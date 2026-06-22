@@ -1,0 +1,13 @@
+repos:
+  - repo: local
+    hooks:
+      - id: gofmt
+        name: gofmt
+        entry: sh -c 'test -z "$(gofmt -l "$@")"' --
+        language: system
+        types: [go]
+      - id: go-test
+        name: go test ./...
+        entry: go test ./...
+        language: system
+        pass_filenames: false

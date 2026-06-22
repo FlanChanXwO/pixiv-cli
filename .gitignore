@@ -1,0 +1,31 @@
+.DS_Store
+
+# Go build/test artifacts
+/pixiv-mcp-server
+/pixiv
+/pixiv-auth
+*.test
+*.out
+coverage/
+coverage.txt
+
+# Runtime outputs and local data
+downloads/
+*.db
+*.sqlite
+*.sqlite3
+*.log
+
+# Local environment and editor files
+.env
+.env.*
+!.env.example
+.idea/
+.vscode/
+
+# Temporary/cache files
+tmp/
+temp/
+.cache/
+__pycache__/
+*.py[cod]
