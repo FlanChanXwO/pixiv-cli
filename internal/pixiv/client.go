@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -19,8 +20,8 @@ import (
 const (
 	DefaultAPIBase           = "https://app-api.pixiv.net"
 	DefaultOAuthBase         = "https://oauth.secure.pixiv.net"
-	DefaultOAuthClientID     = "MOBrBDSOnz6cTIM6GAl6Ytjj"
-	DefaultOAuthClientSecret = "lsyM0L2M6vWypx4Y"
+	DefaultOAuthClientID     = "MOBrBDS8blbauoSck0ZfDbtuzpyT"
+	DefaultOAuthClientSecret = "lsACyCD94FhDUtGTXi3QzcFE2uU1hqtDaKeqrdwj"
 	DefaultUserAgent         = "PixivAndroidApp/5.0.234 (Android 11; Pixel 5)"
 	DefaultAppOS             = "android"
 	DefaultAppOSVersion      = "11"
@@ -137,14 +138,14 @@ func (c *Client) Refresh(ctx context.Context) error {
 		if result.Response.RefreshToken != "" {
 			c.refreshToken = result.Response.RefreshToken
 		}
-		c.userID = result.Response.User.ID
+		c.userID = int64(result.Response.User.ID)
 		return nil
 	}
 	c.accessToken = result.AccessToken
 	if result.RefreshToken != "" {
 		c.refreshToken = result.RefreshToken
 	}
-	c.userID = result.User.ID
+	c.userID = int64(result.User.ID)
 	return nil
 }
 
@@ -339,10 +340,34 @@ func setOffset(q url.Values, offset int) {
 type authResponse struct {
 	AccessToken  string `json:"access_token"`
 	RefreshToken string `json:"refresh_token"`
-	User         User   `json:"user"`
+	User         authUser
 	Response     struct {
 		AccessToken  string `json:"access_token"`
 		RefreshToken string `json:"refresh_token"`
-		User         User   `json:"user"`
+		User         authUser
 	} `json:"response"`
+}
+
+type authUser struct {
+	ID jsonInt64 `json:"id"`
+}
+
+type jsonInt64 int64
+
+func (i *jsonInt64) UnmarshalJSON(body []byte) error {
+	var n int64
+	if err := json.Unmarshal(body, &n); err == nil {
+		*i = jsonInt64(n)
+		return nil
+	}
+	var text string
+	if err := json.Unmarshal(body, &text); err != nil {
+		return err
+	}
+	n, err := strconv.ParseInt(text, 10, 64)
+	if err != nil {
+		return err
+	}
+	*i = jsonInt64(n)
+	return nil
 }

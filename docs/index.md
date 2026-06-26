@@ -20,7 +20,7 @@ go build -o pixiv ./cmd/pixiv-mcp-server
 CLI 示例：
 
 ```bash
-pixiv account add main
+pixiv account login main
 pixiv search --json "初音ミク"
 pixiv download 123456
 ```
@@ -33,5 +33,7 @@ DOWNLOAD_PATH=./downloads \
 FILENAME_TEMPLATE="{author} - {title}_{id}" \
 ./pixiv mcp
 ```
+
+真实 token 写在 inline 环境变量里也可能进入 shell history；长期使用建议通过 MCP client 的私密环境配置或本地 profile 管理。
 
 stdout 保留给 MCP JSON-RPC；日志写入 stderr。

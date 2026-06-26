@@ -23,11 +23,20 @@ func TestRefreshAndRetryOnAuthError(t *testing.T) {
 	defer api.Close()
 
 	oauth := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := r.ParseForm(); err != nil {
+			t.Fatalf("parse refresh form: %v", err)
+		}
+		if got := r.Form.Get("client_id"); got != DefaultOAuthClientID {
+			t.Fatalf("client_id = %q, want %q", got, DefaultOAuthClientID)
+		}
+		if got := r.Form.Get("client_secret"); got != DefaultOAuthClientSecret {
+			t.Fatalf("client_secret = %q, want %q", got, DefaultOAuthClientSecret)
+		}
 		refreshed = true
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"access_token":  "new-access",
 			"refresh_token": "new-refresh",
-			"user":          map[string]any{"id": 7},
+			"user":          map[string]any{"id": "7"},
 		})
 	}))
 	defer oauth.Close()

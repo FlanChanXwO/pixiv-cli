@@ -35,7 +35,7 @@ go build -o pixiv ./cmd/pixiv-mcp-server
 CLI 运行：
 
 ```bash
-pixiv account add main
+pixiv account login main
 pixiv search --json "初音ミク"
 pixiv download 123456
 ```
@@ -49,27 +49,33 @@ FILENAME_TEMPLATE="{author} - {title}_{id}" \
 ./pixiv mcp
 ```
 
+真实 token 写在 inline 环境变量里也可能进入 shell history；长期使用建议通过 MCP client 的私密环境配置或本地 profile 管理。
+
 如网络环境需要代理，可额外设置：
 
 ```bash
 https_proxy=http://127.0.0.1:7890 ./pixiv mcp
 ```
 
-CLI 多账号 profile 保存在 `os.UserConfigDir()/pixiv/config.json`，文件权限为 `0600`。`account add` 默认从 stdin 读取 token，也支持 `--token`，但不建议在共享 shell 历史环境中使用。
+CLI 多账号 profile 保存在 `os.UserConfigDir()/pixiv/config.json`，文件权限为 `0600`。推荐使用 `pixiv account login NAME` 通过本地 loopback server 和浏览器 OAuth 登录；`account add` 仍可从 stdin 读取 token，也支持 `--token`，但不建议在共享 shell 历史环境中使用。
 
 ## 获取 refresh token
 
-浏览器 Cookie 里的 `PHPSESSID`、`device_token` 不是 Pixiv App API OAuth refresh token。推荐用项目内置的 Chromium 扩展走 Pixiv App OAuth PKCE 流程。
+浏览器 Cookie 里的 `PHPSESSID`、`device_token` 不是 Pixiv App API OAuth refresh token。推荐直接登录并保存 profile：
 
-使用步骤：
+```bash
+pixiv account login main
+```
 
-1. 在 Chrome、Edge 或 Brave 打开 `chrome://extensions`。
-2. 启用 Developer mode。
-3. 点击 Load unpacked，选择 `scripts/pixiv-refresh-token-extension`。
-4. 打开扩展弹窗，点击登录按钮。
-5. 完成 Pixiv 登录后复制页面显示的 `refresh_token`。
+| 项 | 说明 |
+| --- | --- |
+| 本地服务 | CLI 生成 PKCE/state，并启动本地 loopback HTTP server。 |
+| 浏览器 | 默认打开系统默认浏览器；`--no-open` 可改为只打印登录 URL。 |
+| 手动回填 | 若浏览器没有自动返回，本地页面可粘贴 callback URL、`pixiv://...` URL 或原始 code。 |
+| state 校验 | URL 派生回调必须匹配本次 state；原始 code 是显式 fallback。 |
+| token 保存 | refresh/access token 不打印；refresh token 写入既有账号配置，权限为 `0600`。 |
 
-扩展会监听 Pixiv OAuth callback 并自动换取 token。如果自动捕获失败，可在扩展弹窗里粘贴 callback URL、`pixiv://` URL 或原始 code 手动换取。扩展只把临时 PKCE verifier/state 写入 `chrome.storage.session`；refresh token 只展示给用户复制，不写入持久存储。
+真实登录依赖 Pixiv OAuth 网页流程可用。自动化测试使用 fake OAuth server 覆盖 callback 和 token exchange，不访问真实 Pixiv。
 
 ## 测试
 
@@ -78,7 +84,6 @@ CLI 多账号 profile 保存在 `os.UserConfigDir()/pixiv/config.json`，文件�
 ```bash
 go test ./...
 go build -o pixiv ./cmd/pixiv-mcp-server
-python3 scripts/test_pixiv_refresh_token_extension.py
 ```
 
 代码改动完成前，应按变更范围补充或更新测试。若不能运行测试，需要在交付说明中写明原因和风险。

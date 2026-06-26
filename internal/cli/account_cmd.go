@@ -33,6 +33,8 @@ func (a app) runAccount(args []string) error {
 	switch args[0] {
 	case "add":
 		return a.accountAdd(args[1:])
+	case "login":
+		return a.accountLogin(args[1:])
 	case "list":
 		return a.accountList(args[1:])
 	case "remove":
@@ -51,6 +53,7 @@ func (a app) printAccountHelp(w io.Writer) {
 
 Commands:
   add NAME       Add or replace a profile
+  login NAME     Login with local browser OAuth flow
   list           List profiles
   remove NAME    Remove a profile
   use NAME       Set the default profile
@@ -69,7 +72,7 @@ func (a app) accountAdd(args []string) error {
 		return err
 	}
 	if fs.NArg() != 1 {
-		return errors.New("usage: pixiv account add NAME [--token TOKEN]")
+		return errors.New("usage: pixiv account add [--token TOKEN] NAME")
 	}
 	name := fs.Arg(0)
 	if err := validateProfileName(name); err != nil {

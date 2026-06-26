@@ -15,7 +15,7 @@
 
 ### `internal/pixiv`
 
-封装 Pixiv app API 与 OAuth refresh flow。主要职责：
+封装 Pixiv app API、OAuth refresh flow 和 authorization-code token exchange。主要职责：
 
 - 保存 refresh token、access token 和 user ID。
 - 用 Pixiv Android app 风格 header 访问 API。
@@ -35,6 +35,8 @@
 负责命令行入口、参数解析、账号 profile 存储、文本/JSON 输出和 `pixiv mcp` 分发。CLI 使用 Go 标准库 `flag`，不引入额外 CLI 框架。
 
 账号文件位于 `os.UserConfigDir()/pixiv/config.json`，写入权限为 `0600`。命令行配置优先级为 flag、选中的 profile、环境变量、默认值。
+
+`pixiv account login NAME` 是推荐的 refresh token 获取与保存方式。CLI 会生成 PKCE verifier/challenge 和 OAuth state，启动本地 loopback HTTP server，并默认打开系统浏览器；使用 `--no-open` 时只打印登录 URL。URL 派生回调必须匹配 state，原始 code 粘贴仅作为显式 fallback。登录成功后只保存 refresh token 和 user ID，不打印 refresh/access token。
 
 ### `internal/download`
 
@@ -76,7 +78,8 @@
 
 - `internal/pixiv.Client` 默认 HTTP timeout 为 60 秒，这是当前代码已有的客户端级保护。
 - `pixiv mcp` 是 MCP stdio server 的显式启动方式；直接执行 `pixiv` 不再启动 MCP。
-- CLI 账号文件以明文 JSON 保存 refresh token，但文件权限固定为 `0600`；需要系统钥匙串时再扩展。
+- CLI 账号文件以明文 JSON 保存 refresh token 和 user ID，不保存 access token，文件权限固定为 `0600`；需要系统钥匙串时再扩展。
+- `account login` 的真实登录依赖 Pixiv OAuth 网页流程；测试使用 fake OAuth server 覆盖 callback 与 token exchange。
 - `download_random_from_recommendation` 默认下载 5 个，当前代码将输入数量限制在最多 20 个。
 - `download` 默认只返回本地路径和 `file://` URI；当 `delivery=image_content` 时，会把所有下载产物作为 MCP `ImageContent` 一并返回，不做无依据截断。
 - `get_thumbnail_base64` 会将缩略图完整编码为 base64 文本返回，调用方需注意输出体积。
