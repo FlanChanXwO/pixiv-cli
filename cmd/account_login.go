@@ -1,4 +1,4 @@
-package cli
+package cmd
 
 import (
 	"context"
@@ -6,21 +6,19 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"errors"
-	"flag"
 	"fmt"
 	"html"
 	"io"
 	"net"
 	"net/http"
 	"net/url"
-	"os/exec"
-	"runtime"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/FlanChanXwO/pixiv-mcp-server/internal/pixiv"
-	"github.com/FlanChanXwO/pixiv-mcp-server/pkg/config"
+	"github.com/pkg/browser"
+	"github.com/spf13/cobra"
 )
 
 const defaultLoginAddr = "127.0.0.1:0"
@@ -36,30 +34,60 @@ type loginServerResult struct {
 	err  error
 }
 
-func (a app) accountLogin(args []string) error {
-	var jsonOut bool
-	var noOpen bool
-	var useProfile bool
-	var addr string
-	var timeout time.Duration
-	fs := flag.NewFlagSet("account login", flag.ContinueOnError)
-	fs.SetOutput(a.errOut)
-	fs.BoolVar(&jsonOut, "json", false, "print JSON")
-	fs.BoolVar(&noOpen, "no-open", false, "do not open the browser")
-	fs.StringVar(&addr, "addr", defaultLoginAddr, "local loopback listen address")
-	fs.BoolVar(&useProfile, "use", false, "set as default profile after login")
-	fs.DurationVar(&timeout, "timeout", 0, "maximum time to wait for login flow")
-	if err := fs.Parse(args); err != nil {
+type accountLoginOptions struct {
+	jsonOut    bool
+	noOpen     bool
+	useProfile bool
+	addr       string
+	timeout    time.Duration
+}
+
+func (a app) newAccountLoginCommand() *cobra.Command {
+	opts := accountLoginOptions{addr: defaultLoginAddr}
+	cmd := &cobra.Command{
+		Use:     "login [NAME]",
+		Short:   "Login with the Pixiv browser OAuth flow",
+		Example: "pixiv account login main --use",
+		Args:    requireMaxArgs(1, "pixiv account login [NAME] [--json] [--no-open] [--addr 127.0.0.1:0] [--use] [--timeout DURATION]"),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return a.accountLogin(cmd, args, opts)
+		},
+	}
+	flags := cmd.Flags()
+	flags.BoolVar(&opts.jsonOut, "json", false, "print JSON")
+	flags.BoolVar(&opts.noOpen, "no-open", false, "do not open the browser")
+	flags.StringVar(&opts.addr, "addr", defaultLoginAddr, "local loopback listen address")
+	flags.BoolVar(&opts.useProfile, "use", false, "set as default account after login")
+	flags.DurationVar(&opts.timeout, "timeout", 0, "maximum time to wait for login flow")
+	return cmd
+}
+
+func (a app) accountLogin(cmd *cobra.Command, args []string, opts accountLoginOptions) error {
+	settings, err := loadSettingsState()
+	if err != nil {
 		return err
 	}
-	if fs.NArg() != 1 {
-		return errors.New("usage: pixiv account login [--json] [--no-open] [--addr 127.0.0.1:0] [--use] [--timeout DURATION] NAME")
-	}
-	name := fs.Arg(0)
-	if err := validateProfileName(name); err != nil {
+	cfg, err := settings.runtime()
+	if err != nil {
 		return err
 	}
-	if err := validateLoginAddr(addr); err != nil {
+	if !cmd.Flags().Changed("no-open") {
+		opts.noOpen = !cfg.LoginOpenBrowser
+	}
+	if !cmd.Flags().Changed("use") {
+		opts.useProfile = cfg.LoginUseAfterLogin
+	}
+	if !cmd.Flags().Changed("timeout") {
+		opts.timeout = cfg.LoginTimeout
+	}
+	name, err := a.resolveAccountNameArg(args, "Account name")
+	if err != nil {
+		return err
+	}
+	if err := validateAccountName(name); err != nil {
+		return err
+	}
+	if err := validateLoginAddr(opts.addr); err != nil {
 		return err
 	}
 
@@ -74,20 +102,19 @@ func (a app) accountLogin(args []string) error {
 
 	ctx := context.Background()
 	var cancel context.CancelFunc
-	if timeout > 0 {
-		// 仅使用用户显式传入的 --timeout 控制等待窗口，避免凭空中断较慢的登录流程。
-		ctx, cancel = context.WithTimeout(ctx, timeout)
+	if opts.timeout > 0 {
+		// 仅在用户或配置显式要求时设置等待窗口，避免无依据打断正常授权流程。
+		ctx, cancel = context.WithTimeout(ctx, opts.timeout)
 		defer cancel()
 	}
 
 	loginURL := pixivLoginURL(challenge, state)
 	oauthBase, browserOpener := currentLoginHooks()
-	code, err := a.waitForLoginCode(ctx, addr, state, loginURL, noOpen, browserOpener)
+	code, err := a.waitForLoginCode(ctx, opts.addr, state, loginURL, opts.noOpen, browserOpener)
 	if err != nil {
 		return err
 	}
 
-	cfg := config.LoadFromEnv()
 	client, err := newLoginPixivClient(cfg, oauthBase)
 	if err != nil {
 		return err
@@ -97,29 +124,29 @@ func (a app) accountLogin(args []string) error {
 		return err
 	}
 
-	path, err := configPath()
+	path, err := authFilePath()
 	if err != nil {
 		return err
 	}
-	store, err := loadAccountStore(path)
+	store, err := loadAuthStore(path)
 	if err != nil {
 		return err
 	}
-	store.Accounts[name] = account{RefreshToken: token.RefreshToken, UserID: token.UserID}
-	if useProfile || store.DefaultProfile == "" {
-		store.DefaultProfile = name
+	store.upsert(account{Name: name, RefreshToken: token.RefreshToken, UserID: token.UserID})
+	if opts.useProfile || store.DefaultAccount == "" {
+		store.DefaultAccount = name
 	}
-	if err := saveAccountStore(path, store); err != nil {
+	if err := saveAuthStore(path, store); err != nil {
 		return err
 	}
 
-	out := accountOut{Name: name, Default: store.DefaultProfile == name, UserID: token.UserID, HasToken: true}
-	if jsonOut {
+	out := accountOut{Name: name, Default: store.DefaultAccount == name, UserID: token.UserID, HasToken: true}
+	if opts.jsonOut {
 		return a.printJSON(out)
 	}
 	fmt.Fprintf(a.out, "account %q saved\n", name)
 	if out.Default {
-		fmt.Fprintf(a.out, "default profile: %s\n", name)
+		fmt.Fprintf(a.out, "default account: %s\n", name)
 	}
 	if out.UserID != 0 {
 		fmt.Fprintf(a.out, "user_id:%d\n", out.UserID)
@@ -206,10 +233,26 @@ func (a app) waitForLoginCode(ctx context.Context, addr, state, loginURL string,
 
 	writeErr("Open this Pixiv login URL:\n%s\n", loginURL)
 	writeErr("Waiting for callback or manual code at http://%s/\n", actualAddr)
+
+	enableTerminalFallback := noOpen && canPrompt(a)
 	if !noOpen {
 		if err := browserOpener(loginURL); err != nil {
 			writeErr("warning: could not open browser: %v\n", err)
+			enableTerminalFallback = canPrompt(a)
 		}
+	}
+	if enableTerminalFallback {
+		go func() {
+			input, err := promptInput(a, "Paste callback URL or authorization code", "")
+			if err != nil {
+				return
+			}
+			result := loginCodeFromInput(input, state)
+			reportInvalidSubmission(result.err)
+			if result.err == nil {
+				submit(result)
+			}
+		}()
 	}
 
 	select {
@@ -360,30 +403,14 @@ func setOpenBrowserForTest(opener func(string) error) func() {
 	}
 }
 
-func newLoginPixivClient(cfg config.Config, oauthBase string) (*pixiv.Client, error) {
-	httpClient := &http.Client{Transport: http.DefaultTransport}
-	if cfg.HTTPSProxy != "" {
-		proxyURL, err := url.Parse(cfg.HTTPSProxy)
-		if err != nil {
-			return nil, fmt.Errorf("invalid proxy URL %q: %w", cfg.HTTPSProxy, err)
-		}
-		httpClient.Transport = &http.Transport{Proxy: http.ProxyURL(proxyURL)}
+func newLoginPixivClient(cfg runtimeConfig, oauthBase string) (*pixiv.Client, error) {
+	httpClient, err := newHTTPClient(cfg.HTTPSProxy)
+	if err != nil {
+		return nil, err
 	}
 	return pixiv.New("", pixiv.WithHTTPClient(httpClient), pixiv.WithBaseURLs("", oauthBase)), nil
 }
 
 func defaultOpenBrowser(rawURL string) error {
-	var cmd *exec.Cmd
-	switch runtime.GOOS {
-	case "darwin":
-		cmd = exec.Command("open", rawURL)
-	case "windows":
-		cmd = exec.Command("rundll32", "url.dll,FileProtocolHandler", rawURL)
-	default:
-		cmd = exec.Command("xdg-open", rawURL)
-	}
-	if err := cmd.Start(); err != nil {
-		return err
-	}
-	return cmd.Process.Release()
+	return browser.OpenURL(rawURL)
 }

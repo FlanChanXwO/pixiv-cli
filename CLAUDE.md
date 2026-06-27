@@ -6,11 +6,11 @@ Answer in Simplified Chinese by default. Keep code identifiers, commands, paths,
 
 ## Repository Shape
 
-- `cmd/pixiv-mcp-server/main.go`: binary entrypoint. Loads env config, configures optional HTTPS proxy, creates the Pixiv client, download manager, and MCP stdio server.
+- `main.go`: official binary entrypoint. It only delegates to the top-level `cmd` package.
+- `cmd/`: Cobra command tree, `auth.json`/`config.toml` storage, TTY prompts, loopback OAuth login, CLI output, and `pixiv mcp` dispatch.
 - `internal/pixiv/`: Pixiv app API client, OAuth refresh flow, API error handling, and JSON response types.
 - `internal/mcpserver/`: MCP server construction, tool registration, input structs, authentication checks, and text formatting.
 - `internal/download/`: background download manager, deduplication, multi-page storage, ugoira zip handling, and `ffmpeg` conversion.
-- `pkg/config/`: environment variable loading and defaults.
 - `pkg/pixivutil/`: filename sanitization, filename template expansion, and ID deduplication.
 - `manifest.json`: DXT/MCP packaging metadata and user config.
 - `docs/`: project documentation.
@@ -21,12 +21,17 @@ Always run commands from the repository root:
 
 ```bash
 go test ./...
-go build ./cmd/pixiv-mcp-server
+go build .
 ```
 
 The module currently declares `go 1.26.3`.
 
 ## Runtime Configuration
+
+Runtime config files:
+
+- `os.UserConfigDir()/pixiv/auth.json`: account auth storage and `default_account`.
+- `os.UserConfigDir()/pixiv/config.toml`: sparse global settings edited by users or `pixiv config`.
 
 Environment variables:
 
@@ -55,7 +60,7 @@ Do not commit tokens, downloaded artwork, local databases, caches, or machine-sp
 
 Existing test files:
 
-- `pkg/config/config_test.go`
+- `cmd/*_test.go`
 - `internal/pixiv/client_test.go`
 - `internal/download/manager_test.go`
 - `internal/mcpserver/server_test.go`

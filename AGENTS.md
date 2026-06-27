@@ -13,11 +13,11 @@
 
 当前主要入口与模块：
 
-- `cmd/pixiv-mcp-server/main.go`：加载环境配置、设置 HTTP/HTTPS 代理、初始化 Pixiv client、下载管理器和 MCP stdio server。
+- `main.go`：仓库根二进制入口，只负责委托给顶层 `cmd` package。
+- `cmd/`：Cobra 命令树、`auth.json`/`config.toml` 读写、TTY 交互、OAuth loopback 登录、文本/JSON 输出和 `pixiv mcp` 分发。
 - `internal/pixiv/`：Pixiv app API 与 OAuth refresh token client，含 JSON 类型定义。
 - `internal/mcpserver/`：MCP tool 注册与参数/返回文本适配。
 - `internal/download/`：下载队列、文件命名、多页作品保存、ugoira zip 转 gif。
-- `pkg/config/`：从环境变量加载运行配置。
 - `pkg/pixivutil/`：文件名清理、模板生成、ID 去重等工具。
 - `manifest.json`：DXT/MCP 打包与用户配置声明。
 - `docs/`：项目文档索引、架构、开发流程和工具说明。
@@ -29,7 +29,7 @@
 ```bash
 go version
 go test ./...
-go build ./cmd/pixiv-mcp-server
+go build .
 ```
 
 可选运行依赖：
@@ -40,7 +40,12 @@ go build ./cmd/pixiv-mcp-server
 
 ## 配置
 
-运行配置来自环境变量：
+运行配置拆分为：
+
+- `os.UserConfigDir()/pixiv/auth.json`：账号认证与默认账号。
+- `os.UserConfigDir()/pixiv/config.toml`：全局可手改配置。
+
+环境变量仍保留公开覆盖层：
 
 - `PIXIV_REFRESH_TOKEN`：Pixiv refresh token。
 - `DOWNLOAD_PATH`：下载目录，默认 `./downloads`。
@@ -63,7 +68,7 @@ go build ./cmd/pixiv-mcp-server
 
 代码任务完成前应补充或更新测试，并运行相关回归。当前已有测试覆盖：
 
-- `pkg/config/config_test.go`
+- `cmd/*_test.go`
 - `pkg/pixivutil` 相关测试写在 `internal/download/manager_test.go`
 - `internal/pixiv/client_test.go`
 - `internal/download/manager_test.go`
@@ -73,7 +78,7 @@ go build ./cmd/pixiv-mcp-server
 
 ```bash
 go test ./...
-go build ./cmd/pixiv-mcp-server
+go build .
 ```
 
 若无法测试，必须说明原因和剩余风险。

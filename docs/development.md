@@ -13,7 +13,7 @@ go 1.26.3
 ```bash
 go version
 go test ./...
-go build -o pixiv ./cmd/pixiv-mcp-server
+go build -o pixiv .
 ```
 
 ugoira GIF 转换需要 `ffmpeg`：
@@ -29,14 +29,14 @@ ffmpeg -version
 构建：
 
 ```bash
-go build -o pixiv ./cmd/pixiv-mcp-server
+go build -o pixiv .
 ```
 
 CLI 运行：
 
 ```bash
 pixiv account login main
-pixiv search --json "初音ミク"
+pixiv search "初音ミク" --json
 pixiv download 123456
 ```
 
@@ -49,7 +49,7 @@ FILENAME_TEMPLATE="{author} - {title}_{id}" \
 ./pixiv mcp
 ```
 
-真实 token 写在 inline 环境变量里也可能进入 shell history；长期使用建议通过 MCP client 的私密环境配置或本地 profile 管理。
+真实 token 写在 inline 环境变量里也可能进入 shell history；长期使用建议通过 MCP client 的私密环境配置或本地账号管理。
 
 如网络环境需要代理，可额外设置：
 
@@ -57,11 +57,12 @@ FILENAME_TEMPLATE="{author} - {title}_{id}" \
 https_proxy=http://127.0.0.1:7890 ./pixiv mcp
 ```
 
-CLI 多账号 profile 保存在 `os.UserConfigDir()/pixiv/config.json`，文件权限为 `0600`。推荐使用 `pixiv account login NAME` 通过本地 loopback server 和浏览器 OAuth 登录；`account add` 仍可从 stdin 读取 token，也支持 `--token`，但不建议在共享 shell 历史环境中使用。
+CLI 多账号认证保存在 `os.UserConfigDir()/pixiv/auth.json`，全局配置保存在 `os.UserConfigDir()/pixiv/config.toml`，两个文件权限都为 `0600`。推荐使用 `pixiv account login NAME` 通过本地 loopback server 和浏览器 OAuth 登录；`account add` 仍可从 stdin 读取 token，也支持 `--token`，但不建议在共享 shell 历史环境中使用。可用 `pixiv config path/get/set/unset` 管理全局配置。
+CLI 使用 Cobra/pflag，flag 可以写在位置参数前后；例如 `pixiv account check main --json` 和 `pixiv search "初音ミク" --json` 都受支持。
 
 ## 获取 refresh token
 
-浏览器 Cookie 里的 `PHPSESSID`、`device_token` 不是 Pixiv App API OAuth refresh token。推荐直接登录并保存 profile：
+浏览器 Cookie 里的 `PHPSESSID`、`device_token` 不是 Pixiv App API OAuth refresh token。推荐直接登录并保存账号：
 
 ```bash
 pixiv account login main
@@ -73,17 +74,17 @@ pixiv account login main
 | 浏览器 | 默认打开系统默认浏览器；`--no-open` 可改为只打印登录 URL。 |
 | 手动回填 | 若浏览器没有自动返回，本地页面可粘贴 callback URL、`pixiv://...` URL 或原始 code。 |
 | state 校验 | URL 派生回调必须匹配本次 state；原始 code 是显式 fallback。 |
-| token 保存 | refresh/access token 不打印；refresh token 写入既有账号配置，权限为 `0600`。 |
+| token 保存 | refresh/access token 不打印；refresh token 写入 `auth.json`，权限为 `0600`。 |
 
 真实登录依赖 Pixiv OAuth 网页流程可用。自动化测试使用 fake OAuth server 覆盖 callback 和 token exchange，不访问真实 Pixiv。
 
 ## 测试
 
-当前测试覆盖配置加载、Pixiv 认证重试、下载管理和 MCP tool 注册：
+当前测试覆盖 CLI 命令、配置/认证存储、Pixiv 认证重试、下载管理和 MCP tool 注册：
 
 ```bash
 go test ./...
-go build -o pixiv ./cmd/pixiv-mcp-server
+go build -o pixiv .
 ```
 
 代码改动完成前，应按变更范围补充或更新测试。若不能运行测试，需要在交付说明中写明原因和风险。

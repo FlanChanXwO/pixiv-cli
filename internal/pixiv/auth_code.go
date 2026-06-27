@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"net/http"
-	"net/url"
 	"strings"
 )
 
@@ -26,27 +25,21 @@ func (c *Client) ExchangeAuthorizationCode(ctx context.Context, code, codeVerifi
 		return AuthCodeToken{}, errors.New("code verifier cannot be empty")
 	}
 
-	form := url.Values{}
-	form.Set("client_id", DefaultOAuthClientID)
-	form.Set("client_secret", DefaultOAuthClientSecret)
-	form.Set("grant_type", "authorization_code")
-	form.Set("include_policy", "true")
-	form.Set("code", code)
-	form.Set("code_verifier", codeVerifier)
-	form.Set("redirect_uri", DefaultOAuthRedirectURI)
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.oauthBase+"/auth/token", strings.NewReader(form.Encode()))
-	if err != nil {
-		return AuthCodeToken{}, err
+	form := map[string]string{
+		"client_id":      DefaultOAuthClientID,
+		"client_secret":  DefaultOAuthClientSecret,
+		"grant_type":     "authorization_code",
+		"include_policy": "true",
+		"code":           code,
+		"code_verifier":  codeVerifier,
+		"redirect_uri":   DefaultOAuthRedirectURI,
 	}
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	req.Header.Set("User-Agent", DefaultUserAgent)
-	req.Header.Set("App-OS", DefaultAppOS)
-	req.Header.Set("App-OS-Version", DefaultAppOSVersion)
-	req.Header.Set("App-Version", DefaultAppVersion)
 
 	var result authResponse
-	if err := c.doJSON(req, &result); err != nil {
+	if err := c.doJSON(ctx, http.MethodPost, c.oauthBase+"/auth/token", requestOptions{
+		Headers: oauthHeaders(),
+		Form:    form,
+	}, &result); err != nil {
 		return AuthCodeToken{}, err
 	}
 	out := authCodeTokenFromResponse(result)

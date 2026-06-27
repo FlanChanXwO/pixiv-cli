@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/FlanChanXwO/pixiv-mcp-server/pkg/pixivutil"
+	"github.com/go-resty/resty/v2"
 )
 
 const (
@@ -29,7 +30,7 @@ const (
 )
 
 type Client struct {
-	httpClient   *http.Client
+	restyClient  *resty.Client
 	apiBase      string
 	oauthBase    string
 	refreshToken string
@@ -43,7 +44,7 @@ type Option func(*Client)
 func WithHTTPClient(httpClient *http.Client) Option {
 	return func(c *Client) {
 		if httpClient != nil {
-			c.httpClient = httpClient
+			c.restyClient = resty.NewWithClient(httpClient)
 		}
 	}
 }
@@ -62,13 +63,18 @@ func WithBaseURLs(apiBase, oauthBase string) Option {
 func New(refreshToken string, opts ...Option) *Client {
 	refreshToken, _ = pixivutil.ParseRefreshTokenInput(refreshToken)
 	c := &Client{
-		httpClient:   &http.Client{Timeout: 60 * time.Second},
+		restyClient:  resty.New(),
 		apiBase:      DefaultAPIBase,
 		oauthBase:    DefaultOAuthBase,
 		refreshToken: refreshToken,
 	}
+	c.restyClient.SetTimeout(60 * time.Second)
 	for _, opt := range opts {
 		opt(c)
+	}
+	if c.restyClient == nil {
+		c.restyClient = resty.New()
+		c.restyClient.SetTimeout(60 * time.Second)
 	}
 	return c
 }
@@ -106,25 +112,19 @@ func (c *Client) Refresh(ctx context.Context) error {
 		return errors.New("missing PIXIV_REFRESH_TOKEN")
 	}
 
-	form := url.Values{}
-	form.Set("client_id", DefaultOAuthClientID)
-	form.Set("client_secret", DefaultOAuthClientSecret)
-	form.Set("grant_type", "refresh_token")
-	form.Set("include_policy", "true")
-	form.Set("refresh_token", refreshToken)
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.oauthBase+"/auth/token", strings.NewReader(form.Encode()))
-	if err != nil {
-		return err
+	form := map[string]string{
+		"client_id":      DefaultOAuthClientID,
+		"client_secret":  DefaultOAuthClientSecret,
+		"grant_type":     "refresh_token",
+		"include_policy": "true",
+		"refresh_token":  refreshToken,
 	}
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	req.Header.Set("User-Agent", DefaultUserAgent)
-	req.Header.Set("App-OS", DefaultAppOS)
-	req.Header.Set("App-OS-Version", DefaultAppOSVersion)
-	req.Header.Set("App-Version", DefaultAppVersion)
 
 	var result authResponse
-	if err := c.doJSON(req, &result); err != nil {
+	if err := c.doJSON(ctx, http.MethodPost, c.oauthBase+"/auth/token", requestOptions{
+		Headers: oauthHeaders(),
+		Form:    form,
+	}, &result); err != nil {
 		return err
 	}
 	if result.Response.AccessToken == "" && result.AccessToken == "" {
@@ -215,22 +215,27 @@ func (c *Client) UgoiraMetadata(ctx context.Context, id int64) (*UgoiraMetadataR
 }
 
 func (c *Client) Download(ctx context.Context, rawURL string, dst io.Writer) error {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
+	resp, err := c.restyClient.R().
+		SetContext(ctx).
+		SetDoNotParseResponse(true).
+		SetHeader("Referer", "https://app-api.pixiv.net/").
+		SetHeader("User-Agent", DefaultUserAgent).
+		Get(rawURL)
 	if err != nil {
 		return err
 	}
-	req.Header.Set("Referer", "https://app-api.pixiv.net/")
-	req.Header.Set("User-Agent", DefaultUserAgent)
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return err
+	defer resp.RawBody().Close()
+	if resp.StatusCode() < 200 || resp.StatusCode() >= 300 {
+		return fmt.Errorf("download failed: %s", resp.Status())
 	}
-	defer resp.Body.Close()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return fmt.Errorf("download failed: %s", resp.Status)
-	}
-	_, err = io.Copy(dst, resp.Body)
+	_, err = io.Copy(dst, resp.RawBody())
 	return err
+}
+
+type requestOptions struct {
+	Headers map[string]string
+	Query   url.Values
+	Form    map[string]string
 }
 
 func getJSON[T any](ctx context.Context, c *Client, path string, query url.Values) (*T, error) {
@@ -253,44 +258,57 @@ func (c *Client) getJSONWithRetry(ctx context.Context, path string, query url.Va
 }
 
 func (c *Client) getJSON(ctx context.Context, path string, query url.Values, out any) error {
-	u := c.apiBase + path
-	if len(query) > 0 {
-		u += "?" + query.Encode()
-	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
-	if err != nil {
-		return err
-	}
-	c.addAPIHeaders(req)
-	return c.doJSON(req, out)
+	return c.doJSON(ctx, http.MethodGet, c.apiBase+path, requestOptions{
+		Headers: c.apiHeaders(),
+		Query:   query,
+	}, out)
 }
 
-func (c *Client) addAPIHeaders(req *http.Request) {
-	req.Header.Set("User-Agent", DefaultUserAgent)
-	req.Header.Set("App-OS", DefaultAppOS)
-	req.Header.Set("App-OS-Version", DefaultAppOSVersion)
-	req.Header.Set("App-Version", DefaultAppVersion)
-	req.Header.Set("Referer", "https://app-api.pixiv.net/")
+func (c *Client) apiHeaders() map[string]string {
+	headers := baseHeaders()
+	headers["Referer"] = "https://app-api.pixiv.net/"
 	c.mu.RLock()
 	token := c.accessToken
 	c.mu.RUnlock()
 	if token != "" {
-		req.Header.Set("Authorization", "Bearer "+token)
+		headers["Authorization"] = "Bearer " + token
+	}
+	return headers
+}
+
+func oauthHeaders() map[string]string {
+	headers := baseHeaders()
+	headers["Content-Type"] = "application/x-www-form-urlencoded"
+	return headers
+}
+
+func baseHeaders() map[string]string {
+	return map[string]string{
+		"User-Agent":     DefaultUserAgent,
+		"App-OS":         DefaultAppOS,
+		"App-OS-Version": DefaultAppOSVersion,
+		"App-Version":    DefaultAppVersion,
 	}
 }
 
-func (c *Client) doJSON(req *http.Request, out any) error {
-	resp, err := c.httpClient.Do(req)
+func (c *Client) doJSON(ctx context.Context, method, rawURL string, opts requestOptions, out any) error {
+	req := c.restyClient.R().SetContext(ctx)
+	if len(opts.Headers) > 0 {
+		req.SetHeaders(opts.Headers)
+	}
+	if len(opts.Query) > 0 {
+		req.SetQueryParamsFromValues(opts.Query)
+	}
+	if len(opts.Form) > 0 {
+		req.SetFormData(opts.Form)
+	}
+	resp, err := req.Execute(method, rawURL)
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return err
-	}
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return APIError{StatusCode: resp.StatusCode, Body: string(body)}
+	body := resp.Body()
+	if resp.StatusCode() < 200 || resp.StatusCode() >= 300 {
+		return APIError{StatusCode: resp.StatusCode(), Body: string(body)}
 	}
 	if len(bytes.TrimSpace(body)) == 0 {
 		return errors.New("empty response")
