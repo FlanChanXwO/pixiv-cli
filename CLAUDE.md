@@ -6,12 +6,18 @@ Answer in Simplified Chinese by default. Keep code identifiers, commands, paths,
 
 ## Repository Shape
 
-- `main.go`: official binary entrypoint. It only delegates to the top-level `cmd` package.
-- `cmd/`: Cobra command tree, `auth.json`/`config.toml` storage, TTY prompts, loopback OAuth login, CLI output, and `pixiv mcp` dispatch.
-- `internal/pixiv/`: Pixiv app API client, OAuth refresh flow, API error handling, and JSON response types.
+- `cmd/pixiv/`: official binary entrypoint. It only delegates to `internal/cli`.
+- `internal/cli/`: Cobra command tree, TTY prompts, loopback OAuth login, CLI output, and `pixiv mcp` dispatch.
+- `internal/cli/state/`: `auth.json` account storage, default account selection, auth file path, and private-file writes.
+- `internal/cli/mcpapp/`: runtime wiring for `pixiv mcp`, including config, account fallback, Pixiv source, download manager, and MCP server construction.
+- `internal/config/`: `config.toml` schema, defaults, effective runtime config, and sparse get/set/unset writes.
+- `internal/pixiv/`: Pixiv source facade plus stable constructors and common model aliases for CLI/MCP.
+- `internal/pixiv/api/`: Pixiv App API client, OAuth refresh flow, authorization-code exchange, and API error handling.
+- `internal/pixiv/web/`: anonymous Pixiv web/ajax API client used for tokenless fallback.
+- `internal/pixiv/model/`: shared response/domain types and typed Pixiv protocol constants.
 - `internal/mcpserver/`: MCP server construction, tool registration, input structs, authentication checks, and text formatting.
 - `internal/download/`: background download manager, deduplication, multi-page storage, ugoira zip handling, and `ffmpeg` conversion.
-- `pkg/pixivutil/`: filename sanitization, filename template expansion, and ID deduplication.
+- `internal/utils/`: filename sanitization, filename template expansion, ID deduplication, and Pixiv web refresh-token input parsing.
 - `manifest.json`: DXT/MCP packaging metadata and user config.
 - `docs/`: project documentation.
 
@@ -21,7 +27,7 @@ Always run commands from the repository root:
 
 ```bash
 go test ./...
-go build .
+go build -o pixiv ./cmd/pixiv
 ```
 
 The module currently declares `go 1.26.3`.
@@ -60,9 +66,14 @@ Do not commit tokens, downloaded artwork, local databases, caches, or machine-sp
 
 Existing test files:
 
-- `cmd/*_test.go`
-- `internal/pixiv/client_test.go`
+- `internal/cli/*_test.go`
+- `test/e2e/pixiv_binary_test.go`
+- `internal/config`
+- `internal/utils`
+- `internal/pixiv/...`
 - `internal/download/manager_test.go`
 - `internal/mcpserver/server_test.go`
 
 For code changes, update or add focused tests and run `go test ./...` before finishing whenever feasible.
+
+Real Pixiv web fallback e2e is opt-in and skipped by default. Run it explicitly with `PIXIV_E2E_WEB_API=1`, plus `PIXIV_WEB_API_PROXY` when the network needs a proxy.

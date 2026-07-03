@@ -15,7 +15,7 @@ import (
 
 	"github.com/FlanChanXwO/pixiv-mcp-server/internal/download"
 	"github.com/FlanChanXwO/pixiv-mcp-server/internal/pixiv"
-	"github.com/FlanChanXwO/pixiv-mcp-server/pkg/pixivutil"
+	"github.com/FlanChanXwO/pixiv-mcp-server/internal/utils"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -271,7 +271,7 @@ type setRefreshTokenIn struct {
 }
 
 func (a *App) setRefreshToken(ctx context.Context, _ *mcp.CallToolRequest, in setRefreshTokenIn) (*mcp.CallToolResult, textOut, error) {
-	token, parsedCookie := pixivutil.ParseRefreshTokenInput(in.RefreshToken)
+	token, parsedCookie := utils.ParsePixivWebRefreshTokenInput(in.RefreshToken)
 	if token == "" {
 		if parsedCookie {
 			return toolText("错误：检测到您输入的是 Cookie 字符串，但其中没有 refresh_token。Pixiv 网页 Cookie 里的 PHPSESSID/device_token 不能直接用于 App API OAuth 刷新。请提供真正的 Pixiv refresh token，或包含 refresh_token=... 的 Cookie。")
@@ -280,9 +280,9 @@ func (a *App) setRefreshToken(ctx context.Context, _ *mcp.CallToolRequest, in se
 	}
 	a.api.SetRefreshToken(token)
 	if err := a.api.Refresh(ctx); err != nil {
-		return toolText(fmt.Sprintf("Refresh token 已保存，但认证失败: %v\n\n请检查 token 是否有效，或稍后使用 refresh_token 工具重试认证。", err))
+		return toolText(fmt.Sprintf("Refresh token 已在当前会话设置，但认证失败: %v\n\n请检查 token 是否有效，或稍后使用 refresh_token 工具重试认证。", err))
 	}
-	return toolText(fmt.Sprintf("Refresh token 设置成功并已完成认证！\n用户 ID: %d\n\n现在您可以使用所有 Pixiv 功能了。", a.api.UserID()))
+	return toolText(fmt.Sprintf("Refresh token 已在当前会话设置并完成认证！\n用户 ID: %d\n\n现在您可以使用所有 Pixiv 功能了。", a.api.UserID()))
 }
 
 type downloadRandomIn struct {
@@ -331,10 +331,10 @@ type searchIllustIn struct {
 
 func (a *App) searchIllust(ctx context.Context, _ *mcp.CallToolRequest, in searchIllustIn) (*mcp.CallToolResult, textOut, error) {
 	if in.SearchTarget == "" {
-		in.SearchTarget = "partial_match_for_tags"
+		in.SearchTarget = string(pixiv.SearchTargetPartialMatchForTags)
 	}
 	if in.Sort == "" {
-		in.Sort = "date_desc"
+		in.Sort = string(pixiv.SortModeDateDesc)
 	}
 	word := in.Word
 	if in.SearchR18 {
@@ -389,7 +389,7 @@ type rankingIn struct {
 
 func (a *App) illustRanking(ctx context.Context, _ *mcp.CallToolRequest, in rankingIn) (*mcp.CallToolResult, textOut, error) {
 	if in.Mode == "" {
-		in.Mode = "day"
+		in.Mode = string(pixiv.RankingModeDay)
 	}
 	result, err := a.api.IllustRanking(ctx, in.Mode, in.Date, in.Offset)
 	if err != nil {
@@ -466,7 +466,7 @@ func (a *App) illustFollow(ctx context.Context, _ *mcp.CallToolRequest, in follo
 		return toolText(err.Error())
 	}
 	if in.Restrict == "" {
-		in.Restrict = "public"
+		in.Restrict = string(pixiv.RestrictPublic)
 	}
 	result, err := a.api.IllustFollow(ctx, in.Restrict, in.Offset)
 	if err != nil {
@@ -490,7 +490,7 @@ func (a *App) userBookmarks(ctx context.Context, _ *mcp.CallToolRequest, in book
 		return toolText(err.Error())
 	}
 	if in.Restrict == "" {
-		in.Restrict = "public"
+		in.Restrict = string(pixiv.RestrictPublic)
 	}
 	userID := in.UserIDToCheck
 	if userID == 0 {
@@ -520,7 +520,7 @@ func (a *App) userFollowing(ctx context.Context, _ *mcp.CallToolRequest, in foll
 		return toolText(err.Error())
 	}
 	if in.Restrict == "" {
-		in.Restrict = "public"
+		in.Restrict = string(pixiv.RestrictPublic)
 	}
 	userID := in.UserIDToCheck
 	if userID == 0 {

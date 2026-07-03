@@ -2,12 +2,20 @@
 
 Go 版 Pixiv 工具集：默认作为 `pixiv` CLI 使用，需要 MCP 时显式运行 `pixiv mcp`。
 
-它复用 Pixiv App API，支持搜索、详情、排行、推荐、下载、多账号 refresh token 管理，以及 MCP stdio server。
+它优先复用 Pixiv App API，支持搜索、详情、排行、推荐、下载、多账号 refresh token 管理，以及 MCP stdio server。未配置 refresh token 时，默认对搜索、详情、排行、用户搜索和下载启用匿名 Pixiv web/ajax API fallback。
+
+源码按 CLI、config、Pixiv facade/source、download、MCP server 分包；Pixiv App API、web fallback 与共享模型分别收在 `internal/pixiv/api`、`internal/pixiv/web`、`internal/pixiv/model`。
 
 ## 构建
 
 ```bash
-go build -o pixiv .
+go build -o pixiv ./cmd/pixiv
+```
+
+或直接安装命令入口：
+
+```bash
+go install github.com/FlanChanXwO/pixiv-mcp-server/cmd/pixiv@latest
 ```
 
 ## 获取 refresh token
@@ -17,10 +25,10 @@ go build -o pixiv .
 推荐用 CLI 浏览器 OAuth 登录，并直接保存到本地账号：
 
 ```bash
-pixiv account login main
+pixiv auth login main
 ```
 
-`account login` 流程：
+`auth login` 流程：
 
 | 阶段 | 行为 |
 | --- | --- |
@@ -37,27 +45,27 @@ pixiv account login main
 先登录并保存一个账号：
 
 ```bash
-pixiv account login main
+pixiv auth login main
 ```
 
 高级/脚本场景也可以导入已有 token：
 
 ```bash
-printf '%s\n' 'YOUR_REFRESH_TOKEN' | pixiv account add main
+printf '%s\n' 'YOUR_REFRESH_TOKEN' | pixiv auth add main
 ```
 
 也可以直接传 token，但 `--token` 参数可能进入 shell history：
 
 ```bash
-pixiv account add --token 'YOUR_REFRESH_TOKEN' main
+pixiv auth add --token 'YOUR_REFRESH_TOKEN' main
 ```
 
 常用命令：
 
 ```bash
-pixiv account list
-pixiv account use main
-pixiv account check
+pixiv auth list
+pixiv auth use main
+pixiv auth check
 pixiv config path
 pixiv config get download_path
 pixiv config set download_path ~/Downloads/pixiv
@@ -72,18 +80,18 @@ pixiv download 123456 789012
 ```
 
 账号认证保存到 `os.UserConfigDir()/pixiv/auth.json`，全局配置保存到 `os.UserConfigDir()/pixiv/config.toml`，两个文件权限都固定为 `0600`。输出默认给人读；加 `--json` 输出机器可解析 JSON。
-CLI 使用 Cobra/pflag，选项可以写在位置参数前后，例如 `pixiv account check main --json` 和 `pixiv search "初音ミク" --json` 都是正式支持的写法。
+CLI 使用 Cobra/pflag，选项可以写在位置参数前后，例如 `pixiv auth check main --json` 和 `pixiv search "初音ミク" --json` 都是正式支持的写法。
 
 ### CLI 命令表
 
 | 命令 | 用法 | 说明 |
 | --- | --- | --- |
-| `account add` | `pixiv account add [NAME] [--token TOKEN]` | 添加或替换账号；不传 `NAME` 或 `--token` 时，TTY 下会交互补齐。 |
-| `account login` | `pixiv account login [NAME] [--json] [--no-open] [--addr 127.0.0.1:0] [--use] [--timeout DURATION]` | 通过本地 loopback server 和浏览器 OAuth 登录并保存账号；不会输出 refresh token。 |
-| `account list` | `pixiv account list [--json]` | 列出本地账号；不会输出 refresh token。 |
-| `account use` | `pixiv account use [NAME]` | 设置默认账号；TTY 下可交互选择。 |
-| `account remove` | `pixiv account remove [NAME] [--yes]` | 删除账号；TTY 下默认确认，删除默认账号后会自动选第一个剩余账号。 |
-| `account check` | `pixiv account check [--json] [NAME]` | 刷新 token 并验证账号；成功后会记录 `user_id`。 |
+| `auth add` | `pixiv auth add [NAME] [--token TOKEN]` | 添加或替换账号；不传 `NAME` 或 `--token` 时，TTY 下会交互补齐。 |
+| `auth login` | `pixiv auth login [NAME] [--json] [--no-open] [--addr 127.0.0.1:0] [--use] [--timeout DURATION]` | 通过本地 loopback server 和浏览器 OAuth 登录并保存账号；不会输出 refresh token。 |
+| `auth list` | `pixiv auth list [--json]` | 列出本地账号；不会输出 refresh token。 |
+| `auth use` | `pixiv auth use [NAME]` | 设置默认账号；TTY 下可交互选择。 |
+| `auth remove` | `pixiv auth remove [NAME] [--yes]` | 删除账号；TTY 下默认确认，删除默认账号后会自动选第一个剩余账号。 |
+| `auth check` | `pixiv auth check [--json] [NAME]` | 刷新 token 并验证账号；成功后会记录 `user_id`。 |
 | `config path` | `pixiv config path` | 输出 `config.toml` 路径。 |
 | `config get` | `pixiv config get KEY` | 输出一个生效中的配置值。 |
 | `config set` | `pixiv config set KEY VALUE` | 写入一个已知配置键到 `config.toml`。 |
@@ -92,10 +100,10 @@ CLI 使用 Cobra/pflag，选项可以写在位置参数前后，例如 `pixiv ac
 | `detail` | `pixiv detail [options] ILLUST_ID` | 查看单个作品详情。 |
 | `ranking` | `pixiv ranking [options]` | 查看 Pixiv 插画排行榜。 |
 | `recommended` | `pixiv recommended [options]` | 查看个性化推荐，需要认证。 |
-| `download` | `pixiv download [options] ILLUST_ID...` | 下载一个或多个作品，需要认证。 |
+| `download` | `pixiv download [options] ILLUST_ID...` | 下载一个或多个作品；无 token 时默认走匿名 web fallback。 |
 | `mcp` | `pixiv mcp` | 启动 MCP stdio server。 |
 
-### `account login` 参数
+### `auth login` 参数
 
 | 参数 | 默认值 | 说明 |
 | --- | --- | --- |
@@ -127,7 +135,7 @@ CLI 使用 Cobra/pflag，选项可以写在位置参数前后，例如 `pixiv ac
 | --- | --- | --- | --- |
 | `--profile NAME` | `search/detail/ranking/recommended/download` | `auth.json.default_account` | 选择本地账号。 |
 | `--refresh-token TOKEN` | `search/detail/ranking/recommended/download` | 空 | 临时覆盖账号/env token。 |
-| `--json` | `account` 子命令和数据命令 | `false` | 输出机器可解析 JSON。 |
+| `--json` | `auth` 子命令和数据命令 | `false` | 输出机器可解析 JSON。 |
 | `--download-path PATH` | 数据命令；实际只影响 `download` | `DOWNLOAD_PATH`、`config.toml` 或 `./downloads` | 下载目录。 |
 | `--filename-template TEMPLATE` | 数据命令；实际只影响 `download` | `FILENAME_TEMPLATE`、`config.toml` 或 `{author} - {title}_{id}` | 文件名模板。 |
 
@@ -138,10 +146,11 @@ CLI 使用 Cobra/pflag，选项可以写在位置参数前后，例如 `pixiv ac
 | `download_path` | string | `./downloads` | 下载目录。 |
 | `filename_template` | string | `{author} - {title}_{id}` | 文件名模板。 |
 | `https_proxy` | string | 空 | HTTP(S) 代理，优先使用环境变量中的小写 `https_proxy`。 |
+| `web_fallback_enabled` | bool | `true` | 无 refresh token 时，允许匿名 Pixiv web/ajax API fallback；写入为 `[web] fallback_enabled = true/false`。 |
 | `output_json` | bool | `false` | 数据命令默认输出 JSON。 |
-| `login_open_browser` | bool | `true` | `account login` 默认是否自动打开浏览器。 |
-| `login_timeout` | duration | `0s` | `account login` 默认等待时长。 |
-| `login_use_after_login` | bool | `false` | `account login` 默认是否设为当前默认账号。 |
+| `login_open_browser` | bool | `true` | `auth login` 默认是否自动打开浏览器。 |
+| `login_timeout` | duration | `0s` | `auth login` 默认等待时长。 |
+| `login_use_after_login` | bool | `false` | `auth login` 默认是否设为当前默认账号。 |
 
 ### 环境变量
 
@@ -156,6 +165,25 @@ CLI 使用 Cobra/pflag，选项可以写在位置参数前后，例如 `pixiv ac
 
 设置类字段优先级：命令行 flag > 环境变量 > `config.toml` > 默认值。
 
+### 匿名 web fallback
+
+当 `--refresh-token`、`PIXIV_REFRESH_TOKEN` 和默认账号都没有提供 refresh token，且 `web_fallback_enabled=true` 时，下列能力自动走 Pixiv web/ajax API：`search`、`detail`、`ranking`、`download`，以及 MCP tools `search_illust`、`illust_detail`、`illust_ranking`、`search_user`、`download`、`get_thumbnail_base64`。
+
+有 refresh token 时仍优先使用 App API；token 无效、App API 网络错误或服务端错误不会自动 fallback，会直接暴露真实错误。
+
+匿名 fallback 的差异：
+
+- `search_user` 不是 Pixiv 官方用户搜索；它通过 web 作品搜索结果按 `userId` 去重，返回“相关作品作者”。
+- 静态单页/多页下载使用 `/ajax/illust/{id}/pages` 的 `original` URL。
+- ugoira 下载使用 `/ajax/illust/{id}/ugoira_meta` 的 `originalSrc` zip 和 frames，并继续依赖本机 `ffmpeg` 转 GIF。
+- web fallback 不新增专用代理环境变量，继续使用 `https_proxy` / `HTTPS_PROXY` 或 `pixiv config set https_proxy ...`。
+
+关闭方式：
+
+```bash
+pixiv config set web_fallback_enabled false
+```
+
 ## MCP 使用
 
 MCP stdio server 需要显式启动：
@@ -167,7 +195,7 @@ FILENAME_TEMPLATE="{author} - {title}_{id}" \
 ./pixiv mcp
 ```
 
-未设置 `PIXIV_REFRESH_TOKEN` 时，`pixiv mcp` 会自动回退到 `auth.json.default_account`。真实 token 写在 inline 环境变量里也可能进入 shell history；长期使用建议通过 MCP client 的私密环境配置或本地账号管理。
+未设置 `PIXIV_REFRESH_TOKEN` 时，`pixiv mcp` 会先回退到 `auth.json.default_account`；如果仍没有 refresh token 且 `web_fallback_enabled=true`，支持匿名 fallback 的 MCP tools 会直接使用 Pixiv web/ajax API。真实 token 写在 inline 环境变量里也可能进入 shell history；长期使用建议通过 MCP client 的私密环境配置或本地账号管理。
 
 日志写入 stderr，stdout 保留给 MCP JSON-RPC。
 
@@ -193,7 +221,7 @@ MCP client 配置示例：
 
 CLI 命令：
 
-- `account add/login/list/remove/use/check`
+- `auth add/login/list/remove/use/check`
 - `config path/get/set/unset`
 - `search`
 - `detail`
@@ -214,7 +242,10 @@ and `get_thumbnail_base64`.
 
 ```bash
 go test ./...
-go build -o pixiv .
+go build -o pixiv ./cmd/pixiv
 ./pixiv --help
 ./pixiv mcp --help
+PIXIV_E2E_WEB_API=1 PIXIV_WEB_API_PROXY=http://127.0.0.1:7890 go test ./test/e2e -run WebAPIFallbackReal -count=1 -v
 ```
+
+真实 Pixiv web fallback e2e 默认跳过；只有设置 `PIXIV_E2E_WEB_API=1` 时才会联网。

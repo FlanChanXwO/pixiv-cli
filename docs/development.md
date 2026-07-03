@@ -13,7 +13,7 @@ go 1.26.3
 ```bash
 go version
 go test ./...
-go build -o pixiv .
+go build -o pixiv ./cmd/pixiv
 ```
 
 ugoira GIF 转换需要 `ffmpeg`：
@@ -29,13 +29,13 @@ ffmpeg -version
 构建：
 
 ```bash
-go build -o pixiv .
+go build -o pixiv ./cmd/pixiv
 ```
 
 CLI 运行：
 
 ```bash
-pixiv account login main
+pixiv auth login main
 pixiv search "初音ミク" --json
 pixiv download 123456
 ```
@@ -57,15 +57,15 @@ FILENAME_TEMPLATE="{author} - {title}_{id}" \
 https_proxy=http://127.0.0.1:7890 ./pixiv mcp
 ```
 
-CLI 多账号认证保存在 `os.UserConfigDir()/pixiv/auth.json`，全局配置保存在 `os.UserConfigDir()/pixiv/config.toml`，两个文件权限都为 `0600`。推荐使用 `pixiv account login NAME` 通过本地 loopback server 和浏览器 OAuth 登录；`account add` 仍可从 stdin 读取 token，也支持 `--token`，但不建议在共享 shell 历史环境中使用。可用 `pixiv config path/get/set/unset` 管理全局配置。
-CLI 使用 Cobra/pflag，flag 可以写在位置参数前后；例如 `pixiv account check main --json` 和 `pixiv search "初音ミク" --json` 都受支持。
+CLI 多账号认证保存在 `os.UserConfigDir()/pixiv/auth.json`，全局配置保存在 `os.UserConfigDir()/pixiv/config.toml`，两个文件权限都为 `0600`。推荐使用 `pixiv auth login NAME` 通过本地 loopback server 和浏览器 OAuth 登录；`auth add` 仍可从 stdin 读取 token，也支持 `--token`，但不建议在共享 shell 历史环境中使用。可用 `pixiv config path/get/set/unset` 管理全局配置。无 refresh token 时默认启用匿名 Pixiv web/ajax API fallback，可用 `pixiv config set web_fallback_enabled false` 关闭。
+CLI 使用 Cobra/pflag，flag 可以写在位置参数前后；例如 `pixiv auth check main --json` 和 `pixiv search "初音ミク" --json` 都受支持。
 
 ## 获取 refresh token
 
 浏览器 Cookie 里的 `PHPSESSID`、`device_token` 不是 Pixiv App API OAuth refresh token。推荐直接登录并保存账号：
 
 ```bash
-pixiv account login main
+pixiv auth login main
 ```
 
 | 项 | 说明 |
@@ -80,12 +80,15 @@ pixiv account login main
 
 ## 测试
 
-当前测试覆盖 CLI 命令、配置/认证存储、Pixiv 认证重试、下载管理和 MCP tool 注册：
+当前测试覆盖 CLI 命令、`internal/config` 配置、`internal/cli/state` 认证存储、Pixiv App API 认证重试、Pixiv facade/source、web fallback、HTTP client wiring、下载管理和 MCP tool 注册：
 
 ```bash
 go test ./...
-go build -o pixiv .
+go build -o pixiv ./cmd/pixiv
+PIXIV_E2E_WEB_API=1 PIXIV_WEB_API_PROXY=http://127.0.0.1:7890 go test ./test/e2e -run WebAPIFallbackReal -count=1 -v
 ```
+
+`go test ./...` 保持默认离线稳定；真实 Pixiv web API fallback e2e 默认跳过，只有设置 `PIXIV_E2E_WEB_API=1` 时才会联网。未设置 `PIXIV_WEB_API_PROXY` 时会直连。
 
 代码改动完成前，应按变更范围补充或更新测试。若不能运行测试，需要在交付说明中写明原因和风险。
 

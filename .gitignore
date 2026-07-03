@@ -27,5 +27,6 @@ downloads/
 tmp/
 temp/
 .cache/
+.repo/
 __pycache__/
 *.py[cod]
