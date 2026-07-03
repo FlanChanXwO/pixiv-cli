@@ -1,0 +1,559 @@
+{
+  "name": "pixiv-mcp-server",
+  "description": "Go 版 Pixiv CLI 与 MCP stdio server，提供 Pixiv 搜索、详情、排行、推荐、下载、多账号认证和匿名 web fallback。",
+  "languages": [
+    "go",
+    "json",
+    "markdown",
+    "mod",
+    "sum",
+    "unknown",
+    "yaml"
+  ],
+  "frameworks": [
+    "Cobra",
+    "MCP Go SDK",
+    "Resty",
+    "Koanf",
+    "Tomledit"
+  ],
+  "files": [
+    {
+      "path": ".pre-commit-config.yaml",
+      "language": "yaml",
+      "sizeLines": 13,
+      "fileCategory": "config"
+    },
+    {
+      "path": ".understand-anything/.understandignore",
+      "language": "unknown",
+      "sizeLines": 54,
+      "fileCategory": "code"
+    },
+    {
+      "path": ".understand-anything/config.json",
+      "language": "json",
+      "sizeLines": 3,
+      "fileCategory": "config"
+    },
+    {
+      "path": "AGENTS.md",
+      "language": "markdown",
+      "sizeLines": 98,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "CLAUDE.md",
+      "language": "markdown",
+      "sizeLines": 79,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "cmd/pixiv/main.go",
+      "language": "go",
+      "sizeLines": 11,
+      "fileCategory": "code"
+    },
+    {
+      "path": "docs/architecture.md",
+      "language": "markdown",
+      "sizeLines": 128,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "docs/development.md",
+      "language": "markdown",
+      "sizeLines": 116,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "docs/index.md",
+      "language": "markdown",
+      "sizeLines": 39,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "docs/mcp-tools.md",
+      "language": "markdown",
+      "sizeLines": 67,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "go.mod",
+      "language": "mod",
+      "sizeLines": 40,
+      "fileCategory": "config"
+    },
+    {
+      "path": "go.sum",
+      "language": "sum",
+      "sizeLines": 106,
+      "fileCategory": "config"
+    },
+    {
+      "path": "internal/cli/account_cmd.go",
+      "language": "go",
+      "sizeLines": 394,
+      "fileCategory": "code"
+    },
+    {
+      "path": "internal/cli/account_login.go",
+      "language": "go",
+      "sizeLines": 414,
+      "fileCategory": "code"
+    },
+    {
+      "path": "internal/cli/account_test.go",
+      "language": "go",
+      "sizeLines": 454,
+      "fileCategory": "code"
+    },
+    {
+      "path": "internal/cli/api_cmd.go",
+      "language": "go",
+      "sizeLines": 259,
+      "fileCategory": "code"
+    },
+    {
+      "path": "internal/cli/api_test.go",
+      "language": "go",
+      "sizeLines": 73,
+      "fileCategory": "code"
+    },
+    {
+      "path": "internal/cli/cli_test.go",
+      "language": "go",
+      "sizeLines": 81,
+      "fileCategory": "code"
+    },
+    {
+      "path": "internal/cli/cli.go",
+      "language": "go",
+      "sizeLines": 252,
+      "fileCategory": "code"
+    },
+    {
+      "path": "internal/cli/config_cmd.go",
+      "language": "go",
+      "sizeLines": 138,
+      "fileCategory": "code"
+    },
+    {
+      "path": "internal/cli/config_test.go",
+      "language": "go",
+      "sizeLines": 151,
+      "fileCategory": "code"
+    },
+    {
+      "path": "internal/cli/mcpapp/mcpapp.go",
+      "language": "go",
+      "sizeLines": 62,
+      "fileCategory": "code"
+    },
+    {
+      "path": "internal/cli/prompt.go",
+      "language": "go",
+      "sizeLines": 108,
+      "fileCategory": "code"
+    },
+    {
+      "path": "internal/cli/state/account.go",
+      "language": "go",
+      "sizeLines": 128,
+      "fileCategory": "code"
+    },
+    {
+      "path": "internal/cli/state/paths.go",
+      "language": "go",
+      "sizeLines": 50,
+      "fileCategory": "code"
+    },
+    {
+      "path": "internal/config/paths.go",
+      "language": "go",
+      "sizeLines": 48,
+      "fileCategory": "code"
+    },
+    {
+      "path": "internal/config/settings.go",
+      "language": "go",
+      "sizeLines": 391,
+      "fileCategory": "code"
+    },
+    {
+      "path": "internal/download/manager_test.go",
+      "language": "go",
+      "sizeLines": 501,
+      "fileCategory": "code"
+    },
+    {
+      "path": "internal/download/manager.go",
+      "language": "go",
+      "sizeLines": 374,
+      "fileCategory": "code"
+    },
+    {
+      "path": "internal/download/replace_nonwindows.go",
+      "language": "go",
+      "sizeLines": 9,
+      "fileCategory": "code"
+    },
+    {
+      "path": "internal/download/replace_windows.go",
+      "language": "go",
+      "sizeLines": 18,
+      "fileCategory": "code"
+    },
+    {
+      "path": "internal/mcpserver/server_test.go",
+      "language": "go",
+      "sizeLines": 314,
+      "fileCategory": "code"
+    },
+    {
+      "path": "internal/mcpserver/server.go",
+      "language": "go",
+      "sizeLines": 650,
+      "fileCategory": "code"
+    },
+    {
+      "path": "internal/pixiv/aliases.go",
+      "language": "go",
+      "sizeLines": 74,
+      "fileCategory": "code"
+    },
+    {
+      "path": "internal/pixiv/api/auth_code.go",
+      "language": "go",
+      "sizeLines": 71,
+      "fileCategory": "code"
+    },
+    {
+      "path": "internal/pixiv/api/client_test.go",
+      "language": "go",
+      "sizeLines": 63,
+      "fileCategory": "code"
+    },
+    {
+      "path": "internal/pixiv/api/client.go",
+      "language": "go",
+      "sizeLines": 391,
+      "fileCategory": "code"
+    },
+    {
+      "path": "internal/pixiv/api/types_alias.go",
+      "language": "go",
+      "sizeLines": 12,
+      "fileCategory": "code"
+    },
+    {
+      "path": "internal/pixiv/client_factory.go",
+      "language": "go",
+      "sizeLines": 56,
+      "fileCategory": "code"
+    },
+    {
+      "path": "internal/pixiv/http_client_test.go",
+      "language": "go",
+      "sizeLines": 34,
+      "fileCategory": "code"
+    },
+    {
+      "path": "internal/pixiv/model/enums.go",
+      "language": "go",
+      "sizeLines": 39,
+      "fileCategory": "code"
+    },
+    {
+      "path": "internal/pixiv/model/types.go",
+      "language": "go",
+      "sizeLines": 86,
+      "fileCategory": "code"
+    },
+    {
+      "path": "internal/pixiv/source_test.go",
+      "language": "go",
+      "sizeLines": 175,
+      "fileCategory": "code"
+    },
+    {
+      "path": "internal/pixiv/source.go",
+      "language": "go",
+      "sizeLines": 152,
+      "fileCategory": "code"
+    },
+    {
+      "path": "internal/pixiv/web/client_test.go",
+      "language": "go",
+      "sizeLines": 177,
+      "fileCategory": "code"
+    },
+    {
+      "path": "internal/pixiv/web/client.go",
+      "language": "go",
+      "sizeLines": 649,
+      "fileCategory": "code"
+    },
+    {
+      "path": "internal/utils/filename.go",
+      "language": "go",
+      "sizeLines": 61,
+      "fileCategory": "code"
+    },
+    {
+      "path": "internal/utils/pixiv_web_auth_test.go",
+      "language": "go",
+      "sizeLines": 31,
+      "fileCategory": "code"
+    },
+    {
+      "path": "internal/utils/pixiv_web_auth.go",
+      "language": "go",
+      "sizeLines": 63,
+      "fileCategory": "code"
+    },
+    {
+      "path": "manifest.json",
+      "language": "json",
+      "sizeLines": 55,
+      "fileCategory": "config"
+    },
+    {
+      "path": "README.md",
+      "language": "markdown",
+      "sizeLines": 251,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "test/e2e/pixiv_binary_test.go",
+      "language": "go",
+      "sizeLines": 304,
+      "fileCategory": "code"
+    }
+  ],
+  "totalFiles": 52,
+  "filteredByIgnore": 0,
+  "estimatedComplexity": "moderate",
+  "importMap": {
+    ".pre-commit-config.yaml": [],
+    ".understand-anything/.understandignore": [],
+    ".understand-anything/config.json": [],
+    "AGENTS.md": [],
+    "CLAUDE.md": [],
+    "cmd/pixiv/main.go": [
+      "internal/cli/account_cmd.go",
+      "internal/cli/account_login.go",
+      "internal/cli/account_test.go",
+      "internal/cli/api_cmd.go",
+      "internal/cli/api_test.go",
+      "internal/cli/cli_test.go",
+      "internal/cli/cli.go",
+      "internal/cli/config_cmd.go",
+      "internal/cli/config_test.go",
+      "internal/cli/prompt.go"
+    ],
+    "docs/architecture.md": [],
+    "docs/development.md": [],
+    "docs/index.md": [],
+    "docs/mcp-tools.md": [],
+    "go.mod": [],
+    "go.sum": [],
+    "internal/cli/account_cmd.go": [
+      "internal/cli/state/account.go",
+      "internal/cli/state/paths.go",
+      "internal/config/paths.go",
+      "internal/config/settings.go",
+      "internal/utils/filename.go",
+      "internal/utils/pixiv_web_auth_test.go",
+      "internal/utils/pixiv_web_auth.go"
+    ],
+    "internal/cli/account_login.go": [
+      "internal/cli/state/account.go",
+      "internal/cli/state/paths.go",
+      "internal/config/paths.go",
+      "internal/config/settings.go",
+      "internal/pixiv/aliases.go",
+      "internal/pixiv/client_factory.go",
+      "internal/pixiv/http_client_test.go",
+      "internal/pixiv/source_test.go",
+      "internal/pixiv/source.go"
+    ],
+    "internal/cli/account_test.go": [
+      "internal/cli/state/account.go",
+      "internal/cli/state/paths.go",
+      "internal/config/paths.go",
+      "internal/config/settings.go",
+      "internal/pixiv/aliases.go",
+      "internal/pixiv/client_factory.go",
+      "internal/pixiv/http_client_test.go",
+      "internal/pixiv/source_test.go",
+      "internal/pixiv/source.go"
+    ],
+    "internal/cli/api_cmd.go": [
+      "internal/download/manager_test.go",
+      "internal/download/manager.go",
+      "internal/download/replace_nonwindows.go",
+      "internal/download/replace_windows.go",
+      "internal/pixiv/aliases.go",
+      "internal/pixiv/client_factory.go",
+      "internal/pixiv/http_client_test.go",
+      "internal/pixiv/source_test.go",
+      "internal/pixiv/source.go"
+    ],
+    "internal/cli/api_test.go": [
+      "internal/cli/state/account.go",
+      "internal/cli/state/paths.go",
+      "internal/pixiv/aliases.go",
+      "internal/pixiv/client_factory.go",
+      "internal/pixiv/http_client_test.go",
+      "internal/pixiv/source_test.go",
+      "internal/pixiv/source.go"
+    ],
+    "internal/cli/cli_test.go": [],
+    "internal/cli/cli.go": [
+      "internal/cli/mcpapp/mcpapp.go",
+      "internal/cli/state/account.go",
+      "internal/cli/state/paths.go",
+      "internal/config/paths.go",
+      "internal/config/settings.go",
+      "internal/download/manager_test.go",
+      "internal/download/manager.go",
+      "internal/download/replace_nonwindows.go",
+      "internal/download/replace_windows.go",
+      "internal/pixiv/aliases.go",
+      "internal/pixiv/client_factory.go",
+      "internal/pixiv/http_client_test.go",
+      "internal/pixiv/source_test.go",
+      "internal/pixiv/source.go",
+      "internal/utils/filename.go",
+      "internal/utils/pixiv_web_auth_test.go",
+      "internal/utils/pixiv_web_auth.go"
+    ],
+    "internal/cli/config_cmd.go": [
+      "internal/config/paths.go",
+      "internal/config/settings.go"
+    ],
+    "internal/cli/config_test.go": [
+      "internal/config/paths.go",
+      "internal/config/settings.go"
+    ],
+    "internal/cli/mcpapp/mcpapp.go": [
+      "internal/cli/state/account.go",
+      "internal/cli/state/paths.go",
+      "internal/config/paths.go",
+      "internal/config/settings.go",
+      "internal/download/manager_test.go",
+      "internal/download/manager.go",
+      "internal/download/replace_nonwindows.go",
+      "internal/download/replace_windows.go",
+      "internal/mcpserver/server_test.go",
+      "internal/mcpserver/server.go",
+      "internal/pixiv/aliases.go",
+      "internal/pixiv/client_factory.go",
+      "internal/pixiv/http_client_test.go",
+      "internal/pixiv/source_test.go",
+      "internal/pixiv/source.go"
+    ],
+    "internal/cli/prompt.go": [],
+    "internal/cli/state/account.go": [],
+    "internal/cli/state/paths.go": [],
+    "internal/config/paths.go": [],
+    "internal/config/settings.go": [
+      "internal/utils/filename.go",
+      "internal/utils/pixiv_web_auth_test.go",
+      "internal/utils/pixiv_web_auth.go"
+    ],
+    "internal/download/manager_test.go": [
+      "internal/pixiv/aliases.go",
+      "internal/pixiv/client_factory.go",
+      "internal/pixiv/http_client_test.go",
+      "internal/pixiv/source_test.go",
+      "internal/pixiv/source.go",
+      "internal/utils/filename.go",
+      "internal/utils/pixiv_web_auth_test.go",
+      "internal/utils/pixiv_web_auth.go"
+    ],
+    "internal/download/manager.go": [
+      "internal/pixiv/aliases.go",
+      "internal/pixiv/client_factory.go",
+      "internal/pixiv/http_client_test.go",
+      "internal/pixiv/source_test.go",
+      "internal/pixiv/source.go",
+      "internal/utils/filename.go",
+      "internal/utils/pixiv_web_auth_test.go",
+      "internal/utils/pixiv_web_auth.go"
+    ],
+    "internal/download/replace_nonwindows.go": [],
+    "internal/download/replace_windows.go": [],
+    "internal/mcpserver/server_test.go": [
+      "internal/download/manager_test.go",
+      "internal/download/manager.go",
+      "internal/download/replace_nonwindows.go",
+      "internal/download/replace_windows.go",
+      "internal/pixiv/aliases.go",
+      "internal/pixiv/client_factory.go",
+      "internal/pixiv/http_client_test.go",
+      "internal/pixiv/source_test.go",
+      "internal/pixiv/source.go"
+    ],
+    "internal/mcpserver/server.go": [
+      "internal/download/manager_test.go",
+      "internal/download/manager.go",
+      "internal/download/replace_nonwindows.go",
+      "internal/download/replace_windows.go",
+      "internal/pixiv/aliases.go",
+      "internal/pixiv/client_factory.go",
+      "internal/pixiv/http_client_test.go",
+      "internal/pixiv/source_test.go",
+      "internal/pixiv/source.go",
+      "internal/utils/filename.go",
+      "internal/utils/pixiv_web_auth_test.go",
+      "internal/utils/pixiv_web_auth.go"
+    ],
+    "internal/pixiv/aliases.go": [
+      "internal/pixiv/api/auth_code.go",
+      "internal/pixiv/api/client_test.go",
+      "internal/pixiv/api/client.go",
+      "internal/pixiv/api/types_alias.go",
+      "internal/pixiv/model/enums.go",
+      "internal/pixiv/model/types.go"
+    ],
+    "internal/pixiv/api/auth_code.go": [],
+    "internal/pixiv/api/client_test.go": [],
+    "internal/pixiv/api/client.go": [
+      "internal/utils/filename.go",
+      "internal/utils/pixiv_web_auth_test.go",
+      "internal/utils/pixiv_web_auth.go"
+    ],
+    "internal/pixiv/api/types_alias.go": [
+      "internal/pixiv/model/enums.go",
+      "internal/pixiv/model/types.go"
+    ],
+    "internal/pixiv/client_factory.go": [
+      "internal/pixiv/web/client_test.go",
+      "internal/pixiv/web/client.go"
+    ],
+    "internal/pixiv/http_client_test.go": [],
+    "internal/pixiv/model/enums.go": [],
+    "internal/pixiv/model/types.go": [],
+    "internal/pixiv/source_test.go": [],
+    "internal/pixiv/source.go": [],
+    "internal/pixiv/web/client_test.go": [],
+    "internal/pixiv/web/client.go": [
+      "internal/pixiv/model/enums.go",
+      "internal/pixiv/model/types.go"
+    ],
+    "internal/utils/filename.go": [],
+    "internal/utils/pixiv_web_auth_test.go": [],
+    "internal/utils/pixiv_web_auth.go": [],
+    "manifest.json": [],
+    "README.md": [],
+    "test/e2e/pixiv_binary_test.go": [
+      "internal/pixiv/aliases.go",
+      "internal/pixiv/client_factory.go",
+      "internal/pixiv/http_client_test.go",
+      "internal/pixiv/source_test.go",
+      "internal/pixiv/source.go"
+    ]
+  }
+}

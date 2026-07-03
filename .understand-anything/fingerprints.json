@@ -1,0 +1,7614 @@
+{
+  "version": "1.0.0",
+  "gitCommitHash": "4ff6f1229571dacada8868c977c06582e6d3b23b",
+  "generatedAt": "2026-07-03T04:07:58.546Z",
+  "files": {
+    ".pre-commit-config.yaml": {
+      "filePath": ".pre-commit-config.yaml",
+      "contentHash": "efc7794936303f46641b5a32385b0a2d722a3657f03a52efdbc5a0308f2448ff",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 14,
+      "hasStructuralAnalysis": true
+    },
+    ".understand-anything/.understandignore": {
+      "filePath": ".understand-anything/.understandignore",
+      "contentHash": "6daeb3e5f9cedf48944ecf415df56723cea653f8b9f6eb827788e371e231e358",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 55,
+      "hasStructuralAnalysis": false
+    },
+    ".understand-anything/config.json": {
+      "filePath": ".understand-anything/config.json",
+      "contentHash": "5d2ff006cff22c68edd4776249d562ea8c73915a61c6214eb85933865a9402e7",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 4,
+      "hasStructuralAnalysis": true
+    },
+    "AGENTS.md": {
+      "filePath": "AGENTS.md",
+      "contentHash": "3d423022317978508be1f7171d8a036eac70449240cb862bb2b004e52509da89",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 99,
+      "hasStructuralAnalysis": true
+    },
+    "CLAUDE.md": {
+      "filePath": "CLAUDE.md",
+      "contentHash": "ad7dc07196176857614a9ff1b14df81d60aaa55b30c002647d2792e518699db9",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 80,
+      "hasStructuralAnalysis": true
+    },
+    "cmd/pixiv/main.go": {
+      "filePath": "cmd/pixiv/main.go",
+      "contentHash": "09d16f534cf715c2e6322d0b6fe26e28174c596f19e94a9ceb1e710d8af08c64",
+      "functions": [
+        {
+          "name": "main",
+          "params": [],
+          "exported": false,
+          "lineCount": 3
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "os",
+          "specifiers": [
+            "os"
+          ]
+        },
+        {
+          "source": "github.com/FlanChanXwO/pixiv-mcp-server/internal/cli",
+          "specifiers": [
+            "pixivcmd"
+          ]
+        }
+      ],
+      "exports": [],
+      "totalLines": 12,
+      "hasStructuralAnalysis": true
+    },
+    "docs/architecture.md": {
+      "filePath": "docs/architecture.md",
+      "contentHash": "7c79293e9e40963d5296f65e53c8df9420f461b29a64d833b9bc95492e148e38",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 129,
+      "hasStructuralAnalysis": true
+    },
+    "docs/development.md": {
+      "filePath": "docs/development.md",
+      "contentHash": "b081189518435d9cc2ce8c107c549ba4db4ea8ebafba849a56c7c3606d539d47",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 117,
+      "hasStructuralAnalysis": true
+    },
+    "docs/index.md": {
+      "filePath": "docs/index.md",
+      "contentHash": "f2ddb6119489164dcf159faacd610f9f120dd48cffbb4812db6b06f04a105a2d",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 40,
+      "hasStructuralAnalysis": true
+    },
+    "docs/mcp-tools.md": {
+      "filePath": "docs/mcp-tools.md",
+      "contentHash": "a300bb953ae9317a86bcd75bb443d7601d838a7289c13739fb3e80aa2a20c81e",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 68,
+      "hasStructuralAnalysis": true
+    },
+    "go.mod": {
+      "filePath": "go.mod",
+      "contentHash": "d8b35aa93953649a4573c2d49bd0ccb8e3a782d54eeda64f6d6436492c042685",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 41,
+      "hasStructuralAnalysis": false
+    },
+    "go.sum": {
+      "filePath": "go.sum",
+      "contentHash": "4053428b0b906ece84fd2270b2d4cbdb6c82faf9376179821dfd0dacb136788c",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 107,
+      "hasStructuralAnalysis": false
+    },
+    "internal/cli/account_cmd.go": {
+      "filePath": "internal/cli/account_cmd.go",
+      "contentHash": "ea822b8cb0ddd59551cd53a80dd77def1e7220bb479787a2ced518cea2d0f29d",
+      "functions": [
+        {
+          "name": "newAccountCommand",
+          "params": [],
+          "returnType": "*cobra.Command",
+          "exported": false,
+          "lineCount": 18
+        },
+        {
+          "name": "newAccountAddCommand",
+          "params": [],
+          "returnType": "*cobra.Command",
+          "exported": false,
+          "lineCount": 16
+        },
+        {
+          "name": "accountAdd",
+          "params": [
+            "args",
+            "opts"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 49
+        },
+        {
+          "name": "newAccountListCommand",
+          "params": [],
+          "returnType": "*cobra.Command",
+          "exported": false,
+          "lineCount": 13
+        },
+        {
+          "name": "accountList",
+          "params": [
+            "jsonOut"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 38
+        },
+        {
+          "name": "newAccountRemoveCommand",
+          "params": [],
+          "returnType": "*cobra.Command",
+          "exported": false,
+          "lineCount": 15
+        },
+        {
+          "name": "accountRemove",
+          "params": [
+            "args",
+            "opts"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 37
+        },
+        {
+          "name": "newAccountUseCommand",
+          "params": [],
+          "returnType": "*cobra.Command",
+          "exported": false,
+          "lineCount": 13
+        },
+        {
+          "name": "accountUse",
+          "params": [
+            "args",
+            "jsonOut"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 26
+        },
+        {
+          "name": "newAccountCheckCommand",
+          "params": [],
+          "returnType": "*cobra.Command",
+          "exported": false,
+          "lineCount": 17
+        },
+        {
+          "name": "accountCheck",
+          "params": [
+            "name",
+            "jsonOut"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 62
+        },
+        {
+          "name": "resolveAccountNameArg",
+          "params": [
+            "args",
+            "promptLabel"
+          ],
+          "returnType": "(string, error)",
+          "exported": false,
+          "lineCount": 9
+        },
+        {
+          "name": "resolveExistingAccountName",
+          "params": [
+            "store",
+            "args",
+            "promptLabel"
+          ],
+          "returnType": "(string, error)",
+          "exported": false,
+          "lineCount": 12
+        },
+        {
+          "name": "resolveRefreshTokenInput",
+          "params": [
+            "tokenFlag"
+          ],
+          "returnType": "(string, error)",
+          "exported": false,
+          "lineCount": 10
+        },
+        {
+          "name": "readTokenLine",
+          "params": [
+            "r"
+          ],
+          "returnType": "(string, error)",
+          "exported": false,
+          "lineCount": 7
+        }
+      ],
+      "classes": [
+        {
+          "name": "accountOut",
+          "methods": [],
+          "properties": [
+            "Name",
+            "Default",
+            "UserID",
+            "HasToken"
+          ],
+          "exported": false,
+          "lineCount": 6
+        },
+        {
+          "name": "accountListOut",
+          "methods": [],
+          "properties": [
+            "DefaultAccount",
+            "Accounts"
+          ],
+          "exported": false,
+          "lineCount": 4
+        },
+        {
+          "name": "accountAddOptions",
+          "methods": [],
+          "properties": [
+            "token",
+            "jsonOut"
+          ],
+          "exported": false,
+          "lineCount": 4
+        },
+        {
+          "name": "accountRemoveOptions",
+          "methods": [],
+          "properties": [
+            "jsonOut",
+            "yes"
+          ],
+          "exported": false,
+          "lineCount": 4
+        }
+      ],
+      "imports": [
+        {
+          "source": "bufio",
+          "specifiers": [
+            "bufio"
+          ]
+        },
+        {
+          "source": "context",
+          "specifiers": [
+            "context"
+          ]
+        },
+        {
+          "source": "errors",
+          "specifiers": [
+            "errors"
+          ]
+        },
+        {
+          "source": "fmt",
+          "specifiers": [
+            "fmt"
+          ]
+        },
+        {
+          "source": "io",
+          "specifiers": [
+            "io"
+          ]
+        },
+        {
+          "source": "strings",
+          "specifiers": [
+            "strings"
+          ]
+        },
+        {
+          "source": "github.com/FlanChanXwO/pixiv-mcp-server/internal/cli/state",
+          "specifiers": [
+            "state"
+          ]
+        },
+        {
+          "source": "github.com/FlanChanXwO/pixiv-mcp-server/internal/config",
+          "specifiers": [
+            "config"
+          ]
+        },
+        {
+          "source": "github.com/FlanChanXwO/pixiv-mcp-server/internal/utils",
+          "specifiers": [
+            "utils"
+          ]
+        },
+        {
+          "source": "github.com/spf13/cobra",
+          "specifiers": [
+            "cobra"
+          ]
+        }
+      ],
+      "exports": [],
+      "totalLines": 395,
+      "hasStructuralAnalysis": true
+    },
+    "internal/cli/account_login.go": {
+      "filePath": "internal/cli/account_login.go",
+      "contentHash": "877bc45585ecdbc6c9cbc392cbe56d9141e990fcedd70ff749eefcd545ead0c8",
+      "functions": [
+        {
+          "name": "newAccountLoginCommand",
+          "params": [],
+          "returnType": "*cobra.Command",
+          "exported": false,
+          "lineCount": 19
+        },
+        {
+          "name": "accountLogin",
+          "params": [
+            "cmd",
+            "args",
+            "opts"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 91
+        },
+        {
+          "name": "waitForLoginCode",
+          "params": [
+            "ctx",
+            "addr",
+            "state",
+            "loginURL",
+            "noOpen",
+            "browserOpener"
+          ],
+          "returnType": "(string, error)",
+          "exported": false,
+          "lineCount": 116
+        },
+        {
+          "name": "writeLoginForm",
+          "params": [
+            "w",
+            "loginURL"
+          ],
+          "exported": false,
+          "lineCount": 11
+        },
+        {
+          "name": "writeLoginResult",
+          "params": [
+            "w",
+            "err"
+          ],
+          "exported": false,
+          "lineCount": 8
+        },
+        {
+          "name": "loginCodeFromInput",
+          "params": [
+            "input",
+            "expectedState"
+          ],
+          "returnType": "loginServerResult",
+          "exported": false,
+          "lineCount": 17
+        },
+        {
+          "name": "loginCodeFromValues",
+          "params": [
+            "values",
+            "expectedState",
+            "requireState"
+          ],
+          "returnType": "loginServerResult",
+          "exported": false,
+          "lineCount": 14
+        },
+        {
+          "name": "pixivLoginURL",
+          "params": [
+            "challenge",
+            "state"
+          ],
+          "returnType": "string",
+          "exported": false,
+          "lineCount": 8
+        },
+        {
+          "name": "generatePKCEPair",
+          "params": [],
+          "returnType": "(verifier, challenge string, err error)",
+          "exported": false,
+          "lineCount": 9
+        },
+        {
+          "name": "randomURLToken",
+          "params": [
+            "size"
+          ],
+          "returnType": "(string, error)",
+          "exported": false,
+          "lineCount": 7
+        },
+        {
+          "name": "validateLoginAddr",
+          "params": [
+            "addr"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 20
+        },
+        {
+          "name": "currentLoginHooks",
+          "params": [],
+          "returnType": "(string, func(string) error)",
+          "exported": false,
+          "lineCount": 5
+        },
+        {
+          "name": "setLoginOAuthBaseForTest",
+          "params": [
+            "baseURL"
+          ],
+          "returnType": "func()",
+          "exported": false,
+          "lineCount": 11
+        },
+        {
+          "name": "setOpenBrowserForTest",
+          "params": [
+            "opener"
+          ],
+          "returnType": "func()",
+          "exported": false,
+          "lineCount": 11
+        },
+        {
+          "name": "newLoginPixivClient",
+          "params": [
+            "cfg",
+            "oauthBase"
+          ],
+          "returnType": "(*pixiv.Client, error)",
+          "exported": false,
+          "lineCount": 3
+        },
+        {
+          "name": "defaultOpenBrowser",
+          "params": [
+            "rawURL"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 3
+        }
+      ],
+      "classes": [
+        {
+          "name": "loginServerResult",
+          "methods": [],
+          "properties": [
+            "code",
+            "err"
+          ],
+          "exported": false,
+          "lineCount": 4
+        },
+        {
+          "name": "accountLoginOptions",
+          "methods": [],
+          "properties": [
+            "jsonOut",
+            "noOpen",
+            "useProfile",
+            "addr",
+            "timeout"
+          ],
+          "exported": false,
+          "lineCount": 7
+        }
+      ],
+      "imports": [
+        {
+          "source": "context",
+          "specifiers": [
+            "context"
+          ]
+        },
+        {
+          "source": "crypto/rand",
+          "specifiers": [
+            "rand"
+          ]
+        },
+        {
+          "source": "crypto/sha256",
+          "specifiers": [
+            "sha256"
+          ]
+        },
+        {
+          "source": "encoding/base64",
+          "specifiers": [
+            "base64"
+          ]
+        },
+        {
+          "source": "errors",
+          "specifiers": [
+            "errors"
+          ]
+        },
+        {
+          "source": "fmt",
+          "specifiers": [
+            "fmt"
+          ]
+        },
+        {
+          "source": "html",
+          "specifiers": [
+            "html"
+          ]
+        },
+        {
+          "source": "io",
+          "specifiers": [
+            "io"
+          ]
+        },
+        {
+          "source": "net",
+          "specifiers": [
+            "net"
+          ]
+        },
+        {
+          "source": "net/http",
+          "specifiers": [
+            "http"
+          ]
+        },
+        {
+          "source": "net/url",
+          "specifiers": [
+            "url"
+          ]
+        },
+        {
+          "source": "strings",
+          "specifiers": [
+            "strings"
+          ]
+        },
+        {
+          "source": "sync",
+          "specifiers": [
+            "sync"
+          ]
+        },
+        {
+          "source": "time",
+          "specifiers": [
+            "time"
+          ]
+        },
+        {
+          "source": "github.com/FlanChanXwO/pixiv-mcp-server/internal/cli/state",
+          "specifiers": [
+            "state"
+          ]
+        },
+        {
+          "source": "github.com/FlanChanXwO/pixiv-mcp-server/internal/config",
+          "specifiers": [
+            "config"
+          ]
+        },
+        {
+          "source": "github.com/FlanChanXwO/pixiv-mcp-server/internal/pixiv",
+          "specifiers": [
+            "pixiv"
+          ]
+        },
+        {
+          "source": "github.com/pkg/browser",
+          "specifiers": [
+            "browser"
+          ]
+        },
+        {
+          "source": "github.com/spf13/cobra",
+          "specifiers": [
+            "cobra"
+          ]
+        }
+      ],
+      "exports": [],
+      "totalLines": 415,
+      "hasStructuralAnalysis": true
+    },
+    "internal/cli/account_test.go": {
+      "filePath": "internal/cli/account_test.go",
+      "contentHash": "60e3cff7bdb47c52a9b283f57d6748e23e7b9a34816c572a75654eac86fd909c",
+      "functions": [
+        {
+          "name": "TestAccountAddListUseRemovePreservesOrder",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 61
+        },
+        {
+          "name": "TestAccountAddReadsTokenFromStdin",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 11
+        },
+        {
+          "name": "TestAccountAddRejectsCookieWithoutRefreshToken",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 9
+        },
+        {
+          "name": "TestResolveRefreshTokenPriority",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 23
+        },
+        {
+          "name": "TestAccountPromptFlows",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 32
+        },
+        {
+          "name": "TestAccountRemovePromptCancelKeepsData",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 20
+        },
+        {
+          "name": "TestAccountLoginNoOpenStoresProfile",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 51
+        },
+        {
+          "name": "TestAccountLoginBrowserFailureFallsBackToTerminalPrompt",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 33
+        },
+        {
+          "name": "setTestOAuthBase",
+          "params": [
+            "t",
+            "baseURL"
+          ],
+          "returnType": "func()",
+          "exported": false,
+          "lineCount": 4
+        },
+        {
+          "name": "setTestOpenBrowser",
+          "params": [
+            "t",
+            "opener"
+          ],
+          "returnType": "func()",
+          "exported": false,
+          "lineCount": 4
+        },
+        {
+          "name": "setTestCLIClientFactory",
+          "params": [
+            "t",
+            "factory"
+          ],
+          "exported": false,
+          "lineCount": 6
+        },
+        {
+          "name": "setPromptStub",
+          "params": [
+            "t",
+            "stub"
+          ],
+          "exported": false,
+          "lineCount": 40
+        },
+        {
+          "name": "useTempPaths",
+          "params": [
+            "t"
+          ],
+          "returnType": "(string, string)",
+          "exported": false,
+          "lineCount": 9
+        },
+        {
+          "name": "startAsyncCLIRun",
+          "params": [
+            "args",
+            "in",
+            "out",
+            "errOut"
+          ],
+          "returnType": "*asyncCLIRun",
+          "exported": false,
+          "lineCount": 7
+        },
+        {
+          "name": "wait",
+          "params": [],
+          "returnType": "int",
+          "exported": false,
+          "lineCount": 19
+        },
+        {
+          "name": "waitWithin",
+          "params": [
+            "t",
+            "timeout"
+          ],
+          "returnType": "int",
+          "exported": false,
+          "lineCount": 25
+        },
+        {
+          "name": "freeLoopbackAddr",
+          "params": [
+            "t"
+          ],
+          "returnType": "string",
+          "exported": false,
+          "lineCount": 8
+        },
+        {
+          "name": "waitForLoginServer",
+          "params": [
+            "t",
+            "addr"
+          ],
+          "returnType": "string",
+          "exported": false,
+          "lineCount": 15
+        },
+        {
+          "name": "loginURLFromPage",
+          "params": [
+            "t",
+            "page"
+          ],
+          "returnType": "string",
+          "exported": false,
+          "lineCount": 10
+        },
+        {
+          "name": "loginState",
+          "params": [
+            "t",
+            "rawURL"
+          ],
+          "returnType": "string",
+          "exported": false,
+          "lineCount": 8
+        }
+      ],
+      "classes": [
+        {
+          "name": "promptStub",
+          "methods": [],
+          "properties": [
+            "inputs",
+            "secrets",
+            "selects",
+            "confirms"
+          ],
+          "exported": false,
+          "lineCount": 6
+        },
+        {
+          "name": "asyncCLIRun",
+          "methods": [
+            "wait",
+            "waitWithin"
+          ],
+          "properties": [
+            "done",
+            "mu",
+            "received",
+            "code"
+          ],
+          "exported": false,
+          "lineCount": 6
+        }
+      ],
+      "imports": [
+        {
+          "source": "bytes",
+          "specifiers": [
+            "bytes"
+          ]
+        },
+        {
+          "source": "encoding/json",
+          "specifiers": [
+            "json"
+          ]
+        },
+        {
+          "source": "errors",
+          "specifiers": [
+            "errors"
+          ]
+        },
+        {
+          "source": "html",
+          "specifiers": [
+            "html"
+          ]
+        },
+        {
+          "source": "io",
+          "specifiers": [
+            "io"
+          ]
+        },
+        {
+          "source": "net",
+          "specifiers": [
+            "net"
+          ]
+        },
+        {
+          "source": "net/http",
+          "specifiers": [
+            "http"
+          ]
+        },
+        {
+          "source": "net/http/httptest",
+          "specifiers": [
+            "httptest"
+          ]
+        },
+        {
+          "source": "net/url",
+          "specifiers": [
+            "url"
+          ]
+        },
+        {
+          "source": "os",
+          "specifiers": [
+            "os"
+          ]
+        },
+        {
+          "source": "path/filepath",
+          "specifiers": [
+            "filepath"
+          ]
+        },
+        {
+          "source": "strings",
+          "specifiers": [
+            "strings"
+          ]
+        },
+        {
+          "source": "sync",
+          "specifiers": [
+            "sync"
+          ]
+        },
+        {
+          "source": "testing",
+          "specifiers": [
+            "testing"
+          ]
+        },
+        {
+          "source": "time",
+          "specifiers": [
+            "time"
+          ]
+        },
+        {
+          "source": "github.com/FlanChanXwO/pixiv-mcp-server/internal/cli/state",
+          "specifiers": [
+            "state"
+          ]
+        },
+        {
+          "source": "github.com/FlanChanXwO/pixiv-mcp-server/internal/config",
+          "specifiers": [
+            "config"
+          ]
+        },
+        {
+          "source": "github.com/FlanChanXwO/pixiv-mcp-server/internal/pixiv",
+          "specifiers": [
+            "pixiv"
+          ]
+        },
+        {
+          "source": "github.com/stretchr/testify/assert",
+          "specifiers": [
+            "assert"
+          ]
+        },
+        {
+          "source": "github.com/stretchr/testify/require",
+          "specifiers": [
+            "require"
+          ]
+        }
+      ],
+      "exports": [
+        "TestAccountAddListUseRemovePreservesOrder",
+        "TestAccountAddReadsTokenFromStdin",
+        "TestAccountAddRejectsCookieWithoutRefreshToken",
+        "TestResolveRefreshTokenPriority",
+        "TestAccountPromptFlows",
+        "TestAccountRemovePromptCancelKeepsData",
+        "TestAccountLoginNoOpenStoresProfile",
+        "TestAccountLoginBrowserFailureFallsBackToTerminalPrompt"
+      ],
+      "totalLines": 455,
+      "hasStructuralAnalysis": true
+    },
+    "internal/cli/api_cmd.go": {
+      "filePath": "internal/cli/api_cmd.go",
+      "contentHash": "faa6b6bf9e67ca40181a4b62a31aaa6de7892a4637d09c22c384e6e601c3e6fe",
+      "functions": [
+        {
+          "name": "newSearchCommand",
+          "params": [],
+          "returnType": "*cobra.Command",
+          "exported": false,
+          "lineCount": 23
+        },
+        {
+          "name": "runSearch",
+          "params": [
+            "cmd",
+            "args",
+            "opts"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 20
+        },
+        {
+          "name": "newDetailCommand",
+          "params": [],
+          "returnType": "*cobra.Command",
+          "exported": false,
+          "lineCount": 13
+        },
+        {
+          "name": "runDetail",
+          "params": [
+            "cmd",
+            "arg",
+            "opts"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 19
+        },
+        {
+          "name": "newRankingCommand",
+          "params": [],
+          "returnType": "*cobra.Command",
+          "exported": false,
+          "lineCount": 17
+        },
+        {
+          "name": "runRanking",
+          "params": [
+            "cmd",
+            "opts"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 16
+        },
+        {
+          "name": "newRecommendedCommand",
+          "params": [],
+          "returnType": "*cobra.Command",
+          "exported": false,
+          "lineCount": 14
+        },
+        {
+          "name": "runRecommended",
+          "params": [
+            "cmd",
+            "opts"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 16
+        },
+        {
+          "name": "newDownloadCommand",
+          "params": [],
+          "returnType": "*cobra.Command",
+          "exported": false,
+          "lineCount": 13
+        },
+        {
+          "name": "runDownload",
+          "params": [
+            "cmd",
+            "args",
+            "opts"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 29
+        },
+        {
+          "name": "printIllusts",
+          "params": [
+            "w",
+            "illusts",
+            "offset",
+            "ranked"
+          ],
+          "exported": false,
+          "lineCount": 9
+        },
+        {
+          "name": "printIllust",
+          "params": [
+            "w",
+            "illust",
+            "rank",
+            "compact"
+          ],
+          "exported": false,
+          "lineCount": 23
+        }
+      ],
+      "classes": [
+        {
+          "name": "searchOptions",
+          "methods": [],
+          "properties": [
+            "target",
+            "sortMode",
+            "duration",
+            "offset",
+            "r18"
+          ],
+          "exported": false,
+          "lineCount": 8
+        },
+        {
+          "name": "rankingOptions",
+          "methods": [],
+          "properties": [
+            "mode",
+            "date",
+            "offset"
+          ],
+          "exported": false,
+          "lineCount": 6
+        },
+        {
+          "name": "recommendedOptions",
+          "methods": [],
+          "properties": [
+            "offset"
+          ],
+          "exported": false,
+          "lineCount": 4
+        }
+      ],
+      "imports": [
+        {
+          "source": "context",
+          "specifiers": [
+            "context"
+          ]
+        },
+        {
+          "source": "fmt",
+          "specifiers": [
+            "fmt"
+          ]
+        },
+        {
+          "source": "io",
+          "specifiers": [
+            "io"
+          ]
+        },
+        {
+          "source": "log/slog",
+          "specifiers": [
+            "slog"
+          ]
+        },
+        {
+          "source": "strconv",
+          "specifiers": [
+            "strconv"
+          ]
+        },
+        {
+          "source": "strings",
+          "specifiers": [
+            "strings"
+          ]
+        },
+        {
+          "source": "github.com/FlanChanXwO/pixiv-mcp-server/internal/download",
+          "specifiers": [
+            "download"
+          ]
+        },
+        {
+          "source": "github.com/FlanChanXwO/pixiv-mcp-server/internal/pixiv",
+          "specifiers": [
+            "pixiv"
+          ]
+        },
+        {
+          "source": "github.com/spf13/cobra",
+          "specifiers": [
+            "cobra"
+          ]
+        }
+      ],
+      "exports": [],
+      "totalLines": 260,
+      "hasStructuralAnalysis": true
+    },
+    "internal/cli/api_test.go": {
+      "filePath": "internal/cli/api_test.go",
+      "contentHash": "7b5c98b2488bbcf3f52ddbbb15e4a14b45ceaf4a99810926834b07b823f876a5",
+      "functions": [
+        {
+          "name": "TestSearchSupportsFlagAfterWord",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 30
+        },
+        {
+          "name": "TestSearchUsesOutputJSONFromConfig",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 26
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "bytes",
+          "specifiers": [
+            "bytes"
+          ]
+        },
+        {
+          "source": "encoding/json",
+          "specifiers": [
+            "json"
+          ]
+        },
+        {
+          "source": "net/http",
+          "specifiers": [
+            "http"
+          ]
+        },
+        {
+          "source": "net/http/httptest",
+          "specifiers": [
+            "httptest"
+          ]
+        },
+        {
+          "source": "strings",
+          "specifiers": [
+            "strings"
+          ]
+        },
+        {
+          "source": "testing",
+          "specifiers": [
+            "testing"
+          ]
+        },
+        {
+          "source": "github.com/FlanChanXwO/pixiv-mcp-server/internal/cli/state",
+          "specifiers": [
+            "state"
+          ]
+        },
+        {
+          "source": "github.com/FlanChanXwO/pixiv-mcp-server/internal/pixiv",
+          "specifiers": [
+            "pixiv"
+          ]
+        },
+        {
+          "source": "github.com/stretchr/testify/assert",
+          "specifiers": [
+            "assert"
+          ]
+        },
+        {
+          "source": "github.com/stretchr/testify/require",
+          "specifiers": [
+            "require"
+          ]
+        }
+      ],
+      "exports": [
+        "TestSearchSupportsFlagAfterWord",
+        "TestSearchUsesOutputJSONFromConfig"
+      ],
+      "totalLines": 74,
+      "hasStructuralAnalysis": true
+    },
+    "internal/cli/cli_test.go": {
+      "filePath": "internal/cli/cli_test.go",
+      "contentHash": "2f3c8fc5b178bc38d442fd73b87d34c38619fe3d53ad0915a2077cd357645c29",
+      "functions": [
+        {
+          "name": "TestRunNoArgsPrintsHelp",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 12
+        },
+        {
+          "name": "TestRunUnknownCommandReturnsError",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 9
+        },
+        {
+          "name": "TestRunAccountCommandIsRemoved",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 9
+        },
+        {
+          "name": "TestRunMCPDispatch",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 18
+        },
+        {
+          "name": "TestRunMCPDispatchError",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 15
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "bytes",
+          "specifiers": [
+            "bytes"
+          ]
+        },
+        {
+          "source": "context",
+          "specifiers": [
+            "context"
+          ]
+        },
+        {
+          "source": "errors",
+          "specifiers": [
+            "errors"
+          ]
+        },
+        {
+          "source": "io",
+          "specifiers": [
+            "io"
+          ]
+        },
+        {
+          "source": "strings",
+          "specifiers": [
+            "strings"
+          ]
+        },
+        {
+          "source": "testing",
+          "specifiers": [
+            "testing"
+          ]
+        },
+        {
+          "source": "github.com/stretchr/testify/assert",
+          "specifiers": [
+            "assert"
+          ]
+        },
+        {
+          "source": "github.com/stretchr/testify/require",
+          "specifiers": [
+            "require"
+          ]
+        }
+      ],
+      "exports": [
+        "TestRunNoArgsPrintsHelp",
+        "TestRunUnknownCommandReturnsError",
+        "TestRunAccountCommandIsRemoved",
+        "TestRunMCPDispatch",
+        "TestRunMCPDispatchError"
+      ],
+      "totalLines": 82,
+      "hasStructuralAnalysis": true
+    },
+    "internal/cli/cli.go": {
+      "filePath": "internal/cli/cli.go",
+      "contentHash": "4911d0f7184ebc8efd5b2b9be4f4df441c4963454f3c91bd5f0ac23c13cc2819",
+      "functions": [
+        {
+          "name": "Run",
+          "params": [
+            "args",
+            "in",
+            "out",
+            "errOut"
+          ],
+          "returnType": "int",
+          "exported": true,
+          "lineCount": 12
+        },
+        {
+          "name": "exit",
+          "params": [
+            "err"
+          ],
+          "returnType": "int",
+          "exported": false,
+          "lineCount": 7
+        },
+        {
+          "name": "runMCP",
+          "params": [
+            "ctx",
+            "errOut"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 3
+        },
+        {
+          "name": "newPixivClient",
+          "params": [
+            "cfg"
+          ],
+          "returnType": "(cliPixivClient, error)",
+          "exported": false,
+          "lineCount": 7
+        },
+        {
+          "name": "newRootCommand",
+          "params": [],
+          "returnType": "*cobra.Command",
+          "exported": false,
+          "lineCount": 23
+        },
+        {
+          "name": "newMCPCommand",
+          "params": [],
+          "returnType": "*cobra.Command",
+          "exported": false,
+          "lineCount": 11
+        },
+        {
+          "name": "bindCommonFlags",
+          "params": [
+            "cmd",
+            "opts"
+          ],
+          "exported": false,
+          "lineCount": 8
+        },
+        {
+          "name": "clientAndConfig",
+          "params": [
+            "cmd",
+            "opts",
+            "needsAuth"
+          ],
+          "returnType": "(cliPixivClient, config.RuntimeConfig, bool, error)",
+          "exported": false,
+          "lineCount": 47
+        },
+        {
+          "name": "resolveRefreshToken",
+          "params": [
+            "store",
+            "requestedProfile",
+            "requestedToken"
+          ],
+          "returnType": "(string, error)",
+          "exported": false,
+          "lineCount": 26
+        },
+        {
+          "name": "printJSON",
+          "params": [
+            "v"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 5
+        },
+        {
+          "name": "parseInt64Arg",
+          "params": [
+            "value",
+            "name"
+          ],
+          "returnType": "(int64, error)",
+          "exported": false,
+          "lineCount": 7
+        },
+        {
+          "name": "textBool",
+          "params": [
+            "value"
+          ],
+          "returnType": "string",
+          "exported": false,
+          "lineCount": 6
+        },
+        {
+          "name": "requireExactArgs",
+          "params": [
+            "count",
+            "usage"
+          ],
+          "returnType": "cobra.PositionalArgs",
+          "exported": false,
+          "lineCount": 8
+        },
+        {
+          "name": "requireMinArgs",
+          "params": [
+            "count",
+            "usage"
+          ],
+          "returnType": "cobra.PositionalArgs",
+          "exported": false,
+          "lineCount": 8
+        },
+        {
+          "name": "requireMaxArgs",
+          "params": [
+            "count",
+            "usage"
+          ],
+          "returnType": "cobra.PositionalArgs",
+          "exported": false,
+          "lineCount": 8
+        }
+      ],
+      "classes": [
+        {
+          "name": "app",
+          "methods": [
+            "exit",
+            "newRootCommand",
+            "newMCPCommand",
+            "bindCommonFlags",
+            "clientAndConfig",
+            "printJSON"
+          ],
+          "properties": [
+            "in",
+            "out",
+            "errOut"
+          ],
+          "exported": false,
+          "lineCount": 5
+        },
+        {
+          "name": "commandOptions",
+          "methods": [],
+          "properties": [
+            "profile",
+            "refreshToken",
+            "downloadPath",
+            "filenameTemplate",
+            "jsonOut"
+          ],
+          "exported": false,
+          "lineCount": 7
+        },
+        {
+          "name": "clientConfig",
+          "methods": [],
+          "properties": [],
+          "exported": false,
+          "lineCount": 3
+        },
+        {
+          "name": "cliPixivClient",
+          "methods": [
+            "Refresh",
+            "UserID",
+            "SearchIllust",
+            "IllustRanking",
+            "IllustRecommended"
+          ],
+          "properties": [],
+          "exported": false,
+          "lineCount": 8
+        }
+      ],
+      "imports": [
+        {
+          "source": "context",
+          "specifiers": [
+            "context"
+          ]
+        },
+        {
+          "source": "encoding/json",
+          "specifiers": [
+            "json"
+          ]
+        },
+        {
+          "source": "errors",
+          "specifiers": [
+            "errors"
+          ]
+        },
+        {
+          "source": "fmt",
+          "specifiers": [
+            "fmt"
+          ]
+        },
+        {
+          "source": "io",
+          "specifiers": [
+            "io"
+          ]
+        },
+        {
+          "source": "strconv",
+          "specifiers": [
+            "strconv"
+          ]
+        },
+        {
+          "source": "strings",
+          "specifiers": [
+            "strings"
+          ]
+        },
+        {
+          "source": "github.com/FlanChanXwO/pixiv-mcp-server/internal/cli/mcpapp",
+          "specifiers": [
+            "mcpapp"
+          ]
+        },
+        {
+          "source": "github.com/FlanChanXwO/pixiv-mcp-server/internal/cli/state",
+          "specifiers": [
+            "state"
+          ]
+        },
+        {
+          "source": "github.com/FlanChanXwO/pixiv-mcp-server/internal/config",
+          "specifiers": [
+            "config"
+          ]
+        },
+        {
+          "source": "github.com/FlanChanXwO/pixiv-mcp-server/internal/download",
+          "specifiers": [
+            "download"
+          ]
+        },
+        {
+          "source": "github.com/FlanChanXwO/pixiv-mcp-server/internal/pixiv",
+          "specifiers": [
+            "pixiv"
+          ]
+        },
+        {
+          "source": "github.com/FlanChanXwO/pixiv-mcp-server/internal/utils",
+          "specifiers": [
+            "utils"
+          ]
+        },
+        {
+          "source": "github.com/spf13/cobra",
+          "specifiers": [
+            "cobra"
+          ]
+        }
+      ],
+      "exports": [
+        "Run"
+      ],
+      "totalLines": 253,
+      "hasStructuralAnalysis": true
+    },
+    "internal/cli/config_cmd.go": {
+      "filePath": "internal/cli/config_cmd.go",
+      "contentHash": "d86003859f9b77cc9407c06025189267de34816f8f2526c73618b905023f9d01",
+      "functions": [
+        {
+          "name": "newConfigCommand",
+          "params": [],
+          "returnType": "*cobra.Command",
+          "exported": false,
+          "lineCount": 16
+        },
+        {
+          "name": "newConfigPathCommand",
+          "params": [],
+          "returnType": "*cobra.Command",
+          "exported": false,
+          "lineCount": 15
+        },
+        {
+          "name": "newConfigGetCommand",
+          "params": [],
+          "returnType": "*cobra.Command",
+          "exported": false,
+          "lineCount": 10
+        },
+        {
+          "name": "configGet",
+          "params": [
+            "alias"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 16
+        },
+        {
+          "name": "newConfigSetCommand",
+          "params": [],
+          "returnType": "*cobra.Command",
+          "exported": false,
+          "lineCount": 10
+        },
+        {
+          "name": "configSet",
+          "params": [
+            "alias",
+            "raw"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 22
+        },
+        {
+          "name": "newConfigUnsetCommand",
+          "params": [],
+          "returnType": "*cobra.Command",
+          "exported": false,
+          "lineCount": 10
+        },
+        {
+          "name": "configUnset",
+          "params": [
+            "alias"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 19
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "errors",
+          "specifiers": [
+            "errors"
+          ]
+        },
+        {
+          "source": "fmt",
+          "specifiers": [
+            "fmt"
+          ]
+        },
+        {
+          "source": "strings",
+          "specifiers": [
+            "strings"
+          ]
+        },
+        {
+          "source": "github.com/FlanChanXwO/pixiv-mcp-server/internal/config",
+          "specifiers": [
+            "config"
+          ]
+        },
+        {
+          "source": "github.com/spf13/cobra",
+          "specifiers": [
+            "cobra"
+          ]
+        }
+      ],
+      "exports": [],
+      "totalLines": 139,
+      "hasStructuralAnalysis": true
+    },
+    "internal/cli/config_test.go": {
+      "filePath": "internal/cli/config_test.go",
+      "contentHash": "6fa514f2af9fd4db977c09b9136debe3ba33adcefd87a610283be36e1d54bd1e",
+      "functions": [
+        {
+          "name": "TestConfigPathGetSetUnset",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 37
+        },
+        {
+          "name": "TestConfigMissingValueReturnsPlaceholder",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 11
+        },
+        {
+          "name": "TestConfigStrongTypesAndSparseWrite",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 26
+        },
+        {
+          "name": "TestConfigWebFallbackDefaultEnabled",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 10
+        },
+        {
+          "name": "TestConfigGetUsesEnvironmentOverrideAndSetWarns",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 21
+        },
+        {
+          "name": "TestConfigLowercaseProxyBeatsUppercase",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 12
+        },
+        {
+          "name": "clearConfigEnv",
+          "params": [
+            "t"
+          ],
+          "exported": false,
+          "lineCount": 15
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "bytes",
+          "specifiers": [
+            "bytes"
+          ]
+        },
+        {
+          "source": "os",
+          "specifiers": [
+            "os"
+          ]
+        },
+        {
+          "source": "strings",
+          "specifiers": [
+            "strings"
+          ]
+        },
+        {
+          "source": "testing",
+          "specifiers": [
+            "testing"
+          ]
+        },
+        {
+          "source": "github.com/FlanChanXwO/pixiv-mcp-server/internal/config",
+          "specifiers": [
+            "config"
+          ]
+        },
+        {
+          "source": "github.com/stretchr/testify/assert",
+          "specifiers": [
+            "assert"
+          ]
+        },
+        {
+          "source": "github.com/stretchr/testify/require",
+          "specifiers": [
+            "require"
+          ]
+        }
+      ],
+      "exports": [
+        "TestConfigPathGetSetUnset",
+        "TestConfigMissingValueReturnsPlaceholder",
+        "TestConfigStrongTypesAndSparseWrite",
+        "TestConfigWebFallbackDefaultEnabled",
+        "TestConfigGetUsesEnvironmentOverrideAndSetWarns",
+        "TestConfigLowercaseProxyBeatsUppercase"
+      ],
+      "totalLines": 152,
+      "hasStructuralAnalysis": true
+    },
+    "internal/cli/mcpapp/mcpapp.go": {
+      "filePath": "internal/cli/mcpapp/mcpapp.go",
+      "contentHash": "6e8bd710e4b15928211a50a37de7135caef44f08a7bd7a695e37517d57b7f89a",
+      "functions": [
+        {
+          "name": "Run",
+          "params": [
+            "ctx",
+            "errOut"
+          ],
+          "returnType": "error",
+          "exported": true,
+          "lineCount": 39
+        },
+        {
+          "name": "newPixivClient",
+          "params": [
+            "cfg"
+          ],
+          "returnType": "(*pixiv.Source, error)",
+          "exported": false,
+          "lineCount": 7
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "context",
+          "specifiers": [
+            "context"
+          ]
+        },
+        {
+          "source": "io",
+          "specifiers": [
+            "io"
+          ]
+        },
+        {
+          "source": "log/slog",
+          "specifiers": [
+            "slog"
+          ]
+        },
+        {
+          "source": "github.com/FlanChanXwO/pixiv-mcp-server/internal/cli/state",
+          "specifiers": [
+            "state"
+          ]
+        },
+        {
+          "source": "github.com/FlanChanXwO/pixiv-mcp-server/internal/config",
+          "specifiers": [
+            "config"
+          ]
+        },
+        {
+          "source": "github.com/FlanChanXwO/pixiv-mcp-server/internal/download",
+          "specifiers": [
+            "download"
+          ]
+        },
+        {
+          "source": "github.com/FlanChanXwO/pixiv-mcp-server/internal/mcpserver",
+          "specifiers": [
+            "mcpserver"
+          ]
+        },
+        {
+          "source": "github.com/FlanChanXwO/pixiv-mcp-server/internal/pixiv",
+          "specifiers": [
+            "pixiv"
+          ]
+        },
+        {
+          "source": "github.com/modelcontextprotocol/go-sdk/mcp",
+          "specifiers": [
+            "mcp"
+          ]
+        }
+      ],
+      "exports": [
+        "Run"
+      ],
+      "totalLines": 63,
+      "hasStructuralAnalysis": true
+    },
+    "internal/cli/prompt.go": {
+      "filePath": "internal/cli/prompt.go",
+      "contentHash": "a1cc9a3aad92c045eb478063c7ddb3c85c2b39ffb3c80b4435f427eb61083baa",
+      "functions": [
+        {
+          "name": "defaultCanPrompt",
+          "params": [
+            "a"
+          ],
+          "returnType": "bool",
+          "exported": false,
+          "lineCount": 8
+        },
+        {
+          "name": "surveyAskOptions",
+          "params": [
+            "a"
+          ],
+          "returnType": "([]survey.AskOpt, error)",
+          "exported": false,
+          "lineCount": 8
+        },
+        {
+          "name": "defaultPromptInput",
+          "params": [
+            "a",
+            "message",
+            "defaultValue"
+          ],
+          "returnType": "(string, error)",
+          "exported": false,
+          "lineCount": 12
+        },
+        {
+          "name": "defaultPromptSecret",
+          "params": [
+            "a",
+            "message"
+          ],
+          "returnType": "(string, error)",
+          "exported": false,
+          "lineCount": 12
+        },
+        {
+          "name": "defaultPromptSelect",
+          "params": [
+            "a",
+            "message",
+            "options"
+          ],
+          "returnType": "(string, error)",
+          "exported": false,
+          "lineCount": 15
+        },
+        {
+          "name": "defaultPromptConfirm",
+          "params": [
+            "a",
+            "message",
+            "defaultValue"
+          ],
+          "returnType": "(bool, error)",
+          "exported": false,
+          "lineCount": 12
+        },
+        {
+          "name": "nonEmptyAnswer",
+          "params": [
+            "value"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 10
+        },
+        {
+          "name": "writePrompt",
+          "params": [
+            "w",
+            "format"
+          ],
+          "exported": false,
+          "lineCount": 3
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "errors",
+          "specifiers": [
+            "errors"
+          ]
+        },
+        {
+          "source": "fmt",
+          "specifiers": [
+            "fmt"
+          ]
+        },
+        {
+          "source": "io",
+          "specifiers": [
+            "io"
+          ]
+        },
+        {
+          "source": "strings",
+          "specifiers": [
+            "strings"
+          ]
+        },
+        {
+          "source": "github.com/AlecAivazis/survey/v2",
+          "specifiers": [
+            "v2"
+          ]
+        },
+        {
+          "source": "github.com/AlecAivazis/survey/v2/terminal",
+          "specifiers": [
+            "surveyterminal"
+          ]
+        },
+        {
+          "source": "golang.org/x/term",
+          "specifiers": [
+            "term"
+          ]
+        }
+      ],
+      "exports": [],
+      "totalLines": 109,
+      "hasStructuralAnalysis": true
+    },
+    "internal/cli/state/account.go": {
+      "filePath": "internal/cli/state/account.go",
+      "contentHash": "e5ac33420e9d7b0195df10e81c3874814b80d83db2a17afdbe85817d79d21fd3",
+      "functions": [
+        {
+          "name": "LoadAuthStore",
+          "params": [
+            "path"
+          ],
+          "returnType": "(AuthStore, error)",
+          "exported": true,
+          "lineCount": 23
+        },
+        {
+          "name": "SaveAuthStore",
+          "params": [
+            "path",
+            "store"
+          ],
+          "returnType": "error",
+          "exported": true,
+          "lineCount": 11
+        },
+        {
+          "name": "Names",
+          "params": [],
+          "returnType": "[]string",
+          "exported": true,
+          "lineCount": 7
+        },
+        {
+          "name": "ValidateAccountName",
+          "params": [
+            "name"
+          ],
+          "returnType": "error",
+          "exported": true,
+          "lineCount": 10
+        },
+        {
+          "name": "Has",
+          "params": [
+            "name"
+          ],
+          "returnType": "bool",
+          "exported": true,
+          "lineCount": 4
+        },
+        {
+          "name": "Get",
+          "params": [
+            "name"
+          ],
+          "returnType": "(int, Account, bool)",
+          "exported": true,
+          "lineCount": 12
+        },
+        {
+          "name": "Upsert",
+          "params": [
+            "acct"
+          ],
+          "exported": true,
+          "lineCount": 7
+        },
+        {
+          "name": "Remove",
+          "params": [
+            "name"
+          ],
+          "returnType": "bool",
+          "exported": true,
+          "lineCount": 14
+        },
+        {
+          "name": "SelectAuthAccount",
+          "params": [
+            "store",
+            "requestedName"
+          ],
+          "returnType": "(string, Account, bool)",
+          "exported": true,
+          "lineCount": 11
+        }
+      ],
+      "classes": [
+        {
+          "name": "AuthStore",
+          "methods": [
+            "Names",
+            "Has",
+            "Get",
+            "Upsert",
+            "Remove"
+          ],
+          "properties": [
+            "DefaultAccount",
+            "Accounts"
+          ],
+          "exported": true,
+          "lineCount": 4
+        },
+        {
+          "name": "Account",
+          "methods": [],
+          "properties": [
+            "Name",
+            "RefreshToken",
+            "UserID"
+          ],
+          "exported": true,
+          "lineCount": 5
+        }
+      ],
+      "imports": [
+        {
+          "source": "encoding/json",
+          "specifiers": [
+            "json"
+          ]
+        },
+        {
+          "source": "errors",
+          "specifiers": [
+            "errors"
+          ]
+        },
+        {
+          "source": "fmt",
+          "specifiers": [
+            "fmt"
+          ]
+        },
+        {
+          "source": "os",
+          "specifiers": [
+            "os"
+          ]
+        },
+        {
+          "source": "strings",
+          "specifiers": [
+            "strings"
+          ]
+        }
+      ],
+      "exports": [
+        "AuthStore",
+        "Account",
+        "LoadAuthStore",
+        "SaveAuthStore",
+        "Names",
+        "ValidateAccountName",
+        "Has",
+        "Get",
+        "Upsert",
+        "Remove",
+        "SelectAuthAccount"
+      ],
+      "totalLines": 129,
+      "hasStructuralAnalysis": true
+    },
+    "internal/cli/state/paths.go": {
+      "filePath": "internal/cli/state/paths.go",
+      "contentHash": "37a3df35c85098430864d7cf65fc88a807a6b26ff3ce74f03030118a76fa97cc",
+      "functions": [
+        {
+          "name": "defaultAppConfigDir",
+          "params": [],
+          "returnType": "(string, error)",
+          "exported": false,
+          "lineCount": 7
+        },
+        {
+          "name": "defaultAuthFilePath",
+          "params": [],
+          "returnType": "(string, error)",
+          "exported": false,
+          "lineCount": 7
+        },
+        {
+          "name": "AuthFilePath",
+          "params": [],
+          "returnType": "(string, error)",
+          "exported": true,
+          "lineCount": 3
+        },
+        {
+          "name": "SetAuthFilePathForTest",
+          "params": [
+            "authPath"
+          ],
+          "returnType": "func()",
+          "exported": true,
+          "lineCount": 7
+        },
+        {
+          "name": "WritePrivateFile",
+          "params": [
+            "path",
+            "body"
+          ],
+          "returnType": "error",
+          "exported": true,
+          "lineCount": 9
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "os",
+          "specifiers": [
+            "os"
+          ]
+        },
+        {
+          "source": "path/filepath",
+          "specifiers": [
+            "filepath"
+          ]
+        }
+      ],
+      "exports": [
+        "AuthFilePath",
+        "SetAuthFilePathForTest",
+        "WritePrivateFile"
+      ],
+      "totalLines": 51,
+      "hasStructuralAnalysis": true
+    },
+    "internal/config/paths.go": {
+      "filePath": "internal/config/paths.go",
+      "contentHash": "959619108966b1446859b870285fb040404564a934db99241895f559dbd5a93e",
+      "functions": [
+        {
+          "name": "defaultAppConfigDir",
+          "params": [],
+          "returnType": "(string, error)",
+          "exported": false,
+          "lineCount": 7
+        },
+        {
+          "name": "defaultConfigFilePath",
+          "params": [],
+          "returnType": "(string, error)",
+          "exported": false,
+          "lineCount": 7
+        },
+        {
+          "name": "ConfigFilePath",
+          "params": [],
+          "returnType": "(string, error)",
+          "exported": true,
+          "lineCount": 3
+        },
+        {
+          "name": "SetFilePathForTest",
+          "params": [
+            "configPath"
+          ],
+          "returnType": "func()",
+          "exported": true,
+          "lineCount": 7
+        },
+        {
+          "name": "WritePrivateFile",
+          "params": [
+            "path",
+            "body"
+          ],
+          "returnType": "error",
+          "exported": true,
+          "lineCount": 9
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "os",
+          "specifiers": [
+            "os"
+          ]
+        },
+        {
+          "source": "path/filepath",
+          "specifiers": [
+            "filepath"
+          ]
+        }
+      ],
+      "exports": [
+        "ConfigFilePath",
+        "SetFilePathForTest",
+        "WritePrivateFile"
+      ],
+      "totalLines": 49,
+      "hasStructuralAnalysis": true
+    },
+    "internal/config/settings.go": {
+      "filePath": "internal/config/settings.go",
+      "contentHash": "2bb27905573c09880664eea05600bfc5110bf0f52ea6de34b2b66b0197aa2ef6",
+      "functions": [
+        {
+          "name": "SettingSpecByAlias",
+          "params": [
+            "alias"
+          ],
+          "returnType": "(SettingSpec, bool)",
+          "exported": true,
+          "lineCount": 8
+        },
+        {
+          "name": "ValidSettingAliases",
+          "params": [],
+          "returnType": "[]string",
+          "exported": true,
+          "lineCount": 8
+        },
+        {
+          "name": "RefreshTokenFromEnv",
+          "params": [],
+          "returnType": "string",
+          "exported": true,
+          "lineCount": 4
+        },
+        {
+          "name": "EnvValue",
+          "params": [
+            "spec"
+          ],
+          "returnType": "(string, bool)",
+          "exported": true,
+          "lineCount": 15
+        },
+        {
+          "name": "envLookup",
+          "params": [
+            "name"
+          ],
+          "returnType": "(string, bool)",
+          "exported": false,
+          "lineCount": 7
+        },
+        {
+          "name": "LoadSettingsState",
+          "params": [],
+          "returnType": "(SettingsState, error)",
+          "exported": true,
+          "lineCount": 11
+        },
+        {
+          "name": "loadConfigFileInto",
+          "params": [
+            "target",
+            "path"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 13
+        },
+        {
+          "name": "Effective",
+          "params": [
+            "alias"
+          ],
+          "returnType": "(SettingValue, error)",
+          "exported": true,
+          "lineCount": 16
+        },
+        {
+          "name": "Runtime",
+          "params": [],
+          "returnType": "(RuntimeConfig, error)",
+          "exported": true,
+          "lineCount": 48
+        },
+        {
+          "name": "coerceSettingValue",
+          "params": [
+            "spec",
+            "raw",
+            "source"
+          ],
+          "returnType": "(SettingValue, error)",
+          "exported": false,
+          "lineCount": 27
+        },
+        {
+          "name": "normalizeStringValue",
+          "params": [
+            "raw"
+          ],
+          "returnType": "(string, bool)",
+          "exported": false,
+          "lineCount": 12
+        },
+        {
+          "name": "normalizeBoolValue",
+          "params": [
+            "raw"
+          ],
+          "returnType": "(bool, error)",
+          "exported": false,
+          "lineCount": 10
+        },
+        {
+          "name": "normalizeDurationValue",
+          "params": [
+            "raw"
+          ],
+          "returnType": "(time.Duration, error)",
+          "exported": false,
+          "lineCount": 10
+        },
+        {
+          "name": "ParseSettingInput",
+          "params": [
+            "alias",
+            "raw"
+          ],
+          "returnType": "(SettingValue, parser.Value, error)",
+          "exported": true,
+          "lineCount": 38
+        },
+        {
+          "name": "loadConfigDocument",
+          "params": [
+            "path"
+          ],
+          "returnType": "(*tomledit.Document, error)",
+          "exported": false,
+          "lineCount": 13
+        },
+        {
+          "name": "saveConfigDocument",
+          "params": [
+            "path",
+            "doc"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 7
+        },
+        {
+          "name": "SetConfigValue",
+          "params": [
+            "path",
+            "alias",
+            "value"
+          ],
+          "returnType": "error",
+          "exported": true,
+          "lineCount": 19
+        },
+        {
+          "name": "UnsetConfigValue",
+          "params": [
+            "path",
+            "alias"
+          ],
+          "returnType": "(bool, error)",
+          "exported": true,
+          "lineCount": 19
+        },
+        {
+          "name": "ensureConfigSection",
+          "params": [
+            "doc",
+            "name"
+          ],
+          "returnType": "*tomledit.Section",
+          "exported": false,
+          "lineCount": 10
+        }
+      ],
+      "classes": [
+        {
+          "name": "SettingSpec",
+          "methods": [],
+          "properties": [
+            "Alias",
+            "KoanfKey",
+            "Table",
+            "Key",
+            "Kind",
+            "HasDefault",
+            "Default"
+          ],
+          "exported": true,
+          "lineCount": 9
+        },
+        {
+          "name": "SettingValue",
+          "methods": [],
+          "properties": [
+            "Value",
+            "Text",
+            "Source",
+            "HasValue"
+          ],
+          "exported": true,
+          "lineCount": 6
+        },
+        {
+          "name": "SettingsState",
+          "methods": [
+            "Effective",
+            "Runtime"
+          ],
+          "properties": [
+            "file"
+          ],
+          "exported": true,
+          "lineCount": 3
+        },
+        {
+          "name": "RuntimeConfig",
+          "methods": [],
+          "properties": [
+            "RefreshToken",
+            "DownloadPath",
+            "FilenameTemplate",
+            "HTTPSProxy",
+            "WebFallbackEnabled",
+            "OutputJSON",
+            "LoginOpenBrowser",
+            "LoginTimeout",
+            "LoginUseAfterLogin"
+          ],
+          "exported": true,
+          "lineCount": 11
+        }
+      ],
+      "imports": [
+        {
+          "source": "bytes",
+          "specifiers": [
+            "bytes"
+          ]
+        },
+        {
+          "source": "errors",
+          "specifiers": [
+            "errors"
+          ]
+        },
+        {
+          "source": "fmt",
+          "specifiers": [
+            "fmt"
+          ]
+        },
+        {
+          "source": "os",
+          "specifiers": [
+            "os"
+          ]
+        },
+        {
+          "source": "slices",
+          "specifiers": [
+            "slices"
+          ]
+        },
+        {
+          "source": "strconv",
+          "specifiers": [
+            "strconv"
+          ]
+        },
+        {
+          "source": "strings",
+          "specifiers": [
+            "strings"
+          ]
+        },
+        {
+          "source": "time",
+          "specifiers": [
+            "time"
+          ]
+        },
+        {
+          "source": "github.com/FlanChanXwO/pixiv-mcp-server/internal/utils",
+          "specifiers": [
+            "utils"
+          ]
+        },
+        {
+          "source": "github.com/creachadair/tomledit",
+          "specifiers": [
+            "tomledit"
+          ]
+        },
+        {
+          "source": "github.com/creachadair/tomledit/parser",
+          "specifiers": [
+            "parser"
+          ]
+        },
+        {
+          "source": "github.com/creachadair/tomledit/transform",
+          "specifiers": [
+            "transform"
+          ]
+        },
+        {
+          "source": "github.com/knadh/koanf/parsers/toml/v2",
+          "specifiers": [
+            "v2"
+          ]
+        },
+        {
+          "source": "github.com/knadh/koanf/providers/file",
+          "specifiers": [
+            "file"
+          ]
+        },
+        {
+          "source": "github.com/knadh/koanf/v2",
+          "specifiers": [
+            "v2"
+          ]
+        }
+      ],
+      "exports": [
+        "SettingSpec",
+        "SettingValue",
+        "SettingsState",
+        "RuntimeConfig",
+        "SettingSpecByAlias",
+        "ValidSettingAliases",
+        "RefreshTokenFromEnv",
+        "EnvValue",
+        "LoadSettingsState",
+        "Effective",
+        "Runtime",
+        "ParseSettingInput",
+        "SetConfigValue",
+        "UnsetConfigValue"
+      ],
+      "totalLines": 392,
+      "hasStructuralAnalysis": true
+    },
+    "internal/download/manager_test.go": {
+      "filePath": "internal/download/manager_test.go",
+      "contentHash": "2b6ff8dd8554d7634f9d401786153c0370dd06cbd52d91848cf33c75ab2c47f7",
+      "functions": [
+        {
+          "name": "TestSanitizeAndGenerateFilename",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 7
+        },
+        {
+          "name": "TestGenerateFilenameSanitizesTemplatePathSeparators",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 10
+        },
+        {
+          "name": "TestDeduplicate",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 7
+        },
+        {
+          "name": "TestSetDownloadPathCreatesDirectory",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 10
+        },
+        {
+          "name": "TestDownloadSingleArtworkReturnsPath",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 34
+        },
+        {
+          "name": "TestDownloadKeepsArtworkInsideDownloadRoot",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 35
+        },
+        {
+          "name": "TestDownloadFailureDoesNotReplaceExistingFile",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 29
+        },
+        {
+          "name": "TestDownloadSuccessReplacesExistingFile",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 28
+        },
+        {
+          "name": "TestDownloadMultiPageArtworkReturnsAllPaths",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 39
+        },
+        {
+          "name": "TestConvertUgoiraBuildsFFmpegCommand",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 16
+        },
+        {
+          "name": "TestConvertUgoiraUsesUniqueTemporaryDirectory",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 23
+        },
+        {
+          "name": "TestConvertUgoiraFailureDoesNotReplaceExistingGIF",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 19
+        },
+        {
+          "name": "TestConvertUgoiraSuccessReplacesExistingGIF",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 18
+        },
+        {
+          "name": "TestDownloadUgoiraZipFailureCleansTemporaryZip",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 36
+        },
+        {
+          "name": "TestDownloadUgoiraReturnsFinalGIFOnly",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 41
+        },
+        {
+          "name": "TestDownloadMissingImageURLReturnsError",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 12
+        },
+        {
+          "name": "TestDownloadUgoiraWithoutFFmpegReturnsError",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 13
+        },
+        {
+          "name": "Run",
+          "params": [
+            "_",
+            "dir",
+            "name"
+          ],
+          "returnType": "error",
+          "exported": true,
+          "lineCount": 11
+        },
+        {
+          "name": "createZip",
+          "params": [
+            "t",
+            "path",
+            "name",
+            "body"
+          ],
+          "exported": false,
+          "lineCount": 6
+        },
+        {
+          "name": "makeZip",
+          "params": [
+            "t",
+            "name",
+            "body"
+          ],
+          "returnType": "[]byte",
+          "exported": false,
+          "lineCount": 16
+        },
+        {
+          "name": "IllustDetail",
+          "params": [
+            "_",
+            "id"
+          ],
+          "returnType": "(*pixiv.IllustDetail, error)",
+          "exported": true,
+          "lineCount": 7
+        },
+        {
+          "name": "UgoiraMetadata",
+          "params": [
+            "_",
+            "id"
+          ],
+          "returnType": "(*pixiv.UgoiraMetadataResult, error)",
+          "exported": true,
+          "lineCount": 7
+        },
+        {
+          "name": "Download",
+          "params": [
+            "_",
+            "rawURL",
+            "dst"
+          ],
+          "returnType": "error",
+          "exported": true,
+          "lineCount": 11
+        },
+        {
+          "name": "assertFileBody",
+          "params": [
+            "t",
+            "path",
+            "want"
+          ],
+          "exported": false,
+          "lineCount": 10
+        }
+      ],
+      "classes": [
+        {
+          "name": "recordingRunner",
+          "methods": [
+            "Run"
+          ],
+          "properties": [
+            "dir",
+            "name",
+            "args",
+            "writeOutput",
+            "err"
+          ],
+          "exported": false,
+          "lineCount": 7
+        },
+        {
+          "name": "fakePixivClient",
+          "methods": [
+            "IllustDetail",
+            "UgoiraMetadata",
+            "Download"
+          ],
+          "properties": [
+            "details",
+            "ugoira",
+            "downloads",
+            "downloadErr"
+          ],
+          "exported": false,
+          "lineCount": 6
+        }
+      ],
+      "imports": [
+        {
+          "source": "archive/zip",
+          "specifiers": [
+            "zip"
+          ]
+        },
+        {
+          "source": "bytes",
+          "specifiers": [
+            "bytes"
+          ]
+        },
+        {
+          "source": "context",
+          "specifiers": [
+            "context"
+          ]
+        },
+        {
+          "source": "errors",
+          "specifiers": [
+            "errors"
+          ]
+        },
+        {
+          "source": "io",
+          "specifiers": [
+            "io"
+          ]
+        },
+        {
+          "source": "os",
+          "specifiers": [
+            "os"
+          ]
+        },
+        {
+          "source": "path/filepath",
+          "specifiers": [
+            "filepath"
+          ]
+        },
+        {
+          "source": "slices",
+          "specifiers": [
+            "slices"
+          ]
+        },
+        {
+          "source": "strings",
+          "specifiers": [
+            "strings"
+          ]
+        },
+        {
+          "source": "testing",
+          "specifiers": [
+            "testing"
+          ]
+        },
+        {
+          "source": "github.com/FlanChanXwO/pixiv-mcp-server/internal/pixiv",
+          "specifiers": [
+            "pixiv"
+          ]
+        },
+        {
+          "source": "github.com/FlanChanXwO/pixiv-mcp-server/internal/utils",
+          "specifiers": [
+            "utils"
+          ]
+        }
+      ],
+      "exports": [
+        "TestSanitizeAndGenerateFilename",
+        "TestGenerateFilenameSanitizesTemplatePathSeparators",
+        "TestDeduplicate",
+        "TestSetDownloadPathCreatesDirectory",
+        "TestDownloadSingleArtworkReturnsPath",
+        "TestDownloadKeepsArtworkInsideDownloadRoot",
+        "TestDownloadFailureDoesNotReplaceExistingFile",
+        "TestDownloadSuccessReplacesExistingFile",
+        "TestDownloadMultiPageArtworkReturnsAllPaths",
+        "TestConvertUgoiraBuildsFFmpegCommand",
+        "TestConvertUgoiraUsesUniqueTemporaryDirectory",
+        "TestConvertUgoiraFailureDoesNotReplaceExistingGIF",
+        "TestConvertUgoiraSuccessReplacesExistingGIF",
+        "TestDownloadUgoiraZipFailureCleansTemporaryZip",
+        "TestDownloadUgoiraReturnsFinalGIFOnly",
+        "TestDownloadMissingImageURLReturnsError",
+        "TestDownloadUgoiraWithoutFFmpegReturnsError",
+        "Run",
+        "IllustDetail",
+        "UgoiraMetadata",
+        "Download"
+      ],
+      "totalLines": 502,
+      "hasStructuralAnalysis": true
+    },
+    "internal/download/manager.go": {
+      "filePath": "internal/download/manager.go",
+      "contentHash": "266cba85be0bc4cc34a8252e56a34227976f789b96e4a8be5c18cd7d8e5a231f",
+      "functions": [
+        {
+          "name": "Run",
+          "params": [
+            "ctx",
+            "dir",
+            "name"
+          ],
+          "returnType": "error",
+          "exported": true,
+          "lineCount": 9
+        },
+        {
+          "name": "NewManager",
+          "params": [
+            "client",
+            "logger",
+            "downloadPath",
+            "filenameTemplate"
+          ],
+          "returnType": "*Manager",
+          "exported": true,
+          "lineCount": 15
+        },
+        {
+          "name": "SetRunner",
+          "params": [
+            "runner"
+          ],
+          "exported": true,
+          "lineCount": 5
+        },
+        {
+          "name": "SetFFmpegAvailable",
+          "params": [
+            "available"
+          ],
+          "exported": true,
+          "lineCount": 3
+        },
+        {
+          "name": "SetDownloadPath",
+          "params": [
+            "path"
+          ],
+          "returnType": "error",
+          "exported": true,
+          "lineCount": 9
+        },
+        {
+          "name": "DownloadPath",
+          "params": [],
+          "returnType": "string",
+          "exported": true,
+          "lineCount": 5
+        },
+        {
+          "name": "Enqueue",
+          "params": [
+            "ctx",
+            "ids"
+          ],
+          "returnType": "int",
+          "exported": true,
+          "lineCount": 7
+        },
+        {
+          "name": "Download",
+          "params": [
+            "ctx",
+            "ids"
+          ],
+          "returnType": "([]DownloadedArtwork, error)",
+          "exported": true,
+          "lineCount": 12
+        },
+        {
+          "name": "downloadOne",
+          "params": [
+            "ctx",
+            "id"
+          ],
+          "exported": false,
+          "lineCount": 7
+        },
+        {
+          "name": "downloadArtwork",
+          "params": [
+            "ctx",
+            "id"
+          ],
+          "returnType": "(DownloadedArtwork, error)",
+          "exported": false,
+          "lineCount": 62
+        },
+        {
+          "name": "downloadUgoira",
+          "params": [
+            "ctx",
+            "illust",
+            "base"
+          ],
+          "returnType": "(string, error)",
+          "exported": false,
+          "lineCount": 30
+        },
+        {
+          "name": "downloadURL",
+          "params": [
+            "ctx",
+            "rawURL",
+            "path"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 27
+        },
+        {
+          "name": "ConvertUgoira",
+          "params": [
+            "ctx",
+            "zipPath",
+            "frames",
+            "workDir",
+            "outputGIF"
+          ],
+          "returnType": "error",
+          "exported": true,
+          "lineCount": 62
+        },
+        {
+          "name": "extractZipFile",
+          "params": [
+            "file",
+            "dstDir"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 15
+        },
+        {
+          "name": "commandExists",
+          "params": [
+            "name"
+          ],
+          "returnType": "bool",
+          "exported": false,
+          "lineCount": 4
+        },
+        {
+          "name": "pathFromURL",
+          "params": [
+            "rawURL"
+          ],
+          "returnType": "string",
+          "exported": false,
+          "lineCount": 7
+        },
+        {
+          "name": "firstNonEmpty",
+          "params": [],
+          "returnType": "string",
+          "exported": false,
+          "lineCount": 8
+        },
+        {
+          "name": "filenameData",
+          "params": [
+            "illust"
+          ],
+          "returnType": "utils.FilenameData",
+          "exported": false,
+          "lineCount": 8
+        },
+        {
+          "name": "fallback",
+          "params": [
+            "value",
+            "backup"
+          ],
+          "returnType": "string",
+          "exported": false,
+          "lineCount": 6
+        }
+      ],
+      "classes": [
+        {
+          "name": "PixivClient",
+          "methods": [
+            "IllustDetail",
+            "UgoiraMetadata",
+            "Download"
+          ],
+          "properties": [],
+          "exported": true,
+          "lineCount": 5
+        },
+        {
+          "name": "Runner",
+          "methods": [
+            "Run"
+          ],
+          "properties": [],
+          "exported": true,
+          "lineCount": 3
+        },
+        {
+          "name": "DownloadedArtwork",
+          "methods": [],
+          "properties": [
+            "IllustID",
+            "Title",
+            "Author",
+            "Type",
+            "Files"
+          ],
+          "exported": true,
+          "lineCount": 7
+        },
+        {
+          "name": "DownloadedFile",
+          "methods": [],
+          "properties": [
+            "Path",
+            "Page"
+          ],
+          "exported": true,
+          "lineCount": 4
+        },
+        {
+          "name": "ExecRunner",
+          "methods": [
+            "Run"
+          ],
+          "properties": [],
+          "exported": true,
+          "lineCount": 1
+        },
+        {
+          "name": "Manager",
+          "methods": [
+            "SetRunner",
+            "SetFFmpegAvailable",
+            "SetDownloadPath",
+            "DownloadPath",
+            "Enqueue",
+            "Download",
+            "downloadOne",
+            "downloadArtwork",
+            "downloadUgoira",
+            "downloadURL",
+            "ConvertUgoira"
+          ],
+          "properties": [
+            "client",
+            "logger",
+            "runner",
+            "downloadPath",
+            "filenameTemplate",
+            "ffmpegAvailable",
+            "sem",
+            "mu"
+          ],
+          "exported": true,
+          "lineCount": 10
+        }
+      ],
+      "imports": [
+        {
+          "source": "archive/zip",
+          "specifiers": [
+            "zip"
+          ]
+        },
+        {
+          "source": "context",
+          "specifiers": [
+            "context"
+          ]
+        },
+        {
+          "source": "fmt",
+          "specifiers": [
+            "fmt"
+          ]
+        },
+        {
+          "source": "io",
+          "specifiers": [
+            "io"
+          ]
+        },
+        {
+          "source": "log/slog",
+          "specifiers": [
+            "slog"
+          ]
+        },
+        {
+          "source": "net/url",
+          "specifiers": [
+            "url"
+          ]
+        },
+        {
+          "source": "os",
+          "specifiers": [
+            "os"
+          ]
+        },
+        {
+          "source": "os/exec",
+          "specifiers": [
+            "exec"
+          ]
+        },
+        {
+          "source": "path/filepath",
+          "specifiers": [
+            "filepath"
+          ]
+        },
+        {
+          "source": "strings",
+          "specifiers": [
+            "strings"
+          ]
+        },
+        {
+          "source": "sync",
+          "specifiers": [
+            "sync"
+          ]
+        },
+        {
+          "source": "github.com/FlanChanXwO/pixiv-mcp-server/internal/pixiv",
+          "specifiers": [
+            "pixiv"
+          ]
+        },
+        {
+          "source": "github.com/FlanChanXwO/pixiv-mcp-server/internal/utils",
+          "specifiers": [
+            "utils"
+          ]
+        }
+      ],
+      "exports": [
+        "PixivClient",
+        "Runner",
+        "DownloadedArtwork",
+        "DownloadedFile",
+        "ExecRunner",
+        "Run",
+        "Manager",
+        "NewManager",
+        "SetRunner",
+        "SetFFmpegAvailable",
+        "SetDownloadPath",
+        "DownloadPath",
+        "Enqueue",
+        "Download",
+        "ConvertUgoira"
+      ],
+      "totalLines": 375,
+      "hasStructuralAnalysis": true
+    },
+    "internal/download/replace_nonwindows.go": {
+      "filePath": "internal/download/replace_nonwindows.go",
+      "contentHash": "3da2fe888fb6db9cde419f19ad611b227b8aa66686c364338d91d6a6aab90cf9",
+      "functions": [
+        {
+          "name": "replaceDownloadedFile",
+          "params": [
+            "tmpPath",
+            "targetPath"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 3
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "os",
+          "specifiers": [
+            "os"
+          ]
+        }
+      ],
+      "exports": [],
+      "totalLines": 10,
+      "hasStructuralAnalysis": true
+    },
+    "internal/download/replace_windows.go": {
+      "filePath": "internal/download/replace_windows.go",
+      "contentHash": "71da05ba5ddeb25964b8f4f918d4408d20263c486d5c7e38a30c894baf148cf9",
+      "functions": [
+        {
+          "name": "replaceDownloadedFile",
+          "params": [
+            "tmpPath",
+            "targetPath"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 12
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "golang.org/x/sys/windows",
+          "specifiers": [
+            "windows"
+          ]
+        }
+      ],
+      "exports": [],
+      "totalLines": 19,
+      "hasStructuralAnalysis": true
+    },
+    "internal/mcpserver/server_test.go": {
+      "filePath": "internal/mcpserver/server_test.go",
+      "contentHash": "a625b904bacc91310b37ebcead24db576b1d3459cd643d0cdfb05ef3306c3033",
+      "functions": [
+        {
+          "name": "TestServerListsExpectedTools",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 29
+        },
+        {
+          "name": "TestSetDownloadPathValidation",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 21
+        },
+        {
+          "name": "TestDownloadDefaultsToLocalPathResult",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 40
+        },
+        {
+          "name": "TestDownloadImageContentResult",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 55
+        },
+        {
+          "name": "TestSetRefreshTokenRejectsCookieWithoutRefreshToken",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 22
+        },
+        {
+          "name": "TestSetRefreshTokenFailureSaysSessionOnly",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 31
+        },
+        {
+          "name": "Refresh",
+          "params": [],
+          "returnType": "error",
+          "exported": true,
+          "lineCount": 1
+        },
+        {
+          "name": "SetRefreshToken",
+          "params": [],
+          "exported": true,
+          "lineCount": 1
+        },
+        {
+          "name": "RefreshTokenValue",
+          "params": [],
+          "returnType": "string",
+          "exported": true,
+          "lineCount": 1
+        },
+        {
+          "name": "UserID",
+          "params": [],
+          "returnType": "int64",
+          "exported": true,
+          "lineCount": 1
+        },
+        {
+          "name": "IsAuthenticated",
+          "params": [],
+          "returnType": "bool",
+          "exported": true,
+          "lineCount": 1
+        },
+        {
+          "name": "SearchIllust",
+          "params": [],
+          "returnType": "(*pixiv.IllustList, error)",
+          "exported": true,
+          "lineCount": 3
+        },
+        {
+          "name": "IllustDetail",
+          "params": [],
+          "returnType": "(*pixiv.IllustDetail, error)",
+          "exported": true,
+          "lineCount": 3
+        },
+        {
+          "name": "IllustRelated",
+          "params": [],
+          "returnType": "(*pixiv.IllustList, error)",
+          "exported": true,
+          "lineCount": 3
+        },
+        {
+          "name": "IllustRanking",
+          "params": [],
+          "returnType": "(*pixiv.IllustList, error)",
+          "exported": true,
+          "lineCount": 3
+        },
+        {
+          "name": "SearchUser",
+          "params": [],
+          "returnType": "(*pixiv.UserPreviewList, error)",
+          "exported": true,
+          "lineCount": 3
+        },
+        {
+          "name": "IllustRecommended",
+          "params": [],
+          "returnType": "(*pixiv.IllustList, error)",
+          "exported": true,
+          "lineCount": 3
+        },
+        {
+          "name": "TrendingTagsIllust",
+          "params": [],
+          "returnType": "(*pixiv.TrendTags, error)",
+          "exported": true,
+          "lineCount": 3
+        },
+        {
+          "name": "IllustFollow",
+          "params": [],
+          "returnType": "(*pixiv.IllustList, error)",
+          "exported": true,
+          "lineCount": 3
+        },
+        {
+          "name": "UserBookmarks",
+          "params": [],
+          "returnType": "(*pixiv.IllustList, error)",
+          "exported": true,
+          "lineCount": 3
+        },
+        {
+          "name": "UserFollowing",
+          "params": [],
+          "returnType": "(*pixiv.UserPreviewList, error)",
+          "exported": true,
+          "lineCount": 3
+        },
+        {
+          "name": "Download",
+          "params": [],
+          "returnType": "error",
+          "exported": true,
+          "lineCount": 3
+        },
+        {
+          "name": "Refresh",
+          "params": [],
+          "returnType": "error",
+          "exported": true,
+          "lineCount": 3
+        },
+        {
+          "name": "newTestSession",
+          "params": [
+            "t",
+            "downloads"
+          ],
+          "returnType": "(*mcp.ClientSession, func())",
+          "exported": false,
+          "lineCount": 17
+        },
+        {
+          "name": "decodeDownloadOut",
+          "params": [
+            "t",
+            "result"
+          ],
+          "returnType": "downloadOut",
+          "exported": false,
+          "lineCount": 12
+        },
+        {
+          "name": "SetDownloadPath",
+          "params": [],
+          "returnType": "error",
+          "exported": true,
+          "lineCount": 1
+        },
+        {
+          "name": "Enqueue",
+          "params": [],
+          "returnType": "int",
+          "exported": true,
+          "lineCount": 1
+        },
+        {
+          "name": "Download",
+          "params": [
+            "_",
+            "ids"
+          ],
+          "returnType": "([]download.DownloadedArtwork, error)",
+          "exported": true,
+          "lineCount": 4
+        }
+      ],
+      "classes": [
+        {
+          "name": "fakeAPI",
+          "methods": [
+            "Refresh",
+            "SetRefreshToken",
+            "RefreshTokenValue",
+            "UserID",
+            "IsAuthenticated",
+            "SearchIllust",
+            "IllustDetail",
+            "IllustRelated",
+            "IllustRanking",
+            "SearchUser",
+            "IllustRecommended",
+            "TrendingTagsIllust",
+            "IllustFollow",
+            "UserBookmarks",
+            "UserFollowing",
+            "Download"
+          ],
+          "properties": [],
+          "exported": false,
+          "lineCount": 1
+        },
+        {
+          "name": "failingRefreshAPI",
+          "methods": [
+            "Refresh"
+          ],
+          "properties": [],
+          "exported": false,
+          "lineCount": 3
+        },
+        {
+          "name": "fakeDownloads",
+          "methods": [
+            "SetDownloadPath",
+            "Enqueue",
+            "Download"
+          ],
+          "properties": [
+            "artworks",
+            "downloadIDs"
+          ],
+          "exported": false,
+          "lineCount": 4
+        }
+      ],
+      "imports": [
+        {
+          "source": "context",
+          "specifiers": [
+            "context"
+          ]
+        },
+        {
+          "source": "encoding/json",
+          "specifiers": [
+            "json"
+          ]
+        },
+        {
+          "source": "errors",
+          "specifiers": [
+            "errors"
+          ]
+        },
+        {
+          "source": "io",
+          "specifiers": [
+            "io"
+          ]
+        },
+        {
+          "source": "log/slog",
+          "specifiers": [
+            "slog"
+          ]
+        },
+        {
+          "source": "os",
+          "specifiers": [
+            "os"
+          ]
+        },
+        {
+          "source": "path/filepath",
+          "specifiers": [
+            "filepath"
+          ]
+        },
+        {
+          "source": "slices",
+          "specifiers": [
+            "slices"
+          ]
+        },
+        {
+          "source": "strings",
+          "specifiers": [
+            "strings"
+          ]
+        },
+        {
+          "source": "testing",
+          "specifiers": [
+            "testing"
+          ]
+        },
+        {
+          "source": "github.com/FlanChanXwO/pixiv-mcp-server/internal/download",
+          "specifiers": [
+            "download"
+          ]
+        },
+        {
+          "source": "github.com/FlanChanXwO/pixiv-mcp-server/internal/pixiv",
+          "specifiers": [
+            "pixiv"
+          ]
+        },
+        {
+          "source": "github.com/modelcontextprotocol/go-sdk/mcp",
+          "specifiers": [
+            "mcp"
+          ]
+        }
+      ],
+      "exports": [
+        "TestServerListsExpectedTools",
+        "TestSetDownloadPathValidation",
+        "TestDownloadDefaultsToLocalPathResult",
+        "TestDownloadImageContentResult",
+        "TestSetRefreshTokenRejectsCookieWithoutRefreshToken",
+        "TestSetRefreshTokenFailureSaysSessionOnly",
+        "Refresh",
+        "SetRefreshToken",
+        "RefreshTokenValue",
+        "UserID",
+        "IsAuthenticated",
+        "SearchIllust",
+        "IllustDetail",
+        "IllustRelated",
+        "IllustRanking",
+        "SearchUser",
+        "IllustRecommended",
+        "TrendingTagsIllust",
+        "IllustFollow",
+        "UserBookmarks",
+        "UserFollowing",
+        "Download",
+        "Refresh",
+        "SetDownloadPath",
+        "Enqueue",
+        "Download"
+      ],
+      "totalLines": 315,
+      "hasStructuralAnalysis": true
+    },
+    "internal/mcpserver/server.go": {
+      "filePath": "internal/mcpserver/server.go",
+      "contentHash": "1c43d16a76cb7c8b6b6c2260a36721e514e60be67e70c77a1781a774e583c151",
+      "functions": [
+        {
+          "name": "New",
+          "params": [
+            "api",
+            "downloads",
+            "logger"
+          ],
+          "returnType": "*mcp.Server",
+          "exported": true,
+          "lineCount": 8
+        },
+        {
+          "name": "register",
+          "params": [
+            "server"
+          ],
+          "exported": false,
+          "lineCount": 18
+        },
+        {
+          "name": "toolText",
+          "params": [
+            "text"
+          ],
+          "returnType": "(*mcp.CallToolResult, textOut, error)",
+          "exported": false,
+          "lineCount": 3
+        },
+        {
+          "name": "setDownloadPath",
+          "params": [
+            "ctx",
+            "_",
+            "in"
+          ],
+          "returnType": "(*mcp.CallToolResult, textOut, error)",
+          "exported": false,
+          "lineCount": 9
+        },
+        {
+          "name": "download",
+          "params": [
+            "ctx",
+            "_",
+            "in"
+          ],
+          "returnType": "(*mcp.CallToolResult, downloadOut, error)",
+          "exported": false,
+          "lineCount": 40
+        },
+        {
+          "name": "downloadResult",
+          "params": [
+            "out"
+          ],
+          "returnType": "*mcp.CallToolResult",
+          "exported": false,
+          "lineCount": 5
+        },
+        {
+          "name": "normalizeDelivery",
+          "params": [
+            "value"
+          ],
+          "returnType": "(string, string)",
+          "exported": false,
+          "lineCount": 10
+        },
+        {
+          "name": "buildDownloadOut",
+          "params": [
+            "delivery",
+            "artworks"
+          ],
+          "returnType": "(downloadOut, error)",
+          "exported": false,
+          "lineCount": 36
+        },
+        {
+          "name": "mimeTypeForPath",
+          "params": [
+            "path"
+          ],
+          "returnType": "string",
+          "exported": false,
+          "lineCount": 14
+        },
+        {
+          "name": "fileURI",
+          "params": [
+            "path"
+          ],
+          "returnType": "string",
+          "exported": false,
+          "lineCount": 6
+        },
+        {
+          "name": "refreshToken",
+          "params": [
+            "ctx",
+            "_",
+            "_"
+          ],
+          "returnType": "(*mcp.CallToolResult, textOut, error)",
+          "exported": false,
+          "lineCount": 9
+        },
+        {
+          "name": "setRefreshToken",
+          "params": [
+            "ctx",
+            "_",
+            "in"
+          ],
+          "returnType": "(*mcp.CallToolResult, textOut, error)",
+          "exported": false,
+          "lineCount": 14
+        },
+        {
+          "name": "downloadRandom",
+          "params": [
+            "ctx",
+            "req",
+            "in"
+          ],
+          "returnType": "(*mcp.CallToolResult, downloadOut, error)",
+          "exported": false,
+          "lineCount": 28
+        },
+        {
+          "name": "searchIllust",
+          "params": [
+            "ctx",
+            "_",
+            "in"
+          ],
+          "returnType": "(*mcp.CallToolResult, textOut, error)",
+          "exported": false,
+          "lineCount": 20
+        },
+        {
+          "name": "illustDetail",
+          "params": [
+            "ctx",
+            "_",
+            "in"
+          ],
+          "returnType": "(*mcp.CallToolResult, textOut, error)",
+          "exported": false,
+          "lineCount": 8
+        },
+        {
+          "name": "illustRelated",
+          "params": [
+            "ctx",
+            "_",
+            "in"
+          ],
+          "returnType": "(*mcp.CallToolResult, textOut, error)",
+          "exported": false,
+          "lineCount": 10
+        },
+        {
+          "name": "illustRanking",
+          "params": [
+            "ctx",
+            "_",
+            "in"
+          ],
+          "returnType": "(*mcp.CallToolResult, textOut, error)",
+          "exported": false,
+          "lineCount": 13
+        },
+        {
+          "name": "searchUser",
+          "params": [
+            "ctx",
+            "_",
+            "in"
+          ],
+          "returnType": "(*mcp.CallToolResult, textOut, error)",
+          "exported": false,
+          "lineCount": 10
+        },
+        {
+          "name": "illustRecommended",
+          "params": [
+            "ctx",
+            "_",
+            "in"
+          ],
+          "returnType": "(*mcp.CallToolResult, textOut, error)",
+          "exported": false,
+          "lineCount": 13
+        },
+        {
+          "name": "trendingTags",
+          "params": [
+            "ctx",
+            "_",
+            "_"
+          ],
+          "returnType": "(*mcp.CallToolResult, textOut, error)",
+          "exported": false,
+          "lineCount": 18
+        },
+        {
+          "name": "illustFollow",
+          "params": [
+            "ctx",
+            "_",
+            "in"
+          ],
+          "returnType": "(*mcp.CallToolResult, textOut, error)",
+          "exported": false,
+          "lineCount": 16
+        },
+        {
+          "name": "userBookmarks",
+          "params": [
+            "ctx",
+            "_",
+            "in"
+          ],
+          "returnType": "(*mcp.CallToolResult, textOut, error)",
+          "exported": false,
+          "lineCount": 23
+        },
+        {
+          "name": "userFollowing",
+          "params": [
+            "ctx",
+            "_",
+            "in"
+          ],
+          "returnType": "(*mcp.CallToolResult, textOut, error)",
+          "exported": false,
+          "lineCount": 23
+        },
+        {
+          "name": "thumbnailBase64",
+          "params": [
+            "ctx",
+            "_",
+            "in"
+          ],
+          "returnType": "(*mcp.CallToolResult, textOut, error)",
+          "exported": false,
+          "lineCount": 18
+        },
+        {
+          "name": "ensureAuth",
+          "params": [
+            "ctx"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 12
+        },
+        {
+          "name": "formatIllusts",
+          "params": [
+            "illusts",
+            "includeThumbnail",
+            "offset",
+            "ranked"
+          ],
+          "returnType": "string",
+          "exported": false,
+          "lineCount": 11
+        },
+        {
+          "name": "formatIllust",
+          "params": [
+            "illust",
+            "includeThumbnail"
+          ],
+          "returnType": "string",
+          "exported": false,
+          "lineCount": 19
+        },
+        {
+          "name": "formatUsers",
+          "params": [
+            "users"
+          ],
+          "returnType": "string",
+          "exported": false,
+          "lineCount": 16
+        },
+        {
+          "name": "thumbnailURL",
+          "params": [
+            "illust"
+          ],
+          "returnType": "string",
+          "exported": false,
+          "lineCount": 11
+        },
+        {
+          "name": "firstNonEmpty",
+          "params": [],
+          "returnType": "string",
+          "exported": false,
+          "lineCount": 8
+        },
+        {
+          "name": "Write",
+          "params": [
+            "p"
+          ],
+          "returnType": "(int, error)",
+          "exported": true,
+          "lineCount": 3
+        }
+      ],
+      "classes": [
+        {
+          "name": "PixivAPI",
+          "methods": [
+            "Refresh",
+            "SetRefreshToken",
+            "RefreshTokenValue",
+            "UserID",
+            "IsAuthenticated",
+            "SearchIllust",
+            "IllustDetail",
+            "IllustRelated",
+            "IllustRanking",
+            "SearchUser",
+            "IllustRecommended",
+            "TrendingTagsIllust",
+            "IllustFollow",
+            "UserBookmarks",
+            "UserFollowing",
+            "Download"
+          ],
+          "properties": [],
+          "exported": true,
+          "lineCount": 18
+        },
+        {
+          "name": "DownloadManager",
+          "methods": [
+            "SetDownloadPath",
+            "Enqueue",
+            "Download"
+          ],
+          "properties": [],
+          "exported": true,
+          "lineCount": 5
+        },
+        {
+          "name": "App",
+          "methods": [
+            "register",
+            "setDownloadPath",
+            "download",
+            "refreshToken",
+            "setRefreshToken",
+            "downloadRandom",
+            "searchIllust",
+            "illustDetail",
+            "illustRelated",
+            "illustRanking",
+            "searchUser",
+            "illustRecommended",
+            "trendingTags",
+            "illustFollow",
+            "userBookmarks",
+            "userFollowing",
+            "thumbnailBase64",
+            "ensureAuth"
+          ],
+          "properties": [
+            "api",
+            "downloads",
+            "logger"
+          ],
+          "exported": true,
+          "lineCount": 5
+        },
+        {
+          "name": "textOut",
+          "methods": [],
+          "properties": [
+            "Text"
+          ],
+          "exported": false,
+          "lineCount": 3
+        },
+        {
+          "name": "setDownloadPathIn",
+          "methods": [],
+          "properties": [
+            "Path"
+          ],
+          "exported": false,
+          "lineCount": 3
+        },
+        {
+          "name": "downloadIn",
+          "methods": [],
+          "properties": [
+            "IllustID",
+            "IllustIDs",
+            "Delivery"
+          ],
+          "exported": false,
+          "lineCount": 5
+        },
+        {
+          "name": "downloadOut",
+          "methods": [],
+          "properties": [
+            "Delivery",
+            "Items",
+            "Files",
+            "Text"
+          ],
+          "exported": false,
+          "lineCount": 6
+        },
+        {
+          "name": "downloadItemOut",
+          "methods": [],
+          "properties": [
+            "IllustID",
+            "Title",
+            "Author",
+            "Type",
+            "Files"
+          ],
+          "exported": false,
+          "lineCount": 7
+        },
+        {
+          "name": "downloadFileOut",
+          "methods": [],
+          "properties": [
+            "IllustID",
+            "Title",
+            "Author",
+            "Path",
+            "FileURI",
+            "MIMEType",
+            "SizeBytes",
+            "Page"
+          ],
+          "exported": false,
+          "lineCount": 10
+        },
+        {
+          "name": "emptyIn",
+          "methods": [],
+          "properties": [],
+          "exported": false,
+          "lineCount": 1
+        },
+        {
+          "name": "setRefreshTokenIn",
+          "methods": [],
+          "properties": [
+            "RefreshToken"
+          ],
+          "exported": false,
+          "lineCount": 3
+        },
+        {
+          "name": "downloadRandomIn",
+          "methods": [],
+          "properties": [
+            "Count",
+            "Delivery"
+          ],
+          "exported": false,
+          "lineCount": 4
+        },
+        {
+          "name": "searchIllustIn",
+          "methods": [],
+          "properties": [
+            "Word",
+            "SearchTarget",
+            "Sort",
+            "Duration",
+            "Offset",
+            "SearchR18",
+            "IncludeThumbnail"
+          ],
+          "exported": false,
+          "lineCount": 9
+        },
+        {
+          "name": "illustIDIn",
+          "methods": [],
+          "properties": [
+            "IllustID"
+          ],
+          "exported": false,
+          "lineCount": 3
+        },
+        {
+          "name": "relatedIn",
+          "methods": [],
+          "properties": [
+            "IllustID",
+            "Offset",
+            "IncludeThumbnail"
+          ],
+          "exported": false,
+          "lineCount": 5
+        },
+        {
+          "name": "rankingIn",
+          "methods": [],
+          "properties": [
+            "Mode",
+            "Date",
+            "Offset",
+            "IncludeThumbnail"
+          ],
+          "exported": false,
+          "lineCount": 6
+        },
+        {
+          "name": "searchUserIn",
+          "methods": [],
+          "properties": [
+            "Word",
+            "Offset"
+          ],
+          "exported": false,
+          "lineCount": 4
+        },
+        {
+          "name": "offsetThumbnailIn",
+          "methods": [],
+          "properties": [
+            "Offset",
+            "IncludeThumbnail"
+          ],
+          "exported": false,
+          "lineCount": 4
+        },
+        {
+          "name": "followIn",
+          "methods": [],
+          "properties": [
+            "Restrict",
+            "Offset",
+            "IncludeThumbnail"
+          ],
+          "exported": false,
+          "lineCount": 5
+        },
+        {
+          "name": "bookmarksIn",
+          "methods": [],
+          "properties": [
+            "UserIDToCheck",
+            "Restrict",
+            "Tag",
+            "MaxBookmarkID"
+          ],
+          "exported": false,
+          "lineCount": 6
+        },
+        {
+          "name": "followingIn",
+          "methods": [],
+          "properties": [
+            "UserIDToCheck",
+            "Restrict",
+            "Offset"
+          ],
+          "exported": false,
+          "lineCount": 5
+        },
+        {
+          "name": "stringWriter",
+          "methods": [
+            "Write"
+          ],
+          "properties": [
+            "builder"
+          ],
+          "exported": false,
+          "lineCount": 3
+        }
+      ],
+      "imports": [
+        {
+          "source": "context",
+          "specifiers": [
+            "context"
+          ]
+        },
+        {
+          "source": "encoding/base64",
+          "specifiers": [
+            "base64"
+          ]
+        },
+        {
+          "source": "encoding/json",
+          "specifiers": [
+            "json"
+          ]
+        },
+        {
+          "source": "fmt",
+          "specifiers": [
+            "fmt"
+          ]
+        },
+        {
+          "source": "io",
+          "specifiers": [
+            "io"
+          ]
+        },
+        {
+          "source": "log/slog",
+          "specifiers": [
+            "slog"
+          ]
+        },
+        {
+          "source": "math/rand",
+          "specifiers": [
+            "rand"
+          ]
+        },
+        {
+          "source": "net/url",
+          "specifiers": [
+            "url"
+          ]
+        },
+        {
+          "source": "os",
+          "specifiers": [
+            "os"
+          ]
+        },
+        {
+          "source": "path/filepath",
+          "specifiers": [
+            "filepath"
+          ]
+        },
+        {
+          "source": "strings",
+          "specifiers": [
+            "strings"
+          ]
+        },
+        {
+          "source": "github.com/FlanChanXwO/pixiv-mcp-server/internal/download",
+          "specifiers": [
+            "download"
+          ]
+        },
+        {
+          "source": "github.com/FlanChanXwO/pixiv-mcp-server/internal/pixiv",
+          "specifiers": [
+            "pixiv"
+          ]
+        },
+        {
+          "source": "github.com/FlanChanXwO/pixiv-mcp-server/internal/utils",
+          "specifiers": [
+            "utils"
+          ]
+        },
+        {
+          "source": "github.com/modelcontextprotocol/go-sdk/mcp",
+          "specifiers": [
+            "mcp"
+          ]
+        }
+      ],
+      "exports": [
+        "PixivAPI",
+        "DownloadManager",
+        "App",
+        "New",
+        "Write"
+      ],
+      "totalLines": 651,
+      "hasStructuralAnalysis": true
+    },
+    "internal/pixiv/aliases.go": {
+      "filePath": "internal/pixiv/aliases.go",
+      "contentHash": "315d7c605ecb71063706a7d4fc4290e4e36bc3d4cf4585dadc4aa47a96fb88a8",
+      "functions": [
+        {
+          "name": "New",
+          "params": [
+            "refreshToken"
+          ],
+          "returnType": "*Client",
+          "exported": true,
+          "lineCount": 3
+        },
+        {
+          "name": "WithHTTPClient",
+          "params": [
+            "httpClient"
+          ],
+          "returnType": "Option",
+          "exported": true,
+          "lineCount": 3
+        },
+        {
+          "name": "WithBaseURLs",
+          "params": [
+            "apiBase",
+            "oauthBase"
+          ],
+          "returnType": "Option",
+          "exported": true,
+          "lineCount": 3
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "net/http",
+          "specifiers": [
+            "http"
+          ]
+        },
+        {
+          "source": "github.com/FlanChanXwO/pixiv-mcp-server/internal/pixiv/api",
+          "specifiers": [
+            "api"
+          ]
+        },
+        {
+          "source": "github.com/FlanChanXwO/pixiv-mcp-server/internal/pixiv/model",
+          "specifiers": [
+            "model"
+          ]
+        }
+      ],
+      "exports": [
+        "New",
+        "WithHTTPClient",
+        "WithBaseURLs"
+      ],
+      "totalLines": 75,
+      "hasStructuralAnalysis": true
+    },
+    "internal/pixiv/api/auth_code.go": {
+      "filePath": "internal/pixiv/api/auth_code.go",
+      "contentHash": "aa3f937fc921cdfb99b35a46dfed94dc9afd59ee22fea2c52e58e943adfd6ae1",
+      "functions": [
+        {
+          "name": "ExchangeAuthorizationCode",
+          "params": [
+            "ctx",
+            "code",
+            "codeVerifier"
+          ],
+          "returnType": "(AuthCodeToken, error)",
+          "exported": true,
+          "lineCount": 39
+        },
+        {
+          "name": "authCodeTokenFromResponse",
+          "params": [
+            "result"
+          ],
+          "returnType": "AuthCodeToken",
+          "exported": false,
+          "lineCount": 14
+        }
+      ],
+      "classes": [
+        {
+          "name": "AuthCodeToken",
+          "methods": [],
+          "properties": [
+            "AccessToken",
+            "RefreshToken",
+            "UserID"
+          ],
+          "exported": true,
+          "lineCount": 5
+        }
+      ],
+      "imports": [
+        {
+          "source": "context",
+          "specifiers": [
+            "context"
+          ]
+        },
+        {
+          "source": "errors",
+          "specifiers": [
+            "errors"
+          ]
+        },
+        {
+          "source": "net/http",
+          "specifiers": [
+            "http"
+          ]
+        },
+        {
+          "source": "strings",
+          "specifiers": [
+            "strings"
+          ]
+        }
+      ],
+      "exports": [
+        "AuthCodeToken",
+        "ExchangeAuthorizationCode"
+      ],
+      "totalLines": 72,
+      "hasStructuralAnalysis": true
+    },
+    "internal/pixiv/api/client_test.go": {
+      "filePath": "internal/pixiv/api/client_test.go",
+      "contentHash": "ab9c69a39dcfe01d2a1d0e43c98579d1b3da9fbef79450f5ed1915cab409a3bf",
+      "functions": [
+        {
+          "name": "TestRefreshAndRetryOnAuthError",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 42
+        },
+        {
+          "name": "TestClientExtractsRefreshTokenFromCookieInput",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 10
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "context",
+          "specifiers": [
+            "context"
+          ]
+        },
+        {
+          "source": "encoding/json",
+          "specifiers": [
+            "json"
+          ]
+        },
+        {
+          "source": "net/http",
+          "specifiers": [
+            "http"
+          ]
+        },
+        {
+          "source": "net/http/httptest",
+          "specifiers": [
+            "httptest"
+          ]
+        },
+        {
+          "source": "testing",
+          "specifiers": [
+            "testing"
+          ]
+        }
+      ],
+      "exports": [
+        "TestRefreshAndRetryOnAuthError",
+        "TestClientExtractsRefreshTokenFromCookieInput"
+      ],
+      "totalLines": 64,
+      "hasStructuralAnalysis": true
+    },
+    "internal/pixiv/api/client.go": {
+      "filePath": "internal/pixiv/api/client.go",
+      "contentHash": "c7d0a504c6363a4d8c16f64f8f2c0b368ef081b85726dea4e716b2ed37845d8d",
+      "functions": [
+        {
+          "name": "WithHTTPClient",
+          "params": [
+            "httpClient"
+          ],
+          "returnType": "Option",
+          "exported": true,
+          "lineCount": 7
+        },
+        {
+          "name": "WithBaseURLs",
+          "params": [
+            "apiBase",
+            "oauthBase"
+          ],
+          "returnType": "Option",
+          "exported": true,
+          "lineCount": 10
+        },
+        {
+          "name": "New",
+          "params": [
+            "refreshToken"
+          ],
+          "returnType": "*Client",
+          "exported": true,
+          "lineCount": 18
+        },
+        {
+          "name": "SetRefreshToken",
+          "params": [
+            "token"
+          ],
+          "exported": true,
+          "lineCount": 6
+        },
+        {
+          "name": "RefreshTokenValue",
+          "params": [],
+          "returnType": "string",
+          "exported": true,
+          "lineCount": 5
+        },
+        {
+          "name": "UserID",
+          "params": [],
+          "returnType": "int64",
+          "exported": true,
+          "lineCount": 5
+        },
+        {
+          "name": "IsAuthenticated",
+          "params": [],
+          "returnType": "bool",
+          "exported": true,
+          "lineCount": 5
+        },
+        {
+          "name": "Refresh",
+          "params": [
+            "ctx"
+          ],
+          "returnType": "error",
+          "exported": true,
+          "lineCount": 44
+        },
+        {
+          "name": "SearchIllust",
+          "params": [
+            "ctx",
+            "word",
+            "target",
+            "sort",
+            "duration",
+            "offset"
+          ],
+          "returnType": "(*IllustList, error)",
+          "exported": true,
+          "lineCount": 6
+        },
+        {
+          "name": "IllustDetail",
+          "params": [
+            "ctx",
+            "id"
+          ],
+          "returnType": "(*IllustDetail, error)",
+          "exported": true,
+          "lineCount": 3
+        },
+        {
+          "name": "IllustRelated",
+          "params": [
+            "ctx",
+            "id",
+            "offset"
+          ],
+          "returnType": "(*IllustList, error)",
+          "exported": true,
+          "lineCount": 5
+        },
+        {
+          "name": "IllustRanking",
+          "params": [
+            "ctx",
+            "mode",
+            "date",
+            "offset"
+          ],
+          "returnType": "(*IllustList, error)",
+          "exported": true,
+          "lineCount": 6
+        },
+        {
+          "name": "SearchUser",
+          "params": [
+            "ctx",
+            "word",
+            "offset"
+          ],
+          "returnType": "(*UserPreviewList, error)",
+          "exported": true,
+          "lineCount": 5
+        },
+        {
+          "name": "IllustRecommended",
+          "params": [
+            "ctx",
+            "offset"
+          ],
+          "returnType": "(*IllustList, error)",
+          "exported": true,
+          "lineCount": 5
+        },
+        {
+          "name": "TrendingTagsIllust",
+          "params": [
+            "ctx"
+          ],
+          "returnType": "(*TrendTags, error)",
+          "exported": true,
+          "lineCount": 3
+        },
+        {
+          "name": "IllustFollow",
+          "params": [
+            "ctx",
+            "restrict",
+            "offset"
+          ],
+          "returnType": "(*IllustList, error)",
+          "exported": true,
+          "lineCount": 5
+        },
+        {
+          "name": "UserBookmarks",
+          "params": [
+            "ctx",
+            "userID",
+            "restrict",
+            "tag",
+            "maxBookmarkID"
+          ],
+          "returnType": "(*IllustList, error)",
+          "exported": true,
+          "lineCount": 8
+        },
+        {
+          "name": "UserFollowing",
+          "params": [
+            "ctx",
+            "userID",
+            "restrict",
+            "offset"
+          ],
+          "returnType": "(*UserPreviewList, error)",
+          "exported": true,
+          "lineCount": 5
+        },
+        {
+          "name": "UgoiraMetadata",
+          "params": [
+            "ctx",
+            "id"
+          ],
+          "returnType": "(*UgoiraMetadataResult, error)",
+          "exported": true,
+          "lineCount": 3
+        },
+        {
+          "name": "Download",
+          "params": [
+            "ctx",
+            "rawURL",
+            "dst"
+          ],
+          "returnType": "error",
+          "exported": true,
+          "lineCount": 17
+        },
+        {
+          "name": "getJSON",
+          "params": [
+            "ctx",
+            "c",
+            "path",
+            "query"
+          ],
+          "returnType": "(*T, error)",
+          "exported": false,
+          "lineCount": 7
+        },
+        {
+          "name": "getJSONWithRetry",
+          "params": [
+            "ctx",
+            "path",
+            "query",
+            "out"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 10
+        },
+        {
+          "name": "getJSON",
+          "params": [
+            "ctx",
+            "path",
+            "query",
+            "out"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 6
+        },
+        {
+          "name": "apiHeaders",
+          "params": [],
+          "returnType": "map[string]string",
+          "exported": false,
+          "lineCount": 11
+        },
+        {
+          "name": "oauthHeaders",
+          "params": [],
+          "returnType": "map[string]string",
+          "exported": false,
+          "lineCount": 5
+        },
+        {
+          "name": "baseHeaders",
+          "params": [],
+          "returnType": "map[string]string",
+          "exported": false,
+          "lineCount": 8
+        },
+        {
+          "name": "doJSON",
+          "params": [
+            "ctx",
+            "method",
+            "rawURL",
+            "opts",
+            "out"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 27
+        },
+        {
+          "name": "Error",
+          "params": [],
+          "returnType": "string",
+          "exported": true,
+          "lineCount": 6
+        },
+        {
+          "name": "isAuthError",
+          "params": [
+            "err"
+          ],
+          "returnType": "bool",
+          "exported": false,
+          "lineCount": 11
+        },
+        {
+          "name": "setOptional",
+          "params": [
+            "q",
+            "key",
+            "value"
+          ],
+          "exported": false,
+          "lineCount": 5
+        },
+        {
+          "name": "setOffset",
+          "params": [
+            "q",
+            "offset"
+          ],
+          "exported": false,
+          "lineCount": 5
+        },
+        {
+          "name": "UnmarshalJSON",
+          "params": [
+            "body"
+          ],
+          "returnType": "error",
+          "exported": true,
+          "lineCount": 17
+        }
+      ],
+      "classes": [
+        {
+          "name": "Client",
+          "methods": [
+            "SetRefreshToken",
+            "RefreshTokenValue",
+            "UserID",
+            "IsAuthenticated",
+            "Refresh",
+            "SearchIllust",
+            "IllustDetail",
+            "IllustRelated",
+            "IllustRanking",
+            "SearchUser",
+            "IllustRecommended",
+            "TrendingTagsIllust",
+            "IllustFollow",
+            "UserBookmarks",
+            "UserFollowing",
+            "UgoiraMetadata",
+            "Download",
+            "getJSONWithRetry",
+            "getJSON",
+            "apiHeaders",
+            "doJSON"
+          ],
+          "properties": [
+            "restyClient",
+            "apiBase",
+            "oauthBase",
+            "refreshToken",
+            "accessToken",
+            "userID",
+            "mu"
+          ],
+          "exported": true,
+          "lineCount": 9
+        },
+        {
+          "name": "requestOptions",
+          "methods": [],
+          "properties": [
+            "Headers",
+            "Query",
+            "Form"
+          ],
+          "exported": false,
+          "lineCount": 5
+        },
+        {
+          "name": "APIError",
+          "methods": [
+            "Error"
+          ],
+          "properties": [
+            "StatusCode",
+            "Body"
+          ],
+          "exported": true,
+          "lineCount": 4
+        },
+        {
+          "name": "authResponse",
+          "methods": [],
+          "properties": [
+            "AccessToken",
+            "RefreshToken",
+            "User",
+            "Response"
+          ],
+          "exported": false,
+          "lineCount": 10
+        },
+        {
+          "name": "authUser",
+          "methods": [],
+          "properties": [
+            "ID"
+          ],
+          "exported": false,
+          "lineCount": 3
+        }
+      ],
+      "imports": [
+        {
+          "source": "bytes",
+          "specifiers": [
+            "bytes"
+          ]
+        },
+        {
+          "source": "context",
+          "specifiers": [
+            "context"
+          ]
+        },
+        {
+          "source": "encoding/json",
+          "specifiers": [
+            "json"
+          ]
+        },
+        {
+          "source": "errors",
+          "specifiers": [
+            "errors"
+          ]
+        },
+        {
+          "source": "fmt",
+          "specifiers": [
+            "fmt"
+          ]
+        },
+        {
+          "source": "io",
+          "specifiers": [
+            "io"
+          ]
+        },
+        {
+          "source": "net/http",
+          "specifiers": [
+            "http"
+          ]
+        },
+        {
+          "source": "net/url",
+          "specifiers": [
+            "url"
+          ]
+        },
+        {
+          "source": "strconv",
+          "specifiers": [
+            "strconv"
+          ]
+        },
+        {
+          "source": "strings",
+          "specifiers": [
+            "strings"
+          ]
+        },
+        {
+          "source": "sync",
+          "specifiers": [
+            "sync"
+          ]
+        },
+        {
+          "source": "time",
+          "specifiers": [
+            "time"
+          ]
+        },
+        {
+          "source": "github.com/FlanChanXwO/pixiv-mcp-server/internal/utils",
+          "specifiers": [
+            "utils"
+          ]
+        },
+        {
+          "source": "github.com/go-resty/resty/v2",
+          "specifiers": [
+            "v2"
+          ]
+        }
+      ],
+      "exports": [
+        "Client",
+        "WithHTTPClient",
+        "WithBaseURLs",
+        "New",
+        "SetRefreshToken",
+        "RefreshTokenValue",
+        "UserID",
+        "IsAuthenticated",
+        "Refresh",
+        "SearchIllust",
+        "IllustDetail",
+        "IllustRelated",
+        "IllustRanking",
+        "SearchUser",
+        "IllustRecommended",
+        "TrendingTagsIllust",
+        "IllustFollow",
+        "UserBookmarks",
+        "UserFollowing",
+        "UgoiraMetadata",
+        "Download",
+        "APIError",
+        "Error",
+        "UnmarshalJSON"
+      ],
+      "totalLines": 392,
+      "hasStructuralAnalysis": true
+    },
+    "internal/pixiv/api/types_alias.go": {
+      "filePath": "internal/pixiv/api/types_alias.go",
+      "contentHash": "ff46a7e4c8dd8727b42ffd3ebec7d302008daeac53bb32683034e578eff5fe7f",
+      "functions": [],
+      "classes": [],
+      "imports": [
+        {
+          "source": "github.com/FlanChanXwO/pixiv-mcp-server/internal/pixiv/model",
+          "specifiers": [
+            "model"
+          ]
+        }
+      ],
+      "exports": [],
+      "totalLines": 13,
+      "hasStructuralAnalysis": true
+    },
+    "internal/pixiv/client_factory.go": {
+      "filePath": "internal/pixiv/client_factory.go",
+      "contentHash": "4fff067cf7eb9e26c1fc756c389ff057492d2949eac5894279bff8b5c6fa4aa7",
+      "functions": [
+        {
+          "name": "NewSource",
+          "params": [
+            "cfg"
+          ],
+          "returnType": "(*Source, error)",
+          "exported": true,
+          "lineCount": 12
+        },
+        {
+          "name": "NewOAuthClient",
+          "params": [
+            "cfg",
+            "oauthBase"
+          ],
+          "returnType": "(*Client, error)",
+          "exported": true,
+          "lineCount": 7
+        },
+        {
+          "name": "HTTPClient",
+          "params": [
+            "proxyValue"
+          ],
+          "returnType": "(*http.Client, error)",
+          "exported": true,
+          "lineCount": 14
+        }
+      ],
+      "classes": [
+        {
+          "name": "SourceConfig",
+          "methods": [],
+          "properties": [
+            "RefreshToken",
+            "HTTPSProxy",
+            "WebFallbackEnabled"
+          ],
+          "exported": true,
+          "lineCount": 5
+        },
+        {
+          "name": "OAuthConfig",
+          "methods": [],
+          "properties": [
+            "HTTPSProxy"
+          ],
+          "exported": true,
+          "lineCount": 3
+        }
+      ],
+      "imports": [
+        {
+          "source": "fmt",
+          "specifiers": [
+            "fmt"
+          ]
+        },
+        {
+          "source": "net/http",
+          "specifiers": [
+            "http"
+          ]
+        },
+        {
+          "source": "net/url",
+          "specifiers": [
+            "url"
+          ]
+        },
+        {
+          "source": "time",
+          "specifiers": [
+            "time"
+          ]
+        },
+        {
+          "source": "github.com/FlanChanXwO/pixiv-mcp-server/internal/pixiv/web",
+          "specifiers": [
+            "web"
+          ]
+        }
+      ],
+      "exports": [
+        "SourceConfig",
+        "OAuthConfig",
+        "NewSource",
+        "NewOAuthClient",
+        "HTTPClient"
+      ],
+      "totalLines": 57,
+      "hasStructuralAnalysis": true
+    },
+    "internal/pixiv/http_client_test.go": {
+      "filePath": "internal/pixiv/http_client_test.go",
+      "contentHash": "7d5de3fef2189bf5480beaf3effe82cd6866aa9aeaaac13a1c7caed384a5ed20",
+      "functions": [
+        {
+          "name": "TestHTTPClientKeepsDefaultTimeout",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 9
+        },
+        {
+          "name": "TestHTTPClientKeepsProxyAndDefaultTimeout",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 16
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "net/http",
+          "specifiers": [
+            "http"
+          ]
+        },
+        {
+          "source": "testing",
+          "specifiers": [
+            "testing"
+          ]
+        },
+        {
+          "source": "time",
+          "specifiers": [
+            "time"
+          ]
+        }
+      ],
+      "exports": [
+        "TestHTTPClientKeepsDefaultTimeout",
+        "TestHTTPClientKeepsProxyAndDefaultTimeout"
+      ],
+      "totalLines": 35,
+      "hasStructuralAnalysis": true
+    },
+    "internal/pixiv/model/enums.go": {
+      "filePath": "internal/pixiv/model/enums.go",
+      "contentHash": "af07779694354d83e396117f187faa7c035be210dc7b4d9803612e71b01f1dc1",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 40,
+      "hasStructuralAnalysis": true
+    },
+    "internal/pixiv/model/types.go": {
+      "filePath": "internal/pixiv/model/types.go",
+      "contentHash": "b83a7e8fb9c6d6247ffbb561bf9a8d0381694374c4e0089f32b8994f6ff9b05f",
+      "functions": [],
+      "classes": [
+        {
+          "name": "IllustList",
+          "methods": [],
+          "properties": [
+            "Illusts"
+          ],
+          "exported": true,
+          "lineCount": 3
+        },
+        {
+          "name": "IllustDetail",
+          "methods": [],
+          "properties": [
+            "Illust"
+          ],
+          "exported": true,
+          "lineCount": 3
+        },
+        {
+          "name": "Illust",
+          "methods": [],
+          "properties": [
+            "ID",
+            "Title",
+            "Type",
+            "PageCount",
+            "TotalBookmarks",
+            "TotalView",
+            "XRestrict",
+            "User",
+            "Tags",
+            "ImageURLs",
+            "MetaSinglePage",
+            "MetaPages"
+          ],
+          "exported": true,
+          "lineCount": 14
+        },
+        {
+          "name": "User",
+          "methods": [],
+          "properties": [
+            "ID",
+            "Name",
+            "Account",
+            "Comment",
+            "IsFollowed"
+          ],
+          "exported": true,
+          "lineCount": 7
+        },
+        {
+          "name": "Tag",
+          "methods": [],
+          "properties": [
+            "Name",
+            "TranslatedName"
+          ],
+          "exported": true,
+          "lineCount": 4
+        },
+        {
+          "name": "ImageURLs",
+          "methods": [],
+          "properties": [
+            "SquareMedium",
+            "Medium",
+            "Large",
+            "Original"
+          ],
+          "exported": true,
+          "lineCount": 6
+        },
+        {
+          "name": "SinglePage",
+          "methods": [],
+          "properties": [
+            "OriginalImageURL"
+          ],
+          "exported": true,
+          "lineCount": 3
+        },
+        {
+          "name": "MetaPage",
+          "methods": [],
+          "properties": [
+            "ImageURLs"
+          ],
+          "exported": true,
+          "lineCount": 3
+        },
+        {
+          "name": "UserPreviewList",
+          "methods": [],
+          "properties": [
+            "UserPreviews"
+          ],
+          "exported": true,
+          "lineCount": 3
+        },
+        {
+          "name": "UserPreview",
+          "methods": [],
+          "properties": [
+            "User"
+          ],
+          "exported": true,
+          "lineCount": 3
+        },
+        {
+          "name": "TrendTags",
+          "methods": [],
+          "properties": [
+            "TrendTags"
+          ],
+          "exported": true,
+          "lineCount": 3
+        },
+        {
+          "name": "TrendTag",
+          "methods": [],
+          "properties": [
+            "Tag",
+            "TranslatedName",
+            "Illust"
+          ],
+          "exported": true,
+          "lineCount": 5
+        },
+        {
+          "name": "UgoiraMetadataResult",
+          "methods": [],
+          "properties": [
+            "UgoiraMetadata"
+          ],
+          "exported": true,
+          "lineCount": 3
+        },
+        {
+          "name": "UgoiraMetadata",
+          "methods": [],
+          "properties": [
+            "ZipURLs",
+            "Frames"
+          ],
+          "exported": true,
+          "lineCount": 6
+        },
+        {
+          "name": "UgoiraFrame",
+          "methods": [],
+          "properties": [
+            "File",
+            "Delay"
+          ],
+          "exported": true,
+          "lineCount": 4
+        }
+      ],
+      "imports": [],
+      "exports": [
+        "IllustList",
+        "IllustDetail",
+        "Illust",
+        "User",
+        "Tag",
+        "ImageURLs",
+        "SinglePage",
+        "MetaPage",
+        "UserPreviewList",
+        "UserPreview",
+        "TrendTags",
+        "TrendTag",
+        "UgoiraMetadataResult",
+        "UgoiraMetadata",
+        "UgoiraFrame"
+      ],
+      "totalLines": 87,
+      "hasStructuralAnalysis": true
+    },
+    "internal/pixiv/source_test.go": {
+      "filePath": "internal/pixiv/source_test.go",
+      "contentHash": "41409a4a5e4da7358a8ee9c38d9027d07bc69c4ca7a4340018cef0653aa5ff59",
+      "functions": [
+        {
+          "name": "TestSourceUsesWebOnlyWhenTokenIsEmptyAndFallbackEnabled",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 13
+        },
+        {
+          "name": "TestSourceKeepsAppErrorsWhenTokenExists",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 12
+        },
+        {
+          "name": "TestSourceDoesNotUseWebWhenFallbackDisabled",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 13
+        },
+        {
+          "name": "TestSourceSetRefreshTokenDisablesWebFallback",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 15
+        },
+        {
+          "name": "TestSourceRoutesDownloadAndUgoiraThroughWebFallback",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 19
+        },
+        {
+          "name": "Refresh",
+          "params": [],
+          "returnType": "error",
+          "exported": true,
+          "lineCount": 1
+        },
+        {
+          "name": "SetRefreshToken",
+          "params": [
+            "token"
+          ],
+          "exported": true,
+          "lineCount": 1
+        },
+        {
+          "name": "RefreshTokenValue",
+          "params": [],
+          "returnType": "string",
+          "exported": true,
+          "lineCount": 1
+        },
+        {
+          "name": "UserID",
+          "params": [],
+          "returnType": "int64",
+          "exported": true,
+          "lineCount": 1
+        },
+        {
+          "name": "IsAuthenticated",
+          "params": [],
+          "returnType": "bool",
+          "exported": true,
+          "lineCount": 1
+        },
+        {
+          "name": "SearchIllust",
+          "params": [],
+          "returnType": "(*IllustList, error)",
+          "exported": true,
+          "lineCount": 7
+        },
+        {
+          "name": "IllustDetail",
+          "params": [],
+          "returnType": "(*IllustDetail, error)",
+          "exported": true,
+          "lineCount": 3
+        },
+        {
+          "name": "IllustRelated",
+          "params": [],
+          "returnType": "(*IllustList, error)",
+          "exported": true,
+          "lineCount": 3
+        },
+        {
+          "name": "IllustRanking",
+          "params": [],
+          "returnType": "(*IllustList, error)",
+          "exported": true,
+          "lineCount": 3
+        },
+        {
+          "name": "SearchUser",
+          "params": [],
+          "returnType": "(*UserPreviewList, error)",
+          "exported": true,
+          "lineCount": 3
+        },
+        {
+          "name": "IllustRecommended",
+          "params": [],
+          "returnType": "(*IllustList, error)",
+          "exported": true,
+          "lineCount": 3
+        },
+        {
+          "name": "TrendingTagsIllust",
+          "params": [],
+          "returnType": "(*TrendTags, error)",
+          "exported": true,
+          "lineCount": 1
+        },
+        {
+          "name": "IllustFollow",
+          "params": [],
+          "returnType": "(*IllustList, error)",
+          "exported": true,
+          "lineCount": 3
+        },
+        {
+          "name": "UserBookmarks",
+          "params": [],
+          "returnType": "(*IllustList, error)",
+          "exported": true,
+          "lineCount": 3
+        },
+        {
+          "name": "UserFollowing",
+          "params": [],
+          "returnType": "(*UserPreviewList, error)",
+          "exported": true,
+          "lineCount": 3
+        },
+        {
+          "name": "UgoiraMetadata",
+          "params": [],
+          "returnType": "(*UgoiraMetadataResult, error)",
+          "exported": true,
+          "lineCount": 4
+        },
+        {
+          "name": "Download",
+          "params": [],
+          "returnType": "error",
+          "exported": true,
+          "lineCount": 4
+        },
+        {
+          "name": "SearchIllust",
+          "params": [],
+          "returnType": "(*IllustList, error)",
+          "exported": true,
+          "lineCount": 4
+        },
+        {
+          "name": "IllustDetail",
+          "params": [],
+          "returnType": "(*IllustDetail, error)",
+          "exported": true,
+          "lineCount": 3
+        },
+        {
+          "name": "IllustRanking",
+          "params": [],
+          "returnType": "(*IllustList, error)",
+          "exported": true,
+          "lineCount": 3
+        },
+        {
+          "name": "SearchUser",
+          "params": [],
+          "returnType": "(*UserPreviewList, error)",
+          "exported": true,
+          "lineCount": 3
+        },
+        {
+          "name": "UgoiraMetadata",
+          "params": [],
+          "returnType": "(*UgoiraMetadataResult, error)",
+          "exported": true,
+          "lineCount": 4
+        },
+        {
+          "name": "Download",
+          "params": [
+            "_",
+            "_",
+            "dst"
+          ],
+          "returnType": "error",
+          "exported": true,
+          "lineCount": 5
+        }
+      ],
+      "classes": [
+        {
+          "name": "fakeAppAPI",
+          "methods": [
+            "Refresh",
+            "SetRefreshToken",
+            "RefreshTokenValue",
+            "UserID",
+            "IsAuthenticated",
+            "SearchIllust",
+            "IllustDetail",
+            "IllustRelated",
+            "IllustRanking",
+            "SearchUser",
+            "IllustRecommended",
+            "TrendingTagsIllust",
+            "IllustFollow",
+            "UserBookmarks",
+            "UserFollowing",
+            "UgoiraMetadata",
+            "Download"
+          ],
+          "properties": [
+            "refreshToken",
+            "search",
+            "searchErr",
+            "searchCalls",
+            "ugoiraCalls",
+            "downloadCalls"
+          ],
+          "exported": false,
+          "lineCount": 8
+        },
+        {
+          "name": "fakeWebAPI",
+          "methods": [
+            "SearchIllust",
+            "IllustDetail",
+            "IllustRanking",
+            "SearchUser",
+            "UgoiraMetadata",
+            "Download"
+          ],
+          "properties": [
+            "search",
+            "searchCalls",
+            "ugoira",
+            "ugoiraCalls",
+            "downloadCalls"
+          ],
+          "exported": false,
+          "lineCount": 7
+        }
+      ],
+      "imports": [
+        {
+          "source": "bytes",
+          "specifiers": [
+            "bytes"
+          ]
+        },
+        {
+          "source": "context",
+          "specifiers": [
+            "context"
+          ]
+        },
+        {
+          "source": "errors",
+          "specifiers": [
+            "errors"
+          ]
+        },
+        {
+          "source": "io",
+          "specifiers": [
+            "io"
+          ]
+        },
+        {
+          "source": "testing",
+          "specifiers": [
+            "testing"
+          ]
+        },
+        {
+          "source": "github.com/stretchr/testify/assert",
+          "specifiers": [
+            "assert"
+          ]
+        },
+        {
+          "source": "github.com/stretchr/testify/require",
+          "specifiers": [
+            "require"
+          ]
+        }
+      ],
+      "exports": [
+        "TestSourceUsesWebOnlyWhenTokenIsEmptyAndFallbackEnabled",
+        "TestSourceKeepsAppErrorsWhenTokenExists",
+        "TestSourceDoesNotUseWebWhenFallbackDisabled",
+        "TestSourceSetRefreshTokenDisablesWebFallback",
+        "TestSourceRoutesDownloadAndUgoiraThroughWebFallback",
+        "Refresh",
+        "SetRefreshToken",
+        "RefreshTokenValue",
+        "UserID",
+        "IsAuthenticated",
+        "SearchIllust",
+        "IllustDetail",
+        "IllustRelated",
+        "IllustRanking",
+        "SearchUser",
+        "IllustRecommended",
+        "TrendingTagsIllust",
+        "IllustFollow",
+        "UserBookmarks",
+        "UserFollowing",
+        "UgoiraMetadata",
+        "Download",
+        "SearchIllust",
+        "IllustDetail",
+        "IllustRanking",
+        "SearchUser",
+        "UgoiraMetadata",
+        "Download"
+      ],
+      "totalLines": 176,
+      "hasStructuralAnalysis": true
+    },
+    "internal/pixiv/source.go": {
+      "filePath": "internal/pixiv/source.go",
+      "contentHash": "c9cd91353787cb07989a00c692d8d05a5ec9afff4831e1dc1d56a65ef11d0253",
+      "functions": [
+        {
+          "name": "NewSourceFromClients",
+          "params": [
+            "app",
+            "web",
+            "cfg"
+          ],
+          "returnType": "*Source",
+          "exported": true,
+          "lineCount": 7
+        },
+        {
+          "name": "Refresh",
+          "params": [
+            "ctx"
+          ],
+          "returnType": "error",
+          "exported": true,
+          "lineCount": 3
+        },
+        {
+          "name": "SetRefreshToken",
+          "params": [
+            "token"
+          ],
+          "exported": true,
+          "lineCount": 6
+        },
+        {
+          "name": "RefreshTokenValue",
+          "params": [],
+          "returnType": "string",
+          "exported": true,
+          "lineCount": 3
+        },
+        {
+          "name": "UserID",
+          "params": [],
+          "returnType": "int64",
+          "exported": true,
+          "lineCount": 3
+        },
+        {
+          "name": "IsAuthenticated",
+          "params": [],
+          "returnType": "bool",
+          "exported": true,
+          "lineCount": 3
+        },
+        {
+          "name": "SearchIllust",
+          "params": [
+            "ctx",
+            "word",
+            "target",
+            "sort",
+            "duration",
+            "offset"
+          ],
+          "returnType": "(*IllustList, error)",
+          "exported": true,
+          "lineCount": 6
+        },
+        {
+          "name": "IllustDetail",
+          "params": [
+            "ctx",
+            "id"
+          ],
+          "returnType": "(*IllustDetail, error)",
+          "exported": true,
+          "lineCount": 6
+        },
+        {
+          "name": "IllustRelated",
+          "params": [
+            "ctx",
+            "id",
+            "offset"
+          ],
+          "returnType": "(*IllustList, error)",
+          "exported": true,
+          "lineCount": 3
+        },
+        {
+          "name": "IllustRanking",
+          "params": [
+            "ctx",
+            "mode",
+            "date",
+            "offset"
+          ],
+          "returnType": "(*IllustList, error)",
+          "exported": true,
+          "lineCount": 6
+        },
+        {
+          "name": "SearchUser",
+          "params": [
+            "ctx",
+            "word",
+            "offset"
+          ],
+          "returnType": "(*UserPreviewList, error)",
+          "exported": true,
+          "lineCount": 6
+        },
+        {
+          "name": "IllustRecommended",
+          "params": [
+            "ctx",
+            "offset"
+          ],
+          "returnType": "(*IllustList, error)",
+          "exported": true,
+          "lineCount": 3
+        },
+        {
+          "name": "TrendingTagsIllust",
+          "params": [
+            "ctx"
+          ],
+          "returnType": "(*TrendTags, error)",
+          "exported": true,
+          "lineCount": 3
+        },
+        {
+          "name": "IllustFollow",
+          "params": [
+            "ctx",
+            "restrict",
+            "offset"
+          ],
+          "returnType": "(*IllustList, error)",
+          "exported": true,
+          "lineCount": 3
+        },
+        {
+          "name": "UserBookmarks",
+          "params": [
+            "ctx",
+            "userID",
+            "restrict",
+            "tag",
+            "maxBookmarkID"
+          ],
+          "returnType": "(*IllustList, error)",
+          "exported": true,
+          "lineCount": 3
+        },
+        {
+          "name": "UserFollowing",
+          "params": [
+            "ctx",
+            "userID",
+            "restrict",
+            "offset"
+          ],
+          "returnType": "(*UserPreviewList, error)",
+          "exported": true,
+          "lineCount": 3
+        },
+        {
+          "name": "UgoiraMetadata",
+          "params": [
+            "ctx",
+            "id"
+          ],
+          "returnType": "(*UgoiraMetadataResult, error)",
+          "exported": true,
+          "lineCount": 6
+        },
+        {
+          "name": "Download",
+          "params": [
+            "ctx",
+            "rawURL",
+            "dst"
+          ],
+          "returnType": "error",
+          "exported": true,
+          "lineCount": 6
+        },
+        {
+          "name": "useWebFallback",
+          "params": [],
+          "returnType": "bool",
+          "exported": false,
+          "lineCount": 5
+        }
+      ],
+      "classes": [
+        {
+          "name": "AppAPI",
+          "methods": [
+            "Refresh",
+            "SetRefreshToken",
+            "RefreshTokenValue",
+            "UserID",
+            "IsAuthenticated",
+            "SearchIllust",
+            "IllustDetail",
+            "IllustRelated",
+            "IllustRanking",
+            "SearchUser",
+            "IllustRecommended",
+            "TrendingTagsIllust",
+            "IllustFollow",
+            "UserBookmarks",
+            "UserFollowing",
+            "UgoiraMetadata",
+            "Download"
+          ],
+          "properties": [],
+          "exported": true,
+          "lineCount": 19
+        },
+        {
+          "name": "WebAPI",
+          "methods": [
+            "SearchIllust",
+            "IllustDetail",
+            "IllustRanking",
+            "SearchUser",
+            "UgoiraMetadata",
+            "Download"
+          ],
+          "properties": [],
+          "exported": true,
+          "lineCount": 8
+        },
+        {
+          "name": "SourcePolicy",
+          "methods": [],
+          "properties": [
+            "RefreshToken",
+            "WebFallbackEnabled"
+          ],
+          "exported": true,
+          "lineCount": 4
+        },
+        {
+          "name": "Source",
+          "methods": [
+            "Refresh",
+            "SetRefreshToken",
+            "RefreshTokenValue",
+            "UserID",
+            "IsAuthenticated",
+            "SearchIllust",
+            "IllustDetail",
+            "IllustRelated",
+            "IllustRanking",
+            "SearchUser",
+            "IllustRecommended",
+            "TrendingTagsIllust",
+            "IllustFollow",
+            "UserBookmarks",
+            "UserFollowing",
+            "UgoiraMetadata",
+            "Download",
+            "useWebFallback"
+          ],
+          "properties": [
+            "app",
+            "web",
+            "mu",
+            "useWeb"
+          ],
+          "exported": true,
+          "lineCount": 6
+        }
+      ],
+      "imports": [
+        {
+          "source": "context",
+          "specifiers": [
+            "context"
+          ]
+        },
+        {
+          "source": "io",
+          "specifiers": [
+            "io"
+          ]
+        },
+        {
+          "source": "strings",
+          "specifiers": [
+            "strings"
+          ]
+        },
+        {
+          "source": "sync",
+          "specifiers": [
+            "sync"
+          ]
+        }
+      ],
+      "exports": [
+        "AppAPI",
+        "WebAPI",
+        "SourcePolicy",
+        "Source",
+        "NewSourceFromClients",
+        "Refresh",
+        "SetRefreshToken",
+        "RefreshTokenValue",
+        "UserID",
+        "IsAuthenticated",
+        "SearchIllust",
+        "IllustDetail",
+        "IllustRelated",
+        "IllustRanking",
+        "SearchUser",
+        "IllustRecommended",
+        "TrendingTagsIllust",
+        "IllustFollow",
+        "UserBookmarks",
+        "UserFollowing",
+        "UgoiraMetadata",
+        "Download"
+      ],
+      "totalLines": 153,
+      "hasStructuralAnalysis": true
+    },
+    "internal/pixiv/web/client_test.go": {
+      "filePath": "internal/pixiv/web/client_test.go",
+      "contentHash": "bb8e11b18b11008f96a61a30824db73d8e964e081cdefa0a25f4216fe5055268",
+      "functions": [
+        {
+          "name": "TestClientSearchIllustMapsWebArtworkResults",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 26
+        },
+        {
+          "name": "TestClientSearchIllustAppliesInPageOffset",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 14
+        },
+        {
+          "name": "TestClientIllustDetailMapsDetailAndPages",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 29
+        },
+        {
+          "name": "TestClientRankingMapsRankingContents",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 20
+        },
+        {
+          "name": "TestClientRankingAppliesInPageOffset",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 14
+        },
+        {
+          "name": "TestClientSearchUserAggregatesArtworkAuthors",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 14
+        },
+        {
+          "name": "TestClientUgoiraMetadataAndDownloadUseWebShape",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 25
+        },
+        {
+          "name": "TestClientExposesWebHTTPErrorBody",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 13
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "bytes",
+          "specifiers": [
+            "bytes"
+          ]
+        },
+        {
+          "source": "context",
+          "specifiers": [
+            "context"
+          ]
+        },
+        {
+          "source": "fmt",
+          "specifiers": [
+            "fmt"
+          ]
+        },
+        {
+          "source": "net/http",
+          "specifiers": [
+            "http"
+          ]
+        },
+        {
+          "source": "net/http/httptest",
+          "specifiers": [
+            "httptest"
+          ]
+        },
+        {
+          "source": "strings",
+          "specifiers": [
+            "strings"
+          ]
+        },
+        {
+          "source": "testing",
+          "specifiers": [
+            "testing"
+          ]
+        },
+        {
+          "source": "github.com/stretchr/testify/assert",
+          "specifiers": [
+            "assert"
+          ]
+        },
+        {
+          "source": "github.com/stretchr/testify/require",
+          "specifiers": [
+            "require"
+          ]
+        }
+      ],
+      "exports": [
+        "TestClientSearchIllustMapsWebArtworkResults",
+        "TestClientSearchIllustAppliesInPageOffset",
+        "TestClientIllustDetailMapsDetailAndPages",
+        "TestClientRankingMapsRankingContents",
+        "TestClientRankingAppliesInPageOffset",
+        "TestClientSearchUserAggregatesArtworkAuthors",
+        "TestClientUgoiraMetadataAndDownloadUseWebShape",
+        "TestClientExposesWebHTTPErrorBody"
+      ],
+      "totalLines": 178,
+      "hasStructuralAnalysis": true
+    },
+    "internal/pixiv/web/client.go": {
+      "filePath": "internal/pixiv/web/client.go",
+      "contentHash": "e3056a4494de2f48239c02d34e0dd30fd60f8a241bce659ce63ce7bab0e87053",
+      "functions": [
+        {
+          "name": "WithHTTPClient",
+          "params": [
+            "httpClient"
+          ],
+          "returnType": "Option",
+          "exported": true,
+          "lineCount": 7
+        },
+        {
+          "name": "WithWebBase",
+          "params": [
+            "base"
+          ],
+          "returnType": "Option",
+          "exported": true,
+          "lineCount": 7
+        },
+        {
+          "name": "New",
+          "params": [],
+          "returnType": "*Client",
+          "exported": true,
+          "lineCount": 11
+        },
+        {
+          "name": "SearchIllust",
+          "params": [
+            "ctx",
+            "word",
+            "target",
+            "sort",
+            "duration",
+            "offset"
+          ],
+          "returnType": "(*model.IllustList, error)",
+          "exported": true,
+          "lineCount": 31
+        },
+        {
+          "name": "IllustDetail",
+          "params": [
+            "ctx",
+            "id"
+          ],
+          "returnType": "(*model.IllustDetail, error)",
+          "exported": true,
+          "lineCount": 15
+        },
+        {
+          "name": "IllustPages",
+          "params": [
+            "ctx",
+            "id"
+          ],
+          "returnType": "([]webPage, error)",
+          "exported": true,
+          "lineCount": 10
+        },
+        {
+          "name": "IllustRanking",
+          "params": [
+            "ctx",
+            "mode",
+            "date",
+            "offset"
+          ],
+          "returnType": "(*model.IllustList, error)",
+          "exported": true,
+          "lineCount": 20
+        },
+        {
+          "name": "SearchUser",
+          "params": [
+            "ctx",
+            "word",
+            "offset"
+          ],
+          "returnType": "(*model.UserPreviewList, error)",
+          "exported": true,
+          "lineCount": 19
+        },
+        {
+          "name": "UgoiraMetadata",
+          "params": [
+            "ctx",
+            "id"
+          ],
+          "returnType": "(*model.UgoiraMetadataResult, error)",
+          "exported": true,
+          "lineCount": 19
+        },
+        {
+          "name": "Download",
+          "params": [
+            "ctx",
+            "rawURL",
+            "dst"
+          ],
+          "returnType": "error",
+          "exported": true,
+          "lineCount": 25
+        },
+        {
+          "name": "getJSON",
+          "params": [
+            "ctx",
+            "path",
+            "query",
+            "out"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 30
+        },
+        {
+          "name": "webURL",
+          "params": [
+            "path",
+            "query"
+          ],
+          "returnType": "(string, error)",
+          "exported": false,
+          "lineCount": 15
+        },
+        {
+          "name": "setHeaders",
+          "params": [
+            "req"
+          ],
+          "exported": false,
+          "lineCount": 5
+        },
+        {
+          "name": "Error",
+          "params": [],
+          "returnType": "string",
+          "exported": true,
+          "lineCount": 6
+        },
+        {
+          "name": "webEnvelopeError",
+          "params": [
+            "message"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 6
+        },
+        {
+          "name": "webPageFromOffset",
+          "params": [
+            "offset",
+            "pageSize"
+          ],
+          "returnType": "int",
+          "exported": false,
+          "lineCount": 7
+        },
+        {
+          "name": "trimWebPageOffset",
+          "params": [
+            "items",
+            "offset",
+            "pageSize"
+          ],
+          "returnType": "[]T",
+          "exported": false,
+          "lineCount": 10
+        },
+        {
+          "name": "webSearchOrder",
+          "params": [
+            "sort"
+          ],
+          "returnType": "string",
+          "exported": false,
+          "lineCount": 10
+        },
+        {
+          "name": "webSearchMode",
+          "params": [
+            "target"
+          ],
+          "returnType": "string",
+          "exported": false,
+          "lineCount": 12
+        },
+        {
+          "name": "webRankingMode",
+          "params": [
+            "mode"
+          ],
+          "returnType": "string",
+          "exported": false,
+          "lineCount": 12
+        },
+        {
+          "name": "setDuration",
+          "params": [
+            "q",
+            "duration"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 20
+        },
+        {
+          "name": "mapSearchIllust",
+          "params": [
+            "item"
+          ],
+          "returnType": "model.Illust",
+          "exported": false,
+          "lineCount": 21
+        },
+        {
+          "name": "mapDetailIllust",
+          "params": [
+            "item",
+            "pages"
+          ],
+          "returnType": "model.Illust",
+          "exported": false,
+          "lineCount": 36
+        },
+        {
+          "name": "mapRankingIllust",
+          "params": [
+            "item"
+          ],
+          "returnType": "model.Illust",
+          "exported": false,
+          "lineCount": 25
+        },
+        {
+          "name": "mapDetailTags",
+          "params": [
+            "items"
+          ],
+          "returnType": "[]model.Tag",
+          "exported": false,
+          "lineCount": 7
+        },
+        {
+          "name": "mapDetailURLs",
+          "params": [
+            "urls"
+          ],
+          "returnType": "model.ImageURLs",
+          "exported": false,
+          "lineCount": 8
+        },
+        {
+          "name": "mapPageURLs",
+          "params": [
+            "urls"
+          ],
+          "returnType": "model.ImageURLs",
+          "exported": false,
+          "lineCount": 8
+        },
+        {
+          "name": "firstImageURLs",
+          "params": [
+            "primary",
+            "fallback"
+          ],
+          "returnType": "model.ImageURLs",
+          "exported": false,
+          "lineCount": 8
+        },
+        {
+          "name": "illustType",
+          "params": [
+            "value"
+          ],
+          "returnType": "string",
+          "exported": false,
+          "lineCount": 10
+        },
+        {
+          "name": "firstNonEmpty",
+          "params": [],
+          "returnType": "string",
+          "exported": false,
+          "lineCount": 8
+        },
+        {
+          "name": "firstFlexInt64",
+          "params": [],
+          "returnType": "flexInt64",
+          "exported": false,
+          "lineCount": 8
+        },
+        {
+          "name": "UnmarshalJSON",
+          "params": [
+            "data"
+          ],
+          "returnType": "error",
+          "exported": true,
+          "lineCount": 29
+        },
+        {
+          "name": "UnmarshalJSON",
+          "params": [
+            "data"
+          ],
+          "returnType": "error",
+          "exported": true,
+          "lineCount": 8
+        }
+      ],
+      "classes": [
+        {
+          "name": "Client",
+          "methods": [
+            "SearchIllust",
+            "IllustDetail",
+            "IllustPages",
+            "IllustRanking",
+            "SearchUser",
+            "UgoiraMetadata",
+            "Download",
+            "getJSON",
+            "webURL",
+            "setHeaders"
+          ],
+          "properties": [
+            "httpClient",
+            "webBase",
+            "userAgent"
+          ],
+          "exported": true,
+          "lineCount": 5
+        },
+        {
+          "name": "APIError",
+          "methods": [
+            "Error"
+          ],
+          "properties": [
+            "StatusCode",
+            "Body"
+          ],
+          "exported": true,
+          "lineCount": 4
+        },
+        {
+          "name": "ajaxEnvelope",
+          "methods": [],
+          "properties": [
+            "Error",
+            "Message",
+            "Body"
+          ],
+          "exported": false,
+          "lineCount": 5
+        },
+        {
+          "name": "webSearchBody",
+          "methods": [],
+          "properties": [
+            "IllustManga",
+            "Illust"
+          ],
+          "exported": false,
+          "lineCount": 4
+        },
+        {
+          "name": "webSearchGroup",
+          "methods": [],
+          "properties": [
+            "Data"
+          ],
+          "exported": false,
+          "lineCount": 3
+        },
+        {
+          "name": "webSearchIllust",
+          "methods": [],
+          "properties": [
+            "ID",
+            "Title",
+            "IllustType",
+            "XRestrict",
+            "URL",
+            "Tags",
+            "UserID",
+            "UserName",
+            "PageCount",
+            "ProfileImgURL"
+          ],
+          "exported": false,
+          "lineCount": 12
+        },
+        {
+          "name": "webIllustDetail",
+          "methods": [],
+          "properties": [
+            "ID",
+            "IllustID",
+            "Title",
+            "IllustTitle",
+            "IllustType",
+            "XRestrict",
+            "PageCount",
+            "UserID",
+            "UserName",
+            "BookmarkCount",
+            "ViewCount",
+            "Tags",
+            "URLs"
+          ],
+          "exported": false,
+          "lineCount": 15
+        },
+        {
+          "name": "webDetailTags",
+          "methods": [],
+          "properties": [
+            "Tags"
+          ],
+          "exported": false,
+          "lineCount": 3
+        },
+        {
+          "name": "webTag",
+          "methods": [],
+          "properties": [
+            "Tag",
+            "Translation"
+          ],
+          "exported": false,
+          "lineCount": 6
+        },
+        {
+          "name": "webDetailURLs",
+          "methods": [],
+          "properties": [
+            "Mini",
+            "ThumbMini",
+            "Small",
+            "Regular",
+            "Original"
+          ],
+          "exported": false,
+          "lineCount": 7
+        },
+        {
+          "name": "webPage",
+          "methods": [],
+          "properties": [
+            "URLs",
+            "Width",
+            "Height"
+          ],
+          "exported": false,
+          "lineCount": 5
+        },
+        {
+          "name": "webPageURLs",
+          "methods": [],
+          "properties": [
+            "ThumbMini",
+            "Small",
+            "Regular",
+            "Original"
+          ],
+          "exported": false,
+          "lineCount": 6
+        },
+        {
+          "name": "webRankingResponse",
+          "methods": [],
+          "properties": [
+            "Contents"
+          ],
+          "exported": false,
+          "lineCount": 3
+        },
+        {
+          "name": "webRankingItem",
+          "methods": [],
+          "properties": [
+            "Title",
+            "Tags",
+            "URL",
+            "IllustType",
+            "IllustPageCount",
+            "UserName",
+            "IllustID",
+            "UserID",
+            "RatingCount",
+            "ViewCount"
+          ],
+          "exported": false,
+          "lineCount": 12
+        },
+        {
+          "name": "webUgoiraMeta",
+          "methods": [],
+          "properties": [
+            "OriginalSrc",
+            "Src",
+            "Frames"
+          ],
+          "exported": false,
+          "lineCount": 5
+        },
+        {
+          "name": "webUgoiraFrame",
+          "methods": [],
+          "properties": [
+            "File",
+            "Delay"
+          ],
+          "exported": false,
+          "lineCount": 4
+        }
+      ],
+      "imports": [
+        {
+          "source": "bytes",
+          "specifiers": [
+            "bytes"
+          ]
+        },
+        {
+          "source": "context",
+          "specifiers": [
+            "context"
+          ]
+        },
+        {
+          "source": "encoding/json",
+          "specifiers": [
+            "json"
+          ]
+        },
+        {
+          "source": "errors",
+          "specifiers": [
+            "errors"
+          ]
+        },
+        {
+          "source": "fmt",
+          "specifiers": [
+            "fmt"
+          ]
+        },
+        {
+          "source": "io",
+          "specifiers": [
+            "io"
+          ]
+        },
+        {
+          "source": "net/http",
+          "specifiers": [
+            "http"
+          ]
+        },
+        {
+          "source": "net/url",
+          "specifiers": [
+            "url"
+          ]
+        },
+        {
+          "source": "strconv",
+          "specifiers": [
+            "strconv"
+          ]
+        },
+        {
+          "source": "strings",
+          "specifiers": [
+            "strings"
+          ]
+        },
+        {
+          "source": "time",
+          "specifiers": [
+            "time"
+          ]
+        },
+        {
+          "source": "github.com/FlanChanXwO/pixiv-mcp-server/internal/pixiv/model",
+          "specifiers": [
+            "model"
+          ]
+        }
+      ],
+      "exports": [
+        "Client",
+        "WithHTTPClient",
+        "WithWebBase",
+        "New",
+        "SearchIllust",
+        "IllustDetail",
+        "IllustPages",
+        "IllustRanking",
+        "SearchUser",
+        "UgoiraMetadata",
+        "Download",
+        "APIError",
+        "Error",
+        "UnmarshalJSON",
+        "UnmarshalJSON"
+      ],
+      "totalLines": 650,
+      "hasStructuralAnalysis": true
+    },
+    "internal/utils/filename.go": {
+      "filePath": "internal/utils/filename.go",
+      "contentHash": "2ea41842412068089b3e8533ed33039b13123d14f5e2e54ba20a201091e875ef",
+      "functions": [
+        {
+          "name": "SanitizeFilename",
+          "params": [
+            "name"
+          ],
+          "returnType": "string",
+          "exported": true,
+          "lineCount": 4
+        },
+        {
+          "name": "GenerateFilename",
+          "params": [
+            "data",
+            "page",
+            "template"
+          ],
+          "returnType": "string",
+          "exported": true,
+          "lineCount": 16
+        },
+        {
+          "name": "Deduplicate",
+          "params": [
+            "ids"
+          ],
+          "returnType": "[]int64",
+          "exported": true,
+          "lineCount": 16
+        },
+        {
+          "name": "fallback",
+          "params": [
+            "value",
+            "backup"
+          ],
+          "returnType": "string",
+          "exported": false,
+          "lineCount": 6
+        }
+      ],
+      "classes": [
+        {
+          "name": "FilenameData",
+          "methods": [],
+          "properties": [
+            "ID",
+            "Author",
+            "Title",
+            "PageCount"
+          ],
+          "exported": true,
+          "lineCount": 6
+        }
+      ],
+      "imports": [
+        {
+          "source": "fmt",
+          "specifiers": [
+            "fmt"
+          ]
+        },
+        {
+          "source": "regexp",
+          "specifiers": [
+            "regexp"
+          ]
+        },
+        {
+          "source": "slices",
+          "specifiers": [
+            "slices"
+          ]
+        },
+        {
+          "source": "strings",
+          "specifiers": [
+            "strings"
+          ]
+        }
+      ],
+      "exports": [
+        "FilenameData",
+        "SanitizeFilename",
+        "GenerateFilename",
+        "Deduplicate"
+      ],
+      "totalLines": 62,
+      "hasStructuralAnalysis": true
+    },
+    "internal/utils/pixiv_web_auth_test.go": {
+      "filePath": "internal/utils/pixiv_web_auth_test.go",
+      "contentHash": "0a90d5c82cd4efe1fbf8c3d94e5662f96405f3d768467eb10ea74ce883485581",
+      "functions": [
+        {
+          "name": "TestParsePixivWebRefreshTokenInputPlainToken",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 6
+        },
+        {
+          "name": "TestParsePixivWebRefreshTokenInputCookieWithRefreshToken",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 6
+        },
+        {
+          "name": "TestParsePixivWebRefreshTokenInputCookieWithoutRefreshToken",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 6
+        },
+        {
+          "name": "TestParsePixivWebRefreshTokenInputSingleEqualsValueIsPlainToken",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 6
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "testing",
+          "specifiers": [
+            "testing"
+          ]
+        }
+      ],
+      "exports": [
+        "TestParsePixivWebRefreshTokenInputPlainToken",
+        "TestParsePixivWebRefreshTokenInputCookieWithRefreshToken",
+        "TestParsePixivWebRefreshTokenInputCookieWithoutRefreshToken",
+        "TestParsePixivWebRefreshTokenInputSingleEqualsValueIsPlainToken"
+      ],
+      "totalLines": 32,
+      "hasStructuralAnalysis": true
+    },
+    "internal/utils/pixiv_web_auth.go": {
+      "filePath": "internal/utils/pixiv_web_auth.go",
+      "contentHash": "2e7ab4ffddbe42a4239ac2d384466b067e5aa3c1148d3a9216a8870f787c276c",
+      "functions": [
+        {
+          "name": "ParsePixivWebRefreshTokenInput",
+          "params": [
+            "input"
+          ],
+          "returnType": "(token string, parsedCookie bool)",
+          "exported": true,
+          "lineCount": 13
+        },
+        {
+          "name": "refreshTokenFromCookie",
+          "params": [
+            "input"
+          ],
+          "returnType": "(string, bool)",
+          "exported": false,
+          "lineCount": 14
+        },
+        {
+          "name": "looksLikeCookie",
+          "params": [
+            "input"
+          ],
+          "returnType": "bool",
+          "exported": false,
+          "lineCount": 16
+        },
+        {
+          "name": "isPixivCookieName",
+          "params": [
+            "name"
+          ],
+          "returnType": "bool",
+          "exported": false,
+          "lineCount": 8
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "net/url",
+          "specifiers": [
+            "url"
+          ]
+        },
+        {
+          "source": "strings",
+          "specifiers": [
+            "strings"
+          ]
+        }
+      ],
+      "exports": [
+        "ParsePixivWebRefreshTokenInput"
+      ],
+      "totalLines": 64,
+      "hasStructuralAnalysis": true
+    },
+    "manifest.json": {
+      "filePath": "manifest.json",
+      "contentHash": "29f77199916b2c7d9e6f926bc5bfdde0a1b9c040d59464fe4abefeb779055eda",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 56,
+      "hasStructuralAnalysis": true
+    },
+    "README.md": {
+      "filePath": "README.md",
+      "contentHash": "37ebc218cac386cdd53f18772a0413ecf61cb5c8146dd19e2b4d3c664965bdca",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 252,
+      "hasStructuralAnalysis": true
+    },
+    "test/e2e/pixiv_binary_test.go": {
+      "filePath": "test/e2e/pixiv_binary_test.go",
+      "contentHash": "4abac21860cd7e624694985e7f3f3c39669602ba2a3a7922463e10b2496701bf",
+      "functions": [
+        {
+          "name": "TestPixivBinaryBuildsFromCmdPixivAndPrintsHelp",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 14
+        },
+        {
+          "name": "TestPixivBinaryUsesAuthCommandAndRemovesAccountCommand",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 24
+        },
+        {
+          "name": "TestPixivBinaryOfflineConfigAndMCPHelp",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 42
+        },
+        {
+          "name": "TestPixivBinaryWebAPIFallbackReal",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 57
+        },
+        {
+          "name": "TestPixivBinaryRealAPISearchOptIn",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 37
+        },
+        {
+          "name": "runPixiv",
+          "params": [
+            "t",
+            "repoRoot",
+            "binaryPath",
+            "env"
+          ],
+          "returnType": "[]byte",
+          "exported": false,
+          "lineCount": 12
+        },
+        {
+          "name": "requireJSON",
+          "params": [
+            "t",
+            "body",
+            "out"
+          ],
+          "exported": false,
+          "lineCount": 7
+        },
+        {
+          "name": "strconvFormatInt",
+          "params": [
+            "value"
+          ],
+          "returnType": "string",
+          "exported": false,
+          "lineCount": 3
+        },
+        {
+          "name": "countRegularFiles",
+          "params": [
+            "t",
+            "root"
+          ],
+          "returnType": "int",
+          "exported": false,
+          "lineCount": 19
+        },
+        {
+          "name": "firstNonEmpty",
+          "params": [],
+          "returnType": "string",
+          "exported": false,
+          "lineCount": 8
+        },
+        {
+          "name": "buildPixivBinary",
+          "params": [
+            "t",
+            "repoRoot"
+          ],
+          "returnType": "string",
+          "exported": false,
+          "lineCount": 13
+        },
+        {
+          "name": "isolatedEnv",
+          "params": [
+            "t"
+          ],
+          "returnType": "isolatedProcessEnv",
+          "exported": false,
+          "lineCount": 23
+        },
+        {
+          "name": "testCommandContext",
+          "params": [
+            "t"
+          ],
+          "returnType": "context.Context",
+          "exported": false,
+          "lineCount": 10
+        }
+      ],
+      "classes": [
+        {
+          "name": "isolatedProcessEnv",
+          "methods": [],
+          "properties": [
+            "values",
+            "home",
+            "configRoot"
+          ],
+          "exported": false,
+          "lineCount": 5
+        }
+      ],
+      "imports": [
+        {
+          "source": "bytes",
+          "specifiers": [
+            "bytes"
+          ]
+        },
+        {
+          "source": "context",
+          "specifiers": [
+            "context"
+          ]
+        },
+        {
+          "source": "encoding/json",
+          "specifiers": [
+            "json"
+          ]
+        },
+        {
+          "source": "os",
+          "specifiers": [
+            "os"
+          ]
+        },
+        {
+          "source": "os/exec",
+          "specifiers": [
+            "exec"
+          ]
+        },
+        {
+          "source": "path/filepath",
+          "specifiers": [
+            "filepath"
+          ]
+        },
+        {
+          "source": "strconv",
+          "specifiers": [
+            "strconv"
+          ]
+        },
+        {
+          "source": "strings",
+          "specifiers": [
+            "strings"
+          ]
+        },
+        {
+          "source": "testing",
+          "specifiers": [
+            "testing"
+          ]
+        },
+        {
+          "source": "time",
+          "specifiers": [
+            "time"
+          ]
+        },
+        {
+          "source": "github.com/FlanChanXwO/pixiv-mcp-server/internal/pixiv",
+          "specifiers": [
+            "pixiv"
+          ]
+        }
+      ],
+      "exports": [
+        "TestPixivBinaryBuildsFromCmdPixivAndPrintsHelp",
+        "TestPixivBinaryUsesAuthCommandAndRemovesAccountCommand",
+        "TestPixivBinaryOfflineConfigAndMCPHelp",
+        "TestPixivBinaryWebAPIFallbackReal",
+        "TestPixivBinaryRealAPISearchOptIn"
+      ],
+      "totalLines": 305,
+      "hasStructuralAnalysis": true
+    }
+  }
+}

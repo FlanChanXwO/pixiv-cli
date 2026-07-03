@@ -30,3 +30,10 @@ temp/
 .repo/
 __pycache__/
 *.py[cod]
+
+# Understand Anything scratch files
+.understand-anything/tmp/
+.understand-anything/.trash-*/
+.understand-anything/intermediate/*
+!.understand-anything/intermediate/
+!.understand-anything/intermediate/scan-result.json
