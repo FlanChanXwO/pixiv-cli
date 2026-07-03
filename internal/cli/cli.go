@@ -4,24 +4,21 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"flag"
 	"fmt"
 	"io"
-	"log/slog"
-	"net/http"
-	"net/url"
 	"strconv"
+	"strings"
 
+	"github.com/FlanChanXwO/pixiv-mcp-server/internal/cli/mcpapp"
+	"github.com/FlanChanXwO/pixiv-mcp-server/internal/cli/state"
+	"github.com/FlanChanXwO/pixiv-mcp-server/internal/config"
 	"github.com/FlanChanXwO/pixiv-mcp-server/internal/download"
-	"github.com/FlanChanXwO/pixiv-mcp-server/internal/mcpserver"
 	"github.com/FlanChanXwO/pixiv-mcp-server/internal/pixiv"
-	"github.com/FlanChanXwO/pixiv-mcp-server/pkg/config"
-	"github.com/FlanChanXwO/pixiv-mcp-server/pkg/pixivutil"
-	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"github.com/FlanChanXwO/pixiv-mcp-server/internal/utils"
+	"github.com/spf13/cobra"
 )
 
 type app struct {
-	args   []string
 	in     io.Reader
 	out    io.Writer
 	errOut io.Writer
@@ -35,48 +32,35 @@ type commandOptions struct {
 	jsonOut          bool
 }
 
-var runMCPServer = runMCP
+type clientConfig struct {
+	config.RuntimeConfig
+}
+
+type cliPixivClient interface {
+	download.PixivClient
+	Refresh(context.Context) error
+	UserID() int64
+	SearchIllust(context.Context, string, string, string, string, int) (*pixiv.IllustList, error)
+	IllustRanking(context.Context, string, string, int) (*pixiv.IllustList, error)
+	IllustRecommended(context.Context, int) (*pixiv.IllustList, error)
+}
+
+var (
+	runMCPServer = runMCP
+	newCLIClient = newPixivClient
+)
 
 func Run(args []string, in io.Reader, out io.Writer, errOut io.Writer) int {
 	if len(args) == 0 {
 		args = []string{"pixiv"}
 	}
-	a := app{args: args, in: in, out: out, errOut: errOut}
-	if len(args) == 1 {
-		a.printHelp(out)
-		return 0
-	}
-	cmd := args[1]
-	if cmd == "-h" || cmd == "--help" || cmd == "help" {
-		a.printHelp(out)
-		return 0
-	}
-	if cmd == "mcp" {
-		if len(args) > 2 && (args[2] == "-h" || args[2] == "--help") {
-			fmt.Fprintln(out, "Usage: pixiv mcp\n\nRun the Pixiv MCP stdio server.")
-			return 0
-		}
-		return a.exit(runMCPServer(context.Background(), errOut))
-	}
-
-	var err error
-	switch cmd {
-	case "account":
-		err = a.runAccount(args[2:])
-	case "search":
-		err = a.runSearch(args[2:])
-	case "detail":
-		err = a.runDetail(args[2:])
-	case "ranking":
-		err = a.runRanking(args[2:])
-	case "recommended":
-		err = a.runRecommended(args[2:])
-	case "download":
-		err = a.runDownload(args[2:])
-	default:
-		err = fmt.Errorf("unknown command %q", cmd)
-	}
-	return a.exit(err)
+	a := app{in: in, out: out, errOut: errOut}
+	cmd := a.newRootCommand()
+	cmd.SetIn(in)
+	cmd.SetOut(out)
+	cmd.SetErr(errOut)
+	cmd.SetArgs(args[1:])
+	return a.exit(cmd.Execute())
 }
 
 func (a app) exit(err error) int {
@@ -87,112 +71,136 @@ func (a app) exit(err error) int {
 	return 1
 }
 
-func (a app) printHelp(w io.Writer) {
-	fmt.Fprint(w, `Usage: pixiv <command> [options]
-
-Commands:
-  account      Manage local Pixiv refresh-token profiles
-  search       Search illustrations
-  detail       Show one illustration
-  ranking      Show illustration ranking
-  recommended  Show personalized recommendations
-  download     Download illustrations
-  mcp          Run the MCP stdio server
-
-Use "pixiv <command> --help" for command options.
-`)
-}
-
 func runMCP(ctx context.Context, errOut io.Writer) error {
-	logger := slog.New(slog.NewTextHandler(errOut, &slog.HandlerOptions{Level: slog.LevelInfo}))
-	cfg := config.LoadFromEnv()
-	client, err := newPixivClient(cfg)
-	if err != nil {
-		return err
-	}
-	manager := download.NewManager(client, logger, cfg.DownloadPath, cfg.FilenameTemplate)
-	server := mcpserver.New(client, manager, logger)
-
-	if cfg.RefreshToken != "" {
-		if err := client.Refresh(ctx); err != nil {
-			logger.Warn("auto-authentication failed", "error", err)
-		} else {
-			logger.Info("auto-authentication successful", "user_id", client.UserID())
-		}
-	}
-	return server.Run(ctx, &mcp.StdioTransport{})
+	return mcpapp.Run(ctx, errOut)
 }
 
-func newPixivClient(cfg config.Config) (*pixiv.Client, error) {
-	httpClient := &http.Client{Transport: http.DefaultTransport}
-	if cfg.HTTPSProxy != "" {
-		proxyURL, err := url.Parse(cfg.HTTPSProxy)
-		if err != nil {
-			return nil, fmt.Errorf("invalid proxy URL %q: %w", cfg.HTTPSProxy, err)
-		}
-		httpClient.Transport = &http.Transport{Proxy: http.ProxyURL(proxyURL)}
-	}
-	return pixiv.New(cfg.RefreshToken, pixiv.WithHTTPClient(httpClient)), nil
+func newPixivClient(cfg clientConfig) (cliPixivClient, error) {
+	return pixiv.NewSource(pixiv.SourceConfig{
+		RefreshToken:       cfg.RefreshToken,
+		HTTPSProxy:         cfg.HTTPSProxy,
+		WebFallbackEnabled: cfg.WebFallbackEnabled,
+	})
 }
 
-func (a app) flagSet(name string, opts *commandOptions) *flag.FlagSet {
-	fs := flag.NewFlagSet(name, flag.ContinueOnError)
-	fs.SetOutput(a.errOut)
-	fs.StringVar(&opts.profile, "profile", "", "profile name")
-	fs.StringVar(&opts.refreshToken, "refresh-token", "", "Pixiv refresh token or cookie with refresh_token")
-	fs.StringVar(&opts.downloadPath, "download-path", "", "download directory")
-	fs.StringVar(&opts.filenameTemplate, "filename-template", "", "filename template")
-	fs.BoolVar(&opts.jsonOut, "json", false, "print JSON")
-	return fs
+func (a app) newRootCommand() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:           "pixiv",
+		Short:         "Pixiv CLI and MCP server",
+		SilenceUsage:  true,
+		SilenceErrors: true,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return cmd.Help()
+		},
+	}
+	cmd.CompletionOptions.DisableDefaultCmd = true
+	cmd.AddCommand(
+		a.newAccountCommand(),
+		a.newConfigCommand(),
+		a.newSearchCommand(),
+		a.newDetailCommand(),
+		a.newRankingCommand(),
+		a.newRecommendedCommand(),
+		a.newDownloadCommand(),
+		a.newMCPCommand(),
+	)
+	return cmd
 }
 
-func (a app) clientAndConfig(opts commandOptions, needsAuth bool) (*pixiv.Client, config.Config, error) {
-	cfg := config.LoadFromEnv()
-	path, err := configPath()
+func (a app) newMCPCommand() *cobra.Command {
+	return &cobra.Command{
+		Use:     "mcp",
+		Short:   "Run the MCP stdio server",
+		Example: "pixiv mcp",
+		Args:    requireExactArgs(0, "pixiv mcp"),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runMCPServer(context.Background(), a.errOut)
+		},
+	}
+}
+
+func (a app) bindCommonFlags(cmd *cobra.Command, opts *commandOptions) {
+	flags := cmd.Flags()
+	flags.StringVar(&opts.profile, "profile", "", "account name")
+	flags.StringVar(&opts.refreshToken, "refresh-token", "", "Pixiv refresh token or cookie with refresh_token")
+	flags.StringVar(&opts.downloadPath, "download-path", "", "download directory")
+	flags.StringVar(&opts.filenameTemplate, "filename-template", "", "filename template")
+	flags.BoolVar(&opts.jsonOut, "json", false, "print JSON")
+}
+
+func (a app) clientAndConfig(cmd *cobra.Command, opts commandOptions, needsAuth bool) (cliPixivClient, config.RuntimeConfig, bool, error) {
+	settings, err := config.LoadSettingsState()
 	if err != nil {
-		return nil, cfg, err
+		return nil, config.RuntimeConfig{}, false, err
 	}
-	store, err := loadAccountStore(path)
+	cfg, err := settings.Runtime()
 	if err != nil {
-		return nil, cfg, err
+		return nil, config.RuntimeConfig{}, false, err
 	}
-	if opts.profile != "" || cfg.RefreshToken == "" {
-		if name, acct, ok := selectAccount(store, opts.profile); ok {
-			cfg.RefreshToken = acct.RefreshToken
-			_ = name
-		} else if opts.profile != "" {
-			return nil, cfg, fmt.Errorf("profile %q not found", opts.profile)
-		}
-	}
-	if opts.refreshToken != "" {
-		token, parsedCookie := pixivutil.ParseRefreshTokenInput(opts.refreshToken)
-		if token == "" {
-			if parsedCookie {
-				return nil, cfg, errors.New("refresh-token cookie does not contain refresh_token")
-			}
-			return nil, cfg, errors.New("refresh-token cannot be empty")
-		}
-		cfg.RefreshToken = token
-	}
-	if opts.downloadPath != "" {
+	if cmd.Flags().Changed("download-path") {
 		cfg.DownloadPath = opts.downloadPath
 	}
-	if opts.filenameTemplate != "" {
+	if cmd.Flags().Changed("filename-template") {
 		cfg.FilenameTemplate = opts.filenameTemplate
 	}
-	if needsAuth && cfg.RefreshToken == "" {
-		return nil, cfg, errors.New("missing refresh token; use PIXIV_REFRESH_TOKEN or pixiv account add")
+	jsonOut := cfg.OutputJSON
+	if cmd.Flags().Changed("json") {
+		jsonOut = opts.jsonOut
 	}
-	client, err := newPixivClient(cfg)
+
+	authPath, err := state.AuthFilePath()
 	if err != nil {
-		return nil, cfg, err
+		return nil, config.RuntimeConfig{}, false, err
+	}
+	store, err := state.LoadAuthStore(authPath)
+	if err != nil {
+		return nil, config.RuntimeConfig{}, false, err
+	}
+	refreshToken, err := resolveRefreshToken(store, opts.profile, opts.refreshToken)
+	if err != nil {
+		return nil, config.RuntimeConfig{}, false, err
+	}
+	cfg.RefreshToken = refreshToken
+	if needsAuth && cfg.RefreshToken == "" {
+		return nil, config.RuntimeConfig{}, false, errors.New("missing refresh token; use PIXIV_REFRESH_TOKEN or pixiv auth add/login")
+	}
+	client, err := newCLIClient(clientConfig{RuntimeConfig: cfg})
+	if err != nil {
+		return nil, config.RuntimeConfig{}, false, err
 	}
 	if needsAuth {
 		if err := client.Refresh(context.Background()); err != nil {
-			return nil, cfg, err
+			return nil, config.RuntimeConfig{}, false, err
 		}
 	}
-	return client, cfg, nil
+	return client, cfg, jsonOut, nil
+}
+
+func resolveRefreshToken(store state.AuthStore, requestedProfile, requestedToken string) (string, error) {
+	if strings.TrimSpace(requestedToken) != "" {
+		token, parsedCookie := utils.ParsePixivWebRefreshTokenInput(requestedToken)
+		if token == "" {
+			if parsedCookie {
+				return "", errors.New("refresh-token cookie does not contain refresh_token")
+			}
+			return "", errors.New("refresh-token cannot be empty")
+		}
+		return token, nil
+	}
+	if profile := strings.TrimSpace(requestedProfile); profile != "" {
+		_, acct, ok := state.SelectAuthAccount(store, profile)
+		if !ok {
+			return "", fmt.Errorf("account %q not found", profile)
+		}
+		return acct.RefreshToken, nil
+	}
+	if token := config.RefreshTokenFromEnv(); token != "" {
+		return token, nil
+	}
+	if _, acct, ok := state.SelectAuthAccount(store, ""); ok {
+		return acct.RefreshToken, nil
+	}
+	return "", nil
 }
 
 func (a app) printJSON(v any) error {
@@ -214,4 +222,31 @@ func textBool(value bool) string {
 		return "yes"
 	}
 	return "no"
+}
+
+func requireExactArgs(count int, usage string) cobra.PositionalArgs {
+	return func(cmd *cobra.Command, args []string) error {
+		if len(args) != count {
+			return fmt.Errorf("usage: %s", usage)
+		}
+		return nil
+	}
+}
+
+func requireMinArgs(count int, usage string) cobra.PositionalArgs {
+	return func(cmd *cobra.Command, args []string) error {
+		if len(args) < count {
+			return fmt.Errorf("usage: %s", usage)
+		}
+		return nil
+	}
+}
+
+func requireMaxArgs(count int, usage string) cobra.PositionalArgs {
+	return func(cmd *cobra.Command, args []string) error {
+		if len(args) > count {
+			return fmt.Errorf("usage: %s", usage)
+		}
+		return nil
+	}
 }

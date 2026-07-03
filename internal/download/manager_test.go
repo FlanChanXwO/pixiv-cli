@@ -4,6 +4,7 @@ import (
 	"archive/zip"
 	"bytes"
 	"context"
+	"errors"
 	"io"
 	"os"
 	"path/filepath"
@@ -12,19 +13,30 @@ import (
 	"testing"
 
 	"github.com/FlanChanXwO/pixiv-mcp-server/internal/pixiv"
-	"github.com/FlanChanXwO/pixiv-mcp-server/pkg/pixivutil"
+	"github.com/FlanChanXwO/pixiv-mcp-server/internal/utils"
 )
 
 func TestSanitizeAndGenerateFilename(t *testing.T) {
-	illust := pixivutil.FilenameData{ID: 123, Title: `a/b:c`, PageCount: 2, Author: `x*y`}
-	got := pixivutil.GenerateFilename(illust, 1, "{author}_{id}_{title}")
+	illust := utils.FilenameData{ID: 123, Title: `a/b:c`, PageCount: 2, Author: `x*y`}
+	got := utils.GenerateFilename(illust, 1, "{author}_{id}_{title}")
 	if got != "x_y_123_a_b_c_p1" {
 		t.Fatalf("filename = %q", got)
 	}
 }
 
+func TestGenerateFilenameSanitizesTemplatePathSeparators(t *testing.T) {
+	illust := utils.FilenameData{ID: 123, Title: "safe", PageCount: 1, Author: "artist"}
+	got := utils.GenerateFilename(illust, 0, "../nested/{author}/{id}")
+	if got != ".._nested_artist_123" {
+		t.Fatalf("filename = %q", got)
+	}
+	if strings.ContainsAny(got, `/\`) {
+		t.Fatalf("filename still contains path separator: %q", got)
+	}
+}
+
 func TestDeduplicate(t *testing.T) {
-	got := pixivutil.Deduplicate([]int64{3, 1, 3, 0, -1, 2})
+	got := utils.Deduplicate([]int64{3, 1, 3, 0, -1, 2})
 	want := []int64{1, 2, 3}
 	if !slices.Equal(got, want) {
 		t.Fatalf("Deduplicate = %v, want %v", got, want)
@@ -75,6 +87,101 @@ func TestDownloadSingleArtworkReturnsPath(t *testing.T) {
 		t.Fatalf("download path = %q", got[0].Files[0].Path)
 	}
 	assertFileBody(t, got[0].Files[0].Path, "jpg")
+}
+
+func TestDownloadKeepsArtworkInsideDownloadRoot(t *testing.T) {
+	dir := t.TempDir()
+	client := &fakePixivClient{
+		details: map[int64]pixiv.Illust{
+			42: {
+				ID:        42,
+				Title:     "single",
+				PageCount: 1,
+				Type:      "illust",
+				User:      pixiv.User{Name: "author"},
+				MetaSinglePage: pixiv.SinglePage{
+					OriginalImageURL: "https://i.example/42.jpg",
+				},
+			},
+		},
+		downloads: map[string][]byte{"https://i.example/42.jpg": []byte("jpg")},
+	}
+	m := NewManager(client, nil, dir, "../escape/{id}")
+
+	got, err := m.Download(context.Background(), []int64{42})
+	if err != nil {
+		t.Fatalf("Download returned error: %v", err)
+	}
+	if len(got) != 1 || len(got[0].Files) != 1 {
+		t.Fatalf("Download returned unexpected artworks: %+v", got)
+	}
+	rel, err := filepath.Rel(dir, got[0].Files[0].Path)
+	if err != nil {
+		t.Fatalf("Rel returned error: %v", err)
+	}
+	if rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) || filepath.IsAbs(rel) {
+		t.Fatalf("download escaped root: path=%q root=%q rel=%q", got[0].Files[0].Path, dir, rel)
+	}
+	assertFileBody(t, got[0].Files[0].Path, "jpg")
+}
+
+func TestDownloadFailureDoesNotReplaceExistingFile(t *testing.T) {
+	dir := t.TempDir()
+	target := filepath.Join(dir, "42.jpg")
+	if err := os.WriteFile(target, []byte("old"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	client := &fakePixivClient{
+		details: map[int64]pixiv.Illust{
+			42: {
+				ID:        42,
+				Title:     "single",
+				PageCount: 1,
+				Type:      "illust",
+				User:      pixiv.User{Name: "author"},
+				MetaSinglePage: pixiv.SinglePage{
+					OriginalImageURL: "https://i.example/42.jpg",
+				},
+			},
+		},
+		downloadErr: errors.New("network broke"),
+	}
+	m := NewManager(client, nil, dir, "{id}")
+
+	_, err := m.Download(context.Background(), []int64{42})
+	if err == nil {
+		t.Fatal("Download returned nil error")
+	}
+	assertFileBody(t, target, "old")
+}
+
+func TestDownloadSuccessReplacesExistingFile(t *testing.T) {
+	dir := t.TempDir()
+	target := filepath.Join(dir, "42.jpg")
+	if err := os.WriteFile(target, []byte("old"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	client := &fakePixivClient{
+		details: map[int64]pixiv.Illust{
+			42: {
+				ID:        42,
+				Title:     "single",
+				PageCount: 1,
+				Type:      "illust",
+				User:      pixiv.User{Name: "author"},
+				MetaSinglePage: pixiv.SinglePage{
+					OriginalImageURL: "https://i.example/42.jpg",
+				},
+			},
+		},
+		downloads: map[string][]byte{"https://i.example/42.jpg": []byte("new")},
+	}
+	m := NewManager(client, nil, dir, "{id}")
+
+	if _, err := m.Download(context.Background(), []int64{42}); err != nil {
+		t.Fatalf("Download returned error: %v", err)
+	}
+	assertFileBody(t, target, "new")
 }
 
 func TestDownloadMultiPageArtworkReturnsAllPaths(t *testing.T) {
@@ -131,6 +238,106 @@ func TestConvertUgoiraBuildsFFmpegCommand(t *testing.T) {
 	}
 	if runner.name != "ffmpeg" || !strings.Contains(strings.Join(runner.args, " "), "palettegen=stats_mode=single") {
 		t.Fatalf("unexpected runner call: name=%q args=%v", runner.name, runner.args)
+	}
+}
+
+func TestConvertUgoiraUsesUniqueTemporaryDirectory(t *testing.T) {
+	dir := t.TempDir()
+	zipPath := filepath.Join(dir, "ugoira.zip")
+	createZip(t, zipPath, "000000.jpg", []byte("frame"))
+
+	runner := &recordingRunner{}
+	m := NewManager(nil, nil, dir, "{id}")
+	m.SetRunner(runner)
+
+	firstOut := filepath.Join(dir, "first.gif")
+	if err := m.ConvertUgoira(context.Background(), zipPath, []pixiv.UgoiraFrame{{File: "000000.jpg", Delay: 80}}, dir, firstOut); err != nil {
+		t.Fatalf("first ConvertUgoira returned error: %v", err)
+	}
+	firstDir := runner.dir
+
+	secondOut := filepath.Join(dir, "second.gif")
+	if err := m.ConvertUgoira(context.Background(), zipPath, []pixiv.UgoiraFrame{{File: "000000.jpg", Delay: 80}}, dir, secondOut); err != nil {
+		t.Fatalf("second ConvertUgoira returned error: %v", err)
+	}
+	if firstDir == runner.dir {
+		t.Fatalf("ConvertUgoira reused temporary directory %q", firstDir)
+	}
+}
+
+func TestConvertUgoiraFailureDoesNotReplaceExistingGIF(t *testing.T) {
+	dir := t.TempDir()
+	zipPath := filepath.Join(dir, "ugoira.zip")
+	createZip(t, zipPath, "000000.jpg", []byte("frame"))
+	outPath := filepath.Join(dir, "out.gif")
+	if err := os.WriteFile(outPath, []byte("old-gif"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	runner := &recordingRunner{err: errors.New("ffmpeg failed"), writeOutput: []byte("partial")}
+	m := NewManager(nil, nil, dir, "{id}")
+	m.SetRunner(runner)
+
+	err := m.ConvertUgoira(context.Background(), zipPath, []pixiv.UgoiraFrame{{File: "000000.jpg", Delay: 80}}, dir, outPath)
+	if err == nil {
+		t.Fatal("ConvertUgoira returned nil error")
+	}
+	assertFileBody(t, outPath, "old-gif")
+}
+
+func TestConvertUgoiraSuccessReplacesExistingGIF(t *testing.T) {
+	dir := t.TempDir()
+	zipPath := filepath.Join(dir, "ugoira.zip")
+	createZip(t, zipPath, "000000.jpg", []byte("frame"))
+	outPath := filepath.Join(dir, "out.gif")
+	if err := os.WriteFile(outPath, []byte("old-gif"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	runner := &recordingRunner{writeOutput: []byte("new-gif")}
+	m := NewManager(nil, nil, dir, "{id}")
+	m.SetRunner(runner)
+
+	if err := m.ConvertUgoira(context.Background(), zipPath, []pixiv.UgoiraFrame{{File: "000000.jpg", Delay: 80}}, dir, outPath); err != nil {
+		t.Fatalf("ConvertUgoira returned error: %v", err)
+	}
+	assertFileBody(t, outPath, "new-gif")
+}
+
+func TestDownloadUgoiraZipFailureCleansTemporaryZip(t *testing.T) {
+	dir := t.TempDir()
+	meta := pixiv.UgoiraMetadata{
+		Frames: []pixiv.UgoiraFrame{{File: "000000.jpg", Delay: 80}},
+	}
+	meta.ZipURLs.Medium = "https://i.example/ugoira.zip"
+	client := &fakePixivClient{
+		details: map[int64]pixiv.Illust{
+			9: {
+				ID:        9,
+				Title:     "ugo",
+				PageCount: 1,
+				Type:      "ugoira",
+				User:      pixiv.User{Name: "author"},
+			},
+		},
+		ugoira: map[int64]pixiv.UgoiraMetadata{
+			9: meta,
+		},
+		downloadErr: errors.New("zip download failed"),
+	}
+	m := NewManager(client, nil, dir, "{id}")
+	m.SetFFmpegAvailable(true)
+
+	_, err := m.Download(context.Background(), []int64{9})
+	if err == nil {
+		t.Fatal("Download returned nil error")
+	}
+	matches, err := filepath.Glob(filepath.Join(dir, "9 - ugo", "ugoira-*.zip"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(matches) != 0 {
+		t.Fatalf("temporary ugoira zip files remain: %v", matches)
 	}
 }
 
@@ -204,12 +411,15 @@ func TestDownloadUgoiraWithoutFFmpegReturnsError(t *testing.T) {
 }
 
 type recordingRunner struct {
+	dir         string
 	name        string
 	args        []string
 	writeOutput []byte
+	err         error
 }
 
-func (r *recordingRunner) Run(_ context.Context, _ string, name string, args ...string) error {
+func (r *recordingRunner) Run(_ context.Context, dir string, name string, args ...string) error {
+	r.dir = dir
 	r.name = name
 	r.args = append([]string(nil), args...)
 	if len(r.writeOutput) > 0 && len(args) > 0 {
@@ -217,7 +427,7 @@ func (r *recordingRunner) Run(_ context.Context, _ string, name string, args ...
 			return err
 		}
 	}
-	return nil
+	return r.err
 }
 
 func createZip(t *testing.T, path, name string, body []byte) {
@@ -245,9 +455,10 @@ func makeZip(t *testing.T, name string, body []byte) []byte {
 }
 
 type fakePixivClient struct {
-	details   map[int64]pixiv.Illust
-	ugoira    map[int64]pixiv.UgoiraMetadata
-	downloads map[string][]byte
+	details     map[int64]pixiv.Illust
+	ugoira      map[int64]pixiv.UgoiraMetadata
+	downloads   map[string][]byte
+	downloadErr error
 }
 
 func (c *fakePixivClient) IllustDetail(_ context.Context, id int64) (*pixiv.IllustDetail, error) {
@@ -267,6 +478,9 @@ func (c *fakePixivClient) UgoiraMetadata(_ context.Context, id int64) (*pixiv.Ug
 }
 
 func (c *fakePixivClient) Download(_ context.Context, rawURL string, dst io.Writer) error {
+	if c.downloadErr != nil {
+		return c.downloadErr
+	}
 	body, ok := c.downloads[rawURL]
 	if !ok {
 		return os.ErrNotExist

@@ -1,4 +1,4 @@
-package pixivutil
+package utils
 
 import (
 	"fmt"
@@ -28,6 +28,8 @@ func GenerateFilename(data FilenameData, page int, template string) string {
 		"{title}", SanitizeFilename(fallback(data.Title, "Untitled")),
 		"{id}", fmt.Sprint(data.ID),
 	).Replace(template)
+	// 模板字面量也可能包含路径分隔符；最终文件名必须整体清理，避免下载写出目标目录。
+	name = SanitizeFilename(name)
 	if data.PageCount > 1 {
 		return fmt.Sprintf("%s_p%d", name, page)
 	}

@@ -14,7 +14,7 @@ import (
 	"sync"
 
 	"github.com/FlanChanXwO/pixiv-mcp-server/internal/pixiv"
-	"github.com/FlanChanXwO/pixiv-mcp-server/pkg/pixivutil"
+	"github.com/FlanChanXwO/pixiv-mcp-server/internal/utils"
 )
 
 type PixivClient interface {
@@ -106,7 +106,7 @@ func (m *Manager) DownloadPath() string {
 }
 
 func (m *Manager) Enqueue(ctx context.Context, ids []int64) int {
-	unique := pixivutil.Deduplicate(ids)
+	unique := utils.Deduplicate(ids)
 	for _, id := range unique {
 		go m.downloadOne(context.WithoutCancel(ctx), id)
 	}
@@ -114,7 +114,7 @@ func (m *Manager) Enqueue(ctx context.Context, ids []int64) int {
 }
 
 func (m *Manager) Download(ctx context.Context, ids []int64) ([]DownloadedArtwork, error) {
-	unique := pixivutil.Deduplicate(ids)
+	unique := utils.Deduplicate(ids)
 	artworks := make([]DownloadedArtwork, 0, len(unique))
 	for _, id := range unique {
 		artwork, err := m.downloadArtwork(ctx, id)
@@ -145,8 +145,8 @@ func (m *Manager) downloadArtwork(ctx context.Context, id int64) (DownloadedArtw
 	if err != nil {
 		return DownloadedArtwork{}, err
 	}
-	if illust.PageCount > 1 || illust.Type == "ugoira" {
-		base = filepath.Join(base, pixivutil.SanitizeFilename(fmt.Sprintf("%d - %s", illust.ID, fallback(illust.Title, "Untitled"))))
+	if illust.PageCount > 1 || illust.Type == string(pixiv.IllustTypeUgoira) {
+		base = filepath.Join(base, utils.SanitizeFilename(fmt.Sprintf("%d - %s", illust.ID, fallback(illust.Title, "Untitled"))))
 	}
 	if err := os.MkdirAll(base, 0o755); err != nil {
 		return DownloadedArtwork{}, err
@@ -159,7 +159,7 @@ func (m *Manager) downloadArtwork(ctx context.Context, id int64) (DownloadedArtw
 		Type:     illust.Type,
 	}
 
-	if illust.Type == "ugoira" {
+	if illust.Type == string(pixiv.IllustTypeUgoira) {
 		path, err := m.downloadUgoira(ctx, illust, base)
 		if err != nil {
 			return DownloadedArtwork{}, err
@@ -175,7 +175,7 @@ func (m *Manager) downloadArtwork(ctx context.Context, id int64) (DownloadedArtw
 		if rawURL == "" {
 			return DownloadedArtwork{}, fmt.Errorf("illust %d has no downloadable image url", illust.ID)
 		}
-		path := filepath.Join(base, pixivutil.GenerateFilename(filenameData(illust), 0, m.filenameTemplate)+filepath.Ext(pathFromURL(rawURL)))
+		path := filepath.Join(base, utils.GenerateFilename(filenameData(illust), 0, m.filenameTemplate)+filepath.Ext(pathFromURL(rawURL)))
 		if err := m.downloadURL(ctx, rawURL, path); err != nil {
 			return DownloadedArtwork{}, err
 		}
@@ -188,7 +188,7 @@ func (m *Manager) downloadArtwork(ctx context.Context, id int64) (DownloadedArtw
 		if rawURL == "" {
 			return DownloadedArtwork{}, fmt.Errorf("illust %d page %d has no downloadable image url", illust.ID, i)
 		}
-		path := filepath.Join(base, pixivutil.GenerateFilename(filenameData(illust), i, m.filenameTemplate)+filepath.Ext(pathFromURL(rawURL)))
+		path := filepath.Join(base, utils.GenerateFilename(filenameData(illust), i, m.filenameTemplate)+filepath.Ext(pathFromURL(rawURL)))
 		if err := m.downloadURL(ctx, rawURL, path); err != nil {
 			return DownloadedArtwork{}, err
 		}
@@ -209,12 +209,19 @@ func (m *Manager) downloadUgoira(ctx context.Context, illust pixiv.Illust, base 
 	if zipURL == "" {
 		return "", fmt.Errorf("ugoira %d has no zip url", illust.ID)
 	}
-	zipPath := filepath.Join(base, filepath.Base(pathFromURL(zipURL)))
-	if err := m.downloadURL(ctx, zipURL, zipPath); err != nil {
+	zipFile, err := os.CreateTemp(base, "ugoira-*.zip")
+	if err != nil {
+		return "", err
+	}
+	zipPath := zipFile.Name()
+	if err := zipFile.Close(); err != nil {
 		return "", err
 	}
 	defer os.Remove(zipPath)
-	outPath := filepath.Join(base, pixivutil.GenerateFilename(filenameData(illust), 0, m.filenameTemplate)+".gif")
+	if err := m.downloadURL(ctx, zipURL, zipPath); err != nil {
+		return "", err
+	}
+	outPath := filepath.Join(base, utils.GenerateFilename(filenameData(illust), 0, m.filenameTemplate)+".gif")
 	if err := m.ConvertUgoira(ctx, zipPath, meta.UgoiraMetadata.Frames, base, outPath); err != nil {
 		return "", err
 	}
@@ -222,20 +229,36 @@ func (m *Manager) downloadUgoira(ctx context.Context, illust pixiv.Illust, base 
 }
 
 func (m *Manager) downloadURL(ctx context.Context, rawURL, path string) error {
-	file, err := os.Create(path)
+	dir := filepath.Dir(path)
+	tmp, err := os.CreateTemp(dir, ".download-*")
 	if err != nil {
 		return err
 	}
-	defer file.Close()
-	return m.client.Download(ctx, rawURL, file)
+	tmpPath := tmp.Name()
+	cleanup := true
+	defer func() {
+		if cleanup {
+			_ = os.Remove(tmpPath)
+		}
+	}()
+	if err := m.client.Download(ctx, rawURL, tmp); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	// 只在完整下载并成功落盘后替换目标，避免网络中断留下半文件或破坏旧文件。
+	if err := replaceDownloadedFile(tmpPath, path); err != nil {
+		return err
+	}
+	cleanup = false
+	return nil
 }
 
 func (m *Manager) ConvertUgoira(ctx context.Context, zipPath string, frames []pixiv.UgoiraFrame, workDir, outputGIF string) error {
-	tempDir := filepath.Join(workDir, "temp_frames")
-	if err := os.RemoveAll(tempDir); err != nil {
-		return err
-	}
-	if err := os.MkdirAll(tempDir, 0o755); err != nil {
+	tempDir, err := os.MkdirTemp(workDir, "ugoira-frames-*")
+	if err != nil {
 		return err
 	}
 	defer os.RemoveAll(tempDir)
@@ -262,14 +285,38 @@ func (m *Manager) ConvertUgoira(ctx context.Context, zipPath string, frames []pi
 		return err
 	}
 
-	return m.runner.Run(ctx, tempDir, "ffmpeg",
+	outFile, err := os.CreateTemp(filepath.Dir(outputGIF), ".ugoira-*.gif")
+	if err != nil {
+		return err
+	}
+	tmpOutput := outFile.Name()
+	if err := outFile.Close(); err != nil {
+		_ = os.Remove(tmpOutput)
+		return err
+	}
+	cleanup := true
+	defer func() {
+		if cleanup {
+			_ = os.Remove(tmpOutput)
+		}
+	}()
+
+	if err := m.runner.Run(ctx, tempDir, "ffmpeg",
 		"-f", "concat",
 		"-safe", "0",
 		"-i", "frame_list.txt",
 		"-vf", "split[s0][s1];[s0]palettegen=stats_mode=single[p];[s1][p]paletteuse=new=1",
 		"-y",
-		outputGIF,
-	)
+		tmpOutput,
+	); err != nil {
+		return err
+	}
+	// GIF 转换也采用临时文件 + rename，避免 ffmpeg 失败时留下半文件或覆盖旧文件。
+	if err := replaceDownloadedFile(tmpOutput, outputGIF); err != nil {
+		return err
+	}
+	cleanup = false
+	return nil
 }
 
 func extractZipFile(file *zip.File, dstDir string) error {
@@ -310,8 +357,8 @@ func firstNonEmpty(values ...string) string {
 	return ""
 }
 
-func filenameData(illust pixiv.Illust) pixivutil.FilenameData {
-	return pixivutil.FilenameData{
+func filenameData(illust pixiv.Illust) utils.FilenameData {
+	return utils.FilenameData{
 		ID:        illust.ID,
 		Author:    illust.User.Name,
 		Title:     illust.Title,

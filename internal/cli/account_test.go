@@ -3,159 +3,452 @@ package cli
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
+	"html"
+	"io"
+	"net"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
+	"time"
+
+	"github.com/FlanChanXwO/pixiv-mcp-server/internal/cli/state"
+	"github.com/FlanChanXwO/pixiv-mcp-server/internal/config"
+	"github.com/FlanChanXwO/pixiv-mcp-server/internal/pixiv"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
-func TestAccountAddListUseRemove(t *testing.T) {
-	path := testConfigPath(t)
+func TestAccountAddListUseRemovePreservesOrder(t *testing.T) {
+	authPath, _ := useTempPaths(t)
 
 	var stdout, stderr bytes.Buffer
-	code := Run([]string{"pixiv", "account", "add", "--token", "foo=bar; refresh_token=main%2Ftoken", "main"}, strings.NewReader(""), &stdout, &stderr)
-	if code != 0 {
-		t.Fatalf("add main code=%d stderr=%s", code, stderr.String())
-	}
-	info, err := os.Stat(path)
-	if err != nil {
-		t.Fatalf("stat config: %v", err)
-	}
-	if got := info.Mode().Perm(); got != defaultConfigFileMode {
-		t.Fatalf("config mode = %v", got)
-	}
-	store, err := loadAccountStore(path)
-	if err != nil {
-		t.Fatalf("load store: %v", err)
-	}
-	if store.DefaultProfile != "main" || store.Accounts["main"].RefreshToken != "main/token" {
-		t.Fatalf("store = %+v", store)
-	}
+	code := Run([]string{"pixiv", "auth", "add", "--token", "foo=bar; refresh_token=main%2Ftoken", "main"}, strings.NewReader(""), &stdout, &stderr)
+	require.Equal(t, 0, code, stderr.String())
+
+	info, err := os.Stat(authPath)
+	require.NoError(t, err)
+	assert.Equal(t, os.FileMode(state.DefaultAuthFileMode), info.Mode().Perm())
+
+	store, err := state.LoadAuthStore(authPath)
+	require.NoError(t, err)
+	require.Equal(t, "main", store.DefaultAccount)
+	require.Len(t, store.Accounts, 1)
+	assert.Equal(t, "main/token", store.Accounts[0].RefreshToken)
 
 	stdout.Reset()
 	stderr.Reset()
-	code = Run([]string{"pixiv", "account", "add", "--token", "other-token", "other"}, strings.NewReader(""), &stdout, &stderr)
-	if code != 0 {
-		t.Fatalf("add other code=%d stderr=%s", code, stderr.String())
-	}
+	code = Run([]string{"pixiv", "auth", "add", "--token", "other-token", "other"}, strings.NewReader(""), &stdout, &stderr)
+	require.Equal(t, 0, code, stderr.String())
+
+	store, err = state.LoadAuthStore(authPath)
+	require.NoError(t, err)
+	require.Len(t, store.Accounts, 2)
+	assert.Equal(t, []string{"main", "other"}, store.Names())
 
 	stdout.Reset()
 	stderr.Reset()
-	code = Run([]string{"pixiv", "account", "use", "other"}, strings.NewReader(""), &stdout, &stderr)
-	if code != 0 {
-		t.Fatalf("use code=%d stderr=%s", code, stderr.String())
-	}
-	store, err = loadAccountStore(path)
-	if err != nil {
-		t.Fatalf("load store: %v", err)
-	}
-	if store.DefaultProfile != "other" {
-		t.Fatalf("default profile = %q", store.DefaultProfile)
-	}
+	code = Run([]string{"pixiv", "auth", "use", "other"}, strings.NewReader(""), &stdout, &stderr)
+	require.Equal(t, 0, code, stderr.String())
+
+	store, err = state.LoadAuthStore(authPath)
+	require.NoError(t, err)
+	assert.Equal(t, "other", store.DefaultAccount)
 
 	stdout.Reset()
 	stderr.Reset()
-	code = Run([]string{"pixiv", "account", "list", "--json"}, strings.NewReader(""), &stdout, &stderr)
-	if code != 0 {
-		t.Fatalf("list code=%d stderr=%s", code, stderr.String())
-	}
+	code = Run([]string{"pixiv", "auth", "list", "--json"}, strings.NewReader(""), &stdout, &stderr)
+	require.Equal(t, 0, code, stderr.String())
+
 	var out accountListOut
-	if err := json.Unmarshal(stdout.Bytes(), &out); err != nil {
-		t.Fatalf("decode JSON: %v\n%s", err, stdout.String())
-	}
-	if out.DefaultProfile != "other" || len(out.Accounts) != 2 {
-		t.Fatalf("list output = %+v", out)
-	}
-	if strings.Contains(stdout.String(), "other-token") || strings.Contains(stdout.String(), "main/token") {
-		t.Fatalf("list leaked token: %s", stdout.String())
-	}
+	require.NoError(t, json.Unmarshal(stdout.Bytes(), &out))
+	assert.Equal(t, "other", out.DefaultAccount)
+	require.Len(t, out.Accounts, 2)
+	assert.Equal(t, "main", out.Accounts[0].Name)
+	assert.Equal(t, "other", out.Accounts[1].Name)
+	assert.NotContains(t, stdout.String(), "other-token")
+	assert.NotContains(t, stdout.String(), "main/token")
 
 	stdout.Reset()
 	stderr.Reset()
-	code = Run([]string{"pixiv", "account", "remove", "other"}, strings.NewReader(""), &stdout, &stderr)
-	if code != 0 {
-		t.Fatalf("remove code=%d stderr=%s", code, stderr.String())
-	}
-	store, err = loadAccountStore(path)
-	if err != nil {
-		t.Fatalf("load store: %v", err)
-	}
-	if store.DefaultProfile != "main" {
-		t.Fatalf("default after remove = %q", store.DefaultProfile)
-	}
+	code = Run([]string{"pixiv", "auth", "remove", "other"}, strings.NewReader(""), &stdout, &stderr)
+	require.Equal(t, 0, code, stderr.String())
+
+	store, err = state.LoadAuthStore(authPath)
+	require.NoError(t, err)
+	assert.Equal(t, "main", store.DefaultAccount)
+	require.Len(t, store.Accounts, 1)
+	assert.Equal(t, "main", store.Accounts[0].Name)
 }
 
 func TestAccountAddReadsTokenFromStdin(t *testing.T) {
-	path := testConfigPath(t)
-	var stdout, stderr bytes.Buffer
+	authPath, _ := useTempPaths(t)
 
-	code := Run([]string{"pixiv", "account", "add", "main"}, strings.NewReader("stdin-token\n"), &stdout, &stderr)
-	if code != 0 {
-		t.Fatalf("code=%d stderr=%s", code, stderr.String())
-	}
-	store, err := loadAccountStore(path)
-	if err != nil {
-		t.Fatalf("load store: %v", err)
-	}
-	if store.Accounts["main"].RefreshToken != "stdin-token" {
-		t.Fatalf("store = %+v", store)
-	}
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"pixiv", "auth", "add", "main"}, strings.NewReader("stdin-token\n"), &stdout, &stderr)
+
+	require.Equal(t, 0, code, stderr.String())
+	store, err := state.LoadAuthStore(authPath)
+	require.NoError(t, err)
+	assert.Equal(t, "stdin-token", store.Accounts[0].RefreshToken)
 }
 
 func TestAccountAddRejectsCookieWithoutRefreshToken(t *testing.T) {
-	testConfigPath(t)
+	useTempPaths(t)
+
 	var stdout, stderr bytes.Buffer
-	code := Run([]string{"pixiv", "account", "add", "--token", "PHPSESSID=web; device_token=device", "main"}, strings.NewReader(""), &stdout, &stderr)
-	if code == 0 {
-		t.Fatalf("expected non-zero code")
-	}
-	if !strings.Contains(stderr.String(), "refresh_token") {
-		t.Fatalf("stderr = %q", stderr.String())
-	}
+	code := Run([]string{"pixiv", "auth", "add", "--token", "PHPSESSID=web; device_token=device", "main"}, strings.NewReader(""), &stdout, &stderr)
+
+	require.NotZero(t, code)
+	assert.Contains(t, stderr.String(), "refresh_token")
 }
 
-func TestClientConfigProfilePriority(t *testing.T) {
-	path := testConfigPath(t)
-	if err := saveAccountStore(path, accountStore{
-		DefaultProfile: "main",
-		Accounts: map[string]account{
-			"main":  {RefreshToken: "main-token"},
-			"other": {RefreshToken: "other-token"},
+func TestResolveRefreshTokenPriority(t *testing.T) {
+	useTempPaths(t)
+	store := state.AuthStore{
+		DefaultAccount: "main",
+		Accounts: []state.Account{
+			{Name: "main", RefreshToken: "main-token"},
+			{Name: "other", RefreshToken: "other-token"},
 		},
-	}); err != nil {
-		t.Fatal(err)
 	}
 	t.Setenv("PIXIV_REFRESH_TOKEN", "env-token")
 
-	a := app{in: strings.NewReader(""), out: &bytes.Buffer{}, errOut: &bytes.Buffer{}}
-	client, _, err := a.clientAndConfig(commandOptions{}, false)
-	if err != nil {
-		t.Fatal(err)
+	token, err := resolveRefreshToken(store, "", "")
+	require.NoError(t, err)
+	assert.Equal(t, "env-token", token)
+
+	token, err = resolveRefreshToken(store, "other", "")
+	require.NoError(t, err)
+	assert.Equal(t, "other-token", token)
+
+	token, err = resolveRefreshToken(store, "other", "flag-token")
+	require.NoError(t, err)
+	assert.Equal(t, "flag-token", token)
+}
+
+func TestAccountPromptFlows(t *testing.T) {
+	authPath, _ := useTempPaths(t)
+	setPromptStub(t, promptStub{
+		inputs:   []string{"main"},
+		secrets:  []string{"prompt-token"},
+		selects:  []string{"main", "main"},
+		confirms: []bool{true},
+	})
+
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"pixiv", "auth", "add"}, strings.NewReader(""), &stdout, &stderr)
+	require.Equal(t, 0, code, stderr.String())
+
+	store, err := state.LoadAuthStore(authPath)
+	require.NoError(t, err)
+	require.Len(t, store.Accounts, 1)
+	assert.Equal(t, "main", store.Accounts[0].Name)
+
+	stdout.Reset()
+	stderr.Reset()
+	code = Run([]string{"pixiv", "auth", "use"}, strings.NewReader(""), &stdout, &stderr)
+	require.Equal(t, 0, code, stderr.String())
+
+	stdout.Reset()
+	stderr.Reset()
+	code = Run([]string{"pixiv", "auth", "remove"}, strings.NewReader(""), &stdout, &stderr)
+	require.Equal(t, 0, code, stderr.String())
+
+	store, err = state.LoadAuthStore(authPath)
+	require.NoError(t, err)
+	assert.Empty(t, store.Accounts)
+}
+
+func TestAccountRemovePromptCancelKeepsData(t *testing.T) {
+	authPath, _ := useTempPaths(t)
+	require.NoError(t, state.SaveAuthStore(authPath, state.AuthStore{
+		DefaultAccount: "main",
+		Accounts:       []state.Account{{Name: "main", RefreshToken: "main-token"}},
+	}))
+	setPromptStub(t, promptStub{
+		selects:  []string{"main"},
+		confirms: []bool{false},
+	})
+
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"pixiv", "auth", "remove"}, strings.NewReader(""), &stdout, &stderr)
+
+	require.NotZero(t, code)
+	store, err := state.LoadAuthStore(authPath)
+	require.NoError(t, err)
+	require.Len(t, store.Accounts, 1)
+	assert.Equal(t, "main", store.Accounts[0].Name)
+}
+
+func TestAccountLoginNoOpenStoresProfile(t *testing.T) {
+	authPath, _ := useTempPaths(t)
+	addr := freeLoopbackAddr(t)
+
+	oauth := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, "/auth/token", r.URL.Path)
+		require.Equal(t, pixiv.DefaultUserAgent, r.Header.Get("User-Agent"))
+		require.NoError(t, r.ParseForm())
+		assert.Equal(t, "authorization_code", r.Form.Get("grant_type"))
+		assert.Equal(t, "manual-code", r.Form.Get("code"))
+		assert.NotEmpty(t, r.Form.Get("code_verifier"))
+		assert.Equal(t, pixiv.DefaultOAuthRedirectURI, r.Form.Get("redirect_uri"))
+		require.NoError(t, json.NewEncoder(w).Encode(map[string]any{
+			"access_token":  "access-secret",
+			"refresh_token": "refresh-secret",
+			"user":          map[string]any{"id": "12345"},
+		}))
+	}))
+	defer oauth.Close()
+	restoreOAuthBase := setTestOAuthBase(t, oauth.URL)
+	defer restoreOAuthBase()
+
+	calledOpen := false
+	restoreOpen := setTestOpenBrowser(t, func(string) error {
+		calledOpen = true
+		return nil
+	})
+	defer restoreOpen()
+
+	var stdout, stderr bytes.Buffer
+	run := startAsyncCLIRun([]string{"pixiv", "auth", "login", "--addr", addr, "--no-open", "--timeout", "5s", "main"}, strings.NewReader(""), &stdout, &stderr)
+	defer run.wait()
+
+	waitForLoginServer(t, addr)
+	resp, err := http.PostForm("http://"+addr+"/manual", url.Values{"code": {"manual-code"}})
+	require.NoError(t, err)
+	_, _ = io.Copy(io.Discard, resp.Body)
+	_ = resp.Body.Close()
+
+	require.Equal(t, 0, run.waitWithin(t, 5*time.Second), stderr.String())
+	assert.False(t, calledOpen)
+
+	store, err := state.LoadAuthStore(authPath)
+	require.NoError(t, err)
+	require.Equal(t, "main", store.DefaultAccount)
+	require.Len(t, store.Accounts, 1)
+	assert.Equal(t, "refresh-secret", store.Accounts[0].RefreshToken)
+	assert.Equal(t, int64(12345), store.Accounts[0].UserID)
+	assert.NotContains(t, stdout.String(), "refresh-secret")
+	assert.NotContains(t, stderr.String(), "refresh-secret")
+}
+
+func TestAccountLoginBrowserFailureFallsBackToTerminalPrompt(t *testing.T) {
+	authPath, _ := useTempPaths(t)
+	addr := freeLoopbackAddr(t)
+	oauth := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.NoError(t, r.ParseForm())
+		assert.Equal(t, "terminal-code", r.Form.Get("code"))
+		require.NoError(t, json.NewEncoder(w).Encode(map[string]any{
+			"refresh_token": "prompt-refresh-secret",
+			"user":          map[string]any{"id": "24680"},
+		}))
+	}))
+	defer oauth.Close()
+	restoreOAuthBase := setTestOAuthBase(t, oauth.URL)
+	defer restoreOAuthBase()
+	restoreOpen := setTestOpenBrowser(t, func(string) error {
+		return errors.New("opener unavailable")
+	})
+	defer restoreOpen()
+	setPromptStub(t, promptStub{
+		inputs: []string{"main", "terminal-code"},
+	})
+
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"pixiv", "auth", "login", "--addr", addr, "--timeout", "5s"}, strings.NewReader(""), &stdout, &stderr)
+
+	require.Equal(t, 0, code, stderr.String())
+	store, err := state.LoadAuthStore(authPath)
+	require.NoError(t, err)
+	require.Len(t, store.Accounts, 1)
+	assert.Equal(t, "main", store.Accounts[0].Name)
+	assert.Equal(t, "prompt-refresh-secret", store.Accounts[0].RefreshToken)
+	assert.Contains(t, stderr.String(), "warning: could not open browser")
+}
+
+func setTestOAuthBase(t *testing.T, baseURL string) func() {
+	t.Helper()
+	return setLoginOAuthBaseForTest(baseURL)
+}
+
+func setTestOpenBrowser(t *testing.T, opener func(string) error) func() {
+	t.Helper()
+	return setOpenBrowserForTest(opener)
+}
+
+func setTestCLIClientFactory(t *testing.T, factory func(clientConfig) (cliPixivClient, error)) {
+	t.Helper()
+	old := newCLIClient
+	newCLIClient = factory
+	t.Cleanup(func() { newCLIClient = old })
+}
+
+type promptStub struct {
+	inputs   []string
+	secrets  []string
+	selects  []string
+	confirms []bool
+}
+
+func setPromptStub(t *testing.T, stub promptStub) {
+	t.Helper()
+	oldCanPrompt := canPrompt
+	oldInput := promptInput
+	oldSecret := promptSecret
+	oldSelect := promptSelect
+	oldConfirm := promptConfirm
+	canPrompt = func(app) bool { return true }
+	promptInput = func(a app, message, defaultValue string) (string, error) {
+		require.NotEmpty(t, stub.inputs, "missing prompt input for %s", message)
+		value := stub.inputs[0]
+		stub.inputs = stub.inputs[1:]
+		return value, nil
 	}
-	if client.RefreshTokenValue() != "env-token" {
-		t.Fatalf("token = %q", client.RefreshTokenValue())
+	promptSecret = func(a app, message string) (string, error) {
+		require.NotEmpty(t, stub.secrets, "missing prompt secret for %s", message)
+		value := stub.secrets[0]
+		stub.secrets = stub.secrets[1:]
+		return value, nil
 	}
-	client, _, err = a.clientAndConfig(commandOptions{profile: "other"}, false)
-	if err != nil {
-		t.Fatal(err)
+	promptSelect = func(a app, message string, options []string) (string, error) {
+		require.NotEmpty(t, stub.selects, "missing prompt select for %s", message)
+		value := stub.selects[0]
+		stub.selects = stub.selects[1:]
+		return value, nil
 	}
-	if client.RefreshTokenValue() != "other-token" {
-		t.Fatalf("token = %q", client.RefreshTokenValue())
+	promptConfirm = func(a app, message string, defaultValue bool) (bool, error) {
+		require.NotEmpty(t, stub.confirms, "missing prompt confirm for %s", message)
+		value := stub.confirms[0]
+		stub.confirms = stub.confirms[1:]
+		return value, nil
 	}
-	client, _, err = a.clientAndConfig(commandOptions{profile: "other", refreshToken: "flag-token"}, false)
-	if err != nil {
-		t.Fatal(err)
+	t.Cleanup(func() {
+		canPrompt = oldCanPrompt
+		promptInput = oldInput
+		promptSecret = oldSecret
+		promptSelect = oldSelect
+		promptConfirm = oldConfirm
+	})
+}
+
+func useTempPaths(t *testing.T) (string, string) {
+	t.Helper()
+	base := filepath.Join(t.TempDir(), "pixiv")
+	authPath := filepath.Join(base, "auth.json")
+	configPath := filepath.Join(base, "config.toml")
+	t.Cleanup(state.SetAuthFilePathForTest(authPath))
+	t.Cleanup(config.SetFilePathForTest(configPath))
+	return authPath, configPath
+}
+
+type asyncCLIRun struct {
+	done     chan int
+	mu       sync.Mutex
+	received bool
+	code     int
+}
+
+func startAsyncCLIRun(args []string, in io.Reader, out io.Writer, errOut io.Writer) *asyncCLIRun {
+	run := &asyncCLIRun{done: make(chan int, 1)}
+	go func() {
+		run.done <- Run(args, in, out, errOut)
+	}()
+	return run
+}
+
+func (r *asyncCLIRun) wait() int {
+	r.mu.Lock()
+	if r.received {
+		code := r.code
+		r.mu.Unlock()
+		return code
 	}
-	if client.RefreshTokenValue() != "flag-token" {
-		t.Fatalf("token = %q", client.RefreshTokenValue())
+	r.mu.Unlock()
+
+	code := <-r.done
+	r.mu.Lock()
+	if !r.received {
+		r.code = code
+		r.received = true
+	}
+	code = r.code
+	r.mu.Unlock()
+	return code
+}
+
+func (r *asyncCLIRun) waitWithin(t *testing.T, timeout time.Duration) int {
+	t.Helper()
+	r.mu.Lock()
+	if r.received {
+		code := r.code
+		r.mu.Unlock()
+		return code
+	}
+	r.mu.Unlock()
+
+	select {
+	case code := <-r.done:
+		r.mu.Lock()
+		if !r.received {
+			r.code = code
+			r.received = true
+		}
+		code = r.code
+		r.mu.Unlock()
+		return code
+	case <-time.After(timeout):
+		t.Fatalf("login command did not finish")
+		return 1
 	}
 }
 
-func testConfigPath(t *testing.T) string {
+func freeLoopbackAddr(t *testing.T) string {
 	t.Helper()
-	path := filepath.Join(t.TempDir(), "pixiv", "config.json")
-	old := configPath
-	configPath = func() (string, error) { return path, nil }
-	t.Cleanup(func() { configPath = old })
-	return path
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	addr := ln.Addr().String()
+	require.NoError(t, ln.Close())
+	return addr
+}
+
+func waitForLoginServer(t *testing.T, addr string) string {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		resp, err := http.Get("http://" + addr + "/")
+		if err == nil {
+			body, _ := io.ReadAll(resp.Body)
+			_ = resp.Body.Close()
+			return string(body)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("login server did not start at %s", addr)
+	return ""
+}
+
+func loginURLFromPage(t *testing.T, page string) string {
+	t.Helper()
+	const marker = `href="`
+	start := strings.Index(page, marker)
+	require.GreaterOrEqual(t, start, 0, page)
+	start += len(marker)
+	end := strings.Index(page[start:], `"`)
+	require.GreaterOrEqual(t, end, 0, page)
+	return html.UnescapeString(page[start : start+end])
+}
+
+func loginState(t *testing.T, rawURL string) string {
+	t.Helper()
+	parsed, err := url.Parse(rawURL)
+	require.NoError(t, err)
+	state := parsed.Query().Get("state")
+	require.NotEmpty(t, state)
+	return state
 }

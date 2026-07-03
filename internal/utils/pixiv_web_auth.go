@@ -1,13 +1,13 @@
-package pixivutil
+package utils
 
 import (
 	"net/url"
 	"strings"
 )
 
-// ParseRefreshTokenInput 接受原始 refresh token，或包含 refresh_token 键的 Cookie 字符串。
+// ParsePixivWebRefreshTokenInput 接受原始 refresh token，或包含 refresh_token 键的 Cookie 字符串。
 // Pixiv 网页 Cookie 中常见的 PHPSESSID/device_token 不是 App API 的 OAuth refresh token。
-func ParseRefreshTokenInput(input string) (token string, parsedCookie bool) {
+func ParsePixivWebRefreshTokenInput(input string) (token string, parsedCookie bool) {
 	value := strings.TrimSpace(input)
 	if value == "" {
 		return "", false

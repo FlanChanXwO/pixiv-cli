@@ -4,13 +4,14 @@ import (
 	"bufio"
 	"context"
 	"errors"
-	"flag"
 	"fmt"
 	"io"
 	"strings"
 
-	"github.com/FlanChanXwO/pixiv-mcp-server/pkg/config"
-	"github.com/FlanChanXwO/pixiv-mcp-server/pkg/pixivutil"
+	"github.com/FlanChanXwO/pixiv-mcp-server/internal/cli/state"
+	"github.com/FlanChanXwO/pixiv-mcp-server/internal/config"
+	"github.com/FlanChanXwO/pixiv-mcp-server/internal/utils"
+	"github.com/spf13/cobra"
 )
 
 type accountOut struct {
@@ -21,126 +22,134 @@ type accountOut struct {
 }
 
 type accountListOut struct {
-	DefaultProfile string       `json:"default_profile,omitempty"`
+	DefaultAccount string       `json:"default_account,omitempty"`
 	Accounts       []accountOut `json:"accounts"`
 }
 
-func (a app) runAccount(args []string) error {
-	if len(args) == 0 || args[0] == "-h" || args[0] == "--help" {
-		a.printAccountHelp(a.out)
-		return nil
-	}
-	switch args[0] {
-	case "add":
-		return a.accountAdd(args[1:])
-	case "list":
-		return a.accountList(args[1:])
-	case "remove":
-		return a.accountRemove(args[1:])
-	case "use":
-		return a.accountUse(args[1:])
-	case "check":
-		return a.accountCheck(args[1:])
-	default:
-		return fmt.Errorf("unknown account command %q", args[0])
-	}
+type accountAddOptions struct {
+	token   string
+	jsonOut bool
 }
 
-func (a app) printAccountHelp(w io.Writer) {
-	fmt.Fprint(w, `Usage: pixiv account <command> [options]
-
-Commands:
-  add NAME       Add or replace a profile
-  list           List profiles
-  remove NAME    Remove a profile
-  use NAME       Set the default profile
-  check [NAME]   Validate a profile token
-`)
+type accountRemoveOptions struct {
+	jsonOut bool
+	yes     bool
 }
 
-func (a app) accountAdd(args []string) error {
-	var token string
-	var jsonOut bool
-	fs := flag.NewFlagSet("account add", flag.ContinueOnError)
-	fs.SetOutput(a.errOut)
-	fs.StringVar(&token, "token", "", "Pixiv refresh token or cookie with refresh_token")
-	fs.BoolVar(&jsonOut, "json", false, "print JSON")
-	if err := fs.Parse(args); err != nil {
+func (a app) newAccountCommand() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "auth",
+		Short: "Manage local Pixiv authentication",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return cmd.Help()
+		},
+	}
+	cmd.AddCommand(
+		a.newAccountAddCommand(),
+		a.newAccountLoginCommand(),
+		a.newAccountListCommand(),
+		a.newAccountRemoveCommand(),
+		a.newAccountUseCommand(),
+		a.newAccountCheckCommand(),
+	)
+	return cmd
+}
+
+func (a app) newAccountAddCommand() *cobra.Command {
+	opts := accountAddOptions{}
+	cmd := &cobra.Command{
+		Use:     "add [NAME]",
+		Short:   "Add or replace an account",
+		Example: "pixiv auth add main --token YOUR_REFRESH_TOKEN",
+		Args:    requireMaxArgs(1, "pixiv auth add [NAME] [--token TOKEN]"),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return a.accountAdd(args, opts)
+		},
+	}
+	flags := cmd.Flags()
+	flags.StringVar(&opts.token, "token", "", "Pixiv refresh token or cookie with refresh_token")
+	flags.BoolVar(&opts.jsonOut, "json", false, "print JSON")
+	return cmd
+}
+
+func (a app) accountAdd(args []string, opts accountAddOptions) error {
+	name, err := a.resolveAccountNameArg(args, "account name")
+	if err != nil {
 		return err
 	}
-	if fs.NArg() != 1 {
-		return errors.New("usage: pixiv account add NAME [--token TOKEN]")
-	}
-	name := fs.Arg(0)
-	if err := validateProfileName(name); err != nil {
+	if err := state.ValidateAccountName(name); err != nil {
 		return err
 	}
+	tokenInput, err := a.resolveRefreshTokenInput(opts.token)
+	if err != nil {
+		return err
+	}
+	token, parsedCookie := utils.ParsePixivWebRefreshTokenInput(tokenInput)
 	if token == "" {
-		fmt.Fprint(a.errOut, "refresh token: ")
-		read, err := readTokenLine(a.in)
-		if err != nil {
-			return err
-		}
-		token = read
-	}
-	parsed, parsedCookie := pixivutil.ParseRefreshTokenInput(token)
-	if parsed == "" {
 		if parsedCookie {
 			return errors.New("cookie does not contain refresh_token")
 		}
 		return errors.New("refresh token cannot be empty")
 	}
-	path, err := configPath()
+
+	path, err := state.AuthFilePath()
 	if err != nil {
 		return err
 	}
-	store, err := loadAccountStore(path)
+	store, err := state.LoadAuthStore(path)
 	if err != nil {
 		return err
 	}
-	store.Accounts[name] = account{RefreshToken: parsed}
-	if store.DefaultProfile == "" {
-		store.DefaultProfile = name
+	userID := int64(0)
+	if _, acct, ok := store.Get(name); ok {
+		userID = acct.UserID
 	}
-	if err := saveAccountStore(path, store); err != nil {
+	store.Upsert(state.Account{Name: name, RefreshToken: token, UserID: userID})
+	if store.DefaultAccount == "" {
+		store.DefaultAccount = name
+	}
+	if err := state.SaveAuthStore(path, store); err != nil {
 		return err
 	}
-	out := accountOut{Name: name, Default: store.DefaultProfile == name, HasToken: true}
-	if jsonOut {
+	out := accountOut{Name: name, Default: store.DefaultAccount == name, HasToken: true, UserID: userID}
+	if opts.jsonOut {
 		return a.printJSON(out)
 	}
 	fmt.Fprintf(a.out, "account %q saved\n", name)
 	if out.Default {
-		fmt.Fprintf(a.out, "default profile: %s\n", name)
+		fmt.Fprintf(a.out, "default account: %s\n", name)
 	}
 	return nil
 }
 
-func (a app) accountList(args []string) error {
+func (a app) newAccountListCommand() *cobra.Command {
 	var jsonOut bool
-	fs := flag.NewFlagSet("account list", flag.ContinueOnError)
-	fs.SetOutput(a.errOut)
-	fs.BoolVar(&jsonOut, "json", false, "print JSON")
-	if err := fs.Parse(args); err != nil {
-		return err
+	cmd := &cobra.Command{
+		Use:   "list",
+		Short: "List accounts",
+		Args:  requireExactArgs(0, "pixiv auth list [--json]"),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return a.accountList(jsonOut)
+		},
 	}
-	if fs.NArg() != 0 {
-		return errors.New("usage: pixiv account list [--json]")
-	}
-	path, err := configPath()
+	cmd.Flags().BoolVar(&jsonOut, "json", false, "print JSON")
+	return cmd
+}
+
+func (a app) accountList(jsonOut bool) error {
+	path, err := state.AuthFilePath()
 	if err != nil {
 		return err
 	}
-	store, err := loadAccountStore(path)
+	store, err := state.LoadAuthStore(path)
 	if err != nil {
 		return err
 	}
-	out := accountListOut{DefaultProfile: store.DefaultProfile}
-	for _, name := range profileNames(store) {
-		acct := store.Accounts[name]
+	out := accountListOut{DefaultAccount: store.DefaultAccount}
+	for _, acct := range store.Accounts {
 		out.Accounts = append(out.Accounts, accountOut{
-			Name:     name,
-			Default:  store.DefaultProfile == name,
+			Name:     acct.Name,
+			Default:  acct.Name == store.DefaultAccount,
 			UserID:   acct.UserID,
 			HasToken: acct.RefreshToken != "",
 		})
@@ -166,117 +175,154 @@ func (a app) accountList(args []string) error {
 	return nil
 }
 
-func (a app) accountRemove(args []string) error {
-	var jsonOut bool
-	fs := flag.NewFlagSet("account remove", flag.ContinueOnError)
-	fs.SetOutput(a.errOut)
-	fs.BoolVar(&jsonOut, "json", false, "print JSON")
-	if err := fs.Parse(args); err != nil {
-		return err
+func (a app) newAccountRemoveCommand() *cobra.Command {
+	opts := accountRemoveOptions{}
+	cmd := &cobra.Command{
+		Use:   "remove [NAME]",
+		Short: "Remove an account",
+		Args:  requireMaxArgs(1, "pixiv auth remove [NAME] [--yes]"),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return a.accountRemove(args, opts)
+		},
 	}
-	if fs.NArg() != 1 {
-		return errors.New("usage: pixiv account remove NAME")
-	}
-	name := fs.Arg(0)
-	path, err := configPath()
+	flags := cmd.Flags()
+	flags.BoolVar(&opts.jsonOut, "json", false, "print JSON")
+	flags.BoolVar(&opts.yes, "yes", false, "skip confirmation in interactive terminals")
+	return cmd
+}
+
+func (a app) accountRemove(args []string, opts accountRemoveOptions) error {
+	path, err := state.AuthFilePath()
 	if err != nil {
 		return err
 	}
-	store, err := loadAccountStore(path)
+	store, err := state.LoadAuthStore(path)
 	if err != nil {
 		return err
 	}
-	if _, ok := store.Accounts[name]; !ok {
-		return fmt.Errorf("profile %q not found", name)
+	name, err := a.resolveExistingAccountName(store, args, "Select account to remove")
+	if err != nil {
+		return err
 	}
-	delete(store.Accounts, name)
-	if store.DefaultProfile == name {
-		store.DefaultProfile = ""
-		names := profileNames(store)
-		if len(names) > 0 {
-			store.DefaultProfile = names[0]
+	if canPrompt(a) && !opts.yes {
+		ok, err := promptConfirm(a, fmt.Sprintf("Remove account %q?", name), false)
+		if err != nil {
+			return err
+		}
+		if !ok {
+			return errors.New("account removal canceled")
 		}
 	}
-	if err := saveAccountStore(path, store); err != nil {
+	if !store.Remove(name) {
+		return fmt.Errorf("account %q not found", name)
+	}
+	if err := state.SaveAuthStore(path, store); err != nil {
 		return err
 	}
-	if jsonOut {
-		return a.printJSON(map[string]string{"removed": name, "default_profile": store.DefaultProfile})
+	if opts.jsonOut {
+		return a.printJSON(map[string]string{"removed": name, "default_account": store.DefaultAccount})
 	}
 	fmt.Fprintf(a.out, "account %q removed\n", name)
-	if store.DefaultProfile != "" {
-		fmt.Fprintf(a.out, "default profile: %s\n", store.DefaultProfile)
+	if store.DefaultAccount != "" {
+		fmt.Fprintf(a.out, "default account: %s\n", store.DefaultAccount)
 	}
 	return nil
 }
 
-func (a app) accountUse(args []string) error {
+func (a app) newAccountUseCommand() *cobra.Command {
 	var jsonOut bool
-	fs := flag.NewFlagSet("account use", flag.ContinueOnError)
-	fs.SetOutput(a.errOut)
-	fs.BoolVar(&jsonOut, "json", false, "print JSON")
-	if err := fs.Parse(args); err != nil {
-		return err
+	cmd := &cobra.Command{
+		Use:   "use [NAME]",
+		Short: "Set the default account",
+		Args:  requireMaxArgs(1, "pixiv auth use [NAME]"),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return a.accountUse(args, jsonOut)
+		},
 	}
-	if fs.NArg() != 1 {
-		return errors.New("usage: pixiv account use NAME")
-	}
-	name := fs.Arg(0)
-	path, err := configPath()
+	cmd.Flags().BoolVar(&jsonOut, "json", false, "print JSON")
+	return cmd
+}
+
+func (a app) accountUse(args []string, jsonOut bool) error {
+	path, err := state.AuthFilePath()
 	if err != nil {
 		return err
 	}
-	store, err := loadAccountStore(path)
+	store, err := state.LoadAuthStore(path)
 	if err != nil {
 		return err
 	}
-	if _, ok := store.Accounts[name]; !ok {
-		return fmt.Errorf("profile %q not found", name)
+	name, err := a.resolveExistingAccountName(store, args, "Select default account")
+	if err != nil {
+		return err
 	}
-	store.DefaultProfile = name
-	if err := saveAccountStore(path, store); err != nil {
+	if !store.Has(name) {
+		return fmt.Errorf("account %q not found", name)
+	}
+	store.DefaultAccount = name
+	if err := state.SaveAuthStore(path, store); err != nil {
 		return err
 	}
 	if jsonOut {
-		return a.printJSON(map[string]string{"default_profile": name})
+		return a.printJSON(map[string]string{"default_account": name})
 	}
-	fmt.Fprintf(a.out, "default profile: %s\n", name)
+	fmt.Fprintf(a.out, "default account: %s\n", name)
 	return nil
 }
 
-func (a app) accountCheck(args []string) error {
+func (a app) newAccountCheckCommand() *cobra.Command {
 	var jsonOut bool
-	fs := flag.NewFlagSet("account check", flag.ContinueOnError)
-	fs.SetOutput(a.errOut)
-	fs.BoolVar(&jsonOut, "json", false, "print JSON")
-	if err := fs.Parse(args); err != nil {
-		return err
+	cmd := &cobra.Command{
+		Use:   "check [NAME]",
+		Short: "Validate an account token",
+		Args:  requireMaxArgs(1, "pixiv auth check [NAME]"),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			name := ""
+			if len(args) == 1 {
+				name = args[0]
+			}
+			return a.accountCheck(name, jsonOut)
+		},
 	}
-	if fs.NArg() > 1 {
-		return errors.New("usage: pixiv account check [NAME]")
-	}
-	name := ""
-	if fs.NArg() == 1 {
-		name = fs.Arg(0)
-	}
-	path, err := configPath()
+	cmd.Flags().BoolVar(&jsonOut, "json", false, "print JSON")
+	return cmd
+}
+
+func (a app) accountCheck(name string, jsonOut bool) error {
+	settings, err := config.LoadSettingsState()
 	if err != nil {
 		return err
 	}
-	store, err := loadAccountStore(path)
+	cfg, err := settings.Runtime()
 	if err != nil {
 		return err
 	}
-	selected, acct, ok := selectAccount(store, name)
-	cfg := config.LoadFromEnv()
-	if ok {
+	path, err := state.AuthFilePath()
+	if err != nil {
+		return err
+	}
+	store, err := state.LoadAuthStore(path)
+	if err != nil {
+		return err
+	}
+	selectedName := ""
+	if strings.TrimSpace(name) != "" {
+		selectedName = strings.TrimSpace(name)
+		_, acct, ok := state.SelectAuthAccount(store, selectedName)
+		if !ok {
+			return fmt.Errorf("account %q not found", selectedName)
+		}
 		cfg.RefreshToken = acct.RefreshToken
-	} else if name != "" {
-		return fmt.Errorf("profile %q not found", name)
-	} else if cfg.RefreshToken == "" {
-		return errors.New("no profile or PIXIV_REFRESH_TOKEN to check")
+	} else if token := config.RefreshTokenFromEnv(); token != "" {
+		cfg.RefreshToken = token
+	} else if chosen, acct, ok := state.SelectAuthAccount(store, ""); ok {
+		selectedName = chosen
+		cfg.RefreshToken = acct.RefreshToken
 	}
-	client, err := newPixivClient(cfg)
+	if cfg.RefreshToken == "" {
+		return errors.New("no account or PIXIV_REFRESH_TOKEN to check")
+	}
+	client, err := newPixivClient(clientConfig{RuntimeConfig: cfg})
 	if err != nil {
 		return err
 	}
@@ -284,23 +330,59 @@ func (a app) accountCheck(args []string) error {
 		return err
 	}
 	userID := client.UserID()
-	if ok {
-		acct.UserID = userID
-		store.Accounts[selected] = acct
-		if err := saveAccountStore(path, store); err != nil {
-			return err
+	if selectedName != "" {
+		if idx, acct, ok := store.Get(selectedName); ok {
+			acct.UserID = userID
+			store.Accounts[idx] = acct
+			if err := state.SaveAuthStore(path, store); err != nil {
+				return err
+			}
 		}
 	}
-	out := accountOut{Name: selected, Default: selected != "" && selected == store.DefaultProfile, UserID: userID, HasToken: true}
+	out := accountOut{Name: selectedName, Default: selectedName != "" && selectedName == store.DefaultAccount, UserID: userID, HasToken: true}
 	if jsonOut {
 		return a.printJSON(out)
 	}
-	if selected == "" {
+	if selectedName == "" {
 		fmt.Fprintf(a.out, "token ok, user_id:%d\n", userID)
 		return nil
 	}
-	fmt.Fprintf(a.out, "account %q ok, user_id:%d\n", selected, userID)
+	fmt.Fprintf(a.out, "account %q ok, user_id:%d\n", selectedName, userID)
 	return nil
+}
+
+func (a app) resolveAccountNameArg(args []string, promptLabel string) (string, error) {
+	if len(args) > 0 && strings.TrimSpace(args[0]) != "" {
+		return strings.TrimSpace(args[0]), nil
+	}
+	if !canPrompt(a) {
+		return "", errors.New("account name is required")
+	}
+	return promptInput(a, promptLabel, "")
+}
+
+func (a app) resolveExistingAccountName(store state.AuthStore, args []string, promptLabel string) (string, error) {
+	if len(args) > 0 && strings.TrimSpace(args[0]) != "" {
+		return strings.TrimSpace(args[0]), nil
+	}
+	if !canPrompt(a) {
+		return "", errors.New("account name is required")
+	}
+	if len(store.Accounts) == 0 {
+		return "", errors.New("no accounts")
+	}
+	return promptSelect(a, promptLabel, store.Names())
+}
+
+func (a app) resolveRefreshTokenInput(tokenFlag string) (string, error) {
+	if strings.TrimSpace(tokenFlag) != "" {
+		return tokenFlag, nil
+	}
+	if canPrompt(a) {
+		return promptSecret(a, "Refresh token")
+	}
+	writePrompt(a.errOut, "refresh token: ")
+	return readTokenLine(a.in)
 }
 
 func readTokenLine(r io.Reader) (string, error) {

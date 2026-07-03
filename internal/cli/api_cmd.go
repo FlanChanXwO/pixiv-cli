@@ -10,56 +10,95 @@ import (
 
 	"github.com/FlanChanXwO/pixiv-mcp-server/internal/download"
 	"github.com/FlanChanXwO/pixiv-mcp-server/internal/pixiv"
+	"github.com/spf13/cobra"
 )
 
-func (a app) runSearch(args []string) error {
-	var opts commandOptions
-	fs := a.flagSet("search", &opts)
-	target := fs.String("search-target", "partial_match_for_tags", "search target")
-	sortMode := fs.String("sort", "date_desc", "sort mode")
-	duration := fs.String("duration", "", "duration")
-	offset := fs.Int("offset", 0, "offset")
-	r18 := fs.Bool("r18", false, "append R-18 to the search word")
-	if err := fs.Parse(args); err != nil {
-		return err
+type searchOptions struct {
+	commandOptions
+	target   string
+	sortMode string
+	duration string
+	offset   int
+	r18      bool
+}
+
+type rankingOptions struct {
+	commandOptions
+	mode   string
+	date   string
+	offset int
+}
+
+type recommendedOptions struct {
+	commandOptions
+	offset int
+}
+
+func (a app) newSearchCommand() *cobra.Command {
+	opts := searchOptions{
+		target:   string(pixiv.SearchTargetPartialMatchForTags),
+		sortMode: string(pixiv.SortModeDateDesc),
 	}
-	if fs.NArg() == 0 {
-		return fmt.Errorf("usage: pixiv search [options] WORD")
+	cmd := &cobra.Command{
+		Use:     "search WORD",
+		Short:   "Search illustrations",
+		Example: "pixiv search \"初音ミク\" --json",
+		Args:    requireMinArgs(1, "pixiv search [options] WORD"),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return a.runSearch(cmd, args, opts)
+		},
 	}
-	word := strings.Join(fs.Args(), " ")
-	if *r18 {
+	a.bindCommonFlags(cmd, &opts.commandOptions)
+	flags := cmd.Flags()
+	flags.StringVar(&opts.target, "search-target", opts.target, "search target")
+	flags.StringVar(&opts.sortMode, "sort", opts.sortMode, "sort mode")
+	flags.StringVar(&opts.duration, "duration", "", "duration")
+	flags.IntVar(&opts.offset, "offset", 0, "offset")
+	flags.BoolVar(&opts.r18, "r18", false, "append R-18 to the search word")
+	return cmd
+}
+
+func (a app) runSearch(cmd *cobra.Command, args []string, opts searchOptions) error {
+	word := strings.Join(args, " ")
+	if opts.r18 {
 		word += " R-18"
 	}
-	client, _, err := a.clientAndConfig(opts, false)
+	client, _, jsonOut, err := a.clientAndConfig(cmd, opts.commandOptions, false)
 	if err != nil {
 		return err
 	}
-	result, err := client.SearchIllust(context.Background(), word, *target, *sortMode, *duration, *offset)
+	result, err := client.SearchIllust(context.Background(), word, opts.target, opts.sortMode, opts.duration, opts.offset)
 	if err != nil {
 		return err
 	}
-	if opts.jsonOut {
+	if jsonOut {
 		return a.printJSON(result)
 	}
 	fmt.Fprintf(a.out, "found %d illustrations for %q\n", len(result.Illusts), word)
-	printIllusts(a.out, result.Illusts, *offset, false)
+	printIllusts(a.out, result.Illusts, opts.offset, false)
 	return nil
 }
 
-func (a app) runDetail(args []string) error {
+func (a app) newDetailCommand() *cobra.Command {
 	var opts commandOptions
-	fs := a.flagSet("detail", &opts)
-	if err := fs.Parse(args); err != nil {
-		return err
+	cmd := &cobra.Command{
+		Use:   "detail ILLUST_ID",
+		Short: "Show one illustration",
+		Args:  requireExactArgs(1, "pixiv detail [options] ILLUST_ID"),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return a.runDetail(cmd, args[0], opts)
+		},
 	}
-	if fs.NArg() != 1 {
-		return fmt.Errorf("usage: pixiv detail [options] ILLUST_ID")
-	}
-	id, err := parseInt64Arg(fs.Arg(0), "illust_id")
+	a.bindCommonFlags(cmd, &opts)
+	return cmd
+}
+
+func (a app) runDetail(cmd *cobra.Command, arg string, opts commandOptions) error {
+	id, err := parseInt64Arg(arg, "illust_id")
 	if err != nil {
 		return err
 	}
-	client, _, err := a.clientAndConfig(opts, false)
+	client, _, jsonOut, err := a.clientAndConfig(cmd, opts, false)
 	if err != nil {
 		return err
 	}
@@ -67,85 +106,104 @@ func (a app) runDetail(args []string) error {
 	if err != nil {
 		return err
 	}
-	if opts.jsonOut {
+	if jsonOut {
 		return a.printJSON(result)
 	}
 	printIllust(a.out, result.Illust, 0, false)
 	return nil
 }
 
-func (a app) runRanking(args []string) error {
-	var opts commandOptions
-	fs := a.flagSet("ranking", &opts)
-	mode := fs.String("mode", "day", "ranking mode")
-	date := fs.String("date", "", "YYYY-MM-DD")
-	offset := fs.Int("offset", 0, "offset")
-	if err := fs.Parse(args); err != nil {
-		return err
+func (a app) newRankingCommand() *cobra.Command {
+	opts := rankingOptions{mode: string(pixiv.RankingModeDay)}
+	cmd := &cobra.Command{
+		Use:   "ranking",
+		Short: "Show illustration ranking",
+		Args:  requireExactArgs(0, "pixiv ranking [options]"),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return a.runRanking(cmd, opts)
+		},
 	}
-	if fs.NArg() != 0 {
-		return fmt.Errorf("usage: pixiv ranking [options]")
-	}
-	client, _, err := a.clientAndConfig(opts, false)
+	a.bindCommonFlags(cmd, &opts.commandOptions)
+	flags := cmd.Flags()
+	flags.StringVar(&opts.mode, "mode", opts.mode, "ranking mode")
+	flags.StringVar(&opts.date, "date", "", "YYYY-MM-DD")
+	flags.IntVar(&opts.offset, "offset", 0, "offset")
+	return cmd
+}
+
+func (a app) runRanking(cmd *cobra.Command, opts rankingOptions) error {
+	client, _, jsonOut, err := a.clientAndConfig(cmd, opts.commandOptions, false)
 	if err != nil {
 		return err
 	}
-	result, err := client.IllustRanking(context.Background(), *mode, *date, *offset)
+	result, err := client.IllustRanking(context.Background(), opts.mode, opts.date, opts.offset)
 	if err != nil {
 		return err
 	}
-	if opts.jsonOut {
+	if jsonOut {
 		return a.printJSON(result)
 	}
-	fmt.Fprintf(a.out, "%s ranking\n", *mode)
-	printIllusts(a.out, result.Illusts, *offset, true)
+	fmt.Fprintf(a.out, "%s ranking\n", opts.mode)
+	printIllusts(a.out, result.Illusts, opts.offset, true)
 	return nil
 }
 
-func (a app) runRecommended(args []string) error {
-	var opts commandOptions
-	fs := a.flagSet("recommended", &opts)
-	offset := fs.Int("offset", 0, "offset")
-	if err := fs.Parse(args); err != nil {
-		return err
+func (a app) newRecommendedCommand() *cobra.Command {
+	opts := recommendedOptions{}
+	cmd := &cobra.Command{
+		Use:   "recommended",
+		Short: "Show personalized recommendations",
+		Args:  requireExactArgs(0, "pixiv recommended [options]"),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return a.runRecommended(cmd, opts)
+		},
 	}
-	if fs.NArg() != 0 {
-		return fmt.Errorf("usage: pixiv recommended [options]")
-	}
-	client, _, err := a.clientAndConfig(opts, true)
+	a.bindCommonFlags(cmd, &opts.commandOptions)
+	cmd.Flags().IntVar(&opts.offset, "offset", 0, "offset")
+	return cmd
+}
+
+func (a app) runRecommended(cmd *cobra.Command, opts recommendedOptions) error {
+	client, _, jsonOut, err := a.clientAndConfig(cmd, opts.commandOptions, true)
 	if err != nil {
 		return err
 	}
-	result, err := client.IllustRecommended(context.Background(), *offset)
+	result, err := client.IllustRecommended(context.Background(), opts.offset)
 	if err != nil {
 		return err
 	}
-	if opts.jsonOut {
+	if jsonOut {
 		return a.printJSON(result)
 	}
 	fmt.Fprintln(a.out, "recommended illustrations")
-	printIllusts(a.out, result.Illusts, *offset, false)
+	printIllusts(a.out, result.Illusts, opts.offset, false)
 	return nil
 }
 
-func (a app) runDownload(args []string) error {
+func (a app) newDownloadCommand() *cobra.Command {
 	var opts commandOptions
-	fs := a.flagSet("download", &opts)
-	if err := fs.Parse(args); err != nil {
-		return err
+	cmd := &cobra.Command{
+		Use:   "download ILLUST_ID...",
+		Short: "Download illustrations",
+		Args:  requireMinArgs(1, "pixiv download [options] ILLUST_ID..."),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return a.runDownload(cmd, args, opts)
+		},
 	}
-	if fs.NArg() == 0 {
-		return fmt.Errorf("usage: pixiv download [options] ILLUST_ID...")
-	}
-	ids := make([]int64, 0, fs.NArg())
-	for _, arg := range fs.Args() {
+	a.bindCommonFlags(cmd, &opts)
+	return cmd
+}
+
+func (a app) runDownload(cmd *cobra.Command, args []string, opts commandOptions) error {
+	ids := make([]int64, 0, len(args))
+	for _, arg := range args {
 		id, err := strconv.ParseInt(arg, 10, 64)
 		if err != nil || id <= 0 {
 			return fmt.Errorf("illust_id %q must be a positive integer", arg)
 		}
 		ids = append(ids, id)
 	}
-	client, cfg, err := a.clientAndConfig(opts, true)
+	client, cfg, jsonOut, err := a.clientAndConfig(cmd, opts, false)
 	if err != nil {
 		return err
 	}
@@ -154,7 +212,7 @@ func (a app) runDownload(args []string) error {
 	if err != nil {
 		return err
 	}
-	if opts.jsonOut {
+	if jsonOut {
 		return a.printJSON(artworks)
 	}
 	for _, artwork := range artworks {

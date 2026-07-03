@@ -3,6 +3,7 @@ package mcpserver
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"log/slog"
 	"os"
@@ -188,6 +189,38 @@ func TestSetRefreshTokenRejectsCookieWithoutRefreshToken(t *testing.T) {
 	}
 }
 
+func TestSetRefreshTokenFailureSaysSessionOnly(t *testing.T) {
+	server := New(&failingRefreshAPI{}, &fakeDownloads{}, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	clientTransport, serverTransport := mcp.NewInMemoryTransports()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() { _ = server.Run(ctx, serverTransport) }()
+	client := mcp.NewClient(&mcp.Implementation{Name: "test", Version: "0.0.0"}, nil)
+	session, err := client.Connect(ctx, clientTransport, nil)
+	if err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+	defer session.Close()
+
+	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{
+		Name:      "set_refresh_token",
+		Arguments: map[string]any{"refresh_token": "bad-token"},
+	})
+	if err != nil {
+		t.Fatalf("call tool: %v", err)
+	}
+	text, ok := result.Content[0].(*mcp.TextContent)
+	if !ok {
+		t.Fatalf("content[0] = %T", result.Content[0])
+	}
+	if strings.Contains(text.Text, "已保存") {
+		t.Fatalf("failure text claims token was saved: %s", text.Text)
+	}
+	if !strings.Contains(text.Text, "当前会话") {
+		t.Fatalf("failure text should clarify session-only scope: %s", text.Text)
+	}
+}
+
 type fakeAPI struct{}
 
 func (fakeAPI) Refresh(context.Context) error { return nil }
@@ -227,6 +260,14 @@ func (fakeAPI) UserFollowing(context.Context, int64, string, int) (*pixiv.UserPr
 }
 func (fakeAPI) Download(context.Context, string, io.Writer) error {
 	return nil
+}
+
+type failingRefreshAPI struct {
+	fakeAPI
+}
+
+func (failingRefreshAPI) Refresh(context.Context) error {
+	return errors.New("invalid token")
 }
 
 func newTestSession(t *testing.T, downloads *fakeDownloads) (*mcp.ClientSession, func()) {

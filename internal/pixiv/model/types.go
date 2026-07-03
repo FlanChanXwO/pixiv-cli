@@ -1,4 +1,4 @@
-package pixiv
+package model
 
 type IllustList struct {
 	Illusts []Illust `json:"illusts"`

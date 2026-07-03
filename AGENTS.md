@@ -13,12 +13,18 @@
 
 当前主要入口与模块：
 
-- `cmd/pixiv-mcp-server/main.go`：加载环境配置、设置 HTTP/HTTPS 代理、初始化 Pixiv client、下载管理器和 MCP stdio server。
-- `internal/pixiv/`：Pixiv app API 与 OAuth refresh token client，含 JSON 类型定义。
+- `cmd/pixiv/`：官方二进制入口，只负责委托给 `internal/cli`。
+- `internal/cli/`：Cobra 命令树、TTY 交互、OAuth loopback 登录、文本/JSON 输出和 `pixiv mcp` 分发。
+- `internal/cli/state/`：`auth.json` 账号存储、默认账号、认证文件路径和权限写入。
+- `internal/cli/mcpapp/`：`pixiv mcp` 的配置、账号、Pixiv source、下载管理器与 MCP server 组装。
+- `internal/config/`：`config.toml` schema、默认值、运行时配置合并以及 `get/set/unset` 写回。
+- `internal/pixiv/`：Pixiv source facade，对 CLI/MCP 暴露稳定构造函数与常用模型 alias。
+- `internal/pixiv/api/`：Pixiv App API client、OAuth refresh 和 authorization-code exchange。
+- `internal/pixiv/web/`：匿名 Pixiv web/ajax API client，用于无 token fallback。
+- `internal/pixiv/model/`：共享 Pixiv response/domain 类型与协议 typed const。
 - `internal/mcpserver/`：MCP tool 注册与参数/返回文本适配。
 - `internal/download/`：下载队列、文件命名、多页作品保存、ugoira zip 转 gif。
-- `pkg/config/`：从环境变量加载运行配置。
-- `pkg/pixivutil/`：文件名清理、模板生成、ID 去重等工具。
+- `internal/utils/`：文件名清理、模板生成、ID 去重和 Pixiv web refresh token 输入解析。
 - `manifest.json`：DXT/MCP 打包与用户配置声明。
 - `docs/`：项目文档索引、架构、开发流程和工具说明。
 
@@ -29,7 +35,7 @@
 ```bash
 go version
 go test ./...
-go build ./cmd/pixiv-mcp-server
+go build -o pixiv ./cmd/pixiv
 ```
 
 可选运行依赖：
@@ -40,7 +46,12 @@ go build ./cmd/pixiv-mcp-server
 
 ## 配置
 
-运行配置来自环境变量：
+运行配置拆分为：
+
+- `os.UserConfigDir()/pixiv/auth.json`：账号认证与默认账号。
+- `os.UserConfigDir()/pixiv/config.toml`：全局可手改配置。
+
+环境变量仍保留公开覆盖层：
 
 - `PIXIV_REFRESH_TOKEN`：Pixiv refresh token。
 - `DOWNLOAD_PATH`：下载目录，默认 `./downloads`。
@@ -63,9 +74,11 @@ go build ./cmd/pixiv-mcp-server
 
 代码任务完成前应补充或更新测试，并运行相关回归。当前已有测试覆盖：
 
-- `pkg/config/config_test.go`
-- `pkg/pixivutil` 相关测试写在 `internal/download/manager_test.go`
-- `internal/pixiv/client_test.go`
+- `internal/cli/*_test.go`
+- `internal/config`
+- `internal/utils`
+- `test/e2e/pixiv_binary_test.go`
+- `internal/pixiv/...`
 - `internal/download/manager_test.go`
 - `internal/mcpserver/server_test.go`
 
@@ -73,7 +86,13 @@ go build ./cmd/pixiv-mcp-server
 
 ```bash
 go test ./...
-go build ./cmd/pixiv-mcp-server
+go build -o pixiv ./cmd/pixiv
+```
+
+真实 Pixiv web fallback e2e 默认跳过；需要联网验证时显式运行：
+
+```bash
+PIXIV_E2E_WEB_API=1 PIXIV_WEB_API_PROXY=http://127.0.0.1:7890 go test ./test/e2e -run WebAPIFallbackReal -count=1 -v
 ```
 
 若无法测试，必须说明原因和剩余风险。
