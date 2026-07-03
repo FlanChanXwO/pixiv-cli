@@ -6,6 +6,7 @@ import (
 	"errors"
 	"html"
 	"io"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -17,9 +18,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/FlanChanXwO/pixiv-mcp-server/internal/cli/state"
+	"github.com/FlanChanXwO/pixiv-mcp-server/internal/application"
+	"github.com/FlanChanXwO/pixiv-mcp-server/internal/bootstrap"
 	"github.com/FlanChanXwO/pixiv-mcp-server/internal/config"
+	"github.com/FlanChanXwO/pixiv-mcp-server/internal/download"
 	"github.com/FlanChanXwO/pixiv-mcp-server/internal/pixiv"
+	"github.com/FlanChanXwO/pixiv-mcp-server/internal/storage/auth"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -33,9 +37,9 @@ func TestAccountAddListUseRemovePreservesOrder(t *testing.T) {
 
 	info, err := os.Stat(authPath)
 	require.NoError(t, err)
-	assert.Equal(t, os.FileMode(state.DefaultAuthFileMode), info.Mode().Perm())
+	assert.Equal(t, os.FileMode(auth.DefaultAuthFileMode), info.Mode().Perm())
 
-	store, err := state.LoadAuthStore(authPath)
+	store, err := auth.LoadAuthStore(authPath)
 	require.NoError(t, err)
 	require.Equal(t, "main", store.DefaultAccount)
 	require.Len(t, store.Accounts, 1)
@@ -46,7 +50,7 @@ func TestAccountAddListUseRemovePreservesOrder(t *testing.T) {
 	code = Run([]string{"pixiv", "auth", "add", "--token", "other-token", "other"}, strings.NewReader(""), &stdout, &stderr)
 	require.Equal(t, 0, code, stderr.String())
 
-	store, err = state.LoadAuthStore(authPath)
+	store, err = auth.LoadAuthStore(authPath)
 	require.NoError(t, err)
 	require.Len(t, store.Accounts, 2)
 	assert.Equal(t, []string{"main", "other"}, store.Names())
@@ -56,7 +60,7 @@ func TestAccountAddListUseRemovePreservesOrder(t *testing.T) {
 	code = Run([]string{"pixiv", "auth", "use", "other"}, strings.NewReader(""), &stdout, &stderr)
 	require.Equal(t, 0, code, stderr.String())
 
-	store, err = state.LoadAuthStore(authPath)
+	store, err = auth.LoadAuthStore(authPath)
 	require.NoError(t, err)
 	assert.Equal(t, "other", store.DefaultAccount)
 
@@ -79,7 +83,7 @@ func TestAccountAddListUseRemovePreservesOrder(t *testing.T) {
 	code = Run([]string{"pixiv", "auth", "remove", "other"}, strings.NewReader(""), &stdout, &stderr)
 	require.Equal(t, 0, code, stderr.String())
 
-	store, err = state.LoadAuthStore(authPath)
+	store, err = auth.LoadAuthStore(authPath)
 	require.NoError(t, err)
 	assert.Equal(t, "main", store.DefaultAccount)
 	require.Len(t, store.Accounts, 1)
@@ -93,7 +97,7 @@ func TestAccountAddReadsTokenFromStdin(t *testing.T) {
 	code := Run([]string{"pixiv", "auth", "add", "main"}, strings.NewReader("stdin-token\n"), &stdout, &stderr)
 
 	require.Equal(t, 0, code, stderr.String())
-	store, err := state.LoadAuthStore(authPath)
+	store, err := auth.LoadAuthStore(authPath)
 	require.NoError(t, err)
 	assert.Equal(t, "stdin-token", store.Accounts[0].RefreshToken)
 }
@@ -110,24 +114,24 @@ func TestAccountAddRejectsCookieWithoutRefreshToken(t *testing.T) {
 
 func TestResolveRefreshTokenPriority(t *testing.T) {
 	useTempPaths(t)
-	store := state.AuthStore{
+	store := auth.AuthStore{
 		DefaultAccount: "main",
-		Accounts: []state.Account{
+		Accounts: []auth.Account{
 			{Name: "main", RefreshToken: "main-token"},
 			{Name: "other", RefreshToken: "other-token"},
 		},
 	}
 	t.Setenv("PIXIV_REFRESH_TOKEN", "env-token")
 
-	token, err := resolveRefreshToken(store, "", "")
+	token, err := application.ResolveRefreshToken(store, "", "", func() string { return "env-token" })
 	require.NoError(t, err)
 	assert.Equal(t, "env-token", token)
 
-	token, err = resolveRefreshToken(store, "other", "")
+	token, err = application.ResolveRefreshToken(store, "other", "", func() string { return "env-token" })
 	require.NoError(t, err)
 	assert.Equal(t, "other-token", token)
 
-	token, err = resolveRefreshToken(store, "other", "flag-token")
+	token, err = application.ResolveRefreshToken(store, "other", "flag-token", func() string { return "env-token" })
 	require.NoError(t, err)
 	assert.Equal(t, "flag-token", token)
 }
@@ -145,7 +149,7 @@ func TestAccountPromptFlows(t *testing.T) {
 	code := Run([]string{"pixiv", "auth", "add"}, strings.NewReader(""), &stdout, &stderr)
 	require.Equal(t, 0, code, stderr.String())
 
-	store, err := state.LoadAuthStore(authPath)
+	store, err := auth.LoadAuthStore(authPath)
 	require.NoError(t, err)
 	require.Len(t, store.Accounts, 1)
 	assert.Equal(t, "main", store.Accounts[0].Name)
@@ -160,16 +164,16 @@ func TestAccountPromptFlows(t *testing.T) {
 	code = Run([]string{"pixiv", "auth", "remove"}, strings.NewReader(""), &stdout, &stderr)
 	require.Equal(t, 0, code, stderr.String())
 
-	store, err = state.LoadAuthStore(authPath)
+	store, err = auth.LoadAuthStore(authPath)
 	require.NoError(t, err)
 	assert.Empty(t, store.Accounts)
 }
 
 func TestAccountRemovePromptCancelKeepsData(t *testing.T) {
 	authPath, _ := useTempPaths(t)
-	require.NoError(t, state.SaveAuthStore(authPath, state.AuthStore{
+	require.NoError(t, auth.SaveAuthStore(authPath, auth.AuthStore{
 		DefaultAccount: "main",
-		Accounts:       []state.Account{{Name: "main", RefreshToken: "main-token"}},
+		Accounts:       []auth.Account{{Name: "main", RefreshToken: "main-token"}},
 	}))
 	setPromptStub(t, promptStub{
 		selects:  []string{"main"},
@@ -180,7 +184,7 @@ func TestAccountRemovePromptCancelKeepsData(t *testing.T) {
 	code := Run([]string{"pixiv", "auth", "remove"}, strings.NewReader(""), &stdout, &stderr)
 
 	require.NotZero(t, code)
-	store, err := state.LoadAuthStore(authPath)
+	store, err := auth.LoadAuthStore(authPath)
 	require.NoError(t, err)
 	require.Len(t, store.Accounts, 1)
 	assert.Equal(t, "main", store.Accounts[0].Name)
@@ -228,7 +232,7 @@ func TestAccountLoginNoOpenStoresProfile(t *testing.T) {
 	require.Equal(t, 0, run.waitWithin(t, 5*time.Second), stderr.String())
 	assert.False(t, calledOpen)
 
-	store, err := state.LoadAuthStore(authPath)
+	store, err := auth.LoadAuthStore(authPath)
 	require.NoError(t, err)
 	require.Equal(t, "main", store.DefaultAccount)
 	require.Len(t, store.Accounts, 1)
@@ -264,7 +268,7 @@ func TestAccountLoginBrowserFailureFallsBackToTerminalPrompt(t *testing.T) {
 	code := Run([]string{"pixiv", "auth", "login", "--addr", addr, "--timeout", "5s"}, strings.NewReader(""), &stdout, &stderr)
 
 	require.Equal(t, 0, code, stderr.String())
-	store, err := state.LoadAuthStore(authPath)
+	store, err := auth.LoadAuthStore(authPath)
 	require.NoError(t, err)
 	require.Len(t, store.Accounts, 1)
 	assert.Equal(t, "main", store.Accounts[0].Name)
@@ -284,9 +288,31 @@ func setTestOpenBrowser(t *testing.T, opener func(string) error) func() {
 
 func setTestCLIClientFactory(t *testing.T, factory func(clientConfig) (cliPixivClient, error)) {
 	t.Helper()
-	old := newCLIClient
-	newCLIClient = factory
-	t.Cleanup(func() { newCLIClient = old })
+	old := newCLIServices
+	newCLIServices = func(logger *slog.Logger) application.Services {
+		services := bootstrap.NewServices(logger)
+		newClient := func(cfg config.RuntimeConfig) (application.ClientBundle, error) {
+			client, err := factory(clientConfig{RuntimeConfig: cfg})
+			if err != nil {
+				return application.ClientBundle{}, err
+			}
+			return application.ClientBundle{Auth: client, Artwork: client, Download: client}, nil
+		}
+		services.Artwork.Resolver.NewClient = newClient
+		services.Download.Resolver.NewClient = newClient
+		services.Download.NewDownloader = func(client application.DownloadClient, cfg config.RuntimeConfig) application.Downloader {
+			return download.NewManager(client, logger, cfg.DownloadPath, cfg.FilenameTemplate)
+		}
+		services.Account.NewClient = func(cfg config.RuntimeConfig) (application.AuthenticatedPixivClient, error) {
+			client, err := newClient(cfg)
+			if err != nil {
+				return nil, err
+			}
+			return client.Auth, nil
+		}
+		return services
+	}
+	t.Cleanup(func() { newCLIServices = old })
 }
 
 type promptStub struct {
@@ -342,7 +368,7 @@ func useTempPaths(t *testing.T) (string, string) {
 	base := filepath.Join(t.TempDir(), "pixiv")
 	authPath := filepath.Join(base, "auth.json")
 	configPath := filepath.Join(base, "config.toml")
-	t.Cleanup(state.SetAuthFilePathForTest(authPath))
+	t.Cleanup(auth.SetAuthFilePathForTest(authPath))
 	t.Cleanup(config.SetFilePathForTest(configPath))
 	return authPath, configPath
 }

@@ -15,8 +15,9 @@
 
 - `cmd/pixiv/`：官方二进制入口，只负责委托给 `internal/cli`。
 - `internal/cli/`：Cobra 命令树、TTY 交互、OAuth loopback 登录、文本/JSON 输出和 `pixiv mcp` 分发。
-- `internal/cli/state/`：`auth.json` 账号存储、默认账号、认证文件路径和权限写入。
-- `internal/cli/mcpapp/`：`pixiv mcp` 的配置、账号、Pixiv source、下载管理器与 MCP server 组装。
+- `internal/application/`：账号、配置、作品查询、下载和登录完成等应用用例。
+- `internal/bootstrap/`：生产 composition root，组装配置、账号存储、Pixiv source、OAuth client、MCP runtime 与应用服务。
+- `internal/storage/auth/`：`auth.json` 账号存储、默认账号、认证文件路径和权限写入。
 - `internal/config/`：`config.toml` schema、默认值、运行时配置合并以及 `get/set/unset` 写回。
 - `internal/pixiv/`：Pixiv source facade，对 CLI/MCP 暴露稳定构造函数与常用模型 alias。
 - `internal/pixiv/api/`：Pixiv App API client、OAuth refresh 和 authorization-code exchange。
@@ -25,6 +26,8 @@
 - `internal/mcpserver/`：MCP tool 注册与参数/返回文本适配。
 - `internal/download/`：下载队列、文件命名、多页作品保存、ugoira zip 转 gif。
 - `internal/utils/`：文件名清理、模板生成、ID 去重和 Pixiv web refresh token 输入解析。
+- `internal/utils/*`：无业务语义的 files/text/uri/media/parse 工具子包。
+- `internal/common/constants/`：仅基础设施常量，不放 Pixiv/MCP/config 协议值。
 - `manifest.json`：DXT/MCP 打包与用户配置声明。
 - `docs/`：项目文档索引、架构、开发流程和工具说明。
 
@@ -75,7 +78,9 @@ go build -o pixiv ./cmd/pixiv
 代码任务完成前应补充或更新测试，并运行相关回归。当前已有测试覆盖：
 
 - `internal/cli/*_test.go`
+- `internal/application`
 - `internal/config`
+- `internal/storage/auth`
 - `internal/utils`
 - `test/e2e/pixiv_binary_test.go`
 - `internal/pixiv/...`

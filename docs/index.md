@@ -9,6 +9,8 @@
 - [架构说明](architecture.md)：入口、Pixiv/config/utils 包边界、运行流程和关键约束。
 - [开发流程](development.md)：本地环境、测试、构建、运行配置和 Git 注意事项。
 - [MCP 工具](mcp-tools.md)：当前注册的 tools 与参数概览。
+- [ADR 0001](adr/0001-cli-thin-controller-and-bootstrap.md)：CLI thin controller、application services 与 bootstrap 分层决策。
+- [ADR 0002](adr/0002-utils-and-common-boundaries.md)：`utils/*` 与 `common/constants` 的边界规则。
 
 ## 快速命令
 

@@ -1,28 +1,20 @@
 package config
 
 import (
-	"os"
-	"path/filepath"
+	"github.com/FlanChanXwO/pixiv-mcp-server/internal/common/constants"
+	"github.com/FlanChanXwO/pixiv-mcp-server/internal/utils/files"
 )
 
-const DefaultConfigFileMode = 0o600
+const DefaultConfigFileMode = constants.PrivateFileMode
 
 var configFilePath = defaultConfigFilePath
 
 func defaultAppConfigDir() (string, error) {
-	dir, err := os.UserConfigDir()
-	if err != nil {
-		return "", err
-	}
-	return filepath.Join(dir, "pixiv"), nil
+	return files.UserConfigSubdir(constants.AppConfigDirName)
 }
 
 func defaultConfigFilePath() (string, error) {
-	dir, err := defaultAppConfigDir()
-	if err != nil {
-		return "", err
-	}
-	return filepath.Join(dir, "config.toml"), nil
+	return files.UserConfigFile(constants.AppConfigDirName, "config.toml")
 }
 
 func ConfigFilePath() (string, error) {
@@ -38,11 +30,5 @@ func SetFilePathForTest(configPath string) func() {
 }
 
 func WritePrivateFile(path string, body []byte) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-		return err
-	}
-	if err := os.WriteFile(path, body, DefaultConfigFileMode); err != nil {
-		return err
-	}
-	return os.Chmod(path, DefaultConfigFileMode)
+	return files.WritePrivateFile(path, body, DefaultConfigFileMode)
 }

@@ -4,7 +4,7 @@ Go 版 Pixiv 工具集：默认作为 `pixiv` CLI 使用，需要 MCP 时显式�
 
 它优先复用 Pixiv App API，支持搜索、详情、排行、推荐、下载、多账号 refresh token 管理，以及 MCP stdio server。未配置 refresh token 时，默认对搜索、详情、排行、用户搜索和下载启用匿名 Pixiv web/ajax API fallback。
 
-源码按 CLI、config、Pixiv facade/source、download、MCP server 分包；Pixiv App API、web fallback 与共享模型分别收在 `internal/pixiv/api`、`internal/pixiv/web`、`internal/pixiv/model`。
+源码按 CLI controller、application services、bootstrap、config、Pixiv facade/source、download、MCP server 分包；账号存储在 `internal/storage/auth`，基础工具按 `internal/utils/*` 子包组织，基础设施常量限制在 `internal/common/constants`。Pixiv App API、web fallback 与共享模型分别收在 `internal/pixiv/api`、`internal/pixiv/web`、`internal/pixiv/model`。
 
 ## 构建
 

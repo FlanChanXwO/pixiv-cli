@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/FlanChanXwO/pixiv-mcp-server/internal/pixiv/model"
+	"github.com/FlanChanXwO/pixiv-mcp-server/internal/utils/text"
 )
 
 const (
@@ -166,7 +167,7 @@ func (c *Client) UgoiraMetadata(ctx context.Context, id int64) (*model.UgoiraMet
 		return nil, webEnvelopeError(out.Message)
 	}
 	var result model.UgoiraMetadataResult
-	result.UgoiraMetadata.ZipURLs.Medium = firstNonEmpty(out.Body.OriginalSrc, out.Body.Src)
+	result.UgoiraMetadata.ZipURLs.Medium = text.FirstNonEmpty(out.Body.OriginalSrc, out.Body.Src)
 	result.UgoiraMetadata.Frames = make([]model.UgoiraFrame, 0, len(out.Body.Frames))
 	for _, frame := range out.Body.Frames {
 		result.UgoiraMetadata.Frames = append(result.UgoiraMetadata.Frames, model.UgoiraFrame{
@@ -390,7 +391,7 @@ func mapDetailIllust(item webIllustDetail, pages []webPage) model.Illust {
 	}
 	illust := model.Illust{
 		ID:             int64(firstFlexInt64(item.ID, item.IllustID)),
-		Title:          firstNonEmpty(item.Title, item.IllustTitle),
+		Title:          text.FirstNonEmpty(item.Title, item.IllustTitle),
 		Type:           illustType(int(item.IllustType)),
 		PageCount:      pageCount,
 		TotalBookmarks: int(item.BookmarkCount),
@@ -447,9 +448,9 @@ func mapDetailTags(items []webTag) []model.Tag {
 
 func mapDetailURLs(urls webDetailURLs) model.ImageURLs {
 	return model.ImageURLs{
-		SquareMedium: firstNonEmpty(urls.Mini, urls.ThumbMini, urls.Small),
-		Medium:       firstNonEmpty(urls.Small, urls.Regular),
-		Large:        firstNonEmpty(urls.Regular, urls.Original),
+		SquareMedium: text.FirstNonEmpty(urls.Mini, urls.ThumbMini, urls.Small),
+		Medium:       text.FirstNonEmpty(urls.Small, urls.Regular),
+		Large:        text.FirstNonEmpty(urls.Regular, urls.Original),
 		Original:     urls.Original,
 	}
 }
@@ -457,18 +458,18 @@ func mapDetailURLs(urls webDetailURLs) model.ImageURLs {
 func mapPageURLs(urls webPageURLs) model.ImageURLs {
 	return model.ImageURLs{
 		SquareMedium: urls.ThumbMini,
-		Medium:       firstNonEmpty(urls.Small, urls.Regular),
-		Large:        firstNonEmpty(urls.Regular, urls.Original),
+		Medium:       text.FirstNonEmpty(urls.Small, urls.Regular),
+		Large:        text.FirstNonEmpty(urls.Regular, urls.Original),
 		Original:     urls.Original,
 	}
 }
 
 func firstImageURLs(primary, fallback model.ImageURLs) model.ImageURLs {
 	return model.ImageURLs{
-		SquareMedium: firstNonEmpty(primary.SquareMedium, fallback.SquareMedium),
-		Medium:       firstNonEmpty(primary.Medium, fallback.Medium),
-		Large:        firstNonEmpty(primary.Large, fallback.Large),
-		Original:     firstNonEmpty(primary.Original, fallback.Original),
+		SquareMedium: text.FirstNonEmpty(primary.SquareMedium, fallback.SquareMedium),
+		Medium:       text.FirstNonEmpty(primary.Medium, fallback.Medium),
+		Large:        text.FirstNonEmpty(primary.Large, fallback.Large),
+		Original:     text.FirstNonEmpty(primary.Original, fallback.Original),
 	}
 }
 
@@ -481,15 +482,6 @@ func illustType(value int) string {
 	default:
 		return string(model.IllustTypeIllust)
 	}
-}
-
-func firstNonEmpty(values ...string) string {
-	for _, value := range values {
-		if value != "" {
-			return value
-		}
-	}
-	return ""
 }
 
 func firstFlexInt64(values ...flexInt64) flexInt64 {

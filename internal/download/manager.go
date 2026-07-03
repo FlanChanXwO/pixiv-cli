@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
-	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -15,6 +14,8 @@ import (
 
 	"github.com/FlanChanXwO/pixiv-mcp-server/internal/pixiv"
 	"github.com/FlanChanXwO/pixiv-mcp-server/internal/utils"
+	"github.com/FlanChanXwO/pixiv-mcp-server/internal/utils/text"
+	uriutil "github.com/FlanChanXwO/pixiv-mcp-server/internal/utils/uri"
 )
 
 type PixivClient interface {
@@ -146,7 +147,7 @@ func (m *Manager) downloadArtwork(ctx context.Context, id int64) (DownloadedArtw
 		return DownloadedArtwork{}, err
 	}
 	if illust.PageCount > 1 || illust.Type == string(pixiv.IllustTypeUgoira) {
-		base = filepath.Join(base, utils.SanitizeFilename(fmt.Sprintf("%d - %s", illust.ID, fallback(illust.Title, "Untitled"))))
+		base = filepath.Join(base, utils.SanitizeFilename(fmt.Sprintf("%d - %s", illust.ID, text.DefaultString(illust.Title, "Untitled"))))
 	}
 	if err := os.MkdirAll(base, 0o755); err != nil {
 		return DownloadedArtwork{}, err
@@ -170,12 +171,12 @@ func (m *Manager) downloadArtwork(ctx context.Context, id int64) (DownloadedArtw
 	if illust.PageCount <= 1 {
 		rawURL := illust.MetaSinglePage.OriginalImageURL
 		if rawURL == "" {
-			rawURL = firstNonEmpty(illust.ImageURLs.Original, illust.ImageURLs.Large)
+			rawURL = text.FirstNonEmpty(illust.ImageURLs.Original, illust.ImageURLs.Large)
 		}
 		if rawURL == "" {
 			return DownloadedArtwork{}, fmt.Errorf("illust %d has no downloadable image url", illust.ID)
 		}
-		path := filepath.Join(base, utils.GenerateFilename(filenameData(illust), 0, m.filenameTemplate)+filepath.Ext(pathFromURL(rawURL)))
+		path := filepath.Join(base, utils.GenerateFilename(filenameData(illust), 0, m.filenameTemplate)+filepath.Ext(uriutil.PathFromURL(rawURL)))
 		if err := m.downloadURL(ctx, rawURL, path); err != nil {
 			return DownloadedArtwork{}, err
 		}
@@ -184,11 +185,11 @@ func (m *Manager) downloadArtwork(ctx context.Context, id int64) (DownloadedArtw
 	}
 
 	for i, page := range illust.MetaPages {
-		rawURL := firstNonEmpty(page.ImageURLs.Original, page.ImageURLs.Large)
+		rawURL := text.FirstNonEmpty(page.ImageURLs.Original, page.ImageURLs.Large)
 		if rawURL == "" {
 			return DownloadedArtwork{}, fmt.Errorf("illust %d page %d has no downloadable image url", illust.ID, i)
 		}
-		path := filepath.Join(base, utils.GenerateFilename(filenameData(illust), i, m.filenameTemplate)+filepath.Ext(pathFromURL(rawURL)))
+		path := filepath.Join(base, utils.GenerateFilename(filenameData(illust), i, m.filenameTemplate)+filepath.Ext(uriutil.PathFromURL(rawURL)))
 		if err := m.downloadURL(ctx, rawURL, path); err != nil {
 			return DownloadedArtwork{}, err
 		}
@@ -340,23 +341,6 @@ func commandExists(name string) bool {
 	return err == nil
 }
 
-func pathFromURL(rawURL string) string {
-	parsed, err := url.Parse(rawURL)
-	if err != nil || parsed.Path == "" {
-		return rawURL
-	}
-	return parsed.Path
-}
-
-func firstNonEmpty(values ...string) string {
-	for _, value := range values {
-		if value != "" {
-			return value
-		}
-	}
-	return ""
-}
-
 func filenameData(illust pixiv.Illust) utils.FilenameData {
 	return utils.FilenameData{
 		ID:        illust.ID,
@@ -364,11 +348,4 @@ func filenameData(illust pixiv.Illust) utils.FilenameData {
 		Title:     illust.Title,
 		PageCount: illust.PageCount,
 	}
-}
-
-func fallback(value, backup string) string {
-	if value == "" {
-		return backup
-	}
-	return value
 }

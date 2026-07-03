@@ -8,14 +8,15 @@ import (
 	"io"
 	"log/slog"
 	"math/rand"
-	"net/url"
 	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/FlanChanXwO/pixiv-mcp-server/internal/download"
 	"github.com/FlanChanXwO/pixiv-mcp-server/internal/pixiv"
 	"github.com/FlanChanXwO/pixiv-mcp-server/internal/utils"
+	"github.com/FlanChanXwO/pixiv-mcp-server/internal/utils/media"
+	"github.com/FlanChanXwO/pixiv-mcp-server/internal/utils/text"
+	uriutil "github.com/FlanChanXwO/pixiv-mcp-server/internal/utils/uri"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -211,13 +212,13 @@ func buildDownloadOut(delivery string, artworks []download.DownloadedArtwork) (d
 			if err != nil {
 				return downloadOut{}, err
 			}
-			mimeType := mimeTypeForPath(file.Path)
+			mimeType := media.MimeTypeForPath(file.Path)
 			fileOut := downloadFileOut{
 				IllustID:  artwork.IllustID,
 				Title:     artwork.Title,
 				Author:    artwork.Author,
 				Path:      file.Path,
-				FileURI:   fileURI(file.Path),
+				FileURI:   uriutil.FileURI(file.Path),
 				MIMEType:  mimeType,
 				SizeBytes: info.Size(),
 				Page:      file.Page,
@@ -230,28 +231,6 @@ func buildDownloadOut(delivery string, artworks []download.DownloadedArtwork) (d
 	}
 	out.Text = strings.Join(lines, "\n")
 	return out, nil
-}
-
-func mimeTypeForPath(path string) string {
-	switch strings.ToLower(filepath.Ext(path)) {
-	case ".jpg", ".jpeg":
-		return "image/jpeg"
-	case ".png":
-		return "image/png"
-	case ".gif":
-		return "image/gif"
-	case ".webp":
-		return "image/webp"
-	default:
-		return "application/octet-stream"
-	}
-}
-
-func fileURI(path string) string {
-	if abs, err := filepath.Abs(path); err == nil {
-		path = abs
-	}
-	return (&url.URL{Scheme: "file", Path: filepath.ToSlash(path)}).String()
 }
 
 type emptyIn struct{}
@@ -627,18 +606,9 @@ func thumbnailURL(illust pixiv.Illust) string {
 		}
 	}
 	if len(illust.MetaPages) > 0 {
-		return firstNonEmpty(illust.MetaPages[0].ImageURLs.SquareMedium, illust.MetaPages[0].ImageURLs.Medium)
+		return text.FirstNonEmpty(illust.MetaPages[0].ImageURLs.SquareMedium, illust.MetaPages[0].ImageURLs.Medium)
 	}
-	return firstNonEmpty(illust.MetaSinglePage.OriginalImageURL, illust.ImageURLs.Large)
-}
-
-func firstNonEmpty(values ...string) string {
-	for _, value := range values {
-		if value != "" {
-			return value
-		}
-	}
-	return ""
+	return text.FirstNonEmpty(illust.MetaSinglePage.OriginalImageURL, illust.ImageURLs.Large)
 }
 
 type stringWriter struct {

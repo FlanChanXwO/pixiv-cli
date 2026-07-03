@@ -4,12 +4,11 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"log/slog"
-	"strconv"
 	"strings"
 
-	"github.com/FlanChanXwO/pixiv-mcp-server/internal/download"
+	"github.com/FlanChanXwO/pixiv-mcp-server/internal/application"
 	"github.com/FlanChanXwO/pixiv-mcp-server/internal/pixiv"
+	"github.com/FlanChanXwO/pixiv-mcp-server/internal/utils/parse"
 	"github.com/spf13/cobra"
 )
 
@@ -63,11 +62,15 @@ func (a app) runSearch(cmd *cobra.Command, args []string, opts searchOptions) er
 	if opts.r18 {
 		word += " R-18"
 	}
-	client, _, jsonOut, err := a.clientAndConfig(cmd, opts.commandOptions, false)
-	if err != nil {
-		return err
-	}
-	result, err := client.SearchIllust(context.Background(), word, opts.target, opts.sortMode, opts.duration, opts.offset)
+	services := a.services()
+	result, jsonOut, err := services.Artwork.Search(context.Background(), application.SearchRequest{
+		Client:   a.clientRequest(cmd, opts.commandOptions, false),
+		Word:     word,
+		Target:   opts.target,
+		Sort:     opts.sortMode,
+		Duration: opts.duration,
+		Offset:   opts.offset,
+	})
 	if err != nil {
 		return err
 	}
@@ -94,15 +97,12 @@ func (a app) newDetailCommand() *cobra.Command {
 }
 
 func (a app) runDetail(cmd *cobra.Command, arg string, opts commandOptions) error {
-	id, err := parseInt64Arg(arg, "illust_id")
+	id, err := parse.PositiveInt64(arg, "illust_id")
 	if err != nil {
 		return err
 	}
-	client, _, jsonOut, err := a.clientAndConfig(cmd, opts, false)
-	if err != nil {
-		return err
-	}
-	result, err := client.IllustDetail(context.Background(), id)
+	services := a.services()
+	result, jsonOut, err := services.Artwork.Detail(context.Background(), a.clientRequest(cmd, opts, false), id)
 	if err != nil {
 		return err
 	}
@@ -132,11 +132,13 @@ func (a app) newRankingCommand() *cobra.Command {
 }
 
 func (a app) runRanking(cmd *cobra.Command, opts rankingOptions) error {
-	client, _, jsonOut, err := a.clientAndConfig(cmd, opts.commandOptions, false)
-	if err != nil {
-		return err
-	}
-	result, err := client.IllustRanking(context.Background(), opts.mode, opts.date, opts.offset)
+	services := a.services()
+	result, jsonOut, err := services.Artwork.Ranking(context.Background(), application.RankingRequest{
+		Client: a.clientRequest(cmd, opts.commandOptions, false),
+		Mode:   opts.mode,
+		Date:   opts.date,
+		Offset: opts.offset,
+	})
 	if err != nil {
 		return err
 	}
@@ -164,11 +166,11 @@ func (a app) newRecommendedCommand() *cobra.Command {
 }
 
 func (a app) runRecommended(cmd *cobra.Command, opts recommendedOptions) error {
-	client, _, jsonOut, err := a.clientAndConfig(cmd, opts.commandOptions, true)
-	if err != nil {
-		return err
-	}
-	result, err := client.IllustRecommended(context.Background(), opts.offset)
+	services := a.services()
+	result, jsonOut, err := services.Artwork.Recommended(context.Background(), application.RecommendedRequest{
+		Client: a.clientRequest(cmd, opts.commandOptions, true),
+		Offset: opts.offset,
+	})
 	if err != nil {
 		return err
 	}
@@ -197,18 +199,14 @@ func (a app) newDownloadCommand() *cobra.Command {
 func (a app) runDownload(cmd *cobra.Command, args []string, opts commandOptions) error {
 	ids := make([]int64, 0, len(args))
 	for _, arg := range args {
-		id, err := strconv.ParseInt(arg, 10, 64)
-		if err != nil || id <= 0 {
-			return fmt.Errorf("illust_id %q must be a positive integer", arg)
+		id, err := parse.PositiveInt64(arg, fmt.Sprintf("illust_id %q", arg))
+		if err != nil {
+			return err
 		}
 		ids = append(ids, id)
 	}
-	client, cfg, jsonOut, err := a.clientAndConfig(cmd, opts, false)
-	if err != nil {
-		return err
-	}
-	manager := download.NewManager(client, slog.New(slog.NewTextHandler(a.errOut, nil)), cfg.DownloadPath, cfg.FilenameTemplate)
-	artworks, err := manager.Download(context.Background(), ids)
+	services := a.services()
+	artworks, jsonOut, err := services.Download.Download(context.Background(), a.clientRequest(cmd, opts, false), ids)
 	if err != nil {
 		return err
 	}

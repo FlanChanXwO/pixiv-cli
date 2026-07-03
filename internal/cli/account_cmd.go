@@ -8,9 +8,7 @@ import (
 	"io"
 	"strings"
 
-	"github.com/FlanChanXwO/pixiv-mcp-server/internal/cli/state"
-	"github.com/FlanChanXwO/pixiv-mcp-server/internal/config"
-	"github.com/FlanChanXwO/pixiv-mcp-server/internal/utils"
+	"github.com/FlanChanXwO/pixiv-mcp-server/internal/application"
 	"github.com/spf13/cobra"
 )
 
@@ -77,41 +75,16 @@ func (a app) accountAdd(args []string, opts accountAddOptions) error {
 	if err != nil {
 		return err
 	}
-	if err := state.ValidateAccountName(name); err != nil {
-		return err
-	}
 	tokenInput, err := a.resolveRefreshTokenInput(opts.token)
 	if err != nil {
 		return err
 	}
-	token, parsedCookie := utils.ParsePixivWebRefreshTokenInput(tokenInput)
-	if token == "" {
-		if parsedCookie {
-			return errors.New("cookie does not contain refresh_token")
-		}
-		return errors.New("refresh token cannot be empty")
-	}
-
-	path, err := state.AuthFilePath()
+	services := a.services()
+	result, err := services.Account.Add(application.AccountAddRequest{Name: name, TokenInput: tokenInput})
 	if err != nil {
 		return err
 	}
-	store, err := state.LoadAuthStore(path)
-	if err != nil {
-		return err
-	}
-	userID := int64(0)
-	if _, acct, ok := store.Get(name); ok {
-		userID = acct.UserID
-	}
-	store.Upsert(state.Account{Name: name, RefreshToken: token, UserID: userID})
-	if store.DefaultAccount == "" {
-		store.DefaultAccount = name
-	}
-	if err := state.SaveAuthStore(path, store); err != nil {
-		return err
-	}
-	out := accountOut{Name: name, Default: store.DefaultAccount == name, HasToken: true, UserID: userID}
+	out := accountOutFromResult(result)
 	if opts.jsonOut {
 		return a.printJSON(out)
 	}
@@ -137,23 +110,12 @@ func (a app) newAccountListCommand() *cobra.Command {
 }
 
 func (a app) accountList(jsonOut bool) error {
-	path, err := state.AuthFilePath()
+	services := a.services()
+	result, err := services.Account.List()
 	if err != nil {
 		return err
 	}
-	store, err := state.LoadAuthStore(path)
-	if err != nil {
-		return err
-	}
-	out := accountListOut{DefaultAccount: store.DefaultAccount}
-	for _, acct := range store.Accounts {
-		out.Accounts = append(out.Accounts, accountOut{
-			Name:     acct.Name,
-			Default:  acct.Name == store.DefaultAccount,
-			UserID:   acct.UserID,
-			HasToken: acct.RefreshToken != "",
-		})
-	}
+	out := accountListOutFromResult(result)
 	if jsonOut {
 		return a.printJSON(out)
 	}
@@ -192,15 +154,12 @@ func (a app) newAccountRemoveCommand() *cobra.Command {
 }
 
 func (a app) accountRemove(args []string, opts accountRemoveOptions) error {
-	path, err := state.AuthFilePath()
+	services := a.services()
+	list, err := services.Account.List()
 	if err != nil {
 		return err
 	}
-	store, err := state.LoadAuthStore(path)
-	if err != nil {
-		return err
-	}
-	name, err := a.resolveExistingAccountName(store, args, "Select account to remove")
+	name, err := a.resolveExistingAccountName(list, args, "Select account to remove")
 	if err != nil {
 		return err
 	}
@@ -213,18 +172,16 @@ func (a app) accountRemove(args []string, opts accountRemoveOptions) error {
 			return errors.New("account removal canceled")
 		}
 	}
-	if !store.Remove(name) {
-		return fmt.Errorf("account %q not found", name)
-	}
-	if err := state.SaveAuthStore(path, store); err != nil {
+	_, defaultAccount, err := services.Account.Remove(name)
+	if err != nil {
 		return err
 	}
 	if opts.jsonOut {
-		return a.printJSON(map[string]string{"removed": name, "default_account": store.DefaultAccount})
+		return a.printJSON(map[string]string{"removed": name, "default_account": defaultAccount})
 	}
 	fmt.Fprintf(a.out, "account %q removed\n", name)
-	if store.DefaultAccount != "" {
-		fmt.Fprintf(a.out, "default account: %s\n", store.DefaultAccount)
+	if defaultAccount != "" {
+		fmt.Fprintf(a.out, "default account: %s\n", defaultAccount)
 	}
 	return nil
 }
@@ -244,23 +201,17 @@ func (a app) newAccountUseCommand() *cobra.Command {
 }
 
 func (a app) accountUse(args []string, jsonOut bool) error {
-	path, err := state.AuthFilePath()
+	services := a.services()
+	list, err := services.Account.List()
 	if err != nil {
 		return err
 	}
-	store, err := state.LoadAuthStore(path)
+	name, err := a.resolveExistingAccountName(list, args, "Select default account")
 	if err != nil {
 		return err
 	}
-	name, err := a.resolveExistingAccountName(store, args, "Select default account")
+	name, err = services.Account.Use(name)
 	if err != nil {
-		return err
-	}
-	if !store.Has(name) {
-		return fmt.Errorf("account %q not found", name)
-	}
-	store.DefaultAccount = name
-	if err := state.SaveAuthStore(path, store); err != nil {
 		return err
 	}
 	if jsonOut {
@@ -289,65 +240,20 @@ func (a app) newAccountCheckCommand() *cobra.Command {
 }
 
 func (a app) accountCheck(name string, jsonOut bool) error {
-	settings, err := config.LoadSettingsState()
+	services := a.services()
+	result, err := services.Account.Check(context.Background(), name)
 	if err != nil {
 		return err
 	}
-	cfg, err := settings.Runtime()
-	if err != nil {
-		return err
-	}
-	path, err := state.AuthFilePath()
-	if err != nil {
-		return err
-	}
-	store, err := state.LoadAuthStore(path)
-	if err != nil {
-		return err
-	}
-	selectedName := ""
-	if strings.TrimSpace(name) != "" {
-		selectedName = strings.TrimSpace(name)
-		_, acct, ok := state.SelectAuthAccount(store, selectedName)
-		if !ok {
-			return fmt.Errorf("account %q not found", selectedName)
-		}
-		cfg.RefreshToken = acct.RefreshToken
-	} else if token := config.RefreshTokenFromEnv(); token != "" {
-		cfg.RefreshToken = token
-	} else if chosen, acct, ok := state.SelectAuthAccount(store, ""); ok {
-		selectedName = chosen
-		cfg.RefreshToken = acct.RefreshToken
-	}
-	if cfg.RefreshToken == "" {
-		return errors.New("no account or PIXIV_REFRESH_TOKEN to check")
-	}
-	client, err := newPixivClient(clientConfig{RuntimeConfig: cfg})
-	if err != nil {
-		return err
-	}
-	if err := client.Refresh(context.Background()); err != nil {
-		return err
-	}
-	userID := client.UserID()
-	if selectedName != "" {
-		if idx, acct, ok := store.Get(selectedName); ok {
-			acct.UserID = userID
-			store.Accounts[idx] = acct
-			if err := state.SaveAuthStore(path, store); err != nil {
-				return err
-			}
-		}
-	}
-	out := accountOut{Name: selectedName, Default: selectedName != "" && selectedName == store.DefaultAccount, UserID: userID, HasToken: true}
+	out := accountOutFromResult(result)
 	if jsonOut {
 		return a.printJSON(out)
 	}
-	if selectedName == "" {
-		fmt.Fprintf(a.out, "token ok, user_id:%d\n", userID)
+	if result.Name == "" {
+		fmt.Fprintf(a.out, "token ok, user_id:%d\n", result.UserID)
 		return nil
 	}
-	fmt.Fprintf(a.out, "account %q ok, user_id:%d\n", selectedName, userID)
+	fmt.Fprintf(a.out, "account %q ok, user_id:%d\n", result.Name, result.UserID)
 	return nil
 }
 
@@ -361,17 +267,21 @@ func (a app) resolveAccountNameArg(args []string, promptLabel string) (string, e
 	return promptInput(a, promptLabel, "")
 }
 
-func (a app) resolveExistingAccountName(store state.AuthStore, args []string, promptLabel string) (string, error) {
+func (a app) resolveExistingAccountName(list application.AccountListResult, args []string, promptLabel string) (string, error) {
 	if len(args) > 0 && strings.TrimSpace(args[0]) != "" {
 		return strings.TrimSpace(args[0]), nil
 	}
 	if !canPrompt(a) {
 		return "", errors.New("account name is required")
 	}
-	if len(store.Accounts) == 0 {
+	if len(list.Accounts) == 0 {
 		return "", errors.New("no accounts")
 	}
-	return promptSelect(a, promptLabel, store.Names())
+	names := make([]string, 0, len(list.Accounts))
+	for _, acct := range list.Accounts {
+		names = append(names, acct.Name)
+	}
+	return promptSelect(a, promptLabel, names)
 }
 
 func (a app) resolveRefreshTokenInput(tokenFlag string) (string, error) {
@@ -391,4 +301,16 @@ func readTokenLine(r io.Reader) (string, error) {
 		return "", err
 	}
 	return strings.TrimSpace(line), nil
+}
+
+func accountOutFromResult(result application.AccountResult) accountOut {
+	return accountOut{Name: result.Name, Default: result.Default, UserID: result.UserID, HasToken: result.HasToken}
+}
+
+func accountListOutFromResult(result application.AccountListResult) accountListOut {
+	out := accountListOut{DefaultAccount: result.DefaultAccount}
+	for _, acct := range result.Accounts {
+		out.Accounts = append(out.Accounts, accountOutFromResult(acct))
+	}
+	return out
 }

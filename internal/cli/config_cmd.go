@@ -3,9 +3,7 @@ package cli
 import (
 	"errors"
 	"fmt"
-	"strings"
 
-	"github.com/FlanChanXwO/pixiv-mcp-server/internal/config"
 	"github.com/spf13/cobra"
 )
 
@@ -34,7 +32,8 @@ func (a app) newConfigPathCommand() *cobra.Command {
 		Short: "Print the config.toml path",
 		Args:  requireExactArgs(0, "pixiv config path"),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			path, err := config.ConfigFilePath()
+			services := a.services()
+			path, err := services.Config.Path()
 			if err != nil {
 				return err
 			}
@@ -56,13 +55,10 @@ func (a app) newConfigGetCommand() *cobra.Command {
 }
 
 func (a app) configGet(alias string) error {
-	settings, err := config.LoadSettingsState()
+	services := a.services()
+	value, err := services.Config.Get(alias)
 	if err != nil {
 		return err
-	}
-	value, err := settings.Effective(alias)
-	if err != nil {
-		return fmt.Errorf("%w. valid keys: %s", err, strings.Join(config.ValidSettingAliases(), ", "))
 	}
 	if !value.HasValue {
 		fmt.Fprintln(a.out, configMissingPlaceholder)
@@ -84,23 +80,13 @@ func (a app) newConfigSetCommand() *cobra.Command {
 }
 
 func (a app) configSet(alias, raw string) error {
-	spec, ok := config.SettingSpecByAlias(alias)
-	if !ok {
-		return fmt.Errorf("unknown config key %q. valid keys: %s", alias, strings.Join(config.ValidSettingAliases(), ", "))
-	}
-	_, value, err := config.ParseSettingInput(alias, raw)
+	services := a.services()
+	result, err := services.Config.Set(alias, raw)
 	if err != nil {
 		return err
 	}
-	path, err := config.ConfigFilePath()
-	if err != nil {
-		return err
-	}
-	if err := config.SetConfigValue(path, alias, value); err != nil {
-		return err
-	}
-	if envRaw, ok := config.EnvValue(spec); ok {
-		fmt.Fprintf(a.errOut, "note: %s is currently overridden by environment and effective value remains %q\n", alias, envRaw)
+	if result.HasOverride {
+		fmt.Fprintf(a.errOut, "note: %s is currently overridden by environment and effective value remains %q\n", alias, result.EnvOverride)
 	}
 	fmt.Fprintf(a.out, "%s updated\n", alias)
 	return nil
@@ -118,20 +104,13 @@ func (a app) newConfigUnsetCommand() *cobra.Command {
 }
 
 func (a app) configUnset(alias string) error {
-	spec, ok := config.SettingSpecByAlias(alias)
-	if !ok {
-		return fmt.Errorf("unknown config key %q. valid keys: %s", alias, strings.Join(config.ValidSettingAliases(), ", "))
-	}
-	path, err := config.ConfigFilePath()
+	services := a.services()
+	result, err := services.Config.Unset(alias)
 	if err != nil {
 		return err
 	}
-	_, err = config.UnsetConfigValue(path, alias)
-	if err != nil {
-		return err
-	}
-	if envRaw, ok := config.EnvValue(spec); ok {
-		fmt.Fprintf(a.errOut, "note: %s is currently overridden by environment and effective value remains %q\n", alias, envRaw)
+	if result.HasOverride {
+		fmt.Fprintf(a.errOut, "note: %s is currently overridden by environment and effective value remains %q\n", alias, result.EnvOverride)
 	}
 	fmt.Fprintf(a.out, "%s removed\n", alias)
 	return nil

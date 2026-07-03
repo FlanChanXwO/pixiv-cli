@@ -8,8 +8,9 @@ Answer in Simplified Chinese by default. Keep code identifiers, commands, paths,
 
 - `cmd/pixiv/`: official binary entrypoint. It only delegates to `internal/cli`.
 - `internal/cli/`: Cobra command tree, TTY prompts, loopback OAuth login, CLI output, and `pixiv mcp` dispatch.
-- `internal/cli/state/`: `auth.json` account storage, default account selection, auth file path, and private-file writes.
-- `internal/cli/mcpapp/`: runtime wiring for `pixiv mcp`, including config, account fallback, Pixiv source, download manager, and MCP server construction.
+- `internal/application/`: application use cases for accounts, config, artwork queries, downloads, and login completion.
+- `internal/bootstrap/`: production composition root for config, auth storage, Pixiv source, OAuth client, MCP runtime, and application services.
+- `internal/storage/auth/`: `auth.json` account storage, default account selection, auth file path, and private-file writes.
 - `internal/config/`: `config.toml` schema, defaults, effective runtime config, and sparse get/set/unset writes.
 - `internal/pixiv/`: Pixiv source facade plus stable constructors and common model aliases for CLI/MCP.
 - `internal/pixiv/api/`: Pixiv App API client, OAuth refresh flow, authorization-code exchange, and API error handling.
@@ -18,6 +19,8 @@ Answer in Simplified Chinese by default. Keep code identifiers, commands, paths,
 - `internal/mcpserver/`: MCP server construction, tool registration, input structs, authentication checks, and text formatting.
 - `internal/download/`: background download manager, deduplication, multi-page storage, ugoira zip handling, and `ffmpeg` conversion.
 - `internal/utils/`: filename sanitization, filename template expansion, ID deduplication, and Pixiv web refresh-token input parsing.
+- `internal/utils/*`: protocol-free files/text/uri/media/parse helper packages.
+- `internal/common/constants/`: infrastructure constants only; no Pixiv/MCP/config protocol values.
 - `manifest.json`: DXT/MCP packaging metadata and user config.
 - `docs/`: project documentation.
 
@@ -67,8 +70,10 @@ Do not commit tokens, downloaded artwork, local databases, caches, or machine-sp
 Existing test files:
 
 - `internal/cli/*_test.go`
+- `internal/application`
 - `test/e2e/pixiv_binary_test.go`
 - `internal/config`
+- `internal/storage/auth`
 - `internal/utils`
 - `internal/pixiv/...`
 - `internal/download/manager_test.go`

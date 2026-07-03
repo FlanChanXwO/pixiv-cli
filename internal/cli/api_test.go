@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/FlanChanXwO/pixiv-mcp-server/internal/cli/state"
 	"github.com/FlanChanXwO/pixiv-mcp-server/internal/pixiv"
+	"github.com/FlanChanXwO/pixiv-mcp-server/internal/storage/auth"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -47,7 +47,7 @@ func TestSearchSupportsFlagAfterWord(t *testing.T) {
 
 func TestSearchUsesOutputJSONFromConfig(t *testing.T) {
 	_, configPath := useTempPaths(t)
-	require.NoError(t, state.WritePrivateFile(configPath, []byte("[output]\njson = true\n")))
+	require.NoError(t, auth.WritePrivateFile(configPath, []byte("[output]\njson = true\n")))
 
 	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		require.NoError(t, json.NewEncoder(w).Encode(pixiv.IllustList{

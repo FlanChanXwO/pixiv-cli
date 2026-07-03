@@ -6,8 +6,8 @@
 
 1. `pixiv` 无参数显示 CLI 帮助。
 2. `pixiv auth/config/search/detail/ranking/recommended/download` 进入 CLI 模式。
-3. `pixiv mcp` 才创建并运行 `internal/mcpserver` MCP stdio server。
-4. CLI 与 MCP 共享同一套运行时配置解析：
+3. `pixiv mcp` 委托 `internal/bootstrap` 组装并运行 MCP stdio server。
+4. CLI 与 MCP 通过 `internal/bootstrap` 共享生产 wiring：
    - 账号认证来自 `os.UserConfigDir()/pixiv/auth.json`
    - 全局配置来自 `os.UserConfigDir()/pixiv/config.toml`
    - 公开环境变量作为覆盖层参与合并
@@ -28,7 +28,23 @@
 - `auth login` 的 loopback OAuth、浏览器打开和 TTY 交互。
 - `pixiv mcp` 分发。
 
-### `internal/cli/state`
+它不直接拥有账号存储变更、Pixiv client 构造或下载管理器构造；这些职责由 `internal/application` 与 `internal/bootstrap` 承接。
+
+### `internal/application`
+
+负责 CLI/MCP 之外的应用用例编排：
+
+- `AccountService`：账号 add/list/remove/use/check。
+- `ConfigService`：`config.toml` path/get/set/unset。
+- `ArtworkService`：search/detail/ranking/recommended。
+- `DownloadService`：按 ID 下载作品。
+- `LoginService`：生成 PKCE/state、authorization-code exchange，并保存账号；Pixiv 登录 URL 构造仍留在 CLI adapter。
+
+### `internal/bootstrap`
+
+生产 composition root，负责把 `internal/config`、`internal/storage/auth`、`internal/pixiv`、`internal/download`、`internal/mcpserver` 和 application services 组装起来。测试可以替换 service 里的小接口或 factory，不需要复制生产 wiring。
+
+### `internal/storage/auth`
 
 负责本地账号状态：
 
@@ -42,10 +58,6 @@
 - `config.toml` schema、默认值和配置键定义。
 - 运行时配置合并：`config.toml` 与公开环境变量。
 - `pixiv config path/get/set/unset` 需要的强类型解析与稀疏写回。
-
-### `internal/cli/mcpapp`
-
-负责 `pixiv mcp` 的 runtime wiring：读取配置和账号、创建 Pixiv source、创建下载管理器，并把它们交给 `internal/mcpserver`。
 
 配置拆分如下：
 
@@ -89,7 +101,7 @@ web API 字段缺失时不伪造 App API 数据；仅映射可从 web 响应确�
 
 ### `internal/mcpserver`
 
-负责将 Pixiv 与下载能力注册为 MCP tools。它定义了较窄的 `PixivAPI` 和 `DownloadManager` interface，便于测试和隔离。
+负责将 Pixiv 与下载能力注册为 MCP tools。它定义了较窄的 `PixivAPI` 和 `DownloadManager` interface，便于测试和隔离；stdio runtime 由 `internal/bootstrap` 组装和启动。
 
 输出目前以中文文本为主，适合直接返回给 LLM/MCP 客户端。认证相关工具会显式提示缺少 token、认证失败或自动认证失败的真实原因。
 
@@ -106,6 +118,10 @@ web API 字段缺失时不伪造 App API 数据；仅映射可从 web 响应确�
 
 注意：ugoira 转换依赖本机 `ffmpeg`。初始化时会探测命令是否存在；缺失时 ugoira 下载会返回明确错误，普通图片下载不受影响。
 
+### `internal/common/constants`
+
+只保存跨包复用、无协议语义的基础设施常量，例如私有文件权限、私有目录权限；`AppConfigDirName` 是 config/auth 共同使用的路径命名空间例外。Pixiv 协议值、MCP delivery 值、config key/default 等仍留在所属领域包。
+
 ### `internal/utils`
 
 提供文件名清理、模板展开、ID 去重和 refresh token 输入规范化：
@@ -115,6 +131,14 @@ web API 字段缺失时不伪造 App API 数据；仅映射可从 web 响应确�
 - 多页作品追加 `_pN` 后缀。
 - 下载 ID 去重时会丢弃小于等于 0 的 ID，并排序。
 - refresh token 输入可从包含 `refresh_token=...` 的 Cookie 字符串中提取真实 token。
+
+`internal/utils/*` 子包提供无业务语义的通用工具：
+
+- `files`：用户配置路径拼接与私有文件写入。
+- `text`：字符串默认值和首个非空值。
+- `uri`：URL path 提取与 file URI 生成。
+- `media`：按文件扩展名推断基础 MIME type。
+- `parse`：通用正整数解析。
 
 ## 已知约束
 

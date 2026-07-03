@@ -3,18 +3,13 @@ package cli
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
-	"strconv"
-	"strings"
+	"log/slog"
 
-	"github.com/FlanChanXwO/pixiv-mcp-server/internal/cli/mcpapp"
-	"github.com/FlanChanXwO/pixiv-mcp-server/internal/cli/state"
+	"github.com/FlanChanXwO/pixiv-mcp-server/internal/application"
+	"github.com/FlanChanXwO/pixiv-mcp-server/internal/bootstrap"
 	"github.com/FlanChanXwO/pixiv-mcp-server/internal/config"
-	"github.com/FlanChanXwO/pixiv-mcp-server/internal/download"
-	"github.com/FlanChanXwO/pixiv-mcp-server/internal/pixiv"
-	"github.com/FlanChanXwO/pixiv-mcp-server/internal/utils"
 	"github.com/spf13/cobra"
 )
 
@@ -37,17 +32,14 @@ type clientConfig struct {
 }
 
 type cliPixivClient interface {
-	download.PixivClient
-	Refresh(context.Context) error
-	UserID() int64
-	SearchIllust(context.Context, string, string, string, string, int) (*pixiv.IllustList, error)
-	IllustRanking(context.Context, string, string, int) (*pixiv.IllustList, error)
-	IllustRecommended(context.Context, int) (*pixiv.IllustList, error)
+	application.AuthenticatedPixivClient
+	application.ArtworkClient
+	application.DownloadClient
 }
 
 var (
-	runMCPServer = runMCP
-	newCLIClient = newPixivClient
+	runMCPServer   = runMCP
+	newCLIServices = bootstrap.NewServices
 )
 
 func Run(args []string, in io.Reader, out io.Writer, errOut io.Writer) int {
@@ -72,15 +64,12 @@ func (a app) exit(err error) int {
 }
 
 func runMCP(ctx context.Context, errOut io.Writer) error {
-	return mcpapp.Run(ctx, errOut)
+	return bootstrap.RunMCP(ctx, errOut)
 }
 
-func newPixivClient(cfg clientConfig) (cliPixivClient, error) {
-	return pixiv.NewSource(pixiv.SourceConfig{
-		RefreshToken:       cfg.RefreshToken,
-		HTTPSProxy:         cfg.HTTPSProxy,
-		WebFallbackEnabled: cfg.WebFallbackEnabled,
-	})
+func (a app) services() application.Services {
+	logger := slog.New(slog.NewTextHandler(a.errOut, nil))
+	return newCLIServices(logger)
 }
 
 func (a app) newRootCommand() *cobra.Command {
@@ -128,93 +117,28 @@ func (a app) bindCommonFlags(cmd *cobra.Command, opts *commandOptions) {
 	flags.BoolVar(&opts.jsonOut, "json", false, "print JSON")
 }
 
-func (a app) clientAndConfig(cmd *cobra.Command, opts commandOptions, needsAuth bool) (cliPixivClient, config.RuntimeConfig, bool, error) {
-	settings, err := config.LoadSettingsState()
-	if err != nil {
-		return nil, config.RuntimeConfig{}, false, err
-	}
-	cfg, err := settings.Runtime()
-	if err != nil {
-		return nil, config.RuntimeConfig{}, false, err
+func (a app) clientRequest(cmd *cobra.Command, opts commandOptions, needsAuth bool) application.ClientRequest {
+	req := application.ClientRequest{
+		Profile:      opts.profile,
+		RefreshToken: opts.refreshToken,
+		NeedsAuth:    needsAuth,
 	}
 	if cmd.Flags().Changed("download-path") {
-		cfg.DownloadPath = opts.downloadPath
+		req.DownloadPathOverride = &opts.downloadPath
 	}
 	if cmd.Flags().Changed("filename-template") {
-		cfg.FilenameTemplate = opts.filenameTemplate
+		req.FilenameTemplateOverride = &opts.filenameTemplate
 	}
-	jsonOut := cfg.OutputJSON
 	if cmd.Flags().Changed("json") {
-		jsonOut = opts.jsonOut
+		req.JSONOverride = &opts.jsonOut
 	}
-
-	authPath, err := state.AuthFilePath()
-	if err != nil {
-		return nil, config.RuntimeConfig{}, false, err
-	}
-	store, err := state.LoadAuthStore(authPath)
-	if err != nil {
-		return nil, config.RuntimeConfig{}, false, err
-	}
-	refreshToken, err := resolveRefreshToken(store, opts.profile, opts.refreshToken)
-	if err != nil {
-		return nil, config.RuntimeConfig{}, false, err
-	}
-	cfg.RefreshToken = refreshToken
-	if needsAuth && cfg.RefreshToken == "" {
-		return nil, config.RuntimeConfig{}, false, errors.New("missing refresh token; use PIXIV_REFRESH_TOKEN or pixiv auth add/login")
-	}
-	client, err := newCLIClient(clientConfig{RuntimeConfig: cfg})
-	if err != nil {
-		return nil, config.RuntimeConfig{}, false, err
-	}
-	if needsAuth {
-		if err := client.Refresh(context.Background()); err != nil {
-			return nil, config.RuntimeConfig{}, false, err
-		}
-	}
-	return client, cfg, jsonOut, nil
-}
-
-func resolveRefreshToken(store state.AuthStore, requestedProfile, requestedToken string) (string, error) {
-	if strings.TrimSpace(requestedToken) != "" {
-		token, parsedCookie := utils.ParsePixivWebRefreshTokenInput(requestedToken)
-		if token == "" {
-			if parsedCookie {
-				return "", errors.New("refresh-token cookie does not contain refresh_token")
-			}
-			return "", errors.New("refresh-token cannot be empty")
-		}
-		return token, nil
-	}
-	if profile := strings.TrimSpace(requestedProfile); profile != "" {
-		_, acct, ok := state.SelectAuthAccount(store, profile)
-		if !ok {
-			return "", fmt.Errorf("account %q not found", profile)
-		}
-		return acct.RefreshToken, nil
-	}
-	if token := config.RefreshTokenFromEnv(); token != "" {
-		return token, nil
-	}
-	if _, acct, ok := state.SelectAuthAccount(store, ""); ok {
-		return acct.RefreshToken, nil
-	}
-	return "", nil
+	return req
 }
 
 func (a app) printJSON(v any) error {
 	encoder := json.NewEncoder(a.out)
 	encoder.SetIndent("", "  ")
 	return encoder.Encode(v)
-}
-
-func parseInt64Arg(value, name string) (int64, error) {
-	id, err := strconv.ParseInt(value, 10, 64)
-	if err != nil || id <= 0 {
-		return 0, fmt.Errorf("%s must be a positive integer", name)
-	}
-	return id, nil
 }
 
 func textBool(value bool) string {

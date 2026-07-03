@@ -1,4 +1,4 @@
-package state
+package auth
 
 import (
 	"encoding/json"

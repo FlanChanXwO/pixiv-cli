@@ -80,7 +80,7 @@ pixiv auth login main
 
 ## 测试
 
-当前测试覆盖 CLI 命令、`internal/config` 配置、`internal/cli/state` 认证存储、Pixiv App API 认证重试、Pixiv facade/source、web fallback、HTTP client wiring、下载管理和 MCP tool 注册：
+当前测试覆盖 CLI 命令、`internal/application` 应用用例、`internal/config` 配置、`internal/storage/auth` 认证存储、Pixiv App API 认证重试、Pixiv facade/source、web fallback、HTTP client wiring、下载管理和 MCP tool 注册：
 
 ```bash
 go test ./...

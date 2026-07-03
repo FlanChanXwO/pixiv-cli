@@ -2,9 +2,6 @@ package cli
 
 import (
 	"context"
-	"crypto/rand"
-	"crypto/sha256"
-	"encoding/base64"
 	"errors"
 	"fmt"
 	"html"
@@ -16,8 +13,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/FlanChanXwO/pixiv-mcp-server/internal/cli/state"
-	"github.com/FlanChanXwO/pixiv-mcp-server/internal/config"
+	"github.com/FlanChanXwO/pixiv-mcp-server/internal/application"
 	"github.com/FlanChanXwO/pixiv-mcp-server/internal/pixiv"
 	"github.com/pkg/browser"
 	"github.com/spf13/cobra"
@@ -65,11 +61,8 @@ func (a app) newAccountLoginCommand() *cobra.Command {
 }
 
 func (a app) accountLogin(cmd *cobra.Command, args []string, opts accountLoginOptions) error {
-	settings, err := config.LoadSettingsState()
-	if err != nil {
-		return err
-	}
-	cfg, err := settings.Runtime()
+	services := a.services()
+	cfg, err := services.Login.LoadRuntime()
 	if err != nil {
 		return err
 	}
@@ -86,18 +79,14 @@ func (a app) accountLogin(cmd *cobra.Command, args []string, opts accountLoginOp
 	if err != nil {
 		return err
 	}
-	if err := state.ValidateAccountName(name); err != nil {
+	if err := application.ValidateAccountName(name); err != nil {
 		return err
 	}
 	if err := validateLoginAddr(opts.addr); err != nil {
 		return err
 	}
 
-	verifier, challenge, err := generatePKCEPair()
-	if err != nil {
-		return err
-	}
-	oauthState, err := randomURLToken(32)
+	loginFlow, err := services.Login.Start()
 	if err != nil {
 		return err
 	}
@@ -110,39 +99,25 @@ func (a app) accountLogin(cmd *cobra.Command, args []string, opts accountLoginOp
 		defer cancel()
 	}
 
-	loginURL := pixivLoginURL(challenge, oauthState)
 	oauthBase, browserOpener := currentLoginHooks()
-	code, err := a.waitForLoginCode(ctx, opts.addr, oauthState, loginURL, opts.noOpen, browserOpener)
+	loginURL := pixivLoginURL(loginFlow.Challenge, loginFlow.State)
+	code, err := a.waitForLoginCode(ctx, opts.addr, loginFlow.State, loginURL, opts.noOpen, browserOpener)
 	if err != nil {
 		return err
 	}
 
-	client, err := newLoginPixivClient(cfg, oauthBase)
-	if err != nil {
-		return err
-	}
-	token, err := client.ExchangeAuthorizationCode(ctx, code, verifier)
+	result, err := services.Login.Complete(ctx, application.LoginCompleteRequest{
+		Name:       name,
+		Code:       code,
+		Verifier:   loginFlow.Verifier,
+		OAuthBase:  oauthBase,
+		UseProfile: opts.useProfile,
+	})
 	if err != nil {
 		return err
 	}
 
-	path, err := state.AuthFilePath()
-	if err != nil {
-		return err
-	}
-	store, err := state.LoadAuthStore(path)
-	if err != nil {
-		return err
-	}
-	store.Upsert(state.Account{Name: name, RefreshToken: token.RefreshToken, UserID: token.UserID})
-	if opts.useProfile || store.DefaultAccount == "" {
-		store.DefaultAccount = name
-	}
-	if err := state.SaveAuthStore(path, store); err != nil {
-		return err
-	}
-
-	out := accountOut{Name: name, Default: store.DefaultAccount == name, UserID: token.UserID, HasToken: true}
+	out := accountOutFromResult(result)
 	if opts.jsonOut {
 		return a.printJSON(out)
 	}
@@ -336,24 +311,6 @@ func pixivLoginURL(challenge, state string) string {
 	return pixiv.DefaultAPIBase + "/web/v1/login?" + values.Encode()
 }
 
-func generatePKCEPair() (verifier, challenge string, err error) {
-	verifier, err = randomURLToken(64)
-	if err != nil {
-		return "", "", err
-	}
-	sum := sha256.Sum256([]byte(verifier))
-	challenge = base64.RawURLEncoding.EncodeToString(sum[:])
-	return verifier, challenge, nil
-}
-
-func randomURLToken(size int) (string, error) {
-	body := make([]byte, size)
-	if _, err := rand.Read(body); err != nil {
-		return "", err
-	}
-	return base64.RawURLEncoding.EncodeToString(body), nil
-}
-
 func validateLoginAddr(addr string) error {
 	if strings.TrimSpace(addr) == "" {
 		return errors.New("--addr cannot be empty")
@@ -403,10 +360,6 @@ func setOpenBrowserForTest(opener func(string) error) func() {
 		openBrowser = old
 		loginHooksMu.Unlock()
 	}
-}
-
-func newLoginPixivClient(cfg config.RuntimeConfig, oauthBase string) (*pixiv.Client, error) {
-	return pixiv.NewOAuthClient(pixiv.OAuthConfig{HTTPSProxy: cfg.HTTPSProxy}, oauthBase)
 }
 
 func defaultOpenBrowser(rawURL string) error {

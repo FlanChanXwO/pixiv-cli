@@ -5,6 +5,8 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+
+	"github.com/FlanChanXwO/pixiv-mcp-server/internal/utils/text"
 )
 
 type FilenameData struct {
@@ -24,8 +26,8 @@ func GenerateFilename(data FilenameData, page int, template string) string {
 		template = "{author} - {title}_{id}"
 	}
 	name := strings.NewReplacer(
-		"{author}", SanitizeFilename(fallback(data.Author, "UnknownAuthor")),
-		"{title}", SanitizeFilename(fallback(data.Title, "Untitled")),
+		"{author}", SanitizeFilename(text.DefaultString(data.Author, "UnknownAuthor")),
+		"{title}", SanitizeFilename(text.DefaultString(data.Title, "Untitled")),
 		"{id}", fmt.Sprint(data.ID),
 	).Replace(template)
 	// 模板字面量也可能包含路径分隔符；最终文件名必须整体清理，避免下载写出目标目录。
@@ -51,11 +53,4 @@ func Deduplicate(ids []int64) []int64 {
 	}
 	slices.Sort(unique)
 	return unique
-}
-
-func fallback(value, backup string) string {
-	if value == "" {
-		return backup
-	}
-	return value
 }
