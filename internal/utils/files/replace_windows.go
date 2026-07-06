@@ -1,11 +1,12 @@
 //go:build windows
 
-package download
+package files
 
 import "golang.org/x/sys/windows"
 
-func replaceDownloadedFile(tmpPath, targetPath string) error {
-	from, err := windows.UTF16PtrFromString(tmpPath)
+// ReplaceFile 用源文件替换目标路径；Windows 下需要显式允许替换已存在目标。
+func ReplaceFile(sourcePath, targetPath string) error {
+	from, err := windows.UTF16PtrFromString(sourcePath)
 	if err != nil {
 		return err
 	}
@@ -13,6 +14,5 @@ func replaceDownloadedFile(tmpPath, targetPath string) error {
 	if err != nil {
 		return err
 	}
-	// Windows 的 os.Rename 不能替换已存在目标；MoveFileEx 提供同目录替换语义。
 	return windows.MoveFileEx(from, to, windows.MOVEFILE_REPLACE_EXISTING)
 }

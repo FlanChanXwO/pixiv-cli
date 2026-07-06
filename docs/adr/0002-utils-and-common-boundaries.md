@@ -11,7 +11,7 @@ Several small helpers were duplicated across config, auth storage, download, Pix
 ## Decision
 
 - Use `internal/utils/*` subpackages for protocol-free helper APIs:
-  - `files`: user config paths and private file writes.
+  - `files`: user config paths, private file writes, and cross-platform file replacement.
   - `text`: string defaulting and first non-empty string selection.
   - `uri`: URL path extraction and file URI generation.
   - `media`: MIME type inference from file extension.

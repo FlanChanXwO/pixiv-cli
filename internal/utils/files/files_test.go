@@ -61,3 +61,19 @@ func TestWritePrivateFileResetsExistingParentDirectoryMode(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, os.FileMode(constants.PrivateDirMode), parent.Mode().Perm())
 }
+
+func TestReplaceFileReplacesTargetAndRemovesSource(t *testing.T) {
+	dir := t.TempDir()
+	source := filepath.Join(dir, "source.tmp")
+	target := filepath.Join(dir, "target.txt")
+	require.NoError(t, os.WriteFile(source, []byte("new"), 0o644))
+	require.NoError(t, os.WriteFile(target, []byte("old"), 0o644))
+
+	require.NoError(t, ReplaceFile(source, target))
+
+	body, err := os.ReadFile(target)
+	require.NoError(t, err)
+	assert.Equal(t, "new", string(body))
+	_, err = os.Stat(source)
+	require.ErrorIs(t, err, os.ErrNotExist)
+}
