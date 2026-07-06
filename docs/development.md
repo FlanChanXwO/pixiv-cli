@@ -104,6 +104,18 @@ PIXIV_E2E_WEB_API=1 PIXIV_WEB_API_PROXY=http://127.0.0.1:7890 go test ./test/e2e
 
 不要提交 Pixiv token、下载内容、本地数据库或机器相关配置。
 
+## Changelog
+
+`CHANGELOG.md` 使用 Keep a Changelog 1.1.0 风格维护。未发布改动先写入 `[Unreleased]`，等正式切版本时再移动到对应版本段。
+
+需要记录的改动：
+
+- 用户可见的新功能、行为变化或 bug 修复。
+- 配置、CLI、MCP tool、输出格式或兼容性变化。
+- 废弃、移除、安全影响和迁移说明。
+
+不强制记录纯内部重构、测试补充、文档清理和不会影响用户/集成方的工程整理。
+
 ## 文档同步
 
 当以下内容变化时，同步更新 `docs/` 或 `README.md`：

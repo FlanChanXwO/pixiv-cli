@@ -9,8 +9,11 @@
 - [架构说明](architecture.md)：入口、Pixiv/config/utils 包边界、运行流程和关键约束。
 - [开发流程](development.md)：本地环境、测试、构建、运行配置和 Git 注意事项。
 - [MCP 工具](mcp-tools.md)：当前注册的 tools 与参数概览。
+- [更新日志](../CHANGELOG.md)：按 Keep a Changelog 风格记录用户可感知变化。
+- [AI 协作文档](agents/index.md)：agent 规则、review checklist 和文档职责边界。
 - [ADR 0001](adr/0001-cli-thin-controller-and-bootstrap.md)：CLI thin controller、application services 与 bootstrap 分层决策。
 - [ADR 0002](adr/0002-utils-and-common-boundaries.md)：`utils/*` 与 `common/constants` 的边界规则。
+- [ADR 0003](adr/0003-agent-instruction-precedent-strategy.md)：AI agent 指令采用选择性先例而非单一模板的决策。
 
 ## 快速命令
 

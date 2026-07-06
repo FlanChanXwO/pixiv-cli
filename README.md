@@ -6,6 +6,8 @@ Go 版 Pixiv 工具集：默认作为 `pixiv` CLI 使用，需要 MCP 时显式�
 
 源码按 CLI controller、application services、bootstrap、config、Pixiv facade/source、download、MCP server 分包；账号存储在 `internal/storage/auth`，基础工具按 `internal/utils/*` 子包组织，基础设施常量限制在 `internal/common/constants`。Pixiv App API、web fallback 与共享模型分别收在 `internal/pixiv/api`、`internal/pixiv/web`、`internal/pixiv/model`。
 
+用户可感知变化记录在 [CHANGELOG.md](CHANGELOG.md)。
+
 ## 构建
 
 ```bash
