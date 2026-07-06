@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/FlanChanXwO/pixiv-mcp-server/internal/config"
-	"github.com/FlanChanXwO/pixiv-mcp-server/internal/storage/auth"
-	"github.com/FlanChanXwO/pixiv-mcp-server/internal/utils"
+	"github.com/FlanChanXwO/pixiv-cli/internal/config"
+	"github.com/FlanChanXwO/pixiv-cli/internal/storage/auth"
+	"github.com/FlanChanXwO/pixiv-cli/internal/utils"
 )
 
 type AuthRepository interface {

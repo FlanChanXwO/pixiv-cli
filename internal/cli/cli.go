@@ -7,9 +7,9 @@ import (
 	"io"
 	"log/slog"
 
-	"github.com/FlanChanXwO/pixiv-mcp-server/internal/application"
-	"github.com/FlanChanXwO/pixiv-mcp-server/internal/bootstrap"
-	"github.com/FlanChanXwO/pixiv-mcp-server/internal/config"
+	"github.com/FlanChanXwO/pixiv-cli/internal/application"
+	"github.com/FlanChanXwO/pixiv-cli/internal/bootstrap"
+	"github.com/FlanChanXwO/pixiv-cli/internal/config"
 	"github.com/spf13/cobra"
 )
 

@@ -6,7 +6,7 @@ import (
 	"net/url"
 	"time"
 
-	"github.com/FlanChanXwO/pixiv-mcp-server/internal/pixiv/web"
+	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/web"
 )
 
 type SourceConfig struct {

@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/FlanChanXwO/pixiv-mcp-server/internal/pixiv"
-	"github.com/FlanChanXwO/pixiv-mcp-server/internal/storage/auth"
+	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv"
+	"github.com/FlanChanXwO/pixiv-cli/internal/storage/auth"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

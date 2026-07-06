@@ -12,11 +12,11 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/FlanChanXwO/pixiv-mcp-server/internal/pixiv"
-	"github.com/FlanChanXwO/pixiv-mcp-server/internal/utils"
-	"github.com/FlanChanXwO/pixiv-mcp-server/internal/utils/files"
-	"github.com/FlanChanXwO/pixiv-mcp-server/internal/utils/text"
-	uriutil "github.com/FlanChanXwO/pixiv-mcp-server/internal/utils/uri"
+	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv"
+	"github.com/FlanChanXwO/pixiv-cli/internal/utils"
+	"github.com/FlanChanXwO/pixiv-cli/internal/utils/files"
+	"github.com/FlanChanXwO/pixiv-cli/internal/utils/text"
+	uriutil "github.com/FlanChanXwO/pixiv-cli/internal/utils/uri"
 )
 
 type PixivClient interface {

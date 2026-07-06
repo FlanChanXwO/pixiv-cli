@@ -1,4 +1,4 @@
-module github.com/FlanChanXwO/pixiv-mcp-server
+module github.com/FlanChanXwO/pixiv-cli
 
 go 1.26.3
 

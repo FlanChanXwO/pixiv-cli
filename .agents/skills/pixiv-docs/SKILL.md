@@ -1,6 +1,6 @@
 ---
 name: pixiv-docs
-description: Maintain pixiv-mcp-server documentation without bloating root agent instructions; route README, docs, ADR, CONTEXT, CHANGELOG, AGENTS, Copilot hints, and skills correctly.
+description: Maintain pixiv-cli documentation without bloating root agent instructions; route README, docs, ADR, CONTEXT, CHANGELOG, AGENTS, Copilot hints, and skills correctly.
 ---
 
 # Pixiv Docs Skill

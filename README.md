@@ -17,7 +17,7 @@ go build -o pixiv ./cmd/pixiv
 或直接安装命令入口：
 
 ```bash
-go install github.com/FlanChanXwO/pixiv-mcp-server/cmd/pixiv@latest
+go install github.com/FlanChanXwO/pixiv-cli/cmd/pixiv@latest
 ```
 
 ## 获取 refresh token

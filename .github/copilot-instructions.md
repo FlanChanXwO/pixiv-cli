@@ -1,10 +1,10 @@
-# Pixiv MCP Server Copilot Instructions
+# Pixiv CLI Copilot Instructions
 
 本仓库的主规则在 [`AGENTS.md`](../AGENTS.md)。本文件只给 Copilot 提供短提示，避免补全时发明不存在的包、命令或 API。
 
 ## Project Shape
 
-- Go module: `github.com/FlanChanXwO/pixiv-mcp-server`
+- Go module: `github.com/FlanChanXwO/pixiv-cli`
 - Binary: `cmd/pixiv`
 - CLI controller: `internal/cli`
 - Application use cases: `internal/application`

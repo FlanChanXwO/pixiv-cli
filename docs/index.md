@@ -1,8 +1,8 @@
-# Pixiv MCP Server 文档
+# Pixiv CLI 文档
 
 ## 项目定位
 
-`pixiv-mcp-server` 是一个 Go 版 Pixiv CLI 和 MCP stdio server。CLI 面向脚本/终端使用；`pixiv mcp` 通过 MCP tools 向客户端提供 Pixiv 搜索、浏览、推荐、排行榜、用户信息、收藏、关注、下载、token refresh 和缩略图获取能力。无 refresh token 时，默认对搜索、详情、排行、用户搜索、下载和缩略图获取启用匿名 Pixiv web/ajax API fallback。
+`pixiv-cli` 是一个 Go 版 Pixiv CLI 和 MCP stdio server。CLI 面向脚本/终端使用；`pixiv mcp` 通过 MCP tools 向客户端提供 Pixiv 搜索、浏览、推荐、排行榜、用户信息、收藏、关注、下载、token refresh 和缩略图获取能力。无 refresh token 时，默认对搜索、详情、排行、用户搜索、下载和缩略图获取启用匿名 Pixiv web/ajax API fallback。
 
 ## 文档目录
 

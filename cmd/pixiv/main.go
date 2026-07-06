@@ -3,7 +3,7 @@ package main
 import (
 	"os"
 
-	pixivcmd "github.com/FlanChanXwO/pixiv-mcp-server/internal/cli"
+	pixivcmd "github.com/FlanChanXwO/pixiv-cli/internal/cli"
 )
 
 func main() {

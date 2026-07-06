@@ -4,7 +4,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/FlanChanXwO/pixiv-mcp-server/internal/common/constants"
+	"github.com/FlanChanXwO/pixiv-cli/internal/common/constants"
 )
 
 func UserConfigSubdir(appName string) (string, error) {

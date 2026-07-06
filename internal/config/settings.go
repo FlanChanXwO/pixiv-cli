@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/FlanChanXwO/pixiv-mcp-server/internal/utils"
+	"github.com/FlanChanXwO/pixiv-cli/internal/utils"
 	"github.com/creachadair/tomledit"
 	"github.com/creachadair/tomledit/parser"
 	"github.com/creachadair/tomledit/transform"

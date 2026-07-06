@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/FlanChanXwO/pixiv-mcp-server/internal/common/constants"
+	"github.com/FlanChanXwO/pixiv-cli/internal/common/constants"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

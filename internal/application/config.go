@@ -3,7 +3,7 @@ package application
 import (
 	"errors"
 
-	"github.com/FlanChanXwO/pixiv-mcp-server/internal/config"
+	"github.com/FlanChanXwO/pixiv-cli/internal/config"
 )
 
 type ConfigService struct {

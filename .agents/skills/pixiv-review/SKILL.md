@@ -1,11 +1,11 @@
 ---
 name: pixiv-review
-description: Review pixiv-mcp-server changes with repository-specific boundaries, MCP/CLI contracts, error handling, tests, and documentation requirements.
+description: Review pixiv-cli changes with repository-specific boundaries, MCP/CLI contracts, error handling, tests, and documentation requirements.
 ---
 
 # Pixiv Review Skill
 
-用于审查 `pixiv-mcp-server` 的本地改动。输出必须 finding-first：先列问题，按严重程度排序，再给简短总结。没有问题时明确说没有发现阻塞问题，并说明剩余测试风险。
+用于审查 `pixiv-cli` 的本地改动。输出必须 finding-first：先列问题，按严重程度排序，再给简短总结。没有问题时明确说没有发现阻塞问题，并说明剩余测试风险。
 
 ## 必读上下文
 

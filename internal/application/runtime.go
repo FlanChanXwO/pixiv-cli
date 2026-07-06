@@ -4,10 +4,10 @@ import (
 	"context"
 	"errors"
 
-	"github.com/FlanChanXwO/pixiv-mcp-server/internal/config"
-	"github.com/FlanChanXwO/pixiv-mcp-server/internal/download"
-	"github.com/FlanChanXwO/pixiv-mcp-server/internal/pixiv"
-	"github.com/FlanChanXwO/pixiv-mcp-server/internal/storage/auth"
+	"github.com/FlanChanXwO/pixiv-cli/internal/config"
+	"github.com/FlanChanXwO/pixiv-cli/internal/download"
+	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv"
+	"github.com/FlanChanXwO/pixiv-cli/internal/storage/auth"
 )
 
 type ArtworkClient interface {

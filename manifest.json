@@ -1,7 +1,7 @@
 {
   "dxt_version": "0.1",
-  "name": "pixiv-mcp-server",
-  "display_name": "Pixiv MCP Server",
+  "name": "pixiv-cli",
+  "display_name": "Pixiv CLI",
   "version": "2.0.0",
   "description": "A Go Pixiv CLI and MCP toolset",
   "author": {
@@ -9,7 +9,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/FlanChanXwO/pixiv-mcp-server"
+    "url": "https://github.com/FlanChanXwO/pixiv-cli"
   },
   "keywords": ["pixiv", "art", "illustration", "download", "search", "mcp"],
   "license": "MIT",

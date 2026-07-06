@@ -97,7 +97,7 @@ PIXIV_E2E_WEB_API=1 PIXIV_WEB_API_PROXY=http://127.0.0.1:7890 go test ./test/e2e
 `.gitignore` 已排除：
 
 - `.DS_Store`
-- 构建产物 `pixiv`、`pixiv-mcp-server`
+- 构建产物 `pixiv`、`pixiv-cli`
 - 本地下载目录 `downloads/`
 - 本地数据库 `*.db`
 - 常见缓存、日志、临时文件

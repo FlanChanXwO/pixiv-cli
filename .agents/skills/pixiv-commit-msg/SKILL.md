@@ -1,6 +1,6 @@
 ---
 name: pixiv-commit-msg
-description: Generate a one-line commit message for pixiv-mcp-server from staged changes and recent commit style.
+description: Generate a one-line commit message for pixiv-cli from staged changes and recent commit style.
 ---
 
 # Pixiv Commit Message Skill

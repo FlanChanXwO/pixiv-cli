@@ -11,12 +11,12 @@ import (
 	"os"
 	"strings"
 
-	"github.com/FlanChanXwO/pixiv-mcp-server/internal/download"
-	"github.com/FlanChanXwO/pixiv-mcp-server/internal/pixiv"
-	"github.com/FlanChanXwO/pixiv-mcp-server/internal/utils"
-	"github.com/FlanChanXwO/pixiv-mcp-server/internal/utils/media"
-	"github.com/FlanChanXwO/pixiv-mcp-server/internal/utils/text"
-	uriutil "github.com/FlanChanXwO/pixiv-mcp-server/internal/utils/uri"
+	"github.com/FlanChanXwO/pixiv-cli/internal/download"
+	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv"
+	"github.com/FlanChanXwO/pixiv-cli/internal/utils"
+	"github.com/FlanChanXwO/pixiv-cli/internal/utils/media"
+	"github.com/FlanChanXwO/pixiv-cli/internal/utils/text"
+	uriutil "github.com/FlanChanXwO/pixiv-cli/internal/utils/uri"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -53,7 +53,7 @@ type App struct {
 
 func New(api PixivAPI, downloads DownloadManager, logger *slog.Logger) *mcp.Server {
 	app := &App{api: api, downloads: downloads, logger: logger}
-	server := mcp.NewServer(&mcp.Implementation{Name: "pixiv-mcp-server", Version: "2.0.0"}, &mcp.ServerOptions{
+	server := mcp.NewServer(&mcp.Implementation{Name: "pixiv-cli", Version: "2.0.0"}, &mcp.ServerOptions{
 		Instructions: "Pixiv MCP server for searching, browsing, and downloading Pixiv content.",
 	})
 	app.register(server)

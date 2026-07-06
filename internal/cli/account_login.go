@@ -13,8 +13,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/FlanChanXwO/pixiv-mcp-server/internal/application"
-	"github.com/FlanChanXwO/pixiv-mcp-server/internal/pixiv"
+	"github.com/FlanChanXwO/pixiv-cli/internal/application"
+	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv"
 	"github.com/pkg/browser"
 	"github.com/spf13/cobra"
 )

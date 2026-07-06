@@ -8,7 +8,7 @@ import (
 	"io"
 	"strings"
 
-	"github.com/FlanChanXwO/pixiv-mcp-server/internal/application"
+	"github.com/FlanChanXwO/pixiv-cli/internal/application"
 	"github.com/spf13/cobra"
 )
 

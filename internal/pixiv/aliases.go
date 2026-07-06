@@ -3,8 +3,8 @@ package pixiv
 import (
 	"net/http"
 
-	"github.com/FlanChanXwO/pixiv-mcp-server/internal/pixiv/api"
-	"github.com/FlanChanXwO/pixiv-mcp-server/internal/pixiv/model"
+	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/api"
+	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/model"
 )
 
 const (

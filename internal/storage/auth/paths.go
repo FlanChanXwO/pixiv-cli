@@ -1,8 +1,8 @@
 package auth
 
 import (
-	"github.com/FlanChanXwO/pixiv-mcp-server/internal/common/constants"
-	"github.com/FlanChanXwO/pixiv-mcp-server/internal/utils/files"
+	"github.com/FlanChanXwO/pixiv-cli/internal/common/constants"
+	"github.com/FlanChanXwO/pixiv-cli/internal/utils/files"
 )
 
 const DefaultAuthFileMode = constants.PrivateFileMode

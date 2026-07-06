@@ -18,12 +18,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/FlanChanXwO/pixiv-mcp-server/internal/application"
-	"github.com/FlanChanXwO/pixiv-mcp-server/internal/bootstrap"
-	"github.com/FlanChanXwO/pixiv-mcp-server/internal/config"
-	"github.com/FlanChanXwO/pixiv-mcp-server/internal/download"
-	"github.com/FlanChanXwO/pixiv-mcp-server/internal/pixiv"
-	"github.com/FlanChanXwO/pixiv-mcp-server/internal/storage/auth"
+	"github.com/FlanChanXwO/pixiv-cli/internal/application"
+	"github.com/FlanChanXwO/pixiv-cli/internal/bootstrap"
+	"github.com/FlanChanXwO/pixiv-cli/internal/config"
+	"github.com/FlanChanXwO/pixiv-cli/internal/download"
+	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv"
+	"github.com/FlanChanXwO/pixiv-cli/internal/storage/auth"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

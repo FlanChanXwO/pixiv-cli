@@ -1,6 +1,6 @@
 # AGENTS.md
 
-这是一个 Go 版 Pixiv CLI 和 MCP stdio server。CLI 面向脚本/终端使用；`pixiv mcp` 通过 MCP tools 向客户端提供 Pixiv 搜索、浏览、推荐、排行榜、用户信息、收藏、关注、下载、token refresh 和缩略图获取能力。无 refresh token 时，默认对搜索、详情、排行、用户搜索、下载和缩略图获取启用匿名 Pixiv web/ajax API fallback。
+本文件是本仓库 AI coding agents 的唯一主规则入口。`CLAUDE.md` 只引用本文件；其它工具提示不得复制本文件全文。
 
 ## 默认交互
 
@@ -12,7 +12,7 @@
 
 ## 项目身份
 
-`github.com/FlanChanXwO/pixiv-mcp-server` 是 Go 版 Pixiv CLI 与 MCP stdio server。它通过 `pixiv` CLI 和 `pixiv mcp` 暴露 Pixiv 搜索、详情、排行、推荐、用户、收藏、下载、token refresh 和缩略图能力。
+`github.com/FlanChanXwO/pixiv-cli` 是 Go 版 Pixiv CLI 与 MCP stdio server。它通过 `pixiv` CLI 和 `pixiv mcp` 暴露 Pixiv 搜索、详情、排行、推荐、用户、收藏、下载、token refresh 和缩略图能力。
 
 核心命令：
 
