@@ -6,7 +6,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/FlanChanXwO/pixiv-mcp-server/internal/utils/text"
+	"github.com/FlanChanXwO/pixiv-cli/internal/utils/text"
 )
 
 type FilenameData struct {

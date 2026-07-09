@@ -61,3 +61,27 @@ func TestClientExtractsRefreshTokenFromCookieInput(t *testing.T) {
 		t.Fatalf("RefreshTokenValue after SetRefreshToken = %q", client.RefreshTokenValue())
 	}
 }
+
+func TestUserDetailFetchesUserName(t *testing.T) {
+	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/user/detail" {
+			t.Fatalf("unexpected api path %s", r.URL.Path)
+		}
+		if got := r.URL.Query().Get("user_id"); got != "123" {
+			t.Fatalf("user_id = %q, want 123", got)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"user": map[string]any{"id": 123, "name": "alice"},
+		})
+	}))
+	defer api.Close()
+
+	client := New("refresh", WithBaseURLs(api.URL, api.URL))
+	user, err := client.UserDetail(context.Background(), 123)
+	if err != nil {
+		t.Fatalf("UserDetail returned error: %v", err)
+	}
+	if user.ID != 123 || user.Name != "alice" {
+		t.Fatalf("unexpected user: %+v", user)
+	}
+}

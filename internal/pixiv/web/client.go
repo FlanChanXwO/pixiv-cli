@@ -13,8 +13,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/FlanChanXwO/pixiv-mcp-server/internal/pixiv/model"
-	"github.com/FlanChanXwO/pixiv-mcp-server/internal/utils/text"
+	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/model"
+	"github.com/FlanChanXwO/pixiv-cli/internal/utils/text"
 )
 
 const (

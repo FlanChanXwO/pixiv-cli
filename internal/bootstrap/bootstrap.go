@@ -7,12 +7,12 @@ import (
 	"log/slog"
 	"strings"
 
-	"github.com/FlanChanXwO/pixiv-mcp-server/internal/application"
-	"github.com/FlanChanXwO/pixiv-mcp-server/internal/config"
-	"github.com/FlanChanXwO/pixiv-mcp-server/internal/download"
-	"github.com/FlanChanXwO/pixiv-mcp-server/internal/mcpserver"
-	"github.com/FlanChanXwO/pixiv-mcp-server/internal/pixiv"
-	"github.com/FlanChanXwO/pixiv-mcp-server/internal/storage/auth"
+	"github.com/FlanChanXwO/pixiv-cli/internal/application"
+	"github.com/FlanChanXwO/pixiv-cli/internal/config"
+	"github.com/FlanChanXwO/pixiv-cli/internal/download"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver"
+	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv"
+	"github.com/FlanChanXwO/pixiv-cli/internal/storage/auth"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -158,17 +158,18 @@ type MCPRuntime struct {
 	Logger  *slog.Logger
 }
 
-func NewMCPRuntime(logger *slog.Logger) (MCPRuntime, error) {
+func NewMCPRuntime(logger *slog.Logger, proxyOverride *string) (MCPRuntime, error) {
 	cfg, err := LoadRuntimeConfig()
 	if err != nil {
 		return MCPRuntime{}, err
 	}
+	applyRuntimeProxyOverride(&cfg, proxyOverride)
 	store, err := AuthFileRepository{}.Load()
 	if err != nil {
 		return MCPRuntime{}, err
 	}
 	if cfg.RefreshToken = config.RefreshTokenFromEnv(); cfg.RefreshToken == "" {
-		if _, acct, ok := auth.SelectAuthAccount(store, ""); ok {
+		if _, acct, ok := auth.SelectAuthAccount(store, 0); ok {
 			cfg.RefreshToken = acct.RefreshToken
 		}
 	}
@@ -178,6 +179,12 @@ func NewMCPRuntime(logger *slog.Logger) (MCPRuntime, error) {
 	}
 	manager := download.NewManager(client, logger, cfg.DownloadPath, cfg.FilenameTemplate)
 	return MCPRuntime{Config: cfg, Client: client, Manager: manager, Logger: logger}, nil
+}
+
+func applyRuntimeProxyOverride(cfg *config.RuntimeConfig, override *string) {
+	if override != nil {
+		cfg.HTTPSProxy = *override
+	}
 }
 
 func (r MCPRuntime) AutoAuthenticate(ctx context.Context) {
@@ -191,9 +198,9 @@ func (r MCPRuntime) AutoAuthenticate(ctx context.Context) {
 	r.Logger.Info("auto-authentication successful", "user_id", r.Client.UserID())
 }
 
-func RunMCP(ctx context.Context, errOut io.Writer) error {
+func RunMCP(ctx context.Context, errOut io.Writer, proxyOverride *string) error {
 	logger := slog.New(slog.NewTextHandler(errOut, &slog.HandlerOptions{Level: slog.LevelInfo}))
-	runtime, err := NewMCPRuntime(logger)
+	runtime, err := NewMCPRuntime(logger, proxyOverride)
 	if err != nil {
 		return err
 	}
@@ -211,5 +218,5 @@ func (c oauthClient) ExchangeAuthorizationCode(ctx context.Context, code, verifi
 	if err != nil {
 		return application.OAuthToken{}, err
 	}
-	return application.OAuthToken{RefreshToken: token.RefreshToken, UserID: token.UserID}, nil
+	return application.OAuthToken{RefreshToken: token.RefreshToken, UserID: token.UserID, Username: token.Username}, nil
 }

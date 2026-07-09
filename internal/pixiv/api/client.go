@@ -14,7 +14,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/FlanChanXwO/pixiv-mcp-server/internal/utils"
+	"github.com/FlanChanXwO/pixiv-cli/internal/utils"
 	"github.com/go-resty/resty/v2"
 )
 
@@ -36,6 +36,7 @@ type Client struct {
 	refreshToken string
 	accessToken  string
 	userID       int64
+	userName     string
 	mu           sync.RWMutex
 }
 
@@ -98,6 +99,12 @@ func (c *Client) UserID() int64 {
 	return c.userID
 }
 
+func (c *Client) UserName() string {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.userName
+}
+
 func (c *Client) IsAuthenticated() bool {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
@@ -139,6 +146,7 @@ func (c *Client) Refresh(ctx context.Context) error {
 			c.refreshToken = result.Response.RefreshToken
 		}
 		c.userID = int64(result.Response.User.ID)
+		c.userName = result.Response.User.Name
 		return nil
 	}
 	c.accessToken = result.AccessToken
@@ -146,6 +154,7 @@ func (c *Client) Refresh(ctx context.Context) error {
 		c.refreshToken = result.RefreshToken
 	}
 	c.userID = int64(result.User.ID)
+	c.userName = result.User.Name
 	return nil
 }
 
@@ -177,6 +186,14 @@ func (c *Client) SearchUser(ctx context.Context, word string, offset int) (*User
 	q := url.Values{"word": {word}}
 	setOffset(q, offset)
 	return getJSON[UserPreviewList](ctx, c, "/v1/search/user", q)
+}
+
+func (c *Client) UserDetail(ctx context.Context, userID int64) (*User, error) {
+	result, err := getJSON[userDetailResult](ctx, c, "/v1/user/detail", url.Values{"user_id": {fmt.Sprint(userID)}})
+	if err != nil {
+		return nil, err
+	}
+	return &result.User, nil
 }
 
 func (c *Client) IllustRecommended(ctx context.Context, offset int) (*IllustList, error) {
@@ -367,7 +384,12 @@ type authResponse struct {
 }
 
 type authUser struct {
-	ID jsonInt64 `json:"id"`
+	ID   jsonInt64 `json:"id"`
+	Name string    `json:"name"`
+}
+
+type userDetailResult struct {
+	User User `json:"user"`
 }
 
 type jsonInt64 int64

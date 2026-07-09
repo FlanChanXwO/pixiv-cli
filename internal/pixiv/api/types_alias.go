@@ -1,11 +1,12 @@
 package api
 
-import "github.com/FlanChanXwO/pixiv-mcp-server/internal/pixiv/model"
+import "github.com/FlanChanXwO/pixiv-cli/internal/pixiv/model"
 
 type (
 	Illust               = model.Illust
 	IllustList           = model.IllustList
 	IllustDetail         = model.IllustDetail
+	User                 = model.User
 	UserPreviewList      = model.UserPreviewList
 	TrendTags            = model.TrendTags
 	UgoiraMetadataResult = model.UgoiraMetadataResult

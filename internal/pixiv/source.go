@@ -12,12 +12,14 @@ type AppAPI interface {
 	SetRefreshToken(string)
 	RefreshTokenValue() string
 	UserID() int64
+	UserName() string
 	IsAuthenticated() bool
 	SearchIllust(context.Context, string, string, string, string, int) (*IllustList, error)
 	IllustDetail(context.Context, int64) (*IllustDetail, error)
 	IllustRelated(context.Context, int64, int) (*IllustList, error)
 	IllustRanking(context.Context, string, string, int) (*IllustList, error)
 	SearchUser(context.Context, string, int) (*UserPreviewList, error)
+	UserDetail(context.Context, int64) (*User, error)
 	IllustRecommended(context.Context, int) (*IllustList, error)
 	TrendingTagsIllust(context.Context) (*TrendTags, error)
 	IllustFollow(context.Context, string, int) (*IllustList, error)
@@ -75,6 +77,10 @@ func (s *Source) UserID() int64 {
 	return s.app.UserID()
 }
 
+func (s *Source) UserName() string {
+	return s.app.UserName()
+}
+
 func (s *Source) IsAuthenticated() bool {
 	return s.app.IsAuthenticated()
 }
@@ -109,6 +115,10 @@ func (s *Source) SearchUser(ctx context.Context, word string, offset int) (*User
 		return s.web.SearchUser(ctx, word, offset)
 	}
 	return s.app.SearchUser(ctx, word, offset)
+}
+
+func (s *Source) UserDetail(ctx context.Context, userID int64) (*User, error) {
+	return s.app.UserDetail(ctx, userID)
 }
 
 func (s *Source) IllustRecommended(ctx context.Context, offset int) (*IllustList, error) {

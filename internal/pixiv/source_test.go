@@ -101,6 +101,7 @@ func (f *fakeAppAPI) Refresh(context.Context) error { return nil }
 func (f *fakeAppAPI) SetRefreshToken(token string)  { f.refreshToken = token }
 func (f *fakeAppAPI) RefreshTokenValue() string     { return f.refreshToken }
 func (f *fakeAppAPI) UserID() int64                 { return 0 }
+func (f *fakeAppAPI) UserName() string              { return "" }
 func (f *fakeAppAPI) IsAuthenticated() bool         { return false }
 func (f *fakeAppAPI) SearchIllust(context.Context, string, string, string, string, int) (*IllustList, error) {
 	f.searchCalls++
@@ -119,6 +120,9 @@ func (f *fakeAppAPI) IllustRanking(context.Context, string, string, int) (*Illus
 	return nil, nil
 }
 func (f *fakeAppAPI) SearchUser(context.Context, string, int) (*UserPreviewList, error) {
+	return nil, nil
+}
+func (f *fakeAppAPI) UserDetail(context.Context, int64) (*User, error) {
 	return nil, nil
 }
 func (f *fakeAppAPI) IllustRecommended(context.Context, int) (*IllustList, error) {

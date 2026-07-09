@@ -8,14 +8,15 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/FlanChanXwO/pixiv-mcp-server/internal/config"
-	"github.com/FlanChanXwO/pixiv-mcp-server/internal/pixiv"
-	"github.com/FlanChanXwO/pixiv-mcp-server/internal/storage/auth"
+	"github.com/FlanChanXwO/pixiv-cli/internal/config"
+	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv"
+	"github.com/FlanChanXwO/pixiv-cli/internal/storage/auth"
 )
 
 type OAuthToken struct {
 	RefreshToken string
 	UserID       int64
+	Username     string
 }
 
 type OAuthExchanger interface {
@@ -37,11 +38,11 @@ type LoginStart struct {
 }
 
 type LoginCompleteRequest struct {
-	Name       string
-	Code       string
-	Verifier   string
-	OAuthBase  string
-	UseProfile bool
+	Code               string
+	Verifier           string
+	OAuthBase          string
+	UseAfterLogin      bool
+	HTTPSProxyOverride *string
 }
 
 func (s LoginService) Start() (LoginStart, error) {
@@ -61,14 +62,11 @@ func (s LoginService) Start() (LoginStart, error) {
 }
 
 func (s LoginService) Complete(ctx context.Context, req LoginCompleteRequest) (AccountResult, error) {
-	name := strings.TrimSpace(req.Name)
-	if err := auth.ValidateAccountName(name); err != nil {
-		return AccountResult{}, err
-	}
 	cfg, err := s.runtime()
 	if err != nil {
 		return AccountResult{}, err
 	}
+	applyHTTPSProxyOverride(&cfg, req.HTTPSProxyOverride)
 	oauthBase := req.OAuthBase
 	if strings.TrimSpace(oauthBase) == "" {
 		oauthBase = pixiv.DefaultOAuthBase
@@ -84,18 +82,22 @@ func (s LoginService) Complete(ctx context.Context, req LoginCompleteRequest) (A
 	if err != nil {
 		return AccountResult{}, err
 	}
-	store, err := s.authStore()
+	if token.UserID == 0 {
+		return AccountResult{}, errors.New("authorization_code response did not include user_id")
+	}
+	store, err := s.authStoreForRecreate()
 	if err != nil {
 		return AccountResult{}, err
 	}
-	store.Upsert(auth.Account{Name: name, RefreshToken: token.RefreshToken, UserID: token.UserID})
-	if req.UseProfile || store.DefaultAccount == "" {
-		store.DefaultAccount = name
+	acct := auth.Account{UserID: token.UserID, Username: strings.TrimSpace(token.Username), RefreshToken: token.RefreshToken}
+	store.Upsert(acct)
+	if req.UseAfterLogin || store.DefaultUserID == 0 {
+		store.DefaultUserID = token.UserID
 	}
 	if err := s.Auth.Save(store); err != nil {
 		return AccountResult{}, err
 	}
-	return accountResult(name, store.DefaultAccount == name, token.UserID, true), nil
+	return accountResult(acct, store.DefaultUserID == token.UserID), nil
 }
 
 func (s LoginService) authStore() (auth.AuthStore, error) {
@@ -103,6 +105,14 @@ func (s LoginService) authStore() (auth.AuthStore, error) {
 		return auth.AuthStore{}, errors.New("auth repository is not configured")
 	}
 	return s.Auth.Load()
+}
+
+func (s LoginService) authStoreForRecreate() (auth.AuthStore, error) {
+	store, err := s.authStore()
+	if auth.IsLegacySchemaError(err) {
+		return auth.AuthStore{Accounts: []auth.Account{}}, nil
+	}
+	return store, err
 }
 
 func (s LoginService) runtime() (config.RuntimeConfig, error) {

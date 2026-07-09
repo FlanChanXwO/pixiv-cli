@@ -12,8 +12,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/FlanChanXwO/pixiv-mcp-server/internal/download"
-	"github.com/FlanChanXwO/pixiv-mcp-server/internal/pixiv"
+	"github.com/FlanChanXwO/pixiv-cli/internal/download"
+	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -189,6 +189,26 @@ func TestSetRefreshTokenRejectsCookieWithoutRefreshToken(t *testing.T) {
 	}
 }
 
+func TestSetRefreshTokenSuccessIncludesUserName(t *testing.T) {
+	session, closeSession := newTestSession(t, &fakeDownloads{})
+	defer closeSession()
+
+	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{
+		Name:      "set_refresh_token",
+		Arguments: map[string]any{"refresh_token": "good-token"},
+	})
+	if err != nil {
+		t.Fatalf("call tool: %v", err)
+	}
+	text, ok := result.Content[0].(*mcp.TextContent)
+	if !ok {
+		t.Fatalf("content[0] = %T", result.Content[0])
+	}
+	if !strings.Contains(text.Text, "用户 ID: 1") || !strings.Contains(text.Text, "用户名: alice") {
+		t.Fatalf("unexpected success text: %s", text.Text)
+	}
+}
+
 func TestSetRefreshTokenFailureSaysSessionOnly(t *testing.T) {
 	server := New(&failingRefreshAPI{}, &fakeDownloads{}, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	clientTransport, serverTransport := mcp.NewInMemoryTransports()
@@ -227,6 +247,7 @@ func (fakeAPI) Refresh(context.Context) error { return nil }
 func (fakeAPI) SetRefreshToken(string)        {}
 func (fakeAPI) RefreshTokenValue() string     { return "refresh" }
 func (fakeAPI) UserID() int64                 { return 1 }
+func (fakeAPI) UserName() string              { return "alice" }
 func (fakeAPI) IsAuthenticated() bool         { return true }
 func (fakeAPI) SearchIllust(context.Context, string, string, string, string, int) (*pixiv.IllustList, error) {
 	return &pixiv.IllustList{}, nil

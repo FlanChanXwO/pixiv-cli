@@ -11,10 +11,10 @@
   - 设置默认下载目录。路径为空会返回错误；设置时会尝试创建目录。
 - `refresh_token`
   - 参数：无
-  - 使用已保存的 refresh token 刷新 Pixiv API token。
+  - 使用已保存的 refresh token 刷新 Pixiv API token；成功时显示用户 ID，若 API 可提供则同时显示用户名。
 - `set_refresh_token`
   - 参数：`refresh_token`
-  - 在当前 MCP 会话设置 refresh token，并立即尝试认证；不会写入 `auth.json`。参数可直接传原始 token，也可传包含 `refresh_token=...` 的 Cookie 字符串；仅包含 `PHPSESSID`/`device_token` 的网页 Cookie 不能用于 App API OAuth 刷新。
+  - 在当前 MCP 会话设置 refresh token，并立即尝试认证；不会写入 `auth.json`。成功时显示用户 ID，若 API 可提供则同时显示用户名。参数可直接传原始 token，也可传包含 `refresh_token=...` 的 Cookie 字符串；仅包含 `PHPSESSID`/`device_token` 的网页 Cookie 不能用于 App API OAuth 刷新。
 
 ## 下载
 

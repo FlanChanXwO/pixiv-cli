@@ -1,7 +1,8 @@
 .DS_Store
 
 # Go build/test artifacts
-/pixiv-mcp-server
+/build/
+/pixiv-cli
 /pixiv
 /pixiv-auth
 *.test

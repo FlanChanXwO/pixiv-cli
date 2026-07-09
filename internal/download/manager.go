@@ -12,10 +12,11 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/FlanChanXwO/pixiv-mcp-server/internal/pixiv"
-	"github.com/FlanChanXwO/pixiv-mcp-server/internal/utils"
-	"github.com/FlanChanXwO/pixiv-mcp-server/internal/utils/text"
-	uriutil "github.com/FlanChanXwO/pixiv-mcp-server/internal/utils/uri"
+	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv"
+	"github.com/FlanChanXwO/pixiv-cli/internal/utils"
+	"github.com/FlanChanXwO/pixiv-cli/internal/utils/files"
+	"github.com/FlanChanXwO/pixiv-cli/internal/utils/text"
+	uriutil "github.com/FlanChanXwO/pixiv-cli/internal/utils/uri"
 )
 
 type PixivClient interface {
@@ -250,7 +251,7 @@ func (m *Manager) downloadURL(ctx context.Context, rawURL, path string) error {
 		return err
 	}
 	// 只在完整下载并成功落盘后替换目标，避免网络中断留下半文件或破坏旧文件。
-	if err := replaceDownloadedFile(tmpPath, path); err != nil {
+	if err := files.ReplaceFile(tmpPath, path); err != nil {
 		return err
 	}
 	cleanup = false
@@ -313,7 +314,7 @@ func (m *Manager) ConvertUgoira(ctx context.Context, zipPath string, frames []pi
 		return err
 	}
 	// GIF 转换也采用临时文件 + rename，避免 ffmpeg 失败时留下半文件或覆盖旧文件。
-	if err := replaceDownloadedFile(tmpOutput, outputGIF); err != nil {
+	if err := files.ReplaceFile(tmpOutput, outputGIF); err != nil {
 		return err
 	}
 	cleanup = false
