@@ -25,6 +25,7 @@ type PixivAPI interface {
 	SetRefreshToken(string)
 	RefreshTokenValue() string
 	UserID() int64
+	UserName() string
 	IsAuthenticated() bool
 	SearchIllust(context.Context, string, string, string, string, int) (*pixiv.IllustList, error)
 	IllustDetail(context.Context, int64) (*pixiv.IllustDetail, error)
@@ -242,7 +243,7 @@ func (a *App) refreshToken(ctx context.Context, _ *mcp.CallToolRequest, _ emptyI
 	if err := a.api.Refresh(ctx); err != nil {
 		return toolText(fmt.Sprintf("Token刷新失败。可能的原因：refresh_token已过期、网络连接问题或代理设置问题。错误详情: %v", err))
 	}
-	return toolText(fmt.Sprintf("Token刷新成功！用户 ID: %d。现在可以正常使用Pixiv API功能了。", a.api.UserID()))
+	return toolText(fmt.Sprintf("Token刷新成功！%s。现在可以正常使用Pixiv API功能了。", a.authIdentityText()))
 }
 
 type setRefreshTokenIn struct {
@@ -261,7 +262,15 @@ func (a *App) setRefreshToken(ctx context.Context, _ *mcp.CallToolRequest, in se
 	if err := a.api.Refresh(ctx); err != nil {
 		return toolText(fmt.Sprintf("Refresh token 已在当前会话设置，但认证失败: %v\n\n请检查 token 是否有效，或稍后使用 refresh_token 工具重试认证。", err))
 	}
-	return toolText(fmt.Sprintf("Refresh token 已在当前会话设置并完成认证！\n用户 ID: %d\n\n现在您可以使用所有 Pixiv 功能了。", a.api.UserID()))
+	return toolText(fmt.Sprintf("Refresh token 已在当前会话设置并完成认证！\n%s\n\n现在您可以使用所有 Pixiv 功能了。", a.authIdentityText()))
+}
+
+func (a *App) authIdentityText() string {
+	identity := fmt.Sprintf("用户 ID: %d", a.api.UserID())
+	if username := strings.TrimSpace(a.api.UserName()); username != "" {
+		identity += "\n用户名: " + username
+	}
+	return identity
 }
 
 type downloadRandomIn struct {

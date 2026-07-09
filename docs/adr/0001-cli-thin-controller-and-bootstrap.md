@@ -36,8 +36,8 @@ The project needs a clearer internal structure without changing CLI/MCP behavior
 ## Guardrails
 
 - Preserve token priority:
-  - CLI: flag token, profile account, env token, default account.
-  - MCP: env token, default account.
+  - CLI: flag token, UID-selected account, env token, default UID.
+  - MCP: env token, default UID.
 - Preserve output contracts and do not print refresh tokens.
 - Do not move durable config schema into CLI.
 - Do not add generic `ports` packages unless a real duplication or dependency problem appears.

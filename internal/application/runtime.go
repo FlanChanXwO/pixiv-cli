@@ -37,8 +37,9 @@ type ClientResolver struct {
 }
 
 type ClientRequest struct {
-	Profile                  string
+	UserID                   int64
 	RefreshToken             string
+	HTTPSProxyOverride       *string
 	DownloadPathOverride     *string
 	FilenameTemplateOverride *string
 	JSONOverride             *bool
@@ -62,6 +63,7 @@ func (r ClientResolver) Resolve(ctx context.Context, req ClientRequest) (ClientS
 	if req.FilenameTemplateOverride != nil {
 		cfg.FilenameTemplate = *req.FilenameTemplateOverride
 	}
+	applyHTTPSProxyOverride(&cfg, req.HTTPSProxyOverride)
 	jsonOut := cfg.OutputJSON
 	if req.JSONOverride != nil {
 		jsonOut = *req.JSONOverride
@@ -70,7 +72,7 @@ func (r ClientResolver) Resolve(ctx context.Context, req ClientRequest) (ClientS
 	if err != nil {
 		return ClientSession{}, err
 	}
-	refreshToken, err := ResolveRefreshToken(store, req.Profile, req.RefreshToken, r.refreshTokenFromEnv)
+	refreshToken, err := ResolveRefreshToken(store, req.UserID, req.RefreshToken, r.refreshTokenFromEnv)
 	if err != nil {
 		return ClientSession{}, err
 	}
@@ -94,6 +96,12 @@ func (r ClientResolver) Resolve(ctx context.Context, req ClientRequest) (ClientS
 		}
 	}
 	return ClientSession{Client: client, Config: cfg, JSONOut: jsonOut}, nil
+}
+
+func applyHTTPSProxyOverride(cfg *config.RuntimeConfig, override *string) {
+	if override != nil {
+		cfg.HTTPSProxy = *override
+	}
 }
 
 func (r ClientResolver) authStore() (auth.AuthStore, error) {

@@ -14,18 +14,20 @@
 - [ADR 0001](adr/0001-cli-thin-controller-and-bootstrap.md)：CLI thin controller、application services 与 bootstrap 分层决策。
 - [ADR 0002](adr/0002-utils-and-common-boundaries.md)：`utils/*` 与 `common/constants` 的边界规则。
 - [ADR 0003](adr/0003-agent-instruction-precedent-strategy.md)：AI agent 指令采用选择性先例而非单一模板的决策。
+- [ADR 0004](adr/0004-auth-accounts-use-pixiv-uid.md)：本地 auth 账号使用 Pixiv UID 的决策。
+- [ADR 0005](adr/0005-auth-login-real-browser-relay-without-ui-automation.md)：`auth login` 使用真实浏览器接力且不做 UI 自动化的决策。
 
 ## 快速命令
 
 ```bash
 go test ./...
-go build -o pixiv ./cmd/pixiv
+sh scripts/build.sh
 ```
 
 CLI 示例：
 
 ```bash
-pixiv auth login main
+pixiv auth login
 pixiv search "初音ミク" --json
 pixiv download 123456
 ```
@@ -36,7 +38,7 @@ MCP 运行示例：
 PIXIV_REFRESH_TOKEN=... \
 DOWNLOAD_PATH=./downloads \
 FILENAME_TEMPLATE="{author} - {title}_{id}" \
-./pixiv mcp
+./build/pixiv mcp
 ```
 
 真实 token 写在 inline 环境变量里也可能进入 shell history；长期使用建议通过 MCP client 的私密环境配置或本地账号管理。

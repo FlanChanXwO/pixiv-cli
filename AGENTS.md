@@ -18,7 +18,7 @@
 
 ```bash
 go test ./...
-go build -o pixiv ./cmd/pixiv
+sh scripts/build.sh
 ```
 
 真实 Pixiv web fallback e2e 默认跳过；需要联网时显式运行：
@@ -33,7 +33,7 @@ PIXIV_E2E_WEB_API=1 PIXIV_WEB_API_PROXY=http://127.0.0.1:7890 go test ./test/e2e
 - `internal/cli`：Cobra、TTY 交互、OAuth loopback、文本/JSON 输出和 `pixiv mcp` 分发；不要放业务 wiring。
 - `internal/application`：账号、配置、作品查询、下载和登录完成等应用用例。
 - `internal/bootstrap`：生产 composition root，唯一组装 config、auth storage、Pixiv source、download manager、MCP runtime 的地方。
-- `internal/storage/auth`：`auth.json` 账号存储、默认账号和私有文件写入。
+- `internal/storage/auth`：`auth.json` UID 账号存储、默认 UID 和私有文件写入。
 - `internal/config`：`config.toml` schema、defaults、effective runtime config 和 get/set/unset。
 - `internal/pixiv`：Pixiv source facade；CLI/MCP 不应绕过它直接依赖 App/Web client。
 - `internal/pixiv/api`、`internal/pixiv/web`、`internal/pixiv/model`：分别承接 App API、匿名 web fallback 和共享模型/协议 typed const。

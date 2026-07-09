@@ -13,18 +13,20 @@ import (
 )
 
 type accountOut struct {
-	Name     string `json:"name"`
-	Default  bool   `json:"default"`
 	UserID   int64  `json:"user_id,omitempty"`
+	Username string `json:"username,omitempty"`
+	Default  bool   `json:"default"`
 	HasToken bool   `json:"has_token"`
+	Warning  string `json:"warning,omitempty"`
 }
 
 type accountListOut struct {
-	DefaultAccount string       `json:"default_account,omitempty"`
-	Accounts       []accountOut `json:"accounts"`
+	DefaultUserID int64        `json:"default_user_id,omitempty"`
+	Accounts      []accountOut `json:"accounts"`
 }
 
 type accountAddOptions struct {
+	proxyOptions
 	token   string
 	jsonOut bool
 }
@@ -32,6 +34,11 @@ type accountAddOptions struct {
 type accountRemoveOptions struct {
 	jsonOut bool
 	yes     bool
+}
+
+type accountCheckOptions struct {
+	proxyOptions
+	jsonOut bool
 }
 
 func (a app) newAccountCommand() *cobra.Command {
@@ -56,22 +63,23 @@ func (a app) newAccountCommand() *cobra.Command {
 func (a app) newAccountAddCommand() *cobra.Command {
 	opts := accountAddOptions{}
 	cmd := &cobra.Command{
-		Use:     "add [NAME]",
+		Use:     "add",
 		Short:   "Add or replace an account",
-		Example: "pixiv auth add main --token YOUR_REFRESH_TOKEN",
-		Args:    requireMaxArgs(1, "pixiv auth add [NAME] [--token TOKEN]"),
+		Example: "pixiv auth add --token YOUR_REFRESH_TOKEN",
+		Args:    requireExactArgs(0, "pixiv auth add [--token TOKEN]"),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return a.accountAdd(args, opts)
+			return a.accountAdd(cmd, opts)
 		},
 	}
 	flags := cmd.Flags()
 	flags.StringVar(&opts.token, "token", "", "Pixiv refresh token or cookie with refresh_token")
 	flags.BoolVar(&opts.jsonOut, "json", false, "print JSON")
+	a.bindProxyFlags(cmd, &opts.proxyOptions)
 	return cmd
 }
 
-func (a app) accountAdd(args []string, opts accountAddOptions) error {
-	name, err := a.resolveAccountNameArg(args, "account name")
+func (a app) accountAdd(cmd *cobra.Command, opts accountAddOptions) error {
+	proxyOverride, err := proxyOverrideFromFlags(cmd, opts.proxyOptions)
 	if err != nil {
 		return err
 	}
@@ -80,7 +88,10 @@ func (a app) accountAdd(args []string, opts accountAddOptions) error {
 		return err
 	}
 	services := a.services()
-	result, err := services.Account.Add(application.AccountAddRequest{Name: name, TokenInput: tokenInput})
+	result, err := services.Account.Add(context.Background(), application.AccountAddRequest{
+		TokenInput:         tokenInput,
+		HTTPSProxyOverride: proxyOverride,
+	})
 	if err != nil {
 		return err
 	}
@@ -88,9 +99,15 @@ func (a app) accountAdd(args []string, opts accountAddOptions) error {
 	if opts.jsonOut {
 		return a.printJSON(out)
 	}
-	fmt.Fprintf(a.out, "account %q saved\n", name)
+	fmt.Fprintf(a.out, "account uid:%d saved\n", out.UserID)
+	if out.Username != "" {
+		fmt.Fprintf(a.out, "username:%s\n", out.Username)
+	}
 	if out.Default {
-		fmt.Fprintf(a.out, "default account: %s\n", name)
+		fmt.Fprintf(a.out, "default uid: %d\n", out.UserID)
+	}
+	if out.Warning != "" {
+		fmt.Fprintf(a.errOut, "warning: %s\n", out.Warning)
 	}
 	return nil
 }
@@ -128,9 +145,9 @@ func (a app) accountList(jsonOut bool) error {
 		if acct.Default {
 			marker = "*"
 		}
-		fmt.Fprintf(a.out, "%s %s token:%s", marker, acct.Name, textBool(acct.HasToken))
-		if acct.UserID != 0 {
-			fmt.Fprintf(a.out, " user_id:%d", acct.UserID)
+		fmt.Fprintf(a.out, "%s uid:%d token:%s", marker, acct.UserID, textBool(acct.HasToken))
+		if acct.Username != "" {
+			fmt.Fprintf(a.out, " username:%s", acct.Username)
 		}
 		fmt.Fprintln(a.out)
 	}
@@ -140,9 +157,9 @@ func (a app) accountList(jsonOut bool) error {
 func (a app) newAccountRemoveCommand() *cobra.Command {
 	opts := accountRemoveOptions{}
 	cmd := &cobra.Command{
-		Use:   "remove [NAME]",
+		Use:   "remove [UID]",
 		Short: "Remove an account",
-		Args:  requireMaxArgs(1, "pixiv auth remove [NAME] [--yes]"),
+		Args:  requireMaxArgs(1, "pixiv auth remove [UID] [--yes]"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return a.accountRemove(args, opts)
 		},
@@ -159,12 +176,12 @@ func (a app) accountRemove(args []string, opts accountRemoveOptions) error {
 	if err != nil {
 		return err
 	}
-	name, err := a.resolveExistingAccountName(list, args, "Select account to remove")
+	userID, err := a.resolveExistingUID(list, args, "Select account to remove")
 	if err != nil {
 		return err
 	}
 	if canPrompt(a) && !opts.yes {
-		ok, err := promptConfirm(a, fmt.Sprintf("Remove account %q?", name), false)
+		ok, err := promptConfirm(a, fmt.Sprintf("Remove uid %d?", userID), false)
 		if err != nil {
 			return err
 		}
@@ -172,16 +189,16 @@ func (a app) accountRemove(args []string, opts accountRemoveOptions) error {
 			return errors.New("account removal canceled")
 		}
 	}
-	_, defaultAccount, err := services.Account.Remove(name)
+	_, defaultUserID, err := services.Account.Remove(userID)
 	if err != nil {
 		return err
 	}
 	if opts.jsonOut {
-		return a.printJSON(map[string]string{"removed": name, "default_account": defaultAccount})
+		return a.printJSON(map[string]int64{"removed_user_id": userID, "default_user_id": defaultUserID})
 	}
-	fmt.Fprintf(a.out, "account %q removed\n", name)
-	if defaultAccount != "" {
-		fmt.Fprintf(a.out, "default account: %s\n", defaultAccount)
+	fmt.Fprintf(a.out, "account uid:%d removed\n", userID)
+	if defaultUserID != 0 {
+		fmt.Fprintf(a.out, "default uid: %d\n", defaultUserID)
 	}
 	return nil
 }
@@ -189,9 +206,9 @@ func (a app) accountRemove(args []string, opts accountRemoveOptions) error {
 func (a app) newAccountUseCommand() *cobra.Command {
 	var jsonOut bool
 	cmd := &cobra.Command{
-		Use:   "use [NAME]",
+		Use:   "use [UID]",
 		Short: "Set the default account",
-		Args:  requireMaxArgs(1, "pixiv auth use [NAME]"),
+		Args:  requireMaxArgs(1, "pixiv auth use [UID]"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return a.accountUse(args, jsonOut)
 		},
@@ -206,82 +223,102 @@ func (a app) accountUse(args []string, jsonOut bool) error {
 	if err != nil {
 		return err
 	}
-	name, err := a.resolveExistingAccountName(list, args, "Select default account")
+	userID, err := a.resolveExistingUID(list, args, "Select default account")
 	if err != nil {
 		return err
 	}
-	name, err = services.Account.Use(name)
+	userID, err = services.Account.Use(userID)
 	if err != nil {
 		return err
 	}
 	if jsonOut {
-		return a.printJSON(map[string]string{"default_account": name})
+		return a.printJSON(map[string]int64{"default_user_id": userID})
 	}
-	fmt.Fprintf(a.out, "default account: %s\n", name)
+	fmt.Fprintf(a.out, "default uid: %d\n", userID)
 	return nil
 }
 
 func (a app) newAccountCheckCommand() *cobra.Command {
-	var jsonOut bool
+	opts := accountCheckOptions{}
 	cmd := &cobra.Command{
-		Use:   "check [NAME]",
+		Use:   "check [UID]",
 		Short: "Validate an account token",
-		Args:  requireMaxArgs(1, "pixiv auth check [NAME]"),
+		Args:  requireMaxArgs(1, "pixiv auth check [UID]"),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			name := ""
+			userID := int64(0)
 			if len(args) == 1 {
-				name = args[0]
+				var err error
+				userID, err = application.ParseUID(args[0])
+				if err != nil {
+					return err
+				}
 			}
-			return a.accountCheck(name, jsonOut)
+			return a.accountCheck(cmd, userID, opts)
 		},
 	}
-	cmd.Flags().BoolVar(&jsonOut, "json", false, "print JSON")
+	cmd.Flags().BoolVar(&opts.jsonOut, "json", false, "print JSON")
+	a.bindProxyFlags(cmd, &opts.proxyOptions)
 	return cmd
 }
 
-func (a app) accountCheck(name string, jsonOut bool) error {
+func (a app) accountCheck(cmd *cobra.Command, userID int64, opts accountCheckOptions) error {
+	proxyOverride, err := proxyOverrideFromFlags(cmd, opts.proxyOptions)
+	if err != nil {
+		return err
+	}
 	services := a.services()
-	result, err := services.Account.Check(context.Background(), name)
+	result, err := services.Account.CheckWithRequest(context.Background(), application.AccountCheckRequest{
+		UserID:             userID,
+		HTTPSProxyOverride: proxyOverride,
+	})
 	if err != nil {
 		return err
 	}
 	out := accountOutFromResult(result)
-	if jsonOut {
+	if opts.jsonOut {
 		return a.printJSON(out)
 	}
-	if result.Name == "" {
-		fmt.Fprintf(a.out, "token ok, user_id:%d\n", result.UserID)
-		return nil
+	if userID == 0 {
+		fmt.Fprintf(a.out, "token ok, uid:%d\n", result.UserID)
+	} else {
+		fmt.Fprintf(a.out, "account uid:%d ok\n", result.UserID)
 	}
-	fmt.Fprintf(a.out, "account %q ok, user_id:%d\n", result.Name, result.UserID)
+	if result.Username != "" {
+		fmt.Fprintf(a.out, "username:%s\n", result.Username)
+	}
+	if result.Warning != "" {
+		fmt.Fprintf(a.errOut, "warning: %s\n", result.Warning)
+	}
 	return nil
 }
 
-func (a app) resolveAccountNameArg(args []string, promptLabel string) (string, error) {
+func (a app) resolveExistingUID(list application.AccountListResult, args []string, promptLabel string) (int64, error) {
 	if len(args) > 0 && strings.TrimSpace(args[0]) != "" {
-		return strings.TrimSpace(args[0]), nil
+		return application.ParseUID(args[0])
 	}
 	if !canPrompt(a) {
-		return "", errors.New("account name is required")
-	}
-	return promptInput(a, promptLabel, "")
-}
-
-func (a app) resolveExistingAccountName(list application.AccountListResult, args []string, promptLabel string) (string, error) {
-	if len(args) > 0 && strings.TrimSpace(args[0]) != "" {
-		return strings.TrimSpace(args[0]), nil
-	}
-	if !canPrompt(a) {
-		return "", errors.New("account name is required")
+		return 0, errors.New("uid is required")
 	}
 	if len(list.Accounts) == 0 {
-		return "", errors.New("no accounts")
+		return 0, errors.New("no accounts")
 	}
-	names := make([]string, 0, len(list.Accounts))
+	options := make([]string, 0, len(list.Accounts))
 	for _, acct := range list.Accounts {
-		names = append(names, acct.Name)
+		label := fmt.Sprintf("%d", acct.UserID)
+		if acct.Username != "" {
+			label += " " + acct.Username
+		}
+		options = append(options, label)
 	}
-	return promptSelect(a, promptLabel, names)
+	selected, err := promptSelect(a, promptLabel, options)
+	if err != nil {
+		return 0, err
+	}
+	fields := strings.Fields(selected)
+	if len(fields) == 0 {
+		return 0, errors.New("uid cannot be empty")
+	}
+	return application.ParseUID(fields[0])
 }
 
 func (a app) resolveRefreshTokenInput(tokenFlag string) (string, error) {
@@ -304,11 +341,17 @@ func readTokenLine(r io.Reader) (string, error) {
 }
 
 func accountOutFromResult(result application.AccountResult) accountOut {
-	return accountOut{Name: result.Name, Default: result.Default, UserID: result.UserID, HasToken: result.HasToken}
+	return accountOut{
+		UserID:   result.UserID,
+		Username: result.Username,
+		Default:  result.Default,
+		HasToken: result.HasToken,
+		Warning:  result.Warning,
+	}
 }
 
 func accountListOutFromResult(result application.AccountListResult) accountListOut {
-	out := accountListOut{DefaultAccount: result.DefaultAccount}
+	out := accountListOut{DefaultUserID: result.DefaultUserID}
 	for _, acct := range result.Accounts {
 		out.Accounts = append(out.Accounts, accountOutFromResult(acct))
 	}

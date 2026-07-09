@@ -6,6 +6,7 @@ type (
 	Illust               = model.Illust
 	IllustList           = model.IllustList
 	IllustDetail         = model.IllustDetail
+	User                 = model.User
 	UserPreviewList      = model.UserPreviewList
 	TrendTags            = model.TrendTags
 	UgoiraMetadataResult = model.UgoiraMetadataResult

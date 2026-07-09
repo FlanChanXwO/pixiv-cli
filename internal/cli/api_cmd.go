@@ -63,8 +63,12 @@ func (a app) runSearch(cmd *cobra.Command, args []string, opts searchOptions) er
 		word += " R-18"
 	}
 	services := a.services()
+	clientReq, err := a.clientRequest(cmd, opts.commandOptions, false)
+	if err != nil {
+		return err
+	}
 	result, jsonOut, err := services.Artwork.Search(context.Background(), application.SearchRequest{
-		Client:   a.clientRequest(cmd, opts.commandOptions, false),
+		Client:   clientReq,
 		Word:     word,
 		Target:   opts.target,
 		Sort:     opts.sortMode,
@@ -102,7 +106,11 @@ func (a app) runDetail(cmd *cobra.Command, arg string, opts commandOptions) erro
 		return err
 	}
 	services := a.services()
-	result, jsonOut, err := services.Artwork.Detail(context.Background(), a.clientRequest(cmd, opts, false), id)
+	clientReq, err := a.clientRequest(cmd, opts, false)
+	if err != nil {
+		return err
+	}
+	result, jsonOut, err := services.Artwork.Detail(context.Background(), clientReq, id)
 	if err != nil {
 		return err
 	}
@@ -133,8 +141,12 @@ func (a app) newRankingCommand() *cobra.Command {
 
 func (a app) runRanking(cmd *cobra.Command, opts rankingOptions) error {
 	services := a.services()
+	clientReq, err := a.clientRequest(cmd, opts.commandOptions, false)
+	if err != nil {
+		return err
+	}
 	result, jsonOut, err := services.Artwork.Ranking(context.Background(), application.RankingRequest{
-		Client: a.clientRequest(cmd, opts.commandOptions, false),
+		Client: clientReq,
 		Mode:   opts.mode,
 		Date:   opts.date,
 		Offset: opts.offset,
@@ -167,8 +179,12 @@ func (a app) newRecommendedCommand() *cobra.Command {
 
 func (a app) runRecommended(cmd *cobra.Command, opts recommendedOptions) error {
 	services := a.services()
+	clientReq, err := a.clientRequest(cmd, opts.commandOptions, true)
+	if err != nil {
+		return err
+	}
 	result, jsonOut, err := services.Artwork.Recommended(context.Background(), application.RecommendedRequest{
-		Client: a.clientRequest(cmd, opts.commandOptions, true),
+		Client: clientReq,
 		Offset: opts.offset,
 	})
 	if err != nil {
@@ -206,7 +222,11 @@ func (a app) runDownload(cmd *cobra.Command, args []string, opts commandOptions)
 		ids = append(ids, id)
 	}
 	services := a.services()
-	artworks, jsonOut, err := services.Download.Download(context.Background(), a.clientRequest(cmd, opts, false), ids)
+	clientReq, err := a.clientRequest(cmd, opts, false)
+	if err != nil {
+		return err
+	}
+	artworks, jsonOut, err := services.Download.Download(context.Background(), clientReq, ids)
 	if err != nil {
 		return err
 	}

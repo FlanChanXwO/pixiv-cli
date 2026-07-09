@@ -13,6 +13,7 @@ type AuthCodeToken struct {
 	AccessToken  string
 	RefreshToken string
 	UserID       int64
+	Username     string
 }
 
 func (c *Client) ExchangeAuthorizationCode(ctx context.Context, code, codeVerifier string) (AuthCodeToken, error) {
@@ -51,6 +52,7 @@ func (c *Client) ExchangeAuthorizationCode(ctx context.Context, code, codeVerifi
 	c.accessToken = out.AccessToken
 	c.refreshToken = out.RefreshToken
 	c.userID = out.UserID
+	c.userName = out.Username
 	c.mu.Unlock()
 	return out, nil
 }
@@ -61,11 +63,13 @@ func authCodeTokenFromResponse(result authResponse) AuthCodeToken {
 			AccessToken:  result.Response.AccessToken,
 			RefreshToken: result.Response.RefreshToken,
 			UserID:       int64(result.Response.User.ID),
+			Username:     result.Response.User.Name,
 		}
 	}
 	return AuthCodeToken{
 		AccessToken:  result.AccessToken,
 		RefreshToken: result.RefreshToken,
 		UserID:       int64(result.User.ID),
+		Username:     result.User.Name,
 	}
 }

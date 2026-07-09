@@ -42,6 +42,8 @@ func NewOAuthClient(cfg OAuthConfig, oauthBase string) (*Client, error) {
 
 func HTTPClient(proxyValue string) (*http.Client, error) {
 	transport := http.DefaultTransport.(*http.Transport).Clone()
+	// Runtime config 已经合并了环境变量；空代理值必须显式禁用 DefaultTransport 的 ProxyFromEnvironment。
+	transport.Proxy = nil
 	// 沿用 Pixiv App API client 既有 60s 网络上限；代理 client 也必须保留同一保护。
 	httpClient := &http.Client{Transport: transport, Timeout: 60 * time.Second}
 	if proxyValue == "" {

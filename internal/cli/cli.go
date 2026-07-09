@@ -20,11 +20,18 @@ type app struct {
 }
 
 type commandOptions struct {
+	proxyOptions
 	profile          string
+	uid              string
 	refreshToken     string
 	downloadPath     string
 	filenameTemplate string
 	jsonOut          bool
+}
+
+type proxyOptions struct {
+	proxy   string
+	noProxy bool
 }
 
 type clientConfig struct {
@@ -63,8 +70,8 @@ func (a app) exit(err error) int {
 	return 1
 }
 
-func runMCP(ctx context.Context, errOut io.Writer) error {
-	return bootstrap.RunMCP(ctx, errOut)
+func runMCP(ctx context.Context, errOut io.Writer, proxyOverride *string) error {
+	return bootstrap.RunMCP(ctx, errOut, proxyOverride)
 }
 
 func (a app) services() application.Services {
@@ -97,32 +104,68 @@ func (a app) newRootCommand() *cobra.Command {
 }
 
 func (a app) newMCPCommand() *cobra.Command {
-	return &cobra.Command{
+	var opts proxyOptions
+	cmd := &cobra.Command{
 		Use:     "mcp",
 		Short:   "Run the MCP stdio server",
 		Example: "pixiv mcp",
 		Args:    requireExactArgs(0, "pixiv mcp"),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runMCPServer(context.Background(), a.errOut)
+			proxyOverride, err := proxyOverrideFromFlags(cmd, opts)
+			if err != nil {
+				return err
+			}
+			return runMCPServer(context.Background(), a.errOut, proxyOverride)
 		},
 	}
+	a.bindProxyFlags(cmd, &opts)
+	return cmd
 }
 
 func (a app) bindCommonFlags(cmd *cobra.Command, opts *commandOptions) {
 	flags := cmd.Flags()
-	flags.StringVar(&opts.profile, "profile", "", "account name")
+	flags.StringVar(&opts.uid, "uid", "", "Pixiv UID from auth.json")
+	flags.StringVar(&opts.profile, "profile", "", "deprecated alias for --uid")
+	_ = flags.MarkDeprecated("profile", "use --uid instead")
 	flags.StringVar(&opts.refreshToken, "refresh-token", "", "Pixiv refresh token or cookie with refresh_token")
 	flags.StringVar(&opts.downloadPath, "download-path", "", "download directory")
 	flags.StringVar(&opts.filenameTemplate, "filename-template", "", "filename template")
 	flags.BoolVar(&opts.jsonOut, "json", false, "print JSON")
+	a.bindProxyFlags(cmd, &opts.proxyOptions)
 }
 
-func (a app) clientRequest(cmd *cobra.Command, opts commandOptions, needsAuth bool) application.ClientRequest {
+func (a app) bindProxyFlags(cmd *cobra.Command, opts *proxyOptions) {
+	flags := cmd.Flags()
+	flags.StringVar(&opts.proxy, "proxy", "", "HTTP(S) proxy URL for this command")
+	flags.BoolVar(&opts.noProxy, "no-proxy", false, "clear HTTP(S) proxy for this command")
+}
+
+func (a app) clientRequest(cmd *cobra.Command, opts commandOptions, needsAuth bool) (application.ClientRequest, error) {
+	userID := int64(0)
+	if cmd.Flags().Changed("uid") && cmd.Flags().Changed("profile") {
+		return application.ClientRequest{}, fmt.Errorf("use either --uid or deprecated --profile, not both")
+	}
+	rawUID := opts.uid
+	if rawUID == "" {
+		rawUID = opts.profile
+	}
+	if rawUID != "" {
+		parsed, err := application.ParseUID(rawUID)
+		if err != nil {
+			return application.ClientRequest{}, err
+		}
+		userID = parsed
+	}
 	req := application.ClientRequest{
-		Profile:      opts.profile,
+		UserID:       userID,
 		RefreshToken: opts.refreshToken,
 		NeedsAuth:    needsAuth,
 	}
+	proxyOverride, err := proxyOverrideFromFlags(cmd, opts.proxyOptions)
+	if err != nil {
+		return application.ClientRequest{}, err
+	}
+	req.HTTPSProxyOverride = proxyOverride
 	if cmd.Flags().Changed("download-path") {
 		req.DownloadPathOverride = &opts.downloadPath
 	}
@@ -132,7 +175,23 @@ func (a app) clientRequest(cmd *cobra.Command, opts commandOptions, needsAuth bo
 	if cmd.Flags().Changed("json") {
 		req.JSONOverride = &opts.jsonOut
 	}
-	return req
+	return req, nil
+}
+
+func proxyOverrideFromFlags(cmd *cobra.Command, opts proxyOptions) (*string, error) {
+	proxyChanged := cmd.Flags().Changed("proxy")
+	noProxyChanged := cmd.Flags().Changed("no-proxy")
+	if proxyChanged && noProxyChanged {
+		return nil, fmt.Errorf("use either --proxy or --no-proxy, not both")
+	}
+	if noProxyChanged && opts.noProxy {
+		empty := ""
+		return &empty, nil
+	}
+	if proxyChanged {
+		return &opts.proxy, nil
+	}
+	return nil, nil
 }
 
 func (a app) printJSON(v any) error {

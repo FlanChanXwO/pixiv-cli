@@ -18,7 +18,7 @@
 
 ```bash
 go test ./...
-go build -o pixiv ./cmd/pixiv
+sh scripts/build.sh
 ```
 
 Do not suggest package-manager, frontend, database, Docker, or release commands unless the repository already contains that workflow.

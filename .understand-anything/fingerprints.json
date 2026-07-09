@@ -1,8 +1,48 @@
 {
   "version": "1.0.0",
-  "gitCommitHash": "4ff6f1229571dacada8868c977c06582e6d3b23b",
-  "generatedAt": "2026-07-03T04:07:58.546Z",
+  "gitCommitHash": "4002c10cb7ef8469da43a77b85bdea83f5cf56dc",
+  "generatedAt": "2026-07-09T09:52:55.079Z",
   "files": {
+    ".agents/skills/pixiv-commit-msg/SKILL.md": {
+      "filePath": ".agents/skills/pixiv-commit-msg/SKILL.md",
+      "contentHash": "bf1785ce857c6f984721b40188743163b1d3baefb3f69417b50b90241245fbed",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 41,
+      "hasStructuralAnalysis": true
+    },
+    ".agents/skills/pixiv-docs/SKILL.md": {
+      "filePath": ".agents/skills/pixiv-docs/SKILL.md",
+      "contentHash": "7d3127fb0b379c174f11487ee11425aaded1e243b87b85a5baecac8869ea61f3",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 37,
+      "hasStructuralAnalysis": true
+    },
+    ".agents/skills/pixiv-review/SKILL.md": {
+      "filePath": ".agents/skills/pixiv-review/SKILL.md",
+      "contentHash": "3346b08735cce14543ace8a4155b99cfb9397400f7974ea339517a110658e7e7",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 46,
+      "hasStructuralAnalysis": true
+    },
+    ".github/copilot-instructions.md": {
+      "filePath": ".github/copilot-instructions.md",
+      "contentHash": "a3527c11b1b0e4077f943b7f0814b7da19559fdbc5d85b6d372d500904f5fb75",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 33,
+      "hasStructuralAnalysis": true
+    },
     ".pre-commit-config.yaml": {
       "filePath": ".pre-commit-config.yaml",
       "contentHash": "efc7794936303f46641b5a32385b0a2d722a3657f03a52efdbc5a0308f2448ff",
@@ -13,49 +53,39 @@
       "totalLines": 14,
       "hasStructuralAnalysis": true
     },
-    ".understand-anything/.understandignore": {
-      "filePath": ".understand-anything/.understandignore",
-      "contentHash": "6daeb3e5f9cedf48944ecf415df56723cea653f8b9f6eb827788e371e231e358",
-      "functions": [],
-      "classes": [],
-      "imports": [],
-      "exports": [],
-      "totalLines": 55,
-      "hasStructuralAnalysis": false
-    },
-    ".understand-anything/config.json": {
-      "filePath": ".understand-anything/config.json",
-      "contentHash": "5d2ff006cff22c68edd4776249d562ea8c73915a61c6214eb85933865a9402e7",
-      "functions": [],
-      "classes": [],
-      "imports": [],
-      "exports": [],
-      "totalLines": 4,
-      "hasStructuralAnalysis": true
-    },
     "AGENTS.md": {
       "filePath": "AGENTS.md",
-      "contentHash": "3d423022317978508be1f7171d8a036eac70449240cb862bb2b004e52509da89",
+      "contentHash": "21007bbdb72788b42a93d3e422a3097c5409dc183d61f0f1becc9f94a0e04a53",
       "functions": [],
       "classes": [],
       "imports": [],
       "exports": [],
-      "totalLines": 99,
+      "totalLines": 60,
+      "hasStructuralAnalysis": true
+    },
+    "CHANGELOG.md": {
+      "filePath": "CHANGELOG.md",
+      "contentHash": "82b9574490731372ef56ad1ff633c3c1f31046ff81957d3b8673c7335869399c",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 27,
       "hasStructuralAnalysis": true
     },
     "CLAUDE.md": {
       "filePath": "CLAUDE.md",
-      "contentHash": "ad7dc07196176857614a9ff1b14df81d60aaa55b30c002647d2792e518699db9",
+      "contentHash": "336cc4fbf19beaada7ccf9986414fa91851a8d7a07dfb3ccbe800a69eed0ab49",
       "functions": [],
       "classes": [],
       "imports": [],
       "exports": [],
-      "totalLines": 80,
+      "totalLines": 2,
       "hasStructuralAnalysis": true
     },
     "cmd/pixiv/main.go": {
       "filePath": "cmd/pixiv/main.go",
-      "contentHash": "09d16f534cf715c2e6322d0b6fe26e28174c596f19e94a9ceb1e710d8af08c64",
+      "contentHash": "f9cae163aa2d27d21151c5fc0be7fab4e59a6a103293a8d079dc2fbf424d0b16",
       "functions": [
         {
           "name": "main",
@@ -73,7 +103,7 @@
           ]
         },
         {
-          "source": "github.com/FlanChanXwO/pixiv-mcp-server/internal/cli",
+          "source": "github.com/FlanChanXwO/pixiv-cli/internal/cli",
           "specifiers": [
             "pixivcmd"
           ]
@@ -83,39 +113,129 @@
       "totalLines": 12,
       "hasStructuralAnalysis": true
     },
-    "docs/architecture.md": {
-      "filePath": "docs/architecture.md",
-      "contentHash": "7c79293e9e40963d5296f65e53c8df9420f461b29a64d833b9bc95492e148e38",
+    "CONTEXT.md": {
+      "filePath": "CONTEXT.md",
+      "contentHash": "5e2ecccef85fd56d9cce78febd7df6df712c0b0f79ecfa765d266e6fb6bf8088",
       "functions": [],
       "classes": [],
       "imports": [],
       "exports": [],
-      "totalLines": 129,
+      "totalLines": 41,
+      "hasStructuralAnalysis": true
+    },
+    "docs/adr/0001-cli-thin-controller-and-bootstrap.md": {
+      "filePath": "docs/adr/0001-cli-thin-controller-and-bootstrap.md",
+      "contentHash": "076fa6095f6e9c7f42b0e16a15be2077ab7ce77864c878e471749793146850b5",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 45,
+      "hasStructuralAnalysis": true
+    },
+    "docs/adr/0002-utils-and-common-boundaries.md": {
+      "filePath": "docs/adr/0002-utils-and-common-boundaries.md",
+      "contentHash": "6b3a86fefbdb941e339ba3f48825c535f0a88c3e5c5e0bf0efd81ab67a9d48ce",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 34,
+      "hasStructuralAnalysis": true
+    },
+    "docs/adr/0003-agent-instruction-precedent-strategy.md": {
+      "filePath": "docs/adr/0003-agent-instruction-precedent-strategy.md",
+      "contentHash": "afac34b4180b3ad76368b5ec23a4206e220a1fd1e54abf21227f1bf91b4296df",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 18,
+      "hasStructuralAnalysis": true
+    },
+    "docs/adr/0004-auth-accounts-use-pixiv-uid.md": {
+      "filePath": "docs/adr/0004-auth-accounts-use-pixiv-uid.md",
+      "contentHash": "c03b22884f54cdf81e70cbc2c22579cb527375f33625c45f11e5386d6a41c8d3",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 30,
+      "hasStructuralAnalysis": true
+    },
+    "docs/adr/0005-auth-login-real-browser-relay-without-ui-automation.md": {
+      "filePath": "docs/adr/0005-auth-login-real-browser-relay-without-ui-automation.md",
+      "contentHash": "da2406b0d11d6f4982cf438296520cf7ebda5f580917e0dfd39a90dea2b75f75",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 34,
+      "hasStructuralAnalysis": true
+    },
+    "docs/agents/documentation-guidelines.md": {
+      "filePath": "docs/agents/documentation-guidelines.md",
+      "contentHash": "3f9460da3160c5c80a86257d5a3e01213b60a260a8eb817495cd85e254faf2b7",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 26,
+      "hasStructuralAnalysis": true
+    },
+    "docs/agents/index.md": {
+      "filePath": "docs/agents/index.md",
+      "contentHash": "ca25ff4e12284c8d91c4aedccbcc0975e480d8bc47f27248734486762c5b224f",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 16,
+      "hasStructuralAnalysis": true
+    },
+    "docs/agents/review-checklist.md": {
+      "filePath": "docs/agents/review-checklist.md",
+      "contentHash": "1f99ef1e9daa514cffd5a9389ea5ac2c1ea6c162078f7cf74fb8fc149d848224",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 33,
+      "hasStructuralAnalysis": true
+    },
+    "docs/architecture.md": {
+      "filePath": "docs/architecture.md",
+      "contentHash": "eeaac19fff49665ebb4f66fffb655afa2800f380ac3e211fb1e4d81b536360d1",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 153,
       "hasStructuralAnalysis": true
     },
     "docs/development.md": {
       "filePath": "docs/development.md",
-      "contentHash": "b081189518435d9cc2ce8c107c549ba4db4ea8ebafba849a56c7c3606d539d47",
+      "contentHash": "79a000d216776db14355af203a492fb61556c1a5b5ca47a6575e60baa2976fb8",
       "functions": [],
       "classes": [],
       "imports": [],
       "exports": [],
-      "totalLines": 117,
+      "totalLines": 144,
       "hasStructuralAnalysis": true
     },
     "docs/index.md": {
       "filePath": "docs/index.md",
-      "contentHash": "f2ddb6119489164dcf159faacd610f9f120dd48cffbb4812db6b06f04a105a2d",
+      "contentHash": "e25ab71738744e72638d32117ec38e82fe8fb6ce94fa329777312f71955f65cc",
       "functions": [],
       "classes": [],
       "imports": [],
       "exports": [],
-      "totalLines": 40,
+      "totalLines": 47,
       "hasStructuralAnalysis": true
     },
     "docs/mcp-tools.md": {
       "filePath": "docs/mcp-tools.md",
-      "contentHash": "a300bb953ae9317a86bcd75bb443d7601d838a7289c13739fb3e80aa2a20c81e",
+      "contentHash": "e6c17d3d92097e2d5af7d8a6d4af68e3392dc52018e13c5a88aed376cf1b2224",
       "functions": [],
       "classes": [],
       "imports": [],
@@ -125,7 +245,7 @@
     },
     "go.mod": {
       "filePath": "go.mod",
-      "contentHash": "d8b35aa93953649a4573c2d49bd0ccb8e3a782d54eeda64f6d6436492c042685",
+      "contentHash": "2d6ffdb7c2b7fe1a5aa083f1f8cc25135c8c1ddcd6fa88ac4c5eb998c6eab27e",
       "functions": [],
       "classes": [],
       "imports": [],
@@ -143,9 +263,1475 @@
       "totalLines": 107,
       "hasStructuralAnalysis": false
     },
+    "internal/application/account_test.go": {
+      "filePath": "internal/application/account_test.go",
+      "contentHash": "287386bb97a3c01490ad365a4ca63cd55b230ab17a79698f64a8d0209d54f5bd",
+      "functions": [
+        {
+          "name": "TestResolveRefreshTokenPriority",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 21
+        },
+        {
+          "name": "TestClientResolverDoesNotReadEnvironmentWithoutInjectedProvider",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 15
+        },
+        {
+          "name": "TestApplicationServicesReportMissingDependencies",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 22
+        },
+        {
+          "name": "TestAccountServiceAddListUsesAuthenticatedUID",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 38
+        },
+        {
+          "name": "TestAccountServiceAddWarnsWhenUsernameLookupFails",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 25
+        },
+        {
+          "name": "TestAccountServiceAddRecreatesLegacyAuthStore",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 20
+        },
+        {
+          "name": "TestAccountServiceCheckRejectsMismatchedUID",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 23
+        },
+        {
+          "name": "TestLoginServiceCompleteStoresOAuthUID",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 28
+        },
+        {
+          "name": "TestLoginServiceCompleteRecreatesLegacyAuthStore",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 19
+        },
+        {
+          "name": "ExchangeAuthorizationCode",
+          "params": [],
+          "returnType": "(OAuthToken, error)",
+          "exported": true,
+          "lineCount": 3
+        },
+        {
+          "name": "Refresh",
+          "params": [],
+          "returnType": "error",
+          "exported": true,
+          "lineCount": 1
+        },
+        {
+          "name": "RefreshTokenValue",
+          "params": [],
+          "returnType": "string",
+          "exported": true,
+          "lineCount": 1
+        },
+        {
+          "name": "UserID",
+          "params": [],
+          "returnType": "int64",
+          "exported": true,
+          "lineCount": 1
+        },
+        {
+          "name": "UserName",
+          "params": [],
+          "returnType": "string",
+          "exported": true,
+          "lineCount": 1
+        },
+        {
+          "name": "UserDetail",
+          "params": [],
+          "returnType": "(*pixiv.User, error)",
+          "exported": true,
+          "lineCount": 6
+        },
+        {
+          "name": "Load",
+          "params": [],
+          "returnType": "(auth.AuthStore, error)",
+          "exported": true,
+          "lineCount": 6
+        },
+        {
+          "name": "Save",
+          "params": [
+            "store"
+          ],
+          "returnType": "error",
+          "exported": true,
+          "lineCount": 4
+        },
+        {
+          "name": "Load",
+          "params": [],
+          "returnType": "(auth.AuthStore, error)",
+          "exported": true,
+          "lineCount": 6
+        },
+        {
+          "name": "Save",
+          "params": [
+            "store"
+          ],
+          "returnType": "error",
+          "exported": true,
+          "lineCount": 5
+        }
+      ],
+      "classes": [
+        {
+          "name": "fakeOAuthExchanger",
+          "methods": [
+            "ExchangeAuthorizationCode"
+          ],
+          "properties": [
+            "token"
+          ],
+          "exported": false,
+          "lineCount": 3
+        },
+        {
+          "name": "fakeAuthenticatedPixivClient",
+          "methods": [
+            "Refresh",
+            "RefreshTokenValue",
+            "UserID",
+            "UserName",
+            "UserDetail"
+          ],
+          "properties": [
+            "userID",
+            "username",
+            "detailErr"
+          ],
+          "exported": false,
+          "lineCount": 5
+        },
+        {
+          "name": "memoryAuthRepository",
+          "methods": [
+            "Load",
+            "Save"
+          ],
+          "properties": [
+            "store"
+          ],
+          "exported": false,
+          "lineCount": 3
+        },
+        {
+          "name": "legacyThenMemoryAuthRepository",
+          "methods": [
+            "Load",
+            "Save"
+          ],
+          "properties": [
+            "store",
+            "saved"
+          ],
+          "exported": false,
+          "lineCount": 4
+        }
+      ],
+      "imports": [
+        {
+          "source": "context",
+          "specifiers": [
+            "context"
+          ]
+        },
+        {
+          "source": "errors",
+          "specifiers": [
+            "errors"
+          ]
+        },
+        {
+          "source": "testing",
+          "specifiers": [
+            "testing"
+          ]
+        },
+        {
+          "source": "github.com/FlanChanXwO/pixiv-cli/internal/config",
+          "specifiers": [
+            "config"
+          ]
+        },
+        {
+          "source": "github.com/FlanChanXwO/pixiv-cli/internal/pixiv",
+          "specifiers": [
+            "pixiv"
+          ]
+        },
+        {
+          "source": "github.com/FlanChanXwO/pixiv-cli/internal/storage/auth",
+          "specifiers": [
+            "auth"
+          ]
+        },
+        {
+          "source": "github.com/stretchr/testify/assert",
+          "specifiers": [
+            "assert"
+          ]
+        },
+        {
+          "source": "github.com/stretchr/testify/require",
+          "specifiers": [
+            "require"
+          ]
+        }
+      ],
+      "exports": [
+        "TestResolveRefreshTokenPriority",
+        "TestClientResolverDoesNotReadEnvironmentWithoutInjectedProvider",
+        "TestApplicationServicesReportMissingDependencies",
+        "TestAccountServiceAddListUsesAuthenticatedUID",
+        "TestAccountServiceAddWarnsWhenUsernameLookupFails",
+        "TestAccountServiceAddRecreatesLegacyAuthStore",
+        "TestAccountServiceCheckRejectsMismatchedUID",
+        "TestLoginServiceCompleteStoresOAuthUID",
+        "TestLoginServiceCompleteRecreatesLegacyAuthStore",
+        "ExchangeAuthorizationCode",
+        "Refresh",
+        "RefreshTokenValue",
+        "UserID",
+        "UserName",
+        "UserDetail",
+        "Load",
+        "Save",
+        "Load",
+        "Save"
+      ],
+      "totalLines": 293,
+      "hasStructuralAnalysis": true
+    },
+    "internal/application/account.go": {
+      "filePath": "internal/application/account.go",
+      "contentHash": "e259b1aba6311c470de944a96f705551555939e74b40e9b7360a963df5a46626",
+      "functions": [
+        {
+          "name": "Add",
+          "params": [
+            "ctx",
+            "req"
+          ],
+          "returnType": "(AccountResult, error)",
+          "exported": true,
+          "lineCount": 33
+        },
+        {
+          "name": "List",
+          "params": [],
+          "returnType": "(AccountListResult, error)",
+          "exported": true,
+          "lineCount": 11
+        },
+        {
+          "name": "Remove",
+          "params": [
+            "userID"
+          ],
+          "returnType": "(AccountResult, int64, error)",
+          "exported": true,
+          "lineCount": 17
+        },
+        {
+          "name": "Use",
+          "params": [
+            "userID"
+          ],
+          "returnType": "(int64, error)",
+          "exported": true,
+          "lineCount": 14
+        },
+        {
+          "name": "Check",
+          "params": [
+            "ctx",
+            "userID"
+          ],
+          "returnType": "(AccountResult, error)",
+          "exported": true,
+          "lineCount": 3
+        },
+        {
+          "name": "CheckWithRequest",
+          "params": [
+            "ctx",
+            "req"
+          ],
+          "returnType": "(AccountResult, error)",
+          "exported": true,
+          "lineCount": 49
+        },
+        {
+          "name": "authStore",
+          "params": [],
+          "returnType": "(auth.AuthStore, error)",
+          "exported": false,
+          "lineCount": 6
+        },
+        {
+          "name": "authStoreForRecreate",
+          "params": [],
+          "returnType": "(auth.AuthStore, error)",
+          "exported": false,
+          "lineCount": 7
+        },
+        {
+          "name": "runtime",
+          "params": [],
+          "returnType": "(config.RuntimeConfig, error)",
+          "exported": false,
+          "lineCount": 6
+        },
+        {
+          "name": "refreshTokenFromEnv",
+          "params": [],
+          "returnType": "string",
+          "exported": false,
+          "lineCount": 6
+        },
+        {
+          "name": "identityAccount",
+          "params": [
+            "ctx",
+            "cfg"
+          ],
+          "returnType": "(auth.Account, string, error)",
+          "exported": false,
+          "lineCount": 31
+        },
+        {
+          "name": "accountResult",
+          "params": [
+            "acct",
+            "isDefault"
+          ],
+          "returnType": "AccountResult",
+          "exported": false,
+          "lineCount": 8
+        },
+        {
+          "name": "ParseUID",
+          "params": [
+            "raw"
+          ],
+          "returnType": "(int64, error)",
+          "exported": true,
+          "lineCount": 11
+        },
+        {
+          "name": "ResolveRefreshToken",
+          "params": [
+            "store",
+            "requestedUserID",
+            "requestedToken",
+            "refreshTokenEnv"
+          ],
+          "returnType": "(string, error)",
+          "exported": true,
+          "lineCount": 28
+        }
+      ],
+      "classes": [
+        {
+          "name": "AuthRepository",
+          "methods": [
+            "Load",
+            "Save"
+          ],
+          "properties": [],
+          "exported": true,
+          "lineCount": 4
+        },
+        {
+          "name": "AuthenticatedPixivClient",
+          "methods": [
+            "Refresh",
+            "RefreshTokenValue",
+            "UserID",
+            "UserName",
+            "UserDetail"
+          ],
+          "properties": [],
+          "exported": true,
+          "lineCount": 7
+        },
+        {
+          "name": "AccountService",
+          "methods": [
+            "Add",
+            "List",
+            "Remove",
+            "Use",
+            "Check",
+            "CheckWithRequest",
+            "authStore",
+            "authStoreForRecreate",
+            "runtime",
+            "refreshTokenFromEnv",
+            "identityAccount"
+          ],
+          "properties": [
+            "Auth",
+            "LoadRuntime",
+            "RefreshTokenEnv",
+            "NewClient"
+          ],
+          "exported": true,
+          "lineCount": 6
+        },
+        {
+          "name": "AccountAddRequest",
+          "methods": [],
+          "properties": [
+            "TokenInput",
+            "HTTPSProxyOverride"
+          ],
+          "exported": true,
+          "lineCount": 4
+        },
+        {
+          "name": "AccountCheckRequest",
+          "methods": [],
+          "properties": [
+            "UserID",
+            "HTTPSProxyOverride"
+          ],
+          "exported": true,
+          "lineCount": 4
+        },
+        {
+          "name": "AccountResult",
+          "methods": [],
+          "properties": [
+            "UserID",
+            "Username",
+            "Default",
+            "HasToken",
+            "Warning"
+          ],
+          "exported": true,
+          "lineCount": 7
+        },
+        {
+          "name": "AccountListResult",
+          "methods": [],
+          "properties": [
+            "DefaultUserID",
+            "Accounts"
+          ],
+          "exported": true,
+          "lineCount": 4
+        }
+      ],
+      "imports": [
+        {
+          "source": "context",
+          "specifiers": [
+            "context"
+          ]
+        },
+        {
+          "source": "errors",
+          "specifiers": [
+            "errors"
+          ]
+        },
+        {
+          "source": "fmt",
+          "specifiers": [
+            "fmt"
+          ]
+        },
+        {
+          "source": "strconv",
+          "specifiers": [
+            "strconv"
+          ]
+        },
+        {
+          "source": "strings",
+          "specifiers": [
+            "strings"
+          ]
+        },
+        {
+          "source": "github.com/FlanChanXwO/pixiv-cli/internal/config",
+          "specifiers": [
+            "config"
+          ]
+        },
+        {
+          "source": "github.com/FlanChanXwO/pixiv-cli/internal/pixiv",
+          "specifiers": [
+            "pixiv"
+          ]
+        },
+        {
+          "source": "github.com/FlanChanXwO/pixiv-cli/internal/storage/auth",
+          "specifiers": [
+            "auth"
+          ]
+        },
+        {
+          "source": "github.com/FlanChanXwO/pixiv-cli/internal/utils",
+          "specifiers": [
+            "utils"
+          ]
+        }
+      ],
+      "exports": [
+        "AuthRepository",
+        "AuthenticatedPixivClient",
+        "AccountService",
+        "AccountAddRequest",
+        "AccountCheckRequest",
+        "AccountResult",
+        "AccountListResult",
+        "Add",
+        "List",
+        "Remove",
+        "Use",
+        "Check",
+        "CheckWithRequest",
+        "ParseUID",
+        "ResolveRefreshToken"
+      ],
+      "totalLines": 304,
+      "hasStructuralAnalysis": true
+    },
+    "internal/application/config.go": {
+      "filePath": "internal/application/config.go",
+      "contentHash": "398fbc5d820730c4703fff536b4674321255f351943955ef63c0da21c9e71324",
+      "functions": [
+        {
+          "name": "Path",
+          "params": [],
+          "returnType": "(string, error)",
+          "exported": true,
+          "lineCount": 6
+        },
+        {
+          "name": "Get",
+          "params": [
+            "alias"
+          ],
+          "returnType": "(config.SettingValue, error)",
+          "exported": true,
+          "lineCount": 6
+        },
+        {
+          "name": "Set",
+          "params": [
+            "alias",
+            "raw"
+          ],
+          "returnType": "(ConfigMutationResult, error)",
+          "exported": true,
+          "lineCount": 6
+        },
+        {
+          "name": "Unset",
+          "params": [
+            "alias"
+          ],
+          "returnType": "(ConfigMutationResult, error)",
+          "exported": true,
+          "lineCount": 6
+        }
+      ],
+      "classes": [
+        {
+          "name": "ConfigService",
+          "methods": [
+            "Path",
+            "Get",
+            "Set",
+            "Unset"
+          ],
+          "properties": [
+            "Store"
+          ],
+          "exported": true,
+          "lineCount": 3
+        },
+        {
+          "name": "ConfigStore",
+          "methods": [
+            "Path",
+            "Get",
+            "Set",
+            "Unset"
+          ],
+          "properties": [],
+          "exported": true,
+          "lineCount": 6
+        },
+        {
+          "name": "ConfigMutationResult",
+          "methods": [],
+          "properties": [
+            "Alias",
+            "EnvOverride",
+            "HasOverride"
+          ],
+          "exported": true,
+          "lineCount": 5
+        }
+      ],
+      "imports": [
+        {
+          "source": "errors",
+          "specifiers": [
+            "errors"
+          ]
+        },
+        {
+          "source": "github.com/FlanChanXwO/pixiv-cli/internal/config",
+          "specifiers": [
+            "config"
+          ]
+        }
+      ],
+      "exports": [
+        "ConfigService",
+        "ConfigStore",
+        "ConfigMutationResult",
+        "Path",
+        "Get",
+        "Set",
+        "Unset"
+      ],
+      "totalLines": 53,
+      "hasStructuralAnalysis": true
+    },
+    "internal/application/login.go": {
+      "filePath": "internal/application/login.go",
+      "contentHash": "c9a209315a24036919dbaca4dc07ec2ddc1329f592677aee3ba8d5db47f55ce7",
+      "functions": [
+        {
+          "name": "Start",
+          "params": [],
+          "returnType": "(LoginStart, error)",
+          "exported": true,
+          "lineCount": 15
+        },
+        {
+          "name": "Complete",
+          "params": [
+            "ctx",
+            "req"
+          ],
+          "returnType": "(AccountResult, error)",
+          "exported": true,
+          "lineCount": 38
+        },
+        {
+          "name": "authStore",
+          "params": [],
+          "returnType": "(auth.AuthStore, error)",
+          "exported": false,
+          "lineCount": 6
+        },
+        {
+          "name": "authStoreForRecreate",
+          "params": [],
+          "returnType": "(auth.AuthStore, error)",
+          "exported": false,
+          "lineCount": 7
+        },
+        {
+          "name": "runtime",
+          "params": [],
+          "returnType": "(config.RuntimeConfig, error)",
+          "exported": false,
+          "lineCount": 6
+        },
+        {
+          "name": "GeneratePKCEPair",
+          "params": [],
+          "returnType": "(verifier, challenge string, err error)",
+          "exported": true,
+          "lineCount": 9
+        },
+        {
+          "name": "RandomURLToken",
+          "params": [
+            "size"
+          ],
+          "returnType": "(string, error)",
+          "exported": true,
+          "lineCount": 7
+        }
+      ],
+      "classes": [
+        {
+          "name": "OAuthToken",
+          "methods": [],
+          "properties": [
+            "RefreshToken",
+            "UserID",
+            "Username"
+          ],
+          "exported": true,
+          "lineCount": 5
+        },
+        {
+          "name": "OAuthExchanger",
+          "methods": [
+            "ExchangeAuthorizationCode"
+          ],
+          "properties": [],
+          "exported": true,
+          "lineCount": 3
+        },
+        {
+          "name": "LoginService",
+          "methods": [
+            "Start",
+            "Complete",
+            "authStore",
+            "authStoreForRecreate",
+            "runtime"
+          ],
+          "properties": [
+            "Auth",
+            "LoadRuntime",
+            "NewOAuth"
+          ],
+          "exported": true,
+          "lineCount": 5
+        },
+        {
+          "name": "LoginStart",
+          "methods": [],
+          "properties": [
+            "Verifier",
+            "Challenge",
+            "State"
+          ],
+          "exported": true,
+          "lineCount": 5
+        },
+        {
+          "name": "LoginCompleteRequest",
+          "methods": [],
+          "properties": [
+            "Code",
+            "Verifier",
+            "OAuthBase",
+            "UseAfterLogin",
+            "HTTPSProxyOverride"
+          ],
+          "exported": true,
+          "lineCount": 7
+        }
+      ],
+      "imports": [
+        {
+          "source": "context",
+          "specifiers": [
+            "context"
+          ]
+        },
+        {
+          "source": "crypto/rand",
+          "specifiers": [
+            "rand"
+          ]
+        },
+        {
+          "source": "crypto/sha256",
+          "specifiers": [
+            "sha256"
+          ]
+        },
+        {
+          "source": "encoding/base64",
+          "specifiers": [
+            "base64"
+          ]
+        },
+        {
+          "source": "errors",
+          "specifiers": [
+            "errors"
+          ]
+        },
+        {
+          "source": "strings",
+          "specifiers": [
+            "strings"
+          ]
+        },
+        {
+          "source": "github.com/FlanChanXwO/pixiv-cli/internal/config",
+          "specifiers": [
+            "config"
+          ]
+        },
+        {
+          "source": "github.com/FlanChanXwO/pixiv-cli/internal/pixiv",
+          "specifiers": [
+            "pixiv"
+          ]
+        },
+        {
+          "source": "github.com/FlanChanXwO/pixiv-cli/internal/storage/auth",
+          "specifiers": [
+            "auth"
+          ]
+        }
+      ],
+      "exports": [
+        "OAuthToken",
+        "OAuthExchanger",
+        "LoginService",
+        "LoginStart",
+        "LoginCompleteRequest",
+        "Start",
+        "Complete",
+        "GeneratePKCEPair",
+        "RandomURLToken"
+      ],
+      "totalLines": 142,
+      "hasStructuralAnalysis": true
+    },
+    "internal/application/runtime.go": {
+      "filePath": "internal/application/runtime.go",
+      "contentHash": "83b37a2ce472015a31b818a46eb18447fe9e22992046d226a1209753b8b93c0f",
+      "functions": [
+        {
+          "name": "Resolve",
+          "params": [
+            "ctx",
+            "req"
+          ],
+          "returnType": "(ClientSession, error)",
+          "exported": true,
+          "lineCount": 45
+        },
+        {
+          "name": "applyHTTPSProxyOverride",
+          "params": [
+            "cfg",
+            "override"
+          ],
+          "exported": false,
+          "lineCount": 5
+        },
+        {
+          "name": "authStore",
+          "params": [],
+          "returnType": "(auth.AuthStore, error)",
+          "exported": false,
+          "lineCount": 6
+        },
+        {
+          "name": "runtime",
+          "params": [],
+          "returnType": "(config.RuntimeConfig, error)",
+          "exported": false,
+          "lineCount": 6
+        },
+        {
+          "name": "refreshTokenFromEnv",
+          "params": [],
+          "returnType": "string",
+          "exported": false,
+          "lineCount": 6
+        },
+        {
+          "name": "Search",
+          "params": [
+            "ctx",
+            "req"
+          ],
+          "returnType": "(*pixiv.IllustList, bool, error)",
+          "exported": true,
+          "lineCount": 11
+        },
+        {
+          "name": "Detail",
+          "params": [
+            "ctx",
+            "clientReq",
+            "id"
+          ],
+          "returnType": "(*pixiv.IllustDetail, bool, error)",
+          "exported": true,
+          "lineCount": 11
+        },
+        {
+          "name": "Ranking",
+          "params": [
+            "ctx",
+            "req"
+          ],
+          "returnType": "(*pixiv.IllustList, bool, error)",
+          "exported": true,
+          "lineCount": 11
+        },
+        {
+          "name": "Recommended",
+          "params": [
+            "ctx",
+            "req"
+          ],
+          "returnType": "(*pixiv.IllustList, bool, error)",
+          "exported": true,
+          "lineCount": 13
+        },
+        {
+          "name": "Download",
+          "params": [
+            "ctx",
+            "clientReq",
+            "ids"
+          ],
+          "returnType": "([]download.DownloadedArtwork, bool, error)",
+          "exported": true,
+          "lineCount": 15
+        }
+      ],
+      "classes": [
+        {
+          "name": "ArtworkClient",
+          "methods": [
+            "SearchIllust",
+            "IllustDetail",
+            "IllustRanking",
+            "IllustRecommended"
+          ],
+          "properties": [],
+          "exported": true,
+          "lineCount": 6
+        },
+        {
+          "name": "DownloadClient",
+          "methods": [],
+          "properties": [],
+          "exported": true,
+          "lineCount": 3
+        },
+        {
+          "name": "ClientBundle",
+          "methods": [],
+          "properties": [
+            "Auth",
+            "Artwork",
+            "Download"
+          ],
+          "exported": true,
+          "lineCount": 5
+        },
+        {
+          "name": "ClientResolver",
+          "methods": [
+            "Resolve",
+            "authStore",
+            "runtime",
+            "refreshTokenFromEnv"
+          ],
+          "properties": [
+            "Auth",
+            "LoadRuntime",
+            "RefreshTokenEnv",
+            "NewClient"
+          ],
+          "exported": true,
+          "lineCount": 6
+        },
+        {
+          "name": "ClientRequest",
+          "methods": [],
+          "properties": [
+            "UserID",
+            "RefreshToken",
+            "HTTPSProxyOverride",
+            "DownloadPathOverride",
+            "FilenameTemplateOverride",
+            "JSONOverride",
+            "NeedsAuth"
+          ],
+          "exported": true,
+          "lineCount": 9
+        },
+        {
+          "name": "ClientSession",
+          "methods": [],
+          "properties": [
+            "Client",
+            "Config",
+            "JSONOut"
+          ],
+          "exported": true,
+          "lineCount": 5
+        },
+        {
+          "name": "ArtworkService",
+          "methods": [
+            "Search",
+            "Detail",
+            "Ranking",
+            "Recommended"
+          ],
+          "properties": [
+            "Resolver"
+          ],
+          "exported": true,
+          "lineCount": 3
+        },
+        {
+          "name": "SearchRequest",
+          "methods": [],
+          "properties": [
+            "Client",
+            "Word",
+            "Target",
+            "Sort",
+            "Duration",
+            "Offset"
+          ],
+          "exported": true,
+          "lineCount": 8
+        },
+        {
+          "name": "RankingRequest",
+          "methods": [],
+          "properties": [
+            "Client",
+            "Mode",
+            "Date",
+            "Offset"
+          ],
+          "exported": true,
+          "lineCount": 6
+        },
+        {
+          "name": "RecommendedRequest",
+          "methods": [],
+          "properties": [
+            "Client",
+            "Offset"
+          ],
+          "exported": true,
+          "lineCount": 4
+        },
+        {
+          "name": "DownloadService",
+          "methods": [
+            "Download"
+          ],
+          "properties": [
+            "Resolver",
+            "NewDownloader"
+          ],
+          "exported": true,
+          "lineCount": 4
+        },
+        {
+          "name": "Downloader",
+          "methods": [
+            "Download"
+          ],
+          "properties": [],
+          "exported": true,
+          "lineCount": 3
+        },
+        {
+          "name": "Services",
+          "methods": [],
+          "properties": [
+            "Account",
+            "Config",
+            "Artwork",
+            "Download",
+            "Login"
+          ],
+          "exported": true,
+          "lineCount": 7
+        }
+      ],
+      "imports": [
+        {
+          "source": "context",
+          "specifiers": [
+            "context"
+          ]
+        },
+        {
+          "source": "errors",
+          "specifiers": [
+            "errors"
+          ]
+        },
+        {
+          "source": "github.com/FlanChanXwO/pixiv-cli/internal/config",
+          "specifiers": [
+            "config"
+          ]
+        },
+        {
+          "source": "github.com/FlanChanXwO/pixiv-cli/internal/download",
+          "specifiers": [
+            "download"
+          ]
+        },
+        {
+          "source": "github.com/FlanChanXwO/pixiv-cli/internal/pixiv",
+          "specifiers": [
+            "pixiv"
+          ]
+        },
+        {
+          "source": "github.com/FlanChanXwO/pixiv-cli/internal/storage/auth",
+          "specifiers": [
+            "auth"
+          ]
+        }
+      ],
+      "exports": [
+        "ArtworkClient",
+        "DownloadClient",
+        "ClientBundle",
+        "ClientResolver",
+        "ClientRequest",
+        "ClientSession",
+        "Resolve",
+        "ArtworkService",
+        "SearchRequest",
+        "RankingRequest",
+        "RecommendedRequest",
+        "Search",
+        "Detail",
+        "Ranking",
+        "Recommended",
+        "DownloadService",
+        "Downloader",
+        "Download",
+        "Services"
+      ],
+      "totalLines": 237,
+      "hasStructuralAnalysis": true
+    },
+    "internal/bootstrap/bootstrap.go": {
+      "filePath": "internal/bootstrap/bootstrap.go",
+      "contentHash": "02edf15c54a8d11e92b8309496c947a96b61a387b6dfeabc4d01b899cf25b2a9",
+      "functions": [
+        {
+          "name": "Load",
+          "params": [],
+          "returnType": "(auth.AuthStore, error)",
+          "exported": true,
+          "lineCount": 7
+        },
+        {
+          "name": "Save",
+          "params": [
+            "store"
+          ],
+          "returnType": "error",
+          "exported": true,
+          "lineCount": 7
+        },
+        {
+          "name": "NewServices",
+          "params": [
+            "logger"
+          ],
+          "returnType": "application.Services",
+          "exported": true,
+          "lineCount": 46
+        },
+        {
+          "name": "LoadRuntimeConfig",
+          "params": [],
+          "returnType": "(config.RuntimeConfig, error)",
+          "exported": true,
+          "lineCount": 7
+        },
+        {
+          "name": "Path",
+          "params": [],
+          "returnType": "(string, error)",
+          "exported": true,
+          "lineCount": 3
+        },
+        {
+          "name": "Get",
+          "params": [
+            "alias"
+          ],
+          "returnType": "(config.SettingValue, error)",
+          "exported": true,
+          "lineCount": 11
+        },
+        {
+          "name": "Set",
+          "params": [
+            "alias",
+            "raw"
+          ],
+          "returnType": "(application.ConfigMutationResult, error)",
+          "exported": true,
+          "lineCount": 19
+        },
+        {
+          "name": "Unset",
+          "params": [
+            "alias"
+          ],
+          "returnType": "(application.ConfigMutationResult, error)",
+          "exported": true,
+          "lineCount": 15
+        },
+        {
+          "name": "NewPixivClient",
+          "params": [
+            "cfg"
+          ],
+          "returnType": "(*pixiv.Source, error)",
+          "exported": true,
+          "lineCount": 7
+        },
+        {
+          "name": "NewMCPRuntime",
+          "params": [
+            "logger",
+            "proxyOverride"
+          ],
+          "returnType": "(MCPRuntime, error)",
+          "exported": true,
+          "lineCount": 22
+        },
+        {
+          "name": "applyRuntimeProxyOverride",
+          "params": [
+            "cfg",
+            "override"
+          ],
+          "exported": false,
+          "lineCount": 5
+        },
+        {
+          "name": "AutoAuthenticate",
+          "params": [
+            "ctx"
+          ],
+          "exported": true,
+          "lineCount": 10
+        },
+        {
+          "name": "RunMCP",
+          "params": [
+            "ctx",
+            "errOut",
+            "proxyOverride"
+          ],
+          "returnType": "error",
+          "exported": true,
+          "lineCount": 10
+        },
+        {
+          "name": "ExchangeAuthorizationCode",
+          "params": [
+            "ctx",
+            "code",
+            "verifier"
+          ],
+          "returnType": "(application.OAuthToken, error)",
+          "exported": true,
+          "lineCount": 7
+        }
+      ],
+      "classes": [
+        {
+          "name": "AuthFileRepository",
+          "methods": [
+            "Load",
+            "Save"
+          ],
+          "properties": [],
+          "exported": true,
+          "lineCount": 1
+        },
+        {
+          "name": "ConfigFileStore",
+          "methods": [
+            "Path",
+            "Get",
+            "Set",
+            "Unset"
+          ],
+          "properties": [],
+          "exported": true,
+          "lineCount": 1
+        },
+        {
+          "name": "MCPRuntime",
+          "methods": [
+            "AutoAuthenticate"
+          ],
+          "properties": [
+            "Config",
+            "Client",
+            "Manager",
+            "Logger"
+          ],
+          "exported": true,
+          "lineCount": 6
+        },
+        {
+          "name": "oauthClient",
+          "methods": [
+            "ExchangeAuthorizationCode"
+          ],
+          "properties": [
+            "client"
+          ],
+          "exported": false,
+          "lineCount": 3
+        }
+      ],
+      "imports": [
+        {
+          "source": "context",
+          "specifiers": [
+            "context"
+          ]
+        },
+        {
+          "source": "fmt",
+          "specifiers": [
+            "fmt"
+          ]
+        },
+        {
+          "source": "io",
+          "specifiers": [
+            "io"
+          ]
+        },
+        {
+          "source": "log/slog",
+          "specifiers": [
+            "slog"
+          ]
+        },
+        {
+          "source": "strings",
+          "specifiers": [
+            "strings"
+          ]
+        },
+        {
+          "source": "github.com/FlanChanXwO/pixiv-cli/internal/application",
+          "specifiers": [
+            "application"
+          ]
+        },
+        {
+          "source": "github.com/FlanChanXwO/pixiv-cli/internal/config",
+          "specifiers": [
+            "config"
+          ]
+        },
+        {
+          "source": "github.com/FlanChanXwO/pixiv-cli/internal/download",
+          "specifiers": [
+            "download"
+          ]
+        },
+        {
+          "source": "github.com/FlanChanXwO/pixiv-cli/internal/mcpserver",
+          "specifiers": [
+            "mcpserver"
+          ]
+        },
+        {
+          "source": "github.com/FlanChanXwO/pixiv-cli/internal/pixiv",
+          "specifiers": [
+            "pixiv"
+          ]
+        },
+        {
+          "source": "github.com/FlanChanXwO/pixiv-cli/internal/storage/auth",
+          "specifiers": [
+            "auth"
+          ]
+        },
+        {
+          "source": "github.com/modelcontextprotocol/go-sdk/mcp",
+          "specifiers": [
+            "mcp"
+          ]
+        }
+      ],
+      "exports": [
+        "AuthFileRepository",
+        "Load",
+        "Save",
+        "NewServices",
+        "LoadRuntimeConfig",
+        "ConfigFileStore",
+        "Path",
+        "Get",
+        "Set",
+        "Unset",
+        "NewPixivClient",
+        "MCPRuntime",
+        "NewMCPRuntime",
+        "AutoAuthenticate",
+        "RunMCP",
+        "ExchangeAuthorizationCode"
+      ],
+      "totalLines": 223,
+      "hasStructuralAnalysis": true
+    },
     "internal/cli/account_cmd.go": {
       "filePath": "internal/cli/account_cmd.go",
-      "contentHash": "ea822b8cb0ddd59551cd53a80dd77def1e7220bb479787a2ced518cea2d0f29d",
+      "contentHash": "c6c3d7ee49bd6ec5eb7c92056f20cef4354e1400be626a74c91d1612739bf982",
       "functions": [
         {
           "name": "newAccountCommand",
@@ -159,17 +1745,17 @@
           "params": [],
           "returnType": "*cobra.Command",
           "exported": false,
-          "lineCount": 16
+          "lineCount": 17
         },
         {
           "name": "accountAdd",
           "params": [
-            "args",
+            "cmd",
             "opts"
           ],
           "returnType": "error",
           "exported": false,
-          "lineCount": 49
+          "lineCount": 33
         },
         {
           "name": "newAccountListCommand",
@@ -185,7 +1771,7 @@
           ],
           "returnType": "error",
           "exported": false,
-          "lineCount": 38
+          "lineCount": 27
         },
         {
           "name": "newAccountRemoveCommand",
@@ -202,7 +1788,7 @@
           ],
           "returnType": "error",
           "exported": false,
-          "lineCount": 37
+          "lineCount": 32
         },
         {
           "name": "newAccountUseCommand",
@@ -219,45 +1805,36 @@
           ],
           "returnType": "error",
           "exported": false,
-          "lineCount": 26
+          "lineCount": 20
         },
         {
           "name": "newAccountCheckCommand",
           "params": [],
           "returnType": "*cobra.Command",
           "exported": false,
-          "lineCount": 17
+          "lineCount": 22
         },
         {
           "name": "accountCheck",
           "params": [
-            "name",
-            "jsonOut"
+            "cmd",
+            "userID",
+            "opts"
           ],
           "returnType": "error",
           "exported": false,
-          "lineCount": 62
+          "lineCount": 30
         },
         {
-          "name": "resolveAccountNameArg",
+          "name": "resolveExistingUID",
           "params": [
+            "list",
             "args",
             "promptLabel"
           ],
-          "returnType": "(string, error)",
+          "returnType": "(int64, error)",
           "exported": false,
-          "lineCount": 9
-        },
-        {
-          "name": "resolveExistingAccountName",
-          "params": [
-            "store",
-            "args",
-            "promptLabel"
-          ],
-          "returnType": "(string, error)",
-          "exported": false,
-          "lineCount": 12
+          "lineCount": 28
         },
         {
           "name": "resolveRefreshTokenInput",
@@ -276,6 +1853,24 @@
           "returnType": "(string, error)",
           "exported": false,
           "lineCount": 7
+        },
+        {
+          "name": "accountOutFromResult",
+          "params": [
+            "result"
+          ],
+          "returnType": "accountOut",
+          "exported": false,
+          "lineCount": 9
+        },
+        {
+          "name": "accountListOutFromResult",
+          "params": [
+            "result"
+          ],
+          "returnType": "accountListOut",
+          "exported": false,
+          "lineCount": 7
         }
       ],
       "classes": [
@@ -283,19 +1878,20 @@
           "name": "accountOut",
           "methods": [],
           "properties": [
-            "Name",
-            "Default",
             "UserID",
-            "HasToken"
+            "Username",
+            "Default",
+            "HasToken",
+            "Warning"
           ],
           "exported": false,
-          "lineCount": 6
+          "lineCount": 7
         },
         {
           "name": "accountListOut",
           "methods": [],
           "properties": [
-            "DefaultAccount",
+            "DefaultUserID",
             "Accounts"
           ],
           "exported": false,
@@ -309,7 +1905,7 @@
             "jsonOut"
           ],
           "exported": false,
-          "lineCount": 4
+          "lineCount": 5
         },
         {
           "name": "accountRemoveOptions",
@@ -317,6 +1913,15 @@
           "properties": [
             "jsonOut",
             "yes"
+          ],
+          "exported": false,
+          "lineCount": 4
+        },
+        {
+          "name": "accountCheckOptions",
+          "methods": [],
+          "properties": [
+            "jsonOut"
           ],
           "exported": false,
           "lineCount": 4
@@ -360,21 +1965,9 @@
           ]
         },
         {
-          "source": "github.com/FlanChanXwO/pixiv-mcp-server/internal/cli/state",
+          "source": "github.com/FlanChanXwO/pixiv-cli/internal/application",
           "specifiers": [
-            "state"
-          ]
-        },
-        {
-          "source": "github.com/FlanChanXwO/pixiv-mcp-server/internal/config",
-          "specifiers": [
-            "config"
-          ]
-        },
-        {
-          "source": "github.com/FlanChanXwO/pixiv-mcp-server/internal/utils",
-          "specifiers": [
-            "utils"
+            "application"
           ]
         },
         {
@@ -385,30 +1978,29 @@
         }
       ],
       "exports": [],
-      "totalLines": 395,
+      "totalLines": 360,
       "hasStructuralAnalysis": true
     },
     "internal/cli/account_login.go": {
       "filePath": "internal/cli/account_login.go",
-      "contentHash": "877bc45585ecdbc6c9cbc392cbe56d9141e990fcedd70ff749eefcd545ead0c8",
+      "contentHash": "4ef56e2fb1c171bae86a49f33adf76a20f6ec2a40064c62cfe24a4903b39fa26",
       "functions": [
         {
           "name": "newAccountLoginCommand",
           "params": [],
           "returnType": "*cobra.Command",
           "exported": false,
-          "lineCount": 19
+          "lineCount": 20
         },
         {
           "name": "accountLogin",
           "params": [
             "cmd",
-            "args",
             "opts"
           ],
           "returnType": "error",
           "exported": false,
-          "lineCount": 91
+          "lineCount": 68
         },
         {
           "name": "waitForLoginCode",
@@ -418,11 +2010,12 @@
             "state",
             "loginURL",
             "noOpen",
-            "browserOpener"
+            "browserOpener",
+            "browserWatcher"
           ],
           "returnType": "(string, error)",
           "exported": false,
-          "lineCount": 116
+          "lineCount": 173
         },
         {
           "name": "writeLoginForm",
@@ -443,6 +2036,26 @@
           "lineCount": 8
         },
         {
+          "name": "writeLoginRelayResult",
+          "params": [
+            "w"
+          ],
+          "exported": false,
+          "lineCount": 4
+        },
+        {
+          "name": "loginInputFromText",
+          "params": [
+            "input",
+            "expectedState",
+            "expectedChallenge",
+            "openRelay"
+          ],
+          "returnType": "loginInputResult",
+          "exported": false,
+          "lineCount": 15
+        },
+        {
           "name": "loginCodeFromInput",
           "params": [
             "input",
@@ -451,6 +2064,15 @@
           "returnType": "loginServerResult",
           "exported": false,
           "lineCount": 17
+        },
+        {
+          "name": "loginURLRequiresState",
+          "params": [
+            "parsed"
+          ],
+          "returnType": "bool",
+          "exported": false,
+          "lineCount": 13
         },
         {
           "name": "loginCodeFromValues",
@@ -474,18 +2096,11 @@
           "lineCount": 8
         },
         {
-          "name": "generatePKCEPair",
-          "params": [],
-          "returnType": "(verifier, challenge string, err error)",
-          "exported": false,
-          "lineCount": 9
-        },
-        {
-          "name": "randomURLToken",
+          "name": "pixivLoginChallenge",
           "params": [
-            "size"
+            "loginURL"
           ],
-          "returnType": "(string, error)",
+          "returnType": "string",
           "exported": false,
           "lineCount": 7
         },
@@ -501,7 +2116,7 @@
         {
           "name": "currentLoginHooks",
           "params": [],
-          "returnType": "(string, func(string) error)",
+          "returnType": "(string, func(string) error, browserCodeWatcher)",
           "exported": false,
           "lineCount": 5
         },
@@ -521,17 +2136,16 @@
           ],
           "returnType": "func()",
           "exported": false,
-          "lineCount": 11
+          "lineCount": 14
         },
         {
-          "name": "newLoginPixivClient",
+          "name": "setBrowserCodeWatcherForTest",
           "params": [
-            "cfg",
-            "oauthBase"
+            "watcher"
           ],
-          "returnType": "(*pixiv.Client, error)",
+          "returnType": "func()",
           "exported": false,
-          "lineCount": 3
+          "lineCount": 11
         },
         {
           "name": "defaultOpenBrowser",
@@ -541,6 +2155,312 @@
           "returnType": "error",
           "exported": false,
           "lineCount": 3
+        },
+        {
+          "name": "installPixivURLSchemeRelay",
+          "params": [
+            "ctx",
+            "manualURL"
+          ],
+          "returnType": "(func(), error)",
+          "exported": false,
+          "lineCount": 39
+        },
+        {
+          "name": "pixivURLHandlerAppPath",
+          "params": [],
+          "returnType": "(string, error)",
+          "exported": false,
+          "lineCount": 7
+        },
+        {
+          "name": "pixivURLHandlerEndpointPath",
+          "params": [],
+          "returnType": "(string, error)",
+          "exported": false,
+          "lineCount": 7
+        },
+        {
+          "name": "ensurePixivURLHandlerApp",
+          "params": [
+            "ctx",
+            "appPath"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 23
+        },
+        {
+          "name": "fileExists",
+          "params": [
+            "path"
+          ],
+          "returnType": "bool",
+          "exported": false,
+          "lineCount": 4
+        },
+        {
+          "name": "registerURLHandlerApp",
+          "params": [
+            "ctx",
+            "appPath"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 8
+        },
+        {
+          "name": "defaultURLSchemeHandler",
+          "params": [
+            "ctx",
+            "scheme"
+          ],
+          "returnType": "(string, error)",
+          "exported": false,
+          "lineCount": 8
+        },
+        {
+          "name": "setDefaultURLSchemeHandler",
+          "params": [
+            "ctx",
+            "scheme",
+            "bundleID"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 7
+        },
+        {
+          "name": "defaultCaptureManagedBrowser",
+          "params": [
+            "ctx",
+            "loginURL",
+            "expectedState",
+            "submit",
+            "reportInvalid"
+          ],
+          "returnType": "(bool, func(), error)",
+          "exported": false,
+          "lineCount": 45
+        },
+        {
+          "name": "managedBrowserExecutable",
+          "params": [],
+          "returnType": "string",
+          "exported": false,
+          "lineCount": 14
+        },
+        {
+          "name": "managedBrowserExecutableCandidates",
+          "params": [],
+          "returnType": "[]string",
+          "exported": false,
+          "lineCount": 14
+        },
+        {
+          "name": "managedBrowserProfileDir",
+          "params": [],
+          "returnType": "(string, error)",
+          "exported": false,
+          "lineCount": 7
+        },
+        {
+          "name": "freeTCPPort",
+          "params": [],
+          "returnType": "(int, error)",
+          "exported": false,
+          "lineCount": 8
+        },
+        {
+          "name": "openManagedBrowserTab",
+          "params": [
+            "ctx",
+            "port",
+            "loginURL"
+          ],
+          "returnType": "(string, error)",
+          "exported": false,
+          "lineCount": 33
+        },
+        {
+          "name": "watchManagedBrowserCDP",
+          "params": [
+            "ctx",
+            "wsURL",
+            "expectedState",
+            "submit",
+            "reportInvalid"
+          ],
+          "exported": false,
+          "lineCount": 37
+        },
+        {
+          "name": "loginCodeFromCDPEvent",
+          "params": [
+            "event",
+            "expectedState"
+          ],
+          "returnType": "(loginServerResult, bool)",
+          "exported": false,
+          "lineCount": 12
+        },
+        {
+          "name": "defaultWatchBrowserLoginCode",
+          "params": [
+            "ctx",
+            "expectedState",
+            "expectedChallenge",
+            "initialSeen",
+            "openURL",
+            "submit",
+            "reportInvalid"
+          ],
+          "exported": false,
+          "lineCount": 53
+        },
+        {
+          "name": "currentBrowserLoginURLs",
+          "params": [
+            "ctx"
+          ],
+          "returnType": "[]string",
+          "exported": false,
+          "lineCount": 15
+        },
+        {
+          "name": "currentBrowserCallbackURLSet",
+          "params": [
+            "ctx"
+          ],
+          "returnType": "map[string]struct{}",
+          "exported": false,
+          "lineCount": 7
+        },
+        {
+          "name": "cloneStringSet",
+          "params": [
+            "values"
+          ],
+          "returnType": "map[string]struct{}",
+          "exported": false,
+          "lineCount": 7
+        },
+        {
+          "name": "addBrowserLoginURL",
+          "params": [
+            "urls",
+            "rawURL"
+          ],
+          "exported": false,
+          "lineCount": 9
+        },
+        {
+          "name": "loginCodeFromBrowserURL",
+          "params": [
+            "rawURL",
+            "expectedState"
+          ],
+          "returnType": "(loginServerResult, bool)",
+          "exported": false,
+          "lineCount": 10
+        },
+        {
+          "name": "pixivPostRedirectReturnTo",
+          "params": [
+            "rawURL"
+          ],
+          "returnType": "(string, bool)",
+          "exported": false,
+          "lineCount": 24
+        },
+        {
+          "name": "pixivPostRedirectRelayURL",
+          "params": [
+            "rawURL",
+            "expectedChallenge"
+          ],
+          "returnType": "(string, bool, error)",
+          "exported": false,
+          "lineCount": 17
+        },
+        {
+          "name": "pixivAuthStartMatchesChallenge",
+          "params": [
+            "rawURL",
+            "expectedChallenge"
+          ],
+          "returnType": "bool",
+          "exported": false,
+          "lineCount": 10
+        },
+        {
+          "name": "callbackURLsFromChromiumStateFiles",
+          "params": [],
+          "returnType": "[]string",
+          "exported": false,
+          "lineCount": 20
+        },
+        {
+          "name": "chromiumStateFiles",
+          "params": [],
+          "returnType": "[]string",
+          "exported": false,
+          "lineCount": 30
+        },
+        {
+          "name": "callbackURLsFromBytes",
+          "params": [
+            "body"
+          ],
+          "returnType": "[]string",
+          "exported": false,
+          "lineCount": 30
+        },
+        {
+          "name": "isURLByte",
+          "params": [
+            "ch"
+          ],
+          "returnType": "bool",
+          "exported": false,
+          "lineCount": 6
+        },
+        {
+          "name": "activeMacBrowserURLs",
+          "params": [
+            "ctx"
+          ],
+          "returnType": "[]string",
+          "exported": false,
+          "lineCount": 9
+        },
+        {
+          "name": "activeMacBrowserURLsViaBrowserScripting",
+          "params": [
+            "ctx"
+          ],
+          "returnType": "([]string, error)",
+          "exported": false,
+          "lineCount": 66
+        },
+        {
+          "name": "activeMacBrowserURLViaSystemEvents",
+          "params": [
+            "ctx"
+          ],
+          "returnType": "(string, error)",
+          "exported": false,
+          "lineCount": 33
+        },
+        {
+          "name": "defaultRunAppleScript",
+          "params": [
+            "ctx",
+            "script"
+          ],
+          "returnType": "(string, error)",
+          "exported": false,
+          "lineCount": 7
         }
       ],
       "classes": [
@@ -555,20 +2475,35 @@
           "lineCount": 4
         },
         {
+          "name": "loginInputResult",
+          "methods": [],
+          "properties": [
+            "relayed"
+          ],
+          "exported": false,
+          "lineCount": 4
+        },
+        {
           "name": "accountLoginOptions",
           "methods": [],
           "properties": [
             "jsonOut",
             "noOpen",
-            "useProfile",
+            "useAfterLogin",
             "addr",
             "timeout"
           ],
           "exported": false,
-          "lineCount": 7
+          "lineCount": 8
         }
       ],
       "imports": [
+        {
+          "source": "bytes",
+          "specifiers": [
+            "bytes"
+          ]
+        },
         {
           "source": "context",
           "specifiers": [
@@ -576,21 +2511,9 @@
           ]
         },
         {
-          "source": "crypto/rand",
+          "source": "encoding/json",
           "specifiers": [
-            "rand"
-          ]
-        },
-        {
-          "source": "crypto/sha256",
-          "specifiers": [
-            "sha256"
-          ]
-        },
-        {
-          "source": "encoding/base64",
-          "specifiers": [
-            "base64"
+            "json"
           ]
         },
         {
@@ -636,6 +2559,36 @@
           ]
         },
         {
+          "source": "os",
+          "specifiers": [
+            "os"
+          ]
+        },
+        {
+          "source": "os/exec",
+          "specifiers": [
+            "exec"
+          ]
+        },
+        {
+          "source": "path/filepath",
+          "specifiers": [
+            "filepath"
+          ]
+        },
+        {
+          "source": "runtime",
+          "specifiers": [
+            "runtime"
+          ]
+        },
+        {
+          "source": "sort",
+          "specifiers": [
+            "sort"
+          ]
+        },
+        {
           "source": "strings",
           "specifiers": [
             "strings"
@@ -654,21 +2607,27 @@
           ]
         },
         {
-          "source": "github.com/FlanChanXwO/pixiv-mcp-server/internal/cli/state",
+          "source": "github.com/FlanChanXwO/pixiv-cli/internal/application",
           "specifiers": [
-            "state"
+            "application"
           ]
         },
         {
-          "source": "github.com/FlanChanXwO/pixiv-mcp-server/internal/config",
+          "source": "github.com/FlanChanXwO/pixiv-cli/internal/common/constants",
           "specifiers": [
-            "config"
+            "constants"
           ]
         },
         {
-          "source": "github.com/FlanChanXwO/pixiv-mcp-server/internal/pixiv",
+          "source": "github.com/FlanChanXwO/pixiv-cli/internal/pixiv",
           "specifiers": [
             "pixiv"
+          ]
+        },
+        {
+          "source": "github.com/FlanChanXwO/pixiv-cli/internal/utils/files",
+          "specifiers": [
+            "files"
           ]
         },
         {
@@ -682,15 +2641,21 @@
           "specifiers": [
             "cobra"
           ]
+        },
+        {
+          "source": "golang.org/x/net/websocket",
+          "specifiers": [
+            "websocket"
+          ]
         }
       ],
       "exports": [],
-      "totalLines": 415,
+      "totalLines": 1240,
       "hasStructuralAnalysis": true
     },
     "internal/cli/account_test.go": {
       "filePath": "internal/cli/account_test.go",
-      "contentHash": "60e3cff7bdb47c52a9b283f57d6748e23e7b9a34816c572a75654eac86fd909c",
+      "contentHash": "b2f582b7ab788bf8d4fb855eb60fa627d5aa1ee9f5251277298f687c3ba978e1",
       "functions": [
         {
           "name": "TestAccountAddListUseRemovePreservesOrder",
@@ -698,7 +2663,7 @@
             "t"
           ],
           "exported": true,
-          "lineCount": 61
+          "lineCount": 69
         },
         {
           "name": "TestAccountAddReadsTokenFromStdin",
@@ -706,7 +2671,47 @@
             "t"
           ],
           "exported": true,
-          "lineCount": 11
+          "lineCount": 16
+        },
+        {
+          "name": "TestAccountAddProxyFlagOverridesEnvAndConfig",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 31
+        },
+        {
+          "name": "TestAccountAddNoProxyFlagClearsEnvAndConfig",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 31
+        },
+        {
+          "name": "TestAccountCheckNoProxyFlagClearsEnvAndConfig",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 35
+        },
+        {
+          "name": "TestAccountCheckProxyFlagOverridesEnvAndConfig",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 35
+        },
+        {
+          "name": "TestAccountNetworkCommandsRejectConflictingProxyFlags",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 18
         },
         {
           "name": "TestAccountAddRejectsCookieWithoutRefreshToken",
@@ -730,7 +2735,7 @@
             "t"
           ],
           "exported": true,
-          "lineCount": 32
+          "lineCount": 34
         },
         {
           "name": "TestAccountRemovePromptCancelKeepsData",
@@ -746,7 +2751,23 @@
             "t"
           ],
           "exported": true,
-          "lineCount": 51
+          "lineCount": 55
+        },
+        {
+          "name": "TestAccountLoginProxyFlagOverridesEnvAndConfig",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 35
+        },
+        {
+          "name": "TestAccountLoginNoProxyFlagClearsEnvAndConfig",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 35
         },
         {
           "name": "TestAccountLoginBrowserFailureFallsBackToTerminalPrompt",
@@ -754,7 +2775,200 @@
             "t"
           ],
           "exported": true,
-          "lineCount": 33
+          "lineCount": 34
+        },
+        {
+          "name": "TestAccountLoginBrowserSuccessStillAcceptsTerminalPrompt",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 40
+        },
+        {
+          "name": "TestAccountLoginAcceptsPixivCallbackURLWithoutState",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 36
+        },
+        {
+          "name": "TestAccountLoginManualPageRelaysPostRedirectThenAcceptsCode",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 57
+        },
+        {
+          "name": "TestAccountLoginBrowserWatcherStoresCallbackCode",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 36
+        },
+        {
+          "name": "TestAccountLoginDefaultBrowserWatcherReadsChromiumHistory",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 47
+        },
+        {
+          "name": "TestAccountLoginDefaultBrowserWatcherCatchesFastActiveTabCallback",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 47
+        },
+        {
+          "name": "TestAccountLoginDefaultBrowserWatcherContinuesPixivPostRedirect",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 66
+        },
+        {
+          "name": "TestAccountLoginDefaultBrowserWatcherSkipsStalePostRedirectChallenge",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 71
+        },
+        {
+          "name": "TestAccountLoginDefaultBrowserWatcherReportsPostRedirectRelayOnce",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 67
+        },
+        {
+          "name": "TestLoginCodeFromInputOnlyPixivCallbacksMayOmitState",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 17
+        },
+        {
+          "name": "TestLoginCodeFromCDPEventAcceptsPixivSchemeRequest",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 16
+        },
+        {
+          "name": "TestLoginCodeFromCDPEventAcceptsOfficialCallbackRequest",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 16
+        },
+        {
+          "name": "TestLoginCodeFromCDPEventIgnoresUnrelatedEvents",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 18
+        },
+        {
+          "name": "TestLoginInputFromTextRelaysPostRedirect",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 15
+        },
+        {
+          "name": "TestLoginInputFromTextRejectsInvalidPostRedirect",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 18
+        },
+        {
+          "name": "TestLoginInputFromTextRejectsStalePostRedirectChallenge",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 14
+        },
+        {
+          "name": "TestCallbackURLsFromBytesExtractsOnlyPixivCallbacks",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 11
+        },
+        {
+          "name": "TestCallbackURLsFromBytesStopsAtNonURLBytes",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 9
+        },
+        {
+          "name": "TestCallbackURLsFromChromiumStateFilesReadsEdgeSessionsAndHistory",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 15
+        },
+        {
+          "name": "TestPixivPostRedirectReturnToAcceptsOnlyPixivStartURL",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 12
+        },
+        {
+          "name": "TestPixivAuthStartMatchesChallenge",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 5
+        },
+        {
+          "name": "pixivAuthStartURLForTest",
+          "params": [
+            "challenge"
+          ],
+          "returnType": "string",
+          "exported": false,
+          "lineCount": 8
+        },
+        {
+          "name": "TestActiveMacBrowserURLsPreferBrowserScripting",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 17
+        },
+        {
+          "name": "TestActiveMacBrowserURLsFallBackToSystemEvents",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 20
         },
         {
           "name": "setTestOAuthBase",
@@ -777,13 +2991,39 @@
           "lineCount": 4
         },
         {
+          "name": "setTestBrowserCodeWatcher",
+          "params": [
+            "t",
+            "watcher"
+          ],
+          "returnType": "func()",
+          "exported": false,
+          "lineCount": 4
+        },
+        {
           "name": "setTestCLIClientFactory",
           "params": [
             "t",
             "factory"
           ],
           "exported": false,
-          "lineCount": 6
+          "lineCount": 28
+        },
+        {
+          "name": "ExchangeAuthorizationCode",
+          "params": [],
+          "returnType": "(application.OAuthToken, error)",
+          "exported": true,
+          "lineCount": 3
+        },
+        {
+          "name": "setTestAuthClientFactory",
+          "params": [
+            "t",
+            "identities"
+          ],
+          "exported": false,
+          "lineCount": 34
         },
         {
           "name": "setPromptStub",
@@ -874,6 +3114,27 @@
       ],
       "classes": [
         {
+          "name": "authIdentity",
+          "methods": [],
+          "properties": [
+            "userID",
+            "username"
+          ],
+          "exported": false,
+          "lineCount": 4
+        },
+        {
+          "name": "fakeLoginOAuthExchanger",
+          "methods": [
+            "ExchangeAuthorizationCode"
+          ],
+          "properties": [
+            "token"
+          ],
+          "exported": false,
+          "lineCount": 3
+        },
+        {
           "name": "promptStub",
           "methods": [],
           "properties": [
@@ -909,6 +3170,12 @@
           ]
         },
         {
+          "source": "context",
+          "specifiers": [
+            "context"
+          ]
+        },
+        {
           "source": "encoding/json",
           "specifiers": [
             "json"
@@ -921,6 +3188,12 @@
           ]
         },
         {
+          "source": "fmt",
+          "specifiers": [
+            "fmt"
+          ]
+        },
+        {
           "source": "html",
           "specifiers": [
             "html"
@@ -930,6 +3203,12 @@
           "source": "io",
           "specifiers": [
             "io"
+          ]
+        },
+        {
+          "source": "log/slog",
+          "specifiers": [
+            "slog"
           ]
         },
         {
@@ -969,6 +3248,12 @@
           ]
         },
         {
+          "source": "runtime",
+          "specifiers": [
+            "runtime"
+          ]
+        },
+        {
           "source": "strings",
           "specifiers": [
             "strings"
@@ -993,21 +3278,39 @@
           ]
         },
         {
-          "source": "github.com/FlanChanXwO/pixiv-mcp-server/internal/cli/state",
+          "source": "github.com/FlanChanXwO/pixiv-cli/internal/application",
           "specifiers": [
-            "state"
+            "application"
           ]
         },
         {
-          "source": "github.com/FlanChanXwO/pixiv-mcp-server/internal/config",
+          "source": "github.com/FlanChanXwO/pixiv-cli/internal/bootstrap",
+          "specifiers": [
+            "bootstrap"
+          ]
+        },
+        {
+          "source": "github.com/FlanChanXwO/pixiv-cli/internal/config",
           "specifiers": [
             "config"
           ]
         },
         {
-          "source": "github.com/FlanChanXwO/pixiv-mcp-server/internal/pixiv",
+          "source": "github.com/FlanChanXwO/pixiv-cli/internal/download",
+          "specifiers": [
+            "download"
+          ]
+        },
+        {
+          "source": "github.com/FlanChanXwO/pixiv-cli/internal/pixiv",
           "specifiers": [
             "pixiv"
+          ]
+        },
+        {
+          "source": "github.com/FlanChanXwO/pixiv-cli/internal/storage/auth",
+          "specifiers": [
+            "auth"
           ]
         },
         {
@@ -1026,19 +3329,50 @@
       "exports": [
         "TestAccountAddListUseRemovePreservesOrder",
         "TestAccountAddReadsTokenFromStdin",
+        "TestAccountAddProxyFlagOverridesEnvAndConfig",
+        "TestAccountAddNoProxyFlagClearsEnvAndConfig",
+        "TestAccountCheckNoProxyFlagClearsEnvAndConfig",
+        "TestAccountCheckProxyFlagOverridesEnvAndConfig",
+        "TestAccountNetworkCommandsRejectConflictingProxyFlags",
         "TestAccountAddRejectsCookieWithoutRefreshToken",
         "TestResolveRefreshTokenPriority",
         "TestAccountPromptFlows",
         "TestAccountRemovePromptCancelKeepsData",
         "TestAccountLoginNoOpenStoresProfile",
-        "TestAccountLoginBrowserFailureFallsBackToTerminalPrompt"
+        "TestAccountLoginProxyFlagOverridesEnvAndConfig",
+        "TestAccountLoginNoProxyFlagClearsEnvAndConfig",
+        "TestAccountLoginBrowserFailureFallsBackToTerminalPrompt",
+        "TestAccountLoginBrowserSuccessStillAcceptsTerminalPrompt",
+        "TestAccountLoginAcceptsPixivCallbackURLWithoutState",
+        "TestAccountLoginManualPageRelaysPostRedirectThenAcceptsCode",
+        "TestAccountLoginBrowserWatcherStoresCallbackCode",
+        "TestAccountLoginDefaultBrowserWatcherReadsChromiumHistory",
+        "TestAccountLoginDefaultBrowserWatcherCatchesFastActiveTabCallback",
+        "TestAccountLoginDefaultBrowserWatcherContinuesPixivPostRedirect",
+        "TestAccountLoginDefaultBrowserWatcherSkipsStalePostRedirectChallenge",
+        "TestAccountLoginDefaultBrowserWatcherReportsPostRedirectRelayOnce",
+        "TestLoginCodeFromInputOnlyPixivCallbacksMayOmitState",
+        "TestLoginCodeFromCDPEventAcceptsPixivSchemeRequest",
+        "TestLoginCodeFromCDPEventAcceptsOfficialCallbackRequest",
+        "TestLoginCodeFromCDPEventIgnoresUnrelatedEvents",
+        "TestLoginInputFromTextRelaysPostRedirect",
+        "TestLoginInputFromTextRejectsInvalidPostRedirect",
+        "TestLoginInputFromTextRejectsStalePostRedirectChallenge",
+        "TestCallbackURLsFromBytesExtractsOnlyPixivCallbacks",
+        "TestCallbackURLsFromBytesStopsAtNonURLBytes",
+        "TestCallbackURLsFromChromiumStateFilesReadsEdgeSessionsAndHistory",
+        "TestPixivPostRedirectReturnToAcceptsOnlyPixivStartURL",
+        "TestPixivAuthStartMatchesChallenge",
+        "TestActiveMacBrowserURLsPreferBrowserScripting",
+        "TestActiveMacBrowserURLsFallBackToSystemEvents",
+        "ExchangeAuthorizationCode"
       ],
-      "totalLines": 455,
+      "totalLines": 1486,
       "hasStructuralAnalysis": true
     },
     "internal/cli/api_cmd.go": {
       "filePath": "internal/cli/api_cmd.go",
-      "contentHash": "faa6b6bf9e67ca40181a4b62a31aaa6de7892a4637d09c22c384e6e601c3e6fe",
+      "contentHash": "9958ab84661f8c75053194b583240a7a061d0f4b0a3f2341ed10707f20e11e25",
       "functions": [
         {
           "name": "newSearchCommand",
@@ -1056,7 +3390,7 @@
           ],
           "returnType": "error",
           "exported": false,
-          "lineCount": 20
+          "lineCount": 28
         },
         {
           "name": "newDetailCommand",
@@ -1074,7 +3408,7 @@
           ],
           "returnType": "error",
           "exported": false,
-          "lineCount": 19
+          "lineCount": 20
         },
         {
           "name": "newRankingCommand",
@@ -1091,7 +3425,7 @@
           ],
           "returnType": "error",
           "exported": false,
-          "lineCount": 16
+          "lineCount": 22
         },
         {
           "name": "newRecommendedCommand",
@@ -1108,7 +3442,7 @@
           ],
           "returnType": "error",
           "exported": false,
-          "lineCount": 16
+          "lineCount": 20
         },
         {
           "name": "newDownloadCommand",
@@ -1206,33 +3540,27 @@
           ]
         },
         {
-          "source": "log/slog",
-          "specifiers": [
-            "slog"
-          ]
-        },
-        {
-          "source": "strconv",
-          "specifiers": [
-            "strconv"
-          ]
-        },
-        {
           "source": "strings",
           "specifiers": [
             "strings"
           ]
         },
         {
-          "source": "github.com/FlanChanXwO/pixiv-mcp-server/internal/download",
+          "source": "github.com/FlanChanXwO/pixiv-cli/internal/application",
           "specifiers": [
-            "download"
+            "application"
           ]
         },
         {
-          "source": "github.com/FlanChanXwO/pixiv-mcp-server/internal/pixiv",
+          "source": "github.com/FlanChanXwO/pixiv-cli/internal/pixiv",
           "specifiers": [
             "pixiv"
+          ]
+        },
+        {
+          "source": "github.com/FlanChanXwO/pixiv-cli/internal/utils/parse",
+          "specifiers": [
+            "parse"
           ]
         },
         {
@@ -1243,12 +3571,12 @@
         }
       ],
       "exports": [],
-      "totalLines": 260,
+      "totalLines": 278,
       "hasStructuralAnalysis": true
     },
     "internal/cli/api_test.go": {
       "filePath": "internal/cli/api_test.go",
-      "contentHash": "7b5c98b2488bbcf3f52ddbbb15e4a14b45ceaf4a99810926834b07b823f876a5",
+      "contentHash": "1676790e2a02c4f1c853a564148ccec56a2872070f4f40b7d4ec062d51d00f44",
       "functions": [
         {
           "name": "TestSearchSupportsFlagAfterWord",
@@ -1265,9 +3593,166 @@
           ],
           "exported": true,
           "lineCount": 26
+        },
+        {
+          "name": "TestSearchProxyFlagOverridesEnvAndConfig",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 22
+        },
+        {
+          "name": "TestSearchNoProxyFlagClearsEnvAndConfig",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 22
+        },
+        {
+          "name": "TestSearchRejectsConflictingProxyFlags",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 9
+        },
+        {
+          "name": "TestDataCommandsProxyFlagPassesRuntimeOverride",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 31
+        },
+        {
+          "name": "TestDataCommandsNoProxyFlagClearsRuntimeProxy",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 31
+        },
+        {
+          "name": "TestNetworkDataCommandsRejectConflictingProxyFlags",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 19
+        },
+        {
+          "name": "TestSearchCanSelectStoredTokenByUIDAndDeprecatedProfile",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 32
+        },
+        {
+          "name": "Refresh",
+          "params": [],
+          "returnType": "error",
+          "exported": true,
+          "lineCount": 1
+        },
+        {
+          "name": "RefreshTokenValue",
+          "params": [],
+          "returnType": "string",
+          "exported": true,
+          "lineCount": 1
+        },
+        {
+          "name": "UserID",
+          "params": [],
+          "returnType": "int64",
+          "exported": true,
+          "lineCount": 1
+        },
+        {
+          "name": "UserName",
+          "params": [],
+          "returnType": "string",
+          "exported": true,
+          "lineCount": 1
+        },
+        {
+          "name": "UserDetail",
+          "params": [],
+          "returnType": "(*pixiv.User, error)",
+          "exported": true,
+          "lineCount": 3
+        },
+        {
+          "name": "SearchIllust",
+          "params": [],
+          "returnType": "(*pixiv.IllustList, error)",
+          "exported": true,
+          "lineCount": 3
+        },
+        {
+          "name": "IllustDetail",
+          "params": [],
+          "returnType": "(*pixiv.IllustDetail, error)",
+          "exported": true,
+          "lineCount": 12
+        },
+        {
+          "name": "IllustRanking",
+          "params": [],
+          "returnType": "(*pixiv.IllustList, error)",
+          "exported": true,
+          "lineCount": 3
+        },
+        {
+          "name": "IllustRecommended",
+          "params": [],
+          "returnType": "(*pixiv.IllustList, error)",
+          "exported": true,
+          "lineCount": 3
+        },
+        {
+          "name": "UgoiraMetadata",
+          "params": [],
+          "returnType": "(*pixiv.UgoiraMetadataResult, error)",
+          "exported": true,
+          "lineCount": 3
+        },
+        {
+          "name": "Download",
+          "params": [
+            "_",
+            "_",
+            "dst"
+          ],
+          "returnType": "error",
+          "exported": true,
+          "lineCount": 4
         }
       ],
-      "classes": [],
+      "classes": [
+        {
+          "name": "proxyFlagPixivClient",
+          "methods": [
+            "Refresh",
+            "RefreshTokenValue",
+            "UserID",
+            "UserName",
+            "UserDetail",
+            "SearchIllust",
+            "IllustDetail",
+            "IllustRanking",
+            "IllustRecommended",
+            "UgoiraMetadata",
+            "Download"
+          ],
+          "properties": [],
+          "exported": false,
+          "lineCount": 1
+        }
+      ],
       "imports": [
         {
           "source": "bytes",
@@ -1276,9 +3761,21 @@
           ]
         },
         {
+          "source": "context",
+          "specifiers": [
+            "context"
+          ]
+        },
+        {
           "source": "encoding/json",
           "specifiers": [
             "json"
+          ]
+        },
+        {
+          "source": "io",
+          "specifiers": [
+            "io"
           ]
         },
         {
@@ -1306,15 +3803,15 @@
           ]
         },
         {
-          "source": "github.com/FlanChanXwO/pixiv-mcp-server/internal/cli/state",
+          "source": "github.com/FlanChanXwO/pixiv-cli/internal/pixiv",
           "specifiers": [
-            "state"
+            "pixiv"
           ]
         },
         {
-          "source": "github.com/FlanChanXwO/pixiv-mcp-server/internal/pixiv",
+          "source": "github.com/FlanChanXwO/pixiv-cli/internal/storage/auth",
           "specifiers": [
-            "pixiv"
+            "auth"
           ]
         },
         {
@@ -1332,14 +3829,32 @@
       ],
       "exports": [
         "TestSearchSupportsFlagAfterWord",
-        "TestSearchUsesOutputJSONFromConfig"
+        "TestSearchUsesOutputJSONFromConfig",
+        "TestSearchProxyFlagOverridesEnvAndConfig",
+        "TestSearchNoProxyFlagClearsEnvAndConfig",
+        "TestSearchRejectsConflictingProxyFlags",
+        "TestDataCommandsProxyFlagPassesRuntimeOverride",
+        "TestDataCommandsNoProxyFlagClearsRuntimeProxy",
+        "TestNetworkDataCommandsRejectConflictingProxyFlags",
+        "TestSearchCanSelectStoredTokenByUIDAndDeprecatedProfile",
+        "Refresh",
+        "RefreshTokenValue",
+        "UserID",
+        "UserName",
+        "UserDetail",
+        "SearchIllust",
+        "IllustDetail",
+        "IllustRanking",
+        "IllustRecommended",
+        "UgoiraMetadata",
+        "Download"
       ],
-      "totalLines": 74,
+      "totalLines": 297,
       "hasStructuralAnalysis": true
     },
     "internal/cli/cli_test.go": {
       "filePath": "internal/cli/cli_test.go",
-      "contentHash": "2f3c8fc5b178bc38d442fd73b87d34c38619fe3d53ad0915a2077cd357645c29",
+      "contentHash": "fc7292ab1f585537710e355ce3b0d98a809de4adb33cd9d32bfbd7e1721f427a",
       "functions": [
         {
           "name": "TestRunNoArgsPrintsHelp",
@@ -1371,6 +3886,22 @@
             "t"
           ],
           "exported": true,
+          "lineCount": 22
+        },
+        {
+          "name": "TestRunMCPNoProxyDispatch",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 19
+        },
+        {
+          "name": "TestRunMCPRejectsConflictingProxyFlags",
+          "params": [
+            "t"
+          ],
+          "exported": true,
           "lineCount": 18
         },
         {
@@ -1380,6 +3911,14 @@
           ],
           "exported": true,
           "lineCount": 15
+        },
+        {
+          "name": "TestNonNetworkCommandsRejectProxyFlags",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 22
         }
       ],
       "classes": [],
@@ -1438,14 +3977,17 @@
         "TestRunUnknownCommandReturnsError",
         "TestRunAccountCommandIsRemoved",
         "TestRunMCPDispatch",
-        "TestRunMCPDispatchError"
+        "TestRunMCPNoProxyDispatch",
+        "TestRunMCPRejectsConflictingProxyFlags",
+        "TestRunMCPDispatchError",
+        "TestNonNetworkCommandsRejectProxyFlags"
       ],
-      "totalLines": 82,
+      "totalLines": 148,
       "hasStructuralAnalysis": true
     },
     "internal/cli/cli.go": {
       "filePath": "internal/cli/cli.go",
-      "contentHash": "4911d0f7184ebc8efd5b2b9be4f4df441c4963454f3c91bd5f0ac23c13cc2819",
+      "contentHash": "17d49ef0f4b9b2b7600a77ad4c3822b7df3559b8779cc70f2e80b4d432197f04",
       "functions": [
         {
           "name": "Run",
@@ -1472,20 +4014,19 @@
           "name": "runMCP",
           "params": [
             "ctx",
-            "errOut"
+            "errOut",
+            "proxyOverride"
           ],
           "returnType": "error",
           "exported": false,
           "lineCount": 3
         },
         {
-          "name": "newPixivClient",
-          "params": [
-            "cfg"
-          ],
-          "returnType": "(cliPixivClient, error)",
+          "name": "services",
+          "params": [],
+          "returnType": "application.Services",
           "exported": false,
-          "lineCount": 7
+          "lineCount": 4
         },
         {
           "name": "newRootCommand",
@@ -1499,7 +4040,7 @@
           "params": [],
           "returnType": "*cobra.Command",
           "exported": false,
-          "lineCount": 11
+          "lineCount": 18
         },
         {
           "name": "bindCommonFlags",
@@ -1508,29 +4049,37 @@
             "opts"
           ],
           "exported": false,
-          "lineCount": 8
+          "lineCount": 11
         },
         {
-          "name": "clientAndConfig",
+          "name": "bindProxyFlags",
+          "params": [
+            "cmd",
+            "opts"
+          ],
+          "exported": false,
+          "lineCount": 5
+        },
+        {
+          "name": "clientRequest",
           "params": [
             "cmd",
             "opts",
             "needsAuth"
           ],
-          "returnType": "(cliPixivClient, config.RuntimeConfig, bool, error)",
+          "returnType": "(application.ClientRequest, error)",
           "exported": false,
-          "lineCount": 47
+          "lineCount": 37
         },
         {
-          "name": "resolveRefreshToken",
+          "name": "proxyOverrideFromFlags",
           "params": [
-            "store",
-            "requestedProfile",
-            "requestedToken"
+            "cmd",
+            "opts"
           ],
-          "returnType": "(string, error)",
+          "returnType": "(*string, error)",
           "exported": false,
-          "lineCount": 26
+          "lineCount": 15
         },
         {
           "name": "printJSON",
@@ -1540,16 +4089,6 @@
           "returnType": "error",
           "exported": false,
           "lineCount": 5
-        },
-        {
-          "name": "parseInt64Arg",
-          "params": [
-            "value",
-            "name"
-          ],
-          "returnType": "(int64, error)",
-          "exported": false,
-          "lineCount": 7
         },
         {
           "name": "textBool",
@@ -1596,10 +4135,12 @@
           "name": "app",
           "methods": [
             "exit",
+            "services",
             "newRootCommand",
             "newMCPCommand",
             "bindCommonFlags",
-            "clientAndConfig",
+            "bindProxyFlags",
+            "clientRequest",
             "printJSON"
           ],
           "properties": [
@@ -1615,13 +4156,24 @@
           "methods": [],
           "properties": [
             "profile",
+            "uid",
             "refreshToken",
             "downloadPath",
             "filenameTemplate",
             "jsonOut"
           ],
           "exported": false,
-          "lineCount": 7
+          "lineCount": 9
+        },
+        {
+          "name": "proxyOptions",
+          "methods": [],
+          "properties": [
+            "proxy",
+            "noProxy"
+          ],
+          "exported": false,
+          "lineCount": 4
         },
         {
           "name": "clientConfig",
@@ -1632,16 +4184,10 @@
         },
         {
           "name": "cliPixivClient",
-          "methods": [
-            "Refresh",
-            "UserID",
-            "SearchIllust",
-            "IllustRanking",
-            "IllustRecommended"
-          ],
+          "methods": [],
           "properties": [],
           "exported": false,
-          "lineCount": 8
+          "lineCount": 5
         }
       ],
       "imports": [
@@ -1658,12 +4204,6 @@
           ]
         },
         {
-          "source": "errors",
-          "specifiers": [
-            "errors"
-          ]
-        },
-        {
           "source": "fmt",
           "specifiers": [
             "fmt"
@@ -1676,51 +4216,27 @@
           ]
         },
         {
-          "source": "strconv",
+          "source": "log/slog",
           "specifiers": [
-            "strconv"
+            "slog"
           ]
         },
         {
-          "source": "strings",
+          "source": "github.com/FlanChanXwO/pixiv-cli/internal/application",
           "specifiers": [
-            "strings"
+            "application"
           ]
         },
         {
-          "source": "github.com/FlanChanXwO/pixiv-mcp-server/internal/cli/mcpapp",
+          "source": "github.com/FlanChanXwO/pixiv-cli/internal/bootstrap",
           "specifiers": [
-            "mcpapp"
+            "bootstrap"
           ]
         },
         {
-          "source": "github.com/FlanChanXwO/pixiv-mcp-server/internal/cli/state",
-          "specifiers": [
-            "state"
-          ]
-        },
-        {
-          "source": "github.com/FlanChanXwO/pixiv-mcp-server/internal/config",
+          "source": "github.com/FlanChanXwO/pixiv-cli/internal/config",
           "specifiers": [
             "config"
-          ]
-        },
-        {
-          "source": "github.com/FlanChanXwO/pixiv-mcp-server/internal/download",
-          "specifiers": [
-            "download"
-          ]
-        },
-        {
-          "source": "github.com/FlanChanXwO/pixiv-mcp-server/internal/pixiv",
-          "specifiers": [
-            "pixiv"
-          ]
-        },
-        {
-          "source": "github.com/FlanChanXwO/pixiv-mcp-server/internal/utils",
-          "specifiers": [
-            "utils"
           ]
         },
         {
@@ -1733,12 +4249,12 @@
       "exports": [
         "Run"
       ],
-      "totalLines": 253,
+      "totalLines": 236,
       "hasStructuralAnalysis": true
     },
     "internal/cli/config_cmd.go": {
       "filePath": "internal/cli/config_cmd.go",
-      "contentHash": "d86003859f9b77cc9407c06025189267de34816f8f2526c73618b905023f9d01",
+      "contentHash": "3b6b7dd95a8ae7c22ce6aab8b87807ce08ffbd48127d4e41fb4d2effb95447ea",
       "functions": [
         {
           "name": "newConfigCommand",
@@ -1752,7 +4268,7 @@
           "params": [],
           "returnType": "*cobra.Command",
           "exported": false,
-          "lineCount": 15
+          "lineCount": 16
         },
         {
           "name": "newConfigGetCommand",
@@ -1768,7 +4284,7 @@
           ],
           "returnType": "error",
           "exported": false,
-          "lineCount": 16
+          "lineCount": 13
         },
         {
           "name": "newConfigSetCommand",
@@ -1785,7 +4301,7 @@
           ],
           "returnType": "error",
           "exported": false,
-          "lineCount": 22
+          "lineCount": 12
         },
         {
           "name": "newConfigUnsetCommand",
@@ -1801,7 +4317,7 @@
           ],
           "returnType": "error",
           "exported": false,
-          "lineCount": 19
+          "lineCount": 12
         }
       ],
       "classes": [],
@@ -1819,18 +4335,6 @@
           ]
         },
         {
-          "source": "strings",
-          "specifiers": [
-            "strings"
-          ]
-        },
-        {
-          "source": "github.com/FlanChanXwO/pixiv-mcp-server/internal/config",
-          "specifiers": [
-            "config"
-          ]
-        },
-        {
           "source": "github.com/spf13/cobra",
           "specifiers": [
             "cobra"
@@ -1838,12 +4342,12 @@
         }
       ],
       "exports": [],
-      "totalLines": 139,
+      "totalLines": 118,
       "hasStructuralAnalysis": true
     },
     "internal/cli/config_test.go": {
       "filePath": "internal/cli/config_test.go",
-      "contentHash": "6fa514f2af9fd4db977c09b9136debe3ba33adcefd87a610283be36e1d54bd1e",
+      "contentHash": "887f47eb2a832dfb90de170122ea3347a808b6803413534ebaa6ce5a00bca3ea",
       "functions": [
         {
           "name": "TestConfigPathGetSetUnset",
@@ -1929,7 +4433,7 @@
           ]
         },
         {
-          "source": "github.com/FlanChanXwO/pixiv-mcp-server/internal/config",
+          "source": "github.com/FlanChanXwO/pixiv-cli/internal/config",
           "specifiers": [
             "config"
           ]
@@ -1956,93 +4460,6 @@
         "TestConfigLowercaseProxyBeatsUppercase"
       ],
       "totalLines": 152,
-      "hasStructuralAnalysis": true
-    },
-    "internal/cli/mcpapp/mcpapp.go": {
-      "filePath": "internal/cli/mcpapp/mcpapp.go",
-      "contentHash": "6e8bd710e4b15928211a50a37de7135caef44f08a7bd7a695e37517d57b7f89a",
-      "functions": [
-        {
-          "name": "Run",
-          "params": [
-            "ctx",
-            "errOut"
-          ],
-          "returnType": "error",
-          "exported": true,
-          "lineCount": 39
-        },
-        {
-          "name": "newPixivClient",
-          "params": [
-            "cfg"
-          ],
-          "returnType": "(*pixiv.Source, error)",
-          "exported": false,
-          "lineCount": 7
-        }
-      ],
-      "classes": [],
-      "imports": [
-        {
-          "source": "context",
-          "specifiers": [
-            "context"
-          ]
-        },
-        {
-          "source": "io",
-          "specifiers": [
-            "io"
-          ]
-        },
-        {
-          "source": "log/slog",
-          "specifiers": [
-            "slog"
-          ]
-        },
-        {
-          "source": "github.com/FlanChanXwO/pixiv-mcp-server/internal/cli/state",
-          "specifiers": [
-            "state"
-          ]
-        },
-        {
-          "source": "github.com/FlanChanXwO/pixiv-mcp-server/internal/config",
-          "specifiers": [
-            "config"
-          ]
-        },
-        {
-          "source": "github.com/FlanChanXwO/pixiv-mcp-server/internal/download",
-          "specifiers": [
-            "download"
-          ]
-        },
-        {
-          "source": "github.com/FlanChanXwO/pixiv-mcp-server/internal/mcpserver",
-          "specifiers": [
-            "mcpserver"
-          ]
-        },
-        {
-          "source": "github.com/FlanChanXwO/pixiv-mcp-server/internal/pixiv",
-          "specifiers": [
-            "pixiv"
-          ]
-        },
-        {
-          "source": "github.com/modelcontextprotocol/go-sdk/mcp",
-          "specifiers": [
-            "mcp"
-          ]
-        }
-      ],
-      "exports": [
-        "Run"
-      ],
-      "totalLines": 63,
       "hasStructuralAnalysis": true
     },
     "internal/cli/prompt.go": {
@@ -2178,253 +4595,33 @@
       "totalLines": 109,
       "hasStructuralAnalysis": true
     },
-    "internal/cli/state/account.go": {
-      "filePath": "internal/cli/state/account.go",
-      "contentHash": "e5ac33420e9d7b0195df10e81c3874814b80d83db2a17afdbe85817d79d21fd3",
-      "functions": [
-        {
-          "name": "LoadAuthStore",
-          "params": [
-            "path"
-          ],
-          "returnType": "(AuthStore, error)",
-          "exported": true,
-          "lineCount": 23
-        },
-        {
-          "name": "SaveAuthStore",
-          "params": [
-            "path",
-            "store"
-          ],
-          "returnType": "error",
-          "exported": true,
-          "lineCount": 11
-        },
-        {
-          "name": "Names",
-          "params": [],
-          "returnType": "[]string",
-          "exported": true,
-          "lineCount": 7
-        },
-        {
-          "name": "ValidateAccountName",
-          "params": [
-            "name"
-          ],
-          "returnType": "error",
-          "exported": true,
-          "lineCount": 10
-        },
-        {
-          "name": "Has",
-          "params": [
-            "name"
-          ],
-          "returnType": "bool",
-          "exported": true,
-          "lineCount": 4
-        },
-        {
-          "name": "Get",
-          "params": [
-            "name"
-          ],
-          "returnType": "(int, Account, bool)",
-          "exported": true,
-          "lineCount": 12
-        },
-        {
-          "name": "Upsert",
-          "params": [
-            "acct"
-          ],
-          "exported": true,
-          "lineCount": 7
-        },
-        {
-          "name": "Remove",
-          "params": [
-            "name"
-          ],
-          "returnType": "bool",
-          "exported": true,
-          "lineCount": 14
-        },
-        {
-          "name": "SelectAuthAccount",
-          "params": [
-            "store",
-            "requestedName"
-          ],
-          "returnType": "(string, Account, bool)",
-          "exported": true,
-          "lineCount": 11
-        }
-      ],
-      "classes": [
-        {
-          "name": "AuthStore",
-          "methods": [
-            "Names",
-            "Has",
-            "Get",
-            "Upsert",
-            "Remove"
-          ],
-          "properties": [
-            "DefaultAccount",
-            "Accounts"
-          ],
-          "exported": true,
-          "lineCount": 4
-        },
-        {
-          "name": "Account",
-          "methods": [],
-          "properties": [
-            "Name",
-            "RefreshToken",
-            "UserID"
-          ],
-          "exported": true,
-          "lineCount": 5
-        }
-      ],
-      "imports": [
-        {
-          "source": "encoding/json",
-          "specifiers": [
-            "json"
-          ]
-        },
-        {
-          "source": "errors",
-          "specifiers": [
-            "errors"
-          ]
-        },
-        {
-          "source": "fmt",
-          "specifiers": [
-            "fmt"
-          ]
-        },
-        {
-          "source": "os",
-          "specifiers": [
-            "os"
-          ]
-        },
-        {
-          "source": "strings",
-          "specifiers": [
-            "strings"
-          ]
-        }
-      ],
-      "exports": [
-        "AuthStore",
-        "Account",
-        "LoadAuthStore",
-        "SaveAuthStore",
-        "Names",
-        "ValidateAccountName",
-        "Has",
-        "Get",
-        "Upsert",
-        "Remove",
-        "SelectAuthAccount"
-      ],
-      "totalLines": 129,
-      "hasStructuralAnalysis": true
-    },
-    "internal/cli/state/paths.go": {
-      "filePath": "internal/cli/state/paths.go",
-      "contentHash": "37a3df35c85098430864d7cf65fc88a807a6b26ff3ce74f03030118a76fa97cc",
-      "functions": [
-        {
-          "name": "defaultAppConfigDir",
-          "params": [],
-          "returnType": "(string, error)",
-          "exported": false,
-          "lineCount": 7
-        },
-        {
-          "name": "defaultAuthFilePath",
-          "params": [],
-          "returnType": "(string, error)",
-          "exported": false,
-          "lineCount": 7
-        },
-        {
-          "name": "AuthFilePath",
-          "params": [],
-          "returnType": "(string, error)",
-          "exported": true,
-          "lineCount": 3
-        },
-        {
-          "name": "SetAuthFilePathForTest",
-          "params": [
-            "authPath"
-          ],
-          "returnType": "func()",
-          "exported": true,
-          "lineCount": 7
-        },
-        {
-          "name": "WritePrivateFile",
-          "params": [
-            "path",
-            "body"
-          ],
-          "returnType": "error",
-          "exported": true,
-          "lineCount": 9
-        }
-      ],
+    "internal/common/constants/constants.go": {
+      "filePath": "internal/common/constants/constants.go",
+      "contentHash": "1d0ba955cbe95706a6e5764991c50adaa8fef943c0ead9180f02e19cdb440eca",
+      "functions": [],
       "classes": [],
-      "imports": [
-        {
-          "source": "os",
-          "specifiers": [
-            "os"
-          ]
-        },
-        {
-          "source": "path/filepath",
-          "specifiers": [
-            "filepath"
-          ]
-        }
-      ],
-      "exports": [
-        "AuthFilePath",
-        "SetAuthFilePathForTest",
-        "WritePrivateFile"
-      ],
-      "totalLines": 51,
+      "imports": [],
+      "exports": [],
+      "totalLines": 8,
       "hasStructuralAnalysis": true
     },
     "internal/config/paths.go": {
       "filePath": "internal/config/paths.go",
-      "contentHash": "959619108966b1446859b870285fb040404564a934db99241895f559dbd5a93e",
+      "contentHash": "adfc73cc7b6d31d5c511402ae5acc38ec0d88f811160566bb76a5313553db2b2",
       "functions": [
         {
           "name": "defaultAppConfigDir",
           "params": [],
           "returnType": "(string, error)",
           "exported": false,
-          "lineCount": 7
+          "lineCount": 3
         },
         {
           "name": "defaultConfigFilePath",
           "params": [],
           "returnType": "(string, error)",
           "exported": false,
-          "lineCount": 7
+          "lineCount": 3
         },
         {
           "name": "ConfigFilePath",
@@ -2450,21 +4647,21 @@
           ],
           "returnType": "error",
           "exported": true,
-          "lineCount": 9
+          "lineCount": 3
         }
       ],
       "classes": [],
       "imports": [
         {
-          "source": "os",
+          "source": "github.com/FlanChanXwO/pixiv-cli/internal/common/constants",
           "specifiers": [
-            "os"
+            "constants"
           ]
         },
         {
-          "source": "path/filepath",
+          "source": "github.com/FlanChanXwO/pixiv-cli/internal/utils/files",
           "specifiers": [
-            "filepath"
+            "files"
           ]
         }
       ],
@@ -2473,12 +4670,12 @@
         "SetFilePathForTest",
         "WritePrivateFile"
       ],
-      "totalLines": 49,
+      "totalLines": 35,
       "hasStructuralAnalysis": true
     },
     "internal/config/settings.go": {
       "filePath": "internal/config/settings.go",
-      "contentHash": "2bb27905573c09880664eea05600bfc5110bf0f52ea6de34b2b66b0197aa2ef6",
+      "contentHash": "0080b8ce9b7db0d1130c8d98a571d9cf826c32d229d94d2f772431a790143b2d",
       "functions": [
         {
           "name": "SettingSpecByAlias",
@@ -2761,7 +4958,7 @@
           ]
         },
         {
-          "source": "github.com/FlanChanXwO/pixiv-mcp-server/internal/utils",
+          "source": "github.com/FlanChanXwO/pixiv-cli/internal/utils",
           "specifiers": [
             "utils"
           ]
@@ -2824,7 +5021,7 @@
     },
     "internal/download/manager_test.go": {
       "filePath": "internal/download/manager_test.go",
-      "contentHash": "2b6ff8dd8554d7634f9d401786153c0370dd06cbd52d91848cf33c75ab2c47f7",
+      "contentHash": "6bf2b5a661e78968b06e313d8f40b14d5611b9409c237d505203f51e95576bc5",
       "functions": [
         {
           "name": "TestSanitizeAndGenerateFilename",
@@ -3132,13 +5329,13 @@
           ]
         },
         {
-          "source": "github.com/FlanChanXwO/pixiv-mcp-server/internal/pixiv",
+          "source": "github.com/FlanChanXwO/pixiv-cli/internal/pixiv",
           "specifiers": [
             "pixiv"
           ]
         },
         {
-          "source": "github.com/FlanChanXwO/pixiv-mcp-server/internal/utils",
+          "source": "github.com/FlanChanXwO/pixiv-cli/internal/utils",
           "specifiers": [
             "utils"
           ]
@@ -3172,7 +5369,7 @@
     },
     "internal/download/manager.go": {
       "filePath": "internal/download/manager.go",
-      "contentHash": "266cba85be0bc4cc34a8252e56a34227976f789b96e4a8be5c18cd7d8e5a231f",
+      "contentHash": "bbcfa8a986cee7576d3e9b471eafeef37c00d69f640d97e2270c716fee5da817",
       "functions": [
         {
           "name": "Run",
@@ -3323,22 +5520,6 @@
           "lineCount": 4
         },
         {
-          "name": "pathFromURL",
-          "params": [
-            "rawURL"
-          ],
-          "returnType": "string",
-          "exported": false,
-          "lineCount": 7
-        },
-        {
-          "name": "firstNonEmpty",
-          "params": [],
-          "returnType": "string",
-          "exported": false,
-          "lineCount": 8
-        },
-        {
           "name": "filenameData",
           "params": [
             "illust"
@@ -3346,16 +5527,6 @@
           "returnType": "utils.FilenameData",
           "exported": false,
           "lineCount": 8
-        },
-        {
-          "name": "fallback",
-          "params": [
-            "value",
-            "backup"
-          ],
-          "returnType": "string",
-          "exported": false,
-          "lineCount": 6
         }
       ],
       "classes": [
@@ -3472,12 +5643,6 @@
           ]
         },
         {
-          "source": "net/url",
-          "specifiers": [
-            "url"
-          ]
-        },
-        {
           "source": "os",
           "specifiers": [
             "os"
@@ -3508,15 +5673,33 @@
           ]
         },
         {
-          "source": "github.com/FlanChanXwO/pixiv-mcp-server/internal/pixiv",
+          "source": "github.com/FlanChanXwO/pixiv-cli/internal/pixiv",
           "specifiers": [
             "pixiv"
           ]
         },
         {
-          "source": "github.com/FlanChanXwO/pixiv-mcp-server/internal/utils",
+          "source": "github.com/FlanChanXwO/pixiv-cli/internal/utils",
           "specifiers": [
             "utils"
+          ]
+        },
+        {
+          "source": "github.com/FlanChanXwO/pixiv-cli/internal/utils/files",
+          "specifiers": [
+            "files"
+          ]
+        },
+        {
+          "source": "github.com/FlanChanXwO/pixiv-cli/internal/utils/text",
+          "specifiers": [
+            "text"
+          ]
+        },
+        {
+          "source": "github.com/FlanChanXwO/pixiv-cli/internal/utils/uri",
+          "specifiers": [
+            "uriutil"
           ]
         }
       ],
@@ -3537,68 +5720,12 @@
         "Download",
         "ConvertUgoira"
       ],
-      "totalLines": 375,
-      "hasStructuralAnalysis": true
-    },
-    "internal/download/replace_nonwindows.go": {
-      "filePath": "internal/download/replace_nonwindows.go",
-      "contentHash": "3da2fe888fb6db9cde419f19ad611b227b8aa66686c364338d91d6a6aab90cf9",
-      "functions": [
-        {
-          "name": "replaceDownloadedFile",
-          "params": [
-            "tmpPath",
-            "targetPath"
-          ],
-          "returnType": "error",
-          "exported": false,
-          "lineCount": 3
-        }
-      ],
-      "classes": [],
-      "imports": [
-        {
-          "source": "os",
-          "specifiers": [
-            "os"
-          ]
-        }
-      ],
-      "exports": [],
-      "totalLines": 10,
-      "hasStructuralAnalysis": true
-    },
-    "internal/download/replace_windows.go": {
-      "filePath": "internal/download/replace_windows.go",
-      "contentHash": "71da05ba5ddeb25964b8f4f918d4408d20263c486d5c7e38a30c894baf148cf9",
-      "functions": [
-        {
-          "name": "replaceDownloadedFile",
-          "params": [
-            "tmpPath",
-            "targetPath"
-          ],
-          "returnType": "error",
-          "exported": false,
-          "lineCount": 12
-        }
-      ],
-      "classes": [],
-      "imports": [
-        {
-          "source": "golang.org/x/sys/windows",
-          "specifiers": [
-            "windows"
-          ]
-        }
-      ],
-      "exports": [],
-      "totalLines": 19,
+      "totalLines": 353,
       "hasStructuralAnalysis": true
     },
     "internal/mcpserver/server_test.go": {
       "filePath": "internal/mcpserver/server_test.go",
-      "contentHash": "a625b904bacc91310b37ebcead24db576b1d3459cd643d0cdfb05ef3306c3033",
+      "contentHash": "9f28fcc82dd439dc8dccf44927ec8687f48f470264f47cd9f0269ca1341b6e08",
       "functions": [
         {
           "name": "TestServerListsExpectedTools",
@@ -3641,6 +5768,14 @@
           "lineCount": 22
         },
         {
+          "name": "TestSetRefreshTokenSuccessIncludesUserName",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 19
+        },
+        {
           "name": "TestSetRefreshTokenFailureSaysSessionOnly",
           "params": [
             "t"
@@ -3672,6 +5807,13 @@
           "name": "UserID",
           "params": [],
           "returnType": "int64",
+          "exported": true,
+          "lineCount": 1
+        },
+        {
+          "name": "UserName",
+          "params": [],
+          "returnType": "string",
           "exported": true,
           "lineCount": 1
         },
@@ -3819,6 +5961,7 @@
             "SetRefreshToken",
             "RefreshTokenValue",
             "UserID",
+            "UserName",
             "IsAuthenticated",
             "SearchIllust",
             "IllustDetail",
@@ -3922,13 +6065,13 @@
           ]
         },
         {
-          "source": "github.com/FlanChanXwO/pixiv-mcp-server/internal/download",
+          "source": "github.com/FlanChanXwO/pixiv-cli/internal/download",
           "specifiers": [
             "download"
           ]
         },
         {
-          "source": "github.com/FlanChanXwO/pixiv-mcp-server/internal/pixiv",
+          "source": "github.com/FlanChanXwO/pixiv-cli/internal/pixiv",
           "specifiers": [
             "pixiv"
           ]
@@ -3946,11 +6089,13 @@
         "TestDownloadDefaultsToLocalPathResult",
         "TestDownloadImageContentResult",
         "TestSetRefreshTokenRejectsCookieWithoutRefreshToken",
+        "TestSetRefreshTokenSuccessIncludesUserName",
         "TestSetRefreshTokenFailureSaysSessionOnly",
         "Refresh",
         "SetRefreshToken",
         "RefreshTokenValue",
         "UserID",
+        "UserName",
         "IsAuthenticated",
         "SearchIllust",
         "IllustDetail",
@@ -3968,12 +6113,12 @@
         "Enqueue",
         "Download"
       ],
-      "totalLines": 315,
+      "totalLines": 336,
       "hasStructuralAnalysis": true
     },
     "internal/mcpserver/server.go": {
       "filePath": "internal/mcpserver/server.go",
-      "contentHash": "1c43d16a76cb7c8b6b6c2260a36721e514e60be67e70c77a1781a774e583c151",
+      "contentHash": "228f89596c953cab76a4206fa698cebe0d8ca0c3d01ad3099cd6dcc4b670455b",
       "functions": [
         {
           "name": "New",
@@ -4054,24 +6199,6 @@
           "lineCount": 36
         },
         {
-          "name": "mimeTypeForPath",
-          "params": [
-            "path"
-          ],
-          "returnType": "string",
-          "exported": false,
-          "lineCount": 14
-        },
-        {
-          "name": "fileURI",
-          "params": [
-            "path"
-          ],
-          "returnType": "string",
-          "exported": false,
-          "lineCount": 6
-        },
-        {
           "name": "refreshToken",
           "params": [
             "ctx",
@@ -4092,6 +6219,13 @@
           "returnType": "(*mcp.CallToolResult, textOut, error)",
           "exported": false,
           "lineCount": 14
+        },
+        {
+          "name": "authIdentityText",
+          "params": [],
+          "returnType": "string",
+          "exported": false,
+          "lineCount": 7
         },
         {
           "name": "downloadRandom",
@@ -4275,13 +6409,6 @@
           "lineCount": 11
         },
         {
-          "name": "firstNonEmpty",
-          "params": [],
-          "returnType": "string",
-          "exported": false,
-          "lineCount": 8
-        },
-        {
           "name": "Write",
           "params": [
             "p"
@@ -4299,6 +6426,7 @@
             "SetRefreshToken",
             "RefreshTokenValue",
             "UserID",
+            "UserName",
             "IsAuthenticated",
             "SearchIllust",
             "IllustDetail",
@@ -4314,7 +6442,7 @@
           ],
           "properties": [],
           "exported": true,
-          "lineCount": 18
+          "lineCount": 19
         },
         {
           "name": "DownloadManager",
@@ -4335,6 +6463,7 @@
             "download",
             "refreshToken",
             "setRefreshToken",
+            "authIdentityText",
             "downloadRandom",
             "searchIllust",
             "illustDetail",
@@ -4610,21 +6739,9 @@
           ]
         },
         {
-          "source": "net/url",
-          "specifiers": [
-            "url"
-          ]
-        },
-        {
           "source": "os",
           "specifiers": [
             "os"
-          ]
-        },
-        {
-          "source": "path/filepath",
-          "specifiers": [
-            "filepath"
           ]
         },
         {
@@ -4634,21 +6751,39 @@
           ]
         },
         {
-          "source": "github.com/FlanChanXwO/pixiv-mcp-server/internal/download",
+          "source": "github.com/FlanChanXwO/pixiv-cli/internal/download",
           "specifiers": [
             "download"
           ]
         },
         {
-          "source": "github.com/FlanChanXwO/pixiv-mcp-server/internal/pixiv",
+          "source": "github.com/FlanChanXwO/pixiv-cli/internal/pixiv",
           "specifiers": [
             "pixiv"
           ]
         },
         {
-          "source": "github.com/FlanChanXwO/pixiv-mcp-server/internal/utils",
+          "source": "github.com/FlanChanXwO/pixiv-cli/internal/utils",
           "specifiers": [
             "utils"
+          ]
+        },
+        {
+          "source": "github.com/FlanChanXwO/pixiv-cli/internal/utils/media",
+          "specifiers": [
+            "media"
+          ]
+        },
+        {
+          "source": "github.com/FlanChanXwO/pixiv-cli/internal/utils/text",
+          "specifiers": [
+            "text"
+          ]
+        },
+        {
+          "source": "github.com/FlanChanXwO/pixiv-cli/internal/utils/uri",
+          "specifiers": [
+            "uriutil"
           ]
         },
         {
@@ -4665,12 +6800,12 @@
         "New",
         "Write"
       ],
-      "totalLines": 651,
+      "totalLines": 630,
       "hasStructuralAnalysis": true
     },
     "internal/pixiv/aliases.go": {
       "filePath": "internal/pixiv/aliases.go",
-      "contentHash": "315d7c605ecb71063706a7d4fc4290e4e36bc3d4cf4585dadc4aa47a96fb88a8",
+      "contentHash": "a40053201d5172a289024f89f54955f9ac5a6857b724d3c7b8c4a04f47cafb8a",
       "functions": [
         {
           "name": "New",
@@ -4710,13 +6845,13 @@
           ]
         },
         {
-          "source": "github.com/FlanChanXwO/pixiv-mcp-server/internal/pixiv/api",
+          "source": "github.com/FlanChanXwO/pixiv-cli/internal/pixiv/api",
           "specifiers": [
             "api"
           ]
         },
         {
-          "source": "github.com/FlanChanXwO/pixiv-mcp-server/internal/pixiv/model",
+          "source": "github.com/FlanChanXwO/pixiv-cli/internal/pixiv/model",
           "specifiers": [
             "model"
           ]
@@ -4732,7 +6867,7 @@
     },
     "internal/pixiv/api/auth_code.go": {
       "filePath": "internal/pixiv/api/auth_code.go",
-      "contentHash": "aa3f937fc921cdfb99b35a46dfed94dc9afd59ee22fea2c52e58e943adfd6ae1",
+      "contentHash": "8b5010e564870e687605fa2d7991ae4d6729bef622817162730923449b08dfd6",
       "functions": [
         {
           "name": "ExchangeAuthorizationCode",
@@ -4743,7 +6878,7 @@
           ],
           "returnType": "(AuthCodeToken, error)",
           "exported": true,
-          "lineCount": 39
+          "lineCount": 40
         },
         {
           "name": "authCodeTokenFromResponse",
@@ -4752,7 +6887,7 @@
           ],
           "returnType": "AuthCodeToken",
           "exported": false,
-          "lineCount": 14
+          "lineCount": 16
         }
       ],
       "classes": [
@@ -4762,10 +6897,11 @@
           "properties": [
             "AccessToken",
             "RefreshToken",
-            "UserID"
+            "UserID",
+            "Username"
           ],
           "exported": true,
-          "lineCount": 5
+          "lineCount": 6
         }
       ],
       "imports": [
@@ -4798,12 +6934,12 @@
         "AuthCodeToken",
         "ExchangeAuthorizationCode"
       ],
-      "totalLines": 72,
+      "totalLines": 76,
       "hasStructuralAnalysis": true
     },
     "internal/pixiv/api/client_test.go": {
       "filePath": "internal/pixiv/api/client_test.go",
-      "contentHash": "ab9c69a39dcfe01d2a1d0e43c98579d1b3da9fbef79450f5ed1915cab409a3bf",
+      "contentHash": "e3021358b0c93535363f9f8b4909b9276f22b447db667f98de23a4d1b79aeb58",
       "functions": [
         {
           "name": "TestRefreshAndRetryOnAuthError",
@@ -4820,6 +6956,14 @@
           ],
           "exported": true,
           "lineCount": 10
+        },
+        {
+          "name": "TestUserDetailFetchesUserName",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 23
         }
       ],
       "classes": [],
@@ -4857,14 +7001,15 @@
       ],
       "exports": [
         "TestRefreshAndRetryOnAuthError",
-        "TestClientExtractsRefreshTokenFromCookieInput"
+        "TestClientExtractsRefreshTokenFromCookieInput",
+        "TestUserDetailFetchesUserName"
       ],
-      "totalLines": 64,
+      "totalLines": 88,
       "hasStructuralAnalysis": true
     },
     "internal/pixiv/api/client.go": {
       "filePath": "internal/pixiv/api/client.go",
-      "contentHash": "c7d0a504c6363a4d8c16f64f8f2c0b368ef081b85726dea4e716b2ed37845d8d",
+      "contentHash": "960612e4214119c717b8d8e605f07ed0abb705a19bbc5eef59024438c8330900",
       "functions": [
         {
           "name": "WithHTTPClient",
@@ -4917,6 +7062,13 @@
           "lineCount": 5
         },
         {
+          "name": "UserName",
+          "params": [],
+          "returnType": "string",
+          "exported": true,
+          "lineCount": 5
+        },
+        {
           "name": "IsAuthenticated",
           "params": [],
           "returnType": "bool",
@@ -4930,7 +7082,7 @@
           ],
           "returnType": "error",
           "exported": true,
-          "lineCount": 44
+          "lineCount": 46
         },
         {
           "name": "SearchIllust",
@@ -4989,6 +7141,16 @@
           "returnType": "(*UserPreviewList, error)",
           "exported": true,
           "lineCount": 5
+        },
+        {
+          "name": "UserDetail",
+          "params": [
+            "ctx",
+            "userID"
+          ],
+          "returnType": "(*User, error)",
+          "exported": true,
+          "lineCount": 7
         },
         {
           "name": "IllustRecommended",
@@ -5188,6 +7350,7 @@
             "SetRefreshToken",
             "RefreshTokenValue",
             "UserID",
+            "UserName",
             "IsAuthenticated",
             "Refresh",
             "SearchIllust",
@@ -5195,6 +7358,7 @@
             "IllustRelated",
             "IllustRanking",
             "SearchUser",
+            "UserDetail",
             "IllustRecommended",
             "TrendingTagsIllust",
             "IllustFollow",
@@ -5214,10 +7378,11 @@
             "refreshToken",
             "accessToken",
             "userID",
+            "userName",
             "mu"
           ],
           "exported": true,
-          "lineCount": 9
+          "lineCount": 10
         },
         {
           "name": "requestOptions",
@@ -5258,7 +7423,17 @@
           "name": "authUser",
           "methods": [],
           "properties": [
-            "ID"
+            "ID",
+            "Name"
+          ],
+          "exported": false,
+          "lineCount": 4
+        },
+        {
+          "name": "userDetailResult",
+          "methods": [],
+          "properties": [
+            "User"
           ],
           "exported": false,
           "lineCount": 3
@@ -5338,7 +7513,7 @@
           ]
         },
         {
-          "source": "github.com/FlanChanXwO/pixiv-mcp-server/internal/utils",
+          "source": "github.com/FlanChanXwO/pixiv-cli/internal/utils",
           "specifiers": [
             "utils"
           ]
@@ -5358,6 +7533,7 @@
         "SetRefreshToken",
         "RefreshTokenValue",
         "UserID",
+        "UserName",
         "IsAuthenticated",
         "Refresh",
         "SearchIllust",
@@ -5365,6 +7541,7 @@
         "IllustRelated",
         "IllustRanking",
         "SearchUser",
+        "UserDetail",
         "IllustRecommended",
         "TrendingTagsIllust",
         "IllustFollow",
@@ -5376,29 +7553,90 @@
         "Error",
         "UnmarshalJSON"
       ],
-      "totalLines": 392,
+      "totalLines": 414,
       "hasStructuralAnalysis": true
     },
     "internal/pixiv/api/types_alias.go": {
       "filePath": "internal/pixiv/api/types_alias.go",
-      "contentHash": "ff46a7e4c8dd8727b42ffd3ebec7d302008daeac53bb32683034e578eff5fe7f",
+      "contentHash": "3c7b7b8e160815156791480c78d031f0e7478d1f14a58518116c1a1535506918",
       "functions": [],
       "classes": [],
       "imports": [
         {
-          "source": "github.com/FlanChanXwO/pixiv-mcp-server/internal/pixiv/model",
+          "source": "github.com/FlanChanXwO/pixiv-cli/internal/pixiv/model",
           "specifiers": [
             "model"
           ]
         }
       ],
       "exports": [],
-      "totalLines": 13,
+      "totalLines": 14,
+      "hasStructuralAnalysis": true
+    },
+    "internal/pixiv/client_factory_test.go": {
+      "filePath": "internal/pixiv/client_factory_test.go",
+      "contentHash": "bbeadf700448778595121e979b93b1227dbb0edf1157af8df75d4e286dd69647",
+      "functions": [
+        {
+          "name": "TestHTTPClientWithoutProxyIgnoresEnvironmentProxy",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 10
+        },
+        {
+          "name": "TestHTTPClientWithProxyUsesExplicitProxy",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 15
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "net/http",
+          "specifiers": [
+            "http"
+          ]
+        },
+        {
+          "source": "net/url",
+          "specifiers": [
+            "url"
+          ]
+        },
+        {
+          "source": "testing",
+          "specifiers": [
+            "testing"
+          ]
+        },
+        {
+          "source": "github.com/stretchr/testify/assert",
+          "specifiers": [
+            "assert"
+          ]
+        },
+        {
+          "source": "github.com/stretchr/testify/require",
+          "specifiers": [
+            "require"
+          ]
+        }
+      ],
+      "exports": [
+        "TestHTTPClientWithoutProxyIgnoresEnvironmentProxy",
+        "TestHTTPClientWithProxyUsesExplicitProxy"
+      ],
+      "totalLines": 38,
       "hasStructuralAnalysis": true
     },
     "internal/pixiv/client_factory.go": {
       "filePath": "internal/pixiv/client_factory.go",
-      "contentHash": "4fff067cf7eb9e26c1fc756c389ff057492d2949eac5894279bff8b5c6fa4aa7",
+      "contentHash": "2f44dd62483ad02a9b5830b33f98c7345ec5a2c0e7dd7a12ce8fd1a0ae7d4c66",
       "functions": [
         {
           "name": "NewSource",
@@ -5426,7 +7664,7 @@
           ],
           "returnType": "(*http.Client, error)",
           "exported": true,
-          "lineCount": 14
+          "lineCount": 16
         }
       ],
       "classes": [
@@ -5477,7 +7715,7 @@
           ]
         },
         {
-          "source": "github.com/FlanChanXwO/pixiv-mcp-server/internal/pixiv/web",
+          "source": "github.com/FlanChanXwO/pixiv-cli/internal/pixiv/web",
           "specifiers": [
             "web"
           ]
@@ -5490,7 +7728,7 @@
         "NewOAuthClient",
         "HTTPClient"
       ],
-      "totalLines": 57,
+      "totalLines": 59,
       "hasStructuralAnalysis": true
     },
     "internal/pixiv/http_client_test.go": {
@@ -5739,7 +7977,7 @@
     },
     "internal/pixiv/source_test.go": {
       "filePath": "internal/pixiv/source_test.go",
-      "contentHash": "41409a4a5e4da7358a8ee9c38d9027d07bc69c4ca7a4340018cef0653aa5ff59",
+      "contentHash": "0ce2564dbff01a57ef283de6356763c501b108dda249d33522be6c5101ba46b3",
       "functions": [
         {
           "name": "TestSourceUsesWebOnlyWhenTokenIsEmptyAndFallbackEnabled",
@@ -5811,6 +8049,13 @@
           "lineCount": 1
         },
         {
+          "name": "UserName",
+          "params": [],
+          "returnType": "string",
+          "exported": true,
+          "lineCount": 1
+        },
+        {
           "name": "IsAuthenticated",
           "params": [],
           "returnType": "bool",
@@ -5849,6 +8094,13 @@
           "name": "SearchUser",
           "params": [],
           "returnType": "(*UserPreviewList, error)",
+          "exported": true,
+          "lineCount": 3
+        },
+        {
+          "name": "UserDetail",
+          "params": [],
+          "returnType": "(*User, error)",
           "exported": true,
           "lineCount": 3
         },
@@ -5956,12 +8208,14 @@
             "SetRefreshToken",
             "RefreshTokenValue",
             "UserID",
+            "UserName",
             "IsAuthenticated",
             "SearchIllust",
             "IllustDetail",
             "IllustRelated",
             "IllustRanking",
             "SearchUser",
+            "UserDetail",
             "IllustRecommended",
             "TrendingTagsIllust",
             "IllustFollow",
@@ -6056,12 +8310,14 @@
         "SetRefreshToken",
         "RefreshTokenValue",
         "UserID",
+        "UserName",
         "IsAuthenticated",
         "SearchIllust",
         "IllustDetail",
         "IllustRelated",
         "IllustRanking",
         "SearchUser",
+        "UserDetail",
         "IllustRecommended",
         "TrendingTagsIllust",
         "IllustFollow",
@@ -6076,12 +8332,12 @@
         "UgoiraMetadata",
         "Download"
       ],
-      "totalLines": 176,
+      "totalLines": 180,
       "hasStructuralAnalysis": true
     },
     "internal/pixiv/source.go": {
       "filePath": "internal/pixiv/source.go",
-      "contentHash": "c9cd91353787cb07989a00c692d8d05a5ec9afff4831e1dc1d56a65ef11d0253",
+      "contentHash": "cd01fcb42d6e412d2d9a9698636e4ff7b815903843bb0916dba95294d51c811f",
       "functions": [
         {
           "name": "NewSourceFromClients",
@@ -6122,6 +8378,13 @@
           "name": "UserID",
           "params": [],
           "returnType": "int64",
+          "exported": true,
+          "lineCount": 3
+        },
+        {
+          "name": "UserName",
+          "params": [],
+          "returnType": "string",
           "exported": true,
           "lineCount": 3
         },
@@ -6189,6 +8452,16 @@
           "returnType": "(*UserPreviewList, error)",
           "exported": true,
           "lineCount": 6
+        },
+        {
+          "name": "UserDetail",
+          "params": [
+            "ctx",
+            "userID"
+          ],
+          "returnType": "(*User, error)",
+          "exported": true,
+          "lineCount": 3
         },
         {
           "name": "IllustRecommended",
@@ -6282,12 +8555,14 @@
             "SetRefreshToken",
             "RefreshTokenValue",
             "UserID",
+            "UserName",
             "IsAuthenticated",
             "SearchIllust",
             "IllustDetail",
             "IllustRelated",
             "IllustRanking",
             "SearchUser",
+            "UserDetail",
             "IllustRecommended",
             "TrendingTagsIllust",
             "IllustFollow",
@@ -6298,7 +8573,7 @@
           ],
           "properties": [],
           "exported": true,
-          "lineCount": 19
+          "lineCount": 21
         },
         {
           "name": "WebAPI",
@@ -6331,12 +8606,14 @@
             "SetRefreshToken",
             "RefreshTokenValue",
             "UserID",
+            "UserName",
             "IsAuthenticated",
             "SearchIllust",
             "IllustDetail",
             "IllustRelated",
             "IllustRanking",
             "SearchUser",
+            "UserDetail",
             "IllustRecommended",
             "TrendingTagsIllust",
             "IllustFollow",
@@ -6392,12 +8669,14 @@
         "SetRefreshToken",
         "RefreshTokenValue",
         "UserID",
+        "UserName",
         "IsAuthenticated",
         "SearchIllust",
         "IllustDetail",
         "IllustRelated",
         "IllustRanking",
         "SearchUser",
+        "UserDetail",
         "IllustRecommended",
         "TrendingTagsIllust",
         "IllustFollow",
@@ -6406,7 +8685,7 @@
         "UgoiraMetadata",
         "Download"
       ],
-      "totalLines": 153,
+      "totalLines": 163,
       "hasStructuralAnalysis": true
     },
     "internal/pixiv/web/client_test.go": {
@@ -6550,7 +8829,7 @@
     },
     "internal/pixiv/web/client.go": {
       "filePath": "internal/pixiv/web/client.go",
-      "contentHash": "e3056a4494de2f48239c02d34e0dd30fd60f8a241bce659ce63ce7bab0e87053",
+      "contentHash": "14a36b8d216c433babb1c70b6ef5b3a87e0fcbf2f511461ba9ebf0502239798d",
       "functions": [
         {
           "name": "WithHTTPClient",
@@ -6832,13 +9111,6 @@
           "returnType": "string",
           "exported": false,
           "lineCount": 10
-        },
-        {
-          "name": "firstNonEmpty",
-          "params": [],
-          "returnType": "string",
-          "exported": false,
-          "lineCount": 8
         },
         {
           "name": "firstFlexInt64",
@@ -7142,9 +9414,15 @@
           ]
         },
         {
-          "source": "github.com/FlanChanXwO/pixiv-mcp-server/internal/pixiv/model",
+          "source": "github.com/FlanChanXwO/pixiv-cli/internal/pixiv/model",
           "specifiers": [
             "model"
+          ]
+        },
+        {
+          "source": "github.com/FlanChanXwO/pixiv-cli/internal/utils/text",
+          "specifiers": [
+            "text"
           ]
         }
       ],
@@ -7165,12 +9443,399 @@
         "UnmarshalJSON",
         "UnmarshalJSON"
       ],
-      "totalLines": 650,
+      "totalLines": 642,
+      "hasStructuralAnalysis": true
+    },
+    "internal/storage/auth/account_test.go": {
+      "filePath": "internal/storage/auth/account_test.go",
+      "contentHash": "b36b9319ad9cd2a10ba3c9f26dda2aa830e9faa9d92cadcad94af1c657e85daa",
+      "functions": [
+        {
+          "name": "TestLoadSaveAuthStoreKeepsPrivatePermissionsAndDefaultUserID",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 22
+        },
+        {
+          "name": "TestLoadAuthStoreDropsMissingDefaultUserID",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 8
+        },
+        {
+          "name": "TestLoadAuthStoreRejectsLegacyAccountNameSchema",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 7
+        },
+        {
+          "name": "TestLoadAuthStoreRejectsMixedLegacyNameSchema",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 7
+        },
+        {
+          "name": "TestLoadAuthStoreRejectsLegacyKeysEvenWhenNull",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 7
+        },
+        {
+          "name": "TestAuthStoreRemovePromotesFirstRemainingUserID",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 13
+        },
+        {
+          "name": "TestSaveAuthStoreRejectsDuplicateUserIDs",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 13
+        },
+        {
+          "name": "TestSaveAuthStoreRejectsMissingDefaultUserID",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 10
+        },
+        {
+          "name": "TestSaveAuthStoreRejectsAccountsWithoutDefaultUserID",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 9
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "os",
+          "specifiers": [
+            "os"
+          ]
+        },
+        {
+          "source": "path/filepath",
+          "specifiers": [
+            "filepath"
+          ]
+        },
+        {
+          "source": "testing",
+          "specifiers": [
+            "testing"
+          ]
+        },
+        {
+          "source": "github.com/stretchr/testify/assert",
+          "specifiers": [
+            "assert"
+          ]
+        },
+        {
+          "source": "github.com/stretchr/testify/require",
+          "specifiers": [
+            "require"
+          ]
+        }
+      ],
+      "exports": [
+        "TestLoadSaveAuthStoreKeepsPrivatePermissionsAndDefaultUserID",
+        "TestLoadAuthStoreDropsMissingDefaultUserID",
+        "TestLoadAuthStoreRejectsLegacyAccountNameSchema",
+        "TestLoadAuthStoreRejectsMixedLegacyNameSchema",
+        "TestLoadAuthStoreRejectsLegacyKeysEvenWhenNull",
+        "TestAuthStoreRemovePromotesFirstRemainingUserID",
+        "TestSaveAuthStoreRejectsDuplicateUserIDs",
+        "TestSaveAuthStoreRejectsMissingDefaultUserID",
+        "TestSaveAuthStoreRejectsAccountsWithoutDefaultUserID"
+      ],
+      "totalLines": 116,
+      "hasStructuralAnalysis": true
+    },
+    "internal/storage/auth/account.go": {
+      "filePath": "internal/storage/auth/account.go",
+      "contentHash": "f447858a4a64b243d646ec9df226237f962f185d33645b1a06fe7d43fff0c1d0",
+      "functions": [
+        {
+          "name": "Error",
+          "params": [],
+          "returnType": "string",
+          "exported": true,
+          "lineCount": 3
+        },
+        {
+          "name": "IsLegacySchemaError",
+          "params": [
+            "err"
+          ],
+          "returnType": "bool",
+          "exported": true,
+          "lineCount": 4
+        },
+        {
+          "name": "LoadAuthStore",
+          "params": [
+            "path"
+          ],
+          "returnType": "(AuthStore, error)",
+          "exported": true,
+          "lineCount": 29
+        },
+        {
+          "name": "rejectLegacyAuthSchema",
+          "params": [
+            "body"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 23
+        },
+        {
+          "name": "SaveAuthStore",
+          "params": [
+            "path",
+            "store"
+          ],
+          "returnType": "error",
+          "exported": true,
+          "lineCount": 14
+        },
+        {
+          "name": "validateAuthStore",
+          "params": [
+            "store",
+            "requireDefault"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 24
+        },
+        {
+          "name": "UserIDs",
+          "params": [],
+          "returnType": "[]int64",
+          "exported": true,
+          "lineCount": 7
+        },
+        {
+          "name": "Has",
+          "params": [
+            "userID"
+          ],
+          "returnType": "bool",
+          "exported": true,
+          "lineCount": 4
+        },
+        {
+          "name": "Get",
+          "params": [
+            "userID"
+          ],
+          "returnType": "(int, Account, bool)",
+          "exported": true,
+          "lineCount": 11
+        },
+        {
+          "name": "Upsert",
+          "params": [
+            "acct"
+          ],
+          "exported": true,
+          "lineCount": 7
+        },
+        {
+          "name": "Remove",
+          "params": [
+            "userID"
+          ],
+          "returnType": "bool",
+          "exported": true,
+          "lineCount": 14
+        },
+        {
+          "name": "SelectAuthAccount",
+          "params": [
+            "store",
+            "requestedUserID"
+          ],
+          "returnType": "(int64, Account, bool)",
+          "exported": true,
+          "lineCount": 11
+        }
+      ],
+      "classes": [
+        {
+          "name": "AuthStore",
+          "methods": [
+            "UserIDs",
+            "Has",
+            "Get",
+            "Upsert",
+            "Remove"
+          ],
+          "properties": [
+            "DefaultUserID",
+            "Accounts"
+          ],
+          "exported": true,
+          "lineCount": 4
+        },
+        {
+          "name": "Account",
+          "methods": [],
+          "properties": [
+            "RefreshToken",
+            "UserID",
+            "Username"
+          ],
+          "exported": true,
+          "lineCount": 5
+        },
+        {
+          "name": "LegacySchemaError",
+          "methods": [
+            "Error"
+          ],
+          "properties": [
+            "Field"
+          ],
+          "exported": true,
+          "lineCount": 3
+        }
+      ],
+      "imports": [
+        {
+          "source": "encoding/json",
+          "specifiers": [
+            "json"
+          ]
+        },
+        {
+          "source": "errors",
+          "specifiers": [
+            "errors"
+          ]
+        },
+        {
+          "source": "os",
+          "specifiers": [
+            "os"
+          ]
+        },
+        {
+          "source": "strings",
+          "specifiers": [
+            "strings"
+          ]
+        }
+      ],
+      "exports": [
+        "AuthStore",
+        "Account",
+        "LegacySchemaError",
+        "Error",
+        "IsLegacySchemaError",
+        "LoadAuthStore",
+        "SaveAuthStore",
+        "UserIDs",
+        "Has",
+        "Get",
+        "Upsert",
+        "Remove",
+        "SelectAuthAccount"
+      ],
+      "totalLines": 187,
+      "hasStructuralAnalysis": true
+    },
+    "internal/storage/auth/paths.go": {
+      "filePath": "internal/storage/auth/paths.go",
+      "contentHash": "08265643a790833ccb63d80c5d516e22c6649190893159f675dc90736bedc6bd",
+      "functions": [
+        {
+          "name": "defaultAppConfigDir",
+          "params": [],
+          "returnType": "(string, error)",
+          "exported": false,
+          "lineCount": 3
+        },
+        {
+          "name": "defaultAuthFilePath",
+          "params": [],
+          "returnType": "(string, error)",
+          "exported": false,
+          "lineCount": 3
+        },
+        {
+          "name": "AuthFilePath",
+          "params": [],
+          "returnType": "(string, error)",
+          "exported": true,
+          "lineCount": 3
+        },
+        {
+          "name": "SetAuthFilePathForTest",
+          "params": [
+            "authPath"
+          ],
+          "returnType": "func()",
+          "exported": true,
+          "lineCount": 7
+        },
+        {
+          "name": "WritePrivateFile",
+          "params": [
+            "path",
+            "body"
+          ],
+          "returnType": "error",
+          "exported": true,
+          "lineCount": 3
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "github.com/FlanChanXwO/pixiv-cli/internal/common/constants",
+          "specifiers": [
+            "constants"
+          ]
+        },
+        {
+          "source": "github.com/FlanChanXwO/pixiv-cli/internal/utils/files",
+          "specifiers": [
+            "files"
+          ]
+        }
+      ],
+      "exports": [
+        "AuthFilePath",
+        "SetAuthFilePathForTest",
+        "WritePrivateFile"
+      ],
+      "totalLines": 37,
       "hasStructuralAnalysis": true
     },
     "internal/utils/filename.go": {
       "filePath": "internal/utils/filename.go",
-      "contentHash": "2ea41842412068089b3e8533ed33039b13123d14f5e2e54ba20a201091e875ef",
+      "contentHash": "4decd948ac8e4bc59ca3f8a20f20e241665562a220f9145333b40aec0eb65cd0",
       "functions": [
         {
           "name": "SanitizeFilename",
@@ -7200,16 +9865,6 @@
           "returnType": "[]int64",
           "exported": true,
           "lineCount": 16
-        },
-        {
-          "name": "fallback",
-          "params": [
-            "value",
-            "backup"
-          ],
-          "returnType": "string",
-          "exported": false,
-          "lineCount": 6
         }
       ],
       "classes": [
@@ -7250,6 +9905,12 @@
           "specifiers": [
             "strings"
           ]
+        },
+        {
+          "source": "github.com/FlanChanXwO/pixiv-cli/internal/utils/text",
+          "specifiers": [
+            "text"
+          ]
         }
       ],
       "exports": [
@@ -7258,7 +9919,379 @@
         "GenerateFilename",
         "Deduplicate"
       ],
-      "totalLines": 62,
+      "totalLines": 57,
+      "hasStructuralAnalysis": true
+    },
+    "internal/utils/files/files_test.go": {
+      "filePath": "internal/utils/files/files_test.go",
+      "contentHash": "c68047669a2e286c57be9a048d182ebdb4c3523b72ebf9ca750df25ade1cbaf9",
+      "functions": [
+        {
+          "name": "TestUserConfigFileBuildsPathUnderNamedAppDir",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 8
+        },
+        {
+          "name": "TestWritePrivateFileCreatesPrivateParentAndFile",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 16
+        },
+        {
+          "name": "TestWritePrivateFileResetsExistingFileMode",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 14
+        },
+        {
+          "name": "TestWritePrivateFileResetsExistingParentDirectoryMode",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 10
+        },
+        {
+          "name": "TestReplaceFileReplacesTargetAndRemovesSource",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 15
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "os",
+          "specifiers": [
+            "os"
+          ]
+        },
+        {
+          "source": "path/filepath",
+          "specifiers": [
+            "filepath"
+          ]
+        },
+        {
+          "source": "testing",
+          "specifiers": [
+            "testing"
+          ]
+        },
+        {
+          "source": "github.com/FlanChanXwO/pixiv-cli/internal/common/constants",
+          "specifiers": [
+            "constants"
+          ]
+        },
+        {
+          "source": "github.com/stretchr/testify/assert",
+          "specifiers": [
+            "assert"
+          ]
+        },
+        {
+          "source": "github.com/stretchr/testify/require",
+          "specifiers": [
+            "require"
+          ]
+        }
+      ],
+      "exports": [
+        "TestUserConfigFileBuildsPathUnderNamedAppDir",
+        "TestWritePrivateFileCreatesPrivateParentAndFile",
+        "TestWritePrivateFileResetsExistingFileMode",
+        "TestWritePrivateFileResetsExistingParentDirectoryMode",
+        "TestReplaceFileReplacesTargetAndRemovesSource"
+      ],
+      "totalLines": 80,
+      "hasStructuralAnalysis": true
+    },
+    "internal/utils/files/files.go": {
+      "filePath": "internal/utils/files/files.go",
+      "contentHash": "b2dd88f262cd46015a800c92960dd10d3ca56e650f4aca5eb1456f2fcac60d07",
+      "functions": [
+        {
+          "name": "UserConfigSubdir",
+          "params": [
+            "appName"
+          ],
+          "returnType": "(string, error)",
+          "exported": true,
+          "lineCount": 7
+        },
+        {
+          "name": "UserConfigFile",
+          "params": [
+            "appName",
+            "filename"
+          ],
+          "returnType": "(string, error)",
+          "exported": true,
+          "lineCount": 7
+        },
+        {
+          "name": "WritePrivateFile",
+          "params": [
+            "path",
+            "body",
+            "mode"
+          ],
+          "returnType": "error",
+          "exported": true,
+          "lineCount": 12
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "os",
+          "specifiers": [
+            "os"
+          ]
+        },
+        {
+          "source": "path/filepath",
+          "specifiers": [
+            "filepath"
+          ]
+        },
+        {
+          "source": "github.com/FlanChanXwO/pixiv-cli/internal/common/constants",
+          "specifiers": [
+            "constants"
+          ]
+        }
+      ],
+      "exports": [
+        "UserConfigSubdir",
+        "UserConfigFile",
+        "WritePrivateFile"
+      ],
+      "totalLines": 38,
+      "hasStructuralAnalysis": true
+    },
+    "internal/utils/files/replace_nonwindows.go": {
+      "filePath": "internal/utils/files/replace_nonwindows.go",
+      "contentHash": "da41b5c8501ca80ad31eb92ff44553a8a5906336045161e9fd200f7e78f85b8c",
+      "functions": [
+        {
+          "name": "ReplaceFile",
+          "params": [
+            "sourcePath",
+            "targetPath"
+          ],
+          "returnType": "error",
+          "exported": true,
+          "lineCount": 3
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "os",
+          "specifiers": [
+            "os"
+          ]
+        }
+      ],
+      "exports": [
+        "ReplaceFile"
+      ],
+      "totalLines": 11,
+      "hasStructuralAnalysis": true
+    },
+    "internal/utils/files/replace_windows.go": {
+      "filePath": "internal/utils/files/replace_windows.go",
+      "contentHash": "f74313e911407eefb757346922d68038cfa335488769d56013166c708ea89001",
+      "functions": [
+        {
+          "name": "ReplaceFile",
+          "params": [
+            "sourcePath",
+            "targetPath"
+          ],
+          "returnType": "error",
+          "exported": true,
+          "lineCount": 11
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "golang.org/x/sys/windows",
+          "specifiers": [
+            "windows"
+          ]
+        }
+      ],
+      "exports": [
+        "ReplaceFile"
+      ],
+      "totalLines": 19,
+      "hasStructuralAnalysis": true
+    },
+    "internal/utils/media/media_test.go": {
+      "filePath": "internal/utils/media/media_test.go",
+      "contentHash": "b692ebe417fdcd02e0bbde077eafbce79fa1ac24442edbb0f24428e076da22a2",
+      "functions": [
+        {
+          "name": "TestMimeTypeForPathReturnsSupportedImageTypes",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 7
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "testing",
+          "specifiers": [
+            "testing"
+          ]
+        },
+        {
+          "source": "github.com/stretchr/testify/assert",
+          "specifiers": [
+            "assert"
+          ]
+        }
+      ],
+      "exports": [
+        "TestMimeTypeForPathReturnsSupportedImageTypes"
+      ],
+      "totalLines": 16,
+      "hasStructuralAnalysis": true
+    },
+    "internal/utils/media/media.go": {
+      "filePath": "internal/utils/media/media.go",
+      "contentHash": "a62adf3469d37312774197cb9ed35985703ae3be5bfaf0b92fc119d59f5ffa4d",
+      "functions": [
+        {
+          "name": "MimeTypeForPath",
+          "params": [
+            "path"
+          ],
+          "returnType": "string",
+          "exported": true,
+          "lineCount": 14
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "path/filepath",
+          "specifiers": [
+            "filepath"
+          ]
+        },
+        {
+          "source": "strings",
+          "specifiers": [
+            "strings"
+          ]
+        }
+      ],
+      "exports": [
+        "MimeTypeForPath"
+      ],
+      "totalLines": 22,
+      "hasStructuralAnalysis": true
+    },
+    "internal/utils/parse/parse_test.go": {
+      "filePath": "internal/utils/parse/parse_test.go",
+      "contentHash": "cf951f6937638ec2890240f4850dc5164c33130da56fa5b9e91cf4929dce3c1f",
+      "functions": [
+        {
+          "name": "TestPositiveInt64ParsesPositiveInteger",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 6
+        },
+        {
+          "name": "TestPositiveInt64RejectsInvalidOrNonPositiveValues",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 7
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "testing",
+          "specifiers": [
+            "testing"
+          ]
+        },
+        {
+          "source": "github.com/stretchr/testify/assert",
+          "specifiers": [
+            "assert"
+          ]
+        },
+        {
+          "source": "github.com/stretchr/testify/require",
+          "specifiers": [
+            "require"
+          ]
+        }
+      ],
+      "exports": [
+        "TestPositiveInt64ParsesPositiveInteger",
+        "TestPositiveInt64RejectsInvalidOrNonPositiveValues"
+      ],
+      "totalLines": 24,
+      "hasStructuralAnalysis": true
+    },
+    "internal/utils/parse/parse.go": {
+      "filePath": "internal/utils/parse/parse.go",
+      "contentHash": "e99a8188c2d8a5fc9f4d053a47ff8c0ed8bbaa539d4abd79ba30f06d778e7bb1",
+      "functions": [
+        {
+          "name": "PositiveInt64",
+          "params": [
+            "value",
+            "name"
+          ],
+          "returnType": "(int64, error)",
+          "exported": true,
+          "lineCount": 7
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "fmt",
+          "specifiers": [
+            "fmt"
+          ]
+        },
+        {
+          "source": "strconv",
+          "specifiers": [
+            "strconv"
+          ]
+        }
+      ],
+      "exports": [
+        "PositiveInt64"
+      ],
+      "totalLines": 15,
       "hasStructuralAnalysis": true
     },
     "internal/utils/pixiv_web_auth_test.go": {
@@ -7378,9 +10411,177 @@
       "totalLines": 64,
       "hasStructuralAnalysis": true
     },
+    "internal/utils/text/text_test.go": {
+      "filePath": "internal/utils/text/text_test.go",
+      "contentHash": "cf08f915f4162d9515dfd05e0db12608a0d951a339d4599a975c41b751508b5a",
+      "functions": [
+        {
+          "name": "TestFirstNonEmptyReturnsFirstNonEmptyString",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 5
+        },
+        {
+          "name": "TestDefaultStringReturnsFallbackForEmptyString",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 4
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "testing",
+          "specifiers": [
+            "testing"
+          ]
+        },
+        {
+          "source": "github.com/stretchr/testify/assert",
+          "specifiers": [
+            "assert"
+          ]
+        }
+      ],
+      "exports": [
+        "TestFirstNonEmptyReturnsFirstNonEmptyString",
+        "TestDefaultStringReturnsFallbackForEmptyString"
+      ],
+      "totalLines": 19,
+      "hasStructuralAnalysis": true
+    },
+    "internal/utils/text/text.go": {
+      "filePath": "internal/utils/text/text.go",
+      "contentHash": "45f279fc95d0eda340db279b161941a1182661a2bb885e4fbc47ca602d06a276",
+      "functions": [
+        {
+          "name": "FirstNonEmpty",
+          "params": [],
+          "returnType": "string",
+          "exported": true,
+          "lineCount": 8
+        },
+        {
+          "name": "DefaultString",
+          "params": [
+            "value",
+            "fallback"
+          ],
+          "returnType": "string",
+          "exported": true,
+          "lineCount": 6
+        }
+      ],
+      "classes": [],
+      "imports": [],
+      "exports": [
+        "FirstNonEmpty",
+        "DefaultString"
+      ],
+      "totalLines": 18,
+      "hasStructuralAnalysis": true
+    },
+    "internal/utils/uri/uri_test.go": {
+      "filePath": "internal/utils/uri/uri_test.go",
+      "contentHash": "20d99f1a4024acc343cdf5833f3c9307216da9304a6af68f8f76db4264c3e154",
+      "functions": [
+        {
+          "name": "TestPathFromURLReturnsParsedPathWhenURLIsValid",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 7
+        },
+        {
+          "name": "TestFileURIBuildsAbsoluteFileURI",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 6
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "path/filepath",
+          "specifiers": [
+            "filepath"
+          ]
+        },
+        {
+          "source": "testing",
+          "specifiers": [
+            "testing"
+          ]
+        },
+        {
+          "source": "github.com/stretchr/testify/assert",
+          "specifiers": [
+            "assert"
+          ]
+        }
+      ],
+      "exports": [
+        "TestPathFromURLReturnsParsedPathWhenURLIsValid",
+        "TestFileURIBuildsAbsoluteFileURI"
+      ],
+      "totalLines": 24,
+      "hasStructuralAnalysis": true
+    },
+    "internal/utils/uri/uri.go": {
+      "filePath": "internal/utils/uri/uri.go",
+      "contentHash": "28aaffa60ec3945d76a184fe653713bff0b81ab042adb0ea351dfa72296adfb6",
+      "functions": [
+        {
+          "name": "PathFromURL",
+          "params": [
+            "rawURL"
+          ],
+          "returnType": "string",
+          "exported": true,
+          "lineCount": 7
+        },
+        {
+          "name": "FileURI",
+          "params": [
+            "path"
+          ],
+          "returnType": "string",
+          "exported": true,
+          "lineCount": 6
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "net/url",
+          "specifiers": [
+            "url"
+          ]
+        },
+        {
+          "source": "path/filepath",
+          "specifiers": [
+            "filepath"
+          ]
+        }
+      ],
+      "exports": [
+        "PathFromURL",
+        "FileURI"
+      ],
+      "totalLines": 22,
+      "hasStructuralAnalysis": true
+    },
     "manifest.json": {
       "filePath": "manifest.json",
-      "contentHash": "29f77199916b2c7d9e6f926bc5bfdde0a1b9c040d59464fe4abefeb779055eda",
+      "contentHash": "33893a35f6e452f880448761250f5e1ec1a1d2d88335bbc0891dc6fe4facc907",
       "functions": [],
       "classes": [],
       "imports": [],
@@ -7390,17 +10591,27 @@
     },
     "README.md": {
       "filePath": "README.md",
-      "contentHash": "37ebc218cac386cdd53f18772a0413ecf61cb5c8146dd19e2b4d3c664965bdca",
+      "contentHash": "168330779c00cb3ee76a601c8cc6e5d8ecb435256895c306a4cc52f9475f0ea9",
       "functions": [],
       "classes": [],
       "imports": [],
       "exports": [],
-      "totalLines": 252,
+      "totalLines": 283,
+      "hasStructuralAnalysis": true
+    },
+    "scripts/build.sh": {
+      "filePath": "scripts/build.sh",
+      "contentHash": "aedcbb8264d5adce4f815b1195f9fa9ffbf8347727ffe4810e276ca1c120bab2",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 16,
       "hasStructuralAnalysis": true
     },
     "test/e2e/pixiv_binary_test.go": {
       "filePath": "test/e2e/pixiv_binary_test.go",
-      "contentHash": "4abac21860cd7e624694985e7f3f3c39669602ba2a3a7922463e10b2496701bf",
+      "contentHash": "6893d06ef481423442a0b28aaabff1e1efce8d2ae7b8a85acab965d18f97d977",
       "functions": [
         {
           "name": "TestPixivBinaryBuildsFromCmdPixivAndPrintsHelp",
@@ -7594,7 +10805,7 @@
           ]
         },
         {
-          "source": "github.com/FlanChanXwO/pixiv-mcp-server/internal/pixiv",
+          "source": "github.com/FlanChanXwO/pixiv-cli/internal/pixiv",
           "specifiers": [
             "pixiv"
           ]
