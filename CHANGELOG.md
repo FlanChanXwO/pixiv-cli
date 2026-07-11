@@ -28,7 +28,10 @@
 
 ### Security
 
-- Release binary 安装在生产 Ed25519 trust root 尚未配置时明确失败，不会伪装为安全更新；正式发布仍被完整 six-target staticlib/manifest、fresh-cache Cargo vendor、native runner 证据、受保护 release Environment 与实际 Release/tap 验证阻断。
+- Rust ugoira crate 的 crates.io 依赖现以完整 locked `vendor/` 闭包及 Cargo checksum 随源码审计；
+  release 验证会在空 Cargo cache 下完成 metadata/build/test 与六 target 许可证检查，缺失 vendor、
+  checksum 不匹配或 registry fallback 都会明确失败。
+- Release binary 安装在生产 Ed25519 trust root 尚未配置时明确失败，不会伪装为安全更新；正式发布仍被完整 six-target staticlib/manifest、native runner 证据、受保护 release Environment 与实际 Release/tap 验证阻断。
 - 更新检查写入前会把既有 `pixiv-cli` cache 目录在 Unix-like 平台收紧为 `0700`；Windows 保持其 ACL 语义。
 - Release installer 会在下载前校验 Releases API 或 ETag cache 中每个选中 asset 的精确 GitHub HTTPS 来源；跨 host、仓库、tag、asset 或含歧义 URL 的记录会明确失败，绝不请求该 URL。
 - Release installer 拒绝 archive 原始路径中含有任何 `..` segment 的条目，防止归一化后的路径绕过解包安全校验。
@@ -38,7 +41,7 @@
 ## [0.1.0] - Release candidate (not published)
 
 > 此段是未来 `v0.1.0` 的 release notes 输入，**不是**已发布公告或发布日期。公开发布前必须完成
-> 六个真实 staticlib 与 manifest、fresh-cache Cargo vendor、workflow/native artifact 证据、production
+> 六个真实 staticlib 与 manifest、workflow/native artifact 证据、production
 > Ed25519 key/受保护 `release` Environment、公开仓库/Release/tap 及真实安装验收。
 
 ### Added

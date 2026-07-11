@@ -80,7 +80,7 @@ jobs:
       - name: Test and audit the checked-out source
         shell: bash
         run: |
-          cargo test --locked --offline --manifest-path internal/download/ugoira_rs/Cargo.toml
+          sh scripts/test-rust-vendor.sh
           go test ./...
           go vet ./...
           go run ./scripts/licensebundle --check

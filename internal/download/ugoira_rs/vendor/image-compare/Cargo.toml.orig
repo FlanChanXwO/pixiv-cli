@@ -1,0 +1,40 @@
+[package]
+name = "image-compare"
+version = "0.5.0"
+edition = "2021"
+authors = ["Christopher Regali <christopher.regali@vdop.org>"]
+license = "MIT"
+repository = "https://github.com/ChrisRega/image-compare"
+homepage = "https://github.com/ChrisRega/image-compare"
+documentation = "https://docs.rs/image-compare"
+readme = "README.md"
+categories = ["multimedia::images"]
+exclude = ["tests/data/*", ".github"]
+description = "Image comparison library based upon the image crate. Currently it provides SSIM and RMS for comparing grayscale and rgb images, a cool hybrid compare as well as several grayscale histogram distance metrics. All with a friendly license."
+
+[dependencies]
+thiserror = "2.0"
+image = { version = "0.25", default-features = false }
+rayon = "1.10"
+itertools = "0.14"
+
+[dev-dependencies]
+cucumber = "0.21"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "time"] }
+image = { version = "0.25", default-features = false, features = ["png"] }
+
+[[test]]
+name = "compare"
+harness = false
+
+[[test]]
+name = "utils"
+harness = false
+
+[profile.release-with-debug]
+inherits = "release"
+debug = true
+
+[features]
+default = []
+yuv_compare = []

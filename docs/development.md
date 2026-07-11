@@ -53,17 +53,28 @@ go test ./internal/download -run '^TestCommittedUgoiraStaticlibManifestWhenPrese
 `internal/download/ugoira_rs/staticlib/`、其 `manifest.json` 和两份 knowledge graph 则是可追溯
 输入，不能以 ignore 规则隐藏。
 
-Cargo 命令当前可以使用 `--locked --offline`：
+Rust crate 的 `.cargo/config.toml` 将 crates.io 替换为其相邻 `vendor/` 中完整的 locked
+依赖闭包。`vendor/` 的每个 package 都带 Cargo 生成的 `.cargo-checksum.json`；它、Cargo config、
+`Cargo.toml`/`Cargo.lock`、Rust source 和本地 `quantette` 都计入 staticlib source digest。不要手工
+编辑 vendor 内容；升级依赖时必须重新以 `cargo vendor --locked --offline` 生成完整闭包并更新 digest
+fixture 与许可证 bundle。`target/` 仍是机器产物，不计入 digest，也不得提交。
+
+直接运行 Cargo 时必须在 crate 目录启动，确保 Cargo 发现 source replacement：
 
 ```bash
-cargo test --locked --offline --manifest-path internal/download/ugoira_rs/Cargo.toml
-cargo clippy --locked --offline --all-targets --manifest-path internal/download/ugoira_rs/Cargo.toml -- -D warnings
+(
+  cd internal/download/ugoira_rs
+  cargo test --locked --offline
+  cargo clippy --locked --offline --all-targets -- -D warnings
+)
 go run ./scripts/licensebundle --check
+sh scripts/test-rust-vendor.sh
 ```
 
-这些命令在有本地 registry cache 的环境可验证锁定输入与许可证 bundle；仓库尚未 vendor 完整
-Cargo 依赖闭包，不能把该结果当作空 cache/离线可复现的证明。Task 31 必须补齐 vendor、source
-replacement 和 fresh-cache 验证后，才可将此限制移除。
+`scripts/test-rust-vendor.sh` 为 release workflow 的聚焦供应链回归：它建立临时空 `CARGO_HOME` 与
+`CARGO_TARGET_DIR`，随后依次执行 `cargo metadata/build/test --locked --offline`，再以相同环境运行
+六个 release target 的 `go run ./scripts/licensebundle --check`。因此 registry cache、网络 fallback、
+缺失 vendor 内容或无效 checksum 都会明确失败，不能把 runner 的预热缓存当作离线可复现性证据。
 
 ## 运行
 
@@ -169,10 +180,10 @@ darwin/linux/windows × amd64/arm64 runner 上构建 Rust staticlib、测试 Go/
 GitHub Release。workflow 使用 full-SHA Actions、最小权限及 `release` Environment，但它尚未在
 GitHub 实际运行。
 
-正式发布目前必须被以下条件阻断：完整 six-target staticlib/manifest 尚缺、Cargo fresh-cache
-offline 闭包尚缺（Task 31）、workflow 解析策略与真实 native artifact 证据尚待 Tasks 32–33，
-并且还未创建受保护的 `release` Environment、生产 signing key、公开仓库或 tag。不得以本地
-fixture 成功、仅有 host library 或 workflow 文件存在来创建 Release/tap。
+正式发布目前必须被以下条件阻断：完整 six-target staticlib/manifest 尚缺、workflow 解析策略与
+真实 native artifact 证据尚待 Tasks 32–33，并且还未创建受保护的 `release` Environment、生产
+signing key、公开仓库或 tag。不得以本地 fixture 成功、仅有 host library 或 workflow 文件存在来
+创建 Release/tap。
 
 生产 Ed25519 信任根的规则如下，当前仅是发布前边界而非已完成部署：
 

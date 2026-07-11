@@ -1,0 +1,29 @@
+[package]
+name = "rand_xoshiro"
+version = "0.8.1"
+authors = ["The Rand Project Developers"]
+license = "MIT OR Apache-2.0"
+readme = "README.md"
+repository = "https://github.com/rust-random/rngs"
+documentation = "https://docs.rs/rand_xoshiro"
+homepage = "https://rust-random.github.io/book"
+description = "Xoshiro, xoroshiro and splitmix64 random number generators"
+keywords = ["random", "rng"]
+categories = ["algorithms"]
+edition = "2024"
+rust-version = "1.85"
+
+[package.metadata.docs.rs]
+all-features = true
+
+[features]
+serde = ["dep:serde"]
+
+[dependencies]
+rand_core = "0.10.0"
+serde = { version = "1", features = ["derive"], optional=true }
+
+[dev-dependencies]
+# This is for testing serde, unfortunately we can't specify feature-gated dev
+# deps yet, see: https://github.com/rust-lang/cargo/issues/1596
+postcard = {version = "1.1.3", default-features = false, features = ["alloc"] }

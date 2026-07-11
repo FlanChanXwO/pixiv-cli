@@ -39,7 +39,8 @@ var ugoiraStaticlibPlatformTargets = map[string]string{
 }
 
 // CalculateUgoiraRustSourceDigest 计算参与 Rust encoder 产物的 Cargo/source 文件摘要。
-// 不计 target/ 和测试源码，避免本机构建产物或测试变动伪造生产 source identity。
+// Cargo source replacement 与 vendor 内容会影响 staticlib 的真实构建输入，必须纳入摘要；
+// target/ 和测试源码不是生产输入，不能让它们伪造 source identity。
 func CalculateUgoiraRustSourceDigest(crateDir, quantetteDir string) (string, error) {
 	hasher := sha256.New()
 	if err := hashUgoiraSourceTree(hasher, "ugoira_rs", crateDir, true); err != nil {
@@ -97,6 +98,9 @@ func hashUgoiraSourceTree(hasher io.Writer, logicalRoot, directory string, inclu
 
 func isUgoiraDigestSource(rel string, includeLock bool) bool {
 	if rel == "Cargo.toml" || (includeLock && rel == "Cargo.lock") || rel == "build.rs" {
+		return true
+	}
+	if includeLock && (strings.HasPrefix(rel, ".cargo/") || strings.HasPrefix(rel, "vendor/")) {
 		return true
 	}
 	return strings.HasPrefix(rel, "src/") && strings.HasSuffix(rel, ".rs")

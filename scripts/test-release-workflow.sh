@@ -29,7 +29,7 @@ for required in \
 	'DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}' \
 	'needs: validate' \
 	'go run ./scripts/releaseassets validate' \
-	'cargo test --locked --offline' \
+	'sh scripts/test-rust-vendor.sh' \
 	'go test ./...' \
 	'go vet ./...' \
 	'go run ./scripts/licensebundle --check' \

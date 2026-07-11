@@ -32,11 +32,14 @@ func TestUgoiraRustSourceDigestTracksSourceButNotBuildArtifacts(t *testing.T) {
 	crateDir := filepath.Join(root, "ugoira_rs")
 	quantetteDir := filepath.Join(root, "quantette")
 	for path, body := range map[string]string{
-		filepath.Join(crateDir, "Cargo.toml"):             "[package]\nname = \"ugoira_rs\"\nversion = \"0.1.0\"\n",
-		filepath.Join(crateDir, "src", "lib.rs"):          "pub fn encode() {}\n",
-		filepath.Join(crateDir, "target", "release", "x"): "first binary\n",
-		filepath.Join(quantetteDir, "Cargo.toml"):         "[package]\nname = \"quantette\"\nversion = \"0.6.0\"\n",
-		filepath.Join(quantetteDir, "src", "lib.rs"):      "pub fn quantize() {}\n",
+		filepath.Join(crateDir, "Cargo.toml"):                            "[package]\nname = \"ugoira_rs\"\nversion = \"0.1.0\"\n",
+		filepath.Join(crateDir, ".cargo", "config.toml"):                 "[source.crates-io]\nreplace-with = \"vendored-sources\"\n",
+		filepath.Join(crateDir, "src", "lib.rs"):                         "pub fn encode() {}\n",
+		filepath.Join(crateDir, "vendor", "dep", ".cargo-checksum.json"): "{\"files\":{},\"package\":\"first\"}\n",
+		filepath.Join(crateDir, "vendor", "dep", "src", "lib.rs"):        "pub fn vendored() {}\n",
+		filepath.Join(crateDir, "target", "release", "x"):                "first binary\n",
+		filepath.Join(quantetteDir, "Cargo.toml"):                        "[package]\nname = \"quantette\"\nversion = \"0.6.0\"\n",
+		filepath.Join(quantetteDir, "src", "lib.rs"):                     "pub fn quantize() {}\n",
 	} {
 		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 			t.Fatal(err)
@@ -59,6 +62,26 @@ func TestUgoiraRustSourceDigestTracksSourceButNotBuildArtifacts(t *testing.T) {
 	if afterBinary != first {
 		t.Fatalf("build artifact changed source digest: first=%s after=%s", first, afterBinary)
 	}
+	if err := os.WriteFile(filepath.Join(crateDir, ".cargo", "config.toml"), []byte("[source.crates-io]\nreplace-with = \"other-sources\"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	afterConfig, err := CalculateUgoiraRustSourceDigest(crateDir, quantetteDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if afterConfig == first {
+		t.Fatal("Cargo source replacement change did not change source digest")
+	}
+	if err := os.WriteFile(filepath.Join(crateDir, "vendor", "dep", "src", "lib.rs"), []byte("pub fn vendored_changed() {}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	afterVendor, err := CalculateUgoiraRustSourceDigest(crateDir, quantetteDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if afterVendor == afterConfig {
+		t.Fatal("vendored Cargo source change did not change source digest")
+	}
 	if err := os.WriteFile(filepath.Join(crateDir, "src", "lib.rs"), []byte("pub fn changed() {}\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -66,7 +89,7 @@ func TestUgoiraRustSourceDigestTracksSourceButNotBuildArtifacts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if afterSource == first {
+	if afterSource == afterVendor {
 		t.Fatal("Rust source change did not change source digest")
 	}
 }

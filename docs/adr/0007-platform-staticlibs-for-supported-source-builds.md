@@ -38,5 +38,5 @@ source 的关系保留给发布审计，需要可重算的 source digest、每�
 - 当前仅保存 Darwin/arm64 staticlib，且没有完整 manifest。因此这项决策尚未让 source build、
   `go install` 或 Release 成为跨平台可发布路径；Task 13/33 仍需取得五个真实库、同源 manifest 与
   每平台 GIF/APNG/cgo smoke 证据。
-- 当前 Cargo `--locked --offline` 仍可能依赖开发机 registry cache。Task 31 在 fresh cache 下完成
-  complete vendor/source replacement 前，不能声称 native 输入可脱离本地缓存复现。
+- Cargo `--locked --offline` 现在经 crate 内 source replacement 使用完整 vendor 闭包；空 Cargo cache
+  的 metadata/build/test 与六 target 许可证检查证明 native Rust 输入不依赖开发机或 runner registry cache。

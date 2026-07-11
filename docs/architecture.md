@@ -169,8 +169,9 @@ checksum bytes 生成带 key ID 的 Ed25519 `checksums.json`。
 
 `.github/workflows/release.yml` 将签名/发布放在受保护的 `release` Environment 中；它使用最小权限和
 full-SHA Actions，并在草稿 Release 上传后核对 asset 集合才发布。文件和本地 fixture 已存在，但尚未
-配置 production key、Environment、remote 或实际 GitHub runner 运行；同时 staticlib/manifest、Cargo
-fresh-cache offline、workflow policy 和 native artifact 证据仍是正式发布阻断项。
+配置 production key、Environment、remote 或实际 GitHub runner 运行；同时 staticlib/manifest、workflow
+policy 和 native artifact 证据仍是正式发布阻断项。Rust crates.io 依赖已由 crate 内 source replacement
+固定到完整 vendor 闭包，并以空 Cargo cache 离线 metadata/build/test 与六 target 许可证检查验证。
 
 Homebrew formula 模板由已验证的六目标 `checksums.txt` 生成，仅使用 macOS/Linux asset；stable
 `pixiv-cli` 与 beta `pixiv-cli-beta` 相互冲突且同装 `pixiv`。tap credential 与发布 key 是不同的

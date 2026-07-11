@@ -1,0 +1,6 @@
+# 锁定 crates.io 到仓库内完整 vendor 闭包；所有 Rust 构建必须保留 --locked --offline。
+[source.crates-io]
+replace-with = "vendored-sources"
+
+[source.vendored-sources]
+directory = "vendor"

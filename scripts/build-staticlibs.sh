@@ -4,6 +4,7 @@ set -eu
 
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 crate_manifest="$repo_root/internal/download/ugoira_rs/Cargo.toml"
+crate_dir=$(dirname "$crate_manifest")
 staticlib_dir=${PIXIV_UGOIRA_STATICLIB_DIR:-"$repo_root/internal/download/ugoira_rs/staticlib"}
 target_dir=${PIXIV_UGOIRA_TARGET_DIR:-}
 target_arg=
@@ -72,6 +73,9 @@ if [ -z "$target_dir" ]; then
 	target_dir=$(mktemp -d "${TMPDIR:-/tmp}/pixiv-ugoira-staticlib.XXXXXX")
 	temporary_target_dir=$target_dir
 	trap 'rm -rf "$temporary_target_dir"' EXIT HUP INT TERM
+elif [ "${target_dir#/}" = "$target_dir" ]; then
+	# 调用方传入相对路径时维持相对调用目录的语义，随后可安全切到 crate 目录读取 source replacement。
+	target_dir=$(pwd)/$target_dir
 fi
 
 # 单 target build 不能证明其余五个库与当前 Rust source 同代；先废止旧 manifest，
@@ -84,7 +88,10 @@ fi
 for target in $targets; do
 	archive=$(target_kind "$target")
 	printf 'cargo build --locked --offline --release --target %s --target-dir %s --manifest-path %s\n' "$target" "$target_dir" "$crate_manifest"
-	if ! cargo build --locked --offline --release --target "$target" --target-dir "$target_dir" --manifest-path "$crate_manifest"; then
+	if ! (
+		cd "$crate_dir"
+		cargo build --locked --offline --release --target "$target" --target-dir "$target_dir" --manifest-path "$crate_manifest"
+	); then
 		fail "failed to build $target; install that Rust target and its matching C linker before retrying"
 	fi
 	source="$target_dir/$target/release/$archive"

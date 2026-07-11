@@ -72,15 +72,27 @@ func TestGenerateQueriesAllSixReleaseTargetsOffline(t *testing.T) {
 	script := fmt.Sprintf(`#!/bin/sh
 set -eu
 target=
+locked=false
+offline=false
+format=
+manifest=
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --filter-platform) target=$2; shift 2 ;;
+    --locked) locked=true; shift ;;
+    --offline) offline=true; shift ;;
+    --format-version) format=$2; shift 2 ;;
+    --manifest-path) manifest=$2; shift 2 ;;
     *) shift ;;
   esac
 done
-printf '%%s\n' "$target" >> %s
+[ "$locked" = true ]
+[ "$offline" = true ]
+[ "$format" = 1 ]
+[ "$manifest" = %s ]
+printf '%%s\t%%s\n' "$PWD" "$target" >> %s
 printf '%%s' %s
-`, shellQuote(record), shellQuote(string(metadata)))
+`, shellQuote(root.manifest), shellQuote(record), shellQuote(string(metadata)))
 	if err := os.WriteFile(fakeCargo, []byte(script), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -97,7 +109,17 @@ printf '%%s' %s
 	if err != nil {
 		t.Fatal(err)
 	}
-	got := strings.Fields(string(body))
+	var got []string
+	for _, line := range strings.Split(strings.TrimSpace(string(body)), "\n") {
+		parts := strings.Split(line, "\t")
+		if len(parts) != 2 {
+			t.Fatalf("cargo invocation = %q, want working directory and target", line)
+		}
+		if parts[0] != filepath.Dir(root.manifest) {
+			t.Fatalf("cargo working directory = %q, want crate directory %q", parts[0], filepath.Dir(root.manifest))
+		}
+		got = append(got, parts[1])
+	}
 	want := append([]string(nil), releaseTargets...)
 	sort.Strings(got)
 	sort.Strings(want)

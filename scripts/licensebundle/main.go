@@ -199,7 +199,9 @@ func bundleOutputPathsOverlap(first, second string) bool {
 
 func cargoMetadataJSON(cargo, repository, manifest, target string) ([]byte, error) {
 	command := exec.Command(cargo, "metadata", "--locked", "--offline", "--format-version", "1", "--filter-platform", target, "--manifest-path", manifest)
-	command.Dir = repository
+	// Cargo 仅从 command.Dir 及其父目录读取 .cargo/config.toml；必须从 crate 目录启动，
+	// 才能让六目标许可证元数据与 staticlib 构建使用同一份仓库内 vendor 闭包。
+	command.Dir = filepath.Dir(manifest)
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 	command.Stdout = &stdout
