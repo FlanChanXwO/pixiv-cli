@@ -12,6 +12,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -349,6 +350,90 @@ func TestReleaseInstallerFailureKeepsExistingExecutable(t *testing.T) {
 			require.Equal(t, "old executable", string(body))
 		})
 	}
+}
+
+// TestReleaseInstallerStopsAfterCompletedArchiveDownloadWhenCanceled 确保 archive
+// 已完整读入后发生的取消仍会在解包前终止安装；下载完成不能成为绕过取消语义的窗口。
+func TestReleaseInstallerStopsAfterCompletedArchiveDownloadWhenCanceled(t *testing.T) {
+	archive := fixtureRuntimeArchive(t, map[string]string{releaseBinaryName(runtime.GOOS): "new executable"})
+	installer, release, target := verifiedFixtureInstaller(t, archive, nil)
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+
+	installer.httpClient = &http.Client{Transport: &cancelAfterAssetResponseTransport{
+		base:     installer.httpClient.Transport,
+		assetURL: release.Assets[0].DownloadURL,
+		cancel:   cancel,
+	}}
+	checkerCalled := false
+	installer.checker = releaseBinaryCheckerFunc(func(context.Context, string, string) error {
+		checkerCalled = true
+		return fmt.Errorf("checker must not run after archive download cancellation")
+	})
+	replacerCalled := false
+	installer.replacer = releaseFileReplacerFunc(func(string, string) error {
+		replacerCalled = true
+		return fmt.Errorf("replacer must not run after archive download cancellation")
+	})
+
+	err := installer.Install(ctx, release)
+	require.ErrorIs(t, err, context.Canceled)
+	require.False(t, checkerCalled)
+	require.False(t, replacerCalled)
+	installed, readErr := os.ReadFile(target)
+	require.NoError(t, readErr)
+	require.Equal(t, []byte("old executable"), installed)
+	requireNoUpdateTemporaryPaths(t, filepath.Dir(target))
+}
+
+// TestReleaseInstallerStopsBeforeStagingWhenCheckerCancels 确保版本预检即使返回
+// 成功，只要它期间调用方取消更新，安装器也不会继续创建 staged 文件或调用替换器。
+func TestReleaseInstallerStopsBeforeStagingWhenCheckerCancels(t *testing.T) {
+	archive := fixtureRuntimeArchive(t, map[string]string{releaseBinaryName(runtime.GOOS): "new executable"})
+	installer, release, target := verifiedFixtureInstaller(t, archive, nil)
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	installer.checker = releaseBinaryCheckerFunc(func(context.Context, string, string) error {
+		cancel()
+		return nil
+	})
+	replacerCalled := false
+	installer.replacer = releaseFileReplacerFunc(func(string, string) error {
+		replacerCalled = true
+		return fmt.Errorf("replacer must not run after preflight cancellation")
+	})
+
+	err := installer.Install(ctx, release)
+	require.ErrorIs(t, err, context.Canceled)
+	require.False(t, replacerCalled)
+	installed, readErr := os.ReadFile(target)
+	require.NoError(t, readErr)
+	require.Equal(t, []byte("old executable"), installed)
+	requireNoUpdateTemporaryPaths(t, filepath.Dir(target))
+}
+
+// TestReleaseInstallerStopsBeforeReplaceWhenCanceledAfterStaging 覆盖 staging 已完成、
+// 准备最终原子替换的最后一个取消边界，确保取消不会被替换器观察为一次有效安装。
+func TestReleaseInstallerStopsBeforeReplaceWhenCanceledAfterStaging(t *testing.T) {
+	archive := fixtureRuntimeArchive(t, map[string]string{releaseBinaryName(runtime.GOOS): "new executable"})
+	installer, release, target := verifiedFixtureInstaller(t, archive, nil)
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	installer.checker = releaseBinaryCheckerFunc(func(context.Context, string, string) error { return nil })
+	installer.afterStaging = cancel
+	replacerCalled := false
+	installer.replacer = releaseFileReplacerFunc(func(string, string) error {
+		replacerCalled = true
+		return fmt.Errorf("replacer must not run after staging cancellation")
+	})
+
+	err := installer.Install(ctx, release)
+	require.ErrorIs(t, err, context.Canceled)
+	require.False(t, replacerCalled)
+	installed, readErr := os.ReadFile(target)
+	require.NoError(t, readErr)
+	require.Equal(t, []byte("old executable"), installed)
+	requireNoUpdateTemporaryPaths(t, filepath.Dir(target))
 }
 
 // TestReleaseInstallerRejectsNormalizedArchiveTraversalBeforePreflightAndReplace
@@ -756,6 +841,51 @@ type releaseFileReplacerFunc func(string, string) error
 
 func (f releaseFileReplacerFunc) Replace(source, target string) error {
 	return f(source, target)
+}
+
+// cancelAfterAssetResponseTransport 会在指定 asset 的 response body 读到 EOF 后取消
+// 调用方 context，从而精确模拟“archive 已下载完成、尚未开始解包”的边界。
+type cancelAfterAssetResponseTransport struct {
+	base     http.RoundTripper
+	assetURL string
+	cancel   context.CancelFunc
+}
+
+func (t *cancelAfterAssetResponseTransport) RoundTrip(request *http.Request) (*http.Response, error) {
+	base := t.base
+	if base == nil {
+		base = http.DefaultTransport
+	}
+	response, err := base.RoundTrip(request)
+	if err != nil {
+		return nil, err
+	}
+	if request.URL.String() == t.assetURL {
+		response.Body = &cancelOnEOFReadCloser{ReadCloser: response.Body, cancel: t.cancel}
+	}
+	return response, nil
+}
+
+type cancelOnEOFReadCloser struct {
+	io.ReadCloser
+	cancel   context.CancelFunc
+	canceled bool
+}
+
+func (r *cancelOnEOFReadCloser) Read(body []byte) (int, error) {
+	n, err := r.ReadCloser.Read(body)
+	if errors.Is(err, io.EOF) && !r.canceled {
+		r.canceled = true
+		r.cancel()
+	}
+	return n, err
+}
+
+func requireNoUpdateTemporaryPaths(t *testing.T, directory string) {
+	t.Helper()
+	paths, err := filepath.Glob(filepath.Join(directory, ".pixiv-update-*"))
+	require.NoError(t, err)
+	require.Empty(t, paths)
 }
 
 type rejectingAssetTransport struct {

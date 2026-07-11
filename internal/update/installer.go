@@ -106,6 +106,8 @@ type releaseInstaller struct {
 	checker           ReleaseBinaryChecker
 	replacer          ReleaseFileReplacer
 	assetURLValidator func(Release, ReleaseAsset) error
+	// afterStaging 仅供同包测试在最终替换边界精确触发取消；生产构造始终为 nil。
+	afterStaging func()
 }
 
 // Install 下载并验证选中版本的唯一平台资产。任何下载、认证、解包、预检或替换失败
@@ -152,6 +154,9 @@ func (i *releaseInstaller) Install(ctx context.Context, release Release) (err er
 	if err != nil {
 		return fmt.Errorf("download release archive %q: %w", assets.archive.Name, err)
 	}
+	if err := checkContext(ctx, "extract release archive"); err != nil {
+		return err
+	}
 	if err := verifyArchiveChecksum(checksums, assets.archive.Name, archive); err != nil {
 		return err
 	}
@@ -174,12 +179,21 @@ func (i *releaseInstaller) Install(ctx context.Context, release Release) (err er
 			}
 		}
 	}()
+	if err := checkContext(ctx, "extract release archive"); err != nil {
+		return err
+	}
 	candidatePath := filepath.Join(workDir, releaseBinaryName(i.goos))
 	if err := extractReleaseBinary(archive, assets.archive.Name, candidatePath, releaseBinaryName(i.goos)); err != nil {
 		return err
 	}
+	if err := checkContext(ctx, "preflight downloaded executable"); err != nil {
+		return err
+	}
 	if err := i.checker.Check(ctx, candidatePath, release.TagName); err != nil {
 		return fmt.Errorf("preflight downloaded executable %q: %w", candidatePath, err)
+	}
+	if err := checkContext(ctx, "stage verified update"); err != nil {
+		return err
 	}
 	staged, err := os.CreateTemp(filepath.Dir(targetPath), ".pixiv-update-stage-")
 	if err != nil {
@@ -193,17 +207,38 @@ func (i *releaseInstaller) Install(ctx context.Context, release Release) (err er
 			}
 		}
 	}()
+	if err := checkContext(ctx, "stage verified update"); err != nil {
+		return err
+	}
 	if err := staged.Close(); err != nil {
 		return fmt.Errorf("close staged update file %q: %w", stagedPath, err)
+	}
+	if err := checkContext(ctx, "stage verified update"); err != nil {
+		return err
 	}
 	if err := os.Remove(stagedPath); err != nil {
 		return fmt.Errorf("prepare staged update file %q: %w", stagedPath, err)
 	}
+	if err := checkContext(ctx, "stage verified update"); err != nil {
+		return err
+	}
 	if err := os.Rename(candidatePath, stagedPath); err != nil {
 		return fmt.Errorf("stage verified update file %q: %w", stagedPath, err)
 	}
+	if err := checkContext(ctx, "replace release executable"); err != nil {
+		return err
+	}
+	if i.afterStaging != nil {
+		i.afterStaging()
+	}
+	if err := checkContext(ctx, "replace release executable"); err != nil {
+		return err
+	}
 	if err := os.Remove(workDir); err != nil {
 		return fmt.Errorf("remove verified update temporary directory %q: %w", workDir, err)
+	}
+	if err := checkContext(ctx, "replace release executable"); err != nil {
+		return err
 	}
 	if err := i.replacer.Replace(stagedPath, targetPath); err != nil {
 		return fmt.Errorf("atomically replace executable %q: %w", targetPath, err)
