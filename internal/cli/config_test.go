@@ -99,6 +99,50 @@ func TestConfigWebFallbackDefaultEnabled(t *testing.T) {
 	assert.True(t, cfg.WebFallbackEnabled)
 }
 
+func TestConfigUpdateCheckDefaultEnabled(t *testing.T) {
+	clearConfigEnv(t)
+	useTempPaths(t)
+
+	settings, err := config.LoadSettingsState()
+	require.NoError(t, err)
+	runtimeConfig, err := settings.Runtime()
+	require.NoError(t, err)
+	assert.True(t, runtimeConfig.UpdateCheckEnabled)
+
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"pixiv", "config", "get", "update_check_enabled"}, strings.NewReader(""), &stdout, &stderr)
+	require.Equal(t, 0, code, stderr.String())
+	assert.Equal(t, "true\n", stdout.String())
+}
+
+func TestConfigUpdateCheckCanBeExplicitlyDisabled(t *testing.T) {
+	t.Run("config file", func(t *testing.T) {
+		clearConfigEnv(t)
+		_, configPath := useTempPaths(t)
+		require.NoError(t, config.WritePrivateFile(configPath, []byte("[update]\ncheck_enabled = false\n")))
+
+		settings, err := config.LoadSettingsState()
+		require.NoError(t, err)
+		runtimeConfig, err := settings.Runtime()
+		require.NoError(t, err)
+		assert.False(t, runtimeConfig.UpdateCheckEnabled)
+	})
+
+	t.Run("config set", func(t *testing.T) {
+		clearConfigEnv(t)
+		_, configPath := useTempPaths(t)
+
+		var stdout, stderr bytes.Buffer
+		code := Run([]string{"pixiv", "config", "set", "update_check_enabled", "false"}, strings.NewReader(""), &stdout, &stderr)
+		require.Equal(t, 0, code, stderr.String())
+
+		body, err := os.ReadFile(configPath)
+		require.NoError(t, err)
+		assert.Contains(t, string(body), "[update]")
+		assert.Contains(t, string(body), "check_enabled = false")
+	})
+}
+
 func TestConfigGetUsesEnvironmentOverrideAndSetWarns(t *testing.T) {
 	clearConfigEnv(t)
 	_, configPath := useTempPaths(t)

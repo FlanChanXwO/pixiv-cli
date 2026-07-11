@@ -103,6 +103,7 @@ func (a app) newRootCommand() *cobra.Command {
 		a.newDownloadCommand(),
 		a.newMCPCommand(),
 		a.newVersionCommand(),
+		a.newUpdateCommand(),
 	)
 	return cmd
 }

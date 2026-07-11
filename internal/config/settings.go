@@ -59,6 +59,7 @@ type RuntimeConfig struct {
 	FilenameTemplate   string
 	HTTPSProxy         string
 	WebFallbackEnabled bool
+	UpdateCheckEnabled bool
 	OutputJSON         bool
 	LoginOpenBrowser   bool
 	LoginTimeout       time.Duration
@@ -70,6 +71,7 @@ var settingSpecs = []SettingSpec{
 	{Alias: "filename_template", KoanfKey: "download.filename_template", Table: []string{"download"}, Key: "filename_template", Kind: settingString, HasDefault: true, Default: DefaultFilenameTemplate},
 	{Alias: "https_proxy", KoanfKey: "network.https_proxy", Table: []string{"network"}, Key: "https_proxy", Kind: settingString},
 	{Alias: "web_fallback_enabled", KoanfKey: "web.fallback_enabled", Table: []string{"web"}, Key: "fallback_enabled", Kind: settingBool, HasDefault: true, Default: true},
+	{Alias: "update_check_enabled", KoanfKey: "update.check_enabled", Table: []string{"update"}, Key: "check_enabled", Kind: settingBool, HasDefault: true, Default: true},
 	{Alias: "output_json", KoanfKey: "output.json", Table: []string{"output"}, Key: "json", Kind: settingBool, HasDefault: true, Default: false},
 	{Alias: "login_open_browser", KoanfKey: "login.open_browser", Table: []string{"login"}, Key: "open_browser", Kind: settingBool, HasDefault: true, Default: true},
 	{Alias: "login_timeout", KoanfKey: "login.timeout", Table: []string{"login"}, Key: "timeout", Kind: settingDuration, HasDefault: true, Default: time.Duration(0)},
@@ -187,6 +189,10 @@ func (s SettingsState) Runtime() (RuntimeConfig, error) {
 	if err != nil {
 		return RuntimeConfig{}, err
 	}
+	updateCheckEnabled, err := s.Effective("update_check_enabled")
+	if err != nil {
+		return RuntimeConfig{}, err
+	}
 	loginOpenBrowser, err := s.Effective("login_open_browser")
 	if err != nil {
 		return RuntimeConfig{}, err
@@ -204,6 +210,7 @@ func (s SettingsState) Runtime() (RuntimeConfig, error) {
 		FilenameTemplate:   filenameTemplate.Value.(string),
 		HTTPSProxy:         "",
 		WebFallbackEnabled: webFallbackEnabled.Value.(bool),
+		UpdateCheckEnabled: updateCheckEnabled.Value.(bool),
 		OutputJSON:         outputJSON.Value.(bool),
 		LoginOpenBrowser:   loginOpenBrowser.Value.(bool),
 		LoginTimeout:       loginTimeout.Value.(time.Duration),
