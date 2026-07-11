@@ -42,16 +42,21 @@ type ReleaseFileReplacer interface {
 	Replace(string, string) error
 }
 
+// ReleaseAssetURLValidator 在下载前验证 Releases API 提供的 asset URL。
+// nil 始终使用本项目固定的 GitHub 下载地址规则；仅受控测试可以显式注入 fixture 规则。
+type ReleaseAssetURLValidator func(Release, ReleaseAsset) error
+
 // ReleaseInstallerOptions 允许生产组装与受控测试分别注入信任根和系统依赖。
 // TrustedKeys 只允许 Ed25519 公钥；私钥绝不能进入生产组装或此 API。
 type ReleaseInstallerOptions struct {
-	HTTPClient     *http.Client
-	TrustedKeys    map[string]ed25519.PublicKey
-	ExecutablePath func() (string, error)
-	GOOS           string
-	GOARCH         string
-	BinaryChecker  ReleaseBinaryChecker
-	Replacer       ReleaseFileReplacer
+	HTTPClient        *http.Client
+	TrustedKeys       map[string]ed25519.PublicKey
+	ExecutablePath    func() (string, error)
+	GOOS              string
+	GOARCH            string
+	BinaryChecker     ReleaseBinaryChecker
+	Replacer          ReleaseFileReplacer
+	AssetURLValidator ReleaseAssetURLValidator
 }
 
 // NewReleaseInstaller 建立 Release 自更新器。未配置 trusted key 时仍返回实例，
@@ -81,29 +86,35 @@ func NewReleaseInstaller(options ReleaseInstallerOptions) ReleaseInstaller {
 	if replacer == nil {
 		replacer = releaseFileReplacer{goos: goos}
 	}
+	assetURLValidator := options.AssetURLValidator
+	if assetURLValidator == nil {
+		assetURLValidator = validateOfficialGitHubReleaseAssetURL
+	}
 	keys := make(map[string]ed25519.PublicKey, len(options.TrustedKeys))
 	for keyID, publicKey := range options.TrustedKeys {
 		keys[keyID] = append(ed25519.PublicKey(nil), publicKey...)
 	}
 	return &releaseInstaller{
-		httpClient:     httpClient,
-		trustedKeys:    keys,
-		executablePath: executablePath,
-		goos:           goos,
-		goarch:         goarch,
-		checker:        checker,
-		replacer:       replacer,
+		httpClient:        httpClient,
+		trustedKeys:       keys,
+		executablePath:    executablePath,
+		goos:              goos,
+		goarch:            goarch,
+		checker:           checker,
+		replacer:          replacer,
+		assetURLValidator: assetURLValidator,
 	}
 }
 
 type releaseInstaller struct {
-	httpClient     *http.Client
-	trustedKeys    map[string]ed25519.PublicKey
-	executablePath func() (string, error)
-	goos           string
-	goarch         string
-	checker        ReleaseBinaryChecker
-	replacer       ReleaseFileReplacer
+	httpClient        *http.Client
+	trustedKeys       map[string]ed25519.PublicKey
+	executablePath    func() (string, error)
+	goos              string
+	goarch            string
+	checker           ReleaseBinaryChecker
+	replacer          ReleaseFileReplacer
+	assetURLValidator ReleaseAssetURLValidator
 }
 
 // Install 下载并验证选中版本的唯一平台资产。任何下载、认证、解包、预检或替换失败
@@ -127,6 +138,9 @@ func (i *releaseInstaller) Install(ctx context.Context, release Release) (err er
 	}
 	assets, err := selectReleaseAssets(release.Assets, releaseArchiveName(release.Version, i.goos, i.goarch))
 	if err != nil {
+		return err
+	}
+	if err := i.validateAssetURLs(release, assets); err != nil {
 		return err
 	}
 	checksums, err := i.download(ctx, assets.checksums)
@@ -210,6 +224,28 @@ type selectedReleaseAssets struct {
 	archive   ReleaseAsset
 	checksums ReleaseAsset
 	manifest  ReleaseAsset
+}
+
+// validateAssetURLs 必须在任何 sidecar 或 archive 请求前执行完全部验证，防止被篡改的
+// Releases API 响应或 ETag cache 把安装器引向非项目控制的来源。
+func (i *releaseInstaller) validateAssetURLs(release Release, assets selectedReleaseAssets) error {
+	for _, asset := range []ReleaseAsset{assets.archive, assets.checksums, assets.manifest} {
+		if err := i.assetURLValidator(release, asset); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// validateOfficialGitHubReleaseAssetURL 只接受固定仓库、选中 tag 和精确 asset 名组成的
+// GitHub HTTPS 下载端点。完整字符串相等也拒绝 query、fragment、userinfo、port 与任何
+// encoded 或歧义 path；真正下载时仍交由 HTTP client 跟随 GitHub 的合法重定向。
+func validateOfficialGitHubReleaseAssetURL(release Release, asset ReleaseAsset) error {
+	expected := "https://github.com/" + defaultGitHubRepository + "/releases/download/" + release.TagName + "/" + asset.Name
+	if asset.DownloadURL != expected {
+		return fmt.Errorf("release asset %q has untrusted download URL %q: expected exact GitHub HTTPS release URL %q", asset.Name, asset.DownloadURL, expected)
+	}
+	return nil
 }
 
 func selectReleaseAssets(assets []ReleaseAsset, archiveName string) (selectedReleaseAssets, error) {

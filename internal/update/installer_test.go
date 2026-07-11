@@ -66,8 +66,9 @@ func TestReleaseInstallerInstallsOnlyVerifiedPlatformArchive(t *testing.T) {
 	target := filepath.Join(t.TempDir(), releaseBinaryName(runtime.GOOS))
 	require.NoError(t, os.WriteFile(target, []byte("old executable"), 0o755))
 	installer := NewReleaseInstaller(ReleaseInstallerOptions{
-		HTTPClient:  server.Client(),
-		TrustedKeys: map[string]ed25519.PublicKey{keyID: privateKey.Public().(ed25519.PublicKey)},
+		HTTPClient:        server.Client(),
+		TrustedKeys:       map[string]ed25519.PublicKey{keyID: privateKey.Public().(ed25519.PublicKey)},
+		AssetURLValidator: allowFixtureReleaseAssetURL,
 		ExecutablePath: func() (string, error) {
 			return target, nil
 		},
@@ -84,6 +85,178 @@ func TestReleaseInstallerInstallsOnlyVerifiedPlatformArchive(t *testing.T) {
 	})
 	require.NoError(t, err)
 
+	installed, err := os.ReadFile(target)
+	require.NoError(t, err)
+	require.Equal(t, executable, installed)
+}
+
+// TestReleaseInstallerRejectsUntrustedCachedAssetURLBeforeRequest 覆盖真实的
+// GitHub Releases API → ETag cache → Check → Install 路径。即使缓存中的
+// browser_download_url 被篡改为本地服务，安装器也必须在发出任何 asset 请求前失败。
+func TestReleaseInstallerRejectsUntrustedCachedAssetURLBeforeRequest(t *testing.T) {
+	const tag = "v0.2.0"
+	archiveName := releaseArchiveName("0.2.0", runtime.GOOS, runtime.GOARCH)
+	assetRequests := 0
+	assetServer := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assetRequests++
+		http.Error(w, "must not receive release asset request", http.StatusTeapot)
+	}))
+	t.Cleanup(assetServer.Close)
+
+	assets := []ReleaseAsset{
+		{Name: archiveName, DownloadURL: "https://github.com/FlanChanXwO/pixiv-cli/releases/download/" + tag + "/" + archiveName},
+		{Name: checksumsAssetName, DownloadURL: assetServer.URL + "/checksums.txt"},
+		{Name: manifestAssetName, DownloadURL: "https://github.com/FlanChanXwO/pixiv-cli/releases/download/" + tag + "/" + manifestAssetName},
+	}
+	assetsJSON, err := json.Marshal(assets)
+	require.NoError(t, err)
+	apiRequests := 0
+	apiServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		apiRequests++
+		if apiRequests == 1 {
+			w.Header().Set("ETag", `"cached-release-v1"`)
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = fmt.Fprintf(w, `[{"tag_name":%q,"draft":false,"prerelease":false,"assets":%s}]`, tag, assetsJSON)
+			return
+		}
+		if got := r.Header.Get("If-None-Match"); got != `"cached-release-v1"` {
+			t.Fatalf("cached release If-None-Match = %q, want cached ETag", got)
+		}
+		w.WriteHeader(http.StatusNotModified)
+	}))
+	t.Cleanup(apiServer.Close)
+
+	client, err := NewGitHubReleaseClient(ReleaseClientOptions{APIBaseURL: apiServer.URL, CacheDir: t.TempDir()})
+	require.NoError(t, err)
+	_, err = client.Check(context.Background(), ReleaseCheckOptions{})
+	require.NoError(t, err)
+	checked, err := client.Check(context.Background(), ReleaseCheckOptions{})
+	require.NoError(t, err)
+	require.Equal(t, 2, apiRequests)
+	require.NotNil(t, checked.Release)
+
+	target := filepath.Join(t.TempDir(), releaseBinaryName(runtime.GOOS))
+	require.NoError(t, os.WriteFile(target, []byte("old executable"), 0o755))
+	installer := NewReleaseInstaller(ReleaseInstallerOptions{
+		HTTPClient:  assetServer.Client(),
+		TrustedKeys: map[string]ed25519.PublicKey{"fixture": make(ed25519.PublicKey, ed25519.PublicKeySize)},
+		ExecutablePath: func() (string, error) {
+			return target, nil
+		},
+	})
+
+	err = installer.Install(context.Background(), *checked.Release)
+	require.ErrorContains(t, err, checksumsAssetName)
+	require.Equal(t, 0, assetRequests, "untrusted cached URL must not receive an asset request")
+	installed, readErr := os.ReadFile(target)
+	require.NoError(t, readErr)
+	require.Equal(t, []byte("old executable"), installed)
+}
+
+// TestReleaseInstallerRejectsEveryUnexpectedGitHubAssetSource 确保默认信任规则不会因
+// 同 host 的歧义 URL、跨仓库、跨 tag 或 asset 名错配而放宽；下载 transport 同样证明
+// 安装器在失败前不向任一候选 URL 发请求。
+func TestReleaseInstallerRejectsEveryUnexpectedGitHubAssetSource(t *testing.T) {
+	const tag = "v0.2.0"
+	archiveName := releaseArchiveName("0.2.0", runtime.GOOS, runtime.GOARCH)
+	expectedArchiveURL := "https://github.com/FlanChanXwO/pixiv-cli/releases/download/" + tag + "/" + archiveName
+	tests := []struct {
+		name string
+		url  string
+	}{
+		{name: "non HTTPS scheme", url: "http://github.com/FlanChanXwO/pixiv-cli/releases/download/" + tag + "/" + archiveName},
+		{name: "different host", url: "https://downloads.example.test/FlanChanXwO/pixiv-cli/releases/download/" + tag + "/" + archiveName},
+		{name: "explicit port", url: "https://github.com:443/FlanChanXwO/pixiv-cli/releases/download/" + tag + "/" + archiveName},
+		{name: "userinfo", url: "https://attacker@github.com/FlanChanXwO/pixiv-cli/releases/download/" + tag + "/" + archiveName},
+		{name: "different repository", url: "https://github.com/FlanChanXwO/other/releases/download/" + tag + "/" + archiveName},
+		{name: "different tag", url: "https://github.com/FlanChanXwO/pixiv-cli/releases/download/v0.2.1/" + archiveName},
+		{name: "different asset path", url: "https://github.com/FlanChanXwO/pixiv-cli/releases/download/" + tag + "/other.tar.gz"},
+		{name: "query", url: expectedArchiveURL + "?redirect=attacker"},
+		{name: "fragment", url: expectedArchiveURL + "#attacker"},
+		{name: "encoded path", url: "https://github.com/FlanChanXwO/pixiv-cli/releases/download/" + tag + "%2F" + archiveName},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			transport := &rejectingAssetTransport{}
+			installer := NewReleaseInstaller(ReleaseInstallerOptions{
+				HTTPClient:  &http.Client{Transport: transport},
+				TrustedKeys: map[string]ed25519.PublicKey{"fixture": make(ed25519.PublicKey, ed25519.PublicKeySize)},
+			})
+			release := Release{
+				TagName: tag,
+				Version: "0.2.0",
+				Assets: []ReleaseAsset{
+					{Name: archiveName, DownloadURL: test.url},
+					{Name: checksumsAssetName, DownloadURL: "https://github.com/FlanChanXwO/pixiv-cli/releases/download/" + tag + "/" + checksumsAssetName},
+					{Name: manifestAssetName, DownloadURL: "https://github.com/FlanChanXwO/pixiv-cli/releases/download/" + tag + "/" + manifestAssetName},
+				},
+			}
+
+			err := installer.Install(context.Background(), release)
+			require.ErrorContains(t, err, archiveName)
+			require.ErrorContains(t, err, test.url)
+			require.Equal(t, 0, transport.requests, "invalid source must fail before an asset request")
+		})
+	}
+}
+
+// TestReleaseInstallerFollowsOfficialGitHubDownloadRedirect 覆盖生产默认 URL 校验后的
+// 完整签名、checksum、解包和替换链路。GitHub 初始下载 URL 合法时，HTTP client 仍可
+// 跟随受 GitHub 控制的 CDN redirect，避免把最终 redirect host 误当作初始信任边界。
+func TestReleaseInstallerFollowsOfficialGitHubDownloadRedirect(t *testing.T) {
+	_, privateKey, err := ed25519.GenerateKey(rand.Reader)
+	require.NoError(t, err)
+	const keyID = "fixture-2026"
+	const tag = "v0.2.0"
+	archiveName := releaseArchiveName("0.2.0", runtime.GOOS, runtime.GOARCH)
+	archive, executable := fixtureNativeExecutableArchive(t)
+	checksum := sha256.Sum256(archive)
+	checksums := []byte(hex.EncodeToString(checksum[:]) + "  " + archiveName + "\n")
+	manifest := signedChecksumsManifest(t, keyID, privateKey, checksums)
+
+	cdnRequests := 0
+	cdn := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		cdnRequests++
+		switch r.URL.Path {
+		case "/FlanChanXwO/pixiv-cli/releases/download/" + tag + "/" + archiveName:
+			_, _ = w.Write(archive)
+		case "/FlanChanXwO/pixiv-cli/releases/download/" + tag + "/" + checksumsAssetName:
+			_, _ = w.Write(checksums)
+		case "/FlanChanXwO/pixiv-cli/releases/download/" + tag + "/" + manifestAssetName:
+			_, _ = w.Write(manifest)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(cdn.Close)
+	transport := &githubAssetRedirectTransport{cdnBaseURL: cdn.URL}
+	target := filepath.Join(t.TempDir(), releaseBinaryName(runtime.GOOS))
+	require.NoError(t, os.WriteFile(target, []byte("old executable"), 0o755))
+	installer := NewReleaseInstaller(ReleaseInstallerOptions{
+		HTTPClient:  &http.Client{Transport: transport},
+		TrustedKeys: map[string]ed25519.PublicKey{keyID: privateKey.Public().(ed25519.PublicKey)},
+		ExecutablePath: func() (string, error) {
+			return target, nil
+		},
+	})
+
+	release := Release{
+		TagName: tag,
+		Version: "0.2.0",
+		Assets: []ReleaseAsset{
+			{Name: archiveName, DownloadURL: "https://github.com/FlanChanXwO/pixiv-cli/releases/download/" + tag + "/" + archiveName},
+			{Name: checksumsAssetName, DownloadURL: "https://github.com/FlanChanXwO/pixiv-cli/releases/download/" + tag + "/" + checksumsAssetName},
+			{Name: manifestAssetName, DownloadURL: "https://github.com/FlanChanXwO/pixiv-cli/releases/download/" + tag + "/" + manifestAssetName},
+		},
+	}
+	require.NoError(t, installer.Install(context.Background(), release))
+	require.Equal(t, 3, cdnRequests)
+	require.Equal(t, []string{
+		"https://github.com/FlanChanXwO/pixiv-cli/releases/download/" + tag + "/" + checksumsAssetName,
+		"https://github.com/FlanChanXwO/pixiv-cli/releases/download/" + tag + "/" + manifestAssetName,
+		"https://github.com/FlanChanXwO/pixiv-cli/releases/download/" + tag + "/" + archiveName,
+	}, transport.githubRequests)
 	installed, err := os.ReadFile(target)
 	require.NoError(t, err)
 	require.Equal(t, executable, installed)
@@ -433,8 +606,9 @@ func verifiedFixtureInstallerForPlatform(t *testing.T, goos, goarch string, arch
 	target := filepath.Join(t.TempDir(), releaseBinaryName(goos))
 	require.NoError(t, os.WriteFile(target, []byte("old executable"), 0o755))
 	installer := NewReleaseInstaller(ReleaseInstallerOptions{
-		HTTPClient:  server.Client(),
-		TrustedKeys: map[string]ed25519.PublicKey{keyID: privateKey.Public().(ed25519.PublicKey)},
+		HTTPClient:        server.Client(),
+		TrustedKeys:       map[string]ed25519.PublicKey{keyID: privateKey.Public().(ed25519.PublicKey)},
+		AssetURLValidator: allowFixtureReleaseAssetURL,
 		ExecutablePath: func() (string, error) {
 			return target, nil
 		},
@@ -454,6 +628,12 @@ func verifiedFixtureInstallerForPlatform(t *testing.T, goos, goarch string, arch
 
 type releaseBinaryCheckerFunc func(context.Context, string, string) error
 
+// allowFixtureReleaseAssetURL 仅供本包 archive fixture 使用；生产构造未注入该规则，
+// 必然采用固定 GitHub URL 验证器。
+func allowFixtureReleaseAssetURL(Release, ReleaseAsset) error {
+	return nil
+}
+
 func (f releaseBinaryCheckerFunc) Check(ctx context.Context, path, tag string) error {
 	return f(ctx, path, tag)
 }
@@ -462,6 +642,33 @@ type releaseFileReplacerFunc func(string, string) error
 
 func (f releaseFileReplacerFunc) Replace(source, target string) error {
 	return f(source, target)
+}
+
+type rejectingAssetTransport struct {
+	requests int
+}
+
+func (t *rejectingAssetTransport) RoundTrip(*http.Request) (*http.Response, error) {
+	t.requests++
+	return nil, fmt.Errorf("asset URL validator should have rejected the request")
+}
+
+type githubAssetRedirectTransport struct {
+	cdnBaseURL     string
+	githubRequests []string
+}
+
+func (t *githubAssetRedirectTransport) RoundTrip(request *http.Request) (*http.Response, error) {
+	if request.URL.Scheme == "https" && request.URL.Host == "github.com" {
+		t.githubRequests = append(t.githubRequests, request.URL.String())
+		return &http.Response{
+			StatusCode: http.StatusFound,
+			Header:     http.Header{"Location": []string{t.cdnBaseURL + request.URL.EscapedPath()}},
+			Body:       io.NopCloser(bytes.NewReader(nil)),
+			Request:    request,
+		}, nil
+	}
+	return http.DefaultTransport.RoundTrip(request)
 }
 
 func signedChecksumsManifest(t *testing.T, keyID string, privateKey ed25519.PrivateKey, checksums []byte) []byte {
