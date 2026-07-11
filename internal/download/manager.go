@@ -1,15 +1,12 @@
 package download
 
 import (
-	"archive/zip"
 	"context"
 	"fmt"
 	"io"
 	"log/slog"
 	"os"
-	"os/exec"
 	"path/filepath"
-	"strings"
 	"sync"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv"
@@ -25,10 +22,6 @@ type PixivClient interface {
 	Download(context.Context, string, io.Writer) error
 }
 
-type Runner interface {
-	Run(ctx context.Context, dir string, name string, args ...string) error
-}
-
 type DownloadedArtwork struct {
 	IllustID int64
 	Title    string
@@ -42,25 +35,12 @@ type DownloadedFile struct {
 	Page int
 }
 
-type ExecRunner struct{}
-
-func (ExecRunner) Run(ctx context.Context, dir string, name string, args ...string) error {
-	cmd := exec.CommandContext(ctx, name, args...)
-	cmd.Dir = dir
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("%s failed: %w: %s", name, err, strings.TrimSpace(string(output)))
-	}
-	return nil
-}
-
 type Manager struct {
 	client           PixivClient
 	logger           *slog.Logger
-	runner           Runner
+	ugoiraEncoder    UgoiraEncoder
 	downloadPath     string
 	filenameTemplate string
-	ffmpegAvailable  bool
 	sem              chan struct{}
 	mu               sync.RWMutex
 }
@@ -72,23 +52,19 @@ func NewManager(client PixivClient, logger *slog.Logger, downloadPath, filenameT
 	m := &Manager{
 		client:           client,
 		logger:           logger,
-		runner:           ExecRunner{},
+		ugoiraEncoder:    defaultUgoiraEncoder(),
 		downloadPath:     downloadPath,
 		filenameTemplate: filenameTemplate,
 		sem:              make(chan struct{}, 5),
 	}
-	m.ffmpegAvailable = commandExists("ffmpeg")
 	return m
 }
 
-func (m *Manager) SetRunner(runner Runner) {
-	if runner != nil {
-		m.runner = runner
+// SetUgoiraEncoder 设置动图编码器，供启动装配和聚焦测试替换。
+func (m *Manager) SetUgoiraEncoder(encoder UgoiraEncoder) {
+	if encoder != nil {
+		m.ugoiraEncoder = encoder
 	}
-}
-
-func (m *Manager) SetFFmpegAvailable(available bool) {
-	m.ffmpegAvailable = available
 }
 
 func (m *Manager) SetDownloadPath(path string) error {
@@ -200,9 +176,6 @@ func (m *Manager) downloadArtwork(ctx context.Context, id int64) (DownloadedArtw
 }
 
 func (m *Manager) downloadUgoira(ctx context.Context, illust pixiv.Illust, base string) (string, error) {
-	if !m.ffmpegAvailable {
-		return "", fmt.Errorf("ffmpeg not found; skip ugoira %d conversion", illust.ID)
-	}
 	meta, err := m.client.UgoiraMetadata(ctx, illust.ID)
 	if err != nil {
 		return "", err
@@ -259,87 +232,16 @@ func (m *Manager) downloadURL(ctx context.Context, rawURL, path string) error {
 }
 
 func (m *Manager) ConvertUgoira(ctx context.Context, zipPath string, frames []pixiv.UgoiraFrame, workDir, outputGIF string) error {
-	tempDir, err := os.MkdirTemp(workDir, "ugoira-frames-*")
-	if err != nil {
-		return err
+	if m.ugoiraEncoder == nil {
+		return fmt.Errorf("ugoira encoder is not configured")
 	}
-	defer os.RemoveAll(tempDir)
-
-	reader, err := zip.OpenReader(zipPath)
-	if err != nil {
-		return err
-	}
-	defer reader.Close()
-	for _, file := range reader.File {
-		if err := extractZipFile(file, tempDir); err != nil {
-			return err
-		}
-	}
-
-	var list strings.Builder
-	for _, frame := range frames {
-		list.WriteString("file '")
-		list.WriteString(filepath.Base(frame.File))
-		list.WriteString("'\n")
-		fmt.Fprintf(&list, "duration %.3f\n", float64(frame.Delay)/1000.0)
-	}
-	if err := os.WriteFile(filepath.Join(tempDir, "frame_list.txt"), []byte(list.String()), 0o644); err != nil {
-		return err
-	}
-
-	outFile, err := os.CreateTemp(filepath.Dir(outputGIF), ".ugoira-*.gif")
-	if err != nil {
-		return err
-	}
-	tmpOutput := outFile.Name()
-	if err := outFile.Close(); err != nil {
-		_ = os.Remove(tmpOutput)
-		return err
-	}
-	cleanup := true
-	defer func() {
-		if cleanup {
-			_ = os.Remove(tmpOutput)
-		}
-	}()
-
-	if err := m.runner.Run(ctx, tempDir, "ffmpeg",
-		"-f", "concat",
-		"-safe", "0",
-		"-i", "frame_list.txt",
-		"-vf", "split[s0][s1];[s0]palettegen=stats_mode=single[p];[s1][p]paletteuse=new=1",
-		"-y",
-		tmpOutput,
-	); err != nil {
-		return err
-	}
-	// GIF 转换也采用临时文件 + rename，避免 ffmpeg 失败时留下半文件或覆盖旧文件。
-	if err := files.ReplaceFile(tmpOutput, outputGIF); err != nil {
-		return err
-	}
-	cleanup = false
-	return nil
-}
-
-func extractZipFile(file *zip.File, dstDir string) error {
-	src, err := file.Open()
-	if err != nil {
-		return err
-	}
-	defer src.Close()
-	dstPath := filepath.Join(dstDir, filepath.Base(file.Name))
-	dst, err := os.Create(dstPath)
-	if err != nil {
-		return err
-	}
-	defer dst.Close()
-	_, err = io.Copy(dst, src)
-	return err
-}
-
-func commandExists(name string) bool {
-	_, err := exec.LookPath(name)
-	return err == nil
+	return m.ugoiraEncoder.Encode(ctx, UgoiraEncodeInput{
+		ZipPath:    zipPath,
+		Frames:     frames,
+		WorkDir:    workDir,
+		OutputPath: outputGIF,
+		Format:     AnimationFormatGIF,
+	})
 }
 
 func filenameData(illust pixiv.Illust) utils.FilenameData {

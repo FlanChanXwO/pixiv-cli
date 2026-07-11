@@ -224,45 +224,23 @@ func TestDownloadMultiPageArtworkReturnsAllPaths(t *testing.T) {
 	assertFileBody(t, got[0].Files[1].Path, "p1")
 }
 
-func TestConvertUgoiraBuildsFFmpegCommand(t *testing.T) {
+func TestConvertUgoiraUsesInjectedEncoder(t *testing.T) {
 	dir := t.TempDir()
 	zipPath := filepath.Join(dir, "ugoira.zip")
 	createZip(t, zipPath, "000000.jpg", []byte("frame"))
 
-	runner := &recordingRunner{}
+	encoder := &recordingUgoiraEncoder{output: []byte("gif")}
 	m := NewManager(nil, nil, dir, "{id}")
-	m.SetRunner(runner)
-	err := m.ConvertUgoira(context.Background(), zipPath, []pixiv.UgoiraFrame{{File: "000000.jpg", Delay: 80}}, dir, filepath.Join(dir, "out.gif"))
+	m.SetUgoiraEncoder(encoder)
+	outPath := filepath.Join(dir, "out.gif")
+	err := m.ConvertUgoira(context.Background(), zipPath, []pixiv.UgoiraFrame{{File: "000000.jpg", Delay: 80}}, dir, outPath)
 	if err != nil {
 		t.Fatalf("ConvertUgoira returned error: %v", err)
 	}
-	if runner.name != "ffmpeg" || !strings.Contains(strings.Join(runner.args, " "), "palettegen=stats_mode=single") {
-		t.Fatalf("unexpected runner call: name=%q args=%v", runner.name, runner.args)
+	if encoder.input.ZipPath != zipPath || encoder.input.WorkDir != dir || encoder.input.Format != AnimationFormatGIF || encoder.input.MaxEdge != 0 {
+		t.Fatalf("encoder input = %+v", encoder.input)
 	}
-}
-
-func TestConvertUgoiraUsesUniqueTemporaryDirectory(t *testing.T) {
-	dir := t.TempDir()
-	zipPath := filepath.Join(dir, "ugoira.zip")
-	createZip(t, zipPath, "000000.jpg", []byte("frame"))
-
-	runner := &recordingRunner{}
-	m := NewManager(nil, nil, dir, "{id}")
-	m.SetRunner(runner)
-
-	firstOut := filepath.Join(dir, "first.gif")
-	if err := m.ConvertUgoira(context.Background(), zipPath, []pixiv.UgoiraFrame{{File: "000000.jpg", Delay: 80}}, dir, firstOut); err != nil {
-		t.Fatalf("first ConvertUgoira returned error: %v", err)
-	}
-	firstDir := runner.dir
-
-	secondOut := filepath.Join(dir, "second.gif")
-	if err := m.ConvertUgoira(context.Background(), zipPath, []pixiv.UgoiraFrame{{File: "000000.jpg", Delay: 80}}, dir, secondOut); err != nil {
-		t.Fatalf("second ConvertUgoira returned error: %v", err)
-	}
-	if firstDir == runner.dir {
-		t.Fatalf("ConvertUgoira reused temporary directory %q", firstDir)
-	}
+	assertFileBody(t, outPath, "gif")
 }
 
 func TestConvertUgoiraFailureDoesNotReplaceExistingGIF(t *testing.T) {
@@ -274,9 +252,9 @@ func TestConvertUgoiraFailureDoesNotReplaceExistingGIF(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	runner := &recordingRunner{err: errors.New("ffmpeg failed"), writeOutput: []byte("partial")}
+	encoder := &recordingUgoiraEncoder{err: errors.New("encoder failed"), output: []byte("partial")}
 	m := NewManager(nil, nil, dir, "{id}")
-	m.SetRunner(runner)
+	m.SetUgoiraEncoder(encoder)
 
 	err := m.ConvertUgoira(context.Background(), zipPath, []pixiv.UgoiraFrame{{File: "000000.jpg", Delay: 80}}, dir, outPath)
 	if err == nil {
@@ -294,9 +272,9 @@ func TestConvertUgoiraSuccessReplacesExistingGIF(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	runner := &recordingRunner{writeOutput: []byte("new-gif")}
+	encoder := &recordingUgoiraEncoder{output: []byte("new-gif")}
 	m := NewManager(nil, nil, dir, "{id}")
-	m.SetRunner(runner)
+	m.SetUgoiraEncoder(encoder)
 
 	if err := m.ConvertUgoira(context.Background(), zipPath, []pixiv.UgoiraFrame{{File: "000000.jpg", Delay: 80}}, dir, outPath); err != nil {
 		t.Fatalf("ConvertUgoira returned error: %v", err)
@@ -326,7 +304,7 @@ func TestDownloadUgoiraZipFailureCleansTemporaryZip(t *testing.T) {
 		downloadErr: errors.New("zip download failed"),
 	}
 	m := NewManager(client, nil, dir, "{id}")
-	m.SetFFmpegAvailable(true)
+	m.SetUgoiraEncoder(&recordingUgoiraEncoder{output: []byte("gif")})
 
 	_, err := m.Download(context.Background(), []int64{9})
 	if err == nil {
@@ -362,10 +340,9 @@ func TestDownloadUgoiraReturnsFinalGIFOnly(t *testing.T) {
 		},
 		downloads: map[string][]byte{"https://i.example/ugoira.zip": makeZip(t, "000000.jpg", []byte("frame"))},
 	}
-	runner := recordingRunner{writeOutput: []byte("gif")}
+	encoder := &recordingUgoiraEncoder{output: []byte("gif")}
 	m := NewManager(client, nil, dir, "{id}")
-	m.SetFFmpegAvailable(true)
-	m.SetRunner(&runner)
+	m.SetUgoiraEncoder(encoder)
 
 	got, err := m.Download(context.Background(), []int64{9})
 	if err != nil {
@@ -396,38 +373,48 @@ func TestDownloadMissingImageURLReturnsError(t *testing.T) {
 	}
 }
 
-func TestDownloadUgoiraWithoutFFmpegReturnsError(t *testing.T) {
+func TestDownloadUgoiraWithoutFFmpegUsesRustEncoder(t *testing.T) {
+	dir := t.TempDir()
+	meta := pixiv.UgoiraMetadata{Frames: []pixiv.UgoiraFrame{{File: "000000.jpg", Delay: 80}}}
+	meta.ZipURLs.Medium = "https://i.example/ugoira.zip"
 	m := NewManager(&fakePixivClient{
 		details: map[int64]pixiv.Illust{
 			1: {ID: 1, Title: "ugo", PageCount: 1, Type: "ugoira"},
 		},
-	}, nil, t.TempDir(), "{id}")
-	m.SetFFmpegAvailable(false)
+		ugoira:    map[int64]pixiv.UgoiraMetadata{1: meta},
+		downloads: map[string][]byte{"https://i.example/ugoira.zip": makeZip(t, "000000.jpg", []byte("frame"))},
+	}, nil, dir, "{id}")
+	encoder := &recordingUgoiraEncoder{output: []byte("gif")}
+	m.SetUgoiraEncoder(encoder)
 
-	_, err := m.Download(context.Background(), []int64{1})
-	if err == nil || !strings.Contains(err.Error(), "ffmpeg not found") {
-		t.Fatalf("Download error = %v", err)
+	got, err := m.Download(context.Background(), []int64{1})
+	if err != nil {
+		t.Fatalf("Download returned error: %v", err)
+	}
+	if len(got) != 1 || len(got[0].Files) != 1 || filepath.Ext(got[0].Files[0].Path) != ".gif" {
+		t.Fatalf("Download returned unexpected files: %+v", got)
+	}
+	if encoder.input.ZipPath == "" || encoder.input.Format != AnimationFormatGIF {
+		t.Fatalf("encoder input = %+v", encoder.input)
 	}
 }
 
-type recordingRunner struct {
-	dir         string
-	name        string
-	args        []string
-	writeOutput []byte
-	err         error
+type recordingUgoiraEncoder struct {
+	input  UgoiraEncodeInput
+	output []byte
+	err    error
 }
 
-func (r *recordingRunner) Run(_ context.Context, dir string, name string, args ...string) error {
-	r.dir = dir
-	r.name = name
-	r.args = append([]string(nil), args...)
-	if len(r.writeOutput) > 0 && len(args) > 0 {
-		if err := os.WriteFile(args[len(args)-1], r.writeOutput, 0o644); err != nil {
-			return err
+func (e *recordingUgoiraEncoder) Encode(ctx context.Context, input UgoiraEncodeInput) error {
+	e.input = input
+	return writeTempAnimation(ctx, input.OutputPath, func(tmpOutput string) error {
+		if len(e.output) > 0 {
+			if err := os.WriteFile(tmpOutput, e.output, 0o644); err != nil {
+				return err
+			}
 		}
-	}
-	return r.err
+		return e.err
+	})
 }
 
 func createZip(t *testing.T, path, name string, body []byte) {

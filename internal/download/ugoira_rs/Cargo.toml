@@ -1,0 +1,23 @@
+[package]
+name = "ugoira_rs"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+
+[lib]
+crate-type = ["staticlib", "rlib"]
+
+[dependencies]
+crc32fast = "1"
+gif = "0.14"
+image = { version = "0.25", default-features = false, features = ["jpeg", "png"] }
+png = "0.18"
+quantette = { version = "0.6", path = "../../../third_party/rust/quantette-0.6.0", features = ["kmeans", "threads", "image"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+zip = { version = "2", default-features = false, features = ["deflate"] }
+
+[dev-dependencies]
+image-compare = "0.5"
+tempfile = "3"
