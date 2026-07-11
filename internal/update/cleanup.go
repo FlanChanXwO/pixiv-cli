@@ -20,6 +20,10 @@ func cleanupPendingWindowsUpdate(goos string, executablePath func() (string, err
 	if err != nil {
 		return fmt.Errorf("locate executable for pending update cleanup: %w", err)
 	}
+	executable, err = resolveReleaseExecutablePath(executable)
+	if err != nil {
+		return err
+	}
 	oldPath := executable + ".old"
 	if err := remove(oldPath); err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("remove pending old executable %q: %w", oldPath, err)

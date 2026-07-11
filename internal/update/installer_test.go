@@ -764,6 +764,67 @@ func TestCleanupPendingWindowsUpdate(t *testing.T) {
 	require.NoError(t, cleanupPendingWindowsUpdate("linux", func() (string, error) { return "", fmt.Errorf("must not run") }, func(string) error { return fmt.Errorf("must not run") }))
 }
 
+// TestCleanupPendingWindowsUpdateRemovesResolvedSymlinkTargetBackup 确保 Windows
+// ReplaceFileW 在真实目标旁留下的备份不会因启动入口是软链接而永久滞留。
+func TestCleanupPendingWindowsUpdateRemovesResolvedSymlinkTargetBackup(t *testing.T) {
+	root := t.TempDir()
+	resolvedTarget := filepath.Join(root, "release", "pixiv.exe")
+	rawLink := filepath.Join(root, "bin", "pixiv.exe")
+	linkTarget := filepath.Join("..", "release", "pixiv.exe")
+	require.NoError(t, os.MkdirAll(filepath.Dir(resolvedTarget), 0o755))
+	require.NoError(t, os.MkdirAll(filepath.Dir(rawLink), 0o755))
+	require.NoError(t, os.WriteFile(resolvedTarget, []byte("current executable"), 0o755))
+	require.NoError(t, os.Symlink(linkTarget, rawLink))
+	resolvedBackup := resolvedTarget + ".old"
+	require.NoError(t, os.WriteFile(resolvedBackup, []byte("pending old executable"), 0o600))
+
+	require.NoError(t, cleanupPendingWindowsUpdate("windows", func() (string, error) { return rawLink, nil }, os.Remove))
+	_, statErr := os.Stat(resolvedBackup)
+	require.ErrorIs(t, statErr, os.ErrNotExist)
+	linkInfo, lstatErr := os.Lstat(rawLink)
+	require.NoError(t, lstatErr)
+	require.True(t, linkInfo.Mode()&os.ModeSymlink != 0, "cleanup must preserve the executable symlink")
+	readLink, readLinkErr := os.Readlink(rawLink)
+	require.NoError(t, readLinkErr)
+	require.Equal(t, linkTarget, readLink)
+}
+
+// TestCleanupPendingWindowsUpdateRejectsBrokenExecutableSymlink 确保断链不会被当作
+// raw 启动入口清理，避免误删入口旁的文件并保留可诊断的解析根因。
+func TestCleanupPendingWindowsUpdateRejectsBrokenExecutableSymlink(t *testing.T) {
+	root := t.TempDir()
+	rawLink := filepath.Join(root, "bin", "pixiv.exe")
+	linkTarget := filepath.Join("..", "missing-release", "pixiv.exe")
+	missingTarget := filepath.Join(root, "missing-release", "pixiv.exe")
+	require.NoError(t, os.MkdirAll(filepath.Dir(rawLink), 0o755))
+	require.NoError(t, os.MkdirAll(filepath.Dir(missingTarget), 0o755))
+	require.NoError(t, os.Symlink(linkTarget, rawLink))
+	rawBackup := rawLink + ".old"
+	resolvedBackup := missingTarget + ".old"
+	require.NoError(t, os.WriteFile(rawBackup, []byte("raw backup"), 0o600))
+	require.NoError(t, os.WriteFile(resolvedBackup, []byte("resolved backup"), 0o600))
+	removeCalled := false
+
+	err := cleanupPendingWindowsUpdate("windows", func() (string, error) { return rawLink, nil }, func(string) error {
+		removeCalled = true
+		return fmt.Errorf("remove must not run for a broken executable symlink")
+	})
+	require.ErrorContains(t, err, "resolve executable symlink")
+	require.ErrorContains(t, err, rawLink)
+	require.ErrorIs(t, err, os.ErrNotExist)
+	require.False(t, removeCalled)
+	linkInfo, lstatErr := os.Lstat(rawLink)
+	require.NoError(t, lstatErr)
+	require.True(t, linkInfo.Mode()&os.ModeSymlink != 0, "cleanup must preserve the broken executable symlink")
+	readLink, readLinkErr := os.Readlink(rawLink)
+	require.NoError(t, readLinkErr)
+	require.Equal(t, linkTarget, readLink)
+	_, rawBackupErr := os.Stat(rawBackup)
+	require.NoError(t, rawBackupErr)
+	_, resolvedBackupErr := os.Stat(resolvedBackup)
+	require.NoError(t, resolvedBackupErr)
+}
+
 func fixtureTarGz(t *testing.T, entries map[string]string) []byte {
 	t.Helper()
 	tarEntries := make([]tarFixtureEntry, 0, len(entries))
