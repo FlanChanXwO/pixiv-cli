@@ -74,6 +74,12 @@ jobs:
       - name: Install the native Rust target
         shell: bash
         run: rustup target add '${{ matrix.rust_target }}'
+      - name: Check Rust format and lints from vendored sources
+        shell: bash
+        working-directory: internal/download/ugoira_rs
+        run: |
+          cargo fmt --check
+          cargo clippy --locked --offline --all-targets -- -D warnings
       - name: Build the native Rust static library
         shell: bash
         run: bash scripts/build-staticlibs.sh --target '${{ matrix.rust_target }}'
@@ -82,9 +88,13 @@ jobs:
         run: |
           sh scripts/test-rust-vendor.sh
           go test ./...
+          go test -race ./...
           go vet ./...
           go run ./scripts/licensebundle --check
           sh scripts/test-package-release.sh
+          python -m pip install --disable-pip-version-check pre-commit==4.6.0
+          python -m pre_commit run --all-files
+          git diff --check
       - name: Build the versioned native executable
         shell: bash
         run: |
@@ -169,9 +179,13 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -eu
+          channel=$(go run ./scripts/releaseassets channel --version "${GITHUB_REF_NAME#v}")
           prerelease=()
-          if [[ "${GITHUB_REF_NAME#v}" == *-* ]]; then
+          if [ "$channel" = prerelease ]; then
             prerelease+=(--prerelease)
+          elif [ "$channel" != stable ]; then
+            printf '%s\n' "unexpected release channel: $channel" >&2
+            exit 1
           fi
           gh release create "$GITHUB_REF_NAME" \
             --draft \

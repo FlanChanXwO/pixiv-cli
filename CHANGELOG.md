@@ -28,6 +28,10 @@
 
 ### Security
 
+- Release workflow 现由可解析的 YAML policy 检查所有 action 的 full-SHA pin、最小权限、精确
+  trigger/runner matrix、默认分支信任 gate 与 signing-secret 顺序；build 在发布前还会执行 Rust
+  fmt/locked-offline Clippy、Go race、固定版本 pre-commit 和 diff 检查，避免排版变化或 action
+  tag/质量门禁移除悄然削弱发布供应链。
 - Rust ugoira crate 的 crates.io 依赖现以完整 locked `vendor/` 闭包及 Cargo checksum 随源码审计；
   release 验证会在空 Cargo cache 下完成 metadata/build/test 与六 target 许可证检查，缺失 vendor、
   checksum 不匹配或 registry fallback 都会明确失败。

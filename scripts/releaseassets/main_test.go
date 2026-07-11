@@ -28,6 +28,29 @@ func TestValidateRejectsNonSemanticVersion(t *testing.T) {
 	}
 }
 
+func TestChannelClassifiesSemanticPrereleaseInsteadOfBuildMetadata(t *testing.T) {
+	t.Parallel()
+
+	for _, test := range []struct {
+		name    string
+		version string
+		want    string
+	}{
+		{name: "stable build metadata", version: "0.1.0+build-1", want: "stable"},
+		{name: "prerelease with build metadata", version: "0.1.0-rc.1+build-1", want: "prerelease"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			output, err := channelOutput([]string{"channel", "--version", test.version})
+			if err != nil {
+				t.Fatalf("classify %q: %v", test.version, err)
+			}
+			if output != test.want+"\n" {
+				t.Fatalf("channel output = %q, want %q", output, test.want+"\n")
+			}
+		})
+	}
+}
+
 func TestPackageCreatesFixedTargetArchive(t *testing.T) {
 	t.Parallel()
 

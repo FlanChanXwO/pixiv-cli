@@ -46,20 +46,59 @@ func main() {
 
 func run(arguments []string) error {
 	if len(arguments) == 0 {
-		return errors.New("a subcommand is required: validate, package, or finalize")
+		return errors.New("a subcommand is required: validate, channel, package, or finalize")
 	}
 	switch arguments[0] {
 	case "validate":
 		return runValidate(arguments[1:])
+	case "channel":
+		return runChannel(arguments[1:])
 	case "package":
 		return runPackage(arguments[1:])
 	case "finalize":
 		return runFinalize(arguments[1:])
 	case "-h", "--help", "help":
-		return errors.New("usage: releaseassets validate|package|finalize")
+		return errors.New("usage: releaseassets validate|channel|package|finalize")
 	default:
 		return fmt.Errorf("unknown subcommand %q", arguments[0])
 	}
+}
+
+// runChannel 输出 release 的稳定渠道名称。它在 validateVersion 成功后才检查预发布段，
+// 因而不会把 build metadata 内合法的连字符误判为 prerelease。
+func runChannel(arguments []string) error {
+	output, err := channelOutput(append([]string{"channel"}, arguments...))
+	if err != nil {
+		return err
+	}
+	_, err = fmt.Fprint(os.Stdout, output)
+	return err
+}
+
+func channelOutput(arguments []string) (string, error) {
+	if len(arguments) == 0 || arguments[0] != "channel" {
+		return "", errors.New("channel subcommand is required")
+	}
+	flags := flag.NewFlagSet("channel", flag.ContinueOnError)
+	flags.SetOutput(os.Stderr)
+	version := flags.String("version", "", "semantic version without v")
+	if err := flags.Parse(arguments[1:]); err != nil {
+		return "", err
+	}
+	if flags.NArg() != 0 {
+		return "", fmt.Errorf("channel accepts no positional arguments: %q", flags.Arg(0))
+	}
+	if err := validateVersion(*version); err != nil {
+		return "", err
+	}
+
+	// validateVersion 已验证整个 SemVer 语法；移除 build metadata 后出现的连字符只能是
+	// 预发布分隔符，无需复制另一套 SemVer parser。
+	coreVersion, _, _ := strings.Cut(*version, "+")
+	if strings.Contains(coreVersion, "-") {
+		return "prerelease\n", nil
+	}
+	return "stable\n", nil
 }
 
 // runValidate 让 workflow 能在拉取 source 后、开始六个平台构建前复用唯一的

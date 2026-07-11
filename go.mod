@@ -2,7 +2,10 @@ module github.com/FlanChanXwO/pixiv-cli
 
 go 1.26.3
 
-require github.com/modelcontextprotocol/go-sdk v0.8.0
+require (
+	github.com/modelcontextprotocol/go-sdk v0.8.0
+	gopkg.in/yaml.v3 v3.0.1
+)
 
 require (
 	github.com/AlecAivazis/survey/v2 v2.3.7 // indirect
@@ -36,5 +39,4 @@ require (
 	golang.org/x/sys v0.35.0 // indirect
 	golang.org/x/term v0.34.0 // indirect
 	golang.org/x/text v0.28.0 // indirect
-	gopkg.in/yaml.v3 v3.0.1 // indirect
 )

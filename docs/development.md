@@ -180,10 +180,18 @@ darwin/linux/windows × amd64/arm64 runner 上构建 Rust staticlib、测试 Go/
 GitHub Release。workflow 使用 full-SHA Actions、最小权限及 `release` Environment，但它尚未在
 GitHub 实际运行。
 
-正式发布目前必须被以下条件阻断：完整 six-target staticlib/manifest 尚缺、workflow 解析策略与
-真实 native artifact 证据尚待 Tasks 32–33，并且还未创建受保护的 `release` Environment、生产
-signing key、公开仓库或 tag。不得以本地 fixture 成功、仅有 host library 或 workflow 文件存在来
-创建 Release/tap。
+`sh scripts/test-release-workflow.sh` 启动 `scripts/releaseworkflow` 的 YAML AST policy，而不是依赖
+文本排版或行号。它精确检查 tag trigger、三份 job 的权限/依赖、六个 runner matrix、每一个
+`uses` 的 40 位 SHA、默认分支 ancestry 与 signing secret 的顺序，以及 publish 的 SemVer channel
+调用。build job 还必须实际运行 vendored Rust 离线检查、crate cwd 的 `cargo fmt --check` 与
+locked/offline Clippy `-D warnings`、普通及 race Go 测试、vet、许可证、封装、固定版本
+`pre-commit==4.6.0`、pre-commit 和 `git diff --check`。发布渠道仅可由
+`go run ./scripts/releaseassets channel --version ...` 判定；build metadata 中的连字符不会使 stable
+tag 误变为 prerelease。
+
+正式发布目前必须被以下条件阻断：完整 six-target staticlib/manifest 与真实 native artifact 证据
+尚待 Task 33，并且还未创建受保护的 `release` Environment、生产 signing key、公开仓库或 tag。
+不得以本地 fixture 成功、仅有 host library 或 workflow 文件存在来创建 Release/tap。
 
 生产 Ed25519 信任根的规则如下，当前仅是发布前边界而非已完成部署：
 
