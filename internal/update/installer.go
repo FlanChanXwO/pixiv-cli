@@ -170,6 +170,18 @@ func (i *releaseInstaller) Install(ctx context.Context, release Release) (err er
 	if err != nil {
 		return fmt.Errorf("resolve current executable %q: %w", targetPath, err)
 	}
+	// 仅在现有入口明确为软链接时解析真实目标；不存在或不可访问的路径仍交给原有
+	// 同目录 staging 流程报告错误，避免改变其既有诊断语义。
+	if fileInfo, lstatErr := os.Lstat(targetPath); lstatErr == nil && fileInfo.Mode()&os.ModeSymlink != 0 {
+		resolvedTargetPath, resolveErr := filepath.EvalSymlinks(targetPath)
+		if resolveErr != nil {
+			return fmt.Errorf("resolve executable symlink %q: %w", targetPath, resolveErr)
+		}
+		targetPath, err = filepath.Abs(resolvedTargetPath)
+		if err != nil {
+			return fmt.Errorf("resolve executable symlink target %q: %w", resolvedTargetPath, err)
+		}
+	}
 	workDir, err := os.MkdirTemp(filepath.Dir(targetPath), ".pixiv-update-")
 	if err != nil {
 		return fmt.Errorf("create update temporary directory beside %q: %w", targetPath, err)

@@ -91,6 +91,90 @@ func TestReleaseInstallerInstallsOnlyVerifiedPlatformArchive(t *testing.T) {
 	require.Equal(t, executable, installed)
 }
 
+// TestReleaseInstallerPreservesExecutableSymlink 确保自更新不会把用户或包管理器维护的
+// 可执行文件软链接替换成普通文件；候选文件必须与其解析后的真实目标同目录 staging。
+func TestReleaseInstallerPreservesExecutableSymlink(t *testing.T) {
+	archive := fixtureRuntimeArchive(t, map[string]string{releaseBinaryName(runtime.GOOS): "new executable"})
+	installer, release, originalTarget := verifiedFixtureInstaller(t, archive, nil)
+	root := filepath.Dir(originalTarget)
+	resolvedTarget := filepath.Join(root, "release", releaseBinaryName(runtime.GOOS))
+	rawLink := filepath.Join(root, "bin", releaseBinaryName(runtime.GOOS))
+	linkTarget := filepath.Join("..", "release", releaseBinaryName(runtime.GOOS))
+	require.NoError(t, os.MkdirAll(filepath.Dir(resolvedTarget), 0o755))
+	require.NoError(t, os.MkdirAll(filepath.Dir(rawLink), 0o755))
+	require.NoError(t, os.Rename(originalTarget, resolvedTarget))
+	require.NoError(t, os.Symlink(linkTarget, rawLink))
+	expectedTarget, err := filepath.EvalSymlinks(rawLink)
+	require.NoError(t, err)
+	installer.executablePath = func() (string, error) { return rawLink, nil }
+	installer.checker = releaseBinaryCheckerFunc(func(context.Context, string, string) error { return nil })
+
+	defaultReplacer := installer.replacer
+	var stagedPath, replacementTarget string
+	installer.replacer = releaseFileReplacerFunc(func(source, target string) error {
+		stagedPath = source
+		replacementTarget = target
+		return defaultReplacer.Replace(source, target)
+	})
+
+	require.NoError(t, installer.Install(context.Background(), release))
+	linkInfo, err := os.Lstat(rawLink)
+	require.NoError(t, err)
+	require.True(t, linkInfo.Mode()&os.ModeSymlink != 0, "raw executable entry must remain a symlink")
+	readLink, err := os.Readlink(rawLink)
+	require.NoError(t, err)
+	require.Equal(t, linkTarget, readLink)
+	installed, err := os.ReadFile(expectedTarget)
+	require.NoError(t, err)
+	require.Equal(t, []byte("new executable"), installed)
+	require.Equal(t, expectedTarget, replacementTarget)
+	require.Equal(t, filepath.Dir(expectedTarget), filepath.Dir(stagedPath))
+	requireNoUpdateTemporaryPaths(t, filepath.Dir(expectedTarget))
+}
+
+// TestReleaseInstallerRejectsBrokenExecutableSymlink 确保断开的软链接在版本预检、
+// staging 和替换之前就暴露真实解析错误，不能被更新流程悄然替换为普通文件。
+func TestReleaseInstallerRejectsBrokenExecutableSymlink(t *testing.T) {
+	archive := fixtureRuntimeArchive(t, map[string]string{releaseBinaryName(runtime.GOOS): "new executable"})
+	installer, release, untouchedTarget := verifiedFixtureInstaller(t, archive, nil)
+	root := filepath.Dir(untouchedTarget)
+	rawLink := filepath.Join(root, "bin", releaseBinaryName(runtime.GOOS))
+	linkTarget := filepath.Join("..", "missing-release", releaseBinaryName(runtime.GOOS))
+	require.NoError(t, os.MkdirAll(filepath.Dir(rawLink), 0o755))
+	require.NoError(t, os.Symlink(linkTarget, rawLink))
+	installer.executablePath = func() (string, error) { return rawLink, nil }
+	checkerCalled := false
+	installer.checker = releaseBinaryCheckerFunc(func(context.Context, string, string) error {
+		checkerCalled = true
+		return fmt.Errorf("checker must not run for a broken executable symlink")
+	})
+	replacerCalled := false
+	installer.replacer = releaseFileReplacerFunc(func(string, string) error {
+		replacerCalled = true
+		return fmt.Errorf("replacer must not run for a broken executable symlink")
+	})
+
+	err := installer.Install(context.Background(), release)
+	require.ErrorContains(t, err, "resolve executable symlink")
+	require.ErrorContains(t, err, rawLink)
+	require.ErrorIs(t, err, os.ErrNotExist)
+	require.False(t, checkerCalled)
+	require.False(t, replacerCalled)
+	linkInfo, lstatErr := os.Lstat(rawLink)
+	require.NoError(t, lstatErr)
+	require.True(t, linkInfo.Mode()&os.ModeSymlink != 0, "broken link entry must remain a symlink")
+	readLink, readLinkErr := os.Readlink(rawLink)
+	require.NoError(t, readLinkErr)
+	require.Equal(t, linkTarget, readLink)
+	_, targetErr := os.Stat(filepath.Join(filepath.Dir(rawLink), linkTarget))
+	require.ErrorIs(t, targetErr, os.ErrNotExist)
+	untouched, readErr := os.ReadFile(untouchedTarget)
+	require.NoError(t, readErr)
+	require.Equal(t, []byte("old executable"), untouched)
+	requireNoUpdateTemporaryPaths(t, filepath.Dir(rawLink))
+	requireNoUpdateTemporaryPaths(t, filepath.Dir(untouchedTarget))
+}
+
 // TestReleaseInstallerRejectsUntrustedCachedAssetURLBeforeRequest 覆盖真实的
 // GitHub Releases API → ETag cache → Check → Install 路径。即使缓存中的
 // browser_download_url 被篡改为本地服务，安装器也必须在发出任何 asset 请求前失败。
