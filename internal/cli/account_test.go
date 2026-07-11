@@ -768,14 +768,20 @@ func TestAccountLoginDefaultBrowserWatcherCatchesFastActiveTabCallback(t *testin
 	defer oauth.Close()
 	restoreOAuthBase := setTestOAuthBase(t, oauth.URL)
 	defer restoreOAuthBase()
+	// watcher 会异步轮询 AppleScript；与 opener 共享的状态必须同步。
+	var stateMu sync.RWMutex
 	opened := false
 	runAppleScript = func(ctx context.Context, script string) (string, error) {
+		stateMu.RLock()
+		defer stateMu.RUnlock()
 		if !opened {
 			return "", nil
 		}
 		return "https://app-api.pixiv.net/web/v1/users/auth/pixiv/callback?code=fast-active-tab-code\n", nil
 	}
 	restoreOpen := setTestOpenBrowser(t, func(string) error {
+		stateMu.Lock()
+		defer stateMu.Unlock()
 		opened = true
 		return nil
 	})
@@ -817,11 +823,15 @@ func TestAccountLoginDefaultBrowserWatcherContinuesPixivPostRedirect(t *testing.
 	restoreOAuthBase := setTestOAuthBase(t, oauth.URL)
 	defer restoreOAuthBase()
 
+	// watcher 与 opener 在不同 goroutine 中读写以下登录场景状态。
+	var stateMu sync.Mutex
 	openedLogin := false
 	pollsAfterBridge := 0
 	var loginChallenge string
 	var bridge string
 	runAppleScript = func(ctx context.Context, script string) (string, error) {
+		stateMu.Lock()
+		defer stateMu.Unlock()
 		if !openedLogin {
 			return "", nil
 		}
@@ -837,6 +847,8 @@ func TestAccountLoginDefaultBrowserWatcherContinuesPixivPostRedirect(t *testing.
 	}
 	var openedURLs []string
 	restoreOpen := setTestOpenBrowser(t, func(rawURL string) error {
+		stateMu.Lock()
+		defer stateMu.Unlock()
 		openedURLs = append(openedURLs, rawURL)
 		if strings.Contains(rawURL, "/web/v1/login?") {
 			openedLogin = true
@@ -850,7 +862,11 @@ func TestAccountLoginDefaultBrowserWatcherContinuesPixivPostRedirect(t *testing.
 	code := Run([]string{"pixiv", "auth", "login", "--addr", addr, "--timeout", "5s"}, strings.NewReader(""), &stdout, &stderr)
 
 	require.Equal(t, 0, code, stderr.String())
-	require.NotContains(t, openedURLs, bridge)
+	stateMu.Lock()
+	openedURLSnapshot := append([]string(nil), openedURLs...)
+	bridgeSnapshot := bridge
+	stateMu.Unlock()
+	require.NotContains(t, openedURLSnapshot, bridgeSnapshot)
 	require.Contains(t, stderr.String(), "waiting for pixiv:// callback handoff")
 	store, err := auth.LoadAuthStore(authPath)
 	require.NoError(t, err)
@@ -884,6 +900,8 @@ func TestAccountLoginDefaultBrowserWatcherSkipsStalePostRedirectChallenge(t *tes
 	restoreOAuthBase := setTestOAuthBase(t, oauth.URL)
 	defer restoreOAuthBase()
 
+	// watcher 与 opener 在不同 goroutine 中读写以下登录场景状态。
+	var stateMu sync.Mutex
 	openedLogin := false
 	pollsAfterCurrent := 0
 	var loginChallenge string
@@ -892,6 +910,8 @@ func TestAccountLoginDefaultBrowserWatcherSkipsStalePostRedirectChallenge(t *tes
 	staleReturnTo := pixivAuthStartURLForTest("stale-challenge")
 	staleBridge := "https://accounts.pixiv.net/post-redirect?return_to=" + url.QueryEscape(staleReturnTo)
 	runAppleScript = func(ctx context.Context, script string) (string, error) {
+		stateMu.Lock()
+		defer stateMu.Unlock()
 		if !openedLogin {
 			return "", nil
 		}
@@ -907,6 +927,8 @@ func TestAccountLoginDefaultBrowserWatcherSkipsStalePostRedirectChallenge(t *tes
 	}
 	var openedURLs []string
 	restoreOpen := setTestOpenBrowser(t, func(rawURL string) error {
+		stateMu.Lock()
+		defer stateMu.Unlock()
 		openedURLs = append(openedURLs, rawURL)
 		if strings.Contains(rawURL, "/web/v1/login?") {
 			openedLogin = true
@@ -920,9 +942,13 @@ func TestAccountLoginDefaultBrowserWatcherSkipsStalePostRedirectChallenge(t *tes
 	code := Run([]string{"pixiv", "auth", "login", "--addr", addr, "--timeout", "5s"}, strings.NewReader(""), &stdout, &stderr)
 
 	require.Equal(t, 0, code, stderr.String())
-	require.NotContains(t, openedURLs, staleReturnTo)
-	require.NotContains(t, openedURLs, staleBridge)
-	require.NotContains(t, openedURLs, currentBridge)
+	stateMu.Lock()
+	openedURLSnapshot := append([]string(nil), openedURLs...)
+	currentBridgeSnapshot := currentBridge
+	stateMu.Unlock()
+	require.NotContains(t, openedURLSnapshot, staleReturnTo)
+	require.NotContains(t, openedURLSnapshot, staleBridge)
+	require.NotContains(t, openedURLSnapshot, currentBridgeSnapshot)
 	require.Contains(t, stderr.String(), "waiting for pixiv:// callback handoff")
 	store, err := auth.LoadAuthStore(authPath)
 	require.NoError(t, err)
@@ -956,6 +982,8 @@ func TestAccountLoginDefaultBrowserWatcherReportsPostRedirectRelayOnce(t *testin
 	restoreOAuthBase := setTestOAuthBase(t, oauth.URL)
 	defer restoreOAuthBase()
 
+	// watcher 与 opener 在不同 goroutine 中读写以下登录场景状态。
+	var stateMu sync.Mutex
 	openedLogin := false
 	var loginChallenge string
 	var returnTo string
@@ -963,6 +991,8 @@ func TestAccountLoginDefaultBrowserWatcherReportsPostRedirectRelayOnce(t *testin
 	openCounts := map[string]int{}
 	pollsAfterBridgeSeen := 0
 	runAppleScript = func(ctx context.Context, script string) (string, error) {
+		stateMu.Lock()
+		defer stateMu.Unlock()
 		if !openedLogin {
 			return "", nil
 		}
@@ -977,6 +1007,8 @@ func TestAccountLoginDefaultBrowserWatcherReportsPostRedirectRelayOnce(t *testin
 		return bridge + "\n", nil
 	}
 	restoreOpen := setTestOpenBrowser(t, func(rawURL string) error {
+		stateMu.Lock()
+		defer stateMu.Unlock()
 		if strings.Contains(rawURL, "/web/v1/login?") {
 			openedLogin = true
 			loginChallenge = pixivLoginChallenge(rawURL)
@@ -990,7 +1022,10 @@ func TestAccountLoginDefaultBrowserWatcherReportsPostRedirectRelayOnce(t *testin
 	code := Run([]string{"pixiv", "auth", "login", "--addr", addr, "--timeout", "5s"}, strings.NewReader(""), &stdout, &stderr)
 
 	require.Equal(t, 0, code, stderr.String())
-	require.Zero(t, openCounts[bridge])
+	stateMu.Lock()
+	bridgeOpenCount := openCounts[bridge]
+	stateMu.Unlock()
+	require.Zero(t, bridgeOpenCount)
 	require.Equal(t, 1, strings.Count(stderr.String(), "waiting for pixiv:// callback handoff"))
 	store, err := auth.LoadAuthStore(authPath)
 	require.NoError(t, err)
