@@ -2,7 +2,9 @@
 set -eu
 
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
-temporary=$(mktemp -d "${TMPDIR:-/tmp}/pixiv-package-release-test.XXXXXX")
+# 归档器会拒绝到根目录之间的任何 symlink；测试目录放在真实 repo 路径下，避免 macOS
+# `/var -> /private/var` 系统 symlink 干扰被测行为。
+temporary=$(mktemp -d "$repo_root/.pixiv-package-release-test.XXXXXX")
 trap 'rm -rf "$temporary"' EXIT HUP INT TERM
 
 binary="$temporary/pixiv"
@@ -65,5 +67,19 @@ if sh "$repo_root/scripts/package-release.sh" --binary "$binary" --format tar.gz
 fi
 if [ "$(find "$existing_directory" -type f | wc -l | tr -d ' ')" != 1 ]; then
 	echo 'symlinked output directory received a residual archive' >&2
+	exit 1
+fi
+
+real_child="$existing_directory/real-child"
+mkdir "$real_child"
+printf 'child sentinel\n' > "$real_child/keep"
+ancestor_link="$temporary/ancestor-link"
+ln -s "$existing_directory" "$ancestor_link"
+if sh "$repo_root/scripts/package-release.sh" --binary "$binary" --format tar.gz --output "$ancestor_link/real-child/pixiv.tar.gz" >/dev/null 2>&1; then
+	echo 'output below symlinked ancestor unexpectedly succeeded' >&2
+	exit 1
+fi
+if [ "$(find "$real_child" -type f | wc -l | tr -d ' ')" != 1 ]; then
+	echo 'output below symlinked ancestor received a residual archive' >&2
 	exit 1
 fi

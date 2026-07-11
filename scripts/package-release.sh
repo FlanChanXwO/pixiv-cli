@@ -22,6 +22,21 @@ fail() {
 	exit 1
 }
 
+# 检查用户提供输出目录到根目录的每个既有祖先。不能使用 realpath，因为它会在检查前
+# 跟随 symlink；以词法路径逐级 -L 才能阻止 link/real-child/file 这类穿透。
+reject_output_symlink_ancestors() {
+	case "$1" in
+		/*) ancestor=$1 ;;
+		*) ancestor=$PWD/$1 ;;
+	esac
+	while :; do
+		[ ! -L "$ancestor" ] || fail "output directory contains a symlink ancestor: $ancestor"
+		parent=$(dirname -- "$ancestor")
+		[ "$parent" = "$ancestor" ] && break
+		ancestor=$parent
+	done
+}
+
 while [ "$#" -gt 0 ]; do
 	case "$1" in
 		--binary)
@@ -73,7 +88,7 @@ output_parent=$(dirname -- "$output")
 [ ! -d "$output" ] || fail "output must be a file path, not an existing directory: $output"
 [ ! -L "$output" ] || fail "output must not be a symlink: $output"
 [ -d "$output_parent" ] || fail "output directory does not exist: $output_parent"
-[ ! -L "$output_parent" ] || fail "output directory must not be a symlink: $output_parent"
+reject_output_symlink_ancestors "$output_parent"
 output_dir=$(CDPATH= cd -- "$output_parent" && pwd)
 output_base=$(basename -- "$output")
 stage=$(mktemp -d "${TMPDIR:-/tmp}/pixiv-release-package.XXXXXX")

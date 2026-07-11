@@ -124,6 +124,9 @@ func TestGenerateRejectsOutputPathsOutsideRepositoryBeforeCargo(t *testing.T) {
 	if err := os.WriteFile(outsideLicense, []byte("outside license\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.Symlink(outside, filepath.Join(repository, "outside-link")); err != nil {
+		t.Skipf("test environment cannot create a symlink: %v", err)
+	}
 	for name, opts := range map[string]options{
 		"absolute index": {
 			Repository: repository,
@@ -151,6 +154,20 @@ func TestGenerateRejectsOutputPathsOutsideRepositoryBeforeCargo(t *testing.T) {
 			Manifest:   "ignored/Cargo.toml",
 			Index:      "third_party/licenses/index.md",
 			Licenses:   "third_party/licenses",
+			Cargo:      "missing-cargo-must-not-run",
+		},
+		"symlinked index": {
+			Repository: repository,
+			Manifest:   "ignored/Cargo.toml",
+			Index:      "outside-link/THIRD_PARTY_LICENSES.md",
+			Licenses:   "third_party/licenses",
+			Cargo:      "missing-cargo-must-not-run",
+		},
+		"symlinked licenses": {
+			Repository: repository,
+			Manifest:   "ignored/Cargo.toml",
+			Index:      "THIRD_PARTY_LICENSES.md",
+			Licenses:   "outside-link/licenses",
 			Cargo:      "missing-cargo-must-not-run",
 		},
 	} {
