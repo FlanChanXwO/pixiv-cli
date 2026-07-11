@@ -1,4 +1,4 @@
-//go:build ugoira_rust && cgo
+//go:build cgo && ((darwin && (amd64 || arm64)) || (linux && (amd64 || arm64)) || (windows && (amd64 || arm64)))
 
 package download
 

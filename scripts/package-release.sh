@@ -1,0 +1,103 @@
+#!/bin/sh
+# 将已构建的单个 pixiv binary 与完整许可证集合封装为 release archive。
+set -eu
+
+repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+binary=
+output=
+format=
+
+usage() {
+	cat >&2 <<'EOF'
+usage: scripts/package-release.sh --binary PATH --format tar.gz|zip --output PATH
+
+Packages exactly one supplied binary, LICENSE, THIRD_PARTY_LICENSES.md, and the
+complete third_party/licenses tree. This command does not sign, checksum, name,
+or upload release assets; those release-policy steps are intentionally separate.
+EOF
+}
+
+fail() {
+	printf '%s\n' "package release: $*" >&2
+	exit 1
+}
+
+while [ "$#" -gt 0 ]; do
+	case "$1" in
+		--binary)
+			[ "$#" -ge 2 ] || fail '--binary requires a path'
+			binary=$2
+			shift 2
+			;;
+		--format)
+			[ "$#" -ge 2 ] || fail '--format requires tar.gz or zip'
+			format=$2
+			shift 2
+			;;
+		--output)
+			[ "$#" -ge 2 ] || fail '--output requires a path'
+			output=$2
+			shift 2
+			;;
+		-h|--help)
+			usage
+			exit 0
+			;;
+		*)
+			usage
+			fail "unknown argument: $1"
+			;;
+	esac
+done
+
+[ -n "$binary" ] || fail '--binary is required'
+[ -n "$output" ] || fail '--output is required'
+case "$format" in
+	tar.gz|zip) ;;
+	*) fail "unsupported archive format: $format" ;;
+esac
+
+[ -f "$binary" ] || fail "binary is not a regular file: $binary"
+[ ! -L "$binary" ] || fail "binary must not be a symlink: $binary"
+[ -f "$repo_root/LICENSE" ] || fail 'root LICENSE is missing'
+[ -f "$repo_root/THIRD_PARTY_LICENSES.md" ] || fail 'THIRD_PARTY_LICENSES.md is missing'
+[ -d "$repo_root/third_party/licenses" ] || fail 'third_party/licenses is missing'
+if find "$repo_root/third_party/licenses" -type l -print -quit | grep -q .; then
+	fail 'third_party/licenses must not contain symlinks'
+fi
+if ! find "$repo_root/third_party/licenses" -type f -print -quit | grep -q .; then
+	fail 'third_party/licenses contains no license files'
+fi
+
+output_dir=$(CDPATH= cd -- "$(dirname -- "$output")" && pwd)
+output_base=$(basename -- "$output")
+stage=$(mktemp -d "${TMPDIR:-/tmp}/pixiv-release-package.XXXXXX")
+temporary_output=$(mktemp "$output_dir/.${output_base}.XXXXXX")
+cleanup() {
+	rm -rf "$stage"
+	rm -f "$temporary_output"
+}
+trap cleanup EXIT HUP INT TERM
+
+binary_name=$(basename -- "$binary")
+cp "$binary" "$stage/$binary_name"
+cp "$repo_root/LICENSE" "$stage/LICENSE"
+cp "$repo_root/THIRD_PARTY_LICENSES.md" "$stage/THIRD_PARTY_LICENSES.md"
+mkdir -p "$stage/third_party"
+cp -R "$repo_root/third_party/licenses" "$stage/third_party/licenses"
+# macOS zip 拒绝覆盖 mktemp 创建的空文件；先移除占位，再由打包器独占创建输出。
+rm -f "$temporary_output"
+
+case "$format" in
+	tar.gz)
+		tar -C "$stage" -czf "$temporary_output" "$binary_name" LICENSE THIRD_PARTY_LICENSES.md third_party/licenses
+		;;
+	zip)
+		(
+			cd "$stage"
+			zip -q -r "$temporary_output" "$binary_name" LICENSE THIRD_PARTY_LICENSES.md third_party/licenses
+		)
+		;;
+esac
+mv -f "$temporary_output" "$output"
+printf 'packaged %s\n' "$output"

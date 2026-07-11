@@ -1,4 +1,4 @@
-//go:build !ugoira_rust || !cgo
+//go:build !cgo || (!darwin && !linux && !windows) || ((darwin || linux || windows) && !amd64 && !arm64)
 
 package download
 
@@ -13,7 +13,7 @@ func defaultUgoiraEncoder() UgoiraEncoder {
 	return NewRustUgoiraEncoder()
 }
 
-// NewRustUgoiraEncoder 在没有链接预构建 staticlib 的构建中返回可诊断的 encoder。
+// NewRustUgoiraEncoder 在没有 cgo 或对应平台预构建 staticlib 的构建中返回可诊断的 encoder。
 func NewRustUgoiraEncoder() UgoiraEncoder {
 	return unavailableRustUgoiraEncoder{}
 }
@@ -22,5 +22,5 @@ func (unavailableRustUgoiraEncoder) Encode(_ context.Context, input UgoiraEncode
 	if _, err := input.Format.normalize(); err != nil {
 		return err
 	}
-	return fmt.Errorf("rust ugoira encoder unavailable: built without ugoira_rust tag or cgo")
+	return fmt.Errorf("rust ugoira encoder unavailable: Go 1.26.3 with CGO_ENABLED=1 and a supported platform C linker are required")
 }

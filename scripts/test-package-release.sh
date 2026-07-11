@@ -1,0 +1,46 @@
+#!/bin/sh
+set -eu
+
+repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+temporary=$(mktemp -d "${TMPDIR:-/tmp}/pixiv-package-release-test.XXXXXX")
+trap 'rm -rf "$temporary"' EXIT HUP INT TERM
+
+binary="$temporary/pixiv"
+printf '#!/bin/sh\nprintf fixture\n' > "$binary"
+chmod 0755 "$binary"
+
+expected="$temporary/expected.txt"
+{
+	printf '%s\n' pixiv LICENSE THIRD_PARTY_LICENSES.md
+	find "$repo_root/third_party/licenses" -type f -print | sed "s#^$repo_root/##"
+} | LC_ALL=C sort > "$expected"
+
+assert_members() {
+	archive=$1
+	format=$2
+	actual="$temporary/actual-$format.txt"
+	case "$format" in
+		tar.gz)
+			tar -tzf "$archive" | while IFS= read -r entry; do
+				case "$entry" in */) ;; *) printf '%s\n' "$entry" ;; esac
+			done | LC_ALL=C sort > "$actual"
+			;;
+		zip)
+			unzip -Z1 "$archive" | while IFS= read -r entry; do
+				case "$entry" in */) ;; *) printf '%s\n' "$entry" ;; esac
+			done | LC_ALL=C sort > "$actual"
+			;;
+	esac
+	diff -u "$expected" "$actual"
+}
+
+for format in tar.gz zip; do
+	archive="$temporary/pixiv.$format"
+	sh "$repo_root/scripts/package-release.sh" --binary "$binary" --format "$format" --output "$archive"
+	assert_members "$archive" "$format"
+done
+
+if sh "$repo_root/scripts/package-release.sh" --binary "$binary" --format unsupported --output "$temporary/bad" >/dev/null 2>&1; then
+	echo 'unsupported archive format unexpectedly succeeded' >&2
+	exit 1
+fi

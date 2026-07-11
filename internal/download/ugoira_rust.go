@@ -1,10 +1,8 @@
-//go:build ugoira_rust && cgo
+//go:build cgo && ((darwin && (amd64 || arm64)) || (linux && (amd64 || arm64)) || (windows && (amd64 || arm64)))
 
 package download
 
 /*
-#cgo !windows LDFLAGS: ${SRCDIR}/ugoira_rs/target/release/libugoira_rs.a
-#cgo windows LDFLAGS: ${SRCDIR}/ugoira_rs/target/release/ugoira_rs.lib
 #include <stdlib.h>
 
 typedef struct UgoiraCancellationToken UgoiraCancellationToken;
