@@ -4,8 +4,8 @@ internal/download/ugoira_rs/vendor/autocfg/README.md conflict-marker-size=32
 internal/download/ugoira_rs/vendor/ref-cast/README.md conflict-marker-size=32
 
 # 下列是 `cargo vendor --locked --offline` 原样复制且由各自 .cargo-checksum.json 固定的上游文件；
-# 它们已有空白告警，改写任一字节会使 Cargo 拒绝 vendor。范围仅覆盖实际触发文件或其生成的 target
-# source 子树，仓库其余路径仍使用默认 whitespace 检查。
+# 它们已有空白告警，改写任一字节会使 Cargo 拒绝 vendor。每条规则只覆盖实际触发文件；仓库其余路径
+# 仍使用默认 whitespace 检查。
 internal/download/ugoira_rs/vendor/adler2/README.md -whitespace
 internal/download/ugoira_rs/vendor/adler2/RELEASE_PROCESS.md -whitespace
 internal/download/ugoira_rs/vendor/autocfg/Cargo.lock -whitespace
@@ -23,7 +23,45 @@ internal/download/ugoira_rs/vendor/image/src/codecs/avif/ycgco.rs -whitespace
 internal/download/ugoira_rs/vendor/itertools/.github/workflows/coverage.yml -whitespace
 internal/download/ugoira_rs/vendor/linux-raw-sys/LICENSE-Apache-2.0_WITH_LLVM-exception -whitespace
 internal/download/ugoira_rs/vendor/linux-raw-sys/ORG_CODE_OF_CONDUCT.md -whitespace
-internal/download/ugoira_rs/vendor/linux-raw-sys/src/** -whitespace
+internal/download/ugoira_rs/vendor/linux-raw-sys/src/aarch64/bootparam.rs whitespace=-blank-at-eof
+internal/download/ugoira_rs/vendor/linux-raw-sys/src/arm/bootparam.rs whitespace=-blank-at-eof
+internal/download/ugoira_rs/vendor/linux-raw-sys/src/arm/image.rs whitespace=-blank-at-eof
+internal/download/ugoira_rs/vendor/linux-raw-sys/src/csky/bootparam.rs whitespace=-blank-at-eof
+internal/download/ugoira_rs/vendor/linux-raw-sys/src/csky/image.rs whitespace=-blank-at-eof
+internal/download/ugoira_rs/vendor/linux-raw-sys/src/hexagon/bootparam.rs whitespace=-blank-at-eof
+internal/download/ugoira_rs/vendor/linux-raw-sys/src/hexagon/image.rs whitespace=-blank-at-eof
+internal/download/ugoira_rs/vendor/linux-raw-sys/src/hexagon/ioctl.rs whitespace=-blank-at-eof
+internal/download/ugoira_rs/vendor/linux-raw-sys/src/loongarch64/bootparam.rs whitespace=-blank-at-eof
+internal/download/ugoira_rs/vendor/linux-raw-sys/src/loongarch64/image.rs whitespace=-blank-at-eof
+internal/download/ugoira_rs/vendor/linux-raw-sys/src/m68k/bootparam.rs whitespace=-blank-at-eof
+internal/download/ugoira_rs/vendor/linux-raw-sys/src/m68k/image.rs whitespace=-blank-at-eof
+internal/download/ugoira_rs/vendor/linux-raw-sys/src/mips/bootparam.rs whitespace=-blank-at-eof
+internal/download/ugoira_rs/vendor/linux-raw-sys/src/mips/image.rs whitespace=-blank-at-eof
+internal/download/ugoira_rs/vendor/linux-raw-sys/src/mips32r6/bootparam.rs whitespace=-blank-at-eof
+internal/download/ugoira_rs/vendor/linux-raw-sys/src/mips32r6/image.rs whitespace=-blank-at-eof
+internal/download/ugoira_rs/vendor/linux-raw-sys/src/mips64/bootparam.rs whitespace=-blank-at-eof
+internal/download/ugoira_rs/vendor/linux-raw-sys/src/mips64/image.rs whitespace=-blank-at-eof
+internal/download/ugoira_rs/vendor/linux-raw-sys/src/mips64r6/bootparam.rs whitespace=-blank-at-eof
+internal/download/ugoira_rs/vendor/linux-raw-sys/src/mips64r6/image.rs whitespace=-blank-at-eof
+internal/download/ugoira_rs/vendor/linux-raw-sys/src/powerpc/bootparam.rs whitespace=-blank-at-eof
+internal/download/ugoira_rs/vendor/linux-raw-sys/src/powerpc/image.rs whitespace=-blank-at-eof
+internal/download/ugoira_rs/vendor/linux-raw-sys/src/powerpc64/bootparam.rs whitespace=-blank-at-eof
+internal/download/ugoira_rs/vendor/linux-raw-sys/src/powerpc64/image.rs whitespace=-blank-at-eof
+internal/download/ugoira_rs/vendor/linux-raw-sys/src/riscv32/bootparam.rs whitespace=-blank-at-eof
+internal/download/ugoira_rs/vendor/linux-raw-sys/src/riscv32/image.rs whitespace=-blank-at-eof
+internal/download/ugoira_rs/vendor/linux-raw-sys/src/riscv64/bootparam.rs whitespace=-blank-at-eof
+internal/download/ugoira_rs/vendor/linux-raw-sys/src/riscv64/image.rs whitespace=-blank-at-eof
+internal/download/ugoira_rs/vendor/linux-raw-sys/src/s390x/bootparam.rs whitespace=-blank-at-eof
+internal/download/ugoira_rs/vendor/linux-raw-sys/src/s390x/image.rs whitespace=-blank-at-eof
+internal/download/ugoira_rs/vendor/linux-raw-sys/src/sparc/bootparam.rs whitespace=-blank-at-eof
+internal/download/ugoira_rs/vendor/linux-raw-sys/src/sparc/image.rs whitespace=-blank-at-eof
+internal/download/ugoira_rs/vendor/linux-raw-sys/src/sparc/ioctl.rs whitespace=-blank-at-eof
+internal/download/ugoira_rs/vendor/linux-raw-sys/src/sparc64/bootparam.rs whitespace=-blank-at-eof
+internal/download/ugoira_rs/vendor/linux-raw-sys/src/sparc64/image.rs whitespace=-blank-at-eof
+internal/download/ugoira_rs/vendor/linux-raw-sys/src/sparc64/ioctl.rs whitespace=-blank-at-eof
+internal/download/ugoira_rs/vendor/linux-raw-sys/src/x32/image.rs whitespace=-blank-at-eof
+internal/download/ugoira_rs/vendor/linux-raw-sys/src/x86/image.rs whitespace=-blank-at-eof
+internal/download/ugoira_rs/vendor/linux-raw-sys/src/x86_64/image.rs whitespace=-blank-at-eof
 internal/download/ugoira_rs/vendor/moxcms/README.md -whitespace
 internal/download/ugoira_rs/vendor/ordered-float/src/lib.rs -whitespace
 internal/download/ugoira_rs/vendor/palette/LICENSE-MIT -whitespace
@@ -36,7 +74,19 @@ internal/download/ugoira_rs/vendor/rand_core/README.md -whitespace
 internal/download/ugoira_rs/vendor/rayon-core/src/sleep/README.md -whitespace
 internal/download/ugoira_rs/vendor/rustix/LICENSE-Apache-2.0_WITH_LLVM-exception -whitespace
 internal/download/ugoira_rs/vendor/rustix/ORG_CODE_OF_CONDUCT.md -whitespace
-internal/download/ugoira_rs/vendor/safe_arch/src/x86_x64/** -whitespace
+internal/download/ugoira_rs/vendor/safe_arch/src/x86_x64/aes.rs whitespace=-blank-at-eof
+internal/download/ugoira_rs/vendor/safe_arch/src/x86_x64/bmi1.rs whitespace=-blank-at-eof
+internal/download/ugoira_rs/vendor/safe_arch/src/x86_x64/bmi2.rs whitespace=-blank-at-eof
+internal/download/ugoira_rs/vendor/safe_arch/src/x86_x64/fma.rs whitespace=-blank-at-eof
+internal/download/ugoira_rs/vendor/safe_arch/src/x86_x64/lzcnt.rs whitespace=-blank-at-eof
+internal/download/ugoira_rs/vendor/safe_arch/src/x86_x64/pclmulqdq.rs whitespace=-blank-at-eof
+internal/download/ugoira_rs/vendor/safe_arch/src/x86_x64/popcnt.rs whitespace=-blank-at-eof
+internal/download/ugoira_rs/vendor/safe_arch/src/x86_x64/rdrand.rs whitespace=-blank-at-eof
+internal/download/ugoira_rs/vendor/safe_arch/src/x86_x64/rdseed.rs whitespace=-blank-at-eof
+internal/download/ugoira_rs/vendor/safe_arch/src/x86_x64/sse3.rs whitespace=-blank-at-eof
+internal/download/ugoira_rs/vendor/safe_arch/src/x86_x64/sse4_1.rs -whitespace
+internal/download/ugoira_rs/vendor/safe_arch/src/x86_x64/sse4_2.rs whitespace=-blank-at-eof
+internal/download/ugoira_rs/vendor/safe_arch/src/x86_x64/ssse3.rs whitespace=-blank-at-eof
 internal/download/ugoira_rs/vendor/simd-adler32/.github/workflows/build.yaml -whitespace
 internal/download/ugoira_rs/vendor/weezl/Changes.md -whitespace
 internal/download/ugoira_rs/vendor/weezl/LICENSE-MIT -whitespace
