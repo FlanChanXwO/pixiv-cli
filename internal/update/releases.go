@@ -407,8 +407,8 @@ func normalizedReleasePath(value string) string {
 }
 
 func (c *GitHubReleaseClient) writeCache(cache releaseCache) (err error) {
-	if err := os.MkdirAll(c.cacheDir, 0o700); err != nil {
-		return fmt.Errorf("create GitHub Releases cache directory %q: %w", c.cacheDir, err)
+	if err := ensurePrivateReleaseCacheDirectory(c.cacheDir); err != nil {
+		return err
 	}
 	cacheFile, err := os.CreateTemp(c.cacheDir, ".github-releases-*")
 	if err != nil {

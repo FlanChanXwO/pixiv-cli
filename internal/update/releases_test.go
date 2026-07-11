@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -533,6 +534,62 @@ func TestGitHubReleaseClientUsesETagAndAtomicallyPersistedCache(t *testing.T) {
 	}
 	if requests != 2 {
 		t.Fatalf("request count = %d, want 2", requests)
+	}
+}
+
+func TestGitHubReleaseClientTightensExistingCacheDirectoryPermissions(t *testing.T) {
+	cacheDir := filepath.Join(t.TempDir(), "pixiv-cli")
+	if err := os.Mkdir(cacheDir, 0o700); err != nil {
+		t.Fatalf("create cache directory fixture: %v", err)
+	}
+	// 明确设为宽权限，避免测试结果受到进程 umask 影响。
+	if err := os.Chmod(cacheDir, 0o755); err != nil {
+		t.Fatalf("widen cache directory fixture permissions: %v", err)
+	}
+	cachePath := filepath.Join(cacheDir, "github-releases.json")
+	if err := os.WriteFile(cachePath, []byte(`{"checked_at":"2026-07-12T00:00:00Z","releases":[]}`), 0o600); err != nil {
+		t.Fatalf("create existing cache file fixture: %v", err)
+	}
+	if err := os.Chmod(cachePath, 0o600); err != nil {
+		t.Fatalf("set existing cache file fixture permissions: %v", err)
+	}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `[{"tag_name":"v1.0.0","draft":false,"prerelease":false}]`)
+	}))
+	defer server.Close()
+
+	client, err := update.NewGitHubReleaseClient(update.ReleaseClientOptions{
+		APIBaseURL: server.URL,
+		CacheDir:   cacheDir,
+	})
+	if err != nil {
+		t.Fatalf("NewGitHubReleaseClient() error = %v", err)
+	}
+	result, err := client.Check(context.Background(), update.ReleaseCheckOptions{})
+	if err != nil {
+		t.Fatalf("Check() error = %v", err)
+	}
+	if result.Release == nil || result.Release.TagName != "v1.0.0" {
+		t.Fatalf("Check() release = %#v, want v1.0.0", result.Release)
+	}
+
+	if runtime.GOOS != "windows" {
+		cacheDirInfo, err := os.Stat(cacheDir)
+		if err != nil {
+			t.Fatalf("stat cache directory: %v", err)
+		}
+		if got := cacheDirInfo.Mode().Perm(); got != 0o700 {
+			t.Fatalf("cache directory permissions = %#o, want 0700", got)
+		}
+		cacheFileInfo, err := os.Stat(cachePath)
+		if err != nil {
+			t.Fatalf("stat cache file: %v", err)
+		}
+		if got := cacheFileInfo.Mode().Perm(); got != 0o600 {
+			t.Fatalf("cache file permissions = %#o, want 0600", got)
+		}
 	}
 }
 
