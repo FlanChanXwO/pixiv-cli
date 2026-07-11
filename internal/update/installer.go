@@ -401,6 +401,9 @@ func extractReleaseBinary(archive []byte, archiveName, destination, binaryName s
 }
 
 func extractTarGzBinary(archive []byte, destination, binaryName string) error {
+	if err := validateTarGzArchivePaths(archive); err != nil {
+		return err
+	}
 	compressed, err := gzip.NewReader(bytes.NewReader(archive))
 	if err != nil {
 		return fmt.Errorf("open gzip release archive: %w", err)
@@ -415,9 +418,6 @@ func extractTarGzBinary(archive []byte, destination, binaryName string) error {
 		}
 		if err != nil {
 			return fmt.Errorf("read tar release archive: %w", err)
-		}
-		if err := validateArchivePath(header.Name); err != nil {
-			return err
 		}
 		if header.Typeflag == tar.TypeSymlink || header.Typeflag == tar.TypeLink {
 			return fmt.Errorf("release archive contains link entry %q", header.Name)
@@ -442,16 +442,41 @@ func extractTarGzBinary(archive []byte, destination, binaryName string) error {
 	return nil
 }
 
+// validateTarGzArchivePaths 在任何候选文件写入前扫描整个 tar stream，防止后置的
+// 不安全路径在合法二进制已经写出后才被发现。
+func validateTarGzArchivePaths(archive []byte) error {
+	compressed, err := gzip.NewReader(bytes.NewReader(archive))
+	if err != nil {
+		return fmt.Errorf("open gzip release archive: %w", err)
+	}
+	defer compressed.Close()
+	reader := tar.NewReader(compressed)
+	for {
+		header, err := reader.Next()
+		if err == io.EOF {
+			return nil
+		}
+		if err != nil {
+			return fmt.Errorf("read tar release archive: %w", err)
+		}
+		if err := validateArchivePath(header.Name); err != nil {
+			return err
+		}
+	}
+}
+
 func extractZipBinary(archive []byte, destination, binaryName string) error {
 	reader, err := zip.NewReader(bytes.NewReader(archive), int64(len(archive)))
 	if err != nil {
 		return fmt.Errorf("open zip release archive: %w", err)
 	}
-	found := false
 	for _, entry := range reader.File {
 		if err := validateArchivePath(entry.Name); err != nil {
 			return err
 		}
+	}
+	found := false
+	for _, entry := range reader.File {
 		if entry.Mode()&os.ModeSymlink != 0 {
 			return fmt.Errorf("release archive contains link entry %q", entry.Name)
 		}

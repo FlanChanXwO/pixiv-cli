@@ -387,6 +387,51 @@ func TestReleaseInstallerRejectsNormalizedArchiveTraversalBeforePreflightAndRepl
 	}
 }
 
+// TestReleaseInstallerRejectsLateTraversalBeforeCandidateWrite 确保 archive 的每个
+// path 都先通过验证。即使合法 binary 排在前面，后续不参与二进制识别的遍历条目也不能
+// 让解包器提前写出 candidate。
+func TestReleaseInstallerRejectsLateTraversalBeforeCandidateWrite(t *testing.T) {
+	for _, goos := range []string{"linux", "windows"} {
+		goos := goos
+		t.Run(goos, func(t *testing.T) {
+			binaryName := releaseBinaryName(goos)
+			unsafeName := "nested/../not-a-binary"
+			archive := fixturePlatformArchiveEntries(t, goos, []tarFixtureEntry{
+				{Name: binaryName, Body: "candidate must not be written"},
+				{Name: unsafeName, Body: "unsafe later entry"},
+			})
+			destination := filepath.Join(t.TempDir(), binaryName)
+
+			err := extractReleaseBinary(archive, releaseArchiveName("0.2.0", goos, "amd64"), destination, binaryName)
+			require.ErrorContains(t, err, "unsafe path")
+			require.ErrorContains(t, err, unsafeName)
+			_, statErr := os.Stat(destination)
+			require.ErrorIs(t, statErr, os.ErrNotExist, "unsafe archive path must fail before candidate creation")
+
+			installer, release, target := verifiedFixtureInstallerForPlatform(t, goos, "amd64", archive, nil)
+			checkerCalled := false
+			replacerCalled := false
+			installer.checker = releaseBinaryCheckerFunc(func(context.Context, string, string) error {
+				checkerCalled = true
+				return nil
+			})
+			installer.replacer = releaseFileReplacerFunc(func(string, string) error {
+				replacerCalled = true
+				return fmt.Errorf("replacer must not run for unsafe archive path")
+			})
+
+			err = installer.Install(context.Background(), release)
+			require.ErrorContains(t, err, "unsafe path")
+			require.ErrorContains(t, err, unsafeName)
+			require.False(t, checkerCalled, "unsafe archive path must fail before binary preflight")
+			require.False(t, replacerCalled, "unsafe archive path must fail before replacement")
+			installed, readErr := os.ReadFile(target)
+			require.NoError(t, readErr)
+			require.Equal(t, []byte("old executable"), installed)
+		})
+	}
+}
+
 // TestReleaseInstallerAcceptsNestedArchiveBinary 保留发布 archive 的普通目录布局：
 // 仍应经过签名、checksum、版本预检和原子替换，而不是因目录名被安全检查误伤。
 func TestReleaseInstallerAcceptsNestedArchiveBinary(t *testing.T) {
