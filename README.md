@@ -8,19 +8,64 @@ Go 版 Pixiv 工具集：默认作为 `pixiv` CLI 使用，需要 MCP 时显式�
 
 用户可感知变化记录在 [CHANGELOG.md](CHANGELOG.md)。
 
-## 构建
+## 安装与构建
+
+> **发布状态**：此工作树还没有公开 GitHub remote、正式 GitHub Release、Homebrew tap
+> 或生产 Ed25519 信任根。下面标注“发布后”的渠道是目标安装方式，不代表现在已经可以
+> 安装或自更新；在发布门禁完成前，请不要把它们当作可用下载来源。
+
+### 从源码构建
 
 ```bash
 sh scripts/build.sh
 ```
 
-默认输出到当前平台的 `build/pixiv` 或 `build/pixiv.exe`。Windows 通过 Git Bash、MSYS2 或 WSL 运行；需要交叉构建时继续直接使用 `go build`。
+受支持的源码构建需要 Go `1.26.3`、`CGO_ENABLED=1`、目标平台可用的 C linker，以及与
+目标匹配的 Rust ugoira staticlib。它会输出 `build/pixiv` 或 `build/pixiv.exe`。Windows
+可通过 Git Bash、MSYS2 或 WSL 运行构建命令。
 
-或直接安装命令入口：
+当前工作树只保存了 Darwin/arm64 staticlib，完整的六目标 `manifest.json` 尚未生成；因此
+`scripts/build.sh` 会故意失败，避免把不完整的 native 产物当成可发布源码构建。完整要求、
+生成方式和失败含义见[开发流程](docs/development.md#rust-ugoira-staticlib)。
+
+### Go 安装（发布后）
+
+完整 staticlib/manifest 与正式 tag 均已发布后，使用精确 tag 安装：
 
 ```bash
-go install github.com/FlanChanXwO/pixiv-cli/cmd/pixiv@latest
+go install github.com/FlanChanXwO/pixiv-cli/cmd/pixiv@vX.Y.Z
 ```
+
+它仍使用本机 Go、cgo、C linker 和该 target 的 committed staticlib；当前不完整的 six-target
+产物状态下，`go install` 不是受支持的跨平台安装渠道。
+
+### Homebrew（发布后）
+
+正式 stable Release 和真实 tap 均通过 audit/安装验证后，macOS/Linux 用户可安装：
+
+```bash
+brew install FlanChanXwO/tap/pixiv-cli
+```
+
+未来 beta/pre-release 通道使用：
+
+```bash
+brew install FlanChanXwO/tap/pixiv-cli-beta
+```
+
+两个 formula 都安装同名 `pixiv`，因此相互冲突；它们只下载已验证的 macOS/Linux Release
+资产，不引入 `ffmpeg` 依赖。当前 tap 尚未创建或推送，不能执行以上命令。
+
+### 直接下载（发布后）
+
+发布流程会为 darwin、linux、windows 的 amd64/arm64 生成六个固定名称的 archive：
+`pixiv-cli_<version>_<os>_<arch>.tar.gz`（Windows 为 `.zip`），以及 `checksums.txt` 与
+Ed25519 签名的 `checksums.json`。在 GitHub Release 实际发布、生产公钥/key ID 已提交并且
+资产完成验证前，不存在可供信任的直接下载路径。
+
+v0.1.0 不包含 Apple notarization 或 Windows Authenticode。即使以后从已验证 Release
+下载，macOS Gatekeeper 或 Windows SmartScreen 仍可能显示系统信誉提示；请只从项目的
+GitHub Release 页面取得资产，核对版本、checksum 和签名说明，切勿绕过不明来源的警告。
 
 ## 获取 refresh token
 
@@ -91,6 +136,12 @@ pixiv config get download_path
 pixiv config set download_path ~/Downloads/pixiv
 pixiv config unset https_proxy
 
+pixiv version
+pixiv version --json
+pixiv --version
+pixiv update --check
+pixiv update --check --json
+
 pixiv search "初音ミク"
 pixiv search "初音ミク" --json
 pixiv detail 123456
@@ -116,6 +167,8 @@ CLI 使用 Cobra/pflag，选项可以写在位置参数前后，例如 `pixiv au
 | `config get` | `pixiv config get KEY` | 输出一个生效中的配置值。 |
 | `config set` | `pixiv config set KEY VALUE` | 写入一个已知配置键到 `config.toml`。 |
 | `config unset` | `pixiv config unset KEY` | 从 `config.toml` 删除一个已知配置键。 |
+| `version` | `pixiv version [--json]` | 输出当前二进制的 `version`、`commit`、`build_date`；根 `pixiv --version` 只输出版本。 |
+| `update` | `pixiv update [--check] [--prerelease] [--proxy URL]` | 检查或执行与当前安装来源匹配的更新；`--json` 仅可与 `--check` 同用。 |
 | `search` | `pixiv search [options] WORD` | 搜索插画。 |
 | `detail` | `pixiv detail [options] ILLUST_ID` | 查看单个作品详情。 |
 | `ranking` | `pixiv ranking [options]` | 查看 Pixiv 插画排行榜。 |
@@ -171,6 +224,7 @@ CLI 使用 Cobra/pflag，选项可以写在位置参数前后，例如 `pixiv au
 | `filename_template` | string | `{author} - {title}_{id}` | 文件名模板。 |
 | `https_proxy` | string | 空 | HTTP(S) 代理，优先使用环境变量中的小写 `https_proxy`。 |
 | `web_fallback_enabled` | bool | `true` | 无 refresh token 时，允许匿名 Pixiv web/ajax API fallback；写入为 `[web] fallback_enabled = true/false`。 |
+| `update_check_enabled` | bool | `true` | 普通 CLI 成功命令后是否检查稳定版更新；写入为 `[update] check_enabled = true/false`。 |
 | `output_json` | bool | `false` | 数据命令默认输出 JSON。 |
 | `login_open_browser` | bool | `true` | `auth login` 默认是否自动打开浏览器。 |
 | `login_timeout` | duration | `0s` | `auth login` 默认等待时长。 |
@@ -199,13 +253,51 @@ CLI 使用 Cobra/pflag，选项可以写在位置参数前后，例如 `pixiv au
 
 - `search_user` 不是 Pixiv 官方用户搜索；它通过 web 作品搜索结果按 `userId` 去重，返回“相关作品作者”。
 - 静态单页/多页下载使用 `/ajax/illust/{id}/pages` 的 `original` URL。
-- ugoira 下载使用 `/ajax/illust/{id}/ugoira_meta` 的 `originalSrc` zip 和 frames，并继续依赖本机 `ffmpeg` 转 GIF。
+- ugoira 下载使用 `/ajax/illust/{id}/ugoira_meta` 的 `originalSrc` zip 和 frames；受支持的发行构建通过内置 Rust encoder 生成 GIF/APNG，运行时不依赖 `ffmpeg`。
 - web fallback 不新增专用代理环境变量，继续使用 `--proxy` / `--no-proxy`、`https_proxy` / `HTTPS_PROXY` 或 `pixiv config set https_proxy ...`。
 
 关闭方式：
 
 ```bash
 pixiv config set web_fallback_enabled false
+```
+
+## 版本与更新
+
+`pixiv version` 输出可读的版本、commit 与构建日期；`pixiv version --json` 的 stdout 是只含
+`version`、`commit`、`build_date` 的 JSON。根 `pixiv --version` 适合快速检查版本。
+
+```bash
+pixiv version
+pixiv version --json
+pixiv --version
+```
+
+显式更新先检查再安装；检查可使用 JSON，而实际安装不接受 `--json`：
+
+```bash
+pixiv update --check
+pixiv update --check --json
+pixiv update --check --prerelease
+pixiv update --proxy http://127.0.0.1:7890
+```
+
+开发构建显示 `dev` 并拒绝自更新。正式安装时，更新器会识别 Homebrew stable/beta、`go install`
+或 Release binary：stable/beta 按 `--prerelease` 在两个相互冲突的 formula 间切换；若切换
+安装失败，会显式尝试恢复原 formula 并报告原错误和恢复结果。`go install` 使用精确 Release
+tag；Release binary 在下载前校验 Ed25519 签名的 checksum 清单和 archive SHA-256，再预检
+`pixiv version --json` 并原子替换可执行文件。
+
+目前生产 Ed25519 public key/key ID 尚未配置，且未发布 Release。因而 Release binary 的实际
+安装会明确失败，绝不会假装已经安全更新；`pixiv update --check` 的只读检查不依赖该信任根。
+
+普通 CLI 命令成功后会尽力检查 stable 更新。它跳过 MCP、help、`version`、`update` 与开发构建，
+对同一用户 cache 最多每 24 小时查询一次，并为自动检查设定最多 3 秒的等待时间。发现新版本或
+检查失败只写 stderr（失败为 warning），不改变业务命令退出码，也不会污染 JSON stdout 或 MCP
+JSON-RPC stdout。可关闭自动检查：
+
+```bash
+pixiv config set update_check_enabled false
 ```
 
 ## MCP 使用
@@ -254,6 +346,8 @@ CLI 命令：
 
 - `auth add/login/list/remove/use/check`
 - `config path/get/set/unset`
+- `version`
+- `update`
 - `search`
 - `detail`
 - `ranking`

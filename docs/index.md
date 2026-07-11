@@ -6,8 +6,8 @@
 
 ## 文档目录
 
-- [架构说明](architecture.md)：入口、Pixiv/config/utils 包边界、运行流程和关键约束。
-- [开发流程](development.md)：本地环境、测试、构建、运行配置和 Git 注意事项。
+- [架构说明](architecture.md)：入口、Pixiv/config/update/download 包边界、运行流程、Release asset 与信任约束。
+- [开发流程](development.md)：本地环境、Rust staticlib、测试、构建、发布门禁、签名/tap 边界和 Git 注意事项。
 - [MCP 工具](mcp-tools.md)：当前注册的 tools 与参数概览。
 - [更新日志](../CHANGELOG.md)：按 Keep a Changelog 风格记录用户可感知变化。
 - [AI 协作文档](agents/index.md)：agent 规则、review checklist 和文档职责边界。
@@ -16,6 +16,8 @@
 - [ADR 0003](adr/0003-agent-instruction-precedent-strategy.md)：AI agent 指令采用选择性先例而非单一模板的决策。
 - [ADR 0004](adr/0004-auth-accounts-use-pixiv-uid.md)：本地 auth 账号使用 Pixiv UID 的决策。
 - [ADR 0005](adr/0005-auth-login-real-browser-relay-without-ui-automation.md)：`auth login` 使用真实浏览器接力且不做 UI 自动化的决策。
+- [ADR 0007](adr/0007-platform-staticlibs-for-supported-source-builds.md)：提交平台 staticlib 以维持受支持源码构建的决策与尚未满足的 native 证据。
+- [ADR 0008](adr/0008-ed25519-signed-multi-channel-release-trust.md)：Ed25519 签名、多渠道更新和 tap 发布信任边界的决策。
 
 ## 快速命令
 
@@ -28,6 +30,8 @@ CLI 示例：
 
 ```bash
 pixiv auth login
+pixiv version --json
+pixiv update --check
 pixiv search "初音ミク" --json
 pixiv download 123456
 ```

@@ -10,6 +10,11 @@
 # Knowledge graph outputs; do not let the generated graph describe itself.
 .understand-anything/
 
+# 发布证据由专用脚本验证并由文档解释；vendor、许可证文本和二进制 archive 不属于应用架构。
+third_party/licenses/
+third_party/rust/
+internal/download/ugoira_rs/staticlib/
+
 # --- From .gitignore (uncomment to exclude) ---
 
 # .DS_Store

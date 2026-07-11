@@ -1,40 +1,56 @@
-# Context
+# 领域上下文
 
-## Domain
+## 领域
 
-This project is a Pixiv MCP stdio server with a companion CLI. It exposes Pixiv artwork search, detail, ranking, recommendation, user/bookmark flows, downloads, thumbnail delivery, and local account/config management.
+本项目是 Pixiv MCP stdio server 与配套 `pixiv` CLI。它提供作品搜索、详情、排行、推荐、用户/收藏流程、下载、缩略图、本地账号/配置管理，以及面向正式二进制的版本与更新协议。
 
-## Architecture Vocabulary
+## 架构词汇
 
-- CLI controller: `internal/cli`; Cobra commands, flags, prompts, loopback browser interaction, and stdout/stderr presenters.
-- Application services: `internal/application`; use cases for accounts, config, artwork queries, downloads, and login completion.
-- Composition root: `internal/bootstrap`; wires config, auth storage, Pixiv clients, OAuth clients, download manager dependencies, and application services.
-- Auth storage: `internal/storage/auth`; `auth.json` UID-keyed account schema, default UID selection, private path and `0600` writes.
-- Pixiv source: `internal/pixiv`; facade over App API and anonymous web fallback.
-- MCP server: `internal/mcpserver`; MCP tool registration and protocol adapter.
-- Utility packages: `internal/utils/*`; non-business helper packages such as files, text, uri, media, and parse.
-- Infrastructure constants: `internal/common/constants`; cross-package constants with no domain or protocol meaning.
-- Pixiv authorization relay page: `accounts.pixiv.net/post-redirect`; an intermediate Pixiv OAuth page that is not a callback. Its `return_to` identifies the official App API start URL, but the CLI must not bypass the relay page when reopening it.
+- **CLI controller**：`internal/cli`；Cobra commands、flags、prompts、loopback browser interaction，以及 stdout/stderr presenter。
+- **Application services**：`internal/application`；账号、配置、作品查询、下载与登录完成的 use case。
+- **Composition root**：`internal/bootstrap`；组装 config、auth storage、Pixiv client、OAuth client、download manager、update dependency 与 application service。
+- **Auth storage**：`internal/storage/auth`；以 UID 为 key 的 `auth.json`、默认 UID、私有路径与 `0600` 写入。
+- **Pixiv source**：`internal/pixiv`；App API 与匿名 web fallback 的 facade。
+- **MCP server**：`internal/mcpserver`；MCP tool 注册与协议 adapter。
+- **Build information**：`internal/buildinfo`；Go linker 注入的 `version`、`commit`、`build_date`；`dev` 是不可自更新的开发构建。
+- **Update domain**：`internal/update`；安装来源识别、GitHub Releases 查询/cache、SemVer channel、Homebrew/Go/Release 更新策略与 Release installer。
+- **Release trust root**：Release installer 认可的 Ed25519 public key 与 key ID；私钥永不属于 CLI、源码、formula 或 archive。
+- **Release asset**：固定名称的 `pixiv-cli_<version>_<os>_<arch>` archive，加上 `checksums.txt` 与签名 `checksums.json`。
+- **Rust staticlib**：ugoira encoder 的 target 专用 cgo 输入；完整 manifest 绑定 source digest、六 target、path 与 SHA-256。
+- **Utility packages**：`internal/utils/*`；files、text、uri、media、parse 等无业务语义的 helper。
+- **Infrastructure constants**：`internal/common/constants`；跨包、无领域/协议含义的基础设施常量。
 
-## Boundary Rules
+## 安装来源与更新通道
 
-- `internal/cli` should not own durable state mutation or Pixiv/download construction logic.
-- `auth login` keeps loopback HTTP server, browser opening, and terminal prompts in CLI because those are local UI adapters.
-- `auth login` may register a local macOS `pixiv://` URL handler that forwards only the final callback URL to the current CLI loopback server; it must not read cookies/tokens, automate browser UI, install extensions, or spoof successful login.
-- `auth login` may open a managed Chromium/Edge browser and read Pixiv OAuth request URLs through DevTools only as a fallback callback detector.
-- `auth login` may still read real browser Pixiv OAuth URLs for fallback callback/relay detection when managed capture is unavailable.
-- `internal/application.LoginService` owns PKCE/state creation, OAuth code exchange, and account save.
-- `internal/bootstrap` is the only place that should know how production services are composed.
-- `internal/config` remains focused on `config.toml` schema, defaults, effective values, and sparse writes.
-- `internal/common/constants` must not contain Pixiv protocol values, MCP delivery values, config keys, or product defaults; `AppConfigDirName` is the only product-named path exception.
-- Adapter helpers for CLI, MCP, and OAuth loopback stay in their adapter package unless they are protocol-free parsing helpers.
+- **Development**：version 为 `dev` 的构建；不读取安装来源或网络，也不允许自更新。
+- **Homebrew stable**：由 `pixiv-cli` keg/receipt 识别；目标是 stable GitHub Release。
+- **Homebrew beta**：由 `pixiv-cli-beta` keg/receipt 识别；只有显式 `--prerelease` 保持 beta，切回 stable 时必须报告可能的卸载/安装/回滚结果。
+- **Go install**：Go build info 与实际 `GOBIN`/`GOPATH/bin` 一致的二进制；升级使用精确 Git tag。
+- **Release binary**：非上述来源的正式二进制；安装前必须验证签名 checksum、平台 archive 与下载 binary version，并原子替换目标文件。
+- **Automatic check**：普通 CLI 成功后对 stable channel 的只读提示；24 小时节流、最多 3 秒、只写 stderr，绝不改变业务退出码或污染 JSON/MCP stdout。
 
-## Behavioral Constraints
+这只是领域模型，不代表所有渠道已公开可用：当前没有公开 Release/tap、production Ed25519 信任根或完整六目标 staticlib manifest。Release 安装在缺少信任根时必须显式失败，不能被标记成成功或安全 fallback。
 
-- Local account: a saved Pixiv identity keyed by Pixiv UID, with refresh token and optional username.
-- CLI token priority is `--refresh-token` > `--uid`/deprecated `--profile` > `PIXIV_REFRESH_TOKEN` > default UID.
-- MCP token priority is `PIXIV_REFRESH_TOKEN` > default UID.
-- Runtime proxy priority is `--proxy URL` or `--no-proxy` > `https_proxy`/`HTTPS_PROXY` > `config.toml`; CLI proxy flags apply only to network commands and are never persisted.
-- JSON/text output shapes should remain stable; refresh tokens must not be printed.
-- OAuth URL callbacks must validate `state`; Pixiv official callback/code input and authorization relay URLs remain explicit fallback paths when the browser flow does not reach loopback.
-- No new arbitrary timeout, truncation, retry, item limit, silent fallback, or hidden downgrade should be added without evidence and documentation.
+## 边界规则
+
+- `internal/cli` 不拥有持久状态 mutation、Pixiv/download/update 网络构造或签名信任根。
+- `auth login` 的 loopback HTTP server、browser opening 和 terminal prompt 留在 CLI，因为它们是本地 UI adapter。
+- `auth login` 可注册本地 macOS `pixiv://` URL handler，只转交最终 callback URL 给当前 CLI loopback；不得读取 cookie/token、自动化 browser UI、安装 extension 或伪造登录成功。
+- `auth login` 在 managed capture 不可用时，可通过 DevTools 或真实 browser 的只读 Pixiv OAuth URL 观察作为 fallback callback detector；不得扩展为 cookie/token extraction。
+- `internal/application.LoginService` 拥有 PKCE/state 创建、OAuth code exchange 与账号保存。
+- `internal/bootstrap` 是唯一了解 production service 组装的位置；它当前不会为 Release installer 注入不存在的 production key。
+- `internal/config` 只处理 `config.toml` schema、default、effective value 与 sparse write；`update_check_enabled` 只控制自动检查。
+- `internal/update` 负责来源与更新策略，但不得把权限、HTTP、asset、签名、checksum、archive 或替换错误伪装成无更新。
+- `internal/download` 的生产 ugoira 路径使用 Rust staticlib，不得在 runtime 回退 `ffmpeg`；完整六目标 manifest 是 source/release 可用的前置条件。
+- `internal/common/constants` 不含 Pixiv protocol、MCP delivery、config key 或 product default；`AppConfigDirName` 是唯一 product-named path exception。
+- CLI/MCP/OAuth loopback adapter helper 留在 adapter package，除非它们是 protocol-free parsing helper。
+
+## 行为约束
+
+- **Local account**：以 Pixiv UID 为 key 的已保存身份，含 refresh token 与可选 username。
+- CLI token priority：`--refresh-token` > `--uid`/deprecated `--profile` > `PIXIV_REFRESH_TOKEN` > default UID。
+- MCP token priority：`PIXIV_REFRESH_TOKEN` > default UID。
+- Runtime proxy priority：`--proxy URL` 或 `--no-proxy` > `https_proxy`/`HTTPS_PROXY` > `config.toml`；CLI proxy flag 只影响本次网络命令，绝不持久化。
+- JSON/text output shape 应保持稳定；refresh token、Ed25519 private key 与 tap deploy key 绝不打印。
+- OAuth URL callback 必须校验 `state`；Pixiv official callback/code input 与 authorization relay URL 是 browser flow 未到达 loopback 时的显式 fallback。
+- 不得新增无依据 timeout、truncation、retry、item limit、silent fallback 或 hidden downgrade；自动更新的 24 小时/3 秒是既定产品约束，只适用于自动检查。

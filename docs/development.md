@@ -8,21 +8,62 @@
 go 1.26.3
 ```
 
-开工前建议检查：
+开工前建议检查 Go/cgo、Rust 与常规测试环境：
 
 ```bash
 go version
+go env GOVERSION CGO_ENABLED CC GOOS GOARCH
+cargo --version
 go test ./...
-sh scripts/build.sh
 ```
 
-ugoira GIF 转换需要 `ffmpeg`：
+## Rust ugoira staticlib
+
+生产 ugoira GIF/APNG 由内置 Rust encoder 完成，运行时不依赖 `ffmpeg`。`ffmpeg` 只可作为
+开发质量对照：显式设置 `PIXIV_UGOIRA_QUALITY_FFMPEG=1` 后，Rust quality gate 才会调用它；
+它不是本地构建或用户运行的前置条件。
+
+受支持的 Go 源码构建需要下列条件：
+
+- Go `1.26.3`；
+- `CGO_ENABLED=1`；
+- 当前 `GOOS/GOARCH` 对应的 C linker；
+- Rust crate 对应 target 的 committed `staticlib`；
+- 同一份 Rust source 生成的六目标 `staticlib/manifest.json`。
+
+固定 target 是 darwin/linux/windows 的 amd64/arm64。`scripts/build-staticlibs.sh` 使用 locked
+Cargo 输入生成 target library；只有同一次成功得到全部六个真实库并逐个核验 SHA-256 后，才会
+写入带 Rust source digest 的 `manifest.json`。单 target 调用会使已有 manifest 失效，避免用
+局部重建证明全平台一致性。
+
+当前工作树只含 Darwin/arm64 library，完整 manifest 与另外五个真实库尚未获得。因此：
+
+- `sh scripts/build.sh` 当前应以“缺少 committed six-target Rust staticlib manifest”明确失败；
+- 不应把本机 host library 复制、改名或当作别的平台产物；
+- 在 Task 13/33 的 native runner 证据完成前，不应宣称 source build 或 `go install` 已跨平台可用。
+
+可在具备目标工具链的受控环境运行：
 
 ```bash
-ffmpeg -version
+sh scripts/build-staticlibs.sh --target <rust-target>
+go test ./internal/download -run '^TestCommittedUgoiraStaticlibManifestWhenPresent$' -count=1
 ```
 
-没有 `ffmpeg` 时，普通图片下载仍可工作；ugoira 转换会失败并返回明确错误。
+不要提交 `internal/download/ugoira_rs/target/`；它是机器产物。完成验证的
+`internal/download/ugoira_rs/staticlib/`、其 `manifest.json` 和两份 knowledge graph 则是可追溯
+输入，不能以 ignore 规则隐藏。
+
+Cargo 命令当前可以使用 `--locked --offline`：
+
+```bash
+cargo test --locked --offline --manifest-path internal/download/ugoira_rs/Cargo.toml
+cargo clippy --locked --offline --all-targets --manifest-path internal/download/ugoira_rs/Cargo.toml -- -D warnings
+go run ./scripts/licensebundle --check
+```
+
+这些命令在有本地 registry cache 的环境可验证锁定输入与许可证 bundle；仓库尚未 vendor 完整
+Cargo 依赖闭包，不能把该结果当作空 cache/离线可复现的证明。Task 31 必须补齐 vendor、source
+replacement 和 fresh-cache 验证后，才可将此限制移除。
 
 ## 运行
 
@@ -95,7 +136,7 @@ pixiv auth login
 
 ## 测试
 
-当前测试覆盖 CLI 命令、`internal/application` 应用用例、`internal/config` 配置、`internal/storage/auth` 认证存储、Pixiv App API 认证重试、Pixiv facade/source、web fallback、HTTP client wiring、下载管理和 MCP tool 注册：
+当前测试覆盖 CLI 命令与 build metadata、显式/自动更新、`internal/application` 应用用例、`internal/config` 配置、`internal/storage/auth` 认证存储、Pixiv App API 认证重试、Pixiv facade/source、web fallback、HTTP client wiring、下载管理、Rust encoder/staticlib 合约和 MCP tool 注册：
 
 ```bash
 go test ./...
@@ -107,6 +148,50 @@ PIXIV_E2E_WEB_API=1 PIXIV_WEB_API_PROXY=http://127.0.0.1:7890 go test ./test/e2e
 
 代码改动完成前，应按变更范围补充或更新测试。若不能运行测试，需要在交付说明中写明原因和风险。
 
+发布相关的本地 fixture/策略门禁还包括：
+
+```bash
+sh scripts/test-build-staticlibs.sh
+sh scripts/test-package-release.sh
+sh scripts/test-release-workflow.sh
+sh scripts/test-homebrew-formula.sh
+git diff --check
+```
+
+fixture 只证明格式、失败语义和本地策略，不替代六个 native runner 的真实静态链接、GIF/APNG
+smoke、版本化 archive 内容和 Homebrew 安装验收。
+
+## 发布门禁、签名与 Homebrew 边界
+
+`.github/workflows/release.yml` 为 `v*` tag 定义本地可审查的发布流程：先验证 SemVer，再在
+darwin/linux/windows × amd64/arm64 runner 上构建 Rust staticlib、测试 Go/Rust、检查许可证并
+封装固定名称的 archive；全部通过后才创建带 `checksums.txt` 和 Ed25519 `checksums.json` 的
+GitHub Release。workflow 使用 full-SHA Actions、最小权限及 `release` Environment，但它尚未在
+GitHub 实际运行。
+
+正式发布目前必须被以下条件阻断：完整 six-target staticlib/manifest 尚缺、Cargo fresh-cache
+offline 闭包尚缺（Task 31）、workflow 解析策略与真实 native artifact 证据尚待 Tasks 32–33，
+并且还未创建受保护的 `release` Environment、生产 signing key、公开仓库或 tag。不得以本地
+fixture 成功、仅有 host library 或 workflow 文件存在来创建 Release/tap。
+
+生产 Ed25519 信任根的规则如下，当前仅是发布前边界而非已完成部署：
+
+- 公钥、key ID 与 fingerprint 必须先以可审计源码变更进入受支持二进制；私钥绝不进入源码、
+  release asset、日志或 formula。
+- 私钥只能作为受保护 `release` Environment 的 secret 使用；恢复副本只可保存在受控的 macOS
+  Keychain。当前两者均未创建或写入。
+- 轮换时先发布能够信任新 key ID 的版本，保留旧公钥直至旧版本退出支持，再通过新的受签名
+  Release 停止使用旧 key。不得让既有二进制突然依赖一个未提交、不可验证的新信任根。
+
+Homebrew tap 是独立发布面：stable 使用 `pixiv-cli`，pre-release 使用 `pixiv-cli-beta`，二者
+都安装 `pixiv` 并相互冲突。Task 20 才能创建专用 tap deploy key；其私钥只能放在 source
+repository 的受保护 `release` Environment secret `HOMEBREW_TAP_DEPLOY_KEY`，tap 只登记对应
+公钥。先在常规 tap checkout 渲染、audit 并在 macOS/Linux 验证安装，再做受限提交/push。当前
+tap 不存在，也不能从本仓库或 workflow 读取、生成或记录 deploy key。
+
+v0.1.0 不会进行 Apple notarization 或 Windows Authenticode。发布后直接下载仍可能被 Gatekeeper
+或 SmartScreen 拦截/提示；这是需要在用户文档中保留的系统信誉边界，不能通过文档或脚本绕过。
+
 ## Git 与本地产物
 
 `.gitignore` 已排除：
@@ -116,8 +201,10 @@ PIXIV_E2E_WEB_API=1 PIXIV_WEB_API_PROXY=http://127.0.0.1:7890 go test ./test/e2e
 - 本地下载目录 `downloads/`
 - 本地数据库 `*.db`
 - 常见缓存、日志、临时文件
+- Rust `internal/download/ugoira_rs/target/`
+- 两份 understand-anything 图谱的临时/垃圾扫描目录（图谱 JSON 和已跟踪 scan result 除外）
 
-不要提交 Pixiv token、下载内容、本地数据库或机器相关配置。
+不要提交 Pixiv token、下载内容、本地数据库、机器相关配置、Ed25519 私钥或 tap deploy key。
 
 ## Changelog
 
@@ -139,5 +226,6 @@ PIXIV_E2E_WEB_API=1 PIXIV_WEB_API_PROXY=http://127.0.0.1:7890 go test ./test/e2e
 - CLI 命令、参数、账号配置或输出语义。
 - 环境变量或默认值。
 - 下载、认证、代理、ugoira 等流程。
+- 安装渠道、更新通道、签名信任根、Release/tap 发布门禁或系统信誉提示。
 - 新增限制、重试、超时、截断、降级或错误处理策略。
 - 测试或构建命令。
