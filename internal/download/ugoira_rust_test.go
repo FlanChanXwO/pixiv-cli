@@ -11,7 +11,9 @@ import (
 	"image/jpeg"
 	"image/png"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv"
@@ -58,6 +60,22 @@ func TestRustUgoiraEncoderNativeGIFAndAPNG(t *testing.T) {
 	defer apngFile.Close()
 	if _, err := png.Decode(apngFile); err != nil {
 		t.Fatalf("decode APNG base PNG frame: %v", err)
+	}
+}
+
+func TestCGODisabledBuildRejectsMissingRustStaticlib(t *testing.T) {
+	command := exec.Command("go", "build", "./cmd/pixiv")
+	command.Dir = filepath.Clean(filepath.Join("..", ".."))
+	command.Env = append(os.Environ(), "CGO_ENABLED=0")
+	body, err := command.CombinedOutput()
+	if err == nil {
+		t.Fatal("CGO_ENABLED=0 go build unexpectedly succeeded")
+	}
+	message := strings.ToLower(string(body))
+	for _, want := range []string{"go 1.26.3", "cgo", "staticlib", "c linker"} {
+		if !strings.Contains(message, want) {
+			t.Fatalf("CGO_ENABLED=0 build error does not contain %q:\n%s", want, body)
+		}
 	}
 }
 
