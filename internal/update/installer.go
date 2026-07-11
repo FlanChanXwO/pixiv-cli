@@ -106,8 +106,10 @@ type releaseInstaller struct {
 	checker           ReleaseBinaryChecker
 	replacer          ReleaseFileReplacer
 	assetURLValidator func(Release, ReleaseAsset) error
-	// afterStaging 仅供同包测试在最终替换边界精确触发取消；生产构造始终为 nil。
-	afterStaging func()
+	// 下列 hook 仅供同包测试精确触发并观测取消边界；生产构造始终为 nil。
+	afterStagedCreate func()
+	afterStagedClose  func()
+	afterStaging      func()
 }
 
 // Install 下载并验证选中版本的唯一平台资产。任何下载、认证、解包、预检或替换失败
@@ -207,11 +209,14 @@ func (i *releaseInstaller) Install(ctx context.Context, release Release) (err er
 			}
 		}
 	}()
-	if err := checkContext(ctx, "stage verified update"); err != nil {
-		return err
+	if i.afterStagedCreate != nil {
+		i.afterStagedCreate()
 	}
 	if err := staged.Close(); err != nil {
 		return fmt.Errorf("close staged update file %q: %w", stagedPath, err)
+	}
+	if i.afterStagedClose != nil {
+		i.afterStagedClose()
 	}
 	if err := checkContext(ctx, "stage verified update"); err != nil {
 		return err

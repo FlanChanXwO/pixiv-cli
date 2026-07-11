@@ -436,6 +436,34 @@ func TestReleaseInstallerStopsBeforeReplaceWhenCanceledAfterStaging(t *testing.T
 	requireNoUpdateTemporaryPaths(t, filepath.Dir(target))
 }
 
+// TestReleaseInstallerClosesStagedFileBeforeCancellationCleanupOnWindows 模拟 Windows
+// 平台的 ZIP 安装路径：Windows 不能删除仍打开的 staged 文件，因此 CreateTemp 后取消也
+// 必须先关闭文件，才能让失败清理不遗留 `.pixiv-update-stage-*`。
+func TestReleaseInstallerClosesStagedFileBeforeCancellationCleanupOnWindows(t *testing.T) {
+	archive := fixturePlatformArchive(t, "windows", map[string]string{"pixiv.exe": "new executable"})
+	installer, release, target := verifiedFixtureInstallerForPlatform(t, "windows", "amd64", archive, nil)
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	installer.checker = releaseBinaryCheckerFunc(func(context.Context, string, string) error { return nil })
+	stagedFileClosed := false
+	installer.afterStagedCreate = cancel
+	installer.afterStagedClose = func() { stagedFileClosed = true }
+	replacerCalled := false
+	installer.replacer = releaseFileReplacerFunc(func(string, string) error {
+		replacerCalled = true
+		return fmt.Errorf("replacer must not run after staged-file cancellation")
+	})
+
+	err := installer.Install(ctx, release)
+	require.ErrorIs(t, err, context.Canceled)
+	require.True(t, stagedFileClosed, "cancellation cleanup must close staged file before removal")
+	require.False(t, replacerCalled)
+	installed, readErr := os.ReadFile(target)
+	require.NoError(t, readErr)
+	require.Equal(t, []byte("old executable"), installed)
+	requireNoUpdateTemporaryPaths(t, filepath.Dir(target))
+}
+
 // TestReleaseInstallerRejectsNormalizedArchiveTraversalBeforePreflightAndReplace
 // 确保 archive 原始名称中的 `..` 不会被 path.Clean 隐藏。该路径即使归一化后正好
 // 是目标二进制，也必须在写入候选文件、版本预检及原子替换之前被拒绝。
