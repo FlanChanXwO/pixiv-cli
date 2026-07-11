@@ -488,6 +488,13 @@ func validateArchivePath(name string) error {
 	if name == "" || strings.HasPrefix(name, "/") || strings.Contains(name, "\\") {
 		return fmt.Errorf("release archive has unsafe path %q", name)
 	}
+	// 必须在 path.Clean 前检查原始 segment，避免 `nested/../pixiv` 被归一化后
+	// 伪装成可接受的候选二进制路径。
+	for _, segment := range strings.Split(name, "/") {
+		if segment == ".." {
+			return fmt.Errorf("release archive has unsafe path %q", name)
+		}
+	}
 	clean := path.Clean(name)
 	if clean == "." || clean == ".." || strings.HasPrefix(clean, "../") {
 		return fmt.Errorf("release archive has unsafe path %q", name)

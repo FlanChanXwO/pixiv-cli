@@ -351,6 +351,75 @@ func TestReleaseInstallerFailureKeepsExistingExecutable(t *testing.T) {
 	}
 }
 
+// TestReleaseInstallerRejectsNormalizedArchiveTraversalBeforePreflightAndReplace
+// 确保 archive 原始名称中的 `..` 不会被 path.Clean 隐藏。该路径即使归一化后正好
+// 是目标二进制，也必须在写入候选文件、版本预检及原子替换之前被拒绝。
+func TestReleaseInstallerRejectsNormalizedArchiveTraversalBeforePreflightAndReplace(t *testing.T) {
+	for _, goos := range []string{"linux", "windows"} {
+		goos := goos
+		t.Run(goos, func(t *testing.T) {
+			binaryName := releaseBinaryName(goos)
+			unsafeName := "nested/../" + binaryName
+			archive := fixturePlatformArchiveEntries(t, goos, []tarFixtureEntry{
+				{Name: unsafeName, Body: "must not become a candidate binary"},
+			})
+			installer, release, target := verifiedFixtureInstallerForPlatform(t, goos, "amd64", archive, nil)
+			checkerCalled := false
+			replacerCalled := false
+			installer.checker = releaseBinaryCheckerFunc(func(context.Context, string, string) error {
+				checkerCalled = true
+				return nil
+			})
+			installer.replacer = releaseFileReplacerFunc(func(string, string) error {
+				replacerCalled = true
+				return fmt.Errorf("replacer must not run for unsafe archive path")
+			})
+
+			err := installer.Install(context.Background(), release)
+			require.ErrorContains(t, err, "unsafe path")
+			require.ErrorContains(t, err, unsafeName)
+			require.False(t, checkerCalled, "unsafe archive path must fail before binary preflight")
+			require.False(t, replacerCalled, "unsafe archive path must fail before replacement")
+			installed, readErr := os.ReadFile(target)
+			require.NoError(t, readErr)
+			require.Equal(t, []byte("old executable"), installed)
+		})
+	}
+}
+
+// TestReleaseInstallerAcceptsNestedArchiveBinary 保留发布 archive 的普通目录布局：
+// 仍应经过签名、checksum、版本预检和原子替换，而不是因目录名被安全检查误伤。
+func TestReleaseInstallerAcceptsNestedArchiveBinary(t *testing.T) {
+	for _, goos := range []string{"linux", "windows"} {
+		goos := goos
+		t.Run(goos, func(t *testing.T) {
+			binaryName := releaseBinaryName(goos)
+			archive := fixturePlatformArchiveEntries(t, goos, []tarFixtureEntry{
+				{Name: "nested/" + binaryName, Body: "new nested executable"},
+			})
+			installer, release, target := verifiedFixtureInstallerForPlatform(t, goos, "amd64", archive, nil)
+			checkerCalled := false
+			replacerCalled := false
+			installer.checker = releaseBinaryCheckerFunc(func(context.Context, string, string) error {
+				checkerCalled = true
+				return nil
+			})
+			defaultReplacer := installer.replacer
+			installer.replacer = releaseFileReplacerFunc(func(source, destination string) error {
+				replacerCalled = true
+				return defaultReplacer.Replace(source, destination)
+			})
+
+			require.NoError(t, installer.Install(context.Background(), release))
+			require.True(t, checkerCalled, "verified binary must be preflighted")
+			require.True(t, replacerCalled, "verified binary must be atomically replaced")
+			installed, err := os.ReadFile(target)
+			require.NoError(t, err)
+			require.Equal(t, []byte("new nested executable"), installed)
+		})
+	}
+}
+
 func TestReleaseInstallerReportsUnwritableExecutablePathBeforeReplacing(t *testing.T) {
 	t.Parallel()
 	installer, release, target := verifiedFixtureInstaller(t, fixtureRuntimeArchive(t, map[string]string{releaseBinaryName(runtime.GOOS): "new"}), nil)
