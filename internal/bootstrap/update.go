@@ -22,5 +22,8 @@ func NewUpdateCoordinator(proxy string, out, errOut io.Writer) (*update.UpdateCo
 		SourceDetector: update.SourceDetectorFunc(update.DetectInstallSource),
 		ReleaseChecker: releaseClient,
 		CommandRunner:  update.NewCommandRunner(out, errOut),
+		ReleaseInstaller: update.NewReleaseInstaller(update.ReleaseInstallerOptions{
+			HTTPClient: httpClient,
+		}),
 	})
 }

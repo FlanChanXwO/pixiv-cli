@@ -15,6 +15,12 @@ var replaceFileW = windows.NewLazySystemDLL("kernel32.dll").NewProc("ReplaceFile
 // 必须使用 ReplaceFileW 这一单次替换原语，不能把 MoveFileEx(REPLACE_EXISTING) 当作等价物。
 // ReplaceFileW 不支持 WRITE_THROUGH，故不能擅自传入该标志；同步由调用方在替换前完成。
 func ReplaceFile(sourcePath, targetPath string) error {
+	return ReplaceFileWithBackup(sourcePath, targetPath, "")
+}
+
+// ReplaceFileWithBackup 用源文件替换目标，并把旧目标交给 backupPath 延迟清理。运行中的
+// Windows 可执行文件无法由自身删除，所以调用方应在下次启动前清理该 .old 文件。
+func ReplaceFileWithBackup(sourcePath, targetPath, backupPath string) error {
 	from, err := windows.UTF16PtrFromString(sourcePath)
 	if err != nil {
 		return err
@@ -33,10 +39,17 @@ func ReplaceFile(sourcePath, targetPath string) error {
 	if err := replaceFileW.Find(); err != nil {
 		return err
 	}
+	var backup *uint16
+	if backupPath != "" {
+		backup, err = windows.UTF16PtrFromString(backupPath)
+		if err != nil {
+			return err
+		}
+	}
 	success, _, lastErr := replaceFileW.Call(
 		uintptr(unsafe.Pointer(to)),
 		uintptr(unsafe.Pointer(from)),
-		0,
+		uintptr(unsafe.Pointer(backup)),
 		0,
 		0,
 		0,

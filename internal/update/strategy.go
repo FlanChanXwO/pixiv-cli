@@ -42,7 +42,7 @@ type CommandRunner interface {
 	Run(context.Context, Command) error
 }
 
-// ReleaseInstaller 安装已核验的 Release。具体下载和原子替换由后续任务实现。
+// ReleaseInstaller 安装已核验的 Release。
 type ReleaseInstaller interface {
 	Install(context.Context, Release) error
 }
@@ -88,7 +88,7 @@ func NewUpdateCoordinator(options UpdateCoordinatorOptions) (*UpdateCoordinator,
 		return nil, fmt.Errorf("update release checker is required")
 	}
 	if options.ReleaseInstaller == nil {
-		options.ReleaseInstaller = unavailableReleaseInstaller{}
+		options.ReleaseInstaller = NewReleaseInstaller(ReleaseInstallerOptions{})
 	}
 	return &UpdateCoordinator{
 		sourceDetector:   options.SourceDetector,
@@ -201,10 +201,4 @@ func (c *UpdateCoordinator) switchHomebrewFormula(ctx context.Context, previousF
 		return fmt.Errorf("install Homebrew formula %q after removing %q: %w; rollback reinstall %q failed: %v", targetFormula, previousFormula, installErr, previousFormula, rollbackErr)
 	}
 	return fmt.Errorf("install Homebrew formula %q after removing %q: %w; rollback reinstall %q succeeded", targetFormula, previousFormula, installErr, previousFormula)
-}
-
-type unavailableReleaseInstaller struct{}
-
-func (unavailableReleaseInstaller) Install(context.Context, Release) error {
-	return fmt.Errorf("release self-update is not available yet")
 }

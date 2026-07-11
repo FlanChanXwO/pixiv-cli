@@ -19,7 +19,10 @@ const (
 	defaultGitHubAPIBaseURL = "https://api.github.com"
 	defaultGitHubRepository = "FlanChanXwO/pixiv-cli"
 	releaseCacheFilename    = "github-releases.json"
-	automaticCheckTimeout   = 3 * time.Second
+	// releaseCacheSchemaVersion 2 起缓存页保留 Release assets；旧 schema 不能接受 304，
+	// 否则显式 self-update 会永久看到缺少资产，直到用户手动删除缓存。
+	releaseCacheSchemaVersion = 2
+	automaticCheckTimeout     = 3 * time.Second
 )
 
 // ReleaseClientOptions 配置 GitHub Releases 客户端。
@@ -43,6 +46,14 @@ type Release struct {
 	TagName    string
 	Version    string
 	Prerelease bool
+	Assets     []ReleaseAsset
+}
+
+// ReleaseAsset 是 GitHub Release 附带的一个可下载资产。
+// 仅使用 Releases API 返回的 browser_download_url，避免根据 tag 猜测下载地址。
+type ReleaseAsset struct {
+	Name        string `json:"name"`
+	DownloadURL string `json:"browser_download_url"`
 }
 
 // ReleaseCheckResult 是一次查询得到的候选 Release。
@@ -128,7 +139,7 @@ func (c *GitHubReleaseClient) Check(ctx context.Context, options ReleaseCheckOpt
 		return ReleaseCheckResult{}, err
 	}
 	now := c.now()
-	if options.Automatic && cacheExists && now.Before(cache.CheckedAt.Add(24*time.Hour)) {
+	if options.Automatic && cacheExists && cache.SchemaVersion == releaseCacheSchemaVersion && now.Before(cache.CheckedAt.Add(24*time.Hour)) {
 		selected, err := selectRelease(cache.Releases, options.IncludePrerelease)
 		if err != nil {
 			return ReleaseCheckResult{}, err
@@ -154,15 +165,17 @@ func (c *GitHubReleaseClient) Check(ctx context.Context, options ReleaseCheckOpt
 }
 
 type githubRelease struct {
-	TagName    string `json:"tag_name"`
-	Draft      bool   `json:"draft"`
-	Prerelease bool   `json:"prerelease"`
+	TagName    string         `json:"tag_name"`
+	Draft      bool           `json:"draft"`
+	Prerelease bool           `json:"prerelease"`
+	Assets     []ReleaseAsset `json:"assets"`
 }
 
 type releaseCache struct {
-	CheckedAt time.Time          `json:"checked_at"`
-	Releases  []githubRelease    `json:"releases"`
-	Pages     []releaseCachePage `json:"pages,omitempty"`
+	SchemaVersion int                `json:"schema_version"`
+	CheckedAt     time.Time          `json:"checked_at"`
+	Releases      []githubRelease    `json:"releases"`
+	Pages         []releaseCachePage `json:"pages,omitempty"`
 }
 
 type releaseCachePage struct {
@@ -205,21 +218,23 @@ func checkContext(ctx context.Context, action string) error {
 
 func (c *GitHubReleaseClient) fetchReleaseCache(ctx context.Context, previous releaseCache) (releaseCache, error) {
 	cachedPages := make(map[string]releaseCachePage, len(previous.Pages))
-	for _, page := range previous.Pages {
-		pageURL, err := c.parseReleasePageURL(page.URL)
-		if err != nil {
-			return releaseCache{}, fmt.Errorf("validate cached GitHub Releases page %q: %w", page.URL, err)
+	if previous.SchemaVersion == releaseCacheSchemaVersion {
+		for _, page := range previous.Pages {
+			pageURL, err := c.parseReleasePageURL(page.URL)
+			if err != nil {
+				return releaseCache{}, fmt.Errorf("validate cached GitHub Releases page %q: %w", page.URL, err)
+			}
+			pageID := canonicalReleasePageURL(pageURL)
+			if _, duplicate := cachedPages[pageID]; duplicate {
+				return releaseCache{}, fmt.Errorf("cached GitHub Releases page %q appears more than once", page.URL)
+			}
+			cachedPages[pageID] = page
 		}
-		pageID := canonicalReleasePageURL(pageURL)
-		if _, duplicate := cachedPages[pageID]; duplicate {
-			return releaseCache{}, fmt.Errorf("cached GitHub Releases page %q appears more than once", page.URL)
-		}
-		cachedPages[pageID] = page
 	}
 
 	current := *c.endpoint
 	visited := make(map[string]struct{})
-	var refreshed releaseCache
+	refreshed := releaseCache{SchemaVersion: releaseCacheSchemaVersion}
 	for {
 		if err := checkContext(ctx, "fetch GitHub Releases page"); err != nil {
 			return releaseCache{}, err
@@ -460,6 +475,7 @@ func selectRelease(releases []githubRelease, includePrerelease bool) (*Release, 
 				TagName:    candidate.TagName,
 				Version:    version.string(),
 				Prerelease: prerelease,
+				Assets:     append([]ReleaseAsset(nil), candidate.Assets...),
 			}
 		}
 	}

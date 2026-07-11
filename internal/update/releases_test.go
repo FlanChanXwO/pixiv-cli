@@ -54,6 +54,79 @@ func TestGitHubReleaseClientSelectsLatestStableRelease(t *testing.T) {
 	}
 }
 
+func TestGitHubReleaseClientCarriesSelectedReleaseAssets(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `[{"tag_name":"v1.0.1","draft":false,"prerelease":false,"assets":[
+			{"name":"pixiv-cli_1.0.1_linux_amd64.tar.gz","browser_download_url":"https://downloads.example.test/linux"},
+			{"name":"checksums.txt","browser_download_url":"https://downloads.example.test/checksums"}
+		]}]`)
+	}))
+	defer server.Close()
+
+	client, err := update.NewGitHubReleaseClient(update.ReleaseClientOptions{APIBaseURL: server.URL, CacheDir: t.TempDir()})
+	if err != nil {
+		t.Fatalf("NewGitHubReleaseClient() error = %v", err)
+	}
+	result, err := client.Check(context.Background(), update.ReleaseCheckOptions{})
+	if err != nil {
+		t.Fatalf("Check() error = %v", err)
+	}
+	if result.Release == nil || len(result.Release.Assets) != 2 {
+		t.Fatalf("Check() assets = %#v, want selected release assets", result.Release)
+	}
+	if got := result.Release.Assets[0]; got.Name != "pixiv-cli_1.0.1_linux_amd64.tar.gz" || got.DownloadURL != "https://downloads.example.test/linux" {
+		t.Fatalf("first asset = %#v, want name and browser_download_url", got)
+	}
+}
+
+func TestGitHubReleaseClientRefreshesLegacyETagCacheBeforeReturningAssets(t *testing.T) {
+	cacheDir := t.TempDir()
+	requests := 0
+	var server *httptest.Server
+	server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		if got := r.Header.Get("If-None-Match"); got != "" {
+			t.Fatalf("legacy cache If-None-Match = %q, want empty to migrate assets schema", got)
+		}
+		w.Header().Set("ETag", `"assets-v1"`)
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `[{"tag_name":"v1.0.1","draft":false,"prerelease":false,"assets":[
+			{"name":"pixiv-cli_1.0.1_linux_amd64.tar.gz","browser_download_url":"https://downloads.example.test/linux"}
+		]}]`)
+	}))
+	defer server.Close()
+
+	cachePath := filepath.Join(cacheDir, "github-releases.json")
+	legacyCache := fmt.Sprintf(`{
+		"checked_at":"2026-07-11T12:00:00Z",
+		"releases":[{"tag_name":"v1.0.1","draft":false,"prerelease":false}],
+		"pages":[{"url":%q,"etag":"\"legacy-v1\"","releases":[{"tag_name":"v1.0.1","draft":false,"prerelease":false}]}]
+	}`, server.URL+"/repos/FlanChanXwO/pixiv-cli/releases")
+	if err := os.WriteFile(cachePath, []byte(legacyCache), 0o600); err != nil {
+		t.Fatalf("write legacy cache: %v", err)
+	}
+
+	client, err := update.NewGitHubReleaseClient(update.ReleaseClientOptions{APIBaseURL: server.URL, CacheDir: cacheDir})
+	if err != nil {
+		t.Fatalf("NewGitHubReleaseClient() error = %v", err)
+	}
+	result, err := client.Check(context.Background(), update.ReleaseCheckOptions{})
+	if err != nil {
+		t.Fatalf("Check() error = %v", err)
+	}
+	if requests != 1 || result.Release == nil || len(result.Release.Assets) != 1 {
+		t.Fatalf("Check() requests=%d release=%#v, want refreshed assets", requests, result.Release)
+	}
+	refreshedCache, err := os.ReadFile(cachePath)
+	if err != nil {
+		t.Fatalf("read refreshed cache: %v", err)
+	}
+	if !strings.Contains(string(refreshedCache), `"schema_version":2`) || !strings.Contains(string(refreshedCache), `"browser_download_url":"https://downloads.example.test/linux"`) {
+		t.Fatalf("refreshed cache = %s, want current schema and assets", refreshedCache)
+	}
+}
+
 func TestGitHubReleaseClientIncludesPrereleasesOnlyWhenRequested(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
