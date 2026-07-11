@@ -90,6 +90,9 @@ func (a app) newRootCommand() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return cmd.Help()
 		},
+		PersistentPostRun: func(cmd *cobra.Command, args []string) {
+			a.checkAutomaticUpdate(cmd)
+		},
 	}
 	cmd.SetVersionTemplate("pixiv {{.Version}}\n")
 	cmd.CompletionOptions.DisableDefaultCmd = true

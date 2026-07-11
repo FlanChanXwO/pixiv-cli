@@ -19,3 +19,16 @@ func TestNewUpdateCoordinatorRejectsInvalidProxy(t *testing.T) {
 
 	require.ErrorContains(t, err, "absolute HTTP(S) URL")
 }
+
+func TestNewAutomaticUpdateCheckerBuildsDedicatedChecker(t *testing.T) {
+	checker, err := NewAutomaticUpdateChecker("")
+
+	require.NoError(t, err)
+	require.NotNil(t, checker)
+}
+
+func TestNewAutomaticUpdateCheckerRejectsInvalidProxy(t *testing.T) {
+	_, err := NewAutomaticUpdateChecker("socks5://proxy.example:1080")
+
+	require.ErrorContains(t, err, "absolute HTTP(S) URL")
+}
