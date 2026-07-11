@@ -29,6 +29,7 @@
 ### Security
 
 - Release binary 安装在生产 Ed25519 trust root 尚未配置时明确失败，不会伪装为安全更新；正式发布仍被完整 six-target staticlib/manifest、fresh-cache Cargo vendor、native runner 证据、受保护 release Environment 与实际 Release/tap 验证阻断。
+- 更新检查写入前会把既有 `pixiv-cli` cache 目录在 Unix-like 平台收紧为 `0700`；Windows 保持其 ACL 语义。
 
 ## [0.1.0] - Release candidate (not published)
 
