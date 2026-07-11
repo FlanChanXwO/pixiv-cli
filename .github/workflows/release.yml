@@ -1,0 +1,194 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v[0-9]*'
+
+# 令每个 job 显式声明自己所需的最小 token 权限。
+permissions: {}
+
+jobs:
+  validate:
+    name: Validate release tag
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+        with:
+          go-version: '1.26.3'
+      - name: Reject a tag that is not SemVer
+        shell: bash
+        run: go run ./scripts/releaseassets validate --version "${GITHUB_REF_NAME#v}"
+      - name: Statically check release workflow policy
+        shell: bash
+        run: sh scripts/test-release-workflow.sh
+
+  build:
+    name: Build ${{ matrix.goos }}/${{ matrix.goarch }}
+    needs: validate
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15-intel
+            goos: darwin
+            goarch: amd64
+            rust_target: x86_64-apple-darwin
+            artifact: darwin-amd64
+          - runner: macos-15
+            goos: darwin
+            goarch: arm64
+            rust_target: aarch64-apple-darwin
+            artifact: darwin-arm64
+          - runner: ubuntu-24.04
+            goos: linux
+            goarch: amd64
+            rust_target: x86_64-unknown-linux-gnu
+            artifact: linux-amd64
+          - runner: ubuntu-24.04-arm
+            goos: linux
+            goarch: arm64
+            rust_target: aarch64-unknown-linux-gnu
+            artifact: linux-arm64
+          - runner: windows-2025
+            goos: windows
+            goarch: amd64
+            rust_target: x86_64-pc-windows-msvc
+            artifact: windows-amd64
+          - runner: windows-11-arm
+            goos: windows
+            goarch: arm64
+            rust_target: aarch64-pc-windows-msvc
+            artifact: windows-arm64
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+        with:
+          go-version: '1.26.3'
+      - name: Install the native Rust target
+        shell: bash
+        run: rustup target add '${{ matrix.rust_target }}'
+      - name: Build the native Rust static library
+        shell: bash
+        run: bash scripts/build-staticlibs.sh --target '${{ matrix.rust_target }}'
+      - name: Test and audit the checked-out source
+        shell: bash
+        run: |
+          cargo test --locked --offline --manifest-path internal/download/ugoira_rs/Cargo.toml
+          go test ./...
+          go vet ./...
+          go run ./scripts/licensebundle --check
+          sh scripts/test-package-release.sh
+      - name: Build the versioned native executable
+        shell: bash
+        run: |
+          set -eu
+          mkdir -p dist
+          output='dist/pixiv'
+          if [ '${{ matrix.goos }}' = windows ]; then
+            output='dist/pixiv.exe'
+          fi
+          go build -trimpath -buildvcs=false \
+            -ldflags "-X github.com/FlanChanXwO/pixiv-cli/internal/buildinfo.Version=${GITHUB_REF_NAME} -X github.com/FlanChanXwO/pixiv-cli/internal/buildinfo.Commit=${GITHUB_SHA} -X github.com/FlanChanXwO/pixiv-cli/internal/buildinfo.BuildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            -o "$output" ./cmd/pixiv
+      - name: Package the fixed-name platform asset
+        shell: bash
+        run: |
+          go run ./scripts/releaseassets package \
+            --repo-root . \
+            --version "${GITHUB_REF_NAME#v}" \
+            --target '${{ matrix.goos }}/${{ matrix.goarch }}' \
+            --binary "dist/pixiv${{ matrix.goos == 'windows' && '.exe' || '' }}" \
+            --output-dir dist
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: release-${{ matrix.artifact }}
+          path: dist/pixiv-cli_*
+          if-no-files-found: error
+          retention-days: 1
+
+  publish:
+    name: Sign and publish the GitHub Release
+    needs: build
+    runs-on: ubuntu-24.04
+    # Task 20 must create this protected Environment and store the signing values
+    # as its secrets, rather than repository secrets available to arbitrary tags.
+    environment: release
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Require the tag commit on the default release branch
+        shell: bash
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          set -eu
+          git show-ref --verify --quiet "refs/remotes/origin/$DEFAULT_BRANCH"
+          git merge-base --is-ancestor HEAD "origin/$DEFAULT_BRANCH"
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+        with:
+          go-version: '1.26.3'
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          pattern: release-*
+          path: dist
+          merge-multiple: true
+      - name: Create the signed release metadata
+        shell: bash
+        env:
+          RELEASE_SIGNING_PRIVATE_KEY: ${{ secrets.RELEASE_SIGNING_PRIVATE_KEY }}
+          RELEASE_SIGNING_KEY_ID: ${{ secrets.RELEASE_SIGNING_KEY_ID }}
+        run: |
+          set -eu
+          umask 077
+          key_path="$RUNNER_TEMP/pixiv-release-ed25519.pem"
+          trap 'rm -f "$key_path"' EXIT HUP INT TERM
+          test -n "$RELEASE_SIGNING_PRIVATE_KEY"
+          test -n "$RELEASE_SIGNING_KEY_ID"
+          printf '%s' "$RELEASE_SIGNING_PRIVATE_KEY" > "$key_path"
+          go run ./scripts/releaseassets finalize \
+            --version "${GITHUB_REF_NAME#v}" \
+            --input-dir dist \
+            --output-dir release \
+            --key-id "$RELEASE_SIGNING_KEY_ID" \
+            --private-key "$key_path" \
+            --changelog CHANGELOG.md
+      - name: Publish only the verified assets
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -eu
+          prerelease=()
+          if [[ "${GITHUB_REF_NAME#v}" == *-* ]]; then
+            prerelease+=(--prerelease)
+          fi
+          gh release create "$GITHUB_REF_NAME" \
+            --draft \
+            --verify-tag \
+            --title "$GITHUB_REF_NAME" \
+            --notes-file release/release-notes.md \
+            "${prerelease[@]}" \
+            release/pixiv-cli_*.tar.gz \
+            release/pixiv-cli_*.zip \
+            release/checksums.txt \
+            release/checksums.json
+          expected=$(find release -maxdepth 1 -type f ! -name release-notes.md -exec basename {} \; | LC_ALL=C sort)
+          actual=$(gh release view "$GITHUB_REF_NAME" --json assets --jq '.assets[].name' | LC_ALL=C sort)
+          if [ "$actual" != "$expected" ]; then
+            printf '%s\n' 'draft release assets differ from the verified local set' >&2
+            printf '%s\n' "expected:$expected" >&2
+            printf '%s\n' "actual:$actual" >&2
+            exit 1
+          fi
+          gh release edit "$GITHUB_REF_NAME" --draft=false
