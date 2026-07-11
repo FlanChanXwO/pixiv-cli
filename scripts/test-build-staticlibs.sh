@@ -37,6 +37,15 @@ sh "$repo_root/scripts/build-staticlibs.sh"
 jq -e '.artifacts["darwin/arm64"].path == "aarch64-apple-darwin/libugoira_rs.a"' "$temporary/staticlib/manifest.json" >/dev/null
 jq -e '.artifacts["windows/amd64"].path == "x86_64-pc-windows-msvc/ugoira_rs.lib"' "$temporary/staticlib/manifest.json" >/dev/null
 
+PATH="$temporary/bin:$PATH" \
+PIXIV_UGOIRA_STATICLIB_DIR="$temporary/staticlib" \
+PIXIV_UGOIRA_TARGET_DIR="$temporary/cargo-target" \
+sh "$repo_root/scripts/build-staticlibs.sh" --target aarch64-apple-darwin
+if [ -e "$temporary/staticlib/manifest.json" ]; then
+	echo 'single-target rebuild retained or published a potentially stale manifest' >&2
+	exit 1
+fi
+
 if PATH="$temporary/bin:$PATH" sh "$repo_root/scripts/build-staticlibs.sh" --target made-up-target >/dev/null 2>&1; then
 	echo 'unsupported target unexpectedly succeeded' >&2
 	exit 1

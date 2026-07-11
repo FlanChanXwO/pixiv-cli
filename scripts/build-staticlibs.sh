@@ -74,6 +74,13 @@ if [ -z "$target_dir" ]; then
 	trap 'rm -rf "$temporary_target_dir"' EXIT HUP INT TERM
 fi
 
+# 单 target build 不能证明其余五个库与当前 Rust source 同代；先废止旧 manifest，
+# 并且本次绝不重新发布它，避免把混代库伪装成受验证的六平台集合。
+if [ -n "$target_arg" ] && { [ -e "$staticlib_dir/manifest.json" ] || [ -L "$staticlib_dir/manifest.json" ]; }; then
+	rm -f "$staticlib_dir/manifest.json" || fail "cannot invalidate stale staticlib manifest: $staticlib_dir/manifest.json"
+	printf 'invalidated %s/manifest.json before single-target rebuild\n' "$staticlib_dir" >&2
+fi
+
 for target in $targets; do
 	archive=$(target_kind "$target")
 	printf 'cargo build --locked --offline --release --target %s --target-dir %s --manifest-path %s\n' "$target" "$target_dir" "$crate_manifest"
@@ -91,6 +98,11 @@ for target in $targets; do
 	mv -f "$temporary_destination" "$destination_dir/$archive"
 	printf 'wrote %s\n' "$destination_dir/$archive"
 done
+
+if [ -n "$target_arg" ]; then
+	printf '%s\n' 'manifest not written: a single-target build cannot prove a same-source six-target staticlib generation' >&2
+	exit 0
+fi
 
 all_artifacts_exist=true
 for target in x86_64-apple-darwin aarch64-apple-darwin x86_64-unknown-linux-gnu aarch64-unknown-linux-gnu x86_64-pc-windows-msvc aarch64-pc-windows-msvc; do

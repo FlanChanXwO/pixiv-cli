@@ -69,7 +69,12 @@ if ! find "$repo_root/third_party/licenses" -type f -print -quit | grep -q .; th
 	fail 'third_party/licenses contains no license files'
 fi
 
-output_dir=$(CDPATH= cd -- "$(dirname -- "$output")" && pwd)
+output_parent=$(dirname -- "$output")
+[ ! -d "$output" ] || fail "output must be a file path, not an existing directory: $output"
+[ ! -L "$output" ] || fail "output must not be a symlink: $output"
+[ -d "$output_parent" ] || fail "output directory does not exist: $output_parent"
+[ ! -L "$output_parent" ] || fail "output directory must not be a symlink: $output_parent"
+output_dir=$(CDPATH= cd -- "$output_parent" && pwd)
 output_base=$(basename -- "$output")
 stage=$(mktemp -d "${TMPDIR:-/tmp}/pixiv-release-package.XXXXXX")
 temporary_output=$(mktemp "$output_dir/.${output_base}.XXXXXX")

@@ -102,8 +102,17 @@ func generate(opts options) error {
 		return err
 	}
 	manifest := absoluteFrom(repository, opts.Manifest)
-	index := absoluteFrom(repository, opts.Index)
-	licenses := absoluteFrom(repository, opts.Licenses)
+	index, err := repositoryOutputPath(repository, opts.Index, "index")
+	if err != nil {
+		return err
+	}
+	licenses, err := repositoryOutputPath(repository, opts.Licenses, "licenses directory")
+	if err != nil {
+		return err
+	}
+	if bundleOutputPathsOverlap(index, licenses) {
+		return fmt.Errorf("index and licenses directory output paths must not overlap")
+	}
 	metadata := make([][]byte, 0, len(releaseTargets))
 	for _, target := range releaseTargets {
 		body, err := cargoMetadataJSON(opts.Cargo, repository, manifest, target)
@@ -137,6 +146,55 @@ func absoluteFrom(root, path string) string {
 		return filepath.Clean(path)
 	}
 	return filepath.Join(root, path)
+}
+
+// repositoryOutputPath 只接受 repository 内部的相对输出路径。许可证生成会替换目录，
+// 因而绝不能让配置把删除/rename 操作引向仓库外或既有 symlink 的目标。
+func repositoryOutputPath(repository, value, label string) (string, error) {
+	if value == "" || filepath.IsAbs(value) {
+		return "", fmt.Errorf("%s must be a repository-relative output path: %q", label, value)
+	}
+	for _, component := range strings.FieldsFunc(value, func(character rune) bool {
+		return character == '/' || character == '\\'
+	}) {
+		if component == ".." {
+			return "", fmt.Errorf("%s must be a repository-relative output path: %q", label, value)
+		}
+	}
+	clean := filepath.Clean(value)
+	if clean == "." || clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) {
+		return "", fmt.Errorf("%s must be a repository-relative output path: %q", label, value)
+	}
+	path := filepath.Join(repository, clean)
+	relative, err := filepath.Rel(repository, path)
+	if err != nil || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
+		return "", fmt.Errorf("%s must be a repository-relative output path: %q", label, value)
+	}
+	current := repository
+	for _, component := range strings.Split(relative, string(filepath.Separator)) {
+		current = filepath.Join(current, component)
+		info, err := os.Lstat(current)
+		if os.IsNotExist(err) {
+			break
+		}
+		if err != nil {
+			return "", fmt.Errorf("inspect %s output path %q: %w", label, value, err)
+		}
+		if info.Mode()&os.ModeSymlink != 0 {
+			return "", fmt.Errorf("%s must be a repository-relative output path without symlinks: %q", label, value)
+		}
+	}
+	return path, nil
+}
+
+func bundleOutputPathsOverlap(first, second string) bool {
+	for _, paths := range [][2]string{{first, second}, {second, first}} {
+		relative, err := filepath.Rel(paths[0], paths[1])
+		if err == nil && (relative == "." || (relative != ".." && !strings.HasPrefix(relative, ".."+string(filepath.Separator)))) {
+			return true
+		}
+	}
+	return false
 }
 
 func cargoMetadataJSON(cargo, repository, manifest, target string) ([]byte, error) {
@@ -293,7 +351,27 @@ func isLicenseName(name string) bool {
 	return strings.HasPrefix(upper, "LICENSE") || strings.HasPrefix(upper, "COPYING") || strings.HasPrefix(upper, "NOTICE")
 }
 
+type bundleFileOps struct {
+	rename    func(string, string) error
+	remove    func(string) error
+	removeAll func(string) error
+	lstat     func(string) (os.FileInfo, error)
+}
+
+func defaultBundleFileOps() bundleFileOps {
+	return bundleFileOps{
+		rename:    os.Rename,
+		remove:    os.Remove,
+		removeAll: os.RemoveAll,
+		lstat:     os.Lstat,
+	}
+}
+
 func writeBundle(bundle []bundledPackage, indexPath, licensesDir string) error {
+	return writeBundleWithFileOps(bundle, indexPath, licensesDir, defaultBundleFileOps())
+}
+
+func writeBundleWithFileOps(bundle []bundledPackage, indexPath, licensesDir string, ops bundleFileOps) error {
 	parent := filepath.Dir(licensesDir)
 	if err := os.MkdirAll(parent, 0o755); err != nil {
 		return err
@@ -334,16 +412,147 @@ func writeBundle(bundle []bundledPackage, indexPath, licensesDir string) error {
 	if err := indexTemporary.Close(); err != nil {
 		return err
 	}
-	if err := os.RemoveAll(licensesDir); err != nil {
-		return err
+	return publishBundle(temporary, indexTemporaryPath, indexPath, licensesDir, ops)
+}
+
+// publishBundle 将完整暂存 tree 和 index 作为一个可回滚的发布单元提交。旧 bundle 先被
+// 同目录 rename 到 backup；任一步失败都会恢复旧 index 与完整 license tree，而不是先删旧树。
+func publishBundle(temporaryTree, temporaryIndex, indexPath, licensesDir string, ops bundleFileOps) error {
+	licensesExisted, err := bundlePathExists(ops, licensesDir)
+	if err != nil {
+		return fmt.Errorf("inspect existing license tree: %w", err)
 	}
-	if err := os.Rename(temporary, licensesDir); err != nil {
-		return err
+	indexExisted, err := bundlePathExists(ops, indexPath)
+	if err != nil {
+		return fmt.Errorf("inspect existing license index: %w", err)
 	}
-	if err := os.Rename(indexTemporaryPath, indexPath); err != nil {
-		return err
+	licensesBackup := ""
+	if licensesExisted {
+		licensesBackup, err = reserveBundleBackupPath(licensesDir)
+		if err != nil {
+			return err
+		}
 	}
-	return nil
+	indexBackup := ""
+	if indexExisted {
+		indexBackup, err = reserveBundleBackupPath(indexPath)
+		if err != nil {
+			return err
+		}
+	}
+
+	licensesBackedUp := false
+	licensesPublished := false
+	indexBackedUp := false
+	indexPublished := false
+	rollback := func(cause error) error {
+		var rollbackErrors []error
+		if indexBackedUp {
+			if indexPublished {
+				if err := removeBundleFileIfPresent(ops, indexPath); err != nil {
+					rollbackErrors = append(rollbackErrors, fmt.Errorf("remove newly published index: %w", err))
+				}
+			}
+			if err := ops.rename(indexBackup, indexPath); err != nil {
+				rollbackErrors = append(rollbackErrors, fmt.Errorf("restore previous index: %w", err))
+			}
+		} else if indexPublished {
+			if err := removeBundleFileIfPresent(ops, indexPath); err != nil {
+				rollbackErrors = append(rollbackErrors, fmt.Errorf("remove newly published index: %w", err))
+			}
+		}
+		if licensesBackedUp {
+			if licensesPublished {
+				if err := removeBundleTreeIfPresent(ops, licensesDir); err != nil {
+					rollbackErrors = append(rollbackErrors, fmt.Errorf("remove newly published license tree: %w", err))
+				}
+			}
+			if err := ops.rename(licensesBackup, licensesDir); err != nil {
+				rollbackErrors = append(rollbackErrors, fmt.Errorf("restore previous license tree: %w", err))
+			}
+		} else if licensesPublished {
+			if err := removeBundleTreeIfPresent(ops, licensesDir); err != nil {
+				rollbackErrors = append(rollbackErrors, fmt.Errorf("remove newly published license tree: %w", err))
+			}
+		}
+		return errors.Join(append([]error{cause}, rollbackErrors...)...)
+	}
+
+	if licensesExisted {
+		if err := ops.rename(licensesDir, licensesBackup); err != nil {
+			return fmt.Errorf("backup previous license tree: %w", err)
+		}
+		licensesBackedUp = true
+	}
+	if err := ops.rename(temporaryTree, licensesDir); err != nil {
+		return rollback(fmt.Errorf("publish license tree: %w", err))
+	}
+	licensesPublished = true
+	if indexExisted {
+		if err := ops.rename(indexPath, indexBackup); err != nil {
+			return rollback(fmt.Errorf("backup previous index: %w", err))
+		}
+		indexBackedUp = true
+	}
+	if err := ops.rename(temporaryIndex, indexPath); err != nil {
+		return rollback(fmt.Errorf("publish license index: %w", err))
+	}
+	indexPublished = true
+
+	var cleanupErrors []error
+	if licensesBackedUp {
+		if err := ops.removeAll(licensesBackup); err != nil {
+			cleanupErrors = append(cleanupErrors, fmt.Errorf("remove previous license tree backup: %w", err))
+		}
+	}
+	if indexBackedUp {
+		if err := ops.remove(indexBackup); err != nil {
+			cleanupErrors = append(cleanupErrors, fmt.Errorf("remove previous index backup: %w", err))
+		}
+	}
+	return errors.Join(cleanupErrors...)
+}
+
+func bundlePathExists(ops bundleFileOps, path string) (bool, error) {
+	_, err := ops.lstat(path)
+	if err == nil {
+		return true, nil
+	}
+	if errors.Is(err, os.ErrNotExist) {
+		return false, nil
+	}
+	return false, err
+}
+
+func reserveBundleBackupPath(path string) (string, error) {
+	reservation, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".backup-*")
+	if err != nil {
+		return "", fmt.Errorf("reserve backup path for %s: %w", path, err)
+	}
+	backup := reservation.Name()
+	if err := reservation.Close(); err != nil {
+		return "", fmt.Errorf("close backup path reservation for %s: %w", path, err)
+	}
+	if err := os.Remove(backup); err != nil {
+		return "", fmt.Errorf("release backup path reservation for %s: %w", path, err)
+	}
+	return backup, nil
+}
+
+func removeBundleFileIfPresent(ops bundleFileOps, path string) error {
+	err := ops.remove(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	return err
+}
+
+func removeBundleTreeIfPresent(ops bundleFileOps, path string) error {
+	err := ops.removeAll(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	return err
 }
 
 func renderIndex(bundle []bundledPackage, indexPath, licensesDir string) string {

@@ -44,3 +44,26 @@ if sh "$repo_root/scripts/package-release.sh" --binary "$binary" --format unsupp
 	echo 'unsupported archive format unexpectedly succeeded' >&2
 	exit 1
 fi
+
+existing_directory="$temporary/existing-output"
+mkdir "$existing_directory"
+printf 'sentinel\n' > "$existing_directory/keep"
+if sh "$repo_root/scripts/package-release.sh" --binary "$binary" --format tar.gz --output "$existing_directory" >/dev/null 2>&1; then
+	echo 'existing output directory unexpectedly succeeded' >&2
+	exit 1
+fi
+if [ "$(find "$existing_directory" -type f | wc -l | tr -d ' ')" != 1 ]; then
+	echo 'existing output directory received a residual archive' >&2
+	exit 1
+fi
+
+output_link="$temporary/output-link"
+ln -s "$existing_directory" "$output_link"
+if sh "$repo_root/scripts/package-release.sh" --binary "$binary" --format tar.gz --output "$output_link/pixiv.tar.gz" >/dev/null 2>&1; then
+	echo 'symlinked output directory unexpectedly succeeded' >&2
+	exit 1
+fi
+if [ "$(find "$existing_directory" -type f | wc -l | tr -d ' ')" != 1 ]; then
+	echo 'symlinked output directory received a residual archive' >&2
+	exit 1
+fi
