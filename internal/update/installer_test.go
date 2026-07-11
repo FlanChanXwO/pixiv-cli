@@ -66,13 +66,13 @@ func TestReleaseInstallerInstallsOnlyVerifiedPlatformArchive(t *testing.T) {
 	target := filepath.Join(t.TempDir(), releaseBinaryName(runtime.GOOS))
 	require.NoError(t, os.WriteFile(target, []byte("old executable"), 0o755))
 	installer := NewReleaseInstaller(ReleaseInstallerOptions{
-		HTTPClient:        server.Client(),
-		TrustedKeys:       map[string]ed25519.PublicKey{keyID: privateKey.Public().(ed25519.PublicKey)},
-		AssetURLValidator: allowFixtureReleaseAssetURL,
+		HTTPClient:  server.Client(),
+		TrustedKeys: map[string]ed25519.PublicKey{keyID: privateKey.Public().(ed25519.PublicKey)},
 		ExecutablePath: func() (string, error) {
 			return target, nil
 		},
-	})
+	}).(*releaseInstaller)
+	installer.assetURLValidator = allowFixtureReleaseAssetURL
 
 	err = installer.Install(context.Background(), Release{
 		TagName: tag,
@@ -606,15 +606,15 @@ func verifiedFixtureInstallerForPlatform(t *testing.T, goos, goarch string, arch
 	target := filepath.Join(t.TempDir(), releaseBinaryName(goos))
 	require.NoError(t, os.WriteFile(target, []byte("old executable"), 0o755))
 	installer := NewReleaseInstaller(ReleaseInstallerOptions{
-		HTTPClient:        server.Client(),
-		TrustedKeys:       map[string]ed25519.PublicKey{keyID: privateKey.Public().(ed25519.PublicKey)},
-		AssetURLValidator: allowFixtureReleaseAssetURL,
+		HTTPClient:  server.Client(),
+		TrustedKeys: map[string]ed25519.PublicKey{keyID: privateKey.Public().(ed25519.PublicKey)},
 		ExecutablePath: func() (string, error) {
 			return target, nil
 		},
 		GOOS:   goos,
 		GOARCH: goarch,
 	}).(*releaseInstaller)
+	installer.assetURLValidator = allowFixtureReleaseAssetURL
 	return installer, Release{
 		TagName: tag,
 		Version: "0.2.0",

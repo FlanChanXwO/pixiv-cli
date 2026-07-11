@@ -42,21 +42,16 @@ type ReleaseFileReplacer interface {
 	Replace(string, string) error
 }
 
-// ReleaseAssetURLValidator 在下载前验证 Releases API 提供的 asset URL。
-// nil 始终使用本项目固定的 GitHub 下载地址规则；仅受控测试可以显式注入 fixture 规则。
-type ReleaseAssetURLValidator func(Release, ReleaseAsset) error
-
 // ReleaseInstallerOptions 允许生产组装与受控测试分别注入信任根和系统依赖。
 // TrustedKeys 只允许 Ed25519 公钥；私钥绝不能进入生产组装或此 API。
 type ReleaseInstallerOptions struct {
-	HTTPClient        *http.Client
-	TrustedKeys       map[string]ed25519.PublicKey
-	ExecutablePath    func() (string, error)
-	GOOS              string
-	GOARCH            string
-	BinaryChecker     ReleaseBinaryChecker
-	Replacer          ReleaseFileReplacer
-	AssetURLValidator ReleaseAssetURLValidator
+	HTTPClient     *http.Client
+	TrustedKeys    map[string]ed25519.PublicKey
+	ExecutablePath func() (string, error)
+	GOOS           string
+	GOARCH         string
+	BinaryChecker  ReleaseBinaryChecker
+	Replacer       ReleaseFileReplacer
 }
 
 // NewReleaseInstaller 建立 Release 自更新器。未配置 trusted key 时仍返回实例，
@@ -86,10 +81,6 @@ func NewReleaseInstaller(options ReleaseInstallerOptions) ReleaseInstaller {
 	if replacer == nil {
 		replacer = releaseFileReplacer{goos: goos}
 	}
-	assetURLValidator := options.AssetURLValidator
-	if assetURLValidator == nil {
-		assetURLValidator = validateOfficialGitHubReleaseAssetURL
-	}
 	keys := make(map[string]ed25519.PublicKey, len(options.TrustedKeys))
 	for keyID, publicKey := range options.TrustedKeys {
 		keys[keyID] = append(ed25519.PublicKey(nil), publicKey...)
@@ -102,7 +93,7 @@ func NewReleaseInstaller(options ReleaseInstallerOptions) ReleaseInstaller {
 		goarch:            goarch,
 		checker:           checker,
 		replacer:          replacer,
-		assetURLValidator: assetURLValidator,
+		assetURLValidator: validateOfficialGitHubReleaseAssetURL,
 	}
 }
 
@@ -114,7 +105,7 @@ type releaseInstaller struct {
 	goarch            string
 	checker           ReleaseBinaryChecker
 	replacer          ReleaseFileReplacer
-	assetURLValidator ReleaseAssetURLValidator
+	assetURLValidator func(Release, ReleaseAsset) error
 }
 
 // Install 下载并验证选中版本的唯一平台资产。任何下载、认证、解包、预检或替换失败
