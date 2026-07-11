@@ -1,0 +1,37 @@
+class {{FORMULA_CLASS}} < Formula
+  desc "Pixiv command-line client and MCP server (beta channel)"
+  homepage "https://github.com/FlanChanXwO/pixiv-cli"
+  version "{{VERSION}}"
+  license "MIT"
+
+  on_macos do
+    if Hardware::CPU.arm?
+      url "{{DARWIN_ARM64_URL}}"
+      sha256 "{{DARWIN_ARM64_SHA256}}"
+    else
+      url "{{DARWIN_AMD64_URL}}"
+      sha256 "{{DARWIN_AMD64_SHA256}}"
+    end
+  end
+
+  on_linux do
+    if Hardware::CPU.arm?
+      url "{{LINUX_ARM64_URL}}"
+      sha256 "{{LINUX_ARM64_SHA256}}"
+    else
+      url "{{LINUX_AMD64_URL}}"
+      sha256 "{{LINUX_AMD64_SHA256}}"
+    end
+  end
+
+  conflicts_with "pixiv-cli", because: "both install the pixiv command"
+
+  def install
+    bin.install "pixiv"
+  end
+
+  test do
+    version_info = JSON.parse(shell_output("#{bin}/pixiv version --json"))
+    assert_equal "v#{version}", version_info["version"]
+  end
+end
