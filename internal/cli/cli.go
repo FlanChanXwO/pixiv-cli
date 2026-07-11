@@ -9,6 +9,7 @@ import (
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/application"
 	"github.com/FlanChanXwO/pixiv-cli/internal/bootstrap"
+	"github.com/FlanChanXwO/pixiv-cli/internal/buildinfo"
 	"github.com/FlanChanXwO/pixiv-cli/internal/config"
 	"github.com/spf13/cobra"
 )
@@ -83,12 +84,14 @@ func (a app) newRootCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:           "pixiv",
 		Short:         "Pixiv CLI and MCP server",
+		Version:       buildinfo.Current().Version,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return cmd.Help()
 		},
 	}
+	cmd.SetVersionTemplate("pixiv {{.Version}}\n")
 	cmd.CompletionOptions.DisableDefaultCmd = true
 	cmd.AddCommand(
 		a.newAccountCommand(),
@@ -99,6 +102,7 @@ func (a app) newRootCommand() *cobra.Command {
 		a.newRecommendedCommand(),
 		a.newDownloadCommand(),
 		a.newMCPCommand(),
+		a.newVersionCommand(),
 	)
 	return cmd
 }
