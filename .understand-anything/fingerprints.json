@@ -1,7 +1,7 @@
 {
   "version": "1.0.0",
-  "gitCommitHash": "4002c10cb7ef8469da43a77b85bdea83f5cf56dc",
-  "generatedAt": "2026-07-09T09:52:55.079Z",
+  "gitCommitHash": "abdde72f03ddb80b54d1c6c4a723799444f895b8",
+  "generatedAt": "2026-07-11T19:27:53.591Z",
   "files": {
     ".agents/skills/pixiv-commit-msg/SKILL.md": {
       "filePath": ".agents/skills/pixiv-commit-msg/SKILL.md",
@@ -43,6 +43,16 @@
       "totalLines": 33,
       "hasStructuralAnalysis": true
     },
+    ".github/workflows/release.yml": {
+      "filePath": ".github/workflows/release.yml",
+      "contentHash": "b116e60a609f7e812fc609c52efd5c8ab9665ec84f00cf4c36223446493d881c",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 195,
+      "hasStructuralAnalysis": true
+    },
     ".pre-commit-config.yaml": {
       "filePath": ".pre-commit-config.yaml",
       "contentHash": "efc7794936303f46641b5a32385b0a2d722a3657f03a52efdbc5a0308f2448ff",
@@ -65,12 +75,12 @@
     },
     "CHANGELOG.md": {
       "filePath": "CHANGELOG.md",
-      "contentHash": "82b9574490731372ef56ad1ff633c3c1f31046ff81957d3b8673c7335869399c",
+      "contentHash": "c8ad65afe71d93e62fb6a050a8d0136364808ff711eecd3b1e200bc8257cde57",
       "functions": [],
       "classes": [],
       "imports": [],
       "exports": [],
-      "totalLines": 27,
+      "totalLines": 54,
       "hasStructuralAnalysis": true
     },
     "CLAUDE.md": {
@@ -85,17 +95,23 @@
     },
     "cmd/pixiv/main.go": {
       "filePath": "cmd/pixiv/main.go",
-      "contentHash": "f9cae163aa2d27d21151c5fc0be7fab4e59a6a103293a8d079dc2fbf424d0b16",
+      "contentHash": "4b3182f138d39b42284d1235b306dde02aa8745f0f5b2ec4cae3ff9198a0864f",
       "functions": [
         {
           "name": "main",
           "params": [],
           "exported": false,
-          "lineCount": 3
+          "lineCount": 7
         }
       ],
       "classes": [],
       "imports": [
+        {
+          "source": "fmt",
+          "specifiers": [
+            "fmt"
+          ]
+        },
         {
           "source": "os",
           "specifiers": [
@@ -107,20 +123,26 @@
           "specifiers": [
             "pixivcmd"
           ]
+        },
+        {
+          "source": "github.com/FlanChanXwO/pixiv-cli/internal/update",
+          "specifiers": [
+            "update"
+          ]
         }
       ],
       "exports": [],
-      "totalLines": 12,
+      "totalLines": 18,
       "hasStructuralAnalysis": true
     },
     "CONTEXT.md": {
       "filePath": "CONTEXT.md",
-      "contentHash": "5e2ecccef85fd56d9cce78febd7df6df712c0b0f79ecfa765d266e6fb6bf8088",
+      "contentHash": "5a1596b8d48fb0dc4d68f3cd0852e0ef6643765181e7e029933f2e1c3f3a2c4f",
       "functions": [],
       "classes": [],
       "imports": [],
       "exports": [],
-      "totalLines": 41,
+      "totalLines": 57,
       "hasStructuralAnalysis": true
     },
     "docs/adr/0001-cli-thin-controller-and-bootstrap.md": {
@@ -173,6 +195,26 @@
       "totalLines": 34,
       "hasStructuralAnalysis": true
     },
+    "docs/adr/0007-platform-staticlibs-for-supported-source-builds.md": {
+      "filePath": "docs/adr/0007-platform-staticlibs-for-supported-source-builds.md",
+      "contentHash": "20095f8f114369d9fdbad9fc71469266ed800761dee76deca875768a6dbe143e",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 43,
+      "hasStructuralAnalysis": true
+    },
+    "docs/adr/0008-ed25519-signed-multi-channel-release-trust.md": {
+      "filePath": "docs/adr/0008-ed25519-signed-multi-channel-release-trust.md",
+      "contentHash": "1a7a3543496be7cb5464df41bc52815464bf3455c9debb23923b6c8338df2245",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 46,
+      "hasStructuralAnalysis": true
+    },
     "docs/agents/documentation-guidelines.md": {
       "filePath": "docs/agents/documentation-guidelines.md",
       "contentHash": "3f9460da3160c5c80a86257d5a3e01213b60a260a8eb817495cd85e254faf2b7",
@@ -205,32 +247,32 @@
     },
     "docs/architecture.md": {
       "filePath": "docs/architecture.md",
-      "contentHash": "eeaac19fff49665ebb4f66fffb655afa2800f380ac3e211fb1e4d81b536360d1",
+      "contentHash": "c931dbc508dda770907baed82591c572994e87e2a5b901c281025b7514b3f8d9",
       "functions": [],
       "classes": [],
       "imports": [],
       "exports": [],
-      "totalLines": 153,
+      "totalLines": 216,
       "hasStructuralAnalysis": true
     },
     "docs/development.md": {
       "filePath": "docs/development.md",
-      "contentHash": "79a000d216776db14355af203a492fb61556c1a5b5ca47a6575e60baa2976fb8",
+      "contentHash": "02d67e1f60b99568cdf615c79de9963ac303b0f07c2579e582c7866d135a930c",
       "functions": [],
       "classes": [],
       "imports": [],
       "exports": [],
-      "totalLines": 144,
+      "totalLines": 232,
       "hasStructuralAnalysis": true
     },
     "docs/index.md": {
       "filePath": "docs/index.md",
-      "contentHash": "e25ab71738744e72638d32117ec38e82fe8fb6ce94fa329777312f71955f65cc",
+      "contentHash": "fe3f463e03a93ea6760fdceac9613437d78439c9b87d04348306873f0849b813",
       "functions": [],
       "classes": [],
       "imports": [],
       "exports": [],
-      "totalLines": 47,
+      "totalLines": 51,
       "hasStructuralAnalysis": true
     },
     "docs/mcp-tools.md": {
@@ -1727,6 +1769,197 @@
         "ExchangeAuthorizationCode"
       ],
       "totalLines": 223,
+      "hasStructuralAnalysis": true
+    },
+    "internal/bootstrap/update_test.go": {
+      "filePath": "internal/bootstrap/update_test.go",
+      "contentHash": "1530faf236c22604bbd1f30e93850891d8c8d03a98984cdc0840805135106f35",
+      "functions": [
+        {
+          "name": "TestNewUpdateCoordinatorBuildsDedicatedUpdater",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 6
+        },
+        {
+          "name": "TestNewUpdateCoordinatorRejectsInvalidProxy",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 5
+        },
+        {
+          "name": "TestNewAutomaticUpdateCheckerBuildsDedicatedChecker",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 6
+        },
+        {
+          "name": "TestNewAutomaticUpdateCheckerRejectsInvalidProxy",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 5
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "io",
+          "specifiers": [
+            "io"
+          ]
+        },
+        {
+          "source": "testing",
+          "specifiers": [
+            "testing"
+          ]
+        },
+        {
+          "source": "github.com/stretchr/testify/require",
+          "specifiers": [
+            "require"
+          ]
+        }
+      ],
+      "exports": [
+        "TestNewUpdateCoordinatorBuildsDedicatedUpdater",
+        "TestNewUpdateCoordinatorRejectsInvalidProxy",
+        "TestNewAutomaticUpdateCheckerBuildsDedicatedChecker",
+        "TestNewAutomaticUpdateCheckerRejectsInvalidProxy"
+      ],
+      "totalLines": 35,
+      "hasStructuralAnalysis": true
+    },
+    "internal/bootstrap/update.go": {
+      "filePath": "internal/bootstrap/update.go",
+      "contentHash": "ca783ebd284a36cf1d94b7cc02edf39b119edc58b18007687be3cb4a37763106",
+      "functions": [
+        {
+          "name": "NewUpdateCoordinator",
+          "params": [
+            "proxy",
+            "out",
+            "errOut"
+          ],
+          "returnType": "(*update.UpdateCoordinator, error)",
+          "exported": true,
+          "lineCount": 18
+        },
+        {
+          "name": "NewAutomaticUpdateChecker",
+          "params": [
+            "proxy"
+          ],
+          "returnType": "(*update.AutomaticUpdateChecker, error)",
+          "exported": true,
+          "lineCount": 14
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "fmt",
+          "specifiers": [
+            "fmt"
+          ]
+        },
+        {
+          "source": "io",
+          "specifiers": [
+            "io"
+          ]
+        },
+        {
+          "source": "github.com/FlanChanXwO/pixiv-cli/internal/update",
+          "specifiers": [
+            "update"
+          ]
+        }
+      ],
+      "exports": [
+        "NewUpdateCoordinator",
+        "NewAutomaticUpdateChecker"
+      ],
+      "totalLines": 47,
+      "hasStructuralAnalysis": true
+    },
+    "internal/buildinfo/buildinfo_test.go": {
+      "filePath": "internal/buildinfo/buildinfo_test.go",
+      "contentHash": "380d16d98fd71bff6a9236113c249d78f14c92bb7cbb8026aba9c016a11b573c",
+      "functions": [
+        {
+          "name": "TestInfoIsDevelopment",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 37
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "testing",
+          "specifiers": [
+            "testing"
+          ]
+        }
+      ],
+      "exports": [
+        "TestInfoIsDevelopment"
+      ],
+      "totalLines": 42,
+      "hasStructuralAnalysis": true
+    },
+    "internal/buildinfo/buildinfo.go": {
+      "filePath": "internal/buildinfo/buildinfo.go",
+      "contentHash": "da9bb2940dfa35df873e22b35b4e24bfbce8cfbaa3a67a5605192e551435044b",
+      "functions": [
+        {
+          "name": "Current",
+          "params": [],
+          "returnType": "Info",
+          "exported": true,
+          "lineCount": 7
+        },
+        {
+          "name": "IsDevelopment",
+          "params": [],
+          "returnType": "bool",
+          "exported": true,
+          "lineCount": 3
+        }
+      ],
+      "classes": [
+        {
+          "name": "Info",
+          "methods": [
+            "IsDevelopment"
+          ],
+          "properties": [
+            "Version",
+            "Commit",
+            "BuildDate"
+          ],
+          "exported": true,
+          "lineCount": 5
+        }
+      ],
+      "imports": [],
+      "exports": [
+        "Info",
+        "Current",
+        "IsDevelopment"
+      ],
+      "totalLines": 31,
       "hasStructuralAnalysis": true
     },
     "internal/cli/account_cmd.go": {
@@ -3852,6 +4085,311 @@
       "totalLines": 297,
       "hasStructuralAnalysis": true
     },
+    "internal/cli/auto_update_test.go": {
+      "filePath": "internal/cli/auto_update_test.go",
+      "contentHash": "7188fd8f9f8b31d23e1836acc8ae272e70f29e93d1244cf34bef9ba316084ed1",
+      "functions": [
+        {
+          "name": "TestRunAutomaticUpdateNoticeKeepsJSONStdoutPure",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 23
+        },
+        {
+          "name": "TestRunAutomaticUpdateRunsAfterConfigLeafCommand",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 17
+        },
+        {
+          "name": "TestRunAutomaticUpdateCanBeDisabledWithoutConstructingChecker",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 17
+        },
+        {
+          "name": "TestRunAutomaticUpdateFailureOnlyWritesStderrWarning",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 17
+        },
+        {
+          "name": "TestRunAutomaticCheckFailureOnlyWritesStderrWarning",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 17
+        },
+        {
+          "name": "TestRunSkipsAutomaticUpdateForExcludedCommands",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 53
+        },
+        {
+          "name": "TestRunDevelopmentBuildSkipsAutomaticUpdate",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 13
+        },
+        {
+          "name": "TestRunAutomaticUpdateUsesCurrentCommandProxyOverride",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 22
+        },
+        {
+          "name": "TestRunAutomaticUpdateUsesCurrentCommandNoProxyOverride",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 22
+        },
+        {
+          "name": "stubAutomaticUpdateCheck",
+          "params": [
+            "t",
+            "runtimeConfig",
+            "constructor"
+          ],
+          "returnType": "func()",
+          "exported": false,
+          "lineCount": 11
+        },
+        {
+          "name": "automaticUpdateMustNotRun",
+          "params": [
+            "t"
+          ],
+          "returnType": "func()",
+          "exported": false,
+          "lineCount": 17
+        },
+        {
+          "name": "newTestAutomaticUpdateChecker",
+          "params": [
+            "checker",
+            "source"
+          ],
+          "returnType": "(*update.AutomaticUpdateChecker, error)",
+          "exported": false,
+          "lineCount": 8
+        },
+        {
+          "name": "Check",
+          "params": [
+            "_",
+            "options"
+          ],
+          "returnType": "(update.ReleaseCheckResult, error)",
+          "exported": true,
+          "lineCount": 4
+        }
+      ],
+      "classes": [
+        {
+          "name": "cliAutomaticReleaseChecker",
+          "methods": [
+            "Check"
+          ],
+          "properties": [
+            "result",
+            "options",
+            "err"
+          ],
+          "exported": false,
+          "lineCount": 5
+        }
+      ],
+      "imports": [
+        {
+          "source": "bytes",
+          "specifiers": [
+            "bytes"
+          ]
+        },
+        {
+          "source": "context",
+          "specifiers": [
+            "context"
+          ]
+        },
+        {
+          "source": "encoding/json",
+          "specifiers": [
+            "json"
+          ]
+        },
+        {
+          "source": "errors",
+          "specifiers": [
+            "errors"
+          ]
+        },
+        {
+          "source": "io",
+          "specifiers": [
+            "io"
+          ]
+        },
+        {
+          "source": "strings",
+          "specifiers": [
+            "strings"
+          ]
+        },
+        {
+          "source": "testing",
+          "specifiers": [
+            "testing"
+          ]
+        },
+        {
+          "source": "github.com/FlanChanXwO/pixiv-cli/internal/buildinfo",
+          "specifiers": [
+            "buildinfo"
+          ]
+        },
+        {
+          "source": "github.com/FlanChanXwO/pixiv-cli/internal/config",
+          "specifiers": [
+            "config"
+          ]
+        },
+        {
+          "source": "github.com/FlanChanXwO/pixiv-cli/internal/update",
+          "specifiers": [
+            "update"
+          ]
+        },
+        {
+          "source": "github.com/stretchr/testify/assert",
+          "specifiers": [
+            "assert"
+          ]
+        },
+        {
+          "source": "github.com/stretchr/testify/require",
+          "specifiers": [
+            "require"
+          ]
+        }
+      ],
+      "exports": [
+        "TestRunAutomaticUpdateNoticeKeepsJSONStdoutPure",
+        "TestRunAutomaticUpdateRunsAfterConfigLeafCommand",
+        "TestRunAutomaticUpdateCanBeDisabledWithoutConstructingChecker",
+        "TestRunAutomaticUpdateFailureOnlyWritesStderrWarning",
+        "TestRunAutomaticCheckFailureOnlyWritesStderrWarning",
+        "TestRunSkipsAutomaticUpdateForExcludedCommands",
+        "TestRunDevelopmentBuildSkipsAutomaticUpdate",
+        "TestRunAutomaticUpdateUsesCurrentCommandProxyOverride",
+        "TestRunAutomaticUpdateUsesCurrentCommandNoProxyOverride",
+        "Check"
+      ],
+      "totalLines": 278,
+      "hasStructuralAnalysis": true
+    },
+    "internal/cli/auto_update.go": {
+      "filePath": "internal/cli/auto_update.go",
+      "contentHash": "4c89e315cb85965680134d457aa60fad0577efaf0695cb95187075db55d6fc15",
+      "functions": [
+        {
+          "name": "checkAutomaticUpdate",
+          "params": [
+            "cmd"
+          ],
+          "exported": false,
+          "lineCount": 33
+        },
+        {
+          "name": "automaticUpdateWarning",
+          "params": [
+            "action",
+            "err"
+          ],
+          "exported": false,
+          "lineCount": 3
+        },
+        {
+          "name": "shouldCheckAutomaticUpdate",
+          "params": [
+            "cmd"
+          ],
+          "returnType": "bool",
+          "exported": false,
+          "lineCount": 19
+        },
+        {
+          "name": "automaticUpdateProxy",
+          "params": [
+            "cmd",
+            "runtimeConfig"
+          ],
+          "returnType": "(string, error)",
+          "exported": false,
+          "lineCount": 21
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "fmt",
+          "specifiers": [
+            "fmt"
+          ]
+        },
+        {
+          "source": "github.com/FlanChanXwO/pixiv-cli/internal/bootstrap",
+          "specifiers": [
+            "bootstrap"
+          ]
+        },
+        {
+          "source": "github.com/FlanChanXwO/pixiv-cli/internal/buildinfo",
+          "specifiers": [
+            "buildinfo"
+          ]
+        },
+        {
+          "source": "github.com/FlanChanXwO/pixiv-cli/internal/config",
+          "specifiers": [
+            "config"
+          ]
+        },
+        {
+          "source": "github.com/FlanChanXwO/pixiv-cli/internal/update",
+          "specifiers": [
+            "update"
+          ]
+        },
+        {
+          "source": "github.com/spf13/cobra",
+          "specifiers": [
+            "cobra"
+          ]
+        }
+      ],
+      "exports": [],
+      "totalLines": 101,
+      "hasStructuralAnalysis": true
+    },
     "internal/cli/cli_test.go": {
       "filePath": "internal/cli/cli_test.go",
       "contentHash": "fc7292ab1f585537710e355ce3b0d98a809de4adb33cd9d32bfbd7e1721f427a",
@@ -3987,7 +4525,7 @@
     },
     "internal/cli/cli.go": {
       "filePath": "internal/cli/cli.go",
-      "contentHash": "17d49ef0f4b9b2b7600a77ad4c3822b7df3559b8779cc70f2e80b4d432197f04",
+      "contentHash": "1e9d70f62224d0fe8447cf73548eedbea6a1c6742d67ca6b72cd620eed108433",
       "functions": [
         {
           "name": "Run",
@@ -4033,7 +4571,7 @@
           "params": [],
           "returnType": "*cobra.Command",
           "exported": false,
-          "lineCount": 23
+          "lineCount": 30
         },
         {
           "name": "newMCPCommand",
@@ -4234,6 +4772,12 @@
           ]
         },
         {
+          "source": "github.com/FlanChanXwO/pixiv-cli/internal/buildinfo",
+          "specifiers": [
+            "buildinfo"
+          ]
+        },
+        {
           "source": "github.com/FlanChanXwO/pixiv-cli/internal/config",
           "specifiers": [
             "config"
@@ -4249,7 +4793,7 @@
       "exports": [
         "Run"
       ],
-      "totalLines": 236,
+      "totalLines": 244,
       "hasStructuralAnalysis": true
     },
     "internal/cli/config_cmd.go": {
@@ -4347,7 +4891,7 @@
     },
     "internal/cli/config_test.go": {
       "filePath": "internal/cli/config_test.go",
-      "contentHash": "887f47eb2a832dfb90de170122ea3347a808b6803413534ebaa6ce5a00bca3ea",
+      "contentHash": "0432d86cdb8918ae532a60c9f2a854e414e8c4f9d80f4bb9125165249ba5455c",
       "functions": [
         {
           "name": "TestConfigPathGetSetUnset",
@@ -4380,6 +4924,22 @@
           ],
           "exported": true,
           "lineCount": 10
+        },
+        {
+          "name": "TestConfigUpdateCheckDefaultEnabled",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 15
+        },
+        {
+          "name": "TestConfigUpdateCheckCanBeExplicitlyDisabled",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 27
         },
         {
           "name": "TestConfigGetUsesEnvironmentOverrideAndSetWarns",
@@ -4456,10 +5016,12 @@
         "TestConfigMissingValueReturnsPlaceholder",
         "TestConfigStrongTypesAndSparseWrite",
         "TestConfigWebFallbackDefaultEnabled",
+        "TestConfigUpdateCheckDefaultEnabled",
+        "TestConfigUpdateCheckCanBeExplicitlyDisabled",
         "TestConfigGetUsesEnvironmentOverrideAndSetWarns",
         "TestConfigLowercaseProxyBeatsUppercase"
       ],
-      "totalLines": 152,
+      "totalLines": 196,
       "hasStructuralAnalysis": true
     },
     "internal/cli/prompt.go": {
@@ -4595,6 +5157,280 @@
       "totalLines": 109,
       "hasStructuralAnalysis": true
     },
+    "internal/cli/update_test.go": {
+      "filePath": "internal/cli/update_test.go",
+      "contentHash": "5bad85856f441a82863607c92506263371d663bc095c023176476b5b2454b7f7",
+      "functions": [
+        {
+          "name": "TestRunUpdateCheckJSONUsesExplicitProxyAndKeepsStdoutPure",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 29
+        },
+        {
+          "name": "TestRunUpdateRejectsJSONWithoutCheckBeforeLoadingDependencies",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 24
+        },
+        {
+          "name": "TestRunUpdateUsesConfiguredProxyAndDoesNotInheritOutputJSON",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 16
+        },
+        {
+          "name": "stubUpdateCommand",
+          "params": [
+            "t",
+            "runtimeConfig",
+            "coordinator"
+          ],
+          "returnType": "func()",
+          "exported": false,
+          "lineCount": 11
+        },
+        {
+          "name": "newCLIUpdateCoordinator",
+          "params": [
+            "checker"
+          ],
+          "returnType": "(*update.UpdateCoordinator, error)",
+          "exported": false,
+          "lineCount": 8
+        },
+        {
+          "name": "useReleaseBuildInfo",
+          "params": [
+            "t",
+            "version"
+          ],
+          "exported": false,
+          "lineCount": 6
+        },
+        {
+          "name": "Check",
+          "params": [
+            "_",
+            "options"
+          ],
+          "returnType": "(update.ReleaseCheckResult, error)",
+          "exported": true,
+          "lineCount": 4
+        }
+      ],
+      "classes": [
+        {
+          "name": "cliReleaseChecker",
+          "methods": [
+            "Check"
+          ],
+          "properties": [
+            "result",
+            "options"
+          ],
+          "exported": false,
+          "lineCount": 4
+        }
+      ],
+      "imports": [
+        {
+          "source": "bytes",
+          "specifiers": [
+            "bytes"
+          ]
+        },
+        {
+          "source": "context",
+          "specifiers": [
+            "context"
+          ]
+        },
+        {
+          "source": "encoding/json",
+          "specifiers": [
+            "json"
+          ]
+        },
+        {
+          "source": "io",
+          "specifiers": [
+            "io"
+          ]
+        },
+        {
+          "source": "strings",
+          "specifiers": [
+            "strings"
+          ]
+        },
+        {
+          "source": "testing",
+          "specifiers": [
+            "testing"
+          ]
+        },
+        {
+          "source": "github.com/FlanChanXwO/pixiv-cli/internal/buildinfo",
+          "specifiers": [
+            "buildinfo"
+          ]
+        },
+        {
+          "source": "github.com/FlanChanXwO/pixiv-cli/internal/config",
+          "specifiers": [
+            "config"
+          ]
+        },
+        {
+          "source": "github.com/FlanChanXwO/pixiv-cli/internal/update",
+          "specifiers": [
+            "update"
+          ]
+        },
+        {
+          "source": "github.com/stretchr/testify/assert",
+          "specifiers": [
+            "assert"
+          ]
+        },
+        {
+          "source": "github.com/stretchr/testify/require",
+          "specifiers": [
+            "require"
+          ]
+        }
+      ],
+      "exports": [
+        "TestRunUpdateCheckJSONUsesExplicitProxyAndKeepsStdoutPure",
+        "TestRunUpdateRejectsJSONWithoutCheckBeforeLoadingDependencies",
+        "TestRunUpdateUsesConfiguredProxyAndDoesNotInheritOutputJSON",
+        "Check"
+      ],
+      "totalLines": 127,
+      "hasStructuralAnalysis": true
+    },
+    "internal/cli/update.go": {
+      "filePath": "internal/cli/update.go",
+      "contentHash": "2dd6f5f709cc9b9657a95b2feda3bf4caa3a4126658d7253d9adea2cc9dc3688",
+      "functions": [
+        {
+          "name": "newUpdateCommand",
+          "params": [],
+          "returnType": "*cobra.Command",
+          "exported": false,
+          "lineCount": 45
+        },
+        {
+          "name": "printUpdateResult",
+          "params": [
+            "out",
+            "result"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 8
+        }
+      ],
+      "classes": [
+        {
+          "name": "updateOptions",
+          "methods": [],
+          "properties": [
+            "check",
+            "includePrerelease",
+            "jsonOut",
+            "proxy"
+          ],
+          "exported": false,
+          "lineCount": 6
+        }
+      ],
+      "imports": [
+        {
+          "source": "fmt",
+          "specifiers": [
+            "fmt"
+          ]
+        },
+        {
+          "source": "io",
+          "specifiers": [
+            "io"
+          ]
+        },
+        {
+          "source": "github.com/FlanChanXwO/pixiv-cli/internal/bootstrap",
+          "specifiers": [
+            "bootstrap"
+          ]
+        },
+        {
+          "source": "github.com/FlanChanXwO/pixiv-cli/internal/buildinfo",
+          "specifiers": [
+            "buildinfo"
+          ]
+        },
+        {
+          "source": "github.com/FlanChanXwO/pixiv-cli/internal/update",
+          "specifiers": [
+            "update"
+          ]
+        },
+        {
+          "source": "github.com/spf13/cobra",
+          "specifiers": [
+            "cobra"
+          ]
+        }
+      ],
+      "exports": [],
+      "totalLines": 79,
+      "hasStructuralAnalysis": true
+    },
+    "internal/cli/version.go": {
+      "filePath": "internal/cli/version.go",
+      "contentHash": "f3ea99cd34fb7b25568b39a10392ca3726eb8db46b4cf00bd94bbf5d0d128c1e",
+      "functions": [
+        {
+          "name": "newVersionCommand",
+          "params": [],
+          "returnType": "*cobra.Command",
+          "exported": false,
+          "lineCount": 18
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "fmt",
+          "specifiers": [
+            "fmt"
+          ]
+        },
+        {
+          "source": "github.com/FlanChanXwO/pixiv-cli/internal/buildinfo",
+          "specifiers": [
+            "buildinfo"
+          ]
+        },
+        {
+          "source": "github.com/spf13/cobra",
+          "specifiers": [
+            "cobra"
+          ]
+        }
+      ],
+      "exports": [],
+      "totalLines": 29,
+      "hasStructuralAnalysis": true
+    },
     "internal/common/constants/constants.go": {
       "filePath": "internal/common/constants/constants.go",
       "contentHash": "1d0ba955cbe95706a6e5764991c50adaa8fef943c0ead9180f02e19cdb440eca",
@@ -4675,7 +5511,7 @@
     },
     "internal/config/settings.go": {
       "filePath": "internal/config/settings.go",
-      "contentHash": "0080b8ce9b7db0d1130c8d98a571d9cf826c32d229d94d2f772431a790143b2d",
+      "contentHash": "ec6dec9106634d260a1bb01fd55d419c66baedc72bb771e6b56d60167dce2393",
       "functions": [
         {
           "name": "SettingSpecByAlias",
@@ -4749,7 +5585,7 @@
           "params": [],
           "returnType": "(RuntimeConfig, error)",
           "exported": true,
-          "lineCount": 48
+          "lineCount": 53
         },
         {
           "name": "coerceSettingValue",
@@ -4899,13 +5735,14 @@
             "FilenameTemplate",
             "HTTPSProxy",
             "WebFallbackEnabled",
+            "UpdateCheckEnabled",
             "OutputJSON",
             "LoginOpenBrowser",
             "LoginTimeout",
             "LoginUseAfterLogin"
           ],
           "exported": true,
-          "lineCount": 11
+          "lineCount": 12
         }
       ],
       "imports": [
@@ -5016,12 +5853,12 @@
         "SetConfigValue",
         "UnsetConfigValue"
       ],
-      "totalLines": 392,
+      "totalLines": 399,
       "hasStructuralAnalysis": true
     },
     "internal/download/manager_test.go": {
       "filePath": "internal/download/manager_test.go",
-      "contentHash": "6bf2b5a661e78968b06e313d8f40b14d5611b9409c237d505203f51e95576bc5",
+      "contentHash": "1c880f6cac19a5f0fa8378a532bde9f35e1a6dc0482448eaf4d7da4d327e3f95",
       "functions": [
         {
           "name": "TestSanitizeAndGenerateFilename",
@@ -5096,20 +5933,12 @@
           "lineCount": 39
         },
         {
-          "name": "TestConvertUgoiraBuildsFFmpegCommand",
+          "name": "TestConvertUgoiraUsesInjectedEncoder",
           "params": [
             "t"
           ],
           "exported": true,
-          "lineCount": 16
-        },
-        {
-          "name": "TestConvertUgoiraUsesUniqueTemporaryDirectory",
-          "params": [
-            "t"
-          ],
-          "exported": true,
-          "lineCount": 23
+          "lineCount": 18
         },
         {
           "name": "TestConvertUgoiraFailureDoesNotReplaceExistingGIF",
@@ -5141,7 +5970,7 @@
             "t"
           ],
           "exported": true,
-          "lineCount": 41
+          "lineCount": 40
         },
         {
           "name": "TestDownloadMissingImageURLReturnsError",
@@ -5152,19 +5981,18 @@
           "lineCount": 12
         },
         {
-          "name": "TestDownloadUgoiraWithoutFFmpegReturnsError",
+          "name": "TestDownloadUgoiraWithoutFFmpegUsesRustEncoder",
           "params": [
             "t"
           ],
           "exported": true,
-          "lineCount": 13
+          "lineCount": 25
         },
         {
-          "name": "Run",
+          "name": "Encode",
           "params": [
-            "_",
-            "dir",
-            "name"
+            "ctx",
+            "input"
           ],
           "returnType": "error",
           "exported": true,
@@ -5236,19 +6064,17 @@
       ],
       "classes": [
         {
-          "name": "recordingRunner",
+          "name": "recordingUgoiraEncoder",
           "methods": [
-            "Run"
+            "Encode"
           ],
           "properties": [
-            "dir",
-            "name",
-            "args",
-            "writeOutput",
+            "input",
+            "output",
             "err"
           ],
           "exported": false,
-          "lineCount": 7
+          "lineCount": 5
         },
         {
           "name": "fakePixivClient",
@@ -5351,37 +6177,25 @@
         "TestDownloadFailureDoesNotReplaceExistingFile",
         "TestDownloadSuccessReplacesExistingFile",
         "TestDownloadMultiPageArtworkReturnsAllPaths",
-        "TestConvertUgoiraBuildsFFmpegCommand",
-        "TestConvertUgoiraUsesUniqueTemporaryDirectory",
+        "TestConvertUgoiraUsesInjectedEncoder",
         "TestConvertUgoiraFailureDoesNotReplaceExistingGIF",
         "TestConvertUgoiraSuccessReplacesExistingGIF",
         "TestDownloadUgoiraZipFailureCleansTemporaryZip",
         "TestDownloadUgoiraReturnsFinalGIFOnly",
         "TestDownloadMissingImageURLReturnsError",
-        "TestDownloadUgoiraWithoutFFmpegReturnsError",
-        "Run",
+        "TestDownloadUgoiraWithoutFFmpegUsesRustEncoder",
+        "Encode",
         "IllustDetail",
         "UgoiraMetadata",
         "Download"
       ],
-      "totalLines": 502,
+      "totalLines": 489,
       "hasStructuralAnalysis": true
     },
     "internal/download/manager.go": {
       "filePath": "internal/download/manager.go",
-      "contentHash": "bbcfa8a986cee7576d3e9b471eafeef37c00d69f640d97e2270c716fee5da817",
+      "contentHash": "e300c52cc574f2a0d82f36e849bf56925aa903a425d91e785f443f2192aeecad",
       "functions": [
-        {
-          "name": "Run",
-          "params": [
-            "ctx",
-            "dir",
-            "name"
-          ],
-          "returnType": "error",
-          "exported": true,
-          "lineCount": 9
-        },
         {
           "name": "NewManager",
           "params": [
@@ -5392,23 +6206,15 @@
           ],
           "returnType": "*Manager",
           "exported": true,
-          "lineCount": 15
+          "lineCount": 14
         },
         {
-          "name": "SetRunner",
+          "name": "SetUgoiraEncoder",
           "params": [
-            "runner"
+            "encoder"
           ],
           "exported": true,
           "lineCount": 5
-        },
-        {
-          "name": "SetFFmpegAvailable",
-          "params": [
-            "available"
-          ],
-          "exported": true,
-          "lineCount": 3
         },
         {
           "name": "SetDownloadPath",
@@ -5474,7 +6280,7 @@
           ],
           "returnType": "(string, error)",
           "exported": false,
-          "lineCount": 30
+          "lineCount": 27
         },
         {
           "name": "downloadURL",
@@ -5498,26 +6304,7 @@
           ],
           "returnType": "error",
           "exported": true,
-          "lineCount": 62
-        },
-        {
-          "name": "extractZipFile",
-          "params": [
-            "file",
-            "dstDir"
-          ],
-          "returnType": "error",
-          "exported": false,
-          "lineCount": 15
-        },
-        {
-          "name": "commandExists",
-          "params": [
-            "name"
-          ],
-          "returnType": "bool",
-          "exported": false,
-          "lineCount": 4
+          "lineCount": 12
         },
         {
           "name": "filenameData",
@@ -5540,15 +6327,6 @@
           "properties": [],
           "exported": true,
           "lineCount": 5
-        },
-        {
-          "name": "Runner",
-          "methods": [
-            "Run"
-          ],
-          "properties": [],
-          "exported": true,
-          "lineCount": 3
         },
         {
           "name": "DownloadedArtwork",
@@ -5574,19 +6352,9 @@
           "lineCount": 4
         },
         {
-          "name": "ExecRunner",
-          "methods": [
-            "Run"
-          ],
-          "properties": [],
-          "exported": true,
-          "lineCount": 1
-        },
-        {
           "name": "Manager",
           "methods": [
-            "SetRunner",
-            "SetFFmpegAvailable",
+            "SetUgoiraEncoder",
             "SetDownloadPath",
             "DownloadPath",
             "Enqueue",
@@ -5600,24 +6368,17 @@
           "properties": [
             "client",
             "logger",
-            "runner",
+            "ugoiraEncoder",
             "downloadPath",
             "filenameTemplate",
-            "ffmpegAvailable",
             "sem",
             "mu"
           ],
           "exported": true,
-          "lineCount": 10
+          "lineCount": 9
         }
       ],
       "imports": [
-        {
-          "source": "archive/zip",
-          "specifiers": [
-            "zip"
-          ]
-        },
         {
           "source": "context",
           "specifiers": [
@@ -5649,21 +6410,9 @@
           ]
         },
         {
-          "source": "os/exec",
-          "specifiers": [
-            "exec"
-          ]
-        },
-        {
           "source": "path/filepath",
           "specifiers": [
             "filepath"
-          ]
-        },
-        {
-          "source": "strings",
-          "specifiers": [
-            "strings"
           ]
         },
         {
@@ -5705,22 +6454,2069 @@
       ],
       "exports": [
         "PixivClient",
-        "Runner",
         "DownloadedArtwork",
         "DownloadedFile",
-        "ExecRunner",
-        "Run",
         "Manager",
         "NewManager",
-        "SetRunner",
-        "SetFFmpegAvailable",
+        "SetUgoiraEncoder",
         "SetDownloadPath",
         "DownloadPath",
         "Enqueue",
         "Download",
         "ConvertUgoira"
       ],
-      "totalLines": 353,
+      "totalLines": 255,
+      "hasStructuralAnalysis": true
+    },
+    "internal/download/testdata/ugoira-source-digest.txt": {
+      "filePath": "internal/download/testdata/ugoira-source-digest.txt",
+      "contentHash": "f1003b760d349edfbdd96b12522d8a12b90083c053e18587b9fa318f6a1cceb6",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 2,
+      "hasStructuralAnalysis": false
+    },
+    "internal/download/ugoira_encoder.go": {
+      "filePath": "internal/download/ugoira_encoder.go",
+      "contentHash": "ea1281de1da37f401b3b3e803d5e55264838db3cb1c2dfdd2d35cea823cf1e96",
+      "functions": [
+        {
+          "name": "normalize",
+          "params": [],
+          "returnType": "(AnimationFormat, error)",
+          "exported": false,
+          "lineCount": 11
+        },
+        {
+          "name": "writeTempAnimation",
+          "params": [
+            "ctx",
+            "outputPath",
+            "encode"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 33
+        }
+      ],
+      "classes": [
+        {
+          "name": "UgoiraEncoder",
+          "methods": [
+            "Encode"
+          ],
+          "properties": [],
+          "exported": true,
+          "lineCount": 3
+        },
+        {
+          "name": "UgoiraEncodeInput",
+          "methods": [],
+          "properties": [
+            "ZipPath",
+            "Frames",
+            "WorkDir",
+            "OutputPath",
+            "Format",
+            "MaxEdge"
+          ],
+          "exported": true,
+          "lineCount": 8
+        }
+      ],
+      "imports": [
+        {
+          "source": "context",
+          "specifiers": [
+            "context"
+          ]
+        },
+        {
+          "source": "fmt",
+          "specifiers": [
+            "fmt"
+          ]
+        },
+        {
+          "source": "os",
+          "specifiers": [
+            "os"
+          ]
+        },
+        {
+          "source": "path/filepath",
+          "specifiers": [
+            "filepath"
+          ]
+        },
+        {
+          "source": "github.com/FlanChanXwO/pixiv-cli/internal/pixiv",
+          "specifiers": [
+            "pixiv"
+          ]
+        },
+        {
+          "source": "github.com/FlanChanXwO/pixiv-cli/internal/utils/files",
+          "specifiers": [
+            "files"
+          ]
+        }
+      ],
+      "exports": [
+        "UgoiraEncoder",
+        "UgoiraEncodeInput"
+      ],
+      "totalLines": 81,
+      "hasStructuralAnalysis": true
+    },
+    "internal/download/ugoira_integrity_test.go": {
+      "filePath": "internal/download/ugoira_integrity_test.go",
+      "contentHash": "317028a24f618b12777d4dbd28d3c17fb66f14187422de77d72ebbbd02642f81",
+      "functions": [
+        {
+          "name": "TestUgoiraRustSourceDigestMatchesRecordedFixture",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 16
+        },
+        {
+          "name": "TestUgoiraRustSourceDigestTracksSourceButNotBuildArtifacts",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 43
+        },
+        {
+          "name": "TestValidateUgoiraStaticlibManifestAcceptsCompleteSyntheticMapping",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 6
+        },
+        {
+          "name": "TestValidateUgoiraStaticlibManifestFilesBindsPathsAndArtifactBytes",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 50
+        },
+        {
+          "name": "TestCommittedUgoiraStaticlibManifestWhenPresent",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 20
+        },
+        {
+          "name": "TestValidateUgoiraStaticlibManifestRejectsInvalidMapping",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 16
+        },
+        {
+          "name": "syntheticUgoiraStaticlibManifest",
+          "params": [
+            "sourceDigest"
+          ],
+          "returnType": "string",
+          "exported": false,
+          "lineCount": 3
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "crypto/sha256",
+          "specifiers": [
+            "sha256"
+          ]
+        },
+        {
+          "source": "encoding/json",
+          "specifiers": [
+            "json"
+          ]
+        },
+        {
+          "source": "fmt",
+          "specifiers": [
+            "fmt"
+          ]
+        },
+        {
+          "source": "os",
+          "specifiers": [
+            "os"
+          ]
+        },
+        {
+          "source": "path/filepath",
+          "specifiers": [
+            "filepath"
+          ]
+        },
+        {
+          "source": "strings",
+          "specifiers": [
+            "strings"
+          ]
+        },
+        {
+          "source": "testing",
+          "specifiers": [
+            "testing"
+          ]
+        }
+      ],
+      "exports": [
+        "TestUgoiraRustSourceDigestMatchesRecordedFixture",
+        "TestUgoiraRustSourceDigestTracksSourceButNotBuildArtifacts",
+        "TestValidateUgoiraStaticlibManifestAcceptsCompleteSyntheticMapping",
+        "TestValidateUgoiraStaticlibManifestFilesBindsPathsAndArtifactBytes",
+        "TestCommittedUgoiraStaticlibManifestWhenPresent",
+        "TestValidateUgoiraStaticlibManifestRejectsInvalidMapping"
+      ],
+      "totalLines": 173,
+      "hasStructuralAnalysis": true
+    },
+    "internal/download/ugoira_integrity.go": {
+      "filePath": "internal/download/ugoira_integrity.go",
+      "contentHash": "77765eba04ca5312b9e6db68a55ef4061a75a8987449b4814aa2146aa3d88604",
+      "functions": [
+        {
+          "name": "CalculateUgoiraRustSourceDigest",
+          "params": [
+            "crateDir",
+            "quantetteDir"
+          ],
+          "returnType": "(string, error)",
+          "exported": true,
+          "lineCount": 10
+        },
+        {
+          "name": "hashUgoiraSourceTree",
+          "params": [
+            "hasher",
+            "logicalRoot",
+            "directory",
+            "includeLock"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 43
+        },
+        {
+          "name": "isUgoiraDigestSource",
+          "params": [
+            "rel",
+            "includeLock"
+          ],
+          "returnType": "bool",
+          "exported": false,
+          "lineCount": 6
+        },
+        {
+          "name": "ValidateUgoiraStaticlibManifest",
+          "params": [
+            "body",
+            "sourceDigest"
+          ],
+          "returnType": "error",
+          "exported": true,
+          "lineCount": 15
+        },
+        {
+          "name": "ValidateUgoiraStaticlibManifestFiles",
+          "params": [
+            "staticlibDir",
+            "body",
+            "sourceDigest"
+          ],
+          "returnType": "error",
+          "exported": true,
+          "lineCount": 30
+        },
+        {
+          "name": "validateUgoiraStaticlibManifest",
+          "params": [
+            "manifest",
+            "sourceDigest"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 35
+        },
+        {
+          "name": "expectedStaticlibManifestPath",
+          "params": [
+            "platform",
+            "target"
+          ],
+          "returnType": "string",
+          "exported": false,
+          "lineCount": 7
+        },
+        {
+          "name": "ensureNoTrailingJSON",
+          "params": [
+            "decoder"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 10
+        },
+        {
+          "name": "isSHA256",
+          "params": [
+            "value"
+          ],
+          "returnType": "bool",
+          "exported": false,
+          "lineCount": 7
+        }
+      ],
+      "classes": [
+        {
+          "name": "UgoiraStaticlibManifest",
+          "methods": [],
+          "properties": [
+            "Schema",
+            "SourceDigest",
+            "Artifacts"
+          ],
+          "exported": true,
+          "lineCount": 5
+        },
+        {
+          "name": "UgoiraStaticlibManifestAsset",
+          "methods": [],
+          "properties": [
+            "Target",
+            "Path",
+            "SHA256"
+          ],
+          "exported": true,
+          "lineCount": 5
+        }
+      ],
+      "imports": [
+        {
+          "source": "bytes",
+          "specifiers": [
+            "bytes"
+          ]
+        },
+        {
+          "source": "crypto/sha256",
+          "specifiers": [
+            "sha256"
+          ]
+        },
+        {
+          "source": "encoding/hex",
+          "specifiers": [
+            "hex"
+          ]
+        },
+        {
+          "source": "encoding/json",
+          "specifiers": [
+            "json"
+          ]
+        },
+        {
+          "source": "fmt",
+          "specifiers": [
+            "fmt"
+          ]
+        },
+        {
+          "source": "io",
+          "specifiers": [
+            "io"
+          ]
+        },
+        {
+          "source": "io/fs",
+          "specifiers": [
+            "fs"
+          ]
+        },
+        {
+          "source": "os",
+          "specifiers": [
+            "os"
+          ]
+        },
+        {
+          "source": "path/filepath",
+          "specifiers": [
+            "filepath"
+          ]
+        },
+        {
+          "source": "sort",
+          "specifiers": [
+            "sort"
+          ]
+        },
+        {
+          "source": "strings",
+          "specifiers": [
+            "strings"
+          ]
+        }
+      ],
+      "exports": [
+        "UgoiraStaticlibManifest",
+        "UgoiraStaticlibManifestAsset",
+        "CalculateUgoiraRustSourceDigest",
+        "ValidateUgoiraStaticlibManifest",
+        "ValidateUgoiraStaticlibManifestFiles"
+      ],
+      "totalLines": 217,
+      "hasStructuralAnalysis": true
+    },
+    "internal/download/ugoira_rs/Cargo.toml": {
+      "filePath": "internal/download/ugoira_rs/Cargo.toml",
+      "contentHash": "17baba70f725e1671fa70593e3310057f5548503cf92a4a8d4d3a7c8c73a3f50",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 24,
+      "hasStructuralAnalysis": true
+    },
+    "internal/download/ugoira_rs/src/lib.rs": {
+      "filePath": "internal/download/ugoira_rs/src/lib.rs",
+      "contentHash": "831f7cd08c7b2fa90afb21e424e1ff16879d99e76f047ac36add38bdacdaf3c5",
+      "functions": [
+        {
+          "name": "cancel",
+          "params": [],
+          "exported": true,
+          "lineCount": 3
+        },
+        {
+          "name": "check",
+          "params": [],
+          "returnType": "Result<(), EncodeError>",
+          "exported": false,
+          "lineCount": 6
+        },
+        {
+          "name": "try_from",
+          "params": [
+            "value"
+          ],
+          "returnType": "Result<Self, Self::Error>",
+          "exported": false,
+          "lineCount": 7
+        },
+        {
+          "name": "new",
+          "params": [],
+          "returnType": "Self",
+          "exported": false,
+          "lineCount": 8
+        },
+        {
+          "name": "add_image",
+          "params": [
+            "image"
+          ],
+          "returnType": "Result<(), EncodeError>",
+          "exported": false,
+          "lineCount": 29
+        },
+        {
+          "name": "weighted_samples",
+          "params": [],
+          "returnType": "Vec<Srgb<u8>>",
+          "exported": false,
+          "lineCount": 3
+        },
+        {
+          "name": "parse_frames_json",
+          "params": [
+            "frames_json"
+          ],
+          "returnType": "Result<Vec<UgoiraFrame>, EncodeError>",
+          "exported": true,
+          "lineCount": 3
+        },
+        {
+          "name": "encode_gif",
+          "params": [
+            "zip_path",
+            "frames",
+            "output_path",
+            "max_edge",
+            "cancellation"
+          ],
+          "returnType": "Result<(), EncodeError>",
+          "exported": true,
+          "lineCount": 24
+        },
+        {
+          "name": "encode_gif_from_json",
+          "params": [
+            "zip_path",
+            "frames_json",
+            "output_path",
+            "max_edge",
+            "cancellation"
+          ],
+          "returnType": "Result<(), EncodeError>",
+          "exported": true,
+          "lineCount": 10
+        },
+        {
+          "name": "encode_apng",
+          "params": [
+            "zip_path",
+            "frames",
+            "output_path",
+            "max_edge",
+            "cancellation"
+          ],
+          "returnType": "Result<(), EncodeError>",
+          "exported": true,
+          "lineCount": 68
+        },
+        {
+          "name": "scaled_dimensions",
+          "params": [
+            "width",
+            "height",
+            "max_edge"
+          ],
+          "returnType": "(u32, u32)",
+          "exported": false,
+          "lineCount": 19
+        },
+        {
+          "name": "collect_global_histogram",
+          "params": [
+            "zip_path",
+            "frames",
+            "max_edge",
+            "cancellation"
+          ],
+          "returnType": "Result<FirstPass, EncodeError>",
+          "exported": false,
+          "lineCount": 44
+        },
+        {
+          "name": "build_global_palette",
+          "params": [
+            "histogram"
+          ],
+          "returnType": "Result<Vec<Srgb<u8>>, EncodeError>",
+          "exported": false,
+          "lineCount": 22
+        },
+        {
+          "name": "write_global_palette_gif",
+          "params": [
+            "zip_path",
+            "frames",
+            "output_path",
+            "first_pass",
+            "opaque_palette",
+            "cancellation"
+          ],
+          "returnType": "Result<(), EncodeError>",
+          "exported": false,
+          "lineCount": 56
+        },
+        {
+          "name": "quantize_frame",
+          "params": [
+            "image",
+            "quantize_method",
+            "has_transparency"
+          ],
+          "returnType": "Result<Vec<u8>, EncodeError>",
+          "exported": false,
+          "lineCount": 49
+        },
+        {
+          "name": "open_archive",
+          "params": [
+            "path"
+          ],
+          "returnType": "Result<ZipArchive<File>, EncodeError>",
+          "exported": false,
+          "lineCount": 3
+        },
+        {
+          "name": "decode_frame",
+          "params": [
+            "archive",
+            "frame"
+          ],
+          "returnType": "Result<RgbaImage, EncodeError>",
+          "exported": false,
+          "lineCount": 12
+        },
+        {
+          "name": "validate_frame_size",
+          "params": [
+            "frame",
+            "dimensions",
+            "expected"
+          ],
+          "returnType": "Result<(), EncodeError>",
+          "exported": false,
+          "lineCount": 18
+        },
+        {
+          "name": "resize_frame",
+          "params": [
+            "image",
+            "output_size"
+          ],
+          "returnType": "RgbaImage",
+          "exported": false,
+          "lineCount": 9
+        },
+        {
+          "name": "decode_and_resize_frame",
+          "params": [
+            "archive",
+            "frame",
+            "original_size",
+            "output_size"
+          ],
+          "returnType": "Result<RgbaImage, EncodeError>",
+          "exported": false,
+          "lineCount": 11
+        },
+        {
+          "name": "changed_region",
+          "params": [
+            "previous",
+            "current"
+          ],
+          "returnType": "FrameRegion",
+          "exported": false,
+          "lineCount": 37
+        },
+        {
+          "name": "frame_region_rows",
+          "params": [
+            "image",
+            "region"
+          ],
+          "returnType": "impl Iterator<Item = &[u8]>",
+          "exported": false,
+          "lineCount": 12
+        },
+        {
+          "name": "write_apng_header",
+          "params": [
+            "output",
+            "canvas_size",
+            "frame_count"
+          ],
+          "returnType": "Result<(), EncodeError>",
+          "exported": false,
+          "lineCount": 20
+        },
+        {
+          "name": "write_apng_frame",
+          "params": [
+            "output",
+            "image",
+            "region",
+            "delay",
+            "first_frame",
+            "sequence",
+            "cancellation"
+          ],
+          "returnType": "Result<(), EncodeError>",
+          "exported": false,
+          "lineCount": 49
+        },
+        {
+          "name": "next_apng_sequence",
+          "params": [
+            "sequence"
+          ],
+          "returnType": "Result<u32, EncodeError>",
+          "exported": false,
+          "lineCount": 7
+        },
+        {
+          "name": "next_apng_sequence_io",
+          "params": [
+            "sequence"
+          ],
+          "returnType": "io::Result<u32>",
+          "exported": false,
+          "lineCount": 3
+        },
+        {
+          "name": "write_png_chunk",
+          "params": [
+            "output",
+            "chunk_type",
+            "data"
+          ],
+          "returnType": "io::Result<()>",
+          "exported": false,
+          "lineCount": 12
+        },
+        {
+          "name": "new",
+          "params": [
+            "output",
+            "sequence",
+            "first_frame",
+            "expected_size"
+          ],
+          "returnType": "Self",
+          "exported": false,
+          "lineCount": 28
+        },
+        {
+          "name": "finish",
+          "params": [],
+          "returnType": "io::Result<()>",
+          "exported": false,
+          "lineCount": 18
+        },
+        {
+          "name": "begin_source_chunk",
+          "params": [],
+          "returnType": "io::Result<()>",
+          "exported": false,
+          "lineCount": 66
+        },
+        {
+          "name": "consume_source_data",
+          "params": [
+            "data"
+          ],
+          "returnType": "io::Result<()>",
+          "exported": false,
+          "lineCount": 18
+        },
+        {
+          "name": "finish_source_chunk_data",
+          "params": [],
+          "returnType": "io::Result<()>",
+          "exported": false,
+          "lineCount": 6
+        },
+        {
+          "name": "validate_ihdr",
+          "params": [],
+          "returnType": "io::Result<()>",
+          "exported": false,
+          "lineCount": 16
+        },
+        {
+          "name": "validate_and_commit_source_crc",
+          "params": [],
+          "returnType": "io::Result<()>",
+          "exported": false,
+          "lineCount": 29
+        },
+        {
+          "name": "begin_target_data_chunk",
+          "params": [],
+          "returnType": "io::Result<()>",
+          "exported": false,
+          "lineCount": 15
+        },
+        {
+          "name": "relay_target_data",
+          "params": [
+            "data"
+          ],
+          "returnType": "io::Result<()>",
+          "exported": false,
+          "lineCount": 7
+        },
+        {
+          "name": "finish_target_data_chunk",
+          "params": [],
+          "returnType": "io::Result<()>",
+          "exported": false,
+          "lineCount": 6
+        },
+        {
+          "name": "copy_into_scratch",
+          "params": [
+            "input",
+            "target_len"
+          ],
+          "exported": false,
+          "lineCount": 6
+        },
+        {
+          "name": "write",
+          "params": [
+            "input"
+          ],
+          "returnType": "io::Result<usize>",
+          "exported": false,
+          "lineCount": 61
+        },
+        {
+          "name": "flush",
+          "params": [],
+          "returnType": "io::Result<()>",
+          "exported": false,
+          "lineCount": 3
+        },
+        {
+          "name": "target_data_chunk_header",
+          "params": [
+            "source_length",
+            "first_frame"
+          ],
+          "returnType": "io::Result<([u8; 4], u32)>",
+          "exported": false,
+          "lineCount": 12
+        },
+        {
+          "name": "validate_png_chunk_type",
+          "params": [
+            "chunk_type"
+          ],
+          "returnType": "io::Result<()>",
+          "exported": false,
+          "lineCount": 9
+        },
+        {
+          "name": "is_png_critical",
+          "params": [
+            "chunk_type"
+          ],
+          "returnType": "bool",
+          "exported": false,
+          "lineCount": 3
+        },
+        {
+          "name": "invalid_png",
+          "params": [
+            "message"
+          ],
+          "returnType": "io::Error",
+          "exported": false,
+          "lineCount": 3
+        },
+        {
+          "name": "gif_palette_bytes",
+          "params": [
+            "palette",
+            "has_transparency"
+          ],
+          "returnType": "Vec<u8>",
+          "exported": false,
+          "lineCount": 10
+        },
+        {
+          "name": "gif_delay_ticks",
+          "params": [
+            "delay_ms",
+            "file"
+          ],
+          "returnType": "Result<u16, EncodeError>",
+          "exported": false,
+          "lineCount": 18
+        },
+        {
+          "name": "apng_delay_fraction",
+          "params": [
+            "delay_ms",
+            "file"
+          ],
+          "returnType": "Result<(u16, u16), EncodeError>",
+          "exported": false,
+          "lineCount": 18
+        },
+        {
+          "name": "greatest_common_divisor",
+          "params": [
+            "left",
+            "right"
+          ],
+          "returnType": "i64",
+          "exported": false,
+          "lineCount": 8
+        },
+        {
+          "name": "owned_c_string",
+          "params": [
+            "ptr",
+            "name"
+          ],
+          "returnType": "Result<String, EncodeError>",
+          "exported": false,
+          "lineCount": 8
+        },
+        {
+          "name": "owned_c_path",
+          "params": [
+            "ptr",
+            "name"
+          ],
+          "returnType": "Result<PathBuf, EncodeError>",
+          "exported": false,
+          "lineCount": 4
+        },
+        {
+          "name": "ffi_result",
+          "params": [
+            "function_name",
+            "operation"
+          ],
+          "returnType": "*mut c_char",
+          "exported": false,
+          "lineCount": 14
+        },
+        {
+          "name": "ugoira_cancel_token_new",
+          "params": [],
+          "returnType": "*mut CancellationToken",
+          "exported": true,
+          "lineCount": 3
+        },
+        {
+          "name": "ugoira_cancel_token_cancel",
+          "params": [
+            "token"
+          ],
+          "returnType": "*mut c_char",
+          "exported": true,
+          "lineCount": 12
+        },
+        {
+          "name": "ugoira_cancel_token_free",
+          "params": [
+            "token"
+          ],
+          "returnType": "*mut c_char",
+          "exported": true,
+          "lineCount": 12
+        },
+        {
+          "name": "ugoira_encode",
+          "params": [
+            "zip_path",
+            "frames_json",
+            "output_path",
+            "cancellation",
+            "format",
+            "max_edge"
+          ],
+          "returnType": "*mut c_char",
+          "exported": true,
+          "lineCount": 22
+        },
+        {
+          "name": "encode_ffi",
+          "params": [
+            "zip_path",
+            "frames_json",
+            "output_path",
+            "cancellation",
+            "format",
+            "max_edge"
+          ],
+          "returnType": "Result<(), EncodeError>",
+          "exported": false,
+          "lineCount": 29
+        },
+        {
+          "name": "c_error_string",
+          "params": [
+            "message"
+          ],
+          "returnType": "*mut c_char",
+          "exported": false,
+          "lineCount": 11
+        },
+        {
+          "name": "panic_payload_to_string",
+          "params": [
+            "payload"
+          ],
+          "returnType": "String",
+          "exported": false,
+          "lineCount": 9
+        },
+        {
+          "name": "ugoira_free_error",
+          "params": [
+            "err"
+          ],
+          "exported": true,
+          "lineCount": 10
+        }
+      ],
+      "classes": [
+        {
+          "name": "CancellationToken",
+          "methods": [
+            "cancel",
+            "check"
+          ],
+          "properties": [
+            "canceled"
+          ],
+          "exported": true,
+          "lineCount": 3
+        },
+        {
+          "name": "UgoiraFrame",
+          "methods": [],
+          "properties": [
+            "file",
+            "delay"
+          ],
+          "exported": true,
+          "lineCount": 4
+        },
+        {
+          "name": "EncodeError",
+          "methods": [],
+          "properties": [
+            "FramesJson",
+            "Zip",
+            "Io",
+            "Image",
+            "Gif",
+            "Apng",
+            "EmptyFrames",
+            "Canceled",
+            "NonPositiveDelay",
+            "DelayTooLarge",
+            "ApngDelayTooLarge",
+            "ApngFrameCountTooLarge",
+            "ApngSequenceOverflow",
+            "FrameTooLarge",
+            "FrameSizeMismatch",
+            "EmptyImage",
+            "ColorStatisticsOverflow",
+            "Quantization",
+            "NullPointer",
+            "InvalidUtf8",
+            "InvalidAnimationFormat"
+          ],
+          "exported": true,
+          "lineCount": 56
+        },
+        {
+          "name": "AnimationFormat",
+          "methods": [
+            "try_from"
+          ],
+          "properties": [
+            "Gif",
+            "Apng"
+          ],
+          "exported": false,
+          "lineCount": 4
+        },
+        {
+          "name": "GlobalColorStatistics",
+          "methods": [
+            "new",
+            "add_image",
+            "weighted_samples"
+          ],
+          "properties": [
+            "samples",
+            "opaque_pixels",
+            "has_transparency",
+            "reservoir_state"
+          ],
+          "exported": false,
+          "lineCount": 6
+        },
+        {
+          "name": "FirstPass",
+          "methods": [],
+          "properties": [
+            "original_size",
+            "output_size",
+            "histogram"
+          ],
+          "exported": false,
+          "lineCount": 5
+        },
+        {
+          "name": "FrameRegion",
+          "methods": [],
+          "properties": [
+            "x",
+            "y",
+            "width",
+            "height"
+          ],
+          "exported": false,
+          "lineCount": 6
+        },
+        {
+          "name": "RelayPhase",
+          "methods": [],
+          "properties": [
+            "Signature",
+            "Length",
+            "Type",
+            "Data",
+            "Crc",
+            "Done"
+          ],
+          "exported": false,
+          "lineCount": 8
+        },
+        {
+          "name": "PngFrameDataRelay",
+          "methods": [],
+          "properties": [
+            "output",
+            "sequence",
+            "first_frame",
+            "expected_size",
+            "phase",
+            "scratch",
+            "scratch_len",
+            "source_chunk_len",
+            "source_chunk_type",
+            "remaining",
+            "source_crc",
+            "target_crc",
+            "ihdr_data",
+            "ihdr_data_len",
+            "chunks_seen",
+            "saw_ihdr",
+            "saw_idat",
+            "idat_ended",
+            "saw_iend"
+          ],
+          "exported": false,
+          "lineCount": 21
+        }
+      ],
+      "imports": [
+        {
+          "source": "std::borrow",
+          "specifiers": [
+            "Cow"
+          ]
+        },
+        {
+          "source": "std::ffi",
+          "specifiers": [
+            "CStr",
+            "CString"
+          ]
+        },
+        {
+          "source": "std::fs",
+          "specifiers": [
+            "File"
+          ]
+        },
+        {
+          "source": "std::io",
+          "specifiers": [
+            "self",
+            "Cursor",
+            "Read",
+            "Write"
+          ]
+        },
+        {
+          "source": "std::os::raw",
+          "specifiers": [
+            "c_char"
+          ]
+        },
+        {
+          "source": "std::panic",
+          "specifiers": [
+            "catch_unwind",
+            "AssertUnwindSafe"
+          ]
+        },
+        {
+          "source": "std::path",
+          "specifiers": [
+            "Path",
+            "PathBuf"
+          ]
+        },
+        {
+          "source": "std::ptr",
+          "specifiers": [
+            "null_mut"
+          ]
+        },
+        {
+          "source": "std::sync::atomic",
+          "specifiers": [
+            "AtomicBool",
+            "Ordering"
+          ]
+        },
+        {
+          "source": "crc32fast::Hasher as Crc32",
+          "specifiers": [
+            "crc32fast::Hasher as Crc32"
+          ]
+        },
+        {
+          "source": "gif",
+          "specifiers": [
+            "DisposalMethod",
+            "Encoder",
+            "Frame",
+            "Repeat"
+          ]
+        },
+        {
+          "source": "image",
+          "specifiers": [
+            "imageops::FilterType",
+            "ImageReader",
+            "RgbImage",
+            "RgbaImage"
+          ]
+        },
+        {
+          "source": "png",
+          "specifiers": [
+            "BitDepth",
+            "ColorType",
+            "Compression",
+            "Filter"
+          ]
+        },
+        {
+          "source": "quantette::deps::palette",
+          "specifiers": [
+            "Srgb"
+          ]
+        },
+        {
+          "source": "quantette::dither",
+          "specifiers": [
+            "FloydSteinberg"
+          ]
+        },
+        {
+          "source": "quantette",
+          "specifiers": [
+            "ImageRef",
+            "PaletteBuf",
+            "PaletteSize",
+            "Pipeline",
+            "QuantizeMethod"
+          ]
+        },
+        {
+          "source": "serde",
+          "specifiers": [
+            "Deserialize"
+          ]
+        },
+        {
+          "source": "thiserror",
+          "specifiers": [
+            "Error"
+          ]
+        },
+        {
+          "source": "zip",
+          "specifiers": [
+            "ZipArchive"
+          ]
+        }
+      ],
+      "exports": [
+        "CancellationToken",
+        "cancel",
+        "UgoiraFrame",
+        "EncodeError",
+        "parse_frames_json",
+        "encode_gif",
+        "encode_gif_from_json",
+        "encode_apng",
+        "ugoira_cancel_token_new",
+        "ugoira_cancel_token_cancel",
+        "ugoira_cancel_token_free",
+        "ugoira_encode",
+        "ugoira_free_error"
+      ],
+      "totalLines": 2609,
+      "hasStructuralAnalysis": true
+    },
+    "internal/download/ugoira_rs/tests/quality_gate.rs": {
+      "filePath": "internal/download/ugoira_rs/tests/quality_gate.rs",
+      "contentHash": "b515aa15767e44962369bc7329d9245010c73c1e55beab293384629ef95bc8a7",
+      "functions": [
+        {
+          "name": "image_compare_reports_identical_rgb_images_as_one",
+          "params": [],
+          "exported": false,
+          "lineCount": 7
+        },
+        {
+          "name": "synthetic_gif_ssim_is_not_lower_than_ffmpeg",
+          "params": [],
+          "exported": false,
+          "lineCount": 14
+        },
+        {
+          "name": "public_ugoira_gif_ssim_is_not_lower_than_ffmpeg",
+          "params": [],
+          "exported": false,
+          "lineCount": 22
+        },
+        {
+          "name": "ffmpeg_quality_enabled",
+          "params": [],
+          "returnType": "bool",
+          "exported": false,
+          "lineCount": 3
+        },
+        {
+          "name": "ffmpeg_binary",
+          "params": [],
+          "returnType": "std::ffi::OsString",
+          "exported": false,
+          "lineCount": 3
+        },
+        {
+          "name": "require_ffmpeg",
+          "params": [],
+          "exported": false,
+          "lineCount": 19
+        },
+        {
+          "name": "run_quality_case",
+          "params": [
+            "name",
+            "zip_path",
+            "frames",
+            "sources",
+            "work_dir",
+            "enforce_each_frame"
+          ],
+          "exported": false,
+          "lineCount": 64
+        },
+        {
+          "name": "assert_each_frame_not_lower",
+          "params": [
+            "name",
+            "metric",
+            "rust",
+            "ffmpeg"
+          ],
+          "exported": false,
+          "lineCount": 8
+        },
+        {
+          "name": "persist_quality_artifacts",
+          "params": [
+            "name",
+            "rust_path",
+            "ffmpeg_path",
+            "frames",
+            "scores"
+          ],
+          "exported": false,
+          "lineCount": 31
+        },
+        {
+          "name": "encode_ffmpeg_gif",
+          "params": [
+            "zip_path",
+            "frames",
+            "output_path",
+            "work_dir"
+          ],
+          "exported": false,
+          "lineCount": 46
+        },
+        {
+          "name": "decode_gif",
+          "params": [
+            "path"
+          ],
+          "returnType": "DecodedGif",
+          "exported": false,
+          "lineCount": 53
+        },
+        {
+          "name": "frame_luma_ssim_scores",
+          "params": [
+            "reference",
+            "actual"
+          ],
+          "returnType": "Vec<f64>",
+          "exported": false,
+          "lineCount": 16
+        },
+        {
+          "name": "frame_rgb_ssim_scores",
+          "params": [
+            "reference",
+            "actual"
+          ],
+          "returnType": "Vec<f64>",
+          "exported": false,
+          "lineCount": 7
+        },
+        {
+          "name": "average_channel_ssim",
+          "params": [
+            "reference",
+            "actual"
+          ],
+          "returnType": "f64",
+          "exported": false,
+          "lineCount": 21
+        },
+        {
+          "name": "average",
+          "params": [
+            "values"
+          ],
+          "returnType": "f64",
+          "exported": false,
+          "lineCount": 3
+        },
+        {
+          "name": "read_source_frames",
+          "params": [
+            "zip_path",
+            "frames"
+          ],
+          "returnType": "Vec<RgbImage>",
+          "exported": false,
+          "lineCount": 15
+        },
+        {
+          "name": "write_png_zip",
+          "params": [
+            "path",
+            "sources"
+          ],
+          "returnType": "Vec<UgoiraFrame>",
+          "exported": false,
+          "lineCount": 24
+        },
+        {
+          "name": "synthetic_scenes",
+          "params": [],
+          "returnType": "Vec<(&'static str, Vec<RgbImage>)>",
+          "exported": false,
+          "lineCount": 7
+        },
+        {
+          "name": "gradient_motion_scene",
+          "params": [],
+          "returnType": "Vec<RgbImage>",
+          "exported": false,
+          "lineCount": 17
+        },
+        {
+          "name": "color_grid_scene",
+          "params": [],
+          "returnType": "Vec<RgbImage>",
+          "exported": false,
+          "lineCount": 14
+        },
+        {
+          "name": "textured_pan_scene",
+          "params": [],
+          "returnType": "Vec<RgbImage>",
+          "exported": false,
+          "lineCount": 18
+        }
+      ],
+      "classes": [
+        {
+          "name": "DecodedGif",
+          "methods": [],
+          "properties": [
+            "frames",
+            "delays",
+            "repeat"
+          ],
+          "exported": false,
+          "lineCount": 5
+        },
+        {
+          "name": "QualityScores",
+          "methods": [],
+          "properties": [
+            "rust_luma",
+            "ffmpeg_luma",
+            "rust_rgb",
+            "ffmpeg_rgb"
+          ],
+          "exported": false,
+          "lineCount": 6
+        }
+      ],
+      "imports": [
+        {
+          "source": "std::fs",
+          "specifiers": [
+            "self",
+            "File"
+          ]
+        },
+        {
+          "source": "std::io",
+          "specifiers": [
+            "Cursor",
+            "Read",
+            "Write"
+          ]
+        },
+        {
+          "source": "std::path",
+          "specifiers": [
+            "Path",
+            "PathBuf"
+          ]
+        },
+        {
+          "source": "std::process",
+          "specifiers": [
+            "Command"
+          ]
+        },
+        {
+          "source": "gif",
+          "specifiers": [
+            "DisposalMethod",
+            "Repeat"
+          ]
+        },
+        {
+          "source": "image",
+          "specifiers": [
+            "DynamicImage",
+            "ImageBuffer",
+            "ImageFormat",
+            "Rgb",
+            "RgbImage",
+            "RgbaImage"
+          ]
+        },
+        {
+          "source": "image_compare",
+          "specifiers": [
+            "Algorithm"
+          ]
+        },
+        {
+          "source": "tempfile",
+          "specifiers": [
+            "tempdir"
+          ]
+        },
+        {
+          "source": "ugoira_rs",
+          "specifiers": [
+            "encode_gif",
+            "parse_frames_json",
+            "CancellationToken",
+            "UgoiraFrame"
+          ]
+        },
+        {
+          "source": "zip::write",
+          "specifiers": [
+            "SimpleFileOptions"
+          ]
+        },
+        {
+          "source": "zip",
+          "specifiers": [
+            "ZipArchive"
+          ]
+        }
+      ],
+      "exports": [],
+      "totalLines": 475,
+      "hasStructuralAnalysis": true
+    },
+    "internal/download/ugoira_rust_link_darwin_amd64.go": {
+      "filePath": "internal/download/ugoira_rust_link_darwin_amd64.go",
+      "contentHash": "11f6d7b9b92fae335e5a59b053f5c734e7c26b684420ef62039b9fe6714dbf91",
+      "functions": [],
+      "classes": [],
+      "imports": [
+        {
+          "source": "C",
+          "specifiers": [
+            "C"
+          ]
+        }
+      ],
+      "exports": [],
+      "totalLines": 9,
+      "hasStructuralAnalysis": true
+    },
+    "internal/download/ugoira_rust_link_darwin_arm64.go": {
+      "filePath": "internal/download/ugoira_rust_link_darwin_arm64.go",
+      "contentHash": "662c69be3bae3de24ef03a7ebf28f0c5fbfa8f67c048ea3d8ca1035c8604f50c",
+      "functions": [],
+      "classes": [],
+      "imports": [
+        {
+          "source": "C",
+          "specifiers": [
+            "C"
+          ]
+        }
+      ],
+      "exports": [],
+      "totalLines": 9,
+      "hasStructuralAnalysis": true
+    },
+    "internal/download/ugoira_rust_link_linux_amd64.go": {
+      "filePath": "internal/download/ugoira_rust_link_linux_amd64.go",
+      "contentHash": "a31ceedd8dac802e628cac91472fcabcf4c5f3952537afdda6ef6bbf683b2b4e",
+      "functions": [],
+      "classes": [],
+      "imports": [
+        {
+          "source": "C",
+          "specifiers": [
+            "C"
+          ]
+        }
+      ],
+      "exports": [],
+      "totalLines": 9,
+      "hasStructuralAnalysis": true
+    },
+    "internal/download/ugoira_rust_link_linux_arm64.go": {
+      "filePath": "internal/download/ugoira_rust_link_linux_arm64.go",
+      "contentHash": "309810f1423623444860c2fade689c8fef182db14aed999e456ccef190fc274c",
+      "functions": [],
+      "classes": [],
+      "imports": [
+        {
+          "source": "C",
+          "specifiers": [
+            "C"
+          ]
+        }
+      ],
+      "exports": [],
+      "totalLines": 9,
+      "hasStructuralAnalysis": true
+    },
+    "internal/download/ugoira_rust_link_windows_amd64.go": {
+      "filePath": "internal/download/ugoira_rust_link_windows_amd64.go",
+      "contentHash": "09c1e3d7936fe25fafb54ae93efe53beae8c6403e1e29d0a02b153c29a8fa5cb",
+      "functions": [],
+      "classes": [],
+      "imports": [
+        {
+          "source": "C",
+          "specifiers": [
+            "C"
+          ]
+        }
+      ],
+      "exports": [],
+      "totalLines": 9,
+      "hasStructuralAnalysis": true
+    },
+    "internal/download/ugoira_rust_link_windows_arm64.go": {
+      "filePath": "internal/download/ugoira_rust_link_windows_arm64.go",
+      "contentHash": "ed8fb156050e65fd62bd036f3c3cfd218082cfab5952b5c4666e36165375da63",
+      "functions": [],
+      "classes": [],
+      "imports": [
+        {
+          "source": "C",
+          "specifiers": [
+            "C"
+          ]
+        }
+      ],
+      "exports": [],
+      "totalLines": 9,
+      "hasStructuralAnalysis": true
+    },
+    "internal/download/ugoira_rust_stub.go": {
+      "filePath": "internal/download/ugoira_rust_stub.go",
+      "contentHash": "33f419ce4d8409be994bd9a01465253c4d163ac254caf6d3c1f2bd3c86e6d85d",
+      "functions": [
+        {
+          "name": "defaultUgoiraEncoder",
+          "params": [],
+          "returnType": "UgoiraEncoder",
+          "exported": false,
+          "lineCount": 3
+        },
+        {
+          "name": "NewRustUgoiraEncoder",
+          "params": [],
+          "returnType": "UgoiraEncoder",
+          "exported": true,
+          "lineCount": 3
+        },
+        {
+          "name": "Encode",
+          "params": [
+            "_",
+            "input"
+          ],
+          "returnType": "error",
+          "exported": true,
+          "lineCount": 6
+        }
+      ],
+      "classes": [
+        {
+          "name": "unavailableRustUgoiraEncoder",
+          "methods": [
+            "Encode"
+          ],
+          "properties": [],
+          "exported": false,
+          "lineCount": 1
+        }
+      ],
+      "imports": [
+        {
+          "source": "context",
+          "specifiers": [
+            "context"
+          ]
+        },
+        {
+          "source": "fmt",
+          "specifiers": [
+            "fmt"
+          ]
+        }
+      ],
+      "exports": [
+        "NewRustUgoiraEncoder",
+        "Encode"
+      ],
+      "totalLines": 31,
+      "hasStructuralAnalysis": true
+    },
+    "internal/download/ugoira_rust_test.go": {
+      "filePath": "internal/download/ugoira_rust_test.go",
+      "contentHash": "2b8b6c1c1d4a1f24e1821e46d3846c8f627942f0788ad56db8700717ebe62a82",
+      "functions": [
+        {
+          "name": "TestRustUgoiraEncoderNativeGIFAndAPNG",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 43
+        },
+        {
+          "name": "TestCGODisabledBuildRejectsMissingRustStaticlib",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 15
+        },
+        {
+          "name": "rustUgoiraJPEG",
+          "params": [
+            "t"
+          ],
+          "returnType": "[]byte",
+          "exported": false,
+          "lineCount": 15
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "bytes",
+          "specifiers": [
+            "bytes"
+          ]
+        },
+        {
+          "source": "context",
+          "specifiers": [
+            "context"
+          ]
+        },
+        {
+          "source": "image",
+          "specifiers": [
+            "image"
+          ]
+        },
+        {
+          "source": "image/color",
+          "specifiers": [
+            "color"
+          ]
+        },
+        {
+          "source": "image/gif",
+          "specifiers": [
+            "gif"
+          ]
+        },
+        {
+          "source": "image/jpeg",
+          "specifiers": [
+            "jpeg"
+          ]
+        },
+        {
+          "source": "image/png",
+          "specifiers": [
+            "png"
+          ]
+        },
+        {
+          "source": "os",
+          "specifiers": [
+            "os"
+          ]
+        },
+        {
+          "source": "os/exec",
+          "specifiers": [
+            "exec"
+          ]
+        },
+        {
+          "source": "path/filepath",
+          "specifiers": [
+            "filepath"
+          ]
+        },
+        {
+          "source": "strings",
+          "specifiers": [
+            "strings"
+          ]
+        },
+        {
+          "source": "testing",
+          "specifiers": [
+            "testing"
+          ]
+        },
+        {
+          "source": "github.com/FlanChanXwO/pixiv-cli/internal/pixiv",
+          "specifiers": [
+            "pixiv"
+          ]
+        }
+      ],
+      "exports": [
+        "TestRustUgoiraEncoderNativeGIFAndAPNG",
+        "TestCGODisabledBuildRejectsMissingRustStaticlib"
+      ],
+      "totalLines": 97,
+      "hasStructuralAnalysis": true
+    },
+    "internal/download/ugoira_rust.go": {
+      "filePath": "internal/download/ugoira_rust.go",
+      "contentHash": "b3140b9f1431b504d1d7ba2be8191e0814428803b68863ae7bcc0f3da3e4c6b1",
+      "functions": [
+        {
+          "name": "withRustUgoiraEncodeGate",
+          "params": [
+            "ctx",
+            "encode"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 16
+        },
+        {
+          "name": "defaultUgoiraEncoder",
+          "params": [],
+          "returnType": "UgoiraEncoder",
+          "exported": false,
+          "lineCount": 3
+        },
+        {
+          "name": "NewRustUgoiraEncoder",
+          "params": [],
+          "returnType": "UgoiraEncoder",
+          "exported": true,
+          "lineCount": 3
+        },
+        {
+          "name": "Encode",
+          "params": [
+            "ctx",
+            "input"
+          ],
+          "returnType": "error",
+          "exported": true,
+          "lineCount": 45
+        },
+        {
+          "name": "NewToken",
+          "params": [],
+          "returnType": "(unsafe.Pointer, error)",
+          "exported": true,
+          "lineCount": 7
+        },
+        {
+          "name": "Cancel",
+          "params": [
+            "token"
+          ],
+          "returnType": "error",
+          "exported": true,
+          "lineCount": 6
+        },
+        {
+          "name": "Free",
+          "params": [
+            "token"
+          ],
+          "returnType": "error",
+          "exported": true,
+          "lineCount": 6
+        },
+        {
+          "name": "Encode",
+          "params": [
+            "zipPath",
+            "framesJSON",
+            "outputPath",
+            "token",
+            "format",
+            "maxEdge"
+          ],
+          "returnType": "error",
+          "exported": true,
+          "lineCount": 30
+        },
+        {
+          "name": "rustFFIError",
+          "params": [
+            "operation",
+            "errPtr"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 8
+        }
+      ],
+      "classes": [
+        {
+          "name": "rustUgoiraFFI",
+          "methods": [
+            "NewToken",
+            "Cancel",
+            "Free",
+            "Encode"
+          ],
+          "properties": [],
+          "exported": false,
+          "lineCount": 6
+        },
+        {
+          "name": "cgoRustUgoiraFFI",
+          "methods": [
+            "NewToken",
+            "Cancel",
+            "Free",
+            "Encode"
+          ],
+          "properties": [],
+          "exported": false,
+          "lineCount": 1
+        },
+        {
+          "name": "rustUgoiraEncoder",
+          "methods": [
+            "Encode"
+          ],
+          "properties": [
+            "ffi"
+          ],
+          "exported": false,
+          "lineCount": 3
+        }
+      ],
+      "imports": [
+        {
+          "source": "C",
+          "specifiers": [
+            "C"
+          ]
+        },
+        {
+          "source": "context",
+          "specifiers": [
+            "context"
+          ]
+        },
+        {
+          "source": "encoding/json",
+          "specifiers": [
+            "json"
+          ]
+        },
+        {
+          "source": "errors",
+          "specifiers": [
+            "errors"
+          ]
+        },
+        {
+          "source": "fmt",
+          "specifiers": [
+            "fmt"
+          ]
+        },
+        {
+          "source": "unsafe",
+          "specifiers": [
+            "unsafe"
+          ]
+        }
+      ],
+      "exports": [
+        "NewRustUgoiraEncoder",
+        "Encode",
+        "NewToken",
+        "Cancel",
+        "Free",
+        "Encode"
+      ],
+      "totalLines": 173,
       "hasStructuralAnalysis": true
     },
     "internal/mcpserver/server_test.go": {
@@ -9833,6 +12629,2786 @@
       "totalLines": 37,
       "hasStructuralAnalysis": true
     },
+    "internal/update/automatic_test.go": {
+      "filePath": "internal/update/automatic_test.go",
+      "contentHash": "6a0efef5a824754fc074947abe6cdb4e44ef3ff165a9d4b2d1cd759b21af56e5",
+      "functions": [
+        {
+          "name": "TestAutomaticUpdateCheckerReportsStableReleaseNotice",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 20
+        },
+        {
+          "name": "TestAutomaticUpdateCheckerDoesNotPromptAfterThrottleOrWithoutNewRelease",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 33
+        },
+        {
+          "name": "TestAutomaticUpdateCheckerReturnsSourceSpecificCommands",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 29
+        },
+        {
+          "name": "TestAutomaticUpdateCheckerDevelopmentBuildAvoidsAllDependencies",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 18
+        },
+        {
+          "name": "TestAutomaticUpdateCheckerPreservesFailures",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 57
+        },
+        {
+          "name": "Check",
+          "params": [
+            "ctx",
+            "options"
+          ],
+          "returnType": "(ReleaseCheckResult, error)",
+          "exported": true,
+          "lineCount": 3
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "context",
+          "specifiers": [
+            "context"
+          ]
+        },
+        {
+          "source": "errors",
+          "specifiers": [
+            "errors"
+          ]
+        },
+        {
+          "source": "testing",
+          "specifiers": [
+            "testing"
+          ]
+        },
+        {
+          "source": "github.com/FlanChanXwO/pixiv-cli/internal/buildinfo",
+          "specifiers": [
+            "buildinfo"
+          ]
+        },
+        {
+          "source": "github.com/stretchr/testify/assert",
+          "specifiers": [
+            "assert"
+          ]
+        },
+        {
+          "source": "github.com/stretchr/testify/require",
+          "specifiers": [
+            "require"
+          ]
+        }
+      ],
+      "exports": [
+        "TestAutomaticUpdateCheckerReportsStableReleaseNotice",
+        "TestAutomaticUpdateCheckerDoesNotPromptAfterThrottleOrWithoutNewRelease",
+        "TestAutomaticUpdateCheckerReturnsSourceSpecificCommands",
+        "TestAutomaticUpdateCheckerDevelopmentBuildAvoidsAllDependencies",
+        "TestAutomaticUpdateCheckerPreservesFailures",
+        "Check"
+      ],
+      "totalLines": 180,
+      "hasStructuralAnalysis": true
+    },
+    "internal/update/automatic.go": {
+      "filePath": "internal/update/automatic.go",
+      "contentHash": "874165234b177d4c2ea473242f9e76ff1eddf4c31cf36f124ef816f3cc0cf05f",
+      "functions": [
+        {
+          "name": "NewAutomaticUpdateChecker",
+          "params": [
+            "options"
+          ],
+          "returnType": "(*AutomaticUpdateChecker, error)",
+          "exported": true,
+          "lineCount": 12
+        },
+        {
+          "name": "Check",
+          "params": [
+            "ctx",
+            "request"
+          ],
+          "returnType": "(*AutomaticUpdateNotice, error)",
+          "exported": true,
+          "lineCount": 47
+        },
+        {
+          "name": "automaticUpdateCommand",
+          "params": [
+            "source",
+            "tag"
+          ],
+          "returnType": "(string, error)",
+          "exported": false,
+          "lineCount": 17
+        }
+      ],
+      "classes": [
+        {
+          "name": "AutomaticUpdateCheckerOptions",
+          "methods": [],
+          "properties": [
+            "SourceDetector",
+            "ReleaseChecker"
+          ],
+          "exported": true,
+          "lineCount": 4
+        },
+        {
+          "name": "AutomaticUpdateChecker",
+          "methods": [
+            "Check"
+          ],
+          "properties": [
+            "sourceDetector",
+            "releaseChecker"
+          ],
+          "exported": true,
+          "lineCount": 4
+        },
+        {
+          "name": "AutomaticUpdateRequest",
+          "methods": [],
+          "properties": [
+            "BuildInfo"
+          ],
+          "exported": true,
+          "lineCount": 3
+        },
+        {
+          "name": "AutomaticUpdateNotice",
+          "methods": [],
+          "properties": [
+            "Source",
+            "CurrentVersion",
+            "LatestVersion",
+            "UpdateCommand"
+          ],
+          "exported": true,
+          "lineCount": 6
+        }
+      ],
+      "imports": [
+        {
+          "source": "context",
+          "specifiers": [
+            "context"
+          ]
+        },
+        {
+          "source": "fmt",
+          "specifiers": [
+            "fmt"
+          ]
+        },
+        {
+          "source": "github.com/FlanChanXwO/pixiv-cli/internal/buildinfo",
+          "specifiers": [
+            "buildinfo"
+          ]
+        }
+      ],
+      "exports": [
+        "AutomaticUpdateCheckerOptions",
+        "AutomaticUpdateChecker",
+        "AutomaticUpdateRequest",
+        "AutomaticUpdateNotice",
+        "NewAutomaticUpdateChecker",
+        "Check"
+      ],
+      "totalLines": 118,
+      "hasStructuralAnalysis": true
+    },
+    "internal/update/cleanup.go": {
+      "filePath": "internal/update/cleanup.go",
+      "contentHash": "833252b6a9af7391760fe57837295d7cbf365e0253207301802964a96a456ee2",
+      "functions": [
+        {
+          "name": "CleanupPendingWindowsUpdate",
+          "params": [],
+          "returnType": "error",
+          "exported": true,
+          "lineCount": 3
+        },
+        {
+          "name": "cleanupPendingWindowsUpdate",
+          "params": [
+            "goos",
+            "executablePath",
+            "remove"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 14
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "fmt",
+          "specifiers": [
+            "fmt"
+          ]
+        },
+        {
+          "source": "os",
+          "specifiers": [
+            "os"
+          ]
+        },
+        {
+          "source": "runtime",
+          "specifiers": [
+            "runtime"
+          ]
+        }
+      ],
+      "exports": [
+        "CleanupPendingWindowsUpdate"
+      ],
+      "totalLines": 29,
+      "hasStructuralAnalysis": true
+    },
+    "internal/update/command_test.go": {
+      "filePath": "internal/update/command_test.go",
+      "contentHash": "c19c55feb7bc268f313baba220eba6c8d5963962e944efd06a4960fffff4c409",
+      "functions": [
+        {
+          "name": "TestNewReleaseHTTPClientUsesOnlyConfiguredProxyWithoutFixedTimeout",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 14
+        },
+        {
+          "name": "TestNewReleaseHTTPClientRejectsNonHTTPProxy",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 4
+        },
+        {
+          "name": "TestUpdateCoordinatorDefaultReleaseInstallerReportsMissingTrustedKey",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 11
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "context",
+          "specifiers": [
+            "context"
+          ]
+        },
+        {
+          "source": "net/http",
+          "specifiers": [
+            "http"
+          ]
+        },
+        {
+          "source": "testing",
+          "specifiers": [
+            "testing"
+          ]
+        },
+        {
+          "source": "github.com/FlanChanXwO/pixiv-cli/internal/buildinfo",
+          "specifiers": [
+            "buildinfo"
+          ]
+        },
+        {
+          "source": "github.com/stretchr/testify/assert",
+          "specifiers": [
+            "assert"
+          ]
+        },
+        {
+          "source": "github.com/stretchr/testify/require",
+          "specifiers": [
+            "require"
+          ]
+        }
+      ],
+      "exports": [
+        "TestNewReleaseHTTPClientUsesOnlyConfiguredProxyWithoutFixedTimeout",
+        "TestNewReleaseHTTPClientRejectsNonHTTPProxy",
+        "TestUpdateCoordinatorDefaultReleaseInstallerReportsMissingTrustedKey"
+      ],
+      "totalLines": 44,
+      "hasStructuralAnalysis": true
+    },
+    "internal/update/command.go": {
+      "filePath": "internal/update/command.go",
+      "contentHash": "7a2376451c955b1daac91fd02903f959bc7e6ca3a382e2be344a4431f49b2bf9",
+      "functions": [
+        {
+          "name": "NewReleaseHTTPClient",
+          "params": [
+            "proxyURL"
+          ],
+          "returnType": "(*http.Client, error)",
+          "exported": true,
+          "lineCount": 20
+        },
+        {
+          "name": "NewCommandRunner",
+          "params": [
+            "out",
+            "errOut"
+          ],
+          "returnType": "CommandRunner",
+          "exported": true,
+          "lineCount": 3
+        },
+        {
+          "name": "Run",
+          "params": [
+            "ctx",
+            "command"
+          ],
+          "returnType": "error",
+          "exported": true,
+          "lineCount": 12
+        }
+      ],
+      "classes": [
+        {
+          "name": "processCommandRunner",
+          "methods": [
+            "Run"
+          ],
+          "properties": [
+            "out",
+            "errOut"
+          ],
+          "exported": false,
+          "lineCount": 4
+        }
+      ],
+      "imports": [
+        {
+          "source": "context",
+          "specifiers": [
+            "context"
+          ]
+        },
+        {
+          "source": "fmt",
+          "specifiers": [
+            "fmt"
+          ]
+        },
+        {
+          "source": "io",
+          "specifiers": [
+            "io"
+          ]
+        },
+        {
+          "source": "net/http",
+          "specifiers": [
+            "http"
+          ]
+        },
+        {
+          "source": "net/url",
+          "specifiers": [
+            "url"
+          ]
+        },
+        {
+          "source": "os/exec",
+          "specifiers": [
+            "exec"
+          ]
+        }
+      ],
+      "exports": [
+        "NewReleaseHTTPClient",
+        "NewCommandRunner",
+        "Run"
+      ],
+      "totalLines": 57,
+      "hasStructuralAnalysis": true
+    },
+    "internal/update/installer_test.go": {
+      "filePath": "internal/update/installer_test.go",
+      "contentHash": "0a63960d6c26aab3878c2591a94e6bf04cf8693b220024b39a02c892e8f8fc70",
+      "functions": [
+        {
+          "name": "TestMain",
+          "params": [
+            "m"
+          ],
+          "exported": true,
+          "lineCount": 7
+        },
+        {
+          "name": "TestReleaseInstallerInstallsOnlyVerifiedPlatformArchive",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 52
+        },
+        {
+          "name": "TestReleaseInstallerFailureKeepsExistingExecutable",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 88
+        },
+        {
+          "name": "TestReleaseInstallerReportsUnwritableExecutablePathBeforeReplacing",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 14
+        },
+        {
+          "name": "TestReleaseInstallerSelectsWindowsZIPAsset",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 11
+        },
+        {
+          "name": "TestPlatformFixtureArchivesMatchReleaseContract",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 16
+        },
+        {
+          "name": "TestSelectReleaseAssetsRejectsMissingAndDuplicateSidecars",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 17
+        },
+        {
+          "name": "TestVerifyChecksumsManifestRejectsTampering",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 23
+        },
+        {
+          "name": "TestCleanupPendingWindowsUpdate",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 15
+        },
+        {
+          "name": "fixtureTarGz",
+          "params": [
+            "t",
+            "entries"
+          ],
+          "returnType": "[]byte",
+          "exported": false,
+          "lineCount": 8
+        },
+        {
+          "name": "fixtureNativeExecutableArchive",
+          "params": [
+            "t"
+          ],
+          "returnType": "([]byte, []byte)",
+          "exported": false,
+          "lineCount": 9
+        },
+        {
+          "name": "fixtureRuntimeArchive",
+          "params": [
+            "t",
+            "entries"
+          ],
+          "returnType": "[]byte",
+          "exported": false,
+          "lineCount": 4
+        },
+        {
+          "name": "fixturePlatformArchive",
+          "params": [
+            "t",
+            "goos",
+            "entries"
+          ],
+          "returnType": "[]byte",
+          "exported": false,
+          "lineCount": 7
+        },
+        {
+          "name": "fixtureRuntimeArchiveEntries",
+          "params": [
+            "t",
+            "entries"
+          ],
+          "returnType": "[]byte",
+          "exported": false,
+          "lineCount": 4
+        },
+        {
+          "name": "fixturePlatformArchiveEntries",
+          "params": [
+            "t",
+            "goos",
+            "entries"
+          ],
+          "returnType": "[]byte",
+          "exported": false,
+          "lineCount": 15
+        },
+        {
+          "name": "runtimeArchiveOpenError",
+          "params": [],
+          "returnType": "string",
+          "exported": false,
+          "lineCount": 6
+        },
+        {
+          "name": "fixtureTarGzEntries",
+          "params": [
+            "t",
+            "entries"
+          ],
+          "returnType": "[]byte",
+          "exported": false,
+          "lineCount": 19
+        },
+        {
+          "name": "fixtureZip",
+          "params": [
+            "t",
+            "entries"
+          ],
+          "returnType": "[]byte",
+          "exported": false,
+          "lineCount": 8
+        },
+        {
+          "name": "fixtureZipEntries",
+          "params": [
+            "t",
+            "entries"
+          ],
+          "returnType": "[]byte",
+          "exported": false,
+          "lineCount": 15
+        },
+        {
+          "name": "verifiedFixtureInstaller",
+          "params": [
+            "t",
+            "archive",
+            "servedArchive"
+          ],
+          "returnType": "(*releaseInstaller, Release, string)",
+          "exported": false,
+          "lineCount": 3
+        },
+        {
+          "name": "verifiedFixtureInstallerForPlatform",
+          "params": [
+            "t",
+            "goos",
+            "goarch",
+            "archive",
+            "servedArchive"
+          ],
+          "returnType": "(*releaseInstaller, Release, string)",
+          "exported": false,
+          "lineCount": 47
+        },
+        {
+          "name": "Check",
+          "params": [
+            "ctx",
+            "path",
+            "tag"
+          ],
+          "returnType": "error",
+          "exported": true,
+          "lineCount": 3
+        },
+        {
+          "name": "Replace",
+          "params": [
+            "source",
+            "target"
+          ],
+          "returnType": "error",
+          "exported": true,
+          "lineCount": 3
+        },
+        {
+          "name": "signedChecksumsManifest",
+          "params": [
+            "t",
+            "keyID",
+            "privateKey",
+            "checksums"
+          ],
+          "returnType": "[]byte",
+          "exported": false,
+          "lineCount": 15
+        }
+      ],
+      "classes": [
+        {
+          "name": "tarFixtureEntry",
+          "methods": [],
+          "properties": [
+            "Name",
+            "Body",
+            "Typeflag",
+            "Linkname"
+          ],
+          "exported": false,
+          "lineCount": 6
+        },
+        {
+          "name": "zipFixtureEntry",
+          "methods": [],
+          "properties": [
+            "Name",
+            "Body",
+            "Mode"
+          ],
+          "exported": false,
+          "lineCount": 5
+        }
+      ],
+      "imports": [
+        {
+          "source": "archive/tar",
+          "specifiers": [
+            "tar"
+          ]
+        },
+        {
+          "source": "archive/zip",
+          "specifiers": [
+            "zip"
+          ]
+        },
+        {
+          "source": "bytes",
+          "specifiers": [
+            "bytes"
+          ]
+        },
+        {
+          "source": "compress/gzip",
+          "specifiers": [
+            "gzip"
+          ]
+        },
+        {
+          "source": "context",
+          "specifiers": [
+            "context"
+          ]
+        },
+        {
+          "source": "crypto/ed25519",
+          "specifiers": [
+            "ed25519"
+          ]
+        },
+        {
+          "source": "crypto/rand",
+          "specifiers": [
+            "rand"
+          ]
+        },
+        {
+          "source": "crypto/sha256",
+          "specifiers": [
+            "sha256"
+          ]
+        },
+        {
+          "source": "encoding/base64",
+          "specifiers": [
+            "base64"
+          ]
+        },
+        {
+          "source": "encoding/hex",
+          "specifiers": [
+            "hex"
+          ]
+        },
+        {
+          "source": "encoding/json",
+          "specifiers": [
+            "json"
+          ]
+        },
+        {
+          "source": "fmt",
+          "specifiers": [
+            "fmt"
+          ]
+        },
+        {
+          "source": "io",
+          "specifiers": [
+            "io"
+          ]
+        },
+        {
+          "source": "net/http",
+          "specifiers": [
+            "http"
+          ]
+        },
+        {
+          "source": "net/http/httptest",
+          "specifiers": [
+            "httptest"
+          ]
+        },
+        {
+          "source": "os",
+          "specifiers": [
+            "os"
+          ]
+        },
+        {
+          "source": "path/filepath",
+          "specifiers": [
+            "filepath"
+          ]
+        },
+        {
+          "source": "runtime",
+          "specifiers": [
+            "runtime"
+          ]
+        },
+        {
+          "source": "testing",
+          "specifiers": [
+            "testing"
+          ]
+        },
+        {
+          "source": "github.com/stretchr/testify/require",
+          "specifiers": [
+            "require"
+          ]
+        }
+      ],
+      "exports": [
+        "TestMain",
+        "TestReleaseInstallerInstallsOnlyVerifiedPlatformArchive",
+        "TestReleaseInstallerFailureKeepsExistingExecutable",
+        "TestReleaseInstallerReportsUnwritableExecutablePathBeforeReplacing",
+        "TestReleaseInstallerSelectsWindowsZIPAsset",
+        "TestPlatformFixtureArchivesMatchReleaseContract",
+        "TestSelectReleaseAssetsRejectsMissingAndDuplicateSidecars",
+        "TestVerifyChecksumsManifestRejectsTampering",
+        "TestCleanupPendingWindowsUpdate",
+        "Check",
+        "Replace"
+      ],
+      "totalLines": 482,
+      "hasStructuralAnalysis": true
+    },
+    "internal/update/installer.go": {
+      "filePath": "internal/update/installer.go",
+      "contentHash": "dc6d164f22a7e05c22c973b70d2b7571339435cae6a2369ba7499cc436b8717f",
+      "functions": [
+        {
+          "name": "NewReleaseInstaller",
+          "params": [
+            "options"
+          ],
+          "returnType": "ReleaseInstaller",
+          "exported": true,
+          "lineCount": 39
+        },
+        {
+          "name": "Install",
+          "params": [
+            "ctx",
+            "release"
+          ],
+          "returnType": "(err error)",
+          "exported": true,
+          "lineCount": 97
+        },
+        {
+          "name": "selectReleaseAssets",
+          "params": [
+            "assets",
+            "archiveName"
+          ],
+          "returnType": "(selectedReleaseAssets, error)",
+          "exported": false,
+          "lineCount": 37
+        },
+        {
+          "name": "releaseArchiveName",
+          "params": [
+            "version",
+            "goos",
+            "goarch"
+          ],
+          "returnType": "string",
+          "exported": false,
+          "lineCount": 7
+        },
+        {
+          "name": "releaseBinaryName",
+          "params": [
+            "goos"
+          ],
+          "returnType": "string",
+          "exported": false,
+          "lineCount": 6
+        },
+        {
+          "name": "download",
+          "params": [
+            "ctx",
+            "asset"
+          ],
+          "returnType": "([]byte, error)",
+          "exported": false,
+          "lineCount": 19
+        },
+        {
+          "name": "verifyChecksumsManifest",
+          "params": [
+            "body",
+            "checksums",
+            "trustedKeys"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 34
+        },
+        {
+          "name": "verifyArchiveChecksum",
+          "params": [
+            "checksums",
+            "filename",
+            "archive"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 36
+        },
+        {
+          "name": "extractReleaseBinary",
+          "params": [
+            "archive",
+            "archiveName",
+            "destination",
+            "binaryName"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 9
+        },
+        {
+          "name": "extractTarGzBinary",
+          "params": [
+            "archive",
+            "destination",
+            "binaryName"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 41
+        },
+        {
+          "name": "extractZipBinary",
+          "params": [
+            "archive",
+            "destination",
+            "binaryName"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 41
+        },
+        {
+          "name": "validateArchivePath",
+          "params": [
+            "name"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 10
+        },
+        {
+          "name": "writeExtractedBinary",
+          "params": [
+            "destination",
+            "source"
+          ],
+          "returnType": "(err error)",
+          "exported": false,
+          "lineCount": 21
+        },
+        {
+          "name": "Check",
+          "params": [
+            "ctx",
+            "executablePath",
+            "expectedTag"
+          ],
+          "returnType": "error",
+          "exported": true,
+          "lineCount": 15
+        },
+        {
+          "name": "Replace",
+          "params": [
+            "sourcePath",
+            "targetPath"
+          ],
+          "returnType": "error",
+          "exported": true,
+          "lineCount": 6
+        }
+      ],
+      "classes": [
+        {
+          "name": "ReleaseBinaryChecker",
+          "methods": [
+            "Check"
+          ],
+          "properties": [],
+          "exported": true,
+          "lineCount": 3
+        },
+        {
+          "name": "ReleaseFileReplacer",
+          "methods": [
+            "Replace"
+          ],
+          "properties": [],
+          "exported": true,
+          "lineCount": 3
+        },
+        {
+          "name": "ReleaseInstallerOptions",
+          "methods": [],
+          "properties": [
+            "HTTPClient",
+            "TrustedKeys",
+            "ExecutablePath",
+            "GOOS",
+            "GOARCH",
+            "BinaryChecker",
+            "Replacer"
+          ],
+          "exported": true,
+          "lineCount": 9
+        },
+        {
+          "name": "releaseInstaller",
+          "methods": [
+            "Install",
+            "download"
+          ],
+          "properties": [
+            "httpClient",
+            "trustedKeys",
+            "executablePath",
+            "goos",
+            "goarch",
+            "checker",
+            "replacer"
+          ],
+          "exported": false,
+          "lineCount": 9
+        },
+        {
+          "name": "selectedReleaseAssets",
+          "methods": [],
+          "properties": [
+            "archive",
+            "checksums",
+            "manifest"
+          ],
+          "exported": false,
+          "lineCount": 5
+        },
+        {
+          "name": "checksumsManifest",
+          "methods": [],
+          "properties": [
+            "KeyID",
+            "ChecksumsSHA256",
+            "Signature"
+          ],
+          "exported": false,
+          "lineCount": 5
+        },
+        {
+          "name": "processReleaseBinaryChecker",
+          "methods": [
+            "Check"
+          ],
+          "properties": [],
+          "exported": false,
+          "lineCount": 1
+        },
+        {
+          "name": "releaseFileReplacer",
+          "methods": [
+            "Replace"
+          ],
+          "properties": [
+            "goos"
+          ],
+          "exported": false,
+          "lineCount": 3
+        }
+      ],
+      "imports": [
+        {
+          "source": "archive/tar",
+          "specifiers": [
+            "tar"
+          ]
+        },
+        {
+          "source": "archive/zip",
+          "specifiers": [
+            "zip"
+          ]
+        },
+        {
+          "source": "bytes",
+          "specifiers": [
+            "bytes"
+          ]
+        },
+        {
+          "source": "compress/gzip",
+          "specifiers": [
+            "gzip"
+          ]
+        },
+        {
+          "source": "context",
+          "specifiers": [
+            "context"
+          ]
+        },
+        {
+          "source": "crypto/ed25519",
+          "specifiers": [
+            "ed25519"
+          ]
+        },
+        {
+          "source": "crypto/sha256",
+          "specifiers": [
+            "sha256"
+          ]
+        },
+        {
+          "source": "encoding/base64",
+          "specifiers": [
+            "base64"
+          ]
+        },
+        {
+          "source": "encoding/hex",
+          "specifiers": [
+            "hex"
+          ]
+        },
+        {
+          "source": "encoding/json",
+          "specifiers": [
+            "json"
+          ]
+        },
+        {
+          "source": "errors",
+          "specifiers": [
+            "errors"
+          ]
+        },
+        {
+          "source": "fmt",
+          "specifiers": [
+            "fmt"
+          ]
+        },
+        {
+          "source": "io",
+          "specifiers": [
+            "io"
+          ]
+        },
+        {
+          "source": "net/http",
+          "specifiers": [
+            "http"
+          ]
+        },
+        {
+          "source": "os",
+          "specifiers": [
+            "os"
+          ]
+        },
+        {
+          "source": "os/exec",
+          "specifiers": [
+            "exec"
+          ]
+        },
+        {
+          "source": "path",
+          "specifiers": [
+            "path"
+          ]
+        },
+        {
+          "source": "path/filepath",
+          "specifiers": [
+            "filepath"
+          ]
+        },
+        {
+          "source": "runtime",
+          "specifiers": [
+            "runtime"
+          ]
+        },
+        {
+          "source": "strings",
+          "specifiers": [
+            "strings"
+          ]
+        },
+        {
+          "source": "github.com/FlanChanXwO/pixiv-cli/internal/buildinfo",
+          "specifiers": [
+            "buildinfo"
+          ]
+        },
+        {
+          "source": "github.com/FlanChanXwO/pixiv-cli/internal/utils/files",
+          "specifiers": [
+            "files"
+          ]
+        }
+      ],
+      "exports": [
+        "ReleaseBinaryChecker",
+        "ReleaseFileReplacer",
+        "ReleaseInstallerOptions",
+        "NewReleaseInstaller",
+        "Install",
+        "Check",
+        "Replace"
+      ],
+      "totalLines": 521,
+      "hasStructuralAnalysis": true
+    },
+    "internal/update/releases_test.go": {
+      "filePath": "internal/update/releases_test.go",
+      "contentHash": "16bc0557d0c457e3384c46385c5e478010a32d8157ee4827902573dcf342fcee",
+      "functions": [
+        {
+          "name": "TestGitHubReleaseClientSelectsLatestStableRelease",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 37
+        },
+        {
+          "name": "TestGitHubReleaseClientCarriesSelectedReleaseAssets",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 25
+        },
+        {
+          "name": "TestGitHubReleaseClientRefreshesLegacyETagCacheBeforeReturningAssets",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 46
+        },
+        {
+          "name": "TestGitHubReleaseClientIncludesPrereleasesOnlyWhenRequested",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 36
+        },
+        {
+          "name": "TestGitHubReleaseClientRejectsNonSemVerPublishedRelease",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 20
+        },
+        {
+          "name": "TestGitHubReleaseClientSkipsGitHubPrereleaseBeforeTagValidation",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 30
+        },
+        {
+          "name": "TestGitHubReleaseClientPreservesBuildMetadataWithoutChangingPrecedence",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 28
+        },
+        {
+          "name": "TestGitHubReleaseClientFollowsNextPagesAndRevalidatesTheirETags",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 64
+        },
+        {
+          "name": "TestGitHubReleaseClientOrdersSemVerNumbersBeyondUint64",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 59
+        },
+        {
+          "name": "TestGitHubReleaseClientRejectsUnsafeNextPages",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 53
+        },
+        {
+          "name": "TestGitHubReleaseClientDoesNotRequestAfterCacheReadContextExpiry",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 27
+        },
+        {
+          "name": "Err",
+          "params": [],
+          "returnType": "error",
+          "exported": true,
+          "lineCount": 7
+        },
+        {
+          "name": "TestGitHubReleaseClientUsesETagAndAtomicallyPersistedCache",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 70
+        },
+        {
+          "name": "TestGitHubReleaseClientReturnsCacheWriteFailures",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 27
+        },
+        {
+          "name": "TestGitHubReleaseClientThrottlesAutomaticChecksFor24Hours",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 58
+        },
+        {
+          "name": "TestGitHubReleaseClientUsesThreeSecondDeadlineOnlyForAutomaticChecks",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 37
+        },
+        {
+          "name": "TestGitHubReleaseClientCancelsSlowAutomaticCheckAfterThreeSeconds",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 34
+        },
+        {
+          "name": "TestGitHubReleaseClientAtomicallyReplacesCacheForConcurrentReaders",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 77
+        },
+        {
+          "name": "RoundTrip",
+          "params": [
+            "request"
+          ],
+          "returnType": "(*http.Response, error)",
+          "exported": true,
+          "lineCount": 4
+        },
+        {
+          "name": "reset",
+          "params": [],
+          "exported": false,
+          "lineCount": 4
+        }
+      ],
+      "classes": [
+        {
+          "name": "expiresDuringCacheReadContext",
+          "methods": [
+            "Err"
+          ],
+          "properties": [
+            "checks"
+          ],
+          "exported": false,
+          "lineCount": 4
+        },
+        {
+          "name": "deadlineRecordingTransport",
+          "methods": [
+            "RoundTrip",
+            "reset"
+          ],
+          "properties": [
+            "next",
+            "hasDeadline",
+            "deadline"
+          ],
+          "exported": false,
+          "lineCount": 5
+        }
+      ],
+      "imports": [
+        {
+          "source": "context",
+          "specifiers": [
+            "context"
+          ]
+        },
+        {
+          "source": "encoding/json",
+          "specifiers": [
+            "json"
+          ]
+        },
+        {
+          "source": "fmt",
+          "specifiers": [
+            "fmt"
+          ]
+        },
+        {
+          "source": "net/http",
+          "specifiers": [
+            "http"
+          ]
+        },
+        {
+          "source": "net/http/httptest",
+          "specifiers": [
+            "httptest"
+          ]
+        },
+        {
+          "source": "os",
+          "specifiers": [
+            "os"
+          ]
+        },
+        {
+          "source": "path/filepath",
+          "specifiers": [
+            "filepath"
+          ]
+        },
+        {
+          "source": "strings",
+          "specifiers": [
+            "strings"
+          ]
+        },
+        {
+          "source": "sync",
+          "specifiers": [
+            "sync"
+          ]
+        },
+        {
+          "source": "testing",
+          "specifiers": [
+            "testing"
+          ]
+        },
+        {
+          "source": "time",
+          "specifiers": [
+            "time"
+          ]
+        },
+        {
+          "source": "github.com/FlanChanXwO/pixiv-cli/internal/update",
+          "specifiers": [
+            "update"
+          ]
+        }
+      ],
+      "exports": [
+        "TestGitHubReleaseClientSelectsLatestStableRelease",
+        "TestGitHubReleaseClientCarriesSelectedReleaseAssets",
+        "TestGitHubReleaseClientRefreshesLegacyETagCacheBeforeReturningAssets",
+        "TestGitHubReleaseClientIncludesPrereleasesOnlyWhenRequested",
+        "TestGitHubReleaseClientRejectsNonSemVerPublishedRelease",
+        "TestGitHubReleaseClientSkipsGitHubPrereleaseBeforeTagValidation",
+        "TestGitHubReleaseClientPreservesBuildMetadataWithoutChangingPrecedence",
+        "TestGitHubReleaseClientFollowsNextPagesAndRevalidatesTheirETags",
+        "TestGitHubReleaseClientOrdersSemVerNumbersBeyondUint64",
+        "TestGitHubReleaseClientRejectsUnsafeNextPages",
+        "TestGitHubReleaseClientDoesNotRequestAfterCacheReadContextExpiry",
+        "Err",
+        "TestGitHubReleaseClientUsesETagAndAtomicallyPersistedCache",
+        "TestGitHubReleaseClientReturnsCacheWriteFailures",
+        "TestGitHubReleaseClientThrottlesAutomaticChecksFor24Hours",
+        "TestGitHubReleaseClientUsesThreeSecondDeadlineOnlyForAutomaticChecks",
+        "TestGitHubReleaseClientCancelsSlowAutomaticCheckAfterThreeSeconds",
+        "TestGitHubReleaseClientAtomicallyReplacesCacheForConcurrentReaders",
+        "RoundTrip"
+      ],
+      "totalLines": 792,
+      "hasStructuralAnalysis": true
+    },
+    "internal/update/releases.go": {
+      "filePath": "internal/update/releases.go",
+      "contentHash": "c193d637e9f830f57e342f20a56ad648f16f114c41b1c835c7365d9a23d1457e",
+      "functions": [
+        {
+          "name": "NewGitHubReleaseClient",
+          "params": [
+            "options"
+          ],
+          "returnType": "(*GitHubReleaseClient, error)",
+          "exported": true,
+          "lineCount": 47
+        },
+        {
+          "name": "Check",
+          "params": [
+            "ctx",
+            "options"
+          ],
+          "returnType": "(ReleaseCheckResult, error)",
+          "exported": true,
+          "lineCount": 42
+        },
+        {
+          "name": "readCache",
+          "params": [
+            "ctx"
+          ],
+          "returnType": "(releaseCache, bool, error)",
+          "exported": false,
+          "lineCount": 23
+        },
+        {
+          "name": "checkContext",
+          "params": [
+            "ctx",
+            "action"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 6
+        },
+        {
+          "name": "fetchReleaseCache",
+          "params": [
+            "ctx",
+            "previous"
+          ],
+          "returnType": "(releaseCache, error)",
+          "exported": false,
+          "lineCount": 42
+        },
+        {
+          "name": "fetchReleasePage",
+          "params": [
+            "ctx",
+            "pageURL",
+            "cachedPage",
+            "hasCachedPage"
+          ],
+          "returnType": "(releaseCachePage, *url.URL, error)",
+          "exported": false,
+          "lineCount": 49
+        },
+        {
+          "name": "cachedNextReleasePage",
+          "params": [
+            "nextURL"
+          ],
+          "returnType": "(*url.URL, error)",
+          "exported": false,
+          "lineCount": 6
+        },
+        {
+          "name": "nextReleasePage",
+          "params": [
+            "linkHeaders",
+            "current"
+          ],
+          "returnType": "(*url.URL, error)",
+          "exported": false,
+          "lineCount": 45
+        },
+        {
+          "name": "parseReleasePageURL",
+          "params": [
+            "value"
+          ],
+          "returnType": "(*url.URL, error)",
+          "exported": false,
+          "lineCount": 7
+        },
+        {
+          "name": "validateReleasePageURL",
+          "params": [
+            "pageURL"
+          ],
+          "returnType": "(*url.URL, error)",
+          "exported": false,
+          "lineCount": 15
+        },
+        {
+          "name": "urlUserString",
+          "params": [
+            "pageURL"
+          ],
+          "returnType": "string",
+          "exported": false,
+          "lineCount": 6
+        },
+        {
+          "name": "canonicalReleasePageURL",
+          "params": [
+            "pageURL"
+          ],
+          "returnType": "string",
+          "exported": false,
+          "lineCount": 8
+        },
+        {
+          "name": "normalizedReleasePath",
+          "params": [
+            "value"
+          ],
+          "returnType": "string",
+          "exported": false,
+          "lineCount": 3
+        },
+        {
+          "name": "writeCache",
+          "params": [
+            "cache"
+          ],
+          "returnType": "(err error)",
+          "exported": false,
+          "lineCount": 33
+        },
+        {
+          "name": "publishedReleases",
+          "params": [
+            "releases"
+          ],
+          "returnType": "[]githubRelease",
+          "exported": false,
+          "lineCount": 9
+        },
+        {
+          "name": "selectRelease",
+          "params": [
+            "releases",
+            "includePrerelease"
+          ],
+          "returnType": "(*Release, error)",
+          "exported": false,
+          "lineCount": 31
+        },
+        {
+          "name": "parseSemanticVersion",
+          "params": [
+            "tag"
+          ],
+          "returnType": "(semanticVersion, error)",
+          "exported": false,
+          "lineCount": 41
+        },
+        {
+          "name": "parseSemanticNumber",
+          "params": [
+            "value"
+          ],
+          "returnType": "(string, error)",
+          "exported": false,
+          "lineCount": 6
+        },
+        {
+          "name": "validSemanticIdentifiers",
+          "params": [
+            "value",
+            "forbidLeadingZeroNumber"
+          ],
+          "returnType": "bool",
+          "exported": false,
+          "lineCount": 19
+        },
+        {
+          "name": "isPrerelease",
+          "params": [],
+          "returnType": "bool",
+          "exported": false,
+          "lineCount": 3
+        },
+        {
+          "name": "string",
+          "params": [],
+          "returnType": "string",
+          "exported": false,
+          "lineCount": 10
+        },
+        {
+          "name": "compare",
+          "params": [
+            "other"
+          ],
+          "returnType": "int",
+          "exported": false,
+          "lineCount": 26
+        },
+        {
+          "name": "compareSemanticIdentifier",
+          "params": [
+            "first",
+            "second"
+          ],
+          "returnType": "int",
+          "exported": false,
+          "lineCount": 14
+        },
+        {
+          "name": "isNumericIdentifier",
+          "params": [
+            "value"
+          ],
+          "returnType": "bool",
+          "exported": false,
+          "lineCount": 11
+        },
+        {
+          "name": "compareSemanticNumber",
+          "params": [
+            "first",
+            "second"
+          ],
+          "returnType": "int",
+          "exported": false,
+          "lineCount": 9
+        },
+        {
+          "name": "compareInt",
+          "params": [
+            "first",
+            "second"
+          ],
+          "returnType": "int",
+          "exported": false,
+          "lineCount": 9
+        }
+      ],
+      "classes": [
+        {
+          "name": "ReleaseClientOptions",
+          "methods": [],
+          "properties": [
+            "APIBaseURL",
+            "Repository",
+            "HTTPClient",
+            "CacheDir",
+            "Now"
+          ],
+          "exported": true,
+          "lineCount": 7
+        },
+        {
+          "name": "ReleaseCheckOptions",
+          "methods": [],
+          "properties": [
+            "IncludePrerelease",
+            "Automatic"
+          ],
+          "exported": true,
+          "lineCount": 4
+        },
+        {
+          "name": "Release",
+          "methods": [],
+          "properties": [
+            "TagName",
+            "Version",
+            "Prerelease",
+            "Assets"
+          ],
+          "exported": true,
+          "lineCount": 6
+        },
+        {
+          "name": "ReleaseAsset",
+          "methods": [],
+          "properties": [
+            "Name",
+            "DownloadURL"
+          ],
+          "exported": true,
+          "lineCount": 4
+        },
+        {
+          "name": "ReleaseCheckResult",
+          "methods": [],
+          "properties": [
+            "Release",
+            "Throttled"
+          ],
+          "exported": true,
+          "lineCount": 4
+        },
+        {
+          "name": "GitHubReleaseClient",
+          "methods": [
+            "Check",
+            "readCache",
+            "fetchReleaseCache",
+            "fetchReleasePage",
+            "cachedNextReleasePage",
+            "nextReleasePage",
+            "parseReleasePageURL",
+            "validateReleasePageURL",
+            "writeCache"
+          ],
+          "properties": [
+            "endpoint",
+            "httpClient",
+            "cacheDir",
+            "cachePath",
+            "now"
+          ],
+          "exported": true,
+          "lineCount": 7
+        },
+        {
+          "name": "githubRelease",
+          "methods": [],
+          "properties": [
+            "TagName",
+            "Draft",
+            "Prerelease",
+            "Assets"
+          ],
+          "exported": false,
+          "lineCount": 6
+        },
+        {
+          "name": "releaseCache",
+          "methods": [],
+          "properties": [
+            "SchemaVersion",
+            "CheckedAt",
+            "Releases",
+            "Pages"
+          ],
+          "exported": false,
+          "lineCount": 6
+        },
+        {
+          "name": "releaseCachePage",
+          "methods": [],
+          "properties": [
+            "URL",
+            "ETag",
+            "NextURL",
+            "Releases"
+          ],
+          "exported": false,
+          "lineCount": 6
+        },
+        {
+          "name": "semanticVersion",
+          "methods": [
+            "isPrerelease",
+            "string",
+            "compare"
+          ],
+          "properties": [
+            "major",
+            "minor",
+            "patch",
+            "prerelease",
+            "build"
+          ],
+          "exported": false,
+          "lineCount": 7
+        }
+      ],
+      "imports": [
+        {
+          "source": "context",
+          "specifiers": [
+            "context"
+          ]
+        },
+        {
+          "source": "encoding/json",
+          "specifiers": [
+            "json"
+          ]
+        },
+        {
+          "source": "fmt",
+          "specifiers": [
+            "fmt"
+          ]
+        },
+        {
+          "source": "net/http",
+          "specifiers": [
+            "http"
+          ]
+        },
+        {
+          "source": "net/url",
+          "specifiers": [
+            "url"
+          ]
+        },
+        {
+          "source": "os",
+          "specifiers": [
+            "os"
+          ]
+        },
+        {
+          "source": "path",
+          "specifiers": [
+            "path"
+          ]
+        },
+        {
+          "source": "path/filepath",
+          "specifiers": [
+            "filepath"
+          ]
+        },
+        {
+          "source": "strings",
+          "specifiers": [
+            "strings"
+          ]
+        },
+        {
+          "source": "time",
+          "specifiers": [
+            "time"
+          ]
+        },
+        {
+          "source": "github.com/FlanChanXwO/pixiv-cli/internal/utils/files",
+          "specifiers": [
+            "files"
+          ]
+        }
+      ],
+      "exports": [
+        "ReleaseClientOptions",
+        "ReleaseCheckOptions",
+        "Release",
+        "ReleaseAsset",
+        "ReleaseCheckResult",
+        "GitHubReleaseClient",
+        "NewGitHubReleaseClient",
+        "Check"
+      ],
+      "totalLines": 651,
+      "hasStructuralAnalysis": true
+    },
+    "internal/update/source_test.go": {
+      "filePath": "internal/update/source_test.go",
+      "contentHash": "ae7cdf364cf4bcca4708914cc0fed8669e5920afc748323ed7ca0b690a259f98",
+      "functions": [
+        {
+          "name": "TestDetectInstallSourceDevelopmentAvoidsSystemAccess",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 28
+        },
+        {
+          "name": "TestDetectInstallSourceHomebrewKeg",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 27
+        },
+        {
+          "name": "TestDetectInstallSourceRejectsInvalidHomebrewKeg",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 64
+        },
+        {
+          "name": "TestDetectInstallSourceGoInstallWithExplicitGOBIN",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 16
+        },
+        {
+          "name": "TestDetectInstallSourceDoesNotMistakeGoBuildForGoInstall",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 55
+        },
+        {
+          "name": "TestDetectInstallSourceUsesFirstGOPATHWhenGOBINIsUnset",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 17
+        },
+        {
+          "name": "TestDetectInstallSourceUsesDefaultGOPATHWhenEnvironmentIsUnset",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 15
+        },
+        {
+          "name": "TestDetectInstallSourceSurfacesBrokenExpectedGoInstallSymlink",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 35
+        },
+        {
+          "name": "TestDetectInstallSourceTreatsUnknownFormalBinaryAsRelease",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 15
+        },
+        {
+          "name": "homebrewExecutableFixture",
+          "params": [
+            "t",
+            "formula",
+            "receipt"
+          ],
+          "returnType": "(rawPath, actualPath string)",
+          "exported": false,
+          "lineCount": 23
+        },
+        {
+          "name": "homebrewReceipt",
+          "params": [
+            "formula"
+          ],
+          "returnType": "string",
+          "exported": false,
+          "lineCount": 3
+        },
+        {
+          "name": "testDetector",
+          "params": [
+            "executable",
+            "resolvedPath",
+            "env"
+          ],
+          "returnType": "sourceDetector",
+          "exported": false,
+          "lineCount": 17
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "errors",
+          "specifiers": [
+            "errors"
+          ]
+        },
+        {
+          "source": "go/build",
+          "specifiers": [
+            "build"
+          ]
+        },
+        {
+          "source": "os",
+          "specifiers": [
+            "os"
+          ]
+        },
+        {
+          "source": "path/filepath",
+          "specifiers": [
+            "filepath"
+          ]
+        },
+        {
+          "source": "runtime",
+          "specifiers": [
+            "runtime"
+          ]
+        },
+        {
+          "source": "runtime/debug",
+          "specifiers": [
+            "debug"
+          ]
+        },
+        {
+          "source": "strings",
+          "specifiers": [
+            "strings"
+          ]
+        },
+        {
+          "source": "testing",
+          "specifiers": [
+            "testing"
+          ]
+        },
+        {
+          "source": "github.com/FlanChanXwO/pixiv-cli/internal/buildinfo",
+          "specifiers": [
+            "buildinfo"
+          ]
+        }
+      ],
+      "exports": [
+        "TestDetectInstallSourceDevelopmentAvoidsSystemAccess",
+        "TestDetectInstallSourceHomebrewKeg",
+        "TestDetectInstallSourceRejectsInvalidHomebrewKeg",
+        "TestDetectInstallSourceGoInstallWithExplicitGOBIN",
+        "TestDetectInstallSourceDoesNotMistakeGoBuildForGoInstall",
+        "TestDetectInstallSourceUsesFirstGOPATHWhenGOBINIsUnset",
+        "TestDetectInstallSourceUsesDefaultGOPATHWhenEnvironmentIsUnset",
+        "TestDetectInstallSourceSurfacesBrokenExpectedGoInstallSymlink",
+        "TestDetectInstallSourceTreatsUnknownFormalBinaryAsRelease"
+      ],
+      "totalLines": 344,
+      "hasStructuralAnalysis": true
+    },
+    "internal/update/source.go": {
+      "filePath": "internal/update/source.go",
+      "contentHash": "17d5ee56e713dfd83053a66635132f845ab50acafd9ea08cd2ac6a9aff57e3cd",
+      "functions": [
+        {
+          "name": "DetectInstallSource",
+          "params": [
+            "info"
+          ],
+          "returnType": "(InstallSource, error)",
+          "exported": true,
+          "lineCount": 3
+        },
+        {
+          "name": "defaultSourceDetector",
+          "params": [],
+          "returnType": "sourceDetector",
+          "exported": false,
+          "lineCount": 10
+        },
+        {
+          "name": "detectInstallSource",
+          "params": [
+            "info",
+            "deps"
+          ],
+          "returnType": "(InstallSource, error)",
+          "exported": false,
+          "lineCount": 27
+        },
+        {
+          "name": "detectHomebrewSource",
+          "params": [
+            "actualExecutable",
+            "deps"
+          ],
+          "returnType": "(InstallSource, bool, error)",
+          "exported": false,
+          "lineCount": 36
+        },
+        {
+          "name": "homebrewKeg",
+          "params": [
+            "executablePath",
+            "executableName"
+          ],
+          "returnType": "(formula, kegRoot string, ok bool)",
+          "exported": false,
+          "lineCount": 20
+        },
+        {
+          "name": "isGoInstall",
+          "params": [
+            "actualExecutable",
+            "deps"
+          ],
+          "returnType": "(bool, error)",
+          "exported": false,
+          "lineCount": 26
+        },
+        {
+          "name": "formulaFromReceiptPath",
+          "params": [
+            "sourcePath"
+          ],
+          "returnType": "(string, error)",
+          "exported": false,
+          "lineCount": 15
+        },
+        {
+          "name": "pixivExecutableName",
+          "params": [
+            "goos"
+          ],
+          "returnType": "string",
+          "exported": false,
+          "lineCount": 6
+        },
+        {
+          "name": "sameExecutablePath",
+          "params": [
+            "first",
+            "second",
+            "goos"
+          ],
+          "returnType": "bool",
+          "exported": false,
+          "lineCount": 8
+        }
+      ],
+      "classes": [
+        {
+          "name": "sourceDetector",
+          "methods": [],
+          "properties": [
+            "executable",
+            "evalSymlinks",
+            "readFile",
+            "readBuildInfo",
+            "getenv",
+            "goos"
+          ],
+          "exported": false,
+          "lineCount": 8
+        }
+      ],
+      "imports": [
+        {
+          "source": "encoding/json",
+          "specifiers": [
+            "json"
+          ]
+        },
+        {
+          "source": "fmt",
+          "specifiers": [
+            "fmt"
+          ]
+        },
+        {
+          "source": "go/build",
+          "specifiers": [
+            "build"
+          ]
+        },
+        {
+          "source": "os",
+          "specifiers": [
+            "os"
+          ]
+        },
+        {
+          "source": "path",
+          "specifiers": [
+            "path"
+          ]
+        },
+        {
+          "source": "path/filepath",
+          "specifiers": [
+            "filepath"
+          ]
+        },
+        {
+          "source": "runtime",
+          "specifiers": [
+            "runtime"
+          ]
+        },
+        {
+          "source": "runtime/debug",
+          "specifiers": [
+            "debug"
+          ]
+        },
+        {
+          "source": "strings",
+          "specifiers": [
+            "strings"
+          ]
+        },
+        {
+          "source": "github.com/FlanChanXwO/pixiv-cli/internal/buildinfo",
+          "specifiers": [
+            "buildinfo"
+          ]
+        }
+      ],
+      "exports": [
+        "DetectInstallSource"
+      ],
+      "totalLines": 200,
+      "hasStructuralAnalysis": true
+    },
+    "internal/update/strategy_test.go": {
+      "filePath": "internal/update/strategy_test.go",
+      "contentHash": "0f27bc1e617588a1b3df778c0d62b8c11f6c59f9263f52a28bf5e0d633c3655f",
+      "functions": [
+        {
+          "name": "TestUpdateCoordinatorGoInstallUsesExactReleaseTag",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 17
+        },
+        {
+          "name": "TestUpdateCoordinatorReleaseUsesInstallerOnlyForStrictlyNewerVersion",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 29
+        },
+        {
+          "name": "TestUpdateCoordinatorHomebrewRunsChannelCommands",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 71
+        },
+        {
+          "name": "TestUpdateCoordinatorHomebrewSwitchRollsBackAndReportsBothOutcomes",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 47
+        },
+        {
+          "name": "TestUpdateCoordinatorDevelopmentBuildRejectsBeforeNetworkOrCommands",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 16
+        },
+        {
+          "name": "TestUpdateCoordinatorCheckNeverRunsCommandOrInstaller",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 32
+        },
+        {
+          "name": "TestUpdateCoordinatorCheckReportsNoReleaseAsNilLatestVersion",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 17
+        },
+        {
+          "name": "TestUpdateCoordinatorCheckReportsHomebrewChannelSwitchWhenSemVerIsOlder",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 33
+        },
+        {
+          "name": "TestUpdateCoordinatorRejectsInvalidFormalVersionBeforeReleaseCheck",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 13
+        },
+        {
+          "name": "TestUpdateCoordinatorPreservesDetectorAndCheckerFailures",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 37
+        },
+        {
+          "name": "TestUpdateCoordinatorGoInstallSkipsRunnerWithoutStrictUpdate",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 15
+        },
+        {
+          "name": "Detect",
+          "params": [],
+          "returnType": "(InstallSource, error)",
+          "exported": true,
+          "lineCount": 3
+        },
+        {
+          "name": "Check",
+          "params": [
+            "_",
+            "options"
+          ],
+          "returnType": "(ReleaseCheckResult, error)",
+          "exported": true,
+          "lineCount": 4
+        },
+        {
+          "name": "Install",
+          "params": [
+            "_",
+            "release"
+          ],
+          "returnType": "error",
+          "exported": true,
+          "lineCount": 4
+        },
+        {
+          "name": "Run",
+          "params": [
+            "_",
+            "command"
+          ],
+          "returnType": "error",
+          "exported": true,
+          "lineCount": 9
+        }
+      ],
+      "classes": [
+        {
+          "name": "fakeSourceDetector",
+          "methods": [
+            "Detect"
+          ],
+          "properties": [
+            "source",
+            "err"
+          ],
+          "exported": false,
+          "lineCount": 4
+        },
+        {
+          "name": "fakeReleaseChecker",
+          "methods": [
+            "Check"
+          ],
+          "properties": [
+            "result",
+            "err",
+            "options"
+          ],
+          "exported": false,
+          "lineCount": 5
+        },
+        {
+          "name": "fakeCommandRunner",
+          "methods": [
+            "Run"
+          ],
+          "properties": [
+            "commands",
+            "errors"
+          ],
+          "exported": false,
+          "lineCount": 4
+        },
+        {
+          "name": "fakeReleaseInstaller",
+          "methods": [
+            "Install"
+          ],
+          "properties": [
+            "releases",
+            "err"
+          ],
+          "exported": false,
+          "lineCount": 4
+        }
+      ],
+      "imports": [
+        {
+          "source": "context",
+          "specifiers": [
+            "context"
+          ]
+        },
+        {
+          "source": "errors",
+          "specifiers": [
+            "errors"
+          ]
+        },
+        {
+          "source": "strings",
+          "specifiers": [
+            "strings"
+          ]
+        },
+        {
+          "source": "testing",
+          "specifiers": [
+            "testing"
+          ]
+        },
+        {
+          "source": "github.com/FlanChanXwO/pixiv-cli/internal/buildinfo",
+          "specifiers": [
+            "buildinfo"
+          ]
+        },
+        {
+          "source": "github.com/stretchr/testify/assert",
+          "specifiers": [
+            "assert"
+          ]
+        },
+        {
+          "source": "github.com/stretchr/testify/require",
+          "specifiers": [
+            "require"
+          ]
+        }
+      ],
+      "exports": [
+        "TestUpdateCoordinatorGoInstallUsesExactReleaseTag",
+        "TestUpdateCoordinatorReleaseUsesInstallerOnlyForStrictlyNewerVersion",
+        "TestUpdateCoordinatorHomebrewRunsChannelCommands",
+        "TestUpdateCoordinatorHomebrewSwitchRollsBackAndReportsBothOutcomes",
+        "TestUpdateCoordinatorDevelopmentBuildRejectsBeforeNetworkOrCommands",
+        "TestUpdateCoordinatorCheckNeverRunsCommandOrInstaller",
+        "TestUpdateCoordinatorCheckReportsNoReleaseAsNilLatestVersion",
+        "TestUpdateCoordinatorCheckReportsHomebrewChannelSwitchWhenSemVerIsOlder",
+        "TestUpdateCoordinatorRejectsInvalidFormalVersionBeforeReleaseCheck",
+        "TestUpdateCoordinatorPreservesDetectorAndCheckerFailures",
+        "TestUpdateCoordinatorGoInstallSkipsRunnerWithoutStrictUpdate",
+        "Detect",
+        "Check",
+        "Install",
+        "Run"
+      ],
+      "totalLines": 396,
+      "hasStructuralAnalysis": true
+    },
+    "internal/update/strategy.go": {
+      "filePath": "internal/update/strategy.go",
+      "contentHash": "a062d122d26bc1b47bd48386b823965a8759fd1929f7a7aa47b7fe50496be38c",
+      "functions": [
+        {
+          "name": "Detect",
+          "params": [
+            "info"
+          ],
+          "returnType": "(InstallSource, error)",
+          "exported": true,
+          "lineCount": 3
+        },
+        {
+          "name": "NewUpdateCoordinator",
+          "params": [
+            "options"
+          ],
+          "returnType": "(*UpdateCoordinator, error)",
+          "exported": true,
+          "lineCount": 17
+        },
+        {
+          "name": "Execute",
+          "params": [
+            "ctx",
+            "request"
+          ],
+          "returnType": "(UpdateResult, error)",
+          "exported": true,
+          "lineCount": 74
+        },
+        {
+          "name": "homebrewChannelSwitchRequested",
+          "params": [
+            "source",
+            "includePrerelease"
+          ],
+          "returnType": "bool",
+          "exported": false,
+          "lineCount": 3
+        },
+        {
+          "name": "runHomebrew",
+          "params": [
+            "ctx",
+            "action",
+            "formula"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 9
+        },
+        {
+          "name": "switchHomebrewFormula",
+          "params": [
+            "ctx",
+            "previousFormula",
+            "targetFormula"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 13
+        }
+      ],
+      "classes": [
+        {
+          "name": "SourceDetector",
+          "methods": [
+            "Detect"
+          ],
+          "properties": [],
+          "exported": true,
+          "lineCount": 3
+        },
+        {
+          "name": "ReleaseChecker",
+          "methods": [
+            "Check"
+          ],
+          "properties": [],
+          "exported": true,
+          "lineCount": 3
+        },
+        {
+          "name": "Command",
+          "methods": [],
+          "properties": [
+            "Name",
+            "Args"
+          ],
+          "exported": true,
+          "lineCount": 4
+        },
+        {
+          "name": "CommandRunner",
+          "methods": [
+            "Run"
+          ],
+          "properties": [],
+          "exported": true,
+          "lineCount": 3
+        },
+        {
+          "name": "ReleaseInstaller",
+          "methods": [
+            "Install"
+          ],
+          "properties": [],
+          "exported": true,
+          "lineCount": 3
+        },
+        {
+          "name": "UpdateCoordinatorOptions",
+          "methods": [],
+          "properties": [
+            "SourceDetector",
+            "ReleaseChecker",
+            "CommandRunner",
+            "ReleaseInstaller"
+          ],
+          "exported": true,
+          "lineCount": 6
+        },
+        {
+          "name": "UpdateCoordinator",
+          "methods": [
+            "Execute",
+            "runHomebrew",
+            "switchHomebrewFormula"
+          ],
+          "properties": [
+            "sourceDetector",
+            "releaseChecker",
+            "commandRunner",
+            "releaseInstaller"
+          ],
+          "exported": true,
+          "lineCount": 6
+        },
+        {
+          "name": "UpdateRequest",
+          "methods": [],
+          "properties": [
+            "BuildInfo",
+            "Check",
+            "IncludePrerelease"
+          ],
+          "exported": true,
+          "lineCount": 5
+        },
+        {
+          "name": "UpdateResult",
+          "methods": [],
+          "properties": [
+            "Source",
+            "CurrentVersion",
+            "LatestVersion",
+            "LatestPrerelease",
+            "UpdateAvailable"
+          ],
+          "exported": true,
+          "lineCount": 7
+        }
+      ],
+      "imports": [
+        {
+          "source": "context",
+          "specifiers": [
+            "context"
+          ]
+        },
+        {
+          "source": "fmt",
+          "specifiers": [
+            "fmt"
+          ]
+        },
+        {
+          "source": "github.com/FlanChanXwO/pixiv-cli/internal/buildinfo",
+          "specifiers": [
+            "buildinfo"
+          ]
+        }
+      ],
+      "exports": [
+        "SourceDetector",
+        "Detect",
+        "ReleaseChecker",
+        "Command",
+        "CommandRunner",
+        "ReleaseInstaller",
+        "UpdateCoordinatorOptions",
+        "UpdateCoordinator",
+        "UpdateRequest",
+        "UpdateResult",
+        "NewUpdateCoordinator",
+        "Execute"
+      ],
+      "totalLines": 205,
+      "hasStructuralAnalysis": true
+    },
     "internal/utils/filename.go": {
       "filePath": "internal/utils/filename.go",
       "contentHash": "4decd948ac8e4bc59ca3f8a20f20e241665562a220f9145333b40aec0eb65cd0",
@@ -9924,7 +15500,7 @@
     },
     "internal/utils/files/files_test.go": {
       "filePath": "internal/utils/files/files_test.go",
-      "contentHash": "c68047669a2e286c57be9a048d182ebdb4c3523b72ebf9ca750df25ade1cbaf9",
+      "contentHash": "aefe9ba0f85eca44b59f7c070334a1cc6a297857958f67f5b274da4272650e73",
       "functions": [
         {
           "name": "TestUserConfigFileBuildsPathUnderNamedAppDir",
@@ -9965,6 +15541,14 @@
           ],
           "exported": true,
           "lineCount": 15
+        },
+        {
+          "name": "TestReplaceFileCreatesMissingTargetAndRemovesSource",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 14
         }
       ],
       "classes": [],
@@ -10011,9 +15595,10 @@
         "TestWritePrivateFileCreatesPrivateParentAndFile",
         "TestWritePrivateFileResetsExistingFileMode",
         "TestWritePrivateFileResetsExistingParentDirectoryMode",
-        "TestReplaceFileReplacesTargetAndRemovesSource"
+        "TestReplaceFileReplacesTargetAndRemovesSource",
+        "TestReplaceFileCreatesMissingTargetAndRemovesSource"
       ],
-      "totalLines": 80,
+      "totalLines": 95,
       "hasStructuralAnalysis": true
     },
     "internal/utils/files/files.go": {
@@ -10082,13 +15667,24 @@
     },
     "internal/utils/files/replace_nonwindows.go": {
       "filePath": "internal/utils/files/replace_nonwindows.go",
-      "contentHash": "da41b5c8501ca80ad31eb92ff44553a8a5906336045161e9fd200f7e78f85b8c",
+      "contentHash": "67aff8feb10fdf1e5b24f77ba10b81c6abcbc27eb7350f83f70faa6e591817ad",
       "functions": [
         {
           "name": "ReplaceFile",
           "params": [
             "sourcePath",
             "targetPath"
+          ],
+          "returnType": "error",
+          "exported": true,
+          "lineCount": 3
+        },
+        {
+          "name": "ReplaceFileWithBackup",
+          "params": [
+            "sourcePath",
+            "targetPath",
+            "_"
           ],
           "returnType": "error",
           "exported": true,
@@ -10105,14 +15701,61 @@
         }
       ],
       "exports": [
-        "ReplaceFile"
+        "ReplaceFile",
+        "ReplaceFileWithBackup"
       ],
-      "totalLines": 11,
+      "totalLines": 17,
+      "hasStructuralAnalysis": true
+    },
+    "internal/utils/files/replace_windows_test.go": {
+      "filePath": "internal/utils/files/replace_windows_test.go",
+      "contentHash": "0cbe42545fbeda79134ede27cb54c38f29a1b73b49307c629ad4757e6a6b72b0",
+      "functions": [
+        {
+          "name": "TestReplaceFileWithBackupPreservesOldTargetForDeferredCleanup",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 18
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "os",
+          "specifiers": [
+            "os"
+          ]
+        },
+        {
+          "source": "path/filepath",
+          "specifiers": [
+            "filepath"
+          ]
+        },
+        {
+          "source": "testing",
+          "specifiers": [
+            "testing"
+          ]
+        },
+        {
+          "source": "github.com/stretchr/testify/require",
+          "specifiers": [
+            "require"
+          ]
+        }
+      ],
+      "exports": [
+        "TestReplaceFileWithBackupPreservesOldTargetForDeferredCleanup"
+      ],
+      "totalLines": 31,
       "hasStructuralAnalysis": true
     },
     "internal/utils/files/replace_windows.go": {
       "filePath": "internal/utils/files/replace_windows.go",
-      "contentHash": "f74313e911407eefb757346922d68038cfa335488769d56013166c708ea89001",
+      "contentHash": "033bfa4218c8fa872be7186bc9dbb3e606a2bd431ec4548a108dbdcda812e641",
       "functions": [
         {
           "name": "ReplaceFile",
@@ -10122,11 +15765,34 @@
           ],
           "returnType": "error",
           "exported": true,
-          "lineCount": 11
+          "lineCount": 3
+        },
+        {
+          "name": "ReplaceFileWithBackup",
+          "params": [
+            "sourcePath",
+            "targetPath",
+            "backupPath"
+          ],
+          "returnType": "error",
+          "exported": true,
+          "lineCount": 40
         }
       ],
       "classes": [],
       "imports": [
+        {
+          "source": "os",
+          "specifiers": [
+            "os"
+          ]
+        },
+        {
+          "source": "unsafe",
+          "specifiers": [
+            "unsafe"
+          ]
+        },
         {
           "source": "golang.org/x/sys/windows",
           "specifiers": [
@@ -10135,9 +15801,10 @@
         }
       ],
       "exports": [
-        "ReplaceFile"
+        "ReplaceFile",
+        "ReplaceFileWithBackup"
       ],
-      "totalLines": 19,
+      "totalLines": 63,
       "hasStructuralAnalysis": true
     },
     "internal/utils/media/media_test.go": {
@@ -10591,22 +16258,1439 @@
     },
     "README.md": {
       "filePath": "README.md",
-      "contentHash": "168330779c00cb3ee76a601c8cc6e5d8ecb435256895c306a4cc52f9475f0ea9",
+      "contentHash": "a754dfd9de15a4966d51d88c3b5a1285c074d5fd607852c2098d5de07878ff99",
       "functions": [],
       "classes": [],
       "imports": [],
       "exports": [],
-      "totalLines": 283,
+      "totalLines": 377,
+      "hasStructuralAnalysis": true
+    },
+    "scripts/build-staticlibs.sh": {
+      "filePath": "scripts/build-staticlibs.sh",
+      "contentHash": "e80c9c7db7f8852b401324fcc7a027d1252984959236b4085f76aff09b34e3f5",
+      "functions": [
+        {
+          "name": "usage",
+          "params": [],
+          "exported": false,
+          "lineCount": 10
+        },
+        {
+          "name": "fail",
+          "params": [],
+          "exported": false,
+          "lineCount": 4
+        },
+        {
+          "name": "target_kind",
+          "params": [],
+          "exported": false,
+          "lineCount": 13
+        }
+      ],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 151,
       "hasStructuralAnalysis": true
     },
     "scripts/build.sh": {
       "filePath": "scripts/build.sh",
-      "contentHash": "aedcbb8264d5adce4f815b1195f9fa9ffbf8347727ffe4810e276ca1c120bab2",
+      "contentHash": "95413c3f3c1faf3ea7b990f1db81396bff0a332ff8563e2ea5d5aad2e8f90167",
       "functions": [],
       "classes": [],
       "imports": [],
       "exports": [],
-      "totalLines": 16,
+      "totalLines": 45,
+      "hasStructuralAnalysis": true
+    },
+    "scripts/homebrewformula/main.go": {
+      "filePath": "scripts/homebrewformula/main.go",
+      "contentHash": "41e10ac364f0e37251271cb40afb18de895cd4bc0526c5b373347af16a9686dd",
+      "functions": [
+        {
+          "name": "main",
+          "params": [],
+          "exported": false,
+          "lineCount": 6
+        },
+        {
+          "name": "run",
+          "params": [
+            "arguments"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 9
+        },
+        {
+          "name": "runRender",
+          "params": [
+            "arguments"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 36
+        },
+        {
+          "name": "validateVersion",
+          "params": [
+            "version"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 6
+        },
+        {
+          "name": "validateFormulaVersion",
+          "params": [
+            "formula",
+            "version"
+          ],
+          "returnType": "(formulaName, templateName string, err error)",
+          "exported": false,
+          "lineCount": 18
+        },
+        {
+          "name": "readChecksums",
+          "params": [
+            "path",
+            "version"
+          ],
+          "returnType": "(map[string]string, error)",
+          "exported": false,
+          "lineCount": 34
+        },
+        {
+          "name": "renderFormula",
+          "params": [
+            "template",
+            "formula",
+            "version",
+            "checksums"
+          ],
+          "returnType": "(string, error)",
+          "exported": false,
+          "lineCount": 27
+        },
+        {
+          "name": "archiveName",
+          "params": [
+            "version",
+            "target"
+          ],
+          "returnType": "string",
+          "exported": false,
+          "lineCount": 7
+        },
+        {
+          "name": "releaseURL",
+          "params": [
+            "version",
+            "archive"
+          ],
+          "returnType": "string",
+          "exported": false,
+          "lineCount": 3
+        },
+        {
+          "name": "readRegularFile",
+          "params": [
+            "path",
+            "label"
+          ],
+          "returnType": "([]byte, error)",
+          "exported": false,
+          "lineCount": 17
+        },
+        {
+          "name": "writeNewRegularFile",
+          "params": [
+            "path",
+            "body"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 35
+        },
+        {
+          "name": "rejectSymlinkAncestors",
+          "params": [
+            "path"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 20
+        }
+      ],
+      "classes": [
+        {
+          "name": "releaseTarget",
+          "methods": [],
+          "properties": [
+            "goos",
+            "goarch"
+          ],
+          "exported": false,
+          "lineCount": 4
+        }
+      ],
+      "imports": [
+        {
+          "source": "errors",
+          "specifiers": [
+            "errors"
+          ]
+        },
+        {
+          "source": "flag",
+          "specifiers": [
+            "flag"
+          ]
+        },
+        {
+          "source": "fmt",
+          "specifiers": [
+            "fmt"
+          ]
+        },
+        {
+          "source": "os",
+          "specifiers": [
+            "os"
+          ]
+        },
+        {
+          "source": "path/filepath",
+          "specifiers": [
+            "filepath"
+          ]
+        },
+        {
+          "source": "regexp",
+          "specifiers": [
+            "regexp"
+          ]
+        },
+        {
+          "source": "strings",
+          "specifiers": [
+            "strings"
+          ]
+        }
+      ],
+      "exports": [],
+      "totalLines": 271,
+      "hasStructuralAnalysis": true
+    },
+    "scripts/licensebundle/main_test.go": {
+      "filePath": "scripts/licensebundle/main_test.go",
+      "contentHash": "fec32098f33b3b3f46cbf58182f1f15c54b8e6c2f16afd604360137b772685d5",
+      "functions": [
+        {
+          "name": "TestGenerateFromTargetMetadataUnionsPlatformDependencyClosures",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 33
+        },
+        {
+          "name": "TestPackageLicenseFilesRejectsTraversalLicenseFile",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 9
+        },
+        {
+          "name": "TestNormalizeLicenseTextPreservesContentAndRemovesOnlyTerminalBlankLines",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 6
+        },
+        {
+          "name": "TestGenerateQueriesAllSixReleaseTargetsOffline",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 43
+        },
+        {
+          "name": "TestGenerateRejectsOutputPathsOutsideRepositoryBeforeCargo",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 79
+        },
+        {
+          "name": "TestWriteBundleRestoresPreviousIndexAndTreeWhenIndexPublishFails",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 42
+        },
+        {
+          "name": "makeTestPackage",
+          "params": [
+            "t",
+            "root",
+            "name",
+            "version",
+            "licenseFile"
+          ],
+          "returnType": "testPackage",
+          "exported": false,
+          "lineCount": 17
+        },
+        {
+          "name": "makeTargetMetadata",
+          "params": [
+            "t",
+            "root",
+            "dependency"
+          ],
+          "returnType": "[]byte",
+          "exported": false,
+          "lineCount": 18
+        },
+        {
+          "name": "shellQuote",
+          "params": [
+            "value"
+          ],
+          "returnType": "string",
+          "exported": false,
+          "lineCount": 3
+        }
+      ],
+      "classes": [
+        {
+          "name": "testPackage",
+          "methods": [],
+          "properties": [
+            "id",
+            "name",
+            "version",
+            "manifest"
+          ],
+          "exported": false,
+          "lineCount": 6
+        }
+      ],
+      "imports": [
+        {
+          "source": "encoding/json",
+          "specifiers": [
+            "json"
+          ]
+        },
+        {
+          "source": "errors",
+          "specifiers": [
+            "errors"
+          ]
+        },
+        {
+          "source": "fmt",
+          "specifiers": [
+            "fmt"
+          ]
+        },
+        {
+          "source": "os",
+          "specifiers": [
+            "os"
+          ]
+        },
+        {
+          "source": "path/filepath",
+          "specifiers": [
+            "filepath"
+          ]
+        },
+        {
+          "source": "sort",
+          "specifiers": [
+            "sort"
+          ]
+        },
+        {
+          "source": "strings",
+          "specifiers": [
+            "strings"
+          ]
+        },
+        {
+          "source": "testing",
+          "specifiers": [
+            "testing"
+          ]
+        }
+      ],
+      "exports": [
+        "TestGenerateFromTargetMetadataUnionsPlatformDependencyClosures",
+        "TestPackageLicenseFilesRejectsTraversalLicenseFile",
+        "TestNormalizeLicenseTextPreservesContentAndRemovesOnlyTerminalBlankLines",
+        "TestGenerateQueriesAllSixReleaseTargetsOffline",
+        "TestGenerateRejectsOutputPathsOutsideRepositoryBeforeCargo",
+        "TestWriteBundleRestoresPreviousIndexAndTreeWhenIndexPublishFails"
+      ],
+      "totalLines": 279,
+      "hasStructuralAnalysis": true
+    },
+    "scripts/licensebundle/main.go": {
+      "filePath": "scripts/licensebundle/main.go",
+      "contentHash": "6c7a361ebf1967164efadffcf5fdfad4b2e9b28dc5bb959167dc04cee00d4f12",
+      "functions": [
+        {
+          "name": "main",
+          "params": [],
+          "exported": false,
+          "lineCount": 6
+        },
+        {
+          "name": "run",
+          "params": [
+            "args"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 18
+        },
+        {
+          "name": "generate",
+          "params": [
+            "opts"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 44
+        },
+        {
+          "name": "absoluteFrom",
+          "params": [
+            "root",
+            "path"
+          ],
+          "returnType": "string",
+          "exported": false,
+          "lineCount": 6
+        },
+        {
+          "name": "repositoryOutputPath",
+          "params": [
+            "repository",
+            "value",
+            "label"
+          ],
+          "returnType": "(string, error)",
+          "exported": false,
+          "lineCount": 36
+        },
+        {
+          "name": "bundleOutputPathsOverlap",
+          "params": [
+            "first",
+            "second"
+          ],
+          "returnType": "bool",
+          "exported": false,
+          "lineCount": 9
+        },
+        {
+          "name": "cargoMetadataJSON",
+          "params": [
+            "cargo",
+            "repository",
+            "manifest",
+            "target"
+          ],
+          "returnType": "([]byte, error)",
+          "exported": false,
+          "lineCount": 16
+        },
+        {
+          "name": "generateFromTargetMetadata",
+          "params": [
+            "rawMetadata",
+            "rootManifest",
+            "indexPath",
+            "licensesDir"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 48
+        },
+        {
+          "name": "rootPackageID",
+          "params": [
+            "packages",
+            "rootManifest"
+          ],
+          "returnType": "(string, error)",
+          "exported": false,
+          "lineCount": 12
+        },
+        {
+          "name": "dependencyClosure",
+          "params": [
+            "root",
+            "nodes"
+          ],
+          "returnType": "map[string]bool",
+          "exported": false,
+          "lineCount": 22
+        },
+        {
+          "name": "packageLicenseFiles",
+          "params": [
+            "pkg"
+          ],
+          "returnType": "([]licenseFile, error)",
+          "exported": false,
+          "lineCount": 40
+        },
+        {
+          "name": "normalizeLicenseText",
+          "params": [
+            "body"
+          ],
+          "returnType": "[]byte",
+          "exported": false,
+          "lineCount": 3
+        },
+        {
+          "name": "isLicenseName",
+          "params": [
+            "name"
+          ],
+          "returnType": "bool",
+          "exported": false,
+          "lineCount": 4
+        },
+        {
+          "name": "defaultBundleFileOps",
+          "params": [],
+          "returnType": "bundleFileOps",
+          "exported": false,
+          "lineCount": 8
+        },
+        {
+          "name": "writeBundle",
+          "params": [
+            "bundle",
+            "indexPath",
+            "licensesDir"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 3
+        },
+        {
+          "name": "writeBundleWithFileOps",
+          "params": [
+            "bundle",
+            "indexPath",
+            "licensesDir",
+            "ops"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 43
+        },
+        {
+          "name": "publishBundle",
+          "params": [
+            "temporaryTree",
+            "temporaryIndex",
+            "indexPath",
+            "licensesDir",
+            "ops"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 95
+        },
+        {
+          "name": "bundlePathExists",
+          "params": [
+            "ops",
+            "path"
+          ],
+          "returnType": "(bool, error)",
+          "exported": false,
+          "lineCount": 10
+        },
+        {
+          "name": "reserveBundleBackupPath",
+          "params": [
+            "path"
+          ],
+          "returnType": "(string, error)",
+          "exported": false,
+          "lineCount": 14
+        },
+        {
+          "name": "removeBundleFileIfPresent",
+          "params": [
+            "ops",
+            "path"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 7
+        },
+        {
+          "name": "removeBundleTreeIfPresent",
+          "params": [
+            "ops",
+            "path"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 7
+        },
+        {
+          "name": "renderIndex",
+          "params": [
+            "bundle",
+            "indexPath",
+            "licensesDir"
+          ],
+          "returnType": "string",
+          "exported": false,
+          "lineCount": 25
+        },
+        {
+          "name": "packageDirectory",
+          "params": [
+            "pkg"
+          ],
+          "returnType": "string",
+          "exported": false,
+          "lineCount": 3
+        },
+        {
+          "name": "compareFile",
+          "params": [
+            "actual",
+            "expected"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 14
+        },
+        {
+          "name": "compareTree",
+          "params": [
+            "actual",
+            "expected"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 19
+        },
+        {
+          "name": "treeFiles",
+          "params": [
+            "root"
+          ],
+          "returnType": "([]string, error)",
+          "exported": false,
+          "lineCount": 18
+        }
+      ],
+      "classes": [
+        {
+          "name": "cargoMetadata",
+          "methods": [],
+          "properties": [
+            "Packages",
+            "Resolve"
+          ],
+          "exported": false,
+          "lineCount": 6
+        },
+        {
+          "name": "cargoPackage",
+          "methods": [],
+          "properties": [
+            "ID",
+            "Name",
+            "Version",
+            "License",
+            "LicenseFile",
+            "ManifestPath",
+            "Repository"
+          ],
+          "exported": false,
+          "lineCount": 9
+        },
+        {
+          "name": "cargoNode",
+          "methods": [],
+          "properties": [
+            "ID",
+            "Deps"
+          ],
+          "exported": false,
+          "lineCount": 4
+        },
+        {
+          "name": "cargoNodeDep",
+          "methods": [],
+          "properties": [
+            "PackageID"
+          ],
+          "exported": false,
+          "lineCount": 3
+        },
+        {
+          "name": "licenseFile",
+          "methods": [],
+          "properties": [
+            "Name",
+            "Body"
+          ],
+          "exported": false,
+          "lineCount": 4
+        },
+        {
+          "name": "bundledPackage",
+          "methods": [],
+          "properties": [
+            "Package",
+            "Files"
+          ],
+          "exported": false,
+          "lineCount": 4
+        },
+        {
+          "name": "options",
+          "methods": [],
+          "properties": [
+            "Manifest",
+            "Index",
+            "Licenses",
+            "Check",
+            "Cargo",
+            "Repository"
+          ],
+          "exported": false,
+          "lineCount": 8
+        },
+        {
+          "name": "bundleFileOps",
+          "methods": [],
+          "properties": [
+            "rename",
+            "remove",
+            "removeAll",
+            "lstat"
+          ],
+          "exported": false,
+          "lineCount": 6
+        }
+      ],
+      "imports": [
+        {
+          "source": "bytes",
+          "specifiers": [
+            "bytes"
+          ]
+        },
+        {
+          "source": "encoding/json",
+          "specifiers": [
+            "json"
+          ]
+        },
+        {
+          "source": "errors",
+          "specifiers": [
+            "errors"
+          ]
+        },
+        {
+          "source": "flag",
+          "specifiers": [
+            "flag"
+          ]
+        },
+        {
+          "source": "fmt",
+          "specifiers": [
+            "fmt"
+          ]
+        },
+        {
+          "source": "io/fs",
+          "specifiers": [
+            "fs"
+          ]
+        },
+        {
+          "source": "os",
+          "specifiers": [
+            "os"
+          ]
+        },
+        {
+          "source": "os/exec",
+          "specifiers": [
+            "exec"
+          ]
+        },
+        {
+          "source": "path/filepath",
+          "specifiers": [
+            "filepath"
+          ]
+        },
+        {
+          "source": "regexp",
+          "specifiers": [
+            "regexp"
+          ]
+        },
+        {
+          "source": "sort",
+          "specifiers": [
+            "sort"
+          ]
+        },
+        {
+          "source": "strings",
+          "specifiers": [
+            "strings"
+          ]
+        }
+      ],
+      "exports": [],
+      "totalLines": 643,
+      "hasStructuralAnalysis": true
+    },
+    "scripts/package-release.sh": {
+      "filePath": "scripts/package-release.sh",
+      "contentHash": "76bd8eab92b721c0065f0cb920ba5121a80254b33fe8e3d75ece8f36e2a30214",
+      "functions": [
+        {
+          "name": "usage",
+          "params": [],
+          "exported": false,
+          "lineCount": 9
+        },
+        {
+          "name": "fail",
+          "params": [],
+          "exported": false,
+          "lineCount": 4
+        },
+        {
+          "name": "reject_output_symlink_ancestors",
+          "params": [],
+          "exported": false,
+          "lineCount": 12
+        },
+        {
+          "name": "cleanup",
+          "params": [],
+          "exported": false,
+          "lineCount": 4
+        }
+      ],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 124,
+      "hasStructuralAnalysis": true
+    },
+    "scripts/releaseassets/main_test.go": {
+      "filePath": "scripts/releaseassets/main_test.go",
+      "contentHash": "dd90d87a333b875ac34835bfd8cc7282a4f0aa705c968794cb8c0f6b95aae1e0",
+      "functions": [
+        {
+          "name": "TestValidateRejectsNonSemanticVersion",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 11
+        },
+        {
+          "name": "TestPackageCreatesFixedTargetArchive",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 42
+        },
+        {
+          "name": "TestFinalizeBuildsSignedReleaseDirectory",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 90
+        },
+        {
+          "name": "TestFinalizeRejectsMissingOrDuplicateChangelogSectionWithoutPublishing",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 39
+        },
+        {
+          "name": "newTestWorkDir",
+          "params": [
+            "t"
+          ],
+          "returnType": "string",
+          "exported": false,
+          "lineCount": 13
+        },
+        {
+          "name": "writeArchiveFixtures",
+          "params": [
+            "t",
+            "directory",
+            "version"
+          ],
+          "returnType": "map[string]string",
+          "exported": false,
+          "lineCount": 13
+        },
+        {
+          "name": "writeFixturePrivateKey",
+          "params": [
+            "t",
+            "directory"
+          ],
+          "returnType": "string",
+          "exported": false,
+          "lineCount": 16
+        },
+        {
+          "name": "expectedChecksums",
+          "params": [
+            "archives"
+          ],
+          "returnType": "string",
+          "exported": false,
+          "lineCount": 13
+        },
+        {
+          "name": "findTestRepositoryRoot",
+          "params": [
+            "t"
+          ],
+          "returnType": "string",
+          "exported": false,
+          "lineCount": 17
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "crypto/ed25519",
+          "specifiers": [
+            "ed25519"
+          ]
+        },
+        {
+          "source": "crypto/rand",
+          "specifiers": [
+            "rand"
+          ]
+        },
+        {
+          "source": "crypto/sha256",
+          "specifiers": [
+            "sha256"
+          ]
+        },
+        {
+          "source": "crypto/x509",
+          "specifiers": [
+            "x509"
+          ]
+        },
+        {
+          "source": "encoding/base64",
+          "specifiers": [
+            "base64"
+          ]
+        },
+        {
+          "source": "encoding/hex",
+          "specifiers": [
+            "hex"
+          ]
+        },
+        {
+          "source": "encoding/json",
+          "specifiers": [
+            "json"
+          ]
+        },
+        {
+          "source": "encoding/pem",
+          "specifiers": [
+            "pem"
+          ]
+        },
+        {
+          "source": "os",
+          "specifiers": [
+            "os"
+          ]
+        },
+        {
+          "source": "path/filepath",
+          "specifiers": [
+            "filepath"
+          ]
+        },
+        {
+          "source": "sort",
+          "specifiers": [
+            "sort"
+          ]
+        },
+        {
+          "source": "strings",
+          "specifiers": [
+            "strings"
+          ]
+        },
+        {
+          "source": "testing",
+          "specifiers": [
+            "testing"
+          ]
+        }
+      ],
+      "exports": [
+        "TestValidateRejectsNonSemanticVersion",
+        "TestPackageCreatesFixedTargetArchive",
+        "TestFinalizeBuildsSignedReleaseDirectory",
+        "TestFinalizeRejectsMissingOrDuplicateChangelogSectionWithoutPublishing"
+      ],
+      "totalLines": 281,
+      "hasStructuralAnalysis": true
+    },
+    "scripts/releaseassets/main.go": {
+      "filePath": "scripts/releaseassets/main.go",
+      "contentHash": "f31bc66ef1140761cfa5c754f12e79d97f8bc29f778384f470c3705c38bc7e9f",
+      "functions": [
+        {
+          "name": "main",
+          "params": [],
+          "exported": false,
+          "lineCount": 6
+        },
+        {
+          "name": "run",
+          "params": [
+            "arguments"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 17
+        },
+        {
+          "name": "runValidate",
+          "params": [
+            "arguments"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 12
+        },
+        {
+          "name": "runPackage",
+          "params": [
+            "arguments"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 57
+        },
+        {
+          "name": "runFinalize",
+          "params": [
+            "arguments"
+          ],
+          "returnType": "(err error)",
+          "exported": false,
+          "lineCount": 84
+        },
+        {
+          "name": "copyRequiredArchives",
+          "params": [
+            "inputDir",
+            "outputDir",
+            "version"
+          ],
+          "returnType": "([]byte, error)",
+          "exported": false,
+          "lineCount": 23
+        },
+        {
+          "name": "copyRegularFile",
+          "params": [
+            "source",
+            "destination"
+          ],
+          "returnType": "([sha256.Size]byte, error)",
+          "exported": false,
+          "lineCount": 48
+        },
+        {
+          "name": "readEd25519PrivateKey",
+          "params": [
+            "path"
+          ],
+          "returnType": "(ed25519.PrivateKey, error)",
+          "exported": false,
+          "lineCount": 22
+        },
+        {
+          "name": "releaseNotesFromChangelog",
+          "params": [
+            "path",
+            "version"
+          ],
+          "returnType": "([]byte, error)",
+          "exported": false,
+          "lineCount": 23
+        },
+        {
+          "name": "signedChecksumsManifest",
+          "params": [
+            "keyID",
+            "privateKey",
+            "checksums"
+          ],
+          "returnType": "([]byte, error)",
+          "exported": false,
+          "lineCount": 17
+        },
+        {
+          "name": "writeRegularFile",
+          "params": [
+            "path",
+            "contents",
+            "permissions"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 21
+        },
+        {
+          "name": "validateVersion",
+          "params": [
+            "version"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 6
+        },
+        {
+          "name": "parseTarget",
+          "params": [
+            "value"
+          ],
+          "returnType": "(releaseTarget, error)",
+          "exported": false,
+          "lineCount": 13
+        },
+        {
+          "name": "archiveName",
+          "params": [
+            "version",
+            "target"
+          ],
+          "returnType": "string",
+          "exported": false,
+          "lineCount": 7
+        },
+        {
+          "name": "requireRepositoryRoot",
+          "params": [
+            "path"
+          ],
+          "returnType": "(string, error)",
+          "exported": false,
+          "lineCount": 13
+        },
+        {
+          "name": "requireRegularFile",
+          "params": [
+            "path",
+            "label"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 13
+        },
+        {
+          "name": "requireDirectory",
+          "params": [
+            "path",
+            "label"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 13
+        },
+        {
+          "name": "requireSecureRegularFile",
+          "params": [
+            "path",
+            "label"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 9
+        },
+        {
+          "name": "requireSecureDirectory",
+          "params": [
+            "path",
+            "label"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 9
+        },
+        {
+          "name": "rejectSymlinkAncestors",
+          "params": [
+            "path"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 24
+        }
+      ],
+      "classes": [
+        {
+          "name": "releaseTarget",
+          "methods": [],
+          "properties": [
+            "goos",
+            "goarch"
+          ],
+          "exported": false,
+          "lineCount": 4
+        }
+      ],
+      "imports": [
+        {
+          "source": "crypto/ed25519",
+          "specifiers": [
+            "ed25519"
+          ]
+        },
+        {
+          "source": "crypto/sha256",
+          "specifiers": [
+            "sha256"
+          ]
+        },
+        {
+          "source": "crypto/x509",
+          "specifiers": [
+            "x509"
+          ]
+        },
+        {
+          "source": "encoding/base64",
+          "specifiers": [
+            "base64"
+          ]
+        },
+        {
+          "source": "encoding/hex",
+          "specifiers": [
+            "hex"
+          ]
+        },
+        {
+          "source": "encoding/json",
+          "specifiers": [
+            "json"
+          ]
+        },
+        {
+          "source": "encoding/pem",
+          "specifiers": [
+            "pem"
+          ]
+        },
+        {
+          "source": "errors",
+          "specifiers": [
+            "errors"
+          ]
+        },
+        {
+          "source": "flag",
+          "specifiers": [
+            "flag"
+          ]
+        },
+        {
+          "source": "fmt",
+          "specifiers": [
+            "fmt"
+          ]
+        },
+        {
+          "source": "io",
+          "specifiers": [
+            "io"
+          ]
+        },
+        {
+          "source": "os",
+          "specifiers": [
+            "os"
+          ]
+        },
+        {
+          "source": "os/exec",
+          "specifiers": [
+            "exec"
+          ]
+        },
+        {
+          "source": "path/filepath",
+          "specifiers": [
+            "filepath"
+          ]
+        },
+        {
+          "source": "regexp",
+          "specifiers": [
+            "regexp"
+          ]
+        },
+        {
+          "source": "sort",
+          "specifiers": [
+            "sort"
+          ]
+        },
+        {
+          "source": "strings",
+          "specifiers": [
+            "strings"
+          ]
+        }
+      ],
+      "exports": [],
+      "totalLines": 501,
+      "hasStructuralAnalysis": true
+    },
+    "scripts/test-build-staticlibs.sh": {
+      "filePath": "scripts/test-build-staticlibs.sh",
+      "contentHash": "bc4b076f21b14d4ef6c1f3ff3776b8c81492c6ab058aa829224fc5ba79006337",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 53,
+      "hasStructuralAnalysis": true
+    },
+    "scripts/test-homebrew-formula.sh": {
+      "filePath": "scripts/test-homebrew-formula.sh",
+      "contentHash": "606715b7ffd406f0d008a651742dc68ff0411b506676415fcd892004b9e9ef23",
+      "functions": [
+        {
+          "name": "expect_failure",
+          "params": [],
+          "exported": false,
+          "lineCount": 12
+        }
+      ],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 110,
+      "hasStructuralAnalysis": true
+    },
+    "scripts/test-package-release.sh": {
+      "filePath": "scripts/test-package-release.sh",
+      "contentHash": "5a2e344f7a68b1d4f112b14903492f1b1ffce6fbb4b6b84635c50fe3eb8b8a0f",
+      "functions": [
+        {
+          "name": "assert_members",
+          "params": [],
+          "exported": false,
+          "lineCount": 18
+        }
+      ],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 86,
+      "hasStructuralAnalysis": true
+    },
+    "scripts/test-release-workflow.sh": {
+      "filePath": "scripts/test-release-workflow.sh",
+      "contentHash": "6edaa9d733bf66403c3fcbb9c8a7af89f407f1d18f24ab23cdfd9fc56847879d",
+      "functions": [
+        {
+          "name": "fail",
+          "params": [],
+          "exported": false,
+          "lineCount": 4
+        }
+      ],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 73,
+      "hasStructuralAnalysis": true
+    },
+    "templates/homebrew/pixiv-cli-beta.rb.tmpl": {
+      "filePath": "templates/homebrew/pixiv-cli-beta.rb.tmpl",
+      "contentHash": "cddd07920b42962eebb558707bdcc9a06720a3c2c30b37155dc933c5a703ea7c",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 38,
+      "hasStructuralAnalysis": false
+    },
+    "templates/homebrew/pixiv-cli.rb.tmpl": {
+      "filePath": "templates/homebrew/pixiv-cli.rb.tmpl",
+      "contentHash": "fdcf96d370e9da6a185da5ff1a67f25a93466c642edd9837ad44556a4a321f19",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 38,
+      "hasStructuralAnalysis": false
+    },
+    "templates/homebrew/TAP_DEPLOYMENT.md": {
+      "filePath": "templates/homebrew/TAP_DEPLOYMENT.md",
+      "contentHash": "841d193a0d990e2db919a2899ea03471bb3dd4f25c068b76ee55e778e7f79c78",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 23,
       "hasStructuralAnalysis": true
     },
     "test/e2e/pixiv_binary_test.go": {
@@ -10819,6 +17903,132 @@
         "TestPixivBinaryRealAPISearchOptIn"
       ],
       "totalLines": 305,
+      "hasStructuralAnalysis": true
+    },
+    "test/e2e/version_binary_test.go": {
+      "filePath": "test/e2e/version_binary_test.go",
+      "contentHash": "b3b09bbc4addba176a00cba18dbe4fa22f67ac551a3d813b25ee3c12942ea826",
+      "functions": [
+        {
+          "name": "TestPixivBinaryReportsBuildMetadata",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 16
+        },
+        {
+          "name": "assertPixivBuildMetadata",
+          "params": [
+            "t",
+            "repoRoot",
+            "binaryPath",
+            "version",
+            "commit",
+            "buildDate"
+          ],
+          "exported": false,
+          "lineCount": 41
+        },
+        {
+          "name": "buildPixivVersionBinary",
+          "params": [
+            "t",
+            "repoRoot"
+          ],
+          "returnType": "string",
+          "exported": false,
+          "lineCount": 23
+        },
+        {
+          "name": "runPixivVersionCommand",
+          "params": [
+            "t",
+            "repoRoot",
+            "binaryPath"
+          ],
+          "returnType": "string",
+          "exported": false,
+          "lineCount": 17
+        },
+        {
+          "name": "isolatedVersionProcessEnv",
+          "params": [
+            "t"
+          ],
+          "returnType": "[]string",
+          "exported": false,
+          "lineCount": 19
+        },
+        {
+          "name": "isWindowsProfileEnvironmentVariable",
+          "params": [
+            "name"
+          ],
+          "returnType": "bool",
+          "exported": false,
+          "lineCount": 8
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "bytes",
+          "specifiers": [
+            "bytes"
+          ]
+        },
+        {
+          "source": "encoding/json",
+          "specifiers": [
+            "json"
+          ]
+        },
+        {
+          "source": "os/exec",
+          "specifiers": [
+            "exec"
+          ]
+        },
+        {
+          "source": "path/filepath",
+          "specifiers": [
+            "filepath"
+          ]
+        },
+        {
+          "source": "runtime",
+          "specifiers": [
+            "runtime"
+          ]
+        },
+        {
+          "source": "strings",
+          "specifiers": [
+            "strings"
+          ]
+        },
+        {
+          "source": "testing",
+          "specifiers": [
+            "testing"
+          ]
+        }
+      ],
+      "exports": [
+        "TestPixivBinaryReportsBuildMetadata"
+      ],
+      "totalLines": 142,
+      "hasStructuralAnalysis": true
+    },
+    "THIRD_PARTY_LICENSES.md": {
+      "filePath": "THIRD_PARTY_LICENSES.md",
+      "contentHash": "0106f290c9f2712ae165f37d5d6591435aa7ceab02f649f6cd04667c884d2fa4",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 643,
       "hasStructuralAnalysis": true
     }
   }

@@ -26,6 +26,12 @@
       "fileCategory": "docs"
     },
     {
+      "path": ".github/workflows/release.yml",
+      "language": "yaml",
+      "sizeLines": 194,
+      "fileCategory": "infra"
+    },
+    {
       "path": ".pre-commit-config.yaml",
       "language": "yaml",
       "sizeLines": 13,
@@ -40,7 +46,7 @@
     {
       "path": "CHANGELOG.md",
       "language": "markdown",
-      "sizeLines": 26,
+      "sizeLines": 53,
       "fileCategory": "docs"
     },
     {
@@ -52,13 +58,13 @@
     {
       "path": "cmd/pixiv/main.go",
       "language": "go",
-      "sizeLines": 11,
+      "sizeLines": 17,
       "fileCategory": "code"
     },
     {
       "path": "CONTEXT.md",
       "language": "markdown",
-      "sizeLines": 40,
+      "sizeLines": 56,
       "fileCategory": "docs"
     },
     {
@@ -92,6 +98,18 @@
       "fileCategory": "docs"
     },
     {
+      "path": "docs/adr/0007-platform-staticlibs-for-supported-source-builds.md",
+      "language": "markdown",
+      "sizeLines": 42,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "docs/adr/0008-ed25519-signed-multi-channel-release-trust.md",
+      "language": "markdown",
+      "sizeLines": 45,
+      "fileCategory": "docs"
+    },
+    {
       "path": "docs/agents/documentation-guidelines.md",
       "language": "markdown",
       "sizeLines": 25,
@@ -112,19 +130,19 @@
     {
       "path": "docs/architecture.md",
       "language": "markdown",
-      "sizeLines": 152,
+      "sizeLines": 215,
       "fileCategory": "docs"
     },
     {
       "path": "docs/development.md",
       "language": "markdown",
-      "sizeLines": 143,
+      "sizeLines": 231,
       "fileCategory": "docs"
     },
     {
       "path": "docs/index.md",
       "language": "markdown",
-      "sizeLines": 46,
+      "sizeLines": 50,
       "fileCategory": "docs"
     },
     {
@@ -182,6 +200,30 @@
       "fileCategory": "code"
     },
     {
+      "path": "internal/bootstrap/update_test.go",
+      "language": "go",
+      "sizeLines": 34,
+      "fileCategory": "code"
+    },
+    {
+      "path": "internal/bootstrap/update.go",
+      "language": "go",
+      "sizeLines": 46,
+      "fileCategory": "code"
+    },
+    {
+      "path": "internal/buildinfo/buildinfo_test.go",
+      "language": "go",
+      "sizeLines": 41,
+      "fileCategory": "code"
+    },
+    {
+      "path": "internal/buildinfo/buildinfo.go",
+      "language": "go",
+      "sizeLines": 30,
+      "fileCategory": "code"
+    },
+    {
       "path": "internal/cli/account_cmd.go",
       "language": "go",
       "sizeLines": 359,
@@ -212,6 +254,18 @@
       "fileCategory": "code"
     },
     {
+      "path": "internal/cli/auto_update_test.go",
+      "language": "go",
+      "sizeLines": 277,
+      "fileCategory": "code"
+    },
+    {
+      "path": "internal/cli/auto_update.go",
+      "language": "go",
+      "sizeLines": 100,
+      "fileCategory": "code"
+    },
+    {
       "path": "internal/cli/cli_test.go",
       "language": "go",
       "sizeLines": 147,
@@ -220,7 +274,7 @@
     {
       "path": "internal/cli/cli.go",
       "language": "go",
-      "sizeLines": 235,
+      "sizeLines": 243,
       "fileCategory": "code"
     },
     {
@@ -232,13 +286,31 @@
     {
       "path": "internal/cli/config_test.go",
       "language": "go",
-      "sizeLines": 151,
+      "sizeLines": 195,
       "fileCategory": "code"
     },
     {
       "path": "internal/cli/prompt.go",
       "language": "go",
       "sizeLines": 108,
+      "fileCategory": "code"
+    },
+    {
+      "path": "internal/cli/update_test.go",
+      "language": "go",
+      "sizeLines": 126,
+      "fileCategory": "code"
+    },
+    {
+      "path": "internal/cli/update.go",
+      "language": "go",
+      "sizeLines": 78,
+      "fileCategory": "code"
+    },
+    {
+      "path": "internal/cli/version.go",
+      "language": "go",
+      "sizeLines": 28,
       "fileCategory": "code"
     },
     {
@@ -256,19 +328,115 @@
     {
       "path": "internal/config/settings.go",
       "language": "go",
-      "sizeLines": 391,
+      "sizeLines": 398,
       "fileCategory": "code"
     },
     {
       "path": "internal/download/manager_test.go",
       "language": "go",
-      "sizeLines": 501,
+      "sizeLines": 488,
       "fileCategory": "code"
     },
     {
       "path": "internal/download/manager.go",
       "language": "go",
-      "sizeLines": 352,
+      "sizeLines": 254,
+      "fileCategory": "code"
+    },
+    {
+      "path": "internal/download/testdata/ugoira-source-digest.txt",
+      "language": "txt",
+      "sizeLines": 1,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "internal/download/ugoira_encoder.go",
+      "language": "go",
+      "sizeLines": 80,
+      "fileCategory": "code"
+    },
+    {
+      "path": "internal/download/ugoira_integrity_test.go",
+      "language": "go",
+      "sizeLines": 172,
+      "fileCategory": "code"
+    },
+    {
+      "path": "internal/download/ugoira_integrity.go",
+      "language": "go",
+      "sizeLines": 216,
+      "fileCategory": "code"
+    },
+    {
+      "path": "internal/download/ugoira_rs/Cargo.toml",
+      "language": "toml",
+      "sizeLines": 23,
+      "fileCategory": "config"
+    },
+    {
+      "path": "internal/download/ugoira_rs/src/lib.rs",
+      "language": "rust",
+      "sizeLines": 2608,
+      "fileCategory": "code"
+    },
+    {
+      "path": "internal/download/ugoira_rs/tests/quality_gate.rs",
+      "language": "rust",
+      "sizeLines": 474,
+      "fileCategory": "code"
+    },
+    {
+      "path": "internal/download/ugoira_rust_link_darwin_amd64.go",
+      "language": "go",
+      "sizeLines": 8,
+      "fileCategory": "code"
+    },
+    {
+      "path": "internal/download/ugoira_rust_link_darwin_arm64.go",
+      "language": "go",
+      "sizeLines": 8,
+      "fileCategory": "code"
+    },
+    {
+      "path": "internal/download/ugoira_rust_link_linux_amd64.go",
+      "language": "go",
+      "sizeLines": 8,
+      "fileCategory": "code"
+    },
+    {
+      "path": "internal/download/ugoira_rust_link_linux_arm64.go",
+      "language": "go",
+      "sizeLines": 8,
+      "fileCategory": "code"
+    },
+    {
+      "path": "internal/download/ugoira_rust_link_windows_amd64.go",
+      "language": "go",
+      "sizeLines": 8,
+      "fileCategory": "code"
+    },
+    {
+      "path": "internal/download/ugoira_rust_link_windows_arm64.go",
+      "language": "go",
+      "sizeLines": 8,
+      "fileCategory": "code"
+    },
+    {
+      "path": "internal/download/ugoira_rust_stub.go",
+      "language": "go",
+      "sizeLines": 30,
+      "fileCategory": "code"
+    },
+    {
+      "path": "internal/download/ugoira_rust_test.go",
+      "language": "go",
+      "sizeLines": 96,
+      "fileCategory": "code"
+    },
+    {
+      "path": "internal/download/ugoira_rust.go",
+      "language": "go",
+      "sizeLines": 172,
       "fileCategory": "code"
     },
     {
@@ -386,6 +554,84 @@
       "fileCategory": "code"
     },
     {
+      "path": "internal/update/automatic_test.go",
+      "language": "go",
+      "sizeLines": 179,
+      "fileCategory": "code"
+    },
+    {
+      "path": "internal/update/automatic.go",
+      "language": "go",
+      "sizeLines": 117,
+      "fileCategory": "code"
+    },
+    {
+      "path": "internal/update/cleanup.go",
+      "language": "go",
+      "sizeLines": 28,
+      "fileCategory": "code"
+    },
+    {
+      "path": "internal/update/command_test.go",
+      "language": "go",
+      "sizeLines": 43,
+      "fileCategory": "code"
+    },
+    {
+      "path": "internal/update/command.go",
+      "language": "go",
+      "sizeLines": 56,
+      "fileCategory": "code"
+    },
+    {
+      "path": "internal/update/installer_test.go",
+      "language": "go",
+      "sizeLines": 481,
+      "fileCategory": "code"
+    },
+    {
+      "path": "internal/update/installer.go",
+      "language": "go",
+      "sizeLines": 520,
+      "fileCategory": "code"
+    },
+    {
+      "path": "internal/update/releases_test.go",
+      "language": "go",
+      "sizeLines": 791,
+      "fileCategory": "code"
+    },
+    {
+      "path": "internal/update/releases.go",
+      "language": "go",
+      "sizeLines": 650,
+      "fileCategory": "code"
+    },
+    {
+      "path": "internal/update/source_test.go",
+      "language": "go",
+      "sizeLines": 343,
+      "fileCategory": "code"
+    },
+    {
+      "path": "internal/update/source.go",
+      "language": "go",
+      "sizeLines": 199,
+      "fileCategory": "code"
+    },
+    {
+      "path": "internal/update/strategy_test.go",
+      "language": "go",
+      "sizeLines": 395,
+      "fileCategory": "code"
+    },
+    {
+      "path": "internal/update/strategy.go",
+      "language": "go",
+      "sizeLines": 204,
+      "fileCategory": "code"
+    },
+    {
       "path": "internal/utils/filename.go",
       "language": "go",
       "sizeLines": 56,
@@ -394,7 +640,7 @@
     {
       "path": "internal/utils/files/files_test.go",
       "language": "go",
-      "sizeLines": 79,
+      "sizeLines": 94,
       "fileCategory": "code"
     },
     {
@@ -406,13 +652,19 @@
     {
       "path": "internal/utils/files/replace_nonwindows.go",
       "language": "go",
-      "sizeLines": 10,
+      "sizeLines": 16,
+      "fileCategory": "code"
+    },
+    {
+      "path": "internal/utils/files/replace_windows_test.go",
+      "language": "go",
+      "sizeLines": 30,
       "fileCategory": "code"
     },
     {
       "path": "internal/utils/files/replace_windows.go",
       "language": "go",
-      "sizeLines": 18,
+      "sizeLines": 62,
       "fileCategory": "code"
     },
     {
@@ -484,48 +736,166 @@
     {
       "path": "README.md",
       "language": "markdown",
-      "sizeLines": 282,
+      "sizeLines": 376,
       "fileCategory": "docs"
+    },
+    {
+      "path": "scripts/build-staticlibs.sh",
+      "language": "shell",
+      "sizeLines": 150,
+      "fileCategory": "script"
     },
     {
       "path": "scripts/build.sh",
       "language": "shell",
-      "sizeLines": 15,
+      "sizeLines": 44,
       "fileCategory": "script"
+    },
+    {
+      "path": "scripts/homebrewformula/main.go",
+      "language": "go",
+      "sizeLines": 270,
+      "fileCategory": "code"
+    },
+    {
+      "path": "scripts/licensebundle/main_test.go",
+      "language": "go",
+      "sizeLines": 278,
+      "fileCategory": "code"
+    },
+    {
+      "path": "scripts/licensebundle/main.go",
+      "language": "go",
+      "sizeLines": 642,
+      "fileCategory": "code"
+    },
+    {
+      "path": "scripts/package-release.sh",
+      "language": "shell",
+      "sizeLines": 123,
+      "fileCategory": "script"
+    },
+    {
+      "path": "scripts/releaseassets/main_test.go",
+      "language": "go",
+      "sizeLines": 280,
+      "fileCategory": "code"
+    },
+    {
+      "path": "scripts/releaseassets/main.go",
+      "language": "go",
+      "sizeLines": 500,
+      "fileCategory": "code"
+    },
+    {
+      "path": "scripts/test-build-staticlibs.sh",
+      "language": "shell",
+      "sizeLines": 52,
+      "fileCategory": "script"
+    },
+    {
+      "path": "scripts/test-homebrew-formula.sh",
+      "language": "shell",
+      "sizeLines": 109,
+      "fileCategory": "script"
+    },
+    {
+      "path": "scripts/test-package-release.sh",
+      "language": "shell",
+      "sizeLines": 85,
+      "fileCategory": "script"
+    },
+    {
+      "path": "scripts/test-release-workflow.sh",
+      "language": "shell",
+      "sizeLines": 72,
+      "fileCategory": "script"
+    },
+    {
+      "path": "templates/homebrew/pixiv-cli-beta.rb.tmpl",
+      "language": "tmpl",
+      "sizeLines": 37,
+      "fileCategory": "code"
+    },
+    {
+      "path": "templates/homebrew/pixiv-cli.rb.tmpl",
+      "language": "tmpl",
+      "sizeLines": 37,
+      "fileCategory": "code"
+    },
+    {
+      "path": "templates/homebrew/TAP_DEPLOYMENT.md",
+      "language": "markdown",
+      "sizeLines": 22,
+      "fileCategory": "docs"
     },
     {
       "path": "test/e2e/pixiv_binary_test.go",
       "language": "go",
       "sizeLines": 304,
       "fileCategory": "code"
+    },
+    {
+      "path": "test/e2e/version_binary_test.go",
+      "language": "go",
+      "sizeLines": 141,
+      "fileCategory": "code"
+    },
+    {
+      "path": "THIRD_PARTY_LICENSES.md",
+      "language": "markdown",
+      "sizeLines": 642,
+      "fileCategory": "docs"
     }
   ],
-  "totalFiles": 83,
-  "filteredByIgnore": 6,
+  "totalFiles": 141,
+  "filteredByIgnore": 192,
   "estimatedComplexity": "moderate",
   "stats": {
-    "filesScanned": 83,
+    "filesScanned": 141,
     "byCategory": {
-      "docs": 21,
-      "config": 4,
-      "code": 57,
-      "script": 1
+      "docs": 26,
+      "infra": 1,
+      "config": 5,
+      "code": 102,
+      "script": 7
     },
     "byLanguage": {
-      "markdown": 21,
-      "yaml": 1,
-      "go": 57,
+      "markdown": 25,
+      "yaml": 2,
+      "go": 98,
       "mod": 1,
       "sum": 1,
+      "txt": 1,
+      "toml": 1,
+      "rust": 2,
       "json": 1,
-      "shell": 1
+      "shell": 7,
+      "tmpl": 2
     }
   },
+  "projectName": "pixiv-cli",
+  "projectDescription": "Go 版 Pixiv CLI 与 MCP stdio server，包含认证、查询、下载、版本信息、签名更新与多渠道发布工具链。",
+  "languages": [
+    "go",
+    "rust",
+    "shell",
+    "yaml",
+    "json",
+    "markdown"
+  ],
+  "frameworks": [
+    "Cobra",
+    "Model Context Protocol",
+    "koanf",
+    "resty"
+  ],
   "importMap": {
     ".agents/skills/pixiv-commit-msg/SKILL.md": [],
     ".agents/skills/pixiv-docs/SKILL.md": [],
     ".agents/skills/pixiv-review/SKILL.md": [],
     ".github/copilot-instructions.md": [],
+    ".github/workflows/release.yml": [],
     ".pre-commit-config.yaml": [],
     "AGENTS.md": [],
     "CHANGELOG.md": [],
@@ -536,11 +906,29 @@
       "internal/cli/account_test.go",
       "internal/cli/api_cmd.go",
       "internal/cli/api_test.go",
+      "internal/cli/auto_update_test.go",
+      "internal/cli/auto_update.go",
       "internal/cli/cli_test.go",
       "internal/cli/cli.go",
       "internal/cli/config_cmd.go",
       "internal/cli/config_test.go",
-      "internal/cli/prompt.go"
+      "internal/cli/prompt.go",
+      "internal/cli/update_test.go",
+      "internal/cli/update.go",
+      "internal/cli/version.go",
+      "internal/update/automatic_test.go",
+      "internal/update/automatic.go",
+      "internal/update/cleanup.go",
+      "internal/update/command_test.go",
+      "internal/update/command.go",
+      "internal/update/installer_test.go",
+      "internal/update/installer.go",
+      "internal/update/releases_test.go",
+      "internal/update/releases.go",
+      "internal/update/source_test.go",
+      "internal/update/source.go",
+      "internal/update/strategy_test.go",
+      "internal/update/strategy.go"
     ],
     "CONTEXT.md": [],
     "docs/adr/0001-cli-thin-controller-and-bootstrap.md": [],
@@ -548,6 +936,8 @@
     "docs/adr/0003-agent-instruction-precedent-strategy.md": [],
     "docs/adr/0004-auth-accounts-use-pixiv-uid.md": [],
     "docs/adr/0005-auth-login-real-browser-relay-without-ui-automation.md": [],
+    "docs/adr/0007-platform-staticlibs-for-supported-source-builds.md": [],
+    "docs/adr/0008-ed25519-signed-multi-channel-release-trust.md": [],
     "docs/agents/documentation-guidelines.md": [],
     "docs/agents/index.md": [],
     "docs/agents/review-checklist.md": [],
@@ -608,6 +998,18 @@
       "internal/config/settings.go",
       "internal/download/manager_test.go",
       "internal/download/manager.go",
+      "internal/download/ugoira_encoder.go",
+      "internal/download/ugoira_integrity_test.go",
+      "internal/download/ugoira_integrity.go",
+      "internal/download/ugoira_rust_link_darwin_amd64.go",
+      "internal/download/ugoira_rust_link_darwin_arm64.go",
+      "internal/download/ugoira_rust_link_linux_amd64.go",
+      "internal/download/ugoira_rust_link_linux_arm64.go",
+      "internal/download/ugoira_rust_link_windows_amd64.go",
+      "internal/download/ugoira_rust_link_windows_arm64.go",
+      "internal/download/ugoira_rust_stub.go",
+      "internal/download/ugoira_rust_test.go",
+      "internal/download/ugoira_rust.go",
       "internal/pixiv/aliases.go",
       "internal/pixiv/client_factory_test.go",
       "internal/pixiv/client_factory.go",
@@ -628,6 +1030,18 @@
       "internal/config/settings.go",
       "internal/download/manager_test.go",
       "internal/download/manager.go",
+      "internal/download/ugoira_encoder.go",
+      "internal/download/ugoira_integrity_test.go",
+      "internal/download/ugoira_integrity.go",
+      "internal/download/ugoira_rust_link_darwin_amd64.go",
+      "internal/download/ugoira_rust_link_darwin_arm64.go",
+      "internal/download/ugoira_rust_link_linux_amd64.go",
+      "internal/download/ugoira_rust_link_linux_arm64.go",
+      "internal/download/ugoira_rust_link_windows_amd64.go",
+      "internal/download/ugoira_rust_link_windows_arm64.go",
+      "internal/download/ugoira_rust_stub.go",
+      "internal/download/ugoira_rust_test.go",
+      "internal/download/ugoira_rust.go",
       "internal/mcpserver/server_test.go",
       "internal/mcpserver/server.go",
       "internal/pixiv/aliases.go",
@@ -640,6 +1054,24 @@
       "internal/storage/auth/account.go",
       "internal/storage/auth/paths.go"
     ],
+    "internal/bootstrap/update_test.go": [],
+    "internal/bootstrap/update.go": [
+      "internal/update/automatic_test.go",
+      "internal/update/automatic.go",
+      "internal/update/cleanup.go",
+      "internal/update/command_test.go",
+      "internal/update/command.go",
+      "internal/update/installer_test.go",
+      "internal/update/installer.go",
+      "internal/update/releases_test.go",
+      "internal/update/releases.go",
+      "internal/update/source_test.go",
+      "internal/update/source.go",
+      "internal/update/strategy_test.go",
+      "internal/update/strategy.go"
+    ],
+    "internal/buildinfo/buildinfo_test.go": [],
+    "internal/buildinfo/buildinfo.go": [],
     "internal/cli/account_cmd.go": [
       "internal/application/account_test.go",
       "internal/application/account.go",
@@ -663,6 +1095,7 @@
       "internal/utils/files/files_test.go",
       "internal/utils/files/files.go",
       "internal/utils/files/replace_nonwindows.go",
+      "internal/utils/files/replace_windows_test.go",
       "internal/utils/files/replace_windows.go"
     ],
     "internal/cli/account_test.go": [
@@ -672,10 +1105,24 @@
       "internal/application/login.go",
       "internal/application/runtime.go",
       "internal/bootstrap/bootstrap.go",
+      "internal/bootstrap/update_test.go",
+      "internal/bootstrap/update.go",
       "internal/config/paths.go",
       "internal/config/settings.go",
       "internal/download/manager_test.go",
       "internal/download/manager.go",
+      "internal/download/ugoira_encoder.go",
+      "internal/download/ugoira_integrity_test.go",
+      "internal/download/ugoira_integrity.go",
+      "internal/download/ugoira_rust_link_darwin_amd64.go",
+      "internal/download/ugoira_rust_link_darwin_arm64.go",
+      "internal/download/ugoira_rust_link_linux_amd64.go",
+      "internal/download/ugoira_rust_link_linux_arm64.go",
+      "internal/download/ugoira_rust_link_windows_amd64.go",
+      "internal/download/ugoira_rust_link_windows_arm64.go",
+      "internal/download/ugoira_rust_stub.go",
+      "internal/download/ugoira_rust_test.go",
+      "internal/download/ugoira_rust.go",
       "internal/pixiv/aliases.go",
       "internal/pixiv/client_factory_test.go",
       "internal/pixiv/client_factory.go",
@@ -712,6 +1159,47 @@
       "internal/storage/auth/account.go",
       "internal/storage/auth/paths.go"
     ],
+    "internal/cli/auto_update_test.go": [
+      "internal/buildinfo/buildinfo_test.go",
+      "internal/buildinfo/buildinfo.go",
+      "internal/config/paths.go",
+      "internal/config/settings.go",
+      "internal/update/automatic_test.go",
+      "internal/update/automatic.go",
+      "internal/update/cleanup.go",
+      "internal/update/command_test.go",
+      "internal/update/command.go",
+      "internal/update/installer_test.go",
+      "internal/update/installer.go",
+      "internal/update/releases_test.go",
+      "internal/update/releases.go",
+      "internal/update/source_test.go",
+      "internal/update/source.go",
+      "internal/update/strategy_test.go",
+      "internal/update/strategy.go"
+    ],
+    "internal/cli/auto_update.go": [
+      "internal/bootstrap/bootstrap.go",
+      "internal/bootstrap/update_test.go",
+      "internal/bootstrap/update.go",
+      "internal/buildinfo/buildinfo_test.go",
+      "internal/buildinfo/buildinfo.go",
+      "internal/config/paths.go",
+      "internal/config/settings.go",
+      "internal/update/automatic_test.go",
+      "internal/update/automatic.go",
+      "internal/update/cleanup.go",
+      "internal/update/command_test.go",
+      "internal/update/command.go",
+      "internal/update/installer_test.go",
+      "internal/update/installer.go",
+      "internal/update/releases_test.go",
+      "internal/update/releases.go",
+      "internal/update/source_test.go",
+      "internal/update/source.go",
+      "internal/update/strategy_test.go",
+      "internal/update/strategy.go"
+    ],
     "internal/cli/cli_test.go": [],
     "internal/cli/cli.go": [
       "internal/application/account_test.go",
@@ -720,6 +1208,10 @@
       "internal/application/login.go",
       "internal/application/runtime.go",
       "internal/bootstrap/bootstrap.go",
+      "internal/bootstrap/update_test.go",
+      "internal/bootstrap/update.go",
+      "internal/buildinfo/buildinfo_test.go",
+      "internal/buildinfo/buildinfo.go",
       "internal/config/paths.go",
       "internal/config/settings.go"
     ],
@@ -729,12 +1221,56 @@
       "internal/config/settings.go"
     ],
     "internal/cli/prompt.go": [],
+    "internal/cli/update_test.go": [
+      "internal/buildinfo/buildinfo_test.go",
+      "internal/buildinfo/buildinfo.go",
+      "internal/config/paths.go",
+      "internal/config/settings.go",
+      "internal/update/automatic_test.go",
+      "internal/update/automatic.go",
+      "internal/update/cleanup.go",
+      "internal/update/command_test.go",
+      "internal/update/command.go",
+      "internal/update/installer_test.go",
+      "internal/update/installer.go",
+      "internal/update/releases_test.go",
+      "internal/update/releases.go",
+      "internal/update/source_test.go",
+      "internal/update/source.go",
+      "internal/update/strategy_test.go",
+      "internal/update/strategy.go"
+    ],
+    "internal/cli/update.go": [
+      "internal/bootstrap/bootstrap.go",
+      "internal/bootstrap/update_test.go",
+      "internal/bootstrap/update.go",
+      "internal/buildinfo/buildinfo_test.go",
+      "internal/buildinfo/buildinfo.go",
+      "internal/update/automatic_test.go",
+      "internal/update/automatic.go",
+      "internal/update/cleanup.go",
+      "internal/update/command_test.go",
+      "internal/update/command.go",
+      "internal/update/installer_test.go",
+      "internal/update/installer.go",
+      "internal/update/releases_test.go",
+      "internal/update/releases.go",
+      "internal/update/source_test.go",
+      "internal/update/source.go",
+      "internal/update/strategy_test.go",
+      "internal/update/strategy.go"
+    ],
+    "internal/cli/version.go": [
+      "internal/buildinfo/buildinfo_test.go",
+      "internal/buildinfo/buildinfo.go"
+    ],
     "internal/common/constants/constants.go": [],
     "internal/config/paths.go": [
       "internal/common/constants/constants.go",
       "internal/utils/files/files_test.go",
       "internal/utils/files/files.go",
       "internal/utils/files/replace_nonwindows.go",
+      "internal/utils/files/replace_windows_test.go",
       "internal/utils/files/replace_windows.go"
     ],
     "internal/config/settings.go": [
@@ -764,6 +1300,7 @@
       "internal/utils/files/files_test.go",
       "internal/utils/files/files.go",
       "internal/utils/files/replace_nonwindows.go",
+      "internal/utils/files/replace_windows_test.go",
       "internal/utils/files/replace_windows.go",
       "internal/utils/pixiv_web_auth_test.go",
       "internal/utils/pixiv_web_auth.go",
@@ -772,9 +1309,56 @@
       "internal/utils/uri/uri_test.go",
       "internal/utils/uri/uri.go"
     ],
+    "internal/download/testdata/ugoira-source-digest.txt": [],
+    "internal/download/ugoira_encoder.go": [
+      "internal/pixiv/aliases.go",
+      "internal/pixiv/client_factory_test.go",
+      "internal/pixiv/client_factory.go",
+      "internal/pixiv/http_client_test.go",
+      "internal/pixiv/source_test.go",
+      "internal/pixiv/source.go",
+      "internal/utils/files/files_test.go",
+      "internal/utils/files/files.go",
+      "internal/utils/files/replace_nonwindows.go",
+      "internal/utils/files/replace_windows_test.go",
+      "internal/utils/files/replace_windows.go"
+    ],
+    "internal/download/ugoira_integrity_test.go": [],
+    "internal/download/ugoira_integrity.go": [],
+    "internal/download/ugoira_rs/Cargo.toml": [],
+    "internal/download/ugoira_rs/src/lib.rs": [],
+    "internal/download/ugoira_rs/tests/quality_gate.rs": [],
+    "internal/download/ugoira_rust_link_darwin_amd64.go": [],
+    "internal/download/ugoira_rust_link_darwin_arm64.go": [],
+    "internal/download/ugoira_rust_link_linux_amd64.go": [],
+    "internal/download/ugoira_rust_link_linux_arm64.go": [],
+    "internal/download/ugoira_rust_link_windows_amd64.go": [],
+    "internal/download/ugoira_rust_link_windows_arm64.go": [],
+    "internal/download/ugoira_rust_stub.go": [],
+    "internal/download/ugoira_rust_test.go": [
+      "internal/pixiv/aliases.go",
+      "internal/pixiv/client_factory_test.go",
+      "internal/pixiv/client_factory.go",
+      "internal/pixiv/http_client_test.go",
+      "internal/pixiv/source_test.go",
+      "internal/pixiv/source.go"
+    ],
+    "internal/download/ugoira_rust.go": [],
     "internal/mcpserver/server_test.go": [
       "internal/download/manager_test.go",
       "internal/download/manager.go",
+      "internal/download/ugoira_encoder.go",
+      "internal/download/ugoira_integrity_test.go",
+      "internal/download/ugoira_integrity.go",
+      "internal/download/ugoira_rust_link_darwin_amd64.go",
+      "internal/download/ugoira_rust_link_darwin_arm64.go",
+      "internal/download/ugoira_rust_link_linux_amd64.go",
+      "internal/download/ugoira_rust_link_linux_arm64.go",
+      "internal/download/ugoira_rust_link_windows_amd64.go",
+      "internal/download/ugoira_rust_link_windows_arm64.go",
+      "internal/download/ugoira_rust_stub.go",
+      "internal/download/ugoira_rust_test.go",
+      "internal/download/ugoira_rust.go",
       "internal/pixiv/aliases.go",
       "internal/pixiv/client_factory_test.go",
       "internal/pixiv/client_factory.go",
@@ -785,6 +1369,18 @@
     "internal/mcpserver/server.go": [
       "internal/download/manager_test.go",
       "internal/download/manager.go",
+      "internal/download/ugoira_encoder.go",
+      "internal/download/ugoira_integrity_test.go",
+      "internal/download/ugoira_integrity.go",
+      "internal/download/ugoira_rust_link_darwin_amd64.go",
+      "internal/download/ugoira_rust_link_darwin_arm64.go",
+      "internal/download/ugoira_rust_link_linux_amd64.go",
+      "internal/download/ugoira_rust_link_linux_arm64.go",
+      "internal/download/ugoira_rust_link_windows_amd64.go",
+      "internal/download/ugoira_rust_link_windows_arm64.go",
+      "internal/download/ugoira_rust_stub.go",
+      "internal/download/ugoira_rust_test.go",
+      "internal/download/ugoira_rust.go",
       "internal/pixiv/aliases.go",
       "internal/pixiv/client_factory_test.go",
       "internal/pixiv/client_factory.go",
@@ -844,7 +1440,70 @@
       "internal/utils/files/files_test.go",
       "internal/utils/files/files.go",
       "internal/utils/files/replace_nonwindows.go",
+      "internal/utils/files/replace_windows_test.go",
       "internal/utils/files/replace_windows.go"
+    ],
+    "internal/update/automatic_test.go": [
+      "internal/buildinfo/buildinfo_test.go",
+      "internal/buildinfo/buildinfo.go"
+    ],
+    "internal/update/automatic.go": [
+      "internal/buildinfo/buildinfo_test.go",
+      "internal/buildinfo/buildinfo.go"
+    ],
+    "internal/update/cleanup.go": [],
+    "internal/update/command_test.go": [
+      "internal/buildinfo/buildinfo_test.go",
+      "internal/buildinfo/buildinfo.go"
+    ],
+    "internal/update/command.go": [],
+    "internal/update/installer_test.go": [],
+    "internal/update/installer.go": [
+      "internal/buildinfo/buildinfo_test.go",
+      "internal/buildinfo/buildinfo.go",
+      "internal/utils/files/files_test.go",
+      "internal/utils/files/files.go",
+      "internal/utils/files/replace_nonwindows.go",
+      "internal/utils/files/replace_windows_test.go",
+      "internal/utils/files/replace_windows.go"
+    ],
+    "internal/update/releases_test.go": [
+      "internal/update/automatic_test.go",
+      "internal/update/automatic.go",
+      "internal/update/cleanup.go",
+      "internal/update/command_test.go",
+      "internal/update/command.go",
+      "internal/update/installer_test.go",
+      "internal/update/installer.go",
+      "internal/update/releases_test.go",
+      "internal/update/releases.go",
+      "internal/update/source_test.go",
+      "internal/update/source.go",
+      "internal/update/strategy_test.go",
+      "internal/update/strategy.go"
+    ],
+    "internal/update/releases.go": [
+      "internal/utils/files/files_test.go",
+      "internal/utils/files/files.go",
+      "internal/utils/files/replace_nonwindows.go",
+      "internal/utils/files/replace_windows_test.go",
+      "internal/utils/files/replace_windows.go"
+    ],
+    "internal/update/source_test.go": [
+      "internal/buildinfo/buildinfo_test.go",
+      "internal/buildinfo/buildinfo.go"
+    ],
+    "internal/update/source.go": [
+      "internal/buildinfo/buildinfo_test.go",
+      "internal/buildinfo/buildinfo.go"
+    ],
+    "internal/update/strategy_test.go": [
+      "internal/buildinfo/buildinfo_test.go",
+      "internal/buildinfo/buildinfo.go"
+    ],
+    "internal/update/strategy.go": [
+      "internal/buildinfo/buildinfo_test.go",
+      "internal/buildinfo/buildinfo.go"
     ],
     "internal/utils/filename.go": [
       "internal/utils/text/text_test.go",
@@ -857,6 +1516,7 @@
       "internal/common/constants/constants.go"
     ],
     "internal/utils/files/replace_nonwindows.go": [],
+    "internal/utils/files/replace_windows_test.go": [],
     "internal/utils/files/replace_windows.go": [],
     "internal/utils/media/media_test.go": [],
     "internal/utils/media/media.go": [],
@@ -870,7 +1530,21 @@
     "internal/utils/uri/uri.go": [],
     "manifest.json": [],
     "README.md": [],
+    "scripts/build-staticlibs.sh": [],
     "scripts/build.sh": [],
+    "scripts/homebrewformula/main.go": [],
+    "scripts/licensebundle/main_test.go": [],
+    "scripts/licensebundle/main.go": [],
+    "scripts/package-release.sh": [],
+    "scripts/releaseassets/main_test.go": [],
+    "scripts/releaseassets/main.go": [],
+    "scripts/test-build-staticlibs.sh": [],
+    "scripts/test-homebrew-formula.sh": [],
+    "scripts/test-package-release.sh": [],
+    "scripts/test-release-workflow.sh": [],
+    "templates/homebrew/pixiv-cli-beta.rb.tmpl": [],
+    "templates/homebrew/pixiv-cli.rb.tmpl": [],
+    "templates/homebrew/TAP_DEPLOYMENT.md": [],
     "test/e2e/pixiv_binary_test.go": [
       "internal/pixiv/aliases.go",
       "internal/pixiv/client_factory_test.go",
@@ -878,25 +1552,13 @@
       "internal/pixiv/http_client_test.go",
       "internal/pixiv/source_test.go",
       "internal/pixiv/source.go"
-    ]
+    ],
+    "test/e2e/version_binary_test.go": [],
+    "THIRD_PARTY_LICENSES.md": []
   },
-  "project": {
-    "name": "pixiv-cli",
-    "description": "Go 版 Pixiv CLI 与 MCP stdio server，提供 Pixiv App API、匿名 web fallback、下载、多账号认证和 MCP tool 暴露。"
-  },
-  "languages": [
-    "go",
-    "json",
-    "markdown",
-    "mod",
-    "shell",
-    "sum",
-    "yaml"
-  ],
-  "frameworks": [
-    "Cobra",
-    "Model Context Protocol",
-    "koanf",
-    "resty"
-  ]
+  "importMapStats": {
+    "filesScanned": 141,
+    "filesWithImports": 48,
+    "totalEdges": 475
+  }
 }
