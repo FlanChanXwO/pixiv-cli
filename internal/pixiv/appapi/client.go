@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -94,7 +95,7 @@ func (c *Client) SearchIllust(ctx context.Context, word, target, sort, duration 
 	q := url.Values{"word": {word}, "search_target": {target}, "sort": {sort}}
 	setOptional(q, "duration", duration)
 	setOffset(q, offset)
-	return getMapped(ctx, c, "/v1/search/illust", q, mapIllustList)
+	return c.getIllustList(ctx, "/v1/search/illust", q, "offset")
 }
 
 func (c *Client) IllustDetail(ctx context.Context, id int64) (*model.IllustDetail, error) {
@@ -112,30 +113,38 @@ func (c *Client) IllustDetail(ctx context.Context, id int64) (*model.IllustDetai
 func (c *Client) IllustRelated(ctx context.Context, id int64, offset int) (*model.IllustList, error) {
 	q := url.Values{"illust_id": {fmt.Sprint(id)}}
 	setOffset(q, offset)
-	return getMapped(ctx, c, "/v2/illust/related", q, mapIllustList)
+	return c.getIllustList(ctx, "/v2/illust/related", q, "offset")
 }
 
 func (c *Client) IllustRanking(ctx context.Context, mode, date string, offset int) (*model.IllustList, error) {
 	q := url.Values{"mode": {mode}}
 	setOptional(q, "date", date)
 	setOffset(q, offset)
-	return getMapped(ctx, c, "/v1/illust/ranking", q, mapIllustList)
+	return c.getIllustList(ctx, "/v1/illust/ranking", q, "offset")
 }
 
 func (c *Client) SearchUser(ctx context.Context, word string, offset int) (*model.UserPreviewList, error) {
 	q := url.Values{"word": {word}}
 	setOffset(q, offset)
-	return getMapped(ctx, c, "/v1/search/user", q, mapUserPreviewList)
+	return c.getUserPreviewList(ctx, "/v1/search/user", q)
 }
 
 func (c *Client) UserDetail(ctx context.Context, userID int64) (*model.User, error) {
-	return getMapped(ctx, c, "/v1/user/detail", url.Values{"user_id": {fmt.Sprint(userID)}}, func(dto userDetailDTO) model.User { return mapUser(dto.User) })
+	var raw userDetailDTO
+	if err := c.getJSONWithRetry(ctx, "/v1/user/detail", url.Values{"user_id": {fmt.Sprint(userID)}}, &raw); err != nil {
+		return nil, err
+	}
+	if raw.User == nil || raw.User.ID <= 0 {
+		return nil, ErrMalformedResponse
+	}
+	out := mapUser(*raw.User)
+	return &out, nil
 }
 
 func (c *Client) IllustRecommended(ctx context.Context, offset int) (*model.IllustList, error) {
 	q := url.Values{}
 	setOffset(q, offset)
-	return getMapped(ctx, c, "/v1/illust/recommended", q, mapIllustList)
+	return c.getIllustList(ctx, "/v1/illust/recommended", q, "offset")
 }
 
 func (c *Client) TrendingTagsIllust(ctx context.Context) (*model.TrendTags, error) {
@@ -145,7 +154,14 @@ func (c *Client) TrendingTagsIllust(ctx context.Context) (*model.TrendTags, erro
 func (c *Client) IllustFollow(ctx context.Context, restrict string, offset int) (*model.IllustList, error) {
 	q := url.Values{"restrict": {restrict}}
 	setOffset(q, offset)
-	return getMapped(ctx, c, "/v2/illust/follow", q, mapIllustList)
+	return c.getIllustList(ctx, "/v2/illust/follow", q, "offset")
+}
+
+// UserArtworks 返回用户作品的单个 App API 批次。
+func (c *Client) UserArtworks(ctx context.Context, userID int64, illustType string, offset int) (*model.IllustList, error) {
+	q := url.Values{"user_id": {fmt.Sprint(userID)}, "type": {illustType}}
+	setOffset(q, offset)
+	return c.getIllustList(ctx, "/v1/user/illusts", q, "offset")
 }
 
 func (c *Client) UserBookmarks(ctx context.Context, userID int64, restrict, tag string, maxBookmarkID int64) (*model.IllustList, error) {
@@ -154,13 +170,100 @@ func (c *Client) UserBookmarks(ctx context.Context, userID int64, restrict, tag 
 	if maxBookmarkID > 0 {
 		q.Set("max_bookmark_id", fmt.Sprint(maxBookmarkID))
 	}
-	return getMapped(ctx, c, "/v1/user/bookmarks/illust", q, mapIllustList)
+	return c.getIllustList(ctx, "/v1/user/bookmarks/illust", q, "max_bookmark_id")
 }
 
 func (c *Client) UserFollowing(ctx context.Context, userID int64, restrict string, offset int) (*model.UserPreviewList, error) {
 	q := url.Values{"user_id": {fmt.Sprint(userID)}, "restrict": {restrict}}
 	setOffset(q, offset)
-	return getMapped(ctx, c, "/v1/user/following", q, mapUserPreviewList)
+	return c.getUserPreviewList(ctx, "/v1/user/following", q)
+}
+
+func (c *Client) getIllustList(ctx context.Context, path string, query url.Values, continuationKey string) (*model.IllustList, error) {
+	var raw illustListDTO
+	if err := c.getJSONWithRetry(ctx, path, query, &raw); err != nil {
+		return nil, err
+	}
+	if !raw.Illusts.Present || !raw.Illusts.Valid {
+		return nil, ErrMalformedResponse
+	}
+	for _, illust := range raw.Illusts.Items {
+		if illust.ID <= 0 {
+			return nil, ErrMalformedResponse
+		}
+	}
+	out := mapIllustList(raw)
+	if err := applyListContinuation(raw.NextURL, continuationKey, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *Client) getUserPreviewList(ctx context.Context, path string, query url.Values) (*model.UserPreviewList, error) {
+	var raw userPreviewListDTO
+	if err := c.getJSONWithRetry(ctx, path, query, &raw); err != nil {
+		return nil, err
+	}
+	if !raw.UserPreviews.Present || !raw.UserPreviews.Valid {
+		return nil, ErrMalformedResponse
+	}
+	for _, preview := range raw.UserPreviews.Items {
+		if preview.User.ID <= 0 {
+			return nil, ErrMalformedResponse
+		}
+	}
+	out := mapUserPreviewList(raw)
+	if raw.NextURL != nil {
+		if *raw.NextURL == "" {
+			return nil, ErrMalformedResponse
+		}
+		value, err := continuationValue(*raw.NextURL, "offset")
+		if err != nil {
+			return nil, err
+		}
+		out.NextOffset, out.ContinuationExists = int(value), true
+	}
+	return &out, nil
+}
+
+func applyListContinuation(rawURL *string, key string, out *model.IllustList) error {
+	if rawURL == nil {
+		return nil
+	}
+	if *rawURL == "" {
+		return ErrMalformedResponse
+	}
+	value, err := continuationValue(*rawURL, key)
+	if err != nil {
+		return err
+	}
+	out.ContinuationExists = true
+	if key == "max_bookmark_id" {
+		out.NextMaxBookmarkID = value
+	} else {
+		out.NextOffset = int(value)
+	}
+	return nil
+}
+
+// continuationValue 只提取已知数值参数；next_url 永不成为后续请求目标。
+func continuationValue(rawURL, key string) (int64, error) {
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		return 0, ErrMalformedResponse
+	}
+	values, err := url.ParseQuery(parsed.RawQuery)
+	if err != nil || len(values[key]) != 1 {
+		return 0, ErrMalformedResponse
+	}
+	value, err := strconv.ParseInt(values.Get(key), 10, 64)
+	if err != nil || value <= 0 {
+		return 0, ErrMalformedResponse
+	}
+	if key == "offset" && int64(int(value)) != value {
+		return 0, ErrMalformedResponse
+	}
+	return value, nil
 }
 
 func (c *Client) UgoiraMetadata(ctx context.Context, id int64) (*model.UgoiraMetadataResult, error) {

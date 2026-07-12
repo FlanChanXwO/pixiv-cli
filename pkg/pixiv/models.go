@@ -34,6 +34,109 @@ type User struct {
 	IsFollowed bool   `json:"is_followed"`
 }
 
+// UserPreview 是用户列表中的稳定 envelope。
+type UserPreview struct {
+	User User `json:"user"`
+}
+
+// Cursor 是版本化、不透明且绑定查询的分页游标；零值表示没有下一批。
+type Cursor string
+
+type SearchTarget string
+
+const (
+	SearchTargetPartialMatchForTags SearchTarget = "partial_match_for_tags"
+	SearchTargetExactMatchForTags   SearchTarget = "exact_match_for_tags"
+	SearchTargetTitleAndCaption     SearchTarget = "title_and_caption"
+)
+
+type SortMode string
+
+const (
+	SortModeDateDesc SortMode = "date_desc"
+	SortModeDateAsc  SortMode = "date_asc"
+)
+
+type RankingMode string
+
+const (
+	RankingModeDay   RankingMode = "day"
+	RankingModeWeek  RankingMode = "week"
+	RankingModeMonth RankingMode = "month"
+)
+
+type Restrict string
+
+const (
+	RestrictPublic  Restrict = "public"
+	RestrictPrivate Restrict = "private"
+)
+
+type IllustType string
+
+const (
+	IllustTypeIllust IllustType = "illust"
+	IllustTypeManga  IllustType = "manga"
+	IllustTypeUgoira IllustType = "ugoira"
+)
+
+type SearchIllustRequest struct {
+	Word     string       `json:"word"`
+	Target   SearchTarget `json:"search_target,omitempty"`
+	Sort     SortMode     `json:"sort,omitempty"`
+	Duration string       `json:"duration,omitempty"`
+	Cursor   Cursor       `json:"cursor,omitempty"`
+}
+type IllustRankingRequest struct {
+	Mode   RankingMode `json:"mode,omitempty"`
+	Date   string      `json:"date,omitempty"`
+	Cursor Cursor      `json:"cursor,omitempty"`
+}
+type IllustRecommendedRequest struct {
+	Cursor Cursor `json:"cursor,omitempty"`
+}
+type FollowingIllustsRequest struct {
+	Restrict Restrict `json:"restrict,omitempty"`
+	Cursor   Cursor   `json:"cursor,omitempty"`
+}
+type SearchUserRequest struct {
+	Word   string `json:"word"`
+	Cursor Cursor `json:"cursor,omitempty"`
+}
+type UserDetailRequest struct {
+	UserID int64 `json:"user_id"`
+}
+type UserArtworksRequest struct {
+	UserID int64      `json:"user_id"`
+	Type   IllustType `json:"type,omitempty"`
+	Cursor Cursor     `json:"cursor,omitempty"`
+}
+type UserBookmarksRequest struct {
+	UserID   int64    `json:"user_id"`
+	Restrict Restrict `json:"restrict,omitempty"`
+	Tag      string   `json:"tag,omitempty"`
+	Cursor   Cursor   `json:"cursor,omitempty"`
+}
+type UserFollowingRequest struct {
+	UserID   int64    `json:"user_id"`
+	Restrict Restrict `json:"restrict,omitempty"`
+	Cursor   Cursor   `json:"cursor,omitempty"`
+}
+
+type IllustListResult struct {
+	Illusts    []Illust `json:"illusts"`
+	NextCursor Cursor   `json:"next_cursor,omitempty"`
+}
+
+type UserListResult struct {
+	UserPreviews []UserPreview `json:"user_previews"`
+	NextCursor   Cursor        `json:"next_cursor,omitempty"`
+}
+
+type UserDetailResult struct {
+	User User `json:"user"`
+}
+
 // Tag 是作品标签及其翻译。
 type Tag struct {
 	Name           string `json:"name"`

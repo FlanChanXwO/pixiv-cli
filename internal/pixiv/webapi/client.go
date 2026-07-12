@@ -102,16 +102,31 @@ func (c *Client) SearchIllust(ctx context.Context, word, target, sort, duration 
 	if out.Error {
 		return nil, webEnvelopeError(out.Message)
 	}
-	items := out.Body.IllustManga.Data
-	if len(items) == 0 {
-		items = out.Body.Illust.Data
+	group := out.Body.IllustManga
+	if (!group.Data.Valid || len(group.Data.Items) == 0) && out.Body.Illust.Data.Valid && len(out.Body.Illust.Data.Items) > 0 {
+		group = out.Body.Illust
+	} else if !group.Data.Valid && out.Body.Illust.Data.Valid {
+		group = out.Body.Illust
 	}
+	if !group.Data.Present || !group.Data.Valid {
+		return nil, ErrMalformedResponse
+	}
+	items := group.Data.Items
+	rawCount := len(items)
 	items = trimWebPageOffset(items, offset, 60)
 	illusts := make([]model.Illust, 0, len(items))
 	for _, item := range items {
+		if item.ID <= 0 {
+			return nil, ErrMalformedResponse
+		}
 		illusts = append(illusts, mapSearchIllust(item))
 	}
-	return &model.IllustList{Illusts: illusts}, nil
+	result := &model.IllustList{Illusts: illusts}
+	if webHasNext(offset, rawCount, int(group.Total), 60) {
+		result.NextOffset = nextWebPageOffset(offset, 60)
+		result.ContinuationExists = true
+	}
+	return result, nil
 }
 
 func (c *Client) IllustDetail(ctx context.Context, id int64) (*model.IllustDetail, error) {
@@ -170,12 +185,26 @@ func (c *Client) IllustRanking(ctx context.Context, mode, date string, offset in
 	if err := c.getJSON(ctx, "/ranking.php", q, &out); err != nil {
 		return nil, err
 	}
-	items := trimWebPageOffset(out.Contents, offset, 50)
+	if !out.Contents.Present || !out.Contents.Valid {
+		return nil, ErrMalformedResponse
+	}
+	for _, item := range out.Contents.Items {
+		if item.IllustID <= 0 {
+			return nil, ErrMalformedResponse
+		}
+	}
+	rawCount := len(out.Contents.Items)
+	items := trimWebPageOffset(out.Contents.Items, offset, 50)
 	illusts := make([]model.Illust, 0, len(items))
 	for _, item := range items {
 		illusts = append(illusts, mapRankingIllust(item))
 	}
-	return &model.IllustList{Illusts: illusts}, nil
+	result := &model.IllustList{Illusts: illusts}
+	if webHasNext(offset, rawCount, int(out.RankTotal), 50) {
+		result.NextOffset = nextWebPageOffset(offset, 50)
+		result.ContinuationExists = true
+	}
+	return result, nil
 }
 
 func (c *Client) SearchUser(ctx context.Context, word string, offset int) (*model.UserPreviewList, error) {
@@ -195,7 +224,11 @@ func (c *Client) SearchUser(ctx context.Context, word string, offset int) (*mode
 		seen[illust.User.ID] = struct{}{}
 		users = append(users, model.UserPreview{User: illust.User})
 	}
-	return &model.UserPreviewList{UserPreviews: users}, nil
+	return &model.UserPreviewList{
+		UserPreviews:       users,
+		NextOffset:         illusts.NextOffset,
+		ContinuationExists: illusts.ContinuationExists,
+	}, nil
 }
 
 func (c *Client) UgoiraMetadata(ctx context.Context, id int64) (*model.UgoiraMetadataResult, error) {
@@ -304,6 +337,21 @@ func trimWebPageOffset[T any](items []T, offset, pageSize int) []T {
 		return nil
 	}
 	return items[skip:]
+}
+
+func nextWebPageOffset(offset, pageSize int) int {
+	return (offset/pageSize + 1) * pageSize
+}
+
+func webHasNext(offset, rawCount, total, pageSize int) bool {
+	if rawCount == 0 {
+		return false
+	}
+	if total > 0 {
+		return offset+rawCount < total
+	}
+	// 无 total 时，只在完整上游批次后继续；下一空批次会自然收敛。
+	return rawCount >= pageSize
 }
 
 func webSearchOrder(sort string) string {
@@ -548,7 +596,26 @@ type webSearchBody struct {
 }
 
 type webSearchGroup struct {
-	Data []webSearchIllust `json:"data"`
+	Data  requiredWebList[webSearchIllust] `json:"data"`
+	Total flexInt                          `json:"total"`
+}
+
+type requiredWebList[T any] struct {
+	Items   []T
+	Present bool
+	Valid   bool
+}
+
+func (l *requiredWebList[T]) UnmarshalJSON(data []byte) error {
+	l.Present = true
+	if bytes.Equal(bytes.TrimSpace(data), []byte("null")) {
+		return nil
+	}
+	if err := json.Unmarshal(data, &l.Items); err != nil {
+		return err
+	}
+	l.Valid = true
+	return nil
 }
 
 type webSearchIllust struct {
@@ -617,7 +684,8 @@ type webPageURLs struct {
 }
 
 type webRankingResponse struct {
-	Contents []webRankingItem `json:"contents"`
+	Contents  requiredWebList[webRankingItem] `json:"contents"`
+	RankTotal flexInt                         `json:"rank_total"`
 }
 
 type webRankingItem struct {

@@ -4,10 +4,10 @@ import "github.com/FlanChanXwO/pixiv-cli/internal/pixiv/model"
 
 func mapIllustList(dto illustListDTO) model.IllustList {
 	var result model.IllustList
-	if dto.Illusts != nil {
-		result.Illusts = make([]model.Illust, len(dto.Illusts))
+	if dto.Illusts.Items != nil {
+		result.Illusts = make([]model.Illust, len(dto.Illusts.Items))
 	}
-	for i, item := range dto.Illusts {
+	for i, item := range dto.Illusts.Items {
 		result.Illusts[i] = mapIllust(item)
 	}
 	return result
@@ -53,10 +53,10 @@ func mapMetaPage(dto metaPageDTO) model.MetaPage {
 
 func mapUserPreviewList(dto userPreviewListDTO) model.UserPreviewList {
 	var result model.UserPreviewList
-	if dto.UserPreviews != nil {
-		result.UserPreviews = make([]model.UserPreview, len(dto.UserPreviews))
+	if dto.UserPreviews.Items != nil {
+		result.UserPreviews = make([]model.UserPreview, len(dto.UserPreviews.Items))
 	}
-	for i, preview := range dto.UserPreviews {
+	for i, preview := range dto.UserPreviews.Items {
 		result.UserPreviews[i] = model.UserPreview{User: mapUser(preview.User)}
 	}
 	return result

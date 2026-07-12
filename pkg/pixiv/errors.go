@@ -34,8 +34,17 @@ const (
 type Operation string
 
 const (
-	OperationIllustDetail Operation = "illust_detail"
-	OperationIllustPages  Operation = "illust_pages"
+	OperationIllustDetail      Operation = "illust_detail"
+	OperationIllustPages       Operation = "illust_pages"
+	OperationSearchIllust      Operation = "search_illust"
+	OperationIllustRanking     Operation = "illust_ranking"
+	OperationIllustRecommended Operation = "illust_recommended"
+	OperationFollowingIllusts  Operation = "following_illusts"
+	OperationSearchUser        Operation = "search_user"
+	OperationUserDetail        Operation = "user_detail"
+	OperationUserArtworks      Operation = "user_artworks"
+	OperationUserBookmarks     Operation = "user_bookmarks"
+	OperationUserFollowing     Operation = "user_following"
 )
 
 // Error 是公开 SDK 的安全、可分类错误。cause 只保存已脱敏原因。
@@ -48,6 +57,12 @@ type Error struct {
 	IllustID       int64
 	UserID         int64
 	cause          error
+}
+
+func newUserError(code ErrorCode, operation Operation, backend Backend, retryable bool, status int, userID int64, cause error) *Error {
+	err := newError(code, operation, backend, retryable, status, 0, cause)
+	err.UserID = userID
+	return err
 }
 
 // Error 返回不含上游响应体、URL、header 或凭据的诊断文本。

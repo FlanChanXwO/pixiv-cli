@@ -1,8 +1,14 @@
 package appapi
 
+import (
+	"bytes"
+	"encoding/json"
+)
+
 // 以下 DTO 只表达 App API wire shape；normalized model 的所有权仍在 internal/pixiv/model。
 type illustListDTO struct {
-	Illusts []illustDTO `json:"illusts"`
+	Illusts requiredList[illustDTO] `json:"illusts"`
+	NextURL *string                 `json:"next_url"`
 }
 type illustDetailDTO struct {
 	Illust *illustDTO `json:"illust"`
@@ -53,7 +59,8 @@ type metaPageDTO struct {
 	ImageURLs imageURLsDTO `json:"image_urls"`
 }
 type userPreviewListDTO struct {
-	UserPreviews []userPreviewDTO `json:"user_previews"`
+	UserPreviews requiredList[userPreviewDTO] `json:"user_previews"`
+	NextURL      *string                      `json:"next_url"`
 }
 type userPreviewDTO struct {
 	User userDTO `json:"user"`
@@ -80,5 +87,24 @@ type ugoiraFrameDTO struct {
 	Delay int    `json:"delay"`
 }
 type userDetailDTO struct {
-	User userDTO `json:"user"`
+	User *userDTO `json:"user"`
+}
+
+// requiredList 区分 wire 的显式空数组与缺失/null；只有前者是合法空批次。
+type requiredList[T any] struct {
+	Items   []T
+	Present bool
+	Valid   bool
+}
+
+func (l *requiredList[T]) UnmarshalJSON(data []byte) error {
+	l.Present = true
+	if bytes.Equal(bytes.TrimSpace(data), []byte("null")) {
+		return nil
+	}
+	if err := json.Unmarshal(data, &l.Items); err != nil {
+		return err
+	}
+	l.Valid = true
+	return nil
 }

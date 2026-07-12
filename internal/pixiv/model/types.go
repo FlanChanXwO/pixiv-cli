@@ -1,7 +1,23 @@
 package model
 
+import "encoding/json"
+
 type IllustList struct {
-	Illusts []Illust `json:"illusts"`
+	Illusts            []Illust `json:"illusts"`
+	NextOffset         int      `json:"-"`
+	NextMaxBookmarkID  int64    `json:"-"`
+	ContinuationExists bool     `json:"-"`
+}
+
+// MarshalJSON 将合法空列表稳定编码为 []，避免内部消费者产生 wire 上的 null。
+func (l IllustList) MarshalJSON() ([]byte, error) {
+	items := l.Illusts
+	if items == nil {
+		items = []Illust{}
+	}
+	return json.Marshal(struct {
+		Illusts []Illust `json:"illusts"`
+	}{Illusts: items})
 }
 
 type IllustDetail struct {
@@ -60,7 +76,19 @@ type MetaPage struct {
 }
 
 type UserPreviewList struct {
-	UserPreviews []UserPreview `json:"user_previews"`
+	UserPreviews       []UserPreview `json:"user_previews"`
+	NextOffset         int           `json:"-"`
+	ContinuationExists bool          `json:"-"`
+}
+
+func (l UserPreviewList) MarshalJSON() ([]byte, error) {
+	items := l.UserPreviews
+	if items == nil {
+		items = []UserPreview{}
+	}
+	return json.Marshal(struct {
+		UserPreviews []UserPreview `json:"user_previews"`
+	}{UserPreviews: items})
 }
 
 type UserPreview struct {
