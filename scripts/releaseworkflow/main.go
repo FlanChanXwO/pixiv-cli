@@ -414,6 +414,9 @@ git archive --format=tar "$GITHUB_SHA" -- \
   scripts/releaseworkflow/main.go \
   scripts/releaseworkflow/main_test.go \
   test/e2e/pixiv_binary_test.go | tar -xf -
+git add -N \
+  internal/update/releases_reader_nonwindows_test.go \
+  internal/update/releases_reader_windows_test.go
 test "$(git diff --name-only)" = "$(printf '%s\n' \
   internal/cli/account_test.go \
   internal/cli/config_test.go \
