@@ -50,6 +50,8 @@ func (c *Client) configPathFor(operation Operation) (string, error) {
 
 // ImportAccount 刷新给定 refresh token，随后安全保存其旋转后的 token。
 func (c *Client) ImportAccount(ctx context.Context, refreshToken string) (*Account, error) {
+	c.authState.mu.Lock()
+	defer c.authState.mu.Unlock()
 	refreshToken, _ = utils.ParsePixivWebRefreshTokenInput(refreshToken)
 	if strings.TrimSpace(refreshToken) == "" {
 		return nil, newError(CodeInvalidArgument, OperationImportAccount, "", false, 0, 0, errors.New("refresh token is required"))
@@ -75,6 +77,8 @@ func (c *Client) ImportAccount(ctx context.Context, refreshToken string) (*Accou
 
 // ListAccounts 返回本地账号的安全摘要。
 func (c *Client) ListAccounts() (*AccountsResult, error) {
+	c.authState.mu.Lock()
+	defer c.authState.mu.Unlock()
 	state, _, err := c.accountState(OperationListAccounts, false)
 	if err != nil {
 		return nil, err
@@ -88,6 +92,8 @@ func (c *Client) ListAccounts() (*AccountsResult, error) {
 
 // SelectAccount 将已有账号选为默认账号。
 func (c *Client) SelectAccount(userID int64) error {
+	c.authState.mu.Lock()
+	defer c.authState.mu.Unlock()
 	if userID <= 0 {
 		return newError(CodeInvalidArgument, OperationSelectAccount, "", false, 0, 0, errors.New("user id must be positive"))
 	}
@@ -107,6 +113,8 @@ func (c *Client) SelectAccount(userID int64) error {
 
 // RemoveAccount 删除本地账号；删除默认账号时沿用存储层的确定性提升规则。
 func (c *Client) RemoveAccount(userID int64) error {
+	c.authState.mu.Lock()
+	defer c.authState.mu.Unlock()
 	if userID <= 0 {
 		return newError(CodeInvalidArgument, OperationRemoveAccount, "", false, 0, 0, errors.New("user id must be positive"))
 	}
@@ -125,6 +133,8 @@ func (c *Client) RemoveAccount(userID int64) error {
 
 // CheckAccount 刷新指定本地账号，验证 UID 不变并保存旋转后的 token。
 func (c *Client) CheckAccount(ctx context.Context, userID int64) (*Account, error) {
+	c.authState.mu.Lock()
+	defer c.authState.mu.Unlock()
 	state, httpClient, err := c.accountState(OperationCheckAccount, true)
 	if err != nil {
 		return nil, err
@@ -137,6 +147,8 @@ func (c *Client) CheckAccount(ctx context.Context, userID int64) (*Account, erro
 
 // Refresh 刷新当前默认账号并保存旋转后的 token。
 func (c *Client) Refresh(ctx context.Context) (*Account, error) {
+	c.authState.mu.Lock()
+	defer c.authState.mu.Unlock()
 	state, httpClient, err := c.accountState(OperationRefresh, true)
 	if err != nil {
 		return nil, err
@@ -146,6 +158,8 @@ func (c *Client) Refresh(ctx context.Context) (*Account, error) {
 
 // RefreshAccount 是 Refresh 的显式 UID 变体。
 func (c *Client) RefreshAccount(ctx context.Context, userID int64) (*Account, error) {
+	c.authState.mu.Lock()
+	defer c.authState.mu.Unlock()
 	return c.refreshStoredAccount(ctx, OperationRefresh, userID)
 }
 

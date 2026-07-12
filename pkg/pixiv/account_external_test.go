@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -459,11 +460,109 @@ func TestOpenDefaultParseResourceRefUsesLocalSnapshotWithoutOAuth(t *testing.T) 
 	if _, err := client.ParseResourceRef("https://i.pximg.net/img-original/a.jpg"); err != nil || requests.Load() != 0 {
 		t.Fatalf("parse err=%v requests=%d", err, requests.Load())
 	}
-	if err := os.WriteFile(authPath, []byte(`{"default_account":"legacy"}`), 0o600); err != nil {
+	if err := os.WriteFile(configPath, []byte("[web\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := client.ParseResourceRef("https://i.pximg.net/img-original/a.jpg"); !errors.Is(err, pixiv.ErrInvalidArgument) || requests.Load() != 0 {
 		t.Fatalf("updated snapshot err=%v requests=%d", err, requests.Load())
+	}
+}
+
+func TestOpenDefaultFreezesResourcePolicy(t *testing.T) {
+	t.Parallel()
+	policy := pixiv.ResourcePolicy{Mirrors: []pixiv.ResourceMirrorPolicy{{Host: "mirror.invalid", PathPrefixes: []string{"/safe"}}}}
+	client, err := pixiv.OpenDefault(pixiv.Options{ResourcePolicy: policy, AuthFilePath: filepath.Join(t.TempDir(), "auth.json"), ConfigFilePath: filepath.Join(t.TempDir(), "config.toml")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	policy.Mirrors[0].Host = "evil.invalid"
+	policy.Mirrors[0].PathPrefixes[0] = "/"
+	if _, err := client.ParseResourceRef("https://evil.invalid/anything"); !errors.Is(err, pixiv.ErrForbidden) {
+		t.Fatalf("mutated caller policy changed client: %v", err)
+	}
+}
+
+func TestOpenDefaultResourcesDoNotRefreshOAuth(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	authPath, configPath := filepath.Join(dir, "auth.json"), filepath.Join(dir, "config.toml")
+	if err := os.WriteFile(authPath, []byte(`{"default_user_id":7,"accounts":[{"user_id":7,"refresh_token":"expired-token"}]}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var oauthCalls, resourceCalls atomic.Int32
+	transport := accountRoundTripperFunc(func(request *http.Request) (*http.Response, error) {
+		if request.URL.Host == "oauth.invalid" {
+			oauthCalls.Add(1)
+			return &http.Response{StatusCode: http.StatusUnauthorized, Body: io.NopCloser(strings.NewReader("expired")), Header: make(http.Header), Request: request}, nil
+		}
+		if request.URL.Host == "i.pximg.net" {
+			resourceCalls.Add(1)
+			return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader("image")), Header: make(http.Header), Request: request}, nil
+		}
+		return nil, errors.New("unexpected host")
+	})
+	client, err := pixiv.OpenDefault(pixiv.Options{AuthFilePath: authPath, ConfigFilePath: configPath, OAuthBaseURL: "https://oauth.invalid", HTTPClient: &http.Client{Transport: transport}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ref, err := client.ParseResourceRef("https://i.pximg.net/img-original/a.jpg")
+	if err != nil {
+		t.Fatal(err)
+	}
+	response, err := client.OpenResource(context.Background(), pixiv.OpenResourceRequest{Ref: ref})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = response.Body.Close()
+	destination := filepath.Join(dir, "image.jpg")
+	if err := client.Download(context.Background(), ref, destination); err != nil {
+		t.Fatal(err)
+	}
+	if oauthCalls.Load() != 0 || resourceCalls.Load() != 2 {
+		t.Fatalf("oauth=%d resource=%d", oauthCalls.Load(), resourceCalls.Load())
+	}
+}
+
+func TestAccountMutationsShareOneClientTransaction(t *testing.T) {
+	t.Parallel()
+	authPath := filepath.Join(t.TempDir(), "auth.json")
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+		if err := request.ParseForm(); err != nil {
+			t.Fatal(err)
+		}
+		userID := 1
+		if request.Form.Get("refresh_token") == "token-2" {
+			userID = 2
+		}
+		_, _ = w.Write([]byte(`{"access_token":"access","refresh_token":"rotated-` + strconv.Itoa(userID) + `","user":{"id":` + strconv.Itoa(userID) + `}}`))
+	}))
+	defer server.Close()
+	client, err := pixiv.NewClient(pixiv.Options{AuthFilePath: authPath, OAuthBaseURL: server.URL, HTTPClient: server.Client()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var wg sync.WaitGroup
+	for _, token := range []string{"token-1", "token-2"} {
+		wg.Add(1)
+		go func(token string) {
+			defer wg.Done()
+			if _, err := client.ImportAccount(context.Background(), token); err != nil {
+				t.Errorf("ImportAccount(%q): %v", token, err)
+			}
+		}(token)
+	}
+	wg.Wait()
+	accounts, err := client.ListAccounts()
+	if err != nil || len(accounts.Accounts) != 2 {
+		t.Fatalf("imports list=%+v err=%v", accounts, err)
+	}
+	wg.Add(2)
+	go func() { defer wg.Done(); _ = client.SelectAccount(2) }()
+	go func() { defer wg.Done(); _ = client.RemoveAccount(1) }()
+	wg.Wait()
+	accounts, err = client.ListAccounts()
+	if err != nil || len(accounts.Accounts) != 1 || accounts.Accounts[0].UserID != 2 || accounts.DefaultUserID != 2 {
+		t.Fatalf("linearized mutations list=%+v err=%v", accounts, err)
 	}
 }
 

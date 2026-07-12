@@ -11,7 +11,10 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/storage/auth"
 )
 
-type defaultOptions struct{ options Options }
+type defaultOptions struct {
+	options   Options
+	authState *authTransactionState
+}
 
 type localSnapshot struct {
 	authPath   string
@@ -68,6 +71,8 @@ func (d *defaultOptions) loadSnapshot() (localSnapshot, error) {
 }
 
 func (d *defaultOptions) snapshot(ctx context.Context, operation Operation) (*Client, error) {
+	d.authState.mu.Lock()
+	defer d.authState.mu.Unlock()
 	snapshot, err := d.loadSnapshot()
 	if err != nil {
 		return nil, localSnapshotError(operation, err)
@@ -89,6 +94,7 @@ func (d *defaultOptions) snapshot(ctx context.Context, operation Operation) (*Cl
 		if err != nil {
 			return nil, localSnapshotError(operation, err)
 		}
+		client.authState = d.authState
 		client.cursorSource = "web:anonymous"
 		return client, nil
 	}
@@ -126,6 +132,7 @@ func (d *defaultOptions) snapshot(ctx context.Context, operation Operation) (*Cl
 	if selectedStored {
 		sourceUserID = selectedUserID
 	}
+	client.authState = d.authState
 	client.cursorSource = "app:user:" + formatUserID(sourceUserID)
 	return client, nil
 }
@@ -149,18 +156,28 @@ func (d *defaultOptions) selectRefreshToken(store auth.AuthStore) (string, int64
 	return "", 0, false, nil
 }
 
-// resourceSnapshot keeps ParseResourceRef in the OpenDefault freshness model
-// without starting an OAuth request from its context-free, local-only API.
+// resourceSnapshot reads current config/proxy state without touching OAuth or
+// auth.json: resource fetching never needs an App credential.
 func (d *defaultOptions) resourceSnapshot(operation Operation) (*Client, error) {
-	snapshot, err := d.loadSnapshot()
+	_, configPath, err := d.paths()
 	if err != nil {
 		return nil, localSnapshotError(operation, err)
 	}
-	if _, _, _, err := d.selectRefreshToken(snapshot.store); err != nil {
-		return nil, newUserError(CodeInvalidArgument, operation, "", false, 0, d.options.UserID, errors.New("selected account does not exist"))
+	settings, err := config.LoadSettingsStateAt(configPath)
+	if err != nil {
+		return nil, localSnapshotError(operation, err)
+	}
+	runtime, err := settings.Runtime()
+	if err != nil {
+		return nil, localSnapshotError(operation, err)
+	}
+	httpClient, err := newHTTPClientForSnapshot(d.options, runtime.HTTPSProxy)
+	if err != nil {
+		return nil, localSnapshotError(operation, err)
 	}
 	options := d.options
 	options.AccessToken = ""
+	options.HTTPClient = httpClient
 	client, err := NewClient(options)
 	if err != nil {
 		return nil, localSnapshotError(operation, err)

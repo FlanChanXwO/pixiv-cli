@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"sync"
 
 	internalpixiv "github.com/FlanChanXwO/pixiv-cli/internal/pixiv"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/appapi"
@@ -54,6 +55,7 @@ type Client struct {
 	configFilePath     string
 	oauthBaseURL       string
 	appAPIBaseURL      string
+	authState          *authTransactionState
 	// defaults 非 nil 表示每个公开操作都必须取得一个新的本地快照。
 	defaults *defaultOptions
 	// cursorSource 只存在于 OpenDefault 的 operation-scoped client；它从不含凭据。
@@ -88,6 +90,7 @@ func NewClient(options Options) (*Client, error) {
 		configFilePath:     strings.TrimSpace(options.ConfigFilePath),
 		oauthBaseURL:       strings.TrimSpace(options.OAuthBaseURL),
 		appAPIBaseURL:      strings.TrimSpace(options.AppAPIBaseURL),
+		authState:          &authTransactionState{},
 	}, nil
 }
 
@@ -97,14 +100,26 @@ func OpenDefault(options Options) (*Client, error) {
 	if strings.TrimSpace(options.AccessToken) != "" {
 		return nil, newError(CodeInvalidArgument, "", "", false, 0, 0, errors.New("AccessToken is only supported by NewClient"))
 	}
+	options = cloneOptions(options)
 	baseOptions := options
 	baseOptions.AccessToken = ""
 	base, err := NewClient(baseOptions)
 	if err != nil {
 		return nil, err
 	}
-	base.defaults = &defaultOptions{options: options}
+	base.defaults = &defaultOptions{options: options, authState: base.authState}
 	return base, nil
+}
+
+type authTransactionState struct{ mu sync.Mutex }
+
+func cloneOptions(options Options) Options {
+	policy := ResourcePolicy{Mirrors: make([]ResourceMirrorPolicy, len(options.ResourcePolicy.Mirrors))}
+	for index, mirror := range options.ResourcePolicy.Mirrors {
+		policy.Mirrors[index] = ResourceMirrorPolicy{Host: mirror.Host, PathPrefixes: append([]string(nil), mirror.PathPrefixes...)}
+	}
+	options.ResourcePolicy = policy
+	return options
 }
 
 // newHTTPClientForSnapshot 保留显式 transport；否则把当前配置中的代理绑定到本次操作。

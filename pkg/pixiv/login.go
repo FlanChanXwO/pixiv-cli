@@ -92,6 +92,8 @@ func (c *Client) CompleteLogin(ctx context.Context, session *LoginSession, callb
 	if !session.state.used.CompareAndSwap(false, true) {
 		return nil, newError(CodeInvalidArgument, OperationCompleteLogin, "", false, 0, 0, errors.New("login session was already used"))
 	}
+	c.authState.mu.Lock()
+	defer c.authState.mu.Unlock()
 	state, httpClient, err := c.accountState(OperationCompleteLogin, true)
 	if err != nil {
 		return nil, err
