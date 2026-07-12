@@ -52,7 +52,7 @@
     {
       "path": ".github/workflows/native-evidence.yml",
       "language": "yaml",
-      "sizeLines": 142,
+      "sizeLines": 150,
       "fileCategory": "infra"
     },
     {
@@ -76,7 +76,7 @@
     {
       "path": "CHANGELOG.md",
       "language": "markdown",
-      "sizeLines": 88,
+      "sizeLines": 89,
       "fileCategory": "docs"
     },
     {
@@ -160,13 +160,13 @@
     {
       "path": "docs/architecture.md",
       "language": "markdown",
-      "sizeLines": 228,
+      "sizeLines": 230,
       "fileCategory": "docs"
     },
     {
       "path": "docs/development.md",
       "language": "markdown",
-      "sizeLines": 337,
+      "sizeLines": 342,
       "fileCategory": "docs"
     },
     {
@@ -478,7 +478,7 @@
     {
       "path": "internal/download/ugoira_rust_test.go",
       "language": "go",
-      "sizeLines": 154,
+      "sizeLines": 177,
       "fileCategory": "code"
     },
     {
@@ -832,13 +832,13 @@
     {
       "path": "scripts/nativeevidence/main_test.go",
       "language": "go",
-      "sizeLines": 695,
+      "sizeLines": 709,
       "fileCategory": "code"
     },
     {
       "path": "scripts/nativeevidence/main.go",
       "language": "go",
-      "sizeLines": 1344,
+      "sizeLines": 1354,
       "fileCategory": "code"
     },
     {
