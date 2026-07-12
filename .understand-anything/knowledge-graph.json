@@ -20,8 +20,8 @@
       "GitHub Actions"
     ],
     "description": "这是一个 Go 版 Pixiv CLI 与 MCP stdio server，内置 Rust ugoira encoder，并包含 release/update workflow。",
-    "analyzedAt": "2026-07-12T22:56:13.187Z",
-    "gitCommitHash": "fde8766fededd9f2bcee4e9962c9f3bbfb9f3d0e"
+    "analyzedAt": "2026-07-12T23:19:12Z",
+    "gitCommitHash": "47db575388301ede1fe1033fea80b6f21fc49e6d"
   },
   "nodes": [
     {

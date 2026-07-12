@@ -1,7 +1,7 @@
 {
   "version": "1.0.0",
-  "gitCommitHash": "fde8766fededd9f2bcee4e9962c9f3bbfb9f3d0e",
-  "generatedAt": "2026-07-12T22:56:13.421Z",
+  "gitCommitHash": "47db575388301ede1fe1033fea80b6f21fc49e6d",
+  "generatedAt": "2026-07-12T23:19:04.502Z",
   "files": {
     ".agents/skills/pixiv-commit-msg/SKILL.md": {
       "filePath": ".agents/skills/pixiv-commit-msg/SKILL.md",
@@ -65,7 +65,7 @@
     },
     ".github/workflows/release.yml": {
       "filePath": ".github/workflows/release.yml",
-      "contentHash": "cc493bc6cdd06e422052e63113a1a7e32996e034189d432a890cd6c91fc674ac",
+      "contentHash": "30c5aadabcd0a9255372e96347bfd12235bc8cd95f40ee93641eaa881d060420",
       "functions": [],
       "classes": [],
       "imports": [],
@@ -20109,7 +20109,7 @@
     },
     "scripts/releaseworkflow/main.go": {
       "filePath": "scripts/releaseworkflow/main.go",
-      "contentHash": "219a2a55ff25954e67b6c3079288948ff196ce73020349a1172364b761bd00cb",
+      "contentHash": "b6815d3393b96185e61fd7e88068a8134755ebea62898d190284b9e1a9cecd0e",
       "functions": [
         {
           "name": "main",
