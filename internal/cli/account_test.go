@@ -1126,8 +1126,6 @@ func TestAccountLoginDefaultBrowserWatcherCatchesFastActiveTabCallback(t *testin
 	authPath, _ := useTempPaths(t)
 	home := t.TempDir()
 	t.Setenv("HOME", home)
-	oldRunAppleScript := runAppleScript
-	defer func() { runAppleScript = oldRunAppleScript }()
 	addr := freeLoopbackAddr(t)
 	oauth := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		require.NoError(t, r.ParseForm())
@@ -1140,19 +1138,25 @@ func TestAccountLoginDefaultBrowserWatcherCatchesFastActiveTabCallback(t *testin
 	defer oauth.Close()
 	restoreOAuthBase := setTestOAuthBase(t, oauth.URL)
 	defer restoreOAuthBase()
+	var stateMu sync.Mutex
 	opened := false
-	runAppleScript = func(ctx context.Context, script string) (string, error) {
+	restoreRunAppleScript := setTestRunAppleScript(t, func(ctx context.Context, script string) (string, error) {
+		stateMu.Lock()
+		defer stateMu.Unlock()
 		if !opened {
 			return "", nil
 		}
 		return "https://app-api.pixiv.net/web/v1/users/auth/pixiv/callback?code=fast-active-tab-code\n", nil
-	}
+	})
+	defer restoreRunAppleScript()
 	var completionBodies []string
 	restoreOpen := setTestOpenBrowser(t, func(rawURL string) error {
 		if requestLoginCompletionPage(t, rawURL, &completionBodies) {
 			return nil
 		}
+		stateMu.Lock()
 		opened = true
+		stateMu.Unlock()
 		return nil
 	})
 	defer restoreOpen()
@@ -1173,6 +1177,87 @@ func TestAccountLoginDefaultBrowserWatcherCatchesFastActiveTabCallback(t *testin
 	assert.NotContains(t, stderr.String(), "fast-active-tab-refresh-secret")
 }
 
+func TestWaitForLoginCodeWaitsForBrowserWatcherExit(t *testing.T) {
+	restoreRunAppleScript := setTestRunAppleScript(t, func(context.Context, string) (string, error) { return "", nil })
+	defer restoreRunAppleScript()
+	watcherErr := errors.New("browser watcher failed")
+	for _, tc := range []struct {
+		name       string
+		submitCode bool
+		resultErr  error
+		cancel     bool
+	}{
+		{name: "success", submitCode: true},
+		{name: "watcher error", resultErr: watcherErr},
+		{name: "context canceled", resultErr: context.Canceled, cancel: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			watcherStarted := make(chan struct{})
+			watcherCanceled := make(chan struct{})
+			releaseWatcher := make(chan struct{})
+			watcherDone := make(chan struct{})
+			watcher := func(ctx context.Context, expectedState, expectedChallenge string, initialSeen map[string]struct{}, openURL func(string) error, submit func(loginServerResult), reportInvalid func(error)) {
+				close(watcherStarted)
+				if tc.submitCode {
+					submit(loginServerResult{code: "watched-code"})
+				}
+				if tc.resultErr != nil && !tc.cancel {
+					submit(loginServerResult{err: tc.resultErr})
+				}
+				<-ctx.Done()
+				close(watcherCanceled)
+				<-releaseWatcher
+				close(watcherDone)
+			}
+
+			type waitResult struct {
+				capture loginCodeCapture
+				err     error
+			}
+			returned := make(chan waitResult)
+			a := app{out: io.Discard, errOut: io.Discard}
+			addr := freeLoopbackAddr(t)
+			go func() {
+				capture, err := a.waitForLoginCode(ctx, addr, "expected-state", pixivLoginURL("expected-challenge", "expected-state"), false, func(string) error { return nil }, watcher)
+				returned <- waitResult{capture: capture, err: err}
+			}()
+
+			<-watcherStarted
+			if tc.cancel {
+				cancel()
+			}
+			<-watcherCanceled
+			var result waitResult
+			returnedEarly := false
+			select {
+			case result = <-returned:
+				returnedEarly = true
+			default:
+			}
+			close(releaseWatcher)
+			if !returnedEarly {
+				result = <-returned
+			}
+			<-watcherDone
+			if returnedEarly {
+				if result.capture.cleanup != nil {
+					result.capture.cleanup()
+				}
+				t.Fatal("waitForLoginCode returned before browser watcher exited")
+			}
+			if tc.resultErr != nil {
+				require.ErrorIs(t, result.err, tc.resultErr)
+				return
+			}
+			require.NoError(t, result.err)
+			require.Equal(t, "watched-code", result.capture.code)
+			result.capture.cleanup()
+		})
+	}
+}
+
 func TestAccountLoginDefaultBrowserWatcherContinuesPixivPostRedirect(t *testing.T) {
 	if runtime.GOOS != "darwin" {
 		t.Skip("default browser watcher currently runs on macOS")
@@ -1180,8 +1265,6 @@ func TestAccountLoginDefaultBrowserWatcherContinuesPixivPostRedirect(t *testing.
 	authPath, _ := useTempPaths(t)
 	home := t.TempDir()
 	t.Setenv("HOME", home)
-	oldRunAppleScript := runAppleScript
-	defer func() { runAppleScript = oldRunAppleScript }()
 	addr := freeLoopbackAddr(t)
 	oauth := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		require.NoError(t, r.ParseForm())
@@ -1195,11 +1278,14 @@ func TestAccountLoginDefaultBrowserWatcherContinuesPixivPostRedirect(t *testing.
 	restoreOAuthBase := setTestOAuthBase(t, oauth.URL)
 	defer restoreOAuthBase()
 
+	var stateMu sync.Mutex
 	openedLogin := false
 	pollsAfterBridge := 0
 	var loginChallenge string
 	var bridge string
-	runAppleScript = func(ctx context.Context, script string) (string, error) {
+	restoreRunAppleScript := setTestRunAppleScript(t, func(ctx context.Context, script string) (string, error) {
+		stateMu.Lock()
+		defer stateMu.Unlock()
 		if !openedLogin {
 			return "", nil
 		}
@@ -1212,10 +1298,13 @@ func TestAccountLoginDefaultBrowserWatcherContinuesPixivPostRedirect(t *testing.
 		returnTo := pixivAuthStartURLForTest(loginChallenge)
 		bridge = "https://accounts.pixiv.net/post-redirect?return_to=" + url.QueryEscape(returnTo)
 		return bridge + "\n", nil
-	}
+	})
+	defer restoreRunAppleScript()
 	var openedURLs []string
 	var completionBodies []string
 	restoreOpen := setTestOpenBrowser(t, func(rawURL string) error {
+		stateMu.Lock()
+		defer stateMu.Unlock()
 		openedURLs = append(openedURLs, rawURL)
 		if requestLoginCompletionPage(t, rawURL, &completionBodies) {
 			return nil
@@ -1232,7 +1321,9 @@ func TestAccountLoginDefaultBrowserWatcherContinuesPixivPostRedirect(t *testing.
 	code := Run([]string{"pixiv", "auth", "login", "--addr", addr, "--timeout", "5s"}, strings.NewReader(""), &stdout, &stderr)
 
 	require.Equal(t, 0, code, stderr.String())
+	stateMu.Lock()
 	require.NotContains(t, openedURLs, bridge)
+	stateMu.Unlock()
 	require.Contains(t, stderr.String(), "waiting for pixiv:// callback handoff")
 	store, err := auth.LoadAuthStore(authPath)
 	require.NoError(t, err)
@@ -1253,8 +1344,6 @@ func TestAccountLoginDefaultBrowserWatcherSkipsStalePostRedirectChallenge(t *tes
 	authPath, _ := useTempPaths(t)
 	home := t.TempDir()
 	t.Setenv("HOME", home)
-	oldRunAppleScript := runAppleScript
-	defer func() { runAppleScript = oldRunAppleScript }()
 	addr := freeLoopbackAddr(t)
 	oauth := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		require.NoError(t, r.ParseForm())
@@ -1268,6 +1357,7 @@ func TestAccountLoginDefaultBrowserWatcherSkipsStalePostRedirectChallenge(t *tes
 	restoreOAuthBase := setTestOAuthBase(t, oauth.URL)
 	defer restoreOAuthBase()
 
+	var stateMu sync.Mutex
 	openedLogin := false
 	pollsAfterCurrent := 0
 	var loginChallenge string
@@ -1275,7 +1365,9 @@ func TestAccountLoginDefaultBrowserWatcherSkipsStalePostRedirectChallenge(t *tes
 	var currentReturnTo string
 	staleReturnTo := pixivAuthStartURLForTest("stale-challenge")
 	staleBridge := "https://accounts.pixiv.net/post-redirect?return_to=" + url.QueryEscape(staleReturnTo)
-	runAppleScript = func(ctx context.Context, script string) (string, error) {
+	restoreRunAppleScript := setTestRunAppleScript(t, func(ctx context.Context, script string) (string, error) {
+		stateMu.Lock()
+		defer stateMu.Unlock()
 		if !openedLogin {
 			return "", nil
 		}
@@ -1288,10 +1380,13 @@ func TestAccountLoginDefaultBrowserWatcherSkipsStalePostRedirectChallenge(t *tes
 		currentReturnTo = pixivAuthStartURLForTest(loginChallenge)
 		currentBridge = "https://accounts.pixiv.net/post-redirect?return_to=" + url.QueryEscape(currentReturnTo)
 		return staleBridge + "\n" + currentBridge + "\n", nil
-	}
+	})
+	defer restoreRunAppleScript()
 	var openedURLs []string
 	var completionBodies []string
 	restoreOpen := setTestOpenBrowser(t, func(rawURL string) error {
+		stateMu.Lock()
+		defer stateMu.Unlock()
 		openedURLs = append(openedURLs, rawURL)
 		if requestLoginCompletionPage(t, rawURL, &completionBodies) {
 			return nil
@@ -1308,9 +1403,11 @@ func TestAccountLoginDefaultBrowserWatcherSkipsStalePostRedirectChallenge(t *tes
 	code := Run([]string{"pixiv", "auth", "login", "--addr", addr, "--timeout", "5s"}, strings.NewReader(""), &stdout, &stderr)
 
 	require.Equal(t, 0, code, stderr.String())
+	stateMu.Lock()
 	require.NotContains(t, openedURLs, staleReturnTo)
 	require.NotContains(t, openedURLs, staleBridge)
 	require.NotContains(t, openedURLs, currentBridge)
+	stateMu.Unlock()
 	require.Contains(t, stderr.String(), "waiting for pixiv:// callback handoff")
 	store, err := auth.LoadAuthStore(authPath)
 	require.NoError(t, err)
@@ -1331,8 +1428,6 @@ func TestAccountLoginDefaultBrowserWatcherReportsPostRedirectRelayOnce(t *testin
 	authPath, _ := useTempPaths(t)
 	home := t.TempDir()
 	t.Setenv("HOME", home)
-	oldRunAppleScript := runAppleScript
-	defer func() { runAppleScript = oldRunAppleScript }()
 	addr := freeLoopbackAddr(t)
 	oauth := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		require.NoError(t, r.ParseForm())
@@ -1346,13 +1441,16 @@ func TestAccountLoginDefaultBrowserWatcherReportsPostRedirectRelayOnce(t *testin
 	restoreOAuthBase := setTestOAuthBase(t, oauth.URL)
 	defer restoreOAuthBase()
 
+	var stateMu sync.Mutex
 	openedLogin := false
 	var loginChallenge string
 	var returnTo string
 	var bridge string
 	openCounts := map[string]int{}
 	pollsAfterBridgeSeen := 0
-	runAppleScript = func(ctx context.Context, script string) (string, error) {
+	restoreRunAppleScript := setTestRunAppleScript(t, func(ctx context.Context, script string) (string, error) {
+		stateMu.Lock()
+		defer stateMu.Unlock()
 		if !openedLogin {
 			return "", nil
 		}
@@ -1365,9 +1463,12 @@ func TestAccountLoginDefaultBrowserWatcherReportsPostRedirectRelayOnce(t *testin
 		returnTo = pixivAuthStartURLForTest(loginChallenge)
 		bridge = "https://accounts.pixiv.net/post-redirect?return_to=" + url.QueryEscape(returnTo)
 		return bridge + "\n", nil
-	}
+	})
+	defer restoreRunAppleScript()
 	var completionBodies []string
 	restoreOpen := setTestOpenBrowser(t, func(rawURL string) error {
+		stateMu.Lock()
+		defer stateMu.Unlock()
 		if requestLoginCompletionPage(t, rawURL, &completionBodies) {
 			return nil
 		}
@@ -1384,7 +1485,9 @@ func TestAccountLoginDefaultBrowserWatcherReportsPostRedirectRelayOnce(t *testin
 	code := Run([]string{"pixiv", "auth", "login", "--addr", addr, "--timeout", "5s"}, strings.NewReader(""), &stdout, &stderr)
 
 	require.Equal(t, 0, code, stderr.String())
+	stateMu.Lock()
 	require.Zero(t, openCounts[bridge])
+	stateMu.Unlock()
 	require.Equal(t, 1, strings.Count(stderr.String(), "waiting for pixiv:// callback handoff"))
 	store, err := auth.LoadAuthStore(authPath)
 	require.NoError(t, err)
@@ -1586,15 +1689,14 @@ func pixivAuthStartURLForTest(challenge string) string {
 }
 
 func TestActiveMacBrowserURLsPreferBrowserScripting(t *testing.T) {
-	old := runAppleScript
-	defer func() { runAppleScript = old }()
 	callbackURL := "https://app-api.pixiv.net/web/v1/users/auth/pixiv/callback?code=active-tab-code"
 	var scripts []string
-	runAppleScript = func(ctx context.Context, script string) (string, error) {
+	restoreRunAppleScript := setTestRunAppleScript(t, func(ctx context.Context, script string) (string, error) {
 		scripts = append(scripts, script)
 		require.Contains(t, script, `application id "com.microsoft.edgemac"`)
 		return "https://example.test/ignored\n" + callbackURL + "\n", nil
-	}
+	})
+	defer restoreRunAppleScript()
 
 	urls := activeMacBrowserURLs(context.Background())
 
@@ -1604,11 +1706,9 @@ func TestActiveMacBrowserURLsPreferBrowserScripting(t *testing.T) {
 }
 
 func TestActiveMacBrowserURLsFallBackToSystemEvents(t *testing.T) {
-	old := runAppleScript
-	defer func() { runAppleScript = old }()
 	callbackURL := "https://app-api.pixiv.net/web/v1/users/auth/pixiv/callback?code=system-events-code"
 	call := 0
-	runAppleScript = func(ctx context.Context, script string) (string, error) {
+	restoreRunAppleScript := setTestRunAppleScript(t, func(ctx context.Context, script string) (string, error) {
 		call++
 		if call == 1 {
 			assert.Contains(t, script, `application id "com.microsoft.edgemac"`)
@@ -1616,7 +1716,8 @@ func TestActiveMacBrowserURLsFallBackToSystemEvents(t *testing.T) {
 		}
 		assert.Contains(t, script, "System Events")
 		return callbackURL + "\n", nil
-	}
+	})
+	defer restoreRunAppleScript()
 
 	urls := activeMacBrowserURLs(context.Background())
 
@@ -1637,6 +1738,11 @@ func setTestOpenBrowser(t *testing.T, opener func(string) error) func() {
 func setTestBrowserCodeWatcher(t *testing.T, watcher browserCodeWatcher) func() {
 	t.Helper()
 	return setBrowserCodeWatcherForTest(watcher)
+}
+
+func setTestRunAppleScript(t *testing.T, run func(context.Context, string) (string, error)) func() {
+	t.Helper()
+	return setRunAppleScriptForTest(run)
 }
 
 func setTestCLIClientFactory(t *testing.T, factory func(clientConfig) (cliPixivClient, error)) {

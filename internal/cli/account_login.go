@@ -192,7 +192,13 @@ func (a app) waitForLoginCode(ctx context.Context, addr, state, loginURL string,
 		return loginCodeCapture{}, err
 	}
 	watchCtx, stopWatching := context.WithCancel(ctx)
-	defer stopWatching()
+	var browserWatcherDone <-chan struct{}
+	defer func() {
+		stopWatching()
+		if browserWatcherDone != nil {
+			<-browserWatcherDone
+		}
+	}()
 	actualAddr := ln.Addr().String()
 	completion := newAuthCompletionPage("http://" + actualAddr + "/complete")
 	resultCh := make(chan loginServerResult, 1)
@@ -325,7 +331,12 @@ func (a app) waitForLoginCode(ctx context.Context, addr, state, loginURL string,
 	if !noOpen {
 		initialSeen := currentBrowserCallbackURLSet(ctx)
 		if browserWatcher != nil {
-			go browserWatcher(watchCtx, state, loginChallenge, initialSeen, observeRelay, submit, reportInvalidSubmission)
+			done := make(chan struct{})
+			browserWatcherDone = done
+			go func() {
+				defer close(done)
+				browserWatcher(watchCtx, state, loginChallenge, initialSeen, observeRelay, submit, reportInvalidSubmission)
+			}()
 		}
 		managedOpened := false
 		if !schemeRelayActive && captureManagedBrowser != nil {
@@ -650,6 +661,12 @@ func currentLoginHooks() (string, func(string) error, browserCodeWatcher) {
 	return loginOAuthBase, openBrowser, watchBrowserLoginCode
 }
 
+func currentRunAppleScript() func(context.Context, string) (string, error) {
+	loginHooksMu.RLock()
+	defer loginHooksMu.RUnlock()
+	return runAppleScript
+}
+
 func setLoginOAuthBaseForTest(baseURL string) func() {
 	loginHooksMu.Lock()
 	old := loginOAuthBase
@@ -685,6 +702,18 @@ func setBrowserCodeWatcherForTest(watcher browserCodeWatcher) func() {
 	return func() {
 		loginHooksMu.Lock()
 		watchBrowserLoginCode = old
+		loginHooksMu.Unlock()
+	}
+}
+
+func setRunAppleScriptForTest(run func(context.Context, string) (string, error)) func() {
+	loginHooksMu.Lock()
+	old := runAppleScript
+	runAppleScript = run
+	loginHooksMu.Unlock()
+	return func() {
+		loginHooksMu.Lock()
+		runAppleScript = old
 		loginHooksMu.Unlock()
 	}
 }
@@ -1371,7 +1400,7 @@ if application id "com.apple.Safari" is running then
 end if
 return browserURLs
 `
-	out, err := runAppleScript(ctx, script)
+	out, err := currentRunAppleScript()(ctx, script)
 	if err != nil {
 		return nil, err
 	}
@@ -1412,7 +1441,7 @@ tell application "System Events"
 end tell
 return ""
 `
-	out, err := runAppleScript(ctx, script)
+	out, err := currentRunAppleScript()(ctx, script)
 	if err != nil {
 		return "", err
 	}
