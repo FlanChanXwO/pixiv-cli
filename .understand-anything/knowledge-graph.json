@@ -20,8 +20,8 @@
       "GitHub Actions"
     ],
     "description": "这是一个 Go 版 Pixiv CLI 与 MCP stdio server，内置 Rust ugoira encoder，并包含 release/update workflow。",
-    "analyzedAt": "2026-07-12T16:22:31.520Z",
-    "gitCommitHash": "7c1633380759177baf52ca0337b8eac5edfc1ab0"
+    "analyzedAt": "2026-07-12T22:04:10.416Z",
+    "gitCommitHash": "1507054cde2fe8291a0d7e2f3ca8973d2f3aad64"
   },
   "nodes": [
     {
@@ -12558,14 +12558,15 @@
       "type": "pipeline",
       "name": "release.yml",
       "filePath": ".github/workflows/release.yml",
-      "summary": "由 SemVer tag 触发：六平台构建与签名 Release 后导出同一 checksums.txt，按 channel 渲染 formula；四个 runner 创建隔离 staging tap、显式 trust 后以 tap-qualified name 安装，最后才允许 protected deploy key 更新 public tap。",
+      "summary": "由 tag push 或默认分支 recovery 绑定 immutable RELEASE_TAG：六目标 build 仅执行 15-step test-only gates，不构建或上传 release artifact；独立 9-step build_production 在新 runner 关闭 Go cache、重建 tag staticlib 并生成唯一 verified-release-*，之后才可签名 Release、验证 Homebrew 与更新 tap。",
       "tags": [
         "ci-cd",
         "release",
-        "homebrew",
-        "homebrew-6",
-        "security",
-        "supply-chain"
+        "recovery",
+        "test-only",
+        "production-isolation",
+        "artifact-provenance",
+        "security"
       ],
       "complexity": "complex"
     },
@@ -12600,12 +12601,13 @@
       "type": "document",
       "name": "CHANGELOG.md",
       "filePath": "CHANGELOG.md",
-      "summary": "记录 Release workflow 新增同源 checksum formula、macOS/Linux 双架构真实安装与最终 deploy-key tap push，以及 secret/SSH 安全边界。",
+      "summary": "记录 v0.1.0 后续修复：immutable-tag recovery 将六平台 test gate 与独立 production runners 分离，阻断 overlay 进程环境进入 binary、许可证或 archive。",
       "tags": [
         "文档",
         "变更记录",
-        "release",
-        "homebrew"
+        "release-recovery",
+        "production-isolation",
+        "artifact-provenance"
       ],
       "complexity": "moderate"
     },
@@ -15204,12 +15206,13 @@
       "type": "file",
       "name": "main_test.go",
       "filePath": "scripts/releaseworkflow/main_test.go",
-      "summary": "通过真实 workflow fixture 与 YAML AST mutations 证明 Homebrew 6 staging tap 创建、精确信任、tap-qualified 四 runner 安装及最终 tap push 不可绕过。",
+      "summary": "用真实 workflow 与 YAML AST mutations 证明 test build 仅含 15 个质量/overlay gates且无 artifact；独立 production runner 才能输出 verified-release assets 并由 publish 精确下载。",
       "tags": [
         "test",
         "release",
-        "homebrew",
-        "homebrew-6",
+        "test-only",
+        "production-isolation",
+        "artifact-provenance",
         "security",
         "validation"
       ],
@@ -15245,8 +15248,8 @@
       ],
       "complexity": "simple",
       "lineRange": [
-        24,
-        35
+        206,
+        217
       ]
     },
     {
@@ -15262,8 +15265,8 @@
       ],
       "complexity": "complex",
       "lineRange": [
-        348,
-        809
+        655,
+        1108
       ]
     },
     {
@@ -15277,10 +15280,10 @@
         "release",
         "security"
       ],
-      "complexity": "complex",
+      "complexity": "moderate",
       "lineRange": [
-        811,
-        850
+        1110,
+        1148
       ]
     },
     {
@@ -15296,8 +15299,8 @@
       ],
       "complexity": "complex",
       "lineRange": [
-        852,
-        920
+        1150,
+        1218
       ]
     },
     {
@@ -15313,8 +15316,8 @@
       ],
       "complexity": "moderate",
       "lineRange": [
-        922,
-        957
+        1220,
+        1255
       ]
     },
     {
@@ -15330,8 +15333,8 @@
       ],
       "complexity": "moderate",
       "lineRange": [
-        959,
-        985
+        1257,
+        1283
       ]
     },
     {
@@ -15347,8 +15350,8 @@
       ],
       "complexity": "moderate",
       "lineRange": [
-        987,
-        1024
+        1285,
+        1322
       ]
     },
     {
@@ -15364,8 +15367,8 @@
       ],
       "complexity": "moderate",
       "lineRange": [
-        1026,
-        1063
+        1324,
+        1361
       ]
     },
     {
@@ -15381,8 +15384,8 @@
       ],
       "complexity": "moderate",
       "lineRange": [
-        1065,
-        1093
+        1363,
+        1396
       ]
     },
     {
@@ -15398,8 +15401,8 @@
       ],
       "complexity": "moderate",
       "lineRange": [
-        1095,
-        1125
+        1398,
+        1433
       ]
     },
     {
@@ -15415,8 +15418,8 @@
       ],
       "complexity": "moderate",
       "lineRange": [
-        1127,
-        1155
+        1435,
+        1463
       ]
     },
     {
@@ -15432,8 +15435,8 @@
       ],
       "complexity": "complex",
       "lineRange": [
-        1157,
-        1199
+        1465,
+        1507
       ]
     },
     {
@@ -15449,8 +15452,8 @@
       ],
       "complexity": "moderate",
       "lineRange": [
-        1201,
-        1233
+        1509,
+        1541
       ]
     },
     {
@@ -15466,8 +15469,8 @@
       ],
       "complexity": "complex",
       "lineRange": [
-        1235,
-        1299
+        1543,
+        1607
       ]
     },
     {
@@ -15483,8 +15486,8 @@
       ],
       "complexity": "complex",
       "lineRange": [
-        1301,
-        1374
+        1609,
+        1682
       ]
     },
     {
@@ -15500,8 +15503,8 @@
       ],
       "complexity": "moderate",
       "lineRange": [
-        1376,
-        1391
+        1684,
+        1699
       ]
     },
     {
@@ -15517,8 +15520,8 @@
       ],
       "complexity": "moderate",
       "lineRange": [
-        1393,
-        1407
+        1701,
+        1715
       ]
     },
     {
@@ -15534,8 +15537,8 @@
       ],
       "complexity": "moderate",
       "lineRange": [
-        1432,
-        1450
+        1740,
+        1758
       ]
     },
     {
@@ -15551,8 +15554,8 @@
       ],
       "complexity": "moderate",
       "lineRange": [
-        1452,
-        1468
+        1760,
+        1776
       ]
     },
     {
@@ -15568,8 +15571,8 @@
       ],
       "complexity": "simple",
       "lineRange": [
-        1470,
-        1481
+        1778,
+        1789
       ]
     },
     {
@@ -15585,8 +15588,8 @@
       ],
       "complexity": "simple",
       "lineRange": [
-        1483,
-        1494
+        1791,
+        1802
       ]
     },
     {
@@ -15602,8 +15605,8 @@
       ],
       "complexity": "moderate",
       "lineRange": [
-        1496,
-        1513
+        1804,
+        1821
       ]
     },
     {
@@ -15619,8 +15622,8 @@
       ],
       "complexity": "simple",
       "lineRange": [
-        1539,
-        1548
+        1847,
+        1856
       ]
     },
     {
@@ -15636,8 +15639,8 @@
       ],
       "complexity": "simple",
       "lineRange": [
-        1566,
-        1579
+        1874,
+        1887
       ]
     },
     {
@@ -15653,8 +15656,8 @@
       ],
       "complexity": "moderate",
       "lineRange": [
-        1601,
-        1618
+        1909,
+        1926
       ]
     },
     {
@@ -15670,8 +15673,8 @@
       ],
       "complexity": "moderate",
       "lineRange": [
-        1620,
-        1634
+        1928,
+        1942
       ]
     },
     {
@@ -15687,8 +15690,8 @@
       ],
       "complexity": "moderate",
       "lineRange": [
-        1636,
-        1652
+        1944,
+        1960
       ]
     },
     {
@@ -15696,11 +15699,12 @@
       "type": "file",
       "name": "main.go",
       "filePath": "scripts/releaseworkflow/main.go",
-      "summary": "以 fail-closed YAML AST policy 锁定 Release→同源 checksum→channel formula→staging tap-new→精确信任→tap-qualified 四架构安装→最终 protected tap push。",
+      "summary": "以 fail-closed YAML AST policy 固定八 job DAG、15-step test-only build（无 production build/package/artifact）、唯一 9-step cache-disabled production matrix 与 verified-release provenance。",
       "tags": [
         "release",
-        "homebrew",
-        "homebrew-6",
+        "test-only",
+        "production-isolation",
+        "artifact-provenance",
         "security",
         "validation",
         "tested"
@@ -15729,7 +15733,7 @@
       "type": "function",
       "name": "checkWorkflow",
       "filePath": "scripts/releaseworkflow/main.go",
-      "summary": "解析 YAML AST 并串联 tag、权限、六目标构建、签名发布、formula 渲染、四架构安装与最终 tap push 的完整 DAG 校验。",
+      "summary": "解析 YAML AST 并串联八个 required jobs；先隔离 signing/Homebrew secrets，再分别校验 test gate、build_production 与后续 Release/Homebrew DAG。",
       "tags": [
         "implementation",
         "release",
@@ -15738,7 +15742,7 @@
       "complexity": "complex",
       "lineRange": [
         84,
-        181
+        191
       ]
     },
     {
@@ -15746,16 +15750,17 @@
       "type": "function",
       "name": "checkTagTrigger",
       "filePath": "scripts/releaseworkflow/main.go",
-      "summary": "校验 Tag Trigger 的 Release workflow 安全与质量约束。",
+      "summary": "校验 workflow 只允许 SemVer tag push 与带必填 release_tag 的 workflow_dispatch 两个入口。",
       "tags": [
         "implementation",
         "release",
+        "recovery",
         "security"
       ],
       "complexity": "moderate",
       "lineRange": [
-        183,
-        203
+        193,
+        225
       ]
     },
     {
@@ -15771,8 +15776,8 @@
       ],
       "complexity": "moderate",
       "lineRange": [
-        213,
-        229
+        518,
+        534
       ]
     },
     {
@@ -15788,8 +15793,8 @@
       ],
       "complexity": "moderate",
       "lineRange": [
-        231,
-        252
+        536,
+        557
       ]
     },
     {
@@ -15797,16 +15802,17 @@
       "type": "function",
       "name": "checkValidateJob",
       "filePath": "scripts/releaseworkflow/main.go",
-      "summary": "校验 Validate Job 的 Release workflow 安全与质量约束。",
+      "summary": "校验触发来源、RELEASE_TAG SemVer、既有 tag/default-branch ancestry 与 Release 尚不存在的 404 前置条件。",
       "tags": [
         "implementation",
         "release",
+        "recovery",
         "security"
       ],
       "complexity": "moderate",
       "lineRange": [
-        254,
-        283
+        559,
+        596
       ]
     },
     {
@@ -15814,16 +15820,17 @@
       "type": "function",
       "name": "checkBuildJob",
       "filePath": "scripts/releaseworkflow/main.go",
-      "summary": "校验 Build Job 的 Release workflow 安全与质量约束。",
+      "summary": "校验六目标 build 只执行 test-only overlay/quality gates；不允许 native production build、package、artifact upload 或 release input。",
       "tags": [
         "implementation",
         "release",
+        "recovery",
         "security"
       ],
       "complexity": "complex",
       "lineRange": [
-        285,
-        353
+        598,
+        660
       ]
     },
     {
@@ -15839,8 +15846,8 @@
       ],
       "complexity": "complex",
       "lineRange": [
-        357,
-        396
+        736,
+        775
       ]
     },
     {
@@ -15856,8 +15863,8 @@
       ],
       "complexity": "simple",
       "lineRange": [
-        414,
-        426
+        791,
+        801
       ]
     },
     {
@@ -15873,8 +15880,8 @@
       ],
       "complexity": "complex",
       "lineRange": [
-        430,
-        470
+        805,
+        845
       ]
     },
     {
@@ -15882,16 +15889,17 @@
       "type": "function",
       "name": "checkReleaseMatrix",
       "filePath": "scripts/releaseworkflow/main.go",
-      "summary": "校验六个平台 runner、GOOS/GOARCH、Rust target 与 artifact 名称一一绑定。",
+      "summary": "校验 test 与 production 共用的六目标 runner/GOOS/GOARCH/Rust target/artifact/CC canonical matrix，拒绝额外字段。",
       "tags": [
         "implementation",
         "release",
+        "recovery",
         "security"
       ],
       "complexity": "moderate",
       "lineRange": [
-        472,
-        500
+        847,
+        881
       ]
     },
     {
@@ -15899,7 +15907,7 @@
       "type": "function",
       "name": "checkVerifyReleaseSourceJob",
       "filePath": "scripts/releaseworkflow/main.go",
-      "summary": "校验无 secret 的独立 ancestry job 在完整 checkout 后验证 tag 位于默认分支。",
+      "summary": "校验 verify_release_source 仅在独立 build_production 成功后运行。",
       "tags": [
         "implementation",
         "release",
@@ -15907,8 +15915,8 @@
       ],
       "complexity": "complex",
       "lineRange": [
-        502,
-        546
+        883,
+        927
       ]
     },
     {
@@ -15924,8 +15932,8 @@
       ],
       "complexity": "moderate",
       "lineRange": [
-        555,
-        579
+        936,
+        960
       ]
     },
     {
@@ -15933,16 +15941,17 @@
       "type": "function",
       "name": "checkPublishJob",
       "filePath": "scripts/releaseworkflow/main.go",
-      "summary": "校验受保护 publish job 的签名边界、Release asset 集合、channel 分类及同源 checksums artifact。",
+      "summary": "校验受保护 publish job 精确下载六个 verified-release artifacts，禁止 test-gate/pattern/额外输入，再签名同一 RELEASE_TAG 资产。",
       "tags": [
         "implementation",
         "release",
+        "recovery",
         "security"
       ],
       "complexity": "complex",
       "lineRange": [
-        581,
-        658
+        989,
+        1069
       ]
     },
     {
@@ -15958,8 +15967,8 @@
       ],
       "complexity": "moderate",
       "lineRange": [
-        977,
-        997
+        1388,
+        1408
       ]
     },
     {
@@ -15975,8 +15984,8 @@
       ],
       "complexity": "complex",
       "lineRange": [
-        999,
-        1049
+        1410,
+        1460
       ]
     },
     {
@@ -15992,8 +16001,8 @@
       ],
       "complexity": "moderate",
       "lineRange": [
-        1051,
-        1070
+        1462,
+        1481
       ]
     },
     {
@@ -16001,7 +16010,7 @@
       "type": "function",
       "name": "checkSigningSecretReachability",
       "filePath": "scripts/releaseworkflow/main.go",
-      "summary": "证明 Release signing secrets 仅在受保护 publish job 的签名 step 可达。",
+      "summary": "证明 signing secrets 不可进入 validate、test build、production build 或 verify job，仅在 protected publish 的签名 step 可达。",
       "tags": [
         "implementation",
         "release",
@@ -16009,8 +16018,8 @@
       ],
       "complexity": "moderate",
       "lineRange": [
-        1072,
-        1095
+        1483,
+        1506
       ]
     },
     {
@@ -16026,8 +16035,8 @@
       ],
       "complexity": "moderate",
       "lineRange": [
-        1132,
-        1165
+        1543,
+        1576
       ]
     },
     {
@@ -16043,8 +16052,8 @@
       ],
       "complexity": "simple",
       "lineRange": [
-        1180,
-        1193
+        1591,
+        1604
       ]
     },
     {
@@ -16060,8 +16069,8 @@
       ],
       "complexity": "simple",
       "lineRange": [
-        1195,
-        1208
+        1606,
+        1619
       ]
     },
     {
@@ -16077,8 +16086,8 @@
       ],
       "complexity": "moderate",
       "lineRange": [
-        1210,
-        1230
+        1621,
+        1641
       ]
     },
     {
@@ -16094,8 +16103,8 @@
       ],
       "complexity": "simple",
       "lineRange": [
-        1232,
-        1243
+        1643,
+        1654
       ]
     },
     {
@@ -16111,8 +16120,8 @@
       ],
       "complexity": "simple",
       "lineRange": [
-        1245,
-        1255
+        1656,
+        1666
       ]
     },
     {
@@ -16128,8 +16137,8 @@
       ],
       "complexity": "moderate",
       "lineRange": [
-        1257,
-        1271
+        1668,
+        1682
       ]
     },
     {
@@ -16145,8 +16154,8 @@
       ],
       "complexity": "simple",
       "lineRange": [
-        1281,
-        1290
+        1692,
+        1701
       ]
     },
     {
@@ -16162,8 +16171,8 @@
       ],
       "complexity": "moderate",
       "lineRange": [
-        1300,
-        1318
+        1711,
+        1729
       ]
     },
     {
@@ -16179,8 +16188,8 @@
       ],
       "complexity": "moderate",
       "lineRange": [
-        1320,
-        1338
+        1731,
+        1749
       ]
     },
     {
@@ -16196,8 +16205,8 @@
       ],
       "complexity": "moderate",
       "lineRange": [
-        1340,
-        1356
+        1751,
+        1767
       ]
     },
     {
@@ -16213,8 +16222,8 @@
       ],
       "complexity": "simple",
       "lineRange": [
-        1358,
-        1369
+        1769,
+        1780
       ]
     },
     {
@@ -16230,8 +16239,8 @@
       ],
       "complexity": "simple",
       "lineRange": [
-        1402,
-        1415
+        1813,
+        1826
       ]
     },
     {
@@ -16247,8 +16256,8 @@
       ],
       "complexity": "simple",
       "lineRange": [
-        1417,
-        1428
+        1828,
+        1839
       ]
     },
     {
@@ -16264,8 +16273,8 @@
       ],
       "complexity": "simple",
       "lineRange": [
-        1430,
-        1439
+        1841,
+        1850
       ]
     },
     {
@@ -16281,8 +16290,8 @@
       ],
       "complexity": "simple",
       "lineRange": [
-        1441,
-        1451
+        1852,
+        1862
       ]
     },
     {
@@ -16522,13 +16531,15 @@
       "type": "document",
       "name": "development.md",
       "filePath": "docs/development.md",
-      "summary": "说明 Homebrew 6 发布 DAG 与 policy：tap-new 隔离 staging namespace、brew trust --tap、tap-qualified 四平台安装及 strict SSH deploy，并区分本地 fixture 与外部 Actions 证据。",
+      "summary": "说明八 job Release policy：六平台 test job 只执行 15-step gates且不生成 artifact；独立 clean-tag production matrix 关闭 Go cache并生成唯一 verified-release-*，publish 只下载六个 exact assets。",
       "complexity": "moderate",
       "tags": [
         "documentation",
         "development",
         "release-process",
-        "homebrew-6"
+        "test-only",
+        "production-isolation",
+        "artifact-provenance"
       ]
     },
     {
@@ -18473,11 +18484,13 @@
       "type": "file",
       "name": "account_test.go",
       "filePath": "internal/cli/account_test.go",
-      "summary": "覆盖账号命令、OAuth 登录和浏览器 watcher 的回归行为；macOS watcher 测试隔离真实 URL scheme 安装副作用。",
+      "summary": "覆盖账号命令、OAuth 登录与浏览器 watcher；登录 fixtures 用 mutex 同步 callback URL，并注入 URL-scheme/AppleScript fakes，避免 race 与真实 macOS helper 副作用。",
       "tags": [
         "测试",
         "认证",
         "CLI",
+        "并发",
+        "系统隔离",
         "回归"
       ],
       "complexity": "complex"
@@ -19496,10 +19509,10 @@
         "Go语言",
         "测试"
       ],
-      "complexity": "simple",
+      "complexity": "complex",
       "lineRange": [
         34,
-        103
+        102
       ]
     },
     {
@@ -19513,10 +19526,10 @@
         "Go语言",
         "测试"
       ],
-      "complexity": "simple",
+      "complexity": "moderate",
       "lineRange": [
         104,
-        120
+        119
       ]
     },
     {
@@ -19530,10 +19543,10 @@
         "Go语言",
         "测试"
       ],
-      "complexity": "simple",
+      "complexity": "moderate",
       "lineRange": [
         121,
-        152
+        151
       ]
     },
     {
@@ -19547,10 +19560,10 @@
         "Go语言",
         "测试"
       ],
-      "complexity": "simple",
+      "complexity": "moderate",
       "lineRange": [
         153,
-        184
+        183
       ]
     },
     {
@@ -19564,10 +19577,10 @@
         "Go语言",
         "测试"
       ],
-      "complexity": "simple",
+      "complexity": "moderate",
       "lineRange": [
         185,
-        220
+        219
       ]
     },
     {
@@ -19581,10 +19594,10 @@
         "Go语言",
         "测试"
       ],
-      "complexity": "simple",
+      "complexity": "moderate",
       "lineRange": [
         221,
-        256
+        255
       ]
     },
     {
@@ -19598,10 +19611,10 @@
         "Go语言",
         "测试"
       ],
-      "complexity": "simple",
+      "complexity": "moderate",
       "lineRange": [
         257,
-        275
+        274
       ]
     },
     {
@@ -19618,7 +19631,7 @@
       "complexity": "simple",
       "lineRange": [
         276,
-        285
+        284
       ]
     },
     {
@@ -19632,10 +19645,10 @@
         "Go语言",
         "测试"
       ],
-      "complexity": "simple",
+      "complexity": "moderate",
       "lineRange": [
         286,
-        309
+        308
       ]
     },
     {
@@ -19649,10 +19662,10 @@
         "Go语言",
         "测试"
       ],
-      "complexity": "simple",
+      "complexity": "moderate",
       "lineRange": [
         310,
-        344
+        343
       ]
     },
     {
@@ -19666,10 +19679,10 @@
         "Go语言",
         "测试"
       ],
-      "complexity": "simple",
+      "complexity": "moderate",
       "lineRange": [
         345,
-        365
+        364
       ]
     },
     {
@@ -19683,10 +19696,10 @@
         "Go语言",
         "测试"
       ],
-      "complexity": "simple",
+      "complexity": "complex",
       "lineRange": [
         366,
-        421
+        420
       ]
     },
     {
@@ -19700,10 +19713,10 @@
         "Go语言",
         "测试"
       ],
-      "complexity": "simple",
+      "complexity": "moderate",
       "lineRange": [
         422,
-        457
+        456
       ]
     },
     {
@@ -19717,10 +19730,10 @@
         "Go语言",
         "测试"
       ],
-      "complexity": "simple",
+      "complexity": "moderate",
       "lineRange": [
         458,
-        493
+        492
       ]
     },
     {
@@ -19734,10 +19747,10 @@
         "Go语言",
         "测试"
       ],
-      "complexity": "simple",
+      "complexity": "moderate",
       "lineRange": [
         494,
-        530
+        531
       ]
     },
     {
@@ -19751,10 +19764,10 @@
         "Go语言",
         "测试"
       ],
-      "complexity": "simple",
+      "complexity": "moderate",
       "lineRange": [
-        531,
-        553
+        535,
+        556
       ]
     },
     {
@@ -19768,10 +19781,10 @@
         "Go语言",
         "测试"
       ],
-      "complexity": "simple",
+      "complexity": "complex",
       "lineRange": [
-        554,
-        594
+        558,
+        601
       ]
     },
     {
@@ -19785,10 +19798,10 @@
         "Go语言",
         "测试"
       ],
-      "complexity": "simple",
+      "complexity": "complex",
       "lineRange": [
-        595,
-        631
+        603,
+        642
       ]
     },
     {
@@ -19802,10 +19815,10 @@
         "Go语言",
         "测试"
       ],
-      "complexity": "simple",
+      "complexity": "complex",
       "lineRange": [
-        632,
-        689
+        644,
+        711
       ]
     },
     {
@@ -19819,10 +19832,10 @@
         "Go语言",
         "测试"
       ],
-      "complexity": "simple",
+      "complexity": "complex",
       "lineRange": [
-        690,
-        726
+        713,
+        752
       ]
     },
     {
@@ -19836,10 +19849,10 @@
         "Go语言",
         "测试"
       ],
-      "complexity": "simple",
+      "complexity": "complex",
       "lineRange": [
-        727,
-        776
+        754,
+        804
       ]
     },
     {
@@ -19853,10 +19866,10 @@
         "Go语言",
         "测试"
       ],
-      "complexity": "simple",
+      "complexity": "complex",
       "lineRange": [
-        777,
-        832
+        806,
+        860
       ]
     },
     {
@@ -19870,10 +19883,10 @@
         "Go语言",
         "测试"
       ],
-      "complexity": "simple",
+      "complexity": "complex",
       "lineRange": [
-        833,
-        911
+        862,
+        939
       ]
     },
     {
@@ -19887,10 +19900,10 @@
         "Go语言",
         "测试"
       ],
-      "complexity": "simple",
+      "complexity": "complex",
       "lineRange": [
-        912,
-        995
+        941,
+        1023
       ]
     },
     {
@@ -19904,10 +19917,10 @@
         "Go语言",
         "测试"
       ],
-      "complexity": "simple",
+      "complexity": "complex",
       "lineRange": [
-        996,
-        1074
+        1025,
+        1102
       ]
     },
     {
@@ -19921,10 +19934,10 @@
         "Go语言",
         "测试"
       ],
-      "complexity": "simple",
+      "complexity": "moderate",
       "lineRange": [
-        1075,
-        1092
+        1104,
+        1120
       ]
     },
     {
@@ -19938,10 +19951,10 @@
         "Go语言",
         "测试"
       ],
-      "complexity": "simple",
+      "complexity": "moderate",
       "lineRange": [
-        1093,
-        1109
+        1122,
+        1137
       ]
     },
     {
@@ -19955,10 +19968,10 @@
         "Go语言",
         "测试"
       ],
-      "complexity": "simple",
+      "complexity": "moderate",
       "lineRange": [
-        1110,
-        1126
+        1139,
+        1154
       ]
     },
     {
@@ -19972,10 +19985,10 @@
         "Go语言",
         "测试"
       ],
-      "complexity": "simple",
+      "complexity": "moderate",
       "lineRange": [
-        1127,
-        1145
+        1156,
+        1173
       ]
     },
     {
@@ -19989,10 +20002,10 @@
         "Go语言",
         "测试"
       ],
-      "complexity": "simple",
+      "complexity": "moderate",
       "lineRange": [
-        1146,
-        1161
+        1175,
+        1189
       ]
     },
     {
@@ -20006,10 +20019,10 @@
         "Go语言",
         "测试"
       ],
-      "complexity": "simple",
+      "complexity": "moderate",
       "lineRange": [
-        1162,
-        1180
+        1191,
+        1208
       ]
     },
     {
@@ -20025,8 +20038,8 @@
       ],
       "complexity": "simple",
       "lineRange": [
-        1181,
-        1195
+        1210,
+        1223
       ]
     },
     {
@@ -20042,8 +20055,8 @@
       ],
       "complexity": "simple",
       "lineRange": [
-        1196,
-        1207
+        1225,
+        1235
       ]
     },
     {
@@ -20059,8 +20072,8 @@
       ],
       "complexity": "simple",
       "lineRange": [
-        1208,
-        1217
+        1237,
+        1245
       ]
     },
     {
@@ -20074,10 +20087,10 @@
         "Go语言",
         "测试"
       ],
-      "complexity": "simple",
+      "complexity": "moderate",
       "lineRange": [
-        1218,
-        1233
+        1247,
+        1261
       ]
     },
     {
@@ -20093,8 +20106,8 @@
       ],
       "complexity": "simple",
       "lineRange": [
-        1234,
-        1246
+        1263,
+        1274
       ]
     },
     {
@@ -20110,8 +20123,8 @@
       ],
       "complexity": "simple",
       "lineRange": [
-        1247,
-        1252
+        1276,
+        1280
       ]
     },
     {
@@ -20127,8 +20140,8 @@
       ],
       "complexity": "simple",
       "lineRange": [
-        1253,
-        1261
+        1282,
+        1289
       ]
     },
     {
@@ -20142,10 +20155,10 @@
         "Go语言",
         "测试"
       ],
-      "complexity": "simple",
+      "complexity": "moderate",
       "lineRange": [
-        1262,
-        1279
+        1291,
+        1307
       ]
     },
     {
@@ -20159,10 +20172,10 @@
         "Go语言",
         "测试"
       ],
-      "complexity": "simple",
+      "complexity": "moderate",
       "lineRange": [
-        1280,
-        1300
+        1309,
+        1328
       ]
     },
     {
@@ -20178,8 +20191,8 @@
       ],
       "complexity": "simple",
       "lineRange": [
-        1301,
-        1305
+        1330,
+        1333
       ]
     },
     {
@@ -20195,8 +20208,8 @@
       ],
       "complexity": "simple",
       "lineRange": [
-        1306,
-        1310
+        1335,
+        1338
       ]
     },
     {
@@ -20212,8 +20225,8 @@
       ],
       "complexity": "simple",
       "lineRange": [
-        1311,
-        1315
+        1340,
+        1343
       ]
     },
     {
@@ -20229,8 +20242,8 @@
       ],
       "complexity": "simple",
       "lineRange": [
-        1316,
-        1320
+        1345,
+        1348
       ]
     },
     {
@@ -20244,10 +20257,10 @@
         "Go语言",
         "测试"
       ],
-      "complexity": "simple",
+      "complexity": "moderate",
       "lineRange": [
-        1321,
-        1349
+        1361,
+        1388
       ]
     },
     {
@@ -20263,8 +20276,8 @@
       ],
       "complexity": "simple",
       "lineRange": [
-        1350,
-        1354
+        1390,
+        1393
       ]
     },
     {
@@ -20280,8 +20293,8 @@
       ],
       "complexity": "simple",
       "lineRange": [
-        1355,
-        1358
+        1395,
+        1397
       ]
     },
     {
@@ -20297,8 +20310,8 @@
       ],
       "complexity": "simple",
       "lineRange": [
-        1359,
-        1362
+        1399,
+        1401
       ]
     },
     {
@@ -20312,10 +20325,10 @@
         "Go语言",
         "测试"
       ],
-      "complexity": "simple",
+      "complexity": "moderate",
       "lineRange": [
-        1363,
-        1397
+        1403,
+        1436
       ]
     },
     {
@@ -20331,8 +20344,8 @@
       ],
       "complexity": "simple",
       "lineRange": [
-        1398,
-        1404
+        1438,
+        1443
       ]
     },
     {
@@ -20346,10 +20359,10 @@
         "Go语言",
         "测试"
       ],
-      "complexity": "simple",
+      "complexity": "complex",
       "lineRange": [
-        1405,
-        1445
+        1445,
+        1484
       ]
     },
     {
@@ -20365,8 +20378,8 @@
       ],
       "complexity": "simple",
       "lineRange": [
-        1446,
-        1455
+        1486,
+        1494
       ]
     },
     {
@@ -20382,8 +20395,8 @@
       ],
       "complexity": "simple",
       "lineRange": [
-        1456,
-        1462
+        1496,
+        1501
       ]
     },
     {
@@ -20399,8 +20412,8 @@
       ],
       "complexity": "simple",
       "lineRange": [
-        1463,
-        1470
+        1503,
+        1509
       ]
     },
     {
@@ -20414,10 +20427,10 @@
         "Go语言",
         "测试"
       ],
-      "complexity": "simple",
+      "complexity": "moderate",
       "lineRange": [
-        1471,
-        1490
+        1511,
+        1529
       ]
     },
     {
@@ -20431,10 +20444,10 @@
         "Go语言",
         "测试"
       ],
-      "complexity": "simple",
+      "complexity": "moderate",
       "lineRange": [
-        1491,
-        1516
+        1531,
+        1555
       ]
     },
     {
@@ -20450,8 +20463,8 @@
       ],
       "complexity": "simple",
       "lineRange": [
-        1517,
-        1525
+        1557,
+        1564
       ]
     },
     {
@@ -20465,10 +20478,10 @@
         "Go语言",
         "测试"
       ],
-      "complexity": "simple",
+      "complexity": "moderate",
       "lineRange": [
-        1526,
-        1541
+        1566,
+        1580
       ]
     },
     {
@@ -20484,8 +20497,8 @@
       ],
       "complexity": "simple",
       "lineRange": [
-        1542,
-        1552
+        1582,
+        1591
       ]
     },
     {
@@ -20501,8 +20514,8 @@
       ],
       "complexity": "simple",
       "lineRange": [
-        1553,
-        1561
+        1593,
+        1600
       ]
     },
     {
@@ -20657,8 +20670,8 @@
       ],
       "complexity": "simple",
       "lineRange": [
-        548,
-        551
+        929,
+        932
       ]
     },
     {
@@ -20688,8 +20701,8 @@
       ],
       "complexity": "simple",
       "lineRange": [
-        1581,
-        1587
+        1889,
+        1895
       ]
     },
     {
@@ -20705,8 +20718,8 @@
       ],
       "complexity": "simple",
       "lineRange": [
-        1558,
-        1564
+        1866,
+        1872
       ]
     },
     {
@@ -20722,8 +20735,8 @@
       ],
       "complexity": "simple",
       "lineRange": [
-        1533,
-        1537
+        1841,
+        1845
       ]
     },
     {
@@ -20739,8 +20752,8 @@
       ],
       "complexity": "simple",
       "lineRange": [
-        1418,
-        1421
+        1726,
+        1729
       ]
     },
     {
@@ -20756,8 +20769,8 @@
       ],
       "complexity": "simple",
       "lineRange": [
-        1409,
-        1416
+        1717,
+        1724
       ]
     },
     {
@@ -20773,8 +20786,8 @@
       ],
       "complexity": "simple",
       "lineRange": [
-        1515,
-        1522
+        1823,
+        1830
       ]
     },
     {
@@ -20790,8 +20803,8 @@
       ],
       "complexity": "simple",
       "lineRange": [
-        1524,
-        1531
+        1832,
+        1839
       ]
     },
     {
@@ -20807,8 +20820,8 @@
       ],
       "complexity": "simple",
       "lineRange": [
-        1423,
-        1430
+        1731,
+        1738
       ]
     },
     {
@@ -20824,8 +20837,8 @@
       ],
       "complexity": "simple",
       "lineRange": [
-        1550,
-        1556
+        1858,
+        1864
       ]
     },
     {
@@ -20841,8 +20854,8 @@
       ],
       "complexity": "simple",
       "lineRange": [
-        1589,
-        1591
+        1897,
+        1899
       ]
     },
     {
@@ -20858,8 +20871,8 @@
       ],
       "complexity": "simple",
       "lineRange": [
-        1593,
-        1599
+        1901,
+        1907
       ]
     },
     {
@@ -20876,8 +20889,8 @@
       ],
       "complexity": "moderate",
       "lineRange": [
-        79,
-        97
+        261,
+        279
       ]
     },
     {
@@ -20894,8 +20907,8 @@
       ],
       "complexity": "complex",
       "lineRange": [
-        99,
-        333
+        406,
+        640
       ]
     },
     {
@@ -20912,8 +20925,8 @@
       ],
       "complexity": "simple",
       "lineRange": [
-        37,
-        49
+        219,
+        231
       ]
     },
     {
@@ -20930,8 +20943,8 @@
       ],
       "complexity": "simple",
       "lineRange": [
-        337,
-        346
+        644,
+        653
       ]
     },
     {
@@ -20948,8 +20961,8 @@
       ],
       "complexity": "complex",
       "lineRange": [
-        891,
-        962
+        1302,
+        1373
       ]
     },
     {
@@ -20965,8 +20978,8 @@
       ],
       "complexity": "simple",
       "lineRange": [
-        205,
-        211
+        510,
+        516
       ]
     },
     {
@@ -20983,8 +20996,8 @@
       ],
       "complexity": "moderate",
       "lineRange": [
-        858,
-        889
+        1269,
+        1300
       ]
     },
     {
@@ -21001,8 +21014,8 @@
       ],
       "complexity": "moderate",
       "lineRange": [
-        1097,
-        1130
+        1508,
+        1541
       ]
     },
     {
@@ -21036,8 +21049,8 @@
       ],
       "complexity": "complex",
       "lineRange": [
-        727,
-        797
+        1138,
+        1208
       ]
     },
     {
@@ -21055,8 +21068,8 @@
       ],
       "complexity": "complex",
       "lineRange": [
-        799,
-        856
+        1210,
+        1267
       ]
     },
     {
@@ -21072,8 +21085,8 @@
       ],
       "complexity": "simple",
       "lineRange": [
-        1379,
-        1386
+        1790,
+        1797
       ]
     },
     {
@@ -21089,8 +21102,8 @@
       ],
       "complexity": "simple",
       "lineRange": [
-        1388,
-        1396
+        1799,
+        1807
       ]
     },
     {
@@ -21106,8 +21119,8 @@
       ],
       "complexity": "simple",
       "lineRange": [
-        1398,
-        1400
+        1809,
+        1811
       ]
     },
     {
@@ -21123,8 +21136,8 @@
       ],
       "complexity": "simple",
       "lineRange": [
-        1175,
-        1178
+        1586,
+        1589
       ]
     },
     {
@@ -21140,8 +21153,8 @@
       ],
       "complexity": "simple",
       "lineRange": [
-        1292,
-        1298
+        1703,
+        1709
       ]
     },
     {
@@ -21174,8 +21187,8 @@
       ],
       "complexity": "moderate",
       "lineRange": [
-        660,
-        693
+        1071,
+        1104
       ]
     },
     {
@@ -21191,8 +21204,8 @@
       ],
       "complexity": "simple",
       "lineRange": [
-        714,
-        725
+        1125,
+        1136
       ]
     },
     {
@@ -21208,8 +21221,8 @@
       ],
       "complexity": "simple",
       "lineRange": [
-        964,
-        975
+        1375,
+        1386
       ]
     },
     {
@@ -21225,8 +21238,8 @@
       ],
       "complexity": "moderate",
       "lineRange": [
-        695,
-        712
+        1106,
+        1123
       ]
     },
     {
@@ -21242,8 +21255,8 @@
       ],
       "complexity": "simple",
       "lineRange": [
-        1167,
-        1173
+        1578,
+        1584
       ]
     },
     {
@@ -21259,8 +21272,8 @@
       ],
       "complexity": "simple",
       "lineRange": [
-        407,
-        412
+        784,
+        789
       ]
     },
     {
@@ -21276,8 +21289,8 @@
       ],
       "complexity": "simple",
       "lineRange": [
-        398,
-        405
+        777,
+        782
       ]
     },
     {
@@ -21293,8 +21306,8 @@
       ],
       "complexity": "simple",
       "lineRange": [
-        1371,
-        1377
+        1782,
+        1788
       ]
     },
     {
@@ -21310,8 +21323,8 @@
       ],
       "complexity": "simple",
       "lineRange": [
-        1273,
-        1279
+        1684,
+        1690
       ]
     },
     {
@@ -21329,8 +21342,8 @@
       ],
       "complexity": "simple",
       "lineRange": [
-        53,
-        63
+        235,
+        245
       ]
     },
     {
@@ -21348,9 +21361,496 @@
       ],
       "complexity": "simple",
       "lineRange": [
-        67,
-        77
+        249,
+        259
       ]
+    },
+    {
+      "id": "function:scripts/releaseworkflow/main.go:checkRecoveryPolicy",
+      "type": "function",
+      "name": "checkRecoveryPolicy",
+      "filePath": "scripts/releaseworkflow/main.go",
+      "lineRange": [
+        227,
+        275
+      ],
+      "summary": "校验 recovery 的 RELEASE_TAG、test-only overlay 与独立 build_production 边界；production job 不得读取 workflow SHA 或 overlay。",
+      "tags": [
+        "implementation",
+        "release",
+        "recovery",
+        "security"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:scripts/releaseworkflow/main.go:containsScalarFragment",
+      "type": "function",
+      "name": "containsScalarFragment",
+      "filePath": "scripts/releaseworkflow/main.go",
+      "lineRange": [
+        285,
+        298
+      ],
+      "summary": "递归检查 YAML AST 是否含指定 scalar 片段，用于证明受信 tag 与 workflow SHA 的引用边界。",
+      "tags": [
+        "implementation",
+        "release",
+        "recovery",
+        "security"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:scripts/releaseworkflow/main.go:countScalarFragment",
+      "type": "function",
+      "name": "countScalarFragment",
+      "filePath": "scripts/releaseworkflow/main.go",
+      "lineRange": [
+        300,
+        312
+      ],
+      "summary": "统计 YAML AST 中指定 scalar 片段出现次数，拒绝恢复 workflow 的重复或越界引用。",
+      "tags": [
+        "implementation",
+        "release",
+        "recovery",
+        "security"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:scripts/releaseworkflow/main.go:stepIndexWithRunFragment",
+      "type": "function",
+      "name": "stepIndexWithRunFragment",
+      "filePath": "scripts/releaseworkflow/main.go",
+      "lineRange": [
+        314,
+        321
+      ],
+      "summary": "定位包含指定命令片段的 run step，供 canonical recovery 顺序校验。",
+      "tags": [
+        "implementation",
+        "release",
+        "recovery",
+        "security"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:scripts/releaseworkflow/main.go:actionStepIndices",
+      "type": "function",
+      "name": "actionStepIndices",
+      "filePath": "scripts/releaseworkflow/main.go",
+      "lineRange": [
+        323,
+        332
+      ],
+      "summary": "返回 job 中指定 full-SHA action 的全部 step 下标，用于要求初始与 fresh 两次 checkout。",
+      "tags": [
+        "implementation",
+        "release",
+        "recovery",
+        "security"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:scripts/releaseworkflow/main.go:requireCanonicalBuildSteps",
+      "type": "function",
+      "name": "requireCanonicalBuildSteps",
+      "filePath": "scripts/releaseworkflow/main.go",
+      "lineRange": [
+        334,
+        376
+      ],
+      "summary": "强制 build job 恰有 15 个 canonical test-only steps：immutable-tag 测试、受审计 overlay 与全部质量门禁；不允许 production checkout、staticlib rebuild、binary/package 或 artifact。",
+      "tags": [
+        "implementation",
+        "release",
+        "recovery",
+        "security"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:scripts/releaseworkflow/main.go:requireCanonicalNamedRunStep",
+      "type": "function",
+      "name": "requireCanonicalNamedRunStep",
+      "filePath": "scripts/releaseworkflow/main.go",
+      "lineRange": [
+        378,
+        386
+      ],
+      "summary": "要求 run step 的名称、shell 与单一命令完全匹配 canonical policy。",
+      "tags": [
+        "implementation",
+        "release",
+        "recovery",
+        "security"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:scripts/releaseworkflow/main.go:requireCanonicalNamedRunStepInDirectory",
+      "type": "function",
+      "name": "requireCanonicalNamedRunStepInDirectory",
+      "filePath": "scripts/releaseworkflow/main.go",
+      "lineRange": [
+        388,
+        393
+      ],
+      "summary": "要求指定 working-directory 下的命名 run step 完全匹配 canonical policy。",
+      "tags": [
+        "implementation",
+        "release",
+        "recovery",
+        "security"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:scripts/releaseworkflow/main.go:requireRecoveryOverlayStep",
+      "type": "function",
+      "name": "requireRecoveryOverlayStep",
+      "filePath": "scripts/releaseworkflow/main.go",
+      "lineRange": [
+        395,
+        407
+      ],
+      "summary": "只允许 workflow_dispatch 将默认分支的 internal/cli/account_test.go 作为 test-only overlay，禁止改生产源码。",
+      "tags": [
+        "implementation",
+        "release",
+        "recovery",
+        "security"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:scripts/releaseworkflow/main.go:requireOverlayQualitySequence",
+      "type": "function",
+      "name": "requireOverlayQualitySequence",
+      "filePath": "scripts/releaseworkflow/main.go",
+      "lineRange": [
+        409,
+        435
+      ],
+      "summary": "要求 test-only overlay 后按固定顺序执行 Go/race/vet/license/package/pre-commit 等质量门禁；test job 到此结束，生产 fresh checkout 由独立 build_production runner 执行。",
+      "tags": [
+        "implementation",
+        "release",
+        "recovery",
+        "security"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:scripts/releaseworkflow/main.go:requireProductionRebuildStep",
+      "type": "function",
+      "name": "requireProductionRebuildStep",
+      "filePath": "scripts/releaseworkflow/main.go",
+      "lineRange": [
+        437,
+        452
+      ],
+      "summary": "在 clean immutable-tag checkout 后重建当前目标 staticlib，恢复 manifest 并证明 tracked、untracked、ignored 状态均干净。",
+      "tags": [
+        "implementation",
+        "release",
+        "recovery",
+        "security"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:scripts/releaseworkflow/main.go:requireProductionBuildStep",
+      "type": "function",
+      "name": "requireProductionBuildStep",
+      "filePath": "scripts/releaseworkflow/main.go",
+      "lineRange": [
+        454,
+        469
+      ],
+      "summary": "锁定由 RELEASE_TAG、tag commit 与 audited CC 生成最终 pixiv binary 的命令序列。",
+      "tags": [
+        "implementation",
+        "release",
+        "recovery",
+        "security"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:scripts/releaseworkflow/main.go:requireProductionPackageStep",
+      "type": "function",
+      "name": "requireProductionPackageStep",
+      "filePath": "scripts/releaseworkflow/main.go",
+      "lineRange": [
+        471,
+        483
+      ],
+      "summary": "锁定以 RELEASE_TAG、matrix target 与刚构建 binary 生成固定名发布 archive 的命令序列。",
+      "tags": [
+        "implementation",
+        "release",
+        "recovery",
+        "security"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:scripts/releaseworkflow/main.go:requireCanonicalConditionalRunStep",
+      "type": "function",
+      "name": "requireCanonicalConditionalRunStep",
+      "filePath": "scripts/releaseworkflow/main.go",
+      "lineRange": [
+        485,
+        496
+      ],
+      "summary": "要求带精确 if 条件的 canonical bash step，不允许额外环境或命令。",
+      "tags": [
+        "implementation",
+        "release",
+        "recovery",
+        "security"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:scripts/releaseworkflow/main.go:mustMappingPath",
+      "type": "function",
+      "name": "mustMappingPath",
+      "filePath": "scripts/releaseworkflow/main.go",
+      "lineRange": [
+        498,
+        508
+      ],
+      "summary": "沿 YAML mapping 的必需键路径取节点，缺失时返回空节点供 fail-closed recovery policy 拒绝。",
+      "tags": [
+        "implementation",
+        "release",
+        "recovery",
+        "security"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:scripts/releaseworkflow/main_test.go:TestCheckRecoveryPolicyRequiresTrustedReleaseTag",
+      "type": "function",
+      "name": "TestCheckRecoveryPolicyRequiresTrustedReleaseTag",
+      "filePath": "scripts/releaseworkflow/main_test.go",
+      "lineRange": [
+        283,
+        290
+      ],
+      "summary": "验证 checked-in workflow 的 push/dispatch recovery、RELEASE_TAG 与 immutable tag 信任链整体通过。",
+      "tags": [
+        "test",
+        "release",
+        "recovery",
+        "security"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:scripts/releaseworkflow/main_test.go:TestCheckRecoveryPolicyRequiresWindowsClangLLDForWholeBuildJob",
+      "type": "function",
+      "name": "TestCheckRecoveryPolicyRequiresWindowsClangLLDForWholeBuildJob",
+      "filePath": "scripts/releaseworkflow/main_test.go",
+      "lineRange": [
+        293,
+        311
+      ],
+      "summary": "验证 Windows 六目标 matrix 必须将整个 Go+cgo build job 绑定到 Clang+LLD。",
+      "tags": [
+        "test",
+        "release",
+        "recovery",
+        "security"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:scripts/releaseworkflow/main_test.go:TestCheckRecoveryPolicyRequiresDispatchFromDefaultBranch",
+      "type": "function",
+      "name": "TestCheckRecoveryPolicyRequiresDispatchFromDefaultBranch",
+      "filePath": "scripts/releaseworkflow/main_test.go",
+      "lineRange": [
+        313,
+        322
+      ],
+      "summary": "验证 workflow_dispatch 只能从默认分支启动既有 immutable tag 恢复。",
+      "tags": [
+        "test",
+        "release",
+        "recovery",
+        "security"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:scripts/releaseworkflow/main_test.go:TestCheckRecoveryPolicyRejectsRecoveryTrustMutations",
+      "type": "function",
+      "name": "TestCheckRecoveryPolicyRejectsRecoveryTrustMutations",
+      "filePath": "scripts/releaseworkflow/main_test.go",
+      "lineRange": [
+        324,
+        362
+      ],
+      "summary": "以 YAML AST mutations 拒绝删除 dispatch、弱化 tag 输入、绕过 Release 404 检查、污染 overlay 或切换 production source。",
+      "tags": [
+        "test",
+        "release",
+        "recovery",
+        "security"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:internal/cli/account_test.go:setTestRunAppleScript",
+      "type": "function",
+      "name": "setTestRunAppleScript",
+      "filePath": "internal/cli/account_test.go",
+      "lineRange": [
+        1352,
+        1359
+      ],
+      "summary": "为账号登录 fixture 注入并恢复 AppleScript runner，隔离真实 macOS 自动化服务与用户浏览器。",
+      "tags": [
+        "fixture",
+        "auth",
+        "macos",
+        "system-isolation"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:scripts/releaseworkflow/main.go:mustJobSteps",
+      "type": "function",
+      "name": "mustJobSteps",
+      "filePath": "scripts/releaseworkflow/main.go",
+      "lineRange": [
+        277,
+        283
+      ],
+      "summary": "以 fail-closed 方式读取 job steps；shape 无效时返回空集合供 production recovery policy 明确拒绝。",
+      "tags": [
+        "implementation",
+        "release",
+        "production-isolation",
+        "security"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:scripts/releaseworkflow/main.go:checkProductionBuildJob",
+      "type": "function",
+      "name": "checkProductionBuildJob",
+      "filePath": "scripts/releaseworkflow/main.go",
+      "lineRange": [
+        664,
+        732
+      ],
+      "summary": "校验唯一独立 production 六矩阵：clean immutable tag checkout、setup-go cache:false、staticlib rebuild、binary/package 与 verified-release artifact。",
+      "tags": [
+        "implementation",
+        "release",
+        "production-isolation",
+        "security"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:scripts/releaseworkflow/main.go:requireVerifiedProductionDownloads",
+      "type": "function",
+      "name": "requireVerifiedProductionDownloads",
+      "filePath": "scripts/releaseworkflow/main.go",
+      "lineRange": [
+        962,
+        987
+      ],
+      "summary": "要求 publish 连续、按固定顺序精确下载六个 verified-release 平台 artifact 到 dist，并拒绝 test-gate、pattern 或额外下载。",
+      "tags": [
+        "implementation",
+        "release",
+        "production-isolation",
+        "security"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:scripts/releaseworkflow/main_test.go:TestCheckWorkflowRequiresProductionCacheIsolation",
+      "type": "function",
+      "name": "TestCheckWorkflowRequiresProductionCacheIsolation",
+      "filePath": "scripts/releaseworkflow/main_test.go",
+      "lineRange": [
+        24,
+        34
+      ],
+      "summary": "验证 build_production 的 pinned setup-go 必须显式 cache:false，隔离 test runner 与 production runner 的 Go cache。",
+      "tags": [
+        "test",
+        "release",
+        "production-isolation",
+        "security"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:scripts/releaseworkflow/main_test.go:TestCheckWorkflowRequiresSixExactProductionArtifactDownloads",
+      "type": "function",
+      "name": "TestCheckWorkflowRequiresSixExactProductionArtifactDownloads",
+      "filePath": "scripts/releaseworkflow/main_test.go",
+      "lineRange": [
+        36,
+        69
+      ],
+      "summary": "验证 publish 只按固定平台顺序下载六个 exact verified-release artifacts，路径均为 dist。",
+      "tags": [
+        "test",
+        "release",
+        "production-isolation",
+        "security"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:scripts/releaseworkflow/main_test.go:TestCheckWorkflowRejectsProductionIsolationMutations",
+      "type": "function",
+      "name": "TestCheckWorkflowRejectsProductionIsolationMutations",
+      "filePath": "scripts/releaseworkflow/main_test.go",
+      "lineRange": [
+        71,
+        204
+      ],
+      "summary": "以 YAML AST mutations 拒绝缺失/绕过 production job、matrix 或权限漂移、cache 启用、test-gate artifact 混入及 publish 下载集合变异。",
+      "tags": [
+        "test",
+        "release",
+        "production-isolation",
+        "security"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:scripts/releaseworkflow/main_test.go:TestCheckWorkflowRejectsTestGateProductionMutations",
+      "type": "function",
+      "name": "TestCheckWorkflowRejectsTestGateProductionMutations",
+      "filePath": "scripts/releaseworkflow/main_test.go",
+      "lineRange": [
+        364,
+        404
+      ],
+      "summary": "以 YAML AST mutations 拒绝 test gate 插入 production build、artifact upload、质量门禁重排或删除；生产资产只能由独立 build_production job 生成。",
+      "tags": [
+        "test",
+        "release",
+        "test-gate",
+        "production-isolation",
+        "security"
+      ],
+      "complexity": "complex"
     }
   ],
   "edges": [
@@ -35066,7 +35566,7 @@
       "type": "tested_by",
       "direction": "forward",
       "weight": 0.5,
-      "description": "Account login watcher lifecycle regression coverage"
+      "description": "Race-safe callback collection and isolated URL-scheme/AppleScript login watcher regression coverage"
     },
     {
       "source": "file:internal/cli/account_login.go",
@@ -36293,7 +36793,8 @@
       "target": "pipeline:.github/workflows/release.yml",
       "type": "documents",
       "direction": "forward",
-      "weight": 0.5
+      "weight": 0.5,
+      "description": "记录 test/production runner 隔离与 artifact provenance"
     },
     {
       "source": "document:docs/architecture.md",
@@ -36323,7 +36824,8 @@
       "target": "pipeline:.github/workflows/release.yml",
       "type": "documents",
       "direction": "forward",
-      "weight": 0.5
+      "weight": 0.5,
+      "description": "说明 test-only build 与唯一 production assets"
     },
     {
       "source": "document:templates/homebrew/TAP_DEPLOYMENT.md",
@@ -37473,6 +37975,590 @@
       "type": "documents",
       "direction": "forward",
       "weight": 0.5
+    },
+    {
+      "source": "file:scripts/releaseworkflow/main.go",
+      "target": "function:scripts/releaseworkflow/main.go:checkRecoveryPolicy",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:scripts/releaseworkflow/main.go",
+      "target": "function:scripts/releaseworkflow/main.go:containsScalarFragment",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:scripts/releaseworkflow/main.go",
+      "target": "function:scripts/releaseworkflow/main.go:countScalarFragment",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:scripts/releaseworkflow/main.go",
+      "target": "function:scripts/releaseworkflow/main.go:stepIndexWithRunFragment",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:scripts/releaseworkflow/main.go",
+      "target": "function:scripts/releaseworkflow/main.go:actionStepIndices",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:scripts/releaseworkflow/main.go",
+      "target": "function:scripts/releaseworkflow/main.go:requireCanonicalBuildSteps",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:scripts/releaseworkflow/main.go",
+      "target": "function:scripts/releaseworkflow/main.go:requireCanonicalNamedRunStep",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:scripts/releaseworkflow/main.go",
+      "target": "function:scripts/releaseworkflow/main.go:requireCanonicalNamedRunStepInDirectory",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:scripts/releaseworkflow/main.go",
+      "target": "function:scripts/releaseworkflow/main.go:requireRecoveryOverlayStep",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:scripts/releaseworkflow/main.go",
+      "target": "function:scripts/releaseworkflow/main.go:requireOverlayQualitySequence",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:scripts/releaseworkflow/main.go",
+      "target": "function:scripts/releaseworkflow/main.go:requireProductionRebuildStep",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:scripts/releaseworkflow/main.go",
+      "target": "function:scripts/releaseworkflow/main.go:requireProductionBuildStep",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:scripts/releaseworkflow/main.go",
+      "target": "function:scripts/releaseworkflow/main.go:requireProductionPackageStep",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:scripts/releaseworkflow/main.go",
+      "target": "function:scripts/releaseworkflow/main.go:requireCanonicalConditionalRunStep",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:scripts/releaseworkflow/main.go",
+      "target": "function:scripts/releaseworkflow/main.go:mustMappingPath",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:scripts/releaseworkflow/main_test.go",
+      "target": "function:scripts/releaseworkflow/main_test.go:TestCheckRecoveryPolicyRequiresTrustedReleaseTag",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:scripts/releaseworkflow/main_test.go",
+      "target": "function:scripts/releaseworkflow/main_test.go:TestCheckRecoveryPolicyRequiresTrustedReleaseTag",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:scripts/releaseworkflow/main_test.go",
+      "target": "function:scripts/releaseworkflow/main_test.go:TestCheckRecoveryPolicyRequiresWindowsClangLLDForWholeBuildJob",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:scripts/releaseworkflow/main_test.go",
+      "target": "function:scripts/releaseworkflow/main_test.go:TestCheckRecoveryPolicyRequiresWindowsClangLLDForWholeBuildJob",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:scripts/releaseworkflow/main_test.go",
+      "target": "function:scripts/releaseworkflow/main_test.go:TestCheckRecoveryPolicyRequiresDispatchFromDefaultBranch",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:scripts/releaseworkflow/main_test.go",
+      "target": "function:scripts/releaseworkflow/main_test.go:TestCheckRecoveryPolicyRequiresDispatchFromDefaultBranch",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:scripts/releaseworkflow/main_test.go",
+      "target": "function:scripts/releaseworkflow/main_test.go:TestCheckRecoveryPolicyRejectsRecoveryTrustMutations",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:scripts/releaseworkflow/main_test.go",
+      "target": "function:scripts/releaseworkflow/main_test.go:TestCheckRecoveryPolicyRejectsRecoveryTrustMutations",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:internal/cli/account_test.go",
+      "target": "function:internal/cli/account_test.go:setTestRunAppleScript",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "function:scripts/releaseworkflow/main.go:checkWorkflow",
+      "target": "function:scripts/releaseworkflow/main.go:checkRecoveryPolicy",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8,
+      "description": "在常规 workflow policy 前验证 immutable-tag recovery 信任链"
+    },
+    {
+      "source": "function:scripts/releaseworkflow/main.go:checkRecoveryPolicy",
+      "target": "function:scripts/releaseworkflow/main.go:containsScalarFragment",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:scripts/releaseworkflow/main.go:checkRecoveryPolicy",
+      "target": "function:scripts/releaseworkflow/main.go:countScalarFragment",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:scripts/releaseworkflow/main.go:checkRecoveryPolicy",
+      "target": "function:scripts/releaseworkflow/main.go:stepIndexWithRunFragment",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:scripts/releaseworkflow/main.go:checkRecoveryPolicy",
+      "target": "function:scripts/releaseworkflow/main.go:actionStepIndices",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:scripts/releaseworkflow/main.go:checkRecoveryPolicy",
+      "target": "function:scripts/releaseworkflow/main.go:requireCanonicalBuildSteps",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:scripts/releaseworkflow/main.go:checkRecoveryPolicy",
+      "target": "function:scripts/releaseworkflow/main.go:requireRecoveryOverlayStep",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:scripts/releaseworkflow/main.go:checkRecoveryPolicy",
+      "target": "function:scripts/releaseworkflow/main.go:requireOverlayQualitySequence",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:scripts/releaseworkflow/main.go:checkRecoveryPolicy",
+      "target": "function:scripts/releaseworkflow/main.go:requireProductionRebuildStep",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:scripts/releaseworkflow/main.go:checkRecoveryPolicy",
+      "target": "function:scripts/releaseworkflow/main.go:requireProductionBuildStep",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:scripts/releaseworkflow/main.go:checkRecoveryPolicy",
+      "target": "function:scripts/releaseworkflow/main.go:requireProductionPackageStep",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:scripts/releaseworkflow/main.go:checkRecoveryPolicy",
+      "target": "function:scripts/releaseworkflow/main.go:mustMappingPath",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:scripts/releaseworkflow/main.go:requireCanonicalBuildSteps",
+      "target": "function:scripts/releaseworkflow/main.go:requireCanonicalNamedRunStep",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:scripts/releaseworkflow/main.go:requireCanonicalBuildSteps",
+      "target": "function:scripts/releaseworkflow/main.go:requireCanonicalNamedRunStepInDirectory",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:scripts/releaseworkflow/main.go:requireCanonicalBuildSteps",
+      "target": "function:scripts/releaseworkflow/main.go:requireRecoveryOverlayStep",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:scripts/releaseworkflow/main.go:requireCanonicalBuildSteps",
+      "target": "function:scripts/releaseworkflow/main.go:requireProductionRebuildStep",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:scripts/releaseworkflow/main.go:requireCanonicalBuildSteps",
+      "target": "function:scripts/releaseworkflow/main.go:requireProductionBuildStep",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:scripts/releaseworkflow/main.go:requireCanonicalBuildSteps",
+      "target": "function:scripts/releaseworkflow/main.go:requireProductionPackageStep",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:scripts/releaseworkflow/main_test.go:TestCheckRecoveryPolicyRequiresTrustedReleaseTag",
+      "target": "function:scripts/releaseworkflow/main.go:checkRecoveryPolicy",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:scripts/releaseworkflow/main_test.go:TestCheckRecoveryPolicyRequiresWindowsClangLLDForWholeBuildJob",
+      "target": "function:scripts/releaseworkflow/main.go:checkRecoveryPolicy",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:scripts/releaseworkflow/main_test.go:TestCheckRecoveryPolicyRequiresDispatchFromDefaultBranch",
+      "target": "function:scripts/releaseworkflow/main.go:checkWorkflow",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:scripts/releaseworkflow/main_test.go:TestCheckRecoveryPolicyRejectsRecoveryTrustMutations",
+      "target": "function:scripts/releaseworkflow/main.go:checkWorkflow",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "pipeline:.github/workflows/release.yml",
+      "target": "file:internal/cli/account_test.go",
+      "type": "reads_from",
+      "direction": "forward",
+      "weight": 0.5,
+      "description": "workflow_dispatch 仅取默认分支 account_test.go 作为受审计 test-only recovery overlay"
+    },
+    {
+      "source": "file:scripts/releaseworkflow/main.go",
+      "target": "function:scripts/releaseworkflow/main.go:mustJobSteps",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:scripts/releaseworkflow/main.go",
+      "target": "function:scripts/releaseworkflow/main.go:checkProductionBuildJob",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:scripts/releaseworkflow/main.go",
+      "target": "function:scripts/releaseworkflow/main.go:requireVerifiedProductionDownloads",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:scripts/releaseworkflow/main_test.go",
+      "target": "function:scripts/releaseworkflow/main_test.go:TestCheckWorkflowRequiresProductionCacheIsolation",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:scripts/releaseworkflow/main_test.go",
+      "target": "function:scripts/releaseworkflow/main_test.go:TestCheckWorkflowRequiresProductionCacheIsolation",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:scripts/releaseworkflow/main_test.go",
+      "target": "function:scripts/releaseworkflow/main_test.go:TestCheckWorkflowRequiresSixExactProductionArtifactDownloads",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:scripts/releaseworkflow/main_test.go",
+      "target": "function:scripts/releaseworkflow/main_test.go:TestCheckWorkflowRequiresSixExactProductionArtifactDownloads",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:scripts/releaseworkflow/main_test.go",
+      "target": "function:scripts/releaseworkflow/main_test.go:TestCheckWorkflowRejectsProductionIsolationMutations",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:scripts/releaseworkflow/main_test.go",
+      "target": "function:scripts/releaseworkflow/main_test.go:TestCheckWorkflowRejectsProductionIsolationMutations",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:scripts/releaseworkflow/main.go:checkWorkflow",
+      "target": "function:scripts/releaseworkflow/main.go:checkProductionBuildJob",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8,
+      "description": "独立校验 immutable production job"
+    },
+    {
+      "source": "function:scripts/releaseworkflow/main.go:checkRecoveryPolicy",
+      "target": "function:scripts/releaseworkflow/main.go:mustJobSteps",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:scripts/releaseworkflow/main.go:checkProductionBuildJob",
+      "target": "function:scripts/releaseworkflow/main.go:requireRequiredJobExecution",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:scripts/releaseworkflow/main.go:checkProductionBuildJob",
+      "target": "function:scripts/releaseworkflow/main.go:requireNoEnvironment",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:scripts/releaseworkflow/main.go:checkProductionBuildJob",
+      "target": "function:scripts/releaseworkflow/main.go:requireOnlyMappingKeys",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:scripts/releaseworkflow/main.go:checkProductionBuildJob",
+      "target": "function:scripts/releaseworkflow/main.go:requireScalar",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:scripts/releaseworkflow/main.go:checkProductionBuildJob",
+      "target": "function:scripts/releaseworkflow/main.go:requireContentsPermission",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:scripts/releaseworkflow/main.go:checkProductionBuildJob",
+      "target": "function:scripts/releaseworkflow/main.go:mappingValue",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:scripts/releaseworkflow/main.go:checkProductionBuildJob",
+      "target": "function:scripts/releaseworkflow/main.go:mustMappingPath",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:scripts/releaseworkflow/main.go:checkProductionBuildJob",
+      "target": "function:scripts/releaseworkflow/main.go:checkReleaseMatrix",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:scripts/releaseworkflow/main.go:checkProductionBuildJob",
+      "target": "function:scripts/releaseworkflow/main.go:jobSteps",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:scripts/releaseworkflow/main.go:checkProductionBuildJob",
+      "target": "function:scripts/releaseworkflow/main.go:requireCanonicalCheckout",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:scripts/releaseworkflow/main.go:checkProductionBuildJob",
+      "target": "function:scripts/releaseworkflow/main.go:requireExactActionStep",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:scripts/releaseworkflow/main.go:checkProductionBuildJob",
+      "target": "function:scripts/releaseworkflow/main.go:requireCanonicalNamedRunStep",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:scripts/releaseworkflow/main.go:checkProductionBuildJob",
+      "target": "function:scripts/releaseworkflow/main.go:requireProductionRebuildStep",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:scripts/releaseworkflow/main.go:checkProductionBuildJob",
+      "target": "function:scripts/releaseworkflow/main.go:requireProductionBuildStep",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:scripts/releaseworkflow/main.go:checkProductionBuildJob",
+      "target": "function:scripts/releaseworkflow/main.go:requireProductionPackageStep",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:scripts/releaseworkflow/main.go:requireVerifiedProductionDownloads",
+      "target": "function:scripts/releaseworkflow/main.go:actionStepIndices",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:scripts/releaseworkflow/main.go:requireVerifiedProductionDownloads",
+      "target": "function:scripts/releaseworkflow/main.go:containsScalarFragment",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:scripts/releaseworkflow/main.go:requireVerifiedProductionDownloads",
+      "target": "function:scripts/releaseworkflow/main.go:requireExactActionStep",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:scripts/releaseworkflow/main.go:checkPublishJob",
+      "target": "function:scripts/releaseworkflow/main.go:requireVerifiedProductionDownloads",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:scripts/releaseworkflow/main_test.go:TestCheckWorkflowRequiresProductionCacheIsolation",
+      "target": "function:scripts/releaseworkflow/main.go:checkProductionBuildJob",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:scripts/releaseworkflow/main_test.go:TestCheckWorkflowRequiresSixExactProductionArtifactDownloads",
+      "target": "function:scripts/releaseworkflow/main.go:requireVerifiedProductionDownloads",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:scripts/releaseworkflow/main_test.go:TestCheckWorkflowRejectsProductionIsolationMutations",
+      "target": "function:scripts/releaseworkflow/main.go:checkWorkflow",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:scripts/releaseworkflow/main_test.go",
+      "target": "function:scripts/releaseworkflow/main_test.go:TestCheckWorkflowRejectsTestGateProductionMutations",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:scripts/releaseworkflow/main_test.go",
+      "target": "function:scripts/releaseworkflow/main_test.go:TestCheckWorkflowRejectsTestGateProductionMutations",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:scripts/releaseworkflow/main_test.go:TestCheckWorkflowRejectsTestGateProductionMutations",
+      "target": "function:scripts/releaseworkflow/main.go:checkWorkflow",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
     }
   ],
   "layers": [
@@ -37632,7 +38718,7 @@
     {
       "id": "layer:release-tooling",
       "name": "发布资产与原生证据工具",
-      "description": "离线 staticlib、许可证、archive、签名元数据、Homebrew formula/staging-tap policy、pinned SSH host key 与 native evidence 的本地可审计工具。",
+      "description": "发布工具与 Release policy；后者约束 15-step 无 artifact test gate、独立 9-step cache-disabled production build 和 verified-release-only publish provenance。",
       "nodeIds": [
         "document:templates/homebrew/TAP_DEPLOYMENT.md",
         "file:scripts/build-staticlibs.sh",
@@ -37660,7 +38746,7 @@
     {
       "id": "layer:ci-cd",
       "name": "CI/CD 发布门禁",
-      "description": "受 full-SHA Actions 与结构化 policy 约束的 Release/native-evidence workflow；Release 串联签名资产、同源 formula、Homebrew 6 隔离 tap 信任、四架构安装与最终受保护 tap 写入。",
+      "description": "受 full-SHA Actions 与结构化 policy 约束的八 job Release/native-evidence 流程；六平台 build 仅为 test gate，独立 production 六矩阵是 verified-release assets 的唯一来源。",
       "nodeIds": [
         "pipeline:.github/workflows/native-evidence.yml",
         "pipeline:.github/workflows/release.yml"
@@ -37763,8 +38849,8 @@
     },
     {
       "order": 7,
-      "title": "本地发布与 Homebrew 6 policy",
-      "description": "发布 policy 锁定同源 checksum、stable/beta formula，以及四 runner 的隔离 tap-new、精确 brew trust --tap 与 tap-qualified install；mutation tests 拒绝本地路径直装、信任重定向、secret 越界或 predecessor bypass。",
+      "title": "15-step test gate 与唯一 production assets",
+      "description": "Release policy 将 recovery overlay 和所有质量门限制在 15-step build test matrix，禁止该 job 产生 binary、package 或 artifact；独立 build_production 六矩阵才在 clean tag runner 上关闭 setup-go cache、重建 staticlib并输出 verified-release-*。",
       "nodeIds": [
         "file:scripts/releaseworkflow/main.go",
         "file:scripts/homebrewformula/main.go",
@@ -37783,8 +38869,8 @@
     },
     {
       "order": 9,
-      "title": "Release、隔离 staging tap 与公开 tap 边界",
-      "description": "Release 公开已核验资产后，同一 checksums.txt 生成唯一 channel formula；四个 runner 各自创建不接触公开 tap 的 local staging tap，仅信任该 namespace 并以 tap-qualified name 安装。全部成功后 protected final job 才能用 strict SSH 更新 public tap；正式 tag 的外部安装证据仍待实际 Actions run。",
+      "title": "Verified production assets、Release 与 tap 边界",
+      "description": "verify_release_source 只在独立 9-step production matrix 完成后运行；protected publish 固定下载六个唯一 verified-release artifacts。test gate 没有发布产物，不能经 artifact、环境或工作树影响签名 Release、formula 验证或公开 tap。",
       "nodeIds": [
         "pipeline:.github/workflows/release.yml",
         "document:CONTEXT.md",

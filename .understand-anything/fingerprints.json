@@ -1,7 +1,7 @@
 {
   "version": "1.0.0",
-  "gitCommitHash": "7c1633380759177baf52ca0337b8eac5edfc1ab0",
-  "generatedAt": "2026-07-12T16:20:25.754Z",
+  "gitCommitHash": "1507054cde2fe8291a0d7e2f3ca8973d2f3aad64",
+  "generatedAt": "2026-07-12T22:03:15.280Z",
   "files": {
     ".agents/skills/pixiv-commit-msg/SKILL.md": {
       "filePath": ".agents/skills/pixiv-commit-msg/SKILL.md",
@@ -65,12 +65,12 @@
     },
     ".github/workflows/release.yml": {
       "filePath": ".github/workflows/release.yml",
-      "contentHash": "9f289ee3b93fd90c6591db0fdbd690e433a66d342d9d3b31beff258ede346dbe",
+      "contentHash": "8715daeb1a65f3567794d5260e67bbdb3de9bebff4b098e4a53cf16d2df819cc",
       "functions": [],
       "classes": [],
       "imports": [],
       "exports": [],
-      "totalLines": 404,
+      "totalLines": 566,
       "hasStructuralAnalysis": true
     },
     ".pre-commit-config.yaml": {
@@ -95,12 +95,12 @@
     },
     "CHANGELOG.md": {
       "filePath": "CHANGELOG.md",
-      "contentHash": "9cc3bfb9f3b7eff251c12371c85559032b45b890bae4f259a92a4e207343f6db",
+      "contentHash": "467827ad1e39ae46d71b4e6427e5e8db3a199b3e98f7fb23e4ea9a8ff8e8f341",
       "functions": [],
       "classes": [],
       "imports": [],
       "exports": [],
-      "totalLines": 102,
+      "totalLines": 100,
       "hasStructuralAnalysis": true
     },
     "CLAUDE.md": {
@@ -277,12 +277,12 @@
     },
     "docs/development.md": {
       "filePath": "docs/development.md",
-      "contentHash": "091670d5a038fa3af4251a542f2b07a905fe7c9d3f421d7df1eb3d1598bd77b4",
+      "contentHash": "bfed92128daccf5d75df85deac76a315a9d4519d5813b1943560b9a85ce72fe0",
       "functions": [],
       "classes": [],
       "imports": [],
       "exports": [],
-      "totalLines": 381,
+      "totalLines": 391,
       "hasStructuralAnalysis": true
     },
     "docs/index.md": {
@@ -3040,7 +3040,7 @@
     },
     "internal/cli/account_test.go": {
       "filePath": "internal/cli/account_test.go",
-      "contentHash": "f3908af34f61e83cec2810c2cd382a7e69d508a0b344074c435067880d6c4e60",
+      "contentHash": "c0fbf81327495e5b088224ea061bbdd2b236c11113409383b3811b8f8cb0c455",
       "functions": [
         {
           "name": "TestAccountAddListUseRemovePreservesOrder",
@@ -3160,7 +3160,7 @@
             "t"
           ],
           "exported": true,
-          "lineCount": 34
+          "lineCount": 38
         },
         {
           "name": "TestCancelAndJoinBrowserWatcherWaitsForExit",
@@ -3176,7 +3176,7 @@
             "t"
           ],
           "exported": true,
-          "lineCount": 40
+          "lineCount": 44
         },
         {
           "name": "TestAccountLoginAcceptsPixivCallbackURLWithoutState",
@@ -3184,7 +3184,7 @@
             "t"
           ],
           "exported": true,
-          "lineCount": 36
+          "lineCount": 40
         },
         {
           "name": "TestAccountLoginManualPageRelaysPostRedirectThenAcceptsCode",
@@ -3192,7 +3192,7 @@
             "t"
           ],
           "exported": true,
-          "lineCount": 57
+          "lineCount": 68
         },
         {
           "name": "TestAccountLoginBrowserWatcherStoresCallbackCode",
@@ -3200,7 +3200,7 @@
             "t"
           ],
           "exported": true,
-          "lineCount": 36
+          "lineCount": 40
         },
         {
           "name": "TestAccountLoginDefaultBrowserWatcherReadsChromiumHistory",
@@ -3208,7 +3208,7 @@
             "t"
           ],
           "exported": true,
-          "lineCount": 49
+          "lineCount": 51
         },
         {
           "name": "TestAccountLoginDefaultBrowserWatcherCatchesFastActiveTabCallback",
@@ -3402,6 +3402,16 @@
           "returnType": "func()",
           "exported": false,
           "lineCount": 4
+        },
+        {
+          "name": "setTestRunAppleScript",
+          "params": [
+            "t",
+            "runner"
+          ],
+          "returnType": "func()",
+          "exported": false,
+          "lineCount": 8
         },
         {
           "name": "setTestCLIClientFactory",
@@ -3771,7 +3781,7 @@
         "TestActiveMacBrowserURLsFallBackToSystemEvents",
         "ExchangeAuthorizationCode"
       ],
-      "totalLines": 1561,
+      "totalLines": 1601,
       "hasStructuralAnalysis": true
     },
     "internal/cli/api_cmd.go": {
@@ -19187,7 +19197,7 @@
     },
     "scripts/releaseworkflow/main_test.go": {
       "filePath": "scripts/releaseworkflow/main_test.go",
-      "contentHash": "454801840f2d71c349264c49a8d221150912d420a78ddd7f5494dde03161212c",
+      "contentHash": "83264fa0ccb7c24263d86e9faf4372a0328aedd1bde0b10902015dd2b0389791",
       "functions": [
         {
           "name": "TestCheckWorkflowRequiresRustFormatGate",
@@ -19196,6 +19206,30 @@
           ],
           "exported": true,
           "lineCount": 11
+        },
+        {
+          "name": "TestCheckWorkflowRequiresProductionCacheIsolation",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 11
+        },
+        {
+          "name": "TestCheckWorkflowRequiresSixExactProductionArtifactDownloads",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 34
+        },
+        {
+          "name": "TestCheckWorkflowRejectsProductionIsolationMutations",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 134
         },
         {
           "name": "TestCheckWorkflowAcceptsIndependentReleaseSourceVerification",
@@ -19238,6 +19272,46 @@
           "lineCount": 19
         },
         {
+          "name": "TestCheckRecoveryPolicyRequiresTrustedReleaseTag",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 8
+        },
+        {
+          "name": "TestCheckRecoveryPolicyRequiresWindowsClangLLDForWholeBuildJob",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 19
+        },
+        {
+          "name": "TestCheckRecoveryPolicyRequiresDispatchFromDefaultBranch",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 10
+        },
+        {
+          "name": "TestCheckRecoveryPolicyRejectsRecoveryTrustMutations",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 39
+        },
+        {
+          "name": "TestCheckWorkflowRejectsTestGateProductionMutations",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 41
+        },
+        {
           "name": "TestCheckWorkflowRejectsHomebrewReleaseGateMutations",
           "params": [
             "t"
@@ -19259,7 +19333,7 @@
             "t"
           ],
           "exported": true,
-          "lineCount": 462
+          "lineCount": 454
         },
         {
           "name": "TestCheckWorkflowRejectsSoftFailedOrSkippedQualityGate",
@@ -19267,7 +19341,7 @@
             "t"
           ],
           "exported": true,
-          "lineCount": 40
+          "lineCount": 39
         },
         {
           "name": "TestCheckWorkflowRejectsAmbiguousYAMLMutations",
@@ -19315,7 +19389,7 @@
             "t"
           ],
           "exported": true,
-          "lineCount": 29
+          "lineCount": 34
         },
         {
           "name": "TestCheckWorkflowRequiresCanonicalValidateAndBuildCheckouts",
@@ -19323,7 +19397,7 @@
             "t"
           ],
           "exported": true,
-          "lineCount": 31
+          "lineCount": 36
         },
         {
           "name": "TestCheckWorkflowAllowsOnlyCanonicalTrustSteps",
@@ -19624,11 +19698,19 @@
       ],
       "exports": [
         "TestCheckWorkflowRequiresRustFormatGate",
+        "TestCheckWorkflowRequiresProductionCacheIsolation",
+        "TestCheckWorkflowRequiresSixExactProductionArtifactDownloads",
+        "TestCheckWorkflowRejectsProductionIsolationMutations",
         "TestCheckWorkflowAcceptsIndependentReleaseSourceVerification",
         "TestCheckWorkflowRequiresHomebrewReleaseGate",
         "TestCheckWorkflowRequiresTapQualifiedStagingFormulaInstall",
         "TestCheckWorkflowRequiresStagingTapTrust",
         "TestCheckPinnedGitHubKnownHosts",
+        "TestCheckRecoveryPolicyRequiresTrustedReleaseTag",
+        "TestCheckRecoveryPolicyRequiresWindowsClangLLDForWholeBuildJob",
+        "TestCheckRecoveryPolicyRequiresDispatchFromDefaultBranch",
+        "TestCheckRecoveryPolicyRejectsRecoveryTrustMutations",
+        "TestCheckWorkflowRejectsTestGateProductionMutations",
         "TestCheckWorkflowRejectsHomebrewReleaseGateMutations",
         "TestCheckWorkflowRequiresHomebrewTapPublicationGate",
         "TestCheckWorkflowRejectsSecurityAndQualityPolicyMutations",
@@ -19647,12 +19729,12 @@
         "TestCheckWorkflowRejectsBareAndFunctionSecretContextsOutsideExpectedSigningEnvironment",
         "TestCheckWorkflowAcceptsCanonicalBracketSigningExpressions"
       ],
-      "totalLines": 1653,
+      "totalLines": 1961,
       "hasStructuralAnalysis": true
     },
     "scripts/releaseworkflow/main.go": {
       "filePath": "scripts/releaseworkflow/main.go",
-      "contentHash": "ba0c15a6ab023f06eebdf01c0cf8309a3009e33225caaed8b4bacaf924420cca",
+      "contentHash": "aa042de41c2a5745d885fa01207b2b22b498484c5730a8b8dbe4ca7e0106f9df",
       "functions": [
         {
           "name": "main",
@@ -19685,7 +19767,7 @@
           ],
           "returnType": "error",
           "exported": false,
-          "lineCount": 98
+          "lineCount": 108
         },
         {
           "name": "checkTagTrigger",
@@ -19694,7 +19776,165 @@
           ],
           "returnType": "error",
           "exported": false,
-          "lineCount": 21
+          "lineCount": 33
+        },
+        {
+          "name": "checkRecoveryPolicy",
+          "params": [
+            "root"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 49
+        },
+        {
+          "name": "mustJobSteps",
+          "params": [
+            "job"
+          ],
+          "returnType": "[]*yaml.Node",
+          "exported": false,
+          "lineCount": 7
+        },
+        {
+          "name": "containsScalarFragment",
+          "params": [
+            "node",
+            "fragment"
+          ],
+          "returnType": "bool",
+          "exported": false,
+          "lineCount": 14
+        },
+        {
+          "name": "countScalarFragment",
+          "params": [
+            "node",
+            "fragment"
+          ],
+          "returnType": "int",
+          "exported": false,
+          "lineCount": 13
+        },
+        {
+          "name": "stepIndexWithRunFragment",
+          "params": [
+            "steps",
+            "fragment"
+          ],
+          "returnType": "int",
+          "exported": false,
+          "lineCount": 8
+        },
+        {
+          "name": "actionStepIndices",
+          "params": [
+            "steps",
+            "action"
+          ],
+          "returnType": "[]int",
+          "exported": false,
+          "lineCount": 10
+        },
+        {
+          "name": "requireCanonicalBuildSteps",
+          "params": [
+            "steps"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 43
+        },
+        {
+          "name": "requireCanonicalNamedRunStep",
+          "params": [
+            "step",
+            "name",
+            "command"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 9
+        },
+        {
+          "name": "requireCanonicalNamedRunStepInDirectory",
+          "params": [
+            "step",
+            "name",
+            "directory",
+            "command"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 6
+        },
+        {
+          "name": "requireRecoveryOverlayStep",
+          "params": [
+            "step"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 13
+        },
+        {
+          "name": "requireOverlayQualitySequence",
+          "params": [
+            "steps",
+            "overlayIndex",
+            "freshCheckoutIndex"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 27
+        },
+        {
+          "name": "requireProductionRebuildStep",
+          "params": [
+            "step"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 16
+        },
+        {
+          "name": "requireProductionBuildStep",
+          "params": [
+            "step"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 16
+        },
+        {
+          "name": "requireProductionPackageStep",
+          "params": [
+            "step"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 13
+        },
+        {
+          "name": "requireCanonicalConditionalRunStep",
+          "params": [
+            "step",
+            "context",
+            "condition",
+            "canonical"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 12
+        },
+        {
+          "name": "mustMappingPath",
+          "params": [
+            "root"
+          ],
+          "returnType": "*yaml.Node",
+          "exported": false,
+          "lineCount": 11
         },
         {
           "name": "checkGlobalPermissions",
@@ -19731,10 +19971,19 @@
           ],
           "returnType": "error",
           "exported": false,
-          "lineCount": 30
+          "lineCount": 38
         },
         {
           "name": "checkBuildJob",
+          "params": [
+            "job"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 63
+        },
+        {
+          "name": "checkProductionBuildJob",
           "params": [
             "job"
           ],
@@ -19758,7 +20007,7 @@
           ],
           "returnType": "error",
           "exported": false,
-          "lineCount": 8
+          "lineCount": 6
         },
         {
           "name": "requireNoEnvironment",
@@ -19778,7 +20027,7 @@
           ],
           "returnType": "error",
           "exported": false,
-          "lineCount": 13
+          "lineCount": 11
         },
         {
           "name": "requireIndependentQualityGate",
@@ -19798,7 +20047,7 @@
           ],
           "returnType": "error",
           "exported": false,
-          "lineCount": 29
+          "lineCount": 35
         },
         {
           "name": "checkVerifyReleaseSourceJob",
@@ -19820,13 +20069,22 @@
           "lineCount": 25
         },
         {
+          "name": "requireVerifiedProductionDownloads",
+          "params": [
+            "steps"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 26
+        },
+        {
           "name": "checkPublishJob",
           "params": [
             "job"
           ],
           "returnType": "(int, []*yaml.Node, error)",
           "exported": false,
-          "lineCount": 78
+          "lineCount": 81
         },
         {
           "name": "requireCanonicalReleasePublicationSuffix",
@@ -19940,6 +20198,7 @@
           "params": [
             "validate",
             "build",
+            "productionBuild",
             "verifyReleaseSource",
             "publish",
             "publishSteps",
@@ -20253,7 +20512,7 @@
         }
       ],
       "exports": [],
-      "totalLines": 1452,
+      "totalLines": 1863,
       "hasStructuralAnalysis": true
     },
     "scripts/test-build-staticlibs.sh": {

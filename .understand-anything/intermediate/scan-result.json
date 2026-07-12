@@ -58,7 +58,7 @@
     {
       "path": ".github/workflows/release.yml",
       "language": "yaml",
-      "sizeLines": 403,
+      "sizeLines": 565,
       "fileCategory": "infra"
     },
     {
@@ -76,7 +76,7 @@
     {
       "path": "CHANGELOG.md",
       "language": "markdown",
-      "sizeLines": 101,
+      "sizeLines": 99,
       "fileCategory": "docs"
     },
     {
@@ -166,7 +166,7 @@
     {
       "path": "docs/development.md",
       "language": "markdown",
-      "sizeLines": 380,
+      "sizeLines": 390,
       "fileCategory": "docs"
     },
     {
@@ -280,7 +280,7 @@
     {
       "path": "internal/cli/account_test.go",
       "language": "go",
-      "sizeLines": 1560,
+      "sizeLines": 1600,
       "fileCategory": "code"
     },
     {
@@ -862,13 +862,13 @@
     {
       "path": "scripts/releaseworkflow/main_test.go",
       "language": "go",
-      "sizeLines": 1652,
+      "sizeLines": 1960,
       "fileCategory": "code"
     },
     {
       "path": "scripts/releaseworkflow/main.go",
       "language": "go",
-      "sizeLines": 1451,
+      "sizeLines": 1862,
       "fileCategory": "code"
     },
     {
