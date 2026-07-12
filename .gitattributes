@@ -1,3 +1,11 @@
+# Rust staticlib source identity 按字节计算；保留 first-party crate 的 Cargo 配置、
+# build script 和生产源码原始字节，避免 Windows checkout 把 LF 转为 CRLF 后改变摘要。
+internal/download/ugoira_rs/Cargo.toml -text
+internal/download/ugoira_rs/Cargo.lock -text
+internal/download/ugoira_rs/build.rs -text
+internal/download/ugoira_rs/.cargo/** -text
+internal/download/ugoira_rs/src/**/*.rs -text
+
 # Cargo vendor 保留上游字节并由 .cargo-checksum.json 校验；以下 Markdown 标题使用
 # 7 个等号，Git 会把它们误判为 unresolved conflict marker。仅调整该两份上游文档的阈值。
 # 所有 Cargo vendor 文件都必须关闭 Git 文本转换；Windows CRLF checkout 会改变上游 checksum，

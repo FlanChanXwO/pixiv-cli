@@ -146,11 +146,18 @@ func TestWindowsNativeEvidenceUsesLLDBackedClang(t *testing.T) {
 	}
 }
 
-// TestPinnedRustSourcesDisableGitTextConversion 保留 Cargo vendor 和本地 locked dependency 的精确字节；
-// Windows checkout 若把 LF 转为 CRLF，会破坏 Cargo checksum、licensebundle 或 staticlib source digest。
+// TestPinnedRustSourcesDisableGitTextConversion 保留 first-party crate、Cargo vendor 和本地
+// locked dependency 的精确字节；Windows checkout 若把 LF 转为 CRLF，会改变
+// staticlib source digest，或破坏 Cargo checksum 与 licensebundle 输入。
 func TestPinnedRustSourcesDisableGitTextConversion(t *testing.T) {
 	repoRoot := filepath.Clean(filepath.Join("..", ".."))
 	for _, source := range []string{
+		"internal/download/ugoira_rs/Cargo.toml",
+		"internal/download/ugoira_rs/Cargo.lock",
+		"internal/download/ugoira_rs/build.rs",
+		"internal/download/ugoira_rs/.cargo/config.toml",
+		"internal/download/ugoira_rs/src/lib.rs",
+		"internal/download/ugoira_rs/src/nested/digest-input.rs",
 		"internal/download/ugoira_rs/vendor/crc32fast/benches/bench.rs",
 		"internal/download/ugoira_rs/vendor/crc32fast/src/specialized/mod.rs",
 		"third_party/rust/quantette-0.6.0/LICENSE-APACHE",
@@ -161,8 +168,18 @@ func TestPinnedRustSourcesDisableGitTextConversion(t *testing.T) {
 			t.Fatalf("read Git text attribute for %q: %v\n%s", source, err, body)
 		}
 		if !strings.Contains(string(body), "text: unset") {
-			t.Fatalf("Cargo vendor source %q must disable Git text conversion, got %q", source, strings.TrimSpace(string(body)))
+			t.Fatalf("Rust source identity input %q must disable Git text conversion, got %q", source, strings.TrimSpace(string(body)))
 		}
+	}
+
+	nonDigestSource := "internal/download/ugoira_rs/src/not-a-digest.md"
+	command := exec.Command("git", "-C", repoRoot, "check-attr", "text", "--", nonDigestSource)
+	body, err := command.CombinedOutput()
+	if err != nil {
+		t.Fatalf("read Git text attribute for %q: %v\n%s", nonDigestSource, err, body)
+	}
+	if !strings.Contains(string(body), "text: unspecified") {
+		t.Fatalf("non-digest Rust crate file %q must keep the default Git text behavior, got %q", nonDigestSource, strings.TrimSpace(string(body)))
 	}
 }
 

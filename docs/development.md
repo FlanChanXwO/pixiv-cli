@@ -55,10 +55,12 @@ go test ./internal/download -run '^TestCommittedUgoiraStaticlibManifestWhenPrese
 
 Rust crate 的 `.cargo/config.toml` 将 crates.io 替换为其相邻 `vendor/` 中完整的 locked
 依赖闭包。`vendor/` 的每个 package 都带 Cargo 生成的 `.cargo-checksum.json`；它、Cargo config、
-`Cargo.toml`/`Cargo.lock`、Rust source 和本地 `quantette` 都计入 staticlib source digest。不要手工
-编辑 vendor 内容；升级依赖时必须重新以 `cargo vendor --locked --offline` 生成完整闭包并更新 digest
-fixture 与许可证 bundle。根 `.gitattributes` 对整个 `vendor/**` 与固定本地 `quantette` source 设置
-`-text`，防止 Windows checkout 把 LF 改为 CRLF 后破坏 Cargo checksum、source digest 或 licensebundle；对
+`Cargo.toml`/`Cargo.lock`、`build.rs`、`.cargo/**`、Rust source 和本地 `quantette` 都计入
+staticlib source digest。不要手工编辑 vendor 内容；升级依赖时必须重新以
+`cargo vendor --locked --offline` 生成完整闭包并更新 digest
+fixture 与许可证 bundle。根 `.gitattributes` 对上述 first-party crate 输入、整个 `vendor/**` 与固定本地
+`quantette` source 设置 `-text`；这只保留 Git blob 原始 bytes，不会重写正常内容，并防止 Windows
+checkout 把 LF 改为 CRLF 后破坏 Cargo checksum、source digest 或 licensebundle。对
 licensebundle 的 `THIRD_PARTY_LICENSES.md` 与
 `third_party/licenses/**` 则固定 `text eol=lf`，使其 byte-for-byte `--check` 在 Windows 保持稳定。
 `target/` 仍是机器产物，不计入 digest，也不得提交。
@@ -133,9 +135,13 @@ Task 20 的 main push 成功后，Task 13 只能按以下过程回填可提交�
 
    该命令只接受完整六目标、同一 source digest 以及同一 expected version/commit 的记录；重新核验
    staticlib/binary/archive SHA 与 archive member hash，生成精确六条 `manifest.json`。任何缺 target、
-   重复/错配 target、metadata、
-   archive member、哈希或 symlink 都会在写入前阻断；输出必须是不存在的新目录，因此不会覆盖或发布
-   部分结果。
+   重复/错配 target、metadata、archive member、哈希或 symlink 都会在写入前阻断；输出必须是
+   不存在的新目录，因此不会覆盖或发布部分结果。
+
+   若同一 workflow run 的 runner record 出现不同 source digest，说明 checkout bytes 已使该组证据失去
+   单一源码身份；即使六个 job 都完成，也不得混合回填该 run 的 artifacts，或与后续 run
+   拼接。修复 checkout 字节规则后，必须重新 push 精确的已审计 SHA，并只使用其新产生的完整
+   six-target run。
 3. 人工复核 `.native-evidence-backfill/staticlib` 与六份 record 的 target、source digest、SHA-256 和
    archive members，确认 artifact 均来自上述 main run。通过后才把该目录中六个 target library 与
    `manifest.json` 明确回填到 `internal/download/ugoira_rs/staticlib/`；逐文件复核哈希，随后审查
