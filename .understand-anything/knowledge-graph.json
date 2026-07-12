@@ -20,8 +20,8 @@
       "GitHub Actions"
     ],
     "description": "这是一个 Go 版 Pixiv CLI 与 MCP stdio server，内置 Rust ugoira encoder，并包含 release/update workflow。",
-    "analyzedAt": "2026-07-12T07:29:27.000Z",
-    "gitCommitHash": "0a36d3d90dd1969ce1e0cd981be1829489d38bec"
+    "analyzedAt": "2026-07-12T07:56:48.666Z",
+    "gitCommitHash": "4a315a07271d1fc58d8c0d1d95f95af4b8ea4693"
   },
   "nodes": [
     {
@@ -3830,7 +3830,7 @@
       "type": "file",
       "name": "ugoira_rust_link_windows_arm64.go",
       "filePath": "internal/download/ugoira_rust_link_windows_arm64.go",
-      "summary": "为 Windows/arm64 Rust staticlib 选择器以 cgo 受支持的 -L${SRCDIR} 与 -lugoira_rs 传递库搜索目录和名称，避免绝对 .lib 输入被安全校验拒绝。",
+      "summary": "为 Windows/arm64 Rust staticlib selector 以 -L/-lugoira_rs 加入目标库，并显式传递 Rust std 所需的 advapi32、ntdll、userenv、ws2_32、dbghelp import libraries。",
       "tags": [
         "ugoira动图",
         "Rust语言",
@@ -3843,7 +3843,7 @@
       "type": "file",
       "name": "ugoira_rust_link_windows_amd64.go",
       "filePath": "internal/download/ugoira_rust_link_windows_amd64.go",
-      "summary": "为 Windows/amd64 Rust staticlib 选择器以 cgo 受支持的 -L${SRCDIR} 与 -lugoira_rs 传递库搜索目录和名称，避免绝对 .lib 输入被安全校验拒绝。",
+      "summary": "为 Windows/amd64 Rust staticlib selector 以 -L/-lugoira_rs 加入目标库，并显式传递 Rust std 所需的 advapi32、ntdll、userenv、ws2_32、dbghelp import libraries。",
       "tags": [
         "ugoira动图",
         "Rust语言",
@@ -5631,7 +5631,7 @@
       "type": "file",
       "name": "ugoira_rust_test.go",
       "filePath": "internal/download/ugoira_rust_test.go",
-      "summary": "覆盖 Rust ugoira encoder、Linux libm 与 Windows cgo library-search selector、pinned Rust source 字节稳定性和生成 license LF checkout 的跨平台回归测试。",
+      "summary": "覆盖 Rust ugoira encoder、Linux libm、Windows cgo selector 的 Rust native import libraries 与 LLD-backed Clang workflow gate，以及源字节/LF checkout 回归。",
       "tags": [
         "测试",
         "ugoira动图",
@@ -12545,7 +12545,7 @@
       "type": "pipeline",
       "name": "native-evidence.yml",
       "filePath": ".github/workflows/native-evidence.yml",
-      "summary": "在受审计 main 提交或手动触发时，于六个真实 runner 构建 native staticlib、GIF/APNG smoke、版本化二进制和可审计归档证据；Windows smoke 与二进制构建显式选择 clang，流程不签名、不创建 tag 或 Release。",
+      "summary": "在受审计 main 提交或手动触发时，于六个真实 runner 构建 native staticlib、GIF/APNG smoke、版本化二进制和可审计归档证据；Windows gate 显式使用 LLD-backed Clang，流程不签名、不创建 tag 或 Release。",
       "tags": [
         "ci-cd",
         "release",
@@ -12597,7 +12597,7 @@
       "type": "document",
       "name": "CHANGELOG.md",
       "filePath": "CHANGELOG.md",
-      "summary": "记录未发布的用户可见变更与 v0.1.0 发布候选说明；包括 Windows cgo staticlib selector 和 native-evidence clang gate。",
+      "summary": "记录未发布的用户可见变更与 v0.1.0 发布候选说明；包括 Windows cgo staticlib、Rust native import libraries 与 LLD-backed Clang 链接修复。",
       "tags": [
         "文档",
         "变更记录",
@@ -16496,7 +16496,7 @@
       "type": "document",
       "name": "architecture.md",
       "filePath": "docs/architecture.md",
-      "summary": "说明 CLI、application、bootstrap、Pixiv、下载和更新职责；明确 Windows cgo staticlib 以 -L/-l 连接 MSVC 库，native evidence workflow 由 clang gate 保证。",
+      "summary": "说明 CLI、application、bootstrap、Pixiv、下载和更新职责；明确 Windows cgo staticlib 的 -L/-l、Rust native import libraries 与 LLD-backed Clang gate。",
       "complexity": "moderate",
       "tags": [
         "documentation",
@@ -16510,7 +16510,7 @@
       "type": "document",
       "name": "development.md",
       "filePath": "docs/development.md",
-      "summary": "说明环境、Rust staticlib、native evidence、Windows clang cgo gate、Cargo vendor/quantette 的 -text 与 licensebundle output 的 LF checkout 约束。",
+      "summary": "说明环境、Rust staticlib、native evidence、Windows Rust import libraries、LLD-backed Clang cgo gate、Cargo vendor/quantette 的 -text 与 licensebundle LF 约束。",
       "complexity": "complex",
       "tags": [
         "documentation",
@@ -16870,7 +16870,7 @@
       "type": "file",
       "name": "main.go",
       "filePath": "scripts/nativeevidence/main.go",
-      "summary": "校验 native evidence workflow 与六目标产物；policy 同时锁定 Windows smoke 和版本化 binary 构建必须选择 clang，并只依赖无 cgo staticlib 契约。",
+      "summary": "校验 native evidence workflow 与六目标产物；policy 锁定 Windows smoke 与 binary build 必须使用 clang -fuse-ld=lld，以链接 MSVC staticlib 并跳过 Go 的 GCC-only debug linker script。",
       "tags": [
         "发布",
         "native-evidence",
@@ -17581,7 +17581,7 @@
       "type": "function",
       "name": "checkNativeEvidenceJob",
       "filePath": "scripts/nativeevidence/main.go",
-      "summary": "验证 native-evidence job 的固定步骤顺序，并要求 Windows GIF/APNG smoke 和版本化 binary 构建在 cgo 前显式 export CC=clang。",
+      "summary": "验证 native-evidence job 的固定步骤顺序，并要求 Windows GIF/APNG smoke 和版本化 binary 构建在 cgo 前显式使用 clang -fuse-ld=lld。",
       "tags": [
         "函数",
         "Go语言",
@@ -17666,7 +17666,7 @@
       "type": "function",
       "name": "requireMultilineRunStep",
       "filePath": "scripts/nativeevidence/main.go",
-      "summary": "严格比较多行 workflow shell step，防止 Windows clang 选择或其他受控 gate 被排版替换或静默移除。",
+      "summary": "严格比较多行 workflow shell step，防止 LLD-backed Clang 或其他受控 gate 被排版替换或静默移除。",
       "tags": [
         "函数",
         "Go语言",
@@ -17904,7 +17904,7 @@
       "type": "file",
       "name": "main_test.go",
       "filePath": "scripts/nativeevidence/main_test.go",
-      "summary": "覆盖 native evidence policy、六目标回填、产物一致性、无 cgo 依赖边界，以及 Windows clang 选择不可被 workflow 变异移除。",
+      "summary": "覆盖 native evidence policy、六目标回填、产物一致性、无 cgo 依赖边界，以及 LLD-backed Clang gate 不可被 workflow 变异移除。",
       "tags": [
         "测试",
         "native-evidence",
@@ -17968,7 +17968,7 @@
       "type": "function",
       "name": "TestCheckWorkflowRejectsNativeEvidenceSecurityAndCompletenessMutations",
       "filePath": "scripts/nativeevidence/main_test.go",
-      "summary": "覆盖 workflow 的安全、完整性和 Windows clang gate 变异，确保 policy 对缺失 clang 的 smoke 或 binary build fail-closed。",
+      "summary": "覆盖 workflow 安全、完整性和 LLD-backed Clang gate 变异，确保 policy 对缺失 LLD 的 smoke 或 binary build fail-closed。",
       "tags": [
         "函数",
         "Go语言",
@@ -20563,12 +20563,27 @@
       "type": "function",
       "name": "TestWindowsRustStaticlibSelectorsUseCgoLibrarySearchFlags",
       "filePath": "internal/download/ugoira_rust_test.go",
-      "summary": "锁定 Windows 两个 cgo selector 只能通过 -L${SRCDIR} 与 -lugoira_rs 传递 MSVC staticlib，拒绝直接绝对 .lib 输入。",
+      "summary": "锁定 Windows 两个 cgo selector 使用 -L/-lugoira_rs，并显式传递 Rust std 的五个 native import libraries，拒绝直接绝对 .lib 输入。",
       "tags": [
         "测试",
         "windows",
         "cgo",
         "staticlib"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:internal/download/ugoira_rust_test.go:TestWindowsNativeEvidenceUsesLLDBackedClang",
+      "type": "function",
+      "name": "TestWindowsNativeEvidenceUsesLLDBackedClang",
+      "filePath": "internal/download/ugoira_rust_test.go",
+      "summary": "锁定 Windows native-evidence 的 smoke 与版本化 binary 构建均使用 clang -fuse-ld=lld，避免 Go 的 GCC-only debug linker script 交给 MSVC linker。",
+      "tags": [
+        "测试",
+        "windows",
+        "lld",
+        "cgo",
+        "native-evidence"
       ],
       "complexity": "simple"
     }
@@ -35451,6 +35466,13 @@
     {
       "source": "file:internal/download/ugoira_rust_test.go",
       "target": "function:internal/download/ugoira_rust_test.go:TestWindowsRustStaticlibSelectorsUseCgoLibrarySearchFlags",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:internal/download/ugoira_rust_test.go",
+      "target": "function:internal/download/ugoira_rust_test.go:TestWindowsNativeEvidenceUsesLLDBackedClang",
       "type": "contains",
       "direction": "forward",
       "weight": 1

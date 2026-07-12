@@ -76,7 +76,7 @@
     {
       "path": "CHANGELOG.md",
       "language": "markdown",
-      "sizeLines": 89,
+      "sizeLines": 90,
       "fileCategory": "docs"
     },
     {
@@ -160,13 +160,13 @@
     {
       "path": "docs/architecture.md",
       "language": "markdown",
-      "sizeLines": 230,
+      "sizeLines": 231,
       "fileCategory": "docs"
     },
     {
       "path": "docs/development.md",
       "language": "markdown",
-      "sizeLines": 342,
+      "sizeLines": 344,
       "fileCategory": "docs"
     },
     {
@@ -460,13 +460,13 @@
     {
       "path": "internal/download/ugoira_rust_link_windows_amd64.go",
       "language": "go",
-      "sizeLines": 8,
+      "sizeLines": 10,
       "fileCategory": "code"
     },
     {
       "path": "internal/download/ugoira_rust_link_windows_arm64.go",
       "language": "go",
-      "sizeLines": 8,
+      "sizeLines": 10,
       "fileCategory": "code"
     },
     {
@@ -478,7 +478,7 @@
     {
       "path": "internal/download/ugoira_rust_test.go",
       "language": "go",
-      "sizeLines": 177,
+      "sizeLines": 200,
       "fileCategory": "code"
     },
     {

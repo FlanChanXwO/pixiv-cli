@@ -1,7 +1,7 @@
 {
   "version": "1.0.0",
-  "gitCommitHash": "0a36d3d90dd1969ce1e0cd981be1829489d38bec",
-  "generatedAt": "2026-07-12T07:29:27.331Z",
+  "gitCommitHash": "4a315a07271d1fc58d8c0d1d95f95af4b8ea4693",
+  "generatedAt": "2026-07-12T07:56:49.019Z",
   "files": {
     ".agents/skills/pixiv-commit-msg/SKILL.md": {
       "filePath": ".agents/skills/pixiv-commit-msg/SKILL.md",
@@ -55,7 +55,7 @@
     },
     ".github/workflows/native-evidence.yml": {
       "filePath": ".github/workflows/native-evidence.yml",
-      "contentHash": "09ea497888b9b006bf20c20e9d6355ee763730e4ff8152395ef794cb32c9b3ce",
+      "contentHash": "99fc16f83ffee57ab5ef72196f768ed1c7f02804071f977cfb6717354608161c",
       "functions": [],
       "classes": [],
       "imports": [],
@@ -95,12 +95,12 @@
     },
     "CHANGELOG.md": {
       "filePath": "CHANGELOG.md",
-      "contentHash": "aa49ac18a9c57ad17a5ce0c64e62732f6b2a7052a34498a4c96b89d79ca807a5",
+      "contentHash": "14771da8a50cc16a45037b1114354202cd0cc6e0a2c816f9f09bd89bdabd9772",
       "functions": [],
       "classes": [],
       "imports": [],
       "exports": [],
-      "totalLines": 90,
+      "totalLines": 91,
       "hasStructuralAnalysis": true
     },
     "CLAUDE.md": {
@@ -267,22 +267,22 @@
     },
     "docs/architecture.md": {
       "filePath": "docs/architecture.md",
-      "contentHash": "64ac950dc1db9795d933987eef8ee086da32a2ee92db10126105210bd8fc9f2a",
+      "contentHash": "b3749c7445d2165310a40b903a78bee18815545c97034976302549aeb68316ac",
       "functions": [],
       "classes": [],
       "imports": [],
       "exports": [],
-      "totalLines": 231,
+      "totalLines": 232,
       "hasStructuralAnalysis": true
     },
     "docs/development.md": {
       "filePath": "docs/development.md",
-      "contentHash": "5c1d084455f011285fa804775b45fb1f3f59ffa1aa2f77736492c24d7a018732",
+      "contentHash": "21572da8eaeea4446fe0b099ea281950cfcdc5005d81883c6c9554a02edf8f88",
       "functions": [],
       "classes": [],
       "imports": [],
       "exports": [],
-      "totalLines": 343,
+      "totalLines": 345,
       "hasStructuralAnalysis": true
     },
     "docs/index.md": {
@@ -8186,7 +8186,7 @@
     },
     "internal/download/ugoira_rust_link_windows_amd64.go": {
       "filePath": "internal/download/ugoira_rust_link_windows_amd64.go",
-      "contentHash": "6234049c699c8ed542372f510a0c831b66cbc99c0bb02dda69c4a1ee52796a1f",
+      "contentHash": "5a13262dd67f2d70057b0de04af924de4b9948b50ec473d986f63c10c34cfa36",
       "functions": [],
       "classes": [],
       "imports": [
@@ -8198,12 +8198,12 @@
         }
       ],
       "exports": [],
-      "totalLines": 9,
+      "totalLines": 11,
       "hasStructuralAnalysis": true
     },
     "internal/download/ugoira_rust_link_windows_arm64.go": {
       "filePath": "internal/download/ugoira_rust_link_windows_arm64.go",
-      "contentHash": "ddf79cf03891735e08c27aa05e55aa42a5eb24727c464cfa9a71fa7cc42953d2",
+      "contentHash": "1450de6604511728eea697434f3722442239a1e2d4da1f8972e09ed7562b7bfd",
       "functions": [],
       "classes": [],
       "imports": [
@@ -8215,7 +8215,7 @@
         }
       ],
       "exports": [],
-      "totalLines": 9,
+      "totalLines": 11,
       "hasStructuralAnalysis": true
     },
     "internal/download/ugoira_rust_stub.go": {
@@ -8281,7 +8281,7 @@
     },
     "internal/download/ugoira_rust_test.go": {
       "filePath": "internal/download/ugoira_rust_test.go",
-      "contentHash": "a866fda08b249af967f6aea52d821fcd4ecd4104ab6b1cd7e08fd00b936b5353",
+      "contentHash": "160fdae50f2f26113de8f3d981b10255efddbb24565e442c0b97461c30d0b373",
       "functions": [
         {
           "name": "TestRustUgoiraEncoderNativeGIFAndAPNG",
@@ -8313,7 +8313,15 @@
             "t"
           ],
           "exported": true,
-          "lineCount": 19
+          "lineCount": 29
+        },
+        {
+          "name": "TestWindowsNativeEvidenceUsesLLDBackedClang",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 10
         },
         {
           "name": "TestPinnedRustSourcesDisableGitTextConversion",
@@ -8427,10 +8435,11 @@
         "TestCGODisabledBuildRejectsMissingRustStaticlib",
         "TestLinuxRustStaticlibLinkersLinkSystemMath",
         "TestWindowsRustStaticlibSelectorsUseCgoLibrarySearchFlags",
+        "TestWindowsNativeEvidenceUsesLLDBackedClang",
         "TestPinnedRustSourcesDisableGitTextConversion",
         "TestGeneratedRustLicenseOutputsUseLFCheckout"
       ],
-      "totalLines": 178,
+      "totalLines": 201,
       "hasStructuralAnalysis": true
     },
     "internal/download/ugoira_rust.go": {
@@ -17525,7 +17534,7 @@
     },
     "scripts/nativeevidence/main_test.go": {
       "filePath": "scripts/nativeevidence/main_test.go",
-      "contentHash": "6b45a06e27310b853b293c04ccfae3ab50e04f4e37c22c522505ce2581a6c2bc",
+      "contentHash": "57a7627c0cf8c27066cfe93b30ab8902aceda81f50f67185110748f2e05c6f30",
       "functions": [
         {
           "name": "TestMain",
@@ -17900,7 +17909,7 @@
     },
     "scripts/nativeevidence/main.go": {
       "filePath": "scripts/nativeevidence/main.go",
-      "contentHash": "c8858c3021da69f26adcb33932dae3a9ab5c14f00f14ccdcf8324412c90a2e2d",
+      "contentHash": "a21a2126fc411790571bd29ec6e25320df487ce8138d940d727ef04fa998f9ca",
       "functions": [
         {
           "name": "main",
