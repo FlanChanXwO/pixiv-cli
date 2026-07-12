@@ -206,6 +206,17 @@ func TestCheckWorkflowRejectsSecurityAndQualityPolicyMutations(t *testing.T) {
 			},
 		},
 		{
+			name: "validate job secret uses bracket expression",
+			want: "non-release job must not reference secrets",
+			mutate: func(t *testing.T, root *yaml.Node) {
+				t.Helper()
+				steps := requireMappingValue(t, jobNode(t, root, "validate"), "steps")
+				appendMappingValue(t, steps.Content[0], "env", &yaml.Node{Kind: yaml.MappingNode, Tag: "!!map", Content: []*yaml.Node{
+					scalarNode("EARLY_SIGNING_REFERENCE"), scalarNode("${{ secrets['RELEASE_SIGNING_PRIVATE_KEY'] }}"),
+				}})
+			},
+		},
+		{
 			name: "publish references secret before signing metadata",
 			want: "publish job must not reference secrets outside its signing metadata step",
 			mutate: func(t *testing.T, root *yaml.Node) {
@@ -228,7 +239,7 @@ func TestCheckWorkflowRejectsSecurityAndQualityPolicyMutations(t *testing.T) {
 		},
 		{
 			name: "releaseassets channel removed",
-			want: "releaseassets channel",
+			want: "release publishing step must assign channel exactly once from releaseassets",
 			mutate: func(t *testing.T, root *yaml.Node) {
 				t.Helper()
 				removeCommand(t, stepWithRun(t, jobNode(t, root, "publish"), "channel=$(go run ./scripts/releaseassets channel"), "channel=$(go run ./scripts/releaseassets channel --version \"${GITHUB_REF_NAME#v}\")")
@@ -236,7 +247,7 @@ func TestCheckWorkflowRejectsSecurityAndQualityPolicyMutations(t *testing.T) {
 		},
 		{
 			name: "releaseassets channel is unrelated to release creation",
-			want: "release publishing step must bind releaseassets channel to the prerelease flag",
+			want: "release publishing step must assign channel exactly once from releaseassets",
 			mutate: func(t *testing.T, root *yaml.Node) {
 				t.Helper()
 				publish := jobNode(t, root, "publish")
@@ -268,6 +279,15 @@ func TestCheckWorkflowRejectsSecurityAndQualityPolicyMutations(t *testing.T) {
 				t.Helper()
 				step := stepWithRun(t, jobNode(t, root, "publish"), "gh release create")
 				replaceRunFragment(t, step, "gh release create \"$GITHUB_REF_NAME\"", "prerelease=()\n          gh release create \"$GITHUB_REF_NAME\"")
+			},
+		},
+		{
+			name: "release channel is reassigned before classification",
+			want: "release publishing step must assign channel exactly once from releaseassets",
+			mutate: func(t *testing.T, root *yaml.Node) {
+				t.Helper()
+				step := stepWithRun(t, jobNode(t, root, "publish"), "gh release create")
+				replaceRunFragment(t, step, "prerelease=()", "channel=stable\n          prerelease=()")
 			},
 		},
 		{
@@ -470,6 +490,72 @@ func TestCheckWorkflowRejectsSoftFailedOrSkippedQualityGate(t *testing.T) {
 	}
 }
 
+func TestCheckWorkflowRejectsBracketSecretExpressionsOutsideExpectedSigningEnvironment(t *testing.T) {
+	t.Parallel()
+
+	for _, test := range []struct {
+		name   string
+		want   string
+		mutate func(t *testing.T, root *yaml.Node)
+	}{
+		{
+			name: "validate double quoted bracket",
+			want: "non-release job must not reference secrets",
+			mutate: func(t *testing.T, root *yaml.Node) {
+				t.Helper()
+				appendBracketSecretToFirstStep(t, jobNode(t, root, "validate"), "${{secrets[\"RELEASE_SIGNING_PRIVATE_KEY\"]}}")
+			},
+		},
+		{
+			name: "build single quoted bracket",
+			want: "non-release job must not reference secrets",
+			mutate: func(t *testing.T, root *yaml.Node) {
+				t.Helper()
+				appendBracketSecretToFirstStep(t, jobNode(t, root, "build"), "${{ secrets['RELEASE_SIGNING_PRIVATE_KEY'] }}")
+			},
+		},
+		{
+			name: "verify double quoted bracket",
+			want: "non-release job must not reference secrets",
+			mutate: func(t *testing.T, root *yaml.Node) {
+				t.Helper()
+				appendBracketSecretToFirstStep(t, jobNode(t, root, "verify_release_source"), "${{ secrets[\"RELEASE_SIGNING_PRIVATE_KEY\"] }}")
+			},
+		},
+		{
+			name: "publish pre-signing single quoted bracket",
+			want: "publish job must not reference secrets outside its signing metadata step",
+			mutate: func(t *testing.T, root *yaml.Node) {
+				t.Helper()
+				appendBracketSecretToFirstStep(t, jobNode(t, root, "publish"), "${{secrets['RELEASE_SIGNING_PRIVATE_KEY']}}")
+			},
+		},
+		{
+			name: "signing extra double quoted bracket",
+			want: "signing-secret step must declare only its expected signing secrets",
+			mutate: func(t *testing.T, root *yaml.Node) {
+				t.Helper()
+				step := stepWithRun(t, jobNode(t, root, "publish"), "go run ./scripts/releaseassets finalize")
+				appendMappingValue(t, requireMappingValue(t, step, "env"), "UNRELATED_SECRET", scalarNode("${{secrets[\"UNRELATED_SECRET\"]}}"))
+			},
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			root := releaseWorkflowRoot(t)
+			test.mutate(t, root)
+			body, err := yaml.Marshal(root)
+			if err != nil {
+				t.Fatalf("marshal mutated workflow: %v", err)
+			}
+			err = checkWorkflow(body)
+			if err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("policy error = %v, want bracket-secret rejection %q", err, test.want)
+			}
+		})
+	}
+}
+
 func releaseWorkflowRoot(t *testing.T) *yaml.Node {
 	t.Helper()
 	body, err := os.ReadFile(filepath.Join(findRepositoryRoot(t), ".github", "workflows", "release.yml"))
@@ -604,6 +690,14 @@ func appendMappingValue(t *testing.T, mapping *yaml.Node, key string, value *yam
 		t.Fatal("append mapping value to a non-mapping node")
 	}
 	mapping.Content = append(mapping.Content, scalarNode(key), value)
+}
+
+func appendBracketSecretToFirstStep(t *testing.T, job *yaml.Node, expression string) {
+	t.Helper()
+	steps := requireMappingValue(t, job, "steps")
+	appendMappingValue(t, steps.Content[0], "env", &yaml.Node{Kind: yaml.MappingNode, Tag: "!!map", Content: []*yaml.Node{
+		scalarNode("UNEXPECTED_SECRET"), scalarNode(expression),
+	}})
 }
 
 func scalarNode(value string) *yaml.Node {

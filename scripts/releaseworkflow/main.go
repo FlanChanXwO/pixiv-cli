@@ -14,9 +14,12 @@ import (
 // actionReferencePattern 只接受远端 action 的不可变完整对象 ID，避免可移动 tag 改写发布供应链。
 var actionReferencePattern = regexp.MustCompile(`^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+@[0-9a-f]{40}$`)
 
-// GitHub 表达式允许 `${{secrets.NAME}}` 等无空格写法；解析后的 YAML scalar 仍保留表达式文本，
-// 所以按 secrets 与点号的语义匹配，不能依赖某一种排版。
-var secretReferencePattern = regexp.MustCompile(`(?i)\bsecrets\s*\.`)
+// GitHub 表达式允许 `${{secrets.NAME}}`、`${{ secrets['NAME'] }}` 等点号或 bracket 写法；
+// 解析后的 YAML scalar 仍保留表达式文本，因此任何 secrets 后接点号或左 bracket 都保守视为凭据引用。
+var secretReferencePattern = regexp.MustCompile(`(?i)\bsecrets\s*(?:\.|\[)`)
+
+// channelAssignmentPattern 捕获普通或 export 风格的 channel 赋值，防止正确值在分支前被覆盖。
+var channelAssignmentPattern = regexp.MustCompile(`\bchannel\s*=`)
 
 // releaseMatrixTargets 将 runner、Go 平台、Rust target 和 release asset 名称绑为同一集合，
 // 防止任一字段的局部改动让六平台发布遗漏或错配。
@@ -431,8 +434,17 @@ func checkReleaseChannelBinding(releaseStep *yaml.Node) error {
 	// 将 channel 判定、数组赋值和 gh release create 固定在同一 run 中，避免一个无关命令
 	// 满足表面存在性检查、而实际发布命令绕过 SemVer channel 结果。
 	lines := splitCommands(requireRunValue(releaseStep))
+	channelAssignment := "channel=$(go run ./scripts/releaseassets channel --version \"${GITHUB_REF_NAME#v}\")"
+	if countCommand(lines, channelAssignment) != 1 {
+		return errors.New("release publishing step must assign channel exactly once from releaseassets")
+	}
+	for _, command := range lines {
+		if channelAssignmentPattern.MatchString(command) && command != channelAssignment {
+			return errors.New("release publishing step must assign channel exactly once from releaseassets")
+		}
+	}
 	sequence := []string{
-		"channel=$(go run ./scripts/releaseassets channel --version \"${GITHUB_REF_NAME#v}\")",
+		channelAssignment,
 		"prerelease=()",
 		"if [ \"$channel\" = prerelease ]; then",
 		"prerelease+=(--prerelease)",
