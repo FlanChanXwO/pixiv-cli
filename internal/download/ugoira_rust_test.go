@@ -97,6 +97,29 @@ func TestLinuxRustStaticlibLinkersLinkSystemMath(t *testing.T) {
 	}
 }
 
+// TestWindowsRustStaticlibSelectorsUseCgoLibrarySearchFlags 锁住 Windows 的 cgo 参数形态：
+// `${SRCDIR}` 会展开为含驱动器号的绝对路径，直接传 `.lib` 会被 Go 的 cgo 安全校验拒绝；
+// 通过受支持的 -L/-l 传递目录与库名，才能让 Windows LLVM linker 找到 MSVC staticlib。
+func TestWindowsRustStaticlibSelectorsUseCgoLibrarySearchFlags(t *testing.T) {
+	repoRoot := filepath.Clean(filepath.Join("..", ".."))
+	for _, source := range []string{
+		"internal/download/ugoira_rust_link_windows_amd64.go",
+		"internal/download/ugoira_rust_link_windows_arm64.go",
+	} {
+		body, err := os.ReadFile(filepath.Join(repoRoot, source))
+		if err != nil {
+			t.Fatalf("read Windows cgo selector %q: %v", source, err)
+		}
+		line := string(body)
+		if !strings.Contains(line, "#cgo LDFLAGS: -L${SRCDIR}/ugoira_rs/staticlib/") || !strings.Contains(line, " -lugoira_rs") {
+			t.Fatalf("Windows cgo selector %q must use -L${SRCDIR} and -lugoira_rs:\n%s", source, body)
+		}
+		if strings.Contains(line, "/ugoira_rs.lib\n") {
+			t.Fatalf("Windows cgo selector %q must not pass ugoira_rs.lib as a direct linker input:\n%s", source, body)
+		}
+	}
+}
+
 // TestPinnedRustSourcesDisableGitTextConversion 保留 Cargo vendor 和本地 locked dependency 的精确字节；
 // Windows checkout 若把 LF 转为 CRLF，会破坏 Cargo checksum、licensebundle 或 staticlib source digest。
 func TestPinnedRustSourcesDisableGitTextConversion(t *testing.T) {

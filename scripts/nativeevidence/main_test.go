@@ -118,6 +118,20 @@ func TestCheckWorkflowRejectsNativeEvidenceSecurityAndCompletenessMutations(t *t
 			},
 		},
 		{
+			name: "windows smoke does not select clang",
+			mutate: func(t *testing.T, root *yaml.Node) {
+				run := requireMappingValue(t, requireJobSteps(t, root).Content[7], "run")
+				run.Value = strings.ReplaceAll(run.Value, "  export CC=clang\n", "")
+			},
+		},
+		{
+			name: "windows binary build does not select clang",
+			mutate: func(t *testing.T, root *yaml.Node) {
+				run := requireMappingValue(t, requireJobSteps(t, root).Content[8], "run")
+				run.Value = strings.ReplaceAll(run.Value, "  export CC=clang\n", "")
+			},
+		},
+		{
 			name: "missing evidence upload",
 			mutate: func(t *testing.T, root *yaml.Node) {
 				removeStepNamed(t, requireJobSteps(t, root), "Upload native evidence")

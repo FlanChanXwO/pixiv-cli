@@ -88,6 +88,11 @@ secret、tag/Release/tap/signing 命令；YAML AST policy 同时固定六个 run
 checkout、vendored Rust 检查、单目标 staticlib、真实 cgo GIF/APNG smoke、版本化 binary 的
 `pixiv version --json`、release-style archive 以及 artifact upload。可离线检查声明本身：
 
+Windows 两个 target 的 Rust library 使用 `*-pc-windows-msvc`；相应 cgo selector 必须以
+`-L${SRCDIR}/… -lugoira_rs` 声明库，不能把带盘符的绝对 `.lib` 路径直接传给 cgo。native evidence
+仅在 Windows 的 smoke 和版本化 binary 构建中显式设 `CC=clang`，使该 MSVC `.lib` 由 runner 已提供的
+LLVM linker 处理；这不是运行时 fallback，也不改变 darwin/linux 的 C linker 选择。
+
 ```bash
 go test ./scripts/nativeevidence -count=1
 go run ./scripts/nativeevidence policy --workflow .github/workflows/native-evidence.yml

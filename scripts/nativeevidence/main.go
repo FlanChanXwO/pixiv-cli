@@ -987,7 +987,7 @@ func checkNativeEvidenceJob(job *yaml.Node) error {
 	if err := requireDirectRunStep(steps.Content[6], "Build the native Rust static library", "bash scripts/build-staticlibs.sh --target '${{ matrix.rust_target }}'"); err != nil {
 		return err
 	}
-	if err := requireDirectRunStep(steps.Content[7], "Run native GIF/APNG smoke", "go test ./internal/download -run '^TestRustUgoiraEncoderNativeGIFAndAPNG$' -count=1"); err != nil {
+	if err := requireMultilineRunStep(steps.Content[7], "Run native GIF/APNG smoke", canonicalNativeSmokeRun); err != nil {
 		return err
 	}
 	if err := requireMultilineRunStep(steps.Content[8], "Build and run the versioned native binary", canonicalBuildBinaryRun); err != nil {
@@ -1076,7 +1076,17 @@ func requireDirectRunStep(step *yaml.Node, name, command string) error {
 	return nil
 }
 
+const canonicalNativeSmokeRun = `set -eu
+if [ '${{ matrix.goos }}' = windows ]; then
+  export CC=clang
+fi
+go test ./internal/download -run '^TestRustUgoiraEncoderNativeGIFAndAPNG$' -count=1
+`
+
 const canonicalBuildBinaryRun = `set -eu
+if [ '${{ matrix.goos }}' = windows ]; then
+  export CC=clang
+fi
 version="0.1.0-native-evidence.${GITHUB_RUN_ID}"
 go run ./scripts/releaseassets validate --version "$version"
 mkdir -p evidence

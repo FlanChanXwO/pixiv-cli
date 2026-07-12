@@ -74,11 +74,19 @@ jobs:
         run: bash scripts/build-staticlibs.sh --target '${{ matrix.rust_target }}'
       - name: Run native GIF/APNG smoke
         shell: bash
-        run: go test ./internal/download -run '^TestRustUgoiraEncoderNativeGIFAndAPNG$' -count=1
+        run: |
+          set -eu
+          if [ '${{ matrix.goos }}' = windows ]; then
+            export CC=clang
+          fi
+          go test ./internal/download -run '^TestRustUgoiraEncoderNativeGIFAndAPNG$' -count=1
       - name: Build and run the versioned native binary
         shell: bash
         run: |
           set -eu
+          if [ '${{ matrix.goos }}' = windows ]; then
+            export CC=clang
+          fi
           version="0.1.0-native-evidence.${GITHUB_RUN_ID}"
           go run ./scripts/releaseassets validate --version "$version"
           mkdir -p evidence

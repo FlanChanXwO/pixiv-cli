@@ -3,6 +3,6 @@
 package download
 
 /*
-#cgo LDFLAGS: ${SRCDIR}/ugoira_rs/staticlib/x86_64-pc-windows-msvc/ugoira_rs.lib
+#cgo LDFLAGS: -L${SRCDIR}/ugoira_rs/staticlib/x86_64-pc-windows-msvc -lugoira_rs
 */
 import "C"
