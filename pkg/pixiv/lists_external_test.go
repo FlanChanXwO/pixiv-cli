@@ -3,16 +3,327 @@ package pixiv_test
 import (
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
 
 	"github.com/FlanChanXwO/pixiv-cli/pkg/pixiv"
 )
+
+func largestSafeWebOffset(pageSize int) int {
+	maxInt := int(^uint(0) >> 1)
+	return (maxInt/pageSize)*pageSize - 1
+}
+
+func TestSearchIllustRejectsWebCursorWhoseNextPageBoundaryOverflowsBeforeNetwork(t *testing.T) {
+	t.Parallel()
+	const secret = "web-cursor-overflow-secret"
+	maxInt := int(^uint(0) >> 1)
+	var appRequests atomic.Int32
+	app := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		appRequests.Add(1)
+		switch r.URL.Query().Get("offset") {
+		case "":
+			fmt.Fprintf(w, `{"illusts":[],"next_url":"/v1/search/illust?offset=%s&proxy_password=%s"}`, strconv.Itoa(maxInt), secret)
+		case strconv.Itoa(maxInt):
+			fmt.Fprint(w, `{"illusts":[],"next_url":null}`)
+		default:
+			t.Errorf("App offset = %q", r.URL.Query().Get("offset"))
+		}
+	}))
+	defer app.Close()
+
+	authenticated, err := pixiv.NewClient(pixiv.Options{HTTPClient: app.Client(), AppAPIBaseURL: app.URL, AccessToken: "token"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, err := authenticated.SearchIllust(context.Background(), pixiv.SearchIllustRequest{Word: "miku"})
+	if err != nil || first.NextCursor == "" {
+		t.Fatalf("App cursor = %q, error = %v", first.NextCursor, err)
+	}
+	appResult, err := authenticated.SearchIllust(context.Background(), pixiv.SearchIllustRequest{Word: "miku", Cursor: first.NextCursor})
+	if err != nil || appResult == nil || appResult.NextCursor != "" || appRequests.Load() != 2 {
+		t.Fatalf("App continuation = %#v, error = %v, requests = %d", appResult, err, appRequests.Load())
+	}
+
+	var webRequests atomic.Int32
+	web := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		webRequests.Add(1)
+		fmt.Fprint(w, `{"error":false,"body":{"illustManga":{"data":[]}}}`)
+	}))
+	defer web.Close()
+	anonymous, err := pixiv.NewClient(pixiv.Options{HTTPClient: web.Client(), WebAPIBaseURL: web.URL, WebFallbackEnabled: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := anonymous.SearchIllust(context.Background(), pixiv.SearchIllustRequest{Word: "miku", Cursor: first.NextCursor})
+	if result != nil || !errors.Is(err, pixiv.ErrInvalidArgument) {
+		t.Fatalf("result = %#v, error = %v", result, err)
+	}
+	var typed *pixiv.Error
+	if !errors.As(err, &typed) || typed.Code != pixiv.CodeInvalidArgument || typed.Operation != pixiv.OperationSearchIllust || typed.Backend != "" || typed.Retryable || typed.UpstreamStatus != 0 || typed.IllustID != 0 || typed.UserID != 0 {
+		t.Fatalf("typed error = %#v", typed)
+	}
+	if webRequests.Load() != 0 {
+		t.Fatalf("Web requests = %d, want 0", webRequests.Load())
+	}
+	for _, exposed := range []string{fmt.Sprint(err), fmt.Sprint(errors.Unwrap(err))} {
+		if strings.Contains(exposed, string(first.NextCursor)) || strings.Contains(exposed, secret) || strings.Contains(exposed, "proxy_password") {
+			t.Fatalf("error leaked cursor source: %q", exposed)
+		}
+	}
+}
+
+func TestIllustRankingRejectsWebCursorWhoseNextPageBoundaryOverflowsBeforeNetwork(t *testing.T) {
+	t.Parallel()
+	maxInt := int(^uint(0) >> 1)
+	app := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprintf(w, `{"illusts":[],"next_url":"/v1/illust/ranking?offset=%s"}`, strconv.Itoa(maxInt))
+	}))
+	defer app.Close()
+	authenticated, err := pixiv.NewClient(pixiv.Options{HTTPClient: app.Client(), AppAPIBaseURL: app.URL, AccessToken: "token"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, err := authenticated.IllustRanking(context.Background(), pixiv.IllustRankingRequest{Mode: pixiv.RankingModeWeek})
+	if err != nil || first.NextCursor == "" {
+		t.Fatalf("App cursor = %q, error = %v", first.NextCursor, err)
+	}
+
+	var webRequests atomic.Int32
+	web := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		webRequests.Add(1)
+		fmt.Fprint(w, `{"rank_total":0,"contents":[]}`)
+	}))
+	defer web.Close()
+	anonymous, err := pixiv.NewClient(pixiv.Options{HTTPClient: web.Client(), WebAPIBaseURL: web.URL, WebFallbackEnabled: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := anonymous.IllustRanking(context.Background(), pixiv.IllustRankingRequest{Mode: pixiv.RankingModeWeek, Cursor: first.NextCursor})
+	if result != nil || !errors.Is(err, pixiv.ErrInvalidArgument) {
+		t.Fatalf("result = %#v, error = %v", result, err)
+	}
+	var typed *pixiv.Error
+	if !errors.As(err, &typed) || typed.Operation != pixiv.OperationIllustRanking || typed.Backend != "" || typed.Retryable || typed.UpstreamStatus != 0 || typed.IllustID != 0 || typed.UserID != 0 {
+		t.Fatalf("typed error = %#v", typed)
+	}
+	if webRequests.Load() != 0 {
+		t.Fatalf("Web requests = %d, want 0", webRequests.Load())
+	}
+}
+
+func TestSearchUserRejectsWebCursorWhoseNextPageBoundaryOverflowsWithSearchUserMetadata(t *testing.T) {
+	t.Parallel()
+	maxInt := int(^uint(0) >> 1)
+	app := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprintf(w, `{"user_previews":[],"next_url":"/v1/search/user?offset=%s"}`, strconv.Itoa(maxInt))
+	}))
+	defer app.Close()
+	authenticated, err := pixiv.NewClient(pixiv.Options{HTTPClient: app.Client(), AppAPIBaseURL: app.URL, AccessToken: "token"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, err := authenticated.SearchUser(context.Background(), pixiv.SearchUserRequest{Word: "artist"})
+	if err != nil || first.NextCursor == "" {
+		t.Fatalf("App cursor = %q, error = %v", first.NextCursor, err)
+	}
+
+	var webRequests atomic.Int32
+	web := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		webRequests.Add(1)
+		fmt.Fprint(w, `{"error":false,"body":{"illustManga":{"data":[]}}}`)
+	}))
+	defer web.Close()
+	anonymous, err := pixiv.NewClient(pixiv.Options{HTTPClient: web.Client(), WebAPIBaseURL: web.URL, WebFallbackEnabled: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := anonymous.SearchUser(context.Background(), pixiv.SearchUserRequest{Word: "artist", Cursor: first.NextCursor})
+	if result != nil || !errors.Is(err, pixiv.ErrInvalidArgument) {
+		t.Fatalf("result = %#v, error = %v", result, err)
+	}
+	var typed *pixiv.Error
+	if !errors.As(err, &typed) || typed.Operation != pixiv.OperationSearchUser || typed.Backend != "" || typed.Retryable || typed.UpstreamStatus != 0 || typed.IllustID != 0 || typed.UserID != 0 {
+		t.Fatalf("typed error = %#v", typed)
+	}
+	if webRequests.Load() != 0 {
+		t.Fatalf("Web requests = %d, want 0", webRequests.Load())
+	}
+}
+
+func TestSearchIllustLargestSafeWebCursorComparesTotalWithoutOverflow(t *testing.T) {
+	t.Parallel()
+	const pageSize = 60
+	offset := largestSafeWebOffset(pageSize)
+	app := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprintf(w, `{"illusts":[],"next_url":"/v1/search/illust?offset=%d"}`, offset)
+	}))
+	defer app.Close()
+	authenticated, err := pixiv.NewClient(pixiv.Options{HTTPClient: app.Client(), AppAPIBaseURL: app.URL, AccessToken: "token"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, err := authenticated.SearchIllust(context.Background(), pixiv.SearchIllustRequest{Word: "boundary"})
+	if err != nil || first.NextCursor == "" {
+		t.Fatalf("App cursor = %q, error = %v", first.NextCursor, err)
+	}
+
+	var webRequests atomic.Int32
+	web := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		webRequests.Add(1)
+		items := make([]map[string]any, 68)
+		for index := range items {
+			items[index] = map[string]any{"id": index + 1, "userId": index + 101}
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"error": false,
+			"body": map[string]any{"illustManga": map[string]any{
+				"total": int(^uint(0) >> 1),
+				"data":  items,
+			}},
+		})
+	}))
+	defer web.Close()
+	anonymous, err := pixiv.NewClient(pixiv.Options{HTTPClient: web.Client(), WebAPIBaseURL: web.URL, WebFallbackEnabled: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := anonymous.SearchIllust(context.Background(), pixiv.SearchIllustRequest{Word: "boundary", Cursor: first.NextCursor})
+	if err != nil || result == nil || len(result.Illusts) != 9 || result.NextCursor != "" || webRequests.Load() != 1 {
+		t.Fatalf("result = %#v, error = %v, requests = %d", result, err, webRequests.Load())
+	}
+}
+
+func TestLargestSafeWebCursorRequestsOneEmptyBatchAcrossOperations(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name     string
+		pageSize int
+		appBody  func(int) string
+		appCall  func(*pixiv.Client) (pixiv.Cursor, error)
+		webPath  string
+		webBody  string
+		webCall  func(*pixiv.Client, pixiv.Cursor) (int, pixiv.Cursor, error)
+	}{
+		{
+			name:     "search illust",
+			pageSize: 60,
+			appBody: func(offset int) string {
+				return fmt.Sprintf(`{"illusts":[],"next_url":"/v1/search/illust?offset=%d"}`, offset)
+			},
+			appCall: func(client *pixiv.Client) (pixiv.Cursor, error) {
+				result, err := client.SearchIllust(context.Background(), pixiv.SearchIllustRequest{Word: "safe"})
+				if err != nil {
+					return "", err
+				}
+				return result.NextCursor, nil
+			},
+			webPath: "/ajax/search/artworks/safe",
+			webBody: `{"error":false,"body":{"illustManga":{"data":[]}}}`,
+			webCall: func(client *pixiv.Client, cursor pixiv.Cursor) (int, pixiv.Cursor, error) {
+				result, err := client.SearchIllust(context.Background(), pixiv.SearchIllustRequest{Word: "safe", Cursor: cursor})
+				if err != nil {
+					return 0, "", err
+				}
+				return len(result.Illusts), result.NextCursor, nil
+			},
+		},
+		{
+			name:     "illust ranking",
+			pageSize: 50,
+			appBody: func(offset int) string {
+				return fmt.Sprintf(`{"illusts":[],"next_url":"/v1/illust/ranking?offset=%d"}`, offset)
+			},
+			appCall: func(client *pixiv.Client) (pixiv.Cursor, error) {
+				result, err := client.IllustRanking(context.Background(), pixiv.IllustRankingRequest{})
+				if err != nil {
+					return "", err
+				}
+				return result.NextCursor, nil
+			},
+			webPath: "/ranking.php",
+			webBody: `{"rank_total":0,"contents":[]}`,
+			webCall: func(client *pixiv.Client, cursor pixiv.Cursor) (int, pixiv.Cursor, error) {
+				result, err := client.IllustRanking(context.Background(), pixiv.IllustRankingRequest{Cursor: cursor})
+				if err != nil {
+					return 0, "", err
+				}
+				return len(result.Illusts), result.NextCursor, nil
+			},
+		},
+		{
+			name:     "search user",
+			pageSize: 60,
+			appBody: func(offset int) string {
+				return fmt.Sprintf(`{"user_previews":[],"next_url":"/v1/search/user?offset=%d"}`, offset)
+			},
+			appCall: func(client *pixiv.Client) (pixiv.Cursor, error) {
+				result, err := client.SearchUser(context.Background(), pixiv.SearchUserRequest{Word: "safe"})
+				if err != nil {
+					return "", err
+				}
+				return result.NextCursor, nil
+			},
+			webPath: "/ajax/search/artworks/safe",
+			webBody: `{"error":false,"body":{"illustManga":{"data":[]}}}`,
+			webCall: func(client *pixiv.Client, cursor pixiv.Cursor) (int, pixiv.Cursor, error) {
+				result, err := client.SearchUser(context.Background(), pixiv.SearchUserRequest{Word: "safe", Cursor: cursor})
+				if err != nil {
+					return 0, "", err
+				}
+				return len(result.UserPreviews), result.NextCursor, nil
+			},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			offset := largestSafeWebOffset(test.pageSize)
+			app := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				fmt.Fprint(w, test.appBody(offset))
+			}))
+			defer app.Close()
+			authenticated, err := pixiv.NewClient(pixiv.Options{HTTPClient: app.Client(), AppAPIBaseURL: app.URL, AccessToken: "token"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			cursor, err := test.appCall(authenticated)
+			if err != nil || cursor == "" {
+				t.Fatalf("App cursor = %q, error = %v", cursor, err)
+			}
+
+			var webRequests atomic.Int32
+			web := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				webRequests.Add(1)
+				if r.URL.Path != test.webPath {
+					t.Errorf("Web path = %q, want %q", r.URL.Path, test.webPath)
+				}
+				if r.URL.Query().Get("p") != strconv.Itoa(offset/test.pageSize+1) {
+					t.Errorf("Web page = %q", r.URL.Query().Get("p"))
+				}
+				if r.Header.Get("Authorization") != "" || r.Header.Get("Cookie") != "" {
+					t.Errorf("Web request carried SDK credentials")
+				}
+				fmt.Fprint(w, test.webBody)
+			}))
+			defer web.Close()
+			anonymous, err := pixiv.NewClient(pixiv.Options{HTTPClient: web.Client(), WebAPIBaseURL: web.URL, WebFallbackEnabled: true})
+			if err != nil {
+				t.Fatal(err)
+			}
+			count, next, err := test.webCall(anonymous, cursor)
+			if err != nil || count != 0 || next != "" || webRequests.Load() != 1 {
+				t.Fatalf("count = %d, next = %q, error = %v, requests = %d", count, next, err, webRequests.Load())
+			}
+		})
+	}
+}
 
 func TestSearchIllustAppCursorContinuesAndEndsWithoutSecrets(t *testing.T) {
 	t.Parallel()

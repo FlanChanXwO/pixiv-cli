@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/model"
+	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/webapi"
 )
 
 type searchIllustQuery struct {
@@ -340,6 +341,9 @@ func mapAppOperationError(err error, operation Operation, userID int64) error {
 }
 
 func mapWebListError(err error, operation Operation, userID int64) error {
+	if errors.Is(err, webapi.ErrUnrepresentablePagination) {
+		return invalidArgument(operation, userID, errors.New("cursor offset cannot be represented by web pagination"))
+	}
 	mapped := mapWebError(err, operation, 0)
 	if typed, ok := mapped.(*Error); ok {
 		typed.UserID = userID

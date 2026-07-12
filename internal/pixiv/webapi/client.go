@@ -26,6 +26,9 @@ const (
 // ErrMalformedResponse 标识成功 HTTP 响应无法构成约定 JSON，不包含原始响应体。
 var ErrMalformedResponse = errors.New("web api returned a malformed response")
 
+// ErrUnrepresentablePagination 标识 cursor offset 无法安全换算为 Web 页码和下一页边界。
+var ErrUnrepresentablePagination = errors.New("web api pagination cannot represent cursor offset")
+
 // EnvelopeError 表示 Web ajax envelope 主动报告失败。
 type EnvelopeError struct {
 	Message string
@@ -83,11 +86,15 @@ func New(opts ...Option) *Client {
 }
 
 func (c *Client) SearchIllust(ctx context.Context, word, target, sort, duration string, offset int) (*model.IllustList, error) {
+	pagination, err := checkedWebPagination(offset, 60)
+	if err != nil {
+		return nil, err
+	}
 	q := url.Values{
 		"word":   {word},
 		"order":  {webSearchOrder(sort)},
 		"mode":   {"all"},
-		"p":      {strconv.Itoa(webPageFromOffset(offset, 60))},
+		"p":      {strconv.Itoa(pagination.page)},
 		"s_mode": {webSearchMode(target)},
 		"type":   {"all"},
 		"lang":   {"zh"},
@@ -123,7 +130,7 @@ func (c *Client) SearchIllust(ctx context.Context, word, target, sort, duration 
 	}
 	result := &model.IllustList{Illusts: illusts}
 	if webHasNext(offset, rawCount, int(group.Total), 60) {
-		result.NextOffset = nextWebPageOffset(offset, 60)
+		result.NextOffset = pagination.nextOffset
 		result.ContinuationExists = true
 	}
 	return result, nil
@@ -173,10 +180,14 @@ func (c *Client) IllustPages(ctx context.Context, id int64) ([]model.MetaPage, e
 }
 
 func (c *Client) IllustRanking(ctx context.Context, mode, date string, offset int) (*model.IllustList, error) {
+	pagination, err := checkedWebPagination(offset, 50)
+	if err != nil {
+		return nil, err
+	}
 	q := url.Values{
 		"format": {"json"},
 		"mode":   {webRankingMode(mode)},
-		"p":      {strconv.Itoa(webPageFromOffset(offset, 50))},
+		"p":      {strconv.Itoa(pagination.page)},
 	}
 	if date != "" {
 		q.Set("date", strings.ReplaceAll(date, "-", ""))
@@ -201,7 +212,7 @@ func (c *Client) IllustRanking(ctx context.Context, mode, date string, offset in
 	}
 	result := &model.IllustList{Illusts: illusts}
 	if webHasNext(offset, rawCount, int(out.RankTotal), 50) {
-		result.NextOffset = nextWebPageOffset(offset, 50)
+		result.NextOffset = pagination.nextOffset
 		result.ContinuationExists = true
 	}
 	return result, nil
@@ -320,12 +331,26 @@ func webEnvelopeError(message string) error {
 	return EnvelopeError{Message: message}
 }
 
-func webPageFromOffset(offset, pageSize int) int {
-	if offset <= 0 {
-		return 1
+type webPagination struct {
+	page       int
+	nextOffset int
+}
+
+func checkedWebPagination(offset, pageSize int) (webPagination, error) {
+	if offset < 0 || pageSize <= 0 {
+		return webPagination{}, ErrUnrepresentablePagination
 	}
-	// Pixiv web ranking/search 使用页码而非 app API offset；按其固定页容量映射到对应页。
-	return offset/pageSize + 1
+	quotient := offset / pageSize
+	maxInt := int(^uint(0) >> 1)
+	if quotient == maxInt {
+		return webPagination{}, ErrUnrepresentablePagination
+	}
+	page := quotient + 1
+	if page > maxInt/pageSize {
+		return webPagination{}, ErrUnrepresentablePagination
+	}
+	// Pixiv Web 使用固定批次页码；同时预检下一页边界，避免响应后产生负 cursor。
+	return webPagination{page: page, nextOffset: page * pageSize}, nil
 }
 
 func trimWebPageOffset[T any](items []T, offset, pageSize int) []T {
@@ -339,17 +364,17 @@ func trimWebPageOffset[T any](items []T, offset, pageSize int) []T {
 	return items[skip:]
 }
 
-func nextWebPageOffset(offset, pageSize int) int {
-	return (offset/pageSize + 1) * pageSize
-}
-
 func webHasNext(offset, rawCount, total, pageSize int) bool {
 	if rawCount == 0 {
 		return false
 	}
 	if total > 0 {
 		pageStart := offset - offset%pageSize
-		return pageStart+rawCount < total
+		if pageStart >= total {
+			return false
+		}
+		// 用减法表达 pageStart+rawCount<total，避免靠近 MaxInt 时加法回绕。
+		return rawCount < total-pageStart
 	}
 	// 无 total 时，只在完整上游批次后继续；下一空批次会自然收敛。
 	return rawCount >= pageSize

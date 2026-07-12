@@ -3,6 +3,7 @@ package webapi
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -11,6 +12,28 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func TestCheckedWebPaginationUsesMachineArithmeticBoundaries(t *testing.T) {
+	maxInt := int(^uint(0) >> 1)
+	for _, pageSize := range []int{60, 50} {
+		t.Run(fmt.Sprintf("page size %d", pageSize), func(t *testing.T) {
+			largestSafe := (maxInt/pageSize)*pageSize - 1
+			pagination, err := checkedWebPagination(largestSafe, pageSize)
+			require.NoError(t, err)
+			assert.Equal(t, largestSafe/pageSize+1, pagination.page)
+			assert.Equal(t, (maxInt/pageSize)*pageSize, pagination.nextOffset)
+			assert.Greater(t, pagination.nextOffset, largestSafe)
+
+			_, err = checkedWebPagination(largestSafe+1, pageSize)
+			assert.True(t, errors.Is(err, ErrUnrepresentablePagination), "error = %v", err)
+
+			pageStart := largestSafe - largestSafe%pageSize
+			remaining := maxInt - pageStart
+			assert.True(t, webHasNext(largestSafe, remaining-1, maxInt, pageSize))
+			assert.False(t, webHasNext(largestSafe, remaining, maxInt, pageSize))
+		})
+	}
+}
 
 func TestWebContinuationUsesPageStartForInPageOffsets(t *testing.T) {
 	tests := []struct {
