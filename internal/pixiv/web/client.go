@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"path"
 	"strconv"
 	"strings"
 	"time"
@@ -106,7 +107,7 @@ func (c *Client) IllustDetail(ctx context.Context, id int64) (*model.IllustDetai
 	return &model.IllustDetail{Illust: illust}, nil
 }
 
-func (c *Client) IllustPages(ctx context.Context, id int64) ([]webPage, error) {
+func (c *Client) IllustPages(ctx context.Context, id int64) ([]model.MetaPage, error) {
 	var out ajaxEnvelope[[]webPage]
 	if err := c.getJSON(ctx, fmt.Sprintf("/ajax/illust/%d/pages", id), url.Values{"lang": {"zh"}}, &out); err != nil {
 		return nil, err
@@ -114,7 +115,17 @@ func (c *Client) IllustPages(ctx context.Context, id int64) ([]webPage, error) {
 	if out.Error {
 		return nil, webEnvelopeError(out.Message)
 	}
-	return out.Body, nil
+	pages := make([]model.MetaPage, 0, len(out.Body))
+	for index, page := range out.Body {
+		pages = append(pages, model.MetaPage{
+			PageIndex: index,
+			Width:     int(page.Width),
+			Height:    int(page.Height),
+			Extension: imageExtension(page.URLs.Original),
+			ImageURLs: mapPageURLs(page.URLs),
+		})
+	}
+	return pages, nil
 }
 
 func (c *Client) IllustRanking(ctx context.Context, mode, date string, offset int) (*model.IllustList, error) {
@@ -375,13 +386,9 @@ func mapSearchIllust(item webSearchIllust) model.Illust {
 	}
 }
 
-func mapDetailIllust(item webIllustDetail, pages []webPage) model.Illust {
+func mapDetailIllust(item webIllustDetail, metaPages []model.MetaPage) model.Illust {
 	tags := mapDetailTags(item.Tags.Tags)
 	imageURLs := mapDetailURLs(item.URLs)
-	metaPages := make([]model.MetaPage, 0, len(pages))
-	for _, page := range pages {
-		metaPages = append(metaPages, model.MetaPage{ImageURLs: mapPageURLs(page.URLs)})
-	}
 	if len(metaPages) > 0 {
 		imageURLs = firstImageURLs(imageURLs, metaPages[0].ImageURLs)
 	}
@@ -410,6 +417,14 @@ func mapDetailIllust(item webIllustDetail, pages []webPage) model.Illust {
 		illust.MetaSinglePage.OriginalImageURL = metaPages[0].ImageURLs.Original
 	}
 	return illust
+}
+
+func imageExtension(rawURL string) string {
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		return ""
+	}
+	return strings.TrimPrefix(path.Ext(parsed.Path), ".")
 }
 
 func mapRankingIllust(item webRankingItem) model.Illust {

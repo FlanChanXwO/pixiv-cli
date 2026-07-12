@@ -85,3 +85,18 @@ func TestUserDetailFetchesUserName(t *testing.T) {
 		t.Fatalf("unexpected user: %+v", user)
 	}
 }
+
+func TestWithAccessTokenSendsBearerAuthorization(t *testing.T) {
+	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.Header.Get("Authorization"); got != "Bearer direct-access" {
+			t.Fatalf("Authorization = %q, want bearer access token", got)
+		}
+		_ = json.NewEncoder(w).Encode(IllustDetail{Illust: Illust{ID: 42}})
+	}))
+	defer api.Close()
+
+	client := New("", WithBaseURLs(api.URL, api.URL), WithAccessToken("direct-access"))
+	if _, err := client.IllustDetail(context.Background(), 42); err != nil {
+		t.Fatalf("IllustDetail returned error: %v", err)
+	}
+}

@@ -1,13 +1,11 @@
-package model
+package pixiv
 
-type IllustList struct {
-	Illusts []Illust `json:"illusts"`
-}
-
+// IllustDetail 是作品详情响应；保留 Pixiv App API 的 illust envelope。
 type IllustDetail struct {
 	Illust Illust `json:"illust"`
 }
 
+// Illust 是供调用方稳定使用的规范化作品模型。
 type Illust struct {
 	ID             int64      `json:"id"`
 	Title          string     `json:"title"`
@@ -27,6 +25,7 @@ type Illust struct {
 	Height         int        `json:"height"`
 }
 
+// User 是作品作者的规范化摘要。
 type User struct {
 	ID         int64  `json:"id"`
 	Name       string `json:"name"`
@@ -35,11 +34,13 @@ type User struct {
 	IsFollowed bool   `json:"is_followed"`
 }
 
+// Tag 是作品标签及其翻译。
 type Tag struct {
 	Name           string `json:"name"`
 	TranslatedName string `json:"translated_name"`
 }
 
+// ImageURLs 汇集同一页面的标准图片尺寸 URL。
 type ImageURLs struct {
 	SquareMedium string `json:"square_medium"`
 	Medium       string `json:"medium"`
@@ -47,48 +48,16 @@ type ImageURLs struct {
 	Original     string `json:"original"`
 }
 
+// SinglePage 保留 App API 单页作品的原图字段。
 type SinglePage struct {
 	OriginalImageURL string `json:"original_image_url"`
 }
 
+// MetaPage 是按作品顺序规范化的完整页面元数据。
 type MetaPage struct {
 	PageIndex int       `json:"page_index"`
 	Width     int       `json:"width"`
 	Height    int       `json:"height"`
 	Extension string    `json:"extension"`
 	ImageURLs ImageURLs `json:"image_urls"`
-}
-
-type UserPreviewList struct {
-	UserPreviews []UserPreview `json:"user_previews"`
-}
-
-type UserPreview struct {
-	User User `json:"user"`
-}
-
-type TrendTags struct {
-	TrendTags []TrendTag `json:"trend_tags"`
-}
-
-type TrendTag struct {
-	Tag            string `json:"tag"`
-	TranslatedName string `json:"translated_name"`
-	Illust         Illust `json:"illust"`
-}
-
-type UgoiraMetadataResult struct {
-	UgoiraMetadata UgoiraMetadata `json:"ugoira_metadata"`
-}
-
-type UgoiraMetadata struct {
-	ZipURLs struct {
-		Medium string `json:"medium"`
-	} `json:"zip_urls"`
-	Frames []UgoiraFrame `json:"frames"`
-}
-
-type UgoiraFrame struct {
-	File  string `json:"file"`
-	Delay int    `json:"delay"`
 }

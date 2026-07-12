@@ -85,6 +85,28 @@ func TestClientIllustDetailMapsDetailAndPages(t *testing.T) {
 	assert.Equal(t, "Hatsune Miku", illust.Tags[0].TranslatedName)
 }
 
+func TestClientIllustPagesMapsDimensionsIndexAndQuerySafeExtension(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, "/ajax/illust/123/pages", r.URL.Path)
+		fmt.Fprint(w, `{"error":false,"message":"","body":[{"width":1200,"height":1600,"urls":{"original":"https://i.pximg.net/o0.png?token=a.jpg#fragment"}},{"width":2400,"height":1800,"urls":{"original":"https://i.pximg.net/o1.jpeg"}}]}`)
+	}))
+	defer server.Close()
+
+	client := New(WithHTTPClient(server.Client()), WithWebBase(server.URL))
+	pages, err := client.IllustPages(context.Background(), 123)
+
+	require.NoError(t, err)
+	require.Len(t, pages, 2)
+	assert.Equal(t, 0, pages[0].PageIndex)
+	assert.Equal(t, 1200, pages[0].Width)
+	assert.Equal(t, 1600, pages[0].Height)
+	assert.Equal(t, "png", pages[0].Extension)
+	assert.Equal(t, 1, pages[1].PageIndex)
+	assert.Equal(t, 2400, pages[1].Width)
+	assert.Equal(t, 1800, pages[1].Height)
+	assert.Equal(t, "jpeg", pages[1].Extension)
+}
+
 func TestClientRankingMapsRankingContents(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		require.Equal(t, "/ranking.php", r.URL.Path)

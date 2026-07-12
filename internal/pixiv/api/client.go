@@ -61,6 +61,13 @@ func WithBaseURLs(apiBase, oauthBase string) Option {
 	}
 }
 
+// WithAccessToken 注入已取得的 access token，供无需刷新流程的 SDK 调用复用 App API。
+func WithAccessToken(token string) Option {
+	return func(c *Client) {
+		c.accessToken = strings.TrimSpace(token)
+	}
+}
+
 func New(refreshToken string, opts ...Option) *Client {
 	refreshToken, _ = utils.ParsePixivWebRefreshTokenInput(refreshToken)
 	c := &Client{
