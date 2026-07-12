@@ -76,6 +76,56 @@ sh scripts/test-rust-vendor.sh
 六个 release target 的 `go run ./scripts/licensebundle --check`。因此 registry cache、网络 fallback、
 缺失 vendor 内容或无效 checksum 都会明确失败，不能把 runner 的预热缓存当作离线可复现性证据。
 
+### Native runner evidence 与 Task 13 受控回填
+
+`.github/workflows/native-evidence.yml` 是独立的、非发布的 runner 入口：只允许审计后的 `main`
+push 或指向 `refs/heads/main` 的 `workflow_dispatch`，全局 `permissions: {}`、job 仅 `contents: read`。它没有 `environment`、
+secret、tag/Release/tap/signing 命令；YAML AST policy 同时固定六个 runner、full-SHA action、无凭据
+checkout、vendored Rust 检查、单目标 staticlib、真实 cgo GIF/APNG smoke、版本化 binary 的
+`pixiv version --json`、release-style archive 以及 artifact upload。可离线检查声明本身：
+
+```bash
+go test ./scripts/nativeevidence -count=1
+go run ./scripts/nativeevidence policy --workflow .github/workflows/native-evidence.yml
+```
+
+每个 runner artifact 只有 `evidence/`：实际链接的 staticlib、版本化 binary、archive 及
+`native-evidence.json`。record 会重算 Rust source digest 和三份 SHA-256，执行 binary 的
+`version --json`，并逐一检查 archive 的 binary、`LICENSE`、`THIRD_PARTY_LICENSES.md` 与完整
+`third_party/licenses` 常规文件树。它不持有 release/tap/signing credential，也不会创建 tag 或
+Release。
+
+**本地 unit fixture、policy 成功或 workflow 文件存在都不是 native runner evidence。** 在 Task 20 对
+审计过的 `main` 只进行一次受控 push 之前，不得把它们当作六目标 staticlib 或发布资格。
+
+Task 20 的 main push 成功后，Task 13 只能按以下过程回填可提交的 blobs：
+
+1. 记录该 push 的精确 main SHA；在 GitHub 检查 `native-evidence` 的 `push/main` run 成功且 head SHA
+   完全相同，再下载**恰好**六个 `native-evidence-{darwin,linux,windows}-{amd64,arm64}` artifact。不得
+   使用 tag、Release、手动 fixture 或不同 SHA 的 dispatch run。
+2. 在干净、非 symlink 的审计目录解压 artifact，保留每个平台的 `native-evidence.json`、staticlib、
+   binary 和 archive；人工确认 run URL、matrix target、source SHA 与六个 artifact 名称。运行：
+
+   ```bash
+   go run ./scripts/nativeevidence consolidate \
+     --input-dir .native-evidence-download \
+     --output-dir .native-evidence-backfill/staticlib
+   ```
+
+   该命令只接受完整六目标、同一 source digest 的记录；重新核验 staticlib/binary/archive SHA 与
+   archive member hash，生成精确六条 `manifest.json`。任何缺 target、重复/错配 target、metadata、
+   archive member、哈希或 symlink 都会在写入前阻断；输出必须是不存在的新目录，因此不会覆盖或发布
+   部分结果。
+3. 人工复核 `.native-evidence-backfill/staticlib` 与六份 record 的 target、source digest、SHA-256 和
+   archive members，确认 artifact 均来自上述 main run。通过后才把该目录中六个 target library 与
+   `manifest.json` 明确回填到 `internal/download/ugoira_rs/staticlib/`；逐文件复核哈希，随后审查
+   `git diff`，不得复用或改名 host library。
+4. 在回填后的工作树运行
+   `go test ./internal/download -run '^TestCommittedUgoiraStaticlibManifestWhenPresent$' -count=1`、
+   `go test ./internal/download -run '^TestRustUgoiraEncoderNativeGIFAndAPNG$' -count=1` 与
+   `git diff --check`，再把六个 blobs、manifest、对应 evidence/review 摘要和更新后的 knowledge graph
+   作为 Task 13 的独立审查提交。任一验证失败都阻断 release，不能以部分 artifact 继续。
+
 ## 运行
 
 构建：
@@ -165,6 +215,8 @@ PIXIV_E2E_WEB_API=1 PIXIV_WEB_API_PROXY=http://127.0.0.1:7890 go test ./test/e2e
 sh scripts/test-build-staticlibs.sh
 sh scripts/test-package-release.sh
 sh scripts/test-release-workflow.sh
+go test ./scripts/nativeevidence -count=1
+go run ./scripts/nativeevidence policy --workflow .github/workflows/native-evidence.yml
 sh scripts/test-homebrew-formula.sh
 git diff --check
 ```
@@ -204,8 +256,9 @@ tag 误变为 prerelease。
 也不替代 Task 20 的真实 Environment、secret 和 tag protection 配置。
 
 正式发布目前必须被以下条件阻断：完整 six-target staticlib/manifest 与真实 native artifact 证据
-尚待 Task 33，并且还未创建受保护的 `release` Environment、生产 signing key、公开仓库或 tag。
-不得以本地 fixture 成功、仅有 host library 或 workflow 文件存在来创建 Release/tap。
+尚待 Task 20 的实际 main runner 收集与 Task 13 回填，并且还未创建受保护的 `release` Environment、
+生产 signing key、公开仓库或 tag。不得以本地 fixture 成功、仅有 host library 或 workflow 文件存在
+来创建 Release/tap。
 
 生产 Ed25519 信任根的规则如下，当前仅是发布前边界而非已完成部署：
 

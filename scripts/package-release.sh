@@ -2,6 +2,11 @@
 # 将已构建的单个 pixiv binary 与完整许可证集合封装为 release archive。
 set -eu
 
+# macOS 的 cp 会把二进制的扩展属性转成 AppleDouble `._*` 文件；这些文件既不属于
+# release contract，也会让 runner evidence 的 archive member 清单与许可证树失配。
+# 关闭 copyfile metadata，确保 tar/zip 只包含显式列出的常规文件。
+export COPYFILE_DISABLE=1
+
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 binary=
 output=

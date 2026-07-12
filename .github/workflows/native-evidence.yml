@@ -1,0 +1,142 @@
+name: Native staticlib evidence
+
+# 这个入口绝不发布、签名、推送或创建 tag。Task 20 将唯一一次经审计的 main push
+# 触发六个平台 runner；手动 dispatch 只限同一受审计 main workflow 使用。
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch: {}
+
+permissions: {}
+
+jobs:
+  native_evidence:
+    name: Native evidence ${{ matrix.goos }}/${{ matrix.goarch }}
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15-intel
+            goos: darwin
+            goarch: amd64
+            rust_target: x86_64-apple-darwin
+            artifact: darwin-amd64
+          - runner: macos-15
+            goos: darwin
+            goarch: arm64
+            rust_target: aarch64-apple-darwin
+            artifact: darwin-arm64
+          - runner: ubuntu-24.04
+            goos: linux
+            goarch: amd64
+            rust_target: x86_64-unknown-linux-gnu
+            artifact: linux-amd64
+          - runner: ubuntu-24.04-arm
+            goos: linux
+            goarch: arm64
+            rust_target: aarch64-unknown-linux-gnu
+            artifact: linux-arm64
+          - runner: windows-2025
+            goos: windows
+            goarch: amd64
+            rust_target: x86_64-pc-windows-msvc
+            artifact: windows-amd64
+          - runner: windows-11-arm
+            goos: windows
+            goarch: arm64
+            rust_target: aarch64-pc-windows-msvc
+            artifact: windows-arm64
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+        with:
+          go-version: '1.26.3'
+      - name: Check native evidence workflow policy
+        shell: bash
+        run: go run ./scripts/nativeevidence policy --workflow .github/workflows/native-evidence.yml
+      - name: Require audited main ref
+        shell: bash
+        run: test "$GITHUB_REF" = 'refs/heads/main'
+      - name: Install the native Rust target
+        shell: bash
+        run: rustup target add '${{ matrix.rust_target }}'
+      - name: Check vendored Rust sources
+        shell: bash
+        run: sh scripts/test-rust-vendor.sh
+      - name: Build the native Rust static library
+        shell: bash
+        run: bash scripts/build-staticlibs.sh --target '${{ matrix.rust_target }}'
+      - name: Run native GIF/APNG smoke
+        shell: bash
+        run: go test ./internal/download -run '^TestRustUgoiraEncoderNativeGIFAndAPNG$' -count=1
+      - name: Build and run the versioned native binary
+        shell: bash
+        run: |
+          set -eu
+          version="0.1.0-native-evidence.${GITHUB_RUN_ID}"
+          go run ./scripts/releaseassets validate --version "$version"
+          mkdir -p evidence
+          binary='evidence/pixiv'
+          if [ '${{ matrix.goos }}' = windows ]; then
+            binary='evidence/pixiv.exe'
+          fi
+          go build -trimpath -buildvcs=false \
+            -ldflags "-X github.com/FlanChanXwO/pixiv-cli/internal/buildinfo.Version=v${version} -X github.com/FlanChanXwO/pixiv-cli/internal/buildinfo.Commit=${GITHUB_SHA} -X github.com/FlanChanXwO/pixiv-cli/internal/buildinfo.BuildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            -o "$binary" ./cmd/pixiv
+          "$binary" version --json
+      - name: Package the versioned native binary
+        shell: bash
+        run: |
+          set -eu
+          version="0.1.0-native-evidence.${GITHUB_RUN_ID}"
+          binary='evidence/pixiv'
+          if [ '${{ matrix.goos }}' = windows ]; then
+            binary='evidence/pixiv.exe'
+          fi
+          go run ./scripts/releaseassets package \
+            --repo-root . \
+            --version "$version" \
+            --target '${{ matrix.goos }}/${{ matrix.goarch }}' \
+            --binary "$binary" \
+            --output-dir evidence
+      - name: Record staticlib, binary and archive evidence
+        shell: bash
+        run: |
+          set -eu
+          version="0.1.0-native-evidence.${GITHUB_RUN_ID}"
+          staticlib='libugoira_rs.a'
+          if [ '${{ matrix.goos }}' = windows ]; then
+            staticlib='ugoira_rs.lib'
+          fi
+          cp "internal/download/ugoira_rs/staticlib/${{ matrix.rust_target }}/$staticlib" "evidence/$staticlib"
+          archive="evidence/pixiv-cli_${version}_${{ matrix.goos }}_${{ matrix.goarch }}"
+          if [ '${{ matrix.goos }}' = windows ]; then
+            archive="$archive.zip"
+          else
+            archive="$archive.tar.gz"
+          fi
+          binary='evidence/pixiv'
+          if [ '${{ matrix.goos }}' = windows ]; then
+            binary='evidence/pixiv.exe'
+          fi
+          go run ./scripts/nativeevidence record \
+            --repo-root . \
+            --version "$version" \
+            --target '${{ matrix.goos }}/${{ matrix.goarch }}' \
+            --rust-target '${{ matrix.rust_target }}' \
+            --staticlib "evidence/$staticlib" \
+            --binary "$binary" \
+            --archive "$archive" \
+            --output evidence/native-evidence.json
+      - name: Upload native evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: native-evidence-${{ matrix.artifact }}
+          path: evidence
+          if-no-files-found: error

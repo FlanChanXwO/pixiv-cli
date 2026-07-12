@@ -28,6 +28,9 @@
 
 ### Security
 
+- 新增独立、无 secret/发布副作用的 six-target native evidence workflow 与本地 AST policy；每个
+  runner 会记录实际 staticlib、版本化 binary、完整许可证 archive 与 source/hash evidence。未收集到
+  经审计 main SHA 的六份真实 artifact 时，release 继续被阻断。
 - Release workflow 现由可解析的 YAML policy 检查所有 action 的 full-SHA pin、最小权限、精确
   trigger/runner matrix；默认分支 trust gate 在独立、无 Environment/secret 的 job 完成后，publish
   才能访问精确的 signing secret。policy 同时拒绝被软失败或条件跳过的质量门禁，并把 SemVer channel
