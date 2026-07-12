@@ -218,7 +218,118 @@ jobs:
             --output-dir dist
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: release-${{ matrix.artifact }}
+          # 该 artifact 只用于 test gate，不得成为签名或发布输入。
+          name: test-gate-${{ matrix.artifact }}
+          path: dist/pixiv-cli_*
+          if-no-files-found: error
+          retention-days: 1
+
+  # recovery overlay 仅存在于 build test gate。生产资产必须在新的 runner 上从不可变 tag 重建，
+  # 使测试进程对 GITHUB_ENV、PATH 或 runner 临时目录的副作用无法跨 job 影响 Release。
+  build_production:
+    name: Build production ${{ matrix.goos }}/${{ matrix.goarch }}
+    needs: build
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+    env:
+      CC: ${{ matrix.cc }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15-intel
+            goos: darwin
+            goarch: amd64
+            rust_target: x86_64-apple-darwin
+            artifact: darwin-amd64
+            cc: clang
+          - runner: macos-15
+            goos: darwin
+            goarch: arm64
+            rust_target: aarch64-apple-darwin
+            artifact: darwin-arm64
+            cc: clang
+          - runner: ubuntu-24.04
+            goos: linux
+            goarch: amd64
+            rust_target: x86_64-unknown-linux-gnu
+            artifact: linux-amd64
+            cc: gcc
+          - runner: ubuntu-24.04-arm
+            goos: linux
+            goarch: arm64
+            rust_target: aarch64-unknown-linux-gnu
+            artifact: linux-arm64
+            cc: gcc
+          - runner: windows-2025
+            goos: windows
+            goarch: amd64
+            rust_target: x86_64-pc-windows-msvc
+            artifact: windows-amd64
+            cc: clang -fuse-ld=lld
+          - runner: windows-11-arm
+            goos: windows
+            goarch: arm64
+            rust_target: aarch64-pc-windows-msvc
+            artifact: windows-arm64
+            cc: clang -fuse-ld=lld
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          clean: true
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ env.RELEASE_TAG }}
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+        with:
+          go-version: '1.26.3'
+          cache: false
+      - name: Validate the exact immutable production source
+        shell: bash
+        run: go run ./scripts/releaseassets validate --version "${RELEASE_TAG#v}"
+      - name: Install the native Rust target
+        shell: bash
+        run: rustup target add '${{ matrix.rust_target }}'
+      - name: Rebuild the selected static library from the immutable tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$(git rev-parse "$RELEASE_TAG^{commit}")"
+          test -z "$(git status --porcelain --untracked-files=all)"
+          test -z "$(git clean -ndx)"
+          bash scripts/build-staticlibs.sh --target '${{ matrix.rust_target }}'
+          git restore --source="$RELEASE_TAG^{commit}" -- internal/download/ugoira_rs/staticlib/manifest.json
+          git diff --exit-code
+          test -z "$(git status --porcelain --untracked-files=all)"
+          test -z "$(git clean -ndx)"
+      - name: Check the generated diff
+        shell: bash
+        run: git diff --check
+      - name: Build the versioned native executable
+        shell: bash
+        run: |
+          set -eu
+          mkdir -p dist
+          output='dist/pixiv'
+          if [ '${{ matrix.goos }}' = windows ]; then
+            output='dist/pixiv.exe'
+          fi
+          go build -trimpath -buildvcs=false \
+            -ldflags "-X github.com/FlanChanXwO/pixiv-cli/internal/buildinfo.Version=${RELEASE_TAG} -X github.com/FlanChanXwO/pixiv-cli/internal/buildinfo.Commit=$(git rev-parse HEAD) -X github.com/FlanChanXwO/pixiv-cli/internal/buildinfo.BuildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            -o "$output" ./cmd/pixiv
+      - name: Package the fixed-name platform asset
+        shell: bash
+        run: |
+          go run ./scripts/releaseassets package \
+            --repo-root . \
+            --version "${RELEASE_TAG#v}" \
+            --target '${{ matrix.goos }}/${{ matrix.goarch }}' \
+            --binary "dist/pixiv${{ matrix.goos == 'windows' && '.exe' || '' }}" \
+            --output-dir dist
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: verified-release-${{ matrix.artifact }}
           path: dist/pixiv-cli_*
           if-no-files-found: error
           retention-days: 1
@@ -227,7 +338,7 @@ jobs:
   # release Environment 的 secret 在 ancestry shell gate 之前进入同一 job 生命周期。
   verify_release_source:
     name: Verify release source trust
-    needs: build
+    needs: build_production
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -265,9 +376,28 @@ jobs:
           go-version: '1.26.3'
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
-          pattern: release-*
+          name: verified-release-darwin-amd64
           path: dist
-          merge-multiple: true
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: verified-release-darwin-arm64
+          path: dist
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: verified-release-linux-amd64
+          path: dist
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: verified-release-linux-arm64
+          path: dist
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: verified-release-windows-amd64
+          path: dist
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: verified-release-windows-arm64
+          path: dist
       - name: Create the signed release metadata
         shell: bash
         env:

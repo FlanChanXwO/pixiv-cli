@@ -14,8 +14,9 @@
   LLD-backed Clang。
 - 修复登录测试夹具对回调 URL 列表的并发读写，并隔离不应访问真实 macOS URL handler/AppleScript
   的场景，避免 race detector 报错或冷 runner 因系统 helper 副作用耗尽显式测试等待窗口。
-- 新增不可变 tag 首次发布在创建 Release 前失败时的受审计恢复入口；恢复仍绑定原 tag，测试后以
-  clean checkout 重建生产工作树和 staticlib，禁止默认分支测试 overlay 混入 binary、许可证或归档。
+- 新增不可变 tag 首次发布在创建 Release 前失败时的受审计恢复入口；恢复仍绑定原 tag，测试门禁与
+  生产资产使用独立 runner，后者以 clean checkout 重建工作树和 staticlib，禁止默认分支测试 overlay
+  或其进程环境混入 binary、许可证或归档。
 
 ## [0.1.0] - 2026-07-13
 

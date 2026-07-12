@@ -272,14 +272,15 @@ GitHub Release。workflow 使用 full-SHA Actions、最小权限及 `release` En
 
 若不可变 tag 的首次 run 在创建 GitHub Release 前失败，维护者只能从默认分支通过
 `workflow_dispatch` 提交同一个 `release_tag` 进行恢复。validate 会校验该 tag 为 SemVer、存在、
-已包含于默认分支且尚未有 Release；构建与发布始终 checkout 该 tag。恢复 run 可以只用默认分支中
-受审计的 `internal/cli/account_test.go` 覆盖测试门禁，所有测试结束后必须以 `clean: true` 重新
-checkout tag、重新构建 selected staticlib 并证明工作树干净，才允许构建 binary、签名、创建 Release 或写 tap。
-因此它不能用于替换生产源码、移动 tag，或
-重发已经存在的 Release。
+已包含于默认分支且尚未有 Release；构建与发布始终 checkout 该 tag。恢复 run 可以只在无 Environment
+的六平台 test job 中用默认分支受审计的 `internal/cli/account_test.go` 覆盖测试门禁；该 job 仅产生
+不可发布、也不会传入 production job 的 `test-gate-*` artifact。
+该 job 成功后，独立的新 runner 才会以 `clean: true` checkout tag、重新构建 selected staticlib 并
+生成唯一可被 publish 下载的 `verified-release-*` assets；测试进程对环境变量、PATH 或临时目录的
+副作用不会进入生产 job。因此它不能用于替换生产源码、移动 tag，或重发已经存在的 Release。
 
 `sh scripts/test-release-workflow.sh` 启动 `scripts/releaseworkflow` 的 YAML AST policy，而不是依赖
-文本排版或行号。它精确检查 tag trigger、七份 job 的权限/依赖、六个 build runner matrix、每一个
+文本排版或行号。它精确检查 tag trigger、八份 job 的权限/依赖、六个 test/production runner matrix、每一个
 `uses` 的 40 位 SHA，以及 publish 的 SemVer channel 调用。默认分支 ancestry 必须在无
 `environment`、无 secret 的 `verify_release_source` job 中完成；只有该 job 成功后，publish 才可
 依赖它并声明精确的 `release` Environment、使用签名 metadata step 的两个预期 secret。policy 还会
@@ -294,9 +295,10 @@ GCC 与 `.lib` ABI 混用。解析器同时 fail-closed 地拒绝 YAML alias、m
 `verify_release_source` 只能按顺序执行 full-history、无凭据的 tag checkout 与默认分支 ancestry gate
 这两个步骤，禁止 `ref`、`repository`、`path` 或中间切换 HEAD 的 step 改变被验证的提交。publish 的
 checkout 同样只允许无凭据 tag source，避免签名 metadata 与构建 asset 所属提交不一致。
-build job 必须实际运行 vendored Rust 离线检查、crate cwd 的 `cargo fmt --check` 与 locked/offline
+test job 必须实际运行 vendored Rust 离线检查、crate cwd 的 `cargo fmt --check` 与 locked/offline
 Clippy `-D warnings`、普通及 race Go 测试、vet、许可证、封装、固定版本 `pre-commit==4.6.0`、
-pre-commit 和 `git diff --check`。发布渠道仅可由
+pre-commit 和 `git diff --check`；production build job 不运行 overlay，且只从 clean tag tree 生成
+`verified-release-*` artifact。发布渠道仅可由
 `go run ./scripts/releaseassets channel --version ...` 判定；build metadata 中的连字符不会使 stable
 tag 误变为 prerelease。
 

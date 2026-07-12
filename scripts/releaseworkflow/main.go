@@ -112,7 +112,7 @@ func checkWorkflow(body []byte) error {
 	if !ok || jobs.Kind != yaml.MappingNode {
 		return errors.New("workflow must have a jobs mapping")
 	}
-	if err := requireOnlyMappingKeys(jobs, "validate", "build", "verify_release_source", "publish", "render_homebrew_formula", "verify_homebrew_formula", "deploy_homebrew_tap"); err != nil {
+	if err := requireOnlyMappingKeys(jobs, "validate", "build", "build_production", "verify_release_source", "publish", "render_homebrew_formula", "verify_homebrew_formula", "deploy_homebrew_tap"); err != nil {
 		return fmt.Errorf("workflow jobs: %w", err)
 	}
 	validate, ok := mappingValue(jobs, "validate")
@@ -122,6 +122,10 @@ func checkWorkflow(body []byte) error {
 	build, ok := mappingValue(jobs, "build")
 	if !ok || build.Kind != yaml.MappingNode {
 		return errors.New("workflow must have a build job")
+	}
+	productionBuild, ok := mappingValue(jobs, "build_production")
+	if !ok || productionBuild.Kind != yaml.MappingNode {
+		return errors.New("workflow must have a build_production job")
 	}
 	verifyReleaseSource, ok := mappingValue(jobs, "verify_release_source")
 	if !ok || verifyReleaseSource.Kind != yaml.MappingNode {
@@ -146,7 +150,7 @@ func checkWorkflow(body []byte) error {
 	// 先报告任何越界 secret 引用，避免后续 checkout 形状校验掩盖真实的凭据泄露风险。
 	preflightPublishSteps, _ := jobSteps(publish)
 	preflightSigningIndex, _ := signingStepIndex(preflightPublishSteps)
-	if err := checkSigningSecretReachability(validate, build, verifyReleaseSource, publish, preflightPublishSteps, preflightSigningIndex); err != nil {
+	if err := checkSigningSecretReachability(validate, build, productionBuild, verifyReleaseSource, publish, preflightPublishSteps, preflightSigningIndex); err != nil {
 		return err
 	}
 	if err := checkHomebrewSecretReachability(renderHomebrew, verifyHomebrew, deployHomebrew); err != nil {
@@ -156,6 +160,9 @@ func checkWorkflow(body []byte) error {
 		return err
 	}
 	if err := checkBuildJob(build); err != nil {
+		return err
+	}
+	if err := checkProductionBuildJob(productionBuild); err != nil {
 		return err
 	}
 	if err := checkRecoveryPolicy(root); err != nil {
@@ -168,7 +175,7 @@ func checkWorkflow(body []byte) error {
 	if err != nil {
 		return err
 	}
-	if err := checkSigningSecretReachability(validate, build, verifyReleaseSource, publish, publishSteps, signingIndex); err != nil {
+	if err := checkSigningSecretReachability(validate, build, productionBuild, verifyReleaseSource, publish, publishSteps, signingIndex); err != nil {
 		return err
 	}
 	if err := checkRenderHomebrewJob(renderHomebrew); err != nil {
@@ -244,6 +251,13 @@ func checkRecoveryPolicy(root *yaml.Node) error {
 	if err := checkReleaseMatrix(matrix); err != nil {
 		return err
 	}
+	productionBuild, ok := mappingValue(jobs, "build_production")
+	if !ok || productionBuild.Kind != yaml.MappingNode {
+		return errors.New("workflow must have an isolated production build job for recovery")
+	}
+	if containsScalarFragment(productionBuild, "GITHUB_SHA") || stepIndexWithRunFragment(mustJobSteps(productionBuild), "account_test.go") >= 0 {
+		return errors.New("production build must not read the workflow SHA or recovery test overlay")
+	}
 	if containsScalarFragment(root, "GITHUB_REF_NAME") {
 		return errors.New("release workflow must not derive production identity from GITHUB_REF_NAME")
 	}
@@ -299,6 +313,14 @@ func checkRecoveryPolicy(root *yaml.Node) error {
 		return err
 	}
 	return nil
+}
+
+func mustJobSteps(job *yaml.Node) []*yaml.Node {
+	steps, err := jobSteps(job)
+	if err != nil {
+		return nil
+	}
+	return steps
 }
 
 func containsScalarFragment(node *yaml.Node, fragment string) bool {
@@ -415,8 +437,8 @@ func requireCanonicalBuildSteps(steps []*yaml.Node) error {
 	if err := requireScalar(steps[19], "name", "Package the fixed-name platform asset"); err != nil {
 		return errors.New("production package must keep its canonical name")
 	}
-	if err := requireExactActionStep(steps[20], "release build artifact upload", uploadArtifactAction, map[string]string{
-		"name":              "release-${{ matrix.artifact }}",
+	if err := requireExactActionStep(steps[20], "test-gate build artifact upload", uploadArtifactAction, map[string]string{
+		"name":              "test-gate-${{ matrix.artifact }}",
 		"path":              "dist/pixiv-cli_*",
 		"if-no-files-found": "error",
 		"retention-days":    "1",
@@ -721,6 +743,78 @@ func checkBuildJob(job *yaml.Node) error {
 	return nil
 }
 
+// checkProductionBuildJob 将最终资产放入独立 runner：它只能读取 immutable tag，不能承接
+// recovery 测试进程对环境变量、PATH 或临时目录的跨 step 副作用。
+func checkProductionBuildJob(job *yaml.Node) error {
+	if err := requireRequiredJobExecution(job, "build_production job"); err != nil {
+		return err
+	}
+	if err := requireNoEnvironment(job, "build_production job"); err != nil {
+		return err
+	}
+	if err := requireOnlyMappingKeys(job, "name", "needs", "runs-on", "permissions", "env", "strategy", "steps"); err != nil {
+		return fmt.Errorf("build_production job: %w", err)
+	}
+	if err := requireScalar(job, "name", "Build production ${{ matrix.goos }}/${{ matrix.goarch }}"); err != nil {
+		return fmt.Errorf("build_production job: %w", err)
+	}
+	if err := requireScalar(job, "needs", "build"); err != nil {
+		return fmt.Errorf("build_production job: %w", err)
+	}
+	if err := requireScalar(job, "runs-on", "${{ matrix.runner }}"); err != nil {
+		return fmt.Errorf("build_production job: %w", err)
+	}
+	if err := requireContentsPermission(job, "read"); err != nil {
+		return fmt.Errorf("build_production job: %w", err)
+	}
+	env, ok := mappingValue(job, "env")
+	if !ok || requireOnlyMappingKeys(env, "CC") != nil || requireScalar(env, "CC", "${{ matrix.cc }}") != nil {
+		return errors.New("build_production job must bind CC from the audited matrix")
+	}
+	strategy, ok := mappingValue(job, "strategy")
+	if !ok || requireOnlyMappingKeys(strategy, "fail-fast", "matrix") != nil || requireScalar(strategy, "fail-fast", "false") != nil {
+		return errors.New("build_production strategy must contain only fail-fast: false and the release matrix")
+	}
+	matrix := mustMappingPath(job, "strategy", "matrix")
+	if matrix == nil || checkReleaseMatrix(matrix) != nil {
+		return errors.New("build_production matrix must contain exactly the six release targets")
+	}
+	steps, err := jobSteps(job)
+	if err != nil || len(steps) != 9 {
+		return errors.New("build_production job must contain exactly the immutable production steps")
+	}
+	if err := requireCanonicalCheckout(steps[0], "build_production job", checkoutWithRequirement{"clean", "true"}, checkoutWithRequirement{"fetch-depth", "0"}, checkoutWithRequirement{"persist-credentials", "false"}, checkoutWithRequirement{"ref", "${{ env.RELEASE_TAG }}"}); err != nil {
+		return err
+	}
+	if err := requireExactActionStep(steps[1], "build_production Go setup", setupGoAction, map[string]string{"go-version": "1.26.3", "cache": "false"}); err != nil {
+		return err
+	}
+	if err := requireCanonicalNamedRunStep(steps[2], "Validate the exact immutable production source", `go run ./scripts/releaseassets validate --version "${RELEASE_TAG#v}"`); err != nil {
+		return err
+	}
+	if err := requireCanonicalNamedRunStep(steps[3], "Install the native Rust target", "rustup target add '${{ matrix.rust_target }}'"); err != nil {
+		return err
+	}
+	if err := requireProductionRebuildStep(steps[4]); err != nil || requireScalar(steps[4], "name", "Rebuild the selected static library from the immutable tag") != nil {
+		return errors.New("build_production job must rebuild the selected static library from the immutable tag")
+	}
+	if err := requireCanonicalNamedRunStep(steps[5], "Check the generated diff", "git diff --check"); err != nil {
+		return err
+	}
+	if err := requireProductionBuildStep(steps[6]); err != nil || requireScalar(steps[6], "name", "Build the versioned native executable") != nil {
+		return errors.New("build_production job must build the tag-bound executable")
+	}
+	if err := requireProductionPackageStep(steps[7]); err != nil || requireScalar(steps[7], "name", "Package the fixed-name platform asset") != nil {
+		return errors.New("build_production job must package the tag-bound executable")
+	}
+	return requireExactActionStep(steps[8], "verified release build artifact upload", uploadArtifactAction, map[string]string{
+		"name":              "verified-release-${{ matrix.artifact }}",
+		"path":              "dist/pixiv-cli_*",
+		"if-no-files-found": "error",
+		"retention-days":    "1",
+	})
+}
+
 // rejectAmbiguousYAML 在策略读取字段前拒绝 GitHub Actions 与 yaml.v3 可能采用不同语义的
 // YAML 构造。mappingValue 只会返回第一个同名字段，故必须先消除重复键和 merge 的歧义。
 func rejectAmbiguousYAML(node *yaml.Node) error {
@@ -835,6 +929,9 @@ func requireIndependentQualityGate(job *yaml.Node, directory, command string) er
 }
 
 func checkReleaseMatrix(matrix *yaml.Node) error {
+	if err := requireOnlyMappingKeys(matrix, "include"); err != nil {
+		return errors.New("build matrix must contain only the six release targets")
+	}
 	include, ok := mappingValue(matrix, "include")
 	if !ok || include.Kind != yaml.SequenceNode || len(include.Content) != len(releaseMatrixTargets) {
 		return errors.New("build matrix must contain exactly the six release targets")
@@ -843,6 +940,9 @@ func checkReleaseMatrix(matrix *yaml.Node) error {
 	for _, entry := range include.Content {
 		if entry.Kind != yaml.MappingNode {
 			return errors.New("build matrix must contain exactly the six release targets")
+		}
+		if err := requireOnlyMappingKeys(entry, "runner", "goos", "goarch", "rust_target", "artifact", "cc"); err != nil {
+			return errors.New("build matrix entries must contain only the canonical release target fields")
 		}
 		fields := make([]string, 0, 6)
 		for _, key := range []string{"runner", "goos", "goarch", "rust_target", "artifact", "cc"} {
@@ -874,7 +974,7 @@ func checkVerifyReleaseSourceJob(job *yaml.Node) error {
 	if err := requireOnlyMappingKeys(job, "name", "needs", "runs-on", "permissions", "steps"); err != nil {
 		return fmt.Errorf("verify_release_source job: %w", err)
 	}
-	if err := requireScalar(job, "needs", "build"); err != nil {
+	if err := requireScalar(job, "needs", "build_production"); err != nil {
 		return fmt.Errorf("verify_release_source job: %w", err)
 	}
 	if err := requireScalar(job, "runs-on", "ubuntu-24.04"); err != nil {
@@ -943,6 +1043,33 @@ func requireCanonicalCheckout(step *yaml.Node, jobName string, requirements ...c
 	return nil
 }
 
+func requireVerifiedProductionDownloads(steps []*yaml.Node) error {
+	names := []string{
+		"verified-release-darwin-amd64",
+		"verified-release-darwin-arm64",
+		"verified-release-linux-amd64",
+		"verified-release-linux-arm64",
+		"verified-release-windows-amd64",
+		"verified-release-windows-arm64",
+	}
+	indices := actionStepIndices(steps, downloadArtifactAction)
+	if len(indices) != len(names) || containsScalarFragment(&yaml.Node{Kind: yaml.SequenceNode, Content: steps}, "test-gate-") {
+		return errors.New("publish job must download exactly the six verified production artifacts")
+	}
+	for index, name := range names {
+		if indices[index] != index+2 {
+			return errors.New("publish verified production artifact downloads must be consecutive and ordered")
+		}
+		if err := requireExactActionStep(steps[index+2], "verified production asset download", downloadArtifactAction, map[string]string{
+			"name": name,
+			"path": "dist",
+		}); err != nil {
+			return errors.New("publish verified production artifact downloads must use exact names and dist path")
+		}
+	}
+	return nil
+}
+
 func checkPublishJob(job *yaml.Node) (int, []*yaml.Node, error) {
 	if err := requireRequiredJobExecution(job, "publish job"); err != nil {
 		return 0, nil, err
@@ -965,6 +1092,9 @@ func checkPublishJob(job *yaml.Node) (int, []*yaml.Node, error) {
 	steps, err := jobSteps(job)
 	if err != nil {
 		return 0, nil, fmt.Errorf("publish job: %w", err)
+	}
+	if err := requireVerifiedProductionDownloads(steps); err != nil {
+		return 0, nil, err
 	}
 	if err := requireCanonicalCheckout(steps[0], "publish job", checkoutWithRequirement{"persist-credentials", "false"}, checkoutWithRequirement{"ref", "${{ env.RELEASE_TAG }}"}); err != nil {
 		return 0, nil, err
@@ -1434,11 +1564,11 @@ func requireApprovedChannelCaseCommands(commands []string, channelCase string) e
 	return nil
 }
 
-func checkSigningSecretReachability(validate, build, verifyReleaseSource, publish *yaml.Node, publishSteps []*yaml.Node, signingIndex int) error {
+func checkSigningSecretReachability(validate, build, productionBuild, verifyReleaseSource, publish *yaml.Node, publishSteps []*yaml.Node, signingIndex int) error {
 	// release Environment 的 secret 只应在 verify_release_source 成功后才由 publish job 注入；
 	// 非发布 job、publish 的 job 级字段和非签名 step 都不允许引用 secrets，防止同一 job
 	// 启动即注入的 credential 在 shell gate 或其它步骤被提前访问。
-	for _, job := range []*yaml.Node{validate, build, verifyReleaseSource} {
+	for _, job := range []*yaml.Node{validate, build, productionBuild, verifyReleaseSource} {
 		if containsSigningSecretReference(job) {
 			return errors.New("non-release job must not reference secrets")
 		}

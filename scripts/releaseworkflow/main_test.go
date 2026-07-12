@@ -21,6 +21,188 @@ func TestCheckWorkflowRequiresRustFormatGate(t *testing.T) {
 	}
 }
 
+func TestCheckWorkflowRequiresProductionCacheIsolation(t *testing.T) {
+	t.Parallel()
+
+	root := releaseWorkflowRoot(t)
+	steps := requireMappingValue(t, jobNode(t, root, "build_production"), "steps")
+	with := requireMappingValue(t, steps.Content[1], "with")
+	cache, ok := mappingValue(with, "cache")
+	if !ok || cache.Value != "false" {
+		t.Fatal("build_production setup-go must explicitly disable cross-job Go caches")
+	}
+}
+
+func TestCheckWorkflowRequiresSixExactProductionArtifactDownloads(t *testing.T) {
+	t.Parallel()
+
+	root := releaseWorkflowRoot(t)
+	steps := requireMappingValue(t, jobNode(t, root, "publish"), "steps")
+	want := []string{
+		"verified-release-darwin-amd64",
+		"verified-release-darwin-arm64",
+		"verified-release-linux-amd64",
+		"verified-release-linux-arm64",
+		"verified-release-windows-amd64",
+		"verified-release-windows-arm64",
+	}
+	var got []string
+	for _, step := range steps.Content {
+		uses, ok := mappingValue(step, "uses")
+		if !ok || uses.Value != downloadArtifactAction {
+			continue
+		}
+		with := requireMappingValue(t, step, "with")
+		got = append(got, requireMappingValue(t, with, "name").Value)
+		if requireMappingValue(t, with, "path").Value != "dist" {
+			t.Fatal("production artifact download path must be dist")
+		}
+	}
+	if len(got) != len(want) {
+		t.Fatalf("production artifact download count = %d, want %d", len(got), len(want))
+	}
+	for index := range want {
+		if got[index] != want[index] {
+			t.Fatalf("production artifact download %d = %q, want %q", index, got[index], want[index])
+		}
+	}
+}
+
+func TestCheckWorkflowRejectsProductionIsolationMutations(t *testing.T) {
+	t.Parallel()
+
+	for _, test := range []struct {
+		name   string
+		mutate func(t *testing.T, root *yaml.Node)
+	}{
+		{name: "production job removed", mutate: func(t *testing.T, root *yaml.Node) {
+			removeMappingValue(t, requireMappingValue(t, root, "jobs"), "build_production")
+		}},
+		{name: "test gate uploads verified artifact", mutate: func(t *testing.T, root *yaml.Node) {
+			steps := requireMappingValue(t, jobNode(t, root, "build"), "steps")
+			upload := steps.Content[len(steps.Content)-1]
+			requireMappingValue(t, requireMappingValue(t, upload, "with"), "name").Value = "verified-release-${{ matrix.artifact }}"
+		}},
+		{name: "production bypasses test gate", mutate: func(t *testing.T, root *yaml.Node) {
+			requireMappingValue(t, jobNode(t, root, "build_production"), "needs").Value = "validate"
+		}},
+		{name: "production matrix loses target", mutate: func(t *testing.T, root *yaml.Node) {
+			include := requireMappingValue(t, mustMappingPath(jobNode(t, root, "build_production"), "strategy", "matrix"), "include")
+			include.Content = include.Content[:len(include.Content)-1]
+		}},
+		{name: "production matrix gains extra field", mutate: func(t *testing.T, root *yaml.Node) {
+			include := requireMappingValue(t, mustMappingPath(jobNode(t, root, "build_production"), "strategy", "matrix"), "include")
+			appendMappingValue(t, include.Content[0], "untrusted", scalarNode("value"))
+		}},
+		{name: "production strategy enables fail fast", mutate: func(t *testing.T, root *yaml.Node) {
+			requireMappingValue(t, requireMappingValue(t, jobNode(t, root, "build_production"), "strategy"), "fail-fast").Value = "true"
+		}},
+		{name: "production job renamed", mutate: func(t *testing.T, root *yaml.Node) {
+			requireMappingValue(t, jobNode(t, root, "build_production"), "name").Value = "Untrusted production"
+		}},
+		{name: "production compiler env changed", mutate: func(t *testing.T, root *yaml.Node) {
+			requireMappingValue(t, requireMappingValue(t, jobNode(t, root, "build_production"), "env"), "CC").Value = "cc"
+		}},
+		{name: "production adds job env", mutate: func(t *testing.T, root *yaml.Node) {
+			appendMappingValue(t, requireMappingValue(t, jobNode(t, root, "build_production"), "env"), "EXTRA", scalarNode("value"))
+		}},
+		{name: "production elevates token permissions", mutate: func(t *testing.T, root *yaml.Node) {
+			requireMappingValue(t, requireMappingValue(t, jobNode(t, root, "build_production"), "permissions"), "contents").Value = "write"
+		}},
+		{name: "production conditionally skips", mutate: func(t *testing.T, root *yaml.Node) {
+			appendMappingValue(t, jobNode(t, root, "build_production"), "if", scalarNode("false"))
+		}},
+		{name: "production adds environment", mutate: func(t *testing.T, root *yaml.Node) {
+			appendMappingValue(t, jobNode(t, root, "build_production"), "environment", scalarNode("release"))
+		}},
+		{name: "production references secret", mutate: func(t *testing.T, root *yaml.Node) {
+			steps := requireMappingValue(t, jobNode(t, root, "build_production"), "steps")
+			appendMappingValue(t, steps.Content[0], "env", mappingNode("LEAK", scalarNode("${{ secrets.RELEASE_SIGNING_PRIVATE_KEY }}")))
+		}},
+		{name: "production runs quality overlay", mutate: func(t *testing.T, root *yaml.Node) {
+			insertRunStep(t, jobNode(t, root, "build_production"), 4, "Forbidden quality gate", "go test ./...")
+		}},
+		{name: "production adds arbitrary step", mutate: func(t *testing.T, root *yaml.Node) {
+			insertRunStep(t, jobNode(t, root, "build_production"), 2, "Arbitrary production step", "true")
+		}},
+		{name: "production checkout uses main", mutate: func(t *testing.T, root *yaml.Node) {
+			checkout := checkoutStep(t, jobNode(t, root, "build_production"))
+			requireMappingValue(t, requireMappingValue(t, checkout, "with"), "ref").Value = "main"
+		}},
+		{name: "production checkout adds repository", mutate: func(t *testing.T, root *yaml.Node) {
+			checkout := checkoutStep(t, jobNode(t, root, "build_production"))
+			appendMappingValue(t, requireMappingValue(t, checkout, "with"), "repository", scalarNode("owner/other"))
+		}},
+		{name: "production setup Go cache omitted", mutate: func(t *testing.T, root *yaml.Node) {
+			steps := requireMappingValue(t, jobNode(t, root, "build_production"), "steps")
+			removeMappingValue(t, requireMappingValue(t, steps.Content[1], "with"), "cache")
+		}},
+		{name: "production setup Go cache enabled", mutate: func(t *testing.T, root *yaml.Node) {
+			steps := requireMappingValue(t, jobNode(t, root, "build_production"), "steps")
+			requireMappingValue(t, requireMappingValue(t, steps.Content[1], "with"), "cache").Value = "true"
+		}},
+		{name: "production uploads test artifact", mutate: func(t *testing.T, root *yaml.Node) {
+			steps := requireMappingValue(t, jobNode(t, root, "build_production"), "steps")
+			upload := steps.Content[len(steps.Content)-1]
+			requireMappingValue(t, requireMappingValue(t, upload, "with"), "name").Value = "test-gate-${{ matrix.artifact }}"
+		}},
+		{name: "verify bypasses production", mutate: func(t *testing.T, root *yaml.Node) {
+			requireMappingValue(t, jobNode(t, root, "verify_release_source"), "needs").Value = "build"
+		}},
+		{name: "publish downloads test artifacts", mutate: func(t *testing.T, root *yaml.Node) {
+			steps := requireMappingValue(t, jobNode(t, root, "publish"), "steps")
+			download := steps.Content[2]
+			requireMappingValue(t, requireMappingValue(t, download, "with"), "name").Value = "test-gate-darwin-amd64"
+		}},
+		{name: "publish production download missing", mutate: func(t *testing.T, root *yaml.Node) {
+			steps := requireMappingValue(t, jobNode(t, root, "publish"), "steps")
+			steps.Content = append(steps.Content[:2], steps.Content[3:]...)
+		}},
+		{name: "publish production download duplicated", mutate: func(t *testing.T, root *yaml.Node) {
+			steps := requireMappingValue(t, jobNode(t, root, "publish"), "steps")
+			first := requireMappingValue(t, requireMappingValue(t, steps.Content[2], "with"), "name").Value
+			requireMappingValue(t, requireMappingValue(t, steps.Content[3], "with"), "name").Value = first
+		}},
+		{name: "publish production download renamed", mutate: func(t *testing.T, root *yaml.Node) {
+			steps := requireMappingValue(t, jobNode(t, root, "publish"), "steps")
+			requireMappingValue(t, requireMappingValue(t, steps.Content[2], "with"), "name").Value = "verified-release-other"
+		}},
+		{name: "publish production download path changed", mutate: func(t *testing.T, root *yaml.Node) {
+			steps := requireMappingValue(t, jobNode(t, root, "publish"), "steps")
+			requireMappingValue(t, requireMappingValue(t, steps.Content[2], "with"), "path").Value = "other"
+		}},
+		{name: "publish production download uses pattern", mutate: func(t *testing.T, root *yaml.Node) {
+			steps := requireMappingValue(t, jobNode(t, root, "publish"), "steps")
+			with := requireMappingValue(t, steps.Content[2], "with")
+			removeMappingValue(t, with, "name")
+			appendMappingValue(t, with, "pattern", scalarNode("verified-release-*"))
+		}},
+		{name: "publish adds second artifact download", mutate: func(t *testing.T, root *yaml.Node) {
+			publish := jobNode(t, root, "publish")
+			steps := requireMappingValue(t, publish, "steps")
+			extra := mappingNode(
+				"uses", scalarNode(downloadArtifactAction),
+				"with", mappingNode(
+					"pattern", scalarNode("test-gate-*"),
+					"path", scalarNode("dist"),
+					"merge-multiple", scalarNode("true"),
+				),
+			)
+			steps.Content = append(steps.Content, nil)
+			copy(steps.Content[4:], steps.Content[3:])
+			steps.Content[3] = extra
+		}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			root := releaseWorkflowRoot(t)
+			test.mutate(t, root)
+			if err := checkWorkflow(mustMarshalYAML(t, root)); err == nil {
+				t.Fatal("release workflow policy accepted a production-isolation mutation")
+			}
+		})
+	}
+}
+
 func TestCheckWorkflowAcceptsIndependentReleaseSourceVerification(t *testing.T) {
 	t.Parallel()
 
@@ -123,7 +305,7 @@ func TestCheckRecoveryPolicyRequiresWindowsClangLLDForWholeBuildJob(t *testing.T
 		removeMappingValue(t, entry, "cc")
 		break
 	}
-	if err := checkRecoveryPolicy(root); err == nil || !strings.Contains(err.Error(), "build matrix must contain exactly the six release targets") {
+	if err := checkRecoveryPolicy(root); err == nil || !strings.Contains(err.Error(), "build matrix entries must contain only the canonical release target fields") {
 		t.Fatalf("policy error = %v, want Windows Clang+LLD rejection", err)
 	}
 }
