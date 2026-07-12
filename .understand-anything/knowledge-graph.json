@@ -20,8 +20,8 @@
       "GitHub Actions"
     ],
     "description": "这是一个 Go 版 Pixiv CLI 与 MCP stdio server，内置 Rust ugoira encoder，并包含 release/update workflow。",
-    "analyzedAt": "2026-07-12T08:33:59.113Z",
-    "gitCommitHash": "a092dd8d6023bb50816e4f49eaf62b0e5f469bae"
+    "analyzedAt": "2026-07-12T10:30:22.000Z",
+    "gitCommitHash": "d4864429ad542ec4ee8b5c8076c771468be93940"
   },
   "nodes": [
     {
@@ -5631,7 +5631,7 @@
       "type": "file",
       "name": "ugoira_rust_test.go",
       "filePath": "internal/download/ugoira_rust_test.go",
-      "summary": "覆盖 Rust ugoira encoder、Linux libm、Windows cgo selector 的 Rust native import libraries、LLD-backed Clang workflow gate，以及中文解释必须位于 import \"C\" 后的 C preamble 回归。",
+      "summary": "覆盖 Rust ugoira encoder、Linux libm、Windows cgo/LLD 链接，并以 git check-attr 正反例锁定 first-party digest 输入禁用文本转换、非摘要 Markdown 保持默认行为。",
       "tags": [
         "测试",
         "ugoira动图",
@@ -12597,7 +12597,7 @@
       "type": "document",
       "name": "CHANGELOG.md",
       "filePath": "CHANGELOG.md",
-      "summary": "记录未发布的用户可见变更与 v0.1.0 发布候选说明；包括 Windows cgo/LLD 链接与 Windows release zip 使用 runner 预装 7-Zip 的修复。",
+      "summary": "记录未发布的用户可见变更与 v0.1.0 发布候选说明；包括 Windows cgo/LLD、7-Zip 打包及 Windows/Unix Rust source identity bytes 一致性修复。",
       "tags": [
         "文档",
         "变更记录",
@@ -16457,11 +16457,12 @@
       "type": "file",
       "name": ".gitattributes",
       "filePath": ".gitattributes",
-      "summary": "声明仓库路径的文本、二进制与语言属性，保障跨平台检出和统计行为一致。",
+      "summary": "对 first-party Rust Cargo/build/source、vendor 与本地依赖禁用 Git 文本转换，并固定生成许可证 LF，确保 Windows/Unix checkout 保持同一 source identity bytes。",
       "tags": [
         "configuration",
         "git",
-        "cross-platform"
+        "cross-platform",
+        "source-identity"
       ],
       "complexity": "moderate"
     },
@@ -16496,7 +16497,7 @@
       "type": "document",
       "name": "architecture.md",
       "filePath": "docs/architecture.md",
-      "summary": "说明 CLI、application、bootstrap、Pixiv、下载和更新职责；明确 Windows cgo/LLD 边界与 Windows release zip 使用 7z、其他平台使用 zip 的 fail-closed packaging 规则。",
+      "summary": "说明 CLI、application、bootstrap、Pixiv、下载和更新职责；明确 Windows cgo/LLD、跨平台 Rust source identity bytes 与 fail-closed release packaging 边界。",
       "complexity": "moderate",
       "tags": [
         "documentation",
@@ -16510,7 +16511,7 @@
       "type": "document",
       "name": "development.md",
       "filePath": "docs/development.md",
-      "summary": "说明环境、Rust staticlib、native evidence、Windows cgo/LLD 约束与 release packaging 测试；Windows zip 使用 runner 预装 7z 并以伪造分支回归验证 archive 成员。",
+      "summary": "说明 Rust staticlib、native evidence 与发布测试；first-party digest 输入保持 Git blob bytes，source digest 分裂的旧 run 不可回填或跨 run 拼接。",
       "complexity": "complex",
       "tags": [
         "documentation",
@@ -20512,7 +20513,7 @@
       "type": "function",
       "name": "TestPinnedRustSourcesDisableGitTextConversion",
       "filePath": "internal/download/ugoira_rust_test.go",
-      "summary": "锁定 Cargo vendor 与 pinned quantette source 禁用 Git 文本转换，保持 checksum、source digest 与 license 输入稳定。",
+      "summary": "以 git check-attr 正例锁定 first-party Cargo/build/Rust source、vendor 与 quantette 为 text unset，并以非摘要 Markdown 反例防止属性范围过宽。",
       "tags": [
         "函数",
         "Go语言",
@@ -20520,8 +20521,8 @@
       ],
       "complexity": "simple",
       "lineRange": [
-        102,
-        121
+        152,
+        184
       ]
     },
     {
@@ -35744,7 +35745,7 @@
     {
       "order": 5,
       "title": "Rust 静态库同源性",
-      "description": "原生编码器的核心是 Rust FFI、PNG relay 与量化实现；Go 侧在加载前验证 staticlib manifest 的目标、源码 digest 和 SHA-256。将二进制库与源码绑定可防止六目标构建产物在发布过程中漂移，也解释了为什么 native 证据不能用 fixture 成功替代。",
+      "description": "原生编码器的核心是 Rust FFI、PNG relay 与量化实现；Go 侧在加载前验证 staticlib manifest 的目标、源码 digest 和 SHA-256。first-party Cargo/build/source 输入必须在 Windows 与 Unix 保持同一 Git blob bytes；run 29187493129 的六个 matrix job 均 success，但 Windows/Unix source digest 已分裂并被 consolidate fail-closed，该 run artifacts 不得回填或与后续 run 拼接。",
       "nodeIds": [
         "file:internal/download/ugoira_rs/src/lib.rs",
         "file:internal/download/ugoira_integrity.go"

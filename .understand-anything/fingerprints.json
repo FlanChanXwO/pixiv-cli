@@ -1,7 +1,7 @@
 {
   "version": "1.0.0",
-  "gitCommitHash": "a092dd8d6023bb50816e4f49eaf62b0e5f469bae",
-  "generatedAt": "2026-07-12T08:34:08.114Z",
+  "gitCommitHash": "d4864429ad542ec4ee8b5c8076c771468be93940",
+  "generatedAt": "2026-07-12T10:30:22.000Z",
   "files": {
     ".agents/skills/pixiv-commit-msg/SKILL.md": {
       "filePath": ".agents/skills/pixiv-commit-msg/SKILL.md",
@@ -35,12 +35,12 @@
     },
     ".gitattributes": {
       "filePath": ".gitattributes",
-      "contentHash": "401cfce5107a4f276d3050ad3f191a76c25858772df8d6dc48a4380c34b2f183",
+      "contentHash": "89b0f51adddf941baa8a0f2918ffd3aabd244ec0b7baac87f702488f3646b8c8",
       "functions": [],
       "classes": [],
       "imports": [],
       "exports": [],
-      "totalLines": 118,
+      "totalLines": 126,
       "hasStructuralAnalysis": false
     },
     ".github/copilot-instructions.md": {
@@ -95,12 +95,12 @@
     },
     "CHANGELOG.md": {
       "filePath": "CHANGELOG.md",
-      "contentHash": "0e7645ab0c8f553550f23c1603393897cd6447a27eda9d824c4a0af4240c2432",
+      "contentHash": "49645e8f371050215deebcdeb2a2cf18b53edd28f6f9c45726943bf6e311ea1f",
       "functions": [],
       "classes": [],
       "imports": [],
       "exports": [],
-      "totalLines": 92,
+      "totalLines": 93,
       "hasStructuralAnalysis": true
     },
     "CLAUDE.md": {
@@ -267,22 +267,22 @@
     },
     "docs/architecture.md": {
       "filePath": "docs/architecture.md",
-      "contentHash": "1d4e96df07fb01a31d2e71da3a6c71b0331fe1651be40c6f55aef02f5505048b",
+      "contentHash": "91560e5f1caf068397056505d2333f7935c2a23e4a1d17adccdeeb1a09245f20",
       "functions": [],
       "classes": [],
       "imports": [],
       "exports": [],
-      "totalLines": 235,
+      "totalLines": 238,
       "hasStructuralAnalysis": true
     },
     "docs/development.md": {
       "filePath": "docs/development.md",
-      "contentHash": "1aaf0e051cbacb5257c8d8655d42b32135a44f65201b262c4d059cea5bcb2aa5",
+      "contentHash": "1b7955aa778693f7b87e792574b60a3fa4a01f1eb47275a6b7e591b0321e23e7",
       "functions": [],
       "classes": [],
       "imports": [],
       "exports": [],
-      "totalLines": 349,
+      "totalLines": 355,
       "hasStructuralAnalysis": true
     },
     "docs/index.md": {
@@ -8281,7 +8281,7 @@
     },
     "internal/download/ugoira_rust_test.go": {
       "filePath": "internal/download/ugoira_rust_test.go",
-      "contentHash": "1f63862b982b0cce3e69893c9a7d8fd378307c38c1f3568e5e6ba119b8e5756a",
+      "contentHash": "fcc05f9ae77d240b9caf50adcf70d9a7c611be3352459edb53b64f0bcaf833ca",
       "functions": [
         {
           "name": "TestRustUgoiraEncoderNativeGIFAndAPNG",
@@ -8329,7 +8329,7 @@
             "t"
           ],
           "exported": true,
-          "lineCount": 17
+          "lineCount": 33
         },
         {
           "name": "TestGeneratedRustLicenseOutputsUseLFCheckout",
@@ -8439,7 +8439,7 @@
         "TestPinnedRustSourcesDisableGitTextConversion",
         "TestGeneratedRustLicenseOutputsUseLFCheckout"
       ],
-      "totalLines": 204,
+      "totalLines": 221,
       "hasStructuralAnalysis": true
     },
     "internal/download/ugoira_rust.go": {
