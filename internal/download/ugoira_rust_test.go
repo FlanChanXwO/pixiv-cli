@@ -79,6 +79,43 @@ func TestCGODisabledBuildRejectsMissingRustStaticlib(t *testing.T) {
 	}
 }
 
+// TestLinuxRustStaticlibLinkersLinkSystemMath 锁住 GitHub Linux runner 的真实链接需求：
+// image/Rust staticlib 会引用 libm 的 sinf/expf，不能仅把 archive 传给 cgo linker。
+func TestLinuxRustStaticlibLinkersLinkSystemMath(t *testing.T) {
+	repoRoot := filepath.Clean(filepath.Join("..", ".."))
+	for _, source := range []string{
+		"internal/download/ugoira_rust_link_linux_amd64.go",
+		"internal/download/ugoira_rust_link_linux_arm64.go",
+	} {
+		body, err := os.ReadFile(filepath.Join(repoRoot, source))
+		if err != nil {
+			t.Fatalf("read Linux cgo selector %q: %v", source, err)
+		}
+		if !strings.Contains(string(body), "#cgo LDFLAGS:") || !strings.Contains(string(body), " -lm") {
+			t.Fatalf("Linux cgo selector %q must link Rust staticlib with libm (-lm):\n%s", source, body)
+		}
+	}
+}
+
+// TestVendoredRustSourcesDisableGitTextConversion 保留 Cargo vendor 的精确字节；Windows checkout
+// 若把 LF 转为 CRLF，会使 .cargo-checksum.json 拒绝原本未修改的上游源码。
+func TestVendoredRustSourcesDisableGitTextConversion(t *testing.T) {
+	repoRoot := filepath.Clean(filepath.Join("..", ".."))
+	for _, source := range []string{
+		"internal/download/ugoira_rs/vendor/crc32fast/benches/bench.rs",
+		"internal/download/ugoira_rs/vendor/crc32fast/src/specialized/mod.rs",
+	} {
+		command := exec.Command("git", "-C", repoRoot, "check-attr", "text", "--", source)
+		body, err := command.CombinedOutput()
+		if err != nil {
+			t.Fatalf("read Git text attribute for %q: %v\n%s", source, err, body)
+		}
+		if !strings.Contains(string(body), "text: unset") {
+			t.Fatalf("Cargo vendor source %q must disable Git text conversion, got %q", source, strings.TrimSpace(string(body)))
+		}
+	}
+}
+
 func rustUgoiraJPEG(t *testing.T) []byte {
 	t.Helper()
 	var body bytes.Buffer

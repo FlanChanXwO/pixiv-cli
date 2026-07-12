@@ -1,5 +1,8 @@
 # Cargo vendor 保留上游字节并由 .cargo-checksum.json 校验；以下 Markdown 标题使用
 # 7 个等号，Git 会把它们误判为 unresolved conflict marker。仅调整该两份上游文档的阈值。
+# 所有 Cargo vendor 文件都必须关闭 Git 文本转换；Windows CRLF checkout 会改变上游 checksum，
+# 使 `cargo --locked --offline` 在实际 native runner 上拒绝未修改的依赖树。
+internal/download/ugoira_rs/vendor/** -text
 internal/download/ugoira_rs/vendor/autocfg/README.md conflict-marker-size=32
 internal/download/ugoira_rs/vendor/ref-cast/README.md conflict-marker-size=32
 

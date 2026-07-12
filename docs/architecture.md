@@ -156,7 +156,8 @@ web API 字段缺失时不伪造 App API 数据；仅映射可从 web 响应确�
 - 多页作品和 ugoira 会建立作品子目录。
 - ugoira 先下载 zip，再由 Rust FFI encoder 合成为 GIF/APNG。
 
-Rust crate 以 target 专用 staticlib 接入 cgo：darwin/linux/windows 各有 amd64/arm64 selector。受支持
+Rust crate 以 target 专用 staticlib 接入 cgo：darwin/linux/windows 各有 amd64/arm64 selector；Linux
+selector 还显式链接系统 `libm`，承接 Rust/image staticlib 的 `sinf`/`expf` 符号。受支持
 的 release/source build 必须从同一 Rust source digest 的六目标 `manifest.json` 选择并链接真实库；
 无 cgo、无 target library 或无 C linker 时应在编译/构建期明确失败，不能回退到 `ffmpeg` 或 runtime
 stub。Rust `target/` 是机器产物，staticlib/manifest 是经过 native 验证后才可提交的发布输入。
