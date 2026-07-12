@@ -3,8 +3,10 @@ package pixiv
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/appapi"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/model"
@@ -21,12 +23,16 @@ type Options struct {
 	WebAPIBaseURL string
 	// AccessToken 是调用 App API 使用的 bearer token。
 	AccessToken string
+	// WebFallbackEnabled 允许无 access token 时显式使用匿名 Web API。
+	WebFallbackEnabled bool
 }
 
 // Client 组合 App API 主数据与显式 Web 补全能力。
 type Client struct {
-	app *appapi.Client
-	web *webapi.Client
+	app                *appapi.Client
+	web                *webapi.Client
+	authenticated      bool
+	webFallbackEnabled bool
 }
 
 type operation uint8
@@ -40,9 +46,10 @@ func webEnrichmentEnabled(op operation) bool {
 
 // NewClient 构造具体客户端；它不会执行网络请求或隐式认证。
 func NewClient(options Options) (*Client, error) {
+	accessToken := strings.TrimSpace(options.AccessToken)
 	appOptions := []appapi.Option{
 		appapi.WithBaseURL(options.AppAPIBaseURL),
-		appapi.WithAccessToken(options.AccessToken),
+		appapi.WithAccessToken(accessToken),
 	}
 	webOptions := []webapi.Option{webapi.WithWebBase(options.WebAPIBaseURL)}
 	if options.HTTPClient != nil {
@@ -50,29 +57,152 @@ func NewClient(options Options) (*Client, error) {
 		webOptions = append(webOptions, webapi.WithHTTPClient(options.HTTPClient))
 	}
 	return &Client{
-		app: appapi.New(appOptions...),
-		web: webapi.New(webOptions...),
+		app:                appapi.New(appOptions...),
+		web:                webapi.New(webOptions...),
+		authenticated:      accessToken != "",
+		webFallbackEnabled: options.WebFallbackEnabled,
 	}, nil
 }
 
 // IllustDetail 先读取 App API 详情，再用 Web pages 显式补全页面元数据。
 // App 失败时不会请求 Web；Web 补全失败会直接返回错误。
 func (c *Client) IllustDetail(ctx context.Context, id int64) (*IllustDetail, error) {
+	if id <= 0 {
+		return nil, newError(
+			CodeInvalidArgument,
+			OperationIllustDetail,
+			"",
+			false,
+			0,
+			0,
+			errors.New("illust id must be positive"),
+		)
+	}
+	if !c.authenticated {
+		if !c.webFallbackEnabled {
+			return nil, newError(
+				CodeUnauthorized,
+				OperationIllustDetail,
+				"",
+				false,
+				0,
+				id,
+				errors.New("access token is required when Web fallback is disabled"),
+			)
+		}
+		detail, err := c.web.IllustDetail(ctx, id)
+		if err != nil {
+			return nil, mapWebError(err, OperationIllustDetail, id)
+		}
+		result := mapIllustDetail(*detail)
+		return &result, nil
+	}
 	detail, err := c.app.IllustDetail(ctx, id)
 	if err != nil {
-		return nil, fmt.Errorf("app illust detail: %w", err)
+		return nil, mapAppError(err, OperationIllustDetail, id)
 	}
 	if !webEnrichmentEnabled(opIllustDetail) {
 		return nil, fmt.Errorf("web enrichment is not enabled for illust detail")
 	}
 	pages, err := c.web.IllustPages(ctx, id)
 	if err != nil {
-		return nil, fmt.Errorf("web illust pages: %w", err)
+		return nil, mapWebError(err, OperationIllustPages, id)
 	}
 
 	result := mapIllustDetail(*detail)
 	result.Illust.MetaPages = mapMetaPages(pages)
 	return &result, nil
+}
+
+func mapWebError(err error, operation Operation, illustID int64) error {
+	var upstream webapi.APIError
+	if errors.As(err, &upstream) {
+		code, retryable := codeForHTTPStatus(upstream.StatusCode, operation)
+		return newError(
+			code,
+			operation,
+			BackendWebAPI,
+			retryable,
+			upstream.StatusCode,
+			illustID,
+			fmt.Errorf("upstream returned HTTP status %d", upstream.StatusCode),
+		)
+	}
+	if errors.Is(err, webapi.ErrMalformedResponse) {
+		return malformedError(operation, BackendWebAPI, illustID)
+	}
+	var envelope webapi.EnvelopeError
+	if errors.As(err, &envelope) {
+		if operation == OperationIllustDetail {
+			return newError(CodeArtworkUnavailable, operation, BackendWebAPI, false, 0, illustID, errors.New("artwork is unavailable from web api"))
+		}
+		return newError(CodeUpstreamError, operation, BackendWebAPI, true, 0, illustID, errors.New("web api rejected the request"))
+	}
+	return transportError(err, operation, BackendWebAPI, illustID)
+}
+
+func mapAppError(err error, operation Operation, illustID int64) error {
+	var upstream appapi.APIError
+	if errors.As(err, &upstream) {
+		code, retryable := codeForHTTPStatus(upstream.StatusCode, operation)
+		return newError(
+			code,
+			operation,
+			BackendAppAPI,
+			retryable,
+			upstream.StatusCode,
+			illustID,
+			fmt.Errorf("upstream returned HTTP status %d", upstream.StatusCode),
+		)
+	}
+	if errors.Is(err, appapi.ErrMalformedResponse) {
+		return malformedError(operation, BackendAppAPI, illustID)
+	}
+	return transportError(err, operation, BackendAppAPI, illustID)
+}
+
+func malformedError(operation Operation, backend Backend, illustID int64) error {
+	return newError(
+		CodeMalformedUpstreamResponse,
+		operation,
+		backend,
+		false,
+		0,
+		illustID,
+		errors.New("upstream response was malformed"),
+	)
+}
+
+func transportError(err error, operation Operation, backend Backend, illustID int64) error {
+	if errors.Is(err, context.Canceled) {
+		return newError(CodeUpstreamUnavailable, operation, backend, false, 0, illustID, context.Canceled)
+	}
+	if errors.Is(err, context.DeadlineExceeded) {
+		return newError(CodeUpstreamUnavailable, operation, backend, false, 0, illustID, context.DeadlineExceeded)
+	}
+	return newError(CodeUpstreamUnavailable, operation, backend, true, 0, illustID, errors.New("upstream transport failed"))
+}
+
+func codeForHTTPStatus(status int, operation Operation) (ErrorCode, bool) {
+	switch status {
+	case http.StatusBadRequest:
+		return CodeInvalidArgument, false
+	case http.StatusUnauthorized:
+		return CodeUnauthorized, false
+	case http.StatusForbidden:
+		return CodeForbidden, false
+	case http.StatusNotFound:
+		if operation == OperationIllustDetail {
+			return CodeArtworkUnavailable, false
+		}
+		return CodeUpstreamError, true
+	case http.StatusTooManyRequests:
+		return CodeRateLimited, true
+	case http.StatusServiceUnavailable, http.StatusGatewayTimeout:
+		return CodeUpstreamUnavailable, true
+	default:
+		return CodeUpstreamError, true
+	}
 }
 
 func mapIllustDetail(detail model.IllustDetail) IllustDetail {

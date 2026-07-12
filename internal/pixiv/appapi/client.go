@@ -23,6 +23,9 @@ const (
 	DefaultAppVersion   = "5.0.234"
 )
 
+// ErrMalformedResponse 标识成功 HTTP 响应无法构成约定 JSON，不包含原始响应体。
+var ErrMalformedResponse = errors.New("app api returned a malformed response")
+
 type Client struct {
 	restyClient *resty.Client
 	apiBase     string
@@ -230,10 +233,10 @@ func (c *Client) doJSON(ctx context.Context, method, rawURL string, opts request
 		return APIError{StatusCode: resp.StatusCode(), Body: string(body)}
 	}
 	if len(bytes.TrimSpace(body)) == 0 {
-		return errors.New("empty response")
+		return ErrMalformedResponse
 	}
 	if err := json.Unmarshal(body, out); err != nil {
-		return fmt.Errorf("decode response: %w", err)
+		return fmt.Errorf("%w: %v", ErrMalformedResponse, err)
 	}
 	return nil
 }

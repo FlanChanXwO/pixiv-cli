@@ -23,6 +23,21 @@ const (
 	defaultUA      = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36"
 )
 
+// ErrMalformedResponse 标识成功 HTTP 响应无法构成约定 JSON，不包含原始响应体。
+var ErrMalformedResponse = errors.New("web api returned a malformed response")
+
+// EnvelopeError 表示 Web ajax envelope 主动报告失败。
+type EnvelopeError struct {
+	Message string
+}
+
+func (e EnvelopeError) Error() string {
+	if e.Message == "" {
+		return "pixiv web api envelope error"
+	}
+	return fmt.Sprintf("pixiv web api envelope error: %s", e.Message)
+}
+
 type Client struct {
 	httpClient *http.Client
 	webBase    string
@@ -212,10 +227,10 @@ func (c *Client) getJSON(ctx context.Context, path string, query url.Values, out
 		return APIError{StatusCode: resp.StatusCode, Body: string(body)}
 	}
 	if len(bytes.TrimSpace(body)) == 0 {
-		return errors.New("empty response")
+		return ErrMalformedResponse
 	}
 	if err := json.Unmarshal(body, out); err != nil {
-		return fmt.Errorf("decode web response: %w", err)
+		return fmt.Errorf("%w: %v", ErrMalformedResponse, err)
 	}
 	return nil
 }
@@ -255,10 +270,7 @@ func (e APIError) Error() string {
 }
 
 func webEnvelopeError(message string) error {
-	if message == "" {
-		return errors.New("pixiv web api error")
-	}
-	return fmt.Errorf("pixiv web api error: %s", message)
+	return EnvelopeError{Message: message}
 }
 
 func webPageFromOffset(offset, pageSize int) int {
@@ -383,9 +395,13 @@ func mapDetailIllust(item webIllustDetail, metaPages []model.MetaPage) model.Ill
 			Name:    item.UserName,
 			Account: strconv.FormatInt(int64(item.UserID), 10),
 		},
-		Tags:      tags,
-		ImageURLs: imageURLs,
-		MetaPages: metaPages,
+		Tags:       tags,
+		ImageURLs:  imageURLs,
+		MetaPages:  metaPages,
+		AIType:     int(item.AIType),
+		CreateDate: item.CreateDate,
+		Width:      int(item.Width),
+		Height:     int(item.Height),
 	}
 	if len(metaPages) == 1 {
 		illust.MetaSinglePage.OriginalImageURL = metaPages[0].ImageURLs.Original
@@ -522,6 +538,10 @@ type webIllustDetail struct {
 	UserName      string        `json:"userName"`
 	BookmarkCount flexInt       `json:"bookmarkCount"`
 	ViewCount     flexInt       `json:"viewCount"`
+	AIType        flexInt       `json:"aiType"`
+	CreateDate    string        `json:"createDate"`
+	Width         flexInt       `json:"width"`
+	Height        flexInt       `json:"height"`
 	Tags          webDetailTags `json:"tags"`
 	URLs          webDetailURLs `json:"urls"`
 }
