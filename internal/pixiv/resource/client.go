@@ -28,9 +28,10 @@ type Client struct {
 
 // OpenRequest 描述一次已由上层 policy 限定的资源读取。
 type OpenRequest struct {
-	URL      string
-	Header   http.Header
-	Validate func(string) error
+	URL            string
+	Header         http.Header
+	Validate       func(string) error
+	DisableCookies bool
 }
 
 // Response 保留响应流所有权，调用方负责关闭 Body。
@@ -110,9 +111,11 @@ func (c *Client) Open(ctx context.Context, request OpenRequest) (*Response, erro
 		req.Header.Set(key, value)
 	}
 
-	// 不修改调用方 Client；禁用 Jar，防止 SDK 请求意外携带站点 Cookie。
+	// 不修改调用方 Client；public SDK 可显式禁用 Jar，legacy 下载则保持原语义。
 	httpClient := *c.httpClient
-	httpClient.Jar = nil
+	if request.DisableCookies {
+		httpClient.Jar = nil
+	}
 	originalRedirect := httpClient.CheckRedirect
 	httpClient.CheckRedirect = func(next *http.Request, via []*http.Request) error {
 		if request.Validate != nil {

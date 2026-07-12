@@ -7,7 +7,9 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/http/cookiejar"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 
@@ -94,6 +96,31 @@ func TestDownloadClosesResponseBody(t *testing.T) {
 	})})
 	require.NoError(t, client.Download(context.Background(), "https://i.pximg.net/a.jpg", io.Discard))
 	assert.True(t, body.closed)
+}
+
+func TestLegacyDownloadPreservesCallerCookieJar(t *testing.T) {
+	var requestCookie string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requestCookie = r.Header.Get("Cookie")
+		http.SetCookie(w, &http.Cookie{Name: "updated", Value: "yes"})
+		_, _ = io.WriteString(w, "image")
+	}))
+	defer server.Close()
+	serverURL, err := url.Parse(server.URL)
+	require.NoError(t, err)
+	jar, err := cookiejar.New(nil)
+	require.NoError(t, err)
+	jar.SetCookies(serverURL, []*http.Cookie{{Name: "legacy", Value: "present"}})
+	httpClient := server.Client()
+	httpClient.Jar = jar
+
+	require.NoError(t, NewApp(httpClient).Download(context.Background(), server.URL, io.Discard))
+	assert.Contains(t, requestCookie, "legacy=present")
+	updated := false
+	for _, cookie := range jar.Cookies(serverURL) {
+		updated = updated || cookie.Name == "updated" && cookie.Value == "yes"
+	}
+	assert.True(t, updated)
 }
 
 type roundTripperFunc func(*http.Request) (*http.Response, error)

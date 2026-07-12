@@ -91,7 +91,7 @@ func validPolicyHost(host string) bool {
 }
 
 func validPathPrefix(prefix string) bool {
-	if !strings.HasPrefix(prefix, "/") || strings.ContainsAny(prefix, "\\%?#") || hasControl(prefix) {
+	if prefix == "/" || !strings.HasPrefix(prefix, "/") || strings.ContainsAny(prefix, "\\%?#") || hasControl(prefix) {
 		return false
 	}
 	return path.Clean(prefix) == prefix ||
@@ -120,8 +120,9 @@ func (c *Client) OpenResource(ctx context.Context, request OpenResourceRequest) 
 	setOptionalHeader(headers, "If-Modified-Since", request.IfModifiedSince)
 	headers.Set("Accept-Encoding", "identity")
 	response, err := c.resource.Open(ctx, internalresource.OpenRequest{
-		URL:    request.Ref.URL,
-		Header: headers,
+		URL:            request.Ref.URL,
+		Header:         headers,
+		DisableCookies: true,
 		Validate: func(rawURL string) error {
 			_, err := c.resourcePolicy.validate(rawURL, OperationOpenResource)
 			return err
@@ -272,12 +273,19 @@ func (p resourcePolicy) validate(rawURL string, operation Operation) (*url.URL, 
 			continue
 		}
 		for _, prefix := range mirror.prefixes {
-			if strings.HasPrefix(decodedPath, prefix) {
+			if matchesPathPrefix(decodedPath, prefix) {
 				return u, nil
 			}
 		}
 	}
 	return nil, forbiddenResourceError(operation)
+}
+
+func matchesPathPrefix(resourcePath, prefix string) bool {
+	if strings.HasSuffix(prefix, "/") {
+		return strings.HasPrefix(resourcePath, prefix)
+	}
+	return resourcePath == prefix || strings.HasPrefix(resourcePath, prefix+"/")
 }
 
 func unsafeResourcePath(decodedPath string) bool {
@@ -287,7 +295,10 @@ func unsafeResourcePath(decodedPath string) bool {
 			return true
 		}
 		next, err := url.PathUnescape(current)
-		if err != nil || next == current {
+		if err != nil {
+			return true
+		}
+		if next == current {
 			return false
 		}
 		current = next

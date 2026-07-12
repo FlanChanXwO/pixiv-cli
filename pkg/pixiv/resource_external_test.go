@@ -72,6 +72,9 @@ func TestOpenResourceForwardsConditionsAndReturnsStreaming206(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, response.Body.Close())
 	assert.Equal(t, "stream-body", string(body))
+	for _, cookie := range jar.Cookies(u) {
+		assert.NotEqual(t, "secret", cookie.Name, "public resource 响应不得更新调用方 Jar")
+	}
 }
 
 func TestOpenResourceRevalidatesRefsAndRejectsInvalidHeadersBeforeNetwork(t *testing.T) {
@@ -86,6 +89,7 @@ func TestOpenResourceRevalidatesRefsAndRejectsInvalidHeadersBeforeNetwork(t *tes
 	refs := []pixiv.ResourceRef{
 		{URL: "http://127.0.0.1/private"},
 		{URL: "https://i.pximg.net/img-original/%2e%2e/private"},
+		{URL: "https://i.pximg.net/img-original/%252e%252e/%25zz"},
 	}
 	encoded, err := json.Marshal(pixiv.ResourceRef{URL: "https://evil.example/img-original/a.jpg"})
 	require.NoError(t, err)
@@ -175,6 +179,31 @@ func TestOpenResourceRevalidatesEveryRedirectHop(t *testing.T) {
 	assert.Zero(t, deniedHits.Load())
 }
 
+func TestOpenResourceAllowsRelativeRedirectWithinPolicy(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/allowed/start.jpg" {
+			http.Redirect(w, r, "/allowed/final.jpg?size=original", http.StatusFound)
+			return
+		}
+		assert.Equal(t, "/allowed/final.jpg", r.URL.Path)
+		_, _ = io.WriteString(w, "image")
+	}))
+	defer server.Close()
+	u, err := url.Parse(server.URL)
+	require.NoError(t, err)
+	client, err := pixiv.NewClient(pixiv.Options{
+		HTTPClient:     server.Client(),
+		ResourcePolicy: pixiv.ResourcePolicy{Mirrors: []pixiv.ResourceMirrorPolicy{{Host: u.Host, PathPrefixes: []string{"/allowed"}}}},
+	})
+	require.NoError(t, err)
+	response, err := client.OpenResource(context.Background(), pixiv.OpenResourceRequest{Ref: pixiv.ResourceRef{URL: server.URL + "/allowed/start.jpg"}})
+	require.NoError(t, err)
+	body, err := io.ReadAll(response.Body)
+	require.NoError(t, err)
+	require.NoError(t, response.Body.Close())
+	assert.Equal(t, "image", string(body))
+}
+
 func TestOpenResourcePreservesCallerCheckRedirect(t *testing.T) {
 	redirectErr := errors.New("caller redirect policy")
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -193,6 +222,36 @@ func TestOpenResourcePreservesCallerCheckRedirect(t *testing.T) {
 	_, err = client.OpenResource(context.Background(), pixiv.OpenResourceRequest{Ref: pixiv.ResourceRef{URL: server.URL + "/resource/start.jpg"}})
 	require.ErrorIs(t, err, pixiv.ErrUpstreamUnavailable)
 	assert.NotErrorIs(t, err, redirectErr, "调用方 redirect 错误不应进入公开 cause")
+}
+
+func TestOpenResourceUseLastResponseRejectsAndClosesRedirect(t *testing.T) {
+	body := &resourceTrackingBody{Reader: strings.NewReader("canary redirect body")}
+	var hits atomic.Int32
+	httpClient := &http.Client{
+		Transport: resourceRoundTripperFunc(func(*http.Request) (*http.Response, error) {
+			hits.Add(1)
+			return &http.Response{
+				StatusCode: http.StatusFound,
+				Header:     http.Header{"Location": {"/img-original/final.jpg?token=canary-query"}},
+				Body:       body,
+			}, nil
+		}),
+		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+	}
+	client, err := pixiv.NewClient(pixiv.Options{HTTPClient: httpClient})
+	require.NoError(t, err)
+	response, err := client.OpenResource(context.Background(), pixiv.OpenResourceRequest{Ref: pixiv.ResourceRef{URL: "https://i.pximg.net/img-original/start.jpg"}})
+	assert.Nil(t, response)
+	require.Error(t, err)
+	var typed *pixiv.Error
+	require.True(t, errors.As(err, &typed))
+	assert.Equal(t, pixiv.OperationOpenResource, typed.Operation)
+	assert.Equal(t, pixiv.BackendResource, typed.Backend)
+	assert.Equal(t, http.StatusFound, typed.UpstreamStatus)
+	assert.True(t, body.closed.Load())
+	assert.Zero(t, body.reads.Load())
+	assert.EqualValues(t, 1, hits.Load())
+	assert.NotContains(t, err.Error(), "canary")
 }
 
 func TestOpenResourcePreservesDefaultRedirectLimit(t *testing.T) {
@@ -316,6 +375,12 @@ func TestDownloadFailuresPreserveTargetAndCleanTemporaryFile(t *testing.T) {
 			},
 		},
 		{
+			name: "not modified status", status: http.StatusNotModified, want: pixiv.ErrUpstreamError,
+			body: func(context.CancelFunc) io.ReadCloser {
+				return &resourceTrackingBody{Reader: strings.NewReader("not modified")}
+			},
+		},
+		{
 			name: "upstream status", status: http.StatusInternalServerError, want: pixiv.ErrUpstreamError,
 			body: func(context.CancelFunc) io.ReadCloser {
 				return &resourceTrackingBody{Reader: strings.NewReader("error canary body")}
@@ -343,6 +408,9 @@ func TestDownloadFailuresPreserveTargetAndCleanTemporaryFile(t *testing.T) {
 			var typed *pixiv.Error
 			require.True(t, errors.As(err, &typed))
 			assert.Equal(t, pixiv.OperationDownload, typed.Operation)
+			if tc.status != http.StatusOK {
+				assert.Equal(t, tc.status, typed.UpstreamStatus)
+			}
 			assert.NotContains(t, err.Error(), "canary")
 			if tracked, ok := body.(*resourceTrackingBody); ok {
 				assert.True(t, tracked.closed.Load(), "失败路径必须关闭资源 body")
@@ -353,6 +421,25 @@ func TestDownloadFailuresPreserveTargetAndCleanTemporaryFile(t *testing.T) {
 			assertNoDownloadTemps(t, dir)
 		})
 	}
+}
+
+func TestDownloadInvalidDestinationDoesNotUseNetwork(t *testing.T) {
+	var calls atomic.Int32
+	client, err := pixiv.NewClient(pixiv.Options{HTTPClient: &http.Client{Transport: resourceRoundTripperFunc(func(*http.Request) (*http.Response, error) {
+		calls.Add(1)
+		return nil, errors.New("must not hit")
+	})}})
+	require.NoError(t, err)
+	ref := pixiv.ResourceRef{URL: "https://i.pximg.net/img-original/a.jpg"}
+	for _, destination := range []string{"", filepath.Join(t.TempDir(), "missing", "image.jpg")} {
+		err := client.Download(context.Background(), ref, destination)
+		require.ErrorIs(t, err, pixiv.ErrInvalidArgument)
+		var typed *pixiv.Error
+		require.True(t, errors.As(err, &typed))
+		assert.Equal(t, pixiv.OperationDownload, typed.Operation)
+		assert.Empty(t, typed.Backend)
+	}
+	assert.Zero(t, calls.Load())
 }
 
 func TestDownloadReplacementFailurePreservesExistingDestination(t *testing.T) {
@@ -464,6 +551,7 @@ func TestParseResourceRefRejectsUnsafeURLsLocally(t *testing.T) {
 		{"https://i.pximg.net/unknown/a.jpg", pixiv.ErrForbidden},
 		{"https://i.pximg.net/img-original/%2e%2e/secret", pixiv.ErrForbidden},
 		{"https://i.pximg.net/img-original/%252e%252e/secret", pixiv.ErrForbidden},
+		{"https://i.pximg.net/img-original/%252e%252e/%25zz", pixiv.ErrForbidden},
 		{"https://i.pximg.net/img-original/a.jpg?bad=%zz", pixiv.ErrInvalidArgument},
 		{"https://127.0.0.1/img-original/a.jpg", pixiv.ErrForbidden},
 		{"file:///img-original/a.jpg", pixiv.ErrInvalidArgument},
@@ -503,6 +591,62 @@ func TestResourceMirrorPolicyRequiresExactHostAndPathPrefix(t *testing.T) {
 	}
 }
 
+func TestResourceMirrorPathPrefixHonorsSegmentBoundary(t *testing.T) {
+	client, err := pixiv.NewClient(pixiv.Options{ResourcePolicy: pixiv.ResourcePolicy{Mirrors: []pixiv.ResourceMirrorPolicy{{
+		Host: "mirror.example", PathPrefixes: []string{"/allowed"},
+	}}}})
+	require.NoError(t, err)
+	for _, rawURL := range []string{"https://mirror.example/allowed", "https://mirror.example/allowed/image.jpg"} {
+		_, err := client.ParseResourceRef(rawURL)
+		require.NoError(t, err)
+	}
+	_, err = client.ParseResourceRef("https://mirror.example/allowed-evil/image.jpg")
+	require.ErrorIs(t, err, pixiv.ErrForbidden)
+
+	_, err = pixiv.NewClient(pixiv.Options{ResourcePolicy: pixiv.ResourcePolicy{Mirrors: []pixiv.ResourceMirrorPolicy{{
+		Host: "mirror.example", PathPrefixes: []string{"/"},
+	}}}})
+	require.ErrorIs(t, err, pixiv.ErrInvalidArgument)
+}
+
+func TestOpenAndRedirectRejectMirrorPrefixBoundaryWithoutDeniedHit(t *testing.T) {
+	var directCalls atomic.Int32
+	client, err := pixiv.NewClient(pixiv.Options{
+		HTTPClient: &http.Client{Transport: resourceRoundTripperFunc(func(*http.Request) (*http.Response, error) {
+			directCalls.Add(1)
+			return nil, errors.New("must not hit")
+		})},
+		ResourcePolicy: pixiv.ResourcePolicy{Mirrors: []pixiv.ResourceMirrorPolicy{{Host: "mirror.example", PathPrefixes: []string{"/allowed"}}}},
+	})
+	require.NoError(t, err)
+	_, err = client.OpenResource(context.Background(), pixiv.OpenResourceRequest{Ref: pixiv.ResourceRef{URL: "https://mirror.example/allowed-evil/a.jpg"}})
+	require.ErrorIs(t, err, pixiv.ErrForbidden)
+	assert.Zero(t, directCalls.Load())
+
+	var deniedHits atomic.Int32
+	denied := httptest.NewTLSServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { deniedHits.Add(1) }))
+	defer denied.Close()
+	first := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, denied.URL+"/allowed-evil/a.jpg", http.StatusFound)
+	}))
+	defer first.Close()
+	firstURL, err := url.Parse(first.URL)
+	require.NoError(t, err)
+	deniedURL, err := url.Parse(denied.URL)
+	require.NoError(t, err)
+	redirectClient, err := pixiv.NewClient(pixiv.Options{
+		HTTPClient: first.Client(),
+		ResourcePolicy: pixiv.ResourcePolicy{Mirrors: []pixiv.ResourceMirrorPolicy{
+			{Host: firstURL.Host, PathPrefixes: []string{"/allowed"}},
+			{Host: deniedURL.Host, PathPrefixes: []string{"/allowed"}},
+		}},
+	})
+	require.NoError(t, err)
+	_, err = redirectClient.OpenResource(context.Background(), pixiv.OpenResourceRequest{Ref: pixiv.ResourceRef{URL: first.URL + "/allowed/start.jpg"}})
+	require.ErrorIs(t, err, pixiv.ErrForbidden)
+	assert.Zero(t, deniedHits.Load())
+}
+
 func TestNewClientRejectsInvalidResourceMirrorPolicy(t *testing.T) {
 	policies := []pixiv.ResourcePolicy{
 		{Mirrors: []pixiv.ResourceMirrorPolicy{{Host: "https://mirror.example", PathPrefixes: []string{"/images/"}}}},
@@ -511,6 +655,7 @@ func TestNewClientRejectsInvalidResourceMirrorPolicy(t *testing.T) {
 		{Mirrors: []pixiv.ResourceMirrorPolicy{{Host: "mirror.example", PathPrefixes: []string{"/a/../b/"}}}},
 		{Mirrors: []pixiv.ResourceMirrorPolicy{{Host: "mirror.example:bad", PathPrefixes: []string{"/images/"}}}},
 		{Mirrors: []pixiv.ResourceMirrorPolicy{{Host: "mirror.example", PathPrefixes: []string{"/images?scope=/"}}}},
+		{Mirrors: []pixiv.ResourceMirrorPolicy{{Host: "mirror.example", PathPrefixes: []string{"/"}}}},
 	}
 	for _, policy := range policies {
 		_, err := pixiv.NewClient(pixiv.Options{ResourcePolicy: policy})
