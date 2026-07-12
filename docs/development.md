@@ -257,34 +257,35 @@ pre-commit 和 `git diff --check`。发布渠道仅可由
 `go run ./scripts/releaseassets channel --version ...` 判定；build metadata 中的连字符不会使 stable
 tag 误变为 prerelease。
 
-这套本地检查只证明 workflow 声明的依赖和语义，**不**创建或保护 GitHub `release` Environment，
-也不替代 Task 20 的真实 Environment、secret 和 tag protection 配置。
+这套本地检查只证明 workflow 声明的依赖和语义，**不**验证 GitHub `release` Environment、
+secret 和 tag protection 的远端实际状态；它不替代 Task 20 的远端配置审计。
 
 正式发布目前必须被以下条件阻断：完整 six-target staticlib/manifest 与真实 native artifact 证据
-尚待 Task 20 的实际 main runner 收集与 Task 13 回填，并且还未创建受保护的 `release` Environment、
-生产 signing 私钥部署、公开仓库或 tag。不得以本地 fixture 成功、仅有 host library 或 workflow
-文件存在来创建 Release/tap。
+尚待 Task 20 的实际 main runner 收集与 Task 13 回填，并且尚未创建正式 tag、GitHub Release 或 tap
+formula 提交。受保护 `release` Environment、生产 signing 私钥与公开仓库已按 Task 20 配置；不得以
+这些远端前置条件或本地 fixture 成功、仅有 host library 或 workflow 文件存在来创建 Release/tap。
 
 production Ed25519 public trust root 已在
 [`internal/bootstrap/release_trust.go`](../internal/bootstrap/release_trust.go) 随源码提交：key ID 为
 `ed25519-2c27e77742d3c33a`，其 SPKI DER SHA-256 fingerprint 为
 `2c27e77742d3c33ad14be867d4e0519229a220898c9a7c868447eaef0951b4cf`。同包测试以已知真实签名验证
-此映射；它只证明公开信任根进入 production wiring，并不证明私钥、Environment 或 Release 已部署。
+此映射；它只证明公开信任根进入 production wiring，并不证明实际签名、Release asset 或安装验收已经
+完成。
 
 生产 Ed25519 信任根的其余规则如下：
 
 - 公钥、key ID 与 fingerprint 已以可审计源码变更进入受支持二进制；私钥绝不进入源码、
   release asset、日志或 formula。
 - 私钥只能作为受保护 `release` Environment 的 secret 使用；恢复副本只可保存在受控的 macOS
-  Keychain。当前两处尚未部署私钥。
+  Keychain。Task 20 已将其写入这两处；它仍不得进入源码、日志、Release asset 或 formula。
 - 轮换时先发布能够信任新 key ID 的版本，保留旧公钥直至旧版本退出支持，再通过新的受签名
   Release 停止使用旧 key。不得让既有二进制突然依赖一个未提交、不可验证的新信任根。
 
 Homebrew tap 是独立发布面：stable 使用 `pixiv-cli`，pre-release 使用 `pixiv-cli-beta`，二者
-都安装 `pixiv` 并相互冲突。Task 20 才能创建专用 tap deploy key；其私钥只能放在 source
-repository 的受保护 `release` Environment secret `HOMEBREW_TAP_DEPLOY_KEY`，tap 只登记对应
-公钥。先在常规 tap checkout 渲染、audit 并在 macOS/Linux 验证安装，再做受限提交/push。当前
-tap 不存在，也不能从本仓库或 workflow 读取、生成或记录 deploy key。
+都安装 `pixiv` 并相互冲突。Task 20 已创建专用 tap deploy key；其私钥只放在 source repository
+的受保护 `release` Environment secret `HOMEBREW_TAP_DEPLOY_KEY`，公开 tap 只登记对应公钥。先在
+常规 tap checkout 渲染、audit 并在 macOS/Linux 验证安装，再做受限提交/push。当前 tap 尚无
+formula 或任何内容提交，也不能从本仓库或 workflow 读取、生成或记录 deploy key。
 
 v0.1.0 不会进行 Apple notarization 或 Windows Authenticode。发布后直接下载仍可能被 Gatekeeper
 或 SmartScreen 拦截/提示；这是需要在用户文档中保留的系统信誉边界，不能通过文档或脚本绕过。

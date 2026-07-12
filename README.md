@@ -56,7 +56,8 @@ brew install FlanChanXwO/tap/pixiv-cli-beta
 ```
 
 两个 formula 都安装同名 `pixiv`，因此相互冲突；它们只下载已验证的 macOS/Linux Release
-资产，不引入 `ffmpeg` 依赖。当前 tap 尚未创建或推送，不能执行以上命令。
+资产，不引入 `ffmpeg` 依赖。公开 tap 已创建并只登记了受限 deploy key 的公钥，但尚未推送任何
+formula，不能执行以上命令。
 
 ### 直接下载（发布后）
 
@@ -290,9 +291,9 @@ pixiv update --proxy http://127.0.0.1:7890
 tag；Release binary 在下载前校验 Ed25519 签名的 checksum 清单和 archive SHA-256，再预检
 `pixiv version --json` 并原子替换可执行文件。
 
-受支持 binary 已内置 production Ed25519 public key/key ID/fingerprint；私钥仍未部署到受保护
-`release` Environment，且尚未发布 Release。因此这不是可用下载渠道的声明；`pixiv update --check`
-的只读检查也不能证明存在已签名、可安装的 Release。
+受支持 binary 已内置 production Ed25519 public key/key ID/fingerprint；私钥只保存在受保护的
+`release` Environment 与受控 macOS Keychain 恢复副本，且尚未发布 Release。因此这不是可用下载
+渠道的声明；`pixiv update --check` 的只读检查也不能证明存在已签名、可安装的 Release。
 
 普通 CLI 命令成功后会尽力检查 stable 更新。它跳过 MCP、help、`version`、`update` 与开发构建，
 对同一用户 cache 最多每 24 小时查询一次，并为自动检查设定最多 3 秒的等待时间。发现新版本或

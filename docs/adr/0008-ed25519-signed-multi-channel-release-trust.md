@@ -39,9 +39,10 @@ repository secret，或复用同一 SSH key，会让任意 tag/workflow 或公�
 
 - 自动检查是只读、限时且 stderr-only 的提示；它不能修改业务退出码或 JSON/MCP stdout。显式更新必须
   将渠道切换、权限、HTTP、签名、checksum、archive 和替换失败如实暴露。
-- production public key/key ID/fingerprint 已进入 bootstrap wiring；私钥、Keychain backup、受保护
-  Environment、公开 remote、GitHub Release 与 tap 仍未部署。不能将 `--check` 成功、本地 fixture 或
-  workflow 文件视为已完成的安全发布。
+- production public key/key ID/fingerprint 已进入 bootstrap wiring；私钥只存在于受保护 Environment
+  与 Keychain recovery copy，公开 source/tap remote 已创建且 tap 只登记 deploy key 公钥。GitHub
+  Release、tag 和 tap formula 仍未部署。不能将 `--check` 成功、本地 fixture 或 workflow 文件视为
+  已完成的安全发布。
 - 当前 staticlib/manifest、workflow policy 和 native artifact evidence 仍未齐备，必须在创建 tag、写入
   secret、发布 Release 或推送 tap 前完成。
 - v0.1.0 用户仍可能看到 Gatekeeper/SmartScreen 警告；支持文档应指导用户回到已验证 Release、

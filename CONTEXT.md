@@ -30,9 +30,9 @@
 - **Automatic check**：普通 CLI 成功后对 stable channel 的只读提示；24 小时节流、最多 3 秒、只写 stderr，绝不改变业务退出码或污染 JSON/MCP stdout。
 
 这只是领域模型，不代表所有渠道已公开可用：受支持 binary 的 production Ed25519 public key、key ID
-与 fingerprint 已随 [`internal/bootstrap/release_trust.go`](internal/bootstrap/release_trust.go) 提交，但当前
-没有公开 remote、Release、tap 或受保护 `release` Environment 的私钥部署，也没有完整六目标 staticlib
-manifest；不能据此声称已发布或可安装。
+与 fingerprint 已随 [`internal/bootstrap/release_trust.go`](internal/bootstrap/release_trust.go) 提交；公开
+source/tap remote、受保护 `release` Environment 与私钥恢复副本已按 Task 20 配置。尚无 tag、Release、
+tap formula 或完整六目标 staticlib manifest；不能据此声称已发布或可安装。
 
 ## 边界规则
 
