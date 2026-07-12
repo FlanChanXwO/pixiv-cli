@@ -31,8 +31,8 @@
 
 这只是领域模型，不代表所有渠道已公开可用：受支持 binary 的 production Ed25519 public key、key ID
 与 fingerprint 已随 [`internal/bootstrap/release_trust.go`](internal/bootstrap/release_trust.go) 提交；公开
-source/tap remote、受保护 `release` Environment 与私钥恢复副本已按 Task 20 配置。尚无 tag、Release、
-tap formula 或完整六目标 staticlib manifest；不能据此声称已发布或可安装。
+source/tap remote、受保护 `release` Environment、私钥恢复副本与完整六目标 staticlib manifest 已按
+Task 20 的审计流程配置或回填。尚无 tag、Release 或 tap formula；不能据此声称已发布或可安装。
 
 ## 边界规则
 

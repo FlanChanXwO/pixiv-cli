@@ -48,6 +48,34 @@ func TestCheckWorkflowRequiresHomebrewReleaseGate(t *testing.T) {
 	}
 }
 
+// Homebrew 6 不接受任意 workspace formula 路径；四平台门禁必须通过隔离 staging tap
+// 的 tap-qualified 标识符安装。
+func TestCheckWorkflowRequiresTapQualifiedStagingFormulaInstall(t *testing.T) {
+	t.Parallel()
+
+	root := releaseWorkflowRoot(t)
+	step := stepWithRun(t, jobNode(t, root, "verify_homebrew_formula"), "brew install")
+	replaceRunFragment(t, step, "brew install --formula \"$staging_tap/$formula_name\"", "brew install --formula \"staging-formula/$formula_name.rb\"")
+	err := checkWorkflow(mustMarshalYAML(t, root))
+	if err == nil || !strings.Contains(err.Error(), "Homebrew native install gate must use the required direct command sequence") {
+		t.Fatalf("policy error = %v, want workspace-path Homebrew formula install rejection", err)
+	}
+}
+
+// Homebrew 6 默认要求 tap trust；staging tap 只在 runner 本地临时存在，仍必须通过
+// `brew trust --tap` 显式登记，不能用环境变量或 developer mode 绕过。
+func TestCheckWorkflowRequiresStagingTapTrust(t *testing.T) {
+	t.Parallel()
+
+	root := releaseWorkflowRoot(t)
+	step := stepWithRun(t, jobNode(t, root, "verify_homebrew_formula"), "brew trust --tap")
+	removeRunFragment(t, step, "brew trust --tap \"$staging_tap\"")
+	err := checkWorkflow(mustMarshalYAML(t, root))
+	if err == nil || !strings.Contains(err.Error(), "Homebrew native install gate must use the required direct command sequence") {
+		t.Fatalf("policy error = %v, want untrusted staging tap install rejection", err)
+	}
+}
+
 func TestCheckPinnedGitHubKnownHosts(t *testing.T) {
 	t.Parallel()
 
@@ -163,10 +191,31 @@ func TestCheckWorkflowRejectsHomebrewReleaseGateMutations(t *testing.T) {
 			},
 		},
 		{
-			name: "staging formula install removed",
+			name: "staging formula install is not tap qualified",
 			want: "Homebrew native install gate must use the required direct command sequence",
 			mutate: func(t *testing.T, root *yaml.Node) {
-				removeRunFragment(t, stepWithRun(t, jobNode(t, root, "verify_homebrew_formula"), "brew install --formula"), "brew install --formula \"staging-formula/$formula_name.rb\"")
+				replaceRunFragment(t, stepWithRun(t, jobNode(t, root, "verify_homebrew_formula"), "brew install --formula"), "brew install --formula \"$staging_tap/$formula_name\"", "brew install --formula \"staging-formula/$formula_name.rb\"")
+			},
+		},
+		{
+			name: "staging formula is copied into the trusted tap namespace",
+			want: "Homebrew native install gate must use the required direct command sequence",
+			mutate: func(t *testing.T, root *yaml.Node) {
+				replaceRunFragment(t, stepWithRun(t, jobNode(t, root, "verify_homebrew_formula"), "staging_tap="), "staging_tap=pixiv-cli-release/staging", "staging_tap=FlanChanXwO/tap")
+			},
+		},
+		{
+			name: "staging tap trust is removed",
+			want: "Homebrew native install gate must use the required direct command sequence",
+			mutate: func(t *testing.T, root *yaml.Node) {
+				removeRunFragment(t, stepWithRun(t, jobNode(t, root, "verify_homebrew_formula"), "brew trust --tap"), "brew trust --tap \"$staging_tap\"")
+			},
+		},
+		{
+			name: "staging tap trust is redirected",
+			want: "Homebrew native install gate must use the required direct command sequence",
+			mutate: func(t *testing.T, root *yaml.Node) {
+				replaceRunFragment(t, stepWithRun(t, jobNode(t, root, "verify_homebrew_formula"), "brew trust --tap"), "brew trust --tap \"$staging_tap\"", "brew trust --tap FlanChanXwO/tap")
 			},
 		},
 		{

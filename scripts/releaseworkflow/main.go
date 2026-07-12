@@ -807,8 +807,13 @@ case "$formula_name" in
 pixiv-cli|pixiv-cli-beta) ;;
 *) exit 1 ;;
 esac
-test -f "staging-formula/$formula_name.rb"
-brew install --formula "staging-formula/$formula_name.rb"
+test "$(find staging-formula -maxdepth 1 -type f -print | LC_ALL=C sort)" = "$(printf '%s\n%s\n' staging-formula/formula-name "staging-formula/$formula_name.rb" | LC_ALL=C sort)"
+staging_tap=pixiv-cli-release/staging
+tap_dir="$(brew --repository)/Library/Taps/pixiv-cli-release/homebrew-staging"
+brew tap-new "$staging_tap" --no-git
+brew trust --tap "$staging_tap"
+cp "staging-formula/$formula_name.rb" "$tap_dir/Formula/$formula_name.rb"
+brew install --formula "$staging_tap/$formula_name"
 pixiv version --json | python3 -c 'import json, sys; actual = json.load(sys.stdin)["version"]; expected = sys.argv[1]; assert actual == expected, f"version {actual!r} != {expected!r}"' "$GITHUB_REF_NAME"`
 
 	if err := requireRequiredJobExecution(job, "verify_homebrew_formula job"); err != nil {

@@ -197,8 +197,10 @@ checksum bytes 生成带 key ID 的 Ed25519 `checksums.json`。
 `.github/workflows/release.yml` 将签名/发布放在受保护的 `release` Environment 中；它使用最小权限和
 full-SHA Actions，并在草稿 Release 上传后核对 asset 集合才发布。发布 job 将同一份已验证
 `release/checksums.txt` 交给下游 renderer；stable/prerelease 分别生成唯一的 `pixiv-cli`/
-`pixiv-cli-beta` formula。四个原生 macOS/Linux runner 从该 staging formula 真实安装并核对
-`pixiv version --json` 后，最终受保护 job 才能读取独立 tap deploy key 并只 push 对应 formula。
+`pixiv-cli-beta` formula。四个原生 macOS/Linux runner 将该 formula 安放在各自隔离的 local staging
+tap 后，以 tap-qualified formula name 真实安装并核对 `pixiv version --json`；此路径不使用或写入
+公开 tap，Homebrew 6 所需的 trust 仅精确写入 runner 本地 staging tap 的临时 trust store。最终受保护
+job 才能读取独立 tap deploy key 并只 push 对应 formula。
 文件和本地 fixture 已存在，但尚未通过正式 tag 取得这四份安装证据；run `29192425899` 已取得实际
 GitHub runner 的完整六目标 native 成功证据并回填 staticlib/manifest。
 production signing 私钥、Environment 与公开 remote 已按 Task 20 配置，受支持 binary 的公开 trust root

@@ -14,8 +14,10 @@ credential material。远端 Environment 与 deploy key 已由 **Task20** 接入
    `HOMEBREW_TAP_DEPLOY_KEY`。不得放入 repository variables、workflow YAML、tap
    repository、日志、artifact 或本目录；fork/PR workflow 不得读取它。
 4. renderer artifact 必须先在 macOS Intel、macOS arm64、Linux amd64 与 Linux arm64
-   runner 上分别执行真实 `brew install --formula`，再解析 `pixiv version --json` 并断言
-   embedded version 等于 tag。任一 matrix job 失败时，最终 tap job 不会启动。
+   runner 上分别复制到隔离 local staging tap 的 `Formula/`，以精确
+   `brew trust --tap pixiv-cli-release/staging` 写入 runner 的临时 trust store，再以 tap-qualified
+   name 执行真实 `brew install`，并解析 `pixiv version --json` 断言 embedded version 等于 tag。它不使用
+   workspace formula path、developer/环境变量 bypass 或公开 tap；任一 matrix job 失败时，最终 tap job 不会启动。
 5. Homebrew 下游 jobs 中只有最后的 `deploy_homebrew_tap` 声明受保护 `release` Environment；
    publish job 仍在同一 Environment 内隔离 Release signing secrets。deploy job 先以 public HTTPS
    clone tap、只 stage 对应的一个 `Formula/*.rb` 并核对 staged diff。最后一个 step 才读取

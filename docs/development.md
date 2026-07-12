@@ -294,8 +294,12 @@ tag 误变为 prerelease。
 publish 核对并公开 Release 后，立即上传同一份 `release/checksums.txt`；policy 拒绝中间 step、路径
 替换或发布后改写。`render_homebrew_formula` 只下载该 artifact，并把 releaseassets 的 stable/
 prerelease 结果直接映射为 `pixiv-cli`/`pixiv-cli-beta`。随后精确四目标 matrix（macOS Intel/arm64、
-Linux amd64/arm64）分别从 staging formula 执行 `brew install --formula`，解析
-`pixiv version --json` 并与 tag 比较。只有全部成功，最终受保护 `deploy_homebrew_tap` 才以 HTTPS
+Linux amd64/arm64）先用 `brew tap-new pixiv-cli-release/staging --no-git` 创建各 runner 的隔离
+local tap，再以 `brew trust --tap pixiv-cli-release/staging` 显式信任这一个临时命名空间；将唯一
+staging formula 放入其 `Formula/`，随后用 `pixiv-cli-release/staging/<formula>` 执行真实
+`brew install --formula`，解析
+`pixiv version --json` 并与 tag 比较。它不使用 workspace formula path、developer/环境变量 bypass，
+也不克隆、写入或信任公开 tap。只有全部成功，最终受保护 `deploy_homebrew_tap` 才以 HTTPS
 clone public tap、核对唯一 staged formula，并在最后一个 step 读取 deploy key；SSH push 固定官方
 GitHub ED25519 known_hosts、启用 strict checking，目标精确为 `HEAD:main`。任何前置 job 失败都不会
 写 tap。
