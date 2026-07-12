@@ -20,8 +20,8 @@
       "GitHub Actions"
     ],
     "description": "这是一个 Go 版 Pixiv CLI 与 MCP stdio server，内置 Rust ugoira encoder，并包含 release/update workflow。",
-    "analyzedAt": "2026-07-12T12:11:45.622Z",
-    "gitCommitHash": "c295394e844770c38dd2eaa65551471c1db6ef06"
+    "analyzedAt": "2026-07-12T13:34:08.408Z",
+    "gitCommitHash": "e5bc6a9b4ddc9818b6ae24c84de44c0ba3859c66"
   },
   "nodes": [
     {
@@ -12597,7 +12597,7 @@
       "type": "document",
       "name": "CHANGELOG.md",
       "filePath": "CHANGELOG.md",
-      "summary": "记录未发布的用户可见变更与 v0.1.0 发布候选说明；包括 Windows cgo/LLD、7-Zip 打包、Rust source identity 与 release archive LICENSE 的跨平台 LF 修复。",
+      "summary": "记录未发布的用户可见变更与 v0.1.0 发布候选说明；六目标 native runner 证据、同源 staticlib 与 manifest 已完成并回填，正式发布仍待 tag、Release、formula 与安装验收。",
       "tags": [
         "文档",
         "变更记录",
@@ -12637,7 +12637,7 @@
       "type": "document",
       "name": "README.md",
       "filePath": "README.md",
-      "summary": "面向用户说明 Pixiv CLI 与 MCP server 的构建、认证、命令、更新和发布后安装方式；记录公开 source/tap 已创建、私钥只在受保护边界，并明确无 Release 或可安装资产。",
+      "summary": "面向用户说明 Pixiv CLI 与 MCP server 的构建、认证、命令、更新和发布后安装方式；六目标 staticlib/manifest 与受保护发布前置条件已齐，但尚无正式 tag、Release、formula 或安装验收。",
       "tags": [
         "文档",
         "用户指南",
@@ -12770,7 +12770,7 @@
       "type": "document",
       "name": "0007-platform-staticlibs-for-supported-source-builds.md",
       "filePath": "docs/adr/0007-platform-staticlibs-for-supported-source-builds.md",
-      "summary": "记录六平台 Rust staticlib、同源 manifest 与 cgo 构建证据的决策及尚未取得真实 runner 证据的限制。",
+      "summary": "记录六平台 Rust staticlib、同源 manifest 与 cgo 构建证据决策；run 29192425899 已完成六目标验证与受控回填，正式发布仍待后续门禁。",
       "tags": [
         "documentation",
         "architecture",
@@ -12783,7 +12783,7 @@
       "type": "document",
       "name": "0008-ed25519-signed-multi-channel-release-trust.md",
       "filePath": "docs/adr/0008-ed25519-signed-multi-channel-release-trust.md",
-      "summary": "记录 Ed25519 签名、更新渠道、已配置的受保护 Release environment 与 Homebrew tap 凭据隔离的信任决策；无 tag、Release 或 formula。",
+      "summary": "记录 Ed25519 签名、更新渠道、受保护 Release environment 与 Homebrew tap 凭据隔离；native 证据和 workflow policy 已齐，仍无正式 tag、Release、formula 或安装验收。",
       "tags": [
         "documentation",
         "architecture",
@@ -16497,7 +16497,7 @@
       "type": "document",
       "name": "architecture.md",
       "filePath": "docs/architecture.md",
-      "summary": "说明 CLI、application、bootstrap、Pixiv、下载和更新职责；记录 run 29191200569 六 job success、六 source digest 一致但 Windows LICENSE member bytes 分裂，consolidation fail-closed 且无输出，不可回填、跨 run 拼接。",
+      "summary": "说明 CLI、application、bootstrap、Pixiv、下载和更新职责；run 29192425899 六目标 source digest 与 LICENSE hash 一致，consolidation 成功并回填六库与 manifest，正式发布门禁仍未完成。",
       "complexity": "moderate",
       "tags": [
         "documentation",
@@ -16511,7 +16511,7 @@
       "type": "document",
       "name": "development.md",
       "filePath": "docs/development.md",
-      "summary": "说明 Rust staticlib、native evidence 与发布测试；记录 run 29191200569 因 Windows LICENSE member bytes 分裂而无输出，必须固定 LF 后从新 SHA 完整重跑。",
+      "summary": "说明 Rust staticlib、native evidence 与发布测试；run 29192425899 六目标验证及 fail-closed consolidation 已成功，六库与 manifest 已回填且 source build 通过，正式发布仍待 tag、Release、formula 与安装验收。",
       "complexity": "complex",
       "tags": [
         "documentation",
@@ -35785,7 +35785,7 @@
     {
       "order": 1,
       "title": "项目全景与发布现状",
-      "description": "先从 README 了解这是同时提供 Pixiv 命令行与 stdio MCP server 的项目，以及构建、认证、命令和更新的用户入口。它也划清当前阶段的边界：公开信任根已进入源码，并不等同于私钥、远端 Release、tap 或可安装资产已经部署。这个前提会贯穿后续所有发布与验证步骤。",
+      "description": "先从 README 了解这是同时提供 Pixiv 命令行与 stdio MCP server 的项目，以及构建、认证、命令和更新的用户入口。公开 source/tap、受保护 release Environment、隔离 credentials 与六目标 staticlib/manifest 已配置或回填，但尚无正式 tag、Release、formula 或安装验收。",
       "nodeIds": [
         "document:README.md"
       ]
@@ -35821,7 +35821,7 @@
     {
       "order": 5,
       "title": "Rust 静态库同源性",
-      "description": "原生编码器的核心是 Rust FFI、PNG relay 与量化实现；Go 侧在加载前验证 staticlib manifest 的目标、源码 digest 和 SHA-256。run 29189725013 的六个 matrix job 均 success，但在规范化 Windows 反斜杠前筛选 src/.cargo/vendor 导致 Windows/Unix source digest 分裂并被 consolidate fail-closed；该 run artifacts 不得回填或跨 run 拼接，必须从修复后的新 SHA 完整重跑。",
+      "description": "原生编码器的核心是 Rust FFI、PNG relay 与量化实现；Go 侧在加载前验证 staticlib manifest 的目标、源码 digest 和 SHA-256。早期 run 的路径与 LICENSE bytes 分裂均被 fail-closed；修复后 run 29192425899 六目标 source digest 与 LICENSE hash 一致，consolidation 成功并回填六库与 manifest。",
       "nodeIds": [
         "file:internal/download/ugoira_rs/src/lib.rs",
         "file:internal/download/ugoira_integrity.go",
@@ -35851,7 +35851,7 @@
     {
       "order": 8,
       "title": "非发布原生证据 CI",
-      "description": "native-evidence workflow 在受审计 main 提交或手动触发时，使用六个真实 runner 收集 staticlib、GIF/APNG smoke、版本化二进制和归档证据。它不签名、不创建 tag 或 Release；开发文档规定了取得六份证据后如何审计并受控回填 staticlib manifest。这样 CI 既验证跨平台产物，也不会越过发布权限边界。",
+      "description": "native-evidence workflow 在受审计 main 提交或手动触发时，使用六个真实 runner 收集 staticlib、GIF/APNG smoke、版本化二进制和归档证据。run 29192425899 六个 job 均成功，六份记录经 fail-closed consolidation 受控回填；该流程仍不签名、不创建 tag 或 Release。",
       "nodeIds": [
         "pipeline:.github/workflows/native-evidence.yml",
         "document:docs/development.md"
@@ -35861,7 +35861,7 @@
     {
       "order": 9,
       "title": "Release 流程与未部署边界",
-      "description": "最后查看 tag 驱动的 Release workflow 与项目领域说明：前者只在语义化版本 tag 且提交属于默认分支时构建、签名并发布六平台资产。生产 public trust root、签名私钥的受保护 Environment、公开 source/tap remote 与 tap deploy key 已按 Task 20 配置；但 six-target native evidence、完整 staticlib manifest、正式 tag、已签名 Release 与 tap formula 尚未完成，因此不能把当前状态称为已发布。",
+      "description": "最后查看 tag 驱动的 Release workflow 与项目领域说明：前者只在语义化版本 tag 且提交属于默认分支时构建、签名并发布六平台资产。production trust root、protected secrets、公开 source/tap、workflow policy、六目标 native evidence 与 staticlib manifest 已齐；正式 tag、已签名 Release、tap formula 与安装验收仍未完成。",
       "nodeIds": [
         "pipeline:.github/workflows/release.yml",
         "document:CONTEXT.md"

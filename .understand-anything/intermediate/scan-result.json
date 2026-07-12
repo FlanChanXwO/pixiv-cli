@@ -76,7 +76,7 @@
     {
       "path": "CHANGELOG.md",
       "language": "markdown",
-      "sizeLines": 94,
+      "sizeLines": 96,
       "fileCategory": "docs"
     },
     {
@@ -160,7 +160,7 @@
     {
       "path": "docs/architecture.md",
       "language": "markdown",
-      "sizeLines": 243,
+      "sizeLines": 246,
       "fileCategory": "docs"
     },
     {
