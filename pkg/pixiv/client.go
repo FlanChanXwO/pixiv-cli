@@ -115,6 +115,10 @@ func (c *Client) IllustDetail(ctx context.Context, id int64) (*IllustDetail, err
 }
 
 func mapWebError(err error, operation Operation, illustID int64) error {
+	var pagesError *webapi.IllustPagesError
+	if errors.As(err, &pagesError) {
+		return mapWebError(errors.Unwrap(pagesError), OperationIllustPages, illustID)
+	}
 	var upstream webapi.APIError
 	if errors.As(err, &upstream) {
 		code, retryable := codeForHTTPStatus(upstream.StatusCode, operation)

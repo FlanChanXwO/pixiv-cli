@@ -98,7 +98,15 @@ func (c *Client) SearchIllust(ctx context.Context, word, target, sort, duration 
 }
 
 func (c *Client) IllustDetail(ctx context.Context, id int64) (*model.IllustDetail, error) {
-	return getMapped(ctx, c, "/v1/illust/detail", url.Values{"illust_id": {fmt.Sprint(id)}}, mapIllustDetail)
+	var raw illustDetailDTO
+	if err := c.getJSONWithRetry(ctx, "/v1/illust/detail", url.Values{"illust_id": {fmt.Sprint(id)}}, &raw); err != nil {
+		return nil, err
+	}
+	if raw.Illust == nil || raw.Illust.ID <= 0 {
+		return nil, ErrMalformedResponse
+	}
+	out := mapIllustDetail(raw)
+	return &out, nil
 }
 
 func (c *Client) IllustRelated(ctx context.Context, id int64, offset int) (*model.IllustList, error) {

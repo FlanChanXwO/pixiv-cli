@@ -38,6 +38,14 @@ func (e EnvelopeError) Error() string {
 	return fmt.Sprintf("pixiv web api envelope error: %s", e.Message)
 }
 
+// IllustPagesError 保留匿名详情流程中 pages 子阶段，供 facade 精确标注 operation。
+type IllustPagesError struct {
+	err error
+}
+
+func (e *IllustPagesError) Error() string { return fmt.Sprintf("web illust pages: %v", e.err) }
+func (e *IllustPagesError) Unwrap() error { return e.err }
+
 type Client struct {
 	httpClient *http.Client
 	webBase    string
@@ -114,9 +122,12 @@ func (c *Client) IllustDetail(ctx context.Context, id int64) (*model.IllustDetai
 	if detail.Error {
 		return nil, webEnvelopeError(detail.Message)
 	}
+	if !detail.bodyPresent || int64(firstFlexInt64(detail.Body.ID, detail.Body.IllustID)) <= 0 {
+		return nil, ErrMalformedResponse
+	}
 	pages, err := c.IllustPages(ctx, id)
 	if err != nil {
-		return nil, err
+		return nil, &IllustPagesError{err: err}
 	}
 	illust := mapDetailIllust(detail.Body, pages)
 	return &model.IllustDetail{Illust: illust}, nil
@@ -129,6 +140,9 @@ func (c *Client) IllustPages(ctx context.Context, id int64) ([]model.MetaPage, e
 	}
 	if out.Error {
 		return nil, webEnvelopeError(out.Message)
+	}
+	if !out.bodyPresent {
+		return nil, ErrMalformedResponse
 	}
 	pages := make([]model.MetaPage, 0, len(out.Body))
 	for index, page := range out.Body {
@@ -502,6 +516,30 @@ type ajaxEnvelope[T any] struct {
 	Error   bool   `json:"error"`
 	Message string `json:"message"`
 	Body    T      `json:"body"`
+
+	bodyPresent bool
+}
+
+func (e *ajaxEnvelope[T]) UnmarshalJSON(data []byte) error {
+	var wire struct {
+		Error   bool            `json:"error"`
+		Message string          `json:"message"`
+		Body    json.RawMessage `json:"body"`
+	}
+	if err := json.Unmarshal(data, &wire); err != nil {
+		return err
+	}
+	e.Error = wire.Error
+	e.Message = wire.Message
+	body := bytes.TrimSpace(wire.Body)
+	if len(body) == 0 || bytes.Equal(body, []byte("null")) {
+		return nil
+	}
+	if err := json.Unmarshal(body, &e.Body); err != nil {
+		return err
+	}
+	e.bodyPresent = true
+	return nil
 }
 
 type webSearchBody struct {

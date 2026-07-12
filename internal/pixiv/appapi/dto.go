@@ -5,7 +5,7 @@ type illustListDTO struct {
 	Illusts []illustDTO `json:"illusts"`
 }
 type illustDetailDTO struct {
-	Illust illustDTO `json:"illust"`
+	Illust *illustDTO `json:"illust"`
 }
 type illustDTO struct {
 	ID             int64         `json:"id"`

@@ -475,6 +475,247 @@ func TestClientIllustDetailMapsWebEnvelopeErrorsSafely(t *testing.T) {
 	}
 }
 
+func TestClientIllustDetailPreservesAnonymousPagesFailureStage(t *testing.T) {
+	t.Parallel()
+
+	var appRequests atomic.Int32
+	transport := roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		if request.URL.Host == "app.invalid" {
+			appRequests.Add(1)
+			return testHTTPResponse(request, http.StatusInternalServerError, "unexpected App request"), nil
+		}
+		switch request.URL.Path {
+		case "/ajax/illust/731":
+			return testHTTPResponse(request, http.StatusOK, `{"error":false,"message":"","body":{"id":"731","title":"anonymous detail","pageCount":"1"}}`), nil
+		case "/ajax/illust/731/pages":
+			return testHTTPResponse(request, http.StatusBadGateway, "pages-body-secret-canary"), nil
+		default:
+			return testHTTPResponse(request, http.StatusNotFound, "unexpected path"), nil
+		}
+	})
+	client, err := pixiv.NewClient(pixiv.Options{
+		HTTPClient:         &http.Client{Transport: transport},
+		AppAPIBaseURL:      "https://app.invalid",
+		WebAPIBaseURL:      "https://web.invalid",
+		WebFallbackEnabled: true,
+	})
+	if err != nil {
+		t.Fatalf("NewClient() error = %v", err)
+	}
+
+	detail, err := client.IllustDetail(context.Background(), 731)
+	if err == nil {
+		t.Fatal("IllustDetail() error = nil, want anonymous pages failure")
+	}
+	if detail != nil {
+		t.Errorf("IllustDetail() detail = %#v, want no partial result", detail)
+	}
+	var typed *pixiv.Error
+	if !errors.As(err, &typed) {
+		t.Fatalf("IllustDetail() error = %v, want *pixiv.Error", err)
+	}
+	if typed.Code != pixiv.CodeUpstreamError || typed.Backend != pixiv.BackendWebAPI || typed.Operation != pixiv.OperationIllustPages || !typed.Retryable || typed.UpstreamStatus != http.StatusBadGateway || typed.IllustID != 731 {
+		t.Errorf("typed error = %#v, want anonymous Web pages metadata", typed)
+	}
+	if appRequests.Load() != 0 {
+		t.Errorf("App requests = %d, want 0", appRequests.Load())
+	}
+	for _, output := range []string{err.Error(), fmt.Sprintf("%+v", err), errors.Unwrap(err).Error()} {
+		if strings.Contains(output, "pages-body-secret-canary") {
+			t.Errorf("public error leaked pages body: %q", output)
+		}
+	}
+}
+
+func TestClientIllustDetailRejectsAppResponseWithoutIllust(t *testing.T) {
+	t.Parallel()
+
+	var webRequests atomic.Int32
+	transport := roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		if request.URL.Host == "app.invalid" {
+			return testHTTPResponse(request, http.StatusOK, `{}`), nil
+		}
+		webRequests.Add(1)
+		return testHTTPResponse(request, http.StatusOK, `{"error":false,"message":"","body":[]}`), nil
+	})
+	client, err := pixiv.NewClient(pixiv.Options{
+		HTTPClient:    &http.Client{Transport: transport},
+		AppAPIBaseURL: "https://app.invalid",
+		WebAPIBaseURL: "https://web.invalid",
+		AccessToken:   "app-token",
+	})
+	if err != nil {
+		t.Fatalf("NewClient() error = %v", err)
+	}
+
+	detail, err := client.IllustDetail(context.Background(), 731)
+	if detail != nil {
+		t.Errorf("IllustDetail() detail = %#v, want nil", detail)
+	}
+	assertMalformedDetailError(t, err, pixiv.BackendAppAPI)
+	if webRequests.Load() != 0 {
+		t.Errorf("Web requests = %d, want 0 after malformed App detail", webRequests.Load())
+	}
+}
+
+func TestClientIllustDetailRejectsAppIllustWithoutRequiredID(t *testing.T) {
+	t.Parallel()
+
+	var webRequests atomic.Int32
+	transport := roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		if request.URL.Host == "app.invalid" {
+			return testHTTPResponse(request, http.StatusOK, `{"illust":{}}`), nil
+		}
+		webRequests.Add(1)
+		return testHTTPResponse(request, http.StatusOK, `{"error":false,"message":"","body":[]}`), nil
+	})
+	client, err := pixiv.NewClient(pixiv.Options{
+		HTTPClient:    &http.Client{Transport: transport},
+		AppAPIBaseURL: "https://app.invalid",
+		WebAPIBaseURL: "https://web.invalid",
+		AccessToken:   "app-token",
+	})
+	if err != nil {
+		t.Fatalf("NewClient() error = %v", err)
+	}
+
+	detail, err := client.IllustDetail(context.Background(), 731)
+	if detail != nil {
+		t.Errorf("IllustDetail() detail = %#v, want nil", detail)
+	}
+	assertMalformedDetailError(t, err, pixiv.BackendAppAPI)
+	if webRequests.Load() != 0 {
+		t.Errorf("Web requests = %d, want 0 after malformed App illust", webRequests.Load())
+	}
+}
+
+func TestClientIllustDetailRejectsWebEnvelopeWithoutBody(t *testing.T) {
+	t.Parallel()
+
+	transport := roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		switch request.URL.Path {
+		case "/ajax/illust/731":
+			return testHTTPResponse(request, http.StatusOK, `{"error":false,"message":""}`), nil
+		case "/ajax/illust/731/pages":
+			return testHTTPResponse(request, http.StatusOK, `{"error":false,"message":"","body":[]}`), nil
+		default:
+			return testHTTPResponse(request, http.StatusNotFound, "unexpected path"), nil
+		}
+	})
+	client, err := pixiv.NewClient(pixiv.Options{
+		HTTPClient:         &http.Client{Transport: transport},
+		WebAPIBaseURL:      "https://web.invalid",
+		WebFallbackEnabled: true,
+	})
+	if err != nil {
+		t.Fatalf("NewClient() error = %v", err)
+	}
+
+	detail, err := client.IllustDetail(context.Background(), 731)
+	if detail != nil {
+		t.Errorf("IllustDetail() detail = %#v, want nil", detail)
+	}
+	assertMalformedDetailError(t, err, pixiv.BackendWebAPI)
+}
+
+func TestClientIllustDetailRejectsWebBodyWithoutRequiredID(t *testing.T) {
+	t.Parallel()
+
+	transport := roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		switch request.URL.Path {
+		case "/ajax/illust/731":
+			return testHTTPResponse(request, http.StatusOK, `{"error":false,"message":"","body":{}}`), nil
+		case "/ajax/illust/731/pages":
+			return testHTTPResponse(request, http.StatusOK, `{"error":false,"message":"","body":[]}`), nil
+		default:
+			return testHTTPResponse(request, http.StatusNotFound, "unexpected path"), nil
+		}
+	})
+	client, err := pixiv.NewClient(pixiv.Options{
+		HTTPClient:         &http.Client{Transport: transport},
+		WebAPIBaseURL:      "https://web.invalid",
+		WebFallbackEnabled: true,
+	})
+	if err != nil {
+		t.Fatalf("NewClient() error = %v", err)
+	}
+
+	detail, err := client.IllustDetail(context.Background(), 731)
+	if detail != nil {
+		t.Errorf("IllustDetail() detail = %#v, want nil", detail)
+	}
+	assertMalformedDetailError(t, err, pixiv.BackendWebAPI)
+}
+
+func TestClientIllustDetailDistinguishesMissingAndEmptyWebPagesBody(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		webBody   string
+		wantError bool
+	}{
+		{name: "missing body is malformed", webBody: `{"error":false,"message":""}`, wantError: true},
+		{name: "empty array is valid", webBody: `{"error":false,"message":"","body":[]}`},
+	}
+	for _, test := range tests {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			transport := roundTripFunc(func(request *http.Request) (*http.Response, error) {
+				if request.URL.Host == "app.invalid" {
+					return testHTTPResponse(request, http.StatusOK, `{"illust":{"id":731,"title":"safe","type":"illust","page_count":0,"user":{},"tags":[],"image_urls":{},"meta_single_page":{},"meta_pages":[]}}`), nil
+				}
+				return testHTTPResponse(request, http.StatusOK, test.webBody), nil
+			})
+			client, err := pixiv.NewClient(pixiv.Options{
+				HTTPClient:    &http.Client{Transport: transport},
+				AppAPIBaseURL: "https://app.invalid",
+				WebAPIBaseURL: "https://web.invalid",
+				AccessToken:   "app-token",
+			})
+			if err != nil {
+				t.Fatalf("NewClient() error = %v", err)
+			}
+
+			detail, err := client.IllustDetail(context.Background(), 731)
+			if !test.wantError {
+				if err != nil {
+					t.Fatalf("IllustDetail() error = %v, want valid empty pages", err)
+				}
+				if detail == nil || detail.Illust.MetaPages == nil || len(detail.Illust.MetaPages) != 0 {
+					t.Errorf("meta pages = %#v, want non-nil empty slice", detail)
+				}
+				return
+			}
+			if detail != nil {
+				t.Errorf("IllustDetail() detail = %#v, want nil", detail)
+			}
+			var typed *pixiv.Error
+			if !errors.As(err, &typed) {
+				t.Fatalf("error = %v, want *pixiv.Error", err)
+			}
+			if typed.Code != pixiv.CodeMalformedUpstreamResponse || typed.Backend != pixiv.BackendWebAPI || typed.Operation != pixiv.OperationIllustPages || typed.Retryable || typed.UpstreamStatus != 0 || typed.IllustID != 731 {
+				t.Errorf("typed error = %#v, want malformed Web pages error", typed)
+			}
+		})
+	}
+}
+
+func assertMalformedDetailError(t *testing.T, err error, backend pixiv.Backend) {
+	t.Helper()
+	var typed *pixiv.Error
+	if !errors.As(err, &typed) {
+		t.Fatalf("error = %v, want *pixiv.Error", err)
+	}
+	if typed.Code != pixiv.CodeMalformedUpstreamResponse || typed.Backend != backend || typed.Operation != pixiv.OperationIllustDetail || typed.Retryable || typed.UpstreamStatus != 0 || typed.IllustID != 731 {
+		t.Errorf("typed error = %#v, want malformed detail for %s", typed, backend)
+	}
+	if !errors.Is(err, pixiv.ErrMalformedUpstreamResponse) {
+		t.Error("errors.Is(err, ErrMalformedUpstreamResponse) = false")
+	}
+}
+
 func TestClientIllustDetailRejectsInvalidIDWithTypedError(t *testing.T) {
 	t.Parallel()
 

@@ -14,7 +14,7 @@ func mapIllustList(dto illustListDTO) model.IllustList {
 }
 
 func mapIllustDetail(dto illustDetailDTO) model.IllustDetail {
-	return model.IllustDetail{Illust: mapIllust(dto.Illust)}
+	return model.IllustDetail{Illust: mapIllust(*dto.Illust)}
 }
 
 func mapIllust(dto illustDTO) model.Illust {
