@@ -30,6 +30,8 @@
 - 新增经六平台 native runner build/smoke 与统一 source digest 验证的 committed Rust staticlibs 和
   `manifest.json`，供受支持的 source build 与 future exact-tag `go install` 使用。
 - 新增 Release asset、checksum/Ed25519 签名、Homebrew formula renderer 与六 native runner workflow 的本地发布准备。
+- Release workflow 现把同一份已发布 checksum 渲染为 stable/beta Homebrew formula，在 macOS/Linux
+  双架构真实安装并核对版本后，才以独立 deploy key 向 public tap 推送唯一对应 formula。
 
 ### Changed
 
@@ -60,6 +62,9 @@
 - Release workflow 的四个 checkout 现固定为 canonical full-SHA source；trust job 只能在完整、无凭据
   checkout 后立即验证 tag ancestry，签名 job 也拒绝 `ref`、`repository`、`path` 等会令源码与发布 asset
   脱钩的 checkout 重定向。
+- Homebrew tap secret 仅可进入最终 protected deploy job 的最后 push step；policy 固定 HTTPS clone、
+  唯一 formula diff、官方 GitHub ED25519 known_hosts、strict SSH 与 `HEAD:main`，任一前置安装失败均
+  不会写 tap。
 - Rust ugoira crate 的 crates.io 依赖现以完整 locked `vendor/` 闭包及 Cargo checksum 随源码审计；
   release 验证会在空 Cargo cache 下完成 metadata/build/test 与六 target 许可证检查，缺失 vendor、
   checksum 不匹配或 registry fallback 都会明确失败。

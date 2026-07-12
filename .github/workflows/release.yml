@@ -244,3 +244,155 @@ jobs:
             exit 1
           fi
           gh release edit "$GITHUB_REF_NAME" --draft=false
+      # 该 artifact 与已发布 Release 使用同一个本地 checksums.txt；下游不得重新下载或重算。
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: verified-release-checksums
+          path: release/checksums.txt
+          if-no-files-found: error
+          retention-days: 1
+
+  render_homebrew_formula:
+    name: Render the channel Homebrew formula
+    needs: publish
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+        with:
+          go-version: '1.26.3'
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: verified-release-checksums
+          path: verified-release
+      - name: Render exactly one channel formula from the published checksums
+        shell: bash
+        run: |
+          set -eu
+          version="${GITHUB_REF_NAME#v}"
+          case "$(go run ./scripts/releaseassets channel --version "$version")" in
+            stable)
+              formula_name=pixiv-cli
+              ;;
+            prerelease)
+              formula_name=pixiv-cli-beta
+              ;;
+            *)
+              printf '%s\n' 'unexpected release classification' >&2
+              exit 1
+              ;;
+          esac
+          mkdir -p staging-formula
+          go run ./scripts/homebrewformula render \
+            --formula "$formula_name" \
+            --version "$version" \
+            --checksums verified-release/checksums.txt \
+            --output "staging-formula/$formula_name.rb"
+          printf '%s\n' "$formula_name" > staging-formula/formula-name
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: staging-homebrew-formula
+          path: staging-formula
+          if-no-files-found: error
+          retention-days: 1
+
+  verify_homebrew_formula:
+    name: Verify Homebrew on ${{ matrix.os }}/${{ matrix.arch }}
+    needs: render_homebrew_formula
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15-intel
+            os: darwin
+            arch: amd64
+          - runner: macos-15
+            os: darwin
+            arch: arm64
+          - runner: ubuntu-24.04
+            os: linux
+            arch: amd64
+          - runner: ubuntu-24.04-arm
+            os: linux
+            arch: arm64
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: staging-homebrew-formula
+          path: staging-formula
+      - name: Install the staging formula and verify its embedded version
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ '${{ matrix.os }}' = linux ]; then
+            eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
+          fi
+          formula_name=$(cat staging-formula/formula-name)
+          case "$formula_name" in
+            pixiv-cli|pixiv-cli-beta) ;;
+            *) exit 1 ;;
+          esac
+          test -f "staging-formula/$formula_name.rb"
+          brew install --formula "staging-formula/$formula_name.rb"
+          pixiv version --json | python3 -c 'import json, sys; actual = json.load(sys.stdin)["version"]; expected = sys.argv[1]; assert actual == expected, f"version {actual!r} != {expected!r}"' "$GITHUB_REF_NAME"
+
+  deploy_homebrew_tap:
+    name: Deploy the verified Homebrew formula
+    needs: verify_homebrew_formula
+    runs-on: ubuntu-24.04
+    environment: release
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: staging-homebrew-formula
+          path: staging-formula
+      - name: Prepare an exact one-formula tap commit over public HTTPS
+        shell: bash
+        run: |
+          set -euo pipefail
+          formula_name=$(cat staging-formula/formula-name)
+          case "$formula_name" in
+            pixiv-cli|pixiv-cli-beta) ;;
+            *) exit 1 ;;
+          esac
+          test -f "staging-formula/$formula_name.rb"
+          test "$(find staging-formula -maxdepth 1 -type f -print | LC_ALL=C sort)" = "$(printf '%s\n%s\n' staging-formula/formula-name "staging-formula/$formula_name.rb" | LC_ALL=C sort)"
+          tap_dir="$RUNNER_TEMP/homebrew-tap"
+          git clone https://github.com/FlanChanXwO/homebrew-tap.git "$tap_dir"
+          git -C "$tap_dir" config user.name github-actions[bot]
+          git -C "$tap_dir" config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          mkdir -p "$tap_dir/Formula"
+          cp "staging-formula/$formula_name.rb" "$tap_dir/Formula/$formula_name.rb"
+          git -C "$tap_dir" add -- "Formula/$formula_name.rb"
+          test "$(git -C "$tap_dir" diff --cached --name-only)" = "Formula/$formula_name.rb"
+          test -z "$(git -C "$tap_dir" status --porcelain | sed -n '\|^?? |p')"
+          git -C "$tap_dir" commit -m "${GITHUB_REF_NAME}: update $formula_name formula"
+      - name: Push the verified formula with the protected deploy key
+        shell: bash
+        env:
+          HOMEBREW_TAP_DEPLOY_KEY: ${{ secrets.HOMEBREW_TAP_DEPLOY_KEY }}
+        run: |
+          set -eu
+          umask 077
+          key_path="$RUNNER_TEMP/homebrew-tap-deploy-key"
+          trap 'rm -f "$key_path"' EXIT HUP INT TERM
+          test -n "$HOMEBREW_TAP_DEPLOY_KEY"
+          # OpenSSH 私钥必须以换行结尾；secret 是否保留末尾 LF 不应影响部署。
+          printf '%s\n' "$HOMEBREW_TAP_DEPLOY_KEY" > "$key_path"
+          chmod 600 "$key_path"
+          tap_dir="$RUNNER_TEMP/homebrew-tap"
+          git -C "$tap_dir" remote set-url origin git@github.com:FlanChanXwO/homebrew-tap.git
+          GIT_SSH_COMMAND="ssh -i $key_path -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=$GITHUB_WORKSPACE/templates/homebrew/github.com-known-hosts" \
+            git -C "$tap_dir" push origin HEAD:main

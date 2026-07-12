@@ -195,8 +195,12 @@ finalize 阶段收集这六个 archive 的 SHA-256 到 `checksums.txt`，并为�
 checksum bytes 生成带 key ID 的 Ed25519 `checksums.json`。
 
 `.github/workflows/release.yml` 将签名/发布放在受保护的 `release` Environment 中；它使用最小权限和
-full-SHA Actions，并在草稿 Release 上传后核对 asset 集合才发布。文件和本地 fixture 已存在，但尚未
-正式发布；run `29192425899` 已取得实际 GitHub runner 的完整六目标成功证据并回填 staticlib/manifest。
+full-SHA Actions，并在草稿 Release 上传后核对 asset 集合才发布。发布 job 将同一份已验证
+`release/checksums.txt` 交给下游 renderer；stable/prerelease 分别生成唯一的 `pixiv-cli`/
+`pixiv-cli-beta` formula。四个原生 macOS/Linux runner 从该 staging formula 真实安装并核对
+`pixiv version --json` 后，最终受保护 job 才能读取独立 tap deploy key 并只 push 对应 formula。
+文件和本地 fixture 已存在，但尚未通过正式 tag 取得这四份安装证据；run `29192425899` 已取得实际
+GitHub runner 的完整六目标 native 成功证据并回填 staticlib/manifest。
 production signing 私钥、Environment 与公开 remote 已按 Task 20 配置，受支持 binary 的公开 trust root
 已在 `internal/bootstrap/release_trust.go` 配置。正式 tag、签名 Release、tap formula 与安装验收仍是独立
 发布阻断项。Rust crates.io 依赖已由
@@ -205,8 +209,9 @@ target 许可证检查验证。
 
 Homebrew formula 模板由已验证的六目标 `checksums.txt` 生成，仅使用 macOS/Linux asset；stable
 `pixiv-cli` 与 beta `pixiv-cli-beta` 相互冲突且同装 `pixiv`。tap credential 与发布 key 是不同的
-信任域：tap 私钥只允许进入受保护 `release` Environment，不能代替 Release Ed25519 trust root。公开 tap
-已创建并只登记 deploy key 公钥，但没有 formula 或可安装资产。
+信任域：tap 私钥只允许进入最终受保护 deploy job 的最后 push step，不能代替 Release Ed25519 trust
+root。公开 tap 已创建并只登记 deploy key 公钥，但没有 formula 或可安装资产。由于 draft Release 的
+匿名 URL 不可安装，Release 会先公开再执行四架构 gate；失败会保留已公开 Release 供处置，但不会写 tap。
 
 v0.1.0 的 archive 不计划包含 Apple notarization 或 Windows Authenticode。用户收到 Gatekeeper 或
 SmartScreen 提示时，必须回到已验证的项目 GitHub Release、checksum 和签名记录，不能把系统提示视为

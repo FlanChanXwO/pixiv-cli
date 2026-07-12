@@ -272,7 +272,7 @@ GitHub Release。workflow 使用 full-SHA Actions、最小权限及 `release` En
 GitHub 实际运行。
 
 `sh scripts/test-release-workflow.sh` 启动 `scripts/releaseworkflow` 的 YAML AST policy，而不是依赖
-文本排版或行号。它精确检查 tag trigger、四份 job 的权限/依赖、六个 runner matrix、每一个
+文本排版或行号。它精确检查 tag trigger、七份 job 的权限/依赖、六个 build runner matrix、每一个
 `uses` 的 40 位 SHA，以及 publish 的 SemVer channel 调用。默认分支 ancestry 必须在无
 `environment`、无 secret 的 `verify_release_source` job 中完成；只有该 job 成功后，publish 才可
 依赖它并声明精确的 `release` Environment、使用签名 metadata step 的两个预期 secret。policy 还会
@@ -281,7 +281,7 @@ GitHub 实际运行。
 检查都是唯一的单命令 `bash` step：policy 精确验证其 run、crate cwd（Rust gate）和 shell，并拒绝
 `env`、`defaults` 或其它 step 字段。解析器同时 fail-closed 地拒绝 YAML alias、merge key、任何重复
 mapping key 以及 root/job 的 `env`、`defaults`，因此 GitHub 的覆盖或工作目录语义不会与本地检查分叉。
-四个 job 的 `actions/checkout` 都固定为同一 full SHA 和精确的 `with` 字段；尤其
+各 source checkout 都固定为同一 full SHA 和精确的 `with` 字段；尤其
 `verify_release_source` 只能按顺序执行 full-history、无凭据的 tag checkout 与默认分支 ancestry gate
 这两个步骤，禁止 `ref`、`repository`、`path` 或中间切换 HEAD 的 step 改变被验证的提交。publish 的
 checkout 同样只允许无凭据 tag source，避免签名 metadata 与构建 asset 所属提交不一致。
@@ -291,8 +291,20 @@ pre-commit 和 `git diff --check`。发布渠道仅可由
 `go run ./scripts/releaseassets channel --version ...` 判定；build metadata 中的连字符不会使 stable
 tag 误变为 prerelease。
 
+publish 核对并公开 Release 后，立即上传同一份 `release/checksums.txt`；policy 拒绝中间 step、路径
+替换或发布后改写。`render_homebrew_formula` 只下载该 artifact，并把 releaseassets 的 stable/
+prerelease 结果直接映射为 `pixiv-cli`/`pixiv-cli-beta`。随后精确四目标 matrix（macOS Intel/arm64、
+Linux amd64/arm64）分别从 staging formula 执行 `brew install --formula`，解析
+`pixiv version --json` 并与 tag 比较。只有全部成功，最终受保护 `deploy_homebrew_tap` 才以 HTTPS
+clone public tap、核对唯一 staged formula，并在最后一个 step 读取 deploy key；SSH push 固定官方
+GitHub ED25519 known_hosts、启用 strict checking，目标精确为 `HEAD:main`。任何前置 job 失败都不会
+写 tap。
+
 这套本地检查只证明 workflow 声明的依赖和语义，**不**验证 GitHub `release` Environment、
-secret 和 tag protection 的远端实际状态；它不替代 Task 20 的远端配置审计。
+secret 和 tag protection 的远端实际状态；它不替代 Task 20 的远端配置审计，也不替代正式 tag
+产生的四架构 Homebrew 外部安装证据。由于 draft asset 的匿名 URL 不可被 Homebrew 下载，workflow
+会先公开 Release 再安装；若安装失败，Release 已公开但 tap 不变，需要维护者显式处置，不能绕过 gate
+手工 push。
 
 正式发布目前仍必须被正式 tag、签名 GitHub Release、tap formula 与后续安装验收阻断。完整
 six-target staticlib/manifest 与真实 native artifact 证据已由 run `29192425899` 收集并受控回填；
@@ -317,9 +329,10 @@ production Ed25519 public trust root 已在
 
 Homebrew tap 是独立发布面：stable 使用 `pixiv-cli`，pre-release 使用 `pixiv-cli-beta`，二者
 都安装 `pixiv` 并相互冲突。Task 20 已创建专用 tap deploy key；其私钥只放在 source repository
-的受保护 `release` Environment secret `HOMEBREW_TAP_DEPLOY_KEY`，公开 tap 只登记对应公钥。先在
-常规 tap checkout 渲染、audit 并在 macOS/Linux 验证安装，再做受限提交/push。当前 tap 尚无
-formula 或任何内容提交，也不能从本仓库或 workflow 读取、生成或记录 deploy key。
+的受保护 `release` Environment secret `HOMEBREW_TAP_DEPLOY_KEY`，公开 tap 只登记对应公钥。workflow
+在独立 renderer 中生成 staging formula，并在四个原生 runner 验证安装，再由最终 protected job 做
+受限提交/push。当前 tap 尚无 formula 或任何内容提交，也不能从本仓库或 workflow artifact 读取、
+生成或记录 deploy key。
 
 v0.1.0 不会进行 Apple notarization 或 Windows Authenticode。发布后直接下载仍可能被 Gatekeeper
 或 SmartScreen 拦截/提示；这是需要在用户文档中保留的系统信誉边界，不能通过文档或脚本绕过。
