@@ -262,15 +262,21 @@ tag 误变为 prerelease。
 
 正式发布目前必须被以下条件阻断：完整 six-target staticlib/manifest 与真实 native artifact 证据
 尚待 Task 20 的实际 main runner 收集与 Task 13 回填，并且还未创建受保护的 `release` Environment、
-生产 signing key、公开仓库或 tag。不得以本地 fixture 成功、仅有 host library 或 workflow 文件存在
-来创建 Release/tap。
+生产 signing 私钥部署、公开仓库或 tag。不得以本地 fixture 成功、仅有 host library 或 workflow
+文件存在来创建 Release/tap。
 
-生产 Ed25519 信任根的规则如下，当前仅是发布前边界而非已完成部署：
+production Ed25519 public trust root 已在
+[`internal/bootstrap/release_trust.go`](../internal/bootstrap/release_trust.go) 随源码提交：key ID 为
+`ed25519-2c27e77742d3c33a`，其 SPKI DER SHA-256 fingerprint 为
+`2c27e77742d3c33ad14be867d4e0519229a220898c9a7c868447eaef0951b4cf`。同包测试以已知真实签名验证
+此映射；它只证明公开信任根进入 production wiring，并不证明私钥、Environment 或 Release 已部署。
 
-- 公钥、key ID 与 fingerprint 必须先以可审计源码变更进入受支持二进制；私钥绝不进入源码、
+生产 Ed25519 信任根的其余规则如下：
+
+- 公钥、key ID 与 fingerprint 已以可审计源码变更进入受支持二进制；私钥绝不进入源码、
   release asset、日志或 formula。
 - 私钥只能作为受保护 `release` Environment 的 secret 使用；恢复副本只可保存在受控的 macOS
-  Keychain。当前两者均未创建或写入。
+  Keychain。当前两处尚未部署私钥。
 - 轮换时先发布能够信任新 key ID 的版本，保留旧公钥直至旧版本退出支持，再通过新的受签名
   Release 停止使用旧 key。不得让既有二进制突然依赖一个未提交、不可验证的新信任根。
 

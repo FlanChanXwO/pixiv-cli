@@ -10,9 +10,11 @@ Go 版 Pixiv 工具集：默认作为 `pixiv` CLI 使用，需要 MCP 时显式�
 
 ## 安装与构建
 
-> **发布状态**：此工作树还没有公开 GitHub remote、正式 GitHub Release、Homebrew tap
-> 或生产 Ed25519 信任根。下面标注“发布后”的渠道是目标安装方式，不代表现在已经可以
-> 安装或自更新；在发布门禁完成前，请不要把它们当作可用下载来源。
+> **发布状态**：受支持 binary 的 Ed25519 公钥、key ID 与 fingerprint 已提交到
+> [`internal/bootstrap/release_trust.go`](internal/bootstrap/release_trust.go)，但此工作树还没有公开
+> GitHub remote、正式 GitHub Release、Homebrew tap 或受保护 `release` Environment 的私钥部署。
+> 下面标注“发布后”的渠道是目标安装方式，不代表现在已经可以安装或自更新；在发布门禁完成前，
+> 请不要把它们当作可用下载来源。
 
 ### 从源码构建
 
@@ -60,8 +62,8 @@ brew install FlanChanXwO/tap/pixiv-cli-beta
 
 发布流程会为 darwin、linux、windows 的 amd64/arm64 生成六个固定名称的 archive：
 `pixiv-cli_<version>_<os>_<arch>.tar.gz`（Windows 为 `.zip`），以及 `checksums.txt` 与
-Ed25519 签名的 `checksums.json`。在 GitHub Release 实际发布、生产公钥/key ID 已提交并且
-资产完成验证前，不存在可供信任的直接下载路径。
+Ed25519 签名的 `checksums.json`。受支持 binary 已提交其 production public key/key ID/fingerprint，
+但在 GitHub Release 实际发布、受保护签名私钥部署且资产完成验证前，仍不存在可供信任的直接下载路径。
 
 v0.1.0 不包含 Apple notarization 或 Windows Authenticode。即使以后从已验证 Release
 下载，macOS Gatekeeper 或 Windows SmartScreen 仍可能显示系统信誉提示；请只从项目的
@@ -288,8 +290,9 @@ pixiv update --proxy http://127.0.0.1:7890
 tag；Release binary 在下载前校验 Ed25519 签名的 checksum 清单和 archive SHA-256，再预检
 `pixiv version --json` 并原子替换可执行文件。
 
-目前生产 Ed25519 public key/key ID 尚未配置，且未发布 Release。因而 Release binary 的实际
-安装会明确失败，绝不会假装已经安全更新；`pixiv update --check` 的只读检查不依赖该信任根。
+受支持 binary 已内置 production Ed25519 public key/key ID/fingerprint；私钥仍未部署到受保护
+`release` Environment，且尚未发布 Release。因此这不是可用下载渠道的声明；`pixiv update --check`
+的只读检查也不能证明存在已签名、可安装的 Release。
 
 普通 CLI 命令成功后会尽力检查 stable 更新。它跳过 MCP、help、`version`、`update` 与开发构建，
 对同一用户 cache 最多每 24 小时查询一次，并为自动检查设定最多 3 秒的等待时间。发现新版本或

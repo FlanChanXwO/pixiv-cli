@@ -45,7 +45,9 @@
 - Rust ugoira crate 的 crates.io 依赖现以完整 locked `vendor/` 闭包及 Cargo checksum 随源码审计；
   release 验证会在空 Cargo cache 下完成 metadata/build/test 与六 target 许可证检查，缺失 vendor、
   checksum 不匹配或 registry fallback 都会明确失败。
-- Release binary 安装在生产 Ed25519 trust root 尚未配置时明确失败，不会伪装为安全更新；正式发布仍被完整 six-target staticlib/manifest、native runner 证据、受保护 release Environment 与实际 Release/tap 验证阻断。
+- 受支持 binary 现在内置可轮换的 production Ed25519 key ID→public key trust root，并以已知真实签名和
+  SPKI fingerprint 回归验证；私钥仍不进入源码。正式发布仍被完整 six-target staticlib/manifest、native
+  runner 证据、受保护 `release` Environment 与实际 Release/tap 验证阻断。
 - 更新检查写入前会把既有 `pixiv-cli` cache 目录在 Unix-like 平台收紧为 `0700`；Windows 保持其 ACL 语义。
 - Release installer 会在下载前校验 Releases API 或 ETag cache 中每个选中 asset 的精确 GitHub HTTPS 来源；跨 host、仓库、tag、asset 或含歧义 URL 的记录会明确失败，绝不请求该 URL。
 - Release installer 拒绝 archive 原始路径中含有任何 `..` segment 的条目，防止归一化后的路径绕过解包安全校验。
@@ -68,7 +70,8 @@
 
 ### Security
 
-- Release installer 设计为在替换前验证 Ed25519 签名 checksum、archive SHA-256 与下载 binary version；缺少 production trust root 时失败而非降级。
+- Release installer 设计为在替换前验证 Ed25519 签名 checksum、archive SHA-256 与下载 binary version；
+  受支持 binary 只信任随源码提交的 production public key，绝不因私钥或 Release 尚未部署而改用其他来源。
 - v0.1.0 不含 Apple notarization 或 Windows Authenticode；发布后直接下载仍可能显示 Gatekeeper/SmartScreen 提示。
 
 [Keep a Changelog 1.1.0]: https://keepachangelog.com/zh-CN/1.1.0/

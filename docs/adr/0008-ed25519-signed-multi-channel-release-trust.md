@@ -24,6 +24,9 @@ repository secret，或复用同一 SSH key，会让任意 tag/workflow 或公�
 - Release binary 只信任随受支持 binary 提交的 Ed25519 public key/key ID。私钥只允许存在于受保护
   `release` Environment secret；恢复副本只可存在于受控 macOS Keychain。私钥不能进入 CLI、源码、
   GitHub Release、formula、日志或测试 fixture。
+- 当前随源码提交的 key ID 是 `ed25519-2c27e77742d3c33a`，其 public key 的 SPKI DER SHA-256
+  fingerprint 是 `2c27e77742d3c33ad14be867d4e0519229a220898c9a7c868447eaef0951b4cf`。它只能作为受支持
+  binary 的 trust root，不能代替私钥部署、Environment protection 或真实 Release 验收。
 - key rotation 先发布同时信任新 key ID 的 binary，保留旧 key 直到旧 binary 退出支持，再以新的
   受签名 Release 停用旧 key。不得要求已发布 binary 突然信任一个未随其发布的 key。
 - Homebrew 使用独立 tap deploy key：tap repository 只登记公钥，source repository 的受保护
@@ -36,9 +39,9 @@ repository secret，或复用同一 SSH key，会让任意 tag/workflow 或公�
 
 - 自动检查是只读、限时且 stderr-only 的提示；它不能修改业务退出码或 JSON/MCP stdout。显式更新必须
   将渠道切换、权限、HTTP、签名、checksum、archive 和替换失败如实暴露。
-- 当前没有 production public key/key ID、私钥、Keychain backup、受保护 Environment、公开 remote、
-  GitHub Release 或 tap。Release installer 因此明确报告缺少 trust root；不能将 `--check` 成功、
-  本地 fixture 或 workflow 文件视为已完成的安全发布。
+- production public key/key ID/fingerprint 已进入 bootstrap wiring；私钥、Keychain backup、受保护
+  Environment、公开 remote、GitHub Release 与 tap 仍未部署。不能将 `--check` 成功、本地 fixture 或
+  workflow 文件视为已完成的安全发布。
 - 当前 staticlib/manifest、workflow policy 和 native artifact evidence 仍未齐备，必须在创建 tag、写入
   secret、发布 Release 或推送 tap 前完成。
 - v0.1.0 用户仍可能看到 Gatekeeper/SmartScreen 警告；支持文档应指导用户回到已验证 Release、

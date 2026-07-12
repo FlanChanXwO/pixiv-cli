@@ -19,12 +19,10 @@ func NewUpdateCoordinator(proxy string, out, errOut io.Writer) (*update.UpdateCo
 		return nil, fmt.Errorf("create GitHub release client: %w", err)
 	}
 	return update.NewUpdateCoordinator(update.UpdateCoordinatorOptions{
-		SourceDetector: update.SourceDetectorFunc(update.DetectInstallSource),
-		ReleaseChecker: releaseClient,
-		CommandRunner:  update.NewCommandRunner(out, errOut),
-		ReleaseInstaller: update.NewReleaseInstaller(update.ReleaseInstallerOptions{
-			HTTPClient: httpClient,
-		}),
+		SourceDetector:   update.SourceDetectorFunc(update.DetectInstallSource),
+		ReleaseChecker:   releaseClient,
+		CommandRunner:    update.NewCommandRunner(out, errOut),
+		ReleaseInstaller: update.NewReleaseInstaller(productionReleaseInstallerOptions(httpClient)),
 	})
 }
 
