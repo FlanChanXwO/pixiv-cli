@@ -4,6 +4,17 @@ on:
   push:
     tags:
       - 'v[0-9]*'
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Existing immutable SemVer tag to recover
+        required: true
+        type: string
+
+# push 与手工恢复只允许在这里选择发布 tag；其余版本、checkout、Release 与 Formula
+# 全部绑定此值，禁止 workflow_dispatch 的 main ref 混入生产产物。
+env:
+  RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
 
 # 令每个 job 显式声明自己所需的最小 token 权限。
 permissions: {}
@@ -17,13 +28,40 @@ jobs:
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
+          fetch-depth: 0
           persist-credentials: false
+          ref: ${{ github.sha }}
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
         with:
           go-version: '1.26.3'
-      - name: Reject a tag that is not SemVer
+      - name: Verify the exact immutable release tag
         shell: bash
-        run: go run ./scripts/releaseassets validate --version "${GITHUB_REF_NAME#v}"
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          set -euo pipefail
+          case "$RELEASE_TAG" in
+            v[0-9]*) ;;
+            *) printf '%s\n' 'release tag must start with v and a digit' >&2; exit 1 ;;
+          esac
+          if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then
+            test "$GITHUB_REF" = "refs/heads/$DEFAULT_BRANCH"
+          fi
+          go run ./scripts/releaseassets validate --version "${RELEASE_TAG#v}"
+          git show-ref --verify --quiet "refs/tags/$RELEASE_TAG"
+          tag_commit=$(git rev-parse "$RELEASE_TAG^{commit}")
+          git show-ref --verify --quiet "refs/remotes/origin/$DEFAULT_BRANCH"
+          git merge-base --is-ancestor "$tag_commit" "origin/$DEFAULT_BRANCH"
+          set +e
+          response=$(gh api --include "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" 2>&1)
+          api_status=$?
+          set -e
+          if [ "$api_status" -eq 0 ]; then
+            printf '%s\n' 'a Release already exists for the requested tag' >&2
+            exit 1
+          fi
+          printf '%s\n' "$response" | grep -Eq 'HTTP/[0-9.]+ 404|HTTP 404'
       - name: Statically check release workflow policy
         shell: bash
         run: sh scripts/test-release-workflow.sh
@@ -34,6 +72,8 @@ jobs:
     runs-on: ${{ matrix.runner }}
     permissions:
       contents: read
+    env:
+      CC: ${{ matrix.cc }}
     strategy:
       fail-fast: false
       matrix:
@@ -43,38 +83,50 @@ jobs:
             goarch: amd64
             rust_target: x86_64-apple-darwin
             artifact: darwin-amd64
+            cc: clang
           - runner: macos-15
             goos: darwin
             goarch: arm64
             rust_target: aarch64-apple-darwin
             artifact: darwin-arm64
+            cc: clang
           - runner: ubuntu-24.04
             goos: linux
             goarch: amd64
             rust_target: x86_64-unknown-linux-gnu
             artifact: linux-amd64
+            cc: gcc
           - runner: ubuntu-24.04-arm
             goos: linux
             goarch: arm64
             rust_target: aarch64-unknown-linux-gnu
             artifact: linux-arm64
+            cc: gcc
           - runner: windows-2025
             goos: windows
             goarch: amd64
             rust_target: x86_64-pc-windows-msvc
             artifact: windows-amd64
+            cc: clang -fuse-ld=lld
           - runner: windows-11-arm
             goos: windows
             goarch: arm64
             rust_target: aarch64-pc-windows-msvc
             artifact: windows-arm64
+            cc: clang -fuse-ld=lld
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
+          fetch-depth: 0
           persist-credentials: false
+          ref: ${{ env.RELEASE_TAG }}
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
         with:
           go-version: '1.26.3'
+      # 恢复 run 的 workflow 定义来自默认分支，但版本、CHANGELOG 与 Release notes 必须来自不可变 tag。
+      - name: Validate the exact immutable release source
+        shell: bash
+        run: go run ./scripts/releaseassets validate --version "${RELEASE_TAG#v}"
       - name: Install the native Rust target
         shell: bash
         run: rustup target add '${{ matrix.rust_target }}'
@@ -89,9 +141,16 @@ jobs:
         shell: bash
         working-directory: internal/download/ugoira_rs
         run: cargo clippy --locked --offline --all-targets -- -D warnings
-      - name: Build the native Rust static library
+      - name: Apply the audited test-only recovery overlay
+        if: github.event_name == 'workflow_dispatch'
         shell: bash
-        run: bash scripts/build-staticlibs.sh --target '${{ matrix.rust_target }}'
+        run: |
+          set -euo pipefail
+          test -z "$(git diff --name-only)"
+          test -z "$(git diff --cached --name-only)"
+          git show "${GITHUB_SHA}:internal/cli/account_test.go" > internal/cli/account_test.go
+          test "$(git diff --name-only)" = internal/cli/account_test.go
+          test -z "$(git diff --cached --name-only)"
       - name: Test Go sources
         shell: bash
         run: go test ./...
@@ -113,6 +172,26 @@ jobs:
       - name: Run pre-commit checks
         shell: bash
         run: python -m pre_commit run --all-files
+      # 无论测试是否产生 tracked、untracked 或 ignored 文件，生产阶段都由 pinned
+      # checkout 的 clean 重建 immutable tag worktree，绝不沿用 overlay 工作区。
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ env.RELEASE_TAG }}
+          clean: true
+      - name: Rebuild the selected static library from the immutable tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$(git rev-parse "$RELEASE_TAG^{commit}")"
+          test -z "$(git status --porcelain --untracked-files=all)"
+          test -z "$(git clean -ndx)"
+          bash scripts/build-staticlibs.sh --target '${{ matrix.rust_target }}'
+          git restore --source="$RELEASE_TAG^{commit}" -- internal/download/ugoira_rs/staticlib/manifest.json
+          git diff --exit-code
+          test -z "$(git status --porcelain --untracked-files=all)"
+          test -z "$(git clean -ndx)"
       - name: Check the generated diff
         shell: bash
         run: git diff --check
@@ -126,14 +205,14 @@ jobs:
             output='dist/pixiv.exe'
           fi
           go build -trimpath -buildvcs=false \
-            -ldflags "-X github.com/FlanChanXwO/pixiv-cli/internal/buildinfo.Version=${GITHUB_REF_NAME} -X github.com/FlanChanXwO/pixiv-cli/internal/buildinfo.Commit=${GITHUB_SHA} -X github.com/FlanChanXwO/pixiv-cli/internal/buildinfo.BuildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            -ldflags "-X github.com/FlanChanXwO/pixiv-cli/internal/buildinfo.Version=${RELEASE_TAG} -X github.com/FlanChanXwO/pixiv-cli/internal/buildinfo.Commit=$(git rev-parse HEAD) -X github.com/FlanChanXwO/pixiv-cli/internal/buildinfo.BuildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
             -o "$output" ./cmd/pixiv
       - name: Package the fixed-name platform asset
         shell: bash
         run: |
           go run ./scripts/releaseassets package \
             --repo-root . \
-            --version "${GITHUB_REF_NAME#v}" \
+            --version "${RELEASE_TAG#v}" \
             --target '${{ matrix.goos }}/${{ matrix.goarch }}' \
             --binary "dist/pixiv${{ matrix.goos == 'windows' && '.exe' || '' }}" \
             --output-dir dist
@@ -157,6 +236,7 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
+          ref: ${{ env.RELEASE_TAG }}
       - name: Require the tag commit on the default release branch
         shell: bash
         env:
@@ -179,6 +259,7 @@ jobs:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
           persist-credentials: false
+          ref: ${{ env.RELEASE_TAG }}
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
         with:
           go-version: '1.26.3'
@@ -201,7 +282,7 @@ jobs:
           test -n "$RELEASE_SIGNING_KEY_ID"
           printf '%s' "$RELEASE_SIGNING_PRIVATE_KEY" > "$key_path"
           go run ./scripts/releaseassets finalize \
-            --version "${GITHUB_REF_NAME#v}" \
+            --version "${RELEASE_TAG#v}" \
             --input-dir dist \
             --output-dir release \
             --key-id "$RELEASE_SIGNING_KEY_ID" \
@@ -214,7 +295,7 @@ jobs:
         run: |
           set -eu
           prerelease=()
-          case "$(go run ./scripts/releaseassets channel --version "${GITHUB_REF_NAME#v}")" in
+          case "$(go run ./scripts/releaseassets channel --version "${RELEASE_TAG#v}")" in
             stable)
               ;;
             prerelease)
@@ -225,10 +306,10 @@ jobs:
               exit 1
               ;;
           esac
-          gh release create "$GITHUB_REF_NAME" \
+          gh release create "$RELEASE_TAG" \
             --draft \
             --verify-tag \
-            --title "$GITHUB_REF_NAME" \
+            --title "$RELEASE_TAG" \
             --notes-file release/release-notes.md \
             "${prerelease[@]}" \
             release/pixiv-cli_*.tar.gz \
@@ -236,14 +317,14 @@ jobs:
             release/checksums.txt \
             release/checksums.json
           expected=$(find release -maxdepth 1 -type f ! -name release-notes.md -exec basename {} \; | LC_ALL=C sort)
-          actual=$(gh release view "$GITHUB_REF_NAME" --json assets --jq '.assets[].name' | LC_ALL=C sort)
+          actual=$(gh release view "$RELEASE_TAG" --json assets --jq '.assets[].name' | LC_ALL=C sort)
           if [ "$actual" != "$expected" ]; then
             printf '%s\n' 'draft release assets differ from the verified local set' >&2
             printf '%s\n' "expected:$expected" >&2
             printf '%s\n' "actual:$actual" >&2
             exit 1
           fi
-          gh release edit "$GITHUB_REF_NAME" --draft=false
+          gh release edit "$RELEASE_TAG" --draft=false
       # 该 artifact 与已发布 Release 使用同一个本地 checksums.txt；下游不得重新下载或重算。
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
@@ -262,6 +343,7 @@ jobs:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
           persist-credentials: false
+          ref: ${{ env.RELEASE_TAG }}
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
         with:
           go-version: '1.26.3'
@@ -273,7 +355,7 @@ jobs:
         shell: bash
         run: |
           set -eu
-          version="${GITHUB_REF_NAME#v}"
+          version="${RELEASE_TAG#v}"
           case "$(go run ./scripts/releaseassets channel --version "$version")" in
             stable)
               formula_name=pixiv-cli
@@ -346,7 +428,7 @@ jobs:
           brew trust --tap "$staging_tap"
           cp "staging-formula/$formula_name.rb" "$tap_dir/Formula/$formula_name.rb"
           brew install --formula "$staging_tap/$formula_name"
-          pixiv version --json | python3 -c 'import json, sys; actual = json.load(sys.stdin)["version"]; expected = sys.argv[1]; assert actual == expected, f"version {actual!r} != {expected!r}"' "$GITHUB_REF_NAME"
+          pixiv version --json | python3 -c 'import json, sys; actual = json.load(sys.stdin)["version"]; expected = sys.argv[1]; assert actual == expected, f"version {actual!r} != {expected!r}"' "$RELEASE_TAG"
 
   deploy_homebrew_tap:
     name: Deploy the verified Homebrew formula
@@ -359,6 +441,7 @@ jobs:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
           persist-credentials: false
+          ref: ${{ env.RELEASE_TAG }}
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           name: staging-homebrew-formula
@@ -383,7 +466,7 @@ jobs:
           git -C "$tap_dir" add -- "Formula/$formula_name.rb"
           test "$(git -C "$tap_dir" diff --cached --name-only)" = "Formula/$formula_name.rb"
           test -z "$(git -C "$tap_dir" status --porcelain | sed -n '\|^?? |p')"
-          git -C "$tap_dir" commit -m "${GITHUB_REF_NAME}: update $formula_name formula"
+          git -C "$tap_dir" commit -m "${RELEASE_TAG}: update $formula_name formula"
       - name: Push the verified formula with the protected deploy key
         shell: bash
         env:

@@ -24,12 +24,12 @@ var secretReferencePattern = regexp.MustCompile(`(?is)\$\{\{[^}]*\bsecrets\b[^}]
 // releaseMatrixTargets 将 runner、Go 平台、Rust target 和 release asset 名称绑为同一集合，
 // 防止任一字段的局部改动让六平台发布遗漏或错配。
 var releaseMatrixTargets = map[string]struct{}{
-	"macos-15-intel|darwin|amd64|x86_64-apple-darwin|darwin-amd64":       {},
-	"macos-15|darwin|arm64|aarch64-apple-darwin|darwin-arm64":            {},
-	"ubuntu-24.04|linux|amd64|x86_64-unknown-linux-gnu|linux-amd64":      {},
-	"ubuntu-24.04-arm|linux|arm64|aarch64-unknown-linux-gnu|linux-arm64": {},
-	"windows-2025|windows|amd64|x86_64-pc-windows-msvc|windows-amd64":    {},
-	"windows-11-arm|windows|arm64|aarch64-pc-windows-msvc|windows-arm64": {},
+	"macos-15-intel|darwin|amd64|x86_64-apple-darwin|darwin-amd64|clang":                    {},
+	"macos-15|darwin|arm64|aarch64-apple-darwin|darwin-arm64|clang":                         {},
+	"ubuntu-24.04|linux|amd64|x86_64-unknown-linux-gnu|linux-amd64|gcc":                     {},
+	"ubuntu-24.04-arm|linux|arm64|aarch64-unknown-linux-gnu|linux-arm64|gcc":                {},
+	"windows-2025|windows|amd64|x86_64-pc-windows-msvc|windows-amd64|clang -fuse-ld=lld":    {},
+	"windows-11-arm|windows|arm64|aarch64-pc-windows-msvc|windows-arm64|clang -fuse-ld=lld": {},
 }
 
 // homebrewMatrixTargets 绑定四个 Homebrew 验证 runner 与其实际平台，避免仅在单一
@@ -99,6 +99,9 @@ func checkWorkflow(body []byte) error {
 	if err := requireNoWorkflowExecutionOverrides(root); err != nil {
 		return err
 	}
+	if err := checkActionReferences(root); err != nil {
+		return err
+	}
 	if err := checkTagTrigger(root); err != nil {
 		return err
 	}
@@ -111,9 +114,6 @@ func checkWorkflow(body []byte) error {
 	}
 	if err := requireOnlyMappingKeys(jobs, "validate", "build", "verify_release_source", "publish", "render_homebrew_formula", "verify_homebrew_formula", "deploy_homebrew_tap"); err != nil {
 		return fmt.Errorf("workflow jobs: %w", err)
-	}
-	if err := checkActionReferences(root); err != nil {
-		return err
 	}
 	validate, ok := mappingValue(jobs, "validate")
 	if !ok || validate.Kind != yaml.MappingNode {
@@ -158,6 +158,9 @@ func checkWorkflow(body []byte) error {
 	if err := checkBuildJob(build); err != nil {
 		return err
 	}
+	if err := checkRecoveryPolicy(root); err != nil {
+		return err
+	}
 	if err := checkVerifyReleaseSourceJob(verifyReleaseSource); err != nil {
 		return err
 	}
@@ -185,8 +188,8 @@ func checkTagTrigger(root *yaml.Node) error {
 	if !ok || on.Kind != yaml.MappingNode {
 		return errors.New("workflow must have an on mapping")
 	}
-	if err := requireOnlyMappingKeys(on, "push"); err != nil {
-		return errors.New("on must contain only the push trigger")
+	if err := requireOnlyMappingKeys(on, "push", "workflow_dispatch"); err != nil {
+		return errors.New("on must contain only push and workflow_dispatch triggers")
 	}
 	push, ok := mappingValue(on, "push")
 	if !ok || push.Kind != yaml.MappingNode {
@@ -199,7 +202,360 @@ func checkTagTrigger(root *yaml.Node) error {
 	if !ok || tags.Kind != yaml.SequenceNode || len(tags.Content) != 1 || tags.Content[0].Value != "v[0-9]*" {
 		return errors.New("on.push.tags must equal [v[0-9]*]")
 	}
+	dispatch, ok := mappingValue(on, "workflow_dispatch")
+	if !ok || requireOnlyMappingKeys(dispatch, "inputs") != nil {
+		return errors.New("workflow_dispatch must contain only the exact release_tag input")
+	}
+	inputs, ok := mappingValue(dispatch, "inputs")
+	if !ok || requireOnlyMappingKeys(inputs, "release_tag") != nil {
+		return errors.New("workflow_dispatch must contain only the exact release_tag input")
+	}
+	releaseTag, ok := mappingValue(inputs, "release_tag")
+	if !ok || requireOnlyMappingKeys(releaseTag, "description", "required", "type") != nil || requireScalar(releaseTag, "required", "true") != nil || requireScalar(releaseTag, "type", "string") != nil {
+		return errors.New("workflow_dispatch release_tag must be a required string")
+	}
 	return nil
+}
+
+func checkRecoveryPolicy(root *yaml.Node) error {
+	if err := checkTagTrigger(root); err != nil {
+		return err
+	}
+	env, ok := mappingValue(root, "env")
+	if !ok || requireOnlyMappingKeys(env, "RELEASE_TAG") != nil || requireScalar(env, "RELEASE_TAG", "${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}") != nil {
+		return errors.New("workflow must bind RELEASE_TAG only to the push tag or required dispatch input")
+	}
+	jobs, ok := mappingValue(root, "jobs")
+	if !ok {
+		return errors.New("workflow must have jobs for recovery policy")
+	}
+	build, ok := mappingValue(jobs, "build")
+	if !ok {
+		return errors.New("workflow must have a build job for recovery policy")
+	}
+	buildEnv, ok := mappingValue(build, "env")
+	if !ok || requireOnlyMappingKeys(buildEnv, "CC") != nil || requireScalar(buildEnv, "CC", "${{ matrix.cc }}") != nil {
+		return errors.New("build job must bind CC from the audited matrix")
+	}
+	matrix := mustMappingPath(build, "strategy", "matrix")
+	if matrix == nil {
+		return errors.New("build matrix must contain exactly the six release targets")
+	}
+	if err := checkReleaseMatrix(matrix); err != nil {
+		return err
+	}
+	if containsScalarFragment(root, "GITHUB_REF_NAME") {
+		return errors.New("release workflow must not derive production identity from GITHUB_REF_NAME")
+	}
+	if countScalarFragment(root, "GITHUB_SHA") != 1 {
+		return errors.New("only the test overlay may read the audited workflow GITHUB_SHA")
+	}
+	steps, err := jobSteps(build)
+	if err != nil {
+		return errors.New("build job must contain recovery overlay gates")
+	}
+	if err := requireCanonicalBuildSteps(steps); err != nil {
+		return err
+	}
+	applyIndex := stepIndexWithRunFragment(steps, `git show "${GITHUB_SHA}:internal/cli/account_test.go"`)
+	preCommitIndex := stepIndexWithRunFragment(steps, "python -m pre_commit run --all-files")
+	checkoutIndices := actionStepIndices(steps, canonicalCheckoutAction)
+	if len(checkoutIndices) != 2 {
+		return errors.New("build job must use exactly two canonical checkouts")
+	}
+	freshCheckoutIndex := checkoutIndices[1]
+	if err := requireCanonicalCheckout(steps[freshCheckoutIndex], "fresh production checkout", checkoutWithRequirement{"fetch-depth", "0"}, checkoutWithRequirement{"persist-credentials", "false"}, checkoutWithRequirement{"ref", "${{ env.RELEASE_TAG }}"}, checkoutWithRequirement{"clean", "true"}); err != nil {
+		return err
+	}
+	rebuildIndex := stepIndexWithRunFragment(steps, "bash scripts/build-staticlibs.sh --target '${{ matrix.rust_target }}'")
+	diffIndex := stepIndexWithRunFragment(steps, "git diff --check")
+	buildIndex := stepIndexWithRunFragment(steps, "go build -trimpath")
+	packageIndex := stepIndexWithRunFragment(steps, "go run ./scripts/releaseassets package")
+	if applyIndex < 0 || rebuildIndex <= freshCheckoutIndex || buildIndex <= rebuildIndex || packageIndex <= buildIndex {
+		return errors.New("recovery must test the overlay, clean-checkout the tag, rebuild staticlib, then build and package")
+	}
+	if diffIndex >= 0 && (freshCheckoutIndex != len(steps)-6 || rebuildIndex != freshCheckoutIndex+1 || diffIndex != rebuildIndex+1 || buildIndex != diffIndex+1 || packageIndex != buildIndex+1) {
+		return errors.New("fresh production checkout must begin the exact uninterrupted rebuild/build/package suffix")
+	}
+	if preCommitIndex >= 0 && freshCheckoutIndex <= preCommitIndex {
+		return errors.New("recovery must finish pre-commit before the fresh production checkout")
+	}
+	if diffIndex >= 0 && (diffIndex <= rebuildIndex || buildIndex <= diffIndex) {
+		return errors.New("recovery must diff-check the rebuilt tag inputs before production build")
+	}
+	if err := requireRecoveryOverlayStep(steps[applyIndex]); err != nil {
+		return err
+	}
+	if err := requireOverlayQualitySequence(steps, applyIndex, freshCheckoutIndex); err != nil {
+		return err
+	}
+	if err := requireProductionRebuildStep(steps[rebuildIndex]); err != nil {
+		return err
+	}
+	if err := requireProductionBuildStep(steps[buildIndex]); err != nil {
+		return err
+	}
+	if err := requireProductionPackageStep(steps[packageIndex]); err != nil {
+		return err
+	}
+	return nil
+}
+
+func containsScalarFragment(node *yaml.Node, fragment string) bool {
+	if node == nil {
+		return false
+	}
+	if node.Kind == yaml.ScalarNode && strings.Contains(node.Value, fragment) {
+		return true
+	}
+	for _, child := range node.Content {
+		if containsScalarFragment(child, fragment) {
+			return true
+		}
+	}
+	return false
+}
+
+func countScalarFragment(node *yaml.Node, fragment string) int {
+	if node == nil {
+		return 0
+	}
+	count := 0
+	if node.Kind == yaml.ScalarNode {
+		count += strings.Count(node.Value, fragment)
+	}
+	for _, child := range node.Content {
+		count += countScalarFragment(child, fragment)
+	}
+	return count
+}
+
+func stepIndexWithRunFragment(steps []*yaml.Node, fragment string) int {
+	for index, step := range steps {
+		if strings.Contains(requireRunValue(step), fragment) {
+			return index
+		}
+	}
+	return -1
+}
+
+func actionStepIndices(steps []*yaml.Node, action string) []int {
+	var indices []int
+	for index, step := range steps {
+		uses, ok := mappingValue(step, "uses")
+		if ok && uses.Kind == yaml.ScalarNode && uses.Value == action {
+			indices = append(indices, index)
+		}
+	}
+	return indices
+}
+
+func requireCanonicalBuildSteps(steps []*yaml.Node) error {
+	if len(steps) != 21 {
+		return errors.New("build job must contain exactly the 21 canonical steps")
+	}
+	if err := requireCanonicalCheckout(steps[0], "initial build checkout", checkoutWithRequirement{"fetch-depth", "0"}, checkoutWithRequirement{"persist-credentials", "false"}, checkoutWithRequirement{"ref", "${{ env.RELEASE_TAG }}"}); err != nil {
+		return err
+	}
+	if err := requireExactActionStep(steps[1], "build Go setup", setupGoAction, map[string]string{"go-version": "1.26.3"}); err != nil {
+		return err
+	}
+	for index, gate := range []struct {
+		name      string
+		command   string
+		directory string
+	}{
+		{name: "Validate the exact immutable release source", command: `go run ./scripts/releaseassets validate --version "${RELEASE_TAG#v}"`},
+		{name: "Install the native Rust target", command: "rustup target add '${{ matrix.rust_target }}'"},
+		{name: "Check vendored Rust sources", command: "sh scripts/test-rust-vendor.sh"},
+		{name: "Check Rust formatting from vendored sources", command: "cargo fmt --check", directory: "internal/download/ugoira_rs"},
+		{name: "Lint vendored Rust sources", command: "cargo clippy --locked --offline --all-targets -- -D warnings", directory: "internal/download/ugoira_rs"},
+	} {
+		step := steps[index+2]
+		var err error
+		if gate.directory == "" {
+			err = requireCanonicalNamedRunStep(step, gate.name, gate.command)
+		} else {
+			err = requireCanonicalNamedRunStepInDirectory(step, gate.name, gate.directory, gate.command)
+		}
+		if err != nil {
+			return err
+		}
+	}
+	if err := requireRecoveryOverlayStep(steps[7]); err != nil {
+		return err
+	}
+	if err := requireScalar(steps[7], "name", "Apply the audited test-only recovery overlay"); err != nil {
+		return errors.New("recovery overlay must keep its canonical name")
+	}
+	if err := requireOverlayQualitySequence(steps, 7, 15); err != nil {
+		return err
+	}
+	if err := requireCanonicalCheckout(steps[15], "fresh production checkout", checkoutWithRequirement{"fetch-depth", "0"}, checkoutWithRequirement{"persist-credentials", "false"}, checkoutWithRequirement{"ref", "${{ env.RELEASE_TAG }}"}, checkoutWithRequirement{"clean", "true"}); err != nil {
+		return err
+	}
+	if err := requireProductionRebuildStep(steps[16]); err != nil {
+		return err
+	}
+	if err := requireScalar(steps[16], "name", "Rebuild the selected static library from the immutable tag"); err != nil {
+		return errors.New("production staticlib rebuild must keep its canonical name")
+	}
+	if err := requireCanonicalNamedRunStep(steps[17], "Check the generated diff", "git diff --check"); err != nil {
+		return err
+	}
+	if err := requireProductionBuildStep(steps[18]); err != nil {
+		return err
+	}
+	if err := requireScalar(steps[18], "name", "Build the versioned native executable"); err != nil {
+		return errors.New("production build must keep its canonical name")
+	}
+	if err := requireProductionPackageStep(steps[19]); err != nil {
+		return err
+	}
+	if err := requireScalar(steps[19], "name", "Package the fixed-name platform asset"); err != nil {
+		return errors.New("production package must keep its canonical name")
+	}
+	if err := requireExactActionStep(steps[20], "release build artifact upload", uploadArtifactAction, map[string]string{
+		"name":              "release-${{ matrix.artifact }}",
+		"path":              "dist/pixiv-cli_*",
+		"if-no-files-found": "error",
+		"retention-days":    "1",
+	}); err != nil {
+		return err
+	}
+	return nil
+}
+
+func requireCanonicalNamedRunStep(step *yaml.Node, name, command string) error {
+	if err := requireCanonicalRunStep(step, name, command); err != nil {
+		return err
+	}
+	if err := requireScalar(step, "name", name); err != nil {
+		return fmt.Errorf("%s must keep its canonical name", name)
+	}
+	return nil
+}
+
+func requireCanonicalNamedRunStepInDirectory(step *yaml.Node, name, directory, command string) error {
+	if err := requireOnlyMappingKeys(step, "name", "shell", "working-directory", "run"); err != nil || requireScalar(step, "name", name) != nil || requireScalar(step, "shell", "bash") != nil || requireScalar(step, "working-directory", directory) != nil || requireScalar(step, "run", command) != nil {
+		return fmt.Errorf("%s must be the exact canonical step in %s", name, directory)
+	}
+	return nil
+}
+
+func requireRecoveryOverlayStep(step *yaml.Node) error {
+	const commands = `
+set -euo pipefail
+test -z "$(git diff --name-only)"
+test -z "$(git diff --cached --name-only)"
+git show "${GITHUB_SHA}:internal/cli/account_test.go" > internal/cli/account_test.go
+test "$(git diff --name-only)" = internal/cli/account_test.go
+test -z "$(git diff --cached --name-only)"`
+	if err := requireCanonicalConditionalRunStep(step, "recovery overlay", "github.event_name == 'workflow_dispatch'", commands); err != nil {
+		return errors.New("recovery overlay must modify only internal/cli/account_test.go with the exact commands")
+	}
+	return nil
+}
+
+func requireOverlayQualitySequence(steps []*yaml.Node, overlayIndex, freshCheckoutIndex int) error {
+	expected := []struct {
+		name    string
+		command string
+	}{
+		{name: "Test Go sources", command: "go test ./..."},
+		{name: "Test Go sources with the race detector", command: "go test -race ./..."},
+		{name: "Vet Go sources", command: "go vet ./..."},
+		{name: "Audit bundled licenses", command: "go run ./scripts/licensebundle --check"},
+		{name: "Test release packages", command: "sh scripts/test-package-release.sh"},
+		{name: "Install the pinned pre-commit version", command: "python -m pip install --disable-pip-version-check pre-commit==4.6.0"},
+		{name: "Run pre-commit checks", command: "python -m pre_commit run --all-files"},
+	}
+	if freshCheckoutIndex != overlayIndex+len(expected)+1 {
+		return errors.New("overlay quality sequence must contain exactly the canonical gates before fresh checkout")
+	}
+	for offset, gate := range expected {
+		step := steps[overlayIndex+offset+1]
+		if err := requireCanonicalRunStep(step, "overlay quality gate "+gate.name, gate.command); err != nil {
+			return errors.New("overlay quality sequence must preserve exact canonical gate commands and order")
+		}
+		if err := requireScalar(step, "name", gate.name); err != nil {
+			return errors.New("overlay quality sequence must preserve exact canonical gate names and order")
+		}
+	}
+	return nil
+}
+
+func requireProductionRebuildStep(step *yaml.Node) error {
+	const commands = `
+set -euo pipefail
+test "$(git rev-parse HEAD)" = "$(git rev-parse "$RELEASE_TAG^{commit}")"
+test -z "$(git status --porcelain --untracked-files=all)"
+test -z "$(git clean -ndx)"
+bash scripts/build-staticlibs.sh --target '${{ matrix.rust_target }}'
+git restore --source="$RELEASE_TAG^{commit}" -- internal/download/ugoira_rs/staticlib/manifest.json
+git diff --exit-code
+test -z "$(git status --porcelain --untracked-files=all)"
+test -z "$(git clean -ndx)"`
+	if err := requireCanonicalRunStep(step, "production staticlib rebuild", commands); err != nil {
+		return errors.New("production staticlib rebuild must use the exact clean tag command sequence")
+	}
+	return nil
+}
+
+func requireProductionBuildStep(step *yaml.Node) error {
+	const commands = `
+set -eu
+mkdir -p dist
+output='dist/pixiv'
+if [ '${{ matrix.goos }}' = windows ]; then
+output='dist/pixiv.exe'
+fi
+go build -trimpath -buildvcs=false \
+-ldflags "-X github.com/FlanChanXwO/pixiv-cli/internal/buildinfo.Version=${RELEASE_TAG} -X github.com/FlanChanXwO/pixiv-cli/internal/buildinfo.Commit=$(git rev-parse HEAD) -X github.com/FlanChanXwO/pixiv-cli/internal/buildinfo.BuildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+-o "$output" ./cmd/pixiv`
+	if err := requireCanonicalRunStep(step, "production versioned binary build", commands); err != nil {
+		return errors.New("production build must use the exact tag-bound metadata and output command sequence")
+	}
+	return nil
+}
+
+func requireProductionPackageStep(step *yaml.Node) error {
+	const commands = `
+go run ./scripts/releaseassets package \
+--repo-root . \
+--version "${RELEASE_TAG#v}" \
+--target '${{ matrix.goos }}/${{ matrix.goarch }}' \
+--binary "dist/pixiv${{ matrix.goos == 'windows' && '.exe' || '' }}" \
+--output-dir dist`
+	if err := requireCanonicalRunStep(step, "production asset package", commands); err != nil {
+		return errors.New("production package must use the exact tag, target, binary and output command sequence")
+	}
+	return nil
+}
+
+func requireCanonicalConditionalRunStep(step *yaml.Node, context, condition, canonical string) error {
+	if err := requireOnlyMappingKeys(step, "name", "if", "shell", "run"); err != nil {
+		return fmt.Errorf("%s must be the canonical conditional bash step", context)
+	}
+	if err := requireScalar(step, "if", condition); err != nil {
+		return fmt.Errorf("%s must use only the approved condition", context)
+	}
+	if err := requireScalar(step, "shell", "bash"); err != nil || !equalCommands(splitCommands(requireRunValue(step)), splitCommands(canonical)) {
+		return fmt.Errorf("%s must use the exact command sequence", context)
+	}
+	return nil
+}
+
+func mustMappingPath(root *yaml.Node, keys ...string) *yaml.Node {
+	current := root
+	for _, key := range keys {
+		var ok bool
+		current, ok = mappingValue(current, key)
+		if !ok {
+			return nil
+		}
+	}
+	return current
 }
 
 func checkGlobalPermissions(root *yaml.Node) error {
@@ -270,11 +626,19 @@ func checkValidateJob(job *yaml.Node) error {
 	if err := requireContentsPermission(job, "read"); err != nil {
 		return fmt.Errorf("validate job: %w", err)
 	}
-	if err := requireCredentialFreeCheckout(job, "validate job"); err != nil {
+	steps, err := jobSteps(job)
+	if err != nil || len(steps) < 3 {
+		return errors.New("validate job must contain the audited workflow checkout and release tag gates")
+	}
+	if err := requireCanonicalCheckout(steps[0], "validate job", checkoutWithRequirement{"fetch-depth", "0"}, checkoutWithRequirement{"persist-credentials", "false"}, checkoutWithRequirement{"ref", "${{ github.sha }}"}); err != nil {
 		return err
 	}
-	if !hasCommand(job, "", "go run ./scripts/releaseassets validate --version \"${GITHUB_REF_NAME#v}\"") {
-		return errors.New("validate job must run releaseassets validate")
+	validateStep, ok := rootStepWithRunFragment(job, "go run ./scripts/releaseassets validate --version \"${RELEASE_TAG#v}\"")
+	if !ok {
+		return errors.New("validate job must validate RELEASE_TAG with releaseassets")
+	}
+	if err := requireRunFragments(validateStep, "validate release tag step", "test \"$GITHUB_REF\" = \"refs/heads/$DEFAULT_BRANCH\"", "git show-ref --verify --quiet \"refs/tags/$RELEASE_TAG\"", "git merge-base --is-ancestor \"$tag_commit\" \"origin/$DEFAULT_BRANCH\"", "gh api --include \"repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG\"", "HTTP/[0-9.]+ 404"); err != nil {
+		return err
 	}
 	if !hasCommand(job, "", "sh scripts/test-release-workflow.sh") {
 		return errors.New("validate job must run the release workflow policy")
@@ -289,7 +653,7 @@ func checkBuildJob(job *yaml.Node) error {
 	if err := requireNoEnvironment(job, "build job"); err != nil {
 		return err
 	}
-	if err := requireOnlyMappingKeys(job, "name", "needs", "runs-on", "permissions", "strategy", "steps"); err != nil {
+	if err := requireOnlyMappingKeys(job, "name", "needs", "runs-on", "permissions", "env", "strategy", "steps"); err != nil {
 		return fmt.Errorf("build job: %w", err)
 	}
 	if err := requireScalar(job, "needs", "validate"); err != nil {
@@ -301,7 +665,11 @@ func checkBuildJob(job *yaml.Node) error {
 	if err := requireContentsPermission(job, "read"); err != nil {
 		return fmt.Errorf("build job: %w", err)
 	}
-	if err := requireCredentialFreeCheckout(job, "build job"); err != nil {
+	steps, err := jobSteps(job)
+	if err != nil || len(steps) == 0 {
+		return errors.New("build job must contain steps")
+	}
+	if err := requireCanonicalCheckout(steps[0], "build job", checkoutWithRequirement{"fetch-depth", "0"}, checkoutWithRequirement{"persist-credentials", "false"}, checkoutWithRequirement{"ref", "${{ env.RELEASE_TAG }}"}); err != nil {
 		return err
 	}
 	strategy, ok := mappingValue(job, "strategy")
@@ -323,6 +691,7 @@ func checkBuildJob(job *yaml.Node) error {
 		workingDirectory string
 		command          string
 	}{
+		{command: "go run ./scripts/releaseassets validate --version \"${RELEASE_TAG#v}\""},
 		{command: "sh scripts/test-rust-vendor.sh"},
 		{workingDirectory: "internal/download/ugoira_rs", command: "cargo fmt --check"},
 		{workingDirectory: "internal/download/ugoira_rs", command: "cargo clippy --locked --offline --all-targets -- -D warnings"},
@@ -396,10 +765,8 @@ func rejectAmbiguousYAML(node *yaml.Node) error {
 }
 
 func requireNoWorkflowExecutionOverrides(root *yaml.Node) error {
-	for _, key := range []string{"defaults", "env"} {
-		if _, exists := mappingValue(root, key); exists {
-			return fmt.Errorf("workflow root must not declare %s", key)
-		}
+	if _, exists := mappingValue(root, "defaults"); exists {
+		return errors.New("workflow root must not declare defaults")
 	}
 	return nil
 }
@@ -417,10 +784,8 @@ func requireRequiredJobExecution(job *yaml.Node, jobName string) error {
 			return fmt.Errorf("%s must not define if or continue-on-error", jobName)
 		}
 	}
-	for _, key := range []string{"env", "defaults"} {
-		if _, exists := mappingValue(job, key); exists {
-			return fmt.Errorf("%s must not declare %s", jobName, key)
-		}
+	if _, exists := mappingValue(job, "defaults"); exists {
+		return fmt.Errorf("%s must not declare defaults", jobName)
 	}
 	return nil
 }
@@ -479,8 +844,8 @@ func checkReleaseMatrix(matrix *yaml.Node) error {
 		if entry.Kind != yaml.MappingNode {
 			return errors.New("build matrix must contain exactly the six release targets")
 		}
-		fields := make([]string, 0, 5)
-		for _, key := range []string{"runner", "goos", "goarch", "rust_target", "artifact"} {
+		fields := make([]string, 0, 6)
+		for _, key := range []string{"runner", "goos", "goarch", "rust_target", "artifact", "cc"} {
 			value, ok := mappingValue(entry, key)
 			if !ok || value.Kind != yaml.ScalarNode {
 				return errors.New("build matrix must contain exactly the six release targets")
@@ -525,7 +890,7 @@ func checkVerifyReleaseSourceJob(job *yaml.Node) error {
 	if len(steps) != 2 {
 		return errors.New("verify_release_source job must contain only the canonical checkout and ancestry gate steps")
 	}
-	if err := requireCanonicalCheckout(steps[0], "verify_release_source job", checkoutWithRequirement{"fetch-depth", "0"}, checkoutWithRequirement{"persist-credentials", "false"}); err != nil {
+	if err := requireCanonicalCheckout(steps[0], "verify_release_source job", checkoutWithRequirement{"fetch-depth", "0"}, checkoutWithRequirement{"persist-credentials", "false"}, checkoutWithRequirement{"ref", "${{ env.RELEASE_TAG }}"}); err != nil {
 		return err
 	}
 	ancestryGate := steps[1]
@@ -601,7 +966,7 @@ func checkPublishJob(job *yaml.Node) (int, []*yaml.Node, error) {
 	if err != nil {
 		return 0, nil, fmt.Errorf("publish job: %w", err)
 	}
-	if err := requireCanonicalCheckout(steps[0], "publish job", checkoutWithRequirement{"persist-credentials", "false"}); err != nil {
+	if err := requireCanonicalCheckout(steps[0], "publish job", checkoutWithRequirement{"persist-credentials", "false"}, checkoutWithRequirement{"ref", "${{ env.RELEASE_TAG }}"}); err != nil {
 		return 0, nil, err
 	}
 	signingIndex, signingStep := signingStepIndex(steps)
@@ -613,11 +978,11 @@ func checkPublishJob(job *yaml.Node) (int, []*yaml.Node, error) {
 	}
 	for _, step := range steps {
 		run, hasRun := mappingValue(step, "run")
-		if hasRun && strings.Contains(run.Value, "${GITHUB_REF_NAME#v}") && strings.Contains(run.Value, "*-*") {
+		if hasRun && strings.Contains(run.Value, "${RELEASE_TAG#v}") && strings.Contains(run.Value, "*-*") {
 			return 0, nil, errors.New("publish job must not classify prereleases with a hyphen shell pattern")
 		}
 	}
-	releaseStep, ok := rootStepWithRunFragment(job, "gh release create \"$GITHUB_REF_NAME\"")
+	releaseStep, ok := rootStepWithRunFragment(job, "gh release create \"$RELEASE_TAG\"")
 	if !ok {
 		return 0, nil, errors.New("publish job must create and publish the verified GitHub Release")
 	}
@@ -630,7 +995,7 @@ func checkPublishJob(job *yaml.Node) (int, []*yaml.Node, error) {
 	if err := checkReleaseChannelBinding(releaseStep); err != nil {
 		return 0, nil, err
 	}
-	if err := requireRunFragments(releaseStep, "release publishing step", "${prerelease[@]}", "release/checksums.json", "gh release view \"$GITHUB_REF_NAME\"", "gh release edit \"$GITHUB_REF_NAME\" --draft=false"); err != nil {
+	if err := requireRunFragments(releaseStep, "release publishing step", "${prerelease[@]}", "release/checksums.json", "gh release view \"$RELEASE_TAG\"", "gh release edit \"$RELEASE_TAG\" --draft=false"); err != nil {
 		return 0, nil, err
 	}
 	if err := requireCanonicalReleasePublicationSuffix(releaseStep); err != nil {
@@ -659,10 +1024,10 @@ func checkPublishJob(job *yaml.Node) (int, []*yaml.Node, error) {
 
 func requireCanonicalReleasePublicationSuffix(step *yaml.Node) error {
 	const canonical = `
-gh release create "$GITHUB_REF_NAME" \
+gh release create "$RELEASE_TAG" \
 --draft \
 --verify-tag \
---title "$GITHUB_REF_NAME" \
+--title "$RELEASE_TAG" \
 --notes-file release/release-notes.md \
 "${prerelease[@]}" \
 release/pixiv-cli_*.tar.gz \
@@ -670,18 +1035,18 @@ release/pixiv-cli_*.zip \
 release/checksums.txt \
 release/checksums.json
 expected=$(find release -maxdepth 1 -type f ! -name release-notes.md -exec basename {} \; | LC_ALL=C sort)
-actual=$(gh release view "$GITHUB_REF_NAME" --json assets --jq '.assets[].name' | LC_ALL=C sort)
+actual=$(gh release view "$RELEASE_TAG" --json assets --jq '.assets[].name' | LC_ALL=C sort)
 if [ "$actual" != "$expected" ]; then
 printf '%s\n' 'draft release assets differ from the verified local set' >&2
 printf '%s\n' "expected:$expected" >&2
 printf '%s\n' "actual:$actual" >&2
 exit 1
 fi
-gh release edit "$GITHUB_REF_NAME" --draft=false`
+gh release edit "$RELEASE_TAG" --draft=false`
 	commands := splitCommands(requireRunValue(step))
 	start := -1
 	for index, command := range commands {
-		if command == `gh release create "$GITHUB_REF_NAME" \` {
+		if command == `gh release create "$RELEASE_TAG" \` {
 			start = index
 			break
 		}
@@ -727,7 +1092,7 @@ func requireCanonicalRunStep(step *yaml.Node, context, canonical string) error {
 func checkRenderHomebrewJob(job *yaml.Node) error {
 	const renderCommands = `
 set -eu
-version="${GITHUB_REF_NAME#v}"
+version="${RELEASE_TAG#v}"
 case "$(go run ./scripts/releaseassets channel --version "$version")" in
 stable)
 formula_name=pixiv-cli
@@ -770,7 +1135,7 @@ printf '%s\n' "$formula_name" > staging-formula/formula-name`
 	if err != nil || len(steps) != 5 {
 		return errors.New("render_homebrew_formula job must contain only the canonical provenance and render steps")
 	}
-	if err := requireCanonicalCheckout(steps[0], "render_homebrew_formula job", checkoutWithRequirement{"persist-credentials", "false"}); err != nil {
+	if err := requireCanonicalCheckout(steps[0], "render_homebrew_formula job", checkoutWithRequirement{"persist-credentials", "false"}, checkoutWithRequirement{"ref", "${{ env.RELEASE_TAG }}"}); err != nil {
 		return err
 	}
 	if err := requireExactActionStep(steps[1], "render_homebrew_formula Go setup", setupGoAction, map[string]string{"go-version": "1.26.3"}); err != nil {
@@ -814,7 +1179,7 @@ brew tap-new "$staging_tap" --no-git
 brew trust --tap "$staging_tap"
 cp "staging-formula/$formula_name.rb" "$tap_dir/Formula/$formula_name.rb"
 brew install --formula "$staging_tap/$formula_name"
-pixiv version --json | python3 -c 'import json, sys; actual = json.load(sys.stdin)["version"]; expected = sys.argv[1]; assert actual == expected, f"version {actual!r} != {expected!r}"' "$GITHUB_REF_NAME"`
+pixiv version --json | python3 -c 'import json, sys; actual = json.load(sys.stdin)["version"]; expected = sys.argv[1]; assert actual == expected, f"version {actual!r} != {expected!r}"' "$RELEASE_TAG"`
 
 	if err := requireRequiredJobExecution(job, "verify_homebrew_formula job"); err != nil {
 		return err
@@ -907,7 +1272,7 @@ cp "staging-formula/$formula_name.rb" "$tap_dir/Formula/$formula_name.rb"
 git -C "$tap_dir" add -- "Formula/$formula_name.rb"
 test "$(git -C "$tap_dir" diff --cached --name-only)" = "Formula/$formula_name.rb"
 test -z "$(git -C "$tap_dir" status --porcelain | sed -n '\|^?? |p')"
-git -C "$tap_dir" commit -m "${GITHUB_REF_NAME}: update $formula_name formula"`
+git -C "$tap_dir" commit -m "${RELEASE_TAG}: update $formula_name formula"`
 	const pushCommands = `
 set -eu
 umask 077
@@ -943,7 +1308,7 @@ git -C "$tap_dir" push origin HEAD:main`
 	if err != nil || len(steps) != 4 {
 		return errors.New("deploy_homebrew_tap job must contain only the canonical checkout, formula download, commit, and final push steps")
 	}
-	if err := requireCanonicalCheckout(steps[0], "deploy_homebrew_tap job", checkoutWithRequirement{"persist-credentials", "false"}); err != nil {
+	if err := requireCanonicalCheckout(steps[0], "deploy_homebrew_tap job", checkoutWithRequirement{"persist-credentials", "false"}, checkoutWithRequirement{"ref", "${{ env.RELEASE_TAG }}"}); err != nil {
 		return err
 	}
 	if err := requireExactActionStep(steps[1], "deploy formula download", downloadArtifactAction, map[string]string{
@@ -1000,7 +1365,7 @@ func checkReleaseChannelBinding(releaseStep *yaml.Node) error {
 	// 将受信 channel command substitution、case 分支、数组赋值和 gh release create 固定在同一
 	// run 中。workflow 不引入可重写的 channel 变量，避免分类结果在分支前被其它 shell 命令覆盖。
 	lines := splitCommands(requireRunValue(releaseStep))
-	channelCase := "case \"$(go run ./scripts/releaseassets channel --version \"${GITHUB_REF_NAME#v}\")\" in"
+	channelCase := "case \"$(go run ./scripts/releaseassets channel --version \"${RELEASE_TAG#v}\")\" in"
 	if countCommand(lines, channelCase) != 1 {
 		return errors.New("release publishing step must classify with the direct releaseassets case expression")
 	}
@@ -1016,7 +1381,7 @@ func checkReleaseChannelBinding(releaseStep *yaml.Node) error {
 		"exit 1",
 		";;",
 		"esac",
-		"gh release create \"$GITHUB_REF_NAME\" \\",
+		"gh release create \"$RELEASE_TAG\" \\",
 	}
 	position := -1
 	for _, command := range sequence {
@@ -1049,7 +1414,7 @@ func checkReleaseChannelBinding(releaseStep *yaml.Node) error {
 }
 
 func requireApprovedChannelCaseCommands(commands []string, channelCase string) error {
-	releaseCreateCommand := `gh release create "$GITHUB_REF_NAME" \`
+	releaseCreateCommand := `gh release create "$RELEASE_TAG" \`
 	if len(commands) == 0 || commands[0] != "set -eu" {
 		return errors.New("release publishing step must use only the approved channel case commands")
 	}

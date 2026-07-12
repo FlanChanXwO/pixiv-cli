@@ -265,11 +265,18 @@ smoke、版本化 archive 内容和 Homebrew 安装验收。
 
 ## 发布门禁、签名与 Homebrew 边界
 
-`.github/workflows/release.yml` 为 `v*` tag 定义本地可审查的发布流程：先验证 SemVer，再在
+`.github/workflows/release.yml` 默认由 `v[0-9]*` tag 触发：先验证 SemVer，再在
 darwin/linux/windows × amd64/arm64 runner 上构建 Rust staticlib、测试 Go/Rust、检查许可证并
 封装固定名称的 archive；全部通过后才创建带 `checksums.txt` 和 Ed25519 `checksums.json` 的
-GitHub Release。workflow 使用 full-SHA Actions、最小权限及 `release` Environment，但它尚未在
-GitHub 实际运行。
+GitHub Release。workflow 使用 full-SHA Actions、最小权限及 `release` Environment。
+
+若不可变 tag 的首次 run 在创建 GitHub Release 前失败，维护者只能从默认分支通过
+`workflow_dispatch` 提交同一个 `release_tag` 进行恢复。validate 会校验该 tag 为 SemVer、存在、
+已包含于默认分支且尚未有 Release；构建与发布始终 checkout 该 tag。恢复 run 可以只用默认分支中
+受审计的 `internal/cli/account_test.go` 覆盖测试门禁，所有测试结束后必须以 `clean: true` 重新
+checkout tag、重新构建 selected staticlib 并证明工作树干净，才允许构建 binary、签名、创建 Release 或写 tap。
+因此它不能用于替换生产源码、移动 tag，或
+重发已经存在的 Release。
 
 `sh scripts/test-release-workflow.sh` 启动 `scripts/releaseworkflow` 的 YAML AST policy，而不是依赖
 文本排版或行号。它精确检查 tag trigger、七份 job 的权限/依赖、六个 build runner matrix、每一个
@@ -279,9 +286,11 @@ GitHub 实际运行。
 拒绝 required job、默认分支 ancestry step 与 quality gate 的 `continue-on-error` 或条件 `if`；validate
 与 build checkout 也必须显式 `persist-credentials: false`。为避免 shell 控制流隐藏 gate，每项质量
 检查都是唯一的单命令 `bash` step：policy 精确验证其 run、crate cwd（Rust gate）和 shell，并拒绝
-`env`、`defaults` 或其它 step 字段。解析器同时 fail-closed 地拒绝 YAML alias、merge key、任何重复
-mapping key 以及 root/job 的 `env`、`defaults`，因此 GitHub 的覆盖或工作目录语义不会与本地检查分叉。
-各 source checkout 都固定为同一 full SHA 和精确的 `with` 字段；尤其
+未审计的 `env`、`defaults` 或其它 step 字段。唯一允许的变量是 root 的 `RELEASE_TAG` 和 build
+matrix 绑定的 `CC`；Windows 必须使用 `clang -fuse-ld=lld` 链接 MSVC Rust staticlib，避免 MinGW
+GCC 与 `.lib` ABI 混用。解析器同时 fail-closed 地拒绝 YAML alias、merge key 和任何重复 mapping key，
+因此 GitHub 的覆盖或工作目录语义不会与本地检查分叉。validate 固定 checkout 受审计的 workflow SHA；
+其余生产 source checkout 固定为精确 tag。尤其
 `verify_release_source` 只能按顺序执行 full-history、无凭据的 tag checkout 与默认分支 ancestry gate
 这两个步骤，禁止 `ref`、`repository`、`path` 或中间切换 HEAD 的 step 改变被验证的提交。publish 的
 checkout 同样只允许无凭据 tag source，避免签名 metadata 与构建 asset 所属提交不一致。

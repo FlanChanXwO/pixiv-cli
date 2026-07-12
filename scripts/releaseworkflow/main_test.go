@@ -96,6 +96,224 @@ func TestCheckPinnedGitHubKnownHosts(t *testing.T) {
 	}
 }
 
+// 不可变 tag 已经存在时，只允许从默认分支受审计 workflow 以精确 tag 恢复；
+// 生产版本、checkout 和发布命令必须继续绑定同一个 RELEASE_TAG。
+func TestCheckRecoveryPolicyRequiresTrustedReleaseTag(t *testing.T) {
+	t.Parallel()
+
+	root := releaseWorkflowRoot(t)
+	if err := checkRecoveryPolicy(root); err != nil {
+		t.Fatalf("checked-in recovery policy rejected: %v", err)
+	}
+}
+
+// Windows 的 Go+cgo 质量门和最终 binary 必须统一使用 Clang+LLD，不能只修某个 step。
+func TestCheckRecoveryPolicyRequiresWindowsClangLLDForWholeBuildJob(t *testing.T) {
+	t.Parallel()
+
+	root := releaseWorkflowRoot(t)
+	build := jobNode(t, root, "build")
+	matrix := requireMappingValue(t, requireMappingValue(t, build, "strategy"), "matrix")
+	include := requireMappingValue(t, matrix, "include")
+	for _, entry := range include.Content {
+		goos := requireMappingValue(t, entry, "goos").Value
+		if goos != "windows" {
+			continue
+		}
+		removeMappingValue(t, entry, "cc")
+		break
+	}
+	if err := checkRecoveryPolicy(root); err == nil || !strings.Contains(err.Error(), "build matrix must contain exactly the six release targets") {
+		t.Fatalf("policy error = %v, want Windows Clang+LLD rejection", err)
+	}
+}
+
+func TestCheckRecoveryPolicyRequiresDispatchFromDefaultBranch(t *testing.T) {
+	t.Parallel()
+
+	root := releaseWorkflowRoot(t)
+	step := stepWithRun(t, jobNode(t, root, "validate"), `test "$GITHUB_REF" = "refs/heads/$DEFAULT_BRANCH"`)
+	removeCommand(t, step, `test "$GITHUB_REF" = "refs/heads/$DEFAULT_BRANCH"`)
+	if err := checkWorkflow(mustMarshalYAML(t, root)); err == nil || !strings.Contains(err.Error(), "refs/heads/$DEFAULT_BRANCH") {
+		t.Fatalf("policy error = %v, want dispatch default-branch rejection", err)
+	}
+}
+
+func TestCheckRecoveryPolicyRejectsRecoveryTrustMutations(t *testing.T) {
+	t.Parallel()
+
+	for _, test := range []struct {
+		name   string
+		mutate func(t *testing.T, root *yaml.Node)
+	}{
+		{name: "dispatch removed", mutate: func(t *testing.T, root *yaml.Node) {
+			removeMappingValue(t, requireMappingValue(t, root, "on"), "workflow_dispatch")
+		}},
+		{name: "dispatch tag optional", mutate: func(t *testing.T, root *yaml.Node) {
+			dispatch := requireMappingValue(t, requireMappingValue(t, root, "on"), "workflow_dispatch")
+			tag := requireMappingValue(t, requireMappingValue(t, dispatch, "inputs"), "release_tag")
+			requireMappingValue(t, tag, "required").Value = "false"
+		}},
+		{name: "release tag bound to arbitrary sha", mutate: func(t *testing.T, root *yaml.Node) {
+			requireMappingValue(t, requireMappingValue(t, root, "env"), "RELEASE_TAG").Value = "${{ inputs.sha }}"
+		}},
+		{name: "existing release check removed", mutate: func(t *testing.T, root *yaml.Node) {
+			step := stepWithRun(t, jobNode(t, root, "validate"), "gh api --include")
+			removeRunFragment(t, step, `gh api --include "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG"`)
+		}},
+		{name: "overlay writes production source", mutate: func(t *testing.T, root *yaml.Node) {
+			step := stepWithRun(t, jobNode(t, root, "build"), `git show "${GITHUB_SHA}:internal/cli/account_test.go"`)
+			replaceRunFragment(t, step, "internal/cli/account_test.go", "internal/cli/account.go")
+		}},
+		{name: "restore reads workflow sha", mutate: func(t *testing.T, root *yaml.Node) {
+			step := stepWithRun(t, jobNode(t, root, "build"), `git restore --source="$RELEASE_TAG^{commit}"`)
+			replaceRunFragment(t, step, `$RELEASE_TAG^{commit}`, `$GITHUB_SHA`)
+		}},
+		{name: "production source switches to workflow sha", mutate: func(t *testing.T, root *yaml.Node) {
+			appendRunStep(t, jobNode(t, root, "build"), "Bypass immutable tag", `git checkout "$GITHUB_SHA"`)
+		}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			root := releaseWorkflowRoot(t)
+			test.mutate(t, root)
+			if err := checkWorkflow(mustMarshalYAML(t, root)); err == nil {
+				t.Fatal("release recovery policy accepted a trust mutation")
+			}
+		})
+	}
+}
+
+func TestCheckRecoveryPolicyRequiresFreshTagCheckoutBeforeProduction(t *testing.T) {
+	t.Parallel()
+
+	root := releaseWorkflowRoot(t)
+	steps, err := jobSteps(jobNode(t, root, "build"))
+	if err != nil {
+		t.Fatalf("build steps: %v", err)
+	}
+	checkoutCount := 0
+	for _, step := range steps {
+		uses, ok := mappingValue(step, "uses")
+		if ok && uses.Value == canonicalCheckoutAction {
+			checkoutCount++
+		}
+	}
+	if checkoutCount != 2 {
+		t.Fatalf("build checkout count = %d, want initial tag checkout plus fresh production checkout", checkoutCount)
+	}
+}
+
+func TestCheckRecoveryPolicyRejectsOverlayAndProductionResetMutations(t *testing.T) {
+	t.Parallel()
+
+	for _, test := range []struct {
+		name   string
+		mutate func(t *testing.T, root *yaml.Node)
+	}{
+		{name: "overlay writes untracked Go input", mutate: func(t *testing.T, root *yaml.Node) {
+			overlay := stepWithRun(t, jobNode(t, root, "build"), `git show "${GITHUB_SHA}:internal/cli/account_test.go"`)
+			requireMappingValue(t, overlay, "run").Value += "\nprintf '%s\\n' package main > untracked-production.go\n"
+		}},
+		{name: "overlay writes ignored input", mutate: func(t *testing.T, root *yaml.Node) {
+			overlay := stepWithRun(t, jobNode(t, root, "build"), `git show "${GITHUB_SHA}:internal/cli/account_test.go"`)
+			requireMappingValue(t, overlay, "run").Value += "\nmkdir -p build && printf evil > build/ignored-production-input\n"
+		}},
+		{name: "fresh checkout removed", mutate: func(t *testing.T, root *yaml.Node) {
+			steps := requireMappingValue(t, jobNode(t, root, "build"), "steps")
+			indices := actionStepIndices(steps.Content, canonicalCheckoutAction)
+			steps.Content = append(steps.Content[:indices[1]], steps.Content[indices[1]+1:]...)
+		}},
+		{name: "fresh checkout cleans disabled", mutate: func(t *testing.T, root *yaml.Node) {
+			steps := requireMappingValue(t, jobNode(t, root, "build"), "steps")
+			indices := actionStepIndices(steps.Content, canonicalCheckoutAction)
+			checkout := steps.Content[indices[1]]
+			requireMappingValue(t, requireMappingValue(t, checkout, "with"), "clean").Value = "false"
+		}},
+		{name: "fresh checkout ref changed", mutate: func(t *testing.T, root *yaml.Node) {
+			steps := requireMappingValue(t, jobNode(t, root, "build"), "steps")
+			indices := actionStepIndices(steps.Content, canonicalCheckoutAction)
+			checkout := steps.Content[indices[1]]
+			requireMappingValue(t, requireMappingValue(t, checkout, "with"), "ref").Value = "main"
+		}},
+		{name: "production rebuild removed", mutate: func(t *testing.T, root *yaml.Node) {
+			steps := requireMappingValue(t, jobNode(t, root, "build"), "steps")
+			index := stepIndexWithRunFragment(steps.Content, "bash scripts/build-staticlibs.sh --target")
+			steps.Content = append(steps.Content[:index], steps.Content[index+1:]...)
+		}},
+		{name: "production rebuild before fresh checkout", mutate: func(t *testing.T, root *yaml.Node) {
+			steps := requireMappingValue(t, jobNode(t, root, "build"), "steps")
+			checkoutIndex := actionStepIndices(steps.Content, canonicalCheckoutAction)[1]
+			rebuildIndex := stepIndexWithRunFragment(steps.Content, "bash scripts/build-staticlibs.sh --target")
+			steps.Content[checkoutIndex], steps.Content[rebuildIndex] = steps.Content[rebuildIndex], steps.Content[checkoutIndex]
+		}},
+		{name: "step inserted after fresh checkout", mutate: func(t *testing.T, root *yaml.Node) {
+			build := jobNode(t, root, "build")
+			steps := requireMappingValue(t, build, "steps")
+			checkoutIndex := actionStepIndices(steps.Content, canonicalCheckoutAction)[1]
+			insertRunStep(t, build, checkoutIndex+1, "Inject production input", "mkdir -p build && printf evil > build/ignored-input")
+		}},
+		{name: "build step injects production Go source", mutate: func(t *testing.T, root *yaml.Node) {
+			step := stepWithRun(t, jobNode(t, root, "build"), "go build -trimpath")
+			replaceRunFragment(t, step, "mkdir -p dist", "mkdir -p dist\nprintf 'package main' > cmd/pixiv/recovery.go")
+		}},
+		{name: "package step replaces built binary", mutate: func(t *testing.T, root *yaml.Node) {
+			step := stepWithRun(t, jobNode(t, root, "build"), "go run ./scripts/releaseassets package")
+			requireMappingValue(t, step, "run").Value = "printf tampered > dist/pixiv\n" + requireRunValue(step)
+		}},
+		{name: "source tamper inserted after overlay", mutate: func(t *testing.T, root *yaml.Node) {
+			build := jobNode(t, root, "build")
+			steps := requireMappingValue(t, build, "steps")
+			overlayIndex := stepIndexWithRunFragment(steps.Content, `git show "${GITHUB_SHA}:internal/cli/account_test.go"`)
+			insertRunStep(t, build, overlayIndex+1, "Tamper tested source", "printf '\n// tampered\n' >> internal/cli/account_login.go")
+		}},
+		{name: "race and vet gates reordered", mutate: func(t *testing.T, root *yaml.Node) {
+			steps := requireMappingValue(t, jobNode(t, root, "build"), "steps")
+			raceIndex := stepIndexWithRunFragment(steps.Content, "go test -race ./...")
+			vetIndex := stepIndexWithRunFragment(steps.Content, "go vet ./...")
+			steps.Content[raceIndex], steps.Content[vetIndex] = steps.Content[vetIndex], steps.Content[raceIndex]
+		}},
+		{name: "license gate deleted from overlay sequence", mutate: func(t *testing.T, root *yaml.Node) {
+			steps := requireMappingValue(t, jobNode(t, root, "build"), "steps")
+			index := stepIndexWithRunFragment(steps.Content, "go run ./scripts/licensebundle --check")
+			steps.Content = append(steps.Content[:index], steps.Content[index+1:]...)
+		}},
+		{name: "pre-overlay untracked source insertion", mutate: func(t *testing.T, root *yaml.Node) {
+			build := jobNode(t, root, "build")
+			steps := requireMappingValue(t, build, "steps")
+			overlayIndex := stepIndexWithRunFragment(steps.Content, `git show "${GITHUB_SHA}:internal/cli/account_test.go"`)
+			insertRunStep(t, build, overlayIndex, "Inject untracked test source", "printf 'package cli' > internal/cli/recovery_bypass_test.go")
+		}},
+		{name: "pre-overlay ignored source insertion", mutate: func(t *testing.T, root *yaml.Node) {
+			build := jobNode(t, root, "build")
+			steps := requireMappingValue(t, build, "steps")
+			overlayIndex := stepIndexWithRunFragment(steps.Content, `git show "${GITHUB_SHA}:internal/cli/account_test.go"`)
+			insertRunStep(t, build, overlayIndex, "Inject ignored input", "mkdir -p build && printf evil > build/recovery-input")
+		}},
+		{name: "initial prefix reordered", mutate: func(t *testing.T, root *yaml.Node) {
+			steps := requireMappingValue(t, jobNode(t, root, "build"), "steps")
+			vendorIndex := stepIndexWithRunFragment(steps.Content, "sh scripts/test-rust-vendor.sh")
+			fmtIndex := stepIndexWithRunFragment(steps.Content, "cargo fmt --check")
+			steps.Content[vendorIndex], steps.Content[fmtIndex] = steps.Content[fmtIndex], steps.Content[vendorIndex]
+		}},
+		{name: "initial prefix step deleted", mutate: func(t *testing.T, root *yaml.Node) {
+			steps := requireMappingValue(t, jobNode(t, root, "build"), "steps")
+			index := stepIndexWithRunFragment(steps.Content, "rustup target add")
+			steps.Content = append(steps.Content[:index], steps.Content[index+1:]...)
+		}},
+		{name: "arbitrary step inserted before setup", mutate: func(t *testing.T, root *yaml.Node) {
+			insertRunStep(t, jobNode(t, root, "build"), 1, "Arbitrary prefix step", "true")
+		}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			root := releaseWorkflowRoot(t)
+			test.mutate(t, root)
+			if err := checkWorkflow(mustMarshalYAML(t, root)); err == nil {
+				t.Fatal("release recovery policy accepted an overlay/reset mutation")
+			}
+		})
+	}
+}
+
 func TestCheckWorkflowRejectsHomebrewReleaseGateMutations(t *testing.T) {
 	t.Parallel()
 
@@ -139,7 +357,7 @@ func TestCheckWorkflowRejectsHomebrewReleaseGateMutations(t *testing.T) {
 			want: "must preserve the verified asset set before exporting checksums",
 			mutate: func(t *testing.T, root *yaml.Node) {
 				step := stepWithRun(t, jobNode(t, root, "publish"), "gh release edit")
-				replaceRunFragment(t, step, "gh release edit \"$GITHUB_REF_NAME\" --draft=false", "printf tampered > release/checksums.txt\ngh release edit \"$GITHUB_REF_NAME\" --draft=false")
+				replaceRunFragment(t, step, "gh release edit \"$RELEASE_TAG\" --draft=false", "printf tampered > release/checksums.txt\ngh release edit \"$RELEASE_TAG\" --draft=false")
 			},
 		},
 		{
@@ -442,7 +660,7 @@ func TestCheckWorkflowRejectsSecurityAndQualityPolicyMutations(t *testing.T) {
 		},
 		{
 			name: "pull request trigger",
-			want: "on must contain only the push trigger",
+			want: "on must contain only push and workflow_dispatch triggers",
 			mutate: func(t *testing.T, root *yaml.Node) {
 				t.Helper()
 				on := requireMappingValue(t, root, "on")
@@ -574,7 +792,7 @@ func TestCheckWorkflowRejectsSecurityAndQualityPolicyMutations(t *testing.T) {
 			mutate: func(t *testing.T, root *yaml.Node) {
 				t.Helper()
 				step := stepWithRun(t, jobNode(t, root, "publish"), "gh release create")
-				replaceRunFragment(t, step, "case \"$(go run ./scripts/releaseassets channel --version \"${GITHUB_REF_NAME#v}\")\" in", "case stable in")
+				replaceRunFragment(t, step, "case \"$(go run ./scripts/releaseassets channel --version \"${RELEASE_TAG#v}\")\" in", "case stable in")
 			},
 		},
 		{
@@ -584,8 +802,8 @@ func TestCheckWorkflowRejectsSecurityAndQualityPolicyMutations(t *testing.T) {
 				t.Helper()
 				publish := jobNode(t, root, "publish")
 				step := stepWithRun(t, publish, "gh release create")
-				replaceRunFragment(t, step, "case \"$(go run ./scripts/releaseassets channel --version \"${GITHUB_REF_NAME#v}\")\" in", "case \"$(printf stable)\" in")
-				appendRunStep(t, publish, "Run an unrelated channel command", "go run ./scripts/releaseassets channel --version \"${GITHUB_REF_NAME#v}\"")
+				replaceRunFragment(t, step, "case \"$(go run ./scripts/releaseassets channel --version \"${RELEASE_TAG#v}\")\" in", "case \"$(printf stable)\" in")
+				appendRunStep(t, publish, "Run an unrelated channel command", "go run ./scripts/releaseassets channel --version \"${RELEASE_TAG#v}\"")
 			},
 		},
 		{
@@ -619,7 +837,7 @@ func TestCheckWorkflowRejectsSecurityAndQualityPolicyMutations(t *testing.T) {
 			mutate: func(t *testing.T, root *yaml.Node) {
 				t.Helper()
 				step := stepWithRun(t, jobNode(t, root, "publish"), "gh release create")
-				replaceRunFragment(t, step, "gh release create \"$GITHUB_REF_NAME\"", "prerelease=()\n          gh release create \"$GITHUB_REF_NAME\"")
+				replaceRunFragment(t, step, "gh release create \"$RELEASE_TAG\"", "prerelease=()\n          gh release create \"$RELEASE_TAG\"")
 			},
 		},
 		{
@@ -680,7 +898,7 @@ func TestCheckWorkflowRejectsSecurityAndQualityPolicyMutations(t *testing.T) {
 				t.Helper()
 				step := stepWithRun(t, jobNode(t, root, "publish"), "gh release create")
 				run := requireMappingValue(t, step, "run")
-				run.Value += "\nif [[ \"${GITHUB_REF_NAME#v}\" == *-* ]]; then\n  prerelease+=(--prerelease)\nfi\n"
+				run.Value += "\nif [[ \"${RELEASE_TAG#v}\" == *-* ]]; then\n  prerelease+=(--prerelease)\nfi\n"
 			},
 		},
 		{
@@ -937,7 +1155,7 @@ func TestCheckWorkflowRejectsRequiredJobExecutionOverrides(t *testing.T) {
 		{name: "verify continue on error", job: "verify_release_source", key: "continue-on-error", value: scalarNode("true"), want: "verify_release_source job must not define if or continue-on-error"},
 		{name: "publish if", job: "publish", key: "if", value: scalarNode("always()"), want: "publish job must not define if or continue-on-error"},
 		{name: "publish continue on error", job: "publish", key: "continue-on-error", value: scalarNode("true"), want: "publish job must not define if or continue-on-error"},
-		{name: "build environment", job: "build", key: "env", value: mappingNode("PWD", scalarNode("/tmp")), want: "build job must not declare env"},
+		{name: "build defaults", job: "build", key: "defaults", value: mappingNode("run", mappingNode("working-directory", scalarNode("/tmp"))), want: "build job must not declare defaults"},
 		{name: "verify defaults", job: "verify_release_source", key: "defaults", value: mappingNode("run", mappingNode("working-directory", scalarNode("/tmp"))), want: "verify_release_source job must not declare defaults"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -1031,7 +1249,7 @@ func TestCheckWorkflowRequiresCanonicalTrustCheckout(t *testing.T) {
 		mutate func(t *testing.T, checkout *yaml.Node)
 	}{
 		{name: "ref", mutate: func(t *testing.T, checkout *yaml.Node) {
-			appendMappingValue(t, requireMappingValue(t, checkout, "with"), "ref", scalarNode("main"))
+			requireMappingValue(t, requireMappingValue(t, checkout, "with"), "ref").Value = "main"
 		}},
 		{name: "repository", mutate: func(t *testing.T, checkout *yaml.Node) {
 			appendMappingValue(t, requireMappingValue(t, checkout, "with"), "repository", scalarNode("owner/other-repository"))
@@ -1079,7 +1297,12 @@ func TestCheckWorkflowRequiresCanonicalPublishCheckout(t *testing.T) {
 			t.Parallel()
 			root := releaseWorkflowRoot(t)
 			checkout := checkoutStep(t, jobNode(t, root, "publish"))
-			appendMappingValue(t, requireMappingValue(t, checkout, "with"), test.key, scalarNode(test.value))
+			with := requireMappingValue(t, checkout, "with")
+			if value, ok := mappingValue(with, test.key); ok {
+				value.Value = test.value
+			} else {
+				appendMappingValue(t, with, test.key, scalarNode(test.value))
+			}
 			body, err := yaml.Marshal(root)
 			if err != nil {
 				t.Fatalf("marshal mutated workflow: %v", err)
@@ -1110,7 +1333,12 @@ func TestCheckWorkflowRequiresCanonicalValidateAndBuildCheckouts(t *testing.T) {
 				t.Parallel()
 				root := releaseWorkflowRoot(t)
 				checkout := checkoutStep(t, jobNode(t, root, jobName))
-				appendMappingValue(t, requireMappingValue(t, checkout, "with"), test.key, scalarNode(test.value))
+				with := requireMappingValue(t, checkout, "with")
+				if value, ok := mappingValue(with, test.key); ok {
+					value.Value = test.value
+				} else {
+					appendMappingValue(t, with, test.key, scalarNode(test.value))
+				}
 				body, err := yaml.Marshal(root)
 				if err != nil {
 					t.Fatalf("marshal mutated workflow: %v", err)
@@ -1619,6 +1847,7 @@ func mappingNode(entries ...any) *yaml.Node {
 
 func requiredQualityGateCommands() []string {
 	return []string{
+		"go run ./scripts/releaseassets validate --version \"${RELEASE_TAG#v}\"",
 		"sh scripts/test-rust-vendor.sh",
 		"cargo fmt --check",
 		"cargo clippy --locked --offline --all-targets -- -D warnings",

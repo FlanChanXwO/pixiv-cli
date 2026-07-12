@@ -505,6 +505,10 @@ func TestAccountLoginBrowserFailureFallsBackToTerminalPrompt(t *testing.T) {
 	defer oauth.Close()
 	restoreOAuthBase := setTestOAuthBase(t, oauth.URL)
 	defer restoreOAuthBase()
+	restoreRelay := setTestURLSchemeRelayInstaller(t, func(context.Context, string) (func(), error) { return func() {}, nil })
+	defer restoreRelay()
+	restoreAppleScript := setTestRunAppleScript(t, func(context.Context, string) (string, error) { return "", nil })
+	defer restoreAppleScript()
 	restoreOpen := setTestOpenBrowser(t, func(string) error {
 		return errors.New("opener unavailable")
 	})
@@ -565,6 +569,10 @@ func TestAccountLoginBrowserSuccessStillAcceptsTerminalPrompt(t *testing.T) {
 	defer oauth.Close()
 	restoreOAuthBase := setTestOAuthBase(t, oauth.URL)
 	defer restoreOAuthBase()
+	restoreRelay := setTestURLSchemeRelayInstaller(t, func(context.Context, string) (func(), error) { return func() {}, nil })
+	defer restoreRelay()
+	restoreAppleScript := setTestRunAppleScript(t, func(context.Context, string) (string, error) { return "", nil })
+	defer restoreAppleScript()
 
 	opened := false
 	restoreOpen := setTestOpenBrowser(t, func(rawURL string) error {
@@ -606,6 +614,10 @@ func TestAccountLoginAcceptsPixivCallbackURLWithoutState(t *testing.T) {
 	defer oauth.Close()
 	restoreOAuthBase := setTestOAuthBase(t, oauth.URL)
 	defer restoreOAuthBase()
+	restoreRelay := setTestURLSchemeRelayInstaller(t, func(context.Context, string) (func(), error) { return func() {}, nil })
+	defer restoreRelay()
+	restoreAppleScript := setTestRunAppleScript(t, func(context.Context, string) (string, error) { return "", nil })
+	defer restoreAppleScript()
 
 	restoreOpen := setTestOpenBrowser(t, func(string) error {
 		return nil
@@ -645,9 +657,17 @@ func TestAccountLoginManualPageRelaysPostRedirectThenAcceptsCode(t *testing.T) {
 	defer restoreOAuthBase()
 	restoreWatcher := setTestBrowserCodeWatcher(t, nil)
 	defer restoreWatcher()
+	restoreRelay := setTestURLSchemeRelayInstaller(t, func(context.Context, string) (func(), error) { return func() {}, nil })
+	defer restoreRelay()
+	restoreAppleScript := setTestRunAppleScript(t, func(context.Context, string) (string, error) { return "", nil })
+	defer restoreAppleScript()
 
+	// opener 由登录服务的 HTTP handler 调用，测试 goroutine 读取前须用同一把锁建立同步关系。
+	var openedURLsMu sync.Mutex
 	var openedURLs []string
 	restoreOpen := setTestOpenBrowser(t, func(rawURL string) error {
+		openedURLsMu.Lock()
+		defer openedURLsMu.Unlock()
 		openedURLs = append(openedURLs, rawURL)
 		return nil
 	})
@@ -668,7 +688,10 @@ func TestAccountLoginManualPageRelaysPostRedirectThenAcceptsCode(t *testing.T) {
 	_ = resp.Body.Close()
 	require.Equal(t, http.StatusOK, resp.StatusCode, string(body))
 	assert.Contains(t, string(body), "authorization relay opened")
-	require.Contains(t, openedURLs, bridge)
+	openedURLsMu.Lock()
+	openedURLSnapshot := append([]string(nil), openedURLs...)
+	openedURLsMu.Unlock()
+	require.Contains(t, openedURLSnapshot, bridge)
 	assert.Contains(t, stderr.String(), "Detected Pixiv authorization relay page")
 
 	resp, err = http.PostForm("http://"+addr+"/manual", url.Values{"code": {"manual-relay-code"}})
@@ -701,6 +724,10 @@ func TestAccountLoginBrowserWatcherStoresCallbackCode(t *testing.T) {
 	defer oauth.Close()
 	restoreOAuthBase := setTestOAuthBase(t, oauth.URL)
 	defer restoreOAuthBase()
+	restoreRelay := setTestURLSchemeRelayInstaller(t, func(context.Context, string) (func(), error) { return func() {}, nil })
+	defer restoreRelay()
+	restoreAppleScript := setTestRunAppleScript(t, func(context.Context, string) (string, error) { return "", nil })
+	defer restoreAppleScript()
 	restoreOpen := setTestOpenBrowser(t, func(string) error {
 		return nil
 	})
@@ -748,6 +775,8 @@ func TestAccountLoginDefaultBrowserWatcherReadsChromiumHistory(t *testing.T) {
 	defer restoreOAuthBase()
 	restoreRelay := setTestURLSchemeRelayInstaller(t, func(context.Context, string) (func(), error) { return func() {}, nil })
 	defer restoreRelay()
+	restoreAppleScript := setTestRunAppleScript(t, func(context.Context, string) (string, error) { return "", nil })
+	defer restoreAppleScript()
 	restoreOpen := setTestOpenBrowser(t, func(string) error {
 		go func() {
 			time.Sleep(200 * time.Millisecond)
@@ -1316,6 +1345,17 @@ func setTestBrowserCodeWatcher(t *testing.T, watcher browserCodeWatcher) func() 
 func setTestURLSchemeRelayInstaller(t *testing.T, installer urlSchemeRelayInstaller) func() {
 	t.Helper()
 	return setURLSchemeRelayInstallerForTest(installer)
+}
+
+// setTestRunAppleScript 隔离登录 fixture 对用户浏览器与 macOS 自动化服务的访问。
+// 默认 watcher 的专门回归测试会单独提供有状态 fake，以保留其轮询语义覆盖。
+func setTestRunAppleScript(t *testing.T, runner func(context.Context, string) (string, error)) func() {
+	t.Helper()
+	old := runAppleScript
+	runAppleScript = runner
+	return func() {
+		runAppleScript = old
+	}
 }
 
 func setTestCLIClientFactory(t *testing.T, factory func(clientConfig) (cliPixivClient, error)) {
