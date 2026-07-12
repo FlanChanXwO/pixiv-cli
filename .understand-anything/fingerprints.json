@@ -1,7 +1,7 @@
 {
   "version": "1.0.0",
-  "gitCommitHash": "baf0f95e15d0cfefae746b99b835f8a02209ee90",
-  "generatedAt": "2026-07-12T08:15:15.049Z",
+  "gitCommitHash": "a092dd8d6023bb50816e4f49eaf62b0e5f469bae",
+  "generatedAt": "2026-07-12T08:34:08.114Z",
   "files": {
     ".agents/skills/pixiv-commit-msg/SKILL.md": {
       "filePath": ".agents/skills/pixiv-commit-msg/SKILL.md",
@@ -95,12 +95,12 @@
     },
     "CHANGELOG.md": {
       "filePath": "CHANGELOG.md",
-      "contentHash": "14771da8a50cc16a45037b1114354202cd0cc6e0a2c816f9f09bd89bdabd9772",
+      "contentHash": "0e7645ab0c8f553550f23c1603393897cd6447a27eda9d824c4a0af4240c2432",
       "functions": [],
       "classes": [],
       "imports": [],
       "exports": [],
-      "totalLines": 91,
+      "totalLines": 92,
       "hasStructuralAnalysis": true
     },
     "CLAUDE.md": {
@@ -267,22 +267,22 @@
     },
     "docs/architecture.md": {
       "filePath": "docs/architecture.md",
-      "contentHash": "b3749c7445d2165310a40b903a78bee18815545c97034976302549aeb68316ac",
+      "contentHash": "1d4e96df07fb01a31d2e71da3a6c71b0331fe1651be40c6f55aef02f5505048b",
       "functions": [],
       "classes": [],
       "imports": [],
       "exports": [],
-      "totalLines": 232,
+      "totalLines": 235,
       "hasStructuralAnalysis": true
     },
     "docs/development.md": {
       "filePath": "docs/development.md",
-      "contentHash": "21572da8eaeea4446fe0b099ea281950cfcdc5005d81883c6c9554a02edf8f88",
+      "contentHash": "1aaf0e051cbacb5257c8d8655d42b32135a44f65201b262c4d059cea5bcb2aa5",
       "functions": [],
       "classes": [],
       "imports": [],
       "exports": [],
-      "totalLines": 345,
+      "totalLines": 349,
       "hasStructuralAnalysis": true
     },
     "docs/index.md": {
@@ -18635,7 +18635,7 @@
     },
     "scripts/package-release.sh": {
       "filePath": "scripts/package-release.sh",
-      "contentHash": "cb32e8b92253dd9bd1cba7e08d0111cfb4ca1578cd9aa9abed74b3f1046ad6a9",
+      "contentHash": "4410d2e1cba13c771da8ba1377b6f8fcc1fd2376a69b42a5572308fb30e7c5ba",
       "functions": [
         {
           "name": "usage",
@@ -18665,7 +18665,7 @@
       "classes": [],
       "imports": [],
       "exports": [],
-      "totalLines": 129,
+      "totalLines": 140,
       "hasStructuralAnalysis": true
     },
     "scripts/releaseassets/main_test.go": {
@@ -20116,7 +20116,7 @@
     },
     "scripts/test-package-release.sh": {
       "filePath": "scripts/test-package-release.sh",
-      "contentHash": "5a2e344f7a68b1d4f112b14903492f1b1ffce6fbb4b6b84635c50fe3eb8b8a0f",
+      "contentHash": "9bf9212d8ae549f8c0b918dc88c063d5fc1456f6723e82eb22797697f34c2a61",
       "functions": [
         {
           "name": "assert_members",
@@ -20128,7 +20128,7 @@
       "classes": [],
       "imports": [],
       "exports": [],
-      "totalLines": 86,
+      "totalLines": 109,
       "hasStructuralAnalysis": true
     },
     "scripts/test-release-workflow.sh": {

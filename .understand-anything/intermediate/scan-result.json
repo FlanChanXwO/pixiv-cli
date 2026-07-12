@@ -76,7 +76,7 @@
     {
       "path": "CHANGELOG.md",
       "language": "markdown",
-      "sizeLines": 90,
+      "sizeLines": 91,
       "fileCategory": "docs"
     },
     {
@@ -160,13 +160,13 @@
     {
       "path": "docs/architecture.md",
       "language": "markdown",
-      "sizeLines": 231,
+      "sizeLines": 234,
       "fileCategory": "docs"
     },
     {
       "path": "docs/development.md",
       "language": "markdown",
-      "sizeLines": 344,
+      "sizeLines": 348,
       "fileCategory": "docs"
     },
     {
@@ -844,7 +844,7 @@
     {
       "path": "scripts/package-release.sh",
       "language": "shell",
-      "sizeLines": 128,
+      "sizeLines": 139,
       "fileCategory": "script"
     },
     {
@@ -886,7 +886,7 @@
     {
       "path": "scripts/test-package-release.sh",
       "language": "shell",
-      "sizeLines": 85,
+      "sizeLines": 108,
       "fileCategory": "script"
     },
     {

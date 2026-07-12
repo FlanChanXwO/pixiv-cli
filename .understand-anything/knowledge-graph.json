@@ -20,8 +20,8 @@
       "GitHub Actions"
     ],
     "description": "这是一个 Go 版 Pixiv CLI 与 MCP stdio server，内置 Rust ugoira encoder，并包含 release/update workflow。",
-    "analyzedAt": "2026-07-12T08:15:14.524Z",
-    "gitCommitHash": "baf0f95e15d0cfefae746b99b835f8a02209ee90"
+    "analyzedAt": "2026-07-12T08:33:59.113Z",
+    "gitCommitHash": "a092dd8d6023bb50816e4f49eaf62b0e5f469bae"
   },
   "nodes": [
     {
@@ -12597,7 +12597,7 @@
       "type": "document",
       "name": "CHANGELOG.md",
       "filePath": "CHANGELOG.md",
-      "summary": "记录未发布的用户可见变更与 v0.1.0 发布候选说明；包括 Windows cgo staticlib、Rust native import libraries 与 LLD-backed Clang 链接修复。",
+      "summary": "记录未发布的用户可见变更与 v0.1.0 发布候选说明；包括 Windows cgo/LLD 链接与 Windows release zip 使用 runner 预装 7-Zip 的修复。",
       "tags": [
         "文档",
         "变更记录",
@@ -12895,7 +12895,7 @@
       "type": "file",
       "name": "package-release.sh",
       "filePath": "scripts/package-release.sh",
-      "summary": "将一个常规二进制、根许可证和完整第三方许可证树封装为 tar.gz 或 zip，并拒绝 symlink 输出路径。",
+      "summary": "将一个常规二进制、根许可证和完整第三方许可证树封装为 tar.gz 或 zip，并拒绝 symlink 输出路径；Windows Git Bash 分支只使用 runner 预装 7z，其他平台使用 zip，缺少约定归档器即失败。",
       "tags": [
         "build-system",
         "native",
@@ -12968,7 +12968,7 @@
       "type": "file",
       "name": "test-package-release.sh",
       "filePath": "scripts/test-package-release.sh",
-      "summary": "验证两种 release archive 的成员恰好包含 binary 和完整许可证树，并覆盖输出路径安全边界。",
+      "summary": "验证两种 release archive 的成员恰好包含 binary 和完整许可证树、输出路径安全边界，并伪造 Windows/MINGW 的 7z 调用以锁定与其他平台相同的 zip 成员集合。",
       "tags": [
         "test",
         "release",
@@ -12985,7 +12985,7 @@
         20,
         37
       ],
-      "summary": "实现 test-package-release.sh 中 assert_members 的核心逻辑。",
+      "summary": "读取 tar.gz 或 zip 的常规成员并与 binary、许可证和完整第三方许可证树的期望集合比较，复用以验证伪造 7z 生成的 Windows archive。",
       "tags": [
         "implementation",
         "test",
@@ -16496,7 +16496,7 @@
       "type": "document",
       "name": "architecture.md",
       "filePath": "docs/architecture.md",
-      "summary": "说明 CLI、application、bootstrap、Pixiv、下载和更新职责；明确 Windows cgo staticlib 的 -L/-l、Rust native import libraries 与 LLD-backed Clang gate。",
+      "summary": "说明 CLI、application、bootstrap、Pixiv、下载和更新职责；明确 Windows cgo/LLD 边界与 Windows release zip 使用 7z、其他平台使用 zip 的 fail-closed packaging 规则。",
       "complexity": "moderate",
       "tags": [
         "documentation",
@@ -16510,7 +16510,7 @@
       "type": "document",
       "name": "development.md",
       "filePath": "docs/development.md",
-      "summary": "说明环境、Rust staticlib、native evidence、Windows Rust import libraries、LLD-backed Clang cgo gate、Cargo vendor/quantette 的 -text 与 licensebundle LF 约束。",
+      "summary": "说明环境、Rust staticlib、native evidence、Windows cgo/LLD 约束与 release packaging 测试；Windows zip 使用 runner 预装 7z 并以伪造分支回归验证 archive 成员。",
       "complexity": "complex",
       "tags": [
         "documentation",
@@ -35782,7 +35782,7 @@
     {
       "order": 9,
       "title": "Release 流程与未部署边界",
-      "description": "最后查看 tag 驱动的 Release workflow 与项目领域说明：前者只在语义化版本 tag 且提交属于默认分支时构建、签名并发布六平台资产。生产 public trust root 已提交，但 private key、受保护 Environment、公开 remote、Release、tap 与完整真实六目标 manifest 尚未部署或完成，因此不能把当前状态称为已发布。",
+      "description": "最后查看 tag 驱动的 Release workflow 与项目领域说明：前者只在语义化版本 tag 且提交属于默认分支时构建、签名并发布六平台资产。生产 public trust root、签名私钥的受保护 Environment、公开 source/tap remote 与 tap deploy key 已按 Task 20 配置；但 six-target native evidence、完整 staticlib manifest、正式 tag、已签名 Release 与 tap formula 尚未完成，因此不能把当前状态称为已发布。",
       "nodeIds": [
         "pipeline:.github/workflows/release.yml",
         "document:CONTEXT.md"
