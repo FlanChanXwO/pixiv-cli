@@ -1,7 +1,7 @@
 {
   "version": "1.0.0",
-  "gitCommitHash": "b1dac08f386f55089edbbe8ebf54776f0032ff67",
-  "generatedAt": "2026-07-12T04:03:07.893Z",
+  "gitCommitHash": "0cbd004d0f890adc14a3184bab93724b05634bb6",
+  "generatedAt": "2026-07-12T04:52:37.966Z",
   "files": {
     ".agents/skills/pixiv-commit-msg/SKILL.md": {
       "filePath": ".agents/skills/pixiv-commit-msg/SKILL.md",
@@ -95,12 +95,12 @@
     },
     "CHANGELOG.md": {
       "filePath": "CHANGELOG.md",
-      "contentHash": "3c26c8c68fe59b55d751d5f290e04697877f246f255b68add0e034cc6799fb8b",
+      "contentHash": "b13f00d938722a924dfd7f378e7e5099d00a63d907a5cdf27b99e45ba1efcc51",
       "functions": [],
       "classes": [],
       "imports": [],
       "exports": [],
-      "totalLines": 79,
+      "totalLines": 82,
       "hasStructuralAnalysis": true
     },
     "CLAUDE.md": {
@@ -157,7 +157,7 @@
     },
     "CONTEXT.md": {
       "filePath": "CONTEXT.md",
-      "contentHash": "0f4975b8c67240b312c792219da344814bd73f33b8adf2a66025b1e0d4fc2aaa",
+      "contentHash": "3a18fd6a9e1337f5f32cbfab27cb34941511a85baaafb252899c1dc447270fc0",
       "functions": [],
       "classes": [],
       "imports": [],
@@ -227,12 +227,12 @@
     },
     "docs/adr/0008-ed25519-signed-multi-channel-release-trust.md": {
       "filePath": "docs/adr/0008-ed25519-signed-multi-channel-release-trust.md",
-      "contentHash": "6a76a2b997dae8f3c318fd51a079879e17a455594c36a3579338da5e0f01d143",
+      "contentHash": "97aa247ad10ce77bd86628e274a54e36f08a3850c5304685825f67ab314aaa56",
       "functions": [],
       "classes": [],
       "imports": [],
       "exports": [],
-      "totalLines": 49,
+      "totalLines": 50,
       "hasStructuralAnalysis": true
     },
     "docs/agents/documentation-guidelines.md": {
@@ -267,22 +267,22 @@
     },
     "docs/architecture.md": {
       "filePath": "docs/architecture.md",
-      "contentHash": "4ad1e283769867ea96980cca5703edf715e8bc0c2b5f40a5c2029d3843d19719",
+      "contentHash": "ad1950a5a0c41f4bad592d8e3b72f278eeca7869bfd75c16cc711478505f84d4",
       "functions": [],
       "classes": [],
       "imports": [],
       "exports": [],
-      "totalLines": 221,
+      "totalLines": 222,
       "hasStructuralAnalysis": true
     },
     "docs/development.md": {
       "filePath": "docs/development.md",
-      "contentHash": "8ecf56cea261464decb53ea83333d39a475f8debf10d60d2a5c5b6761f5bf8be",
+      "contentHash": "03f2159f3754bd22b167306a442f1b5b5efb54f50a733bb8dbeea7d70ccc6332",
       "functions": [],
       "classes": [],
       "imports": [],
       "exports": [],
-      "totalLines": 329,
+      "totalLines": 330,
       "hasStructuralAnalysis": true
     },
     "docs/index.md": {
@@ -16758,12 +16758,12 @@
     },
     "README.md": {
       "filePath": "README.md",
-      "contentHash": "89b62f7865229cde9bed601723db025c165465da191bf8cf96edb0910eecf8c1",
+      "contentHash": "d65b0005a4405fd664f32a1df01b843e2374b4fbd4bfe65901e74020e1ca7a51",
       "functions": [],
       "classes": [],
       "imports": [],
       "exports": [],
-      "totalLines": 380,
+      "totalLines": 381,
       "hasStructuralAnalysis": true
     },
     "scripts/build-staticlibs.sh": {

@@ -20,8 +20,8 @@
       "GitHub Actions"
     ],
     "description": "这是一个 Go 版 Pixiv CLI 与 MCP stdio server，内置 Rust ugoira encoder，并包含 release/update workflow。",
-    "analyzedAt": "2026-07-12T04:15:22.467Z",
-    "gitCommitHash": "f7a9f464d7e713904b16090eecdbe409d90c3721"
+    "analyzedAt": "2026-07-12T04:52:37.598Z",
+    "gitCommitHash": "0cbd004d0f890adc14a3184bab93724b05634bb6"
   },
   "nodes": [
     {
@@ -15215,7 +15215,7 @@
       "type": "document",
       "name": "CHANGELOG.md",
       "filePath": "CHANGELOG.md",
-      "summary": "记录未发布的用户可见变更与 v0.1.0 发布候选说明；明确候选版本尚未发布，真实 six-target 证据、受保护签名环境与远端发布仍是前置条件。",
+      "summary": "记录未发布的用户可见变更与 v0.1.0 发布候选说明；包含受保护 release 环境和隔离凭据已配置、但真实发布仍被 native evidence 与安装验收阻断的安全状态。",
       "tags": [
         "文档",
         "变更记录",
@@ -15241,7 +15241,7 @@
       "type": "document",
       "name": "CONTEXT.md",
       "filePath": "CONTEXT.md",
-      "summary": "定义 Pixiv CLI/MCP 的领域语言、架构与更新边界；production Ed25519 public-key trust root、key ID 与 fingerprint 已随源码提交，但私钥、受保护 release Environment、公开 remote/Release/tap 与完整 six-target staticlib manifest 尚未部署或完成，因而不得声称已发布或可安装。",
+      "summary": "定义 Pixiv CLI/MCP 的领域语言、架构与更新边界；production Ed25519 trust root 与受保护私钥边界、公开 source/tap remote 已配置，但 tag、Release、formula 与完整 six-target manifest 均未完成。",
       "tags": [
         "领域模型",
         "发布边界",
@@ -15255,7 +15255,7 @@
       "type": "document",
       "name": "README.md",
       "filePath": "README.md",
-      "summary": "面向用户说明 Pixiv CLI 与 MCP server 的构建、认证、命令、更新和发布后安装方式；明确已提交 public trust root 不等于已有私钥部署、Release、tap 或可安装资产。",
+      "summary": "面向用户说明 Pixiv CLI 与 MCP server 的构建、认证、命令、更新和发布后安装方式；记录公开 source/tap 已创建、私钥只在受保护边界，并明确无 Release 或可安装资产。",
       "tags": [
         "文档",
         "用户指南",
@@ -15401,7 +15401,7 @@
       "type": "document",
       "name": "0008-ed25519-signed-multi-channel-release-trust.md",
       "filePath": "docs/adr/0008-ed25519-signed-multi-channel-release-trust.md",
-      "summary": "记录 Ed25519 签名、更新渠道、受保护 Release environment 和 Homebrew tap 凭据隔离的信任决策。",
+      "summary": "记录 Ed25519 签名、更新渠道、已配置的受保护 Release environment 与 Homebrew tap 凭据隔离的信任决策；无 tag、Release 或 formula。",
       "tags": [
         "documentation",
         "architecture",
@@ -19128,7 +19128,7 @@
       "type": "document",
       "name": "development.md",
       "filePath": "docs/development.md",
-      "summary": "说明项目环境、Rust staticlib、native evidence、测试、发布门禁与 Task 13 受控回填流程。",
+      "summary": "说明项目环境、Rust staticlib、native evidence、测试、远端 release/tap 前置条件与 Task 13 受控回填流程；明确远端凭据已配置但未发布。",
       "complexity": "complex",
       "tags": [
         "documentation",

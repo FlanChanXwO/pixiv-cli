@@ -76,7 +76,7 @@
     {
       "path": "CHANGELOG.md",
       "language": "markdown",
-      "sizeLines": 78,
+      "sizeLines": 81,
       "fileCategory": "docs"
     },
     {
@@ -94,7 +94,7 @@
     {
       "path": "CONTEXT.md",
       "language": "markdown",
-      "sizeLines": 56,
+      "sizeLines": 61,
       "fileCategory": "docs"
     },
     {
@@ -136,7 +136,7 @@
     {
       "path": "docs/adr/0008-ed25519-signed-multi-channel-release-trust.md",
       "language": "markdown",
-      "sizeLines": 48,
+      "sizeLines": 49,
       "fileCategory": "docs"
     },
     {
@@ -166,7 +166,7 @@
     {
       "path": "docs/development.md",
       "language": "markdown",
-      "sizeLines": 328,
+      "sizeLines": 329,
       "fileCategory": "docs"
     },
     {
@@ -796,7 +796,7 @@
     {
       "path": "README.md",
       "language": "markdown",
-      "sizeLines": 379,
+      "sizeLines": 380,
       "fileCategory": "docs"
     },
     {
