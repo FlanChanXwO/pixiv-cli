@@ -35,15 +35,6 @@ type Client struct {
 	webFallbackEnabled bool
 }
 
-type operation uint8
-
-const opIllustDetail operation = iota
-
-// webEnrichmentEnabled 是 SDK 允许 Web 补全的唯一 operation policy。
-func webEnrichmentEnabled(op operation) bool {
-	return op == opIllustDetail
-}
-
 // NewClient 构造具体客户端；它不会执行网络请求或隐式认证。
 func NewClient(options Options) (*Client, error) {
 	accessToken := strings.TrimSpace(options.AccessToken)
@@ -78,18 +69,11 @@ func (c *Client) IllustDetail(ctx context.Context, id int64) (*IllustDetail, err
 			errors.New("illust id must be positive"),
 		)
 	}
-	if !c.authenticated {
-		if !c.webFallbackEnabled {
-			return nil, newError(
-				CodeUnauthorized,
-				OperationIllustDetail,
-				"",
-				false,
-				0,
-				id,
-				errors.New("access token is required when Web fallback is disabled"),
-			)
-		}
+	route, err := c.selectRoute(OperationIllustDetail, id, 0)
+	if err != nil {
+		return nil, err
+	}
+	if route == routeWeb {
 		detail, err := c.web.IllustDetail(ctx, id)
 		if err != nil {
 			return nil, mapWebError(err, OperationIllustDetail, id)
@@ -100,9 +84,6 @@ func (c *Client) IllustDetail(ctx context.Context, id int64) (*IllustDetail, err
 	detail, err := c.app.IllustDetail(ctx, id)
 	if err != nil {
 		return nil, mapAppError(err, OperationIllustDetail, id)
-	}
-	if !webEnrichmentEnabled(opIllustDetail) {
-		return nil, fmt.Errorf("web enrichment is not enabled for illust detail")
 	}
 	pages, err := c.web.IllustPages(ctx, id)
 	if err != nil {

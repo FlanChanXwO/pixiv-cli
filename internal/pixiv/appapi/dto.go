@@ -66,7 +66,7 @@ type userPreviewDTO struct {
 	User userDTO `json:"user"`
 }
 type trendTagsDTO struct {
-	TrendTags []trendTagDTO `json:"trend_tags"`
+	TrendTags requiredList[trendTagDTO] `json:"trend_tags"`
 }
 type trendTagDTO struct {
 	Tag            string    `json:"tag"`
@@ -74,13 +74,13 @@ type trendTagDTO struct {
 	Illust         illustDTO `json:"illust"`
 }
 type ugoiraMetadataResultDTO struct {
-	UgoiraMetadata ugoiraMetadataDTO `json:"ugoira_metadata"`
+	UgoiraMetadata *ugoiraMetadataDTO `json:"ugoira_metadata"`
 }
 type ugoiraMetadataDTO struct {
-	ZipURLs struct {
+	ZipURLs *struct {
 		Medium string `json:"medium"`
 	} `json:"zip_urls"`
-	Frames []ugoiraFrameDTO `json:"frames"`
+	Frames requiredList[ugoiraFrameDTO] `json:"frames"`
 }
 type ugoiraFrameDTO struct {
 	File  string `json:"file"`

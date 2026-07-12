@@ -148,7 +148,20 @@ func (c *Client) IllustRecommended(ctx context.Context, offset int) (*model.Illu
 }
 
 func (c *Client) TrendingTagsIllust(ctx context.Context) (*model.TrendTags, error) {
-	return getMapped(ctx, c, "/v1/trending-tags/illust", nil, mapTrendTags)
+	var raw trendTagsDTO
+	if err := c.getJSONWithRetry(ctx, "/v1/trending-tags/illust", nil, &raw); err != nil {
+		return nil, err
+	}
+	if !raw.TrendTags.Present || !raw.TrendTags.Valid {
+		return nil, ErrMalformedResponse
+	}
+	for _, item := range raw.TrendTags.Items {
+		if item.Tag == "" || item.Illust.ID <= 0 {
+			return nil, ErrMalformedResponse
+		}
+	}
+	out := mapTrendTags(raw)
+	return &out, nil
 }
 
 func (c *Client) IllustFollow(ctx context.Context, restrict string, offset int) (*model.IllustList, error) {
@@ -267,7 +280,21 @@ func continuationValue(rawURL, key string) (int64, error) {
 }
 
 func (c *Client) UgoiraMetadata(ctx context.Context, id int64) (*model.UgoiraMetadataResult, error) {
-	return getMapped(ctx, c, "/v1/ugoira/metadata", url.Values{"illust_id": {fmt.Sprint(id)}}, mapUgoiraMetadata)
+	var raw ugoiraMetadataResultDTO
+	if err := c.getJSONWithRetry(ctx, "/v1/ugoira/metadata", url.Values{"illust_id": {fmt.Sprint(id)}}, &raw); err != nil {
+		return nil, err
+	}
+	if raw.UgoiraMetadata == nil || raw.UgoiraMetadata.ZipURLs == nil || raw.UgoiraMetadata.ZipURLs.Medium == "" ||
+		!raw.UgoiraMetadata.Frames.Present || !raw.UgoiraMetadata.Frames.Valid || len(raw.UgoiraMetadata.Frames.Items) == 0 {
+		return nil, ErrMalformedResponse
+	}
+	for _, frame := range raw.UgoiraMetadata.Frames.Items {
+		if frame.File == "" {
+			return nil, ErrMalformedResponse
+		}
+	}
+	out := mapUgoiraMetadata(raw)
+	return &out, nil
 }
 
 type requestOptions struct {

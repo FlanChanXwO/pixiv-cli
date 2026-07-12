@@ -34,17 +34,20 @@ const (
 type Operation string
 
 const (
-	OperationIllustDetail      Operation = "illust_detail"
-	OperationIllustPages       Operation = "illust_pages"
-	OperationSearchIllust      Operation = "search_illust"
-	OperationIllustRanking     Operation = "illust_ranking"
-	OperationIllustRecommended Operation = "illust_recommended"
-	OperationFollowingIllusts  Operation = "following_illusts"
-	OperationSearchUser        Operation = "search_user"
-	OperationUserDetail        Operation = "user_detail"
-	OperationUserArtworks      Operation = "user_artworks"
-	OperationUserBookmarks     Operation = "user_bookmarks"
-	OperationUserFollowing     Operation = "user_following"
+	OperationIllustDetail       Operation = "illust_detail"
+	OperationIllustPages        Operation = "illust_pages"
+	OperationIllustRelated      Operation = "illust_related"
+	OperationTrendingTagsIllust Operation = "trending_tags_illust"
+	OperationUgoiraMetadata     Operation = "ugoira_metadata"
+	OperationSearchIllust       Operation = "search_illust"
+	OperationIllustRanking      Operation = "illust_ranking"
+	OperationIllustRecommended  Operation = "illust_recommended"
+	OperationFollowingIllusts   Operation = "following_illusts"
+	OperationSearchUser         Operation = "search_user"
+	OperationUserDetail         Operation = "user_detail"
+	OperationUserArtworks       Operation = "user_artworks"
+	OperationUserBookmarks      Operation = "user_bookmarks"
+	OperationUserFollowing      Operation = "user_following"
 )
 
 // Error 是公开 SDK 的安全、可分类错误。cause 只保存已脱敏原因。

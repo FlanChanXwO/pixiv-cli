@@ -38,6 +38,7 @@ type (
 	TrendTag             = model.TrendTag
 	UgoiraMetadataResult = model.UgoiraMetadataResult
 	UgoiraMetadata       = model.UgoiraMetadata
+	UgoiraZipURLs        = model.UgoiraZipURLs
 	UgoiraFrame          = model.UgoiraFrame
 	SearchTarget         = model.SearchTarget
 	SortMode             = model.SortMode

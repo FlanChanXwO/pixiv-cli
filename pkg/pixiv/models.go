@@ -127,6 +127,11 @@ type UserFollowingRequest struct {
 	Cursor   Cursor   `json:"cursor,omitempty"`
 }
 
+type IllustRelatedRequest struct {
+	IllustID int64  `json:"illust_id"`
+	Cursor   Cursor `json:"cursor,omitempty"`
+}
+
 type IllustListResult struct {
 	Illusts    []Illust `json:"illusts"`
 	NextCursor Cursor   `json:"next_cursor,omitempty"`
@@ -139,6 +144,35 @@ type UserListResult struct {
 
 type UserDetailResult struct {
 	User User `json:"user"`
+}
+
+type TrendingTagsIllustResult struct {
+	TrendTags []TrendTag `json:"trend_tags"`
+}
+
+type TrendTag struct {
+	Tag            string `json:"tag"`
+	TranslatedName string `json:"translated_name"`
+	Illust         Illust `json:"illust"`
+}
+
+type UgoiraMetadataResult struct {
+	UgoiraMetadata UgoiraMetadata `json:"ugoira_metadata"`
+}
+
+type UgoiraMetadata struct {
+	ZipURLs UgoiraZipURLs `json:"zip_urls"`
+	Frames  []UgoiraFrame `json:"frames"`
+}
+
+type UgoiraZipURLs struct {
+	Medium   string `json:"medium"`
+	Original string `json:"original"`
+}
+
+type UgoiraFrame struct {
+	File  string `json:"file"`
+	Delay int    `json:"delay"`
 }
 
 // Tag 是作品标签及其翻译。

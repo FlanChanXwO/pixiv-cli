@@ -110,10 +110,13 @@ type UgoiraMetadataResult struct {
 }
 
 type UgoiraMetadata struct {
-	ZipURLs struct {
-		Medium string `json:"medium"`
-	} `json:"zip_urls"`
-	Frames []UgoiraFrame `json:"frames"`
+	ZipURLs UgoiraZipURLs `json:"zip_urls"`
+	Frames  []UgoiraFrame `json:"frames"`
+}
+
+type UgoiraZipURLs struct {
+	Medium   string `json:"medium"`
+	Original string `json:"original"`
 }
 
 type UgoiraFrame struct {

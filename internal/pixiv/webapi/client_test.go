@@ -305,7 +305,7 @@ func TestClientUgoiraMetadataUsesWebShape(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/ajax/illust/123/ugoira_meta":
-			fmt.Fprint(w, `{"error":false,"message":"","body":{"originalSrc":"https://i.pximg.net/ugoira.zip","frames":[{"file":"000000.jpg","delay":80}]}}`)
+			fmt.Fprint(w, `{"error":false,"message":"","body":{"src":"https://i.pximg.net/ugoira-medium.zip","originalSrc":"https://i.pximg.net/ugoira.zip","frames":[{"file":"000000.jpg","delay":80}]}}`)
 		default:
 			http.NotFound(w, r)
 		}
@@ -315,7 +315,8 @@ func TestClientUgoiraMetadataUsesWebShape(t *testing.T) {
 	client := New(WithHTTPClient(server.Client()), WithWebBase(server.URL))
 	meta, err := client.UgoiraMetadata(context.Background(), 123)
 	require.NoError(t, err)
-	assert.Equal(t, "https://i.pximg.net/ugoira.zip", meta.UgoiraMetadata.ZipURLs.Medium)
+	assert.Equal(t, "https://i.pximg.net/ugoira-medium.zip", meta.UgoiraMetadata.ZipURLs.Medium)
+	assert.Equal(t, "https://i.pximg.net/ugoira.zip", meta.UgoiraMetadata.ZipURLs.Original)
 	require.Len(t, meta.UgoiraMetadata.Frames, 1)
 	assert.Equal(t, 80, meta.UgoiraMetadata.Frames[0].Delay)
 }

@@ -250,10 +250,17 @@ func (c *Client) UgoiraMetadata(ctx context.Context, id int64) (*model.UgoiraMet
 	if out.Error {
 		return nil, webEnvelopeError(out.Message)
 	}
+	if !out.bodyPresent || out.Body.OriginalSrc == "" || len(out.Body.Frames) == 0 {
+		return nil, ErrMalformedResponse
+	}
 	var result model.UgoiraMetadataResult
-	result.UgoiraMetadata.ZipURLs.Medium = text.FirstNonEmpty(out.Body.OriginalSrc, out.Body.Src)
+	result.UgoiraMetadata.ZipURLs.Medium = out.Body.Src
+	result.UgoiraMetadata.ZipURLs.Original = out.Body.OriginalSrc
 	result.UgoiraMetadata.Frames = make([]model.UgoiraFrame, 0, len(out.Body.Frames))
 	for _, frame := range out.Body.Frames {
+		if frame.File == "" {
+			return nil, ErrMalformedResponse
+		}
 		result.UgoiraMetadata.Frames = append(result.UgoiraMetadata.Frames, model.UgoiraFrame{
 			File:  frame.File,
 			Delay: int(frame.Delay),

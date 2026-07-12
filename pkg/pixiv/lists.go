@@ -60,10 +60,11 @@ func (c *Client) SearchIllust(ctx context.Context, request SearchIllustRequest) 
 	if err != nil {
 		return nil, err
 	}
-	if !c.authenticated {
-		if !c.webFallbackEnabled {
-			return nil, unauthorized(OperationSearchIllust, 0)
-		}
+	route, err := c.selectRoute(OperationSearchIllust, 0, 0)
+	if err != nil {
+		return nil, err
+	}
+	if route == routeWeb {
 		list, err := c.web.SearchIllust(ctx, query.Word, string(query.Target), string(query.Sort), query.Duration, offset)
 		if err != nil {
 			return nil, mapWebListError(err, OperationSearchIllust, 0)
@@ -94,10 +95,11 @@ func (c *Client) IllustRanking(ctx context.Context, request IllustRankingRequest
 	if err != nil {
 		return nil, err
 	}
-	if !c.authenticated {
-		if !c.webFallbackEnabled {
-			return nil, unauthorized(OperationIllustRanking, 0)
-		}
+	route, err := c.selectRoute(OperationIllustRanking, 0, 0)
+	if err != nil {
+		return nil, err
+	}
+	if route == routeWeb {
 		list, err := c.web.IllustRanking(ctx, string(query.Mode), query.Date, offset)
 		if err != nil {
 			return nil, mapWebListError(err, OperationIllustRanking, 0)
@@ -118,8 +120,8 @@ func (c *Client) IllustRecommended(ctx context.Context, request IllustRecommende
 	if err != nil {
 		return nil, err
 	}
-	if !c.authenticated {
-		return nil, unauthorized(OperationIllustRecommended, 0)
+	if _, err := c.selectRoute(OperationIllustRecommended, 0, 0); err != nil {
+		return nil, err
 	}
 	list, err := c.app.IllustRecommended(ctx, offset)
 	if err != nil {
@@ -142,8 +144,8 @@ func (c *Client) FollowingIllusts(ctx context.Context, request FollowingIllustsR
 	if err != nil {
 		return nil, err
 	}
-	if !c.authenticated {
-		return nil, unauthorized(OperationFollowingIllusts, 0)
+	if _, err := c.selectRoute(OperationFollowingIllusts, 0, 0); err != nil {
+		return nil, err
 	}
 	list, err := c.app.IllustFollow(ctx, string(query.Restrict), offset)
 	if err != nil {
@@ -163,10 +165,11 @@ func (c *Client) SearchUser(ctx context.Context, request SearchUserRequest) (*Us
 	if err != nil {
 		return nil, err
 	}
-	if !c.authenticated {
-		if !c.webFallbackEnabled {
-			return nil, unauthorized(OperationSearchUser, 0)
-		}
+	route, err := c.selectRoute(OperationSearchUser, 0, 0)
+	if err != nil {
+		return nil, err
+	}
+	if route == routeWeb {
 		list, err := c.web.SearchUser(ctx, query.Word, offset)
 		if err != nil {
 			return nil, mapWebListError(err, OperationSearchUser, 0)
@@ -185,8 +188,8 @@ func (c *Client) UserDetail(ctx context.Context, request UserDetailRequest) (*Us
 	if request.UserID <= 0 {
 		return nil, invalidArgument(OperationUserDetail, request.UserID, errors.New("user id must be positive"))
 	}
-	if !c.authenticated {
-		return nil, unauthorized(OperationUserDetail, request.UserID)
+	if _, err := c.selectRoute(OperationUserDetail, 0, request.UserID); err != nil {
+		return nil, err
 	}
 	user, err := c.app.UserDetail(ctx, request.UserID)
 	if err != nil {
@@ -212,8 +215,8 @@ func (c *Client) UserArtworks(ctx context.Context, request UserArtworksRequest) 
 	if err != nil {
 		return nil, err
 	}
-	if !c.authenticated {
-		return nil, unauthorized(OperationUserArtworks, request.UserID)
+	if _, err := c.selectRoute(OperationUserArtworks, 0, request.UserID); err != nil {
+		return nil, err
 	}
 	list, err := c.app.UserArtworks(ctx, request.UserID, string(query.Type), offset)
 	if err != nil {
@@ -239,8 +242,8 @@ func (c *Client) UserBookmarks(ctx context.Context, request UserBookmarksRequest
 	if err != nil {
 		return nil, err
 	}
-	if !c.authenticated {
-		return nil, unauthorized(OperationUserBookmarks, request.UserID)
+	if _, err := c.selectRoute(OperationUserBookmarks, 0, request.UserID); err != nil {
+		return nil, err
 	}
 	list, err := c.app.UserBookmarks(ctx, request.UserID, string(query.Restrict), request.Tag, maxID)
 	if err != nil {
@@ -266,8 +269,8 @@ func (c *Client) UserFollowing(ctx context.Context, request UserFollowingRequest
 	if err != nil {
 		return nil, err
 	}
-	if !c.authenticated {
-		return nil, unauthorized(OperationUserFollowing, request.UserID)
+	if _, err := c.selectRoute(OperationUserFollowing, 0, request.UserID); err != nil {
+		return nil, err
 	}
 	list, err := c.app.UserFollowing(ctx, request.UserID, string(query.Restrict), offset)
 	if err != nil {
@@ -328,10 +331,6 @@ func mapUser(user model.User) User {
 func invalidArgument(operation Operation, userID int64, cause error) error {
 	return newUserError(CodeInvalidArgument, operation, "", false, 0, userID, cause)
 }
-func unauthorized(operation Operation, userID int64) error {
-	return newUserError(CodeUnauthorized, operation, "", false, 0, userID, errors.New("access token is required"))
-}
-
 func mapAppOperationError(err error, operation Operation, userID int64) error {
 	mapped := mapAppError(err, operation, 0)
 	if typed, ok := mapped.(*Error); ok {
