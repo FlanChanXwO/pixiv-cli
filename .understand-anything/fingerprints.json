@@ -1,7 +1,7 @@
 {
   "version": "1.0.0",
-  "gitCommitHash": "abdde72f03ddb80b54d1c6c4a723799444f895b8",
-  "generatedAt": "2026-07-11T19:27:53.591Z",
+  "gitCommitHash": "b1dac08f386f55089edbbe8ebf54776f0032ff67",
+  "generatedAt": "2026-07-12T04:03:07.893Z",
   "files": {
     ".agents/skills/pixiv-commit-msg/SKILL.md": {
       "filePath": ".agents/skills/pixiv-commit-msg/SKILL.md",
@@ -33,6 +33,16 @@
       "totalLines": 46,
       "hasStructuralAnalysis": true
     },
+    ".gitattributes": {
+      "filePath": ".gitattributes",
+      "contentHash": "7ac4504372a54617c00e3c9e20de9fb19b65287bed6890dc677cd21e16fd01f8",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 108,
+      "hasStructuralAnalysis": false
+    },
     ".github/copilot-instructions.md": {
       "filePath": ".github/copilot-instructions.md",
       "contentHash": "a3527c11b1b0e4077f943b7f0814b7da19559fdbc5d85b6d372d500904f5fb75",
@@ -43,14 +53,24 @@
       "totalLines": 33,
       "hasStructuralAnalysis": true
     },
-    ".github/workflows/release.yml": {
-      "filePath": ".github/workflows/release.yml",
-      "contentHash": "b116e60a609f7e812fc609c52efd5c8ab9665ec84f00cf4c36223446493d881c",
+    ".github/workflows/native-evidence.yml": {
+      "filePath": ".github/workflows/native-evidence.yml",
+      "contentHash": "dd5654d68979207d2973686d3cda569cf9226b6e5b646473040e294a9cf2c85f",
       "functions": [],
       "classes": [],
       "imports": [],
       "exports": [],
-      "totalLines": 195,
+      "totalLines": 143,
+      "hasStructuralAnalysis": true
+    },
+    ".github/workflows/release.yml": {
+      "filePath": ".github/workflows/release.yml",
+      "contentHash": "92332731a314a38cbfb7a0945c6f71531b01346f61619885e92a690713352731",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 247,
       "hasStructuralAnalysis": true
     },
     ".pre-commit-config.yaml": {
@@ -75,12 +95,12 @@
     },
     "CHANGELOG.md": {
       "filePath": "CHANGELOG.md",
-      "contentHash": "c8ad65afe71d93e62fb6a050a8d0136364808ff711eecd3b1e200bc8257cde57",
+      "contentHash": "3c26c8c68fe59b55d751d5f290e04697877f246f255b68add0e034cc6799fb8b",
       "functions": [],
       "classes": [],
       "imports": [],
       "exports": [],
-      "totalLines": 54,
+      "totalLines": 79,
       "hasStructuralAnalysis": true
     },
     "CLAUDE.md": {
@@ -137,12 +157,12 @@
     },
     "CONTEXT.md": {
       "filePath": "CONTEXT.md",
-      "contentHash": "5a1596b8d48fb0dc4d68f3cd0852e0ef6643765181e7e029933f2e1c3f3a2c4f",
+      "contentHash": "0f4975b8c67240b312c792219da344814bd73f33b8adf2a66025b1e0d4fc2aaa",
       "functions": [],
       "classes": [],
       "imports": [],
       "exports": [],
-      "totalLines": 57,
+      "totalLines": 62,
       "hasStructuralAnalysis": true
     },
     "docs/adr/0001-cli-thin-controller-and-bootstrap.md": {
@@ -197,7 +217,7 @@
     },
     "docs/adr/0007-platform-staticlibs-for-supported-source-builds.md": {
       "filePath": "docs/adr/0007-platform-staticlibs-for-supported-source-builds.md",
-      "contentHash": "20095f8f114369d9fdbad9fc71469266ed800761dee76deca875768a6dbe143e",
+      "contentHash": "1958f02502d5892360a468e260794b070880f1981f1ef3592e63544627a873d3",
       "functions": [],
       "classes": [],
       "imports": [],
@@ -207,12 +227,12 @@
     },
     "docs/adr/0008-ed25519-signed-multi-channel-release-trust.md": {
       "filePath": "docs/adr/0008-ed25519-signed-multi-channel-release-trust.md",
-      "contentHash": "1a7a3543496be7cb5464df41bc52815464bf3455c9debb23923b6c8338df2245",
+      "contentHash": "6a76a2b997dae8f3c318fd51a079879e17a455594c36a3579338da5e0f01d143",
       "functions": [],
       "classes": [],
       "imports": [],
       "exports": [],
-      "totalLines": 46,
+      "totalLines": 49,
       "hasStructuralAnalysis": true
     },
     "docs/agents/documentation-guidelines.md": {
@@ -247,22 +267,22 @@
     },
     "docs/architecture.md": {
       "filePath": "docs/architecture.md",
-      "contentHash": "c931dbc508dda770907baed82591c572994e87e2a5b901c281025b7514b3f8d9",
+      "contentHash": "4ad1e283769867ea96980cca5703edf715e8bc0c2b5f40a5c2029d3843d19719",
       "functions": [],
       "classes": [],
       "imports": [],
       "exports": [],
-      "totalLines": 216,
+      "totalLines": 221,
       "hasStructuralAnalysis": true
     },
     "docs/development.md": {
       "filePath": "docs/development.md",
-      "contentHash": "02d67e1f60b99568cdf615c79de9963ac303b0f07c2579e582c7866d135a930c",
+      "contentHash": "8ecf56cea261464decb53ea83333d39a475f8debf10d60d2a5c5b6761f5bf8be",
       "functions": [],
       "classes": [],
       "imports": [],
       "exports": [],
-      "totalLines": 232,
+      "totalLines": 329,
       "hasStructuralAnalysis": true
     },
     "docs/index.md": {
@@ -287,12 +307,12 @@
     },
     "go.mod": {
       "filePath": "go.mod",
-      "contentHash": "2d6ffdb7c2b7fe1a5aa083f1f8cc25135c8c1ddcd6fa88ac4c5eb998c6eab27e",
+      "contentHash": "8f510ed86d1160c5c01ffe67c7ad69f8d5855759f8b29491093dd8f5e0a3a979",
       "functions": [],
       "classes": [],
       "imports": [],
       "exports": [],
-      "totalLines": 41,
+      "totalLines": 43,
       "hasStructuralAnalysis": false
     },
     "go.sum": {
@@ -1771,6 +1791,118 @@
       "totalLines": 223,
       "hasStructuralAnalysis": true
     },
+    "internal/bootstrap/release_trust_test.go": {
+      "filePath": "internal/bootstrap/release_trust_test.go",
+      "contentHash": "eea8211dbe98e4ea838299ccf9552893b7eb127a288ad568078819e2bb804ac5",
+      "functions": [
+        {
+          "name": "TestProductionReleaseInstallerTrustRootVerifiesKnownSignature",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 17
+        },
+        {
+          "name": "TestProductionReleaseInstallerOptionsDefensivelyCopyTrustedKeys",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 14
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "crypto/ed25519",
+          "specifiers": [
+            "ed25519"
+          ]
+        },
+        {
+          "source": "crypto/sha256",
+          "specifiers": [
+            "sha256"
+          ]
+        },
+        {
+          "source": "crypto/x509",
+          "specifiers": [
+            "x509"
+          ]
+        },
+        {
+          "source": "encoding/base64",
+          "specifiers": [
+            "base64"
+          ]
+        },
+        {
+          "source": "encoding/hex",
+          "specifiers": [
+            "hex"
+          ]
+        },
+        {
+          "source": "testing",
+          "specifiers": [
+            "testing"
+          ]
+        },
+        {
+          "source": "github.com/stretchr/testify/require",
+          "specifiers": [
+            "require"
+          ]
+        }
+      ],
+      "exports": [
+        "TestProductionReleaseInstallerTrustRootVerifiesKnownSignature",
+        "TestProductionReleaseInstallerOptionsDefensivelyCopyTrustedKeys"
+      ],
+      "totalLines": 55,
+      "hasStructuralAnalysis": true
+    },
+    "internal/bootstrap/release_trust.go": {
+      "filePath": "internal/bootstrap/release_trust.go",
+      "contentHash": "aa931b6e6e10a646c66daafccbf7962e2eb44e0e617a0fc823b6bf72eb63ab99",
+      "functions": [
+        {
+          "name": "productionReleaseInstallerOptions",
+          "params": [
+            "httpClient"
+          ],
+          "returnType": "update.ReleaseInstallerOptions",
+          "exported": false,
+          "lineCount": 8
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "crypto/ed25519",
+          "specifiers": [
+            "ed25519"
+          ]
+        },
+        {
+          "source": "net/http",
+          "specifiers": [
+            "http"
+          ]
+        },
+        {
+          "source": "github.com/FlanChanXwO/pixiv-cli/internal/update",
+          "specifiers": [
+            "update"
+          ]
+        }
+      ],
+      "exports": [],
+      "totalLines": 36,
+      "hasStructuralAnalysis": true
+    },
     "internal/bootstrap/update_test.go": {
       "filePath": "internal/bootstrap/update_test.go",
       "contentHash": "1530faf236c22604bbd1f30e93850891d8c8d03a98984cdc0840805135106f35",
@@ -1840,7 +1972,7 @@
     },
     "internal/bootstrap/update.go": {
       "filePath": "internal/bootstrap/update.go",
-      "contentHash": "ca783ebd284a36cf1d94b7cc02edf39b119edc58b18007687be3cb4a37763106",
+      "contentHash": "30e3bef68ca0373802467feb095a87c316839ea0a2df17a30a80034e1f56f4f3",
       "functions": [
         {
           "name": "NewUpdateCoordinator",
@@ -1851,7 +1983,7 @@
           ],
           "returnType": "(*update.UpdateCoordinator, error)",
           "exported": true,
-          "lineCount": 18
+          "lineCount": 16
         },
         {
           "name": "NewAutomaticUpdateChecker",
@@ -1888,7 +2020,7 @@
         "NewUpdateCoordinator",
         "NewAutomaticUpdateChecker"
       ],
-      "totalLines": 47,
+      "totalLines": 45,
       "hasStructuralAnalysis": true
     },
     "internal/buildinfo/buildinfo_test.go": {
@@ -2888,7 +3020,7 @@
     },
     "internal/cli/account_test.go": {
       "filePath": "internal/cli/account_test.go",
-      "contentHash": "b2f582b7ab788bf8d4fb855eb60fa627d5aa1ee9f5251277298f687c3ba978e1",
+      "contentHash": "5533ba0c501d27de7936531ec6404f2c43f0b46b93d60fe85aac90ae0cc1b4ec",
       "functions": [
         {
           "name": "TestAccountAddListUseRemovePreservesOrder",
@@ -3056,7 +3188,7 @@
             "t"
           ],
           "exported": true,
-          "lineCount": 47
+          "lineCount": 53
         },
         {
           "name": "TestAccountLoginDefaultBrowserWatcherContinuesPixivPostRedirect",
@@ -3064,7 +3196,7 @@
             "t"
           ],
           "exported": true,
-          "lineCount": 66
+          "lineCount": 76
         },
         {
           "name": "TestAccountLoginDefaultBrowserWatcherSkipsStalePostRedirectChallenge",
@@ -3072,7 +3204,7 @@
             "t"
           ],
           "exported": true,
-          "lineCount": 71
+          "lineCount": 81
         },
         {
           "name": "TestAccountLoginDefaultBrowserWatcherReportsPostRedirectRelayOnce",
@@ -3080,7 +3212,7 @@
             "t"
           ],
           "exported": true,
-          "lineCount": 67
+          "lineCount": 76
         },
         {
           "name": "TestLoginCodeFromInputOnlyPixivCallbacksMayOmitState",
@@ -3600,7 +3732,7 @@
         "TestActiveMacBrowserURLsFallBackToSystemEvents",
         "ExchangeAuthorizationCode"
       ],
-      "totalLines": 1486,
+      "totalLines": 1521,
       "hasStructuralAnalysis": true
     },
     "internal/cli/api_cmd.go": {
@@ -6470,7 +6602,7 @@
     },
     "internal/download/testdata/ugoira-source-digest.txt": {
       "filePath": "internal/download/testdata/ugoira-source-digest.txt",
-      "contentHash": "f1003b760d349edfbdd96b12522d8a12b90083c053e18587b9fa318f6a1cceb6",
+      "contentHash": "77cd43a2cd6ff421ce760537315638b3cce877aa84b283d8474f52fe7f547ae8",
       "functions": [],
       "classes": [],
       "imports": [],
@@ -6573,7 +6705,7 @@
     },
     "internal/download/ugoira_integrity_test.go": {
       "filePath": "internal/download/ugoira_integrity_test.go",
-      "contentHash": "317028a24f618b12777d4dbd28d3c17fb66f14187422de77d72ebbbd02642f81",
+      "contentHash": "53b72bf0c8ef2a7bbad3871d1d8d7a3dcaf0934aee2163e5e0f55a7da43a7b60",
       "functions": [
         {
           "name": "TestUgoiraRustSourceDigestMatchesRecordedFixture",
@@ -6589,7 +6721,7 @@
             "t"
           ],
           "exported": true,
-          "lineCount": 43
+          "lineCount": 66
         },
         {
           "name": "TestValidateUgoiraStaticlibManifestAcceptsCompleteSyntheticMapping",
@@ -6686,12 +6818,12 @@
         "TestCommittedUgoiraStaticlibManifestWhenPresent",
         "TestValidateUgoiraStaticlibManifestRejectsInvalidMapping"
       ],
-      "totalLines": 173,
+      "totalLines": 196,
       "hasStructuralAnalysis": true
     },
     "internal/download/ugoira_integrity.go": {
       "filePath": "internal/download/ugoira_integrity.go",
-      "contentHash": "77765eba04ca5312b9e6db68a55ef4061a75a8987449b4814aa2146aa3d88604",
+      "contentHash": "e04900c389e2ccfe1db7d689d1bae8f5938af05ae0822e830403db0d079be8b7",
       "functions": [
         {
           "name": "CalculateUgoiraRustSourceDigest",
@@ -6723,7 +6855,7 @@
           ],
           "returnType": "bool",
           "exported": false,
-          "lineCount": 6
+          "lineCount": 9
         },
         {
           "name": "ValidateUgoiraStaticlibManifest",
@@ -6884,7 +7016,17 @@
         "ValidateUgoiraStaticlibManifest",
         "ValidateUgoiraStaticlibManifestFiles"
       ],
-      "totalLines": 217,
+      "totalLines": 221,
+      "hasStructuralAnalysis": true
+    },
+    "internal/download/ugoira_rs/.cargo/config.toml": {
+      "filePath": "internal/download/ugoira_rs/.cargo/config.toml",
+      "contentHash": "56296a0f53fd05c13ab11818641e76562c262982f9c737dc38a85edbaac7c13f",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 7,
       "hasStructuralAnalysis": true
     },
     "internal/download/ugoira_rs/Cargo.toml": {
@@ -12844,9 +12986,75 @@
       "totalLines": 118,
       "hasStructuralAnalysis": true
     },
+    "internal/update/cache_permissions_unix.go": {
+      "filePath": "internal/update/cache_permissions_unix.go",
+      "contentHash": "8eb2a8e4fbc882a62e8500b811d17352924f391e26dfbed006278f5a157b4f4a",
+      "functions": [
+        {
+          "name": "ensurePrivateReleaseCacheDirectory",
+          "params": [
+            "cacheDir"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 9
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "fmt",
+          "specifiers": [
+            "fmt"
+          ]
+        },
+        {
+          "source": "os",
+          "specifiers": [
+            "os"
+          ]
+        }
+      ],
+      "exports": [],
+      "totalLines": 20,
+      "hasStructuralAnalysis": true
+    },
+    "internal/update/cache_permissions_windows.go": {
+      "filePath": "internal/update/cache_permissions_windows.go",
+      "contentHash": "cc5dca382c14d1e7f87f15849b185f8556bd287d901122452dac67a51eb51fb8",
+      "functions": [
+        {
+          "name": "ensurePrivateReleaseCacheDirectory",
+          "params": [
+            "cacheDir"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 6
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "fmt",
+          "specifiers": [
+            "fmt"
+          ]
+        },
+        {
+          "source": "os",
+          "specifiers": [
+            "os"
+          ]
+        }
+      ],
+      "exports": [],
+      "totalLines": 17,
+      "hasStructuralAnalysis": true
+    },
     "internal/update/cleanup.go": {
       "filePath": "internal/update/cleanup.go",
-      "contentHash": "833252b6a9af7391760fe57837295d7cbf365e0253207301802964a96a456ee2",
+      "contentHash": "47962ab5294c3af661d144cf4b9dc20a8e4bd7d95038f7a1b1949322d7a71607",
       "functions": [
         {
           "name": "CleanupPendingWindowsUpdate",
@@ -12864,7 +13072,7 @@
           ],
           "returnType": "error",
           "exported": false,
-          "lineCount": 14
+          "lineCount": 18
         }
       ],
       "classes": [],
@@ -12891,7 +13099,7 @@
       "exports": [
         "CleanupPendingWindowsUpdate"
       ],
-      "totalLines": 29,
+      "totalLines": 33,
       "hasStructuralAnalysis": true
     },
     "internal/update/command_test.go": {
@@ -13066,7 +13274,7 @@
     },
     "internal/update/installer_test.go": {
       "filePath": "internal/update/installer_test.go",
-      "contentHash": "0a63960d6c26aab3878c2591a94e6bf04cf8693b220024b39a02c892e8f8fc70",
+      "contentHash": "d7c4bb06ec6b0efe4872ae9238fd70803a0d0efbcc57a3c4cefb7d8adc53da01",
       "functions": [
         {
           "name": "TestMain",
@@ -13082,7 +13290,47 @@
             "t"
           ],
           "exported": true,
-          "lineCount": 52
+          "lineCount": 53
+        },
+        {
+          "name": "TestReleaseInstallerPreservesExecutableSymlink",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 38
+        },
+        {
+          "name": "TestReleaseInstallerRejectsBrokenExecutableSymlink",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 40
+        },
+        {
+          "name": "TestReleaseInstallerRejectsUntrustedCachedAssetURLBeforeRequest",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 59
+        },
+        {
+          "name": "TestReleaseInstallerRejectsEveryUnexpectedGitHubAssetSource",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 44
+        },
+        {
+          "name": "TestReleaseInstallerFollowsOfficialGitHubDownloadRedirect",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 57
         },
         {
           "name": "TestReleaseInstallerFailureKeepsExistingExecutable",
@@ -13091,6 +13339,62 @@
           ],
           "exported": true,
           "lineCount": 88
+        },
+        {
+          "name": "TestReleaseInstallerStopsAfterCompletedArchiveDownloadWhenCanceled",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 31
+        },
+        {
+          "name": "TestReleaseInstallerStopsBeforeStagingWhenCheckerCancels",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 23
+        },
+        {
+          "name": "TestReleaseInstallerStopsBeforeReplaceWhenCanceledAfterStaging",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 21
+        },
+        {
+          "name": "TestReleaseInstallerClosesStagedFileBeforeCancellationCleanupOnWindows",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 24
+        },
+        {
+          "name": "TestReleaseInstallerRejectsNormalizedArchiveTraversalBeforePreflightAndReplace",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 32
+        },
+        {
+          "name": "TestReleaseInstallerRejectsLateTraversalBeforeCandidateWrite",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 41
+        },
+        {
+          "name": "TestReleaseInstallerAcceptsNestedArchiveBinary",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 30
         },
         {
           "name": "TestReleaseInstallerReportsUnwritableExecutablePathBeforeReplacing",
@@ -13139,6 +13443,22 @@
           ],
           "exported": true,
           "lineCount": 15
+        },
+        {
+          "name": "TestCleanupPendingWindowsUpdateRemovesResolvedSymlinkTargetBackup",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 22
+        },
+        {
+          "name": "TestCleanupPendingWindowsUpdateRejectsBrokenExecutableSymlink",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 33
         },
         {
           "name": "fixtureTarGz",
@@ -13260,7 +13580,14 @@
           ],
           "returnType": "(*releaseInstaller, Release, string)",
           "exported": false,
-          "lineCount": 47
+          "lineCount": 48
+        },
+        {
+          "name": "allowFixtureReleaseAssetURL",
+          "params": [],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 3
         },
         {
           "name": "Check",
@@ -13282,6 +13609,49 @@
           "returnType": "error",
           "exported": true,
           "lineCount": 3
+        },
+        {
+          "name": "RoundTrip",
+          "params": [
+            "request"
+          ],
+          "returnType": "(*http.Response, error)",
+          "exported": true,
+          "lineCount": 14
+        },
+        {
+          "name": "Read",
+          "params": [
+            "body"
+          ],
+          "returnType": "(int, error)",
+          "exported": true,
+          "lineCount": 8
+        },
+        {
+          "name": "requireNoUpdateTemporaryPaths",
+          "params": [
+            "t",
+            "directory"
+          ],
+          "exported": false,
+          "lineCount": 6
+        },
+        {
+          "name": "RoundTrip",
+          "params": [],
+          "returnType": "(*http.Response, error)",
+          "exported": true,
+          "lineCount": 4
+        },
+        {
+          "name": "RoundTrip",
+          "params": [
+            "request"
+          ],
+          "returnType": "(*http.Response, error)",
+          "exported": true,
+          "lineCount": 12
         },
         {
           "name": "signedChecksumsManifest",
@@ -13319,6 +13689,54 @@
           ],
           "exported": false,
           "lineCount": 5
+        },
+        {
+          "name": "cancelAfterAssetResponseTransport",
+          "methods": [
+            "RoundTrip"
+          ],
+          "properties": [
+            "base",
+            "assetURL",
+            "cancel"
+          ],
+          "exported": false,
+          "lineCount": 5
+        },
+        {
+          "name": "cancelOnEOFReadCloser",
+          "methods": [
+            "Read"
+          ],
+          "properties": [
+            "cancel",
+            "canceled"
+          ],
+          "exported": false,
+          "lineCount": 5
+        },
+        {
+          "name": "rejectingAssetTransport",
+          "methods": [
+            "RoundTrip"
+          ],
+          "properties": [
+            "requests"
+          ],
+          "exported": false,
+          "lineCount": 3
+        },
+        {
+          "name": "githubAssetRedirectTransport",
+          "methods": [
+            "RoundTrip"
+          ],
+          "properties": [
+            "cdnBaseURL",
+            "githubRequests"
+          ],
+          "exported": false,
+          "lineCount": 4
         }
       ],
       "imports": [
@@ -13389,6 +13807,12 @@
           ]
         },
         {
+          "source": "errors",
+          "specifiers": [
+            "errors"
+          ]
+        },
+        {
           "source": "fmt",
           "specifiers": [
             "fmt"
@@ -13446,22 +13870,40 @@
       "exports": [
         "TestMain",
         "TestReleaseInstallerInstallsOnlyVerifiedPlatformArchive",
+        "TestReleaseInstallerPreservesExecutableSymlink",
+        "TestReleaseInstallerRejectsBrokenExecutableSymlink",
+        "TestReleaseInstallerRejectsUntrustedCachedAssetURLBeforeRequest",
+        "TestReleaseInstallerRejectsEveryUnexpectedGitHubAssetSource",
+        "TestReleaseInstallerFollowsOfficialGitHubDownloadRedirect",
         "TestReleaseInstallerFailureKeepsExistingExecutable",
+        "TestReleaseInstallerStopsAfterCompletedArchiveDownloadWhenCanceled",
+        "TestReleaseInstallerStopsBeforeStagingWhenCheckerCancels",
+        "TestReleaseInstallerStopsBeforeReplaceWhenCanceledAfterStaging",
+        "TestReleaseInstallerClosesStagedFileBeforeCancellationCleanupOnWindows",
+        "TestReleaseInstallerRejectsNormalizedArchiveTraversalBeforePreflightAndReplace",
+        "TestReleaseInstallerRejectsLateTraversalBeforeCandidateWrite",
+        "TestReleaseInstallerAcceptsNestedArchiveBinary",
         "TestReleaseInstallerReportsUnwritableExecutablePathBeforeReplacing",
         "TestReleaseInstallerSelectsWindowsZIPAsset",
         "TestPlatformFixtureArchivesMatchReleaseContract",
         "TestSelectReleaseAssetsRejectsMissingAndDuplicateSidecars",
         "TestVerifyChecksumsManifestRejectsTampering",
         "TestCleanupPendingWindowsUpdate",
+        "TestCleanupPendingWindowsUpdateRemovesResolvedSymlinkTargetBackup",
+        "TestCleanupPendingWindowsUpdateRejectsBrokenExecutableSymlink",
         "Check",
-        "Replace"
+        "Replace",
+        "RoundTrip",
+        "Read",
+        "RoundTrip",
+        "RoundTrip"
       ],
-      "totalLines": 482,
+      "totalLines": 1106,
       "hasStructuralAnalysis": true
     },
     "internal/update/installer.go": {
       "filePath": "internal/update/installer.go",
-      "contentHash": "dc6d164f22a7e05c22c973b70d2b7571339435cae6a2369ba7499cc436b8717f",
+      "contentHash": "38d700ed8eea5655b051d0d3e6370149bb92f870081921017a4b10fa2fb9c914",
       "functions": [
         {
           "name": "NewReleaseInstaller",
@@ -13470,7 +13912,7 @@
           ],
           "returnType": "ReleaseInstaller",
           "exported": true,
-          "lineCount": 39
+          "lineCount": 40
         },
         {
           "name": "Install",
@@ -13480,7 +13922,36 @@
           ],
           "returnType": "(err error)",
           "exported": true,
-          "lineCount": 97
+          "lineCount": 136
+        },
+        {
+          "name": "resolveReleaseExecutablePath",
+          "params": [
+            "executablePath"
+          ],
+          "returnType": "(string, error)",
+          "exported": false,
+          "lineCount": 19
+        },
+        {
+          "name": "validateAssetURLs",
+          "params": [
+            "release",
+            "assets"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 8
+        },
+        {
+          "name": "validateOfficialGitHubReleaseAssetURL",
+          "params": [
+            "release",
+            "asset"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 7
         },
         {
           "name": "selectReleaseAssets",
@@ -13568,6 +14039,15 @@
           "lineCount": 41
         },
         {
+          "name": "validateTarGzArchivePaths",
+          "params": [
+            "archive"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 20
+        },
+        {
           "name": "extractZipBinary",
           "params": [
             "archive",
@@ -13576,7 +14056,7 @@
           ],
           "returnType": "error",
           "exported": false,
-          "lineCount": 41
+          "lineCount": 43
         },
         {
           "name": "validateArchivePath",
@@ -13585,7 +14065,7 @@
           ],
           "returnType": "error",
           "exported": false,
-          "lineCount": 10
+          "lineCount": 17
         },
         {
           "name": "writeExtractedBinary",
@@ -13657,6 +14137,7 @@
           "name": "releaseInstaller",
           "methods": [
             "Install",
+            "validateAssetURLs",
             "download"
           ],
           "properties": [
@@ -13666,10 +14147,14 @@
             "goos",
             "goarch",
             "checker",
-            "replacer"
+            "replacer",
+            "assetURLValidator",
+            "afterStagedCreate",
+            "afterStagedClose",
+            "afterStaging"
           ],
           "exported": false,
-          "lineCount": 9
+          "lineCount": 14
         },
         {
           "name": "selectedReleaseAssets",
@@ -13857,12 +14342,12 @@
         "Check",
         "Replace"
       ],
-      "totalLines": 521,
+      "totalLines": 642,
       "hasStructuralAnalysis": true
     },
     "internal/update/releases_test.go": {
       "filePath": "internal/update/releases_test.go",
-      "contentHash": "16bc0557d0c457e3384c46385c5e478010a32d8157ee4827902573dcf342fcee",
+      "contentHash": "af569f596fdf092a70e1b3ed4bc272bc353bf036a90db345f583cd6124e85a8f",
       "functions": [
         {
           "name": "TestGitHubReleaseClientSelectsLatestStableRelease",
@@ -13966,6 +14451,14 @@
           ],
           "exported": true,
           "lineCount": 70
+        },
+        {
+          "name": "TestGitHubReleaseClientTightensExistingCacheDirectoryPermissions",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 55
         },
         {
           "name": "TestGitHubReleaseClientReturnsCacheWriteFailures",
@@ -14094,6 +14587,12 @@
           ]
         },
         {
+          "source": "runtime",
+          "specifiers": [
+            "runtime"
+          ]
+        },
+        {
           "source": "strings",
           "specifiers": [
             "strings"
@@ -14138,6 +14637,7 @@
         "TestGitHubReleaseClientDoesNotRequestAfterCacheReadContextExpiry",
         "Err",
         "TestGitHubReleaseClientUsesETagAndAtomicallyPersistedCache",
+        "TestGitHubReleaseClientTightensExistingCacheDirectoryPermissions",
         "TestGitHubReleaseClientReturnsCacheWriteFailures",
         "TestGitHubReleaseClientThrottlesAutomaticChecksFor24Hours",
         "TestGitHubReleaseClientUsesThreeSecondDeadlineOnlyForAutomaticChecks",
@@ -14145,12 +14645,12 @@
         "TestGitHubReleaseClientAtomicallyReplacesCacheForConcurrentReaders",
         "RoundTrip"
       ],
-      "totalLines": 792,
+      "totalLines": 849,
       "hasStructuralAnalysis": true
     },
     "internal/update/releases.go": {
       "filePath": "internal/update/releases.go",
-      "contentHash": "c193d637e9f830f57e342f20a56ad648f16f114c41b1c835c7365d9a23d1457e",
+      "contentHash": "b4080a5ae32c2144dd19bc4df2c08a578070a5a5f46dfaa8762a8d621c9ff732",
       "functions": [
         {
           "name": "NewGitHubReleaseClient",
@@ -16258,17 +16758,17 @@
     },
     "README.md": {
       "filePath": "README.md",
-      "contentHash": "a754dfd9de15a4966d51d88c3b5a1285c074d5fd607852c2098d5de07878ff99",
+      "contentHash": "89b62f7865229cde9bed601723db025c165465da191bf8cf96edb0910eecf8c1",
       "functions": [],
       "classes": [],
       "imports": [],
       "exports": [],
-      "totalLines": 377,
+      "totalLines": 380,
       "hasStructuralAnalysis": true
     },
     "scripts/build-staticlibs.sh": {
       "filePath": "scripts/build-staticlibs.sh",
-      "contentHash": "e80c9c7db7f8852b401324fcc7a027d1252984959236b4085f76aff09b34e3f5",
+      "contentHash": "ba46fe845e1f626ac17ca85f194726fdc1e1249a61578dd5235aef730d7e04b2",
       "functions": [
         {
           "name": "usage",
@@ -16292,7 +16792,7 @@
       "classes": [],
       "imports": [],
       "exports": [],
-      "totalLines": 151,
+      "totalLines": 158,
       "hasStructuralAnalysis": true
     },
     "scripts/build.sh": {
@@ -16486,7 +16986,7 @@
     },
     "scripts/licensebundle/main_test.go": {
       "filePath": "scripts/licensebundle/main_test.go",
-      "contentHash": "fec32098f33b3b3f46cbf58182f1f15c54b8e6c2f16afd604360137b772685d5",
+      "contentHash": "0bdf9fefc5cd8aabc9633bd5d6ecbe187e4e51896cc0e56772539f8a9d476399",
       "functions": [
         {
           "name": "TestGenerateFromTargetMetadataUnionsPlatformDependencyClosures",
@@ -16518,7 +17018,7 @@
             "t"
           ],
           "exported": true,
-          "lineCount": 43
+          "lineCount": 65
         },
         {
           "name": "TestGenerateRejectsOutputPathsOutsideRepositoryBeforeCargo",
@@ -16642,12 +17142,12 @@
         "TestGenerateRejectsOutputPathsOutsideRepositoryBeforeCargo",
         "TestWriteBundleRestoresPreviousIndexAndTreeWhenIndexPublishFails"
       ],
-      "totalLines": 279,
+      "totalLines": 301,
       "hasStructuralAnalysis": true
     },
     "scripts/licensebundle/main.go": {
       "filePath": "scripts/licensebundle/main.go",
-      "contentHash": "6c7a361ebf1967164efadffcf5fdfad4b2e9b28dc5bb959167dc04cee00d4f12",
+      "contentHash": "be04f24f478441a57daaf5f232a41a577154b486a4e30a43bc77f4c8c99eb817",
       "functions": [
         {
           "name": "main",
@@ -16714,7 +17214,7 @@
           ],
           "returnType": "([]byte, error)",
           "exported": false,
-          "lineCount": 16
+          "lineCount": 18
         },
         {
           "name": "generateFromTargetMetadata",
@@ -17074,12 +17574,1104 @@
         }
       ],
       "exports": [],
-      "totalLines": 643,
+      "totalLines": 645,
+      "hasStructuralAnalysis": true
+    },
+    "scripts/nativeevidence/main_test.go": {
+      "filePath": "scripts/nativeevidence/main_test.go",
+      "contentHash": "3c6dea007120df6c352ff57a2ee192aa5172e57d18118911e40d4cdbb254d917",
+      "functions": [
+        {
+          "name": "TestMain",
+          "params": [
+            "m"
+          ],
+          "exported": true,
+          "lineCount": 7
+        },
+        {
+          "name": "TestCheckWorkflowAcceptsAuditedNativeEvidenceEntry",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 11
+        },
+        {
+          "name": "TestCheckWorkflowRejectsNativeEvidenceSecurityAndCompletenessMutations",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 89
+        },
+        {
+          "name": "TestRecordEvidenceBindsStaticlibBinaryAndCompleteArchive",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 56
+        },
+        {
+          "name": "TestConsolidateEvidencePublishesOnlyCompleteSameSourceStaticlibs",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 22
+        },
+        {
+          "name": "TestConsolidateEvidenceRejectsMissingTargetWithoutPublishingOutput",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 22
+        },
+        {
+          "name": "TestConsolidateEvidenceRejectsArchiveMemberHashMismatch",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 36
+        },
+        {
+          "name": "TestConsolidateEvidenceRejectsMixedBuildMetadataWithoutPublishingOutput",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 45
+        },
+        {
+          "name": "TestConsolidateEvidenceRejectsMalformedExpectedCommitBeforeInput",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 21
+        },
+        {
+          "name": "TestConsolidateEvidenceRejectsArchiveMissingRequiredMember",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 46
+        },
+        {
+          "name": "TestConsolidateEvidenceRejectsSymlinkInputAncestor",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 15
+        },
+        {
+          "name": "writeConsolidationFixture",
+          "params": [
+            "t",
+            "inputDir",
+            "platform",
+            "target",
+            "sourceDigest"
+          ],
+          "exported": false,
+          "lineCount": 49
+        },
+        {
+          "name": "packageConsolidationArchive",
+          "params": [
+            "t",
+            "repoRoot",
+            "binary",
+            "archive",
+            "zipFormat",
+            "binaryName",
+            "binaryDigest"
+          ],
+          "returnType": "[]evidenceFile",
+          "exported": false,
+          "lineCount": 22
+        },
+        {
+          "name": "testSourceDigest",
+          "params": [
+            "t"
+          ],
+          "returnType": "string",
+          "exported": false,
+          "lineCount": 8
+        },
+        {
+          "name": "writeMinimalEvidenceArchive",
+          "params": [
+            "t",
+            "path",
+            "zipFormat"
+          ],
+          "returnType": "[]evidenceFile",
+          "exported": false,
+          "lineCount": 49
+        },
+        {
+          "name": "sha256Sum",
+          "params": [
+            "t",
+            "body"
+          ],
+          "returnType": "string",
+          "exported": false,
+          "lineCount": 12
+        },
+        {
+          "name": "newRepositoryWorkDir",
+          "params": [
+            "t"
+          ],
+          "returnType": "string",
+          "exported": false,
+          "lineCount": 13
+        },
+        {
+          "name": "checkedInWorkflowRoot",
+          "params": [
+            "t"
+          ],
+          "returnType": "*yaml.Node",
+          "exported": false,
+          "lineCount": 15
+        },
+        {
+          "name": "requireMappingValue",
+          "params": [
+            "t",
+            "mapping",
+            "key"
+          ],
+          "returnType": "*yaml.Node",
+          "exported": false,
+          "lineCount": 8
+        },
+        {
+          "name": "requireJob",
+          "params": [
+            "t",
+            "root"
+          ],
+          "returnType": "*yaml.Node",
+          "exported": false,
+          "lineCount": 4
+        },
+        {
+          "name": "requireJobSteps",
+          "params": [
+            "t",
+            "root"
+          ],
+          "returnType": "*yaml.Node",
+          "exported": false,
+          "lineCount": 4
+        },
+        {
+          "name": "appendMappingValue",
+          "params": [
+            "t",
+            "mapping",
+            "key",
+            "value"
+          ],
+          "exported": false,
+          "lineCount": 7
+        },
+        {
+          "name": "removeStepNamed",
+          "params": [
+            "t",
+            "steps",
+            "name"
+          ],
+          "exported": false,
+          "lineCount": 11
+        },
+        {
+          "name": "scalarNode",
+          "params": [
+            "value"
+          ],
+          "returnType": "*yaml.Node",
+          "exported": false,
+          "lineCount": 3
+        },
+        {
+          "name": "sequenceNode",
+          "params": [],
+          "returnType": "*yaml.Node",
+          "exported": false,
+          "lineCount": 7
+        },
+        {
+          "name": "mappingNode",
+          "params": [],
+          "returnType": "*yaml.Node",
+          "exported": false,
+          "lineCount": 15
+        },
+        {
+          "name": "copyTestExecutable",
+          "params": [
+            "t",
+            "output"
+          ],
+          "exported": false,
+          "lineCount": 19
+        },
+        {
+          "name": "packageReleaseArchive",
+          "params": [
+            "t",
+            "repoRoot",
+            "binary",
+            "outputDir"
+          ],
+          "exported": false,
+          "lineCount": 14
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "archive/tar",
+          "specifiers": [
+            "tar"
+          ]
+        },
+        {
+          "source": "archive/zip",
+          "specifiers": [
+            "zip"
+          ]
+        },
+        {
+          "source": "compress/gzip",
+          "specifiers": [
+            "gzip"
+          ]
+        },
+        {
+          "source": "encoding/json",
+          "specifiers": [
+            "json"
+          ]
+        },
+        {
+          "source": "io",
+          "specifiers": [
+            "io"
+          ]
+        },
+        {
+          "source": "os",
+          "specifiers": [
+            "os"
+          ]
+        },
+        {
+          "source": "os/exec",
+          "specifiers": [
+            "exec"
+          ]
+        },
+        {
+          "source": "path/filepath",
+          "specifiers": [
+            "filepath"
+          ]
+        },
+        {
+          "source": "runtime",
+          "specifiers": [
+            "runtime"
+          ]
+        },
+        {
+          "source": "sort",
+          "specifiers": [
+            "sort"
+          ]
+        },
+        {
+          "source": "strings",
+          "specifiers": [
+            "strings"
+          ]
+        },
+        {
+          "source": "testing",
+          "specifiers": [
+            "testing"
+          ]
+        },
+        {
+          "source": "github.com/FlanChanXwO/pixiv-cli/internal/download",
+          "specifiers": [
+            "download"
+          ]
+        },
+        {
+          "source": "gopkg.in/yaml.v3",
+          "specifiers": [
+            "yaml.v3"
+          ]
+        }
+      ],
+      "exports": [
+        "TestMain",
+        "TestCheckWorkflowAcceptsAuditedNativeEvidenceEntry",
+        "TestCheckWorkflowRejectsNativeEvidenceSecurityAndCompletenessMutations",
+        "TestRecordEvidenceBindsStaticlibBinaryAndCompleteArchive",
+        "TestConsolidateEvidencePublishesOnlyCompleteSameSourceStaticlibs",
+        "TestConsolidateEvidenceRejectsMissingTargetWithoutPublishingOutput",
+        "TestConsolidateEvidenceRejectsArchiveMemberHashMismatch",
+        "TestConsolidateEvidenceRejectsMixedBuildMetadataWithoutPublishingOutput",
+        "TestConsolidateEvidenceRejectsMalformedExpectedCommitBeforeInput",
+        "TestConsolidateEvidenceRejectsArchiveMissingRequiredMember",
+        "TestConsolidateEvidenceRejectsSymlinkInputAncestor"
+      ],
+      "totalLines": 680,
+      "hasStructuralAnalysis": true
+    },
+    "scripts/nativeevidence/main.go": {
+      "filePath": "scripts/nativeevidence/main.go",
+      "contentHash": "e0973ff77ad44812d758cc4459dda8a8ce49c7a22b58801f3a3bbea8ccf43ed5",
+      "functions": [
+        {
+          "name": "main",
+          "params": [],
+          "exported": false,
+          "lineCount": 6
+        },
+        {
+          "name": "run",
+          "params": [
+            "arguments"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 15
+        },
+        {
+          "name": "runPolicy",
+          "params": [
+            "arguments"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 10
+        },
+        {
+          "name": "runRecord",
+          "params": [
+            "arguments"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 21
+        },
+        {
+          "name": "runConsolidate",
+          "params": [
+            "arguments"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 17
+        },
+        {
+          "name": "consolidateEvidence",
+          "params": [
+            "options"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 71
+        },
+        {
+          "name": "readEvidenceLocations",
+          "params": [
+            "inputDir"
+          ],
+          "returnType": "([]evidenceLocation, error)",
+          "exported": false,
+          "lineCount": 37
+        },
+        {
+          "name": "verifyEvidenceLocations",
+          "params": [
+            "locations",
+            "repoRoot",
+            "sourceDigest",
+            "expectedVersion",
+            "expectedCommit"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 54
+        },
+        {
+          "name": "verifyRecordedArtifact",
+          "params": [
+            "directory",
+            "artifact",
+            "expectedName"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 17
+        },
+        {
+          "name": "validateRecordedMembers",
+          "params": [
+            "members"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 16
+        },
+        {
+          "name": "requireExactEvidenceMembers",
+          "params": [
+            "recorded",
+            "expected"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 11
+        },
+        {
+          "name": "verifyRecordedArchiveMembers",
+          "params": [
+            "path",
+            "recorded"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 25
+        },
+        {
+          "name": "copyVerifiedFile",
+          "params": [
+            "source",
+            "destination",
+            "expectedDigest"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 33
+        },
+        {
+          "name": "writeFreshFile",
+          "params": [
+            "path",
+            "body"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 16
+        },
+        {
+          "name": "isSHA256",
+          "params": [
+            "value"
+          ],
+          "returnType": "bool",
+          "exported": false,
+          "lineCount": 7
+        },
+        {
+          "name": "recordEvidence",
+          "params": [
+            "options"
+          ],
+          "returnType": "(evidenceRecord, error)",
+          "exported": false,
+          "lineCount": 75
+        },
+        {
+          "name": "expectedArchiveName",
+          "params": [
+            "version",
+            "target"
+          ],
+          "returnType": "string",
+          "exported": false,
+          "lineCount": 7
+        },
+        {
+          "name": "requireDirectory",
+          "params": [
+            "path",
+            "label"
+          ],
+          "returnType": "(string, error)",
+          "exported": false,
+          "lineCount": 13
+        },
+        {
+          "name": "requireSecureDirectory",
+          "params": [
+            "path",
+            "label"
+          ],
+          "returnType": "(string, error)",
+          "exported": false,
+          "lineCount": 20
+        },
+        {
+          "name": "calculateSourceDigest",
+          "params": [
+            "repoRoot"
+          ],
+          "returnType": "(string, error)",
+          "exported": false,
+          "lineCount": 10
+        },
+        {
+          "name": "requireRegularFile",
+          "params": [
+            "path",
+            "label"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 13
+        },
+        {
+          "name": "requireNewOutput",
+          "params": [
+            "path"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 28
+        },
+        {
+          "name": "fileSHA256",
+          "params": [
+            "path"
+          ],
+          "returnType": "(string, error)",
+          "exported": false,
+          "lineCount": 15
+        },
+        {
+          "name": "readBinaryVersion",
+          "params": [
+            "binary",
+            "expectedVersion"
+          ],
+          "returnType": "(buildinfo.Info, error)",
+          "exported": false,
+          "lineCount": 21
+        },
+        {
+          "name": "verifyArchive",
+          "params": [
+            "repoRoot",
+            "archive",
+            "binaryName",
+            "binaryDigest"
+          ],
+          "returnType": "([]evidenceFile, error)",
+          "exported": false,
+          "lineCount": 30
+        },
+        {
+          "name": "expectedArchiveMembers",
+          "params": [
+            "repoRoot",
+            "binaryName",
+            "binaryDigest"
+          ],
+          "returnType": "(map[string]string, error)",
+          "exported": false,
+          "lineCount": 42
+        },
+        {
+          "name": "readTarGzMembers",
+          "params": [
+            "path"
+          ],
+          "returnType": "(map[string]string, error)",
+          "exported": false,
+          "lineCount": 33
+        },
+        {
+          "name": "readZIPMembers",
+          "params": [
+            "path"
+          ],
+          "returnType": "(map[string]string, error)",
+          "exported": false,
+          "lineCount": 30
+        },
+        {
+          "name": "addArchiveMember",
+          "params": [
+            "members",
+            "name",
+            "body"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 14
+        },
+        {
+          "name": "writeNewJSON",
+          "params": [
+            "path",
+            "value"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 28
+        },
+        {
+          "name": "findRepositoryRoot",
+          "params": [
+            "t"
+          ],
+          "returnType": "string",
+          "exported": false,
+          "lineCount": 20
+        },
+        {
+          "name": "checkWorkflow",
+          "params": [
+            "body"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 40
+        },
+        {
+          "name": "checkNativeEvidenceJob",
+          "params": [
+            "job"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 63
+        },
+        {
+          "name": "checkNativeEvidenceMatrix",
+          "params": [
+            "matrix"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 32
+        },
+        {
+          "name": "requireCanonicalCheckout",
+          "params": [
+            "step"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 10
+        },
+        {
+          "name": "requireCanonicalSetupGo",
+          "params": [
+            "step"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 10
+        },
+        {
+          "name": "requireDirectRunStep",
+          "params": [
+            "step",
+            "name",
+            "command"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 6
+        },
+        {
+          "name": "requireMultilineRunStep",
+          "params": [
+            "step",
+            "name",
+            "canonical"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 10
+        },
+        {
+          "name": "requireUploadEvidenceStep",
+          "params": [
+            "step"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 10
+        },
+        {
+          "name": "checkNativeEvidenceTrigger",
+          "params": [
+            "root"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 16
+        },
+        {
+          "name": "checkEmptyPermissions",
+          "params": [
+            "root"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 7
+        },
+        {
+          "name": "checkContentsReadPermission",
+          "params": [
+            "job"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 11
+        },
+        {
+          "name": "checkActionReferences",
+          "params": [
+            "root"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 13
+        },
+        {
+          "name": "collectActionReferences",
+          "params": [
+            "node",
+            "references"
+          ],
+          "exported": false,
+          "lineCount": 18
+        },
+        {
+          "name": "checkNoReleaseSideEffects",
+          "params": [
+            "node"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 12
+        },
+        {
+          "name": "rejectAmbiguousYAML",
+          "params": [
+            "node"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 40
+        },
+        {
+          "name": "requireOnlyMappingKeys",
+          "params": [
+            "mapping"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 15
+        },
+        {
+          "name": "requireScalar",
+          "params": [
+            "mapping",
+            "key",
+            "want"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 7
+        },
+        {
+          "name": "collectScalarValues",
+          "params": [
+            "node",
+            "values"
+          ],
+          "exported": false,
+          "lineCount": 11
+        },
+        {
+          "name": "containsSecretReference",
+          "params": [
+            "node"
+          ],
+          "returnType": "bool",
+          "exported": false,
+          "lineCount": 14
+        },
+        {
+          "name": "mappingValue",
+          "params": [
+            "mapping",
+            "key"
+          ],
+          "returnType": "(*yaml.Node, bool)",
+          "exported": false,
+          "lineCount": 11
+        }
+      ],
+      "classes": [
+        {
+          "name": "nativeTarget",
+          "methods": [],
+          "properties": [
+            "goos",
+            "goarch",
+            "rustTarget",
+            "staticlib"
+          ],
+          "exported": false,
+          "lineCount": 6
+        },
+        {
+          "name": "recordOptions",
+          "methods": [],
+          "properties": [
+            "repoRoot",
+            "version",
+            "target",
+            "rustTarget",
+            "staticlib",
+            "binary",
+            "archive",
+            "output"
+          ],
+          "exported": false,
+          "lineCount": 10
+        },
+        {
+          "name": "evidenceRecord",
+          "methods": [],
+          "properties": [
+            "Schema",
+            "Target",
+            "SourceDigest",
+            "Staticlib",
+            "Binary",
+            "Archive"
+          ],
+          "exported": false,
+          "lineCount": 8
+        },
+        {
+          "name": "evidenceTarget",
+          "methods": [],
+          "properties": [
+            "GOOS",
+            "GOARCH",
+            "RustTarget"
+          ],
+          "exported": false,
+          "lineCount": 5
+        },
+        {
+          "name": "evidenceFile",
+          "methods": [],
+          "properties": [
+            "Name",
+            "SHA256"
+          ],
+          "exported": false,
+          "lineCount": 4
+        },
+        {
+          "name": "evidenceBinary",
+          "methods": [],
+          "properties": [
+            "Version",
+            "Commit",
+            "BuildDate"
+          ],
+          "exported": false,
+          "lineCount": 6
+        },
+        {
+          "name": "evidenceArchive",
+          "methods": [],
+          "properties": [
+            "Members"
+          ],
+          "exported": false,
+          "lineCount": 4
+        },
+        {
+          "name": "consolidateOptions",
+          "methods": [],
+          "properties": [
+            "repoRoot",
+            "expectedVersion",
+            "expectedCommit",
+            "inputDir",
+            "outputDir"
+          ],
+          "exported": false,
+          "lineCount": 7
+        },
+        {
+          "name": "evidenceLocation",
+          "methods": [],
+          "properties": [
+            "record",
+            "dir"
+          ],
+          "exported": false,
+          "lineCount": 4
+        }
+      ],
+      "imports": [
+        {
+          "source": "archive/tar",
+          "specifiers": [
+            "tar"
+          ]
+        },
+        {
+          "source": "archive/zip",
+          "specifiers": [
+            "zip"
+          ]
+        },
+        {
+          "source": "compress/gzip",
+          "specifiers": [
+            "gzip"
+          ]
+        },
+        {
+          "source": "crypto/sha256",
+          "specifiers": [
+            "sha256"
+          ]
+        },
+        {
+          "source": "encoding/hex",
+          "specifiers": [
+            "hex"
+          ]
+        },
+        {
+          "source": "encoding/json",
+          "specifiers": [
+            "json"
+          ]
+        },
+        {
+          "source": "errors",
+          "specifiers": [
+            "errors"
+          ]
+        },
+        {
+          "source": "flag",
+          "specifiers": [
+            "flag"
+          ]
+        },
+        {
+          "source": "fmt",
+          "specifiers": [
+            "fmt"
+          ]
+        },
+        {
+          "source": "io",
+          "specifiers": [
+            "io"
+          ]
+        },
+        {
+          "source": "io/fs",
+          "specifiers": [
+            "fs"
+          ]
+        },
+        {
+          "source": "os",
+          "specifiers": [
+            "os"
+          ]
+        },
+        {
+          "source": "os/exec",
+          "specifiers": [
+            "exec"
+          ]
+        },
+        {
+          "source": "path/filepath",
+          "specifiers": [
+            "filepath"
+          ]
+        },
+        {
+          "source": "regexp",
+          "specifiers": [
+            "regexp"
+          ]
+        },
+        {
+          "source": "sort",
+          "specifiers": [
+            "sort"
+          ]
+        },
+        {
+          "source": "strings",
+          "specifiers": [
+            "strings"
+          ]
+        },
+        {
+          "source": "github.com/FlanChanXwO/pixiv-cli/internal/buildinfo",
+          "specifiers": [
+            "buildinfo"
+          ]
+        },
+        {
+          "source": "github.com/FlanChanXwO/pixiv-cli/internal/download",
+          "specifiers": [
+            "download"
+          ]
+        },
+        {
+          "source": "gopkg.in/yaml.v3",
+          "specifiers": [
+            "yaml.v3"
+          ]
+        }
+      ],
+      "exports": [],
+      "totalLines": 1345,
       "hasStructuralAnalysis": true
     },
     "scripts/package-release.sh": {
       "filePath": "scripts/package-release.sh",
-      "contentHash": "76bd8eab92b721c0065f0cb920ba5121a80254b33fe8e3d75ece8f36e2a30214",
+      "contentHash": "cb32e8b92253dd9bd1cba7e08d0111cfb4ca1578cd9aa9abed74b3f1046ad6a9",
       "functions": [
         {
           "name": "usage",
@@ -17109,12 +18701,12 @@
       "classes": [],
       "imports": [],
       "exports": [],
-      "totalLines": 124,
+      "totalLines": 129,
       "hasStructuralAnalysis": true
     },
     "scripts/releaseassets/main_test.go": {
       "filePath": "scripts/releaseassets/main_test.go",
-      "contentHash": "dd90d87a333b875ac34835bfd8cc7282a4f0aa705c968794cb8c0f6b95aae1e0",
+      "contentHash": "a66ceeb6cc66ccaea5da06b8513fe0155a5e9c592e62b88099f2dbd4fc06c340",
       "functions": [
         {
           "name": "TestValidateRejectsNonSemanticVersion",
@@ -17123,6 +18715,14 @@
           ],
           "exported": true,
           "lineCount": 11
+        },
+        {
+          "name": "TestChannelClassifiesSemanticPrereleaseInsteadOfBuildMetadata",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 22
         },
         {
           "name": "TestPackageCreatesFixedTargetArchive",
@@ -17280,16 +18880,17 @@
       ],
       "exports": [
         "TestValidateRejectsNonSemanticVersion",
+        "TestChannelClassifiesSemanticPrereleaseInsteadOfBuildMetadata",
         "TestPackageCreatesFixedTargetArchive",
         "TestFinalizeBuildsSignedReleaseDirectory",
         "TestFinalizeRejectsMissingOrDuplicateChangelogSectionWithoutPublishing"
       ],
-      "totalLines": 281,
+      "totalLines": 304,
       "hasStructuralAnalysis": true
     },
     "scripts/releaseassets/main.go": {
       "filePath": "scripts/releaseassets/main.go",
-      "contentHash": "f31bc66ef1140761cfa5c754f12e79d97f8bc29f778384f470c3705c38bc7e9f",
+      "contentHash": "3d5d3fa56a11f51a1e2d07d89d538702b430d34539a4e65b28152a583fe4e20c",
       "functions": [
         {
           "name": "main",
@@ -17304,7 +18905,25 @@
           ],
           "returnType": "error",
           "exported": false,
-          "lineCount": 17
+          "lineCount": 19
+        },
+        {
+          "name": "runChannel",
+          "params": [
+            "arguments"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 8
+        },
+        {
+          "name": "channelOutput",
+          "params": [
+            "arguments"
+          ],
+          "returnType": "(string, error)",
+          "exported": false,
+          "lineCount": 25
         },
         {
           "name": "runValidate",
@@ -17599,7 +19218,909 @@
         }
       ],
       "exports": [],
-      "totalLines": 501,
+      "totalLines": 540,
+      "hasStructuralAnalysis": true
+    },
+    "scripts/releaseworkflow/main_test.go": {
+      "filePath": "scripts/releaseworkflow/main_test.go",
+      "contentHash": "dd7d8083c5efdb6ec10805e762e5e466e1b1abdf551464748d61882212863d5a",
+      "functions": [
+        {
+          "name": "TestCheckWorkflowRequiresRustFormatGate",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 11
+        },
+        {
+          "name": "TestCheckWorkflowAcceptsIndependentReleaseSourceVerification",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 12
+        },
+        {
+          "name": "TestCheckWorkflowRejectsSecurityAndQualityPolicyMutations",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 462
+        },
+        {
+          "name": "TestCheckWorkflowRejectsSoftFailedOrSkippedQualityGate",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 40
+        },
+        {
+          "name": "TestCheckWorkflowRejectsAmbiguousYAMLMutations",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 69
+        },
+        {
+          "name": "TestCheckWorkflowRejectsRequiredJobExecutionOverrides",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 36
+        },
+        {
+          "name": "TestCheckWorkflowRejectsConditionalTrustGate",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 27
+        },
+        {
+          "name": "TestCheckWorkflowRequiresCredentialFreeValidateAndBuildCheckouts",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 38
+        },
+        {
+          "name": "TestCheckWorkflowRequiresCanonicalTrustCheckout",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 38
+        },
+        {
+          "name": "TestCheckWorkflowRequiresCanonicalPublishCheckout",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 29
+        },
+        {
+          "name": "TestCheckWorkflowRequiresCanonicalValidateAndBuildCheckouts",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 31
+        },
+        {
+          "name": "TestCheckWorkflowAllowsOnlyCanonicalTrustSteps",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 29
+        },
+        {
+          "name": "TestCheckWorkflowRejectsNonDirectQualityGateRuns",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 43
+        },
+        {
+          "name": "TestCheckWorkflowRejectsQualityGateExecutionOverrides",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 33
+        },
+        {
+          "name": "TestCheckWorkflowRejectsBracketSecretExpressionsOutsideExpectedSigningEnvironment",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 65
+        },
+        {
+          "name": "TestCheckWorkflowRejectsBareAndFunctionSecretContextsOutsideExpectedSigningEnvironment",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 74
+        },
+        {
+          "name": "TestCheckWorkflowAcceptsCanonicalBracketSigningExpressions",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 16
+        },
+        {
+          "name": "releaseWorkflowRoot",
+          "params": [
+            "t"
+          ],
+          "returnType": "*yaml.Node",
+          "exported": false,
+          "lineCount": 15
+        },
+        {
+          "name": "jobNode",
+          "params": [
+            "t",
+            "root",
+            "name"
+          ],
+          "returnType": "*yaml.Node",
+          "exported": false,
+          "lineCount": 4
+        },
+        {
+          "name": "requireMappingValue",
+          "params": [
+            "t",
+            "mapping",
+            "key"
+          ],
+          "returnType": "*yaml.Node",
+          "exported": false,
+          "lineCount": 8
+        },
+        {
+          "name": "findFirstUses",
+          "params": [
+            "t",
+            "node"
+          ],
+          "returnType": "*yaml.Node",
+          "exported": false,
+          "lineCount": 19
+        },
+        {
+          "name": "removeMappingKeyRecursively",
+          "params": [
+            "node",
+            "key"
+          ],
+          "exported": false,
+          "lineCount": 17
+        },
+        {
+          "name": "stepWithRun",
+          "params": [
+            "t",
+            "job",
+            "command"
+          ],
+          "returnType": "*yaml.Node",
+          "exported": false,
+          "lineCount": 12
+        },
+        {
+          "name": "checkoutStep",
+          "params": [
+            "t",
+            "job"
+          ],
+          "returnType": "*yaml.Node",
+          "exported": false,
+          "lineCount": 12
+        },
+        {
+          "name": "removeCommand",
+          "params": [
+            "t",
+            "step",
+            "command"
+          ],
+          "exported": false,
+          "lineCount": 18
+        },
+        {
+          "name": "removeRunFragment",
+          "params": [
+            "t",
+            "step",
+            "fragment"
+          ],
+          "exported": false,
+          "lineCount": 8
+        },
+        {
+          "name": "replaceRunFragment",
+          "params": [
+            "t",
+            "step",
+            "old",
+            "new"
+          ],
+          "exported": false,
+          "lineCount": 8
+        },
+        {
+          "name": "appendRunStep",
+          "params": [
+            "t",
+            "job",
+            "name",
+            "run"
+          ],
+          "exported": false,
+          "lineCount": 5
+        },
+        {
+          "name": "insertRunStep",
+          "params": [
+            "t",
+            "job",
+            "index",
+            "name",
+            "run"
+          ],
+          "exported": false,
+          "lineCount": 10
+        },
+        {
+          "name": "runStepNode",
+          "params": [
+            "name",
+            "run"
+          ],
+          "returnType": "*yaml.Node",
+          "exported": false,
+          "lineCount": 7
+        },
+        {
+          "name": "appendMappingValue",
+          "params": [
+            "t",
+            "mapping",
+            "key",
+            "value"
+          ],
+          "exported": false,
+          "lineCount": 7
+        },
+        {
+          "name": "removeMappingValue",
+          "params": [
+            "t",
+            "mapping",
+            "key"
+          ],
+          "exported": false,
+          "lineCount": 14
+        },
+        {
+          "name": "appendBracketSecretToFirstStep",
+          "params": [
+            "t",
+            "job",
+            "expression"
+          ],
+          "exported": false,
+          "lineCount": 7
+        },
+        {
+          "name": "scalarNode",
+          "params": [
+            "value"
+          ],
+          "returnType": "*yaml.Node",
+          "exported": false,
+          "lineCount": 3
+        },
+        {
+          "name": "sequenceNode",
+          "params": [],
+          "returnType": "*yaml.Node",
+          "exported": false,
+          "lineCount": 7
+        },
+        {
+          "name": "mappingNode",
+          "params": [],
+          "returnType": "*yaml.Node",
+          "exported": false,
+          "lineCount": 18
+        },
+        {
+          "name": "requiredQualityGateCommands",
+          "params": [],
+          "returnType": "[]string",
+          "exported": false,
+          "lineCount": 15
+        },
+        {
+          "name": "findRepositoryRoot",
+          "params": [
+            "t"
+          ],
+          "returnType": "string",
+          "exported": false,
+          "lineCount": 17
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "os",
+          "specifiers": [
+            "os"
+          ]
+        },
+        {
+          "source": "path/filepath",
+          "specifiers": [
+            "filepath"
+          ]
+        },
+        {
+          "source": "strings",
+          "specifiers": [
+            "strings"
+          ]
+        },
+        {
+          "source": "testing",
+          "specifiers": [
+            "testing"
+          ]
+        },
+        {
+          "source": "gopkg.in/yaml.v3",
+          "specifiers": [
+            "yaml.v3"
+          ]
+        }
+      ],
+      "exports": [
+        "TestCheckWorkflowRequiresRustFormatGate",
+        "TestCheckWorkflowAcceptsIndependentReleaseSourceVerification",
+        "TestCheckWorkflowRejectsSecurityAndQualityPolicyMutations",
+        "TestCheckWorkflowRejectsSoftFailedOrSkippedQualityGate",
+        "TestCheckWorkflowRejectsAmbiguousYAMLMutations",
+        "TestCheckWorkflowRejectsRequiredJobExecutionOverrides",
+        "TestCheckWorkflowRejectsConditionalTrustGate",
+        "TestCheckWorkflowRequiresCredentialFreeValidateAndBuildCheckouts",
+        "TestCheckWorkflowRequiresCanonicalTrustCheckout",
+        "TestCheckWorkflowRequiresCanonicalPublishCheckout",
+        "TestCheckWorkflowRequiresCanonicalValidateAndBuildCheckouts",
+        "TestCheckWorkflowAllowsOnlyCanonicalTrustSteps",
+        "TestCheckWorkflowRejectsNonDirectQualityGateRuns",
+        "TestCheckWorkflowRejectsQualityGateExecutionOverrides",
+        "TestCheckWorkflowRejectsBracketSecretExpressionsOutsideExpectedSigningEnvironment",
+        "TestCheckWorkflowRejectsBareAndFunctionSecretContextsOutsideExpectedSigningEnvironment",
+        "TestCheckWorkflowAcceptsCanonicalBracketSigningExpressions"
+      ],
+      "totalLines": 1333,
+      "hasStructuralAnalysis": true
+    },
+    "scripts/releaseworkflow/main.go": {
+      "filePath": "scripts/releaseworkflow/main.go",
+      "contentHash": "1b6d65f67409c3a7b9e2cd11cce543a2a8007b6729b7851bfaa03ae705cf5173",
+      "functions": [
+        {
+          "name": "main",
+          "params": [],
+          "exported": false,
+          "lineCount": 6
+        },
+        {
+          "name": "checkWorkflowPath",
+          "params": [
+            "arguments"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 10
+        },
+        {
+          "name": "checkWorkflow",
+          "params": [
+            "body"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 74
+        },
+        {
+          "name": "checkTagTrigger",
+          "params": [
+            "root"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 21
+        },
+        {
+          "name": "checkGlobalPermissions",
+          "params": [
+            "root"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 7
+        },
+        {
+          "name": "checkActionReferences",
+          "params": [
+            "root"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 17
+        },
+        {
+          "name": "collectActionReferences",
+          "params": [
+            "node",
+            "references",
+            "invalidReference"
+          ],
+          "exported": false,
+          "lineCount": 22
+        },
+        {
+          "name": "checkValidateJob",
+          "params": [
+            "job"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 30
+        },
+        {
+          "name": "checkBuildJob",
+          "params": [
+            "job"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 69
+        },
+        {
+          "name": "rejectAmbiguousYAML",
+          "params": [
+            "node"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 40
+        },
+        {
+          "name": "requireNoWorkflowExecutionOverrides",
+          "params": [
+            "root"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 8
+        },
+        {
+          "name": "requireNoEnvironment",
+          "params": [
+            "job",
+            "jobName"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 6
+        },
+        {
+          "name": "requireRequiredJobExecution",
+          "params": [
+            "job",
+            "jobName"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 13
+        },
+        {
+          "name": "requireIndependentQualityGate",
+          "params": [
+            "job",
+            "directory",
+            "command"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 41
+        },
+        {
+          "name": "checkReleaseMatrix",
+          "params": [
+            "matrix"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 29
+        },
+        {
+          "name": "checkVerifyReleaseSourceJob",
+          "params": [
+            "job"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 45
+        },
+        {
+          "name": "requireCanonicalCheckout",
+          "params": [
+            "step",
+            "jobName"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 25
+        },
+        {
+          "name": "checkPublishJob",
+          "params": [
+            "job"
+          ],
+          "returnType": "(int, []*yaml.Node, error)",
+          "exported": false,
+          "lineCount": 57
+        },
+        {
+          "name": "requireUnconditionalAncestryGate",
+          "params": [
+            "step"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 21
+        },
+        {
+          "name": "checkReleaseChannelBinding",
+          "params": [
+            "releaseStep"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 51
+        },
+        {
+          "name": "requireApprovedChannelCaseCommands",
+          "params": [
+            "commands",
+            "channelCase"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 20
+        },
+        {
+          "name": "checkSigningSecretReachability",
+          "params": [
+            "validate",
+            "build",
+            "verifyReleaseSource",
+            "publish",
+            "publishSteps",
+            "signingIndex"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 24
+        },
+        {
+          "name": "checkSigningStep",
+          "params": [
+            "step"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 34
+        },
+        {
+          "name": "requireExpectedSigningSecret",
+          "params": [
+            "env",
+            "key"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 7
+        },
+        {
+          "name": "expectedSigningSecretExpression",
+          "params": [
+            "key"
+          ],
+          "returnType": "*regexp.Regexp",
+          "exported": false,
+          "lineCount": 4
+        },
+        {
+          "name": "containsSigningSecretReference",
+          "params": [
+            "node"
+          ],
+          "returnType": "bool",
+          "exported": false,
+          "lineCount": 14
+        },
+        {
+          "name": "containsSigningSecretReferenceOutsideEnvironment",
+          "params": [
+            "step"
+          ],
+          "returnType": "bool",
+          "exported": false,
+          "lineCount": 14
+        },
+        {
+          "name": "requireCredentialFreeCheckout",
+          "params": [
+            "job",
+            "jobName"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 21
+        },
+        {
+          "name": "signingStepIndex",
+          "params": [
+            "steps"
+          ],
+          "returnType": "(int, *yaml.Node)",
+          "exported": false,
+          "lineCount": 12
+        },
+        {
+          "name": "mappingValue",
+          "params": [
+            "mapping",
+            "key"
+          ],
+          "returnType": "(*yaml.Node, bool)",
+          "exported": false,
+          "lineCount": 11
+        },
+        {
+          "name": "requireOnlyMappingKeys",
+          "params": [
+            "mapping"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 15
+        },
+        {
+          "name": "requireScalar",
+          "params": [
+            "mapping",
+            "key",
+            "want"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 7
+        },
+        {
+          "name": "requireContentsPermission",
+          "params": [
+            "job",
+            "level"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 10
+        },
+        {
+          "name": "jobSteps",
+          "params": [
+            "job"
+          ],
+          "returnType": "([]*yaml.Node, error)",
+          "exported": false,
+          "lineCount": 7
+        },
+        {
+          "name": "hasCommandInWorkingDirectory",
+          "params": [
+            "job",
+            "directory",
+            "command"
+          ],
+          "returnType": "bool",
+          "exported": false,
+          "lineCount": 19
+        },
+        {
+          "name": "hasCommand",
+          "params": [
+            "job",
+            "directory",
+            "command"
+          ],
+          "returnType": "bool",
+          "exported": false,
+          "lineCount": 19
+        },
+        {
+          "name": "rootStepWithRunFragment",
+          "params": [
+            "job",
+            "fragment"
+          ],
+          "returnType": "(*yaml.Node, bool)",
+          "exported": false,
+          "lineCount": 17
+        },
+        {
+          "name": "requireRunFragments",
+          "params": [
+            "step",
+            "context"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 12
+        },
+        {
+          "name": "requireRunValue",
+          "params": [
+            "step"
+          ],
+          "returnType": "string",
+          "exported": false,
+          "lineCount": 7
+        },
+        {
+          "name": "commandIndexAfter",
+          "params": [
+            "commands",
+            "want",
+            "after"
+          ],
+          "returnType": "int",
+          "exported": false,
+          "lineCount": 8
+        },
+        {
+          "name": "countCommand",
+          "params": [
+            "commands",
+            "want"
+          ],
+          "returnType": "int",
+          "exported": false,
+          "lineCount": 9
+        },
+        {
+          "name": "countRunFragment",
+          "params": [
+            "step",
+            "fragment"
+          ],
+          "returnType": "int",
+          "exported": false,
+          "lineCount": 3
+        },
+        {
+          "name": "hasShellArgument",
+          "params": [
+            "step",
+            "argument"
+          ],
+          "returnType": "bool",
+          "exported": false,
+          "lineCount": 14
+        },
+        {
+          "name": "hasStepCommand",
+          "params": [
+            "step",
+            "command"
+          ],
+          "returnType": "bool",
+          "exported": false,
+          "lineCount": 12
+        },
+        {
+          "name": "splitCommands",
+          "params": [
+            "run"
+          ],
+          "returnType": "[]string",
+          "exported": false,
+          "lineCount": 10
+        },
+        {
+          "name": "equalCommands",
+          "params": [
+            "got",
+            "want"
+          ],
+          "returnType": "bool",
+          "exported": false,
+          "lineCount": 11
+        }
+      ],
+      "classes": [
+        {
+          "name": "checkoutWithRequirement",
+          "methods": [],
+          "properties": [
+            "key",
+            "value"
+          ],
+          "exported": false,
+          "lineCount": 4
+        }
+      ],
+      "imports": [
+        {
+          "source": "errors",
+          "specifiers": [
+            "errors"
+          ]
+        },
+        {
+          "source": "fmt",
+          "specifiers": [
+            "fmt"
+          ]
+        },
+        {
+          "source": "os",
+          "specifiers": [
+            "os"
+          ]
+        },
+        {
+          "source": "regexp",
+          "specifiers": [
+            "regexp"
+          ]
+        },
+        {
+          "source": "strings",
+          "specifiers": [
+            "strings"
+          ]
+        },
+        {
+          "source": "gopkg.in/yaml.v3",
+          "specifiers": [
+            "yaml.v3"
+          ]
+        }
+      ],
+      "exports": [],
+      "totalLines": 1023,
       "hasStructuralAnalysis": true
     },
     "scripts/test-build-staticlibs.sh": {
@@ -17648,7 +20169,17 @@
     },
     "scripts/test-release-workflow.sh": {
       "filePath": "scripts/test-release-workflow.sh",
-      "contentHash": "6edaa9d733bf66403c3fcbb9c8a7af89f407f1d18f24ab23cdfd9fc56847879d",
+      "contentHash": "5aff9416176a2a6e4d999b864a40bd38ab926b97dfe8d407b83821f7389ed0bf",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 9,
+      "hasStructuralAnalysis": true
+    },
+    "scripts/test-rust-vendor.sh": {
+      "filePath": "scripts/test-rust-vendor.sh",
+      "contentHash": "72bc64fabc6690c97385a7816764e96bae9d80d4ca2faabebf7757a946dba3b4",
       "functions": [
         {
           "name": "fail",
@@ -17660,7 +20191,7 @@
       "classes": [],
       "imports": [],
       "exports": [],
-      "totalLines": 73,
+      "totalLines": 38,
       "hasStructuralAnalysis": true
     },
     "templates/homebrew/pixiv-cli-beta.rb.tmpl": {
