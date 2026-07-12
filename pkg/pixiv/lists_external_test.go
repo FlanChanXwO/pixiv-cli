@@ -317,6 +317,30 @@ func TestAnonymousSearchUserCursorFollowsArtworkBatchNotDeduplicatedUsers(t *tes
 	}
 }
 
+func TestAnonymousSearchUserRejectsArtworkWithoutUserID(t *testing.T) {
+	t.Parallel()
+	const secret = "missing-user-secret"
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprintf(w, `{"error":false,"body":{"illustManga":{"data":[{"id":"1","userName":"%s"}]}}}`, secret)
+	}))
+	defer server.Close()
+	client, err := pixiv.NewClient(pixiv.Options{HTTPClient: server.Client(), WebAPIBaseURL: server.URL, WebFallbackEnabled: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := client.SearchUser(context.Background(), pixiv.SearchUserRequest{Word: "artist"})
+	if result != nil || !errors.Is(err, pixiv.ErrMalformedUpstreamResponse) {
+		t.Fatalf("result=%#v err=%v", result, err)
+	}
+	var typed *pixiv.Error
+	if !errors.As(err, &typed) || typed.Code != pixiv.CodeMalformedUpstreamResponse || typed.Backend != pixiv.BackendWebAPI || typed.Operation != pixiv.OperationSearchUser || typed.UserID != 0 || typed.IllustID != 0 {
+		t.Fatalf("metadata=%#v", typed)
+	}
+	if strings.Contains(fmt.Sprint(err), secret) || strings.Contains(fmt.Sprint(errors.Unwrap(err)), secret) {
+		t.Fatalf("error leaked source data: %v", err)
+	}
+}
+
 func TestAnonymousRankingUsesWebCursor(t *testing.T) {
 	t.Parallel()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -345,6 +369,135 @@ func TestAnonymousRankingUsesWebCursor(t *testing.T) {
 	second, err := client.IllustRanking(context.Background(), pixiv.IllustRankingRequest{Cursor: first.NextCursor})
 	if err != nil || len(second.Illusts) != 1 || second.Illusts[0].ID != 2 || second.NextCursor != "" {
 		t.Fatalf("second=%#v err=%v", second, err)
+	}
+}
+
+func TestExtendedRankingModesUseAppAndWebWireValuesAndBindCursor(t *testing.T) {
+	t.Parallel()
+	modes := []struct {
+		mode pixiv.RankingMode
+		web  string
+	}{
+		{pixiv.RankingModeDayMale, "male"},
+		{pixiv.RankingModeDayFemale, "female"},
+		{pixiv.RankingModeWeekOriginal, "original"},
+		{pixiv.RankingModeWeekRookie, "rookie"},
+	}
+	for index, test := range modes {
+		t.Run(string(test.mode), func(t *testing.T) {
+			var appRequests atomic.Int32
+			app := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				appRequests.Add(1)
+				if got := r.URL.Query().Get("mode"); got != string(test.mode) {
+					t.Errorf("App mode=%q", got)
+				}
+				fmt.Fprint(w, `{"illusts":[{"id":1}],"next_url":"/v1/illust/ranking?offset=30"}`)
+			}))
+			defer app.Close()
+			appClient, err := pixiv.NewClient(pixiv.Options{HTTPClient: app.Client(), AppAPIBaseURL: app.URL, AccessToken: "token"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			appResult, err := appClient.IllustRanking(context.Background(), pixiv.IllustRankingRequest{Mode: test.mode})
+			if err != nil || appResult.NextCursor == "" {
+				t.Fatalf("App result=%#v err=%v", appResult, err)
+			}
+			other := modes[(index+1)%len(modes)].mode
+			if _, err := appClient.IllustRanking(context.Background(), pixiv.IllustRankingRequest{Mode: other, Cursor: appResult.NextCursor}); !errors.Is(err, pixiv.ErrInvalidArgument) {
+				t.Fatalf("App cursor mismatch error=%v", err)
+			}
+			if appRequests.Load() != 1 {
+				t.Fatalf("App mismatch used network")
+			}
+
+			var webRequests atomic.Int32
+			web := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				webRequests.Add(1)
+				if got := r.URL.Query().Get("mode"); got != test.web {
+					t.Errorf("Web mode=%q want=%q", got, test.web)
+				}
+				fmt.Fprint(w, `{"rank_total":2,"contents":[{"illust_id":1,"user_id":10}]}`)
+			}))
+			defer web.Close()
+			webClient, err := pixiv.NewClient(pixiv.Options{HTTPClient: web.Client(), WebAPIBaseURL: web.URL, WebFallbackEnabled: true})
+			if err != nil {
+				t.Fatal(err)
+			}
+			webResult, err := webClient.IllustRanking(context.Background(), pixiv.IllustRankingRequest{Mode: test.mode})
+			if err != nil || webResult.NextCursor == "" {
+				t.Fatalf("Web result=%#v err=%v", webResult, err)
+			}
+			if _, err := webClient.IllustRanking(context.Background(), pixiv.IllustRankingRequest{Mode: other, Cursor: webResult.NextCursor}); !errors.Is(err, pixiv.ErrInvalidArgument) {
+				t.Fatalf("Web cursor mismatch error=%v", err)
+			}
+			if webRequests.Load() != 1 {
+				t.Fatalf("Web mismatch used network")
+			}
+		})
+	}
+}
+
+func TestRankingDateRequiresCanonicalDateAndBindsCursor(t *testing.T) {
+	t.Parallel()
+	var requests atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests.Add(1)
+		if got := r.URL.Query().Get("date"); got != "2025-01-02" {
+			t.Errorf("App date=%q", got)
+		}
+		fmt.Fprint(w, `{"illusts":[{"id":1}],"next_url":"/v1/illust/ranking?offset=30"}`)
+	}))
+	defer server.Close()
+	client, err := pixiv.NewClient(pixiv.Options{HTTPClient: server.Client(), AppAPIBaseURL: server.URL, AccessToken: "token"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, date := range []string{"2025-1-2", "2025-02-30", " 2025-01-02 ", "20250102"} {
+		result, err := client.IllustRanking(context.Background(), pixiv.IllustRankingRequest{Date: date})
+		if result != nil || !errors.Is(err, pixiv.ErrInvalidArgument) {
+			t.Errorf("date=%q result=%#v err=%v", date, result, err)
+		}
+		var typed *pixiv.Error
+		if !errors.As(err, &typed) || typed.Operation != pixiv.OperationIllustRanking || typed.Backend != "" {
+			t.Errorf("date=%q metadata=%#v", date, typed)
+		}
+	}
+	if requests.Load() != 0 {
+		t.Fatalf("invalid dates used network: %d", requests.Load())
+	}
+	first, err := client.IllustRanking(context.Background(), pixiv.IllustRankingRequest{Date: "2025-01-02"})
+	if err != nil || first.NextCursor == "" {
+		t.Fatalf("first=%#v err=%v", first, err)
+	}
+	if _, err := client.IllustRanking(context.Background(), pixiv.IllustRankingRequest{Date: "2025-01-03", Cursor: first.NextCursor}); !errors.Is(err, pixiv.ErrInvalidArgument) {
+		t.Fatalf("date mismatch error=%v", err)
+	}
+	if requests.Load() != 1 {
+		t.Fatalf("date mismatch used network")
+	}
+
+	var webRequests atomic.Int32
+	web := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		webRequests.Add(1)
+		if got := r.URL.Query().Get("date"); got != "20250102" {
+			t.Errorf("Web date=%q", got)
+		}
+		fmt.Fprint(w, `{"rank_total":2,"contents":[{"illust_id":1,"user_id":10}]}`)
+	}))
+	defer web.Close()
+	webClient, err := pixiv.NewClient(pixiv.Options{HTTPClient: web.Client(), WebAPIBaseURL: web.URL, WebFallbackEnabled: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	webFirst, err := webClient.IllustRanking(context.Background(), pixiv.IllustRankingRequest{Date: "2025-01-02"})
+	if err != nil || webFirst.NextCursor == "" {
+		t.Fatalf("Web first=%#v err=%v", webFirst, err)
+	}
+	if _, err := webClient.IllustRanking(context.Background(), pixiv.IllustRankingRequest{Date: "2025-01-03", Cursor: webFirst.NextCursor}); !errors.Is(err, pixiv.ErrInvalidArgument) {
+		t.Fatalf("Web date mismatch error=%v", err)
+	}
+	if webRequests.Load() != 1 {
+		t.Fatalf("Web date mismatch used network")
 	}
 }
 

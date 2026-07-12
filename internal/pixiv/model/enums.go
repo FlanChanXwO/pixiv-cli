@@ -18,9 +18,13 @@ const (
 type RankingMode string
 
 const (
-	RankingModeDay   RankingMode = "day"
-	RankingModeWeek  RankingMode = "week"
-	RankingModeMonth RankingMode = "month"
+	RankingModeDay          RankingMode = "day"
+	RankingModeDayMale      RankingMode = "day_male"
+	RankingModeDayFemale    RankingMode = "day_female"
+	RankingModeWeek         RankingMode = "week"
+	RankingModeWeekOriginal RankingMode = "week_original"
+	RankingModeWeekRookie   RankingMode = "week_rookie"
+	RankingModeMonth        RankingMode = "month"
 )
 
 type Restrict string

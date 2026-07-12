@@ -2,6 +2,7 @@ package webapi
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -10,6 +11,61 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func TestWebContinuationUsesPageStartForInPageOffsets(t *testing.T) {
+	tests := []struct {
+		name      string
+		operation string
+		offset    int
+		pageSize  int
+		total     int
+		wantNext  bool
+	}{
+		{name: "search total below page boundary", operation: "search", offset: 1, pageSize: 60, total: 59},
+		{name: "search total at page boundary", operation: "search", offset: 1, pageSize: 60, total: 60},
+		{name: "search total beyond page boundary", operation: "search", offset: 1, pageSize: 60, total: 61, wantNext: true},
+		{name: "search without total keeps full-batch continuation", operation: "search", offset: 1, pageSize: 60, wantNext: true},
+		{name: "search user total below page boundary", operation: "user", offset: 1, pageSize: 60, total: 59},
+		{name: "search user total at page boundary", operation: "user", offset: 1, pageSize: 60, total: 60},
+		{name: "search user total beyond page boundary", operation: "user", offset: 1, pageSize: 60, total: 61, wantNext: true},
+		{name: "ranking total below page boundary", operation: "ranking", offset: 30, pageSize: 50, total: 49},
+		{name: "ranking total at page boundary", operation: "ranking", offset: 30, pageSize: 50, total: 50},
+		{name: "ranking total beyond page boundary", operation: "ranking", offset: 30, pageSize: 50, total: 51, wantNext: true},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				items := make([]map[string]any, test.pageSize)
+				for index := range items {
+					items[index] = map[string]any{"id": index + 1, "illust_id": index + 1, "userId": index + 101, "user_id": index + 101}
+				}
+				if test.operation == "ranking" {
+					_ = json.NewEncoder(w).Encode(map[string]any{"contents": items, "rank_total": test.total})
+					return
+				}
+				_ = json.NewEncoder(w).Encode(map[string]any{"error": false, "body": map[string]any{"illustManga": map[string]any{"data": items, "total": test.total}}})
+			}))
+			defer server.Close()
+			client := New(WithHTTPClient(server.Client()), WithWebBase(server.URL))
+			var gotNext bool
+			switch test.operation {
+			case "ranking":
+				result, err := client.IllustRanking(context.Background(), "day", "", test.offset)
+				require.NoError(t, err)
+				gotNext = result.ContinuationExists
+			case "user":
+				result, err := client.SearchUser(context.Background(), "artist", test.offset)
+				require.NoError(t, err)
+				gotNext = result.ContinuationExists
+			default:
+				result, err := client.SearchIllust(context.Background(), "miku", "partial_match_for_tags", "date_desc", "", test.offset)
+				require.NoError(t, err)
+				gotNext = result.ContinuationExists
+			}
+			assert.Equal(t, test.wantNext, gotNext)
+		})
+	}
+}
 
 func TestClientSearchIllustMapsWebArtworkResults(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

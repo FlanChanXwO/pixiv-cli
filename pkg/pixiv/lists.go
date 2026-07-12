@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"time"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/model"
 )
@@ -77,12 +78,15 @@ func (c *Client) SearchIllust(ctx context.Context, request SearchIllustRequest) 
 
 // IllustRanking 返回一个排行榜上游批次。
 func (c *Client) IllustRanking(ctx context.Context, request IllustRankingRequest) (*IllustListResult, error) {
-	query := rankingQuery{request.Mode, strings.TrimSpace(request.Date)}
+	query := rankingQuery{request.Mode, request.Date}
 	if query.Mode == "" {
 		query.Mode = RankingModeDay
 	}
 	if !validRankingMode(query.Mode) {
 		return nil, invalidArgument(OperationIllustRanking, 0, errors.New("ranking mode is invalid"))
+	}
+	if !validRankingDate(query.Date) {
+		return nil, invalidArgument(OperationIllustRanking, 0, errors.New("ranking date must use YYYY-MM-DD"))
 	}
 	digest := queryDigest(OperationIllustRanking, query)
 	offset, err := cursorOffset(request.Cursor, OperationIllustRanking, digest, 0)
@@ -350,7 +354,17 @@ func validSearchTarget(value SearchTarget) bool {
 func validSortMode(value SortMode) bool { return value == SortModeDateDesc || value == SortModeDateAsc }
 
 func validRankingMode(value RankingMode) bool {
-	return value == RankingModeDay || value == RankingModeWeek || value == RankingModeMonth
+	return value == RankingModeDay || value == RankingModeDayMale || value == RankingModeDayFemale ||
+		value == RankingModeWeek || value == RankingModeWeekOriginal || value == RankingModeWeekRookie ||
+		value == RankingModeMonth
+}
+
+func validRankingDate(value string) bool {
+	if value == "" {
+		return true
+	}
+	parsed, err := time.Parse("2006-01-02", value)
+	return err == nil && parsed.Format("2006-01-02") == value
 }
 
 func validRestrict(value Restrict) bool { return value == RestrictPublic || value == RestrictPrivate }

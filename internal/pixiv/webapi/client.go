@@ -216,7 +216,7 @@ func (c *Client) SearchUser(ctx context.Context, word string, offset int) (*mode
 	users := make([]model.UserPreview, 0, len(illusts.Illusts))
 	for _, illust := range illusts.Illusts {
 		if illust.User.ID == 0 {
-			continue
+			return nil, ErrMalformedResponse
 		}
 		if _, ok := seen[illust.User.ID]; ok {
 			continue
@@ -348,7 +348,8 @@ func webHasNext(offset, rawCount, total, pageSize int) bool {
 		return false
 	}
 	if total > 0 {
-		return offset+rawCount < total
+		pageStart := offset - offset%pageSize
+		return pageStart+rawCount < total
 	}
 	// 无 total 时，只在完整上游批次后继续；下一空批次会自然收敛。
 	return rawCount >= pageSize
@@ -382,8 +383,16 @@ func webRankingMode(mode string) string {
 	switch mode {
 	case "", string(model.RankingModeDay):
 		return "daily"
+	case string(model.RankingModeDayMale):
+		return "male"
+	case string(model.RankingModeDayFemale):
+		return "female"
 	case string(model.RankingModeWeek):
 		return "weekly"
+	case string(model.RankingModeWeekOriginal):
+		return "original"
+	case string(model.RankingModeWeekRookie):
+		return "rookie"
 	case string(model.RankingModeMonth):
 		return "monthly"
 	default:
