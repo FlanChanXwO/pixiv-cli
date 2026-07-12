@@ -4,6 +4,7 @@ package resource
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -23,6 +24,21 @@ type Client struct {
 	headers    map[string]string
 	// includeErrorBody 保留 Web resource 旧有的非 2xx body 诊断语义；App 仅报告 status。
 	includeErrorBody bool
+}
+
+// OpenRequest 描述一次已由上层 policy 限定的资源读取。
+type OpenRequest struct {
+	URL      string
+	Header   http.Header
+	Validate func(string) error
+}
+
+// Response 保留响应流所有权，调用方负责关闭 Body。
+type Response struct {
+	StatusCode int
+	Status     string
+	Header     http.Header
+	Body       io.ReadCloser
 }
 
 func NewApp(httpClient *http.Client) *Client {
@@ -51,16 +67,7 @@ func newClient(httpClient *http.Client, referer, userAgent string) *Client {
 }
 
 func (c *Client) Download(ctx context.Context, rawURL string, dst io.Writer) error {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
-	if err != nil {
-		return err
-	}
-	req.Header.Set("Referer", c.referer)
-	req.Header.Set("User-Agent", c.userAgent)
-	for key, value := range c.headers {
-		req.Header.Set(key, value)
-	}
-	resp, err := c.httpClient.Do(req)
+	resp, err := c.Open(ctx, OpenRequest{URL: rawURL})
 	if err != nil {
 		return err
 	}
@@ -79,4 +86,52 @@ func (c *Client) Download(ctx context.Context, rawURL string, dst io.Writer) err
 	}
 	_, err = io.Copy(dst, resp.Body)
 	return err
+}
+
+// Open 执行不预读 body 的资源请求。Validate 在首个 URL 与每次 redirect 前调用。
+func (c *Client) Open(ctx context.Context, request OpenRequest) (*Response, error) {
+	if request.Validate != nil {
+		if err := request.Validate(request.URL); err != nil {
+			return nil, err
+		}
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, request.URL, nil)
+	if err != nil {
+		return nil, err
+	}
+	for key, values := range request.Header {
+		for _, value := range values {
+			req.Header.Add(key, value)
+		}
+	}
+	req.Header.Set("Referer", c.referer)
+	req.Header.Set("User-Agent", c.userAgent)
+	for key, value := range c.headers {
+		req.Header.Set(key, value)
+	}
+
+	// 不修改调用方 Client；禁用 Jar，防止 SDK 请求意外携带站点 Cookie。
+	httpClient := *c.httpClient
+	httpClient.Jar = nil
+	originalRedirect := httpClient.CheckRedirect
+	httpClient.CheckRedirect = func(next *http.Request, via []*http.Request) error {
+		if request.Validate != nil {
+			if err := request.Validate(next.URL.String()); err != nil {
+				return err
+			}
+		}
+		if originalRedirect != nil {
+			return originalRedirect(next, via)
+		}
+		// 保持 net/http.Client 在 CheckRedirect 为空时的默认十跳上限。
+		if len(via) >= 10 {
+			return errors.New("stopped after 10 redirects")
+		}
+		return nil
+	}
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	return &Response{StatusCode: resp.StatusCode, Status: resp.Status, Header: resp.Header, Body: resp.Body}, nil
 }

@@ -10,6 +10,7 @@ import (
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/appapi"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/model"
+	internalresource "github.com/FlanChanXwO/pixiv-cli/internal/pixiv/resource"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/webapi"
 )
 
@@ -25,6 +26,8 @@ type Options struct {
 	AccessToken string
 	// WebFallbackEnabled 允许无 access token 时显式使用匿名 Web API。
 	WebFallbackEnabled bool
+	// ResourcePolicy 追加调用方显式信任的资源镜像；Pixiv 官方资源规则始终启用。
+	ResourcePolicy ResourcePolicy
 }
 
 // Client 组合 App API 主数据与显式 Web 补全能力。
@@ -33,10 +36,16 @@ type Client struct {
 	web                *webapi.Client
 	authenticated      bool
 	webFallbackEnabled bool
+	resourcePolicy     resourcePolicy
+	resource           *internalresource.Client
 }
 
 // NewClient 构造具体客户端；它不会执行网络请求或隐式认证。
 func NewClient(options Options) (*Client, error) {
+	resourcePolicy, err := compileResourcePolicy(options.ResourcePolicy)
+	if err != nil {
+		return nil, err
+	}
 	accessToken := strings.TrimSpace(options.AccessToken)
 	appOptions := []appapi.Option{
 		appapi.WithBaseURL(options.AppAPIBaseURL),
@@ -52,6 +61,8 @@ func NewClient(options Options) (*Client, error) {
 		web:                webapi.New(webOptions...),
 		authenticated:      accessToken != "",
 		webFallbackEnabled: options.WebFallbackEnabled,
+		resourcePolicy:     resourcePolicy,
+		resource:           internalresource.NewApp(options.HTTPClient),
 	}, nil
 }
 

@@ -48,6 +48,9 @@ const (
 	OperationUserArtworks       Operation = "user_artworks"
 	OperationUserBookmarks      Operation = "user_bookmarks"
 	OperationUserFollowing      Operation = "user_following"
+	OperationParseResourceRef   Operation = "parse_resource_ref"
+	OperationOpenResource       Operation = "open_resource"
+	OperationDownload           Operation = "download"
 )
 
 // Error 是公开 SDK 的安全、可分类错误。cause 只保存已脱敏原因。
