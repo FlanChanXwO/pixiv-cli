@@ -20,8 +20,8 @@
       "GitHub Actions"
     ],
     "description": "这是一个 Go 版 Pixiv CLI 与 MCP stdio server，内置 Rust ugoira encoder，并包含 release/update workflow。",
-    "analyzedAt": "2026-07-12T06:13:39.707Z",
-    "gitCommitHash": "f7926ae3c4af0601d1e5f1b54a80674dd01be76b"
+    "analyzedAt": "2026-07-12T06:35:40.212Z",
+    "gitCommitHash": "c5eef2cd8060ca6cf893d3e36db136011cee083a"
   },
   "nodes": [
     {
@@ -4292,7 +4292,7 @@
       "type": "file",
       "name": "ugoira_rust_link_linux_arm64.go",
       "filePath": "internal/download/ugoira_rust_link_linux_arm64.go",
-      "summary": "实现 ugoira_rust_link_linux_arm64.go 所在包的项目行为、边界或支撑逻辑。",
+      "summary": "为 Linux arm64 Rust ugoira staticlib 选择器链接 archive 与系统 libm。",
       "tags": [
         "ugoira动图",
         "Rust语言",
@@ -4824,7 +4824,7 @@
       "type": "file",
       "name": "ugoira_rust_link_linux_amd64.go",
       "filePath": "internal/download/ugoira_rust_link_linux_amd64.go",
-      "summary": "实现 ugoira_rust_link_linux_amd64.go 所在包的项目行为、边界或支撑逻辑。",
+      "summary": "为 Linux amd64 Rust ugoira staticlib 选择器链接 archive 与系统 libm。",
       "tags": [
         "ugoira动图",
         "Rust语言",
@@ -5631,64 +5631,14 @@
       "type": "file",
       "name": "ugoira_rust_test.go",
       "filePath": "internal/download/ugoira_rust_test.go",
-      "summary": "为 ugoira_rust_test.go 对应行为提供聚焦回归测试和边界验证。",
+      "summary": "覆盖 Rust ugoira encoder、Linux libm cgo 链接与 Cargo vendor 字节稳定性的聚焦回归测试。",
       "tags": [
         "测试",
-        "回归",
-        "Go语言"
+        "ugoira动图",
+        "静态库",
+        "跨平台"
       ],
-      "complexity": "moderate"
-    },
-    {
-      "id": "function:internal/download/ugoira_rust_test.go:TestRustUgoiraEncoderNativeGIFAndAPNG",
-      "type": "function",
-      "name": "TestRustUgoiraEncoderNativeGIFAndAPNG",
-      "filePath": "internal/download/ugoira_rust_test.go",
-      "summary": "实现 ugoira_rust_test.go 中 TestRustUgoiraEncoderNativeGIFAndAPNG 的核心处理逻辑。",
-      "tags": [
-        "函数",
-        "Go语言",
-        "实现"
-      ],
-      "complexity": "simple",
-      "lineRange": [
-        22,
-        64
-      ]
-    },
-    {
-      "id": "function:internal/download/ugoira_rust_test.go:TestCGODisabledBuildRejectsMissingRustStaticlib",
-      "type": "function",
-      "name": "TestCGODisabledBuildRejectsMissingRustStaticlib",
-      "filePath": "internal/download/ugoira_rust_test.go",
-      "summary": "实现 ugoira_rust_test.go 中 TestCGODisabledBuildRejectsMissingRustStaticlib 的核心处理逻辑。",
-      "tags": [
-        "函数",
-        "Go语言",
-        "实现"
-      ],
-      "complexity": "simple",
-      "lineRange": [
-        66,
-        80
-      ]
-    },
-    {
-      "id": "function:internal/download/ugoira_rust_test.go:rustUgoiraJPEG",
-      "type": "function",
-      "name": "rustUgoiraJPEG",
-      "filePath": "internal/download/ugoira_rust_test.go",
-      "summary": "实现 ugoira_rust_test.go 中 rustUgoiraJPEG 的核心处理逻辑。",
-      "tags": [
-        "函数",
-        "Go语言",
-        "实现"
-      ],
-      "complexity": "simple",
-      "lineRange": [
-        82,
-        96
-      ]
+      "complexity": "complex"
     },
     {
       "id": "file:internal/download/ugoira_rust_stub.go",
@@ -12647,7 +12597,7 @@
       "type": "document",
       "name": "CHANGELOG.md",
       "filePath": "CHANGELOG.md",
-      "summary": "记录未发布的用户可见变更与 v0.1.0 发布候选说明；包含受保护 release 环境和隔离凭据已配置、但真实发布仍被 native evidence 与安装验收阻断的安全状态。",
+      "summary": "记录未发布的用户可见变更与 v0.1.0 发布候选说明；包括跨平台 native staticlib 的 libm 链接和 Cargo vendor 字节稳定性修复。",
       "tags": [
         "文档",
         "变更记录",
@@ -16546,7 +16496,7 @@
       "type": "document",
       "name": "architecture.md",
       "filePath": "docs/architecture.md",
-      "summary": "说明 CLI、application、bootstrap、Pixiv、下载和更新包职责；明确无 cgo staticlib 契约、watcher 生命周期与 production Release trust root。",
+      "summary": "说明 CLI、application、bootstrap、Pixiv、下载和更新职责；明确 Rust staticlib 的 Linux libm 链接、无 cgo evidence 契约与 production trust root。",
       "complexity": "moderate",
       "tags": [
         "documentation",
@@ -16560,7 +16510,7 @@
       "type": "document",
       "name": "development.md",
       "filePath": "docs/development.md",
-      "summary": "说明环境、Rust staticlib、native evidence、无 cgo policy gate、远端 release/tap 前置条件与 Task 13 受控回填流程。",
+      "summary": "说明环境、Rust staticlib、native evidence、无 cgo policy gate、Cargo vendor 的 -text 字节约束与发布前置条件。",
       "complexity": "complex",
       "tags": [
         "documentation",
@@ -20504,6 +20454,91 @@
       "lineRange": [
         1553,
         1561
+      ]
+    },
+    {
+      "id": "function:internal/download/ugoira_rust_test.go:TestRustUgoiraEncoderNativeGIFAndAPNG",
+      "type": "function",
+      "name": "TestRustUgoiraEncoderNativeGIFAndAPNG",
+      "filePath": "internal/download/ugoira_rust_test.go",
+      "summary": "实现 ugoira_rust_test.go 中 TestRustUgoiraEncoderNativeGIFAndAPNG 的核心处理逻辑。",
+      "tags": [
+        "函数",
+        "Go语言",
+        "测试"
+      ],
+      "complexity": "simple",
+      "lineRange": [
+        22,
+        65
+      ]
+    },
+    {
+      "id": "function:internal/download/ugoira_rust_test.go:TestCGODisabledBuildRejectsMissingRustStaticlib",
+      "type": "function",
+      "name": "TestCGODisabledBuildRejectsMissingRustStaticlib",
+      "filePath": "internal/download/ugoira_rust_test.go",
+      "summary": "实现 ugoira_rust_test.go 中 TestCGODisabledBuildRejectsMissingRustStaticlib 的核心处理逻辑。",
+      "tags": [
+        "函数",
+        "Go语言",
+        "测试"
+      ],
+      "complexity": "simple",
+      "lineRange": [
+        66,
+        83
+      ]
+    },
+    {
+      "id": "function:internal/download/ugoira_rust_test.go:TestLinuxRustStaticlibLinkersLinkSystemMath",
+      "type": "function",
+      "name": "TestLinuxRustStaticlibLinkersLinkSystemMath",
+      "filePath": "internal/download/ugoira_rust_test.go",
+      "summary": "锁定 Linux Rust staticlib 的 cgo selector 将 archive 之后的 libm 链接给 sinf/expf。",
+      "tags": [
+        "函数",
+        "Go语言",
+        "测试"
+      ],
+      "complexity": "simple",
+      "lineRange": [
+        84,
+        101
+      ]
+    },
+    {
+      "id": "function:internal/download/ugoira_rust_test.go:TestVendoredRustSourcesDisableGitTextConversion",
+      "type": "function",
+      "name": "TestVendoredRustSourcesDisableGitTextConversion",
+      "filePath": "internal/download/ugoira_rust_test.go",
+      "summary": "锁定 Cargo vendor 文件禁用 Git 文本转换，避免 Windows CRLF 破坏上游 checksum。",
+      "tags": [
+        "函数",
+        "Go语言",
+        "测试"
+      ],
+      "complexity": "simple",
+      "lineRange": [
+        102,
+        118
+      ]
+    },
+    {
+      "id": "function:internal/download/ugoira_rust_test.go:rustUgoiraJPEG",
+      "type": "function",
+      "name": "rustUgoiraJPEG",
+      "filePath": "internal/download/ugoira_rust_test.go",
+      "summary": "实现 ugoira_rust_test.go 中 rustUgoiraJPEG 的核心处理逻辑。",
+      "tags": [
+        "函数",
+        "Go语言",
+        "测试"
+      ],
+      "complexity": "simple",
+      "lineRange": [
+        119,
+        134
       ]
     }
   ],
@@ -26072,27 +26107,6 @@
       "type": "imports",
       "direction": "forward",
       "weight": 0.7
-    },
-    {
-      "source": "file:internal/download/ugoira_rust_test.go",
-      "target": "function:internal/download/ugoira_rust_test.go:TestRustUgoiraEncoderNativeGIFAndAPNG",
-      "type": "contains",
-      "direction": "forward",
-      "weight": 1
-    },
-    {
-      "source": "file:internal/download/ugoira_rust_test.go",
-      "target": "function:internal/download/ugoira_rust_test.go:TestCGODisabledBuildRejectsMissingRustStaticlib",
-      "type": "contains",
-      "direction": "forward",
-      "weight": 1
-    },
-    {
-      "source": "file:internal/download/ugoira_rust_test.go",
-      "target": "function:internal/download/ugoira_rust_test.go:rustUgoiraJPEG",
-      "type": "contains",
-      "direction": "forward",
-      "weight": 1
     },
     {
       "source": "file:internal/download/ugoira_rust_stub.go",
@@ -35322,6 +35336,69 @@
     {
       "source": "file:internal/cli/account_test.go",
       "target": "function:internal/cli/account_test.go:loginState",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:internal/download/ugoira_rust_test.go",
+      "target": "function:internal/download/ugoira_rust_test.go:TestRustUgoiraEncoderNativeGIFAndAPNG",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:internal/download/ugoira_rust_test.go",
+      "target": "function:internal/download/ugoira_rust_test.go:TestRustUgoiraEncoderNativeGIFAndAPNG",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:internal/download/ugoira_rust_test.go",
+      "target": "function:internal/download/ugoira_rust_test.go:TestCGODisabledBuildRejectsMissingRustStaticlib",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:internal/download/ugoira_rust_test.go",
+      "target": "function:internal/download/ugoira_rust_test.go:TestCGODisabledBuildRejectsMissingRustStaticlib",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:internal/download/ugoira_rust_test.go",
+      "target": "function:internal/download/ugoira_rust_test.go:TestLinuxRustStaticlibLinkersLinkSystemMath",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:internal/download/ugoira_rust_test.go",
+      "target": "function:internal/download/ugoira_rust_test.go:TestLinuxRustStaticlibLinkersLinkSystemMath",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:internal/download/ugoira_rust_test.go",
+      "target": "function:internal/download/ugoira_rust_test.go:TestVendoredRustSourcesDisableGitTextConversion",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:internal/download/ugoira_rust_test.go",
+      "target": "function:internal/download/ugoira_rust_test.go:TestVendoredRustSourcesDisableGitTextConversion",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:internal/download/ugoira_rust_test.go",
+      "target": "function:internal/download/ugoira_rust_test.go:rustUgoiraJPEG",
       "type": "contains",
       "direction": "forward",
       "weight": 1

@@ -1,7 +1,7 @@
 {
   "version": "1.0.0",
-  "gitCommitHash": "f7926ae3c4af0601d1e5f1b54a80674dd01be76b",
-  "generatedAt": "2026-07-12T06:13:40.065Z",
+  "gitCommitHash": "c5eef2cd8060ca6cf893d3e36db136011cee083a",
+  "generatedAt": "2026-07-12T06:35:40.579Z",
   "files": {
     ".agents/skills/pixiv-commit-msg/SKILL.md": {
       "filePath": ".agents/skills/pixiv-commit-msg/SKILL.md",
@@ -35,12 +35,12 @@
     },
     ".gitattributes": {
       "filePath": ".gitattributes",
-      "contentHash": "7ac4504372a54617c00e3c9e20de9fb19b65287bed6890dc677cd21e16fd01f8",
+      "contentHash": "88882e7cd4bab15d91afe51e23e9dc1bd48f9654f5e9708fa2aa3d0d88fbcb0e",
       "functions": [],
       "classes": [],
       "imports": [],
       "exports": [],
-      "totalLines": 108,
+      "totalLines": 111,
       "hasStructuralAnalysis": false
     },
     ".github/copilot-instructions.md": {
@@ -95,12 +95,12 @@
     },
     "CHANGELOG.md": {
       "filePath": "CHANGELOG.md",
-      "contentHash": "c6efe6ef36a04ac88a1186c82917cff9a7a60d4639e8d2d68bd71c540da69079",
+      "contentHash": "5cde0cd00845344835371cabfebddabdc71d78f131efff2769cec0e394be8b33",
       "functions": [],
       "classes": [],
       "imports": [],
       "exports": [],
-      "totalLines": 84,
+      "totalLines": 89,
       "hasStructuralAnalysis": true
     },
     "CLAUDE.md": {
@@ -267,22 +267,22 @@
     },
     "docs/architecture.md": {
       "filePath": "docs/architecture.md",
-      "contentHash": "055a19f3e9b8b55339900ad8c45ccb0527cd568e1118d10c4c6f6a80c97f26eb",
+      "contentHash": "eb960a58acaec06c63135ce6be5e2299504b5543779859ff5c736787deb36558",
       "functions": [],
       "classes": [],
       "imports": [],
       "exports": [],
-      "totalLines": 227,
+      "totalLines": 228,
       "hasStructuralAnalysis": true
     },
     "docs/development.md": {
       "filePath": "docs/development.md",
-      "contentHash": "3eb13a55f7b0ddb13b29a83d197e8b20d13dd7a8bd10fed17e2a13e436f508b6",
+      "contentHash": "b5152cdd218d2bbabcf52cd18d08215cc05a2a61e88e77ddf4aa11ded0aba738",
       "functions": [],
       "classes": [],
       "imports": [],
       "exports": [],
-      "totalLines": 334,
+      "totalLines": 335,
       "hasStructuralAnalysis": true
     },
     "docs/index.md": {
@@ -8152,7 +8152,7 @@
     },
     "internal/download/ugoira_rust_link_linux_amd64.go": {
       "filePath": "internal/download/ugoira_rust_link_linux_amd64.go",
-      "contentHash": "a31ceedd8dac802e628cac91472fcabcf4c5f3952537afdda6ef6bbf683b2b4e",
+      "contentHash": "825974a3c090699db939712175a1ed86e91d8051bdb531b2dfce0ccf348ff98f",
       "functions": [],
       "classes": [],
       "imports": [
@@ -8169,7 +8169,7 @@
     },
     "internal/download/ugoira_rust_link_linux_arm64.go": {
       "filePath": "internal/download/ugoira_rust_link_linux_arm64.go",
-      "contentHash": "309810f1423623444860c2fade689c8fef182db14aed999e456ccef190fc274c",
+      "contentHash": "749f49519ba3e0d6f7d3270d2f46776d9550b1e42a9e82593819324196e6924e",
       "functions": [],
       "classes": [],
       "imports": [
@@ -8281,7 +8281,7 @@
     },
     "internal/download/ugoira_rust_test.go": {
       "filePath": "internal/download/ugoira_rust_test.go",
-      "contentHash": "2b8b6c1c1d4a1f24e1821e46d3846c8f627942f0788ad56db8700717ebe62a82",
+      "contentHash": "bcc1885b0ebc756064a808e8d279acb0985c2b1b01ece526e576ff88305c4c3c",
       "functions": [
         {
           "name": "TestRustUgoiraEncoderNativeGIFAndAPNG",
@@ -8298,6 +8298,22 @@
           ],
           "exported": true,
           "lineCount": 15
+        },
+        {
+          "name": "TestLinuxRustStaticlibLinkersLinkSystemMath",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 15
+        },
+        {
+          "name": "TestVendoredRustSourcesDisableGitTextConversion",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 16
         },
         {
           "name": "rustUgoiraJPEG",
@@ -8392,9 +8408,11 @@
       ],
       "exports": [
         "TestRustUgoiraEncoderNativeGIFAndAPNG",
-        "TestCGODisabledBuildRejectsMissingRustStaticlib"
+        "TestCGODisabledBuildRejectsMissingRustStaticlib",
+        "TestLinuxRustStaticlibLinkersLinkSystemMath",
+        "TestVendoredRustSourcesDisableGitTextConversion"
       ],
-      "totalLines": 97,
+      "totalLines": 134,
       "hasStructuralAnalysis": true
     },
     "internal/download/ugoira_rust.go": {
