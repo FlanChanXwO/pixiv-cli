@@ -29,7 +29,10 @@
 - **Release binary**：非上述来源的正式二进制；安装前必须验证签名 checksum、平台 archive 与下载 binary version，并原子替换目标文件。
 - **Automatic check**：普通 CLI 成功后对 stable channel 的只读提示；24 小时节流、最多 3 秒、只写 stderr，绝不改变业务退出码或污染 JSON/MCP stdout。
 
-这只是领域模型，不代表所有渠道已公开可用：当前没有公开 Release/tap、production Ed25519 信任根或完整六目标 staticlib manifest。Release 安装在缺少信任根时必须显式失败，不能被标记成成功或安全 fallback。
+这只是领域模型，不代表所有渠道已公开可用：受支持 binary 的 production Ed25519 public key、key ID
+与 fingerprint 已随 [`internal/bootstrap/release_trust.go`](internal/bootstrap/release_trust.go) 提交，但当前
+没有公开 remote、Release、tap 或受保护 `release` Environment 的私钥部署，也没有完整六目标 staticlib
+manifest；不能据此声称已发布或可安装。
 
 ## 边界规则
 
@@ -38,7 +41,9 @@
 - `auth login` 可注册本地 macOS `pixiv://` URL handler，只转交最终 callback URL 给当前 CLI loopback；不得读取 cookie/token、自动化 browser UI、安装 extension 或伪造登录成功。
 - `auth login` 在 managed capture 不可用时，可通过 DevTools 或真实 browser 的只读 Pixiv OAuth URL 观察作为 fallback callback detector；不得扩展为 cookie/token extraction。
 - `internal/application.LoginService` 拥有 PKCE/state 创建、OAuth code exchange 与账号保存。
-- `internal/bootstrap` 是唯一了解 production service 组装的位置；它当前不会为 Release installer 注入不存在的 production key。
+- `internal/bootstrap` 是唯一了解 production service 组装的位置；它为 Release installer 注入已提交的
+  production public key/key ID，私钥仍只应存在于受保护 `release` Environment secret 或受控 macOS
+  Keychain 恢复副本。
 - `internal/config` 只处理 `config.toml` schema、default、effective value 与 sparse write；`update_check_enabled` 只控制自动检查。
 - `internal/update` 负责来源与更新策略，但不得把权限、HTTP、asset、签名、checksum、archive 或替换错误伪装成无更新。
 - `internal/download` 的生产 ugoira 路径使用 Rust staticlib，不得在 runtime 回退 `ffmpeg`；完整六目标 manifest 是 source/release 可用的前置条件。
