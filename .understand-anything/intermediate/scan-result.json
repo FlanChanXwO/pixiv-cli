@@ -58,7 +58,7 @@
     {
       "path": ".github/workflows/release.yml",
       "language": "yaml",
-      "sizeLines": 246,
+      "sizeLines": 403,
       "fileCategory": "infra"
     },
     {
@@ -76,7 +76,7 @@
     {
       "path": "CHANGELOG.md",
       "language": "markdown",
-      "sizeLines": 96,
+      "sizeLines": 101,
       "fileCategory": "docs"
     },
     {
@@ -160,13 +160,13 @@
     {
       "path": "docs/architecture.md",
       "language": "markdown",
-      "sizeLines": 246,
+      "sizeLines": 253,
       "fileCategory": "docs"
     },
     {
       "path": "docs/development.md",
       "language": "markdown",
-      "sizeLines": 363,
+      "sizeLines": 380,
       "fileCategory": "docs"
     },
     {
@@ -862,13 +862,13 @@
     {
       "path": "scripts/releaseworkflow/main_test.go",
       "language": "go",
-      "sizeLines": 1332,
+      "sizeLines": 1652,
       "fileCategory": "code"
     },
     {
       "path": "scripts/releaseworkflow/main.go",
       "language": "go",
-      "sizeLines": 1022,
+      "sizeLines": 1451,
       "fileCategory": "code"
     },
     {
@@ -916,7 +916,7 @@
     {
       "path": "templates/homebrew/TAP_DEPLOYMENT.md",
       "language": "markdown",
-      "sizeLines": 22,
+      "sizeLines": 33,
       "fileCategory": "docs"
     },
     {
@@ -948,9 +948,15 @@
       "language": "go",
       "sizeLines": 33,
       "fileCategory": "code"
+    },
+    {
+      "path": "templates/homebrew/github.com-known-hosts",
+      "language": "unknown",
+      "sizeLines": 1,
+      "fileCategory": "config"
     }
   ],
-  "totalFiles": 155,
+  "totalFiles": 156,
   "filteredByIgnore": 194,
   "estimatedComplexity": "large",
   "importMap": {
@@ -1676,6 +1682,7 @@
     "test/e2e/version_binary_test.go": [],
     "THIRD_PARTY_LICENSES.md": [],
     "internal/download/staticlib/manifest.go": [],
-    "internal/download/staticlib/manifest_test.go": []
+    "internal/download/staticlib/manifest_test.go": [],
+    "templates/homebrew/github.com-known-hosts": []
   }
 }

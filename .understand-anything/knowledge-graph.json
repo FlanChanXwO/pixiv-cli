@@ -20,8 +20,8 @@
       "GitHub Actions"
     ],
     "description": "这是一个 Go 版 Pixiv CLI 与 MCP stdio server，内置 Rust ugoira encoder，并包含 release/update workflow。",
-    "analyzedAt": "2026-07-12T13:34:08.408Z",
-    "gitCommitHash": "e5bc6a9b4ddc9818b6ae24c84de44c0ba3859c66"
+    "analyzedAt": "2026-07-12T16:22:31.520Z",
+    "gitCommitHash": "7c1633380759177baf52ca0337b8eac5edfc1ab0"
   },
   "nodes": [
     {
@@ -12558,11 +12558,14 @@
       "type": "pipeline",
       "name": "release.yml",
       "filePath": ".github/workflows/release.yml",
-      "summary": "在符合 SemVer 的 tag 推送后，构建、测试、校验、签名并发布六平台资产；发布前验证 tag 提交属于默认分支。",
+      "summary": "由 SemVer tag 触发：六平台构建与签名 Release 后导出同一 checksums.txt，按 channel 渲染 formula；四个 runner 创建隔离 staging tap、显式 trust 后以 tap-qualified name 安装，最后才允许 protected deploy key 更新 public tap。",
       "tags": [
         "ci-cd",
         "release",
-        "security"
+        "homebrew",
+        "homebrew-6",
+        "security",
+        "supply-chain"
       ],
       "complexity": "complex"
     },
@@ -12597,11 +12600,12 @@
       "type": "document",
       "name": "CHANGELOG.md",
       "filePath": "CHANGELOG.md",
-      "summary": "记录未发布的用户可见变更与 v0.1.0 发布候选说明；六目标 native runner 证据、同源 staticlib 与 manifest 已完成并回填，正式发布仍待 tag、Release、formula 与安装验收。",
+      "summary": "记录 Release workflow 新增同源 checksum formula、macOS/Linux 双架构真实安装与最终 deploy-key tap push，以及 secret/SSH 安全边界。",
       "tags": [
         "文档",
         "变更记录",
-        "发布准备"
+        "release",
+        "homebrew"
       ],
       "complexity": "moderate"
     },
@@ -12623,12 +12627,12 @@
       "type": "document",
       "name": "CONTEXT.md",
       "filePath": "CONTEXT.md",
-      "summary": "定义 Pixiv CLI/MCP 的领域语言、架构与更新边界；production Ed25519 trust root 与受保护私钥边界、公开 source/tap remote 已配置，但 tag、Release、formula 与完整 six-target manifest 均未完成。",
+      "summary": "定义 Pixiv CLI/MCP 的领域语言、架构与更新边界；production Ed25519 trust root、公开 source/tap remote、受保护 secrets 与完整六目标 staticlib manifest 已配置或回填，仍无正式 tag、Release 或 tap formula。",
       "tags": [
-        "领域模型",
-        "发布边界",
-        "信任根",
-        "安全"
+        "documentation",
+        "domain-model",
+        "release-trust",
+        "native-evidence"
       ],
       "complexity": "moderate"
     },
@@ -15200,9 +15204,12 @@
       "type": "file",
       "name": "main_test.go",
       "filePath": "scripts/releaseworkflow/main_test.go",
-      "summary": "以 YAML AST mutation tests 锁定 release workflow 的质量、权限、密钥和信任门禁。",
+      "summary": "通过真实 workflow fixture 与 YAML AST mutations 证明 Homebrew 6 staging tap 创建、精确信任、tap-qualified 四 runner 安装及最终 tap push 不可绕过。",
       "tags": [
+        "test",
         "release",
+        "homebrew",
+        "homebrew-6",
         "security",
         "validation"
       ],
@@ -15213,485 +15220,487 @@
       "type": "function",
       "name": "TestCheckWorkflowRequiresRustFormatGate",
       "filePath": "scripts/releaseworkflow/main_test.go",
-      "lineRange": [
-        12,
-        22
-      ],
-      "summary": "验证 main_test.go 中 TestCheckWorkflowRequiresRustFormatGate 覆盖的行为、边界或回归场景。",
+      "summary": "验证 Check Workflow Requires Rust Format Gate 对应的 Release workflow policy 行为、边界与回归场景。",
       "tags": [
         "test",
         "release",
         "security"
       ],
-      "complexity": "simple"
+      "complexity": "simple",
+      "lineRange": [
+        12,
+        22
+      ]
     },
     {
       "id": "function:scripts/releaseworkflow/main_test.go:TestCheckWorkflowAcceptsIndependentReleaseSourceVerification",
       "type": "function",
       "name": "TestCheckWorkflowAcceptsIndependentReleaseSourceVerification",
       "filePath": "scripts/releaseworkflow/main_test.go",
-      "lineRange": [
-        24,
-        35
-      ],
-      "summary": "验证 main_test.go 中 TestCheckWorkflowAcceptsIndependentReleaseSourceVerification 覆盖的行为、边界或回归场景。",
+      "summary": "验证 Check Workflow Accepts Independent Release Source Verification 对应的 Release workflow policy 行为、边界与回归场景。",
       "tags": [
         "test",
         "release",
         "security"
       ],
-      "complexity": "simple"
+      "complexity": "simple",
+      "lineRange": [
+        24,
+        35
+      ]
     },
     {
       "id": "function:scripts/releaseworkflow/main_test.go:TestCheckWorkflowRejectsSecurityAndQualityPolicyMutations",
       "type": "function",
       "name": "TestCheckWorkflowRejectsSecurityAndQualityPolicyMutations",
       "filePath": "scripts/releaseworkflow/main_test.go",
-      "lineRange": [
-        37,
-        498
-      ],
-      "summary": "验证 main_test.go 中 TestCheckWorkflowRejectsSecurityAndQualityPolicyMutations 覆盖的行为、边界或回归场景。",
+      "summary": "验证 Check Workflow Rejects Security And Quality Policy Mutations 对应的 Release workflow policy 行为、边界与回归场景。",
       "tags": [
         "test",
         "release",
         "security"
       ],
-      "complexity": "complex"
+      "complexity": "complex",
+      "lineRange": [
+        348,
+        809
+      ]
     },
     {
       "id": "function:scripts/releaseworkflow/main_test.go:TestCheckWorkflowRejectsSoftFailedOrSkippedQualityGate",
       "type": "function",
       "name": "TestCheckWorkflowRejectsSoftFailedOrSkippedQualityGate",
       "filePath": "scripts/releaseworkflow/main_test.go",
-      "lineRange": [
-        500,
-        539
-      ],
-      "summary": "验证 main_test.go 中 TestCheckWorkflowRejectsSoftFailedOrSkippedQualityGate 覆盖的行为、边界或回归场景。",
+      "summary": "验证 Check Workflow Rejects Soft Failed Or Skipped Quality Gate 对应的 Release workflow policy 行为、边界与回归场景。",
       "tags": [
         "test",
         "release",
         "security"
       ],
-      "complexity": "simple"
+      "complexity": "complex",
+      "lineRange": [
+        811,
+        850
+      ]
     },
     {
       "id": "function:scripts/releaseworkflow/main_test.go:TestCheckWorkflowRejectsAmbiguousYAMLMutations",
       "type": "function",
       "name": "TestCheckWorkflowRejectsAmbiguousYAMLMutations",
       "filePath": "scripts/releaseworkflow/main_test.go",
-      "lineRange": [
-        541,
-        609
-      ],
-      "summary": "验证 main_test.go 中 TestCheckWorkflowRejectsAmbiguousYAMLMutations 覆盖的行为、边界或回归场景。",
+      "summary": "验证 Check Workflow Rejects Ambiguous YAML Mutations 对应的 Release workflow policy 行为、边界与回归场景。",
       "tags": [
         "test",
         "release",
         "security"
       ],
-      "complexity": "moderate"
+      "complexity": "complex",
+      "lineRange": [
+        852,
+        920
+      ]
     },
     {
       "id": "function:scripts/releaseworkflow/main_test.go:TestCheckWorkflowRejectsRequiredJobExecutionOverrides",
       "type": "function",
       "name": "TestCheckWorkflowRejectsRequiredJobExecutionOverrides",
       "filePath": "scripts/releaseworkflow/main_test.go",
-      "lineRange": [
-        611,
-        646
-      ],
-      "summary": "验证 main_test.go 中 TestCheckWorkflowRejectsRequiredJobExecutionOverrides 覆盖的行为、边界或回归场景。",
+      "summary": "验证 Check Workflow Rejects Required Job Execution Overrides 对应的 Release workflow policy 行为、边界与回归场景。",
       "tags": [
         "test",
         "release",
         "security"
       ],
-      "complexity": "simple"
+      "complexity": "moderate",
+      "lineRange": [
+        922,
+        957
+      ]
     },
     {
       "id": "function:scripts/releaseworkflow/main_test.go:TestCheckWorkflowRejectsConditionalTrustGate",
       "type": "function",
       "name": "TestCheckWorkflowRejectsConditionalTrustGate",
       "filePath": "scripts/releaseworkflow/main_test.go",
-      "lineRange": [
-        648,
-        674
-      ],
-      "summary": "验证 main_test.go 中 TestCheckWorkflowRejectsConditionalTrustGate 覆盖的行为、边界或回归场景。",
+      "summary": "验证 Check Workflow Rejects Conditional Trust Gate 对应的 Release workflow policy 行为、边界与回归场景。",
       "tags": [
         "test",
         "release",
         "security"
       ],
-      "complexity": "simple"
+      "complexity": "moderate",
+      "lineRange": [
+        959,
+        985
+      ]
     },
     {
       "id": "function:scripts/releaseworkflow/main_test.go:TestCheckWorkflowRequiresCredentialFreeValidateAndBuildCheckouts",
       "type": "function",
       "name": "TestCheckWorkflowRequiresCredentialFreeValidateAndBuildCheckouts",
       "filePath": "scripts/releaseworkflow/main_test.go",
-      "lineRange": [
-        676,
-        713
-      ],
-      "summary": "验证 main_test.go 中 TestCheckWorkflowRequiresCredentialFreeValidateAndBuildCheckouts 覆盖的行为、边界或回归场景。",
+      "summary": "验证 Check Workflow Requires Credential Free Validate And Build Checkouts 对应的 Release workflow policy 行为、边界与回归场景。",
       "tags": [
         "test",
         "release",
         "security"
       ],
-      "complexity": "simple"
+      "complexity": "moderate",
+      "lineRange": [
+        987,
+        1024
+      ]
     },
     {
       "id": "function:scripts/releaseworkflow/main_test.go:TestCheckWorkflowRequiresCanonicalTrustCheckout",
       "type": "function",
       "name": "TestCheckWorkflowRequiresCanonicalTrustCheckout",
       "filePath": "scripts/releaseworkflow/main_test.go",
-      "lineRange": [
-        715,
-        752
-      ],
-      "summary": "验证 main_test.go 中 TestCheckWorkflowRequiresCanonicalTrustCheckout 覆盖的行为、边界或回归场景。",
+      "summary": "验证 Check Workflow Requires Canonical Trust Checkout 对应的 Release workflow policy 行为、边界与回归场景。",
       "tags": [
         "test",
         "release",
         "security"
       ],
-      "complexity": "simple"
+      "complexity": "moderate",
+      "lineRange": [
+        1026,
+        1063
+      ]
     },
     {
       "id": "function:scripts/releaseworkflow/main_test.go:TestCheckWorkflowRequiresCanonicalPublishCheckout",
       "type": "function",
       "name": "TestCheckWorkflowRequiresCanonicalPublishCheckout",
       "filePath": "scripts/releaseworkflow/main_test.go",
-      "lineRange": [
-        754,
-        782
-      ],
-      "summary": "验证 main_test.go 中 TestCheckWorkflowRequiresCanonicalPublishCheckout 覆盖的行为、边界或回归场景。",
+      "summary": "验证 Check Workflow Requires Canonical Publish Checkout 对应的 Release workflow policy 行为、边界与回归场景。",
       "tags": [
         "test",
         "release",
         "security"
       ],
-      "complexity": "simple"
+      "complexity": "moderate",
+      "lineRange": [
+        1065,
+        1093
+      ]
     },
     {
       "id": "function:scripts/releaseworkflow/main_test.go:TestCheckWorkflowRequiresCanonicalValidateAndBuildCheckouts",
       "type": "function",
       "name": "TestCheckWorkflowRequiresCanonicalValidateAndBuildCheckouts",
       "filePath": "scripts/releaseworkflow/main_test.go",
-      "lineRange": [
-        784,
-        814
-      ],
-      "summary": "验证 main_test.go 中 TestCheckWorkflowRequiresCanonicalValidateAndBuildCheckouts 覆盖的行为、边界或回归场景。",
+      "summary": "验证 Check Workflow Requires Canonical Validate And Build Checkouts 对应的 Release workflow policy 行为、边界与回归场景。",
       "tags": [
         "test",
         "release",
         "security"
       ],
-      "complexity": "simple"
+      "complexity": "moderate",
+      "lineRange": [
+        1095,
+        1125
+      ]
     },
     {
       "id": "function:scripts/releaseworkflow/main_test.go:TestCheckWorkflowAllowsOnlyCanonicalTrustSteps",
       "type": "function",
       "name": "TestCheckWorkflowAllowsOnlyCanonicalTrustSteps",
       "filePath": "scripts/releaseworkflow/main_test.go",
-      "lineRange": [
-        816,
-        844
-      ],
-      "summary": "验证 main_test.go 中 TestCheckWorkflowAllowsOnlyCanonicalTrustSteps 覆盖的行为、边界或回归场景。",
+      "summary": "验证 Check Workflow Allows Only Canonical Trust Steps 对应的 Release workflow policy 行为、边界与回归场景。",
       "tags": [
         "test",
         "release",
         "security"
       ],
-      "complexity": "simple"
+      "complexity": "moderate",
+      "lineRange": [
+        1127,
+        1155
+      ]
     },
     {
       "id": "function:scripts/releaseworkflow/main_test.go:TestCheckWorkflowRejectsNonDirectQualityGateRuns",
       "type": "function",
       "name": "TestCheckWorkflowRejectsNonDirectQualityGateRuns",
       "filePath": "scripts/releaseworkflow/main_test.go",
-      "lineRange": [
-        846,
-        888
-      ],
-      "summary": "验证 main_test.go 中 TestCheckWorkflowRejectsNonDirectQualityGateRuns 覆盖的行为、边界或回归场景。",
+      "summary": "验证 Check Workflow Rejects Non Direct Quality Gate Runs 对应的 Release workflow policy 行为、边界与回归场景。",
       "tags": [
         "test",
         "release",
         "security"
       ],
-      "complexity": "simple"
+      "complexity": "complex",
+      "lineRange": [
+        1157,
+        1199
+      ]
     },
     {
       "id": "function:scripts/releaseworkflow/main_test.go:TestCheckWorkflowRejectsQualityGateExecutionOverrides",
       "type": "function",
       "name": "TestCheckWorkflowRejectsQualityGateExecutionOverrides",
       "filePath": "scripts/releaseworkflow/main_test.go",
-      "lineRange": [
-        890,
-        922
-      ],
-      "summary": "验证 main_test.go 中 TestCheckWorkflowRejectsQualityGateExecutionOverrides 覆盖的行为、边界或回归场景。",
+      "summary": "验证 Check Workflow Rejects Quality Gate Execution Overrides 对应的 Release workflow policy 行为、边界与回归场景。",
       "tags": [
         "test",
         "release",
         "security"
       ],
-      "complexity": "simple"
+      "complexity": "moderate",
+      "lineRange": [
+        1201,
+        1233
+      ]
     },
     {
       "id": "function:scripts/releaseworkflow/main_test.go:TestCheckWorkflowRejectsBracketSecretExpressionsOutsideExpectedSigningEnvironment",
       "type": "function",
       "name": "TestCheckWorkflowRejectsBracketSecretExpressionsOutsideExpectedSigningEnvironment",
       "filePath": "scripts/releaseworkflow/main_test.go",
-      "lineRange": [
-        924,
-        988
-      ],
-      "summary": "验证 main_test.go 中 TestCheckWorkflowRejectsBracketSecretExpressionsOutsideExpectedSigningEnvironment 覆盖的行为、边界或回归场景。",
+      "summary": "验证 Check Workflow Rejects Bracket Secret Expressions Outside Expected Signing Environment 对应的 Release workflow policy 行为、边界与回归场景。",
       "tags": [
         "test",
         "release",
         "security"
       ],
-      "complexity": "moderate"
+      "complexity": "complex",
+      "lineRange": [
+        1235,
+        1299
+      ]
     },
     {
       "id": "function:scripts/releaseworkflow/main_test.go:TestCheckWorkflowRejectsBareAndFunctionSecretContextsOutsideExpectedSigningEnvironment",
       "type": "function",
       "name": "TestCheckWorkflowRejectsBareAndFunctionSecretContextsOutsideExpectedSigningEnvironment",
       "filePath": "scripts/releaseworkflow/main_test.go",
-      "lineRange": [
-        990,
-        1063
-      ],
-      "summary": "验证 main_test.go 中 TestCheckWorkflowRejectsBareAndFunctionSecretContextsOutsideExpectedSigningEnvironment 覆盖的行为、边界或回归场景。",
+      "summary": "验证 Check Workflow Rejects Bare And Function Secret Contexts Outside Expected Signing Environment 对应的 Release workflow policy 行为、边界与回归场景。",
       "tags": [
         "test",
         "release",
         "security"
       ],
-      "complexity": "moderate"
+      "complexity": "complex",
+      "lineRange": [
+        1301,
+        1374
+      ]
     },
     {
       "id": "function:scripts/releaseworkflow/main_test.go:TestCheckWorkflowAcceptsCanonicalBracketSigningExpressions",
       "type": "function",
       "name": "TestCheckWorkflowAcceptsCanonicalBracketSigningExpressions",
       "filePath": "scripts/releaseworkflow/main_test.go",
-      "lineRange": [
-        1065,
-        1080
-      ],
-      "summary": "验证 main_test.go 中 TestCheckWorkflowAcceptsCanonicalBracketSigningExpressions 覆盖的行为、边界或回归场景。",
+      "summary": "验证 Check Workflow Accepts Canonical Bracket Signing Expressions 对应的 Release workflow policy 行为、边界与回归场景。",
       "tags": [
         "test",
         "release",
         "security"
       ],
-      "complexity": "simple"
+      "complexity": "moderate",
+      "lineRange": [
+        1376,
+        1391
+      ]
     },
     {
       "id": "function:scripts/releaseworkflow/main_test.go:releaseWorkflowRoot",
       "type": "function",
       "name": "releaseWorkflowRoot",
       "filePath": "scripts/releaseworkflow/main_test.go",
-      "lineRange": [
-        1082,
-        1096
-      ],
-      "summary": "实现发布 workflow YAML 安全策略校验中的 releaseWorkflowRoot 步骤。",
+      "summary": "读取真实 release.yml 为 YAML AST mutation fixture。",
       "tags": [
-        "implementation",
+        "fixture",
         "release",
         "security"
       ],
-      "complexity": "simple"
+      "complexity": "moderate",
+      "lineRange": [
+        1393,
+        1407
+      ]
     },
     {
       "id": "function:scripts/releaseworkflow/main_test.go:findFirstUses",
       "type": "function",
       "name": "findFirstUses",
       "filePath": "scripts/releaseworkflow/main_test.go",
-      "lineRange": [
-        1112,
-        1130
-      ],
-      "summary": "实现发布 workflow YAML 安全策略校验中的 findFirstUses 步骤。",
+      "summary": "递归定位第一个 uses 节点以构造 action mutation。",
       "tags": [
-        "implementation",
+        "fixture",
         "release",
         "security"
       ],
-      "complexity": "simple"
+      "complexity": "moderate",
+      "lineRange": [
+        1432,
+        1450
+      ]
     },
     {
       "id": "function:scripts/releaseworkflow/main_test.go:removeMappingKeyRecursively",
       "type": "function",
       "name": "removeMappingKeyRecursively",
       "filePath": "scripts/releaseworkflow/main_test.go",
-      "lineRange": [
-        1132,
-        1148
-      ],
-      "summary": "实现发布 workflow YAML 安全策略校验中的 removeMappingKeyRecursively 步骤。",
+      "summary": "递归删除 YAML mapping 键以验证 fail-closed 行为。",
       "tags": [
-        "implementation",
+        "fixture",
         "release",
         "security"
       ],
-      "complexity": "simple"
+      "complexity": "moderate",
+      "lineRange": [
+        1452,
+        1468
+      ]
     },
     {
       "id": "function:scripts/releaseworkflow/main_test.go:stepWithRun",
       "type": "function",
       "name": "stepWithRun",
       "filePath": "scripts/releaseworkflow/main_test.go",
-      "lineRange": [
-        1150,
-        1161
-      ],
-      "summary": "实现发布 workflow YAML 安全策略校验中的 stepWithRun 步骤。",
+      "summary": "按命令片段定位直接 run step。",
       "tags": [
-        "implementation",
+        "fixture",
         "release",
         "security"
       ],
-      "complexity": "simple"
+      "complexity": "simple",
+      "lineRange": [
+        1470,
+        1481
+      ]
     },
     {
       "id": "function:scripts/releaseworkflow/main_test.go:checkoutStep",
       "type": "function",
       "name": "checkoutStep",
       "filePath": "scripts/releaseworkflow/main_test.go",
-      "lineRange": [
-        1163,
-        1174
-      ],
-      "summary": "实现发布 workflow YAML 安全策略校验中的 checkoutStep 步骤。",
+      "summary": "定位 job 的 canonical checkout step。",
       "tags": [
-        "implementation",
+        "fixture",
         "release",
         "security"
       ],
-      "complexity": "simple"
+      "complexity": "simple",
+      "lineRange": [
+        1483,
+        1494
+      ]
     },
     {
       "id": "function:scripts/releaseworkflow/main_test.go:removeCommand",
       "type": "function",
       "name": "removeCommand",
       "filePath": "scripts/releaseworkflow/main_test.go",
-      "lineRange": [
-        1176,
-        1193
-      ],
-      "summary": "实现发布 workflow YAML 安全策略校验中的 removeCommand 步骤。",
+      "summary": "从 run step 删除完整命令。",
       "tags": [
-        "implementation",
+        "fixture",
         "release",
         "security"
       ],
-      "complexity": "simple"
+      "complexity": "moderate",
+      "lineRange": [
+        1496,
+        1513
+      ]
     },
     {
       "id": "function:scripts/releaseworkflow/main_test.go:insertRunStep",
       "type": "function",
       "name": "insertRunStep",
       "filePath": "scripts/releaseworkflow/main_test.go",
-      "lineRange": [
-        1219,
-        1228
-      ],
-      "summary": "实现发布 workflow YAML 安全策略校验中的 insertRunStep 步骤。",
+      "summary": "在指定位置插入 YAML run step。",
       "tags": [
-        "implementation",
+        "fixture",
         "release",
         "security"
       ],
-      "complexity": "simple"
+      "complexity": "simple",
+      "lineRange": [
+        1539,
+        1548
+      ]
     },
     {
       "id": "function:scripts/releaseworkflow/main_test.go:removeMappingValue",
       "type": "function",
       "name": "removeMappingValue",
       "filePath": "scripts/releaseworkflow/main_test.go",
-      "lineRange": [
-        1246,
-        1259
-      ],
-      "summary": "实现发布 workflow YAML 安全策略校验中的 removeMappingValue 步骤。",
+      "summary": "从 YAML mapping 删除指定键值。",
       "tags": [
-        "implementation",
+        "fixture",
         "release",
         "security"
       ],
-      "complexity": "simple"
+      "complexity": "simple",
+      "lineRange": [
+        1566,
+        1579
+      ]
     },
     {
       "id": "function:scripts/releaseworkflow/main_test.go:mappingNode",
       "type": "function",
       "name": "mappingNode",
       "filePath": "scripts/releaseworkflow/main_test.go",
-      "lineRange": [
-        1281,
-        1298
-      ],
-      "summary": "实现发布 workflow YAML 安全策略校验中的 mappingNode 步骤。",
+      "summary": "构造 YAML mapping fixture 节点。",
       "tags": [
-        "implementation",
+        "fixture",
         "release",
         "security"
       ],
-      "complexity": "simple"
+      "complexity": "moderate",
+      "lineRange": [
+        1601,
+        1618
+      ]
     },
     {
       "id": "function:scripts/releaseworkflow/main_test.go:requiredQualityGateCommands",
       "type": "function",
       "name": "requiredQualityGateCommands",
       "filePath": "scripts/releaseworkflow/main_test.go",
-      "lineRange": [
-        1300,
-        1314
-      ],
-      "summary": "实现发布 workflow YAML 安全策略校验中的 requiredQualityGateCommands 步骤。",
+      "summary": "返回 build job 必须独立执行的质量门禁命令集合。",
       "tags": [
-        "validation",
+        "fixture",
         "release",
         "security"
       ],
-      "complexity": "simple"
+      "complexity": "moderate",
+      "lineRange": [
+        1620,
+        1634
+      ]
     },
     {
       "id": "function:scripts/releaseworkflow/main_test.go:findRepositoryRoot",
       "type": "function",
       "name": "findRepositoryRoot",
       "filePath": "scripts/releaseworkflow/main_test.go",
-      "lineRange": [
-        1316,
-        1332
-      ],
-      "summary": "实现发布 workflow YAML 安全策略校验中的 findRepositoryRoot 步骤。",
+      "summary": "从测试工作目录向上定位仓库根目录。",
       "tags": [
-        "implementation",
+        "fixture",
         "release",
         "security"
       ],
-      "complexity": "simple"
+      "complexity": "moderate",
+      "lineRange": [
+        1636,
+        1652
+      ]
     },
     {
       "id": "file:scripts/releaseworkflow/main.go",
       "type": "file",
       "name": "main.go",
       "filePath": "scripts/releaseworkflow/main.go",
-      "summary": "以 fail-closed YAML AST 校验强制 release workflow 的精确 trigger、job、动作 SHA、质量 gate 与 signing secret 边界。",
+      "summary": "以 fail-closed YAML AST policy 锁定 Release→同源 checksum→channel formula→staging tap-new→精确信任→tap-qualified 四架构安装→最终 protected tap push。",
       "tags": [
         "release",
+        "homebrew",
+        "homebrew-6",
         "security",
         "validation",
         "tested"
@@ -15703,578 +15712,578 @@
       "type": "function",
       "name": "checkWorkflowPath",
       "filePath": "scripts/releaseworkflow/main.go",
-      "lineRange": [
-        41,
-        50
-      ],
-      "summary": "实现发布 workflow YAML 安全策略校验中的 checkWorkflowPath 步骤。",
+      "summary": "读取指定 Release workflow 与仓库内 pinned GitHub known_hosts，再执行统一结构化策略校验。",
       "tags": [
         "implementation",
         "release",
         "security"
       ],
-      "complexity": "simple"
+      "complexity": "moderate",
+      "lineRange": [
+        58,
+        75
+      ]
     },
     {
       "id": "function:scripts/releaseworkflow/main.go:checkWorkflow",
       "type": "function",
       "name": "checkWorkflow",
       "filePath": "scripts/releaseworkflow/main.go",
-      "lineRange": [
-        52,
-        125
-      ],
-      "summary": "实现发布 workflow YAML 安全策略校验中的 checkWorkflow 步骤。",
+      "summary": "解析 YAML AST 并串联 tag、权限、六目标构建、签名发布、formula 渲染、四架构安装与最终 tap push 的完整 DAG 校验。",
       "tags": [
         "implementation",
         "release",
         "security"
       ],
-      "complexity": "moderate"
+      "complexity": "complex",
+      "lineRange": [
+        84,
+        181
+      ]
     },
     {
       "id": "function:scripts/releaseworkflow/main.go:checkTagTrigger",
       "type": "function",
       "name": "checkTagTrigger",
       "filePath": "scripts/releaseworkflow/main.go",
-      "lineRange": [
-        127,
-        147
-      ],
-      "summary": "实现发布 workflow YAML 安全策略校验中的 checkTagTrigger 步骤。",
+      "summary": "校验 Tag Trigger 的 Release workflow 安全与质量约束。",
       "tags": [
         "implementation",
         "release",
         "security"
       ],
-      "complexity": "simple"
+      "complexity": "moderate",
+      "lineRange": [
+        183,
+        203
+      ]
     },
     {
       "id": "function:scripts/releaseworkflow/main.go:checkActionReferences",
       "type": "function",
       "name": "checkActionReferences",
       "filePath": "scripts/releaseworkflow/main.go",
-      "lineRange": [
-        157,
-        173
-      ],
-      "summary": "实现发布 workflow YAML 安全策略校验中的 checkActionReferences 步骤。",
+      "summary": "校验 Action References 的 Release workflow 安全与质量约束。",
       "tags": [
         "implementation",
         "release",
         "security"
       ],
-      "complexity": "simple"
+      "complexity": "moderate",
+      "lineRange": [
+        213,
+        229
+      ]
     },
     {
       "id": "function:scripts/releaseworkflow/main.go:collectActionReferences",
       "type": "function",
       "name": "collectActionReferences",
       "filePath": "scripts/releaseworkflow/main.go",
-      "lineRange": [
-        175,
-        196
-      ],
-      "summary": "实现发布 workflow YAML 安全策略校验中的 collectActionReferences 步骤。",
+      "summary": "收集 Action References，供供应链引用校验使用。",
       "tags": [
         "implementation",
         "release",
         "security"
       ],
-      "complexity": "simple"
+      "complexity": "moderate",
+      "lineRange": [
+        231,
+        252
+      ]
     },
     {
       "id": "function:scripts/releaseworkflow/main.go:checkValidateJob",
       "type": "function",
       "name": "checkValidateJob",
       "filePath": "scripts/releaseworkflow/main.go",
-      "lineRange": [
-        198,
-        227
-      ],
-      "summary": "实现发布 workflow YAML 安全策略校验中的 checkValidateJob 步骤。",
+      "summary": "校验 Validate Job 的 Release workflow 安全与质量约束。",
       "tags": [
         "implementation",
         "release",
         "security"
       ],
-      "complexity": "simple"
+      "complexity": "moderate",
+      "lineRange": [
+        254,
+        283
+      ]
     },
     {
       "id": "function:scripts/releaseworkflow/main.go:checkBuildJob",
       "type": "function",
       "name": "checkBuildJob",
       "filePath": "scripts/releaseworkflow/main.go",
-      "lineRange": [
-        229,
-        297
-      ],
-      "summary": "实现发布 workflow YAML 安全策略校验中的 checkBuildJob 步骤。",
+      "summary": "校验 Build Job 的 Release workflow 安全与质量约束。",
       "tags": [
         "implementation",
         "release",
         "security"
       ],
-      "complexity": "moderate"
+      "complexity": "complex",
+      "lineRange": [
+        285,
+        353
+      ]
     },
     {
       "id": "function:scripts/releaseworkflow/main.go:rejectAmbiguousYAML",
       "type": "function",
       "name": "rejectAmbiguousYAML",
       "filePath": "scripts/releaseworkflow/main.go",
-      "lineRange": [
-        301,
-        340
-      ],
-      "summary": "实现发布 workflow YAML 安全策略校验中的 rejectAmbiguousYAML 步骤。",
+      "summary": "实现 Release workflow policy 的 rejectAmbiguousYAML 辅助逻辑。",
       "tags": [
         "implementation",
         "release",
         "security"
       ],
-      "complexity": "simple"
+      "complexity": "complex",
+      "lineRange": [
+        357,
+        396
+      ]
     },
     {
       "id": "function:scripts/releaseworkflow/main.go:requireRequiredJobExecution",
       "type": "function",
       "name": "requireRequiredJobExecution",
       "filePath": "scripts/releaseworkflow/main.go",
-      "lineRange": [
-        358,
-        370
-      ],
-      "summary": "实现发布 workflow YAML 安全策略校验中的 requireRequiredJobExecution 步骤。",
+      "summary": "强制 Required Job Execution 约束，偏离 canonical workflow 时返回可诊断错误。",
       "tags": [
-        "validation",
+        "implementation",
         "release",
         "security"
       ],
-      "complexity": "simple"
+      "complexity": "simple",
+      "lineRange": [
+        414,
+        426
+      ]
     },
     {
       "id": "function:scripts/releaseworkflow/main.go:requireIndependentQualityGate",
       "type": "function",
       "name": "requireIndependentQualityGate",
       "filePath": "scripts/releaseworkflow/main.go",
-      "lineRange": [
-        374,
-        414
-      ],
-      "summary": "实现发布 workflow YAML 安全策略校验中的 requireIndependentQualityGate 步骤。",
+      "summary": "强制 Independent Quality Gate 约束，偏离 canonical workflow 时返回可诊断错误。",
       "tags": [
-        "validation",
+        "implementation",
         "release",
         "security"
       ],
-      "complexity": "simple"
+      "complexity": "complex",
+      "lineRange": [
+        430,
+        470
+      ]
     },
     {
       "id": "function:scripts/releaseworkflow/main.go:checkReleaseMatrix",
       "type": "function",
       "name": "checkReleaseMatrix",
       "filePath": "scripts/releaseworkflow/main.go",
-      "lineRange": [
-        416,
-        444
-      ],
-      "summary": "实现发布 workflow YAML 安全策略校验中的 checkReleaseMatrix 步骤。",
+      "summary": "校验六个平台 runner、GOOS/GOARCH、Rust target 与 artifact 名称一一绑定。",
       "tags": [
         "implementation",
         "release",
         "security"
       ],
-      "complexity": "simple"
+      "complexity": "moderate",
+      "lineRange": [
+        472,
+        500
+      ]
     },
     {
       "id": "function:scripts/releaseworkflow/main.go:checkVerifyReleaseSourceJob",
       "type": "function",
       "name": "checkVerifyReleaseSourceJob",
       "filePath": "scripts/releaseworkflow/main.go",
-      "lineRange": [
-        446,
-        490
-      ],
-      "summary": "实现发布 workflow YAML 安全策略校验中的 checkVerifyReleaseSourceJob 步骤。",
+      "summary": "校验无 secret 的独立 ancestry job 在完整 checkout 后验证 tag 位于默认分支。",
       "tags": [
         "implementation",
         "release",
         "security"
       ],
-      "complexity": "simple"
+      "complexity": "complex",
+      "lineRange": [
+        502,
+        546
+      ]
     },
     {
       "id": "function:scripts/releaseworkflow/main.go:requireCanonicalCheckout",
       "type": "function",
       "name": "requireCanonicalCheckout",
       "filePath": "scripts/releaseworkflow/main.go",
-      "lineRange": [
-        499,
-        523
-      ],
-      "summary": "实现发布 workflow YAML 安全策略校验中的 requireCanonicalCheckout 步骤。",
+      "summary": "锁定 checkout action、SHA 与凭据/ref/fetch 约束，避免源码重定向。",
       "tags": [
-        "validation",
+        "implementation",
         "release",
         "security"
       ],
-      "complexity": "simple"
+      "complexity": "moderate",
+      "lineRange": [
+        555,
+        579
+      ]
     },
     {
       "id": "function:scripts/releaseworkflow/main.go:checkPublishJob",
       "type": "function",
       "name": "checkPublishJob",
       "filePath": "scripts/releaseworkflow/main.go",
-      "lineRange": [
-        525,
-        581
-      ],
-      "summary": "实现发布 workflow YAML 安全策略校验中的 checkPublishJob 步骤。",
+      "summary": "校验受保护 publish job 的签名边界、Release asset 集合、channel 分类及同源 checksums artifact。",
       "tags": [
         "implementation",
         "release",
         "security"
       ],
-      "complexity": "moderate"
+      "complexity": "complex",
+      "lineRange": [
+        581,
+        658
+      ]
     },
     {
       "id": "function:scripts/releaseworkflow/main.go:requireUnconditionalAncestryGate",
       "type": "function",
       "name": "requireUnconditionalAncestryGate",
       "filePath": "scripts/releaseworkflow/main.go",
-      "lineRange": [
-        583,
-        603
-      ],
-      "summary": "实现发布 workflow YAML 安全策略校验中的 requireUnconditionalAncestryGate 步骤。",
+      "summary": "强制 Unconditional Ancestry Gate 约束，偏离 canonical workflow 时返回可诊断错误。",
       "tags": [
-        "validation",
+        "implementation",
         "release",
         "security"
       ],
-      "complexity": "simple"
+      "complexity": "moderate",
+      "lineRange": [
+        977,
+        997
+      ]
     },
     {
       "id": "function:scripts/releaseworkflow/main.go:checkReleaseChannelBinding",
       "type": "function",
       "name": "checkReleaseChannelBinding",
       "filePath": "scripts/releaseworkflow/main.go",
-      "lineRange": [
-        605,
-        655
-      ],
-      "summary": "实现发布 workflow YAML 安全策略校验中的 checkReleaseChannelBinding 步骤。",
+      "summary": "用 releaseassets channel 绑定 stable 与 prerelease 的 GitHub Release 语义。",
       "tags": [
         "implementation",
         "release",
         "security"
       ],
-      "complexity": "moderate"
+      "complexity": "complex",
+      "lineRange": [
+        999,
+        1049
+      ]
     },
     {
       "id": "function:scripts/releaseworkflow/main.go:requireApprovedChannelCaseCommands",
       "type": "function",
       "name": "requireApprovedChannelCaseCommands",
       "filePath": "scripts/releaseworkflow/main.go",
-      "lineRange": [
-        657,
-        676
-      ],
-      "summary": "实现发布 workflow YAML 安全策略校验中的 requireApprovedChannelCaseCommands 步骤。",
+      "summary": "强制 Approved Channel Case Commands 约束，偏离 canonical workflow 时返回可诊断错误。",
       "tags": [
-        "validation",
+        "implementation",
         "release",
         "security"
       ],
-      "complexity": "simple"
+      "complexity": "moderate",
+      "lineRange": [
+        1051,
+        1070
+      ]
     },
     {
       "id": "function:scripts/releaseworkflow/main.go:checkSigningSecretReachability",
       "type": "function",
       "name": "checkSigningSecretReachability",
       "filePath": "scripts/releaseworkflow/main.go",
-      "lineRange": [
-        678,
-        701
-      ],
-      "summary": "实现发布 workflow YAML 安全策略校验中的 checkSigningSecretReachability 步骤。",
+      "summary": "证明 Release signing secrets 仅在受保护 publish job 的签名 step 可达。",
       "tags": [
         "implementation",
         "release",
         "security"
       ],
-      "complexity": "simple"
+      "complexity": "moderate",
+      "lineRange": [
+        1072,
+        1095
+      ]
     },
     {
       "id": "function:scripts/releaseworkflow/main.go:checkSigningStep",
       "type": "function",
       "name": "checkSigningStep",
       "filePath": "scripts/releaseworkflow/main.go",
-      "lineRange": [
-        703,
-        736
-      ],
-      "summary": "实现发布 workflow YAML 安全策略校验中的 checkSigningStep 步骤。",
+      "summary": "校验 Signing Step 的 Release workflow 安全与质量约束。",
       "tags": [
         "implementation",
         "release",
         "security"
       ],
-      "complexity": "simple"
+      "complexity": "moderate",
+      "lineRange": [
+        1132,
+        1165
+      ]
     },
     {
       "id": "function:scripts/releaseworkflow/main.go:containsSigningSecretReference",
       "type": "function",
       "name": "containsSigningSecretReference",
       "filePath": "scripts/releaseworkflow/main.go",
-      "lineRange": [
-        751,
-        764
-      ],
-      "summary": "实现发布 workflow YAML 安全策略校验中的 containsSigningSecretReference 步骤。",
+      "summary": "实现 Release workflow policy 的 containsSigningSecretReference 辅助逻辑。",
       "tags": [
         "implementation",
         "release",
         "security"
       ],
-      "complexity": "simple"
+      "complexity": "simple",
+      "lineRange": [
+        1180,
+        1193
+      ]
     },
     {
       "id": "function:scripts/releaseworkflow/main.go:containsSigningSecretReferenceOutsideEnvironment",
       "type": "function",
       "name": "containsSigningSecretReferenceOutsideEnvironment",
       "filePath": "scripts/releaseworkflow/main.go",
-      "lineRange": [
-        766,
-        779
-      ],
-      "summary": "实现发布 workflow YAML 安全策略校验中的 containsSigningSecretReferenceOutsideEnvironment 步骤。",
+      "summary": "实现 Release workflow policy 的 containsSigningSecretReferenceOutsideEnvironment 辅助逻辑。",
       "tags": [
         "implementation",
         "release",
         "security"
       ],
-      "complexity": "simple"
+      "complexity": "simple",
+      "lineRange": [
+        1195,
+        1208
+      ]
     },
     {
       "id": "function:scripts/releaseworkflow/main.go:requireCredentialFreeCheckout",
       "type": "function",
       "name": "requireCredentialFreeCheckout",
       "filePath": "scripts/releaseworkflow/main.go",
-      "lineRange": [
-        781,
-        801
-      ],
-      "summary": "实现发布 workflow YAML 安全策略校验中的 requireCredentialFreeCheckout 步骤。",
+      "summary": "强制 Credential Free Checkout 约束，偏离 canonical workflow 时返回可诊断错误。",
       "tags": [
-        "validation",
+        "implementation",
         "release",
         "security"
       ],
-      "complexity": "simple"
+      "complexity": "moderate",
+      "lineRange": [
+        1210,
+        1230
+      ]
     },
     {
       "id": "function:scripts/releaseworkflow/main.go:signingStepIndex",
       "type": "function",
       "name": "signingStepIndex",
       "filePath": "scripts/releaseworkflow/main.go",
-      "lineRange": [
-        803,
-        814
-      ],
-      "summary": "实现发布 workflow YAML 安全策略校验中的 signingStepIndex 步骤。",
+      "summary": "实现 Release workflow policy 的 signingStepIndex 辅助逻辑。",
       "tags": [
         "implementation",
         "release",
         "security"
       ],
-      "complexity": "simple"
+      "complexity": "simple",
+      "lineRange": [
+        1232,
+        1243
+      ]
     },
     {
       "id": "function:scripts/releaseworkflow/main.go:mappingValue",
       "type": "function",
       "name": "mappingValue",
       "filePath": "scripts/releaseworkflow/main.go",
-      "lineRange": [
-        816,
-        826
-      ],
-      "summary": "实现发布 workflow YAML 安全策略校验中的 mappingValue 步骤。",
+      "summary": "从 YAML mapping 中按键读取节点，供所有结构化策略检查复用。",
       "tags": [
         "implementation",
         "release",
         "security"
       ],
-      "complexity": "simple"
+      "complexity": "simple",
+      "lineRange": [
+        1245,
+        1255
+      ]
     },
     {
       "id": "function:scripts/releaseworkflow/main.go:requireOnlyMappingKeys",
       "type": "function",
       "name": "requireOnlyMappingKeys",
       "filePath": "scripts/releaseworkflow/main.go",
-      "lineRange": [
-        828,
-        842
-      ],
-      "summary": "实现发布 workflow YAML 安全策略校验中的 requireOnlyMappingKeys 步骤。",
+      "summary": "强制 Only Mapping Keys 约束，偏离 canonical workflow 时返回可诊断错误。",
       "tags": [
-        "validation",
+        "implementation",
         "release",
         "security"
       ],
-      "complexity": "simple"
+      "complexity": "moderate",
+      "lineRange": [
+        1257,
+        1271
+      ]
     },
     {
       "id": "function:scripts/releaseworkflow/main.go:requireContentsPermission",
       "type": "function",
       "name": "requireContentsPermission",
       "filePath": "scripts/releaseworkflow/main.go",
-      "lineRange": [
-        852,
-        861
-      ],
-      "summary": "实现发布 workflow YAML 安全策略校验中的 requireContentsPermission 步骤。",
+      "summary": "强制 Contents Permission 约束，偏离 canonical workflow 时返回可诊断错误。",
       "tags": [
-        "validation",
+        "implementation",
         "release",
         "security"
       ],
-      "complexity": "simple"
+      "complexity": "simple",
+      "lineRange": [
+        1281,
+        1290
+      ]
     },
     {
       "id": "function:scripts/releaseworkflow/main.go:hasCommandInWorkingDirectory",
       "type": "function",
       "name": "hasCommandInWorkingDirectory",
       "filePath": "scripts/releaseworkflow/main.go",
-      "lineRange": [
-        871,
-        889
-      ],
-      "summary": "实现发布 workflow YAML 安全策略校验中的 hasCommandInWorkingDirectory 步骤。",
+      "summary": "检测 has command in working directory 条件，供 fail-closed workflow policy 判定。",
       "tags": [
         "implementation",
         "release",
         "security"
       ],
-      "complexity": "simple"
+      "complexity": "moderate",
+      "lineRange": [
+        1300,
+        1318
+      ]
     },
     {
       "id": "function:scripts/releaseworkflow/main.go:hasCommand",
       "type": "function",
       "name": "hasCommand",
       "filePath": "scripts/releaseworkflow/main.go",
-      "lineRange": [
-        891,
-        909
-      ],
-      "summary": "实现发布 workflow YAML 安全策略校验中的 hasCommand 步骤。",
+      "summary": "检测 has command 条件，供 fail-closed workflow policy 判定。",
       "tags": [
         "implementation",
         "release",
         "security"
       ],
-      "complexity": "simple"
+      "complexity": "moderate",
+      "lineRange": [
+        1320,
+        1338
+      ]
     },
     {
       "id": "function:scripts/releaseworkflow/main.go:rootStepWithRunFragment",
       "type": "function",
       "name": "rootStepWithRunFragment",
       "filePath": "scripts/releaseworkflow/main.go",
-      "lineRange": [
-        911,
-        927
-      ],
-      "summary": "实现发布 workflow YAML 安全策略校验中的 rootStepWithRunFragment 步骤。",
+      "summary": "实现 Release workflow policy 的 rootStepWithRunFragment 辅助逻辑。",
       "tags": [
         "implementation",
         "release",
         "security"
       ],
-      "complexity": "simple"
+      "complexity": "moderate",
+      "lineRange": [
+        1340,
+        1356
+      ]
     },
     {
       "id": "function:scripts/releaseworkflow/main.go:requireRunFragments",
       "type": "function",
       "name": "requireRunFragments",
       "filePath": "scripts/releaseworkflow/main.go",
-      "lineRange": [
-        929,
-        940
-      ],
-      "summary": "实现发布 workflow YAML 安全策略校验中的 requireRunFragments 步骤。",
+      "summary": "强制 Run Fragments 约束，偏离 canonical workflow 时返回可诊断错误。",
       "tags": [
-        "validation",
+        "implementation",
         "release",
         "security"
       ],
-      "complexity": "simple"
+      "complexity": "simple",
+      "lineRange": [
+        1358,
+        1369
+      ]
     },
     {
       "id": "function:scripts/releaseworkflow/main.go:hasShellArgument",
       "type": "function",
       "name": "hasShellArgument",
       "filePath": "scripts/releaseworkflow/main.go",
-      "lineRange": [
-        973,
-        986
-      ],
-      "summary": "实现发布 workflow YAML 安全策略校验中的 hasShellArgument 步骤。",
+      "summary": "检测 has shell argument 条件，供 fail-closed workflow policy 判定。",
       "tags": [
         "implementation",
         "release",
         "security"
       ],
-      "complexity": "simple"
+      "complexity": "simple",
+      "lineRange": [
+        1402,
+        1415
+      ]
     },
     {
       "id": "function:scripts/releaseworkflow/main.go:hasStepCommand",
       "type": "function",
       "name": "hasStepCommand",
       "filePath": "scripts/releaseworkflow/main.go",
-      "lineRange": [
-        988,
-        999
-      ],
-      "summary": "实现发布 workflow YAML 安全策略校验中的 hasStepCommand 步骤。",
+      "summary": "检测 has step command 条件，供 fail-closed workflow policy 判定。",
       "tags": [
         "implementation",
         "release",
         "security"
       ],
-      "complexity": "simple"
+      "complexity": "simple",
+      "lineRange": [
+        1417,
+        1428
+      ]
     },
     {
       "id": "function:scripts/releaseworkflow/main.go:splitCommands",
       "type": "function",
       "name": "splitCommands",
       "filePath": "scripts/releaseworkflow/main.go",
-      "lineRange": [
-        1001,
-        1010
-      ],
-      "summary": "实现发布 workflow YAML 安全策略校验中的 splitCommands 步骤。",
+      "summary": "按行规范化 shell 命令，支持 canonical command sequence 精确比较。",
       "tags": [
         "implementation",
         "release",
         "security"
       ],
-      "complexity": "simple"
+      "complexity": "simple",
+      "lineRange": [
+        1430,
+        1439
+      ]
     },
     {
       "id": "function:scripts/releaseworkflow/main.go:equalCommands",
       "type": "function",
       "name": "equalCommands",
       "filePath": "scripts/releaseworkflow/main.go",
-      "lineRange": [
-        1012,
-        1022
-      ],
-      "summary": "实现发布 workflow YAML 安全策略校验中的 equalCommands 步骤。",
+      "summary": "逐项比较规范化命令序列，拒绝插入、删除或重排。",
       "tags": [
         "implementation",
         "release",
         "security"
       ],
-      "complexity": "simple"
+      "complexity": "simple",
+      "lineRange": [
+        1441,
+        1451
+      ]
     },
     {
       "id": "file:templates/homebrew/pixiv-cli-beta.rb.tmpl",
@@ -16307,13 +16316,15 @@
       "type": "document",
       "name": "TAP_DEPLOYMENT.md",
       "filePath": "templates/homebrew/TAP_DEPLOYMENT.md",
-      "summary": "说明 Task20 在正式发布前接入独立 Homebrew tap deploy key 的人工安全清单，不含任何凭据材料。",
+      "summary": "记录自动 tap 部署的同源 checksum、stable/beta channel、Homebrew 6 local staging tap 精确信任、tap-qualified 四架构安装与最终 deploy-key push 边界。",
       "tags": [
         "documentation",
-        "architecture",
-        "project-guide"
+        "homebrew",
+        "homebrew-6",
+        "security",
+        "deployment"
       ],
-      "complexity": "simple"
+      "complexity": "moderate"
     },
     {
       "id": "file:test/e2e/version_binary_test.go",
@@ -16497,13 +16508,13 @@
       "type": "document",
       "name": "architecture.md",
       "filePath": "docs/architecture.md",
-      "summary": "说明 CLI、application、bootstrap、Pixiv、下载和更新职责；run 29192425899 六目标 source digest 与 LICENSE hash 一致，consolidation 成功并回填六库与 manifest，正式发布门禁仍未完成。",
+      "summary": "说明 Release 同源 checksum 生成 channel formula；四 runner 以隔离 local staging tap、精确 trust 与 tap-qualified name 安装，全部成功后才由 protected job 更新公开 tap。",
       "complexity": "moderate",
       "tags": [
         "documentation",
         "architecture",
         "release-trust",
-        "native-evidence"
+        "homebrew-6"
       ]
     },
     {
@@ -16511,13 +16522,13 @@
       "type": "document",
       "name": "development.md",
       "filePath": "docs/development.md",
-      "summary": "说明 Rust staticlib、native evidence 与发布测试；run 29192425899 六目标验证及 fail-closed consolidation 已成功，六库与 manifest 已回填且 source build 通过，正式发布仍待 tag、Release、formula 与安装验收。",
-      "complexity": "complex",
+      "summary": "说明 Homebrew 6 发布 DAG 与 policy：tap-new 隔离 staging namespace、brew trust --tap、tap-qualified 四平台安装及 strict SSH deploy，并区分本地 fixture 与外部 Actions 证据。",
+      "complexity": "moderate",
       "tags": [
         "documentation",
         "development",
         "release-process",
-        "native-evidence"
+        "homebrew-6"
       ]
     },
     {
@@ -20631,6 +20642,714 @@
       "lineRange": [
         138,
         149
+      ]
+    },
+    {
+      "id": "class:scripts/releaseworkflow/main.go:checkoutWithRequirement",
+      "type": "class",
+      "name": "checkoutWithRequirement",
+      "filePath": "scripts/releaseworkflow/main.go",
+      "summary": "描述 canonical checkout 必须具有的 with 键值约束。",
+      "tags": [
+        "release",
+        "security",
+        "policy"
+      ],
+      "complexity": "simple",
+      "lineRange": [
+        548,
+        551
+      ]
+    },
+    {
+      "id": "config:templates/homebrew/github.com-known-hosts",
+      "type": "config",
+      "name": "github.com-known-hosts",
+      "filePath": "templates/homebrew/github.com-known-hosts",
+      "summary": "只包含 GitHub 官方 ED25519 SSH host key，供最终 tap push 启用 StrictHostKeyChecking=yes，避免运行时 trust-on-first-use。",
+      "tags": [
+        "homebrew",
+        "ssh",
+        "security",
+        "pinned-host-key"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:scripts/releaseworkflow/main_test.go:appendBracketSecretToFirstStep",
+      "type": "function",
+      "name": "appendBracketSecretToFirstStep",
+      "filePath": "scripts/releaseworkflow/main_test.go",
+      "summary": "向首个 step 注入 bracket secrets expression。",
+      "tags": [
+        "fixture",
+        "release",
+        "security"
+      ],
+      "complexity": "simple",
+      "lineRange": [
+        1581,
+        1587
+      ]
+    },
+    {
+      "id": "function:scripts/releaseworkflow/main_test.go:appendMappingValue",
+      "type": "function",
+      "name": "appendMappingValue",
+      "filePath": "scripts/releaseworkflow/main_test.go",
+      "summary": "向 YAML mapping 附加键值。",
+      "tags": [
+        "fixture",
+        "release",
+        "security"
+      ],
+      "complexity": "simple",
+      "lineRange": [
+        1558,
+        1564
+      ]
+    },
+    {
+      "id": "function:scripts/releaseworkflow/main_test.go:appendRunStep",
+      "type": "function",
+      "name": "appendRunStep",
+      "filePath": "scripts/releaseworkflow/main_test.go",
+      "summary": "向 job 末尾追加 YAML run step。",
+      "tags": [
+        "fixture",
+        "release",
+        "security"
+      ],
+      "complexity": "simple",
+      "lineRange": [
+        1533,
+        1537
+      ]
+    },
+    {
+      "id": "function:scripts/releaseworkflow/main_test.go:jobNode",
+      "type": "function",
+      "name": "jobNode",
+      "filePath": "scripts/releaseworkflow/main_test.go",
+      "summary": "按 job 名称定位 workflow AST 节点。",
+      "tags": [
+        "fixture",
+        "release",
+        "security"
+      ],
+      "complexity": "simple",
+      "lineRange": [
+        1418,
+        1421
+      ]
+    },
+    {
+      "id": "function:scripts/releaseworkflow/main_test.go:mustMarshalYAML",
+      "type": "function",
+      "name": "mustMarshalYAML",
+      "filePath": "scripts/releaseworkflow/main_test.go",
+      "summary": "将变更后的 YAML AST 序列化为 policy 输入。",
+      "tags": [
+        "fixture",
+        "release",
+        "security"
+      ],
+      "complexity": "simple",
+      "lineRange": [
+        1409,
+        1416
+      ]
+    },
+    {
+      "id": "function:scripts/releaseworkflow/main_test.go:removeRunFragment",
+      "type": "function",
+      "name": "removeRunFragment",
+      "filePath": "scripts/releaseworkflow/main_test.go",
+      "summary": "从 run step 删除指定片段。",
+      "tags": [
+        "fixture",
+        "release",
+        "security"
+      ],
+      "complexity": "simple",
+      "lineRange": [
+        1515,
+        1522
+      ]
+    },
+    {
+      "id": "function:scripts/releaseworkflow/main_test.go:replaceRunFragment",
+      "type": "function",
+      "name": "replaceRunFragment",
+      "filePath": "scripts/releaseworkflow/main_test.go",
+      "summary": "替换 run step 片段以构造最小安全变异。",
+      "tags": [
+        "fixture",
+        "release",
+        "security"
+      ],
+      "complexity": "simple",
+      "lineRange": [
+        1524,
+        1531
+      ]
+    },
+    {
+      "id": "function:scripts/releaseworkflow/main_test.go:requireMappingValue",
+      "type": "function",
+      "name": "requireMappingValue",
+      "filePath": "scripts/releaseworkflow/main_test.go",
+      "summary": "从 mapping fixture 中读取必需键并在缺失时终止测试。",
+      "tags": [
+        "fixture",
+        "release",
+        "security"
+      ],
+      "complexity": "simple",
+      "lineRange": [
+        1423,
+        1430
+      ]
+    },
+    {
+      "id": "function:scripts/releaseworkflow/main_test.go:runStepNode",
+      "type": "function",
+      "name": "runStepNode",
+      "filePath": "scripts/releaseworkflow/main_test.go",
+      "summary": "构造带 name、bash shell 与 run 的 AST step。",
+      "tags": [
+        "fixture",
+        "release",
+        "security"
+      ],
+      "complexity": "simple",
+      "lineRange": [
+        1550,
+        1556
+      ]
+    },
+    {
+      "id": "function:scripts/releaseworkflow/main_test.go:scalarNode",
+      "type": "function",
+      "name": "scalarNode",
+      "filePath": "scripts/releaseworkflow/main_test.go",
+      "summary": "构造 YAML scalar fixture 节点。",
+      "tags": [
+        "fixture",
+        "release",
+        "security"
+      ],
+      "complexity": "simple",
+      "lineRange": [
+        1589,
+        1591
+      ]
+    },
+    {
+      "id": "function:scripts/releaseworkflow/main_test.go:sequenceNode",
+      "type": "function",
+      "name": "sequenceNode",
+      "filePath": "scripts/releaseworkflow/main_test.go",
+      "summary": "构造 YAML sequence fixture 节点。",
+      "tags": [
+        "fixture",
+        "release",
+        "security"
+      ],
+      "complexity": "simple",
+      "lineRange": [
+        1593,
+        1599
+      ]
+    },
+    {
+      "id": "function:scripts/releaseworkflow/main_test.go:TestCheckPinnedGitHubKnownHosts",
+      "type": "function",
+      "name": "TestCheckPinnedGitHubKnownHosts",
+      "filePath": "scripts/releaseworkflow/main_test.go",
+      "summary": "验证 checked-in GitHub ED25519 known_hosts 精确值，并拒绝替换或附加 host key。",
+      "tags": [
+        "test",
+        "release",
+        "homebrew",
+        "security"
+      ],
+      "complexity": "moderate",
+      "lineRange": [
+        79,
+        97
+      ]
+    },
+    {
+      "id": "function:scripts/releaseworkflow/main_test.go:TestCheckWorkflowRejectsHomebrewReleaseGateMutations",
+      "type": "function",
+      "name": "TestCheckWorkflowRejectsHomebrewReleaseGateMutations",
+      "filePath": "scripts/releaseworkflow/main_test.go",
+      "summary": "以 YAML AST mutations 覆盖 checksum provenance、channel、staging tap identity、精确信任、tap-qualified 四 runner 安装、secret 隔离、strict SSH 与唯一 formula push。",
+      "tags": [
+        "test",
+        "release",
+        "homebrew",
+        "security"
+      ],
+      "complexity": "complex",
+      "lineRange": [
+        99,
+        333
+      ]
+    },
+    {
+      "id": "function:scripts/releaseworkflow/main_test.go:TestCheckWorkflowRequiresHomebrewReleaseGate",
+      "type": "function",
+      "name": "TestCheckWorkflowRequiresHomebrewReleaseGate",
+      "filePath": "scripts/releaseworkflow/main_test.go",
+      "summary": "验证 workflow 必须包含 formula 渲染、四架构安装与最终 tap 部署三个连续 job。",
+      "tags": [
+        "test",
+        "release",
+        "homebrew",
+        "security"
+      ],
+      "complexity": "simple",
+      "lineRange": [
+        37,
+        49
+      ]
+    },
+    {
+      "id": "function:scripts/releaseworkflow/main_test.go:TestCheckWorkflowRequiresHomebrewTapPublicationGate",
+      "type": "function",
+      "name": "TestCheckWorkflowRequiresHomebrewTapPublicationGate",
+      "filePath": "scripts/releaseworkflow/main_test.go",
+      "summary": "验证删除最终 deploy_homebrew_tap job 会被结构化策略明确拒绝。",
+      "tags": [
+        "test",
+        "release",
+        "homebrew",
+        "security"
+      ],
+      "complexity": "simple",
+      "lineRange": [
+        337,
+        346
+      ]
+    },
+    {
+      "id": "function:scripts/releaseworkflow/main.go:checkDeployHomebrewJob",
+      "type": "function",
+      "name": "checkDeployHomebrewJob",
+      "filePath": "scripts/releaseworkflow/main.go",
+      "summary": "要求受保护最终 job 仅提交对应 formula，并用 pinned host key 与 deploy key 精确 push HEAD:main。",
+      "tags": [
+        "implementation",
+        "homebrew",
+        "release",
+        "security"
+      ],
+      "complexity": "complex",
+      "lineRange": [
+        891,
+        962
+      ]
+    },
+    {
+      "id": "function:scripts/releaseworkflow/main.go:checkGlobalPermissions",
+      "type": "function",
+      "name": "checkGlobalPermissions",
+      "filePath": "scripts/releaseworkflow/main.go",
+      "summary": "校验 Global Permissions 的 Release workflow 安全与质量约束。",
+      "tags": [
+        "implementation",
+        "release",
+        "security"
+      ],
+      "complexity": "simple",
+      "lineRange": [
+        205,
+        211
+      ]
+    },
+    {
+      "id": "function:scripts/releaseworkflow/main.go:checkHomebrewMatrix",
+      "type": "function",
+      "name": "checkHomebrewMatrix",
+      "filePath": "scripts/releaseworkflow/main.go",
+      "summary": "将 Homebrew 验证 matrix 固定为 macOS/Linux 的 amd64 与 arm64 四个真实 runner。",
+      "tags": [
+        "implementation",
+        "homebrew",
+        "release",
+        "security"
+      ],
+      "complexity": "moderate",
+      "lineRange": [
+        858,
+        889
+      ]
+    },
+    {
+      "id": "function:scripts/releaseworkflow/main.go:checkHomebrewSecretReachability",
+      "type": "function",
+      "name": "checkHomebrewSecretReachability",
+      "filePath": "scripts/releaseworkflow/main.go",
+      "summary": "证明 Homebrew deploy key 仅在最终 protected deploy job 的最后 push step 可达。",
+      "tags": [
+        "implementation",
+        "homebrew",
+        "release",
+        "security"
+      ],
+      "complexity": "moderate",
+      "lineRange": [
+        1097,
+        1130
+      ]
+    },
+    {
+      "id": "function:scripts/releaseworkflow/main.go:checkPinnedGitHubKnownHosts",
+      "type": "function",
+      "name": "checkPinnedGitHubKnownHosts",
+      "filePath": "scripts/releaseworkflow/main.go",
+      "summary": "要求 known_hosts fixture 只含官方固定的 GitHub ED25519 host key。",
+      "tags": [
+        "implementation",
+        "release",
+        "security"
+      ],
+      "complexity": "simple",
+      "lineRange": [
+        77,
+        82
+      ]
+    },
+    {
+      "id": "function:scripts/releaseworkflow/main.go:checkRenderHomebrewJob",
+      "type": "function",
+      "name": "checkRenderHomebrewJob",
+      "filePath": "scripts/releaseworkflow/main.go",
+      "summary": "要求 renderer 只消费 publish 导出的同一 checksums.txt，并按 stable/prerelease 生成唯一 formula artifact。",
+      "tags": [
+        "implementation",
+        "homebrew",
+        "release",
+        "security"
+      ],
+      "complexity": "complex",
+      "lineRange": [
+        727,
+        797
+      ]
+    },
+    {
+      "id": "function:scripts/releaseworkflow/main.go:checkVerifyHomebrewJob",
+      "type": "function",
+      "name": "checkVerifyHomebrewJob",
+      "filePath": "scripts/releaseworkflow/main.go",
+      "summary": "要求四个 macOS/Linux runner 创建隔离 local staging tap、仅信任该 tap、复制唯一 formula，并以 tap-qualified name 安装后校验 pixiv version --json。",
+      "tags": [
+        "implementation",
+        "homebrew",
+        "homebrew-6",
+        "release",
+        "security"
+      ],
+      "complexity": "complex",
+      "lineRange": [
+        799,
+        856
+      ]
+    },
+    {
+      "id": "function:scripts/releaseworkflow/main.go:commandIndexAfter",
+      "type": "function",
+      "name": "commandIndexAfter",
+      "filePath": "scripts/releaseworkflow/main.go",
+      "summary": "实现 Release workflow policy 的 commandIndexAfter 辅助逻辑。",
+      "tags": [
+        "implementation",
+        "release",
+        "security"
+      ],
+      "complexity": "simple",
+      "lineRange": [
+        1379,
+        1386
+      ]
+    },
+    {
+      "id": "function:scripts/releaseworkflow/main.go:countCommand",
+      "type": "function",
+      "name": "countCommand",
+      "filePath": "scripts/releaseworkflow/main.go",
+      "summary": "统计 count command，用于拒绝重复或缺失的门禁命令。",
+      "tags": [
+        "implementation",
+        "release",
+        "security"
+      ],
+      "complexity": "simple",
+      "lineRange": [
+        1388,
+        1396
+      ]
+    },
+    {
+      "id": "function:scripts/releaseworkflow/main.go:countRunFragment",
+      "type": "function",
+      "name": "countRunFragment",
+      "filePath": "scripts/releaseworkflow/main.go",
+      "summary": "统计 count run fragment，用于拒绝重复或缺失的门禁命令。",
+      "tags": [
+        "implementation",
+        "release",
+        "security"
+      ],
+      "complexity": "simple",
+      "lineRange": [
+        1398,
+        1400
+      ]
+    },
+    {
+      "id": "function:scripts/releaseworkflow/main.go:expectedSigningSecretExpression",
+      "type": "function",
+      "name": "expectedSigningSecretExpression",
+      "filePath": "scripts/releaseworkflow/main.go",
+      "summary": "实现 Release workflow policy 的 expectedSigningSecretExpression 辅助逻辑。",
+      "tags": [
+        "implementation",
+        "release",
+        "security"
+      ],
+      "complexity": "simple",
+      "lineRange": [
+        1175,
+        1178
+      ]
+    },
+    {
+      "id": "function:scripts/releaseworkflow/main.go:jobSteps",
+      "type": "function",
+      "name": "jobSteps",
+      "filePath": "scripts/releaseworkflow/main.go",
+      "summary": "实现 Release workflow policy 的 jobSteps 辅助逻辑。",
+      "tags": [
+        "implementation",
+        "release",
+        "security"
+      ],
+      "complexity": "simple",
+      "lineRange": [
+        1292,
+        1298
+      ]
+    },
+    {
+      "id": "function:scripts/releaseworkflow/main.go:main",
+      "type": "function",
+      "name": "main",
+      "filePath": "scripts/releaseworkflow/main.go",
+      "summary": "运行 release workflow fail-closed policy CLI，并将真实校验错误写入 stderr。",
+      "tags": [
+        "implementation",
+        "release",
+        "security"
+      ],
+      "complexity": "simple",
+      "lineRange": [
+        51,
+        56
+      ]
+    },
+    {
+      "id": "function:scripts/releaseworkflow/main.go:requireCanonicalReleasePublicationSuffix",
+      "type": "function",
+      "name": "requireCanonicalReleasePublicationSuffix",
+      "filePath": "scripts/releaseworkflow/main.go",
+      "summary": "锁定 draft Release 创建、asset 集合比对、公开 Release 与 checksum 导出的不可插入命令后缀。",
+      "tags": [
+        "implementation",
+        "release",
+        "security"
+      ],
+      "complexity": "moderate",
+      "lineRange": [
+        660,
+        693
+      ]
+    },
+    {
+      "id": "function:scripts/releaseworkflow/main.go:requireCanonicalRunStep",
+      "type": "function",
+      "name": "requireCanonicalRunStep",
+      "filePath": "scripts/releaseworkflow/main.go",
+      "summary": "要求无额外环境或控制流的 canonical direct bash 命令序列。",
+      "tags": [
+        "implementation",
+        "release",
+        "security"
+      ],
+      "complexity": "simple",
+      "lineRange": [
+        714,
+        725
+      ]
+    },
+    {
+      "id": "function:scripts/releaseworkflow/main.go:requireCanonicalRunStepWithEnvironment",
+      "type": "function",
+      "name": "requireCanonicalRunStepWithEnvironment",
+      "filePath": "scripts/releaseworkflow/main.go",
+      "summary": "要求仅在显式环境边界内执行 canonical direct bash 命令序列。",
+      "tags": [
+        "implementation",
+        "release",
+        "security"
+      ],
+      "complexity": "simple",
+      "lineRange": [
+        964,
+        975
+      ]
+    },
+    {
+      "id": "function:scripts/releaseworkflow/main.go:requireExactActionStep",
+      "type": "function",
+      "name": "requireExactActionStep",
+      "filePath": "scripts/releaseworkflow/main.go",
+      "summary": "要求指定 GitHub Action、完整 SHA 与 with 参数完全匹配 canonical step。",
+      "tags": [
+        "implementation",
+        "release",
+        "security"
+      ],
+      "complexity": "moderate",
+      "lineRange": [
+        695,
+        712
+      ]
+    },
+    {
+      "id": "function:scripts/releaseworkflow/main.go:requireExpectedSigningSecret",
+      "type": "function",
+      "name": "requireExpectedSigningSecret",
+      "filePath": "scripts/releaseworkflow/main.go",
+      "summary": "强制 Expected Signing Secret 约束，偏离 canonical workflow 时返回可诊断错误。",
+      "tags": [
+        "implementation",
+        "release",
+        "security"
+      ],
+      "complexity": "simple",
+      "lineRange": [
+        1167,
+        1173
+      ]
+    },
+    {
+      "id": "function:scripts/releaseworkflow/main.go:requireNoEnvironment",
+      "type": "function",
+      "name": "requireNoEnvironment",
+      "filePath": "scripts/releaseworkflow/main.go",
+      "summary": "强制 No Environment 约束，偏离 canonical workflow 时返回可诊断错误。",
+      "tags": [
+        "implementation",
+        "release",
+        "security"
+      ],
+      "complexity": "simple",
+      "lineRange": [
+        407,
+        412
+      ]
+    },
+    {
+      "id": "function:scripts/releaseworkflow/main.go:requireNoWorkflowExecutionOverrides",
+      "type": "function",
+      "name": "requireNoWorkflowExecutionOverrides",
+      "filePath": "scripts/releaseworkflow/main.go",
+      "summary": "强制 No Workflow Execution Overrides 约束，偏离 canonical workflow 时返回可诊断错误。",
+      "tags": [
+        "implementation",
+        "release",
+        "security"
+      ],
+      "complexity": "simple",
+      "lineRange": [
+        398,
+        405
+      ]
+    },
+    {
+      "id": "function:scripts/releaseworkflow/main.go:requireRunValue",
+      "type": "function",
+      "name": "requireRunValue",
+      "filePath": "scripts/releaseworkflow/main.go",
+      "summary": "强制 Run Value 约束，偏离 canonical workflow 时返回可诊断错误。",
+      "tags": [
+        "implementation",
+        "release",
+        "security"
+      ],
+      "complexity": "simple",
+      "lineRange": [
+        1371,
+        1377
+      ]
+    },
+    {
+      "id": "function:scripts/releaseworkflow/main.go:requireScalar",
+      "type": "function",
+      "name": "requireScalar",
+      "filePath": "scripts/releaseworkflow/main.go",
+      "summary": "强制 Scalar 约束，偏离 canonical workflow 时返回可诊断错误。",
+      "tags": [
+        "implementation",
+        "release",
+        "security"
+      ],
+      "complexity": "simple",
+      "lineRange": [
+        1273,
+        1279
+      ]
+    },
+    {
+      "id": "function:scripts/releaseworkflow/main_test.go:TestCheckWorkflowRequiresTapQualifiedStagingFormulaInstall",
+      "type": "function",
+      "name": "TestCheckWorkflowRequiresTapQualifiedStagingFormulaInstall",
+      "filePath": "scripts/releaseworkflow/main_test.go",
+      "summary": "验证 Homebrew 安装必须使用隔离 staging tap 的 tap-qualified formula name，并拒绝退回任意本地文件路径安装。",
+      "tags": [
+        "test",
+        "release",
+        "homebrew",
+        "homebrew-6",
+        "security"
+      ],
+      "complexity": "simple",
+      "lineRange": [
+        53,
+        63
+      ]
+    },
+    {
+      "id": "function:scripts/releaseworkflow/main_test.go:TestCheckWorkflowRequiresStagingTapTrust",
+      "type": "function",
+      "name": "TestCheckWorkflowRequiresStagingTapTrust",
+      "filePath": "scripts/releaseworkflow/main_test.go",
+      "summary": "验证 Homebrew 6 staging tap 必须通过 brew trust --tap 精确信任，拒绝删除 trust 或使用绕过模式。",
+      "tags": [
+        "test",
+        "release",
+        "homebrew",
+        "homebrew-6",
+        "security"
+      ],
+      "complexity": "simple",
+      "lineRange": [
+        67,
+        77
       ]
     }
   ],
@@ -33376,7 +34095,7 @@
       "type": "tested_by",
       "direction": "forward",
       "weight": 0.5,
-      "description": "Path-based pairing (deterministic)"
+      "description": "同包真实 workflow fixture 与 YAML AST mutation tests"
     },
     {
       "source": "file:internal/download/staticlib/manifest.go",
@@ -35552,6 +36271,1208 @@
       "type": "contains",
       "direction": "forward",
       "weight": 1
+    },
+    {
+      "source": "config:templates/homebrew/github.com-known-hosts",
+      "target": "file:scripts/releaseworkflow/main_test.go",
+      "type": "tested_by",
+      "direction": "forward",
+      "weight": 0.5,
+      "description": "known_hosts 精确值与 mutation 回归"
+    },
+    {
+      "source": "config:templates/homebrew/github.com-known-hosts",
+      "target": "pipeline:.github/workflows/release.yml",
+      "type": "configures",
+      "direction": "forward",
+      "weight": 0.6,
+      "description": "固定最终 SSH tap push 的远端 host identity"
+    },
+    {
+      "source": "document:CHANGELOG.md",
+      "target": "pipeline:.github/workflows/release.yml",
+      "type": "documents",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:docs/architecture.md",
+      "target": "file:scripts/homebrewformula/main.go",
+      "type": "documents",
+      "direction": "forward",
+      "weight": 0.5,
+      "description": "说明 formula provenance 与发布信任链"
+    },
+    {
+      "source": "document:docs/architecture.md",
+      "target": "pipeline:.github/workflows/release.yml",
+      "type": "documents",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:docs/development.md",
+      "target": "file:scripts/releaseworkflow/main.go",
+      "type": "documents",
+      "direction": "forward",
+      "weight": 0.5,
+      "description": "说明结构化 release workflow policy 与本地验证命令"
+    },
+    {
+      "source": "document:docs/development.md",
+      "target": "pipeline:.github/workflows/release.yml",
+      "type": "documents",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:templates/homebrew/TAP_DEPLOYMENT.md",
+      "target": "config:templates/homebrew/github.com-known-hosts",
+      "type": "documents",
+      "direction": "forward",
+      "weight": 0.5,
+      "description": "说明 pinned GitHub SSH host key 的用途与轮换边界"
+    },
+    {
+      "source": "document:templates/homebrew/TAP_DEPLOYMENT.md",
+      "target": "pipeline:.github/workflows/release.yml",
+      "type": "documents",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "file:scripts/releaseworkflow/main_test.go",
+      "target": "function:scripts/releaseworkflow/main_test.go:appendBracketSecretToFirstStep",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:scripts/releaseworkflow/main_test.go",
+      "target": "function:scripts/releaseworkflow/main_test.go:appendMappingValue",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:scripts/releaseworkflow/main_test.go",
+      "target": "function:scripts/releaseworkflow/main_test.go:appendRunStep",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:scripts/releaseworkflow/main_test.go",
+      "target": "function:scripts/releaseworkflow/main_test.go:jobNode",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:scripts/releaseworkflow/main_test.go",
+      "target": "function:scripts/releaseworkflow/main_test.go:mustMarshalYAML",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:scripts/releaseworkflow/main_test.go",
+      "target": "function:scripts/releaseworkflow/main_test.go:removeRunFragment",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:scripts/releaseworkflow/main_test.go",
+      "target": "function:scripts/releaseworkflow/main_test.go:replaceRunFragment",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:scripts/releaseworkflow/main_test.go",
+      "target": "function:scripts/releaseworkflow/main_test.go:requireMappingValue",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:scripts/releaseworkflow/main_test.go",
+      "target": "function:scripts/releaseworkflow/main_test.go:runStepNode",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:scripts/releaseworkflow/main_test.go",
+      "target": "function:scripts/releaseworkflow/main_test.go:scalarNode",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:scripts/releaseworkflow/main_test.go",
+      "target": "function:scripts/releaseworkflow/main_test.go:sequenceNode",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:scripts/releaseworkflow/main_test.go",
+      "target": "function:scripts/releaseworkflow/main_test.go:TestCheckPinnedGitHubKnownHosts",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:scripts/releaseworkflow/main_test.go",
+      "target": "function:scripts/releaseworkflow/main_test.go:TestCheckPinnedGitHubKnownHosts",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:scripts/releaseworkflow/main_test.go",
+      "target": "function:scripts/releaseworkflow/main_test.go:TestCheckWorkflowRejectsHomebrewReleaseGateMutations",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:scripts/releaseworkflow/main_test.go",
+      "target": "function:scripts/releaseworkflow/main_test.go:TestCheckWorkflowRejectsHomebrewReleaseGateMutations",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:scripts/releaseworkflow/main_test.go",
+      "target": "function:scripts/releaseworkflow/main_test.go:TestCheckWorkflowRequiresHomebrewReleaseGate",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:scripts/releaseworkflow/main_test.go",
+      "target": "function:scripts/releaseworkflow/main_test.go:TestCheckWorkflowRequiresHomebrewReleaseGate",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:scripts/releaseworkflow/main_test.go",
+      "target": "function:scripts/releaseworkflow/main_test.go:TestCheckWorkflowRequiresHomebrewTapPublicationGate",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:scripts/releaseworkflow/main_test.go",
+      "target": "function:scripts/releaseworkflow/main_test.go:TestCheckWorkflowRequiresHomebrewTapPublicationGate",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:scripts/releaseworkflow/main.go",
+      "target": "class:scripts/releaseworkflow/main.go:checkoutWithRequirement",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:scripts/releaseworkflow/main.go",
+      "target": "config:templates/homebrew/github.com-known-hosts",
+      "type": "reads_from",
+      "direction": "forward",
+      "weight": 0.5,
+      "description": "policy 校验 checked-in known_hosts 精确内容"
+    },
+    {
+      "source": "file:scripts/releaseworkflow/main.go",
+      "target": "function:scripts/releaseworkflow/main.go:checkDeployHomebrewJob",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:scripts/releaseworkflow/main.go",
+      "target": "function:scripts/releaseworkflow/main.go:checkGlobalPermissions",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:scripts/releaseworkflow/main.go",
+      "target": "function:scripts/releaseworkflow/main.go:checkHomebrewMatrix",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:scripts/releaseworkflow/main.go",
+      "target": "function:scripts/releaseworkflow/main.go:checkHomebrewSecretReachability",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:scripts/releaseworkflow/main.go",
+      "target": "function:scripts/releaseworkflow/main.go:checkPinnedGitHubKnownHosts",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:scripts/releaseworkflow/main.go",
+      "target": "function:scripts/releaseworkflow/main.go:checkRenderHomebrewJob",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:scripts/releaseworkflow/main.go",
+      "target": "function:scripts/releaseworkflow/main.go:checkVerifyHomebrewJob",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:scripts/releaseworkflow/main.go",
+      "target": "function:scripts/releaseworkflow/main.go:commandIndexAfter",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:scripts/releaseworkflow/main.go",
+      "target": "function:scripts/releaseworkflow/main.go:countCommand",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:scripts/releaseworkflow/main.go",
+      "target": "function:scripts/releaseworkflow/main.go:countRunFragment",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:scripts/releaseworkflow/main.go",
+      "target": "function:scripts/releaseworkflow/main.go:expectedSigningSecretExpression",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:scripts/releaseworkflow/main.go",
+      "target": "function:scripts/releaseworkflow/main.go:jobSteps",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:scripts/releaseworkflow/main.go",
+      "target": "function:scripts/releaseworkflow/main.go:main",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:scripts/releaseworkflow/main.go",
+      "target": "function:scripts/releaseworkflow/main.go:requireCanonicalReleasePublicationSuffix",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:scripts/releaseworkflow/main.go",
+      "target": "function:scripts/releaseworkflow/main.go:requireCanonicalRunStep",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:scripts/releaseworkflow/main.go",
+      "target": "function:scripts/releaseworkflow/main.go:requireCanonicalRunStepWithEnvironment",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:scripts/releaseworkflow/main.go",
+      "target": "function:scripts/releaseworkflow/main.go:requireExactActionStep",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:scripts/releaseworkflow/main.go",
+      "target": "function:scripts/releaseworkflow/main.go:requireExpectedSigningSecret",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:scripts/releaseworkflow/main.go",
+      "target": "function:scripts/releaseworkflow/main.go:requireNoEnvironment",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:scripts/releaseworkflow/main.go",
+      "target": "function:scripts/releaseworkflow/main.go:requireNoWorkflowExecutionOverrides",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:scripts/releaseworkflow/main.go",
+      "target": "function:scripts/releaseworkflow/main.go:requireRunValue",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:scripts/releaseworkflow/main.go",
+      "target": "function:scripts/releaseworkflow/main.go:requireScalar",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:scripts/releaseworkflow/main.go",
+      "target": "pipeline:.github/workflows/release.yml",
+      "type": "validates",
+      "direction": "forward",
+      "weight": 0.8,
+      "description": "fail-closed YAML AST policy"
+    },
+    {
+      "source": "function:scripts/releaseworkflow/main_test.go:TestCheckPinnedGitHubKnownHosts",
+      "target": "function:scripts/releaseworkflow/main.go:checkPinnedGitHubKnownHosts",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:scripts/releaseworkflow/main_test.go:TestCheckWorkflowAcceptsCanonicalBracketSigningExpressions",
+      "target": "function:scripts/releaseworkflow/main.go:checkWorkflow",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:scripts/releaseworkflow/main_test.go:TestCheckWorkflowAcceptsIndependentReleaseSourceVerification",
+      "target": "function:scripts/releaseworkflow/main.go:checkWorkflow",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:scripts/releaseworkflow/main_test.go:TestCheckWorkflowAllowsOnlyCanonicalTrustSteps",
+      "target": "function:scripts/releaseworkflow/main.go:checkWorkflow",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:scripts/releaseworkflow/main_test.go:TestCheckWorkflowRejectsAmbiguousYAMLMutations",
+      "target": "function:scripts/releaseworkflow/main.go:checkWorkflow",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:scripts/releaseworkflow/main_test.go:TestCheckWorkflowRejectsBareAndFunctionSecretContextsOutsideExpectedSigningEnvironment",
+      "target": "function:scripts/releaseworkflow/main.go:checkWorkflow",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:scripts/releaseworkflow/main_test.go:TestCheckWorkflowRejectsBracketSecretExpressionsOutsideExpectedSigningEnvironment",
+      "target": "function:scripts/releaseworkflow/main.go:checkWorkflow",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:scripts/releaseworkflow/main_test.go:TestCheckWorkflowRejectsConditionalTrustGate",
+      "target": "function:scripts/releaseworkflow/main.go:checkWorkflow",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:scripts/releaseworkflow/main_test.go:TestCheckWorkflowRejectsHomebrewReleaseGateMutations",
+      "target": "function:scripts/releaseworkflow/main.go:checkWorkflow",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:scripts/releaseworkflow/main_test.go:TestCheckWorkflowRejectsNonDirectQualityGateRuns",
+      "target": "function:scripts/releaseworkflow/main.go:checkWorkflow",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:scripts/releaseworkflow/main_test.go:TestCheckWorkflowRejectsQualityGateExecutionOverrides",
+      "target": "function:scripts/releaseworkflow/main.go:checkWorkflow",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:scripts/releaseworkflow/main_test.go:TestCheckWorkflowRejectsRequiredJobExecutionOverrides",
+      "target": "function:scripts/releaseworkflow/main.go:checkWorkflow",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:scripts/releaseworkflow/main_test.go:TestCheckWorkflowRejectsSecurityAndQualityPolicyMutations",
+      "target": "function:scripts/releaseworkflow/main.go:checkWorkflow",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:scripts/releaseworkflow/main_test.go:TestCheckWorkflowRejectsSoftFailedOrSkippedQualityGate",
+      "target": "function:scripts/releaseworkflow/main.go:checkWorkflow",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:scripts/releaseworkflow/main_test.go:TestCheckWorkflowRequiresCanonicalPublishCheckout",
+      "target": "function:scripts/releaseworkflow/main.go:checkWorkflow",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:scripts/releaseworkflow/main_test.go:TestCheckWorkflowRequiresCanonicalTrustCheckout",
+      "target": "function:scripts/releaseworkflow/main.go:checkWorkflow",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:scripts/releaseworkflow/main_test.go:TestCheckWorkflowRequiresCanonicalValidateAndBuildCheckouts",
+      "target": "function:scripts/releaseworkflow/main.go:checkWorkflow",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:scripts/releaseworkflow/main_test.go:TestCheckWorkflowRequiresCredentialFreeValidateAndBuildCheckouts",
+      "target": "function:scripts/releaseworkflow/main.go:checkWorkflow",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:scripts/releaseworkflow/main_test.go:TestCheckWorkflowRequiresHomebrewReleaseGate",
+      "target": "function:scripts/releaseworkflow/main.go:checkWorkflow",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:scripts/releaseworkflow/main_test.go:TestCheckWorkflowRequiresHomebrewTapPublicationGate",
+      "target": "function:scripts/releaseworkflow/main.go:checkWorkflow",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:scripts/releaseworkflow/main_test.go:TestCheckWorkflowRequiresRustFormatGate",
+      "target": "function:scripts/releaseworkflow/main.go:checkWorkflow",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:scripts/releaseworkflow/main.go:checkDeployHomebrewJob",
+      "target": "function:scripts/releaseworkflow/main.go:jobSteps",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:scripts/releaseworkflow/main.go:checkDeployHomebrewJob",
+      "target": "function:scripts/releaseworkflow/main.go:requireCanonicalCheckout",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:scripts/releaseworkflow/main.go:checkDeployHomebrewJob",
+      "target": "function:scripts/releaseworkflow/main.go:requireCanonicalRunStep",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:scripts/releaseworkflow/main.go:checkDeployHomebrewJob",
+      "target": "function:scripts/releaseworkflow/main.go:requireCanonicalRunStepWithEnvironment",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:scripts/releaseworkflow/main.go:checkDeployHomebrewJob",
+      "target": "function:scripts/releaseworkflow/main.go:requireContentsPermission",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:scripts/releaseworkflow/main.go:checkDeployHomebrewJob",
+      "target": "function:scripts/releaseworkflow/main.go:requireExactActionStep",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:scripts/releaseworkflow/main.go:checkDeployHomebrewJob",
+      "target": "function:scripts/releaseworkflow/main.go:requireOnlyMappingKeys",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:scripts/releaseworkflow/main.go:checkDeployHomebrewJob",
+      "target": "function:scripts/releaseworkflow/main.go:requireRequiredJobExecution",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:scripts/releaseworkflow/main.go:checkDeployHomebrewJob",
+      "target": "function:scripts/releaseworkflow/main.go:requireScalar",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:scripts/releaseworkflow/main.go:checkHomebrewMatrix",
+      "target": "function:scripts/releaseworkflow/main.go:mappingValue",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:scripts/releaseworkflow/main.go:checkHomebrewMatrix",
+      "target": "function:scripts/releaseworkflow/main.go:requireOnlyMappingKeys",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:scripts/releaseworkflow/main.go:checkHomebrewSecretReachability",
+      "target": "function:scripts/releaseworkflow/main.go:containsSigningSecretReference",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:scripts/releaseworkflow/main.go:checkHomebrewSecretReachability",
+      "target": "function:scripts/releaseworkflow/main.go:containsSigningSecretReferenceOutsideEnvironment",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:scripts/releaseworkflow/main.go:checkHomebrewSecretReachability",
+      "target": "function:scripts/releaseworkflow/main.go:expectedSigningSecretExpression",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:scripts/releaseworkflow/main.go:checkHomebrewSecretReachability",
+      "target": "function:scripts/releaseworkflow/main.go:jobSteps",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:scripts/releaseworkflow/main.go:checkHomebrewSecretReachability",
+      "target": "function:scripts/releaseworkflow/main.go:mappingValue",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:scripts/releaseworkflow/main.go:checkHomebrewSecretReachability",
+      "target": "function:scripts/releaseworkflow/main.go:requireOnlyMappingKeys",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:scripts/releaseworkflow/main.go:checkPublishJob",
+      "target": "function:scripts/releaseworkflow/main.go:checkReleaseChannelBinding",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:scripts/releaseworkflow/main.go:checkPublishJob",
+      "target": "function:scripts/releaseworkflow/main.go:checkSigningStep",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:scripts/releaseworkflow/main.go:checkPublishJob",
+      "target": "function:scripts/releaseworkflow/main.go:hasShellArgument",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:scripts/releaseworkflow/main.go:checkPublishJob",
+      "target": "function:scripts/releaseworkflow/main.go:jobSteps",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:scripts/releaseworkflow/main.go:checkPublishJob",
+      "target": "function:scripts/releaseworkflow/main.go:requireCanonicalCheckout",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:scripts/releaseworkflow/main.go:checkPublishJob",
+      "target": "function:scripts/releaseworkflow/main.go:requireCanonicalReleasePublicationSuffix",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:scripts/releaseworkflow/main.go:checkPublishJob",
+      "target": "function:scripts/releaseworkflow/main.go:requireContentsPermission",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:scripts/releaseworkflow/main.go:checkPublishJob",
+      "target": "function:scripts/releaseworkflow/main.go:requireExactActionStep",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:scripts/releaseworkflow/main.go:checkPublishJob",
+      "target": "function:scripts/releaseworkflow/main.go:requireOnlyMappingKeys",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:scripts/releaseworkflow/main.go:checkPublishJob",
+      "target": "function:scripts/releaseworkflow/main.go:requireRequiredJobExecution",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:scripts/releaseworkflow/main.go:checkPublishJob",
+      "target": "function:scripts/releaseworkflow/main.go:requireRunFragments",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:scripts/releaseworkflow/main.go:checkPublishJob",
+      "target": "function:scripts/releaseworkflow/main.go:requireScalar",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:scripts/releaseworkflow/main.go:checkPublishJob",
+      "target": "function:scripts/releaseworkflow/main.go:rootStepWithRunFragment",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:scripts/releaseworkflow/main.go:checkPublishJob",
+      "target": "function:scripts/releaseworkflow/main.go:signingStepIndex",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:scripts/releaseworkflow/main.go:checkRenderHomebrewJob",
+      "target": "function:scripts/releaseworkflow/main.go:jobSteps",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:scripts/releaseworkflow/main.go:checkRenderHomebrewJob",
+      "target": "function:scripts/releaseworkflow/main.go:requireCanonicalCheckout",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:scripts/releaseworkflow/main.go:checkRenderHomebrewJob",
+      "target": "function:scripts/releaseworkflow/main.go:requireCanonicalRunStep",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:scripts/releaseworkflow/main.go:checkRenderHomebrewJob",
+      "target": "function:scripts/releaseworkflow/main.go:requireContentsPermission",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:scripts/releaseworkflow/main.go:checkRenderHomebrewJob",
+      "target": "function:scripts/releaseworkflow/main.go:requireExactActionStep",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:scripts/releaseworkflow/main.go:checkRenderHomebrewJob",
+      "target": "function:scripts/releaseworkflow/main.go:requireNoEnvironment",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:scripts/releaseworkflow/main.go:checkRenderHomebrewJob",
+      "target": "function:scripts/releaseworkflow/main.go:requireOnlyMappingKeys",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:scripts/releaseworkflow/main.go:checkRenderHomebrewJob",
+      "target": "function:scripts/releaseworkflow/main.go:requireRequiredJobExecution",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:scripts/releaseworkflow/main.go:checkRenderHomebrewJob",
+      "target": "function:scripts/releaseworkflow/main.go:requireScalar",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:scripts/releaseworkflow/main.go:checkVerifyHomebrewJob",
+      "target": "function:scripts/releaseworkflow/main.go:checkHomebrewMatrix",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:scripts/releaseworkflow/main.go:checkVerifyHomebrewJob",
+      "target": "function:scripts/releaseworkflow/main.go:jobSteps",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:scripts/releaseworkflow/main.go:checkVerifyHomebrewJob",
+      "target": "function:scripts/releaseworkflow/main.go:mappingValue",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:scripts/releaseworkflow/main.go:checkVerifyHomebrewJob",
+      "target": "function:scripts/releaseworkflow/main.go:requireCanonicalRunStep",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:scripts/releaseworkflow/main.go:checkVerifyHomebrewJob",
+      "target": "function:scripts/releaseworkflow/main.go:requireContentsPermission",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:scripts/releaseworkflow/main.go:checkVerifyHomebrewJob",
+      "target": "function:scripts/releaseworkflow/main.go:requireExactActionStep",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:scripts/releaseworkflow/main.go:checkVerifyHomebrewJob",
+      "target": "function:scripts/releaseworkflow/main.go:requireNoEnvironment",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:scripts/releaseworkflow/main.go:checkVerifyHomebrewJob",
+      "target": "function:scripts/releaseworkflow/main.go:requireOnlyMappingKeys",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:scripts/releaseworkflow/main.go:checkVerifyHomebrewJob",
+      "target": "function:scripts/releaseworkflow/main.go:requireRequiredJobExecution",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:scripts/releaseworkflow/main.go:checkVerifyHomebrewJob",
+      "target": "function:scripts/releaseworkflow/main.go:requireScalar",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:scripts/releaseworkflow/main.go:checkWorkflow",
+      "target": "function:scripts/releaseworkflow/main.go:checkActionReferences",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:scripts/releaseworkflow/main.go:checkWorkflow",
+      "target": "function:scripts/releaseworkflow/main.go:checkBuildJob",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:scripts/releaseworkflow/main.go:checkWorkflow",
+      "target": "function:scripts/releaseworkflow/main.go:checkDeployHomebrewJob",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:scripts/releaseworkflow/main.go:checkWorkflow",
+      "target": "function:scripts/releaseworkflow/main.go:checkGlobalPermissions",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:scripts/releaseworkflow/main.go:checkWorkflow",
+      "target": "function:scripts/releaseworkflow/main.go:checkHomebrewSecretReachability",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:scripts/releaseworkflow/main.go:checkWorkflow",
+      "target": "function:scripts/releaseworkflow/main.go:checkPublishJob",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:scripts/releaseworkflow/main.go:checkWorkflow",
+      "target": "function:scripts/releaseworkflow/main.go:checkRenderHomebrewJob",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:scripts/releaseworkflow/main.go:checkWorkflow",
+      "target": "function:scripts/releaseworkflow/main.go:checkSigningSecretReachability",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:scripts/releaseworkflow/main.go:checkWorkflow",
+      "target": "function:scripts/releaseworkflow/main.go:checkTagTrigger",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:scripts/releaseworkflow/main.go:checkWorkflow",
+      "target": "function:scripts/releaseworkflow/main.go:checkValidateJob",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:scripts/releaseworkflow/main.go:checkWorkflow",
+      "target": "function:scripts/releaseworkflow/main.go:checkVerifyHomebrewJob",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:scripts/releaseworkflow/main.go:checkWorkflow",
+      "target": "function:scripts/releaseworkflow/main.go:checkVerifyReleaseSourceJob",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:scripts/releaseworkflow/main.go:checkWorkflow",
+      "target": "function:scripts/releaseworkflow/main.go:jobSteps",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:scripts/releaseworkflow/main.go:checkWorkflow",
+      "target": "function:scripts/releaseworkflow/main.go:mappingValue",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:scripts/releaseworkflow/main.go:checkWorkflow",
+      "target": "function:scripts/releaseworkflow/main.go:rejectAmbiguousYAML",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:scripts/releaseworkflow/main.go:checkWorkflow",
+      "target": "function:scripts/releaseworkflow/main.go:requireNoWorkflowExecutionOverrides",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:scripts/releaseworkflow/main.go:checkWorkflow",
+      "target": "function:scripts/releaseworkflow/main.go:requireOnlyMappingKeys",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:scripts/releaseworkflow/main.go:checkWorkflow",
+      "target": "function:scripts/releaseworkflow/main.go:signingStepIndex",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:scripts/releaseworkflow/main.go:checkWorkflowPath",
+      "target": "function:scripts/releaseworkflow/main.go:checkPinnedGitHubKnownHosts",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:scripts/releaseworkflow/main.go:checkWorkflowPath",
+      "target": "function:scripts/releaseworkflow/main.go:checkWorkflow",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:scripts/releaseworkflow/main.go:main",
+      "target": "function:scripts/releaseworkflow/main.go:checkWorkflowPath",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:scripts/releaseworkflow/main.go:requireCanonicalReleasePublicationSuffix",
+      "target": "function:scripts/releaseworkflow/main.go:equalCommands",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:scripts/releaseworkflow/main.go:requireCanonicalReleasePublicationSuffix",
+      "target": "function:scripts/releaseworkflow/main.go:requireRunValue",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:scripts/releaseworkflow/main.go:requireCanonicalReleasePublicationSuffix",
+      "target": "function:scripts/releaseworkflow/main.go:splitCommands",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:scripts/releaseworkflow/main.go:requireCanonicalRunStep",
+      "target": "function:scripts/releaseworkflow/main.go:equalCommands",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:scripts/releaseworkflow/main.go:requireCanonicalRunStep",
+      "target": "function:scripts/releaseworkflow/main.go:requireOnlyMappingKeys",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:scripts/releaseworkflow/main.go:requireCanonicalRunStep",
+      "target": "function:scripts/releaseworkflow/main.go:requireRunValue",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:scripts/releaseworkflow/main.go:requireCanonicalRunStep",
+      "target": "function:scripts/releaseworkflow/main.go:requireScalar",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:scripts/releaseworkflow/main.go:requireCanonicalRunStep",
+      "target": "function:scripts/releaseworkflow/main.go:splitCommands",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:scripts/releaseworkflow/main.go:requireCanonicalRunStepWithEnvironment",
+      "target": "function:scripts/releaseworkflow/main.go:equalCommands",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:scripts/releaseworkflow/main.go:requireCanonicalRunStepWithEnvironment",
+      "target": "function:scripts/releaseworkflow/main.go:requireOnlyMappingKeys",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:scripts/releaseworkflow/main.go:requireCanonicalRunStepWithEnvironment",
+      "target": "function:scripts/releaseworkflow/main.go:requireRunValue",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:scripts/releaseworkflow/main.go:requireCanonicalRunStepWithEnvironment",
+      "target": "function:scripts/releaseworkflow/main.go:requireScalar",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:scripts/releaseworkflow/main.go:requireCanonicalRunStepWithEnvironment",
+      "target": "function:scripts/releaseworkflow/main.go:splitCommands",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "pipeline:.github/workflows/release.yml",
+      "target": "file:scripts/homebrewformula/main.go",
+      "type": "triggers",
+      "direction": "forward",
+      "weight": 0.6,
+      "description": "从 publish 导出的同一 checksums.txt 渲染 channel formula"
+    },
+    {
+      "source": "pipeline:.github/workflows/release.yml",
+      "target": "file:scripts/releaseassets/main.go",
+      "type": "triggers",
+      "direction": "forward",
+      "weight": 0.6,
+      "description": "分类 release channel 并生成已签名发布资产"
+    },
+    {
+      "source": "pipeline:.github/workflows/release.yml",
+      "target": "file:scripts/releaseworkflow/main.go",
+      "type": "triggers",
+      "direction": "forward",
+      "weight": 0.6,
+      "description": "validate job 运行结构化 workflow policy"
+    },
+    {
+      "source": "pipeline:.github/workflows/release.yml",
+      "target": "file:templates/homebrew/pixiv-cli-beta.rb.tmpl",
+      "type": "depends_on",
+      "direction": "forward",
+      "weight": 0.6,
+      "description": "prerelease channel formula 模板"
+    },
+    {
+      "source": "pipeline:.github/workflows/release.yml",
+      "target": "file:templates/homebrew/pixiv-cli.rb.tmpl",
+      "type": "depends_on",
+      "direction": "forward",
+      "weight": 0.6,
+      "description": "stable channel formula 模板"
+    },
+    {
+      "source": "file:scripts/releaseworkflow/main_test.go",
+      "target": "function:scripts/releaseworkflow/main_test.go:TestCheckWorkflowRequiresTapQualifiedStagingFormulaInstall",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:scripts/releaseworkflow/main_test.go",
+      "target": "function:scripts/releaseworkflow/main_test.go:TestCheckWorkflowRequiresTapQualifiedStagingFormulaInstall",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:scripts/releaseworkflow/main_test.go",
+      "target": "function:scripts/releaseworkflow/main_test.go:TestCheckWorkflowRequiresStagingTapTrust",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:scripts/releaseworkflow/main_test.go",
+      "target": "function:scripts/releaseworkflow/main_test.go:TestCheckWorkflowRequiresStagingTapTrust",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:scripts/releaseworkflow/main_test.go:TestCheckWorkflowRequiresTapQualifiedStagingFormulaInstall",
+      "target": "function:scripts/releaseworkflow/main.go:checkWorkflow",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:scripts/releaseworkflow/main_test.go:TestCheckWorkflowRequiresStagingTapTrust",
+      "target": "function:scripts/releaseworkflow/main.go:checkWorkflow",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "document:CONTEXT.md",
+      "target": "pipeline:.github/workflows/release.yml",
+      "type": "documents",
+      "direction": "forward",
+      "weight": 0.5
     }
   ],
   "layers": [
@@ -35711,7 +37632,7 @@
     {
       "id": "layer:release-tooling",
       "name": "发布资产与原生证据工具",
-      "description": "离线 staticlib、许可证、archive、签名元数据、Homebrew formula 与 native evidence 的本地可审计工具。",
+      "description": "离线 staticlib、许可证、archive、签名元数据、Homebrew formula/staging-tap policy、pinned SSH host key 与 native evidence 的本地可审计工具。",
       "nodeIds": [
         "document:templates/homebrew/TAP_DEPLOYMENT.md",
         "file:scripts/build-staticlibs.sh",
@@ -35732,13 +37653,14 @@
         "file:scripts/test-release-workflow.sh",
         "file:scripts/test-rust-vendor.sh",
         "file:templates/homebrew/pixiv-cli-beta.rb.tmpl",
-        "file:templates/homebrew/pixiv-cli.rb.tmpl"
+        "file:templates/homebrew/pixiv-cli.rb.tmpl",
+        "config:templates/homebrew/github.com-known-hosts"
       ]
     },
     {
       "id": "layer:ci-cd",
       "name": "CI/CD 发布门禁",
-      "description": "受 SHA 绑定的 Release 与非发布 native-evidence workflow，前者负责签名发布，后者只收集六目标证据。",
+      "description": "受 full-SHA Actions 与结构化 policy 约束的 Release/native-evidence workflow；Release 串联签名资产、同源 formula、Homebrew 6 隔离 tap 信任、四架构安装与最终受保护 tap 写入。",
       "nodeIds": [
         "pipeline:.github/workflows/native-evidence.yml",
         "pipeline:.github/workflows/release.yml"
@@ -35841,11 +37763,12 @@
     },
     {
       "order": 7,
-      "title": "本地发布审计工具",
-      "description": "发布相关的本地工具将 workflow 规则和原生证据变成 fail-closed 的可审计检查：前者约束触发条件、动作 SHA、质量门禁与签名 secret 边界，后者绑定六目标 staticlib、二进制与 archive。它们先于任何远端副作用运行，使缺少目标或元数据不一致能阻断后续发布。",
+      "title": "本地发布与 Homebrew 6 policy",
+      "description": "发布 policy 锁定同源 checksum、stable/beta formula，以及四 runner 的隔离 tap-new、精确 brew trust --tap 与 tap-qualified install；mutation tests 拒绝本地路径直装、信任重定向、secret 越界或 predecessor bypass。",
       "nodeIds": [
         "file:scripts/releaseworkflow/main.go",
-        "file:scripts/nativeevidence/main.go"
+        "file:scripts/homebrewformula/main.go",
+        "config:templates/homebrew/github.com-known-hosts"
       ]
     },
     {
@@ -35860,11 +37783,12 @@
     },
     {
       "order": 9,
-      "title": "Release 流程与未部署边界",
-      "description": "最后查看 tag 驱动的 Release workflow 与项目领域说明：前者只在语义化版本 tag 且提交属于默认分支时构建、签名并发布六平台资产。production trust root、protected secrets、公开 source/tap、workflow policy、六目标 native evidence 与 staticlib manifest 已齐；正式 tag、已签名 Release、tap formula 与安装验收仍未完成。",
+      "title": "Release、隔离 staging tap 与公开 tap 边界",
+      "description": "Release 公开已核验资产后，同一 checksums.txt 生成唯一 channel formula；四个 runner 各自创建不接触公开 tap 的 local staging tap，仅信任该 namespace 并以 tap-qualified name 安装。全部成功后 protected final job 才能用 strict SSH 更新 public tap；正式 tag 的外部安装证据仍待实际 Actions run。",
       "nodeIds": [
         "pipeline:.github/workflows/release.yml",
-        "document:CONTEXT.md"
+        "document:CONTEXT.md",
+        "document:templates/homebrew/TAP_DEPLOYMENT.md"
       ],
       "languageLesson": "CI/CD 的安全性不仅取决于脚本内容，还取决于触发来源、最小权限、受保护环境和可追溯产物之间的共同约束。"
     }

@@ -1,7 +1,7 @@
 {
   "version": "1.0.0",
-  "gitCommitHash": "e5bc6a9b4ddc9818b6ae24c84de44c0ba3859c66",
-  "generatedAt": "2026-07-12T13:34:08.408Z",
+  "gitCommitHash": "7c1633380759177baf52ca0337b8eac5edfc1ab0",
+  "generatedAt": "2026-07-12T16:20:25.754Z",
   "files": {
     ".agents/skills/pixiv-commit-msg/SKILL.md": {
       "filePath": ".agents/skills/pixiv-commit-msg/SKILL.md",
@@ -65,12 +65,12 @@
     },
     ".github/workflows/release.yml": {
       "filePath": ".github/workflows/release.yml",
-      "contentHash": "92332731a314a38cbfb7a0945c6f71531b01346f61619885e92a690713352731",
+      "contentHash": "9f289ee3b93fd90c6591db0fdbd690e433a66d342d9d3b31beff258ede346dbe",
       "functions": [],
       "classes": [],
       "imports": [],
       "exports": [],
-      "totalLines": 247,
+      "totalLines": 404,
       "hasStructuralAnalysis": true
     },
     ".pre-commit-config.yaml": {
@@ -95,12 +95,12 @@
     },
     "CHANGELOG.md": {
       "filePath": "CHANGELOG.md",
-      "contentHash": "af235f723ff15c491df298da316adf2c8497fb3975697b43fa53126fbf55e8a1",
+      "contentHash": "9cc3bfb9f3b7eff251c12371c85559032b45b890bae4f259a92a4e207343f6db",
       "functions": [],
       "classes": [],
       "imports": [],
       "exports": [],
-      "totalLines": 97,
+      "totalLines": 102,
       "hasStructuralAnalysis": true
     },
     "CLAUDE.md": {
@@ -157,7 +157,7 @@
     },
     "CONTEXT.md": {
       "filePath": "CONTEXT.md",
-      "contentHash": "3a18fd6a9e1337f5f32cbfab27cb34941511a85baaafb252899c1dc447270fc0",
+      "contentHash": "d1de9f0e3c7bbf9cd8ee7f3d77a4f8ea39c1ba923bf686bc74f429bb6355062a",
       "functions": [],
       "classes": [],
       "imports": [],
@@ -267,22 +267,22 @@
     },
     "docs/architecture.md": {
       "filePath": "docs/architecture.md",
-      "contentHash": "1f4ca6e56b88247ec8c4428f744b570b660850d52f8586b999f882a3cfb030f7",
+      "contentHash": "33abde0cb8c05ca306cdb3e10b75949087d95183ba6502e58349ae3f7ad61fc1",
       "functions": [],
       "classes": [],
       "imports": [],
       "exports": [],
-      "totalLines": 247,
+      "totalLines": 254,
       "hasStructuralAnalysis": true
     },
     "docs/development.md": {
       "filePath": "docs/development.md",
-      "contentHash": "fb611ed4ecb6cdc0bfb8e03800417a2af9fb7043a3d0ddf77dd2e4512c70e388",
+      "contentHash": "091670d5a038fa3af4251a542f2b07a905fe7c9d3f421d7df1eb3d1598bd77b4",
       "functions": [],
       "classes": [],
       "imports": [],
       "exports": [],
-      "totalLines": 364,
+      "totalLines": 381,
       "hasStructuralAnalysis": true
     },
     "docs/index.md": {
@@ -19187,7 +19187,7 @@
     },
     "scripts/releaseworkflow/main_test.go": {
       "filePath": "scripts/releaseworkflow/main_test.go",
-      "contentHash": "dd7d8083c5efdb6ec10805e762e5e466e1b1abdf551464748d61882212863d5a",
+      "contentHash": "454801840f2d71c349264c49a8d221150912d420a78ddd7f5494dde03161212c",
       "functions": [
         {
           "name": "TestCheckWorkflowRequiresRustFormatGate",
@@ -19204,6 +19204,54 @@
           ],
           "exported": true,
           "lineCount": 12
+        },
+        {
+          "name": "TestCheckWorkflowRequiresHomebrewReleaseGate",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 13
+        },
+        {
+          "name": "TestCheckWorkflowRequiresTapQualifiedStagingFormulaInstall",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 11
+        },
+        {
+          "name": "TestCheckWorkflowRequiresStagingTapTrust",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 11
+        },
+        {
+          "name": "TestCheckPinnedGitHubKnownHosts",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 19
+        },
+        {
+          "name": "TestCheckWorkflowRejectsHomebrewReleaseGateMutations",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 235
+        },
+        {
+          "name": "TestCheckWorkflowRequiresHomebrewTapPublicationGate",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 10
         },
         {
           "name": "TestCheckWorkflowRejectsSecurityAndQualityPolicyMutations",
@@ -19333,6 +19381,16 @@
           "returnType": "*yaml.Node",
           "exported": false,
           "lineCount": 15
+        },
+        {
+          "name": "mustMarshalYAML",
+          "params": [
+            "t",
+            "node"
+          ],
+          "returnType": "[]byte",
+          "exported": false,
+          "lineCount": 8
         },
         {
           "name": "jobNode",
@@ -19567,6 +19625,12 @@
       "exports": [
         "TestCheckWorkflowRequiresRustFormatGate",
         "TestCheckWorkflowAcceptsIndependentReleaseSourceVerification",
+        "TestCheckWorkflowRequiresHomebrewReleaseGate",
+        "TestCheckWorkflowRequiresTapQualifiedStagingFormulaInstall",
+        "TestCheckWorkflowRequiresStagingTapTrust",
+        "TestCheckPinnedGitHubKnownHosts",
+        "TestCheckWorkflowRejectsHomebrewReleaseGateMutations",
+        "TestCheckWorkflowRequiresHomebrewTapPublicationGate",
         "TestCheckWorkflowRejectsSecurityAndQualityPolicyMutations",
         "TestCheckWorkflowRejectsSoftFailedOrSkippedQualityGate",
         "TestCheckWorkflowRejectsAmbiguousYAMLMutations",
@@ -19583,12 +19647,12 @@
         "TestCheckWorkflowRejectsBareAndFunctionSecretContextsOutsideExpectedSigningEnvironment",
         "TestCheckWorkflowAcceptsCanonicalBracketSigningExpressions"
       ],
-      "totalLines": 1333,
+      "totalLines": 1653,
       "hasStructuralAnalysis": true
     },
     "scripts/releaseworkflow/main.go": {
       "filePath": "scripts/releaseworkflow/main.go",
-      "contentHash": "1b6d65f67409c3a7b9e2cd11cce543a2a8007b6729b7851bfaa03ae705cf5173",
+      "contentHash": "ba0c15a6ab023f06eebdf01c0cf8309a3009e33225caaed8b4bacaf924420cca",
       "functions": [
         {
           "name": "main",
@@ -19603,7 +19667,16 @@
           ],
           "returnType": "error",
           "exported": false,
-          "lineCount": 10
+          "lineCount": 18
+        },
+        {
+          "name": "checkPinnedGitHubKnownHosts",
+          "params": [
+            "body"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 6
         },
         {
           "name": "checkWorkflow",
@@ -19612,7 +19685,7 @@
           ],
           "returnType": "error",
           "exported": false,
-          "lineCount": 74
+          "lineCount": 98
         },
         {
           "name": "checkTagTrigger",
@@ -19753,7 +19826,86 @@
           ],
           "returnType": "(int, []*yaml.Node, error)",
           "exported": false,
-          "lineCount": 57
+          "lineCount": 78
+        },
+        {
+          "name": "requireCanonicalReleasePublicationSuffix",
+          "params": [
+            "step"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 34
+        },
+        {
+          "name": "requireExactActionStep",
+          "params": [
+            "step",
+            "context",
+            "action",
+            "withValues"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 18
+        },
+        {
+          "name": "requireCanonicalRunStep",
+          "params": [
+            "step",
+            "context",
+            "canonical"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 12
+        },
+        {
+          "name": "checkRenderHomebrewJob",
+          "params": [
+            "job"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 71
+        },
+        {
+          "name": "checkVerifyHomebrewJob",
+          "params": [
+            "job"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 58
+        },
+        {
+          "name": "checkHomebrewMatrix",
+          "params": [
+            "matrix"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 32
+        },
+        {
+          "name": "checkDeployHomebrewJob",
+          "params": [
+            "job"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 72
+        },
+        {
+          "name": "requireCanonicalRunStepWithEnvironment",
+          "params": [
+            "step",
+            "context",
+            "canonical"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 12
         },
         {
           "name": "requireUnconditionalAncestryGate",
@@ -19796,6 +19948,17 @@
           "returnType": "error",
           "exported": false,
           "lineCount": 24
+        },
+        {
+          "name": "checkHomebrewSecretReachability",
+          "params": [
+            "render",
+            "verify",
+            "deploy"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 34
         },
         {
           "name": "checkSigningStep",
@@ -20065,6 +20228,12 @@
           ]
         },
         {
+          "source": "path/filepath",
+          "specifiers": [
+            "filepath"
+          ]
+        },
+        {
           "source": "regexp",
           "specifiers": [
             "regexp"
@@ -20084,7 +20253,7 @@
         }
       ],
       "exports": [],
-      "totalLines": 1023,
+      "totalLines": 1452,
       "hasStructuralAnalysis": true
     },
     "scripts/test-build-staticlibs.sh": {
@@ -20180,12 +20349,12 @@
     },
     "templates/homebrew/TAP_DEPLOYMENT.md": {
       "filePath": "templates/homebrew/TAP_DEPLOYMENT.md",
-      "contentHash": "841d193a0d990e2db919a2899ea03471bb3dd4f25c068b76ee55e778e7f79c78",
+      "contentHash": "25ac9d0a25362000b5ac327c9801ea6cb1bdfd4265b567a8ac2883c1903b1028",
       "functions": [],
       "classes": [],
       "imports": [],
       "exports": [],
-      "totalLines": 23,
+      "totalLines": 34,
       "hasStructuralAnalysis": true
     },
     "test/e2e/pixiv_binary_test.go": {
@@ -20751,6 +20920,16 @@
       ],
       "totalLines": 34,
       "hasStructuralAnalysis": true
+    },
+    "templates/homebrew/github.com-known-hosts": {
+      "filePath": "templates/homebrew/github.com-known-hosts",
+      "contentHash": "6233fddbb0a29afc8c4e8c699733c1a188c3a41f2fb63a2640653dc4aea624ce",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 2,
+      "hasStructuralAnalysis": false
     }
   }
 }
