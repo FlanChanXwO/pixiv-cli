@@ -20,8 +20,8 @@
       "GitHub Actions"
     ],
     "description": "这是一个 Go 版 Pixiv CLI 与 MCP stdio server，内置 Rust ugoira encoder，并包含 release/update workflow。",
-    "analyzedAt": "2026-07-12T07:56:48.666Z",
-    "gitCommitHash": "4a315a07271d1fc58d8c0d1d95f95af4b8ea4693"
+    "analyzedAt": "2026-07-12T08:15:14.524Z",
+    "gitCommitHash": "baf0f95e15d0cfefae746b99b835f8a02209ee90"
   },
   "nodes": [
     {
@@ -3830,7 +3830,7 @@
       "type": "file",
       "name": "ugoira_rust_link_windows_arm64.go",
       "filePath": "internal/download/ugoira_rust_link_windows_arm64.go",
-      "summary": "为 Windows/arm64 Rust staticlib selector 以 -L/-lugoira_rs 加入目标库，并显式传递 Rust std 所需的 advapi32、ntdll、userenv、ws2_32、dbghelp import libraries。",
+      "summary": "为 Windows/arm64 Rust staticlib selector 以 -L/-lugoira_rs 加入目标库，并在 import \"C\" 后的 Go 注释中说明 advapi32、ntdll、userenv、ws2_32、dbghelp import libraries，避免说明文字进入 cgo C preamble。",
       "tags": [
         "ugoira动图",
         "Rust语言",
@@ -3843,7 +3843,7 @@
       "type": "file",
       "name": "ugoira_rust_link_windows_amd64.go",
       "filePath": "internal/download/ugoira_rust_link_windows_amd64.go",
-      "summary": "为 Windows/amd64 Rust staticlib selector 以 -L/-lugoira_rs 加入目标库，并显式传递 Rust std 所需的 advapi32、ntdll、userenv、ws2_32、dbghelp import libraries。",
+      "summary": "为 Windows/amd64 Rust staticlib selector 以 -L/-lugoira_rs 加入目标库，并在 import \"C\" 后的 Go 注释中说明 advapi32、ntdll、userenv、ws2_32、dbghelp import libraries，避免说明文字进入 cgo C preamble。",
       "tags": [
         "ugoira动图",
         "Rust语言",
@@ -5631,7 +5631,7 @@
       "type": "file",
       "name": "ugoira_rust_test.go",
       "filePath": "internal/download/ugoira_rust_test.go",
-      "summary": "覆盖 Rust ugoira encoder、Linux libm、Windows cgo selector 的 Rust native import libraries 与 LLD-backed Clang workflow gate，以及源字节/LF checkout 回归。",
+      "summary": "覆盖 Rust ugoira encoder、Linux libm、Windows cgo selector 的 Rust native import libraries、LLD-backed Clang workflow gate，以及中文解释必须位于 import \"C\" 后的 C preamble 回归。",
       "tags": [
         "测试",
         "ugoira动图",
@@ -20563,7 +20563,7 @@
       "type": "function",
       "name": "TestWindowsRustStaticlibSelectorsUseCgoLibrarySearchFlags",
       "filePath": "internal/download/ugoira_rust_test.go",
-      "summary": "锁定 Windows 两个 cgo selector 使用 -L/-lugoira_rs，并显式传递 Rust std 的五个 native import libraries，拒绝直接绝对 .lib 输入。",
+      "summary": "锁定 Windows 两个 cgo selector 使用 -L/-lugoira_rs 与 Rust std native import libraries，且中文解释必须在 import \"C\" 后，不能进入 cgo C preamble。",
       "tags": [
         "测试",
         "windows",

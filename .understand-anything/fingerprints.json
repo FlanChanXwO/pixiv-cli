@@ -1,7 +1,7 @@
 {
   "version": "1.0.0",
-  "gitCommitHash": "4a315a07271d1fc58d8c0d1d95f95af4b8ea4693",
-  "generatedAt": "2026-07-12T07:56:49.019Z",
+  "gitCommitHash": "baf0f95e15d0cfefae746b99b835f8a02209ee90",
+  "generatedAt": "2026-07-12T08:15:15.049Z",
   "files": {
     ".agents/skills/pixiv-commit-msg/SKILL.md": {
       "filePath": ".agents/skills/pixiv-commit-msg/SKILL.md",
@@ -8186,7 +8186,7 @@
     },
     "internal/download/ugoira_rust_link_windows_amd64.go": {
       "filePath": "internal/download/ugoira_rust_link_windows_amd64.go",
-      "contentHash": "5a13262dd67f2d70057b0de04af924de4b9948b50ec473d986f63c10c34cfa36",
+      "contentHash": "b2b30b1442dfad97b840aefc530c9b522ccb8c2d373340fda9d9c3f1305e3523",
       "functions": [],
       "classes": [],
       "imports": [
@@ -8198,12 +8198,12 @@
         }
       ],
       "exports": [],
-      "totalLines": 11,
+      "totalLines": 12,
       "hasStructuralAnalysis": true
     },
     "internal/download/ugoira_rust_link_windows_arm64.go": {
       "filePath": "internal/download/ugoira_rust_link_windows_arm64.go",
-      "contentHash": "1450de6604511728eea697434f3722442239a1e2d4da1f8972e09ed7562b7bfd",
+      "contentHash": "62abf9adfb449b7cb3fe4c798d792bf3126c315dbfcd5d7ffc54e2bc740d6d39",
       "functions": [],
       "classes": [],
       "imports": [
@@ -8215,7 +8215,7 @@
         }
       ],
       "exports": [],
-      "totalLines": 11,
+      "totalLines": 12,
       "hasStructuralAnalysis": true
     },
     "internal/download/ugoira_rust_stub.go": {
@@ -8281,7 +8281,7 @@
     },
     "internal/download/ugoira_rust_test.go": {
       "filePath": "internal/download/ugoira_rust_test.go",
-      "contentHash": "160fdae50f2f26113de8f3d981b10255efddbb24565e442c0b97461c30d0b373",
+      "contentHash": "1f63862b982b0cce3e69893c9a7d8fd378307c38c1f3568e5e6ba119b8e5756a",
       "functions": [
         {
           "name": "TestRustUgoiraEncoderNativeGIFAndAPNG",
@@ -8313,7 +8313,7 @@
             "t"
           ],
           "exported": true,
-          "lineCount": 29
+          "lineCount": 32
         },
         {
           "name": "TestWindowsNativeEvidenceUsesLLDBackedClang",
@@ -8439,7 +8439,7 @@
         "TestPinnedRustSourcesDisableGitTextConversion",
         "TestGeneratedRustLicenseOutputsUseLFCheckout"
       ],
-      "totalLines": 201,
+      "totalLines": 204,
       "hasStructuralAnalysis": true
     },
     "internal/download/ugoira_rust.go": {

@@ -460,13 +460,13 @@
     {
       "path": "internal/download/ugoira_rust_link_windows_amd64.go",
       "language": "go",
-      "sizeLines": 10,
+      "sizeLines": 11,
       "fileCategory": "code"
     },
     {
       "path": "internal/download/ugoira_rust_link_windows_arm64.go",
       "language": "go",
-      "sizeLines": 10,
+      "sizeLines": 11,
       "fileCategory": "code"
     },
     {
@@ -478,7 +478,7 @@
     {
       "path": "internal/download/ugoira_rust_test.go",
       "language": "go",
-      "sizeLines": 200,
+      "sizeLines": 203,
       "fileCategory": "code"
     },
     {
