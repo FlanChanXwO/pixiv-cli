@@ -40,7 +40,7 @@
     {
       "path": ".gitattributes",
       "language": "unknown",
-      "sizeLines": 110,
+      "sizeLines": 117,
       "fileCategory": "code"
     },
     {
@@ -160,13 +160,13 @@
     {
       "path": "docs/architecture.md",
       "language": "markdown",
-      "sizeLines": 227,
+      "sizeLines": 228,
       "fileCategory": "docs"
     },
     {
       "path": "docs/development.md",
       "language": "markdown",
-      "sizeLines": 334,
+      "sizeLines": 337,
       "fileCategory": "docs"
     },
     {
@@ -478,7 +478,7 @@
     {
       "path": "internal/download/ugoira_rust_test.go",
       "language": "go",
-      "sizeLines": 133,
+      "sizeLines": 154,
       "fileCategory": "code"
     },
     {

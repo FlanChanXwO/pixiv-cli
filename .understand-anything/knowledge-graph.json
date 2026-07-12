@@ -20,8 +20,8 @@
       "GitHub Actions"
     ],
     "description": "这是一个 Go 版 Pixiv CLI 与 MCP stdio server，内置 Rust ugoira encoder，并包含 release/update workflow。",
-    "analyzedAt": "2026-07-12T06:35:40.212Z",
-    "gitCommitHash": "c5eef2cd8060ca6cf893d3e36db136011cee083a"
+    "analyzedAt": "2026-07-12T07:01:58.336Z",
+    "gitCommitHash": "2706c1533966318535eece730ee17d4107d96a15"
   },
   "nodes": [
     {
@@ -5631,7 +5631,7 @@
       "type": "file",
       "name": "ugoira_rust_test.go",
       "filePath": "internal/download/ugoira_rust_test.go",
-      "summary": "覆盖 Rust ugoira encoder、Linux libm cgo 链接与 Cargo vendor 字节稳定性的聚焦回归测试。",
+      "summary": "覆盖 Rust ugoira encoder、Linux libm 链接、pinned Rust source 字节稳定性与生成 license LF checkout 的跨平台回归测试。",
       "tags": [
         "测试",
         "ugoira动图",
@@ -12597,7 +12597,7 @@
       "type": "document",
       "name": "CHANGELOG.md",
       "filePath": "CHANGELOG.md",
-      "summary": "记录未发布的用户可见变更与 v0.1.0 发布候选说明；包括跨平台 native staticlib 的 libm 链接和 Cargo vendor 字节稳定性修复。",
+      "summary": "记录未发布的用户可见变更与 v0.1.0 发布候选说明；包括跨平台 staticlib 和 Windows pinned source/license bundle 字节稳定性修复。",
       "tags": [
         "文档",
         "变更记录",
@@ -16496,7 +16496,7 @@
       "type": "document",
       "name": "architecture.md",
       "filePath": "docs/architecture.md",
-      "summary": "说明 CLI、application、bootstrap、Pixiv、下载和更新职责；明确 Rust staticlib 的 Linux libm 链接、无 cgo evidence 契约与 production trust root。",
+      "summary": "说明 CLI、application、bootstrap、Pixiv、下载和更新职责；明确 Rust staticlib 的 Linux libm 链接与 release license output 的 LF 边界。",
       "complexity": "moderate",
       "tags": [
         "documentation",
@@ -16510,7 +16510,7 @@
       "type": "document",
       "name": "development.md",
       "filePath": "docs/development.md",
-      "summary": "说明环境、Rust staticlib、native evidence、无 cgo policy gate、Cargo vendor 的 -text 字节约束与发布前置条件。",
+      "summary": "说明环境、Rust staticlib、native evidence、Cargo vendor/quantette 的 -text 与 licensebundle output 的 LF checkout 约束。",
       "complexity": "complex",
       "tags": [
         "documentation",
@@ -20508,11 +20508,11 @@
       ]
     },
     {
-      "id": "function:internal/download/ugoira_rust_test.go:TestVendoredRustSourcesDisableGitTextConversion",
+      "id": "function:internal/download/ugoira_rust_test.go:TestPinnedRustSourcesDisableGitTextConversion",
       "type": "function",
-      "name": "TestVendoredRustSourcesDisableGitTextConversion",
+      "name": "TestPinnedRustSourcesDisableGitTextConversion",
       "filePath": "internal/download/ugoira_rust_test.go",
-      "summary": "锁定 Cargo vendor 文件禁用 Git 文本转换，避免 Windows CRLF 破坏上游 checksum。",
+      "summary": "锁定 Cargo vendor 与 pinned quantette source 禁用 Git 文本转换，保持 checksum、source digest 与 license 输入稳定。",
       "tags": [
         "函数",
         "Go语言",
@@ -20521,7 +20521,24 @@
       "complexity": "simple",
       "lineRange": [
         102,
-        118
+        121
+      ]
+    },
+    {
+      "id": "function:internal/download/ugoira_rust_test.go:TestGeneratedRustLicenseOutputsUseLFCheckout",
+      "type": "function",
+      "name": "TestGeneratedRustLicenseOutputsUseLFCheckout",
+      "filePath": "internal/download/ugoira_rust_test.go",
+      "summary": "锁定 licensebundle 的 index 与 license tree 在 Windows checkout 保持 LF，避免 stale 误报。",
+      "tags": [
+        "函数",
+        "Go语言",
+        "测试"
+      ],
+      "complexity": "simple",
+      "lineRange": [
+        122,
+        139
       ]
     },
     {
@@ -20537,8 +20554,8 @@
       ],
       "complexity": "simple",
       "lineRange": [
-        119,
-        134
+        140,
+        155
       ]
     }
   ],
@@ -35384,14 +35401,28 @@
     },
     {
       "source": "file:internal/download/ugoira_rust_test.go",
-      "target": "function:internal/download/ugoira_rust_test.go:TestVendoredRustSourcesDisableGitTextConversion",
+      "target": "function:internal/download/ugoira_rust_test.go:TestPinnedRustSourcesDisableGitTextConversion",
       "type": "contains",
       "direction": "forward",
       "weight": 1
     },
     {
       "source": "file:internal/download/ugoira_rust_test.go",
-      "target": "function:internal/download/ugoira_rust_test.go:TestVendoredRustSourcesDisableGitTextConversion",
+      "target": "function:internal/download/ugoira_rust_test.go:TestPinnedRustSourcesDisableGitTextConversion",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:internal/download/ugoira_rust_test.go",
+      "target": "function:internal/download/ugoira_rust_test.go:TestGeneratedRustLicenseOutputsUseLFCheckout",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:internal/download/ugoira_rust_test.go",
+      "target": "function:internal/download/ugoira_rust_test.go:TestGeneratedRustLicenseOutputsUseLFCheckout",
       "type": "exports",
       "direction": "forward",
       "weight": 0.8
