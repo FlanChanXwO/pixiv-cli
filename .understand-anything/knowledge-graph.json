@@ -20,8 +20,8 @@
       "GitHub Actions"
     ],
     "description": "这是一个 Go 版 Pixiv CLI 与 MCP stdio server，内置 Rust ugoira encoder，并包含 release/update workflow。",
-    "analyzedAt": "2026-07-12T11:23:03.143Z",
-    "gitCommitHash": "42a5515e1ae97db9fb4be62407ba9a291f33288f"
+    "analyzedAt": "2026-07-12T12:11:45.622Z",
+    "gitCommitHash": "c295394e844770c38dd2eaa65551471c1db6ef06"
   },
   "nodes": [
     {
@@ -5631,7 +5631,7 @@
       "type": "file",
       "name": "ugoira_rust_test.go",
       "filePath": "internal/download/ugoira_rust_test.go",
-      "summary": "覆盖 Rust ugoira encoder、Linux libm、Windows cgo/LLD 链接，并以 git check-attr 正反例锁定 first-party digest 输入禁用文本转换、非摘要 Markdown 保持默认行为。",
+      "summary": "覆盖 Rust ugoira encoder、Linux libm、Windows cgo/LLD 链接、first-party digest 输入禁用文本转换，并锁定 release archive LICENSE 与生成许可证 bundle 在 Windows checkout 保持 LF。",
       "tags": [
         "测试",
         "ugoira动图",
@@ -12597,7 +12597,7 @@
       "type": "document",
       "name": "CHANGELOG.md",
       "filePath": "CHANGELOG.md",
-      "summary": "记录未发布的用户可见变更与 v0.1.0 发布候选说明；包括 Windows cgo/LLD、7-Zip 打包及 Windows/Unix Rust source identity bytes 一致性修复。",
+      "summary": "记录未发布的用户可见变更与 v0.1.0 发布候选说明；包括 Windows cgo/LLD、7-Zip 打包、Rust source identity 与 release archive LICENSE 的跨平台 LF 修复。",
       "tags": [
         "文档",
         "变更记录",
@@ -16457,7 +16457,7 @@
       "type": "file",
       "name": ".gitattributes",
       "filePath": ".gitattributes",
-      "summary": "对 first-party Rust Cargo/build/source、vendor 与本地依赖禁用 Git 文本转换，并固定生成许可证 LF，确保 Windows/Unix checkout 保持同一 source identity bytes。",
+      "summary": "对 first-party Rust Cargo/build/source、vendor 与本地依赖禁用 Git 文本转换，并固定 release archive 的 LICENSE 与生成许可证 bundle 为 LF，确保 Windows/Unix checkout 和 archive member bytes 一致。",
       "tags": [
         "configuration",
         "git",
@@ -16497,7 +16497,7 @@
       "type": "document",
       "name": "architecture.md",
       "filePath": "docs/architecture.md",
-      "summary": "说明 CLI、application、bootstrap、Pixiv、下载和更新职责；明确 Windows cgo/LLD、跨平台 Rust source identity bytes 与 fail-closed release packaging 边界。",
+      "summary": "说明 CLI、application、bootstrap、Pixiv、下载和更新职责；记录 run 29191200569 六 job success、六 source digest 一致但 Windows LICENSE member bytes 分裂，consolidation fail-closed 且无输出，不可回填、跨 run 拼接。",
       "complexity": "moderate",
       "tags": [
         "documentation",
@@ -16511,7 +16511,7 @@
       "type": "document",
       "name": "development.md",
       "filePath": "docs/development.md",
-      "summary": "说明 Rust staticlib、native evidence 与发布测试；first-party digest 输入保持 Git blob bytes，source digest 分裂的旧 run 不可回填或跨 run 拼接。",
+      "summary": "说明 Rust staticlib、native evidence 与发布测试；记录 run 29191200569 因 Windows LICENSE member bytes 分裂而无输出，必须固定 LF 后从新 SHA 完整重跑。",
       "complexity": "complex",
       "tags": [
         "documentation",
@@ -20563,11 +20563,11 @@
       ]
     },
     {
-      "id": "function:internal/download/ugoira_rust_test.go:TestGeneratedRustLicenseOutputsUseLFCheckout",
+      "id": "function:internal/download/ugoira_rust_test.go:TestReleaseLicenseOutputsUseLFCheckout",
       "type": "function",
-      "name": "TestGeneratedRustLicenseOutputsUseLFCheckout",
+      "name": "TestReleaseLicenseOutputsUseLFCheckout",
       "filePath": "internal/download/ugoira_rust_test.go",
-      "summary": "锁定 licensebundle 的 index 与 license tree 在 Windows checkout 保持 LF，避免 stale 误报。",
+      "summary": "锁定 release archive 的 LICENSE、licensebundle index 与 license tree 在 Windows checkout 保持 LF，避免跨平台 archive member bytes 分裂。",
       "tags": [
         "函数",
         "Go语言",
@@ -20575,8 +20575,8 @@
       ],
       "complexity": "simple",
       "lineRange": [
-        122,
-        139
+        188,
+        204
       ]
     },
     {
@@ -20592,8 +20592,8 @@
       ],
       "complexity": "simple",
       "lineRange": [
-        140,
-        155
+        207,
+        221
       ]
     },
     {
@@ -20608,7 +20608,11 @@
         "cgo",
         "staticlib"
       ],
-      "complexity": "simple"
+      "complexity": "simple",
+      "lineRange": [
+        103,
+        136
+      ]
     },
     {
       "id": "function:internal/download/ugoira_rust_test.go:TestWindowsNativeEvidenceUsesLLDBackedClang",
@@ -20623,7 +20627,11 @@
         "cgo",
         "native-evidence"
       ],
-      "complexity": "simple"
+      "complexity": "simple",
+      "lineRange": [
+        138,
+        149
+      ]
     }
   ],
   "edges": [
@@ -35512,14 +35520,14 @@
     },
     {
       "source": "file:internal/download/ugoira_rust_test.go",
-      "target": "function:internal/download/ugoira_rust_test.go:TestGeneratedRustLicenseOutputsUseLFCheckout",
+      "target": "function:internal/download/ugoira_rust_test.go:TestReleaseLicenseOutputsUseLFCheckout",
       "type": "contains",
       "direction": "forward",
       "weight": 1
     },
     {
       "source": "file:internal/download/ugoira_rust_test.go",
-      "target": "function:internal/download/ugoira_rust_test.go:TestGeneratedRustLicenseOutputsUseLFCheckout",
+      "target": "function:internal/download/ugoira_rust_test.go:TestReleaseLicenseOutputsUseLFCheckout",
       "type": "exports",
       "direction": "forward",
       "weight": 0.8
