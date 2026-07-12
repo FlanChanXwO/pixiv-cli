@@ -20,8 +20,8 @@
       "GitHub Actions"
     ],
     "description": "这是一个 Go 版 Pixiv CLI 与 MCP stdio server，内置 Rust ugoira encoder，并包含 release/update workflow。",
-    "analyzedAt": "2026-07-12T22:04:10.416Z",
-    "gitCommitHash": "1507054cde2fe8291a0d7e2f3ca8973d2f3aad64"
+    "analyzedAt": "2026-07-12T22:56:13.187Z",
+    "gitCommitHash": "fde8766fededd9f2bcee4e9962c9f3bbfb9f3d0e"
   },
   "nodes": [
     {
@@ -1448,7 +1448,7 @@
         756,
         832
       ],
-      "summary": "验证 releases_test.go 中 TestGitHubReleaseClientAtomicallyReplacesCacheForConcurrentReaders 覆盖的行为、边界或回归场景。",
+      "summary": "验证 Release 缓存替换期间的并发读者；按平台选择允许删除共享的 reader，避免 Windows ReplaceFileW 被测试读句柄阻塞。",
       "tags": [
         "test",
         "test",
@@ -12558,7 +12558,7 @@
       "type": "pipeline",
       "name": "release.yml",
       "filePath": ".github/workflows/release.yml",
-      "summary": "由 tag push 或默认分支 recovery 绑定 immutable RELEASE_TAG：六目标 build 仅执行 15-step test-only gates，不构建或上传 release artifact；独立 9-step build_production 在新 runner 关闭 Go cache、重建 tag staticlib 并生成唯一 verified-release-*，之后才可签名 Release、验证 Homebrew 与更新 tap。",
+      "summary": "由 tag push 或默认分支 recovery 绑定 immutable RELEASE_TAG：六目标 build 仅执行 15-step test-only gates，并以 git archive 覆盖经验证的 Windows-safe 测试与 policy；独立 9-step build_production 在新 runner 关闭 Go cache、重建 tag staticlib 并生成唯一 verified-release-*。",
       "tags": [
         "ci-cd",
         "release",
@@ -21023,7 +21023,7 @@
       "type": "function",
       "name": "checkPinnedGitHubKnownHosts",
       "filePath": "scripts/releaseworkflow/main.go",
-      "summary": "要求 known_hosts fixture 只含官方固定的 GitHub ED25519 host key。",
+      "summary": "要求 known_hosts fixture 仅含官方固定 GitHub ED25519 host key；允许 Git for Windows checkout 产生的 CRLF，但仍拒绝任何额外内容。",
       "tags": [
         "implementation",
         "release",
@@ -21032,7 +21032,7 @@
       "complexity": "simple",
       "lineRange": [
         77,
-        82
+        85
       ]
     },
     {
@@ -21515,10 +21515,10 @@
       "name": "requireRecoveryOverlayStep",
       "filePath": "scripts/releaseworkflow/main.go",
       "lineRange": [
-        395,
-        407
+        399,
+        435
       ],
-      "summary": "只允许 workflow_dispatch 将默认分支的 internal/cli/account_test.go 作为 test-only overlay，禁止改生产源码。",
+      "summary": "只允许 workflow_dispatch 通过 git archive 覆盖精确、经审计的 Windows-safe 测试和 release policy 文件；禁止改生产源码或索引。",
       "tags": [
         "implementation",
         "release",
@@ -21851,6 +21851,70 @@
         "security"
       ],
       "complexity": "complex"
+    },
+    {
+      "id": "file:internal/update/releases_reader_nonwindows_test.go",
+      "type": "file",
+      "name": "releases_reader_nonwindows_test.go",
+      "filePath": "internal/update/releases_reader_nonwindows_test.go",
+      "summary": "为 Release 缓存并发替换测试提供非 Windows 读取实现，使用普通 os.ReadFile 保持 Unix 语义。",
+      "tags": [
+        "test",
+        "update",
+        "platform",
+        "cache"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:internal/update/releases_reader_nonwindows_test.go:readCacheForConcurrentReader",
+      "type": "function",
+      "name": "readCacheForConcurrentReader",
+      "filePath": "internal/update/releases_reader_nonwindows_test.go",
+      "lineRange": [
+        8,
+        10
+      ],
+      "summary": "在非 Windows 平台以普通打开语义读取并发替换中的 Release 缓存。",
+      "tags": [
+        "test",
+        "update",
+        "platform",
+        "cache"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:internal/update/releases_reader_windows_test.go",
+      "type": "file",
+      "name": "releases_reader_windows_test.go",
+      "filePath": "internal/update/releases_reader_windows_test.go",
+      "summary": "为 Release 缓存并发替换测试提供 Windows 读取实现，显式共享删除权限以验证 ReplaceFileW 的原子替换路径。",
+      "tags": [
+        "test",
+        "update",
+        "windows",
+        "cache"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:internal/update/releases_reader_windows_test.go:readCacheForConcurrentReader",
+      "type": "function",
+      "name": "readCacheForConcurrentReader",
+      "filePath": "internal/update/releases_reader_windows_test.go",
+      "lineRange": [
+        15,
+        39
+      ],
+      "summary": "在 Windows 以 FILE_SHARE_DELETE 打开缓存，避免测试读句柄阻塞 ReplaceFileW。",
+      "tags": [
+        "test",
+        "update",
+        "windows",
+        "cache"
+      ],
+      "complexity": "simple"
     }
   ],
   "edges": [
@@ -38559,6 +38623,36 @@
       "type": "calls",
       "direction": "forward",
       "weight": 0.8
+    },
+    {
+      "source": "file:internal/update/releases_reader_nonwindows_test.go",
+      "target": "function:internal/update/releases_reader_nonwindows_test.go:readCacheForConcurrentReader",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:internal/update/releases_reader_nonwindows_test.go",
+      "target": "file:internal/update/releases_test.go",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5,
+      "description": "为并发缓存替换测试提供平台专用 reader helper"
+    },
+    {
+      "source": "file:internal/update/releases_reader_windows_test.go",
+      "target": "function:internal/update/releases_reader_windows_test.go:readCacheForConcurrentReader",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:internal/update/releases_reader_windows_test.go",
+      "target": "file:internal/update/releases_test.go",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5,
+      "description": "为并发缓存替换测试提供平台专用 reader helper"
     }
   ],
   "layers": [
@@ -38625,7 +38719,9 @@
         "file:internal/update/source.go",
         "file:internal/update/source_test.go",
         "file:internal/update/strategy.go",
-        "file:internal/update/strategy_test.go"
+        "file:internal/update/strategy_test.go",
+        "file:internal/update/releases_reader_nonwindows_test.go",
+        "file:internal/update/releases_reader_windows_test.go"
       ]
     },
     {

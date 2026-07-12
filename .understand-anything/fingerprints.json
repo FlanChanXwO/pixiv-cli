@@ -1,7 +1,7 @@
 {
   "version": "1.0.0",
-  "gitCommitHash": "1507054cde2fe8291a0d7e2f3ca8973d2f3aad64",
-  "generatedAt": "2026-07-12T22:03:15.280Z",
+  "gitCommitHash": "fde8766fededd9f2bcee4e9962c9f3bbfb9f3d0e",
+  "generatedAt": "2026-07-12T22:56:13.421Z",
   "files": {
     ".agents/skills/pixiv-commit-msg/SKILL.md": {
       "filePath": ".agents/skills/pixiv-commit-msg/SKILL.md",
@@ -65,12 +65,12 @@
     },
     ".github/workflows/release.yml": {
       "filePath": ".github/workflows/release.yml",
-      "contentHash": "8715daeb1a65f3567794d5260e67bbdb3de9bebff4b098e4a53cf16d2df819cc",
+      "contentHash": "cc493bc6cdd06e422052e63113a1a7e32996e034189d432a890cd6c91fc674ac",
       "functions": [],
       "classes": [],
       "imports": [],
       "exports": [],
-      "totalLines": 566,
+      "totalLines": 594,
       "hasStructuralAnalysis": true
     },
     ".pre-commit-config.yaml": {
@@ -95,12 +95,12 @@
     },
     "CHANGELOG.md": {
       "filePath": "CHANGELOG.md",
-      "contentHash": "467827ad1e39ae46d71b4e6427e5e8db3a199b3e98f7fb23e4ea9a8ff8e8f341",
+      "contentHash": "8772c736b7a7009dd616775d9210d49e96ecd5505a5cd1e1911857d5708f1b68",
       "functions": [],
       "classes": [],
       "imports": [],
       "exports": [],
-      "totalLines": 100,
+      "totalLines": 102,
       "hasStructuralAnalysis": true
     },
     "CLAUDE.md": {
@@ -277,12 +277,12 @@
     },
     "docs/development.md": {
       "filePath": "docs/development.md",
-      "contentHash": "bfed92128daccf5d75df85deac76a315a9d4519d5813b1943560b9a85ce72fe0",
+      "contentHash": "ab53713363cfd9106a69dec2a9de4395d652fbc1562526381dc6cd61bf4c7f77",
       "functions": [],
       "classes": [],
       "imports": [],
       "exports": [],
-      "totalLines": 391,
+      "totalLines": 393,
       "hasStructuralAnalysis": true
     },
     "docs/index.md": {
@@ -3040,7 +3040,7 @@
     },
     "internal/cli/account_test.go": {
       "filePath": "internal/cli/account_test.go",
-      "contentHash": "c0fbf81327495e5b088224ea061bbdd2b236c11113409383b3811b8f8cb0c455",
+      "contentHash": "3b837780afd5f2496ca5db4d18ea04fda1a73c726ecff2a5b4ebe83aedde6866",
       "functions": [
         {
           "name": "TestAccountAddListUseRemovePreservesOrder",
@@ -3320,7 +3320,17 @@
             "t"
           ],
           "exported": true,
-          "lineCount": 15
+          "lineCount": 19
+        },
+        {
+          "name": "assertPrivateFileMode",
+          "params": [
+            "t",
+            "actual",
+            "want"
+          ],
+          "exported": false,
+          "lineCount": 9
         },
         {
           "name": "TestPixivPostRedirectReturnToAcceptsOnlyPixivStartURL",
@@ -3781,7 +3791,7 @@
         "TestActiveMacBrowserURLsFallBackToSystemEvents",
         "ExchangeAuthorizationCode"
       ],
-      "totalLines": 1601,
+      "totalLines": 1615,
       "hasStructuralAnalysis": true
     },
     "internal/cli/api_cmd.go": {
@@ -5072,7 +5082,7 @@
     },
     "internal/cli/config_test.go": {
       "filePath": "internal/cli/config_test.go",
-      "contentHash": "0432d86cdb8918ae532a60c9f2a854e414e8c4f9d80f4bb9125165249ba5455c",
+      "contentHash": "a68e8b87dd3fca1acc711e1bf394110575fdb8b0d23c9050c2bc54001f6bdc43",
       "functions": [
         {
           "name": "TestConfigPathGetSetUnset",
@@ -5096,7 +5106,7 @@
             "t"
           ],
           "exported": true,
-          "lineCount": 26
+          "lineCount": 31
         },
         {
           "name": "TestConfigWebFallbackDefaultEnabled",
@@ -5162,6 +5172,12 @@
           ]
         },
         {
+          "source": "runtime",
+          "specifiers": [
+            "runtime"
+          ]
+        },
+        {
           "source": "strings",
           "specifiers": [
             "strings"
@@ -5202,7 +5218,7 @@
         "TestConfigGetUsesEnvironmentOverrideAndSetWarns",
         "TestConfigLowercaseProxyBeatsUppercase"
       ],
-      "totalLines": 196,
+      "totalLines": 202,
       "hasStructuralAnalysis": true
     },
     "internal/cli/prompt.go": {
@@ -6647,6 +6663,232 @@
         "ConvertUgoira"
       ],
       "totalLines": 255,
+      "hasStructuralAnalysis": true
+    },
+    "internal/download/staticlib/manifest_test.go": {
+      "filePath": "internal/download/staticlib/manifest_test.go",
+      "contentHash": "2e6c89a63b540c923e1605b28c6460531134a49cbff0867c0068438fc47cf0c3",
+      "functions": [
+        {
+          "name": "TestIsDigestSourceAcceptsPlatformSeparators",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 29
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "testing",
+          "specifiers": [
+            "testing"
+          ]
+        }
+      ],
+      "exports": [
+        "TestIsDigestSourceAcceptsPlatformSeparators"
+      ],
+      "totalLines": 34,
+      "hasStructuralAnalysis": true
+    },
+    "internal/download/staticlib/manifest.go": {
+      "filePath": "internal/download/staticlib/manifest.go",
+      "contentHash": "c7693968e1405acf34a5d6f8dd95aa4ad3e4ef2f1e92693bdf00f7bb9b389455",
+      "functions": [
+        {
+          "name": "CalculateRustSourceDigest",
+          "params": [
+            "crateDir",
+            "quantetteDir"
+          ],
+          "returnType": "(string, error)",
+          "exported": true,
+          "lineCount": 10
+        },
+        {
+          "name": "hashSourceTree",
+          "params": [
+            "hasher",
+            "logicalRoot",
+            "directory",
+            "includeLock"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 46
+        },
+        {
+          "name": "isDigestSource",
+          "params": [
+            "rel",
+            "includeLock"
+          ],
+          "returnType": "bool",
+          "exported": false,
+          "lineCount": 11
+        },
+        {
+          "name": "ValidateManifest",
+          "params": [
+            "body",
+            "sourceDigest"
+          ],
+          "returnType": "error",
+          "exported": true,
+          "lineCount": 15
+        },
+        {
+          "name": "ValidateManifestFiles",
+          "params": [
+            "staticlibDir",
+            "body",
+            "sourceDigest"
+          ],
+          "returnType": "error",
+          "exported": true,
+          "lineCount": 30
+        },
+        {
+          "name": "validateManifest",
+          "params": [
+            "manifest",
+            "sourceDigest"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 35
+        },
+        {
+          "name": "expectedManifestPath",
+          "params": [
+            "platform",
+            "target"
+          ],
+          "returnType": "string",
+          "exported": false,
+          "lineCount": 7
+        },
+        {
+          "name": "ensureNoTrailingJSON",
+          "params": [
+            "decoder"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 10
+        },
+        {
+          "name": "isSHA256",
+          "params": [
+            "value"
+          ],
+          "returnType": "bool",
+          "exported": false,
+          "lineCount": 7
+        }
+      ],
+      "classes": [
+        {
+          "name": "Manifest",
+          "methods": [],
+          "properties": [
+            "Schema",
+            "SourceDigest",
+            "Artifacts"
+          ],
+          "exported": true,
+          "lineCount": 5
+        },
+        {
+          "name": "ManifestAsset",
+          "methods": [],
+          "properties": [
+            "Target",
+            "Path",
+            "SHA256"
+          ],
+          "exported": true,
+          "lineCount": 5
+        }
+      ],
+      "imports": [
+        {
+          "source": "bytes",
+          "specifiers": [
+            "bytes"
+          ]
+        },
+        {
+          "source": "crypto/sha256",
+          "specifiers": [
+            "sha256"
+          ]
+        },
+        {
+          "source": "encoding/hex",
+          "specifiers": [
+            "hex"
+          ]
+        },
+        {
+          "source": "encoding/json",
+          "specifiers": [
+            "json"
+          ]
+        },
+        {
+          "source": "fmt",
+          "specifiers": [
+            "fmt"
+          ]
+        },
+        {
+          "source": "io",
+          "specifiers": [
+            "io"
+          ]
+        },
+        {
+          "source": "io/fs",
+          "specifiers": [
+            "fs"
+          ]
+        },
+        {
+          "source": "os",
+          "specifiers": [
+            "os"
+          ]
+        },
+        {
+          "source": "path/filepath",
+          "specifiers": [
+            "filepath"
+          ]
+        },
+        {
+          "source": "sort",
+          "specifiers": [
+            "sort"
+          ]
+        },
+        {
+          "source": "strings",
+          "specifiers": [
+            "strings"
+          ]
+        }
+      ],
+      "exports": [
+        "Manifest",
+        "ManifestAsset",
+        "CalculateRustSourceDigest",
+        "ValidateManifest",
+        "ValidateManifestFiles"
+      ],
+      "totalLines": 228,
       "hasStructuralAnalysis": true
     },
     "internal/download/testdata/ugoira-source-digest.txt": {
@@ -8291,7 +8533,7 @@
     },
     "internal/download/ugoira_rust_test.go": {
       "filePath": "internal/download/ugoira_rust_test.go",
-      "contentHash": "9040168d7fa04f9f151ba412b2d538a8e152dd17c91bc5f8f520efa6d7c049a3",
+      "contentHash": "72adb5b59d719ea52fad0dc0726a3d9cd61dd6a25472beb318994d65f95a6c1e",
       "functions": [
         {
           "name": "TestRustUgoiraEncoderNativeGIFAndAPNG",
@@ -8323,7 +8565,7 @@
             "t"
           ],
           "exported": true,
-          "lineCount": 32
+          "lineCount": 34
         },
         {
           "name": "TestWindowsNativeEvidenceUsesLLDBackedClang",
@@ -8449,7 +8691,7 @@
         "TestPinnedRustSourcesDisableGitTextConversion",
         "TestReleaseLicenseOutputsUseLFCheckout"
       ],
-      "totalLines": 222,
+      "totalLines": 224,
       "hasStructuralAnalysis": true
     },
     "internal/download/ugoira_rust.go": {
@@ -12351,7 +12593,7 @@
     },
     "internal/storage/auth/account_test.go": {
       "filePath": "internal/storage/auth/account_test.go",
-      "contentHash": "b36b9319ad9cd2a10ba3c9f26dda2aa830e9faa9d92cadcad94af1c657e85daa",
+      "contentHash": "4de56db6464a62f5e29a969b2297e389f29ed8c52f6c2f23ee906c9a8912b2e2",
       "functions": [
         {
           "name": "TestLoadSaveAuthStoreKeepsPrivatePermissionsAndDefaultUserID",
@@ -12359,7 +12601,7 @@
             "t"
           ],
           "exported": true,
-          "lineCount": 22
+          "lineCount": 27
         },
         {
           "name": "TestLoadAuthStoreDropsMissingDefaultUserID",
@@ -12441,6 +12683,12 @@
           ]
         },
         {
+          "source": "runtime",
+          "specifiers": [
+            "runtime"
+          ]
+        },
+        {
           "source": "testing",
           "specifiers": [
             "testing"
@@ -12470,7 +12718,7 @@
         "TestSaveAuthStoreRejectsMissingDefaultUserID",
         "TestSaveAuthStoreRejectsAccountsWithoutDefaultUserID"
       ],
-      "totalLines": 116,
+      "totalLines": 122,
       "hasStructuralAnalysis": true
     },
     "internal/storage/auth/account.go": {
@@ -13239,7 +13487,7 @@
     },
     "internal/update/installer_test.go": {
       "filePath": "internal/update/installer_test.go",
-      "contentHash": "d7c4bb06ec6b0efe4872ae9238fd70803a0d0efbcc57a3c4cefb7d8adc53da01",
+      "contentHash": "a456909f306ad9c965d82d47a3fc6cd0ba73d4b202a648f9d539044d3bc857c4",
       "functions": [
         {
           "name": "TestMain",
@@ -13271,7 +13519,7 @@
             "t"
           ],
           "exported": true,
-          "lineCount": 40
+          "lineCount": 41
         },
         {
           "name": "TestReleaseInstallerRejectsUntrustedCachedAssetURLBeforeRequest",
@@ -13423,7 +13671,7 @@
             "t"
           ],
           "exported": true,
-          "lineCount": 33
+          "lineCount": 34
         },
         {
           "name": "fixtureTarGz",
@@ -13863,7 +14111,7 @@
         "RoundTrip",
         "RoundTrip"
       ],
-      "totalLines": 1106,
+      "totalLines": 1108,
       "hasStructuralAnalysis": true
     },
     "internal/update/installer.go": {
@@ -14310,9 +14558,81 @@
       "totalLines": 642,
       "hasStructuralAnalysis": true
     },
+    "internal/update/releases_reader_nonwindows_test.go": {
+      "filePath": "internal/update/releases_reader_nonwindows_test.go",
+      "contentHash": "a4a7f6caae955fb77ecff2360c6fbb967d64fe74cd4ecf1e69ab8476a635cd3d",
+      "functions": [
+        {
+          "name": "readCacheForConcurrentReader",
+          "params": [
+            "path"
+          ],
+          "returnType": "([]byte, error)",
+          "exported": false,
+          "lineCount": 3
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "os",
+          "specifiers": [
+            "os"
+          ]
+        }
+      ],
+      "exports": [],
+      "totalLines": 11,
+      "hasStructuralAnalysis": true
+    },
+    "internal/update/releases_reader_windows_test.go": {
+      "filePath": "internal/update/releases_reader_windows_test.go",
+      "contentHash": "becbb5b2e574c473fa5c2ef617c2bc4a3ae4d861d04f9decd2d3a8740d1bbc6e",
+      "functions": [
+        {
+          "name": "readCacheForConcurrentReader",
+          "params": [
+            "path"
+          ],
+          "returnType": "([]byte, error)",
+          "exported": false,
+          "lineCount": 25
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "fmt",
+          "specifiers": [
+            "fmt"
+          ]
+        },
+        {
+          "source": "io",
+          "specifiers": [
+            "io"
+          ]
+        },
+        {
+          "source": "os",
+          "specifiers": [
+            "os"
+          ]
+        },
+        {
+          "source": "golang.org/x/sys/windows",
+          "specifiers": [
+            "windows"
+          ]
+        }
+      ],
+      "exports": [],
+      "totalLines": 40,
+      "hasStructuralAnalysis": true
+    },
     "internal/update/releases_test.go": {
       "filePath": "internal/update/releases_test.go",
-      "contentHash": "af569f596fdf092a70e1b3ed4bc272bc353bf036a90db345f583cd6124e85a8f",
+      "contentHash": "c9c8a1e34a5f6a9af23d8a7099dc1dba4bcb8a5e60ce06ace2d5e6096047c189",
       "functions": [
         {
           "name": "TestGitHubReleaseClientSelectsLatestStableRelease",
@@ -15076,7 +15396,7 @@
     },
     "internal/update/source_test.go": {
       "filePath": "internal/update/source_test.go",
-      "contentHash": "ae7cdf364cf4bcca4708914cc0fed8669e5920afc748323ed7ca0b690a259f98",
+      "contentHash": "bcd5056496962b984e2e7c955441ecc4d31624b9c3ad403d87c25b4bfe41b440",
       "functions": [
         {
           "name": "TestDetectInstallSourceDevelopmentAvoidsSystemAccess",
@@ -15140,7 +15460,7 @@
             "t"
           ],
           "exported": true,
-          "lineCount": 35
+          "lineCount": 36
         },
         {
           "name": "TestDetectInstallSourceTreatsUnknownFormalBinaryAsRelease",
@@ -15188,6 +15508,12 @@
           "source": "errors",
           "specifiers": [
             "errors"
+          ]
+        },
+        {
+          "source": "fmt",
+          "specifiers": [
+            "fmt"
           ]
         },
         {
@@ -15250,7 +15576,7 @@
         "TestDetectInstallSourceSurfacesBrokenExpectedGoInstallSymlink",
         "TestDetectInstallSourceTreatsUnknownFormalBinaryAsRelease"
       ],
-      "totalLines": 344,
+      "totalLines": 346,
       "hasStructuralAnalysis": true
     },
     "internal/update/source.go": {
@@ -15965,7 +16291,7 @@
     },
     "internal/utils/files/files_test.go": {
       "filePath": "internal/utils/files/files_test.go",
-      "contentHash": "aefe9ba0f85eca44b59f7c070334a1cc6a297857958f67f5b274da4272650e73",
+      "contentHash": "686923281ded5bcb6a41def80c7bbd0669ee5531bb82ae1d0def177034c01a78",
       "functions": [
         {
           "name": "TestUserConfigFileBuildsPathUnderNamedAppDir",
@@ -16000,6 +16326,24 @@
           "lineCount": 10
         },
         {
+          "name": "assertPrivateFileMode",
+          "params": [
+            "t",
+            "actual"
+          ],
+          "exported": false,
+          "lineCount": 9
+        },
+        {
+          "name": "assertPrivateDirMode",
+          "params": [
+            "t",
+            "actual"
+          ],
+          "exported": false,
+          "lineCount": 9
+        },
+        {
           "name": "TestReplaceFileReplacesTargetAndRemovesSource",
           "params": [
             "t"
@@ -16028,6 +16372,12 @@
           "source": "path/filepath",
           "specifiers": [
             "filepath"
+          ]
+        },
+        {
+          "source": "runtime",
+          "specifiers": [
+            "runtime"
           ]
         },
         {
@@ -16063,7 +16413,7 @@
         "TestReplaceFileReplacesTargetAndRemovesSource",
         "TestReplaceFileCreatesMissingTargetAndRemovesSource"
       ],
-      "totalLines": 95,
+      "totalLines": 116,
       "hasStructuralAnalysis": true
     },
     "internal/utils/files/files.go": {
@@ -16951,7 +17301,7 @@
     },
     "scripts/licensebundle/main_test.go": {
       "filePath": "scripts/licensebundle/main_test.go",
-      "contentHash": "0bdf9fefc5cd8aabc9633bd5d6ecbe187e4e51896cc0e56772539f8a9d476399",
+      "contentHash": "56f04699bf682a8c926566a429bd40e94c82e16c1bb30dab581d24c45483eff3",
       "functions": [
         {
           "name": "TestGenerateFromTargetMetadataUnionsPlatformDependencyClosures",
@@ -16983,7 +17333,20 @@
             "t"
           ],
           "exported": true,
-          "lineCount": 65
+          "lineCount": 38
+        },
+        {
+          "name": "buildFakeCargo",
+          "params": [
+            "t",
+            "dir",
+            "record",
+            "manifest",
+            "metadata"
+          ],
+          "returnType": "string",
+          "exported": false,
+          "lineCount": 56
         },
         {
           "name": "TestGenerateRejectsOutputPathsOutsideRepositoryBeforeCargo",
@@ -17075,9 +17438,21 @@
           ]
         },
         {
+          "source": "os/exec",
+          "specifiers": [
+            "exec"
+          ]
+        },
+        {
           "source": "path/filepath",
           "specifiers": [
             "filepath"
+          ]
+        },
+        {
+          "source": "runtime",
+          "specifiers": [
+            "runtime"
           ]
         },
         {
@@ -17107,7 +17482,7 @@
         "TestGenerateRejectsOutputPathsOutsideRepositoryBeforeCargo",
         "TestWriteBundleRestoresPreviousIndexAndTreeWhenIndexPublishFails"
       ],
-      "totalLines": 301,
+      "totalLines": 336,
       "hasStructuralAnalysis": true
     },
     "scripts/licensebundle/main.go": {
@@ -19197,7 +19572,7 @@
     },
     "scripts/releaseworkflow/main_test.go": {
       "filePath": "scripts/releaseworkflow/main_test.go",
-      "contentHash": "83264fa0ccb7c24263d86e9faf4372a0328aedd1bde0b10902015dd2b0389791",
+      "contentHash": "bf4296faae37dd3768bd542a477678deb377c5682f93320460c472f2ddbad158",
       "functions": [
         {
           "name": "TestCheckWorkflowRequiresRustFormatGate",
@@ -19269,7 +19644,7 @@
             "t"
           ],
           "exported": true,
-          "lineCount": 19
+          "lineCount": 22
         },
         {
           "name": "TestCheckRecoveryPolicyRequiresTrustedReleaseTag",
@@ -19729,12 +20104,12 @@
         "TestCheckWorkflowRejectsBareAndFunctionSecretContextsOutsideExpectedSigningEnvironment",
         "TestCheckWorkflowAcceptsCanonicalBracketSigningExpressions"
       ],
-      "totalLines": 1961,
+      "totalLines": 1964,
       "hasStructuralAnalysis": true
     },
     "scripts/releaseworkflow/main.go": {
       "filePath": "scripts/releaseworkflow/main.go",
-      "contentHash": "aa042de41c2a5745d885fa01207b2b22b498484c5730a8b8dbe4ca7e0106f9df",
+      "contentHash": "219a2a55ff25954e67b6c3079288948ff196ce73020349a1172364b761bd00cb",
       "functions": [
         {
           "name": "main",
@@ -19758,7 +20133,7 @@
           ],
           "returnType": "error",
           "exported": false,
-          "lineCount": 6
+          "lineCount": 8
         },
         {
           "name": "checkWorkflow",
@@ -19875,7 +20250,7 @@
           ],
           "returnType": "error",
           "exported": false,
-          "lineCount": 13
+          "lineCount": 41
         },
         {
           "name": "requireOverlayQualitySequence",
@@ -20512,7 +20887,7 @@
         }
       ],
       "exports": [],
-      "totalLines": 1863,
+      "totalLines": 1893,
       "hasStructuralAnalysis": true
     },
     "scripts/test-build-staticlibs.sh": {
@@ -20586,6 +20961,16 @@
       "totalLines": 38,
       "hasStructuralAnalysis": true
     },
+    "templates/homebrew/github.com-known-hosts": {
+      "filePath": "templates/homebrew/github.com-known-hosts",
+      "contentHash": "6233fddbb0a29afc8c4e8c699733c1a188c3a41f2fb63a2640653dc4aea624ce",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 2,
+      "hasStructuralAnalysis": false
+    },
     "templates/homebrew/pixiv-cli-beta.rb.tmpl": {
       "filePath": "templates/homebrew/pixiv-cli-beta.rb.tmpl",
       "contentHash": "cddd07920b42962eebb558707bdcc9a06720a3c2c30b37155dc933c5a703ea7c",
@@ -20618,7 +21003,7 @@
     },
     "test/e2e/pixiv_binary_test.go": {
       "filePath": "test/e2e/pixiv_binary_test.go",
-      "contentHash": "6893d06ef481423442a0b28aaabff1e1efce8d2ae7b8a85acab965d18f97d977",
+      "contentHash": "941d3b5f4192b750f93841a3beff678c86dd76c94518ff5a66fe2e27b530044a",
       "functions": [
         {
           "name": "TestPixivBinaryBuildsFromCmdPixivAndPrintsHelp",
@@ -20716,7 +21101,7 @@
           ],
           "returnType": "string",
           "exported": false,
-          "lineCount": 13
+          "lineCount": 17
         },
         {
           "name": "isolatedEnv",
@@ -20788,6 +21173,12 @@
           ]
         },
         {
+          "source": "runtime",
+          "specifiers": [
+            "runtime"
+          ]
+        },
+        {
           "source": "strconv",
           "specifiers": [
             "strconv"
@@ -20825,7 +21216,7 @@
         "TestPixivBinaryWebAPIFallbackReal",
         "TestPixivBinaryRealAPISearchOptIn"
       ],
-      "totalLines": 305,
+      "totalLines": 310,
       "hasStructuralAnalysis": true
     },
     "test/e2e/version_binary_test.go": {
@@ -20953,242 +21344,6 @@
       "exports": [],
       "totalLines": 643,
       "hasStructuralAnalysis": true
-    },
-    "internal/download/staticlib/manifest.go": {
-      "filePath": "internal/download/staticlib/manifest.go",
-      "contentHash": "c7693968e1405acf34a5d6f8dd95aa4ad3e4ef2f1e92693bdf00f7bb9b389455",
-      "functions": [
-        {
-          "name": "CalculateRustSourceDigest",
-          "params": [
-            "crateDir",
-            "quantetteDir"
-          ],
-          "returnType": "(string, error)",
-          "exported": true,
-          "lineCount": 10
-        },
-        {
-          "name": "hashSourceTree",
-          "params": [
-            "hasher",
-            "logicalRoot",
-            "directory",
-            "includeLock"
-          ],
-          "returnType": "error",
-          "exported": false,
-          "lineCount": 46
-        },
-        {
-          "name": "isDigestSource",
-          "params": [
-            "rel",
-            "includeLock"
-          ],
-          "returnType": "bool",
-          "exported": false,
-          "lineCount": 11
-        },
-        {
-          "name": "ValidateManifest",
-          "params": [
-            "body",
-            "sourceDigest"
-          ],
-          "returnType": "error",
-          "exported": true,
-          "lineCount": 15
-        },
-        {
-          "name": "ValidateManifestFiles",
-          "params": [
-            "staticlibDir",
-            "body",
-            "sourceDigest"
-          ],
-          "returnType": "error",
-          "exported": true,
-          "lineCount": 30
-        },
-        {
-          "name": "validateManifest",
-          "params": [
-            "manifest",
-            "sourceDigest"
-          ],
-          "returnType": "error",
-          "exported": false,
-          "lineCount": 35
-        },
-        {
-          "name": "expectedManifestPath",
-          "params": [
-            "platform",
-            "target"
-          ],
-          "returnType": "string",
-          "exported": false,
-          "lineCount": 7
-        },
-        {
-          "name": "ensureNoTrailingJSON",
-          "params": [
-            "decoder"
-          ],
-          "returnType": "error",
-          "exported": false,
-          "lineCount": 10
-        },
-        {
-          "name": "isSHA256",
-          "params": [
-            "value"
-          ],
-          "returnType": "bool",
-          "exported": false,
-          "lineCount": 7
-        }
-      ],
-      "classes": [
-        {
-          "name": "Manifest",
-          "methods": [],
-          "properties": [
-            "Schema",
-            "SourceDigest",
-            "Artifacts"
-          ],
-          "exported": true,
-          "lineCount": 5
-        },
-        {
-          "name": "ManifestAsset",
-          "methods": [],
-          "properties": [
-            "Target",
-            "Path",
-            "SHA256"
-          ],
-          "exported": true,
-          "lineCount": 5
-        }
-      ],
-      "imports": [
-        {
-          "source": "bytes",
-          "specifiers": [
-            "bytes"
-          ]
-        },
-        {
-          "source": "crypto/sha256",
-          "specifiers": [
-            "sha256"
-          ]
-        },
-        {
-          "source": "encoding/hex",
-          "specifiers": [
-            "hex"
-          ]
-        },
-        {
-          "source": "encoding/json",
-          "specifiers": [
-            "json"
-          ]
-        },
-        {
-          "source": "fmt",
-          "specifiers": [
-            "fmt"
-          ]
-        },
-        {
-          "source": "io",
-          "specifiers": [
-            "io"
-          ]
-        },
-        {
-          "source": "io/fs",
-          "specifiers": [
-            "fs"
-          ]
-        },
-        {
-          "source": "os",
-          "specifiers": [
-            "os"
-          ]
-        },
-        {
-          "source": "path/filepath",
-          "specifiers": [
-            "filepath"
-          ]
-        },
-        {
-          "source": "sort",
-          "specifiers": [
-            "sort"
-          ]
-        },
-        {
-          "source": "strings",
-          "specifiers": [
-            "strings"
-          ]
-        }
-      ],
-      "exports": [
-        "Manifest",
-        "ManifestAsset",
-        "CalculateRustSourceDigest",
-        "ValidateManifest",
-        "ValidateManifestFiles"
-      ],
-      "totalLines": 228,
-      "hasStructuralAnalysis": true
-    },
-    "internal/download/staticlib/manifest_test.go": {
-      "filePath": "internal/download/staticlib/manifest_test.go",
-      "contentHash": "2e6c89a63b540c923e1605b28c6460531134a49cbff0867c0068438fc47cf0c3",
-      "functions": [
-        {
-          "name": "TestIsDigestSourceAcceptsPlatformSeparators",
-          "params": [
-            "t"
-          ],
-          "exported": true,
-          "lineCount": 29
-        }
-      ],
-      "classes": [],
-      "imports": [
-        {
-          "source": "testing",
-          "specifiers": [
-            "testing"
-          ]
-        }
-      ],
-      "exports": [
-        "TestIsDigestSourceAcceptsPlatformSeparators"
-      ],
-      "totalLines": 34,
-      "hasStructuralAnalysis": true
-    },
-    "templates/homebrew/github.com-known-hosts": {
-      "filePath": "templates/homebrew/github.com-known-hosts",
-      "contentHash": "6233fddbb0a29afc8c4e8c699733c1a188c3a41f2fb63a2640653dc4aea624ce",
-      "functions": [],
-      "classes": [],
-      "imports": [],
-      "exports": [],
-      "totalLines": 2,
-      "hasStructuralAnalysis": false
     }
   }
 }

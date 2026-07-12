@@ -11,7 +11,7 @@
     ],
     "description": "Pixiv CLI 架构、开发、MCP 与发布决策文档的知识图谱。",
     "analyzedAt": "2026-07-12T22:03:38.000Z",
-    "gitCommitHash": "1507054cde2fe8291a0d7e2f3ca8973d2f3aad64"
+    "gitCommitHash": "fde8766fededd9f2bcee4e9962c9f3bbfb9f3d0e"
   },
   "nodes": [
     {
@@ -217,7 +217,7 @@
       "type": "article",
       "name": "开发流程",
       "filePath": "development.md",
-      "summary": "说明 Rust staticlib、离线依赖、测试与发布门禁；不可变 tag recovery 的六平台 test gate 只测试且不生成 release artifact，独立新 runner 的 build_production 禁用 Go cache、重建 staticlib 并生成唯一可被精确六名下载的 verified-release assets。",
+      "summary": "说明 Rust staticlib、离线依赖、测试与发布门禁；不可变 tag recovery 的六平台 test gate 仅以 git archive 应用 Windows-safe 的 14 条固定白名单路径（13 个测试文件加 releaseworkflow policy verifier），逐项核对 diff 且不生成 release artifact。独立新 runner 的 build_production 禁用 Go cache、从干净 tag 重建 staticlib，并生成唯一可被精确六名下载的 verified-release assets。",
       "tags": [
         "文档",
         "维护",
@@ -474,7 +474,7 @@
       "id": "claim:release:immutable-tag-recovery",
       "type": "claim",
       "name": "不可变 tag 恢复必须重建干净生产工作树",
-      "summary": "workflow_dispatch 仍须从默认分支提交现有、属于默认分支且尚无 Release 的 immutable release_tag。六平台 build 只作 test gate：可覆盖受审计的 internal/cli/account_test.go，但不生成任何 release artifact。成功后，独立 build_production 在全新 runner 上 clean checkout 原 tag、以 setup-go cache:false 禁用跨 job Go cache、重建 selected staticlib，并生成 verified-release-*；job 边界同时隔离测试写入的 GITHUB_ENV、GITHUB_PATH、PATH 与 runner 临时目录。publish 必须连续下载六个精确命名的 verified-release artifacts，不得用 wildcard/pattern、merge-multiple 或测试产物。该恢复链尚未有成功 run。",
+      "summary": "workflow_dispatch 仍须从默认分支提交现有、属于默认分支且尚无 Release 的 immutable release_tag。六平台 build 只作 test gate：仅可用 git archive 覆盖 Windows-safe 的固定 14 条白名单路径（13 个测试文件及 scripts/releaseworkflow/main.go policy verifier），并逐项核对 diff；该范围禁止任意生产源码且不生成 release artifact。成功后，独立 build_production 在全新 runner 上 clean checkout 原 tag、以 setup-go cache:false 禁用跨 job Go cache、重建 selected staticlib，并生成 verified-release-*；job 边界同时隔离测试写入的 GITHUB_ENV、GITHUB_PATH、PATH 与 runner 临时目录。publish 必须连续下载六个精确命名的 verified-release artifacts，不得用 wildcard/pattern、merge-multiple 或测试产物。该恢复链尚未有成功 run。",
       "tags": [
         "GitHub Actions",
         "不可变标签",
@@ -794,7 +794,7 @@
       "type": "builds_on",
       "direction": "forward",
       "weight": 0.9,
-      "description": "开发流程定义六平台纯 test gate（不生成 release artifact）→独立新 runner build_production→publish 精确六 verified-release 下载的恢复链，并隔离测试进程环境副作用。"
+      "description": "开发流程定义六平台 Windows-safe 14 路径白名单 test gate（13 测试文件加 policy verifier，逐项 diff 校验且不生成 release artifact）→独立新 runner build_production→publish 精确六 verified-release 下载的恢复链，并隔离测试进程环境副作用。"
     },
     {
       "source": "article:development",
@@ -865,7 +865,7 @@
     {
       "id": "layer:release",
       "name": "构建、发布与信任",
-      "description": "Rust staticlib、Release assets、Ed25519 trust root，以及纯 test gate→隔离 build_production→精确六 verified-release 下载→签名/Homebrew/tap 的不可变 tag 恢复、证据和权限边界。",
+      "description": "Rust staticlib、Release assets、Ed25519 trust root，以及 Windows-safe 14 路径 test gate→隔离 build_production→精确六 verified-release 下载→签名/Homebrew/tap 的不可变 tag 恢复、证据和权限边界。",
       "nodeIds": [
         "article:development",
         "article:adr/0007-platform-staticlibs-for-supported-source-builds",
@@ -945,7 +945,7 @@
     {
       "order": 4,
       "title": "签名与 Homebrew 发布门禁",
-      "description": "先看 v0.1.0 首轮 run 在 Release 前 fail-closed，再沿 immutable tag recovery：test-only overlay 只留在六平台 test gate，且该 job 不生成 release artifact；新 runner 的 build_production 隔离 GITHUB_ENV/PATH/temp、禁用 Go cache、重建 staticlib，publish 再无 wildcard 地精确下载六份 verified-release。当前仍无成功恢复 run、Release 或 tap Formula。",
+      "description": "先看 v0.1.0 首轮 run 在 Release 前 fail-closed，再沿 immutable tag recovery：test-only overlay 仅可用 git archive 覆盖 Windows-safe 的 14 条固定路径（13 测试文件加 policy verifier），逐项 diff 校验且不生成 release artifact；新 runner 的 build_production 隔离 GITHUB_ENV/PATH/temp、禁用 Go cache、重建 staticlib，publish 再无 wildcard 地精确下载六份 verified-release。当前仍无成功恢复 run、Release 或 tap Formula。",
       "nodeIds": [
         "article:adr/0008-ed25519-signed-multi-channel-release-trust",
         "entity:release-asset",

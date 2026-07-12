@@ -58,7 +58,7 @@
     {
       "path": ".github/workflows/release.yml",
       "language": "yaml",
-      "sizeLines": 565,
+      "sizeLines": 593,
       "fileCategory": "infra"
     },
     {
@@ -76,7 +76,7 @@
     {
       "path": "CHANGELOG.md",
       "language": "markdown",
-      "sizeLines": 99,
+      "sizeLines": 101,
       "fileCategory": "docs"
     },
     {
@@ -166,7 +166,7 @@
     {
       "path": "docs/development.md",
       "language": "markdown",
-      "sizeLines": 390,
+      "sizeLines": 392,
       "fileCategory": "docs"
     },
     {
@@ -280,7 +280,7 @@
     {
       "path": "internal/cli/account_test.go",
       "language": "go",
-      "sizeLines": 1600,
+      "sizeLines": 1614,
       "fileCategory": "code"
     },
     {
@@ -328,7 +328,7 @@
     {
       "path": "internal/cli/config_test.go",
       "language": "go",
-      "sizeLines": 195,
+      "sizeLines": 201,
       "fileCategory": "code"
     },
     {
@@ -383,6 +383,18 @@
       "path": "internal/download/manager.go",
       "language": "go",
       "sizeLines": 254,
+      "fileCategory": "code"
+    },
+    {
+      "path": "internal/download/staticlib/manifest_test.go",
+      "language": "go",
+      "sizeLines": 33,
+      "fileCategory": "code"
+    },
+    {
+      "path": "internal/download/staticlib/manifest.go",
+      "language": "go",
+      "sizeLines": 227,
       "fileCategory": "code"
     },
     {
@@ -478,7 +490,7 @@
     {
       "path": "internal/download/ugoira_rust_test.go",
       "language": "go",
-      "sizeLines": 221,
+      "sizeLines": 223,
       "fileCategory": "code"
     },
     {
@@ -586,7 +598,7 @@
     {
       "path": "internal/storage/auth/account_test.go",
       "language": "go",
-      "sizeLines": 115,
+      "sizeLines": 121,
       "fileCategory": "code"
     },
     {
@@ -646,13 +658,25 @@
     {
       "path": "internal/update/installer_test.go",
       "language": "go",
-      "sizeLines": 1105,
+      "sizeLines": 1107,
       "fileCategory": "code"
     },
     {
       "path": "internal/update/installer.go",
       "language": "go",
       "sizeLines": 641,
+      "fileCategory": "code"
+    },
+    {
+      "path": "internal/update/releases_reader_nonwindows_test.go",
+      "language": "go",
+      "sizeLines": 10,
+      "fileCategory": "code"
+    },
+    {
+      "path": "internal/update/releases_reader_windows_test.go",
+      "language": "go",
+      "sizeLines": 39,
       "fileCategory": "code"
     },
     {
@@ -670,7 +694,7 @@
     {
       "path": "internal/update/source_test.go",
       "language": "go",
-      "sizeLines": 343,
+      "sizeLines": 345,
       "fileCategory": "code"
     },
     {
@@ -700,7 +724,7 @@
     {
       "path": "internal/utils/files/files_test.go",
       "language": "go",
-      "sizeLines": 94,
+      "sizeLines": 115,
       "fileCategory": "code"
     },
     {
@@ -820,7 +844,7 @@
     {
       "path": "scripts/licensebundle/main_test.go",
       "language": "go",
-      "sizeLines": 300,
+      "sizeLines": 335,
       "fileCategory": "code"
     },
     {
@@ -862,13 +886,13 @@
     {
       "path": "scripts/releaseworkflow/main_test.go",
       "language": "go",
-      "sizeLines": 1960,
+      "sizeLines": 1963,
       "fileCategory": "code"
     },
     {
       "path": "scripts/releaseworkflow/main.go",
       "language": "go",
-      "sizeLines": 1862,
+      "sizeLines": 1892,
       "fileCategory": "code"
     },
     {
@@ -902,6 +926,12 @@
       "fileCategory": "script"
     },
     {
+      "path": "templates/homebrew/github.com-known-hosts",
+      "language": "com-known-hosts",
+      "sizeLines": 1,
+      "fileCategory": "code"
+    },
+    {
       "path": "templates/homebrew/pixiv-cli-beta.rb.tmpl",
       "language": "tmpl",
       "sizeLines": 37,
@@ -922,7 +952,7 @@
     {
       "path": "test/e2e/pixiv_binary_test.go",
       "language": "go",
-      "sizeLines": 304,
+      "sizeLines": 309,
       "fileCategory": "code"
     },
     {
@@ -936,28 +966,10 @@
       "language": "markdown",
       "sizeLines": 642,
       "fileCategory": "docs"
-    },
-    {
-      "path": "internal/download/staticlib/manifest.go",
-      "language": "go",
-      "sizeLines": 227,
-      "fileCategory": "code"
-    },
-    {
-      "path": "internal/download/staticlib/manifest_test.go",
-      "language": "go",
-      "sizeLines": 33,
-      "fileCategory": "code"
-    },
-    {
-      "path": "templates/homebrew/github.com-known-hosts",
-      "language": "unknown",
-      "sizeLines": 1,
-      "fileCategory": "config"
     }
   ],
-  "totalFiles": 156,
-  "filteredByIgnore": 194,
+  "totalFiles": 158,
+  "filteredByIgnore": 200,
   "estimatedComplexity": "large",
   "importMap": {
     ".agents/skills/pixiv-commit-msg/SKILL.md": [],
@@ -1683,6 +1695,8 @@
     "THIRD_PARTY_LICENSES.md": [],
     "internal/download/staticlib/manifest.go": [],
     "internal/download/staticlib/manifest_test.go": [],
-    "templates/homebrew/github.com-known-hosts": []
+    "templates/homebrew/github.com-known-hosts": [],
+    "internal/update/releases_reader_nonwindows_test.go": [],
+    "internal/update/releases_reader_windows_test.go": []
   }
 }
