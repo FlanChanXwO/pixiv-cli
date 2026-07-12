@@ -97,13 +97,14 @@ func TestLinuxRustStaticlibLinkersLinkSystemMath(t *testing.T) {
 	}
 }
 
-// TestVendoredRustSourcesDisableGitTextConversion 保留 Cargo vendor 的精确字节；Windows checkout
-// 若把 LF 转为 CRLF，会使 .cargo-checksum.json 拒绝原本未修改的上游源码。
-func TestVendoredRustSourcesDisableGitTextConversion(t *testing.T) {
+// TestPinnedRustSourcesDisableGitTextConversion 保留 Cargo vendor 和本地 locked dependency 的精确字节；
+// Windows checkout 若把 LF 转为 CRLF，会破坏 Cargo checksum、licensebundle 或 staticlib source digest。
+func TestPinnedRustSourcesDisableGitTextConversion(t *testing.T) {
 	repoRoot := filepath.Clean(filepath.Join("..", ".."))
 	for _, source := range []string{
 		"internal/download/ugoira_rs/vendor/crc32fast/benches/bench.rs",
 		"internal/download/ugoira_rs/vendor/crc32fast/src/specialized/mod.rs",
+		"third_party/rust/quantette-0.6.0/LICENSE-APACHE",
 	} {
 		command := exec.Command("git", "-C", repoRoot, "check-attr", "text", "--", source)
 		body, err := command.CombinedOutput()
@@ -112,6 +113,26 @@ func TestVendoredRustSourcesDisableGitTextConversion(t *testing.T) {
 		}
 		if !strings.Contains(string(body), "text: unset") {
 			t.Fatalf("Cargo vendor source %q must disable Git text conversion, got %q", source, strings.TrimSpace(string(body)))
+		}
+	}
+}
+
+// TestGeneratedRustLicenseOutputsUseLFCheckout 锁定 licensebundle 的两个受检生成物在 Windows
+// checkout 也保留 LF；生成器规范化为 LF，若 Git 改写为 CRLF，release gate 会错误报告 stale。
+func TestGeneratedRustLicenseOutputsUseLFCheckout(t *testing.T) {
+	repoRoot := filepath.Clean(filepath.Join("..", ".."))
+	for _, source := range []string{
+		"THIRD_PARTY_LICENSES.md",
+		"third_party/licenses/crc32fast-1.5.0/LICENSE-MIT",
+	} {
+		command := exec.Command("git", "-C", repoRoot, "check-attr", "text", "eol", "--", source)
+		body, err := command.CombinedOutput()
+		if err != nil {
+			t.Fatalf("read Git line-ending attributes for %q: %v\n%s", source, err, body)
+		}
+		output := string(body)
+		if !strings.Contains(output, "text: set") || !strings.Contains(output, "eol: lf") {
+			t.Fatalf("generated Rust license output %q must use LF checkout, got %q", source, strings.TrimSpace(output))
 		}
 	}
 }

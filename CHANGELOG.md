@@ -9,8 +9,8 @@
 
 ### Fixed
 
-- 修复 Linux 原生 Rust staticlib 的 `libm` 链接，以及 Windows checkout 对 Cargo vendor 的文本转换，确保
-  六平台 native evidence 能校验并链接真实 ugoira encoder。
+- 修复 Linux 原生 Rust staticlib 的 `libm` 链接，以及 Windows checkout 对 pinned Rust source、Cargo
+  vendor 和生成 license bundle 的文本转换，确保六平台 native evidence 能校验并链接真实 ugoira encoder。
 
 当前还没有切出正式版本；未发布改动先汇总到这里。
 

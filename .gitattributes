@@ -3,6 +3,13 @@
 # 所有 Cargo vendor 文件都必须关闭 Git 文本转换；Windows CRLF checkout 会改变上游 checksum，
 # 使 `cargo --locked --offline` 在实际 native runner 上拒绝未修改的依赖树。
 internal/download/ugoira_rs/vendor/** -text
+third_party/rust/quantette-0.6.0/** -text
+
+# licensebundle 生成并在 release gate 中按字节比较这两个输出。保留 LF，避免 Windows checkout
+# 改成 CRLF 后把已生成且未修改的许可证 bundle 误报为 stale。
+THIRD_PARTY_LICENSES.md text eol=lf
+third_party/licenses/** text eol=lf
+
 internal/download/ugoira_rs/vendor/autocfg/README.md conflict-marker-size=32
 internal/download/ugoira_rs/vendor/ref-cast/README.md conflict-marker-size=32
 

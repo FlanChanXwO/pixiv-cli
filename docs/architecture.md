@@ -173,7 +173,8 @@ stub。Rust `target/` 是机器产物，staticlib/manifest 是经过 native 验�
 
 `scripts/releaseassets` 以固定六目标封装 archive：darwin/linux 为 `.tar.gz`，Windows 为 `.zip`；
 每个 archive 包含一个 `pixiv`/`pixiv.exe`、`LICENSE`、`THIRD_PARTY_LICENSES.md` 与完整
-`third_party/licenses`。finalize 阶段收集这六个 archive 的 SHA-256 到 `checksums.txt`，并为原始
+`third_party/licenses`；它们在 Git 中固定 LF，以便 licensebundle 在 Windows 也可按字节校验。
+finalize 阶段收集这六个 archive 的 SHA-256 到 `checksums.txt`，并为原始
 checksum bytes 生成带 key ID 的 Ed25519 `checksums.json`。
 
 `.github/workflows/release.yml` 将签名/发布放在受保护的 `release` Environment 中；它使用最小权限和

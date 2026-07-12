@@ -57,8 +57,11 @@ Rust crate 的 `.cargo/config.toml` 将 crates.io 替换为其相邻 `vendor/` �
 依赖闭包。`vendor/` 的每个 package 都带 Cargo 生成的 `.cargo-checksum.json`；它、Cargo config、
 `Cargo.toml`/`Cargo.lock`、Rust source 和本地 `quantette` 都计入 staticlib source digest。不要手工
 编辑 vendor 内容；升级依赖时必须重新以 `cargo vendor --locked --offline` 生成完整闭包并更新 digest
-fixture 与许可证 bundle。根 `.gitattributes` 对整个 `vendor/**` 设置 `-text`，防止 Windows checkout
-把 LF 改为 CRLF 后破坏 Cargo checksum。`target/` 仍是机器产物，不计入 digest，也不得提交。
+fixture 与许可证 bundle。根 `.gitattributes` 对整个 `vendor/**` 与固定本地 `quantette` source 设置
+`-text`，防止 Windows checkout 把 LF 改为 CRLF 后破坏 Cargo checksum、source digest 或 licensebundle；对
+licensebundle 的 `THIRD_PARTY_LICENSES.md` 与
+`third_party/licenses/**` 则固定 `text eol=lf`，使其 byte-for-byte `--check` 在 Windows 保持稳定。
+`target/` 仍是机器产物，不计入 digest，也不得提交。
 
 直接运行 Cargo 时必须在 crate 目录启动，确保 Cargo 发现 source replacement：
 
