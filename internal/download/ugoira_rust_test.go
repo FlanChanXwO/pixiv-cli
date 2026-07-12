@@ -127,6 +127,9 @@ func TestWindowsRustStaticlibSelectorsUseCgoLibrarySearchFlags(t *testing.T) {
 		if strings.Contains(line, "/ugoira_rs.lib\n") {
 			t.Fatalf("Windows cgo selector %q must not pass ugoira_rs.lib as a direct linker input:\n%s", source, body)
 		}
+		if strings.Contains(line, "package download\n\n// Rust staticlib") || !strings.Contains(line, "import \"C\"\n\n// Rust staticlib") {
+			t.Fatalf("Windows cgo selector %q must keep its Chinese explanation outside the cgo C preamble:\n%s", source, body)
+		}
 	}
 }
 
