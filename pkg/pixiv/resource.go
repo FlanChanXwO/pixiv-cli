@@ -167,14 +167,18 @@ func (c *Client) Download(ctx context.Context, ref ResourceRef, destinationPath 
 		_ = tmp.Close()
 		return newError(CodeUpstreamError, OperationDownload, BackendResource, true, response.StatusCode, 0, errors.New("resource was not a complete response"))
 	}
-	_, copyErr := io.Copy(tmp, response.Body)
+	destination := &resourceDestinationWriter{writer: tmp}
+	_, copyErr := io.Copy(destination, response.Body)
 	bodyCloseErr := response.Body.Close()
 	contextErr := ctx.Err()
 	tmpCloseErr := tmp.Close()
 	if contextErr != nil {
 		return mapResourceTransportError(contextErr, OperationDownload)
 	}
-	if copyErr != nil || bodyCloseErr != nil {
+	if copyErr != nil {
+		return classifyResourceCopyError(copyErr, destination.err)
+	}
+	if bodyCloseErr != nil {
 		return newError(CodeUpstreamUnavailable, OperationDownload, BackendResource, true, 0, 0, errors.New("resource stream failed"))
 	}
 	if tmpCloseErr != nil {
@@ -185,6 +189,28 @@ func (c *Client) Download(ctx context.Context, ref ResourceRef, destinationPath 
 	}
 	keepTemp = false
 	return nil
+}
+
+type resourceDestinationWriter struct {
+	writer io.Writer
+	err    error
+}
+
+func (w *resourceDestinationWriter) Write(payload []byte) (int, error) {
+	written, err := w.writer.Write(payload)
+	if err != nil {
+		w.err = err
+	} else if written != len(payload) {
+		w.err = io.ErrShortWrite
+	}
+	return written, err
+}
+
+func classifyResourceCopyError(_ error, destinationErr error) error {
+	if destinationErr != nil {
+		return invalidResourceError(OperationDownload, "destination write failed")
+	}
+	return newError(CodeUpstreamUnavailable, OperationDownload, BackendResource, true, 0, 0, errors.New("resource stream failed"))
 }
 
 func resourceErrorForOperation(err error, operation Operation) error {
@@ -225,7 +251,7 @@ func filteredResourceHeaders(source http.Header) http.Header {
 func allowedResourceHeader(header string) bool {
 	switch header {
 	case "Content-Type", "Content-Length", "Cache-Control", "Etag", "Last-Modified",
-		"Expires", "Age", "Accept-Ranges", "Content-Encoding", "Vary":
+		"Expires", "Age", "Accept-Ranges", "Content-Range", "Content-Encoding", "Vary":
 		return true
 	default:
 		return false

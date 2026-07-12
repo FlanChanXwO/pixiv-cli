@@ -28,6 +28,7 @@ func TestOpenResourceForwardsConditionsAndReturnsStreaming206(t *testing.T) {
 		w.Header().Add("Content-Type", "image/jpeg")
 		w.Header().Add("ETag", `"first"`)
 		w.Header().Add("ETag", `"second"`)
+		w.Header().Set("Content-Range", "bytes 2-12/13")
 		w.Header().Add("Set-Cookie", "secret=cookie")
 		w.Header().Add("X-Internal", "hidden")
 		w.WriteHeader(http.StatusPartialContent)
@@ -57,6 +58,7 @@ func TestOpenResourceForwardsConditionsAndReturnsStreaming206(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, http.StatusPartialContent, response.StatusCode)
 	assert.Equal(t, []string{`"first"`, `"second"`}, response.Header.Values("ETag"))
+	assert.Equal(t, "bytes 2-12/13", response.Header.Get("Content-Range"))
 	assert.Equal(t, "image/jpeg", response.Header.Get("Content-Type"))
 	assert.Equal(t, "11", response.Header.Get("Content-Length"))
 	assert.Empty(t, response.Header.Get("Set-Cookie"))
@@ -206,14 +208,20 @@ func TestOpenResourceAllowsRelativeRedirectWithinPolicy(t *testing.T) {
 
 func TestOpenResourcePreservesCallerCheckRedirect(t *testing.T) {
 	redirectErr := errors.New("caller redirect policy")
+	var hits atomic.Int32
+	var callbackCalled atomic.Bool
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits.Add(1)
 		http.Redirect(w, r, "/resource/next.jpg", http.StatusFound)
 	}))
 	defer server.Close()
 	u, err := url.Parse(server.URL)
 	require.NoError(t, err)
 	httpClient := server.Client()
-	httpClient.CheckRedirect = func(*http.Request, []*http.Request) error { return redirectErr }
+	httpClient.CheckRedirect = func(*http.Request, []*http.Request) error {
+		callbackCalled.Store(true)
+		return redirectErr
+	}
 	client, err := pixiv.NewClient(pixiv.Options{
 		HTTPClient:     httpClient,
 		ResourcePolicy: pixiv.ResourcePolicy{Mirrors: []pixiv.ResourceMirrorPolicy{{Host: u.Host, PathPrefixes: []string{"/resource/"}}}},
@@ -222,6 +230,62 @@ func TestOpenResourcePreservesCallerCheckRedirect(t *testing.T) {
 	_, err = client.OpenResource(context.Background(), pixiv.OpenResourceRequest{Ref: pixiv.ResourceRef{URL: server.URL + "/resource/start.jpg"}})
 	require.ErrorIs(t, err, pixiv.ErrUpstreamUnavailable)
 	assert.NotErrorIs(t, err, redirectErr, "调用方 redirect 错误不应进入公开 cause")
+	assert.True(t, callbackCalled.Load())
+	assert.EqualValues(t, 1, hits.Load())
+}
+
+func TestOpenResourceValidatesURLAfterCallerRedirectMutation(t *testing.T) {
+	var privateHits atomic.Int32
+	privateURL := "http://127.0.0.1/private?token=canary-query"
+	httpClient := &http.Client{
+		Transport: resourceRoundTripperFunc(func(request *http.Request) (*http.Response, error) {
+			if request.URL.Host == "127.0.0.1" {
+				privateHits.Add(1)
+				return &http.Response{StatusCode: http.StatusOK, Header: make(http.Header), Body: io.NopCloser(strings.NewReader("private canary body"))}, nil
+			}
+			return &http.Response{
+				StatusCode: http.StatusFound,
+				Header:     http.Header{"Location": {"https://i.pximg.net/img-original/allowed.jpg"}},
+				Body:       io.NopCloser(strings.NewReader("redirect")),
+			}, nil
+		}),
+		CheckRedirect: func(next *http.Request, _ []*http.Request) error {
+			mutated, err := url.Parse(privateURL)
+			require.NoError(t, err)
+			next.URL = mutated
+			return nil
+		},
+	}
+	client, err := pixiv.NewClient(pixiv.Options{HTTPClient: httpClient})
+	require.NoError(t, err)
+	response, err := client.OpenResource(context.Background(), pixiv.OpenResourceRequest{Ref: pixiv.ResourceRef{URL: "https://i.pximg.net/img-original/start.jpg"}})
+	assert.Nil(t, response)
+	require.ErrorIs(t, err, pixiv.ErrForbidden)
+	var typed *pixiv.Error
+	require.True(t, errors.As(err, &typed))
+	assert.Equal(t, pixiv.OperationOpenResource, typed.Operation)
+	assert.Empty(t, typed.Backend)
+	assert.Zero(t, privateHits.Load())
+	assert.NotContains(t, err.Error(), "canary")
+}
+
+func TestOpenResourceClonesAllowedResponseHeaders(t *testing.T) {
+	upstream := http.Header{
+		"Content-Range": {"bytes 0-1/4", "bytes 2-3/4"},
+		"Etag":          {`"first"`, `"second"`},
+	}
+	client, err := pixiv.NewClient(pixiv.Options{HTTPClient: &http.Client{Transport: resourceRoundTripperFunc(func(*http.Request) (*http.Response, error) {
+		return &http.Response{StatusCode: http.StatusPartialContent, Header: upstream, Body: io.NopCloser(strings.NewReader("data"))}, nil
+	})}})
+	require.NoError(t, err)
+	response, err := client.OpenResource(context.Background(), pixiv.OpenResourceRequest{Ref: pixiv.ResourceRef{URL: "https://i.pximg.net/img-original/a.jpg"}})
+	require.NoError(t, err)
+	defer response.Body.Close()
+	require.Equal(t, []string{"bytes 0-1/4", "bytes 2-3/4"}, response.Header.Values("Content-Range"))
+	response.Header["Content-Range"][0] = "mutated"
+	response.Header["Etag"][0] = "mutated"
+	assert.Equal(t, "bytes 0-1/4", upstream["Content-Range"][0])
+	assert.Equal(t, `"first"`, upstream["Etag"][0])
 }
 
 func TestOpenResourceUseLastResponseRejectsAndClosesRedirect(t *testing.T) {

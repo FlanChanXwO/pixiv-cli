@@ -118,17 +118,19 @@ func (c *Client) Open(ctx context.Context, request OpenRequest) (*Response, erro
 	}
 	originalRedirect := httpClient.CheckRedirect
 	httpClient.CheckRedirect = func(next *http.Request, via []*http.Request) error {
+		if originalRedirect != nil {
+			if err := originalRedirect(next, via); err != nil {
+				return err
+			}
+		} else if len(via) >= 10 {
+			// 保持 net/http.Client 在 CheckRedirect 为空时的默认十跳上限。
+			return errors.New("stopped after 10 redirects")
+		}
+		// caller callback 可能改写 URL，因此必须验证其最终结果。
 		if request.Validate != nil {
 			if err := request.Validate(next.URL.String()); err != nil {
 				return err
 			}
-		}
-		if originalRedirect != nil {
-			return originalRedirect(next, via)
-		}
-		// 保持 net/http.Client 在 CheckRedirect 为空时的默认十跳上限。
-		if len(via) >= 10 {
-			return errors.New("stopped after 10 redirects")
 		}
 		return nil
 	}
