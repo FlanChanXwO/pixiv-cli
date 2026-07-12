@@ -76,7 +76,7 @@
     {
       "path": "CHANGELOG.md",
       "language": "markdown",
-      "sizeLines": 92,
+      "sizeLines": 93,
       "fileCategory": "docs"
     },
     {
@@ -160,13 +160,13 @@
     {
       "path": "docs/architecture.md",
       "language": "markdown",
-      "sizeLines": 237,
+      "sizeLines": 240,
       "fileCategory": "docs"
     },
     {
       "path": "docs/development.md",
       "language": "markdown",
-      "sizeLines": 354,
+      "sizeLines": 358,
       "fileCategory": "docs"
     },
     {
@@ -940,11 +940,17 @@
     {
       "path": "internal/download/staticlib/manifest.go",
       "language": "go",
-      "sizeLines": 222,
+      "sizeLines": 227,
+      "fileCategory": "code"
+    },
+    {
+      "path": "internal/download/staticlib/manifest_test.go",
+      "language": "go",
+      "sizeLines": 33,
       "fileCategory": "code"
     }
   ],
-  "totalFiles": 154,
+  "totalFiles": 155,
   "filteredByIgnore": 194,
   "estimatedComplexity": "large",
   "importMap": {
@@ -1669,6 +1675,7 @@
     ],
     "test/e2e/version_binary_test.go": [],
     "THIRD_PARTY_LICENSES.md": [],
-    "internal/download/staticlib/manifest.go": []
+    "internal/download/staticlib/manifest.go": [],
+    "internal/download/staticlib/manifest_test.go": []
   }
 }

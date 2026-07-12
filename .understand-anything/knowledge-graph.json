@@ -20,8 +20,8 @@
       "GitHub Actions"
     ],
     "description": "这是一个 Go 版 Pixiv CLI 与 MCP stdio server，内置 Rust ugoira encoder，并包含 release/update workflow。",
-    "analyzedAt": "2026-07-12T10:30:22.000Z",
-    "gitCommitHash": "d4864429ad542ec4ee8b5c8076c771468be93940"
+    "analyzedAt": "2026-07-12T11:23:03.143Z",
+    "gitCommitHash": "42a5515e1ae97db9fb4be62407ba9a291f33288f"
   },
   "nodes": [
     {
@@ -16553,13 +16553,15 @@
       "type": "file",
       "name": "manifest.go",
       "filePath": "internal/download/staticlib/manifest.go",
-      "summary": "定义无 cgo 的 Rust staticlib 来源摘要与 manifest 完整性契约，供下载路径和 native evidence policy 共享。",
+      "summary": "定义无 cgo 的 Rust staticlib 来源摘要与 manifest 完整性契约；在筛选前把平台路径规范化为 logical slash path，确保 Windows/Unix source identity 一致，并供下载路径与 native evidence policy 共享。",
       "tags": [
         "ugoira动图",
         "Rust语言",
         "静态库",
         "完整性",
-        "无cgo"
+        "无cgo",
+        "跨平台路径",
+        "tested"
       ],
       "complexity": "complex"
     },
@@ -16619,7 +16621,7 @@
       "type": "function",
       "name": "hashSourceTree",
       "filePath": "internal/download/staticlib/manifest.go",
-      "summary": "实现 manifest.go 中 hashSourceTree 的核心处理逻辑。",
+      "summary": "遍历 crate 与 locked dependency 的生产输入，先把 filepath.Rel 结果规范化为 slash path，再筛选、排序并按文件 SHA-256 写入稳定 source digest。",
       "tags": [
         "函数",
         "Go语言",
@@ -16628,7 +16630,7 @@
       "complexity": "moderate",
       "lineRange": [
         57,
-        100
+        102
       ]
     },
     {
@@ -16636,16 +16638,17 @@
       "type": "function",
       "name": "isDigestSource",
       "filePath": "internal/download/staticlib/manifest.go",
-      "summary": "实现 manifest.go 中 isDigestSource 的核心处理逻辑。",
+      "summary": "接受 slash 或反斜杠 logical path，筛选 Cargo/build、src Rust 以及主 crate 的 .cargo/vendor 输入，并排除 target 与非生产文件。",
       "tags": [
         "函数",
         "Go语言",
-        "实现"
+        "实现",
+        "tested"
       ],
       "complexity": "moderate",
       "lineRange": [
-        101,
-        111
+        104,
+        114
       ]
     },
     {
@@ -16661,8 +16664,8 @@
       ],
       "complexity": "moderate",
       "lineRange": [
-        112,
-        129
+        117,
+        131
       ]
     },
     {
@@ -16678,8 +16681,8 @@
       ],
       "complexity": "moderate",
       "lineRange": [
-        130,
-        160
+        135,
+        164
       ]
     },
     {
@@ -16695,8 +16698,8 @@
       ],
       "complexity": "moderate",
       "lineRange": [
-        161,
-        196
+        166,
+        200
       ]
     },
     {
@@ -16712,8 +16715,8 @@
       ],
       "complexity": "moderate",
       "lineRange": [
-        197,
-        204
+        202,
+        208
       ]
     },
     {
@@ -16729,8 +16732,8 @@
       ],
       "complexity": "moderate",
       "lineRange": [
-        205,
-        215
+        210,
+        219
       ]
     },
     {
@@ -16746,8 +16749,42 @@
       ],
       "complexity": "moderate",
       "lineRange": [
-        216,
-        223
+        221,
+        227
+      ]
+    },
+    {
+      "id": "file:internal/download/staticlib/manifest_test.go",
+      "type": "file",
+      "name": "manifest_test.go",
+      "filePath": "internal/download/staticlib/manifest_test.go",
+      "summary": "以 Windows 与 Unix 风格路径的正反例回归 source digest 输入筛选，锁定 src/.cargo/vendor、quantette、非 Rust 文件与 target 产物边界。",
+      "tags": [
+        "测试",
+        "Go语言",
+        "Rust语言",
+        "跨平台路径",
+        "source-identity"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:internal/download/staticlib/manifest_test.go:TestIsDigestSourceAcceptsPlatformSeparators",
+      "type": "function",
+      "name": "TestIsDigestSourceAcceptsPlatformSeparators",
+      "filePath": "internal/download/staticlib/manifest_test.go",
+      "summary": "以 slash/反斜杠正例验证 src/.cargo/vendor 与 quantette Rust 输入，并以 quantette .cargo、非 Rust 与 target 路径反例锁定筛选边界。",
+      "tags": [
+        "测试",
+        "Go语言",
+        "Windows",
+        "路径规范化",
+        "source-identity"
+      ],
+      "complexity": "simple",
+      "lineRange": [
+        5,
+        33
       ]
     },
     {
@@ -33446,6 +33483,36 @@
       "weight": 1
     },
     {
+      "source": "file:internal/download/staticlib/manifest_test.go",
+      "target": "function:internal/download/staticlib/manifest_test.go:TestIsDigestSourceAcceptsPlatformSeparators",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:internal/download/staticlib/manifest_test.go",
+      "target": "function:internal/download/staticlib/manifest_test.go:TestIsDigestSourceAcceptsPlatformSeparators",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:internal/download/staticlib/manifest.go",
+      "target": "file:internal/download/staticlib/manifest_test.go",
+      "type": "tested_by",
+      "direction": "forward",
+      "weight": 0.5,
+      "description": "Path-based pairing (deterministic)"
+    },
+    {
+      "source": "function:internal/download/staticlib/manifest.go:isDigestSource",
+      "target": "function:internal/download/staticlib/manifest_test.go:TestIsDigestSourceAcceptsPlatformSeparators",
+      "type": "tested_by",
+      "direction": "forward",
+      "weight": 0.5,
+      "description": "Platform-separator positive and negative cases lock the digest filter boundary"
+    },
+    {
       "source": "file:internal/download/ugoira_integrity.go",
       "target": "class:internal/download/ugoira_integrity.go:UgoiraStaticlibManifest",
       "type": "contains",
@@ -35591,7 +35658,8 @@
         "file:internal/download/ugoira_rust_link_windows_arm64.go",
         "file:internal/download/ugoira_rust_stub.go",
         "file:internal/download/ugoira_rust_test.go",
-        "file:internal/download/staticlib/manifest.go"
+        "file:internal/download/staticlib/manifest.go",
+        "file:internal/download/staticlib/manifest_test.go"
       ]
     },
     {
@@ -35745,10 +35813,12 @@
     {
       "order": 5,
       "title": "Rust 静态库同源性",
-      "description": "原生编码器的核心是 Rust FFI、PNG relay 与量化实现；Go 侧在加载前验证 staticlib manifest 的目标、源码 digest 和 SHA-256。first-party Cargo/build/source 输入必须在 Windows 与 Unix 保持同一 Git blob bytes；run 29187493129 的六个 matrix job 均 success，但 Windows/Unix source digest 已分裂并被 consolidate fail-closed，该 run artifacts 不得回填或与后续 run 拼接。",
+      "description": "原生编码器的核心是 Rust FFI、PNG relay 与量化实现；Go 侧在加载前验证 staticlib manifest 的目标、源码 digest 和 SHA-256。run 29189725013 的六个 matrix job 均 success，但在规范化 Windows 反斜杠前筛选 src/.cargo/vendor 导致 Windows/Unix source digest 分裂并被 consolidate fail-closed；该 run artifacts 不得回填或跨 run 拼接，必须从修复后的新 SHA 完整重跑。",
       "nodeIds": [
         "file:internal/download/ugoira_rs/src/lib.rs",
-        "file:internal/download/ugoira_integrity.go"
+        "file:internal/download/ugoira_integrity.go",
+        "file:internal/download/staticlib/manifest.go",
+        "file:internal/download/staticlib/manifest_test.go"
       ],
       "languageLesson": "Rust 通过 C FFI 暴露稳定入口给 cgo；跨语言边界应把所有权、错误码和字节缓冲区约定写成可验证的契约。"
     },
