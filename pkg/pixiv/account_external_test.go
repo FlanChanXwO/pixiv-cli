@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -140,6 +141,11 @@ func TestLoginSessionIsOpaqueOneTimeAndValidatesCallback(t *testing.T) {
 	if string(encoded) != "{}" {
 		t.Fatalf("session JSON=%s", encoded)
 	}
+	for _, rendered := range []string{fmt.Sprint(session), fmt.Sprintf("%+v", session), fmt.Sprintf("%#v", session), fmt.Sprintf("%q", session)} {
+		if strings.Contains(rendered, "code_challenge") || strings.Contains(rendered, "state=") || strings.Contains(rendered, "pixiv-android") {
+			t.Fatalf("login session formatting leaked: %q", rendered)
+		}
+	}
 	loginURL, err := url.Parse(session.AuthorizationURL())
 	if err != nil || loginURL.Path != "/web/v1/login" || loginURL.Query().Get("code_challenge_method") != "S256" || loginURL.Query().Get("state") == "" {
 		t.Fatalf("authorization url=%q err=%v", session.AuthorizationURL(), err)
@@ -173,13 +179,14 @@ func TestLoginSessionConcurrentCompletionExchangesOnce(t *testing.T) {
 	defer server.Close()
 	client, _ := pixiv.NewClient(pixiv.Options{AuthFilePath: authPath, OAuthBaseURL: server.URL, HTTPClient: server.Client()})
 	session, _ := client.StartLogin()
+	copyValue := *session
 	var wg sync.WaitGroup
-	for range 2 {
+	for _, current := range []*pixiv.LoginSession{session, &copyValue} {
 		wg.Add(1)
-		go func() {
+		go func(current *pixiv.LoginSession) {
 			defer wg.Done()
-			_, _ = client.CompleteLogin(context.Background(), session, "code", pixiv.LoginOptions{})
-		}()
+			_, _ = client.CompleteLogin(context.Background(), current, "code", pixiv.LoginOptions{})
+		}(current)
 	}
 	wg.Wait()
 	if exchanges.Load() != 1 {
@@ -231,6 +238,9 @@ func TestOpenDefaultReadsOneCurrentSnapshotPerOperation(t *testing.T) {
 	if _, err := client.IllustDetail(context.Background(), 1); err != nil || appCalls.Load() != 1 || webCalls.Load() != 2 || oauthCalls.Load() != 1 {
 		t.Fatalf("authenticated detail err=%v app=%d web=%d oauth=%d", err, appCalls.Load(), webCalls.Load(), oauthCalls.Load())
 	}
+	if body, err := os.ReadFile(authPath); err != nil || !strings.Contains(string(body), "rotated") || strings.Contains(string(body), `"refresh_token":"stored"`) {
+		t.Fatalf("snapshot rotation was not saved: body=%s err=%v", body, err)
+	}
 	if err := os.Remove(authPath); err != nil {
 		t.Fatal(err)
 	}
@@ -250,13 +260,13 @@ func TestOpenDefaultCursorRejectsSourceChangeAndLegacyCursor(t *testing.T) {
 	if err := os.WriteFile(configPath, []byte("[web]\nfallback_enabled = true\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	writeAuth := func(token string) {
+	writeAuth := func(token string, userID int) {
 		t.Helper()
-		if err := os.WriteFile(authPath, []byte(`{"default_user_id":7,"accounts":[{"user_id":7,"refresh_token":"`+token+`"}]}`), 0o600); err != nil {
+		if err := os.WriteFile(authPath, []byte(`{"default_user_id":`+strconv.Itoa(userID)+`,"accounts":[{"user_id":`+strconv.Itoa(userID)+`,"refresh_token":"`+token+`"}]}`), 0o600); err != nil {
 			t.Fatal(err)
 		}
 	}
-	writeAuth("uid-seven")
+	writeAuth("uid-seven", 7)
 	var contentCalls atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
@@ -288,11 +298,11 @@ func TestOpenDefaultCursorRejectsSourceChangeAndLegacyCursor(t *testing.T) {
 	if err != nil || first.NextCursor == "" || strings.Contains(string(first.NextCursor), "never-in-cursor") {
 		t.Fatalf("first=%+v err=%v", first, err)
 	}
-	writeAuth("uid-eight")
+	writeAuth("uid-eight", 8)
 	if _, err := client.SearchIllust(context.Background(), pixiv.SearchIllustRequest{Word: "miku", Cursor: first.NextCursor}); !errors.Is(err, pixiv.ErrInvalidArgument) || contentCalls.Load() != 1 {
 		t.Fatalf("source change err=%v content=%d", err, contentCalls.Load())
 	}
-	writeAuth("uid-seven")
+	writeAuth("uid-seven", 7)
 	if err := os.WriteFile(configPath, []byte("[web]\nfallback_enabled = true\n[output]\njson = true\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -355,8 +365,13 @@ func TestOpenDefaultRefreshTokenPriority(t *testing.T) {
 			if err := r.ParseForm(); err != nil {
 				t.Fatal(err)
 			}
-			gotToken.Store(r.Form.Get("refresh_token"))
-			_, _ = w.Write([]byte(`{"access_token":"access","refresh_token":"rotated","user":{"id":1}}`))
+			token := r.Form.Get("refresh_token")
+			gotToken.Store(token)
+			userID := 1
+			if token == "selected-token" {
+				userID = 2
+			}
+			_, _ = w.Write([]byte(`{"access_token":"access","refresh_token":"rotated","user":{"id":` + strconv.Itoa(userID) + `}}`))
 		case "/v1/illust/recommended":
 			_, _ = w.Write([]byte(`{"illusts":[],"next_url":null}`))
 		default:
@@ -387,6 +402,71 @@ func TestOpenDefaultRefreshTokenPriority(t *testing.T) {
 	call(pixiv.Options{}, "default-token")
 }
 
+func TestOpenDefaultMissingSelectedUIDAndStoredMismatchNeverReachContent(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	authPath := filepath.Join(dir, "auth.json")
+	configPath := filepath.Join(dir, "config.toml")
+	if err := os.WriteFile(authPath, []byte(`{"default_user_id":7,"accounts":[{"user_id":7,"refresh_token":"stored-token"}]}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var oauthCalls, contentCalls atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/auth/token":
+			oauthCalls.Add(1)
+			_, _ = w.Write([]byte(`{"access_token":"access","refresh_token":"wrong-rotated","user":{"id":8}}`))
+		case "/v1/illust/recommended":
+			contentCalls.Add(1)
+		default:
+			t.Fatalf("path=%s", r.URL.Path)
+		}
+	}))
+	defer server.Close()
+	options := pixiv.Options{AuthFilePath: authPath, ConfigFilePath: configPath, HTTPClient: server.Client(), OAuthBaseURL: server.URL, AppAPIBaseURL: server.URL}
+	missing, _ := pixiv.OpenDefault(pixiv.Options{AuthFilePath: authPath, ConfigFilePath: configPath, HTTPClient: server.Client(), OAuthBaseURL: server.URL, AppAPIBaseURL: server.URL, UserID: 99})
+	if _, err := missing.IllustRecommended(context.Background(), pixiv.IllustRecommendedRequest{}); !errors.Is(err, pixiv.ErrInvalidArgument) || oauthCalls.Load() != 0 || contentCalls.Load() != 0 {
+		t.Fatalf("missing selected uid err=%v oauth=%d content=%d", err, oauthCalls.Load(), contentCalls.Load())
+	}
+	client, _ := pixiv.OpenDefault(options)
+	_, err := client.IllustRecommended(context.Background(), pixiv.IllustRecommendedRequest{})
+	var typed *pixiv.Error
+	if !errors.As(err, &typed) || typed.UserID != 7 || typed.Operation != pixiv.OperationIllustRecommended || contentCalls.Load() != 0 {
+		t.Fatalf("mismatch err=%#v content=%d", err, contentCalls.Load())
+	}
+	body, readErr := os.ReadFile(authPath)
+	if readErr != nil || strings.Contains(string(body), "wrong-rotated") || !strings.Contains(string(body), "stored-token") {
+		t.Fatalf("stored account changed body=%s err=%v", body, readErr)
+	}
+}
+
+func TestOpenDefaultParseResourceRefUsesLocalSnapshotWithoutOAuth(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	authPath := filepath.Join(dir, "auth.json")
+	configPath := filepath.Join(dir, "config.toml")
+	if err := os.WriteFile(configPath, []byte("[web]\nfallback_enabled = true\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var requests atomic.Int32
+	client, err := pixiv.OpenDefault(pixiv.Options{AuthFilePath: authPath, ConfigFilePath: configPath, HTTPClient: &http.Client{Transport: accountRoundTripperFunc(func(*http.Request) (*http.Response, error) {
+		requests.Add(1)
+		return nil, errors.New("network should not run")
+	})}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := client.ParseResourceRef("https://i.pximg.net/img-original/a.jpg"); err != nil || requests.Load() != 0 {
+		t.Fatalf("parse err=%v requests=%d", err, requests.Load())
+	}
+	if err := os.WriteFile(authPath, []byte(`{"default_account":"legacy"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := client.ParseResourceRef("https://i.pximg.net/img-original/a.jpg"); !errors.Is(err, pixiv.ErrInvalidArgument) || requests.Load() != 0 {
+		t.Fatalf("updated snapshot err=%v requests=%d", err, requests.Load())
+	}
+}
+
 func mustQuery(t *testing.T, raw, key string) string {
 	t.Helper()
 	parsed, err := url.Parse(raw)
@@ -401,4 +481,10 @@ func errString(err error) string {
 		return ""
 	}
 	return err.Error()
+}
+
+type accountRoundTripperFunc func(*http.Request) (*http.Response, error)
+
+func (f accountRoundTripperFunc) RoundTrip(request *http.Request) (*http.Response, error) {
+	return f(request)
 }

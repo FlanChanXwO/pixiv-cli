@@ -3,6 +3,8 @@ package pixiv
 import (
 	"context"
 	"errors"
+	"fmt"
+	"io"
 	"net/url"
 	"strings"
 	"sync/atomic"
@@ -12,9 +14,13 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/storage/auth"
 )
 
-// LoginSession 是同一进程、同一 Client 绑定的一次性 PKCE 会话。其字段均不导出，
-// 因而 JSON、fmt 和错误链不会暴露 verifier 或 state。
+// LoginSession 是同一进程、同一 Client 绑定的一次性 PKCE 会话。复制这个
+// 小 handle 仍共享同一个会话状态与 one-time gate。
 type LoginSession struct {
+	state *loginSessionState
+}
+
+type loginSessionState struct {
 	owner            *Client
 	authorizationURL string
 	verifier         string
@@ -24,10 +30,18 @@ type LoginSession struct {
 
 // AuthorizationURL 返回调用方应自行打开或交给浏览器的 Pixiv 授权地址。
 func (s *LoginSession) AuthorizationURL() string {
-	if s == nil {
+	if s == nil || s.state == nil {
 		return ""
 	}
-	return s.authorizationURL
+	return s.state.authorizationURL
+}
+
+// String、GoString 和 Format 均不暴露 URL、state 或 PKCE verifier；授权 URL
+// 只能通过 AuthorizationURL 这个显式能力取得。
+func (LoginSession) String() string   { return "pixiv.LoginSession{}" }
+func (LoginSession) GoString() string { return "pixiv.LoginSession{}" }
+func (LoginSession) Format(state fmt.State, _ rune) {
+	_, _ = io.WriteString(state, "pixiv.LoginSession{}")
 }
 
 // StartLogin 创建一次性的程序化登录会话；pkg 不会启动浏览器、loopback server 或 TTY。
@@ -45,12 +59,12 @@ func (c *Client) StartLogin() (*LoginSession, error) {
 	values.Set("code_challenge_method", "S256")
 	values.Set("client", "pixiv-android")
 	values.Set("state", state)
-	return &LoginSession{
+	return &LoginSession{state: &loginSessionState{
 		owner:            c,
 		authorizationURL: strings.TrimRight(c.loginBaseURL(), "/") + "/web/v1/login?" + values.Encode(),
 		verifier:         verifier,
 		state:            state,
-	}, nil
+	}}, nil
 }
 
 func (c *Client) loginBaseURL() string {
@@ -68,14 +82,14 @@ func (c *Client) loginBaseURL() string {
 // CompleteLogin 校验 callback/state，交换 authorization code 并安全保存账号。
 // callbackOrCode 可为裸 code 或回调 URL；任意非官方 callback URL 必须带匹配 state。
 func (c *Client) CompleteLogin(ctx context.Context, session *LoginSession, callbackOrCode string, options LoginOptions) (*Account, error) {
-	if session == nil || session.owner != c {
+	if session == nil || session.state == nil || session.state.owner != c {
 		return nil, newError(CodeInvalidArgument, OperationCompleteLogin, "", false, 0, 0, errors.New("login session is not owned by this client"))
 	}
-	code, err := loginCode(callbackOrCode, session.state)
+	code, err := loginCode(callbackOrCode, session.state.state)
 	if err != nil {
 		return nil, newError(CodeInvalidArgument, OperationCompleteLogin, "", false, 0, 0, errors.New("login callback is invalid"))
 	}
-	if !session.used.CompareAndSwap(false, true) {
+	if !session.state.used.CompareAndSwap(false, true) {
 		return nil, newError(CodeInvalidArgument, OperationCompleteLogin, "", false, 0, 0, errors.New("login session was already used"))
 	}
 	state, httpClient, err := c.accountState(OperationCompleteLogin, true)
@@ -83,7 +97,7 @@ func (c *Client) CompleteLogin(ctx context.Context, session *LoginSession, callb
 		return nil, err
 	}
 	oauthClient := oauth.New("", oauth.WithHTTPClient(httpClient), oauth.WithBaseURL(c.oauthBase()))
-	token, err := oauthClient.ExchangeAuthorizationCode(ctx, code, session.verifier)
+	token, err := oauthClient.ExchangeAuthorizationCode(ctx, code, session.state.verifier)
 	if err != nil {
 		return nil, mapOAuthError(err, OperationCompleteLogin)
 	}

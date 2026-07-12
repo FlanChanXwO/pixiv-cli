@@ -72,7 +72,10 @@ func (d *defaultOptions) snapshot(ctx context.Context, operation Operation) (*Cl
 	if err != nil {
 		return nil, localSnapshotError(operation, err)
 	}
-	refreshToken, _ := d.selectRefreshToken(snapshot.store)
+	refreshToken, selectedUserID, selectedStored, err := d.selectRefreshToken(snapshot.store)
+	if err != nil {
+		return nil, newUserError(CodeInvalidArgument, operation, "", false, 0, d.options.UserID, errors.New("selected account does not exist"))
+	}
 	httpClient, err := newHTTPClientForSnapshot(d.options, snapshot.runtime.HTTPSProxy)
 	if err != nil {
 		return nil, localSnapshotError(operation, err)
@@ -97,32 +100,72 @@ func (d *defaultOptions) snapshot(ctx context.Context, operation Operation) (*Cl
 	if oauthClient.UserID() <= 0 || strings.TrimSpace(oauthClient.AccessToken()) == "" {
 		return nil, newError(CodeMalformedUpstreamResponse, operation, BackendOAuth, false, 0, 0, errors.New("oauth response did not include authenticated identity"))
 	}
+	if selectedStored {
+		if oauthClient.UserID() != selectedUserID {
+			return nil, newUserError(CodeInvalidArgument, operation, BackendOAuth, false, 0, selectedUserID, errors.New("oauth identity does not match selected account"))
+		}
+		index, stored, ok := snapshot.store.Get(selectedUserID)
+		if !ok {
+			return nil, newUserError(CodeInvalidArgument, operation, "", false, 0, selectedUserID, errors.New("selected account does not exist"))
+		}
+		stored.RefreshToken = oauthClient.RefreshTokenValue()
+		if username := strings.TrimSpace(oauthClient.UserName()); username != "" {
+			stored.Username = username
+		}
+		snapshot.store.Accounts[index] = stored
+		if err := auth.SaveAuthStore(snapshot.authPath, snapshot.store); err != nil {
+			return nil, localSnapshotError(operation, err)
+		}
+	}
 	options.AccessToken = oauthClient.AccessToken()
 	client, err := NewClient(options)
 	if err != nil {
 		return nil, localSnapshotError(operation, err)
 	}
-	client.cursorSource = "app:user:" + formatUserID(oauthClient.UserID())
+	sourceUserID := oauthClient.UserID()
+	if selectedStored {
+		sourceUserID = selectedUserID
+	}
+	client.cursorSource = "app:user:" + formatUserID(sourceUserID)
 	return client, nil
 }
 
-func (d *defaultOptions) selectRefreshToken(store auth.AuthStore) (string, int64) {
+func (d *defaultOptions) selectRefreshToken(store auth.AuthStore) (string, int64, bool, error) {
 	if token := strings.TrimSpace(d.options.RefreshToken); token != "" {
-		return token, 0
+		return token, 0, false, nil
 	}
 	if d.options.UserID != 0 {
 		if _, account, ok := store.Get(d.options.UserID); ok {
-			return account.RefreshToken, account.UserID
+			return account.RefreshToken, account.UserID, true, nil
 		}
-		return "", 0
+		return "", 0, false, errors.New("selected account does not exist")
 	}
 	if token := config.RefreshTokenFromEnv(); token != "" {
-		return token, 0
+		return token, 0, false, nil
 	}
 	if userID, account, ok := auth.SelectAuthAccount(store, 0); ok {
-		return account.RefreshToken, userID
+		return account.RefreshToken, userID, true, nil
 	}
-	return "", 0
+	return "", 0, false, nil
+}
+
+// resourceSnapshot keeps ParseResourceRef in the OpenDefault freshness model
+// without starting an OAuth request from its context-free, local-only API.
+func (d *defaultOptions) resourceSnapshot(operation Operation) (*Client, error) {
+	snapshot, err := d.loadSnapshot()
+	if err != nil {
+		return nil, localSnapshotError(operation, err)
+	}
+	if _, _, _, err := d.selectRefreshToken(snapshot.store); err != nil {
+		return nil, newUserError(CodeInvalidArgument, operation, "", false, 0, d.options.UserID, errors.New("selected account does not exist"))
+	}
+	options := d.options
+	options.AccessToken = ""
+	client, err := NewClient(options)
+	if err != nil {
+		return nil, localSnapshotError(operation, err)
+	}
+	return client, nil
 }
 
 func localSnapshotError(operation Operation, _ error) error {

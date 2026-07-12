@@ -100,6 +100,13 @@ func validPathPrefix(prefix string) bool {
 
 // ParseResourceRef 根据 Client 的资源策略解析并验证 URL。
 func (c *Client) ParseResourceRef(rawURL string) (ResourceRef, error) {
+	if c.defaults != nil {
+		scoped, err := c.defaults.resourceSnapshot(OperationParseResourceRef)
+		if err != nil {
+			return ResourceRef{}, err
+		}
+		return scoped.ParseResourceRef(rawURL)
+	}
 	parsed, err := c.resourcePolicy.validate(rawURL, OperationParseResourceRef)
 	if err != nil {
 		return ResourceRef{}, err
