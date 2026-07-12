@@ -166,8 +166,11 @@ selector 还显式链接系统 `libm`，承接 Rust/image staticlib 的 `sinf`/`
 无 cgo、无 target library 或无 C linker 时应在编译/构建期明确失败，不能回退到 `ffmpeg` 或 runtime
 stub。Source identity 纳入 first-party crate 的 Cargo/build/source 输入、vendor 闭包与本地
 `quantette`；这些路径在 `.gitattributes` 中禁用 Git 文本转换，使 Windows 与 Unix checkout 保持同一
-Git blob bytes，而不是在摘要算法中掩盖差异。Rust `target/` 是机器产物，staticlib/manifest 是经过
-native 验证后才可提交的发布输入。
+Git blob bytes，而不是在摘要算法中掩盖差异。摘要算法先把 `filepath.Rel` 的 Windows 反斜杠转换为
+logical slash path，再筛选 `src/`、`.cargo/` 与 `vendor/`；run `29189725013` 证明若顺序相反，即使
+六个 runner job 均 success，也会产生 Unix/Windows digest split 并被 consolidation fail-closed。
+该 run 不可回填或与后续 run 拼接。Rust `target/` 是机器产物，staticlib/manifest 是经过 native
+验证后才可提交的发布输入。
 `internal/download/staticlib` 只承载 source digest 与 manifest 的完整性契约，不导入 cgo encoder；
 因此 native-evidence 的 **policy** gate 可以在目标库生成前执行。`record` 与 `consolidate` 同样不
 触发 cgo 链接，但分别仍需要已生成的 staticlib/binary/archive 与完整六份 evidence 输入；下载运行时

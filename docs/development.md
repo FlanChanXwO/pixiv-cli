@@ -63,6 +63,10 @@ fixture 与许可证 bundle。根 `.gitattributes` 对上述 first-party crate �
 checkout 把 LF 改为 CRLF 后破坏 Cargo checksum、source digest 或 licensebundle。对
 licensebundle 的 `THIRD_PARTY_LICENSES.md` 与
 `third_party/licenses/**` 则固定 `text eol=lf`，使其 byte-for-byte `--check` 在 Windows 保持稳定。
+摘要器还必须在判断 `src/`、`.cargo/` 与 `vendor/` 之前，把 `filepath.Rel` 的平台分隔符规范化为
+slash；否则 Windows 的反斜杠路径会静默漏掉这些输入。run `29189725013` 的六个 matrix job 虽均
+success，但其 Unix/Windows source digest 因该路径筛选缺陷分裂，`consolidate` 必须拒绝该 run；其
+artifacts 不可回填或跨 run 拼接，修复后仍须从新 SHA 完整重跑六目标证据。
 `target/` 仍是机器产物，不计入 digest，也不得提交。
 
 直接运行 Cargo 时必须在 crate 目录启动，确保 Cargo 发现 source replacement：

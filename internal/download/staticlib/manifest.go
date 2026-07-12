@@ -73,8 +73,11 @@ func hashSourceTree(hasher io.Writer, logicalRoot, directory string, includeLock
 		if err != nil {
 			return err
 		}
+		// source identity 使用平台无关的 slash 路径；Windows 的 filepath.Rel 会返回反斜杠，
+		// 若在筛选之后才规范化，就会静默漏掉 src、.cargo 与 vendor 输入。
+		rel = filepath.ToSlash(rel)
 		if isDigestSource(rel, includeLock) {
-			files = append(files, filepath.ToSlash(rel))
+			files = append(files, rel)
 		}
 		return nil
 	})
@@ -99,6 +102,8 @@ func hashSourceTree(hasher io.Writer, logicalRoot, directory string, includeLock
 }
 
 func isDigestSource(rel string, includeLock bool) bool {
+	// 单元测试也会直接传入 Windows 风格路径，先统一为 logical slash path。
+	rel = strings.ReplaceAll(rel, `\`, "/")
 	if rel == "Cargo.toml" || (includeLock && rel == "Cargo.lock") || rel == "build.rs" {
 		return true
 	}
