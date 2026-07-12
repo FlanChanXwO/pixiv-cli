@@ -292,6 +292,45 @@ func TestAnonymousWebSearchRejectsMissingItemsAndIDsButAcceptsEmpty(t *testing.T
 	}
 }
 
+func TestListDecoderHonorsFinalDuplicateJSONValue(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name      string
+		body      string
+		web       bool
+		wantError bool
+	}{
+		{name: "App final null is malformed", body: `{"illusts":[],"illusts":null}`, wantError: true},
+		{name: "App final array is valid", body: `{"illusts":null,"illusts":[]}`},
+		{name: "Web final null is malformed", body: `{"error":false,"body":{"illustManga":{"data":[],"data":null}}}`, web: true, wantError: true},
+		{name: "Web final array is valid", body: `{"error":false,"body":{"illustManga":{"data":null,"data":[]}}}`, web: true},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { fmt.Fprint(w, test.body) }))
+			defer server.Close()
+			options := pixiv.Options{HTTPClient: server.Client(), AppAPIBaseURL: server.URL, AccessToken: "token"}
+			if test.web {
+				options = pixiv.Options{HTTPClient: server.Client(), WebAPIBaseURL: server.URL, WebFallbackEnabled: true}
+			}
+			client, err := pixiv.NewClient(options)
+			if err != nil {
+				t.Fatal(err)
+			}
+			result, err := client.SearchIllust(context.Background(), pixiv.SearchIllustRequest{Word: "miku"})
+			if test.wantError {
+				if result != nil || !errors.Is(err, pixiv.ErrMalformedUpstreamResponse) {
+					t.Fatalf("result=%#v err=%v", result, err)
+				}
+				return
+			}
+			if err != nil || result == nil || result.Illusts == nil || len(result.Illusts) != 0 {
+				t.Fatalf("result=%#v err=%v", result, err)
+			}
+		})
+	}
+}
+
 func TestAnonymousSearchUserCursorFollowsArtworkBatchNotDeduplicatedUsers(t *testing.T) {
 	t.Parallel()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

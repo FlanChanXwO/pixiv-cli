@@ -98,6 +98,7 @@ type requiredList[T any] struct {
 }
 
 func (l *requiredList[T]) UnmarshalJSON(data []byte) error {
+	*l = requiredList[T]{}
 	l.Present = true
 	if bytes.Equal(bytes.TrimSpace(data), []byte("null")) {
 		return nil
