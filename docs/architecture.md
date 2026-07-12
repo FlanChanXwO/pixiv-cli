@@ -104,8 +104,9 @@ Release。
 
 该包不得把签名、checksum、HTTP、archive、替换或权限错误伪装成“无更新”。当前 production
 trusted key、签名私钥与 Keychain 恢复副本、受保护 `release` Environment 和公开 remote 已按 Task 20
-配置；在完整六目标成功 native evidence、staticlib manifest、正式 tag、已签名 Release 与 tap formula
-尚未完成前，Release 安装的失败语义仍是保护边界，而不是临时降级。
+配置；完整六目标成功 native evidence 与 staticlib manifest 已由 run `29192425899` 完成并回填。正式
+tag、已签名 Release、tap formula 与安装验收尚未完成，当前 Release 安装的失败语义仍是保护边界，
+而不是临时降级。
 
 ### `internal/pixiv`
 
@@ -179,8 +180,9 @@ consolidation 再次 fail-closed。该 run 也不可回填或跨 run 拼接，�
 触发 cgo 链接，但分别仍需要已生成的 staticlib/binary/archive 与完整六份 evidence 输入；下载运行时
 仍只由 `internal/download` 组装 Rust FFI。
 
-当前仅有 Darwin/arm64 library，完整 manifest 尚缺；因此这一架构约束已经由构建脚本实施，但尚未得到
-六平台 native runner 证明。`ffmpeg` 仅保留给显式启用的开发质量对照，不在生产下载路径中。
+run `29192425899` 已在六个平台完成 native build、真实 cgo GIF/APNG smoke、binary/archive record，
+并经本地 fail-closed consolidation 回填六个 target library 与统一 manifest；source build 会在链接前
+校验该 manifest 和库哈希。`ffmpeg` 仅保留给显式启用的开发质量对照，不在生产下载路径中。
 
 ## Release assets 与信任边界
 
@@ -194,9 +196,10 @@ checksum bytes 生成带 key ID 的 Ed25519 `checksums.json`。
 
 `.github/workflows/release.yml` 将签名/发布放在受保护的 `release` Environment 中；它使用最小权限和
 full-SHA Actions，并在草稿 Release 上传后核对 asset 集合才发布。文件和本地 fixture 已存在，但尚未
-取得实际 GitHub runner 的完整六目标成功证据或发布；production signing 私钥、Environment 与公开 remote
-已按 Task 20 配置，受支持 binary 的公开 trust root 已在 `internal/bootstrap/release_trust.go` 配置。同时
-staticlib/manifest、workflow policy 和 native artifact 证据仍是正式发布阻断项。Rust crates.io 依赖已由
+正式发布；run `29192425899` 已取得实际 GitHub runner 的完整六目标成功证据并回填 staticlib/manifest。
+production signing 私钥、Environment 与公开 remote 已按 Task 20 配置，受支持 binary 的公开 trust root
+已在 `internal/bootstrap/release_trust.go` 配置。正式 tag、签名 Release、tap formula 与安装验收仍是独立
+发布阻断项。Rust crates.io 依赖已由
 crate 内 source replacement 固定到完整 vendor 闭包，并以空 Cargo cache 离线 metadata/build/test 与六
 target 许可证检查验证。
 

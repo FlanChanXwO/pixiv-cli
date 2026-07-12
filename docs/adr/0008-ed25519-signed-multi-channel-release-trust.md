@@ -43,7 +43,7 @@ repository secret，或复用同一 SSH key，会让任意 tag/workflow 或公�
   与 Keychain recovery copy，公开 source/tap remote 已创建且 tap 只登记 deploy key 公钥。GitHub
   Release、tag 和 tap formula 仍未部署。不能将 `--check` 成功、本地 fixture 或 workflow 文件视为
   已完成的安全发布。
-- 当前 staticlib/manifest、workflow policy 和 native artifact evidence 仍未齐备，必须在创建 tag、写入
-  secret、发布 Release 或推送 tap 前完成。
+- staticlib/manifest、workflow policy 与六平台 native artifact evidence 已齐备；受保护 Environment
+  secrets 也已配置。正式 tag、签名 Release、tap formula 与安装验收仍须按发布流程依次完成。
 - v0.1.0 用户仍可能看到 Gatekeeper/SmartScreen 警告；支持文档应指导用户回到已验证 Release、
   checksum 和签名记录，而不是绕过系统信誉机制。

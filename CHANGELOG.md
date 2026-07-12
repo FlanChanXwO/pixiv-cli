@@ -27,6 +27,8 @@
 - 新增 `pixiv version [--json]` 与根 `pixiv --version`；JSON 输出包含 `version`、`commit`、`build_date`。
 - 新增 `pixiv update [--check] [--prerelease] [--proxy URL]`，以及可关闭的 `update_check_enabled` 自动 stable 更新提示；自动检查不会污染 JSON/MCP stdout 或改变业务命令退出码。
 - 新增内置 Rust ugoira GIF/APNG encoder；生产下载路径不再依赖 `ffmpeg`。
+- 新增经六平台 native runner build/smoke 与统一 source digest 验证的 committed Rust staticlibs 和
+  `manifest.json`，供受支持的 source build 与 future exact-tag `go install` 使用。
 - 新增 Release asset、checksum/Ed25519 签名、Homebrew formula renderer 与六 native runner workflow 的本地发布准备。
 
 ### Changed

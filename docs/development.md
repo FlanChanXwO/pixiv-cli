@@ -36,11 +36,11 @@ Cargo 输入生成 target library；只有同一次成功得到全部六个真�
 写入带 Rust source digest 的 `manifest.json`。单 target 调用会使已有 manifest 失效，避免用
 局部重建证明全平台一致性。
 
-当前工作树只含 Darwin/arm64 library，完整 manifest 与另外五个真实库尚未获得。因此：
-
-- `sh scripts/build.sh` 当前应以“缺少 committed six-target Rust staticlib manifest”明确失败；
-- 不应把本机 host library 复制、改名或当作别的平台产物；
-- 在 Task 13/33 的 native runner 证据完成前，不应宣称 source build 或 `go install` 已跨平台可用。
+当前工作树已回填 run `29192425899`（head
+`a1c6b838b9096dd68571b1f477ccace331ddedc9`）产生的六个真实 library 与统一 manifest。六个 runner
+均完成 locked/offline Rust build、真实 cgo GIF/APNG smoke、版本化 binary、archive 与 record；受控
+`consolidate` 又在本地重验 source identity、staticlib/binary/archive SHA 和全部 archive members 后
+生成提交输入。`sh scripts/build.sh` 现会先校验完整 manifest，再在具备本机 cgo/C linker 时构建。
 
 可在具备目标工具链的受控环境运行：
 
@@ -294,10 +294,10 @@ tag 误变为 prerelease。
 这套本地检查只证明 workflow 声明的依赖和语义，**不**验证 GitHub `release` Environment、
 secret 和 tag protection 的远端实际状态；它不替代 Task 20 的远端配置审计。
 
-正式发布目前必须被以下条件阻断：完整 six-target staticlib/manifest 与真实 native artifact 证据
-尚待 Task 20 的实际 main runner 收集与 Task 13 回填，并且尚未创建正式 tag、GitHub Release 或 tap
-formula 提交。受保护 `release` Environment、生产 signing 私钥与公开仓库已按 Task 20 配置；不得以
-这些远端前置条件或本地 fixture 成功、仅有 host library 或 workflow 文件存在来创建 Release/tap。
+正式发布目前仍必须被正式 tag、签名 GitHub Release、tap formula 与后续安装验收阻断。完整
+six-target staticlib/manifest 与真实 native artifact 证据已由 run `29192425899` 收集并受控回填；
+受保护 `release` Environment、生产 signing 私钥与公开仓库也已按 Task 20 配置，但这些前置条件本身
+不等于 Release/tap 已创建或安装路径已验收。
 
 production Ed25519 public trust root 已在
 [`internal/bootstrap/release_trust.go`](../internal/bootstrap/release_trust.go) 随源码提交：key ID 为

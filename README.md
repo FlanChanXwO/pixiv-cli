@@ -11,10 +11,10 @@ Go 版 Pixiv 工具集：默认作为 `pixiv` CLI 使用，需要 MCP 时显式�
 ## 安装与构建
 
 > **发布状态**：受支持 binary 的 Ed25519 公钥、key ID 与 fingerprint 已提交到
-> [`internal/bootstrap/release_trust.go`](internal/bootstrap/release_trust.go)，但此工作树还没有公开
-> GitHub remote、正式 GitHub Release、Homebrew tap 或受保护 `release` Environment 的私钥部署。
-> 下面标注“发布后”的渠道是目标安装方式，不代表现在已经可以安装或自更新；在发布门禁完成前，
-> 请不要把它们当作可用下载来源。
+> [`internal/bootstrap/release_trust.go`](internal/bootstrap/release_trust.go)；公开 source/tap repositories、
+> 受保护 `release` Environment 与隔离 credentials 已配置。当前仍没有正式 GitHub Release、tap formula
+> 或安装验收。下面标注“发布后”的渠道是目标安装方式，不代表现在已经可以安装或自更新；在发布门禁
+> 完成前，请不要把它们当作可用下载来源。
 
 ### 从源码构建
 
@@ -26,20 +26,20 @@ sh scripts/build.sh
 目标匹配的 Rust ugoira staticlib。它会输出 `build/pixiv` 或 `build/pixiv.exe`。Windows
 可通过 Git Bash、MSYS2 或 WSL 运行构建命令。
 
-当前工作树只保存了 Darwin/arm64 staticlib，完整的六目标 `manifest.json` 尚未生成；因此
-`scripts/build.sh` 会故意失败，避免把不完整的 native 产物当成可发布源码构建。完整要求、
-生成方式和失败含义见[开发流程](docs/development.md#rust-ugoira-staticlib)。
+当前工作树已保存 darwin/linux/windows × amd64/arm64 的六个 runner-verified staticlib 与同源
+`manifest.json`；`scripts/build.sh` 会先校验 source digest、target/path 与每个库的 SHA-256，再构建
+本机 binary。完整要求、证据回填流程和失败含义见[开发流程](docs/development.md#rust-ugoira-staticlib)。
 
 ### Go 安装（发布后）
 
-完整 staticlib/manifest 与正式 tag 均已发布后，使用精确 tag 安装：
+正式 tag 发布后，使用精确 tag 安装：
 
 ```bash
 go install github.com/FlanChanXwO/pixiv-cli/cmd/pixiv@vX.Y.Z
 ```
 
-它仍使用本机 Go、cgo、C linker 和该 target 的 committed staticlib；当前不完整的 six-target
-产物状态下，`go install` 不是受支持的跨平台安装渠道。
+它仍使用本机 Go、cgo、C linker 和该 target 的 committed staticlib。六目标库与 manifest 已完整，
+但正式 tag 尚未发布，因此当前仍没有受支持的 exact-tag `go install` 安装入口。
 
 ### Homebrew（发布后）
 

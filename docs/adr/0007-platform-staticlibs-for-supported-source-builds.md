@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted；完整六目标交付仍待 native runner 验证。
+Accepted；完整六目标已由 native runner 验证并受控回填。
 
 ## Context
 
@@ -35,8 +35,8 @@ source 的关系保留给发布审计，需要可重算的 source digest、每�
   native runner 证据。
 - 没有 cgo、target C linker、目标 staticlib 或完整 manifest 时，构建必须清晰失败；不能退回 stub、
   `ffmpeg` 或“部分可用”的 binary。
-- 当前仅保存 Darwin/arm64 staticlib，且没有完整 manifest。因此这项决策尚未让 source build、
-  `go install` 或 Release 成为跨平台可发布路径；Task 13/33 仍需取得五个真实库、同源 manifest 与
-  每平台 GIF/APNG/cgo smoke 证据。
+- run `29192425899` 已取得六个真实 staticlib、同源 manifest 与每平台 GIF/APNG/cgo smoke 证据，
+  并经 fail-closed consolidation 回填；source build 与 future exact-tag `go install` 会消费这些
+  committed libraries。正式 Release 与安装验收仍由后续发布任务独立证明。
 - Cargo `--locked --offline` 现在经 crate 内 source replacement 使用完整 vendor 闭包；空 Cargo cache
   的 metadata/build/test 与六 target 许可证检查证明 native Rust 输入不依赖开发机或 runner registry cache。
