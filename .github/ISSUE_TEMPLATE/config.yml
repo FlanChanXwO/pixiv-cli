@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 讨论区
+    url: https://github.com/FlanChanXwO/astrbot_plugin_rsshub/discussions
+    about: 使用中若遇到问题，请先在这里求助。
