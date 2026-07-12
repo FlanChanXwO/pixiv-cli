@@ -42,6 +42,29 @@ for format in tar.gz zip; do
 	assert_members "$archive" "$format"
 done
 
+# GitHub 的 Windows runner 由 7-Zip 产出 zip；在非 Windows 开发机中伪造 uname/7z，
+# 既验证该分支确实被选择，也验证它仍写出与其余平台相同的 release member 集合。
+windows_bin="$temporary/windows-bin"
+mkdir "$windows_bin"
+windows_7z_marker="$temporary/windows-7z-used"
+printf '%s\n' '#!/bin/sh' 'printf "%s\\n" MINGW64_NT-10.0' > "$windows_bin/uname"
+printf '%s\n' \
+	'#!/bin/sh' \
+	': > "$PIXIV_TEST_7Z_MARKER"' \
+	'[ "$1" = a ] && [ "$2" = -tzip ] && [ "$3" = -bd ] || exit 64' \
+	'output=$4' \
+	'shift 4' \
+	'zip -q -r "$output" "$@"' > "$windows_bin/7z"
+chmod 0755 "$windows_bin/uname" "$windows_bin/7z"
+windows_archive="$temporary/pixiv-windows.zip"
+PIXIV_TEST_7Z_MARKER="$windows_7z_marker" PATH="$windows_bin:$PATH" \
+	sh "$repo_root/scripts/package-release.sh" --binary "$binary" --format zip --output "$windows_archive"
+[ -f "$windows_7z_marker" ] || {
+	echo 'Windows zip packaging did not invoke 7z' >&2
+	exit 1
+}
+assert_members "$windows_archive" zip
+
 if sh "$repo_root/scripts/package-release.sh" --binary "$binary" --format unsupported --output "$temporary/bad" >/dev/null 2>&1; then
 	echo 'unsupported archive format unexpectedly succeeded' >&2
 	exit 1

@@ -12,7 +12,8 @@
 - 修复 Linux 原生 Rust staticlib 的 `libm` 链接，以及 Windows checkout 对 pinned Rust source、Cargo
   vendor 和生成 license bundle 的文本转换；Windows cgo 现用库搜索参数、Rust std import libraries 和
   LLD-backed Clang 链接 `*-pc-windows-msvc` staticlib，确保六平台 native evidence 能校验并链接真实
-  ugoira encoder。
+  ugoira encoder；Windows release `.zip` 改用 runner 预装的 7-Zip，避免 Git Bash 缺少 `zip` 而中断
+  native evidence。
 
 当前还没有切出正式版本；未发布改动先汇总到这里。
 

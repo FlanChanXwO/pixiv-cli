@@ -120,7 +120,18 @@ case "$format" in
 	zip)
 		(
 			cd "$stage"
-			zip -q -r "$temporary_output" "$binary_name" LICENSE THIRD_PARTY_LICENSES.md third_party/licenses
+			# GitHub Windows runner 的 Git Bash 没有 zip；该镜像通过 Chocolatey 预装 7-Zip。
+			# 不能退回到不确定的工具或跳过归档：缺少约定工具应让 native evidence 明确失败。
+			case "$(uname -s)" in
+				MINGW*|MSYS*|CYGWIN*)
+					command -v 7z >/dev/null 2>&1 || fail 'Windows zip packaging requires runner-provided 7z'
+					7z a -tzip -bd "$temporary_output" "$binary_name" LICENSE THIRD_PARTY_LICENSES.md third_party/licenses
+					;;
+				*)
+					command -v zip >/dev/null 2>&1 || fail 'zip packaging requires zip'
+					zip -q -r "$temporary_output" "$binary_name" LICENSE THIRD_PARTY_LICENSES.md third_party/licenses
+					;;
+			esac
 		)
 		;;
 esac

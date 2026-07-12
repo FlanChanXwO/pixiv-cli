@@ -103,8 +103,9 @@ Release。
   用于节流与原子保存。
 
 该包不得把签名、checksum、HTTP、archive、替换或权限错误伪装成“无更新”。当前 production
-trusted key 已随受支持 binary 的源码配置；在私钥、受保护 Environment 与真实已签名 Release 尚未
-部署前，Release 安装的失败语义仍是保护边界，而不是临时降级。
+trusted key、签名私钥与 Keychain 恢复副本、受保护 `release` Environment 和公开 remote 已按 Task 20
+配置；在完整六目标成功 native evidence、staticlib manifest、正式 tag、已签名 Release 与 tap formula
+尚未完成前，Release 安装的失败语义仍是保护边界，而不是临时降级。
 
 ### `internal/pixiv`
 
@@ -177,6 +178,8 @@ stub。Rust `target/` 是机器产物，staticlib/manifest 是经过 native 验�
 `scripts/releaseassets` 以固定六目标封装 archive：darwin/linux 为 `.tar.gz`，Windows 为 `.zip`；
 每个 archive 包含一个 `pixiv`/`pixiv.exe`、`LICENSE`、`THIRD_PARTY_LICENSES.md` 与完整
 `third_party/licenses`；它们在 Git 中固定 LF，以便 licensebundle 在 Windows 也可按字节校验。
+Windows Git Bash 缺少 `zip` 时，打包脚本明确使用 runner 预装的 `7z`；其他平台使用 `zip`。两条分支
+生成相同的 member 集合，缺少对应归档器会直接失败而不会产出不完整 asset。
 finalize 阶段收集这六个 archive 的 SHA-256 到 `checksums.txt`，并为原始
 checksum bytes 生成带 key ID 的 Ed25519 `checksums.json`。
 

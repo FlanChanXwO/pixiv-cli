@@ -244,6 +244,10 @@ git diff --check
 fixture 只证明格式、失败语义和本地策略，不替代六个 native runner 的真实静态链接、GIF/APNG
 smoke、版本化 archive 内容和 Homebrew 安装验收。
 
+其中 Windows 的 `.zip` 由 GitHub runner 镜像预装的 `7z` 生成；其他平台继续使用 `zip`。
+`scripts/test-package-release.sh` 会在本地伪造 Windows/7z 调用，并核对 archive member，避免 Git Bash
+缺少 `zip` 时直到 native evidence 才暴露问题。
+
 ## 发布门禁、签名与 Homebrew 边界
 
 `.github/workflows/release.yml` 为 `v*` tag 定义本地可审查的发布流程：先验证 SemVer，再在
