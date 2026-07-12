@@ -18,6 +18,8 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+const testEvidenceCommit = "0123456789abcdef0123456789abcdef01234567"
+
 func TestMain(m *testing.M) {
 	if len(os.Args) == 3 && os.Args[1] == "version" && os.Args[2] == "--json" {
 		_, _ = os.Stdout.WriteString(`{"version":"v0.1.0-native-evidence.test","commit":"fixture-commit","build_date":"2026-07-12T00:00:00Z"}` + "\n")
@@ -196,7 +198,7 @@ func TestConsolidateEvidencePublishesOnlyCompleteSameSourceStaticlibs(t *testing
 		writeConsolidationFixture(t, inputDir, platform, target, sourceDigest)
 	}
 	outputDir := filepath.Join(workDir, "staticlib")
-	if err := consolidateEvidence(consolidateOptions{repoRoot: findRepositoryRoot(t), expectedVersion: "v0.1.0-native-evidence.test", expectedCommit: "fixture", inputDir: inputDir, outputDir: outputDir}); err != nil {
+	if err := consolidateEvidence(consolidateOptions{repoRoot: findRepositoryRoot(t), expectedVersion: "v0.1.0-native-evidence.test", expectedCommit: testEvidenceCommit, inputDir: inputDir, outputDir: outputDir}); err != nil {
 		t.Fatalf("consolidate six native records: %v", err)
 	}
 	manifest, err := os.ReadFile(filepath.Join(outputDir, "manifest.json"))
@@ -222,7 +224,7 @@ func TestConsolidateEvidenceRejectsMissingTargetWithoutPublishingOutput(t *testi
 		writeConsolidationFixture(t, inputDir, platform, target, sourceDigest)
 	}
 	outputDir := filepath.Join(workDir, "staticlib")
-	err := consolidateEvidence(consolidateOptions{repoRoot: findRepositoryRoot(t), expectedVersion: "v0.1.0-native-evidence.test", expectedCommit: "fixture", inputDir: inputDir, outputDir: outputDir})
+	err := consolidateEvidence(consolidateOptions{repoRoot: findRepositoryRoot(t), expectedVersion: "v0.1.0-native-evidence.test", expectedCommit: testEvidenceCommit, inputDir: inputDir, outputDir: outputDir})
 	if err == nil || !strings.Contains(err.Error(), "six") {
 		t.Fatalf("consolidate error = %v, want missing-target rejection", err)
 	}
@@ -259,7 +261,7 @@ func TestConsolidateEvidenceRejectsArchiveMemberHashMismatch(t *testing.T) {
 		t.Fatalf("write mismatched evidence: %v", err)
 	}
 	outputDir := filepath.Join(workDir, "staticlib")
-	err = consolidateEvidence(consolidateOptions{repoRoot: findRepositoryRoot(t), expectedVersion: "v0.1.0-native-evidence.test", expectedCommit: "fixture", inputDir: inputDir, outputDir: outputDir})
+	err = consolidateEvidence(consolidateOptions{repoRoot: findRepositoryRoot(t), expectedVersion: "v0.1.0-native-evidence.test", expectedCommit: testEvidenceCommit, inputDir: inputDir, outputDir: outputDir})
 	if err == nil || !strings.Contains(err.Error(), "members") {
 		t.Fatalf("consolidate error = %v, want archive-member mismatch rejection", err)
 	}
@@ -303,12 +305,34 @@ func TestConsolidateEvidenceRejectsMixedBuildMetadataWithoutPublishingOutput(t *
 				t.Fatalf("write mixed evidence: %v", err)
 			}
 			outputDir := filepath.Join(workDir, "staticlib")
-			err = consolidateEvidence(consolidateOptions{repoRoot: findRepositoryRoot(t), expectedVersion: "v0.1.0-native-evidence.test", expectedCommit: "fixture", inputDir: inputDir, outputDir: outputDir})
+			err = consolidateEvidence(consolidateOptions{repoRoot: findRepositoryRoot(t), expectedVersion: "v0.1.0-native-evidence.test", expectedCommit: testEvidenceCommit, inputDir: inputDir, outputDir: outputDir})
 			if err == nil || !strings.Contains(err.Error(), "metadata") {
 				t.Fatalf("consolidate error = %v, want metadata rejection", err)
 			}
 			if _, statErr := os.Lstat(outputDir); !os.IsNotExist(statErr) {
 				t.Fatalf("failed consolidation published output: %v", statErr)
+			}
+		})
+	}
+}
+
+func TestConsolidateEvidenceRejectsMalformedExpectedCommitBeforeInput(t *testing.T) {
+	for _, commit := range []string{"", "abc", strings.Repeat("a", 39), strings.Repeat("a", 41), strings.Repeat("A", 40), strings.Repeat("g", 40), " " + strings.Repeat("a", 40)} {
+		t.Run("commit="+commit, func(t *testing.T) {
+			workDir := newRepositoryWorkDir(t)
+			outputDir := filepath.Join(workDir, "staticlib")
+			err := consolidateEvidence(consolidateOptions{
+				repoRoot:        findRepositoryRoot(t),
+				expectedVersion: "v0.1.0-native-evidence.test",
+				expectedCommit:  commit,
+				inputDir:        filepath.Join(workDir, "missing-input"),
+				outputDir:       outputDir,
+			})
+			if err == nil || !strings.Contains(err.Error(), "expected commit") {
+				t.Fatalf("consolidate error = %v, want malformed-commit rejection", err)
+			}
+			if _, statErr := os.Lstat(outputDir); !os.IsNotExist(statErr) {
+				t.Fatalf("malformed commit published output: %v", statErr)
 			}
 		})
 	}
@@ -350,7 +374,7 @@ func TestConsolidateEvidenceRejectsArchiveMissingRequiredMember(t *testing.T) {
 				t.Fatalf("write incomplete evidence: %v", err)
 			}
 			outputDir := filepath.Join(workDir, "staticlib")
-			err = consolidateEvidence(consolidateOptions{repoRoot: findRepositoryRoot(t), expectedVersion: "v0.1.0-native-evidence.test", expectedCommit: "fixture", inputDir: inputDir, outputDir: outputDir})
+			err = consolidateEvidence(consolidateOptions{repoRoot: findRepositoryRoot(t), expectedVersion: "v0.1.0-native-evidence.test", expectedCommit: testEvidenceCommit, inputDir: inputDir, outputDir: outputDir})
 			if err == nil || !strings.Contains(err.Error(), "members") {
 				t.Fatalf("consolidate error = %v, want incomplete archive rejection", err)
 			}
@@ -371,7 +395,7 @@ func TestConsolidateEvidenceRejectsSymlinkInputAncestor(t *testing.T) {
 	if err := os.Symlink(actualInput, linkedInput); err != nil {
 		t.Fatalf("create input symlink: %v", err)
 	}
-	err := consolidateEvidence(consolidateOptions{repoRoot: findRepositoryRoot(t), expectedVersion: "v0.1.0-native-evidence.test", expectedCommit: "fixture", inputDir: linkedInput, outputDir: filepath.Join(workDir, "output")})
+	err := consolidateEvidence(consolidateOptions{repoRoot: findRepositoryRoot(t), expectedVersion: "v0.1.0-native-evidence.test", expectedCommit: testEvidenceCommit, inputDir: linkedInput, outputDir: filepath.Join(workDir, "output")})
 	if err == nil || !strings.Contains(err.Error(), "symlink ancestor") {
 		t.Fatalf("consolidate error = %v, want input symlink rejection", err)
 	}
@@ -415,7 +439,7 @@ func writeConsolidationFixture(t *testing.T, inputDir, platform string, target n
 		Target:       evidenceTarget{GOOS: target.goos, GOARCH: target.goarch, RustTarget: target.rustTarget},
 		SourceDigest: sourceDigest,
 		Staticlib:    evidenceFile{Name: target.staticlib, SHA256: staticlibDigest},
-		Binary:       evidenceBinary{evidenceFile: evidenceFile{Name: binaryName, SHA256: binaryDigest}, Version: "v0.1.0-native-evidence.test", Commit: "fixture", BuildDate: "2026-07-12T00:00:00Z"},
+		Binary:       evidenceBinary{evidenceFile: evidenceFile{Name: binaryName, SHA256: binaryDigest}, Version: "v0.1.0-native-evidence.test", Commit: testEvidenceCommit, BuildDate: "2026-07-12T00:00:00Z"},
 		Archive:      evidenceArchive{evidenceFile: evidenceFile{Name: filepath.Base(archivePath), SHA256: archiveDigest}, Members: members},
 	}
 	body, err := json.Marshal(record)

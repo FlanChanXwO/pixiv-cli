@@ -33,6 +33,7 @@ const canonicalSetupGoAction = "actions/setup-go@40f1582b2485089dde7abd97c1529aa
 const canonicalUploadArtifactAction = "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02"
 
 var semanticVersionPattern = regexp.MustCompile(`^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-(?:(?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*))*))?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$`)
+var gitCommitPattern = regexp.MustCompile(`^[0-9a-f]{40}$`)
 
 type nativeTarget struct {
 	goos       string
@@ -189,8 +190,8 @@ func consolidateEvidence(options consolidateOptions) error {
 	if !strings.HasPrefix(options.expectedVersion, "v") || !semanticVersionPattern.MatchString(strings.TrimPrefix(options.expectedVersion, "v")) {
 		return fmt.Errorf("expected version is not a v-prefixed semantic version: %q", options.expectedVersion)
 	}
-	if strings.TrimSpace(options.expectedCommit) == "" {
-		return errors.New("expected commit is required")
+	if !gitCommitPattern.MatchString(options.expectedCommit) {
+		return fmt.Errorf("expected commit must be a 40-character lowercase Git SHA: %q", options.expectedCommit)
 	}
 	repoRoot, err := requireSecureDirectory(options.repoRoot, "repository root")
 	if err != nil {
