@@ -190,6 +190,10 @@ GitHub 实际运行。
 检查都是唯一的单命令 `bash` step：policy 精确验证其 run、crate cwd（Rust gate）和 shell，并拒绝
 `env`、`defaults` 或其它 step 字段。解析器同时 fail-closed 地拒绝 YAML alias、merge key、任何重复
 mapping key 以及 root/job 的 `env`、`defaults`，因此 GitHub 的覆盖或工作目录语义不会与本地检查分叉。
+四个 job 的 `actions/checkout` 都固定为同一 full SHA 和精确的 `with` 字段；尤其
+`verify_release_source` 只能按顺序执行 full-history、无凭据的 tag checkout 与默认分支 ancestry gate
+这两个步骤，禁止 `ref`、`repository`、`path` 或中间切换 HEAD 的 step 改变被验证的提交。publish 的
+checkout 同样只允许无凭据 tag source，避免签名 metadata 与构建 asset 所属提交不一致。
 build job 必须实际运行 vendored Rust 离线检查、crate cwd 的 `cargo fmt --check` 与 locked/offline
 Clippy `-D warnings`、普通及 race Go 测试、vet、许可证、封装、固定版本 `pre-commit==4.6.0`、
 pre-commit 和 `git diff --check`。发布渠道仅可由

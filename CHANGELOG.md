@@ -36,6 +36,9 @@
 - Release workflow policy 现 fail-closed 地拒绝 YAML alias、merge key 与重复 mapping key，并禁止
   required job/ancestry gate 被条件跳过；每项质量检查固定为独立的直接命令 step，validate/build checkout
   显式不持久化凭据，避免工作目录、shell 控制流或 credential 语义悄然改变发布结果。
+- Release workflow 的四个 checkout 现固定为 canonical full-SHA source；trust job 只能在完整、无凭据
+  checkout 后立即验证 tag ancestry，签名 job 也拒绝 `ref`、`repository`、`path` 等会令源码与发布 asset
+  脱钩的 checkout 重定向。
 - Rust ugoira crate 的 crates.io 依赖现以完整 locked `vendor/` 闭包及 Cargo checksum 随源码审计；
   release 验证会在空 Cargo cache 下完成 metadata/build/test 与六 target 许可证检查，缺失 vendor、
   checksum 不匹配或 registry fallback 都会明确失败。

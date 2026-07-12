@@ -14,6 +14,8 @@ import (
 // actionReferencePattern 只接受远端 action 的不可变完整对象 ID，避免可移动 tag 改写发布供应链。
 var actionReferencePattern = regexp.MustCompile(`^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+@[0-9a-f]{40}$`)
 
+const canonicalCheckoutAction = "actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5"
+
 // 解析后的 YAML scalar 保留 GitHub expression。任一 `${{ ... }}` 内独立的 secrets context
 // （包括 bare、toJSON(secrets)、dot 和 bracket）都视为凭据引用，不能依赖具体访问语法。
 var secretReferencePattern = regexp.MustCompile(`(?is)\$\{\{[^}]*\bsecrets\b[^}]*\}\}`)
@@ -96,6 +98,12 @@ func checkWorkflow(body []byte) error {
 	publish, ok := mappingValue(jobs, "publish")
 	if !ok || publish.Kind != yaml.MappingNode {
 		return errors.New("workflow must have a publish job")
+	}
+	// 先报告任何越界 secret 引用，避免后续 checkout 形状校验掩盖真实的凭据泄露风险。
+	preflightPublishSteps, _ := jobSteps(publish)
+	preflightSigningIndex, _ := signingStepIndex(preflightPublishSteps)
+	if err := checkSigningSecretReachability(validate, build, verifyReleaseSource, publish, preflightPublishSteps, preflightSigningIndex); err != nil {
+		return err
 	}
 	if err := checkValidateJob(validate); err != nil {
 		return err
@@ -458,28 +466,58 @@ func checkVerifyReleaseSourceJob(job *yaml.Node) error {
 	if err != nil {
 		return fmt.Errorf("verify_release_source job: %w", err)
 	}
-	ancestryIndex := -1
-	for index, step := range steps {
-		if hasStepCommand(step, "git merge-base --is-ancestor HEAD \"origin/$DEFAULT_BRANCH\"") {
-			ancestryIndex = index
-			if err := requireUnconditionalAncestryGate(step); err != nil {
-				return err
-			}
-			if !hasStepCommand(step, "git show-ref --verify --quiet \"refs/remotes/origin/$DEFAULT_BRANCH\"") {
-				return errors.New("verify_release_source default-branch ancestry gate must verify origin/$DEFAULT_BRANCH")
-			}
-			env, ok := mappingValue(step, "env")
-			if !ok || requireOnlyMappingKeys(env, "DEFAULT_BRANCH") != nil || requireScalar(env, "DEFAULT_BRANCH", "${{ github.event.repository.default_branch }}") != nil {
-				return errors.New("verify_release_source default-branch ancestry gate must derive DEFAULT_BRANCH from the release repository")
-			}
-			break
-		}
+	if len(steps) != 2 {
+		return errors.New("verify_release_source job must contain only the canonical checkout and ancestry gate steps")
 	}
-	if ancestryIndex < 0 {
+	if err := requireCanonicalCheckout(steps[0], "verify_release_source job", checkoutWithRequirement{"fetch-depth", "0"}, checkoutWithRequirement{"persist-credentials", "false"}); err != nil {
+		return err
+	}
+	ancestryGate := steps[1]
+	if !hasStepCommand(ancestryGate, "git merge-base --is-ancestor HEAD \"origin/$DEFAULT_BRANCH\"") {
 		return errors.New("verify_release_source job must contain a default-branch ancestry gate")
 	}
-	if !hasTrustedCheckoutBefore(steps, ancestryIndex) {
-		return errors.New("verify_release_source default-branch ancestry gate requires a full, credential-free checkout before it runs")
+	if err := requireUnconditionalAncestryGate(ancestryGate); err != nil {
+		return err
+	}
+	if !hasStepCommand(ancestryGate, "git show-ref --verify --quiet \"refs/remotes/origin/$DEFAULT_BRANCH\"") {
+		return errors.New("verify_release_source default-branch ancestry gate must verify origin/$DEFAULT_BRANCH")
+	}
+	env, ok := mappingValue(ancestryGate, "env")
+	if !ok || requireOnlyMappingKeys(env, "DEFAULT_BRANCH") != nil || requireScalar(env, "DEFAULT_BRANCH", "${{ github.event.repository.default_branch }}") != nil {
+		return errors.New("verify_release_source default-branch ancestry gate must derive DEFAULT_BRANCH from the release repository")
+	}
+	return nil
+}
+
+type checkoutWithRequirement struct {
+	key   string
+	value string
+}
+
+// requireCanonicalCheckout 将 source checkout 绑定到审计过的 action SHA 和精确的 with 字段，
+// 防止 ref、repository、path 或额外选项让校验、构建、签名各自读取不同提交。
+func requireCanonicalCheckout(step *yaml.Node, jobName string, requirements ...checkoutWithRequirement) error {
+	if err := requireOnlyMappingKeys(step, "uses", "with"); err != nil {
+		return fmt.Errorf("%s must use the canonical checkout", jobName)
+	}
+	if err := requireScalar(step, "uses", canonicalCheckoutAction); err != nil {
+		return fmt.Errorf("%s must use the canonical checkout", jobName)
+	}
+	with, ok := mappingValue(step, "with")
+	if !ok {
+		return fmt.Errorf("%s must use the canonical checkout", jobName)
+	}
+	keys := make([]string, 0, len(requirements))
+	for _, requirement := range requirements {
+		keys = append(keys, requirement.key)
+	}
+	if err := requireOnlyMappingKeys(with, keys...); err != nil {
+		return fmt.Errorf("%s must use the canonical checkout", jobName)
+	}
+	for _, requirement := range requirements {
+		if err := requireScalar(with, requirement.key, requirement.value); err != nil {
+			return fmt.Errorf("%s must use the canonical checkout", jobName)
+		}
 	}
 	return nil
 }
@@ -506,6 +544,9 @@ func checkPublishJob(job *yaml.Node) (int, []*yaml.Node, error) {
 	steps, err := jobSteps(job)
 	if err != nil {
 		return 0, nil, fmt.Errorf("publish job: %w", err)
+	}
+	if err := requireCanonicalCheckout(steps[0], "publish job", checkoutWithRequirement{"persist-credentials", "false"}); err != nil {
+		return 0, nil, err
 	}
 	signingIndex, signingStep := signingStepIndex(steps)
 	if signingIndex < 0 {
@@ -737,30 +778,10 @@ func containsSigningSecretReferenceOutsideEnvironment(step *yaml.Node) bool {
 	return false
 }
 
-func hasTrustedCheckoutBefore(steps []*yaml.Node, before int) bool {
-	for index := 0; index < before; index++ {
-		uses, hasUses := mappingValue(steps[index], "uses")
-		with, hasWith := mappingValue(steps[index], "with")
-		if !hasUses || !hasWith || !strings.HasPrefix(uses.Value, "actions/checkout@") {
-			continue
-		}
-		if _, conditional := mappingValue(steps[index], "if"); conditional {
-			continue
-		}
-		if _, softFailure := mappingValue(steps[index], "continue-on-error"); softFailure {
-			continue
-		}
-		if requireScalar(with, "fetch-depth", "0") == nil && requireScalar(with, "persist-credentials", "false") == nil {
-			return true
-		}
-	}
-	return false
-}
-
 func requireCredentialFreeCheckout(job *yaml.Node, jobName string) error {
 	steps, err := jobSteps(job)
 	if err != nil {
-		return fmt.Errorf("%s must have exactly one credential-free checkout", jobName)
+		return fmt.Errorf("%s must have exactly one canonical checkout", jobName)
 	}
 	checkoutCount := 0
 	for _, step := range steps {
@@ -769,19 +790,12 @@ func requireCredentialFreeCheckout(job *yaml.Node, jobName string) error {
 			continue
 		}
 		checkoutCount++
-		if _, exists := mappingValue(step, "if"); exists {
-			return fmt.Errorf("%s checkout must not define if or continue-on-error", jobName)
-		}
-		if _, exists := mappingValue(step, "continue-on-error"); exists {
-			return fmt.Errorf("%s checkout must not define if or continue-on-error", jobName)
-		}
-		with, ok := mappingValue(step, "with")
-		if !ok || requireScalar(with, "persist-credentials", "false") != nil {
-			return fmt.Errorf("%s checkout must set persist-credentials to false", jobName)
+		if err := requireCanonicalCheckout(step, jobName, checkoutWithRequirement{"persist-credentials", "false"}); err != nil {
+			return err
 		}
 	}
 	if checkoutCount != 1 {
-		return fmt.Errorf("%s must have exactly one credential-free checkout", jobName)
+		return fmt.Errorf("%s must have exactly one canonical checkout", jobName)
 	}
 	return nil
 }

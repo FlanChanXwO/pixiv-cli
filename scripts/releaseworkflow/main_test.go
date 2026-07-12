@@ -705,8 +705,139 @@ func TestCheckWorkflowRequiresCredentialFreeValidateAndBuildCheckouts(t *testing
 				t.Fatalf("marshal mutated workflow: %v", err)
 			}
 			err = checkWorkflow(body)
-			if err == nil || !strings.Contains(err.Error(), "checkout must set persist-credentials to false") {
-				t.Fatalf("policy error = %v, want credential-free checkout rejection", err)
+			if err == nil || !strings.Contains(err.Error(), test.job+" job must use the canonical checkout") {
+				t.Fatalf("policy error = %v, want canonical checkout rejection", err)
+			}
+		})
+	}
+}
+
+func TestCheckWorkflowRequiresCanonicalTrustCheckout(t *testing.T) {
+	t.Parallel()
+
+	for _, test := range []struct {
+		name   string
+		mutate func(t *testing.T, checkout *yaml.Node)
+	}{
+		{name: "ref", mutate: func(t *testing.T, checkout *yaml.Node) {
+			appendMappingValue(t, requireMappingValue(t, checkout, "with"), "ref", scalarNode("main"))
+		}},
+		{name: "repository", mutate: func(t *testing.T, checkout *yaml.Node) {
+			appendMappingValue(t, requireMappingValue(t, checkout, "with"), "repository", scalarNode("owner/other-repository"))
+		}},
+		{name: "path", mutate: func(t *testing.T, checkout *yaml.Node) {
+			appendMappingValue(t, requireMappingValue(t, checkout, "with"), "path", scalarNode("other-source"))
+		}},
+		{name: "extra with key", mutate: func(t *testing.T, checkout *yaml.Node) {
+			appendMappingValue(t, requireMappingValue(t, checkout, "with"), "fetch-tags", scalarNode("true"))
+		}},
+		{name: "different action SHA", mutate: func(t *testing.T, checkout *yaml.Node) {
+			requireMappingValue(t, checkout, "uses").Value = "actions/checkout@0000000000000000000000000000000000000000"
+		}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			root := releaseWorkflowRoot(t)
+			test.mutate(t, checkoutStep(t, jobNode(t, root, "verify_release_source")))
+			body, err := yaml.Marshal(root)
+			if err != nil {
+				t.Fatalf("marshal mutated workflow: %v", err)
+			}
+			err = checkWorkflow(body)
+			if err == nil || !strings.Contains(err.Error(), "verify_release_source job must use the canonical checkout") {
+				t.Fatalf("policy error = %v, want canonical trust-checkout rejection", err)
+			}
+		})
+	}
+}
+
+func TestCheckWorkflowRequiresCanonicalPublishCheckout(t *testing.T) {
+	t.Parallel()
+
+	for _, test := range []struct {
+		name  string
+		key   string
+		value string
+	}{
+		{name: "ref", key: "ref", value: "main"},
+		{name: "repository", key: "repository", value: "owner/other-repository"},
+		{name: "path", key: "path", value: "other-source"},
+		{name: "extra with key", key: "fetch-tags", value: "true"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			root := releaseWorkflowRoot(t)
+			checkout := checkoutStep(t, jobNode(t, root, "publish"))
+			appendMappingValue(t, requireMappingValue(t, checkout, "with"), test.key, scalarNode(test.value))
+			body, err := yaml.Marshal(root)
+			if err != nil {
+				t.Fatalf("marshal mutated workflow: %v", err)
+			}
+			err = checkWorkflow(body)
+			if err == nil || !strings.Contains(err.Error(), "publish job must use the canonical checkout") {
+				t.Fatalf("policy error = %v, want canonical publish-checkout rejection", err)
+			}
+		})
+	}
+}
+
+func TestCheckWorkflowRequiresCanonicalValidateAndBuildCheckouts(t *testing.T) {
+	t.Parallel()
+
+	for _, jobName := range []string{"validate", "build"} {
+		for _, test := range []struct {
+			name  string
+			key   string
+			value string
+		}{
+			{name: "ref", key: "ref", value: "main"},
+			{name: "repository", key: "repository", value: "owner/other-repository"},
+			{name: "path", key: "path", value: "other-source"},
+			{name: "extra with key", key: "fetch-tags", value: "true"},
+		} {
+			t.Run(jobName+" "+test.name, func(t *testing.T) {
+				t.Parallel()
+				root := releaseWorkflowRoot(t)
+				checkout := checkoutStep(t, jobNode(t, root, jobName))
+				appendMappingValue(t, requireMappingValue(t, checkout, "with"), test.key, scalarNode(test.value))
+				body, err := yaml.Marshal(root)
+				if err != nil {
+					t.Fatalf("marshal mutated workflow: %v", err)
+				}
+				err = checkWorkflow(body)
+				if err == nil || !strings.Contains(err.Error(), jobName+" job must use the canonical checkout") {
+					t.Fatalf("policy error = %v, want canonical %s checkout rejection", err, jobName)
+				}
+			})
+		}
+	}
+}
+
+func TestCheckWorkflowAllowsOnlyCanonicalTrustSteps(t *testing.T) {
+	t.Parallel()
+
+	for _, test := range []struct {
+		name   string
+		mutate func(t *testing.T, job *yaml.Node)
+	}{
+		{name: "checkout followed by source switch", mutate: func(t *testing.T, job *yaml.Node) {
+			insertRunStep(t, job, 1, "Replace the checked-out tag", "git checkout main")
+		}},
+		{name: "step after ancestry", mutate: func(t *testing.T, job *yaml.Node) {
+			appendRunStep(t, job, "Run after trust gate", "git status --short")
+		}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			root := releaseWorkflowRoot(t)
+			test.mutate(t, jobNode(t, root, "verify_release_source"))
+			body, err := yaml.Marshal(root)
+			if err != nil {
+				t.Fatalf("marshal mutated workflow: %v", err)
+			}
+			err = checkWorkflow(body)
+			if err == nil || !strings.Contains(err.Error(), "verify_release_source job must contain only the canonical checkout and ancestry gate steps") {
+				t.Fatalf("policy error = %v, want exact trust-step sequence rejection", err)
 			}
 		})
 	}
@@ -1082,11 +1213,26 @@ func replaceRunFragment(t *testing.T, step *yaml.Node, old, new string) {
 func appendRunStep(t *testing.T, job *yaml.Node, name, run string) {
 	t.Helper()
 	steps := requireMappingValue(t, job, "steps")
-	steps.Content = append(steps.Content, &yaml.Node{Kind: yaml.MappingNode, Tag: "!!map", Content: []*yaml.Node{
+	steps.Content = append(steps.Content, runStepNode(name, run))
+}
+
+func insertRunStep(t *testing.T, job *yaml.Node, index int, name, run string) {
+	t.Helper()
+	steps := requireMappingValue(t, job, "steps")
+	if index < 0 || index > len(steps.Content) {
+		t.Fatalf("step index %d is outside the workflow", index)
+	}
+	steps.Content = append(steps.Content, nil)
+	copy(steps.Content[index+1:], steps.Content[index:])
+	steps.Content[index] = runStepNode(name, run)
+}
+
+func runStepNode(name, run string) *yaml.Node {
+	return &yaml.Node{Kind: yaml.MappingNode, Tag: "!!map", Content: []*yaml.Node{
 		scalarNode("name"), scalarNode(name),
 		scalarNode("shell"), scalarNode("bash"),
 		scalarNode("run"), scalarNode(run),
-	}})
+	}}
 }
 
 func appendMappingValue(t *testing.T, mapping *yaml.Node, key string, value *yaml.Node) {
