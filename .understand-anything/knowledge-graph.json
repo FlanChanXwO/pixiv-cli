@@ -20,8 +20,8 @@
       "GitHub Actions"
     ],
     "description": "这是一个 Go 版 Pixiv CLI 与 MCP stdio server，内置 Rust ugoira encoder，并包含 release/update workflow。",
-    "analyzedAt": "2026-07-12T23:19:12Z",
-    "gitCommitHash": "47db575388301ede1fe1033fea80b6f21fc49e6d"
+    "analyzedAt": "2026-07-12T23:44:43Z",
+    "gitCommitHash": "9796b8acb9811c3c75f4b55c81f29302e9476bf8"
   },
   "nodes": [
     {
@@ -12558,7 +12558,7 @@
       "type": "pipeline",
       "name": "release.yml",
       "filePath": ".github/workflows/release.yml",
-      "summary": "由 tag push 或默认分支 recovery 绑定 immutable RELEASE_TAG：六目标 build 仅执行 15-step test-only gates，并以 git archive 覆盖经验证的 Windows-safe 测试与 policy；独立 9-step build_production 在新 runner 关闭 Go cache、重建 tag staticlib 并生成唯一 verified-release-*。",
+      "summary": "由 tag push 或默认分支 recovery 绑定 immutable RELEASE_TAG：六目标 build 仅执行 15-step test-only gates，以 git archive 覆盖经验证的 Windows-safe 测试与 policy；tag 中不存在的两条平台 reader 先以 git add -N 标为 intent-to-add，再同时核对工作树 diff 与空 cached diff。独立 9-step build_production 在新 runner 关闭 Go cache、重建 tag staticlib 并生成唯一 verified-release-*。",
       "tags": [
         "ci-cd",
         "release",
@@ -15699,7 +15699,7 @@
       "type": "file",
       "name": "main.go",
       "filePath": "scripts/releaseworkflow/main.go",
-      "summary": "以 fail-closed YAML AST policy 固定八 job DAG、15-step test-only build（无 production build/package/artifact）、唯一 9-step cache-disabled production matrix 与 verified-release provenance。",
+      "summary": "以 fail-closed YAML AST policy 固定八 job DAG、15-step test-only build（无 production build/package/artifact）与唯一 9-step cache-disabled production matrix；recovery policy 精确要求两条 tag 缺失 reader 的 git add -N intent-to-add、工作树白名单 diff 和空 cached diff，确保 verified-release provenance。",
       "tags": [
         "release",
         "test-only",
@@ -21515,10 +21515,10 @@
       "name": "requireRecoveryOverlayStep",
       "filePath": "scripts/releaseworkflow/main.go",
       "lineRange": [
-        399,
-        435
+        397,
+        439
       ],
-      "summary": "只允许 workflow_dispatch 通过 git archive 覆盖精确、经审计的 Windows-safe 测试和 release policy 文件；禁止改生产源码或索引。",
+      "summary": "只允许 workflow_dispatch 通过 git archive 覆盖精确、经审计的 Windows-safe 测试和 release policy 文件；两条 tag 缺失 reader 必须先 git add -N 成 intent-to-add，再同时验证工作树白名单 diff 与空 cached diff，禁止改生产源码或真实索引。",
       "tags": [
         "implementation",
         "release",
@@ -38370,6 +38370,22 @@
       "direction": "forward",
       "weight": 0.5,
       "description": "workflow_dispatch 仅取默认分支 account_test.go 作为受审计 test-only recovery overlay"
+    },
+    {
+      "source": "pipeline:.github/workflows/release.yml",
+      "target": "file:internal/update/releases_reader_nonwindows_test.go",
+      "type": "reads_from",
+      "direction": "forward",
+      "weight": 0.5,
+      "description": "workflow_dispatch 以 git add -N 标记 tag 中缺失的非 Windows reader 为 intent-to-add，并纳入白名单工作树 diff 与空 cached diff 验证"
+    },
+    {
+      "source": "pipeline:.github/workflows/release.yml",
+      "target": "file:internal/update/releases_reader_windows_test.go",
+      "type": "reads_from",
+      "direction": "forward",
+      "weight": 0.5,
+      "description": "workflow_dispatch 以 git add -N 标记 tag 中缺失的 Windows reader 为 intent-to-add，并纳入白名单工作树 diff 与空 cached diff 验证"
     },
     {
       "source": "file:scripts/releaseworkflow/main.go",

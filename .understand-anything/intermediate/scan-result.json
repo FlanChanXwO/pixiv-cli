@@ -58,7 +58,7 @@
     {
       "path": ".github/workflows/release.yml",
       "language": "yaml",
-      "sizeLines": 593,
+      "sizeLines": 596,
       "fileCategory": "infra"
     },
     {
@@ -166,7 +166,7 @@
     {
       "path": "docs/development.md",
       "language": "markdown",
-      "sizeLines": 392,
+      "sizeLines": 393,
       "fileCategory": "docs"
     },
     {
@@ -892,7 +892,7 @@
     {
       "path": "scripts/releaseworkflow/main.go",
       "language": "go",
-      "sizeLines": 1892,
+      "sizeLines": 1895,
       "fileCategory": "code"
     },
     {
