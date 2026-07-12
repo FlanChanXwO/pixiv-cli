@@ -359,7 +359,7 @@ func (c *Client) UnfollowUser(ctx context.Context, userID int64) error {
 
 func (c *Client) postFormWithRetry(ctx context.Context, path string, form url.Values) error {
 	err := c.postForm(ctx, path, form)
-	if !isAuthError(err) {
+	if !isAuthAPIResponse(err) {
 		return err
 	}
 	if c.session == nil {
@@ -369,6 +369,12 @@ func (c *Client) postFormWithRetry(ctx context.Context, path string, form url.Va
 		return fmt.Errorf("%w; token refresh failed: %v", err, refreshErr)
 	}
 	return c.postForm(ctx, path, form)
+}
+
+// isAuthAPIResponse 仅识别明确的认证 HTTP 状态，避免响应正文中的词汇触发 mutation 重放。
+func isAuthAPIResponse(err error) bool {
+	var apiErr APIError
+	return errors.As(err, &apiErr) && (apiErr.StatusCode == http.StatusUnauthorized || apiErr.StatusCode == http.StatusForbidden)
 }
 
 func (c *Client) postForm(ctx context.Context, path string, form url.Values) error {

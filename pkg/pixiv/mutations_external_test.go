@@ -178,12 +178,14 @@ func TestMutationsRequireAuthenticatedAppWithoutWebFallback(t *testing.T) {
 
 func TestMutationUpstreamFailureIsTypedAndSecretSafe(t *testing.T) {
 	t.Parallel()
+	var requests atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		requests.Add(1)
 		if request.URL.Path != "/v1/user/follow/delete" {
 			t.Fatalf("path=%s", request.URL.Path)
 		}
-		writer.WriteHeader(http.StatusTooManyRequests)
-		_, _ = writer.Write([]byte("upstream-body-secret access-secret"))
+		writer.WriteHeader(http.StatusBadGateway)
+		_, _ = writer.Write([]byte("upstream-body-secret unauthorized access-secret"))
 	}))
 	defer server.Close()
 	client, err := pixiv.NewClient(pixiv.Options{HTTPClient: server.Client(), AppAPIBaseURL: server.URL, AccessToken: "access-secret"})
@@ -192,8 +194,11 @@ func TestMutationUpstreamFailureIsTypedAndSecretSafe(t *testing.T) {
 	}
 	err = client.UnfollowUser(context.Background(), pixiv.UnfollowUserRequest{UserID: 419})
 	var typed *pixiv.Error
-	if !errors.As(err, &typed) || typed.Code != pixiv.CodeRateLimited || typed.Operation != pixiv.OperationUnfollowUser || typed.Backend != pixiv.BackendAppAPI || typed.UserID != 419 || typed.UpstreamStatus != http.StatusTooManyRequests || !typed.Retryable {
+	if !errors.As(err, &typed) || typed.Code != pixiv.CodeUpstreamError || typed.Operation != pixiv.OperationUnfollowUser || typed.Backend != pixiv.BackendAppAPI || typed.UserID != 419 || typed.UpstreamStatus != http.StatusBadGateway || !typed.Retryable {
 		t.Fatalf("err=%v typed=%+v", err, typed)
+	}
+	if got := requests.Load(); got != 1 {
+		t.Fatalf("requests=%d", got)
 	}
 	if rendered := err.Error() + " " + fmt.Sprint(errors.Unwrap(err)); strings.Contains(rendered, "upstream-body-secret") || strings.Contains(rendered, "access-secret") {
 		t.Fatalf("secret leaked in %q", rendered)

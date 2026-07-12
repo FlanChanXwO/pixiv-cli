@@ -113,3 +113,25 @@ func TestBookmarkMutationRefreshesAuthAndAcceptsEmptySuccess(t *testing.T) {
 		t.Fatalf("refresh calls=%d", session.refreshCalls)
 	}
 }
+
+func TestMutationServerErrorDoesNotRefreshOrReplay(t *testing.T) {
+	session := &fakeSession{token: "old-access"}
+	requests := 0
+	api := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		requests++
+		if request.Method != http.MethodPost || request.URL.Path != "/v1/user/follow/delete" {
+			t.Fatalf("method=%s path=%s", request.Method, request.URL.Path)
+		}
+		writer.WriteHeader(http.StatusBadGateway)
+		_, _ = writer.Write([]byte("unauthorized"))
+	}))
+	defer api.Close()
+
+	client := New(WithBaseURL(api.URL), WithSession(session))
+	if err := client.UnfollowUser(context.Background(), 42); err == nil {
+		t.Fatal("UnfollowUser unexpectedly succeeded")
+	}
+	if requests != 1 || session.refreshCalls != 0 {
+		t.Fatalf("requests=%d refresh_calls=%d", requests, session.refreshCalls)
+	}
+}
