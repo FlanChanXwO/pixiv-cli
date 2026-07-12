@@ -12,7 +12,8 @@
 - 修复 Linux 原生 Rust staticlib 的 `libm` 链接，以及 Windows checkout 对 first-party crate、Cargo
   vendor、本地 locked dependency 和生成 license bundle 的文本转换，使六平台保持同一 Rust
   source identity；Rust source digest 也会在筛选 `src/.cargo/vendor` 前规范化 Windows 路径分隔符，
-  避免真实输入被静默漏掉；Windows cgo 现用库搜索参数、Rust std import libraries 和
+  避免真实输入被静默漏掉；release archive 的 `LICENSE` 固定 LF checkout，避免 Windows/Unix
+  许可证成员字节分裂；Windows cgo 现用库搜索参数、Rust std import libraries 和
   LLD-backed Clang 链接 `*-pc-windows-msvc` staticlib，确保六平台 native evidence 能校验并链接真实
   ugoira encoder；Windows release `.zip` 改用 runner 预装的 7-Zip，避免 Git Bash 缺少 `zip` 而中断
   native evidence。

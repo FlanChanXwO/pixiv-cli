@@ -13,8 +13,9 @@ internal/download/ugoira_rs/src/**/*.rs -text
 internal/download/ugoira_rs/vendor/** -text
 third_party/rust/quantette-0.6.0/** -text
 
-# licensebundle 生成并在 release gate 中按字节比较这两个输出。保留 LF，避免 Windows checkout
-# 改成 CRLF 后把已生成且未修改的许可证 bundle 误报为 stale。
+# release archive 与 licensebundle gate 会按字节比较这些许可证输入。保留 LF，避免 Windows checkout
+# 改成 CRLF 后让跨平台 archive evidence 分裂，或把未修改的许可证 bundle 误报为 stale。
+LICENSE text eol=lf
 THIRD_PARTY_LICENSES.md text eol=lf
 third_party/licenses/** text eol=lf
 

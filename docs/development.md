@@ -61,12 +61,17 @@ staticlib source digest。不要手工编辑 vendor 内容；升级依赖时必�
 fixture 与许可证 bundle。根 `.gitattributes` 对上述 first-party crate 输入、整个 `vendor/**` 与固定本地
 `quantette` source 设置 `-text`；这只保留 Git blob 原始 bytes，不会重写正常内容，并防止 Windows
 checkout 把 LF 改为 CRLF 后破坏 Cargo checksum、source digest 或 licensebundle。对
-licensebundle 的 `THIRD_PARTY_LICENSES.md` 与
-`third_party/licenses/**` 则固定 `text eol=lf`，使其 byte-for-byte `--check` 在 Windows 保持稳定。
+release archive 的 `LICENSE`、licensebundle 的 `THIRD_PARTY_LICENSES.md` 与
+`third_party/licenses/**` 则固定 `text eol=lf`，使 archive member audit 与 byte-for-byte `--check` 在
+Windows 保持稳定。
 摘要器还必须在判断 `src/`、`.cargo/` 与 `vendor/` 之前，把 `filepath.Rel` 的平台分隔符规范化为
 slash；否则 Windows 的反斜杠路径会静默漏掉这些输入。run `29189725013` 的六个 matrix job 虽均
 success，但其 Unix/Windows source digest 因该路径筛选缺陷分裂，`consolidate` 必须拒绝该 run；其
 artifacts 不可回填或跨 run 拼接，修复后仍须从新 SHA 完整重跑六目标证据。
+run `29191200569` 的六个 matrix job 均 success，且六份 record 已统一为同一 source identity，证明
+上述 source digest 修复有效；但其 Windows archive 中 `LICENSE` 仍因 CRLF checkout 与 Unix/Git
+blob bytes 不同，`consolidate` 再次 fail-closed，且未生成输出目录。该 run 同样不可回填或跨 run
+拼接；固定 `LICENSE` 为 LF 后仍必须从新 SHA 完整重跑。
 `target/` 仍是机器产物，不计入 digest，也不得提交。
 
 直接运行 Cargo 时必须在 crate 目录启动，确保 Cargo 发现 source replacement：

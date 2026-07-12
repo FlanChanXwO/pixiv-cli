@@ -183,11 +183,12 @@ func TestPinnedRustSourcesDisableGitTextConversion(t *testing.T) {
 	}
 }
 
-// TestGeneratedRustLicenseOutputsUseLFCheckout 锁定 licensebundle 的两个受检生成物在 Windows
-// checkout 也保留 LF；生成器规范化为 LF，若 Git 改写为 CRLF，release gate 会错误报告 stale。
-func TestGeneratedRustLicenseOutputsUseLFCheckout(t *testing.T) {
+// TestReleaseLicenseOutputsUseLFCheckout 锁定发布归档的许可证输入在 Windows checkout 也保留 LF；
+// 否则 runner record 虽自洽，跨平台 consolidation 仍会因 archive member bytes 不一致而拒绝证据。
+func TestReleaseLicenseOutputsUseLFCheckout(t *testing.T) {
 	repoRoot := filepath.Clean(filepath.Join("..", ".."))
 	for _, source := range []string{
+		"LICENSE",
 		"THIRD_PARTY_LICENSES.md",
 		"third_party/licenses/crc32fast-1.5.0/LICENSE-MIT",
 	} {
@@ -198,7 +199,7 @@ func TestGeneratedRustLicenseOutputsUseLFCheckout(t *testing.T) {
 		}
 		output := string(body)
 		if !strings.Contains(output, "text: set") || !strings.Contains(output, "eol: lf") {
-			t.Fatalf("generated Rust license output %q must use LF checkout, got %q", source, strings.TrimSpace(output))
+			t.Fatalf("release license input %q must use LF checkout, got %q", source, strings.TrimSpace(output))
 		}
 	}
 }

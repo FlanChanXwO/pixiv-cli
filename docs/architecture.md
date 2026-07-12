@@ -171,6 +171,9 @@ logical slash path，再筛选 `src/`、`.cargo/` 与 `vendor/`；run `291897250
 六个 runner job 均 success，也会产生 Unix/Windows digest split 并被 consolidation fail-closed。
 该 run 不可回填或与后续 run 拼接。Rust `target/` 是机器产物，staticlib/manifest 是经过 native
 验证后才可提交的发布输入。
+release archive 的 `LICENSE` 与生成的许可证 bundle 同样固定 LF checkout；run `29191200569` 的六份
+source digest 已一致，但 Windows archive 的 `LICENSE` bytes 仍与 Unix/Git blob 分裂，因此
+consolidation 再次 fail-closed。该 run 也不可回填或跨 run 拼接，必须从修复后的新 SHA 完整重跑。
 `internal/download/staticlib` 只承载 source digest 与 manifest 的完整性契约，不导入 cgo encoder；
 因此 native-evidence 的 **policy** gate 可以在目标库生成前执行。`record` 与 `consolidate` 同样不
 触发 cgo 链接，但分别仍需要已生成的 staticlib/binary/archive 与完整六份 evidence 输入；下载运行时
