@@ -128,6 +128,12 @@ func LoadSettingsState() (SettingsState, error) {
 	if err != nil {
 		return SettingsState{}, err
 	}
+	return LoadSettingsStateAt(path)
+}
+
+// LoadSettingsStateAt 从明确给定的路径加载配置。SDK 需要它避免改动
+// 包级测试路径或依赖调用进程的隐式当前配置位置。
+func LoadSettingsStateAt(path string) (SettingsState, error) {
 	fileState := koanf.New(".")
 	if err := loadConfigFileInto(fileState, path); err != nil {
 		return SettingsState{}, err

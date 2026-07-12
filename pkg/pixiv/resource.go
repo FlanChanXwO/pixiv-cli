@@ -109,6 +109,11 @@ func (c *Client) ParseResourceRef(rawURL string) (ResourceRef, error) {
 
 // OpenResource 打开经 policy 验证的 Pixiv 资源；成功响应的 Body 由调用方关闭。
 func (c *Client) OpenResource(ctx context.Context, request OpenResourceRequest) (*ResourceResponse, error) {
+	if scoped, err := c.operationClient(ctx, OperationOpenResource); err != nil {
+		return nil, err
+	} else if scoped != c {
+		return scoped.OpenResource(ctx, request)
+	}
 	for _, value := range []string{request.Range, request.IfNoneMatch, request.IfModifiedSince} {
 		if hasControl(value) {
 			return nil, invalidResourceError(OperationOpenResource, "resource request header is invalid")
@@ -141,6 +146,11 @@ func (c *Client) OpenResource(ctx context.Context, request OpenResourceRequest) 
 
 // Download 将完整资源流式写入同目录临时文件，并在成功后原子替换目标。
 func (c *Client) Download(ctx context.Context, ref ResourceRef, destinationPath string) error {
+	if scoped, err := c.operationClient(ctx, OperationDownload); err != nil {
+		return err
+	} else if scoped != c {
+		return scoped.Download(ctx, ref, destinationPath)
+	}
 	if strings.TrimSpace(destinationPath) == "" {
 		return invalidResourceError(OperationDownload, "destination path is invalid")
 	}

@@ -19,6 +19,9 @@ type cursorPayload struct {
 	QueryDigest string    `json:"q"`
 	Kind        string    `json:"k"`
 	Value       string    `json:"n"`
+	// Source is additive. Direct NewClient leaves it empty for v1 compatibility;
+	// OpenDefault binds continuations to a non-secret route/identity marker.
+	Source string `json:"s,omitempty"`
 }
 
 func queryDigest(operation Operation, query any) string {
@@ -31,11 +34,19 @@ func queryDigest(operation Operation, query any) string {
 }
 
 func encodeCursor(operation Operation, digest, kind string, value int64) Cursor {
-	payload, _ := json.Marshal(cursorPayload{cursorVersion, operation, digest, kind, strconv.FormatInt(value, 10)})
+	return encodeCursorForSource(operation, digest, kind, value, "")
+}
+
+func encodeCursorForSource(operation Operation, digest, kind string, value int64, source string) Cursor {
+	payload, _ := json.Marshal(cursorPayload{Version: cursorVersion, Operation: operation, QueryDigest: digest, Kind: kind, Value: strconv.FormatInt(value, 10), Source: source})
 	return Cursor(base64.RawURLEncoding.EncodeToString(payload))
 }
 
 func decodeCursor(raw Cursor, operation Operation, digest, kind string) (int64, error) {
+	return decodeCursorForSource(raw, operation, digest, kind, "", false)
+}
+
+func decodeCursorForSource(raw Cursor, operation Operation, digest, kind, source string, requireSource bool) (int64, error) {
 	if raw == "" {
 		return 0, nil
 	}
@@ -54,6 +65,9 @@ func decodeCursor(raw Cursor, operation Operation, digest, kind string) (int64, 
 	}
 	if payload.Version != cursorVersion || payload.Operation != operation || payload.QueryDigest != digest || payload.Kind != kind {
 		return 0, errors.New("cursor does not match this request")
+	}
+	if requireSource && (payload.Source == "" || payload.Source != source) {
+		return 0, errors.New("cursor does not match this operation source")
 	}
 	value, err := strconv.ParseInt(payload.Value, 10, 64)
 	if err != nil || value <= 0 {

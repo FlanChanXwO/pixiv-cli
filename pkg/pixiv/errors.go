@@ -51,6 +51,17 @@ const (
 	OperationParseResourceRef   Operation = "parse_resource_ref"
 	OperationOpenResource       Operation = "open_resource"
 	OperationDownload           Operation = "download"
+	OperationRefresh            Operation = "refresh"
+	OperationImportAccount      Operation = "import_account"
+	OperationListAccounts       Operation = "list_accounts"
+	OperationSelectAccount      Operation = "select_account"
+	OperationRemoveAccount      Operation = "remove_account"
+	OperationCheckAccount       Operation = "check_account"
+	OperationConfigGet          Operation = "config_get"
+	OperationConfigSet          Operation = "config_set"
+	OperationConfigUnset        Operation = "config_unset"
+	OperationStartLogin         Operation = "start_login"
+	OperationCompleteLogin      Operation = "complete_login"
 )
 
 // Error 是公开 SDK 的安全、可分类错误。cause 只保存已脱敏原因。

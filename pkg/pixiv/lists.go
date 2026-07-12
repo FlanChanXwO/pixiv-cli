@@ -42,6 +42,11 @@ type userFollowingQuery struct {
 
 // SearchIllust 返回一个作品搜索上游批次。
 func (c *Client) SearchIllust(ctx context.Context, request SearchIllustRequest) (*IllustListResult, error) {
+	if scoped, err := c.operationClient(ctx, OperationSearchIllust); err != nil {
+		return nil, err
+	} else if scoped != c {
+		return scoped.SearchIllust(ctx, request)
+	}
 	query := searchIllustQuery{strings.TrimSpace(request.Word), request.Target, request.Sort, strings.TrimSpace(request.Duration)}
 	if query.Word == "" {
 		return nil, invalidArgument(OperationSearchIllust, 0, errors.New("word is required"))
@@ -56,7 +61,7 @@ func (c *Client) SearchIllust(ctx context.Context, request SearchIllustRequest) 
 		return nil, invalidArgument(OperationSearchIllust, 0, errors.New("search enum is invalid"))
 	}
 	digest := queryDigest(OperationSearchIllust, query)
-	offset, err := cursorOffset(request.Cursor, OperationSearchIllust, digest, 0)
+	offset, err := c.cursorOffset(request.Cursor, OperationSearchIllust, digest, 0)
 	if err != nil {
 		return nil, err
 	}
@@ -69,7 +74,7 @@ func (c *Client) SearchIllust(ctx context.Context, request SearchIllustRequest) 
 		if err != nil {
 			return nil, mapWebListError(err, OperationSearchIllust, 0)
 		}
-		return publicIllustList(list, OperationSearchIllust, digest, "offset"), nil
+		return publicIllustList(list, OperationSearchIllust, digest, "offset", c.cursorSource), nil
 	}
 	if route != routeApp {
 		return nil, unexpectedRoute(OperationSearchIllust, 0, 0)
@@ -78,11 +83,16 @@ func (c *Client) SearchIllust(ctx context.Context, request SearchIllustRequest) 
 	if err != nil {
 		return nil, mapAppOperationError(err, OperationSearchIllust, 0)
 	}
-	return publicIllustList(list, OperationSearchIllust, digest, "offset"), nil
+	return publicIllustList(list, OperationSearchIllust, digest, "offset", c.cursorSource), nil
 }
 
 // IllustRanking 返回一个排行榜上游批次。
 func (c *Client) IllustRanking(ctx context.Context, request IllustRankingRequest) (*IllustListResult, error) {
+	if scoped, err := c.operationClient(ctx, OperationIllustRanking); err != nil {
+		return nil, err
+	} else if scoped != c {
+		return scoped.IllustRanking(ctx, request)
+	}
 	query := rankingQuery{request.Mode, request.Date}
 	if query.Mode == "" {
 		query.Mode = RankingModeDay
@@ -94,7 +104,7 @@ func (c *Client) IllustRanking(ctx context.Context, request IllustRankingRequest
 		return nil, invalidArgument(OperationIllustRanking, 0, errors.New("ranking date must use YYYY-MM-DD"))
 	}
 	digest := queryDigest(OperationIllustRanking, query)
-	offset, err := cursorOffset(request.Cursor, OperationIllustRanking, digest, 0)
+	offset, err := c.cursorOffset(request.Cursor, OperationIllustRanking, digest, 0)
 	if err != nil {
 		return nil, err
 	}
@@ -107,7 +117,7 @@ func (c *Client) IllustRanking(ctx context.Context, request IllustRankingRequest
 		if err != nil {
 			return nil, mapWebListError(err, OperationIllustRanking, 0)
 		}
-		return publicIllustList(list, OperationIllustRanking, digest, "offset"), nil
+		return publicIllustList(list, OperationIllustRanking, digest, "offset", c.cursorSource), nil
 	}
 	if route != routeApp {
 		return nil, unexpectedRoute(OperationIllustRanking, 0, 0)
@@ -116,13 +126,18 @@ func (c *Client) IllustRanking(ctx context.Context, request IllustRankingRequest
 	if err != nil {
 		return nil, mapAppOperationError(err, OperationIllustRanking, 0)
 	}
-	return publicIllustList(list, OperationIllustRanking, digest, "offset"), nil
+	return publicIllustList(list, OperationIllustRanking, digest, "offset", c.cursorSource), nil
 }
 
 // IllustRecommended 返回一个认证推荐作品批次。
 func (c *Client) IllustRecommended(ctx context.Context, request IllustRecommendedRequest) (*IllustListResult, error) {
+	if scoped, err := c.operationClient(ctx, OperationIllustRecommended); err != nil {
+		return nil, err
+	} else if scoped != c {
+		return scoped.IllustRecommended(ctx, request)
+	}
 	digest := queryDigest(OperationIllustRecommended, struct{}{})
-	offset, err := cursorOffset(request.Cursor, OperationIllustRecommended, digest, 0)
+	offset, err := c.cursorOffset(request.Cursor, OperationIllustRecommended, digest, 0)
 	if err != nil {
 		return nil, err
 	}
@@ -133,11 +148,16 @@ func (c *Client) IllustRecommended(ctx context.Context, request IllustRecommende
 	if err != nil {
 		return nil, mapAppOperationError(err, OperationIllustRecommended, 0)
 	}
-	return publicIllustList(list, OperationIllustRecommended, digest, "offset"), nil
+	return publicIllustList(list, OperationIllustRecommended, digest, "offset", c.cursorSource), nil
 }
 
 // FollowingIllusts 返回当前认证账号所关注用户的一个作品批次。
 func (c *Client) FollowingIllusts(ctx context.Context, request FollowingIllustsRequest) (*IllustListResult, error) {
+	if scoped, err := c.operationClient(ctx, OperationFollowingIllusts); err != nil {
+		return nil, err
+	} else if scoped != c {
+		return scoped.FollowingIllusts(ctx, request)
+	}
 	query := restrictQuery{request.Restrict}
 	if query.Restrict == "" {
 		query.Restrict = RestrictPublic
@@ -146,7 +166,7 @@ func (c *Client) FollowingIllusts(ctx context.Context, request FollowingIllustsR
 		return nil, invalidArgument(OperationFollowingIllusts, 0, errors.New("restrict is invalid"))
 	}
 	digest := queryDigest(OperationFollowingIllusts, query)
-	offset, err := cursorOffset(request.Cursor, OperationFollowingIllusts, digest, 0)
+	offset, err := c.cursorOffset(request.Cursor, OperationFollowingIllusts, digest, 0)
 	if err != nil {
 		return nil, err
 	}
@@ -157,17 +177,22 @@ func (c *Client) FollowingIllusts(ctx context.Context, request FollowingIllustsR
 	if err != nil {
 		return nil, mapAppOperationError(err, OperationFollowingIllusts, 0)
 	}
-	return publicIllustList(list, OperationFollowingIllusts, digest, "offset"), nil
+	return publicIllustList(list, OperationFollowingIllusts, digest, "offset", c.cursorSource), nil
 }
 
 // SearchUser 返回一个用户搜索上游批次。
 func (c *Client) SearchUser(ctx context.Context, request SearchUserRequest) (*UserListResult, error) {
+	if scoped, err := c.operationClient(ctx, OperationSearchUser); err != nil {
+		return nil, err
+	} else if scoped != c {
+		return scoped.SearchUser(ctx, request)
+	}
 	query := searchUserQuery{strings.TrimSpace(request.Word)}
 	if query.Word == "" {
 		return nil, invalidArgument(OperationSearchUser, 0, errors.New("word is required"))
 	}
 	digest := queryDigest(OperationSearchUser, query)
-	offset, err := cursorOffset(request.Cursor, OperationSearchUser, digest, 0)
+	offset, err := c.cursorOffset(request.Cursor, OperationSearchUser, digest, 0)
 	if err != nil {
 		return nil, err
 	}
@@ -180,7 +205,7 @@ func (c *Client) SearchUser(ctx context.Context, request SearchUserRequest) (*Us
 		if err != nil {
 			return nil, mapWebListError(err, OperationSearchUser, 0)
 		}
-		return publicUserList(list, OperationSearchUser, digest), nil
+		return publicUserList(list, OperationSearchUser, digest, c.cursorSource), nil
 	}
 	if route != routeApp {
 		return nil, unexpectedRoute(OperationSearchUser, 0, 0)
@@ -189,11 +214,16 @@ func (c *Client) SearchUser(ctx context.Context, request SearchUserRequest) (*Us
 	if err != nil {
 		return nil, mapAppOperationError(err, OperationSearchUser, 0)
 	}
-	return publicUserList(list, OperationSearchUser, digest), nil
+	return publicUserList(list, OperationSearchUser, digest, c.cursorSource), nil
 }
 
 // UserDetail 返回指定用户的稳定摘要。
 func (c *Client) UserDetail(ctx context.Context, request UserDetailRequest) (*UserDetailResult, error) {
+	if scoped, err := c.operationClient(ctx, OperationUserDetail); err != nil {
+		return nil, err
+	} else if scoped != c {
+		return scoped.UserDetail(ctx, request)
+	}
 	if request.UserID <= 0 {
 		return nil, invalidArgument(OperationUserDetail, request.UserID, errors.New("user id must be positive"))
 	}
@@ -209,6 +239,11 @@ func (c *Client) UserDetail(ctx context.Context, request UserDetailRequest) (*Us
 
 // UserArtworks 返回指定用户的一个作品批次。
 func (c *Client) UserArtworks(ctx context.Context, request UserArtworksRequest) (*IllustListResult, error) {
+	if scoped, err := c.operationClient(ctx, OperationUserArtworks); err != nil {
+		return nil, err
+	} else if scoped != c {
+		return scoped.UserArtworks(ctx, request)
+	}
 	if request.UserID <= 0 {
 		return nil, invalidArgument(OperationUserArtworks, request.UserID, errors.New("user id must be positive"))
 	}
@@ -220,7 +255,7 @@ func (c *Client) UserArtworks(ctx context.Context, request UserArtworksRequest) 
 		return nil, invalidArgument(OperationUserArtworks, request.UserID, errors.New("illust type is invalid"))
 	}
 	digest := queryDigest(OperationUserArtworks, query)
-	offset, err := cursorOffset(request.Cursor, OperationUserArtworks, digest, request.UserID)
+	offset, err := c.cursorOffset(request.Cursor, OperationUserArtworks, digest, request.UserID)
 	if err != nil {
 		return nil, err
 	}
@@ -231,11 +266,16 @@ func (c *Client) UserArtworks(ctx context.Context, request UserArtworksRequest) 
 	if err != nil {
 		return nil, mapAppOperationError(err, OperationUserArtworks, request.UserID)
 	}
-	return publicIllustList(list, OperationUserArtworks, digest, "offset"), nil
+	return publicIllustList(list, OperationUserArtworks, digest, "offset", c.cursorSource), nil
 }
 
 // UserBookmarks 返回指定用户的一个收藏作品批次。
 func (c *Client) UserBookmarks(ctx context.Context, request UserBookmarksRequest) (*IllustListResult, error) {
+	if scoped, err := c.operationClient(ctx, OperationUserBookmarks); err != nil {
+		return nil, err
+	} else if scoped != c {
+		return scoped.UserBookmarks(ctx, request)
+	}
 	if request.UserID <= 0 {
 		return nil, invalidArgument(OperationUserBookmarks, request.UserID, errors.New("user id must be positive"))
 	}
@@ -247,7 +287,7 @@ func (c *Client) UserBookmarks(ctx context.Context, request UserBookmarksRequest
 		return nil, invalidArgument(OperationUserBookmarks, request.UserID, errors.New("restrict is invalid"))
 	}
 	digest := queryDigest(OperationUserBookmarks, query)
-	maxID, err := cursorValue(request.Cursor, OperationUserBookmarks, digest, "max_bookmark_id", request.UserID)
+	maxID, err := c.cursorValue(request.Cursor, OperationUserBookmarks, digest, "max_bookmark_id", request.UserID)
 	if err != nil {
 		return nil, err
 	}
@@ -258,11 +298,16 @@ func (c *Client) UserBookmarks(ctx context.Context, request UserBookmarksRequest
 	if err != nil {
 		return nil, mapAppOperationError(err, OperationUserBookmarks, request.UserID)
 	}
-	return publicIllustList(list, OperationUserBookmarks, digest, "max_bookmark_id"), nil
+	return publicIllustList(list, OperationUserBookmarks, digest, "max_bookmark_id", c.cursorSource), nil
 }
 
 // UserFollowing 返回指定用户关注的一个用户批次。
 func (c *Client) UserFollowing(ctx context.Context, request UserFollowingRequest) (*UserListResult, error) {
+	if scoped, err := c.operationClient(ctx, OperationUserFollowing); err != nil {
+		return nil, err
+	} else if scoped != c {
+		return scoped.UserFollowing(ctx, request)
+	}
 	if request.UserID <= 0 {
 		return nil, invalidArgument(OperationUserFollowing, request.UserID, errors.New("user id must be positive"))
 	}
@@ -274,7 +319,7 @@ func (c *Client) UserFollowing(ctx context.Context, request UserFollowingRequest
 		return nil, invalidArgument(OperationUserFollowing, request.UserID, errors.New("restrict is invalid"))
 	}
 	digest := queryDigest(OperationUserFollowing, query)
-	offset, err := cursorOffset(request.Cursor, OperationUserFollowing, digest, request.UserID)
+	offset, err := c.cursorOffset(request.Cursor, OperationUserFollowing, digest, request.UserID)
 	if err != nil {
 		return nil, err
 	}
@@ -285,11 +330,11 @@ func (c *Client) UserFollowing(ctx context.Context, request UserFollowingRequest
 	if err != nil {
 		return nil, mapAppOperationError(err, OperationUserFollowing, request.UserID)
 	}
-	return publicUserList(list, OperationUserFollowing, digest), nil
+	return publicUserList(list, OperationUserFollowing, digest, c.cursorSource), nil
 }
 
-func cursorOffset(cursor Cursor, operation Operation, digest string, userID int64) (int, error) {
-	value, err := cursorValue(cursor, operation, digest, "offset", userID)
+func (c *Client) cursorOffset(cursor Cursor, operation Operation, digest string, userID int64) (int, error) {
+	value, err := c.cursorValue(cursor, operation, digest, "offset", userID)
 	if err != nil {
 		return 0, err
 	}
@@ -299,15 +344,15 @@ func cursorOffset(cursor Cursor, operation Operation, digest string, userID int6
 	return int(value), nil
 }
 
-func cursorValue(cursor Cursor, operation Operation, digest, kind string, userID int64) (int64, error) {
-	value, err := decodeCursor(cursor, operation, digest, kind)
+func (c *Client) cursorValue(cursor Cursor, operation Operation, digest, kind string, userID int64) (int64, error) {
+	value, err := decodeCursorForSource(cursor, operation, digest, kind, c.cursorSource, c.cursorSource != "")
 	if err != nil {
 		return 0, invalidArgument(operation, userID, err)
 	}
 	return value, nil
 }
 
-func publicIllustList(list *model.IllustList, operation Operation, digest, kind string) *IllustListResult {
+func publicIllustList(list *model.IllustList, operation Operation, digest, kind, source string) *IllustListResult {
 	result := &IllustListResult{Illusts: make([]Illust, len(list.Illusts))}
 	for index, item := range list.Illusts {
 		result.Illusts[index] = mapIllust(item)
@@ -317,18 +362,18 @@ func publicIllustList(list *model.IllustList, operation Operation, digest, kind 
 		if kind == "max_bookmark_id" {
 			value = list.NextMaxBookmarkID
 		}
-		result.NextCursor = encodeCursor(operation, digest, kind, value)
+		result.NextCursor = encodeCursorForSource(operation, digest, kind, value, source)
 	}
 	return result
 }
 
-func publicUserList(list *model.UserPreviewList, operation Operation, digest string) *UserListResult {
+func publicUserList(list *model.UserPreviewList, operation Operation, digest, source string) *UserListResult {
 	result := &UserListResult{UserPreviews: make([]UserPreview, len(list.UserPreviews))}
 	for index, item := range list.UserPreviews {
 		result.UserPreviews[index] = UserPreview{User: mapUser(item.User)}
 	}
 	if list.ContinuationExists {
-		result.NextCursor = encodeCursor(operation, digest, "offset", int64(list.NextOffset))
+		result.NextCursor = encodeCursorForSource(operation, digest, "offset", int64(list.NextOffset), source)
 	}
 	return result
 }

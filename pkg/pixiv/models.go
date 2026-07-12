@@ -175,6 +175,33 @@ type UgoiraFrame struct {
 	Delay int    `json:"delay"`
 }
 
+// Account 是不含 refresh token 的本地账号摘要。
+type Account struct {
+	UserID   int64  `json:"user_id"`
+	Username string `json:"username,omitempty"`
+	Default  bool   `json:"default"`
+	HasToken bool   `json:"has_token"`
+}
+
+// AccountsResult 包含当前默认 UID 与不含凭据的账号列表。
+type AccountsResult struct {
+	DefaultUserID int64     `json:"default_user_id,omitempty"`
+	Accounts      []Account `json:"accounts"`
+}
+
+// ConfigValue 是一个配置项的安全、可序列化视图。
+type ConfigValue struct {
+	Key      string `json:"key"`
+	Value    string `json:"value,omitempty"`
+	Source   string `json:"source"`
+	HasValue bool   `json:"has_value"`
+}
+
+// LoginOptions 控制成功登录后是否选择该账号为默认账号。
+type LoginOptions struct {
+	UseAsDefault bool
+}
+
 // Tag 是作品标签及其翻译。
 type Tag struct {
 	Name           string `json:"name"`

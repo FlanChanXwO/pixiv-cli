@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strings"
 
+	internalpixiv "github.com/FlanChanXwO/pixiv-cli/internal/pixiv"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/appapi"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/model"
 	internalresource "github.com/FlanChanXwO/pixiv-cli/internal/pixiv/resource"
@@ -24,6 +25,16 @@ type Options struct {
 	WebAPIBaseURL string
 	// AccessToken 是调用 App API 使用的 bearer token。
 	AccessToken string
+	// RefreshToken 仅供 OpenDefault 的本次快照显式选择；NewClient 不读取它。
+	RefreshToken string
+	// UserID 仅供 OpenDefault 从本地 auth store 选择账号。
+	UserID int64
+	// OAuthBaseURL 覆盖 OAuth token endpoint，主要用于测试。
+	OAuthBaseURL string
+	// AuthFilePath 和 ConfigFilePath 指定本地状态路径。NewClient 不会读取它们；
+	// OpenDefault 在为空时使用现有默认路径。
+	AuthFilePath   string
+	ConfigFilePath string
 	// WebFallbackEnabled 允许无 access token 时显式使用匿名 Web API。
 	WebFallbackEnabled bool
 	// ResourcePolicy 追加调用方显式信任的资源镜像；Pixiv 官方资源规则始终启用。
@@ -38,6 +49,15 @@ type Client struct {
 	webFallbackEnabled bool
 	resourcePolicy     resourcePolicy
 	resource           *internalresource.Client
+	httpClient         *http.Client
+	authFilePath       string
+	configFilePath     string
+	oauthBaseURL       string
+	appAPIBaseURL      string
+	// defaults 非 nil 表示每个公开操作都必须取得一个新的本地快照。
+	defaults *defaultOptions
+	// cursorSource 只存在于 OpenDefault 的 operation-scoped client；它从不含凭据。
+	cursorSource string
 }
 
 // NewClient 构造具体客户端；它不会执行网络请求或隐式认证。
@@ -63,12 +83,46 @@ func NewClient(options Options) (*Client, error) {
 		webFallbackEnabled: options.WebFallbackEnabled,
 		resourcePolicy:     resourcePolicy,
 		resource:           internalresource.NewApp(options.HTTPClient),
+		httpClient:         options.HTTPClient,
+		authFilePath:       strings.TrimSpace(options.AuthFilePath),
+		configFilePath:     strings.TrimSpace(options.ConfigFilePath),
+		oauthBaseURL:       strings.TrimSpace(options.OAuthBaseURL),
+		appAPIBaseURL:      strings.TrimSpace(options.AppAPIBaseURL),
 	}, nil
+}
+
+// OpenDefault 构造使用本地 auth.json、config.toml 与环境变量的客户端。
+// 它不缓存这些状态：每次公开操作开始时都会取得一次新快照。
+func OpenDefault(options Options) (*Client, error) {
+	if strings.TrimSpace(options.AccessToken) != "" {
+		return nil, newError(CodeInvalidArgument, "", "", false, 0, 0, errors.New("AccessToken is only supported by NewClient"))
+	}
+	baseOptions := options
+	baseOptions.AccessToken = ""
+	base, err := NewClient(baseOptions)
+	if err != nil {
+		return nil, err
+	}
+	base.defaults = &defaultOptions{options: options}
+	return base, nil
+}
+
+// newHTTPClientForSnapshot 保留显式 transport；否则把当前配置中的代理绑定到本次操作。
+func newHTTPClientForSnapshot(options Options, proxy string) (*http.Client, error) {
+	if options.HTTPClient != nil {
+		return options.HTTPClient, nil
+	}
+	return internalpixiv.HTTPClient(proxy)
 }
 
 // IllustDetail 先读取 App API 详情，再用 Web pages 显式补全页面元数据。
 // App 失败时不会请求 Web；Web 补全失败会直接返回错误。
 func (c *Client) IllustDetail(ctx context.Context, id int64) (*IllustDetail, error) {
+	if scoped, err := c.operationClient(ctx, OperationIllustDetail); err != nil {
+		return nil, err
+	} else if scoped != c {
+		return scoped.IllustDetail(ctx, id)
+	}
 	if id <= 0 {
 		return nil, newError(
 			CodeInvalidArgument,

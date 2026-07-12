@@ -13,6 +13,11 @@ type illustRelatedQuery struct {
 
 // IllustPages 返回作品的全部页面元数据；该接口不分页。
 func (c *Client) IllustPages(ctx context.Context, illustID int64) ([]MetaPage, error) {
+	if scoped, err := c.operationClient(ctx, OperationIllustPages); err != nil {
+		return nil, err
+	} else if scoped != c {
+		return scoped.IllustPages(ctx, illustID)
+	}
 	if illustID <= 0 {
 		return nil, invalidIllustArgument(OperationIllustPages, errors.New("illust id must be positive"))
 	}
@@ -28,12 +33,17 @@ func (c *Client) IllustPages(ctx context.Context, illustID int64) ([]MetaPage, e
 
 // IllustRelated 返回与指定作品相关的一个 App API 批次。
 func (c *Client) IllustRelated(ctx context.Context, request IllustRelatedRequest) (*IllustListResult, error) {
+	if scoped, err := c.operationClient(ctx, OperationIllustRelated); err != nil {
+		return nil, err
+	} else if scoped != c {
+		return scoped.IllustRelated(ctx, request)
+	}
 	if request.IllustID <= 0 {
 		return nil, invalidIllustArgument(OperationIllustRelated, errors.New("illust id must be positive"))
 	}
 	query := illustRelatedQuery{IllustID: request.IllustID}
 	digest := queryDigest(OperationIllustRelated, query)
-	offset, err := cursorIllustOffset(request.Cursor, OperationIllustRelated, digest, request.IllustID)
+	offset, err := c.cursorIllustOffset(request.Cursor, OperationIllustRelated, digest, request.IllustID)
 	if err != nil {
 		return nil, err
 	}
@@ -44,11 +54,16 @@ func (c *Client) IllustRelated(ctx context.Context, request IllustRelatedRequest
 	if err != nil {
 		return nil, mapAppError(err, OperationIllustRelated, request.IllustID)
 	}
-	return publicIllustList(list, OperationIllustRelated, digest, "offset"), nil
+	return publicIllustList(list, OperationIllustRelated, digest, "offset", c.cursorSource), nil
 }
 
 // TrendingTagsIllust 返回 App API 当前的插画趋势标签。
 func (c *Client) TrendingTagsIllust(ctx context.Context) (*TrendingTagsIllustResult, error) {
+	if scoped, err := c.operationClient(ctx, OperationTrendingTagsIllust); err != nil {
+		return nil, err
+	} else if scoped != c {
+		return scoped.TrendingTagsIllust(ctx)
+	}
 	if err := c.requireRoute(OperationTrendingTagsIllust, routeApp, 0, 0); err != nil {
 		return nil, err
 	}
@@ -65,6 +80,11 @@ func (c *Client) TrendingTagsIllust(ctx context.Context) (*TrendingTagsIllustRes
 
 // UgoiraMetadata 以 App 数据为主，并用 Web 的真实 originalSrc 补全原始压缩包 URL。
 func (c *Client) UgoiraMetadata(ctx context.Context, illustID int64) (*UgoiraMetadataResult, error) {
+	if scoped, err := c.operationClient(ctx, OperationUgoiraMetadata); err != nil {
+		return nil, err
+	} else if scoped != c {
+		return scoped.UgoiraMetadata(ctx, illustID)
+	}
 	if illustID <= 0 {
 		return nil, invalidIllustArgument(OperationUgoiraMetadata, errors.New("illust id must be positive"))
 	}
@@ -106,8 +126,8 @@ func publicUgoiraMetadata(value *model.UgoiraMetadataResult) *UgoiraMetadataResu
 	}}
 }
 
-func cursorIllustOffset(cursor Cursor, operation Operation, digest string, illustID int64) (int, error) {
-	value, err := decodeCursor(cursor, operation, digest, "offset")
+func (c *Client) cursorIllustOffset(cursor Cursor, operation Operation, digest string, illustID int64) (int, error) {
+	value, err := decodeCursorForSource(cursor, operation, digest, "offset", c.cursorSource, c.cursorSource != "")
 	if err != nil || int64(int(value)) != value {
 		return 0, newError(CodeInvalidArgument, operation, "", false, 0, illustID, errors.New("cursor is invalid"))
 	}

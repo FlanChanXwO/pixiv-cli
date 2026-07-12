@@ -4,6 +4,9 @@ package oauth
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -25,6 +28,10 @@ const (
 	defaultUserAgent    = "PixivAndroidApp/5.0.234 (Android 11; Pixel 5)"
 )
 
+// ErrMalformedResponse 标识 OAuth 成功状态码却未提供可用 token payload。
+// 它不携带原始响应体。
+var ErrMalformedResponse = errors.New("pixiv oauth returned a malformed response")
+
 type Client struct {
 	restyClient  *resty.Client
 	baseURL      string
@@ -33,6 +40,14 @@ type Client struct {
 	userID       int64
 	userName     string
 	mu           sync.RWMutex
+}
+
+// APIError 是 OAuth 上游状态错误。它故意不保留响应体，避免调用方把
+// OAuth 诊断内容（其中可能含 token 或 code）写入日志。
+type APIError struct{ StatusCode int }
+
+func (e APIError) Error() string {
+	return fmt.Sprintf("pixiv oauth exchange failed: status %d", e.StatusCode)
 }
 
 type Option func(*Client)
@@ -104,7 +119,7 @@ func (c *Client) Refresh(ctx context.Context) error {
 	}
 	token := tokenFromResponse(result)
 	if token.AccessToken == "" {
-		return errors.New("token refresh response did not include access_token")
+		return fmt.Errorf("%w: missing access token", ErrMalformedResponse)
 	}
 	c.store(token)
 	return nil
@@ -115,6 +130,25 @@ type AuthCodeToken struct {
 	RefreshToken string
 	UserID       int64
 	Username     string
+}
+
+// GeneratePKCEPair 使用 OAuth S256 所需的随机 verifier/challenge 对。
+func GeneratePKCEPair() (verifier, challenge string, err error) {
+	verifier, err = RandomURLToken(64)
+	if err != nil {
+		return "", "", err
+	}
+	sum := sha256.Sum256([]byte(verifier))
+	return verifier, base64.RawURLEncoding.EncodeToString(sum[:]), nil
+}
+
+// RandomURLToken 返回 URL-safe、不可预测的随机 token。
+func RandomURLToken(size int) (string, error) {
+	body := make([]byte, size)
+	if _, err := rand.Read(body); err != nil {
+		return "", err
+	}
+	return base64.RawURLEncoding.EncodeToString(body), nil
 }
 
 func (c *Client) ExchangeAuthorizationCode(ctx context.Context, code, verifier string) (AuthCodeToken, error) {
@@ -135,7 +169,7 @@ func (c *Client) ExchangeAuthorizationCode(ctx context.Context, code, verifier s
 	}
 	token := tokenFromResponse(result)
 	if token.RefreshToken == "" {
-		return AuthCodeToken{}, errors.New("authorization_code response did not include refresh_token")
+		return AuthCodeToken{}, fmt.Errorf("%w: missing refresh token", ErrMalformedResponse)
 	}
 	c.store(token)
 	return token, nil
@@ -147,14 +181,14 @@ func (c *Client) exchange(ctx context.Context, form map[string]string) (authResp
 		return authResponse{}, err
 	}
 	if resp.StatusCode() < 200 || resp.StatusCode() >= 300 {
-		return authResponse{}, fmt.Errorf("pixiv oauth error: status %d: %s", resp.StatusCode(), string(resp.Body()))
+		return authResponse{}, APIError{StatusCode: resp.StatusCode()}
 	}
 	if len(bytes.TrimSpace(resp.Body())) == 0 {
-		return authResponse{}, errors.New("empty response")
+		return authResponse{}, fmt.Errorf("%w: empty response", ErrMalformedResponse)
 	}
 	var result authResponse
 	if err := json.Unmarshal(resp.Body(), &result); err != nil {
-		return authResponse{}, fmt.Errorf("decode response: %w", err)
+		return authResponse{}, fmt.Errorf("%w: invalid JSON", ErrMalformedResponse)
 	}
 	return result, nil
 }
