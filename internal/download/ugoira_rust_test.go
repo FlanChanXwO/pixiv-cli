@@ -111,12 +111,35 @@ func TestWindowsRustStaticlibSelectorsUseCgoLibrarySearchFlags(t *testing.T) {
 			t.Fatalf("read Windows cgo selector %q: %v", source, err)
 		}
 		line := string(body)
-		if !strings.Contains(line, "#cgo LDFLAGS: -L${SRCDIR}/ugoira_rs/staticlib/") || !strings.Contains(line, " -lugoira_rs") {
-			t.Fatalf("Windows cgo selector %q must use -L${SRCDIR} and -lugoira_rs:\n%s", source, body)
+		for _, want := range []string{
+			"#cgo LDFLAGS: -L${SRCDIR}/ugoira_rs/staticlib/",
+			" -lugoira_rs",
+			" -ladvapi32",
+			" -lntdll",
+			" -luserenv",
+			" -lws2_32",
+			" -ldbghelp",
+		} {
+			if !strings.Contains(line, want) {
+				t.Fatalf("Windows cgo selector %q must link Rust native dependency %q:\n%s", source, want, body)
+			}
 		}
 		if strings.Contains(line, "/ugoira_rs.lib\n") {
 			t.Fatalf("Windows cgo selector %q must not pass ugoira_rs.lib as a direct linker input:\n%s", source, body)
 		}
+	}
+}
+
+// TestWindowsNativeEvidenceUsesLLDBackedClang 锁住 Windows workflow 的外链驱动：
+// Go 仅在外链器报告 LLD 时跳过 GCC 专属的 debug linker script；MSVC `link.exe` 不能解析该脚本。
+func TestWindowsNativeEvidenceUsesLLDBackedClang(t *testing.T) {
+	repoRoot := filepath.Clean(filepath.Join("..", ".."))
+	body, err := os.ReadFile(filepath.Join(repoRoot, ".github", "workflows", "native-evidence.yml"))
+	if err != nil {
+		t.Fatalf("read native evidence workflow: %v", err)
+	}
+	if strings.Count(string(body), "export CC='clang -fuse-ld=lld'") != 2 {
+		t.Fatalf("Windows smoke and binary build must each select clang backed by lld:\n%s", body)
 	}
 }
 

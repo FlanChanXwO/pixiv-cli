@@ -1078,14 +1078,14 @@ func requireDirectRunStep(step *yaml.Node, name, command string) error {
 
 const canonicalNativeSmokeRun = `set -eu
 if [ '${{ matrix.goos }}' = windows ]; then
-  export CC=clang
+  export CC='clang -fuse-ld=lld'
 fi
 go test ./internal/download -run '^TestRustUgoiraEncoderNativeGIFAndAPNG$' -count=1
 `
 
 const canonicalBuildBinaryRun = `set -eu
 if [ '${{ matrix.goos }}' = windows ]; then
-  export CC=clang
+  export CC='clang -fuse-ld=lld'
 fi
 version="0.1.0-native-evidence.${GITHUB_RUN_ID}"
 go run ./scripts/releaseassets validate --version "$version"
