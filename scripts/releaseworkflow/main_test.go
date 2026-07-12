@@ -276,6 +276,9 @@ func TestCheckPinnedGitHubKnownHosts(t *testing.T) {
 			t.Fatal("mutated GitHub known_hosts fixture was accepted")
 		}
 	}
+	if err := checkPinnedGitHubKnownHosts([]byte(strings.ReplaceAll(string(body), "\n", "\r\n"))); err != nil {
+		t.Fatalf("CRLF checked-out GitHub known_hosts rejected: %v", err)
+	}
 }
 
 // 不可变 tag 已经存在时，只允许从默认分支受审计 workflow 以精确 tag 恢复；
@@ -344,7 +347,7 @@ func TestCheckRecoveryPolicyRejectsRecoveryTrustMutations(t *testing.T) {
 			removeRunFragment(t, step, `gh api --include "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG"`)
 		}},
 		{name: "overlay writes production source", mutate: func(t *testing.T, root *yaml.Node) {
-			step := stepWithRun(t, jobNode(t, root, "build"), `git show "${GITHUB_SHA}:internal/cli/account_test.go"`)
+			step := stepWithRun(t, jobNode(t, root, "build"), `git archive --format=tar "$GITHUB_SHA"`)
 			replaceRunFragment(t, step, "internal/cli/account_test.go", "internal/cli/account.go")
 		}},
 		{name: "production source switches to workflow sha", mutate: func(t *testing.T, root *yaml.Node) {

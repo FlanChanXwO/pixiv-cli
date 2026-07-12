@@ -110,7 +110,9 @@ func TestWindowsRustStaticlibSelectorsUseCgoLibrarySearchFlags(t *testing.T) {
 		if err != nil {
 			t.Fatalf("read Windows cgo selector %q: %v", source, err)
 		}
-		line := string(body)
+		// Windows checkout 可能把普通 Go 源文件转换为 CRLF；cgo 注释位置的
+		// 语义不随行尾表示变化，断言前统一为 LF 以免把注释误判进 preamble。
+		line := strings.ReplaceAll(string(body), "\r\n", "\n")
 		for _, want := range []string{
 			"#cgo LDFLAGS: -L${SRCDIR}/ugoira_rs/staticlib/",
 			" -lugoira_rs",

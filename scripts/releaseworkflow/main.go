@@ -75,7 +75,9 @@ func checkWorkflowPath(arguments []string) error {
 }
 
 func checkPinnedGitHubKnownHosts(body []byte) error {
-	if string(body) != githubKnownHostsLine {
+	// Git for Windows 可将未标记文本 fixture checkout 为 CRLF；known_hosts
+	// 的单条 ED25519 记录不受该表示影响，比较前只规范化 CRLF，仍拒绝额外内容。
+	if strings.ReplaceAll(string(body), "\r\n", "\n") != githubKnownHostsLine {
 		return errors.New("GitHub known_hosts fixture must contain only the pinned official ED25519 host key")
 	}
 	return nil
@@ -397,11 +399,39 @@ func requireRecoveryOverlayStep(step *yaml.Node) error {
 set -euo pipefail
 test -z "$(git diff --name-only)"
 test -z "$(git diff --cached --name-only)"
-git show "${GITHUB_SHA}:internal/cli/account_test.go" > internal/cli/account_test.go
-test "$(git diff --name-only)" = internal/cli/account_test.go
+git archive --format=tar "$GITHUB_SHA" -- \
+  internal/cli/account_test.go \
+  internal/cli/config_test.go \
+  internal/download/ugoira_rust_test.go \
+  internal/storage/auth/account_test.go \
+  internal/update/installer_test.go \
+  internal/update/releases_reader_nonwindows_test.go \
+  internal/update/releases_reader_windows_test.go \
+  internal/update/releases_test.go \
+  internal/update/source_test.go \
+  internal/utils/files/files_test.go \
+  scripts/licensebundle/main_test.go \
+  scripts/releaseworkflow/main.go \
+  scripts/releaseworkflow/main_test.go \
+  test/e2e/pixiv_binary_test.go | tar -xf -
+test "$(git diff --name-only)" = "$(printf '%s\\n' \
+  internal/cli/account_test.go \
+  internal/cli/config_test.go \
+  internal/download/ugoira_rust_test.go \
+  internal/storage/auth/account_test.go \
+  internal/update/installer_test.go \
+  internal/update/releases_reader_nonwindows_test.go \
+  internal/update/releases_reader_windows_test.go \
+  internal/update/releases_test.go \
+  internal/update/source_test.go \
+  internal/utils/files/files_test.go \
+  scripts/licensebundle/main_test.go \
+  scripts/releaseworkflow/main.go \
+  scripts/releaseworkflow/main_test.go \
+  test/e2e/pixiv_binary_test.go)"
 test -z "$(git diff --cached --name-only)"`
 	if err := requireCanonicalConditionalRunStep(step, "recovery overlay", "github.event_name == 'workflow_dispatch'", commands); err != nil {
-		return errors.New("recovery overlay must modify only internal/cli/account_test.go with the exact commands")
+		return errors.New("recovery overlay must use only the exact audited Windows-compatible test paths and verifier")
 	}
 	return nil
 }

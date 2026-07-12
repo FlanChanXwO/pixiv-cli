@@ -156,7 +156,8 @@ func TestReleaseInstallerRejectsBrokenExecutableSymlink(t *testing.T) {
 
 	err := installer.Install(context.Background(), release)
 	require.ErrorContains(t, err, "resolve executable symlink")
-	require.ErrorContains(t, err, rawLink)
+	// 错误上下文以 %q 呈现路径；Windows 路径中的反斜杠会随 Go 字符串规则转义。
+	require.ErrorContains(t, err, fmt.Sprintf("%q", rawLink))
 	require.ErrorIs(t, err, os.ErrNotExist)
 	require.False(t, checkerCalled)
 	require.False(t, replacerCalled)
@@ -810,7 +811,8 @@ func TestCleanupPendingWindowsUpdateRejectsBrokenExecutableSymlink(t *testing.T)
 		return fmt.Errorf("remove must not run for a broken executable symlink")
 	})
 	require.ErrorContains(t, err, "resolve executable symlink")
-	require.ErrorContains(t, err, rawLink)
+	// 错误上下文以 %q 呈现路径；Windows 路径中的反斜杠会随 Go 字符串规则转义。
+	require.ErrorContains(t, err, fmt.Sprintf("%q", rawLink))
 	require.ErrorIs(t, err, os.ErrNotExist)
 	require.False(t, removeCalled)
 	linkInfo, lstatErr := os.Lstat(rawLink)

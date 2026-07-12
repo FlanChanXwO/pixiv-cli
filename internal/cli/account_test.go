@@ -44,7 +44,7 @@ func TestAccountAddListUseRemovePreservesOrder(t *testing.T) {
 
 	info, err := os.Stat(authPath)
 	require.NoError(t, err)
-	assert.Equal(t, os.FileMode(auth.DefaultAuthFileMode), info.Mode().Perm())
+	assertPrivateFileMode(t, info.Mode().Perm(), auth.DefaultAuthFileMode)
 
 	store, err := auth.LoadAuthStore(authPath)
 	require.NoError(t, err)
@@ -1247,6 +1247,10 @@ func TestCallbackURLsFromBytesStopsAtNonURLBytes(t *testing.T) {
 func TestCallbackURLsFromChromiumStateFilesReadsEdgeSessionsAndHistory(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	if runtime.GOOS == "windows" {
+		// Windows 的 os.UserHomeDir 使用 USERPROFILE，不会读取 HOME。
+		t.Setenv("USERPROFILE", home)
+	}
 	sessionDir := filepath.Join(home, "Library", "Application Support", "Microsoft Edge", "Default", "Sessions")
 	require.NoError(t, os.MkdirAll(sessionDir, 0o700))
 	require.NoError(t, os.WriteFile(filepath.Join(sessionDir, "Session_1"), []byte("https://app-api.pixiv.net/web/v1/users/auth/pixiv/callback?code=session-code\x00"), 0o600))
@@ -1258,6 +1262,16 @@ func TestCallbackURLsFromChromiumStateFilesReadsEdgeSessionsAndHistory(t *testin
 		"https://app-api.pixiv.net/web/v1/users/auth/pixiv/callback?code=session-code",
 		"pixiv://account/login?code=history-code",
 	}, urls)
+}
+
+func assertPrivateFileMode(t *testing.T, actual os.FileMode, want os.FileMode) {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		// Windows 通过 ACL 管理访问控制，os.FileMode 不保留 Unix 的 0600 位。
+		assert.Equal(t, os.FileMode(0o666), actual)
+		return
+	}
+	assert.Equal(t, want, actual)
 }
 
 func TestPixivPostRedirectReturnToAcceptsOnlyPixivStartURL(t *testing.T) {

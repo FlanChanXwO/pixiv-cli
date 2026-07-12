@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"os"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -75,7 +76,12 @@ func TestConfigStrongTypesAndSparseWrite(t *testing.T) {
 
 	info, err := os.Stat(configPath)
 	require.NoError(t, err)
-	assert.Equal(t, os.FileMode(config.DefaultConfigFileMode), info.Mode().Perm())
+	if runtime.GOOS == "windows" {
+		// Windows 通过 ACL 管理访问控制，os.FileMode 不保留 Unix 的 0600 位。
+		assert.Equal(t, os.FileMode(0o666), info.Mode().Perm())
+	} else {
+		assert.Equal(t, os.FileMode(config.DefaultConfigFileMode), info.Mode().Perm())
+	}
 
 	body, err := os.ReadFile(configPath)
 	require.NoError(t, err)

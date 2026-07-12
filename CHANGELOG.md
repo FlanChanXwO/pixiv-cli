@@ -17,6 +17,8 @@
 - 新增不可变 tag 首次发布在创建 Release 前失败时的受审计恢复入口；恢复仍绑定原 tag，测试门禁与
   生产资产使用独立 runner，后者以 clean checkout 重建工作树和 staticlib，禁止默认分支测试 overlay
   或其进程环境混入 binary、许可证或归档。
+- 修复恢复测试门在 Windows runner 上对 ACL、`.exe`、CRLF、文件共享和路径转义的错误假设；覆盖路径
+  受静态 policy 限制，生产资产仍只由不可变 tag 源码构建。
 
 ## [0.1.0] - 2026-07-13
 

@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"testing"
@@ -251,7 +252,11 @@ func firstNonEmpty(values ...string) string {
 func buildPixivBinary(t *testing.T, repoRoot string) string {
 	t.Helper()
 
-	binaryPath := filepath.Join(t.TempDir(), "pixiv")
+	binaryName := "pixiv"
+	if runtime.GOOS == "windows" {
+		binaryName += ".exe"
+	}
+	binaryPath := filepath.Join(t.TempDir(), binaryName)
 	build := exec.Command("go", "build", "-o", binaryPath, "./cmd/pixiv")
 	build.Dir = repoRoot
 	var buildErr bytes.Buffer

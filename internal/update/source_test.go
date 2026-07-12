@@ -2,6 +2,7 @@ package update
 
 import (
 	"errors"
+	"fmt"
 	"go/build"
 	"os"
 	"path/filepath"
@@ -275,7 +276,8 @@ func TestDetectInstallSourceSurfacesBrokenExpectedGoInstallSymlink(t *testing.T)
 	if err == nil {
 		t.Fatal("detectInstallSource() error = nil, want expected Go install symlink resolution error")
 	}
-	if !strings.Contains(err.Error(), expectedExecutable) || !strings.Contains(err.Error(), "resolve Go install executable symlink") {
+	// 错误上下文以 %q 呈现路径；Windows 路径中的反斜杠会随 Go 字符串规则转义。
+	if !strings.Contains(err.Error(), fmt.Sprintf("%q", expectedExecutable)) || !strings.Contains(err.Error(), "resolve Go install executable symlink") {
 		t.Fatalf("detectInstallSource() error = %q, want expected symlink path and context", err)
 	}
 }

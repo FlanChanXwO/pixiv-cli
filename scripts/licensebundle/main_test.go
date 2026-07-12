@@ -5,7 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 	"testing"
@@ -68,34 +70,7 @@ func TestGenerateQueriesAllSixReleaseTargetsOffline(t *testing.T) {
 	dependency := makeTestPackage(t, dir, "dependency", "1.0.0", "LICENSE-MIT")
 	metadata := makeTargetMetadata(t, root, dependency)
 	record := filepath.Join(dir, "targets.txt")
-	fakeCargo := filepath.Join(dir, "fake-cargo")
-	script := fmt.Sprintf(`#!/bin/sh
-set -eu
-target=
-locked=false
-offline=false
-format=
-manifest=
-while [ "$#" -gt 0 ]; do
-  case "$1" in
-    --filter-platform) target=$2; shift 2 ;;
-    --locked) locked=true; shift ;;
-    --offline) offline=true; shift ;;
-    --format-version) format=$2; shift 2 ;;
-    --manifest-path) manifest=$2; shift 2 ;;
-    *) shift ;;
-  esac
-done
-[ "$locked" = true ]
-[ "$offline" = true ]
-[ "$format" = 1 ]
-[ "$manifest" = %s ]
-printf '%%s\t%%s\n' "$PWD" "$target" >> %s
-printf '%%s' %s
-`, shellQuote(root.manifest), shellQuote(record), shellQuote(string(metadata)))
-	if err := os.WriteFile(fakeCargo, []byte(script), 0o755); err != nil {
-		t.Fatal(err)
-	}
+	fakeCargo := buildFakeCargo(t, dir, record, root.manifest, metadata)
 	if err := generate(options{
 		Repository: dir,
 		Manifest:   root.manifest,
@@ -126,6 +101,66 @@ printf '%%s' %s
 	if strings.Join(got, ",") != strings.Join(want, ",") {
 		t.Fatalf("cargo metadata targets = %v, want %v", got, want)
 	}
+}
+
+// buildFakeCargo 编译真实的临时可执行文件，而非依赖 POSIX shell 脚本。
+// Windows 的 exec.Command 只会按 PATHEXT 查找可执行文件，不能把无扩展名
+// 的 shell fixture 当作 cargo；该 helper 同时在各平台验证相同的调用契约。
+func buildFakeCargo(t *testing.T, dir, record, manifest string, metadata []byte) string {
+	t.Helper()
+
+	output := filepath.Join(dir, "fake-cargo")
+	if runtime.GOOS == "windows" {
+		output += ".exe"
+	}
+	sourcePath := filepath.Join(dir, "fake-cargo.go")
+	source := fmt.Sprintf(`package main
+
+import (
+	"fmt"
+	"os"
+)
+
+func main() {
+	var target, format, gotManifest string
+	var locked, offline bool
+	for arguments := os.Args[1:]; len(arguments) > 0; {
+		switch arguments[0] {
+		case "--filter-platform":
+			if len(arguments) < 2 { os.Exit(2) }
+			target, arguments = arguments[1], arguments[2:]
+		case "--locked":
+			locked, arguments = true, arguments[1:]
+		case "--offline":
+			offline, arguments = true, arguments[1:]
+		case "--format-version":
+			if len(arguments) < 2 { os.Exit(2) }
+			format, arguments = arguments[1], arguments[2:]
+		case "--manifest-path":
+			if len(arguments) < 2 { os.Exit(2) }
+			gotManifest, arguments = arguments[1], arguments[2:]
+		default:
+			arguments = arguments[1:]
+		}
+	}
+	if !locked || !offline || format != "1" || gotManifest != %q { os.Exit(3) }
+	workingDirectory, err := os.Getwd()
+	if err != nil { os.Exit(4) }
+	record, err := os.OpenFile(%q, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
+	if err != nil { os.Exit(5) }
+	defer record.Close()
+	if _, err := fmt.Fprintf(record, "%%s\t%%s\n", workingDirectory, target); err != nil { os.Exit(6) }
+	fmt.Print(%q)
+}
+`, manifest, record, string(metadata))
+	if err := os.WriteFile(sourcePath, []byte(source), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	command := exec.Command("go", "build", "-o", output, sourcePath)
+	if output, err := command.CombinedOutput(); err != nil {
+		t.Fatalf("build cross-platform fake cargo: %v\n%s", err, output)
+	}
+	return output
 }
 
 func TestGenerateRejectsOutputPathsOutsideRepositoryBeforeCargo(t *testing.T) {

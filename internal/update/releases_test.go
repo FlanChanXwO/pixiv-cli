@@ -791,7 +791,7 @@ func TestGitHubReleaseClientAtomicallyReplacesCacheForConcurrentReaders(t *testi
 				return
 			default:
 			}
-			cacheBytes, err := os.ReadFile(cachePath)
+			cacheBytes, err := readCacheForConcurrentReader(cachePath)
 			if err != nil {
 				select {
 				case readerErrors <- fmt.Errorf("read cache while replacing it: %w", err):

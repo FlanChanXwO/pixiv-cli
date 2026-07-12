@@ -3,6 +3,7 @@ package auth
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -23,7 +24,12 @@ func TestLoadSaveAuthStoreKeepsPrivatePermissionsAndDefaultUserID(t *testing.T) 
 
 	info, err := os.Stat(path)
 	require.NoError(t, err)
-	assert.Equal(t, os.FileMode(DefaultAuthFileMode), info.Mode().Perm())
+	if runtime.GOOS == "windows" {
+		// Windows 通过 ACL 管理访问控制，os.FileMode 不保留 Unix 的 0600 位。
+		assert.Equal(t, os.FileMode(0o666), info.Mode().Perm())
+	} else {
+		assert.Equal(t, os.FileMode(DefaultAuthFileMode), info.Mode().Perm())
+	}
 
 	loaded, err := LoadAuthStore(path)
 	require.NoError(t, err)
