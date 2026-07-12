@@ -273,9 +273,8 @@ GitHub Release。workflow 使用 full-SHA Actions、最小权限及 `release` En
 若不可变 tag 的首次 run 在创建 GitHub Release 前失败，维护者只能从默认分支通过
 `workflow_dispatch` 提交同一个 `release_tag` 进行恢复。validate 会校验该 tag 为 SemVer、存在、
 已包含于默认分支且尚未有 Release；构建与发布始终 checkout 该 tag。恢复 run 可以只在无 Environment
-的六平台 test job 中用默认分支受审计的 `internal/cli/account_test.go` 覆盖测试门禁；该 job 仅产生
-不可发布、也不会传入 production job 的 `test-gate-*` artifact。
-该 job 成功后，独立的新 runner 才会以 `clean: true` checkout tag、重新构建 selected staticlib 并
+的六平台 test job 中用默认分支受审计的 `internal/cli/account_test.go` 覆盖测试门禁，且不生成 release
+artifact。该 job 成功后，独立的新 runner 才会以 `clean: true` checkout tag、重新构建 selected staticlib 并
 生成唯一可被 publish 下载的 `verified-release-*` assets；测试进程对环境变量、PATH 或临时目录的
 副作用不会进入生产 job。因此它不能用于替换生产源码、移动 tag，或重发已经存在的 Release。
 

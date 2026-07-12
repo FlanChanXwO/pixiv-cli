@@ -271,47 +271,6 @@ func checkRecoveryPolicy(root *yaml.Node) error {
 	if err := requireCanonicalBuildSteps(steps); err != nil {
 		return err
 	}
-	applyIndex := stepIndexWithRunFragment(steps, `git show "${GITHUB_SHA}:internal/cli/account_test.go"`)
-	preCommitIndex := stepIndexWithRunFragment(steps, "python -m pre_commit run --all-files")
-	checkoutIndices := actionStepIndices(steps, canonicalCheckoutAction)
-	if len(checkoutIndices) != 2 {
-		return errors.New("build job must use exactly two canonical checkouts")
-	}
-	freshCheckoutIndex := checkoutIndices[1]
-	if err := requireCanonicalCheckout(steps[freshCheckoutIndex], "fresh production checkout", checkoutWithRequirement{"fetch-depth", "0"}, checkoutWithRequirement{"persist-credentials", "false"}, checkoutWithRequirement{"ref", "${{ env.RELEASE_TAG }}"}, checkoutWithRequirement{"clean", "true"}); err != nil {
-		return err
-	}
-	rebuildIndex := stepIndexWithRunFragment(steps, "bash scripts/build-staticlibs.sh --target '${{ matrix.rust_target }}'")
-	diffIndex := stepIndexWithRunFragment(steps, "git diff --check")
-	buildIndex := stepIndexWithRunFragment(steps, "go build -trimpath")
-	packageIndex := stepIndexWithRunFragment(steps, "go run ./scripts/releaseassets package")
-	if applyIndex < 0 || rebuildIndex <= freshCheckoutIndex || buildIndex <= rebuildIndex || packageIndex <= buildIndex {
-		return errors.New("recovery must test the overlay, clean-checkout the tag, rebuild staticlib, then build and package")
-	}
-	if diffIndex >= 0 && (freshCheckoutIndex != len(steps)-6 || rebuildIndex != freshCheckoutIndex+1 || diffIndex != rebuildIndex+1 || buildIndex != diffIndex+1 || packageIndex != buildIndex+1) {
-		return errors.New("fresh production checkout must begin the exact uninterrupted rebuild/build/package suffix")
-	}
-	if preCommitIndex >= 0 && freshCheckoutIndex <= preCommitIndex {
-		return errors.New("recovery must finish pre-commit before the fresh production checkout")
-	}
-	if diffIndex >= 0 && (diffIndex <= rebuildIndex || buildIndex <= diffIndex) {
-		return errors.New("recovery must diff-check the rebuilt tag inputs before production build")
-	}
-	if err := requireRecoveryOverlayStep(steps[applyIndex]); err != nil {
-		return err
-	}
-	if err := requireOverlayQualitySequence(steps, applyIndex, freshCheckoutIndex); err != nil {
-		return err
-	}
-	if err := requireProductionRebuildStep(steps[rebuildIndex]); err != nil {
-		return err
-	}
-	if err := requireProductionBuildStep(steps[buildIndex]); err != nil {
-		return err
-	}
-	if err := requireProductionPackageStep(steps[packageIndex]); err != nil {
-		return err
-	}
 	return nil
 }
 
@@ -373,8 +332,8 @@ func actionStepIndices(steps []*yaml.Node, action string) []int {
 }
 
 func requireCanonicalBuildSteps(steps []*yaml.Node) error {
-	if len(steps) != 21 {
-		return errors.New("build job must contain exactly the 21 canonical steps")
+	if len(steps) != 15 {
+		return errors.New("build job must contain exactly the 15 canonical test-only steps")
 	}
 	if err := requireCanonicalCheckout(steps[0], "initial build checkout", checkoutWithRequirement{"fetch-depth", "0"}, checkoutWithRequirement{"persist-credentials", "false"}, checkoutWithRequirement{"ref", "${{ env.RELEASE_TAG }}"}); err != nil {
 		return err
@@ -411,38 +370,6 @@ func requireCanonicalBuildSteps(steps []*yaml.Node) error {
 		return errors.New("recovery overlay must keep its canonical name")
 	}
 	if err := requireOverlayQualitySequence(steps, 7, 15); err != nil {
-		return err
-	}
-	if err := requireCanonicalCheckout(steps[15], "fresh production checkout", checkoutWithRequirement{"fetch-depth", "0"}, checkoutWithRequirement{"persist-credentials", "false"}, checkoutWithRequirement{"ref", "${{ env.RELEASE_TAG }}"}, checkoutWithRequirement{"clean", "true"}); err != nil {
-		return err
-	}
-	if err := requireProductionRebuildStep(steps[16]); err != nil {
-		return err
-	}
-	if err := requireScalar(steps[16], "name", "Rebuild the selected static library from the immutable tag"); err != nil {
-		return errors.New("production staticlib rebuild must keep its canonical name")
-	}
-	if err := requireCanonicalNamedRunStep(steps[17], "Check the generated diff", "git diff --check"); err != nil {
-		return err
-	}
-	if err := requireProductionBuildStep(steps[18]); err != nil {
-		return err
-	}
-	if err := requireScalar(steps[18], "name", "Build the versioned native executable"); err != nil {
-		return errors.New("production build must keep its canonical name")
-	}
-	if err := requireProductionPackageStep(steps[19]); err != nil {
-		return err
-	}
-	if err := requireScalar(steps[19], "name", "Package the fixed-name platform asset"); err != nil {
-		return errors.New("production package must keep its canonical name")
-	}
-	if err := requireExactActionStep(steps[20], "test-gate build artifact upload", uploadArtifactAction, map[string]string{
-		"name":              "test-gate-${{ matrix.artifact }}",
-		"path":              "dist/pixiv-cli_*",
-		"if-no-files-found": "error",
-		"retention-days":    "1",
-	}); err != nil {
 		return err
 	}
 	return nil
@@ -724,21 +651,10 @@ func checkBuildJob(job *yaml.Node) error {
 		{command: "sh scripts/test-package-release.sh"},
 		{command: "python -m pip install --disable-pip-version-check pre-commit==4.6.0"},
 		{command: "python -m pre_commit run --all-files"},
-		{command: "git diff --check"},
 	} {
 		if err := requireIndependentQualityGate(job, gate.workingDirectory, gate.command); err != nil {
 			return err
 		}
-	}
-	if !hasCommand(job, "", "bash scripts/build-staticlibs.sh --target '${{ matrix.rust_target }}'") {
-		return errors.New("build must build the selected native Rust static library")
-	}
-	packageStep, ok := rootStepWithRunFragment(job, "go run ./scripts/releaseassets package")
-	if !ok {
-		return errors.New("build must package the selected platform asset")
-	}
-	if err := requireRunFragments(packageStep, "build packaging step", "--repo-root .", "--target '${{ matrix.goos }}/${{ matrix.goarch }}'", "--output-dir dist"); err != nil {
-		return err
 	}
 	return nil
 }

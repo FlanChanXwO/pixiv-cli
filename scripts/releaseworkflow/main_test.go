@@ -79,9 +79,9 @@ func TestCheckWorkflowRejectsProductionIsolationMutations(t *testing.T) {
 			removeMappingValue(t, requireMappingValue(t, root, "jobs"), "build_production")
 		}},
 		{name: "test gate uploads verified artifact", mutate: func(t *testing.T, root *yaml.Node) {
-			steps := requireMappingValue(t, jobNode(t, root, "build"), "steps")
-			upload := steps.Content[len(steps.Content)-1]
-			requireMappingValue(t, requireMappingValue(t, upload, "with"), "name").Value = "verified-release-${{ matrix.artifact }}"
+			build := jobNode(t, root, "build")
+			steps := requireMappingValue(t, build, "steps")
+			steps.Content = append(steps.Content, mappingNode("uses", scalarNode(uploadArtifactAction), "with", mappingNode("name", scalarNode("verified-release-${{ matrix.artifact }}"), "path", scalarNode("dist"))))
 		}},
 		{name: "production bypasses test gate", mutate: func(t *testing.T, root *yaml.Node) {
 			requireMappingValue(t, jobNode(t, root, "build_production"), "needs").Value = "validate"
@@ -347,10 +347,6 @@ func TestCheckRecoveryPolicyRejectsRecoveryTrustMutations(t *testing.T) {
 			step := stepWithRun(t, jobNode(t, root, "build"), `git show "${GITHUB_SHA}:internal/cli/account_test.go"`)
 			replaceRunFragment(t, step, "internal/cli/account_test.go", "internal/cli/account.go")
 		}},
-		{name: "restore reads workflow sha", mutate: func(t *testing.T, root *yaml.Node) {
-			step := stepWithRun(t, jobNode(t, root, "build"), `git restore --source="$RELEASE_TAG^{commit}"`)
-			replaceRunFragment(t, step, `$RELEASE_TAG^{commit}`, `$GITHUB_SHA`)
-		}},
 		{name: "production source switches to workflow sha", mutate: func(t *testing.T, root *yaml.Node) {
 			appendRunStep(t, jobNode(t, root, "build"), "Bypass immutable tag", `git checkout "$GITHUB_SHA"`)
 		}},
@@ -365,88 +361,20 @@ func TestCheckRecoveryPolicyRejectsRecoveryTrustMutations(t *testing.T) {
 	}
 }
 
-func TestCheckRecoveryPolicyRequiresFreshTagCheckoutBeforeProduction(t *testing.T) {
-	t.Parallel()
-
-	root := releaseWorkflowRoot(t)
-	steps, err := jobSteps(jobNode(t, root, "build"))
-	if err != nil {
-		t.Fatalf("build steps: %v", err)
-	}
-	checkoutCount := 0
-	for _, step := range steps {
-		uses, ok := mappingValue(step, "uses")
-		if ok && uses.Value == canonicalCheckoutAction {
-			checkoutCount++
-		}
-	}
-	if checkoutCount != 2 {
-		t.Fatalf("build checkout count = %d, want initial tag checkout plus fresh production checkout", checkoutCount)
-	}
-}
-
-func TestCheckRecoveryPolicyRejectsOverlayAndProductionResetMutations(t *testing.T) {
+func TestCheckWorkflowRejectsTestGateProductionMutations(t *testing.T) {
 	t.Parallel()
 
 	for _, test := range []struct {
 		name   string
 		mutate func(t *testing.T, root *yaml.Node)
 	}{
-		{name: "overlay writes untracked Go input", mutate: func(t *testing.T, root *yaml.Node) {
-			overlay := stepWithRun(t, jobNode(t, root, "build"), `git show "${GITHUB_SHA}:internal/cli/account_test.go"`)
-			requireMappingValue(t, overlay, "run").Value += "\nprintf '%s\\n' package main > untracked-production.go\n"
+		{name: "production build command inserted", mutate: func(t *testing.T, root *yaml.Node) {
+			insertRunStep(t, jobNode(t, root, "build"), 14, "Forbidden production build", "go build -trimpath ./cmd/pixiv")
 		}},
-		{name: "overlay writes ignored input", mutate: func(t *testing.T, root *yaml.Node) {
-			overlay := stepWithRun(t, jobNode(t, root, "build"), `git show "${GITHUB_SHA}:internal/cli/account_test.go"`)
-			requireMappingValue(t, overlay, "run").Value += "\nmkdir -p build && printf evil > build/ignored-production-input\n"
-		}},
-		{name: "fresh checkout removed", mutate: func(t *testing.T, root *yaml.Node) {
-			steps := requireMappingValue(t, jobNode(t, root, "build"), "steps")
-			indices := actionStepIndices(steps.Content, canonicalCheckoutAction)
-			steps.Content = append(steps.Content[:indices[1]], steps.Content[indices[1]+1:]...)
-		}},
-		{name: "fresh checkout cleans disabled", mutate: func(t *testing.T, root *yaml.Node) {
-			steps := requireMappingValue(t, jobNode(t, root, "build"), "steps")
-			indices := actionStepIndices(steps.Content, canonicalCheckoutAction)
-			checkout := steps.Content[indices[1]]
-			requireMappingValue(t, requireMappingValue(t, checkout, "with"), "clean").Value = "false"
-		}},
-		{name: "fresh checkout ref changed", mutate: func(t *testing.T, root *yaml.Node) {
-			steps := requireMappingValue(t, jobNode(t, root, "build"), "steps")
-			indices := actionStepIndices(steps.Content, canonicalCheckoutAction)
-			checkout := steps.Content[indices[1]]
-			requireMappingValue(t, requireMappingValue(t, checkout, "with"), "ref").Value = "main"
-		}},
-		{name: "production rebuild removed", mutate: func(t *testing.T, root *yaml.Node) {
-			steps := requireMappingValue(t, jobNode(t, root, "build"), "steps")
-			index := stepIndexWithRunFragment(steps.Content, "bash scripts/build-staticlibs.sh --target")
-			steps.Content = append(steps.Content[:index], steps.Content[index+1:]...)
-		}},
-		{name: "production rebuild before fresh checkout", mutate: func(t *testing.T, root *yaml.Node) {
-			steps := requireMappingValue(t, jobNode(t, root, "build"), "steps")
-			checkoutIndex := actionStepIndices(steps.Content, canonicalCheckoutAction)[1]
-			rebuildIndex := stepIndexWithRunFragment(steps.Content, "bash scripts/build-staticlibs.sh --target")
-			steps.Content[checkoutIndex], steps.Content[rebuildIndex] = steps.Content[rebuildIndex], steps.Content[checkoutIndex]
-		}},
-		{name: "step inserted after fresh checkout", mutate: func(t *testing.T, root *yaml.Node) {
+		{name: "artifact upload inserted", mutate: func(t *testing.T, root *yaml.Node) {
 			build := jobNode(t, root, "build")
 			steps := requireMappingValue(t, build, "steps")
-			checkoutIndex := actionStepIndices(steps.Content, canonicalCheckoutAction)[1]
-			insertRunStep(t, build, checkoutIndex+1, "Inject production input", "mkdir -p build && printf evil > build/ignored-input")
-		}},
-		{name: "build step injects production Go source", mutate: func(t *testing.T, root *yaml.Node) {
-			step := stepWithRun(t, jobNode(t, root, "build"), "go build -trimpath")
-			replaceRunFragment(t, step, "mkdir -p dist", "mkdir -p dist\nprintf 'package main' > cmd/pixiv/recovery.go")
-		}},
-		{name: "package step replaces built binary", mutate: func(t *testing.T, root *yaml.Node) {
-			step := stepWithRun(t, jobNode(t, root, "build"), "go run ./scripts/releaseassets package")
-			requireMappingValue(t, step, "run").Value = "printf tampered > dist/pixiv\n" + requireRunValue(step)
-		}},
-		{name: "source tamper inserted after overlay", mutate: func(t *testing.T, root *yaml.Node) {
-			build := jobNode(t, root, "build")
-			steps := requireMappingValue(t, build, "steps")
-			overlayIndex := stepIndexWithRunFragment(steps.Content, `git show "${GITHUB_SHA}:internal/cli/account_test.go"`)
-			insertRunStep(t, build, overlayIndex+1, "Tamper tested source", "printf '\n// tampered\n' >> internal/cli/account_login.go")
+			steps.Content = append(steps.Content, mappingNode("uses", scalarNode(uploadArtifactAction), "with", mappingNode("name", scalarNode("test-gate-extra"), "path", scalarNode("dist"))))
 		}},
 		{name: "race and vet gates reordered", mutate: func(t *testing.T, root *yaml.Node) {
 			steps := requireMappingValue(t, jobNode(t, root, "build"), "steps")
@@ -459,31 +387,10 @@ func TestCheckRecoveryPolicyRejectsOverlayAndProductionResetMutations(t *testing
 			index := stepIndexWithRunFragment(steps.Content, "go run ./scripts/licensebundle --check")
 			steps.Content = append(steps.Content[:index], steps.Content[index+1:]...)
 		}},
-		{name: "pre-overlay untracked source insertion", mutate: func(t *testing.T, root *yaml.Node) {
-			build := jobNode(t, root, "build")
-			steps := requireMappingValue(t, build, "steps")
-			overlayIndex := stepIndexWithRunFragment(steps.Content, `git show "${GITHUB_SHA}:internal/cli/account_test.go"`)
-			insertRunStep(t, build, overlayIndex, "Inject untracked test source", "printf 'package cli' > internal/cli/recovery_bypass_test.go")
-		}},
-		{name: "pre-overlay ignored source insertion", mutate: func(t *testing.T, root *yaml.Node) {
-			build := jobNode(t, root, "build")
-			steps := requireMappingValue(t, build, "steps")
-			overlayIndex := stepIndexWithRunFragment(steps.Content, `git show "${GITHUB_SHA}:internal/cli/account_test.go"`)
-			insertRunStep(t, build, overlayIndex, "Inject ignored input", "mkdir -p build && printf evil > build/recovery-input")
-		}},
-		{name: "initial prefix reordered", mutate: func(t *testing.T, root *yaml.Node) {
+		{name: "quality gate deleted", mutate: func(t *testing.T, root *yaml.Node) {
 			steps := requireMappingValue(t, jobNode(t, root, "build"), "steps")
-			vendorIndex := stepIndexWithRunFragment(steps.Content, "sh scripts/test-rust-vendor.sh")
-			fmtIndex := stepIndexWithRunFragment(steps.Content, "cargo fmt --check")
-			steps.Content[vendorIndex], steps.Content[fmtIndex] = steps.Content[fmtIndex], steps.Content[vendorIndex]
-		}},
-		{name: "initial prefix step deleted", mutate: func(t *testing.T, root *yaml.Node) {
-			steps := requireMappingValue(t, jobNode(t, root, "build"), "steps")
-			index := stepIndexWithRunFragment(steps.Content, "rustup target add")
+			index := stepIndexWithRunFragment(steps.Content, "go run ./scripts/licensebundle --check")
 			steps.Content = append(steps.Content[:index], steps.Content[index+1:]...)
-		}},
-		{name: "arbitrary step inserted before setup", mutate: func(t *testing.T, root *yaml.Node) {
-			insertRunStep(t, jobNode(t, root, "build"), 1, "Arbitrary prefix step", "true")
 		}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -1051,10 +958,10 @@ func TestCheckWorkflowRejectsSecurityAndQualityPolicyMutations(t *testing.T) {
 		},
 		{
 			name: "package target argument removed",
-			want: "build packaging step must contain --target",
+			want: "build_production job must package the tag-bound executable",
 			mutate: func(t *testing.T, root *yaml.Node) {
 				t.Helper()
-				removeRunFragment(t, stepWithRun(t, jobNode(t, root, "build"), "go run ./scripts/releaseassets package"), "--target '${{ matrix.goos }}/${{ matrix.goarch }}'")
+				removeRunFragment(t, stepWithRun(t, jobNode(t, root, "build_production"), "go run ./scripts/releaseassets package"), "--target '${{ matrix.goos }}/${{ matrix.goarch }}'")
 			},
 		},
 		{
@@ -1180,14 +1087,6 @@ func TestCheckWorkflowRejectsSecurityAndQualityPolicyMutations(t *testing.T) {
 				removeCommand(t, stepWithRun(t, jobNode(t, root, "build"), "python -m pre_commit run --all-files"), "python -m pre_commit run --all-files")
 			},
 		},
-		{
-			name: "diff check removed",
-			want: "git diff --check",
-			mutate: func(t *testing.T, root *yaml.Node) {
-				t.Helper()
-				removeCommand(t, stepWithRun(t, jobNode(t, root, "build"), "git diff --check"), "git diff --check")
-			},
-		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
@@ -1220,7 +1119,6 @@ func TestCheckWorkflowRejectsSoftFailedOrSkippedQualityGate(t *testing.T) {
 		{name: "race", command: "go test -race ./..."},
 		{name: "pre-commit install", command: "python -m pip install --disable-pip-version-check pre-commit==4.6.0"},
 		{name: "pre-commit", command: "python -m pre_commit run --all-files"},
-		{name: "diff check", command: "git diff --check"},
 	}
 	for _, gate := range gates {
 		for _, mutation := range []struct {
@@ -2040,7 +1938,6 @@ func requiredQualityGateCommands() []string {
 		"sh scripts/test-package-release.sh",
 		"python -m pip install --disable-pip-version-check pre-commit==4.6.0",
 		"python -m pre_commit run --all-files",
-		"git diff --check",
 	}
 }
 

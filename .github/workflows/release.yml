@@ -172,57 +172,6 @@ jobs:
       - name: Run pre-commit checks
         shell: bash
         run: python -m pre_commit run --all-files
-      # 无论测试是否产生 tracked、untracked 或 ignored 文件，生产阶段都由 pinned
-      # checkout 的 clean 重建 immutable tag worktree，绝不沿用 overlay 工作区。
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
-        with:
-          fetch-depth: 0
-          persist-credentials: false
-          ref: ${{ env.RELEASE_TAG }}
-          clean: true
-      - name: Rebuild the selected static library from the immutable tag
-        shell: bash
-        run: |
-          set -euo pipefail
-          test "$(git rev-parse HEAD)" = "$(git rev-parse "$RELEASE_TAG^{commit}")"
-          test -z "$(git status --porcelain --untracked-files=all)"
-          test -z "$(git clean -ndx)"
-          bash scripts/build-staticlibs.sh --target '${{ matrix.rust_target }}'
-          git restore --source="$RELEASE_TAG^{commit}" -- internal/download/ugoira_rs/staticlib/manifest.json
-          git diff --exit-code
-          test -z "$(git status --porcelain --untracked-files=all)"
-          test -z "$(git clean -ndx)"
-      - name: Check the generated diff
-        shell: bash
-        run: git diff --check
-      - name: Build the versioned native executable
-        shell: bash
-        run: |
-          set -eu
-          mkdir -p dist
-          output='dist/pixiv'
-          if [ '${{ matrix.goos }}' = windows ]; then
-            output='dist/pixiv.exe'
-          fi
-          go build -trimpath -buildvcs=false \
-            -ldflags "-X github.com/FlanChanXwO/pixiv-cli/internal/buildinfo.Version=${RELEASE_TAG} -X github.com/FlanChanXwO/pixiv-cli/internal/buildinfo.Commit=$(git rev-parse HEAD) -X github.com/FlanChanXwO/pixiv-cli/internal/buildinfo.BuildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-            -o "$output" ./cmd/pixiv
-      - name: Package the fixed-name platform asset
-        shell: bash
-        run: |
-          go run ./scripts/releaseassets package \
-            --repo-root . \
-            --version "${RELEASE_TAG#v}" \
-            --target '${{ matrix.goos }}/${{ matrix.goarch }}' \
-            --binary "dist/pixiv${{ matrix.goos == 'windows' && '.exe' || '' }}" \
-            --output-dir dist
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        with:
-          # 该 artifact 只用于 test gate，不得成为签名或发布输入。
-          name: test-gate-${{ matrix.artifact }}
-          path: dist/pixiv-cli_*
-          if-no-files-found: error
-          retention-days: 1
 
   # recovery overlay 仅存在于 build test gate。生产资产必须在新的 runner 上从不可变 tag 重建，
   # 使测试进程对 GITHUB_ENV、PATH 或 runner 临时目录的副作用无法跨 job 影响 Release。
