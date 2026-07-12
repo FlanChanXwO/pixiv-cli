@@ -7,29 +7,26 @@
 
 ## [Unreleased]
 
-### Fixed
+当前暂无未发布变更。
 
-- 修复 Linux 原生 Rust staticlib 的 `libm` 链接，以及 Windows checkout 对 first-party crate、Cargo
-  vendor、本地 locked dependency 和生成 license bundle 的文本转换，使六平台保持同一 Rust
-  source identity；Rust source digest 也会在筛选 `src/.cargo/vendor` 前规范化 Windows 路径分隔符，
-  避免真实输入被静默漏掉；release archive 的 `LICENSE` 固定 LF checkout，避免 Windows/Unix
-  许可证成员字节分裂；Windows cgo 现用库搜索参数、Rust std import libraries 和
-  LLD-backed Clang 链接 `*-pc-windows-msvc` staticlib，确保六平台 native evidence 能校验并链接真实
-  ugoira encoder；Windows release `.zip` 改用 runner 预装的 7-Zip，避免 Git Bash 缺少 `zip` 而中断
-  native evidence。
-
-当前还没有切出正式版本；未发布改动先汇总到这里。
+## [0.1.0] - 2026-07-13
 
 ### Added
 
 - 新增项目级 changelog，集中记录用户可见变化、兼容性说明和发布准备事项。
 - 新增 POSIX sh 构建脚本 `sh scripts/build.sh`，默认将二进制输出到 `build/`。
 - 新增 `pixiv version [--json]` 与根 `pixiv --version`；JSON 输出包含 `version`、`commit`、`build_date`。
-- 新增 `pixiv update [--check] [--prerelease] [--proxy URL]`，以及可关闭的 `update_check_enabled` 自动 stable 更新提示；自动检查不会污染 JSON/MCP stdout 或改变业务命令退出码。
+- 新增 `pixiv update [--check] [--prerelease] [--proxy URL]`，支持 Homebrew stable/beta、精确 tag
+  `go install` 与签名 Release binary 策略；开发构建拒绝更新。
+- 新增可关闭的 `update_check_enabled` 自动 stable 更新提示；普通 CLI 成功后最多每 24 小时检查一次，
+  自动检查最多等待 3 秒，且不会污染 JSON/MCP stdout 或改变业务命令退出码。
 - 新增内置 Rust ugoira GIF/APNG encoder；生产下载路径不再依赖 `ffmpeg`。
 - 新增经六平台 native runner build/smoke 与统一 source digest 验证的 committed Rust staticlibs 和
-  `manifest.json`，供受支持的 source build 与 future exact-tag `go install` 使用。
-- 新增 Release asset、checksum/Ed25519 签名、Homebrew formula renderer 与六 native runner workflow 的本地发布准备。
+  `manifest.json`，供受支持的 source build 与精确 tag `go install` 使用。
+- 新增固定 six-target Release asset 格式、checksum/Ed25519 签名、Homebrew formula renderer 与六 native
+  runner workflow。
+- 新增 Homebrew stable `pixiv-cli` 与 beta `pixiv-cli-beta` formula 模板；两者冲突并同装 `pixiv`，
+  不依赖 `ffmpeg`。
 - Release workflow 现把同一份已发布 checksum 渲染为 stable/beta Homebrew formula，在 macOS/Linux
   双架构真实安装并核对版本后，才以独立 deploy key 向 public tap 推送唯一对应 formula。
 
@@ -41,16 +38,26 @@
 - `pixiv auth login` 接受 Pixiv 官方 callback URL 与 `pixiv://account/login` 缺省 OAuth state 的授权码回填，同时继续要求本地 loopback callback 携带正确 state。
 - `pixiv auth login` 在 macOS 默认会优先注册本地 `pixiv://` callback helper 并打开默认浏览器，以复用已有 Pixiv 登录态；helper 只把最终 callback URL 转交给本轮 CLI loopback，不安装扩展、不点击页面、不读取 cookie/token。若 helper 不可用，CLI 会退回专用 Chromium/Edge DevTools 捕获；macOS 上仍保留 Edge/Chrome/Chromium/Safari 标签页与 Chromium session/history 只读观察，并在 Pixiv 卡在 `post-redirect` 授权接力页时校验本轮 OAuth 后等待 `pixiv://` handoff，不再自动重开白页；状态不可读或 Pixiv 未生成 callback 时继续保留手动回填路径。
 
+### Fixed
+
+- 修复 Linux 原生 Rust staticlib 的 `libm` 链接，以及 Windows checkout 对 first-party crate、Cargo
+  vendor、本地 locked dependency 和生成 license bundle 的文本转换，使六平台保持同一 Rust
+  source identity；Rust source digest 也会在筛选 `src/.cargo/vendor` 前规范化 Windows 路径分隔符，
+  避免真实输入被静默漏掉；release archive 的 `LICENSE` 固定 LF checkout，避免 Windows/Unix
+  许可证成员字节分裂；Windows cgo 现用库搜索参数、Rust std import libraries 和
+  LLD-backed Clang 链接 `*-pc-windows-msvc` staticlib，确保六平台 native evidence 能校验并链接真实
+  ugoira encoder；Windows release `.zip` 改用 runner 预装的 7-Zip，避免 Git Bash 缺少 `zip` 而中断
+  native evidence。
+
 ### Security
 
-- 已创建公开 source/tap 仓库、受保护 `release` Environment、隔离的 Ed25519 签名与 tap deploy
-  credentials；私钥仅位于该 Environment 与 macOS Keychain 恢复副本。此准备不创建 tag、Release 或
-  tap formula，正式发布仍受 native evidence 与安装验收门禁阻断。
+- 发布基础设施使用公开 source/tap 仓库、受保护 `release` Environment、隔离的 Ed25519 签名与 tap
+  deploy credentials；私钥仅位于该 Environment 与 macOS Keychain 恢复副本。
 - native-evidence 的 policy command 现与 cgo encoder 解耦，可在目标 staticlib 生成前 fail-closed
   地检查 workflow；避免缺库被误报为 policy 或 runner 配置通过。
 - 新增独立、无 secret/发布副作用的 six-target native evidence workflow 与本地 AST policy；每个
-  runner 会记录实际 staticlib、版本化 binary、完整许可证 archive 与 source/hash evidence。未收集到
-  经审计 main SHA 的六份真实 artifact 时，release 继续被阻断。
+  runner 会记录实际 staticlib、版本化 binary、完整许可证 archive 与 source/hash evidence。六个真实
+  runner 已针对同一经审计 main SHA 产出并验证对应 artifact，且 source digest 与 `LICENSE` hash 一致。
 - Release workflow 现由可解析的 YAML policy 检查所有 action 的 full-SHA pin、最小权限、精确
   trigger/runner matrix；默认分支 trust gate 在独立、无 Environment/secret 的 job 完成后，publish
   才能访问精确的 signing secret。policy 同时拒绝被软失败或条件跳过的质量门禁，并把 SemVer channel
@@ -69,33 +76,15 @@
   release 验证会在空 Cargo cache 下完成 metadata/build/test 与六 target 许可证检查，缺失 vendor、
   checksum 不匹配或 registry fallback 都会明确失败。
 - 受支持 binary 现在内置可轮换的 production Ed25519 key ID→public key trust root，并以已知真实签名和
-  SPKI fingerprint 回归验证；私钥仍不进入源码。正式发布仍被完整 six-target staticlib/manifest、native
-  runner 证据、受保护 `release` Environment 与实际 Release/tap 验证阻断。
+  SPKI fingerprint 回归验证；私钥仍不进入源码。Release installer 会在替换前验证 Ed25519 签名
+  checksum、archive SHA-256 与下载 binary version，且不会因签名私钥或 Release 状态改用其他信任来源。
 - 更新检查写入前会把既有 `pixiv-cli` cache 目录在 Unix-like 平台收紧为 `0700`；Windows 保持其 ACL 语义。
 - Release installer 会在下载前校验 Releases API 或 ETag cache 中每个选中 asset 的精确 GitHub HTTPS 来源；跨 host、仓库、tag、asset 或含歧义 URL 的记录会明确失败，绝不请求该 URL。
 - Release installer 拒绝 archive 原始路径中含有任何 `..` segment 的条目，防止归一化后的路径绕过解包安全校验。
 - Release installer 在 archive 解包、版本预检、staging 及最终替换前都会保留调用方取消；取消更新会清理临时文件且不会替换当前 executable。
 - Release installer 与 Windows pending-update backup cleanup 在当前 executable 为软链接时保留链接入口，只操作解析后的真实目标；断链会明确失败而不会改写链接或删除备份。
-
-## [0.1.0] - Release candidate (not published)
-
-> 此段是未来 `v0.1.0` 的 release notes 输入，**不是**已发布公告或发布日期。公开发布前必须完成
-> 六个真实 staticlib 与 manifest、workflow/native artifact 证据、production
-> Ed25519 key/受保护 `release` Environment、公开仓库/Release/tap 及真实安装验收。
-
-### Added
-
-- `pixiv version [--json]`、根 `pixiv --version` 与构建 metadata。
-- `pixiv update` 的 Homebrew stable/beta、精确 tag `go install` 与签名 Release binary 策略；开发构建拒绝更新。
-- 普通 CLI 成功后的 stable 更新提示、24 小时节流和最多 3 秒的自动检查时间边界。
-- 以 Rust staticlib 驱动的 ugoira GIF/APNG encoder，以及固定 six-target Release asset/checksum/signature 格式。
-- Homebrew stable `pixiv-cli` 与 future beta `pixiv-cli-beta` formula 模板；两者冲突并同装 `pixiv`，不依赖 `ffmpeg`。
-
-### Security
-
-- Release installer 设计为在替换前验证 Ed25519 签名 checksum、archive SHA-256 与下载 binary version；
-  受支持 binary 只信任随源码提交的 production public key，绝不因私钥或 Release 尚未部署而改用其他来源。
-- v0.1.0 不含 Apple notarization 或 Windows Authenticode；发布后直接下载仍可能显示 Gatekeeper/SmartScreen 提示。
+- v0.1.0 不含 Apple notarization 或 Windows Authenticode；直接下载仍可能显示 Gatekeeper/SmartScreen
+  提示。
 
 [Keep a Changelog 1.1.0]: https://keepachangelog.com/zh-CN/1.1.0/
 [Semantic Versioning]: https://semver.org/spec/v2.0.0.html
