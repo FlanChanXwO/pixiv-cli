@@ -84,3 +84,32 @@ func TestWithAccessTokenSendsBearerAuthorization(t *testing.T) {
 		t.Fatalf("IllustDetail returned error: %v", err)
 	}
 }
+
+func TestBookmarkMutationRefreshesAuthAndAcceptsEmptySuccess(t *testing.T) {
+	session := &fakeSession{token: "old-access"}
+	api := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.Method != http.MethodPost || request.URL.Path != "/v2/illust/bookmark/add" {
+			t.Fatalf("method=%s path=%s", request.Method, request.URL.Path)
+		}
+		if err := request.ParseForm(); err != nil {
+			t.Fatal(err)
+		}
+		if request.Form.Get("illust_id") != "42" || request.Form.Get("restrict") != "public" || len(request.Form["tags[]"]) != 2 {
+			t.Fatalf("form=%v", request.Form)
+		}
+		if request.Header.Get("Authorization") != "Bearer new-access" {
+			http.Error(writer, `{"error":{"message":"unauthorized"}}`, http.StatusUnauthorized)
+			return
+		}
+		writer.WriteHeader(http.StatusNoContent)
+	}))
+	defer api.Close()
+
+	client := New(WithBaseURL(api.URL), WithSession(session))
+	if err := client.AddBookmark(context.Background(), 42, "public", []string{"a", "b"}); err != nil {
+		t.Fatalf("AddBookmark returned error: %v", err)
+	}
+	if session.refreshCalls != 1 {
+		t.Fatalf("refresh calls=%d", session.refreshCalls)
+	}
+}

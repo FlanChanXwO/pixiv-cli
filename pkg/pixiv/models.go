@@ -127,6 +127,29 @@ type UserFollowingRequest struct {
 	Cursor   Cursor   `json:"cursor,omitempty"`
 }
 
+// AddBookmarkRequest 指定要收藏的作品、可见范围与标签。
+type AddBookmarkRequest struct {
+	IllustID int64    `json:"illust_id"`
+	Restrict Restrict `json:"restrict,omitempty"`
+	Tags     []string `json:"tags,omitempty"`
+}
+
+// RemoveBookmarkRequest 指定要取消收藏的作品。
+type RemoveBookmarkRequest struct {
+	IllustID int64 `json:"illust_id"`
+}
+
+// FollowUserRequest 指定要关注的用户与可见范围。
+type FollowUserRequest struct {
+	UserID   int64    `json:"user_id"`
+	Restrict Restrict `json:"restrict,omitempty"`
+}
+
+// UnfollowUserRequest 指定要取消关注的用户。
+type UnfollowUserRequest struct {
+	UserID int64 `json:"user_id"`
+}
+
 type IllustRelatedRequest struct {
 	IllustID int64  `json:"illust_id"`
 	Cursor   Cursor `json:"cursor,omitempty"`

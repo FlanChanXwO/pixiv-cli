@@ -333,6 +333,48 @@ func (c *Client) getJSON(ctx context.Context, path string, query url.Values, out
 	}, out)
 }
 
+// AddBookmark 收藏作品。成功响应可为空，因此不走 JSON 解码路径。
+func (c *Client) AddBookmark(ctx context.Context, illustID int64, restrict string, tags []string) error {
+	form := url.Values{"illust_id": {fmt.Sprint(illustID)}, "restrict": {restrict}}
+	for _, tag := range tags {
+		form.Add("tags[]", tag)
+	}
+	return c.postFormWithRetry(ctx, "/v2/illust/bookmark/add", form)
+}
+
+// RemoveBookmark 取消收藏作品。
+func (c *Client) RemoveBookmark(ctx context.Context, illustID int64) error {
+	return c.postFormWithRetry(ctx, "/v1/illust/bookmark/delete", url.Values{"illust_id": {fmt.Sprint(illustID)}})
+}
+
+// FollowUser 关注用户。
+func (c *Client) FollowUser(ctx context.Context, userID int64, restrict string) error {
+	return c.postFormWithRetry(ctx, "/v1/user/follow/add", url.Values{"user_id": {fmt.Sprint(userID)}, "restrict": {restrict}})
+}
+
+// UnfollowUser 取消关注用户。
+func (c *Client) UnfollowUser(ctx context.Context, userID int64) error {
+	return c.postFormWithRetry(ctx, "/v1/user/follow/delete", url.Values{"user_id": {fmt.Sprint(userID)}})
+}
+
+func (c *Client) postFormWithRetry(ctx context.Context, path string, form url.Values) error {
+	err := c.postForm(ctx, path, form)
+	if !isAuthError(err) {
+		return err
+	}
+	if c.session == nil {
+		return err
+	}
+	if refreshErr := c.session.Refresh(ctx); refreshErr != nil {
+		return fmt.Errorf("%w; token refresh failed: %v", err, refreshErr)
+	}
+	return c.postForm(ctx, path, form)
+}
+
+func (c *Client) postForm(ctx context.Context, path string, form url.Values) error {
+	return c.doForm(ctx, http.MethodPost, c.apiBase+path, requestOptions{Headers: c.apiHeaders()}, form)
+}
+
 func (c *Client) apiHeaders() map[string]string {
 	headers := baseHeaders()
 	headers["Referer"] = "https://app-api.pixiv.net/"
@@ -376,6 +418,22 @@ func (c *Client) doJSON(ctx context.Context, method, rawURL string, opts request
 	}
 	if err := json.Unmarshal(body, out); err != nil {
 		return fmt.Errorf("%w: %v", ErrMalformedResponse, err)
+	}
+	return nil
+}
+
+// doForm 保留所有 2xx 成功状态；mutation endpoint 不保证返回 JSON body。
+func (c *Client) doForm(ctx context.Context, method, rawURL string, opts requestOptions, form url.Values) error {
+	req := c.restyClient.R().SetContext(ctx).SetFormDataFromValues(form)
+	if len(opts.Headers) > 0 {
+		req.SetHeaders(opts.Headers)
+	}
+	resp, err := req.Execute(method, rawURL)
+	if err != nil {
+		return err
+	}
+	if resp.StatusCode() < 200 || resp.StatusCode() >= 300 {
+		return APIError{StatusCode: resp.StatusCode(), Body: string(resp.Body())}
 	}
 	return nil
 }
