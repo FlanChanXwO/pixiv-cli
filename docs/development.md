@@ -100,21 +100,25 @@ Release。
 
 Task 20 的 main push 成功后，Task 13 只能按以下过程回填可提交的 blobs：
 
-1. 记录该 push 的精确 main SHA；在 GitHub 检查 `native-evidence` 的 `push/main` run 成功且 head SHA
-   完全相同，再下载**恰好**六个 `native-evidence-{darwin,linux,windows}-{amd64,arm64}` artifact。不得
-   使用 tag、Release、手动 fixture 或不同 SHA 的 dispatch run。
+1. 记录该 push 的精确 main SHA 和同一个成功 `native-evidence` workflow run 写入的版本
+   `v0.1.0-native-evidence.<run-id>`；在 GitHub 检查该 `push/main` run 的 head SHA 完全相同，再下载
+   **恰好**六个 `native-evidence-{darwin,linux,windows}-{amd64,arm64}` artifact。不得使用 tag、Release、
+   手动 fixture 或不同 SHA 的 dispatch run；这两个值是受控回填的必填门禁，而非只靠人工阅读。
 2. 在干净、非 symlink 的审计目录解压 artifact，保留每个平台的 `native-evidence.json`、staticlib、
    binary 和 archive；人工确认 run URL、matrix target、source SHA 与六个 artifact 名称。运行：
 
    ```bash
    go run ./scripts/nativeevidence consolidate \
      --repo-root . \
+     --expected-version v0.1.0-native-evidence.<run-id> \
+     --expected-commit <exact-main-sha> \
      --input-dir .native-evidence-download \
      --output-dir .native-evidence-backfill/staticlib
    ```
 
-   该命令只接受完整六目标、同一 source digest 的记录；重新核验 staticlib/binary/archive SHA 与
-   archive member hash，生成精确六条 `manifest.json`。任何缺 target、重复/错配 target、metadata、
+   该命令只接受完整六目标、同一 source digest 以及同一 expected version/commit 的记录；重新核验
+   staticlib/binary/archive SHA 与 archive member hash，生成精确六条 `manifest.json`。任何缺 target、
+   重复/错配 target、metadata、
    archive member、哈希或 symlink 都会在写入前阻断；输出必须是不存在的新目录，因此不会覆盖或发布
    部分结果。
 3. 人工复核 `.native-evidence-backfill/staticlib` 与六份 record 的 target、source digest、SHA-256 和

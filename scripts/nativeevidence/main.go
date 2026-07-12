@@ -156,6 +156,8 @@ func runConsolidate(arguments []string) error {
 	flags.SetOutput(os.Stderr)
 	options := consolidateOptions{}
 	flags.StringVar(&options.repoRoot, "repo-root", "", "repository root matching the audited evidence source")
+	flags.StringVar(&options.expectedVersion, "expected-version", "", "exact v-prefixed binary version from the audited main workflow run")
+	flags.StringVar(&options.expectedCommit, "expected-commit", "", "exact main commit SHA from the audited workflow run")
 	flags.StringVar(&options.inputDir, "input-dir", "", "directory containing downloaded native evidence artifacts")
 	flags.StringVar(&options.outputDir, "output-dir", "", "new staticlib directory receiving a complete manifest")
 	if err := flags.Parse(arguments); err != nil {
@@ -168,9 +170,11 @@ func runConsolidate(arguments []string) error {
 }
 
 type consolidateOptions struct {
-	repoRoot  string
-	inputDir  string
-	outputDir string
+	repoRoot        string
+	expectedVersion string
+	expectedCommit  string
+	inputDir        string
+	outputDir       string
 }
 
 type evidenceLocation struct {
@@ -182,6 +186,12 @@ type evidenceLocation struct {
 // 目录验证和组装，再一次 rename 发布。已有输出、缺目标、hash 变化或 symlink 一律失败，
 // 因而不会把部分或混代库伪装成 Task 13 的可提交 staticlib 集合。
 func consolidateEvidence(options consolidateOptions) error {
+	if !strings.HasPrefix(options.expectedVersion, "v") || !semanticVersionPattern.MatchString(strings.TrimPrefix(options.expectedVersion, "v")) {
+		return fmt.Errorf("expected version is not a v-prefixed semantic version: %q", options.expectedVersion)
+	}
+	if strings.TrimSpace(options.expectedCommit) == "" {
+		return errors.New("expected commit is required")
+	}
 	repoRoot, err := requireSecureDirectory(options.repoRoot, "repository root")
 	if err != nil {
 		return err
@@ -204,7 +214,7 @@ func consolidateEvidence(options consolidateOptions) error {
 	if err != nil {
 		return err
 	}
-	if err := verifyEvidenceLocations(locations, repoRoot, sourceDigest); err != nil {
+	if err := verifyEvidenceLocations(locations, repoRoot, sourceDigest, options.expectedVersion, options.expectedCommit); err != nil {
 		return err
 	}
 	stage, err := os.MkdirTemp(filepath.Dir(options.outputDir), ".native-evidence-consolidate-")
@@ -285,7 +295,7 @@ func readEvidenceLocations(inputDir string) ([]evidenceLocation, error) {
 	return locations, nil
 }
 
-func verifyEvidenceLocations(locations []evidenceLocation, repoRoot, sourceDigest string) error {
+func verifyEvidenceLocations(locations []evidenceLocation, repoRoot, sourceDigest, expectedVersion, expectedCommit string) error {
 	seen := make(map[string]struct{}, len(locations))
 	for _, location := range locations {
 		record := location.record
@@ -313,6 +323,9 @@ func verifyEvidenceLocations(locations []evidenceLocation, repoRoot, sourceDiges
 		}
 		if !strings.HasPrefix(record.Binary.Version, "v") || !semanticVersionPattern.MatchString(strings.TrimPrefix(record.Binary.Version, "v")) || strings.TrimSpace(record.Binary.Commit) == "" || strings.TrimSpace(record.Binary.BuildDate) == "" {
 			return fmt.Errorf("binary metadata for %s is incomplete", platform)
+		}
+		if record.Binary.Version != expectedVersion || record.Binary.Commit != expectedCommit {
+			return fmt.Errorf("binary metadata for %s does not match the expected workflow run", platform)
 		}
 		if err := verifyRecordedArtifact(location.dir, record.Archive.evidenceFile, expectedArchiveName(strings.TrimPrefix(record.Binary.Version, "v"), target)); err != nil {
 			return fmt.Errorf("validate archive for %s: %w", platform, err)
