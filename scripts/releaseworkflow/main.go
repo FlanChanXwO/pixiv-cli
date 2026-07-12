@@ -14,12 +14,9 @@ import (
 // actionReferencePattern 只接受远端 action 的不可变完整对象 ID，避免可移动 tag 改写发布供应链。
 var actionReferencePattern = regexp.MustCompile(`^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+@[0-9a-f]{40}$`)
 
-// GitHub 表达式允许 `${{secrets.NAME}}`、`${{ secrets['NAME'] }}` 等点号或 bracket 写法；
-// 解析后的 YAML scalar 仍保留表达式文本，因此任何 secrets 后接点号或左 bracket 都保守视为凭据引用。
-var secretReferencePattern = regexp.MustCompile(`(?i)\bsecrets\s*(?:\.|\[)`)
-
-// channelAssignmentPattern 捕获普通或 export 风格的 channel 赋值，防止正确值在分支前被覆盖。
-var channelAssignmentPattern = regexp.MustCompile(`\bchannel\s*=`)
+// 解析后的 YAML scalar 保留 GitHub expression。任一 `${{ ... }}` 内独立的 secrets context
+// （包括 bare、toJSON(secrets)、dot 和 bracket）都视为凭据引用，不能依赖具体访问语法。
+var secretReferencePattern = regexp.MustCompile(`(?is)\$\{\{[^}]*\bsecrets\b[^}]*\}\}`)
 
 // releaseMatrixTargets 将 runner、Go 平台、Rust target 和 release asset 名称绑为同一集合，
 // 防止任一字段的局部改动让六平台发布遗漏或错配。
@@ -431,26 +428,25 @@ func checkPublishJob(job *yaml.Node) (int, []*yaml.Node, error) {
 }
 
 func checkReleaseChannelBinding(releaseStep *yaml.Node) error {
-	// 将 channel 判定、数组赋值和 gh release create 固定在同一 run 中，避免一个无关命令
-	// 满足表面存在性检查、而实际发布命令绕过 SemVer channel 结果。
+	// 将受信 channel command substitution、case 分支、数组赋值和 gh release create 固定在同一
+	// run 中。workflow 不引入可重写的 channel 变量，避免分类结果在分支前被其它 shell 命令覆盖。
 	lines := splitCommands(requireRunValue(releaseStep))
-	channelAssignment := "channel=$(go run ./scripts/releaseassets channel --version \"${GITHUB_REF_NAME#v}\")"
-	if countCommand(lines, channelAssignment) != 1 {
-		return errors.New("release publishing step must assign channel exactly once from releaseassets")
-	}
-	for _, command := range lines {
-		if channelAssignmentPattern.MatchString(command) && command != channelAssignment {
-			return errors.New("release publishing step must assign channel exactly once from releaseassets")
-		}
+	channelCase := "case \"$(go run ./scripts/releaseassets channel --version \"${GITHUB_REF_NAME#v}\")\" in"
+	if countCommand(lines, channelCase) != 1 {
+		return errors.New("release publishing step must classify with the direct releaseassets case expression")
 	}
 	sequence := []string{
-		channelAssignment,
 		"prerelease=()",
-		"if [ \"$channel\" = prerelease ]; then",
+		channelCase,
+		"stable)",
+		";;",
+		"prerelease)",
 		"prerelease+=(--prerelease)",
-		"elif [ \"$channel\" != stable ]; then",
+		";;",
+		"*)",
 		"exit 1",
-		"fi",
+		";;",
+		"esac",
 		"gh release create \"$GITHUB_REF_NAME\" \\",
 	}
 	position := -1
@@ -463,6 +459,9 @@ func checkReleaseChannelBinding(releaseStep *yaml.Node) error {
 	if commandIndexAfter(lines, "\"${prerelease[@]}\" \\", position) < 0 {
 		return errors.New("release publishing step must pass the channel-derived prerelease flag to gh release create")
 	}
+	if err := requireApprovedChannelCaseCommands(lines, channelCase); err != nil {
+		return err
+	}
 	if countCommand(lines, "prerelease=()") != 1 || countCommand(lines, "prerelease+=(--prerelease)") != 1 || countRunFragment(releaseStep, "--prerelease") != 1 {
 		return errors.New("release publishing step must not hard-code or reassign the prerelease flag")
 	}
@@ -471,10 +470,31 @@ func checkReleaseChannelBinding(releaseStep *yaml.Node) error {
 			continue
 		}
 		switch command {
-		case "prerelease=()", "if [ \"$channel\" = prerelease ]; then", "prerelease+=(--prerelease)", "\"${prerelease[@]}\" \\":
+		case "prerelease=()", "prerelease)", "prerelease+=(--prerelease)", "\"${prerelease[@]}\" \\":
 			continue
 		default:
 			return errors.New("release publishing step must not hard-code or reassign the prerelease flag")
+		}
+	}
+	return nil
+}
+
+func requireApprovedChannelCaseCommands(commands []string, channelCase string) error {
+	releaseCreateCommand := `gh release create "$GITHUB_REF_NAME" \`
+	if len(commands) == 0 || commands[0] != "set -eu" {
+		return errors.New("release publishing step must use only the approved channel case commands")
+	}
+	start := 0
+	end := commandIndexAfter(commands, releaseCreateCommand, start)
+	if start < 0 || end < start {
+		return errors.New("release publishing step must use only the approved channel case commands")
+	}
+	for index := start; index <= end; index++ {
+		switch commands[index] {
+		case "set -eu", "prerelease=()", channelCase, "stable)", ";;", "prerelease)", "prerelease+=(--prerelease)", "*)", "printf '%s\\n' 'unexpected release classification' >&2", "exit 1", "esac", releaseCreateCommand:
+			continue
+		default:
+			return errors.New("release publishing step must use only the approved channel case commands")
 		}
 	}
 	return nil
@@ -513,10 +533,10 @@ func checkSigningStep(step *yaml.Node) error {
 	if err := requireOnlyMappingKeys(env, "RELEASE_SIGNING_PRIVATE_KEY", "RELEASE_SIGNING_KEY_ID"); err != nil {
 		return errors.New("signing-secret step must declare only its expected signing secrets")
 	}
-	if err := requireScalar(env, "RELEASE_SIGNING_PRIVATE_KEY", "${{ secrets.RELEASE_SIGNING_PRIVATE_KEY }}"); err != nil {
+	if err := requireExpectedSigningSecret(env, "RELEASE_SIGNING_PRIVATE_KEY"); err != nil {
 		return errors.New("signing-secret step must use the protected private-key secret")
 	}
-	if err := requireScalar(env, "RELEASE_SIGNING_KEY_ID", "${{ secrets.RELEASE_SIGNING_KEY_ID }}"); err != nil {
+	if err := requireExpectedSigningSecret(env, "RELEASE_SIGNING_KEY_ID"); err != nil {
 		return errors.New("signing-secret step must use the protected key-ID secret")
 	}
 	for _, command := range []string{
@@ -538,6 +558,19 @@ func checkSigningStep(step *yaml.Node) error {
 		return errors.New("signing-secret step must not print signing secret values")
 	}
 	return nil
+}
+
+func requireExpectedSigningSecret(env *yaml.Node, key string) error {
+	value, ok := mappingValue(env, key)
+	if !ok || value.Kind != yaml.ScalarNode || !expectedSigningSecretExpression(key).MatchString(value.Value) {
+		return fmt.Errorf("%s must be its exact signing secret expression", key)
+	}
+	return nil
+}
+
+func expectedSigningSecretExpression(key string) *regexp.Regexp {
+	quotedKey := regexp.QuoteMeta(key)
+	return regexp.MustCompile(`^\$\{\{\s*secrets\s*(?:\.\s*` + quotedKey + `|\[\s*['"]` + quotedKey + `['"]\s*\])\s*\}\}$`)
 }
 
 func containsSigningSecretReference(node *yaml.Node) bool {

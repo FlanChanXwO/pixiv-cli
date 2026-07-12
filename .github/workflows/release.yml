@@ -192,14 +192,18 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -eu
-          channel=$(go run ./scripts/releaseassets channel --version "${GITHUB_REF_NAME#v}")
           prerelease=()
-          if [ "$channel" = prerelease ]; then
-            prerelease+=(--prerelease)
-          elif [ "$channel" != stable ]; then
-            printf '%s\n' "unexpected release channel: $channel" >&2
-            exit 1
-          fi
+          case "$(go run ./scripts/releaseassets channel --version "${GITHUB_REF_NAME#v}")" in
+            stable)
+              ;;
+            prerelease)
+              prerelease+=(--prerelease)
+              ;;
+            *)
+              printf '%s\n' 'unexpected release classification' >&2
+              exit 1
+              ;;
+          esac
           gh release create "$GITHUB_REF_NAME" \
             --draft \
             --verify-tag \
