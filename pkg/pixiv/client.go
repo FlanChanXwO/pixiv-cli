@@ -81,6 +81,9 @@ func (c *Client) IllustDetail(ctx context.Context, id int64) (*IllustDetail, err
 		result := mapIllustDetail(*detail)
 		return &result, nil
 	}
+	if route != routeAppThenWeb {
+		return nil, unexpectedRoute(OperationIllustDetail, id, 0)
+	}
 	detail, err := c.app.IllustDetail(ctx, id)
 	if err != nil {
 		return nil, mapAppError(err, OperationIllustDetail, id)

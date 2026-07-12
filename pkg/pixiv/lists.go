@@ -71,6 +71,9 @@ func (c *Client) SearchIllust(ctx context.Context, request SearchIllustRequest) 
 		}
 		return publicIllustList(list, OperationSearchIllust, digest, "offset"), nil
 	}
+	if route != routeApp {
+		return nil, unexpectedRoute(OperationSearchIllust, 0, 0)
+	}
 	list, err := c.app.SearchIllust(ctx, query.Word, string(query.Target), string(query.Sort), query.Duration, offset)
 	if err != nil {
 		return nil, mapAppOperationError(err, OperationSearchIllust, 0)
@@ -106,6 +109,9 @@ func (c *Client) IllustRanking(ctx context.Context, request IllustRankingRequest
 		}
 		return publicIllustList(list, OperationIllustRanking, digest, "offset"), nil
 	}
+	if route != routeApp {
+		return nil, unexpectedRoute(OperationIllustRanking, 0, 0)
+	}
 	list, err := c.app.IllustRanking(ctx, string(query.Mode), query.Date, offset)
 	if err != nil {
 		return nil, mapAppOperationError(err, OperationIllustRanking, 0)
@@ -120,7 +126,7 @@ func (c *Client) IllustRecommended(ctx context.Context, request IllustRecommende
 	if err != nil {
 		return nil, err
 	}
-	if _, err := c.selectRoute(OperationIllustRecommended, 0, 0); err != nil {
+	if err := c.requireRoute(OperationIllustRecommended, routeApp, 0, 0); err != nil {
 		return nil, err
 	}
 	list, err := c.app.IllustRecommended(ctx, offset)
@@ -144,7 +150,7 @@ func (c *Client) FollowingIllusts(ctx context.Context, request FollowingIllustsR
 	if err != nil {
 		return nil, err
 	}
-	if _, err := c.selectRoute(OperationFollowingIllusts, 0, 0); err != nil {
+	if err := c.requireRoute(OperationFollowingIllusts, routeApp, 0, 0); err != nil {
 		return nil, err
 	}
 	list, err := c.app.IllustFollow(ctx, string(query.Restrict), offset)
@@ -176,6 +182,9 @@ func (c *Client) SearchUser(ctx context.Context, request SearchUserRequest) (*Us
 		}
 		return publicUserList(list, OperationSearchUser, digest), nil
 	}
+	if route != routeApp {
+		return nil, unexpectedRoute(OperationSearchUser, 0, 0)
+	}
 	list, err := c.app.SearchUser(ctx, query.Word, offset)
 	if err != nil {
 		return nil, mapAppOperationError(err, OperationSearchUser, 0)
@@ -188,7 +197,7 @@ func (c *Client) UserDetail(ctx context.Context, request UserDetailRequest) (*Us
 	if request.UserID <= 0 {
 		return nil, invalidArgument(OperationUserDetail, request.UserID, errors.New("user id must be positive"))
 	}
-	if _, err := c.selectRoute(OperationUserDetail, 0, request.UserID); err != nil {
+	if err := c.requireRoute(OperationUserDetail, routeApp, 0, request.UserID); err != nil {
 		return nil, err
 	}
 	user, err := c.app.UserDetail(ctx, request.UserID)
@@ -215,7 +224,7 @@ func (c *Client) UserArtworks(ctx context.Context, request UserArtworksRequest) 
 	if err != nil {
 		return nil, err
 	}
-	if _, err := c.selectRoute(OperationUserArtworks, 0, request.UserID); err != nil {
+	if err := c.requireRoute(OperationUserArtworks, routeApp, 0, request.UserID); err != nil {
 		return nil, err
 	}
 	list, err := c.app.UserArtworks(ctx, request.UserID, string(query.Type), offset)
@@ -242,7 +251,7 @@ func (c *Client) UserBookmarks(ctx context.Context, request UserBookmarksRequest
 	if err != nil {
 		return nil, err
 	}
-	if _, err := c.selectRoute(OperationUserBookmarks, 0, request.UserID); err != nil {
+	if err := c.requireRoute(OperationUserBookmarks, routeApp, 0, request.UserID); err != nil {
 		return nil, err
 	}
 	list, err := c.app.UserBookmarks(ctx, request.UserID, string(query.Restrict), request.Tag, maxID)
@@ -269,7 +278,7 @@ func (c *Client) UserFollowing(ctx context.Context, request UserFollowingRequest
 	if err != nil {
 		return nil, err
 	}
-	if _, err := c.selectRoute(OperationUserFollowing, 0, request.UserID); err != nil {
+	if err := c.requireRoute(OperationUserFollowing, routeApp, 0, request.UserID); err != nil {
 		return nil, err
 	}
 	list, err := c.app.UserFollowing(ctx, request.UserID, string(query.Restrict), offset)

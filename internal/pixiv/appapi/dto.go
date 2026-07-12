@@ -69,18 +69,19 @@ type trendTagsDTO struct {
 	TrendTags requiredList[trendTagDTO] `json:"trend_tags"`
 }
 type trendTagDTO struct {
-	Tag            string    `json:"tag"`
-	TranslatedName string    `json:"translated_name"`
-	Illust         illustDTO `json:"illust"`
+	Tag            string                    `json:"tag"`
+	TranslatedName string                    `json:"translated_name"`
+	Illust         requiredObject[illustDTO] `json:"illust"`
 }
 type ugoiraMetadataResultDTO struct {
-	UgoiraMetadata *ugoiraMetadataDTO `json:"ugoira_metadata"`
+	UgoiraMetadata requiredObject[ugoiraMetadataDTO] `json:"ugoira_metadata"`
 }
 type ugoiraMetadataDTO struct {
-	ZipURLs *struct {
-		Medium string `json:"medium"`
-	} `json:"zip_urls"`
-	Frames requiredList[ugoiraFrameDTO] `json:"frames"`
+	ZipURLs requiredObject[ugoiraZipURLsDTO] `json:"zip_urls"`
+	Frames  requiredList[ugoiraFrameDTO]     `json:"frames"`
+}
+type ugoiraZipURLsDTO struct {
+	Medium string `json:"medium"`
 }
 type ugoiraFrameDTO struct {
 	File  string `json:"file"`
@@ -107,5 +108,28 @@ func (l *requiredList[T]) UnmarshalJSON(data []byte) error {
 		return err
 	}
 	l.Valid = true
+	return nil
+}
+
+// requiredObject 每次反序列化都先清空 Value，确保重复 object key 遵循 JSON 最后值而非字段合并。
+type requiredObject[T any] struct {
+	Value   T
+	Present bool
+	Valid   bool
+}
+
+func (o *requiredObject[T]) UnmarshalJSON(data []byte) error {
+	*o = requiredObject[T]{Present: true}
+	data = bytes.TrimSpace(data)
+	if bytes.Equal(data, []byte("null")) {
+		return nil
+	}
+	if len(data) == 0 || data[0] != '{' {
+		return json.Unmarshal(data, &o.Value)
+	}
+	if err := json.Unmarshal(data, &o.Value); err != nil {
+		return err
+	}
+	o.Valid = true
 	return nil
 }

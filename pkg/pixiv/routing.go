@@ -48,6 +48,21 @@ func (c *Client) selectRoute(operation Operation, illustID, userID int64) (conte
 	return 0, localRouteError(CodeUnauthorized, operation, illustID, userID, errors.New("access token is required"))
 }
 
+func (c *Client) requireRoute(operation Operation, expected contentRoute, illustID, userID int64) error {
+	route, err := c.selectRoute(operation, illustID, userID)
+	if err != nil {
+		return err
+	}
+	if route != expected {
+		return localRouteError(CodeUnsupported, operation, illustID, userID, errors.New("operation route is unsupported"))
+	}
+	return nil
+}
+
+func unexpectedRoute(operation Operation, illustID, userID int64) error {
+	return localRouteError(CodeUnsupported, operation, illustID, userID, errors.New("operation route is unsupported"))
+}
+
 func localRouteError(code ErrorCode, operation Operation, illustID, userID int64, cause error) error {
 	err := newError(code, operation, "", false, 0, illustID, cause)
 	err.UserID = userID

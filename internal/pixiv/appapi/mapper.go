@@ -68,18 +68,19 @@ func mapTrendTags(dto trendTagsDTO) model.TrendTags {
 		result.TrendTags = make([]model.TrendTag, len(dto.TrendTags.Items))
 	}
 	for i, trend := range dto.TrendTags.Items {
-		result.TrendTags[i] = model.TrendTag{Tag: trend.Tag, TranslatedName: trend.TranslatedName, Illust: mapIllust(trend.Illust)}
+		result.TrendTags[i] = model.TrendTag{Tag: trend.Tag, TranslatedName: trend.TranslatedName, Illust: mapIllust(trend.Illust.Value)}
 	}
 	return result
 }
 
 func mapUgoiraMetadata(dto ugoiraMetadataResultDTO) model.UgoiraMetadataResult {
 	var result model.UgoiraMetadataResult
-	result.UgoiraMetadata.ZipURLs.Medium = dto.UgoiraMetadata.ZipURLs.Medium
-	if dto.UgoiraMetadata.Frames.Items != nil {
-		result.UgoiraMetadata.Frames = make([]model.UgoiraFrame, len(dto.UgoiraMetadata.Frames.Items))
+	metadata := dto.UgoiraMetadata.Value
+	result.UgoiraMetadata.ZipURLs.Medium = metadata.ZipURLs.Value.Medium
+	if metadata.Frames.Items != nil {
+		result.UgoiraMetadata.Frames = make([]model.UgoiraFrame, len(metadata.Frames.Items))
 	}
-	for i, frame := range dto.UgoiraMetadata.Frames.Items {
+	for i, frame := range metadata.Frames.Items {
 		result.UgoiraMetadata.Frames[i] = model.UgoiraFrame{File: frame.File, Delay: frame.Delay}
 	}
 	return result

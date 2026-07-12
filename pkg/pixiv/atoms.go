@@ -16,7 +16,7 @@ func (c *Client) IllustPages(ctx context.Context, illustID int64) ([]MetaPage, e
 	if illustID <= 0 {
 		return nil, invalidIllustArgument(OperationIllustPages, errors.New("illust id must be positive"))
 	}
-	if _, err := c.selectRoute(OperationIllustPages, illustID, 0); err != nil {
+	if err := c.requireRoute(OperationIllustPages, routeWeb, illustID, 0); err != nil {
 		return nil, err
 	}
 	pages, err := c.web.IllustPages(ctx, illustID)
@@ -37,7 +37,7 @@ func (c *Client) IllustRelated(ctx context.Context, request IllustRelatedRequest
 	if err != nil {
 		return nil, err
 	}
-	if _, err := c.selectRoute(OperationIllustRelated, request.IllustID, 0); err != nil {
+	if err := c.requireRoute(OperationIllustRelated, routeApp, request.IllustID, 0); err != nil {
 		return nil, err
 	}
 	list, err := c.app.IllustRelated(ctx, request.IllustID, offset)
@@ -49,7 +49,7 @@ func (c *Client) IllustRelated(ctx context.Context, request IllustRelatedRequest
 
 // TrendingTagsIllust 返回 App API 当前的插画趋势标签。
 func (c *Client) TrendingTagsIllust(ctx context.Context) (*TrendingTagsIllustResult, error) {
-	if _, err := c.selectRoute(OperationTrendingTagsIllust, 0, 0); err != nil {
+	if err := c.requireRoute(OperationTrendingTagsIllust, routeApp, 0, 0); err != nil {
 		return nil, err
 	}
 	result, err := c.app.TrendingTagsIllust(ctx)
@@ -78,6 +78,9 @@ func (c *Client) UgoiraMetadata(ctx context.Context, illustID int64) (*UgoiraMet
 			return nil, mapWebError(err, OperationUgoiraMetadata, illustID)
 		}
 		return publicUgoiraMetadata(webResult), nil
+	}
+	if route != routeAppThenWeb {
+		return nil, unexpectedRoute(OperationUgoiraMetadata, illustID, 0)
 	}
 	appResult, err := c.app.UgoiraMetadata(ctx, illustID)
 	if err != nil {

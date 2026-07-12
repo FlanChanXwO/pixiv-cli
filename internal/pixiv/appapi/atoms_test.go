@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -49,5 +50,54 @@ func TestTrendingExplicitEmptyAndDuplicateLastAreValid(t *testing.T) {
 	got, err := New(WithBaseURL(server.URL), WithAccessToken("token")).TrendingTagsIllust(context.Background())
 	if err != nil || got.TrendTags == nil || len(got.TrendTags) != 0 {
 		t.Fatalf("got=%+v err=%v", got, err)
+	}
+}
+
+func TestRequiredObjectsUseLastDuplicateMemberWithoutMerging(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name string
+		body string
+		call func(*Client) error
+	}{
+		{"ugoira metadata valid then invalid", `{"ugoira_metadata":{"zip_urls":{"medium":"old"},"frames":[{"file":"old.jpg"}]},"ugoira_metadata":{"frames":[{"file":"new.jpg"}]}}`, func(c *Client) error { _, err := c.UgoiraMetadata(context.Background(), 1); return err }},
+		{"ugoira metadata invalid then valid", `{"ugoira_metadata":{"frames":[{"file":"old.jpg"}]},"ugoira_metadata":{"zip_urls":{"medium":"new"},"frames":[{"file":"new.jpg"}]}}`, func(c *Client) error {
+			got, err := c.UgoiraMetadata(context.Background(), 1)
+			if err == nil && got.UgoiraMetadata.ZipURLs.Medium != "new" {
+				t.Fatalf("medium=%q", got.UgoiraMetadata.ZipURLs.Medium)
+			}
+			return err
+		}},
+		{"zip urls valid then invalid", `{"ugoira_metadata":{"zip_urls":{"medium":"old"},"zip_urls":{},"frames":[{"file":"new.jpg"}]}}`, func(c *Client) error { _, err := c.UgoiraMetadata(context.Background(), 1); return err }},
+		{"zip urls invalid then valid", `{"ugoira_metadata":{"zip_urls":{},"zip_urls":{"medium":"new"},"frames":[{"file":"new.jpg"}]}}`, func(c *Client) error {
+			got, err := c.UgoiraMetadata(context.Background(), 1)
+			if err == nil && got.UgoiraMetadata.ZipURLs.Medium != "new" {
+				t.Fatalf("medium=%q", got.UgoiraMetadata.ZipURLs.Medium)
+			}
+			return err
+		}},
+		{"trending illust valid then invalid", `{"trend_tags":[{"tag":"cat","illust":{"id":1},"illust":{}}]}`, func(c *Client) error { _, err := c.TrendingTagsIllust(context.Background()); return err }},
+		{"trending illust invalid then valid", `{"trend_tags":[{"tag":"cat","illust":{},"illust":{"id":2}}]}`, func(c *Client) error {
+			got, err := c.TrendingTagsIllust(context.Background())
+			if err == nil && got.TrendTags[0].Illust.ID != 2 {
+				t.Fatalf("id=%d", got.TrendTags[0].Illust.ID)
+			}
+			return err
+		}},
+	}
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte(tt.body)) }))
+			defer server.Close()
+			err := tt.call(New(WithBaseURL(server.URL), WithAccessToken("token")))
+			wantMalformed := strings.Contains(tt.name, "valid then invalid")
+			if wantMalformed != errors.Is(err, ErrMalformedResponse) {
+				t.Fatalf("err=%v want malformed=%v", err, wantMalformed)
+			}
+			if !wantMalformed && err != nil {
+				t.Fatalf("err=%v", err)
+			}
+		})
 	}
 }

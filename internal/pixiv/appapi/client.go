@@ -156,7 +156,7 @@ func (c *Client) TrendingTagsIllust(ctx context.Context) (*model.TrendTags, erro
 		return nil, ErrMalformedResponse
 	}
 	for _, item := range raw.TrendTags.Items {
-		if item.Tag == "" || item.Illust.ID <= 0 {
+		if item.Tag == "" || !item.Illust.Present || !item.Illust.Valid || item.Illust.Value.ID <= 0 {
 			return nil, ErrMalformedResponse
 		}
 	}
@@ -284,11 +284,12 @@ func (c *Client) UgoiraMetadata(ctx context.Context, id int64) (*model.UgoiraMet
 	if err := c.getJSONWithRetry(ctx, "/v1/ugoira/metadata", url.Values{"illust_id": {fmt.Sprint(id)}}, &raw); err != nil {
 		return nil, err
 	}
-	if raw.UgoiraMetadata == nil || raw.UgoiraMetadata.ZipURLs == nil || raw.UgoiraMetadata.ZipURLs.Medium == "" ||
-		!raw.UgoiraMetadata.Frames.Present || !raw.UgoiraMetadata.Frames.Valid || len(raw.UgoiraMetadata.Frames.Items) == 0 {
+	metadata := raw.UgoiraMetadata.Value
+	if !raw.UgoiraMetadata.Present || !raw.UgoiraMetadata.Valid || !metadata.ZipURLs.Present || !metadata.ZipURLs.Valid || metadata.ZipURLs.Value.Medium == "" ||
+		!metadata.Frames.Present || !metadata.Frames.Valid || len(metadata.Frames.Items) == 0 {
 		return nil, ErrMalformedResponse
 	}
-	for _, frame := range raw.UgoiraMetadata.Frames.Items {
+	for _, frame := range metadata.Frames.Items {
 		if frame.File == "" {
 			return nil, ErrMalformedResponse
 		}
