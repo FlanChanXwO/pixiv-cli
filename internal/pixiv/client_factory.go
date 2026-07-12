@@ -6,7 +6,10 @@ import (
 	"net/url"
 	"time"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/web"
+	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/appapi"
+	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/oauth"
+	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/resource"
+	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/webapi"
 )
 
 type SourceConfig struct {
@@ -24,20 +27,21 @@ func NewSource(cfg SourceConfig) (*Source, error) {
 	if err != nil {
 		return nil, err
 	}
-	app := New(cfg.RefreshToken, WithHTTPClient(httpClient))
-	webClient := web.New(web.WithHTTPClient(httpClient))
-	return NewSourceFromClients(app, webClient, SourcePolicy{
+	auth := oauth.New(cfg.RefreshToken, oauth.WithHTTPClient(httpClient))
+	app := appapi.New(appapi.WithHTTPClient(httpClient), appapi.WithSession(auth))
+	webClient := webapi.New(webapi.WithHTTPClient(httpClient))
+	return NewSourceFromClients(app, webClient, auth, resource.NewApp(httpClient), resource.NewWeb(httpClient, webapi.DefaultWebBase), SourcePolicy{
 		RefreshToken:       cfg.RefreshToken,
 		WebFallbackEnabled: cfg.WebFallbackEnabled,
 	}), nil
 }
 
-func NewOAuthClient(cfg OAuthConfig, oauthBase string) (*Client, error) {
+func NewOAuthClient(cfg OAuthConfig, oauthBase string) (*oauth.Client, error) {
 	httpClient, err := HTTPClient(cfg.HTTPSProxy)
 	if err != nil {
 		return nil, err
 	}
-	return New("", WithHTTPClient(httpClient), WithBaseURLs("", oauthBase)), nil
+	return oauth.New("", oauth.WithHTTPClient(httpClient), oauth.WithBaseURL(oauthBase)), nil
 }
 
 func HTTPClient(proxyValue string) (*http.Client, error) {

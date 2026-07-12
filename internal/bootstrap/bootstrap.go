@@ -12,6 +12,7 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/download"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv"
+	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/oauth"
 	"github.com/FlanChanXwO/pixiv-cli/internal/storage/auth"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -210,7 +211,7 @@ func RunMCP(ctx context.Context, errOut io.Writer, proxyOverride *string) error 
 }
 
 type oauthClient struct {
-	client *pixiv.Client
+	client *oauth.Client
 }
 
 func (c oauthClient) ExchangeAuthorizationCode(ctx context.Context, code, verifier string) (application.OAuthToken, error) {

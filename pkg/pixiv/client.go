@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/api"
+	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/appapi"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/model"
-	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/web"
+	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/webapi"
 )
 
 // Options 配置 Client 当前所需的传输端点与 App API 身份。
@@ -25,24 +25,33 @@ type Options struct {
 
 // Client 组合 App API 主数据与显式 Web 补全能力。
 type Client struct {
-	app *api.Client
-	web *web.Client
+	app *appapi.Client
+	web *webapi.Client
+}
+
+type operation uint8
+
+const opIllustDetail operation = iota
+
+// webEnrichmentEnabled 是 SDK 允许 Web 补全的唯一 operation policy。
+func webEnrichmentEnabled(op operation) bool {
+	return op == opIllustDetail
 }
 
 // NewClient 构造具体客户端；它不会执行网络请求或隐式认证。
 func NewClient(options Options) (*Client, error) {
-	appOptions := []api.Option{
-		api.WithBaseURLs(options.AppAPIBaseURL, ""),
-		api.WithAccessToken(options.AccessToken),
+	appOptions := []appapi.Option{
+		appapi.WithBaseURL(options.AppAPIBaseURL),
+		appapi.WithAccessToken(options.AccessToken),
 	}
-	webOptions := []web.Option{web.WithWebBase(options.WebAPIBaseURL)}
+	webOptions := []webapi.Option{webapi.WithWebBase(options.WebAPIBaseURL)}
 	if options.HTTPClient != nil {
-		appOptions = append(appOptions, api.WithHTTPClient(options.HTTPClient))
-		webOptions = append(webOptions, web.WithHTTPClient(options.HTTPClient))
+		appOptions = append(appOptions, appapi.WithHTTPClient(options.HTTPClient))
+		webOptions = append(webOptions, webapi.WithHTTPClient(options.HTTPClient))
 	}
 	return &Client{
-		app: api.New("", appOptions...),
-		web: web.New(webOptions...),
+		app: appapi.New(appOptions...),
+		web: webapi.New(webOptions...),
 	}, nil
 }
 
@@ -52,6 +61,9 @@ func (c *Client) IllustDetail(ctx context.Context, id int64) (*IllustDetail, err
 	detail, err := c.app.IllustDetail(ctx, id)
 	if err != nil {
 		return nil, fmt.Errorf("app illust detail: %w", err)
+	}
+	if !webEnrichmentEnabled(opIllustDetail) {
+		return nil, fmt.Errorf("web enrichment is not enabled for illust detail")
 	}
 	pages, err := c.web.IllustPages(ctx, id)
 	if err != nil {

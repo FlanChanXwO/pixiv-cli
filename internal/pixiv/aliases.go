@@ -2,27 +2,28 @@ package pixiv
 
 import (
 	"net/http"
+	"strings"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/api"
+	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/appapi"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/model"
+	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/oauth"
+	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/resource"
 )
 
 const (
-	DefaultAPIBase           = api.DefaultAPIBase
-	DefaultOAuthBase         = api.DefaultOAuthBase
-	DefaultOAuthClientID     = api.DefaultOAuthClientID
-	DefaultOAuthClientSecret = api.DefaultOAuthClientSecret
-	DefaultOAuthRedirectURI  = api.DefaultOAuthRedirectURI
-	DefaultUserAgent         = api.DefaultUserAgent
-	DefaultAppOS             = api.DefaultAppOS
-	DefaultAppOSVersion      = api.DefaultAppOSVersion
-	DefaultAppVersion        = api.DefaultAppVersion
+	DefaultAPIBase           = appapi.DefaultAPIBase
+	DefaultOAuthBase         = oauth.DefaultBase
+	DefaultOAuthClientID     = oauth.DefaultClientID
+	DefaultOAuthClientSecret = oauth.DefaultClientSecret
+	DefaultOAuthRedirectURI  = oauth.DefaultRedirectURI
+	DefaultUserAgent         = appapi.DefaultUserAgent
+	DefaultAppOS             = appapi.DefaultAppOS
+	DefaultAppOSVersion      = appapi.DefaultAppOSVersion
+	DefaultAppVersion        = appapi.DefaultAppVersion
 )
 
 type (
-	Client = api.Client
-	Option = api.Option
-
+	Client               = Source
 	Illust               = model.Illust
 	IllustList           = model.IllustList
 	IllustDetail         = model.IllustDetail
@@ -61,14 +62,28 @@ const (
 	IllustTypeUgoira                = model.IllustTypeUgoira
 )
 
-func New(refreshToken string, opts ...Option) *Client {
-	return api.New(refreshToken, opts...)
+type legacyOptions struct {
+	httpClient         *http.Client
+	apiBase, oauthBase string
 }
+type Option func(*legacyOptions)
 
-func WithHTTPClient(httpClient *http.Client) Option {
-	return api.WithHTTPClient(httpClient)
+func WithHTTPClient(client *http.Client) Option {
+	return func(o *legacyOptions) { o.httpClient = client }
 }
-
 func WithBaseURLs(apiBase, oauthBase string) Option {
-	return api.WithBaseURLs(apiBase, oauthBase)
+	return func(o *legacyOptions) {
+		o.apiBase, o.oauthBase = strings.TrimRight(apiBase, "/"), strings.TrimRight(oauthBase, "/")
+	}
+}
+
+// New 保留 internal CLI 测试与组装所需入口；协议实现已分别落在 appapi/oauth/resource。
+func New(refreshToken string, opts ...Option) *Client {
+	var cfg legacyOptions
+	for _, opt := range opts {
+		opt(&cfg)
+	}
+	auth := oauth.New(refreshToken, oauth.WithHTTPClient(cfg.httpClient), oauth.WithBaseURL(cfg.oauthBase))
+	app := appapi.New(appapi.WithHTTPClient(cfg.httpClient), appapi.WithBaseURL(cfg.apiBase), appapi.WithSession(auth))
+	return NewSourceFromClients(app, nil, auth, resource.NewApp(cfg.httpClient), nil, SourcePolicy{RefreshToken: refreshToken})
 }

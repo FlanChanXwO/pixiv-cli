@@ -1,4 +1,4 @@
-package web
+package webapi
 
 import (
 	"bytes"
@@ -187,32 +187,6 @@ func (c *Client) UgoiraMetadata(ctx context.Context, id int64) (*model.UgoiraMet
 		})
 	}
 	return &result, nil
-}
-
-func (c *Client) Download(ctx context.Context, rawURL string, dst io.Writer) error {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
-	if err != nil {
-		return err
-	}
-	c.setHeaders(req)
-	req.Header.Set("Referer", c.webBase+"/")
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		body, readErr := io.ReadAll(resp.Body)
-		if readErr != nil {
-			return fmt.Errorf("download failed: %s: read error body: %w", resp.Status, readErr)
-		}
-		if len(bytes.TrimSpace(body)) == 0 {
-			return fmt.Errorf("download failed: %s", resp.Status)
-		}
-		return fmt.Errorf("download failed: %s: %s", resp.Status, string(body))
-	}
-	_, err = io.Copy(dst, resp.Body)
-	return err
 }
 
 func (c *Client) getJSON(ctx context.Context, path string, query url.Values, out any) error {

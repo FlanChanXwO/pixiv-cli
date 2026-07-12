@@ -1,12 +1,10 @@
-package web
+package webapi
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -158,14 +156,11 @@ func TestClientSearchUserAggregatesArtworkAuthors(t *testing.T) {
 	assert.Equal(t, int64(789), result.UserPreviews[1].User.ID)
 }
 
-func TestClientUgoiraMetadataAndDownloadUseWebShape(t *testing.T) {
+func TestClientUgoiraMetadataUsesWebShape(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/ajax/illust/123/ugoira_meta":
 			fmt.Fprint(w, `{"error":false,"message":"","body":{"originalSrc":"https://i.pximg.net/ugoira.zip","frames":[{"file":"000000.jpg","delay":80}]}}`)
-		case "/image.jpg":
-			assert.True(t, strings.HasSuffix(r.Header.Get("Referer"), "/"))
-			fmt.Fprint(w, "image-bytes")
 		default:
 			http.NotFound(w, r)
 		}
@@ -178,10 +173,6 @@ func TestClientUgoiraMetadataAndDownloadUseWebShape(t *testing.T) {
 	assert.Equal(t, "https://i.pximg.net/ugoira.zip", meta.UgoiraMetadata.ZipURLs.Medium)
 	require.Len(t, meta.UgoiraMetadata.Frames, 1)
 	assert.Equal(t, 80, meta.UgoiraMetadata.Frames[0].Delay)
-
-	var dst bytes.Buffer
-	require.NoError(t, client.Download(context.Background(), server.URL+"/image.jpg", &dst))
-	assert.Equal(t, "image-bytes", dst.String())
 }
 
 func TestClientExposesWebHTTPErrorBody(t *testing.T) {
