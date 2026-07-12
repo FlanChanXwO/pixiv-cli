@@ -56,7 +56,7 @@ pixiv config set https_proxy http://127.0.0.1:7890
 pixiv auth login --proxy http://127.0.0.1:7890
 ```
 
-`--proxy URL` 与 `--no-proxy` 都只影响当前命令，不写入 `config.toml`；两者不能同时使用。`--no-proxy` 会清空本次命令的代理，即使环境变量或配置里存在 `https_proxy`。
+`--proxy URL` 只影响当前网络命令，不写入 `config.toml`；运行期代理优先级为 `--proxy` > `https_proxy`/`HTTPS_PROXY` > `config.toml`。
 
 真实登录依赖 Pixiv OAuth 网页流程可用；自动化测试使用 fake OAuth server，不访问真实 Pixiv。
 
@@ -106,12 +106,12 @@ CLI 使用 Cobra/pflag，选项可以写在位置参数前后，例如 `pixiv au
 
 | 命令 | 用法 | 说明 |
 | --- | --- | --- |
-| `auth add` | `pixiv auth add [--token TOKEN] [--json] [--proxy URL\|--no-proxy]` | 校验 refresh token 或包含 `refresh_token=...` 的 Cookie，并按 Pixiv UID 添加或替换账号；不传 `--token` 时从 TTY/stdin 读取。 |
-| `auth login` | `pixiv auth login [--json] [--no-open] [--addr 127.0.0.1:0] [--use] [--timeout DURATION] [--proxy URL\|--no-proxy]` | 通过本地 loopback server 和浏览器 OAuth 登录，按 Pixiv UID 保存账号；不会输出 refresh token。 |
+| `auth add` | `pixiv auth add [--token TOKEN] [--json] [--proxy URL]` | 校验 refresh token 或包含 `refresh_token=...` 的 Cookie，并按 Pixiv UID 添加或替换账号；不传 `--token` 时从 TTY/stdin 读取。 |
+| `auth login` | `pixiv auth login [--json] [--no-open] [--addr 127.0.0.1:0] [--use] [--timeout DURATION] [--proxy URL]` | 通过本地 loopback server 和浏览器 OAuth 登录，按 Pixiv UID 保存账号；不会输出 refresh token。 |
 | `auth list` | `pixiv auth list [--json]` | 列出本地账号；不会输出 refresh token。 |
 | `auth use` | `pixiv auth use [UID]` | 设置默认账号；TTY 下可交互选择。 |
 | `auth remove` | `pixiv auth remove [UID] [--yes]` | 删除账号；TTY 下默认确认，删除默认账号后会自动选第一个剩余账号。 |
-| `auth check` | `pixiv auth check [UID] [--json] [--proxy URL\|--no-proxy]` | 刷新 token 并验证账号；成功后会记录 `user_id` 和可获取到的 username。 |
+| `auth check` | `pixiv auth check [UID] [--json] [--proxy URL]` | 刷新 token 并验证账号；成功后会记录 `user_id` 和可获取到的 username。 |
 | `config path` | `pixiv config path` | 输出 `config.toml` 路径。 |
 | `config get` | `pixiv config get KEY` | 输出一个生效中的配置值。 |
 | `config set` | `pixiv config set KEY VALUE` | 写入一个已知配置键到 `config.toml`。 |
@@ -121,7 +121,7 @@ CLI 使用 Cobra/pflag，选项可以写在位置参数前后，例如 `pixiv au
 | `ranking` | `pixiv ranking [options]` | 查看 Pixiv 插画排行榜。 |
 | `recommended` | `pixiv recommended [options]` | 查看个性化推荐，需要认证。 |
 | `download` | `pixiv download [options] ILLUST_ID...` | 下载一个或多个作品；无 token 时默认走匿名 web fallback。 |
-| `mcp` | `pixiv mcp [--proxy URL\|--no-proxy]` | 启动 MCP stdio server；代理覆盖只在本次启动时生效。 |
+| `mcp` | `pixiv mcp [--proxy URL]` | 启动 MCP stdio server；代理覆盖只在本次启动时生效。 |
 
 ### `auth login` 参数
 
@@ -132,7 +132,7 @@ CLI 使用 Cobra/pflag，选项可以写在位置参数前后，例如 `pixiv au
 | `--addr` | `127.0.0.1:0` | 本地 loopback 监听地址；端口 `0` 表示自动分配。 |
 | `--use` | `false` | 登录成功后设为默认账号；若当前没有默认账号，也会自动设为默认。 |
 | `--timeout` | `0` | 等待登录完成的最大时长；`0` 表示不由 CLI 主动限时。 |
-| `--proxy URL` / `--no-proxy` | 空 | 本次 token exchange 代理覆盖；不会保存到 `config.toml`。 |
+| `--proxy URL` | 空 | 本次 token exchange 代理覆盖；不会保存到 `config.toml`。 |
 
 ### 数据命令参数
 
@@ -161,7 +161,6 @@ CLI 使用 Cobra/pflag，选项可以写在位置参数前后，例如 `pixiv au
 | `--download-path PATH` | 数据命令；实际只影响 `download` | `DOWNLOAD_PATH`、`config.toml` 或 `./downloads` | 下载目录。 |
 | `--filename-template TEMPLATE` | 数据命令；实际只影响 `download` | `FILENAME_TEMPLATE`、`config.toml` 或 `{author} - {title}_{id}` | 文件名模板。 |
 | `--proxy URL` | `auth add/login/check`、数据命令、`mcp` | `https_proxy`/`HTTPS_PROXY`、`config.toml` 或空 | 临时使用 HTTP(S) 代理；只影响当前命令。 |
-| `--no-proxy` | `auth add/login/check`、数据命令、`mcp` | 空 | 临时清空 HTTP(S) 代理；优先级同 `--proxy`，且不能与 `--proxy` 同用。 |
 
 ### `config` 支持的键
 
@@ -187,7 +186,7 @@ CLI 使用 Cobra/pflag，选项可以写在位置参数前后，例如 `pixiv au
 
 认证优先级：`--refresh-token` > `--uid`/deprecated `--profile` > `PIXIV_REFRESH_TOKEN` > `auth.json.default_user_id`。
 
-设置类字段优先级：命令行 flag > 环境变量 > `config.toml` > 默认值。代理的命令行覆盖只支持 `--proxy URL` / `--no-proxy`，且不会持久化。
+设置类字段优先级：命令行 flag > 环境变量 > `config.toml` > 默认值。代理的运行期优先级为 `--proxy` > `https_proxy`/`HTTPS_PROXY` > `config.toml`，且命令行覆盖不会持久化。
 
 ### 匿名 web fallback
 
@@ -200,7 +199,7 @@ CLI 使用 Cobra/pflag，选项可以写在位置参数前后，例如 `pixiv au
 - `search_user` 不是 Pixiv 官方用户搜索；它通过 web 作品搜索结果按 `userId` 去重，返回“相关作品作者”。
 - 静态单页/多页下载使用 `/ajax/illust/{id}/pages` 的 `original` URL。
 - ugoira 下载使用 `/ajax/illust/{id}/ugoira_meta` 的 `originalSrc` zip 和 frames，并继续依赖本机 `ffmpeg` 转 GIF。
-- web fallback 不新增专用代理环境变量，继续使用 `--proxy` / `--no-proxy`、`https_proxy` / `HTTPS_PROXY` 或 `pixiv config set https_proxy ...`。
+- web fallback 不新增专用代理环境变量，继续使用 `--proxy`、`https_proxy` / `HTTPS_PROXY` 或 `pixiv config set https_proxy ...`。
 
 关闭方式：
 
@@ -223,7 +222,6 @@ MCP 的代理覆盖是启动期设置：
 
 ```bash
 ./build/pixiv mcp --proxy http://127.0.0.1:7890
-./build/pixiv mcp --no-proxy
 ```
 
 未设置 `PIXIV_REFRESH_TOKEN` 时，`pixiv mcp` 会先回退到 `auth.json.default_user_id`；如果仍没有 refresh token 且 `web_fallback_enabled=true`，支持匿名 fallback 的 MCP tools 会直接使用 Pixiv web/ajax API。真实 token 写在 inline 环境变量里也可能进入 shell history；长期使用建议通过 MCP client 的私密环境配置或本地账号管理。

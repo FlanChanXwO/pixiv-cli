@@ -150,7 +150,7 @@ func TestAccountAddProxyFlagOverridesEnvAndConfig(t *testing.T) {
 	assert.Equal(t, "http://flag-proxy", seenProxy)
 }
 
-func TestAccountAddNoProxyFlagClearsEnvAndConfig(t *testing.T) {
+func TestAccountAddEmptyProxyFlagClearsEnvAndConfig(t *testing.T) {
 	_, configPath := useTempPaths(t)
 	require.NoError(t, auth.WritePrivateFile(configPath, []byte("[network]\nhttps_proxy = \"http://file-proxy\"\n")))
 	t.Setenv("https_proxy", "http://env-proxy")
@@ -176,13 +176,13 @@ func TestAccountAddNoProxyFlagClearsEnvAndConfig(t *testing.T) {
 	})
 
 	var stdout, stderr bytes.Buffer
-	code := Run([]string{"pixiv", "auth", "add", "--token", "input-token", "--no-proxy"}, strings.NewReader(""), &stdout, &stderr)
+	code := Run([]string{"pixiv", "auth", "add", "--token", "input-token", "--proxy", ""}, strings.NewReader(""), &stdout, &stderr)
 
 	require.Equal(t, 0, code, stderr.String())
 	assert.Empty(t, seenProxy)
 }
 
-func TestAccountCheckNoProxyFlagClearsEnvAndConfig(t *testing.T) {
+func TestAccountCheckEmptyProxyFlagClearsEnvAndConfig(t *testing.T) {
 	authPath, configPath := useTempPaths(t)
 	require.NoError(t, auth.WritePrivateFile(configPath, []byte("[network]\nhttps_proxy = \"http://file-proxy\"\n")))
 	require.NoError(t, auth.SaveAuthStore(authPath, auth.AuthStore{
@@ -212,7 +212,7 @@ func TestAccountCheckNoProxyFlagClearsEnvAndConfig(t *testing.T) {
 	})
 
 	var stdout, stderr bytes.Buffer
-	code := Run([]string{"pixiv", "auth", "check", "--no-proxy"}, strings.NewReader(""), &stdout, &stderr)
+	code := Run([]string{"pixiv", "auth", "check", "--proxy", ""}, strings.NewReader(""), &stdout, &stderr)
 
 	require.Equal(t, 0, code, stderr.String())
 	assert.Empty(t, seenProxy)
@@ -254,11 +254,11 @@ func TestAccountCheckProxyFlagOverridesEnvAndConfig(t *testing.T) {
 	assert.Equal(t, "http://flag-proxy", seenProxy)
 }
 
-func TestAccountNetworkCommandsRejectConflictingProxyFlags(t *testing.T) {
+func TestAccountNetworkCommandsNoProxyFlagIsUnknown(t *testing.T) {
 	tests := [][]string{
-		{"pixiv", "auth", "add", "--proxy", "http://flag-proxy", "--no-proxy"},
-		{"pixiv", "auth", "login", "--proxy", "http://flag-proxy", "--no-proxy"},
-		{"pixiv", "auth", "check", "--proxy", "http://flag-proxy", "--no-proxy"},
+		{"pixiv", "auth", "add", "--no-proxy"},
+		{"pixiv", "auth", "login", "--no-proxy"},
+		{"pixiv", "auth", "check", "--no-proxy"},
 	}
 	for _, args := range tests {
 		t.Run(strings.Join(args[1:], " "), func(t *testing.T) {
@@ -268,7 +268,7 @@ func TestAccountNetworkCommandsRejectConflictingProxyFlags(t *testing.T) {
 			code := Run(args, strings.NewReader(""), &stdout, &stderr)
 
 			require.NotZero(t, code)
-			assert.Contains(t, stderr.String(), "use either --proxy or --no-proxy, not both")
+			assert.Contains(t, stderr.String(), `unknown flag: --no-proxy`)
 		})
 	}
 }
@@ -397,10 +397,14 @@ func TestAccountLoginNoOpenStoresProfile(t *testing.T) {
 	defer run.wait()
 
 	waitForLoginServer(t, addr)
-	resp, err := http.PostForm("http://"+addr+"/manual", url.Values{"code": {"manual-code"}})
+	resp, err := http.PostForm("http://"+addr+"/manual", visibleLoginForm("manual-code"))
 	require.NoError(t, err)
-	_, _ = io.Copy(io.Discard, resp.Body)
+	body, _ := io.ReadAll(resp.Body)
 	_ = resp.Body.Close()
+	require.Equal(t, http.StatusOK, resp.StatusCode, string(body))
+	assert.Contains(t, string(body), "Authentication complete.")
+	assert.Contains(t, string(body), "return to your terminal")
+	assert.NotContains(t, string(body), "authorization code received")
 
 	require.Equal(t, 0, run.waitWithin(t, 5*time.Second), stderr.String())
 	assert.False(t, calledOpen)
@@ -417,6 +421,188 @@ func TestAccountLoginNoOpenStoresProfile(t *testing.T) {
 	assert.Equal(t, "oauth-user", store.Accounts[0].Username)
 	assert.NotContains(t, stdout.String(), "refresh-secret")
 	assert.NotContains(t, stderr.String(), "refresh-secret")
+}
+
+func TestAccountLoginManualPageShowsFailureWhenExchangeFails(t *testing.T) {
+	authPath, _ := useTempPaths(t)
+	addr := freeLoopbackAddr(t)
+
+	oauth := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.NoError(t, r.ParseForm())
+		assert.Equal(t, "manual-code", r.Form.Get("code"))
+		http.Error(w, "exchange failed with secret response", http.StatusUnauthorized)
+	}))
+	defer oauth.Close()
+	restoreOAuthBase := setTestOAuthBase(t, oauth.URL)
+	defer restoreOAuthBase()
+
+	calledOpen := false
+	restoreOpen := setTestOpenBrowser(t, func(string) error {
+		calledOpen = true
+		return nil
+	})
+	defer restoreOpen()
+
+	var stdout, stderr bytes.Buffer
+	run := startAsyncCLIRun([]string{"pixiv", "auth", "login", "--addr", addr, "--no-open", "--timeout", "5s"}, strings.NewReader(""), &stdout, &stderr)
+	defer run.wait()
+
+	waitForLoginServer(t, addr)
+	resp, err := http.PostForm("http://"+addr+"/manual", visibleLoginForm("manual-code"))
+	require.NoError(t, err)
+	body, _ := io.ReadAll(resp.Body)
+	_ = resp.Body.Close()
+
+	require.Equal(t, http.StatusOK, resp.StatusCode, string(body))
+	assert.Contains(t, string(body), "Authentication was not completed.")
+	assert.Contains(t, string(body), "Return to your terminal for details.")
+	assert.NotContains(t, string(body), "exchange failed")
+	require.NotEqual(t, 0, run.waitWithin(t, 5*time.Second), stderr.String())
+	assert.False(t, calledOpen)
+
+	store, err := auth.LoadAuthStore(authPath)
+	require.NoError(t, err)
+	assert.Empty(t, store.Accounts)
+	assert.Empty(t, stdout.String())
+	assert.Contains(t, stderr.String(), "exchange failed")
+}
+
+func TestAccountLoginURLSchemeHelperOpensCompletionPage(t *testing.T) {
+	authPath, _ := useTempPaths(t)
+	addr := freeLoopbackAddr(t)
+	oauth := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.NoError(t, r.ParseForm())
+		assert.Equal(t, "helper-code", r.Form.Get("code"))
+		require.NoError(t, json.NewEncoder(w).Encode(map[string]any{
+			"refresh_token": "helper-refresh-secret",
+			"user":          map[string]any{"id": "424242", "name": "helper-user"},
+		}))
+	}))
+	defer oauth.Close()
+	restoreOAuthBase := setTestOAuthBase(t, oauth.URL)
+	defer restoreOAuthBase()
+
+	var completionBodies []string
+	restoreOpen := setTestOpenBrowser(t, func(rawURL string) error {
+		if requestLoginCompletionPage(t, rawURL, &completionBodies) {
+			return nil
+		}
+		return nil
+	})
+	defer restoreOpen()
+
+	var stdout, stderr bytes.Buffer
+	run := startAsyncCLIRun([]string{"pixiv", "auth", "login", "--addr", addr, "--timeout", "5s"}, strings.NewReader(""), &stdout, &stderr)
+	defer run.wait()
+
+	waitForLoginServer(t, addr)
+	resp, err := http.PostForm("http://"+addr+"/manual", url.Values{"code": {"pixiv://account/login?code=helper-code"}})
+	require.NoError(t, err)
+	body, _ := io.ReadAll(resp.Body)
+	_ = resp.Body.Close()
+	require.Equal(t, http.StatusOK, resp.StatusCode, string(body))
+	assert.Contains(t, string(body), "authorization code received")
+	assert.NotContains(t, string(body), "Authentication complete.")
+
+	require.Equal(t, 0, run.waitWithin(t, 5*time.Second), stderr.String())
+	require.Len(t, completionBodies, 1)
+	assert.Contains(t, completionBodies[0], "Authentication complete.")
+	store, err := auth.LoadAuthStore(authPath)
+	require.NoError(t, err)
+	require.Len(t, store.Accounts, 1)
+	assert.Equal(t, int64(424242), store.Accounts[0].UserID)
+	assert.NotContains(t, stdout.String(), "helper-refresh-secret")
+	assert.NotContains(t, stderr.String(), "helper-refresh-secret")
+}
+
+func TestAccountLoginCallbackPageShowsCompletionAfterSave(t *testing.T) {
+	authPath, _ := useTempPaths(t)
+	addr := freeLoopbackAddr(t)
+	oauth := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.NoError(t, r.ParseForm())
+		assert.Equal(t, "loopback-code", r.Form.Get("code"))
+		require.NoError(t, json.NewEncoder(w).Encode(map[string]any{
+			"refresh_token": "loopback-refresh-secret",
+			"user":          map[string]any{"id": "515151", "name": "loopback-user"},
+		}))
+	}))
+	defer oauth.Close()
+	restoreOAuthBase := setTestOAuthBase(t, oauth.URL)
+	defer restoreOAuthBase()
+	restoreOpen := setTestOpenBrowser(t, func(string) error { return nil })
+	defer restoreOpen()
+
+	var stdout, stderr bytes.Buffer
+	run := startAsyncCLIRun([]string{"pixiv", "auth", "login", "--addr", addr, "--no-open", "--timeout", "5s"}, strings.NewReader(""), &stdout, &stderr)
+	defer run.wait()
+
+	page := waitForLoginServer(t, addr)
+	state := loginState(t, loginURLFromPage(t, page))
+	resp, err := http.Get("http://" + addr + "/callback?code=loopback-code&state=" + url.QueryEscape(state))
+	require.NoError(t, err)
+	body, _ := io.ReadAll(resp.Body)
+	_ = resp.Body.Close()
+	require.Equal(t, http.StatusOK, resp.StatusCode, string(body))
+	assert.Contains(t, string(body), "Authentication complete.")
+	assert.Contains(t, string(body), "return to your terminal")
+
+	require.Equal(t, 0, run.waitWithin(t, 5*time.Second), stderr.String())
+	store, err := auth.LoadAuthStore(authPath)
+	require.NoError(t, err)
+	require.Len(t, store.Accounts, 1)
+	assert.Equal(t, int64(515151), store.Accounts[0].UserID)
+	assert.NotContains(t, stdout.String(), "loopback-refresh-secret")
+	assert.NotContains(t, stderr.String(), "loopback-refresh-secret")
+}
+
+func TestAccountLoginVisibleManualDisconnectFallsBackToCompletionPage(t *testing.T) {
+	authPath, _ := useTempPaths(t)
+	addr := freeLoopbackAddr(t)
+	oauthRequested := make(chan struct{})
+	releaseOAuth := make(chan struct{})
+	oauth := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.NoError(t, r.ParseForm())
+		assert.Equal(t, "disconnect-code", r.Form.Get("code"))
+		close(oauthRequested)
+		<-releaseOAuth
+		require.NoError(t, json.NewEncoder(w).Encode(map[string]any{
+			"refresh_token": "disconnect-refresh-secret",
+			"user":          map[string]any{"id": "616161", "name": "disconnect-user"},
+		}))
+	}))
+	defer oauth.Close()
+	restoreOAuthBase := setTestOAuthBase(t, oauth.URL)
+	defer restoreOAuthBase()
+
+	var completionBodies []string
+	restoreOpen := setTestOpenBrowser(t, func(rawURL string) error {
+		if requestLoginCompletionPage(t, rawURL, &completionBodies) {
+			return nil
+		}
+		return nil
+	})
+	defer restoreOpen()
+
+	var stdout, stderr bytes.Buffer
+	run := startAsyncCLIRun([]string{"pixiv", "auth", "login", "--addr", addr, "--no-open"}, strings.NewReader(""), &stdout, &stderr)
+	defer run.wait()
+
+	waitForLoginServer(t, addr)
+	client := http.Client{Timeout: 100 * time.Millisecond}
+	_, err := client.PostForm("http://"+addr+"/manual", visibleLoginForm("disconnect-code"))
+	require.Error(t, err)
+	<-oauthRequested
+	close(releaseOAuth)
+
+	require.Equal(t, 0, run.waitWithin(t, 5*time.Second), stderr.String())
+	require.Len(t, completionBodies, 1)
+	assert.Contains(t, completionBodies[0], "Authentication complete.")
+	store, err := auth.LoadAuthStore(authPath)
+	require.NoError(t, err)
+	require.Len(t, store.Accounts, 1)
+	assert.Equal(t, int64(616161), store.Accounts[0].UserID)
+	assert.NotContains(t, stdout.String(), "disconnect-refresh-secret")
+	assert.NotContains(t, stderr.String(), "disconnect-refresh-secret")
 }
 
 func TestAccountLoginProxyFlagOverridesEnvAndConfig(t *testing.T) {
@@ -455,7 +641,7 @@ func TestAccountLoginProxyFlagOverridesEnvAndConfig(t *testing.T) {
 	assert.Equal(t, "http://flag-proxy", seenProxy)
 }
 
-func TestAccountLoginNoProxyFlagClearsEnvAndConfig(t *testing.T) {
+func TestAccountLoginEmptyProxyFlagClearsEnvAndConfig(t *testing.T) {
 	_, configPath := useTempPaths(t)
 	require.NoError(t, auth.WritePrivateFile(configPath, []byte("[network]\nhttps_proxy = \"http://file-proxy\"\n")))
 	t.Setenv("https_proxy", "http://env-proxy")
@@ -478,7 +664,7 @@ func TestAccountLoginNoProxyFlagClearsEnvAndConfig(t *testing.T) {
 	t.Cleanup(func() { newCLIServices = oldServices })
 
 	var stdout, stderr bytes.Buffer
-	run := startAsyncCLIRun([]string{"pixiv", "auth", "login", "--addr", addr, "--no-open", "--timeout", "5s", "--no-proxy"}, strings.NewReader(""), &stdout, &stderr)
+	run := startAsyncCLIRun([]string{"pixiv", "auth", "login", "--addr", addr, "--no-open", "--timeout", "5s", "--proxy", ""}, strings.NewReader(""), &stdout, &stderr)
 	defer run.wait()
 
 	waitForLoginServer(t, addr)
@@ -542,8 +728,12 @@ func TestAccountLoginBrowserSuccessStillAcceptsTerminalPrompt(t *testing.T) {
 	defer restoreOAuthBase()
 
 	opened := false
+	var completionBodies []string
 	restoreOpen := setTestOpenBrowser(t, func(rawURL string) error {
 		opened = true
+		if requestLoginCompletionPage(t, rawURL, &completionBodies) {
+			return nil
+		}
 		require.Contains(t, rawURL, "code_challenge=")
 		return nil
 	})
@@ -563,8 +753,172 @@ func TestAccountLoginBrowserSuccessStillAcceptsTerminalPrompt(t *testing.T) {
 	assert.Equal(t, int64(13579), store.Accounts[0].UserID)
 	assert.Equal(t, "pasted-user", store.Accounts[0].Username)
 	assert.Equal(t, "pasted-refresh-secret", store.Accounts[0].RefreshToken)
+	require.Len(t, completionBodies, 1)
+	assert.Contains(t, completionBodies[0], "Authentication complete.")
 	assert.NotContains(t, stdout.String(), "pasted-refresh-secret")
 	assert.NotContains(t, stderr.String(), "pasted-refresh-secret")
+}
+
+func TestAccountLoginCompletionOpenFailureDoesNotFailSavedLogin(t *testing.T) {
+	authPath, _ := useTempPaths(t)
+	addr := freeLoopbackAddr(t)
+	oauth := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.NoError(t, r.ParseForm())
+		assert.Equal(t, "pasted-code", r.Form.Get("code"))
+		require.NoError(t, json.NewEncoder(w).Encode(map[string]any{
+			"refresh_token": "completion-open-refresh-secret",
+			"user":          map[string]any{"id": "13580", "name": "completion-open-user"},
+		}))
+	}))
+	defer oauth.Close()
+	restoreOAuthBase := setTestOAuthBase(t, oauth.URL)
+	defer restoreOAuthBase()
+
+	restoreOpen := setTestOpenBrowser(t, func(rawURL string) error {
+		parsed, err := url.Parse(rawURL)
+		if err == nil && parsed.Path == "/complete" {
+			return errors.New("browser rejected completion page")
+		}
+		return nil
+	})
+	defer restoreOpen()
+	setPromptStub(t, promptStub{
+		inputs: []string{"pasted-code"},
+	})
+
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"pixiv", "auth", "login", "--addr", addr, "--timeout", "5s"}, strings.NewReader(""), &stdout, &stderr)
+
+	require.Equal(t, 0, code, stderr.String())
+	store, err := auth.LoadAuthStore(authPath)
+	require.NoError(t, err)
+	require.Len(t, store.Accounts, 1)
+	assert.Equal(t, int64(13580), store.Accounts[0].UserID)
+	assert.Contains(t, stderr.String(), "warning: could not open auth completion page")
+	assert.Contains(t, stderr.String(), "Auth completion page:")
+	assert.NotContains(t, stdout.String(), "completion-open-refresh-secret")
+	assert.NotContains(t, stderr.String(), "completion-open-refresh-secret")
+}
+
+func TestAccountLoginCompletionLoadTimeoutDoesNotFailSavedLogin(t *testing.T) {
+	authPath, _ := useTempPaths(t)
+	addr := freeLoopbackAddr(t)
+	oauth := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.NoError(t, r.ParseForm())
+		assert.Equal(t, "pasted-code", r.Form.Get("code"))
+		require.NoError(t, json.NewEncoder(w).Encode(map[string]any{
+			"refresh_token": "completion-timeout-refresh-secret",
+			"user":          map[string]any{"id": "13582", "name": "completion-timeout-user"},
+		}))
+	}))
+	defer oauth.Close()
+	restoreOAuthBase := setTestOAuthBase(t, oauth.URL)
+	defer restoreOAuthBase()
+
+	restoreOpen := setTestOpenBrowser(t, func(string) error {
+		return nil
+	})
+	defer restoreOpen()
+	restoreWatcher := setTestBrowserCodeWatcher(t, func(ctx context.Context, expectedState, expectedChallenge string, initialSeen map[string]struct{}, openURL func(string) error, submit func(loginServerResult), reportInvalid func(error)) {
+		submit(loginServerResult{code: "pasted-code"})
+	})
+	defer restoreWatcher()
+
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"pixiv", "auth", "login", "--addr", addr, "--timeout", "3s"}, strings.NewReader(""), &stdout, &stderr)
+
+	require.Equal(t, 0, code, stderr.String())
+	store, err := auth.LoadAuthStore(authPath)
+	require.NoError(t, err)
+	require.Len(t, store.Accounts, 1)
+	assert.Equal(t, int64(13582), store.Accounts[0].UserID)
+	assert.Contains(t, stderr.String(), "warning: auth completion page was not loaded")
+	assert.Contains(t, stderr.String(), "Auth completion page:")
+	assert.NotContains(t, stdout.String(), "completion-timeout-refresh-secret")
+	assert.NotContains(t, stderr.String(), "completion-timeout-refresh-secret")
+}
+
+func TestAccountLoginDefaultTimeoutDoesNotHangWhenCompletionPageIsNotLoaded(t *testing.T) {
+	authPath, _ := useTempPaths(t)
+	addr := freeLoopbackAddr(t)
+	oauth := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.NoError(t, r.ParseForm())
+		assert.Equal(t, "pasted-code", r.Form.Get("code"))
+		require.NoError(t, json.NewEncoder(w).Encode(map[string]any{
+			"refresh_token": "completion-default-refresh-secret",
+			"user":          map[string]any{"id": "13583", "name": "completion-default-user"},
+		}))
+	}))
+	defer oauth.Close()
+	restoreOAuthBase := setTestOAuthBase(t, oauth.URL)
+	defer restoreOAuthBase()
+
+	restoreOpen := setTestOpenBrowser(t, func(string) error {
+		return nil
+	})
+	defer restoreOpen()
+	restoreWatcher := setTestBrowserCodeWatcher(t, func(ctx context.Context, expectedState, expectedChallenge string, initialSeen map[string]struct{}, openURL func(string) error, submit func(loginServerResult), reportInvalid func(error)) {
+		submit(loginServerResult{code: "pasted-code"})
+	})
+	defer restoreWatcher()
+
+	var stdout, stderr bytes.Buffer
+	run := startAsyncCLIRun([]string{"pixiv", "auth", "login", "--addr", addr}, strings.NewReader(""), &stdout, &stderr)
+	defer run.wait()
+
+	require.Equal(t, 0, run.waitWithin(t, 3*time.Second), stderr.String())
+	store, err := auth.LoadAuthStore(authPath)
+	require.NoError(t, err)
+	require.Len(t, store.Accounts, 1)
+	assert.Equal(t, int64(13583), store.Accounts[0].UserID)
+	assert.NotContains(t, stdout.String(), "completion-default-refresh-secret")
+	assert.NotContains(t, stderr.String(), "completion-default-refresh-secret")
+}
+
+func TestAccountLoginJSONKeepsStdoutMachineReadableWithCompletionPage(t *testing.T) {
+	authPath, _ := useTempPaths(t)
+	addr := freeLoopbackAddr(t)
+	oauth := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.NoError(t, r.ParseForm())
+		assert.Equal(t, "json-code", r.Form.Get("code"))
+		require.NoError(t, json.NewEncoder(w).Encode(map[string]any{
+			"refresh_token": "json-refresh-secret",
+			"user":          map[string]any{"id": "13581", "name": "json-user"},
+		}))
+	}))
+	defer oauth.Close()
+	restoreOAuthBase := setTestOAuthBase(t, oauth.URL)
+	defer restoreOAuthBase()
+
+	var completionBodies []string
+	restoreOpen := setTestOpenBrowser(t, func(rawURL string) error {
+		if requestLoginCompletionPage(t, rawURL, &completionBodies) {
+			return nil
+		}
+		return nil
+	})
+	defer restoreOpen()
+	setPromptStub(t, promptStub{
+		inputs: []string{"json-code"},
+	})
+
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"pixiv", "auth", "login", "--addr", addr, "--timeout", "5s", "--json"}, strings.NewReader(""), &stdout, &stderr)
+
+	require.Equal(t, 0, code, stderr.String())
+	var out accountOut
+	require.NoError(t, json.Unmarshal(stdout.Bytes(), &out))
+	assert.Equal(t, int64(13581), out.UserID)
+	assert.Equal(t, "json-user", out.Username)
+	require.Len(t, completionBodies, 1)
+	assert.Contains(t, completionBodies[0], "Authentication complete.")
+	assert.NotContains(t, stdout.String(), "Authentication complete")
+	assert.NotContains(t, stdout.String(), "json-refresh-secret")
+	assert.NotContains(t, stderr.String(), "json-refresh-secret")
+
+	store, err := auth.LoadAuthStore(authPath)
+	require.NoError(t, err)
+	require.Len(t, store.Accounts, 1)
 }
 
 func TestAccountLoginAcceptsPixivCallbackURLWithoutState(t *testing.T) {
@@ -582,7 +936,11 @@ func TestAccountLoginAcceptsPixivCallbackURLWithoutState(t *testing.T) {
 	restoreOAuthBase := setTestOAuthBase(t, oauth.URL)
 	defer restoreOAuthBase()
 
-	restoreOpen := setTestOpenBrowser(t, func(string) error {
+	var completionBodies []string
+	restoreOpen := setTestOpenBrowser(t, func(rawURL string) error {
+		if requestLoginCompletionPage(t, rawURL, &completionBodies) {
+			return nil
+		}
 		return nil
 	})
 	defer restoreOpen()
@@ -600,6 +958,8 @@ func TestAccountLoginAcceptsPixivCallbackURLWithoutState(t *testing.T) {
 	assert.Equal(t, int64(97531), store.Accounts[0].UserID)
 	assert.Equal(t, "callback-user", store.Accounts[0].Username)
 	assert.Equal(t, "pixiv-callback-refresh-secret", store.Accounts[0].RefreshToken)
+	require.Len(t, completionBodies, 1)
+	assert.Contains(t, completionBodies[0], "Authentication complete.")
 	assert.NotContains(t, stdout.String(), "pixiv-callback-refresh-secret")
 	assert.NotContains(t, stderr.String(), "pixiv-callback-refresh-secret")
 }
@@ -676,7 +1036,11 @@ func TestAccountLoginBrowserWatcherStoresCallbackCode(t *testing.T) {
 	defer oauth.Close()
 	restoreOAuthBase := setTestOAuthBase(t, oauth.URL)
 	defer restoreOAuthBase()
-	restoreOpen := setTestOpenBrowser(t, func(string) error {
+	var completionBodies []string
+	restoreOpen := setTestOpenBrowser(t, func(rawURL string) error {
+		if requestLoginCompletionPage(t, rawURL, &completionBodies) {
+			return nil
+		}
 		return nil
 	})
 	defer restoreOpen()
@@ -695,6 +1059,8 @@ func TestAccountLoginBrowserWatcherStoresCallbackCode(t *testing.T) {
 	assert.Equal(t, int64(86420), store.Accounts[0].UserID)
 	assert.Equal(t, "watched-user", store.Accounts[0].Username)
 	assert.Equal(t, "watched-refresh-secret", store.Accounts[0].RefreshToken)
+	require.Len(t, completionBodies, 1)
+	assert.Contains(t, completionBodies[0], "Authentication complete.")
 	assert.NotContains(t, stdout.String(), "watched-refresh-secret")
 	assert.NotContains(t, stderr.String(), "watched-refresh-secret")
 }
@@ -721,7 +1087,11 @@ func TestAccountLoginDefaultBrowserWatcherReadsChromiumHistory(t *testing.T) {
 	defer oauth.Close()
 	restoreOAuthBase := setTestOAuthBase(t, oauth.URL)
 	defer restoreOAuthBase()
-	restoreOpen := setTestOpenBrowser(t, func(string) error {
+	var completionBodies []string
+	restoreOpen := setTestOpenBrowser(t, func(rawURL string) error {
+		if requestLoginCompletionPage(t, rawURL, &completionBodies) {
+			return nil
+		}
 		go func() {
 			time.Sleep(200 * time.Millisecond)
 			_ = os.WriteFile(historyPath, []byte("https://app-api.pixiv.net/web/v1/users/auth/pixiv/callback?code=history-watched-code\x00"), 0o600)
@@ -743,6 +1113,8 @@ func TestAccountLoginDefaultBrowserWatcherReadsChromiumHistory(t *testing.T) {
 	assert.Contains(t, stderr.String(), "Watching supported browser history/session state")
 	assert.Contains(t, stderr.String(), "Manual fallback page")
 	assert.NotContains(t, stderr.String(), "Waiting for callback")
+	require.Len(t, completionBodies, 1)
+	assert.Contains(t, completionBodies[0], "Authentication complete.")
 	assert.NotContains(t, stdout.String(), "history-watched-refresh-secret")
 	assert.NotContains(t, stderr.String(), "history-watched-refresh-secret")
 }
@@ -775,7 +1147,11 @@ func TestAccountLoginDefaultBrowserWatcherCatchesFastActiveTabCallback(t *testin
 		}
 		return "https://app-api.pixiv.net/web/v1/users/auth/pixiv/callback?code=fast-active-tab-code\n", nil
 	}
-	restoreOpen := setTestOpenBrowser(t, func(string) error {
+	var completionBodies []string
+	restoreOpen := setTestOpenBrowser(t, func(rawURL string) error {
+		if requestLoginCompletionPage(t, rawURL, &completionBodies) {
+			return nil
+		}
 		opened = true
 		return nil
 	})
@@ -791,6 +1167,8 @@ func TestAccountLoginDefaultBrowserWatcherCatchesFastActiveTabCallback(t *testin
 	assert.Equal(t, int64(445566), store.Accounts[0].UserID)
 	assert.Equal(t, "fast-active-tab-user", store.Accounts[0].Username)
 	assert.Equal(t, "fast-active-tab-refresh-secret", store.Accounts[0].RefreshToken)
+	require.Len(t, completionBodies, 1)
+	assert.Contains(t, completionBodies[0], "Authentication complete.")
 	assert.NotContains(t, stdout.String(), "fast-active-tab-refresh-secret")
 	assert.NotContains(t, stderr.String(), "fast-active-tab-refresh-secret")
 }
@@ -836,8 +1214,12 @@ func TestAccountLoginDefaultBrowserWatcherContinuesPixivPostRedirect(t *testing.
 		return bridge + "\n", nil
 	}
 	var openedURLs []string
+	var completionBodies []string
 	restoreOpen := setTestOpenBrowser(t, func(rawURL string) error {
 		openedURLs = append(openedURLs, rawURL)
+		if requestLoginCompletionPage(t, rawURL, &completionBodies) {
+			return nil
+		}
 		if strings.Contains(rawURL, "/web/v1/login?") {
 			openedLogin = true
 			loginChallenge = pixivLoginChallenge(rawURL)
@@ -858,6 +1240,8 @@ func TestAccountLoginDefaultBrowserWatcherContinuesPixivPostRedirect(t *testing.
 	assert.Equal(t, int64(778899), store.Accounts[0].UserID)
 	assert.Equal(t, "continued-user", store.Accounts[0].Username)
 	assert.Equal(t, "continued-refresh-secret", store.Accounts[0].RefreshToken)
+	require.Len(t, completionBodies, 1)
+	assert.Contains(t, completionBodies[0], "Authentication complete.")
 	assert.NotContains(t, stdout.String(), "continued-refresh-secret")
 	assert.NotContains(t, stderr.String(), "continued-refresh-secret")
 }
@@ -906,8 +1290,12 @@ func TestAccountLoginDefaultBrowserWatcherSkipsStalePostRedirectChallenge(t *tes
 		return staleBridge + "\n" + currentBridge + "\n", nil
 	}
 	var openedURLs []string
+	var completionBodies []string
 	restoreOpen := setTestOpenBrowser(t, func(rawURL string) error {
 		openedURLs = append(openedURLs, rawURL)
+		if requestLoginCompletionPage(t, rawURL, &completionBodies) {
+			return nil
+		}
 		if strings.Contains(rawURL, "/web/v1/login?") {
 			openedLogin = true
 			loginChallenge = pixivLoginChallenge(rawURL)
@@ -930,6 +1318,8 @@ func TestAccountLoginDefaultBrowserWatcherSkipsStalePostRedirectChallenge(t *tes
 	assert.Equal(t, int64(887766), store.Accounts[0].UserID)
 	assert.Equal(t, "same-tab-user", store.Accounts[0].Username)
 	assert.Equal(t, "same-tab-refresh-secret", store.Accounts[0].RefreshToken)
+	require.Len(t, completionBodies, 1)
+	assert.Contains(t, completionBodies[0], "Authentication complete.")
 	assert.NotContains(t, stdout.String(), "same-tab-refresh-secret")
 	assert.NotContains(t, stderr.String(), "same-tab-refresh-secret")
 }
@@ -976,7 +1366,11 @@ func TestAccountLoginDefaultBrowserWatcherReportsPostRedirectRelayOnce(t *testin
 		bridge = "https://accounts.pixiv.net/post-redirect?return_to=" + url.QueryEscape(returnTo)
 		return bridge + "\n", nil
 	}
+	var completionBodies []string
 	restoreOpen := setTestOpenBrowser(t, func(rawURL string) error {
+		if requestLoginCompletionPage(t, rawURL, &completionBodies) {
+			return nil
+		}
 		if strings.Contains(rawURL, "/web/v1/login?") {
 			openedLogin = true
 			loginChallenge = pixivLoginChallenge(rawURL)
@@ -998,6 +1392,8 @@ func TestAccountLoginDefaultBrowserWatcherReportsPostRedirectRelayOnce(t *testin
 	assert.Equal(t, int64(998877), store.Accounts[0].UserID)
 	assert.Equal(t, "retried-user", store.Accounts[0].Username)
 	assert.Equal(t, "retried-refresh-secret", store.Accounts[0].RefreshToken)
+	require.Len(t, completionBodies, 1)
+	assert.Contains(t, completionBodies[0], "Authentication complete.")
 	assert.NotContains(t, stdout.String(), "retried-refresh-secret")
 	assert.NotContains(t, stderr.String(), "retried-refresh-secret")
 }
@@ -1462,6 +1858,29 @@ func waitForLoginServer(t *testing.T, addr string) string {
 	}
 	t.Fatalf("login server did not start at %s", addr)
 	return ""
+}
+
+func visibleLoginForm(code string) url.Values {
+	return url.Values{
+		"code":                    {code},
+		"auth_completion_visible": {"1"},
+	}
+}
+
+func requestLoginCompletionPage(t *testing.T, rawURL string, bodies *[]string) bool {
+	t.Helper()
+	parsed, err := url.Parse(rawURL)
+	if err != nil || parsed.Path != "/complete" {
+		return false
+	}
+	resp, err := http.Get(rawURL)
+	require.NoError(t, err)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.NoError(t, resp.Body.Close())
+	require.Equal(t, http.StatusOK, resp.StatusCode, string(body))
+	*bodies = append(*bodies, string(body))
+	return true
 }
 
 func loginURLFromPage(t *testing.T, page string) string {

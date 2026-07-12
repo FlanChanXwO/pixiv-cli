@@ -30,8 +30,7 @@ type commandOptions struct {
 }
 
 type proxyOptions struct {
-	proxy   string
-	noProxy bool
+	proxy string
 }
 
 type clientConfig struct {
@@ -137,7 +136,6 @@ func (a app) bindCommonFlags(cmd *cobra.Command, opts *commandOptions) {
 func (a app) bindProxyFlags(cmd *cobra.Command, opts *proxyOptions) {
 	flags := cmd.Flags()
 	flags.StringVar(&opts.proxy, "proxy", "", "HTTP(S) proxy URL for this command")
-	flags.BoolVar(&opts.noProxy, "no-proxy", false, "clear HTTP(S) proxy for this command")
 }
 
 func (a app) clientRequest(cmd *cobra.Command, opts commandOptions, needsAuth bool) (application.ClientRequest, error) {
@@ -179,16 +177,7 @@ func (a app) clientRequest(cmd *cobra.Command, opts commandOptions, needsAuth bo
 }
 
 func proxyOverrideFromFlags(cmd *cobra.Command, opts proxyOptions) (*string, error) {
-	proxyChanged := cmd.Flags().Changed("proxy")
-	noProxyChanged := cmd.Flags().Changed("no-proxy")
-	if proxyChanged && noProxyChanged {
-		return nil, fmt.Errorf("use either --proxy or --no-proxy, not both")
-	}
-	if noProxyChanged && opts.noProxy {
-		empty := ""
-		return &empty, nil
-	}
-	if proxyChanged {
+	if cmd.Flags().Changed("proxy") {
 		return &opts.proxy, nil
 	}
 	return nil, nil

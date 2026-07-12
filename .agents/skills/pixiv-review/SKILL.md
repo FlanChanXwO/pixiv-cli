@@ -1,27 +1,21 @@
 ---
 name: pixiv-review
-description: Review pixiv-cli changes with repository-specific boundaries, MCP/CLI contracts, error handling, tests, and documentation requirements.
+description: Review pixiv-cli changes with finding-first output; review criteria live in docs/agents/review-checklist.md.
 ---
 
-# Pixiv Review Skill
+# Pixiv Review
 
-用于审查 `pixiv-cli` 的本地改动。输出必须 finding-first：先列问题，按严重程度排序，再给简短总结。没有问题时明确说没有发现阻塞问题，并说明剩余测试风险。
+审查本仓库改动。审查标准以 `docs/agents/review-checklist.md` 为准；本文件只定义流程和输出格式，不复制清单内容。
 
-## 必读上下文
+## 流程
 
-- `AGENTS.md`
-- `docs/agents/review-checklist.md`
-- 相关改动附近代码和测试
+1. 收集范围：`git status --short` 和 `git diff`（或用户指定的 commit/PR 范围）。
+2. 读取 `docs/agents/review-checklist.md`，按边界 → 行为风险 → MCP/CLI 契约 → 测试的顺序核对。
+3. 每个 finding 落到具体文件/行号；无法确认的放入 Open Questions，不猜测。
 
-## 审查重点
+## 输出
 
-- `internal/cli` 是否回流业务逻辑，`internal/application` 是否承接用例，`internal/bootstrap` 是否仍是生产 wiring。
-- CLI/MCP 是否通过 `internal/pixiv` facade 使用 Pixiv 能力。
-- MCP tool 名称、参数、structured output、delivery mode、文本语义变化是否更新测试和 `docs/mcp-tools.md`。
-- token 是否可能泄露；错误是否暴露真实原因；是否新增无依据限制或静默 fallback。
-- 用户可见变化是否更新 README/docs，必要时更新 `CHANGELOG.md`。
-
-## 输出格式
+finding-first，按严重程度排序：
 
 ```text
 Findings
@@ -31,15 +25,7 @@ Open Questions
 - ...
 
 Summary
-简短说明审查范围和剩余风险。
+审查范围、已运行/未运行的测试和剩余风险。
 ```
 
-若无 finding：
-
-```text
-Findings
-- 未发现阻塞问题。
-
-Summary
-说明已检查范围、已运行/未运行测试和剩余风险。
-```
+无 finding 时明确写"未发现阻塞问题"，并在 Summary 说明已检查范围和剩余测试风险。

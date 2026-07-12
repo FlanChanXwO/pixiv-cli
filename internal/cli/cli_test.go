@@ -68,7 +68,27 @@ func TestRunMCPDispatch(t *testing.T) {
 	assert.Equal(t, "http://flag-proxy", *seenProxy)
 }
 
-func TestRunMCPNoProxyDispatch(t *testing.T) {
+func TestRunMCPNoProxyFlagIsUnknown(t *testing.T) {
+	useTempPaths(t)
+
+	old := runMCPServer
+	t.Cleanup(func() { runMCPServer = old })
+
+	called := false
+	runMCPServer = func(_ context.Context, _ io.Writer, proxyOverride *string) error {
+		called = true
+		return nil
+	}
+
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"pixiv", "mcp", "--no-proxy"}, strings.NewReader(""), &stdout, &stderr)
+
+	require.NotZero(t, code)
+	assert.False(t, called)
+	assert.Contains(t, stderr.String(), `unknown flag: --no-proxy`)
+}
+
+func TestRunMCPEmptyProxyDispatch(t *testing.T) {
 	useTempPaths(t)
 
 	old := runMCPServer
@@ -81,30 +101,11 @@ func TestRunMCPNoProxyDispatch(t *testing.T) {
 	}
 
 	var stdout, stderr bytes.Buffer
-	code := Run([]string{"pixiv", "mcp", "--no-proxy"}, strings.NewReader(""), &stdout, &stderr)
+	code := Run([]string{"pixiv", "mcp", "--proxy", ""}, strings.NewReader(""), &stdout, &stderr)
 
 	require.Equal(t, 0, code, stderr.String())
 	require.NotNil(t, seenProxy)
 	assert.Empty(t, *seenProxy)
-}
-
-func TestRunMCPRejectsConflictingProxyFlags(t *testing.T) {
-	useTempPaths(t)
-
-	old := runMCPServer
-	t.Cleanup(func() { runMCPServer = old })
-	called := false
-	runMCPServer = func(context.Context, io.Writer, *string) error {
-		called = true
-		return nil
-	}
-
-	var stdout, stderr bytes.Buffer
-	code := Run([]string{"pixiv", "mcp", "--proxy", "http://flag-proxy", "--no-proxy"}, strings.NewReader(""), &stdout, &stderr)
-
-	require.NotZero(t, code)
-	assert.False(t, called)
-	assert.Contains(t, stderr.String(), "use either --proxy or --no-proxy, not both")
 }
 
 func TestRunMCPDispatchError(t *testing.T) {

@@ -47,9 +47,34 @@ type loginServerResult struct {
 	err  error
 }
 
+type loginCodeCapture struct {
+	code       string
+	completion *authCompletionPage
+	cleanup    func()
+}
+
 type loginInputResult struct {
 	loginServerResult
 	relayed bool
+}
+
+type authCompletionOutcome struct {
+	success bool
+}
+
+type authCompletionPage struct {
+	url string
+
+	mu             sync.Mutex
+	done           chan struct{}
+	served         chan struct{}
+	servedOnce     sync.Once
+	abandoned      chan struct{}
+	abandonedOnce  sync.Once
+	completed      bool
+	outcome        authCompletionOutcome
+	visibleWaiters int
+	visibleServed  bool
 }
 
 type browserCodeWatcher func(context.Context, string, string, map[string]struct{}, func(string) error, func(loginServerResult), func(error))
@@ -123,20 +148,27 @@ func (a app) accountLogin(cmd *cobra.Command, opts accountLoginOptions) error {
 
 	oauthBase, browserOpener, browserWatcher := currentLoginHooks()
 	loginURL := pixivLoginURL(loginFlow.Challenge, loginFlow.State)
-	code, err := a.waitForLoginCode(ctx, opts.addr, loginFlow.State, loginURL, opts.noOpen, browserOpener, browserWatcher)
+	capture, err := a.waitForLoginCode(ctx, opts.addr, loginFlow.State, loginURL, opts.noOpen, browserOpener, browserWatcher)
 	if err != nil {
 		return err
 	}
+	defer capture.cleanup()
 	fmt.Fprintln(a.errOut, "Authorization code received; exchanging it for a refresh token.")
 
 	result, err := services.Login.Complete(ctx, application.LoginCompleteRequest{
-		Code:               code,
+		Code:               capture.code,
 		Verifier:           loginFlow.Verifier,
 		OAuthBase:          oauthBase,
 		UseAfterLogin:      opts.useAfterLogin,
 		HTTPSProxyOverride: proxyOverride,
 	})
 	if err != nil {
+		capture.completion.complete(false)
+		_ = capture.completion.ensureShown(ctx, browserOpener, a.errOut)
+		return err
+	}
+	capture.completion.complete(true)
+	if err := capture.completion.ensureShown(ctx, browserOpener, a.errOut); err != nil {
 		return err
 	}
 
@@ -154,14 +186,15 @@ func (a app) accountLogin(cmd *cobra.Command, opts accountLoginOptions) error {
 	return nil
 }
 
-func (a app) waitForLoginCode(ctx context.Context, addr, state, loginURL string, noOpen bool, browserOpener func(string) error, browserWatcher browserCodeWatcher) (string, error) {
+func (a app) waitForLoginCode(ctx context.Context, addr, state, loginURL string, noOpen bool, browserOpener func(string) error, browserWatcher browserCodeWatcher) (loginCodeCapture, error) {
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {
-		return "", err
+		return loginCodeCapture{}, err
 	}
 	watchCtx, stopWatching := context.WithCancel(ctx)
 	defer stopWatching()
 	actualAddr := ln.Addr().String()
+	completion := newAuthCompletionPage("http://" + actualAddr + "/complete")
 	resultCh := make(chan loginServerResult, 1)
 	var submitOnce sync.Once
 	submit := func(result loginServerResult) {
@@ -210,11 +243,15 @@ func (a app) waitForLoginCode(ctx context.Context, addr, state, loginURL string,
 	})
 	mux.HandleFunc("/callback", func(w http.ResponseWriter, r *http.Request) {
 		result := loginCodeFromValues(r.URL.Query(), state, true)
-		writeLoginResult(w, result.err)
 		reportInvalidSubmission(result.err)
 		if result.err == nil {
+			completion.beginVisibleWaiter()
+			defer completion.endVisibleWaiter()
 			submit(result)
+			completion.write(w, r.Context(), true)
+			return
 		}
+		writeLoginResult(w, result.err)
 	})
 	mux.HandleFunc("/manual", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodGet {
@@ -240,11 +277,27 @@ func (a app) waitForLoginCode(ctx context.Context, addr, state, loginURL string,
 			writeLoginRelayResult(w)
 			return
 		}
-		writeLoginResult(w, result.err)
 		reportInvalidSubmission(result.err)
 		if result.err == nil {
+			if isVisibleLoginForm(r) {
+				completion.beginVisibleWaiter()
+				defer completion.endVisibleWaiter()
+				submit(result.loginServerResult)
+				completion.write(w, r.Context(), true)
+				return
+			}
 			submit(result.loginServerResult)
+			writeLoginResult(w, nil)
+			return
 		}
+		writeLoginResult(w, result.err)
+	})
+	mux.HandleFunc("/complete", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		completion.write(w, r.Context(), false)
 	})
 
 	server := &http.Server{Handler: mux}
@@ -256,7 +309,7 @@ func (a app) waitForLoginCode(ctx context.Context, addr, state, loginURL string,
 		}
 		serveErr <- err
 	}()
-	defer func() { _ = server.Shutdown(context.Background()) }()
+	cleanup := func() { _ = server.Shutdown(context.Background()) }
 
 	writeErr("Open this Pixiv login URL:\n%s\n", loginURL)
 	if noOpen {
@@ -315,17 +368,132 @@ func (a app) waitForLoginCode(ctx context.Context, addr, state, loginURL string,
 	select {
 	case result := <-resultCh:
 		if result.err != nil {
-			return "", result.err
+			cleanup()
+			return loginCodeCapture{}, result.err
 		}
-		return result.code, nil
+		return loginCodeCapture{code: result.code, completion: completion, cleanup: cleanup}, nil
 	case err := <-serveErr:
 		if err != nil {
-			return "", err
+			cleanup()
+			return loginCodeCapture{}, err
 		}
-		return "", errors.New("login server stopped before receiving authorization code")
+		cleanup()
+		return loginCodeCapture{}, errors.New("login server stopped before receiving authorization code")
 	case <-ctx.Done():
-		return "", ctx.Err()
+		cleanup()
+		return loginCodeCapture{}, ctx.Err()
 	}
+}
+
+func newAuthCompletionPage(rawURL string) *authCompletionPage {
+	return &authCompletionPage{
+		url:       rawURL,
+		done:      make(chan struct{}),
+		served:    make(chan struct{}),
+		abandoned: make(chan struct{}),
+	}
+}
+
+func (p *authCompletionPage) beginVisibleWaiter() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.visibleWaiters++
+}
+
+func (p *authCompletionPage) endVisibleWaiter() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.visibleWaiters > 0 {
+		p.visibleWaiters--
+	}
+	if p.visibleWaiters == 0 && !p.visibleServed {
+		p.abandonedOnce.Do(func() { close(p.abandoned) })
+	}
+}
+
+func (p *authCompletionPage) hasVisibleCompletion() bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.visibleWaiters > 0 || p.visibleServed
+}
+
+func (p *authCompletionPage) complete(success bool) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.completed {
+		return
+	}
+	p.outcome = authCompletionOutcome{success: success}
+	p.completed = true
+	close(p.done)
+}
+
+func (p *authCompletionPage) ensureShown(ctx context.Context, browserOpener func(string) error, errOut io.Writer) error {
+	if p.hasVisibleCompletion() {
+		served, abandoned := p.waitVisible(ctx)
+		if served {
+			return nil
+		}
+		if !abandoned {
+			fmt.Fprintf(errOut, "warning: auth completion page was not loaded before the login context ended\n")
+			fmt.Fprintf(errOut, "Auth completion page: %s\n", p.url)
+			return nil
+		}
+	}
+	if browserOpener == nil {
+		fmt.Fprintf(errOut, "warning: auth completion page cannot be opened automatically: browser opener is not configured\n")
+		fmt.Fprintf(errOut, "Auth completion page: %s\n", p.url)
+		return nil
+	}
+	if err := browserOpener(p.url); err != nil {
+		fmt.Fprintf(errOut, "warning: could not open auth completion page: %v\n", err)
+		fmt.Fprintf(errOut, "Auth completion page: %s\n", p.url)
+		return nil
+	}
+	if _, hasDeadline := ctx.Deadline(); hasDeadline && !p.waitServed(ctx) {
+		fmt.Fprintf(errOut, "warning: auth completion page was not loaded before the login context ended\n")
+		fmt.Fprintf(errOut, "Auth completion page: %s\n", p.url)
+	}
+	return nil
+}
+
+func (p *authCompletionPage) waitVisible(ctx context.Context) (served bool, abandoned bool) {
+	select {
+	case <-p.served:
+		return true, false
+	case <-p.abandoned:
+		return false, true
+	case <-ctx.Done():
+		return false, false
+	}
+}
+
+func (p *authCompletionPage) waitServed(ctx context.Context) bool {
+	select {
+	case <-p.served:
+		return true
+	case <-ctx.Done():
+		return false
+	}
+}
+
+func (p *authCompletionPage) write(w http.ResponseWriter, ctx context.Context, visible bool) {
+	select {
+	case <-p.done:
+	case <-ctx.Done():
+		if visible {
+			p.abandonedOnce.Do(func() { close(p.abandoned) })
+		}
+		return
+	}
+	p.mu.Lock()
+	outcome := p.outcome
+	if visible {
+		p.visibleServed = true
+	}
+	p.mu.Unlock()
+	writeAuthCompletionPage(w, outcome.success)
+	p.servedOnce.Do(func() { close(p.served) })
 }
 
 func writeLoginForm(w http.ResponseWriter, loginURL string) {
@@ -334,19 +502,40 @@ func writeLoginForm(w http.ResponseWriter, loginURL string) {
 <html><body>
 <p>Open <a href="%s">Pixiv login</a>, then paste a callback URL, pixiv:// URL, Pixiv relay URL, or raw code.</p>
 <form method="post" action="/manual">
+<input type="hidden" name="auth_completion_visible" value="1">
 <input name="code" autofocus>
 <button type="submit">Submit</button>
 </form>
 </body></html>`, html.EscapeString(loginURL))
 }
 
+func isVisibleLoginForm(r *http.Request) bool {
+	return r.Form.Get("auth_completion_visible") == "1"
+}
+
 func writeLoginResult(w http.ResponseWriter, err error) {
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		http.Error(w, "Authentication was not completed. Return to your terminal for details.", http.StatusBadRequest)
 		return
 	}
 	_, _ = io.WriteString(w, "authorization code received; return to the CLI\n")
+}
+
+func writeAuthCompletionPage(w http.ResponseWriter, success bool) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	title := "Authentication was not completed."
+	message := "Return to your terminal for details."
+	if success {
+		title = "Authentication complete."
+		message = "You can close this page and return to your terminal."
+	}
+	fmt.Fprintf(w, `<!doctype html>
+<html><head><meta charset="utf-8"><title>%s</title></head>
+<body>
+<h1>%s</h1>
+<p>%s</p>
+</body></html>`, html.EscapeString(title), html.EscapeString(title), html.EscapeString(message))
 }
 
 func writeLoginRelayResult(w http.ResponseWriter) {

@@ -97,7 +97,7 @@ func TestSearchProxyFlagOverridesEnvAndConfig(t *testing.T) {
 	assert.Equal(t, "http://flag-proxy", seenProxy)
 }
 
-func TestSearchNoProxyFlagClearsEnvAndConfig(t *testing.T) {
+func TestSearchEmptyProxyFlagClearsEnvAndConfig(t *testing.T) {
 	_, configPath := useTempPaths(t)
 	require.NoError(t, auth.WritePrivateFile(configPath, []byte("[network]\nhttps_proxy = \"http://file-proxy\"\n")))
 	t.Setenv("https_proxy", "http://env-proxy")
@@ -114,20 +114,20 @@ func TestSearchNoProxyFlagClearsEnvAndConfig(t *testing.T) {
 	})
 
 	var stdout, stderr bytes.Buffer
-	code := Run([]string{"pixiv", "search", "miku", "--no-proxy"}, strings.NewReader(""), &stdout, &stderr)
+	code := Run([]string{"pixiv", "search", "miku", "--proxy", ""}, strings.NewReader(""), &stdout, &stderr)
 
 	require.Equal(t, 0, code, stderr.String())
 	assert.Empty(t, seenProxy)
 }
 
-func TestSearchRejectsConflictingProxyFlags(t *testing.T) {
+func TestSearchNoProxyFlagIsUnknown(t *testing.T) {
 	useTempPaths(t)
 
 	var stdout, stderr bytes.Buffer
 	code := Run([]string{"pixiv", "search", "miku", "--proxy", "http://flag-proxy", "--no-proxy"}, strings.NewReader(""), &stdout, &stderr)
 
 	require.NotZero(t, code)
-	assert.Contains(t, stderr.String(), "use either --proxy or --no-proxy, not both")
+	assert.Contains(t, stderr.String(), `unknown flag: --no-proxy`)
 }
 
 func TestDataCommandsProxyFlagPassesRuntimeOverride(t *testing.T) {
@@ -162,15 +162,15 @@ func TestDataCommandsProxyFlagPassesRuntimeOverride(t *testing.T) {
 	}
 }
 
-func TestDataCommandsNoProxyFlagClearsRuntimeProxy(t *testing.T) {
+func TestDataCommandsEmptyProxyFlagClearsRuntimeProxy(t *testing.T) {
 	tests := []struct {
 		name string
 		args []string
 	}{
-		{name: "detail", args: []string{"pixiv", "detail", "42", "--no-proxy"}},
-		{name: "ranking", args: []string{"pixiv", "ranking", "--no-proxy"}},
-		{name: "recommended", args: []string{"pixiv", "recommended", "--no-proxy"}},
-		{name: "download", args: []string{"pixiv", "download", "42", "--no-proxy"}},
+		{name: "detail", args: []string{"pixiv", "detail", "42", "--proxy", ""}},
+		{name: "ranking", args: []string{"pixiv", "ranking", "--proxy", ""}},
+		{name: "recommended", args: []string{"pixiv", "recommended", "--proxy", ""}},
+		{name: "download", args: []string{"pixiv", "download", "42", "--proxy", ""}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -194,12 +194,12 @@ func TestDataCommandsNoProxyFlagClearsRuntimeProxy(t *testing.T) {
 	}
 }
 
-func TestNetworkDataCommandsRejectConflictingProxyFlags(t *testing.T) {
+func TestNetworkDataCommandsNoProxyFlagIsUnknown(t *testing.T) {
 	tests := [][]string{
-		{"pixiv", "detail", "42", "--proxy", "http://flag-proxy", "--no-proxy"},
-		{"pixiv", "ranking", "--proxy", "http://flag-proxy", "--no-proxy"},
-		{"pixiv", "recommended", "--proxy", "http://flag-proxy", "--no-proxy"},
-		{"pixiv", "download", "42", "--proxy", "http://flag-proxy", "--no-proxy"},
+		{"pixiv", "detail", "42", "--no-proxy"},
+		{"pixiv", "ranking", "--no-proxy"},
+		{"pixiv", "recommended", "--no-proxy"},
+		{"pixiv", "download", "42", "--no-proxy"},
 	}
 	for _, args := range tests {
 		t.Run(strings.Join(args[1:], " "), func(t *testing.T) {
@@ -209,7 +209,7 @@ func TestNetworkDataCommandsRejectConflictingProxyFlags(t *testing.T) {
 			code := Run(args, strings.NewReader(""), &stdout, &stderr)
 
 			require.NotZero(t, code)
-			assert.Contains(t, stderr.String(), "use either --proxy or --no-proxy, not both")
+			assert.Contains(t, stderr.String(), `unknown flag: --no-proxy`)
 		})
 	}
 }
