@@ -29,8 +29,74 @@ func TestCheckedWebPaginationUsesMachineArithmeticBoundaries(t *testing.T) {
 
 			pageStart := largestSafe - largestSafe%pageSize
 			remaining := maxInt - pageStart
-			assert.True(t, webHasNext(largestSafe, remaining-1, maxInt, pageSize))
-			assert.False(t, webHasNext(largestSafe, remaining, maxInt, pageSize))
+			assert.True(t, webHasNext(largestSafe, remaining-1, int64(maxInt), pageSize))
+			assert.False(t, webHasNext(largestSafe, remaining, int64(maxInt), pageSize))
+		})
+	}
+}
+
+func TestWebHasNextKeepsTotalAsInt64(t *testing.T) {
+	const aboveMaxInt32 = int64(1<<31) + 1
+	assert.True(t, webHasNext(1, 60, aboveMaxInt32, 60))
+	assert.False(t, webHasNext(120, 1, int64(120), 60))
+	assert.True(t, webHasNext(61, 1, int64(62), 60))
+}
+
+func TestClientContinuationPreservesTotalsBeyondInt32(t *testing.T) {
+	tests := []struct {
+		name       string
+		body       string
+		call       func(*Client) (int, bool, error)
+		wantOffset int
+	}{
+		{
+			name: "search illust",
+			body: `{"error":false,"body":{"illustManga":{"total":2147483648,"data":[{"id":"1","userId":"10"}]}}}`,
+			call: func(client *Client) (int, bool, error) {
+				result, err := client.SearchIllust(context.Background(), "miku", "partial_match_for_tags", "date_desc", "", 0)
+				if err != nil {
+					return 0, false, err
+				}
+				return result.NextOffset, result.ContinuationExists, nil
+			},
+			wantOffset: 60,
+		},
+		{
+			name: "illust ranking",
+			body: `{"rank_total":2147483648,"contents":[{"illust_id":1,"user_id":10}]}`,
+			call: func(client *Client) (int, bool, error) {
+				result, err := client.IllustRanking(context.Background(), "day", "", 0)
+				if err != nil {
+					return 0, false, err
+				}
+				return result.NextOffset, result.ContinuationExists, nil
+			},
+			wantOffset: 50,
+		},
+		{
+			name: "search user",
+			body: `{"error":false,"body":{"illustManga":{"total":2147483648,"data":[{"id":"1","userId":"10"}]}}}`,
+			call: func(client *Client) (int, bool, error) {
+				result, err := client.SearchUser(context.Background(), "artist", 0)
+				if err != nil {
+					return 0, false, err
+				}
+				return result.NextOffset, result.ContinuationExists, nil
+			},
+			wantOffset: 60,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				fmt.Fprint(w, test.body)
+			}))
+			defer server.Close()
+			client := New(WithHTTPClient(server.Client()), WithWebBase(server.URL))
+			offset, continuation, err := test.call(client)
+			require.NoError(t, err)
+			assert.True(t, continuation)
+			assert.Equal(t, test.wantOffset, offset)
 		})
 	}
 }

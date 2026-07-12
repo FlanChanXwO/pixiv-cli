@@ -129,7 +129,7 @@ func (c *Client) SearchIllust(ctx context.Context, word, target, sort, duration 
 		illusts = append(illusts, mapSearchIllust(item))
 	}
 	result := &model.IllustList{Illusts: illusts}
-	if webHasNext(offset, rawCount, int(group.Total), 60) {
+	if webHasNext(offset, rawCount, int64(group.Total), 60) {
 		result.NextOffset = pagination.nextOffset
 		result.ContinuationExists = true
 	}
@@ -211,7 +211,7 @@ func (c *Client) IllustRanking(ctx context.Context, mode, date string, offset in
 		illusts = append(illusts, mapRankingIllust(item))
 	}
 	result := &model.IllustList{Illusts: illusts}
-	if webHasNext(offset, rawCount, int(out.RankTotal), 50) {
+	if webHasNext(offset, rawCount, int64(out.RankTotal), 50) {
 		result.NextOffset = pagination.nextOffset
 		result.ContinuationExists = true
 	}
@@ -364,17 +364,17 @@ func trimWebPageOffset[T any](items []T, offset, pageSize int) []T {
 	return items[skip:]
 }
 
-func webHasNext(offset, rawCount, total, pageSize int) bool {
+func webHasNext(offset, rawCount int, total int64, pageSize int) bool {
 	if rawCount == 0 {
 		return false
 	}
 	if total > 0 {
-		pageStart := offset - offset%pageSize
+		pageStart := int64(offset - offset%pageSize)
 		if pageStart >= total {
 			return false
 		}
 		// 用减法表达 pageStart+rawCount<total，避免靠近 MaxInt 时加法回绕。
-		return rawCount < total-pageStart
+		return int64(rawCount) < total-pageStart
 	}
 	// 无 total 时，只在完整上游批次后继续；下一空批次会自然收敛。
 	return rawCount >= pageSize
@@ -631,7 +631,7 @@ type webSearchBody struct {
 
 type webSearchGroup struct {
 	Data  requiredWebList[webSearchIllust] `json:"data"`
-	Total flexInt                          `json:"total"`
+	Total flexInt64                        `json:"total"`
 }
 
 type requiredWebList[T any] struct {
@@ -720,7 +720,7 @@ type webPageURLs struct {
 
 type webRankingResponse struct {
 	Contents  requiredWebList[webRankingItem] `json:"contents"`
-	RankTotal flexInt                         `json:"rank_total"`
+	RankTotal flexInt64                       `json:"rank_total"`
 }
 
 type webRankingItem struct {
