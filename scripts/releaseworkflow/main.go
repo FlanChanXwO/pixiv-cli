@@ -14,6 +14,10 @@ import (
 // actionReferencePattern 只接受远端 action 的不可变完整对象 ID，避免可移动 tag 改写发布供应链。
 var actionReferencePattern = regexp.MustCompile(`^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+@[0-9a-f]{40}$`)
 
+// GitHub 表达式允许 `${{secrets.NAME}}` 等无空格写法；解析后的 YAML scalar 仍保留表达式文本，
+// 所以按 secrets 与点号的语义匹配，不能依赖某一种排版。
+var secretReferencePattern = regexp.MustCompile(`(?i)\bsecrets\s*\.`)
+
 // releaseMatrixTargets 将 runner、Go 平台、Rust target 和 release asset 名称绑为同一集合，
 // 防止任一字段的局部改动让六平台发布遗漏或错配。
 var releaseMatrixTargets = map[string]struct{}{
@@ -65,7 +69,7 @@ func checkWorkflow(body []byte) error {
 	if !ok || jobs.Kind != yaml.MappingNode {
 		return errors.New("workflow must have a jobs mapping")
 	}
-	if err := requireOnlyMappingKeys(jobs, "validate", "build", "publish"); err != nil {
+	if err := requireOnlyMappingKeys(jobs, "validate", "build", "verify_release_source", "publish"); err != nil {
 		return fmt.Errorf("workflow jobs: %w", err)
 	}
 	if err := checkActionReferences(root); err != nil {
@@ -79,6 +83,10 @@ func checkWorkflow(body []byte) error {
 	if !ok || build.Kind != yaml.MappingNode {
 		return errors.New("workflow must have a build job")
 	}
+	verifyReleaseSource, ok := mappingValue(jobs, "verify_release_source")
+	if !ok || verifyReleaseSource.Kind != yaml.MappingNode {
+		return errors.New("workflow must have a verify_release_source job")
+	}
 	publish, ok := mappingValue(jobs, "publish")
 	if !ok || publish.Kind != yaml.MappingNode {
 		return errors.New("workflow must have a publish job")
@@ -89,11 +97,14 @@ func checkWorkflow(body []byte) error {
 	if err := checkBuildJob(build); err != nil {
 		return err
 	}
-	ancestryStep, publishSteps, err := checkPublishJob(publish)
+	if err := checkVerifyReleaseSourceJob(verifyReleaseSource); err != nil {
+		return err
+	}
+	signingIndex, publishSteps, err := checkPublishJob(publish)
 	if err != nil {
 		return err
 	}
-	if err := checkSigningSecretReachability(jobs, publishSteps, ancestryStep); err != nil {
+	if err := checkSigningSecretReachability(validate, build, verifyReleaseSource, publish, publishSteps, signingIndex); err != nil {
 		return err
 	}
 	return nil
@@ -110,6 +121,9 @@ func checkTagTrigger(root *yaml.Node) error {
 	push, ok := mappingValue(on, "push")
 	if !ok || push.Kind != yaml.MappingNode {
 		return errors.New("on.push must be a mapping")
+	}
+	if err := requireOnlyMappingKeys(push, "tags"); err != nil {
+		return errors.New("on.push must contain only tags")
 	}
 	tags, ok := mappingValue(push, "tags")
 	if !ok || tags.Kind != yaml.SequenceNode || len(tags.Content) != 1 || tags.Content[0].Value != "v[0-9]*" {
@@ -168,6 +182,9 @@ func collectActionReferences(node *yaml.Node, references *[]string, invalidRefer
 }
 
 func checkValidateJob(job *yaml.Node) error {
+	if err := requireNoEnvironment(job, "validate job"); err != nil {
+		return err
+	}
 	if err := requireScalar(job, "runs-on", "ubuntu-24.04"); err != nil {
 		return fmt.Errorf("validate job: %w", err)
 	}
@@ -187,6 +204,9 @@ func checkValidateJob(job *yaml.Node) error {
 }
 
 func checkBuildJob(job *yaml.Node) error {
+	if err := requireNoEnvironment(job, "build job"); err != nil {
+		return err
+	}
 	if err := requireScalar(job, "needs", "validate"); err != nil {
 		return fmt.Errorf("build job: %w", err)
 	}
@@ -227,8 +247,12 @@ func checkBuildJob(job *yaml.Node) error {
 		{command: "python -m pre_commit run --all-files"},
 		{command: "git diff --check"},
 	} {
-		if !hasCommand(job, gate.workingDirectory, gate.command) {
+		step, ok := qualityGateStep(job, gate.workingDirectory, gate.command)
+		if !ok {
 			return fmt.Errorf("build must run %s", gate.command)
+		}
+		if err := requireUnconditionalQualityGate(step, gate.command); err != nil {
+			return err
 		}
 	}
 	if !hasCommand(job, "", "bash scripts/build-staticlibs.sh --target '${{ matrix.rust_target }}'") {
@@ -240,6 +264,46 @@ func checkBuildJob(job *yaml.Node) error {
 	}
 	if err := requireRunFragments(packageStep, "build packaging step", "--repo-root .", "--target '${{ matrix.goos }}/${{ matrix.goarch }}'", "--output-dir dist"); err != nil {
 		return err
+	}
+	return nil
+}
+
+func requireNoEnvironment(job *yaml.Node, jobName string) error {
+	if _, exists := mappingValue(job, "environment"); exists {
+		return fmt.Errorf("%s must not declare an environment", jobName)
+	}
+	return nil
+}
+
+func qualityGateStep(job *yaml.Node, directory, command string) (*yaml.Node, bool) {
+	steps, err := jobSteps(job)
+	if err != nil {
+		return nil, false
+	}
+	for _, step := range steps {
+		if directory != "" {
+			workingDirectory, hasWorkingDirectory := mappingValue(step, "working-directory")
+			if !hasWorkingDirectory || workingDirectory.Kind != yaml.ScalarNode || workingDirectory.Value != directory {
+				continue
+			}
+		} else {
+			workingDirectory, hasWorkingDirectory := mappingValue(step, "working-directory")
+			if hasWorkingDirectory && (workingDirectory.Kind != yaml.ScalarNode || workingDirectory.Value != ".") {
+				continue
+			}
+		}
+		if hasStepCommand(step, command) {
+			return step, true
+		}
+	}
+	return nil, false
+}
+
+func requireUnconditionalQualityGate(step *yaml.Node, command string) error {
+	for _, key := range []string{"continue-on-error", "if"} {
+		if _, exists := mappingValue(step, key); exists {
+			return fmt.Errorf("build quality gate %s must not define continue-on-error or if", command)
+		}
 	}
 	return nil
 }
@@ -274,8 +338,48 @@ func checkReleaseMatrix(matrix *yaml.Node) error {
 	return nil
 }
 
-func checkPublishJob(job *yaml.Node) (int, []*yaml.Node, error) {
+func checkVerifyReleaseSourceJob(job *yaml.Node) error {
+	if err := requireNoEnvironment(job, "verify_release_source job"); err != nil {
+		return err
+	}
 	if err := requireScalar(job, "needs", "build"); err != nil {
+		return fmt.Errorf("verify_release_source job: %w", err)
+	}
+	if err := requireScalar(job, "runs-on", "ubuntu-24.04"); err != nil {
+		return fmt.Errorf("verify_release_source job: %w", err)
+	}
+	if err := requireContentsPermission(job, "read"); err != nil {
+		return fmt.Errorf("verify_release_source job: %w", err)
+	}
+	steps, err := jobSteps(job)
+	if err != nil {
+		return fmt.Errorf("verify_release_source job: %w", err)
+	}
+	ancestryIndex := -1
+	for index, step := range steps {
+		if hasStepCommand(step, "git merge-base --is-ancestor HEAD \"origin/$DEFAULT_BRANCH\"") {
+			ancestryIndex = index
+			if !hasStepCommand(step, "git show-ref --verify --quiet \"refs/remotes/origin/$DEFAULT_BRANCH\"") {
+				return errors.New("verify_release_source default-branch ancestry gate must verify origin/$DEFAULT_BRANCH")
+			}
+			env, ok := mappingValue(step, "env")
+			if !ok || requireScalar(env, "DEFAULT_BRANCH", "${{ github.event.repository.default_branch }}") != nil {
+				return errors.New("verify_release_source default-branch ancestry gate must derive DEFAULT_BRANCH from the release repository")
+			}
+			break
+		}
+	}
+	if ancestryIndex < 0 {
+		return errors.New("verify_release_source job must contain a default-branch ancestry gate")
+	}
+	if !hasTrustedCheckoutBefore(steps, ancestryIndex) {
+		return errors.New("verify_release_source default-branch ancestry gate requires a full, credential-free checkout before it runs")
+	}
+	return nil
+}
+
+func checkPublishJob(job *yaml.Node) (int, []*yaml.Node, error) {
+	if err := requireScalar(job, "needs", "verify_release_source"); err != nil {
 		return 0, nil, fmt.Errorf("publish job: %w", err)
 	}
 	if err := requireScalar(job, "runs-on", "ubuntu-24.04"); err != nil {
@@ -291,38 +395,12 @@ func checkPublishJob(job *yaml.Node) (int, []*yaml.Node, error) {
 	if err != nil {
 		return 0, nil, fmt.Errorf("publish job: %w", err)
 	}
-	ancestryIndex := -1
-	for index, step := range steps {
-		if hasStepCommand(step, "git merge-base --is-ancestor HEAD \"origin/$DEFAULT_BRANCH\"") {
-			ancestryIndex = index
-			if !hasStepCommand(step, "git show-ref --verify --quiet \"refs/remotes/origin/$DEFAULT_BRANCH\"") {
-				return 0, nil, errors.New("default-branch ancestry gate must verify origin/$DEFAULT_BRANCH")
-			}
-			env, ok := mappingValue(step, "env")
-			if !ok || requireScalar(env, "DEFAULT_BRANCH", "${{ github.event.repository.default_branch }}") != nil {
-				return 0, nil, errors.New("default-branch ancestry gate must derive DEFAULT_BRANCH from the release repository")
-			}
-			break
-		}
-	}
-	if ancestryIndex < 0 {
-		return 0, nil, errors.New("publish job must contain a default-branch ancestry gate")
-	}
-	if !hasTrustedCheckoutBefore(steps, ancestryIndex) {
-		return 0, nil, errors.New("default-branch ancestry gate requires a full, credential-free checkout before it runs")
-	}
 	signingIndex, signingStep := signingStepIndex(steps)
 	if signingIndex < 0 {
 		return 0, nil, errors.New("publish job must contain a signing-secret step")
 	}
-	if signingIndex <= ancestryIndex {
-		return 0, nil, errors.New("signing secret is reachable before the default-branch ancestry gate")
-	}
 	if err := checkSigningStep(signingStep); err != nil {
 		return 0, nil, err
-	}
-	if !hasCommand(job, "", "channel=$(go run ./scripts/releaseassets channel --version \"${GITHUB_REF_NAME#v}\")") {
-		return 0, nil, errors.New("publish job must classify the tag with releaseassets channel")
 	}
 	for _, step := range steps {
 		run, hasRun := mappingValue(step, "run")
@@ -340,24 +418,76 @@ func checkPublishJob(job *yaml.Node) (int, []*yaml.Node, error) {
 	if !hasShellArgument(releaseStep, "--verify-tag") {
 		return 0, nil, errors.New("release publishing step must contain --verify-tag")
 	}
+	if err := checkReleaseChannelBinding(releaseStep); err != nil {
+		return 0, nil, err
+	}
 	if err := requireRunFragments(releaseStep, "release publishing step", "${prerelease[@]}", "release/checksums.json", "gh release view \"$GITHUB_REF_NAME\"", "gh release edit \"$GITHUB_REF_NAME\" --draft=false"); err != nil {
 		return 0, nil, err
 	}
-	return ancestryIndex, steps, nil
+	return signingIndex, steps, nil
 }
 
-func checkSigningSecretReachability(jobs *yaml.Node, publishSteps []*yaml.Node, ancestryIndex int) error {
-	// GitHub 只会在 job 启动时注入 environment secret；因此除 publish 在信任 gate 后的步骤外，
-	// 任何 `${{ secrets.* }}` 引用都意味着未经默认分支验证就可能触及凭据。
-	for index := 0; index+1 < len(jobs.Content); index += 2 {
-		name, job := jobs.Content[index].Value, jobs.Content[index+1]
-		if name != "publish" && containsSigningSecretReference(job) {
-			return errors.New("signing secret is reachable before the default-branch ancestry gate")
+func checkReleaseChannelBinding(releaseStep *yaml.Node) error {
+	// 将 channel 判定、数组赋值和 gh release create 固定在同一 run 中，避免一个无关命令
+	// 满足表面存在性检查、而实际发布命令绕过 SemVer channel 结果。
+	lines := splitCommands(requireRunValue(releaseStep))
+	sequence := []string{
+		"channel=$(go run ./scripts/releaseassets channel --version \"${GITHUB_REF_NAME#v}\")",
+		"prerelease=()",
+		"if [ \"$channel\" = prerelease ]; then",
+		"prerelease+=(--prerelease)",
+		"elif [ \"$channel\" != stable ]; then",
+		"exit 1",
+		"fi",
+		"gh release create \"$GITHUB_REF_NAME\" \\",
+	}
+	position := -1
+	for _, command := range sequence {
+		position = commandIndexAfter(lines, command, position)
+		if position < 0 {
+			return errors.New("release publishing step must bind releaseassets channel to the prerelease flag")
+		}
+	}
+	if commandIndexAfter(lines, "\"${prerelease[@]}\" \\", position) < 0 {
+		return errors.New("release publishing step must pass the channel-derived prerelease flag to gh release create")
+	}
+	if countCommand(lines, "prerelease=()") != 1 || countCommand(lines, "prerelease+=(--prerelease)") != 1 || countRunFragment(releaseStep, "--prerelease") != 1 {
+		return errors.New("release publishing step must not hard-code or reassign the prerelease flag")
+	}
+	for _, command := range lines {
+		if !strings.Contains(command, "prerelease") {
+			continue
+		}
+		switch command {
+		case "prerelease=()", "if [ \"$channel\" = prerelease ]; then", "prerelease+=(--prerelease)", "\"${prerelease[@]}\" \\":
+			continue
+		default:
+			return errors.New("release publishing step must not hard-code or reassign the prerelease flag")
+		}
+	}
+	return nil
+}
+
+func checkSigningSecretReachability(validate, build, verifyReleaseSource, publish *yaml.Node, publishSteps []*yaml.Node, signingIndex int) error {
+	// release Environment 的 secret 只应在 verify_release_source 成功后才由 publish job 注入；
+	// 非发布 job、publish 的 job 级字段和非签名 step 都不允许引用 secrets，防止同一 job
+	// 启动即注入的 credential 在 shell gate 或其它步骤被提前访问。
+	for _, job := range []*yaml.Node{validate, build, verifyReleaseSource} {
+		if containsSigningSecretReference(job) {
+			return errors.New("non-release job must not reference secrets")
+		}
+	}
+	for index := 0; index+1 < len(publish.Content); index += 2 {
+		if publish.Content[index].Value != "steps" && containsSigningSecretReference(publish.Content[index+1]) {
+			return errors.New("publish job must not reference secrets outside its signing metadata step")
 		}
 	}
 	for index, step := range publishSteps {
-		if index <= ancestryIndex && containsSigningSecretReference(step) {
-			return errors.New("signing secret is reachable before the default-branch ancestry gate")
+		if index != signingIndex && containsSigningSecretReference(step) {
+			return errors.New("publish job must not reference secrets outside its signing metadata step")
+		}
+		if index == signingIndex && containsSigningSecretReferenceOutsideEnvironment(step) {
+			return errors.New("signing metadata step must reference secrets only through its expected environment")
 		}
 	}
 	return nil
@@ -367,6 +497,9 @@ func checkSigningStep(step *yaml.Node) error {
 	env, ok := mappingValue(step, "env")
 	if !ok || env.Kind != yaml.MappingNode {
 		return errors.New("signing-secret step must declare its secret environment")
+	}
+	if err := requireOnlyMappingKeys(env, "RELEASE_SIGNING_PRIVATE_KEY", "RELEASE_SIGNING_KEY_ID"); err != nil {
+		return errors.New("signing-secret step must declare only its expected signing secrets")
 	}
 	if err := requireScalar(env, "RELEASE_SIGNING_PRIVATE_KEY", "${{ secrets.RELEASE_SIGNING_PRIVATE_KEY }}"); err != nil {
 		return errors.New("signing-secret step must use the protected private-key secret")
@@ -399,11 +532,26 @@ func containsSigningSecretReference(node *yaml.Node) bool {
 	if node == nil {
 		return false
 	}
-	if node.Kind == yaml.ScalarNode && strings.Contains(node.Value, "${{ secrets.") {
+	if node.Kind == yaml.ScalarNode && secretReferencePattern.MatchString(node.Value) {
 		return true
 	}
 	for _, child := range node.Content {
 		if containsSigningSecretReference(child) {
+			return true
+		}
+	}
+	return false
+}
+
+func containsSigningSecretReferenceOutsideEnvironment(step *yaml.Node) bool {
+	if step == nil || step.Kind != yaml.MappingNode {
+		return containsSigningSecretReference(step)
+	}
+	for index := 0; index+1 < len(step.Content); index += 2 {
+		if step.Content[index].Value == "env" {
+			continue
+		}
+		if containsSigningSecretReference(step.Content[index+1]) {
 			return true
 		}
 	}
@@ -551,16 +699,47 @@ func rootStepWithRunFragment(job *yaml.Node, fragment string) (*yaml.Node, bool)
 }
 
 func requireRunFragments(step *yaml.Node, context string, fragments ...string) error {
-	run, hasRun := mappingValue(step, "run")
-	if !hasRun || run.Kind != yaml.ScalarNode {
+	run := requireRunValue(step)
+	if run == "" {
 		return fmt.Errorf("%s must have a run command", context)
 	}
 	for _, fragment := range fragments {
-		if !strings.Contains(run.Value, fragment) {
+		if !strings.Contains(run, fragment) {
 			return fmt.Errorf("%s must contain %s", context, fragment)
 		}
 	}
 	return nil
+}
+
+func requireRunValue(step *yaml.Node) string {
+	run, hasRun := mappingValue(step, "run")
+	if !hasRun || run.Kind != yaml.ScalarNode {
+		return ""
+	}
+	return run.Value
+}
+
+func commandIndexAfter(commands []string, want string, after int) int {
+	for index := after + 1; index < len(commands); index++ {
+		if commands[index] == want {
+			return index
+		}
+	}
+	return -1
+}
+
+func countCommand(commands []string, want string) int {
+	count := 0
+	for _, command := range commands {
+		if command == want {
+			count++
+		}
+	}
+	return count
+}
+
+func countRunFragment(step *yaml.Node, fragment string) int {
+	return strings.Count(requireRunValue(step), fragment)
 }
 
 func hasShellArgument(step *yaml.Node, argument string) bool {

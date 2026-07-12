@@ -123,15 +123,14 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
-  publish:
-    name: Sign and publish the GitHub Release
+  # 在不声明 environment 的 job 中验证 tag 所指提交属于默认分支，避免 protected
+  # release Environment 的 secret 在 ancestry shell gate 之前进入同一 job 生命周期。
+  verify_release_source:
+    name: Verify release source trust
     needs: build
     runs-on: ubuntu-24.04
-    # Task 20 must create this protected Environment and store the signing values
-    # as its secrets, rather than repository secrets available to arbitrary tags.
-    environment: release
     permissions:
-      contents: write
+      contents: read
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
@@ -145,6 +144,20 @@ jobs:
           set -eu
           git show-ref --verify --quiet "refs/remotes/origin/$DEFAULT_BRANCH"
           git merge-base --is-ancestor HEAD "origin/$DEFAULT_BRANCH"
+
+  publish:
+    name: Sign and publish the GitHub Release
+    needs: verify_release_source
+    runs-on: ubuntu-24.04
+    # Task 20 must create this protected Environment and store the signing values
+    # as its secrets, rather than repository secrets available to arbitrary tags.
+    environment: release
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          persist-credentials: false
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
         with:
           go-version: '1.26.3'

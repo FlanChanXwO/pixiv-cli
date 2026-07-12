@@ -181,13 +181,18 @@ GitHub Release。workflow 使用 full-SHA Actions、最小权限及 `release` En
 GitHub 实际运行。
 
 `sh scripts/test-release-workflow.sh` 启动 `scripts/releaseworkflow` 的 YAML AST policy，而不是依赖
-文本排版或行号。它精确检查 tag trigger、三份 job 的权限/依赖、六个 runner matrix、每一个
-`uses` 的 40 位 SHA、默认分支 ancestry 与 signing secret 的顺序，以及 publish 的 SemVer channel
-调用。build job 还必须实际运行 vendored Rust 离线检查、crate cwd 的 `cargo fmt --check` 与
+文本排版或行号。它精确检查 tag trigger、四份 job 的权限/依赖、六个 runner matrix、每一个
+`uses` 的 40 位 SHA，以及 publish 的 SemVer channel 调用。默认分支 ancestry 必须在无
+`environment`、无 secret 的 `verify_release_source` job 中完成；只有该 job 成功后，publish 才可
+依赖它并声明精确的 `release` Environment、使用签名 metadata step 的两个预期 secret。policy 还会
+拒绝 `continue-on-error` 或条件 `if` 跳过的质量门禁。build job 必须实际运行 vendored Rust 离线检查、crate cwd 的 `cargo fmt --check` 与
 locked/offline Clippy `-D warnings`、普通及 race Go 测试、vet、许可证、封装、固定版本
 `pre-commit==4.6.0`、pre-commit 和 `git diff --check`。发布渠道仅可由
 `go run ./scripts/releaseassets channel --version ...` 判定；build metadata 中的连字符不会使 stable
 tag 误变为 prerelease。
+
+这套本地检查只证明 workflow 声明的依赖和语义，**不**创建或保护 GitHub `release` Environment，
+也不替代 Task 20 的真实 Environment、secret 和 tag protection 配置。
 
 正式发布目前必须被以下条件阻断：完整 six-target staticlib/manifest 与真实 native artifact 证据
 尚待 Task 33，并且还未创建受保护的 `release` Environment、生产 signing key、公开仓库或 tag。
