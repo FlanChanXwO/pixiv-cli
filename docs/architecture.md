@@ -103,7 +103,8 @@ Release。
   用于节流与原子保存。
 
 该包不得把签名、checksum、HTTP、archive、替换或权限错误伪装成“无更新”。当前 production
-trusted key 为空，故 Release 安装的失败语义是保护边界，而不是临时降级。
+trusted key 已随受支持 binary 的源码配置；在私钥、受保护 Environment 与真实已签名 Release 尚未
+部署前，Release 安装的失败语义仍是保护边界，而不是临时降级。
 
 ### `internal/pixiv`
 
