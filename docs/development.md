@@ -108,6 +108,7 @@ Task 20 的 main push 成功后，Task 13 只能按以下过程回填可提交�
 
    ```bash
    go run ./scripts/nativeevidence consolidate \
+     --repo-root . \
      --input-dir .native-evidence-download \
      --output-dir .native-evidence-backfill/staticlib
    ```

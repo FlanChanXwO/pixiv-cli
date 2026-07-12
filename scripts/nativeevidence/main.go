@@ -155,6 +155,7 @@ func runConsolidate(arguments []string) error {
 	flags := flag.NewFlagSet("consolidate", flag.ContinueOnError)
 	flags.SetOutput(os.Stderr)
 	options := consolidateOptions{}
+	flags.StringVar(&options.repoRoot, "repo-root", "", "repository root matching the audited evidence source")
 	flags.StringVar(&options.inputDir, "input-dir", "", "directory containing downloaded native evidence artifacts")
 	flags.StringVar(&options.outputDir, "output-dir", "", "new staticlib directory receiving a complete manifest")
 	if err := flags.Parse(arguments); err != nil {
@@ -167,6 +168,7 @@ func runConsolidate(arguments []string) error {
 }
 
 type consolidateOptions struct {
+	repoRoot  string
 	inputDir  string
 	outputDir string
 }
@@ -180,7 +182,11 @@ type evidenceLocation struct {
 // 目录验证和组装，再一次 rename 发布。已有输出、缺目标、hash 变化或 symlink 一律失败，
 // 因而不会把部分或混代库伪装成 Task 13 的可提交 staticlib 集合。
 func consolidateEvidence(options consolidateOptions) error {
-	inputDir, err := requireDirectory(options.inputDir, "input directory")
+	repoRoot, err := requireSecureDirectory(options.repoRoot, "repository root")
+	if err != nil {
+		return err
+	}
+	inputDir, err := requireSecureDirectory(options.inputDir, "input directory")
 	if err != nil {
 		return err
 	}
@@ -194,8 +200,11 @@ func consolidateEvidence(options consolidateOptions) error {
 	if len(locations) != len(nativeTargets) {
 		return fmt.Errorf("native evidence must contain exactly six target records, got %d", len(locations))
 	}
-	sourceDigest, err := verifyEvidenceLocations(locations)
+	sourceDigest, err := calculateSourceDigest(repoRoot)
 	if err != nil {
+		return err
+	}
+	if err := verifyEvidenceLocations(locations, repoRoot, sourceDigest); err != nil {
 		return err
 	}
 	stage, err := os.MkdirTemp(filepath.Dir(options.outputDir), ".native-evidence-consolidate-")
@@ -276,55 +285,56 @@ func readEvidenceLocations(inputDir string) ([]evidenceLocation, error) {
 	return locations, nil
 }
 
-func verifyEvidenceLocations(locations []evidenceLocation) (string, error) {
+func verifyEvidenceLocations(locations []evidenceLocation, repoRoot, sourceDigest string) error {
 	seen := make(map[string]struct{}, len(locations))
-	sourceDigest := ""
 	for _, location := range locations {
 		record := location.record
-		if record.Schema != 1 || !isSHA256(record.SourceDigest) {
-			return "", errors.New("evidence record has an unsupported schema or source digest")
+		if record.Schema != 1 || record.SourceDigest != sourceDigest {
+			return errors.New("evidence record source digest does not match the audited repository")
 		}
 		platform := record.Target.GOOS + "/" + record.Target.GOARCH
 		target, ok := nativeTargets[platform]
 		if !ok || target.rustTarget != record.Target.RustTarget {
-			return "", fmt.Errorf("evidence record has an unsupported target binding %q", platform)
+			return fmt.Errorf("evidence record has an unsupported target binding %q", platform)
 		}
 		if _, duplicate := seen[platform]; duplicate {
-			return "", fmt.Errorf("native evidence contains duplicate target %q", platform)
+			return fmt.Errorf("native evidence contains duplicate target %q", platform)
 		}
 		seen[platform] = struct{}{}
-		if sourceDigest == "" {
-			sourceDigest = record.SourceDigest
-		} else if sourceDigest != record.SourceDigest {
-			return "", errors.New("native evidence source digests do not match")
-		}
 		if err := verifyRecordedArtifact(location.dir, record.Staticlib, target.staticlib); err != nil {
-			return "", fmt.Errorf("validate staticlib for %s: %w", platform, err)
+			return fmt.Errorf("validate staticlib for %s: %w", platform, err)
 		}
 		binaryName := "pixiv"
 		if target.goos == "windows" {
 			binaryName = "pixiv.exe"
 		}
 		if err := verifyRecordedArtifact(location.dir, record.Binary.evidenceFile, binaryName); err != nil {
-			return "", fmt.Errorf("validate binary for %s: %w", platform, err)
+			return fmt.Errorf("validate binary for %s: %w", platform, err)
 		}
 		if !strings.HasPrefix(record.Binary.Version, "v") || !semanticVersionPattern.MatchString(strings.TrimPrefix(record.Binary.Version, "v")) || strings.TrimSpace(record.Binary.Commit) == "" || strings.TrimSpace(record.Binary.BuildDate) == "" {
-			return "", fmt.Errorf("binary metadata for %s is incomplete", platform)
+			return fmt.Errorf("binary metadata for %s is incomplete", platform)
 		}
 		if err := verifyRecordedArtifact(location.dir, record.Archive.evidenceFile, expectedArchiveName(strings.TrimPrefix(record.Binary.Version, "v"), target)); err != nil {
-			return "", fmt.Errorf("validate archive for %s: %w", platform, err)
+			return fmt.Errorf("validate archive for %s: %w", platform, err)
 		}
 		if err := validateRecordedMembers(record.Archive.Members); err != nil {
-			return "", fmt.Errorf("validate archive members for %s: %w", platform, err)
+			return fmt.Errorf("validate archive members for %s: %w", platform, err)
 		}
 		if err := verifyRecordedArchiveMembers(filepath.Join(location.dir, record.Archive.Name), record.Archive.Members); err != nil {
-			return "", fmt.Errorf("verify archive members for %s: %w", platform, err)
+			return fmt.Errorf("verify archive members for %s: %w", platform, err)
+		}
+		expected, err := expectedArchiveMembers(repoRoot, record.Binary.Name, record.Binary.SHA256)
+		if err != nil {
+			return fmt.Errorf("calculate expected archive members for %s: %w", platform, err)
+		}
+		if err := requireExactEvidenceMembers(record.Archive.Members, expected); err != nil {
+			return fmt.Errorf("archive members for %s do not match the audited tree: %w", platform, err)
 		}
 	}
 	if len(seen) != len(nativeTargets) {
-		return "", errors.New("native evidence must contain all six target records")
+		return errors.New("native evidence must contain all six target records")
 	}
-	return sourceDigest, nil
+	return nil
 }
 
 func verifyRecordedArtifact(directory string, artifact evidenceFile, expectedName string) error {
@@ -358,6 +368,18 @@ func validateRecordedMembers(members []evidenceFile) error {
 			return fmt.Errorf("archive member %q is duplicated", member.Name)
 		}
 		seen[member.Name] = struct{}{}
+	}
+	return nil
+}
+
+func requireExactEvidenceMembers(recorded []evidenceFile, expected map[string]string) error {
+	if len(recorded) != len(expected) {
+		return errors.New("member count differs")
+	}
+	for _, member := range recorded {
+		if expected[member.Name] != member.SHA256 {
+			return fmt.Errorf("member %q differs", member.Name)
+		}
 	}
 	return nil
 }
@@ -543,6 +565,38 @@ func requireDirectory(path, label string) (string, error) {
 		return "", fmt.Errorf("%s must be a directory", label)
 	}
 	return filepath.Clean(path), nil
+}
+
+func requireSecureDirectory(path, label string) (string, error) {
+	directory, err := requireDirectory(path, label)
+	if err != nil {
+		return "", err
+	}
+	for current := directory; ; current = filepath.Dir(current) {
+		info, err := os.Lstat(current)
+		if err != nil {
+			return "", fmt.Errorf("inspect %s ancestor: %w", label, err)
+		}
+		if info.Mode()&os.ModeSymlink != 0 {
+			return "", fmt.Errorf("%s contains a symlink ancestor: %s", label, current)
+		}
+		parent := filepath.Dir(current)
+		if parent == current {
+			break
+		}
+	}
+	return directory, nil
+}
+
+func calculateSourceDigest(repoRoot string) (string, error) {
+	digest, err := download.CalculateUgoiraRustSourceDigest(
+		filepath.Join(repoRoot, "internal", "download", "ugoira_rs"),
+		filepath.Join(repoRoot, "third_party", "rust", "quantette-0.6.0"),
+	)
+	if err != nil {
+		return "", fmt.Errorf("calculate Rust source digest: %w", err)
+	}
+	return digest, nil
 }
 
 func requireRegularFile(path, label string) error {
@@ -922,13 +976,13 @@ func checkNativeEvidenceJob(job *yaml.Node) error {
 	if err := requireDirectRunStep(steps.Content[7], "Run native GIF/APNG smoke", "go test ./internal/download -run '^TestRustUgoiraEncoderNativeGIFAndAPNG$' -count=1"); err != nil {
 		return err
 	}
-	if err := requireMultilineRunStep(steps.Content[8], "Build and run the versioned native binary", "go run ./scripts/releaseassets validate --version \"$version\"", "go build -trimpath -buildvcs=false", "\"$binary\" version --json"); err != nil {
+	if err := requireMultilineRunStep(steps.Content[8], "Build and run the versioned native binary", canonicalBuildBinaryRun); err != nil {
 		return err
 	}
-	if err := requireMultilineRunStep(steps.Content[9], "Package the versioned native binary", "go run ./scripts/releaseassets package", "--target '${{ matrix.goos }}/${{ matrix.goarch }}'", "--output-dir evidence"); err != nil {
+	if err := requireMultilineRunStep(steps.Content[9], "Package the versioned native binary", canonicalPackageRun); err != nil {
 		return err
 	}
-	if err := requireMultilineRunStep(steps.Content[10], "Record staticlib, binary and archive evidence", "cp \"internal/download/ugoira_rs/staticlib/${{ matrix.rust_target }}/$staticlib\" \"evidence/$staticlib\"", "go run ./scripts/nativeevidence record", "--output evidence/native-evidence.json"); err != nil {
+	if err := requireMultilineRunStep(steps.Content[10], "Record staticlib, binary and archive evidence", canonicalRecordRun); err != nil {
 		return err
 	}
 	if err := requireUploadEvidenceStep(steps.Content[11]); err != nil {
@@ -1008,18 +1062,69 @@ func requireDirectRunStep(step *yaml.Node, name, command string) error {
 	return nil
 }
 
-func requireMultilineRunStep(step *yaml.Node, name string, fragments ...string) error {
+const canonicalBuildBinaryRun = `set -eu
+version="0.1.0-native-evidence.${GITHUB_RUN_ID}"
+go run ./scripts/releaseassets validate --version "$version"
+mkdir -p evidence
+binary='evidence/pixiv'
+if [ '${{ matrix.goos }}' = windows ]; then
+  binary='evidence/pixiv.exe'
+fi
+go build -trimpath -buildvcs=false \
+  -ldflags "-X github.com/FlanChanXwO/pixiv-cli/internal/buildinfo.Version=v${version} -X github.com/FlanChanXwO/pixiv-cli/internal/buildinfo.Commit=${GITHUB_SHA} -X github.com/FlanChanXwO/pixiv-cli/internal/buildinfo.BuildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+  -o "$binary" ./cmd/pixiv
+"$binary" version --json
+`
+
+const canonicalPackageRun = `set -eu
+version="0.1.0-native-evidence.${GITHUB_RUN_ID}"
+binary='evidence/pixiv'
+if [ '${{ matrix.goos }}' = windows ]; then
+  binary='evidence/pixiv.exe'
+fi
+go run ./scripts/releaseassets package \
+  --repo-root . \
+  --version "$version" \
+  --target '${{ matrix.goos }}/${{ matrix.goarch }}' \
+  --binary "$binary" \
+  --output-dir evidence
+`
+
+const canonicalRecordRun = `set -eu
+version="0.1.0-native-evidence.${GITHUB_RUN_ID}"
+staticlib='libugoira_rs.a'
+if [ '${{ matrix.goos }}' = windows ]; then
+  staticlib='ugoira_rs.lib'
+fi
+cp "internal/download/ugoira_rs/staticlib/${{ matrix.rust_target }}/$staticlib" "evidence/$staticlib"
+archive="evidence/pixiv-cli_${version}_${{ matrix.goos }}_${{ matrix.goarch }}"
+if [ '${{ matrix.goos }}' = windows ]; then
+  archive="$archive.zip"
+else
+  archive="$archive.tar.gz"
+fi
+binary='evidence/pixiv'
+if [ '${{ matrix.goos }}' = windows ]; then
+  binary='evidence/pixiv.exe'
+fi
+go run ./scripts/nativeevidence record \
+  --repo-root . \
+  --version "$version" \
+  --target '${{ matrix.goos }}/${{ matrix.goarch }}' \
+  --rust-target '${{ matrix.rust_target }}' \
+  --staticlib "evidence/$staticlib" \
+  --binary "$binary" \
+  --archive "$archive" \
+  --output evidence/native-evidence.json
+`
+
+func requireMultilineRunStep(step *yaml.Node, name, canonical string) error {
 	if requireOnlyMappingKeys(step, "name", "shell", "run") != nil || requireScalar(step, "name", name) != nil || requireScalar(step, "shell", "bash") != nil {
 		return fmt.Errorf("native evidence job must retain step %q", name)
 	}
 	run, ok := mappingValue(step, "run")
-	if !ok || run.Kind != yaml.ScalarNode || !strings.Contains(run.Value, "set -eu") {
+	if !ok || run.Kind != yaml.ScalarNode || run.Value != canonical {
 		return fmt.Errorf("native evidence job must retain guarded step %q", name)
-	}
-	for _, fragment := range fragments {
-		if !strings.Contains(run.Value, fragment) {
-			return fmt.Errorf("native evidence job step %q must retain %s", name, fragment)
-		}
 	}
 	return nil
 }
@@ -1109,7 +1214,7 @@ func checkNoReleaseSideEffects(node *yaml.Node) error {
 	var values []string
 	collectScalarValues(node, &values)
 	for _, value := range values {
-		for _, forbidden := range []string{"gh release", "git push", "git tag", "releaseassets finalize", "HOMEBREW_TAP", "RELEASE_SIGNING"} {
+		for _, forbidden := range []string{"gh release", "git push", "git tag", "releaseassets finalize", "HOMEBREW_TAP", "RELEASE_SIGNING", "github.token", "GITHUB_TOKEN", "GH_TOKEN", "curl", "wget"} {
 			if regexp.MustCompile(`(?i)` + regexp.QuoteMeta(forbidden)).MatchString(value) {
 				return fmt.Errorf("native evidence workflow must not contain release side effect %q", forbidden)
 			}
