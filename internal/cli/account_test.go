@@ -746,6 +746,8 @@ func TestAccountLoginDefaultBrowserWatcherReadsChromiumHistory(t *testing.T) {
 	defer oauth.Close()
 	restoreOAuthBase := setTestOAuthBase(t, oauth.URL)
 	defer restoreOAuthBase()
+	restoreRelay := setTestURLSchemeRelayInstaller(t, func(context.Context, string) (func(), error) { return func() {}, nil })
+	defer restoreRelay()
 	restoreOpen := setTestOpenBrowser(t, func(string) error {
 		go func() {
 			time.Sleep(200 * time.Millisecond)
@@ -793,6 +795,8 @@ func TestAccountLoginDefaultBrowserWatcherCatchesFastActiveTabCallback(t *testin
 	defer oauth.Close()
 	restoreOAuthBase := setTestOAuthBase(t, oauth.URL)
 	defer restoreOAuthBase()
+	restoreRelay := setTestURLSchemeRelayInstaller(t, func(context.Context, string) (func(), error) { return func() {}, nil })
+	defer restoreRelay()
 	// watcher 会异步轮询 AppleScript；与 opener 共享的状态必须同步。
 	var stateMu sync.RWMutex
 	opened := false
@@ -847,6 +851,8 @@ func TestAccountLoginDefaultBrowserWatcherContinuesPixivPostRedirect(t *testing.
 	defer oauth.Close()
 	restoreOAuthBase := setTestOAuthBase(t, oauth.URL)
 	defer restoreOAuthBase()
+	restoreRelay := setTestURLSchemeRelayInstaller(t, func(context.Context, string) (func(), error) { return func() {}, nil })
+	defer restoreRelay()
 
 	// watcher 与 opener 在不同 goroutine 中读写以下登录场景状态。
 	var stateMu sync.Mutex
@@ -924,6 +930,8 @@ func TestAccountLoginDefaultBrowserWatcherSkipsStalePostRedirectChallenge(t *tes
 	defer oauth.Close()
 	restoreOAuthBase := setTestOAuthBase(t, oauth.URL)
 	defer restoreOAuthBase()
+	restoreRelay := setTestURLSchemeRelayInstaller(t, func(context.Context, string) (func(), error) { return func() {}, nil })
+	defer restoreRelay()
 
 	// watcher 与 opener 在不同 goroutine 中读写以下登录场景状态。
 	var stateMu sync.Mutex
@@ -1006,6 +1014,8 @@ func TestAccountLoginDefaultBrowserWatcherReportsPostRedirectRelayOnce(t *testin
 	defer oauth.Close()
 	restoreOAuthBase := setTestOAuthBase(t, oauth.URL)
 	defer restoreOAuthBase()
+	restoreRelay := setTestURLSchemeRelayInstaller(t, func(context.Context, string) (func(), error) { return func() {}, nil })
+	defer restoreRelay()
 
 	// watcher 与 opener 在不同 goroutine 中读写以下登录场景状态。
 	var stateMu sync.Mutex
@@ -1301,6 +1311,11 @@ func setTestOpenBrowser(t *testing.T, opener func(string) error) func() {
 func setTestBrowserCodeWatcher(t *testing.T, watcher browserCodeWatcher) func() {
 	t.Helper()
 	return setBrowserCodeWatcherForTest(watcher)
+}
+
+func setTestURLSchemeRelayInstaller(t *testing.T, installer urlSchemeRelayInstaller) func() {
+	t.Helper()
+	return setURLSchemeRelayInstallerForTest(installer)
 }
 
 func setTestCLIClientFactory(t *testing.T, factory func(clientConfig) (cliPixivClient, error)) {

@@ -39,6 +39,7 @@ var (
 	openBrowser           = defaultOpenBrowser
 	watchBrowserLoginCode = defaultWatchBrowserLoginCode
 	captureManagedBrowser = defaultCaptureManagedBrowser
+	installURLSchemeRelay = installPixivURLSchemeRelay
 	runAppleScript        = defaultRunAppleScript
 )
 
@@ -54,6 +55,7 @@ type loginInputResult struct {
 
 type browserCodeWatcher func(context.Context, string, string, map[string]struct{}, func(string) error, func(loginServerResult), func(error))
 type managedBrowserCapturer func(context.Context, string, string, func(loginServerResult), func(error)) (bool, func(), error)
+type urlSchemeRelayInstaller func(context.Context, string) (func(), error)
 
 type accountLoginOptions struct {
 	proxyOptions
@@ -121,9 +123,9 @@ func (a app) accountLogin(cmd *cobra.Command, opts accountLoginOptions) error {
 		defer cancel()
 	}
 
-	oauthBase, browserOpener, browserWatcher := currentLoginHooks()
+	oauthBase, browserOpener, browserWatcher, schemeRelayInstaller := currentLoginHooks()
 	loginURL := pixivLoginURL(loginFlow.Challenge, loginFlow.State)
-	code, err := a.waitForLoginCode(ctx, opts.addr, loginFlow.State, loginURL, opts.noOpen, browserOpener, browserWatcher)
+	code, err := a.waitForLoginCode(ctx, opts.addr, loginFlow.State, loginURL, opts.noOpen, browserOpener, browserWatcher, schemeRelayInstaller)
 	if err != nil {
 		return err
 	}
@@ -154,7 +156,7 @@ func (a app) accountLogin(cmd *cobra.Command, opts accountLoginOptions) error {
 	return nil
 }
 
-func (a app) waitForLoginCode(ctx context.Context, addr, state, loginURL string, noOpen bool, browserOpener func(string) error, browserWatcher browserCodeWatcher) (string, error) {
+func (a app) waitForLoginCode(ctx context.Context, addr, state, loginURL string, noOpen bool, browserOpener func(string) error, browserWatcher browserCodeWatcher, schemeRelayInstaller urlSchemeRelayInstaller) (string, error) {
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {
 		return "", err
@@ -190,7 +192,7 @@ func (a app) waitForLoginCode(ctx context.Context, addr, state, loginURL string,
 	}
 	var schemeRelayActive bool
 	if !noOpen {
-		cleanup, err := installPixivURLSchemeRelay(ctx, "http://"+actualAddr+"/manual")
+		cleanup, err := schemeRelayInstaller(ctx, "http://"+actualAddr+"/manual")
 		if err != nil {
 			writeErr("warning: pixiv:// callback handler is unavailable: %v\n", err)
 		} else if cleanup != nil {
@@ -475,10 +477,10 @@ func validateLoginAddr(addr string) error {
 	return nil
 }
 
-func currentLoginHooks() (string, func(string) error, browserCodeWatcher) {
+func currentLoginHooks() (string, func(string) error, browserCodeWatcher, urlSchemeRelayInstaller) {
 	loginHooksMu.RLock()
 	defer loginHooksMu.RUnlock()
-	return loginOAuthBase, openBrowser, watchBrowserLoginCode
+	return loginOAuthBase, openBrowser, watchBrowserLoginCode, installURLSchemeRelay
 }
 
 func setLoginOAuthBaseForTest(baseURL string) func() {
@@ -516,6 +518,20 @@ func setBrowserCodeWatcherForTest(watcher browserCodeWatcher) func() {
 	return func() {
 		loginHooksMu.Lock()
 		watchBrowserLoginCode = old
+		loginHooksMu.Unlock()
+	}
+}
+
+// setURLSchemeRelayInstallerForTest 替换 URL scheme 安装器，供不应调用 macOS 系统命令的测试使用。
+// 值与其余登录 hook 在同一锁下快照，避免异步 watcher 或后续测试观察到部分设置。
+func setURLSchemeRelayInstallerForTest(installer urlSchemeRelayInstaller) func() {
+	loginHooksMu.Lock()
+	old := installURLSchemeRelay
+	installURLSchemeRelay = installer
+	loginHooksMu.Unlock()
+	return func() {
+		loginHooksMu.Lock()
+		installURLSchemeRelay = old
 		loginHooksMu.Unlock()
 	}
 }
