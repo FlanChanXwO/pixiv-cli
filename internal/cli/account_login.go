@@ -160,7 +160,8 @@ func (a app) waitForLoginCode(ctx context.Context, addr, state, loginURL string,
 		return "", err
 	}
 	watchCtx, stopWatching := context.WithCancel(ctx)
-	defer stopWatching()
+	var browserWatcherDone <-chan struct{}
+	defer func() { cancelAndJoinBrowserWatcher(stopWatching, browserWatcherDone, nil) }()
 	actualAddr := ln.Addr().String()
 	resultCh := make(chan loginServerResult, 1)
 	var submitOnce sync.Once
@@ -272,7 +273,12 @@ func (a app) waitForLoginCode(ctx context.Context, addr, state, loginURL string,
 	if !noOpen {
 		initialSeen := currentBrowserCallbackURLSet(ctx)
 		if browserWatcher != nil {
-			go browserWatcher(watchCtx, state, loginChallenge, initialSeen, observeRelay, submit, reportInvalidSubmission)
+			done := make(chan struct{})
+			browserWatcherDone = done
+			go func() {
+				defer close(done)
+				browserWatcher(watchCtx, state, loginChallenge, initialSeen, observeRelay, submit, reportInvalidSubmission)
+			}()
 		}
 		managedOpened := false
 		if !schemeRelayActive && captureManagedBrowser != nil {
@@ -326,6 +332,20 @@ func (a app) waitForLoginCode(ctx context.Context, addr, state, loginURL string,
 	case <-ctx.Done():
 		return "", ctx.Err()
 	}
+}
+
+// cancelAndJoinBrowserWatcher 固化登录 watcher 的生命周期：先取消，再等待其退出。
+// beforeJoin 仅为确定性的内部测试接缝；生产调用始终传 nil。
+func cancelAndJoinBrowserWatcher(stop func(), done <-chan struct{}, beforeJoin func()) {
+	stop()
+	if done == nil {
+		return
+	}
+	if beforeJoin != nil {
+		beforeJoin()
+	}
+	// watcher 的契约是响应 watchCtx；这里不引入额外超时，真实阻塞应当显式暴露。
+	<-done
 }
 
 func writeLoginForm(w http.ResponseWriter, loginURL string) {

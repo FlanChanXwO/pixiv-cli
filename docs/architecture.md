@@ -160,6 +160,10 @@ Rust crate 以 target 专用 staticlib 接入 cgo：darwin/linux/windows 各有 
 的 release/source build 必须从同一 Rust source digest 的六目标 `manifest.json` 选择并链接真实库；
 无 cgo、无 target library 或无 C linker 时应在编译/构建期明确失败，不能回退到 `ffmpeg` 或 runtime
 stub。Rust `target/` 是机器产物，staticlib/manifest 是经过 native 验证后才可提交的发布输入。
+`internal/download/staticlib` 只承载 source digest 与 manifest 的完整性契约，不导入 cgo encoder；
+因此 native-evidence 的 **policy** gate 可以在目标库生成前执行。`record` 与 `consolidate` 同样不
+触发 cgo 链接，但分别仍需要已生成的 staticlib/binary/archive 与完整六份 evidence 输入；下载运行时
+仍只由 `internal/download` 组装 Rust FFI。
 
 当前仅有 Darwin/arm64 library，完整 manifest 尚缺；因此这一架构约束已经由构建脚本实施，但尚未得到
 六平台 native runner 证明。`ffmpeg` 仅保留给显式启用的开发质量对照，不在生产下载路径中。
@@ -173,15 +177,16 @@ checksum bytes 生成带 key ID 的 Ed25519 `checksums.json`。
 
 `.github/workflows/release.yml` 将签名/发布放在受保护的 `release` Environment 中；它使用最小权限和
 full-SHA Actions，并在草稿 Release 上传后核对 asset 集合才发布。文件和本地 fixture 已存在，但尚未
-部署 production signing 私钥、Environment、remote 或实际 GitHub runner 运行；受支持 binary 的公开
-trust root 已在 `internal/bootstrap/release_trust.go` 配置。同时 staticlib/manifest、workflow policy 和
-native artifact 证据仍是正式发布阻断项。Rust crates.io 依赖已由 crate 内 source replacement 固定到完整
-vendor 闭包，并以空 Cargo cache 离线 metadata/build/test 与六 target 许可证检查验证。
+取得实际 GitHub runner 的完整六目标成功证据或发布；production signing 私钥、Environment 与公开 remote
+已按 Task 20 配置，受支持 binary 的公开 trust root 已在 `internal/bootstrap/release_trust.go` 配置。同时
+staticlib/manifest、workflow policy 和 native artifact 证据仍是正式发布阻断项。Rust crates.io 依赖已由
+crate 内 source replacement 固定到完整 vendor 闭包，并以空 Cargo cache 离线 metadata/build/test 与六
+target 许可证检查验证。
 
 Homebrew formula 模板由已验证的六目标 `checksums.txt` 生成，仅使用 macOS/Linux asset；stable
 `pixiv-cli` 与 beta `pixiv-cli-beta` 相互冲突且同装 `pixiv`。tap credential 与发布 key 是不同的
-信任域：tap 私钥只允许进入受保护 `release` Environment，不能代替 Release Ed25519 trust root。当前
-没有 tap 或可安装 formula。
+信任域：tap 私钥只允许进入受保护 `release` Environment，不能代替 Release Ed25519 trust root。公开 tap
+已创建并只登记 deploy key 公钥，但没有 formula 或可安装资产。
 
 v0.1.0 的 archive 不计划包含 Apple notarization 或 Windows Authenticode。用户收到 Gatekeeper 或
 SmartScreen 提示时，必须回到已验证的项目 GitHub Release、checksum 和签名记录，不能把系统提示视为

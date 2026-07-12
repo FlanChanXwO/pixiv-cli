@@ -21,7 +21,7 @@ import (
 	"strings"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/buildinfo"
-	"github.com/FlanChanXwO/pixiv-cli/internal/download"
+	"github.com/FlanChanXwO/pixiv-cli/internal/download/staticlib"
 	"gopkg.in/yaml.v3"
 )
 
@@ -223,7 +223,7 @@ func consolidateEvidence(options consolidateOptions) error {
 		return fmt.Errorf("create staticlib staging directory: %w", err)
 	}
 	defer os.RemoveAll(stage)
-	manifest := download.UgoiraStaticlibManifest{Schema: 1, SourceDigest: sourceDigest, Artifacts: make(map[string]download.UgoiraStaticlibManifestAsset, len(locations))}
+	manifest := staticlib.Manifest{Schema: 1, SourceDigest: sourceDigest, Artifacts: make(map[string]staticlib.ManifestAsset, len(locations))}
 	for _, location := range locations {
 		platform := location.record.Target.GOOS + "/" + location.record.Target.GOARCH
 		target := nativeTargets[platform]
@@ -236,7 +236,7 @@ func consolidateEvidence(options consolidateOptions) error {
 		if err := copyVerifiedFile(source, destination, location.record.Staticlib.SHA256); err != nil {
 			return fmt.Errorf("copy staticlib for %s: %w", platform, err)
 		}
-		manifest.Artifacts[platform] = download.UgoiraStaticlibManifestAsset{
+		manifest.Artifacts[platform] = staticlib.ManifestAsset{
 			Target: target.rustTarget,
 			Path:   filepath.ToSlash(filepath.Join(target.rustTarget, target.staticlib)),
 			SHA256: location.record.Staticlib.SHA256,
@@ -246,7 +246,7 @@ func consolidateEvidence(options consolidateOptions) error {
 	if err != nil {
 		return fmt.Errorf("encode staticlib manifest: %w", err)
 	}
-	if err := download.ValidateUgoiraStaticlibManifestFiles(stage, body, sourceDigest); err != nil {
+	if err := staticlib.ValidateManifestFiles(stage, body, sourceDigest); err != nil {
 		return fmt.Errorf("validate staged staticlib manifest: %w", err)
 	}
 	if err := writeFreshFile(filepath.Join(stage, "manifest.json"), append(body, '\n')); err != nil {
@@ -513,7 +513,7 @@ func recordEvidence(options recordOptions) (evidenceRecord, error) {
 	if err != nil {
 		return evidenceRecord{}, err
 	}
-	sourceDigest, err := download.CalculateUgoiraRustSourceDigest(
+	sourceDigest, err := staticlib.CalculateRustSourceDigest(
 		filepath.Join(root, "internal", "download", "ugoira_rs"),
 		filepath.Join(root, "third_party", "rust", "quantette-0.6.0"),
 	)
@@ -603,7 +603,7 @@ func requireSecureDirectory(path, label string) (string, error) {
 }
 
 func calculateSourceDigest(repoRoot string) (string, error) {
-	digest, err := download.CalculateUgoiraRustSourceDigest(
+	digest, err := staticlib.CalculateRustSourceDigest(
 		filepath.Join(repoRoot, "internal", "download", "ugoira_rs"),
 		filepath.Join(repoRoot, "third_party", "rust", "quantette-0.6.0"),
 	)

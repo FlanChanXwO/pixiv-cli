@@ -89,6 +89,10 @@ go test ./scripts/nativeevidence -count=1
 go run ./scripts/nativeevidence policy --workflow .github/workflows/native-evidence.yml
 ```
 
+该 policy command 只依赖 `internal/download/staticlib` 的 source-digest/manifest 契约，不导入 cgo
+encoder；因此它必须能在每个 runner 构建目标 staticlib **之前**执行。若 policy gate 因缺库或 cgo
+link 失败，属于 workflow bootstrap 缺陷，而不是可接受的“尚无 native evidence”结果。
+
 每个 runner artifact 只有 `evidence/`：实际链接的 staticlib、版本化 binary、archive 及
 `native-evidence.json`。record 会重算 Rust source digest 和三份 SHA-256，执行 binary 的
 `version --json`，并逐一检查 archive 的 binary、`LICENSE`、`THIRD_PARTY_LICENSES.md` 与完整

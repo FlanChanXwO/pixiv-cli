@@ -31,6 +31,8 @@
 - 已创建公开 source/tap 仓库、受保护 `release` Environment、隔离的 Ed25519 签名与 tap deploy
   credentials；私钥仅位于该 Environment 与 macOS Keychain 恢复副本。此准备不创建 tag、Release 或
   tap formula，正式发布仍受 native evidence 与安装验收门禁阻断。
+- native-evidence 的 policy command 现与 cgo encoder 解耦，可在目标 staticlib 生成前 fail-closed
+  地检查 workflow；避免缺库被误报为 policy 或 runner 配置通过。
 - 新增独立、无 secret/发布副作用的 six-target native evidence workflow 与本地 AST policy；每个
   runner 会记录实际 staticlib、版本化 binary、完整许可证 archive 与 source/hash evidence。未收集到
   经审计 main SHA 的六份真实 artifact 时，release 继续被阻断。

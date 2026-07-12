@@ -526,6 +526,31 @@ func TestAccountLoginBrowserFailureFallsBackToTerminalPrompt(t *testing.T) {
 	assert.Contains(t, stderr.String(), "warning: could not open browser")
 }
 
+// TestCancelAndJoinBrowserWatcherWaitsForExit 防止登录函数在 watcher 仍引用本轮 hook/状态时返回。
+// 用进入 join 前的同步点避免以任意 sleep/超时断言并发顺序。
+func TestCancelAndJoinBrowserWatcherWaitsForExit(t *testing.T) {
+	stopCalled := make(chan struct{})
+	joinStarted := make(chan struct{})
+	watcherExited := make(chan struct{})
+	returned := make(chan struct{})
+
+	go func() {
+		cancelAndJoinBrowserWatcher(func() { close(stopCalled) }, watcherExited, func() { close(joinStarted) })
+		close(returned)
+	}()
+
+	<-stopCalled
+	<-joinStarted
+	select {
+	case <-returned:
+		t.Fatal("login watcher join returned before watcher exit")
+	default:
+	}
+
+	close(watcherExited)
+	<-returned
+}
+
 func TestAccountLoginBrowserSuccessStillAcceptsTerminalPrompt(t *testing.T) {
 	authPath, _ := useTempPaths(t)
 	addr := freeLoopbackAddr(t)
