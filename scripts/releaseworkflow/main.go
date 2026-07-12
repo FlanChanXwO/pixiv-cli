@@ -52,12 +52,18 @@ func checkWorkflow(body []byte) error {
 	if err := yaml.Unmarshal(body, &document); err != nil {
 		return fmt.Errorf("parse YAML: %w", err)
 	}
+	if err := rejectAmbiguousYAML(&document); err != nil {
+		return err
+	}
 	if document.Kind != yaml.DocumentNode || len(document.Content) != 1 {
 		return errors.New("workflow must contain exactly one YAML document")
 	}
 	root := document.Content[0]
 	if root.Kind != yaml.MappingNode {
 		return errors.New("workflow root must be a mapping")
+	}
+	if err := requireNoWorkflowExecutionOverrides(root); err != nil {
+		return err
 	}
 	if err := checkTagTrigger(root); err != nil {
 		return err
@@ -182,8 +188,14 @@ func collectActionReferences(node *yaml.Node, references *[]string, invalidRefer
 }
 
 func checkValidateJob(job *yaml.Node) error {
+	if err := requireRequiredJobExecution(job, "validate job"); err != nil {
+		return err
+	}
 	if err := requireNoEnvironment(job, "validate job"); err != nil {
 		return err
+	}
+	if err := requireOnlyMappingKeys(job, "name", "runs-on", "permissions", "steps"); err != nil {
+		return fmt.Errorf("validate job: %w", err)
 	}
 	if err := requireScalar(job, "runs-on", "ubuntu-24.04"); err != nil {
 		return fmt.Errorf("validate job: %w", err)
@@ -193,6 +205,9 @@ func checkValidateJob(job *yaml.Node) error {
 	}
 	if err := requireContentsPermission(job, "read"); err != nil {
 		return fmt.Errorf("validate job: %w", err)
+	}
+	if err := requireCredentialFreeCheckout(job, "validate job"); err != nil {
+		return err
 	}
 	if !hasCommand(job, "", "go run ./scripts/releaseassets validate --version \"${GITHUB_REF_NAME#v}\"") {
 		return errors.New("validate job must run releaseassets validate")
@@ -204,8 +219,14 @@ func checkValidateJob(job *yaml.Node) error {
 }
 
 func checkBuildJob(job *yaml.Node) error {
+	if err := requireRequiredJobExecution(job, "build job"); err != nil {
+		return err
+	}
 	if err := requireNoEnvironment(job, "build job"); err != nil {
 		return err
+	}
+	if err := requireOnlyMappingKeys(job, "name", "needs", "runs-on", "permissions", "strategy", "steps"); err != nil {
+		return fmt.Errorf("build job: %w", err)
 	}
 	if err := requireScalar(job, "needs", "validate"); err != nil {
 		return fmt.Errorf("build job: %w", err)
@@ -215,6 +236,9 @@ func checkBuildJob(job *yaml.Node) error {
 	}
 	if err := requireContentsPermission(job, "read"); err != nil {
 		return fmt.Errorf("build job: %w", err)
+	}
+	if err := requireCredentialFreeCheckout(job, "build job"); err != nil {
+		return err
 	}
 	strategy, ok := mappingValue(job, "strategy")
 	if !ok || strategy.Kind != yaml.MappingNode {
@@ -247,11 +271,7 @@ func checkBuildJob(job *yaml.Node) error {
 		{command: "python -m pre_commit run --all-files"},
 		{command: "git diff --check"},
 	} {
-		step, ok := qualityGateStep(job, gate.workingDirectory, gate.command)
-		if !ok {
-			return fmt.Errorf("build must run %s", gate.command)
-		}
-		if err := requireUnconditionalQualityGate(step, gate.command); err != nil {
+		if err := requireIndependentQualityGate(job, gate.workingDirectory, gate.command); err != nil {
 			return err
 		}
 	}
@@ -268,6 +288,58 @@ func checkBuildJob(job *yaml.Node) error {
 	return nil
 }
 
+// rejectAmbiguousYAML 在策略读取字段前拒绝 GitHub Actions 与 yaml.v3 可能采用不同语义的
+// YAML 构造。mappingValue 只会返回第一个同名字段，故必须先消除重复键和 merge 的歧义。
+func rejectAmbiguousYAML(node *yaml.Node) error {
+	if node == nil {
+		return errors.New("workflow must not contain nil YAML nodes")
+	}
+	if node.Kind == yaml.AliasNode {
+		return errors.New("workflow must not use YAML aliases")
+	}
+	if node.Kind == yaml.MappingNode {
+		if len(node.Content)%2 != 0 {
+			return errors.New("workflow mappings must contain key-value pairs")
+		}
+		keys := make(map[string]struct{}, len(node.Content)/2)
+		for index := 0; index < len(node.Content); index += 2 {
+			key, value := node.Content[index], node.Content[index+1]
+			if key.Kind != yaml.ScalarNode {
+				return errors.New("workflow mapping keys must be scalars")
+			}
+			if key.Value == "<<" {
+				return errors.New("workflow must not use YAML merge keys")
+			}
+			if _, duplicate := keys[key.Value]; duplicate {
+				return fmt.Errorf("workflow must not contain duplicate mapping key %q", key.Value)
+			}
+			keys[key.Value] = struct{}{}
+			if err := rejectAmbiguousYAML(key); err != nil {
+				return err
+			}
+			if err := rejectAmbiguousYAML(value); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	for _, child := range node.Content {
+		if err := rejectAmbiguousYAML(child); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func requireNoWorkflowExecutionOverrides(root *yaml.Node) error {
+	for _, key := range []string{"defaults", "env"} {
+		if _, exists := mappingValue(root, key); exists {
+			return fmt.Errorf("workflow root must not declare %s", key)
+		}
+	}
+	return nil
+}
+
 func requireNoEnvironment(job *yaml.Node, jobName string) error {
 	if _, exists := mappingValue(job, "environment"); exists {
 		return fmt.Errorf("%s must not declare an environment", jobName)
@@ -275,35 +347,60 @@ func requireNoEnvironment(job *yaml.Node, jobName string) error {
 	return nil
 }
 
-func qualityGateStep(job *yaml.Node, directory, command string) (*yaml.Node, bool) {
-	steps, err := jobSteps(job)
-	if err != nil {
-		return nil, false
-	}
-	for _, step := range steps {
-		if directory != "" {
-			workingDirectory, hasWorkingDirectory := mappingValue(step, "working-directory")
-			if !hasWorkingDirectory || workingDirectory.Kind != yaml.ScalarNode || workingDirectory.Value != directory {
-				continue
-			}
-		} else {
-			workingDirectory, hasWorkingDirectory := mappingValue(step, "working-directory")
-			if hasWorkingDirectory && (workingDirectory.Kind != yaml.ScalarNode || workingDirectory.Value != ".") {
-				continue
-			}
-		}
-		if hasStepCommand(step, command) {
-			return step, true
+func requireRequiredJobExecution(job *yaml.Node, jobName string) error {
+	for _, key := range []string{"if", "continue-on-error"} {
+		if _, exists := mappingValue(job, key); exists {
+			return fmt.Errorf("%s must not define if or continue-on-error", jobName)
 		}
 	}
-	return nil, false
+	for _, key := range []string{"env", "defaults"} {
+		if _, exists := mappingValue(job, key); exists {
+			return fmt.Errorf("%s must not declare %s", jobName, key)
+		}
+	}
+	return nil
 }
 
-func requireUnconditionalQualityGate(step *yaml.Node, command string) error {
+// requireIndependentQualityGate 将每项质量命令约束为唯一、单命令的 bash step。相比从
+// 多行 shell 文本中猜测控制流，这样可以证明 gate 不会藏在 if、循环或 `|| true` 之中。
+func requireIndependentQualityGate(job *yaml.Node, directory, command string) error {
+	steps, err := jobSteps(job)
+	if err != nil {
+		return fmt.Errorf("build must run %s", command)
+	}
+	var matches []*yaml.Node
+	for _, step := range steps {
+		if requireRunValue(step) == command {
+			matches = append(matches, step)
+		}
+	}
+	if len(matches) != 1 {
+		return fmt.Errorf("build must run %s in an independent quality gate step", command)
+	}
+	step := matches[0]
 	for _, key := range []string{"continue-on-error", "if"} {
 		if _, exists := mappingValue(step, key); exists {
 			return fmt.Errorf("build quality gate %s must not define continue-on-error or if", command)
 		}
+	}
+	keys := []string{"name", "shell", "run"}
+	if directory != "" {
+		keys = append(keys, "working-directory")
+	}
+	if err := requireOnlyMappingKeys(step, keys...); err != nil {
+		return fmt.Errorf("build quality gate %s must be an independent direct bash step", command)
+	}
+	if err := requireScalar(step, "shell", "bash"); err != nil {
+		return fmt.Errorf("build quality gate %s must use shell bash", command)
+	}
+	if directory == "" {
+		if _, exists := mappingValue(step, "working-directory"); exists {
+			return fmt.Errorf("build quality gate %s must run from the repository root", command)
+		}
+		return nil
+	}
+	if err := requireScalar(step, "working-directory", directory); err != nil {
+		return fmt.Errorf("build quality gate %s must run from %s", command, directory)
 	}
 	return nil
 }
@@ -339,8 +436,14 @@ func checkReleaseMatrix(matrix *yaml.Node) error {
 }
 
 func checkVerifyReleaseSourceJob(job *yaml.Node) error {
+	if err := requireRequiredJobExecution(job, "verify_release_source job"); err != nil {
+		return err
+	}
 	if err := requireNoEnvironment(job, "verify_release_source job"); err != nil {
 		return err
+	}
+	if err := requireOnlyMappingKeys(job, "name", "needs", "runs-on", "permissions", "steps"); err != nil {
+		return fmt.Errorf("verify_release_source job: %w", err)
 	}
 	if err := requireScalar(job, "needs", "build"); err != nil {
 		return fmt.Errorf("verify_release_source job: %w", err)
@@ -359,11 +462,14 @@ func checkVerifyReleaseSourceJob(job *yaml.Node) error {
 	for index, step := range steps {
 		if hasStepCommand(step, "git merge-base --is-ancestor HEAD \"origin/$DEFAULT_BRANCH\"") {
 			ancestryIndex = index
+			if err := requireUnconditionalAncestryGate(step); err != nil {
+				return err
+			}
 			if !hasStepCommand(step, "git show-ref --verify --quiet \"refs/remotes/origin/$DEFAULT_BRANCH\"") {
 				return errors.New("verify_release_source default-branch ancestry gate must verify origin/$DEFAULT_BRANCH")
 			}
 			env, ok := mappingValue(step, "env")
-			if !ok || requireScalar(env, "DEFAULT_BRANCH", "${{ github.event.repository.default_branch }}") != nil {
+			if !ok || requireOnlyMappingKeys(env, "DEFAULT_BRANCH") != nil || requireScalar(env, "DEFAULT_BRANCH", "${{ github.event.repository.default_branch }}") != nil {
 				return errors.New("verify_release_source default-branch ancestry gate must derive DEFAULT_BRANCH from the release repository")
 			}
 			break
@@ -379,6 +485,12 @@ func checkVerifyReleaseSourceJob(job *yaml.Node) error {
 }
 
 func checkPublishJob(job *yaml.Node) (int, []*yaml.Node, error) {
+	if err := requireRequiredJobExecution(job, "publish job"); err != nil {
+		return 0, nil, err
+	}
+	if err := requireOnlyMappingKeys(job, "name", "needs", "runs-on", "environment", "permissions", "steps"); err != nil {
+		return 0, nil, fmt.Errorf("publish job: %w", err)
+	}
 	if err := requireScalar(job, "needs", "verify_release_source"); err != nil {
 		return 0, nil, fmt.Errorf("publish job: %w", err)
 	}
@@ -425,6 +537,28 @@ func checkPublishJob(job *yaml.Node) (int, []*yaml.Node, error) {
 		return 0, nil, err
 	}
 	return signingIndex, steps, nil
+}
+
+func requireUnconditionalAncestryGate(step *yaml.Node) error {
+	for _, key := range []string{"continue-on-error", "if"} {
+		if _, exists := mappingValue(step, key); exists {
+			return errors.New("verify_release_source default-branch ancestry gate must not define if or continue-on-error")
+		}
+	}
+	if err := requireOnlyMappingKeys(step, "name", "shell", "env", "run"); err != nil {
+		return errors.New("verify_release_source default-branch ancestry gate must be a direct bash step")
+	}
+	if err := requireScalar(step, "shell", "bash"); err != nil {
+		return errors.New("verify_release_source default-branch ancestry gate must use shell bash")
+	}
+	if commands := splitCommands(requireRunValue(step)); !equalCommands(commands, []string{
+		"set -eu",
+		"git show-ref --verify --quiet \"refs/remotes/origin/$DEFAULT_BRANCH\"",
+		"git merge-base --is-ancestor HEAD \"origin/$DEFAULT_BRANCH\"",
+	}) {
+		return errors.New("verify_release_source default-branch ancestry gate must use the required direct command sequence")
+	}
+	return nil
 }
 
 func checkReleaseChannelBinding(releaseStep *yaml.Node) error {
@@ -610,11 +744,46 @@ func hasTrustedCheckoutBefore(steps []*yaml.Node, before int) bool {
 		if !hasUses || !hasWith || !strings.HasPrefix(uses.Value, "actions/checkout@") {
 			continue
 		}
+		if _, conditional := mappingValue(steps[index], "if"); conditional {
+			continue
+		}
+		if _, softFailure := mappingValue(steps[index], "continue-on-error"); softFailure {
+			continue
+		}
 		if requireScalar(with, "fetch-depth", "0") == nil && requireScalar(with, "persist-credentials", "false") == nil {
 			return true
 		}
 	}
 	return false
+}
+
+func requireCredentialFreeCheckout(job *yaml.Node, jobName string) error {
+	steps, err := jobSteps(job)
+	if err != nil {
+		return fmt.Errorf("%s must have exactly one credential-free checkout", jobName)
+	}
+	checkoutCount := 0
+	for _, step := range steps {
+		uses, hasUses := mappingValue(step, "uses")
+		if !hasUses || uses.Kind != yaml.ScalarNode || !strings.HasPrefix(uses.Value, "actions/checkout@") {
+			continue
+		}
+		checkoutCount++
+		if _, exists := mappingValue(step, "if"); exists {
+			return fmt.Errorf("%s checkout must not define if or continue-on-error", jobName)
+		}
+		if _, exists := mappingValue(step, "continue-on-error"); exists {
+			return fmt.Errorf("%s checkout must not define if or continue-on-error", jobName)
+		}
+		with, ok := mappingValue(step, "with")
+		if !ok || requireScalar(with, "persist-credentials", "false") != nil {
+			return fmt.Errorf("%s checkout must set persist-credentials to false", jobName)
+		}
+	}
+	if checkoutCount != 1 {
+		return fmt.Errorf("%s must have exactly one credential-free checkout", jobName)
+	}
+	return nil
 }
 
 func signingStepIndex(steps []*yaml.Node) (int, *yaml.Node) {
@@ -824,4 +993,16 @@ func splitCommands(run string) []string {
 		}
 	}
 	return commands
+}
+
+func equalCommands(got, want []string) bool {
+	if len(got) != len(want) {
+		return false
+	}
+	for index := range want {
+		if got[index] != want[index] {
+			return false
+		}
+	}
+	return true
 }

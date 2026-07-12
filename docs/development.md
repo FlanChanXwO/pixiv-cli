@@ -185,9 +185,14 @@ GitHub 实际运行。
 `uses` 的 40 位 SHA，以及 publish 的 SemVer channel 调用。默认分支 ancestry 必须在无
 `environment`、无 secret 的 `verify_release_source` job 中完成；只有该 job 成功后，publish 才可
 依赖它并声明精确的 `release` Environment、使用签名 metadata step 的两个预期 secret。policy 还会
-拒绝 `continue-on-error` 或条件 `if` 跳过的质量门禁。build job 必须实际运行 vendored Rust 离线检查、crate cwd 的 `cargo fmt --check` 与
-locked/offline Clippy `-D warnings`、普通及 race Go 测试、vet、许可证、封装、固定版本
-`pre-commit==4.6.0`、pre-commit 和 `git diff --check`。发布渠道仅可由
+拒绝 required job、默认分支 ancestry step 与 quality gate 的 `continue-on-error` 或条件 `if`；validate
+与 build checkout 也必须显式 `persist-credentials: false`。为避免 shell 控制流隐藏 gate，每项质量
+检查都是唯一的单命令 `bash` step：policy 精确验证其 run、crate cwd（Rust gate）和 shell，并拒绝
+`env`、`defaults` 或其它 step 字段。解析器同时 fail-closed 地拒绝 YAML alias、merge key、任何重复
+mapping key 以及 root/job 的 `env`、`defaults`，因此 GitHub 的覆盖或工作目录语义不会与本地检查分叉。
+build job 必须实际运行 vendored Rust 离线检查、crate cwd 的 `cargo fmt --check` 与 locked/offline
+Clippy `-D warnings`、普通及 race Go 测试、vet、许可证、封装、固定版本 `pre-commit==4.6.0`、
+pre-commit 和 `git diff --check`。发布渠道仅可由
 `go run ./scripts/releaseassets channel --version ...` 判定；build metadata 中的连字符不会使 stable
 tag 误变为 prerelease。
 

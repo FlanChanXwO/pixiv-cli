@@ -16,6 +16,8 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          persist-credentials: false
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
         with:
           go-version: '1.26.3'
@@ -68,33 +70,52 @@ jobs:
             artifact: windows-arm64
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          persist-credentials: false
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
         with:
           go-version: '1.26.3'
       - name: Install the native Rust target
         shell: bash
         run: rustup target add '${{ matrix.rust_target }}'
-      - name: Check Rust format and lints from vendored sources
+      - name: Check vendored Rust sources
+        shell: bash
+        run: sh scripts/test-rust-vendor.sh
+      - name: Check Rust formatting from vendored sources
         shell: bash
         working-directory: internal/download/ugoira_rs
-        run: |
-          cargo fmt --check
-          cargo clippy --locked --offline --all-targets -- -D warnings
+        run: cargo fmt --check
+      - name: Lint vendored Rust sources
+        shell: bash
+        working-directory: internal/download/ugoira_rs
+        run: cargo clippy --locked --offline --all-targets -- -D warnings
       - name: Build the native Rust static library
         shell: bash
         run: bash scripts/build-staticlibs.sh --target '${{ matrix.rust_target }}'
-      - name: Test and audit the checked-out source
+      - name: Test Go sources
         shell: bash
-        run: |
-          sh scripts/test-rust-vendor.sh
-          go test ./...
-          go test -race ./...
-          go vet ./...
-          go run ./scripts/licensebundle --check
-          sh scripts/test-package-release.sh
-          python -m pip install --disable-pip-version-check pre-commit==4.6.0
-          python -m pre_commit run --all-files
-          git diff --check
+        run: go test ./...
+      - name: Test Go sources with the race detector
+        shell: bash
+        run: go test -race ./...
+      - name: Vet Go sources
+        shell: bash
+        run: go vet ./...
+      - name: Audit bundled licenses
+        shell: bash
+        run: go run ./scripts/licensebundle --check
+      - name: Test release packages
+        shell: bash
+        run: sh scripts/test-package-release.sh
+      - name: Install the pinned pre-commit version
+        shell: bash
+        run: python -m pip install --disable-pip-version-check pre-commit==4.6.0
+      - name: Run pre-commit checks
+        shell: bash
+        run: python -m pre_commit run --all-files
+      - name: Check the generated diff
+        shell: bash
+        run: git diff --check
       - name: Build the versioned native executable
         shell: bash
         run: |

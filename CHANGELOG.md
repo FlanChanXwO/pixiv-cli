@@ -33,6 +33,9 @@
   才能访问精确的 signing secret。policy 同时拒绝被软失败或条件跳过的质量门禁，并把 SemVer channel
   的 stable/prerelease 分支绑定到实际 `gh release create` 参数，避免排版变化或 action tag/门禁移除
   悄然削弱发布供应链。
+- Release workflow policy 现 fail-closed 地拒绝 YAML alias、merge key 与重复 mapping key，并禁止
+  required job/ancestry gate 被条件跳过；每项质量检查固定为独立的直接命令 step，validate/build checkout
+  显式不持久化凭据，避免工作目录、shell 控制流或 credential 语义悄然改变发布结果。
 - Rust ugoira crate 的 crates.io 依赖现以完整 locked `vendor/` 闭包及 Cargo checksum 随源码审计；
   release 验证会在空 Cargo cache 下完成 metadata/build/test 与六 target 许可证检查，缺失 vendor、
   checksum 不匹配或 registry fallback 都会明确失败。
