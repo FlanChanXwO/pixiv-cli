@@ -76,7 +76,7 @@
     {
       "path": "CHANGELOG.md",
       "language": "markdown",
-      "sizeLines": 81,
+      "sizeLines": 83,
       "fileCategory": "docs"
     },
     {
@@ -160,13 +160,13 @@
     {
       "path": "docs/architecture.md",
       "language": "markdown",
-      "sizeLines": 220,
+      "sizeLines": 226,
       "fileCategory": "docs"
     },
     {
       "path": "docs/development.md",
       "language": "markdown",
-      "sizeLines": 329,
+      "sizeLines": 333,
       "fileCategory": "docs"
     },
     {
@@ -274,13 +274,13 @@
     {
       "path": "internal/cli/account_login.go",
       "language": "go",
-      "sizeLines": 1239,
+      "sizeLines": 1275,
       "fileCategory": "code"
     },
     {
       "path": "internal/cli/account_test.go",
       "language": "go",
-      "sizeLines": 1520,
+      "sizeLines": 1560,
       "fileCategory": "code"
     },
     {
@@ -406,7 +406,7 @@
     {
       "path": "internal/download/ugoira_integrity.go",
       "language": "go",
-      "sizeLines": 220,
+      "sizeLines": 47,
       "fileCategory": "code"
     },
     {
@@ -832,7 +832,7 @@
     {
       "path": "scripts/nativeevidence/main_test.go",
       "language": "go",
-      "sizeLines": 679,
+      "sizeLines": 695,
       "fileCategory": "code"
     },
     {
@@ -936,9 +936,15 @@
       "language": "markdown",
       "sizeLines": 642,
       "fileCategory": "docs"
+    },
+    {
+      "path": "internal/download/staticlib/manifest.go",
+      "language": "go",
+      "sizeLines": 222,
+      "fileCategory": "code"
     }
   ],
-  "totalFiles": 153,
+  "totalFiles": 154,
   "filteredByIgnore": 194,
   "estimatedComplexity": "large",
   "importMap": {
@@ -1415,7 +1421,9 @@
       "internal/utils/files/replace_windows.go"
     ],
     "internal/download/ugoira_integrity_test.go": [],
-    "internal/download/ugoira_integrity.go": [],
+    "internal/download/ugoira_integrity.go": [
+      "internal/download/staticlib/manifest.go"
+    ],
     "internal/download/ugoira_rs/.cargo/config.toml": [],
     "internal/download/ugoira_rs/Cargo.toml": [],
     "internal/download/ugoira_rs/src/lib.rs": [],
@@ -1632,38 +1640,11 @@
     "scripts/licensebundle/main_test.go": [],
     "scripts/licensebundle/main.go": [],
     "scripts/nativeevidence/main_test.go": [
-      "internal/download/manager_test.go",
-      "internal/download/manager.go",
-      "internal/download/ugoira_encoder.go",
-      "internal/download/ugoira_integrity_test.go",
-      "internal/download/ugoira_integrity.go",
-      "internal/download/ugoira_rust_link_darwin_amd64.go",
-      "internal/download/ugoira_rust_link_darwin_arm64.go",
-      "internal/download/ugoira_rust_link_linux_amd64.go",
-      "internal/download/ugoira_rust_link_linux_arm64.go",
-      "internal/download/ugoira_rust_link_windows_amd64.go",
-      "internal/download/ugoira_rust_link_windows_arm64.go",
-      "internal/download/ugoira_rust_stub.go",
-      "internal/download/ugoira_rust_test.go",
-      "internal/download/ugoira_rust.go"
+      "internal/download/staticlib/manifest.go"
     ],
     "scripts/nativeevidence/main.go": [
-      "internal/buildinfo/buildinfo_test.go",
       "internal/buildinfo/buildinfo.go",
-      "internal/download/manager_test.go",
-      "internal/download/manager.go",
-      "internal/download/ugoira_encoder.go",
-      "internal/download/ugoira_integrity_test.go",
-      "internal/download/ugoira_integrity.go",
-      "internal/download/ugoira_rust_link_darwin_amd64.go",
-      "internal/download/ugoira_rust_link_darwin_arm64.go",
-      "internal/download/ugoira_rust_link_linux_amd64.go",
-      "internal/download/ugoira_rust_link_linux_arm64.go",
-      "internal/download/ugoira_rust_link_windows_amd64.go",
-      "internal/download/ugoira_rust_link_windows_arm64.go",
-      "internal/download/ugoira_rust_stub.go",
-      "internal/download/ugoira_rust_test.go",
-      "internal/download/ugoira_rust.go"
+      "internal/download/staticlib/manifest.go"
     ],
     "scripts/package-release.sh": [],
     "scripts/releaseassets/main_test.go": [],
@@ -1687,6 +1668,7 @@
       "internal/pixiv/source.go"
     ],
     "test/e2e/version_binary_test.go": [],
-    "THIRD_PARTY_LICENSES.md": []
+    "THIRD_PARTY_LICENSES.md": [],
+    "internal/download/staticlib/manifest.go": []
   }
 }

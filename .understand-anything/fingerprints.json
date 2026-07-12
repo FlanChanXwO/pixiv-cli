@@ -1,7 +1,7 @@
 {
   "version": "1.0.0",
-  "gitCommitHash": "0cbd004d0f890adc14a3184bab93724b05634bb6",
-  "generatedAt": "2026-07-12T04:52:37.966Z",
+  "gitCommitHash": "f7926ae3c4af0601d1e5f1b54a80674dd01be76b",
+  "generatedAt": "2026-07-12T06:13:40.065Z",
   "files": {
     ".agents/skills/pixiv-commit-msg/SKILL.md": {
       "filePath": ".agents/skills/pixiv-commit-msg/SKILL.md",
@@ -95,12 +95,12 @@
     },
     "CHANGELOG.md": {
       "filePath": "CHANGELOG.md",
-      "contentHash": "b13f00d938722a924dfd7f378e7e5099d00a63d907a5cdf27b99e45ba1efcc51",
+      "contentHash": "c6efe6ef36a04ac88a1186c82917cff9a7a60d4639e8d2d68bd71c540da69079",
       "functions": [],
       "classes": [],
       "imports": [],
       "exports": [],
-      "totalLines": 82,
+      "totalLines": 84,
       "hasStructuralAnalysis": true
     },
     "CLAUDE.md": {
@@ -267,22 +267,22 @@
     },
     "docs/architecture.md": {
       "filePath": "docs/architecture.md",
-      "contentHash": "ad1950a5a0c41f4bad592d8e3b72f278eeca7869bfd75c16cc711478505f84d4",
+      "contentHash": "055a19f3e9b8b55339900ad8c45ccb0527cd568e1118d10c4c6f6a80c97f26eb",
       "functions": [],
       "classes": [],
       "imports": [],
       "exports": [],
-      "totalLines": 222,
+      "totalLines": 227,
       "hasStructuralAnalysis": true
     },
     "docs/development.md": {
       "filePath": "docs/development.md",
-      "contentHash": "03f2159f3754bd22b167306a442f1b5b5efb54f50a733bb8dbeea7d70ccc6332",
+      "contentHash": "3eb13a55f7b0ddb13b29a83d197e8b20d13dd7a8bd10fed17e2a13e436f508b6",
       "functions": [],
       "classes": [],
       "imports": [],
       "exports": [],
-      "totalLines": 330,
+      "totalLines": 334,
       "hasStructuralAnalysis": true
     },
     "docs/index.md": {
@@ -2348,7 +2348,7 @@
     },
     "internal/cli/account_login.go": {
       "filePath": "internal/cli/account_login.go",
-      "contentHash": "4ef56e2fb1c171bae86a49f33adf76a20f6ec2a40064c62cfe24a4903b39fa26",
+      "contentHash": "37bb5ef19006b5c19d7f636e1fe428f6676b0b5cdb6a84bc4fa3788bd7a70c09",
       "functions": [
         {
           "name": "newAccountLoginCommand",
@@ -2376,11 +2376,22 @@
             "loginURL",
             "noOpen",
             "browserOpener",
-            "browserWatcher"
+            "browserWatcher",
+            "schemeRelayInstaller"
           ],
           "returnType": "(string, error)",
           "exported": false,
-          "lineCount": 173
+          "lineCount": 179
+        },
+        {
+          "name": "cancelAndJoinBrowserWatcher",
+          "params": [
+            "stop",
+            "done",
+            "beforeJoin"
+          ],
+          "exported": false,
+          "lineCount": 11
         },
         {
           "name": "writeLoginForm",
@@ -2481,7 +2492,7 @@
         {
           "name": "currentLoginHooks",
           "params": [],
-          "returnType": "(string, func(string) error, browserCodeWatcher)",
+          "returnType": "(string, func(string) error, browserCodeWatcher, urlSchemeRelayInstaller)",
           "exported": false,
           "lineCount": 5
         },
@@ -2507,6 +2518,15 @@
           "name": "setBrowserCodeWatcherForTest",
           "params": [
             "watcher"
+          ],
+          "returnType": "func()",
+          "exported": false,
+          "lineCount": 11
+        },
+        {
+          "name": "setURLSchemeRelayInstallerForTest",
+          "params": [
+            "installer"
           ],
           "returnType": "func()",
           "exported": false,
@@ -3015,12 +3035,12 @@
         }
       ],
       "exports": [],
-      "totalLines": 1240,
+      "totalLines": 1276,
       "hasStructuralAnalysis": true
     },
     "internal/cli/account_test.go": {
       "filePath": "internal/cli/account_test.go",
-      "contentHash": "5533ba0c501d27de7936531ec6404f2c43f0b46b93d60fe85aac90ae0cc1b4ec",
+      "contentHash": "f3908af34f61e83cec2810c2cd382a7e69d508a0b344074c435067880d6c4e60",
       "functions": [
         {
           "name": "TestAccountAddListUseRemovePreservesOrder",
@@ -3143,6 +3163,14 @@
           "lineCount": 34
         },
         {
+          "name": "TestCancelAndJoinBrowserWatcherWaitsForExit",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 22
+        },
+        {
           "name": "TestAccountLoginBrowserSuccessStillAcceptsTerminalPrompt",
           "params": [
             "t"
@@ -3180,7 +3208,7 @@
             "t"
           ],
           "exported": true,
-          "lineCount": 47
+          "lineCount": 49
         },
         {
           "name": "TestAccountLoginDefaultBrowserWatcherCatchesFastActiveTabCallback",
@@ -3188,7 +3216,7 @@
             "t"
           ],
           "exported": true,
-          "lineCount": 53
+          "lineCount": 55
         },
         {
           "name": "TestAccountLoginDefaultBrowserWatcherContinuesPixivPostRedirect",
@@ -3196,7 +3224,7 @@
             "t"
           ],
           "exported": true,
-          "lineCount": 76
+          "lineCount": 78
         },
         {
           "name": "TestAccountLoginDefaultBrowserWatcherSkipsStalePostRedirectChallenge",
@@ -3204,7 +3232,7 @@
             "t"
           ],
           "exported": true,
-          "lineCount": 81
+          "lineCount": 83
         },
         {
           "name": "TestAccountLoginDefaultBrowserWatcherReportsPostRedirectRelayOnce",
@@ -3212,7 +3240,7 @@
             "t"
           ],
           "exported": true,
-          "lineCount": 76
+          "lineCount": 78
         },
         {
           "name": "TestLoginCodeFromInputOnlyPixivCallbacksMayOmitState",
@@ -3360,6 +3388,16 @@
           "params": [
             "t",
             "watcher"
+          ],
+          "returnType": "func()",
+          "exported": false,
+          "lineCount": 4
+        },
+        {
+          "name": "setTestURLSchemeRelayInstaller",
+          "params": [
+            "t",
+            "installer"
           ],
           "returnType": "func()",
           "exported": false,
@@ -3707,6 +3745,7 @@
         "TestAccountLoginProxyFlagOverridesEnvAndConfig",
         "TestAccountLoginNoProxyFlagClearsEnvAndConfig",
         "TestAccountLoginBrowserFailureFallsBackToTerminalPrompt",
+        "TestCancelAndJoinBrowserWatcherWaitsForExit",
         "TestAccountLoginBrowserSuccessStillAcceptsTerminalPrompt",
         "TestAccountLoginAcceptsPixivCallbackURLWithoutState",
         "TestAccountLoginManualPageRelaysPostRedirectThenAcceptsCode",
@@ -3732,7 +3771,7 @@
         "TestActiveMacBrowserURLsFallBackToSystemEvents",
         "ExchangeAuthorizationCode"
       ],
-      "totalLines": 1521,
+      "totalLines": 1561,
       "hasStructuralAnalysis": true
     },
     "internal/cli/api_cmd.go": {
@@ -6823,71 +6862,8 @@
     },
     "internal/download/ugoira_integrity.go": {
       "filePath": "internal/download/ugoira_integrity.go",
-      "contentHash": "e04900c389e2ccfe1db7d689d1bae8f5938af05ae0822e830403db0d079be8b7",
+      "contentHash": "dc55210628a89480774a0223a6b567cc0e33664826166e27dfaf5f26ab507fc2",
       "functions": [
-        {
-          "name": "CalculateUgoiraRustSourceDigest",
-          "params": [
-            "crateDir",
-            "quantetteDir"
-          ],
-          "returnType": "(string, error)",
-          "exported": true,
-          "lineCount": 10
-        },
-        {
-          "name": "hashUgoiraSourceTree",
-          "params": [
-            "hasher",
-            "logicalRoot",
-            "directory",
-            "includeLock"
-          ],
-          "returnType": "error",
-          "exported": false,
-          "lineCount": 43
-        },
-        {
-          "name": "isUgoiraDigestSource",
-          "params": [
-            "rel",
-            "includeLock"
-          ],
-          "returnType": "bool",
-          "exported": false,
-          "lineCount": 9
-        },
-        {
-          "name": "ValidateUgoiraStaticlibManifest",
-          "params": [
-            "body",
-            "sourceDigest"
-          ],
-          "returnType": "error",
-          "exported": true,
-          "lineCount": 15
-        },
-        {
-          "name": "ValidateUgoiraStaticlibManifestFiles",
-          "params": [
-            "staticlibDir",
-            "body",
-            "sourceDigest"
-          ],
-          "returnType": "error",
-          "exported": true,
-          "lineCount": 30
-        },
-        {
-          "name": "validateUgoiraStaticlibManifest",
-          "params": [
-            "manifest",
-            "sourceDigest"
-          ],
-          "returnType": "error",
-          "exported": false,
-          "lineCount": 35
-        },
         {
           "name": "expectedStaticlibManifestPath",
           "params": [
@@ -6899,124 +6875,58 @@
           "lineCount": 7
         },
         {
-          "name": "ensureNoTrailingJSON",
+          "name": "CalculateUgoiraRustSourceDigest",
           "params": [
-            "decoder"
+            "crateDir",
+            "quantetteDir"
+          ],
+          "returnType": "(string, error)",
+          "exported": true,
+          "lineCount": 3
+        },
+        {
+          "name": "ValidateUgoiraStaticlibManifest",
+          "params": [
+            "body",
+            "sourceDigest"
           ],
           "returnType": "error",
-          "exported": false,
-          "lineCount": 10
+          "exported": true,
+          "lineCount": 3
         },
         {
-          "name": "isSHA256",
+          "name": "ValidateUgoiraStaticlibManifestFiles",
           "params": [
-            "value"
+            "staticlibDir",
+            "body",
+            "sourceDigest"
           ],
-          "returnType": "bool",
-          "exported": false,
-          "lineCount": 7
+          "returnType": "error",
+          "exported": true,
+          "lineCount": 3
         }
       ],
-      "classes": [
-        {
-          "name": "UgoiraStaticlibManifest",
-          "methods": [],
-          "properties": [
-            "Schema",
-            "SourceDigest",
-            "Artifacts"
-          ],
-          "exported": true,
-          "lineCount": 5
-        },
-        {
-          "name": "UgoiraStaticlibManifestAsset",
-          "methods": [],
-          "properties": [
-            "Target",
-            "Path",
-            "SHA256"
-          ],
-          "exported": true,
-          "lineCount": 5
-        }
-      ],
+      "classes": [],
       "imports": [
-        {
-          "source": "bytes",
-          "specifiers": [
-            "bytes"
-          ]
-        },
-        {
-          "source": "crypto/sha256",
-          "specifiers": [
-            "sha256"
-          ]
-        },
-        {
-          "source": "encoding/hex",
-          "specifiers": [
-            "hex"
-          ]
-        },
-        {
-          "source": "encoding/json",
-          "specifiers": [
-            "json"
-          ]
-        },
-        {
-          "source": "fmt",
-          "specifiers": [
-            "fmt"
-          ]
-        },
-        {
-          "source": "io",
-          "specifiers": [
-            "io"
-          ]
-        },
-        {
-          "source": "io/fs",
-          "specifiers": [
-            "fs"
-          ]
-        },
-        {
-          "source": "os",
-          "specifiers": [
-            "os"
-          ]
-        },
-        {
-          "source": "path/filepath",
-          "specifiers": [
-            "filepath"
-          ]
-        },
-        {
-          "source": "sort",
-          "specifiers": [
-            "sort"
-          ]
-        },
         {
           "source": "strings",
           "specifiers": [
             "strings"
           ]
+        },
+        {
+          "source": "github.com/FlanChanXwO/pixiv-cli/internal/download/staticlib",
+          "specifiers": [
+            "staticlib"
+          ]
         }
       ],
       "exports": [
-        "UgoiraStaticlibManifest",
-        "UgoiraStaticlibManifestAsset",
         "CalculateUgoiraRustSourceDigest",
         "ValidateUgoiraStaticlibManifest",
         "ValidateUgoiraStaticlibManifestFiles"
       ],
-      "totalLines": 221,
+      "totalLines": 48,
       "hasStructuralAnalysis": true
     },
     "internal/download/ugoira_rs/.cargo/config.toml": {
@@ -17579,7 +17489,7 @@
     },
     "scripts/nativeevidence/main_test.go": {
       "filePath": "scripts/nativeevidence/main_test.go",
-      "contentHash": "3c6dea007120df6c352ff57a2ee192aa5172e57d18118911e40d4cdbb254d917",
+      "contentHash": "435fa4c4c1c2ccd18deeea8ea0919cc23e37e9be787f4cb2b1eb8be552b8f29a",
       "functions": [
         {
           "name": "TestMain",
@@ -17588,6 +17498,14 @@
           ],
           "exported": true,
           "lineCount": 7
+        },
+        {
+          "name": "TestPolicyCommandHasNoCGODownloadDependency",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 13
         },
         {
           "name": "TestCheckWorkflowAcceptsAuditedNativeEvidenceEntry",
@@ -17915,9 +17833,9 @@
           ]
         },
         {
-          "source": "github.com/FlanChanXwO/pixiv-cli/internal/download",
+          "source": "github.com/FlanChanXwO/pixiv-cli/internal/download/staticlib",
           "specifiers": [
-            "download"
+            "staticlib"
           ]
         },
         {
@@ -17929,6 +17847,7 @@
       ],
       "exports": [
         "TestMain",
+        "TestPolicyCommandHasNoCGODownloadDependency",
         "TestCheckWorkflowAcceptsAuditedNativeEvidenceEntry",
         "TestCheckWorkflowRejectsNativeEvidenceSecurityAndCompletenessMutations",
         "TestRecordEvidenceBindsStaticlibBinaryAndCompleteArchive",
@@ -17940,12 +17859,12 @@
         "TestConsolidateEvidenceRejectsArchiveMissingRequiredMember",
         "TestConsolidateEvidenceRejectsSymlinkInputAncestor"
       ],
-      "totalLines": 680,
+      "totalLines": 696,
       "hasStructuralAnalysis": true
     },
     "scripts/nativeevidence/main.go": {
       "filePath": "scripts/nativeevidence/main.go",
-      "contentHash": "e0973ff77ad44812d758cc4459dda8a8ce49c7a22b58801f3a3bbea8ccf43ed5",
+      "contentHash": "6810c6b7babde5f173e5c8e0857a2e44274fd21070bf8807a542e2e39abd9814",
       "functions": [
         {
           "name": "main",
@@ -18653,9 +18572,9 @@
           ]
         },
         {
-          "source": "github.com/FlanChanXwO/pixiv-cli/internal/download",
+          "source": "github.com/FlanChanXwO/pixiv-cli/internal/download/staticlib",
           "specifiers": [
-            "download"
+            "staticlib"
           ]
         },
         {
@@ -20560,6 +20479,204 @@
       "imports": [],
       "exports": [],
       "totalLines": 643,
+      "hasStructuralAnalysis": true
+    },
+    "internal/download/staticlib/manifest.go": {
+      "filePath": "internal/download/staticlib/manifest.go",
+      "contentHash": "3e89d14da9ff02beda0a349c870b9753175ceaecf2c382a56e15c46a79778e0d",
+      "functions": [
+        {
+          "name": "CalculateRustSourceDigest",
+          "params": [
+            "crateDir",
+            "quantetteDir"
+          ],
+          "returnType": "(string, error)",
+          "exported": true,
+          "lineCount": 10
+        },
+        {
+          "name": "hashSourceTree",
+          "params": [
+            "hasher",
+            "logicalRoot",
+            "directory",
+            "includeLock"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 43
+        },
+        {
+          "name": "isDigestSource",
+          "params": [
+            "rel",
+            "includeLock"
+          ],
+          "returnType": "bool",
+          "exported": false,
+          "lineCount": 9
+        },
+        {
+          "name": "ValidateManifest",
+          "params": [
+            "body",
+            "sourceDigest"
+          ],
+          "returnType": "error",
+          "exported": true,
+          "lineCount": 15
+        },
+        {
+          "name": "ValidateManifestFiles",
+          "params": [
+            "staticlibDir",
+            "body",
+            "sourceDigest"
+          ],
+          "returnType": "error",
+          "exported": true,
+          "lineCount": 30
+        },
+        {
+          "name": "validateManifest",
+          "params": [
+            "manifest",
+            "sourceDigest"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 35
+        },
+        {
+          "name": "expectedManifestPath",
+          "params": [
+            "platform",
+            "target"
+          ],
+          "returnType": "string",
+          "exported": false,
+          "lineCount": 7
+        },
+        {
+          "name": "ensureNoTrailingJSON",
+          "params": [
+            "decoder"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 10
+        },
+        {
+          "name": "isSHA256",
+          "params": [
+            "value"
+          ],
+          "returnType": "bool",
+          "exported": false,
+          "lineCount": 7
+        }
+      ],
+      "classes": [
+        {
+          "name": "Manifest",
+          "methods": [],
+          "properties": [
+            "Schema",
+            "SourceDigest",
+            "Artifacts"
+          ],
+          "exported": true,
+          "lineCount": 5
+        },
+        {
+          "name": "ManifestAsset",
+          "methods": [],
+          "properties": [
+            "Target",
+            "Path",
+            "SHA256"
+          ],
+          "exported": true,
+          "lineCount": 5
+        }
+      ],
+      "imports": [
+        {
+          "source": "bytes",
+          "specifiers": [
+            "bytes"
+          ]
+        },
+        {
+          "source": "crypto/sha256",
+          "specifiers": [
+            "sha256"
+          ]
+        },
+        {
+          "source": "encoding/hex",
+          "specifiers": [
+            "hex"
+          ]
+        },
+        {
+          "source": "encoding/json",
+          "specifiers": [
+            "json"
+          ]
+        },
+        {
+          "source": "fmt",
+          "specifiers": [
+            "fmt"
+          ]
+        },
+        {
+          "source": "io",
+          "specifiers": [
+            "io"
+          ]
+        },
+        {
+          "source": "io/fs",
+          "specifiers": [
+            "fs"
+          ]
+        },
+        {
+          "source": "os",
+          "specifiers": [
+            "os"
+          ]
+        },
+        {
+          "source": "path/filepath",
+          "specifiers": [
+            "filepath"
+          ]
+        },
+        {
+          "source": "sort",
+          "specifiers": [
+            "sort"
+          ]
+        },
+        {
+          "source": "strings",
+          "specifiers": [
+            "strings"
+          ]
+        }
+      ],
+      "exports": [
+        "Manifest",
+        "ManifestAsset",
+        "CalculateRustSourceDigest",
+        "ValidateManifest",
+        "ValidateManifestFiles"
+      ],
+      "totalLines": 223,
       "hasStructuralAnalysis": true
     }
   }
