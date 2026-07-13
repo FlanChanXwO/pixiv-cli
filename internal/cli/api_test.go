@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
@@ -67,6 +69,29 @@ func TestSearchFiltersResultsAndFollowsCursorUntilLimit(t *testing.T) {
 	}
 	require.NoError(t, json.Unmarshal(stdout.Bytes(), &out))
 	assert.Equal(t, []int64{4, 5}, []int64{out.Illusts[0].ID, out.Illusts[1].ID})
+}
+
+func TestSearchAITypeFilterPreservesAnonymousWebResult(t *testing.T) {
+	useTempPaths(t)
+	web := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		require.Equal(t, "/ajax/search/artworks/miku", request.URL.Path)
+		_, _ = io.WriteString(writer, `{"error":false,"body":{"illustManga":{"data":[{"id":"1","title":"AI work","illustType":"0","xRestrict":"0","aiType":"1","userId":"10","userName":"artist","pageCount":"1"}]}}}`)
+	}))
+	defer web.Close()
+	setTestSDKCommandFactory(t, func(application.SDKClientRequest) (application.SDKClient, error) {
+		return sdk.NewClient(sdk.Options{HTTPClient: web.Client(), WebAPIBaseURL: web.URL, WebFallbackEnabled: true})
+	})
+
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"pixiv", "search", "miku", "--ai-type", "1", "--json"}, strings.NewReader(""), &stdout, &stderr)
+
+	require.Equal(t, 0, code, stderr.String())
+	var out struct {
+		Illusts []sdk.Illust `json:"illusts"`
+	}
+	require.NoError(t, json.Unmarshal(stdout.Bytes(), &out))
+	require.Len(t, out.Illusts, 1)
+	assert.Equal(t, 1, out.Illusts[0].AIType)
 }
 
 func TestSearchRejectsInvalidFilterValuesBeforeOpeningSDK(t *testing.T) {
