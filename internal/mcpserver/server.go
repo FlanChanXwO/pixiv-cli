@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -11,6 +12,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/application"
 	"github.com/FlanChanXwO/pixiv-cli/internal/download"
@@ -86,28 +88,43 @@ func newServer(app *App) *mcp.Server {
 	return server
 }
 
+// addTool 在注册层统一观测所有 MCP tool（包括 legacy Source tool）。wrapper 不读取
+// request arguments，避免 token、cookie、URL 或用户查询进入日志；日志仍只经注入的
+// stderr logger 输出，绝不触碰 JSON-RPC transport。
+func addTool[In, Out any](a *App, server *mcp.Server, tool *mcp.Tool, handler mcp.ToolHandlerFor[In, Out]) {
+	mcp.AddTool(server, tool, func(ctx context.Context, request *mcp.CallToolRequest, input In) (result *mcp.CallToolResult, output Out, err error) {
+		started := time.Now()
+		result, output, err = handler(ctx, request, input)
+		if result != nil && result.IsError && err == nil {
+			err = errors.New("mcp tool returned an error result")
+		}
+		a.operationLog(tool.Name, started, err, 0, 0)
+		return result, output, err
+	})
+}
+
 func (a *App) register(server *mcp.Server) {
-	mcp.AddTool(server, &mcp.Tool{Name: "set_download_path", Description: "Set the default local save location for images and animations."}, a.setDownloadPath)
-	mcp.AddTool(server, &mcp.Tool{Name: "download", Description: "Download one or more artworks by ID with intelligent storage rules."}, a.download)
-	mcp.AddTool(server, &mcp.Tool{Name: "refresh_token", Description: "Manually refresh Pixiv API token when encountering authentication errors."}, a.refreshToken)
-	mcp.AddTool(server, &mcp.Tool{Name: "set_refresh_token", Description: "Set or update the Pixiv refresh token for authentication."}, a.setRefreshToken)
-	mcp.AddTool(server, &mcp.Tool{Name: "download_random_from_recommendation", Description: "Download random artworks from recommendations."}, a.downloadRandom)
-	mcp.AddTool(server, &mcp.Tool{Name: "search_illust", Description: "Search for illustrations using keywords with filters."}, a.searchIllust)
-	mcp.AddTool(server, &mcp.Tool{Name: "illust_detail", Description: "Get detailed information about a specific artwork."}, a.illustDetail)
-	mcp.AddTool(server, &mcp.Tool{Name: "illust_related", Description: "Find artworks related to a specific illustration."}, a.illustRelated)
-	mcp.AddTool(server, &mcp.Tool{Name: "illust_ranking", Description: "Browse Pixiv rankings."}, a.illustRanking)
-	mcp.AddTool(server, &mcp.Tool{Name: "search_user", Description: "Search for users/artists on Pixiv."}, a.searchUser)
-	mcp.AddTool(server, &mcp.Tool{Name: "illust_recommended", Description: "Get personalized artwork recommendations."}, a.illustRecommended)
-	mcp.AddTool(server, &mcp.Tool{Name: "trending_tags_illust", Description: "Get currently trending illustration tags."}, a.trendingTags)
-	mcp.AddTool(server, &mcp.Tool{Name: "illust_follow", Description: "Browse artworks from followed artists."}, a.illustFollow)
-	mcp.AddTool(server, &mcp.Tool{Name: "user_artworks", Description: "Browse a user's artworks."}, a.userArtworks)
-	mcp.AddTool(server, &mcp.Tool{Name: "user_bookmarks", Description: "Browse user's bookmarked artworks."}, a.userBookmarks)
-	mcp.AddTool(server, &mcp.Tool{Name: "user_following", Description: "View user's following list."}, a.userFollowing)
-	mcp.AddTool(server, &mcp.Tool{Name: "add_bookmark", Description: "Add an artwork to bookmarks."}, a.addBookmark)
-	mcp.AddTool(server, &mcp.Tool{Name: "remove_bookmark", Description: "Remove an artwork from bookmarks."}, a.removeBookmark)
-	mcp.AddTool(server, &mcp.Tool{Name: "follow_user", Description: "Follow a Pixiv user."}, a.followUser)
-	mcp.AddTool(server, &mcp.Tool{Name: "unfollow_user", Description: "Unfollow a Pixiv user."}, a.unfollowUser)
-	mcp.AddTool(server, &mcp.Tool{Name: "get_thumbnail_base64", Description: "Get artwork thumbnail as base64 data URL."}, a.thumbnailBase64)
+	addTool(a, server, &mcp.Tool{Name: "set_download_path", Description: "Set the default local save location for images and animations."}, a.setDownloadPath)
+	addTool(a, server, &mcp.Tool{Name: "download", Description: "Download one or more artworks by ID with intelligent storage rules."}, a.download)
+	addTool(a, server, &mcp.Tool{Name: "refresh_token", Description: "Manually refresh Pixiv API token when encountering authentication errors."}, a.refreshToken)
+	addTool(a, server, &mcp.Tool{Name: "set_refresh_token", Description: "Set or update the Pixiv refresh token for authentication."}, a.setRefreshToken)
+	addTool(a, server, &mcp.Tool{Name: "download_random_from_recommendation", Description: "Download random artworks from recommendations."}, a.downloadRandom)
+	addTool(a, server, &mcp.Tool{Name: "search_illust", Description: "Search for illustrations using keywords with filters."}, a.searchIllust)
+	addTool(a, server, &mcp.Tool{Name: "illust_detail", Description: "Get detailed information about a specific artwork."}, a.illustDetail)
+	addTool(a, server, &mcp.Tool{Name: "illust_related", Description: "Find artworks related to a specific illustration."}, a.illustRelated)
+	addTool(a, server, &mcp.Tool{Name: "illust_ranking", Description: "Browse Pixiv rankings."}, a.illustRanking)
+	addTool(a, server, &mcp.Tool{Name: "search_user", Description: "Search for users/artists on Pixiv."}, a.searchUser)
+	addTool(a, server, &mcp.Tool{Name: "illust_recommended", Description: "Get personalized artwork recommendations."}, a.illustRecommended)
+	addTool(a, server, &mcp.Tool{Name: "trending_tags_illust", Description: "Get currently trending illustration tags."}, a.trendingTags)
+	addTool(a, server, &mcp.Tool{Name: "illust_follow", Description: "Browse artworks from followed artists."}, a.illustFollow)
+	addTool(a, server, &mcp.Tool{Name: "user_artworks", Description: "Browse a user's artworks."}, a.userArtworks)
+	addTool(a, server, &mcp.Tool{Name: "user_bookmarks", Description: "Browse user's bookmarked artworks."}, a.userBookmarks)
+	addTool(a, server, &mcp.Tool{Name: "user_following", Description: "View user's following list."}, a.userFollowing)
+	addTool(a, server, &mcp.Tool{Name: "add_bookmark", Description: "Add an artwork to bookmarks."}, a.addBookmark)
+	addTool(a, server, &mcp.Tool{Name: "remove_bookmark", Description: "Remove an artwork from bookmarks."}, a.removeBookmark)
+	addTool(a, server, &mcp.Tool{Name: "follow_user", Description: "Follow a Pixiv user."}, a.followUser)
+	addTool(a, server, &mcp.Tool{Name: "unfollow_user", Description: "Unfollow a Pixiv user."}, a.unfollowUser)
+	addTool(a, server, &mcp.Tool{Name: "get_thumbnail_base64", Description: "Get artwork thumbnail as base64 data URL."}, a.thumbnailBase64)
 }
 
 type textOut struct {

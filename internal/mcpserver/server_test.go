@@ -1,6 +1,8 @@
 package mcpserver
 
 import (
+	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -10,6 +12,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -51,6 +54,101 @@ func TestServerListsExpectedTools(t *testing.T) {
 			t.Fatalf("tool %q missing from %v", want, names)
 		}
 	}
+}
+
+func TestLegacyToolLogsSafelyOutsideMCPProtocol(t *testing.T) {
+	var logs bytes.Buffer
+	server := New(&fakeAPI{}, &fakeDownloads{}, slog.New(slog.NewJSONHandler(&logs, nil)))
+	clientTransport, serverTransport := mcp.NewInMemoryTransports()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() { _ = server.Run(ctx, serverTransport) }()
+	client := mcp.NewClient(&mcp.Implementation{Name: "test", Version: "0.0.0"}, nil)
+	session, err := client.Connect(ctx, clientTransport, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer session.Close()
+	result := callTool(t, session, "search_illust", map[string]any{"word": "query-secret-canary"})
+	if result.IsError {
+		t.Fatalf("unexpected MCP result: %+v", result)
+	}
+	if strings.Contains(fmt.Sprint(result.Content), "pixiv operation") {
+		t.Fatalf("protocol content contains diagnostic log: %+v", result.Content)
+	}
+	got := logs.String()
+	for _, want := range []string{`"component":"mcp"`, `"operation":"search_illust"`, `"result":"success"`} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("missing %s in %s", want, got)
+		}
+	}
+	if strings.Contains(got, "query-secret-canary") {
+		t.Fatalf("MCP log leaked tool argument: %s", got)
+	}
+}
+
+func TestMCPStdioKeepsJSONRPCOnStdoutAndLogsOnStderr(t *testing.T) {
+	command := exec.Command(os.Args[0], "-test.run=^TestMCPStdioHelper$")
+	command.Env = append(os.Environ(), "PIXIV_MCP_STDIO_HELPER=1")
+	stdin, err := command.StdinPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	stdout, err := command.StdoutPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var stderr bytes.Buffer
+	command.Stderr = &stderr
+	if err := command.Start(); err != nil {
+		t.Fatal(err)
+	}
+	// StdioTransport 使用 newline-delimited JSON-RPC。输入仅含普通搜索词；
+	// 断言依然覆盖完整 OS stdout/stderr 边界，而非仅内存 transport。
+	for _, message := range []string{
+		`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"test","version":"1"}}}`,
+		`{"jsonrpc":"2.0","method":"notifications/initialized","params":{}}`,
+		`{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"search_illust","arguments":{"word":"stdio-secret-canary"}}}`,
+	} {
+		if _, err := io.WriteString(stdin, message+"\n"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	scanner := bufio.NewScanner(stdout)
+	lines := make([]string, 0, 2)
+	for range 2 {
+		if !scanner.Scan() {
+			t.Fatalf("stdio server ended before responses: %v; stderr=%s", scanner.Err(), stderr.String())
+		}
+		lines = append(lines, scanner.Text())
+	}
+	if err := stdin.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := command.Wait(); err != nil {
+		t.Fatalf("stdio helper: %v\nstdout=%s\nstderr=%s", err, strings.Join(lines, "\n"), stderr.String())
+	}
+	protocol := strings.Join(lines, "\n")
+	if !strings.Contains(protocol, `"jsonrpc":"2.0"`) || strings.Contains(protocol, `"component":"mcp"`) {
+		t.Fatalf("stdout is not protocol-only: %s; stderr=%s", protocol, stderr.String())
+	}
+	if !strings.Contains(stderr.String(), `"component":"mcp"`) || !strings.Contains(stderr.String(), `"operation":"search_illust"`) {
+		t.Fatalf("stderr lacks MCP event: %s", stderr.String())
+	}
+	if strings.Contains(stderr.String(), "stdio-secret-canary") {
+		t.Fatalf("stderr leaked tool input: %s", stderr.String())
+	}
+}
+
+func TestMCPStdioHelper(t *testing.T) {
+	if os.Getenv("PIXIV_MCP_STDIO_HELPER") != "1" {
+		return
+	}
+	server := New(&fakeAPI{}, &fakeDownloads{}, slog.New(slog.NewJSONHandler(os.Stderr, nil)))
+	if err := server.Run(context.Background(), &mcp.StdioTransport{}); err != nil {
+		os.Exit(1)
+	}
+	os.Exit(0)
 }
 
 func TestSetDownloadPathValidation(t *testing.T) {

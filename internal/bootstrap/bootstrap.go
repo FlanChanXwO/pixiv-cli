@@ -104,11 +104,25 @@ func newSDKClient(logger *slog.Logger, request application.SDKClientRequest) (ap
 // NewApplicationLogger 从当前配置建立一次应用根 logger。它不触碰 slog 全局默认值；
 // CLI 与 MCP 将其显式传入所有下游组件，确保诊断永远离开 stdout 协议通道。
 func NewApplicationLogger(errOut io.Writer) (*slog.Logger, error) {
-	cfg, err := LoadRuntimeConfig()
+	settings, err := config.LoadSettingsState()
+	if err != nil {
+		// 根 logger 的初始化不得抢在 Cobra 前把帮助、config path 等本地协议变成
+		// 失败。配置文件不可读或语法损坏时静默 logger；只要文件可解析，下面对
+		// log_level/log_format 的显式校验仍会把非法日志配置返回给调用方。
+		return slog.New(slog.NewTextHandler(io.Discard, nil)), nil
+	}
+	// 根 logger 只依赖 logging 自己的两项设置。这样无关 runtime 配置（例如
+	// web.fallback_enabled）的错误不会破坏 help/config path 等离线协议；反之
+	// 无效 log_level/log_format 仍明确失败，绝不静默回退。
+	level, err := settings.Effective("log_level")
 	if err != nil {
 		return nil, err
 	}
-	return config.NewLogger(errOut, cfg)
+	format, err := settings.Effective("log_format")
+	if err != nil {
+		return nil, err
+	}
+	return config.NewLogger(errOut, config.RuntimeConfig{LogLevel: level.Value.(string), LogFormat: format.Value.(string)})
 }
 
 func LoadRuntimeConfig() (config.RuntimeConfig, error) {

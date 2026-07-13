@@ -44,6 +44,24 @@ func TestRunWritesJSONLogsOnlyToStderr(t *testing.T) {
 	}
 }
 
+func TestHelpAndConfigPathSurviveBrokenNonLoggingRuntimeConfig(t *testing.T) {
+	for _, body := range []string{
+		"[web]\nfallback_enabled = 'not-a-bool'\n",
+		"[unterminated\n",
+	} {
+		_, configPath := useTempPaths(t)
+		if err := config.WritePrivateFile(configPath, []byte(body)); err != nil {
+			t.Fatal(err)
+		}
+		for _, args := range [][]string{{"pixiv"}, {"pixiv", "config", "path"}} {
+			var stdout, stderr bytes.Buffer
+			if code := Run(args, strings.NewReader(""), &stdout, &stderr); code != 0 {
+				t.Fatalf("config=%q Run(%v) code=%d stderr=%s", body, args, code, stderr.String())
+			}
+		}
+	}
+}
+
 func TestRunUnknownCommandReturnsError(t *testing.T) {
 	useTempPaths(t)
 

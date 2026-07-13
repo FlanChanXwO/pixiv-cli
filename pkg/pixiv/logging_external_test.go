@@ -3,7 +3,10 @@ package pixiv_test
 import (
 	"bytes"
 	"context"
+	"io"
 	"log/slog"
+	"net/http"
+	"os"
 	"strings"
 	"testing"
 
@@ -60,4 +63,62 @@ func TestOpenDefaultLogsOneEventForOnePublicOperation(t *testing.T) {
 	if got := strings.Count(output.String(), `"operation":"add_bookmark"`); got != 1 {
 		t.Fatalf("add bookmark log count = %d: %s", got, output.String())
 	}
+}
+
+func TestOpenDefaultCurrentUserSnapshotFailureLogsOnlyCurrentUserOperation(t *testing.T) {
+	configPath := t.TempDir() + "/config.toml"
+	if err := os.WriteFile(configPath, []byte("[logging]\nformat = 'invalid'\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var output bytes.Buffer
+	client, err := pixiv.OpenDefault(pixiv.Options{ConfigFilePath: configPath, Logger: slog.New(slog.NewJSONHandler(&output, nil))})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := client.CurrentUserID(context.Background()); err == nil {
+		t.Fatal("CurrentUserID unexpectedly succeeded")
+	}
+	got := output.String()
+	if strings.Count(got, `"operation":"current_user_id"`) != 1 || strings.Contains(got, `"operation":"snapshot"`) {
+		t.Fatalf("unexpected snapshot log sequence: %s", got)
+	}
+}
+
+func TestClientLoggerRedactsRealUpstreamFailureCanaries(t *testing.T) {
+	const token = "access-token-canary"
+	const query = "query-canary"
+	const body = "response-body-canary"
+	const cookie = "cookie-canary"
+	const oauthCode = "oauth-code-canary"
+	const verifier = "pkce-verifier-canary"
+	var output bytes.Buffer
+	client, err := pixiv.NewClient(pixiv.Options{
+		AccessToken:   token,
+		AppAPIBaseURL: "https://api.example.invalid/?secret=" + query,
+		Logger:        slog.New(slog.NewJSONHandler(&output, nil)),
+		HTTPClient: &http.Client{Transport: loggingRoundTripper(func(*http.Request) (*http.Response, error) {
+			return &http.Response{StatusCode: http.StatusInternalServerError, Body: io.NopCloser(strings.NewReader(body + cookie + oauthCode + verifier)), Header: make(http.Header)}, nil
+		})},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := client.SearchIllust(context.Background(), pixiv.SearchIllustRequest{Word: "safe"}); err == nil {
+		t.Fatal("SearchIllust unexpectedly succeeded")
+	}
+	got := output.String()
+	if !strings.Contains(got, `"operation":"search_illust"`) || !strings.Contains(got, `"error_code":"upstream_error"`) {
+		t.Fatalf("missing structured failure: %s", got)
+	}
+	for _, secret := range []string{token, query, body, cookie, oauthCode, verifier} {
+		if strings.Contains(got, secret) {
+			t.Fatalf("log leaked %q: %s", secret, got)
+		}
+	}
+}
+
+type loggingRoundTripper func(*http.Request) (*http.Response, error)
+
+func (f loggingRoundTripper) RoundTrip(request *http.Request) (*http.Response, error) {
+	return f(request)
 }

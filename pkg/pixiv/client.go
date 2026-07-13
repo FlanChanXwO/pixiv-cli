@@ -78,8 +78,18 @@ type Client struct {
 // 的 access token 不携带可验证 UID，因此返回 unsupported。
 func (c *Client) CurrentUserID(ctx context.Context) (userID int64, err error) {
 	started := time.Now()
+	if c.defaults != nil {
+		scoped, snapshotErr := c.operationClient(ctx, OperationCurrentUserID)
+		if snapshotErr != nil {
+			return 0, snapshotErr
+		}
+		userID, err = scoped.currentUserID()
+		// operationClient 已记录快照失败；成功后的身份解析只有这里一条事件。
+		scoped.operationLog(OperationCurrentUserID, started, err, 0, userID)
+		return userID, err
+	}
 	defer func() { c.operationLog(OperationCurrentUserID, started, err, 0, userID) }()
-	if scoped, err := c.Snapshot(ctx); err != nil {
+	if scoped, err := c.operationClient(ctx, OperationCurrentUserID); err != nil {
 		return 0, err
 	} else if scoped != c {
 		return scoped.currentUserID()
