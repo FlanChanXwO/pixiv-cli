@@ -14,8 +14,9 @@ import (
 
 // readCacheForConcurrentReader 在测试写入仍活跃时读取完整缓存。ReplaceFileW 的官方文档说明它
 // 组合“旧文件改名、新文件取得目标名、删除旧文件”等多个步骤；真实 Windows runner 已在该命名
-// 空间切换窗口观察到 ERROR_FILE_NOT_FOUND。仅此瞬时错误可重试，其他打开/读取错误一律原样
-// 返回；stopReaders 关闭后立即停止重试，因此不会用任意次数或时长掩盖意外的持久错误。
+// 空间/句柄切换窗口观察到 ERROR_FILE_NOT_FOUND 与 ERROR_SHARING_VIOLATION。仅这两个
+// ReplaceFileW 相关的瞬时错误可重试，其他打开/读取错误一律原样返回；stopReaders 关闭后
+// 立即停止重试，因此不会用任意次数或时长掩盖意外的持久错误。
 //
 // https://learn.microsoft.com/windows/win32/api/winbase/nf-winbase-replacefilew
 func readCacheForConcurrentReader(path string, stopReaders <-chan struct{}) ([]byte, error) {
@@ -24,7 +25,7 @@ func readCacheForConcurrentReader(path string, stopReaders <-chan struct{}) ([]b
 		if err == nil {
 			return cacheBytes, nil
 		}
-		if !errors.Is(err, windows.ERROR_FILE_NOT_FOUND) {
+		if !errors.Is(err, windows.ERROR_FILE_NOT_FOUND) && !errors.Is(err, windows.ERROR_SHARING_VIOLATION) {
 			return nil, err
 		}
 		select {
