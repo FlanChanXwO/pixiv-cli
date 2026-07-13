@@ -278,6 +278,57 @@ func TestOpenDefaultCurrentUserIDUsesOAuthSnapshotIdentity(t *testing.T) {
 	}
 }
 
+func TestOpenDefaultCurrentUserIDPrefersExplicitAndEnvironmentOAuthIdentity(t *testing.T) {
+	// t.Setenv 不能与 t.Parallel 共用；此回归刻意验证 token 优先级与本地 default UID
+	// 不一致时，CLI 所需的“当前用户”仍来自本次 OAuth 响应。
+	for _, test := range []struct {
+		name          string
+		explicitToken string
+		envToken      string
+		oauthUserID   int64
+	}{
+		{name: "explicit token", explicitToken: "explicit-token", oauthUserID: 101},
+		{name: "environment token", envToken: "environment-token", oauthUserID: 202},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			dir := t.TempDir()
+			authPath := filepath.Join(dir, "auth.json")
+			configPath := filepath.Join(dir, "config.toml")
+			if err := os.WriteFile(authPath, []byte(`{"default_user_id":7,"accounts":[{"user_id":7,"refresh_token":"stored-token"}]}`), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if test.envToken != "" {
+				t.Setenv("PIXIV_REFRESH_TOKEN", test.envToken)
+			}
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path != "/auth/token" {
+					t.Fatalf("path=%s", r.URL.Path)
+				}
+				if err := r.ParseForm(); err != nil {
+					t.Fatal(err)
+				}
+				expectedToken := test.explicitToken
+				if expectedToken == "" {
+					expectedToken = test.envToken
+				}
+				if got := r.Form.Get("refresh_token"); got != expectedToken {
+					t.Fatalf("refresh_token=%q want=%q", got, expectedToken)
+				}
+				_, _ = fmt.Fprintf(w, `{"access_token":"access","refresh_token":"rotated","user":{"id":%d}}`, test.oauthUserID)
+			}))
+			defer server.Close()
+			client, err := pixiv.OpenDefault(pixiv.Options{AuthFilePath: authPath, ConfigFilePath: configPath, HTTPClient: server.Client(), OAuthBaseURL: server.URL, RefreshToken: test.explicitToken})
+			if err != nil {
+				t.Fatal(err)
+			}
+			userID, err := client.CurrentUserID(context.Background())
+			if err != nil || userID != test.oauthUserID {
+				t.Fatalf("CurrentUserID()=(%d,%v), want %d", userID, err, test.oauthUserID)
+			}
+		})
+	}
+}
+
 func TestOpenDefaultCursorRejectsSourceChangeAndLegacyCursor(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()

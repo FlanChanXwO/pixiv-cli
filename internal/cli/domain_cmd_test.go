@@ -7,11 +7,14 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/application"
 	"github.com/FlanChanXwO/pixiv-cli/internal/bootstrap"
+	"github.com/FlanChanXwO/pixiv-cli/internal/storage/auth"
 	sdk "github.com/FlanChanXwO/pixiv-cli/pkg/pixiv"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -289,6 +292,41 @@ func TestRunContextCancelsSDKNetworkCommand(t *testing.T) {
 	cancel()
 	assert.NotZero(t, <-done)
 	assert.Contains(t, stderr.String(), "context canceled")
+}
+
+func TestUserArtworksWithoutIDUsesConcreteOAuthIdentity(t *testing.T) {
+	authPath, configPath := useTempPaths(t)
+	require.NoError(t, auth.SaveAuthStore(authPath, auth.AuthStore{DefaultUserID: 7, Accounts: []auth.Account{{UserID: 7, RefreshToken: "stored-token"}}}))
+	t.Setenv("PIXIV_REFRESH_TOKEN", "environment-token")
+	var requestedUserIDs []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+		switch request.URL.Path {
+		case "/auth/token":
+			require.NoError(t, request.ParseForm())
+			assert.Equal(t, "environment-token", request.Form.Get("refresh_token"))
+			_, _ = io.WriteString(w, `{"access_token":"access","refresh_token":"rotated","user":{"id":202}}`)
+		case "/v1/user/illusts":
+			requestedUserIDs = append(requestedUserIDs, request.URL.Query().Get("user_id"))
+			_, _ = io.WriteString(w, `{"illusts":[]}`)
+		default:
+			t.Fatalf("unexpected path=%s", request.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	old := newCLIServices
+	newCLIServices = func(logger *slog.Logger) application.Services {
+		services := bootstrap.NewServices(logger)
+		services.SDK.NewClient = func(request application.SDKClientRequest) (application.SDKClient, error) {
+			return sdk.OpenDefault(sdk.Options{AuthFilePath: authPath, ConfigFilePath: configPath, HTTPClient: server.Client(), OAuthBaseURL: server.URL, AppAPIBaseURL: server.URL, UserID: request.UserID, RefreshToken: request.RefreshToken})
+		}
+		return services
+	}
+	t.Cleanup(func() { newCLIServices = old })
+
+	var stdout, stderr bytes.Buffer
+	require.Equal(t, 0, Run([]string{"pixiv", "user", "artworks", "--json"}, strings.NewReader(""), &stdout, &stderr), stderr.String())
+	assert.Equal(t, []string{"202"}, requestedUserIDs)
 }
 
 var _ io.Writer = (*bytes.Buffer)(nil)
