@@ -7,6 +7,8 @@
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-07-13
+
 ### Fixed
 
 - 修复直接下载的 Release binary 在本机不存在预期 `GOBIN`/`GOPATH/bin/pixiv` 时，把该正常安装来源

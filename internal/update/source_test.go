@@ -273,6 +273,41 @@ func TestDetectInstallSourceTreatsAbsentGoInstallTargetAsRelease(t *testing.T) {
 	}
 }
 
+func TestDetectInstallSourcePreservesUnexpectedGoInstallTargetResolutionError(t *testing.T) {
+	root := t.TempDir()
+	actualExecutable := filepath.Join(root, "release", pixivExecutableName(runtime.GOOS))
+	gobin := filepath.Join(root, "bin")
+	expectedExecutable := filepath.Join(gobin, pixivExecutableName(runtime.GOOS))
+	resolutionErr := errors.New("permission denied")
+
+	deps := testDetector(actualExecutable, actualExecutable, map[string]string{"GOBIN": gobin})
+	deps.evalSymlinks = func(executable string) (string, error) {
+		switch executable {
+		case actualExecutable:
+			return actualExecutable, nil
+		case expectedExecutable:
+			return "", resolutionErr
+		default:
+			t.Fatalf("evalSymlinks() path = %q, want current or expected executable", executable)
+			return "", nil
+		}
+	}
+	deps.readBuildInfo = func() (*debug.BuildInfo, bool) {
+		return &debug.BuildInfo{Path: pixivCLIModulePath + "/cmd/pixiv", Main: debug.Module{Path: pixivCLIModulePath}}, true
+	}
+
+	got, err := detectInstallSource(buildinfo.Info{Version: "v0.1.0"}, deps)
+	if got != "" {
+		t.Fatalf("detectInstallSource() source = %q, want no successful classification", got)
+	}
+	if !errors.Is(err, resolutionErr) {
+		t.Fatalf("detectInstallSource() error = %v, want wrapped resolution error", err)
+	}
+	if !strings.Contains(err.Error(), "resolve Go install executable symlink") {
+		t.Fatalf("detectInstallSource() error = %q, want resolution context", err)
+	}
+}
+
 func TestDetectInstallSourceTreatsUnknownFormalBinaryAsRelease(t *testing.T) {
 	executable := filepath.Join(t.TempDir(), "opt", pixivExecutableName(runtime.GOOS))
 	deps := testDetector(executable, executable, map[string]string{})
