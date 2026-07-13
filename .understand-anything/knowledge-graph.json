@@ -20,8 +20,8 @@
       "GitHub Actions"
     ],
     "description": "这是一个 Go 版 Pixiv CLI 与 MCP stdio server，内置 Rust ugoira encoder，并包含 release/update workflow。",
-    "analyzedAt": "2026-07-12T23:44:43Z",
-    "gitCommitHash": "9796b8acb9811c3c75f4b55c81f29302e9476bf8"
+    "analyzedAt": "2026-07-13T00:12:56.767Z",
+    "gitCommitHash": "8d0cf8482215f2f1e828345d0790afde8eff99cd"
   },
   "nodes": [
     {
@@ -12558,7 +12558,7 @@
       "type": "pipeline",
       "name": "release.yml",
       "filePath": ".github/workflows/release.yml",
-      "summary": "由 tag push 或默认分支 recovery 绑定 immutable RELEASE_TAG：六目标 build 仅执行 15-step test-only gates，以 git archive 覆盖经验证的 Windows-safe 测试与 policy；tag 中不存在的两条平台 reader 先以 git add -N 标为 intent-to-add，再同时核对工作树 diff 与空 cached diff。独立 9-step build_production 在新 runner 关闭 Go cache、重建 tag staticlib 并生成唯一 verified-release-*。",
+      "summary": "由 tag push 或默认分支 recovery 绑定 immutable RELEASE_TAG：六目标 build 仅执行 15-step test-only gates，以 git archive 覆盖经验证的 Windows-safe 测试、当前 release workflow 与 policy；白名单严格为 .github/workflows/release.yml、13 个测试文件及 scripts/releaseworkflow/main.go（15 条路径）。tag 中不存在的两条平台 reader 先以 git add -N 标为 intent-to-add，再同时核对工作树 diff 与空 cached diff。独立 9-step build_production 在新 runner 关闭 Go cache、重建 tag staticlib 并生成唯一 verified-release-*。",
       "tags": [
         "ci-cd",
         "release",
@@ -15699,7 +15699,7 @@
       "type": "file",
       "name": "main.go",
       "filePath": "scripts/releaseworkflow/main.go",
-      "summary": "以 fail-closed YAML AST policy 固定八 job DAG、15-step test-only build（无 production build/package/artifact）与唯一 9-step cache-disabled production matrix；recovery policy 精确要求两条 tag 缺失 reader 的 git add -N intent-to-add、工作树白名单 diff 和空 cached diff，确保 verified-release provenance。",
+      "summary": "以 fail-closed YAML AST policy 固定八 job DAG、15-step test-only build（无 production build/package/artifact）与唯一 9-step cache-disabled production matrix；recovery policy 精确要求包含当前 release workflow、13 个测试文件与 verifier 的 15 条白名单、两条 tag 缺失 reader 的 git add -N intent-to-add、工作树白名单 diff 和空 cached diff，确保 verified-release provenance。",
       "tags": [
         "release",
         "test-only",
@@ -16531,7 +16531,7 @@
       "type": "document",
       "name": "development.md",
       "filePath": "docs/development.md",
-      "summary": "说明八 job Release policy：六平台 test job 只执行 15-step gates且不生成 artifact；独立 clean-tag production matrix 关闭 Go cache并生成唯一 verified-release-*，publish 只下载六个 exact assets。",
+      "summary": "说明八 job Release policy：恢复 test job 只执行 15-step gates，以包含当前 release workflow、13 个测试文件及 verifier 的 15 条白名单覆盖并不生成 artifact；两条 tag 缺失 reader 保持 intent-to-add/empty cached diff；独立 clean-tag production matrix 关闭 Go cache并生成唯一 verified-release-*，publish 只下载六个 exact assets。",
       "complexity": "moderate",
       "tags": [
         "documentation",
@@ -21516,9 +21516,9 @@
       "filePath": "scripts/releaseworkflow/main.go",
       "lineRange": [
         397,
-        439
+        441
       ],
-      "summary": "只允许 workflow_dispatch 通过 git archive 覆盖精确、经审计的 Windows-safe 测试和 release policy 文件；两条 tag 缺失 reader 必须先 git add -N 成 intent-to-add，再同时验证工作树白名单 diff 与空 cached diff，禁止改生产源码或真实索引。",
+      "summary": "只允许 workflow_dispatch 通过 git archive 覆盖精确、经审计的 15 条 Windows-safe 路径：当前 release workflow、13 个测试文件和 release policy verifier；两条 tag 缺失 reader 必须先 git add -N 成 intent-to-add，再同时验证工作树白名单 diff 与空 cached diff，禁止改生产源码或真实索引。",
       "tags": [
         "implementation",
         "release",
@@ -21533,8 +21533,8 @@
       "name": "requireOverlayQualitySequence",
       "filePath": "scripts/releaseworkflow/main.go",
       "lineRange": [
-        409,
-        435
+        444,
+        470
       ],
       "summary": "要求 test-only overlay 后按固定顺序执行 Go/race/vet/license/package/pre-commit 等质量门禁；test job 到此结束，生产 fresh checkout 由独立 build_production runner 执行。",
       "tags": [
@@ -21551,8 +21551,8 @@
       "name": "requireProductionRebuildStep",
       "filePath": "scripts/releaseworkflow/main.go",
       "lineRange": [
-        437,
-        452
+        472,
+        487
       ],
       "summary": "在 clean immutable-tag checkout 后重建当前目标 staticlib，恢复 manifest 并证明 tracked、untracked、ignored 状态均干净。",
       "tags": [

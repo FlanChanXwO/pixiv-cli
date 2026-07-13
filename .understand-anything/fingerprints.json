@@ -1,7 +1,7 @@
 {
   "version": "1.0.0",
-  "gitCommitHash": "9796b8acb9811c3c75f4b55c81f29302e9476bf8",
-  "generatedAt": "2026-07-12T23:48:33.461Z",
+  "gitCommitHash": "8d0cf8482215f2f1e828345d0790afde8eff99cd",
+  "generatedAt": "2026-07-13T00:13:07.695Z",
   "files": {
     ".agents/skills/pixiv-commit-msg/SKILL.md": {
       "filePath": ".agents/skills/pixiv-commit-msg/SKILL.md",
@@ -65,12 +65,12 @@
     },
     ".github/workflows/release.yml": {
       "filePath": ".github/workflows/release.yml",
-      "contentHash": "64191e643325245db77418c7d4b10710ce7991957445224179cfad7bca64bd29",
+      "contentHash": "269ac26b130841edd0c6ec7c404a851a02cd3593321e02a0e904c1d2888c63c9",
       "functions": [],
       "classes": [],
       "imports": [],
       "exports": [],
-      "totalLines": 597,
+      "totalLines": 599,
       "hasStructuralAnalysis": true
     },
     ".pre-commit-config.yaml": {
@@ -277,12 +277,12 @@
     },
     "docs/development.md": {
       "filePath": "docs/development.md",
-      "contentHash": "9a53da430290e0697f7d0e59c951d80a2e8891d931047e3da9986d99c9adb865",
+      "contentHash": "0af1ea245ae6999ed9cd3cbb2d02adcbb45e2e9149fe4716ae6a168be449d8d7",
       "functions": [],
       "classes": [],
       "imports": [],
       "exports": [],
-      "totalLines": 394,
+      "totalLines": 395,
       "hasStructuralAnalysis": true
     },
     "docs/index.md": {
@@ -20109,7 +20109,7 @@
     },
     "scripts/releaseworkflow/main.go": {
       "filePath": "scripts/releaseworkflow/main.go",
-      "contentHash": "0697dcf9d986730131ee8a2b0933fe32432187a1b5c18e99288284a0dc81c6d8",
+      "contentHash": "97ac6548497967e55fb84e6f7c32af2b135b18c05b1f1fef6efb4b4c7b8c55d1",
       "functions": [
         {
           "name": "main",
@@ -20250,7 +20250,7 @@
           ],
           "returnType": "error",
           "exported": false,
-          "lineCount": 44
+          "lineCount": 46
         },
         {
           "name": "requireOverlayQualitySequence",
@@ -20887,7 +20887,7 @@
         }
       ],
       "exports": [],
-      "totalLines": 1896,
+      "totalLines": 1898,
       "hasStructuralAnalysis": true
     },
     "scripts/test-build-staticlibs.sh": {
