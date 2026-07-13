@@ -243,8 +243,8 @@ func checkRecoveryPolicy(root *yaml.Node) error {
 		return errors.New("workflow must have a build job for recovery policy")
 	}
 	buildEnv, ok := mappingValue(build, "env")
-	if !ok || requireOnlyMappingKeys(buildEnv, "CC") != nil || requireScalar(buildEnv, "CC", "${{ matrix.cc }}") != nil {
-		return errors.New("build job must bind CC from the audited matrix")
+	if !ok || requireOnlyMappingKeys(buildEnv, "CC", "GIT_CONFIG_COUNT", "GIT_CONFIG_KEY_0", "GIT_CONFIG_VALUE_0") != nil || requireScalar(buildEnv, "CC", "${{ matrix.cc }}") != nil || requireScalar(buildEnv, "GIT_CONFIG_COUNT", "1") != nil || requireScalar(buildEnv, "GIT_CONFIG_KEY_0", "core.autocrlf") != nil || requireScalar(buildEnv, "GIT_CONFIG_VALUE_0", "false") != nil {
+		return errors.New("build job must bind the audited compiler and immutable source byte checkout")
 	}
 	matrix := mustMappingPath(build, "strategy", "matrix")
 	if matrix == nil {

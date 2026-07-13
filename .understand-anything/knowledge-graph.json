@@ -20,8 +20,8 @@
       "GitHub Actions"
     ],
     "description": "这是一个 Go 版 Pixiv CLI 与 MCP stdio server，内置 Rust ugoira encoder，并包含 release/update workflow。",
-    "analyzedAt": "2026-07-13T02:17:40.556Z",
-    "gitCommitHash": "6299020d63ff9f94689a949cb474fc0cc7a11a9e"
+    "analyzedAt": "2026-07-13T02:54:34.930Z",
+    "gitCommitHash": "156c47d00dba4144c96340770244a3754c03dc66"
   },
   "nodes": [
     {
@@ -12558,7 +12558,7 @@
       "type": "pipeline",
       "name": "release.yml",
       "filePath": ".github/workflows/release.yml",
-      "summary": "由 tag push 或默认分支 recovery 绑定 immutable RELEASE_TAG：六目标 build 仅执行 15-step test-only gates，Windows/arm64 因 Go 1.26.3 不支持 -race 是唯一固定例外，其余五个目标仍运行 race。git archive recovery 白名单严格为当前 workflow、13 个测试文件、scripts/test-package-release.sh package fixture 与 scripts/releaseworkflow/main.go verifier（16 条路径）；两条 tag 缺失 reader 先 git add -N，再核对工作树白名单 diff 与空 cached diff。独立 9-step build_production 在新 runner 关闭 Go cache、重建 tag staticlib 并生成唯一 verified-release-*。",
+      "summary": "由 tag push 或默认分支 recovery 绑定 immutable RELEASE_TAG：六目标 build 仅执行 15-step test-only gates，Windows/arm64 因 Go 1.26.3 不支持 -race 是唯一固定例外，其余五个目标仍运行 race。test job 还固定 GIT_CONFIG_COUNT=1、GIT_CONFIG_KEY_0=core.autocrlf、GIT_CONFIG_VALUE_0=false，使 Git for Windows checkout 保留 tag LF blob，避免 pre-commit gofmt 将 CRLF 转换误报为源码格式错误。git archive recovery 白名单为 workflow、13 个测试文件、package fixture 与 verifier（16 条路径）；两条 tag 缺失 reader 先 git add -N。独立 9-step build_production 不继承该 byte config，仍在新 runner clean 默认 checkout tag、关闭 Go cache并生成唯一 verified-release-*。",
       "tags": [
         "ci-cd",
         "release",
@@ -15224,7 +15224,7 @@
       "type": "file",
       "name": "main_test.go",
       "filePath": "scripts/releaseworkflow/main_test.go",
-      "summary": "用真实 workflow 与 YAML AST mutations 证明 test build 仅含 15 个质量/overlay gates且无 artifact；独立 production runner 才能输出 verified-release assets 并由 publish 精确下载，同时固定 known_hosts CRLF 边界和唯一 Windows ARM64 race 条件例外。",
+      "summary": "用真实 workflow 与 YAML AST mutations 证明 test build 仅含 15 个质量/overlay gates且无 artifact；独立 production runner 才能输出 verified-release assets 并由 publish 精确下载，同时固定 known_hosts CRLF、唯一 Windows ARM64 race 条件与 test-only core.autocrlf=false checkout byte 配置。",
       "tags": [
         "test",
         "release",
@@ -15735,7 +15735,7 @@
       "type": "file",
       "name": "main.go",
       "filePath": "scripts/releaseworkflow/main.go",
-      "summary": "以 fail-closed YAML AST policy 固定八 job DAG、15-step test-only build（无 production build/package/artifact）与唯一 9-step cache-disabled production matrix；recovery policy 精确要求含 workflow、13 个测试文件、package fixture 与 verifier 的 16 条白名单、两条 tag 缺失 reader 的 git add -N/空 cached diff，并将 Go 1.26.3 Windows/arm64 -race 的唯一条件固定为其余五目标必跑。",
+      "summary": "以 fail-closed YAML AST policy 固定八 job DAG、15-step test-only build（无 production build/package/artifact）与唯一 9-step cache-disabled production matrix；recovery policy精确要求 16 条 overlay 白名单、两条 reader 的 git add -N/空 cached diff、唯一 Windows/arm64 race 条件，以及 test job 专属的 core.autocrlf=false GIT_CONFIG 三元组，防止 Git for Windows CRLF 触发 gofmt 误报；production 维持干净默认 tag checkout。",
       "tags": [
         "release",
         "test-only",
@@ -16585,7 +16585,7 @@
       "type": "document",
       "name": "development.md",
       "filePath": "docs/development.md",
-      "summary": "说明八 job Release policy：恢复 test job 以 workflow、13 个测试文件、package fixture 和 verifier 的 16 条白名单覆盖并不生成 artifact；package fixture 在 Windows 以 winsymlinks:nativestrict 建立并 -L 验证原生链接，无法建立即失败，防止 pseudo-link 弱化 output ancestor 安全门；两条 tag 缺失 reader 保持 intent-to-add/empty cached diff；Go 1.26.3 的 Windows/arm64 是唯一固定 -race 例外；独立 clean-tag production matrix 关闭 Go cache并生成唯一 verified-release-*。",
+      "summary": "说明八 job Release policy：恢复 test job 以 16 条白名单覆盖并不生成 artifact，并以 GIT_CONFIG_COUNT=1、core.autocrlf=false 固定 Git for Windows 的 tag LF blob bytes，避免 pre-commit gofmt 将 CRLF 转换误报；该 byte 设置仅用于 test gate，独立 clean-tag production matrix 维持默认 checkout、关闭 Go cache并生成唯一 verified-release-*。",
       "complexity": "moderate",
       "tags": [
         "documentation",
@@ -21428,7 +21428,7 @@
         227,
         275
       ],
-      "summary": "校验 recovery 的 RELEASE_TAG、test-only overlay 与独立 build_production 边界；production job 不得读取 workflow SHA 或 overlay。",
+      "summary": "校验 recovery 的 RELEASE_TAG、test-only overlay、Git for Windows LF blob checkout 三元组与独立 build_production 边界；生产 job 不得读取 workflow SHA、overlay 或 test-only GIT_CONFIG byte 设置。",
       "tags": [
         "implementation",
         "release",
@@ -21894,9 +21894,9 @@
       "filePath": "scripts/releaseworkflow/main_test.go",
       "lineRange": [
         71,
-        204
+        207
       ],
-      "summary": "以 YAML AST mutations 拒绝缺失/绕过 production job、matrix 或权限漂移、cache 启用、test-gate artifact 混入及 publish 下载集合变异。",
+      "summary": "以 YAML AST mutations 拒绝缺失/绕过 production job、matrix 或权限漂移、cache 启用、test-gate artifact 混入及 publish 下载集合变异；同时锁定 test gate 的 core.autocrlf=false GIT_CONFIG 三元组，避免 Windows CRLF/gofmt 误报而不污染 production checkout。",
       "tags": [
         "test",
         "release",

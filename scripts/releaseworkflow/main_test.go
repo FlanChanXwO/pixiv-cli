@@ -103,6 +103,9 @@ func TestCheckWorkflowRejectsProductionIsolationMutations(t *testing.T) {
 		{name: "production compiler env changed", mutate: func(t *testing.T, root *yaml.Node) {
 			requireMappingValue(t, requireMappingValue(t, jobNode(t, root, "build_production"), "env"), "CC").Value = "cc"
 		}},
+		{name: "test checkout byte config changed", mutate: func(t *testing.T, root *yaml.Node) {
+			requireMappingValue(t, requireMappingValue(t, jobNode(t, root, "build"), "env"), "GIT_CONFIG_VALUE_0").Value = "true"
+		}},
 		{name: "production adds job env", mutate: func(t *testing.T, root *yaml.Node) {
 			appendMappingValue(t, requireMappingValue(t, jobNode(t, root, "build_production"), "env"), "EXTRA", scalarNode("value"))
 		}},

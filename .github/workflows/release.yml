@@ -74,6 +74,11 @@ jobs:
       contents: read
     env:
       CC: ${{ matrix.cc }}
+      # Git for Windows 会按 runner 默认值把 immutable tag 的 Go 源码转换为 CRLF；质量门必须
+      # 检查 Git blob 的 LF bytes，避免 gofmt 将 checkout 转换误报为源码格式错误。
+      GIT_CONFIG_COUNT: '1'
+      GIT_CONFIG_KEY_0: core.autocrlf
+      GIT_CONFIG_VALUE_0: 'false'
     strategy:
       fail-fast: false
       matrix:

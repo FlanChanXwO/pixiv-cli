@@ -310,6 +310,9 @@ tag 误变为 prerelease。
 
 Go 1.26.3 不支持 Windows ARM64 的 race detector，因此该唯一 matrix entry 显式跳过 `go test -race`；
 其余五个原生目标仍运行 race gate，workflow policy 固定这个条件，禁止扩张为任意条件跳过。
+test matrix 还固定 `GIT_CONFIG_*` 为 `core.autocrlf=false`，使 Git for Windows checkout 保留 immutable
+tag 的 LF blob bytes；否则 pre-commit 的 `gofmt` 会把 runner 的 CRLF 转换误报为源码未格式化。该配置
+仅用于 test gate，独立 production build 仍从 tag 的干净默认 checkout 构建资产。
 
 publish 核对并公开 Release 后，立即上传同一份 `release/checksums.txt`；policy 拒绝中间 step、路径
 替换或发布后改写。`render_homebrew_formula` 只下载该 artifact，并把 releaseassets 的 stable/
