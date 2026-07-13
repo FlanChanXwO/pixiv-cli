@@ -86,7 +86,7 @@ adapter 根据 `Mode` 选择 SDK 方法，将 `NextCursor` 存回自己的状态
 - `pkg/pixiv` 可由外部 Go module 直接导入，构造 `*pixiv.Client`，不需 HTTP server。
 - 外部调用方可以用其 own adapter mock SDK 的窄方法集。
 - CLI 可列出用户作品、收藏、关注；`USER_ID` 可选并解析为当前认证用户。
-- MCP 同步暴露对应读取与写操作，错误为 `isError=true`，列表使用 `page`/`limit` structured pagination。
+- MCP 的 SDK 路径同步暴露对应用户读取与写操作；这些错误为 `isError=true` 并保留 structured/text，列表使用 `page`/`limit` structured pagination。遗留 tool 保持既有文本结果兼容，不承诺统一 `isError`。
 - SDK 和 CLI/MCP 均不暴露 cursor token、不把 App 失败静默改走 Web。
 - 图片代理可使用 `ResourceRef`/`OpenResource` 流式工作，非法 URL、header、redirect 与写入错误明确失败。
 - README、接口说明、架构、ADR、MCP 文档、开发文档、CHANGELOG 与知识图谱同步。

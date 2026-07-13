@@ -2,7 +2,7 @@
 
 以 `pixiv mcp` 启动 stdio server。stdout 仅用于 JSON-RPC，日志写 stderr。MCP 不提供 HTTP endpoint。
 
-有 refresh token 时 App API 为主路径，失败不自动回落 Web；无 refresh token 且 `web_fallback_enabled=true` 时，仅匿名白名单读 tool 可用 Web API。所有 tool 同时返回文本内容与 structured output；可分类失败会令 result `isError=true`，保留安全错误文本和对应 structured output。
+有 refresh token 时 App API 为主路径，失败不自动回落 Web；无 refresh token 且 `web_fallback_enabled=true` 时，仅匿名白名单读 tool 可用 Web API。SDK 路径的用户列表和收藏/关注写操作同时返回文本内容与 structured output；其可分类失败会令 result `isError=true`，保留安全错误文本和对应 structured output。遗留 MCP tool 保持既有文本结果兼容，不承诺统一 `isError` 语义。
 
 ## 分页
 
@@ -50,4 +50,4 @@ SDK cursor 不出现在 MCP 参数或输出。`user_bookmarks.max_bookmark_id` �
 | `follow_user` | `user_id`、可选 `restrict` | `{success, action, user_id}`。 |
 | `unfollow_user` | `user_id` | `{success, action, user_id}`。 |
 
-写操作均需要认证；失败 `success=false` 且 MCP result 为 `isError=true`。
+表中写操作均走 SDK 路径、需要认证；失败 `success=false` 且 MCP result 为 `isError=true`。
