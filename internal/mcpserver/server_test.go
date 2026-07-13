@@ -458,6 +458,7 @@ func TestSDKListsFollowOpaqueCursorForLimitAndRejectCycles(t *testing.T) {
 }
 
 func TestSDKToolsPersistRotationAfterSessionTokenAndSerializeConcurrentOperations(t *testing.T) {
+	t.Setenv("PIXIV_REFRESH_TOKEN", "")
 	dir := t.TempDir()
 	authPath := filepath.Join(dir, "auth.json")
 	configPath := filepath.Join(dir, "config.toml")
@@ -495,6 +496,7 @@ func TestSDKToolsPersistRotationAfterSessionTokenAndSerializeConcurrentOperation
 		return sdk.OpenDefault(sdk.Options{
 			AuthFilePath: authPath, ConfigFilePath: configPath, HTTPClient: server.Client(),
 			OAuthBaseURL: server.URL, AppAPIBaseURL: server.URL,
+			UserID: request.UserID, RefreshToken: request.RefreshToken,
 		})
 	}}
 	source := &rotatingSessionAPI{refreshToken: "r0", userID: 7, userName: "alice"}
