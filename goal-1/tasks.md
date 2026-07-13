@@ -18,10 +18,10 @@
 
 ## T03 — 审查 recovery 修改并 dispatch/验收 v0.2.0 Release
 
-- 状态：未完成
-- 实际：
-- 证据：
-- 风险/下一步：
+- 状态：阻塞
+- 实际：已创建并推送 recovery PR #4；Linux 双架构、macOS arm64 与 quality 通过。
+- 证据：GitHub Actions `29276437342`、`29276437349`；macOS amd64、Windows amd64/arm64 连续多个 goal 回合仍为 in-progress，未提供失败日志或完成结论。
+- 风险/下一步：等待 GitHub Actions 外部 runner 完成后，复查全部门禁；全绿才合并 main 并 dispatch `release_tag=v0.2.0`，tag 保持不可变。
 
 ## C01 — 集中检查：恢复链路、tag 不变性、文档与外部发布证据
 
