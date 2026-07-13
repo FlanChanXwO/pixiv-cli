@@ -3,6 +3,7 @@ package update
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"go/build"
 	"os"
@@ -161,6 +162,11 @@ func isGoInstall(actualExecutable string, deps sourceDetector) (bool, error) {
 	expectedExecutable := filepath.Join(binDir, pixivExecutableName(deps.goos))
 	resolvedExpected, err := deps.evalSymlinks(expectedExecutable)
 	if err != nil {
+		// 发布包也带有 Pixiv 的 Go 构建信息；预期的 go install 路径不存在时，
+		// 仅说明当前程序并非由 go install 安装，不能阻断 release 更新检查。
+		if errors.Is(err, os.ErrNotExist) {
+			return false, nil
+		}
 		return false, fmt.Errorf("resolve Go install executable symlink %q: %w", expectedExecutable, err)
 	}
 	return sameExecutablePath(actualExecutable, resolvedExpected, deps.goos), nil

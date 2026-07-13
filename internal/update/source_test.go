@@ -2,7 +2,6 @@ package update
 
 import (
 	"errors"
-	"fmt"
 	"go/build"
 	"os"
 	"path/filepath"
@@ -245,7 +244,7 @@ func TestDetectInstallSourceUsesDefaultGOPATHWhenEnvironmentIsUnset(t *testing.T
 	}
 }
 
-func TestDetectInstallSourceSurfacesBrokenExpectedGoInstallSymlink(t *testing.T) {
+func TestDetectInstallSourceTreatsAbsentGoInstallTargetAsRelease(t *testing.T) {
 	root := t.TempDir()
 	actualExecutable := filepath.Join(root, "release", pixivExecutableName(runtime.GOOS))
 	if err := os.MkdirAll(filepath.Dir(actualExecutable), 0o755); err != nil {
@@ -258,10 +257,6 @@ func TestDetectInstallSourceSurfacesBrokenExpectedGoInstallSymlink(t *testing.T)
 	if err := os.MkdirAll(gobin, 0o755); err != nil {
 		t.Fatalf("create GOBIN directory: %v", err)
 	}
-	expectedExecutable := filepath.Join(gobin, pixivExecutableName(runtime.GOOS))
-	if err := os.Symlink(filepath.Join(root, "missing", pixivExecutableName(runtime.GOOS)), expectedExecutable); err != nil {
-		t.Fatalf("create broken GOBIN symlink: %v", err)
-	}
 
 	deps := testDetector(actualExecutable, actualExecutable, map[string]string{"GOBIN": gobin})
 	deps.evalSymlinks = filepath.EvalSymlinks
@@ -270,15 +265,11 @@ func TestDetectInstallSourceSurfacesBrokenExpectedGoInstallSymlink(t *testing.T)
 	}
 
 	got, err := detectInstallSource(buildinfo.Info{Version: "v0.1.0"}, deps)
-	if got != "" {
-		t.Fatalf("detectInstallSource() source = %q, want no successful classification", got)
+	if err != nil {
+		t.Fatalf("detectInstallSource() error = %v, want absent GOBIN executable to mean not go install", err)
 	}
-	if err == nil {
-		t.Fatal("detectInstallSource() error = nil, want expected Go install symlink resolution error")
-	}
-	// 错误上下文以 %q 呈现路径；Windows 路径中的反斜杠会随 Go 字符串规则转义。
-	if !strings.Contains(err.Error(), fmt.Sprintf("%q", expectedExecutable)) || !strings.Contains(err.Error(), "resolve Go install executable symlink") {
-		t.Fatalf("detectInstallSource() error = %q, want expected symlink path and context", err)
+	if got != InstallSourceRelease {
+		t.Fatalf("detectInstallSource() = %q, want %q", got, InstallSourceRelease)
 	}
 }
 

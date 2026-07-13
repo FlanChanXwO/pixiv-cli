@@ -9,6 +9,9 @@
 
 ### Fixed
 
+- 修复直接下载的 Release binary 在本机不存在预期 `GOBIN`/`GOPATH/bin/pixiv` 时，把该正常安装来源
+  判定为错误而无法执行 `pixiv update --check` 的问题；不存在的 go install 目标现在会正确归类为
+  Release，其他路径解析错误仍会原样报告。
 - 修复 Release workflow 在 Windows 上以 MinGW GCC 链接 MSVC Rust staticlib 的错误；六平台 Go
   测试、race、vet、pre-commit 与最终构建现在统一使用各自受审计的 cgo linker，Windows 固定为
   LLD-backed Clang。
