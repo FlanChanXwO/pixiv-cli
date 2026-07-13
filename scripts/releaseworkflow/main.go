@@ -400,6 +400,7 @@ set -euo pipefail
 test -z "$(git diff --name-only)"
 test -z "$(git diff --cached --name-only)"
 git archive --format=tar "$GITHUB_SHA" -- \
+  .github/workflows/release.yml \
   internal/cli/account_test.go \
   internal/cli/config_test.go \
   internal/download/ugoira_rust_test.go \
@@ -418,6 +419,7 @@ git add -N \
   internal/update/releases_reader_nonwindows_test.go \
   internal/update/releases_reader_windows_test.go
 test "$(git diff --name-only)" = "$(printf '%s\n' \
+  .github/workflows/release.yml \
   internal/cli/account_test.go \
   internal/cli/config_test.go \
   internal/download/ugoira_rust_test.go \
