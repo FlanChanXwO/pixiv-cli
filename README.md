@@ -109,7 +109,7 @@ result, err := client.UserArtworks(ctx, pixiv.UserArtworksRequest{UserID: 123456
 PIXIV_REFRESH_TOKEN=... ./build/pixiv mcp
 ```
 
-MCP 使用 stdio，不监听 HTTP 端口。当前 tool、参数和 structured output 见 [docs/mcp-tools.md](docs/mcp-tools.md)。SDK 路径的用户列表与收藏/关注写操作使用 `page`/`limit`，不暴露 cursor；这些操作失败时 result 设置 `isError=true`，同时保留安全文本与 structured output。遗留 MCP tool 保持既有文本结果兼容，不承诺统一 `isError` 语义。
+MCP 使用 stdio，不监听 HTTP 端口。当前 tool、参数和 structured output 见 [docs/mcp-tools.md](docs/mcp-tools.md)。SDK 路径的用户列表使用 `page`/`limit`，不暴露 cursor；用户列表与收藏/关注写操作失败时 result 设置 `isError=true`，同时保留安全文本与 structured output。遗留 MCP tool 保持既有文本结果兼容，不承诺统一 `isError` 语义。
 
 ## 测试
 
