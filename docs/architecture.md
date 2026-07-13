@@ -1,152 +1,54 @@
 # 架构说明
 
-## 总体流程
+## 入口与依赖方向
 
-`cmd/pixiv/main.go` 是唯一官方二进制入口，它只负责调用 `internal/cli`：
+`cmd/pixiv` 只调用 `internal/cli`。CLI 与 MCP 是 adapter；公开 Go API 是 `pkg/pixiv`。生产对象只在 `internal/bootstrap` 组装。
 
-1. `pixiv` 无参数显示 CLI 帮助。
-2. `pixiv auth/config/search/detail/ranking/recommended/download` 进入 CLI 模式。
-3. `pixiv mcp` 委托 `internal/bootstrap` 组装并运行 MCP stdio server。
-4. CLI 与 MCP 通过 `internal/bootstrap` 共享生产 wiring：
-   - 账号认证来自 `os.UserConfigDir()/pixiv/auth.json`
-   - 全局配置来自 `os.UserConfigDir()/pixiv/config.toml`
-   - 公开环境变量作为覆盖层参与合并
-5. MCP 模式若没有 `PIXIV_REFRESH_TOKEN`，会回退到 `auth.json.default_user_id`；若仍无 refresh token 且 `web_fallback_enabled=true`，支持匿名能力的路径会走 Pixiv web/ajax API。
+```text
+cmd/pixiv -> internal/cli -> internal/application -> pkg/pixiv -> internal/pixiv/{appapi,webapi,oauth,resource}
+                                  ^                         ^
+internal/mcpserver ---------------|                         |
+internal/bootstrap ---------------+-------------------------+
+```
 
-## 包职责
+- `internal/cli`：Cobra、flag、TTY、文本/JSON 输出、`auth login` 本地 UI adapter。业务调用经 `internal/application`，不直连内部 Pixiv transport。
+- `internal/mcpserver`：tool 注册、MCP 输入输出适配；stdio runtime 在 `internal/bootstrap` 启动。
+- `internal/application`：账号、配置、下载和 CLI/MCP 到公开 SDK 的应用编排；定义本地所需窄接口，避免公开 SDK 反向依赖 CLI/MCP。
+- `pkg/pixiv`：稳定公开模型与具体 `*pixiv.Client`；不公开大而全 interface，不启动服务。
+- `internal/pixiv/appapi`：认证 App API 主路径与写操作。
+- `internal/pixiv/webapi`：匿名白名单读和明确 Web enrichment。
+- `internal/pixiv/oauth`：refresh token 与 authorization-code exchange。
+- `internal/pixiv/resource`：受策略限制的资源流传输。
+- `internal/config` 与 `internal/storage/auth`：本地 `config.toml`、UID 账号与权限控制。
+- `internal/download`：本地作品下载和 ugoira 处理。
 
-### `cmd/pixiv`
+旧 `internal/pixiv` facade 仅保留兼容入口；CLI/MCP 新领域能力经 application 使用 `pkg/pixiv`，不得直接依赖 `appapi` 或 `webapi`。
 
-负责生成 `pixiv` binary 的 `main` package。它不承载业务逻辑，只委托 `internal/cli.Run` 并返回进程退出码。
+## SDK、配置与认证
 
-### `internal/cli`
+`NewClient(Options)` 只使用显式选项，不读本地文件、不隐式认证。`OpenDefault(Options)` 使用 auth/config/环境选择账号，且每个公开操作取得新的配置快照；需要固定一个多请求操作时调用 `Snapshot(ctx)`。
 
-负责 CLI 用户态的命令分发与输出：
+OpenDefault 的 token 优先级：CLI 为 `--refresh-token` > `--uid` > `PIXIV_REFRESH_TOKEN` > 默认 UID；MCP 为 `PIXIV_REFRESH_TOKEN` > 默认 UID。`CurrentUserID` 只能从 OpenDefault 的认证快照取得，显式 access token 不臆测所属 UID。
 
-- Cobra 命令树、help 和 flag 解析。
-- 文本/JSON 输出。
-- `auth login` 的 loopback OAuth、浏览器打开和 TTY 交互。
-- `pixiv mcp` 分发。
+## 上游路由
 
-它不直接拥有账号存储变更、Pixiv client 构造或下载管理器构造；这些职责由 `internal/application` 与 `internal/bootstrap` 承接。
+- 有 refresh token：App API 是主路径。App 认证、网络、服务端失败不自动回退 Web。
+- 无 refresh token 且 `web_fallback_enabled=true`：仅匿名白名单读操作可走 Web API。
+- `IllustDetail` 的 pages 补全与原始 ugoira resource metadata 是明确 enrichment；不是失败回退。
+- 资源访问不需要 OAuth，但必须通过 `ResourceRef` policy 校验。
 
-### `internal/application`
+## 分页与资源
 
-负责 CLI/MCP 之外的应用用例编排：
+SDK `Cursor` 是版本化、不透明、绑定查询及 OpenDefault source 的 continuation。调用方只传回 `NextCursor`；CLI/MCP 把它适配为 `limit`/逻辑 `page`，不泄漏 token。
 
-- `AccountService`：账号 add/list/remove/use/check。
-- `ConfigService`：`config.toml` path/get/set/unset。
-- `ArtworkService`：search/detail/ranking/recommended。
-- `DownloadService`：按 ID 下载作品。
-- `LoginService`：生成 PKCE/state、authorization-code exchange，并保存账号；Pixiv 登录 URL 构造仍留在 CLI adapter。
+`ParseResourceRef` 只接受 Pixiv 官方资源域名，或调用方在 `ResourcePolicy` 显式批准的 mirror host/path prefix。`OpenResource` 仅转发 `Range`、`If-None-Match`、`If-Modified-Since`，过滤响应 header 并返回未预读流；调用方关闭 `Body`。`Download` 流式写入临时文件，成功后原子替换目标。
 
-### `internal/bootstrap`
+## 日志与错误
 
-生产 composition root，负责把 `internal/config`、`internal/storage/auth`、`internal/pixiv`、`internal/download`、`internal/mcpserver` 和 application services 组装起来。测试可以替换 service 里的小接口或 factory，不需要复制生产 wiring。
+日志使用显式注入 `slog.Logger`；SDK 未注入时静默，不调用 `slog.Default`。CLI/MCP root logger 从 `log_level`/`log_format` 或 `PIXIV_LOG_LEVEL`/`PIXIV_LOG_FORMAT` 构造，输出 stderr。字段包括 component、operation、backend、duration、result、error_code、status 与已验证 ID，不记录 token、cookie、完整 URL、查询或 resource header。
 
-### `internal/storage/auth`
+SDK 以 `*pixiv.Error` 暴露 `Code`、`Operation`、`Backend`、`Retryable`、安全状态码和 ID；调用方用 `errors.As` 或 `errors.Is` 分支。MCP 失败使用 `isError=true`，不把失败伪装成空数据。
 
-负责本地账号状态：
+## 不在本仓库边界
 
-- `auth.json` 读写与默认 UID 管理。
-- 认证文件路径解析和 `0600` 权限写入。
-
-### `internal/config`
-
-负责 `config.toml` 及运行时配置：
-
-- `config.toml` schema、默认值和配置键定义。
-- 运行时配置合并：`config.toml` 与公开环境变量。
-- `pixiv config path/get/set/unset` 需要的强类型解析与稀疏写回。
-
-配置拆分如下：
-
-- `auth.json`：只保存 `default_user_id` 与 `accounts[].user_id/username/refresh_token`，文件权限固定为 `0600`。
-- `config.toml`：只保存用户显式设置过的全局配置键，文件权限固定为 `0600`。
-
-运行时设置使用 `koanf` 合并 `config.toml` 与公开环境变量；`config set/unset` 使用 `tomledit` 写回，尽量保留注释、顺序和布局。
-
-### `internal/pixiv`
-
-Pixiv 领域 facade。对 CLI/MCP 暴露稳定的 `Source`、`NewSource`、`NewOAuthClient`、HTTP client wiring 和常用模型 type alias。
-
-source 策略只有一条：refresh token 为空且 `web_fallback_enabled=true` 时，`search/detail/ranking/search_user/download/ugoira metadata` 使用 web；只要存在 refresh token，就优先 app API，app API 的认证、网络或服务端错误不会自动 fallback。
-
-### `internal/pixiv/api`
-
-封装 Pixiv app API、OAuth refresh flow 和 authorization-code token exchange。当前实现使用 `resty` 作为底层 HTTP transport，主要职责：
-
-- 保存 refresh token、access token、user ID 和可从认证/用户详情接口获取到的 username。
-- 用 Pixiv Android app 风格 header 访问 API。
-- 在认证错误时 refresh token 后只重放一次原请求。
-- 将非 2xx 响应暴露为 `APIError`，保留状态码和响应体。
-
-当前已实现接口包括搜索作品、作品详情、相关作品、排行榜、用户搜索、推荐、热门标签、关注动态、用户收藏、用户关注、ugoira metadata 和直接下载 URL。
-
-### `internal/pixiv/web`
-
-封装匿名 Pixiv web/ajax API。它复用 CLI/MCP 的 HTTP proxy 配置，当前用于无 refresh token fallback：
-
-- `/ajax/search/artworks/{word}`：匿名作品搜索。
-- `/ajax/illust/{id}` 与 `/ajax/illust/{id}/pages`：作品详情和原图 URL。
-- `ranking.php?format=json`：排行榜。
-- `/ajax/illust/{id}/ugoira_meta`：ugoira zip 与 frames。
-- pximg 下载时使用 Pixiv web Referer。
-
-web API 字段缺失时不伪造 App API 数据；仅映射可从 web 响应确认的字段。
-
-### `internal/pixiv/model`
-
-集中 Pixiv response/domain 类型以及 Pixiv 协议枚举 typed const，例如 search target、sort、ranking mode、restrict 和 illust type。MCP delivery 等传输层常量仍留在 `internal/mcpserver`。
-
-### `internal/mcpserver`
-
-负责将 Pixiv 与下载能力注册为 MCP tools。它定义了较窄的 `PixivAPI` 和 `DownloadManager` interface，便于测试和隔离；stdio runtime 由 `internal/bootstrap` 组装和启动。
-
-输出目前以中文文本为主，适合直接返回给 LLM/MCP 客户端。认证相关工具会显式提示缺少 token、认证失败或自动认证失败的真实原因。
-
-### `internal/download`
-
-负责下载和本地文件落盘：
-
-- `Download` 会同步下载 ID 列表，并返回每个作品的实际产物路径。
-- `Enqueue` 会去重、排序并为每个 ID 启动后台任务。
-- 内部 semaphore 当前并发为 5。
-- 单页作品保存到下载目录。
-- 多页作品和 ugoira 会建立作品子目录。
-- ugoira 先下载 zip，再用 `ffmpeg` 合成为 GIF。
-
-注意：ugoira 转换依赖本机 `ffmpeg`。初始化时会探测命令是否存在；缺失时 ugoira 下载会返回明确错误，普通图片下载不受影响。
-
-### `internal/common/constants`
-
-只保存跨包复用、无协议语义的基础设施常量，例如私有文件权限、私有目录权限；`AppConfigDirName` 是 config/auth 共同使用的路径命名空间例外。Pixiv 协议值、MCP delivery 值、config key/default 等仍留在所属领域包。
-
-### `internal/utils`
-
-提供文件名清理、模板展开、ID 去重和 refresh token 输入规范化：
-
-- 非法文件名字符替换为 `_`。
-- 支持 `{author}`、`{title}`、`{id}` 模板字段。
-- 多页作品追加 `_pN` 后缀。
-- 下载 ID 去重时会丢弃小于等于 0 的 ID，并排序。
-- refresh token 输入可从包含 `refresh_token=...` 的 Cookie 字符串中提取真实 token。
-
-`internal/utils/*` 子包提供无业务语义的通用工具：
-
-- `files`：用户配置路径拼接与私有文件写入。
-- `text`：字符串默认值和首个非空值。
-- `uri`：URL path 提取与 file URI 生成。
-- `media`：按文件扩展名推断基础 MIME type。
-- `parse`：通用正整数解析。
-
-## 已知约束
-
-- `internal/pixiv/api.Client` 默认 HTTP timeout 为 60 秒，`internal/pixiv` facade 创建带代理的 HTTP client 时也保留该客户端级保护。
-- `pixiv mcp` 是 MCP stdio server 的显式启动方式；直接执行 `pixiv` 不会启动 MCP。
-- CLI 账号文件以明文 JSON 保存 refresh token、user ID 和可选 username，不保存 access token，文件权限固定为 `0600`；需要系统钥匙串时再扩展。
-- `config.toml` 采用稀疏写入，不会把默认值整份落盘。
-- `download_random_from_recommendation` 默认下载 5 个，当前代码将输入数量限制在最多 20 个。
-- `download` 默认只返回本地路径和 `file://` URI；当 `delivery=image_content` 时，会把所有下载产物作为 MCP `ImageContent` 一并返回，不做无依据截断。
-- `get_thumbnail_base64` 会将缩略图完整编码为 base64 文本返回，调用方需注意输出体积。
-- 匿名 `search_user` fallback 语义是“作品搜索结果中的相关作者去重”，不是 Pixiv 官方用户名搜索。
+本仓库不实现 HTTP API、Provider HTTP server、Discover/Probe/Capabilities、RSS、crawler、采集 source mode、预算、过滤、cursor 存储、数据库写入或图库调度。外部项目应围绕其领域定义窄 adapter；详见 [ADR 0007](adr/0007-public-pixiv-sdk-and-caller-adapter.md)。
