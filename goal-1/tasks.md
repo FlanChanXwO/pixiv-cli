@@ -11,10 +11,10 @@
 
 ## T02 — 修复 v0.2.0 Windows recovery 测试门并扩展白名单
 
-- 状态：未完成
-- 实际：
-- 证据：
-- 风险/下一步：
+- 状态：完成
+- 实际：Windows 下把 config 私有文件 mode 断言改为既有 ACL `0666` 表示，Unix 保持 `0600`；将精确测试文件加入 workflow 与 canonical policy 的 archive/diff allowlist；新增遗漏/额外路径拒绝测试，并修正文档计数。
+- 证据：提交 `9a41124`、`8c5739f`；`go test ./pkg/pixiv ./scripts/releaseworkflow`、`sh scripts/test-release-workflow.sh`、`git diff --check 3d59741..HEAD` 均通过；规格与质量复审均批准。
+- 风险/下一步：本机非 Windows，实际 Windows gate 留待恢复 workflow 的原生 runner 证实；下一任务只审查并触发 v0.2.0 recovery，不移动 tag。
 
 ## T03 — 审查 recovery 修改并 dispatch/验收 v0.2.0 Release
 
