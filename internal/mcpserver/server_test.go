@@ -461,7 +461,7 @@ func TestSDKToolsPersistRotationAfterSessionTokenAndSerializeConcurrentOperation
 	dir := t.TempDir()
 	authPath := filepath.Join(dir, "auth.json")
 	configPath := filepath.Join(dir, "config.toml")
-	if err := os.WriteFile(authPath, []byte(`{"accounts":[]}`), 0o600); err != nil {
+	if err := os.WriteFile(authPath, []byte(`{"default_user_id":1,"accounts":[{"user_id":1,"username":"old","refresh_token":"old-a"}]}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	expected := []string{"r1", "r2", "r3", "r4"}
@@ -498,7 +498,8 @@ func TestSDKToolsPersistRotationAfterSessionTokenAndSerializeConcurrentOperation
 		})
 	}}
 	source := &rotatingSessionAPI{refreshToken: "r0", userID: 7, userName: "alice"}
-	session, closeSession := newSDKTestSessionWithServiceRequest(t, source, service, application.SDKClientRequest{AuthFilePath: authPath})
+	// 模拟 RunMCP AutoAuthenticate 已选择旧 UID A；set_refresh_token 随后认证到 UID B。
+	session, closeSession := newSDKTestSessionWithServiceRequest(t, source, service, application.SDKClientRequest{AuthFilePath: authPath, UserID: 1})
 	defer closeSession()
 	set := callTool(t, session, "set_refresh_token", map[string]any{"refresh_token": "r0"})
 	var setOut textOut

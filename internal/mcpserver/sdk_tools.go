@@ -199,7 +199,13 @@ func (a *App) persistSourceAuth() error {
 	}
 	store.Upsert(auth.Account{UserID: a.api.UserID(), Username: a.api.UserName(), RefreshToken: a.api.RefreshTokenValue()})
 	store.DefaultUserID = a.api.UserID()
-	return auth.SaveAuthStore(path, store)
+	if err := auth.SaveAuthStore(path, store); err != nil {
+		return err
+	}
+	// 调用者在 sdkMu 内完成 Source refresh、store 保存和选择切换，确保 set_refresh_token
+	// 认证到另一 UID 后，下一次 SDK OpenDefault 不会仍优先旧 UserID。
+	a.sdkRequest.UserID = a.api.UserID()
+	return nil
 }
 
 func resolveSDKUser(ctx context.Context, app *App, userID int64) (application.SDKClient, int64, func(), error) {
