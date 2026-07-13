@@ -4,10 +4,10 @@
 
 ## T01 — 建立隔离 worktree 与干净基线
 
-- 状态：未完成
-- 实际：
-- 证据：
-- 风险/下一步：
+- 状态：完成
+- 实际：创建 `codex/goal-setup` 元数据分支，提交 goal 文件与 `.worktrees/` ignore；在 `.worktrees/v030` 创建 `codex/v030` 隔离工作区。
+- 证据：Go 1.26.3；`go test ./...` 退出成功。
+- 风险/下一步：基线来自 main 的 v0.2.0 后续提交；下一任务只修改 recovery test overlay，保持 v0.2.0 tag 不变。
 
 ## T02 — 修复 v0.2.0 Windows recovery 测试门并扩展白名单
 
