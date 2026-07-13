@@ -281,8 +281,8 @@ GitHub Release。workflow 使用 full-SHA Actions、最小权限及 `release` En
 `workflow_dispatch` 提交同一个 `release_tag` 进行恢复。validate 会校验该 tag 为 SemVer、存在、
 已包含于默认分支且尚未有 Release；构建与发布始终 checkout 该 tag。恢复 run 可以只在无 Environment
 的六平台 test job 中应用固定白名单的默认分支测试覆盖：Windows ACL、`.exe`、CRLF 和文件共享语义所需的
-13 个测试文件、`scripts/test-package-release.sh` package 测试脚本、仅在该 test gate 使用的
-`known_hosts` 验证器，以及供该 verifier 读取的当前 release workflow 配置（共 16 条路径）。覆盖通过
+14 个测试文件、`scripts/test-package-release.sh` package 测试脚本、仅在该 test gate 使用的
+`known_hosts` 验证器，以及供该 verifier 读取的当前 release workflow 配置（共 17 条路径）。覆盖通过
 一次 `git archive` 提取；其中两条
 在 tag 中不存在的平台 reader 仅以 `git add -N` 标为 intent-to-add，再逐项核对工作树 diff 与空 cached diff，
 不能加入任意路径或生产源码，且不生成 release artifact。该 job 成功后，独立的新 runner
