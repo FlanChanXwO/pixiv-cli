@@ -260,8 +260,8 @@ fixture 只证明格式、失败语义和本地策略，不替代六个 native r
 smoke、版本化 archive 内容和 Homebrew 安装验收。
 
 其中 Windows 的 `.zip` 由 GitHub runner 镜像预装的 `7z` 生成；其他平台继续使用 `zip`。
-`scripts/test-package-release.sh` 会在本地伪造 Windows/7z 调用，并核对 archive member，避免 Git Bash
-缺少 `zip` 时直到 native evidence 才暴露问题。
+`scripts/test-package-release.sh` 会在 Windows runner 把伪造的调用委托给真实 `7z`，在其他开发机使用
+`zip` fixture，并核对 archive member；因此 Git Bash 缺少 `zip` 会在 release test gate 直接暴露。
 
 ## 发布门禁、签名与 Homebrew 边界
 
@@ -274,8 +274,9 @@ GitHub Release。workflow 使用 full-SHA Actions、最小权限及 `release` En
 `workflow_dispatch` 提交同一个 `release_tag` 进行恢复。validate 会校验该 tag 为 SemVer、存在、
 已包含于默认分支且尚未有 Release；构建与发布始终 checkout 该 tag。恢复 run 可以只在无 Environment
 的六平台 test job 中应用固定白名单的默认分支测试覆盖：Windows ACL、`.exe`、CRLF 和文件共享语义所需的
-13 个测试文件、仅在该 test gate 使用的 `known_hosts` 验证器，以及供该 verifier 读取的当前 release workflow
-配置。覆盖通过一次 `git archive` 提取；其中两条
+13 个测试文件、`scripts/test-package-release.sh` package 测试脚本、仅在该 test gate 使用的
+`known_hosts` 验证器，以及供该 verifier 读取的当前 release workflow 配置（共 16 条路径）。覆盖通过
+一次 `git archive` 提取；其中两条
 在 tag 中不存在的平台 reader 仅以 `git add -N` 标为 intent-to-add，再逐项核对工作树 diff 与空 cached diff，
 不能加入任意路径或生产源码，且不生成 release artifact。该 job 成功后，独立的新 runner
 才会以 `clean: true` checkout tag、重新构建 selected staticlib 并生成唯一可被 publish 下载的
@@ -299,11 +300,14 @@ GCC 与 `.lib` ABI 混用。解析器同时 fail-closed 地拒绝 YAML alias、m
 这两个步骤，禁止 `ref`、`repository`、`path` 或中间切换 HEAD 的 step 改变被验证的提交。publish 的
 checkout 同样只允许无凭据 tag source，避免签名 metadata 与构建 asset 所属提交不一致。
 test job 必须实际运行 vendored Rust 离线检查、crate cwd 的 `cargo fmt --check` 与 locked/offline
-Clippy `-D warnings`、普通及 race Go 测试、vet、许可证、封装、固定版本 `pre-commit==4.6.0`、
+Clippy `-D warnings`、普通 Go 测试、vet、许可证、封装、固定版本 `pre-commit==4.6.0`、
 pre-commit 和 `git diff --check`；production build job 不运行 overlay，且只从 clean tag tree 生成
 `verified-release-*` artifact。发布渠道仅可由
 `go run ./scripts/releaseassets channel --version ...` 判定；build metadata 中的连字符不会使 stable
 tag 误变为 prerelease。
+
+Go 1.26.3 不支持 Windows ARM64 的 race detector，因此该唯一 matrix entry 显式跳过 `go test -race`；
+其余五个原生目标仍运行 race gate，workflow policy 固定这个条件，禁止扩张为任意条件跳过。
 
 publish 核对并公开 Release 后，立即上传同一份 `release/checksums.txt`；policy 拒绝中间 step、路径
 替换或发布后改写。`render_homebrew_formula` 只下载该 artifact，并把 releaseassets 的 stable/

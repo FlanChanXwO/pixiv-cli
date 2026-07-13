@@ -414,6 +414,7 @@ git archive --format=tar "$GITHUB_SHA" -- \
   scripts/licensebundle/main_test.go \
   scripts/releaseworkflow/main.go \
   scripts/releaseworkflow/main_test.go \
+  scripts/test-package-release.sh \
   test/e2e/pixiv_binary_test.go | tar -xf -
 git add -N \
   internal/update/releases_reader_nonwindows_test.go \
@@ -433,6 +434,7 @@ test "$(git diff --name-only)" = "$(printf '%s\n' \
   scripts/licensebundle/main_test.go \
   scripts/releaseworkflow/main.go \
   scripts/releaseworkflow/main_test.go \
+  scripts/test-package-release.sh \
   test/e2e/pixiv_binary_test.go)"
 test -z "$(git diff --cached --name-only)"`
 	if err := requireCanonicalConditionalRunStep(step, "recovery overlay", "github.event_name == 'workflow_dispatch'", commands); err != nil {
@@ -459,7 +461,7 @@ func requireOverlayQualitySequence(steps []*yaml.Node, overlayIndex, freshChecko
 	}
 	for offset, gate := range expected {
 		step := steps[overlayIndex+offset+1]
-		if err := requireCanonicalRunStep(step, "overlay quality gate "+gate.name, gate.command); err != nil {
+		if err := requireOverlayQualityGate(step, gate.name, gate.command); err != nil {
 			return errors.New("overlay quality sequence must preserve exact canonical gate commands and order")
 		}
 		if err := requireScalar(step, "name", gate.name); err != nil {
@@ -467,6 +469,15 @@ func requireOverlayQualitySequence(steps []*yaml.Node, overlayIndex, freshChecko
 		}
 	}
 	return nil
+}
+
+// requireOverlayQualityGate 保留 race gate 的唯一客观例外：Go 1.26.3 不支持
+// windows/arm64 race detector。其余五个 release 目标必须运行该 gate，条件本身也受策略固定。
+func requireOverlayQualityGate(step *yaml.Node, name, command string) error {
+	if command == "go test -race ./..." {
+		return requireCanonicalConditionalRunStep(step, "overlay quality gate "+name, "matrix.goos != 'windows' || matrix.goarch != 'arm64'", command)
+	}
+	return requireCanonicalRunStep(step, "overlay quality gate "+name, command)
 }
 
 func requireProductionRebuildStep(step *yaml.Node) error {
@@ -680,7 +691,6 @@ func checkBuildJob(job *yaml.Node) error {
 		{workingDirectory: "internal/download/ugoira_rs", command: "cargo fmt --check"},
 		{workingDirectory: "internal/download/ugoira_rs", command: "cargo clippy --locked --offline --all-targets -- -D warnings"},
 		{command: "go test ./..."},
-		{command: "go test -race ./..."},
 		{command: "go vet ./..."},
 		{command: "go run ./scripts/licensebundle --check"},
 		{command: "sh scripts/test-package-release.sh"},
@@ -691,7 +701,27 @@ func checkBuildJob(job *yaml.Node) error {
 			return err
 		}
 	}
+	if err := requireConditionalRaceQualityGate(job); err != nil {
+		return err
+	}
 	return nil
+}
+
+func requireConditionalRaceQualityGate(job *yaml.Node) error {
+	steps, err := jobSteps(job)
+	if err != nil {
+		return errors.New("build must run go test -race ./...")
+	}
+	var matches []*yaml.Node
+	for _, step := range steps {
+		if equalCommands(splitCommands(requireRunValue(step)), splitCommands("go test -race ./...")) {
+			matches = append(matches, step)
+		}
+	}
+	if len(matches) != 1 {
+		return errors.New("build must run go test -race ./... in exactly one quality gate step")
+	}
+	return requireCanonicalConditionalRunStep(matches[0], "build quality gate go test -race ./...", "matrix.goos != 'windows' || matrix.goarch != 'arm64'", "go test -race ./...")
 }
 
 // checkProductionBuildJob 将最终资产放入独立 runner：它只能读取 immutable tag，不能承接

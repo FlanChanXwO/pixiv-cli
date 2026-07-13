@@ -1123,7 +1123,6 @@ func TestCheckWorkflowRejectsSoftFailedOrSkippedQualityGate(t *testing.T) {
 	}{
 		{name: "Rust format", command: "cargo fmt --check"},
 		{name: "Rust clippy", command: "cargo clippy --locked --offline --all-targets -- -D warnings"},
-		{name: "race", command: "go test -race ./..."},
 		{name: "pre-commit install", command: "python -m pip install --disable-pip-version-check pre-commit==4.6.0"},
 		{name: "pre-commit", command: "python -m pre_commit run --all-files"},
 	}
@@ -1151,6 +1150,33 @@ func TestCheckWorkflowRejectsSoftFailedOrSkippedQualityGate(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+func TestCheckWorkflowAllowsOnlyDocumentedWindowsARM64RaceException(t *testing.T) {
+	t.Parallel()
+
+	for _, test := range []struct {
+		name  string
+		key   string
+		value string
+	}{
+		{name: "condition changed", key: "if", value: "false"},
+		{name: "soft failure added", key: "continue-on-error", value: "true"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			root := releaseWorkflowRoot(t)
+			step := stepWithRun(t, jobNode(t, root, "build"), "go test -race ./...")
+			appendMappingValue(t, step, test.key, scalarNode(test.value))
+			body, err := yaml.Marshal(root)
+			if err != nil {
+				t.Fatalf("marshal mutated workflow: %v", err)
+			}
+			if err := checkWorkflow(body); err == nil {
+				t.Fatal("release workflow policy accepted an unapproved race gate exception")
+			}
+		})
 	}
 }
 

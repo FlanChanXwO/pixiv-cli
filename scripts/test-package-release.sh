@@ -42,22 +42,28 @@ for format in tar.gz zip; do
 	assert_members "$archive" "$format"
 done
 
-# GitHub 的 Windows runner 由 7-Zip 产出 zip；在非 Windows 开发机中伪造 uname/7z，
-# 既验证该分支确实被选择，也验证它仍写出与其余平台相同的 release member 集合。
+# GitHub 的 Windows runner 由 7-Zip 产出 zip；伪造 uname/7z 既验证该分支确实被选择，
+# 也验证它仍写出与其余平台相同的 release member 集合。Windows runner 没有 `zip`，所以
+# 优先委托其预装的真实 7z；非 Windows 开发机则保留 zip fixture，避免把本地工具差异伪装为
+# package-release 的失败。
 windows_bin="$temporary/windows-bin"
 mkdir "$windows_bin"
 windows_7z_marker="$temporary/windows-7z-used"
+real_7z=$(command -v 7z || true)
 printf '%s\n' '#!/bin/sh' 'printf "%s\\n" MINGW64_NT-10.0' > "$windows_bin/uname"
 printf '%s\n' \
 	'#!/bin/sh' \
 	': > "$PIXIV_TEST_7Z_MARKER"' \
 	'[ "$1" = a ] && [ "$2" = -tzip ] && [ "$3" = -bd ] || exit 64' \
+	'if [ -n "${PIXIV_TEST_REAL_7Z:-}" ]; then' \
+	'  exec "$PIXIV_TEST_REAL_7Z" "$@"' \
+	'fi' \
 	'output=$4' \
 	'shift 4' \
 	'zip -q -r "$output" "$@"' > "$windows_bin/7z"
 chmod 0755 "$windows_bin/uname" "$windows_bin/7z"
 windows_archive="$temporary/pixiv-windows.zip"
-PIXIV_TEST_7Z_MARKER="$windows_7z_marker" PATH="$windows_bin:$PATH" \
+PIXIV_TEST_7Z_MARKER="$windows_7z_marker" PIXIV_TEST_REAL_7Z="$real_7z" PATH="$windows_bin:$PATH" \
 	sh "$repo_root/scripts/package-release.sh" --binary "$binary" --format zip --output "$windows_archive"
 [ -f "$windows_7z_marker" ] || {
 	echo 'Windows zip packaging did not invoke 7z' >&2

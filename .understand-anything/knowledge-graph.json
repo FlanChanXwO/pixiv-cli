@@ -20,8 +20,8 @@
       "GitHub Actions"
     ],
     "description": "这是一个 Go 版 Pixiv CLI 与 MCP stdio server，内置 Rust ugoira encoder，并包含 release/update workflow。",
-    "analyzedAt": "2026-07-13T00:56:13.804Z",
-    "gitCommitHash": "bef34d814421c3198349f99ac09e227af9ee8a32"
+    "analyzedAt": "2026-07-13T01:37:18.668Z",
+    "gitCommitHash": "8209a646094a66719e5395ba01f10a514f211086"
   },
   "nodes": [
     {
@@ -12558,7 +12558,7 @@
       "type": "pipeline",
       "name": "release.yml",
       "filePath": ".github/workflows/release.yml",
-      "summary": "由 tag push 或默认分支 recovery 绑定 immutable RELEASE_TAG：六目标 build 仅执行 15-step test-only gates，以 git archive 覆盖经验证的 Windows-safe 测试、当前 release workflow 与 policy；白名单严格为 .github/workflows/release.yml、13 个测试文件及 scripts/releaseworkflow/main.go（15 条路径）。tag 中不存在的两条平台 reader 先以 git add -N 标为 intent-to-add，再同时核对工作树 diff 与空 cached diff。独立 9-step build_production 在新 runner 关闭 Go cache、重建 tag staticlib 并生成唯一 verified-release-*。",
+      "summary": "由 tag push 或默认分支 recovery 绑定 immutable RELEASE_TAG：六目标 build 仅执行 15-step test-only gates，Windows/arm64 因 Go 1.26.3 不支持 -race 是唯一固定例外，其余五个目标仍运行 race。git archive recovery 白名单严格为当前 workflow、13 个测试文件、scripts/test-package-release.sh package fixture 与 scripts/releaseworkflow/main.go verifier（16 条路径）；两条 tag 缺失 reader 先 git add -N，再核对工作树白名单 diff 与空 cached diff。独立 9-step build_production 在新 runner 关闭 Go cache、重建 tag staticlib 并生成唯一 verified-release-*。",
       "tags": [
         "ci-cd",
         "release",
@@ -12974,7 +12974,7 @@
       "type": "file",
       "name": "test-package-release.sh",
       "filePath": "scripts/test-package-release.sh",
-      "summary": "验证两种 release archive 的成员恰好包含 binary 和完整许可证树、输出路径安全边界，并伪造 Windows/MINGW 的 7z 调用以锁定与其他平台相同的 zip 成员集合。",
+      "summary": "验证两种 release archive 的成员恰好包含 binary 和完整许可证树、输出路径安全边界；伪造 Windows/MINGW 7z 调用时，Windows runner 委托预装真实 7z，其他开发机保留 zip fixture，以暴露而非掩盖 Git Bash 缺少 zip。",
       "tags": [
         "test",
         "release",
@@ -12991,7 +12991,7 @@
         20,
         37
       ],
-      "summary": "读取 tar.gz 或 zip 的常规成员并与 binary、许可证和完整第三方许可证树的期望集合比较，复用以验证伪造 7z 生成的 Windows archive。",
+      "summary": "读取 tar.gz 或 zip 的常规成员并与 binary、许可证和完整第三方许可证树的期望集合比较，复用以验证 Windows 真实 7z 或其他平台 fixture 生成的 archive。",
       "tags": [
         "implementation",
         "test",
@@ -15206,7 +15206,7 @@
       "type": "file",
       "name": "main_test.go",
       "filePath": "scripts/releaseworkflow/main_test.go",
-      "summary": "用真实 workflow 与 YAML AST mutations 证明 test build 仅含 15 个质量/overlay gates且无 artifact；独立 production runner 才能输出 verified-release assets 并由 publish 精确下载，同时对 known_hosts CRLF 归一化与额外 key 拒绝做回归验证。",
+      "summary": "用真实 workflow 与 YAML AST mutations 证明 test build 仅含 15 个质量/overlay gates且无 artifact；独立 production runner 才能输出 verified-release assets 并由 publish 精确下载，同时固定 known_hosts CRLF 边界和唯一 Windows ARM64 race 条件例外。",
       "tags": [
         "test",
         "release",
@@ -15282,9 +15282,27 @@
       ],
       "complexity": "moderate",
       "lineRange": [
-        1110,
-        1148
+        1117,
+        1154
       ]
+    },
+    {
+      "id": "function:scripts/releaseworkflow/main_test.go:TestCheckWorkflowAllowsOnlyDocumentedWindowsARM64RaceException",
+      "type": "function",
+      "name": "TestCheckWorkflowAllowsOnlyDocumentedWindowsARM64RaceException",
+      "filePath": "scripts/releaseworkflow/main_test.go",
+      "lineRange": [
+        1156,
+        1181
+      ],
+      "summary": "以 YAML AST mutation 验证 race 条件不可改写或软失败，只接受 Go 1.26.3 Windows/arm64 的文档化固定例外。",
+      "tags": [
+        "test",
+        "release",
+        "recovery",
+        "security"
+      ],
+      "complexity": "moderate"
     },
     {
       "id": "function:scripts/releaseworkflow/main_test.go:TestCheckWorkflowRejectsAmbiguousYAMLMutations",
@@ -15699,7 +15717,7 @@
       "type": "file",
       "name": "main.go",
       "filePath": "scripts/releaseworkflow/main.go",
-      "summary": "以 fail-closed YAML AST policy 固定八 job DAG、15-step test-only build（无 production build/package/artifact）与唯一 9-step cache-disabled production matrix；recovery policy 精确要求包含当前 release workflow、13 个测试文件与 verifier 的 15 条白名单、两条 tag 缺失 reader 的 git add -N intent-to-add、工作树白名单 diff 和空 cached diff，确保 verified-release provenance。",
+      "summary": "以 fail-closed YAML AST policy 固定八 job DAG、15-step test-only build（无 production build/package/artifact）与唯一 9-step cache-disabled production matrix；recovery policy 精确要求含 workflow、13 个测试文件、package fixture 与 verifier 的 16 条白名单、两条 tag 缺失 reader 的 git add -N/空 cached diff，并将 Go 1.26.3 Windows/arm64 -race 的唯一条件固定为其余五目标必跑。",
       "tags": [
         "release",
         "test-only",
@@ -15820,7 +15838,7 @@
       "type": "function",
       "name": "checkBuildJob",
       "filePath": "scripts/releaseworkflow/main.go",
-      "summary": "校验六目标 build 只执行 test-only overlay/quality gates；不允许 native production build、package、artifact upload 或 release input。",
+      "summary": "校验六目标 build 只执行 test-only overlay/quality gates；常规质量门禁必须无条件执行，go test -race ./... 仅允许 Go 1.26.3 不支持的 windows/arm64 组合按固定条件跳过；不允许 native production build、package、artifact upload 或 release input。",
       "tags": [
         "implementation",
         "release",
@@ -15829,9 +15847,27 @@
       ],
       "complexity": "complex",
       "lineRange": [
-        598,
-        660
+        644,
+        708
       ]
+    },
+    {
+      "id": "function:scripts/releaseworkflow/main.go:requireConditionalRaceQualityGate",
+      "type": "function",
+      "name": "requireConditionalRaceQualityGate",
+      "filePath": "scripts/releaseworkflow/main.go",
+      "lineRange": [
+        710,
+        725
+      ],
+      "summary": "在 build job 中定位唯一 go test -race ./... gate，并将条件固定为 matrix.goos != windows 或 matrix.goarch != arm64，防止将 Go 1.26.3 Windows/arm64 的客观限制扩张为任意跳过。",
+      "tags": [
+        "implementation",
+        "release",
+        "recovery",
+        "security"
+      ],
+      "complexity": "moderate"
     },
     {
       "id": "function:scripts/releaseworkflow/main.go:rejectAmbiguousYAML",
@@ -16531,7 +16567,7 @@
       "type": "document",
       "name": "development.md",
       "filePath": "docs/development.md",
-      "summary": "说明八 job Release policy：恢复 test job 只执行 15-step gates，以包含当前 release workflow、13 个测试文件及 verifier 的 15 条白名单覆盖并不生成 artifact；两条 tag 缺失 reader 保持 intent-to-add/empty cached diff；独立 clean-tag production matrix 关闭 Go cache并生成唯一 verified-release-*，publish 只下载六个 exact assets。",
+      "summary": "说明八 job Release policy：恢复 test job 以 workflow、13 个测试文件、package fixture 和 verifier 的 16 条白名单覆盖并不生成 artifact；两条 tag 缺失 reader 保持 intent-to-add/empty cached diff；Go 1.26.3 的 Windows/arm64 是唯一固定 -race 例外；独立 clean-tag production matrix 关闭 Go cache并生成唯一 verified-release-*，publish 只下载六个 exact assets。",
       "complexity": "moderate",
       "tags": [
         "documentation",
@@ -21461,10 +21497,10 @@
       "name": "requireCanonicalBuildSteps",
       "filePath": "scripts/releaseworkflow/main.go",
       "lineRange": [
-        334,
-        376
+        336,
+        378
       ],
-      "summary": "强制 build job 恰有 15 个 canonical test-only steps：immutable-tag 测试、受审计 overlay 与全部质量门禁；不允许 production checkout、staticlib rebuild、binary/package 或 artifact。",
+      "summary": "强制 build job 恰有 15 个 test-only steps，包含受审计 overlay 与全部质量门禁；race step 仅可使用已固定的 Windows/arm64 客观例外，禁止 production checkout、staticlib rebuild、binary/package 或 artifact。",
       "tags": [
         "implementation",
         "release",
@@ -21516,9 +21552,9 @@
       "filePath": "scripts/releaseworkflow/main.go",
       "lineRange": [
         397,
-        441
+        444
       ],
-      "summary": "只允许 workflow_dispatch 通过 git archive 覆盖精确、经审计的 15 条 Windows-safe 路径：当前 release workflow、13 个测试文件和 release policy verifier；两条 tag 缺失 reader 必须先 git add -N 成 intent-to-add，再同时验证工作树白名单 diff 与空 cached diff，禁止改生产源码或真实索引。",
+      "summary": "只允许 workflow_dispatch 通过 git archive 覆盖精确、经审计的 16 条路径：当前 workflow、13 个测试文件、scripts/test-package-release.sh fixture 与 release policy verifier；两条 tag 缺失 reader 必须 git add -N，并同时验证工作树白名单 diff 与空 cached diff，禁止改生产源码或真实索引。",
       "tags": [
         "implementation",
         "release",
@@ -21533,10 +21569,28 @@
       "name": "requireOverlayQualitySequence",
       "filePath": "scripts/releaseworkflow/main.go",
       "lineRange": [
-        444,
-        470
+        446,
+        472
       ],
-      "summary": "要求 test-only overlay 后按固定顺序执行 Go/race/vet/license/package/pre-commit 等质量门禁；test job 到此结束，生产 fresh checkout 由独立 build_production runner 执行。",
+      "summary": "要求 test-only overlay 后按固定顺序执行 Go/race/vet/license/package/pre-commit 质量门禁；race 通过独立 helper 只允许 Go 1.26.3 Windows/arm64 的固定条件跳过，test job 到此结束，生产 fresh checkout 由独立 build_production runner 执行。",
+      "tags": [
+        "implementation",
+        "release",
+        "recovery",
+        "security"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:scripts/releaseworkflow/main.go:requireOverlayQualityGate",
+      "type": "function",
+      "name": "requireOverlayQualityGate",
+      "filePath": "scripts/releaseworkflow/main.go",
+      "lineRange": [
+        476,
+        481
+      ],
+      "summary": "为 overlay 质量门禁保留唯一客观 race 例外：Go 1.26.3 不支持 Windows/arm64 race detector；其余五个 release target 仍必须执行，条件通过 canonical policy 固定。",
       "tags": [
         "implementation",
         "release",
@@ -21551,8 +21605,8 @@
       "name": "requireProductionRebuildStep",
       "filePath": "scripts/releaseworkflow/main.go",
       "lineRange": [
-        472,
-        487
+        483,
+        498
       ],
       "summary": "在 clean immutable-tag checkout 后重建当前目标 staticlib，恢复 manifest 并证明 tracked、untracked、ignored 状态均干净。",
       "tags": [
@@ -38730,6 +38784,48 @@
     {
       "source": "function:test/e2e/pixiv_binary_test.go:isolatedEnv",
       "target": "function:test/e2e/pixiv_binary_test.go:isIsolatedEnvKey",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:scripts/releaseworkflow/main.go",
+      "target": "function:scripts/releaseworkflow/main.go:requireOverlayQualityGate",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:scripts/releaseworkflow/main.go",
+      "target": "function:scripts/releaseworkflow/main.go:requireConditionalRaceQualityGate",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "function:scripts/releaseworkflow/main.go:requireOverlayQualitySequence",
+      "target": "function:scripts/releaseworkflow/main.go:requireOverlayQualityGate",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:scripts/releaseworkflow/main.go:checkBuildJob",
+      "target": "function:scripts/releaseworkflow/main.go:requireConditionalRaceQualityGate",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:scripts/releaseworkflow/main_test.go",
+      "target": "function:scripts/releaseworkflow/main_test.go:TestCheckWorkflowAllowsOnlyDocumentedWindowsARM64RaceException",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "function:scripts/releaseworkflow/main_test.go:TestCheckWorkflowAllowsOnlyDocumentedWindowsARM64RaceException",
+      "target": "function:scripts/releaseworkflow/main.go:checkWorkflow",
       "type": "calls",
       "direction": "forward",
       "weight": 0.8

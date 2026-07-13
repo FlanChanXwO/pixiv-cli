@@ -1,7 +1,7 @@
 {
   "version": "1.0.0",
-  "gitCommitHash": "bef34d814421c3198349f99ac09e227af9ee8a32",
-  "generatedAt": "2026-07-13T00:56:14.278Z",
+  "gitCommitHash": "8209a646094a66719e5395ba01f10a514f211086",
+  "generatedAt": "2026-07-13T01:37:19.725Z",
   "files": {
     ".agents/skills/pixiv-commit-msg/SKILL.md": {
       "filePath": ".agents/skills/pixiv-commit-msg/SKILL.md",
@@ -65,12 +65,12 @@
     },
     ".github/workflows/release.yml": {
       "filePath": ".github/workflows/release.yml",
-      "contentHash": "269ac26b130841edd0c6ec7c404a851a02cd3593321e02a0e904c1d2888c63c9",
+      "contentHash": "0dc991ba4ab09df6f79afa451ae90218127bf22a03645536d73690431966bf4b",
       "functions": [],
       "classes": [],
       "imports": [],
       "exports": [],
-      "totalLines": 599,
+      "totalLines": 603,
       "hasStructuralAnalysis": true
     },
     ".pre-commit-config.yaml": {
@@ -277,12 +277,12 @@
     },
     "docs/development.md": {
       "filePath": "docs/development.md",
-      "contentHash": "0af1ea245ae6999ed9cd3cbb2d02adcbb45e2e9149fe4716ae6a168be449d8d7",
+      "contentHash": "ce2f54627e06c28a22f515d9a7ff1ec60f8312f7b075a8a38e6cf5367bd192be",
       "functions": [],
       "classes": [],
       "imports": [],
       "exports": [],
-      "totalLines": 395,
+      "totalLines": 399,
       "hasStructuralAnalysis": true
     },
     "docs/index.md": {
@@ -19595,7 +19595,7 @@
     },
     "scripts/releaseworkflow/main_test.go": {
       "filePath": "scripts/releaseworkflow/main_test.go",
-      "contentHash": "c90f9f637fa53972193ba80fc3027bfa97324008e03430edf8def6eebe10f468",
+      "contentHash": "1bcf67d9bcbf88374ee043371f00e818d2e1cc1674de763e53f100d8728a18d1",
       "functions": [
         {
           "name": "TestCheckWorkflowRequiresRustFormatGate",
@@ -19739,7 +19739,15 @@
             "t"
           ],
           "exported": true,
-          "lineCount": 39
+          "lineCount": 38
+        },
+        {
+          "name": "TestCheckWorkflowAllowsOnlyDocumentedWindowsARM64RaceException",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 26
         },
         {
           "name": "TestCheckWorkflowRejectsAmbiguousYAMLMutations",
@@ -20113,6 +20121,7 @@
         "TestCheckWorkflowRequiresHomebrewTapPublicationGate",
         "TestCheckWorkflowRejectsSecurityAndQualityPolicyMutations",
         "TestCheckWorkflowRejectsSoftFailedOrSkippedQualityGate",
+        "TestCheckWorkflowAllowsOnlyDocumentedWindowsARM64RaceException",
         "TestCheckWorkflowRejectsAmbiguousYAMLMutations",
         "TestCheckWorkflowRejectsRequiredJobExecutionOverrides",
         "TestCheckWorkflowRejectsConditionalTrustGate",
@@ -20127,12 +20136,12 @@
         "TestCheckWorkflowRejectsBareAndFunctionSecretContextsOutsideExpectedSigningEnvironment",
         "TestCheckWorkflowAcceptsCanonicalBracketSigningExpressions"
       ],
-      "totalLines": 1968,
+      "totalLines": 1994,
       "hasStructuralAnalysis": true
     },
     "scripts/releaseworkflow/main.go": {
       "filePath": "scripts/releaseworkflow/main.go",
-      "contentHash": "97ac6548497967e55fb84e6f7c32af2b135b18c05b1f1fef6efb4b4c7b8c55d1",
+      "contentHash": "d5e24b0f4d45d0034025c357a6babcacfe12b3f3f257303d45f61529f57be85a",
       "functions": [
         {
           "name": "main",
@@ -20273,7 +20282,7 @@
           ],
           "returnType": "error",
           "exported": false,
-          "lineCount": 46
+          "lineCount": 48
         },
         {
           "name": "requireOverlayQualitySequence",
@@ -20285,6 +20294,17 @@
           "returnType": "error",
           "exported": false,
           "lineCount": 27
+        },
+        {
+          "name": "requireOverlayQualityGate",
+          "params": [
+            "step",
+            "name",
+            "command"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 6
         },
         {
           "name": "requireProductionRebuildStep",
@@ -20378,7 +20398,16 @@
           ],
           "returnType": "error",
           "exported": false,
-          "lineCount": 63
+          "lineCount": 65
+        },
+        {
+          "name": "requireConditionalRaceQualityGate",
+          "params": [
+            "job"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 16
         },
         {
           "name": "checkProductionBuildJob",
@@ -20910,7 +20939,7 @@
         }
       ],
       "exports": [],
-      "totalLines": 1898,
+      "totalLines": 1928,
       "hasStructuralAnalysis": true
     },
     "scripts/test-build-staticlibs.sh": {
@@ -20942,7 +20971,7 @@
     },
     "scripts/test-package-release.sh": {
       "filePath": "scripts/test-package-release.sh",
-      "contentHash": "9bf9212d8ae549f8c0b918dc88c063d5fc1456f6723e82eb22797697f34c2a61",
+      "contentHash": "c3b77b65d63cdd14295a2fda3f4d8db208016a834fb2616a7c1490e0cc357cae",
       "functions": [
         {
           "name": "assert_members",
@@ -20954,7 +20983,7 @@
       "classes": [],
       "imports": [],
       "exports": [],
-      "totalLines": 109,
+      "totalLines": 115,
       "hasStructuralAnalysis": true
     },
     "scripts/test-release-workflow.sh": {
