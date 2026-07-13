@@ -10,6 +10,7 @@ import (
 	"math/rand"
 	"os"
 	"strings"
+	"sync"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/application"
 	"github.com/FlanChanXwO/pixiv-cli/internal/download"
@@ -53,6 +54,9 @@ type App struct {
 	logger     *slog.Logger
 	sdk        application.SDKService
 	sdkRequest application.SDKClientRequest
+	// sdkMu 串行化同一 MCP 实例中会刷新 OAuth 的 SDK operation，避免两个 OpenDefault
+	// 快照同时消费同一个 rotation token。
+	sdkMu sync.Mutex
 }
 
 func New(api PixivAPI, downloads DownloadManager, logger *slog.Logger) *mcp.Server {
@@ -254,11 +258,18 @@ func buildDownloadOut(delivery string, artworks []download.DownloadedArtwork) (d
 type emptyIn struct{}
 
 func (a *App) refreshToken(ctx context.Context, _ *mcp.CallToolRequest, _ emptyIn) (*mcp.CallToolResult, textOut, error) {
+	if a.sdk.NewClient != nil {
+		a.sdkMu.Lock()
+		defer a.sdkMu.Unlock()
+	}
 	if a.api.RefreshTokenValue() == "" {
 		return toolText("错误：未设置 refresh token。请先使用 set_refresh_token 工具设置 token。")
 	}
 	if err := a.api.Refresh(ctx); err != nil {
 		return toolText(fmt.Sprintf("Token刷新失败。可能的原因：refresh_token已过期、网络连接问题或代理设置问题。错误详情: %v", err))
+	}
+	if err := a.persistSourceAuth(); err != nil {
+		return toolText("Token刷新成功，但无法同步认证状态: " + err.Error())
 	}
 	return toolText(fmt.Sprintf("Token刷新成功！%s。现在可以正常使用Pixiv API功能了。", a.authIdentityText()))
 }
@@ -275,9 +286,16 @@ func (a *App) setRefreshToken(ctx context.Context, _ *mcp.CallToolRequest, in se
 		}
 		return toolText("错误：refresh token 不能为空。")
 	}
+	if a.sdk.NewClient != nil {
+		a.sdkMu.Lock()
+		defer a.sdkMu.Unlock()
+	}
 	a.api.SetRefreshToken(token)
 	if err := a.api.Refresh(ctx); err != nil {
 		return toolText(fmt.Sprintf("Refresh token 已在当前会话设置，但认证失败: %v\n\n请检查 token 是否有效，或稍后使用 refresh_token 工具重试认证。", err))
+	}
+	if err := a.persistSourceAuth(); err != nil {
+		return toolText("Refresh token 已在当前会话设置并完成认证，但无法同步认证状态: " + err.Error())
 	}
 	return toolText(fmt.Sprintf("Refresh token 已在当前会话设置并完成认证！\n%s\n\n现在您可以使用所有 Pixiv 功能了。", a.authIdentityText()))
 }
@@ -506,11 +524,22 @@ func (a *App) ensureAuth(ctx context.Context) error {
 	if a.api.IsAuthenticated() {
 		return nil
 	}
+	if a.sdk.NewClient != nil {
+		a.sdkMu.Lock()
+		defer a.sdkMu.Unlock()
+		// 锁等待期间另一 tool 可能已经完成认证。
+		if a.api.IsAuthenticated() {
+			return nil
+		}
+	}
 	if a.api.RefreshTokenValue() == "" {
 		return fmt.Errorf("错误: 此功能需要认证。请先使用 set_refresh_token 工具或在客户端设置 PIXIV_REFRESH_TOKEN 环境变量。")
 	}
 	if err := a.api.Refresh(ctx); err != nil {
 		return fmt.Errorf("错误: 自动认证失败: %v", err)
+	}
+	if err := a.persistSourceAuth(); err != nil {
+		return fmt.Errorf("错误: 自动认证成功，但无法同步认证状态: %v", err)
 	}
 	return nil
 }

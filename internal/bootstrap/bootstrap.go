@@ -87,7 +87,7 @@ func NewServices(logger *slog.Logger) application.Services {
 // newSDKClient 将 CLI 的显式账号和代理覆写交给公共 SDK。没有 --proxy 时，
 // OpenDefault 自己在每个操作读取当前 config 快照；有覆写时才固定本次 transport。
 func newSDKClient(request application.SDKClientRequest) (application.SDKClient, error) {
-	options := publicpixiv.Options{UserID: request.UserID, RefreshToken: request.RefreshToken}
+	options := publicpixiv.Options{UserID: request.UserID, RefreshToken: request.RefreshToken, AuthFilePath: request.AuthFilePath}
 	if request.HTTPSProxyOverride != nil {
 		httpClient, err := pixiv.HTTPClient(*request.HTTPSProxyOverride)
 		if err != nil {
@@ -175,6 +175,7 @@ type MCPRuntime struct {
 	Logger     *slog.Logger
 	SDK        application.SDKService
 	SDKRequest application.SDKClientRequest
+	AuthPath   string
 }
 
 func NewMCPRuntime(logger *slog.Logger, proxyOverride *string) (MCPRuntime, error) {
@@ -184,6 +185,10 @@ func NewMCPRuntime(logger *slog.Logger, proxyOverride *string) (MCPRuntime, erro
 	}
 	applyRuntimeProxyOverride(&cfg, proxyOverride)
 	store, err := AuthFileRepository{}.Load()
+	if err != nil {
+		return MCPRuntime{}, err
+	}
+	authPath, err := auth.AuthFilePath()
 	if err != nil {
 		return MCPRuntime{}, err
 	}
@@ -203,7 +208,8 @@ func NewMCPRuntime(logger *slog.Logger, proxyOverride *string) (MCPRuntime, erro
 		Manager:    manager,
 		Logger:     logger,
 		SDK:        NewServices(logger).SDK,
-		SDKRequest: application.SDKClientRequest{HTTPSProxyOverride: proxyOverride},
+		SDKRequest: application.SDKClientRequest{HTTPSProxyOverride: proxyOverride, AuthFilePath: authPath},
+		AuthPath:   authPath,
 	}, nil
 }
 
@@ -221,7 +227,26 @@ func (r MCPRuntime) AutoAuthenticate(ctx context.Context) {
 		r.Logger.Warn("auto-authentication failed", "error", err)
 		return
 	}
+	if err := r.persistAuthenticatedSource(); err != nil {
+		r.Logger.Warn("auto-authentication state persistence failed", "error", err)
+		return
+	}
 	r.Logger.Info("auto-authentication successful", "user_id", r.Client.UserID())
+}
+
+// persistAuthenticatedSource 将 legacy Source 刚完成 OAuth refresh 后的旋转 token 写回
+// MCP 与公共 SDK 共用的 auth store。它只在已验证身份后操作，且不会记录凭据。
+func (r MCPRuntime) persistAuthenticatedSource() error {
+	if r.Client.UserID() <= 0 || r.Client.RefreshTokenValue() == "" {
+		return fmt.Errorf("authenticated source did not provide account state")
+	}
+	store, err := auth.LoadAuthStore(r.AuthPath)
+	if err != nil {
+		return err
+	}
+	store.Upsert(auth.Account{UserID: r.Client.UserID(), Username: r.Client.UserName(), RefreshToken: r.Client.RefreshTokenValue()})
+	store.DefaultUserID = r.Client.UserID()
+	return auth.SaveAuthStore(r.AuthPath, store)
 }
 
 func RunMCP(ctx context.Context, errOut io.Writer, proxyOverride *string) error {
@@ -230,8 +255,13 @@ func RunMCP(ctx context.Context, errOut io.Writer, proxyOverride *string) error 
 	if err != nil {
 		return err
 	}
-	server := mcpserver.NewWithSDK(runtime.Client, runtime.Manager, runtime.Logger, runtime.SDK, runtime.SDKRequest)
 	runtime.AutoAuthenticate(ctx)
+	// AutoAuthenticate 已把环境/默认 token 的 rotation 保存到 auth store。随后固定
+	// 已验证 UID，使 MCP SDK 在后续操作中选择 store 而不是再次使用已消费的环境 token。
+	if userID := runtime.Client.UserID(); userID > 0 {
+		runtime.SDKRequest.UserID = userID
+	}
+	server := mcpserver.NewWithSDK(runtime.Client, runtime.Manager, runtime.Logger, runtime.SDK, runtime.SDKRequest)
 	return server.Run(ctx, &mcp.StdioTransport{})
 }
 

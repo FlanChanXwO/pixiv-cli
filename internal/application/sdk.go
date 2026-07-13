@@ -31,6 +31,9 @@ type SDKClientRequest struct {
 	UserID             int64
 	RefreshToken       string
 	HTTPSProxyOverride *string
+	// AuthFilePath 允许 MCP 等长驻调用方把 OAuth rotation 固定到同一个受保护 store。
+	// 为空时继续使用 OpenDefault 的标准路径。
+	AuthFilePath string
 }
 
 type SDKClientFactory func(SDKClientRequest) (SDKClient, error)

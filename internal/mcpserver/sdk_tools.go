@@ -10,6 +10,7 @@ import (
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/application"
 	legacy "github.com/FlanChanXwO/pixiv-cli/internal/pixiv"
+	"github.com/FlanChanXwO/pixiv-cli/internal/storage/auth"
 	sdk "github.com/FlanChanXwO/pixiv-cli/pkg/pixiv"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -112,34 +113,99 @@ func collectPages[T any](ctx context.Context, plan mcpListPlan, fetch func(conte
 	}
 }
 
-func (a *App) openSDKOperation(ctx context.Context) (application.SDKClient, error) {
+func (a *App) openSDKOperation(ctx context.Context) (application.SDKClient, func(), error) {
 	if a.sdk.NewClient == nil {
-		return nil, errors.New("pixiv sdk is not configured")
+		return nil, nil, errors.New("pixiv sdk is not configured")
 	}
-	request := a.sdkRequest
-	// set_refresh_token 是 MCP 的既有“当前会话”认证入口。新 SDK tool 也要看见这个
-	// 内存 token；显式注入的 SDK request 则保持调用方优先级。
-	if request.RefreshToken == "" && a.api != nil {
-		request.RefreshToken = a.api.RefreshTokenValue()
+	a.sdkMu.Lock()
+	client, err := a.sdk.OpenOperation(ctx, a.sdkRequest)
+	if err != nil {
+		a.sdkMu.Unlock()
+		return nil, nil, err
 	}
-	return a.sdk.OpenOperation(ctx, request)
+	return client, a.releaseSDKOperation, nil
 }
 
-func (a *App) currentSDKUser(ctx context.Context) (application.SDKClient, int64, error) {
+func (a *App) currentSDKUser(ctx context.Context) (application.SDKClient, int64, func(), error) {
 	if a.sdk.NewClient == nil {
-		return nil, 0, errors.New("pixiv sdk is not configured")
+		return nil, 0, nil, errors.New("pixiv sdk is not configured")
 	}
-	request := a.sdkRequest
-	if request.RefreshToken == "" && a.api != nil {
-		request.RefreshToken = a.api.RefreshTokenValue()
+	a.sdkMu.Lock()
+	client, err := a.sdk.OpenOperation(ctx, a.sdkRequest)
+	if err != nil {
+		a.sdkMu.Unlock()
+		return nil, 0, nil, err
 	}
-	return a.sdk.CurrentUserID(ctx, request)
+	userID, err := client.CurrentUserID(ctx)
+	if err != nil {
+		a.sdkMu.Unlock()
+		return nil, 0, nil, err
+	}
+	return client, userID, a.releaseSDKOperation, nil
 }
 
-func resolveSDKUser(ctx context.Context, app *App, userID int64) (application.SDKClient, int64, error) {
+func (a *App) releaseSDKOperation() {
+	// SDK 已在 selected store 内写入旋转 token；同步 legacy Source 仅为让旧 tool
+	// 后续 refresh 继续使用同一权威状态。同步失败不改变已完成的 SDK 调用结果。
+	a.syncSourceTokenFromStore()
+	a.sdkMu.Unlock()
+}
+
+func (a *App) syncSourceTokenFromStore() {
+	if a.api == nil {
+		return
+	}
+	path := a.sdkRequest.AuthFilePath
+	if path == "" {
+		var err error
+		path, err = auth.AuthFilePath()
+		if err != nil {
+			return
+		}
+	}
+	store, err := auth.LoadAuthStore(path)
+	if err != nil {
+		return
+	}
+	userID := a.sdkRequest.UserID
+	if userID == 0 {
+		userID = store.DefaultUserID
+	}
+	if _, account, ok := store.Get(userID); ok {
+		a.api.SetRefreshToken(account.RefreshToken)
+	}
+}
+
+// persistSourceAuth 把 legacy Source 已验证的认证结果同步到公共 SDK 的本地 store。
+// 只在 NewWithSDK 下调用；SDK 后续 OpenDefault 快照会从该 store 取得并安全持久化 rotation。
+func (a *App) persistSourceAuth() error {
+	if a.sdk.NewClient == nil {
+		return nil
+	}
+	if a.api == nil || a.api.UserID() <= 0 || a.api.RefreshTokenValue() == "" {
+		return errors.New("authenticated source did not provide account state")
+	}
+	path := a.sdkRequest.AuthFilePath
+	if path == "" {
+		var err error
+		path, err = auth.AuthFilePath()
+		if err != nil {
+			return err
+		}
+	}
+	store, err := auth.LoadAuthStore(path)
+	if err != nil {
+		return err
+	}
+	store.Upsert(auth.Account{UserID: a.api.UserID(), Username: a.api.UserName(), RefreshToken: a.api.RefreshTokenValue()})
+	store.DefaultUserID = a.api.UserID()
+	return auth.SaveAuthStore(path, store)
+}
+
+func resolveSDKUser(ctx context.Context, app *App, userID int64) (application.SDKClient, int64, func(), error) {
 	if userID != 0 {
-		client, err := app.openSDKOperation(ctx)
-		return client, userID, err
+		client, release, err := app.openSDKOperation(ctx)
+		return client, userID, release, err
 	}
 	return app.currentSDKUser(ctx)
 }
@@ -166,10 +232,11 @@ func (a *App) userArtworks(ctx context.Context, _ *mcp.CallToolRequest, in userA
 	if err != nil {
 		return a.illustListError(in.UserID, err)
 	}
-	client, userID, err := resolveSDKUser(ctx, a, in.UserID)
+	client, userID, release, err := resolveSDKUser(ctx, a, in.UserID)
 	if err != nil {
 		return a.illustListError(in.UserID, err)
 	}
+	defer release()
 	items, more, err := collectPages(ctx, plan, func(ctx context.Context, cursor sdk.Cursor) ([]sdk.Illust, sdk.Cursor, error) {
 		result, err := client.UserArtworks(ctx, sdk.UserArtworksRequest{UserID: userID, Type: in.Type, Cursor: cursor})
 		if err != nil {
@@ -226,10 +293,11 @@ func (a *App) userBookmarks(ctx context.Context, _ *mcp.CallToolRequest, in book
 		}
 		return a.legacyBookmarks(ctx, in)
 	}
-	client, userID, err := resolveSDKUser(ctx, a, userID)
+	client, userID, release, err := resolveSDKUser(ctx, a, userID)
 	if err != nil {
 		return a.illustListError(userID, err)
 	}
+	defer release()
 	items, more, err := collectPages(ctx, plan, func(ctx context.Context, cursor sdk.Cursor) ([]sdk.Illust, sdk.Cursor, error) {
 		result, err := client.UserBookmarks(ctx, sdk.UserBookmarksRequest{UserID: userID, Restrict: sdk.Restrict(in.Restrict), Tag: in.Tag, Cursor: cursor})
 		if err != nil {
@@ -346,10 +414,11 @@ func (a *App) userFollowing(ctx context.Context, _ *mcp.CallToolRequest, in foll
 		plan.skip = *in.Offset
 		plan.oneBatch = in.Limit == nil
 	}
-	client, userID, err := resolveSDKUser(ctx, a, userID)
+	client, userID, release, err := resolveSDKUser(ctx, a, userID)
 	if err != nil {
 		return a.userListError(userID, err)
 	}
+	defer release()
 	items, more, err := collectPages(ctx, plan, func(ctx context.Context, cursor sdk.Cursor) ([]sdk.UserPreview, sdk.Cursor, error) {
 		result, err := client.UserFollowing(ctx, sdk.UserFollowingRequest{UserID: userID, Restrict: sdk.Restrict(in.Restrict), Cursor: cursor})
 		if err != nil {
@@ -460,8 +529,9 @@ func mutationResult(out mutationOut) *mcp.CallToolResult {
 }
 
 func (a *App) runMutation(ctx context.Context, out mutationOut, run func(application.SDKClient) error) (*mcp.CallToolResult, mutationOut, error) {
-	client, err := a.openSDKOperation(ctx)
+	client, release, err := a.openSDKOperation(ctx)
 	if err == nil {
+		defer release()
 		err = run(client)
 	}
 	if err != nil {

@@ -4,12 +4,16 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/application"
@@ -453,17 +457,82 @@ func TestSDKListsFollowOpaqueCursorForLimitAndRejectCycles(t *testing.T) {
 	}
 }
 
-func TestSDKToolsUseExistingMCPSessionRefreshToken(t *testing.T) {
-	var got application.SDKClientRequest
+func TestSDKToolsPersistRotationAfterSessionTokenAndSerializeConcurrentOperations(t *testing.T) {
+	dir := t.TempDir()
+	authPath := filepath.Join(dir, "auth.json")
+	configPath := filepath.Join(dir, "config.toml")
+	if err := os.WriteFile(authPath, []byte(`{"accounts":[]}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	expected := []string{"r1", "r2", "r3", "r4"}
+	var oauthMu sync.Mutex
+	oauthCalls := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/auth/token":
+			if err := r.ParseForm(); err != nil {
+				t.Errorf("parse oauth form: %v", err)
+				return
+			}
+			oauthMu.Lock()
+			defer oauthMu.Unlock()
+			if oauthCalls >= len(expected) || r.Form.Get("refresh_token") != expected[oauthCalls] {
+				http.Error(w, "unexpected rotated token", http.StatusUnauthorized)
+				return
+			}
+			oauthCalls++
+			_, _ = fmt.Fprintf(w, `{"access_token":"access-%d","refresh_token":"r%d","user":{"id":7,"name":"alice"}}`, oauthCalls, oauthCalls+1)
+		case "/v1/user/illusts":
+			_, _ = w.Write([]byte(`{"illusts":[],"next_url":null}`))
+		case "/v2/illust/bookmark/add", "/v1/illust/bookmark/delete":
+			_, _ = w.Write([]byte(`{}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
 	service := application.SDKService{NewClient: func(request application.SDKClientRequest) (application.SDKClient, error) {
-		got = request
-		return &fakeSDKClient{}, nil
+		return sdk.OpenDefault(sdk.Options{
+			AuthFilePath: authPath, ConfigFilePath: configPath, HTTPClient: server.Client(),
+			OAuthBaseURL: server.URL, AppAPIBaseURL: server.URL,
+		})
 	}}
-	session, closeSession := newSDKTestSessionWithService(t, &fakeAPI{}, service)
+	source := &rotatingSessionAPI{refreshToken: "r0", userID: 7, userName: "alice"}
+	session, closeSession := newSDKTestSessionWithServiceRequest(t, source, service, application.SDKClientRequest{AuthFilePath: authPath})
 	defer closeSession()
-	_ = callTool(t, session, "add_bookmark", map[string]any{"illust_id": 1})
-	if got.RefreshToken != "refresh" {
-		t.Fatalf("SDK request did not receive MCP session token: %+v", got)
+	set := callTool(t, session, "set_refresh_token", map[string]any{"refresh_token": "r0"})
+	var setOut textOut
+	decodeStructured(t, set, &setOut)
+	if !strings.Contains(setOut.Text, "完成认证") {
+		t.Fatalf("set_refresh_token=%q", setOut.Text)
+	}
+	_ = callTool(t, session, "user_artworks", map[string]any{"user_id": 7})
+	_ = callTool(t, session, "user_artworks", map[string]any{"user_id": 7})
+
+	errCh := make(chan error, 2)
+	for _, call := range []*mcp.CallToolParams{
+		{Name: "add_bookmark", Arguments: map[string]any{"illust_id": 9}},
+		{Name: "remove_bookmark", Arguments: map[string]any{"illust_id": 9}},
+	} {
+		go func(call *mcp.CallToolParams) {
+			_, err := session.CallTool(context.Background(), call)
+			errCh <- err
+		}(call)
+	}
+	for range 2 {
+		if err := <-errCh; err != nil {
+			t.Fatalf("concurrent SDK tool: %v", err)
+		}
+	}
+	oauthMu.Lock()
+	calls := oauthCalls
+	oauthMu.Unlock()
+	if calls != len(expected) {
+		t.Fatalf("oauth calls=%d want=%d", calls, len(expected))
+	}
+	stored, err := os.ReadFile(authPath)
+	if err != nil || !strings.Contains(string(stored), `"refresh_token": "r5"`) || strings.Contains(string(stored), `"refresh_token": "r1"`) {
+		t.Fatalf("auth store did not retain latest rotation: %q err=%v", stored, err)
 	}
 }
 
@@ -548,8 +617,12 @@ func newSDKTestSessionWithAPI(t *testing.T, api PixivAPI, sdkClient application.
 }
 
 func newSDKTestSessionWithService(t *testing.T, api PixivAPI, service application.SDKService) (*mcp.ClientSession, func()) {
+	return newSDKTestSessionWithServiceRequest(t, api, service, application.SDKClientRequest{})
+}
+
+func newSDKTestSessionWithServiceRequest(t *testing.T, api PixivAPI, service application.SDKService, request application.SDKClientRequest) (*mcp.ClientSession, func()) {
 	t.Helper()
-	server := NewWithSDK(api, &fakeDownloads{}, slog.New(slog.NewTextHandler(io.Discard, nil)), service, application.SDKClientRequest{})
+	server := NewWithSDK(api, &fakeDownloads{}, slog.New(slog.NewTextHandler(io.Discard, nil)), service, request)
 	clientTransport, serverTransport := mcp.NewInMemoryTransports()
 	ctx, cancel := context.WithCancel(context.Background())
 	go func() { _ = server.Run(ctx, serverTransport) }()
@@ -564,6 +637,56 @@ func newSDKTestSessionWithService(t *testing.T, api PixivAPI, service applicatio
 		cancel()
 	}
 }
+
+type rotatingSessionAPI struct {
+	refreshToken string
+	userID       int64
+	userName     string
+}
+
+func (a *rotatingSessionAPI) Refresh(context.Context) error {
+	if a.refreshToken != "r0" {
+		return errors.New("unexpected legacy refresh token")
+	}
+	a.refreshToken = "r1"
+	return nil
+}
+func (a *rotatingSessionAPI) SetRefreshToken(token string) { a.refreshToken = token }
+func (a *rotatingSessionAPI) RefreshTokenValue() string    { return a.refreshToken }
+func (a *rotatingSessionAPI) UserID() int64                { return a.userID }
+func (a *rotatingSessionAPI) UserName() string             { return a.userName }
+func (*rotatingSessionAPI) IsAuthenticated() bool          { return false }
+func (*rotatingSessionAPI) SearchIllust(context.Context, string, string, string, string, int) (*pixiv.IllustList, error) {
+	return &pixiv.IllustList{}, nil
+}
+func (*rotatingSessionAPI) IllustDetail(context.Context, int64) (*pixiv.IllustDetail, error) {
+	return &pixiv.IllustDetail{}, nil
+}
+func (*rotatingSessionAPI) IllustRelated(context.Context, int64, int) (*pixiv.IllustList, error) {
+	return &pixiv.IllustList{}, nil
+}
+func (*rotatingSessionAPI) IllustRanking(context.Context, string, string, int) (*pixiv.IllustList, error) {
+	return &pixiv.IllustList{}, nil
+}
+func (*rotatingSessionAPI) SearchUser(context.Context, string, int) (*pixiv.UserPreviewList, error) {
+	return &pixiv.UserPreviewList{}, nil
+}
+func (*rotatingSessionAPI) IllustRecommended(context.Context, int) (*pixiv.IllustList, error) {
+	return &pixiv.IllustList{}, nil
+}
+func (*rotatingSessionAPI) TrendingTagsIllust(context.Context) (*pixiv.TrendTags, error) {
+	return &pixiv.TrendTags{}, nil
+}
+func (*rotatingSessionAPI) IllustFollow(context.Context, string, int) (*pixiv.IllustList, error) {
+	return &pixiv.IllustList{}, nil
+}
+func (*rotatingSessionAPI) UserBookmarks(context.Context, int64, string, string, int64) (*pixiv.IllustList, error) {
+	return &pixiv.IllustList{}, nil
+}
+func (*rotatingSessionAPI) UserFollowing(context.Context, int64, string, int) (*pixiv.UserPreviewList, error) {
+	return &pixiv.UserPreviewList{}, nil
+}
+func (*rotatingSessionAPI) Download(context.Context, string, io.Writer) error { return nil }
 
 type legacyBookmarkAPI struct {
 	fakeAPI
