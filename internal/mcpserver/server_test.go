@@ -151,6 +151,40 @@ func TestMCPStdioHelper(t *testing.T) {
 	os.Exit(0)
 }
 
+func TestToolLoggingWrapperPreservesStructuredErrorResult(t *testing.T) {
+	var logs bytes.Buffer
+	app := &App{logger: slog.New(slog.NewJSONHandler(&logs, nil))}
+	server := mcp.NewServer(&mcp.Implementation{Name: "test", Version: "1"}, nil)
+	addTool(app, server, &mcp.Tool{Name: "structured_error"}, func(context.Context, *mcp.CallToolRequest, struct{}) (*mcp.CallToolResult, map[string]string, error) {
+		return &mcp.CallToolResult{
+			IsError:           true,
+			Content:           []mcp.Content{&mcp.TextContent{Text: "structured failure"}},
+			StructuredContent: map[string]string{"reason": "preserved"},
+		}, map[string]string{"reason": "preserved"}, nil
+	})
+	clientTransport, serverTransport := mcp.NewInMemoryTransports()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() { _ = server.Run(ctx, serverTransport) }()
+	client := mcp.NewClient(&mcp.Implementation{Name: "test", Version: "1"}, nil)
+	session, err := client.Connect(ctx, clientTransport, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer session.Close()
+	result := callTool(t, session, "structured_error", map[string]any{})
+	if !result.IsError || len(result.Content) != 1 {
+		t.Fatalf("error result changed: %+v", result)
+	}
+	structured, ok := result.StructuredContent.(map[string]any)
+	if !ok || structured["reason"] != "preserved" {
+		t.Fatalf("structured content lost: %#v", result.StructuredContent)
+	}
+	if !strings.Contains(logs.String(), `"result":"error"`) {
+		t.Fatalf("error event missing: %s", logs.String())
+	}
+}
+
 func TestSetDownloadPathValidation(t *testing.T) {
 	server := New(&fakeAPI{}, &fakeDownloads{}, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	clientTransport, serverTransport := mcp.NewInMemoryTransports()

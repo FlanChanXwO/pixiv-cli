@@ -95,10 +95,13 @@ func addTool[In, Out any](a *App, server *mcp.Server, tool *mcp.Tool, handler mc
 	mcp.AddTool(server, tool, func(ctx context.Context, request *mcp.CallToolRequest, input In) (result *mcp.CallToolResult, output Out, err error) {
 		started := time.Now()
 		result, output, err = handler(ctx, request, input)
+		logErr := err
 		if result != nil && result.IsError && err == nil {
-			err = errors.New("mcp tool returned an error result")
+			// 仅供日志标记失败。把它作为 handler 返回 error 会让 go-sdk 重新包装
+			// CallToolResult，丢失调用方已有的 Content/StructuredContent。
+			logErr = errors.New("mcp tool returned an error result")
 		}
-		a.operationLog(tool.Name, started, err, 0, 0)
+		a.operationLog(tool.Name, started, logErr, 0, 0)
 		return result, output, err
 	})
 }
