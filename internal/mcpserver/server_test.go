@@ -325,16 +325,21 @@ func TestSDKMutationTypedErrorIsMCPErrorAndWrapperLogsMetadata(t *testing.T) {
 	if out.Success || !strings.Contains(out.Text, "upstream_error") {
 		t.Fatalf("structured mutation error = %+v", out)
 	}
+	found := false
 	for _, line := range strings.Split(strings.TrimSpace(logs.String()), "\n") {
 		var event map[string]any
 		if err := json.Unmarshal([]byte(line), &event); err != nil {
 			t.Fatal(err)
 		}
 		if event["operation"] == "add_bookmark" && event["result"] == "error" {
+			found = true
 			if event["error_code"] != string(sdk.CodeUpstreamError) || event["backend"] != string(sdk.BackendAppAPI) || event["status"] != float64(http.StatusBadGateway) || event["illust_id"] != float64(41) {
 				t.Fatalf("wrapper dropped typed SDK metadata: %v", event)
 			}
 		}
+	}
+	if !found {
+		t.Fatalf("missing add_bookmark typed error event: %s", logs.String())
 	}
 }
 

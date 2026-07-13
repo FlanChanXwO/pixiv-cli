@@ -117,7 +117,7 @@ func collectPages[T any](ctx context.Context, plan mcpListPlan, fetch func(conte
 
 func (a *App) openSDKOperation(ctx context.Context) (client application.SDKClient, release func(), err error) {
 	started := time.Now()
-	defer func() { a.operationLog("open_sdk_operation", started, err, 0, 0) }()
+	defer func() { a.operationLog("open_sdk_operation", started, err != nil, err, 0, 0) }()
 	if a.sdk.NewClient == nil {
 		return nil, nil, errors.New("pixiv sdk is not configured")
 	}
@@ -134,7 +134,7 @@ func (a *App) openSDKOperation(ctx context.Context) (client application.SDKClien
 
 func (a *App) currentSDKUser(ctx context.Context) (client application.SDKClient, userID int64, release func(), err error) {
 	started := time.Now()
-	defer func() { a.operationLog("current_sdk_user", started, err, 0, userID) }()
+	defer func() { a.operationLog("current_sdk_user", started, err != nil, err, 0, userID) }()
 	if a.sdk.NewClient == nil {
 		return nil, 0, nil, errors.New("pixiv sdk is not configured")
 	}
@@ -156,16 +156,18 @@ func (a *App) currentSDKUser(ctx context.Context) (client application.SDKClient,
 
 // operationLog 保持 MCP stdio 的 stdout 只属于 JSON-RPC。它不记录 tool 参数、
 // 原始错误、认证材料或 URL；详细上游元数据由注入后的 public SDK 单独安全记录。
-func (a *App) operationLog(operation string, started time.Time, err error, illustID, userID int64) {
+func (a *App) operationLog(operation string, started time.Time, failed bool, err error, illustID, userID int64) {
 	if a == nil || a.logger == nil {
 		return
 	}
 	result, code, backend, status := "success", "", "local", 0
 	level := slog.LevelInfo
 	var typed *sdk.Error
-	if err != nil {
+	if failed {
 		result = "error"
 		level = slog.LevelError
+	}
+	if err != nil {
 		if errors.As(err, &typed) {
 			code, backend, status = string(typed.Code), string(typed.Backend), typed.UpstreamStatus
 			if backend == "" {

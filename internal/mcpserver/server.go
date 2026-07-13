@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -115,15 +114,13 @@ func addTool[In, Out any](a *App, server *mcp.Server, tool *mcp.Tool, handler mc
 		capture := &toolErrorCapture{}
 		result, output, err = handler(context.WithValue(ctx, toolErrorCaptureKey{}, capture), request, input)
 		logErr := err
-		if result != nil && result.IsError && err == nil {
+		resultError := result != nil && result.IsError
+		if resultError && err == nil {
 			// 仅供日志标记失败。把它作为 handler 返回 error 会让 go-sdk 重新包装
 			// CallToolResult，丢失调用方已有的 Content/StructuredContent。
 			logErr = capture.err
-			if logErr == nil {
-				logErr = errors.New("mcp tool returned an error result")
-			}
 		}
-		a.operationLog(tool.Name, started, logErr, 0, 0)
+		a.operationLog(tool.Name, started, resultError || err != nil, logErr, 0, 0)
 		return result, output, err
 	})
 }
