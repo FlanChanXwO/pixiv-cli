@@ -20,8 +20,8 @@
       "GitHub Actions"
     ],
     "description": "这是一个 Go 版 Pixiv CLI 与 MCP stdio server，内置 Rust ugoira encoder，并包含 release/update workflow。",
-    "analyzedAt": "2026-07-13T00:12:56.767Z",
-    "gitCommitHash": "8d0cf8482215f2f1e828345d0790afde8eff99cd"
+    "analyzedAt": "2026-07-13T00:37:44.001Z",
+    "gitCommitHash": "1c3097aae36c26b36353803a0e2eaef75016038d"
   },
   "nodes": [
     {
@@ -1108,7 +1108,7 @@
       "type": "file",
       "name": "releases_test.go",
       "filePath": "internal/update/releases_test.go",
-      "summary": "覆盖 GitHub Release 分页、ETag 缓存、SemVer、节流和网络边界条件。",
+      "summary": "覆盖 GitHub Release 分页、ETag 缓存、SemVer、节流和网络边界条件，以及并发原子缓存替换在 Windows ReplaceFileW 命名空间窗口的 reader 语义。",
       "tags": [
         "test",
         "update",
@@ -1122,8 +1122,8 @@
       "name": "deadlineRecordingTransport",
       "filePath": "internal/update/releases_test.go",
       "lineRange": [
-        834,
-        838
+        841,
+        845
       ],
       "summary": "定义 deadlineRecordingTransport 类型，承载 GitHub Release 查询、缓存或 SemVer 比较的数据与协作边界。",
       "tags": [
@@ -1446,9 +1446,9 @@
       "filePath": "internal/update/releases_test.go",
       "lineRange": [
         756,
-        832
+        839
       ],
-      "summary": "验证 Release 缓存替换期间的并发读者；按平台选择允许删除共享的 reader，避免 Windows ReplaceFileW 被测试读句柄阻塞。",
+      "summary": "验证 Release 缓存替换期间的并发读者；Windows reader 仅为可证明的 ReplaceFileW 瞬时 ERROR_FILE_NOT_FOUND 让出重试，停止信号关闭后不将该竞争报告为测试失败。",
       "tags": [
         "test",
         "test",
@@ -1462,8 +1462,8 @@
       "name": "RoundTrip",
       "filePath": "internal/update/releases_test.go",
       "lineRange": [
-        840,
-        843
+        847,
+        850
       ],
       "summary": "实现 GitHub Release 查询、缓存或 SemVer 处理中的 RoundTrip 步骤。",
       "tags": [
@@ -5752,7 +5752,7 @@
       "type": "file",
       "name": "pixiv_binary_test.go",
       "filePath": "test/e2e/pixiv_binary_test.go",
-      "summary": "为 pixiv_binary_test.go 对应行为提供聚焦回归测试和边界验证。",
+      "summary": "为 pixiv CLI 二进制端到端行为提供聚焦回归；子进程环境在 Windows 同时隔离 APPDATA、LOCALAPPDATA、USERPROFILE 与 HOME/XDG 配置根，避免继承 runner 用户目录。",
       "tags": [
         "测试",
         "回归",
@@ -5901,7 +5901,7 @@
       "type": "function",
       "name": "isolatedEnv",
       "filePath": "test/e2e/pixiv_binary_test.go",
-      "summary": "实现 pixiv_binary_test.go 中 isolatedEnv 的核心处理逻辑。",
+      "summary": "为二进制 e2e 子进程构造隔离环境：移除大小写无关的敏感配置键，并在 Windows 显式设置 APPDATA、LOCALAPPDATA、USERPROFILE、HOMEDRIVE/HOMEPATH 与 HOME/XDG 根。",
       "tags": [
         "函数",
         "Go语言",
@@ -5909,8 +5909,8 @@
       ],
       "complexity": "simple",
       "lineRange": [
-        271,
-        293
+        276,
+        302
       ]
     },
     {
@@ -5926,8 +5926,8 @@
       ],
       "complexity": "simple",
       "lineRange": [
-        295,
-        304
+        316,
+        325
       ]
     },
     {
@@ -15206,7 +15206,7 @@
       "type": "file",
       "name": "main_test.go",
       "filePath": "scripts/releaseworkflow/main_test.go",
-      "summary": "用真实 workflow 与 YAML AST mutations 证明 test build 仅含 15 个质量/overlay gates且无 artifact；独立 production runner 才能输出 verified-release assets 并由 publish 精确下载。",
+      "summary": "用真实 workflow 与 YAML AST mutations 证明 test build 仅含 15 个质量/overlay gates且无 artifact；独立 production runner 才能输出 verified-release assets 并由 publish 精确下载，同时对 known_hosts CRLF 归一化与额外 key 拒绝做回归验证。",
       "tags": [
         "test",
         "release",
@@ -20880,7 +20880,7 @@
       "type": "function",
       "name": "TestCheckPinnedGitHubKnownHosts",
       "filePath": "scripts/releaseworkflow/main_test.go",
-      "summary": "验证 checked-in GitHub ED25519 known_hosts 精确值，并拒绝替换或附加 host key。",
+      "summary": "验证 checked-in GitHub ED25519 known_hosts 精确值；先归一化后构造真实 CRLF fixture，既接受该合法输入，也拒绝 LF/CRLF 的替换或附加 host key。",
       "tags": [
         "test",
         "release",
@@ -20890,7 +20890,7 @@
       "complexity": "moderate",
       "lineRange": [
         261,
-        279
+        286
       ]
     },
     {
@@ -21857,7 +21857,7 @@
       "type": "file",
       "name": "releases_reader_nonwindows_test.go",
       "filePath": "internal/update/releases_reader_nonwindows_test.go",
-      "summary": "为 Release 缓存并发替换测试提供非 Windows 读取实现，使用普通 os.ReadFile 保持 Unix 语义。",
+      "summary": "为 Release 缓存并发替换测试提供非 Windows 读取实现，忽略停止 channel 以统一平台 helper 调用形状，并保持普通 os.ReadFile 语义。",
       "tags": [
         "test",
         "update",
@@ -21872,10 +21872,10 @@
       "name": "readCacheForConcurrentReader",
       "filePath": "internal/update/releases_reader_nonwindows_test.go",
       "lineRange": [
-        8,
-        10
+        9,
+        11
       ],
-      "summary": "在非 Windows 平台以普通打开语义读取并发替换中的 Release 缓存。",
+      "summary": "在非 Windows 平台以普通打开语义读取并发替换中的 Release 缓存；停止 channel 仅用于与 Windows helper 统一调用形状。",
       "tags": [
         "test",
         "update",
@@ -21889,7 +21889,7 @@
       "type": "file",
       "name": "releases_reader_windows_test.go",
       "filePath": "internal/update/releases_reader_windows_test.go",
-      "summary": "为 Release 缓存并发替换测试提供 Windows 读取实现，显式共享删除权限以验证 ReplaceFileW 的原子替换路径。",
+      "summary": "为 Release 缓存并发替换测试提供 Windows reader：共享删除权限读取，并仅在 ReplaceFileW 命名空间切换窗口的 ERROR_FILE_NOT_FOUND 中按停止信号受控让出重试。",
       "tags": [
         "test",
         "update",
@@ -21904,15 +21904,51 @@
       "name": "readCacheForConcurrentReader",
       "filePath": "internal/update/releases_reader_windows_test.go",
       "lineRange": [
-        15,
-        39
+        21,
+        38
       ],
-      "summary": "在 Windows 以 FILE_SHARE_DELETE 打开缓存，避免测试读句柄阻塞 ReplaceFileW。",
+      "summary": "在 Windows 测试写入活跃时读取完整缓存；仅对 ReplaceFileW 瞬时命名空间窗口的 ERROR_FILE_NOT_FOUND 重试，并在 stopReaders 关闭后立即返回，其他错误原样暴露。",
       "tags": [
         "test",
         "update",
         "windows",
         "cache"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:internal/update/releases_reader_windows_test.go:readCacheForConcurrentReaderOnce",
+      "type": "function",
+      "name": "readCacheForConcurrentReaderOnce",
+      "filePath": "internal/update/releases_reader_windows_test.go",
+      "lineRange": [
+        42,
+        66
+      ],
+      "summary": "以 FILE_SHARE_DELETE 打开 Windows Release 缓存的一次读取，允许 ReplaceFileW 删除旧文件而不把测试 reader 变成写入障碍。",
+      "tags": [
+        "test",
+        "update",
+        "windows",
+        "cache"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:test/e2e/pixiv_binary_test.go:isIsolatedEnvKey",
+      "type": "function",
+      "name": "isIsolatedEnvKey",
+      "filePath": "test/e2e/pixiv_binary_test.go",
+      "lineRange": [
+        304,
+        314
+      ],
+      "summary": "以大小写无关比较识别 e2e 子进程必须移除的 HOME、Windows 用户目录、下载、代理和 token 环境键。",
+      "tags": [
+        "函数",
+        "Go语言",
+        "测试",
+        "环境隔离"
       ],
       "complexity": "simple"
     }
@@ -38669,6 +38705,34 @@
       "direction": "forward",
       "weight": 0.5,
       "description": "为并发缓存替换测试提供平台专用 reader helper"
+    },
+    {
+      "source": "file:internal/update/releases_reader_windows_test.go",
+      "target": "function:internal/update/releases_reader_windows_test.go:readCacheForConcurrentReaderOnce",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "function:internal/update/releases_reader_windows_test.go:readCacheForConcurrentReader",
+      "target": "function:internal/update/releases_reader_windows_test.go:readCacheForConcurrentReaderOnce",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:test/e2e/pixiv_binary_test.go",
+      "target": "function:test/e2e/pixiv_binary_test.go:isIsolatedEnvKey",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "function:test/e2e/pixiv_binary_test.go:isolatedEnv",
+      "target": "function:test/e2e/pixiv_binary_test.go:isIsolatedEnvKey",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
     }
   ],
   "layers": [

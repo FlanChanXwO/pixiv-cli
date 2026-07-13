@@ -670,19 +670,19 @@
     {
       "path": "internal/update/releases_reader_nonwindows_test.go",
       "language": "go",
-      "sizeLines": 10,
+      "sizeLines": 11,
       "fileCategory": "code"
     },
     {
       "path": "internal/update/releases_reader_windows_test.go",
       "language": "go",
-      "sizeLines": 39,
+      "sizeLines": 66,
       "fileCategory": "code"
     },
     {
       "path": "internal/update/releases_test.go",
       "language": "go",
-      "sizeLines": 848,
+      "sizeLines": 855,
       "fileCategory": "code"
     },
     {
@@ -886,7 +886,7 @@
     {
       "path": "scripts/releaseworkflow/main_test.go",
       "language": "go",
-      "sizeLines": 1963,
+      "sizeLines": 1967,
       "fileCategory": "code"
     },
     {
@@ -952,7 +952,7 @@
     {
       "path": "test/e2e/pixiv_binary_test.go",
       "language": "go",
-      "sizeLines": 309,
+      "sizeLines": 325,
       "fileCategory": "code"
     },
     {

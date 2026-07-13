@@ -1,7 +1,7 @@
 {
   "version": "1.0.0",
-  "gitCommitHash": "8d0cf8482215f2f1e828345d0790afde8eff99cd",
-  "generatedAt": "2026-07-13T00:13:07.695Z",
+  "gitCommitHash": "1c3097aae36c26b36353803a0e2eaef75016038d",
+  "generatedAt": "2026-07-13T00:37:54.131Z",
   "files": {
     ".agents/skills/pixiv-commit-msg/SKILL.md": {
       "filePath": ".agents/skills/pixiv-commit-msg/SKILL.md",
@@ -14560,12 +14560,13 @@
     },
     "internal/update/releases_reader_nonwindows_test.go": {
       "filePath": "internal/update/releases_reader_nonwindows_test.go",
-      "contentHash": "a4a7f6caae955fb77ecff2360c6fbb967d64fe74cd4ecf1e69ab8476a635cd3d",
+      "contentHash": "3ca45bbc8158ef6f99d1437646a4da80ac4b8f2fb5010f0749b6877d0ab25ff2",
       "functions": [
         {
           "name": "readCacheForConcurrentReader",
           "params": [
-            "path"
+            "path",
+            "_"
           ],
           "returnType": "([]byte, error)",
           "exported": false,
@@ -14582,15 +14583,25 @@
         }
       ],
       "exports": [],
-      "totalLines": 11,
+      "totalLines": 12,
       "hasStructuralAnalysis": true
     },
     "internal/update/releases_reader_windows_test.go": {
       "filePath": "internal/update/releases_reader_windows_test.go",
-      "contentHash": "becbb5b2e574c473fa5c2ef617c2bc4a3ae4d861d04f9decd2d3a8740d1bbc6e",
+      "contentHash": "572e87820b6b009442032ed48e2355767ab0820d24d7c8c4a7f678ff9d0026b8",
       "functions": [
         {
           "name": "readCacheForConcurrentReader",
+          "params": [
+            "path",
+            "stopReaders"
+          ],
+          "returnType": "([]byte, error)",
+          "exported": false,
+          "lineCount": 18
+        },
+        {
+          "name": "readCacheForConcurrentReaderOnce",
           "params": [
             "path"
           ],
@@ -14601,6 +14612,12 @@
       ],
       "classes": [],
       "imports": [
+        {
+          "source": "errors",
+          "specifiers": [
+            "errors"
+          ]
+        },
         {
           "source": "fmt",
           "specifiers": [
@@ -14620,6 +14637,12 @@
           ]
         },
         {
+          "source": "runtime",
+          "specifiers": [
+            "runtime"
+          ]
+        },
+        {
           "source": "golang.org/x/sys/windows",
           "specifiers": [
             "windows"
@@ -14627,12 +14650,12 @@
         }
       ],
       "exports": [],
-      "totalLines": 40,
+      "totalLines": 67,
       "hasStructuralAnalysis": true
     },
     "internal/update/releases_test.go": {
       "filePath": "internal/update/releases_test.go",
-      "contentHash": "c9c8a1e34a5f6a9af23d8a7099dc1dba4bcb8a5e60ce06ace2d5e6096047c189",
+      "contentHash": "3009e930e603e7c4fc794d9005104412a07cae7159e8bd0f0ae8958f7a64641b",
       "functions": [
         {
           "name": "TestGitHubReleaseClientSelectsLatestStableRelease",
@@ -14783,7 +14806,7 @@
             "t"
           ],
           "exported": true,
-          "lineCount": 77
+          "lineCount": 84
         },
         {
           "name": "RoundTrip",
@@ -14930,7 +14953,7 @@
         "TestGitHubReleaseClientAtomicallyReplacesCacheForConcurrentReaders",
         "RoundTrip"
       ],
-      "totalLines": 849,
+      "totalLines": 856,
       "hasStructuralAnalysis": true
     },
     "internal/update/releases.go": {
@@ -19572,7 +19595,7 @@
     },
     "scripts/releaseworkflow/main_test.go": {
       "filePath": "scripts/releaseworkflow/main_test.go",
-      "contentHash": "bf4296faae37dd3768bd542a477678deb377c5682f93320460c472f2ddbad158",
+      "contentHash": "c90f9f637fa53972193ba80fc3027bfa97324008e03430edf8def6eebe10f468",
       "functions": [
         {
           "name": "TestCheckWorkflowRequiresRustFormatGate",
@@ -19644,7 +19667,7 @@
             "t"
           ],
           "exported": true,
-          "lineCount": 22
+          "lineCount": 26
         },
         {
           "name": "TestCheckRecoveryPolicyRequiresTrustedReleaseTag",
@@ -20104,7 +20127,7 @@
         "TestCheckWorkflowRejectsBareAndFunctionSecretContextsOutsideExpectedSigningEnvironment",
         "TestCheckWorkflowAcceptsCanonicalBracketSigningExpressions"
       ],
-      "totalLines": 1964,
+      "totalLines": 1968,
       "hasStructuralAnalysis": true
     },
     "scripts/releaseworkflow/main.go": {
@@ -21003,7 +21026,7 @@
     },
     "test/e2e/pixiv_binary_test.go": {
       "filePath": "test/e2e/pixiv_binary_test.go",
-      "contentHash": "941d3b5f4192b750f93841a3beff678c86dd76c94518ff5a66fe2e27b530044a",
+      "contentHash": "8a18f09df0c8d28ccbd8e76d9753ec6cbd68ef7811c771e52d9a0fe85e732f82",
       "functions": [
         {
           "name": "TestPixivBinaryBuildsFromCmdPixivAndPrintsHelp",
@@ -21110,7 +21133,16 @@
           ],
           "returnType": "isolatedProcessEnv",
           "exported": false,
-          "lineCount": 23
+          "lineCount": 27
+        },
+        {
+          "name": "isIsolatedEnvKey",
+          "params": [
+            "name"
+          ],
+          "returnType": "bool",
+          "exported": false,
+          "lineCount": 11
         },
         {
           "name": "testCommandContext",
@@ -21216,7 +21248,7 @@
         "TestPixivBinaryWebAPIFallbackReal",
         "TestPixivBinaryRealAPISearchOptIn"
       ],
-      "totalLines": 310,
+      "totalLines": 326,
       "hasStructuralAnalysis": true
     },
     "test/e2e/version_binary_test.go": {
