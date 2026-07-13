@@ -169,10 +169,12 @@ func NewPixivClient(cfg config.RuntimeConfig) (*pixiv.Source, error) {
 }
 
 type MCPRuntime struct {
-	Config  config.RuntimeConfig
-	Client  *pixiv.Source
-	Manager *download.Manager
-	Logger  *slog.Logger
+	Config     config.RuntimeConfig
+	Client     *pixiv.Source
+	Manager    *download.Manager
+	Logger     *slog.Logger
+	SDK        application.SDKService
+	SDKRequest application.SDKClientRequest
 }
 
 func NewMCPRuntime(logger *slog.Logger, proxyOverride *string) (MCPRuntime, error) {
@@ -195,7 +197,14 @@ func NewMCPRuntime(logger *slog.Logger, proxyOverride *string) (MCPRuntime, erro
 		return MCPRuntime{}, err
 	}
 	manager := download.NewManager(client, logger, cfg.DownloadPath, cfg.FilenameTemplate)
-	return MCPRuntime{Config: cfg, Client: client, Manager: manager, Logger: logger}, nil
+	return MCPRuntime{
+		Config:     cfg,
+		Client:     client,
+		Manager:    manager,
+		Logger:     logger,
+		SDK:        NewServices(logger).SDK,
+		SDKRequest: application.SDKClientRequest{HTTPSProxyOverride: proxyOverride},
+	}, nil
 }
 
 func applyRuntimeProxyOverride(cfg *config.RuntimeConfig, override *string) {
@@ -221,7 +230,7 @@ func RunMCP(ctx context.Context, errOut io.Writer, proxyOverride *string) error 
 	if err != nil {
 		return err
 	}
-	server := mcpserver.New(runtime.Client, runtime.Manager, runtime.Logger)
+	server := mcpserver.NewWithSDK(runtime.Client, runtime.Manager, runtime.Logger, runtime.SDK, runtime.SDKRequest)
 	runtime.AutoAuthenticate(ctx)
 	return server.Run(ctx, &mcp.StdioTransport{})
 }

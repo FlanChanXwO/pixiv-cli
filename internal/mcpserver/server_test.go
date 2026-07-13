@@ -12,8 +12,10 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/FlanChanXwO/pixiv-cli/internal/application"
 	"github.com/FlanChanXwO/pixiv-cli/internal/download"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv"
+	sdk "github.com/FlanChanXwO/pixiv-cli/pkg/pixiv"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -40,7 +42,7 @@ func TestServerListsExpectedTools(t *testing.T) {
 		}
 		names = append(names, tool.Name)
 	}
-	for _, want := range []string{"set_download_path", "download", "refresh_token", "set_refresh_token", "download_random_from_recommendation", "search_illust", "search_user", "trending_tags_illust", "illust_related", "illust_recommended", "illust_follow", "user_bookmarks", "user_following", "illust_detail", "illust_ranking", "get_thumbnail_base64"} {
+	for _, want := range []string{"set_download_path", "download", "refresh_token", "set_refresh_token", "download_random_from_recommendation", "search_illust", "search_user", "trending_tags_illust", "illust_related", "illust_recommended", "illust_follow", "user_artworks", "user_bookmarks", "user_following", "add_bookmark", "remove_bookmark", "follow_user", "unfollow_user", "illust_detail", "illust_ranking", "get_thumbnail_base64"} {
 		if !slices.Contains(names, want) {
 			t.Fatalf("tool %q missing from %v", want, names)
 		}
@@ -66,6 +68,17 @@ func TestSetDownloadPathValidation(t *testing.T) {
 	}
 	if len(result.Content) == 0 {
 		t.Fatalf("expected content")
+	}
+}
+
+func TestSDKToolsWithoutSDKReturnStructuredConfigurationError(t *testing.T) {
+	session, closeSession := newTestSession(t, &fakeDownloads{})
+	defer closeSession()
+	result := callTool(t, session, "add_bookmark", map[string]any{"illust_id": 1})
+	var out mutationOut
+	decodeStructured(t, result, &out)
+	if out.Success || !strings.Contains(out.Text, "sdk is not configured") {
+		t.Fatalf("unexpected output: %+v", out)
 	}
 }
 
@@ -241,6 +254,173 @@ func TestSetRefreshTokenFailureSaysSessionOnly(t *testing.T) {
 	}
 }
 
+func TestSDKUserToolsResolveIdentityKeepLegacyInputAndReturnStructuredOutput(t *testing.T) {
+	client := &fakeSDKClient{
+		userID:    71,
+		artworks:  []sdk.Illust{testSDKIllust(11, "work", 71)},
+		bookmarks: []sdk.Illust{testSDKIllust(12, "saved", 99)},
+		following: []sdk.UserPreview{{User: sdk.User{ID: 33, Name: "followed", Account: "f"}}},
+	}
+	session, closeSession := newSDKTestSession(t, client)
+	defer closeSession()
+
+	artworks := callTool(t, session, "user_artworks", map[string]any{"limit": 1})
+	var artworksOut illustListOut
+	decodeStructured(t, artworks, &artworksOut)
+	if client.artworksRequest.UserID != 71 || artworksOut.UserID != 71 || len(artworksOut.Items) != 1 || artworksOut.Pagination.Returned != 1 {
+		t.Fatalf("user artworks = request=%+v output=%+v", client.artworksRequest, artworksOut)
+	}
+
+	bookmarks := callTool(t, session, "user_bookmarks", map[string]any{"user_id_to_check": 99, "tag": "tag", "limit": 0})
+	var bookmarksOut illustListOut
+	decodeStructured(t, bookmarks, &bookmarksOut)
+	if client.bookmarksRequest.UserID != 99 || client.bookmarksRequest.Tag != "tag" || bookmarksOut.UserID != 99 || len(bookmarksOut.Items) != 1 || bookmarksOut.Pagination.HasMore {
+		t.Fatalf("bookmarks = request=%+v output=%+v", client.bookmarksRequest, bookmarksOut)
+	}
+	if !strings.Contains(bookmarksOut.Text, "找到用户 99 的 1 个收藏") {
+		t.Fatalf("legacy bookmark text missing: %q", bookmarksOut.Text)
+	}
+
+	following := callTool(t, session, "user_following", map[string]any{"user_id_to_check": 99, "offset": 0})
+	var followingOut userListOut
+	decodeStructured(t, following, &followingOut)
+	if client.followingRequest.UserID != 99 || followingOut.UserID != 99 || len(followingOut.Items) != 1 {
+		t.Fatalf("following = request=%+v output=%+v", client.followingRequest, followingOut)
+	}
+	if !strings.Contains(followingOut.Text, "用户 99 关注了 1 位用户") {
+		t.Fatalf("legacy following text missing: %q", followingOut.Text)
+	}
+}
+
+func testSDKIllust(id int64, title string, userID int64) sdk.Illust {
+	return sdk.Illust{
+		ID:        id,
+		Title:     title,
+		User:      sdk.User{ID: userID, Name: "artist"},
+		Tags:      []sdk.Tag{},
+		MetaPages: []sdk.MetaPage{},
+	}
+}
+
+func TestSDKMutationToolsReturnStructuredSuccess(t *testing.T) {
+	client := &fakeSDKClient{}
+	session, closeSession := newSDKTestSession(t, client)
+	defer closeSession()
+
+	for _, test := range []struct {
+		name string
+		args map[string]any
+		want string
+	}{
+		{"add_bookmark", map[string]any{"illust_id": 9, "restrict": "private", "tags": []string{"one"}}, "add_bookmark"},
+		{"remove_bookmark", map[string]any{"illust_id": 9}, "remove_bookmark"},
+		{"follow_user", map[string]any{"user_id": 8, "restrict": "private"}, "follow_user"},
+		{"unfollow_user", map[string]any{"user_id": 8}, "unfollow_user"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			result := callTool(t, session, test.name, test.args)
+			var out mutationOut
+			decodeStructured(t, result, &out)
+			if !out.Success || out.Action != test.want || !strings.Contains(out.Text, "已") {
+				t.Fatalf("mutation output = %+v", out)
+			}
+		})
+	}
+	if client.addBookmarkRequest.IllustID != 9 || client.addBookmarkRequest.Restrict != sdk.RestrictPrivate || !slices.Equal(client.addBookmarkRequest.Tags, []string{"one"}) {
+		t.Fatalf("add bookmark request = %+v", client.addBookmarkRequest)
+	}
+	if client.removeBookmarkRequest.IllustID != 9 || client.followUserRequest.UserID != 8 || client.followUserRequest.Restrict != sdk.RestrictPrivate || client.unfollowUserRequest.UserID != 8 {
+		t.Fatalf("mutation requests = remove=%+v follow=%+v unfollow=%+v", client.removeBookmarkRequest, client.followUserRequest, client.unfollowUserRequest)
+	}
+}
+
+func TestUserBookmarksAcceptsLegacyMaxBookmarkID(t *testing.T) {
+	legacyAPI := &legacyBookmarkAPI{illusts: []pixiv.Illust{{
+		ID:        15,
+		Title:     "legacy",
+		Tags:      []pixiv.Tag{},
+		MetaPages: []pixiv.MetaPage{},
+	}}}
+	session, closeSession := newSDKTestSessionWithAPI(t, legacyAPI, &fakeSDKClient{})
+	defer closeSession()
+	result := callTool(t, session, "user_bookmarks", map[string]any{"user_id_to_check": 99, "max_bookmark_id": 101})
+	var out illustListOut
+	decodeStructured(t, result, &out)
+	if legacyAPI.userID != 99 || legacyAPI.maxBookmarkID != 101 || len(out.Items) != 1 || out.Items[0].ID != 15 {
+		t.Fatalf("legacy compatibility = request=(%d,%d) output=%+v", legacyAPI.userID, legacyAPI.maxBookmarkID, out)
+	}
+}
+
+func TestSDKListPageRequiresPositiveLimitAndPositiveValue(t *testing.T) {
+	session, closeSession := newSDKTestSession(t, &fakeSDKClient{userID: 1})
+	defer closeSession()
+	for _, arguments := range []map[string]any{
+		{"page": 0, "limit": 1},
+		{"page": 1},
+	} {
+		result := callTool(t, session, "user_artworks", arguments)
+		var out illustListOut
+		decodeStructured(t, result, &out)
+		if !strings.Contains(out.Text, "page") {
+			t.Fatalf("arguments=%v output=%+v", arguments, out)
+		}
+	}
+}
+
+func TestSDKListsFollowOpaqueCursorForLimitAndRejectCycles(t *testing.T) {
+	first := testSDKIllust(1, "first", 7)
+	second := testSDKIllust(2, "second", 7)
+	paged := &fakeSDKClient{userID: 7, artworkResults: map[sdk.Cursor]sdk.IllustListResult{
+		"": {Illusts: []sdk.Illust{first}, NextCursor: "next"},
+	}}
+	pagedSession, closePagedSession := newSDKTestSession(t, paged)
+	defer closePagedSession()
+	result := callTool(t, pagedSession, "user_artworks", map[string]any{"limit": 1})
+	var out illustListOut
+	decodeStructured(t, result, &out)
+	if !out.Pagination.HasMore || out.Pagination.NextPage == nil || *out.Pagination.NextPage != 2 {
+		t.Fatalf("single-page pagination=%+v", out.Pagination)
+	}
+
+	client := &fakeSDKClient{userID: 7, artworkResults: map[sdk.Cursor]sdk.IllustListResult{
+		"":     {Illusts: []sdk.Illust{first}, NextCursor: "next"},
+		"next": {Illusts: []sdk.Illust{second}},
+	}}
+	session, closeSession := newSDKTestSession(t, client)
+	defer closeSession()
+	result = callTool(t, session, "user_artworks", map[string]any{"limit": 0})
+	decodeStructured(t, result, &out)
+	if len(out.Items) != 2 || out.Pagination.HasMore || len(client.artworksRequests) != 2 || client.artworksRequests[1].Cursor != "next" {
+		t.Fatalf("all-pages output=%+v requests=%+v", out, client.artworksRequests)
+	}
+
+	cyclic := &fakeSDKClient{userID: 7, artworkResults: map[sdk.Cursor]sdk.IllustListResult{
+		"":     {Illusts: []sdk.Illust{first}, NextCursor: "loop"},
+		"loop": {NextCursor: "loop"},
+	}}
+	cycleSession, closeCycleSession := newSDKTestSession(t, cyclic)
+	defer closeCycleSession()
+	result = callTool(t, cycleSession, "user_artworks", map[string]any{"limit": 0})
+	decodeStructured(t, result, &out)
+	if !strings.Contains(out.Text, "cursor repeated") || len(cyclic.artworksRequests) != 2 {
+		t.Fatalf("cycle output=%+v requests=%+v", out, cyclic.artworksRequests)
+	}
+}
+
+func TestSDKToolsUseExistingMCPSessionRefreshToken(t *testing.T) {
+	var got application.SDKClientRequest
+	service := application.SDKService{NewClient: func(request application.SDKClientRequest) (application.SDKClient, error) {
+		got = request
+		return &fakeSDKClient{}, nil
+	}}
+	session, closeSession := newSDKTestSessionWithService(t, &fakeAPI{}, service)
+	defer closeSession()
+	_ = callTool(t, session, "add_bookmark", map[string]any{"illust_id": 1})
+	if got.RefreshToken != "refresh" {
+		t.Fatalf("SDK request did not receive MCP session token: %+v", got)
+	}
+}
+
 type fakeAPI struct{}
 
 func (fakeAPI) Refresh(context.Context) error { return nil }
@@ -307,6 +487,132 @@ func newTestSession(t *testing.T, downloads *fakeDownloads) (*mcp.ClientSession,
 		session.Close()
 		cancel()
 	}
+}
+
+func newSDKTestSession(t *testing.T, sdkClient application.SDKClient) (*mcp.ClientSession, func()) {
+	return newSDKTestSessionWithAPI(t, &fakeAPI{}, sdkClient)
+}
+
+func newSDKTestSessionWithAPI(t *testing.T, api PixivAPI, sdkClient application.SDKClient) (*mcp.ClientSession, func()) {
+	t.Helper()
+	service := application.SDKService{NewClient: func(application.SDKClientRequest) (application.SDKClient, error) {
+		return sdkClient, nil
+	}}
+	return newSDKTestSessionWithService(t, api, service)
+}
+
+func newSDKTestSessionWithService(t *testing.T, api PixivAPI, service application.SDKService) (*mcp.ClientSession, func()) {
+	t.Helper()
+	server := NewWithSDK(api, &fakeDownloads{}, slog.New(slog.NewTextHandler(io.Discard, nil)), service, application.SDKClientRequest{})
+	clientTransport, serverTransport := mcp.NewInMemoryTransports()
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() { _ = server.Run(ctx, serverTransport) }()
+	client := mcp.NewClient(&mcp.Implementation{Name: "test", Version: "0.0.0"}, nil)
+	session, err := client.Connect(ctx, clientTransport, nil)
+	if err != nil {
+		cancel()
+		t.Fatalf("connect: %v", err)
+	}
+	return session, func() {
+		session.Close()
+		cancel()
+	}
+}
+
+type legacyBookmarkAPI struct {
+	fakeAPI
+	illusts       []pixiv.Illust
+	userID        int64
+	maxBookmarkID int64
+}
+
+func (a *legacyBookmarkAPI) UserBookmarks(_ context.Context, userID int64, _ string, _ string, maxBookmarkID int64) (*pixiv.IllustList, error) {
+	a.userID = userID
+	a.maxBookmarkID = maxBookmarkID
+	return &pixiv.IllustList{Illusts: a.illusts}, nil
+}
+
+func callTool(t *testing.T, session *mcp.ClientSession, name string, arguments map[string]any) *mcp.CallToolResult {
+	t.Helper()
+	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: name, Arguments: arguments})
+	if err != nil {
+		t.Fatalf("CallTool(%s): %v", name, err)
+	}
+	return result
+}
+
+func decodeStructured(t *testing.T, result *mcp.CallToolResult, out any) {
+	t.Helper()
+	raw, err := json.Marshal(result.StructuredContent)
+	if err != nil {
+		t.Fatalf("marshal structured content: %v", err)
+	}
+	if err := json.Unmarshal(raw, out); err != nil {
+		t.Fatalf("unmarshal structured content: %v", err)
+	}
+}
+
+type fakeSDKClient struct {
+	userID                int64
+	artworks              []sdk.Illust
+	bookmarks             []sdk.Illust
+	following             []sdk.UserPreview
+	artworksRequest       sdk.UserArtworksRequest
+	artworksRequests      []sdk.UserArtworksRequest
+	artworkResults        map[sdk.Cursor]sdk.IllustListResult
+	bookmarksRequest      sdk.UserBookmarksRequest
+	followingRequest      sdk.UserFollowingRequest
+	addBookmarkRequest    sdk.AddBookmarkRequest
+	removeBookmarkRequest sdk.RemoveBookmarkRequest
+	followUserRequest     sdk.FollowUserRequest
+	unfollowUserRequest   sdk.UnfollowUserRequest
+}
+
+func (f *fakeSDKClient) CurrentUserID(context.Context) (int64, error) { return f.userID, nil }
+func (*fakeSDKClient) SearchIllust(context.Context, sdk.SearchIllustRequest) (*sdk.IllustListResult, error) {
+	return &sdk.IllustListResult{}, nil
+}
+func (*fakeSDKClient) IllustDetail(context.Context, int64) (*sdk.IllustDetail, error) {
+	return &sdk.IllustDetail{}, nil
+}
+func (*fakeSDKClient) IllustRanking(context.Context, sdk.IllustRankingRequest) (*sdk.IllustListResult, error) {
+	return &sdk.IllustListResult{}, nil
+}
+func (*fakeSDKClient) IllustRecommended(context.Context, sdk.IllustRecommendedRequest) (*sdk.IllustListResult, error) {
+	return &sdk.IllustListResult{}, nil
+}
+func (f *fakeSDKClient) UserArtworks(_ context.Context, request sdk.UserArtworksRequest) (*sdk.IllustListResult, error) {
+	f.artworksRequest = request
+	f.artworksRequests = append(f.artworksRequests, request)
+	if f.artworkResults != nil {
+		result := f.artworkResults[request.Cursor]
+		return &result, nil
+	}
+	return &sdk.IllustListResult{Illusts: f.artworks}, nil
+}
+func (f *fakeSDKClient) UserBookmarks(_ context.Context, request sdk.UserBookmarksRequest) (*sdk.IllustListResult, error) {
+	f.bookmarksRequest = request
+	return &sdk.IllustListResult{Illusts: f.bookmarks}, nil
+}
+func (f *fakeSDKClient) UserFollowing(_ context.Context, request sdk.UserFollowingRequest) (*sdk.UserListResult, error) {
+	f.followingRequest = request
+	return &sdk.UserListResult{UserPreviews: f.following}, nil
+}
+func (f *fakeSDKClient) AddBookmark(_ context.Context, request sdk.AddBookmarkRequest) error {
+	f.addBookmarkRequest = request
+	return nil
+}
+func (f *fakeSDKClient) RemoveBookmark(_ context.Context, request sdk.RemoveBookmarkRequest) error {
+	f.removeBookmarkRequest = request
+	return nil
+}
+func (f *fakeSDKClient) FollowUser(_ context.Context, request sdk.FollowUserRequest) error {
+	f.followUserRequest = request
+	return nil
+}
+func (f *fakeSDKClient) UnfollowUser(_ context.Context, request sdk.UnfollowUserRequest) error {
+	f.unfollowUserRequest = request
+	return nil
 }
 
 func decodeDownloadOut(t *testing.T, result *mcp.CallToolResult) downloadOut {

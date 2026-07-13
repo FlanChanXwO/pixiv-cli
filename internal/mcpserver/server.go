@@ -11,6 +11,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/FlanChanXwO/pixiv-cli/internal/application"
 	"github.com/FlanChanXwO/pixiv-cli/internal/download"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv"
 	"github.com/FlanChanXwO/pixiv-cli/internal/utils"
@@ -47,13 +48,24 @@ type DownloadManager interface {
 }
 
 type App struct {
-	api       PixivAPI
-	downloads DownloadManager
-	logger    *slog.Logger
+	api        PixivAPI
+	downloads  DownloadManager
+	logger     *slog.Logger
+	sdk        application.SDKService
+	sdkRequest application.SDKClientRequest
 }
 
 func New(api PixivAPI, downloads DownloadManager, logger *slog.Logger) *mcp.Server {
-	app := &App{api: api, downloads: downloads, logger: logger}
+	return newServer(&App{api: api, downloads: downloads, logger: logger})
+}
+
+// NewWithSDK 在保留旧 Source 工具的同时，为新增领域工具注入公共 SDK 接缝。
+// SDKService 会在每次 MCP tool 调用时建立独立的配置/认证 operation snapshot。
+func NewWithSDK(api PixivAPI, downloads DownloadManager, logger *slog.Logger, service application.SDKService, request application.SDKClientRequest) *mcp.Server {
+	return newServer(&App{api: api, downloads: downloads, logger: logger, sdk: service, sdkRequest: request})
+}
+
+func newServer(app *App) *mcp.Server {
 	server := mcp.NewServer(&mcp.Implementation{Name: "pixiv-cli", Version: "2.0.0"}, &mcp.ServerOptions{
 		Instructions: "Pixiv MCP server for searching, browsing, and downloading Pixiv content.",
 	})
@@ -75,8 +87,13 @@ func (a *App) register(server *mcp.Server) {
 	mcp.AddTool(server, &mcp.Tool{Name: "illust_recommended", Description: "Get personalized artwork recommendations."}, a.illustRecommended)
 	mcp.AddTool(server, &mcp.Tool{Name: "trending_tags_illust", Description: "Get currently trending illustration tags."}, a.trendingTags)
 	mcp.AddTool(server, &mcp.Tool{Name: "illust_follow", Description: "Browse artworks from followed artists."}, a.illustFollow)
+	mcp.AddTool(server, &mcp.Tool{Name: "user_artworks", Description: "Browse a user's artworks."}, a.userArtworks)
 	mcp.AddTool(server, &mcp.Tool{Name: "user_bookmarks", Description: "Browse user's bookmarked artworks."}, a.userBookmarks)
 	mcp.AddTool(server, &mcp.Tool{Name: "user_following", Description: "View user's following list."}, a.userFollowing)
+	mcp.AddTool(server, &mcp.Tool{Name: "add_bookmark", Description: "Add an artwork to bookmarks."}, a.addBookmark)
+	mcp.AddTool(server, &mcp.Tool{Name: "remove_bookmark", Description: "Remove an artwork from bookmarks."}, a.removeBookmark)
+	mcp.AddTool(server, &mcp.Tool{Name: "follow_user", Description: "Follow a Pixiv user."}, a.followUser)
+	mcp.AddTool(server, &mcp.Tool{Name: "unfollow_user", Description: "Unfollow a Pixiv user."}, a.unfollowUser)
 	mcp.AddTool(server, &mcp.Tool{Name: "get_thumbnail_base64", Description: "Get artwork thumbnail as base64 data URL."}, a.thumbnailBase64)
 }
 
@@ -464,67 +481,6 @@ func (a *App) illustFollow(ctx context.Context, _ *mcp.CallToolRequest, in follo
 		return toolText("您的关注动态中暂时没有新作品。")
 	}
 	return toolText(fmt.Sprintf("找到 %d 篇关注动态:\n\n%s", len(result.Illusts), formatIllusts(result.Illusts, in.IncludeThumbnail, in.Offset, false)))
-}
-
-type bookmarksIn struct {
-	UserIDToCheck int64  `json:"user_id_to_check,omitempty"`
-	Restrict      string `json:"restrict,omitempty"`
-	Tag           string `json:"tag,omitempty"`
-	MaxBookmarkID int64  `json:"max_bookmark_id,omitempty"`
-}
-
-func (a *App) userBookmarks(ctx context.Context, _ *mcp.CallToolRequest, in bookmarksIn) (*mcp.CallToolResult, textOut, error) {
-	if err := a.ensureAuth(ctx); err != nil {
-		return toolText(err.Error())
-	}
-	if in.Restrict == "" {
-		in.Restrict = string(pixiv.RestrictPublic)
-	}
-	userID := in.UserIDToCheck
-	if userID == 0 {
-		userID = a.api.UserID()
-	}
-	if userID == 0 {
-		return toolText("错误: 查询自己的收藏时，需要先认证以获取用户ID。")
-	}
-	result, err := a.api.UserBookmarks(ctx, userID, in.Restrict, in.Tag, in.MaxBookmarkID)
-	if err != nil {
-		return toolText(err.Error())
-	}
-	if len(result.Illusts) == 0 {
-		return toolText(fmt.Sprintf("找不到用户 %d 的收藏。", userID))
-	}
-	return toolText(fmt.Sprintf("找到用户 %d 的 %d 个收藏:\n\n%s", userID, len(result.Illusts), formatIllusts(result.Illusts, false, 0, false)))
-}
-
-type followingIn struct {
-	UserIDToCheck int64  `json:"user_id_to_check,omitempty"`
-	Restrict      string `json:"restrict,omitempty"`
-	Offset        int    `json:"offset,omitempty"`
-}
-
-func (a *App) userFollowing(ctx context.Context, _ *mcp.CallToolRequest, in followingIn) (*mcp.CallToolResult, textOut, error) {
-	if err := a.ensureAuth(ctx); err != nil {
-		return toolText(err.Error())
-	}
-	if in.Restrict == "" {
-		in.Restrict = string(pixiv.RestrictPublic)
-	}
-	userID := in.UserIDToCheck
-	if userID == 0 {
-		userID = a.api.UserID()
-	}
-	if userID == 0 {
-		return toolText("错误: 查询自己的关注列表时，需要先认证以获取用户ID。")
-	}
-	result, err := a.api.UserFollowing(ctx, userID, in.Restrict, in.Offset)
-	if err != nil {
-		return toolText(err.Error())
-	}
-	if len(result.UserPreviews) == 0 {
-		return toolText(fmt.Sprintf("用户 %d 没有关注任何人。", userID))
-	}
-	return toolText(fmt.Sprintf("用户 %d 关注了 %d 位用户:\n\n%s", userID, len(result.UserPreviews), formatUsers(result.UserPreviews)))
 }
 
 func (a *App) thumbnailBase64(ctx context.Context, _ *mcp.CallToolRequest, in illustIDIn) (*mcp.CallToolResult, textOut, error) {
