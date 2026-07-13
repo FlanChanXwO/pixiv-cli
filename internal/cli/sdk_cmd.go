@@ -80,10 +80,15 @@ func (a app) sdkRequest(cmd *cobra.Command, options commandOptions) (application
 // 明确没有 next cursor 时停止，context 取消会直接传给每个请求。
 func pageItems[T any](ctx context.Context, plan listPlan, fetch func(context.Context, sdk.Cursor) ([]T, sdk.Cursor, error), consume func([]T) error) error {
 	cursor := sdk.Cursor("")
+	seenCursors := make(map[sdk.Cursor]struct{})
 	skip := plan.skip
 	seekingOffset := skip > 0
 	emitted := 0
 	for {
+		if _, seen := seenCursors[cursor]; seen {
+			return fmt.Errorf("pagination cursor repeated: %q", cursor)
+		}
+		seenCursors[cursor] = struct{}{}
 		items, next, err := fetch(ctx, cursor)
 		if err != nil {
 			return err

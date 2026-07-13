@@ -71,12 +71,22 @@ type Client struct {
 // 本地默认账号错误地当作显式 refresh token 或环境变量 token 的身份。显式 NewClient
 // 的 access token 不携带可验证 UID，因此返回 unsupported。
 func (c *Client) CurrentUserID(ctx context.Context) (int64, error) {
-	if scoped, err := c.operationClient(ctx, OperationCurrentUserID); err != nil {
+	if scoped, err := c.Snapshot(ctx); err != nil {
 		return 0, err
 	} else if scoped != c {
 		return scoped.currentUserID()
 	}
 	return c.currentUserID()
+}
+
+// Snapshot 取得一次明确的本地配置与认证快照，供一个高层操作内的多个
+// cursor 请求复用。OpenDefault 的普通公开方法仍各自刷新快照；调用方只有显式
+// 选择本方法时才把同一快照固定在返回 Client 上。
+func (c *Client) Snapshot(ctx context.Context) (*Client, error) {
+	if c.defaults == nil {
+		return c, nil
+	}
+	return c.operationClient(ctx, OperationSnapshot)
 }
 
 func (c *Client) currentUserID() (int64, error) {

@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -294,39 +295,114 @@ func TestRunContextCancelsSDKNetworkCommand(t *testing.T) {
 	assert.Contains(t, stderr.String(), "context canceled")
 }
 
-func TestUserArtworksWithoutIDUsesConcreteOAuthIdentity(t *testing.T) {
-	authPath, configPath := useTempPaths(t)
-	require.NoError(t, auth.SaveAuthStore(authPath, auth.AuthStore{DefaultUserID: 7, Accounts: []auth.Account{{UserID: 7, RefreshToken: "stored-token"}}}))
-	t.Setenv("PIXIV_REFRESH_TOKEN", "environment-token")
-	var requestedUserIDs []string
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
-		switch request.URL.Path {
-		case "/auth/token":
-			require.NoError(t, request.ParseForm())
-			assert.Equal(t, "environment-token", request.Form.Get("refresh_token"))
-			_, _ = io.WriteString(w, `{"access_token":"access","refresh_token":"rotated","user":{"id":202}}`)
-		case "/v1/user/illusts":
-			requestedUserIDs = append(requestedUserIDs, request.URL.Query().Get("user_id"))
-			_, _ = io.WriteString(w, `{"illusts":[]}`)
-		default:
-			t.Fatalf("unexpected path=%s", request.URL.Path)
-		}
-	}))
-	defer server.Close()
-
-	old := newCLIServices
-	newCLIServices = func(logger *slog.Logger) application.Services {
-		services := bootstrap.NewServices(logger)
-		services.SDK.NewClient = func(request application.SDKClientRequest) (application.SDKClient, error) {
-			return sdk.OpenDefault(sdk.Options{AuthFilePath: authPath, ConfigFilePath: configPath, HTTPClient: server.Client(), OAuthBaseURL: server.URL, AppAPIBaseURL: server.URL, UserID: request.UserID, RefreshToken: request.RefreshToken})
-		}
-		return services
+func TestPageItemsRejectsRepeatedOpaqueCursor(t *testing.T) {
+	for _, test := range []struct {
+		name  string
+		next  map[sdk.Cursor]sdk.Cursor
+		items map[sdk.Cursor][]sdk.Illust
+	}{
+		{name: "direct repeat", next: map[sdk.Cursor]sdk.Cursor{"": "A", "A": "A"}},
+		{name: "cycle", next: map[sdk.Cursor]sdk.Cursor{"": "A", "A": "B", "B": "A"}},
+		{name: "empty batch repeat", next: map[sdk.Cursor]sdk.Cursor{"": "A", "A": "A"}, items: map[sdk.Cursor][]sdk.Illust{"": nil, "A": nil}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			var calls []sdk.Cursor
+			err := pageItems(context.Background(), listPlan{limit: 0}, func(_ context.Context, cursor sdk.Cursor) ([]sdk.Illust, sdk.Cursor, error) {
+				calls = append(calls, cursor)
+				return test.items[cursor], test.next[cursor], nil
+			}, func([]sdk.Illust) error { return nil })
+			require.ErrorContains(t, err, "pagination cursor repeated")
+			assert.NotEmpty(t, calls)
+		})
 	}
-	t.Cleanup(func() { newCLIServices = old })
+}
 
+func TestListJSONCursorCycleDoesNotWritePartialStdout(t *testing.T) {
+	useTempPaths(t)
+	calls := 0
+	setTestSDKCommandClient(t, sdkCommandFake{search: func(_ context.Context, request sdk.SearchIllustRequest) (*sdk.IllustListResult, error) {
+		calls++
+		if request.Cursor == "" {
+			return &sdk.IllustListResult{Illusts: []sdk.Illust{commandIllust(1)}, NextCursor: "repeat"}, nil
+		}
+		return &sdk.IllustListResult{Illusts: []sdk.Illust{commandIllust(2)}, NextCursor: "repeat"}, nil
+	}})
 	var stdout, stderr bytes.Buffer
-	require.Equal(t, 0, Run([]string{"pixiv", "user", "artworks", "--json"}, strings.NewReader(""), &stdout, &stderr), stderr.String())
-	assert.Equal(t, []string{"202"}, requestedUserIDs)
+	assert.NotZero(t, Run([]string{"pixiv", "search", "miku", "--json", "--limit", "0"}, strings.NewReader(""), &stdout, &stderr))
+	assert.Empty(t, stdout.String())
+	assert.Equal(t, 2, calls)
+	assert.Contains(t, stderr.String(), "pagination cursor repeated")
+}
+
+func TestSelfUserListsReuseOneConcreteOAuthSnapshotAcrossPages(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		path string
+	}{
+		{name: "artworks", path: "/v1/user/illusts"},
+		{name: "bookmarks", path: "/v1/user/bookmarks/illust"},
+		{name: "following", path: "/v1/user/following"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			authPath, configPath := useTempPaths(t)
+			require.NoError(t, auth.SaveAuthStore(authPath, auth.AuthStore{DefaultUserID: 7, Accounts: []auth.Account{{UserID: 7, RefreshToken: "stored-token"}}}))
+			t.Setenv("PIXIV_REFRESH_TOKEN", "environment-token")
+			var oauthCalls int
+			var requestedUserIDs []string
+			var server *httptest.Server
+			server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+				switch request.URL.Path {
+				case "/auth/token":
+					oauthCalls++
+					require.NoError(t, request.ParseForm())
+					assert.Equal(t, "environment-token", request.Form.Get("refresh_token"))
+					if oauthCalls > 1 {
+						http.Error(w, "old token already rotated", http.StatusBadRequest)
+						return
+					}
+					_, _ = io.WriteString(w, `{"access_token":"access","refresh_token":"rotated","user":{"id":202}}`)
+				case test.path:
+					requestedUserIDs = append(requestedUserIDs, request.URL.Query().Get("user_id"))
+					if request.URL.Query().Get("offset") == "1" || request.URL.Query().Get("max_bookmark_id") == "1" {
+						if test.name == "following" {
+							_, _ = io.WriteString(w, `{"user_previews":[{"user":{"id":2}}]}`)
+						} else {
+							_, _ = io.WriteString(w, `{"illusts":[{"id":2,"type":"illust","page_count":1,"user":{},"tags":[],"image_urls":{},"meta_single_page":{},"meta_pages":[]}]}`)
+						}
+						return
+					}
+					nextKey := "offset=1"
+					if test.name == "bookmarks" {
+						nextKey = "max_bookmark_id=1"
+					}
+					nextURL := server.URL + test.path + "?" + nextKey
+					if test.name == "following" {
+						_, _ = fmt.Fprintf(w, `{"user_previews":[{"user":{"id":1}}],"next_url":%q}`, nextURL)
+					} else {
+						_, _ = fmt.Fprintf(w, `{"illusts":[{"id":1,"type":"illust","page_count":1,"user":{},"tags":[],"image_urls":{},"meta_single_page":{},"meta_pages":[]}],"next_url":%q}`, nextURL)
+					}
+				default:
+					t.Fatalf("unexpected path=%s", request.URL.Path)
+				}
+			}))
+			defer server.Close()
+
+			old := newCLIServices
+			newCLIServices = func(logger *slog.Logger) application.Services {
+				services := bootstrap.NewServices(logger)
+				services.SDK.NewClient = func(request application.SDKClientRequest) (application.SDKClient, error) {
+					return sdk.OpenDefault(sdk.Options{AuthFilePath: authPath, ConfigFilePath: configPath, HTTPClient: server.Client(), OAuthBaseURL: server.URL, AppAPIBaseURL: server.URL, UserID: request.UserID, RefreshToken: request.RefreshToken})
+				}
+				return services
+			}
+			t.Cleanup(func() { newCLIServices = old })
+
+			var stdout, stderr bytes.Buffer
+			require.Equal(t, 0, Run([]string{"pixiv", "user", test.name, "--json", "--limit", "0"}, strings.NewReader(""), &stdout, &stderr), stderr.String())
+			assert.Equal(t, 1, oauthCalls)
+			assert.Equal(t, []string{"202", "202"}, requestedUserIDs)
+		})
+	}
 }
 
 var _ io.Writer = (*bytes.Buffer)(nil)

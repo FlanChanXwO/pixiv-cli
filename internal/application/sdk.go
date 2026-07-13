@@ -47,6 +47,23 @@ func (s SDKService) Client(req SDKClientRequest) (SDKClient, error) {
 	return s.NewClient(req)
 }
 
+// OpenOperation 让一个 CLI 命令的 self 身份解析和所有 cursor 页面共享同一个
+// OpenDefault 快照，避免 OAuth rotation 在命令进行中使旧 refresh token 失效。
+func (s SDKService) OpenOperation(ctx context.Context, req SDKClientRequest) (SDKClient, error) {
+	client, err := s.Client(req)
+	if err != nil {
+		return nil, err
+	}
+	if snapshotter, ok := client.(interface {
+		Snapshot(context.Context) (*sdk.Client, error)
+	}); ok {
+		return snapshotter.Snapshot(ctx)
+	}
+	// Test/embedding adapters may already represent one stable operation. Product
+	// factory returns *sdk.Client and always takes the concrete Snapshot branch.
+	return client, nil
+}
+
 // JSONOut 与既有 CLI config 语义一致：命令显式 --json 覆盖 runtime 配置。
 func (s SDKService) JSONOut(override *bool) (bool, error) {
 	if s.LoadRuntime == nil {
@@ -65,7 +82,7 @@ func (s SDKService) JSONOut(override *bool) (bool, error) {
 // CurrentUserID 通过 SDK OAuth 快照获取真实身份。这样 --refresh-token 和环境 token
 // 都不会被本地默认账号误替代。
 func (s SDKService) CurrentUserID(ctx context.Context, req SDKClientRequest) (SDKClient, int64, error) {
-	client, err := s.Client(req)
+	client, err := s.OpenOperation(ctx, req)
 	if err != nil {
 		return nil, 0, err
 	}

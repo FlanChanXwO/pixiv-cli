@@ -72,7 +72,7 @@ func (a app) resolveUserID(cmd *cobra.Command, args []string, options commandOpt
 	}
 	if len(args) == 1 {
 		id, parseErr := parse.PositiveInt64(args[0], "user_id")
-		client, err = services.SDK.Client(request)
+		client, err = services.SDK.OpenOperation(cmd.Context(), request)
 		if err != nil {
 			return 0, nil, err
 		}
@@ -197,7 +197,7 @@ func (a app) newBookmarkAddCommand() *cobra.Command {
 		if err != nil {
 			return err
 		}
-		client, err := a.services().SDK.Client(request)
+		client, err := a.services().SDK.OpenOperation(cmd.Context(), request)
 		if err != nil {
 			return err
 		}
@@ -227,7 +227,7 @@ func (a app) newBookmarkRemoveCommand() *cobra.Command {
 		if err != nil {
 			return err
 		}
-		client, err := a.services().SDK.Client(request)
+		client, err := a.services().SDK.OpenOperation(cmd.Context(), request)
 		if err != nil {
 			return err
 		}
@@ -261,7 +261,7 @@ func (a app) newFollowAddCommand() *cobra.Command {
 		if err != nil {
 			return err
 		}
-		client, err := a.services().SDK.Client(request)
+		client, err := a.services().SDK.OpenOperation(cmd.Context(), request)
 		if err != nil {
 			return err
 		}
@@ -290,7 +290,7 @@ func (a app) newFollowRemoveCommand() *cobra.Command {
 		if err != nil {
 			return err
 		}
-		client, err := a.services().SDK.Client(request)
+		client, err := a.services().SDK.OpenOperation(cmd.Context(), request)
 		if err != nil {
 			return err
 		}

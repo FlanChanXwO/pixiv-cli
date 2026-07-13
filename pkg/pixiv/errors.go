@@ -67,6 +67,7 @@ const (
 	OperationStartLogin         Operation = "start_login"
 	OperationCompleteLogin      Operation = "complete_login"
 	OperationCurrentUserID      Operation = "current_user_id"
+	OperationSnapshot           Operation = "snapshot"
 )
 
 // Error 是公开 SDK 的安全、可分类错误。cause 只保存已脱敏原因。

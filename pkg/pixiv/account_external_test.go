@@ -329,6 +329,43 @@ func TestOpenDefaultCurrentUserIDPrefersExplicitAndEnvironmentOAuthIdentity(t *t
 	}
 }
 
+func TestSnapshotKeepsConfigUntilNextExplicitSnapshot(t *testing.T) {
+	dir := t.TempDir()
+	authPath := filepath.Join(dir, "auth.json")
+	configPath := filepath.Join(dir, "config.toml")
+	if err := os.WriteFile(configPath, []byte("[web]\nfallback_enabled = true\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/ajax/illust/1/pages" {
+			t.Fatalf("path=%s", r.URL.Path)
+		}
+		_, _ = w.Write([]byte(`{"error":false,"body":[{"urls":{"original":"https://i.pximg.net/img-original/x.jpg"},"width":1,"height":1}]}`))
+	}))
+	defer server.Close()
+	client, err := pixiv.OpenDefault(pixiv.Options{AuthFilePath: authPath, ConfigFilePath: configPath, HTTPClient: server.Client(), WebAPIBaseURL: server.URL})
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, err := client.Snapshot(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(configPath, []byte("[web]\nfallback_enabled = false\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := first.IllustPages(context.Background(), 1); err != nil {
+		t.Fatalf("first snapshot pages: %v", err)
+	}
+	second, err := client.Snapshot(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := second.IllustPages(context.Background(), 1); !errors.Is(err, pixiv.ErrUnauthorized) {
+		t.Fatalf("second snapshot pages error=%v", err)
+	}
+}
+
 func TestOpenDefaultCursorRejectsSourceChangeAndLegacyCursor(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()

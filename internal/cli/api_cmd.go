@@ -70,7 +70,7 @@ func (a app) runSearch(cmd *cobra.Command, args []string, opts searchOptions) er
 	if err != nil {
 		return err
 	}
-	client, err := services.SDK.Client(clientReq)
+	client, err := services.SDK.OpenOperation(cmd.Context(), clientReq)
 	if err != nil {
 		return err
 	}
@@ -118,7 +118,7 @@ func (a app) runDetail(cmd *cobra.Command, arg string, opts commandOptions) erro
 	if err != nil {
 		return err
 	}
-	client, err := services.SDK.Client(clientReq)
+	client, err := services.SDK.OpenOperation(cmd.Context(), clientReq)
 	if err != nil {
 		return err
 	}
@@ -161,7 +161,7 @@ func (a app) runRanking(cmd *cobra.Command, opts rankingOptions) error {
 	if err != nil {
 		return err
 	}
-	client, err := services.SDK.Client(clientReq)
+	client, err := services.SDK.OpenOperation(cmd.Context(), clientReq)
 	if err != nil {
 		return err
 	}
@@ -206,7 +206,7 @@ func (a app) runRecommended(cmd *cobra.Command, opts recommendedOptions) error {
 	if err != nil {
 		return err
 	}
-	client, err := services.SDK.Client(clientReq)
+	client, err := services.SDK.OpenOperation(cmd.Context(), clientReq)
 	if err != nil {
 		return err
 	}
