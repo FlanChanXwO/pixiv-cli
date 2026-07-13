@@ -1,6 +1,7 @@
 package e2e
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -44,6 +45,24 @@ func TestPixivBinaryUsesAuthCommandAndRemovesAccountCommand(t *testing.T) {
 	if !strings.Contains(string(out), "Manage local Pixiv authentication") {
 		t.Fatalf("auth help output did not describe local authentication:\n%s", string(out))
 	}
+	for _, command := range []struct {
+		name string
+		want string
+	}{
+		{name: "user", want: "Query a Pixiv user"},
+		{name: "bookmark", want: "Manage illustration bookmarks"},
+		{name: "follow", want: "Manage followed users"},
+	} {
+		help := exec.Command(binaryPath, command.name, "--help")
+		help.Dir = repoRoot
+		out, err := help.CombinedOutput()
+		if err != nil {
+			t.Fatalf("pixiv %s --help failed: %v\n%s", command.name, err, string(out))
+		}
+		if !strings.Contains(string(out), command.want) {
+			t.Fatalf("%s help missing %q:\n%s", command.name, command.want, string(out))
+		}
+	}
 
 	account := exec.Command(binaryPath, "account")
 	account.Dir = repoRoot
@@ -61,13 +80,9 @@ func TestPixivBinaryOfflineConfigAndMCPHelp(t *testing.T) {
 	binaryPath := buildPixivBinary(t, repoRoot)
 	env := isolatedEnv(t)
 
-	configPath := exec.Command(binaryPath, "config", "path")
-	configPath.Dir = repoRoot
-	configPath.Env = env.values
-	out, err := configPath.CombinedOutput()
-	if err != nil {
-		t.Fatalf("pixiv config path failed: %v\n%s", err, string(out))
-	}
+	// 配置路径是 stdout 协议；自动更新 warning 和结构化日志只能在 stderr，不能用
+	// CombinedOutput 混合后再判断路径。
+	out, _ := runPixivStdout(t, repoRoot, binaryPath, env.values, "config", "path")
 	gotConfigPath := strings.TrimSpace(string(out))
 	if !strings.HasPrefix(gotConfigPath, env.configRoot) && !strings.HasPrefix(gotConfigPath, env.home) {
 		t.Fatalf("config path escaped isolated config roots:\n%s", string(out))
@@ -76,26 +91,122 @@ func TestPixivBinaryOfflineConfigAndMCPHelp(t *testing.T) {
 		t.Fatalf("config path did not point at pixiv/config.toml:\n%s", string(out))
 	}
 
-	configGet := exec.Command(binaryPath, "config", "get", "download_path")
-	configGet.Dir = repoRoot
-	configGet.Env = env.values
-	out, err = configGet.CombinedOutput()
-	if err != nil {
-		t.Fatalf("pixiv config get download_path failed: %v\n%s", err, string(out))
-	}
+	out, _ = runPixivStdout(t, repoRoot, binaryPath, env.values, "config", "get", "download_path")
 	if strings.TrimSpace(string(out)) != "./downloads" {
 		t.Fatalf("download_path default changed:\n%s", string(out))
+	}
+	_, _ = runPixivStdout(t, repoRoot, binaryPath, env.values, "config", "set", "output_json", "true")
+	out, _ = runPixivStdout(t, repoRoot, binaryPath, env.values, "config", "get", "output_json")
+	if strings.TrimSpace(string(out)) != "true" {
+		t.Fatalf("config set did not persist output_json:\n%s", string(out))
+	}
+	_, _ = runPixivStdout(t, repoRoot, binaryPath, env.values, "config", "unset", "output_json")
+	out, _ = runPixivStdout(t, repoRoot, binaryPath, env.values, "config", "get", "output_json")
+	if strings.TrimSpace(string(out)) != "false" {
+		t.Fatalf("config unset did not restore output_json default:\n%s", string(out))
 	}
 
 	mcpHelp := exec.Command(binaryPath, "mcp", "--help")
 	mcpHelp.Dir = repoRoot
 	mcpHelp.Env = env.values
-	out, err = mcpHelp.CombinedOutput()
+	out, err := mcpHelp.CombinedOutput()
 	if err != nil {
 		t.Fatalf("pixiv mcp --help failed: %v\n%s", err, string(out))
 	}
 	if !strings.Contains(string(out), "Run the MCP stdio server") {
 		t.Fatalf("mcp help output did not describe stdio server:\n%s", string(out))
+	}
+}
+
+func TestPixivBinaryMCPStdioListsLegacyAndSDKTools(t *testing.T) {
+	repoRoot := filepath.Join("..", "..")
+	binaryPath := buildPixivBinary(t, repoRoot)
+	command := exec.CommandContext(testCommandContext(t), binaryPath, "mcp")
+	command.Dir = repoRoot
+	command.Env = isolatedEnv(t).values
+	stdin, err := command.StdinPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	stdout, err := command.StdoutPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var stderr bytes.Buffer
+	command.Stderr = &stderr
+	if err := command.Start(); err != nil {
+		t.Fatal(err)
+	}
+	for _, message := range []string{
+		`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"e2e","version":"1"}}}`,
+		`{"jsonrpc":"2.0","method":"notifications/initialized","params":{}}`,
+		`{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}`,
+	} {
+		if _, err := stdin.Write([]byte(message + "\n")); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	scanner := bufio.NewScanner(stdout)
+	for range 2 {
+		if !scanner.Scan() {
+			t.Fatalf("MCP server ended before responses: %v; stderr=%s", scanner.Err(), stderr.String())
+		}
+		line := scanner.Bytes()
+		if !json.Valid(line) {
+			t.Fatalf("MCP stdout is not JSON-RPC: %s", line)
+		}
+		var response struct {
+			ID     int `json:"id"`
+			Result struct {
+				Tools []struct {
+					Name string `json:"name"`
+				} `json:"tools"`
+			} `json:"result"`
+		}
+		if err := json.Unmarshal(line, &response); err != nil {
+			t.Fatalf("decode MCP response: %v", err)
+		}
+		if response.ID != 2 {
+			continue
+		}
+		names := make(map[string]struct{}, len(response.Result.Tools))
+		for _, tool := range response.Result.Tools {
+			names[tool.Name] = struct{}{}
+		}
+		for _, want := range []string{"search_illust", "user_artworks", "add_bookmark", "follow_user"} {
+			if _, ok := names[want]; !ok {
+				t.Fatalf("MCP tool %q missing from %+v", want, response.Result.Tools)
+			}
+		}
+	}
+	if err := stdin.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := command.Wait(); err != nil {
+		t.Fatalf("MCP server failed: %v; stderr=%s", err, stderr.String())
+	}
+}
+
+func TestPixivBinaryUsesProvidedBinaryAndExpectedVersion(t *testing.T) {
+	externalBinary := os.Getenv("PIXIV_E2E_BINARY")
+	if externalBinary == "" {
+		t.Skip("set PIXIV_E2E_BINARY to validate an already built binary")
+	}
+	expectedVersion := os.Getenv("PIXIV_E2E_EXPECTED_VERSION")
+	if expectedVersion == "" {
+		t.Fatal("PIXIV_E2E_EXPECTED_VERSION is required with PIXIV_E2E_BINARY")
+	}
+
+	repoRoot := filepath.Join("..", "..")
+	binaryPath := buildPixivBinary(t, repoRoot)
+	out, _ := runPixivStdout(t, repoRoot, binaryPath, isolatedEnv(t).values, "version", "--json")
+	var version struct {
+		Version string `json:"version"`
+	}
+	requireJSON(t, out, &version)
+	if version.Version != expectedVersion {
+		t.Fatalf("external binary version = %q, want %q", version.Version, expectedVersion)
 	}
 }
 
@@ -208,6 +319,21 @@ func runPixiv(t *testing.T, repoRoot, binaryPath string, env []string, args ...s
 	return out
 }
 
+func runPixivStdout(t *testing.T, repoRoot, binaryPath string, env []string, args ...string) ([]byte, []byte) {
+	t.Helper()
+
+	run := exec.CommandContext(testCommandContext(t), binaryPath, args...)
+	run.Dir = repoRoot
+	run.Env = env
+	var stdout, stderr bytes.Buffer
+	run.Stdout = &stdout
+	run.Stderr = &stderr
+	if err := run.Run(); err != nil {
+		t.Fatalf("pixiv %s failed: %v\nstdout:\n%s\nstderr:\n%s", strings.Join(args, " "), err, stdout.String(), stderr.String())
+	}
+	return stdout.Bytes(), stderr.Bytes()
+}
+
 func requireJSON(t *testing.T, body []byte, out any) {
 	t.Helper()
 
@@ -251,6 +377,16 @@ func firstNonEmpty(values ...string) string {
 
 func buildPixivBinary(t *testing.T, repoRoot string) string {
 	t.Helper()
+	if externalBinary := os.Getenv("PIXIV_E2E_BINARY"); externalBinary != "" {
+		info, err := os.Stat(externalBinary)
+		if err != nil {
+			t.Fatalf("stat PIXIV_E2E_BINARY: %v", err)
+		}
+		if info.IsDir() {
+			t.Fatalf("PIXIV_E2E_BINARY is a directory: %s", externalBinary)
+		}
+		return externalBinary
+	}
 
 	binaryName := "pixiv"
 	if runtime.GOOS == "windows" {

@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/FlanChanXwO/pixiv-cli/internal/config"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -25,14 +26,54 @@ func TestRunNoArgsPrintsHelp(t *testing.T) {
 	assert.NotContains(t, stdout.String(), "completion")
 }
 
+func TestRunWritesJSONLogsOnlyToStderr(t *testing.T) {
+	_, configPath := useTempPaths(t)
+	if err := config.WritePrivateFile(configPath, []byte("[logging]\nformat = 'json'\nlevel = 'info'\n")); err != nil {
+		t.Fatal(err)
+	}
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"pixiv"}, strings.NewReader(""), &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("Run code=%d stderr=%s", code, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "Usage:") || strings.Contains(stdout.String(), `"component":"cli"`) {
+		t.Fatalf("stdout mixed with log: %q", stdout.String())
+	}
+	if !strings.Contains(stderr.String(), `"component":"cli"`) || !strings.Contains(stderr.String(), `"operation":"pixiv"`) {
+		t.Fatalf("stderr lacks CLI JSON log: %q", stderr.String())
+	}
+}
+
+func TestHelpAndConfigPathSurviveBrokenNonLoggingRuntimeConfig(t *testing.T) {
+	for _, body := range []string{
+		"[web]\nfallback_enabled = 'not-a-bool'\n",
+		"[unterminated\n",
+	} {
+		_, configPath := useTempPaths(t)
+		if err := config.WritePrivateFile(configPath, []byte(body)); err != nil {
+			t.Fatal(err)
+		}
+		for _, args := range [][]string{{"pixiv"}, {"pixiv", "config", "path"}} {
+			var stdout, stderr bytes.Buffer
+			if code := Run(args, strings.NewReader(""), &stdout, &stderr); code != 0 {
+				t.Fatalf("config=%q Run(%v) code=%d stderr=%s", body, args, code, stderr.String())
+			}
+		}
+	}
+}
+
 func TestRunUnknownCommandReturnsError(t *testing.T) {
-	useTempPaths(t)
+	_, configPath := useTempPaths(t)
+	if err := config.WritePrivateFile(configPath, []byte("[logging]\nformat = 'json'\nlevel = 'error'\n")); err != nil {
+		t.Fatal(err)
+	}
 
 	var stdout, stderr bytes.Buffer
 	code := Run([]string{"pixiv", "wat"}, strings.NewReader(""), &stdout, &stderr)
 
 	require.NotZero(t, code)
 	assert.Contains(t, stderr.String(), `unknown command "wat"`)
+	assert.Contains(t, stderr.String(), `"level":"ERROR"`)
 }
 
 func TestRunAccountCommandIsRemoved(t *testing.T) {
@@ -88,23 +129,24 @@ func TestRunMCPNoProxyDispatch(t *testing.T) {
 	assert.Empty(t, *seenProxy)
 }
 
-func TestRunMCPRejectsConflictingProxyFlags(t *testing.T) {
+func TestRunMCPEmptyProxyDispatch(t *testing.T) {
 	useTempPaths(t)
 
 	old := runMCPServer
 	t.Cleanup(func() { runMCPServer = old })
-	called := false
-	runMCPServer = func(context.Context, io.Writer, *string) error {
-		called = true
+
+	var seenProxy *string
+	runMCPServer = func(_ context.Context, _ io.Writer, proxyOverride *string) error {
+		seenProxy = proxyOverride
 		return nil
 	}
 
 	var stdout, stderr bytes.Buffer
-	code := Run([]string{"pixiv", "mcp", "--proxy", "http://flag-proxy", "--no-proxy"}, strings.NewReader(""), &stdout, &stderr)
+	code := Run([]string{"pixiv", "mcp", "--proxy", ""}, strings.NewReader(""), &stdout, &stderr)
 
-	require.NotZero(t, code)
-	assert.False(t, called)
-	assert.Contains(t, stderr.String(), "use either --proxy or --no-proxy, not both")
+	require.Equal(t, 0, code, stderr.String())
+	require.NotNil(t, seenProxy)
+	assert.Empty(t, *seenProxy)
 }
 
 func TestRunMCPDispatchError(t *testing.T) {

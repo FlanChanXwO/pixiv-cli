@@ -242,6 +242,8 @@ PIXIV_E2E_WEB_API=1 PIXIV_WEB_API_PROXY=http://127.0.0.1:7890 go test ./test/e2e
 
 `go test ./...` 保持默认离线稳定；真实 Pixiv web API fallback e2e 默认跳过，只有设置 `PIXIV_E2E_WEB_API=1` 时才会联网。未设置 `PIXIV_WEB_API_PROXY` 时会直连。
 
+`PIXIV_E2E_BINARY` 与 `PIXIV_E2E_EXPECTED_VERSION` 供 CI 对已构建、已解压的 release binary 执行离线 e2e；它们不注入 token，也不启用真实 Pixiv API/Web fallback。`platform-smoke.yml` 在六个受支持 runner 上构建、封装、解压并运行这组 CLI/config/MCP stdio 验证。
+
 代码改动完成前，应按变更范围补充或更新测试。若不能运行测试，需要在交付说明中写明原因和风险。
 
 发布相关的本地 fixture/策略门禁还包括：
@@ -252,12 +254,15 @@ sh scripts/test-package-release.sh
 sh scripts/test-release-workflow.sh
 go test ./scripts/nativeevidence -count=1
 go run ./scripts/nativeevidence policy --workflow .github/workflows/native-evidence.yml
+go test ./scripts/platformsmokeworkflow -count=1
 sh scripts/test-homebrew-formula.sh
 git diff --check
 ```
 
 fixture 只证明格式、失败语义和本地策略，不替代六个 native runner 的真实静态链接、GIF/APNG
 smoke、版本化 archive 内容和 Homebrew 安装验收。
+
+`.github/workflows/ci.yml` 在 PR/main 运行 Linux quality gate（test、race、vet、build、package/release policy、pre-commit）。`.github/workflows/platform-smoke.yml` 在 PR/main 运行六平台离线已打包 binary smoke。两者都使用只读权限、固定 SHA action 与取消过期并发 run；真实 Pixiv e2e 不进入 GitHub Actions。
 
 其中 Windows 的 `.zip` 由 GitHub runner 镜像预装的 `7z` 生成；其他平台继续使用 `zip`。
 `scripts/test-package-release.sh` 会在 Windows runner 把伪造的调用委托给真实 `7z`，在其他开发机使用
@@ -358,10 +363,10 @@ Homebrew tap 是独立发布面：stable 使用 `pixiv-cli`，pre-release 使用
 都安装 `pixiv` 并相互冲突。Task 20 已创建专用 tap deploy key；其私钥只放在 source repository
 的受保护 `release` Environment secret `HOMEBREW_TAP_DEPLOY_KEY`，公开 tap 只登记对应公钥。workflow
 在独立 renderer 中生成 staging formula，并在四个原生 runner 验证安装，再由最终 protected job 做
-受限提交/push。当前 tap 尚无 formula 或任何内容提交，也不能从本仓库或 workflow artifact 读取、
-生成或记录 deploy key。
+受限提交/push。v0.1.1 的 stable formula 已提交到公开 tap；后续 stable/beta 发布仍不能从本仓库或
+workflow artifact 读取、生成或记录 deploy key。
 
-v0.1.0 不会进行 Apple notarization 或 Windows Authenticode。发布后直接下载仍可能被 Gatekeeper
+当前 Release 不会进行 Apple notarization 或 Windows Authenticode。直接下载仍可能被 Gatekeeper
 或 SmartScreen 拦截/提示；这是需要在用户文档中保留的系统信誉边界，不能通过文档或脚本绕过。
 
 ## Git 与本地产物

@@ -1,20 +1,20 @@
-# Pixiv CLI / MCP Server
+# Pixiv CLI / MCP / Go SDK
 
-Go 版 Pixiv 工具集：默认作为 `pixiv` CLI 使用，需要 MCP 时显式运行 `pixiv mcp`。
+Go 版 Pixiv 工具集：默认作为 `pixiv` CLI 使用，需要 MCP 时显式运行 `pixiv mcp`；Go 程序可导入公开 `pkg/pixiv`。
 
-它优先复用 Pixiv App API，支持搜索、详情、排行、推荐、下载、多账号 refresh token 管理，以及 MCP stdio server。未配置 refresh token 时，默认对搜索、详情、排行、用户搜索和下载启用匿名 Pixiv web/ajax API fallback。
+它优先复用 Pixiv App API，支持搜索、详情、排行、推荐、下载、多账号 refresh token 管理，以及 MCP stdio server。未配置 refresh token 时，默认对搜索、详情、排行、用户搜索和下载启用匿名 Pixiv web/ajax API fallback。它不是 HTTP 服务，也不提供 Discover、Probe、Capabilities、RSS 或 crawler。
 
-源码按 CLI controller、application services、bootstrap、config、Pixiv facade/source、download、MCP server 分包；账号存储在 `internal/storage/auth`，基础工具按 `internal/utils/*` 子包组织，基础设施常量限制在 `internal/common/constants`。Pixiv App API、web fallback 与共享模型分别收在 `internal/pixiv/api`、`internal/pixiv/web`、`internal/pixiv/model`。
+源码按 CLI controller、application services、bootstrap、public SDK、config、Pixiv facade/source、download、MCP server 分包；账号存储在 `internal/storage/auth`，基础工具按 `internal/utils/*` 子包组织。公开 SDK 是具体 `*pixiv.Client`，内部协议实现分为 `internal/pixiv/appapi`、`webapi`、`oauth`、`resource`。
 
-用户可感知变化记录在 [CHANGELOG.md](CHANGELOG.md)。
+用户可感知变化记录在 [CHANGELOG.md](CHANGELOG.md)。SDK 契约见 [pixiv-sdk-interface.md](pixiv-sdk-interface.md)，架构边界见 [ADR 0009](docs/adr/0009-public-pixiv-sdk-and-caller-adapter.md)。
 
 ## 安装与构建
 
 > **发布状态**：受支持 binary 的 Ed25519 公钥、key ID 与 fingerprint 已提交到
 > [`internal/bootstrap/release_trust.go`](internal/bootstrap/release_trust.go)；公开 source/tap repositories、
-> 受保护 `release` Environment 与隔离 credentials 已配置。当前仍没有正式 GitHub Release、tap formula
-> 或安装验收。下面标注“发布后”的渠道是目标安装方式，不代表现在已经可以安装或自更新；在发布门禁
-> 完成前，请不要把它们当作可用下载来源。
+> 受保护 `release` Environment 与隔离 credentials 已配置。v0.1.1 已作为正式 GitHub Release 发布，包含六个
+> 平台 archive、checksum 与签名清单；stable Homebrew formula 已推送。后续版本仍必须通过同一套 tag、签名、资产与
+> Homebrew 门禁后才可作为可用下载来源。
 
 ### 从源码构建
 
@@ -30,7 +30,7 @@ sh scripts/build.sh
 `manifest.json`；`scripts/build.sh` 会先校验 source digest、target/path 与每个库的 SHA-256，再构建
 本机 binary。完整要求、证据回填流程和失败含义见[开发流程](docs/development.md#rust-ugoira-staticlib)。
 
-### Go 安装（发布后）
+### Go 安装
 
 正式 tag 发布后，使用精确 tag 安装：
 
@@ -39,9 +39,9 @@ go install github.com/FlanChanXwO/pixiv-cli/cmd/pixiv@vX.Y.Z
 ```
 
 它仍使用本机 Go、cgo、C linker 和该 target 的 committed staticlib。六目标库与 manifest 已完整，
-但正式 tag 尚未发布，因此当前仍没有受支持的 exact-tag `go install` 安装入口。
+例如当前正式版本可使用 `@v0.1.1`；后续版本始终使用其精确 tag，而不是分支名。
 
-### Homebrew（发布后）
+### Homebrew
 
 正式 stable Release 和真实 tap 均通过 audit/安装验证后，macOS/Linux 用户可安装：
 
@@ -56,19 +56,32 @@ brew install FlanChanXwO/tap/pixiv-cli-beta
 ```
 
 两个 formula 都安装同名 `pixiv`，因此相互冲突；它们只下载已验证的 macOS/Linux Release
-资产，不引入 `ffmpeg` 依赖。公开 tap 已创建并只登记了受限 deploy key 的公钥，但尚未推送任何
-formula，不能执行以上命令。
+资产，不引入 `ffmpeg` 依赖。当前 stable `pixiv-cli` formula 已在公开 tap；beta formula 只随
+后续 pre-release 发布。
 
-### 直接下载（发布后）
+### 直接下载
 
 发布流程会为 darwin、linux、windows 的 amd64/arm64 生成六个固定名称的 archive：
 `pixiv-cli_<version>_<os>_<arch>.tar.gz`（Windows 为 `.zip`），以及 `checksums.txt` 与
-Ed25519 签名的 `checksums.json`。受支持 binary 已提交其 production public key/key ID/fingerprint，
-但在 GitHub Release 实际发布、受保护签名私钥部署且资产完成验证前，仍不存在可供信任的直接下载路径。
+Ed25519 签名的 `checksums.json`。v0.1.1 已提供完整资产；后续版本只有在同一发布门禁完成后才应作为
+可供信任的直接下载来源。
 
-v0.1.0 不包含 Apple notarization 或 Windows Authenticode。即使以后从已验证 Release
+当前 Release 不包含 Apple notarization 或 Windows Authenticode。即使从已验证 Release
 下载，macOS Gatekeeper 或 Windows SmartScreen 仍可能显示系统信誉提示；请只从项目的
 GitHub Release 页面取得资产，核对版本、checksum 和签名说明，切勿绕过不明来源的警告。
+
+## Go SDK
+
+外部 Go 程序直接使用具体 `*pixiv.Client`，并在自己的 adapter 中定义业务窄接口：
+
+```go
+client, err := pixiv.OpenDefault(pixiv.Options{})
+if err != nil { /* handle local auth/config failure */ }
+result, err := client.SearchIllust(ctx, pixiv.SearchIllustRequest{Word: "初音ミク"})
+_ = result
+```
+
+`NewClient` 只使用显式 transport/token/options，不读取本地状态；`OpenDefault` 每个公开操作读取一次当前 auth/config snapshot。调用方负责采集模式、budget、filter、cursor 持久化、入库、调度和自己的 HTTP API。完整模型、资源流、错误与分页契约见 [SDK 接口](pixiv-sdk-interface.md)。
 
 ## 获取 refresh token
 
@@ -176,6 +189,11 @@ CLI 使用 Cobra/pflag，选项可以写在位置参数前后，例如 `pixiv au
 | `detail` | `pixiv detail [options] ILLUST_ID` | 查看单个作品详情。 |
 | `ranking` | `pixiv ranking [options]` | 查看 Pixiv 插画排行榜。 |
 | `recommended` | `pixiv recommended [options]` | 查看个性化推荐，需要认证。 |
+| `user artworks` | `pixiv user artworks [USER_ID] [--page N --limit N]` | 查看用户作品；省略 `USER_ID` 时使用当前认证用户。 |
+| `user bookmarks` | `pixiv user bookmarks [USER_ID] [--page N --limit N]` | 查看用户收藏；省略 `USER_ID` 时使用当前认证用户。 |
+| `user following` | `pixiv user following [USER_ID] [--page N --limit N]` | 查看用户关注；省略 `USER_ID` 时使用当前认证用户。 |
+| `bookmark add/remove` | `pixiv bookmark add/remove ILLUST_ID` | 收藏或取消收藏作品。 |
+| `follow add/remove` | `pixiv follow add/remove USER_ID` | 关注或取消关注用户。 |
 | `download` | `pixiv download [options] ILLUST_ID...` | 下载一个或多个作品；无 token 时默认走匿名 web fallback。 |
 | `mcp` | `pixiv mcp [--proxy URL\|--no-proxy]` | 启动 MCP stdio server；代理覆盖只在本次启动时生效。 |
 
@@ -197,7 +215,9 @@ CLI 使用 Cobra/pflag，选项可以写在位置参数前后，例如 `pixiv au
 | `search` | `--search-target` | `partial_match_for_tags` | 搜索范围。 |
 | `search` | `--sort` | `date_desc` | 排序方式。 |
 | `search` | `--duration` | 空 | Pixiv API 的时间范围参数。 |
-| `search` | `--offset` | `0` | 分页偏移。 |
+| 列表命令 | `--limit` | 一个上游批次 | 最大条数；`0` 表示持续读取到没有下一批。 |
+| 列表命令 | `--page` | 空 | 从 1 开始的逻辑页；必须与正数 `--limit` 同用。 |
+| 列表命令 | `--offset` | `0` | 已废弃的逻辑偏移；不能与 `--page` 同用。 |
 | `search` | `--r18` | `false` | 在搜索词后追加 `R-18`。 |
 | `ranking` | `--mode` | `day` | 排行榜模式。 |
 | `ranking` | `--date` | 空 | 排行榜日期，格式通常为 `YYYY-MM-DD`。 |
@@ -227,6 +247,8 @@ CLI 使用 Cobra/pflag，选项可以写在位置参数前后，例如 `pixiv au
 | `filename_template` | string | `{author} - {title}_{id}` | 文件名模板。 |
 | `https_proxy` | string | 空 | HTTP(S) 代理，优先使用环境变量中的小写 `https_proxy`。 |
 | `web_fallback_enabled` | bool | `true` | 无 refresh token 时，允许匿名 Pixiv web/ajax API fallback；写入为 `[web] fallback_enabled = true/false`。 |
+| `log_level` | string | `info` | stderr 结构化日志级别；可由 `PIXIV_LOG_LEVEL` 覆盖。 |
+| `log_format` | string | `text` | 日志格式 `text` 或 `json`；可由 `PIXIV_LOG_FORMAT` 覆盖。 |
 | `update_check_enabled` | bool | `true` | 普通 CLI 成功命令后是否检查稳定版更新；写入为 `[update] check_enabled = true/false`。 |
 | `output_json` | bool | `false` | 数据命令默认输出 JSON。 |
 | `login_open_browser` | bool | `true` | `auth login` 默认是否自动打开浏览器。 |
@@ -238,6 +260,8 @@ CLI 使用 Cobra/pflag，选项可以写在位置参数前后，例如 `pixiv au
 | 环境变量 | 默认值 | 说明 |
 | --- | --- | --- |
 | `PIXIV_REFRESH_TOKEN` | 空 | Pixiv App API OAuth refresh token；可被账号选择或 `--refresh-token` 覆盖。 |
+| `PIXIV_LOG_LEVEL` | 空 | 覆盖 `log_level`。 |
+| `PIXIV_LOG_FORMAT` | 空 | 覆盖 `log_format`。 |
 | `DOWNLOAD_PATH` | `./downloads` | 下载目录。 |
 | `FILENAME_TEMPLATE` | `{author} - {title}_{id}` | 文件名模板。 |
 | `https_proxy` / `HTTPS_PROXY` | 空 | HTTP(S) 代理；优先使用小写 `https_proxy`。 |
@@ -292,8 +316,8 @@ tag；Release binary 在下载前校验 Ed25519 签名的 checksum 清单和 arc
 `pixiv version --json` 并原子替换可执行文件。
 
 受支持 binary 已内置 production Ed25519 public key/key ID/fingerprint；私钥只保存在受保护的
-`release` Environment 与受控 macOS Keychain 恢复副本，且尚未发布 Release。因此这不是可用下载
-渠道的声明；`pixiv update --check` 的只读检查也不能证明存在已签名、可安装的 Release。
+`release` Environment 与受控 macOS Keychain 恢复副本。v0.1.1 是已发布的受签名 Release；
+`pixiv update --check` 仍只是只读检查，不能替代对选中版本资产、checksum 与签名的安装验证。
 
 普通 CLI 命令成功后会尽力检查 stable 更新。它跳过 MCP、help、`version`、`update` 与开发构建，
 对同一用户 cache 最多每 24 小时查询一次，并为自动检查设定最多 3 秒的等待时间。发现新版本或

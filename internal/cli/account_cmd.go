@@ -2,7 +2,6 @@ package cli
 
 import (
 	"bufio"
-	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -88,7 +87,7 @@ func (a app) accountAdd(cmd *cobra.Command, opts accountAddOptions) error {
 		return err
 	}
 	services := a.services()
-	result, err := services.Account.Add(context.Background(), application.AccountAddRequest{
+	result, err := services.Account.Add(cmd.Context(), application.AccountAddRequest{
 		TokenInput:         tokenInput,
 		HTTPSProxyOverride: proxyOverride,
 	})
@@ -267,7 +266,7 @@ func (a app) accountCheck(cmd *cobra.Command, userID int64, opts accountCheckOpt
 		return err
 	}
 	services := a.services()
-	result, err := services.Account.CheckWithRequest(context.Background(), application.AccountCheckRequest{
+	result, err := services.Account.CheckWithRequest(cmd.Context(), application.AccountCheckRequest{
 		UserID:             userID,
 		HTTPSProxyOverride: proxyOverride,
 	})

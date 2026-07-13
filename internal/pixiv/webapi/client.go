@@ -1,4 +1,4 @@
-package web
+package webapi
 
 import (
 	"bytes"
@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"path"
 	"strconv"
 	"strings"
 	"time"
@@ -21,6 +22,32 @@ const (
 	DefaultWebBase = "https://www.pixiv.net"
 	defaultUA      = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36"
 )
+
+// ErrMalformedResponse 标识成功 HTTP 响应无法构成约定 JSON，不包含原始响应体。
+var ErrMalformedResponse = errors.New("web api returned a malformed response")
+
+// ErrUnrepresentablePagination 标识 cursor offset 无法安全换算为 Web 页码和下一页边界。
+var ErrUnrepresentablePagination = errors.New("web api pagination cannot represent cursor offset")
+
+// EnvelopeError 表示 Web ajax envelope 主动报告失败。
+type EnvelopeError struct {
+	Message string
+}
+
+func (e EnvelopeError) Error() string {
+	if e.Message == "" {
+		return "pixiv web api envelope error"
+	}
+	return fmt.Sprintf("pixiv web api envelope error: %s", e.Message)
+}
+
+// IllustPagesError 保留匿名详情流程中 pages 子阶段，供 facade 精确标注 operation。
+type IllustPagesError struct {
+	err error
+}
+
+func (e *IllustPagesError) Error() string { return fmt.Sprintf("web illust pages: %v", e.err) }
+func (e *IllustPagesError) Unwrap() error { return e.err }
 
 type Client struct {
 	httpClient *http.Client
@@ -59,11 +86,15 @@ func New(opts ...Option) *Client {
 }
 
 func (c *Client) SearchIllust(ctx context.Context, word, target, sort, duration string, offset int) (*model.IllustList, error) {
+	pagination, err := checkedWebPagination(offset, 60)
+	if err != nil {
+		return nil, err
+	}
 	q := url.Values{
 		"word":   {word},
 		"order":  {webSearchOrder(sort)},
 		"mode":   {"all"},
-		"p":      {strconv.Itoa(webPageFromOffset(offset, 60))},
+		"p":      {strconv.Itoa(pagination.page)},
 		"s_mode": {webSearchMode(target)},
 		"type":   {"all"},
 		"lang":   {"zh"},
@@ -78,16 +109,31 @@ func (c *Client) SearchIllust(ctx context.Context, word, target, sort, duration 
 	if out.Error {
 		return nil, webEnvelopeError(out.Message)
 	}
-	items := out.Body.IllustManga.Data
-	if len(items) == 0 {
-		items = out.Body.Illust.Data
+	group := out.Body.IllustManga
+	if (!group.Data.Valid || len(group.Data.Items) == 0) && out.Body.Illust.Data.Valid && len(out.Body.Illust.Data.Items) > 0 {
+		group = out.Body.Illust
+	} else if !group.Data.Valid && out.Body.Illust.Data.Valid {
+		group = out.Body.Illust
 	}
+	if !group.Data.Present || !group.Data.Valid {
+		return nil, ErrMalformedResponse
+	}
+	items := group.Data.Items
+	rawCount := len(items)
 	items = trimWebPageOffset(items, offset, 60)
 	illusts := make([]model.Illust, 0, len(items))
 	for _, item := range items {
+		if item.ID <= 0 {
+			return nil, ErrMalformedResponse
+		}
 		illusts = append(illusts, mapSearchIllust(item))
 	}
-	return &model.IllustList{Illusts: illusts}, nil
+	result := &model.IllustList{Illusts: illusts}
+	if webHasNext(offset, rawCount, int64(group.Total), 60) {
+		result.NextOffset = pagination.nextOffset
+		result.ContinuationExists = true
+	}
+	return result, nil
 }
 
 func (c *Client) IllustDetail(ctx context.Context, id int64) (*model.IllustDetail, error) {
@@ -98,15 +144,18 @@ func (c *Client) IllustDetail(ctx context.Context, id int64) (*model.IllustDetai
 	if detail.Error {
 		return nil, webEnvelopeError(detail.Message)
 	}
+	if !detail.bodyPresent || int64(firstFlexInt64(detail.Body.ID, detail.Body.IllustID)) <= 0 {
+		return nil, ErrMalformedResponse
+	}
 	pages, err := c.IllustPages(ctx, id)
 	if err != nil {
-		return nil, err
+		return nil, &IllustPagesError{err: err}
 	}
 	illust := mapDetailIllust(detail.Body, pages)
 	return &model.IllustDetail{Illust: illust}, nil
 }
 
-func (c *Client) IllustPages(ctx context.Context, id int64) ([]webPage, error) {
+func (c *Client) IllustPages(ctx context.Context, id int64) ([]model.MetaPage, error) {
 	var out ajaxEnvelope[[]webPage]
 	if err := c.getJSON(ctx, fmt.Sprintf("/ajax/illust/%d/pages", id), url.Values{"lang": {"zh"}}, &out); err != nil {
 		return nil, err
@@ -114,14 +163,31 @@ func (c *Client) IllustPages(ctx context.Context, id int64) ([]webPage, error) {
 	if out.Error {
 		return nil, webEnvelopeError(out.Message)
 	}
-	return out.Body, nil
+	if !out.bodyPresent {
+		return nil, ErrMalformedResponse
+	}
+	pages := make([]model.MetaPage, 0, len(out.Body))
+	for index, page := range out.Body {
+		pages = append(pages, model.MetaPage{
+			PageIndex: index,
+			Width:     int(page.Width),
+			Height:    int(page.Height),
+			Extension: imageExtension(page.URLs.Original),
+			ImageURLs: mapPageURLs(page.URLs),
+		})
+	}
+	return pages, nil
 }
 
 func (c *Client) IllustRanking(ctx context.Context, mode, date string, offset int) (*model.IllustList, error) {
+	pagination, err := checkedWebPagination(offset, 50)
+	if err != nil {
+		return nil, err
+	}
 	q := url.Values{
 		"format": {"json"},
 		"mode":   {webRankingMode(mode)},
-		"p":      {strconv.Itoa(webPageFromOffset(offset, 50))},
+		"p":      {strconv.Itoa(pagination.page)},
 	}
 	if date != "" {
 		q.Set("date", strings.ReplaceAll(date, "-", ""))
@@ -130,12 +196,26 @@ func (c *Client) IllustRanking(ctx context.Context, mode, date string, offset in
 	if err := c.getJSON(ctx, "/ranking.php", q, &out); err != nil {
 		return nil, err
 	}
-	items := trimWebPageOffset(out.Contents, offset, 50)
+	if !out.Contents.Present || !out.Contents.Valid {
+		return nil, ErrMalformedResponse
+	}
+	for _, item := range out.Contents.Items {
+		if item.IllustID <= 0 {
+			return nil, ErrMalformedResponse
+		}
+	}
+	rawCount := len(out.Contents.Items)
+	items := trimWebPageOffset(out.Contents.Items, offset, 50)
 	illusts := make([]model.Illust, 0, len(items))
 	for _, item := range items {
 		illusts = append(illusts, mapRankingIllust(item))
 	}
-	return &model.IllustList{Illusts: illusts}, nil
+	result := &model.IllustList{Illusts: illusts}
+	if webHasNext(offset, rawCount, int64(out.RankTotal), 50) {
+		result.NextOffset = pagination.nextOffset
+		result.ContinuationExists = true
+	}
+	return result, nil
 }
 
 func (c *Client) SearchUser(ctx context.Context, word string, offset int) (*model.UserPreviewList, error) {
@@ -147,7 +227,7 @@ func (c *Client) SearchUser(ctx context.Context, word string, offset int) (*mode
 	users := make([]model.UserPreview, 0, len(illusts.Illusts))
 	for _, illust := range illusts.Illusts {
 		if illust.User.ID == 0 {
-			continue
+			return nil, ErrMalformedResponse
 		}
 		if _, ok := seen[illust.User.ID]; ok {
 			continue
@@ -155,7 +235,11 @@ func (c *Client) SearchUser(ctx context.Context, word string, offset int) (*mode
 		seen[illust.User.ID] = struct{}{}
 		users = append(users, model.UserPreview{User: illust.User})
 	}
-	return &model.UserPreviewList{UserPreviews: users}, nil
+	return &model.UserPreviewList{
+		UserPreviews:       users,
+		NextOffset:         illusts.NextOffset,
+		ContinuationExists: illusts.ContinuationExists,
+	}, nil
 }
 
 func (c *Client) UgoiraMetadata(ctx context.Context, id int64) (*model.UgoiraMetadataResult, error) {
@@ -166,42 +250,23 @@ func (c *Client) UgoiraMetadata(ctx context.Context, id int64) (*model.UgoiraMet
 	if out.Error {
 		return nil, webEnvelopeError(out.Message)
 	}
+	if !out.bodyPresent || out.Body.OriginalSrc == "" || len(out.Body.Frames) == 0 {
+		return nil, ErrMalformedResponse
+	}
 	var result model.UgoiraMetadataResult
-	result.UgoiraMetadata.ZipURLs.Medium = text.FirstNonEmpty(out.Body.OriginalSrc, out.Body.Src)
+	result.UgoiraMetadata.ZipURLs.Medium = out.Body.Src
+	result.UgoiraMetadata.ZipURLs.Original = out.Body.OriginalSrc
 	result.UgoiraMetadata.Frames = make([]model.UgoiraFrame, 0, len(out.Body.Frames))
 	for _, frame := range out.Body.Frames {
+		if frame.File == "" {
+			return nil, ErrMalformedResponse
+		}
 		result.UgoiraMetadata.Frames = append(result.UgoiraMetadata.Frames, model.UgoiraFrame{
 			File:  frame.File,
 			Delay: int(frame.Delay),
 		})
 	}
 	return &result, nil
-}
-
-func (c *Client) Download(ctx context.Context, rawURL string, dst io.Writer) error {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
-	if err != nil {
-		return err
-	}
-	c.setHeaders(req)
-	req.Header.Set("Referer", c.webBase+"/")
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		body, readErr := io.ReadAll(resp.Body)
-		if readErr != nil {
-			return fmt.Errorf("download failed: %s: read error body: %w", resp.Status, readErr)
-		}
-		if len(bytes.TrimSpace(body)) == 0 {
-			return fmt.Errorf("download failed: %s", resp.Status)
-		}
-		return fmt.Errorf("download failed: %s: %s", resp.Status, string(body))
-	}
-	_, err = io.Copy(dst, resp.Body)
-	return err
 }
 
 func (c *Client) getJSON(ctx context.Context, path string, query url.Values, out any) error {
@@ -227,10 +292,10 @@ func (c *Client) getJSON(ctx context.Context, path string, query url.Values, out
 		return APIError{StatusCode: resp.StatusCode, Body: string(body)}
 	}
 	if len(bytes.TrimSpace(body)) == 0 {
-		return errors.New("empty response")
+		return ErrMalformedResponse
 	}
 	if err := json.Unmarshal(body, out); err != nil {
-		return fmt.Errorf("decode web response: %w", err)
+		return fmt.Errorf("%w: %v", ErrMalformedResponse, err)
 	}
 	return nil
 }
@@ -270,18 +335,29 @@ func (e APIError) Error() string {
 }
 
 func webEnvelopeError(message string) error {
-	if message == "" {
-		return errors.New("pixiv web api error")
-	}
-	return fmt.Errorf("pixiv web api error: %s", message)
+	return EnvelopeError{Message: message}
 }
 
-func webPageFromOffset(offset, pageSize int) int {
-	if offset <= 0 {
-		return 1
+type webPagination struct {
+	page       int
+	nextOffset int
+}
+
+func checkedWebPagination(offset, pageSize int) (webPagination, error) {
+	if offset < 0 || pageSize <= 0 {
+		return webPagination{}, ErrUnrepresentablePagination
 	}
-	// Pixiv web ranking/search 使用页码而非 app API offset；按其固定页容量映射到对应页。
-	return offset/pageSize + 1
+	quotient := offset / pageSize
+	maxInt := int(^uint(0) >> 1)
+	if quotient == maxInt {
+		return webPagination{}, ErrUnrepresentablePagination
+	}
+	page := quotient + 1
+	if page > maxInt/pageSize {
+		return webPagination{}, ErrUnrepresentablePagination
+	}
+	// Pixiv Web 使用固定批次页码；同时预检下一页边界，避免响应后产生负 cursor。
+	return webPagination{page: page, nextOffset: page * pageSize}, nil
 }
 
 func trimWebPageOffset[T any](items []T, offset, pageSize int) []T {
@@ -293,6 +369,22 @@ func trimWebPageOffset[T any](items []T, offset, pageSize int) []T {
 		return nil
 	}
 	return items[skip:]
+}
+
+func webHasNext(offset, rawCount int, total int64, pageSize int) bool {
+	if rawCount == 0 {
+		return false
+	}
+	if total > 0 {
+		pageStart := int64(offset - offset%pageSize)
+		if pageStart >= total {
+			return false
+		}
+		// 用减法表达 pageStart+rawCount<total，避免靠近 MaxInt 时加法回绕。
+		return int64(rawCount) < total-pageStart
+	}
+	// 无 total 时，只在完整上游批次后继续；下一空批次会自然收敛。
+	return rawCount >= pageSize
 }
 
 func webSearchOrder(sort string) string {
@@ -323,8 +415,16 @@ func webRankingMode(mode string) string {
 	switch mode {
 	case "", string(model.RankingModeDay):
 		return "daily"
+	case string(model.RankingModeDayMale):
+		return "male"
+	case string(model.RankingModeDayFemale):
+		return "female"
 	case string(model.RankingModeWeek):
 		return "weekly"
+	case string(model.RankingModeWeekOriginal):
+		return "original"
+	case string(model.RankingModeWeekRookie):
+		return "rookie"
 	case string(model.RankingModeMonth):
 		return "monthly"
 	default:
@@ -375,13 +475,9 @@ func mapSearchIllust(item webSearchIllust) model.Illust {
 	}
 }
 
-func mapDetailIllust(item webIllustDetail, pages []webPage) model.Illust {
+func mapDetailIllust(item webIllustDetail, metaPages []model.MetaPage) model.Illust {
 	tags := mapDetailTags(item.Tags.Tags)
 	imageURLs := mapDetailURLs(item.URLs)
-	metaPages := make([]model.MetaPage, 0, len(pages))
-	for _, page := range pages {
-		metaPages = append(metaPages, model.MetaPage{ImageURLs: mapPageURLs(page.URLs)})
-	}
 	if len(metaPages) > 0 {
 		imageURLs = firstImageURLs(imageURLs, metaPages[0].ImageURLs)
 	}
@@ -402,14 +498,26 @@ func mapDetailIllust(item webIllustDetail, pages []webPage) model.Illust {
 			Name:    item.UserName,
 			Account: strconv.FormatInt(int64(item.UserID), 10),
 		},
-		Tags:      tags,
-		ImageURLs: imageURLs,
-		MetaPages: metaPages,
+		Tags:       tags,
+		ImageURLs:  imageURLs,
+		MetaPages:  metaPages,
+		AIType:     int(item.AIType),
+		CreateDate: item.CreateDate,
+		Width:      int(item.Width),
+		Height:     int(item.Height),
 	}
 	if len(metaPages) == 1 {
 		illust.MetaSinglePage.OriginalImageURL = metaPages[0].ImageURLs.Original
 	}
 	return illust
+}
+
+func imageExtension(rawURL string) string {
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		return ""
+	}
+	return strings.TrimPrefix(path.Ext(parsed.Path), ".")
 }
 
 func mapRankingIllust(item webRankingItem) model.Illust {
@@ -497,6 +605,30 @@ type ajaxEnvelope[T any] struct {
 	Error   bool   `json:"error"`
 	Message string `json:"message"`
 	Body    T      `json:"body"`
+
+	bodyPresent bool
+}
+
+func (e *ajaxEnvelope[T]) UnmarshalJSON(data []byte) error {
+	var wire struct {
+		Error   bool            `json:"error"`
+		Message string          `json:"message"`
+		Body    json.RawMessage `json:"body"`
+	}
+	if err := json.Unmarshal(data, &wire); err != nil {
+		return err
+	}
+	e.Error = wire.Error
+	e.Message = wire.Message
+	body := bytes.TrimSpace(wire.Body)
+	if len(body) == 0 || bytes.Equal(body, []byte("null")) {
+		return nil
+	}
+	if err := json.Unmarshal(body, &e.Body); err != nil {
+		return err
+	}
+	e.bodyPresent = true
+	return nil
 }
 
 type webSearchBody struct {
@@ -505,7 +637,27 @@ type webSearchBody struct {
 }
 
 type webSearchGroup struct {
-	Data []webSearchIllust `json:"data"`
+	Data  requiredWebList[webSearchIllust] `json:"data"`
+	Total flexInt64                        `json:"total"`
+}
+
+type requiredWebList[T any] struct {
+	Items   []T
+	Present bool
+	Valid   bool
+}
+
+func (l *requiredWebList[T]) UnmarshalJSON(data []byte) error {
+	*l = requiredWebList[T]{}
+	l.Present = true
+	if bytes.Equal(bytes.TrimSpace(data), []byte("null")) {
+		return nil
+	}
+	if err := json.Unmarshal(data, &l.Items); err != nil {
+		return err
+	}
+	l.Valid = true
+	return nil
 }
 
 type webSearchIllust struct {
@@ -533,6 +685,10 @@ type webIllustDetail struct {
 	UserName      string        `json:"userName"`
 	BookmarkCount flexInt       `json:"bookmarkCount"`
 	ViewCount     flexInt       `json:"viewCount"`
+	AIType        flexInt       `json:"aiType"`
+	CreateDate    string        `json:"createDate"`
+	Width         flexInt       `json:"width"`
+	Height        flexInt       `json:"height"`
 	Tags          webDetailTags `json:"tags"`
 	URLs          webDetailURLs `json:"urls"`
 }
@@ -570,7 +726,8 @@ type webPageURLs struct {
 }
 
 type webRankingResponse struct {
-	Contents []webRankingItem `json:"contents"`
+	Contents  requiredWebList[webRankingItem] `json:"contents"`
+	RankTotal flexInt64                       `json:"rank_total"`
 }
 
 type webRankingItem struct {
