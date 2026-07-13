@@ -411,6 +411,7 @@ git archive --format=tar "$GITHUB_SHA" -- \
   internal/update/releases_test.go \
   internal/update/source_test.go \
   internal/utils/files/files_test.go \
+  pkg/pixiv/account_external_test.go \
   scripts/licensebundle/main_test.go \
   scripts/releaseworkflow/main.go \
   scripts/releaseworkflow/main_test.go \
@@ -431,6 +432,7 @@ test "$(git diff --name-only)" = "$(printf '%s\n' \
   internal/update/releases_test.go \
   internal/update/source_test.go \
   internal/utils/files/files_test.go \
+  pkg/pixiv/account_external_test.go \
   scripts/licensebundle/main_test.go \
   scripts/releaseworkflow/main.go \
   scripts/releaseworkflow/main_test.go \

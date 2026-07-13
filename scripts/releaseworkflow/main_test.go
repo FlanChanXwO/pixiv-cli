@@ -299,6 +299,50 @@ func TestCheckRecoveryPolicyRequiresTrustedReleaseTag(t *testing.T) {
 	}
 }
 
+// v0.2.0 的 Windows test gate 只能恢复这一份跨平台权限断言测试；生产源码仍只来自 tag。
+func TestCheckRecoveryPolicyRequiresExactPixivConfigTestOverlay(t *testing.T) {
+	t.Parallel()
+
+	const path = "pkg/pixiv/account_external_test.go"
+	root := releaseWorkflowRoot(t)
+	step := stepWithRun(t, jobNode(t, root, "build"), `git archive --format=tar "$GITHUB_SHA"`)
+	run := requireMappingValue(t, step, "run")
+	if !strings.Contains(run.Value, "  "+path+" \\\n") {
+		t.Fatalf("recovery overlay does not include %q", path)
+	}
+	if err := checkRecoveryPolicy(root); err != nil {
+		t.Fatalf("checked-in recovery policy rejected: %v", err)
+	}
+
+	for _, mutation := range []struct {
+		name  string
+		apply func(*yaml.Node)
+	}{
+		{
+			name: "required test path omitted",
+			apply: func(root *yaml.Node) {
+				removeRunFragment(t, stepWithRun(t, jobNode(t, root, "build"), `git archive --format=tar "$GITHUB_SHA"`), "  "+path+" \\\n")
+			},
+		},
+		{
+			name: "extra test path added",
+			apply: func(root *yaml.Node) {
+				step := stepWithRun(t, jobNode(t, root, "build"), `git archive --format=tar "$GITHUB_SHA"`)
+				run := requireMappingValue(t, step, "run")
+				run.Value = strings.Replace(run.Value, "  "+path+" \\\n", "  "+path+" \\\n  pkg/pixiv/other_test.go \\\n", 1)
+			},
+		},
+	} {
+		t.Run(mutation.name, func(t *testing.T) {
+			root := releaseWorkflowRoot(t)
+			mutation.apply(root)
+			if err := checkRecoveryPolicy(root); err == nil {
+				t.Fatal("release recovery policy accepted an overlay allowlist mutation")
+			}
+		})
+	}
+}
+
 // Windows 的 Go+cgo 质量门和最终 binary 必须统一使用 Clang+LLD，不能只修某个 step。
 func TestCheckRecoveryPolicyRequiresWindowsClangLLDForWholeBuildJob(t *testing.T) {
 	t.Parallel()
