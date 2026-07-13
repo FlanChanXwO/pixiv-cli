@@ -676,7 +676,7 @@
     {
       "path": "internal/update/releases_reader_windows_test.go",
       "language": "go",
-      "sizeLines": 66,
+      "sizeLines": 67,
       "fileCategory": "code"
     },
     {

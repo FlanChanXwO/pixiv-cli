@@ -20,8 +20,8 @@
       "GitHub Actions"
     ],
     "description": "这是一个 Go 版 Pixiv CLI 与 MCP stdio server，内置 Rust ugoira encoder，并包含 release/update workflow。",
-    "analyzedAt": "2026-07-13T00:37:44.001Z",
-    "gitCommitHash": "1c3097aae36c26b36353803a0e2eaef75016038d"
+    "analyzedAt": "2026-07-13T00:56:13.804Z",
+    "gitCommitHash": "bef34d814421c3198349f99ac09e227af9ee8a32"
   },
   "nodes": [
     {
@@ -1448,7 +1448,7 @@
         756,
         839
       ],
-      "summary": "验证 Release 缓存替换期间的并发读者；Windows reader 仅为可证明的 ReplaceFileW 瞬时 ERROR_FILE_NOT_FOUND 让出重试，停止信号关闭后不将该竞争报告为测试失败。",
+      "summary": "验证 Release 缓存替换期间的并发读者；Windows reader 仅为 run 29216006791 证明的 ReplaceFileW handoff 瞬时 ERROR_FILE_NOT_FOUND 或 ERROR_SHARING_VIOLATION 让出重试，停止信号关闭后不将该竞争报告为测试失败。",
       "tags": [
         "test",
         "test",
@@ -21889,7 +21889,7 @@
       "type": "file",
       "name": "releases_reader_windows_test.go",
       "filePath": "internal/update/releases_reader_windows_test.go",
-      "summary": "为 Release 缓存并发替换测试提供 Windows reader：共享删除权限读取，并仅在 ReplaceFileW 命名空间切换窗口的 ERROR_FILE_NOT_FOUND 中按停止信号受控让出重试。",
+      "summary": "为 Release 缓存并发替换测试提供 Windows reader：共享删除权限读取；run 29216006791 的 ReplaceFileW handoff evidence 证明 ERROR_FILE_NOT_FOUND 与 ERROR_SHARING_VIOLATION 都可能短暂出现，二者仅在停止信号前受控让出重试。",
       "tags": [
         "test",
         "update",
@@ -21904,10 +21904,10 @@
       "name": "readCacheForConcurrentReader",
       "filePath": "internal/update/releases_reader_windows_test.go",
       "lineRange": [
-        21,
-        38
+        22,
+        39
       ],
-      "summary": "在 Windows 测试写入活跃时读取完整缓存；仅对 ReplaceFileW 瞬时命名空间窗口的 ERROR_FILE_NOT_FOUND 重试，并在 stopReaders 关闭后立即返回，其他错误原样暴露。",
+      "summary": "在 Windows 测试写入活跃时读取完整缓存；依据 run 29216006791 的 ReplaceFileW 命名空间/句柄 handoff evidence，仅对 ERROR_FILE_NOT_FOUND 与 ERROR_SHARING_VIOLATION 瞬时重试，并在 stopReaders 关闭后立即返回，其他错误原样暴露。",
       "tags": [
         "test",
         "update",
@@ -21922,8 +21922,8 @@
       "name": "readCacheForConcurrentReaderOnce",
       "filePath": "internal/update/releases_reader_windows_test.go",
       "lineRange": [
-        42,
-        66
+        43,
+        67
       ],
       "summary": "以 FILE_SHARE_DELETE 打开 Windows Release 缓存的一次读取，允许 ReplaceFileW 删除旧文件而不把测试 reader 变成写入障碍。",
       "tags": [

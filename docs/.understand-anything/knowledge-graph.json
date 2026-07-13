@@ -10,8 +10,8 @@
       "karpathy-wiki"
     ],
     "description": "Pixiv CLI 架构、开发、MCP 与发布决策文档的知识图谱。",
-    "analyzedAt": "2026-07-13T00:37:44.001Z",
-    "gitCommitHash": "1c3097aae36c26b36353803a0e2eaef75016038d"
+    "analyzedAt": "2026-07-13T00:56:13.804Z",
+    "gitCommitHash": "bef34d814421c3198349f99ac09e227af9ee8a32"
   },
   "nodes": [
     {

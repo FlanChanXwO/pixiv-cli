@@ -1,7 +1,7 @@
 {
   "version": "1.0.0",
-  "gitCommitHash": "1c3097aae36c26b36353803a0e2eaef75016038d",
-  "generatedAt": "2026-07-13T00:37:54.131Z",
+  "gitCommitHash": "bef34d814421c3198349f99ac09e227af9ee8a32",
+  "generatedAt": "2026-07-13T00:56:14.278Z",
   "files": {
     ".agents/skills/pixiv-commit-msg/SKILL.md": {
       "filePath": ".agents/skills/pixiv-commit-msg/SKILL.md",
@@ -14588,7 +14588,7 @@
     },
     "internal/update/releases_reader_windows_test.go": {
       "filePath": "internal/update/releases_reader_windows_test.go",
-      "contentHash": "572e87820b6b009442032ed48e2355767ab0820d24d7c8c4a7f678ff9d0026b8",
+      "contentHash": "dad236cd584267709ace0a8480e5a9965ab3a5e8aa63b4ab63e6fcd54c259f17",
       "functions": [
         {
           "name": "readCacheForConcurrentReader",
@@ -14650,7 +14650,7 @@
         }
       ],
       "exports": [],
-      "totalLines": 67,
+      "totalLines": 68,
       "hasStructuralAnalysis": true
     },
     "internal/update/releases_test.go": {
