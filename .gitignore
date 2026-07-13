@@ -46,3 +46,4 @@ docs/.understand-anything/.trash-*/
 docs/.understand-anything/intermediate/*
 !docs/.understand-anything/intermediate/
 !docs/.understand-anything/intermediate/scan-result.json
+.worktrees/
