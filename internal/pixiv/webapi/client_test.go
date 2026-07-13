@@ -163,7 +163,7 @@ func TestClientSearchIllustMapsWebArtworkResults(t *testing.T) {
 		assert.Equal(t, "date_d", r.URL.Query().Get("order"))
 		assert.Equal(t, "s_tag", r.URL.Query().Get("s_mode"))
 		assert.Equal(t, "1", r.URL.Query().Get("p"))
-		fmt.Fprint(w, `{"error":false,"message":"","body":{"illustManga":{"data":[{"id":"123","title":"Miku","illustType":0,"xRestrict":0,"url":"https://i.pximg.net/thumb.jpg","tags":["初音ミク"],"userId":"456","userName":"artist","pageCount":1}]}}}`)
+		fmt.Fprint(w, `{"error":false,"message":"","body":{"illustManga":{"data":[{"id":"123","title":"Miku","illustType":0,"xRestrict":0,"aiType":1,"url":"https://i.pximg.net/thumb.jpg","tags":["初音ミク"],"userId":"456","userName":"artist","pageCount":1}]}}}`)
 	}))
 	defer server.Close()
 
@@ -176,6 +176,7 @@ func TestClientSearchIllustMapsWebArtworkResults(t *testing.T) {
 	assert.Equal(t, int64(123), illust.ID)
 	assert.Equal(t, "Miku", illust.Title)
 	assert.Equal(t, "illust", illust.Type)
+	assert.Equal(t, 1, illust.AIType)
 	assert.Equal(t, int64(456), illust.User.ID)
 	assert.Equal(t, "artist", illust.User.Name)
 	assert.Equal(t, "https://i.pximg.net/thumb.jpg", illust.ImageURLs.Medium)

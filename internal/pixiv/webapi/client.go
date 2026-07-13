@@ -472,6 +472,7 @@ func mapSearchIllust(item webSearchIllust) model.Illust {
 		},
 		Tags:      tags,
 		ImageURLs: imageURLs,
+		AIType:    int(item.AIType),
 	}
 }
 
@@ -665,6 +666,7 @@ type webSearchIllust struct {
 	Title         string    `json:"title"`
 	IllustType    flexInt   `json:"illustType"`
 	XRestrict     flexInt   `json:"xRestrict"`
+	AIType        flexInt   `json:"aiType"`
 	URL           string    `json:"url"`
 	Tags          []string  `json:"tags"`
 	UserID        flexInt64 `json:"userId"`
