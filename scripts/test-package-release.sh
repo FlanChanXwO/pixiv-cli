@@ -36,6 +36,17 @@ assert_members() {
 	diff -u "$expected" "$actual"
 }
 
+# Git Bash 默认会把无法创建的 Windows symlink 伪装成普通文本文件；这会让 `-L` 无法表达
+# package-release 要拒绝的真实 reparse-point 边界。nativestrict 要求 MSYS 创建原生链接，失败即暴露
+# runner 权限/配置问题，不会把安全测试静默降级为普通文件路径测试。
+create_checked_symlink() {
+	MSYS=winsymlinks:nativestrict ln -s "$1" "$2"
+	[ -L "$2" ] || {
+		echo "test symlink is not a native link: $2" >&2
+		exit 1
+	}
+}
+
 for format in tar.gz zip; do
 	archive="$temporary/pixiv.$format"
 	sh "$repo_root/scripts/package-release.sh" --binary "$binary" --format "$format" --output "$archive"
@@ -89,7 +100,7 @@ if [ "$(find "$existing_directory" -type f | wc -l | tr -d ' ')" != 1 ]; then
 fi
 
 output_link="$temporary/output-link"
-ln -s "$existing_directory" "$output_link"
+create_checked_symlink "$existing_directory" "$output_link"
 if sh "$repo_root/scripts/package-release.sh" --binary "$binary" --format tar.gz --output "$output_link/pixiv.tar.gz" >/dev/null 2>&1; then
 	echo 'symlinked output directory unexpectedly succeeded' >&2
 	exit 1
@@ -103,7 +114,7 @@ real_child="$existing_directory/real-child"
 mkdir "$real_child"
 printf 'child sentinel\n' > "$real_child/keep"
 ancestor_link="$temporary/ancestor-link"
-ln -s "$existing_directory" "$ancestor_link"
+create_checked_symlink "$existing_directory" "$ancestor_link"
 if sh "$repo_root/scripts/package-release.sh" --binary "$binary" --format tar.gz --output "$ancestor_link/real-child/pixiv.tar.gz" >/dev/null 2>&1; then
 	echo 'output below symlinked ancestor unexpectedly succeeded' >&2
 	exit 1

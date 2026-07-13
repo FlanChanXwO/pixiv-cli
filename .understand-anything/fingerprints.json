@@ -1,7 +1,7 @@
 {
   "version": "1.0.0",
-  "gitCommitHash": "8209a646094a66719e5395ba01f10a514f211086",
-  "generatedAt": "2026-07-13T01:37:19.725Z",
+  "gitCommitHash": "6299020d63ff9f94689a949cb474fc0cc7a11a9e",
+  "generatedAt": "2026-07-13T02:17:40.821Z",
   "files": {
     ".agents/skills/pixiv-commit-msg/SKILL.md": {
       "filePath": ".agents/skills/pixiv-commit-msg/SKILL.md",
@@ -277,12 +277,12 @@
     },
     "docs/development.md": {
       "filePath": "docs/development.md",
-      "contentHash": "ce2f54627e06c28a22f515d9a7ff1ec60f8312f7b075a8a38e6cf5367bd192be",
+      "contentHash": "a2a377ac93de161d8a199423d0754d54eb74e27159a6a2a013940ca0447d45d0",
       "functions": [],
       "classes": [],
       "imports": [],
       "exports": [],
-      "totalLines": 399,
+      "totalLines": 401,
       "hasStructuralAnalysis": true
     },
     "docs/index.md": {
@@ -20971,19 +20971,25 @@
     },
     "scripts/test-package-release.sh": {
       "filePath": "scripts/test-package-release.sh",
-      "contentHash": "c3b77b65d63cdd14295a2fda3f4d8db208016a834fb2616a7c1490e0cc357cae",
+      "contentHash": "aa62eab5f406a8cc7a5cda93b8aad1ad8a9f16d1badfd481dce7b279529c1311",
       "functions": [
         {
           "name": "assert_members",
           "params": [],
           "exported": false,
           "lineCount": 18
+        },
+        {
+          "name": "create_checked_symlink",
+          "params": [],
+          "exported": false,
+          "lineCount": 7
         }
       ],
       "classes": [],
       "imports": [],
       "exports": [],
-      "totalLines": 115,
+      "totalLines": 126,
       "hasStructuralAnalysis": true
     },
     "scripts/test-release-workflow.sh": {

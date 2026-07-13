@@ -166,7 +166,7 @@
     {
       "path": "docs/development.md",
       "language": "markdown",
-      "sizeLines": 397,
+      "sizeLines": 400,
       "fileCategory": "docs"
     },
     {
@@ -910,7 +910,7 @@
     {
       "path": "scripts/test-package-release.sh",
       "language": "shell",
-      "sizeLines": 114,
+      "sizeLines": 125,
       "fileCategory": "script"
     },
     {

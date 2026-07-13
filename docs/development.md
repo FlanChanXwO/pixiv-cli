@@ -262,6 +262,8 @@ smoke、版本化 archive 内容和 Homebrew 安装验收。
 其中 Windows 的 `.zip` 由 GitHub runner 镜像预装的 `7z` 生成；其他平台继续使用 `zip`。
 `scripts/test-package-release.sh` 会在 Windows runner 把伪造的调用委托给真实 `7z`，在其他开发机使用
 `zip` fixture，并核对 archive member；因此 Git Bash 缺少 `zip` 会在 release test gate 直接暴露。
+它用 MSYS 的 `winsymlinks:nativestrict` 创建受检链接：若 runner 不能创建原生 Windows link，测试会显式
+失败，避免 Git Bash 的普通文件伪链接让 output ancestor 安全门形同虚设。
 
 ## 发布门禁、签名与 Homebrew 边界
 

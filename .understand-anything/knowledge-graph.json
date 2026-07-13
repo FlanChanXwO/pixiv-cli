@@ -20,8 +20,8 @@
       "GitHub Actions"
     ],
     "description": "这是一个 Go 版 Pixiv CLI 与 MCP stdio server，内置 Rust ugoira encoder，并包含 release/update workflow。",
-    "analyzedAt": "2026-07-13T01:37:18.668Z",
-    "gitCommitHash": "8209a646094a66719e5395ba01f10a514f211086"
+    "analyzedAt": "2026-07-13T02:17:40.556Z",
+    "gitCommitHash": "6299020d63ff9f94689a949cb474fc0cc7a11a9e"
   },
   "nodes": [
     {
@@ -12974,7 +12974,7 @@
       "type": "file",
       "name": "test-package-release.sh",
       "filePath": "scripts/test-package-release.sh",
-      "summary": "验证两种 release archive 的成员恰好包含 binary 和完整许可证树、输出路径安全边界；伪造 Windows/MINGW 7z 调用时，Windows runner 委托预装真实 7z，其他开发机保留 zip fixture，以暴露而非掩盖 Git Bash 缺少 zip。",
+      "summary": "验证两种 release archive 的成员恰好包含 binary 和完整许可证树、输出路径安全边界；Windows 伪造 7z 委托真实 7z，且以 MSYS winsymlinks:nativestrict 建立并 -L 断言原生链接，不能建立时显式失败，避免 Git Bash pseudo-link 弱化 output ancestor 安全门。",
       "tags": [
         "test",
         "release",
@@ -12998,6 +12998,24 @@
         "release"
       ],
       "complexity": "simple"
+    },
+    {
+      "id": "function:scripts/test-package-release.sh:create_checked_symlink",
+      "type": "function",
+      "name": "create_checked_symlink",
+      "filePath": "scripts/test-package-release.sh",
+      "lineRange": [
+        42,
+        48
+      ],
+      "summary": "以 MSYS=winsymlinks:nativestrict 创建测试链接，并用 -L 断言其为原生链接；任一步失败都显式终止，防止 Git Bash 文本 pseudo-link 将 output ancestor reparse-point 安全门降级为普通路径测试。",
+      "tags": [
+        "test",
+        "release",
+        "windows",
+        "security"
+      ],
+      "complexity": "moderate"
     },
     {
       "id": "file:scripts/test-release-workflow.sh",
@@ -16567,7 +16585,7 @@
       "type": "document",
       "name": "development.md",
       "filePath": "docs/development.md",
-      "summary": "说明八 job Release policy：恢复 test job 以 workflow、13 个测试文件、package fixture 和 verifier 的 16 条白名单覆盖并不生成 artifact；两条 tag 缺失 reader 保持 intent-to-add/empty cached diff；Go 1.26.3 的 Windows/arm64 是唯一固定 -race 例外；独立 clean-tag production matrix 关闭 Go cache并生成唯一 verified-release-*，publish 只下载六个 exact assets。",
+      "summary": "说明八 job Release policy：恢复 test job 以 workflow、13 个测试文件、package fixture 和 verifier 的 16 条白名单覆盖并不生成 artifact；package fixture 在 Windows 以 winsymlinks:nativestrict 建立并 -L 验证原生链接，无法建立即失败，防止 pseudo-link 弱化 output ancestor 安全门；两条 tag 缺失 reader 保持 intent-to-add/empty cached diff；Go 1.26.3 的 Windows/arm64 是唯一固定 -race 例外；独立 clean-tag production matrix 关闭 Go cache并生成唯一 verified-release-*。",
       "complexity": "moderate",
       "tags": [
         "documentation",
@@ -38829,6 +38847,13 @@
       "type": "calls",
       "direction": "forward",
       "weight": 0.8
+    },
+    {
+      "source": "file:scripts/test-package-release.sh",
+      "target": "function:scripts/test-package-release.sh:create_checked_symlink",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
     }
   ],
   "layers": [
