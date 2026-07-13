@@ -80,13 +80,9 @@ func TestPixivBinaryOfflineConfigAndMCPHelp(t *testing.T) {
 	binaryPath := buildPixivBinary(t, repoRoot)
 	env := isolatedEnv(t)
 
-	configPath := exec.Command(binaryPath, "config", "path")
-	configPath.Dir = repoRoot
-	configPath.Env = env.values
-	out, err := configPath.CombinedOutput()
-	if err != nil {
-		t.Fatalf("pixiv config path failed: %v\n%s", err, string(out))
-	}
+	// 配置路径是 stdout 协议；自动更新 warning 和结构化日志只能在 stderr，不能用
+	// CombinedOutput 混合后再判断路径。
+	out, _ := runPixivStdout(t, repoRoot, binaryPath, env.values, "config", "path")
 	gotConfigPath := strings.TrimSpace(string(out))
 	if !strings.HasPrefix(gotConfigPath, env.configRoot) && !strings.HasPrefix(gotConfigPath, env.home) {
 		t.Fatalf("config path escaped isolated config roots:\n%s", string(out))
@@ -113,7 +109,7 @@ func TestPixivBinaryOfflineConfigAndMCPHelp(t *testing.T) {
 	mcpHelp := exec.Command(binaryPath, "mcp", "--help")
 	mcpHelp.Dir = repoRoot
 	mcpHelp.Env = env.values
-	out, err = mcpHelp.CombinedOutput()
+	out, err := mcpHelp.CombinedOutput()
 	if err != nil {
 		t.Fatalf("pixiv mcp --help failed: %v\n%s", err, string(out))
 	}
