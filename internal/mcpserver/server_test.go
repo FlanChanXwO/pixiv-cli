@@ -351,6 +351,52 @@ func TestUserBookmarksAcceptsLegacyMaxBookmarkID(t *testing.T) {
 	}
 }
 
+func TestNewKeepsLegacyUserListToolsAndParameters(t *testing.T) {
+	api := &legacyUserToolsAPI{
+		bookmarks: []pixiv.Illust{{ID: 15, Tags: []pixiv.Tag{}, MetaPages: []pixiv.MetaPage{}}},
+		following: []pixiv.UserPreview{{User: pixiv.User{ID: 31, Name: "legacy"}}},
+	}
+	server := New(api, &fakeDownloads{}, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	clientTransport, serverTransport := mcp.NewInMemoryTransports()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() { _ = server.Run(ctx, serverTransport) }()
+	client := mcp.NewClient(&mcp.Implementation{Name: "test", Version: "0.0.0"}, nil)
+	session, err := client.Connect(ctx, clientTransport, nil)
+	if err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+	defer session.Close()
+
+	bookmarkResult := callTool(t, session, "user_bookmarks", map[string]any{
+		"user_id_to_check": 9, "restrict": "private", "tag": "legacy-tag", "max_bookmark_id": 101,
+	})
+	var bookmarksOut illustListOut
+	decodeStructured(t, bookmarkResult, &bookmarksOut)
+	if api.bookmarkUserID != 9 || api.bookmarkRestrict != "private" || api.bookmarkTag != "legacy-tag" || api.maxBookmarkID != 101 || !strings.Contains(bookmarksOut.Text, "找到用户 9 的 1 个收藏") {
+		t.Fatalf("legacy bookmarks request=(%d,%q,%q,%d) output=%+v", api.bookmarkUserID, api.bookmarkRestrict, api.bookmarkTag, api.maxBookmarkID, bookmarksOut)
+	}
+
+	followingResult := callTool(t, session, "user_following", map[string]any{
+		"user_id_to_check": 8, "restrict": "private", "offset": 12,
+	})
+	var followingOut userListOut
+	decodeStructured(t, followingResult, &followingOut)
+	if api.followingUserID != 8 || api.followingRestrict != "private" || api.followingOffset != 12 || !strings.Contains(followingOut.Text, "用户 8 关注了 1 位用户") {
+		t.Fatalf("legacy following request=(%d,%q,%d) output=%+v", api.followingUserID, api.followingRestrict, api.followingOffset, followingOut)
+	}
+
+	api.bookmarks = []pixiv.Illust{}
+	api.following = []pixiv.UserPreview{}
+	bookmarkResult = callTool(t, session, "user_bookmarks", map[string]any{"user_id_to_check": 9})
+	decodeStructured(t, bookmarkResult, &bookmarksOut)
+	followingResult = callTool(t, session, "user_following", map[string]any{"user_id_to_check": 8})
+	decodeStructured(t, followingResult, &followingOut)
+	if bookmarksOut.Text != "找不到用户 9 的收藏。" || followingOut.Text != "用户 8 没有关注任何人。" {
+		t.Fatalf("legacy empty text bookmarks=%q following=%q", bookmarksOut.Text, followingOut.Text)
+	}
+}
+
 func TestSDKListPageRequiresPositiveLimitAndPositiveValue(t *testing.T) {
 	session, closeSession := newSDKTestSession(t, &fakeSDKClient{userID: 1})
 	defer closeSession()
@@ -530,6 +576,34 @@ func (a *legacyBookmarkAPI) UserBookmarks(_ context.Context, userID int64, _ str
 	a.userID = userID
 	a.maxBookmarkID = maxBookmarkID
 	return &pixiv.IllustList{Illusts: a.illusts}, nil
+}
+
+type legacyUserToolsAPI struct {
+	fakeAPI
+	bookmarks         []pixiv.Illust
+	following         []pixiv.UserPreview
+	bookmarkUserID    int64
+	bookmarkRestrict  string
+	bookmarkTag       string
+	maxBookmarkID     int64
+	followingUserID   int64
+	followingRestrict string
+	followingOffset   int
+}
+
+func (a *legacyUserToolsAPI) UserBookmarks(_ context.Context, userID int64, restrict, tag string, maxBookmarkID int64) (*pixiv.IllustList, error) {
+	a.bookmarkUserID = userID
+	a.bookmarkRestrict = restrict
+	a.bookmarkTag = tag
+	a.maxBookmarkID = maxBookmarkID
+	return &pixiv.IllustList{Illusts: a.bookmarks}, nil
+}
+
+func (a *legacyUserToolsAPI) UserFollowing(_ context.Context, userID int64, restrict string, offset int) (*pixiv.UserPreviewList, error) {
+	a.followingUserID = userID
+	a.followingRestrict = restrict
+	a.followingOffset = offset
+	return &pixiv.UserPreviewList{UserPreviews: a.following}, nil
 }
 
 func callTool(t *testing.T, session *mcp.ClientSession, name string, arguments map[string]any) *mcp.CallToolResult {
