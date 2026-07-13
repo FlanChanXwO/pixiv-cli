@@ -9,9 +9,9 @@
     "frameworks": [
       "karpathy-wiki"
     ],
-    "description": "Knowledge graph for Pixiv CLI 文档",
-    "analyzedAt": "2026-07-09T10:34:34.774847+00:00",
-    "gitCommitHash": "4fc43e4ec861e90979d948b8b2bcc0623d1256f8"
+    "description": "Pixiv CLI 的架构、开发与 ADR 文档知识图谱。",
+    "analyzedAt": "2026-07-13T05:58:41.133Z",
+    "gitCommitHash": "30212b0a3eb022ee848bd8f87487ddbaac24a2ae"
   },
   "nodes": [
     {
@@ -26,7 +26,7 @@
       "complexity": "simple",
       "knowledgeMeta": {
         "wikilinks": [],
-        "content": "# ADR 0001: CLI Thin Controller And Bootstrap\n\n## Status\n\nAccepted.\n\n## Context\n\n`internal/cli` originally owned Cobra command wiring, prompts, output formatting, account storage mutation, config reads/writes, Pixiv client construction, download manager construction, OAuth token exchange, and MCP runtime wiring. That made the directory feel like both frontend controller and application runtime.\n\nThe project needs a clearer internal structure without changing CLI/MCP behavior.\n\n## Decision\n\n- Keep `internal/cli` as the CLI controller layer:\n  - Cobra command tree, flags and positional arguments.\n  - TTY prompts and loopback browser OAuth receiver.\n  - Text/JSON presenters and process exit handling.\n- Add `internal/application` for use cases:\n  - `AccountService`\n  - `ConfigService`\n  - `ArtworkService`\n  - `DownloadService`\n  - `LoginService`\n- Add `internal/bootstrap` as the production composition root.\n- Move `internal/cli/state` to `internal/storage/auth`.\n- Merge `internal/cli/mcpapp` into `internal/bootstrap` as MCP runtime wiring.\n\n## Consequences\n\n- CLI tests continue to validate user-visible behavior, while `internal/application` and `internal/storage/auth` gain focused package tests.\n- Production wiring is centralized in `internal/bootstrap`, making future client/storage replacement less invasive.\n- `auth login` intentionally keeps loopback HTTP and browser/prompt adapters in CLI; the application layer handles PKCE/state generation, authorization-code exchange, and account persistence.\n- `internal/mcpserver` owns MCP tool registration; `internal/bootstrap` owns stdio runtime startup.\n\n## Guardrails\n\n- Preserve token priority:\n  - CLI: flag token, UID-selected account, env token, default UID.\n  - MCP: env token, default UID.\n- Preserve output contracts and do not print refresh tokens.\n- Do not move durable config schema into CLI.\n- Do not add generic `ports` packages unless a real duplication or dependency problem appears.\n- `internal/common/constants` is allowed only as the narrow infrastructure-constant exception defined by ADR 0002.\n",
+        "content": "# ADR 0001: CLI Thin Controller And Bootstrap\n\n## Status\n\nAccepted.\n\n## Context\n\n`internal/cli` originally owned Cobra command wiring, prompts, output formatting, account storage mutation, config reads/writes, Pixiv client construction, download manager construction, OAuth token exchange, and MCP runtime wiring. That made the directory feel like both frontend controller and application runtime.\n\nThe project needs a clearer internal structure without changing CLI/MCP behavior.\n\n## Decision\n\n- Keep `internal/cli` as the CLI controller layer:\n  - Cobra command tree, flags and positional arguments.\n  - TTY prompts and loopback browser OAuth receiver.\n  - Text/JSON presenters and process exit handling.\n- Add `internal/application` for use cases:\n  - `AccountService`\n  - `ConfigService`\n  - `ArtworkService`\n  - `DownloadService`\n  - `LoginService`\n- Add `internal/bootstrap` as the production composition root.\n- Publish Pixiv access through concrete `pkg/pixiv.Client`; CLI/MCP reach it through application-owned narrow seams rather than importing internal App/Web transports.\n- Move `internal/cli/state` to `internal/storage/auth`.\n- Merge `internal/cli/mcpapp` into `internal/bootstrap` as MCP runtime wiring.\n\n## Consequences\n\n- CLI tests continue to validate user-visible behavior, while `internal/application` and `internal/storage/auth` gain focused package tests.\n- Production wiring is centralized in `internal/bootstrap`, making future client/storage replacement less invasive.\n- `auth login` intentionally keeps loopback HTTP and browser/prompt adapters in CLI; the application layer handles PKCE/state generation, authorization-code exchange, and account persistence.\n- `internal/mcpserver` owns MCP tool registration; `internal/bootstrap` owns stdio runtime startup.\n- Public SDK construction and logger injection remain in bootstrap/application. CLI and MCP remain presentation/protocol adapters, not Pixiv protocol owners.\n\n## Guardrails\n\n- Preserve token priority:\n  - CLI: flag token, UID-selected account, env token, default UID.\n  - MCP: env token, default UID.\n- Preserve output contracts and do not print refresh tokens.\n- Do not move durable config schema into CLI.\n- Do not add generic `ports` packages unless a real duplication or dependency problem appears.\n- Do not create an HTTP provider server or repository-owned generic Provider interface; external callers own their narrow adapters.\n- `internal/common/constants` is allowed only as the narrow infrastructure-constant exception defined by ADR 0002.\n",
         "backlinks": []
       }
     },
@@ -95,6 +95,38 @@
       }
     },
     {
+      "id": "article:adr/0006-original-ugoira-resource-resolution",
+      "type": "article",
+      "name": "ADR 0006：通过 Web metadata 解析 original ugoira 资源",
+      "filePath": "adr/0006-original-ugoira-resource-resolution.md",
+      "summary": "已采纳。",
+      "tags": [
+        "adr"
+      ],
+      "complexity": "simple",
+      "knowledgeMeta": {
+        "wikilinks": [],
+        "content": "# ADR 0006：通过 Web metadata 解析 original ugoira 资源\n\n## Status\n\n已采纳。\n\n## Decision\n\n请求 `quality=original` 时，认证会话可以查询 Pixiv Web metadata 以解析 original ugoira zip，因为 App API metadata 只提供 medium variant。这是明确的资源版本补全，不是 App API 失败后的自动 fallback。\n\n同一界限适用于 `pkg/pixiv` detail/pages enrichment：App API 仍是主数据路径；App 失败即返回失败。资源 URL 只能作为已验证的 `ResourceRef` 进入代理/下载流程，并经 `OpenResource`/`Download` 流式处理。\n\n## Consequences\n\n- 调用方可请求 original 资源，不需要暗中降级质量。\n- Web 路由保持范围明确、可审计。\n- 资源代理保留 SSRF policy、header filtering 与流所有权边界。\n",
+        "backlinks": []
+      }
+    },
+    {
+      "id": "article:adr/0007-public-pixiv-sdk-and-caller-adapter",
+      "type": "article",
+      "name": "ADR 0007：公开 Pixiv SDK 与调用方 adapter",
+      "filePath": "adr/0007-public-pixiv-sdk-and-caller-adapter.md",
+      "summary": "已采纳。",
+      "tags": [
+        "adr"
+      ],
+      "complexity": "simple",
+      "knowledgeMeta": {
+        "wikilinks": [],
+        "content": "# ADR 0007：公开 Pixiv SDK 与调用方 adapter\n\n## 状态\n\n已采纳。\n\n## 背景\n\n外部消费者需要 Pixiv 读取、写入、账号处理和安全媒体访问。早期替换讨论把它建模为 HTTP Provider，包含 discovery、source probe、RSS/crawler ingestion 与 capability negotiation。这些概念属于图库/采集调用方领域，不属于 CLI 仓库；加入它们会强制引入 service lifecycle、重复的持久化语义和宽而不稳定的接口。\n\n## 决策\n\n- 发布 `pkg/pixiv`，提供具体 `*pixiv.Client`、稳定模型、request/result、opaque cursor、typed error 和资源 API。\n- 公开契约只通过 package 提供；不提供 HTTP server、`Discover`、Probe、Capabilities、RSS 或 crawler。\n- `atri-setu-api` 等调用方拥有窄 adapter interface，以及自己的 source mode、budget、filter、cursor storage、persistence、scheduling 和 HTTP presentation。\n- 内部使用物理包 `internal/pixiv/appapi`、`webapi`、`oauth`、`resource`；公开 SDK 负责路由和规范化，但不泄漏这些包。\n- 有凭据时 App API 为主路径。匿名 Web read 仅在无 refresh token 时按配置 fallback；Web enrichment 必须显式，绝不隐藏 fallback。\n- 媒体通过 policy 验证过的 `ResourceRef`、`OpenResource`、`Download` 提供，保持 stream ownership 与 SSRF controls。\n\n## 后果\n\n- CLI/MCP 和外部 Go 程序消费同一个公开契约，无需额外进程或 transport translation。\n- 集成方可用小 mock 测试其 adapter，自选运行策略。\n- 本仓库不承诺 collector-specific discovery 兼容性；调用方须将这类行为迁移到自己的领域层。\n- 物理协议变更封装在 `pkg/pixiv` 后，降低公开 API churn。\n",
+        "backlinks": []
+      }
+    },
+    {
       "id": "article:agents/documentation-guidelines",
       "type": "article",
       "name": "Documentation Guidelines",
@@ -106,7 +138,7 @@
       "complexity": "simple",
       "knowledgeMeta": {
         "wikilinks": [],
-        "content": "# Documentation Guidelines\n\n文档按读者和稳定性分层，避免把所有内容塞进根文件。\n\n## 文件职责\n\n- `README.md`：用户入口，描述 CLI/MCP 用法、配置、环境变量和主要行为。\n- `docs/index.md`：文档导航。\n- `docs/architecture.md`：包职责、运行流程和已知约束。\n- `docs/development.md`：本地环境、测试、构建、Git、changelog 和开发流程。\n- `docs/mcp-tools.md`：MCP tools 的名称、参数和返回语义。\n- `CONTEXT.md`：Pixiv/MCP 领域词汇与关系；不要放通用工程流程。\n- `docs/adr/`：难以逆转、未来会疑惑、经过真实取舍的决策。\n- `CHANGELOG.md`：用户和集成方可感知的变化。\n- `AGENTS.md`：agent 的短主规则和路由。\n- `.github/copilot-instructions.md`：Copilot 短提示。\n- `.agents/skills/`：高频 agent 工作流。\n\n## 更新规则\n\n- 功能、API、配置、CLI/MCP 行为、输出语义、测试流程或限制变化时，同步 README 或 docs。\n- 公开行为变化优先写 `README.md`；内部边界变化优先写 `docs/architecture.md` 或 ADR。\n- 术语冲突或领域概念变化才更新 `CONTEXT.md`。\n- 纯内部重构、测试补充、文档清理通常不需要 changelog。\n- 不为短期实现细节创建 ADR；只有真实取舍且未来维护者需要背景时才新增。\n",
+        "content": "# Documentation Guidelines\n\n文档按读者和稳定性分层，避免把所有内容塞进根文件。\n\n## 文件职责\n\n- `README.md`：用户入口，描述 CLI/MCP 用法、配置、环境变量和主要行为。\n- `docs/index.md`：文档导航。\n- `docs/architecture.md`：包职责、运行流程和已知约束。\n- `docs/development.md`：本地环境、测试、构建、Git、changelog 和开发流程。\n- `docs/mcp-tools.md`：MCP tools 的名称、参数和返回语义。\n- `CONTEXT.md`：Pixiv/MCP 领域词汇与关系；不要放通用工程流程。\n- `docs/adr/`：难以逆转、未来会疑惑、经过真实取舍的决策。\n- `CHANGELOG.md`：用户和集成方可感知的变化。\n- `AGENTS.md`：agent 的短主规则和路由。\n- `.github/copilot-instructions.md`：Copilot 短提示。\n- `.agents/skills/`：高频 agent 工作流。\n- `.understand-anything/`、`docs/.understand-anything/`：入库的 understand-anything 知识图谱快照（代码图谱与文档图谱），是 agent 快速认识项目的首选入口；结构性变更后重新生成并随改动提交。\n\n## 更新规则\n\n- 功能、API、配置、CLI/MCP 行为、输出语义、测试流程或限制变化时，同步 README 或 docs。\n- 公开行为变化优先写 `README.md`；内部边界变化优先写 `docs/architecture.md` 或 ADR。\n- 术语冲突或领域概念变化才更新 `CONTEXT.md`。\n- 纯内部重构、测试补充、文档清理通常不需要 changelog。\n- 不为短期实现细节创建 ADR；只有真实取舍且未来维护者需要背景时才新增。\n",
         "backlinks": []
       }
     },
@@ -138,7 +170,7 @@
       "complexity": "simple",
       "knowledgeMeta": {
         "wikilinks": [],
-        "content": "# Review Checklist\n\n代码审查时先看行为风险，再看风格。输出 finding-first，按严重程度排序，并给出文件/行号。\n\n## 边界\n\n- `internal/cli` 是否只做 Cobra、TTY、OAuth loopback 和 presenter；业务用例是否留在 `internal/application`。\n- `internal/bootstrap` 是否仍是生产 wiring 的唯一入口；MCP runtime 是否仍由 bootstrap 启动。\n- CLI/MCP 是否通过 `internal/pixiv` facade 使用 Pixiv 能力；不要无故绕到 `api` 或 `web` 子包。\n- `internal/config` 是否只维护 `config.toml` schema、defaults、effective runtime config 和 sparse writes。\n- `internal/utils/*` 是否保持协议无关；Pixiv/MCP/config 协议值不要搬进 generic utils/common。\n\n## 行为风险\n\n- refresh token 不得打印到 stdout、stderr、JSON、MCP result 或测试 fixture。\n- 认证、网络、Pixiv API、文件系统、`ffmpeg` 错误要暴露真实原因，不要返回空成功。\n- 不新增无依据的 timeout、截断、分页上限、重试上限、静默 fallback 或隐藏降级。\n- Pixiv web fallback 只在无 refresh token 且 `web_fallback_enabled=true` 时使用；App API 错误不要自动 fallback。\n- MCP stdout 保留给 JSON-RPC；日志和人类可读诊断写 stderr。\n\n## MCP 与 CLI\n\n- MCP tool 名称、参数、structured output、delivery mode 或文本语义变化时，更新 `docs/mcp-tools.md` 和聚焦测试。\n- CLI 命令、flag、输出 JSON、token 优先级、账号/config 行为变化时，更新 README 或 docs。\n- 用户可见变化、兼容性影响、废弃/移除或安全影响要写入 `CHANGELOG.md` 的 `[Unreleased]`。\n\n## 测试\n\n- 代码改动需要新增或更新聚焦测试，并运行相关包测试。\n- 共享行为、CLI/MCP 公开接口、下载、认证或 config 变更，优先运行 `go test ./...`。\n- 文档/agent-only 改动至少运行 `git diff --check` 并检查链接。\n- 真实 Pixiv e2e 是 opt-in；不能运行时说明原因和剩余风险。\n",
+        "content": "# Review Checklist\n\n代码审查时先看行为风险，再看风格。输出 finding-first，按严重程度排序，并给出文件/行号。\n\n## 边界\n\n- `internal/cli` 是否只做 Cobra、TTY、OAuth loopback 和 presenter；业务用例是否留在 `internal/application`。\n- `internal/bootstrap` 是否仍是生产 wiring 的唯一入口；MCP runtime 是否仍由 bootstrap 启动。\n- CLI/MCP 是否通过 `internal/pixiv` facade 使用 Pixiv 能力；不要无故绕到 `api` 或 `web` 子包。\n- `internal/config` 是否只维护 `config.toml` schema、defaults、effective runtime config 和 sparse writes。\n- `internal/utils/*` 是否保持协议无关；Pixiv/MCP/config 协议值不要搬进 generic utils/common。\n- 结构性变更（新增/移动包、文件大规模迁移、公开接口大改）是否重新生成了 `.understand-anything/` 与 `docs/.understand-anything/` 知识图谱并随改动提交。\n\n## 行为风险\n\n- refresh token 不得打印到 stdout、stderr、JSON、MCP result 或测试 fixture。\n- 认证、网络、Pixiv API、文件系统、`ffmpeg` 错误要暴露真实原因，不要返回空成功。\n- 不新增无依据的 timeout、截断、分页上限、重试上限、静默 fallback 或隐藏降级。\n- Pixiv web fallback 只在无 refresh token 且 `web_fallback_enabled=true` 时使用；App API 错误不要自动 fallback。\n- MCP stdout 保留给 JSON-RPC；日志和人类可读诊断写 stderr。\n\n## MCP 与 CLI\n\n- MCP tool 名称、参数、structured output、delivery mode 或文本语义变化时，更新 `docs/mcp-tools.md` 和聚焦测试。\n- CLI 命令、flag、输出 JSON、token 优先级、账号/config 行为变化时，更新 README 或 docs。\n- 用户可见变化、兼容性影响、废弃/移除或安全影响要写入 `CHANGELOG.md` 的 `[Unreleased]`。\n\n## 测试\n\n- 代码改动需要新增或更新聚焦测试，并运行相关包测试。\n- 共享行为、CLI/MCP 公开接口、下载、认证或 config 变更，优先运行 `go test ./...`。\n- 文档/agent-only 改动至少运行 `git diff --check` 并检查链接。\n- 真实 Pixiv e2e 是 opt-in；不能运行时说明原因和剩余风险。\n",
         "backlinks": []
       }
     },
@@ -147,12 +179,12 @@
       "type": "article",
       "name": "架构说明",
       "filePath": "architecture.md",
-      "summary": "`cmd/pixiv/main.go` 是唯一官方二进制入口，它只负责调用 `internal/cli`：",
+      "summary": "`cmd/pixiv` 只调用 `internal/cli`。CLI 与 MCP 是 adapter；公开 Go API 是 `pkg/pixiv`。生产对象只在 `internal/bootstrap` 组装。",
       "tags": [],
       "complexity": "simple",
       "knowledgeMeta": {
         "wikilinks": [],
-        "content": "# 架构说明\n\n## 总体流程\n\n`cmd/pixiv/main.go` 是唯一官方二进制入口，它只负责调用 `internal/cli`：\n\n1. `pixiv` 无参数显示 CLI 帮助。\n2. `pixiv auth/config/search/detail/ranking/recommended/download` 进入 CLI 模式。\n3. `pixiv mcp` 委托 `internal/bootstrap` 组装并运行 MCP stdio server。\n4. CLI 与 MCP 通过 `internal/bootstrap` 共享生产 wiring：\n   - 账号认证来自 `os.UserConfigDir()/pixiv/auth.json`\n   - 全局配置来自 `os.UserConfigDir()/pixiv/config.toml`\n   - 公开环境变量作为覆盖层参与合并\n5. MCP 模式若没有 `PIXIV_REFRESH_TOKEN`，会回退到 `auth.json.default_user_id`；若仍无 refresh token 且 `web_fallback_enabled=true`，支持匿名能力的路径会走 Pixiv web/ajax API。\n\n## 包职责\n\n### `cmd/pixiv`\n\n负责生成 `pixiv` binary 的 `main` package。它不承载业务逻辑，只委托 `internal/cli.Run` 并返回进程退出码。\n\n### `internal/cli`\n\n负责 CLI 用户态的命令分发与输出：\n\n- Cobra 命令树、help 和 flag 解析。\n- 文本/JSON 输出。\n- `auth login` 的 loopback OAuth、浏览器打开和 TTY 交互。\n- `pixiv mcp` 分发。\n\n它不直接拥有账号存储变更、Pixiv client 构造或下载管理器构造；这些职责由 `internal/application` 与 `internal/bootstrap` 承接。\n\n### `internal/application`\n\n负责 CLI/MCP 之外的应用用例编排：\n\n- `AccountService`：账号 add/list/remove/use/check。\n- `ConfigService`：`config.toml` path/get/set/unset。\n- `ArtworkService`：search/detail/ranking/recommended。\n- `DownloadService`：按 ID 下载作品。\n- `LoginService`：生成 PKCE/state、authorization-code exchange，并保存账号；Pixiv 登录 URL 构造仍留在 CLI adapter。\n\n### `internal/bootstrap`\n\n生产 composition root，负责把 `internal/config`、`internal/storage/auth`、`internal/pixiv`、`internal/download`、`internal/mcpserver` 和 application services 组装起来。测试可以替换 service 里的小接口或 factory，不需要复制生产 wiring。\n\n### `internal/storage/auth`\n\n负责本地账号状态：\n\n- `auth.json` 读写与默认 UID 管理。\n- 认证文件路径解析和 `0600` 权限写入。\n\n### `internal/config`\n\n负责 `config.toml` 及运行时配置：\n\n- `config.toml` schema、默认值和配置键定义。\n- 运行时配置合并：`config.toml` 与公开环境变量。\n- `pixiv config path/get/set/unset` 需要的强类型解析与稀疏写回。\n\n配置拆分如下：\n\n- `auth.json`：只保存 `default_user_id` 与 `accounts[].user_id/username/refresh_token`，文件权限固定为 `0600`。\n- `config.toml`：只保存用户显式设置过的全局配置键，文件权限固定为 `0600`。\n\n运行时设置使用 `koanf` 合并 `config.toml` 与公开环境变量；`config set/unset` 使用 `tomledit` 写回，尽量保留注释、顺序和布局。\n\n### `internal/pixiv`\n\nPixiv 领域 facade。对 CLI/MCP 暴露稳定的 `Source`、`NewSource`、`NewOAuthClient`、HTTP client wiring 和常用模型 type alias。\n\nsource 策略只有一条：refresh token 为空且 `web_fallback_enabled=true` 时，`search/detail/ranking/search_user/download/ugoira metadata` 使用 web；只要存在 refresh token，就优先 app API，app API 的认证、网络或服务端错误不会自动 fallback。\n\n### `internal/pixiv/api`\n\n封装 Pixiv app API、OAuth refresh flow 和 authorization-code token exchange。当前实现使用 `resty` 作为底层 HTTP transport，主要职责：\n\n- 保存 refresh token、access token、user ID 和可从认证/用户详情接口获取到的 username。\n- 用 Pixiv Android app 风格 header 访问 API。\n- 在认证错误时 refresh token 后只重放一次原请求。\n- 将非 2xx 响应暴露为 `APIError`，保留状态码和响应体。\n\n当前已实现接口包括搜索作品、作品详情、相关作品、排行榜、用户搜索、推荐、热门标签、关注动态、用户收藏、用户关注、ugoira metadata 和直接下载 URL。\n\n### `internal/pixiv/web`\n\n封装匿名 Pixiv web/ajax API。它复用 CLI/MCP 的 HTTP proxy 配置，当前用于无 refresh token fallback：\n\n- `/ajax/search/artworks/{word}`：匿名作品搜索。\n- `/ajax/illust/{id}` 与 `/ajax/illust/{id}/pages`：作品详情和原图 URL。\n- `ranking.php?format=json`：排行榜。\n- `/ajax/illust/{id}/ugoira_meta`：ugoira zip 与 f",
+        "content": "# 架构说明\n\n## 入口与依赖方向\n\n`cmd/pixiv` 只调用 `internal/cli`。CLI 与 MCP 是 adapter；公开 Go API 是 `pkg/pixiv`。生产对象只在 `internal/bootstrap` 组装。\n\n```text\ncmd/pixiv -> internal/cli -> internal/application -> pkg/pixiv -> internal/pixiv/{appapi,webapi,oauth,resource}\n                                  ^                         ^\ninternal/mcpserver ---------------|                         |\ninternal/bootstrap ---------------+-------------------------+\n```\n\n- `internal/cli`：Cobra、flag、TTY、文本/JSON 输出、`auth login` 本地 UI adapter。业务调用经 `internal/application`，不直连内部 Pixiv transport。\n- `internal/mcpserver`：tool 注册、MCP 输入输出适配；stdio runtime 在 `internal/bootstrap` 启动。\n- `internal/application`：账号、配置、下载和 CLI/MCP 到公开 SDK 的应用编排；定义本地所需窄接口，避免公开 SDK 反向依赖 CLI/MCP。\n- `pkg/pixiv`：稳定公开模型与具体 `*pixiv.Client`；不公开大而全 interface，不启动服务。\n- `internal/pixiv/appapi`：认证 App API 主路径与写操作。\n- `internal/pixiv/webapi`：匿名白名单读和明确 Web enrichment。\n- `internal/pixiv/oauth`：refresh token 与 authorization-code exchange。\n- `internal/pixiv/resource`：受策略限制的资源流传输。\n- `internal/config` 与 `internal/storage/auth`：本地 `config.toml`、UID 账号与权限控制。\n- `internal/download`：本地作品下载和 ugoira 处理。\n\n旧 `internal/pixiv` facade 仅保留兼容入口；CLI/MCP 新领域能力经 application 使用 `pkg/pixiv`，不得直接依赖 `appapi` 或 `webapi`。\n\n## SDK、配置与认证\n\n`NewClient(Options)` 只使用显式选项，不读本地文件、不隐式认证。`OpenDefault(Options)` 使用 auth/config/环境选择账号，且每个公开操作取得新的配置快照；需要固定一个多请求操作时调用 `Snapshot(ctx)`。\n\nOpenDefault 的 token 优先级：CLI 为 `--refresh-token` > `--uid` > `PIXIV_REFRESH_TOKEN` > 默认 UID；MCP 为 `PIXIV_REFRESH_TOKEN` > 默认 UID。`CurrentUserID` 只能从 OpenDefault 的认证快照取得，显式 access token 不臆测所属 UID。\n\n## 上游路由\n\n- 有 refresh token：App API 是主路径。App 认证、网络、服务端失败不自动回退 Web。\n- 无 refresh token 且 `web_fallback_enabled=true`：仅匿名白名单读操作可走 Web API。\n- `IllustDetail` 的 pages 补全与原始 ugoira resource metadata 是明确 enrichment；不是失败回退。\n- 资源访问不需要 OAuth，但必须通过 `ResourceRef` policy 校验。\n\n## 分页与资源\n\nSDK `Cursor` 是版本化、不透明、绑定查询及 OpenDefault source 的 continuation。调用方只传回 `NextCursor`；CLI/MCP 把它适配为 `limit`/逻辑 `page`，不泄漏 token。\n\n`ParseResourceRef` 只接受 Pixiv 官方资源域名，或调用方在 `ResourcePolicy` 显式批准的 mirror host/path prefix。`OpenResource` 仅转发 `Range`、`If-None-Match`、`If-Modified-Since`，过滤响应 header 并返回未预读流；调用方关闭 `Body`。`Download` 流式写入临时文件，成功后原子替换目标。\n\n## 日志与错误\n\n日志使用显式注入 `slog.Logger`；SDK 未注入时静默，不调用 `slog.Default`。CLI/MCP root logger 从 `log_level`/`log_format` 或 `PIXIV_LOG_LEVEL`/`PIXIV_LOG_FORMAT` 构造，输出 stderr。字段包括 component、operation、backend、duration、result、error_code、status 与已验证 ID，不记录 token、cookie、完整 URL、查询或 resource header。\n\nSDK 以 `*pixiv.Error` 暴露 `Code`、`Operation`、`Backend`、`Retryable`、安全状态码和 ID；调用方用 `errors.As` 或 `errors.Is` 分支。MCP 的 SDK 用户列表及收藏/关注写操作失败使用 `isError=true`，保留安全文本和 structured output；遗留 tool 保持既有文本结果兼容，不承诺统一 `isError`。\n\n## 不在本仓库边界\n\n本仓库不实现 HTTP API、Provider HTTP server、Discover/Probe/Capabilities、RSS、crawler、采集 source mode、预算、过滤、cursor 存储、数据库写入或图库调度。外部项目应围绕其领域定义窄 adapter；详见 [ADR 0007](adr/0007-public-pixiv-sdk-and-caller-adapter.md)。\n",
         "backlinks": []
       }
     },
@@ -161,12 +193,12 @@
       "type": "article",
       "name": "开发流程",
       "filePath": "development.md",
-      "summary": "项目是 Go module，当前 `go.mod` 声明：",
+      "summary": "`go.mod` 声明 Go `1.26.3`。开工前检查：",
       "tags": [],
       "complexity": "simple",
       "knowledgeMeta": {
         "wikilinks": [],
-        "content": "# 开发流程\n\n## 环境检查\n\n项目是 Go module，当前 `go.mod` 声明：\n\n```text\ngo 1.26.3\n```\n\n开工前建议检查：\n\n```bash\ngo version\ngo test ./...\nsh scripts/build.sh\n```\n\nugoira GIF 转换需要 `ffmpeg`：\n\n```bash\nffmpeg -version\n```\n\n没有 `ffmpeg` 时，普通图片下载仍可工作；ugoira 转换会失败并返回明确错误。\n\n## 运行\n\n构建：\n\n```bash\nsh scripts/build.sh\n```\n\n默认输出到当前平台的 `build/pixiv` 或 `build/pixiv.exe`。Windows 通过 Git Bash、MSYS2 或 WSL 运行；需要交叉构建时继续直接使用 `go build`。\n\nCLI 运行：\n\n```bash\npixiv auth login\npixiv search \"初音ミク\" --json\npixiv download 123456\n```\n\nMCP stdio 运行：\n\n```bash\nPIXIV_REFRESH_TOKEN=... \\\nDOWNLOAD_PATH=./downloads \\\nFILENAME_TEMPLATE=\"{author} - {title}_{id}\" \\\n./build/pixiv mcp\n```\n\n真实 token 写在 inline 环境变量里也可能进入 shell history；长期使用建议通过 MCP client 的私密环境配置或本地账号管理。\n\n如网络环境需要代理，可额外设置：\n\n```bash\nhttps_proxy=http://127.0.0.1:7890 ./build/pixiv mcp\n```\n\n或只给本次启动覆盖代理：\n\n```bash\n./build/pixiv mcp --proxy http://127.0.0.1:7890\n./build/pixiv mcp --no-proxy\n```\n\nCLI 多账号认证保存在 `os.UserConfigDir()/pixiv/auth.json`，账号 key 是 Pixiv UID；全局配置保存在 `os.UserConfigDir()/pixiv/config.toml`，两个文件权限都为 `0600`。推荐使用 `pixiv auth login` 通过本地 loopback server 和浏览器 OAuth 登录；`auth add` 仍可从 stdin 读取 token，也支持 `--token`，但不建议在共享 shell 历史环境中使用。可用 `pixiv config path/get/set/unset` 管理全局配置。无 refresh token 时默认启用匿名 Pixiv web/ajax API fallback，可用 `pixiv config set web_fallback_enabled false` 关闭。\nCLI 使用 Cobra/pflag，flag 可以写在位置参数前后；例如 `pixiv auth check 12345678 --json` 和 `pixiv search \"初音ミク\" --json` 都受支持。\n\n## 获取 refresh token\n\n浏览器 Cookie 里的 `PHPSESSID`、`device_token` 不是 Pixiv App API OAuth refresh token。推荐直接登录并保存账号：\n\n```bash\npixiv auth login\n```\n\n| 项 | 说明 |\n| --- | --- |\n| 本地服务 | CLI 生成 PKCE/state，并启动本地 loopback HTTP server。 |\n| 浏览器 | macOS 默认优先注册本地 `pixiv://` callback helper 并打开默认浏览器，因此可复用已有 Pixiv 登录态；需要用户在 Pixiv 页面确认账号；`--no-open` 可改为只打印登录 URL。 |\n| 自动/手动回填 | CLI 默认通过 `pixiv://` helper、浏览器 URL/session 只读观察或 DevTools fallback 捕获 `pixiv://account/login`/官方 callback 请求，并保留终端粘贴兜底；若浏览器没有自动返回，也可在本地页面粘贴 callback URL、`pixiv://...` URL、Pixiv relay URL 或原始 code。 |\n| state 校验 | 本地 loopback 回调必须匹配本次 state；Pixiv 官方 callback URL 与 `pixiv://account/login` 可在 Pixiv 未返回 state 时作为显式 fallback。 |\n| token 保存 | refresh/access token 不打印；refresh token 按 Pixiv UID 写入 `auth.json`，权限为 `0600`。 |\n\n默认浏览器打开时，macOS 会优先安装/注册一个本地 `PixivCLIURLHandler.app`，只把 Pixiv 返回的 `pixiv://account/login?...` URL 转交给本轮 CLI loopback，不读取 cookie、token 或浏览器存储。若本机无法注册该 helper，CLI 才退回专用 Chromium/Edge 用户资料目录并通过 DevTools 只监听 Pixiv OAuth 请求 URL；该 fallback 不安装扩展、不点击页面、不读取 cookie 或 token。macOS 的浏览器 URL 观察仍支持 Microsoft Edge、Chrome、Chromium 与 Safari，会读取浏览器标签页 URL，并扫描 Chromium 系浏览器的 session/history 状态文件；遇到 Pixiv `post-redirect` 授权接力页时会校验其 `return_to` 属于本轮 OAuth，然后等待 Pixiv 触发 `pixiv://` handoff，不再自动重开白页。浏览器可能停留在白色 relay 页，是否成功以终端最终输出为准。若手动粘贴 Pixiv relay URL，CLI 会打开该 relay URL 一次。状态不可读或 Pixiv 未生成 callback 时不会隐藏失败或假装登录成功，用户仍可用终端 prompt 或本地页面手动回填授权码。\n\n浏览器使用的系统代理不会自动传给 Go CLI。若 Pixiv token exchange 需要代理，请配置 `pixiv config set https_proxy http://127.0.0.1:7890`，在单次命令前设置 `https_proxy=...`，或对网络命令使用运行期覆盖 `--proxy http://127.0.0.1:789",
+        "content": "# 开发流程\n\n## 环境与验证\n\n`go.mod` 声明 Go `1.26.3`。开工前检查：\n\n```bash\ngo version\ngo test ./...\ngo test -race ./...\ngo vet ./...\nsh scripts/build.sh\n```\n\nugoira 转换还需 `ffmpeg`；缺失时普通图片可下载，ugoira 返回明确错误。\n\n真实 Web fallback e2e 不属于默认回归，只有显式设置环境变量才联网：\n\n```bash\nPIXIV_E2E_WEB_API=1 PIXIV_WEB_API_PROXY=http://127.0.0.1:7890 go test ./test/e2e -run WebAPIFallbackReal -count=1 -v\n```\n\n## 公共 SDK 开发\n\n公开 API 只放 `pkg/pixiv`，保持具体 `*pixiv.Client`、稳定 request/result/model、opaque `Cursor` 与 `*pixiv.Error`。不要把 CLI/MCP 类型、内部 transport 或上游 wire model 泄漏到包外；也不要为未来调用方预建大 interface。\n\n调用方需接口时，在调用方拥有的 adapter 中按实际需要定义窄 interface。例如采集服务可定义只含 `SearchIllust` 和 `IllustDetail` 的接口，再用 `*pixiv.Client` 适配。调用方负责 source mode、budget、filters、cursor 持久化、入库和调度。\n\n新增或变更公开 API 时：\n\n1. 先写 external package test，确认导入方可用的行为。\n2. 保持 `NewClient` 无本地 I/O；`OpenDefault` 每操作取快照。\n3. 对网络、认证、资源、cursor 路由补充聚焦测试。\n4. 同步 [SDK 接口](../pixiv-sdk-interface.md)、README、架构、CHANGELOG 和知识图谱。\n\n## 配置、日志与运行\n\n`auth.json` 与 `config.toml` 位于 `os.UserConfigDir()/pixiv/`，写入权限为 `0600`。可通过：\n\n```bash\npixiv config set log_level debug\npixiv config set log_format json\nPIXIV_LOG_LEVEL=warn PIXIV_LOG_FORMAT=text pixiv search \"初音ミク\"\n```\n\n有效日志等级：`trace`、`debug`、`info`、`warn`、`error`；格式：`text`、`json`。SDK 只有传入 `Options.Logger` 才记录日志；MCP stdout 为 JSON-RPC，所有诊断写 stderr。\n\n代理优先级是 `--proxy` > `https_proxy`/`HTTPS_PROXY` > `config.toml`。不要记录 token、cookie、完整 URL 或查询内容。\n\n## 文档与 Git\n\n用户可见的 CLI、MCP、配置、SDK 或安全变化写入 `CHANGELOG.md` 的 `[Unreleased]`。API/结构变更同步 README、相关 `docs/`、ADR 与两份 `.understand-anything` 图谱。不要提交 token、下载内容、数据库、缓存、日志或本机配置。\n\n提交前至少运行与改动匹配的测试及：\n\n```bash\ngit diff --check\n```\n",
         "backlinks": []
       }
     },
@@ -175,1144 +207,325 @@
       "type": "article",
       "name": "MCP 工具",
       "filePath": "mcp-tools.md",
-      "summary": "当前 server 通过 `pixiv mcp` 以 stdio 注册以下 MCP tools。",
+      "summary": "以 `pixiv mcp` 启动 stdio server。stdout 仅用于 JSON-RPC，日志写 stderr。MCP 不提供 HTTP endpoint。",
       "tags": [],
       "complexity": "simple",
       "knowledgeMeta": {
         "wikilinks": [],
-        "content": "# MCP 工具\n\n当前 server 通过 `pixiv mcp` 以 stdio 注册以下 MCP tools。\n\n无 refresh token 且 `web_fallback_enabled=true` 时，`download`、`search_illust`、`illust_detail`、`illust_ranking`、`search_user`、`get_thumbnail_base64` 会走匿名 Pixiv web/ajax API fallback。有 refresh token 时仍优先 App API；App API 认证、网络或服务端错误不会自动 fallback。\n\n## 配置与认证\n\n- `set_download_path`\n  - 参数：`path`\n  - 设置默认下载目录。路径为空会返回错误；设置时会尝试创建目录。\n- `refresh_token`\n  - 参数：无\n  - 使用已保存的 refresh token 刷新 Pixiv API token；成功时显示用户 ID，若 API 可提供则同时显示用户名。\n- `set_refresh_token`\n  - 参数：`refresh_token`\n  - 在当前 MCP 会话设置 refresh token，并立即尝试认证；不会写入 `auth.json`。成功时显示用户 ID，若 API 可提供则同时显示用户名。参数可直接传原始 token，也可传包含 `refresh_token=...` 的 Cookie 字符串；仅包含 `PHPSESSID`/`device_token` 的网页 Cookie 不能用于 App API OAuth 刷新。\n\n## 下载\n\n- `download`\n  - 参数：`illust_id` 或 `illust_ids`，可选 `delivery`\n  - 同步下载作品，完成后返回中文摘要和 structured output。默认 `delivery` 为 `local_path`，会返回本地路径、`file://` URI、MIME 和文件大小。\n  - 当 `delivery` 为 `image_content` 时，还会为每个已下载文件追加 MCP `ImageContent`。文本摘要和 structured output 仍会返回，供不支持图片输入的客户端或模型使用。\n  - 匿名 fallback 下，静态作品通过 `/ajax/illust/{id}/pages` 的 `original` URL 下载；ugoira 通过 `/ajax/illust/{id}/ugoira_meta` 获取 zip 与 frames 后继续复用本地 `ffmpeg` 转 GIF。\n- `download_random_from_recommendation`\n  - 参数：`count`，可选 `delivery`\n  - 从推荐作品中随机选择并同步下载。当前默认 5 个，最多 20 个，返回格式与 `download` 一致。\n\n## 作品浏览\n\n- `search_illust`\n  - 参数：`word`、`search_target`、`sort`、`duration`、`offset`、`search_r18`、`include_thumbnail`\n  - 搜索插画。`search_r18` 为 true 时会在搜索词后追加 `R-18`。\n- `illust_detail`\n  - 参数：`illust_id`\n  - 获取单个作品详情，当前以格式化 JSON 返回。\n- `illust_related`\n  - 参数：`illust_id`、`offset`、`include_thumbnail`\n  - 获取相关作品。\n- `illust_ranking`\n  - 参数：`mode`、`date`、`offset`、`include_thumbnail`\n  - 浏览 Pixiv 排行榜。默认 `mode` 为 `day`。\n- `illust_recommended`\n  - 参数：`offset`、`include_thumbnail`\n  - 获取个性化推荐，需要认证。\n- `trending_tags_illust`\n  - 参数：无\n  - 获取当前热门插画标签。\n- `illust_follow`\n  - 参数：`restrict`、`offset`、`include_thumbnail`\n  - 获取关注用户的新作品，需要认证。默认 `restrict` 为 `public`。\n- `get_thumbnail_base64`\n  - 参数：`illust_id`\n  - 获取作品缩略图并返回 `data:image/jpeg;base64,...` 文本。\n\n## 用户相关\n\n- `search_user`\n  - 参数：`word`、`offset`\n  - 搜索 Pixiv 用户。匿名 fallback 下不是官方用户名搜索，而是通过作品搜索结果按 `userId` 去重返回“相关作品作者”。\n- `user_bookmarks`\n  - 参数：`user_id_to_check`、`restrict`、`tag`、`max_bookmark_id`\n  - 查询用户收藏，需要认证。未提供用户 ID 时使用当前认证用户。\n- `user_following`\n  - 参数：`user_id_to_check`、`restrict`、`offset`\n  - 查询用户关注列表，需要认证。未提供用户 ID 时使用当前认证用户。\n",
+        "content": "# MCP 工具\n\n以 `pixiv mcp` 启动 stdio server。stdout 仅用于 JSON-RPC，日志写 stderr。MCP 不提供 HTTP endpoint。\n\n有 refresh token 时 App API 为主路径，失败不自动回落 Web；无 refresh token 且 `web_fallback_enabled=true` 时，仅匿名白名单读 tool 可用 Web API。SDK 路径的用户列表和收藏/关注写操作同时返回文本内容与 structured output；其可分类失败会令 result `isError=true`，保留安全错误文本和对应 structured output。遗留 MCP tool 保持既有文本结果兼容，不承诺统一 `isError` 语义。\n\n## 分页\n\n新 SDK 列表 tool 均使用：\n\n- `limit`：最大项目数；`0` 表示跟随上游直到没有下一批；不传时兼容为一个上游批次。\n- `page`：从 1 开始的逻辑页，必须配正数 `limit`。\n- 输出 `pagination.page`、`limit`、`returned`、`has_more`、可选 `next_page`。\n\nSDK cursor 不出现在 MCP 参数或输出。`user_bookmarks.max_bookmark_id` 是旧 continuation，已废弃，不能与 `page` 或 `limit` 同用。`user_following.offset` 是旧逻辑 offset，已废弃，仅与 `page` 互斥，允许和 `limit` 同用。\n\n## 配置、认证与下载\n\n| tool | 参数 | structured output |\n| --- | --- | --- |\n| `set_download_path` | `path` | 文本状态。 |\n| `refresh_token` | 无 | 当前认证账号摘要。 |\n| `set_refresh_token` | `refresh_token` | 当前会话认证结果；不写 `auth.json`。 |\n| `download` | `illust_id` 或 `illust_ids`，可选 `delivery` | 下载文件、URI、MIME、大小；`image_content` 另附 ImageContent。 |\n| `download_random_from_recommendation` | `count`，可选 `delivery` | 同 `download`。 |\n\n## 作品与用户读取\n\n| tool | 参数 | structured output |\n| --- | --- | --- |\n| `search_illust` | `word`、`search_target`、`sort`、`duration`、`offset`、`search_r18`、`include_thumbnail` | 作品列表。 |\n| `illust_detail` | `illust_id` | 作品详情。 |\n| `illust_related` | `illust_id`、`offset`、`include_thumbnail` | 相关作品。 |\n| `illust_ranking` | `mode`、`date`、`offset`、`include_thumbnail` | 排行榜作品。 |\n| `illust_recommended` | `offset`、`include_thumbnail` | 推荐作品；需要认证。 |\n| `trending_tags_illust` | 无 | 热门标签。 |\n| `illust_follow` | `restrict`、`offset`、`include_thumbnail` | 关注新作；需要认证。 |\n| `search_user` | `word`、`offset` | 用户列表；匿名 fallback 是相关作者去重，不是官方用户名搜索。 |\n| `get_thumbnail_base64` | `illust_id` | `data:image/jpeg;base64,...`。 |\n| `user_artworks` | 可选 `user_id`、`type`、`page`、`limit` | `{user_id, items, pagination}`；缺省 UID 为当前认证用户。 |\n| `user_bookmarks` | 可选 `user_id`、旧 alias `user_id_to_check`、`restrict`、`tag`、`page`、`limit`、废弃 `max_bookmark_id` | `{user_id, items, pagination}`；缺省 UID 为当前认证用户。 |\n| `user_following` | 可选 `user_id`、旧 alias `user_id_to_check`、`restrict`、`page`、`limit`、废弃 `offset` | `{user_id, items, pagination}`；缺省 UID 为当前认证用户。 |\n\n## 写操作\n\n| tool | 参数 | structured output |\n| --- | --- | --- |\n| `add_bookmark` | `illust_id`、可选 `restrict`、`tags` | `{success, action, illust_id}`。 |\n| `remove_bookmark` | `illust_id` | `{success, action, illust_id}`。 |\n| `follow_user` | `user_id`、可选 `restrict` | `{success, action, user_id}`。 |\n| `unfollow_user` | `user_id` | `{success, action, user_id}`。 |\n\n表中写操作均走 SDK 路径、需要认证；失败 `success=false` 且 MCP result 为 `isError=true`。\n",
         "backlinks": []
       }
     },
     {
-      "id": "topic:项目定位",
+      "id": "topic:adr",
       "type": "topic",
-      "name": "项目定位",
-      "summary": "Category from index: 项目定位 (0 articles)",
+      "name": "ADR",
+      "summary": "Category from index: ADR (0 articles)",
       "tags": [
         "category"
       ],
       "complexity": "simple"
     },
     {
-      "id": "topic:文档目录",
-      "type": "topic",
-      "name": "文档目录",
-      "summary": "Category from index: 文档目录 (0 articles)",
+      "id": "entity:pixiv",
+      "type": "entity",
+      "name": "Pixiv",
+      "summary": "本项目集成的插画平台及其 App API、Web API 和 OAuth 服务提供方。",
       "tags": [
-        "category"
+        "entity",
+        "platform"
       ],
       "complexity": "simple"
     },
     {
-      "id": "topic:快速命令",
-      "type": "topic",
-      "name": "快速命令",
-      "summary": "Category from index: 快速命令 (0 articles)",
+      "id": "entity:github",
+      "type": "entity",
+      "name": "GitHub",
+      "summary": "承载仓库、Pull Request、Actions 和 Release 自动化的代码托管平台。",
       "tags": [
-        "category"
+        "entity",
+        "platform"
       ],
       "complexity": "simple"
     },
     {
-      "id": "entity:internal-cli",
+      "id": "entity:github-mcp-server",
       "type": "entity",
-      "name": "internal/cli",
-      "summary": "CLI controller 层：Cobra 命令树、TTY 交互、OAuth loopback 和文本/JSON 输出。",
+      "name": "GitHub MCP Server",
+      "summary": "ADR 0003 用作 MCP server 形态参考的外部项目。",
       "tags": [
-        "package",
-        "cli"
-      ],
-      "complexity": "moderate"
-    },
-    {
-      "id": "entity:internal-application",
-      "type": "entity",
-      "name": "internal/application",
-      "summary": "应用用例层：Account/Config/Artwork/Download/Login 五个 service。",
-      "tags": [
-        "package",
-        "use-case"
-      ],
-      "complexity": "moderate"
-    },
-    {
-      "id": "entity:internal-bootstrap",
-      "type": "entity",
-      "name": "internal/bootstrap",
-      "summary": "生产 composition root，唯一组装 config、auth storage、Pixiv source、download、MCP runtime 的地方。",
-      "tags": [
-        "package",
-        "wiring"
-      ],
-      "complexity": "moderate"
-    },
-    {
-      "id": "entity:pixiv-source-facade",
-      "type": "entity",
-      "name": "internal/pixiv facade",
-      "summary": "Pixiv 领域 facade，CLI/MCP 通过它使用 App API 与 web fallback，不直接依赖子包。",
-      "tags": [
-        "package",
-        "facade"
-      ],
-      "complexity": "moderate"
-    },
-    {
-      "id": "entity:pixiv-app-api",
-      "type": "entity",
-      "name": "Pixiv App API",
-      "summary": "internal/pixiv/api 封装的官方 App API：OAuth refresh、Android 风格 header、认证错误只重放一次。",
-      "tags": [
-        "pixiv",
-        "api"
-      ],
-      "complexity": "complex"
-    },
-    {
-      "id": "entity:pixiv-web-fallback",
-      "type": "entity",
-      "name": "Pixiv web fallback",
-      "summary": "internal/pixiv/web 封装的匿名 web/ajax API，仅在无 refresh token 且 web_fallback_enabled=true 时使用。",
-      "tags": [
-        "pixiv",
-        "fallback"
-      ],
-      "complexity": "complex"
-    },
-    {
-      "id": "entity:internal-mcpserver",
-      "type": "entity",
-      "name": "internal/mcpserver",
-      "summary": "MCP tool 注册与输入/输出适配；stdio runtime 由 bootstrap 启动。",
-      "tags": [
-        "package",
-        "mcp"
-      ],
-      "complexity": "moderate"
-    },
-    {
-      "id": "entity:internal-download",
-      "type": "entity",
-      "name": "internal/download",
-      "summary": "下载队列与落盘：多页作品子目录、ugoira zip 与 ffmpeg 转 GIF，内部并发 5。",
-      "tags": [
-        "package",
-        "download"
-      ],
-      "complexity": "moderate"
-    },
-    {
-      "id": "entity:auth-json",
-      "type": "entity",
-      "name": "auth.json",
-      "summary": "UID key 的本地账号存储，含 default_user_id 与 refresh token，权限 0600。",
-      "tags": [
-        "storage",
-        "auth"
+        "entity",
+        "precedent"
       ],
       "complexity": "simple"
     },
     {
-      "id": "entity:config-toml",
+      "id": "entity:github-cli",
       "type": "entity",
-      "name": "config.toml",
-      "summary": "全局配置文件，稀疏写入只保存用户显式设置的键，权限 0600。",
+      "name": "GitHub CLI",
+      "summary": "ADR 0003 用作 Go CLI 结构参考的外部项目。",
       "tags": [
-        "storage",
-        "config"
+        "entity",
+        "precedent"
       ],
       "complexity": "simple"
     },
     {
-      "id": "entity:refresh-token",
+      "id": "entity:ant-design",
       "type": "entity",
-      "name": "refresh token",
-      "summary": "Pixiv App API OAuth refresh token；不得打印，优先级 CLI flag > UID 账号 > 环境变量 > 默认 UID。",
+      "name": "Ant Design",
+      "summary": "ADR 0003 用作 repository-local skills 布局参考的外部项目。",
       "tags": [
-        "auth",
-        "security"
-      ],
-      "complexity": "moderate"
-    },
-    {
-      "id": "entity:oauth-loopback",
-      "type": "entity",
-      "name": "OAuth loopback server",
-      "summary": "auth login 启动的本地回调 HTTP server，回调必须匹配本轮 state。",
-      "tags": [
-        "auth",
-        "oauth"
-      ],
-      "complexity": "moderate"
-    },
-    {
-      "id": "entity:pkce",
-      "type": "entity",
-      "name": "PKCE/state",
-      "summary": "LoginService 生成的 OAuth 防伪参数，code exchange 与账号保存在 application 层。",
-      "tags": [
-        "auth",
-        "oauth"
+        "entity",
+        "precedent"
       ],
       "complexity": "simple"
     },
     {
-      "id": "entity:pixiv-url-handler",
+      "id": "entity:codex",
       "type": "entity",
-      "name": "pixiv:// URL handler",
-      "summary": "macOS 本地 helper app，只把 pixiv://account/login 回调转发给本轮 CLI loopback，不读 cookie/token。",
+      "name": "Codex",
+      "summary": "ADR 0003 用作架构 guardrail 参考的 AI 编码工具。",
       "tags": [
-        "auth",
-        "macos"
+        "entity",
+        "tool"
       ],
-      "complexity": "moderate"
+      "complexity": "simple"
     },
     {
-      "id": "entity:post-redirect-relay",
+      "id": "entity:fanbox",
       "type": "entity",
-      "name": "post-redirect 授权接力页",
-      "summary": "accounts.pixiv.net/post-redirect 是 Pixiv 授权接力页而非 callback，CLI 校验 return_to 但不绕过它。",
+      "name": "FANBOX",
+      "summary": "使用 Pixiv 账号登录的第一方 Web 产品，但其 Web 会话不能替代 Pixiv App API 授权码。",
       "tags": [
-        "auth",
-        "pixiv"
+        "entity",
+        "platform"
       ],
-      "complexity": "moderate"
+      "complexity": "simple"
     },
     {
-      "id": "entity:devtools-fallback",
+      "id": "entity:chromium",
       "type": "entity",
-      "name": "DevTools 回调观察 fallback",
-      "summary": "URL handler 不可用时用受管 Chromium/Edge + DevTools 只观察 OAuth 请求 URL，不点击页面不读存储。",
+      "name": "Chromium",
+      "summary": "在本地 URL handler 不可用时，可由登录流程以 DevTools 连接方式观察 OAuth 回调的浏览器。",
       "tags": [
-        "auth",
-        "browser"
+        "entity",
+        "tool"
       ],
-      "complexity": "moderate"
-    },
-    {
-      "id": "entity:ugoira",
-      "type": "entity",
-      "name": "ugoira",
-      "summary": "Pixiv 动图作品：先下载 zip 再用 ffmpeg 合成 GIF；ffmpeg 缺失时报明确错误。",
-      "tags": [
-        "download",
-        "media"
-      ],
-      "complexity": "moderate"
+      "complexity": "simple"
     },
     {
       "id": "entity:ffmpeg",
       "type": "entity",
       "name": "ffmpeg",
-      "summary": "ugoira GIF 转换依赖的本机命令，缺失不影响普通图片下载。",
+      "summary": "开发文档注明 ugoira 转换所需的外部媒体处理工具。",
       "tags": [
-        "dependency"
+        "entity",
+        "tool"
       ],
       "complexity": "simple"
     },
     {
-      "id": "entity:mcp-stdio-server",
-      "type": "entity",
-      "name": "MCP stdio server",
-      "summary": "pixiv mcp 显式启动；stdout 保留给 JSON-RPC，日志写 stderr。",
+      "id": "claim:adr-0001:layered-adapters-and-bootstrap",
+      "type": "claim",
+      "name": "CLI/MCP 是 adapter，bootstrap 是唯一生产组装入口",
+      "summary": "CLI 只保留命令与呈现职责，MCP 只适配协议；业务用例位于 application，生产对象只能在 bootstrap 组装。",
       "tags": [
-        "mcp",
-        "runtime"
-      ],
-      "complexity": "moderate"
-    },
-    {
-      "id": "entity:pixiv-uid",
-      "type": "entity",
-      "name": "Pixiv UID",
-      "summary": "本地账号的唯一 key；username 只是显示元数据，选择器用 --uid。",
-      "tags": [
-        "auth",
-        "identity"
+        "claim",
+        "architecture"
       ],
       "complexity": "simple"
     },
     {
-      "id": "entity:internal-utils",
-      "type": "entity",
-      "name": "internal/utils/*",
-      "summary": "协议无关工具子包（files/text/uri/media/parse）；根包放带项目语义的下载/文件名工具。",
+      "id": "claim:adr-0002:protocol-free-utils-only",
+      "type": "claim",
+      "name": "utils 只承载无协议语义的共享辅助",
+      "summary": "internal/utils 只能承载不含 CLI、MCP、OAuth、Pixiv 协议或配置 schema 语义的可复用辅助；common/constants 仅是狭窄的基础设施例外。",
       "tags": [
-        "package",
-        "utils"
+        "claim",
+        "architecture"
       ],
       "complexity": "simple"
     },
     {
-      "id": "entity:internal-common-constants",
-      "type": "entity",
-      "name": "internal/common/constants",
-      "summary": "只放跨包、无协议语义的基础设施常量；AppConfigDirName 是唯一产品命名例外。",
+      "id": "claim:adr-0004:uid-is-account-key",
+      "type": "claim",
+      "name": "Pixiv UID 是本地账户主键",
+      "summary": "auth.json 以 user_id 存储账户并以 default_user_id 选择默认项，username 仅作展示元数据。",
       "tags": [
-        "package",
-        "constants"
+        "claim",
+        "authentication"
       ],
       "complexity": "simple"
     },
     {
-      "id": "entity:docs-mcp-tools",
-      "type": "entity",
-      "name": "docs/mcp-tools.md",
-      "summary": "MCP tool 名称、参数与返回语义的权威文档，tool 变更必须同步。",
+      "id": "claim:adr-0005:browser-callback-without-automation",
+      "type": "claim",
+      "name": "登录捕获真实浏览器回调而不自动操作页面",
+      "summary": "auth login 使用 PKCE 与本地回调/手动回退，仅观察最终 OAuth 回调，不读取 Cookie、token、存储或自动点击页面。",
       "tags": [
-        "docs",
+        "claim",
+        "authentication"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "claim:adr-0006:ugoira-web-enrichment-is-explicit",
+      "type": "claim",
+      "name": "original ugoira Web metadata 是显式 enrichment",
+      "summary": "original ugoira 资源可通过 Web metadata 补全，但 App API 仍是主路径，App 失败不得自动 fallback。",
+      "tags": [
+        "claim",
+        "routing"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "claim:adr-0007:public-concrete-sdk-and-caller-adapters",
+      "type": "claim",
+      "name": "公开具体 SDK，调用方拥有窄 adapter",
+      "summary": "pkg/pixiv 提供具体 Client、稳定模型、opaque cursor、typed error 和资源 API；外部调用方自行拥有领域 adapter 与运行策略。",
+      "tags": [
+        "claim",
+        "sdk"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "claim:architecture:token-aware-routing",
+      "type": "claim",
+      "name": "路由取决于 refresh token 与显式 Web fallback 配置",
+      "summary": "有 refresh token 时 App API 为主且失败不回退；仅无 token 且启用 web_fallback_enabled 的匿名白名单读取可走 Web API。",
+      "tags": [
+        "claim",
+        "routing"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "claim:mcp-tools:stdio-protocol-boundary",
+      "type": "claim",
+      "name": "MCP stdout 仅承载 JSON-RPC",
+      "summary": "pixiv mcp 不提供 HTTP endpoint；stdout 只输出 JSON-RPC，日志和人类可读诊断必须写入 stderr。",
+      "tags": [
+        "claim",
         "mcp"
-      ],
-      "complexity": "simple"
-    },
-    {
-      "id": "entity:changelog",
-      "type": "entity",
-      "name": "CHANGELOG.md",
-      "summary": "Keep a Changelog 1.1.0 风格；用户可感知变化写入 [Unreleased]。",
-      "tags": [
-        "docs",
-        "process"
-      ],
-      "complexity": "simple"
-    },
-    {
-      "id": "claim:0001-cli-thin-controller-and-bootstrap:cli-is-thin-controller",
-      "type": "claim",
-      "name": "internal/cli 是 thin controller",
-      "summary": "CLI 只保留 Cobra、TTY、loopback OAuth 和 presenter，业务用例迁入 internal/application。",
-      "tags": [
-        "adr",
-        "boundary"
-      ],
-      "complexity": "moderate"
-    },
-    {
-      "id": "claim:0001-cli-thin-controller-and-bootstrap:bootstrap-only-composition-root",
-      "type": "claim",
-      "name": "bootstrap 是唯一生产 wiring",
-      "summary": "生产组装集中在 internal/bootstrap，测试替换小接口而非复制 wiring。",
-      "tags": [
-        "adr",
-        "boundary"
-      ],
-      "complexity": "moderate"
-    },
-    {
-      "id": "claim:0002-utils-and-common-boundaries:utils-protocol-free",
-      "type": "claim",
-      "name": "utils/* 只收协议无关 helper",
-      "summary": "带 CLI/MCP/OAuth/Pixiv/config 语义的 helper 留在 adapter 或领域包。",
-      "tags": [
-        "adr",
-        "boundary"
-      ],
-      "complexity": "simple"
-    },
-    {
-      "id": "claim:0002-utils-and-common-boundaries:constants-narrow-exception",
-      "type": "claim",
-      "name": "common/constants 是窄例外",
-      "summary": "协议值、config key、产品默认值不得进入 common/constants。",
-      "tags": [
-        "adr",
-        "boundary"
-      ],
-      "complexity": "simple"
-    },
-    {
-      "id": "claim:0003-agent-instruction-precedent-strategy:selective-precedents",
-      "type": "claim",
-      "name": "agent 指令采用选择性先例",
-      "summary": "参考多个仓库各取所长而非复制单一模板；指令变更需说明保护的边界或工作流。",
-      "tags": [
-        "adr",
-        "agents"
-      ],
-      "complexity": "simple"
-    },
-    {
-      "id": "claim:0003-agent-instruction-precedent-strategy:agents-md-canonical",
-      "type": "claim",
-      "name": "AGENTS.md 是 canonical 入口",
-      "summary": "AGENTS.md 保持简短主规则；CLAUDE.md 只引用；细则在 docs/agents 与 skills。",
-      "tags": [
-        "adr",
-        "agents"
-      ],
-      "complexity": "simple"
-    },
-    {
-      "id": "claim:0004-auth-accounts-use-pixiv-uid:accounts-keyed-by-uid",
-      "type": "claim",
-      "name": "本地账号以 Pixiv UID 为 key",
-      "summary": "default_user_id 指向默认账号，去除自定义账号名，账号身份与 Pixiv 真实身份一致。",
-      "tags": [
-        "adr",
-        "auth"
-      ],
-      "complexity": "simple"
-    },
-    {
-      "id": "claim:0004-auth-accounts-use-pixiv-uid:old-auth-incompatible",
-      "type": "claim",
-      "name": "旧 name-key auth 文件不兼容",
-      "summary": "default_account/accounts[].name 格式需要用户重新 auth add/login 重建。",
-      "tags": [
-        "adr",
-        "auth",
-        "migration"
-      ],
-      "complexity": "simple"
-    },
-    {
-      "id": "claim:0005-auth-login-real-browser-relay-without-ui-automation:no-ui-automation",
-      "type": "claim",
-      "name": "登录不做 UI 自动化",
-      "summary": "只观察回调 URL：不点击页面、不填表单、不读 cookie/token/页面存储，不做 MITM。",
-      "tags": [
-        "adr",
-        "auth",
-        "security"
-      ],
-      "complexity": "moderate"
-    },
-    {
-      "id": "claim:0005-auth-login-real-browser-relay-without-ui-automation:relay-not-callback",
-      "type": "claim",
-      "name": "post-redirect 是接力页不是 callback",
-      "summary": "CLI 校验 return_to 属于本轮 OAuth 后等待 pixiv:// handoff，不绕过或自动重开接力页。",
-      "tags": [
-        "adr",
-        "auth"
-      ],
-      "complexity": "moderate"
-    },
-    {
-      "id": "claim:architecture:single-fallback-rule",
-      "type": "claim",
-      "name": "web fallback 只有一条规则",
-      "summary": "refresh token 为空且 web_fallback_enabled=true 才走 web；App API 错误不自动 fallback。",
-      "tags": [
-        "architecture",
-        "fallback"
-      ],
-      "complexity": "moderate"
-    },
-    {
-      "id": "claim:architecture:no-fabricated-web-fields",
-      "type": "claim",
-      "name": "web 字段缺失不伪造数据",
-      "summary": "web fallback 只映射可从 web 响应确认的字段，不伪造 App API 数据。",
-      "tags": [
-        "architecture",
-        "fallback"
-      ],
-      "complexity": "simple"
-    },
-    {
-      "id": "claim:development:offline-default-tests",
-      "type": "claim",
-      "name": "默认测试离线稳定",
-      "summary": "go test ./... 不联网；真实 Pixiv e2e 需显式 PIXIV_E2E_WEB_API=1 opt-in。",
-      "tags": [
-        "testing"
-      ],
-      "complexity": "simple"
-    },
-    {
-      "id": "claim:mcp-tools:download-delivery-modes",
-      "type": "claim",
-      "name": "download 有两种 delivery",
-      "summary": "默认 local_path 返回路径/URI/MIME；image_content 追加 MCP ImageContent 且不做无依据截断。",
-      "tags": [
-        "mcp",
-        "download"
-      ],
-      "complexity": "simple"
-    },
-    {
-      "id": "claim:agents/documentation-guidelines:docs-layered",
-      "type": "claim",
-      "name": "文档按读者和稳定性分层",
-      "summary": "不把所有内容塞进根文件；公开行为进 README，内部边界进 architecture/ADR。",
-      "tags": [
-        "docs"
-      ],
-      "complexity": "simple"
-    },
-    {
-      "id": "claim:agents/review-checklist:finding-first",
-      "type": "claim",
-      "name": "review 输出 finding-first",
-      "summary": "先列问题按严重程度排序并给文件/行号，再给简短总结。",
-      "tags": [
-        "review"
-      ],
-      "complexity": "simple"
-    },
-    {
-      "id": "claim:agents/index:skills-high-frequency-only",
-      "type": "claim",
-      "name": "skills 只放高频工作流",
-      "summary": ".agents/skills 只收高频、可复用、能减少误操作的项目技能。",
-      "tags": [
-        "agents",
-        "skills"
       ],
       "complexity": "simple"
     }
   ],
   "edges": [
     {
-      "source": "article:adr/0001-cli-thin-controller-and-bootstrap",
-      "target": "claim:0001-cli-thin-controller-and-bootstrap:cli-is-thin-controller",
-      "type": "cites",
-      "direction": "forward",
-      "weight": 0.9
-    },
-    {
-      "source": "article:adr/0001-cli-thin-controller-and-bootstrap",
-      "target": "claim:0001-cli-thin-controller-and-bootstrap:bootstrap-only-composition-root",
-      "type": "cites",
-      "direction": "forward",
-      "weight": 0.9
-    },
-    {
-      "source": "article:adr/0002-utils-and-common-boundaries",
-      "target": "claim:0002-utils-and-common-boundaries:utils-protocol-free",
-      "type": "cites",
-      "direction": "forward",
-      "weight": 0.9
-    },
-    {
-      "source": "article:adr/0002-utils-and-common-boundaries",
-      "target": "claim:0002-utils-and-common-boundaries:constants-narrow-exception",
-      "type": "cites",
-      "direction": "forward",
-      "weight": 0.9
-    },
-    {
-      "source": "article:adr/0003-agent-instruction-precedent-strategy",
-      "target": "claim:0003-agent-instruction-precedent-strategy:selective-precedents",
-      "type": "cites",
-      "direction": "forward",
-      "weight": 0.9
-    },
-    {
-      "source": "article:adr/0003-agent-instruction-precedent-strategy",
-      "target": "claim:0003-agent-instruction-precedent-strategy:agents-md-canonical",
-      "type": "cites",
-      "direction": "forward",
-      "weight": 0.9
-    },
-    {
-      "source": "article:adr/0004-auth-accounts-use-pixiv-uid",
-      "target": "claim:0004-auth-accounts-use-pixiv-uid:accounts-keyed-by-uid",
-      "type": "cites",
-      "direction": "forward",
-      "weight": 0.9
-    },
-    {
-      "source": "article:adr/0004-auth-accounts-use-pixiv-uid",
-      "target": "claim:0004-auth-accounts-use-pixiv-uid:old-auth-incompatible",
-      "type": "cites",
-      "direction": "forward",
-      "weight": 0.8
-    },
-    {
-      "source": "article:adr/0005-auth-login-real-browser-relay-without-ui-automation",
-      "target": "claim:0005-auth-login-real-browser-relay-without-ui-automation:no-ui-automation",
-      "type": "cites",
-      "direction": "forward",
-      "weight": 0.9
-    },
-    {
-      "source": "article:adr/0005-auth-login-real-browser-relay-without-ui-automation",
-      "target": "claim:0005-auth-login-real-browser-relay-without-ui-automation:relay-not-callback",
-      "type": "cites",
-      "direction": "forward",
-      "weight": 0.9
-    },
-    {
-      "source": "article:architecture",
-      "target": "claim:architecture:single-fallback-rule",
-      "type": "cites",
-      "direction": "forward",
-      "weight": 0.9
-    },
-    {
-      "source": "article:architecture",
-      "target": "claim:architecture:no-fabricated-web-fields",
-      "type": "cites",
-      "direction": "forward",
-      "weight": 0.8
-    },
-    {
-      "source": "article:development",
-      "target": "claim:development:offline-default-tests",
-      "type": "cites",
-      "direction": "forward",
-      "weight": 0.9
-    },
-    {
-      "source": "article:mcp-tools",
-      "target": "claim:mcp-tools:download-delivery-modes",
-      "type": "cites",
-      "direction": "forward",
-      "weight": 0.8
-    },
-    {
-      "source": "article:agents/documentation-guidelines",
-      "target": "claim:agents/documentation-guidelines:docs-layered",
-      "type": "cites",
-      "direction": "forward",
-      "weight": 0.9
-    },
-    {
-      "source": "article:agents/review-checklist",
-      "target": "claim:agents/review-checklist:finding-first",
-      "type": "cites",
-      "direction": "forward",
-      "weight": 0.9
-    },
-    {
-      "source": "article:agents/index",
-      "target": "claim:agents/index:skills-high-frequency-only",
-      "type": "cites",
-      "direction": "forward",
-      "weight": 0.8
-    },
-    {
       "source": "article:adr/0002-utils-and-common-boundaries",
       "target": "article:adr/0001-cli-thin-controller-and-bootstrap",
       "type": "builds_on",
       "direction": "forward",
-      "weight": 0.8
+      "weight": 0.8,
+      "description": "ADR 0002 明确将 common/constants 定义为 ADR 0001 包边界规则的狭窄例外。"
     },
     {
-      "source": "article:adr/0005-auth-login-real-browser-relay-without-ui-automation",
+      "source": "article:architecture",
+      "target": "article:adr/0001-cli-thin-controller-and-bootstrap",
+      "type": "builds_on",
+      "direction": "forward",
+      "weight": 0.8,
+      "description": "架构说明将 CLI/application/bootstrap 的职责分层作为当前依赖方向。"
+    },
+    {
+      "source": "article:architecture",
+      "target": "article:adr/0002-utils-and-common-boundaries",
+      "type": "builds_on",
+      "direction": "forward",
+      "weight": 0.8,
+      "description": "架构说明沿用 utils 协议无关与 common/constants 狭窄例外的边界。"
+    },
+    {
+      "source": "article:architecture",
       "target": "article:adr/0004-auth-accounts-use-pixiv-uid",
       "type": "builds_on",
       "direction": "forward",
-      "weight": 0.6
+      "weight": 0.8,
+      "description": "架构说明以 UID 账户选择和默认 UID 描述 OpenDefault 的认证快照与优先级。"
     },
     {
-      "source": "article:agents/review-checklist",
-      "target": "article:adr/0003-agent-instruction-precedent-strategy",
-      "type": "exemplifies",
+      "source": "article:architecture",
+      "target": "article:adr/0006-original-ugoira-resource-resolution",
+      "type": "builds_on",
       "direction": "forward",
-      "weight": 0.6
+      "weight": 0.8,
+      "description": "架构说明将 original ugoira metadata 定义为显式 enrichment，而非 App API 失败后的回退。"
     },
     {
-      "source": "article:agents/documentation-guidelines",
-      "target": "article:adr/0003-agent-instruction-precedent-strategy",
-      "type": "exemplifies",
+      "source": "article:architecture",
+      "target": "article:adr/0007-public-pixiv-sdk-and-caller-adapter",
+      "type": "builds_on",
       "direction": "forward",
-      "weight": 0.6
+      "weight": 0.8,
+      "description": "架构说明以 pkg/pixiv 作为公开具体 SDK，并排除本仓库实现 HTTP Provider 等调用方领域能力。"
     },
     {
       "source": "article:development",
-      "target": "article:architecture",
-      "type": "related",
+      "target": "article:adr/0007-public-pixiv-sdk-and-caller-adapter",
+      "type": "builds_on",
       "direction": "forward",
-      "weight": 0.7
-    },
-    {
-      "source": "article:mcp-tools",
-      "target": "article:architecture",
-      "type": "related",
-      "direction": "forward",
-      "weight": 0.7
-    },
-    {
-      "source": "article:architecture",
-      "target": "entity:internal-cli",
-      "type": "related",
-      "direction": "forward",
-      "weight": 0.9
-    },
-    {
-      "source": "article:architecture",
-      "target": "entity:internal-application",
-      "type": "related",
-      "direction": "forward",
-      "weight": 0.9
-    },
-    {
-      "source": "article:architecture",
-      "target": "entity:internal-bootstrap",
-      "type": "related",
-      "direction": "forward",
-      "weight": 0.9
-    },
-    {
-      "source": "article:architecture",
-      "target": "entity:pixiv-source-facade",
-      "type": "related",
-      "direction": "forward",
-      "weight": 0.9
-    },
-    {
-      "source": "article:architecture",
-      "target": "entity:pixiv-app-api",
-      "type": "related",
-      "direction": "forward",
-      "weight": 0.8
-    },
-    {
-      "source": "article:architecture",
-      "target": "entity:pixiv-web-fallback",
-      "type": "related",
-      "direction": "forward",
-      "weight": 0.8
-    },
-    {
-      "source": "article:architecture",
-      "target": "entity:internal-mcpserver",
-      "type": "related",
-      "direction": "forward",
-      "weight": 0.8
-    },
-    {
-      "source": "article:architecture",
-      "target": "entity:internal-download",
-      "type": "related",
-      "direction": "forward",
-      "weight": 0.8
-    },
-    {
-      "source": "article:architecture",
-      "target": "entity:auth-json",
-      "type": "related",
-      "direction": "forward",
-      "weight": 0.7
-    },
-    {
-      "source": "article:architecture",
-      "target": "entity:config-toml",
-      "type": "related",
-      "direction": "forward",
-      "weight": 0.7
-    },
-    {
-      "source": "article:architecture",
-      "target": "entity:internal-utils",
-      "type": "related",
-      "direction": "forward",
-      "weight": 0.7
-    },
-    {
-      "source": "article:architecture",
-      "target": "entity:internal-common-constants",
-      "type": "related",
-      "direction": "forward",
-      "weight": 0.7
-    },
-    {
-      "source": "article:architecture",
-      "target": "entity:ugoira",
-      "type": "related",
-      "direction": "forward",
-      "weight": 0.6
-    },
-    {
-      "source": "article:architecture",
-      "target": "entity:mcp-stdio-server",
-      "type": "related",
-      "direction": "forward",
-      "weight": 0.7
-    },
-    {
-      "source": "article:adr/0001-cli-thin-controller-and-bootstrap",
-      "target": "entity:internal-cli",
-      "type": "related",
-      "direction": "forward",
-      "weight": 0.9
-    },
-    {
-      "source": "article:adr/0001-cli-thin-controller-and-bootstrap",
-      "target": "entity:internal-application",
-      "type": "related",
-      "direction": "forward",
-      "weight": 0.9
-    },
-    {
-      "source": "article:adr/0001-cli-thin-controller-and-bootstrap",
-      "target": "entity:internal-bootstrap",
-      "type": "related",
-      "direction": "forward",
-      "weight": 0.9
-    },
-    {
-      "source": "article:adr/0001-cli-thin-controller-and-bootstrap",
-      "target": "entity:refresh-token",
-      "type": "related",
-      "direction": "forward",
-      "weight": 0.6
-    },
-    {
-      "source": "article:adr/0002-utils-and-common-boundaries",
-      "target": "entity:internal-utils",
-      "type": "related",
-      "direction": "forward",
-      "weight": 0.9
-    },
-    {
-      "source": "article:adr/0002-utils-and-common-boundaries",
-      "target": "entity:internal-common-constants",
-      "type": "related",
-      "direction": "forward",
-      "weight": 0.9
-    },
-    {
-      "source": "article:adr/0004-auth-accounts-use-pixiv-uid",
-      "target": "entity:pixiv-uid",
-      "type": "related",
-      "direction": "forward",
-      "weight": 0.9
-    },
-    {
-      "source": "article:adr/0004-auth-accounts-use-pixiv-uid",
-      "target": "entity:auth-json",
-      "type": "related",
-      "direction": "forward",
-      "weight": 0.9
-    },
-    {
-      "source": "article:adr/0005-auth-login-real-browser-relay-without-ui-automation",
-      "target": "entity:oauth-loopback",
-      "type": "related",
-      "direction": "forward",
-      "weight": 0.8
-    },
-    {
-      "source": "article:adr/0005-auth-login-real-browser-relay-without-ui-automation",
-      "target": "entity:pkce",
-      "type": "related",
-      "direction": "forward",
-      "weight": 0.8
-    },
-    {
-      "source": "article:adr/0005-auth-login-real-browser-relay-without-ui-automation",
-      "target": "entity:pixiv-url-handler",
-      "type": "related",
-      "direction": "forward",
-      "weight": 0.9
-    },
-    {
-      "source": "article:adr/0005-auth-login-real-browser-relay-without-ui-automation",
-      "target": "entity:post-redirect-relay",
-      "type": "related",
-      "direction": "forward",
-      "weight": 0.9
-    },
-    {
-      "source": "article:adr/0005-auth-login-real-browser-relay-without-ui-automation",
-      "target": "entity:devtools-fallback",
-      "type": "related",
-      "direction": "forward",
-      "weight": 0.8
-    },
-    {
-      "source": "article:adr/0005-auth-login-real-browser-relay-without-ui-automation",
-      "target": "entity:refresh-token",
-      "type": "related",
-      "direction": "forward",
-      "weight": 0.7
-    },
-    {
-      "source": "article:development",
-      "target": "entity:ffmpeg",
-      "type": "related",
-      "direction": "forward",
-      "weight": 0.7
-    },
-    {
-      "source": "article:development",
-      "target": "entity:auth-json",
-      "type": "related",
-      "direction": "forward",
-      "weight": 0.7
-    },
-    {
-      "source": "article:development",
-      "target": "entity:config-toml",
-      "type": "related",
-      "direction": "forward",
-      "weight": 0.7
-    },
-    {
-      "source": "article:development",
-      "target": "entity:oauth-loopback",
-      "type": "related",
-      "direction": "forward",
-      "weight": 0.7
-    },
-    {
-      "source": "article:development",
-      "target": "entity:refresh-token",
-      "type": "related",
-      "direction": "forward",
-      "weight": 0.8
-    },
-    {
-      "source": "article:development",
-      "target": "entity:changelog",
-      "type": "related",
-      "direction": "forward",
-      "weight": 0.7
-    },
-    {
-      "source": "article:development",
-      "target": "entity:pixiv-web-fallback",
-      "type": "related",
-      "direction": "forward",
-      "weight": 0.6
-    },
-    {
-      "source": "article:mcp-tools",
-      "target": "entity:internal-mcpserver",
-      "type": "related",
-      "direction": "forward",
-      "weight": 0.9
-    },
-    {
-      "source": "article:mcp-tools",
-      "target": "entity:mcp-stdio-server",
-      "type": "related",
-      "direction": "forward",
-      "weight": 0.9
-    },
-    {
-      "source": "article:mcp-tools",
-      "target": "entity:pixiv-web-fallback",
-      "type": "related",
-      "direction": "forward",
-      "weight": 0.8
-    },
-    {
-      "source": "article:mcp-tools",
-      "target": "entity:ugoira",
-      "type": "related",
-      "direction": "forward",
-      "weight": 0.6
-    },
-    {
-      "source": "article:mcp-tools",
-      "target": "entity:docs-mcp-tools",
-      "type": "related",
-      "direction": "forward",
-      "weight": 0.9
-    },
-    {
-      "source": "article:mcp-tools",
-      "target": "entity:refresh-token",
-      "type": "related",
-      "direction": "forward",
-      "weight": 0.7
-    },
-    {
-      "source": "article:agents/documentation-guidelines",
-      "target": "entity:changelog",
-      "type": "related",
-      "direction": "forward",
-      "weight": 0.7
-    },
-    {
-      "source": "article:agents/documentation-guidelines",
-      "target": "entity:docs-mcp-tools",
-      "type": "related",
-      "direction": "forward",
-      "weight": 0.7
-    },
-    {
-      "source": "article:agents/review-checklist",
-      "target": "entity:refresh-token",
-      "type": "related",
-      "direction": "forward",
-      "weight": 0.7
-    },
-    {
-      "source": "article:agents/review-checklist",
-      "target": "entity:pixiv-source-facade",
-      "type": "related",
-      "direction": "forward",
-      "weight": 0.7
-    },
-    {
-      "source": "article:agents/review-checklist",
-      "target": "entity:mcp-stdio-server",
-      "type": "related",
-      "direction": "forward",
-      "weight": 0.6
-    },
-    {
-      "source": "entity:ugoira",
-      "target": "entity:ffmpeg",
-      "type": "depends_on",
-      "direction": "forward",
-      "weight": 0.8
-    },
-    {
-      "source": "entity:pixiv-source-facade",
-      "target": "entity:pixiv-app-api",
-      "type": "contains",
-      "direction": "forward",
-      "weight": 0.8
-    },
-    {
-      "source": "entity:pixiv-source-facade",
-      "target": "entity:pixiv-web-fallback",
-      "type": "contains",
-      "direction": "forward",
-      "weight": 0.8
-    },
-    {
-      "source": "entity:internal-bootstrap",
-      "target": "entity:mcp-stdio-server",
-      "type": "configures",
-      "direction": "forward",
-      "weight": 0.7
-    },
-    {
-      "source": "entity:auth-json",
-      "target": "entity:pixiv-uid",
-      "type": "depends_on",
-      "direction": "forward",
-      "weight": 0.7
-    },
-    {
-      "source": "claim:architecture:single-fallback-rule",
-      "target": "entity:pixiv-web-fallback",
-      "type": "related",
-      "direction": "forward",
-      "weight": 0.8
-    },
-    {
-      "source": "claim:0005-auth-login-real-browser-relay-without-ui-automation:relay-not-callback",
-      "target": "entity:post-redirect-relay",
-      "type": "related",
-      "direction": "forward",
-      "weight": 0.8
-    },
-    {
-      "source": "claim:0004-auth-accounts-use-pixiv-uid:accounts-keyed-by-uid",
-      "target": "entity:pixiv-uid",
-      "type": "related",
-      "direction": "forward",
-      "weight": 0.8
+      "weight": 0.8,
+      "description": "开发流程要求公开 API 保持具体 Client 和窄调用方 adapter，与 ADR 0007 的公开契约决策一致。"
     }
   ],
   "layers": [
     {
-      "id": "layer:项目定位",
-      "name": "项目定位",
-      "description": "项目定位 (1 nodes)",
+      "id": "layer:adr",
+      "name": "ADR",
+      "description": "ADR (1 nodes)",
       "nodeIds": [
-        "topic:项目定位"
-      ]
-    },
-    {
-      "id": "layer:文档目录",
-      "name": "文档目录",
-      "description": "文档目录 (1 nodes)",
-      "nodeIds": [
-        "topic:文档目录"
-      ]
-    },
-    {
-      "id": "layer:快速命令",
-      "name": "快速命令",
-      "description": "快速命令 (1 nodes)",
-      "nodeIds": [
-        "topic:快速命令"
+        "topic:adr"
       ]
     },
     {
       "id": "layer:other",
       "name": "Other",
-      "description": "Uncategorized nodes (52)",
+      "description": "Uncategorized nodes (30)",
       "nodeIds": [
         "article:adr/0001-cli-thin-controller-and-bootstrap",
         "article:adr/0002-utils-and-common-boundaries",
         "article:adr/0003-agent-instruction-precedent-strategy",
         "article:adr/0004-auth-accounts-use-pixiv-uid",
         "article:adr/0005-auth-login-real-browser-relay-without-ui-automation",
+        "article:adr/0006-original-ugoira-resource-resolution",
+        "article:adr/0007-public-pixiv-sdk-and-caller-adapter",
         "article:agents/documentation-guidelines",
         "article:agents/index",
         "article:agents/review-checklist",
         "article:architecture",
         "article:development",
         "article:mcp-tools",
-        "entity:internal-cli",
-        "entity:internal-application",
-        "entity:internal-bootstrap",
-        "entity:pixiv-source-facade",
-        "entity:pixiv-app-api",
-        "entity:pixiv-web-fallback",
-        "entity:internal-mcpserver",
-        "entity:internal-download",
-        "entity:auth-json",
-        "entity:config-toml",
-        "entity:refresh-token",
-        "entity:oauth-loopback",
-        "entity:pkce",
-        "entity:pixiv-url-handler",
-        "entity:post-redirect-relay",
-        "entity:devtools-fallback",
-        "entity:ugoira",
+        "entity:pixiv",
+        "entity:github",
+        "entity:github-mcp-server",
+        "entity:github-cli",
+        "entity:ant-design",
+        "entity:codex",
+        "entity:fanbox",
+        "entity:chromium",
         "entity:ffmpeg",
-        "entity:mcp-stdio-server",
-        "entity:pixiv-uid",
-        "entity:internal-utils",
-        "entity:internal-common-constants",
-        "entity:docs-mcp-tools",
-        "entity:changelog",
-        "claim:0001-cli-thin-controller-and-bootstrap:cli-is-thin-controller",
-        "claim:0001-cli-thin-controller-and-bootstrap:bootstrap-only-composition-root",
-        "claim:0002-utils-and-common-boundaries:utils-protocol-free",
-        "claim:0002-utils-and-common-boundaries:constants-narrow-exception",
-        "claim:0003-agent-instruction-precedent-strategy:selective-precedents",
-        "claim:0003-agent-instruction-precedent-strategy:agents-md-canonical",
-        "claim:0004-auth-accounts-use-pixiv-uid:accounts-keyed-by-uid",
-        "claim:0004-auth-accounts-use-pixiv-uid:old-auth-incompatible",
-        "claim:0005-auth-login-real-browser-relay-without-ui-automation:no-ui-automation",
-        "claim:0005-auth-login-real-browser-relay-without-ui-automation:relay-not-callback",
-        "claim:architecture:single-fallback-rule",
-        "claim:architecture:no-fabricated-web-fields",
-        "claim:development:offline-default-tests",
-        "claim:mcp-tools:download-delivery-modes",
-        "claim:agents/documentation-guidelines:docs-layered",
-        "claim:agents/review-checklist:finding-first",
-        "claim:agents/index:skills-high-frequency-only"
+        "claim:adr-0001:layered-adapters-and-bootstrap",
+        "claim:adr-0002:protocol-free-utils-only",
+        "claim:adr-0004:uid-is-account-key",
+        "claim:adr-0005:browser-callback-without-automation",
+        "claim:adr-0006:ugoira-web-enrichment-is-explicit",
+        "claim:adr-0007:public-concrete-sdk-and-caller-adapters",
+        "claim:architecture:token-aware-routing",
+        "claim:mcp-tools:stdio-protocol-boundary"
       ]
     }
   ],
   "tour": [
     {
       "order": 1,
-      "title": "项目定位",
-      "description": "Explore the 项目定位 section (0 articles)",
+      "title": "ADR",
+      "description": "Explore the ADR section (0 articles)",
       "nodeIds": [
-        "topic:项目定位"
-      ]
-    },
-    {
-      "order": 2,
-      "title": "文档目录",
-      "description": "Explore the 文档目录 section (0 articles)",
-      "nodeIds": [
-        "topic:文档目录"
-      ]
-    },
-    {
-      "order": 3,
-      "title": "快速命令",
-      "description": "Explore the 快速命令 section (0 articles)",
-      "nodeIds": [
-        "topic:快速命令"
+        "topic:adr"
       ]
     }
   ]
