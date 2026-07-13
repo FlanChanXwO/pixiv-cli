@@ -16,9 +16,11 @@ func (c *Client) operationLog(operation Operation, started time.Time, err error,
 	code := ""
 	status := 0
 	result := "success"
+	level := slog.LevelInfo
 	var pixivErr *Error
 	if err != nil {
 		result = "error"
+		level = slog.LevelError
 		if errors.As(err, &pixivErr) {
 			backend = string(pixivErr.Backend)
 			if backend == "" {
@@ -49,7 +51,7 @@ func (c *Client) operationLog(operation Operation, started time.Time, err error,
 	if userID != 0 {
 		attrs = append(attrs, slog.Int64("user_id", userID))
 	}
-	c.logger.LogAttrs(nil, slog.LevelInfo, "pixiv operation", attrs...)
+	c.logger.LogAttrs(nil, level, "pixiv operation", attrs...)
 }
 
 // delegatedOperationLog 用于 OpenDefault 会代理给 scoped Client 的内容/资源操作。

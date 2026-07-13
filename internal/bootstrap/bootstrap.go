@@ -266,7 +266,11 @@ func (r MCPRuntime) mcpLog(operation string, started time.Time, result string, u
 	if r.Logger == nil {
 		return
 	}
-	r.Logger.LogAttrs(nil, slog.LevelInfo, "pixiv operation",
+	level := slog.LevelInfo
+	if result == "error" {
+		level = slog.LevelError
+	}
+	r.Logger.LogAttrs(nil, level, "pixiv operation",
 		slog.String("component", "mcp"), slog.String("operation", operation), slog.String("backend", "local"), slog.Duration("duration", time.Since(started)),
 		slog.String("result", result), slog.String("error_code", ""), slog.Int("status", 0), slog.Int64("user_id", userID),
 	)

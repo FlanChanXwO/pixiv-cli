@@ -17,6 +17,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/application"
@@ -180,8 +181,33 @@ func TestToolLoggingWrapperPreservesStructuredErrorResult(t *testing.T) {
 	if !ok || structured["reason"] != "preserved" {
 		t.Fatalf("structured content lost: %#v", result.StructuredContent)
 	}
-	if !strings.Contains(logs.String(), `"result":"error"`) {
+	if !strings.Contains(logs.String(), `"result":"error"`) || !strings.Contains(logs.String(), `"level":"ERROR"`) {
 		t.Fatalf("error event missing: %s", logs.String())
+	}
+}
+
+func TestSDKOperationGateRespectsCanceledContext(t *testing.T) {
+	var calls atomic.Int32
+	app := &App{
+		logger:  slog.New(slog.NewTextHandler(io.Discard, nil)),
+		sdkGate: make(chan struct{}, 1),
+		sdk: application.SDKService{NewClient: func(application.SDKClientRequest) (application.SDKClient, error) {
+			calls.Add(1)
+			return &fakeSDKClient{}, nil
+		}},
+	}
+	_, release, err := app.openSDKOperation(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer release()
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, _, err := app.openSDKOperation(ctx); !errors.Is(err, context.Canceled) {
+		t.Fatalf("second open error=%v, want context canceled", err)
+	}
+	if calls.Load() != 1 {
+		t.Fatalf("SDK factory calls=%d, want 1", calls.Load())
 	}
 }
 

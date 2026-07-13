@@ -205,10 +205,12 @@ func (m *Manager) downloadArtwork(ctx context.Context, id int64) (out Downloaded
 // 因而不能直接作为 slog 的 error 属性输出。
 func (m *Manager) operationLog(operation string, started time.Time, err error, illustID int64) {
 	result := "success"
+	level := slog.LevelInfo
 	if err != nil {
 		result = "error"
+		level = slog.LevelError
 	}
-	m.logger.LogAttrs(nil, slog.LevelInfo, "pixiv operation",
+	m.logger.LogAttrs(nil, level, "pixiv operation",
 		slog.String("component", "download"),
 		slog.String("operation", operation),
 		slog.String("backend", "local"),

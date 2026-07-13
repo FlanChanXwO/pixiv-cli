@@ -63,13 +63,17 @@ func TestHelpAndConfigPathSurviveBrokenNonLoggingRuntimeConfig(t *testing.T) {
 }
 
 func TestRunUnknownCommandReturnsError(t *testing.T) {
-	useTempPaths(t)
+	_, configPath := useTempPaths(t)
+	if err := config.WritePrivateFile(configPath, []byte("[logging]\nformat = 'json'\nlevel = 'error'\n")); err != nil {
+		t.Fatal(err)
+	}
 
 	var stdout, stderr bytes.Buffer
 	code := Run([]string{"pixiv", "wat"}, strings.NewReader(""), &stdout, &stderr)
 
 	require.NotZero(t, code)
 	assert.Contains(t, stderr.String(), `unknown command "wat"`)
+	assert.Contains(t, stderr.String(), `"level":"ERROR"`)
 }
 
 func TestRunAccountCommandIsRemoved(t *testing.T) {

@@ -11,7 +11,6 @@ import (
 	"math/rand"
 	"os"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/application"
@@ -56,9 +55,9 @@ type App struct {
 	logger     *slog.Logger
 	sdk        application.SDKService
 	sdkRequest application.SDKClientRequest
-	// sdkMu 串行化同一 MCP 实例中会刷新 OAuth 的 SDK operation，避免两个 OpenDefault
-	// 快照同时消费同一个 rotation token。
-	sdkMu sync.Mutex
+	// sdkGate 串行化同一 MCP 实例中会刷新 OAuth 的 SDK operation，避免两个
+	// OpenDefault 快照同时消费同一个 rotation token；channel select 可响应 ctx。
+	sdkGate chan struct{}
 }
 
 func New(api PixivAPI, downloads DownloadManager, logger *slog.Logger) *mcp.Server {
@@ -81,6 +80,9 @@ func loggerOrDiscard(logger *slog.Logger) *slog.Logger {
 }
 
 func newServer(app *App) *mcp.Server {
+	if app.sdkGate == nil {
+		app.sdkGate = make(chan struct{}, 1)
+	}
 	server := mcp.NewServer(&mcp.Implementation{Name: "pixiv-cli", Version: "2.0.0"}, &mcp.ServerOptions{
 		Instructions: "Pixiv MCP server for searching, browsing, and downloading Pixiv content.",
 	})
@@ -288,8 +290,10 @@ type emptyIn struct{}
 
 func (a *App) refreshToken(ctx context.Context, _ *mcp.CallToolRequest, _ emptyIn) (*mcp.CallToolResult, textOut, error) {
 	if a.sdk.NewClient != nil {
-		a.sdkMu.Lock()
-		defer a.sdkMu.Unlock()
+		if err := a.acquireSDKGate(ctx); err != nil {
+			return toolText(err.Error())
+		}
+		defer a.releaseSDKGate()
 	}
 	if a.api.RefreshTokenValue() == "" {
 		return toolText("错误：未设置 refresh token。请先使用 set_refresh_token 工具设置 token。")
@@ -316,8 +320,10 @@ func (a *App) setRefreshToken(ctx context.Context, _ *mcp.CallToolRequest, in se
 		return toolText("错误：refresh token 不能为空。")
 	}
 	if a.sdk.NewClient != nil {
-		a.sdkMu.Lock()
-		defer a.sdkMu.Unlock()
+		if err := a.acquireSDKGate(ctx); err != nil {
+			return toolText(err.Error())
+		}
+		defer a.releaseSDKGate()
 	}
 	a.api.SetRefreshToken(token)
 	if err := a.api.Refresh(ctx); err != nil {
@@ -554,8 +560,10 @@ func (a *App) ensureAuth(ctx context.Context) error {
 		return nil
 	}
 	if a.sdk.NewClient != nil {
-		a.sdkMu.Lock()
-		defer a.sdkMu.Unlock()
+		if err := a.acquireSDKGate(ctx); err != nil {
+			return err
+		}
+		defer a.releaseSDKGate()
 		// 锁等待期间另一 tool 可能已经完成认证。
 		if a.api.IsAuthenticated() {
 			return nil

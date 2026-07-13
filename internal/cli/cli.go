@@ -94,10 +94,12 @@ func (a app) commandLog(operation string, started time.Time, err error) {
 		return
 	}
 	result := "success"
+	level := slog.LevelInfo
 	if err != nil {
 		result = "error"
+		level = slog.LevelError
 	}
-	a.logger.LogAttrs(nil, slog.LevelInfo, "pixiv operation",
+	a.logger.LogAttrs(nil, level, "pixiv operation",
 		slog.String("component", "cli"), slog.String("operation", operation), slog.String("backend", "local"),
 		slog.Duration("duration", time.Since(started)), slog.String("result", result), slog.String("error_code", ""), slog.Int("status", 0),
 	)

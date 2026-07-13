@@ -121,10 +121,12 @@ func (a *App) openSDKOperation(ctx context.Context) (client application.SDKClien
 	if a.sdk.NewClient == nil {
 		return nil, nil, errors.New("pixiv sdk is not configured")
 	}
-	a.sdkMu.Lock()
+	if err = a.acquireSDKGate(ctx); err != nil {
+		return nil, nil, err
+	}
 	client, err = a.sdk.OpenOperation(ctx, a.sdkRequest)
 	if err != nil {
-		a.sdkMu.Unlock()
+		a.releaseSDKGate()
 		return nil, nil, err
 	}
 	return client, a.releaseSDKOperation, nil
@@ -136,15 +138,17 @@ func (a *App) currentSDKUser(ctx context.Context) (client application.SDKClient,
 	if a.sdk.NewClient == nil {
 		return nil, 0, nil, errors.New("pixiv sdk is not configured")
 	}
-	a.sdkMu.Lock()
+	if err = a.acquireSDKGate(ctx); err != nil {
+		return nil, 0, nil, err
+	}
 	client, err = a.sdk.OpenOperation(ctx, a.sdkRequest)
 	if err != nil {
-		a.sdkMu.Unlock()
+		a.releaseSDKGate()
 		return nil, 0, nil, err
 	}
 	userID, err = client.CurrentUserID(ctx)
 	if err != nil {
-		a.sdkMu.Unlock()
+		a.releaseSDKGate()
 		return nil, 0, nil, err
 	}
 	return client, userID, a.releaseSDKOperation, nil
@@ -157,9 +161,11 @@ func (a *App) operationLog(operation string, started time.Time, err error, illus
 		return
 	}
 	result, code, backend, status := "success", "", "local", 0
+	level := slog.LevelInfo
 	var typed *sdk.Error
 	if err != nil {
 		result = "error"
+		level = slog.LevelError
 		if errors.As(err, &typed) {
 			code, backend, status = string(typed.Code), string(typed.Backend), typed.UpstreamStatus
 			if backend == "" {
@@ -180,15 +186,29 @@ func (a *App) operationLog(operation string, started time.Time, err error, illus
 	if userID != 0 {
 		attrs = append(attrs, slog.Int64("user_id", userID))
 	}
-	a.logger.LogAttrs(nil, slog.LevelInfo, "pixiv operation", attrs...)
+	a.logger.LogAttrs(nil, level, "pixiv operation", attrs...)
 }
 
 func (a *App) releaseSDKOperation() {
 	// SDK 已在 selected store 内写入旋转 token；同步 legacy Source 仅为让旧 tool
 	// 后续 refresh 继续使用同一权威状态。同步失败不改变已完成的 SDK 调用结果。
 	a.syncSourceTokenFromStore()
-	a.sdkMu.Unlock()
+	a.releaseSDKGate()
 }
+
+func (a *App) acquireSDKGate(ctx context.Context) error {
+	if a.sdkGate == nil {
+		a.sdkGate = make(chan struct{}, 1)
+	}
+	select {
+	case a.sdkGate <- struct{}{}:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+func (a *App) releaseSDKGate() { <-a.sdkGate }
 
 func (a *App) syncSourceTokenFromStore() {
 	if a.api == nil {

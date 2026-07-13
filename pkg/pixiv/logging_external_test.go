@@ -36,6 +36,9 @@ func TestClientLoggerEmitsSafeStructuredFailureAndNilIsNoop(t *testing.T) {
 			t.Fatalf("log missing %s: %s", field, got)
 		}
 	}
+	if !strings.Contains(got, `"level":"ERROR"`) {
+		t.Fatalf("failure was not logged at error level: %s", got)
+	}
 	for _, secret := range []string{accessSecret, querySecret} {
 		if strings.Contains(got, secret) {
 			t.Fatalf("log leaked secret %q: %s", secret, got)
