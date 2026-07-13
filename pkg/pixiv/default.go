@@ -134,6 +134,7 @@ func (d *defaultOptions) snapshot(ctx context.Context, operation Operation) (*Cl
 	}
 	client.authState = d.authState
 	client.cursorSource = "app:user:" + formatUserID(sourceUserID)
+	client.authenticatedUserID = oauthClient.UserID()
 	return client, nil
 }
 

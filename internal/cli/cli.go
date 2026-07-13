@@ -49,6 +49,11 @@ var (
 )
 
 func Run(args []string, in io.Reader, out io.Writer, errOut io.Writer) int {
+	return RunContext(context.Background(), args, in, out, errOut)
+}
+
+// RunContext 让嵌入式调用方把取消信号传到每一条网络数据命令。
+func RunContext(ctx context.Context, args []string, in io.Reader, out io.Writer, errOut io.Writer) int {
 	if len(args) == 0 {
 		args = []string{"pixiv"}
 	}
@@ -58,6 +63,7 @@ func Run(args []string, in io.Reader, out io.Writer, errOut io.Writer) int {
 	cmd.SetOut(out)
 	cmd.SetErr(errOut)
 	cmd.SetArgs(args[1:])
+	cmd.SetContext(ctx)
 	return a.exit(cmd.Execute())
 }
 
@@ -96,6 +102,9 @@ func (a app) newRootCommand() *cobra.Command {
 		a.newDetailCommand(),
 		a.newRankingCommand(),
 		a.newRecommendedCommand(),
+		a.newUserCommand(),
+		a.newBookmarkCommand(),
+		a.newFollowCommand(),
 		a.newDownloadCommand(),
 		a.newMCPCommand(),
 	)
@@ -114,7 +123,7 @@ func (a app) newMCPCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return runMCPServer(context.Background(), a.errOut, proxyOverride)
+			return runMCPServer(cmd.Context(), a.errOut, proxyOverride)
 		},
 	}
 	a.bindProxyFlags(cmd, &opts)

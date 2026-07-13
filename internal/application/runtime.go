@@ -233,4 +233,5 @@ type Services struct {
 	Artwork  ArtworkService
 	Download DownloadService
 	Login    LoginService
+	SDK      SDKService
 }

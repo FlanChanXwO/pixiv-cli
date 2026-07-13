@@ -138,7 +138,7 @@ func (a app) accountLogin(cmd *cobra.Command, opts accountLoginOptions) error {
 		return err
 	}
 
-	ctx := context.Background()
+	ctx := cmd.Context()
 	var cancel context.CancelFunc
 	if opts.timeout > 0 {
 		// 仅在用户或配置显式要求时设置等待窗口，避免无依据打断正常授权流程。

@@ -60,6 +60,33 @@ type Client struct {
 	defaults *defaultOptions
 	// cursorSource 只存在于 OpenDefault 的 operation-scoped client；它从不含凭据。
 	cursorSource string
+	// authenticatedUserID 仅由 OpenDefault 的 OAuth 快照写入；显式 access token
+	// 不声称可从 token 本身推断用户身份。
+	authenticatedUserID int64
+}
+
+// CurrentUserID 返回 OpenDefault 当前认证快照对应的 Pixiv UID。
+//
+// 它为 CLI 等需要将省略的 USER_ID 解释为“我自己”的调用方提供身份边界；不会把
+// 本地默认账号错误地当作显式 refresh token 或环境变量 token 的身份。显式 NewClient
+// 的 access token 不携带可验证 UID，因此返回 unsupported。
+func (c *Client) CurrentUserID(ctx context.Context) (int64, error) {
+	if scoped, err := c.operationClient(ctx, OperationCurrentUserID); err != nil {
+		return 0, err
+	} else if scoped != c {
+		return scoped.currentUserID()
+	}
+	return c.currentUserID()
+}
+
+func (c *Client) currentUserID() (int64, error) {
+	if !c.authenticated {
+		return 0, localRouteError(CodeUnauthorized, OperationCurrentUserID, 0, 0, errors.New("access token is required"))
+	}
+	if c.authenticatedUserID <= 0 {
+		return 0, localRouteError(CodeUnsupported, OperationCurrentUserID, 0, 0, errors.New("authenticated user identity is unavailable"))
+	}
+	return c.authenticatedUserID, nil
 }
 
 // NewClient 构造具体客户端；它不会执行网络请求或隐式认证。

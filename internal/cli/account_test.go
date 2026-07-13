@@ -27,6 +27,7 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/download"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv"
 	"github.com/FlanChanXwO/pixiv-cli/internal/storage/auth"
+	publicpixiv "github.com/FlanChanXwO/pixiv-cli/pkg/pixiv"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -1769,9 +1770,106 @@ func setTestCLIClientFactory(t *testing.T, factory func(clientConfig) (cliPixivC
 			}
 			return client.Auth, nil
 		}
+		services.SDK.NewClient = func(request application.SDKClientRequest) (application.SDKClient, error) {
+			cfg, err := bootstrap.LoadRuntimeConfig()
+			if err != nil {
+				return nil, err
+			}
+			if request.HTTPSProxyOverride != nil {
+				cfg.HTTPSProxy = *request.HTTPSProxyOverride
+			}
+			store, err := bootstrap.AuthFileRepository{}.Load()
+			if err != nil {
+				return nil, err
+			}
+			token, err := application.ResolveRefreshToken(store, request.UserID, request.RefreshToken, config.RefreshTokenFromEnv)
+			if err != nil {
+				return nil, err
+			}
+			cfg.RefreshToken = token
+			client, err := factory(clientConfig{RuntimeConfig: cfg})
+			if err != nil {
+				return nil, err
+			}
+			return legacySDKAdapter{client: client}, nil
+		}
 		return services
 	}
 	t.Cleanup(func() { newCLIServices = old })
+}
+
+// legacySDKAdapter 只让未迁移的 fixture 继续驱动同一 HTTP server；产品 CLI 不使用
+// 它，Task 13 的真实数据命令仍经 public pkg facade。
+type legacySDKAdapter struct{ client cliPixivClient }
+
+func publicValue[T any](value any) (T, error) {
+	var result T
+	body, err := json.Marshal(value)
+	if err != nil {
+		return result, err
+	}
+	err = json.Unmarshal(body, &result)
+	return result, err
+}
+
+func (a legacySDKAdapter) CurrentUserID(context.Context) (int64, error) {
+	if id := a.client.UserID(); id > 0 {
+		return id, nil
+	}
+	return 0, errors.New("authenticated user identity is unavailable")
+}
+func (a legacySDKAdapter) SearchIllust(ctx context.Context, r publicpixiv.SearchIllustRequest) (*publicpixiv.IllustListResult, error) {
+	v, err := a.client.SearchIllust(ctx, r.Word, string(r.Target), string(r.Sort), r.Duration, 0)
+	if err != nil {
+		return nil, err
+	}
+	out, err := publicValue[publicpixiv.IllustListResult](v)
+	return &out, err
+}
+func (a legacySDKAdapter) IllustDetail(ctx context.Context, id int64) (*publicpixiv.IllustDetail, error) {
+	v, err := a.client.IllustDetail(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	out, err := publicValue[publicpixiv.IllustDetail](v)
+	return &out, err
+}
+func (a legacySDKAdapter) IllustRanking(ctx context.Context, r publicpixiv.IllustRankingRequest) (*publicpixiv.IllustListResult, error) {
+	v, err := a.client.IllustRanking(ctx, string(r.Mode), r.Date, 0)
+	if err != nil {
+		return nil, err
+	}
+	out, err := publicValue[publicpixiv.IllustListResult](v)
+	return &out, err
+}
+func (a legacySDKAdapter) IllustRecommended(ctx context.Context, _ publicpixiv.IllustRecommendedRequest) (*publicpixiv.IllustListResult, error) {
+	v, err := a.client.IllustRecommended(ctx, 0)
+	if err != nil {
+		return nil, err
+	}
+	out, err := publicValue[publicpixiv.IllustListResult](v)
+	return &out, err
+}
+func (a legacySDKAdapter) UserArtworks(context.Context, publicpixiv.UserArtworksRequest) (*publicpixiv.IllustListResult, error) {
+	return nil, errors.New("fixture does not implement user artworks")
+}
+func (a legacySDKAdapter) UserBookmarks(context.Context, publicpixiv.UserBookmarksRequest) (*publicpixiv.IllustListResult, error) {
+	return nil, errors.New("fixture does not implement user bookmarks")
+}
+func (a legacySDKAdapter) UserFollowing(context.Context, publicpixiv.UserFollowingRequest) (*publicpixiv.UserListResult, error) {
+	return nil, errors.New("fixture does not implement user following")
+}
+func (a legacySDKAdapter) AddBookmark(context.Context, publicpixiv.AddBookmarkRequest) error {
+	return errors.New("fixture does not implement bookmark mutation")
+}
+func (a legacySDKAdapter) RemoveBookmark(context.Context, publicpixiv.RemoveBookmarkRequest) error {
+	return errors.New("fixture does not implement bookmark mutation")
+}
+func (a legacySDKAdapter) FollowUser(context.Context, publicpixiv.FollowUserRequest) error {
+	return errors.New("fixture does not implement follow mutation")
+}
+func (a legacySDKAdapter) UnfollowUser(context.Context, publicpixiv.UnfollowUserRequest) error {
+	return errors.New("fixture does not implement follow mutation")
 }
 
 type authIdentity struct {

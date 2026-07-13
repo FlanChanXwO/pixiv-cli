@@ -14,6 +14,7 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/oauth"
 	"github.com/FlanChanXwO/pixiv-cli/internal/storage/auth"
+	publicpixiv "github.com/FlanChanXwO/pixiv-cli/pkg/pixiv"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -79,7 +80,22 @@ func NewServices(logger *slog.Logger) application.Services {
 				return oauthClient{client: client}, nil
 			},
 		},
+		SDK: application.SDKService{NewClient: newSDKClient, LoadRuntime: LoadRuntimeConfig},
 	}
+}
+
+// newSDKClient 将 CLI 的显式账号和代理覆写交给公共 SDK。没有 --proxy 时，
+// OpenDefault 自己在每个操作读取当前 config 快照；有覆写时才固定本次 transport。
+func newSDKClient(request application.SDKClientRequest) (application.SDKClient, error) {
+	options := publicpixiv.Options{UserID: request.UserID, RefreshToken: request.RefreshToken}
+	if request.HTTPSProxyOverride != nil {
+		httpClient, err := pixiv.HTTPClient(*request.HTTPSProxyOverride)
+		if err != nil {
+			return nil, err
+		}
+		options.HTTPClient = httpClient
+	}
+	return publicpixiv.OpenDefault(options)
 }
 
 func LoadRuntimeConfig() (config.RuntimeConfig, error) {

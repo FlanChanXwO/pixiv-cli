@@ -253,6 +253,31 @@ func TestOpenDefaultReadsOneCurrentSnapshotPerOperation(t *testing.T) {
 	}
 }
 
+func TestOpenDefaultCurrentUserIDUsesOAuthSnapshotIdentity(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	authPath := filepath.Join(dir, "auth.json")
+	configPath := filepath.Join(dir, "config.toml")
+	if err := os.WriteFile(authPath, []byte(`{"default_user_id":7,"accounts":[{"user_id":7,"refresh_token":"stored"}]}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/auth/token" {
+			t.Fatalf("path=%s", r.URL.Path)
+		}
+		_, _ = w.Write([]byte(`{"access_token":"access","refresh_token":"rotated","user":{"id":7}}`))
+	}))
+	defer server.Close()
+	client, err := pixiv.OpenDefault(pixiv.Options{AuthFilePath: authPath, ConfigFilePath: configPath, HTTPClient: server.Client(), OAuthBaseURL: server.URL})
+	if err != nil {
+		t.Fatal(err)
+	}
+	userID, err := client.CurrentUserID(context.Background())
+	if err != nil || userID != 7 {
+		t.Fatalf("CurrentUserID()=(%d,%v)", userID, err)
+	}
+}
+
 func TestOpenDefaultCursorRejectsSourceChangeAndLegacyCursor(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()

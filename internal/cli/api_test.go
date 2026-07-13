@@ -22,7 +22,7 @@ func TestSearchSupportsFlagAfterWord(t *testing.T) {
 	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		require.Equal(t, "/v1/search/illust", r.URL.Path)
 		assert.Equal(t, "初音ミク", r.URL.Query().Get("word"))
-		assert.Equal(t, "12", r.URL.Query().Get("offset"))
+		assert.Empty(t, r.URL.Query().Get("offset"))
 		assert.Equal(t, "partial_match_for_tags", r.URL.Query().Get("search_target"))
 		assert.Equal(t, "date_desc", r.URL.Query().Get("sort"))
 		require.NoError(t, json.NewEncoder(w).Encode(pixiv.IllustList{
@@ -38,7 +38,7 @@ func TestSearchSupportsFlagAfterWord(t *testing.T) {
 	})
 
 	var stdout, stderr bytes.Buffer
-	code := Run([]string{"pixiv", "search", "初音ミク", "--json", "--offset", "12"}, strings.NewReader(""), &stdout, &stderr)
+	code := Run([]string{"pixiv", "search", "初音ミク", "--json"}, strings.NewReader(""), &stdout, &stderr)
 
 	require.Equal(t, 0, code, stderr.String())
 	var out pixiv.IllustList
