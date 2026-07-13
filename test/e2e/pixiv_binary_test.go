@@ -278,23 +278,39 @@ func isolatedEnv(t *testing.T) isolatedProcessEnv {
 
 	home := t.TempDir()
 	configRoot := filepath.Join(t.TempDir(), "config")
-	filtered := make([]string, 0, len(os.Environ())+2)
+	filtered := make([]string, 0, len(os.Environ())+7)
 	for _, entry := range os.Environ() {
-		switch {
-		case strings.HasPrefix(entry, "HOME="),
-			strings.HasPrefix(entry, "XDG_CONFIG_HOME="),
-			strings.HasPrefix(entry, "DOWNLOAD_PATH="),
-			strings.HasPrefix(entry, "FILENAME_TEMPLATE="),
-			strings.HasPrefix(entry, "https_proxy="),
-			strings.HasPrefix(entry, "HTTPS_PROXY="),
-			strings.HasPrefix(entry, "PIXIV_REFRESH_TOKEN="):
+		name, _, found := strings.Cut(entry, "=")
+		if found && isIsolatedEnvKey(name) {
 			continue
-		default:
-			filtered = append(filtered, entry)
 		}
+		filtered = append(filtered, entry)
 	}
 	filtered = append(filtered, "HOME="+home, "XDG_CONFIG_HOME="+configRoot)
+	if runtime.GOOS == "windows" {
+		// Windows 的 os.UserConfigDir 优先读取 APPDATA，不能继承 runner 的用户目录。
+		volume := filepath.VolumeName(home)
+		filtered = append(filtered,
+			"APPDATA="+configRoot,
+			"LOCALAPPDATA="+filepath.Join(home, "AppData", "Local"),
+			"USERPROFILE="+home,
+			"HOMEDRIVE="+volume,
+			"HOMEPATH="+strings.TrimPrefix(home, volume),
+		)
+	}
 	return isolatedProcessEnv{values: filtered, home: home, configRoot: configRoot}
+}
+
+func isIsolatedEnvKey(name string) bool {
+	for _, key := range []string{
+		"HOME", "XDG_CONFIG_HOME", "APPDATA", "LOCALAPPDATA", "USERPROFILE", "HOMEDRIVE", "HOMEPATH",
+		"DOWNLOAD_PATH", "FILENAME_TEMPLATE", "https_proxy", "HTTPS_PROXY", "PIXIV_REFRESH_TOKEN",
+	} {
+		if strings.EqualFold(name, key) {
+			return true
+		}
+	}
+	return false
 }
 
 func testCommandContext(t *testing.T) context.Context {

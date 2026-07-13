@@ -791,8 +791,15 @@ func TestGitHubReleaseClientAtomicallyReplacesCacheForConcurrentReaders(t *testi
 				return
 			default:
 			}
-			cacheBytes, err := readCacheForConcurrentReader(cachePath)
+			cacheBytes, err := readCacheForConcurrentReader(cachePath, stopReaders)
 			if err != nil {
+				// 测试已结束时，Windows 读者可能刚好在可证明的短暂命名空间窗口内；此时
+				// 不把停止信号竞争成读缓存失败。
+				select {
+				case <-stopReaders:
+					return
+				default:
+				}
 				select {
 				case readerErrors <- fmt.Errorf("read cache while replacing it: %w", err):
 				case <-stopReaders:
