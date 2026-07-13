@@ -10,7 +10,9 @@ import (
 	"math/rand"
 	"os"
 	"strings"
+	"time"
 
+	"github.com/FlanChanXwO/pixiv-cli/internal/application"
 	"github.com/FlanChanXwO/pixiv-cli/internal/download"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv"
 	"github.com/FlanChanXwO/pixiv-cli/internal/utils"
@@ -47,13 +49,55 @@ type DownloadManager interface {
 }
 
 type App struct {
-	api       PixivAPI
-	downloads DownloadManager
-	logger    *slog.Logger
+	api        PixivAPI
+	downloads  DownloadManager
+	logger     *slog.Logger
+	sdk        application.SDKService
+	sdkRequest application.SDKClientRequest
+	// sdkGate 串行化同一 MCP 实例中会刷新 OAuth 的 SDK operation，避免两个
+	// OpenDefault 快照同时消费同一个 rotation token；channel select 可响应 ctx。
+	sdkGate chan struct{}
+}
+
+// toolErrorCapture 将 handler 已转换为 MCP error result 的原始安全错误交给注册层。
+// go-sdk 对 result 与 error 同时存在时会重包 result，因此不能直接返回 handler error。
+type toolErrorCapture struct{ err error }
+
+type toolErrorCaptureKey struct{}
+
+func recordToolError(ctx context.Context, err error) {
+	if err == nil {
+		return
+	}
+	capture, _ := ctx.Value(toolErrorCaptureKey{}).(*toolErrorCapture)
+	if capture != nil && capture.err == nil {
+		capture.err = err
+	}
 }
 
 func New(api PixivAPI, downloads DownloadManager, logger *slog.Logger) *mcp.Server {
-	app := &App{api: api, downloads: downloads, logger: logger}
+	logger = loggerOrDiscard(logger)
+	return newServer(&App{api: api, downloads: downloads, logger: logger})
+}
+
+// NewWithSDK 在保留旧 Source 工具的同时，为新增领域工具注入公共 SDK 接缝。
+// SDKService 会在每次 MCP tool 调用时建立独立的配置/认证 operation snapshot。
+func NewWithSDK(api PixivAPI, downloads DownloadManager, logger *slog.Logger, service application.SDKService, request application.SDKClientRequest) *mcp.Server {
+	logger = loggerOrDiscard(logger)
+	return newServer(&App{api: api, downloads: downloads, logger: logger, sdk: service, sdkRequest: request})
+}
+
+func loggerOrDiscard(logger *slog.Logger) *slog.Logger {
+	if logger != nil {
+		return logger
+	}
+	return slog.New(slog.NewTextHandler(io.Discard, nil))
+}
+
+func newServer(app *App) *mcp.Server {
+	if app.sdkGate == nil {
+		app.sdkGate = make(chan struct{}, 1)
+	}
 	server := mcp.NewServer(&mcp.Implementation{Name: "pixiv-cli", Version: "2.0.0"}, &mcp.ServerOptions{
 		Instructions: "Pixiv MCP server for searching, browsing, and downloading Pixiv content.",
 	})
@@ -61,23 +105,48 @@ func New(api PixivAPI, downloads DownloadManager, logger *slog.Logger) *mcp.Serv
 	return server
 }
 
+// addTool 在注册层统一观测所有 MCP tool（包括 legacy Source tool）。wrapper 不读取
+// request arguments，避免 token、cookie、URL 或用户查询进入日志；日志仍只经注入的
+// stderr logger 输出，绝不触碰 JSON-RPC transport。
+func addTool[In, Out any](a *App, server *mcp.Server, tool *mcp.Tool, handler mcp.ToolHandlerFor[In, Out]) {
+	mcp.AddTool(server, tool, func(ctx context.Context, request *mcp.CallToolRequest, input In) (result *mcp.CallToolResult, output Out, err error) {
+		started := time.Now()
+		capture := &toolErrorCapture{}
+		result, output, err = handler(context.WithValue(ctx, toolErrorCaptureKey{}, capture), request, input)
+		logErr := err
+		resultError := result != nil && result.IsError
+		if resultError && err == nil {
+			// 仅供日志标记失败。把它作为 handler 返回 error 会让 go-sdk 重新包装
+			// CallToolResult，丢失调用方已有的 Content/StructuredContent。
+			logErr = capture.err
+		}
+		a.operationLog(tool.Name, started, resultError || err != nil, logErr, 0, 0)
+		return result, output, err
+	})
+}
+
 func (a *App) register(server *mcp.Server) {
-	mcp.AddTool(server, &mcp.Tool{Name: "set_download_path", Description: "Set the default local save location for images and animations."}, a.setDownloadPath)
-	mcp.AddTool(server, &mcp.Tool{Name: "download", Description: "Download one or more artworks by ID with intelligent storage rules."}, a.download)
-	mcp.AddTool(server, &mcp.Tool{Name: "refresh_token", Description: "Manually refresh Pixiv API token when encountering authentication errors."}, a.refreshToken)
-	mcp.AddTool(server, &mcp.Tool{Name: "set_refresh_token", Description: "Set or update the Pixiv refresh token for authentication."}, a.setRefreshToken)
-	mcp.AddTool(server, &mcp.Tool{Name: "download_random_from_recommendation", Description: "Download random artworks from recommendations."}, a.downloadRandom)
-	mcp.AddTool(server, &mcp.Tool{Name: "search_illust", Description: "Search for illustrations using keywords with filters."}, a.searchIllust)
-	mcp.AddTool(server, &mcp.Tool{Name: "illust_detail", Description: "Get detailed information about a specific artwork."}, a.illustDetail)
-	mcp.AddTool(server, &mcp.Tool{Name: "illust_related", Description: "Find artworks related to a specific illustration."}, a.illustRelated)
-	mcp.AddTool(server, &mcp.Tool{Name: "illust_ranking", Description: "Browse Pixiv rankings."}, a.illustRanking)
-	mcp.AddTool(server, &mcp.Tool{Name: "search_user", Description: "Search for users/artists on Pixiv."}, a.searchUser)
-	mcp.AddTool(server, &mcp.Tool{Name: "illust_recommended", Description: "Get personalized artwork recommendations."}, a.illustRecommended)
-	mcp.AddTool(server, &mcp.Tool{Name: "trending_tags_illust", Description: "Get currently trending illustration tags."}, a.trendingTags)
-	mcp.AddTool(server, &mcp.Tool{Name: "illust_follow", Description: "Browse artworks from followed artists."}, a.illustFollow)
-	mcp.AddTool(server, &mcp.Tool{Name: "user_bookmarks", Description: "Browse user's bookmarked artworks."}, a.userBookmarks)
-	mcp.AddTool(server, &mcp.Tool{Name: "user_following", Description: "View user's following list."}, a.userFollowing)
-	mcp.AddTool(server, &mcp.Tool{Name: "get_thumbnail_base64", Description: "Get artwork thumbnail as base64 data URL."}, a.thumbnailBase64)
+	addTool(a, server, &mcp.Tool{Name: "set_download_path", Description: "Set the default local save location for images and animations."}, a.setDownloadPath)
+	addTool(a, server, &mcp.Tool{Name: "download", Description: "Download one or more artworks by ID with intelligent storage rules."}, a.download)
+	addTool(a, server, &mcp.Tool{Name: "refresh_token", Description: "Manually refresh Pixiv API token when encountering authentication errors."}, a.refreshToken)
+	addTool(a, server, &mcp.Tool{Name: "set_refresh_token", Description: "Set or update the Pixiv refresh token for authentication."}, a.setRefreshToken)
+	addTool(a, server, &mcp.Tool{Name: "download_random_from_recommendation", Description: "Download random artworks from recommendations."}, a.downloadRandom)
+	addTool(a, server, &mcp.Tool{Name: "search_illust", Description: "Search for illustrations using keywords with filters."}, a.searchIllust)
+	addTool(a, server, &mcp.Tool{Name: "illust_detail", Description: "Get detailed information about a specific artwork."}, a.illustDetail)
+	addTool(a, server, &mcp.Tool{Name: "illust_related", Description: "Find artworks related to a specific illustration."}, a.illustRelated)
+	addTool(a, server, &mcp.Tool{Name: "illust_ranking", Description: "Browse Pixiv rankings."}, a.illustRanking)
+	addTool(a, server, &mcp.Tool{Name: "search_user", Description: "Search for users/artists on Pixiv."}, a.searchUser)
+	addTool(a, server, &mcp.Tool{Name: "illust_recommended", Description: "Get personalized artwork recommendations."}, a.illustRecommended)
+	addTool(a, server, &mcp.Tool{Name: "trending_tags_illust", Description: "Get currently trending illustration tags."}, a.trendingTags)
+	addTool(a, server, &mcp.Tool{Name: "illust_follow", Description: "Browse artworks from followed artists."}, a.illustFollow)
+	addTool(a, server, &mcp.Tool{Name: "user_artworks", Description: "Browse a user's artworks."}, a.userArtworks)
+	addTool(a, server, &mcp.Tool{Name: "user_bookmarks", Description: "Browse user's bookmarked artworks."}, a.userBookmarks)
+	addTool(a, server, &mcp.Tool{Name: "user_following", Description: "View user's following list."}, a.userFollowing)
+	addTool(a, server, &mcp.Tool{Name: "add_bookmark", Description: "Add an artwork to bookmarks."}, a.addBookmark)
+	addTool(a, server, &mcp.Tool{Name: "remove_bookmark", Description: "Remove an artwork from bookmarks."}, a.removeBookmark)
+	addTool(a, server, &mcp.Tool{Name: "follow_user", Description: "Follow a Pixiv user."}, a.followUser)
+	addTool(a, server, &mcp.Tool{Name: "unfollow_user", Description: "Unfollow a Pixiv user."}, a.unfollowUser)
+	addTool(a, server, &mcp.Tool{Name: "get_thumbnail_base64", Description: "Get artwork thumbnail as base64 data URL."}, a.thumbnailBase64)
 }
 
 type textOut struct {
@@ -237,11 +306,20 @@ func buildDownloadOut(delivery string, artworks []download.DownloadedArtwork) (d
 type emptyIn struct{}
 
 func (a *App) refreshToken(ctx context.Context, _ *mcp.CallToolRequest, _ emptyIn) (*mcp.CallToolResult, textOut, error) {
+	if a.sdk.NewClient != nil {
+		if err := a.acquireSDKGate(ctx); err != nil {
+			return toolText(err.Error())
+		}
+		defer a.releaseSDKGate()
+	}
 	if a.api.RefreshTokenValue() == "" {
 		return toolText("错误：未设置 refresh token。请先使用 set_refresh_token 工具设置 token。")
 	}
 	if err := a.api.Refresh(ctx); err != nil {
 		return toolText(fmt.Sprintf("Token刷新失败。可能的原因：refresh_token已过期、网络连接问题或代理设置问题。错误详情: %v", err))
+	}
+	if err := a.persistSourceAuth(); err != nil {
+		return toolText("Token刷新成功，但无法同步认证状态: " + err.Error())
 	}
 	return toolText(fmt.Sprintf("Token刷新成功！%s。现在可以正常使用Pixiv API功能了。", a.authIdentityText()))
 }
@@ -258,9 +336,18 @@ func (a *App) setRefreshToken(ctx context.Context, _ *mcp.CallToolRequest, in se
 		}
 		return toolText("错误：refresh token 不能为空。")
 	}
+	if a.sdk.NewClient != nil {
+		if err := a.acquireSDKGate(ctx); err != nil {
+			return toolText(err.Error())
+		}
+		defer a.releaseSDKGate()
+	}
 	a.api.SetRefreshToken(token)
 	if err := a.api.Refresh(ctx); err != nil {
 		return toolText(fmt.Sprintf("Refresh token 已在当前会话设置，但认证失败: %v\n\n请检查 token 是否有效，或稍后使用 refresh_token 工具重试认证。", err))
+	}
+	if err := a.persistSourceAuth(); err != nil {
+		return toolText("Refresh token 已在当前会话设置并完成认证，但无法同步认证状态: " + err.Error())
 	}
 	return toolText(fmt.Sprintf("Refresh token 已在当前会话设置并完成认证！\n%s\n\n现在您可以使用所有 Pixiv 功能了。", a.authIdentityText()))
 }
@@ -466,67 +553,6 @@ func (a *App) illustFollow(ctx context.Context, _ *mcp.CallToolRequest, in follo
 	return toolText(fmt.Sprintf("找到 %d 篇关注动态:\n\n%s", len(result.Illusts), formatIllusts(result.Illusts, in.IncludeThumbnail, in.Offset, false)))
 }
 
-type bookmarksIn struct {
-	UserIDToCheck int64  `json:"user_id_to_check,omitempty"`
-	Restrict      string `json:"restrict,omitempty"`
-	Tag           string `json:"tag,omitempty"`
-	MaxBookmarkID int64  `json:"max_bookmark_id,omitempty"`
-}
-
-func (a *App) userBookmarks(ctx context.Context, _ *mcp.CallToolRequest, in bookmarksIn) (*mcp.CallToolResult, textOut, error) {
-	if err := a.ensureAuth(ctx); err != nil {
-		return toolText(err.Error())
-	}
-	if in.Restrict == "" {
-		in.Restrict = string(pixiv.RestrictPublic)
-	}
-	userID := in.UserIDToCheck
-	if userID == 0 {
-		userID = a.api.UserID()
-	}
-	if userID == 0 {
-		return toolText("错误: 查询自己的收藏时，需要先认证以获取用户ID。")
-	}
-	result, err := a.api.UserBookmarks(ctx, userID, in.Restrict, in.Tag, in.MaxBookmarkID)
-	if err != nil {
-		return toolText(err.Error())
-	}
-	if len(result.Illusts) == 0 {
-		return toolText(fmt.Sprintf("找不到用户 %d 的收藏。", userID))
-	}
-	return toolText(fmt.Sprintf("找到用户 %d 的 %d 个收藏:\n\n%s", userID, len(result.Illusts), formatIllusts(result.Illusts, false, 0, false)))
-}
-
-type followingIn struct {
-	UserIDToCheck int64  `json:"user_id_to_check,omitempty"`
-	Restrict      string `json:"restrict,omitempty"`
-	Offset        int    `json:"offset,omitempty"`
-}
-
-func (a *App) userFollowing(ctx context.Context, _ *mcp.CallToolRequest, in followingIn) (*mcp.CallToolResult, textOut, error) {
-	if err := a.ensureAuth(ctx); err != nil {
-		return toolText(err.Error())
-	}
-	if in.Restrict == "" {
-		in.Restrict = string(pixiv.RestrictPublic)
-	}
-	userID := in.UserIDToCheck
-	if userID == 0 {
-		userID = a.api.UserID()
-	}
-	if userID == 0 {
-		return toolText("错误: 查询自己的关注列表时，需要先认证以获取用户ID。")
-	}
-	result, err := a.api.UserFollowing(ctx, userID, in.Restrict, in.Offset)
-	if err != nil {
-		return toolText(err.Error())
-	}
-	if len(result.UserPreviews) == 0 {
-		return toolText(fmt.Sprintf("用户 %d 没有关注任何人。", userID))
-	}
-	return toolText(fmt.Sprintf("用户 %d 关注了 %d 位用户:\n\n%s", userID, len(result.UserPreviews), formatUsers(result.UserPreviews)))
-}
-
 func (a *App) thumbnailBase64(ctx context.Context, _ *mcp.CallToolRequest, in illustIDIn) (*mcp.CallToolResult, textOut, error) {
 	result, err := a.api.IllustDetail(ctx, in.IllustID)
 	if err != nil {
@@ -550,11 +576,24 @@ func (a *App) ensureAuth(ctx context.Context) error {
 	if a.api.IsAuthenticated() {
 		return nil
 	}
+	if a.sdk.NewClient != nil {
+		if err := a.acquireSDKGate(ctx); err != nil {
+			return err
+		}
+		defer a.releaseSDKGate()
+		// 锁等待期间另一 tool 可能已经完成认证。
+		if a.api.IsAuthenticated() {
+			return nil
+		}
+	}
 	if a.api.RefreshTokenValue() == "" {
 		return fmt.Errorf("错误: 此功能需要认证。请先使用 set_refresh_token 工具或在客户端设置 PIXIV_REFRESH_TOKEN 环境变量。")
 	}
 	if err := a.api.Refresh(ctx); err != nil {
 		return fmt.Errorf("错误: 自动认证失败: %v", err)
+	}
+	if err := a.persistSourceAuth(); err != nil {
+		return fmt.Errorf("错误: 自动认证成功，但无法同步认证状态: %v", err)
 	}
 	return nil
 }

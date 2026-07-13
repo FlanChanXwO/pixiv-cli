@@ -14,7 +14,7 @@ import (
 func TestSourceUsesWebOnlyWhenTokenIsEmptyAndFallbackEnabled(t *testing.T) {
 	app := &fakeAppAPI{searchErr: errors.New("app should not be called")}
 	web := &fakeWebAPI{search: &IllustList{Illusts: []Illust{{ID: 101}}}}
-	source := NewSourceFromClients(app, web, SourcePolicy{WebFallbackEnabled: true})
+	source := newFakeSource(app, web, &fakeAuth{}, true)
 
 	result, err := source.SearchIllust(context.Background(), "miku", "partial_match_for_tags", "date_desc", "", 0)
 
@@ -27,9 +27,9 @@ func TestSourceUsesWebOnlyWhenTokenIsEmptyAndFallbackEnabled(t *testing.T) {
 
 func TestSourceKeepsAppErrorsWhenTokenExists(t *testing.T) {
 	appErr := errors.New("invalid refresh token")
-	app := &fakeAppAPI{refreshToken: "token", searchErr: appErr}
+	app := &fakeAppAPI{searchErr: appErr}
 	web := &fakeWebAPI{search: &IllustList{Illusts: []Illust{{ID: 202}}}}
-	source := NewSourceFromClients(app, web, SourcePolicy{RefreshToken: "token", WebFallbackEnabled: true})
+	source := newFakeSource(app, web, &fakeAuth{refreshToken: "token"}, true)
 
 	_, err := source.SearchIllust(context.Background(), "miku", "partial_match_for_tags", "date_desc", "", 0)
 
@@ -41,7 +41,7 @@ func TestSourceKeepsAppErrorsWhenTokenExists(t *testing.T) {
 func TestSourceDoesNotUseWebWhenFallbackDisabled(t *testing.T) {
 	app := &fakeAppAPI{search: &IllustList{Illusts: []Illust{{ID: 303}}}}
 	web := &fakeWebAPI{search: &IllustList{Illusts: []Illust{{ID: 404}}}}
-	source := NewSourceFromClients(app, web, SourcePolicy{WebFallbackEnabled: false})
+	source := newFakeSource(app, web, &fakeAuth{}, false)
 
 	result, err := source.SearchIllust(context.Background(), "miku", "partial_match_for_tags", "date_desc", "", 0)
 
@@ -52,16 +52,29 @@ func TestSourceDoesNotUseWebWhenFallbackDisabled(t *testing.T) {
 	assert.Equal(t, 0, web.searchCalls)
 }
 
+func TestSourceKeepsAppOnlyOperationOutOfWebWhitelist(t *testing.T) {
+	app := &fakeAppAPI{related: &IllustList{Illusts: []Illust{{ID: 808}}}}
+	source := newFakeSource(app, &fakeWebAPI{}, &fakeAuth{}, true)
+
+	result, err := source.IllustRelated(context.Background(), 1, 0)
+
+	require.NoError(t, err)
+	require.Len(t, result.Illusts, 1)
+	assert.Equal(t, int64(808), result.Illusts[0].ID)
+	assert.Equal(t, 1, app.relatedCalls)
+}
+
 func TestSourceSetRefreshTokenDisablesWebFallback(t *testing.T) {
 	app := &fakeAppAPI{search: &IllustList{Illusts: []Illust{{ID: 505}}}}
 	web := &fakeWebAPI{search: &IllustList{Illusts: []Illust{{ID: 606}}}}
-	source := NewSourceFromClients(app, web, SourcePolicy{WebFallbackEnabled: true})
+	auth := &fakeAuth{}
+	source := newFakeSource(app, web, auth, true)
 
 	source.SetRefreshToken("new-token")
 	result, err := source.SearchIllust(context.Background(), "miku", "partial_match_for_tags", "date_desc", "", 0)
 
 	require.NoError(t, err)
-	assert.Equal(t, "new-token", app.refreshToken)
+	assert.Equal(t, "new-token", auth.refreshToken)
 	require.Len(t, result.Illusts, 1)
 	assert.Equal(t, int64(505), result.Illusts[0].ID)
 	assert.Equal(t, 1, app.searchCalls)
@@ -73,7 +86,8 @@ func TestSourceRoutesDownloadAndUgoiraThroughWebFallback(t *testing.T) {
 	web := &fakeWebAPI{
 		ugoira: &UgoiraMetadataResult{UgoiraMetadata: UgoiraMetadata{Frames: []UgoiraFrame{{File: "0.jpg", Delay: 60}}}},
 	}
-	source := NewSourceFromClients(app, web, SourcePolicy{WebFallbackEnabled: true})
+	appResource, webResource := &fakeResource{}, &fakeResource{payload: "web-download"}
+	source := NewSourceFromClients(app, web, &fakeAuth{}, appResource, webResource, SourcePolicy{WebFallbackEnabled: true})
 
 	meta, err := source.UgoiraMetadata(context.Background(), 707)
 	require.NoError(t, err)
@@ -83,26 +97,44 @@ func TestSourceRoutesDownloadAndUgoiraThroughWebFallback(t *testing.T) {
 	require.NoError(t, source.Download(context.Background(), "https://i.pximg.net/x.jpg", &dst))
 	assert.Equal(t, "web-download", dst.String())
 	assert.Equal(t, 1, web.ugoiraCalls)
-	assert.Equal(t, 1, web.downloadCalls)
+	assert.Equal(t, 1, webResource.calls)
 	assert.Equal(t, 0, app.ugoiraCalls)
-	assert.Equal(t, 0, app.downloadCalls)
+	assert.Equal(t, 0, appResource.calls)
+}
+
+func newFakeSource(app AppAPI, web WebAPI, auth *fakeAuth, enabled bool) *Source {
+	return NewSourceFromClients(app, web, auth, &fakeResource{}, &fakeResource{}, SourcePolicy{RefreshToken: auth.refreshToken, WebFallbackEnabled: enabled})
+}
+
+type fakeAuth struct{ refreshToken string }
+
+func (*fakeAuth) Refresh(context.Context) error  { return nil }
+func (f *fakeAuth) SetRefreshToken(token string) { f.refreshToken = token }
+func (f *fakeAuth) RefreshTokenValue() string    { return f.refreshToken }
+func (*fakeAuth) UserID() int64                  { return 0 }
+func (*fakeAuth) UserName() string               { return "" }
+func (*fakeAuth) IsAuthenticated() bool          { return false }
+
+type fakeResource struct {
+	payload string
+	calls   int
+}
+
+func (f *fakeResource) Download(_ context.Context, _ string, dst io.Writer) error {
+	f.calls++
+	_, err := io.WriteString(dst, f.payload)
+	return err
 }
 
 type fakeAppAPI struct {
-	refreshToken  string
-	search        *IllustList
-	searchErr     error
-	searchCalls   int
-	ugoiraCalls   int
-	downloadCalls int
+	search       *IllustList
+	searchErr    error
+	searchCalls  int
+	related      *IllustList
+	relatedCalls int
+	ugoiraCalls  int
 }
 
-func (f *fakeAppAPI) Refresh(context.Context) error { return nil }
-func (f *fakeAppAPI) SetRefreshToken(token string)  { f.refreshToken = token }
-func (f *fakeAppAPI) RefreshTokenValue() string     { return f.refreshToken }
-func (f *fakeAppAPI) UserID() int64                 { return 0 }
-func (f *fakeAppAPI) UserName() string              { return "" }
-func (f *fakeAppAPI) IsAuthenticated() bool         { return false }
 func (f *fakeAppAPI) SearchIllust(context.Context, string, string, string, string, int) (*IllustList, error) {
 	f.searchCalls++
 	if f.searchErr != nil {
@@ -114,7 +146,8 @@ func (f *fakeAppAPI) IllustDetail(context.Context, int64) (*IllustDetail, error)
 	return nil, nil
 }
 func (f *fakeAppAPI) IllustRelated(context.Context, int64, int) (*IllustList, error) {
-	return nil, nil
+	f.relatedCalls++
+	return f.related, nil
 }
 func (f *fakeAppAPI) IllustRanking(context.Context, string, string, int) (*IllustList, error) {
 	return nil, nil
@@ -142,17 +175,12 @@ func (f *fakeAppAPI) UgoiraMetadata(context.Context, int64) (*UgoiraMetadataResu
 	f.ugoiraCalls++
 	return nil, nil
 }
-func (f *fakeAppAPI) Download(context.Context, string, io.Writer) error {
-	f.downloadCalls++
-	return nil
-}
 
 type fakeWebAPI struct {
-	search        *IllustList
-	searchCalls   int
-	ugoira        *UgoiraMetadataResult
-	ugoiraCalls   int
-	downloadCalls int
+	search      *IllustList
+	searchCalls int
+	ugoira      *UgoiraMetadataResult
+	ugoiraCalls int
 }
 
 func (f *fakeWebAPI) SearchIllust(context.Context, string, string, string, string, int) (*IllustList, error) {
@@ -171,9 +199,4 @@ func (f *fakeWebAPI) SearchUser(context.Context, string, int) (*UserPreviewList,
 func (f *fakeWebAPI) UgoiraMetadata(context.Context, int64) (*UgoiraMetadataResult, error) {
 	f.ugoiraCalls++
 	return f.ugoira, nil
-}
-func (f *fakeWebAPI) Download(_ context.Context, _ string, dst io.Writer) error {
-	f.downloadCalls++
-	_, err := io.WriteString(dst, "web-download")
-	return err
 }

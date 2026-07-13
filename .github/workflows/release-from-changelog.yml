@@ -1,0 +1,251 @@
+name: Release From Changelog
+
+on:
+  push:
+    branches:
+      - master
+      - main
+      - workflow
+      - workflow/**
+    paths:
+      - CHANGELOG.md
+      - changelog.md
+      - data/plugins/**/CHANGELOG.md
+      - data/plugins/**/changelog.md
+  workflow_dispatch:
+    inputs:
+      changelog_path:
+        description: "Optional single changelog path (e.g. data/plugins/foo/CHANGELOG.md)"
+        required: false
+        default: ""
+      tag_prefix:
+        description: "Optional tag prefix override. Empty = v"
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-from-changelog-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      changelog_files: ${{ steps.collect.outputs.changelog_files }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Collect changelog files
+        id: collect
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [ -n "${{ inputs.changelog_path }}" ]; then
+            file="${{ inputs.changelog_path }}"
+            if [ ! -f "$file" ]; then
+              echo "Input changelog path does not exist: $file" >&2
+              exit 1
+            fi
+            json="$(jq -cn --arg f "$file" '[$f]')"
+            echo "changelog_files=$json" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          before="${{ github.event.before }}"
+          after="${{ github.sha }}"
+
+          if [ -z "$before" ] || [ "$before" = "0000000000000000000000000000000000000000" ]; then
+            changed_files="$(git --no-pager ls-files "CHANGELOG.md" "changelog.md" "data/plugins/*/CHANGELOG.md" "data/plugins/*/changelog.md")"
+          else
+            changed_files="$(git --no-pager diff --name-only "$before" "$after")"
+          fi
+
+          json="$(printf '%s\n' "$changed_files" \
+            | awk '/^(CHANGELOG\.md|changelog\.md)$/ || /^data\/plugins\/[^/]+\/(CHANGELOG\.md|changelog\.md)$/ { print }' \
+            | awk 'NF' \
+            | sort -u \
+            | jq -R -s -c 'split("\n") | map(select(length > 0))')"
+
+          if [ -z "$json" ]; then
+            json='[]'
+          fi
+
+          count="$(printf '%s' "$json" | jq 'length')"
+          if [ "$count" -gt 1 ]; then
+            echo "Detected multiple changelog files in one push:" >&2
+            printf '%s\n' "$json" | jq -r '.[]' >&2
+            echo "Please rerun workflow_dispatch with input changelog_path to publish one target." >&2
+            exit 1
+          fi
+
+          echo "changelog_files=$json" >> "$GITHUB_OUTPUT"
+
+  release:
+    runs-on: ubuntu-latest
+    needs: prepare
+    if: needs.prepare.outputs.changelog_files != '[]' && needs.prepare.outputs.changelog_files != ''
+
+    strategy:
+      fail-fast: false
+      matrix:
+        changelog: ${{ fromJson(needs.prepare.outputs.changelog_files) }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Parse version and notes
+        id: parse
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          changelog_path="${{ matrix.changelog }}"
+          if [ ! -f "$changelog_path" ]; then
+            echo "Missing changelog: $changelog_path" >&2
+            exit 1
+          fi
+
+          plugin_name=""
+          case "$changelog_path" in
+            CHANGELOG.md|changelog.md)
+              plugin_name="${{ github.event.repository.name }}"
+              ;;
+            data/plugins/*/CHANGELOG.md|data/plugins/*/changelog.md)
+              IFS='/' read -r p1 p2 plugin_name _ <<< "$changelog_path"
+              if [ "$p1" != "data" ] || [ "$p2" != "plugins" ] || [ -z "$plugin_name" ]; then
+                echo "Unsupported changelog path: $changelog_path" >&2
+                exit 1
+              fi
+              ;;
+            *)
+              echo "Unsupported changelog path: $changelog_path" >&2
+              exit 1
+              ;;
+          esac
+
+          first_heading_line="$(grep -n -m1 -E '^##[[:space:]]*\[?v?[0-9]+\.[0-9]+\.[0-9]+([-.+][^]]+)?\]?.*$' "$changelog_path" || true)"
+          if [ -z "$first_heading_line" ]; then
+            echo "No version heading like '## [1.2.3]' found." >&2
+            exit 1
+          fi
+
+          start_line="${first_heading_line%%:*}"
+          heading_text="${first_heading_line#*:}"
+          version="$(printf '%s\n' "$heading_text" | sed -E 's/^##[[:space:]]*\[?v?([^]]+)\]?.*$/\1/')"
+
+          next_marker_rel="$(tail -n +$((start_line + 1)) "$changelog_path" \
+            | grep -n -m1 -E '^(##[[:space:]]*\[?v?[0-9]+\.[0-9]+\.[0-9]+([-.+][^]]+)?\]?.*|<details>)' \
+            | cut -d: -f1 || true)"
+          notes_start=$((start_line + 1))
+          if [ -n "$next_marker_rel" ]; then
+            notes_end=$((start_line + next_marker_rel - 1))
+            notes="$(sed -n "${notes_start},${notes_end}p" "$changelog_path")"
+          else
+            notes="$(sed -n "${notes_start},\$p" "$changelog_path")"
+          fi
+
+          if [ -z "$(printf '%s' "$notes" | tr -d '[:space:]')" ]; then
+            echo "Failed to extract release notes from $changelog_path" >&2
+            exit 1
+          fi
+
+          if [ -n "${{ inputs.tag_prefix }}" ]; then
+            tag="${{ inputs.tag_prefix }}${version}"
+          else
+            tag="v${version}"
+          fi
+
+          notes_file="release-notes-${plugin_name}.md"
+          printf '%s\n' "$notes" > "$notes_file"
+          if [ ! -s "$notes_file" ]; then
+            echo "Generated notes file is empty: $notes_file" >&2
+            exit 1
+          fi
+
+          echo "plugin=$plugin_name" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "notes_file=$notes_file" >> "$GITHUB_OUTPUT"
+
+      - name: Check existing tag/release
+        id: dedupe
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          tag="${{ steps.parse.outputs.tag }}"
+          tag_exists="false"
+          release_exists="false"
+
+          if gh api "repos/${{ github.repository }}/git/ref/tags/${tag}" >/dev/null 2>&1; then
+            tag_exists="true"
+          fi
+
+          if gh release view "$tag" >/dev/null 2>&1; then
+            release_exists="true"
+          fi
+
+          echo "tag_exists=$tag_exists" >> "$GITHUB_OUTPUT"
+          echo "release_exists=$release_exists" >> "$GITHUB_OUTPUT"
+
+      - name: Update existing release notes
+        if: steps.dedupe.outputs.release_exists == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          tag="${{ steps.parse.outputs.tag }}"
+          gh release edit "$tag" \
+            --title "$tag" \
+            --notes-file "${{ steps.parse.outputs.notes_file }}"
+
+      - name: Create release and tag
+        if: steps.dedupe.outputs.release_exists != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          tag="${{ steps.parse.outputs.tag }}"
+
+          if [ "${{ steps.dedupe.outputs.tag_exists }}" = "true" ]; then
+            gh release create "$tag" \
+              --title "$tag" \
+              --notes-file "${{ steps.parse.outputs.notes_file }}"
+          else
+            gh release create "$tag" \
+              --target "$GITHUB_SHA" \
+              --title "$tag" \
+              --notes-file "${{ steps.parse.outputs.notes_file }}"
+          fi
+
+      - name: Release summary
+        shell: bash
+        run: |
+          if [ "${{ steps.dedupe.outputs.release_exists }}" = "true" ]; then
+            echo "Updated release ${{ steps.parse.outputs.tag }} from ${{ matrix.changelog }}"
+          else
+            echo "Created release ${{ steps.parse.outputs.tag }} from ${{ matrix.changelog }}"
+          fi
+
+      - name: Verify release body
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          tag="${{ steps.parse.outputs.tag }}"
+          body="$(gh release view "$tag" --json body --jq '.body // ""')"
+          if [ -z "$(printf '%s' "$body" | tr -d '[:space:]')" ]; then
+            echo "Release body is still empty for $tag" >&2
+            exit 1
+          fi

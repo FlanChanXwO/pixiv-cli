@@ -3,14 +3,18 @@ package cli
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
+	"strings"
+	"time"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/application"
 	"github.com/FlanChanXwO/pixiv-cli/internal/bootstrap"
 	"github.com/FlanChanXwO/pixiv-cli/internal/buildinfo"
 	"github.com/FlanChanXwO/pixiv-cli/internal/config"
+	sdk "github.com/FlanChanXwO/pixiv-cli/pkg/pixiv"
 	"github.com/spf13/cobra"
 )
 
@@ -18,6 +22,7 @@ type app struct {
 	in     io.Reader
 	out    io.Writer
 	errOut io.Writer
+	logger *slog.Logger
 }
 
 type commandOptions struct {
@@ -51,16 +56,75 @@ var (
 )
 
 func Run(args []string, in io.Reader, out io.Writer, errOut io.Writer) int {
+	return RunContext(context.Background(), args, in, out, errOut)
+}
+
+// RunContext 让嵌入式调用方把取消信号传到每一条网络数据命令。
+func RunContext(ctx context.Context, args []string, in io.Reader, out io.Writer, errOut io.Writer) int {
 	if len(args) == 0 {
 		args = []string{"pixiv"}
 	}
-	a := app{in: in, out: out, errOut: errOut}
+	logger, err := bootstrap.NewApplicationLogger(errOut)
+	if err != nil {
+		fmt.Fprintln(errOut, "error:", err)
+		return 1
+	}
+	a := app{in: in, out: out, errOut: errOut, logger: logger}
 	cmd := a.newRootCommand()
 	cmd.SetIn(in)
 	cmd.SetOut(out)
 	cmd.SetErr(errOut)
 	cmd.SetArgs(args[1:])
-	return a.exit(cmd.Execute())
+	cmd.SetContext(ctx)
+	operation := cmd.CommandPath()
+	if target, _, findErr := cmd.Find(args[1:]); findErr == nil && target != nil {
+		operation = target.CommandPath()
+	}
+	started := time.Now()
+	err = cmd.Execute()
+	// Cobra 将根帮助和 `pixiv --version` 都报告为 `pixiv`；后者是稳定的单行
+	// machine-readable 输出，不能混入日志，前者则仍应留下命令诊断。
+	a.commandLog(operation, started, err, len(args) == 2 && args[1] == "--version")
+	return a.exit(err)
+}
+
+// commandLog 仅记录命令名和稳定结果，不能记录 args：其中可能含 refresh token、
+// OAuth code 或本地路径。stdout 始终只保留命令业务输出。
+func (a app) commandLog(operation string, started time.Time, err error, suppress bool) {
+	if a.logger == nil {
+		return
+	}
+	// 纯本地 metadata/config 命令的 stdout/stderr 是稳定机器接口；它们不触发业务
+	// 网络流程，因此不额外产生日志。根命令覆盖 `pixiv --version` 的 Cobra 路径。
+	if suppress || strings.HasPrefix(operation, "pixiv config") || strings.HasPrefix(operation, "pixiv version") || strings.HasPrefix(operation, "pixiv update") {
+		return
+	}
+	result, code, backend, status := "success", "", "local", 0
+	level := slog.LevelInfo
+	var illustID, userID int64
+	if err != nil {
+		result = "error"
+		level = slog.LevelError
+		var typed *sdk.Error
+		if errors.As(err, &typed) {
+			code, backend, status = string(typed.Code), string(typed.Backend), typed.UpstreamStatus
+			if backend == "" {
+				backend = "local"
+			}
+			illustID, userID = typed.IllustID, typed.UserID
+		}
+	}
+	attrs := []slog.Attr{
+		slog.String("component", "cli"), slog.String("operation", operation), slog.String("backend", backend),
+		slog.Duration("duration", time.Since(started)), slog.String("result", result), slog.String("error_code", code), slog.Int("status", status),
+	}
+	if illustID != 0 {
+		attrs = append(attrs, slog.Int64("illust_id", illustID))
+	}
+	if userID != 0 {
+		attrs = append(attrs, slog.Int64("user_id", userID))
+	}
+	a.logger.LogAttrs(nil, level, "pixiv operation", attrs...)
 }
 
 func (a app) exit(err error) int {
@@ -76,8 +140,11 @@ func runMCP(ctx context.Context, errOut io.Writer, proxyOverride *string) error 
 }
 
 func (a app) services() application.Services {
-	logger := slog.New(slog.NewTextHandler(a.errOut, nil))
-	return newCLIServices(logger)
+	if a.logger != nil {
+		return newCLIServices(a.logger)
+	}
+	// 仅供包内直接构造 app 的测试；生产入口始终显式创建根 logger。
+	return newCLIServices(slog.New(slog.NewTextHandler(io.Discard, nil)))
 }
 
 func (a app) newRootCommand() *cobra.Command {
@@ -103,6 +170,9 @@ func (a app) newRootCommand() *cobra.Command {
 		a.newDetailCommand(),
 		a.newRankingCommand(),
 		a.newRecommendedCommand(),
+		a.newUserCommand(),
+		a.newBookmarkCommand(),
+		a.newFollowCommand(),
 		a.newDownloadCommand(),
 		a.newMCPCommand(),
 		a.newVersionCommand(),
@@ -123,7 +193,7 @@ func (a app) newMCPCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return runMCPServer(context.Background(), a.errOut, proxyOverride)
+			return runMCPServer(cmd.Context(), a.errOut, proxyOverride)
 		},
 	}
 	a.bindProxyFlags(cmd, &opts)

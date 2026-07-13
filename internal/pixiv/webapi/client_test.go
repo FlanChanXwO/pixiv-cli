@@ -1,17 +1,160 @@
-package web
+package webapi
 
 import (
-	"bytes"
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func TestCheckedWebPaginationUsesMachineArithmeticBoundaries(t *testing.T) {
+	maxInt := int(^uint(0) >> 1)
+	for _, pageSize := range []int{60, 50} {
+		t.Run(fmt.Sprintf("page size %d", pageSize), func(t *testing.T) {
+			largestSafe := (maxInt/pageSize)*pageSize - 1
+			pagination, err := checkedWebPagination(largestSafe, pageSize)
+			require.NoError(t, err)
+			assert.Equal(t, largestSafe/pageSize+1, pagination.page)
+			assert.Equal(t, (maxInt/pageSize)*pageSize, pagination.nextOffset)
+			assert.Greater(t, pagination.nextOffset, largestSafe)
+
+			_, err = checkedWebPagination(largestSafe+1, pageSize)
+			assert.True(t, errors.Is(err, ErrUnrepresentablePagination), "error = %v", err)
+
+			pageStart := largestSafe - largestSafe%pageSize
+			remaining := maxInt - pageStart
+			assert.True(t, webHasNext(largestSafe, remaining-1, int64(maxInt), pageSize))
+			assert.False(t, webHasNext(largestSafe, remaining, int64(maxInt), pageSize))
+		})
+	}
+}
+
+func TestWebHasNextKeepsTotalAsInt64(t *testing.T) {
+	const aboveMaxInt32 = int64(1<<31) + 1
+	assert.True(t, webHasNext(1, 60, aboveMaxInt32, 60))
+	assert.False(t, webHasNext(120, 1, int64(120), 60))
+	assert.True(t, webHasNext(61, 1, int64(62), 60))
+}
+
+func TestClientContinuationPreservesTotalsBeyondInt32(t *testing.T) {
+	tests := []struct {
+		name       string
+		body       string
+		call       func(*Client) (int, bool, error)
+		wantOffset int
+	}{
+		{
+			name: "search illust",
+			body: `{"error":false,"body":{"illustManga":{"total":2147483648,"data":[{"id":"1","userId":"10"}]}}}`,
+			call: func(client *Client) (int, bool, error) {
+				result, err := client.SearchIllust(context.Background(), "miku", "partial_match_for_tags", "date_desc", "", 0)
+				if err != nil {
+					return 0, false, err
+				}
+				return result.NextOffset, result.ContinuationExists, nil
+			},
+			wantOffset: 60,
+		},
+		{
+			name: "illust ranking",
+			body: `{"rank_total":2147483648,"contents":[{"illust_id":1,"user_id":10}]}`,
+			call: func(client *Client) (int, bool, error) {
+				result, err := client.IllustRanking(context.Background(), "day", "", 0)
+				if err != nil {
+					return 0, false, err
+				}
+				return result.NextOffset, result.ContinuationExists, nil
+			},
+			wantOffset: 50,
+		},
+		{
+			name: "search user",
+			body: `{"error":false,"body":{"illustManga":{"total":2147483648,"data":[{"id":"1","userId":"10"}]}}}`,
+			call: func(client *Client) (int, bool, error) {
+				result, err := client.SearchUser(context.Background(), "artist", 0)
+				if err != nil {
+					return 0, false, err
+				}
+				return result.NextOffset, result.ContinuationExists, nil
+			},
+			wantOffset: 60,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				fmt.Fprint(w, test.body)
+			}))
+			defer server.Close()
+			client := New(WithHTTPClient(server.Client()), WithWebBase(server.URL))
+			offset, continuation, err := test.call(client)
+			require.NoError(t, err)
+			assert.True(t, continuation)
+			assert.Equal(t, test.wantOffset, offset)
+		})
+	}
+}
+
+func TestWebContinuationUsesPageStartForInPageOffsets(t *testing.T) {
+	tests := []struct {
+		name      string
+		operation string
+		offset    int
+		pageSize  int
+		total     int
+		wantNext  bool
+	}{
+		{name: "search total below page boundary", operation: "search", offset: 1, pageSize: 60, total: 59},
+		{name: "search total at page boundary", operation: "search", offset: 1, pageSize: 60, total: 60},
+		{name: "search total beyond page boundary", operation: "search", offset: 1, pageSize: 60, total: 61, wantNext: true},
+		{name: "search without total keeps full-batch continuation", operation: "search", offset: 1, pageSize: 60, wantNext: true},
+		{name: "search user total below page boundary", operation: "user", offset: 1, pageSize: 60, total: 59},
+		{name: "search user total at page boundary", operation: "user", offset: 1, pageSize: 60, total: 60},
+		{name: "search user total beyond page boundary", operation: "user", offset: 1, pageSize: 60, total: 61, wantNext: true},
+		{name: "ranking total below page boundary", operation: "ranking", offset: 30, pageSize: 50, total: 49},
+		{name: "ranking total at page boundary", operation: "ranking", offset: 30, pageSize: 50, total: 50},
+		{name: "ranking total beyond page boundary", operation: "ranking", offset: 30, pageSize: 50, total: 51, wantNext: true},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				items := make([]map[string]any, test.pageSize)
+				for index := range items {
+					items[index] = map[string]any{"id": index + 1, "illust_id": index + 1, "userId": index + 101, "user_id": index + 101}
+				}
+				if test.operation == "ranking" {
+					_ = json.NewEncoder(w).Encode(map[string]any{"contents": items, "rank_total": test.total})
+					return
+				}
+				_ = json.NewEncoder(w).Encode(map[string]any{"error": false, "body": map[string]any{"illustManga": map[string]any{"data": items, "total": test.total}}})
+			}))
+			defer server.Close()
+			client := New(WithHTTPClient(server.Client()), WithWebBase(server.URL))
+			var gotNext bool
+			switch test.operation {
+			case "ranking":
+				result, err := client.IllustRanking(context.Background(), "day", "", test.offset)
+				require.NoError(t, err)
+				gotNext = result.ContinuationExists
+			case "user":
+				result, err := client.SearchUser(context.Background(), "artist", test.offset)
+				require.NoError(t, err)
+				gotNext = result.ContinuationExists
+			default:
+				result, err := client.SearchIllust(context.Background(), "miku", "partial_match_for_tags", "date_desc", "", test.offset)
+				require.NoError(t, err)
+				gotNext = result.ContinuationExists
+			}
+			assert.Equal(t, test.wantNext, gotNext)
+		})
+	}
+}
 
 func TestClientSearchIllustMapsWebArtworkResults(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -85,6 +228,28 @@ func TestClientIllustDetailMapsDetailAndPages(t *testing.T) {
 	assert.Equal(t, "Hatsune Miku", illust.Tags[0].TranslatedName)
 }
 
+func TestClientIllustPagesMapsDimensionsIndexAndQuerySafeExtension(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, "/ajax/illust/123/pages", r.URL.Path)
+		fmt.Fprint(w, `{"error":false,"message":"","body":[{"width":1200,"height":1600,"urls":{"original":"https://i.pximg.net/o0.png?token=a.jpg#fragment"}},{"width":2400,"height":1800,"urls":{"original":"https://i.pximg.net/o1.jpeg"}}]}`)
+	}))
+	defer server.Close()
+
+	client := New(WithHTTPClient(server.Client()), WithWebBase(server.URL))
+	pages, err := client.IllustPages(context.Background(), 123)
+
+	require.NoError(t, err)
+	require.Len(t, pages, 2)
+	assert.Equal(t, 0, pages[0].PageIndex)
+	assert.Equal(t, 1200, pages[0].Width)
+	assert.Equal(t, 1600, pages[0].Height)
+	assert.Equal(t, "png", pages[0].Extension)
+	assert.Equal(t, 1, pages[1].PageIndex)
+	assert.Equal(t, 2400, pages[1].Width)
+	assert.Equal(t, 1800, pages[1].Height)
+	assert.Equal(t, "jpeg", pages[1].Extension)
+}
+
 func TestClientRankingMapsRankingContents(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		require.Equal(t, "/ranking.php", r.URL.Path)
@@ -136,14 +301,11 @@ func TestClientSearchUserAggregatesArtworkAuthors(t *testing.T) {
 	assert.Equal(t, int64(789), result.UserPreviews[1].User.ID)
 }
 
-func TestClientUgoiraMetadataAndDownloadUseWebShape(t *testing.T) {
+func TestClientUgoiraMetadataUsesWebShape(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/ajax/illust/123/ugoira_meta":
-			fmt.Fprint(w, `{"error":false,"message":"","body":{"originalSrc":"https://i.pximg.net/ugoira.zip","frames":[{"file":"000000.jpg","delay":80}]}}`)
-		case "/image.jpg":
-			assert.True(t, strings.HasSuffix(r.Header.Get("Referer"), "/"))
-			fmt.Fprint(w, "image-bytes")
+			fmt.Fprint(w, `{"error":false,"message":"","body":{"src":"https://i.pximg.net/ugoira-medium.zip","originalSrc":"https://i.pximg.net/ugoira.zip","frames":[{"file":"000000.jpg","delay":80}]}}`)
 		default:
 			http.NotFound(w, r)
 		}
@@ -153,13 +315,10 @@ func TestClientUgoiraMetadataAndDownloadUseWebShape(t *testing.T) {
 	client := New(WithHTTPClient(server.Client()), WithWebBase(server.URL))
 	meta, err := client.UgoiraMetadata(context.Background(), 123)
 	require.NoError(t, err)
-	assert.Equal(t, "https://i.pximg.net/ugoira.zip", meta.UgoiraMetadata.ZipURLs.Medium)
+	assert.Equal(t, "https://i.pximg.net/ugoira-medium.zip", meta.UgoiraMetadata.ZipURLs.Medium)
+	assert.Equal(t, "https://i.pximg.net/ugoira.zip", meta.UgoiraMetadata.ZipURLs.Original)
 	require.Len(t, meta.UgoiraMetadata.Frames, 1)
 	assert.Equal(t, 80, meta.UgoiraMetadata.Frames[0].Delay)
-
-	var dst bytes.Buffer
-	require.NoError(t, client.Download(context.Background(), server.URL+"/image.jpg", &dst))
-	assert.Equal(t, "image-bytes", dst.String())
 }
 
 func TestClientExposesWebHTTPErrorBody(t *testing.T) {

@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -9,6 +10,19 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func TestWritePrivateFileKeepsOldAuthWhenReplacementFails(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "auth.json")
+	require.NoError(t, os.WriteFile(path, []byte("old"), DefaultAuthFileMode))
+	err := writePrivateFile(path, []byte("new"), func(string, string) error { return errors.New("replace failed") })
+	require.Error(t, err)
+	body, readErr := os.ReadFile(path)
+	require.NoError(t, readErr)
+	assert.Equal(t, "old", string(body))
+	matches, globErr := filepath.Glob(filepath.Join(filepath.Dir(path), ".auth-*"))
+	require.NoError(t, globErr)
+	assert.Empty(t, matches)
+}
 
 func TestLoadSaveAuthStoreKeepsPrivatePermissionsAndDefaultUserID(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "pixiv", "auth.json")

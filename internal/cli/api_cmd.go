@@ -6,9 +6,8 @@ import (
 	"io"
 	"strings"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/application"
-	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv"
 	"github.com/FlanChanXwO/pixiv-cli/internal/utils/parse"
+	sdk "github.com/FlanChanXwO/pixiv-cli/pkg/pixiv"
 	"github.com/spf13/cobra"
 )
 
@@ -17,26 +16,26 @@ type searchOptions struct {
 	target   string
 	sortMode string
 	duration string
-	offset   int
-	r18      bool
+	listOptions
+	r18 bool
 }
 
 type rankingOptions struct {
 	commandOptions
-	mode   string
-	date   string
-	offset int
+	mode string
+	date string
+	listOptions
 }
 
 type recommendedOptions struct {
 	commandOptions
-	offset int
+	listOptions
 }
 
 func (a app) newSearchCommand() *cobra.Command {
 	opts := searchOptions{
-		target:   string(pixiv.SearchTargetPartialMatchForTags),
-		sortMode: string(pixiv.SortModeDateDesc),
+		target:   string(sdk.SearchTargetPartialMatchForTags),
+		sortMode: string(sdk.SortModeDateDesc),
 	}
 	cmd := &cobra.Command{
 		Use:     "search WORD",
@@ -52,7 +51,7 @@ func (a app) newSearchCommand() *cobra.Command {
 	flags.StringVar(&opts.target, "search-target", opts.target, "search target")
 	flags.StringVar(&opts.sortMode, "sort", opts.sortMode, "sort mode")
 	flags.StringVar(&opts.duration, "duration", "", "duration")
-	flags.IntVar(&opts.offset, "offset", 0, "offset")
+	bindListFlags(cmd, &opts.listOptions)
 	flags.BoolVar(&opts.r18, "r18", false, "append R-18 to the search word")
 	return cmd
 }
@@ -62,28 +61,33 @@ func (a app) runSearch(cmd *cobra.Command, args []string, opts searchOptions) er
 	if opts.r18 {
 		word += " R-18"
 	}
+	plan, err := parseListPlan(cmd, opts.listOptions)
+	if err != nil {
+		return err
+	}
 	services := a.services()
-	clientReq, err := a.clientRequest(cmd, opts.commandOptions, false)
+	clientReq, jsonOverride, err := a.sdkRequest(cmd, opts.commandOptions)
 	if err != nil {
 		return err
 	}
-	result, jsonOut, err := services.Artwork.Search(context.Background(), application.SearchRequest{
-		Client:   clientReq,
-		Word:     word,
-		Target:   opts.target,
-		Sort:     opts.sortMode,
-		Duration: opts.duration,
-		Offset:   opts.offset,
-	})
+	jsonOut, err := services.SDK.JSONOut(jsonOverride)
 	if err != nil {
 		return err
 	}
-	if jsonOut {
-		return a.printJSON(result)
+	client, err := services.SDK.OpenOperation(cmd.Context(), clientReq)
+	if err != nil {
+		return err
 	}
-	fmt.Fprintf(a.out, "found %d illustrations for %q\n", len(result.Illusts), word)
-	printIllusts(a.out, result.Illusts, opts.offset, false)
-	return nil
+	if !jsonOut {
+		fmt.Fprintf(a.out, "illustrations for %q\n", word)
+	}
+	return a.runIllustList(cmd.Context(), plan, jsonOut, func(ctx context.Context, cursor sdk.Cursor) ([]sdk.Illust, sdk.Cursor, error) {
+		result, err := client.SearchIllust(ctx, sdk.SearchIllustRequest{Word: word, Target: sdk.SearchTarget(opts.target), Sort: sdk.SortMode(opts.sortMode), Duration: opts.duration, Cursor: cursor})
+		if err != nil {
+			return nil, "", err
+		}
+		return result.Illusts, result.NextCursor, nil
+	}, func(items []sdk.Illust, start int) { printIllusts(a.out, items, start, false) })
 }
 
 func (a app) newDetailCommand() *cobra.Command {
@@ -106,11 +110,19 @@ func (a app) runDetail(cmd *cobra.Command, arg string, opts commandOptions) erro
 		return err
 	}
 	services := a.services()
-	clientReq, err := a.clientRequest(cmd, opts, false)
+	clientReq, jsonOverride, err := a.sdkRequest(cmd, opts)
 	if err != nil {
 		return err
 	}
-	result, jsonOut, err := services.Artwork.Detail(context.Background(), clientReq, id)
+	jsonOut, err := services.SDK.JSONOut(jsonOverride)
+	if err != nil {
+		return err
+	}
+	client, err := services.SDK.OpenOperation(cmd.Context(), clientReq)
+	if err != nil {
+		return err
+	}
+	result, err := client.IllustDetail(cmd.Context(), id)
 	if err != nil {
 		return err
 	}
@@ -122,7 +134,7 @@ func (a app) runDetail(cmd *cobra.Command, arg string, opts commandOptions) erro
 }
 
 func (a app) newRankingCommand() *cobra.Command {
-	opts := rankingOptions{mode: string(pixiv.RankingModeDay)}
+	opts := rankingOptions{mode: string(sdk.RankingModeDay)}
 	cmd := &cobra.Command{
 		Use:   "ranking",
 		Short: "Show illustration ranking",
@@ -135,31 +147,38 @@ func (a app) newRankingCommand() *cobra.Command {
 	flags := cmd.Flags()
 	flags.StringVar(&opts.mode, "mode", opts.mode, "ranking mode")
 	flags.StringVar(&opts.date, "date", "", "YYYY-MM-DD")
-	flags.IntVar(&opts.offset, "offset", 0, "offset")
+	bindListFlags(cmd, &opts.listOptions)
 	return cmd
 }
 
 func (a app) runRanking(cmd *cobra.Command, opts rankingOptions) error {
+	plan, err := parseListPlan(cmd, opts.listOptions)
+	if err != nil {
+		return err
+	}
 	services := a.services()
-	clientReq, err := a.clientRequest(cmd, opts.commandOptions, false)
+	clientReq, jsonOverride, err := a.sdkRequest(cmd, opts.commandOptions)
 	if err != nil {
 		return err
 	}
-	result, jsonOut, err := services.Artwork.Ranking(context.Background(), application.RankingRequest{
-		Client: clientReq,
-		Mode:   opts.mode,
-		Date:   opts.date,
-		Offset: opts.offset,
-	})
+	jsonOut, err := services.SDK.JSONOut(jsonOverride)
 	if err != nil {
 		return err
 	}
-	if jsonOut {
-		return a.printJSON(result)
+	client, err := services.SDK.OpenOperation(cmd.Context(), clientReq)
+	if err != nil {
+		return err
 	}
-	fmt.Fprintf(a.out, "%s ranking\n", opts.mode)
-	printIllusts(a.out, result.Illusts, opts.offset, true)
-	return nil
+	if !jsonOut {
+		fmt.Fprintf(a.out, "%s ranking\n", opts.mode)
+	}
+	return a.runIllustList(cmd.Context(), plan, jsonOut, func(ctx context.Context, cursor sdk.Cursor) ([]sdk.Illust, sdk.Cursor, error) {
+		result, err := client.IllustRanking(ctx, sdk.IllustRankingRequest{Mode: sdk.RankingMode(opts.mode), Date: opts.date, Cursor: cursor})
+		if err != nil {
+			return nil, "", err
+		}
+		return result.Illusts, result.NextCursor, nil
+	}, func(items []sdk.Illust, start int) { printIllusts(a.out, items, start, true) })
 }
 
 func (a app) newRecommendedCommand() *cobra.Command {
@@ -173,29 +192,38 @@ func (a app) newRecommendedCommand() *cobra.Command {
 		},
 	}
 	a.bindCommonFlags(cmd, &opts.commandOptions)
-	cmd.Flags().IntVar(&opts.offset, "offset", 0, "offset")
+	bindListFlags(cmd, &opts.listOptions)
 	return cmd
 }
 
 func (a app) runRecommended(cmd *cobra.Command, opts recommendedOptions) error {
+	plan, err := parseListPlan(cmd, opts.listOptions)
+	if err != nil {
+		return err
+	}
 	services := a.services()
-	clientReq, err := a.clientRequest(cmd, opts.commandOptions, true)
+	clientReq, jsonOverride, err := a.sdkRequest(cmd, opts.commandOptions)
 	if err != nil {
 		return err
 	}
-	result, jsonOut, err := services.Artwork.Recommended(context.Background(), application.RecommendedRequest{
-		Client: clientReq,
-		Offset: opts.offset,
-	})
+	jsonOut, err := services.SDK.JSONOut(jsonOverride)
 	if err != nil {
 		return err
 	}
-	if jsonOut {
-		return a.printJSON(result)
+	client, err := services.SDK.OpenOperation(cmd.Context(), clientReq)
+	if err != nil {
+		return err
 	}
-	fmt.Fprintln(a.out, "recommended illustrations")
-	printIllusts(a.out, result.Illusts, opts.offset, false)
-	return nil
+	if !jsonOut {
+		fmt.Fprintln(a.out, "recommended illustrations")
+	}
+	return a.runIllustList(cmd.Context(), plan, jsonOut, func(ctx context.Context, cursor sdk.Cursor) ([]sdk.Illust, sdk.Cursor, error) {
+		result, err := client.IllustRecommended(ctx, sdk.IllustRecommendedRequest{Cursor: cursor})
+		if err != nil {
+			return nil, "", err
+		}
+		return result.Illusts, result.NextCursor, nil
+	}, func(items []sdk.Illust, start int) { printIllusts(a.out, items, start, false) })
 }
 
 func (a app) newDownloadCommand() *cobra.Command {
@@ -226,7 +254,7 @@ func (a app) runDownload(cmd *cobra.Command, args []string, opts commandOptions)
 	if err != nil {
 		return err
 	}
-	artworks, jsonOut, err := services.Download.Download(context.Background(), clientReq, ids)
+	artworks, jsonOut, err := services.Download.Download(cmd.Context(), clientReq, ids)
 	if err != nil {
 		return err
 	}
@@ -242,7 +270,7 @@ func (a app) runDownload(cmd *cobra.Command, args []string, opts commandOptions)
 	return nil
 }
 
-func printIllusts(w io.Writer, illusts []pixiv.Illust, offset int, ranked bool) {
+func printIllusts(w io.Writer, illusts []sdk.Illust, offset int, ranked bool) {
 	for i, illust := range illusts {
 		rank := 0
 		if ranked {
@@ -252,7 +280,7 @@ func printIllusts(w io.Writer, illusts []pixiv.Illust, offset int, ranked bool) 
 	}
 }
 
-func printIllust(w io.Writer, illust pixiv.Illust, rank int, compact bool) {
+func printIllust(w io.Writer, illust sdk.Illust, rank int, compact bool) {
 	prefix := ""
 	if rank > 0 {
 		prefix = fmt.Sprintf("#%d ", rank)

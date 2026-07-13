@@ -1,0 +1,117 @@
+name: Platform packaged binary smoke
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+  workflow_dispatch: {}
+
+concurrency:
+  group: platform-smoke-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions: {}
+
+jobs:
+  packaged_binary_smoke:
+    name: Packaged binary smoke ${{ matrix.goos }}/${{ matrix.goarch }}
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+    env:
+      CC: ${{ matrix.cc }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15-intel
+            goos: darwin
+            goarch: amd64
+            rust_target: x86_64-apple-darwin
+            cc: clang
+          - runner: macos-15
+            goos: darwin
+            goarch: arm64
+            rust_target: aarch64-apple-darwin
+            cc: clang
+          - runner: ubuntu-24.04
+            goos: linux
+            goarch: amd64
+            rust_target: x86_64-unknown-linux-gnu
+            cc: gcc
+          - runner: ubuntu-24.04-arm
+            goos: linux
+            goarch: arm64
+            rust_target: aarch64-unknown-linux-gnu
+            cc: gcc
+          - runner: windows-2025
+            goos: windows
+            goarch: amd64
+            rust_target: x86_64-pc-windows-msvc
+            cc: clang -fuse-ld=lld
+          - runner: windows-11-arm
+            goos: windows
+            goarch: arm64
+            rust_target: aarch64-pc-windows-msvc
+            cc: clang -fuse-ld=lld
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+        with:
+          go-version: '1.26.3'
+      - name: Install the native Rust target
+        shell: bash
+        run: rustup target add '${{ matrix.rust_target }}'
+      - name: Check vendored Rust sources
+        shell: bash
+        run: sh scripts/test-rust-vendor.sh
+      - name: Build the native Rust static library
+        shell: bash
+        run: bash scripts/build-staticlibs.sh --target '${{ matrix.rust_target }}'
+      - name: Run native GIF/APNG smoke
+        shell: bash
+        run: go test ./internal/download -run '^TestRustUgoiraEncoderNativeGIFAndAPNG$' -count=1
+      - name: Build and package a versioned binary
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="0.2.0-ci.${GITHUB_RUN_ID}"
+          mkdir -p dist
+          binary='dist/pixiv'
+          if [ '${{ matrix.goos }}' = windows ]; then
+            binary='dist/pixiv.exe'
+          fi
+          go build -trimpath -buildvcs=false \
+            -ldflags "-X github.com/FlanChanXwO/pixiv-cli/internal/buildinfo.Version=v${version} -X github.com/FlanChanXwO/pixiv-cli/internal/buildinfo.Commit=${GITHUB_SHA} -X github.com/FlanChanXwO/pixiv-cli/internal/buildinfo.BuildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            -o "$binary" ./cmd/pixiv
+          go run ./scripts/releaseassets package \
+            --repo-root . \
+            --version "$version" \
+            --target '${{ matrix.goos }}/${{ matrix.goarch }}' \
+            --binary "$binary" \
+            --output-dir dist
+      - name: Extract and smoke the packaged binary
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="0.2.0-ci.${GITHUB_RUN_ID}"
+          archive="dist/pixiv-cli_${version}_${{ matrix.goos }}_${{ matrix.goarch }}"
+          mkdir -p smoke
+          binary='smoke/pixiv'
+          if [ '${{ matrix.goos }}' = windows ]; then
+            7z x "${archive}.zip" -osmoke
+            binary='smoke/pixiv.exe'
+          else
+            tar -xzf "${archive}.tar.gz" -C smoke
+          fi
+          test -f "$binary"
+          PIXIV_E2E_BINARY="$(pwd)/$binary" \
+          PIXIV_E2E_EXPECTED_VERSION="v${version}" \
+          PIXIV_E2E_REAL_API= \
+          PIXIV_E2E_WEB_API= \
+          go test ./test/e2e -run '^TestPixivBinary' -count=1

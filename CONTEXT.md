@@ -2,7 +2,7 @@
 
 ## 领域
 
-本项目是 Pixiv MCP stdio server 与配套 `pixiv` CLI。它提供作品搜索、详情、排行、推荐、用户/收藏流程、下载、缩略图、本地账号/配置管理，以及面向正式二进制的版本与更新协议。
+本项目是 Pixiv CLI、MCP stdio server 与公开 Go SDK。它提供作品搜索、详情、排行、推荐、用户/收藏流程、下载、缩略图、本地账号/配置管理，以及面向正式二进制的版本与更新协议；不提供 HTTP Provider service。
 
 ## 架构词汇
 
@@ -11,6 +11,10 @@
 - **Composition root**：`internal/bootstrap`；组装 config、auth storage、Pixiv client、OAuth client、download manager、update dependency 与 application service。
 - **Auth storage**：`internal/storage/auth`；以 UID 为 key 的 `auth.json`、默认 UID、私有路径与 `0600` 写入。
 - **Pixiv source**：`internal/pixiv`；App API 与匿名 web fallback 的 facade。
+- **SDK client**：`pkg/pixiv` 的具体 `*pixiv.Client`；外部 Go 程序通过它访问规范化 Pixiv 原子能力。
+- **Caller adapter**：调用方自己的窄接口与业务层；它拥有 source mode、budget、filter、cursor 持久化、入库与调度。
+- **Operation snapshot**：`OpenDefault` 每个公开操作读取一次 auth/config/OAuth 快照；`Snapshot(ctx)` 可显式固定一个高层操作。
+- **Opaque cursor**：SDK 绑定 operation/query/source 的版本化 continuation；CLI/MCP 不暴露它。
 - **MCP server**：`internal/mcpserver`；MCP tool 注册与协议 adapter。
 - **Build information**：`internal/buildinfo`；Go linker 注入的 `version`、`commit`、`build_date`；`dev` 是不可自更新的开发构建。
 - **Update domain**：`internal/update`；安装来源识别、GitHub Releases 查询/cache、SemVer channel、Homebrew/Go/Release 更新策略与 Release installer。
@@ -32,7 +36,8 @@
 这只是领域模型，不代表所有渠道已公开可用：受支持 binary 的 production Ed25519 public key、key ID
 与 fingerprint 已随 [`internal/bootstrap/release_trust.go`](internal/bootstrap/release_trust.go) 提交；公开
 source/tap remote、受保护 `release` Environment、私钥恢复副本与完整六目标 staticlib manifest 已按
-Task 20 的审计流程配置或回填。尚无 tag、Release 或 tap formula；不能据此声称已发布或可安装。
+Task 20 的审计流程配置或回填。v0.1.1 已发布为正式 Release，公开 tap 已有 stable formula；后续版本
+仍必须完成相同的 tag、签名、资产和安装门禁，不能只因 trust root 存在就声称可安装。
 
 ## 边界规则
 
@@ -47,6 +52,9 @@ Task 20 的审计流程配置或回填。尚无 tag、Release 或 tap formula；
 - `internal/config` 只处理 `config.toml` schema、default、effective value 与 sparse write；`update_check_enabled` 只控制自动检查。
 - `internal/update` 负责来源与更新策略，但不得把权限、HTTP、asset、签名、checksum、archive 或替换错误伪装成无更新。
 - `internal/download` 的生产 ugoira 路径使用 Rust staticlib，不得在 runtime 回退 `ffmpeg`；完整六目标 manifest 是 source/release 可用的前置条件。
+- `pkg/pixiv` 是公开 facade；内部协议实现物理拆分为 `appapi`、`webapi`、`oauth`、`resource`，不得反向 import public package。
+- 有凭据时 App API 为主路径，失败不自动 Web fallback；Web pages/ugoira original 只能作为明确 enrichment。
+- 不新增 Discover、Probe、Capabilities、RSS、crawler、通用 Provider interface 或 HTTP server；这些属于调用方 adapter。
 - `internal/common/constants` 不含 Pixiv protocol、MCP delivery、config key 或 product default；`AppConfigDirName` 是唯一 product-named path exception。
 - CLI/MCP/OAuth loopback adapter helper 留在 adapter package，除非它们是 protocol-free parsing helper。
 

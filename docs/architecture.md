@@ -5,7 +5,7 @@
 `cmd/pixiv/main.go` 是唯一官方二进制入口，它只负责调用 `internal/cli`：
 
 1. `pixiv` 无参数显示 CLI 帮助。
-2. `pixiv auth/config/version/update/search/detail/ranking/recommended/download` 进入 CLI 模式。
+2. `pixiv auth/config/version/update/search/detail/ranking/recommended/user/bookmark/follow/download` 进入 CLI 模式。
 3. `pixiv mcp` 委托 `internal/bootstrap` 组装并运行 MCP stdio server。
 4. CLI 与 MCP 通过 `internal/bootstrap` 共享生产 wiring：
    - 账号认证来自 `os.UserConfigDir()/pixiv/auth.json`
@@ -51,10 +51,11 @@ cache 的 24 小时节流，并最多等待 3 秒。配置、网络、来源识�
 - `ArtworkService`：search/detail/ranking/recommended。
 - `DownloadService`：按 ID 下载作品。
 - `LoginService`：生成 PKCE/state、authorization-code exchange，并保存账号；Pixiv 登录 URL 构造仍留在 CLI adapter。
+- `SDKService`：为 CLI/MCP 打开 `pkg/pixiv` client，并把调用方选择的账号/代理/JSON 设置映射到 SDK operation snapshot。
 
 ### `internal/bootstrap`
 
-生产 composition root，负责把 `internal/config`、`internal/storage/auth`、`internal/pixiv`、`internal/download`、`internal/mcpserver`、更新 release client/installer 和 application services 组装起来。测试可以替换 service 里的小接口或 factory，不需要复制生产 wiring。
+生产 composition root，负责把 `internal/config`、`internal/storage/auth`、`pkg/pixiv`、`internal/download`、`internal/mcpserver`、更新 release client/installer 和 application services 组装起来。测试可以替换 service 里的小接口或 factory，不需要复制生产 wiring。
 
 `NewUpdateCoordinator` 通过 `productionReleaseInstallerOptions` 为 Release installer 注入随受支持
 binary 提交的 Ed25519 key ID→public key 映射，并在每次组装时复制 map 与 key bytes，避免调用方污染
@@ -102,40 +103,27 @@ Release。
 - GitHub Releases API 是唯一查询后端；draft 被排除，stable 检查不纳入 prerelease。ETag/cache
   用于节流与原子保存。
 
-该包不得把签名、checksum、HTTP、archive、替换或权限错误伪装成“无更新”。当前 production
-trusted key、签名私钥与 Keychain 恢复副本、受保护 `release` Environment 和公开 remote 已按 Task 20
-配置；完整六目标成功 native evidence 与 staticlib manifest 已由 run `29192425899` 完成并回填。正式
-tag、已签名 Release、tap formula 与安装验收尚未完成，当前 Release 安装的失败语义仍是保护边界，
-而不是临时降级。
+该包不得把签名、checksum、HTTP、archive、替换或权限错误伪装成“无更新”。production trusted key、
+签名私钥与 Keychain 恢复副本、受保护 `release` Environment 和公开 remote 已按 Task 20 配置；完整六目标
+native evidence 与 staticlib manifest 已回填。v0.1.1 已完成正式 tag、受签名 Release 与 stable tap formula；
+Release 安装的失败语义仍是保护边界，而不是临时降级。
 
-### `internal/pixiv`
+### `pkg/pixiv`
 
-Pixiv 领域 facade。对 CLI/MCP 暴露稳定的 `Source`、`NewSource`、`NewOAuthClient`、HTTP client wiring 和常用模型 type alias。
+公开 concrete facade。`NewClient` 只使用显式 options；`OpenDefault` 复用本地 auth/config，并在每个公开操作开始时取得一次 snapshot。它暴露规范化模型、opaque cursor、`*pixiv.Error`、账号/config、登录 session、资源流和下载；CLI/MCP 与外部 Go 程序消费同一契约。
 
-source 策略只有一条：refresh token 为空且 `web_fallback_enabled=true` 时，`search/detail/ranking/search_user/download/ugoira metadata` 使用 web；只要存在 refresh token，就优先 app API，app API 的认证、网络或服务端错误不会自动 fallback。
+调用方在自身 adapter 中定义 source mode、budget、filter、cursor 持久化和 HTTP presentation。本仓库不提供 HTTP Provider、Discover、Probe、Capabilities、RSS 或 crawler。
 
-### `internal/pixiv/api`
+### `internal/pixiv/appapi`、`webapi`、`oauth`、`resource`
 
-封装 Pixiv app API、OAuth refresh flow 和 authorization-code token exchange。当前实现使用 `resty` 作为底层 HTTP transport，主要职责：
+内部协议包只由 facade 组合：
 
-- 保存 refresh token、access token、user ID 和可从认证/用户详情接口获取到的 username。
-- 用 Pixiv Android app 风格 header 访问 API。
-- 在认证错误时 refresh token 后只重放一次原请求。
-- 将非 2xx 响应暴露为 `APIError`，保留状态码和响应体。
+- `appapi`：有凭据的 App content API 与 raw DTO/mapper。
+- `webapi`：匿名白名单读与明确 metadata enrichment；不接收 SDK Authorization/Cookie。
+- `oauth`：PKCE、code exchange、refresh 与 token state。
+- `resource`：受 policy 约束的 resource transport、redirect/header/body 边界。
 
-当前已实现接口包括搜索作品、作品详情、相关作品、排行榜、用户搜索、推荐、热门标签、关注动态、用户收藏、用户关注、ugoira metadata 和直接下载 URL。
-
-### `internal/pixiv/web`
-
-封装匿名 Pixiv web/ajax API。它复用 CLI/MCP 的 HTTP proxy 配置，当前用于无 refresh token fallback：
-
-- `/ajax/search/artworks/{word}`：匿名作品搜索。
-- `/ajax/illust/{id}` 与 `/ajax/illust/{id}/pages`：作品详情和原图 URL。
-- `ranking.php?format=json`：排行榜。
-- `/ajax/illust/{id}/ugoira_meta`：ugoira zip 与 frames。
-- pximg 下载时使用 Pixiv web Referer。
-
-web API 字段缺失时不伪造 App API 数据；仅映射可从 web 响应确认的字段。
+有 token 时 App API 是主路径，失败不自动 Web fallback；无 token 且 `web_fallback_enabled=true` 时才允许明确白名单 Web read。pages/original ugoira enrichment 必须由 operation policy 显式选择。
 
 ### `internal/pixiv/model`
 
@@ -143,7 +131,7 @@ web API 字段缺失时不伪造 App API 数据；仅映射可从 web 响应确�
 
 ### `internal/mcpserver`
 
-负责将 Pixiv 与下载能力注册为 MCP tools。它定义了较窄的 `PixivAPI` 和 `DownloadManager` interface，便于测试和隔离；stdio runtime 由 `internal/bootstrap` 组装和启动。
+负责将 Pixiv 与下载能力注册为 MCP tools。遗留 tool 继续通过窄 `PixivAPI`/`DownloadManager` 使用旧 facade；新增 user、bookmark、follow tool 通过 `SDKService` 使用 public SDK。stdio runtime 由 `internal/bootstrap` 组装和启动。
 
 输出目前以中文文本为主，适合直接返回给 LLM/MCP 客户端。认证相关工具会显式提示缺少 token、认证失败或自动认证失败的真实原因。
 
@@ -201,21 +189,20 @@ full-SHA Actions，并在草稿 Release 上传后核对 asset 集合才发布。
 tap 后，以 tap-qualified formula name 真实安装并核对 `pixiv version --json`；此路径不使用或写入
 公开 tap，Homebrew 6 所需的 trust 仅精确写入 runner 本地 staging tap 的临时 trust store。最终受保护
 job 才能读取独立 tap deploy key 并只 push 对应 formula。
-文件和本地 fixture 已存在，但尚未通过正式 tag 取得这四份安装证据；run `29192425899` 已取得实际
-GitHub runner 的完整六目标 native 成功证据并回填 staticlib/manifest。
-production signing 私钥、Environment 与公开 remote 已按 Task 20 配置，受支持 binary 的公开 trust root
-已在 `internal/bootstrap/release_trust.go` 配置。正式 tag、签名 Release、tap formula 与安装验收仍是独立
-发布阻断项。Rust crates.io 依赖已由
+v0.1.1 的正式 tag 已走完此发布路径并推送 stable formula；后续 tag 仍必须独立满足同一安装 gate。完整
+六目标 native 成功证据已回填 staticlib/manifest。production signing 私钥、Environment 与公开 remote
+已按 Task 20 配置，受支持 binary 的公开 trust root 已在 `internal/bootstrap/release_trust.go` 配置。Rust crates.io 依赖已由
 crate 内 source replacement 固定到完整 vendor 闭包，并以空 Cargo cache 离线 metadata/build/test 与六
 target 许可证检查验证。
 
 Homebrew formula 模板由已验证的六目标 `checksums.txt` 生成，仅使用 macOS/Linux asset；stable
 `pixiv-cli` 与 beta `pixiv-cli-beta` 相互冲突且同装 `pixiv`。tap credential 与发布 key 是不同的
 信任域：tap 私钥只允许进入最终受保护 deploy job 的最后 push step，不能代替 Release Ed25519 trust
-root。公开 tap 已创建并只登记 deploy key 公钥，但没有 formula 或可安装资产。由于 draft Release 的
-匿名 URL 不可安装，Release 会先公开再执行四架构 gate；失败会保留已公开 Release 供处置，但不会写 tap。
+root。公开 tap 的 stable formula 已对应 v0.1.1；beta formula 仍只由 pre-release 通道写入。由于 draft
+Release 的匿名 URL 不可安装，Release 会先公开再执行四架构 gate；失败会保留已公开 Release 供处置，
+但不会写对应 formula。
 
-v0.1.0 的 archive 不计划包含 Apple notarization 或 Windows Authenticode。用户收到 Gatekeeper 或
+当前 Release archive 不计划包含 Apple notarization 或 Windows Authenticode。用户收到 Gatekeeper 或
 SmartScreen 提示时，必须回到已验证的项目 GitHub Release、checksum 和签名记录，不能把系统提示视为
 可由 CLI 静默绕过的错误。
 
@@ -243,7 +230,7 @@ SmartScreen 提示时，必须回到已验证的项目 GitHub Release、checksum
 
 ## 已知约束
 
-- `internal/pixiv/api.Client` 默认 HTTP timeout 为 60 秒，`internal/pixiv` facade 创建带代理的 HTTP client 时也保留该客户端级保护。
+- `appapi`、`webapi` 与 resource transport 使用 caller/SDK 注入的 HTTP client；SDK 不新增无依据固定请求超时，取消由 context 传播。
 - `pixiv mcp` 是 MCP stdio server 的显式启动方式；直接执行 `pixiv` 不会启动 MCP。
 - CLI 账号文件以明文 JSON 保存 refresh token、user ID 和可选 username，不保存 access token，文件权限固定为 `0600`；需要系统钥匙串时再扩展。
 - `config.toml` 采用稀疏写入，不会把默认值整份落盘。

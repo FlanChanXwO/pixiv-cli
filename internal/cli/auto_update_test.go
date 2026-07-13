@@ -35,7 +35,7 @@ func TestRunAutomaticUpdateNoticeKeepsJSONStdoutPure(t *testing.T) {
 	var result accountListOut
 	require.NoError(t, json.Unmarshal(stdout.Bytes(), &result))
 	assert.Empty(t, result.Accounts)
-	assert.Equal(t, "update available: v0.1.0 -> v0.2.0\nrun: pixiv update\n", stderr.String())
+	assert.Contains(t, stderr.String(), "update available: v0.1.0 -> v0.2.0\nrun: pixiv update\n")
 	assert.True(t, constructed)
 	assert.Equal(t, []update.ReleaseCheckOptions{{Automatic: true}}, checker.options)
 }
@@ -73,7 +73,8 @@ func TestRunAutomaticUpdateCanBeDisabledWithoutConstructingChecker(t *testing.T)
 	require.Equal(t, 0, code, stderr.String())
 	var result accountListOut
 	require.NoError(t, json.Unmarshal(stdout.Bytes(), &result))
-	assert.Empty(t, stderr.String())
+	assert.NotContains(t, stderr.String(), "update available:")
+	assert.NotContains(t, stderr.String(), "warning:")
 }
 
 func TestRunAutomaticUpdateFailureOnlyWritesStderrWarning(t *testing.T) {
@@ -91,7 +92,7 @@ func TestRunAutomaticUpdateFailureOnlyWritesStderrWarning(t *testing.T) {
 	require.Equal(t, 0, code, stderr.String())
 	var result accountListOut
 	require.NoError(t, json.Unmarshal(stdout.Bytes(), &result))
-	assert.Equal(t, "warning: create automatic update checker: release API unavailable\n", stderr.String())
+	assert.Contains(t, stderr.String(), "warning: create automatic update checker: release API unavailable\n")
 }
 
 func TestRunAutomaticCheckFailureOnlyWritesStderrWarning(t *testing.T) {
@@ -109,7 +110,7 @@ func TestRunAutomaticCheckFailureOnlyWritesStderrWarning(t *testing.T) {
 	require.Equal(t, 0, code, stderr.String())
 	var result accountListOut
 	require.NoError(t, json.Unmarshal(stdout.Bytes(), &result))
-	assert.Equal(t, "warning: check for updates: check available releases: GitHub Releases unavailable\n", stderr.String())
+	assert.Contains(t, stderr.String(), "warning: check for updates: check available releases: GitHub Releases unavailable\n")
 }
 
 func TestRunSkipsAutomaticUpdateForExcludedCommands(t *testing.T) {
@@ -177,15 +178,14 @@ func TestRunDevelopmentBuildSkipsAutomaticUpdate(t *testing.T) {
 	require.Equal(t, 0, code, stderr.String())
 	var result accountListOut
 	require.NoError(t, json.Unmarshal(stdout.Bytes(), &result))
-	assert.Empty(t, stderr.String())
+	assert.NotContains(t, stderr.String(), "update available:")
+	assert.NotContains(t, stderr.String(), "warning:")
 }
 
 func TestRunAutomaticUpdateUsesCurrentCommandProxyOverride(t *testing.T) {
 	useTempPaths(t)
 	useReleaseBuildInfo(t, "v0.1.0")
-	setTestCLIClientFactory(t, func(clientConfig) (cliPixivClient, error) {
-		return proxyFlagPixivClient{}, nil
-	})
+	setTestSDKCommandClient(t, proxySDKClient())
 	checker := &cliAutomaticReleaseChecker{}
 	restore := stubAutomaticUpdateCheck(t, config.RuntimeConfig{HTTPSProxy: "http://config-proxy", UpdateCheckEnabled: true}, func(proxy string) (*update.AutomaticUpdateChecker, error) {
 		assert.Equal(t, "http://command-proxy", proxy)
@@ -199,16 +199,14 @@ func TestRunAutomaticUpdateUsesCurrentCommandProxyOverride(t *testing.T) {
 	require.Equal(t, 0, code, stderr.String())
 	var result map[string]any
 	require.NoError(t, json.Unmarshal(stdout.Bytes(), &result))
-	assert.Empty(t, stderr.String())
+	assert.Contains(t, stderr.String(), "pixiv operation")
 	assert.Equal(t, []update.ReleaseCheckOptions{{Automatic: true}}, checker.options)
 }
 
 func TestRunAutomaticUpdateUsesCurrentCommandNoProxyOverride(t *testing.T) {
 	useTempPaths(t)
 	useReleaseBuildInfo(t, "v0.1.0")
-	setTestCLIClientFactory(t, func(clientConfig) (cliPixivClient, error) {
-		return proxyFlagPixivClient{}, nil
-	})
+	setTestSDKCommandClient(t, proxySDKClient())
 	checker := &cliAutomaticReleaseChecker{}
 	restore := stubAutomaticUpdateCheck(t, config.RuntimeConfig{HTTPSProxy: "http://config-proxy", UpdateCheckEnabled: true}, func(proxy string) (*update.AutomaticUpdateChecker, error) {
 		assert.Empty(t, proxy)
@@ -222,7 +220,7 @@ func TestRunAutomaticUpdateUsesCurrentCommandNoProxyOverride(t *testing.T) {
 	require.Equal(t, 0, code, stderr.String())
 	var result map[string]any
 	require.NoError(t, json.Unmarshal(stdout.Bytes(), &result))
-	assert.Empty(t, stderr.String())
+	assert.Contains(t, stderr.String(), "pixiv operation")
 	assert.Equal(t, []update.ReleaseCheckOptions{{Automatic: true}}, checker.options)
 }
 
