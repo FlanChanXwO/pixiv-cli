@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -12,6 +13,7 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/application"
 	"github.com/FlanChanXwO/pixiv-cli/internal/bootstrap"
 	"github.com/FlanChanXwO/pixiv-cli/internal/config"
+	sdk "github.com/FlanChanXwO/pixiv-cli/pkg/pixiv"
 	"github.com/spf13/cobra"
 )
 
@@ -93,16 +95,32 @@ func (a app) commandLog(operation string, started time.Time, err error) {
 	if strings.HasPrefix(operation, "pixiv config") {
 		return
 	}
-	result := "success"
+	result, code, backend, status := "success", "", "local", 0
 	level := slog.LevelInfo
+	var illustID, userID int64
 	if err != nil {
 		result = "error"
 		level = slog.LevelError
+		var typed *sdk.Error
+		if errors.As(err, &typed) {
+			code, backend, status = string(typed.Code), string(typed.Backend), typed.UpstreamStatus
+			if backend == "" {
+				backend = "local"
+			}
+			illustID, userID = typed.IllustID, typed.UserID
+		}
 	}
-	a.logger.LogAttrs(nil, level, "pixiv operation",
-		slog.String("component", "cli"), slog.String("operation", operation), slog.String("backend", "local"),
-		slog.Duration("duration", time.Since(started)), slog.String("result", result), slog.String("error_code", ""), slog.Int("status", 0),
-	)
+	attrs := []slog.Attr{
+		slog.String("component", "cli"), slog.String("operation", operation), slog.String("backend", backend),
+		slog.Duration("duration", time.Since(started)), slog.String("result", result), slog.String("error_code", code), slog.Int("status", status),
+	}
+	if illustID != 0 {
+		attrs = append(attrs, slog.Int64("illust_id", illustID))
+	}
+	if userID != 0 {
+		attrs = append(attrs, slog.Int64("user_id", userID))
+	}
+	a.logger.LogAttrs(nil, level, "pixiv operation", attrs...)
 }
 
 func (a app) exit(err error) int {

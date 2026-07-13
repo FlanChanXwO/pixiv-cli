@@ -110,14 +110,15 @@ func TestMCPStdioKeepsJSONRPCOnStdoutAndLogsOnStderr(t *testing.T) {
 		`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"test","version":"1"}}}`,
 		`{"jsonrpc":"2.0","method":"notifications/initialized","params":{}}`,
 		`{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"search_illust","arguments":{"word":"stdio-secret-canary"}}}`,
+		`{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"add_bookmark","arguments":{"illust_id":41}}}`,
 	} {
 		if _, err := io.WriteString(stdin, message+"\n"); err != nil {
 			t.Fatal(err)
 		}
 	}
 	scanner := bufio.NewScanner(stdout)
-	lines := make([]string, 0, 2)
-	for range 2 {
+	lines := make([]string, 0, 3)
+	for range 3 {
 		if !scanner.Scan() {
 			t.Fatalf("stdio server ended before responses: %v; stderr=%s", scanner.Err(), stderr.String())
 		}
@@ -130,10 +131,10 @@ func TestMCPStdioKeepsJSONRPCOnStdoutAndLogsOnStderr(t *testing.T) {
 		t.Fatalf("stdio helper: %v\nstdout=%s\nstderr=%s", err, strings.Join(lines, "\n"), stderr.String())
 	}
 	protocol := strings.Join(lines, "\n")
-	if !strings.Contains(protocol, `"jsonrpc":"2.0"`) || strings.Contains(protocol, `"component":"mcp"`) {
+	if !strings.Contains(protocol, `"jsonrpc":"2.0"`) || !strings.Contains(protocol, `"isError":true`) || strings.Contains(protocol, `"component":"mcp"`) {
 		t.Fatalf("stdout is not protocol-only: %s; stderr=%s", protocol, stderr.String())
 	}
-	if !strings.Contains(stderr.String(), `"component":"mcp"`) || !strings.Contains(stderr.String(), `"operation":"search_illust"`) {
+	if !strings.Contains(stderr.String(), `"component":"mcp"`) || !strings.Contains(stderr.String(), `"operation":"search_illust"`) || !strings.Contains(stderr.String(), `"operation":"add_bookmark"`) || !strings.Contains(stderr.String(), `"result":"error"`) {
 		t.Fatalf("stderr lacks MCP event: %s", stderr.String())
 	}
 	if strings.Contains(stderr.String(), "stdio-secret-canary") {
@@ -145,7 +146,10 @@ func TestMCPStdioHelper(t *testing.T) {
 	if os.Getenv("PIXIV_MCP_STDIO_HELPER") != "1" {
 		return
 	}
-	server := New(&fakeAPI{}, &fakeDownloads{}, slog.New(slog.NewJSONHandler(os.Stderr, nil)))
+	service := application.SDKService{NewClient: func(application.SDKClientRequest) (application.SDKClient, error) {
+		return &failingMutationSDKClient{err: &sdk.Error{Code: sdk.CodeUpstreamError, Backend: sdk.BackendAppAPI, IllustID: 41}}, nil
+	}}
+	server := NewWithSDK(&fakeAPI{}, &fakeDownloads{}, slog.New(slog.NewJSONHandler(os.Stderr, nil)), service, application.SDKClientRequest{})
 	if err := server.Run(context.Background(), &mcp.StdioTransport{}); err != nil {
 		os.Exit(1)
 	}
@@ -237,10 +241,100 @@ func TestSDKToolsWithoutSDKReturnStructuredConfigurationError(t *testing.T) {
 	session, closeSession := newTestSession(t, &fakeDownloads{})
 	defer closeSession()
 	result := callTool(t, session, "add_bookmark", map[string]any{"illust_id": 1})
+	if !result.IsError {
+		t.Fatalf("SDK configuration failure must be an MCP error result: %+v", result)
+	}
 	var out mutationOut
 	decodeStructured(t, result, &out)
 	if out.Success || !strings.Contains(out.Text, "sdk is not configured") {
 		t.Fatalf("unexpected output: %+v", out)
+	}
+}
+
+func TestSDKListValidationReturnsMCPErrorWithStructuredOutput(t *testing.T) {
+	session, closeSession := newSDKTestSession(t, &fakeSDKClient{})
+	defer closeSession()
+
+	result := callTool(t, session, "user_artworks", map[string]any{"user_id": 9, "page": 0, "limit": 1})
+	if !result.IsError {
+		t.Fatalf("invalid page must be an MCP error result: %+v", result)
+	}
+	if len(result.Content) != 1 {
+		t.Fatalf("error result must retain text content: %+v", result.Content)
+	}
+	var out illustListOut
+	decodeStructured(t, result, &out)
+	if out.UserID != 9 || len(out.Items) != 0 || !strings.Contains(out.Text, "page must be a positive integer") {
+		t.Fatalf("structured validation error = %+v", out)
+	}
+}
+
+func TestLegacyUserListFailureReturnsMCPErrorWithStructuredOutput(t *testing.T) {
+	server := New(&failingLegacyBookmarksAPI{}, &fakeDownloads{}, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	clientTransport, serverTransport := mcp.NewInMemoryTransports()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() { _ = server.Run(ctx, serverTransport) }()
+	client := mcp.NewClient(&mcp.Implementation{Name: "test", Version: "1"}, nil)
+	session, err := client.Connect(ctx, clientTransport, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer session.Close()
+
+	result := callTool(t, session, "user_bookmarks", map[string]any{"user_id_to_check": 9})
+	if !result.IsError {
+		t.Fatalf("legacy failure must be an MCP error result: %+v", result)
+	}
+	var out illustListOut
+	decodeStructured(t, result, &out)
+	if out.UserID != 9 || len(out.Items) != 0 || !strings.Contains(out.Text, "legacy failed") {
+		t.Fatalf("structured legacy error = %+v", out)
+	}
+}
+
+func TestSDKMutationTypedErrorIsMCPErrorAndWrapperLogsMetadata(t *testing.T) {
+	var logs bytes.Buffer
+	client := &failingMutationSDKClient{err: &sdk.Error{
+		Code:           sdk.CodeUpstreamError,
+		Backend:        sdk.BackendAppAPI,
+		UpstreamStatus: http.StatusBadGateway,
+		IllustID:       41,
+	}}
+	service := application.SDKService{NewClient: func(application.SDKClientRequest) (application.SDKClient, error) {
+		return client, nil
+	}}
+	server := NewWithSDK(&fakeAPI{}, &fakeDownloads{}, slog.New(slog.NewJSONHandler(&logs, nil)), service, application.SDKClientRequest{})
+	clientTransport, serverTransport := mcp.NewInMemoryTransports()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() { _ = server.Run(ctx, serverTransport) }()
+	mcpClient := mcp.NewClient(&mcp.Implementation{Name: "test", Version: "1"}, nil)
+	session, err := mcpClient.Connect(ctx, clientTransport, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer session.Close()
+
+	result := callTool(t, session, "add_bookmark", map[string]any{"illust_id": 41})
+	if !result.IsError {
+		t.Fatalf("typed SDK mutation failure must be an MCP error: %+v", result)
+	}
+	var out mutationOut
+	decodeStructured(t, result, &out)
+	if out.Success || !strings.Contains(out.Text, "upstream_error") {
+		t.Fatalf("structured mutation error = %+v", out)
+	}
+	for _, line := range strings.Split(strings.TrimSpace(logs.String()), "\n") {
+		var event map[string]any
+		if err := json.Unmarshal([]byte(line), &event); err != nil {
+			t.Fatal(err)
+		}
+		if event["operation"] == "add_bookmark" && event["result"] == "error" {
+			if event["error_code"] != string(sdk.CodeUpstreamError) || event["backend"] != string(sdk.BackendAppAPI) || event["status"] != float64(http.StatusBadGateway) || event["illust_id"] != float64(41) {
+				t.Fatalf("wrapper dropped typed SDK metadata: %v", event)
+			}
+		}
 	}
 }
 
@@ -924,6 +1018,21 @@ type fakeSDKClient struct {
 	removeBookmarkRequest sdk.RemoveBookmarkRequest
 	followUserRequest     sdk.FollowUserRequest
 	unfollowUserRequest   sdk.UnfollowUserRequest
+}
+
+type failingMutationSDKClient struct {
+	fakeSDKClient
+	err error
+}
+
+func (f *failingMutationSDKClient) AddBookmark(context.Context, sdk.AddBookmarkRequest) error {
+	return f.err
+}
+
+type failingLegacyBookmarksAPI struct{ fakeAPI }
+
+func (*failingLegacyBookmarksAPI) UserBookmarks(context.Context, int64, string, string, int64) (*pixiv.IllustList, error) {
+	return nil, errors.New("legacy failed")
 }
 
 func (f *fakeSDKClient) CurrentUserID(context.Context) (int64, error) { return f.userID, nil }

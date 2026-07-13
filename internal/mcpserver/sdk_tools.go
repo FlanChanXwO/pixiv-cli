@@ -295,11 +295,11 @@ func illustListResult(out illustListOut) *mcp.CallToolResult {
 func (a *App) userArtworks(ctx context.Context, _ *mcp.CallToolRequest, in userArtworksIn) (*mcp.CallToolResult, illustListOut, error) {
 	plan, err := parseMCPListPlan(in.pageLimitIn)
 	if err != nil {
-		return a.illustListError(in.UserID, err)
+		return a.illustListError(ctx, in.UserID, err)
 	}
 	client, userID, release, err := resolveSDKUser(ctx, a, in.UserID)
 	if err != nil {
-		return a.illustListError(in.UserID, err)
+		return a.illustListError(ctx, in.UserID, err)
 	}
 	defer release()
 	items, more, err := collectPages(ctx, plan, func(ctx context.Context, cursor sdk.Cursor) ([]sdk.Illust, sdk.Cursor, error) {
@@ -310,7 +310,7 @@ func (a *App) userArtworks(ctx context.Context, _ *mcp.CallToolRequest, in userA
 		return result.Illusts, result.NextCursor, nil
 	})
 	if err != nil {
-		return a.illustListError(userID, err)
+		return a.illustListError(ctx, userID, err)
 	}
 	text := fmt.Sprintf("找到用户 %d 的 %d 个作品:\n\n%s", userID, len(items), formatSDKIllusts(items))
 	if len(items) == 0 {
@@ -320,9 +320,12 @@ func (a *App) userArtworks(ctx context.Context, _ *mcp.CallToolRequest, in userA
 	return illustListResult(out), out, nil
 }
 
-func (a *App) illustListError(userID int64, err error) (*mcp.CallToolResult, illustListOut, error) {
+func (a *App) illustListError(ctx context.Context, userID int64, err error) (*mcp.CallToolResult, illustListOut, error) {
+	recordToolError(ctx, err)
 	out := illustListOut{UserID: userID, Items: []sdk.Illust{}, Text: "错误: " + err.Error()}
-	return illustListResult(out), out, nil
+	result := illustListResult(out)
+	result.IsError = true
+	return result, out, nil
 }
 
 type bookmarksSDKIn struct {
@@ -350,17 +353,17 @@ func (a *App) userBookmarks(ctx context.Context, _ *mcp.CallToolRequest, in book
 	plan, err := parseMCPListPlan(in.pageLimitIn)
 	userID := in.resolvedUserID()
 	if err != nil {
-		return a.illustListError(userID, err)
+		return a.illustListError(ctx, userID, err)
 	}
 	if in.MaxBookmarkID != 0 {
 		if in.Page != nil || in.Limit != nil {
-			return a.illustListError(userID, errors.New("max_bookmark_id cannot be combined with page or limit"))
+			return a.illustListError(ctx, userID, errors.New("max_bookmark_id cannot be combined with page or limit"))
 		}
 		return a.legacyBookmarks(ctx, in)
 	}
 	client, userID, release, err := resolveSDKUser(ctx, a, userID)
 	if err != nil {
-		return a.illustListError(userID, err)
+		return a.illustListError(ctx, userID, err)
 	}
 	defer release()
 	items, more, err := collectPages(ctx, plan, func(ctx context.Context, cursor sdk.Cursor) ([]sdk.Illust, sdk.Cursor, error) {
@@ -371,7 +374,7 @@ func (a *App) userBookmarks(ctx context.Context, _ *mcp.CallToolRequest, in book
 		return result.Illusts, result.NextCursor, nil
 	})
 	if err != nil {
-		return a.illustListError(userID, err)
+		return a.illustListError(ctx, userID, err)
 	}
 	text := fmt.Sprintf("找到用户 %d 的 %d 个收藏:\n\n%s", userID, len(items), formatSDKIllusts(items))
 	if len(items) == 0 {
@@ -385,14 +388,14 @@ func (a *App) userBookmarks(ctx context.Context, _ *mcp.CallToolRequest, in book
 // 上游 ID 并以 opaque cursor 取代它，因此新 page/limit 调用不会经过这里。
 func (a *App) legacyBookmarks(ctx context.Context, in bookmarksSDKIn) (*mcp.CallToolResult, illustListOut, error) {
 	if err := a.ensureAuth(ctx); err != nil {
-		return a.legacyIllustListError(in.resolvedUserID(), err)
+		return a.legacyIllustListError(ctx, in.resolvedUserID(), err)
 	}
 	userID := in.resolvedUserID()
 	if userID == 0 {
 		userID = a.api.UserID()
 	}
 	if userID == 0 {
-		return a.legacyIllustListError(0, errors.New("错误: 查询自己的收藏时，需要先认证以获取用户ID。"))
+		return a.legacyIllustListError(ctx, 0, errors.New("错误: 查询自己的收藏时，需要先认证以获取用户ID。"))
 	}
 	restrict := in.Restrict
 	if restrict == "" {
@@ -400,11 +403,11 @@ func (a *App) legacyBookmarks(ctx context.Context, in bookmarksSDKIn) (*mcp.Call
 	}
 	result, err := a.api.UserBookmarks(ctx, userID, restrict, in.Tag, in.MaxBookmarkID)
 	if err != nil {
-		return a.legacyIllustListError(userID, err)
+		return a.legacyIllustListError(ctx, userID, err)
 	}
 	items, err := normalizeLegacyIllusts(result.Illusts)
 	if err != nil {
-		return a.legacyIllustListError(userID, err)
+		return a.legacyIllustListError(ctx, userID, err)
 	}
 	text := fmt.Sprintf("找到用户 %d 的 %d 个收藏:\n\n%s", userID, len(items), formatSDKIllusts(items))
 	if len(items) == 0 {
@@ -414,9 +417,12 @@ func (a *App) legacyBookmarks(ctx context.Context, in bookmarksSDKIn) (*mcp.Call
 	return illustListResult(out), out, nil
 }
 
-func (a *App) legacyIllustListError(userID int64, err error) (*mcp.CallToolResult, illustListOut, error) {
+func (a *App) legacyIllustListError(ctx context.Context, userID int64, err error) (*mcp.CallToolResult, illustListOut, error) {
+	recordToolError(ctx, err)
 	out := illustListOut{UserID: userID, Items: []sdk.Illust{}, Text: err.Error()}
-	return illustListResult(out), out, nil
+	result := illustListResult(out)
+	result.IsError = true
+	return result, out, nil
 }
 
 func normalizeLegacyIllusts(items []legacy.Illust) ([]sdk.Illust, error) {
@@ -467,21 +473,21 @@ func (a *App) userFollowing(ctx context.Context, _ *mcp.CallToolRequest, in foll
 	plan, err := parseMCPListPlan(in.pageLimitIn)
 	userID := in.resolvedUserID()
 	if err != nil {
-		return a.userListError(userID, err)
+		return a.userListError(ctx, userID, err)
 	}
 	if in.Offset != nil {
 		if in.Page != nil {
-			return a.userListError(userID, errors.New("page and deprecated offset cannot be used together"))
+			return a.userListError(ctx, userID, errors.New("page and deprecated offset cannot be used together"))
 		}
 		if *in.Offset < 0 {
-			return a.userListError(userID, errors.New("offset must be zero or a positive integer"))
+			return a.userListError(ctx, userID, errors.New("offset must be zero or a positive integer"))
 		}
 		plan.skip = *in.Offset
 		plan.oneBatch = in.Limit == nil
 	}
 	client, userID, release, err := resolveSDKUser(ctx, a, userID)
 	if err != nil {
-		return a.userListError(userID, err)
+		return a.userListError(ctx, userID, err)
 	}
 	defer release()
 	items, more, err := collectPages(ctx, plan, func(ctx context.Context, cursor sdk.Cursor) ([]sdk.UserPreview, sdk.Cursor, error) {
@@ -492,7 +498,7 @@ func (a *App) userFollowing(ctx context.Context, _ *mcp.CallToolRequest, in foll
 		return result.UserPreviews, result.NextCursor, nil
 	})
 	if err != nil {
-		return a.userListError(userID, err)
+		return a.userListError(ctx, userID, err)
 	}
 	text := fmt.Sprintf("用户 %d 关注了 %d 位用户:\n\n%s", userID, len(items), formatSDKUsers(items))
 	if len(items) == 0 {
@@ -504,14 +510,14 @@ func (a *App) userFollowing(ctx context.Context, _ *mcp.CallToolRequest, in foll
 
 func (a *App) legacyFollowing(ctx context.Context, in followingSDKIn) (*mcp.CallToolResult, userListOut, error) {
 	if err := a.ensureAuth(ctx); err != nil {
-		return a.legacyUserListError(in.resolvedUserID(), err)
+		return a.legacyUserListError(ctx, in.resolvedUserID(), err)
 	}
 	userID := in.resolvedUserID()
 	if userID == 0 {
 		userID = a.api.UserID()
 	}
 	if userID == 0 {
-		return a.legacyUserListError(0, errors.New("错误: 查询自己的关注列表时，需要先认证以获取用户ID。"))
+		return a.legacyUserListError(ctx, 0, errors.New("错误: 查询自己的关注列表时，需要先认证以获取用户ID。"))
 	}
 	restrict := in.Restrict
 	if restrict == "" {
@@ -523,11 +529,11 @@ func (a *App) legacyFollowing(ctx context.Context, in followingSDKIn) (*mcp.Call
 	}
 	result, err := a.api.UserFollowing(ctx, userID, restrict, offset)
 	if err != nil {
-		return a.legacyUserListError(userID, err)
+		return a.legacyUserListError(ctx, userID, err)
 	}
 	items, err := normalizeLegacyUsers(result.UserPreviews)
 	if err != nil {
-		return a.legacyUserListError(userID, err)
+		return a.legacyUserListError(ctx, userID, err)
 	}
 	text := fmt.Sprintf("用户 %d 关注了 %d 位用户:\n\n%s", userID, len(items), formatSDKUsers(items))
 	if len(items) == 0 {
@@ -552,14 +558,20 @@ func normalizeLegacyUsers(items []legacy.UserPreview) ([]sdk.UserPreview, error)
 	return normalized, nil
 }
 
-func (a *App) legacyUserListError(userID int64, err error) (*mcp.CallToolResult, userListOut, error) {
+func (a *App) legacyUserListError(ctx context.Context, userID int64, err error) (*mcp.CallToolResult, userListOut, error) {
+	recordToolError(ctx, err)
 	out := userListOut{UserID: userID, Items: []sdk.UserPreview{}, Text: err.Error()}
-	return userListResult(out), out, nil
+	result := userListResult(out)
+	result.IsError = true
+	return result, out, nil
 }
 
-func (a *App) userListError(userID int64, err error) (*mcp.CallToolResult, userListOut, error) {
+func (a *App) userListError(ctx context.Context, userID int64, err error) (*mcp.CallToolResult, userListOut, error) {
+	recordToolError(ctx, err)
 	out := userListOut{UserID: userID, Items: []sdk.UserPreview{}, Text: "错误: " + err.Error()}
-	return userListResult(out), out, nil
+	result := userListResult(out)
+	result.IsError = true
+	return result, out, nil
 }
 
 type bookmarkMutationIn struct {
@@ -590,23 +602,21 @@ type mutationOut struct {
 }
 
 func mutationResult(out mutationOut) *mcp.CallToolResult {
-	return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: out.Text}}}
+	return &mcp.CallToolResult{IsError: !out.Success, Content: []mcp.Content{&mcp.TextContent{Text: out.Text}}}
 }
 
 func (a *App) runMutation(ctx context.Context, out mutationOut, run func(application.SDKClient) error) (*mcp.CallToolResult, mutationOut, error) {
-	started := time.Now()
 	client, release, err := a.openSDKOperation(ctx)
 	if err == nil {
 		defer release()
 		err = run(client)
 	}
 	if err != nil {
-		a.operationLog(out.Action, started, err, out.IllustID, out.UserID)
+		recordToolError(ctx, err)
 		out.Text = "错误: " + err.Error()
 		return mutationResult(out), out, nil
 	}
 	out.Success = true
-	a.operationLog(out.Action, started, nil, out.IllustID, out.UserID)
 	return mutationResult(out), out, nil
 }
 

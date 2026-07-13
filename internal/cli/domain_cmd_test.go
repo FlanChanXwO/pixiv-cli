@@ -12,6 +12,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/application"
 	"github.com/FlanChanXwO/pixiv-cli/internal/bootstrap"
@@ -243,6 +244,56 @@ func TestListPaginationAndValidationUseOpaqueCursorWithoutCursorFlag(t *testing.
 		stderr.Reset()
 		assert.NotZero(t, Run(args, strings.NewReader(""), &stdout, &stderr), args)
 	}
+}
+
+func TestInvalidListOrExplicitUserIDDoesNotOpenSDKOperation(t *testing.T) {
+	useTempPaths(t)
+	calls := 0
+	old := newCLIServices
+	newCLIServices = func(logger *slog.Logger) application.Services {
+		services := bootstrap.NewServices(logger)
+		services.SDK.NewClient = func(application.SDKClientRequest) (application.SDKClient, error) {
+			calls++
+			return sdkCommandFake{}, nil
+		}
+		return services
+	}
+	t.Cleanup(func() { newCLIServices = old })
+
+	for _, args := range [][]string{
+		{"pixiv", "search", "miku", "--page", "0", "--limit", "1"},
+		{"pixiv", "ranking", "--page", "1"},
+		{"pixiv", "recommended", "--limit", "-1"},
+		{"pixiv", "user", "artworks", "--page", "0", "--limit", "1"},
+		{"pixiv", "user", "bookmarks", "not-a-user-id"},
+		{"pixiv", "user", "following", "0"},
+	} {
+		var stdout, stderr bytes.Buffer
+		if Run(args, strings.NewReader(""), &stdout, &stderr) == 0 {
+			t.Fatalf("invalid command succeeded: %v", args)
+		}
+	}
+	if calls != 0 {
+		t.Fatalf("invalid list/user ID opened SDK operation %d times", calls)
+	}
+}
+
+func TestCommandLogPreservesTypedSDKErrorMetadata(t *testing.T) {
+	var logs bytes.Buffer
+	a := app{logger: slog.New(slog.NewJSONHandler(&logs, nil))}
+	a.commandLog("pixiv user artworks", time.Now(), &sdk.Error{
+		Code:           sdk.CodeUpstreamError,
+		Backend:        sdk.BackendAppAPI,
+		UpstreamStatus: http.StatusBadGateway,
+		UserID:         88,
+	})
+	var event map[string]any
+	require.NoError(t, json.Unmarshal(logs.Bytes(), &event))
+	assert.Equal(t, "error", event["result"])
+	assert.Equal(t, string(sdk.CodeUpstreamError), event["error_code"])
+	assert.Equal(t, string(sdk.BackendAppAPI), event["backend"])
+	assert.Equal(t, float64(http.StatusBadGateway), event["status"])
+	assert.Equal(t, float64(88), event["user_id"])
 }
 
 func TestListJSONSpoolsUntilFullSuccessAndDetailKeepsPages(t *testing.T) {

@@ -61,6 +61,10 @@ func (a app) runSearch(cmd *cobra.Command, args []string, opts searchOptions) er
 	if opts.r18 {
 		word += " R-18"
 	}
+	plan, err := parseListPlan(cmd, opts.listOptions)
+	if err != nil {
+		return err
+	}
 	services := a.services()
 	clientReq, jsonOverride, err := a.sdkRequest(cmd, opts.commandOptions)
 	if err != nil {
@@ -71,10 +75,6 @@ func (a app) runSearch(cmd *cobra.Command, args []string, opts searchOptions) er
 		return err
 	}
 	client, err := services.SDK.OpenOperation(cmd.Context(), clientReq)
-	if err != nil {
-		return err
-	}
-	plan, err := parseListPlan(cmd, opts.listOptions)
 	if err != nil {
 		return err
 	}
@@ -152,6 +152,10 @@ func (a app) newRankingCommand() *cobra.Command {
 }
 
 func (a app) runRanking(cmd *cobra.Command, opts rankingOptions) error {
+	plan, err := parseListPlan(cmd, opts.listOptions)
+	if err != nil {
+		return err
+	}
 	services := a.services()
 	clientReq, jsonOverride, err := a.sdkRequest(cmd, opts.commandOptions)
 	if err != nil {
@@ -162,10 +166,6 @@ func (a app) runRanking(cmd *cobra.Command, opts rankingOptions) error {
 		return err
 	}
 	client, err := services.SDK.OpenOperation(cmd.Context(), clientReq)
-	if err != nil {
-		return err
-	}
-	plan, err := parseListPlan(cmd, opts.listOptions)
 	if err != nil {
 		return err
 	}
@@ -197,6 +197,10 @@ func (a app) newRecommendedCommand() *cobra.Command {
 }
 
 func (a app) runRecommended(cmd *cobra.Command, opts recommendedOptions) error {
+	plan, err := parseListPlan(cmd, opts.listOptions)
+	if err != nil {
+		return err
+	}
 	services := a.services()
 	clientReq, jsonOverride, err := a.sdkRequest(cmd, opts.commandOptions)
 	if err != nil {
@@ -207,10 +211,6 @@ func (a app) runRecommended(cmd *cobra.Command, opts recommendedOptions) error {
 		return err
 	}
 	client, err := services.SDK.OpenOperation(cmd.Context(), clientReq)
-	if err != nil {
-		return err
-	}
-	plan, err := parseListPlan(cmd, opts.listOptions)
 	if err != nil {
 		return err
 	}

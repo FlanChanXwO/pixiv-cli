@@ -60,6 +60,22 @@ type App struct {
 	sdkGate chan struct{}
 }
 
+// toolErrorCapture 将 handler 已转换为 MCP error result 的原始安全错误交给注册层。
+// go-sdk 对 result 与 error 同时存在时会重包 result，因此不能直接返回 handler error。
+type toolErrorCapture struct{ err error }
+
+type toolErrorCaptureKey struct{}
+
+func recordToolError(ctx context.Context, err error) {
+	if err == nil {
+		return
+	}
+	capture, _ := ctx.Value(toolErrorCaptureKey{}).(*toolErrorCapture)
+	if capture != nil && capture.err == nil {
+		capture.err = err
+	}
+}
+
 func New(api PixivAPI, downloads DownloadManager, logger *slog.Logger) *mcp.Server {
 	logger = loggerOrDiscard(logger)
 	return newServer(&App{api: api, downloads: downloads, logger: logger})
@@ -96,12 +112,16 @@ func newServer(app *App) *mcp.Server {
 func addTool[In, Out any](a *App, server *mcp.Server, tool *mcp.Tool, handler mcp.ToolHandlerFor[In, Out]) {
 	mcp.AddTool(server, tool, func(ctx context.Context, request *mcp.CallToolRequest, input In) (result *mcp.CallToolResult, output Out, err error) {
 		started := time.Now()
-		result, output, err = handler(ctx, request, input)
+		capture := &toolErrorCapture{}
+		result, output, err = handler(context.WithValue(ctx, toolErrorCaptureKey{}, capture), request, input)
 		logErr := err
 		if result != nil && result.IsError && err == nil {
 			// 仅供日志标记失败。把它作为 handler 返回 error 会让 go-sdk 重新包装
 			// CallToolResult，丢失调用方已有的 Content/StructuredContent。
-			logErr = errors.New("mcp tool returned an error result")
+			logErr = capture.err
+			if logErr == nil {
+				logErr = errors.New("mcp tool returned an error result")
+			}
 		}
 		a.operationLog(tool.Name, started, logErr, 0, 0)
 		return result, output, err

@@ -65,24 +65,36 @@ func (a app) newUserFollowingCommand() *cobra.Command {
 }
 
 func (a app) resolveUserID(cmd *cobra.Command, args []string, options commandOptions) (sdkUserID int64, client application.SDKClient, err error) {
-	services := a.services()
-	request, _, err := a.sdkRequest(cmd, options)
-	if err != nil {
-		return 0, nil, err
-	}
 	if len(args) == 1 {
 		id, parseErr := parse.PositiveInt64(args[0], "user_id")
+		if parseErr != nil {
+			return 0, nil, parseErr
+		}
+		request, _, requestErr := a.sdkRequest(cmd, options)
+		if requestErr != nil {
+			return 0, nil, requestErr
+		}
+		services := a.services()
 		client, err = services.SDK.OpenOperation(cmd.Context(), request)
 		if err != nil {
 			return 0, nil, err
 		}
-		return id, client, parseErr
+		return id, client, nil
 	}
+	request, _, err := a.sdkRequest(cmd, options)
+	if err != nil {
+		return 0, nil, err
+	}
+	services := a.services()
 	client, sdkUserID, err = services.SDK.CurrentUserID(cmd.Context(), request)
 	return sdkUserID, client, err
 }
 
 func (a app) runUserArtworks(cmd *cobra.Command, args []string, options userListOptions) error {
+	plan, err := parseListPlan(cmd, options.listOptions)
+	if err != nil {
+		return err
+	}
 	userID, client, err := a.resolveUserID(cmd, args, options.commandOptions)
 	if err != nil {
 		return err
@@ -93,10 +105,6 @@ func (a app) runUserArtworks(cmd *cobra.Command, args []string, options userList
 		return err
 	}
 	jsonOut, err := services.SDK.JSONOut(jsonOverride)
-	if err != nil {
-		return err
-	}
-	plan, err := parseListPlan(cmd, options.listOptions)
 	if err != nil {
 		return err
 	}
@@ -113,6 +121,10 @@ func (a app) runUserArtworks(cmd *cobra.Command, args []string, options userList
 }
 
 func (a app) runUserBookmarks(cmd *cobra.Command, args []string, options userListOptions) error {
+	plan, err := parseListPlan(cmd, options.listOptions)
+	if err != nil {
+		return err
+	}
 	userID, client, err := a.resolveUserID(cmd, args, options.commandOptions)
 	if err != nil {
 		return err
@@ -123,10 +135,6 @@ func (a app) runUserBookmarks(cmd *cobra.Command, args []string, options userLis
 		return err
 	}
 	jsonOut, err := services.SDK.JSONOut(jsonOverride)
-	if err != nil {
-		return err
-	}
-	plan, err := parseListPlan(cmd, options.listOptions)
 	if err != nil {
 		return err
 	}
@@ -143,6 +151,10 @@ func (a app) runUserBookmarks(cmd *cobra.Command, args []string, options userLis
 }
 
 func (a app) runUserFollowing(cmd *cobra.Command, args []string, options userListOptions) error {
+	plan, err := parseListPlan(cmd, options.listOptions)
+	if err != nil {
+		return err
+	}
 	userID, client, err := a.resolveUserID(cmd, args, options.commandOptions)
 	if err != nil {
 		return err
@@ -153,10 +165,6 @@ func (a app) runUserFollowing(cmd *cobra.Command, args []string, options userLis
 		return err
 	}
 	jsonOut, err := services.SDK.JSONOut(jsonOverride)
-	if err != nil {
-		return err
-	}
-	plan, err := parseListPlan(cmd, options.listOptions)
 	if err != nil {
 		return err
 	}
