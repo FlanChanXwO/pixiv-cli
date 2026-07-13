@@ -63,6 +63,9 @@ type RuntimeConfig struct {
 	LoginOpenBrowser   bool
 	LoginTimeout       time.Duration
 	LoginUseAfterLogin bool
+	// LogLevel 与 LogFormat 只描述应用根 logger，不会改变 slog 默认全局 logger。
+	LogLevel  string
+	LogFormat string
 }
 
 var settingSpecs = []SettingSpec{
@@ -74,6 +77,8 @@ var settingSpecs = []SettingSpec{
 	{Alias: "login_open_browser", KoanfKey: "login.open_browser", Table: []string{"login"}, Key: "open_browser", Kind: settingBool, HasDefault: true, Default: true},
 	{Alias: "login_timeout", KoanfKey: "login.timeout", Table: []string{"login"}, Key: "timeout", Kind: settingDuration, HasDefault: true, Default: time.Duration(0)},
 	{Alias: "login_use_after_login", KoanfKey: "login.use_after_login", Table: []string{"login"}, Key: "use_after_login", Kind: settingBool, HasDefault: true, Default: false},
+	{Alias: "log_level", KoanfKey: "logging.level", Table: []string{"logging"}, Key: "level", Kind: settingString, HasDefault: true, Default: "info"},
+	{Alias: "log_format", KoanfKey: "logging.format", Table: []string{"logging"}, Key: "format", Kind: settingString, HasDefault: true, Default: "text"},
 }
 
 func SettingSpecByAlias(alias string) (SettingSpec, bool) {
@@ -110,6 +115,10 @@ func EnvValue(spec SettingSpec) (string, bool) {
 			return value, true
 		}
 		return envLookup("HTTPS_PROXY")
+	case "log_level":
+		return envLookup("PIXIV_LOG_LEVEL")
+	case "log_format":
+		return envLookup("PIXIV_LOG_FORMAT")
 	default:
 		return "", false
 	}
@@ -205,6 +214,22 @@ func (s SettingsState) Runtime() (RuntimeConfig, error) {
 	if err != nil {
 		return RuntimeConfig{}, err
 	}
+	logLevel, err := s.Effective("log_level")
+	if err != nil {
+		return RuntimeConfig{}, err
+	}
+	logFormat, err := s.Effective("log_format")
+	if err != nil {
+		return RuntimeConfig{}, err
+	}
+	level, err := normalizeLogLevel(logLevel.Value.(string))
+	if err != nil {
+		return RuntimeConfig{}, err
+	}
+	format, err := normalizeLogFormat(logFormat.Value.(string))
+	if err != nil {
+		return RuntimeConfig{}, err
+	}
 	cfg := RuntimeConfig{
 		DownloadPath:       downloadPath.Value.(string),
 		FilenameTemplate:   filenameTemplate.Value.(string),
@@ -214,6 +239,8 @@ func (s SettingsState) Runtime() (RuntimeConfig, error) {
 		LoginOpenBrowser:   loginOpenBrowser.Value.(bool),
 		LoginTimeout:       loginTimeout.Value.(time.Duration),
 		LoginUseAfterLogin: loginUseAfterLogin.Value.(bool),
+		LogLevel:           level,
+		LogFormat:          format,
 	}
 	if httpsProxy.HasValue {
 		cfg.HTTPSProxy = httpsProxy.Value.(string)

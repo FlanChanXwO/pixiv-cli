@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/config"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/oauth"
@@ -49,7 +50,9 @@ func (c *Client) configPathFor(operation Operation) (string, error) {
 }
 
 // ImportAccount 刷新给定 refresh token，随后安全保存其旋转后的 token。
-func (c *Client) ImportAccount(ctx context.Context, refreshToken string) (*Account, error) {
+func (c *Client) ImportAccount(ctx context.Context, refreshToken string) (out *Account, err error) {
+	started := time.Now()
+	defer func() { c.operationLog(OperationImportAccount, started, err, 0, 0) }()
 	c.authState.mu.Lock()
 	defer c.authState.mu.Unlock()
 	refreshToken, _ = utils.ParsePixivWebRefreshTokenInput(refreshToken)
@@ -76,7 +79,9 @@ func (c *Client) ImportAccount(ctx context.Context, refreshToken string) (*Accou
 }
 
 // ListAccounts 返回本地账号的安全摘要。
-func (c *Client) ListAccounts() (*AccountsResult, error) {
+func (c *Client) ListAccounts() (out *AccountsResult, err error) {
+	started := time.Now()
+	defer func() { c.operationLog(OperationListAccounts, started, err, 0, 0) }()
 	c.authState.mu.Lock()
 	defer c.authState.mu.Unlock()
 	state, _, err := c.accountState(OperationListAccounts, false)
@@ -91,7 +96,9 @@ func (c *Client) ListAccounts() (*AccountsResult, error) {
 }
 
 // SelectAccount 将已有账号选为默认账号。
-func (c *Client) SelectAccount(userID int64) error {
+func (c *Client) SelectAccount(userID int64) (err error) {
+	started := time.Now()
+	defer func() { c.operationLog(OperationSelectAccount, started, err, 0, userID) }()
 	c.authState.mu.Lock()
 	defer c.authState.mu.Unlock()
 	if userID <= 0 {
@@ -112,7 +119,9 @@ func (c *Client) SelectAccount(userID int64) error {
 }
 
 // RemoveAccount 删除本地账号；删除默认账号时沿用存储层的确定性提升规则。
-func (c *Client) RemoveAccount(userID int64) error {
+func (c *Client) RemoveAccount(userID int64) (err error) {
+	started := time.Now()
+	defer func() { c.operationLog(OperationRemoveAccount, started, err, 0, userID) }()
 	c.authState.mu.Lock()
 	defer c.authState.mu.Unlock()
 	if userID <= 0 {
@@ -132,7 +141,9 @@ func (c *Client) RemoveAccount(userID int64) error {
 }
 
 // CheckAccount 刷新指定本地账号，验证 UID 不变并保存旋转后的 token。
-func (c *Client) CheckAccount(ctx context.Context, userID int64) (*Account, error) {
+func (c *Client) CheckAccount(ctx context.Context, userID int64) (out *Account, err error) {
+	started := time.Now()
+	defer func() { c.operationLog(OperationCheckAccount, started, err, 0, userID) }()
 	c.authState.mu.Lock()
 	defer c.authState.mu.Unlock()
 	state, httpClient, err := c.accountState(OperationCheckAccount, true)
@@ -146,7 +157,9 @@ func (c *Client) CheckAccount(ctx context.Context, userID int64) (*Account, erro
 }
 
 // Refresh 刷新当前默认账号并保存旋转后的 token。
-func (c *Client) Refresh(ctx context.Context) (*Account, error) {
+func (c *Client) Refresh(ctx context.Context) (out *Account, err error) {
+	started := time.Now()
+	defer func() { c.operationLog(OperationRefresh, started, err, 0, 0) }()
 	c.authState.mu.Lock()
 	defer c.authState.mu.Unlock()
 	state, httpClient, err := c.accountState(OperationRefresh, true)
@@ -157,7 +170,9 @@ func (c *Client) Refresh(ctx context.Context) (*Account, error) {
 }
 
 // RefreshAccount 是 Refresh 的显式 UID 变体。
-func (c *Client) RefreshAccount(ctx context.Context, userID int64) (*Account, error) {
+func (c *Client) RefreshAccount(ctx context.Context, userID int64) (out *Account, err error) {
+	started := time.Now()
+	defer func() { c.operationLog(OperationRefresh, started, err, 0, userID) }()
 	c.authState.mu.Lock()
 	defer c.authState.mu.Unlock()
 	return c.refreshStoredAccount(ctx, OperationRefresh, userID)
@@ -250,7 +265,9 @@ func (c *Client) accountState(operation Operation, needsHTTP bool) (localSnapsho
 }
 
 // GetConfig 读取 alias 的有效值，包含现有环境变量覆盖规则。
-func (c *Client) GetConfig(alias string) (ConfigValue, error) {
+func (c *Client) GetConfig(alias string) (out ConfigValue, err error) {
+	started := time.Now()
+	defer func() { c.operationLog(OperationConfigGet, started, err, 0, 0) }()
 	path, err := c.configPathFor(OperationConfigGet)
 	if err != nil {
 		return ConfigValue{}, err
@@ -267,7 +284,9 @@ func (c *Client) GetConfig(alias string) (ConfigValue, error) {
 }
 
 // SetConfig 校验并私有写入一个现有 alias。
-func (c *Client) SetConfig(alias, raw string) (ConfigValue, error) {
+func (c *Client) SetConfig(alias, raw string) (out ConfigValue, err error) {
+	started := time.Now()
+	defer func() { c.operationLog(OperationConfigSet, started, err, 0, 0) }()
 	path, err := c.configPathFor(OperationConfigSet)
 	if err != nil {
 		return ConfigValue{}, err
@@ -283,7 +302,9 @@ func (c *Client) SetConfig(alias, raw string) (ConfigValue, error) {
 }
 
 // UnsetConfig 移除一个现有 alias 的文件值；环境覆盖仍会由 GetConfig 显示。
-func (c *Client) UnsetConfig(alias string) (bool, error) {
+func (c *Client) UnsetConfig(alias string) (out bool, err error) {
+	started := time.Now()
+	defer func() { c.operationLog(OperationConfigUnset, started, err, 0, 0) }()
 	path, err := c.configPathFor(OperationConfigUnset)
 	if err != nil {
 		return false, err

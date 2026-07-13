@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv"
 	"github.com/FlanChanXwO/pixiv-cli/internal/utils"
@@ -67,7 +68,8 @@ type Manager struct {
 
 func NewManager(client PixivClient, logger *slog.Logger, downloadPath, filenameTemplate string) *Manager {
 	if logger == nil {
-		logger = slog.Default()
+		// 下载管理器可由 SDK/嵌入方单独使用；未注入时严格静默，不能落到可变全局 logger。
+		logger = slog.New(slog.NewTextHandler(io.Discard, nil))
 	}
 	m := &Manager{
 		client:           client,
@@ -131,12 +133,12 @@ func (m *Manager) Download(ctx context.Context, ids []int64) ([]DownloadedArtwor
 func (m *Manager) downloadOne(ctx context.Context, id int64) {
 	m.sem <- struct{}{}
 	defer func() { <-m.sem }()
-	if _, err := m.downloadArtwork(ctx, id); err != nil {
-		m.logger.Error("download failed", "illust_id", id, "error", err)
-	}
+	_, _ = m.downloadArtwork(ctx, id)
 }
 
-func (m *Manager) downloadArtwork(ctx context.Context, id int64) (DownloadedArtwork, error) {
+func (m *Manager) downloadArtwork(ctx context.Context, id int64) (out DownloadedArtwork, err error) {
+	started := time.Now()
+	defer func() { m.operationLog("download", started, err, id) }()
 	detail, err := m.client.IllustDetail(ctx, id)
 	if err != nil {
 		return DownloadedArtwork{}, err
@@ -197,6 +199,25 @@ func (m *Manager) downloadArtwork(ctx context.Context, id int64) (DownloadedArtw
 		artwork.Files = append(artwork.Files, DownloadedFile{Path: path, Page: i})
 	}
 	return artwork, nil
+}
+
+// operationLog 只写稳定诊断字段；下载错误可能携带上游 URL 或文件系统路径，
+// 因而不能直接作为 slog 的 error 属性输出。
+func (m *Manager) operationLog(operation string, started time.Time, err error, illustID int64) {
+	result := "success"
+	if err != nil {
+		result = "error"
+	}
+	m.logger.LogAttrs(nil, slog.LevelInfo, "pixiv operation",
+		slog.String("component", "download"),
+		slog.String("operation", operation),
+		slog.String("backend", "local"),
+		slog.Duration("duration", time.Since(started)),
+		slog.String("result", result),
+		slog.String("error_code", ""),
+		slog.Int("status", 0),
+		slog.Int64("illust_id", illustID),
+	)
 }
 
 func (m *Manager) downloadUgoira(ctx context.Context, illust pixiv.Illust, base string) (string, error) {

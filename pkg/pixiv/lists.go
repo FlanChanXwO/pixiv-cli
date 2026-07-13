@@ -41,7 +41,9 @@ type userFollowingQuery struct {
 }
 
 // SearchIllust 返回一个作品搜索上游批次。
-func (c *Client) SearchIllust(ctx context.Context, request SearchIllustRequest) (*IllustListResult, error) {
+func (c *Client) SearchIllust(ctx context.Context, request SearchIllustRequest) (result *IllustListResult, err error) {
+	started := time.Now()
+	defer func() { c.delegatedOperationLog(OperationSearchIllust, started, err, 0, 0) }()
 	if scoped, err := c.operationClient(ctx, OperationSearchIllust); err != nil {
 		return nil, err
 	} else if scoped != c {
@@ -87,7 +89,9 @@ func (c *Client) SearchIllust(ctx context.Context, request SearchIllustRequest) 
 }
 
 // IllustRanking 返回一个排行榜上游批次。
-func (c *Client) IllustRanking(ctx context.Context, request IllustRankingRequest) (*IllustListResult, error) {
+func (c *Client) IllustRanking(ctx context.Context, request IllustRankingRequest) (result *IllustListResult, err error) {
+	started := time.Now()
+	defer func() { c.delegatedOperationLog(OperationIllustRanking, started, err, 0, 0) }()
 	if scoped, err := c.operationClient(ctx, OperationIllustRanking); err != nil {
 		return nil, err
 	} else if scoped != c {
@@ -130,7 +134,9 @@ func (c *Client) IllustRanking(ctx context.Context, request IllustRankingRequest
 }
 
 // IllustRecommended 返回一个认证推荐作品批次。
-func (c *Client) IllustRecommended(ctx context.Context, request IllustRecommendedRequest) (*IllustListResult, error) {
+func (c *Client) IllustRecommended(ctx context.Context, request IllustRecommendedRequest) (result *IllustListResult, err error) {
+	started := time.Now()
+	defer func() { c.delegatedOperationLog(OperationIllustRecommended, started, err, 0, 0) }()
 	if scoped, err := c.operationClient(ctx, OperationIllustRecommended); err != nil {
 		return nil, err
 	} else if scoped != c {
@@ -152,7 +158,9 @@ func (c *Client) IllustRecommended(ctx context.Context, request IllustRecommende
 }
 
 // FollowingIllusts 返回当前认证账号所关注用户的一个作品批次。
-func (c *Client) FollowingIllusts(ctx context.Context, request FollowingIllustsRequest) (*IllustListResult, error) {
+func (c *Client) FollowingIllusts(ctx context.Context, request FollowingIllustsRequest) (result *IllustListResult, err error) {
+	started := time.Now()
+	defer func() { c.delegatedOperationLog(OperationFollowingIllusts, started, err, 0, 0) }()
 	if scoped, err := c.operationClient(ctx, OperationFollowingIllusts); err != nil {
 		return nil, err
 	} else if scoped != c {
@@ -181,7 +189,9 @@ func (c *Client) FollowingIllusts(ctx context.Context, request FollowingIllustsR
 }
 
 // SearchUser 返回一个用户搜索上游批次。
-func (c *Client) SearchUser(ctx context.Context, request SearchUserRequest) (*UserListResult, error) {
+func (c *Client) SearchUser(ctx context.Context, request SearchUserRequest) (result *UserListResult, err error) {
+	started := time.Now()
+	defer func() { c.delegatedOperationLog(OperationSearchUser, started, err, 0, 0) }()
 	if scoped, err := c.operationClient(ctx, OperationSearchUser); err != nil {
 		return nil, err
 	} else if scoped != c {
@@ -218,7 +228,9 @@ func (c *Client) SearchUser(ctx context.Context, request SearchUserRequest) (*Us
 }
 
 // UserDetail 返回指定用户的稳定摘要。
-func (c *Client) UserDetail(ctx context.Context, request UserDetailRequest) (*UserDetailResult, error) {
+func (c *Client) UserDetail(ctx context.Context, request UserDetailRequest) (result *UserDetailResult, err error) {
+	started := time.Now()
+	defer func() { c.delegatedOperationLog(OperationUserDetail, started, err, 0, request.UserID) }()
 	if scoped, err := c.operationClient(ctx, OperationUserDetail); err != nil {
 		return nil, err
 	} else if scoped != c {
@@ -238,7 +250,9 @@ func (c *Client) UserDetail(ctx context.Context, request UserDetailRequest) (*Us
 }
 
 // UserArtworks 返回指定用户的一个作品批次。
-func (c *Client) UserArtworks(ctx context.Context, request UserArtworksRequest) (*IllustListResult, error) {
+func (c *Client) UserArtworks(ctx context.Context, request UserArtworksRequest) (result *IllustListResult, err error) {
+	started := time.Now()
+	defer func() { c.delegatedOperationLog(OperationUserArtworks, started, err, 0, request.UserID) }()
 	if scoped, err := c.operationClient(ctx, OperationUserArtworks); err != nil {
 		return nil, err
 	} else if scoped != c {
@@ -270,7 +284,9 @@ func (c *Client) UserArtworks(ctx context.Context, request UserArtworksRequest) 
 }
 
 // UserBookmarks 返回指定用户的一个收藏作品批次。
-func (c *Client) UserBookmarks(ctx context.Context, request UserBookmarksRequest) (*IllustListResult, error) {
+func (c *Client) UserBookmarks(ctx context.Context, request UserBookmarksRequest) (result *IllustListResult, err error) {
+	started := time.Now()
+	defer func() { c.delegatedOperationLog(OperationUserBookmarks, started, err, 0, request.UserID) }()
 	if scoped, err := c.operationClient(ctx, OperationUserBookmarks); err != nil {
 		return nil, err
 	} else if scoped != c {
@@ -302,7 +318,9 @@ func (c *Client) UserBookmarks(ctx context.Context, request UserBookmarksRequest
 }
 
 // UserFollowing 返回指定用户关注的一个用户批次。
-func (c *Client) UserFollowing(ctx context.Context, request UserFollowingRequest) (*UserListResult, error) {
+func (c *Client) UserFollowing(ctx context.Context, request UserFollowingRequest) (result *UserListResult, err error) {
+	started := time.Now()
+	defer func() { c.delegatedOperationLog(OperationUserFollowing, started, err, 0, request.UserID) }()
 	if scoped, err := c.operationClient(ctx, OperationUserFollowing); err != nil {
 		return nil, err
 	} else if scoped != c {

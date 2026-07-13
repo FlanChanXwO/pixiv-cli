@@ -3,6 +3,7 @@ package pixiv
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/model"
 )
@@ -12,7 +13,9 @@ type illustRelatedQuery struct {
 }
 
 // IllustPages 返回作品的全部页面元数据；该接口不分页。
-func (c *Client) IllustPages(ctx context.Context, illustID int64) ([]MetaPage, error) {
+func (c *Client) IllustPages(ctx context.Context, illustID int64) (result []MetaPage, err error) {
+	started := time.Now()
+	defer func() { c.delegatedOperationLog(OperationIllustPages, started, err, illustID, 0) }()
 	if scoped, err := c.operationClient(ctx, OperationIllustPages); err != nil {
 		return nil, err
 	} else if scoped != c {
@@ -32,7 +35,9 @@ func (c *Client) IllustPages(ctx context.Context, illustID int64) ([]MetaPage, e
 }
 
 // IllustRelated 返回与指定作品相关的一个 App API 批次。
-func (c *Client) IllustRelated(ctx context.Context, request IllustRelatedRequest) (*IllustListResult, error) {
+func (c *Client) IllustRelated(ctx context.Context, request IllustRelatedRequest) (result *IllustListResult, err error) {
+	started := time.Now()
+	defer func() { c.delegatedOperationLog(OperationIllustRelated, started, err, request.IllustID, 0) }()
 	if scoped, err := c.operationClient(ctx, OperationIllustRelated); err != nil {
 		return nil, err
 	} else if scoped != c {
@@ -58,7 +63,9 @@ func (c *Client) IllustRelated(ctx context.Context, request IllustRelatedRequest
 }
 
 // TrendingTagsIllust 返回 App API 当前的插画趋势标签。
-func (c *Client) TrendingTagsIllust(ctx context.Context) (*TrendingTagsIllustResult, error) {
+func (c *Client) TrendingTagsIllust(ctx context.Context) (result *TrendingTagsIllustResult, err error) {
+	started := time.Now()
+	defer func() { c.delegatedOperationLog(OperationTrendingTagsIllust, started, err, 0, 0) }()
 	if scoped, err := c.operationClient(ctx, OperationTrendingTagsIllust); err != nil {
 		return nil, err
 	} else if scoped != c {
@@ -67,19 +74,21 @@ func (c *Client) TrendingTagsIllust(ctx context.Context) (*TrendingTagsIllustRes
 	if err := c.requireRoute(OperationTrendingTagsIllust, routeApp, 0, 0); err != nil {
 		return nil, err
 	}
-	result, err := c.app.TrendingTagsIllust(ctx)
+	trendTags, err := c.app.TrendingTagsIllust(ctx)
 	if err != nil {
 		return nil, mapAppError(err, OperationTrendingTagsIllust, 0)
 	}
-	out := &TrendingTagsIllustResult{TrendTags: make([]TrendTag, len(result.TrendTags))}
-	for i, item := range result.TrendTags {
+	out := &TrendingTagsIllustResult{TrendTags: make([]TrendTag, len(trendTags.TrendTags))}
+	for i, item := range trendTags.TrendTags {
 		out.TrendTags[i] = TrendTag{Tag: item.Tag, TranslatedName: item.TranslatedName, Illust: mapIllust(item.Illust)}
 	}
 	return out, nil
 }
 
 // UgoiraMetadata 以 App 数据为主，并用 Web 的真实 originalSrc 补全原始压缩包 URL。
-func (c *Client) UgoiraMetadata(ctx context.Context, illustID int64) (*UgoiraMetadataResult, error) {
+func (c *Client) UgoiraMetadata(ctx context.Context, illustID int64) (result *UgoiraMetadataResult, err error) {
+	started := time.Now()
+	defer func() { c.delegatedOperationLog(OperationUgoiraMetadata, started, err, illustID, 0) }()
 	if scoped, err := c.operationClient(ctx, OperationUgoiraMetadata); err != nil {
 		return nil, err
 	} else if scoped != c {
@@ -110,9 +119,9 @@ func (c *Client) UgoiraMetadata(ctx context.Context, illustID int64) (*UgoiraMet
 	if err != nil {
 		return nil, mapWebError(err, OperationUgoiraMetadata, illustID)
 	}
-	result := publicUgoiraMetadata(appResult)
-	result.UgoiraMetadata.ZipURLs.Original = webResult.UgoiraMetadata.ZipURLs.Original
-	return result, nil
+	out := publicUgoiraMetadata(appResult)
+	out.UgoiraMetadata.ZipURLs.Original = webResult.UgoiraMetadata.ZipURLs.Original
+	return out, nil
 }
 
 func publicUgoiraMetadata(value *model.UgoiraMetadataResult) *UgoiraMetadataResult {

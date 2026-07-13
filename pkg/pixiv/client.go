@@ -5,9 +5,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
+	"log/slog"
 	"net/http"
 	"strings"
 	"sync"
+	"time"
 
 	internalpixiv "github.com/FlanChanXwO/pixiv-cli/internal/pixiv"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/appapi"
@@ -18,6 +21,8 @@ import (
 
 // Options 配置 Client 当前所需的传输端点与 App API 身份。
 type Options struct {
+	// Logger 接收调用方显式注入的诊断 logger；为空时 SDK 严格静默，绝不使用 slog.Default。
+	Logger *slog.Logger
 	// HTTPClient 同时承载 App 与 Web 请求；为空时使用各内部客户端默认值。
 	HTTPClient *http.Client
 	// AppAPIBaseURL 覆盖 App API 地址，主要用于代理与测试。
@@ -63,6 +68,7 @@ type Client struct {
 	// authenticatedUserID 仅由 OpenDefault 的 OAuth 快照写入；显式 access token
 	// 不声称可从 token 本身推断用户身份。
 	authenticatedUserID int64
+	logger              *slog.Logger
 }
 
 // CurrentUserID 返回 OpenDefault 当前认证快照对应的 Pixiv UID。
@@ -70,7 +76,9 @@ type Client struct {
 // 它为 CLI 等需要将省略的 USER_ID 解释为“我自己”的调用方提供身份边界；不会把
 // 本地默认账号错误地当作显式 refresh token 或环境变量 token 的身份。显式 NewClient
 // 的 access token 不携带可验证 UID，因此返回 unsupported。
-func (c *Client) CurrentUserID(ctx context.Context) (int64, error) {
+func (c *Client) CurrentUserID(ctx context.Context) (userID int64, err error) {
+	started := time.Now()
+	defer func() { c.operationLog(OperationCurrentUserID, started, err, 0, userID) }()
 	if scoped, err := c.Snapshot(ctx); err != nil {
 		return 0, err
 	} else if scoped != c {
@@ -128,7 +136,15 @@ func NewClient(options Options) (*Client, error) {
 		oauthBaseURL:       strings.TrimSpace(options.OAuthBaseURL),
 		appAPIBaseURL:      strings.TrimSpace(options.AppAPIBaseURL),
 		authState:          &authTransactionState{},
+		logger:             loggerOrDiscard(options.Logger),
 	}, nil
+}
+
+func loggerOrDiscard(logger *slog.Logger) *slog.Logger {
+	if logger != nil {
+		return logger
+	}
+	return slog.New(slog.NewTextHandler(io.Discard, nil))
 }
 
 // OpenDefault 构造使用本地 auth.json、config.toml 与环境变量的客户端。
@@ -169,7 +185,9 @@ func newHTTPClientForSnapshot(options Options, proxy string) (*http.Client, erro
 
 // IllustDetail 先读取 App API 详情，再用 Web pages 显式补全页面元数据。
 // App 失败时不会请求 Web；Web 补全失败会直接返回错误。
-func (c *Client) IllustDetail(ctx context.Context, id int64) (*IllustDetail, error) {
+func (c *Client) IllustDetail(ctx context.Context, id int64) (result *IllustDetail, err error) {
+	started := time.Now()
+	defer func() { c.delegatedOperationLog(OperationIllustDetail, started, err, id, 0) }()
 	if scoped, err := c.operationClient(ctx, OperationIllustDetail); err != nil {
 		return nil, err
 	} else if scoped != c {
@@ -210,9 +228,9 @@ func (c *Client) IllustDetail(ctx context.Context, id int64) (*IllustDetail, err
 		return nil, mapWebError(err, OperationIllustPages, id)
 	}
 
-	result := mapIllustDetail(*detail)
-	result.Illust.MetaPages = mapMetaPages(pages)
-	return &result, nil
+	out := mapIllustDetail(*detail)
+	out.Illust.MetaPages = mapMetaPages(pages)
+	return &out, nil
 }
 
 func mapWebError(err error, operation Operation, illustID int64) error {

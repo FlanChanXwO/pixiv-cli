@@ -6,6 +6,7 @@ import (
 	"io"
 	"log/slog"
 	"strings"
+	"time"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/application"
 	"github.com/FlanChanXwO/pixiv-cli/internal/config"
@@ -80,14 +81,16 @@ func NewServices(logger *slog.Logger) application.Services {
 				return oauthClient{client: client}, nil
 			},
 		},
-		SDK: application.SDKService{NewClient: newSDKClient, LoadRuntime: LoadRuntimeConfig},
+		SDK: application.SDKService{NewClient: func(request application.SDKClientRequest) (application.SDKClient, error) {
+			return newSDKClient(logger, request)
+		}, LoadRuntime: LoadRuntimeConfig},
 	}
 }
 
 // newSDKClient 将 CLI 的显式账号和代理覆写交给公共 SDK。没有 --proxy 时，
 // OpenDefault 自己在每个操作读取当前 config 快照；有覆写时才固定本次 transport。
-func newSDKClient(request application.SDKClientRequest) (application.SDKClient, error) {
-	options := publicpixiv.Options{UserID: request.UserID, RefreshToken: request.RefreshToken, AuthFilePath: request.AuthFilePath}
+func newSDKClient(logger *slog.Logger, request application.SDKClientRequest) (application.SDKClient, error) {
+	options := publicpixiv.Options{UserID: request.UserID, RefreshToken: request.RefreshToken, AuthFilePath: request.AuthFilePath, Logger: logger}
 	if request.HTTPSProxyOverride != nil {
 		httpClient, err := pixiv.HTTPClient(*request.HTTPSProxyOverride)
 		if err != nil {
@@ -96,6 +99,16 @@ func newSDKClient(request application.SDKClientRequest) (application.SDKClient, 
 		options.HTTPClient = httpClient
 	}
 	return publicpixiv.OpenDefault(options)
+}
+
+// NewApplicationLogger 从当前配置建立一次应用根 logger。它不触碰 slog 全局默认值；
+// CLI 与 MCP 将其显式传入所有下游组件，确保诊断永远离开 stdout 协议通道。
+func NewApplicationLogger(errOut io.Writer) (*slog.Logger, error) {
+	cfg, err := LoadRuntimeConfig()
+	if err != nil {
+		return nil, err
+	}
+	return config.NewLogger(errOut, cfg)
 }
 
 func LoadRuntimeConfig() (config.RuntimeConfig, error) {
@@ -220,18 +233,29 @@ func applyRuntimeProxyOverride(cfg *config.RuntimeConfig, override *string) {
 }
 
 func (r MCPRuntime) AutoAuthenticate(ctx context.Context) {
+	started := time.Now()
 	if r.Config.RefreshToken == "" {
 		return
 	}
 	if err := r.Client.Refresh(ctx); err != nil {
-		r.Logger.Warn("auto-authentication failed", "error", err)
+		r.mcpLog("auto_authenticate", started, "error", r.Client.UserID())
 		return
 	}
 	if err := r.persistAuthenticatedSource(); err != nil {
-		r.Logger.Warn("auto-authentication state persistence failed", "error", err)
+		r.mcpLog("auto_authenticate", started, "error", r.Client.UserID())
 		return
 	}
-	r.Logger.Info("auto-authentication successful", "user_id", r.Client.UserID())
+	r.mcpLog("auto_authenticate", started, "success", r.Client.UserID())
+}
+
+func (r MCPRuntime) mcpLog(operation string, started time.Time, result string, userID int64) {
+	if r.Logger == nil {
+		return
+	}
+	r.Logger.LogAttrs(nil, slog.LevelInfo, "pixiv operation",
+		slog.String("component", "mcp"), slog.String("operation", operation), slog.String("backend", "local"), slog.Duration("duration", time.Since(started)),
+		slog.String("result", result), slog.String("error_code", ""), slog.Int("status", 0), slog.Int64("user_id", userID),
+	)
 }
 
 // persistAuthenticatedSource 将 legacy Source 刚完成 OAuth refresh 后的旋转 token 写回
@@ -250,7 +274,10 @@ func (r MCPRuntime) persistAuthenticatedSource() error {
 }
 
 func RunMCP(ctx context.Context, errOut io.Writer, proxyOverride *string) error {
-	logger := slog.New(slog.NewTextHandler(errOut, &slog.HandlerOptions{Level: slog.LevelInfo}))
+	logger, err := NewApplicationLogger(errOut)
+	if err != nil {
+		return err
+	}
 	runtime, err := NewMCPRuntime(logger, proxyOverride)
 	if err != nil {
 		return err
@@ -262,7 +289,14 @@ func RunMCP(ctx context.Context, errOut io.Writer, proxyOverride *string) error 
 		runtime.SDKRequest.UserID = userID
 	}
 	server := mcpserver.NewWithSDK(runtime.Client, runtime.Manager, runtime.Logger, runtime.SDK, runtime.SDKRequest)
-	return server.Run(ctx, &mcp.StdioTransport{})
+	started := time.Now()
+	err = server.Run(ctx, &mcp.StdioTransport{})
+	result := "success"
+	if err != nil {
+		result = "error"
+	}
+	runtime.mcpLog("run", started, result, runtime.Client.UserID())
+	return err
 }
 
 type oauthClient struct {

@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"strings"
+	"time"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/application"
 	"github.com/FlanChanXwO/pixiv-cli/internal/bootstrap"
@@ -17,6 +19,7 @@ type app struct {
 	in     io.Reader
 	out    io.Writer
 	errOut io.Writer
+	logger *slog.Logger
 }
 
 type commandOptions struct {
@@ -57,14 +60,47 @@ func RunContext(ctx context.Context, args []string, in io.Reader, out io.Writer,
 	if len(args) == 0 {
 		args = []string{"pixiv"}
 	}
-	a := app{in: in, out: out, errOut: errOut}
+	logger, err := bootstrap.NewApplicationLogger(errOut)
+	if err != nil {
+		fmt.Fprintln(errOut, "error:", err)
+		return 1
+	}
+	a := app{in: in, out: out, errOut: errOut, logger: logger}
 	cmd := a.newRootCommand()
 	cmd.SetIn(in)
 	cmd.SetOut(out)
 	cmd.SetErr(errOut)
 	cmd.SetArgs(args[1:])
 	cmd.SetContext(ctx)
-	return a.exit(cmd.Execute())
+	operation := cmd.CommandPath()
+	if target, _, findErr := cmd.Find(args[1:]); findErr == nil && target != nil {
+		operation = target.CommandPath()
+	}
+	started := time.Now()
+	err = cmd.Execute()
+	a.commandLog(operation, started, err)
+	return a.exit(err)
+}
+
+// commandLog 仅记录命令名和稳定结果，不能记录 args：其中可能含 refresh token、
+// OAuth code 或本地路径。stdout 始终只保留命令业务输出。
+func (a app) commandLog(operation string, started time.Time, err error) {
+	if a.logger == nil {
+		return
+	}
+	// config 命令的 stdout 是嵌入方常以 CombinedOutput 读取的稳定机器值；它们不
+	// 触发网络或业务流程，因此不额外产生日志，保持既有 CLI 输出兼容。
+	if strings.HasPrefix(operation, "pixiv config") {
+		return
+	}
+	result := "success"
+	if err != nil {
+		result = "error"
+	}
+	a.logger.LogAttrs(nil, slog.LevelInfo, "pixiv operation",
+		slog.String("component", "cli"), slog.String("operation", operation), slog.String("backend", "local"),
+		slog.Duration("duration", time.Since(started)), slog.String("result", result), slog.String("error_code", ""), slog.Int("status", 0),
+	)
 }
 
 func (a app) exit(err error) int {
@@ -80,8 +116,11 @@ func runMCP(ctx context.Context, errOut io.Writer, proxyOverride *string) error 
 }
 
 func (a app) services() application.Services {
-	logger := slog.New(slog.NewTextHandler(a.errOut, nil))
-	return newCLIServices(logger)
+	if a.logger != nil {
+		return newCLIServices(a.logger)
+	}
+	// 仅供包内直接构造 app 的测试；生产入口始终显式创建根 logger。
+	return newCLIServices(slog.New(slog.NewTextHandler(io.Discard, nil)))
 }
 
 func (a app) newRootCommand() *cobra.Command {

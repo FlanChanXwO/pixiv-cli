@@ -5,8 +5,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"math"
 	"strings"
+	"time"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/application"
 	legacy "github.com/FlanChanXwO/pixiv-cli/internal/pixiv"
@@ -113,12 +115,14 @@ func collectPages[T any](ctx context.Context, plan mcpListPlan, fetch func(conte
 	}
 }
 
-func (a *App) openSDKOperation(ctx context.Context) (application.SDKClient, func(), error) {
+func (a *App) openSDKOperation(ctx context.Context) (client application.SDKClient, release func(), err error) {
+	started := time.Now()
+	defer func() { a.operationLog("open_sdk_operation", started, err, 0, 0) }()
 	if a.sdk.NewClient == nil {
 		return nil, nil, errors.New("pixiv sdk is not configured")
 	}
 	a.sdkMu.Lock()
-	client, err := a.sdk.OpenOperation(ctx, a.sdkRequest)
+	client, err = a.sdk.OpenOperation(ctx, a.sdkRequest)
 	if err != nil {
 		a.sdkMu.Unlock()
 		return nil, nil, err
@@ -126,22 +130,57 @@ func (a *App) openSDKOperation(ctx context.Context) (application.SDKClient, func
 	return client, a.releaseSDKOperation, nil
 }
 
-func (a *App) currentSDKUser(ctx context.Context) (application.SDKClient, int64, func(), error) {
+func (a *App) currentSDKUser(ctx context.Context) (client application.SDKClient, userID int64, release func(), err error) {
+	started := time.Now()
+	defer func() { a.operationLog("current_sdk_user", started, err, 0, userID) }()
 	if a.sdk.NewClient == nil {
 		return nil, 0, nil, errors.New("pixiv sdk is not configured")
 	}
 	a.sdkMu.Lock()
-	client, err := a.sdk.OpenOperation(ctx, a.sdkRequest)
+	client, err = a.sdk.OpenOperation(ctx, a.sdkRequest)
 	if err != nil {
 		a.sdkMu.Unlock()
 		return nil, 0, nil, err
 	}
-	userID, err := client.CurrentUserID(ctx)
+	userID, err = client.CurrentUserID(ctx)
 	if err != nil {
 		a.sdkMu.Unlock()
 		return nil, 0, nil, err
 	}
 	return client, userID, a.releaseSDKOperation, nil
+}
+
+// operationLog 保持 MCP stdio 的 stdout 只属于 JSON-RPC。它不记录 tool 参数、
+// 原始错误、认证材料或 URL；详细上游元数据由注入后的 public SDK 单独安全记录。
+func (a *App) operationLog(operation string, started time.Time, err error, illustID, userID int64) {
+	if a == nil || a.logger == nil {
+		return
+	}
+	result, code, backend, status := "success", "", "local", 0
+	var typed *sdk.Error
+	if err != nil {
+		result = "error"
+		if errors.As(err, &typed) {
+			code, backend, status = string(typed.Code), string(typed.Backend), typed.UpstreamStatus
+			if backend == "" {
+				backend = "local"
+			}
+			if typed.IllustID != 0 {
+				illustID = typed.IllustID
+			}
+			if typed.UserID != 0 {
+				userID = typed.UserID
+			}
+		}
+	}
+	attrs := []slog.Attr{slog.String("component", "mcp"), slog.String("operation", operation), slog.String("backend", backend), slog.Duration("duration", time.Since(started)), slog.String("result", result), slog.String("error_code", code), slog.Int("status", status)}
+	if illustID != 0 {
+		attrs = append(attrs, slog.Int64("illust_id", illustID))
+	}
+	if userID != 0 {
+		attrs = append(attrs, slog.Int64("user_id", userID))
+	}
+	a.logger.LogAttrs(nil, slog.LevelInfo, "pixiv operation", attrs...)
 }
 
 func (a *App) releaseSDKOperation() {
@@ -535,16 +574,19 @@ func mutationResult(out mutationOut) *mcp.CallToolResult {
 }
 
 func (a *App) runMutation(ctx context.Context, out mutationOut, run func(application.SDKClient) error) (*mcp.CallToolResult, mutationOut, error) {
+	started := time.Now()
 	client, release, err := a.openSDKOperation(ctx)
 	if err == nil {
 		defer release()
 		err = run(client)
 	}
 	if err != nil {
+		a.operationLog(out.Action, started, err, out.IllustID, out.UserID)
 		out.Text = "错误: " + err.Error()
 		return mutationResult(out), out, nil
 	}
 	out.Success = true
+	a.operationLog(out.Action, started, nil, out.IllustID, out.UserID)
 	return mutationResult(out), out, nil
 }
 

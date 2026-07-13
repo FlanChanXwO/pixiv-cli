@@ -1,0 +1,67 @@
+package config
+
+import (
+	"fmt"
+	"io"
+	"log/slog"
+	"strings"
+)
+
+// NewLogger 按已解析的运行时配置创建本进程根 logger。调用方决定输出流，CLI/MCP
+// 一律传 stderr；本函数绝不设置或读取 slog 默认全局 logger。
+func NewLogger(writer io.Writer, cfg RuntimeConfig) (*slog.Logger, error) {
+	level, err := slogLevel(cfg.LogLevel)
+	if err != nil {
+		return nil, err
+	}
+	format, err := normalizeLogFormat(cfg.LogFormat)
+	if err != nil {
+		return nil, err
+	}
+	options := &slog.HandlerOptions{Level: level}
+	if format == "json" {
+		return slog.New(slog.NewJSONHandler(writer, options)), nil
+	}
+	return slog.New(slog.NewTextHandler(writer, options)), nil
+}
+
+func normalizeLogLevel(value string) (string, error) {
+	value = strings.ToLower(strings.TrimSpace(value))
+	switch value {
+	case "trace", "debug", "info", "warn", "error":
+		return value, nil
+	default:
+		return "", fmt.Errorf("log_level must be one of trace, debug, info, warn, error")
+	}
+}
+
+func normalizeLogFormat(value string) (string, error) {
+	value = strings.ToLower(strings.TrimSpace(value))
+	switch value {
+	case "text", "json":
+		return value, nil
+	default:
+		return "", fmt.Errorf("log_format must be text or json")
+	}
+}
+
+func slogLevel(value string) (slog.Level, error) {
+	value, err := normalizeLogLevel(value)
+	if err != nil {
+		return 0, err
+	}
+	switch value {
+	case "trace":
+		return slog.LevelDebug - 4, nil
+	case "debug":
+		return slog.LevelDebug, nil
+	case "info":
+		return slog.LevelInfo, nil
+	case "warn":
+		return slog.LevelWarn, nil
+	case "error":
+		return slog.LevelError, nil
+	default:
+		panic("validated log level")
+	}
+}

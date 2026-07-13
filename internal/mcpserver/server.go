@@ -60,13 +60,22 @@ type App struct {
 }
 
 func New(api PixivAPI, downloads DownloadManager, logger *slog.Logger) *mcp.Server {
+	logger = loggerOrDiscard(logger)
 	return newServer(&App{api: api, downloads: downloads, logger: logger})
 }
 
 // NewWithSDK 在保留旧 Source 工具的同时，为新增领域工具注入公共 SDK 接缝。
 // SDKService 会在每次 MCP tool 调用时建立独立的配置/认证 operation snapshot。
 func NewWithSDK(api PixivAPI, downloads DownloadManager, logger *slog.Logger, service application.SDKService, request application.SDKClientRequest) *mcp.Server {
+	logger = loggerOrDiscard(logger)
 	return newServer(&App{api: api, downloads: downloads, logger: logger, sdk: service, sdkRequest: request})
+}
+
+func loggerOrDiscard(logger *slog.Logger) *slog.Logger {
+	if logger != nil {
+		return logger
+	}
+	return slog.New(slog.NewTextHandler(io.Discard, nil))
 }
 
 func newServer(app *App) *mcp.Server {

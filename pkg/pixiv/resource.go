@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	internalresource "github.com/FlanChanXwO/pixiv-cli/internal/pixiv/resource"
 	"github.com/FlanChanXwO/pixiv-cli/internal/utils/files"
@@ -99,10 +100,13 @@ func validPathPrefix(prefix string) bool {
 }
 
 // ParseResourceRef 根据 Client 的资源策略解析并验证 URL。
-func (c *Client) ParseResourceRef(rawURL string) (ResourceRef, error) {
+func (c *Client) ParseResourceRef(rawURL string) (out ResourceRef, err error) {
+	started := time.Now()
+	defer func() { c.delegatedOperationLog(OperationParseResourceRef, started, err, 0, 0) }()
 	if c.defaults != nil {
 		scoped, err := c.defaults.resourceSnapshot(OperationParseResourceRef)
 		if err != nil {
+			c.operationLog(OperationParseResourceRef, started, err, 0, 0)
 			return ResourceRef{}, err
 		}
 		return scoped.ParseResourceRef(rawURL)
@@ -115,10 +119,13 @@ func (c *Client) ParseResourceRef(rawURL string) (ResourceRef, error) {
 }
 
 // OpenResource 打开经 policy 验证的 Pixiv 资源；成功响应的 Body 由调用方关闭。
-func (c *Client) OpenResource(ctx context.Context, request OpenResourceRequest) (*ResourceResponse, error) {
+func (c *Client) OpenResource(ctx context.Context, request OpenResourceRequest) (out *ResourceResponse, err error) {
+	started := time.Now()
+	defer func() { c.delegatedOperationLog(OperationOpenResource, started, err, 0, 0) }()
 	if c.defaults != nil {
 		scoped, err := c.defaults.resourceSnapshot(OperationOpenResource)
 		if err != nil {
+			c.operationLog(OperationOpenResource, started, err, 0, 0)
 			return nil, err
 		}
 		return scoped.OpenResource(ctx, request)
@@ -154,10 +161,13 @@ func (c *Client) OpenResource(ctx context.Context, request OpenResourceRequest) 
 }
 
 // Download 将完整资源流式写入同目录临时文件，并在成功后原子替换目标。
-func (c *Client) Download(ctx context.Context, ref ResourceRef, destinationPath string) error {
+func (c *Client) Download(ctx context.Context, ref ResourceRef, destinationPath string) (err error) {
+	started := time.Now()
+	defer func() { c.delegatedOperationLog(OperationDownload, started, err, 0, 0) }()
 	if c.defaults != nil {
 		scoped, err := c.defaults.resourceSnapshot(OperationDownload)
 		if err != nil {
+			c.operationLog(OperationDownload, started, err, 0, 0)
 			return err
 		}
 		return scoped.Download(ctx, ref, destinationPath)

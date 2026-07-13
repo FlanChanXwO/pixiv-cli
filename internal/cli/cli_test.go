@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/FlanChanXwO/pixiv-cli/internal/config"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -23,6 +24,24 @@ func TestRunNoArgsPrintsHelp(t *testing.T) {
 	assert.Contains(t, stdout.String(), "auth")
 	assert.Contains(t, stdout.String(), "config")
 	assert.NotContains(t, stdout.String(), "completion")
+}
+
+func TestRunWritesJSONLogsOnlyToStderr(t *testing.T) {
+	_, configPath := useTempPaths(t)
+	if err := config.WritePrivateFile(configPath, []byte("[logging]\nformat = 'json'\nlevel = 'info'\n")); err != nil {
+		t.Fatal(err)
+	}
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"pixiv"}, strings.NewReader(""), &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("Run code=%d stderr=%s", code, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "Usage:") || strings.Contains(stdout.String(), `"component":"cli"`) {
+		t.Fatalf("stdout mixed with log: %q", stdout.String())
+	}
+	if !strings.Contains(stderr.String(), `"component":"cli"`) || !strings.Contains(stderr.String(), `"operation":"pixiv"`) {
+		t.Fatalf("stderr lacks CLI JSON log: %q", stderr.String())
+	}
 }
 
 func TestRunUnknownCommandReturnsError(t *testing.T) {

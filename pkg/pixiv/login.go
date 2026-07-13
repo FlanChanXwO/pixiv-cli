@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"strings"
 	"sync/atomic"
+	"time"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/appapi"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/oauth"
@@ -45,7 +46,9 @@ func (LoginSession) Format(state fmt.State, _ rune) {
 }
 
 // StartLogin 创建一次性的程序化登录会话；pkg 不会启动浏览器、loopback server 或 TTY。
-func (c *Client) StartLogin() (*LoginSession, error) {
+func (c *Client) StartLogin() (out *LoginSession, err error) {
+	started := time.Now()
+	defer func() { c.operationLog(OperationStartLogin, started, err, 0, 0) }()
 	verifier, challenge, err := oauth.GeneratePKCEPair()
 	if err != nil {
 		return nil, newError(CodeUpstreamUnavailable, OperationStartLogin, BackendOAuth, true, 0, 0, errors.New("cannot create oauth login session"))
@@ -81,7 +84,9 @@ func (c *Client) loginBaseURL() string {
 
 // CompleteLogin 校验 callback/state，交换 authorization code 并安全保存账号。
 // callbackOrCode 可为裸 code 或回调 URL；任意非官方 callback URL 必须带匹配 state。
-func (c *Client) CompleteLogin(ctx context.Context, session *LoginSession, callbackOrCode string, options LoginOptions) (*Account, error) {
+func (c *Client) CompleteLogin(ctx context.Context, session *LoginSession, callbackOrCode string, options LoginOptions) (out *Account, err error) {
+	started := time.Now()
+	defer func() { c.operationLog(OperationCompleteLogin, started, err, 0, 0) }()
 	if session == nil || session.state == nil || session.state.owner != c {
 		return nil, newError(CodeInvalidArgument, OperationCompleteLogin, "", false, 0, 0, errors.New("login session is not owned by this client"))
 	}
