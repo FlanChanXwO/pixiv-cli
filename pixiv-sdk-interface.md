@@ -19,7 +19,7 @@ local, err := pixiv.OpenDefault(pixiv.Options{
 
 `NewClient` 不读本地文件，也不网络认证。`OpenDefault` 使用 `AuthFilePath`、`ConfigFilePath`、`RefreshToken`、`UserID` 或现有默认路径和环境选择认证；每个公开操作重新取得一次 configuration/auth snapshot。多次续页若要求同一 snapshot，调用 `client.Snapshot(ctx)`。
 
-`Options` 支持显式 `HTTPClient`、`AppAPIBaseURL`、`WebAPIBaseURL`、`OAuthBaseURL`、`WebFallbackEnabled`、`ResourcePolicy` 与 `Logger`。`AccessToken` 只供 `NewClient`；不要把 refresh token 或 logger 全局化。
+`Options` 支持显式 `HTTPClient`、`AppAPIBaseURL`、`WebAPIBaseURL`、`OAuthBaseURL`、`WebFallbackEnabled`、`ResourcePolicy` 与 `Logger`。`AccessToken` 与 `WebFallbackEnabled` 只供 `NewClient`；`OpenDefault` 每次 snapshot 从本地 `web_fallback_enabled` 读取 Web fallback 设置。不要把 refresh token 或 logger 全局化。
 
 ## 读取与写入
 
@@ -56,7 +56,7 @@ cursor 是版本化、不透明、绑定操作和查询的 token；不可解析�
 
 ## 路由
 
-有 refresh token 时，App API 是主路径；App 的认证、网络、服务端失败不自动 Web fallback。无 refresh token 且 `WebFallbackEnabled`/本地 `web_fallback_enabled=true` 时，匿名白名单读操作使用 Web API。`IllustDetail` 的 pages 和原始 ugoira metadata 可能调用 Web 做明确补全，不是失败回退。
+有 refresh token 时，App API 是主路径；App 的认证、网络、服务端失败不自动 Web fallback。`NewClient` 无 refresh token 且 `WebFallbackEnabled=true` 时，匿名白名单读操作使用 Web API；`OpenDefault` 则每次 snapshot 读取本地 `web_fallback_enabled`。`IllustDetail` 的 pages 和原始 ugoira metadata 可能调用 Web 做明确补全，不是失败回退。
 
 ## 资源与图片代理
 

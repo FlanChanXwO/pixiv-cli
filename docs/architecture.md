@@ -47,7 +47,7 @@ SDK `Cursor` 是版本化、不透明、绑定查询及 OpenDefault source 的 c
 
 日志使用显式注入 `slog.Logger`；SDK 未注入时静默，不调用 `slog.Default`。CLI/MCP root logger 从 `log_level`/`log_format` 或 `PIXIV_LOG_LEVEL`/`PIXIV_LOG_FORMAT` 构造，输出 stderr。字段包括 component、operation、backend、duration、result、error_code、status 与已验证 ID，不记录 token、cookie、完整 URL、查询或 resource header。
 
-SDK 以 `*pixiv.Error` 暴露 `Code`、`Operation`、`Backend`、`Retryable`、安全状态码和 ID；调用方用 `errors.As` 或 `errors.Is` 分支。MCP 失败使用 `isError=true`，不把失败伪装成空数据。
+SDK 以 `*pixiv.Error` 暴露 `Code`、`Operation`、`Backend`、`Retryable`、安全状态码和 ID；调用方用 `errors.As` 或 `errors.Is` 分支。MCP 的 SDK 用户列表及收藏/关注写操作失败使用 `isError=true`，保留安全文本和 structured output；遗留 tool 保持既有文本结果兼容，不承诺统一 `isError`。
 
 ## 不在本仓库边界
 

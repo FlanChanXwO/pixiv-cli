@@ -12,7 +12,7 @@
 - `page`：从 1 开始的逻辑页，必须配正数 `limit`。
 - 输出 `pagination.page`、`limit`、`returned`、`has_more`、可选 `next_page`。
 
-SDK cursor 不出现在 MCP 参数或输出。`user_bookmarks.max_bookmark_id` 和 `user_following.offset` 仅为旧调用方保留，已废弃，不能与新的分页参数混用。
+SDK cursor 不出现在 MCP 参数或输出。`user_bookmarks.max_bookmark_id` 是旧 continuation，已废弃，不能与 `page` 或 `limit` 同用。`user_following.offset` 是旧逻辑 offset，已废弃，仅与 `page` 互斥，允许和 `limit` 同用。
 
 ## 配置、认证与下载
 
