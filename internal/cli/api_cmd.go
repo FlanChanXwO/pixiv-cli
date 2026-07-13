@@ -17,7 +17,10 @@ type searchOptions struct {
 	sortMode string
 	duration string
 	listOptions
-	r18 bool
+	r18    bool
+	rating string
+	typ    string
+	aiType int
 }
 
 type rankingOptions struct {
@@ -36,6 +39,9 @@ func (a app) newSearchCommand() *cobra.Command {
 	opts := searchOptions{
 		target:   string(sdk.SearchTargetPartialMatchForTags),
 		sortMode: string(sdk.SortModeDateDesc),
+		rating:   "all",
+		typ:      "all",
+		aiType:   2,
 	}
 	cmd := &cobra.Command{
 		Use:     "search WORD",
@@ -51,12 +57,18 @@ func (a app) newSearchCommand() *cobra.Command {
 	flags.StringVar(&opts.target, "search-target", opts.target, "search target")
 	flags.StringVar(&opts.sortMode, "sort", opts.sortMode, "sort mode")
 	flags.StringVar(&opts.duration, "duration", "", "duration")
+	flags.StringVar(&opts.rating, "rating", opts.rating, "rating filter: sfw, r18, r18g, mature, all")
+	flags.StringVar(&opts.typ, "type", opts.typ, "artwork type filter: illust, comics, ugoira, all")
+	flags.IntVar(&opts.aiType, "ai-type", opts.aiType, "AI artwork filter: 0 non-AI, 1 AI only, 2 all")
 	bindListFlags(cmd, &opts.listOptions)
 	flags.BoolVar(&opts.r18, "r18", false, "append R-18 to the search word")
 	return cmd
 }
 
 func (a app) runSearch(cmd *cobra.Command, args []string, opts searchOptions) error {
+	if err := validateSearchFilters(opts); err != nil {
+		return err
+	}
 	word := strings.Join(args, " ")
 	if opts.r18 {
 		word += " R-18"
@@ -86,8 +98,76 @@ func (a app) runSearch(cmd *cobra.Command, args []string, opts searchOptions) er
 		if err != nil {
 			return nil, "", err
 		}
-		return result.Illusts, result.NextCursor, nil
+		return filterSearchIllusts(result.Illusts, opts), result.NextCursor, nil
 	}, func(items []sdk.Illust, start int) { printIllusts(a.out, items, start, false) })
+}
+
+func validateSearchFilters(opts searchOptions) error {
+	switch opts.rating {
+	case "sfw", "r18", "r18g", "mature", "all":
+	default:
+		return fmt.Errorf("rating must be one of sfw, r18, r18g, mature, all")
+	}
+	switch opts.typ {
+	case "illust", "comics", "ugoira", "all":
+	default:
+		return fmt.Errorf("type must be one of illust, comics, ugoira, all")
+	}
+	if opts.aiType < 0 || opts.aiType > 2 {
+		return fmt.Errorf("ai-type must be 0, 1, or 2")
+	}
+	return nil
+}
+
+// filterSearchIllusts 保持上游原始 cursor 不变，仅在 CLI 输出边界筛选结果。
+// 因此 --limit/--page 仍由通用分页器按筛选后的逻辑结果计数，并会在未满足数量时继续取下一批。
+func filterSearchIllusts(illusts []sdk.Illust, opts searchOptions) []sdk.Illust {
+	filtered := make([]sdk.Illust, 0, len(illusts))
+	for _, illust := range illusts {
+		if !matchesSearchRating(illust.XRestrict, opts.rating) || !matchesSearchType(illust.Type, opts.typ) || !matchesSearchAIType(illust.AIType, opts.aiType) {
+			continue
+		}
+		filtered = append(filtered, illust)
+	}
+	return filtered
+}
+
+func matchesSearchRating(xRestrict int, rating string) bool {
+	switch rating {
+	case "sfw":
+		return xRestrict == 0
+	case "r18":
+		return xRestrict == 1
+	case "r18g":
+		return xRestrict == 2
+	case "mature":
+		return xRestrict == 0 || xRestrict == 1
+	case "all":
+		return true
+	default:
+		return false
+	}
+}
+
+func matchesSearchType(actual, want string) bool {
+	if want == "all" {
+		return true
+	}
+	if want == "comics" {
+		return actual == string(sdk.IllustTypeManga)
+	}
+	return actual == want
+}
+
+func matchesSearchAIType(actual, want int) bool {
+	switch want {
+	case 0, 1:
+		return actual == want
+	case 2:
+		return true
+	default:
+		return false
+	}
 }
 
 func (a app) newDetailCommand() *cobra.Command {

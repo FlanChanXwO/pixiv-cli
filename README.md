@@ -215,6 +215,9 @@ CLI 使用 Cobra/pflag，选项可以写在位置参数前后，例如 `pixiv au
 | `search` | `--search-target` | `partial_match_for_tags` | 搜索范围。 |
 | `search` | `--sort` | `date_desc` | 排序方式。 |
 | `search` | `--duration` | 空 | Pixiv API 的时间范围参数。 |
+| `search` | `--rating` | `all` | 本地结果分级筛选：`sfw`、`r18`、`r18g`、`mature` 或 `all`。 |
+| `search` | `--type` | `all` | 本地作品类型筛选：`illust`、`comics`（Pixiv `manga`）、`ugoira` 或 `all`。 |
+| `search` | `--ai-type` | `2` | 本地 AI 类型筛选：`0` 非 AI、`1` 仅 AI、`2` 全部。 |
 | 列表命令 | `--limit` | 一个上游批次 | 最大条数；`0` 表示持续读取到没有下一批。 |
 | 列表命令 | `--page` | 空 | 从 1 开始的逻辑页；必须与正数 `--limit` 同用。 |
 | 列表命令 | `--offset` | `0` | 已废弃的逻辑偏移；不能与 `--page` 同用。 |
@@ -225,6 +228,8 @@ CLI 使用 Cobra/pflag，选项可以写在位置参数前后，例如 `pixiv au
 | `recommended` | `--offset` | `0` | 分页偏移。 |
 | `detail` | `ILLUST_ID` | 必填 | Pixiv 作品 ID。 |
 | `download` | `ILLUST_ID...` | 必填 | 一个或多个 Pixiv 作品 ID。 |
+
+`search` 的 `--rating`、`--type` 与 `--ai-type` 在 CLI 输出端筛选上游结果，不改变 SDK 请求或 opaque cursor。当指定正数 `--limit` 或 `--page` 时，CLI 会持续读取上游批次直到收集到对应数量的匹配作品、上游没有下一批，或检测到重复 cursor；未指定 `--limit` 时仍保持只读取一个上游批次的兼容默认行为。
 
 ### 通用参数
 

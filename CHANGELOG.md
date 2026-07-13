@@ -7,6 +7,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- `pixiv search` 新增 `--rating`、`--type` 与 `--ai-type` 本地结果过滤；带 `--limit`/`--page` 时会按匹配结果继续读取 opaque cursor。
+
 ## [0.2.0] - 2026-07-13
 
 ### Added

@@ -3,6 +3,8 @@ package cli
 import (
 	"bytes"
 	"context"
+	"encoding/json"
+	"fmt"
 	"io"
 	"strings"
 	"testing"
@@ -31,6 +33,67 @@ func TestSearchRoutesArgumentsAndPrintsSDKJSON(t *testing.T) {
 		Word: "初音ミク", Target: sdk.SearchTargetPartialMatchForTags, Sort: sdk.SortModeDateDesc,
 	}, got)
 	assert.JSONEq(t, `{"illusts":[{"id":123,"title":"work","type":"","page_count":0,"total_bookmarks":0,"total_view":0,"x_restrict":0,"user":{"id":0,"name":"artist","account":"","comment":"","is_followed":false},"tags":null,"image_urls":{"square_medium":"","medium":"","large":"","original":""},"meta_single_page":{"original_image_url":""},"meta_pages":null,"ai_type":0,"create_date":"","width":0,"height":0}]}`, stdout.String())
+}
+
+func TestSearchFiltersResultsAndFollowsCursorUntilLimit(t *testing.T) {
+	useTempPaths(t)
+	var cursors []sdk.Cursor
+	setTestSDKCommandClient(t, sdkCommandFake{search: func(_ context.Context, request sdk.SearchIllustRequest) (*sdk.IllustListResult, error) {
+		cursors = append(cursors, request.Cursor)
+		switch request.Cursor {
+		case "":
+			return &sdk.IllustListResult{Illusts: []sdk.Illust{
+				{ID: 1, Type: "illust", XRestrict: 1, AIType: 1},
+				{ID: 2, Type: "manga", XRestrict: 0, AIType: 1},
+				{ID: 3, Type: "manga", XRestrict: 1, AIType: 0},
+				{ID: 4, Type: "manga", XRestrict: 1, AIType: 1},
+			}, NextCursor: "second"}, nil
+		case "second":
+			return &sdk.IllustListResult{Illusts: []sdk.Illust{
+				{ID: 5, Type: "manga", XRestrict: 1, AIType: 1},
+			}}, nil
+		default:
+			return nil, fmt.Errorf("unexpected cursor %q", request.Cursor)
+		}
+	}})
+
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"pixiv", "search", "miku", "--rating", "r18", "--type", "comics", "--ai-type", "1", "--limit", "2", "--json"}, strings.NewReader(""), &stdout, &stderr)
+
+	require.Equal(t, 0, code, stderr.String())
+	assert.Equal(t, []sdk.Cursor{"", "second"}, cursors)
+	var out struct {
+		Illusts []sdk.Illust `json:"illusts"`
+	}
+	require.NoError(t, json.Unmarshal(stdout.Bytes(), &out))
+	assert.Equal(t, []int64{4, 5}, []int64{out.Illusts[0].ID, out.Illusts[1].ID})
+}
+
+func TestSearchRejectsInvalidFilterValuesBeforeOpeningSDK(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		args []string
+		want string
+	}{
+		{name: "rating", args: []string{"--rating", "adult"}, want: "rating must be one of"},
+		{name: "type", args: []string{"--type", "novel"}, want: "type must be one of"},
+		{name: "ai type", args: []string{"--ai-type", "3"}, want: "ai-type must be 0, 1, or 2"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			useTempPaths(t)
+			calls := 0
+			setTestSDKCommandFactory(t, func(application.SDKClientRequest) (application.SDKClient, error) {
+				calls++
+				return sdkCommandFake{}, nil
+			})
+			var stdout, stderr bytes.Buffer
+			code := Run(append([]string{"pixiv", "search", "miku"}, test.args...), strings.NewReader(""), &stdout, &stderr)
+
+			require.NotZero(t, code)
+			assert.Contains(t, stderr.String(), test.want)
+			assert.Zero(t, calls)
+		})
+	}
 }
 
 func TestSearchUsesOutputJSONFromConfig(t *testing.T) {
