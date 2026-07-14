@@ -123,10 +123,10 @@
 
 ## T12 — 迁移剩余 CLI/MCP/download 到 SDK，删除 legacy Source 双栈
 
-- 状态：未完成
-- 实际：
-- 证据：
-- 风险/下一步：
+- 状态：完成
+- 实际：删除 `internal/pixiv.Source`、legacy aliases、Source factory 及其测试；production CLI、账号、登录、MCP 和下载统一只经顶层公开 `pixiv` SDK。下载管理器改用公开详情、ugoira metadata、resource ref 与 SDK 原子下载；CLI 下载在单次 SDK operation 内创建 manager。MCP 所有旧文本 tool 保留名称/参数/可观察输出，但改用 SDK；`illust_recommended` offset、`download_random_from_recommendation` 的默认 5/上限 20/shuffle、bookmark 的 `max_bookmark_id` 和 following offset 均经公开 opaque cursor/collector 适配。MCP 账号导入/选择、动态 download factory 和 gate 保障 token rotation、A→B 切换后的 direct/random 下载同源且串行。登录以公开 `LoginSession` 处理 PKCE 与 callback，CLI/browser 只使用不泄露 state/verifier 的 callback predicate；完整 callback 交 `CompleteLogin` 消费，裸 code 保持兼容。补充公开 `CheckRefreshToken`，使未指定 UID 的 `auth check` 继续优先验证环境 token 而不写入/替换本地默认账号；显式 UID 不受环境覆盖。
+- 证据：TDD RED→GREEN 包含公开 SDK 下载 resource ref tracer、`LoginSession.AcceptsCallbackURL`、`CheckRefreshToken` 无 auth store 写入、application 环境 token 优先等；MCP 回归覆盖旧 tool SDK 调用、A→B direct/random 下载与 rotation+direct-download gate，CLI 回归以本地 OAuth/App/CONNECT proxy 覆盖账户、登录、下载及 `--proxy/--no-proxy`。`go test ./... -count=1`、`gofmt -l`（现存变更 Go 文件）、`git diff --check` 均通过；规格审查发现的下载账号 snapshot 与登录 callback P1 均已窄复审 APPROVE，质量审查发现的环境 token P1 与 SDKClient P2 均已窄复审 APPROVE。
+- 风险/下一步：默认回归不访问真实 Pixiv；真实认证、资源和四类推荐 wire 兼容性仍留待 T14 opt-in canary。T13 必须同步 README、MCP tools、CONTEXT/architecture/ADR/CHANGELOG 与知识图谱，清除所有“legacy Source”生产描述。按三个实现任务后的门禁，下一任务 C04 集中审计能力矩阵、架构导入边界与完整回归。
 
 ## C04 — 集中检查：能力矩阵、架构导入门禁、完整回归
 

@@ -64,6 +64,7 @@ const (
 	OperationSelectAccount      Operation = "select_account"
 	OperationRemoveAccount      Operation = "remove_account"
 	OperationCheckAccount       Operation = "check_account"
+	OperationCheckRefreshToken  Operation = "check_refresh_token"
 	OperationConfigGet          Operation = "config_get"
 	OperationConfigSet          Operation = "config_set"
 	OperationConfigUnset        Operation = "config_unset"

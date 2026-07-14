@@ -389,6 +389,31 @@ func (c *Client) UserBookmarks(ctx context.Context, request UserBookmarksRequest
 	return publicIllustList(list, OperationUserBookmarks, digest, "max_bookmark_id", c.cursorSource), nil
 }
 
+// UserBookmarksCursor 将旧调用方持有的 max_bookmark_id 适配为绑定用户、可见性和
+// tag 查询的公开 opaque cursor。它不请求上游，也不暴露 cursor 的编码细节；调用方
+// 仍只能把返回值交回 UserBookmarks。
+func (c *Client) UserBookmarksCursor(ctx context.Context, request UserBookmarksRequest, maxBookmarkID int64) (cursor Cursor, err error) {
+	if scoped, err := c.operationClient(ctx, OperationUserBookmarks); err != nil {
+		return "", err
+	} else if scoped != c {
+		return scoped.UserBookmarksCursor(ctx, request, maxBookmarkID)
+	}
+	if request.UserID <= 0 || maxBookmarkID <= 0 {
+		return "", invalidArgument(OperationUserBookmarks, request.UserID, errors.New("user id and max bookmark id must be positive"))
+	}
+	query := userBookmarksQuery{request.UserID, request.Restrict, request.Tag}
+	if query.Restrict == "" {
+		query.Restrict = RestrictPublic
+	}
+	if !validRestrict(query.Restrict) {
+		return "", invalidArgument(OperationUserBookmarks, request.UserID, errors.New("restrict is invalid"))
+	}
+	if request.Cursor != "" {
+		return "", invalidArgument(OperationUserBookmarks, request.UserID, errors.New("legacy cursor cannot be combined with cursor"))
+	}
+	return encodeCursorForSource(OperationUserBookmarks, queryDigest(OperationUserBookmarks, query), "max_bookmark_id", maxBookmarkID, c.cursorSource), nil
+}
+
 // UserFollowing 返回指定用户关注的一个用户批次。
 func (c *Client) UserFollowing(ctx context.Context, request UserFollowingRequest) (result *UserListResult, err error) {
 	started := time.Now()

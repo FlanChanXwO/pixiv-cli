@@ -22,7 +22,6 @@ import (
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/application"
 	"github.com/FlanChanXwO/pixiv-cli/internal/common/constants"
-	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv"
 	"github.com/FlanChanXwO/pixiv-cli/internal/utils/files"
 	publicpixiv "github.com/FlanChanXwO/pixiv-cli/pixiv"
 	"github.com/pkg/browser"
@@ -36,7 +35,6 @@ const pixivURLHandlerBundleID = "com.flanchan.pixiv-cli.url-handler"
 
 var (
 	loginHooksMu          sync.RWMutex
-	loginOAuthBase        = pixiv.DefaultOAuthBase
 	openBrowser           = defaultOpenBrowser
 	watchBrowserLoginCode = defaultWatchBrowserLoginCode
 	captureManagedBrowser = defaultCaptureManagedBrowser
@@ -54,8 +52,9 @@ type loginInputResult struct {
 	relayed bool
 }
 
-type browserCodeWatcher func(context.Context, string, string, map[string]struct{}, func(string) error, func(loginServerResult), func(error))
-type managedBrowserCapturer func(context.Context, string, string, func(loginServerResult), func(error)) (bool, func(), error)
+type callbackURLAccepter = func(string) bool
+type browserCodeWatcher func(context.Context, callbackURLAccepter, string, map[string]struct{}, func(string) error, func(loginServerResult), func(error))
+type managedBrowserCapturer func(context.Context, string, callbackURLAccepter, func(loginServerResult), func(error)) (bool, func(), error)
 type urlSchemeRelayInstaller func(context.Context, string) (func(), error)
 
 type accountLoginOptions struct {
@@ -111,7 +110,7 @@ func (a app) accountLogin(cmd *cobra.Command, opts accountLoginOptions) error {
 		return err
 	}
 
-	loginFlow, err := services.Login.Start()
+	loginFlow, err := services.Login.Start(application.SDKClientRequest{HTTPSProxyOverride: proxyOverride})
 	if err != nil {
 		return err
 	}
@@ -124,21 +123,15 @@ func (a app) accountLogin(cmd *cobra.Command, opts accountLoginOptions) error {
 		defer cancel()
 	}
 
-	oauthBase, browserOpener, browserWatcher, schemeRelayInstaller := currentLoginHooks()
-	loginURL := pixivLoginURL(loginFlow.Challenge, loginFlow.State)
-	code, err := a.waitForLoginCode(ctx, opts.addr, loginFlow.State, loginURL, opts.noOpen, browserOpener, browserWatcher, schemeRelayInstaller)
+	browserOpener, browserWatcher, schemeRelayInstaller := currentLoginHooks()
+	loginURL := loginFlow.AuthorizationURL
+	callbackOrCode, err := a.waitForLoginCode(ctx, opts.addr, loginFlow.AcceptsCallbackURL, loginURL, opts.noOpen, browserOpener, browserWatcher, schemeRelayInstaller)
 	if err != nil {
 		return err
 	}
 	fmt.Fprintln(a.errOut, "Authorization code received; exchanging it for a refresh token.")
 
-	result, err := services.Login.Complete(ctx, application.LoginCompleteRequest{
-		Code:               code,
-		Verifier:           loginFlow.Verifier,
-		OAuthBase:          oauthBase,
-		UseAfterLogin:      opts.useAfterLogin,
-		HTTPSProxyOverride: proxyOverride,
-	})
+	result, err := services.Login.Complete(ctx, loginFlow, application.LoginCompleteRequest{CallbackOrCode: callbackOrCode, UseAfterLogin: opts.useAfterLogin})
 	if err != nil {
 		return err
 	}
@@ -157,7 +150,7 @@ func (a app) accountLogin(cmd *cobra.Command, opts accountLoginOptions) error {
 	return nil
 }
 
-func (a app) waitForLoginCode(ctx context.Context, addr, state, loginURL string, noOpen bool, browserOpener func(string) error, browserWatcher browserCodeWatcher, schemeRelayInstaller urlSchemeRelayInstaller) (string, error) {
+func (a app) waitForLoginCode(ctx context.Context, addr string, acceptsCallback callbackURLAccepter, loginURL string, noOpen bool, browserOpener func(string) error, browserWatcher browserCodeWatcher, schemeRelayInstaller urlSchemeRelayInstaller) (string, error) {
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {
 		return "", err
@@ -213,7 +206,7 @@ func (a app) waitForLoginCode(ctx context.Context, addr, state, loginURL string,
 		writeLoginForm(w, loginURL)
 	})
 	mux.HandleFunc("/callback", func(w http.ResponseWriter, r *http.Request) {
-		result := loginCodeFromValues(r.URL.Query(), state, true)
+		result := loginCodeFromInput(callbackURLFromRequest(r), acceptsCallback)
 		writeLoginResult(w, result.err)
 		reportInvalidSubmission(result.err)
 		if result.err == nil {
@@ -239,7 +232,7 @@ func (a app) waitForLoginCode(ctx context.Context, addr, state, loginURL string,
 		if input == "" {
 			input = r.Form.Get("callback_url")
 		}
-		result := loginInputFromText(input, state, loginChallenge, openManualRelay)
+		result := loginInputFromText(input, acceptsCallback, loginChallenge, openManualRelay)
 		if result.relayed && result.err == nil {
 			writeLoginRelayResult(w)
 			return
@@ -280,14 +273,14 @@ func (a app) waitForLoginCode(ctx context.Context, addr, state, loginURL string,
 			browserWatcherDone = done
 			go func() {
 				defer close(done)
-				browserWatcher(watchCtx, state, loginChallenge, initialSeen, observeRelay, submit, reportInvalidSubmission)
+				browserWatcher(watchCtx, acceptsCallback, loginChallenge, initialSeen, observeRelay, submit, reportInvalidSubmission)
 			}()
 		}
 		managedOpened := false
 		if !schemeRelayActive && captureManagedBrowser != nil {
 			var managedStop func()
 			var err error
-			managedOpened, managedStop, err = captureManagedBrowser(watchCtx, loginURL, state, submit, reportInvalidSubmission)
+			managedOpened, managedStop, err = captureManagedBrowser(watchCtx, loginURL, acceptsCallback, submit, reportInvalidSubmission)
 			if managedStop != nil {
 				defer managedStop()
 			}
@@ -308,7 +301,7 @@ func (a app) waitForLoginCode(ctx context.Context, addr, state, loginURL string,
 				if err != nil {
 					return
 				}
-				result := loginInputFromText(input, state, loginChallenge, openManualRelay)
+				result := loginInputFromText(input, acceptsCallback, loginChallenge, openManualRelay)
 				reportInvalidSubmission(result.err)
 				if result.relayed {
 					continue
@@ -377,7 +370,7 @@ func writeLoginRelayResult(w http.ResponseWriter) {
 	_, _ = io.WriteString(w, "authorization relay opened; continue in the browser or paste the final callback/code\n")
 }
 
-func loginInputFromText(input, expectedState, expectedChallenge string, openRelay func(string) error) loginInputResult {
+func loginInputFromText(input string, acceptsCallback callbackURLAccepter, expectedChallenge string, openRelay func(string) error) loginInputResult {
 	if returnTo, ok, err := pixivPostRedirectRelayURL(input, expectedChallenge); ok {
 		if err != nil {
 			return loginInputResult{loginServerResult: loginServerResult{err: err}, relayed: true}
@@ -390,10 +383,10 @@ func loginInputFromText(input, expectedState, expectedChallenge string, openRela
 		}
 		return loginInputResult{relayed: true}
 	}
-	return loginInputResult{loginServerResult: loginCodeFromInput(input, expectedState)}
+	return loginInputResult{loginServerResult: loginCodeFromInput(input, acceptsCallback)}
 }
 
-func loginCodeFromInput(input, expectedState string) loginServerResult {
+func loginCodeFromInput(input string, acceptsCallback callbackURLAccepter) loginServerResult {
 	input = strings.TrimSpace(input)
 	if input == "" {
 		return loginServerResult{err: errors.New("authorization code cannot be empty")}
@@ -404,44 +397,39 @@ func loginCodeFromInput(input, expectedState string) loginServerResult {
 			return loginServerResult{err: errors.New("invalid callback URL")}
 		}
 		if parsed.RawQuery != "" {
-			return loginCodeFromValues(parsed.Query(), expectedState, loginURLRequiresState(parsed))
+			if acceptsCallback == nil || !acceptsCallback(input) {
+				return loginServerResult{err: errors.New("callback URL does not match this login session")}
+			}
+			return loginServerResult{code: input}
 		}
 		return loginServerResult{err: errors.New("callback URL did not include query parameters")}
 	}
 	return loginServerResult{code: input}
 }
 
-func loginURLRequiresState(parsed *url.URL) bool {
+func callbackURLFromRequest(r *http.Request) string {
+	if r == nil || r.URL == nil {
+		return ""
+	}
+	scheme := "http"
+	if r.TLS != nil {
+		scheme = "https"
+	}
+	host := r.Host
+	if host == "" {
+		host = r.URL.Host
+	}
+	return scheme + "://" + host + r.URL.RequestURI()
+}
+
+func isBrowserCallbackURL(parsed *url.URL) bool {
 	if parsed == nil {
+		return false
+	}
+	if strings.EqualFold(parsed.Scheme, "pixiv") && strings.EqualFold(parsed.Host, "account") && parsed.Path == "/login" {
 		return true
 	}
-	// Pixiv 的 App OAuth 跳转会丢掉 state；只对官方回调形态放宽，避免任意 URL 绕过校验。
-	if strings.EqualFold(parsed.Scheme, "pixiv") && strings.EqualFold(parsed.Host, "account") && parsed.Path == "/login" {
-		return false
-	}
-	if publicpixiv.IsOfficialOAuthCallbackURL(parsed.String()) {
-		return false
-	}
-	return true
-}
-
-func loginCodeFromValues(values url.Values, expectedState string, requireState bool) loginServerResult {
-	code := strings.TrimSpace(values.Get("code"))
-	if code == "" {
-		return loginServerResult{err: errors.New("callback did not include authorization code")}
-	}
-	state := strings.TrimSpace(values.Get("state"))
-	if requireState && state == "" {
-		return loginServerResult{err: errors.New("OAuth state is required")}
-	}
-	if state != "" && state != expectedState {
-		return loginServerResult{err: errors.New("OAuth state mismatch")}
-	}
-	return loginServerResult{code: code}
-}
-
-func pixivLoginURL(challenge, state string) string {
-	return publicpixiv.BuildLoginAuthorizationURL(challenge, state)
+	return publicpixiv.IsOfficialOAuthCallbackURL(parsed.String())
 }
 
 func pixivLoginChallenge(loginURL string) string {
@@ -473,22 +461,10 @@ func validateLoginAddr(addr string) error {
 	return nil
 }
 
-func currentLoginHooks() (string, func(string) error, browserCodeWatcher, urlSchemeRelayInstaller) {
+func currentLoginHooks() (func(string) error, browserCodeWatcher, urlSchemeRelayInstaller) {
 	loginHooksMu.RLock()
 	defer loginHooksMu.RUnlock()
-	return loginOAuthBase, openBrowser, watchBrowserLoginCode, installURLSchemeRelay
-}
-
-func setLoginOAuthBaseForTest(baseURL string) func() {
-	loginHooksMu.Lock()
-	old := loginOAuthBase
-	loginOAuthBase = baseURL
-	loginHooksMu.Unlock()
-	return func() {
-		loginHooksMu.Lock()
-		loginOAuthBase = old
-		loginHooksMu.Unlock()
-	}
+	return openBrowser, watchBrowserLoginCode, installURLSchemeRelay
 }
 
 func setOpenBrowserForTest(opener func(string) error) func() {
@@ -722,7 +698,7 @@ app.setActivationPolicy(.accessory)
 app.run()
 `
 
-func defaultCaptureManagedBrowser(ctx context.Context, loginURL, expectedState string, submit func(loginServerResult), reportInvalid func(error)) (bool, func(), error) {
+func defaultCaptureManagedBrowser(ctx context.Context, loginURL string, acceptsCallback callbackURLAccepter, submit func(loginServerResult), reportInvalid func(error)) (bool, func(), error) {
 	browserPath := managedBrowserExecutable()
 	if browserPath == "" {
 		return false, nil, errors.New("supported Chromium/Edge browser executable was not found")
@@ -764,7 +740,7 @@ func defaultCaptureManagedBrowser(ctx context.Context, loginURL, expectedState s
 		stop()
 		return false, nil, err
 	}
-	go watchManagedBrowserCDP(ctx, wsURL, expectedState, submit, reportInvalid)
+	go watchManagedBrowserCDP(ctx, wsURL, acceptsCallback, submit, reportInvalid)
 	return true, stop, nil
 }
 
@@ -849,7 +825,7 @@ func openManagedBrowserTab(ctx context.Context, port int, loginURL string) (stri
 	}
 }
 
-func watchManagedBrowserCDP(ctx context.Context, wsURL, expectedState string, submit func(loginServerResult), reportInvalid func(error)) {
+func watchManagedBrowserCDP(ctx context.Context, wsURL string, acceptsCallback callbackURLAccepter, submit func(loginServerResult), reportInvalid func(error)) {
 	ws, err := websocket.Dial(wsURL, "", "http://127.0.0.1")
 	if err != nil {
 		reportInvalid(fmt.Errorf("could not attach to managed browser DevTools: %w", err))
@@ -874,7 +850,7 @@ func watchManagedBrowserCDP(ctx context.Context, wsURL, expectedState string, su
 			}
 			return
 		}
-		result, ok := loginCodeFromCDPEvent(event, expectedState)
+		result, ok := loginCodeFromCDPEvent(event, acceptsCallback)
 		if !ok {
 			continue
 		}
@@ -887,7 +863,7 @@ func watchManagedBrowserCDP(ctx context.Context, wsURL, expectedState string, su
 	}
 }
 
-func loginCodeFromCDPEvent(event map[string]any, expectedState string) (loginServerResult, bool) {
+func loginCodeFromCDPEvent(event map[string]any, acceptsCallback callbackURLAccepter) (loginServerResult, bool) {
 	if event == nil || event["method"] != "Network.requestWillBeSent" {
 		return loginServerResult{}, false
 	}
@@ -897,10 +873,10 @@ func loginCodeFromCDPEvent(event map[string]any, expectedState string) (loginSer
 	if rawURL == "" {
 		rawURL, _ = params["documentURL"].(string)
 	}
-	return loginCodeFromBrowserURL(rawURL, expectedState)
+	return loginCodeFromBrowserURL(rawURL, acceptsCallback)
 }
 
-func defaultWatchBrowserLoginCode(ctx context.Context, expectedState, expectedChallenge string, initialSeen map[string]struct{}, openURL func(string) error, submit func(loginServerResult), reportInvalid func(error)) {
+func defaultWatchBrowserLoginCode(ctx context.Context, acceptsCallback callbackURLAccepter, expectedChallenge string, initialSeen map[string]struct{}, openURL func(string) error, submit func(loginServerResult), reportInvalid func(error)) {
 	if runtime.GOOS != "darwin" {
 		return
 	}
@@ -926,7 +902,7 @@ func defaultWatchBrowserLoginCode(ctx context.Context, expectedState, expectedCh
 				continue
 			}
 			seen[rawURL] = struct{}{}
-			result, ok := loginCodeFromBrowserURL(rawURL, expectedState)
+			result, ok := loginCodeFromBrowserURL(rawURL, acceptsCallback)
 			if !ok {
 				continue
 			}
@@ -987,7 +963,8 @@ func cloneStringSet(values map[string]struct{}) map[string]struct{} {
 }
 
 func addBrowserLoginURL(urls map[string]struct{}, rawURL string) {
-	if _, ok := loginCodeFromBrowserURL(rawURL, ""); ok {
+	parsed, err := url.Parse(strings.TrimSpace(rawURL))
+	if err == nil && isBrowserCallbackURL(parsed) && parsed.RawQuery != "" {
 		urls[rawURL] = struct{}{}
 		return
 	}
@@ -996,15 +973,15 @@ func addBrowserLoginURL(urls map[string]struct{}, rawURL string) {
 	}
 }
 
-func loginCodeFromBrowserURL(rawURL, expectedState string) (loginServerResult, bool) {
+func loginCodeFromBrowserURL(rawURL string, acceptsCallback callbackURLAccepter) (loginServerResult, bool) {
 	parsed, err := url.Parse(strings.TrimSpace(rawURL))
 	if err != nil || parsed.RawQuery == "" {
 		return loginServerResult{}, false
 	}
-	if loginURLRequiresState(parsed) {
+	if !isBrowserCallbackURL(parsed) {
 		return loginServerResult{}, false
 	}
-	return loginCodeFromValues(parsed.Query(), expectedState, false), true
+	return loginCodeFromInput(rawURL, acceptsCallback), true
 }
 
 func pixivPostRedirectReturnTo(rawURL string) (string, bool) {

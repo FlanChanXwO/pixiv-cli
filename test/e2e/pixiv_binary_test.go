@@ -14,7 +14,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv"
+	"github.com/FlanChanXwO/pixiv-cli/pixiv"
 )
 
 func TestPixivBinaryBuildsFromCmdPixivAndPrintsHelp(t *testing.T) {
@@ -225,7 +225,7 @@ func TestPixivBinaryWebAPIFallbackReal(t *testing.T) {
 	}
 
 	searchOut := runPixiv(t, repoRoot, binaryPath, env, "search", "初音ミク", "--json")
-	var searchResult pixiv.IllustList
+	var searchResult pixiv.IllustListResult
 	requireJSON(t, searchOut, &searchResult)
 	if len(searchResult.Illusts) == 0 {
 		t.Fatalf("web fallback search returned no illustrations:\n%s", string(searchOut))
@@ -253,7 +253,7 @@ func TestPixivBinaryWebAPIFallbackReal(t *testing.T) {
 	}
 
 	rankingOut := runPixiv(t, repoRoot, binaryPath, env, "ranking", "--json")
-	var rankingResult pixiv.IllustList
+	var rankingResult pixiv.IllustListResult
 	requireJSON(t, rankingOut, &rankingResult)
 	if len(rankingResult.Illusts) == 0 {
 		t.Fatalf("web fallback ranking returned no illustrations:\n%s", string(rankingOut))

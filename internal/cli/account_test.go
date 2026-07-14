@@ -24,13 +24,21 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/application"
 	"github.com/FlanChanXwO/pixiv-cli/internal/bootstrap"
 	"github.com/FlanChanXwO/pixiv-cli/internal/config"
-	"github.com/FlanChanXwO/pixiv-cli/internal/download"
-	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv"
+	internalpixiv "github.com/FlanChanXwO/pixiv-cli/internal/pixiv"
 	"github.com/FlanChanXwO/pixiv-cli/internal/storage/auth"
 	publicpixiv "github.com/FlanChanXwO/pixiv-cli/pixiv"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func loginOAuthSuccessHandler(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Path != "/auth/token" {
+		http.NotFound(w, r)
+		return
+	}
+	_ = r.ParseForm()
+	_ = json.NewEncoder(w).Encode(map[string]any{"access_token": "access", "refresh_token": "rotated", "user": map[string]any{"id": 456, "name": "login-user"}})
+}
 
 func TestAccountAddListUseRemovePreservesOrder(t *testing.T) {
 	authPath, _ := useTempPaths(t)
@@ -138,23 +146,24 @@ func TestAccountAddProxyFlagOverridesEnvAndConfig(t *testing.T) {
 	}))
 	defer api.Close()
 
-	var seenProxy string
-	setTestCLIClientFactory(t, func(cfg clientConfig) (cliPixivClient, error) {
-		seenProxy = cfg.HTTPSProxy
-		return pixiv.New(cfg.RefreshToken, pixiv.WithHTTPClient(api.Client()), pixiv.WithBaseURLs(api.URL, api.URL)), nil
+	proxy := newTestForwardProxy(t)
+	setTestPublicSDKFactory(t, api.URL, api.URL, api.URL, publicpixiv.ResourcePolicy{}, func(request application.SDKClientRequest) {
+		require.NotNil(t, request.HTTPSProxyOverride)
+		assert.Equal(t, proxy.URL, *request.HTTPSProxyOverride)
 	})
 
 	var stdout, stderr bytes.Buffer
-	code := Run([]string{"pixiv", "auth", "add", "--token", "input-token", "--proxy", "http://flag-proxy"}, strings.NewReader(""), &stdout, &stderr)
+	code := Run([]string{"pixiv", "auth", "add", "--token", "input-token", "--proxy", proxy.URL}, strings.NewReader(""), &stdout, &stderr)
 
 	require.Equal(t, 0, code, stderr.String())
-	assert.Equal(t, "http://flag-proxy", seenProxy)
+	assert.NotZero(t, proxy.Requests())
 }
 
 func TestAccountAddNoProxyFlagClearsEnvAndConfig(t *testing.T) {
 	_, configPath := useTempPaths(t)
-	require.NoError(t, auth.WritePrivateFile(configPath, []byte("[network]\nhttps_proxy = \"http://file-proxy\"\n")))
-	t.Setenv("https_proxy", "http://env-proxy")
+	proxy := newTestForwardProxy(t)
+	require.NoError(t, auth.WritePrivateFile(configPath, []byte("[network]\nhttps_proxy = \""+proxy.URL+"\"\n")))
+	t.Setenv("https_proxy", proxy.URL)
 
 	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
@@ -170,27 +179,27 @@ func TestAccountAddNoProxyFlagClearsEnvAndConfig(t *testing.T) {
 	}))
 	defer api.Close()
 
-	seenProxy := "unset"
-	setTestCLIClientFactory(t, func(cfg clientConfig) (cliPixivClient, error) {
-		seenProxy = cfg.HTTPSProxy
-		return pixiv.New(cfg.RefreshToken, pixiv.WithHTTPClient(api.Client()), pixiv.WithBaseURLs(api.URL, api.URL)), nil
+	setTestPublicSDKFactory(t, api.URL, api.URL, api.URL, publicpixiv.ResourcePolicy{}, func(request application.SDKClientRequest) {
+		require.NotNil(t, request.HTTPSProxyOverride)
+		assert.Empty(t, *request.HTTPSProxyOverride)
 	})
 
 	var stdout, stderr bytes.Buffer
 	code := Run([]string{"pixiv", "auth", "add", "--token", "input-token", "--no-proxy"}, strings.NewReader(""), &stdout, &stderr)
 
 	require.Equal(t, 0, code, stderr.String())
-	assert.Empty(t, seenProxy)
+	assert.Zero(t, proxy.Requests())
 }
 
 func TestAccountCheckNoProxyFlagClearsEnvAndConfig(t *testing.T) {
 	authPath, configPath := useTempPaths(t)
-	require.NoError(t, auth.WritePrivateFile(configPath, []byte("[network]\nhttps_proxy = \"http://file-proxy\"\n")))
+	proxy := newTestForwardProxy(t)
+	require.NoError(t, auth.WritePrivateFile(configPath, []byte("[network]\nhttps_proxy = \""+proxy.URL+"\"\n")))
 	require.NoError(t, auth.SaveAuthStore(authPath, auth.AuthStore{
 		DefaultUserID: 444,
 		Accounts:      []auth.Account{{UserID: 444, RefreshToken: "check-token"}},
 	}))
-	t.Setenv("https_proxy", "http://env-proxy")
+	t.Setenv("https_proxy", proxy.URL)
 
 	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
@@ -206,27 +215,64 @@ func TestAccountCheckNoProxyFlagClearsEnvAndConfig(t *testing.T) {
 	}))
 	defer api.Close()
 
-	seenProxy := "unset"
-	setTestCLIClientFactory(t, func(cfg clientConfig) (cliPixivClient, error) {
-		seenProxy = cfg.HTTPSProxy
-		return pixiv.New(cfg.RefreshToken, pixiv.WithHTTPClient(api.Client()), pixiv.WithBaseURLs(api.URL, api.URL)), nil
+	setTestPublicSDKFactory(t, api.URL, api.URL, api.URL, publicpixiv.ResourcePolicy{}, func(request application.SDKClientRequest) {
+		require.NotNil(t, request.HTTPSProxyOverride)
+		assert.Empty(t, *request.HTTPSProxyOverride)
 	})
 
 	var stdout, stderr bytes.Buffer
 	code := Run([]string{"pixiv", "auth", "check", "--no-proxy"}, strings.NewReader(""), &stdout, &stderr)
 
 	require.Equal(t, 0, code, stderr.String())
-	assert.Empty(t, seenProxy)
+	assert.Zero(t, proxy.Requests())
+}
+
+func TestAccountCheckUsesEnvironmentTokenWithoutChangingDefaultAccount(t *testing.T) {
+	authPath, _ := useTempPaths(t)
+	require.NoError(t, auth.SaveAuthStore(authPath, auth.AuthStore{
+		DefaultUserID: 444,
+		Accounts:      []auth.Account{{UserID: 444, Username: "stored", RefreshToken: "stored-token"}},
+	}))
+	t.Setenv("PIXIV_REFRESH_TOKEN", "environment-token")
+
+	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/auth/token" {
+			http.NotFound(w, r)
+			return
+		}
+		require.NoError(t, r.ParseForm())
+		assert.Equal(t, "environment-token", r.Form.Get("refresh_token"))
+		require.NoError(t, json.NewEncoder(w).Encode(map[string]any{
+			"access_token":  "access-token",
+			"refresh_token": "rotated-environment-token",
+			"user":          map[string]any{"id": 555, "name": "environment-user"},
+		}))
+	}))
+	defer api.Close()
+	setTestPublicSDKFactory(t, api.URL, api.URL, api.URL, publicpixiv.ResourcePolicy{}, nil)
+
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"pixiv", "auth", "check", "--json"}, strings.NewReader(""), &stdout, &stderr)
+	require.Equal(t, 0, code, stderr.String())
+	var out accountOut
+	require.NoError(t, json.Unmarshal(stdout.Bytes(), &out))
+	assert.Equal(t, accountOut{UserID: 555, Username: "environment-user", HasToken: true}, out)
+
+	store, err := auth.LoadAuthStore(authPath)
+	require.NoError(t, err)
+	assert.Equal(t, int64(444), store.DefaultUserID)
+	require.Equal(t, []auth.Account{{UserID: 444, Username: "stored", RefreshToken: "stored-token"}}, store.Accounts)
 }
 
 func TestAccountCheckProxyFlagOverridesEnvAndConfig(t *testing.T) {
 	authPath, configPath := useTempPaths(t)
-	require.NoError(t, auth.WritePrivateFile(configPath, []byte("[network]\nhttps_proxy = \"http://file-proxy\"\n")))
+	proxy := newTestForwardProxy(t)
+	require.NoError(t, auth.WritePrivateFile(configPath, []byte("[network]\nhttps_proxy = \""+proxy.URL+"\"\n")))
 	require.NoError(t, auth.SaveAuthStore(authPath, auth.AuthStore{
 		DefaultUserID: 446,
 		Accounts:      []auth.Account{{UserID: 446, RefreshToken: "check-token"}},
 	}))
-	t.Setenv("https_proxy", "http://env-proxy")
+	t.Setenv("https_proxy", proxy.URL)
 
 	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
@@ -242,17 +288,16 @@ func TestAccountCheckProxyFlagOverridesEnvAndConfig(t *testing.T) {
 	}))
 	defer api.Close()
 
-	var seenProxy string
-	setTestCLIClientFactory(t, func(cfg clientConfig) (cliPixivClient, error) {
-		seenProxy = cfg.HTTPSProxy
-		return pixiv.New(cfg.RefreshToken, pixiv.WithHTTPClient(api.Client()), pixiv.WithBaseURLs(api.URL, api.URL)), nil
+	setTestPublicSDKFactory(t, api.URL, api.URL, api.URL, publicpixiv.ResourcePolicy{}, func(request application.SDKClientRequest) {
+		require.NotNil(t, request.HTTPSProxyOverride)
+		assert.Equal(t, proxy.URL, *request.HTTPSProxyOverride)
 	})
 
 	var stdout, stderr bytes.Buffer
-	code := Run([]string{"pixiv", "auth", "check", "--proxy", "http://flag-proxy"}, strings.NewReader(""), &stdout, &stderr)
+	code := Run([]string{"pixiv", "auth", "check", "--proxy", proxy.URL}, strings.NewReader(""), &stdout, &stderr)
 
 	require.Equal(t, 0, code, stderr.String())
-	assert.Equal(t, "http://flag-proxy", seenProxy)
+	assert.NotZero(t, proxy.Requests())
 }
 
 func TestAccountNetworkCommandsRejectConflictingProxyFlags(t *testing.T) {
@@ -282,30 +327,6 @@ func TestAccountAddRejectsCookieWithoutRefreshToken(t *testing.T) {
 
 	require.NotZero(t, code)
 	assert.Contains(t, stderr.String(), "refresh_token")
-}
-
-func TestResolveRefreshTokenPriority(t *testing.T) {
-	useTempPaths(t)
-	store := auth.AuthStore{
-		DefaultUserID: 111,
-		Accounts: []auth.Account{
-			{UserID: 111, RefreshToken: "main-token"},
-			{UserID: 222, RefreshToken: "other-token"},
-		},
-	}
-	t.Setenv("PIXIV_REFRESH_TOKEN", "env-token")
-
-	token, err := application.ResolveRefreshToken(store, 0, "", func() string { return "env-token" })
-	require.NoError(t, err)
-	assert.Equal(t, "env-token", token)
-
-	token, err = application.ResolveRefreshToken(store, 222, "", func() string { return "env-token" })
-	require.NoError(t, err)
-	assert.Equal(t, "other-token", token)
-
-	token, err = application.ResolveRefreshToken(store, 222, "flag-token", func() string { return "env-token" })
-	require.NoError(t, err)
-	assert.Equal(t, "flag-token", token)
 }
 
 func TestAccountPromptFlows(t *testing.T) {
@@ -370,12 +391,12 @@ func TestAccountLoginNoOpenStoresProfile(t *testing.T) {
 
 	oauth := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		require.Equal(t, "/auth/token", r.URL.Path)
-		require.Equal(t, pixiv.DefaultUserAgent, r.Header.Get("User-Agent"))
+		require.NotEmpty(t, r.Header.Get("User-Agent"))
 		require.NoError(t, r.ParseForm())
 		assert.Equal(t, "authorization_code", r.Form.Get("grant_type"))
 		assert.Equal(t, "manual-code", r.Form.Get("code"))
 		assert.NotEmpty(t, r.Form.Get("code_verifier"))
-		assert.Equal(t, pixiv.DefaultOAuthRedirectURI, r.Form.Get("redirect_uri"))
+		assert.Equal(t, "https://app-api.pixiv.net/web/v1/users/auth/pixiv/callback", r.Form.Get("redirect_uri"))
 		require.NoError(t, json.NewEncoder(w).Encode(map[string]any{
 			"access_token":  "access-secret",
 			"refresh_token": "refresh-secret",
@@ -425,19 +446,20 @@ func TestAccountLoginProxyFlagOverridesEnvAndConfig(t *testing.T) {
 	require.NoError(t, auth.WritePrivateFile(configPath, []byte("[network]\nhttps_proxy = \"http://file-proxy\"\n")))
 	t.Setenv("https_proxy", "http://env-proxy")
 	addr := freeLoopbackAddr(t)
+	oauth := httptest.NewServer(http.HandlerFunc(loginOAuthSuccessHandler))
+	defer oauth.Close()
 
 	oldServices := newCLIServices
 	var seenProxy string
 	newCLIServices = func(logger *slog.Logger) application.Services {
 		services := bootstrap.NewServices(logger)
-		services.Login.NewOAuth = func(cfg config.RuntimeConfig, _ string) (application.OAuthExchanger, error) {
-			seenProxy = cfg.HTTPSProxy
-			return fakeLoginOAuthExchanger{token: application.OAuthToken{
-				RefreshToken: "login-refresh",
-				UserID:       67890,
-				Username:     "login-proxy-user",
-			}}, nil
+		services.SDK.NewClient = func(request application.SDKClientRequest) (application.SDKClient, error) {
+			if request.HTTPSProxyOverride != nil {
+				seenProxy = *request.HTTPSProxyOverride
+			}
+			return publicpixiv.OpenDefault(publicpixiv.Options{HTTPClient: oauth.Client(), OAuthBaseURL: oauth.URL})
 		}
+		services.Login.SDK = services.SDK
 		return services
 	}
 	t.Cleanup(func() { newCLIServices = oldServices })
@@ -461,19 +483,20 @@ func TestAccountLoginNoProxyFlagClearsEnvAndConfig(t *testing.T) {
 	require.NoError(t, auth.WritePrivateFile(configPath, []byte("[network]\nhttps_proxy = \"http://file-proxy\"\n")))
 	t.Setenv("https_proxy", "http://env-proxy")
 	addr := freeLoopbackAddr(t)
+	oauth := httptest.NewServer(http.HandlerFunc(loginOAuthSuccessHandler))
+	defer oauth.Close()
 
 	oldServices := newCLIServices
 	seenProxy := "unset"
 	newCLIServices = func(logger *slog.Logger) application.Services {
 		services := bootstrap.NewServices(logger)
-		services.Login.NewOAuth = func(cfg config.RuntimeConfig, _ string) (application.OAuthExchanger, error) {
-			seenProxy = cfg.HTTPSProxy
-			return fakeLoginOAuthExchanger{token: application.OAuthToken{
-				RefreshToken: "login-refresh",
-				UserID:       67891,
-				Username:     "login-no-proxy-user",
-			}}, nil
+		services.SDK.NewClient = func(request application.SDKClientRequest) (application.SDKClient, error) {
+			if request.HTTPSProxyOverride != nil {
+				seenProxy = *request.HTTPSProxyOverride
+			}
+			return publicpixiv.OpenDefault(publicpixiv.Options{HTTPClient: oauth.Client(), OAuthBaseURL: oauth.URL})
 		}
+		services.Login.SDK = services.SDK
 		return services
 	}
 	t.Cleanup(func() { newCLIServices = oldServices })
@@ -719,7 +742,9 @@ func TestAccountLoginManualPageRelaysPostRedirectThenAcceptsCode(t *testing.T) {
 func TestAccountLoginBrowserWatcherStoresCallbackCode(t *testing.T) {
 	authPath, _ := useTempPaths(t)
 	addr := freeLoopbackAddr(t)
+	exchanges := 0
 	oauth := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		exchanges++
 		require.NoError(t, r.ParseForm())
 		assert.Equal(t, "watched-code", r.Form.Get("code"))
 		require.NoError(t, json.NewEncoder(w).Encode(map[string]any{
@@ -734,12 +759,27 @@ func TestAccountLoginBrowserWatcherStoresCallbackCode(t *testing.T) {
 	defer restoreRelay()
 	restoreAppleScript := setTestRunAppleScript(t, func(context.Context, string) (string, error) { return "", nil })
 	defer restoreAppleScript()
-	restoreOpen := setTestOpenBrowser(t, func(string) error {
+	authorizationURL := make(chan string, 1)
+	restoreOpen := setTestOpenBrowser(t, func(rawURL string) error {
+		authorizationURL <- rawURL
 		return nil
 	})
 	defer restoreOpen()
-	restoreWatcher := setTestBrowserCodeWatcher(t, func(ctx context.Context, expectedState, expectedChallenge string, initialSeen map[string]struct{}, openURL func(string) error, submit func(loginServerResult), reportInvalid func(error)) {
-		submit(loginCodeFromInput("https://app-api.pixiv.net/web/v1/users/auth/pixiv/callback?code=watched-code", expectedState))
+	restoreWatcher := setTestBrowserCodeWatcher(t, func(ctx context.Context, acceptsCallback func(string) bool, expectedChallenge string, initialSeen map[string]struct{}, openURL func(string) error, submit func(loginServerResult), reportInvalid func(error)) {
+		select {
+		case rawURL := <-authorizationURL:
+			parsed, err := url.Parse(rawURL)
+			require.NoError(t, err)
+			state := parsed.Query().Get("state")
+			require.NotEmpty(t, state)
+			foreign := "https://app-api.pixiv.net/web/v1/users/auth/pixiv/callback?code=foreign-code&state=other"
+			assert.False(t, acceptsCallback(foreign), "foreign callback must be rejected before token exchange")
+			callback := "https://app-api.pixiv.net/web/v1/users/auth/pixiv/callback?code=watched-code&state=" + url.QueryEscape(state)
+			assert.True(t, acceptsCallback(callback), "matching callback must pass without consuming the session")
+			submit(loginCodeFromInput(callback, acceptsCallback))
+		case <-ctx.Done():
+			t.Error("browser watcher stopped before receiving authorization URL")
+		}
 	})
 	defer restoreWatcher()
 
@@ -747,6 +787,7 @@ func TestAccountLoginBrowserWatcherStoresCallbackCode(t *testing.T) {
 	code := Run([]string{"pixiv", "auth", "login", "--addr", addr, "--timeout", "5s"}, strings.NewReader(""), &stdout, &stderr)
 
 	require.Equal(t, 0, code, stderr.String())
+	assert.Equal(t, 1, exchanges, "accepted callback must be exchanged exactly once by CompleteLogin")
 	store, err := auth.LoadAuthStore(authPath)
 	require.NoError(t, err)
 	require.Len(t, store.Accounts, 1)
@@ -1108,21 +1149,24 @@ func TestAccountLoginDefaultBrowserWatcherReportsPostRedirectRelayOnce(t *testin
 }
 
 func TestLoginCodeFromInputOnlyPixivCallbacksMayOmitState(t *testing.T) {
-	result := loginCodeFromInput("pixiv://account/login?code=app-code", "expected-state")
+	accepts := func(rawURL string) bool {
+		return rawURL == "pixiv://account/login?code=app-code" || rawURL == "https://app-api.pixiv.net/web/v1/users/auth/pixiv/callback?code=https-code"
+	}
+	result := loginCodeFromInput("pixiv://account/login?code=app-code", accepts)
 	require.NoError(t, result.err)
-	assert.Equal(t, "app-code", result.code)
+	assert.Equal(t, "pixiv://account/login?code=app-code", result.code)
 
-	result = loginCodeFromInput("https://app-api.pixiv.net/web/v1/users/auth/pixiv/callback?code=https-code", "expected-state")
+	result = loginCodeFromInput("https://app-api.pixiv.net/web/v1/users/auth/pixiv/callback?code=https-code", accepts)
 	require.NoError(t, result.err)
-	assert.Equal(t, "https-code", result.code)
+	assert.Equal(t, "https://app-api.pixiv.net/web/v1/users/auth/pixiv/callback?code=https-code", result.code)
 
-	result = loginCodeFromInput("http://127.0.0.1:12345/callback?code=loopback-code", "expected-state")
+	result = loginCodeFromInput("http://127.0.0.1:12345/callback?code=loopback-code", accepts)
 	require.Error(t, result.err)
-	assert.Contains(t, result.err.Error(), "OAuth state is required")
+	assert.Contains(t, result.err.Error(), "does not match")
 
-	result = loginCodeFromInput("pixiv://account/login?code=app-code&state=wrong-state", "expected-state")
+	result = loginCodeFromInput("pixiv://account/login?code=app-code&state=wrong-state", accepts)
 	require.Error(t, result.err)
-	assert.Contains(t, result.err.Error(), "OAuth state mismatch")
+	assert.Contains(t, result.err.Error(), "does not match")
 }
 
 func TestLoginCodeFromCDPEventAcceptsPixivSchemeRequest(t *testing.T) {
@@ -1135,11 +1179,11 @@ func TestLoginCodeFromCDPEventAcceptsPixivSchemeRequest(t *testing.T) {
 		},
 	}
 
-	result, ok := loginCodeFromCDPEvent(event, "expected-state")
+	result, ok := loginCodeFromCDPEvent(event, acceptsTestCallback)
 
 	require.True(t, ok)
 	require.NoError(t, result.err)
-	assert.Equal(t, "cdp-code", result.code)
+	assert.Equal(t, "pixiv://account/login?code=cdp-code", result.code)
 }
 
 func TestLoginCodeFromCDPEventAcceptsOfficialCallbackRequest(t *testing.T) {
@@ -1152,11 +1196,11 @@ func TestLoginCodeFromCDPEventAcceptsOfficialCallbackRequest(t *testing.T) {
 		},
 	}
 
-	result, ok := loginCodeFromCDPEvent(event, "expected-state")
+	result, ok := loginCodeFromCDPEvent(event, acceptsTestCallback)
 
 	require.True(t, ok)
 	require.NoError(t, result.err)
-	assert.Equal(t, "cdp-https-code", result.code)
+	assert.Equal(t, "https://app-api.pixiv.net/web/v1/users/auth/pixiv/callback?code=cdp-https-code", result.code)
 }
 
 func TestLoginCodeFromCDPEventIgnoresUnrelatedEvents(t *testing.T) {
@@ -1171,7 +1215,7 @@ func TestLoginCodeFromCDPEventIgnoresUnrelatedEvents(t *testing.T) {
 	}
 
 	for _, event := range events {
-		result, ok := loginCodeFromCDPEvent(event, "expected-state")
+		result, ok := loginCodeFromCDPEvent(event, acceptsTestCallback)
 		assert.False(t, ok)
 		assert.Empty(t, result.code)
 		assert.NoError(t, result.err)
@@ -1183,7 +1227,7 @@ func TestLoginInputFromTextRelaysPostRedirect(t *testing.T) {
 	bridge := "https://accounts.pixiv.net/post-redirect?return_to=" + url.QueryEscape(returnTo)
 	var opened []string
 
-	result := loginInputFromText(bridge, "expected-state", "expected-challenge", func(rawURL string) error {
+	result := loginInputFromText(bridge, acceptsTestCallback, "expected-challenge", func(rawURL string) error {
 		opened = append(opened, rawURL)
 		return nil
 	})
@@ -1202,7 +1246,7 @@ func TestLoginInputFromTextRejectsInvalidPostRedirect(t *testing.T) {
 	}
 	for _, input := range cases {
 		var opened []string
-		result := loginInputFromText(input, "expected-state", "expected-challenge", func(rawURL string) error {
+		result := loginInputFromText(input, acceptsTestCallback, "expected-challenge", func(rawURL string) error {
 			opened = append(opened, rawURL)
 			return nil
 		})
@@ -1218,7 +1262,7 @@ func TestLoginInputFromTextRejectsStalePostRedirectChallenge(t *testing.T) {
 	bridge := "https://accounts.pixiv.net/post-redirect?return_to=" + url.QueryEscape(returnTo)
 	var opened []string
 
-	result := loginInputFromText(bridge, "expected-state", "expected-challenge", func(rawURL string) error {
+	result := loginInputFromText(bridge, acceptsTestCallback, "expected-challenge", func(rawURL string) error {
 		opened = append(opened, rawURL)
 		return nil
 	})
@@ -1349,7 +1393,22 @@ func TestActiveMacBrowserURLsFallBackToSystemEvents(t *testing.T) {
 
 func setTestOAuthBase(t *testing.T, baseURL string) func() {
 	t.Helper()
-	return setLoginOAuthBaseForTest(baseURL)
+	old := newCLIServices
+	newCLIServices = func(logger *slog.Logger) application.Services {
+		services := old(logger)
+		services.SDK.NewClient = func(request application.SDKClientRequest) (application.SDKClient, error) {
+			return publicpixiv.OpenDefault(publicpixiv.Options{
+				UserID:       request.UserID,
+				RefreshToken: request.RefreshToken,
+				AuthFilePath: request.AuthFilePath,
+				OAuthBaseURL: baseURL,
+				Logger:       logger,
+			})
+		}
+		services.Login.SDK = services.SDK
+		return services
+	}
+	return func() { newCLIServices = old }
 }
 
 func setTestOpenBrowser(t *testing.T, opener func(string) error) func() {
@@ -1378,46 +1437,132 @@ func setTestRunAppleScript(t *testing.T, runner func(context.Context, string) (s
 	}
 }
 
-func setTestCLIClientFactory(t *testing.T, factory func(clientConfig) (cliPixivClient, error)) {
+// setTestPublicSDKFactory 保持 CLI 测试走与生产相同的 public OpenDefault 路径。
+// 测试仅替换上游地址；传入的 proxy 覆写仍由生产 HTTPClient 构造并经真实 transport
+// 发出请求，避免以接口 fake 掩盖 --proxy/--no-proxy 的装配错误。
+func setTestPublicSDKFactory(t *testing.T, oauthBaseURL, appAPIBaseURL, webAPIBaseURL string, resourcePolicy publicpixiv.ResourcePolicy, observe func(application.SDKClientRequest)) {
+	setTestPublicSDKFactoryWithHTTPClient(t, oauthBaseURL, appAPIBaseURL, webAPIBaseURL, resourcePolicy, internalpixiv.HTTPClient, observe)
+}
+
+func setTestPublicSDKFactoryWithHTTPClient(t *testing.T, oauthBaseURL, appAPIBaseURL, webAPIBaseURL string, resourcePolicy publicpixiv.ResourcePolicy, newHTTPClient func(string) (*http.Client, error), observe func(application.SDKClientRequest)) {
 	t.Helper()
+	authPath, err := auth.AuthFilePath()
+	require.NoError(t, err)
+	configPath, err := config.ConfigFilePath()
+	require.NoError(t, err)
 	old := newCLIServices
 	newCLIServices = func(logger *slog.Logger) application.Services {
 		services := bootstrap.NewServices(logger)
-		newClient := func(cfg config.RuntimeConfig) (application.ClientBundle, error) {
-			client, err := factory(clientConfig{RuntimeConfig: cfg})
-			if err != nil {
-				return application.ClientBundle{}, err
+		services.SDK.NewClient = func(request application.SDKClientRequest) (application.SDKClient, error) {
+			if observe != nil {
+				observe(request)
 			}
-			return application.ClientBundle{Auth: client, Artwork: client, Download: client}, nil
-		}
-		services.Artwork.Resolver.NewClient = newClient
-		services.Download.Resolver.NewClient = newClient
-		services.Download.NewDownloader = func(client application.DownloadClient, cfg config.RuntimeConfig) application.Downloader {
-			return download.NewManager(client, logger, cfg.DownloadPath, cfg.FilenameTemplate)
-		}
-		services.Account.NewClient = func(cfg config.RuntimeConfig) (application.AuthenticatedPixivClient, error) {
-			client, err := newClient(cfg)
-			if err != nil {
-				return nil, err
+			options := publicpixiv.Options{
+				UserID:         request.UserID,
+				RefreshToken:   request.RefreshToken,
+				AuthFilePath:   authPath,
+				ConfigFilePath: configPath,
+				OAuthBaseURL:   oauthBaseURL,
+				AppAPIBaseURL:  appAPIBaseURL,
+				WebAPIBaseURL:  webAPIBaseURL,
+				ResourcePolicy: resourcePolicy,
+				Logger:         logger,
 			}
-			return client.Auth, nil
+			if request.HTTPSProxyOverride != nil {
+				httpClient, err := newHTTPClient(*request.HTTPSProxyOverride)
+				if err != nil {
+					return nil, err
+				}
+				options.HTTPClient = httpClient
+			}
+			return publicpixiv.OpenDefault(options)
 		}
+		// Account/Login 各自持有 SDKService 值；重新装配后必须同步替换它们。
+		services.Account.SDK = services.SDK
+		services.Login.SDK = services.SDK
 		return services
 	}
 	t.Cleanup(func() { newCLIServices = old })
 }
 
+type testForwardProxy struct {
+	*httptest.Server
+	mu       sync.Mutex
+	requests int
+}
+
+// newTestForwardProxy 是最小 HTTP forward proxy：它让测试验证 SDK transport
+// 确实经过 --proxy 指定的地址，而不是仅观察 factory 入参。
+func newTestForwardProxy(t *testing.T) *testForwardProxy {
+	t.Helper()
+	proxy := &testForwardProxy{}
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.Proxy = nil
+	proxy.Server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		proxy.mu.Lock()
+		proxy.requests++
+		proxy.mu.Unlock()
+		if r.Method == http.MethodConnect {
+			proxy.tunnel(t, w, r)
+			return
+		}
+
+		outbound := r.Clone(r.Context())
+		outbound.RequestURI = ""
+		outbound.Host = ""
+		response, err := transport.RoundTrip(outbound)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadGateway)
+			return
+		}
+		defer response.Body.Close()
+		for key, values := range response.Header {
+			for _, value := range values {
+				w.Header().Add(key, value)
+			}
+		}
+		w.WriteHeader(response.StatusCode)
+		_, _ = io.Copy(w, response.Body)
+	}))
+	t.Cleanup(proxy.Close)
+	return proxy
+}
+
+func (p *testForwardProxy) tunnel(t *testing.T, w http.ResponseWriter, r *http.Request) {
+	t.Helper()
+	upstream, err := net.Dial("tcp", r.Host)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadGateway)
+		return
+	}
+	defer upstream.Close()
+	hijacker, ok := w.(http.Hijacker)
+	if !ok {
+		http.Error(w, "response writer does not support connection hijacking", http.StatusInternalServerError)
+		return
+	}
+	client, _, err := hijacker.Hijack()
+	if err != nil {
+		return
+	}
+	defer client.Close()
+	_, _ = io.WriteString(client, "HTTP/1.1 200 Connection Established\r\n\r\n")
+	go func() {
+		_, _ = io.Copy(upstream, client)
+		_ = upstream.Close()
+	}()
+	_, _ = io.Copy(client, upstream)
+}
+
+func (p *testForwardProxy) Requests() int {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.requests
+}
+
 type authIdentity struct {
 	userID   int64
 	username string
-}
-
-type fakeLoginOAuthExchanger struct {
-	token application.OAuthToken
-}
-
-func (e fakeLoginOAuthExchanger) ExchangeAuthorizationCode(context.Context, string, string) (application.OAuthToken, error) {
-	return e.token, nil
 }
 
 func setTestAuthClientFactory(t *testing.T, identities map[string]authIdentity) {
@@ -1453,9 +1598,7 @@ func setTestAuthClientFactory(t *testing.T, identities map[string]authIdentity) 
 		}
 	}))
 	t.Cleanup(api.Close)
-	setTestCLIClientFactory(t, func(cfg clientConfig) (cliPixivClient, error) {
-		return pixiv.New(cfg.RefreshToken, pixiv.WithHTTPClient(api.Client()), pixiv.WithBaseURLs(api.URL, api.URL)), nil
-	})
+	setTestPublicSDKFactory(t, api.URL, api.URL, api.URL, publicpixiv.ResourcePolicy{}, nil)
 }
 
 type promptStub struct {
@@ -1613,11 +1756,9 @@ func loginURLFromPage(t *testing.T, page string) string {
 	return html.UnescapeString(page[start : start+end])
 }
 
-func loginState(t *testing.T, rawURL string) string {
-	t.Helper()
+// acceptsTestCallback 只模拟 browser adapter 已从 LoginSession 得到的布尔校验，
+// 不在 CLI helper 测试里重新读取或比较 state。
+func acceptsTestCallback(rawURL string) bool {
 	parsed, err := url.Parse(rawURL)
-	require.NoError(t, err)
-	state := parsed.Query().Get("state")
-	require.NotEmpty(t, state)
-	return state
+	return err == nil && isBrowserCallbackURL(parsed) && strings.TrimSpace(parsed.Query().Get("code")) != ""
 }

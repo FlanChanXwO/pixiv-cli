@@ -42,6 +42,27 @@ type sdkCommandFake struct {
 }
 
 func unimplementedSDKCommand() error { return errors.New("unexpected sdk command") }
+func (sdkCommandFake) ImportAccount(context.Context, string) (*sdk.Account, error) {
+	return nil, unimplementedSDKCommand()
+}
+func (sdkCommandFake) ListAccounts() (*sdk.AccountsResult, error) {
+	return nil, unimplementedSDKCommand()
+}
+func (sdkCommandFake) SelectAccount(int64) error { return unimplementedSDKCommand() }
+func (sdkCommandFake) RemoveAccount(int64) error { return unimplementedSDKCommand() }
+func (sdkCommandFake) CheckAccount(context.Context, int64) (*sdk.Account, error) {
+	return nil, unimplementedSDKCommand()
+}
+func (sdkCommandFake) CheckRefreshToken(context.Context, string) (*sdk.Account, error) {
+	return nil, unimplementedSDKCommand()
+}
+func (sdkCommandFake) Refresh(context.Context) (*sdk.Account, error) {
+	return nil, unimplementedSDKCommand()
+}
+func (sdkCommandFake) StartLogin() (*sdk.LoginSession, error) { return nil, unimplementedSDKCommand() }
+func (sdkCommandFake) CompleteLogin(context.Context, *sdk.LoginSession, string, sdk.LoginOptions) (*sdk.Account, error) {
+	return nil, unimplementedSDKCommand()
+}
 func (f sdkCommandFake) CurrentUserID(ctx context.Context) (int64, error) {
 	if f.currentUserID != nil {
 		return f.currentUserID(ctx)
@@ -60,11 +81,35 @@ func (f sdkCommandFake) IllustDetail(ctx context.Context, id int64) (*sdk.Illust
 	}
 	return nil, unimplementedSDKCommand()
 }
+func (sdkCommandFake) IllustRelated(context.Context, sdk.IllustRelatedRequest) (*sdk.IllustListResult, error) {
+	return nil, unimplementedSDKCommand()
+}
 func (f sdkCommandFake) IllustRanking(ctx context.Context, r sdk.IllustRankingRequest) (*sdk.IllustListResult, error) {
 	if f.ranking != nil {
 		return f.ranking(ctx, r)
 	}
 	return nil, unimplementedSDKCommand()
+}
+func (sdkCommandFake) FollowingIllusts(context.Context, sdk.FollowingIllustsRequest) (*sdk.IllustListResult, error) {
+	return nil, unimplementedSDKCommand()
+}
+func (sdkCommandFake) SearchUser(context.Context, sdk.SearchUserRequest) (*sdk.UserListResult, error) {
+	return nil, unimplementedSDKCommand()
+}
+func (sdkCommandFake) TrendingTagsIllust(context.Context) (*sdk.TrendingTagsIllustResult, error) {
+	return nil, unimplementedSDKCommand()
+}
+func (sdkCommandFake) UgoiraMetadata(context.Context, int64) (*sdk.UgoiraMetadataResult, error) {
+	return nil, unimplementedSDKCommand()
+}
+func (sdkCommandFake) ParseResourceRef(string) (sdk.ResourceRef, error) {
+	return sdk.ResourceRef{}, unimplementedSDKCommand()
+}
+func (sdkCommandFake) OpenResource(context.Context, sdk.OpenResourceRequest) (*sdk.ResourceResponse, error) {
+	return nil, unimplementedSDKCommand()
+}
+func (sdkCommandFake) Download(context.Context, sdk.ResourceRef, string) error {
+	return unimplementedSDKCommand()
 }
 func (f sdkCommandFake) IllustRecommended(ctx context.Context, r sdk.IllustRecommendedRequest) (*sdk.IllustListResult, error) {
 	if f.recommended != nil {
@@ -259,6 +304,9 @@ func (f sdkCommandFake) UserBookmarks(ctx context.Context, r sdk.UserBookmarksRe
 		return f.bookmarks(ctx, r)
 	}
 	return nil, unimplementedSDKCommand()
+}
+func (sdkCommandFake) UserBookmarksCursor(context.Context, sdk.UserBookmarksRequest, int64) (sdk.Cursor, error) {
+	return "", unimplementedSDKCommand()
 }
 func (f sdkCommandFake) UserFollowing(ctx context.Context, r sdk.UserFollowingRequest) (*sdk.UserListResult, error) {
 	if f.following != nil {

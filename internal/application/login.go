@@ -2,140 +2,59 @@ package application
 
 import (
 	"context"
-	"crypto/rand"
-	"crypto/sha256"
-	"encoding/base64"
 	"errors"
-	"strings"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/config"
-	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv"
-	"github.com/FlanChanXwO/pixiv-cli/internal/storage/auth"
+	sdk "github.com/FlanChanXwO/pixiv-cli/pixiv"
 )
 
-type OAuthToken struct {
-	RefreshToken string
-	UserID       int64
-	Username     string
-}
-
-type OAuthExchanger interface {
-	ExchangeAuthorizationCode(context.Context, string, string) (OAuthToken, error)
-}
-
-type OAuthClientFactory func(config.RuntimeConfig, string) (OAuthExchanger, error)
-
+// LoginService 将浏览器交互同 public SDK 的一次性 LoginSession 连接起来。应用层不再
+// 自行生成 PKCE、直连 OAuth 或写入 auth store。
 type LoginService struct {
-	Auth        AuthRepository
+	SDK         SDKService
 	LoadRuntime func() (config.RuntimeConfig, error)
-	NewOAuth    OAuthClientFactory
 }
 
 type LoginStart struct {
-	Verifier  string
-	Challenge string
-	State     string
+	client           SDKClient
+	session          *sdk.LoginSession
+	AuthorizationURL string
 }
 
 type LoginCompleteRequest struct {
-	Code               string
-	Verifier           string
-	OAuthBase          string
-	UseAfterLogin      bool
-	HTTPSProxyOverride *string
+	CallbackOrCode string
+	UseAfterLogin  bool
 }
 
-func (s LoginService) Start() (LoginStart, error) {
-	verifier, challenge, err := GeneratePKCEPair()
+func (s LoginService) Start(requests ...SDKClientRequest) (LoginStart, error) {
+	request := SDKClientRequest{}
+	if len(requests) > 0 {
+		request = requests[0]
+	}
+	client, err := s.SDK.Client(request)
 	if err != nil {
 		return LoginStart{}, err
 	}
-	state, err := RandomURLToken(32)
+	session, err := client.StartLogin()
 	if err != nil {
 		return LoginStart{}, err
 	}
-	return LoginStart{
-		Verifier:  verifier,
-		Challenge: challenge,
-		State:     state,
-	}, nil
+	return LoginStart{client: client, session: session, AuthorizationURL: session.AuthorizationURL()}, nil
 }
 
-func (s LoginService) Complete(ctx context.Context, req LoginCompleteRequest) (AccountResult, error) {
-	cfg, err := s.runtime()
+// AcceptsCallbackURL 是浏览器、loopback 和手工 URL 输入的非消耗性校验入口。它把
+// state/verifier 保持在 public SDK 的不透明 LoginSession 内，调用方只能得到布尔结果。
+func (s LoginStart) AcceptsCallbackURL(rawURL string) bool {
+	return s.session != nil && s.session.AcceptsCallbackURL(rawURL)
+}
+
+func (s LoginService) Complete(ctx context.Context, start LoginStart, request LoginCompleteRequest) (AccountResult, error) {
+	if start.client == nil || start.session == nil {
+		return AccountResult{}, errors.New("login session is not initialized")
+	}
+	account, err := start.client.CompleteLogin(ctx, start.session, request.CallbackOrCode, sdk.LoginOptions{UseAsDefault: request.UseAfterLogin})
 	if err != nil {
 		return AccountResult{}, err
 	}
-	applyHTTPSProxyOverride(&cfg, req.HTTPSProxyOverride)
-	oauthBase := req.OAuthBase
-	if strings.TrimSpace(oauthBase) == "" {
-		oauthBase = pixiv.DefaultOAuthBase
-	}
-	if s.NewOAuth == nil {
-		return AccountResult{}, errors.New("oauth client factory is not configured")
-	}
-	client, err := s.NewOAuth(cfg, oauthBase)
-	if err != nil {
-		return AccountResult{}, err
-	}
-	token, err := client.ExchangeAuthorizationCode(ctx, req.Code, req.Verifier)
-	if err != nil {
-		return AccountResult{}, err
-	}
-	if token.UserID == 0 {
-		return AccountResult{}, errors.New("authorization_code response did not include user_id")
-	}
-	store, err := s.authStoreForRecreate()
-	if err != nil {
-		return AccountResult{}, err
-	}
-	acct := auth.Account{UserID: token.UserID, Username: strings.TrimSpace(token.Username), RefreshToken: token.RefreshToken}
-	store.Upsert(acct)
-	if req.UseAfterLogin || store.DefaultUserID == 0 {
-		store.DefaultUserID = token.UserID
-	}
-	if err := s.Auth.Save(store); err != nil {
-		return AccountResult{}, err
-	}
-	return accountResult(acct, store.DefaultUserID == token.UserID), nil
-}
-
-func (s LoginService) authStore() (auth.AuthStore, error) {
-	if s.Auth == nil {
-		return auth.AuthStore{}, errors.New("auth repository is not configured")
-	}
-	return s.Auth.Load()
-}
-
-func (s LoginService) authStoreForRecreate() (auth.AuthStore, error) {
-	store, err := s.authStore()
-	if auth.IsLegacySchemaError(err) {
-		return auth.AuthStore{Accounts: []auth.Account{}}, nil
-	}
-	return store, err
-}
-
-func (s LoginService) runtime() (config.RuntimeConfig, error) {
-	if s.LoadRuntime == nil {
-		return config.RuntimeConfig{}, errors.New("runtime config loader is not configured")
-	}
-	return s.LoadRuntime()
-}
-
-func GeneratePKCEPair() (verifier, challenge string, err error) {
-	verifier, err = RandomURLToken(64)
-	if err != nil {
-		return "", "", err
-	}
-	sum := sha256.Sum256([]byte(verifier))
-	challenge = base64.RawURLEncoding.EncodeToString(sum[:])
-	return verifier, challenge, nil
-}
-
-func RandomURLToken(size int) (string, error) {
-	body := make([]byte, size)
-	if _, err := rand.Read(body); err != nil {
-		return "", err
-	}
-	return base64.RawURLEncoding.EncodeToString(body), nil
+	return sdkAccountResult(*account), nil
 }

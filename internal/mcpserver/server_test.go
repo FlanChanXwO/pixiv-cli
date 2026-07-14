@@ -23,7 +23,6 @@ import (
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/application"
 	"github.com/FlanChanXwO/pixiv-cli/internal/download"
-	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv"
 	sdk "github.com/FlanChanXwO/pixiv-cli/pixiv"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -270,27 +269,20 @@ func TestSDKListValidationReturnsMCPErrorWithStructuredOutput(t *testing.T) {
 	}
 }
 
-func TestLegacyUserListFailureReturnsMCPErrorWithStructuredOutput(t *testing.T) {
-	server := New(&failingLegacyBookmarksAPI{}, &fakeDownloads{}, slog.New(slog.NewTextHandler(io.Discard, nil)))
-	clientTransport, serverTransport := mcp.NewInMemoryTransports()
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	go func() { _ = server.Run(ctx, serverTransport) }()
-	client := mcp.NewClient(&mcp.Implementation{Name: "test", Version: "1"}, nil)
-	session, err := client.Connect(ctx, clientTransport, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer session.Close()
+func TestSDKUserBookmarksFailureReturnsMCPErrorWithStructuredOutput(t *testing.T) {
+	session, closeSession := newSDKTestSession(t, &fakeSDKClient{
+		userBookmarksErr: errors.New("bookmarks upstream failed"),
+	})
+	defer closeSession()
 
 	result := callTool(t, session, "user_bookmarks", map[string]any{"user_id_to_check": 9})
 	if !result.IsError {
-		t.Fatalf("legacy failure must be an MCP error result: %+v", result)
+		t.Fatalf("SDK failure must be an MCP error result: %+v", result)
 	}
 	var out illustListOut
 	decodeStructured(t, result, &out)
-	if out.UserID != 9 || len(out.Items) != 0 || !strings.Contains(out.Text, "legacy failed") {
-		t.Fatalf("structured legacy error = %+v", out)
+	if out.UserID != 9 || len(out.Items) != 0 || !strings.Contains(out.Text, "bookmarks upstream failed") {
+		t.Fatalf("structured SDK error = %+v", out)
 	}
 }
 
@@ -465,7 +457,7 @@ func TestSetRefreshTokenRejectsCookieWithoutRefreshToken(t *testing.T) {
 }
 
 func TestSetRefreshTokenSuccessIncludesUserName(t *testing.T) {
-	session, closeSession := newTestSession(t, &fakeDownloads{})
+	session, closeSession := newSDKTestSession(t, &fakeSDKClient{userID: 1})
 	defer closeSession()
 
 	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{
@@ -485,17 +477,8 @@ func TestSetRefreshTokenSuccessIncludesUserName(t *testing.T) {
 }
 
 func TestSetRefreshTokenFailureSaysSessionOnly(t *testing.T) {
-	server := New(&failingRefreshAPI{}, &fakeDownloads{}, slog.New(slog.NewTextHandler(io.Discard, nil)))
-	clientTransport, serverTransport := mcp.NewInMemoryTransports()
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	go func() { _ = server.Run(ctx, serverTransport) }()
-	client := mcp.NewClient(&mcp.Implementation{Name: "test", Version: "0.0.0"}, nil)
-	session, err := client.Connect(ctx, clientTransport, nil)
-	if err != nil {
-		t.Fatalf("connect: %v", err)
-	}
-	defer session.Close()
+	session, closeSession := newSDKTestSession(t, &fakeSDKClient{importAccountErr: errors.New("invalid token")})
+	defer closeSession()
 
 	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{
 		Name:      "set_refresh_token",
@@ -540,7 +523,7 @@ func TestSDKUserToolsResolveIdentityKeepLegacyInputAndReturnStructuredOutput(t *
 		t.Fatalf("bookmarks = request=%+v output=%+v", client.bookmarksRequest, bookmarksOut)
 	}
 	if !strings.Contains(bookmarksOut.Text, "找到用户 99 的 1 个收藏") {
-		t.Fatalf("legacy bookmark text missing: %q", bookmarksOut.Text)
+		t.Fatalf("bookmark text missing: %q", bookmarksOut.Text)
 	}
 
 	following := callTool(t, session, "user_following", map[string]any{"user_id_to_check": 99, "offset": 0})
@@ -550,7 +533,7 @@ func TestSDKUserToolsResolveIdentityKeepLegacyInputAndReturnStructuredOutput(t *
 		t.Fatalf("following = request=%+v output=%+v", client.followingRequest, followingOut)
 	}
 	if !strings.Contains(followingOut.Text, "用户 99 关注了 1 位用户") {
-		t.Fatalf("legacy following text missing: %q", followingOut.Text)
+		t.Fatalf("following text missing: %q", followingOut.Text)
 	}
 }
 
@@ -635,9 +618,9 @@ func TestSDKUserDetailRejectsInvalidInputAndReturnsSDKFailuresAsMCPError(t *test
 		t.Fatalf("typed SDK failure structured output=%+v", typedOut)
 	}
 
-	legacySession, closeLegacySession := newTestSession(t, &fakeDownloads{})
-	defer closeLegacySession()
-	result = callTool(t, legacySession, "user_detail", map[string]any{"user_id": 42})
+	noSDKSession, closeNoSDKSession := newTestSession(t, &fakeDownloads{})
+	defer closeNoSDKSession()
+	result = callTool(t, noSDKSession, "user_detail", map[string]any{"user_id": 42})
 	if !result.IsError || len(result.Content) != 1 {
 		t.Fatalf("unconfigured SDK result=%+v", result)
 	}
@@ -766,9 +749,9 @@ func TestSDKRecommendedSingleKindsAndInputFailures(t *testing.T) {
 		}
 	}
 
-	legacySession, closeLegacySession := newTestSession(t, &fakeDownloads{})
-	defer closeLegacySession()
-	result = callTool(t, legacySession, "recommended", map[string]any{"kind": "illust"})
+	noSDKSession, closeNoSDKSession := newTestSession(t, &fakeDownloads{})
+	defer closeNoSDKSession()
+	result = callTool(t, noSDKSession, "recommended", map[string]any{"kind": "illust"})
 	if !result.IsError {
 		t.Fatalf("unconfigured SDK result=%+v", result)
 	}
@@ -852,46 +835,41 @@ func TestSDKRecommendedAllAppliesPageTwoIndependently(t *testing.T) {
 	}
 }
 
-type legacyRecommendationAPI struct {
-	fakeAPI
-	calls int
-}
-
-func (a *legacyRecommendationAPI) IllustRecommended(context.Context, int) (*pixiv.IllustList, error) {
-	a.calls++
-	return &pixiv.IllustList{Illusts: []pixiv.Illust{{ID: 77, Title: "legacy"}}}, nil
-}
-
-func TestLegacyIllustRecommendedStillUsesSourceInsteadOfSDK(t *testing.T) {
-	api := &legacyRecommendationAPI{}
-	sdkCalls := 0
-	service := application.SDKService{NewClient: func(application.SDKClientRequest) (application.SDKClient, error) {
-		sdkCalls++
-		return &fakeSDKClient{}, nil
-	}}
-	session, closeSession := newSDKTestSessionWithService(t, api, service)
+func TestIllustRecommendedUsesSDKAndPreservesLegacyOffset(t *testing.T) {
+	var requests []sdk.IllustRecommendedRequest
+	client := &fakeSDKClient{
+		illustRecommended: func(_ context.Context, request sdk.IllustRecommendedRequest) (*sdk.IllustListResult, error) {
+			requests = append(requests, request)
+			return &sdk.IllustListResult{Illusts: []sdk.Illust{
+				testSDKIllust(11, "first", 1),
+				testSDKIllust(77, "after-offset", 1),
+			}}, nil
+		},
+	}
+	session, closeSession := newSDKTestSession(t, client)
 	defer closeSession()
-	result := callTool(t, session, "illust_recommended", map[string]any{})
-	if result.IsError || api.calls != 1 || sdkCalls != 0 {
-		t.Fatalf("legacy result=%+v source=%d sdk=%d", result, api.calls, sdkCalls)
+	result := callTool(t, session, "illust_recommended", map[string]any{"offset": 1})
+	var out textOut
+	decodeStructured(t, result, &out)
+	if result.IsError || len(requests) != 1 || requests[0].Cursor != "" || !strings.Contains(out.Text, "77") || strings.Contains(out.Text, "11") {
+		t.Fatalf("result=%+v requests=%+v", out, requests)
 	}
 }
 
-func TestDownloadRandomFromRecommendationKeepsLegacySourceAndAvoidsSDK(t *testing.T) {
-	api := &legacyRecommendationAPI{}
-	path := filepath.Join(t.TempDir(), "legacy.jpg")
-	if err := os.WriteFile(path, []byte("legacy"), 0o644); err != nil {
+func TestDownloadRandomFromRecommendationUsesSDKAndPreservesCount(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "recommended.jpg")
+	if err := os.WriteFile(path, []byte("recommended"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	// 让 legacy fixture 经过真实 structured delivery 的 files 数组，而不是由 nil
-	// 切片触发 MCP schema 的 array 约束；生产下载流程不受这个测试数据影响。
 	downloads := &fakeDownloads{artworks: []download.DownloadedArtwork{{IllustID: 77, Files: []download.DownloadedFile{{Path: path}}}}}
-	sdkCalls := 0
+	var requests []sdk.IllustRecommendedRequest
 	service := application.SDKService{NewClient: func(application.SDKClientRequest) (application.SDKClient, error) {
-		sdkCalls++
-		return &fakeSDKClient{}, nil
+		return &fakeSDKClient{illustRecommended: func(_ context.Context, request sdk.IllustRecommendedRequest) (*sdk.IllustListResult, error) {
+			requests = append(requests, request)
+			return &sdk.IllustListResult{Illusts: []sdk.Illust{testSDKIllust(77, "recommended", 1)}}, nil
+		}}, nil
 	}}
-	server := NewWithSDK(api, downloads, slog.New(slog.NewTextHandler(io.Discard, nil)), service, application.SDKClientRequest{})
+	server := NewWithSDK(&fakeAPI{}, downloads, slog.New(slog.NewTextHandler(io.Discard, nil)), service, application.SDKClientRequest{})
 	clientTransport, serverTransport := mcp.NewInMemoryTransports()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -903,8 +881,48 @@ func TestDownloadRandomFromRecommendationKeepsLegacySourceAndAvoidsSDK(t *testin
 	}
 	defer session.Close()
 	result := callTool(t, session, "download_random_from_recommendation", map[string]any{"count": 1})
-	if result.IsError || api.calls != 1 || sdkCalls != 0 || !slices.Equal(downloads.downloadIDs, []int64{77}) {
-		t.Fatalf("result=%+v source=%d sdk=%d ids=%v", result, api.calls, sdkCalls, downloads.downloadIDs)
+	if result.IsError || len(requests) != 1 || requests[0] != (sdk.IllustRecommendedRequest{}) || !slices.Equal(downloads.downloadIDs, []int64{77}) {
+		t.Fatalf("result=%+v requests=%+v ids=%v", result, requests, downloads.downloadIDs)
+	}
+}
+
+func TestSDKDownloadFactoryUsesSelectedAccountAfterTokenSwitch(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "work.jpg")
+	if err := os.WriteFile(path, []byte("image"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	accountB := &fakeSDKClient{userID: 2, illustRecommended: func(context.Context, sdk.IllustRecommendedRequest) (*sdk.IllustListResult, error) {
+		return &sdk.IllustListResult{Illusts: []sdk.Illust{{ID: 77}}}, nil
+	}}
+	accountA := &fakeSDKClient{userID: 1, importAccount: func(context.Context, string) (*sdk.Account, error) {
+		return &sdk.Account{UserID: 2, Username: "b"}, nil
+	}}
+	service := application.SDKService{NewClient: func(request application.SDKClientRequest) (application.SDKClient, error) {
+		if request.UserID == 2 {
+			return accountB, nil
+		}
+		return accountA, nil
+	}}
+	var managers []application.SDKClient
+	server := NewWithSDKDownloadFactory(&fakeDownloads{}, func(client application.SDKClient) DownloadManager {
+		managers = append(managers, client)
+		return &fakeDownloads{artworks: []download.DownloadedArtwork{{IllustID: 77, Files: []download.DownloadedFile{{Path: path}}}}}
+	}, slog.New(slog.NewTextHandler(io.Discard, nil)), service, application.SDKClientRequest{UserID: 1})
+	clientTransport, serverTransport := mcp.NewInMemoryTransports()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() { _ = server.Run(ctx, serverTransport) }()
+	client := mcp.NewClient(&mcp.Implementation{Name: "test", Version: "1"}, nil)
+	session, err := client.Connect(ctx, clientTransport, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer session.Close()
+	_ = callTool(t, session, "set_refresh_token", map[string]any{"refresh_token": "switch"})
+	_ = callTool(t, session, "download", map[string]any{"illust_id": 77})
+	_ = callTool(t, session, "download_random_from_recommendation", map[string]any{"count": 1})
+	if len(managers) != 2 || managers[0] != accountB || managers[1] != accountB {
+		t.Fatalf("download managers=%v want account B twice", managers)
 	}
 }
 
@@ -951,46 +969,35 @@ func TestSDKMutationToolsReturnStructuredSuccess(t *testing.T) {
 }
 
 func TestUserBookmarksAcceptsLegacyMaxBookmarkID(t *testing.T) {
-	legacyAPI := &legacyBookmarkAPI{illusts: []pixiv.Illust{{
-		ID:        15,
-		Title:     "legacy",
-		Tags:      []pixiv.Tag{},
-		MetaPages: []pixiv.MetaPage{},
-	}}}
-	session, closeSession := newSDKTestSessionWithAPI(t, legacyAPI, &fakeSDKClient{})
+	client := &fakeSDKClient{bookmarks: []sdk.Illust{testSDKIllust(15, "saved", 99)}}
+	session, closeSession := newSDKTestSession(t, client)
 	defer closeSession()
 	result := callTool(t, session, "user_bookmarks", map[string]any{"user_id_to_check": 99, "max_bookmark_id": 101})
 	var out illustListOut
 	decodeStructured(t, result, &out)
-	if legacyAPI.userID != 99 || legacyAPI.maxBookmarkID != 101 || len(out.Items) != 1 || out.Items[0].ID != 15 {
-		t.Fatalf("legacy compatibility = request=(%d,%d) output=%+v", legacyAPI.userID, legacyAPI.maxBookmarkID, out)
+	if client.bookmarksRequest.UserID != 99 || client.bookmarksRequest.Cursor != "bookmark-101" || len(out.Items) != 1 || out.Items[0].ID != 15 {
+		t.Fatalf("max_bookmark_id compatibility = request=%+v output=%+v", client.bookmarksRequest, out)
 	}
 }
 
-func TestNewKeepsLegacyUserListToolsAndParameters(t *testing.T) {
-	api := &legacyUserToolsAPI{
-		bookmarks: []pixiv.Illust{{ID: 15, Tags: []pixiv.Tag{}, MetaPages: []pixiv.MetaPage{}}},
-		following: []pixiv.UserPreview{{User: pixiv.User{ID: 31, Name: "legacy"}}},
+func TestSDKUserListToolsPreserveLegacyParameters(t *testing.T) {
+	client := &fakeSDKClient{
+		bookmarks: []sdk.Illust{testSDKIllust(15, "saved", 9)},
+		following: []sdk.UserPreview{
+			{User: sdk.User{ID: 30, Name: "before-offset"}},
+			{User: sdk.User{ID: 31, Name: "after-offset"}},
+		},
 	}
-	server := New(api, &fakeDownloads{}, slog.New(slog.NewTextHandler(io.Discard, nil)))
-	clientTransport, serverTransport := mcp.NewInMemoryTransports()
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	go func() { _ = server.Run(ctx, serverTransport) }()
-	client := mcp.NewClient(&mcp.Implementation{Name: "test", Version: "0.0.0"}, nil)
-	session, err := client.Connect(ctx, clientTransport, nil)
-	if err != nil {
-		t.Fatalf("connect: %v", err)
-	}
-	defer session.Close()
+	session, closeSession := newSDKTestSession(t, client)
+	defer closeSession()
 
 	bookmarkResult := callTool(t, session, "user_bookmarks", map[string]any{
 		"user_id_to_check": 9, "restrict": "private", "tag": "legacy-tag", "max_bookmark_id": 101,
 	})
 	var bookmarksOut illustListOut
 	decodeStructured(t, bookmarkResult, &bookmarksOut)
-	if api.bookmarkUserID != 9 || api.bookmarkRestrict != "private" || api.bookmarkTag != "legacy-tag" || api.maxBookmarkID != 101 || !strings.Contains(bookmarksOut.Text, "找到用户 9 的 1 个收藏") {
-		t.Fatalf("legacy bookmarks request=(%d,%q,%q,%d) output=%+v", api.bookmarkUserID, api.bookmarkRestrict, api.bookmarkTag, api.maxBookmarkID, bookmarksOut)
+	if client.bookmarksRequest.UserID != 9 || client.bookmarksRequest.Restrict != sdk.RestrictPrivate || client.bookmarksRequest.Tag != "legacy-tag" || client.bookmarksRequest.Cursor != "bookmark-101" || !strings.Contains(bookmarksOut.Text, "找到用户 9 的 1 个收藏") {
+		t.Fatalf("bookmarks request=%+v output=%+v", client.bookmarksRequest, bookmarksOut)
 	}
 
 	followingResult := callTool(t, session, "user_following", map[string]any{
@@ -998,18 +1005,18 @@ func TestNewKeepsLegacyUserListToolsAndParameters(t *testing.T) {
 	})
 	var followingOut userListOut
 	decodeStructured(t, followingResult, &followingOut)
-	if api.followingUserID != 8 || api.followingRestrict != "private" || api.followingOffset != 12 || !strings.Contains(followingOut.Text, "用户 8 关注了 1 位用户") {
-		t.Fatalf("legacy following request=(%d,%q,%d) output=%+v", api.followingUserID, api.followingRestrict, api.followingOffset, followingOut)
+	if client.followingRequest.UserID != 8 || client.followingRequest.Restrict != sdk.RestrictPrivate || len(followingOut.Items) != 0 || followingOut.Text != "用户 8 没有关注任何人。" {
+		t.Fatalf("following offset request=%+v output=%+v", client.followingRequest, followingOut)
 	}
 
-	api.bookmarks = []pixiv.Illust{}
-	api.following = []pixiv.UserPreview{}
+	client.bookmarks = []sdk.Illust{}
+	client.following = []sdk.UserPreview{}
 	bookmarkResult = callTool(t, session, "user_bookmarks", map[string]any{"user_id_to_check": 9})
 	decodeStructured(t, bookmarkResult, &bookmarksOut)
 	followingResult = callTool(t, session, "user_following", map[string]any{"user_id_to_check": 8})
 	decodeStructured(t, followingResult, &followingOut)
 	if bookmarksOut.Text != "找不到用户 9 的收藏。" || followingOut.Text != "用户 8 没有关注任何人。" {
-		t.Fatalf("legacy empty text bookmarks=%q following=%q", bookmarksOut.Text, followingOut.Text)
+		t.Fatalf("empty text bookmarks=%q following=%q", bookmarksOut.Text, followingOut.Text)
 	}
 }
 
@@ -1077,7 +1084,9 @@ func TestSDKToolsPersistRotationAfterSessionTokenAndSerializeConcurrentOperation
 	if err := os.WriteFile(authPath, []byte(`{"default_user_id":1,"accounts":[{"user_id":1,"username":"old","refresh_token":"old-a"}]}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	expected := []string{"r1", "r2", "r3", "r4"}
+	// set_refresh_token 先由 public SDK 的 ImportAccount 消耗 r0；mock 按下标
+	// 返回 r2。其后四个 SDK operation 必须被 gate 串行化，依次消费 r2..r5。
+	expected := []string{"r0", "r2", "r3", "r4", "r5"}
 	var oauthMu sync.Mutex
 	oauthCalls := 0
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -1097,7 +1106,7 @@ func TestSDKToolsPersistRotationAfterSessionTokenAndSerializeConcurrentOperation
 			_, _ = fmt.Fprintf(w, `{"access_token":"access-%d","refresh_token":"r%d","user":{"id":7,"name":"alice"}}`, oauthCalls, oauthCalls+1)
 		case "/v1/user/illusts":
 			_, _ = w.Write([]byte(`{"illusts":[],"next_url":null}`))
-		case "/v2/illust/bookmark/add", "/v1/illust/bookmark/delete":
+		case "/v2/illust/bookmark/add":
 			_, _ = w.Write([]byte(`{}`))
 		default:
 			http.NotFound(w, r)
@@ -1111,9 +1120,8 @@ func TestSDKToolsPersistRotationAfterSessionTokenAndSerializeConcurrentOperation
 			UserID: request.UserID, RefreshToken: request.RefreshToken,
 		})
 	}}
-	source := &rotatingSessionAPI{refreshToken: "r0", userID: 7, userName: "alice"}
-	// 模拟 RunMCP AutoAuthenticate 已选择旧 UID A；set_refresh_token 随后认证到 UID B。
-	session, closeSession := newSDKTestSessionWithServiceRequest(t, source, service, application.SDKClientRequest{AuthFilePath: authPath, UserID: 1})
+	// 构造器保留的首参只是兼容占位；会话认证与所有 operation 都来自 public SDK。
+	session, closeSession := newSDKTestSessionWithServiceRequest(t, &fakeAPI{}, service, application.SDKClientRequest{AuthFilePath: authPath, UserID: 1})
 	defer closeSession()
 	set := callTool(t, session, "set_refresh_token", map[string]any{"refresh_token": "r0"})
 	var setOut textOut
@@ -1121,16 +1129,25 @@ func TestSDKToolsPersistRotationAfterSessionTokenAndSerializeConcurrentOperation
 	if !strings.Contains(setOut.Text, "完成认证") {
 		t.Fatalf("set_refresh_token=%q", setOut.Text)
 	}
-	_ = callTool(t, session, "user_artworks", map[string]any{"user_id": 7})
-	_ = callTool(t, session, "user_artworks", map[string]any{"user_id": 7})
+	for _, result := range []*mcp.CallToolResult{
+		callTool(t, session, "user_artworks", map[string]any{"user_id": 7}),
+		callTool(t, session, "user_artworks", map[string]any{"user_id": 7}),
+	} {
+		if result.IsError {
+			t.Fatalf("SDK artwork operation failed: %+v", result)
+		}
+	}
 
 	errCh := make(chan error, 2)
 	for _, call := range []*mcp.CallToolParams{
 		{Name: "add_bookmark", Arguments: map[string]any{"illust_id": 9}},
-		{Name: "remove_bookmark", Arguments: map[string]any{"illust_id": 9}},
+		{Name: "download", Arguments: map[string]any{"illust_id": 9}},
 	} {
 		go func(call *mcp.CallToolParams) {
-			_, err := session.CallTool(context.Background(), call)
+			result, err := session.CallTool(context.Background(), call)
+			if err == nil && result.IsError {
+				err = fmt.Errorf("SDK mutation failed: %+v", result)
+			}
 			errCh <- err
 		}(call)
 	}
@@ -1146,60 +1163,13 @@ func TestSDKToolsPersistRotationAfterSessionTokenAndSerializeConcurrentOperation
 		t.Fatalf("oauth calls=%d want=%d", calls, len(expected))
 	}
 	stored, err := os.ReadFile(authPath)
-	if err != nil || !strings.Contains(string(stored), `"refresh_token": "r5"`) || strings.Contains(string(stored), `"refresh_token": "r1"`) {
+	if err != nil || !strings.Contains(string(stored), `"refresh_token": "r6"`) || strings.Contains(string(stored), `"refresh_token": "r2"`) {
 		t.Fatalf("auth store did not retain latest rotation: %q err=%v", stored, err)
 	}
 }
 
+// fakeAPI 只占据 New/NewWithSDK 保留的已废弃兼容参数；MCP 不得调用它。
 type fakeAPI struct{}
-
-func (fakeAPI) Refresh(context.Context) error { return nil }
-func (fakeAPI) SetRefreshToken(string)        {}
-func (fakeAPI) RefreshTokenValue() string     { return "refresh" }
-func (fakeAPI) UserID() int64                 { return 1 }
-func (fakeAPI) UserName() string              { return "alice" }
-func (fakeAPI) IsAuthenticated() bool         { return true }
-func (fakeAPI) SearchIllust(context.Context, string, string, string, string, int) (*pixiv.IllustList, error) {
-	return &pixiv.IllustList{}, nil
-}
-func (fakeAPI) IllustDetail(context.Context, int64) (*pixiv.IllustDetail, error) {
-	return &pixiv.IllustDetail{}, nil
-}
-func (fakeAPI) IllustRelated(context.Context, int64, int) (*pixiv.IllustList, error) {
-	return &pixiv.IllustList{}, nil
-}
-func (fakeAPI) IllustRanking(context.Context, string, string, int) (*pixiv.IllustList, error) {
-	return &pixiv.IllustList{}, nil
-}
-func (fakeAPI) SearchUser(context.Context, string, int) (*pixiv.UserPreviewList, error) {
-	return &pixiv.UserPreviewList{}, nil
-}
-func (fakeAPI) IllustRecommended(context.Context, int) (*pixiv.IllustList, error) {
-	return &pixiv.IllustList{Illusts: []pixiv.Illust{{ID: 1}}}, nil
-}
-func (fakeAPI) TrendingTagsIllust(context.Context) (*pixiv.TrendTags, error) {
-	return &pixiv.TrendTags{}, nil
-}
-func (fakeAPI) IllustFollow(context.Context, string, int) (*pixiv.IllustList, error) {
-	return &pixiv.IllustList{}, nil
-}
-func (fakeAPI) UserBookmarks(context.Context, int64, string, string, int64) (*pixiv.IllustList, error) {
-	return &pixiv.IllustList{}, nil
-}
-func (fakeAPI) UserFollowing(context.Context, int64, string, int) (*pixiv.UserPreviewList, error) {
-	return &pixiv.UserPreviewList{}, nil
-}
-func (fakeAPI) Download(context.Context, string, io.Writer) error {
-	return nil
-}
-
-type failingRefreshAPI struct {
-	fakeAPI
-}
-
-func (failingRefreshAPI) Refresh(context.Context) error {
-	return errors.New("invalid token")
-}
 
 func newTestSession(t *testing.T, downloads *fakeDownloads) (*mcp.ClientSession, func()) {
 	t.Helper()
@@ -1223,7 +1193,7 @@ func newSDKTestSession(t *testing.T, sdkClient application.SDKClient) (*mcp.Clie
 	return newSDKTestSessionWithAPI(t, &fakeAPI{}, sdkClient)
 }
 
-func newSDKTestSessionWithAPI(t *testing.T, api PixivAPI, sdkClient application.SDKClient) (*mcp.ClientSession, func()) {
+func newSDKTestSessionWithAPI(t *testing.T, api any, sdkClient application.SDKClient) (*mcp.ClientSession, func()) {
 	t.Helper()
 	service := application.SDKService{NewClient: func(application.SDKClientRequest) (application.SDKClient, error) {
 		return sdkClient, nil
@@ -1231,13 +1201,13 @@ func newSDKTestSessionWithAPI(t *testing.T, api PixivAPI, sdkClient application.
 	return newSDKTestSessionWithService(t, api, service)
 }
 
-func newSDKTestSessionWithService(t *testing.T, api PixivAPI, service application.SDKService) (*mcp.ClientSession, func()) {
+func newSDKTestSessionWithService(t *testing.T, api any, service application.SDKService) (*mcp.ClientSession, func()) {
 	return newSDKTestSessionWithServiceRequest(t, api, service, application.SDKClientRequest{})
 }
 
-func newSDKTestSessionWithServiceRequest(t *testing.T, api PixivAPI, service application.SDKService, request application.SDKClientRequest) (*mcp.ClientSession, func()) {
+func newSDKTestSessionWithServiceRequest(t *testing.T, api any, service application.SDKService, request application.SDKClientRequest) (*mcp.ClientSession, func()) {
 	t.Helper()
-	server := NewWithSDK(api, &fakeDownloads{}, slog.New(slog.NewTextHandler(io.Discard, nil)), service, request)
+	server := NewWithSDKDownloadFactory(&fakeDownloads{}, func(application.SDKClient) DownloadManager { return &fakeDownloads{} }, slog.New(slog.NewTextHandler(io.Discard, nil)), service, request)
 	clientTransport, serverTransport := mcp.NewInMemoryTransports()
 	ctx, cancel := context.WithCancel(context.Background())
 	go func() { _ = server.Run(ctx, serverTransport) }()
@@ -1251,97 +1221,6 @@ func newSDKTestSessionWithServiceRequest(t *testing.T, api PixivAPI, service app
 		session.Close()
 		cancel()
 	}
-}
-
-type rotatingSessionAPI struct {
-	refreshToken string
-	userID       int64
-	userName     string
-}
-
-func (a *rotatingSessionAPI) Refresh(context.Context) error {
-	if a.refreshToken != "r0" {
-		return errors.New("unexpected legacy refresh token")
-	}
-	a.refreshToken = "r1"
-	return nil
-}
-func (a *rotatingSessionAPI) SetRefreshToken(token string) { a.refreshToken = token }
-func (a *rotatingSessionAPI) RefreshTokenValue() string    { return a.refreshToken }
-func (a *rotatingSessionAPI) UserID() int64                { return a.userID }
-func (a *rotatingSessionAPI) UserName() string             { return a.userName }
-func (*rotatingSessionAPI) IsAuthenticated() bool          { return false }
-func (*rotatingSessionAPI) SearchIllust(context.Context, string, string, string, string, int) (*pixiv.IllustList, error) {
-	return &pixiv.IllustList{}, nil
-}
-func (*rotatingSessionAPI) IllustDetail(context.Context, int64) (*pixiv.IllustDetail, error) {
-	return &pixiv.IllustDetail{}, nil
-}
-func (*rotatingSessionAPI) IllustRelated(context.Context, int64, int) (*pixiv.IllustList, error) {
-	return &pixiv.IllustList{}, nil
-}
-func (*rotatingSessionAPI) IllustRanking(context.Context, string, string, int) (*pixiv.IllustList, error) {
-	return &pixiv.IllustList{}, nil
-}
-func (*rotatingSessionAPI) SearchUser(context.Context, string, int) (*pixiv.UserPreviewList, error) {
-	return &pixiv.UserPreviewList{}, nil
-}
-func (*rotatingSessionAPI) IllustRecommended(context.Context, int) (*pixiv.IllustList, error) {
-	return &pixiv.IllustList{}, nil
-}
-func (*rotatingSessionAPI) TrendingTagsIllust(context.Context) (*pixiv.TrendTags, error) {
-	return &pixiv.TrendTags{}, nil
-}
-func (*rotatingSessionAPI) IllustFollow(context.Context, string, int) (*pixiv.IllustList, error) {
-	return &pixiv.IllustList{}, nil
-}
-func (*rotatingSessionAPI) UserBookmarks(context.Context, int64, string, string, int64) (*pixiv.IllustList, error) {
-	return &pixiv.IllustList{}, nil
-}
-func (*rotatingSessionAPI) UserFollowing(context.Context, int64, string, int) (*pixiv.UserPreviewList, error) {
-	return &pixiv.UserPreviewList{}, nil
-}
-func (*rotatingSessionAPI) Download(context.Context, string, io.Writer) error { return nil }
-
-type legacyBookmarkAPI struct {
-	fakeAPI
-	illusts       []pixiv.Illust
-	userID        int64
-	maxBookmarkID int64
-}
-
-func (a *legacyBookmarkAPI) UserBookmarks(_ context.Context, userID int64, _ string, _ string, maxBookmarkID int64) (*pixiv.IllustList, error) {
-	a.userID = userID
-	a.maxBookmarkID = maxBookmarkID
-	return &pixiv.IllustList{Illusts: a.illusts}, nil
-}
-
-type legacyUserToolsAPI struct {
-	fakeAPI
-	bookmarks         []pixiv.Illust
-	following         []pixiv.UserPreview
-	bookmarkUserID    int64
-	bookmarkRestrict  string
-	bookmarkTag       string
-	maxBookmarkID     int64
-	followingUserID   int64
-	followingRestrict string
-	followingOffset   int
-}
-
-func (a *legacyUserToolsAPI) UserBookmarks(_ context.Context, userID int64, restrict, tag string, maxBookmarkID int64) (*pixiv.IllustList, error) {
-	a.bookmarkUserID = userID
-	a.bookmarkRestrict = restrict
-	a.bookmarkTag = tag
-	a.maxBookmarkID = maxBookmarkID
-	return &pixiv.IllustList{Illusts: a.bookmarks}, nil
-}
-
-func (a *legacyUserToolsAPI) UserFollowing(_ context.Context, userID int64, restrict string, offset int) (*pixiv.UserPreviewList, error) {
-	a.followingUserID = userID
-	a.followingRestrict = restrict
-	a.followingOffset = offset
-	return &pixiv.UserPreviewList{UserPreviews: a.following}, nil
 }
 
 func callTool(t *testing.T, session *mcp.ClientSession, name string, arguments map[string]any) *mcp.CallToolResult {
@@ -1375,11 +1254,14 @@ type fakeSDKClient struct {
 	userRecommended       func(context.Context, sdk.UserRecommendedRequest) (*sdk.UserRecommendedResult, error)
 	userDetailResult      *sdk.UserDetailResult
 	userDetailErr         error
+	importAccountErr      error
+	importAccount         func(context.Context, string) (*sdk.Account, error)
 	userDetailRequest     sdk.UserDetailRequest
 	artworksRequest       sdk.UserArtworksRequest
 	artworksRequests      []sdk.UserArtworksRequest
 	artworkResults        map[sdk.Cursor]sdk.IllustListResult
 	bookmarksRequest      sdk.UserBookmarksRequest
+	userBookmarksErr      error
 	followingRequest      sdk.UserFollowingRequest
 	addBookmarkRequest    sdk.AddBookmarkRequest
 	removeBookmarkRequest sdk.RemoveBookmarkRequest
@@ -1396,21 +1278,68 @@ func (f *failingMutationSDKClient) AddBookmark(context.Context, sdk.AddBookmarkR
 	return f.err
 }
 
-type failingLegacyBookmarksAPI struct{ fakeAPI }
-
-func (*failingLegacyBookmarksAPI) UserBookmarks(context.Context, int64, string, string, int64) (*pixiv.IllustList, error) {
-	return nil, errors.New("legacy failed")
-}
-
 func (f *fakeSDKClient) CurrentUserID(context.Context) (int64, error) { return f.userID, nil }
+func (f *fakeSDKClient) ImportAccount(ctx context.Context, token string) (*sdk.Account, error) {
+	if f.importAccount != nil {
+		return f.importAccount(ctx, token)
+	}
+	if f.importAccountErr != nil {
+		return nil, f.importAccountErr
+	}
+	return &sdk.Account{UserID: f.userID, Username: "alice"}, nil
+}
+func (*fakeSDKClient) ListAccounts() (*sdk.AccountsResult, error) {
+	return &sdk.AccountsResult{Accounts: []sdk.Account{}}, nil
+}
+func (*fakeSDKClient) SelectAccount(int64) error { return nil }
+func (*fakeSDKClient) RemoveAccount(int64) error { return nil }
+func (f *fakeSDKClient) CheckAccount(context.Context, int64) (*sdk.Account, error) {
+	return &sdk.Account{UserID: f.userID, Username: "alice"}, nil
+}
+func (f *fakeSDKClient) CheckRefreshToken(context.Context, string) (*sdk.Account, error) {
+	return nil, errors.New("unexpected refresh token check")
+}
+func (f *fakeSDKClient) Refresh(context.Context) (*sdk.Account, error) {
+	return &sdk.Account{UserID: f.userID, Username: "alice"}, nil
+}
+func (*fakeSDKClient) StartLogin() (*sdk.LoginSession, error) {
+	return nil, errors.New("login is not configured")
+}
+func (*fakeSDKClient) CompleteLogin(context.Context, *sdk.LoginSession, string, sdk.LoginOptions) (*sdk.Account, error) {
+	return nil, errors.New("login is not configured")
+}
 func (*fakeSDKClient) SearchIllust(context.Context, sdk.SearchIllustRequest) (*sdk.IllustListResult, error) {
 	return &sdk.IllustListResult{}, nil
 }
 func (*fakeSDKClient) IllustDetail(context.Context, int64) (*sdk.IllustDetail, error) {
 	return &sdk.IllustDetail{}, nil
 }
+func (*fakeSDKClient) IllustRelated(context.Context, sdk.IllustRelatedRequest) (*sdk.IllustListResult, error) {
+	return &sdk.IllustListResult{}, nil
+}
 func (*fakeSDKClient) IllustRanking(context.Context, sdk.IllustRankingRequest) (*sdk.IllustListResult, error) {
 	return &sdk.IllustListResult{}, nil
+}
+func (*fakeSDKClient) FollowingIllusts(context.Context, sdk.FollowingIllustsRequest) (*sdk.IllustListResult, error) {
+	return &sdk.IllustListResult{}, nil
+}
+func (*fakeSDKClient) SearchUser(context.Context, sdk.SearchUserRequest) (*sdk.UserListResult, error) {
+	return &sdk.UserListResult{}, nil
+}
+func (*fakeSDKClient) TrendingTagsIllust(context.Context) (*sdk.TrendingTagsIllustResult, error) {
+	return &sdk.TrendingTagsIllustResult{}, nil
+}
+func (*fakeSDKClient) UgoiraMetadata(context.Context, int64) (*sdk.UgoiraMetadataResult, error) {
+	return &sdk.UgoiraMetadataResult{}, nil
+}
+func (*fakeSDKClient) ParseResourceRef(rawURL string) (sdk.ResourceRef, error) {
+	return sdk.ResourceRef{URL: rawURL}, nil
+}
+func (*fakeSDKClient) OpenResource(context.Context, sdk.OpenResourceRequest) (*sdk.ResourceResponse, error) {
+	return nil, errors.New("resource is not configured")
+}
+func (*fakeSDKClient) Download(context.Context, sdk.ResourceRef, string) error {
+	return errors.New("resource is not configured")
 }
 
 func (f *fakeSDKClient) IllustRecommended(ctx context.Context, request sdk.IllustRecommendedRequest) (*sdk.IllustListResult, error) {
@@ -1460,7 +1389,13 @@ func (f *fakeSDKClient) UserArtworks(_ context.Context, request sdk.UserArtworks
 }
 func (f *fakeSDKClient) UserBookmarks(_ context.Context, request sdk.UserBookmarksRequest) (*sdk.IllustListResult, error) {
 	f.bookmarksRequest = request
+	if f.userBookmarksErr != nil {
+		return nil, f.userBookmarksErr
+	}
 	return &sdk.IllustListResult{Illusts: f.bookmarks}, nil
+}
+func (*fakeSDKClient) UserBookmarksCursor(_ context.Context, _ sdk.UserBookmarksRequest, maxBookmarkID int64) (sdk.Cursor, error) {
+	return sdk.Cursor(fmt.Sprintf("bookmark-%d", maxBookmarkID)), nil
 }
 func (f *fakeSDKClient) UserFollowing(_ context.Context, request sdk.UserFollowingRequest) (*sdk.UserListResult, error) {
 	f.followingRequest = request

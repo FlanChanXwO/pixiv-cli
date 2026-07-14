@@ -44,12 +44,6 @@ type clientConfig struct {
 	config.RuntimeConfig
 }
 
-type cliPixivClient interface {
-	application.AuthenticatedPixivClient
-	application.ArtworkClient
-	application.DownloadClient
-}
-
 var (
 	runMCPServer   = runMCP
 	newCLIServices = bootstrap.NewServices

@@ -12,8 +12,7 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/config"
 	"github.com/FlanChanXwO/pixiv-cli/internal/download"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver"
-	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv"
-	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/oauth"
+	internalpixiv "github.com/FlanChanXwO/pixiv-cli/internal/pixiv"
 	"github.com/FlanChanXwO/pixiv-cli/internal/storage/auth"
 	publicpixiv "github.com/FlanChanXwO/pixiv-cli/pixiv"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -38,52 +37,14 @@ func (AuthFileRepository) Save(store auth.AuthStore) error {
 }
 
 func NewServices(logger *slog.Logger) application.Services {
-	repo := AuthFileRepository{}
-	resolver := application.ClientResolver{
-		Auth:            repo,
-		LoadRuntime:     LoadRuntimeConfig,
-		RefreshTokenEnv: config.RefreshTokenFromEnv,
-		NewClient: func(cfg config.RuntimeConfig) (application.ClientBundle, error) {
-			client, err := NewPixivClient(cfg)
-			if err != nil {
-				return application.ClientBundle{}, err
-			}
-			return application.ClientBundle{Auth: client, Artwork: client, Download: client}, nil
-		},
-	}
+	sdkService := application.SDKService{NewClient: func(request application.SDKClientRequest) (application.SDKClient, error) {
+		return newSDKClient(logger, request)
+	}, LoadRuntime: LoadRuntimeConfig}
 	return application.Services{
-		Account: application.AccountService{
-			Auth:            repo,
-			LoadRuntime:     LoadRuntimeConfig,
-			RefreshTokenEnv: config.RefreshTokenFromEnv,
-			NewClient: func(cfg config.RuntimeConfig) (application.AuthenticatedPixivClient, error) {
-				return NewPixivClient(cfg)
-			},
-		},
-		Config: application.ConfigService{Store: ConfigFileStore{}},
-		Artwork: application.ArtworkService{
-			Resolver: resolver,
-		},
-		Download: application.DownloadService{
-			Resolver: resolver,
-			NewDownloader: func(client application.DownloadClient, cfg config.RuntimeConfig) application.Downloader {
-				return download.NewManager(client, logger, cfg.DownloadPath, cfg.FilenameTemplate)
-			},
-		},
-		Login: application.LoginService{
-			Auth:        repo,
-			LoadRuntime: LoadRuntimeConfig,
-			NewOAuth: func(cfg config.RuntimeConfig, oauthBase string) (application.OAuthExchanger, error) {
-				client, err := pixiv.NewOAuthClient(pixiv.OAuthConfig{HTTPSProxy: cfg.HTTPSProxy}, oauthBase)
-				if err != nil {
-					return nil, err
-				}
-				return oauthClient{client: client}, nil
-			},
-		},
-		SDK: application.SDKService{NewClient: func(request application.SDKClientRequest) (application.SDKClient, error) {
-			return newSDKClient(logger, request)
-		}, LoadRuntime: LoadRuntimeConfig},
+		Account: application.AccountService{SDK: sdkService, RefreshTokenFromEnv: config.RefreshTokenFromEnv},
+		Config:  application.ConfigService{Store: ConfigFileStore{}},
+		Login:   application.LoginService{SDK: sdkService, LoadRuntime: LoadRuntimeConfig},
+		SDK:     sdkService,
 	}
 }
 
@@ -92,7 +53,7 @@ func NewServices(logger *slog.Logger) application.Services {
 func newSDKClient(logger *slog.Logger, request application.SDKClientRequest) (application.SDKClient, error) {
 	options := publicpixiv.Options{UserID: request.UserID, RefreshToken: request.RefreshToken, AuthFilePath: request.AuthFilePath, Logger: logger}
 	if request.HTTPSProxyOverride != nil {
-		httpClient, err := pixiv.HTTPClient(*request.HTTPSProxyOverride)
+		httpClient, err := internalpixiv.HTTPClient(*request.HTTPSProxyOverride)
 		if err != nil {
 			return nil, err
 		}
@@ -187,17 +148,8 @@ func (ConfigFileStore) Unset(alias string) (application.ConfigMutationResult, er
 	return application.ConfigMutationResult{Alias: alias, EnvOverride: envRaw, HasOverride: hasOverride}, nil
 }
 
-func NewPixivClient(cfg config.RuntimeConfig) (*pixiv.Source, error) {
-	return pixiv.NewSource(pixiv.SourceConfig{
-		RefreshToken:       cfg.RefreshToken,
-		HTTPSProxy:         cfg.HTTPSProxy,
-		WebFallbackEnabled: cfg.WebFallbackEnabled,
-	})
-}
-
 type MCPRuntime struct {
 	Config     config.RuntimeConfig
-	Client     *pixiv.Source
 	Manager    *download.Manager
 	Logger     *slog.Logger
 	SDK        application.SDKService
@@ -205,7 +157,7 @@ type MCPRuntime struct {
 	AuthPath   string
 }
 
-func NewMCPRuntime(logger *slog.Logger, proxyOverride *string) (MCPRuntime, error) {
+func NewMCPRuntime(ctx context.Context, logger *slog.Logger, proxyOverride *string) (MCPRuntime, error) {
 	cfg, err := LoadRuntimeConfig()
 	if err != nil {
 		return MCPRuntime{}, err
@@ -219,23 +171,31 @@ func NewMCPRuntime(logger *slog.Logger, proxyOverride *string) (MCPRuntime, erro
 	if err != nil {
 		return MCPRuntime{}, err
 	}
-	if cfg.RefreshToken = config.RefreshTokenFromEnv(); cfg.RefreshToken == "" {
-		if _, acct, ok := auth.SelectAuthAccount(store, 0); ok {
-			cfg.RefreshToken = acct.RefreshToken
-		}
+	request := application.SDKClientRequest{HTTPSProxyOverride: proxyOverride, AuthFilePath: authPath}
+	if _, account, ok := auth.SelectAuthAccount(store, 0); ok {
+		request.UserID = account.UserID
 	}
-	client, err := NewPixivClient(cfg)
+	client, err := newSDKClient(logger, request)
 	if err != nil {
 		return MCPRuntime{}, err
+	}
+	if token := config.RefreshTokenFromEnv(); token != "" {
+		account, err := client.ImportAccount(ctx, token)
+		if err != nil {
+			return MCPRuntime{}, err
+		}
+		if err := client.SelectAccount(account.UserID); err != nil {
+			return MCPRuntime{}, err
+		}
+		request.UserID = account.UserID
 	}
 	manager := download.NewManager(client, logger, cfg.DownloadPath, cfg.FilenameTemplate)
 	return MCPRuntime{
 		Config:     cfg,
-		Client:     client,
 		Manager:    manager,
 		Logger:     logger,
 		SDK:        NewServices(logger).SDK,
-		SDKRequest: application.SDKClientRequest{HTTPSProxyOverride: proxyOverride, AuthFilePath: authPath},
+		SDKRequest: request,
 		AuthPath:   authPath,
 	}, nil
 }
@@ -244,22 +204,6 @@ func applyRuntimeProxyOverride(cfg *config.RuntimeConfig, override *string) {
 	if override != nil {
 		cfg.HTTPSProxy = *override
 	}
-}
-
-func (r MCPRuntime) AutoAuthenticate(ctx context.Context) {
-	started := time.Now()
-	if r.Config.RefreshToken == "" {
-		return
-	}
-	if err := r.Client.Refresh(ctx); err != nil {
-		r.mcpLog("auto_authenticate", started, "error", r.Client.UserID())
-		return
-	}
-	if err := r.persistAuthenticatedSource(); err != nil {
-		r.mcpLog("auto_authenticate", started, "error", r.Client.UserID())
-		return
-	}
-	r.mcpLog("auto_authenticate", started, "success", r.Client.UserID())
 }
 
 func (r MCPRuntime) mcpLog(operation string, started time.Time, result string, userID int64) {
@@ -276,55 +220,24 @@ func (r MCPRuntime) mcpLog(operation string, started time.Time, result string, u
 	)
 }
 
-// persistAuthenticatedSource 将 legacy Source 刚完成 OAuth refresh 后的旋转 token 写回
-// MCP 与公共 SDK 共用的 auth store。它只在已验证身份后操作，且不会记录凭据。
-func (r MCPRuntime) persistAuthenticatedSource() error {
-	if r.Client.UserID() <= 0 || r.Client.RefreshTokenValue() == "" {
-		return fmt.Errorf("authenticated source did not provide account state")
-	}
-	store, err := auth.LoadAuthStore(r.AuthPath)
-	if err != nil {
-		return err
-	}
-	store.Upsert(auth.Account{UserID: r.Client.UserID(), Username: r.Client.UserName(), RefreshToken: r.Client.RefreshTokenValue()})
-	store.DefaultUserID = r.Client.UserID()
-	return auth.SaveAuthStore(r.AuthPath, store)
-}
-
 func RunMCP(ctx context.Context, errOut io.Writer, proxyOverride *string) error {
 	logger, err := NewApplicationLogger(errOut)
 	if err != nil {
 		return err
 	}
-	runtime, err := NewMCPRuntime(logger, proxyOverride)
+	runtime, err := NewMCPRuntime(ctx, logger, proxyOverride)
 	if err != nil {
 		return err
 	}
-	runtime.AutoAuthenticate(ctx)
-	// AutoAuthenticate 已把环境/默认 token 的 rotation 保存到 auth store。随后固定
-	// 已验证 UID，使 MCP SDK 在后续操作中选择 store 而不是再次使用已消费的环境 token。
-	if userID := runtime.Client.UserID(); userID > 0 {
-		runtime.SDKRequest.UserID = userID
-	}
-	server := mcpserver.NewWithSDK(runtime.Client, runtime.Manager, runtime.Logger, runtime.SDK, runtime.SDKRequest)
+	server := mcpserver.NewWithSDKDownloadFactory(runtime.Manager, func(client application.SDKClient) mcpserver.DownloadManager {
+		return download.NewManager(client, runtime.Logger, runtime.Manager.DownloadPath(), runtime.Config.FilenameTemplate)
+	}, runtime.Logger, runtime.SDK, runtime.SDKRequest)
 	started := time.Now()
 	err = server.Run(ctx, &mcp.StdioTransport{})
 	result := "success"
 	if err != nil {
 		result = "error"
 	}
-	runtime.mcpLog("run", started, result, runtime.Client.UserID())
+	runtime.mcpLog("run", started, result, runtime.SDKRequest.UserID)
 	return err
-}
-
-type oauthClient struct {
-	client *oauth.Client
-}
-
-func (c oauthClient) ExchangeAuthorizationCode(ctx context.Context, code, verifier string) (application.OAuthToken, error) {
-	token, err := c.client.ExchangeAuthorizationCode(ctx, code, verifier)
-	if err != nil {
-		return application.OAuthToken{}, err
-	}
-	return application.OAuthToken{RefreshToken: token.RefreshToken, UserID: token.UserID, Username: token.Username}, nil
 }

@@ -37,6 +37,21 @@ func (s *LoginSession) AuthorizationURL() string {
 	return s.state.authorizationURL
 }
 
+// AcceptsCallbackURL 判断浏览器捕获的 URL 是否携带属于本会话的有效 authorization
+// code。它不返回 code、state 或 verifier，也不标记会话已使用；实际交换仍必须由
+// CompleteLogin 完成并再次校验。裸 code 不是 URL，不能由 watcher 通过本方法接受。
+func (s *LoginSession) AcceptsCallbackURL(rawURL string) bool {
+	if s == nil || s.state == nil {
+		return false
+	}
+	parsed, err := url.Parse(strings.TrimSpace(rawURL))
+	if err != nil || parsed.Scheme == "" {
+		return false
+	}
+	_, err = loginCode(rawURL, s.state.state)
+	return err == nil
+}
+
 // BuildLoginAuthorizationURL 返回官方 App OAuth 登录地址。它供只负责浏览器
 // 交互的 adapter 复用；PKCE verifier 和 state 的生成、校验及 code exchange
 // 仍分别由调用方或 LoginSession 负责。

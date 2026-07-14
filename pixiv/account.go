@@ -156,6 +156,50 @@ func (c *Client) CheckAccount(ctx context.Context, userID int64) (out *Account, 
 	return c.refreshStoredAccountFromState(ctx, OperationCheckAccount, userID, state, httpClient)
 }
 
+// CheckRefreshToken 验证一次调用方提供的 refresh token 并返回其身份摘要。它不会读取、
+// 选择、旋转或写入本地 auth store，因此环境变量等临时凭据不能改变默认账号。
+func (c *Client) CheckRefreshToken(ctx context.Context, refreshToken string) (out *Account, err error) {
+	started := time.Now()
+	if c.defaults != nil {
+		// 临时 token 只需要当前配置决定的 transport；不得走会选择并刷新本地账号的
+		// operation snapshot，否则环境变量检查会意外改写 auth.json。
+		scoped, snapshotErr := c.defaults.resourceSnapshot(OperationCheckRefreshToken)
+		if snapshotErr != nil {
+			c.operationLog(OperationCheckRefreshToken, started, snapshotErr, 0, 0)
+			return nil, snapshotErr
+		}
+		out, err = scoped.checkRefreshToken(ctx, refreshToken)
+		c.operationLog(OperationCheckRefreshToken, started, err, 0, accountUserID(out))
+		return out, err
+	}
+	defer func() { c.operationLog(OperationCheckRefreshToken, started, err, 0, accountUserID(out)) }()
+	return c.checkRefreshToken(ctx, refreshToken)
+}
+
+func (c *Client) checkRefreshToken(ctx context.Context, refreshToken string) (*Account, error) {
+	refreshToken = strings.TrimSpace(refreshToken)
+	if refreshToken == "" {
+		return nil, newError(CodeInvalidArgument, OperationCheckRefreshToken, "", false, 0, 0, errors.New("refresh token is required"))
+	}
+	httpClient := c.httpClient
+	if httpClient == nil {
+		httpClient = http.DefaultClient
+	}
+	account, err := c.refreshIdentity(ctx, OperationCheckRefreshToken, httpClient, refreshToken)
+	if err != nil {
+		return nil, err
+	}
+	result := publicAccount(account, 0)
+	return &result, nil
+}
+
+func accountUserID(account *Account) int64 {
+	if account == nil {
+		return 0
+	}
+	return account.UserID
+}
+
 // Refresh 刷新当前默认账号并保存旋转后的 token。
 func (c *Client) Refresh(ctx context.Context) (out *Account, err error) {
 	started := time.Now()

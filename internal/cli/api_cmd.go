@@ -6,6 +6,8 @@ import (
 	"io"
 	"strings"
 
+	"github.com/FlanChanXwO/pixiv-cli/internal/application"
+	"github.com/FlanChanXwO/pixiv-cli/internal/download"
 	"github.com/FlanChanXwO/pixiv-cli/internal/utils/parse"
 	sdk "github.com/FlanChanXwO/pixiv-cli/pixiv"
 	"github.com/spf13/cobra"
@@ -304,7 +306,27 @@ func (a app) runDownload(cmd *cobra.Command, args []string, opts commandOptions)
 	if err != nil {
 		return err
 	}
-	artworks, jsonOut, err := services.Download.Download(cmd.Context(), clientReq, ids)
+	jsonOut, err := services.SDK.JSONOut(clientReq.JSONOverride)
+	if err != nil {
+		return err
+	}
+	runtime, err := services.SDK.Runtime()
+	if err != nil {
+		return err
+	}
+	if clientReq.DownloadPathOverride != nil {
+		runtime.DownloadPath = *clientReq.DownloadPathOverride
+	}
+	if clientReq.FilenameTemplateOverride != nil {
+		runtime.FilenameTemplate = *clientReq.FilenameTemplateOverride
+	}
+	client, err := services.SDK.OpenOperation(cmd.Context(), application.SDKClientRequest{
+		UserID: clientReq.UserID, RefreshToken: clientReq.RefreshToken, HTTPSProxyOverride: clientReq.HTTPSProxyOverride,
+	})
+	if err != nil {
+		return err
+	}
+	artworks, err := download.NewManager(client, a.logger, runtime.DownloadPath, runtime.FilenameTemplate).Download(cmd.Context(), ids)
 	if err != nil {
 		return err
 	}

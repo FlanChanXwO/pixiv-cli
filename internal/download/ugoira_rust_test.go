@@ -16,7 +16,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv"
+	pixiv "github.com/FlanChanXwO/pixiv-cli/pixiv"
 )
 
 func TestRustUgoiraEncoderNativeGIFAndAPNG(t *testing.T) {

@@ -97,6 +97,50 @@ func TestExplicitAccountStoreRefreshesRotatedTokenWithoutExposingIt(t *testing.T
 	}
 }
 
+func TestCheckRefreshTokenVerifiesExternalTokenWithoutChangingStoredDefault(t *testing.T) {
+	dir := t.TempDir()
+	authPath := filepath.Join(dir, "auth.json")
+	configPath := filepath.Join(dir, "config.toml")
+	const storedAuth = `{"default_user_id":7,"accounts":[{"user_id":7,"username":"stored","refresh_token":"stored-refresh-secret"}]}`
+	if err := os.WriteFile(authPath, []byte(storedAuth), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/auth/token" {
+			t.Fatalf("path=%s", r.URL.Path)
+		}
+		if err := r.ParseForm(); err != nil {
+			t.Fatal(err)
+		}
+		if got := r.Form.Get("refresh_token"); got != "environment-refresh-secret" {
+			t.Fatalf("refresh_token=%q", got)
+		}
+		_, _ = w.Write([]byte(`{"access_token":"access-secret","refresh_token":"rotated-environment-secret","user":{"id":8,"name":"environment"}}`))
+	}))
+	defer server.Close()
+
+	client, err := pixiv.OpenDefault(pixiv.Options{
+		AuthFilePath: authPath, ConfigFilePath: configPath, HTTPClient: server.Client(), OAuthBaseURL: server.URL,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	account, err := client.CheckRefreshToken(context.Background(), "environment-refresh-secret")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if account.UserID != 8 || account.Username != "environment" || account.Default || !account.HasToken {
+		t.Fatalf("account=%+v", account)
+	}
+	gotAuth, err := os.ReadFile(authPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(gotAuth) != storedAuth {
+		t.Fatalf("auth.json was changed: %s", gotAuth)
+	}
+}
+
 func TestAccountAndConfigRequireExplicitStoreOnNewClient(t *testing.T) {
 	t.Parallel()
 	client, err := pixiv.NewClient(pixiv.Options{})
@@ -210,6 +254,34 @@ func TestLoginSessionIsOpaqueOneTimeAndValidatesCallback(t *testing.T) {
 	other, _ := pixiv.NewClient(pixiv.Options{AuthFilePath: authPath})
 	if _, err := other.CompleteLogin(context.Background(), session, "code-secret", pixiv.LoginOptions{}); !errors.Is(err, pixiv.ErrInvalidArgument) || exchanges.Load() != 1 {
 		t.Fatalf("cross client err=%v exchanges=%d", err, exchanges.Load())
+	}
+}
+
+// CLI browser watchers need a public way to reject callbacks for a different
+// login session without reading the opaque PKCE verifier or state, and without
+// consuming the session before CompleteLogin performs the exchange.
+func TestLoginSessionAcceptsOnlyItsOwnCallbackWithoutConsumingIt(t *testing.T) {
+	client, err := pixiv.NewClient(pixiv.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	session, err := client.StartLogin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	parsed, err := url.Parse(session.AuthorizationURL())
+	if err != nil {
+		t.Fatal(err)
+	}
+	state := parsed.Query().Get("state")
+	if state == "" {
+		t.Fatal("authorization URL did not contain state")
+	}
+	if session.AcceptsCallbackURL("https://app-api.pixiv.net/web/v1/users/auth/pixiv/callback?code=bad&state=other") {
+		t.Fatal("foreign callback was accepted")
+	}
+	if !session.AcceptsCallbackURL("https://app-api.pixiv.net/web/v1/users/auth/pixiv/callback?code=good&state=" + url.QueryEscape(state)) {
+		t.Fatal("matching callback was rejected")
 	}
 }
 
