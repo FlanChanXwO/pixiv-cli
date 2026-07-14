@@ -165,6 +165,7 @@ jobs:
             internal/update/releases_test.go \
             internal/update/source_test.go \
             internal/utils/files/files_test.go \
+            pkg/pixiv/account_external_test.go \
             scripts/licensebundle/main_test.go \
             scripts/releaseworkflow/main.go \
             scripts/releaseworkflow/main_test.go \
@@ -185,6 +186,7 @@ jobs:
             internal/update/releases_test.go \
             internal/update/source_test.go \
             internal/utils/files/files_test.go \
+            pkg/pixiv/account_external_test.go \
             scripts/licensebundle/main_test.go \
             scripts/releaseworkflow/main.go \
             scripts/releaseworkflow/main_test.go \
