@@ -10,8 +10,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/appapi"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/oauth"
+	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/protocol"
 	"github.com/FlanChanXwO/pixiv-cli/internal/storage/auth"
 )
 
@@ -37,6 +37,29 @@ func (s *LoginSession) AuthorizationURL() string {
 	return s.state.authorizationURL
 }
 
+// BuildLoginAuthorizationURL 返回官方 App OAuth 登录地址。它供只负责浏览器
+// 交互的 adapter 复用；PKCE verifier 和 state 的生成、校验及 code exchange
+// 仍分别由调用方或 LoginSession 负责。
+func BuildLoginAuthorizationURL(challenge, state string) string {
+	return buildLoginAuthorizationURL(protocol.AppAPIBase, challenge, state)
+}
+
+// OAuthCallbackURLPrefix 返回官方 HTTPS callback 的可扫描 URL 前缀。浏览器
+// adapter 可据此定位候选 URL，但仍必须使用 IsOfficialOAuthCallbackURL 校验。
+func OAuthCallbackURLPrefix() string { return protocol.OAuthRedirectURI + "?" }
+
+// IsOfficialOAuthCallbackURL 判断 URL 是否为 Pixiv App OAuth 的官方 HTTPS
+// callback；它不解析或暴露 authorization code、state 等 query 内容。
+func IsOfficialOAuthCallbackURL(rawURL string) bool {
+	return isOfficialAppOAuthURL(rawURL, callbackPath())
+}
+
+// IsOfficialOAuthStartURL 判断 post-redirect 的 return_to 是否指向本次 App
+// OAuth start 路由。调用方仍需独立校验它携带的 PKCE challenge。
+func IsOfficialOAuthStartURL(rawURL string) bool {
+	return isOfficialAppOAuthURL(rawURL, protocol.AppOAuthStart)
+}
+
 // String、GoString 和 Format 均不暴露 URL、state 或 PKCE verifier；授权 URL
 // 只能通过 AuthorizationURL 这个显式能力取得。
 func (LoginSession) String() string   { return "pixiv.LoginSession{}" }
@@ -57,17 +80,41 @@ func (c *Client) StartLogin() (out *LoginSession, err error) {
 	if err != nil {
 		return nil, newError(CodeUpstreamUnavailable, OperationStartLogin, BackendOAuth, true, 0, 0, errors.New("cannot create oauth login session"))
 	}
+	return &LoginSession{state: &loginSessionState{
+		owner:            c,
+		authorizationURL: buildLoginAuthorizationURL(c.loginBaseURL(), challenge, state),
+		verifier:         verifier,
+		state:            state,
+	}}, nil
+}
+
+func buildLoginAuthorizationURL(baseURL, challenge, state string) string {
 	values := url.Values{}
 	values.Set("code_challenge", challenge)
 	values.Set("code_challenge_method", "S256")
 	values.Set("client", "pixiv-android")
 	values.Set("state", state)
-	return &LoginSession{state: &loginSessionState{
-		owner:            c,
-		authorizationURL: strings.TrimRight(c.loginBaseURL(), "/") + "/web/v1/login?" + values.Encode(),
-		verifier:         verifier,
-		state:            state,
-	}}, nil
+	return strings.TrimRight(baseURL, "/") + protocol.AppLogin + "?" + values.Encode()
+}
+
+func isOfficialAppOAuthURL(rawURL, expectedPath string) bool {
+	parsed, err := url.Parse(strings.TrimSpace(rawURL))
+	if err != nil {
+		return false
+	}
+	callback, err := url.Parse(protocol.OAuthRedirectURI)
+	if err != nil {
+		return false
+	}
+	return strings.EqualFold(parsed.Scheme, callback.Scheme) && strings.EqualFold(parsed.Host, callback.Host) && parsed.Path == expectedPath
+}
+
+func callbackPath() string {
+	callback, err := url.Parse(protocol.OAuthRedirectURI)
+	if err != nil {
+		return ""
+	}
+	return callback.Path
 }
 
 func (c *Client) loginBaseURL() string {
@@ -79,7 +126,7 @@ func (c *Client) loginBaseURL() string {
 		// direct custom AppAPIBaseURL is kept separately by NewClient below.
 		return c.appAPIBaseURL
 	}
-	return appapi.DefaultAPIBase
+	return protocol.AppAPIBase
 }
 
 // CompleteLogin 校验 callback/state，交换 authorization code 并安全保存账号。
@@ -159,5 +206,7 @@ func loginCallbackRequiresState(parsed *url.URL) bool {
 	if strings.EqualFold(parsed.Scheme, "pixiv") && strings.EqualFold(parsed.Host, "account") && parsed.Path == "/login" {
 		return false
 	}
-	return !(strings.EqualFold(parsed.Scheme, "https") && strings.EqualFold(parsed.Host, "app-api.pixiv.net") && parsed.Path == "/web/v1/users/auth/pixiv/callback")
+	// 与 OAuth client 共用 protocol 中的官方 callback，避免登录校验和实际
+	// authorization-code exchange 在上游地址调整时分叉。
+	return !IsOfficialOAuthCallbackURL(parsed.String())
 }

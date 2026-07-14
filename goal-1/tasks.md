@@ -60,10 +60,10 @@
 
 ## T05 — 集中协议 profile、endpoint catalog 与脱敏 adapter failure
 
-- 状态：未完成
-- 实际：
-- 证据：
-- 风险/下一步：
+- 状态：完成
+- 实际：新增纯内部 `internal/pixiv/protocol`，成为 App/Web/OAuth base、profile headers、OAuth 常量和 App/Web endpoint 的唯一维护点；appapi、webapi、oauth、resource、legacy aliases 与顶层登录 URL 均改为消费该 catalog。adapter 以不保存 body、URL、header、token、cookie 或 envelope message 的 `protocol.Failure` 交给 facade，公开 SDK 经单一 `mapAdapterFailure` 保持既有 typed error 字段和 context 语义。CLI 登录的实际打开 URL、callback state 例外、post-redirect return_to 与 Chromium history 扫描均经顶层 SDK 的 catalog-derived helpers，生产 CLI 不再硬编码 App OAuth host/path；legacy Source 的 Web resource error body 行为明确暂留 T12。
+- 证据：公开 SDK profile/failure tracer 覆盖 App HTTP body、Web envelope、OAuth body、普通 transport 脱敏、App/Web headers 与显式 base；Web `io.ReadAll` 失败已被归一为安全 transport failure。首次 tracer 因接手时 protocol 接线已存在而直接 GREEN，未伪造 RED；随后登录 URL helper 的 RED `go test ./pixiv -run TestBuildLoginAuthorizationURLUsesOfficialLoginRoute -count=1`（helper 未定义）及 OAuth helpers 的 RED `go test ./pixiv -run TestOfficialOAuthURLHelpersAcceptOnlyCatalogRoutes -count=1` 均在实现后 GREEN。`go test ./pixiv -count=1`、`go test ./internal/pixiv/... -count=1`、`go test ./internal/application ./internal/bootstrap ./internal/cli ./internal/mcpserver -count=1`、`go test ./... -count=1`、`git diff --check` 均通过；规格审查、P1 窄复审、质量审查和 P2 窄复审均 APPROVE。
+- 风险/下一步：未联网验证真实 Pixiv，真实六平台 Release CI 留待发布门禁；legacy `internal/pixiv.Source` 的 Web resource body 兼容语义仍待 T12 删除。下一任务 T06 扩展 User Detail 正规模型与 SDK contract。
 
 ## T06 — 扩展 User Detail 正规模型与 SDK contract
 

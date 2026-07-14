@@ -322,7 +322,7 @@ func TestClientUgoiraMetadataUsesWebShape(t *testing.T) {
 	assert.Equal(t, 80, meta.UgoiraMetadata.Frames[0].Delay)
 }
 
-func TestClientExposesWebHTTPErrorBody(t *testing.T) {
+func TestClientDoesNotExposeWebHTTPErrorBody(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "blocked", http.StatusForbidden)
 	}))
@@ -332,6 +332,6 @@ func TestClientExposesWebHTTPErrorBody(t *testing.T) {
 	_, err := client.IllustRanking(context.Background(), "day", "", 0)
 
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "pixiv web api error: status 403")
-	assert.Contains(t, err.Error(), "blocked")
+	assert.Contains(t, err.Error(), "status 403")
+	assert.NotContains(t, err.Error(), "blocked")
 }

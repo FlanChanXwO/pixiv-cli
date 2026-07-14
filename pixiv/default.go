@@ -199,18 +199,7 @@ func localSnapshotError(operation Operation, _ error) error {
 }
 
 func mapOAuthError(err error, operation Operation) error {
-	var upstream oauth.APIError
-	if errors.As(err, &upstream) {
-		code, retryable := codeForHTTPStatus(upstream.StatusCode, operation)
-		return newError(code, operation, BackendOAuth, retryable, upstream.StatusCode, 0, errors.New("oauth upstream rejected the request"))
-	}
-	if errors.Is(err, oauth.ErrMalformedResponse) {
-		return newError(CodeMalformedUpstreamResponse, operation, BackendOAuth, false, 0, 0, errors.New("oauth response was malformed"))
-	}
-	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-		return newError(CodeUpstreamUnavailable, operation, BackendOAuth, false, 0, 0, err)
-	}
-	return newError(CodeUpstreamUnavailable, operation, BackendOAuth, true, 0, 0, errors.New("oauth token refresh failed"))
+	return mapAdapterFailure(err, operation, BackendOAuth, 0, 0)
 }
 
 func formatUserID(id int64) string {

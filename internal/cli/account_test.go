@@ -27,6 +27,7 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/download"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv"
 	"github.com/FlanChanXwO/pixiv-cli/internal/storage/auth"
+	publicpixiv "github.com/FlanChanXwO/pixiv-cli/pixiv"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -575,8 +576,10 @@ func TestAccountLoginBrowserSuccessStillAcceptsTerminalPrompt(t *testing.T) {
 	defer restoreAppleScript()
 
 	opened := false
+	openedURL := ""
 	restoreOpen := setTestOpenBrowser(t, func(rawURL string) error {
 		opened = true
+		openedURL = rawURL
 		require.Contains(t, rawURL, "code_challenge=")
 		return nil
 	})
@@ -590,6 +593,9 @@ func TestAccountLoginBrowserSuccessStillAcceptsTerminalPrompt(t *testing.T) {
 
 	require.Equal(t, 0, code, stderr.String())
 	assert.True(t, opened)
+	parsedLoginURL, err := url.Parse(openedURL)
+	require.NoError(t, err)
+	assert.Equal(t, publicpixiv.BuildLoginAuthorizationURL(parsedLoginURL.Query().Get("code_challenge"), parsedLoginURL.Query().Get("state")), openedURL)
 	store, err := auth.LoadAuthStore(authPath)
 	require.NoError(t, err)
 	require.Len(t, store.Accounts, 1)

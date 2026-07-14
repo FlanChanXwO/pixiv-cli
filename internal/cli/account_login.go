@@ -24,6 +24,7 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/common/constants"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv"
 	"github.com/FlanChanXwO/pixiv-cli/internal/utils/files"
+	publicpixiv "github.com/FlanChanXwO/pixiv-cli/pixiv"
 	"github.com/pkg/browser"
 	"github.com/spf13/cobra"
 	"golang.org/x/net/websocket"
@@ -418,7 +419,7 @@ func loginURLRequiresState(parsed *url.URL) bool {
 	if strings.EqualFold(parsed.Scheme, "pixiv") && strings.EqualFold(parsed.Host, "account") && parsed.Path == "/login" {
 		return false
 	}
-	if strings.EqualFold(parsed.Scheme, "https") && strings.EqualFold(parsed.Host, "app-api.pixiv.net") && parsed.Path == "/web/v1/users/auth/pixiv/callback" {
+	if publicpixiv.IsOfficialOAuthCallbackURL(parsed.String()) {
 		return false
 	}
 	return true
@@ -440,12 +441,7 @@ func loginCodeFromValues(values url.Values, expectedState string, requireState b
 }
 
 func pixivLoginURL(challenge, state string) string {
-	values := url.Values{}
-	values.Set("code_challenge", challenge)
-	values.Set("code_challenge_method", "S256")
-	values.Set("client", "pixiv-android")
-	values.Set("state", state)
-	return pixiv.DefaultAPIBase + "/web/v1/login?" + values.Encode()
+	return publicpixiv.BuildLoginAuthorizationURL(challenge, state)
 }
 
 func pixivLoginChallenge(loginURL string) string {
@@ -1027,10 +1023,7 @@ func pixivPostRedirectReturnTo(rawURL string) (string, bool) {
 	if err != nil {
 		return "", false
 	}
-	if !strings.EqualFold(target.Scheme, "https") || !strings.EqualFold(target.Host, "app-api.pixiv.net") {
-		return "", false
-	}
-	if target.Path != "/web/v1/users/auth/pixiv/start" {
+	if !publicpixiv.IsOfficialOAuthStartURL(target.String()) {
 		return "", false
 	}
 	return returnTo, true
@@ -1119,7 +1112,7 @@ func chromiumStateFiles() []string {
 
 func callbackURLsFromBytes(body []byte) []string {
 	prefixes := [][]byte{
-		[]byte("https://app-api.pixiv.net/web/v1/users/auth/pixiv/callback?"),
+		[]byte(publicpixiv.OAuthCallbackURLPrefix()),
 		[]byte("pixiv://account/login?"),
 	}
 	seen := map[string]struct{}{}

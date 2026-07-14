@@ -13,19 +13,20 @@ import (
 	"time"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/model"
+	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/protocol"
 	"github.com/go-resty/resty/v2"
 )
 
 const (
-	DefaultAPIBase      = "https://app-api.pixiv.net"
-	DefaultUserAgent    = "PixivAndroidApp/5.0.234 (Android 11; Pixel 5)"
-	DefaultAppOS        = "android"
-	DefaultAppOSVersion = "11"
-	DefaultAppVersion   = "5.0.234"
+	DefaultAPIBase      = protocol.AppAPIBase
+	DefaultUserAgent    = protocol.AppUserAgent
+	DefaultAppOS        = protocol.AppOS
+	DefaultAppOSVersion = protocol.AppOSVersion
+	DefaultAppVersion   = protocol.AppVersion
 )
 
 // ErrMalformedResponse 标识成功 HTTP 响应无法构成约定 JSON，不包含原始响应体。
-var ErrMalformedResponse = errors.New("app api returned a malformed response")
+var ErrMalformedResponse = protocol.ErrMalformedResponse
 
 type Client struct {
 	restyClient *resty.Client
@@ -95,12 +96,12 @@ func (c *Client) SearchIllust(ctx context.Context, word, target, sort, duration 
 	q := url.Values{"word": {word}, "search_target": {target}, "sort": {sort}}
 	setOptional(q, "duration", duration)
 	setOffset(q, offset)
-	return c.getIllustList(ctx, "/v1/search/illust", q, "offset")
+	return c.getIllustList(ctx, protocol.AppSearchIllust, q, "offset")
 }
 
 func (c *Client) IllustDetail(ctx context.Context, id int64) (*model.IllustDetail, error) {
 	var raw illustDetailDTO
-	if err := c.getJSONWithRetry(ctx, "/v1/illust/detail", url.Values{"illust_id": {fmt.Sprint(id)}}, &raw); err != nil {
+	if err := c.getJSONWithRetry(ctx, protocol.AppIllustDetail, url.Values{"illust_id": {fmt.Sprint(id)}}, &raw); err != nil {
 		return nil, err
 	}
 	if raw.Illust == nil || raw.Illust.ID <= 0 {
@@ -113,25 +114,25 @@ func (c *Client) IllustDetail(ctx context.Context, id int64) (*model.IllustDetai
 func (c *Client) IllustRelated(ctx context.Context, id int64, offset int) (*model.IllustList, error) {
 	q := url.Values{"illust_id": {fmt.Sprint(id)}}
 	setOffset(q, offset)
-	return c.getIllustList(ctx, "/v2/illust/related", q, "offset")
+	return c.getIllustList(ctx, protocol.AppIllustRelated, q, "offset")
 }
 
 func (c *Client) IllustRanking(ctx context.Context, mode, date string, offset int) (*model.IllustList, error) {
 	q := url.Values{"mode": {mode}}
 	setOptional(q, "date", date)
 	setOffset(q, offset)
-	return c.getIllustList(ctx, "/v1/illust/ranking", q, "offset")
+	return c.getIllustList(ctx, protocol.AppIllustRanking, q, "offset")
 }
 
 func (c *Client) SearchUser(ctx context.Context, word string, offset int) (*model.UserPreviewList, error) {
 	q := url.Values{"word": {word}}
 	setOffset(q, offset)
-	return c.getUserPreviewList(ctx, "/v1/search/user", q)
+	return c.getUserPreviewList(ctx, protocol.AppSearchUser, q)
 }
 
 func (c *Client) UserDetail(ctx context.Context, userID int64) (*model.User, error) {
 	var raw userDetailDTO
-	if err := c.getJSONWithRetry(ctx, "/v1/user/detail", url.Values{"user_id": {fmt.Sprint(userID)}}, &raw); err != nil {
+	if err := c.getJSONWithRetry(ctx, protocol.AppUserDetail, url.Values{"user_id": {fmt.Sprint(userID)}}, &raw); err != nil {
 		return nil, err
 	}
 	if raw.User == nil || raw.User.ID <= 0 {
@@ -144,12 +145,12 @@ func (c *Client) UserDetail(ctx context.Context, userID int64) (*model.User, err
 func (c *Client) IllustRecommended(ctx context.Context, offset int) (*model.IllustList, error) {
 	q := url.Values{}
 	setOffset(q, offset)
-	return c.getIllustList(ctx, "/v1/illust/recommended", q, "offset")
+	return c.getIllustList(ctx, protocol.AppIllustRecommended, q, "offset")
 }
 
 func (c *Client) TrendingTagsIllust(ctx context.Context) (*model.TrendTags, error) {
 	var raw trendTagsDTO
-	if err := c.getJSONWithRetry(ctx, "/v1/trending-tags/illust", nil, &raw); err != nil {
+	if err := c.getJSONWithRetry(ctx, protocol.AppTrendingTagsIllust, nil, &raw); err != nil {
 		return nil, err
 	}
 	if !raw.TrendTags.Present || !raw.TrendTags.Valid {
@@ -167,14 +168,14 @@ func (c *Client) TrendingTagsIllust(ctx context.Context) (*model.TrendTags, erro
 func (c *Client) IllustFollow(ctx context.Context, restrict string, offset int) (*model.IllustList, error) {
 	q := url.Values{"restrict": {restrict}}
 	setOffset(q, offset)
-	return c.getIllustList(ctx, "/v2/illust/follow", q, "offset")
+	return c.getIllustList(ctx, protocol.AppIllustFollow, q, "offset")
 }
 
 // UserArtworks 返回用户作品的单个 App API 批次。
 func (c *Client) UserArtworks(ctx context.Context, userID int64, illustType string, offset int) (*model.IllustList, error) {
 	q := url.Values{"user_id": {fmt.Sprint(userID)}, "type": {illustType}}
 	setOffset(q, offset)
-	return c.getIllustList(ctx, "/v1/user/illusts", q, "offset")
+	return c.getIllustList(ctx, protocol.AppUserIllusts, q, "offset")
 }
 
 func (c *Client) UserBookmarks(ctx context.Context, userID int64, restrict, tag string, maxBookmarkID int64) (*model.IllustList, error) {
@@ -183,13 +184,13 @@ func (c *Client) UserBookmarks(ctx context.Context, userID int64, restrict, tag 
 	if maxBookmarkID > 0 {
 		q.Set("max_bookmark_id", fmt.Sprint(maxBookmarkID))
 	}
-	return c.getIllustList(ctx, "/v1/user/bookmarks/illust", q, "max_bookmark_id")
+	return c.getIllustList(ctx, protocol.AppUserBookmarks, q, "max_bookmark_id")
 }
 
 func (c *Client) UserFollowing(ctx context.Context, userID int64, restrict string, offset int) (*model.UserPreviewList, error) {
 	q := url.Values{"user_id": {fmt.Sprint(userID)}, "restrict": {restrict}}
 	setOffset(q, offset)
-	return c.getUserPreviewList(ctx, "/v1/user/following", q)
+	return c.getUserPreviewList(ctx, protocol.AppUserFollowing, q)
 }
 
 func (c *Client) getIllustList(ctx context.Context, path string, query url.Values, continuationKey string) (*model.IllustList, error) {
@@ -281,7 +282,7 @@ func continuationValue(rawURL, key string) (int64, error) {
 
 func (c *Client) UgoiraMetadata(ctx context.Context, id int64) (*model.UgoiraMetadataResult, error) {
 	var raw ugoiraMetadataResultDTO
-	if err := c.getJSONWithRetry(ctx, "/v1/ugoira/metadata", url.Values{"illust_id": {fmt.Sprint(id)}}, &raw); err != nil {
+	if err := c.getJSONWithRetry(ctx, protocol.AppUgoiraMetadata, url.Values{"illust_id": {fmt.Sprint(id)}}, &raw); err != nil {
 		return nil, err
 	}
 	metadata := raw.UgoiraMetadata.Value
@@ -321,7 +322,8 @@ func (c *Client) getJSONWithRetry(ctx context.Context, path string, query url.Va
 		return err
 	}
 	if refreshErr := c.session.Refresh(ctx); refreshErr != nil {
-		return fmt.Errorf("%w; token refresh failed: %v", err, refreshErr)
+		// 原始刷新失败可能携带 OAuth 传输细节；保留已脱敏的认证状态失败。
+		return err
 	}
 	return c.getJSON(ctx, path, query, out)
 }
@@ -339,22 +341,22 @@ func (c *Client) AddBookmark(ctx context.Context, illustID int64, restrict strin
 	for _, tag := range tags {
 		form.Add("tags[]", tag)
 	}
-	return c.postFormWithRetry(ctx, "/v2/illust/bookmark/add", form)
+	return c.postFormWithRetry(ctx, protocol.AppBookmarkAdd, form)
 }
 
 // RemoveBookmark 取消收藏作品。
 func (c *Client) RemoveBookmark(ctx context.Context, illustID int64) error {
-	return c.postFormWithRetry(ctx, "/v1/illust/bookmark/delete", url.Values{"illust_id": {fmt.Sprint(illustID)}})
+	return c.postFormWithRetry(ctx, protocol.AppBookmarkDelete, url.Values{"illust_id": {fmt.Sprint(illustID)}})
 }
 
 // FollowUser 关注用户。
 func (c *Client) FollowUser(ctx context.Context, userID int64, restrict string) error {
-	return c.postFormWithRetry(ctx, "/v1/user/follow/add", url.Values{"user_id": {fmt.Sprint(userID)}, "restrict": {restrict}})
+	return c.postFormWithRetry(ctx, protocol.AppFollowAdd, url.Values{"user_id": {fmt.Sprint(userID)}, "restrict": {restrict}})
 }
 
 // UnfollowUser 取消关注用户。
 func (c *Client) UnfollowUser(ctx context.Context, userID int64) error {
-	return c.postFormWithRetry(ctx, "/v1/user/follow/delete", url.Values{"user_id": {fmt.Sprint(userID)}})
+	return c.postFormWithRetry(ctx, protocol.AppFollowDelete, url.Values{"user_id": {fmt.Sprint(userID)}})
 }
 
 func (c *Client) postFormWithRetry(ctx context.Context, path string, form url.Values) error {
@@ -366,15 +368,15 @@ func (c *Client) postFormWithRetry(ctx context.Context, path string, form url.Va
 		return err
 	}
 	if refreshErr := c.session.Refresh(ctx); refreshErr != nil {
-		return fmt.Errorf("%w; token refresh failed: %v", err, refreshErr)
+		return err
 	}
 	return c.postForm(ctx, path, form)
 }
 
 // isAuthAPIResponse 仅识别明确的认证 HTTP 状态，避免响应正文中的词汇触发 mutation 重放。
 func isAuthAPIResponse(err error) bool {
-	var apiErr APIError
-	return errors.As(err, &apiErr) && (apiErr.StatusCode == http.StatusUnauthorized || apiErr.StatusCode == http.StatusForbidden)
+	var apiErr protocol.Failure
+	return errors.As(err, &apiErr) && apiErr.Kind == protocol.FailureHTTPStatus && (apiErr.StatusCode == http.StatusUnauthorized || apiErr.StatusCode == http.StatusForbidden)
 }
 
 func (c *Client) postForm(ctx context.Context, path string, form url.Values) error {
@@ -382,25 +384,15 @@ func (c *Client) postForm(ctx context.Context, path string, form url.Values) err
 }
 
 func (c *Client) apiHeaders() map[string]string {
-	headers := baseHeaders()
-	headers["Referer"] = "https://app-api.pixiv.net/"
 	token := ""
 	if c.session != nil {
 		token = c.session.AccessToken()
 	}
-	if token != "" {
-		headers["Authorization"] = "Bearer " + token
-	}
-	return headers
+	return protocol.AppHeaders(token)
 }
 
 func baseHeaders() map[string]string {
-	return map[string]string{
-		"User-Agent":     DefaultUserAgent,
-		"App-OS":         DefaultAppOS,
-		"App-OS-Version": DefaultAppOSVersion,
-		"App-Version":    DefaultAppVersion,
-	}
+	return protocol.AppHeaders("")
 }
 
 func (c *Client) doJSON(ctx context.Context, method, rawURL string, opts requestOptions, out any) error {
@@ -413,17 +405,17 @@ func (c *Client) doJSON(ctx context.Context, method, rawURL string, opts request
 	}
 	resp, err := req.Execute(method, rawURL)
 	if err != nil {
-		return err
+		return protocol.Transport(err)
 	}
 	body := resp.Body()
 	if resp.StatusCode() < 200 || resp.StatusCode() >= 300 {
-		return APIError{StatusCode: resp.StatusCode(), Body: string(body)}
+		return protocol.HTTPStatus(resp.StatusCode())
 	}
 	if len(bytes.TrimSpace(body)) == 0 {
-		return ErrMalformedResponse
+		return protocol.MalformedResponse()
 	}
 	if err := json.Unmarshal(body, out); err != nil {
-		return fmt.Errorf("%w: %v", ErrMalformedResponse, err)
+		return protocol.MalformedResponse()
 	}
 	return nil
 }
@@ -436,32 +428,23 @@ func (c *Client) doForm(ctx context.Context, method, rawURL string, opts request
 	}
 	resp, err := req.Execute(method, rawURL)
 	if err != nil {
-		return err
+		return protocol.Transport(err)
 	}
 	if resp.StatusCode() < 200 || resp.StatusCode() >= 300 {
-		return APIError{StatusCode: resp.StatusCode(), Body: string(resp.Body())}
+		return protocol.HTTPStatus(resp.StatusCode())
 	}
 	return nil
 }
 
-type APIError struct {
-	StatusCode int
-	Body       string
-}
-
-func (e APIError) Error() string {
-	if e.Body == "" {
-		return fmt.Sprintf("pixiv api error: status %d", e.StatusCode)
-	}
-	return fmt.Sprintf("pixiv api error: status %d: %s", e.StatusCode, e.Body)
-}
+// APIError 保留内部兼容名称；实际失败统一由 protocol.Failure 脱敏表示。
+type APIError = protocol.Failure
 
 func isAuthError(err error) bool {
 	if err == nil {
 		return false
 	}
-	var apiErr APIError
-	if errors.As(err, &apiErr) && (apiErr.StatusCode == http.StatusUnauthorized || apiErr.StatusCode == http.StatusForbidden) {
+	var apiErr protocol.Failure
+	if errors.As(err, &apiErr) && apiErr.Kind == protocol.FailureHTTPStatus && (apiErr.StatusCode == http.StatusUnauthorized || apiErr.StatusCode == http.StatusForbidden) {
 		return true
 	}
 	text := strings.ToLower(err.Error())

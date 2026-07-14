@@ -9,12 +9,14 @@ import (
 	"io"
 	"net/http"
 	"strings"
+
+	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/protocol"
 )
 
 const (
-	AppReferer   = "https://app-api.pixiv.net/"
-	AppUserAgent = "PixivAndroidApp/5.0.234 (Android 11; Pixel 5)"
-	WebUserAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36"
+	AppReferer   = protocol.AppReferer
+	AppUserAgent = protocol.AppUserAgent
+	WebUserAgent = protocol.WebUserAgent
 )
 
 type Client struct {
@@ -49,14 +51,12 @@ func NewApp(httpClient *http.Client) *Client {
 func NewWeb(httpClient *http.Client, webBase string) *Client {
 	base := strings.TrimRight(webBase, "/")
 	if base == "" {
-		base = "https://www.pixiv.net"
+		base = protocol.WebAPIBase
 	}
 	c := newClient(httpClient, base+"/", WebUserAgent)
 	c.includeErrorBody = true
-	c.headers = map[string]string{
-		"Accept":          "application/json,text/plain,*/*",
-		"Accept-Language": "zh-CN,zh;q=0.9,ja;q=0.8,en;q=0.7",
-	}
+	c.headers = protocol.WebHeaders()
+	delete(c.headers, "User-Agent")
 	return c
 }
 
@@ -98,7 +98,7 @@ func (c *Client) Open(ctx context.Context, request OpenRequest) (*Response, erro
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, request.URL, nil)
 	if err != nil {
-		return nil, err
+		return nil, protocol.Transport(err)
 	}
 	for key, values := range request.Header {
 		for _, value := range values {
@@ -136,7 +136,7 @@ func (c *Client) Open(ctx context.Context, request OpenRequest) (*Response, erro
 	}
 	resp, err := httpClient.Do(req)
 	if err != nil {
-		return nil, err
+		return nil, protocol.Transport(err)
 	}
 	return &Response{StatusCode: resp.StatusCode, Status: resp.Status, Header: resp.Header, Body: resp.Body}, nil
 }

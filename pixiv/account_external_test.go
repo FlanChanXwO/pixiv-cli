@@ -21,6 +21,41 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/pixiv"
 )
 
+func TestBuildLoginAuthorizationURLUsesOfficialLoginRoute(t *testing.T) {
+	t.Parallel()
+	rawURL := pixiv.BuildLoginAuthorizationURL("challenge/value", "state value")
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if parsed.Scheme != "https" || parsed.Host != "app-api.pixiv.net" || parsed.Path != "/web/v1/login" {
+		t.Fatalf("authorization url=%q", rawURL)
+	}
+	if parsed.Query().Get("code_challenge") != "challenge/value" || parsed.Query().Get("state") != "state value" || parsed.Query().Get("code_challenge_method") != "S256" || parsed.Query().Get("client") != "pixiv-android" {
+		t.Fatalf("authorization query=%v", parsed.Query())
+	}
+}
+
+func TestOfficialOAuthURLHelpersAcceptOnlyCatalogRoutes(t *testing.T) {
+	t.Parallel()
+	callback := "https://app-api.pixiv.net/web/v1/users/auth/pixiv/callback?code=callback-code"
+	if !pixiv.IsOfficialOAuthCallbackURL(callback) {
+		t.Fatal("official callback was rejected")
+	}
+	if pixiv.IsOfficialOAuthCallbackURL("https://example.test/web/v1/users/auth/pixiv/callback?code=callback-code") {
+		t.Fatal("foreign callback was accepted")
+	}
+	if pixiv.OAuthCallbackURLPrefix() != "https://app-api.pixiv.net/web/v1/users/auth/pixiv/callback?" {
+		t.Fatalf("callback prefix=%q", pixiv.OAuthCallbackURLPrefix())
+	}
+	if !pixiv.IsOfficialOAuthStartURL("https://app-api.pixiv.net/web/v1/users/auth/pixiv/start?code_challenge=challenge") {
+		t.Fatal("official start URL was rejected")
+	}
+	if pixiv.IsOfficialOAuthStartURL("https://app-api.pixiv.net/not-start?code_challenge=challenge") {
+		t.Fatal("foreign start URL was accepted")
+	}
+}
+
 func TestExplicitAccountStoreRefreshesRotatedTokenWithoutExposingIt(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()

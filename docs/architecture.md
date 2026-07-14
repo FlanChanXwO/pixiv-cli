@@ -114,10 +114,11 @@ Release 安装的失败语义仍是保护边界，而不是临时降级。
 
 调用方在自身 adapter 中定义 source mode、budget、filter、cursor 持久化和 HTTP presentation。本仓库不提供 HTTP Provider、Discover、Probe、Capabilities、RSS 或 crawler。
 
-### `internal/pixiv/appapi`、`webapi`、`oauth`、`resource`
+### `internal/pixiv/protocol`、`appapi`、`webapi`、`oauth`、`resource`
 
 内部协议包只由 facade 组合：
 
+- `protocol`：上游 base、profile header、endpoint catalog 与脱敏 adapter failure 的唯一来源；不读配置、不发请求，也不保存响应 body、URL、header 或凭据。
 - `appapi`：有凭据的 App content API 与 raw DTO/mapper。
 - `webapi`：匿名白名单读与明确 metadata enrichment；不接收 SDK Authorization/Cookie。
 - `oauth`：PKCE、code exchange、refresh 与 token state。

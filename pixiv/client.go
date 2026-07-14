@@ -15,6 +15,7 @@ import (
 	internalpixiv "github.com/FlanChanXwO/pixiv-cli/internal/pixiv"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/appapi"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/model"
+	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/protocol"
 	internalresource "github.com/FlanChanXwO/pixiv-cli/internal/pixiv/resource"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/webapi"
 )
@@ -248,50 +249,58 @@ func mapWebError(err error, operation Operation, illustID int64) error {
 	if errors.As(err, &pagesError) {
 		return mapWebError(errors.Unwrap(pagesError), OperationIllustPages, illustID)
 	}
-	var upstream webapi.APIError
-	if errors.As(err, &upstream) {
-		code, retryable := codeForHTTPStatus(upstream.StatusCode, operation)
-		return newError(
-			code,
-			operation,
-			BackendWebAPI,
-			retryable,
-			upstream.StatusCode,
-			illustID,
-			fmt.Errorf("upstream returned HTTP status %d", upstream.StatusCode),
-		)
-	}
-	if errors.Is(err, webapi.ErrMalformedResponse) {
-		return malformedError(operation, BackendWebAPI, illustID)
-	}
-	var envelope webapi.EnvelopeError
-	if errors.As(err, &envelope) {
-		if operation == OperationIllustDetail {
-			return newError(CodeArtworkUnavailable, operation, BackendWebAPI, false, 0, illustID, errors.New("artwork is unavailable from web api"))
-		}
-		return newError(CodeUpstreamError, operation, BackendWebAPI, true, 0, illustID, errors.New("web api rejected the request"))
-	}
-	return transportError(err, operation, BackendWebAPI, illustID)
+	return mapAdapterFailure(err, operation, BackendWebAPI, illustID, 0)
 }
 
 func mapAppError(err error, operation Operation, illustID int64) error {
-	var upstream appapi.APIError
-	if errors.As(err, &upstream) {
-		code, retryable := codeForHTTPStatus(upstream.StatusCode, operation)
-		return newError(
-			code,
-			operation,
-			BackendAppAPI,
-			retryable,
-			upstream.StatusCode,
-			illustID,
-			fmt.Errorf("upstream returned HTTP status %d", upstream.StatusCode),
-		)
+	return mapAdapterFailure(err, operation, BackendAppAPI, illustID, 0)
+}
+
+// mapAdapterFailure 是公开 SDK 接收 adapter 失败的唯一映射点。adapter 只交付
+// protocol.Failure；未知错误也按 transport 处理，因此原始 URL/body/凭据不会进入
+// *Error 的 Error 或 Unwrap。
+func mapAdapterFailure(err error, operation Operation, backend Backend, illustID, userID int64) error {
+	code, retryable, status := CodeUpstreamUnavailable, true, 0
+	cause := error(errors.New("upstream transport failed"))
+	var failure protocol.Failure
+	if errors.As(err, &failure) {
+		switch failure.Kind {
+		case protocol.FailureHTTPStatus:
+			code, retryable = codeForHTTPStatus(failure.StatusCode, operation)
+			status = failure.StatusCode
+			cause = fmt.Errorf("upstream returned HTTP status %d", failure.StatusCode)
+		case protocol.FailureMalformed:
+			code, retryable = CodeMalformedUpstreamResponse, false
+			cause = errors.New("upstream response was malformed")
+		case protocol.FailureRejected:
+			code, retryable = CodeUpstreamError, true
+			cause = errors.New("upstream rejected the request")
+			if backend == BackendWebAPI && operation == OperationIllustDetail {
+				code, retryable = CodeArtworkUnavailable, false
+				cause = errors.New("artwork is unavailable from web api")
+			}
+		case protocol.FailureForbidden:
+			code, retryable = CodeForbidden, false
+			cause = errors.New("request was forbidden by policy")
+		case protocol.FailureTransport:
+			if errors.Is(failure, context.Canceled) {
+				retryable, cause = false, context.Canceled
+			} else if errors.Is(failure, context.DeadlineExceeded) {
+				retryable, cause = false, context.DeadlineExceeded
+			}
+		}
+	} else if errors.Is(err, protocol.ErrMalformedResponse) {
+		code, retryable = CodeMalformedUpstreamResponse, false
+		cause = errors.New("upstream response was malformed")
+	} else if errors.Is(err, context.Canceled) {
+		retryable, cause = false, context.Canceled
+	} else if errors.Is(err, context.DeadlineExceeded) {
+		retryable, cause = false, context.DeadlineExceeded
 	}
-	if errors.Is(err, appapi.ErrMalformedResponse) {
-		return malformedError(operation, BackendAppAPI, illustID)
+	if userID > 0 {
+		return newUserError(code, operation, backend, retryable, status, userID, cause)
 	}
-	return transportError(err, operation, BackendAppAPI, illustID)
+	return newError(code, operation, backend, retryable, status, illustID, cause)
 }
 
 func malformedError(operation Operation, backend Backend, illustID int64) error {

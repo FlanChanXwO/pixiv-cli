@@ -7,19 +7,20 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/appapi"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/model"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/oauth"
+	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/protocol"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/resource"
 )
 
 const (
-	DefaultAPIBase           = appapi.DefaultAPIBase
-	DefaultOAuthBase         = oauth.DefaultBase
-	DefaultOAuthClientID     = oauth.DefaultClientID
-	DefaultOAuthClientSecret = oauth.DefaultClientSecret
-	DefaultOAuthRedirectURI  = oauth.DefaultRedirectURI
-	DefaultUserAgent         = appapi.DefaultUserAgent
-	DefaultAppOS             = appapi.DefaultAppOS
-	DefaultAppOSVersion      = appapi.DefaultAppOSVersion
-	DefaultAppVersion        = appapi.DefaultAppVersion
+	DefaultAPIBase           = protocol.AppAPIBase
+	DefaultOAuthBase         = protocol.OAuthBase
+	DefaultOAuthClientID     = protocol.OAuthClientID
+	DefaultOAuthClientSecret = protocol.OAuthClientSecret
+	DefaultOAuthRedirectURI  = protocol.OAuthRedirectURI
+	DefaultUserAgent         = protocol.AppUserAgent
+	DefaultAppOS             = protocol.AppOS
+	DefaultAppOSVersion      = protocol.AppOSVersion
+	DefaultAppVersion        = protocol.AppVersion
 )
 
 type (

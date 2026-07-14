@@ -9,28 +9,28 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/protocol"
 	"github.com/FlanChanXwO/pixiv-cli/internal/utils"
 	"github.com/go-resty/resty/v2"
 )
 
 const (
-	DefaultBase         = "https://oauth.secure.pixiv.net"
-	DefaultClientID     = "MOBrBDS8blbauoSck0ZfDbtuzpyT"
-	DefaultClientSecret = "lsACyCD94FhDUtGTXi3QzcFE2uU1hqtDaKeqrdwj"
-	DefaultRedirectURI  = "https://app-api.pixiv.net/web/v1/users/auth/pixiv/callback"
-	defaultUserAgent    = "PixivAndroidApp/5.0.234 (Android 11; Pixel 5)"
+	DefaultBase         = protocol.OAuthBase
+	DefaultClientID     = protocol.OAuthClientID
+	DefaultClientSecret = protocol.OAuthClientSecret
+	DefaultRedirectURI  = protocol.OAuthRedirectURI
+	defaultUserAgent    = protocol.AppUserAgent
 )
 
 // ErrMalformedResponse 标识 OAuth 成功状态码却未提供可用 token payload。
 // 它不携带原始响应体。
-var ErrMalformedResponse = errors.New("pixiv oauth returned a malformed response")
+var ErrMalformedResponse = protocol.ErrMalformedResponse
 
 type Client struct {
 	restyClient  *resty.Client
@@ -44,11 +44,7 @@ type Client struct {
 
 // APIError 是 OAuth 上游状态错误。它故意不保留响应体，避免调用方把
 // OAuth 诊断内容（其中可能含 token 或 code）写入日志。
-type APIError struct{ StatusCode int }
-
-func (e APIError) Error() string {
-	return fmt.Sprintf("pixiv oauth exchange failed: status %d", e.StatusCode)
-}
+type APIError = protocol.Failure
 
 type Option func(*Client)
 
@@ -119,7 +115,7 @@ func (c *Client) Refresh(ctx context.Context) error {
 	}
 	token := tokenFromResponse(result)
 	if token.AccessToken == "" {
-		return fmt.Errorf("%w: missing access token", ErrMalformedResponse)
+		return protocol.MalformedResponse()
 	}
 	c.store(token)
 	return nil
@@ -169,26 +165,26 @@ func (c *Client) ExchangeAuthorizationCode(ctx context.Context, code, verifier s
 	}
 	token := tokenFromResponse(result)
 	if token.RefreshToken == "" {
-		return AuthCodeToken{}, fmt.Errorf("%w: missing refresh token", ErrMalformedResponse)
+		return AuthCodeToken{}, protocol.MalformedResponse()
 	}
 	c.store(token)
 	return token, nil
 }
 
 func (c *Client) exchange(ctx context.Context, form map[string]string) (authResponse, error) {
-	resp, err := c.restyClient.R().SetContext(ctx).SetHeaders(oauthHeaders()).SetFormData(form).Post(c.baseURL + "/auth/token")
+	resp, err := c.restyClient.R().SetContext(ctx).SetHeaders(oauthHeaders()).SetFormData(form).Post(c.baseURL + protocol.OAuthToken)
 	if err != nil {
-		return authResponse{}, err
+		return authResponse{}, protocol.Transport(err)
 	}
 	if resp.StatusCode() < 200 || resp.StatusCode() >= 300 {
-		return authResponse{}, APIError{StatusCode: resp.StatusCode()}
+		return authResponse{}, protocol.HTTPStatus(resp.StatusCode())
 	}
 	if len(bytes.TrimSpace(resp.Body())) == 0 {
-		return authResponse{}, fmt.Errorf("%w: empty response", ErrMalformedResponse)
+		return authResponse{}, protocol.MalformedResponse()
 	}
 	var result authResponse
 	if err := json.Unmarshal(resp.Body(), &result); err != nil {
-		return authResponse{}, fmt.Errorf("%w: invalid JSON", ErrMalformedResponse)
+		return authResponse{}, protocol.MalformedResponse()
 	}
 	return result, nil
 }
@@ -204,10 +200,7 @@ func (c *Client) store(token AuthCodeToken) {
 }
 
 func oauthHeaders() map[string]string {
-	return map[string]string{
-		"User-Agent": defaultUserAgent, "App-OS": "android", "App-OS-Version": "11",
-		"App-Version": "5.0.234", "Content-Type": "application/x-www-form-urlencoded",
-	}
+	return protocol.OAuthHeaders()
 }
 
 type authResponse struct {

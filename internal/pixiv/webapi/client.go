@@ -15,31 +15,23 @@ import (
 	"time"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/model"
+	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/protocol"
 	"github.com/FlanChanXwO/pixiv-cli/internal/utils/text"
 )
 
 const (
-	DefaultWebBase = "https://www.pixiv.net"
-	defaultUA      = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36"
+	DefaultWebBase = protocol.WebAPIBase
+	defaultUA      = protocol.WebUserAgent
 )
 
 // ErrMalformedResponse 标识成功 HTTP 响应无法构成约定 JSON，不包含原始响应体。
-var ErrMalformedResponse = errors.New("web api returned a malformed response")
+var ErrMalformedResponse = protocol.ErrMalformedResponse
 
 // ErrUnrepresentablePagination 标识 cursor offset 无法安全换算为 Web 页码和下一页边界。
 var ErrUnrepresentablePagination = errors.New("web api pagination cannot represent cursor offset")
 
-// EnvelopeError 表示 Web ajax envelope 主动报告失败。
-type EnvelopeError struct {
-	Message string
-}
-
-func (e EnvelopeError) Error() string {
-	if e.Message == "" {
-		return "pixiv web api envelope error"
-	}
-	return fmt.Sprintf("pixiv web api envelope error: %s", e.Message)
-}
+// EnvelopeError 保留内部兼容名称；message 不得越过 Web adapter。
+type EnvelopeError = protocol.Failure
 
 // IllustPagesError 保留匿名详情流程中 pages 子阶段，供 facade 精确标注 operation。
 type IllustPagesError struct {
@@ -103,7 +95,7 @@ func (c *Client) SearchIllust(ctx context.Context, word, target, sort, duration 
 		return nil, err
 	}
 	var out ajaxEnvelope[webSearchBody]
-	if err := c.getJSON(ctx, "/ajax/search/artworks/"+url.PathEscape(word), q, &out); err != nil {
+	if err := c.getJSON(ctx, protocol.WebSearchArtworks(word), q, &out); err != nil {
 		return nil, err
 	}
 	if out.Error {
@@ -138,7 +130,7 @@ func (c *Client) SearchIllust(ctx context.Context, word, target, sort, duration 
 
 func (c *Client) IllustDetail(ctx context.Context, id int64) (*model.IllustDetail, error) {
 	var detail ajaxEnvelope[webIllustDetail]
-	if err := c.getJSON(ctx, fmt.Sprintf("/ajax/illust/%d", id), url.Values{"lang": {"zh"}}, &detail); err != nil {
+	if err := c.getJSON(ctx, protocol.WebIllustDetail(id), url.Values{"lang": {"zh"}}, &detail); err != nil {
 		return nil, err
 	}
 	if detail.Error {
@@ -157,7 +149,7 @@ func (c *Client) IllustDetail(ctx context.Context, id int64) (*model.IllustDetai
 
 func (c *Client) IllustPages(ctx context.Context, id int64) ([]model.MetaPage, error) {
 	var out ajaxEnvelope[[]webPage]
-	if err := c.getJSON(ctx, fmt.Sprintf("/ajax/illust/%d/pages", id), url.Values{"lang": {"zh"}}, &out); err != nil {
+	if err := c.getJSON(ctx, protocol.WebIllustPages(id), url.Values{"lang": {"zh"}}, &out); err != nil {
 		return nil, err
 	}
 	if out.Error {
@@ -193,7 +185,7 @@ func (c *Client) IllustRanking(ctx context.Context, mode, date string, offset in
 		q.Set("date", strings.ReplaceAll(date, "-", ""))
 	}
 	var out webRankingResponse
-	if err := c.getJSON(ctx, "/ranking.php", q, &out); err != nil {
+	if err := c.getJSON(ctx, protocol.WebRanking, q, &out); err != nil {
 		return nil, err
 	}
 	if !out.Contents.Present || !out.Contents.Valid {
@@ -244,7 +236,7 @@ func (c *Client) SearchUser(ctx context.Context, word string, offset int) (*mode
 
 func (c *Client) UgoiraMetadata(ctx context.Context, id int64) (*model.UgoiraMetadataResult, error) {
 	var out ajaxEnvelope[webUgoiraMeta]
-	if err := c.getJSON(ctx, fmt.Sprintf("/ajax/illust/%d/ugoira_meta", id), url.Values{"lang": {"zh"}}, &out); err != nil {
+	if err := c.getJSON(ctx, protocol.WebUgoiraMetadata(id), url.Values{"lang": {"zh"}}, &out); err != nil {
 		return nil, err
 	}
 	if out.Error {
@@ -272,30 +264,32 @@ func (c *Client) UgoiraMetadata(ctx context.Context, id int64) (*model.UgoiraMet
 func (c *Client) getJSON(ctx context.Context, path string, query url.Values, out any) error {
 	rawURL, err := c.webURL(path, query)
 	if err != nil {
-		return err
+		return protocol.Transport(err)
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
 	if err != nil {
-		return err
+		return protocol.Transport(err)
 	}
 	c.setHeaders(req)
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return err
+		return protocol.Transport(err)
 	}
 	defer resp.Body.Close()
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return err
+		// reader 失败可能来自底层 transport；不能让其 URL 或代理诊断跨越
+		// Web adapter，统一转换为 protocol 的脱敏失败。
+		return protocol.Transport(err)
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return APIError{StatusCode: resp.StatusCode, Body: string(body)}
+		return protocol.HTTPStatus(resp.StatusCode)
 	}
 	if len(bytes.TrimSpace(body)) == 0 {
-		return ErrMalformedResponse
+		return protocol.MalformedResponse()
 	}
 	if err := json.Unmarshal(body, out); err != nil {
-		return fmt.Errorf("%w: %v", ErrMalformedResponse, err)
+		return protocol.MalformedResponse()
 	}
 	return nil
 }
@@ -317,25 +311,18 @@ func (c *Client) webURL(path string, query url.Values) (string, error) {
 }
 
 func (c *Client) setHeaders(req *http.Request) {
-	req.Header.Set("User-Agent", c.userAgent)
-	req.Header.Set("Accept", "application/json,text/plain,*/*")
-	req.Header.Set("Accept-Language", "zh-CN,zh;q=0.9,ja;q=0.8,en;q=0.7")
-}
-
-type APIError struct {
-	StatusCode int
-	Body       string
-}
-
-func (e APIError) Error() string {
-	if e.Body == "" {
-		return fmt.Sprintf("pixiv web api error: status %d", e.StatusCode)
+	for key, value := range protocol.WebHeaders() {
+		if key == "User-Agent" && c.userAgent != "" {
+			value = c.userAgent
+		}
+		req.Header.Set(key, value)
 	}
-	return fmt.Sprintf("pixiv web api error: status %d: %s", e.StatusCode, e.Body)
 }
 
-func webEnvelopeError(message string) error {
-	return EnvelopeError{Message: message}
+type APIError = protocol.Failure
+
+func webEnvelopeError(string) error {
+	return protocol.UpstreamRejected()
 }
 
 type webPagination struct {
