@@ -18,10 +18,10 @@
 
 ## T03 — 审查 recovery 修改并 dispatch/验收 v0.2.0 Release
 
-- 状态：待修复
-- 实际：recovery PR #4 与 overlay 修复 PR #5 已合并至 main；T03b 对齐 Environment 后，run `29307406643` 完成并成功公开 v0.2.0 Release、四平台验证 Homebrew formula 与 tap 部署。发布产物、tag 与公式均已验收，但实际 CLI `update --check --json` 仍被 GitHub API 403 拒绝。
-- 证据：`29304765177` 失败由 17/4 overlay 差异引起，已由 T03a 修复；`29306391898` 的 publish job 由 Environment branch policy 拒绝，已由 T03b 修复。`29307406643` 的 validate、六个 build、六个 build_production、release publish、四个 Homebrew verify 与 tap deploy 均为 success；Release `v0.2.0` 为非 draft/non-prerelease，含六平台 archive 与 `checksums.{txt,json}`，tag commit 仍为 `329711121588d9f054fb3d15540bb0fd6c134e42`。`homebrew-tap` 的 `Formula/pixiv-cli.rb` version/URL/SHA 与 Release 对齐，commit `710f997`。但以 v0.2.0 buildinfo 运行 `pixiv update --check --json` 得 `GitHub Releases ... HTTP 403 Forbidden`；同端点带 User-Agent curl 返回 HTTP 200、匿名配额剩余 57，且 `internal/update/releases.go` 的请求仅设 ETag，未设 User-Agent。
-- 风险/下一步：新增 T03c，补齐 GitHub Releases 请求 User-Agent 的聚焦回归与实现；修复后需要完整 CI 和对已发布 v0.2.0 的 update-check 兼容性策略评估，不能重写 immutable tag 或 Release。
+- 状态：完成
+- 实际：recovery PR #4、overlay 修复 PR #5 与 update compatibility PR #6 已合并至 main。经过 protected Environment 的两次记录审核后，run `29307406643` 成功发布 v0.2.0、四平台验证并部署 Homebrew formula；User-Agent 修复经 PR #6 的 quality/六平台 CI 合并，为 v0.3.0 分发准备。
+- 证据：run `29307406643` 的 validate、六个 build、六个 build_production、trust、publish、formula render、四个 Homebrew verify、tap deploy 全部 success；Release `v0.2.0` 为非 draft/non-prerelease，含六平台 archive 与 `checksums.{txt,json}`，tag commit 仍为 `329711121588d9f054fb3d15540bb0fd6c134e42`。`homebrew-tap` formula version/URL/SHA 与 Release 对齐（commit `710f997`）。PR #6（merge `73a4d5d`）的 quality 和六平台 smoke 全绿，且 `3b46b9f` 是 origin/main 祖先；隔离 HOME/cache 的正式 v0.2.0 buildinfo 连续两次 update check 返回 latest v0.2.0/no update。
+- 风险/下一步：v0.2.0 binary/tag 不可重写，故其既有下载资产不会包含之后的 User-Agent 源码修复；该修复已在 main，必须由 v0.3.0 签名 Release 对外分发。下一任务 C01 对恢复链路、tag 不变性、文档与外部发布证据作集中审计。
 
 ## T03a — 收敛 recovery overlay 至实际最小审计差异并复验 policy
 
