@@ -39,10 +39,10 @@
 
 ## T03c — 修复 GitHub Releases update check 的 User-Agent 兼容性
 
-- 状态：未完成
-- 实际：
-- 证据：
-- 风险/下一步：
+- 状态：完成
+- 实际：给 GitHub Releases 每个分页请求加入固定、非敏感 `User-Agent: pixiv-cli`，保持 ETag、缓存、分页、proxy、timeout、错误和 fallback 语义不变；新增经公开 `GitHubReleaseClient.Check` 的首页/next-page 回归，并更新 Unreleased changelog。
+- 证据：提交 `3b46b9f`；TDD RED 显示默认 Go User-Agent/403，GREEN `go test ./internal/update -run '^TestGitHubReleaseClientUsesStableUserAgentForEveryReleasePage$' -count=1`、`go test ./internal/update -count=1`、`go test ./internal/cli -count=1`、`go test ./...`、pre-commit 和 diff check 全通过；规格与质量审查批准。将正式 v0.2.0 buildinfo 编入临时 binary，在隔离 HOME/cache 下连续两次 `pixiv update --check --json` 均返回 source release、latest `v0.2.0`、`update_available=false`，第二次覆盖 ETag cache 重验证。
+- 风险/下一步：不可变 v0.2.0 资产不包含该源码修复；必须把修复经 PR CI 合并，使后续 v0.3.0 包含。T03 的 release/Homebrew/tag 已完成，更新修复的公开分发留待 v0.3.0 Release。
 
 ## C01 — 集中检查：恢复链路、tag 不变性、文档与外部发布证据
 
