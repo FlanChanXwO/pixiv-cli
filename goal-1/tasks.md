@@ -88,10 +88,10 @@
 
 ## T08 — 新增 MCP user_detail、更新 tool skill 与文档
 
-- 状态：未完成
-- 实际：
-- 证据：
-- 风险/下一步：
+- 状态：完成
+- 实际：注册 MCP `user_detail`，只接受必填正整数 `user_id`；handler 经一次 `openSDKOperation` 后只调用公开 `SDKClient.UserDetail`，成功 structured output 直接使用完整未裁剪的 `UserDetailResult`。认证/配置、typed SDK 和 nil result 失败均返回安全文本与 `isError=true`，不走 legacy Source 或匿名 Web fallback。同步 README、MCP tools 文档和 Unreleased。
+- 证据：TDD RED `go test ./internal/mcpserver -run '^TestSDKUserDetailReturnsStructuredSDKResult$' -count=1` 在基线报告 `unknown tool \"user_detail\"`，GREEN 后测试覆盖完整四区段、SDK request、一次 operation；增量覆盖零/负/缺失/类型错误均不打开 SDK、typed SDK 失败和无 SDK 配置。`go test ./internal/mcpserver -count=1`、`go test ./internal/application ./internal/bootstrap ./internal/cli -count=1`、`go test ./pixiv -count=1`、`go test ./... -count=1`、`gofmt -d` 与 `git diff --check` 均通过；规格审查和质量审查均 APPROVE。
+- 风险/下一步：默认测试不访问真实 Pixiv；真实 App API 兼容性留待 T14 opt-in canary。下一任务 T09 扩展小说、作者、漫画三类推荐 SDK 与稳定模型。
 
 ## T09 — 新增小说/作者/漫画推荐 SDK 与稳定模型
 

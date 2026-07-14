@@ -277,6 +277,39 @@ func resolveSDKUser(ctx context.Context, app *App, userID int64) (application.SD
 	return app.currentSDKUser(ctx)
 }
 
+// userDetailIn 只接受明确指定的目标用户，避免把请求误解析为当前认证账号。
+type userDetailIn struct {
+	UserID int64 `json:"user_id" jsonschema:"required positive Pixiv user ID"`
+}
+
+// userDetail 直接返回稳定的公开 SDK envelope；MCP 不重新映射或裁剪详情字段。
+func (a *App) userDetail(ctx context.Context, _ *mcp.CallToolRequest, in userDetailIn) (*mcp.CallToolResult, sdk.UserDetailResult, error) {
+	if in.UserID <= 0 {
+		return a.userDetailError(ctx, fmt.Errorf("user_id must be a positive integer"))
+	}
+	client, release, err := a.openSDKOperation(ctx)
+	if err != nil {
+		return a.userDetailError(ctx, err)
+	}
+	defer release()
+	result, err := client.UserDetail(ctx, sdk.UserDetailRequest{UserID: in.UserID})
+	if err != nil {
+		return a.userDetailError(ctx, err)
+	}
+	if result == nil {
+		return a.userDetailError(ctx, errors.New("pixiv sdk returned an empty user detail result"))
+	}
+	return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("已获取用户 %d 的详情。", in.UserID)}}}, *result, nil
+}
+
+func (a *App) userDetailError(ctx context.Context, err error) (*mcp.CallToolResult, sdk.UserDetailResult, error) {
+	recordToolError(ctx, err)
+	return &mcp.CallToolResult{
+		IsError: true,
+		Content: []mcp.Content{&mcp.TextContent{Text: "错误: " + err.Error()}},
+	}, sdk.UserDetailResult{}, nil
+}
+
 type userArtworksIn struct {
 	UserID int64          `json:"user_id,omitempty" jsonschema:"optional user ID; defaults to the authenticated user"`
 	Type   sdk.IllustType `json:"type,omitempty" jsonschema:"illust, manga, or ugoira"`

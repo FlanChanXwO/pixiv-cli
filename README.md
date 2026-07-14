@@ -394,8 +394,10 @@ MCP tools：
 `set_download_path`, `download`, `refresh_token`, `set_refresh_token`,
 `download_random_from_recommendation`, `search_illust`, `illust_detail`,
 `illust_related`, `illust_ranking`, `search_user`, `illust_recommended`,
-`trending_tags_illust`, `illust_follow`, `user_bookmarks`, `user_following`,
+`trending_tags_illust`, `illust_follow`, `user_detail`, `user_bookmarks`, `user_following`,
 and `get_thumbnail_base64`.
+
+`user_detail` 接受必填的 `user_id`，返回完整稳定的用户详情 structured output；它需要认证，不支持匿名 Web fallback。各 MCP tool 的参数与返回语义见 [MCP 工具](docs/mcp-tools.md)。
 
 ## 开发验证
 

@@ -13,6 +13,7 @@
 
 ### Added
 
+- MCP 新增 `user_detail`，以必填 `user_id` 返回完整稳定的用户详情 structured output。
 - 新增 `pixiv user detail USER_ID`；可用 `--json` 输出完整、稳定的用户详情 SDK envelope。
 - `pixiv search` 新增 `--rating`、`--type` 与 `--ai-type` 本地结果过滤；带 `--limit`/`--page` 时会按匹配结果继续读取 opaque cursor。
 

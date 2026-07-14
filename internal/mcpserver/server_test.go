@@ -14,6 +14,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"sync"
@@ -553,6 +554,104 @@ func TestSDKUserToolsResolveIdentityKeepLegacyInputAndReturnStructuredOutput(t *
 	}
 }
 
+func TestSDKUserDetailReturnsStructuredSDKResult(t *testing.T) {
+	webpage := "https://example.test/artist"
+	workspaceImage := "https://example.test/workspace.png"
+	want := &sdk.UserDetailResult{
+		User:             sdk.User{ID: 42, Name: "artist", Account: "artist_account", Comment: "hello"},
+		Profile:          sdk.Profile{Webpage: &webpage, Region: "Tokyo", CountryCode: "JP", Job: "illustrator", TotalIllusts: 10, TotalManga: 2, TotalNovels: 3, TotalFollowUsers: 4},
+		ProfilePublicity: sdk.ProfilePublicity{Gender: true, Region: true, BirthDay: true, BirthYear: true, Job: true, Pawoo: true},
+		Workspace:        sdk.Workspace{PC: "desktop", Tool: "pen", WorkspaceImageURL: &workspaceImage},
+	}
+	client := &fakeSDKClient{userDetailResult: want}
+	openCalls := 0
+	service := application.SDKService{NewClient: func(application.SDKClientRequest) (application.SDKClient, error) {
+		openCalls++
+		return client, nil
+	}}
+	session, closeSession := newSDKTestSessionWithService(t, &fakeAPI{}, service)
+	defer closeSession()
+
+	result := callTool(t, session, "user_detail", map[string]any{"user_id": 42})
+	if result.IsError {
+		t.Fatalf("user_detail returned error: %+v", result)
+	}
+	if len(result.Content) != 1 {
+		t.Fatalf("user_detail text content = %+v", result.Content)
+	}
+	text, ok := result.Content[0].(*mcp.TextContent)
+	if !ok || !strings.Contains(text.Text, "用户 42") {
+		t.Fatalf("user_detail text content = %+v", result.Content)
+	}
+	var out sdk.UserDetailResult
+	decodeStructured(t, result, &out)
+	if !reflect.DeepEqual(out, *want) || client.userDetailRequest != (sdk.UserDetailRequest{UserID: 42}) || openCalls != 1 {
+		t.Fatalf("user_detail output=%+v request=%+v open calls=%d", out, client.userDetailRequest, openCalls)
+	}
+}
+
+func TestSDKUserDetailRejectsInvalidInputAndReturnsSDKFailuresAsMCPError(t *testing.T) {
+	for _, input := range []map[string]any{{"user_id": 0}, {"user_id": -1}} {
+		openCalls := 0
+		service := application.SDKService{NewClient: func(application.SDKClientRequest) (application.SDKClient, error) {
+			openCalls++
+			return &fakeSDKClient{}, nil
+		}}
+		session, closeSession := newSDKTestSessionWithService(t, &fakeAPI{}, service)
+		result := callTool(t, session, "user_detail", input)
+		closeSession()
+		if !result.IsError || openCalls != 0 {
+			t.Fatalf("input=%v result=%+v open calls=%d", input, result, openCalls)
+		}
+	}
+	for _, input := range []map[string]any{{}, {"user_id": "not-an-integer"}} {
+		openCalls := 0
+		service := application.SDKService{NewClient: func(application.SDKClientRequest) (application.SDKClient, error) {
+			openCalls++
+			return &fakeSDKClient{}, nil
+		}}
+		session, closeSession := newSDKTestSessionWithService(t, &fakeAPI{}, service)
+		_, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: "user_detail", Arguments: input})
+		closeSession()
+		if err == nil || openCalls != 0 {
+			t.Fatalf("input=%v error=%v open calls=%d", input, err, openCalls)
+		}
+	}
+
+	typed := &sdk.Error{Code: sdk.CodeMalformedUpstreamResponse, Operation: sdk.OperationUserDetail, Backend: sdk.BackendAppAPI, UserID: 42}
+	session, closeSession := newSDKTestSession(t, &fakeSDKClient{userDetailErr: typed})
+	defer closeSession()
+	result := callTool(t, session, "user_detail", map[string]any{"user_id": 42})
+	if !result.IsError || len(result.Content) != 1 {
+		t.Fatalf("typed SDK failure result=%+v", result)
+	}
+	text, ok := result.Content[0].(*mcp.TextContent)
+	if !ok || !strings.Contains(text.Text, typed.Error()) {
+		t.Fatalf("typed SDK failure content=%+v", result.Content)
+	}
+	var typedOut sdk.UserDetailResult
+	decodeStructured(t, result, &typedOut)
+	if typedOut != (sdk.UserDetailResult{}) {
+		t.Fatalf("typed SDK failure structured output=%+v", typedOut)
+	}
+
+	legacySession, closeLegacySession := newTestSession(t, &fakeDownloads{})
+	defer closeLegacySession()
+	result = callTool(t, legacySession, "user_detail", map[string]any{"user_id": 42})
+	if !result.IsError || len(result.Content) != 1 {
+		t.Fatalf("unconfigured SDK result=%+v", result)
+	}
+	text, ok = result.Content[0].(*mcp.TextContent)
+	if !ok || !strings.Contains(text.Text, "pixiv sdk is not configured") {
+		t.Fatalf("unconfigured SDK content=%+v", result.Content)
+	}
+	var unconfiguredOut sdk.UserDetailResult
+	decodeStructured(t, result, &unconfiguredOut)
+	if unconfiguredOut != (sdk.UserDetailResult{}) {
+		t.Fatalf("unconfigured SDK structured output=%+v", unconfiguredOut)
+	}
+}
+
 func testSDKIllust(id int64, title string, userID int64) sdk.Illust {
 	return sdk.Illust{
 		ID:        id,
@@ -1014,6 +1113,9 @@ type fakeSDKClient struct {
 	artworks              []sdk.Illust
 	bookmarks             []sdk.Illust
 	following             []sdk.UserPreview
+	userDetailResult      *sdk.UserDetailResult
+	userDetailErr         error
+	userDetailRequest     sdk.UserDetailRequest
 	artworksRequest       sdk.UserArtworksRequest
 	artworksRequests      []sdk.UserArtworksRequest
 	artworkResults        map[sdk.Cursor]sdk.IllustListResult
@@ -1054,8 +1156,15 @@ func (*fakeSDKClient) IllustRecommended(context.Context, sdk.IllustRecommendedRe
 	return &sdk.IllustListResult{}, nil
 }
 
-// UserDetail 仅保持 SDK 测试替身满足窄接口；MCP user_detail tool 将在后续任务单独接入。
-func (*fakeSDKClient) UserDetail(context.Context, sdk.UserDetailRequest) (*sdk.UserDetailResult, error) {
+// UserDetail 记录 MCP 到公开 SDK 的完整请求，供结构化输出与错误路径断言。
+func (f *fakeSDKClient) UserDetail(_ context.Context, request sdk.UserDetailRequest) (*sdk.UserDetailResult, error) {
+	f.userDetailRequest = request
+	if f.userDetailErr != nil {
+		return nil, f.userDetailErr
+	}
+	if f.userDetailResult != nil {
+		return f.userDetailResult, nil
+	}
 	return &sdk.UserDetailResult{}, nil
 }
 func (f *fakeSDKClient) UserArtworks(_ context.Context, request sdk.UserArtworksRequest) (*sdk.IllustListResult, error) {
