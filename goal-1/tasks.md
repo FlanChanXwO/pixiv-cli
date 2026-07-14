@@ -74,10 +74,10 @@
 
 ## C02 — 集中检查：SDK 路径、协议边界、公开模型稳定性
 
-- 状态：未完成
-- 实际：
-- 证据：
-- 风险/下一步：
+- 状态：完成
+- 实际：独立审计 T04–T06 的 SDK 路径、protocol adapter 边界、完整 User Detail 和跨切片文档事实。审计发现 README/architecture 仍把当前正式发布误写为 v0.1.1，已最小更正为已验收的 v0.2.0，并保留“wiring 不替代每个版本独立发布验收”的安全边界；原审计者窄复核批准。
+- 证据：`go test ./... -count=1`、`go vet ./...`、`git diff --check origin/main..HEAD` 均通过；`go list ./...` 只列出顶层公开 `github.com/FlanChanXwO/pixiv-cli/pixiv`，根 SDK 有 26 个已跟踪文件。旧 `pkg/pixiv` 仅出现在 v0.2 immutable recovery 历史说明与 releaseworkflow mutation fixture；CLI/MCP 未直连 appapi/webapi/oauth/resource。审计确认 protocol 是生产 base/profile/endpoint/failure 单一来源，UserDetail 四 envelope/可选 URL/零值/脱敏/App-only 与 legacy nil-safe 均有回归覆盖；文档 P2 经独立窄复审 APPROVE。
+- 风险/下一步：完整 `UserDetailResult` 的用户可见 SDK 新字段尚待 T13 在 CHANGELOG 汇总；知识图谱亦按 T13 重建。真实 Pixiv API canary 和六平台 Release CI 留待 T14/T15。下一任务 T07 新增 CLI `pixiv user detail USER_ID` 并保持 SDK 单链路。
 
 ## T07 — 新增 CLI user detail 与 SDK 单链路调用
 
