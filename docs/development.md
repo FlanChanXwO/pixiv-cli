@@ -238,9 +238,12 @@ pixiv auth login
 go test ./...
 sh scripts/build.sh
 PIXIV_E2E_WEB_API=1 PIXIV_WEB_API_PROXY=http://127.0.0.1:7890 go test ./test/e2e -run WebAPIFallbackReal -count=1 -v
+PIXIV_E2E_REAL_API=1 PIXIV_E2E_REFRESH_TOKEN="<独立测试 refresh token>" PIXIV_E2E_PROXY=http://127.0.0.1:7890 go test ./test/e2e -run AuthenticatedAppAPICanary -count=1 -v
 ```
 
 `go test ./...` 保持默认离线稳定；真实 Pixiv web API fallback e2e 默认跳过，只有设置 `PIXIV_E2E_WEB_API=1` 时才会联网。未设置 `PIXIV_WEB_API_PROXY` 时会直连。
+
+认证 App API canary 还必须同时设置 `PIXIV_E2E_REAL_API=1` 和 `PIXIV_E2E_REFRESH_TOKEN`，缺一即跳过；它只使用这个显式传入的独立测试 token，不读取本机 auth 配置、浏览器数据，也不会匿名 fallback。该 canary 验证 `auth check`、完整用户详情和插画/漫画/小说/作者四类推荐。可选 `PIXIV_E2E_PROXY`（或 `PIXIV_WEB_API_PROXY`）只作用于该次测试；请勿把 token 写入 shell history、日志或仓库文件。
 
 `PIXIV_E2E_BINARY` 与 `PIXIV_E2E_EXPECTED_VERSION` 供 CI 对已构建、已解压的 release binary 执行离线 e2e；它们不注入 token，也不启用真实 Pixiv API/Web fallback。`platform-smoke.yml` 在六个受支持 runner 上构建、封装、解压并运行这组 CLI/config/MCP stdio 验证。
 

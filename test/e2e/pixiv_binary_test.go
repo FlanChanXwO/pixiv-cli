@@ -306,6 +306,128 @@ func TestPixivBinaryRealAPISearchOptIn(t *testing.T) {
 	}
 }
 
+// TestPixivBinaryAuthenticatedAppAPICanary 覆盖需要登录态的稳定公开 SDK
+// 能力。它只接受调用者显式传入的临时测试 token，绝不复用本机认证配置，避免
+// 误把日常开发环境的凭据用于联网发布门禁。
+func TestPixivBinaryAuthenticatedAppAPICanary(t *testing.T) {
+	if os.Getenv("PIXIV_E2E_REAL_API") != "1" {
+		t.Skip("set PIXIV_E2E_REAL_API=1 to run authenticated App API canary")
+	}
+	refreshToken := os.Getenv("PIXIV_E2E_REFRESH_TOKEN")
+	if refreshToken == "" {
+		t.Skip("set PIXIV_E2E_REFRESH_TOKEN with PIXIV_E2E_REAL_API=1 to run authenticated App API canary")
+	}
+
+	repoRoot := filepath.Join("..", "..")
+	binaryPath := buildPixivBinary(t, repoRoot)
+	env := isolatedEnv(t).values
+	env = append(env, "PIXIV_REFRESH_TOKEN="+refreshToken)
+	if proxy := firstNonEmpty(os.Getenv("PIXIV_E2E_PROXY"), os.Getenv("PIXIV_WEB_API_PROXY")); proxy != "" {
+		env = append(env, "https_proxy="+proxy, "HTTPS_PROXY="+proxy)
+	}
+
+	accountOut := runPixivCanary(t, repoRoot, binaryPath, env, refreshToken, "auth", "check", "--json")
+	var account struct {
+		UserID int64 `json:"user_id"`
+	}
+	requireCanaryJSON(t, accountOut, refreshToken, &account)
+	if account.UserID <= 0 {
+		t.Fatalf("auth check returned invalid user_id: %d", account.UserID)
+	}
+
+	userDetailOut := runPixivCanary(t, repoRoot, binaryPath, env, refreshToken, "user", "detail", strconvFormatInt(account.UserID), "--json")
+	var detail pixiv.UserDetailResult
+	requireCanaryJSON(t, userDetailOut, refreshToken, &detail)
+	if detail.User.ID != account.UserID {
+		t.Fatalf("user detail returned user id %d, want %d", detail.User.ID, account.UserID)
+	}
+	requireCanaryVisibleJSONFields(t, userDetailOut, refreshToken, "user", "profile", "profile_publicity", "workspace")
+
+	for _, recommendation := range []struct {
+		kind  string
+		field string
+	}{
+		{kind: "illust", field: "illusts"},
+		{kind: "manga", field: "manga"},
+		{kind: "novel", field: "novels"},
+		{kind: "user", field: "user_previews"},
+	} {
+		t.Run(recommendation.kind, func(t *testing.T) {
+			out := runPixivCanary(t, repoRoot, binaryPath, env, refreshToken, "recommended", recommendation.kind, "--limit", "1", "--json")
+			requireCanaryJSONArrayField(t, out, refreshToken, recommendation.field)
+			requireNoCanaryContinuationFields(t, out)
+		})
+	}
+
+	allOut := runPixivCanary(t, repoRoot, binaryPath, env, refreshToken, "recommended", "all", "--limit", "1", "--json")
+	for _, field := range []string{"illusts", "manga", "novels", "user_previews"} {
+		requireCanaryJSONArrayField(t, allOut, refreshToken, field)
+	}
+	requireNoCanaryContinuationFields(t, allOut)
+}
+
+// runPixivCanary 保留命令的真实失败原因，同时在测试框架输出前删除显式注入的
+// refresh token，避免失败日志意外暴露认证材料。
+func runPixivCanary(t *testing.T, repoRoot, binaryPath string, env []string, refreshToken string, args ...string) []byte {
+	t.Helper()
+
+	run := exec.CommandContext(testCommandContext(t), binaryPath, args...)
+	run.Dir = repoRoot
+	run.Env = env
+	out, err := run.CombinedOutput()
+	if err != nil {
+		t.Fatalf("pixiv %s failed: %v\n%s", strings.Join(args, " "), err, strings.ReplaceAll(string(out), refreshToken, "[redacted]"))
+	}
+	return out
+}
+
+func requireCanaryJSON(t *testing.T, body []byte, refreshToken string, out any) {
+	t.Helper()
+
+	if err := json.Unmarshal(body, out); err != nil {
+		t.Fatalf("decode canary JSON failed: %v\n%s", err, strings.ReplaceAll(string(body), refreshToken, "[redacted]"))
+	}
+}
+
+func requireCanaryVisibleJSONFields(t *testing.T, body []byte, refreshToken string, fields ...string) {
+	t.Helper()
+
+	var document map[string]json.RawMessage
+	requireCanaryJSON(t, body, refreshToken, &document)
+	for _, field := range fields {
+		value, ok := document[field]
+		if !ok || len(value) == 0 || bytes.Equal(value, []byte("null")) {
+			t.Fatalf("JSON field %q is missing or null", field)
+		}
+	}
+}
+
+func requireCanaryJSONArrayField(t *testing.T, body []byte, refreshToken, field string) {
+	t.Helper()
+
+	var document map[string]json.RawMessage
+	requireCanaryJSON(t, body, refreshToken, &document)
+	value, ok := document[field]
+	if !ok || bytes.Equal(value, []byte("null")) {
+		t.Fatalf("JSON field %q is missing or null", field)
+	}
+	var array []json.RawMessage
+	if err := json.Unmarshal(value, &array); err != nil {
+		t.Fatalf("JSON field %q is not an array: %v", field, err)
+	}
+}
+
+// requireNoCanaryContinuationFields 断言公开推荐输出没有泄露上游分页协议字段。
+func requireNoCanaryContinuationFields(t *testing.T, body []byte) {
+	t.Helper()
+
+	for _, forbidden := range [][]byte{[]byte(`"cursor"`), []byte(`"next_cursor"`), []byte(`"next_url"`)} {
+		if bytes.Contains(body, forbidden) {
+			t.Fatalf("recommended output leaked upstream continuation field %s", forbidden)
+		}
+	}
+}
+
 func runPixiv(t *testing.T, repoRoot, binaryPath string, env []string, args ...string) []byte {
 	t.Helper()
 
