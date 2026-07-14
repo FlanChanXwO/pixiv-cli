@@ -162,7 +162,7 @@ pixiv search "初音ミク"
 pixiv search "初音ミク" --json
 pixiv detail 123456
 pixiv ranking --mode day
-pixiv recommended
+pixiv recommended all
 pixiv download 123456 789012
 ```
 
@@ -188,7 +188,7 @@ CLI 使用 Cobra/pflag，选项可以写在位置参数前后，例如 `pixiv au
 | `search` | `pixiv search [options] WORD` | 搜索插画。 |
 | `detail` | `pixiv detail [options] ILLUST_ID` | 查看单个作品详情。 |
 | `ranking` | `pixiv ranking [options]` | 查看 Pixiv 插画排行榜。 |
-| `recommended` | `pixiv recommended [options]` | 查看个性化推荐，需要认证。 |
+| `recommended` | `pixiv recommended all\|illust\|manga\|novel\|user [--page N --limit N --json]` | 查看指定类个性化推荐；`all` 按插画、漫画、小说、作者顺序完整返回，需要认证。 |
 | `user detail` | `pixiv user detail USER_ID [--json]` | 查看指定用户的完整公开资料；`USER_ID` 必填。 |
 | `user artworks` | `pixiv user artworks [USER_ID] [--page N --limit N]` | 查看用户作品；省略 `USER_ID` 时使用当前认证用户。 |
 | `user bookmarks` | `pixiv user bookmarks [USER_ID] [--page N --limit N]` | 查看用户收藏；省略 `USER_ID` 时使用当前认证用户。 |
@@ -226,7 +226,7 @@ CLI 使用 Cobra/pflag，选项可以写在位置参数前后，例如 `pixiv au
 | `ranking` | `--mode` | `day` | 排行榜模式。 |
 | `ranking` | `--date` | 空 | 排行榜日期，格式通常为 `YYYY-MM-DD`。 |
 | `ranking` | `--offset` | `0` | 分页偏移。 |
-| `recommended` | `--offset` | `0` | 分页偏移。 |
+| `recommended KIND` | `--page`、`--limit`、已废弃 `--offset` | 各流独立分页；`all` 会对插画、漫画、小说、作者分别应用相同分页语义。 |
 | `detail` | `ILLUST_ID` | 必填 | Pixiv 作品 ID。 |
 | `download` | `ILLUST_ID...` | 必填 | 一个或多个 Pixiv 作品 ID。 |
 

@@ -143,7 +143,7 @@ func TestSDKDataCommandsPassProxyOverride(t *testing.T) {
 		{name: "search", args: []string{"pixiv", "search", "miku", "--proxy", "http://flag-proxy"}},
 		{name: "detail", args: []string{"pixiv", "detail", "42", "--proxy", "http://flag-proxy"}},
 		{name: "ranking", args: []string{"pixiv", "ranking", "--proxy", "http://flag-proxy"}},
-		{name: "recommended", args: []string{"pixiv", "recommended", "--proxy", "http://flag-proxy"}},
+		{name: "recommended", args: []string{"pixiv", "recommended", "illust", "--proxy", "http://flag-proxy"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -170,7 +170,7 @@ func TestSDKDataCommandsEmptyProxyOverrideClearsRuntimeProxy(t *testing.T) {
 		{name: "search", args: []string{"pixiv", "search", "miku", "--proxy", ""}},
 		{name: "detail", args: []string{"pixiv", "detail", "42", "--proxy", ""}},
 		{name: "ranking", args: []string{"pixiv", "ranking", "--proxy", ""}},
-		{name: "recommended", args: []string{"pixiv", "recommended", "--proxy", ""}},
+		{name: "recommended", args: []string{"pixiv", "recommended", "illust", "--proxy", ""}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -220,7 +220,7 @@ func TestNetworkDataCommandsNoProxyFlagClearsRuntimeProxy(t *testing.T) {
 		{"pixiv", "search", "miku", "--no-proxy"},
 		{"pixiv", "detail", "42", "--no-proxy"},
 		{"pixiv", "ranking", "--no-proxy"},
-		{"pixiv", "recommended", "--no-proxy"},
+		{"pixiv", "recommended", "illust", "--no-proxy"},
 	} {
 		t.Run(strings.Join(args[1:], " "), func(t *testing.T) {
 			useTempPaths(t)

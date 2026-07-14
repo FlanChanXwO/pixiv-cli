@@ -1155,6 +1155,15 @@ func (*fakeSDKClient) IllustRanking(context.Context, sdk.IllustRankingRequest) (
 func (*fakeSDKClient) IllustRecommended(context.Context, sdk.IllustRecommendedRequest) (*sdk.IllustListResult, error) {
 	return &sdk.IllustListResult{}, nil
 }
+func (*fakeSDKClient) MangaRecommended(context.Context, sdk.IllustRecommendedRequest) (*sdk.IllustListResult, error) {
+	return &sdk.IllustListResult{}, nil
+}
+func (*fakeSDKClient) NovelRecommended(context.Context, sdk.NovelRecommendedRequest) (*sdk.NovelListResult, error) {
+	return &sdk.NovelListResult{}, nil
+}
+func (*fakeSDKClient) UserRecommended(context.Context, sdk.UserRecommendedRequest) (*sdk.UserRecommendedResult, error) {
+	return &sdk.UserRecommendedResult{}, nil
+}
 
 // UserDetail 记录 MCP 到公开 SDK 的完整请求，供结构化输出与错误路径断言。
 func (f *fakeSDKClient) UserDetail(_ context.Context, request sdk.UserDetailRequest) (*sdk.UserDetailResult, error) {

@@ -109,10 +109,10 @@
 
 ## T10 — 改造 CLI recommended 子命令与原子输出
 
-- 状态：未完成
-- 实际：
-- 证据：
-- 风险/下一步：
+- 状态：完成
+- 实际：将 CLI 改为必填 `pixiv recommended all|illust|manga|novel|user`。`all` 在一个 SDK/account snapshot 内按插画、漫画、小说、作者顺序读取，`--limit`/`--page` 对每条流独立生效。`all` 的文本与 JSON 都先落入私有临时文件，四类全部成功后才提交 stdout；`--limit 0` 逐项落盘而不累积结果。JSON 为稳定单对象 `{illusts,manga,novels,user_previews}`，单类 key 与对应 all 分段一致。SDKClient/fake 同步扩口；README/Unreleased 已更新。
+- 证据：TDD RED 为旧 `recommended all --json` 因无 kind 被 usage 拒绝，GREEN 验证单次 factory 与固定四类调用顺序；补充 Run 边界测试覆盖 all 出错 stdout 为空、无/未知 kind 不开 SDK、每流 `page=2 limit=1` 使用独立 cursor、单类漫画与 all 的 `manga` JSON schema 一致。规格审查发现的 P1 schema 不一致已修复并窄复审；质量审查发现的 JSON spool header 写失败临时文件泄漏 P2 已修复、测试并窄复审关闭。`go test ./internal/cli -count=1`、`go test ./internal/application ./internal/bootstrap ./internal/mcpserver -count=1`、`go test ./pixiv -count=1`、`go test ./... -count=1`、`gofmt -d`、`git diff --check` 均通过。
+- 风险/下一步：真实认证推荐流留待 T14 opt-in canary；T11 将以相同 SDK 接口新增 MCP `recommended(kind)`，并保留旧 `illust_recommended` 兼容行为。
 
 ## T11 — 新增 MCP recommended(kind) 并保留旧 tool 兼容
 

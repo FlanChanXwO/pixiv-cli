@@ -23,19 +23,22 @@ import (
 )
 
 type sdkCommandFake struct {
-	currentUserID  func(context.Context) (int64, error)
-	search         func(context.Context, sdk.SearchIllustRequest) (*sdk.IllustListResult, error)
-	detail         func(context.Context, int64) (*sdk.IllustDetail, error)
-	ranking        func(context.Context, sdk.IllustRankingRequest) (*sdk.IllustListResult, error)
-	recommended    func(context.Context, sdk.IllustRecommendedRequest) (*sdk.IllustListResult, error)
-	userDetail     func(context.Context, sdk.UserDetailRequest) (*sdk.UserDetailResult, error)
-	artworks       func(context.Context, sdk.UserArtworksRequest) (*sdk.IllustListResult, error)
-	bookmarks      func(context.Context, sdk.UserBookmarksRequest) (*sdk.IllustListResult, error)
-	following      func(context.Context, sdk.UserFollowingRequest) (*sdk.UserListResult, error)
-	addBookmark    func(context.Context, sdk.AddBookmarkRequest) error
-	removeBookmark func(context.Context, sdk.RemoveBookmarkRequest) error
-	follow         func(context.Context, sdk.FollowUserRequest) error
-	unfollow       func(context.Context, sdk.UnfollowUserRequest) error
+	currentUserID    func(context.Context) (int64, error)
+	search           func(context.Context, sdk.SearchIllustRequest) (*sdk.IllustListResult, error)
+	detail           func(context.Context, int64) (*sdk.IllustDetail, error)
+	ranking          func(context.Context, sdk.IllustRankingRequest) (*sdk.IllustListResult, error)
+	recommended      func(context.Context, sdk.IllustRecommendedRequest) (*sdk.IllustListResult, error)
+	mangaRecommended func(context.Context, sdk.IllustRecommendedRequest) (*sdk.IllustListResult, error)
+	novelRecommended func(context.Context, sdk.NovelRecommendedRequest) (*sdk.NovelListResult, error)
+	userRecommended  func(context.Context, sdk.UserRecommendedRequest) (*sdk.UserRecommendedResult, error)
+	userDetail       func(context.Context, sdk.UserDetailRequest) (*sdk.UserDetailResult, error)
+	artworks         func(context.Context, sdk.UserArtworksRequest) (*sdk.IllustListResult, error)
+	bookmarks        func(context.Context, sdk.UserBookmarksRequest) (*sdk.IllustListResult, error)
+	following        func(context.Context, sdk.UserFollowingRequest) (*sdk.UserListResult, error)
+	addBookmark      func(context.Context, sdk.AddBookmarkRequest) error
+	removeBookmark   func(context.Context, sdk.RemoveBookmarkRequest) error
+	follow           func(context.Context, sdk.FollowUserRequest) error
+	unfollow         func(context.Context, sdk.UnfollowUserRequest) error
 }
 
 func unimplementedSDKCommand() error { return errors.New("unexpected sdk command") }
@@ -68,6 +71,176 @@ func (f sdkCommandFake) IllustRecommended(ctx context.Context, r sdk.IllustRecom
 		return f.recommended(ctx, r)
 	}
 	return nil, unimplementedSDKCommand()
+}
+func (f sdkCommandFake) MangaRecommended(ctx context.Context, r sdk.IllustRecommendedRequest) (*sdk.IllustListResult, error) {
+	if f.mangaRecommended != nil {
+		return f.mangaRecommended(ctx, r)
+	}
+	return nil, unimplementedSDKCommand()
+}
+func (f sdkCommandFake) NovelRecommended(ctx context.Context, r sdk.NovelRecommendedRequest) (*sdk.NovelListResult, error) {
+	if f.novelRecommended != nil {
+		return f.novelRecommended(ctx, r)
+	}
+	return nil, unimplementedSDKCommand()
+}
+func (f sdkCommandFake) UserRecommended(ctx context.Context, r sdk.UserRecommendedRequest) (*sdk.UserRecommendedResult, error) {
+	if f.userRecommended != nil {
+		return f.userRecommended(ctx, r)
+	}
+	return nil, unimplementedSDKCommand()
+}
+
+func TestRecommendedAllJSONRoutesEverySDKKindThroughOneOperation(t *testing.T) {
+	useTempPaths(t)
+	var order []string
+	opens := 0
+	setTestSDKCommandFactory(t, func(application.SDKClientRequest) (application.SDKClient, error) {
+		opens++
+		return sdkCommandFake{
+			recommended: func(context.Context, sdk.IllustRecommendedRequest) (*sdk.IllustListResult, error) {
+				order = append(order, "illust")
+				return &sdk.IllustListResult{Illusts: []sdk.Illust{commandIllust(1)}}, nil
+			},
+			mangaRecommended: func(context.Context, sdk.IllustRecommendedRequest) (*sdk.IllustListResult, error) {
+				order = append(order, "manga")
+				return &sdk.IllustListResult{Illusts: []sdk.Illust{commandIllust(2)}}, nil
+			},
+			novelRecommended: func(context.Context, sdk.NovelRecommendedRequest) (*sdk.NovelListResult, error) {
+				order = append(order, "novel")
+				return &sdk.NovelListResult{Novels: []sdk.Novel{{ID: 3}}}, nil
+			},
+			userRecommended: func(context.Context, sdk.UserRecommendedRequest) (*sdk.UserRecommendedResult, error) {
+				order = append(order, "user")
+				return &sdk.UserRecommendedResult{UserPreviews: []sdk.RecommendedUserPreview{{User: sdk.User{ID: 4}}}}, nil
+			},
+		}, nil
+	})
+	var stdout, stderr bytes.Buffer
+	require.Equal(t, 0, Run([]string{"pixiv", "recommended", "all", "--json"}, strings.NewReader(""), &stdout, &stderr), stderr.String())
+	assert.Equal(t, 1, opens)
+	assert.Equal(t, []string{"illust", "manga", "novel", "user"}, order)
+	assert.Contains(t, stdout.String(), `"illusts"`)
+	assert.Contains(t, stdout.String(), `"user_previews"`)
+}
+
+func TestRecommendedAllDefersTextOutputAndRejectsKindsBeforeOpeningSDK(t *testing.T) {
+	useTempPaths(t)
+	opened := 0
+	setTestSDKCommandFactory(t, func(application.SDKClientRequest) (application.SDKClient, error) {
+		opened++
+		return sdkCommandFake{
+			recommended: func(context.Context, sdk.IllustRecommendedRequest) (*sdk.IllustListResult, error) {
+				return &sdk.IllustListResult{Illusts: []sdk.Illust{commandIllust(1)}}, nil
+			},
+			mangaRecommended: func(context.Context, sdk.IllustRecommendedRequest) (*sdk.IllustListResult, error) {
+				return &sdk.IllustListResult{Illusts: []sdk.Illust{commandIllust(2)}}, nil
+			},
+			novelRecommended: func(context.Context, sdk.NovelRecommendedRequest) (*sdk.NovelListResult, error) {
+				return &sdk.NovelListResult{Novels: []sdk.Novel{{ID: 3}}}, nil
+			},
+			userRecommended: func(context.Context, sdk.UserRecommendedRequest) (*sdk.UserRecommendedResult, error) {
+				return nil, sdk.ErrMalformedUpstreamResponse
+			},
+		}, nil
+	})
+	var stdout, stderr bytes.Buffer
+	assert.Equal(t, 1, Run([]string{"pixiv", "recommended", "all"}, strings.NewReader(""), &stdout, &stderr))
+	assert.Empty(t, stdout.String())
+	assert.Equal(t, 1, opened)
+	stdout.Reset()
+	stderr.Reset()
+	opened = 0
+	assert.Equal(t, 1, Run([]string{"pixiv", "recommended", "unknown"}, strings.NewReader(""), &stdout, &stderr))
+	assert.Empty(t, stdout.String())
+	assert.Equal(t, 0, opened)
+}
+
+func TestRecommendedAllAppliesPagePlanIndependentlyToEveryStream(t *testing.T) {
+	useTempPaths(t)
+	var illust, manga, novel, users []sdk.Cursor
+	setTestSDKCommandClient(t, sdkCommandFake{
+		recommended: func(_ context.Context, r sdk.IllustRecommendedRequest) (*sdk.IllustListResult, error) {
+			illust = append(illust, r.Cursor)
+			if r.Cursor == "" {
+				return &sdk.IllustListResult{Illusts: []sdk.Illust{commandIllust(1)}, NextCursor: "i"}, nil
+			}
+			return &sdk.IllustListResult{Illusts: []sdk.Illust{commandIllust(11)}}, nil
+		},
+		mangaRecommended: func(_ context.Context, r sdk.IllustRecommendedRequest) (*sdk.IllustListResult, error) {
+			manga = append(manga, r.Cursor)
+			if r.Cursor == "" {
+				return &sdk.IllustListResult{Illusts: []sdk.Illust{commandIllust(2)}, NextCursor: "m"}, nil
+			}
+			return &sdk.IllustListResult{Illusts: []sdk.Illust{commandIllust(12)}}, nil
+		},
+		novelRecommended: func(_ context.Context, r sdk.NovelRecommendedRequest) (*sdk.NovelListResult, error) {
+			novel = append(novel, r.Cursor)
+			if r.Cursor == "" {
+				return &sdk.NovelListResult{Novels: []sdk.Novel{{ID: 3}}, NextCursor: "n"}, nil
+			}
+			return &sdk.NovelListResult{Novels: []sdk.Novel{{ID: 13}}}, nil
+		},
+		userRecommended: func(_ context.Context, r sdk.UserRecommendedRequest) (*sdk.UserRecommendedResult, error) {
+			users = append(users, r.Cursor)
+			if r.Cursor == "" {
+				return &sdk.UserRecommendedResult{UserPreviews: []sdk.RecommendedUserPreview{{User: sdk.User{ID: 4}}}, NextCursor: "u"}, nil
+			}
+			return &sdk.UserRecommendedResult{UserPreviews: []sdk.RecommendedUserPreview{{User: sdk.User{ID: 14}}}}, nil
+		},
+	})
+	var stdout, stderr bytes.Buffer
+	require.Equal(t, 0, Run([]string{"pixiv", "recommended", "all", "--page", "2", "--limit", "1", "--json"}, strings.NewReader(""), &stdout, &stderr), stderr.String())
+	assert.Equal(t, []sdk.Cursor{"", "i"}, illust)
+	assert.Equal(t, []sdk.Cursor{"", "m"}, manga)
+	assert.Equal(t, []sdk.Cursor{"", "n"}, novel)
+	assert.Equal(t, []sdk.Cursor{"", "u"}, users)
+	for _, args := range [][]string{{"pixiv", "recommended"}, {"pixiv", "recommended", "unknown"}} {
+		var out, errOut bytes.Buffer
+		assert.Equal(t, 1, Run(args, strings.NewReader(""), &out, &errOut))
+		assert.Empty(t, out.String())
+	}
+}
+
+func TestRecommendedMangaJSONUsesTheSameMangaEnvelopeAsAll(t *testing.T) {
+	useTempPaths(t)
+	setTestSDKCommandClient(t, sdkCommandFake{
+		recommended: func(context.Context, sdk.IllustRecommendedRequest) (*sdk.IllustListResult, error) {
+			return &sdk.IllustListResult{}, nil
+		},
+		mangaRecommended: func(context.Context, sdk.IllustRecommendedRequest) (*sdk.IllustListResult, error) {
+			return &sdk.IllustListResult{Illusts: []sdk.Illust{commandIllust(2)}}, nil
+		},
+		novelRecommended: func(context.Context, sdk.NovelRecommendedRequest) (*sdk.NovelListResult, error) {
+			return &sdk.NovelListResult{}, nil
+		},
+		userRecommended: func(context.Context, sdk.UserRecommendedRequest) (*sdk.UserRecommendedResult, error) {
+			return &sdk.UserRecommendedResult{}, nil
+		},
+	})
+	var single, all, stderr bytes.Buffer
+	require.Equal(t, 0, Run([]string{"pixiv", "recommended", "manga", "--json"}, strings.NewReader(""), &single, &stderr), stderr.String())
+	stderr.Reset()
+	require.Equal(t, 0, Run([]string{"pixiv", "recommended", "all", "--json"}, strings.NewReader(""), &all, &stderr), stderr.String())
+	var one struct {
+		Manga []sdk.Illust `json:"manga"`
+	}
+	var every struct {
+		Manga []sdk.Illust `json:"manga"`
+	}
+	require.NoError(t, json.Unmarshal(single.Bytes(), &one))
+	require.NoError(t, json.Unmarshal(all.Bytes(), &every))
+	assert.Equal(t, every.Manga, one.Manga)
+	assert.NotContains(t, single.String(), `"illusts"`)
+}
+
+func TestRecommendationJSONSpoolCleansUpWhenHeaderWriteFails(t *testing.T) {
+	original := writeRecommendationSpoolHeader
+	writeRecommendationSpoolHeader = func(io.Writer, string) (int, error) { return 0, errors.New("header write failed") }
+	t.Cleanup(func() { writeRecommendationSpoolHeader = original })
+	spool, err := newRecommendationSpool(true)
+	assert.Nil(t, spool)
+	assert.EqualError(t, err, "header write failed")
 }
 func (f sdkCommandFake) UserDetail(ctx context.Context, r sdk.UserDetailRequest) (*sdk.UserDetailResult, error) {
 	if f.userDetail != nil {
@@ -396,7 +569,7 @@ func TestInvalidListOrExplicitUserIDDoesNotOpenSDKOperation(t *testing.T) {
 	for _, args := range [][]string{
 		{"pixiv", "search", "miku", "--page", "0", "--limit", "1"},
 		{"pixiv", "ranking", "--page", "1"},
-		{"pixiv", "recommended", "--limit", "-1"},
+		{"pixiv", "recommended", "illust", "--limit", "-1"},
 		{"pixiv", "user", "artworks", "--page", "0", "--limit", "1"},
 		{"pixiv", "user", "bookmarks", "not-a-user-id"},
 		{"pixiv", "user", "following", "0"},
