@@ -280,12 +280,10 @@ GitHub Release。workflow 使用 full-SHA Actions、最小权限及 `release` En
 若不可变 tag 的首次 run 在创建 GitHub Release 前失败，维护者只能从默认分支通过
 `workflow_dispatch` 提交同一个 `release_tag` 进行恢复。validate 会校验该 tag 为 SemVer、存在、
 已包含于默认分支且尚未有 Release；构建与发布始终 checkout 该 tag。恢复 run 可以只在无 Environment
-的六平台 test job 中应用固定白名单的默认分支测试覆盖：Windows ACL、`.exe`、CRLF 和文件共享语义所需的
-14 个测试文件、`scripts/test-package-release.sh` package 测试脚本、仅在该 test gate 使用的
-`known_hosts` 验证器，以及供该 verifier 读取的当前 release workflow 配置（共 17 条路径）。覆盖通过
-一次 `git archive` 提取；其中两条
-在 tag 中不存在的平台 reader 仅以 `git add -N` 标为 intent-to-add，再逐项核对工作树 diff 与空 cached diff，
-不能加入任意路径或生产源码，且不生成 release artifact。该 job 成功后，独立的新 runner
+的六平台 test job 中应用固定白名单的默认分支测试覆盖：当前 release workflow、Windows ACL 所需的
+`pkg/pixiv/account_external_test.go`，以及该 workflow 的 canonical verifier 与其测试（共 4 条路径）。覆盖通过
+一次 `git archive` 提取，再逐项核对工作树 diff 与空 cached diff，不能加入任意路径或生产源码，且不生成
+release artifact。该 job 成功后，独立的新 runner
 才会以 `clean: true` checkout tag、重新构建 selected staticlib 并生成唯一可被 publish 下载的
 `verified-release-*` assets；测试进程对环境变量、PATH 或临时目录的副作用不会进入生产 job。因此它不能用于
 替换生产资产源码、移动 tag，或重发已经存在的 Release。

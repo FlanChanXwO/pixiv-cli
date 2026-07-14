@@ -18,10 +18,17 @@
 
 ## T03 — 审查 recovery 修改并 dispatch/验收 v0.2.0 Release
 
-- 状态：未完成
-- 实际：
-- 证据：
-- 风险/下一步：
+- 状态：待修复
+- 实际：recovery PR #4 已合并至 main；审计 recovery run 已从不可变 `v0.2.0` tag 启动，但六个平台均在覆盖层步骤失败，未创建 Release。
+- 证据：GitHub Actions `29304765177`（failure）。逐字复现其 overlay 后，实际 diff 仅为 `.github/workflows/release.yml`、`pkg/pixiv/account_external_test.go`、`scripts/releaseworkflow/main.go`、`scripts/releaseworkflow/main_test.go` 四项，而 workflow 的严格断言仍要求历史遗留的 17 项全集；失败发生在 Go 测试前，故与平台或 Windows ACL 无关。
+- 风险/下一步：新增 T03a 以把审计白名单和运行时断言改为同一个、基于实际 tag-to-main 差异的最小集合；修复必须继续不移动 tag，且经实现/规格/质量三阶段审查和多平台 CI 后才可重新 dispatch。
+
+## T03a — 收敛 recovery overlay 至实际最小审计差异并复验 policy
+
+- 状态：完成
+- 实际：将 test-only recovery overlay 的 archive、工作树 diff 断言和 Go canonical verifier 同步收敛为 tag 与当前默认分支实际不同的四条路径；移除遗留的两条 `git add -N`，并把聚焦策略测试改为精确四路径命令、逐条缺失和额外路径拒绝。
+- 证据：提交 `59105ed`；TDD RED `go test ./scripts/releaseworkflow -run '^TestCheckRecoveryPolicyRequiresExactFourPathOverlay$' -count=1` 在旧 17 条命令下失败，GREEN 后通过；`go test ./scripts/releaseworkflow -count=1`、`sh scripts/test-release-workflow.sh`、`go test ./...`、`git diff --check origin/main..HEAD` 和 pre-commit 均通过。临时 detached `v0.2.0` worktree 从 `origin/main` archive 四条路径后，`git diff --name-only` 精确等于该集合且 cached diff 为空。规格审查与质量审查均批准。
+- 风险/下一步：仍需把修复推送、通过六平台 PR CI，并从默认分支重新 dispatch `release_tag=v0.2.0`；tag 保持不可变，生产构建隔离仍待远端实际 run 验证。
 
 ## C01 — 集中检查：恢复链路、tag 不变性、文档与外部发布证据
 
