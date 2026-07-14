@@ -116,10 +116,10 @@
 
 ## T11 — 新增 MCP recommended(kind) 并保留旧 tool 兼容
 
-- 状态：未完成
-- 实际：
-- 证据：
-- 风险/下一步：
+- 状态：完成
+- 实际：新增 MCP `recommended`，强制 `kind=all|illust|manga|novel|user`。新 tool 只经一次 SDK operation 调用公开 SDK；`all` 固定依次读取插画、漫画、小说、作者四流，`page`/`limit` 分别作用于每流，任一流失败时不返回局部 structured data。输出只含必要推荐、作者 preview、按流 pagination，SDK cursor 不离开 MCP 边界。为满足 MCP schema，适配层把可选预览数组和小说 tags 归一为空数组。旧 `illust_recommended` 与 `download_random_from_recommendation` 仍保留 legacy Source 行为；README、MCP 工具文档与 Unreleased 已同步。
+- 证据：基线未注册 `recommended`；新增 MCP tracer 覆盖四流顺序、单次 SDK factory、单类 kind、缺失/类型错误/未知 kind、无 SDK 配置、每流第二页、all 失败无局部输出及 structured schema。新增随机下载兼容回归经真实 MCP 调用断言 legacy `IllustRecommended` 一次、SDK factory 零次和下载 ID `77`。`go test ./internal/mcpserver -count=1`、`go test ./internal/application ./internal/bootstrap ./internal/cli -count=1`、`go test ./pixiv -count=1`、`go test ./... -count=1`、`gofmt -l`、`git diff --check` 均通过；规格复审、兼容窄复审和质量复审均 APPROVE。
+- 风险/下一步：默认回归不访问真实 Pixiv；四类认证推荐的 wire 兼容性留待 T14 显式 opt-in canary。下一任务 T12 迁移其余 CLI/MCP/download 至 SDK 并删除 legacy Source 双栈，但不得移除本任务明确保留的兼容语义，除非后续计划另行审定。
 
 ## T12 — 迁移剩余 CLI/MCP/download 到 SDK，删除 legacy Source 双栈
 

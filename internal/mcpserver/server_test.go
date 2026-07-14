@@ -51,7 +51,7 @@ func TestServerListsExpectedTools(t *testing.T) {
 		}
 		names = append(names, tool.Name)
 	}
-	for _, want := range []string{"set_download_path", "download", "refresh_token", "set_refresh_token", "download_random_from_recommendation", "search_illust", "search_user", "trending_tags_illust", "illust_related", "illust_recommended", "illust_follow", "user_artworks", "user_bookmarks", "user_following", "add_bookmark", "remove_bookmark", "follow_user", "unfollow_user", "illust_detail", "illust_ranking", "get_thumbnail_base64"} {
+	for _, want := range []string{"set_download_path", "download", "refresh_token", "set_refresh_token", "download_random_from_recommendation", "search_illust", "search_user", "trending_tags_illust", "illust_related", "illust_recommended", "recommended", "illust_follow", "user_artworks", "user_bookmarks", "user_following", "add_bookmark", "remove_bookmark", "follow_user", "unfollow_user", "illust_detail", "illust_ranking", "get_thumbnail_base64"} {
 		if !slices.Contains(names, want) {
 			t.Fatalf("tool %q missing from %v", want, names)
 		}
@@ -652,6 +652,262 @@ func TestSDKUserDetailRejectsInvalidInputAndReturnsSDKFailuresAsMCPError(t *test
 	}
 }
 
+func TestSDKRecommendedAllReturnsEveryStreamAndPagination(t *testing.T) {
+	client := &fakeSDKClient{}
+	var order []string
+	client.illustRecommended = func(context.Context, sdk.IllustRecommendedRequest) (*sdk.IllustListResult, error) {
+		order = append(order, "illust")
+		return &sdk.IllustListResult{Illusts: []sdk.Illust{testSDKIllust(1, "illust", 10)}, NextCursor: "illust-next"}, nil
+	}
+	client.mangaRecommended = func(context.Context, sdk.IllustRecommendedRequest) (*sdk.IllustListResult, error) {
+		order = append(order, "manga")
+		return &sdk.IllustListResult{Illusts: []sdk.Illust{testSDKIllust(2, "manga", 20)}, NextCursor: "manga-next"}, nil
+	}
+	client.novelRecommended = func(context.Context, sdk.NovelRecommendedRequest) (*sdk.NovelListResult, error) {
+		order = append(order, "novel")
+		return &sdk.NovelListResult{Novels: []sdk.Novel{{ID: 3, User: sdk.User{ID: 30}, Tags: []sdk.Tag{}}}, NextCursor: "novel-next"}, nil
+	}
+	client.userRecommended = func(context.Context, sdk.UserRecommendedRequest) (*sdk.UserRecommendedResult, error) {
+		order = append(order, "user")
+		return &sdk.UserRecommendedResult{UserPreviews: []sdk.RecommendedUserPreview{{User: sdk.User{ID: 4}, Illusts: []sdk.Illust{}, Novels: []sdk.Novel{{ID: 5}}}}, NextCursor: "user-next"}, nil
+	}
+	openCalls := 0
+	service := application.SDKService{NewClient: func(application.SDKClientRequest) (application.SDKClient, error) {
+		openCalls++
+		return client, nil
+	}}
+	session, closeSession := newSDKTestSessionWithService(t, &fakeAPI{}, service)
+	defer closeSession()
+
+	result := callTool(t, session, "recommended", map[string]any{"kind": "all", "limit": 1})
+	if result.IsError || openCalls != 1 || !slices.Equal(order, []string{"illust", "manga", "novel", "user"}) {
+		t.Fatalf("recommended all result=%+v opens=%d order=%v", result, openCalls, order)
+	}
+	var structured map[string]any
+	decodeStructured(t, result, &structured)
+	pagination, ok := structured["pagination"].(map[string]any)
+	if !ok || len(pagination) != 4 {
+		t.Fatalf("missing independent pagination: %#v", structured)
+	}
+	for _, key := range []string{"illusts", "manga", "novels", "user_previews"} {
+		items, ok := structured[key].([]any)
+		if !ok || len(items) != 1 {
+			t.Fatalf("%s = %#v", key, structured[key])
+		}
+	}
+	novels := structured["novels"].([]any)
+	if tags := novels[0].(map[string]any)["tags"]; tags == nil {
+		t.Fatalf("top-level novel tags must be an array")
+	}
+	previews := structured["user_previews"].([]any)
+	if tags := previews[0].(map[string]any)["novels"].([]any)[0].(map[string]any)["tags"]; tags == nil {
+		t.Fatalf("preview novel tags must be an array")
+	}
+	raw, err := json.Marshal(structured)
+	if err != nil || strings.Contains(string(raw), "cursor") || strings.Contains(string(raw), "next_url") {
+		t.Fatalf("structured output leaks continuation: %s, err=%v", raw, err)
+	}
+}
+
+func TestSDKRecommendedSingleKindsAndInputFailures(t *testing.T) {
+	for _, test := range []struct {
+		kind string
+		want string
+	}{
+		{kind: "illust", want: "illust"},
+		{kind: "manga", want: "manga"},
+		{kind: "novel", want: "novel"},
+		{kind: "user", want: "user"},
+	} {
+		t.Run(test.kind, func(t *testing.T) {
+			var calls []string
+			client := &fakeSDKClient{
+				illustRecommended: func(context.Context, sdk.IllustRecommendedRequest) (*sdk.IllustListResult, error) {
+					calls = append(calls, "illust")
+					return &sdk.IllustListResult{}, nil
+				},
+				mangaRecommended: func(context.Context, sdk.IllustRecommendedRequest) (*sdk.IllustListResult, error) {
+					calls = append(calls, "manga")
+					return &sdk.IllustListResult{}, nil
+				},
+				novelRecommended: func(context.Context, sdk.NovelRecommendedRequest) (*sdk.NovelListResult, error) {
+					calls = append(calls, "novel")
+					return &sdk.NovelListResult{}, nil
+				},
+				userRecommended: func(context.Context, sdk.UserRecommendedRequest) (*sdk.UserRecommendedResult, error) {
+					calls = append(calls, "user")
+					return &sdk.UserRecommendedResult{}, nil
+				},
+			}
+			session, closeSession := newSDKTestSession(t, client)
+			defer closeSession()
+			result := callTool(t, session, "recommended", map[string]any{"kind": test.kind})
+			if result.IsError || !slices.Equal(calls, []string{test.want}) {
+				t.Fatalf("kind=%s result=%+v calls=%v", test.kind, result, calls)
+			}
+		})
+	}
+
+	openCalls := 0
+	service := application.SDKService{NewClient: func(application.SDKClientRequest) (application.SDKClient, error) {
+		openCalls++
+		return &fakeSDKClient{}, nil
+	}}
+	session, closeSession := newSDKTestSessionWithService(t, &fakeAPI{}, service)
+	defer closeSession()
+	result := callTool(t, session, "recommended", map[string]any{"kind": "unknown"})
+	if !result.IsError || openCalls != 0 {
+		t.Fatalf("invalid kind result=%+v open calls=%d", result, openCalls)
+	}
+	for _, input := range []map[string]any{{}, {"kind": 9}} {
+		_, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: "recommended", Arguments: input})
+		if err == nil || openCalls != 0 {
+			t.Fatalf("input=%v error=%v open calls=%d", input, err, openCalls)
+		}
+	}
+
+	legacySession, closeLegacySession := newTestSession(t, &fakeDownloads{})
+	defer closeLegacySession()
+	result = callTool(t, legacySession, "recommended", map[string]any{"kind": "illust"})
+	if !result.IsError {
+		t.Fatalf("unconfigured SDK result=%+v", result)
+	}
+}
+
+func TestSDKRecommendedAllFailureDoesNotExposePartialStructuredOutput(t *testing.T) {
+	client := &fakeSDKClient{
+		illustRecommended: func(context.Context, sdk.IllustRecommendedRequest) (*sdk.IllustListResult, error) {
+			return &sdk.IllustListResult{Illusts: []sdk.Illust{testSDKIllust(1, "first", 1)}}, nil
+		},
+		mangaRecommended: func(context.Context, sdk.IllustRecommendedRequest) (*sdk.IllustListResult, error) {
+			return nil, sdk.ErrMalformedUpstreamResponse
+		},
+	}
+	session, closeSession := newSDKTestSession(t, client)
+	defer closeSession()
+	result := callTool(t, session, "recommended", map[string]any{"kind": "all"})
+	if !result.IsError {
+		t.Fatalf("all failure result=%+v", result)
+	}
+	var out recommendedOut
+	decodeStructured(t, result, &out)
+	if out.Kind != "" || len(out.Illusts) != 0 || len(out.Manga) != 0 || len(out.Novels) != 0 || len(out.UserPreviews) != 0 || out.Pagination != (recommendedPaginationOut{}) {
+		t.Fatalf("partial structured output=%+v", out)
+	}
+}
+
+func TestSDKRecommendedAllAppliesPageTwoIndependently(t *testing.T) {
+	var illust, manga, novel, users []sdk.Cursor
+	client := &fakeSDKClient{
+		illustRecommended: func(_ context.Context, request sdk.IllustRecommendedRequest) (*sdk.IllustListResult, error) {
+			illust = append(illust, request.Cursor)
+			if request.Cursor == "" {
+				return &sdk.IllustListResult{Illusts: []sdk.Illust{testSDKIllust(1, "first", 1)}, NextCursor: "i"}, nil
+			}
+			return &sdk.IllustListResult{Illusts: []sdk.Illust{testSDKIllust(11, "second", 1)}}, nil
+		},
+		mangaRecommended: func(_ context.Context, request sdk.IllustRecommendedRequest) (*sdk.IllustListResult, error) {
+			manga = append(manga, request.Cursor)
+			if request.Cursor == "" {
+				return &sdk.IllustListResult{Illusts: []sdk.Illust{testSDKIllust(2, "first", 2)}, NextCursor: "m"}, nil
+			}
+			return &sdk.IllustListResult{Illusts: []sdk.Illust{testSDKIllust(12, "second", 2)}}, nil
+		},
+		novelRecommended: func(_ context.Context, request sdk.NovelRecommendedRequest) (*sdk.NovelListResult, error) {
+			novel = append(novel, request.Cursor)
+			if request.Cursor == "" {
+				return &sdk.NovelListResult{Novels: []sdk.Novel{{ID: 3, User: sdk.User{ID: 3}}}, NextCursor: "n"}, nil
+			}
+			return &sdk.NovelListResult{Novels: []sdk.Novel{{ID: 13, User: sdk.User{ID: 3}}}}, nil
+		},
+		userRecommended: func(_ context.Context, request sdk.UserRecommendedRequest) (*sdk.UserRecommendedResult, error) {
+			users = append(users, request.Cursor)
+			if request.Cursor == "" {
+				return &sdk.UserRecommendedResult{UserPreviews: []sdk.RecommendedUserPreview{{User: sdk.User{ID: 4}}}, NextCursor: "u"}, nil
+			}
+			return &sdk.UserRecommendedResult{UserPreviews: []sdk.RecommendedUserPreview{{User: sdk.User{ID: 14}}}}, nil
+		},
+	}
+	session, closeSession := newSDKTestSession(t, client)
+	defer closeSession()
+	result := callTool(t, session, "recommended", map[string]any{"kind": "all", "page": 2, "limit": 1})
+	if result.IsError || !slices.Equal(illust, []sdk.Cursor{"", "i"}) || !slices.Equal(manga, []sdk.Cursor{"", "m"}) || !slices.Equal(novel, []sdk.Cursor{"", "n"}) || !slices.Equal(users, []sdk.Cursor{"", "u"}) {
+		t.Fatalf("result=%+v cursors=%v/%v/%v/%v", result, illust, manga, novel, users)
+	}
+	var structured map[string]any
+	decodeStructured(t, result, &structured)
+	previews, ok := structured["user_previews"].([]any)
+	if !ok || len(previews) != 1 {
+		t.Fatalf("user previews=%#v", structured["user_previews"])
+	}
+	preview, ok := previews[0].(map[string]any)
+	if !ok {
+		t.Fatalf("user preview=%#v", previews[0])
+	}
+	if illusts, ok := preview["illusts"].([]any); !ok || len(illusts) != 0 {
+		t.Fatalf("nested illusts=%#v", preview["illusts"])
+	}
+	if novels, ok := preview["novels"].([]any); !ok || len(novels) != 0 {
+		t.Fatalf("nested novels=%#v", preview["novels"])
+	}
+}
+
+type legacyRecommendationAPI struct {
+	fakeAPI
+	calls int
+}
+
+func (a *legacyRecommendationAPI) IllustRecommended(context.Context, int) (*pixiv.IllustList, error) {
+	a.calls++
+	return &pixiv.IllustList{Illusts: []pixiv.Illust{{ID: 77, Title: "legacy"}}}, nil
+}
+
+func TestLegacyIllustRecommendedStillUsesSourceInsteadOfSDK(t *testing.T) {
+	api := &legacyRecommendationAPI{}
+	sdkCalls := 0
+	service := application.SDKService{NewClient: func(application.SDKClientRequest) (application.SDKClient, error) {
+		sdkCalls++
+		return &fakeSDKClient{}, nil
+	}}
+	session, closeSession := newSDKTestSessionWithService(t, api, service)
+	defer closeSession()
+	result := callTool(t, session, "illust_recommended", map[string]any{})
+	if result.IsError || api.calls != 1 || sdkCalls != 0 {
+		t.Fatalf("legacy result=%+v source=%d sdk=%d", result, api.calls, sdkCalls)
+	}
+}
+
+func TestDownloadRandomFromRecommendationKeepsLegacySourceAndAvoidsSDK(t *testing.T) {
+	api := &legacyRecommendationAPI{}
+	path := filepath.Join(t.TempDir(), "legacy.jpg")
+	if err := os.WriteFile(path, []byte("legacy"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// 让 legacy fixture 经过真实 structured delivery 的 files 数组，而不是由 nil
+	// 切片触发 MCP schema 的 array 约束；生产下载流程不受这个测试数据影响。
+	downloads := &fakeDownloads{artworks: []download.DownloadedArtwork{{IllustID: 77, Files: []download.DownloadedFile{{Path: path}}}}}
+	sdkCalls := 0
+	service := application.SDKService{NewClient: func(application.SDKClientRequest) (application.SDKClient, error) {
+		sdkCalls++
+		return &fakeSDKClient{}, nil
+	}}
+	server := NewWithSDK(api, downloads, slog.New(slog.NewTextHandler(io.Discard, nil)), service, application.SDKClientRequest{})
+	clientTransport, serverTransport := mcp.NewInMemoryTransports()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() { _ = server.Run(ctx, serverTransport) }()
+	client := mcp.NewClient(&mcp.Implementation{Name: "test", Version: "1"}, nil)
+	session, err := client.Connect(ctx, clientTransport, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer session.Close()
+	result := callTool(t, session, "download_random_from_recommendation", map[string]any{"count": 1})
+	if result.IsError || api.calls != 1 || sdkCalls != 0 || !slices.Equal(downloads.downloadIDs, []int64{77}) {
+		t.Fatalf("result=%+v source=%d sdk=%d ids=%v", result, api.calls, sdkCalls, downloads.downloadIDs)
+	}
+}
+
 func testSDKIllust(id int64, title string, userID int64) sdk.Illust {
 	return sdk.Illust{
 		ID:        id,
@@ -1113,6 +1369,10 @@ type fakeSDKClient struct {
 	artworks              []sdk.Illust
 	bookmarks             []sdk.Illust
 	following             []sdk.UserPreview
+	illustRecommended     func(context.Context, sdk.IllustRecommendedRequest) (*sdk.IllustListResult, error)
+	mangaRecommended      func(context.Context, sdk.IllustRecommendedRequest) (*sdk.IllustListResult, error)
+	novelRecommended      func(context.Context, sdk.NovelRecommendedRequest) (*sdk.NovelListResult, error)
+	userRecommended       func(context.Context, sdk.UserRecommendedRequest) (*sdk.UserRecommendedResult, error)
 	userDetailResult      *sdk.UserDetailResult
 	userDetailErr         error
 	userDetailRequest     sdk.UserDetailRequest
@@ -1152,16 +1412,29 @@ func (*fakeSDKClient) IllustDetail(context.Context, int64) (*sdk.IllustDetail, e
 func (*fakeSDKClient) IllustRanking(context.Context, sdk.IllustRankingRequest) (*sdk.IllustListResult, error) {
 	return &sdk.IllustListResult{}, nil
 }
-func (*fakeSDKClient) IllustRecommended(context.Context, sdk.IllustRecommendedRequest) (*sdk.IllustListResult, error) {
+
+func (f *fakeSDKClient) IllustRecommended(ctx context.Context, request sdk.IllustRecommendedRequest) (*sdk.IllustListResult, error) {
+	if f.illustRecommended != nil {
+		return f.illustRecommended(ctx, request)
+	}
 	return &sdk.IllustListResult{}, nil
 }
-func (*fakeSDKClient) MangaRecommended(context.Context, sdk.IllustRecommendedRequest) (*sdk.IllustListResult, error) {
+func (f *fakeSDKClient) MangaRecommended(ctx context.Context, request sdk.IllustRecommendedRequest) (*sdk.IllustListResult, error) {
+	if f.mangaRecommended != nil {
+		return f.mangaRecommended(ctx, request)
+	}
 	return &sdk.IllustListResult{}, nil
 }
-func (*fakeSDKClient) NovelRecommended(context.Context, sdk.NovelRecommendedRequest) (*sdk.NovelListResult, error) {
+func (f *fakeSDKClient) NovelRecommended(ctx context.Context, request sdk.NovelRecommendedRequest) (*sdk.NovelListResult, error) {
+	if f.novelRecommended != nil {
+		return f.novelRecommended(ctx, request)
+	}
 	return &sdk.NovelListResult{}, nil
 }
-func (*fakeSDKClient) UserRecommended(context.Context, sdk.UserRecommendedRequest) (*sdk.UserRecommendedResult, error) {
+func (f *fakeSDKClient) UserRecommended(ctx context.Context, request sdk.UserRecommendedRequest) (*sdk.UserRecommendedResult, error) {
+	if f.userRecommended != nil {
+		return f.userRecommended(ctx, request)
+	}
 	return &sdk.UserRecommendedResult{}, nil
 }
 

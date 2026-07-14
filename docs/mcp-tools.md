@@ -32,7 +32,8 @@ SDK cursor 不出现在 MCP 参数或输出。`user_bookmarks.max_bookmark_id` �
 | `illust_detail` | `illust_id` | 作品详情。 |
 | `illust_related` | `illust_id`、`offset`、`include_thumbnail` | 相关作品。 |
 | `illust_ranking` | `mode`、`date`、`offset`、`include_thumbnail` | 排行榜作品。 |
-| `illust_recommended` | `offset`、`include_thumbnail` | 推荐作品；需要认证。 |
+| `illust_recommended` | `offset`、`include_thumbnail` | 兼容旧推荐作品 tool；继续使用 legacy Source 的文本输出。 |
+| `recommended` | 必填 `kind`（`all`、`illust`、`manga`、`novel`、`user`），可选 `page`、`limit` | 通过认证 App SDK 返回 `{kind, illusts, manga, novels, user_previews, pagination}`；单类只填对应流，`all` 顺序读取四流。每条流独立应用分页，`pagination` 按流给出逻辑页信息；不暴露 SDK cursor，不支持 Web fallback。 |
 | `trending_tags_illust` | 无 | 热门标签。 |
 | `illust_follow` | `restrict`、`offset`、`include_thumbnail` | 关注新作；需要认证。 |
 | `search_user` | `word`、`offset` | 用户列表；匿名 fallback 是相关作者去重，不是官方用户名搜索。 |

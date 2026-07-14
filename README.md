@@ -393,11 +393,13 @@ MCP tools：
 
 `set_download_path`, `download`, `refresh_token`, `set_refresh_token`,
 `download_random_from_recommendation`, `search_illust`, `illust_detail`,
-`illust_related`, `illust_ranking`, `search_user`, `illust_recommended`,
+`illust_related`, `illust_ranking`, `search_user`, `illust_recommended`, `recommended`,
 `trending_tags_illust`, `illust_follow`, `user_detail`, `user_bookmarks`, `user_following`,
 and `get_thumbnail_base64`.
 
 `user_detail` 接受必填的 `user_id`，返回完整稳定的用户详情 structured output；它需要认证，不支持匿名 Web fallback。各 MCP tool 的参数与返回语义见 [MCP 工具](docs/mcp-tools.md)。
+
+`recommended` 接受必填 `kind`：`all`、`illust`、`manga`、`novel` 或 `user`。它经认证 App SDK 返回结构化推荐；`all` 对四条流分别应用 `page`/`limit`，不暴露 SDK cursor，也不支持匿名 Web fallback。`illust_recommended` 保留为兼容旧调用方的 legacy Source tool。
 
 ## 开发验证
 

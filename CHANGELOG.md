@@ -13,6 +13,7 @@
 
 ### Added
 
+- MCP 新增 `recommended`：以必填 kind 返回插画、漫画、小说或作者推荐；`all` 以每流独立分页的 structured output 返回四类推荐。
 - `pixiv recommended` 现要求 `all|illust|manga|novel|user` kind；`all` 原子返回四类个性化推荐。
 - MCP 新增 `user_detail`，以必填 `user_id` 返回完整稳定的用户详情 structured output。
 - 新增 `pixiv user detail USER_ID`；可用 `--json` 输出完整、稳定的用户详情 SDK envelope。

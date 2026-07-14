@@ -310,6 +310,146 @@ func (a *App) userDetailError(ctx context.Context, err error) (*mcp.CallToolResu
 	}, sdk.UserDetailResult{}, nil
 }
 
+type recommendedIn struct {
+	Kind string `json:"kind" jsonschema:"required: all, illust, manga, novel, or user"`
+	pageLimitIn
+}
+type recommendedOut struct {
+	Kind         string                       `json:"kind"`
+	Illusts      []sdk.Illust                 `json:"illusts"`
+	Manga        []sdk.Illust                 `json:"manga"`
+	Novels       []sdk.Novel                  `json:"novels"`
+	UserPreviews []sdk.RecommendedUserPreview `json:"user_previews"`
+	Pagination   recommendedPaginationOut     `json:"pagination"`
+}
+
+// recommendedPaginationOut 分别表达每条推荐流的逻辑分页；SDK opaque cursor 不离开适配层。
+// 单类查询只有其对应字段，all 则始终含四个字段。
+type recommendedPaginationOut struct {
+	Illust *paginationOut `json:"illust,omitempty"`
+	Manga  *paginationOut `json:"manga,omitempty"`
+	Novel  *paginationOut `json:"novel,omitempty"`
+	User   *paginationOut `json:"user,omitempty"`
+}
+
+func newRecommendedOut(kind string) recommendedOut {
+	return recommendedOut{
+		Kind: kind, Illusts: []sdk.Illust{}, Manga: []sdk.Illust{}, Novels: []sdk.Novel{}, UserPreviews: []sdk.RecommendedUserPreview{},
+	}
+}
+
+func recommendedPagination(plan mcpListPlan, limit *int, returned int, more bool) *paginationOut {
+	value := listPagination(plan, limit, returned, more)
+	return &value
+}
+
+func (a *App) recommended(ctx context.Context, _ *mcp.CallToolRequest, in recommendedIn) (*mcp.CallToolResult, recommendedOut, error) {
+	out := newRecommendedOut(in.Kind)
+	plan, err := parseMCPListPlan(in.pageLimitIn)
+	if err == nil && in.Kind != "all" && in.Kind != "illust" && in.Kind != "manga" && in.Kind != "novel" && in.Kind != "user" {
+		err = errors.New("kind must be one of: all, illust, manga, novel, user")
+	}
+	if err != nil {
+		return a.recommendedError(ctx, err)
+	}
+	client, release, err := a.openSDKOperation(ctx)
+	if err != nil {
+		return a.recommendedError(ctx, err)
+	}
+	defer release()
+	if in.Kind == "all" || in.Kind == "illust" {
+		items, more, fetchErr := collectPages(ctx, plan, func(ctx context.Context, c sdk.Cursor) ([]sdk.Illust, sdk.Cursor, error) {
+			r, e := client.IllustRecommended(ctx, sdk.IllustRecommendedRequest{Cursor: c})
+			if e != nil {
+				return nil, "", e
+			}
+			return r.Illusts, r.NextCursor, nil
+		})
+		if fetchErr != nil {
+			return a.recommendedError(ctx, fetchErr)
+		}
+		out.Illusts = items
+		out.Pagination.Illust = recommendedPagination(plan, in.Limit, len(items), more)
+	}
+	if in.Kind == "all" || in.Kind == "manga" {
+		items, more, fetchErr := collectPages(ctx, plan, func(ctx context.Context, c sdk.Cursor) ([]sdk.Illust, sdk.Cursor, error) {
+			r, e := client.MangaRecommended(ctx, sdk.IllustRecommendedRequest{Cursor: c})
+			if e != nil {
+				return nil, "", e
+			}
+			return r.Illusts, r.NextCursor, nil
+		})
+		if fetchErr != nil {
+			return a.recommendedError(ctx, fetchErr)
+		}
+		out.Manga = items
+		out.Pagination.Manga = recommendedPagination(plan, in.Limit, len(items), more)
+	}
+	if in.Kind == "all" || in.Kind == "novel" {
+		items, more, fetchErr := collectPages(ctx, plan, func(ctx context.Context, c sdk.Cursor) ([]sdk.Novel, sdk.Cursor, error) {
+			r, e := client.NovelRecommended(ctx, sdk.NovelRecommendedRequest{Cursor: c})
+			if e != nil {
+				return nil, "", e
+			}
+			return r.Novels, r.NextCursor, nil
+		})
+		if fetchErr != nil {
+			return a.recommendedError(ctx, fetchErr)
+		}
+		out.Novels = normalizeRecommendedNovels(items)
+		out.Pagination.Novel = recommendedPagination(plan, in.Limit, len(items), more)
+	}
+	if in.Kind == "all" || in.Kind == "user" {
+		items, more, fetchErr := collectPages(ctx, plan, func(ctx context.Context, c sdk.Cursor) ([]sdk.RecommendedUserPreview, sdk.Cursor, error) {
+			r, e := client.UserRecommended(ctx, sdk.UserRecommendedRequest{Cursor: c})
+			if e != nil {
+				return nil, "", e
+			}
+			return r.UserPreviews, r.NextCursor, nil
+		})
+		if fetchErr != nil {
+			return a.recommendedError(ctx, fetchErr)
+		}
+		out.UserPreviews = normalizeRecommendedUserPreviews(items)
+		out.Pagination.User = recommendedPagination(plan, in.Limit, len(items), more)
+	}
+	return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("已获取 %s 推荐。", in.Kind)}}}, out, nil
+}
+
+// normalizeRecommendedUserPreviews 只在 MCP 输出边界把可选作品预览归一为空数组，
+// 使其满足 tool schema；公共 SDK 仍保留 nil 与空切片的原始 Go 语义。
+func normalizeRecommendedUserPreviews(items []sdk.RecommendedUserPreview) []sdk.RecommendedUserPreview {
+	result := make([]sdk.RecommendedUserPreview, len(items))
+	copy(result, items)
+	for index := range result {
+		if result[index].Illusts == nil {
+			result[index].Illusts = []sdk.Illust{}
+		}
+		if result[index].Novels == nil {
+			result[index].Novels = []sdk.Novel{}
+		}
+		result[index].Novels = normalizeRecommendedNovels(result[index].Novels)
+	}
+	return result
+}
+
+// normalizeRecommendedNovels 保证 MCP schema 的 tags 字段始终编码为数组。
+func normalizeRecommendedNovels(items []sdk.Novel) []sdk.Novel {
+	result := make([]sdk.Novel, len(items))
+	copy(result, items)
+	for index := range result {
+		if result[index].Tags == nil {
+			result[index].Tags = []sdk.Tag{}
+		}
+	}
+	return result
+}
+
+func (a *App) recommendedError(ctx context.Context, err error) (*mcp.CallToolResult, recommendedOut, error) {
+	recordToolError(ctx, err)
+	return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: "错误: " + err.Error()}}}, newRecommendedOut(""), nil
+}
+
 type userArtworksIn struct {
 	UserID int64          `json:"user_id,omitempty" jsonschema:"optional user ID; defaults to the authenticated user"`
 	Type   sdk.IllustType `json:"type,omitempty" jsonschema:"illust, manga, or ugoira"`
