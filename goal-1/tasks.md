@@ -18,10 +18,17 @@
 
 ## T03 — 审查 recovery 修改并 dispatch/验收 v0.2.0 Release
 
-- 状态：阻塞
-- 实际：已创建并推送 recovery PR #4；Linux 双架构、macOS arm64 与 quality 通过。
-- 证据：GitHub Actions `29276437342`、`29276437349`；macOS amd64、Windows amd64/arm64 连续多个 goal 回合仍为 in-progress，未提供失败日志或完成结论。
-- 风险/下一步：等待 GitHub Actions 外部 runner 完成后，复查全部门禁；全绿才合并 main 并 dispatch `release_tag=v0.2.0`，tag 保持不可变。
+- 状态：待修复
+- 实际：recovery PR #4 已合并至 main；审计 recovery run 已从不可变 `v0.2.0` tag 启动，但六个平台均在覆盖层步骤失败，未创建 Release。
+- 证据：GitHub Actions `29304765177`（failure）。逐字复现其 overlay 后，实际 diff 仅为 `.github/workflows/release.yml`、`pkg/pixiv/account_external_test.go`、`scripts/releaseworkflow/main.go`、`scripts/releaseworkflow/main_test.go` 四项，而 workflow 的严格断言仍要求历史遗留的 17 项全集；失败发生在 Go 测试前，故与平台或 Windows ACL 无关。
+- 风险/下一步：新增 T03a 以把审计白名单和运行时断言改为同一个、基于实际 tag-to-main 差异的最小集合；修复必须继续不移动 tag，且经实现/规格/质量三阶段审查和多平台 CI 后才可重新 dispatch。
+
+## T03a — 收敛 recovery overlay 至实际最小审计差异并复验 policy
+
+- 状态：未完成
+- 实际：
+- 证据：
+- 风险/下一步：
 
 ## C01 — 集中检查：恢复链路、tag 不变性、文档与外部发布证据
 
