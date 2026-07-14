@@ -144,10 +144,10 @@
 
 ## T14 — v0.3.0 Release 候选门禁与 opt-in API canary
 
-- 状态：未完成
+- 状态：阻塞
 - 实际：新增仅在 `PIXIV_E2E_REAL_API=1` 且显式提供 `PIXIV_E2E_REFRESH_TOKEN` 时执行的认证 App API canary；子进程隔离 HOME/XDG，仅注入该测试 token，不读取本机 auth/browser，也不匿名 fallback。canary 经 CLI 验证 `auth check`、完整 User Detail 四个稳定 envelope、四类原子推荐与 `recommended all` 四数组，并拒绝 `cursor`、`next_cursor`、`next_url` 泄露。完成本机 `v0.3.0-rc.1` 候选构建、版本 e2e 与 darwin/arm64 打包检查。
 - 证据：规格审查发现并修复 `next_cursor`、`null` 数组和单类续页泄露三项问题，窄复审与质量审查均 APPROVE。`go test ./... -count=1`、`go test -race ./... -count=1`、`go vet ./...`、`pre-commit run --all-files`、release workflow/package/Homebrew fixture、releaseassets/releaseworkflow/platformsmokeworkflow/nativeevidence 测试及 Rust vendor/fmt/clippy 均通过。候选 `062e0a6` 以 `v0.3.0-rc.1` 编译，`PIXIV_E2E_BINARY`/`PIXIV_E2E_EXPECTED_VERSION` e2e 通过，并产出 `pixiv-cli_0.3.0-rc.1_darwin_arm64.tar.gz`；候选 channel 为 prerelease，`0.3.0` 为 stable。明确设置开关但未设置 token 时，canary 正确 skip，未发生网络访问。
-- 风险/下一步：本机没有显式独立 `PIXIV_E2E_REFRESH_TOKEN`，故尚未取得真实 App API wire 兼容性证据；不能把默认 skip 或本地 fixture 视为 canary 通过。待调用者在受控环境显式注入独立测试 token（必要时 `PIXIV_E2E_PROXY`）后运行 canary；成功后再完成 T14 并进入不可变 `v0.3.0` 发布。
+- 风险/下一步：本机没有显式独立 `PIXIV_E2E_REFRESH_TOKEN`，故尚未取得真实 App API wire 兼容性证据；不能把默认 skip 或本地 fixture 视为 canary 通过。2026-07-15 只读复核确认 `v0.2.0` 的公开 Release、六平台资产与 workflow `29307406643` 仍为 success，远端不存在 `v0.3.0` tag 或 Release。待调用者在受控环境显式注入独立测试 token（必要时 `PIXIV_E2E_PROXY`）后运行 canary；成功后再完成 T14 并进入不可变 `v0.3.0` 发布。
 
 ## T15 — 创建并发布不可变 v0.3.0，验收 Release/Homebrew/更新
 
