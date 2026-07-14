@@ -55,6 +55,50 @@ func TestGitHubReleaseClientSelectsLatestStableRelease(t *testing.T) {
 	}
 }
 
+func TestGitHubReleaseClientUsesStableUserAgentForEveryReleasePage(t *testing.T) {
+	const wantUserAgent = "pixiv-cli"
+	requests := make(map[string]int)
+	var server *httptest.Server
+	server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.Header.Get("User-Agent"); got != wantUserAgent {
+			t.Errorf("User-Agent for %q = %q, want %q", r.URL.RequestURI(), got, wantUserAgent)
+			http.Error(w, "missing or incorrect User-Agent", http.StatusForbidden)
+			return
+		}
+		requests[r.URL.RequestURI()]++
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Query().Get("page") {
+		case "":
+			w.Header().Set("Link", "<"+server.URL+"/repos/FlanChanXwO/pixiv-cli/releases?page=2>; rel=\"next\"")
+			fmt.Fprint(w, `[{"tag_name":"v1.0.0","draft":false,"prerelease":false}]`)
+		case "2":
+			fmt.Fprint(w, `[{"tag_name":"v1.0.1","draft":false,"prerelease":false}]`)
+		default:
+			t.Fatalf("unexpected release page %q", r.URL.RequestURI())
+		}
+	}))
+	defer server.Close()
+
+	client, err := update.NewGitHubReleaseClient(update.ReleaseClientOptions{
+		APIBaseURL: server.URL,
+		CacheDir:   t.TempDir(),
+	})
+	if err != nil {
+		t.Fatalf("NewGitHubReleaseClient() error = %v", err)
+	}
+
+	result, err := client.Check(context.Background(), update.ReleaseCheckOptions{})
+	if err != nil {
+		t.Fatalf("Check() error = %v", err)
+	}
+	if result.Release == nil || result.Release.TagName != "v1.0.1" {
+		t.Fatalf("Check() release = %#v, want v1.0.1 from the second page", result.Release)
+	}
+	if requests["/repos/FlanChanXwO/pixiv-cli/releases"] != 1 || requests["/repos/FlanChanXwO/pixiv-cli/releases?page=2"] != 1 {
+		t.Fatalf("release page requests = %#v, want one request for each page", requests)
+	}
+}
+
 func TestGitHubReleaseClientCarriesSelectedReleaseAssets(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
