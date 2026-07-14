@@ -102,10 +102,10 @@
 
 ## C03 — 集中检查：用户详情和推荐模型、认证、错误与分页
 
-- 状态：未完成
-- 实际：
-- 证据：
-- 风险/下一步：
+- 状态：完成
+- 实际：独立审计 T06–T09 的 User Detail、四类推荐、认证/错误和分页边界，未发现阻塞问题。确认 UserDetail 的四个 required envelope、nil-safe legacy 适配与公开 typed error；插画/漫画/小说/作者推荐均为 App-only，漫画复用正确 catalog，四 Operation/digest/cursor 互不兼容，`next_url` 只解析数值 continuation 且不进入公开模型。CLI/MCP 未直连底层 adapter；三类新推荐尚未提前暴露，按计划留给 T10/T11。
+- 证据：`go vet ./...`、`go test ./pixiv ./internal/pixiv/appapi ./internal/application ./internal/bootstrap ./internal/cli ./internal/mcpserver -count=1`、`go test ./... -count=1`、`git diff --check origin/main..HEAD` 均通过。导入检索确认 CLI/MCP 不导入 appapi/webapi/oauth/resource；独立审计复查 DTO→model→public、malformed envelope/ID/continuation、未认证不触网、cursor 交叉拒绝和无 raw `next_url` 后 APPROVE。
+- 风险/下一步：默认测试仍未访问真实 Pixiv；小说/作者推荐的实际 endpoint/wire shape 需在 T14 显式、脱敏 opt-in App API canary 复核。下一任务 T10 实现 `pixiv recommended all|illust|manga|novel|user`，并扩 SDKClient 接口及测试 fake。
 
 ## T10 — 改造 CLI recommended 子命令与原子输出
 
