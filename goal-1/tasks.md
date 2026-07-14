@@ -70,7 +70,7 @@
 - 状态：完成
 - 实际：将 App `/v1/user/detail` 扩展为严格四 envelope 的 DTO→internal model→公开 SDK 映射；`UserDetailResult` 现稳定包含 `User`、`Profile`、`ProfilePublicity` 与 `Workspace`，`User` 新增可选 `ProfileImageURLs.Medium`。`profile` 的统计/身份字段、公开性六个布尔字段和 workspace 文本均规范化为公开模型；可选 URL 的缺失/null/空串统一为 nil，隐藏文本/未知计数/布尔值保持零值。四个 envelope 的缺失、null、非 object、解码失败或无效 user ID 均返回脱敏 typed malformed error。legacy `Source.UserDetail` 继续对旧 consumer 返回摘要 User，并把 adapter `(nil,nil)` 显式归类 malformed，避免 panic。
 - 证据：TDD RED `go test ./pixiv -run '^TestUserDetailReturnsCompleteStableProfileFromOneAppRequest$' -count=1` 因尚无完整模型字段编译失败，GREEN 后通过；公开测试覆盖完整映射、四 envelope malformed/错误 metadata 脱敏、optional URL nil 与零值，internal mapper/legacy Source 测试覆盖三段隔离与 nil adapter。`go test ./pixiv -count=1`、`go test ./internal/pixiv/appapi ./internal/pixiv -count=1`、`go test ./internal/application ./internal/bootstrap ./internal/cli ./internal/mcpserver -count=1`、`go test ./... -count=1`、`git diff --check` 均通过；规格审查、质量审查与 P2 nil-safe 窄复审均 APPROVE。
-- 风险/下一步：默认测试未访问真实 Pixiv，字段兼容性将在 T14 opt-in App API canary 复核；CLI/MCP 暂未暴露完整详情，下一任务 T07 新增 CLI `pixiv user detail USER_ID` 并保持 SDK 单链路。
+- 风险/下一步：默认测试未访问真实 Pixiv，字段兼容性将在 T14 opt-in App API canary 复核；CLI/MCP 暂未暴露完整详情。按三个实现任务后的门禁，下一任务 C02 集中检查 SDK 路径、协议边界与公开模型稳定性。
 
 ## C02 — 集中检查：SDK 路径、协议边界、公开模型稳定性
 
