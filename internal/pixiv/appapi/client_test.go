@@ -55,18 +55,21 @@ func TestUserDetailFetchesUserName(t *testing.T) {
 			t.Fatalf("user_id = %q, want 123", got)
 		}
 		_ = json.NewEncoder(w).Encode(map[string]any{
-			"user": map[string]any{"id": 123, "name": "alice"},
+			"user":              map[string]any{"id": 123, "name": "alice"},
+			"profile":           map[string]any{},
+			"profile_publicity": map[string]any{},
+			"workspace":         map[string]any{},
 		})
 	}))
 	defer api.Close()
 
 	client := New(WithBaseURL(api.URL), WithAccessToken("access"))
-	user, err := client.UserDetail(context.Background(), 123)
+	detail, err := client.UserDetail(context.Background(), 123)
 	if err != nil {
 		t.Fatalf("UserDetail returned error: %v", err)
 	}
-	if user.ID != 123 || user.Name != "alice" {
-		t.Fatalf("unexpected user: %+v", user)
+	if detail.User.ID != 123 || detail.User.Name != "alice" {
+		t.Fatalf("unexpected detail: %+v", detail)
 	}
 }
 

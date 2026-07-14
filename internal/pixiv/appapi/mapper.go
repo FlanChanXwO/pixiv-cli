@@ -42,7 +42,51 @@ func mapIllust(dto illustDTO) model.Illust {
 }
 
 func mapUser(dto userDTO) model.User {
-	return model.User{ID: dto.ID, Name: dto.Name, Account: dto.Account, Comment: dto.Comment, IsFollowed: dto.IsFollowed}
+	return model.User{
+		ID: dto.ID, Name: dto.Name, Account: dto.Account, Comment: dto.Comment, IsFollowed: dto.IsFollowed,
+		ProfileImageURLs: model.ProfileImageURLs{Medium: optionalURL(dto.ProfileImageURLs.Medium)},
+	}
+}
+
+func mapUserDetail(dto userDetailDTO) model.UserDetail {
+	return model.UserDetail{
+		User:             mapUser(dto.User.Value),
+		Profile:          mapProfile(dto.Profile.Value),
+		ProfilePublicity: mapProfilePublicity(dto.ProfilePublicity.Value),
+		Workspace:        mapWorkspace(dto.Workspace.Value),
+	}
+}
+
+func mapProfile(dto profileDTO) model.Profile {
+	return model.Profile{
+		Webpage: optionalURL(dto.Webpage), Gender: dto.Gender, Birth: dto.Birth, BirthDay: dto.BirthDay, BirthYear: dto.BirthYear,
+		Region: dto.Region, AddressID: dto.AddressID, CountryCode: dto.CountryCode, Job: dto.Job, JobID: dto.JobID,
+		TotalFollowUsers: dto.TotalFollowUsers, TotalMyPixivUsers: dto.TotalMyPixivUsers, TotalIllusts: dto.TotalIllusts,
+		TotalManga: dto.TotalManga, TotalNovels: dto.TotalNovels, TotalIllustBookmarksPublic: dto.TotalIllustBookmarksPublic,
+		TotalIllustSeries: dto.TotalIllustSeries, TotalNovelSeries: dto.TotalNovelSeries,
+		BackgroundImageURL: optionalURL(dto.BackgroundImageURL), TwitterAccount: dto.TwitterAccount,
+		TwitterURL: optionalURL(dto.TwitterURL), PawooURL: optionalURL(dto.PawooURL), IsPremium: dto.IsPremium,
+		IsUsingCustomProfileImage: dto.IsUsingCustomProfileImage,
+	}
+}
+
+func mapProfilePublicity(dto profilePublicityDTO) model.ProfilePublicity {
+	return model.ProfilePublicity{Gender: dto.Gender, Region: dto.Region, BirthDay: dto.BirthDay, BirthYear: dto.BirthYear, Job: dto.Job, Pawoo: dto.Pawoo}
+}
+
+func mapWorkspace(dto workspaceDTO) model.Workspace {
+	return model.Workspace{
+		PC: dto.PC, Monitor: dto.Monitor, Tool: dto.Tool, Scanner: dto.Scanner, Tablet: dto.Tablet, Mouse: dto.Mouse,
+		Printer: dto.Printer, Desktop: dto.Desktop, Music: dto.Music, Desk: dto.Desk, Chair: dto.Chair, Comment: dto.Comment,
+		WorkspaceImageURL: optionalURL(dto.WorkspaceImageURL),
+	}
+}
+
+func optionalURL(value *string) *string {
+	if value == nil || *value == "" {
+		return nil
+	}
+	return value
 }
 func mapImageURLs(dto imageURLsDTO) model.ImageURLs {
 	return model.ImageURLs{SquareMedium: dto.SquareMedium, Medium: dto.Medium, Large: dto.Large, Original: dto.Original}

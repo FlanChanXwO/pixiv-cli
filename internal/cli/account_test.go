@@ -1439,7 +1439,10 @@ func setTestAuthClientFactory(t *testing.T, identities map[string]authIdentity) 
 			for _, identity := range identities {
 				if uid == fmt.Sprint(identity.userID) {
 					require.NoError(t, json.NewEncoder(w).Encode(map[string]any{
-						"user": map[string]any{"id": identity.userID, "name": identity.username},
+						"user":              map[string]any{"id": identity.userID, "name": identity.username},
+						"profile":           map[string]any{},
+						"profile_publicity": map[string]any{},
+						"workspace":         map[string]any{},
 					}))
 					return
 				}

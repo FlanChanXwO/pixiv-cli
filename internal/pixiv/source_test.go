@@ -7,6 +7,7 @@ import (
 	"io"
 	"testing"
 
+	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/appapi"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -62,6 +63,25 @@ func TestSourceKeepsAppOnlyOperationOutOfWebWhitelist(t *testing.T) {
 	require.Len(t, result.Illusts, 1)
 	assert.Equal(t, int64(808), result.Illusts[0].ID)
 	assert.Equal(t, 1, app.relatedCalls)
+}
+
+func TestSourceUserDetailRetainsLegacyUserContract(t *testing.T) {
+	app := &fakeAppAPI{userDetail: &UserDetail{User: User{ID: 42, Name: "alice"}, Profile: Profile{Gender: "female"}}}
+	source := newFakeSource(app, &fakeWebAPI{}, &fakeAuth{}, true)
+
+	user, err := source.UserDetail(context.Background(), 42)
+
+	require.NoError(t, err)
+	assert.Equal(t, &User{ID: 42, Name: "alice"}, user)
+}
+
+func TestSourceUserDetailRejectsNilDetailAsMalformed(t *testing.T) {
+	source := newFakeSource(&fakeAppAPI{}, &fakeWebAPI{}, &fakeAuth{}, true)
+
+	user, err := source.UserDetail(context.Background(), 42)
+
+	assert.Nil(t, user)
+	assert.ErrorIs(t, err, appapi.ErrMalformedResponse)
 }
 
 func TestSourceSetRefreshTokenDisablesWebFallback(t *testing.T) {
@@ -133,6 +153,7 @@ type fakeAppAPI struct {
 	related      *IllustList
 	relatedCalls int
 	ugoiraCalls  int
+	userDetail   *UserDetail
 }
 
 func (f *fakeAppAPI) SearchIllust(context.Context, string, string, string, string, int) (*IllustList, error) {
@@ -155,8 +176,8 @@ func (f *fakeAppAPI) IllustRanking(context.Context, string, string, int) (*Illus
 func (f *fakeAppAPI) SearchUser(context.Context, string, int) (*UserPreviewList, error) {
 	return nil, nil
 }
-func (f *fakeAppAPI) UserDetail(context.Context, int64) (*User, error) {
-	return nil, nil
+func (f *fakeAppAPI) UserDetail(context.Context, int64) (*UserDetail, error) {
+	return f.userDetail, nil
 }
 func (f *fakeAppAPI) IllustRecommended(context.Context, int) (*IllustList, error) {
 	return nil, nil

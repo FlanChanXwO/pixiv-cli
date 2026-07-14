@@ -32,11 +32,15 @@ type illustDTO struct {
 	Height         int           `json:"height"`
 }
 type userDTO struct {
-	ID         int64  `json:"id"`
-	Name       string `json:"name"`
-	Account    string `json:"account"`
-	Comment    string `json:"comment"`
-	IsFollowed bool   `json:"is_followed"`
+	ID               int64               `json:"id"`
+	Name             string              `json:"name"`
+	Account          string              `json:"account"`
+	Comment          string              `json:"comment"`
+	IsFollowed       bool                `json:"is_followed"`
+	ProfileImageURLs profileImageURLsDTO `json:"profile_image_urls"`
+}
+type profileImageURLsDTO struct {
+	Medium *string `json:"medium"`
 }
 type tagDTO struct {
 	Name           string `json:"name"`
@@ -88,7 +92,59 @@ type ugoiraFrameDTO struct {
 	Delay int    `json:"delay"`
 }
 type userDetailDTO struct {
-	User *userDTO `json:"user"`
+	User             requiredObject[userDTO]             `json:"user"`
+	Profile          requiredObject[profileDTO]          `json:"profile"`
+	ProfilePublicity requiredObject[profilePublicityDTO] `json:"profile_publicity"`
+	Workspace        requiredObject[workspaceDTO]        `json:"workspace"`
+}
+type profileDTO struct {
+	Webpage                    *string `json:"webpage"`
+	Gender                     string  `json:"gender"`
+	Birth                      string  `json:"birth"`
+	BirthDay                   string  `json:"birth_day"`
+	BirthYear                  int     `json:"birth_year"`
+	Region                     string  `json:"region"`
+	AddressID                  int64   `json:"address_id"`
+	CountryCode                string  `json:"country_code"`
+	Job                        string  `json:"job"`
+	JobID                      int64   `json:"job_id"`
+	TotalFollowUsers           int     `json:"total_follow_users"`
+	TotalMyPixivUsers          int     `json:"total_mypixiv_users"`
+	TotalIllusts               int     `json:"total_illusts"`
+	TotalManga                 int     `json:"total_manga"`
+	TotalNovels                int     `json:"total_novels"`
+	TotalIllustBookmarksPublic int     `json:"total_illust_bookmarks_public"`
+	TotalIllustSeries          int     `json:"total_illust_series"`
+	TotalNovelSeries           int     `json:"total_novel_series"`
+	BackgroundImageURL         *string `json:"background_image_url"`
+	TwitterAccount             string  `json:"twitter_account"`
+	TwitterURL                 *string `json:"twitter_url"`
+	PawooURL                   *string `json:"pawoo_url"`
+	IsPremium                  bool    `json:"is_premium"`
+	IsUsingCustomProfileImage  bool    `json:"is_using_custom_profile_image"`
+}
+type profilePublicityDTO struct {
+	Gender    bool `json:"gender"`
+	Region    bool `json:"region"`
+	BirthDay  bool `json:"birth_day"`
+	BirthYear bool `json:"birth_year"`
+	Job       bool `json:"job"`
+	Pawoo     bool `json:"pawoo"`
+}
+type workspaceDTO struct {
+	PC                string  `json:"pc"`
+	Monitor           string  `json:"monitor"`
+	Tool              string  `json:"tool"`
+	Scanner           string  `json:"scanner"`
+	Tablet            string  `json:"tablet"`
+	Mouse             string  `json:"mouse"`
+	Printer           string  `json:"printer"`
+	Desktop           string  `json:"desktop"`
+	Music             string  `json:"music"`
+	Desk              string  `json:"desk"`
+	Chair             string  `json:"chair"`
+	Comment           string  `json:"comment"`
+	WorkspaceImageURL *string `json:"workspace_image_url"`
 }
 
 // requiredList 区分 wire 的显式空数组与缺失/null；只有前者是合法空批次。

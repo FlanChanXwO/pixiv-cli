@@ -29,6 +29,11 @@ type (
 	IllustList           = model.IllustList
 	IllustDetail         = model.IllustDetail
 	User                 = model.User
+	UserDetail           = model.UserDetail
+	Profile              = model.Profile
+	ProfilePublicity     = model.ProfilePublicity
+	Workspace            = model.Workspace
+	ProfileImageURLs     = model.ProfileImageURLs
 	Tag                  = model.Tag
 	ImageURLs            = model.ImageURLs
 	SinglePage           = model.SinglePage

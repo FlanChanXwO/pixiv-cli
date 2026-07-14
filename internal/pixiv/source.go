@@ -4,6 +4,8 @@ import (
 	"context"
 	"io"
 	"strings"
+
+	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/appapi"
 )
 
 type AppAPI interface {
@@ -12,7 +14,7 @@ type AppAPI interface {
 	IllustRelated(context.Context, int64, int) (*IllustList, error)
 	IllustRanking(context.Context, string, string, int) (*IllustList, error)
 	SearchUser(context.Context, string, int) (*UserPreviewList, error)
-	UserDetail(context.Context, int64) (*User, error)
+	UserDetail(context.Context, int64) (*UserDetail, error)
 	IllustRecommended(context.Context, int) (*IllustList, error)
 	TrendingTagsIllust(context.Context) (*TrendTags, error)
 	IllustFollow(context.Context, string, int) (*IllustList, error)
@@ -124,7 +126,14 @@ func (s *Source) SearchUser(ctx context.Context, word string, offset int) (*User
 	return s.app.SearchUser(ctx, word, offset)
 }
 func (s *Source) UserDetail(ctx context.Context, id int64) (*User, error) {
-	return s.app.UserDetail(ctx, id)
+	detail, err := s.app.UserDetail(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if detail == nil {
+		return nil, appapi.ErrMalformedResponse
+	}
+	return &detail.User, nil
 }
 func (s *Source) IllustRecommended(ctx context.Context, offset int) (*IllustList, error) {
 	return s.app.IllustRecommended(ctx, offset)

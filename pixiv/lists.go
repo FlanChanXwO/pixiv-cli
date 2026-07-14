@@ -227,7 +227,7 @@ func (c *Client) SearchUser(ctx context.Context, request SearchUserRequest) (res
 	return publicUserList(list, OperationSearchUser, digest, c.cursorSource), nil
 }
 
-// UserDetail 返回指定用户的稳定摘要。
+// UserDetail 返回指定用户的稳定完整详情。
 func (c *Client) UserDetail(ctx context.Context, request UserDetailRequest) (result *UserDetailResult, err error) {
 	started := time.Now()
 	defer func() { c.delegatedOperationLog(OperationUserDetail, started, err, 0, request.UserID) }()
@@ -242,11 +242,11 @@ func (c *Client) UserDetail(ctx context.Context, request UserDetailRequest) (res
 	if err := c.requireRoute(OperationUserDetail, routeApp, 0, request.UserID); err != nil {
 		return nil, err
 	}
-	user, err := c.app.UserDetail(ctx, request.UserID)
+	detail, err := c.app.UserDetail(ctx, request.UserID)
 	if err != nil {
 		return nil, mapAppOperationError(err, OperationUserDetail, request.UserID)
 	}
-	return &UserDetailResult{User: mapUser(*user)}, nil
+	return mapUserDetail(*detail), nil
 }
 
 // UserArtworks 返回指定用户的一个作品批次。
@@ -397,7 +397,37 @@ func publicUserList(list *model.UserPreviewList, operation Operation, digest, so
 }
 
 func mapUser(user model.User) User {
-	return User{ID: user.ID, Name: user.Name, Account: user.Account, Comment: user.Comment, IsFollowed: user.IsFollowed}
+	return User{
+		ID: user.ID, Name: user.Name, Account: user.Account, Comment: user.Comment, IsFollowed: user.IsFollowed,
+		ProfileImageURLs: ProfileImageURLs{Medium: user.ProfileImageURLs.Medium},
+	}
+}
+
+func mapUserDetail(detail model.UserDetail) *UserDetailResult {
+	return &UserDetailResult{
+		User: mapUser(detail.User),
+		Profile: Profile{
+			Webpage: detail.Profile.Webpage, Gender: detail.Profile.Gender, Birth: detail.Profile.Birth, BirthDay: detail.Profile.BirthDay,
+			BirthYear: detail.Profile.BirthYear, Region: detail.Profile.Region, AddressID: detail.Profile.AddressID,
+			CountryCode: detail.Profile.CountryCode, Job: detail.Profile.Job, JobID: detail.Profile.JobID,
+			TotalFollowUsers: detail.Profile.TotalFollowUsers, TotalMyPixivUsers: detail.Profile.TotalMyPixivUsers,
+			TotalIllusts: detail.Profile.TotalIllusts, TotalManga: detail.Profile.TotalManga, TotalNovels: detail.Profile.TotalNovels,
+			TotalIllustBookmarksPublic: detail.Profile.TotalIllustBookmarksPublic, TotalIllustSeries: detail.Profile.TotalIllustSeries,
+			TotalNovelSeries: detail.Profile.TotalNovelSeries, BackgroundImageURL: detail.Profile.BackgroundImageURL,
+			TwitterAccount: detail.Profile.TwitterAccount, TwitterURL: detail.Profile.TwitterURL, PawooURL: detail.Profile.PawooURL,
+			IsPremium: detail.Profile.IsPremium, IsUsingCustomProfileImage: detail.Profile.IsUsingCustomProfileImage,
+		},
+		ProfilePublicity: ProfilePublicity{
+			Gender: detail.ProfilePublicity.Gender, Region: detail.ProfilePublicity.Region, BirthDay: detail.ProfilePublicity.BirthDay,
+			BirthYear: detail.ProfilePublicity.BirthYear, Job: detail.ProfilePublicity.Job, Pawoo: detail.ProfilePublicity.Pawoo,
+		},
+		Workspace: Workspace{
+			PC: detail.Workspace.PC, Monitor: detail.Workspace.Monitor, Tool: detail.Workspace.Tool, Scanner: detail.Workspace.Scanner,
+			Tablet: detail.Workspace.Tablet, Mouse: detail.Workspace.Mouse, Printer: detail.Workspace.Printer, Desktop: detail.Workspace.Desktop,
+			Music: detail.Workspace.Music, Desk: detail.Workspace.Desk, Chair: detail.Workspace.Chair, Comment: detail.Workspace.Comment,
+			WorkspaceImageURL: detail.Workspace.WorkspaceImageURL,
+		},
+	}
 }
 
 func invalidArgument(operation Operation, userID int64, cause error) error {

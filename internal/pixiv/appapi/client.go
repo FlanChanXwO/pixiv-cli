@@ -130,15 +130,18 @@ func (c *Client) SearchUser(ctx context.Context, word string, offset int) (*mode
 	return c.getUserPreviewList(ctx, protocol.AppSearchUser, q)
 }
 
-func (c *Client) UserDetail(ctx context.Context, userID int64) (*model.User, error) {
+func (c *Client) UserDetail(ctx context.Context, userID int64) (*model.UserDetail, error) {
 	var raw userDetailDTO
 	if err := c.getJSONWithRetry(ctx, protocol.AppUserDetail, url.Values{"user_id": {fmt.Sprint(userID)}}, &raw); err != nil {
 		return nil, err
 	}
-	if raw.User == nil || raw.User.ID <= 0 {
+	if !raw.User.Present || !raw.User.Valid || raw.User.Value.ID <= 0 ||
+		!raw.Profile.Present || !raw.Profile.Valid ||
+		!raw.ProfilePublicity.Present || !raw.ProfilePublicity.Valid ||
+		!raw.Workspace.Present || !raw.Workspace.Valid {
 		return nil, ErrMalformedResponse
 	}
-	out := mapUser(*raw.User)
+	out := mapUserDetail(raw)
 	return &out, nil
 }
 

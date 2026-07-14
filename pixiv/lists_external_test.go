@@ -475,7 +475,7 @@ func TestAuthenticatedListOperationsUseExpectedAppEndpointsAndContinuations(t *t
 			if r.URL.Query().Get("user_id") != "42" {
 				t.Errorf("detail user_id = %q", r.URL.Query().Get("user_id"))
 			}
-			fmt.Fprint(w, `{"user":{"id":42,"name":"detail"}}`)
+			fmt.Fprint(w, `{"user":{"id":42,"name":"detail"},"profile":{},"profile_publicity":{},"workspace":{}}`)
 		case "/v1/user/illusts":
 			if r.URL.Query().Get("user_id") != "42" || r.URL.Query().Get("type") != "illust" {
 				t.Errorf("artworks query = %s", r.URL.RawQuery)
@@ -528,6 +528,133 @@ func TestAuthenticatedListOperationsUseExpectedAppEndpointsAndContinuations(t *t
 	following, err := client.UserFollowing(ctx, pixiv.UserFollowingRequest{UserID: 42})
 	if err != nil || len(following.UserPreviews) != 1 || following.UserPreviews[0].User.ID != 7 || following.NextCursor == "" {
 		t.Fatalf("following = %#v, %v", following, err)
+	}
+}
+
+func TestUserDetailReturnsCompleteStableProfileFromOneAppRequest(t *testing.T) {
+	t.Parallel()
+	var requests atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests.Add(1)
+		if r.URL.Path != "/v1/user/detail" || r.URL.Query().Get("user_id") != "42" {
+			t.Fatalf("request path=%q query=%q", r.URL.Path, r.URL.RawQuery)
+		}
+		fmt.Fprint(w, `{
+			"user":{"id":42,"name":"alice","account":"alice_account","comment":"hello","is_followed":true,"profile_image_urls":{"medium":"https://img.example/profile.jpg"}},
+			"profile":{"webpage":"https://alice.example","gender":"female","birth":"2000-01-02","birth_day":"01-02","birth_year":2000,"region":"Tokyo","address_id":13,"country_code":"JP","job":"illustrator","job_id":9,"total_follow_users":10,"total_mypixiv_users":11,"total_illusts":12,"total_manga":13,"total_novels":14,"total_illust_bookmarks_public":15,"total_illust_series":16,"total_novel_series":17,"background_image_url":"https://img.example/background.jpg","twitter_account":"alice","twitter_url":"https://x.example/alice","pawoo_url":"https://pawoo.example/@alice","is_premium":true,"is_using_custom_profile_image":true},
+			"profile_publicity":{"gender":true,"region":true,"birth_day":true,"birth_year":true,"job":true,"pawoo":true},
+			"workspace":{"pc":"PC","monitor":"Monitor","tool":"Tool","scanner":"Scanner","tablet":"Tablet","mouse":"Mouse","printer":"Printer","desktop":"Desktop","music":"Music","desk":"Desk","chair":"Chair","comment":"Workspace","workspace_image_url":"https://img.example/workspace.jpg"}
+		}`)
+	}))
+	defer server.Close()
+
+	client, err := pixiv.NewClient(pixiv.Options{HTTPClient: server.Client(), AppAPIBaseURL: server.URL, AccessToken: "token"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	detail, err := client.UserDetail(context.Background(), pixiv.UserDetailRequest{UserID: 42})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if detail.User.ID != 42 || detail.User.Name != "alice" || detail.User.ProfileImageURLs.Medium == nil || *detail.User.ProfileImageURLs.Medium != "https://img.example/profile.jpg" {
+		t.Fatalf("user=%#v", detail.User)
+	}
+	if detail.Profile.Webpage == nil || *detail.Profile.Webpage != "https://alice.example" || detail.Profile.TotalNovelSeries != 17 || detail.Profile.BackgroundImageURL == nil || *detail.Profile.BackgroundImageURL != "https://img.example/background.jpg" || detail.Profile.TwitterURL == nil || detail.Profile.PawooURL == nil || !detail.Profile.IsPremium || !detail.Profile.IsUsingCustomProfileImage {
+		t.Fatalf("profile=%#v", detail.Profile)
+	}
+	if !detail.ProfilePublicity.Gender || !detail.ProfilePublicity.Region || !detail.ProfilePublicity.BirthDay || !detail.ProfilePublicity.BirthYear || !detail.ProfilePublicity.Job || !detail.ProfilePublicity.Pawoo {
+		t.Fatalf("profile_publicity=%#v", detail.ProfilePublicity)
+	}
+	if detail.Workspace.PC != "PC" || detail.Workspace.Comment != "Workspace" || detail.Workspace.WorkspaceImageURL == nil || *detail.Workspace.WorkspaceImageURL != "https://img.example/workspace.jpg" {
+		t.Fatalf("workspace=%#v", detail.Workspace)
+	}
+	if requests.Load() != 1 {
+		t.Fatalf("requests=%d, want 1", requests.Load())
+	}
+}
+
+func TestUserDetailRejectsMalformedRequiredEnvelopesWithTypedSafeError(t *testing.T) {
+	t.Parallel()
+	const secret = "user-detail-response-secret"
+	valid := `{"user":{"id":42},"profile":{},"profile_publicity":{},"workspace":{}}`
+	tests := []struct {
+		name string
+		body string
+	}{
+		{name: "user missing", body: `{"profile":{},"profile_publicity":{},"workspace":{}}`},
+		{name: "user null", body: `{"user":null,"profile":{},"profile_publicity":{},"workspace":{}}`},
+		{name: "user non object", body: `{"user":"` + secret + `","profile":{},"profile_publicity":{},"workspace":{}}`},
+		{name: "profile missing", body: `{"user":{"id":42},"profile_publicity":{},"workspace":{}}`},
+		{name: "profile null", body: `{"user":{"id":42},"profile":null,"profile_publicity":{},"workspace":{}}`},
+		{name: "profile non object", body: `{"user":{"id":42},"profile":[],"profile_publicity":{},"workspace":{}}`},
+		{name: "profile publicity missing", body: `{"user":{"id":42},"profile":{},"workspace":{}}`},
+		{name: "profile publicity null", body: `{"user":{"id":42},"profile":{},"profile_publicity":null,"workspace":{}}`},
+		{name: "profile publicity non object", body: `{"user":{"id":42},"profile":{},"profile_publicity":false,"workspace":{}}`},
+		{name: "workspace missing", body: `{"user":{"id":42},"profile":{},"profile_publicity":{}}`},
+		{name: "workspace null", body: `{"user":{"id":42},"profile":{},"profile_publicity":{},"workspace":null}`},
+		{name: "workspace non object", body: `{"user":{"id":42},"profile":{},"profile_publicity":{},"workspace":1}`},
+		{name: "user id zero", body: strings.Replace(valid, `"id":42`, `"id":0`, 1)},
+	}
+	for _, test := range tests {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { fmt.Fprint(w, test.body) }))
+			defer server.Close()
+			client, err := pixiv.NewClient(pixiv.Options{HTTPClient: server.Client(), AppAPIBaseURL: server.URL, AccessToken: "token"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			result, err := client.UserDetail(context.Background(), pixiv.UserDetailRequest{UserID: 42})
+			if result != nil || !errors.Is(err, pixiv.ErrMalformedUpstreamResponse) {
+				t.Fatalf("result=%#v err=%v", result, err)
+			}
+			var typed *pixiv.Error
+			if !errors.As(err, &typed) || typed.Operation != pixiv.OperationUserDetail || typed.Backend != pixiv.BackendAppAPI || typed.UserID != 42 || typed.Retryable || typed.UpstreamStatus != 0 {
+				t.Fatalf("typed=%#v", typed)
+			}
+			for _, exposed := range []string{err.Error(), fmt.Sprint(errors.Unwrap(err))} {
+				if strings.Contains(exposed, secret) || strings.Contains(exposed, server.URL) || strings.Contains(exposed, "token") {
+					t.Fatalf("unsafe error=%q", exposed)
+				}
+			}
+		})
+	}
+}
+
+func TestUserDetailNormalizesOptionalURLsAndUnknownFieldsToStableZeroValues(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name            string
+		profileImageURL string
+		profileURLs     string
+		workspaceURL    string
+	}{
+		{name: "absent", profileImageURL: `{}`, profileURLs: `{}`, workspaceURL: `{}`},
+		{name: "null", profileImageURL: `{"medium":null}`, profileURLs: `{"webpage":null,"background_image_url":null,"twitter_url":null,"pawoo_url":null}`, workspaceURL: `{"workspace_image_url":null}`},
+		{name: "empty", profileImageURL: `{"medium":""}`, profileURLs: `{"webpage":"","background_image_url":"","twitter_url":"","pawoo_url":""}`, workspaceURL: `{"workspace_image_url":""}`},
+	}
+	for _, test := range tests {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				fmt.Fprintf(w, `{"user":{"id":42,"profile_image_urls":%s,"private_text":"hidden"},"profile":%s,"profile_publicity":{},"workspace":%s,"unknown_count":999}`, test.profileImageURL, test.profileURLs, test.workspaceURL)
+			}))
+			defer server.Close()
+			client, err := pixiv.NewClient(pixiv.Options{HTTPClient: server.Client(), AppAPIBaseURL: server.URL, AccessToken: "token"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			detail, err := client.UserDetail(context.Background(), pixiv.UserDetailRequest{UserID: 42})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if detail.User.ProfileImageURLs.Medium != nil || detail.Profile.Webpage != nil || detail.Profile.BackgroundImageURL != nil || detail.Profile.TwitterURL != nil || detail.Profile.PawooURL != nil || detail.Workspace.WorkspaceImageURL != nil {
+				t.Fatalf("optional urls were not normalized: %#v", detail)
+			}
+			if detail.User.Name != "" || detail.User.Comment != "" || detail.Profile.TotalFollowUsers != 0 || detail.Profile.TotalNovelSeries != 0 || detail.Profile.IsPremium || detail.Profile.IsUsingCustomProfileImage || detail.ProfilePublicity.Gender || detail.Workspace.Comment != "" {
+				t.Fatalf("hidden or unknown data escaped stable zero values: %#v", detail)
+			}
+		})
 	}
 }
 
