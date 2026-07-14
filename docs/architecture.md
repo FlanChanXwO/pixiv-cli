@@ -219,7 +219,7 @@ SmartScreen 提示时，必须回到已验证的项目 GitHub Release、checksum
 - 支持 `{author}`、`{title}`、`{id}` 模板字段。
 - 多页作品追加 `_pN` 后缀。
 - 下载 ID 去重时会丢弃小于等于 0 的 ID，并排序。
-- refresh token 输入可从包含 `refresh_token=...` 的 Cookie 字符串中提取真实 token。
+- refresh token 只接受原始 Pixiv App API token；Cookie 形态（含 `refresh_token=...`）在 SDK、CLI、MCP、环境变量和已存账号边界统一拒绝，绝不提取、转换或发送。
 
 `internal/utils/*` 子包提供无业务语义的通用工具：
 

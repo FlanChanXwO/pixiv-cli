@@ -20,7 +20,7 @@ SDK cursor 不出现在 MCP 参数或输出。`user_bookmarks.max_bookmark_id` �
 | --- | --- | --- |
 | `set_download_path` | `path` | 文本状态。 |
 | `refresh_token` | 无 | 当前认证账号摘要。 |
-| `set_refresh_token` | `refresh_token` | 当前会话认证结果；不写 `auth.json`。 |
+| `set_refresh_token` | 原始 App API `refresh_token` | 当前会话认证结果；不写 `auth.json`；Cookie 输入会被拒绝。 |
 | `download` | `illust_id` 或 `illust_ids`，可选 `delivery` | 下载文件、URI、MIME、大小；`image_content` 另附 ImageContent。 |
 | `download_random_from_recommendation` | `count`，可选 `delivery` | 同 `download`。 |
 
@@ -32,7 +32,7 @@ SDK cursor 不出现在 MCP 参数或输出。`user_bookmarks.max_bookmark_id` �
 | `illust_detail` | `illust_id` | 作品详情。 |
 | `illust_related` | `illust_id`、`offset`、`include_thumbnail` | 相关作品。 |
 | `illust_ranking` | `mode`、`date`、`offset`、`include_thumbnail` | 排行榜作品。 |
-| `illust_recommended` | `offset`、`include_thumbnail` | 兼容旧推荐作品 tool；继续使用 legacy Source 的文本输出。 |
+| `illust_recommended` | `offset`、`include_thumbnail` | 兼容旧推荐作品 tool；保留既有文本输出，但经公开 SDK 调用链执行。 |
 | `recommended` | 必填 `kind`（`all`、`illust`、`manga`、`novel`、`user`），可选 `page`、`limit` | 通过认证 App SDK 返回 `{kind, illusts, manga, novels, user_previews, pagination}`；单类只填对应流，`all` 顺序读取四流。每条流独立应用分页，`pagination` 按流给出逻辑页信息；不暴露 SDK cursor，不支持 Web fallback。 |
 | `trending_tags_illust` | 无 | 热门标签。 |
 | `illust_follow` | `restrict`、`offset`、`include_thumbnail` | 关注新作；需要认证。 |

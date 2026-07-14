@@ -10,7 +10,7 @@
 - **Application services**：`internal/application`；账号、配置、作品查询、下载与登录完成的 use case。
 - **Composition root**：`internal/bootstrap`；组装 config、auth storage、Pixiv client、OAuth client、download manager、update dependency 与 application service。
 - **Auth storage**：`internal/storage/auth`；以 UID 为 key 的 `auth.json`、默认 UID、私有路径与 `0600` 写入。
-- **Pixiv source**：`internal/pixiv`；App API 与匿名 web fallback 的 facade。
+- **Pixiv facade**：`internal/pixiv` 与顶层 `pixiv`；前者封装 App API 与匿名 web fallback 协议适配，后者提供唯一公开调用链。
 - **SDK client**：`pixiv` 的具体 `*pixiv.Client`；外部 Go 程序通过它访问规范化 Pixiv 原子能力。
 - **Caller adapter**：调用方自己的窄接口与业务层；它拥有 source mode、budget、filter、cursor 持久化、入库与调度。
 - **Operation snapshot**：`OpenDefault` 每个公开操作读取一次 auth/config/OAuth 快照；`Snapshot(ctx)` 可显式固定一个高层操作。
@@ -44,7 +44,7 @@ Task 20 的审计流程配置或回填。v0.1.1 已发布为正式 Release，公
 - `internal/cli` 不拥有持久状态 mutation、Pixiv/download/update 网络构造或签名信任根。
 - `auth login` 的 loopback HTTP server、browser opening 和 terminal prompt 留在 CLI，因为它们是本地 UI adapter。
 - `auth login` 可注册本地 macOS `pixiv://` URL handler，只转交最终 callback URL 给当前 CLI loopback；不得读取 cookie/token、自动化 browser UI、安装 extension 或伪造登录成功。
-- `auth login` 在 managed capture 不可用时，可通过 DevTools 或真实 browser 的只读 Pixiv OAuth URL 观察作为 fallback callback detector；不得扩展为 cookie/token extraction。
+- `auth login` 不读取浏览器历史、会话文件、标签页、存储或网络流量，也不启动受管 Chromium、DevTools/CDP；helper 不可用时只能等待 loopback 或用户手动回填。
 - `internal/application.LoginService` 拥有 PKCE/state 创建、OAuth code exchange 与账号保存。
 - `internal/bootstrap` 是唯一了解 production service 组装的位置；它为 Release installer 注入已提交的
   production public key/key ID，私钥仍只应存在于受保护 `release` Environment secret 或受控 macOS

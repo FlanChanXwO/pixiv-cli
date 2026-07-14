@@ -4,7 +4,7 @@ Go 版 Pixiv 工具集：默认作为 `pixiv` CLI 使用，需要 MCP 时显式�
 
 它优先复用 Pixiv App API，支持搜索、详情、排行、推荐、下载、多账号 refresh token 管理，以及 MCP stdio server。未配置 refresh token 时，默认对搜索、详情、排行、用户搜索和下载启用匿名 Pixiv web/ajax API fallback。它不是 HTTP 服务，也不提供 Discover、Probe、Capabilities、RSS 或 crawler。
 
-源码按 CLI controller、application services、bootstrap、public SDK、config、Pixiv facade/source、download、MCP server 分包；账号存储在 `internal/storage/auth`，基础工具按 `internal/utils/*` 子包组织。公开 SDK 是具体 `*pixiv.Client`，内部协议实现分为 `internal/pixiv/appapi`、`webapi`、`oauth`、`resource`。
+源码按 CLI controller、application services、bootstrap、public SDK、config、Pixiv facade/protocol adapters、download、MCP server 分包；账号存储在 `internal/storage/auth`，基础工具按 `internal/utils/*` 子包组织。公开 SDK 是具体 `*pixiv.Client`，内部协议实现分为 `internal/pixiv/appapi`、`webapi`、`oauth`、`resource`。
 
 用户可感知变化记录在 [CHANGELOG.md](CHANGELOG.md)。SDK 契约见 [pixiv-sdk-interface.md](pixiv-sdk-interface.md)，架构边界见 [ADR 0009](docs/adr/0009-public-pixiv-sdk-and-caller-adapter.md)。
 
@@ -85,7 +85,7 @@ _ = result
 
 ## 获取 refresh token
 
-`PIXIV_REFRESH_TOKEN` 必须是 Pixiv App API OAuth refresh token。网页 Cookie 里的 `PHPSESSID`、`device_token` 不能直接用。
+`PIXIV_REFRESH_TOKEN` 必须是原始的 Pixiv App API OAuth refresh token。网页 Cookie（包括 `refresh_token=...`、`PHPSESSID`、`device_token`）一律拒绝，不会从中提取或转换凭据。
 
 推荐用 CLI 浏览器 OAuth 登录，并直接保存到本地账号：
 
@@ -99,11 +99,11 @@ pixiv auth login
 | --- | --- |
 | 初始化 | CLI 生成 PKCE verifier/challenge 和 OAuth state，并启动本地 loopback HTTP server。 |
 | 浏览器 | macOS 默认优先注册本地 `pixiv://` callback helper 并打开默认浏览器，因此可复用已有 Pixiv 登录态；需要用户在 Pixiv 页面确认账号；使用 `--no-open` 时只打印登录 URL 和本地页面地址。 |
-| 回调 | CLI 通过 `pixiv://` helper、浏览器 URL/session 只读观察或 DevTools fallback 捕获本轮 `pixiv://account/login`/官方 callback 请求，并继续监听本地 callback、终端粘贴和本地页面表单；浏览器若没有自动返回，可粘贴 callback URL、`pixiv://...` URL、Pixiv relay URL 或原始 authorization code。 |
+| 回调 | CLI 仅接收本轮 loopback callback、当前登录尝试注册的 `pixiv://` helper 转交、终端粘贴或本地页面表单；浏览器若没有返回，可手动粘贴 callback URL、`pixiv://...` URL、Pixiv relay URL 或原始 authorization code。 |
 | 校验 | 本地 loopback 回调必须匹配本次 state；Pixiv 官方 callback URL 与 `pixiv://account/login` 可在 Pixiv 未返回 state 时作为显式 fallback。 |
 | 保存 | refresh/access token 不会打印；refresh token 按 Pixiv UID 保存到 `auth.json`，文件权限为 `0600`。 |
 
-默认浏览器打开时，macOS 会优先安装/注册一个本地 `PixivCLIURLHandler.app`，只把 Pixiv 返回的 `pixiv://account/login?...` URL 转交给本轮 CLI loopback，不读取 cookie、token 或浏览器存储。若本机无法注册该 helper，CLI 才退回专用 Chromium/Edge 用户资料目录并通过 DevTools 只监听 Pixiv OAuth 请求 URL；该 fallback 不安装扩展、不点击页面、不读取 cookie 或 token。macOS 仍保留 Microsoft Edge、Chrome、Chromium 与 Safari 标签页/浏览器状态文件的只读观察；遇到 Pixiv `post-redirect` 授权接力页时，会校验其 `return_to` 属于本轮 OAuth，然后等待 Pixiv 触发 `pixiv://` handoff，不再自动重开白页。浏览器可能停留在白色 relay 页，是否成功以终端最终输出为准。若手动粘贴 Pixiv relay URL，CLI 会打开该 relay URL 一次。若 Pixiv 未生成 callback，CLI 不会伪造成功，仍可使用终端或本地页面手动回填。
+默认浏览器打开时，macOS 会注册一个仅服务于当前登录尝试的本地 `PixivCLIURLHandler.app`，只把 Pixiv 返回的 `pixiv://account/login?...` URL 转交给本轮 CLI loopback；它不读取浏览器 Cookie、存储、历史、会话文件、标签页或网络流量。若 helper 不可用，CLI 仍打开正常浏览器并等待 loopback 或手动回填，不会启动受管 Chromium、DevTools/CDP 或浏览器状态扫描。遇到 Pixiv `post-redirect` 授权接力页时，用户可手动粘贴 relay URL；CLI 只在校验其属于本轮 OAuth 后打开该 relay URL 一次。浏览器可能停留在白色 relay 页，是否成功以终端最终输出为准；若 Pixiv 未生成 callback，CLI 不会伪造成功。
 
 浏览器使用的系统代理不会自动传给 Go CLI。若 Pixiv token 端点在当前网络下需要代理，请先配置：
 
@@ -173,7 +173,7 @@ CLI 使用 Cobra/pflag，选项可以写在位置参数前后，例如 `pixiv au
 
 | 命令 | 用法 | 说明 |
 | --- | --- | --- |
-| `auth add` | `pixiv auth add [--token TOKEN] [--json] [--proxy URL\|--no-proxy]` | 校验 refresh token 或包含 `refresh_token=...` 的 Cookie，并按 Pixiv UID 添加或替换账号；不传 `--token` 时从 TTY/stdin 读取。 |
+| `auth add` | `pixiv auth add [--token TOKEN] [--json] [--proxy URL\|--no-proxy]` | 校验原始 Pixiv App API refresh token，并按 Pixiv UID 添加或替换账号；Cookie 输入会被拒绝。不传 `--token` 时从 TTY/stdin 读取。 |
 | `auth login` | `pixiv auth login [--json] [--no-open] [--addr 127.0.0.1:0] [--use] [--timeout DURATION] [--proxy URL\|--no-proxy]` | 通过本地 loopback server 和浏览器 OAuth 登录，按 Pixiv UID 保存账号；不会输出 refresh token。 |
 | `auth list` | `pixiv auth list [--json]` | 列出本地账号；不会输出 refresh token。 |
 | `auth use` | `pixiv auth use [UID]` | 设置默认账号；TTY 下可交互选择。 |
@@ -203,7 +203,7 @@ CLI 使用 Cobra/pflag，选项可以写在位置参数前后，例如 `pixiv au
 | 参数 | 默认值 | 说明 |
 | --- | --- | --- |
 | `--json` | `false` | 输出保存结果 JSON；不会输出 refresh/access token。 |
-| `--no-open` | `false` | 不自动打开 managed/browser，也不观察浏览器 URL；只打印登录 URL 和本地 loopback 页面地址。 |
+| `--no-open` | `false` | 不自动打开系统默认浏览器，也不做浏览器观察；只打印登录 URL 和本地 loopback 页面地址。 |
 | `--addr` | `127.0.0.1:0` | 本地 loopback 监听地址；端口 `0` 表示自动分配。 |
 | `--use` | `false` | 登录成功后设为默认账号；若当前没有默认账号，也会自动设为默认。 |
 | `--timeout` | `0` | 等待登录完成的最大时长；`0` 表示不由 CLI 主动限时。 |
@@ -236,9 +236,9 @@ CLI 使用 Cobra/pflag，选项可以写在位置参数前后，例如 `pixiv au
 
 | 参数 | 适用命令 | 默认值 | 说明 |
 | --- | --- | --- | --- |
-| `--uid UID` | `search/detail/ranking/recommended/download` | `auth.json.default_user_id` | 选择本地账号。 |
-| `--profile UID` | `search/detail/ranking/recommended/download` | 空 | `--uid` 的 deprecated alias。 |
-| `--refresh-token TOKEN` | `search/detail/ranking/recommended/download` | 空 | 临时覆盖账号/env token。 |
+| `--uid UID` | `search/detail/ranking/recommended/user/download` | `auth.json.default_user_id` | 选择本地账号。 |
+| `--profile UID` | `search/detail/ranking/recommended/user/download` | 空 | `--uid` 的 deprecated alias。 |
+| `--refresh-token TOKEN` | `search/detail/ranking/recommended/user/download` | 空 | 临时覆盖账号/env token；只接受原始 App API refresh token。 |
 | `--json` | `auth` 子命令和数据命令 | `false` | 输出机器可解析 JSON。 |
 | `--download-path PATH` | 数据命令；实际只影响 `download` | `DOWNLOAD_PATH`、`config.toml` 或 `./downloads` | 下载目录。 |
 | `--filename-template TEMPLATE` | 数据命令；实际只影响 `download` | `FILENAME_TEMPLATE`、`config.toml` 或 `{author} - {title}_{id}` | 文件名模板。 |
@@ -365,7 +365,7 @@ MCP client 配置示例：
       "command": "/absolute/path/to/pixiv-cli/build/pixiv",
       "args": ["mcp"],
       "env": {
-        "PIXIV_REFRESH_TOKEN": "your refresh token or cookie with refresh_token=...",
+        "PIXIV_REFRESH_TOKEN": "your Pixiv App API refresh token",
         "DOWNLOAD_PATH": "./downloads",
         "FILENAME_TEMPLATE": "{author} - {title}_{id}"
       }
@@ -399,7 +399,7 @@ and `get_thumbnail_base64`.
 
 `user_detail` 接受必填的 `user_id`，返回完整稳定的用户详情 structured output；它需要认证，不支持匿名 Web fallback。各 MCP tool 的参数与返回语义见 [MCP 工具](docs/mcp-tools.md)。
 
-`recommended` 接受必填 `kind`：`all`、`illust`、`manga`、`novel` 或 `user`。它经认证 App SDK 返回结构化推荐；`all` 对四条流分别应用 `page`/`limit`，不暴露 SDK cursor，也不支持匿名 Web fallback。`illust_recommended` 保留为兼容旧调用方的 legacy Source tool。
+`recommended` 接受必填 `kind`：`all`、`illust`、`manga`、`novel` 或 `user`。它经认证 App SDK 返回结构化推荐；`all` 对四条流分别应用 `page`/`limit`，不暴露 SDK cursor，也不支持匿名 Web fallback。`illust_recommended` 保留旧 tool 名、参数和文本输出兼容性，但同样经公开 SDK 调用链执行。
 
 ## 开发验证
 

@@ -137,10 +137,10 @@
 
 ## T13 — 同步 README、MCP 文档、ADR、CHANGELOG 和知识图谱
 
-- 状态：未完成
-- 实际：
-- 证据：
-- 风险/下一步：
+- 状态：完成
+- 实际：README、开发/架构/MCP 文档、领域上下文、ADR 0005、SDK 接口和 CHANGELOG 已同步 v0.3 公开 SDK、完整用户详情、四流推荐与安全认证边界。文档明确：Cookie（含 `refresh_token=...`）只会被拒绝；登录仅接受本轮 loopback、受控 `pixiv://` handoff 或用户显式回填，不读取浏览器状态、不启动受管浏览器或 DevTools/CDP；旧 MCP tool 名/输出兼容但统一走公开 SDK。重建代码和文档知识图谱。
+- 证据：本地 Markdown 链接检查通过，`git diff --check` 通过。代码图谱为 212 文件、1790 nodes、4080 edges、8 layers、10-step tour，fingerprint baseline 已生成；文档图谱为 34 nodes、22 edges、4 个全覆盖语义层、5-step tour。两份 graph/meta 的 commit 均为 `446f523`，无悬挂边、重复层归属或无效 tour 引用；文档复审 APPROVED。
+- 风险/下一步：图谱是本提交前 `HEAD` 的快照，提交后 meta 会自然落后一提交；T14 应以候选版本在干净工作树完成 release 门禁和 opt-in 真实 API canary，禁止把本地图谱/fixture 当成上游 wire 兼容性证据。
 
 ## T14 — v0.3.0 Release 候选门禁与 opt-in API canary
 

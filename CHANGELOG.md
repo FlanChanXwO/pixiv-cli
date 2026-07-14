@@ -10,6 +10,7 @@
 ### Changed
 
 - Breaking: 公开 Go SDK 已迁移至 `github.com/FlanChanXwO/pixiv-cli/pixiv`；旧导入路径不保留兼容 package。
+- Breaking: 认证入口只接受原始 Pixiv App API refresh token；网页 Cookie（包括 `refresh_token=...`）不再被解析、提取或转换。
 
 ### Added
 
@@ -22,6 +23,11 @@
 ### Fixed
 
 - 修复显式与自动更新检查未向 GitHub Releases API 发送项目识别性 `User-Agent` 而可能收到 HTTP 403 的兼容性问题。
+
+### Security
+
+- `auth login` 不再启动受管 Chromium、连接 DevTools/CDP、读取浏览器历史/会话/存储或扫描活动标签页；只保留本轮 loopback、受控 `pixiv://` helper 和用户显式手动回填。
+- SDK、CLI、MCP、环境变量和已存账号在 OAuth 请求前统一拒绝 Cookie 形态凭据，且不回显输入内容。
 
 ## [0.2.0] - 2026-07-13
 
