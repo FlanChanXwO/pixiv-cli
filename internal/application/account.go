@@ -15,7 +15,7 @@ import (
 // OAuth 身份验证均由 SDK 维护，应用层不再复制另一份 auth store 调用链。
 type AccountService struct {
 	SDK                 SDKService
-	RefreshTokenFromEnv func() string
+	RefreshTokenFromEnv func() (string, error)
 }
 
 type AccountAddRequest struct {
@@ -42,11 +42,11 @@ type AccountListResult struct {
 }
 
 func (s AccountService) Add(ctx context.Context, request AccountAddRequest) (AccountResult, error) {
-	token, parsedCookie := utils.ParsePixivWebRefreshTokenInput(request.TokenInput)
+	token, err := utils.ValidateRefreshTokenInput(request.TokenInput)
+	if err != nil {
+		return AccountResult{}, err
+	}
 	if token == "" {
-		if parsedCookie {
-			return AccountResult{}, errors.New("cookie does not contain refresh_token")
-		}
 		return AccountResult{}, errors.New("refresh token cannot be empty")
 	}
 	client, err := s.SDK.Client(SDKClientRequest{HTTPSProxyOverride: request.HTTPSProxyOverride})
@@ -128,7 +128,9 @@ func (s AccountService) CheckWithRequest(ctx context.Context, request AccountChe
 		return AccountResult{}, err
 	}
 	if request.UserID == 0 {
-		if token := s.refreshTokenFromEnv(); token != "" {
+		if token, err := s.refreshTokenFromEnv(); err != nil {
+			return AccountResult{}, err
+		} else if token != "" {
 			account, err := client.CheckRefreshToken(ctx, token)
 			if err != nil {
 				return AccountResult{}, err
@@ -147,11 +149,15 @@ func sdkAccountResult(account sdk.Account) AccountResult {
 	return AccountResult{UserID: account.UserID, Username: account.Username, Default: account.Default, HasToken: account.HasToken}
 }
 
-func (s AccountService) refreshTokenFromEnv() string {
+func (s AccountService) refreshTokenFromEnv() (string, error) {
 	if s.RefreshTokenFromEnv == nil {
-		return ""
+		return "", nil
 	}
-	return strings.TrimSpace(s.RefreshTokenFromEnv())
+	token, err := s.RefreshTokenFromEnv()
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(token), nil
 }
 
 func ParseUID(raw string) (int64, error) {

@@ -10,6 +10,7 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/config"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/oauth"
 	"github.com/FlanChanXwO/pixiv-cli/internal/storage/auth"
+	"github.com/FlanChanXwO/pixiv-cli/internal/utils"
 )
 
 type defaultOptions struct {
@@ -87,6 +88,9 @@ func (d *defaultOptions) snapshot(ctx context.Context, operation Operation) (*Cl
 	}
 	refreshToken, selectedUserID, selectedStored, err := d.selectRefreshToken(snapshot.store)
 	if err != nil {
+		if errors.Is(err, utils.ErrCookieRefreshTokenInput) {
+			return nil, newError(CodeInvalidArgument, operation, "", false, 0, 0, err)
+		}
 		return nil, newUserError(CodeInvalidArgument, operation, "", false, 0, d.options.UserID, errors.New("selected account does not exist"))
 	}
 	httpClient, err := newHTTPClientForSnapshot(d.options, snapshot.runtime.HTTPSProxy)
@@ -148,19 +152,24 @@ func (d *defaultOptions) snapshot(ctx context.Context, operation Operation) (*Cl
 
 func (d *defaultOptions) selectRefreshToken(store auth.AuthStore) (string, int64, bool, error) {
 	if token := strings.TrimSpace(d.options.RefreshToken); token != "" {
-		return token, 0, false, nil
+		token, err := utils.ValidateRefreshTokenInput(token)
+		return token, 0, false, err
 	}
 	if d.options.UserID != 0 {
 		if _, account, ok := store.Get(d.options.UserID); ok {
-			return account.RefreshToken, account.UserID, true, nil
+			token, err := utils.ValidateRefreshTokenInput(account.RefreshToken)
+			return token, account.UserID, true, err
 		}
 		return "", 0, false, errors.New("selected account does not exist")
 	}
-	if token := config.RefreshTokenFromEnv(); token != "" {
+	if token, err := config.RefreshTokenFromEnv(); err != nil {
+		return "", 0, false, err
+	} else if token != "" {
 		return token, 0, false, nil
 	}
 	if userID, account, ok := auth.SelectAuthAccount(store, 0); ok {
-		return account.RefreshToken, userID, true, nil
+		token, err := utils.ValidateRefreshTokenInput(account.RefreshToken)
+		return token, userID, true, err
 	}
 	return "", 0, false, nil
 }

@@ -1,9 +1,7 @@
 package cli
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"html"
@@ -15,7 +13,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
-	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -26,20 +23,15 @@ import (
 	publicpixiv "github.com/FlanChanXwO/pixiv-cli/pixiv"
 	"github.com/pkg/browser"
 	"github.com/spf13/cobra"
-	"golang.org/x/net/websocket"
 )
 
 const defaultLoginAddr = "127.0.0.1:0"
-const managedBrowserDebugStartup = 15 * time.Second
 const pixivURLHandlerBundleID = "com.flanchan.pixiv-cli.url-handler"
 
 var (
 	loginHooksMu          sync.RWMutex
 	openBrowser           = defaultOpenBrowser
-	watchBrowserLoginCode = defaultWatchBrowserLoginCode
-	captureManagedBrowser = defaultCaptureManagedBrowser
 	installURLSchemeRelay = installPixivURLSchemeRelay
-	runAppleScript        = defaultRunAppleScript
 )
 
 type loginServerResult struct {
@@ -53,8 +45,6 @@ type loginInputResult struct {
 }
 
 type callbackURLAccepter = func(string) bool
-type browserCodeWatcher func(context.Context, callbackURLAccepter, string, map[string]struct{}, func(string) error, func(loginServerResult), func(error))
-type managedBrowserCapturer func(context.Context, string, callbackURLAccepter, func(loginServerResult), func(error)) (bool, func(), error)
 type urlSchemeRelayInstaller func(context.Context, string) (func(), error)
 
 type accountLoginOptions struct {
@@ -123,9 +113,9 @@ func (a app) accountLogin(cmd *cobra.Command, opts accountLoginOptions) error {
 		defer cancel()
 	}
 
-	browserOpener, browserWatcher, schemeRelayInstaller := currentLoginHooks()
+	browserOpener, schemeRelayInstaller := currentLoginHooks()
 	loginURL := loginFlow.AuthorizationURL
-	callbackOrCode, err := a.waitForLoginCode(ctx, opts.addr, loginFlow.AcceptsCallbackURL, loginURL, opts.noOpen, browserOpener, browserWatcher, schemeRelayInstaller)
+	callbackOrCode, err := a.waitForLoginCode(ctx, opts.addr, loginFlow.AcceptsCallbackURL, loginURL, opts.noOpen, browserOpener, schemeRelayInstaller)
 	if err != nil {
 		return err
 	}
@@ -150,14 +140,11 @@ func (a app) accountLogin(cmd *cobra.Command, opts accountLoginOptions) error {
 	return nil
 }
 
-func (a app) waitForLoginCode(ctx context.Context, addr string, acceptsCallback callbackURLAccepter, loginURL string, noOpen bool, browserOpener func(string) error, browserWatcher browserCodeWatcher, schemeRelayInstaller urlSchemeRelayInstaller) (string, error) {
+func (a app) waitForLoginCode(ctx context.Context, addr string, acceptsCallback callbackURLAccepter, loginURL string, noOpen bool, browserOpener func(string) error, schemeRelayInstaller urlSchemeRelayInstaller) (string, error) {
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {
 		return "", err
 	}
-	watchCtx, stopWatching := context.WithCancel(ctx)
-	var browserWatcherDone <-chan struct{}
-	defer func() { cancelAndJoinBrowserWatcher(stopWatching, browserWatcherDone, nil) }()
 	actualAddr := ln.Addr().String()
 	resultCh := make(chan loginServerResult, 1)
 	var submitOnce sync.Once
@@ -180,17 +167,11 @@ func (a app) waitForLoginCode(ctx context.Context, addr string, acceptsCallback 
 		writeErr("Detected Pixiv authorization relay page; opening Pixiv relay URL once.\n")
 		return browserOpener(rawURL)
 	}
-	observeRelay := func(string) error {
-		writeErr("Detected Pixiv authorization relay page; waiting for pixiv:// callback handoff.\n")
-		return nil
-	}
-	var schemeRelayActive bool
 	if !noOpen {
 		cleanup, err := schemeRelayInstaller(ctx, "http://"+actualAddr+"/manual")
 		if err != nil {
 			writeErr("warning: pixiv:// callback handler is unavailable: %v\n", err)
 		} else if cleanup != nil {
-			schemeRelayActive = true
 			defer cleanup()
 			writeErr("Registered pixiv:// callback handler for this login attempt.\n")
 			writeErr("After confirming Pixiv account, the browser may stay on a white Pixiv relay page; keep this terminal open for the result.\n")
@@ -258,39 +239,14 @@ func (a app) waitForLoginCode(ctx context.Context, addr string, acceptsCallback 
 	writeErr("Open this Pixiv login URL:\n%s\n", loginURL)
 	if noOpen {
 		writeErr("Browser opening is disabled; use the manual fallback page or terminal prompt.\n")
-	} else if runtime.GOOS == "darwin" && browserWatcher != nil {
-		writeErr("Watching supported browser history/session state for the Pixiv callback URL.\n")
 	} else {
-		writeErr("Automatic browser callback detection is unavailable here; use the manual fallback page or terminal prompt.\n")
+		writeErr("Complete the official Pixiv authorization in your browser; the loopback callback or manual page will receive the result.\n")
 	}
 	writeErr("Manual fallback page: http://%s/\n", actualAddr)
 
 	enableTerminalFallback := canPrompt(a)
 	if !noOpen {
-		initialSeen := currentBrowserCallbackURLSet(ctx)
-		if browserWatcher != nil {
-			done := make(chan struct{})
-			browserWatcherDone = done
-			go func() {
-				defer close(done)
-				browserWatcher(watchCtx, acceptsCallback, loginChallenge, initialSeen, observeRelay, submit, reportInvalidSubmission)
-			}()
-		}
-		managedOpened := false
-		if !schemeRelayActive && captureManagedBrowser != nil {
-			var managedStop func()
-			var err error
-			managedOpened, managedStop, err = captureManagedBrowser(watchCtx, loginURL, acceptsCallback, submit, reportInvalidSubmission)
-			if managedStop != nil {
-				defer managedStop()
-			}
-			if err != nil {
-				writeErr("warning: managed browser capture is unavailable: %v\n", err)
-			}
-		}
-		if managedOpened {
-			writeErr("Opened a managed browser window for Pixiv login; waiting for pixiv:// callback capture.\n")
-		} else if err := browserOpener(loginURL); err != nil {
+		if err := browserOpener(loginURL); err != nil {
 			writeErr("warning: could not open browser: %v\n", err)
 		}
 	}
@@ -328,20 +284,6 @@ func (a app) waitForLoginCode(ctx context.Context, addr string, acceptsCallback 
 	case <-ctx.Done():
 		return "", ctx.Err()
 	}
-}
-
-// cancelAndJoinBrowserWatcher 固化登录 watcher 的生命周期：先取消，再等待其退出。
-// beforeJoin 仅为确定性的内部测试接缝；生产调用始终传 nil。
-func cancelAndJoinBrowserWatcher(stop func(), done <-chan struct{}, beforeJoin func()) {
-	stop()
-	if done == nil {
-		return
-	}
-	if beforeJoin != nil {
-		beforeJoin()
-	}
-	// watcher 的契约是响应 watchCtx；这里不引入额外超时，真实阻塞应当显式暴露。
-	<-done
 }
 
 func writeLoginForm(w http.ResponseWriter, loginURL string) {
@@ -461,35 +403,20 @@ func validateLoginAddr(addr string) error {
 	return nil
 }
 
-func currentLoginHooks() (func(string) error, browserCodeWatcher, urlSchemeRelayInstaller) {
+func currentLoginHooks() (func(string) error, urlSchemeRelayInstaller) {
 	loginHooksMu.RLock()
 	defer loginHooksMu.RUnlock()
-	return openBrowser, watchBrowserLoginCode, installURLSchemeRelay
+	return openBrowser, installURLSchemeRelay
 }
 
 func setOpenBrowserForTest(opener func(string) error) func() {
 	loginHooksMu.Lock()
 	old := openBrowser
-	oldCapture := captureManagedBrowser
 	openBrowser = opener
-	captureManagedBrowser = nil
 	loginHooksMu.Unlock()
 	return func() {
 		loginHooksMu.Lock()
 		openBrowser = old
-		captureManagedBrowser = oldCapture
-		loginHooksMu.Unlock()
-	}
-}
-
-func setBrowserCodeWatcherForTest(watcher browserCodeWatcher) func() {
-	loginHooksMu.Lock()
-	old := watchBrowserLoginCode
-	watchBrowserLoginCode = watcher
-	loginHooksMu.Unlock()
-	return func() {
-		loginHooksMu.Lock()
-		watchBrowserLoginCode = old
 		loginHooksMu.Unlock()
 	}
 }
@@ -698,292 +625,6 @@ app.setActivationPolicy(.accessory)
 app.run()
 `
 
-func defaultCaptureManagedBrowser(ctx context.Context, loginURL string, acceptsCallback callbackURLAccepter, submit func(loginServerResult), reportInvalid func(error)) (bool, func(), error) {
-	browserPath := managedBrowserExecutable()
-	if browserPath == "" {
-		return false, nil, errors.New("supported Chromium/Edge browser executable was not found")
-	}
-	profileDir, err := managedBrowserProfileDir()
-	if err != nil {
-		return false, nil, err
-	}
-	if err := os.MkdirAll(profileDir, constants.PrivateDirMode); err != nil {
-		return false, nil, err
-	}
-	if err := os.Chmod(profileDir, constants.PrivateDirMode); err != nil {
-		return false, nil, err
-	}
-	port, err := freeTCPPort()
-	if err != nil {
-		return false, nil, err
-	}
-	cmd := exec.CommandContext(ctx, browserPath,
-		fmt.Sprintf("--remote-debugging-port=%d", port),
-		"--remote-allow-origins=http://127.0.0.1",
-		"--no-first-run",
-		"--no-default-browser-check",
-		"--new-window",
-		"--user-data-dir="+profileDir,
-		"about:blank",
-	)
-	if err := cmd.Start(); err != nil {
-		return false, nil, err
-	}
-	stop := func() {
-		if cmd.Process != nil {
-			_ = cmd.Process.Kill()
-		}
-		_ = cmd.Wait()
-	}
-	wsURL, err := openManagedBrowserTab(ctx, port, loginURL)
-	if err != nil {
-		stop()
-		return false, nil, err
-	}
-	go watchManagedBrowserCDP(ctx, wsURL, acceptsCallback, submit, reportInvalid)
-	return true, stop, nil
-}
-
-func managedBrowserExecutable() string {
-	for _, candidate := range managedBrowserExecutableCandidates() {
-		if filepath.IsAbs(candidate) {
-			if info, err := os.Stat(candidate); err == nil && !info.IsDir() {
-				return candidate
-			}
-			continue
-		}
-		if path, err := exec.LookPath(candidate); err == nil {
-			return path
-		}
-	}
-	return ""
-}
-
-func managedBrowserExecutableCandidates() []string {
-	switch runtime.GOOS {
-	case "darwin":
-		return []string{
-			"/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
-			"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
-			"/Applications/Chromium.app/Contents/MacOS/Chromium",
-		}
-	case "windows":
-		return []string{"msedge.exe", "chrome.exe", "chromium.exe"}
-	default:
-		return []string{"microsoft-edge", "microsoft-edge-stable", "google-chrome", "google-chrome-stable", "chromium", "chromium-browser"}
-	}
-}
-
-func managedBrowserProfileDir() (string, error) {
-	dir, err := files.UserConfigSubdir(constants.AppConfigDirName)
-	if err != nil {
-		return "", err
-	}
-	return filepath.Join(dir, "auth-browser-profile"), nil
-}
-
-func freeTCPPort() (int, error) {
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		return 0, err
-	}
-	defer ln.Close()
-	return ln.Addr().(*net.TCPAddr).Port, nil
-}
-
-func openManagedBrowserTab(ctx context.Context, port int, loginURL string) (string, error) {
-	debugBase := fmt.Sprintf("http://127.0.0.1:%d", port)
-	// 只限制本地子进程 DevTools 端口启动阶段；登录等待仍完全由用户配置的 auth timeout 控制。
-	startupCtx := ctx
-	var cancel context.CancelFunc
-	if _, ok := ctx.Deadline(); !ok {
-		startupCtx, cancel = context.WithTimeout(ctx, managedBrowserDebugStartup)
-		defer cancel()
-	}
-	client := http.Client{}
-	for {
-		req, err := http.NewRequestWithContext(startupCtx, http.MethodPut, debugBase+"/json/new?"+url.QueryEscape(loginURL), nil)
-		if err != nil {
-			return "", err
-		}
-		resp, err := client.Do(req)
-		if err == nil {
-			var tab struct {
-				WebSocketDebuggerURL string `json:"webSocketDebuggerUrl"`
-			}
-			decodeErr := json.NewDecoder(resp.Body).Decode(&tab)
-			_ = resp.Body.Close()
-			if decodeErr == nil && tab.WebSocketDebuggerURL != "" {
-				return tab.WebSocketDebuggerURL, nil
-			}
-		}
-		select {
-		case <-startupCtx.Done():
-			return "", startupCtx.Err()
-		case <-time.After(200 * time.Millisecond):
-		}
-	}
-}
-
-func watchManagedBrowserCDP(ctx context.Context, wsURL string, acceptsCallback callbackURLAccepter, submit func(loginServerResult), reportInvalid func(error)) {
-	ws, err := websocket.Dial(wsURL, "", "http://127.0.0.1")
-	if err != nil {
-		reportInvalid(fmt.Errorf("could not attach to managed browser DevTools: %w", err))
-		return
-	}
-	defer ws.Close()
-	_ = websocket.JSON.Send(ws, map[string]any{"id": 1, "method": "Network.enable"})
-	done := make(chan struct{})
-	go func() {
-		select {
-		case <-ctx.Done():
-			_ = ws.Close()
-		case <-done:
-		}
-	}()
-	defer close(done)
-	for {
-		var event map[string]any
-		if err := websocket.JSON.Receive(ws, &event); err != nil {
-			if ctx.Err() == nil {
-				reportInvalid(fmt.Errorf("managed browser DevTools disconnected: %w", err))
-			}
-			return
-		}
-		result, ok := loginCodeFromCDPEvent(event, acceptsCallback)
-		if !ok {
-			continue
-		}
-		if result.err != nil {
-			reportInvalid(result.err)
-			continue
-		}
-		submit(result)
-		return
-	}
-}
-
-func loginCodeFromCDPEvent(event map[string]any, acceptsCallback callbackURLAccepter) (loginServerResult, bool) {
-	if event == nil || event["method"] != "Network.requestWillBeSent" {
-		return loginServerResult{}, false
-	}
-	params, _ := event["params"].(map[string]any)
-	request, _ := params["request"].(map[string]any)
-	rawURL, _ := request["url"].(string)
-	if rawURL == "" {
-		rawURL, _ = params["documentURL"].(string)
-	}
-	return loginCodeFromBrowserURL(rawURL, acceptsCallback)
-}
-
-func defaultWatchBrowserLoginCode(ctx context.Context, acceptsCallback callbackURLAccepter, expectedChallenge string, initialSeen map[string]struct{}, openURL func(string) error, submit func(loginServerResult), reportInvalid func(error)) {
-	if runtime.GOOS != "darwin" {
-		return
-	}
-	ticker := time.NewTicker(500 * time.Millisecond)
-	defer ticker.Stop()
-	seen := cloneStringSet(initialSeen)
-	handleURLs := func(urls []string) bool {
-		for _, rawURL := range urls {
-			if returnTo, ok := pixivPostRedirectReturnTo(rawURL); ok {
-				if !pixivAuthStartMatchesChallenge(returnTo, expectedChallenge) {
-					continue
-				}
-				if _, ok := seen[rawURL]; ok {
-					continue
-				}
-				seen[rawURL] = struct{}{}
-				if err := openURL(rawURL); err != nil {
-					reportInvalid(fmt.Errorf("could not open Pixiv authorization relay URL: %w", err))
-				}
-				continue
-			}
-			if _, ok := seen[rawURL]; ok {
-				continue
-			}
-			seen[rawURL] = struct{}{}
-			result, ok := loginCodeFromBrowserURL(rawURL, acceptsCallback)
-			if !ok {
-				continue
-			}
-			if result.err != nil {
-				reportInvalid(result.err)
-				continue
-			}
-			submit(result)
-			return true
-		}
-		return false
-	}
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
-			if handleURLs(activeMacBrowserURLs(ctx)) {
-				return
-			}
-			if handleURLs(callbackURLsFromChromiumStateFiles()) {
-				return
-			}
-		}
-	}
-}
-
-func currentBrowserLoginURLs(ctx context.Context) []string {
-	seen := map[string]struct{}{}
-	for _, rawURL := range activeMacBrowserURLs(ctx) {
-		addBrowserLoginURL(seen, rawURL)
-	}
-	for _, rawURL := range callbackURLsFromChromiumStateFiles() {
-		addBrowserLoginURL(seen, rawURL)
-	}
-	out := make([]string, 0, len(seen))
-	for rawURL := range seen {
-		out = append(out, rawURL)
-	}
-	sort.Strings(out)
-	return out
-}
-
-func currentBrowserCallbackURLSet(ctx context.Context) map[string]struct{} {
-	seen := map[string]struct{}{}
-	for _, rawURL := range currentBrowserLoginURLs(ctx) {
-		seen[rawURL] = struct{}{}
-	}
-	return seen
-}
-
-func cloneStringSet(values map[string]struct{}) map[string]struct{} {
-	clone := map[string]struct{}{}
-	for value := range values {
-		clone[value] = struct{}{}
-	}
-	return clone
-}
-
-func addBrowserLoginURL(urls map[string]struct{}, rawURL string) {
-	parsed, err := url.Parse(strings.TrimSpace(rawURL))
-	if err == nil && isBrowserCallbackURL(parsed) && parsed.RawQuery != "" {
-		urls[rawURL] = struct{}{}
-		return
-	}
-	if _, ok := pixivPostRedirectReturnTo(rawURL); ok {
-		urls[rawURL] = struct{}{}
-	}
-}
-
-func loginCodeFromBrowserURL(rawURL string, acceptsCallback callbackURLAccepter) (loginServerResult, bool) {
-	parsed, err := url.Parse(strings.TrimSpace(rawURL))
-	if err != nil || parsed.RawQuery == "" {
-		return loginServerResult{}, false
-	}
-	if !isBrowserCallbackURL(parsed) {
-		return loginServerResult{}, false
-	}
-	return loginCodeFromInput(rawURL, acceptsCallback), true
-}
-
 func pixivPostRedirectReturnTo(rawURL string) (string, bool) {
 	parsed, err := url.Parse(strings.TrimSpace(rawURL))
 	if err != nil {
@@ -1033,213 +674,4 @@ func pixivAuthStartMatchesChallenge(rawURL, expectedChallenge string) bool {
 		return false
 	}
 	return parsed.Query().Get("code_challenge") == expectedChallenge
-}
-
-func callbackURLsFromChromiumStateFiles() []string {
-	files := chromiumStateFiles()
-	seen := map[string]struct{}{}
-	for _, filePath := range files {
-		// 仅扫描浏览器状态文件中的 Pixiv 授权回调 URL，不读取 cookie、local storage 或 token。
-		body, err := os.ReadFile(filePath)
-		if err != nil {
-			continue
-		}
-		for _, rawURL := range callbackURLsFromBytes(body) {
-			seen[rawURL] = struct{}{}
-		}
-	}
-	out := make([]string, 0, len(seen))
-	for rawURL := range seen {
-		out = append(out, rawURL)
-	}
-	sort.Strings(out)
-	return out
-}
-
-func chromiumStateFiles() []string {
-	home, err := os.UserHomeDir()
-	if err != nil || home == "" {
-		return nil
-	}
-	patterns := []string{
-		filepath.Join(home, "Library", "Application Support", "Microsoft Edge", "*", "Sessions", "*"),
-		filepath.Join(home, "Library", "Application Support", "Microsoft Edge", "*", "History"),
-		filepath.Join(home, "Library", "Application Support", "Google", "Chrome", "*", "Sessions", "*"),
-		filepath.Join(home, "Library", "Application Support", "Google", "Chrome", "*", "History"),
-		filepath.Join(home, "Library", "Application Support", "Chromium", "*", "Sessions", "*"),
-		filepath.Join(home, "Library", "Application Support", "Chromium", "*", "History"),
-	}
-	var files []string
-	for _, pattern := range patterns {
-		matches, err := filepath.Glob(pattern)
-		if err != nil {
-			continue
-		}
-		for _, match := range matches {
-			info, err := os.Stat(match)
-			if err != nil || info.IsDir() {
-				continue
-			}
-			files = append(files, match)
-		}
-	}
-	sort.Strings(files)
-	return files
-}
-
-func callbackURLsFromBytes(body []byte) []string {
-	prefixes := [][]byte{
-		[]byte(publicpixiv.OAuthCallbackURLPrefix()),
-		[]byte("pixiv://account/login?"),
-	}
-	seen := map[string]struct{}{}
-	for _, prefix := range prefixes {
-		for searchStart := 0; searchStart < len(body); {
-			relative := bytes.Index(body[searchStart:], prefix)
-			if relative < 0 {
-				break
-			}
-			start := searchStart + relative
-			end := start
-			for end < len(body) && isURLByte(body[end]) {
-				end++
-			}
-			if end > start {
-				seen[string(body[start:end])] = struct{}{}
-			}
-			searchStart = end
-		}
-	}
-	out := make([]string, 0, len(seen))
-	for rawURL := range seen {
-		out = append(out, rawURL)
-	}
-	sort.Strings(out)
-	return out
-}
-
-func isURLByte(ch byte) bool {
-	return (ch >= 'a' && ch <= 'z') ||
-		(ch >= 'A' && ch <= 'Z') ||
-		(ch >= '0' && ch <= '9') ||
-		strings.ContainsRune(":/?#[]@!$&'()*+,;=%-._~", rune(ch))
-}
-
-func activeMacBrowserURLs(ctx context.Context) []string {
-	if urls, err := activeMacBrowserURLsViaBrowserScripting(ctx); err == nil && len(urls) > 0 {
-		return urls
-	}
-	if rawURL, err := activeMacBrowserURLViaSystemEvents(ctx); err == nil && rawURL != "" {
-		return []string{rawURL}
-	}
-	return nil
-}
-
-func activeMacBrowserURLsViaBrowserScripting(ctx context.Context) ([]string, error) {
-	script := `
-set browserURLs to ""
-if application id "com.microsoft.edgemac" is running then
-	try
-		tell application id "com.microsoft.edgemac"
-			repeat with browserWindow in windows
-				repeat with browserTab in tabs of browserWindow
-					set browserURL to URL of browserTab
-					if browserURL is not missing value and browserURL is not "" then set browserURLs to browserURLs & browserURL & linefeed
-				end repeat
-			end repeat
-		end tell
-	end try
-end if
-if application id "com.google.Chrome" is running then
-	try
-		tell application id "com.google.Chrome"
-			repeat with browserWindow in windows
-				repeat with browserTab in tabs of browserWindow
-					set browserURL to URL of browserTab
-					if browserURL is not missing value and browserURL is not "" then set browserURLs to browserURLs & browserURL & linefeed
-				end repeat
-			end repeat
-		end tell
-	end try
-end if
-if application id "org.chromium.Chromium" is running then
-	try
-		tell application id "org.chromium.Chromium"
-			repeat with browserWindow in windows
-				repeat with browserTab in tabs of browserWindow
-					set browserURL to URL of browserTab
-					if browserURL is not missing value and browserURL is not "" then set browserURLs to browserURLs & browserURL & linefeed
-				end repeat
-			end repeat
-		end tell
-	end try
-end if
-if application id "com.apple.Safari" is running then
-	try
-		tell application id "com.apple.Safari"
-			repeat with browserWindow in windows
-				repeat with browserTab in tabs of browserWindow
-					set browserURL to URL of browserTab
-					if browserURL is not missing value and browserURL is not "" then set browserURLs to browserURLs & browserURL & linefeed
-				end repeat
-			end repeat
-		end tell
-	end try
-end if
-return browserURLs
-`
-	out, err := runAppleScript(ctx, script)
-	if err != nil {
-		return nil, err
-	}
-	lines := strings.Split(out, "\n")
-	urls := make([]string, 0, len(lines))
-	for _, line := range lines {
-		if rawURL := strings.TrimSpace(line); rawURL != "" {
-			urls = append(urls, rawURL)
-		}
-	}
-	return urls, nil
-}
-
-func activeMacBrowserURLViaSystemEvents(ctx context.Context) (string, error) {
-	script := `
-tell application "System Events"
-	set browserNames to {"Microsoft Edge", "Google Chrome", "Chromium", "Safari"}
-	repeat with browserName in browserNames
-		if exists process (contents of browserName) then
-			tell process (contents of browserName)
-				if (count of windows) is 0 then
-					set browserURL to ""
-				else
-					set browserURL to ""
-					try
-						set browserURL to value of text field 1 of group 1 of toolbar 1 of window 1
-					end try
-					if browserURL is "" then
-						try
-							set browserURL to value of text field 1 of toolbar 1 of window 1
-						end try
-					end if
-					if browserURL is not "" then return browserURL
-				end if
-			end tell
-		end if
-	end repeat
-end tell
-return ""
-`
-	out, err := runAppleScript(ctx, script)
-	if err != nil {
-		return "", err
-	}
-	return strings.TrimSpace(out), nil
-}
-
-func defaultRunAppleScript(ctx context.Context, script string) (string, error) {
-	out, err := exec.CommandContext(ctx, "osascript", "-e", script).Output()
-	if err != nil {
-		return "", err
-	}
-	return string(out), nil
 }

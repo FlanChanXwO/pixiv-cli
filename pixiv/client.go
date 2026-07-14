@@ -18,6 +18,7 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/protocol"
 	internalresource "github.com/FlanChanXwO/pixiv-cli/internal/pixiv/resource"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/webapi"
+	"github.com/FlanChanXwO/pixiv-cli/internal/utils"
 )
 
 // Options 配置 Client 当前所需的传输端点与 App API 身份。
@@ -163,6 +164,9 @@ func loggerOrDiscard(logger *slog.Logger) *slog.Logger {
 func OpenDefault(options Options) (*Client, error) {
 	if strings.TrimSpace(options.AccessToken) != "" {
 		return nil, newError(CodeInvalidArgument, "", "", false, 0, 0, errors.New("AccessToken is only supported by NewClient"))
+	}
+	if _, err := utils.ValidateRefreshTokenInput(options.RefreshToken); err != nil {
+		return nil, newError(CodeInvalidArgument, "", "", false, 0, 0, err)
 	}
 	options = cloneOptions(options)
 	baseOptions := options

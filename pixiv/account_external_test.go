@@ -56,6 +56,85 @@ func TestOfficialOAuthURLHelpersAcceptOnlyCatalogRoutes(t *testing.T) {
 	}
 }
 
+func TestImportAccountRejectsCookieBeforeNetwork(t *testing.T) {
+	var requests atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		requests.Add(1)
+	}))
+	defer server.Close()
+
+	client, err := pixiv.NewClient(pixiv.Options{HTTPClient: server.Client(), OAuthBaseURL: server.URL})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = client.ImportAccount(context.Background(), "refresh_token=secret")
+	var sdkErr *pixiv.Error
+	if !errors.As(err, &sdkErr) || sdkErr.Code != pixiv.CodeInvalidArgument {
+		t.Fatalf("ImportAccount() error = %#v", err)
+	}
+	if !strings.Contains(errors.Unwrap(err).Error(), "cookie input is not supported; provide a Pixiv App API refresh token") {
+		t.Fatalf("unexpected safe cause: %v", errors.Unwrap(err))
+	}
+	if requests.Load() != 0 {
+		t.Fatalf("oauth requests = %d", requests.Load())
+	}
+}
+
+func TestOpenDefaultRejectsCookieRefreshToken(t *testing.T) {
+	_, err := pixiv.OpenDefault(pixiv.Options{RefreshToken: "refresh_token=secret"})
+	var sdkErr *pixiv.Error
+	if !errors.As(err, &sdkErr) || sdkErr.Code != pixiv.CodeInvalidArgument {
+		t.Fatalf("OpenDefault() error = %#v", err)
+	}
+}
+
+func TestOpenDefaultRejectsCookieEnvironmentTokenBeforeNetwork(t *testing.T) {
+	dir := t.TempDir()
+	authPath := filepath.Join(dir, "auth.json")
+	configPath := filepath.Join(dir, "config.toml")
+	if err := os.WriteFile(authPath, []byte(`{"accounts":[]}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(configPath, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PIXIV_REFRESH_TOKEN", "session=secret")
+	client, err := pixiv.OpenDefault(pixiv.Options{AuthFilePath: authPath, ConfigFilePath: configPath})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = client.CurrentUserID(context.Background())
+	var sdkErr *pixiv.Error
+	if !errors.As(err, &sdkErr) || sdkErr.Code != pixiv.CodeInvalidArgument {
+		t.Fatalf("CurrentUserID() error = %#v", err)
+	}
+}
+
+func TestStoredCookieRefreshTokenIsRejectedBeforeOAuthRequest(t *testing.T) {
+	dir := t.TempDir()
+	authPath := filepath.Join(dir, "auth.json")
+	if err := os.WriteFile(authPath, []byte(`{"default_user_id":7,"accounts":[{"user_id":7,"refresh_token":"refresh_token=secret"}]}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var requests atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		requests.Add(1)
+	}))
+	defer server.Close()
+	client, err := pixiv.NewClient(pixiv.Options{AuthFilePath: authPath, OAuthBaseURL: server.URL, HTTPClient: server.Client()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = client.CheckAccount(context.Background(), 7)
+	var sdkErr *pixiv.Error
+	if !errors.As(err, &sdkErr) || sdkErr.Code != pixiv.CodeInvalidArgument || sdkErr.UserID != 7 {
+		t.Fatalf("CheckAccount() error = %#v", err)
+	}
+	if requests.Load() != 0 {
+		t.Fatalf("oauth requests = %d", requests.Load())
+	}
+}
+
 func TestExplicitAccountStoreRefreshesRotatedTokenWithoutExposingIt(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()

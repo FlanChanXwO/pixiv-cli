@@ -179,7 +179,9 @@ func NewMCPRuntime(ctx context.Context, logger *slog.Logger, proxyOverride *stri
 	if err != nil {
 		return MCPRuntime{}, err
 	}
-	if token := config.RefreshTokenFromEnv(); token != "" {
+	if token, err := config.RefreshTokenFromEnv(); err != nil {
+		return MCPRuntime{}, err
+	} else if token != "" {
 		account, err := client.ImportAccount(ctx, token)
 		if err != nil {
 			return MCPRuntime{}, err

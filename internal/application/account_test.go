@@ -30,7 +30,7 @@ func TestAccountServiceUsesPublicSDKAccountStore(t *testing.T) {
 	}
 	service := newAccountServiceForTest(client)
 
-	result, err := service.Add(context.Background(), AccountAddRequest{TokenInput: "refresh_token=main%2Ftoken"})
+	result, err := service.Add(context.Background(), AccountAddRequest{TokenInput: "main/token"})
 	require.NoError(t, err)
 	assert.Equal(t, AccountResult{UserID: 456, Username: "bob", HasToken: true}, result)
 	list, err := service.List()
@@ -62,7 +62,7 @@ func TestAccountServiceCheckPrefersEnvironmentTokenWithoutSelectingStoredAccount
 		return &sdk.Account{UserID: 456, Username: "environment", HasToken: true}, nil
 	}
 	service := newAccountServiceForTest(client)
-	service.RefreshTokenFromEnv = func() string { return "environment-token" }
+	service.RefreshTokenFromEnv = func() (string, error) { return "environment-token", nil }
 
 	result, err := service.CheckWithRequest(context.Background(), AccountCheckRequest{})
 	require.NoError(t, err)
@@ -80,11 +80,21 @@ func TestAccountServiceCheckExplicitUIDDoesNotUseEnvironmentToken(t *testing.T) 
 		return nil, nil
 	}
 	service := newAccountServiceForTest(client)
-	service.RefreshTokenFromEnv = func() string { return "environment-token" }
+	service.RefreshTokenFromEnv = func() (string, error) { return "environment-token", nil }
 
 	result, err := service.CheckWithRequest(context.Background(), AccountCheckRequest{UserID: 123})
 	require.NoError(t, err)
 	assert.Equal(t, AccountResult{UserID: 123, Username: "stored", Default: true, HasToken: true}, result)
+}
+
+func TestAccountServiceAddRejectsCookieBeforeOpeningSDK(t *testing.T) {
+	service := AccountService{SDK: SDKService{NewClient: func(SDKClientRequest) (SDKClient, error) {
+		t.Fatal("SDK client was opened for a cookie input")
+		return nil, nil
+	}}}
+
+	_, err := service.Add(context.Background(), AccountAddRequest{TokenInput: "refresh_token=secret"})
+	require.ErrorContains(t, err, "cookie input is not supported")
 }
 
 // fakeAccountSDKClient 嵌入完整公开 facade，只覆写本组测试经过的账号方法；这样

@@ -55,8 +55,11 @@ func (c *Client) ImportAccount(ctx context.Context, refreshToken string) (out *A
 	defer func() { c.operationLog(OperationImportAccount, started, err, 0, 0) }()
 	c.authState.mu.Lock()
 	defer c.authState.mu.Unlock()
-	refreshToken, _ = utils.ParsePixivWebRefreshTokenInput(refreshToken)
-	if strings.TrimSpace(refreshToken) == "" {
+	refreshToken, inputErr := utils.ValidateRefreshTokenInput(refreshToken)
+	if inputErr != nil {
+		return nil, newError(CodeInvalidArgument, OperationImportAccount, "", false, 0, 0, inputErr)
+	}
+	if refreshToken == "" {
 		return nil, newError(CodeInvalidArgument, OperationImportAccount, "", false, 0, 0, errors.New("refresh token is required"))
 	}
 	state, httpClient, err := c.accountState(OperationImportAccount, true)
@@ -177,7 +180,10 @@ func (c *Client) CheckRefreshToken(ctx context.Context, refreshToken string) (ou
 }
 
 func (c *Client) checkRefreshToken(ctx context.Context, refreshToken string) (*Account, error) {
-	refreshToken = strings.TrimSpace(refreshToken)
+	refreshToken, inputErr := utils.ValidateRefreshTokenInput(refreshToken)
+	if inputErr != nil {
+		return nil, newError(CodeInvalidArgument, OperationCheckRefreshToken, "", false, 0, 0, inputErr)
+	}
 	if refreshToken == "" {
 		return nil, newError(CodeInvalidArgument, OperationCheckRefreshToken, "", false, 0, 0, errors.New("refresh token is required"))
 	}
@@ -238,7 +244,11 @@ func (c *Client) refreshStoredAccountFromState(ctx context.Context, operation Op
 	if !ok || strings.TrimSpace(stored.RefreshToken) == "" {
 		return nil, newUserError(CodeUnauthorized, operation, "", false, 0, userID, errors.New("account token is unavailable"))
 	}
-	updated, err := c.refreshIdentity(ctx, operation, httpClient, stored.RefreshToken)
+	refreshToken, inputErr := utils.ValidateRefreshTokenInput(stored.RefreshToken)
+	if inputErr != nil {
+		return nil, newUserError(CodeInvalidArgument, operation, "", false, 0, userID, inputErr)
+	}
+	updated, err := c.refreshIdentity(ctx, operation, httpClient, refreshToken)
 	if err != nil {
 		return nil, err
 	}

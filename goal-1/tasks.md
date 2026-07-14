@@ -130,10 +130,10 @@
 
 ## C04 — 集中检查：能力矩阵、架构导入门禁、完整回归
 
-- 状态：未完成
-- 实际：
-- 证据：
-- 风险/下一步：
+- 状态：完成
+- 实际：审计确认所有已暴露的内容能力均经顶层 `pixiv` SDK；移除了遗留 `Source` 内容调用链、Cookie 凭据解析与 Chromium/CDP/浏览器历史、会话文件、AppleScript 活动标签凭据采集。认证输入仅接受 App API refresh token，SDK、CLI、MCP、环境变量、OpenDefault、OAuth 与已存账号均在 OAuth 请求前拒绝 Cookie；`cmd/pixiv` 仅委托 `internal/cli`，Windows 更新残留清理由 CLI 启动路径执行。
+- 证据：`go test ./... -count=1`、`go vet ./...`、`git diff --check` 通过；非测试 CLI/application/bootstrap/MCP/download 未直连 `internal/pixiv` adapter；`watchBrowser|ManagedBrowser|Chromium|CDP|AppleScript|History|callbackURLsFrom` 与旧 Cookie parser 生产引用均为零。两轮审查：规格审查修正 CLI help，质量审查修正已存账号 Cookie 的 typed `CodeInvalidArgument` 与零请求回归后 APPROVED。
+- 风险/下一步：真实 Pixiv wire 兼容性仍待 T14 opt-in canary；T13 必须同步 README、MCP 文档、CONTEXT/architecture/ADR/CHANGELOG 及知识图谱，删除旧 Cookie、浏览器 watcher 与 legacy Source 描述。
 
 ## T13 — 同步 README、MCP 文档、ADR、CHANGELOG 和知识图谱
 

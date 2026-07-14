@@ -433,7 +433,7 @@ func TestDownloadImageContentResult(t *testing.T) {
 	}
 }
 
-func TestSetRefreshTokenRejectsCookieWithoutRefreshToken(t *testing.T) {
+func TestSetRefreshTokenRejectsCookieInput(t *testing.T) {
 	session, closeSession := newTestSession(t, &fakeDownloads{})
 	defer closeSession()
 
@@ -451,7 +451,7 @@ func TestSetRefreshTokenRejectsCookieWithoutRefreshToken(t *testing.T) {
 	if !ok {
 		t.Fatalf("content[0] = %T", result.Content[0])
 	}
-	if !strings.Contains(text.Text, "没有 refresh_token") || !strings.Contains(text.Text, "PHPSESSID/device_token") {
+	if !strings.Contains(text.Text, "cookie input is not supported; provide a Pixiv App API refresh token") {
 		t.Fatalf("unexpected text: %s", text.Text)
 	}
 }

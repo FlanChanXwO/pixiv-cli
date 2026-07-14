@@ -19,12 +19,20 @@ func TestRefreshOwnsIdentityState(t *testing.T) {
 		_ = json.NewEncoder(w).Encode(map[string]any{"access_token": "access", "refresh_token": "new-refresh", "user": map[string]any{"id": "7", "name": "alice"}})
 	}))
 	defer server.Close()
-	client := New("PHPSESSID=x; refresh_token=old%2Frefresh", WithHTTPClient(server.Client()), WithBaseURL(server.URL))
+	client := New("old/refresh", WithHTTPClient(server.Client()), WithBaseURL(server.URL))
 	require.NoError(t, client.Refresh(context.Background()))
 	assert.Equal(t, "access", client.AccessToken())
 	assert.Equal(t, "new-refresh", client.RefreshTokenValue())
 	assert.Equal(t, int64(7), client.UserID())
 	assert.Equal(t, "alice", client.UserName())
+}
+
+func TestRefreshRejectsCookieInputWithoutRequest(t *testing.T) {
+	client := New("PHPSESSID=secret; refresh_token=another")
+	require.ErrorContains(t, client.Refresh(context.Background()), "cookie input is not supported; provide a Pixiv App API refresh token")
+
+	client.SetRefreshToken("csrftoken=secret")
+	require.ErrorContains(t, client.Refresh(context.Background()), "cookie input is not supported; provide a Pixiv App API refresh token")
 }
 
 func TestExchangeAuthorizationCodeStoresToken(t *testing.T) {

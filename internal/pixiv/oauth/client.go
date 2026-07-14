@@ -36,10 +36,13 @@ type Client struct {
 	restyClient  *resty.Client
 	baseURL      string
 	refreshToken string
-	accessToken  string
-	userID       int64
-	userName     string
-	mu           sync.RWMutex
+	// refreshTokenErr 只保存本地输入校验错误；Refresh 会直接返回它，确保 Cookie
+	// 不会因被清空而伪装成普通的“缺少 token”错误。
+	refreshTokenErr error
+	accessToken     string
+	userID          int64
+	userName        string
+	mu              sync.RWMutex
 }
 
 // APIError 是 OAuth 上游状态错误。它故意不保留响应体，避免调用方把
@@ -69,8 +72,8 @@ func WithAccessToken(token string) Option {
 }
 
 func New(refreshToken string, opts ...Option) *Client {
-	refreshToken, _ = utils.ParsePixivWebRefreshTokenInput(refreshToken)
-	c := &Client{restyClient: resty.New(), baseURL: DefaultBase, refreshToken: refreshToken}
+	refreshToken, refreshTokenErr := utils.ValidateRefreshTokenInput(refreshToken)
+	c := &Client{restyClient: resty.New(), baseURL: DefaultBase, refreshToken: refreshToken, refreshTokenErr: refreshTokenErr}
 	c.restyClient.SetTimeout(60 * time.Second)
 	for _, opt := range opts {
 		opt(c)
@@ -83,9 +86,10 @@ func New(refreshToken string, opts ...Option) *Client {
 }
 
 func (c *Client) SetRefreshToken(token string) {
-	token, _ = utils.ParsePixivWebRefreshTokenInput(token)
+	token, inputErr := utils.ValidateRefreshTokenInput(token)
 	c.mu.Lock()
 	c.refreshToken = strings.TrimSpace(token)
+	c.refreshTokenErr = inputErr
 	c.mu.Unlock()
 }
 
@@ -102,7 +106,11 @@ func (c *Client) IsAuthenticated() bool { return c.AccessToken() != "" }
 func (c *Client) Refresh(ctx context.Context) error {
 	c.mu.RLock()
 	refreshToken := c.refreshToken
+	refreshTokenErr := c.refreshTokenErr
 	c.mu.RUnlock()
+	if refreshTokenErr != nil {
+		return refreshTokenErr
+	}
 	if refreshToken == "" {
 		return errors.New("missing PIXIV_REFRESH_TOKEN")
 	}

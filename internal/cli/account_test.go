@@ -27,6 +27,7 @@ import (
 	internalpixiv "github.com/FlanChanXwO/pixiv-cli/internal/pixiv"
 	"github.com/FlanChanXwO/pixiv-cli/internal/storage/auth"
 	publicpixiv "github.com/FlanChanXwO/pixiv-cli/pixiv"
+	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -48,7 +49,7 @@ func TestAccountAddListUseRemovePreservesOrder(t *testing.T) {
 	})
 
 	var stdout, stderr bytes.Buffer
-	code := Run([]string{"pixiv", "auth", "add", "--token", "foo=bar; refresh_token=main%2Ftoken"}, strings.NewReader(""), &stdout, &stderr)
+	code := Run([]string{"pixiv", "auth", "add", "--token", "main/token"}, strings.NewReader(""), &stdout, &stderr)
 	require.Equal(t, 0, code, stderr.String())
 
 	info, err := os.Stat(authPath)
@@ -319,14 +320,33 @@ func TestAccountNetworkCommandsRejectConflictingProxyFlags(t *testing.T) {
 	}
 }
 
-func TestAccountAddRejectsCookieWithoutRefreshToken(t *testing.T) {
+func TestAccountAddRejectsCookieInput(t *testing.T) {
 	useTempPaths(t)
 
 	var stdout, stderr bytes.Buffer
 	code := Run([]string{"pixiv", "auth", "add", "--token", "PHPSESSID=web; device_token=device"}, strings.NewReader(""), &stdout, &stderr)
 
 	require.NotZero(t, code)
-	assert.Contains(t, stderr.String(), "refresh_token")
+	assert.Contains(t, stderr.String(), "cookie input is not supported; provide a Pixiv App API refresh token")
+}
+
+func TestRefreshTokenFlagsOnlyDescribeAppAPIInput(t *testing.T) {
+	a := app{}
+	commonCommand := &cobra.Command{}
+	var commonOptions commandOptions
+	a.bindCommonFlags(commonCommand, &commonOptions)
+	common := commonCommand.Flags().Lookup("refresh-token")
+	if common == nil {
+		t.Fatal("missing --refresh-token flag")
+	}
+	assert.Equal(t, "Pixiv App API refresh token", common.Usage)
+
+	add := a.newAccountAddCommand()
+	token := add.Flags().Lookup("token")
+	if token == nil {
+		t.Fatal("missing auth add --token flag")
+	}
+	assert.Equal(t, "Pixiv App API refresh token", token.Usage)
 }
 
 func TestAccountPromptFlows(t *testing.T) {
@@ -531,8 +551,6 @@ func TestAccountLoginBrowserFailureFallsBackToTerminalPrompt(t *testing.T) {
 	defer restoreOAuthBase()
 	restoreRelay := setTestURLSchemeRelayInstaller(t, func(context.Context, string) (func(), error) { return func() {}, nil })
 	defer restoreRelay()
-	restoreAppleScript := setTestRunAppleScript(t, func(context.Context, string) (string, error) { return "", nil })
-	defer restoreAppleScript()
 	restoreOpen := setTestOpenBrowser(t, func(string) error {
 		return errors.New("opener unavailable")
 	})
@@ -554,31 +572,6 @@ func TestAccountLoginBrowserFailureFallsBackToTerminalPrompt(t *testing.T) {
 	assert.Contains(t, stderr.String(), "warning: could not open browser")
 }
 
-// TestCancelAndJoinBrowserWatcherWaitsForExit 防止登录函数在 watcher 仍引用本轮 hook/状态时返回。
-// 用进入 join 前的同步点避免以任意 sleep/超时断言并发顺序。
-func TestCancelAndJoinBrowserWatcherWaitsForExit(t *testing.T) {
-	stopCalled := make(chan struct{})
-	joinStarted := make(chan struct{})
-	watcherExited := make(chan struct{})
-	returned := make(chan struct{})
-
-	go func() {
-		cancelAndJoinBrowserWatcher(func() { close(stopCalled) }, watcherExited, func() { close(joinStarted) })
-		close(returned)
-	}()
-
-	<-stopCalled
-	<-joinStarted
-	select {
-	case <-returned:
-		t.Fatal("login watcher join returned before watcher exit")
-	default:
-	}
-
-	close(watcherExited)
-	<-returned
-}
-
 func TestAccountLoginBrowserSuccessStillAcceptsTerminalPrompt(t *testing.T) {
 	authPath, _ := useTempPaths(t)
 	addr := freeLoopbackAddr(t)
@@ -595,8 +588,6 @@ func TestAccountLoginBrowserSuccessStillAcceptsTerminalPrompt(t *testing.T) {
 	defer restoreOAuthBase()
 	restoreRelay := setTestURLSchemeRelayInstaller(t, func(context.Context, string) (func(), error) { return func() {}, nil })
 	defer restoreRelay()
-	restoreAppleScript := setTestRunAppleScript(t, func(context.Context, string) (string, error) { return "", nil })
-	defer restoreAppleScript()
 
 	opened := false
 	openedURL := ""
@@ -645,8 +636,6 @@ func TestAccountLoginAcceptsPixivCallbackURLWithoutState(t *testing.T) {
 	defer restoreOAuthBase()
 	restoreRelay := setTestURLSchemeRelayInstaller(t, func(context.Context, string) (func(), error) { return func() {}, nil })
 	defer restoreRelay()
-	restoreAppleScript := setTestRunAppleScript(t, func(context.Context, string) (string, error) { return "", nil })
-	defer restoreAppleScript()
 
 	restoreOpen := setTestOpenBrowser(t, func(string) error {
 		return nil
@@ -684,12 +673,8 @@ func TestAccountLoginManualPageRelaysPostRedirectThenAcceptsCode(t *testing.T) {
 	defer oauth.Close()
 	restoreOAuthBase := setTestOAuthBase(t, oauth.URL)
 	defer restoreOAuthBase()
-	restoreWatcher := setTestBrowserCodeWatcher(t, nil)
-	defer restoreWatcher()
 	restoreRelay := setTestURLSchemeRelayInstaller(t, func(context.Context, string) (func(), error) { return func() {}, nil })
 	defer restoreRelay()
-	restoreAppleScript := setTestRunAppleScript(t, func(context.Context, string) (string, error) { return "", nil })
-	defer restoreAppleScript()
 
 	// opener 由登录服务的 HTTP handler 调用，测试 goroutine 读取前须用同一把锁建立同步关系。
 	var openedURLsMu sync.Mutex
@@ -739,415 +724,6 @@ func TestAccountLoginManualPageRelaysPostRedirectThenAcceptsCode(t *testing.T) {
 	assert.NotContains(t, stderr.String(), "manual-relay-refresh-secret")
 }
 
-func TestAccountLoginBrowserWatcherStoresCallbackCode(t *testing.T) {
-	authPath, _ := useTempPaths(t)
-	addr := freeLoopbackAddr(t)
-	exchanges := 0
-	oauth := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		exchanges++
-		require.NoError(t, r.ParseForm())
-		assert.Equal(t, "watched-code", r.Form.Get("code"))
-		require.NoError(t, json.NewEncoder(w).Encode(map[string]any{
-			"refresh_token": "watched-refresh-secret",
-			"user":          map[string]any{"id": "86420", "name": "watched-user"},
-		}))
-	}))
-	defer oauth.Close()
-	restoreOAuthBase := setTestOAuthBase(t, oauth.URL)
-	defer restoreOAuthBase()
-	restoreRelay := setTestURLSchemeRelayInstaller(t, func(context.Context, string) (func(), error) { return func() {}, nil })
-	defer restoreRelay()
-	restoreAppleScript := setTestRunAppleScript(t, func(context.Context, string) (string, error) { return "", nil })
-	defer restoreAppleScript()
-	authorizationURL := make(chan string, 1)
-	restoreOpen := setTestOpenBrowser(t, func(rawURL string) error {
-		authorizationURL <- rawURL
-		return nil
-	})
-	defer restoreOpen()
-	restoreWatcher := setTestBrowserCodeWatcher(t, func(ctx context.Context, acceptsCallback func(string) bool, expectedChallenge string, initialSeen map[string]struct{}, openURL func(string) error, submit func(loginServerResult), reportInvalid func(error)) {
-		select {
-		case rawURL := <-authorizationURL:
-			parsed, err := url.Parse(rawURL)
-			require.NoError(t, err)
-			state := parsed.Query().Get("state")
-			require.NotEmpty(t, state)
-			foreign := "https://app-api.pixiv.net/web/v1/users/auth/pixiv/callback?code=foreign-code&state=other"
-			assert.False(t, acceptsCallback(foreign), "foreign callback must be rejected before token exchange")
-			callback := "https://app-api.pixiv.net/web/v1/users/auth/pixiv/callback?code=watched-code&state=" + url.QueryEscape(state)
-			assert.True(t, acceptsCallback(callback), "matching callback must pass without consuming the session")
-			submit(loginCodeFromInput(callback, acceptsCallback))
-		case <-ctx.Done():
-			t.Error("browser watcher stopped before receiving authorization URL")
-		}
-	})
-	defer restoreWatcher()
-
-	var stdout, stderr bytes.Buffer
-	code := Run([]string{"pixiv", "auth", "login", "--addr", addr, "--timeout", "5s"}, strings.NewReader(""), &stdout, &stderr)
-
-	require.Equal(t, 0, code, stderr.String())
-	assert.Equal(t, 1, exchanges, "accepted callback must be exchanged exactly once by CompleteLogin")
-	store, err := auth.LoadAuthStore(authPath)
-	require.NoError(t, err)
-	require.Len(t, store.Accounts, 1)
-	assert.Equal(t, int64(86420), store.Accounts[0].UserID)
-	assert.Equal(t, "watched-user", store.Accounts[0].Username)
-	assert.Equal(t, "watched-refresh-secret", store.Accounts[0].RefreshToken)
-	assert.NotContains(t, stdout.String(), "watched-refresh-secret")
-	assert.NotContains(t, stderr.String(), "watched-refresh-secret")
-}
-
-func TestAccountLoginDefaultBrowserWatcherReadsChromiumHistory(t *testing.T) {
-	if runtime.GOOS != "darwin" {
-		t.Skip("default browser watcher currently runs on macOS")
-	}
-	authPath, _ := useTempPaths(t)
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-	historyPath := filepath.Join(home, "Library", "Application Support", "Microsoft Edge", "Default", "History")
-	require.NoError(t, os.MkdirAll(filepath.Dir(historyPath), 0o700))
-	require.NoError(t, os.WriteFile(historyPath, nil, 0o600))
-	addr := freeLoopbackAddr(t)
-	oauth := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		require.NoError(t, r.ParseForm())
-		assert.Equal(t, "history-watched-code", r.Form.Get("code"))
-		require.NoError(t, json.NewEncoder(w).Encode(map[string]any{
-			"refresh_token": "history-watched-refresh-secret",
-			"user":          map[string]any{"id": "112233", "name": "history-watched-user"},
-		}))
-	}))
-	defer oauth.Close()
-	restoreOAuthBase := setTestOAuthBase(t, oauth.URL)
-	defer restoreOAuthBase()
-	restoreRelay := setTestURLSchemeRelayInstaller(t, func(context.Context, string) (func(), error) { return func() {}, nil })
-	defer restoreRelay()
-	restoreAppleScript := setTestRunAppleScript(t, func(context.Context, string) (string, error) { return "", nil })
-	defer restoreAppleScript()
-	restoreOpen := setTestOpenBrowser(t, func(string) error {
-		go func() {
-			time.Sleep(200 * time.Millisecond)
-			_ = os.WriteFile(historyPath, []byte("https://app-api.pixiv.net/web/v1/users/auth/pixiv/callback?code=history-watched-code\x00"), 0o600)
-		}()
-		return nil
-	})
-	defer restoreOpen()
-
-	var stdout, stderr bytes.Buffer
-	code := Run([]string{"pixiv", "auth", "login", "--addr", addr, "--timeout", "5s"}, strings.NewReader(""), &stdout, &stderr)
-
-	require.Equal(t, 0, code, stderr.String())
-	store, err := auth.LoadAuthStore(authPath)
-	require.NoError(t, err)
-	require.Len(t, store.Accounts, 1)
-	assert.Equal(t, int64(112233), store.Accounts[0].UserID)
-	assert.Equal(t, "history-watched-user", store.Accounts[0].Username)
-	assert.Equal(t, "history-watched-refresh-secret", store.Accounts[0].RefreshToken)
-	assert.Contains(t, stderr.String(), "Watching supported browser history/session state")
-	assert.Contains(t, stderr.String(), "Manual fallback page")
-	assert.NotContains(t, stderr.String(), "Waiting for callback")
-	assert.NotContains(t, stdout.String(), "history-watched-refresh-secret")
-	assert.NotContains(t, stderr.String(), "history-watched-refresh-secret")
-}
-
-func TestAccountLoginDefaultBrowserWatcherCatchesFastActiveTabCallback(t *testing.T) {
-	if runtime.GOOS != "darwin" {
-		t.Skip("default browser watcher currently runs on macOS")
-	}
-	authPath, _ := useTempPaths(t)
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-	oldRunAppleScript := runAppleScript
-	defer func() { runAppleScript = oldRunAppleScript }()
-	addr := freeLoopbackAddr(t)
-	oauth := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		require.NoError(t, r.ParseForm())
-		assert.Equal(t, "fast-active-tab-code", r.Form.Get("code"))
-		require.NoError(t, json.NewEncoder(w).Encode(map[string]any{
-			"refresh_token": "fast-active-tab-refresh-secret",
-			"user":          map[string]any{"id": "445566", "name": "fast-active-tab-user"},
-		}))
-	}))
-	defer oauth.Close()
-	restoreOAuthBase := setTestOAuthBase(t, oauth.URL)
-	defer restoreOAuthBase()
-	restoreRelay := setTestURLSchemeRelayInstaller(t, func(context.Context, string) (func(), error) { return func() {}, nil })
-	defer restoreRelay()
-	// watcher 会异步轮询 AppleScript；与 opener 共享的状态必须同步。
-	var stateMu sync.RWMutex
-	opened := false
-	runAppleScript = func(ctx context.Context, script string) (string, error) {
-		stateMu.RLock()
-		defer stateMu.RUnlock()
-		if !opened {
-			return "", nil
-		}
-		return "https://app-api.pixiv.net/web/v1/users/auth/pixiv/callback?code=fast-active-tab-code\n", nil
-	}
-	restoreOpen := setTestOpenBrowser(t, func(string) error {
-		stateMu.Lock()
-		defer stateMu.Unlock()
-		opened = true
-		return nil
-	})
-	defer restoreOpen()
-
-	var stdout, stderr bytes.Buffer
-	code := Run([]string{"pixiv", "auth", "login", "--addr", addr, "--timeout", "5s"}, strings.NewReader(""), &stdout, &stderr)
-
-	require.Equal(t, 0, code, stderr.String())
-	store, err := auth.LoadAuthStore(authPath)
-	require.NoError(t, err)
-	require.Len(t, store.Accounts, 1)
-	assert.Equal(t, int64(445566), store.Accounts[0].UserID)
-	assert.Equal(t, "fast-active-tab-user", store.Accounts[0].Username)
-	assert.Equal(t, "fast-active-tab-refresh-secret", store.Accounts[0].RefreshToken)
-	assert.NotContains(t, stdout.String(), "fast-active-tab-refresh-secret")
-	assert.NotContains(t, stderr.String(), "fast-active-tab-refresh-secret")
-}
-
-func TestAccountLoginDefaultBrowserWatcherContinuesPixivPostRedirect(t *testing.T) {
-	if runtime.GOOS != "darwin" {
-		t.Skip("default browser watcher currently runs on macOS")
-	}
-	authPath, _ := useTempPaths(t)
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-	oldRunAppleScript := runAppleScript
-	defer func() { runAppleScript = oldRunAppleScript }()
-	addr := freeLoopbackAddr(t)
-	oauth := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		require.NoError(t, r.ParseForm())
-		assert.Equal(t, "continued-code", r.Form.Get("code"))
-		require.NoError(t, json.NewEncoder(w).Encode(map[string]any{
-			"refresh_token": "continued-refresh-secret",
-			"user":          map[string]any{"id": "778899", "name": "continued-user"},
-		}))
-	}))
-	defer oauth.Close()
-	restoreOAuthBase := setTestOAuthBase(t, oauth.URL)
-	defer restoreOAuthBase()
-	restoreRelay := setTestURLSchemeRelayInstaller(t, func(context.Context, string) (func(), error) { return func() {}, nil })
-	defer restoreRelay()
-
-	// watcher 与 opener 在不同 goroutine 中读写以下登录场景状态。
-	var stateMu sync.Mutex
-	openedLogin := false
-	pollsAfterBridge := 0
-	var loginChallenge string
-	var bridge string
-	runAppleScript = func(ctx context.Context, script string) (string, error) {
-		stateMu.Lock()
-		defer stateMu.Unlock()
-		if !openedLogin {
-			return "", nil
-		}
-		if bridge != "" {
-			pollsAfterBridge++
-		}
-		if pollsAfterBridge >= 2 {
-			return "https://app-api.pixiv.net/web/v1/users/auth/pixiv/callback?code=continued-code\n", nil
-		}
-		returnTo := pixivAuthStartURLForTest(loginChallenge)
-		bridge = "https://accounts.pixiv.net/post-redirect?return_to=" + url.QueryEscape(returnTo)
-		return bridge + "\n", nil
-	}
-	var openedURLs []string
-	restoreOpen := setTestOpenBrowser(t, func(rawURL string) error {
-		stateMu.Lock()
-		defer stateMu.Unlock()
-		openedURLs = append(openedURLs, rawURL)
-		if strings.Contains(rawURL, "/web/v1/login?") {
-			openedLogin = true
-			loginChallenge = pixivLoginChallenge(rawURL)
-		}
-		return nil
-	})
-	defer restoreOpen()
-
-	var stdout, stderr bytes.Buffer
-	code := Run([]string{"pixiv", "auth", "login", "--addr", addr, "--timeout", "5s"}, strings.NewReader(""), &stdout, &stderr)
-
-	require.Equal(t, 0, code, stderr.String())
-	stateMu.Lock()
-	openedURLSnapshot := append([]string(nil), openedURLs...)
-	bridgeSnapshot := bridge
-	stateMu.Unlock()
-	require.NotContains(t, openedURLSnapshot, bridgeSnapshot)
-	require.Contains(t, stderr.String(), "waiting for pixiv:// callback handoff")
-	store, err := auth.LoadAuthStore(authPath)
-	require.NoError(t, err)
-	require.Len(t, store.Accounts, 1)
-	assert.Equal(t, int64(778899), store.Accounts[0].UserID)
-	assert.Equal(t, "continued-user", store.Accounts[0].Username)
-	assert.Equal(t, "continued-refresh-secret", store.Accounts[0].RefreshToken)
-	assert.NotContains(t, stdout.String(), "continued-refresh-secret")
-	assert.NotContains(t, stderr.String(), "continued-refresh-secret")
-}
-
-func TestAccountLoginDefaultBrowserWatcherSkipsStalePostRedirectChallenge(t *testing.T) {
-	if runtime.GOOS != "darwin" {
-		t.Skip("default browser watcher currently runs on macOS")
-	}
-	authPath, _ := useTempPaths(t)
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-	oldRunAppleScript := runAppleScript
-	defer func() { runAppleScript = oldRunAppleScript }()
-	addr := freeLoopbackAddr(t)
-	oauth := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		require.NoError(t, r.ParseForm())
-		assert.Equal(t, "same-tab-code", r.Form.Get("code"))
-		require.NoError(t, json.NewEncoder(w).Encode(map[string]any{
-			"refresh_token": "same-tab-refresh-secret",
-			"user":          map[string]any{"id": "887766", "name": "same-tab-user"},
-		}))
-	}))
-	defer oauth.Close()
-	restoreOAuthBase := setTestOAuthBase(t, oauth.URL)
-	defer restoreOAuthBase()
-	restoreRelay := setTestURLSchemeRelayInstaller(t, func(context.Context, string) (func(), error) { return func() {}, nil })
-	defer restoreRelay()
-
-	// watcher 与 opener 在不同 goroutine 中读写以下登录场景状态。
-	var stateMu sync.Mutex
-	openedLogin := false
-	pollsAfterCurrent := 0
-	var loginChallenge string
-	var currentBridge string
-	var currentReturnTo string
-	staleReturnTo := pixivAuthStartURLForTest("stale-challenge")
-	staleBridge := "https://accounts.pixiv.net/post-redirect?return_to=" + url.QueryEscape(staleReturnTo)
-	runAppleScript = func(ctx context.Context, script string) (string, error) {
-		stateMu.Lock()
-		defer stateMu.Unlock()
-		if !openedLogin {
-			return "", nil
-		}
-		if currentBridge != "" {
-			pollsAfterCurrent++
-		}
-		if pollsAfterCurrent >= 2 {
-			return "https://app-api.pixiv.net/web/v1/users/auth/pixiv/callback?code=same-tab-code\n", nil
-		}
-		currentReturnTo = pixivAuthStartURLForTest(loginChallenge)
-		currentBridge = "https://accounts.pixiv.net/post-redirect?return_to=" + url.QueryEscape(currentReturnTo)
-		return staleBridge + "\n" + currentBridge + "\n", nil
-	}
-	var openedURLs []string
-	restoreOpen := setTestOpenBrowser(t, func(rawURL string) error {
-		stateMu.Lock()
-		defer stateMu.Unlock()
-		openedURLs = append(openedURLs, rawURL)
-		if strings.Contains(rawURL, "/web/v1/login?") {
-			openedLogin = true
-			loginChallenge = pixivLoginChallenge(rawURL)
-		}
-		return nil
-	})
-	defer restoreOpen()
-
-	var stdout, stderr bytes.Buffer
-	code := Run([]string{"pixiv", "auth", "login", "--addr", addr, "--timeout", "5s"}, strings.NewReader(""), &stdout, &stderr)
-
-	require.Equal(t, 0, code, stderr.String())
-	stateMu.Lock()
-	openedURLSnapshot := append([]string(nil), openedURLs...)
-	currentBridgeSnapshot := currentBridge
-	stateMu.Unlock()
-	require.NotContains(t, openedURLSnapshot, staleReturnTo)
-	require.NotContains(t, openedURLSnapshot, staleBridge)
-	require.NotContains(t, openedURLSnapshot, currentBridgeSnapshot)
-	require.Contains(t, stderr.String(), "waiting for pixiv:// callback handoff")
-	store, err := auth.LoadAuthStore(authPath)
-	require.NoError(t, err)
-	require.Len(t, store.Accounts, 1)
-	assert.Equal(t, int64(887766), store.Accounts[0].UserID)
-	assert.Equal(t, "same-tab-user", store.Accounts[0].Username)
-	assert.Equal(t, "same-tab-refresh-secret", store.Accounts[0].RefreshToken)
-	assert.NotContains(t, stdout.String(), "same-tab-refresh-secret")
-	assert.NotContains(t, stderr.String(), "same-tab-refresh-secret")
-}
-
-func TestAccountLoginDefaultBrowserWatcherReportsPostRedirectRelayOnce(t *testing.T) {
-	if runtime.GOOS != "darwin" {
-		t.Skip("default browser watcher currently runs on macOS")
-	}
-	authPath, _ := useTempPaths(t)
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-	oldRunAppleScript := runAppleScript
-	defer func() { runAppleScript = oldRunAppleScript }()
-	addr := freeLoopbackAddr(t)
-	oauth := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		require.NoError(t, r.ParseForm())
-		assert.Equal(t, "retried-code", r.Form.Get("code"))
-		require.NoError(t, json.NewEncoder(w).Encode(map[string]any{
-			"refresh_token": "retried-refresh-secret",
-			"user":          map[string]any{"id": "998877", "name": "retried-user"},
-		}))
-	}))
-	defer oauth.Close()
-	restoreOAuthBase := setTestOAuthBase(t, oauth.URL)
-	defer restoreOAuthBase()
-	restoreRelay := setTestURLSchemeRelayInstaller(t, func(context.Context, string) (func(), error) { return func() {}, nil })
-	defer restoreRelay()
-
-	// watcher 与 opener 在不同 goroutine 中读写以下登录场景状态。
-	var stateMu sync.Mutex
-	openedLogin := false
-	var loginChallenge string
-	var returnTo string
-	var bridge string
-	openCounts := map[string]int{}
-	pollsAfterBridgeSeen := 0
-	runAppleScript = func(ctx context.Context, script string) (string, error) {
-		stateMu.Lock()
-		defer stateMu.Unlock()
-		if !openedLogin {
-			return "", nil
-		}
-		if bridge != "" {
-			pollsAfterBridgeSeen++
-		}
-		if pollsAfterBridgeSeen >= 2 {
-			return "https://app-api.pixiv.net/web/v1/users/auth/pixiv/callback?code=retried-code\n", nil
-		}
-		returnTo = pixivAuthStartURLForTest(loginChallenge)
-		bridge = "https://accounts.pixiv.net/post-redirect?return_to=" + url.QueryEscape(returnTo)
-		return bridge + "\n", nil
-	}
-	restoreOpen := setTestOpenBrowser(t, func(rawURL string) error {
-		stateMu.Lock()
-		defer stateMu.Unlock()
-		if strings.Contains(rawURL, "/web/v1/login?") {
-			openedLogin = true
-			loginChallenge = pixivLoginChallenge(rawURL)
-		}
-		openCounts[rawURL]++
-		return nil
-	})
-	defer restoreOpen()
-
-	var stdout, stderr bytes.Buffer
-	code := Run([]string{"pixiv", "auth", "login", "--addr", addr, "--timeout", "5s"}, strings.NewReader(""), &stdout, &stderr)
-
-	require.Equal(t, 0, code, stderr.String())
-	stateMu.Lock()
-	bridgeOpenCount := openCounts[bridge]
-	stateMu.Unlock()
-	require.Zero(t, bridgeOpenCount)
-	require.Equal(t, 1, strings.Count(stderr.String(), "waiting for pixiv:// callback handoff"))
-	store, err := auth.LoadAuthStore(authPath)
-	require.NoError(t, err)
-	require.Len(t, store.Accounts, 1)
-	assert.Equal(t, int64(998877), store.Accounts[0].UserID)
-	assert.Equal(t, "retried-user", store.Accounts[0].Username)
-	assert.Equal(t, "retried-refresh-secret", store.Accounts[0].RefreshToken)
-	assert.NotContains(t, stdout.String(), "retried-refresh-secret")
-	assert.NotContains(t, stderr.String(), "retried-refresh-secret")
-}
-
 func TestLoginCodeFromInputOnlyPixivCallbacksMayOmitState(t *testing.T) {
 	accepts := func(rawURL string) bool {
 		return rawURL == "pixiv://account/login?code=app-code" || rawURL == "https://app-api.pixiv.net/web/v1/users/auth/pixiv/callback?code=https-code"
@@ -1167,59 +743,6 @@ func TestLoginCodeFromInputOnlyPixivCallbacksMayOmitState(t *testing.T) {
 	result = loginCodeFromInput("pixiv://account/login?code=app-code&state=wrong-state", accepts)
 	require.Error(t, result.err)
 	assert.Contains(t, result.err.Error(), "does not match")
-}
-
-func TestLoginCodeFromCDPEventAcceptsPixivSchemeRequest(t *testing.T) {
-	event := map[string]any{
-		"method": "Network.requestWillBeSent",
-		"params": map[string]any{
-			"request": map[string]any{
-				"url": "pixiv://account/login?code=cdp-code",
-			},
-		},
-	}
-
-	result, ok := loginCodeFromCDPEvent(event, acceptsTestCallback)
-
-	require.True(t, ok)
-	require.NoError(t, result.err)
-	assert.Equal(t, "pixiv://account/login?code=cdp-code", result.code)
-}
-
-func TestLoginCodeFromCDPEventAcceptsOfficialCallbackRequest(t *testing.T) {
-	event := map[string]any{
-		"method": "Network.requestWillBeSent",
-		"params": map[string]any{
-			"request": map[string]any{
-				"url": "https://app-api.pixiv.net/web/v1/users/auth/pixiv/callback?code=cdp-https-code",
-			},
-		},
-	}
-
-	result, ok := loginCodeFromCDPEvent(event, acceptsTestCallback)
-
-	require.True(t, ok)
-	require.NoError(t, result.err)
-	assert.Equal(t, "https://app-api.pixiv.net/web/v1/users/auth/pixiv/callback?code=cdp-https-code", result.code)
-}
-
-func TestLoginCodeFromCDPEventIgnoresUnrelatedEvents(t *testing.T) {
-	events := []map[string]any{
-		{"method": "Page.loadEventFired"},
-		{
-			"method": "Network.requestWillBeSent",
-			"params": map[string]any{
-				"request": map[string]any{"url": "https://example.test/callback?code=ignored"},
-			},
-		},
-	}
-
-	for _, event := range events {
-		result, ok := loginCodeFromCDPEvent(event, acceptsTestCallback)
-		assert.False(t, ok)
-		assert.Empty(t, result.code)
-		assert.NoError(t, result.err)
-	}
 }
 
 func TestLoginInputFromTextRelaysPostRedirect(t *testing.T) {
@@ -1272,58 +795,6 @@ func TestLoginInputFromTextRejectsStalePostRedirectChallenge(t *testing.T) {
 	assert.Empty(t, opened)
 }
 
-func TestCallbackURLsFromBytesExtractsOnlyPixivCallbacks(t *testing.T) {
-	body := []byte("noise https://app-api.pixiv.net/web/v1/users/auth/pixiv/callback?code=https-code\x00" +
-		"https://example.test/callback?code=ignored pixiv://account/login?code=app-code\n")
-
-	urls := callbackURLsFromBytes(body)
-
-	assert.Equal(t, []string{
-		"https://app-api.pixiv.net/web/v1/users/auth/pixiv/callback?code=https-code",
-		"pixiv://account/login?code=app-code",
-	}, urls)
-}
-
-func TestCallbackURLsFromBytesStopsAtNonURLBytes(t *testing.T) {
-	body := []byte("https://app-api.pixiv.net/web/v1/users/auth/pixiv/callback?code=https-code{}sqlite-printable-garbage")
-
-	urls := callbackURLsFromBytes(body)
-
-	assert.Equal(t, []string{
-		"https://app-api.pixiv.net/web/v1/users/auth/pixiv/callback?code=https-code",
-	}, urls)
-}
-
-func TestCallbackURLsFromChromiumStateFilesReadsEdgeSessionsAndHistory(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-	if runtime.GOOS == "windows" {
-		// Windows 的 os.UserHomeDir 使用 USERPROFILE，不会读取 HOME。
-		t.Setenv("USERPROFILE", home)
-	}
-	sessionDir := filepath.Join(home, "Library", "Application Support", "Microsoft Edge", "Default", "Sessions")
-	require.NoError(t, os.MkdirAll(sessionDir, 0o700))
-	require.NoError(t, os.WriteFile(filepath.Join(sessionDir, "Session_1"), []byte("https://app-api.pixiv.net/web/v1/users/auth/pixiv/callback?code=session-code\x00"), 0o600))
-	require.NoError(t, os.WriteFile(filepath.Join(home, "Library", "Application Support", "Microsoft Edge", "Default", "History"), []byte("pixiv://account/login?code=history-code\x00"), 0o600))
-
-	urls := callbackURLsFromChromiumStateFiles()
-
-	assert.Equal(t, []string{
-		"https://app-api.pixiv.net/web/v1/users/auth/pixiv/callback?code=session-code",
-		"pixiv://account/login?code=history-code",
-	}, urls)
-}
-
-func assertPrivateFileMode(t *testing.T, actual os.FileMode, want os.FileMode) {
-	t.Helper()
-	if runtime.GOOS == "windows" {
-		// Windows 通过 ACL 管理访问控制，os.FileMode 不保留 Unix 的 0600 位。
-		assert.Equal(t, os.FileMode(0o666), actual)
-		return
-	}
-	assert.Equal(t, want, actual)
-}
-
 func TestPixivPostRedirectReturnToAcceptsOnlyPixivStartURL(t *testing.T) {
 	returnTo := "https://app-api.pixiv.net/web/v1/users/auth/pixiv/start?code_challenge=challenge&client=pixiv-android"
 	actual, ok := pixivPostRedirectReturnTo("https://accounts.pixiv.net/post-redirect?return_to=" + url.QueryEscape(returnTo))
@@ -1343,6 +814,16 @@ func TestPixivAuthStartMatchesChallenge(t *testing.T) {
 	assert.True(t, pixivAuthStartMatchesChallenge(pixivAuthStartURLForTest("any-challenge"), ""))
 }
 
+func assertPrivateFileMode(t *testing.T, actual os.FileMode, want os.FileMode) {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		// Windows 通过 ACL 管理访问控制，os.FileMode 不保留 Unix 的 0600 位。
+		assert.Equal(t, os.FileMode(0o666), actual)
+		return
+	}
+	assert.Equal(t, want, actual)
+}
+
 func pixivAuthStartURLForTest(challenge string) string {
 	values := url.Values{}
 	values.Set("code_challenge", challenge)
@@ -1350,45 +831,6 @@ func pixivAuthStartURLForTest(challenge string) string {
 	values.Set("client", "pixiv-android")
 	values.Set("via", "login")
 	return "https://app-api.pixiv.net/web/v1/users/auth/pixiv/start?" + values.Encode()
-}
-
-func TestActiveMacBrowserURLsPreferBrowserScripting(t *testing.T) {
-	old := runAppleScript
-	defer func() { runAppleScript = old }()
-	callbackURL := "https://app-api.pixiv.net/web/v1/users/auth/pixiv/callback?code=active-tab-code"
-	var scripts []string
-	runAppleScript = func(ctx context.Context, script string) (string, error) {
-		scripts = append(scripts, script)
-		require.Contains(t, script, `application id "com.microsoft.edgemac"`)
-		return "https://example.test/ignored\n" + callbackURL + "\n", nil
-	}
-
-	urls := activeMacBrowserURLs(context.Background())
-
-	assert.Equal(t, []string{"https://example.test/ignored", callbackURL}, urls)
-	require.Len(t, scripts, 1)
-	assert.NotContains(t, scripts[0], "System Events")
-}
-
-func TestActiveMacBrowserURLsFallBackToSystemEvents(t *testing.T) {
-	old := runAppleScript
-	defer func() { runAppleScript = old }()
-	callbackURL := "https://app-api.pixiv.net/web/v1/users/auth/pixiv/callback?code=system-events-code"
-	call := 0
-	runAppleScript = func(ctx context.Context, script string) (string, error) {
-		call++
-		if call == 1 {
-			assert.Contains(t, script, `application id "com.microsoft.edgemac"`)
-			return "", nil
-		}
-		assert.Contains(t, script, "System Events")
-		return callbackURL + "\n", nil
-	}
-
-	urls := activeMacBrowserURLs(context.Background())
-
-	assert.Equal(t, []string{callbackURL}, urls)
-	assert.Equal(t, 2, call)
 }
 
 func setTestOAuthBase(t *testing.T, baseURL string) func() {
@@ -1416,25 +858,9 @@ func setTestOpenBrowser(t *testing.T, opener func(string) error) func() {
 	return setOpenBrowserForTest(opener)
 }
 
-func setTestBrowserCodeWatcher(t *testing.T, watcher browserCodeWatcher) func() {
-	t.Helper()
-	return setBrowserCodeWatcherForTest(watcher)
-}
-
 func setTestURLSchemeRelayInstaller(t *testing.T, installer urlSchemeRelayInstaller) func() {
 	t.Helper()
 	return setURLSchemeRelayInstallerForTest(installer)
-}
-
-// setTestRunAppleScript 隔离登录 fixture 对用户浏览器与 macOS 自动化服务的访问。
-// 默认 watcher 的专门回归测试会单独提供有状态 fake，以保留其轮询语义覆盖。
-func setTestRunAppleScript(t *testing.T, runner func(context.Context, string) (string, error)) func() {
-	t.Helper()
-	old := runAppleScript
-	runAppleScript = runner
-	return func() {
-		runAppleScript = old
-	}
 }
 
 // setTestPublicSDKFactory 保持 CLI 测试走与生产相同的 public OpenDefault 路径。

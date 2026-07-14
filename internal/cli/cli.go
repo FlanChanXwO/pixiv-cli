@@ -14,6 +14,7 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/bootstrap"
 	"github.com/FlanChanXwO/pixiv-cli/internal/buildinfo"
 	"github.com/FlanChanXwO/pixiv-cli/internal/config"
+	"github.com/FlanChanXwO/pixiv-cli/internal/update"
 	sdk "github.com/FlanChanXwO/pixiv-cli/pixiv"
 	"github.com/spf13/cobra"
 )
@@ -45,8 +46,9 @@ type clientConfig struct {
 }
 
 var (
-	runMCPServer   = runMCP
-	newCLIServices = bootstrap.NewServices
+	runMCPServer                = runMCP
+	newCLIServices              = bootstrap.NewServices
+	cleanupPendingWindowsUpdate = update.CleanupPendingWindowsUpdate
 )
 
 func Run(args []string, in io.Reader, out io.Writer, errOut io.Writer) int {
@@ -57,6 +59,10 @@ func Run(args []string, in io.Reader, out io.Writer, errOut io.Writer) int {
 func RunContext(ctx context.Context, args []string, in io.Reader, out io.Writer, errOut io.Writer) int {
 	if len(args) == 0 {
 		args = []string{"pixiv"}
+	}
+	if err := cleanupPendingWindowsUpdate(); err != nil {
+		fmt.Fprintf(errOut, "clean pending update: %v\n", err)
+		return 1
 	}
 	logger, err := bootstrap.NewApplicationLogger(errOut)
 	if err != nil {
@@ -199,7 +205,7 @@ func (a app) bindCommonFlags(cmd *cobra.Command, opts *commandOptions) {
 	flags.StringVar(&opts.uid, "uid", "", "Pixiv UID from auth.json")
 	flags.StringVar(&opts.profile, "profile", "", "deprecated alias for --uid")
 	_ = flags.MarkDeprecated("profile", "use --uid instead")
-	flags.StringVar(&opts.refreshToken, "refresh-token", "", "Pixiv refresh token or cookie with refresh_token")
+	flags.StringVar(&opts.refreshToken, "refresh-token", "", "Pixiv App API refresh token")
 	flags.StringVar(&opts.downloadPath, "download-path", "", "download directory")
 	flags.StringVar(&opts.filenameTemplate, "filename-template", "", "filename template")
 	flags.BoolVar(&opts.jsonOut, "json", false, "print JSON")

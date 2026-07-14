@@ -95,7 +95,7 @@ func newServer(app *App) *mcp.Server {
 	return server
 }
 
-// addTool 在注册层统一观测所有 MCP tool（包括 legacy Source tool）。wrapper 不读取
+// addTool 在注册层统一观测所有 MCP tool（包括旧兼容 tool）。wrapper 不读取
 // request arguments，避免 token、cookie、URL 或用户查询进入日志；日志仍只经注入的
 // stderr logger 输出，绝不触碰 JSON-RPC transport。
 func addTool[In, Out any](a *App, server *mcp.Server, tool *mcp.Tool, handler mcp.ToolHandlerFor[In, Out]) {
@@ -332,11 +332,11 @@ type setRefreshTokenIn struct {
 }
 
 func (a *App) setRefreshToken(ctx context.Context, _ *mcp.CallToolRequest, in setRefreshTokenIn) (*mcp.CallToolResult, textOut, error) {
-	token, parsedCookie := utils.ParsePixivWebRefreshTokenInput(in.RefreshToken)
+	token, err := utils.ValidateRefreshTokenInput(in.RefreshToken)
+	if err != nil {
+		return toolText("错误：" + err.Error())
+	}
 	if token == "" {
-		if parsedCookie {
-			return toolText("错误：检测到您输入的是 Cookie 字符串，但其中没有 refresh_token。Pixiv 网页 Cookie 里的 PHPSESSID/device_token 不能直接用于 App API OAuth 刷新。请提供真正的 Pixiv refresh token，或包含 refresh_token=... 的 Cookie。")
-		}
 		return toolText("错误：refresh token 不能为空。")
 	}
 	client, release, err := a.openSDKMutable(ctx)

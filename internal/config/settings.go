@@ -101,9 +101,10 @@ func ValidSettingAliases() []string {
 	return keys
 }
 
-func RefreshTokenFromEnv() string {
-	token, _ := utils.ParsePixivWebRefreshTokenInput(os.Getenv("PIXIV_REFRESH_TOKEN"))
-	return token
+// RefreshTokenFromEnv 读取 App API refresh token。Cookie 形态在此处即被拒绝，
+// 不能继续流入默认 SDK 的 OAuth 请求。
+func RefreshTokenFromEnv() (string, error) {
+	return utils.ValidateRefreshTokenInput(os.Getenv("PIXIV_REFRESH_TOKEN"))
 }
 
 func EnvValue(spec SettingSpec) (string, bool) {

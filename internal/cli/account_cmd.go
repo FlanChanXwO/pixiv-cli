@@ -71,7 +71,7 @@ func (a app) newAccountAddCommand() *cobra.Command {
 		},
 	}
 	flags := cmd.Flags()
-	flags.StringVar(&opts.token, "token", "", "Pixiv refresh token or cookie with refresh_token")
+	flags.StringVar(&opts.token, "token", "", "Pixiv App API refresh token")
 	flags.BoolVar(&opts.jsonOut, "json", false, "print JSON")
 	a.bindProxyFlags(cmd, &opts.proxyOptions)
 	return cmd
