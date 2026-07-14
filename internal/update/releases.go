@@ -18,7 +18,9 @@ import (
 const (
 	defaultGitHubAPIBaseURL = "https://api.github.com"
 	defaultGitHubRepository = "FlanChanXwO/pixiv-cli"
-	releaseCacheFilename    = "github-releases.json"
+	// githubReleaseUserAgent 让匿名 Releases 请求满足 GitHub 的可识别客户端要求，且不包含版本或用户信息。
+	githubReleaseUserAgent = "pixiv-cli"
+	releaseCacheFilename   = "github-releases.json"
 	// releaseCacheSchemaVersion 2 起缓存页保留 Release assets；旧 schema 不能接受 304，
 	// 否则显式 self-update 会永久看到缺少资产，直到用户手动删除缓存。
 	releaseCacheSchemaVersion = 2
@@ -264,6 +266,7 @@ func (c *GitHubReleaseClient) fetchReleasePage(ctx context.Context, pageURL *url
 	if err != nil {
 		return releaseCachePage{}, nil, fmt.Errorf("create GitHub Releases request: %w", err)
 	}
+	request.Header.Set("User-Agent", githubReleaseUserAgent)
 	if hasCachedPage && cachedPage.ETag != "" {
 		request.Header.Set("If-None-Match", cachedPage.ETag)
 	}

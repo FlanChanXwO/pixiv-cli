@@ -11,6 +11,10 @@
 
 - `pixiv search` 新增 `--rating`、`--type` 与 `--ai-type` 本地结果过滤；带 `--limit`/`--page` 时会按匹配结果继续读取 opaque cursor。
 
+### Fixed
+
+- 修复显式与自动更新检查未向 GitHub Releases API 发送项目识别性 `User-Agent` 而可能收到 HTTP 403 的兼容性问题。
+
 ## [0.2.0] - 2026-07-13
 
 ### Added
