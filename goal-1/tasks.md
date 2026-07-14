@@ -32,10 +32,10 @@
 
 ## T03b — 对齐 protected release Environment 与受审计 main recovery dispatch
 
-- 状态：未完成
-- 实际：
-- 证据：
-- 风险/下一步：
+- 状态：完成
+- 实际：在 GitHub `release` Environment 的 custom deployment branch policies 中新增精确 `main` branch 规则；保留既有 `v*` tag 规则、required reviewer 及 `prevent_self_review=false`，未更改 secrets、环境名或 workflow。
+- 证据：GitHub API 创建 policy `54575656`（`main` / `branch`）；复查显示 policy 集合仅为 `main` branch 与 `v*` tag，Environment 仍含 required_reviewers 和 branch_policy protection rules；`main` 的 GitHub branch 元数据为 `protected=true`。
+- 风险/下一步：需重新从 main dispatch immutable `v0.2.0`；publish 应进入 required reviewer gate，而非 runner 前 branch policy 拒绝。随后验收签名 Release、Homebrew 与更新检查；不得删除这两条 policy 或绕过 reviewer。
 
 ## C01 — 集中检查：恢复链路、tag 不变性、文档与外部发布证据
 
