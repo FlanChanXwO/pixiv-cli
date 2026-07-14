@@ -15,7 +15,7 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/oauth"
 	"github.com/FlanChanXwO/pixiv-cli/internal/storage/auth"
-	publicpixiv "github.com/FlanChanXwO/pixiv-cli/pkg/pixiv"
+	publicpixiv "github.com/FlanChanXwO/pixiv-cli/pixiv"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 

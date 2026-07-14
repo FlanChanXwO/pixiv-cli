@@ -23,7 +23,7 @@ The project needs a clearer internal structure without changing CLI/MCP behavior
   - `DownloadService`
   - `LoginService`
 - Add `internal/bootstrap` as the production composition root.
-- Publish Pixiv access through concrete `pkg/pixiv.Client`; CLI/MCP reach it through application-owned narrow seams rather than importing internal App/Web transports.
+- Publish Pixiv access through concrete `pixiv.Client`; CLI/MCP reach it through application-owned narrow seams rather than importing internal App/Web transports.
 - Move `internal/cli/state` to `internal/storage/auth`.
 - Merge `internal/cli/mcpapp` into `internal/bootstrap` as MCP runtime wiring.
 

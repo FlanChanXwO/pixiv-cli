@@ -16,7 +16,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/FlanChanXwO/pixiv-cli/pkg/pixiv"
+	"github.com/FlanChanXwO/pixiv-cli/pixiv"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

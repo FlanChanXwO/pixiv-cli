@@ -13,7 +13,7 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/FlanChanXwO/pixiv-cli/pkg/pixiv"
+	"github.com/FlanChanXwO/pixiv-cli/pixiv"
 )
 
 func largestSafeWebOffset(pageSize int) int {

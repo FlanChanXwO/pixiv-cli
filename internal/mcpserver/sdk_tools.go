@@ -13,7 +13,7 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/application"
 	legacy "github.com/FlanChanXwO/pixiv-cli/internal/pixiv"
 	"github.com/FlanChanXwO/pixiv-cli/internal/storage/auth"
-	sdk "github.com/FlanChanXwO/pixiv-cli/pkg/pixiv"
+	sdk "github.com/FlanChanXwO/pixiv-cli/pixiv"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 

@@ -53,10 +53,10 @@
 
 ## T04 — 将公开 SDK 迁移到顶层 pixiv 并更新全仓 import
 
-- 状态：未完成
-- 实际：
-- 证据：
-- 风险/下一步：
+- 状态：完成
+- 实际：将全部 24 个公开 SDK 文件从 `pkg/pixiv` 物理迁移至顶层 `pixiv`，全仓 Go consumer、公开文档、ADR、PRD、架构说明和 changelog 均改用唯一 import `github.com/FlanChanXwO/pixiv-cli/pixiv`，未保留兼容 package；新增外部 tracer 通过该 import 构造 `Client`。移除与源码目录冲突的 `/pixiv` ignore，并把 CGO 负向构建测试改为临时显式输出，避免同名目录掩盖真实 staticlib 门禁。未来 tag 的 recovery overlay/canonical verifier/tests 同步使用 `pixiv/account_external_test.go`；文档保留 v0.2.0 tag 中旧 `pkg/pixiv/account_external_test.go` 仅为已完成恢复的历史事实。
+- 证据：TDD RED 从 `HEAD` archive 执行 `go test ./pixiv -count=1` 因目录不存在退出 1，GREEN 后新增 `pixiv/path_external_test.go` 经顶层公开 import 构造 Client；`go test ./pixiv -count=1`、`go test ./internal/application ./internal/bootstrap ./internal/cli ./internal/mcpserver -count=1`、`go test ./scripts/releaseworkflow -count=1`、`sh scripts/test-release-workflow.sh`、`go test ./... -count=1`、`gofmt -l pixiv` 和 `git diff --check` 均通过。旧公开 Go import 检索为空；规格审查与质量审查均 APPROVE。
+- 风险/下一步：本地未跑真实六平台 Release CI 与 opt-in Pixiv E2E；release 验收任务会覆盖前者。知识图谱按显式 T13 统一重建。下一任务 T05 集中协议 profile、endpoint catalog 与脱敏 adapter failure。
 
 ## T05 — 集中协议 profile、endpoint catalog 与脱敏 adapter failure
 

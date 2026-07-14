@@ -51,11 +51,11 @@ cache 的 24 小时节流，并最多等待 3 秒。配置、网络、来源识�
 - `ArtworkService`：search/detail/ranking/recommended。
 - `DownloadService`：按 ID 下载作品。
 - `LoginService`：生成 PKCE/state、authorization-code exchange，并保存账号；Pixiv 登录 URL 构造仍留在 CLI adapter。
-- `SDKService`：为 CLI/MCP 打开 `pkg/pixiv` client，并把调用方选择的账号/代理/JSON 设置映射到 SDK operation snapshot。
+- `SDKService`：为 CLI/MCP 打开顶层 `pixiv` client，并把调用方选择的账号/代理/JSON 设置映射到 SDK operation snapshot。
 
 ### `internal/bootstrap`
 
-生产 composition root，负责把 `internal/config`、`internal/storage/auth`、`pkg/pixiv`、`internal/download`、`internal/mcpserver`、更新 release client/installer 和 application services 组装起来。测试可以替换 service 里的小接口或 factory，不需要复制生产 wiring。
+生产 composition root，负责把 `internal/config`、`internal/storage/auth`、顶层 `pixiv`、`internal/download`、`internal/mcpserver`、更新 release client/installer 和 application services 组装起来。测试可以替换 service 里的小接口或 factory，不需要复制生产 wiring。
 
 `NewUpdateCoordinator` 通过 `productionReleaseInstallerOptions` 为 Release installer 注入随受支持
 binary 提交的 Ed25519 key ID→public key 映射，并在每次组装时复制 map 与 key bytes，避免调用方污染
@@ -108,7 +108,7 @@ Release。
 native evidence 与 staticlib manifest 已回填。v0.1.1 已完成正式 tag、受签名 Release 与 stable tap formula；
 Release 安装的失败语义仍是保护边界，而不是临时降级。
 
-### `pkg/pixiv`
+### `pixiv`
 
 公开 concrete facade。`NewClient` 只使用显式 options；`OpenDefault` 复用本地 auth/config，并在每个公开操作开始时取得一次 snapshot。它暴露规范化模型、opaque cursor、`*pixiv.Error`、账号/config、登录 session、资源流和下载；CLI/MCP 与外部 Go 程序消费同一契约。
 

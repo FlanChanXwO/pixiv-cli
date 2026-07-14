@@ -3,7 +3,6 @@
 # Go build/test artifacts
 /build/
 /pixiv-cli
-/pixiv
 /pixiv-auth
 *.test
 *.out

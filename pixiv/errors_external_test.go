@@ -11,7 +11,7 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/FlanChanXwO/pixiv-cli/pkg/pixiv"
+	"github.com/FlanChanXwO/pixiv-cli/pixiv"
 )
 
 type roundTripFunc func(*http.Request) (*http.Response, error)

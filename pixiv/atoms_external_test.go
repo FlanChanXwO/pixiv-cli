@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/FlanChanXwO/pixiv-cli/pkg/pixiv"
+	"github.com/FlanChanXwO/pixiv-cli/pixiv"
 )
 
 func TestClientExportsRemainingReadAtoms(t *testing.T) {

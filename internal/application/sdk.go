@@ -5,7 +5,7 @@ import (
 	"errors"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/config"
-	sdk "github.com/FlanChanXwO/pixiv-cli/pkg/pixiv"
+	sdk "github.com/FlanChanXwO/pixiv-cli/pixiv"
 )
 
 // SDKClient 是 CLI 数据命令所需的窄 facade。它刻意不复用或导出旧 Source 的大接口，

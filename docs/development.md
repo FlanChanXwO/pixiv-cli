@@ -281,12 +281,14 @@ GitHub Release。workflow 使用 full-SHA Actions、最小权限及 `release` En
 `workflow_dispatch` 提交同一个 `release_tag` 进行恢复。validate 会校验该 tag 为 SemVer、存在、
 已包含于默认分支且尚未有 Release；构建与发布始终 checkout 该 tag。恢复 run 可以只在无 Environment
 的六平台 test job 中应用固定白名单的默认分支测试覆盖：当前 release workflow、Windows ACL 所需的
-`pkg/pixiv/account_external_test.go`，以及该 workflow 的 canonical verifier 与其测试（共 4 条路径）。覆盖通过
+`pixiv/account_external_test.go`，以及该 workflow 的 canonical verifier 与其测试（共 4 条路径）。覆盖通过
 一次 `git archive` 提取，再逐项核对工作树 diff 与空 cached diff，不能加入任意路径或生产源码，且不生成
 release artifact。该 job 成功后，独立的新 runner
 才会以 `clean: true` checkout tag、重新构建 selected staticlib 并生成唯一可被 publish 下载的
 `verified-release-*` assets；测试进程对环境变量、PATH 或临时目录的副作用不会进入生产 job。因此它不能用于
-替换生产资产源码、移动 tag，或重发已经存在的 Release。
+替换生产资产源码、移动 tag，或重发已经存在的 Release。v0.2.0 的不可变 tag 中对应测试仍位于
+`pkg/pixiv/account_external_test.go`；它是该次已完成恢复的历史证据，不能被改写为当前工作树路径。当前
+workflow 只覆盖顶层 `pixiv/account_external_test.go`，用于之后采用顶层 SDK 的新 tag。
 
 `sh scripts/test-release-workflow.sh` 启动 `scripts/releaseworkflow` 的 YAML AST policy，而不是依赖
 文本排版或行号。它精确检查 tag trigger、八份 job 的权限/依赖、六个 test/production runner matrix、每一个

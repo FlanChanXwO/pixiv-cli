@@ -11,7 +11,7 @@
 - **Composition root**：`internal/bootstrap`；组装 config、auth storage、Pixiv client、OAuth client、download manager、update dependency 与 application service。
 - **Auth storage**：`internal/storage/auth`；以 UID 为 key 的 `auth.json`、默认 UID、私有路径与 `0600` 写入。
 - **Pixiv source**：`internal/pixiv`；App API 与匿名 web fallback 的 facade。
-- **SDK client**：`pkg/pixiv` 的具体 `*pixiv.Client`；外部 Go 程序通过它访问规范化 Pixiv 原子能力。
+- **SDK client**：`pixiv` 的具体 `*pixiv.Client`；外部 Go 程序通过它访问规范化 Pixiv 原子能力。
 - **Caller adapter**：调用方自己的窄接口与业务层；它拥有 source mode、budget、filter、cursor 持久化、入库与调度。
 - **Operation snapshot**：`OpenDefault` 每个公开操作读取一次 auth/config/OAuth 快照；`Snapshot(ctx)` 可显式固定一个高层操作。
 - **Opaque cursor**：SDK 绑定 operation/query/source 的版本化 continuation；CLI/MCP 不暴露它。
@@ -52,7 +52,7 @@ Task 20 的审计流程配置或回填。v0.1.1 已发布为正式 Release，公
 - `internal/config` 只处理 `config.toml` schema、default、effective value 与 sparse write；`update_check_enabled` 只控制自动检查。
 - `internal/update` 负责来源与更新策略，但不得把权限、HTTP、asset、签名、checksum、archive 或替换错误伪装成无更新。
 - `internal/download` 的生产 ugoira 路径使用 Rust staticlib，不得在 runtime 回退 `ffmpeg`；完整六目标 manifest 是 source/release 可用的前置条件。
-- `pkg/pixiv` 是公开 facade；内部协议实现物理拆分为 `appapi`、`webapi`、`oauth`、`resource`，不得反向 import public package。
+- `pixiv` 是公开 facade；内部协议实现物理拆分为 `appapi`、`webapi`、`oauth`、`resource`，不得反向 import public package。
 - 有凭据时 App API 为主路径，失败不自动 Web fallback；Web pages/ugoira original 只能作为明确 enrichment。
 - 不新增 Discover、Probe、Capabilities、RSS、crawler、通用 Provider interface 或 HTTP server；这些属于调用方 adapter。
 - `internal/common/constants` 不含 Pixiv protocol、MCP delivery、config key 或 product default；`AppConfigDirName` 是唯一 product-named path exception。

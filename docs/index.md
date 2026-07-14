@@ -2,7 +2,7 @@
 
 ## 项目定位
 
-`pixiv-cli` 是一个 Go 版 Pixiv CLI、MCP stdio server 与 public `pkg/pixiv` SDK。CLI/MCP 是 SDK consumer；调用方在自身 adapter 中定义采集、budget、filter 与持久化。无 refresh token 时，允许的匿名读操作可使用 Pixiv web/ajax API。
+`pixiv-cli` 是一个 Go 版 Pixiv CLI、MCP stdio server 与 public `pixiv` SDK（`github.com/FlanChanXwO/pixiv-cli/pixiv`）。CLI/MCP 是 SDK consumer；调用方在自身 adapter 中定义采集、budget、filter 与持久化。无 refresh token 时，允许的匿名读操作可使用 Pixiv web/ajax API。
 
 ## 文档目录
 

@@ -7,6 +7,10 @@
 
 ## [Unreleased]
 
+### Changed
+
+- Breaking: 公开 Go SDK 已迁移至 `github.com/FlanChanXwO/pixiv-cli/pixiv`；旧导入路径不保留兼容 package。
+
 ### Added
 
 - `pixiv search` 新增 `--rating`、`--type` 与 `--ai-type` 本地结果过滤；带 `--limit`/`--page` 时会按匹配结果继续读取 opaque cursor。
@@ -19,7 +23,7 @@
 
 ### Added
 
-- 新增公开 Go 包 `github.com/FlanChanXwO/pixiv-cli/pkg/pixiv`；提供具体 `*pixiv.Client`、稳定模型、类型化错误、opaque cursor、账号/config 与受策略限制的资源流访问。
+- 新增公开 Go SDK；提供具体 `*pixiv.Client`、稳定模型、类型化错误、opaque cursor、账号/config 与受策略限制的资源流访问。
 - 新增 `pixiv user artworks/bookmarks/following [USER_ID]`；新增 `bookmark add/remove` 与 `follow add/remove`。
 - MCP 新增 `user_artworks`、分页用户列表、收藏/关注写操作及 structured output。
 - 新增可注入的 `slog` 诊断日志与 `log_level`/`log_format` 配置，支持 `PIXIV_LOG_LEVEL`/`PIXIV_LOG_FORMAT` 覆盖。

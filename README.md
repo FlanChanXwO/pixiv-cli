@@ -1,6 +1,6 @@
 # Pixiv CLI / MCP / Go SDK
 
-Go 版 Pixiv 工具集：默认作为 `pixiv` CLI 使用，需要 MCP 时显式运行 `pixiv mcp`；Go 程序可导入公开 `pkg/pixiv`。
+Go 版 Pixiv 工具集：默认作为 `pixiv` CLI 使用，需要 MCP 时显式运行 `pixiv mcp`；Go 程序可导入公开 `pixiv` package（`github.com/FlanChanXwO/pixiv-cli/pixiv`）。
 
 它优先复用 Pixiv App API，支持搜索、详情、排行、推荐、下载、多账号 refresh token 管理，以及 MCP stdio server。未配置 refresh token 时，默认对搜索、详情、排行、用户搜索和下载启用匿名 Pixiv web/ajax API fallback。它不是 HTTP 服务，也不提供 Discover、Probe、Capabilities、RSS 或 crawler。
 

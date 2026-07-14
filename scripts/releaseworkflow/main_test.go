@@ -308,18 +308,18 @@ test -z "$(git diff --name-only)"
 test -z "$(git diff --cached --name-only)"
 git archive --format=tar "$GITHUB_SHA" -- \
   .github/workflows/release.yml \
-  pkg/pixiv/account_external_test.go \
+  pixiv/account_external_test.go \
   scripts/releaseworkflow/main.go \
   scripts/releaseworkflow/main_test.go | tar -xf -
 test "$(git diff --name-only)" = "$(printf '%s\n' \
   .github/workflows/release.yml \
-  pkg/pixiv/account_external_test.go \
+  pixiv/account_external_test.go \
   scripts/releaseworkflow/main.go \
   scripts/releaseworkflow/main_test.go)"
 test -z "$(git diff --cached --name-only)"`
 	paths := []string{
 		".github/workflows/release.yml",
-		"pkg/pixiv/account_external_test.go",
+		"pixiv/account_external_test.go",
 		"scripts/releaseworkflow/main.go",
 		"scripts/releaseworkflow/main_test.go",
 	}
@@ -411,7 +411,7 @@ func TestCheckRecoveryPolicyRejectsRecoveryTrustMutations(t *testing.T) {
 		}},
 		{name: "overlay writes production source", mutate: func(t *testing.T, root *yaml.Node) {
 			step := stepWithRun(t, jobNode(t, root, "build"), `git archive --format=tar "$GITHUB_SHA"`)
-			replaceRunFragment(t, step, "pkg/pixiv/account_external_test.go", "pkg/pixiv/account.go")
+			replaceRunFragment(t, step, "pixiv/account_external_test.go", "pixiv/account.go")
 		}},
 		{name: "production source switches to workflow sha", mutate: func(t *testing.T, root *yaml.Node) {
 			appendRunStep(t, jobNode(t, root, "build"), "Bypass immutable tag", `git checkout "$GITHUB_SHA"`)

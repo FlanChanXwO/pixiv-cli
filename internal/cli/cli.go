@@ -14,7 +14,7 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/bootstrap"
 	"github.com/FlanChanXwO/pixiv-cli/internal/buildinfo"
 	"github.com/FlanChanXwO/pixiv-cli/internal/config"
-	sdk "github.com/FlanChanXwO/pixiv-cli/pkg/pixiv"
+	sdk "github.com/FlanChanXwO/pixiv-cli/pixiv"
 	"github.com/spf13/cobra"
 )
 

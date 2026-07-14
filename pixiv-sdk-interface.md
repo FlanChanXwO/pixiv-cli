@@ -1,6 +1,6 @@
 # Pixiv Go SDK 接口
 
-本文件取代旧 HTTP Provider interface。公开入口是 `github.com/FlanChanXwO/pixiv-cli/pkg/pixiv` 的具体 `*pixiv.Client`，不是 HTTP endpoint、Provider server 或可发现服务。
+本文件取代旧 HTTP Provider interface。公开入口是 `github.com/FlanChanXwO/pixiv-cli/pixiv` 的具体 `*pixiv.Client`，不是 HTTP endpoint、Provider server 或可发现服务。
 
 调用方若需要接口，应在自身 adapter 内定义最小方法集；SDK 不输出 `Discover`、Probe、Capabilities、RSS 或 crawler。
 
@@ -34,7 +34,7 @@ local, err := pixiv.OpenDefault(pixiv.Options{
 | 登录 | `StartLogin`、`CompleteLogin`。SDK 不启动浏览器、loopback server 或 TTY。 |
 | 资源 | `ParseResourceRef`、`OpenResource`、`Download`。 |
 
-请求型方法使用命名 request，例如 `SearchIllustRequest`、`UserArtworksRequest`、`UserBookmarksRequest`、`UserFollowingRequest`、`AddBookmarkRequest`、`FollowUserRequest`。返回模型为 `IllustListResult`、`UserListResult`、`IllustDetail`、`UserDetailResult` 等，均来自 `pkg/pixiv`。
+请求型方法使用命名 request，例如 `SearchIllustRequest`、`UserArtworksRequest`、`UserBookmarksRequest`、`UserFollowingRequest`、`AddBookmarkRequest`、`FollowUserRequest`。返回模型为 `IllustListResult`、`UserListResult`、`IllustDetail`、`UserDetailResult` 等，均来自顶层 `pixiv` package。
 
 `UserArtworksRequest.UserID` 等 SDK 用户 ID 必填；“省略 UID 就是自己”是 CLI/MCP adapter 行为，外部 Go 调用方先调用 `CurrentUserID(ctx)` 后再组装 request。
 

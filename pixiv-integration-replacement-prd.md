@@ -2,7 +2,7 @@
 
 ## 目标
 
-让调用方以 Go package 或现有 CLI/MCP 接入 Pixiv，不引入 HTTP service。公开实现是 `pkg/pixiv` 的具体 `*pixiv.Client`；调用方可以替换其自身 adapter，但不需要、也不应依赖本仓库提供的泛化 Provider。
+让调用方以 Go package 或现有 CLI/MCP 接入 Pixiv，不引入 HTTP service。公开实现是顶层 `pixiv`（`github.com/FlanChanXwO/pixiv-cli/pixiv`）的具体 `*pixiv.Client`；调用方可以替换其自身 adapter，但不需要、也不应依赖本仓库提供的泛化 Provider。
 
 目标调用方包括 `atri-setu-api`：它可继续拥有 source mode、采集预算、过滤、cursor 持久化、数据库入库、图片代理和任务调度，只把 Pixiv 上游读取、认证、规范化模型与安全资源读取委托给 SDK。
 
@@ -31,7 +31,7 @@
 - `NewClient(pixiv.Options)`：纯显式构造；不读本地文件、不刷新 token、不发网络请求。
 - `OpenDefault(pixiv.Options)`：读取本地 auth/config 和环境；每个公开操作创建一次 operation snapshot。
 - `Snapshot(ctx)`：调用方明确要求多个相关请求复用同一 snapshot。
-- 公开 request/result/model 与 `*pixiv.Error` 都放在 `pkg/pixiv`；不泄漏上游 DTO、CLI/MCP 类型或 internal 包。
+- 公开 request/result/model 与 `*pixiv.Error` 都放在顶层 `pixiv`；不泄漏上游 DTO、CLI/MCP 类型或 internal 包。
 - 不预置公共大 interface；调用方按用例定义窄接口，再以 `*pixiv.Client` 适配。
 
 ### 路由与认证
@@ -83,7 +83,7 @@ adapter 根据 `Mode` 选择 SDK 方法，将 `NextCursor` 存回自己的状态
 
 ## 验收标准
 
-- `pkg/pixiv` 可由外部 Go module 直接导入，构造 `*pixiv.Client`，不需 HTTP server。
+- `github.com/FlanChanXwO/pixiv-cli/pixiv` 可由外部 Go module 直接导入，构造 `*pixiv.Client`，不需 HTTP server。
 - 外部调用方可以用其 own adapter mock SDK 的窄方法集。
 - CLI 可列出用户作品、收藏、关注；`USER_ID` 可选并解析为当前认证用户。
 - MCP 的 SDK 路径同步暴露对应用户读取与写操作；这些错误为 `isError=true` 并保留 structured/text，列表使用 `page`/`limit` structured pagination。遗留 tool 保持既有文本结果兼容，不承诺统一 `isError`。
