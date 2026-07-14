@@ -46,10 +46,10 @@
 
 ## C01 — 集中检查：恢复链路、tag 不变性、文档与外部发布证据
 
-- 状态：未完成
-- 实际：
-- 证据：
-- 风险/下一步：
+- 状态：完成
+- 实际：独立审计 recovery overlay、受保护 Environment、不可变 tag、Release、Homebrew 和 update 修复合并状态；审计发现 ADR 0008 仍把发布写成未部署，已按 v0.2.0 外部事实最小更正并由原审计者复核批准。
+- 证据：`go test ./...`、`sh scripts/test-release-workflow.sh`、`go test ./scripts/releaseworkflow -count=1` 和 `git diff --check` 均通过；run `29307406643` 的 21 个 job 全部 success，Release `v0.2.0` 为公开 stable 且含 8 个资产，annotated tag 最终指向 `329711121588d9f054fb3d15540bb0fd6c134e42`，tap formula 已对齐 v0.2.0 URL/SHA。`release` Environment 仍保留 required reviewer 与精确 `main`/`v*` policy；PR #6 的 `3b46b9f` 已为 main 祖先，隔离 HOME/cache 的正式 buildinfo update check 连续两次返回 latest v0.2.0/no update。ADR 更正经独立复核 APPROVE。
+- 风险/下一步：v0.2.0 tag/资产不可变，故不包含随后合并的 User-Agent 修复；该修复将随 v0.3.0 发布。下一任务 T04 执行公开 SDK 顶层路径迁移。
 
 ## T04 — 将公开 SDK 迁移到顶层 pixiv 并更新全仓 import
 
