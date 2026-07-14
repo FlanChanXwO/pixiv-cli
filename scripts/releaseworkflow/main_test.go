@@ -299,48 +299,60 @@ func TestCheckRecoveryPolicyRequiresTrustedReleaseTag(t *testing.T) {
 	}
 }
 
-// v0.2.0 的 Windows test gate 只能恢复这一份跨平台权限断言测试；生产源码仍只来自 tag。
-func TestCheckRecoveryPolicyRequiresExactPixivConfigTestOverlay(t *testing.T) {
+// v0.2.0 恢复只覆盖 tag 与默认分支之间实际变化的四个审计文件；生产源码仍只来自 tag。
+func TestCheckRecoveryPolicyRequiresExactFourPathOverlay(t *testing.T) {
 	t.Parallel()
 
-	const path = "pkg/pixiv/account_external_test.go"
+	const commands = `set -euo pipefail
+test -z "$(git diff --name-only)"
+test -z "$(git diff --cached --name-only)"
+git archive --format=tar "$GITHUB_SHA" -- \
+  .github/workflows/release.yml \
+  pkg/pixiv/account_external_test.go \
+  scripts/releaseworkflow/main.go \
+  scripts/releaseworkflow/main_test.go | tar -xf -
+test "$(git diff --name-only)" = "$(printf '%s\n' \
+  .github/workflows/release.yml \
+  pkg/pixiv/account_external_test.go \
+  scripts/releaseworkflow/main.go \
+  scripts/releaseworkflow/main_test.go)"
+test -z "$(git diff --cached --name-only)"`
+	paths := []string{
+		".github/workflows/release.yml",
+		"pkg/pixiv/account_external_test.go",
+		"scripts/releaseworkflow/main.go",
+		"scripts/releaseworkflow/main_test.go",
+	}
 	root := releaseWorkflowRoot(t)
 	step := stepWithRun(t, jobNode(t, root, "build"), `git archive --format=tar "$GITHUB_SHA"`)
 	run := requireMappingValue(t, step, "run")
-	if !strings.Contains(run.Value, "  "+path+" \\\n") {
-		t.Fatalf("recovery overlay does not include %q", path)
+	if run.Value != commands+"\n" {
+		t.Fatalf("recovery overlay command = %q, want exact four-path audited command", run.Value)
 	}
 	if err := checkRecoveryPolicy(root); err != nil {
 		t.Fatalf("checked-in recovery policy rejected: %v", err)
 	}
 
-	for _, mutation := range []struct {
-		name  string
-		apply func(*yaml.Node)
-	}{
-		{
-			name: "required test path omitted",
-			apply: func(root *yaml.Node) {
-				removeRunFragment(t, stepWithRun(t, jobNode(t, root, "build"), `git archive --format=tar "$GITHUB_SHA"`), "  "+path+" \\\n")
-			},
-		},
-		{
-			name: "extra test path added",
-			apply: func(root *yaml.Node) {
-				step := stepWithRun(t, jobNode(t, root, "build"), `git archive --format=tar "$GITHUB_SHA"`)
-				run := requireMappingValue(t, step, "run")
-				run.Value = strings.Replace(run.Value, "  "+path+" \\\n", "  "+path+" \\\n  pkg/pixiv/other_test.go \\\n", 1)
-			},
-		},
-	} {
-		t.Run(mutation.name, func(t *testing.T) {
+	for _, path := range paths {
+		t.Run("required path omitted: "+path, func(t *testing.T) {
 			root := releaseWorkflowRoot(t)
-			mutation.apply(root)
+			step := stepWithRun(t, jobNode(t, root, "build"), `git archive --format=tar "$GITHUB_SHA"`)
+			run := requireMappingValue(t, step, "run")
+			run.Value = strings.Replace(run.Value, path, "", 1)
 			if err := checkRecoveryPolicy(root); err == nil {
-				t.Fatal("release recovery policy accepted an overlay allowlist mutation")
+				t.Fatal("release recovery policy accepted a missing audited overlay path")
 			}
 		})
 	}
+	t.Run("extra path added", func(t *testing.T) {
+		root := releaseWorkflowRoot(t)
+		step := stepWithRun(t, jobNode(t, root, "build"), `git archive --format=tar "$GITHUB_SHA"`)
+		run := requireMappingValue(t, step, "run")
+		run.Value = strings.Replace(run.Value, "  scripts/releaseworkflow/main_test.go | tar -xf -", "  scripts/releaseworkflow/main_test.go \\\n  pkg/pixiv/other_test.go | tar -xf -", 1)
+		if err := checkRecoveryPolicy(root); err == nil {
+			t.Fatal("release recovery policy accepted an extra overlay path")
+		}
+	})
 }
 
 // Windows 的 Go+cgo 质量门和最终 binary 必须统一使用 Clang+LLD，不能只修某个 step。
@@ -399,7 +411,7 @@ func TestCheckRecoveryPolicyRejectsRecoveryTrustMutations(t *testing.T) {
 		}},
 		{name: "overlay writes production source", mutate: func(t *testing.T, root *yaml.Node) {
 			step := stepWithRun(t, jobNode(t, root, "build"), `git archive --format=tar "$GITHUB_SHA"`)
-			replaceRunFragment(t, step, "internal/cli/account_test.go", "internal/cli/account.go")
+			replaceRunFragment(t, step, "pkg/pixiv/account_external_test.go", "pkg/pixiv/account.go")
 		}},
 		{name: "production source switches to workflow sha", mutate: func(t *testing.T, root *yaml.Node) {
 			appendRunStep(t, jobNode(t, root, "build"), "Bypass immutable tag", `git checkout "$GITHUB_SHA"`)
