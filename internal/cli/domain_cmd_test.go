@@ -28,6 +28,7 @@ type sdkCommandFake struct {
 	detail         func(context.Context, int64) (*sdk.IllustDetail, error)
 	ranking        func(context.Context, sdk.IllustRankingRequest) (*sdk.IllustListResult, error)
 	recommended    func(context.Context, sdk.IllustRecommendedRequest) (*sdk.IllustListResult, error)
+	userDetail     func(context.Context, sdk.UserDetailRequest) (*sdk.UserDetailResult, error)
 	artworks       func(context.Context, sdk.UserArtworksRequest) (*sdk.IllustListResult, error)
 	bookmarks      func(context.Context, sdk.UserBookmarksRequest) (*sdk.IllustListResult, error)
 	following      func(context.Context, sdk.UserFollowingRequest) (*sdk.UserListResult, error)
@@ -65,6 +66,12 @@ func (f sdkCommandFake) IllustRanking(ctx context.Context, r sdk.IllustRankingRe
 func (f sdkCommandFake) IllustRecommended(ctx context.Context, r sdk.IllustRecommendedRequest) (*sdk.IllustListResult, error) {
 	if f.recommended != nil {
 		return f.recommended(ctx, r)
+	}
+	return nil, unimplementedSDKCommand()
+}
+func (f sdkCommandFake) UserDetail(ctx context.Context, r sdk.UserDetailRequest) (*sdk.UserDetailResult, error) {
+	if f.userDetail != nil {
+		return f.userDetail(ctx, r)
 	}
 	return nil, unimplementedSDKCommand()
 }
@@ -130,6 +137,126 @@ func setTestSDKCommandFactory(t *testing.T, factory application.SDKClientFactory
 
 func commandIllust(id int64) sdk.Illust {
 	return sdk.Illust{ID: id, Title: "work", User: sdk.User{Name: "artist"}}
+}
+
+func TestUserDetailRoutesRequiredIDAndPrintsCompleteSDKJSON(t *testing.T) {
+	useTempPaths(t)
+	webpage := "https://example.test/artist"
+	workspaceImage := "https://example.test/workspace.png"
+	want := sdk.UserDetailResult{
+		User: sdk.User{ID: 42, Name: "artist", Account: "artist_account", Comment: "hello"},
+		Profile: sdk.Profile{
+			Webpage: &webpage, Region: "Tokyo", CountryCode: "JP", Job: "illustrator",
+			TotalIllusts: 10, TotalManga: 2, TotalNovels: 3, TotalFollowUsers: 4,
+		},
+		ProfilePublicity: sdk.ProfilePublicity{Gender: true, Region: true, BirthDay: true, BirthYear: true, Job: true, Pawoo: true},
+		Workspace:        sdk.Workspace{PC: "desktop", Tool: "pen", WorkspaceImageURL: &workspaceImage},
+	}
+	var got sdk.UserDetailRequest
+	var gotClientRequest application.SDKClientRequest
+	factoryCalls := 0
+	setTestSDKCommandFactory(t, func(request application.SDKClientRequest) (application.SDKClient, error) {
+		factoryCalls++
+		gotClientRequest = request
+		return sdkCommandFake{userDetail: func(_ context.Context, request sdk.UserDetailRequest) (*sdk.UserDetailResult, error) {
+			got = request
+			return &want, nil
+		}}, nil
+	})
+
+	var stdout, stderr bytes.Buffer
+	require.Equal(t, 0, Run([]string{"pixiv", "user", "detail", "42", "--json", "--uid", "9", "--refresh-token", "refresh", "--proxy", "http://127.0.0.1:7890"}, strings.NewReader(""), &stdout, &stderr), stderr.String())
+	assert.Equal(t, sdk.UserDetailRequest{UserID: 42}, got)
+	assert.Equal(t, 1, factoryCalls)
+	assert.Equal(t, int64(9), gotClientRequest.UserID)
+	assert.Equal(t, "refresh", gotClientRequest.RefreshToken)
+	require.NotNil(t, gotClientRequest.HTTPSProxyOverride)
+	assert.Equal(t, "http://127.0.0.1:7890", *gotClientRequest.HTTPSProxyOverride)
+	assert.Contains(t, stdout.String(), "\"profile_publicity\"")
+	assert.Contains(t, stdout.String(), "\"workspace\"")
+	var actual sdk.UserDetailResult
+	require.NoError(t, json.Unmarshal(stdout.Bytes(), &actual))
+	assert.Equal(t, want, actual)
+}
+
+func TestUserDetailTextOmitsEmptyFieldsAndSanitizesWebpage(t *testing.T) {
+	useTempPaths(t)
+	webpage := "https://alice:secret@example.test/artist?token=secret#private"
+	setTestSDKCommandClient(t, sdkCommandFake{userDetail: func(_ context.Context, request sdk.UserDetailRequest) (*sdk.UserDetailResult, error) {
+		assert.Equal(t, sdk.UserDetailRequest{UserID: 42}, request)
+		return &sdk.UserDetailResult{
+			User:    sdk.User{ID: 42, Name: "artist", Account: "artist_account", Comment: "hello"},
+			Profile: sdk.Profile{Webpage: &webpage, Region: "Tokyo", CountryCode: "JP", Job: "illustrator", TotalIllusts: 10, TotalManga: 2, TotalNovels: 3, TotalFollowUsers: 4},
+			Workspace: sdk.Workspace{
+				PC: "desktop",
+			},
+		}, nil
+	}})
+
+	var stdout, stderr bytes.Buffer
+	require.Equal(t, 0, Run([]string{"pixiv", "user", "detail", "42"}, strings.NewReader(""), &stdout, &stderr), stderr.String())
+	output := stdout.String()
+	assert.Contains(t, output, "user id: 42\n")
+	assert.Contains(t, output, "name: artist\n")
+	assert.Contains(t, output, "account: artist_account\n")
+	assert.Contains(t, output, "comment: hello\n")
+	assert.Contains(t, output, "webpage: https://example.test/artist\n")
+	assert.Contains(t, output, "region: Tokyo\n")
+	assert.Contains(t, output, "country: JP\n")
+	assert.Contains(t, output, "job: illustrator\n")
+	assert.Contains(t, output, "artworks: 10\n")
+	assert.Contains(t, output, "manga: 2\n")
+	assert.Contains(t, output, "novels: 3\n")
+	assert.Contains(t, output, "following: 4\n")
+	assert.Contains(t, output, "workspace pc: desktop\n")
+	assert.NotContains(t, output, "token=secret")
+	assert.NotContains(t, output, "alice:secret")
+	assert.NotContains(t, output, "#private")
+	assert.NotContains(t, output, "workspace monitor:")
+	assert.NotContains(t, output, "workspace comment:")
+}
+
+func TestUserDetailBindsNoProxyFlag(t *testing.T) {
+	useTempPaths(t)
+	setTestSDKCommandFactory(t, func(request application.SDKClientRequest) (application.SDKClient, error) {
+		require.NotNil(t, request.HTTPSProxyOverride)
+		assert.Equal(t, "", *request.HTTPSProxyOverride)
+		return sdkCommandFake{userDetail: func(context.Context, sdk.UserDetailRequest) (*sdk.UserDetailResult, error) {
+			return &sdk.UserDetailResult{User: sdk.User{ID: 42}}, nil
+		}}, nil
+	})
+
+	var stdout, stderr bytes.Buffer
+	require.Equal(t, 0, Run([]string{"pixiv", "user", "detail", "42", "--no-proxy"}, strings.NewReader(""), &stdout, &stderr), stderr.String())
+}
+
+func TestUserDetailRejectsInvalidIDBeforeOpeningSDKAndPreservesTypedErrorOutput(t *testing.T) {
+	useTempPaths(t)
+	for _, args := range [][]string{
+		{"pixiv", "user", "detail"},
+		{"pixiv", "user", "detail", "not-a-number"},
+		{"pixiv", "user", "detail", "0"},
+	} {
+		t.Run(strings.Join(args[3:], "/"), func(t *testing.T) {
+			factoryCalls := 0
+			setTestSDKCommandFactory(t, func(application.SDKClientRequest) (application.SDKClient, error) {
+				factoryCalls++
+				return sdkCommandFake{}, nil
+			})
+			var stdout, stderr bytes.Buffer
+			assert.Equal(t, 1, Run(args, strings.NewReader(""), &stdout, &stderr))
+			assert.Empty(t, stdout.String())
+			assert.Equal(t, 0, factoryCalls)
+		})
+	}
+
+	setTestSDKCommandClient(t, sdkCommandFake{userDetail: func(context.Context, sdk.UserDetailRequest) (*sdk.UserDetailResult, error) {
+		return nil, sdk.ErrMalformedUpstreamResponse
+	}})
+	var stdout, stderr bytes.Buffer
+	assert.Equal(t, 1, Run([]string{"pixiv", "user", "detail", "42", "--json"}, strings.NewReader(""), &stdout, &stderr))
+	assert.Empty(t, stdout.String())
+	assert.Contains(t, stderr.String(), sdk.ErrMalformedUpstreamResponse.Error())
 }
 
 func TestUserCommandsRouteOptionalIDAndMutationsThroughSDK(t *testing.T) {

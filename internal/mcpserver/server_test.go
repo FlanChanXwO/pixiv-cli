@@ -1053,6 +1053,11 @@ func (*fakeSDKClient) IllustRanking(context.Context, sdk.IllustRankingRequest) (
 func (*fakeSDKClient) IllustRecommended(context.Context, sdk.IllustRecommendedRequest) (*sdk.IllustListResult, error) {
 	return &sdk.IllustListResult{}, nil
 }
+
+// UserDetail 仅保持 SDK 测试替身满足窄接口；MCP user_detail tool 将在后续任务单独接入。
+func (*fakeSDKClient) UserDetail(context.Context, sdk.UserDetailRequest) (*sdk.UserDetailResult, error) {
+	return &sdk.UserDetailResult{}, nil
+}
 func (f *fakeSDKClient) UserArtworks(_ context.Context, request sdk.UserArtworksRequest) (*sdk.IllustListResult, error) {
 	f.artworksRequest = request
 	f.artworksRequests = append(f.artworksRequests, request)

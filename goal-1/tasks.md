@@ -81,10 +81,10 @@
 
 ## T07 — 新增 CLI user detail 与 SDK 单链路调用
 
-- 状态：未完成
-- 实际：
-- 证据：
-- 风险/下一步：
+- 状态：完成
+- 实际：新增必填 `pixiv user detail USER_ID`，仅经一次 `SDK.OpenOperation` 调用公开 `SDKClient.UserDetail`；`--json` 直出完整 `UserDetailResult`，文本仅输出必要非空资料、四项公开计数和非空 workspace。文本网页仅保留无 userinfo/query/fragment 的 HTTP(S) 地址。补齐 SDK 接口演进所需的 MCP 测试 fake，但未新增 MCP tool；README 与 Unreleased 已同步。
+- 证据：TDD 覆盖公开 `Run` 边界的完整 JSON、SDK 请求/单次 factory、refresh-token/uid/proxy/no-proxy 透传、文本空字段省略与 URL 脱敏、无效 ID 不打开 SDK、typed SDK error stdout 为空；早期基线缺少 `UserDetail` SDK 接口和 CLI 子命令，新增 tracer 无法编译，后续 GREEN。`go test ./internal/cli -count=1`、`go test ./internal/application ./internal/bootstrap -count=1`、`go test ./pixiv -count=1`、`go test ./internal/mcpserver -count=1`、`go test ./... -count=1`、`gofmt -d`、`git diff --check` 均通过；规格审查批准，质量审查发现的 gofmt P2 已修复并窄复审批准。
+- 风险/下一步：默认测试不访问真实 Pixiv；完整详情的真实上游兼容性留待 T14 opt-in canary。下一任务 T08 仅新增 MCP `user_detail` 并使用同一 SDK 调用链。
 
 ## T08 — 新增 MCP user_detail、更新 tool skill 与文档
 

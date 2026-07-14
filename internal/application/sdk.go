@@ -16,6 +16,7 @@ type SDKClient interface {
 	IllustDetail(context.Context, int64) (*sdk.IllustDetail, error)
 	IllustRanking(context.Context, sdk.IllustRankingRequest) (*sdk.IllustListResult, error)
 	IllustRecommended(context.Context, sdk.IllustRecommendedRequest) (*sdk.IllustListResult, error)
+	UserDetail(context.Context, sdk.UserDetailRequest) (*sdk.UserDetailResult, error)
 	UserArtworks(context.Context, sdk.UserArtworksRequest) (*sdk.IllustListResult, error)
 	UserBookmarks(context.Context, sdk.UserBookmarksRequest) (*sdk.IllustListResult, error)
 	UserFollowing(context.Context, sdk.UserFollowingRequest) (*sdk.UserListResult, error)
