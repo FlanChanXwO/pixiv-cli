@@ -157,6 +157,78 @@ func (c *Client) IllustRecommended(ctx context.Context, request IllustRecommende
 	return publicIllustList(list, OperationIllustRecommended, digest, "offset", c.cursorSource), nil
 }
 
+// MangaRecommended 返回一个认证漫画推荐批次；它与插画推荐使用相同 catalog，但游标互不兼容。
+func (c *Client) MangaRecommended(ctx context.Context, request IllustRecommendedRequest) (result *IllustListResult, err error) {
+	started := time.Now()
+	defer func() { c.delegatedOperationLog(OperationMangaRecommended, started, err, 0, 0) }()
+	if scoped, err := c.operationClient(ctx, OperationMangaRecommended); err != nil {
+		return nil, err
+	} else if scoped != c {
+		return scoped.MangaRecommended(ctx, request)
+	}
+	digest := queryDigest(OperationMangaRecommended, struct{}{})
+	offset, err := c.cursorOffset(request.Cursor, OperationMangaRecommended, digest, 0)
+	if err != nil {
+		return nil, err
+	}
+	if err := c.requireRoute(OperationMangaRecommended, routeApp, 0, 0); err != nil {
+		return nil, err
+	}
+	list, err := c.app.MangaRecommended(ctx, offset)
+	if err != nil {
+		return nil, mapAppOperationError(err, OperationMangaRecommended, 0)
+	}
+	return publicIllustList(list, OperationMangaRecommended, digest, "offset", c.cursorSource), nil
+}
+
+// NovelRecommended 返回一个认证小说推荐批次；其 opaque cursor 不能用于其他推荐种类。
+func (c *Client) NovelRecommended(ctx context.Context, request NovelRecommendedRequest) (result *NovelListResult, err error) {
+	started := time.Now()
+	defer func() { c.delegatedOperationLog(OperationNovelRecommended, started, err, 0, 0) }()
+	if scoped, err := c.operationClient(ctx, OperationNovelRecommended); err != nil {
+		return nil, err
+	} else if scoped != c {
+		return scoped.NovelRecommended(ctx, request)
+	}
+	digest := queryDigest(OperationNovelRecommended, struct{}{})
+	offset, err := c.cursorOffset(request.Cursor, OperationNovelRecommended, digest, 0)
+	if err != nil {
+		return nil, err
+	}
+	if err := c.requireRoute(OperationNovelRecommended, routeApp, 0, 0); err != nil {
+		return nil, err
+	}
+	list, err := c.app.NovelRecommended(ctx, offset)
+	if err != nil {
+		return nil, mapAppOperationError(err, OperationNovelRecommended, 0)
+	}
+	return publicNovelList(list, OperationNovelRecommended, digest, c.cursorSource), nil
+}
+
+// UserRecommended 返回一个认证作者推荐批次及对应作品预览。
+func (c *Client) UserRecommended(ctx context.Context, request UserRecommendedRequest) (result *UserRecommendedResult, err error) {
+	started := time.Now()
+	defer func() { c.delegatedOperationLog(OperationUserRecommended, started, err, 0, 0) }()
+	if scoped, err := c.operationClient(ctx, OperationUserRecommended); err != nil {
+		return nil, err
+	} else if scoped != c {
+		return scoped.UserRecommended(ctx, request)
+	}
+	digest := queryDigest(OperationUserRecommended, struct{}{})
+	offset, err := c.cursorOffset(request.Cursor, OperationUserRecommended, digest, 0)
+	if err != nil {
+		return nil, err
+	}
+	if err := c.requireRoute(OperationUserRecommended, routeApp, 0, 0); err != nil {
+		return nil, err
+	}
+	list, err := c.app.UserRecommended(ctx, offset)
+	if err != nil {
+		return nil, mapAppOperationError(err, OperationUserRecommended, 0)
+	}
+	return publicRecommendedUsers(list, OperationUserRecommended, digest, c.cursorSource), nil
+}
+
 // FollowingIllusts 返回当前认证账号所关注用户的一个作品批次。
 func (c *Client) FollowingIllusts(ctx context.Context, request FollowingIllustsRequest) (result *IllustListResult, err error) {
 	started := time.Now()
@@ -389,6 +461,35 @@ func publicUserList(list *model.UserPreviewList, operation Operation, digest, so
 	result := &UserListResult{UserPreviews: make([]UserPreview, len(list.UserPreviews))}
 	for index, item := range list.UserPreviews {
 		result.UserPreviews[index] = UserPreview{User: mapUser(item.User)}
+	}
+	if list.ContinuationExists {
+		result.NextCursor = encodeCursorForSource(operation, digest, "offset", int64(list.NextOffset), source)
+	}
+	return result
+}
+
+func publicNovelList(list *model.NovelList, operation Operation, digest, source string) *NovelListResult {
+	result := &NovelListResult{Novels: make([]Novel, len(list.Novels))}
+	for index, item := range list.Novels {
+		result.Novels[index] = mapNovel(item)
+	}
+	if list.ContinuationExists {
+		result.NextCursor = encodeCursorForSource(operation, digest, "offset", int64(list.NextOffset), source)
+	}
+	return result
+}
+
+func publicRecommendedUsers(list *model.RecommendedUserList, operation Operation, digest, source string) *UserRecommendedResult {
+	result := &UserRecommendedResult{UserPreviews: make([]RecommendedUserPreview, len(list.UserPreviews))}
+	for index, item := range list.UserPreviews {
+		preview := RecommendedUserPreview{User: mapUser(item.User), Illusts: make([]Illust, len(item.Illusts)), Novels: make([]Novel, len(item.Novels))}
+		for illustIndex, illust := range item.Illusts {
+			preview.Illusts[illustIndex] = mapIllust(illust)
+		}
+		for novelIndex, novel := range item.Novels {
+			preview.Novels[novelIndex] = mapNovel(novel)
+		}
+		result.UserPreviews[index] = preview
 	}
 	if list.ContinuationExists {
 		result.NextCursor = encodeCursorForSource(operation, digest, "offset", int64(list.NextOffset), source)

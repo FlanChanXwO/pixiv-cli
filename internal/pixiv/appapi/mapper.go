@@ -41,6 +41,55 @@ func mapIllust(dto illustDTO) model.Illust {
 	}
 }
 
+func mapNovel(dto novelDTO) model.Novel {
+	var tags []model.Tag
+	if dto.Tags != nil {
+		tags = make([]model.Tag, len(dto.Tags))
+	}
+	for i, tag := range dto.Tags {
+		tags[i] = model.Tag{Name: tag.Name, TranslatedName: tag.TranslatedName}
+	}
+	return model.Novel{
+		ID: dto.ID, Title: dto.Title, Caption: dto.Caption, User: mapUser(dto.User), Tags: tags,
+		ImageURLs: mapImageURLs(dto.ImageURLs), CreateDate: dto.CreateDate, TotalBookmarks: dto.TotalBookmarks, TotalView: dto.TotalView,
+	}
+}
+
+func mapNovelList(dto novelListDTO) model.NovelList {
+	var result model.NovelList
+	if dto.Novels.Items != nil {
+		result.Novels = make([]model.Novel, len(dto.Novels.Items))
+	}
+	for i, novel := range dto.Novels.Items {
+		result.Novels[i] = mapNovel(novel)
+	}
+	return result
+}
+
+func mapRecommendedUserList(dto recommendedUserListDTO) model.RecommendedUserList {
+	var result model.RecommendedUserList
+	if dto.UserPreviews.Items != nil {
+		result.UserPreviews = make([]model.RecommendedUserPreview, len(dto.UserPreviews.Items))
+	}
+	for i, preview := range dto.UserPreviews.Items {
+		out := model.RecommendedUserPreview{User: mapUser(preview.User)}
+		if preview.Illusts != nil {
+			out.Illusts = make([]model.Illust, len(preview.Illusts))
+			for j, illust := range preview.Illusts {
+				out.Illusts[j] = mapIllust(illust)
+			}
+		}
+		if preview.Novels != nil {
+			out.Novels = make([]model.Novel, len(preview.Novels))
+			for j, novel := range preview.Novels {
+				out.Novels[j] = mapNovel(novel)
+			}
+		}
+		result.UserPreviews[i] = out
+	}
+	return result
+}
+
 func mapUser(dto userDTO) model.User {
 	return model.User{
 		ID: dto.ID, Name: dto.Name, Account: dto.Account, Comment: dto.Comment, IsFollowed: dto.IsFollowed,

@@ -382,6 +382,17 @@ func mapIllust(illust model.Illust) Illust {
 	}
 }
 
+func mapNovel(novel model.Novel) Novel {
+	tags := make([]Tag, len(novel.Tags))
+	for index, tag := range novel.Tags {
+		tags[index] = Tag{Name: tag.Name, TranslatedName: tag.TranslatedName}
+	}
+	return Novel{
+		ID: novel.ID, Title: novel.Title, Caption: novel.Caption, User: mapUser(novel.User), Tags: tags,
+		ImageURLs: mapImageURLs(novel.ImageURLs), CreateDate: novel.CreateDate, TotalBookmarks: novel.TotalBookmarks, TotalView: novel.TotalView,
+	}
+}
+
 func mapMetaPages(pages []model.MetaPage) []MetaPage {
 	result := make([]MetaPage, len(pages))
 	for index, page := range pages {

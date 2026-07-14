@@ -13,6 +13,8 @@ const (
 	AppSearchUser         = "/v1/search/user"
 	AppUserDetail         = "/v1/user/detail"
 	AppIllustRecommended  = "/v1/illust/recommended"
+	AppNovelRecommended   = "/v1/novel/recommended"
+	AppUserRecommended    = "/v1/user/recommended"
 	AppTrendingTagsIllust = "/v1/trending-tags/illust"
 	AppIllustFollow       = "/v2/illust/follow"
 	AppUserIllusts        = "/v1/user/illusts"

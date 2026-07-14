@@ -95,10 +95,10 @@
 
 ## T09 — 新增小说/作者/漫画推荐 SDK 与稳定模型
 
-- 状态：未完成
-- 实际：
-- 证据：
-- 风险/下一步：
+- 状态：完成
+- 实际：保留插画推荐并新增原子 `MangaRecommended`、`NovelRecommended`、`UserRecommended`。漫画固定复用 `/v1/illust/recommended?content_type=manga`；小说和作者 endpoint 统一收敛进 protocol catalog。小说仅公开必要稳定字段；作者推荐仅公开作者与插画/小说预览。四类各用不同 Operation、query digest 与 opaque cursor，不公开 raw `next_url`、ranking、privacy policy 或 UI 字段；均为认证 App-only 路径，无 Web fallback。
+- 证据：TDD RED 为公开 `MangaRecommended` 未定义，GREEN 验证 catalog URL 与 `content_type=manga`；随后 `NovelRecommended`/request 未定义 RED，GREEN 验证稳定小说映射与 continuation 隔离。公开 SDK 回归覆盖作者预览、四类 cursor 互斥、原始 next_url 不泄漏、小说/作者 malformed envelope/continuation，以及未认证不触网。`go test ./pixiv -count=1`、`go test ./internal/pixiv/appapi -count=1`、`go test ./internal/application ./internal/bootstrap ./internal/cli ./internal/mcpserver -count=1`、`go test ./... -count=1`、`gofmt -d`、`git diff --check` 均通过；规格与质量审查均 APPROVE。
+- 风险/下一步：默认测试使用 httptest，不访问真实 Pixiv；endpoint/response 与真实上游兼容性留待 T14 opt-in App API canary。CLI/MCP 尚未暴露三类新推荐，下一轮按门禁执行 C03，随后 T10/T11 接入。
 
 ## C03 — 集中检查：用户详情和推荐模型、认证、错误与分页
 

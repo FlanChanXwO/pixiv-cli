@@ -151,6 +151,27 @@ func (c *Client) IllustRecommended(ctx context.Context, offset int) (*model.Illu
 	return c.getIllustList(ctx, protocol.AppIllustRecommended, q, "offset")
 }
 
+// MangaRecommended 使用插画推荐 catalog 的漫画筛选；Pixiv 没有独立 manga 推荐 endpoint。
+func (c *Client) MangaRecommended(ctx context.Context, offset int) (*model.IllustList, error) {
+	q := url.Values{"content_type": {"manga"}}
+	setOffset(q, offset)
+	return c.getIllustList(ctx, protocol.AppIllustRecommended, q, "offset")
+}
+
+// NovelRecommended 返回小说推荐的单个 App API 批次。
+func (c *Client) NovelRecommended(ctx context.Context, offset int) (*model.NovelList, error) {
+	q := url.Values{}
+	setOffset(q, offset)
+	return c.getNovelList(ctx, protocol.AppNovelRecommended, q)
+}
+
+// UserRecommended 返回作者推荐及其可用作品预览的单个 App API 批次。
+func (c *Client) UserRecommended(ctx context.Context, offset int) (*model.RecommendedUserList, error) {
+	q := url.Values{}
+	setOffset(q, offset)
+	return c.getRecommendedUserList(ctx, protocol.AppUserRecommended, q)
+}
+
 func (c *Client) TrendingTagsIllust(ctx context.Context) (*model.TrendTags, error) {
 	var raw trendTagsDTO
 	if err := c.getJSONWithRetry(ctx, protocol.AppTrendingTagsIllust, nil, &raw); err != nil {
@@ -230,6 +251,70 @@ func (c *Client) getUserPreviewList(ctx context.Context, path string, query url.
 		}
 	}
 	out := mapUserPreviewList(raw)
+	if raw.NextURL != nil {
+		if *raw.NextURL == "" {
+			return nil, ErrMalformedResponse
+		}
+		value, err := continuationValue(*raw.NextURL, "offset")
+		if err != nil {
+			return nil, err
+		}
+		out.NextOffset, out.ContinuationExists = int(value), true
+	}
+	return &out, nil
+}
+
+func (c *Client) getNovelList(ctx context.Context, path string, query url.Values) (*model.NovelList, error) {
+	var raw novelListDTO
+	if err := c.getJSONWithRetry(ctx, path, query, &raw); err != nil {
+		return nil, err
+	}
+	if !raw.Novels.Present || !raw.Novels.Valid {
+		return nil, ErrMalformedResponse
+	}
+	for _, novel := range raw.Novels.Items {
+		if novel.ID <= 0 || novel.User.ID <= 0 {
+			return nil, ErrMalformedResponse
+		}
+	}
+	out := mapNovelList(raw)
+	if raw.NextURL != nil {
+		if *raw.NextURL == "" {
+			return nil, ErrMalformedResponse
+		}
+		value, err := continuationValue(*raw.NextURL, "offset")
+		if err != nil {
+			return nil, err
+		}
+		out.NextOffset, out.ContinuationExists = int(value), true
+	}
+	return &out, nil
+}
+
+func (c *Client) getRecommendedUserList(ctx context.Context, path string, query url.Values) (*model.RecommendedUserList, error) {
+	var raw recommendedUserListDTO
+	if err := c.getJSONWithRetry(ctx, path, query, &raw); err != nil {
+		return nil, err
+	}
+	if !raw.UserPreviews.Present || !raw.UserPreviews.Valid {
+		return nil, ErrMalformedResponse
+	}
+	for _, preview := range raw.UserPreviews.Items {
+		if preview.User.ID <= 0 {
+			return nil, ErrMalformedResponse
+		}
+		for _, illust := range preview.Illusts {
+			if illust.ID <= 0 {
+				return nil, ErrMalformedResponse
+			}
+		}
+		for _, novel := range preview.Novels {
+			if novel.ID <= 0 || novel.User.ID <= 0 {
+				return nil, ErrMalformedResponse
+			}
+		}
+	}
+	out := mapRecommendedUserList(raw)
 	if raw.NextURL != nil {
 		if *raw.NextURL == "" {
 			return nil, ErrMalformedResponse

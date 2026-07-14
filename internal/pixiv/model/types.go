@@ -24,6 +24,37 @@ type IllustDetail struct {
 	Illust Illust `json:"illust"`
 }
 
+// Novel 是推荐接口所需的规范化小说字段，刻意不传递上游的 UI 或策略字段。
+type Novel struct {
+	ID             int64     `json:"id"`
+	Title          string    `json:"title"`
+	Caption        string    `json:"caption"`
+	User           User      `json:"user"`
+	Tags           []Tag     `json:"tags"`
+	ImageURLs      ImageURLs `json:"image_urls"`
+	CreateDate     string    `json:"create_date"`
+	TotalBookmarks int       `json:"total_bookmarks"`
+	TotalView      int       `json:"total_view"`
+}
+
+type NovelList struct {
+	Novels             []Novel `json:"novels"`
+	NextOffset         int     `json:"-"`
+	ContinuationExists bool    `json:"-"`
+}
+
+type RecommendedUserPreview struct {
+	User    User     `json:"user"`
+	Illusts []Illust `json:"illusts"`
+	Novels  []Novel  `json:"novels"`
+}
+
+type RecommendedUserList struct {
+	UserPreviews       []RecommendedUserPreview `json:"user_previews"`
+	NextOffset         int                      `json:"-"`
+	ContinuationExists bool                     `json:"-"`
+}
+
 type Illust struct {
 	ID             int64      `json:"id"`
 	Title          string     `json:"title"`

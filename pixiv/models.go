@@ -105,6 +105,16 @@ type IllustRankingRequest struct {
 type IllustRecommendedRequest struct {
 	Cursor Cursor `json:"cursor,omitempty"`
 }
+
+// NovelRecommendedRequest 仅包含本操作的 opaque continuation。
+type NovelRecommendedRequest struct {
+	Cursor Cursor `json:"cursor,omitempty"`
+}
+
+// UserRecommendedRequest 仅包含本操作的 opaque continuation。
+type UserRecommendedRequest struct {
+	Cursor Cursor `json:"cursor,omitempty"`
+}
 type FollowingIllustsRequest struct {
 	Restrict Restrict `json:"restrict,omitempty"`
 	Cursor   Cursor   `json:"cursor,omitempty"`
@@ -164,6 +174,38 @@ type IllustRelatedRequest struct {
 type IllustListResult struct {
 	Illusts    []Illust `json:"illusts"`
 	NextCursor Cursor   `json:"next_cursor,omitempty"`
+}
+
+// Novel 是小说推荐结果中的稳定必要字段。
+type Novel struct {
+	ID             int64     `json:"id"`
+	Title          string    `json:"title"`
+	Caption        string    `json:"caption"`
+	User           User      `json:"user"`
+	Tags           []Tag     `json:"tags"`
+	ImageURLs      ImageURLs `json:"image_urls"`
+	CreateDate     string    `json:"create_date"`
+	TotalBookmarks int       `json:"total_bookmarks"`
+	TotalView      int       `json:"total_view"`
+}
+
+// NovelListResult 包含小说推荐批次与仅能续用到该操作的 opaque cursor。
+type NovelListResult struct {
+	Novels     []Novel `json:"novels"`
+	NextCursor Cursor  `json:"next_cursor,omitempty"`
+}
+
+// RecommendedUserPreview 只公开用户与可用作品预览，不传递上游排名或 UI 策略字段。
+type RecommendedUserPreview struct {
+	User    User     `json:"user"`
+	Illusts []Illust `json:"illusts"`
+	Novels  []Novel  `json:"novels"`
+}
+
+// UserRecommendedResult 包含作者推荐批次与仅能续用到该操作的 opaque cursor。
+type UserRecommendedResult struct {
+	UserPreviews []RecommendedUserPreview `json:"user_previews"`
+	NextCursor   Cursor                   `json:"next_cursor,omitempty"`
 }
 
 type UserListResult struct {

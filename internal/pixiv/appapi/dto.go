@@ -13,6 +13,21 @@ type illustListDTO struct {
 type illustDetailDTO struct {
 	Illust *illustDTO `json:"illust"`
 }
+type novelListDTO struct {
+	Novels  requiredList[novelDTO] `json:"novels"`
+	NextURL *string                `json:"next_url"`
+}
+type novelDTO struct {
+	ID             int64        `json:"id"`
+	Title          string       `json:"title"`
+	Caption        string       `json:"caption"`
+	User           userDTO      `json:"user"`
+	Tags           []tagDTO     `json:"tags"`
+	ImageURLs      imageURLsDTO `json:"image_urls"`
+	CreateDate     string       `json:"create_date"`
+	TotalBookmarks int          `json:"total_bookmarks"`
+	TotalView      int          `json:"total_view"`
+}
 type illustDTO struct {
 	ID             int64         `json:"id"`
 	Title          string        `json:"title"`
@@ -68,6 +83,15 @@ type userPreviewListDTO struct {
 }
 type userPreviewDTO struct {
 	User userDTO `json:"user"`
+}
+type recommendedUserListDTO struct {
+	UserPreviews requiredList[recommendedUserPreviewDTO] `json:"user_previews"`
+	NextURL      *string                                 `json:"next_url"`
+}
+type recommendedUserPreviewDTO struct {
+	User    userDTO     `json:"user"`
+	Illusts []illustDTO `json:"illusts"`
+	Novels  []novelDTO  `json:"novels"`
 }
 type trendTagsDTO struct {
 	TrendTags requiredList[trendTagDTO] `json:"trend_tags"`

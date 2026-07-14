@@ -1295,3 +1295,239 @@ func TestSearchIllustAnonymousWebCursorUsesNextWebBatch(t *testing.T) {
 		t.Fatalf("second = %#v; requests=%d", second, requests.Load())
 	}
 }
+
+func TestMangaRecommendedUsesIllustCatalogWithMangaContentType(t *testing.T) {
+	t.Parallel()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/illust/recommended" || r.URL.Query().Get("content_type") != "manga" {
+			t.Fatalf("path=%q query=%q", r.URL.Path, r.URL.RawQuery)
+		}
+		fmt.Fprint(w, `{"illusts":[{"id":101,"title":"manga","type":"manga"}],"next_url":null}`)
+	}))
+	defer server.Close()
+	client, err := pixiv.NewClient(pixiv.Options{HTTPClient: server.Client(), AppAPIBaseURL: server.URL, AccessToken: "token"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := client.MangaRecommended(context.Background(), pixiv.IllustRecommendedRequest{})
+	if err != nil || len(result.Illusts) != 1 || result.Illusts[0].ID != 101 {
+		t.Fatalf("result=%#v err=%v", result, err)
+	}
+}
+
+func TestNovelRecommendedMapsStableFieldsAndHidesUpstreamContinuation(t *testing.T) {
+	t.Parallel()
+	const secret = "novel-next-url-secret"
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/novel/recommended" || r.URL.Query().Get("content_type") != "" {
+			t.Fatalf("path=%q query=%q", r.URL.Path, r.URL.RawQuery)
+		}
+		fmt.Fprintf(w, `{"novels":[{"id":201,"title":"novel","caption":"caption","user":{"id":8,"name":"author","account":"author_account"},"tags":[{"name":"tag","translated_name":"标签"}],"image_urls":{"medium":"https://img.example/novel.jpg"},"create_date":"2026-07-14T00:00:00+00:00","total_bookmarks":12,"total_view":34}],"next_url":"https://app-api.pixiv.net/v1/novel/recommended?offset=30&token=%s"}`, secret)
+	}))
+	defer server.Close()
+	client, err := pixiv.NewClient(pixiv.Options{HTTPClient: server.Client(), AppAPIBaseURL: server.URL, AccessToken: "token"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := client.NovelRecommended(context.Background(), pixiv.NovelRecommendedRequest{})
+	if err != nil || len(result.Novels) != 1 {
+		t.Fatalf("result=%#v err=%v", result, err)
+	}
+	novel := result.Novels[0]
+	if novel.ID != 201 || novel.Caption != "caption" || novel.User.ID != 8 || len(novel.Tags) != 1 || novel.ImageURLs.Medium == "" || novel.CreateDate == "" || novel.TotalBookmarks != 12 || novel.TotalView != 34 || result.NextCursor == "" {
+		t.Fatalf("novel=%#v cursor=%q", novel, result.NextCursor)
+	}
+	if strings.Contains(string(result.NextCursor), secret) || strings.Contains(string(result.NextCursor), "next_url") {
+		t.Fatalf("cursor leaks upstream continuation: %q", result.NextCursor)
+	}
+}
+
+func TestUserRecommendedMapsUserAndWorkPreviews(t *testing.T) {
+	t.Parallel()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/user/recommended" {
+			t.Fatalf("path=%q", r.URL.Path)
+		}
+		fmt.Fprint(w, `{"user_previews":[{"user":{"id":301,"name":"artist","account":"artist_account"},"illusts":[{"id":302,"title":"preview","user":{"id":301}}],"novels":[{"id":303,"title":"novel preview","caption":"caption","user":{"id":301},"tags":[],"image_urls":{},"create_date":"2026-07-14","total_bookmarks":2,"total_view":3}]}],"next_url":null,"ranking":99,"privacy_policy":{"secret":true}}`)
+	}))
+	defer server.Close()
+	client, err := pixiv.NewClient(pixiv.Options{HTTPClient: server.Client(), AppAPIBaseURL: server.URL, AccessToken: "token"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := client.UserRecommended(context.Background(), pixiv.UserRecommendedRequest{})
+	if err != nil || len(result.UserPreviews) != 1 {
+		t.Fatalf("result=%#v err=%v", result, err)
+	}
+	preview := result.UserPreviews[0]
+	if preview.User.ID != 301 || preview.User.Name != "artist" || preview.User.Account != "artist_account" ||
+		len(preview.Illusts) != 1 || preview.Illusts[0].ID != 302 || preview.Illusts[0].Title != "preview" ||
+		len(preview.Novels) != 1 || preview.Novels[0].ID != 303 || preview.Novels[0].Caption != "caption" {
+		t.Fatalf("preview=%#v", preview)
+	}
+}
+
+func TestRecommendationCursorsAreKindSpecificAndNeverExposeNextURL(t *testing.T) {
+	t.Parallel()
+	const secret = "recommendation-next-url-secret"
+	var requests atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests.Add(1)
+		switch r.URL.Path {
+		case "/v1/illust/recommended":
+			if r.URL.Query().Get("content_type") == "manga" {
+				fmt.Fprintf(w, `{"illusts":[],"next_url":"/v1/illust/recommended?content_type=manga&offset=30&token=%s"}`, secret)
+				return
+			}
+			if r.URL.Query().Get("content_type") != "" {
+				t.Fatalf("illust content_type=%q", r.URL.Query().Get("content_type"))
+			}
+			fmt.Fprintf(w, `{"illusts":[],"next_url":"/v1/illust/recommended?offset=30&token=%s"}`, secret)
+		case "/v1/novel/recommended":
+			fmt.Fprintf(w, `{"novels":[],"next_url":"/v1/novel/recommended?offset=30&token=%s"}`, secret)
+		case "/v1/user/recommended":
+			fmt.Fprintf(w, `{"user_previews":[],"next_url":"/v1/user/recommended?offset=30&token=%s"}`, secret)
+		default:
+			t.Fatalf("unexpected path=%q", r.URL.Path)
+		}
+	}))
+	defer server.Close()
+	client, err := pixiv.NewClient(pixiv.Options{HTTPClient: server.Client(), AppAPIBaseURL: server.URL, AccessToken: "token"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	illust, err := client.IllustRecommended(context.Background(), pixiv.IllustRecommendedRequest{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	manga, err := client.MangaRecommended(context.Background(), pixiv.IllustRecommendedRequest{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	novel, err := client.NovelRecommended(context.Background(), pixiv.NovelRecommendedRequest{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	users, err := client.UserRecommended(context.Background(), pixiv.UserRecommendedRequest{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, cursor := range []pixiv.Cursor{illust.NextCursor, manga.NextCursor, novel.NextCursor, users.NextCursor} {
+		if cursor == "" || strings.Contains(string(cursor), secret) || strings.Contains(string(cursor), "next_url") {
+			t.Fatalf("unsafe cursor=%q", cursor)
+		}
+	}
+	for _, call := range []func() error{
+		func() error {
+			_, err := client.MangaRecommended(context.Background(), pixiv.IllustRecommendedRequest{Cursor: illust.NextCursor})
+			return err
+		},
+		func() error {
+			_, err := client.NovelRecommended(context.Background(), pixiv.NovelRecommendedRequest{Cursor: manga.NextCursor})
+			return err
+		},
+		func() error {
+			_, err := client.UserRecommended(context.Background(), pixiv.UserRecommendedRequest{Cursor: novel.NextCursor})
+			return err
+		},
+		func() error {
+			_, err := client.IllustRecommended(context.Background(), pixiv.IllustRecommendedRequest{Cursor: users.NextCursor})
+			return err
+		},
+	} {
+		if err := call(); !errors.Is(err, pixiv.ErrInvalidArgument) {
+			t.Fatalf("cross-kind cursor error=%v", err)
+		}
+	}
+	if requests.Load() != 4 {
+		t.Fatalf("cross-kind cursors unexpectedly used network: requests=%d", requests.Load())
+	}
+}
+
+func TestNovelAndUserRecommendedRejectMalformedEnvelopesAndContinuation(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name string
+		path string
+		body string
+		call func(*pixiv.Client) error
+		op   pixiv.Operation
+	}{
+		{"novel envelope", "/v1/novel/recommended", `{}`, func(c *pixiv.Client) error {
+			_, err := c.NovelRecommended(context.Background(), pixiv.NovelRecommendedRequest{})
+			return err
+		}, pixiv.OperationNovelRecommended},
+		{"novel continuation", "/v1/novel/recommended", `{"novels":[],"next_url":"/v1/novel/recommended?offset=bad"}`, func(c *pixiv.Client) error {
+			_, err := c.NovelRecommended(context.Background(), pixiv.NovelRecommendedRequest{})
+			return err
+		}, pixiv.OperationNovelRecommended},
+		{"novel id", "/v1/novel/recommended", `{"novels":[{"id":0,"user":{"id":1}}],"next_url":null}`, func(c *pixiv.Client) error {
+			_, err := c.NovelRecommended(context.Background(), pixiv.NovelRecommendedRequest{})
+			return err
+		}, pixiv.OperationNovelRecommended},
+		{"user envelope", "/v1/user/recommended", `{}`, func(c *pixiv.Client) error {
+			_, err := c.UserRecommended(context.Background(), pixiv.UserRecommendedRequest{})
+			return err
+		}, pixiv.OperationUserRecommended},
+		{"user id", "/v1/user/recommended", `{"user_previews":[{"user":{"id":0}}],"next_url":null}`, func(c *pixiv.Client) error {
+			_, err := c.UserRecommended(context.Background(), pixiv.UserRecommendedRequest{})
+			return err
+		}, pixiv.OperationUserRecommended},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path != test.path {
+					t.Fatalf("path=%q", r.URL.Path)
+				}
+				fmt.Fprint(w, test.body)
+			}))
+			defer server.Close()
+			client, err := pixiv.NewClient(pixiv.Options{HTTPClient: server.Client(), AppAPIBaseURL: server.URL, AccessToken: "token"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			err = test.call(client)
+			var typed *pixiv.Error
+			if !errors.Is(err, pixiv.ErrMalformedUpstreamResponse) || !errors.As(err, &typed) || typed.Operation != test.op || typed.Backend != pixiv.BackendAppAPI {
+				t.Fatalf("err=%#v typed=%#v", err, typed)
+			}
+		})
+	}
+}
+
+func TestRecommendationsRequireAuthenticationBeforeNetwork(t *testing.T) {
+	t.Parallel()
+	var requests atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { requests.Add(1) }))
+	defer server.Close()
+	client, err := pixiv.NewClient(pixiv.Options{HTTPClient: server.Client(), AppAPIBaseURL: server.URL, WebAPIBaseURL: server.URL, WebFallbackEnabled: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, call := range []func() error{
+		func() error {
+			_, err := client.IllustRecommended(context.Background(), pixiv.IllustRecommendedRequest{})
+			return err
+		},
+		func() error {
+			_, err := client.MangaRecommended(context.Background(), pixiv.IllustRecommendedRequest{})
+			return err
+		},
+		func() error {
+			_, err := client.NovelRecommended(context.Background(), pixiv.NovelRecommendedRequest{})
+			return err
+		},
+		func() error {
+			_, err := client.UserRecommended(context.Background(), pixiv.UserRecommendedRequest{})
+			return err
+		},
+	} {
+		if err := call(); !errors.Is(err, pixiv.ErrUnauthorized) {
+			t.Fatalf("unauthenticated recommendation error=%v", err)
+		}
+	}
+	if requests.Load() != 0 {
+		t.Fatalf("unauthenticated recommendations used network: %d", requests.Load())
+	}
+}
