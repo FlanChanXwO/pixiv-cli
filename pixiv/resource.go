@@ -265,7 +265,9 @@ func resourceErrorForOperation(err error, operation Operation) error {
 	if !errors.As(err, &typed) {
 		return mapResourceTransportError(err, operation)
 	}
-	return newError(typed.Code, operation, typed.Backend, typed.Retryable, typed.UpstreamStatus, 0, errors.Unwrap(typed))
+	mapped := newError(typed.Code, operation, typed.Backend, typed.Retryable, typed.UpstreamStatus, 0, errors.Unwrap(typed))
+	mapped.TransportKind = typed.TransportKind
+	return mapped
 }
 
 func setOptionalHeader(header http.Header, key, value string) {

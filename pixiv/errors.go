@@ -74,6 +74,18 @@ const (
 	OperationSnapshot           Operation = "snapshot"
 )
 
+// TransportKind 标识不携带目标地址、证书或凭据的稳定传输失败子类。
+type TransportKind string
+
+const (
+	TransportKindDNS               TransportKind = "dns"
+	TransportKindTLS               TransportKind = "tls"
+	TransportKindProxy             TransportKind = "proxy"
+	TransportKindConnectionRefused TransportKind = "connection_refused"
+	TransportKindConnectionReset   TransportKind = "connection_reset"
+	TransportKindUnknown           TransportKind = "unknown"
+)
+
 // Error 是公开 SDK 的安全、可分类错误。cause 只保存已脱敏原因。
 type Error struct {
 	Code           ErrorCode
@@ -83,6 +95,7 @@ type Error struct {
 	UpstreamStatus int
 	IllustID       int64
 	UserID         int64
+	TransportKind  TransportKind
 	cause          error
 }
 
@@ -113,7 +126,26 @@ func (e *Error) Error() string {
 	if e.UserID > 0 {
 		parts = append(parts, fmt.Sprintf("user_id=%d", e.UserID))
 	}
+	if kind := safeTransportKind(e.TransportKind); kind != "" {
+		parts = append(parts, "transport_kind="+string(kind))
+	}
 	return strings.Join(parts, " ")
+}
+
+// safeTransportKind 确保公开可写字段不能把任意 URL、主机或凭据带入诊断。
+func safeTransportKind(kind TransportKind) TransportKind {
+	switch kind {
+	case "",
+		TransportKindDNS,
+		TransportKindTLS,
+		TransportKindProxy,
+		TransportKindConnectionRefused,
+		TransportKindConnectionReset,
+		TransportKindUnknown:
+		return kind
+	default:
+		return TransportKindUnknown
+	}
 }
 
 // Unwrap 暴露已验证安全的 cause，并保留 context 取消等标准错误链。

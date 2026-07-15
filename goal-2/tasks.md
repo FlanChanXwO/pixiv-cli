@@ -22,12 +22,12 @@
 
 ## T03 — 安全分类上游 transport 失败
 
-- 状态：未完成
+- 状态：已完成
 - 范围：P2-3。为 DNS、TLS、代理拒连、连接拒绝/重置等增加不含 URL/host 的稳定 transport 子类，并映射到公开 typed error。
 - 验收：protocol/public SDK 测试逐类 RED→GREEN；context cancellation/deadline 的 `errors.Is` 保持；未知 transport 仍安全；无 token/URL 泄露。
-- 实际：
-- 证据：
-- 风险/下一步：
+- 实际：`protocol.Transport` 现仅依据标准库 typed/wrapped cause，把非 context 传输失败分类为 `dns`、`tls`、`proxy`、`connection_refused`、`connection_reset` 或 `unknown`；`proxyconnect` 优先于其内层拒连 errno。公开 SDK 新增 `TransportKind` 与 `Error.TransportKind`，顶层 code/sentinel、operation/backend/status/retryable、fallback/timeout/retry 语义不变；`Error()` 只渲染白名单枚举，非法公开字段值归一为 `unknown`。取消/deadline 继续以 `errors.Is` 判断且不设置子类；`Download` operation remap 保留 kind。`docs/sdk.md` 与 `[Unreleased]` 已同步。
+- 证据：DNS、TLS、proxyconnect、ECONNREFUSED、ECONNRESET、unknown 均实际逐项 RED→GREEN；TLS record header/alert/certificate wrapper 初始实际落入 unknown，补 typed 分类后 GREEN；Download remap 初始实际丢失 kind，修后 GREEN；context 回归首次即 GREEN。规格审查发现任意公开 `TransportKind` 会被 `Error()` 回显，外部 canary 实际 RED 显示完整恶意 URL/token，白名单修复后窄复审 APPROVE；质量审查无 Critical/Important/Minor 并 APPROVE。`go test ./... -count=1`、`go test -race ./pixiv ./internal/pixiv/protocol -count=1`、`go vet ./pixiv ./internal/pixiv/protocol`、gofmt、`git diff --check` 全部通过；protocol 通过 Windows/Linux amd64 交叉编译，质量审查另通过 20 次重复测试及 Linux/Windows/FreeBSD/WASM 编译。
+- 风险/下一步：标准库未提供 typed cause 的 HTTPS proxy CONNECT 非 200 文本错误仍安全归为 `unknown`；刻意不解析可能包含地址或凭据的错误文本。下一任务 C01 集中复查 T01–T03 的错误透明性、脱敏、覆盖率与全量门禁。
 
 ## C01 — 集中检查 1（T01–T03）
 

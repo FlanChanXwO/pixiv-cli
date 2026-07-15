@@ -266,6 +266,7 @@ func mapAppError(err error, operation Operation, illustID int64) error {
 func mapAdapterFailure(err error, operation Operation, backend Backend, illustID, userID int64) error {
 	code, retryable, status := CodeUpstreamUnavailable, true, 0
 	cause := error(errors.New("upstream transport failed"))
+	transportKind := TransportKind("")
 	var failure protocol.Failure
 	if errors.As(err, &failure) {
 		switch failure.Kind {
@@ -287,6 +288,7 @@ func mapAdapterFailure(err error, operation Operation, backend Backend, illustID
 			code, retryable = CodeForbidden, false
 			cause = errors.New("request was forbidden by policy")
 		case protocol.FailureTransport:
+			transportKind = TransportKind(failure.TransportKind)
 			if errors.Is(failure, context.Canceled) {
 				retryable, cause = false, context.Canceled
 			} else if errors.Is(failure, context.DeadlineExceeded) {
@@ -302,9 +304,13 @@ func mapAdapterFailure(err error, operation Operation, backend Backend, illustID
 		retryable, cause = false, context.DeadlineExceeded
 	}
 	if userID > 0 {
-		return newUserError(code, operation, backend, retryable, status, userID, cause)
+		mapped := newUserError(code, operation, backend, retryable, status, userID, cause)
+		mapped.TransportKind = transportKind
+		return mapped
 	}
-	return newError(code, operation, backend, retryable, status, illustID, cause)
+	mapped := newError(code, operation, backend, retryable, status, illustID, cause)
+	mapped.TransportKind = transportKind
+	return mapped
 }
 
 func malformedError(operation Operation, backend Backend, illustID int64) error {

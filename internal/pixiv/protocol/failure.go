@@ -2,18 +2,35 @@ package protocol
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"errors"
 	"fmt"
+	"net"
+	"syscall"
 )
 
 // Failure 是 adapter 向 facade 交付的脱敏失败。它绝不保存响应 body、URL、
 // header、token、cookie 或 Web envelope message；只有取消和 deadline 可作为
 // 可 unwrap 的底层原因，以保留 Go 的 context 语义。
 type Failure struct {
-	Kind       FailureKind
-	StatusCode int
-	cause      error
+	Kind          FailureKind
+	TransportKind TransportKind
+	StatusCode    int
+	cause         error
 }
+
+// TransportKind 是 adapter 交付给 facade 的安全传输失败子类。
+type TransportKind string
+
+const (
+	TransportDNS               TransportKind = "dns"
+	TransportTLS               TransportKind = "tls"
+	TransportProxy             TransportKind = "proxy"
+	TransportConnectionRefused TransportKind = "connection_refused"
+	TransportConnectionReset   TransportKind = "connection_reset"
+	TransportUnknown           TransportKind = "unknown"
+)
 
 type FailureKind string
 
@@ -42,7 +59,47 @@ func Transport(err error) Failure {
 	if errors.Is(err, context.DeadlineExceeded) {
 		return Failure{Kind: FailureTransport, cause: context.DeadlineExceeded}
 	}
-	return Failure{Kind: FailureTransport}
+	return Failure{Kind: FailureTransport, TransportKind: classifyTransportKind(err)}
+}
+
+// classifyTransportKind 只依赖标准库的 typed cause；错误文本可能包含敏感地址或
+// 凭据，不得作为分类输入。proxyconnect 必须先于其常见的内层 ECONNREFUSED。
+func classifyTransportKind(err error) TransportKind {
+	var operationError *net.OpError
+	if errors.As(err, &operationError) && operationError.Op == "proxyconnect" {
+		return TransportProxy
+	}
+	var dnsError *net.DNSError
+	if errors.As(err, &dnsError) {
+		return TransportDNS
+	}
+	if isTLSTransportError(err) {
+		return TransportTLS
+	}
+	if errors.Is(err, syscall.ECONNREFUSED) {
+		return TransportConnectionRefused
+	}
+	if errors.Is(err, syscall.ECONNRESET) {
+		return TransportConnectionReset
+	}
+	return TransportUnknown
+}
+
+func isTLSTransportError(err error) bool {
+	var certificateVerificationError *tls.CertificateVerificationError
+	if errors.As(err, &certificateVerificationError) {
+		return true
+	}
+	var unknownAuthorityError x509.UnknownAuthorityError
+	if errors.As(err, &unknownAuthorityError) {
+		return true
+	}
+	var recordHeaderError tls.RecordHeaderError
+	if errors.As(err, &recordHeaderError) {
+		return true
+	}
+	var alertError tls.AlertError
+	return errors.As(err, &alertError)
 }
 
 func (e Failure) Error() string {

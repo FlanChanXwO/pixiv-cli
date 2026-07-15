@@ -7,6 +7,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- 公开 Go SDK 的 `upstream_unavailable` 错误新增安全 `TransportKind` 分类，可区分 DNS、TLS、代理连接、拒绝连接、连接重置和无 typed 信号的未知传输失败；诊断仍不暴露 URL、主机、证书或凭据。
+
 ### Fixed
 
 - 修复 MCP `refresh_token` 在 SDK 初始化、配置或代理失败时误报“未设置 refresh token”的问题；取消、超时和公开 SDK 错误现保留安全分类，未知初始化错误继续保持脱敏。
