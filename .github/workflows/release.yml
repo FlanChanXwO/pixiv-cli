@@ -74,6 +74,7 @@ jobs:
       contents: read
     env:
       CC: ${{ matrix.cc }}
+      RUSTUP_TOOLCHAIN: ${{ matrix.rust_toolchain }}
       # Git for Windows 会按 runner 默认值把 immutable tag 的 Go 源码转换为 CRLF；质量门必须
       # 检查 Git blob 的 LF bytes，避免 gofmt 将 checkout 转换误报为源码格式错误。
       GIT_CONFIG_COUNT: '1'
@@ -87,36 +88,42 @@ jobs:
             goos: darwin
             goarch: amd64
             rust_target: x86_64-apple-darwin
+            rust_toolchain: '1.96.0'
             artifact: darwin-amd64
             cc: clang
           - runner: macos-15
             goos: darwin
             goarch: arm64
             rust_target: aarch64-apple-darwin
+            rust_toolchain: '1.96.1'
             artifact: darwin-arm64
             cc: clang
           - runner: ubuntu-24.04
             goos: linux
             goarch: amd64
             rust_target: x86_64-unknown-linux-gnu
+            rust_toolchain: '1.96.1'
             artifact: linux-amd64
             cc: gcc
           - runner: ubuntu-24.04-arm
             goos: linux
             goarch: arm64
             rust_target: aarch64-unknown-linux-gnu
+            rust_toolchain: '1.96.1'
             artifact: linux-arm64
             cc: gcc
           - runner: windows-2025
             goos: windows
             goarch: amd64
             rust_target: x86_64-pc-windows-msvc
+            rust_toolchain: '1.96.0'
             artifact: windows-amd64
             cc: clang -fuse-ld=lld
           - runner: windows-11-arm
             goos: windows
             goarch: arm64
             rust_target: aarch64-pc-windows-msvc
+            rust_toolchain: '1.96.1'
             artifact: windows-arm64
             cc: clang -fuse-ld=lld
     steps:
@@ -132,9 +139,9 @@ jobs:
       - name: Validate the exact immutable release source
         shell: bash
         run: go run ./scripts/releaseassets validate --version "${RELEASE_TAG#v}"
-      - name: Install the native Rust target
+      - name: Install the pinned native Rust toolchain
         shell: bash
-        run: rustup target add '${{ matrix.rust_target }}'
+        run: rustup toolchain install '${{ matrix.rust_toolchain }}' --profile minimal --component 'clippy,rustfmt' --target '${{ matrix.rust_target }}' --no-self-update
       - name: Check vendored Rust sources
         shell: bash
         run: sh scripts/test-rust-vendor.sh
@@ -198,6 +205,7 @@ jobs:
       contents: read
     env:
       CC: ${{ matrix.cc }}
+      RUSTUP_TOOLCHAIN: ${{ matrix.rust_toolchain }}
     strategy:
       fail-fast: false
       matrix:
@@ -206,36 +214,42 @@ jobs:
             goos: darwin
             goarch: amd64
             rust_target: x86_64-apple-darwin
+            rust_toolchain: '1.96.0'
             artifact: darwin-amd64
             cc: clang
           - runner: macos-15
             goos: darwin
             goarch: arm64
             rust_target: aarch64-apple-darwin
+            rust_toolchain: '1.96.1'
             artifact: darwin-arm64
             cc: clang
           - runner: ubuntu-24.04
             goos: linux
             goarch: amd64
             rust_target: x86_64-unknown-linux-gnu
+            rust_toolchain: '1.96.1'
             artifact: linux-amd64
             cc: gcc
           - runner: ubuntu-24.04-arm
             goos: linux
             goarch: arm64
             rust_target: aarch64-unknown-linux-gnu
+            rust_toolchain: '1.96.1'
             artifact: linux-arm64
             cc: gcc
           - runner: windows-2025
             goos: windows
             goarch: amd64
             rust_target: x86_64-pc-windows-msvc
+            rust_toolchain: '1.96.0'
             artifact: windows-amd64
             cc: clang -fuse-ld=lld
           - runner: windows-11-arm
             goos: windows
             goarch: arm64
             rust_target: aarch64-pc-windows-msvc
+            rust_toolchain: '1.96.1'
             artifact: windows-arm64
             cc: clang -fuse-ld=lld
     steps:
@@ -252,9 +266,9 @@ jobs:
       - name: Validate the exact immutable production source
         shell: bash
         run: go run ./scripts/releaseassets validate --version "${RELEASE_TAG#v}"
-      - name: Install the native Rust target
+      - name: Install the pinned native Rust toolchain
         shell: bash
-        run: rustup target add '${{ matrix.rust_target }}'
+        run: rustup toolchain install '${{ matrix.rust_toolchain }}' --profile minimal --target '${{ matrix.rust_target }}' --no-self-update
       - name: Rebuild the selected static library from the immutable tag
         shell: bash
         run: |

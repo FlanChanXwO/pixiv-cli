@@ -42,6 +42,15 @@ Cargo 输入生成 target library；只有同一次成功得到全部六个真�
 `consolidate` 又在本地重验 source identity、staticlib/binary/archive SHA 和全部 archive members 后
 生成提交输入。`sh scripts/build.sh` 现会先校验完整 manifest，再在具备本机 cgo/C linker 时构建。
 
+这些 committed library 的编译器 provenance 按 target 固定，而不是使用可移动的 runner 默认
+toolchain：`x86_64-apple-darwin` 与 `x86_64-pc-windows-msvc` 来自 Rust `1.96.0`；
+`aarch64-apple-darwin`、`aarch64-pc-windows-msvc`、`x86_64-unknown-linux-gnu` 与
+`aarch64-unknown-linux-gnu` 来自 Rust `1.96.1`。release test 与 production matrix 都必须携带这份
+精确映射，并通过 `RUSTUP_TOOLCHAIN` 和带 `--no-self-update` 的 `rustup toolchain install` 使用它；
+不能让 runner image 的 `stable` 更新改变重建 bytes。该映射记录当前六库及 v0.3.0 recovery 的来源，
+不是允许永久混用工具链的惯例。后续升级 Rust 时必须从同一受审计 source 完整重建、链接并 smoke
+验证六目标，同时更新六库、manifest、native evidence 与 release matrix；不得只更新单个平台的 pin。
+
 可在具备目标工具链的受控环境运行：
 
 ```bash
@@ -294,6 +303,12 @@ release artifact。该 job 成功后，独立的新 runner
 `pkg/pixiv/account_external_test.go`；它是该次已完成恢复的历史证据，不能被改写为当前工作树路径。当前
 workflow 只覆盖顶层 `pixiv/account_external_test.go`，用于之后采用顶层 SDK 的新 tag。
 
+恢复 workflow 的定义可以来自受审计的默认分支，但 production worktree 仍只含 tag bytes。为重现
+v0.3.0 tag 已提交 staticlib，test 与 production job 从相同六目标 matrix 读取上述 per-target Rust
+toolchain，并在执行 tag 自带的构建脚本前精确安装；这属于 runner 构建环境约束，不把 main 文件或新库
+覆盖进 production。重建库必须继续与 tag blob 通过 `git diff --exit-code` 的 byte-for-byte 检查；
+toolchain pin 不能用来替换 tag staticlib、恢复 manifest、放宽 diff 或移动 tag。
+
 `sh scripts/test-release-workflow.sh` 启动 `scripts/releaseworkflow` 的 YAML AST policy，而不是依赖
 文本排版或行号。它精确检查 tag trigger、八份 job 的权限/依赖、六个 test/production runner matrix、每一个
 `uses` 的 40 位 SHA，以及 publish 的 SemVer channel 调用。默认分支 ancestry 必须在无
@@ -302,8 +317,8 @@ workflow 只覆盖顶层 `pixiv/account_external_test.go`，用于之后采用�
 拒绝 required job、默认分支 ancestry step 与 quality gate 的 `continue-on-error` 或条件 `if`；validate
 与 build checkout 也必须显式 `persist-credentials: false`。为避免 shell 控制流隐藏 gate，每项质量
 检查都是唯一的单命令 `bash` step：policy 精确验证其 run、crate cwd（Rust gate）和 shell，并拒绝
-未审计的 `env`、`defaults` 或其它 step 字段。唯一允许的变量是 root 的 `RELEASE_TAG` 和 build
-matrix 绑定的 `CC`；Windows 必须使用 `clang -fuse-ld=lld` 链接 MSVC Rust staticlib，避免 MinGW
+未审计的 `env`、`defaults` 或其它 step 字段。唯一允许的变量是 root 的 `RELEASE_TAG`，以及 build
+matrix 绑定的 `CC` 与 per-target `RUSTUP_TOOLCHAIN`；Windows 必须使用 `clang -fuse-ld=lld` 链接 MSVC Rust staticlib，避免 MinGW
 GCC 与 `.lib` ABI 混用。解析器同时 fail-closed 地拒绝 YAML alias、merge key 和任何重复 mapping key，
 因此 GitHub 的覆盖或工作目录语义不会与本地检查分叉。validate 固定 checkout 受审计的 workflow SHA；
 其余生产 source checkout 固定为精确 tag。尤其

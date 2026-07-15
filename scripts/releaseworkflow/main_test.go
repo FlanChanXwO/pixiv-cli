@@ -21,6 +21,180 @@ func TestCheckWorkflowRequiresRustFormatGate(t *testing.T) {
 	}
 }
 
+// release staticlib 的字节身份包含 Rust compiler；test gate 与 production rebuild
+// 必须按 target 选择生成对应已提交 staticlib 的精确 toolchain。
+func TestCheckWorkflowRequiresPinnedRustToolchainForReleaseBuilds(t *testing.T) {
+	t.Parallel()
+
+	root := releaseWorkflowRoot(t)
+	wantToolchains := map[string]string{
+		"x86_64-apple-darwin":       "1.96.0",
+		"aarch64-apple-darwin":      "1.96.1",
+		"x86_64-unknown-linux-gnu":  "1.96.1",
+		"aarch64-unknown-linux-gnu": "1.96.1",
+		"x86_64-pc-windows-msvc":    "1.96.0",
+		"aarch64-pc-windows-msvc":   "1.96.1",
+	}
+	for _, test := range []struct {
+		job     string
+		command string
+	}{
+		{
+			job:     "build",
+			command: "rustup toolchain install '${{ matrix.rust_toolchain }}' --profile minimal --component 'clippy,rustfmt' --target '${{ matrix.rust_target }}' --no-self-update",
+		},
+		{
+			job:     "build_production",
+			command: "rustup toolchain install '${{ matrix.rust_toolchain }}' --profile minimal --target '${{ matrix.rust_target }}' --no-self-update",
+		},
+	} {
+		t.Run(test.job, func(t *testing.T) {
+			job := jobNode(t, root, test.job)
+			env := requireMappingValue(t, job, "env")
+			toolchain, ok := mappingValue(env, "RUSTUP_TOOLCHAIN")
+			if !ok {
+				t.Fatalf("%s RUSTUP_TOOLCHAIN is missing", test.job)
+			}
+			if toolchain.Value != "${{ matrix.rust_toolchain }}" {
+				t.Fatalf("%s RUSTUP_TOOLCHAIN = %q, want matrix provenance pin", test.job, toolchain.Value)
+			}
+			if stepIndexWithRunFragment(requireMappingValue(t, job, "steps").Content, test.command) < 0 {
+				t.Fatalf("%s must install the exact pinned Rust toolchain", test.job)
+			}
+
+			gotToolchains := make(map[string]string, len(wantToolchains))
+			matrix := mustMappingPath(job, "strategy", "matrix")
+			include := requireMappingValue(t, matrix, "include")
+			for _, entry := range include.Content {
+				target := requireMappingValue(t, entry, "rust_target").Value
+				gotToolchains[target] = requireMappingValue(t, entry, "rust_toolchain").Value
+			}
+			if len(gotToolchains) != len(wantToolchains) {
+				t.Fatalf("%s pinned Rust target count = %d, want %d", test.job, len(gotToolchains), len(wantToolchains))
+			}
+			for target, want := range wantToolchains {
+				if got := gotToolchains[target]; got != want {
+					t.Errorf("%s Rust toolchain for %s = %q, want %q", test.job, target, got, want)
+				}
+			}
+		})
+	}
+	if err := checkWorkflow(mustMarshalYAML(t, root)); err != nil {
+		t.Fatalf("release workflow policy rejected the pinned Rust toolchain: %v", err)
+	}
+}
+
+func TestCheckWorkflowRejectsReleaseRustToolchainMutations(t *testing.T) {
+	t.Parallel()
+
+	matrixEntry := func(t *testing.T, root *yaml.Node, jobName, rustTarget string) *yaml.Node {
+		t.Helper()
+		matrix := mustMappingPath(jobNode(t, root, jobName), "strategy", "matrix")
+		include := requireMappingValue(t, matrix, "include")
+		for _, entry := range include.Content {
+			if requireMappingValue(t, entry, "rust_target").Value == rustTarget {
+				return entry
+			}
+		}
+		t.Fatalf("%s matrix has no Rust target %s", jobName, rustTarget)
+		return nil
+	}
+
+	for _, test := range []struct {
+		name   string
+		want   string
+		mutate func(t *testing.T, root *yaml.Node)
+	}{
+		{
+			name: "test toolchain env missing",
+			want: "build job must bind the audited compiler, Rust toolchain",
+			mutate: func(t *testing.T, root *yaml.Node) {
+				removeMappingValue(t, requireMappingValue(t, jobNode(t, root, "build"), "env"), "RUSTUP_TOOLCHAIN")
+			},
+		},
+		{
+			name: "production toolchain env is mutable stable",
+			want: "build_production job must bind CC and the Rust toolchain",
+			mutate: func(t *testing.T, root *yaml.Node) {
+				requireMappingValue(t, requireMappingValue(t, jobNode(t, root, "build_production"), "env"), "RUSTUP_TOOLCHAIN").Value = "stable"
+			},
+		},
+		{
+			name: "test matrix toolchain missing",
+			want: "canonical release target fields",
+			mutate: func(t *testing.T, root *yaml.Node) {
+				entry := matrixEntry(t, root, "build", "x86_64-unknown-linux-gnu")
+				removeMappingValue(t, entry, "rust_toolchain")
+			},
+		},
+		{
+			name: "test matrix toolchain drifts",
+			want: "exactly the six release targets",
+			mutate: func(t *testing.T, root *yaml.Node) {
+				entry := matrixEntry(t, root, "build", "x86_64-unknown-linux-gnu")
+				requireMappingValue(t, entry, "rust_toolchain").Value = "1.97.0"
+			},
+		},
+		{
+			name: "production matrix disagrees with test provenance",
+			want: "exactly the six release targets",
+			mutate: func(t *testing.T, root *yaml.Node) {
+				entry := matrixEntry(t, root, "build_production", "x86_64-apple-darwin")
+				requireMappingValue(t, entry, "rust_toolchain").Value = "1.96.1"
+			},
+		},
+		{
+			name: "test install omits components",
+			want: "Install the pinned native Rust toolchain",
+			mutate: func(t *testing.T, root *yaml.Node) {
+				step := stepWithRun(t, jobNode(t, root, "build"), testRustInstallCommand)
+				removeRunFragment(t, step, "--component 'clippy,rustfmt'")
+			},
+		},
+		{
+			name: "test install omits target",
+			want: "Install the pinned native Rust toolchain",
+			mutate: func(t *testing.T, root *yaml.Node) {
+				step := stepWithRun(t, jobNode(t, root, "build"), testRustInstallCommand)
+				removeRunFragment(t, step, "--target '${{ matrix.rust_target }}'")
+			},
+		},
+		{
+			name: "production install omits minimal profile",
+			want: "Install the pinned native Rust toolchain must use the required direct command sequence",
+			mutate: func(t *testing.T, root *yaml.Node) {
+				step := stepWithRun(t, jobNode(t, root, "build_production"), prodRustInstallCommand)
+				removeRunFragment(t, step, "--profile minimal")
+			},
+		},
+		{
+			name: "production install permits rustup self update",
+			want: "Install the pinned native Rust toolchain must use the required direct command sequence",
+			mutate: func(t *testing.T, root *yaml.Node) {
+				step := stepWithRun(t, jobNode(t, root, "build_production"), prodRustInstallCommand)
+				removeRunFragment(t, step, "--no-self-update")
+			},
+		},
+		{
+			name: "production install uses stable instead of matrix provenance",
+			want: "Install the pinned native Rust toolchain must use the required direct command sequence",
+			mutate: func(t *testing.T, root *yaml.Node) {
+				step := stepWithRun(t, jobNode(t, root, "build_production"), prodRustInstallCommand)
+				replaceRunFragment(t, step, "'${{ matrix.rust_toolchain }}'", "stable")
+			},
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			root := releaseWorkflowRoot(t)
+			test.mutate(t, root)
+			err := checkWorkflow(mustMarshalYAML(t, root))
+			if err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("policy error = %v, want rejection containing %q", err, test.want)
+			}
+		})
+	}
+}
+
 func TestCheckWorkflowRequiresProductionCacheIsolation(t *testing.T) {
 	t.Parallel()
 
