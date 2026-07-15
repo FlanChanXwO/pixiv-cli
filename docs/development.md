@@ -293,15 +293,19 @@ GitHub Release。workflow 使用 full-SHA Actions、最小权限及 `release` En
 若不可变 tag 的首次 run 在创建 GitHub Release 前失败，维护者只能从默认分支通过
 `workflow_dispatch` 提交同一个 `release_tag` 进行恢复。validate 会校验该 tag 为 SemVer、存在、
 已包含于默认分支且尚未有 Release；构建与发布始终 checkout 该 tag。恢复 run 可以只在无 Environment
-的六平台 test job 中应用固定白名单的默认分支测试覆盖：当前 release workflow、Windows ACL 所需的
-`pixiv/account_external_test.go`，以及该 workflow 的 canonical verifier 与其测试（共 4 条路径）。覆盖通过
-一次 `git archive` 提取，再逐项核对工作树 diff 与空 cached diff，不能加入任意路径或生产源码，且不生成
-release artifact。该 job 成功后，独立的新 runner
+的六平台 test job 中应用固定白名单的默认分支测试覆盖。v0.2.0 已完成的历史恢复使用四条路径：当时的
+release workflow、位于 `pkg/pixiv/account_external_test.go` 的 Windows ACL 测试，以及 canonical
+verifier 与其测试；这是不可改写的历史证据，不定义后续 tag 的 allowlist。
+
+当前 v0.3.0 tag 已包含与默认分支相同的顶层 `pixiv/account_external_test.go`，质量门直接运行 tag 中的
+测试，不需要也不能再次 overlay。v0.3.0 恢复 allowlist 因而精确收敛为三条实际有 diff 的路径：
+`.github/workflows/release.yml`、`scripts/releaseworkflow/main.go` 与
+`scripts/releaseworkflow/main_test.go`。覆盖通过一次 `git archive` 提取，再逐项核对工作树 diff 与空
+cached diff；重新加入 account test、任意第四路径或生产源码都必须失败，test job 也不生成 release
+artifact。该 job 成功后，独立的新 runner
 才会以 `clean: true` checkout tag、重新构建 selected staticlib 并生成唯一可被 publish 下载的
 `verified-release-*` assets；测试进程对环境变量、PATH 或临时目录的副作用不会进入生产 job。因此它不能用于
-替换生产资产源码、移动 tag，或重发已经存在的 Release。v0.2.0 的不可变 tag 中对应测试仍位于
-`pkg/pixiv/account_external_test.go`；它是该次已完成恢复的历史证据，不能被改写为当前工作树路径。当前
-workflow 只覆盖顶层 `pixiv/account_external_test.go`，用于之后采用顶层 SDK 的新 tag。
+替换生产资产源码、移动 tag，或重发已经存在的 Release。
 
 恢复 workflow 的定义可以来自受审计的默认分支，但 production worktree 仍只含 tag bytes。为重现
 v0.3.0 tag 已提交 staticlib，test 与 production job 从相同六目标 matrix 读取上述 per-target Rust
