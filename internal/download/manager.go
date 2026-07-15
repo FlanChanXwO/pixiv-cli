@@ -10,33 +10,19 @@ import (
 	"sync"
 	"time"
 
+	"github.com/FlanChanXwO/pixiv-cli/internal/application"
 	"github.com/FlanChanXwO/pixiv-cli/internal/utils"
 	"github.com/FlanChanXwO/pixiv-cli/internal/utils/text"
 	uriutil "github.com/FlanChanXwO/pixiv-cli/internal/utils/uri"
 	sdk "github.com/FlanChanXwO/pixiv-cli/pixiv"
 )
 
-// PixivClient 是下载路径所需的公开 SDK 窄接口。资源 URL 只能先转成 SDK
-// ResourceRef，再由 SDK 负责 policy 校验、流式写入与原子替换。
-type PixivClient interface {
-	IllustDetail(context.Context, int64) (*sdk.IllustDetail, error)
-	UgoiraMetadata(context.Context, int64) (*sdk.UgoiraMetadataResult, error)
-	ParseResourceRef(string) (sdk.ResourceRef, error)
-	Download(context.Context, sdk.ResourceRef, string) error
-}
+// PixivClient 保留原有名称供内部调用方源码兼容；能力边界由 application 统一拥有。
+type PixivClient = application.DownloadClient
 
-type DownloadedArtwork struct {
-	IllustID int64
-	Title    string
-	Author   string
-	Type     string
-	Files    []DownloadedFile
-}
-
-type DownloadedFile struct {
-	Path string
-	Page int
-}
+// 下载结果属于应用层稳定 DTO；alias 让现有 MCP/下载包调用方保持源码兼容。
+type DownloadedArtwork = application.DownloadedArtwork
+type DownloadedFile = application.DownloadedFile
 
 type Manager struct {
 	client           PixivClient

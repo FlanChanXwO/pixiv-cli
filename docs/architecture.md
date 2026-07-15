@@ -50,6 +50,7 @@ cache 的 24 小时节流，并最多等待 3 秒。配置、网络、来源识�
 - `ConfigService`：`config.toml` path/get/set/unset。
 - `LoginService`：生成 PKCE/state、authorization-code exchange，并保存账号；Pixiv 登录 URL 构造仍留在 CLI adapter。
 - `SDKService`：为 CLI/MCP 打开顶层 `pixiv` client，并把调用方选择的账号/代理/JSON 设置映射到 SDK operation snapshot；作品查询和下载均从该 snapshot 的 public SDK 能力继续执行。
+- `DownloadService`：把同一 operation snapshot、本次下载路径和文件名模板交给 bootstrap 注入的窄 factory，并委托下载；应用层不构造具体 manager。
 
 ### `internal/bootstrap`
 

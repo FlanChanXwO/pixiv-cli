@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -14,6 +16,7 @@ import (
 	"testing"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/application"
+	"github.com/FlanChanXwO/pixiv-cli/internal/config"
 	"github.com/FlanChanXwO/pixiv-cli/internal/storage/auth"
 	sdk "github.com/FlanChanXwO/pixiv-cli/pixiv"
 	"github.com/stretchr/testify/assert"
@@ -251,6 +254,150 @@ func TestNetworkCommandsRejectConflictingProxyFlags(t *testing.T) {
 			assert.Contains(t, stderr.String(), "use either --proxy or --no-proxy, not both")
 		})
 	}
+}
+
+func TestDownloadDelegatesOperationSnapshotAndFlagOverrides(t *testing.T) {
+	useTempPaths(t)
+	type contextKey string
+	ctx := context.WithValue(context.Background(), contextKey("download"), "same-context")
+	client := &sdkCommandFake{}
+	var gotClientRequest application.SDKClientRequest
+	setTestDownloadCommandServices(t, func(request application.SDKClientRequest) (application.SDKClient, error) {
+		gotClientRequest = request
+		return client, nil
+	}, config.RuntimeConfig{DownloadPath: "/runtime/path", FilenameTemplate: "runtime-template"}, func(gotClient application.DownloadClient, gotPath, gotTemplate string) (application.DownloadManager, error) {
+		require.Same(t, client, gotClient)
+		require.Equal(t, "/flag/path", gotPath)
+		require.Equal(t, "flag-template", gotTemplate)
+		return downloadManagerFake{download: func(gotContext context.Context, gotIDs []int64) ([]application.DownloadedArtwork, error) {
+			require.Same(t, ctx, gotContext)
+			require.Equal(t, []int64{42, 84}, gotIDs)
+			return []application.DownloadedArtwork{{
+				IllustID: 42,
+				Title:    "work",
+				Author:   "artist",
+				Files:    []application.DownloadedFile{{Path: "/flag/path/42.jpg"}},
+			}}, nil
+		}}, nil
+	})
+
+	var stdout, stderr bytes.Buffer
+	code := RunContext(ctx, []string{
+		"pixiv", "download", "42", "84",
+		"--uid", "9",
+		"--refresh-token", "refresh",
+		"--download-path", "/flag/path",
+		"--filename-template", "flag-template",
+		"--proxy", "http://flag-proxy",
+	}, strings.NewReader(""), &stdout, &stderr)
+
+	require.Equal(t, 0, code, stderr.String())
+	require.NotNil(t, gotClientRequest.HTTPSProxyOverride)
+	require.Equal(t, "http://flag-proxy", *gotClientRequest.HTTPSProxyOverride)
+	require.Equal(t, int64(9), gotClientRequest.UserID)
+	require.Equal(t, "refresh", gotClientRequest.RefreshToken)
+	require.Equal(t, "downloaded 42 \"work\" by artist\n  /flag/path/42.jpg\n", stdout.String())
+}
+
+func TestDownloadDelegatesRuntimePathAndTemplateWithoutFlags(t *testing.T) {
+	useTempPaths(t)
+	setTestDownloadCommandServices(t, func(application.SDKClientRequest) (application.SDKClient, error) {
+		return &sdkCommandFake{}, nil
+	}, config.RuntimeConfig{DownloadPath: "/runtime/path", FilenameTemplate: "runtime-template"}, func(_ application.DownloadClient, path, template string) (application.DownloadManager, error) {
+		require.Equal(t, "/runtime/path", path)
+		require.Equal(t, "runtime-template", template)
+		return downloadManagerFake{download: func(context.Context, []int64) ([]application.DownloadedArtwork, error) {
+			return nil, nil
+		}}, nil
+	})
+
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"pixiv", "download", "42"}, strings.NewReader(""), &stdout, &stderr)
+
+	require.Equal(t, 0, code, stderr.String())
+	require.Empty(t, stdout.String())
+}
+
+func TestDownloadReportsFactoryFailure(t *testing.T) {
+	useTempPaths(t)
+	want := errors.New("download factory failed")
+	setTestDownloadCommandServices(t, func(application.SDKClientRequest) (application.SDKClient, error) {
+		return &sdkCommandFake{}, nil
+	}, config.RuntimeConfig{}, func(application.DownloadClient, string, string) (application.DownloadManager, error) {
+		return nil, want
+	})
+
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"pixiv", "download", "42"}, strings.NewReader(""), &stdout, &stderr)
+
+	require.NotZero(t, code)
+	require.Empty(t, stdout.String())
+	require.Contains(t, stderr.String(), want.Error())
+}
+
+func TestDownloadReportsManagerFailure(t *testing.T) {
+	useTempPaths(t)
+	want := errors.New("download manager failed")
+	setTestDownloadCommandServices(t, func(application.SDKClientRequest) (application.SDKClient, error) {
+		return &sdkCommandFake{}, nil
+	}, config.RuntimeConfig{}, func(application.DownloadClient, string, string) (application.DownloadManager, error) {
+		return downloadManagerFake{download: func(context.Context, []int64) ([]application.DownloadedArtwork, error) {
+			return nil, want
+		}}, nil
+	})
+
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"pixiv", "download", "42"}, strings.NewReader(""), &stdout, &stderr)
+
+	require.NotZero(t, code)
+	require.Empty(t, stdout.String())
+	require.Contains(t, stderr.String(), want.Error())
+}
+
+func TestDownloadPreservesJSONOutputShape(t *testing.T) {
+	useTempPaths(t)
+	setTestDownloadCommandServices(t, func(application.SDKClientRequest) (application.SDKClient, error) {
+		return &sdkCommandFake{}, nil
+	}, config.RuntimeConfig{}, func(application.DownloadClient, string, string) (application.DownloadManager, error) {
+		return downloadManagerFake{download: func(context.Context, []int64) ([]application.DownloadedArtwork, error) {
+			return []application.DownloadedArtwork{{
+				IllustID: 42,
+				Title:    "work",
+				Author:   "artist",
+				Type:     "illust",
+				Files:    []application.DownloadedFile{{Path: "/downloads/42.jpg", Page: 2}},
+			}}, nil
+		}}, nil
+	})
+
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"pixiv", "download", "42", "--json"}, strings.NewReader(""), &stdout, &stderr)
+
+	require.Equal(t, 0, code, stderr.String())
+	require.JSONEq(t, `[{"IllustID":42,"Title":"work","Author":"artist","Type":"illust","Files":[{"Path":"/downloads/42.jpg","Page":2}]}]`, stdout.String())
+}
+
+type downloadManagerFake struct {
+	download func(context.Context, []int64) ([]application.DownloadedArtwork, error)
+}
+
+func (m downloadManagerFake) Download(ctx context.Context, ids []int64) ([]application.DownloadedArtwork, error) {
+	return m.download(ctx, ids)
+}
+
+func setTestDownloadCommandServices(t *testing.T, newClient application.SDKClientFactory, runtime config.RuntimeConfig, newManager application.DownloadManagerFactory) {
+	t.Helper()
+	old := newCLIServices
+	newCLIServices = func(*slog.Logger) application.Services {
+		return application.Services{
+			SDK: application.SDKService{
+				NewClient:   newClient,
+				LoadRuntime: func() (config.RuntimeConfig, error) { return runtime, nil },
+			},
+			Download: application.DownloadService{NewManager: newManager},
+		}
+	}
+	t.Cleanup(func() { newCLIServices = old })
 }
 
 func TestDownloadProxyFlagPassesRuntimeOverride(t *testing.T) {

@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/application"
-	"github.com/FlanChanXwO/pixiv-cli/internal/download"
 	"github.com/FlanChanXwO/pixiv-cli/internal/utils/parse"
 	sdk "github.com/FlanChanXwO/pixiv-cli/pixiv"
 	"github.com/spf13/cobra"
@@ -326,7 +325,11 @@ func (a app) runDownload(cmd *cobra.Command, args []string, opts commandOptions)
 	if err != nil {
 		return err
 	}
-	artworks, err := download.NewManager(client, a.logger, runtime.DownloadPath, runtime.FilenameTemplate).Download(cmd.Context(), ids)
+	artworks, err := services.Download.Download(cmd.Context(), client, application.DownloadRequest{
+		IllustIDs:        ids,
+		DownloadPath:     runtime.DownloadPath,
+		FilenameTemplate: runtime.FilenameTemplate,
+	})
 	if err != nil {
 		return err
 	}

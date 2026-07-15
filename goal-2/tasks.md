@@ -58,12 +58,12 @@
 
 ## T05 — 统一 CLI 下载 composition root 并补 bootstrap 纯逻辑测试
 
-- 状态：未完成
+- 状态：已完成
 - 范围：P2-5 与 P2-13。CLI 不再内联 `download.NewManager`；经 application service/factory 与 bootstrap production wiring 注入；覆盖 runtime config/proxy override 和 factory 错误。
 - 验收：CLI/MCP 共享受控构造链；无协议反向依赖；相关 application/bootstrap/CLI 测试 RED→GREEN。
-- 实际：
-- 证据：
-- 风险/下一步：
+- 实际：application 新增 protocol-free `DownloadClient`、稳定下载 DTO、manager/factory port、request 与 `DownloadService`；service 将同一 SDK operation snapshot、context、IDs、下载路径和文件名模板交给注入 manager，并对 missing/typed-nil client、factory、manager fail-loud。`internal/download` 以 alias 复用 application client port 与 DTO，保持旧内部名称、MCP source compatibility 和 CLI JSON shape。CLI 已删除 `internal/download` import，只保留参数/runtime/flag override、`SDK.OpenOperation`、service 调用和 presenter；bootstrap 私有 `newDownloadManager` 成为唯一 production `download.NewManager` 调用点，供 CLI service、MCP runtime 与 MCP snapshot factory 共用。`LoadRuntimeConfig` 和 proxy override 纯逻辑测试已补齐，架构文档同步 DownloadService 职责；无用户行为变化，未记 changelog。
+- 证据：application port 首先因类型不存在实际 compile-RED，factory sentinel 随后 GREEN；missing factory、nil client、nil manager 分别从 panic/错误行为 RED 转为明确错误，CLI `Services.Download` 缺失也实际 compile-RED 后经 public `RunContext` GREEN。质量审查发现 typed-nil interface 仍可穿透保护：typed-nil client 曾调用 factory 且返回 nil，typed-nil manager曾触发 panic canary；增加只检查 nil-able reflect kind 的 helper 后两项 RED→GREEN，且 download 重复 client method set 改为 application alias，窄复审 APPROVE。runtime defaults、file/env priority、malformed TOML、proxy nil/empty/nonempty 与 production factory是既有正确行为的 characterization，首次 GREEN；旧 commit 可复现 CLI direct import/NewManager，当前 AST guard 与 import/`rg` 门禁 GREEN。独立 spec review APPROVE；quality review 修复后 APPROVE。主线程复验 application/bootstrap/CLI 聚焦测试、真实 TLS/proxy download 开启与显式清空两支、相关五包普通/race/vet、`go test ./... -count=1`、application Linux/Windows amd64 CGO-disabled 测试二进制编译（ELF/PE）、pre-commit、gofmt 与 `git diff --check` 全部通过；bootstrap statement coverage 为 17.7%（评审基线 10.2%）。
+- 风险/下一步：bootstrap/CLI 的 CGO-disabled 异构编译仍会被仓库既有 `ugoira_rust_stub.go` 主动拒绝，要求 CGO、目标 Rust staticlib 和 linker；application port 已完成 Linux/Windows compile，本次 native 全仓/五包门禁通过。T19 仍负责剩余 bootstrap production factory/评审矩阵复扫；下一任务 T06 只处理 MCP 推荐下载 count 的静默钳制。
 
 ## T06 — 移除 MCP 推荐下载静默 count 钳制
 

@@ -45,7 +45,15 @@ func NewServices(logger *slog.Logger) application.Services {
 		Config:  application.ConfigService{Store: ConfigFileStore{}},
 		Login:   application.LoginService{SDK: sdkService, LoadRuntime: LoadRuntimeConfig},
 		SDK:     sdkService,
+		Download: application.DownloadService{NewManager: func(client application.DownloadClient, downloadPath, filenameTemplate string) (application.DownloadManager, error) {
+			return newDownloadManager(client, logger, downloadPath, filenameTemplate), nil
+		}},
 	}
+}
+
+// newDownloadManager 是 CLI 与 MCP 唯一的生产下载器构造链，避免两处 wiring 漂移。
+func newDownloadManager(client application.DownloadClient, logger *slog.Logger, downloadPath, filenameTemplate string) *download.Manager {
+	return download.NewManager(client, logger, downloadPath, filenameTemplate)
 }
 
 // newSDKClient 将 CLI 的显式账号和代理覆写交给公共 SDK。没有 --proxy 时，
@@ -191,7 +199,7 @@ func NewMCPRuntime(ctx context.Context, logger *slog.Logger, proxyOverride *stri
 		}
 		request.UserID = account.UserID
 	}
-	manager := download.NewManager(client, logger, cfg.DownloadPath, cfg.FilenameTemplate)
+	manager := newDownloadManager(client, logger, cfg.DownloadPath, cfg.FilenameTemplate)
 	return MCPRuntime{
 		Config:     cfg,
 		Manager:    manager,
@@ -232,7 +240,7 @@ func RunMCP(ctx context.Context, errOut io.Writer, proxyOverride *string) error 
 		return err
 	}
 	server := mcpserver.NewWithSDKDownloadFactory(runtime.Manager, func(client application.SDKClient) mcpserver.DownloadManager {
-		return download.NewManager(client, runtime.Logger, runtime.Manager.DownloadPath(), runtime.Config.FilenameTemplate)
+		return newDownloadManager(client, runtime.Logger, runtime.Manager.DownloadPath(), runtime.Config.FilenameTemplate)
 	}, runtime.Logger, runtime.SDK, runtime.SDKRequest)
 	started := time.Now()
 	err = server.Run(ctx, &mcp.StdioTransport{})

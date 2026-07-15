@@ -14,8 +14,9 @@ type ClientRequest struct {
 
 // Services 只组合应用层的本地适配与 public SDK facade。
 type Services struct {
-	Account AccountService
-	Config  ConfigService
-	Login   LoginService
-	SDK     SDKService
+	Account  AccountService
+	Config   ConfigService
+	Login    LoginService
+	SDK      SDKService
+	Download DownloadService
 }
