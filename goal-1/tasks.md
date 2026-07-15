@@ -144,17 +144,17 @@
 
 ## T14 — v0.3.0 Release 候选门禁与 opt-in API canary
 
-- 状态：阻塞
-- 实际：新增认证 App API canary，验证 `auth check`、完整 User Detail 四个稳定 envelope、四类原子推荐与 `recommended all` 四数组，并拒绝 `cursor`、`next_cursor`、`next_url` 泄露。真实 canary 先发现 stderr INFO 日志与 JSON stdout 被错误混合，现默认日志为 `warn`、显式 `info` 保留，canary 只解析 stdout。真实 UserDetail 又发现 `profile_publicity` 的 `public`/`private` wire 值，已在 App DTO 归一为稳定 bool。认证来源现为显式二选一：独立 token 隔离模式，或 `PIXIV_E2E_USE_LOCAL_AUTH=1` 本机账号模式；后者只运行当前源码构建的 binary、移除 `PIXIV_REFRESH_TOKEN` 覆盖，并按正常 CLI 路径持久化 rotation。登录 UX 修复后，重建本机 `v0.3.0-rc.2` 候选并复验版本 e2e 与 darwin/arm64 打包。
-- 证据：canary 安全、UserDetail wire、日志边界和登录 UX 均完成 TDD、规格审查、质量审查及窄复审。`go test ./... -count=1`、`go test -race ./... -count=1`、`go vet ./...`、`pre-commit run --all-files`、release workflow/package/Homebrew fixture、releaseassets/releaseworkflow/platformsmokeworkflow/nativeevidence 测试及 Rust vendor/fmt/clippy 均通过。候选 `062e0a6` 以 `v0.3.0-rc.1` 编译，`PIXIV_E2E_BINARY`/`PIXIV_E2E_EXPECTED_VERSION` e2e 通过，并产出 `pixiv-cli_0.3.0-rc.1_darwin_arm64.tar.gz`；登录 UX 修复提交 `73bdc76` 后，`v0.3.0-rc.2` 的同一 e2e 与 archive 内容（binary、LICENSE、THIRD_PARTY_LICENSES）再次通过。真实认证请求已证明 OAuth 成功、并暴露并修复 UserDetail wire 差异；本机账号 store 的 08:30 时间戳说明它尚未在安全模式修复后重新登录。候选 channel 为 prerelease，`0.3.0` 为 stable。
-- 风险/下一步：此前临时 token canary 可能触发 rotation 而无法写回，现已停止使用该路径读取本机账号。等待调用者用最新 `build/pixiv auth login` 重新登录（运行时不得并发其他 pixiv CLI/MCP）；随后仅用 `PIXIV_E2E_REAL_API=1 PIXIV_E2E_USE_LOCAL_AUTH=1` 运行完整真实 canary。不能把默认 skip、本地 fixture 或已完成的局部真实请求视为整套 canary 通过。2026-07-15 只读复核确认 `v0.2.0` 的公开 Release、六平台资产与 workflow `29307406643` 仍为 success，远端不存在 `v0.3.0` tag 或 Release。
+- 状态：完成
+- 实际：新增认证 App API canary，验证 `auth check`、完整 User Detail 四个稳定 envelope、四类原子推荐与 `recommended all` 四数组，并拒绝 `cursor`、`next_cursor`、`next_url` 泄露。真实 canary 依次发现并修复 stderr INFO 与 JSON stdout 混合、User Detail `profile_publicity` 的 `public`/`private` wire 值，以及四类推荐 `next_url` 合法返回 `offset=0` 却被误判 malformed。zero-offset 修复只允许四个推荐 operation 使用非空 opaque cursor 编码/回传 0；其他列表及负数、缺失、重复、非整数和溢出仍拒绝。认证来源为显式二选一：独立 token 隔离模式，或 `PIXIV_E2E_USE_LOCAL_AUTH=1` 本机账号模式；后者只运行当前源码构建、移除 `PIXIV_REFRESH_TOKEN` 覆盖，并按正常 CLI 路径持久化 rotation。重新登录后，完整真实 canary 已通过；最终 SHA 又重建 `v0.3.0-rc.3` 候选并复验版本与 darwin/arm64 归档。
+- 证据：zero-offset 修复提交 `f8fa7cc` 完成四次真实 RED→GREEN，规格与质量/安全复审均 APPROVE；四类公开 SDK 测试覆盖首批生成非空 cursor、同类 cursor 回传实际发送唯一 `offset=0`、raw `next_url`/附加 query 不泄露、非推荐不放宽和非法 continuation 拒绝。`PIXIV_E2E_REAL_API=1 PIXIV_E2E_USE_LOCAL_AUTH=1 go test ./test/e2e -run '^TestPixivBinaryAuthenticatedAppAPICanary$' -count=1 -v` 在 2026-07-15 通过，认证、用户详情、illust/manga/novel/user 及 `all` 全部 PASS。最终 `f8fa7cc0563418db52e939383e71c9912d6fd829` 以 `v0.3.0-rc.3` 编译，`PIXIV_E2E_BINARY`/`PIXIV_E2E_EXPECTED_VERSION` e2e 通过，并产出 `pixiv-cli_0.3.0-rc.3_darwin_arm64.tar.gz`；归档含 binary、`LICENSE`、`THIRD_PARTY_LICENSES.md` 和许可证树，channel 为 prerelease。最终 SHA 的 `go test -race ./... -count=1`、`go vet ./...`、`pre-commit run --all-files`、`git diff --check` 全部通过；此前 release workflow/package/Homebrew fixture、releaseassets/releaseworkflow/platformsmokeworkflow/nativeevidence 及 Rust vendor/fmt/clippy 门禁也已通过。
+- 风险/下一步：上游可能持续返回相同 `offset=0`；CLI/MCP 已有重复 opaque cursor 止环，SDK 保持单批次并让调用方观察同一 cursor，不隐藏上游语义。`v0.2.0` 的公开 Release、六平台资产与 workflow `29307406643` 仍为 success；截至本任务验收时远端没有 `v0.3.0` tag 或 Release。下一任务 T15 只能从当前已验收 SHA 进入正式不可变发布流程，并在远端 CI、Release、六资产、签名/checksum、Homebrew 和更新检查全部通过后完成。
 
 ## T14a — 修复 auth login 授权回调页与成功提示
 
 - 状态：完成
 - 实际：成功 loopback callback 现返回简洁 HTML，准确说明“已收到授权，正在回到 CLI 完成登录”；非 JSON 登录在 OAuth exchange 和保存账号成功后只输出一行 `登录成功（UID: …）`。JSON、错误和 Pixiv relay 行为保持不变。
 - 证据：TDD tracer 通过真实 CLI loopback callback 和 fake OAuth exchange 先复现旧纯文本/多行输出，再验证 HTML content type、授权码不回显、页面不称“登录成功”和最终单行输出。规格审查发现并修复了 callback HTML title 过早称登录成功的问题；质量审查要求补充 Unreleased changelog，窄复审均 APPROVE。`go test ./internal/cli -count=1`、`go test ./... -count=1`、`go vet ./...`、`gofmt` 与 `git diff --check` 均通过。
-- 风险/下一步：不读取认证文件、浏览器数据或真实 Pixiv；真实 App API canary 仍只接受显式 `PIXIV_E2E_REFRESH_TOKEN`，不会使用本地登录保存的 token。
+- 风险/下一步：本任务本身不读取认证文件、浏览器数据或真实 Pixiv；后续 T14 已新增受限本地账号模式、完成重新登录并通过完整真实 App API canary。
 
 ## T15 — 创建并发布不可变 v0.3.0，验收 Release/Homebrew/更新
 
