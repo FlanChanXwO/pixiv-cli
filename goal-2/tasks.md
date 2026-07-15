@@ -76,8 +76,18 @@
 
 ## C02 — 集中检查 2（T04–T06）
 
-- 状态：未完成
+- 状态：已完成（发现 P1 修复项）
 - 检查：composition boundary、错误真因、无据限制、CLI/MCP 契约、全量 test/vet、文档和 changelog。
+- 实际：集中复核 `2e1f9ca..d2be109` 的 T04–T06 生产代码、公开测试和文档。T04 的 typed-first 本地状态分类、白名单错误渲染、Download remap 与脱敏边界，T05 的 application 下载 port、bootstrap 唯一 production wiring、typed-nil fail-loud、CLI JSON/proxy/runtime 行为，以及 T06 的 count/default/range/delivery/限制依据均符合各自契约；没有新增 timeout、retry、fallback 或单作品文件截断。独立 checkpoint review 发现 1 个 P1：typed `downloadOut` schema 要求 `items/files` 为 array，但 direct `download` 的 no-ID、非法 delivery、manager/build/read-file 失败，以及 random 的 SDK-open、推荐失败、空推荐、manager/build 失败仍返回 nil slices（random 多数还返回 nil result），会把真正错误遮蔽为 output-schema 错误；部分 random 错误还把已规范化 `image_content` 重置为 `local_path`。已插入 F02。
+- 证据：生产 `download.NewManager` 经 `rg` 仅剩 `internal/bootstrap/bootstrap.go` 一处；`go list`/import 检索确认 CLI/MCP/application 未直连 appapi/webapi/oauth/resource。go-sdk v0.8.0 `mcp/server.go` 明确对所有 typed handler output marshal 后执行 `applySchema`，nil slice 序列化为 `null`；T06 的 invalid-delivery public test 已以同一机制实际 RED 为 `items: type null, want array`，现代码审计证明其余列举分支仍有相同形状。独立 reviewer `REQUEST_CHANGES` 且除该项外无 finding。主线程与 reviewer 通过 `git diff --check 2e1f9ca..HEAD`、T04/local-state 聚焦重复测试、T05 application/bootstrap/CLI/download 测试、`TestDownloadRandom` 20 次、相关六包 race、`go test ./... -count=1`、`go vet ./...`、`sh scripts/build.sh`、开发 binary `version --json` 和 `pre-commit run --all-files`；application/bootstrap coverage 分别为 73.5%/17.7%，构建产物已清理且 worktree 恢复干净。
+- 风险/下一步：P1 未关闭前，下载参数错误、认证/推荐失败、空推荐或本地下载失败仍可能只暴露 schema 错误，因此不得把 C02 组合标为无风险。下一轮先执行 F02：用 public in-memory MCP tracer bullets 覆盖 direct/random 全部失败与空结果类别，统一显式空数组、legacy-compatible result 和规范化 delivery；T07 必须等 F02 关闭后再开始。真实 Pixiv 联网 e2e 未启用；默认 e2e package 已通过。T05 结构变化造成的两份知识图谱滞后按 T20 集中重建。
+
+## F02 — 修复 MCP 下载错误被 output schema 遮蔽
+
+- 状态：未完成
+- 来源：C02 P1。typed `downloadOut` 的 `items/files` 必须是 JSON array，现有多个失败/空结果分支返回 nil slices，导致 go-sdk output validation 覆盖真正错误。
+- 范围：为 direct `download` 与 `download_random_from_recommendation` 的所有参数错误、SDK/推荐失败、空推荐、manager/download 失败、结果整理失败和 image-content 读取失败统一构造显式空 `items/files` 与 `downloadResult(out)`；完成 delivery 规范化后保留规范化值，尚未规范化或非法 delivery 继续使用 `local_path`。保持现有安全错误文本、legacy `IsError=false`、日志语义和成功输出；不得给 random 新增 ImageContent，也不得顺手处理 T13 observability。
+- 验收：public in-memory MCP tracer bullets 逐类实际 RED→GREEN，至少覆盖 direct no-ID/invalid-delivery/download/build/read-file 与 random SDK-open/recommendation/empty/download/build；每个分支返回原有业务错误而非 `validating tool output`，structured `items/files` 是空数组，delivery 正确，失败前不发生不应有的下游调用；MCP package/race/vet、全仓测试、文档/changelog 审核和独立 spec/quality review 通过。
 - 实际：
 - 证据：
 - 风险/下一步：
