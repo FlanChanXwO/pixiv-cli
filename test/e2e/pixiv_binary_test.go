@@ -80,9 +80,12 @@ func TestPixivBinaryOfflineConfigAndMCPHelp(t *testing.T) {
 	binaryPath := buildPixivBinary(t, repoRoot)
 	env := isolatedEnv(t)
 
-	// 配置路径是 stdout 协议；自动更新 warning 和结构化日志只能在 stderr，不能用
-	// CombinedOutput 混合后再判断路径。
-	out, _ := runPixivStdout(t, repoRoot, binaryPath, env.values, "config", "path")
+	// 配置路径是 stdout 协议；默认日志级别不应把普通成功操作的 INFO 诊断写入
+	// stderr。即使未来新增 warning，也不能混合两个流后再判断路径。
+	out, stderr := runPixivStdout(t, repoRoot, binaryPath, env.values, "config", "path")
+	if bytes.Contains(stderr, []byte("level=INFO")) {
+		t.Fatalf("default CLI success emitted INFO diagnostic to stderr:\n%s", string(stderr))
+	}
 	gotConfigPath := strings.TrimSpace(string(out))
 	if !strings.HasPrefix(gotConfigPath, env.configRoot) && !strings.HasPrefix(gotConfigPath, env.home) {
 		t.Fatalf("config path escaped isolated config roots:\n%s", string(out))
@@ -279,17 +282,18 @@ func TestPixivBinaryRealAPISearchOptIn(t *testing.T) {
 	if proxy := firstNonEmpty(os.Getenv("PIXIV_E2E_PROXY"), os.Getenv("PIXIV_WEB_API_PROXY")); proxy != "" {
 		env = append(env, "https_proxy="+proxy, "HTTPS_PROXY="+proxy)
 	}
-	if refreshToken := os.Getenv("PIXIV_E2E_REFRESH_TOKEN"); refreshToken != "" {
+	refreshToken := os.Getenv("PIXIV_E2E_REFRESH_TOKEN")
+	if refreshToken != "" {
 		env = append(env, "PIXIV_REFRESH_TOKEN="+refreshToken)
 	} else {
 		env = append(env, "PIXIV_REFRESH_TOKEN=")
 	}
 
-	run := exec.CommandContext(testCommandContext(t), binaryPath, "search", "初音ミク")
-	run.Dir = repoRoot
-	run.Env = env
-	out, err := run.CombinedOutput()
-	if os.Getenv("PIXIV_E2E_REFRESH_TOKEN") == "" {
+	if refreshToken == "" {
+		run := exec.CommandContext(testCommandContext(t), binaryPath, "search", "初音ミク")
+		run.Dir = repoRoot
+		run.Env = env
+		out, err := run.CombinedOutput()
 		if err != nil {
 			t.Fatalf("unauthenticated real web fallback search failed: %v\n%s", err, string(out))
 		}
@@ -298,11 +302,12 @@ func TestPixivBinaryRealAPISearchOptIn(t *testing.T) {
 		}
 		return
 	}
-	if err != nil {
-		t.Fatalf("pixiv search against real API failed: %v\n%s", err, string(out))
-	}
-	if !strings.Contains(string(out), "found ") {
-		t.Fatalf("real API search did not print result summary:\n%s", string(out))
+
+	// App API 认证失败时，stdout/stderr 都可能带上服务端回显；统一交给
+	// canary helper 分流并在测试诊断前脱敏，避免显式注入的 token 泄露。
+	stdout := runPixivCanary(t, repoRoot, binaryPath, env, refreshToken, "search", "初音ミク")
+	if !strings.Contains(string(stdout), "found ") {
+		t.Fatalf("real API search did not print result summary:\n%s", redactCanaryDiagnostic(refreshToken, string(stdout)))
 	}
 }
 
@@ -374,19 +379,26 @@ func runPixivCanary(t *testing.T, repoRoot, binaryPath string, env []string, ref
 	run := exec.CommandContext(testCommandContext(t), binaryPath, args...)
 	run.Dir = repoRoot
 	run.Env = env
-	out, err := run.CombinedOutput()
+	var stdout, stderr bytes.Buffer
+	run.Stdout = &stdout
+	run.Stderr = &stderr
+	err := run.Run()
 	if err != nil {
-		t.Fatalf("pixiv %s failed: %v\n%s", strings.Join(args, " "), err, strings.ReplaceAll(string(out), refreshToken, "[redacted]"))
+		t.Fatalf("pixiv %s failed: %s\nstdout:\n%s\nstderr:\n%s", strings.Join(args, " "), redactCanaryDiagnostic(refreshToken, err.Error()), redactCanaryDiagnostic(refreshToken, stdout.String()), redactCanaryDiagnostic(refreshToken, stderr.String()))
 	}
-	return out
+	return stdout.Bytes()
 }
 
 func requireCanaryJSON(t *testing.T, body []byte, refreshToken string, out any) {
 	t.Helper()
 
 	if err := json.Unmarshal(body, out); err != nil {
-		t.Fatalf("decode canary JSON failed: %v\n%s", err, strings.ReplaceAll(string(body), refreshToken, "[redacted]"))
+		t.Fatalf("decode canary JSON failed: %v\n%s", err, redactCanaryDiagnostic(refreshToken, string(body)))
 	}
+}
+
+func redactCanaryDiagnostic(refreshToken, value string) string {
+	return strings.ReplaceAll(value, refreshToken, "[redacted]")
 }
 
 func requireCanaryVisibleJSONFields(t *testing.T, body []byte, refreshToken string, fields ...string) {
@@ -563,6 +575,7 @@ func isIsolatedEnvKey(name string) bool {
 	for _, key := range []string{
 		"HOME", "XDG_CONFIG_HOME", "APPDATA", "LOCALAPPDATA", "USERPROFILE", "HOMEDRIVE", "HOMEPATH",
 		"DOWNLOAD_PATH", "FILENAME_TEMPLATE", "https_proxy", "HTTPS_PROXY", "PIXIV_REFRESH_TOKEN",
+		"PIXIV_LOG_LEVEL", "PIXIV_LOG_FORMAT",
 	} {
 		if strings.EqualFold(name, key) {
 			return true

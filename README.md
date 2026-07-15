@@ -253,7 +253,7 @@ CLI 使用 Cobra/pflag，选项可以写在位置参数前后，例如 `pixiv au
 | `filename_template` | string | `{author} - {title}_{id}` | 文件名模板。 |
 | `https_proxy` | string | 空 | HTTP(S) 代理，优先使用环境变量中的小写 `https_proxy`。 |
 | `web_fallback_enabled` | bool | `true` | 无 refresh token 时，允许匿名 Pixiv web/ajax API fallback；写入为 `[web] fallback_enabled = true/false`。 |
-| `log_level` | string | `info` | stderr 结构化日志级别；可由 `PIXIV_LOG_LEVEL` 覆盖。 |
+| `log_level` | string | `warn` | stderr 结构化日志级别；可由 `PIXIV_LOG_LEVEL` 覆盖。显式设为 `info` 可保留操作诊断。 |
 | `log_format` | string | `text` | 日志格式 `text` 或 `json`；可由 `PIXIV_LOG_FORMAT` 覆盖。 |
 | `update_check_enabled` | bool | `true` | 普通 CLI 成功命令后是否检查稳定版更新；写入为 `[update] check_enabled = true/false`。 |
 | `output_json` | bool | `false` | 数据命令默认输出 JSON。 |

@@ -23,6 +23,7 @@
 ### Fixed
 
 - `auth login` 的浏览器 callback 页现在明确提示“授权已收到、正在回到 CLI 完成登录”；非 JSON 的登录成功输出精简为单行。
+- 默认日志级别改为 `warn`，避免普通 CLI 成功命令把 INFO 操作诊断写入 stderr；显式 `info` 配置和环境覆盖保持不变。
 - 修复显式与自动更新检查未向 GitHub Releases API 发送项目识别性 `User-Agent` 而可能收到 HTTP 403 的兼容性问题。
 
 ### Security
