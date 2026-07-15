@@ -13,12 +13,12 @@
 
 ## T02 — 补齐 application token-sensitive 用例覆盖
 
-- 状态：未完成
+- 状态：已完成
 - 范围：P1-2。通过 fake public SDK/config store 覆盖 `LoginService.Start/Complete`、`AccountService.Remove/Use`、`ConfigService.Get/Set/Unset` 的成功与关键错误传播。
 - 验收：测试只观察 application 公共接口；覆盖 PKCE session handoff、账号选择/删除后的默认 UID、nil store 与依赖错误；`go test ./internal/application -cover -count=1`。
-- 实际：
-- 证据：
-- 风险/下一步：
+- 实际：新增 `login_test.go`、`config_test.go` 并扩充 `account_test.go`；只经 application 公共方法与 public SDK/config fake 覆盖 Login Start/Complete、Account Remove/Use、Config Get/Set/Unset。三组 characterization 测试首次均为 GREEN，未伪造行为 RED；未改生产代码。application 语句覆盖率由 29.6% 提升至 70.4%。
+- 证据：规格审查与质量审查均 APPROVE；`go test ./internal/application -run 'Test(LoginService|AccountService(Remove|Use)|ConfigService)' -count=1 -v`、`go test ./internal/application -cover -count=1`、`go test -race ./internal/application -count=1`、`go vet ./internal/application`、`gofmt -d ...`、`git diff --check` 全部通过；质量审查另以 `go test ./internal/application -count=20` 验证稳定性。
+- 风险/下一步：聚焦测试不执行真实 OAuth 网络交换；真实 PKCE 一次性与交换语义继续由 public SDK 外部测试覆盖。fake 嵌入 nil `SDKClient`，若未来误调用未覆写方法会 fail-loud。下一任务 T03 处理 transport typed error 安全分类。
 
 ## T03 — 安全分类上游 transport 失败
 

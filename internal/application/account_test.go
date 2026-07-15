@@ -97,12 +97,149 @@ func TestAccountServiceAddRejectsCookieBeforeOpeningSDK(t *testing.T) {
 	require.ErrorContains(t, err, "cookie input is not supported")
 }
 
+func TestAccountServiceRemoveReturnsRemovedAccountAndUpdatedDefault(t *testing.T) {
+	listCalls := 0
+	client := &fakeAccountSDKClient{}
+	client.listAccounts = func() (*sdk.AccountsResult, error) {
+		listCalls++
+		if listCalls == 1 {
+			return &sdk.AccountsResult{DefaultUserID: 123, Accounts: []sdk.Account{
+				{UserID: 123, Username: "alice", Default: true, HasToken: true},
+				{UserID: 456, Username: "bob", HasToken: true},
+			}}, nil
+		}
+		return &sdk.AccountsResult{DefaultUserID: 456, Accounts: []sdk.Account{
+			{UserID: 456, Username: "bob", Default: true, HasToken: true},
+		}}, nil
+	}
+	client.removeAccount = func(userID int64) error {
+		assert.Equal(t, int64(123), userID)
+		return nil
+	}
+
+	removed, defaultUserID, err := newAccountServiceForTest(client).Remove(123)
+	require.NoError(t, err)
+	assert.Equal(t, AccountResult{UserID: 123, Username: "alice", HasToken: true}, removed)
+	assert.Equal(t, int64(456), defaultUserID)
+	assert.Equal(t, 2, listCalls)
+}
+
+func TestAccountServiceRemoveReportsNotFoundWithoutMutation(t *testing.T) {
+	client := &fakeAccountSDKClient{accounts: sdk.AccountsResult{
+		DefaultUserID: 123,
+		Accounts:      []sdk.Account{{UserID: 123, Username: "alice", Default: true, HasToken: true}},
+	}}
+	client.removeAccount = func(int64) error {
+		t.Fatal("RemoveAccount was called for an unknown uid")
+		return nil
+	}
+
+	_, _, err := newAccountServiceForTest(client).Remove(999)
+	require.EqualError(t, err, "account uid 999 not found")
+}
+
+func TestAccountServiceRemovePropagatesDependencyErrors(t *testing.T) {
+	t.Run("initial client", func(t *testing.T) {
+		wantErr := errors.New("open list client")
+		service := AccountService{SDK: SDKService{NewClient: func(SDKClientRequest) (SDKClient, error) {
+			return nil, wantErr
+		}}}
+
+		_, _, err := service.Remove(123)
+		require.ErrorIs(t, err, wantErr)
+	})
+
+	t.Run("initial list", func(t *testing.T) {
+		wantErr := errors.New("list accounts")
+		client := &fakeAccountSDKClient{listAccounts: func() (*sdk.AccountsResult, error) {
+			return nil, wantErr
+		}}
+
+		_, _, err := newAccountServiceForTest(client).Remove(123)
+		require.ErrorIs(t, err, wantErr)
+	})
+
+	t.Run("remove client", func(t *testing.T) {
+		wantErr := errors.New("open remove client")
+		client := &fakeAccountSDKClient{accounts: sdk.AccountsResult{
+			Accounts: []sdk.Account{{UserID: 123, HasToken: true}},
+		}}
+		calls := 0
+		service := AccountService{SDK: SDKService{NewClient: func(SDKClientRequest) (SDKClient, error) {
+			calls++
+			if calls == 2 {
+				return nil, wantErr
+			}
+			return client, nil
+		}}}
+
+		_, _, err := service.Remove(123)
+		require.ErrorIs(t, err, wantErr)
+	})
+
+	t.Run("remove account", func(t *testing.T) {
+		wantErr := errors.New("remove account")
+		client := &fakeAccountSDKClient{
+			accounts: sdk.AccountsResult{Accounts: []sdk.Account{{UserID: 123, HasToken: true}}},
+			removeAccount: func(int64) error {
+				return wantErr
+			},
+		}
+
+		_, _, err := newAccountServiceForTest(client).Remove(123)
+		require.ErrorIs(t, err, wantErr)
+	})
+
+	t.Run("updated list", func(t *testing.T) {
+		wantErr := errors.New("updated list accounts")
+		listCalls := 0
+		client := &fakeAccountSDKClient{listAccounts: func() (*sdk.AccountsResult, error) {
+			listCalls++
+			if listCalls == 2 {
+				return nil, wantErr
+			}
+			return &sdk.AccountsResult{Accounts: []sdk.Account{{UserID: 123, HasToken: true}}}, nil
+		}}
+
+		_, _, err := newAccountServiceForTest(client).Remove(123)
+		require.ErrorIs(t, err, wantErr)
+	})
+}
+
+func TestAccountServiceUseSelectsRequestedAccount(t *testing.T) {
+	client := &fakeAccountSDKClient{selectAccount: func(userID int64) error {
+		assert.Equal(t, int64(456), userID)
+		return nil
+	}}
+
+	userID, err := newAccountServiceForTest(client).Use(456)
+	require.NoError(t, err)
+	assert.Equal(t, int64(456), userID)
+}
+
+func TestAccountServiceUsePropagatesDependencyErrors(t *testing.T) {
+	clientErr := errors.New("open select client")
+	service := AccountService{SDK: SDKService{NewClient: func(SDKClientRequest) (SDKClient, error) {
+		return nil, clientErr
+	}}}
+	_, err := service.Use(123)
+	require.ErrorIs(t, err, clientErr)
+
+	selectErr := errors.New("select account")
+	client := &fakeAccountSDKClient{selectAccount: func(int64) error { return selectErr }}
+	_, err = newAccountServiceForTest(client).Use(123)
+	require.ErrorIs(t, err, selectErr)
+}
+
 // fakeAccountSDKClient 嵌入完整公开 facade，只覆写本组测试经过的账号方法；这样
 // 测试从 application 到公开 SDK 边界观察行为，不再模拟 legacy Source。
 type fakeAccountSDKClient struct {
 	SDKClient
 	accounts          sdk.AccountsResult
 	importAccount     func(context.Context, string) (*sdk.Account, error)
+	listAccounts      func() (*sdk.AccountsResult, error)
+	selectAccount     func(int64) error
+	removeAccount     func(int64) error
 	checkAccount      func(context.Context, int64) (*sdk.Account, error)
 	checkRefreshToken func(context.Context, string) (*sdk.Account, error)
 }
@@ -113,9 +250,24 @@ func (f *fakeAccountSDKClient) ImportAccount(ctx context.Context, token string) 
 	}
 	return nil, errors.New("unexpected import")
 }
-func (f *fakeAccountSDKClient) ListAccounts() (*sdk.AccountsResult, error) { return &f.accounts, nil }
-func (*fakeAccountSDKClient) SelectAccount(int64) error                    { return nil }
-func (*fakeAccountSDKClient) RemoveAccount(int64) error                    { return nil }
+func (f *fakeAccountSDKClient) ListAccounts() (*sdk.AccountsResult, error) {
+	if f.listAccounts != nil {
+		return f.listAccounts()
+	}
+	return &f.accounts, nil
+}
+func (f *fakeAccountSDKClient) SelectAccount(userID int64) error {
+	if f.selectAccount != nil {
+		return f.selectAccount(userID)
+	}
+	return nil
+}
+func (f *fakeAccountSDKClient) RemoveAccount(userID int64) error {
+	if f.removeAccount != nil {
+		return f.removeAccount(userID)
+	}
+	return nil
+}
 func (f *fakeAccountSDKClient) CheckAccount(ctx context.Context, userID int64) (*sdk.Account, error) {
 	if f.checkAccount != nil {
 		return f.checkAccount(ctx, userID)
