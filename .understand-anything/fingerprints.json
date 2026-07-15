@@ -1,7 +1,7 @@
 {
   "version": "1.0.0",
-  "gitCommitHash": "446f5239747506b059db33a1bd84c66e08b38f89",
-  "generatedAt": "2026-07-14T17:35:45.844Z",
+  "gitCommitHash": "8d1561cee88a54ff2f929ed323053c43ce5554be",
+  "generatedAt": "2026-07-15T10:58:49.387Z",
   "files": {
     ".agents/skills/pixiv-commit-msg/SKILL.md": {
       "filePath": ".agents/skills/pixiv-commit-msg/SKILL.md",
@@ -25,7 +25,7 @@
     },
     ".agents/skills/pixiv-mcp-tool/SKILL.md": {
       "filePath": ".agents/skills/pixiv-mcp-tool/SKILL.md",
-      "contentHash": "7fd94544c5b859d224fd750e08fe635eaad96d7511001283753ec28555bf3d6d",
+      "contentHash": "38346aea4c73c68f86ad23ca8644c3909f92d4e4bb94fc926bfbed242dcbee53",
       "functions": [],
       "classes": [],
       "imports": [],
@@ -55,7 +55,7 @@
     },
     ".github/copilot-instructions.md": {
       "filePath": ".github/copilot-instructions.md",
-      "contentHash": "a3527c11b1b0e4077f943b7f0814b7da19559fdbc5d85b6d372d500904f5fb75",
+      "contentHash": "5fad23c86c07d436b5b7ef7c3d0c264abb78710a8273c7d1cf032d25ec847e80",
       "functions": [],
       "classes": [],
       "imports": [],
@@ -95,12 +95,12 @@
     },
     ".github/workflows/release.yml": {
       "filePath": ".github/workflows/release.yml",
-      "contentHash": "8dcaffcdf1da4c4a26afbce02b1c5c5c2468d57cdbafa88056b9b2af74a3f393",
+      "contentHash": "bb087dc536b7396e3be52dcd8c08e4868b8ffef4bfb643b742624e822cc81b2d",
       "functions": [],
       "classes": [],
       "imports": [],
       "exports": [],
-      "totalLines": 581,
+      "totalLines": 593,
       "hasStructuralAnalysis": true
     },
     ".pre-commit-config.yaml": {
@@ -115,7 +115,7 @@
     },
     "AGENTS.md": {
       "filePath": "AGENTS.md",
-      "contentHash": "9463a64225bd94f2e39b8404a55e00be8d3f69687ea18deece5daaf36e25ab38",
+      "contentHash": "4ad64566d55cbd0ee9cbbc38fde1446469a0067b7c323ccbe0cf11733b617b7c",
       "functions": [],
       "classes": [],
       "imports": [],
@@ -125,12 +125,12 @@
     },
     "CHANGELOG.md": {
       "filePath": "CHANGELOG.md",
-      "contentHash": "d4f7e530f51cd4e09b76b091a4b5bef91f2352c7d0aa132711d9aae33b0a216d",
+      "contentHash": "cc857db385bd0b31a4252986c8cba098d9b0ec1c7768e047fa96bb96880e680d",
       "functions": [],
       "classes": [],
       "imports": [],
       "exports": [],
-      "totalLines": 144,
+      "totalLines": 150,
       "hasStructuralAnalysis": true
     },
     "CLAUDE.md": {
@@ -175,7 +175,7 @@
     },
     "CONTEXT.md": {
       "filePath": "CONTEXT.md",
-      "contentHash": "7d4047692cf601ea01b998a49954144265df4aa0305fe270e1147aef112a2eac",
+      "contentHash": "5ee7d0fc74d37a5a592e0f396935fcc275c5faef2cafd1ce52c6ec196c20184d",
       "functions": [],
       "classes": [],
       "imports": [],
@@ -185,12 +185,12 @@
     },
     "docs/adr/0001-cli-thin-controller-and-bootstrap.md": {
       "filePath": "docs/adr/0001-cli-thin-controller-and-bootstrap.md",
-      "contentHash": "958ea14c38e23674d67fae608bcd8cd65c3d092d312086116f72df19b1a658b3",
+      "contentHash": "2f8af62d0bb77b882dcbb69d5b740f1b702078031fe66d833d5e971738af4900",
       "functions": [],
       "classes": [],
       "imports": [],
       "exports": [],
-      "totalLines": 48,
+      "totalLines": 47,
       "hasStructuralAnalysis": true
     },
     "docs/adr/0002-utils-and-common-boundaries.md": {
@@ -245,17 +245,17 @@
     },
     "docs/adr/0007-platform-staticlibs-for-supported-source-builds.md": {
       "filePath": "docs/adr/0007-platform-staticlibs-for-supported-source-builds.md",
-      "contentHash": "207fd9458dd210f22ca680abd20449240c5cb260559531e2227399deaeea81e4",
+      "contentHash": "43fe186186ec2cd0c2e3210514c2f6b478f566ddc1ba41a3e338e747237f20a1",
       "functions": [],
       "classes": [],
       "imports": [],
       "exports": [],
-      "totalLines": 43,
+      "totalLines": 50,
       "hasStructuralAnalysis": true
     },
     "docs/adr/0008-ed25519-signed-multi-channel-release-trust.md": {
       "filePath": "docs/adr/0008-ed25519-signed-multi-channel-release-trust.md",
-      "contentHash": "953abc83ec95e22ac821a372fe99c3dbe42238a5da32c5bb76e5e16677fecb4b",
+      "contentHash": "a47109e9e3724367e86dfaf8e1aae8fce4de6e2e42aad528faaf28447149779e",
       "functions": [],
       "classes": [],
       "imports": [],
@@ -295,7 +295,7 @@
     },
     "docs/agents/review-checklist.md": {
       "filePath": "docs/agents/review-checklist.md",
-      "contentHash": "0348806dd1ec46663d18ae22a284018f45ffeec9229d3a563db78dfdba92524f",
+      "contentHash": "6f4e0093bb9e7a061a6766fe72915901e4549a63b1885a0c50533d3f4134d44d",
       "functions": [],
       "classes": [],
       "imports": [],
@@ -305,22 +305,22 @@
     },
     "docs/architecture.md": {
       "filePath": "docs/architecture.md",
-      "contentHash": "4c4c130ceb3662a8bbbf0a6fabab1a273851f9f3d8cb314026803993c5260e56",
+      "contentHash": "ec11d8101b4d5005bfd1a9dda6665a4eb5f999730e31180c0c511c5eef6f5b58",
       "functions": [],
       "classes": [],
       "imports": [],
       "exports": [],
-      "totalLines": 242,
+      "totalLines": 240,
       "hasStructuralAnalysis": true
     },
     "docs/development.md": {
       "filePath": "docs/development.md",
-      "contentHash": "3cae70a63e9beff8e768ca2afcdbf6e51fabf444909e1bf9bc20e0b1afe22538",
+      "contentHash": "75b788268990c3496f01d16f82e41556f0c76a62a68e2dd0b4173707182c66e1",
       "functions": [],
       "classes": [],
       "imports": [],
       "exports": [],
-      "totalLines": 409,
+      "totalLines": 432,
       "hasStructuralAnalysis": true
     },
     "docs/index.md": {
@@ -385,12 +385,12 @@
     },
     "goal-1/tasks.md": {
       "filePath": "goal-1/tasks.md",
-      "contentHash": "4973742badbbbfa7f803ae1edcbd9df902c706875665ee545b431abef74d469d",
+      "contentHash": "fa4ccefcda065992d718a3a8dab84ae0f6669df2fe66d3c837dc9b0fabb59185",
       "functions": [],
       "classes": [],
       "imports": [],
       "exports": [],
-      "totalLines": 165,
+      "totalLines": 172,
       "hasStructuralAnalysis": true
     },
     "internal/application/account_test.go": {
@@ -2101,7 +2101,7 @@
     },
     "internal/cli/account_login.go": {
       "filePath": "internal/cli/account_login.go",
-      "contentHash": "0e8063d6d83b3f722d9e1187f99f80d768a8ec45726029c093f262488af1d4c7",
+      "contentHash": "0510b4b32ff338d59218509c1ad30a45f12991eaac07715dba2131a19d46bb25",
       "functions": [
         {
           "name": "newAccountLoginCommand",
@@ -2118,7 +2118,7 @@
           ],
           "returnType": "error",
           "exported": false,
-          "lineCount": 62
+          "lineCount": 55
         },
         {
           "name": "waitForLoginCode",
@@ -2151,7 +2151,7 @@
             "err"
           ],
           "exported": false,
-          "lineCount": 8
+          "lineCount": 11
         },
         {
           "name": "writeLoginRelayResult",
@@ -2520,12 +2520,12 @@
         }
       ],
       "exports": [],
-      "totalLines": 678,
+      "totalLines": 674,
       "hasStructuralAnalysis": true
     },
     "internal/cli/account_test.go": {
       "filePath": "internal/cli/account_test.go",
-      "contentHash": "eb29314d992c75bb9abec955ae3e2e5c645ac7a5e64414e378e5fa3d013883c7",
+      "contentHash": "dcfde7eb45e876256deb0024bf3c7cb934c660bc7dce5bfdb1707c1294c88862",
       "functions": [
         {
           "name": "loginOAuthSuccessHandler",
@@ -2638,7 +2638,7 @@
             "t"
           ],
           "exported": true,
-          "lineCount": 55
+          "lineCount": 64
         },
         {
           "name": "TestAccountLoginProxyFlagOverridesEnvAndConfig",
@@ -3183,7 +3183,7 @@
         "TestPixivAuthStartMatchesChallenge",
         "Requests"
       ],
-      "totalLines": 1191,
+      "totalLines": 1200,
       "hasStructuralAnalysis": true
     },
     "internal/cli/api_cmd.go": {
@@ -3651,7 +3651,7 @@
     },
     "internal/cli/auto_update_test.go": {
       "filePath": "internal/cli/auto_update_test.go",
-      "contentHash": "201ff8ee0d7773527a3febf5db10896037225b721a5bf20d4bccd021d7584161",
+      "contentHash": "710c57e68d6620c89618882dd0fc1c6710b4cafbba2c05d822654b0457a76f81",
       "functions": [
         {
           "name": "TestRunAutomaticUpdateNoticeKeepsJSONStdoutPure",
@@ -3715,7 +3715,7 @@
             "t"
           ],
           "exported": true,
-          "lineCount": 20
+          "lineCount": 22
         },
         {
           "name": "TestRunAutomaticUpdateUsesCurrentCommandNoProxyOverride",
@@ -3723,7 +3723,7 @@
             "t"
           ],
           "exported": true,
-          "lineCount": 20
+          "lineCount": 22
         },
         {
           "name": "stubAutomaticUpdateCheck",
@@ -3867,7 +3867,7 @@
         "TestRunAutomaticUpdateUsesCurrentCommandNoProxyOverride",
         "Check"
       ],
-      "totalLines": 276,
+      "totalLines": 280,
       "hasStructuralAnalysis": true
     },
     "internal/cli/auto_update.go": {
@@ -6535,8 +6535,16 @@
     },
     "internal/config/logger_test.go": {
       "filePath": "internal/config/logger_test.go",
-      "contentHash": "ce159d1729cac585ab57bf50d90867049d163c18ee4b84fde42cce6bdeca4913",
+      "contentHash": "1d3edc15ae4b03063402829944594d4e8df3b34dc62c4116e8f77e778e8e152f",
       "functions": [
+        {
+          "name": "TestRuntimeLoggerDefaultsToWarn",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 26
+        },
         {
           "name": "TestRuntimeLoggerUsesEnvironmentOverFileAndEmitsJSON",
           "params": [
@@ -6544,6 +6552,32 @@
           ],
           "exported": true,
           "lineCount": 28
+        },
+        {
+          "name": "TestRuntimeLoggerKeepsExplicitInfoDiagnostics",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 18
+        },
+        {
+          "name": "assertInfoDiagnostic",
+          "params": [
+            "t",
+            "path"
+          ],
+          "exported": false,
+          "lineCount": 23
+        },
+        {
+          "name": "clearEnvironmentForTest",
+          "params": [
+            "t",
+            "key"
+          ],
+          "exported": false,
+          "lineCount": 14
         },
         {
           "name": "TestRuntimeLoggerRejectsInvalidConfiguredValues",
@@ -6563,6 +6597,12 @@
           ]
         },
         {
+          "source": "os",
+          "specifiers": [
+            "os"
+          ]
+        },
+        {
           "source": "strings",
           "specifiers": [
             "strings"
@@ -6576,10 +6616,12 @@
         }
       ],
       "exports": [
+        "TestRuntimeLoggerDefaultsToWarn",
         "TestRuntimeLoggerUsesEnvironmentOverFileAndEmitsJSON",
+        "TestRuntimeLoggerKeepsExplicitInfoDiagnostics",
         "TestRuntimeLoggerRejectsInvalidConfiguredValues"
       ],
-      "totalLines": 63,
+      "totalLines": 149,
       "hasStructuralAnalysis": true
     },
     "internal/config/logger.go": {
@@ -6770,7 +6812,7 @@
     },
     "internal/config/settings.go": {
       "filePath": "internal/config/settings.go",
-      "contentHash": "c673ce72c29475de7c90afce7bba261663bbf95bf9d265ca001c73b7ea5c6c89",
+      "contentHash": "869c05d6cb1a3f2a9eb84f75be2d4071a3effbef13920fe4f51ff8c789897f96",
       "functions": [
         {
           "name": "SettingSpecByAlias",
@@ -12380,7 +12422,7 @@
     },
     "internal/pixiv/appapi/client_test.go": {
       "filePath": "internal/pixiv/appapi/client_test.go",
-      "contentHash": "7a651466215a4d1890f47ca9daef85ffdd2cafadb4e4943d1852429a9895d357",
+      "contentHash": "8ac41dbb62f5fadb8ceb43d3009ed53080f7bad145e388909beee952a251857f",
       "functions": [
         {
           "name": "TestRefreshAndRetryOnAuthError",
@@ -12411,6 +12453,30 @@
           ],
           "exported": true,
           "lineCount": 26
+        },
+        {
+          "name": "TestUserDetailNormalizesProfilePublicityWireValues",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 24
+        },
+        {
+          "name": "TestUserDetailNormalizesMissingProfilePublicityFieldsToFalse",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 21
+        },
+        {
+          "name": "TestUserDetailRejectsMalformedProfilePublicityWireValues",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 27
         },
         {
           "name": "TestWithAccessTokenSendsBearerAuthorization",
@@ -12466,6 +12532,12 @@
           ]
         },
         {
+          "source": "errors",
+          "specifiers": [
+            "errors"
+          ]
+        },
+        {
           "source": "net/http",
           "specifiers": [
             "http"
@@ -12495,16 +12567,19 @@
         "AccessToken",
         "Refresh",
         "TestUserDetailFetchesUserName",
+        "TestUserDetailNormalizesProfilePublicityWireValues",
+        "TestUserDetailNormalizesMissingProfilePublicityFieldsToFalse",
+        "TestUserDetailRejectsMalformedProfilePublicityWireValues",
         "TestWithAccessTokenSendsBearerAuthorization",
         "TestBookmarkMutationRefreshesAuthAndAcceptsEmptySuccess",
         "TestMutationServerErrorDoesNotRefreshOrReplay"
       ],
-      "totalLines": 141,
+      "totalLines": 217,
       "hasStructuralAnalysis": true
     },
     "internal/pixiv/appapi/client.go": {
       "filePath": "internal/pixiv/appapi/client.go",
-      "contentHash": "c5053589874da168fab9d7e2a9ba7c964e8754e4787a9d0ed5a612cb6c8fe8ab",
+      "contentHash": "aafcf246016167dbea7ca34b08abd92c36d83cb335ed991ea96d3b1e0ce09653",
       "functions": [
         {
           "name": "AccessToken",
@@ -12635,7 +12710,8 @@
           "name": "IllustRecommended",
           "params": [
             "ctx",
-            "offset"
+            "offset",
+            "continuationExists"
           ],
           "returnType": "(*model.IllustList, error)",
           "exported": true,
@@ -12645,7 +12721,8 @@
           "name": "MangaRecommended",
           "params": [
             "ctx",
-            "offset"
+            "offset",
+            "continuationExists"
           ],
           "returnType": "(*model.IllustList, error)",
           "exported": true,
@@ -12655,7 +12732,8 @@
           "name": "NovelRecommended",
           "params": [
             "ctx",
-            "offset"
+            "offset",
+            "continuationExists"
           ],
           "returnType": "(*model.NovelList, error)",
           "exported": true,
@@ -12665,7 +12743,8 @@
           "name": "UserRecommended",
           "params": [
             "ctx",
-            "offset"
+            "offset",
+            "continuationExists"
           ],
           "returnType": "(*model.RecommendedUserList, error)",
           "exported": true,
@@ -12738,6 +12817,30 @@
           ],
           "returnType": "(*model.IllustList, error)",
           "exported": false,
+          "lineCount": 3
+        },
+        {
+          "name": "getIllustListAllowingZeroOffset",
+          "params": [
+            "ctx",
+            "path",
+            "query"
+          ],
+          "returnType": "(*model.IllustList, error)",
+          "exported": false,
+          "lineCount": 3
+        },
+        {
+          "name": "getIllustListWithContinuationPolicy",
+          "params": [
+            "ctx",
+            "path",
+            "query",
+            "continuationKey",
+            "policy"
+          ],
+          "returnType": "(*model.IllustList, error)",
+          "exported": false,
           "lineCount": 19
         },
         {
@@ -12778,6 +12881,7 @@
           "params": [
             "rawURL",
             "key",
+            "policy",
             "out"
           ],
           "returnType": "error",
@@ -12789,6 +12893,17 @@
           "params": [
             "rawURL",
             "key"
+          ],
+          "returnType": "(int64, error)",
+          "exported": false,
+          "lineCount": 3
+        },
+        {
+          "name": "continuationValueWithPolicy",
+          "params": [
+            "rawURL",
+            "key",
+            "policy"
           ],
           "returnType": "(int64, error)",
           "exported": false,
@@ -12982,6 +13097,16 @@
           ],
           "exported": false,
           "lineCount": 5
+        },
+        {
+          "name": "setRecommendationOffset",
+          "params": [
+            "q",
+            "offset",
+            "continuationExists"
+          ],
+          "exported": false,
+          "lineCount": 7
         }
       ],
       "classes": [
@@ -13004,6 +13129,8 @@
             "UserBookmarks",
             "UserFollowing",
             "getIllustList",
+            "getIllustListAllowingZeroOffset",
+            "getIllustListWithContinuationPolicy",
             "getUserPreviewList",
             "getNovelList",
             "getRecommendedUserList",
@@ -13172,13 +13299,29 @@
         "FollowUser",
         "UnfollowUser"
       ],
-      "totalLines": 553,
+      "totalLines": 580,
       "hasStructuralAnalysis": true
     },
     "internal/pixiv/appapi/dto.go": {
       "filePath": "internal/pixiv/appapi/dto.go",
-      "contentHash": "a293d9546da5b80c4bcb5bbed54ea39f1c27483331d85d3dca4e865e54008d42",
+      "contentHash": "eae911dd0ec88cfa28ade8e2356d8cc8b31b0162485012a504fd229d511b1aa1",
       "functions": [
+        {
+          "name": "UnmarshalJSON",
+          "params": [
+            "data"
+          ],
+          "returnType": "error",
+          "exported": true,
+          "lineCount": 25
+        },
+        {
+          "name": "valid",
+          "params": [],
+          "returnType": "bool",
+          "exported": false,
+          "lineCount": 10
+        },
         {
           "name": "UnmarshalJSON",
           "params": [
@@ -13480,7 +13623,9 @@
         },
         {
           "name": "profilePublicityDTO",
-          "methods": [],
+          "methods": [
+            "valid"
+          ],
           "properties": [
             "Gender",
             "Region",
@@ -13491,6 +13636,19 @@
           ],
           "exported": false,
           "lineCount": 8
+        },
+        {
+          "name": "profilePublicityValue",
+          "methods": [
+            "UnmarshalJSON"
+          ],
+          "properties": [
+            "Value",
+            "Present",
+            "Valid"
+          ],
+          "exported": false,
+          "lineCount": 5
         },
         {
           "name": "workspaceDTO",
@@ -13552,14 +13710,15 @@
       ],
       "exports": [
         "UnmarshalJSON",
+        "UnmarshalJSON",
         "UnmarshalJSON"
       ],
-      "totalLines": 216,
+      "totalLines": 262,
       "hasStructuralAnalysis": true
     },
     "internal/pixiv/appapi/mapper_test.go": {
       "filePath": "internal/pixiv/appapi/mapper_test.go",
-      "contentHash": "d3b60bb21b0642cd473a7a79e0defdef8a166b71644550096189a0f375ae465f",
+      "contentHash": "130ec88880dcec45b4126cc419398d628dbbd08b65c064df7a972d8f0884d732",
       "functions": [
         {
           "name": "TestMapIllustPreservesEveryNormalizedField",
@@ -13575,7 +13734,7 @@
             "t"
           ],
           "exported": true,
-          "lineCount": 47
+          "lineCount": 49
         }
       ],
       "classes": [],
@@ -13603,12 +13762,12 @@
         "TestMapIllustPreservesEveryNormalizedField",
         "TestMapUserDetailPreservesNormalizedEnvelopeAndOptionalURLs"
       ],
-      "totalLines": 81,
+      "totalLines": 83,
       "hasStructuralAnalysis": true
     },
     "internal/pixiv/appapi/mapper.go": {
       "filePath": "internal/pixiv/appapi/mapper.go",
-      "contentHash": "a78f98df4be0e5db2c4df5dfebde5e8f7510a07212ad7ebeae17544659cd023b",
+      "contentHash": "ab18f238b2effc4e1b542dd33da364dd7804c62957c8ff3c6d1397d187ad69e1",
       "functions": [
         {
           "name": "mapIllustList",
@@ -13698,7 +13857,7 @@
           ],
           "returnType": "model.ProfilePublicity",
           "exported": false,
-          "lineCount": 3
+          "lineCount": 6
         },
         {
           "name": "mapWorkspace",
@@ -13774,7 +13933,7 @@
         }
       ],
       "exports": [],
-      "totalLines": 181,
+      "totalLines": 184,
       "hasStructuralAnalysis": true
     },
     "internal/pixiv/http_client_test.go": {
@@ -22253,7 +22412,7 @@
     },
     "pixiv/cursor.go": {
       "filePath": "pixiv/cursor.go",
-      "contentHash": "105bced041ef0c4ec9aae5a5dd76738506a9acb1949f5e4775fc0fca25b0f00a",
+      "contentHash": "e46fa84721c67b2a47d2bf9be55192300311620863969ef52a3270fbfccbca73",
       "functions": [
         {
           "name": "queryDigest",
@@ -22315,6 +22474,16 @@
           "returnType": "(int64, error)",
           "exported": false,
           "lineCount": 29
+        },
+        {
+          "name": "allowsZeroCursorContinuation",
+          "params": [
+            "operation",
+            "kind"
+          ],
+          "returnType": "bool",
+          "exported": false,
+          "lineCount": 11
         },
         {
           "name": "ensureCursorEOF",
@@ -22393,7 +22562,7 @@
         }
       ],
       "exports": [],
-      "totalLines": 86,
+      "totalLines": 98,
       "hasStructuralAnalysis": true
     },
     "pixiv/default.go": {
@@ -22897,7 +23066,7 @@
     },
     "pixiv/lists_external_test.go": {
       "filePath": "pixiv/lists_external_test.go",
-      "contentHash": "518cd7c3630b96b8b823d4f2c4c599613243363cef054fe50e6b8c5b250290e3",
+      "contentHash": "adc0e07fe5b517cd17f791725c6768cf0bce112325f406c3247ece67a28979b0",
       "functions": [
         {
           "name": "largestSafeWebOffset",
@@ -22972,6 +23141,15 @@
           "returnType": "pixiv.Cursor",
           "exported": false,
           "lineCount": 3
+        },
+        {
+          "name": "assertOpaqueCursorDoesNotContain",
+          "params": [
+            "t",
+            "cursor"
+          ],
+          "exported": false,
+          "lineCount": 14
         },
         {
           "name": "TestAuthenticatedListOperationsUseExpectedAppEndpointsAndContinuations",
@@ -23142,6 +23320,14 @@
           "lineCount": 18
         },
         {
+          "name": "TestRecommendationsAcceptAndReuseZeroOffsetCursors",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 93
+        },
+        {
           "name": "TestNovelRecommendedMapsStableFieldsAndHidesUpstreamContinuation",
           "params": [
             "t"
@@ -23156,6 +23342,22 @@
           ],
           "exported": true,
           "lineCount": 24
+        },
+        {
+          "name": "TestZeroOffsetContinuationRemainsRecommendationOnly",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 17
+        },
+        {
+          "name": "TestRecommendationsRejectInvalidOffsetContinuations",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 81
         },
         {
           "name": "TestRecommendationCursorsAreKindSpecificAndNeverExposeNextURL",
@@ -23286,18 +23488,21 @@
         "TestUserWireRequiresUserAndPreviewFields",
         "TestSearchIllustAnonymousWebCursorUsesNextWebBatch",
         "TestMangaRecommendedUsesIllustCatalogWithMangaContentType",
+        "TestRecommendationsAcceptAndReuseZeroOffsetCursors",
         "TestNovelRecommendedMapsStableFieldsAndHidesUpstreamContinuation",
         "TestUserRecommendedMapsUserAndWorkPreviews",
+        "TestZeroOffsetContinuationRemainsRecommendationOnly",
+        "TestRecommendationsRejectInvalidOffsetContinuations",
         "TestRecommendationCursorsAreKindSpecificAndNeverExposeNextURL",
         "TestNovelAndUserRecommendedRejectMalformedEnvelopesAndContinuation",
         "TestRecommendationsRequireAuthenticationBeforeNetwork"
       ],
-      "totalLines": 1534,
+      "totalLines": 1743,
       "hasStructuralAnalysis": true
     },
     "pixiv/lists.go": {
       "filePath": "pixiv/lists.go",
-      "contentHash": "0d734cf821ed2e6bc214c3f30e460f74bdc1c207d1b6f242eb7d59bd9f9d1bf8",
+      "contentHash": "49a3101a0f70f42f7816411ac630ee5b8ae6c9f50101b985ab3034a29f45f31b",
       "functions": [
         {
           "name": "SearchIllust",
@@ -26212,7 +26417,7 @@
     },
     "README.md": {
       "filePath": "README.md",
-      "contentHash": "e45aa3c8d0839239b6c7d877dd9e266e37f9e8835e942604060a8bae20fdad8a",
+      "contentHash": "2c2e07609783b950241dc31b55fe1cf5d84ed8cec055cce0066c49bd3fe99096",
       "functions": [],
       "classes": [],
       "imports": [],
@@ -28844,7 +29049,7 @@
     },
     "scripts/releaseworkflow/main_test.go": {
       "filePath": "scripts/releaseworkflow/main_test.go",
-      "contentHash": "845a29c9504952fc5960ac0ae1c7f1120b5e1d491cb8768c2e53b1afd9661832",
+      "contentHash": "830ffa2a6c471f8a437ce03fb06af95e3d14c6110467537abd0b49c4cdc406f1",
       "functions": [
         {
           "name": "TestCheckWorkflowRequiresRustFormatGate",
@@ -28853,6 +29058,22 @@
           ],
           "exported": true,
           "lineCount": 11
+        },
+        {
+          "name": "TestCheckWorkflowRequiresPinnedRustToolchainForReleaseBuilds",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 60
+        },
+        {
+          "name": "TestCheckWorkflowRejectsReleaseRustToolchainMutations",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 110
         },
         {
           "name": "TestCheckWorkflowRequiresProductionCacheIsolation",
@@ -28927,12 +29148,12 @@
           "lineCount": 8
         },
         {
-          "name": "TestCheckRecoveryPolicyRequiresExactFourPathOverlay",
+          "name": "TestCheckRecoveryPolicyRequiresExactThreePathOverlay",
           "params": [
             "t"
           ],
           "exported": true,
-          "lineCount": 54
+          "lineCount": 60
         },
         {
           "name": "TestCheckRecoveryPolicyRequiresWindowsClangLLDForWholeBuildJob",
@@ -28956,7 +29177,7 @@
             "t"
           ],
           "exported": true,
-          "lineCount": 39
+          "lineCount": 40
         },
         {
           "name": "TestCheckWorkflowRejectsTestGateProductionMutations",
@@ -29361,6 +29582,8 @@
       ],
       "exports": [
         "TestCheckWorkflowRequiresRustFormatGate",
+        "TestCheckWorkflowRequiresPinnedRustToolchainForReleaseBuilds",
+        "TestCheckWorkflowRejectsReleaseRustToolchainMutations",
         "TestCheckWorkflowRequiresProductionCacheIsolation",
         "TestCheckWorkflowRequiresSixExactProductionArtifactDownloads",
         "TestCheckWorkflowRejectsProductionIsolationMutations",
@@ -29370,7 +29593,7 @@
         "TestCheckWorkflowRequiresStagingTapTrust",
         "TestCheckPinnedGitHubKnownHosts",
         "TestCheckRecoveryPolicyRequiresTrustedReleaseTag",
-        "TestCheckRecoveryPolicyRequiresExactFourPathOverlay",
+        "TestCheckRecoveryPolicyRequiresExactThreePathOverlay",
         "TestCheckRecoveryPolicyRequiresWindowsClangLLDForWholeBuildJob",
         "TestCheckRecoveryPolicyRequiresDispatchFromDefaultBranch",
         "TestCheckRecoveryPolicyRejectsRecoveryTrustMutations",
@@ -29394,12 +29617,12 @@
         "TestCheckWorkflowRejectsBareAndFunctionSecretContextsOutsideExpectedSigningEnvironment",
         "TestCheckWorkflowAcceptsCanonicalBracketSigningExpressions"
       ],
-      "totalLines": 2053,
+      "totalLines": 2235,
       "hasStructuralAnalysis": true
     },
     "scripts/releaseworkflow/main.go": {
       "filePath": "scripts/releaseworkflow/main.go",
-      "contentHash": "acc641f9576c23de882461fa30a04a5b293f2391157293ae8a3deac03cdacbec",
+      "contentHash": "55e0bbab9b8559a70dc79432d99a755e0532567de3eb958d51a2b7b6bec837aa",
       "functions": [
         {
           "name": "main",
@@ -29540,7 +29763,7 @@
           ],
           "returnType": "error",
           "exported": false,
-          "lineCount": 21
+          "lineCount": 19
         },
         {
           "name": "requireOverlayQualitySequence",
@@ -30319,7 +30542,7 @@
     },
     "test/e2e/pixiv_binary_test.go": {
       "filePath": "test/e2e/pixiv_binary_test.go",
-      "contentHash": "d479e7809edbcf62fdb7ad7ed795041d46abec80b54bd15144b105c5fcfffc37",
+      "contentHash": "9fd9f46bb2f448fc86bfa28143cde7a5b8327742997917139c06562af2f60ac9",
       "functions": [
         {
           "name": "TestPixivBinaryBuildsFromCmdPixivAndPrintsHelp",
@@ -30343,7 +30566,7 @@
             "t"
           ],
           "exported": true,
-          "lineCount": 42
+          "lineCount": 45
         },
         {
           "name": "TestPixivBinaryMCPStdioListsLegacyAndSDKTools",
@@ -30375,7 +30598,184 @@
             "t"
           ],
           "exported": true,
-          "lineCount": 37
+          "lineCount": 39
+        },
+        {
+          "name": "TestResolveAuthenticatedCanaryAuth",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 31
+        },
+        {
+          "name": "TestLocalAuthCanaryEnvironmentRemovesRefreshTokenOverride",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 18
+        },
+        {
+          "name": "TestLocalAuthCanaryRejectsExternalBinary",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 13
+        },
+        {
+          "name": "TestRedactCanaryDiagnostic",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 32
+        },
+        {
+          "name": "TestLocalStoreCanaryFailureDiagnosticsOmitChildOutput",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 17
+        },
+        {
+          "name": "TestExplicitTokenCanaryFailureDiagnosticsRedactKnownToken",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 14
+        },
+        {
+          "name": "TestPixivBinaryAuthenticatedAppAPICanary",
+          "params": [
+            "t"
+          ],
+          "exported": true,
+          "lineCount": 69
+        },
+        {
+          "name": "resolveAuthenticatedCanaryAuth",
+          "params": [
+            "refreshToken",
+            "useLocalAuth"
+          ],
+          "returnType": "(authenticatedCanaryAuth, bool, error)",
+          "exported": false,
+          "lineCount": 15
+        },
+        {
+          "name": "validateLocalAuthCanaryBinary",
+          "params": [
+            "kind",
+            "externalBinary"
+          ],
+          "returnType": "error",
+          "exported": false,
+          "lineCount": 6
+        },
+        {
+          "name": "localAuthCanaryEnv",
+          "params": [],
+          "returnType": "[]string",
+          "exported": false,
+          "lineCount": 3
+        },
+        {
+          "name": "localAuthCanaryEnvFrom",
+          "params": [
+            "environ"
+          ],
+          "returnType": "[]string",
+          "exported": false,
+          "lineCount": 11
+        },
+        {
+          "name": "runPixivCanary",
+          "params": [
+            "t",
+            "repoRoot",
+            "binaryPath",
+            "env",
+            "auth"
+          ],
+          "returnType": "[]byte",
+          "exported": false,
+          "lineCount": 19
+        },
+        {
+          "name": "canaryCommandFailureSummary",
+          "params": [
+            "err"
+          ],
+          "returnType": "string",
+          "exported": false,
+          "lineCount": 7
+        },
+        {
+          "name": "canaryFailureDiagnostics",
+          "params": [
+            "auth",
+            "failure",
+            "stdout",
+            "stderr"
+          ],
+          "returnType": "string",
+          "exported": false,
+          "lineCount": 6
+        },
+        {
+          "name": "requireCanaryJSON",
+          "params": [
+            "t",
+            "body",
+            "auth",
+            "out"
+          ],
+          "exported": false,
+          "lineCount": 10
+        },
+        {
+          "name": "redactCanaryDiagnostic",
+          "params": [
+            "refreshToken",
+            "value"
+          ],
+          "returnType": "string",
+          "exported": false,
+          "lineCount": 11
+        },
+        {
+          "name": "requireCanaryVisibleJSONFields",
+          "params": [
+            "t",
+            "body",
+            "auth"
+          ],
+          "exported": false,
+          "lineCount": 12
+        },
+        {
+          "name": "requireCanaryJSONArrayField",
+          "params": [
+            "t",
+            "body",
+            "auth",
+            "field"
+          ],
+          "exported": false,
+          "lineCount": 14
+        },
+        {
+          "name": "requireNoCanaryContinuationFields",
+          "params": [
+            "t",
+            "body"
+          ],
+          "exported": false,
+          "lineCount": 9
         },
         {
           "name": "runPixiv",
@@ -30463,7 +30863,7 @@
           ],
           "returnType": "bool",
           "exported": false,
-          "lineCount": 11
+          "lineCount": 12
         },
         {
           "name": "testCommandContext",
@@ -30476,6 +30876,16 @@
         }
       ],
       "classes": [
+        {
+          "name": "authenticatedCanaryAuth",
+          "methods": [],
+          "properties": [
+            "kind",
+            "refreshToken"
+          ],
+          "exported": false,
+          "lineCount": 4
+        },
         {
           "name": "isolatedProcessEnv",
           "methods": [],
@@ -30514,6 +30924,18 @@
           ]
         },
         {
+          "source": "errors",
+          "specifiers": [
+            "errors"
+          ]
+        },
+        {
+          "source": "fmt",
+          "specifiers": [
+            "fmt"
+          ]
+        },
+        {
           "source": "os",
           "specifiers": [
             "os"
@@ -30532,9 +30954,21 @@
           ]
         },
         {
+          "source": "regexp",
+          "specifiers": [
+            "regexp"
+          ]
+        },
+        {
           "source": "runtime",
           "specifiers": [
             "runtime"
+          ]
+        },
+        {
+          "source": "slices",
+          "specifiers": [
+            "slices"
           ]
         },
         {
@@ -30575,9 +31009,16 @@
         "TestPixivBinaryMCPStdioListsLegacyAndSDKTools",
         "TestPixivBinaryUsesProvidedBinaryAndExpectedVersion",
         "TestPixivBinaryWebAPIFallbackReal",
-        "TestPixivBinaryRealAPISearchOptIn"
+        "TestPixivBinaryRealAPISearchOptIn",
+        "TestResolveAuthenticatedCanaryAuth",
+        "TestLocalAuthCanaryEnvironmentRemovesRefreshTokenOverride",
+        "TestLocalAuthCanaryRejectsExternalBinary",
+        "TestRedactCanaryDiagnostic",
+        "TestLocalStoreCanaryFailureDiagnosticsOmitChildOutput",
+        "TestExplicitTokenCanaryFailureDiagnosticsRedactKnownToken",
+        "TestPixivBinaryAuthenticatedAppAPICanary"
       ],
-      "totalLines": 462,
+      "totalLines": 841,
       "hasStructuralAnalysis": true
     },
     "test/e2e/version_binary_test.go": {
