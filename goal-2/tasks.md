@@ -4,12 +4,12 @@
 
 ## T01 — MCP refresh_token 保留真实打开错误
 
-- 状态：未完成
+- 状态：完成
 - 范围：P1-1。区分可判定的未设置 token 与 context、代理、配置、client factory 等失败；返回脱敏但真实的错误，不把所有失败伪装成缺 token。
 - 验收：MCP public tool 测试先 RED；无 token 提示保持兼容，其他错误包含安全真因且不泄露凭据；`go test ./internal/mcpserver -count=1`。
-- 实际：
-- 证据：
-- 风险/下一步：
+- 实际：`refresh_token` 现把 open/factory 错误分为取消、超时、public `*sdk.Error` 和未知初始化/配置/代理错误；未知错误固定脱敏，open 阶段的 unauthorized 不再冒充缺 token。只有 `client.Refresh` 返回 typed `sdk.ErrUnauthorized` 才保留原缺 token 提示；其他 public SDK 错误保留安全 code/operation/backend。成功输出、tool/structured shape、`IsError` 和日志语义不变；`CHANGELOG.md` 已记录用户可见修复。
+- 证据：第一条 public in-memory MCP tracer 在旧代码上实际 RED：factory canary error 得到 `错误：未设置 refresh token。请先使用 set_refresh_token 工具设置 token。`，而预期为脱敏 SDK 初始化失败；随后逐项完成 8 个 RED→GREEN 场景。`go test ./internal/mcpserver -run 'TestRefreshToken' -count=1 -v`、`go test ./internal/mcpserver -count=1`、`go test -race ./internal/mcpserver -run 'TestRefreshToken' -count=1`、`go vet ./internal/mcpserver`、gofmt 与 `git diff --check` 全部通过。proxy username/password、URL、token 和配置路径 canary 均未泄漏。独立 spec review APPROVE；quality review 无 Critical/Important，仅要求修正 changelog 的过度声称，修后窄复审 APPROVE。
+- 风险/下一步：受信任的自定义 `SDKClient` 若违反 public SDK 约定，在 `Refresh` 返回任意非 typed error，仍沿用既有详情文本；生产 public SDK 只返回安全 typed error，本 task 未扩大该兼容边界。下一任务 T02 只补 application 聚焦测试，不改变业务行为。
 
 ## T02 — 补齐 application token-sensitive 用例覆盖
 

@@ -456,6 +456,87 @@ func TestSetRefreshTokenRejectsCookieInput(t *testing.T) {
 	}
 }
 
+func TestRefreshTokenOpenFailuresAreSafeAndDiagnostic(t *testing.T) {
+	const sensitiveFactoryError = "proxy http://proxy-user:proxy-password@127.0.0.1:7890 token=secret-token config=/secret/config.json"
+	tests := []struct {
+		name string
+		err  error
+		want string
+	}{
+		{
+			name: "unknown factory or config error",
+			err:  errors.New(sensitiveFactoryError),
+			want: "Token刷新失败：无法初始化 Pixiv SDK。请检查本地配置或代理设置。",
+		},
+		{name: "canceled", err: context.Canceled, want: "Token刷新已取消。"},
+		{name: "deadline", err: context.DeadlineExceeded, want: "Token刷新失败：操作超时。"},
+		{
+			name: "public SDK unauthorized is not treated as missing token",
+			err:  &sdk.Error{Code: sdk.CodeUnauthorized, Operation: sdk.OperationSnapshot},
+			want: "Token刷新失败：无法初始化 Pixiv SDK：pixiv unauthorized operation=snapshot。",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			service := application.SDKService{NewClient: func(application.SDKClientRequest) (application.SDKClient, error) {
+				return nil, tt.err
+			}}
+			session, cleanup := newSDKTestSessionWithService(t, &fakeAPI{}, service)
+			defer cleanup()
+
+			result := callTool(t, session, "refresh_token", map[string]any{})
+			var out textOut
+			decodeStructured(t, result, &out)
+			if out.Text != tt.want {
+				t.Fatalf("refresh_token output=%q, want %q", out.Text, tt.want)
+			}
+			for _, secret := range []string{"proxy-user", "proxy-password", "127.0.0.1:7890", "secret-token", "/secret/config.json"} {
+				if strings.Contains(out.Text, secret) {
+					t.Fatalf("refresh_token output leaked %q: %q", secret, out.Text)
+				}
+			}
+		})
+	}
+}
+
+func TestRefreshTokenFailureClassification(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+		want string
+	}{
+		{
+			name: "unauthorized keeps missing token hint",
+			err:  &sdk.Error{Code: sdk.CodeUnauthorized, Operation: sdk.OperationRefresh},
+			want: "错误：未设置 refresh token。请先使用 set_refresh_token 工具设置 token。",
+		},
+		{name: "canceled", err: context.Canceled, want: "Token刷新已取消。"},
+		{name: "deadline", err: context.DeadlineExceeded, want: "Token刷新失败：操作超时。"},
+		{
+			name: "public SDK error keeps safe cause",
+			err: &sdk.Error{
+				Code:      sdk.CodeUpstreamUnavailable,
+				Operation: sdk.OperationRefresh,
+				Backend:   sdk.BackendOAuth,
+			},
+			want: "Token刷新失败：pixiv upstream_unavailable operation=refresh backend=oauth。",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			session, cleanup := newSDKTestSession(t, &failingRefreshSDKClient{err: tt.err})
+			defer cleanup()
+
+			result := callTool(t, session, "refresh_token", map[string]any{})
+			var out textOut
+			decodeStructured(t, result, &out)
+			if out.Text != tt.want {
+				t.Fatalf("refresh_token output=%q, want %q", out.Text, tt.want)
+			}
+		})
+	}
+}
+
 func TestSetRefreshTokenSuccessIncludesUserName(t *testing.T) {
 	session, closeSession := newSDKTestSession(t, &fakeSDKClient{userID: 1})
 	defer closeSession()
@@ -1272,6 +1353,15 @@ type fakeSDKClient struct {
 type failingMutationSDKClient struct {
 	fakeSDKClient
 	err error
+}
+
+type failingRefreshSDKClient struct {
+	fakeSDKClient
+	err error
+}
+
+func (f *failingRefreshSDKClient) Refresh(context.Context) (*sdk.Account, error) {
+	return nil, f.err
 }
 
 func (f *failingMutationSDKClient) AddBookmark(context.Context, sdk.AddBookmarkRequest) error {
