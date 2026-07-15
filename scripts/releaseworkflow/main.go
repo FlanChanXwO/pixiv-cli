@@ -403,12 +403,10 @@ test -z "$(git diff --name-only)"
 test -z "$(git diff --cached --name-only)"
 git archive --format=tar "$GITHUB_SHA" -- \
   .github/workflows/release.yml \
-  pixiv/account_external_test.go \
   scripts/releaseworkflow/main.go \
   scripts/releaseworkflow/main_test.go | tar -xf -
 test "$(git diff --name-only)" = "$(printf '%s\n' \
   .github/workflows/release.yml \
-  pixiv/account_external_test.go \
   scripts/releaseworkflow/main.go \
   scripts/releaseworkflow/main_test.go)"
 test -z "$(git diff --cached --name-only)"`

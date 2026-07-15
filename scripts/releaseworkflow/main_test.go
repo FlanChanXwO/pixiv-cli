@@ -473,8 +473,9 @@ func TestCheckRecoveryPolicyRequiresTrustedReleaseTag(t *testing.T) {
 	}
 }
 
-// v0.2.0 恢复只覆盖 tag 与默认分支之间实际变化的四个审计文件；生产源码仍只来自 tag。
-func TestCheckRecoveryPolicyRequiresExactFourPathOverlay(t *testing.T) {
+// v0.3.0 tag 已包含顶层 account external test；恢复只覆盖 tag 与默认分支之间
+// 实际变化的 workflow 及其 verifier，生产源码仍只来自 tag。
+func TestCheckRecoveryPolicyRequiresExactThreePathOverlay(t *testing.T) {
 	t.Parallel()
 
 	const commands = `set -euo pipefail
@@ -482,18 +483,15 @@ test -z "$(git diff --name-only)"
 test -z "$(git diff --cached --name-only)"
 git archive --format=tar "$GITHUB_SHA" -- \
   .github/workflows/release.yml \
-  pixiv/account_external_test.go \
   scripts/releaseworkflow/main.go \
   scripts/releaseworkflow/main_test.go | tar -xf -
 test "$(git diff --name-only)" = "$(printf '%s\n' \
   .github/workflows/release.yml \
-  pixiv/account_external_test.go \
   scripts/releaseworkflow/main.go \
   scripts/releaseworkflow/main_test.go)"
 test -z "$(git diff --cached --name-only)"`
 	paths := []string{
 		".github/workflows/release.yml",
-		"pixiv/account_external_test.go",
 		"scripts/releaseworkflow/main.go",
 		"scripts/releaseworkflow/main_test.go",
 	}
@@ -501,7 +499,7 @@ test -z "$(git diff --cached --name-only)"`
 	step := stepWithRun(t, jobNode(t, root, "build"), `git archive --format=tar "$GITHUB_SHA"`)
 	run := requireMappingValue(t, step, "run")
 	if run.Value != commands+"\n" {
-		t.Fatalf("recovery overlay command = %q, want exact four-path audited command", run.Value)
+		t.Fatalf("recovery overlay command = %q, want exact three-path audited command", run.Value)
 	}
 	if err := checkRecoveryPolicy(root); err != nil {
 		t.Fatalf("checked-in recovery policy rejected: %v", err)
@@ -518,11 +516,20 @@ test -z "$(git diff --cached --name-only)"`
 			}
 		})
 	}
-	t.Run("extra path added", func(t *testing.T) {
+	t.Run("account external test re-added", func(t *testing.T) {
 		root := releaseWorkflowRoot(t)
 		step := stepWithRun(t, jobNode(t, root, "build"), `git archive --format=tar "$GITHUB_SHA"`)
 		run := requireMappingValue(t, step, "run")
-		run.Value = strings.Replace(run.Value, "  scripts/releaseworkflow/main_test.go | tar -xf -", "  scripts/releaseworkflow/main_test.go \\\n  pkg/pixiv/other_test.go | tar -xf -", 1)
+		run.Value = strings.ReplaceAll(run.Value, "  scripts/releaseworkflow/main.go \\", "  pixiv/account_external_test.go \\\n  scripts/releaseworkflow/main.go \\")
+		if err := checkRecoveryPolicy(root); err == nil {
+			t.Fatal("release recovery policy accepted the redundant account test overlay")
+		}
+	})
+	t.Run("arbitrary fourth path added", func(t *testing.T) {
+		root := releaseWorkflowRoot(t)
+		step := stepWithRun(t, jobNode(t, root, "build"), `git archive --format=tar "$GITHUB_SHA"`)
+		run := requireMappingValue(t, step, "run")
+		run.Value = strings.ReplaceAll(run.Value, "  scripts/releaseworkflow/main.go \\", "  pkg/pixiv/other_test.go \\\n  scripts/releaseworkflow/main.go \\")
 		if err := checkRecoveryPolicy(root); err == nil {
 			t.Fatal("release recovery policy accepted an extra overlay path")
 		}
@@ -585,7 +592,8 @@ func TestCheckRecoveryPolicyRejectsRecoveryTrustMutations(t *testing.T) {
 		}},
 		{name: "overlay writes production source", mutate: func(t *testing.T, root *yaml.Node) {
 			step := stepWithRun(t, jobNode(t, root, "build"), `git archive --format=tar "$GITHUB_SHA"`)
-			replaceRunFragment(t, step, "pixiv/account_external_test.go", "pixiv/account.go")
+			run := requireMappingValue(t, step, "run")
+			run.Value = strings.ReplaceAll(run.Value, "  scripts/releaseworkflow/main.go \\", "  pixiv/account.go \\\n  scripts/releaseworkflow/main.go \\")
 		}},
 		{name: "production source switches to workflow sha", mutate: func(t *testing.T, root *yaml.Node) {
 			appendRunStep(t, jobNode(t, root, "build"), "Bypass immutable tag", `git checkout "$GITHUB_SHA"`)
