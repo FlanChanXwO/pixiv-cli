@@ -119,7 +119,6 @@ func (a app) accountLogin(cmd *cobra.Command, opts accountLoginOptions) error {
 	if err != nil {
 		return err
 	}
-	fmt.Fprintln(a.errOut, "Authorization code received; exchanging it for a refresh token.")
 
 	result, err := services.Login.Complete(ctx, loginFlow, application.LoginCompleteRequest{CallbackOrCode: callbackOrCode, UseAfterLogin: opts.useAfterLogin})
 	if err != nil {
@@ -130,13 +129,7 @@ func (a app) accountLogin(cmd *cobra.Command, opts accountLoginOptions) error {
 	if opts.jsonOut {
 		return a.printJSON(out)
 	}
-	fmt.Fprintf(a.out, "account uid:%d saved\n", out.UserID)
-	if out.Default {
-		fmt.Fprintf(a.out, "default uid: %d\n", out.UserID)
-	}
-	if out.Username != "" {
-		fmt.Fprintf(a.out, "username:%s\n", out.Username)
-	}
+	fmt.Fprintf(a.out, "登录成功（UID: %d）\n", out.UserID)
 	return nil
 }
 
@@ -299,12 +292,15 @@ func writeLoginForm(w http.ResponseWriter, loginURL string) {
 }
 
 func writeLoginResult(w http.ResponseWriter, err error) {
-	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	if err != nil {
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	_, _ = io.WriteString(w, "authorization code received; return to the CLI\n")
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	_, _ = io.WriteString(w, `<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><title>授权已收到</title></head>
+<body><p>已收到授权，正在回到 CLI 完成登录。</p></body></html>`)
 }
 
 func writeLoginRelayResult(w http.ResponseWriter) {

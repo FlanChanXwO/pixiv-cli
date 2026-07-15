@@ -149,6 +149,13 @@
 - 证据：规格审查发现并修复 `next_cursor`、`null` 数组和单类续页泄露三项问题，窄复审与质量审查均 APPROVE。`go test ./... -count=1`、`go test -race ./... -count=1`、`go vet ./...`、`pre-commit run --all-files`、release workflow/package/Homebrew fixture、releaseassets/releaseworkflow/platformsmokeworkflow/nativeevidence 测试及 Rust vendor/fmt/clippy 均通过。候选 `062e0a6` 以 `v0.3.0-rc.1` 编译，`PIXIV_E2E_BINARY`/`PIXIV_E2E_EXPECTED_VERSION` e2e 通过，并产出 `pixiv-cli_0.3.0-rc.1_darwin_arm64.tar.gz`；候选 channel 为 prerelease，`0.3.0` 为 stable。明确设置开关但未设置 token 时，canary 正确 skip，未发生网络访问。
 - 风险/下一步：本机没有显式独立 `PIXIV_E2E_REFRESH_TOKEN`，故尚未取得真实 App API wire 兼容性证据；不能把默认 skip 或本地 fixture 视为 canary 通过。2026-07-15 只读复核确认 `v0.2.0` 的公开 Release、六平台资产与 workflow `29307406643` 仍为 success，远端不存在 `v0.3.0` tag 或 Release。待调用者在受控环境显式注入独立测试 token（必要时 `PIXIV_E2E_PROXY`）后运行 canary；成功后再完成 T14 并进入不可变 `v0.3.0` 发布。
 
+## T14a — 修复 auth login 授权回调页与成功提示
+
+- 状态：完成
+- 实际：成功 loopback callback 现返回简洁 HTML，准确说明“已收到授权，正在回到 CLI 完成登录”；非 JSON 登录在 OAuth exchange 和保存账号成功后只输出一行 `登录成功（UID: …）`。JSON、错误和 Pixiv relay 行为保持不变。
+- 证据：TDD tracer 通过真实 CLI loopback callback 和 fake OAuth exchange 先复现旧纯文本/多行输出，再验证 HTML content type、授权码不回显、页面不称“登录成功”和最终单行输出。规格审查发现并修复了 callback HTML title 过早称登录成功的问题；质量审查要求补充 Unreleased changelog，窄复审均 APPROVE。`go test ./internal/cli -count=1`、`go test ./... -count=1`、`go vet ./...`、`gofmt` 与 `git diff --check` 均通过。
+- 风险/下一步：不读取认证文件、浏览器数据或真实 Pixiv；真实 App API canary 仍只接受显式 `PIXIV_E2E_REFRESH_TOKEN`，不会使用本地登录保存的 token。
+
 ## T15 — 创建并发布不可变 v0.3.0，验收 Release/Homebrew/更新
 
 - 状态：未完成

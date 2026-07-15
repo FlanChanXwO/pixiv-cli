@@ -22,6 +22,7 @@
 
 ### Fixed
 
+- `auth login` 的浏览器 callback 页现在明确提示“授权已收到、正在回到 CLI 完成登录”；非 JSON 的登录成功输出精简为单行。
 - 修复显式与自动更新检查未向 GitHub Releases API 发送项目识别性 `User-Agent` 而可能收到 HTTP 403 的兼容性问题。
 
 ### Security
