@@ -7,6 +7,8 @@
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-07-15
+
 ### Changed
 
 - Breaking: 公开 Go SDK 已迁移至 `github.com/FlanChanXwO/pixiv-cli/pixiv`；旧导入路径不保留兼容 package。
