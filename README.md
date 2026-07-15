@@ -6,7 +6,7 @@ Go 版 Pixiv 工具集：默认作为 `pixiv` CLI 使用，需要 MCP 时显式�
 
 源码按 CLI controller、application services、bootstrap、public SDK、config、Pixiv facade/protocol adapters、download、MCP server 分包；账号存储在 `internal/storage/auth`，基础工具按 `internal/utils/*` 子包组织。公开 SDK 是具体 `*pixiv.Client`，内部协议实现分为 `internal/pixiv/appapi`、`webapi`、`oauth`、`resource`。
 
-用户可感知变化记录在 [CHANGELOG.md](CHANGELOG.md)。SDK 契约见 [pixiv-sdk-interface.md](pixiv-sdk-interface.md)，架构边界见 [ADR 0009](docs/adr/0009-public-pixiv-sdk-and-caller-adapter.md)。
+用户可感知变化记录在 [CHANGELOG.md](CHANGELOG.md)。SDK 契约见 [docs/sdk.md](docs/sdk.md)，架构边界见 [ADR 0009](docs/adr/0009-public-pixiv-sdk-and-caller-adapter.md)。
 
 ## 安装与构建
 
@@ -81,7 +81,7 @@ result, err := client.SearchIllust(ctx, pixiv.SearchIllustRequest{Word: "初音�
 _ = result
 ```
 
-`NewClient` 只使用显式 transport/token/options，不读取本地状态；`OpenDefault` 每个公开操作读取一次当前 auth/config snapshot。调用方负责采集模式、budget、filter、cursor 持久化、入库、调度和自己的 HTTP API。完整模型、资源流、错误与分页契约见 [SDK 接口](pixiv-sdk-interface.md)。
+`NewClient` 只使用显式 transport/token/options，不读取本地状态；`OpenDefault` 每个公开操作读取一次当前 auth/config snapshot。调用方负责采集模式、budget、filter、cursor 持久化、入库、调度和自己的 HTTP API。完整模型、资源流、错误与分页契约见 [SDK 接口](docs/sdk.md)。
 
 ## 获取 refresh token
 
