@@ -31,8 +31,18 @@
 
 ## C01 — 集中检查 1（T01–T03）
 
-- 状态：未完成
+- 状态：已完成（发现 Important 修复项）
 - 检查：错误透明性、脱敏、MCP result/error observability、application coverage、全量 test/vet/race 聚焦、文档/changelog 是否同步。
+- 实际：集中复核 T01–T03 的 commit range、公开错误契约、MCP 结果/日志、application 测试边界、文档与跨层依赖。T01 open/factory、T02 public application tests、T03 typed transport 分类均符合各自验收；legacy MCP `IsError=false`/success log 的既知 observability 债仍按计划留给 T13。独立审计发现 1 个 Important：`client.Refresh` 返回非 context、非 unauthorized、非 `*sdk.Error` 的任意错误时，fallback 仍以 `%v` 写入 MCP 输出，可能泄露 proxy userinfo、完整 URL、token 或配置路径；这是 T01 脱敏范围内的遗漏，已插入 F01。
+- 证据：独立 checkpoint reviewer 逐项复核并以该 Important 暂拒 APPROVE；主线程源码复核确认 `internal/mcpserver/server.go` 的 unknown Refresh 分支仍格式化 raw error。`go test ./... -count=1`、`go vet ./...`、`go test -race ./internal/mcpserver ./internal/application ./internal/pixiv/protocol ./pixiv -count=1`、`go test ./internal/application -cover -count=1`（70.4%）、`sh scripts/build.sh`、开发 binary `version --json`、聚焦 refresh/transport tests、base..HEAD `git diff --check` 全部通过；CLI/MCP 未新增对协议子包的直接 import，未发现 debug residue，构建产物已清理且工作树恢复干净。
+- 风险/下一步：C01 的测试/构建门禁通过，但 unknown Refresh 原始错误泄露尚未关闭，因此不得把 T01–T03 组合标为无风险。下一轮先执行 F01 的 public MCP canary RED→GREEN，并经过 spec/quality review；T04 必须等 F01 关闭后再开始。
+
+## F01 — 关闭 C01 的 MCP Refresh unknown-error 泄露
+
+- 状态：未完成
+- 来源：C01 Important。`client.Refresh` 的 unknown raw error fallback 仍把 `%v` 暴露给 MCP 调用方。
+- 范围：只把非 context、非 typed unauthorized、非安全 `*sdk.Error` 的 Refresh 错误改为固定、可操作且脱敏的提示；不得改变 open/factory 分支、typed SDK 诊断、missing-token 兼容文案、成功输出、legacy structured/text shape、`IsError` 或日志语义。
+- 验收：public in-memory MCP test 以包含 proxy username/password、完整 URL、token、Cookie 和配置路径的 raw canary 实际 RED→GREEN；输出及日志均不含 canary；refresh 聚焦、mcpserver 全包、race、vet 与全仓测试通过；独立 spec/quality review APPROVE。
 - 实际：
 - 证据：
 - 风险/下一步：
