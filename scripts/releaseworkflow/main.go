@@ -21,15 +21,15 @@ const canonicalCheckoutAction = "actions/checkout@34e114876b0b11c390a56381ad16eb
 // （包括 bare、toJSON(secrets)、dot 和 bracket）都视为凭据引用，不能依赖具体访问语法。
 var secretReferencePattern = regexp.MustCompile(`(?is)\$\{\{[^}]*\bsecrets\b[^}]*\}\}`)
 
-// releaseMatrixTargets 将 runner、Go 平台、Rust target 和 release asset 名称绑为同一集合，
-// 防止任一字段的局部改动让六平台发布遗漏或错配。
+// releaseMatrixTargets 将 runner、Go 平台、Rust target、生成已提交 staticlib 的 Rust toolchain
+// 和 release asset 名称绑为同一集合，防止任一字段的局部改动让六平台发布遗漏或错配。
 var releaseMatrixTargets = map[string]struct{}{
-	"macos-15-intel|darwin|amd64|x86_64-apple-darwin|darwin-amd64|clang":                    {},
-	"macos-15|darwin|arm64|aarch64-apple-darwin|darwin-arm64|clang":                         {},
-	"ubuntu-24.04|linux|amd64|x86_64-unknown-linux-gnu|linux-amd64|gcc":                     {},
-	"ubuntu-24.04-arm|linux|arm64|aarch64-unknown-linux-gnu|linux-arm64|gcc":                {},
-	"windows-2025|windows|amd64|x86_64-pc-windows-msvc|windows-amd64|clang -fuse-ld=lld":    {},
-	"windows-11-arm|windows|arm64|aarch64-pc-windows-msvc|windows-arm64|clang -fuse-ld=lld": {},
+	"macos-15-intel|darwin|amd64|x86_64-apple-darwin|1.96.0|darwin-amd64|clang":                    {},
+	"macos-15|darwin|arm64|aarch64-apple-darwin|1.96.1|darwin-arm64|clang":                         {},
+	"ubuntu-24.04|linux|amd64|x86_64-unknown-linux-gnu|1.96.1|linux-amd64|gcc":                     {},
+	"ubuntu-24.04-arm|linux|arm64|aarch64-unknown-linux-gnu|1.96.1|linux-arm64|gcc":                {},
+	"windows-2025|windows|amd64|x86_64-pc-windows-msvc|1.96.0|windows-amd64|clang -fuse-ld=lld":    {},
+	"windows-11-arm|windows|arm64|aarch64-pc-windows-msvc|1.96.1|windows-arm64|clang -fuse-ld=lld": {},
 }
 
 // homebrewMatrixTargets 绑定四个 Homebrew 验证 runner 与其实际平台，避免仅在单一
@@ -46,6 +46,8 @@ const (
 	uploadArtifactAction   = "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02"
 	downloadArtifactAction = "actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093"
 	githubKnownHostsLine   = "github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl\n"
+	testRustInstallCommand = "rustup toolchain install '${{ matrix.rust_toolchain }}' --profile minimal --component 'clippy,rustfmt' --target '${{ matrix.rust_target }}' --no-self-update"
+	prodRustInstallCommand = "rustup toolchain install '${{ matrix.rust_toolchain }}' --profile minimal --target '${{ matrix.rust_target }}' --no-self-update"
 )
 
 func main() {
@@ -243,8 +245,8 @@ func checkRecoveryPolicy(root *yaml.Node) error {
 		return errors.New("workflow must have a build job for recovery policy")
 	}
 	buildEnv, ok := mappingValue(build, "env")
-	if !ok || requireOnlyMappingKeys(buildEnv, "CC", "GIT_CONFIG_COUNT", "GIT_CONFIG_KEY_0", "GIT_CONFIG_VALUE_0") != nil || requireScalar(buildEnv, "CC", "${{ matrix.cc }}") != nil || requireScalar(buildEnv, "GIT_CONFIG_COUNT", "1") != nil || requireScalar(buildEnv, "GIT_CONFIG_KEY_0", "core.autocrlf") != nil || requireScalar(buildEnv, "GIT_CONFIG_VALUE_0", "false") != nil {
-		return errors.New("build job must bind the audited compiler and immutable source byte checkout")
+	if !ok || requireOnlyMappingKeys(buildEnv, "CC", "RUSTUP_TOOLCHAIN", "GIT_CONFIG_COUNT", "GIT_CONFIG_KEY_0", "GIT_CONFIG_VALUE_0") != nil || requireScalar(buildEnv, "CC", "${{ matrix.cc }}") != nil || requireScalar(buildEnv, "RUSTUP_TOOLCHAIN", "${{ matrix.rust_toolchain }}") != nil || requireScalar(buildEnv, "GIT_CONFIG_COUNT", "1") != nil || requireScalar(buildEnv, "GIT_CONFIG_KEY_0", "core.autocrlf") != nil || requireScalar(buildEnv, "GIT_CONFIG_VALUE_0", "false") != nil {
+		return errors.New("build job must bind the audited compiler, Rust toolchain, and immutable source byte checkout")
 	}
 	matrix := mustMappingPath(build, "strategy", "matrix")
 	if matrix == nil {
@@ -349,7 +351,7 @@ func requireCanonicalBuildSteps(steps []*yaml.Node) error {
 		directory string
 	}{
 		{name: "Validate the exact immutable release source", command: `go run ./scripts/releaseassets validate --version "${RELEASE_TAG#v}"`},
-		{name: "Install the native Rust target", command: "rustup target add '${{ matrix.rust_target }}'"},
+		{name: "Install the pinned native Rust toolchain", command: testRustInstallCommand},
 		{name: "Check vendored Rust sources", command: "sh scripts/test-rust-vendor.sh"},
 		{name: "Check Rust formatting from vendored sources", command: "cargo fmt --check", directory: "internal/download/ugoira_rs"},
 		{name: "Lint vendored Rust sources", command: "cargo clippy --locked --offline --all-targets -- -D warnings", directory: "internal/download/ugoira_rs"},
@@ -722,8 +724,8 @@ func checkProductionBuildJob(job *yaml.Node) error {
 		return fmt.Errorf("build_production job: %w", err)
 	}
 	env, ok := mappingValue(job, "env")
-	if !ok || requireOnlyMappingKeys(env, "CC") != nil || requireScalar(env, "CC", "${{ matrix.cc }}") != nil {
-		return errors.New("build_production job must bind CC from the audited matrix")
+	if !ok || requireOnlyMappingKeys(env, "CC", "RUSTUP_TOOLCHAIN") != nil || requireScalar(env, "CC", "${{ matrix.cc }}") != nil || requireScalar(env, "RUSTUP_TOOLCHAIN", "${{ matrix.rust_toolchain }}") != nil {
+		return errors.New("build_production job must bind CC and the Rust toolchain from the audited release policy")
 	}
 	strategy, ok := mappingValue(job, "strategy")
 	if !ok || requireOnlyMappingKeys(strategy, "fail-fast", "matrix") != nil || requireScalar(strategy, "fail-fast", "false") != nil {
@@ -746,7 +748,7 @@ func checkProductionBuildJob(job *yaml.Node) error {
 	if err := requireCanonicalNamedRunStep(steps[2], "Validate the exact immutable production source", `go run ./scripts/releaseassets validate --version "${RELEASE_TAG#v}"`); err != nil {
 		return err
 	}
-	if err := requireCanonicalNamedRunStep(steps[3], "Install the native Rust target", "rustup target add '${{ matrix.rust_target }}'"); err != nil {
+	if err := requireCanonicalNamedRunStep(steps[3], "Install the pinned native Rust toolchain", prodRustInstallCommand); err != nil {
 		return err
 	}
 	if err := requireProductionRebuildStep(steps[4]); err != nil || requireScalar(steps[4], "name", "Rebuild the selected static library from the immutable tag") != nil {
@@ -895,11 +897,11 @@ func checkReleaseMatrix(matrix *yaml.Node) error {
 		if entry.Kind != yaml.MappingNode {
 			return errors.New("build matrix must contain exactly the six release targets")
 		}
-		if err := requireOnlyMappingKeys(entry, "runner", "goos", "goarch", "rust_target", "artifact", "cc"); err != nil {
+		if err := requireOnlyMappingKeys(entry, "runner", "goos", "goarch", "rust_target", "rust_toolchain", "artifact", "cc"); err != nil {
 			return errors.New("build matrix entries must contain only the canonical release target fields")
 		}
-		fields := make([]string, 0, 6)
-		for _, key := range []string{"runner", "goos", "goarch", "rust_target", "artifact", "cc"} {
+		fields := make([]string, 0, 7)
+		for _, key := range []string{"runner", "goos", "goarch", "rust_target", "rust_toolchain", "artifact", "cc"} {
 			value, ok := mappingValue(entry, key)
 			if !ok || value.Kind != yaml.ScalarNode {
 				return errors.New("build matrix must contain exactly the six release targets")

@@ -23,6 +23,10 @@ source 的关系保留给发布审计，需要可重算的 source digest、每�
   `staticlib/manifest.json` 必须同时记录 six target、path、SHA-256 与 Rust source digest。
 - `scripts/build-staticlibs.sh` 仅在同一份 source 成功取得全部六个真实库后写 manifest。单 target
   生成会使旧 manifest 失效，不能被误用为跨平台发布证明。
+- release workflow 必须把生成 committed staticlib 的 Rust toolchain 作为 target provenance 固定：
+  `x86_64-apple-darwin` 与 `x86_64-pc-windows-msvc` 使用 `1.96.0`，其余四个 release target 使用
+  `1.96.1`。test 与 production job 必须从同一受审计 matrix 选择版本，禁止使用可移动的 `stable`
+  或 runner 默认值；production 仍只 checkout immutable tag，toolchain pin 不构成源码 overlay。
 - Rust `target/` 始终是忽略的机器产物；已验证 staticlib 与 manifest 是可审计发布输入，不能忽略。
 - production ugoira 路径只使用 Rust encoder；`ffmpeg` 仅保留给显式启用的开发质量对照，不作为运行
   时 fallback。
@@ -38,5 +42,8 @@ source 的关系保留给发布审计，需要可重算的 source digest、每�
 - run `29192425899` 已取得六个真实 staticlib、同源 manifest 与每平台 GIF/APNG/cgo smoke 证据，
   并经 fail-closed consolidation 回填；source build 与 future exact-tag `go install` 会消费这些
   committed libraries。正式 Release 与安装验收仍由后续发布任务独立证明。
+- 上述 per-target pin 是当前六库及 v0.3.0 immutable-tag recovery 的实际 provenance。后续 Rust
+  升级必须从同一受审计 source 成套重建、链接并 smoke 验证六目标，同时更新 staticlib、manifest、
+  native evidence 与 release matrix；不能单独漂移某个 target 或用新编译器覆盖既有 tag 的 library。
 - Cargo `--locked --offline` 现在经 crate 内 source replacement 使用完整 vendor 闭包；空 Cargo cache
   的 metadata/build/test 与六 target 许可证检查证明 native Rust 输入不依赖开发机或 runner registry cache。
