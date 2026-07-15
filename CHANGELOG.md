@@ -10,6 +10,7 @@
 ### Added
 
 - 公开 Go SDK 的 `upstream_unavailable` 错误新增安全 `TransportKind` 分类，可区分 DNS、TLS、代理连接、拒绝连接、连接重置和无 typed 信号的未知传输失败；诊断仍不暴露 URL、主机、证书或凭据。
+- 公开 Go SDK 的本地 snapshot 错误新增安全 `LocalStateKind` 分类，可区分 auth/config 格式、权限、缺失、代理配置、账号身份不匹配、不可用和未知状态；`errors.Unwrap` 仅提供固定脱敏原因，缺失的可选 auth/config 文件仍按空状态正常加载。
 
 ### Fixed
 

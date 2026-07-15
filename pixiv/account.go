@@ -75,7 +75,7 @@ func (c *Client) ImportAccount(ctx context.Context, refreshToken string) (out *A
 		state.store.DefaultUserID = account.UserID
 	}
 	if err := auth.SaveAuthStore(state.authPath, state.store); err != nil {
-		return nil, localSnapshotError(OperationImportAccount, err)
+		return nil, localSnapshotError(OperationImportAccount, markLocalState(localStateStageAuth, err))
 	}
 	result := publicAccount(account, state.store.DefaultUserID)
 	return &result, nil
@@ -116,7 +116,7 @@ func (c *Client) SelectAccount(userID int64) (err error) {
 	}
 	state.store.DefaultUserID = userID
 	if err := auth.SaveAuthStore(state.authPath, state.store); err != nil {
-		return localSnapshotError(OperationSelectAccount, err)
+		return localSnapshotError(OperationSelectAccount, markLocalState(localStateStageAuth, err))
 	}
 	return nil
 }
@@ -138,7 +138,7 @@ func (c *Client) RemoveAccount(userID int64) (err error) {
 		return newUserError(CodeInvalidArgument, OperationRemoveAccount, "", false, 0, userID, errors.New("account does not exist"))
 	}
 	if err := auth.SaveAuthStore(state.authPath, state.store); err != nil {
-		return localSnapshotError(OperationRemoveAccount, err)
+		return localSnapshotError(OperationRemoveAccount, markLocalState(localStateStageAuth, err))
 	}
 	return nil
 }
@@ -253,11 +253,11 @@ func (c *Client) refreshStoredAccountFromState(ctx context.Context, operation Op
 		return nil, err
 	}
 	if updated.UserID != stored.UserID {
-		return nil, newUserError(CodeInvalidArgument, operation, BackendOAuth, false, 0, userID, errors.New("oauth identity does not match selected account"))
+		return nil, accountMismatchError(operation, userID)
 	}
 	state.store.Accounts[index] = updated
 	if err := auth.SaveAuthStore(state.authPath, state.store); err != nil {
-		return nil, localSnapshotError(operation, err)
+		return nil, localSnapshotError(operation, markLocalState(localStateStageAuth, err))
 	}
 	result := publicAccount(updated, state.store.DefaultUserID)
 	return &result, nil
@@ -300,7 +300,7 @@ func (c *Client) accountState(operation Operation, needsHTTP bool) (localSnapsho
 		}
 		httpClient, err := newHTTPClientForSnapshot(c.defaults.options, state.runtime.HTTPSProxy)
 		if err != nil {
-			return localSnapshot{}, nil, localSnapshotError(operation, err)
+			return localSnapshot{}, nil, localSnapshotError(operation, markLocalState(localStateStageProxy, err))
 		}
 		return state, httpClient, nil
 	}
@@ -309,7 +309,7 @@ func (c *Client) accountState(operation Operation, needsHTTP bool) (localSnapsho
 	}
 	store, err := auth.LoadAuthStore(c.authFilePath)
 	if err != nil {
-		return localSnapshot{}, nil, localSnapshotError(operation, err)
+		return localSnapshot{}, nil, localSnapshotError(operation, markLocalState(localStateStageAuth, err))
 	}
 	client := c.httpClient
 	if client == nil {
@@ -328,7 +328,7 @@ func (c *Client) GetConfig(alias string) (out ConfigValue, err error) {
 	}
 	state, err := config.LoadSettingsStateAt(path)
 	if err != nil {
-		return ConfigValue{}, localSnapshotError(OperationConfigGet, err)
+		return ConfigValue{}, localSnapshotError(OperationConfigGet, markLocalState(localStateStageConfig, err))
 	}
 	value, err := state.Effective(alias)
 	if err != nil {
@@ -350,7 +350,7 @@ func (c *Client) SetConfig(alias, raw string) (out ConfigValue, err error) {
 		return ConfigValue{}, newError(CodeInvalidArgument, OperationConfigSet, "", false, 0, 0, errors.New("config key or value is invalid"))
 	}
 	if err := config.SetConfigValue(path, alias, parsed); err != nil {
-		return ConfigValue{}, localSnapshotError(OperationConfigSet, err)
+		return ConfigValue{}, localSnapshotError(OperationConfigSet, markLocalState(localStateStageConfig, err))
 	}
 	return ConfigValue{Key: alias, Value: value.Text, Source: "file", HasValue: true}, nil
 }
@@ -368,7 +368,7 @@ func (c *Client) UnsetConfig(alias string) (out bool, err error) {
 		if _, ok := config.SettingSpecByAlias(alias); !ok {
 			return false, newError(CodeInvalidArgument, OperationConfigUnset, "", false, 0, 0, errors.New("config key is invalid"))
 		}
-		return false, localSnapshotError(OperationConfigUnset, err)
+		return false, localSnapshotError(OperationConfigUnset, markLocalState(localStateStageConfig, err))
 	}
 	return removed, nil
 }

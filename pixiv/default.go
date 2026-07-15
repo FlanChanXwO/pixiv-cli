@@ -3,8 +3,11 @@ package pixiv
 import (
 	"context"
 	"errors"
+	"io/fs"
+	"os"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/config"
@@ -23,6 +26,30 @@ type localSnapshot struct {
 	configPath string
 	runtime    config.RuntimeConfig
 	store      auth.AuthStore
+}
+
+type localStateStage string
+
+const (
+	localStateStagePath   localStateStage = "path"
+	localStateStageAuth   localStateStage = "auth"
+	localStateStageConfig localStateStage = "config"
+	localStateStageProxy  localStateStage = "proxy"
+)
+
+type localStateFailure struct {
+	stage localStateStage
+	err   error
+}
+
+func (e *localStateFailure) Error() string { return e.err.Error() }
+func (e *localStateFailure) Unwrap() error { return e.err }
+
+func markLocalState(stage localStateStage, err error) error {
+	if err == nil {
+		return nil
+	}
+	return &localStateFailure{stage: stage, err: err}
 }
 
 func (c *Client) operationClient(ctx context.Context, operation Operation) (*Client, error) {
@@ -45,7 +72,7 @@ func (d *defaultOptions) paths() (string, string, error) {
 		var err error
 		authPath, err = auth.AuthFilePath()
 		if err != nil {
-			return "", "", err
+			return "", "", markLocalState(localStateStagePath, err)
 		}
 	}
 	configPath := strings.TrimSpace(d.options.ConfigFilePath)
@@ -53,7 +80,7 @@ func (d *defaultOptions) paths() (string, string, error) {
 		var err error
 		configPath, err = config.ConfigFilePath()
 		if err != nil {
-			return "", "", err
+			return "", "", markLocalState(localStateStagePath, err)
 		}
 	}
 	return authPath, configPath, nil
@@ -66,15 +93,15 @@ func (d *defaultOptions) loadSnapshot() (localSnapshot, error) {
 	}
 	state, err := config.LoadSettingsStateAt(configPath)
 	if err != nil {
-		return localSnapshot{}, err
+		return localSnapshot{}, markLocalState(localStateStageConfig, err)
 	}
 	runtime, err := state.Runtime()
 	if err != nil {
-		return localSnapshot{}, err
+		return localSnapshot{}, markLocalState(localStateStageConfig, err)
 	}
 	store, err := auth.LoadAuthStore(authPath)
 	if err != nil {
-		return localSnapshot{}, err
+		return localSnapshot{}, markLocalState(localStateStageAuth, err)
 	}
 	return localSnapshot{authPath: authPath, configPath: configPath, runtime: runtime, store: store}, nil
 }
@@ -95,7 +122,7 @@ func (d *defaultOptions) snapshot(ctx context.Context, operation Operation) (*Cl
 	}
 	httpClient, err := newHTTPClientForSnapshot(d.options, snapshot.runtime.HTTPSProxy)
 	if err != nil {
-		return nil, localSnapshotError(operation, err)
+		return nil, localSnapshotError(operation, markLocalState(localStateStageProxy, err))
 	}
 	options := d.options
 	options.HTTPClient = httpClient
@@ -120,7 +147,7 @@ func (d *defaultOptions) snapshot(ctx context.Context, operation Operation) (*Cl
 	}
 	if selectedStored {
 		if oauthClient.UserID() != selectedUserID {
-			return nil, newUserError(CodeInvalidArgument, operation, BackendOAuth, false, 0, selectedUserID, errors.New("oauth identity does not match selected account"))
+			return nil, accountMismatchError(operation, selectedUserID)
 		}
 		index, stored, ok := snapshot.store.Get(selectedUserID)
 		if !ok {
@@ -132,7 +159,7 @@ func (d *defaultOptions) snapshot(ctx context.Context, operation Operation) (*Cl
 		}
 		snapshot.store.Accounts[index] = stored
 		if err := auth.SaveAuthStore(snapshot.authPath, snapshot.store); err != nil {
-			return nil, localSnapshotError(operation, err)
+			return nil, localSnapshotError(operation, markLocalState(localStateStageAuth, err))
 		}
 	}
 	options.AccessToken = oauthClient.AccessToken()
@@ -183,15 +210,15 @@ func (d *defaultOptions) resourceSnapshot(operation Operation) (*Client, error) 
 	}
 	settings, err := config.LoadSettingsStateAt(configPath)
 	if err != nil {
-		return nil, localSnapshotError(operation, err)
+		return nil, localSnapshotError(operation, markLocalState(localStateStageConfig, err))
 	}
 	runtime, err := settings.Runtime()
 	if err != nil {
-		return nil, localSnapshotError(operation, err)
+		return nil, localSnapshotError(operation, markLocalState(localStateStageConfig, err))
 	}
 	httpClient, err := newHTTPClientForSnapshot(d.options, runtime.HTTPSProxy)
 	if err != nil {
-		return nil, localSnapshotError(operation, err)
+		return nil, localSnapshotError(operation, markLocalState(localStateStageProxy, err))
 	}
 	options := d.options
 	options.AccessToken = ""
@@ -203,8 +230,58 @@ func (d *defaultOptions) resourceSnapshot(operation Operation) (*Client, error) 
 	return client, nil
 }
 
-func localSnapshotError(operation Operation, _ error) error {
-	return newError(CodeInvalidArgument, operation, "", false, 0, 0, errors.New("local authentication or configuration state is invalid"))
+func localSnapshotError(operation Operation, err error) error {
+	kind, cause := classifyLocalStateError(err)
+	mapped := newError(CodeInvalidArgument, operation, "", false, 0, 0, cause)
+	mapped.LocalStateKind = kind
+	return mapped
+}
+
+func accountMismatchError(operation Operation, userID int64) error {
+	mapped := newUserError(CodeInvalidArgument, operation, BackendOAuth, false, 0, userID, errors.New("oauth identity does not match selected account"))
+	mapped.LocalStateKind = LocalStateKindAccountMismatch
+	return mapped
+}
+
+func classifyLocalStateError(err error) (LocalStateKind, error) {
+	if errors.Is(err, fs.ErrPermission) {
+		return LocalStateKindPermissionDenied, errors.New("local state permission denied")
+	}
+	if errors.Is(err, fs.ErrNotExist) {
+		return LocalStateKindNotFound, errors.New("local state was not found")
+	}
+	var pathErr *fs.PathError
+	if errors.As(err, &pathErr) {
+		return LocalStateKindUnavailable, errors.New("local state is unavailable")
+	}
+	var linkErr *os.LinkError
+	if errors.As(err, &linkErr) {
+		return LocalStateKindUnavailable, errors.New("local state is unavailable")
+	}
+	var syscallErr *os.SyscallError
+	if errors.As(err, &syscallErr) {
+		return LocalStateKindUnavailable, errors.New("local state is unavailable")
+	}
+	// syscall.Errno 是标准库对操作系统 syscall 状态的 typed 表示；只匹配该
+	// 具体类型及其 wrapper，不能把普通业务 sentinel 误判为本地 I/O 失败。
+	var errno syscall.Errno
+	if errors.As(err, &errno) {
+		return LocalStateKindUnavailable, errors.New("local state is unavailable")
+	}
+	var failure *localStateFailure
+	if errors.As(err, &failure) {
+		switch failure.stage {
+		case localStateStageAuth:
+			return LocalStateKindAuthMalformed, errors.New("local authentication is malformed")
+		case localStateStageConfig:
+			return LocalStateKindConfigMalformed, errors.New("local configuration is malformed")
+		case localStateStageProxy:
+			return LocalStateKindInvalidProxy, errors.New("configured proxy URL is invalid")
+		case localStateStagePath:
+			return LocalStateKindUnavailable, errors.New("local state is unavailable")
+		}
+	}
+	return LocalStateKindUnknown, errors.New("local authentication or configuration state is invalid")
 }
 
 func mapOAuthError(err error, operation Operation) error {

@@ -49,12 +49,12 @@
 
 ## T04 — 分类本地 snapshot/auth/config 真因
 
-- 状态：未完成
+- 状态：已完成
 - 范围：P2-4。替换 `localSnapshotError(operation, _ error)` 的无差别抹除；保留文件不存在、权限、JSON/TOML 解析、代理 URL、账号不一致等安全分类，同时不暴露 token 或文件内容。
 - 验收：`OpenDefault` 公共操作测试覆盖代表性本地失败，operation/code/cause 可诊断且 secret-safe。
-- 实际：
-- 证据：
-- 风险/下一步：
+- 实际：公开 SDK 新增 additive `LocalStateKind` 与 `auth_malformed`、`config_malformed`、`permission_denied`、`not_found`、`invalid_proxy`、`account_mismatch`、`unavailable`、`unknown` 八个稳定子类；顶层 `CodeInvalidArgument`/sentinel、operation、backend、user ID 与 retryable 语义保持兼容。default/account/login 的 path、auth、config、proxy 边界使用私有 stage marker 保留分类上下文，公开错误只携带固定脱敏 cause；filesystem permission/not-exist 优先，其他 `PathError`、`LinkError`、`SyscallError` 与 wrapped `syscall.Errno` 归为 unavailable，解析/schema 错误仍按 auth/config malformed 分类。两处 OAuth identity mismatch 均保留 OAuth backend 与所选 user ID 并标为 account mismatch；Download operation remap 保留 kind。非法公开 kind 只输出 `unknown`，缺失的可选 auth/config 文件仍正常加载为空状态；SDK 文档与 `[Unreleased]` 已同步。
+- 证据：malformed config 首先因公开字段缺失实际 compile-RED，malformed auth 与 invalid proxy 先实际落入 unknown 后逐项 GREEN；account mismatch 原先 kind 为空、Download remap 原先丢 kind，均实际 RED→GREEN。质量审查进一步复现非 permission `LinkError`/`SyscallError`/wrapped errno 被误标 malformed，以及 hostile `https_proxy` 覆盖 fixture 并进入 OAuth transport；新增聚焦测试后全部 GREEN，invalid-proxy 用本地 OAuth atomic counter 证明请求数为 0，handler goroutine 也不再调用 `Fatal`。独立 spec review APPROVE；quality review 提出的两个 Important 和一个 Minor 经原实现代理修复后窄复审 APPROVE。主线程复验 T04 聚焦集、hostile lower/upper proxy 环境、`go test ./pixiv -count=1`、`go test -race ./pixiv -count=1`、`go vet ./pixiv`、Windows/Linux amd64 CGO-disabled 交叉编译、`go test ./... -count=1`、gofmt、pre-commit 配置存在性与 `git diff --check` 全部通过。
+- 风险/下一步：真实 filesystem permission 在跨平台 public 测试中不稳定，分类优先级使用标准库 typed synthetic error 验证；config/auth/proxy/mismatch 主路径由 public `OpenDefault`/账号操作覆盖。私有 marker 内部仍包装 raw error，但规格审查逐条确认所有生产调用路径在公开返回或日志前都经安全映射。下一任务 T05 只处理 CLI download composition root 与 bootstrap 纯逻辑测试。
 
 ## T05 — 统一 CLI 下载 composition root 并补 bootstrap 纯逻辑测试
 

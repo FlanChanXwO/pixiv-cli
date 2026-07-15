@@ -740,8 +740,16 @@ func TestOpenDefaultMissingSelectedUIDAndStoredMismatchNeverReachContent(t *test
 	client, _ := pixiv.OpenDefault(options)
 	_, err := client.IllustRecommended(context.Background(), pixiv.IllustRecommendedRequest{})
 	var typed *pixiv.Error
-	if !errors.As(err, &typed) || typed.UserID != 7 || typed.Operation != pixiv.OperationIllustRecommended || contentCalls.Load() != 0 {
+	if !errors.As(err, &typed) || typed.Code != pixiv.CodeInvalidArgument || typed.UserID != 7 || typed.Operation != pixiv.OperationIllustRecommended || typed.Backend != pixiv.BackendOAuth || typed.Retryable || typed.LocalStateKind != pixiv.LocalStateKindAccountMismatch || contentCalls.Load() != 0 {
 		t.Fatalf("mismatch err=%#v content=%d", err, contentCalls.Load())
+	}
+	if cause := errors.Unwrap(err); cause == nil || cause.Error() != "oauth identity does not match selected account" {
+		t.Fatalf("mismatch cause=%v", cause)
+	}
+	for _, rendered := range []string{err.Error(), errors.Unwrap(err).Error(), fmt.Sprintf("%+v", typed)} {
+		if strings.Contains(rendered, "stored-token") || strings.Contains(rendered, "wrong-rotated") || strings.Contains(rendered, authPath) {
+			t.Fatalf("mismatch secret leaked: %q", rendered)
+		}
 	}
 	body, readErr := os.ReadFile(authPath)
 	if readErr != nil || strings.Contains(string(body), "wrong-rotated") || !strings.Contains(string(body), "stored-token") {

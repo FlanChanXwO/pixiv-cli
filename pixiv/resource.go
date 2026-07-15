@@ -267,6 +267,7 @@ func resourceErrorForOperation(err error, operation Operation) error {
 	}
 	mapped := newError(typed.Code, operation, typed.Backend, typed.Retryable, typed.UpstreamStatus, 0, errors.Unwrap(typed))
 	mapped.TransportKind = typed.TransportKind
+	mapped.LocalStateKind = typed.LocalStateKind
 	return mapped
 }
 
