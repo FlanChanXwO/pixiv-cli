@@ -145,30 +145,30 @@ func (c *Client) UserDetail(ctx context.Context, userID int64) (*model.UserDetai
 	return &out, nil
 }
 
-func (c *Client) IllustRecommended(ctx context.Context, offset int) (*model.IllustList, error) {
+func (c *Client) IllustRecommended(ctx context.Context, offset int, continuationExists bool) (*model.IllustList, error) {
 	q := url.Values{}
-	setOffset(q, offset)
-	return c.getIllustList(ctx, protocol.AppIllustRecommended, q, "offset")
+	setRecommendationOffset(q, offset, continuationExists)
+	return c.getIllustListAllowingZeroOffset(ctx, protocol.AppIllustRecommended, q)
 }
 
 // MangaRecommended 使用插画推荐 catalog 的漫画筛选；Pixiv 没有独立 manga 推荐 endpoint。
-func (c *Client) MangaRecommended(ctx context.Context, offset int) (*model.IllustList, error) {
+func (c *Client) MangaRecommended(ctx context.Context, offset int, continuationExists bool) (*model.IllustList, error) {
 	q := url.Values{"content_type": {"manga"}}
-	setOffset(q, offset)
-	return c.getIllustList(ctx, protocol.AppIllustRecommended, q, "offset")
+	setRecommendationOffset(q, offset, continuationExists)
+	return c.getIllustListAllowingZeroOffset(ctx, protocol.AppIllustRecommended, q)
 }
 
 // NovelRecommended 返回小说推荐的单个 App API 批次。
-func (c *Client) NovelRecommended(ctx context.Context, offset int) (*model.NovelList, error) {
+func (c *Client) NovelRecommended(ctx context.Context, offset int, continuationExists bool) (*model.NovelList, error) {
 	q := url.Values{}
-	setOffset(q, offset)
+	setRecommendationOffset(q, offset, continuationExists)
 	return c.getNovelList(ctx, protocol.AppNovelRecommended, q)
 }
 
 // UserRecommended 返回作者推荐及其可用作品预览的单个 App API 批次。
-func (c *Client) UserRecommended(ctx context.Context, offset int) (*model.RecommendedUserList, error) {
+func (c *Client) UserRecommended(ctx context.Context, offset int, continuationExists bool) (*model.RecommendedUserList, error) {
 	q := url.Values{}
-	setOffset(q, offset)
+	setRecommendationOffset(q, offset, continuationExists)
 	return c.getRecommendedUserList(ctx, protocol.AppUserRecommended, q)
 }
 
@@ -218,6 +218,14 @@ func (c *Client) UserFollowing(ctx context.Context, userID int64, restrict strin
 }
 
 func (c *Client) getIllustList(ctx context.Context, path string, query url.Values, continuationKey string) (*model.IllustList, error) {
+	return c.getIllustListWithContinuationPolicy(ctx, path, query, continuationKey, positiveContinuation)
+}
+
+func (c *Client) getIllustListAllowingZeroOffset(ctx context.Context, path string, query url.Values) (*model.IllustList, error) {
+	return c.getIllustListWithContinuationPolicy(ctx, path, query, "offset", recommendationOffsetContinuation)
+}
+
+func (c *Client) getIllustListWithContinuationPolicy(ctx context.Context, path string, query url.Values, continuationKey string, policy continuationPolicy) (*model.IllustList, error) {
 	var raw illustListDTO
 	if err := c.getJSONWithRetry(ctx, path, query, &raw); err != nil {
 		return nil, err
@@ -231,7 +239,7 @@ func (c *Client) getIllustList(ctx context.Context, path string, query url.Value
 		}
 	}
 	out := mapIllustList(raw)
-	if err := applyListContinuation(raw.NextURL, continuationKey, &out); err != nil {
+	if err := applyListContinuation(raw.NextURL, continuationKey, policy, &out); err != nil {
 		return nil, err
 	}
 	return &out, nil
@@ -282,7 +290,7 @@ func (c *Client) getNovelList(ctx context.Context, path string, query url.Values
 		if *raw.NextURL == "" {
 			return nil, ErrMalformedResponse
 		}
-		value, err := continuationValue(*raw.NextURL, "offset")
+		value, err := continuationValueWithPolicy(*raw.NextURL, "offset", recommendationOffsetContinuation)
 		if err != nil {
 			return nil, err
 		}
@@ -319,7 +327,7 @@ func (c *Client) getRecommendedUserList(ctx context.Context, path string, query 
 		if *raw.NextURL == "" {
 			return nil, ErrMalformedResponse
 		}
-		value, err := continuationValue(*raw.NextURL, "offset")
+		value, err := continuationValueWithPolicy(*raw.NextURL, "offset", recommendationOffsetContinuation)
 		if err != nil {
 			return nil, err
 		}
@@ -328,14 +336,14 @@ func (c *Client) getRecommendedUserList(ctx context.Context, path string, query 
 	return &out, nil
 }
 
-func applyListContinuation(rawURL *string, key string, out *model.IllustList) error {
+func applyListContinuation(rawURL *string, key string, policy continuationPolicy, out *model.IllustList) error {
 	if rawURL == nil {
 		return nil
 	}
 	if *rawURL == "" {
 		return ErrMalformedResponse
 	}
-	value, err := continuationValue(*rawURL, key)
+	value, err := continuationValueWithPolicy(*rawURL, key, policy)
 	if err != nil {
 		return err
 	}
@@ -350,6 +358,17 @@ func applyListContinuation(rawURL *string, key string, out *model.IllustList) er
 
 // continuationValue 只提取已知数值参数；next_url 永不成为后续请求目标。
 func continuationValue(rawURL, key string) (int64, error) {
+	return continuationValueWithPolicy(rawURL, key, positiveContinuation)
+}
+
+type continuationPolicy uint8
+
+const (
+	positiveContinuation continuationPolicy = iota
+	recommendationOffsetContinuation
+)
+
+func continuationValueWithPolicy(rawURL, key string, policy continuationPolicy) (int64, error) {
 	parsed, err := url.Parse(rawURL)
 	if err != nil {
 		return 0, ErrMalformedResponse
@@ -359,7 +378,7 @@ func continuationValue(rawURL, key string) (int64, error) {
 		return 0, ErrMalformedResponse
 	}
 	value, err := strconv.ParseInt(values.Get(key), 10, 64)
-	if err != nil || value <= 0 {
+	if err != nil || value < 0 || value == 0 && !(policy == recommendationOffsetContinuation && key == "offset") {
 		return 0, ErrMalformedResponse
 	}
 	if key == "offset" && int64(int(value)) != value {
@@ -549,4 +568,12 @@ func setOffset(q url.Values, offset int) {
 	if offset > 0 {
 		q.Set("offset", fmt.Sprint(offset))
 	}
+}
+
+func setRecommendationOffset(q url.Values, offset int, continuationExists bool) {
+	if continuationExists {
+		q.Set("offset", fmt.Sprint(offset))
+		return
+	}
+	setOffset(q, offset)
 }

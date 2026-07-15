@@ -22,6 +22,7 @@
 
 ### Fixed
 
+- 修复真实 App API 四类推荐的 `next_url` 返回 `offset=0` 时被误判为 malformed 的问题；opaque cursor 继续保持种类、查询与账号来源隔离。
 - 修复 App API 用户详情把 `profile_publicity` 的 `public`/`private` wire 值误判为 malformed 的问题；公开 SDK 继续稳定输出 bool。
 - `auth login` 的浏览器 callback 页现在明确提示“授权已收到、正在回到 CLI 完成登录”；非 JSON 的登录成功输出精简为单行。
 - 默认日志级别改为 `warn`，避免普通 CLI 成功命令把 INFO 操作诊断写入 stderr；显式 `info` 配置和环境覆盖保持不变。

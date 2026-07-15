@@ -150,7 +150,7 @@ func (c *Client) IllustRecommended(ctx context.Context, request IllustRecommende
 	if err := c.requireRoute(OperationIllustRecommended, routeApp, 0, 0); err != nil {
 		return nil, err
 	}
-	list, err := c.app.IllustRecommended(ctx, offset)
+	list, err := c.app.IllustRecommended(ctx, offset, request.Cursor != "")
 	if err != nil {
 		return nil, mapAppOperationError(err, OperationIllustRecommended, 0)
 	}
@@ -174,7 +174,7 @@ func (c *Client) MangaRecommended(ctx context.Context, request IllustRecommended
 	if err := c.requireRoute(OperationMangaRecommended, routeApp, 0, 0); err != nil {
 		return nil, err
 	}
-	list, err := c.app.MangaRecommended(ctx, offset)
+	list, err := c.app.MangaRecommended(ctx, offset, request.Cursor != "")
 	if err != nil {
 		return nil, mapAppOperationError(err, OperationMangaRecommended, 0)
 	}
@@ -198,7 +198,7 @@ func (c *Client) NovelRecommended(ctx context.Context, request NovelRecommendedR
 	if err := c.requireRoute(OperationNovelRecommended, routeApp, 0, 0); err != nil {
 		return nil, err
 	}
-	list, err := c.app.NovelRecommended(ctx, offset)
+	list, err := c.app.NovelRecommended(ctx, offset, request.Cursor != "")
 	if err != nil {
 		return nil, mapAppOperationError(err, OperationNovelRecommended, 0)
 	}
@@ -222,7 +222,7 @@ func (c *Client) UserRecommended(ctx context.Context, request UserRecommendedReq
 	if err := c.requireRoute(OperationUserRecommended, routeApp, 0, 0); err != nil {
 		return nil, err
 	}
-	list, err := c.app.UserRecommended(ctx, offset)
+	list, err := c.app.UserRecommended(ctx, offset, request.Cursor != "")
 	if err != nil {
 		return nil, mapAppOperationError(err, OperationUserRecommended, 0)
 	}
