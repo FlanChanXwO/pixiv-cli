@@ -158,14 +158,14 @@
 
 ## T15 — 创建并发布不可变 v0.3.0，验收 Release/Homebrew/更新
 
-- 状态：未完成
-- 实际：
-- 证据：
-- 风险/下一步：
+- 状态：完成
+- 实际：从已验收候选创建 annotated `v0.3.0`，经 PR #7 合入正式 release notes 后保持 tag 不可变。首次 tag run `29396309287` 的两个 Linux production 重建因 runner 默认 Rust 从 `1.96.1` 漂移到 `1.97.0` 而被 byte-for-byte 门禁拒绝；PR #8 将六个 staticlib 的真实 compiler provenance 按 target 固定（Darwin/Windows amd64 为 `1.96.0`，其余四目标为 `1.96.1`）。首次 main recovery run `29399903383` 又证明旧 exact-four test overlay 与 v0.3.0 tag 的实际差异不符；PR #9 将 allowlist 收敛为仅 workflow 与 verifier 三路径。最终从受审计 main fresh dispatch 同一 tag，经两次 protected Environment 审批，正式发布 v0.3.0 并部署 stable Homebrew formula；未移动 tag、替换 tag staticlib 或放宽 production diff。
+- 证据：annotated tag object 仍为 `25196141ca74949b6a8c2122dc34608db910dbfb`，解引用 commit 仍为 `ce1c79f3e929bb9fd2d3151663820fb57ccd9258` 且为 main 祖先。最终 run `29405907141` 的 validate、六个 test/build、六个 production staticlib byte rebuild、source trust、签名发布、formula render、四个平台 Homebrew verify 与 tap deploy 全部 success。公开 Release `v0.3.0` 为 non-draft/non-prerelease，含六个平台 archive 与 `checksums.{txt,json}` 共 8 个资产。tap commit `8938c466cb4460a1209e3f1963cee9b6de25af22` 将 `pixiv-cli` formula 更新为 `0.3.0`，四个平台 URL/SHA 指向该 Release。隔离 HOME/cache 的当前 updater 先从模拟 `v0.2.0` 检查到 stable `v0.3.0`，再以 production 内置 Ed25519 trust root 验证真实 `checksums.json`、archive SHA 与版本并原子替换临时 binary；更新后 `version --json` 返回 `v0.3.0`/`ce1c79f...`，再次检查返回 latest v0.3.0、`update_available=false`。PR #8/#9 的本地全量测试、race、vet、pre-commit、workflow policy、六平台 CI 及独立规格/质量审查均通过。
+- 风险/下一步：当前 recovery 的 per-target Rust pin 是 v0.3.0 六库的历史 provenance；后续版本应统一工具链成套重建六库，并把 rustc commit/LLVM identity 纳入 manifest/native evidence，避免多处重复维护。GitHub runner 提示 pinned Actions 的 Node 20 runtime 将被强制切换 Node 24，属非阻断后续维护项。下一任务 C05 对目标全部显式要求、代码/文档/发布外部状态作逐项终审。
 
 ## C05 — 终审
 
-- 状态：未完成
-- 实际：
-- 证据：
-- 风险/下一步：
+- 状态：完成
+- 实际：逐项终审 v0.3.0 目标、实现、公开契约、文档、知识图谱与外部发布状态。独立功能审计最初发现当前稳定版本、SDK/旧服务边界、图谱快照和真实 canary 证据四类文档/证据偏差；已统一修正为 v0.3.0 与顶层 `pixiv` public SDK 单链，移除不存在的 `ArtworkService`/`DownloadService` 描述，重建代码与文档图谱，并用本地受限认证重新跑通四类真实推荐。独立供应链审计与两份图谱复核均无阻断发现。
+- 证据：本地 `go test ./... -count=1`、`go test -race ./... -count=1`、`go vet ./...`、`sh scripts/test-release-workflow.sh`、`sh scripts/test-rust-vendor.sh`、`pre-commit run --all-files` 和 `git diff --check` 全部通过；`PIXIV_E2E_REAL_API=1 PIXIV_E2E_USE_LOCAL_AUTH=1 go test ./test/e2e -run '^TestPixivBinaryAuthenticatedAppAPICanary$' -count=1 -v` 的 illust/manga/novel/user 四个子测试全部通过且未输出 token。代码图谱覆盖 212 个文件、1820 节点、4139 条边，文档图谱为 40 节点、20 条边、4 个完整分层和 6 步导览；两者 commit、指纹、边引用、分层与关键 claim 均经独立只读复核 APPROVED。远端 annotated `v0.3.0` 仍解引用 `ce1c79f3...`，最终 workflow `29405907141` 的 21 个 job 全部 success；公开 Release、8 个资产、签名/checksum、六平台 production rebuild、tap `8938c46...`、四平台 formula SHA/URL 与真实 updater 升级/复查均已验收。
+- 风险/下一步：目标已完成，无阻断项。后续版本宜统一 Rust 工具链重建六个 staticlib，并把 rustc commit/LLVM identity 纳入 provenance manifest；同时跟进 GitHub Actions Node 20 到 Node 24 的 runtime 迁移。Pixiv 上游接口仍可能变化，现有协议 adapter、稳定公开模型与 opt-in 真实 canary 用于将迭代影响限制在内部边界。

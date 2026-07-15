@@ -26,7 +26,7 @@ Do not suggest package-manager, frontend, database, Docker, or release commands 
 ## Guardrails
 
 - Keep `internal/cli` as controller code; put use-case orchestration in `internal/application` and production wiring in `internal/bootstrap`.
-- CLI/MCP should depend on `internal/pixiv` facade rather than reaching into `internal/pixiv/api` or `internal/pixiv/web` without a clear package-level reason.
+- CLI/MCP Pixiv capabilities should use the top-level `pixiv` public SDK through `internal/application.SDKService`; do not import `internal/pixiv/appapi`, `webapi`, `oauth`, or `resource` protocol adapters directly.
 - MCP tool changes must update focused tests and `docs/mcp-tools.md`; update `README.md` or `CHANGELOG.md` when user-visible behavior changes.
 - Do not print refresh tokens or hide authentication, network, Pixiv API, or filesystem errors behind empty success results.
 - Do not add arbitrary truncation, retry limits, item caps, timeout behavior, or silent fallback without evidence and documentation.

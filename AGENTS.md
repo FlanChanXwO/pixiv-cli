@@ -48,7 +48,7 @@ PIXIV_E2E_WEB_API=1 PIXIV_WEB_API_PROXY=http://127.0.0.1:7890 go test ./test/e2e
 各包职责描述见代码图谱 `layers` 和 `docs/architecture.md`；以下是不可违反的规则：
 
 - `cmd/pixiv` 只委托 `internal/cli`；`internal/cli` 是 thin controller，业务用例在 `internal/application`，生产组装只在 `internal/bootstrap`。
-- CLI/MCP 只通过 `internal/pixiv` facade 使用 Pixiv 能力，不直连 `internal/pixiv/api` 或 `internal/pixiv/web` 子包。
+- CLI/MCP 的 Pixiv 能力只经 `internal/application.SDKService` 调用顶层 `pixiv` public SDK；不得直连 `internal/pixiv/appapi`、`webapi`、`oauth` 或 `resource` 协议适配包。
 - MCP tool 注册和输入/输出适配在 `internal/mcpserver`；stdio runtime 由 `internal/bootstrap` 启动。
 - `internal/utils/*` 保持协议无关；`internal/common/constants` 只放跨包基础设施常量。
 

@@ -1,22 +1,5 @@
 {
-  "name": "pixiv-cli",
-  "description": "Go 版 Pixiv CLI、MCP stdio server 与公开 pixiv SDK；以单一公开调用链封装 Pixiv App API、受限匿名 Web fallback、认证、下载和更新能力。",
-  "languages": [
-    "com-known-hosts",
-    "go",
-    "json",
-    "markdown",
-    "mod",
-    "rust",
-    "shell",
-    "sum",
-    "tmpl",
-    "toml",
-    "txt",
-    "unknown",
-    "yaml"
-  ],
-  "frameworks": [],
+  "scriptCompleted": true,
   "files": [
     {
       "path": ".agents/skills/pixiv-commit-msg/SKILL.md",
@@ -75,7 +58,7 @@
     {
       "path": ".github/workflows/release.yml",
       "language": "yaml",
-      "sizeLines": 580,
+      "sizeLines": 592,
       "fileCategory": "infra"
     },
     {
@@ -93,7 +76,7 @@
     {
       "path": "CHANGELOG.md",
       "language": "markdown",
-      "sizeLines": 143,
+      "sizeLines": 149,
       "fileCategory": "docs"
     },
     {
@@ -117,7 +100,7 @@
     {
       "path": "docs/adr/0001-cli-thin-controller-and-bootstrap.md",
       "language": "markdown",
-      "sizeLines": 47,
+      "sizeLines": 46,
       "fileCategory": "docs"
     },
     {
@@ -153,7 +136,7 @@
     {
       "path": "docs/adr/0007-platform-staticlibs-for-supported-source-builds.md",
       "language": "markdown",
-      "sizeLines": 42,
+      "sizeLines": 49,
       "fileCategory": "docs"
     },
     {
@@ -189,13 +172,13 @@
     {
       "path": "docs/architecture.md",
       "language": "markdown",
-      "sizeLines": 241,
+      "sizeLines": 239,
       "fileCategory": "docs"
     },
     {
       "path": "docs/development.md",
       "language": "markdown",
-      "sizeLines": 408,
+      "sizeLines": 431,
       "fileCategory": "docs"
     },
     {
@@ -237,7 +220,7 @@
     {
       "path": "goal-1/tasks.md",
       "language": "markdown",
-      "sizeLines": 164,
+      "sizeLines": 171,
       "fileCategory": "docs"
     },
     {
@@ -327,13 +310,13 @@
     {
       "path": "internal/cli/account_login.go",
       "language": "go",
-      "sizeLines": 677,
+      "sizeLines": 673,
       "fileCategory": "code"
     },
     {
       "path": "internal/cli/account_test.go",
       "language": "go",
-      "sizeLines": 1190,
+      "sizeLines": 1199,
       "fileCategory": "code"
     },
     {
@@ -351,7 +334,7 @@
     {
       "path": "internal/cli/auto_update_test.go",
       "language": "go",
-      "sizeLines": 275,
+      "sizeLines": 279,
       "fileCategory": "code"
     },
     {
@@ -447,7 +430,7 @@
     {
       "path": "internal/config/logger_test.go",
       "language": "go",
-      "sizeLines": 62,
+      "sizeLines": 148,
       "fileCategory": "code"
     },
     {
@@ -627,31 +610,31 @@
     {
       "path": "internal/pixiv/appapi/client_test.go",
       "language": "go",
-      "sizeLines": 140,
+      "sizeLines": 216,
       "fileCategory": "code"
     },
     {
       "path": "internal/pixiv/appapi/client.go",
       "language": "go",
-      "sizeLines": 552,
+      "sizeLines": 579,
       "fileCategory": "code"
     },
     {
       "path": "internal/pixiv/appapi/dto.go",
       "language": "go",
-      "sizeLines": 215,
+      "sizeLines": 261,
       "fileCategory": "code"
     },
     {
       "path": "internal/pixiv/appapi/mapper_test.go",
       "language": "go",
-      "sizeLines": 80,
+      "sizeLines": 82,
       "fileCategory": "code"
     },
     {
       "path": "internal/pixiv/appapi/mapper.go",
       "language": "go",
-      "sizeLines": 180,
+      "sizeLines": 183,
       "fileCategory": "code"
     },
     {
@@ -1017,7 +1000,7 @@
     {
       "path": "pixiv/cursor.go",
       "language": "go",
-      "sizeLines": 85,
+      "sizeLines": 97,
       "fileCategory": "code"
     },
     {
@@ -1041,7 +1024,7 @@
     {
       "path": "pixiv/lists_external_test.go",
       "language": "go",
-      "sizeLines": 1533,
+      "sizeLines": 1742,
       "fileCategory": "code"
     },
     {
@@ -1209,7 +1192,7 @@
     {
       "path": "scripts/releaseworkflow/main_test.go",
       "language": "go",
-      "sizeLines": 2052,
+      "sizeLines": 2234,
       "fileCategory": "code"
     },
     {
@@ -1275,7 +1258,7 @@
     {
       "path": "test/e2e/pixiv_binary_test.go",
       "language": "go",
-      "sizeLines": 461,
+      "sizeLines": 840,
       "fileCategory": "code"
     },
     {
@@ -1294,6 +1277,31 @@
   "totalFiles": 212,
   "filteredByIgnore": 200,
   "estimatedComplexity": "large",
+  "stats": {
+    "filesScanned": 212,
+    "byCategory": {
+      "docs": 34,
+      "code": 160,
+      "infra": 4,
+      "config": 6,
+      "script": 8
+    },
+    "byLanguage": {
+      "markdown": 33,
+      "unknown": 1,
+      "yaml": 5,
+      "go": 154,
+      "mod": 1,
+      "sum": 1,
+      "txt": 1,
+      "toml": 2,
+      "rust": 2,
+      "json": 1,
+      "shell": 8,
+      "com-known-hosts": 1,
+      "tmpl": 2
+    }
+  },
   "importMap": {
     ".agents/skills/pixiv-commit-msg/SKILL.md": [],
     ".agents/skills/pixiv-docs/SKILL.md": [],

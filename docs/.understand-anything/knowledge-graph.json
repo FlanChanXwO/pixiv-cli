@@ -2,16 +2,16 @@
   "version": "1.0.0",
   "kind": "knowledge",
   "project": {
-    "name": "Pixiv CLI 文档",
+    "name": "Pixiv CLI \u6587\u6863",
     "languages": [
       "markdown"
     ],
     "frameworks": [
       "karpathy-wiki"
     ],
-    "description": "Knowledge graph for Pixiv CLI 文档",
-    "analyzedAt": "2026-07-14T17:41:28.216Z",
-    "gitCommitHash": "446f5239747506b059db33a1bd84c66e08b38f89"
+    "description": "Knowledge graph for Pixiv CLI \u6587\u6863",
+    "analyzedAt": "2026-07-15T11:08:25.301810+00:00",
+    "gitCommitHash": "8d1561cee88a54ff2f929ed323053c43ce5554be"
   },
   "nodes": [
     {
@@ -19,14 +19,14 @@
       "type": "article",
       "name": "ADR 0001: CLI Thin Controller And Bootstrap",
       "filePath": "adr/0001-cli-thin-controller-and-bootstrap.md",
-      "summary": "Accepted.",
+      "summary": "Accepted\uff1b\u5185\u5bb9\u67e5\u8be2\u4e0e\u4e0b\u8f7d seam \u5df2\u7531 [ADR 0009](0009-public-pixiv-sdk-and-caller-adapter.md) \u7684 public SDK \u51b3\u7b56\u53d6\u4ee3\u3002",
       "tags": [
         "adr"
       ],
       "complexity": "simple",
       "knowledgeMeta": {
         "wikilinks": [],
-        "content": "# ADR 0001: CLI Thin Controller And Bootstrap\n\n## Status\n\nAccepted.\n\n## Context\n\n`internal/cli` originally owned Cobra command wiring, prompts, output formatting, account storage mutation, config reads/writes, Pixiv client construction, download manager construction, OAuth token exchange, and MCP runtime wiring. That made the directory feel like both frontend controller and application runtime.\n\nThe project needs a clearer internal structure without changing CLI/MCP behavior.\n\n## Decision\n\n- Keep `internal/cli` as the CLI controller layer:\n  - Cobra command tree, flags and positional arguments.\n  - TTY prompts and loopback browser OAuth receiver.\n  - Text/JSON presenters and process exit handling.\n- Add `internal/application` for use cases:\n  - `AccountService`\n  - `ConfigService`\n  - `ArtworkService`\n  - `DownloadService`\n  - `LoginService`\n- Add `internal/bootstrap` as the production composition root.\n- Publish Pixiv access through concrete `pixiv.Client`; CLI/MCP reach it through application-owned narrow seams rather than importing internal App/Web transports.\n- Move `internal/cli/state` to `internal/storage/auth`.\n- Merge `internal/cli/mcpapp` into `internal/bootstrap` as MCP runtime wiring.\n\n## Consequences\n\n- CLI tests continue to validate user-visible behavior, while `internal/application` and `internal/storage/auth` gain focused package tests.\n- Production wiring is centralized in `internal/bootstrap`, making future client/storage replacement less invasive.\n- `auth login` intentionally keeps loopback HTTP and browser/prompt adapters in CLI; the application layer handles PKCE/state generation, authorization-code exchange, and account persistence.\n- `internal/mcpserver` owns MCP tool registration; `internal/bootstrap` owns stdio runtime startup.\n- Public SDK construction and logger injection remain in bootstrap/application. CLI and MCP remain presentation/protocol adapters, not Pixiv protocol owners.\n\n## Guardrails\n\n- Preserve token priority:\n  - CLI: flag token, UID-selected account, env token, default UID.\n  - MCP: env token, default UID.\n- Preserve output contracts and do not print refresh tokens.\n- Do not move durable config schema into CLI.\n- Do not add generic `ports` packages unless a real duplication or dependency problem appears.\n- Do not create an HTTP provider server or repository-owned generic Provider interface; external callers own their narrow adapters.\n- `internal/common/constants` is allowed only as the narrow infrastructure-constant exception defined by ADR 0002.\n",
+        "content": "# ADR 0001: CLI Thin Controller And Bootstrap\n\n## Status\n\nAccepted\uff1b\u5185\u5bb9\u67e5\u8be2\u4e0e\u4e0b\u8f7d seam \u5df2\u7531 [ADR 0009](0009-public-pixiv-sdk-and-caller-adapter.md) \u7684 public SDK \u51b3\u7b56\u53d6\u4ee3\u3002\n\n## Context\n\n`internal/cli` originally owned Cobra command wiring, prompts, output formatting, account storage mutation, config reads/writes, Pixiv client construction, download manager construction, OAuth token exchange, and MCP runtime wiring. That made the directory feel like both frontend controller and application runtime.\n\nThe project needs a clearer internal structure without changing CLI/MCP behavior.\n\n## Decision\n\n- Keep `internal/cli` as the CLI controller layer:\n  - Cobra command tree, flags and positional arguments.\n  - TTY prompts and loopback browser OAuth receiver.\n  - Text/JSON presenters and process exit handling.\n- Add `internal/application` for use cases:\n  - `AccountService`\n  - `ConfigService`\n  - `LoginService`\n  - `SDKService`\uff08\u53d6\u4ee3\u65e9\u671f\u72ec\u7acb\u7684 `ArtworkService` / `DownloadService` seam\uff09\n- Add `internal/bootstrap` as the production composition root.\n- Publish Pixiv access through concrete `pixiv.Client`; CLI/MCP reach it through application-owned narrow seams rather than importing internal App/Web transports.\n- Move `internal/cli/state` to `internal/storage/auth`.\n- Merge `internal/cli/mcpapp` into `internal/bootstrap` as MCP runtime wiring.\n\n## Consequences\n\n- CLI tests continue to validate user-visible behavior, while `internal/application` and `internal/storage/auth` gain focused package tests.\n- Production wiring is centralized in `internal/bootstrap`, making future client/storage replacement less invasive.\n- `auth login` intentionally keeps loopback HTTP and browser/prompt adapters in CLI; the application layer handles PKCE/state generation, authorization-code exchange, and account persistence.\n- `internal/mcpserver` owns MCP tool registration; `internal/bootstrap` owns stdio runtime startup.\n- Public SDK construction and logger injection remain in bootstrap/application. CLI and MCP remain presentation/protocol adapters, not Pixiv protocol owners.\n\n## Guardrails\n\n- Preserve token priority:\n  - CLI: flag token, UID-selected account, env token, default UID.\n  - MCP: env token, default UID.\n- Preserve output contracts and do not print refresh tokens.\n- Do not move durable config schema into CLI.\n- Do not add generic `ports` packages unless a real duplication or dependency problem appears.\n- Do not create an HTTP provider server or repository-owned generic Provider interface; external callers own their narrow adapters.\n- `internal/common/constants` is allowed only as the narrow infrastructure-constant exception defined by ADR 0002.\n",
         "backlinks": []
       }
     },
@@ -83,78 +83,78 @@
       "type": "article",
       "name": "ADR 0005: Auth Login Uses Explicit Callback Handoff Only",
       "filePath": "adr/0005-auth-login-real-browser-relay-without-ui-automation.md",
-      "summary": "Accepted，2026-07 v0.3 安全边界修订。",
+      "summary": "Accepted\uff0c2026-07 v0.3 \u5b89\u5168\u8fb9\u754c\u4fee\u8ba2\u3002",
       "tags": [
         "adr"
       ],
       "complexity": "simple",
       "knowledgeMeta": {
         "wikilinks": [],
-        "content": "# ADR 0005: Auth Login Uses Explicit Callback Handoff Only\n\n## Status\n\nAccepted，2026-07 v0.3 安全边界修订。\n\n## Context\n\nPixiv OAuth login can pass through `accounts.pixiv.net/post-redirect` before reaching the final `pixiv://account/login` or App API callback request. In real browsers this page may appear blank or require Pixiv-side account confirmation. The relay URL contains a `return_to` App API start URL, but opening that `return_to` directly is not equivalent to Pixiv's relay page and can produce Pixiv's \"endpoint does not exist\" page.\n\nFANBOX uses Pixiv account login as a first-party web product, but that does not establish a compatible Pixiv App API authorization code. The CLI needs a refresh token from `oauth.secure.pixiv.net/auth/token` using the App API callback URI, so FANBOX-style web session login is not a substitute.\n\n## Decision\n\n- Keep `pixiv auth login` based on PKCE and the local loopback/manual fallback page.\n- On macOS, default browser opening may register a repo-owned local `pixiv://` URL handler app for the current login attempt and opens the normal system browser. It forwards only the final callback URL to the current CLI loopback server.\n- If the URL handler path is unavailable, keep normal browser opening plus loopback/manual fallback; do not start a managed Chromium/Edge profile or DevTools/CDP connection.\n- Do not read browser cookies, tokens, storage, history, session files, active tabs or network events. Do not automate browser UI, install an extension, or retrieve browser credentials by any other means.\n- Treat `accounts.pixiv.net/post-redirect` as a Pixiv authorization relay page, not as a callback.\n- When the relay page belongs to the current `code_challenge`, the user may explicitly submit it. The CLI validates `return_to` before opening that relay URL once; it never scans a browser to discover the URL.\n- Let users paste a relay URL into the terminal or local fallback page to explicitly open that relay URL once.\n- Do not implement HTTPS MITM, automatic certificate installation, host rewriting, or FANBOX session import for `auth login`.\n\n## Consequences\n\n- The CLI can reuse the user's existing browser login state on macOS without reading browser cookies or tokens.\n- Callback receipt has an explicit trust boundary: the current loopback listener, the current helper handoff, or a value the user explicitly pastes.\n- Users still need to confirm their Pixiv account in the browser.\n- The local URL handler is registered as the `pixiv://` handler while a login attempt is active; users may see a browser prompt the first time Edge/Chrome opens it.\n- A browser can remain visually parked on the white Pixiv relay page after the handoff; CLI success/failure is determined by whether the terminal receives and exchanges the callback code.\n- If Pixiv or reCAPTCHA does not generate a callback, the CLI cannot synthesize success and must keep manual fallback available.\n- No browser observation mechanism is retained; adding one requires a new ",
+        "content": "# ADR 0005: Auth Login Uses Explicit Callback Handoff Only\n\n## Status\n\nAccepted\uff0c2026-07 v0.3 \u5b89\u5168\u8fb9\u754c\u4fee\u8ba2\u3002\n\n## Context\n\nPixiv OAuth login can pass through `accounts.pixiv.net/post-redirect` before reaching the final `pixiv://account/login` or App API callback request. In real browsers this page may appear blank or require Pixiv-side account confirmation. The relay URL contains a `return_to` App API start URL, but opening that `return_to` directly is not equivalent to Pixiv's relay page and can produce Pixiv's \"endpoint does not exist\" page.\n\nFANBOX uses Pixiv account login as a first-party web product, but that does not establish a compatible Pixiv App API authorization code. The CLI needs a refresh token from `oauth.secure.pixiv.net/auth/token` using the App API callback URI, so FANBOX-style web session login is not a substitute.\n\n## Decision\n\n- Keep `pixiv auth login` based on PKCE and the local loopback/manual fallback page.\n- On macOS, default browser opening may register a repo-owned local `pixiv://` URL handler app for the current login attempt and opens the normal system browser. It forwards only the final callback URL to the current CLI loopback server.\n- If the URL handler path is unavailable, keep normal browser opening plus loopback/manual fallback; do not start a managed Chromium/Edge profile or DevTools/CDP connection.\n- Do not read browser cookies, tokens, storage, history, session files, active tabs or network events. Do not automate browser UI, install an extension, or retrieve browser credentials by any other means.\n- Treat `accounts.pixiv.net/post-redirect` as a Pixiv authorization relay page, not as a callback.\n- When the relay page belongs to the current `code_challenge`, the user may explicitly submit it. The CLI validates `return_to` before opening that relay URL once; it never scans a browser to discover the URL.\n- Let users paste a relay URL into the terminal or local fallback page to explicitly open that relay URL once.\n- Do not implement HTTPS MITM, automatic certificate installation, host rewriting, or FANBOX session import for `auth login`.\n\n## Consequences\n\n- The CLI can reuse the user's existing browser login state on macOS without reading browser cookies or tokens.\n- Callback receipt has an explicit trust boundary: the current loopback listener, the current helper handoff, or a value the user explicitly pastes.\n- Users still need to confirm their Pixiv account in the browser.\n- The local URL handler is registered as the `pixiv://` handler while a login attempt is active; users may see a browser prompt the first time Edge/Chrome opens it.\n- A browser can remain visually parked on the white Pixiv relay page after the handoff; CLI success/failure is determined by whether the terminal receives and exchanges the callback code.\n- If Pixiv or reCAPTCHA does not generate a callback, the CLI cannot synthesize success and must keep manual fallback available.\n- No browser observation mechanism is retained; adding one requires a new ",
         "backlinks": []
       }
     },
     {
       "id": "article:adr/0006-original-ugoira-resource-resolution",
       "type": "article",
-      "name": "ADR 0006：通过 Web metadata 解析 original ugoira 资源",
+      "name": "ADR 0006\uff1a\u901a\u8fc7 Web metadata \u89e3\u6790 original ugoira \u8d44\u6e90",
       "filePath": "adr/0006-original-ugoira-resource-resolution.md",
-      "summary": "已采纳。",
+      "summary": "\u5df2\u91c7\u7eb3\u3002",
       "tags": [
         "adr"
       ],
       "complexity": "simple",
       "knowledgeMeta": {
         "wikilinks": [],
-        "content": "# ADR 0006：通过 Web metadata 解析 original ugoira 资源\n\n## Status\n\n已采纳。\n\n## Decision\n\n请求 `quality=original` 时，认证会话可以查询 Pixiv Web metadata 以解析 original ugoira zip，因为 App API metadata 只提供 medium variant。这是明确的资源版本补全，不是 App API 失败后的自动 fallback。\n\n同一界限适用于顶层 `pixiv` detail/pages enrichment：App API 仍是主数据路径；App 失败即返回失败。资源 URL 只能作为已验证的 `ResourceRef` 进入代理/下载流程，并经 `OpenResource`/`Download` 流式处理。\n\n## Consequences\n\n- 调用方可请求 original 资源，不需要暗中降级质量。\n- Web 路由保持范围明确、可审计。\n- 资源代理保留 SSRF policy、header filtering 与流所有权边界。\n",
+        "content": "# ADR 0006\uff1a\u901a\u8fc7 Web metadata \u89e3\u6790 original ugoira \u8d44\u6e90\n\n## Status\n\n\u5df2\u91c7\u7eb3\u3002\n\n## Decision\n\n\u8bf7\u6c42 `quality=original` \u65f6\uff0c\u8ba4\u8bc1\u4f1a\u8bdd\u53ef\u4ee5\u67e5\u8be2 Pixiv Web metadata \u4ee5\u89e3\u6790 original ugoira zip\uff0c\u56e0\u4e3a App API metadata \u53ea\u63d0\u4f9b medium variant\u3002\u8fd9\u662f\u660e\u786e\u7684\u8d44\u6e90\u7248\u672c\u8865\u5168\uff0c\u4e0d\u662f App API \u5931\u8d25\u540e\u7684\u81ea\u52a8 fallback\u3002\n\n\u540c\u4e00\u754c\u9650\u9002\u7528\u4e8e\u9876\u5c42 `pixiv` detail/pages enrichment\uff1aApp API \u4ecd\u662f\u4e3b\u6570\u636e\u8def\u5f84\uff1bApp \u5931\u8d25\u5373\u8fd4\u56de\u5931\u8d25\u3002\u8d44\u6e90 URL \u53ea\u80fd\u4f5c\u4e3a\u5df2\u9a8c\u8bc1\u7684 `ResourceRef` \u8fdb\u5165\u4ee3\u7406/\u4e0b\u8f7d\u6d41\u7a0b\uff0c\u5e76\u7ecf `OpenResource`/`Download` \u6d41\u5f0f\u5904\u7406\u3002\n\n## Consequences\n\n- \u8c03\u7528\u65b9\u53ef\u8bf7\u6c42 original \u8d44\u6e90\uff0c\u4e0d\u9700\u8981\u6697\u4e2d\u964d\u7ea7\u8d28\u91cf\u3002\n- Web \u8def\u7531\u4fdd\u6301\u8303\u56f4\u660e\u786e\u3001\u53ef\u5ba1\u8ba1\u3002\n- \u8d44\u6e90\u4ee3\u7406\u4fdd\u7559 SSRF policy\u3001header filtering \u4e0e\u6d41\u6240\u6709\u6743\u8fb9\u754c\u3002\n",
         "backlinks": []
       }
     },
     {
       "id": "article:adr/0007-platform-staticlibs-for-supported-source-builds",
       "type": "article",
-      "name": "ADR 0007: 提交平台 Staticlib 以维持受支持的源码构建",
+      "name": "ADR 0007: \u63d0\u4ea4\u5e73\u53f0 Staticlib \u4ee5\u7ef4\u6301\u53d7\u652f\u6301\u7684\u6e90\u7801\u6784\u5efa",
       "filePath": "adr/0007-platform-staticlibs-for-supported-source-builds.md",
-      "summary": "Accepted；完整六目标已由 native runner 验证并受控回填。",
+      "summary": "Accepted\uff1b\u5b8c\u6574\u516d\u76ee\u6807\u5df2\u7531 native runner \u9a8c\u8bc1\u5e76\u53d7\u63a7\u56de\u586b\u3002",
       "tags": [
         "adr"
       ],
       "complexity": "simple",
       "knowledgeMeta": {
         "wikilinks": [],
-        "content": "# ADR 0007: 提交平台 Staticlib 以维持受支持的源码构建\n\n## Status\n\nAccepted；完整六目标已由 native runner 验证并受控回填。\n\n## Context\n\nugoira GIF/APNG encoder 由 Rust 实现，并通过 cgo 接入 Go CLI。让每个终端用户在 `go build` 或\n`go install` 时即时编译 Rust，会把 Rust toolchain、target、C linker 与网络/registry 状态变成\n隐式安装前提，也会让同一 Go tag 的 native 行为不可审计。运行时调用 `ffmpeg` 则会重新引入外部\n二进制依赖，无法满足内置 encoder 的发布要求。\n\n项目必须同时支持 darwin、linux、windows 的 amd64/arm64。每个 target 的 Rust archive 都是不同\n二进制输入，不能由 host archive 复制、改名或用 Git LFS pointer 代替。要将这些二进制和 Rust\nsource 的关系保留给发布审计，需要可重算的 source digest、每文件 SHA-256 和稳定的 target mapping。\n\n## Decision\n\n- 为六个 GOOS/GOARCH target 使用明确的 Rust target staticlib 与 cgo selector；受支持源码构建要求\n  Go `1.26.3`、`CGO_ENABLED=1`、目标 C linker 和对应 staticlib。\n- 将经 native runner 生成、链接和 smoke 验证的 staticlib 以普通 Git blob 提交，而非 Git LFS；\n  `staticlib/manifest.json` 必须同时记录 six target、path、SHA-256 与 Rust source digest。\n- `scripts/build-staticlibs.sh` 仅在同一份 source 成功取得全部六个真实库后写 manifest。单 target\n  生成会使旧 manifest 失效，不能被误用为跨平台发布证明。\n- Rust `target/` 始终是忽略的机器产物；已验证 staticlib 与 manifest 是可审计发布输入，不能忽略。\n- production ugoira 路径只使用 Rust encoder；`ffmpeg` 仅保留给显式启用的开发质量对照，不作为运行\n  时 fallback。\n\n## Consequences\n\n- 发行 archive 和 future `go install` 可以链接已验证的 target library，而不是在用户机器上临时\n  解决 Rust build 环境。\n- 仓库会包含较大的 native binary blob，必须在提交/发布前审查 source digest、manifest、hash 与\n  native runner 证据。\n- 没有 cgo、target C linker、目标 staticlib 或完整 manifest 时，构建必须清晰失败；不能退回 stub、\n  `ffmpeg` 或“部分可用”的 binary。\n- run `29192425899` 已取得六个真实 staticlib、同源 manifest 与每平台 GIF/APNG/cgo smoke 证据，\n  并经 fail-closed consolidation 回填；source build 与 future exact-tag `go install` 会消费这些\n  committed libraries。正式 Release 与安装验收仍由后续发布任务独立证明。\n- Cargo `--locked --offline` 现在经 crate 内 source replacement 使用完整 vendor 闭包；空 Cargo cache\n  的 metadata/build/test 与六 target 许可证检查证明 native Rust 输入不依赖开发机或 runner registry cache。\n",
+        "content": "# ADR 0007: \u63d0\u4ea4\u5e73\u53f0 Staticlib \u4ee5\u7ef4\u6301\u53d7\u652f\u6301\u7684\u6e90\u7801\u6784\u5efa\n\n## Status\n\nAccepted\uff1b\u5b8c\u6574\u516d\u76ee\u6807\u5df2\u7531 native runner \u9a8c\u8bc1\u5e76\u53d7\u63a7\u56de\u586b\u3002\n\n## Context\n\nugoira GIF/APNG encoder \u7531 Rust \u5b9e\u73b0\uff0c\u5e76\u901a\u8fc7 cgo \u63a5\u5165 Go CLI\u3002\u8ba9\u6bcf\u4e2a\u7ec8\u7aef\u7528\u6237\u5728 `go build` \u6216\n`go install` \u65f6\u5373\u65f6\u7f16\u8bd1 Rust\uff0c\u4f1a\u628a Rust toolchain\u3001target\u3001C linker \u4e0e\u7f51\u7edc/registry \u72b6\u6001\u53d8\u6210\n\u9690\u5f0f\u5b89\u88c5\u524d\u63d0\uff0c\u4e5f\u4f1a\u8ba9\u540c\u4e00 Go tag \u7684 native \u884c\u4e3a\u4e0d\u53ef\u5ba1\u8ba1\u3002\u8fd0\u884c\u65f6\u8c03\u7528 `ffmpeg` \u5219\u4f1a\u91cd\u65b0\u5f15\u5165\u5916\u90e8\n\u4e8c\u8fdb\u5236\u4f9d\u8d56\uff0c\u65e0\u6cd5\u6ee1\u8db3\u5185\u7f6e encoder \u7684\u53d1\u5e03\u8981\u6c42\u3002\n\n\u9879\u76ee\u5fc5\u987b\u540c\u65f6\u652f\u6301 darwin\u3001linux\u3001windows \u7684 amd64/arm64\u3002\u6bcf\u4e2a target \u7684 Rust archive \u90fd\u662f\u4e0d\u540c\n\u4e8c\u8fdb\u5236\u8f93\u5165\uff0c\u4e0d\u80fd\u7531 host archive \u590d\u5236\u3001\u6539\u540d\u6216\u7528 Git LFS pointer \u4ee3\u66ff\u3002\u8981\u5c06\u8fd9\u4e9b\u4e8c\u8fdb\u5236\u548c Rust\nsource \u7684\u5173\u7cfb\u4fdd\u7559\u7ed9\u53d1\u5e03\u5ba1\u8ba1\uff0c\u9700\u8981\u53ef\u91cd\u7b97\u7684 source digest\u3001\u6bcf\u6587\u4ef6 SHA-256 \u548c\u7a33\u5b9a\u7684 target mapping\u3002\n\n## Decision\n\n- \u4e3a\u516d\u4e2a GOOS/GOARCH target \u4f7f\u7528\u660e\u786e\u7684 Rust target staticlib \u4e0e cgo selector\uff1b\u53d7\u652f\u6301\u6e90\u7801\u6784\u5efa\u8981\u6c42\n  Go `1.26.3`\u3001`CGO_ENABLED=1`\u3001\u76ee\u6807 C linker \u548c\u5bf9\u5e94 staticlib\u3002\n- \u5c06\u7ecf native runner \u751f\u6210\u3001\u94fe\u63a5\u548c smoke \u9a8c\u8bc1\u7684 staticlib \u4ee5\u666e\u901a Git blob \u63d0\u4ea4\uff0c\u800c\u975e Git LFS\uff1b\n  `staticlib/manifest.json` \u5fc5\u987b\u540c\u65f6\u8bb0\u5f55 six target\u3001path\u3001SHA-256 \u4e0e Rust source digest\u3002\n- `scripts/build-staticlibs.sh` \u4ec5\u5728\u540c\u4e00\u4efd source \u6210\u529f\u53d6\u5f97\u5168\u90e8\u516d\u4e2a\u771f\u5b9e\u5e93\u540e\u5199 manifest\u3002\u5355 target\n  \u751f\u6210\u4f1a\u4f7f\u65e7 manifest \u5931\u6548\uff0c\u4e0d\u80fd\u88ab\u8bef\u7528\u4e3a\u8de8\u5e73\u53f0\u53d1\u5e03\u8bc1\u660e\u3002\n- release workflow \u5fc5\u987b\u628a\u751f\u6210 committed staticlib \u7684 Rust toolchain \u4f5c\u4e3a target provenance \u56fa\u5b9a\uff1a\n  `x86_64-apple-darwin` \u4e0e `x86_64-pc-windows-msvc` \u4f7f\u7528 `1.96.0`\uff0c\u5176\u4f59\u56db\u4e2a release target \u4f7f\u7528\n  `1.96.1`\u3002test \u4e0e production job \u5fc5\u987b\u4ece\u540c\u4e00\u53d7\u5ba1\u8ba1 matrix \u9009\u62e9\u7248\u672c\uff0c\u7981\u6b62\u4f7f\u7528\u53ef\u79fb\u52a8\u7684 `stable`\n  \u6216 runner \u9ed8\u8ba4\u503c\uff1bproduction \u4ecd\u53ea checkout immutable tag\uff0ctoolchain pin \u4e0d\u6784\u6210\u6e90\u7801 overlay\u3002\n- Rust `target/` \u59cb\u7ec8\u662f\u5ffd\u7565\u7684\u673a\u5668\u4ea7\u7269\uff1b\u5df2\u9a8c\u8bc1 staticlib \u4e0e manifest \u662f\u53ef\u5ba1\u8ba1\u53d1\u5e03\u8f93\u5165\uff0c\u4e0d\u80fd\u5ffd\u7565\u3002\n- production ugoira \u8def\u5f84\u53ea\u4f7f\u7528 Rust encoder\uff1b`ffmpeg` \u4ec5\u4fdd\u7559\u7ed9\u663e\u5f0f\u542f\u7528\u7684\u5f00\u53d1\u8d28\u91cf\u5bf9\u7167\uff0c\u4e0d\u4f5c\u4e3a\u8fd0\u884c\n  \u65f6 fallback\u3002\n\n## Consequences\n\n- \u53d1\u884c archive \u548c future `go install` \u53ef\u4ee5\u94fe\u63a5\u5df2\u9a8c\u8bc1\u7684 target library\uff0c\u800c\u4e0d\u662f\u5728\u7528\u6237\u673a\u5668\u4e0a\u4e34\u65f6\n  \u89e3\u51b3 Rust build \u73af\u5883\u3002\n- \u4ed3\u5e93\u4f1a\u5305\u542b\u8f83\u5927\u7684 native binary blob\uff0c\u5fc5\u987b\u5728\u63d0\u4ea4/\u53d1\u5e03\u524d\u5ba1\u67e5 source digest\u3001manifest\u3001hash \u4e0e\n  native runner \u8bc1\u636e\u3002\n- \u6ca1\u6709 cgo\u3001target C linker\u3001\u76ee\u6807 staticlib \u6216\u5b8c\u6574 manifest \u65f6\uff0c\u6784\u5efa\u5fc5\u987b\u6e05\u6670\u5931\u8d25\uff1b\u4e0d\u80fd\u9000\u56de stub\u3001\n  `ffmpeg` \u6216\u201c\u90e8\u5206\u53ef\u7528\u201d\u7684 binary\u3002\n- run `29192425899` \u5df2\u53d6\u5f97\u516d\u4e2a\u771f\u5b9e staticlib\u3001\u540c\u6e90 manifest \u4e0e\u6bcf\u5e73\u53f0 GIF/APNG/cgo smoke \u8bc1\u636e\uff0c\n  \u5e76\u7ecf fail-closed consolidation \u56de\u586b\uff1bsource build \u4e0e future exact-tag `go install` \u4f1a\u6d88\u8d39\u8fd9\u4e9b\n  committed libraries\u3002\u6b63\u5f0f Release \u4e0e\u5b89\u88c5\u9a8c\u6536\u4ecd\u7531\u540e\u7eed\u53d1\u5e03\u4efb\u52a1\u72ec\u7acb\u8bc1\u660e\u3002\n- \u4e0a\u8ff0 per-target pin \u662f\u5f53\u524d\u516d\u5e93\u53ca v0.3.0 immutable-tag recovery \u7684\u5b9e\u9645 provenance\u3002\u540e\u7eed Rust\n  \u5347\u7ea7\u5fc5\u987b\u4ece\u540c\u4e00\u53d7\u5ba1\u8ba1 source \u6210\u5957\u91cd\u5efa\u3001\u94fe\u63a5\u5e76 smoke \u9a8c\u8bc1\u516d\u76ee\u6807\uff0c\u540c\u65f6\u66f4\u65b0 staticlib\u3001manifest\u3001\n  native evidence \u4e0e release matrix\uff1b\u4e0d\u80fd\u5355\u72ec\u6f02\u79fb\u67d0\u4e2a target \u6216\u7528\u65b0\u7f16\u8bd1\u5668\u8986\u76d6\u65e2\u6709 tag \u7684 library\u3002\n- Cargo `--locked --offline` \u73b0\u5728\u7ecf crate \u5185 source replacement \u4f7f\u7528\u5b8c\u6574 vendor \u95ed\u5305\uff1b\u7a7a Cargo cache\n  \u7684 metadata/build/test \u4e0e\u516d target \u8bb8\u53ef\u8bc1\u68c0\u67e5\u8bc1\u660e native Rust \u8f93\u5165\u4e0d\u4f9d\u8d56\u5f00\u53d1\u673a\u6216 runner registry cache\u3002\n",
         "backlinks": []
       }
     },
     {
       "id": "article:adr/0008-ed25519-signed-multi-channel-release-trust",
       "type": "article",
-      "name": "ADR 0008: Ed25519 签名的多渠道发布信任",
+      "name": "ADR 0008: Ed25519 \u7b7e\u540d\u7684\u591a\u6e20\u9053\u53d1\u5e03\u4fe1\u4efb",
       "filePath": "adr/0008-ed25519-signed-multi-channel-release-trust.md",
-      "summary": "Accepted；v0.2.0 production rollout 已完成；后续正式发布继续遵循本决策。",
+      "summary": "Accepted\uff1bv0.2.0 \u4e0e v0.3.0 production rollout \u5df2\u5b8c\u6210\uff1b\u540e\u7eed\u6b63\u5f0f\u53d1\u5e03\u7ee7\u7eed\u9075\u5faa\u672c\u51b3\u7b56\u3002",
       "tags": [
         "adr"
       ],
       "complexity": "simple",
       "knowledgeMeta": {
         "wikilinks": [],
-        "content": "# ADR 0008: Ed25519 签名的多渠道发布信任\n\n## Status\n\nAccepted；v0.2.0 production rollout 已完成；后续正式发布继续遵循本决策。\n\n## Context\n\n`pixiv update` 需要根据本机安装来源选择 Homebrew、`go install` 或 Release binary 更新。不同渠道的\n更新器不能把“GitHub 返回一个 asset URL”视为足够信任：Release binary 需要验证 archive 的内容和\n版本，Homebrew stable/beta 需要避免两个都提供 `pixiv`，而 Go 安装需要精确绑定已选 tag。用户也必须\n了解 v0.1.0 没有 Apple notarization/Windows Authenticode，直接下载可能触发系统信誉提示。\n\n发布签名私钥、tap 写权限和 GitHub Actions token 具有不同权限范围。把它们提交到源码、放进普通\nrepository secret，或复用同一 SSH key，会让任意 tag/workflow 或公开历史取得不必要的发布能力。\n\n## Decision\n\n- GitHub Releases API 是更新查询的唯一后端。draft 不可选；自动检查只选 stable，显式\n  `--prerelease` 才可选择预发布版本。\n- 每个正式 Release 使用固定六目标 asset 名，发布 `checksums.txt` 以及对其原始 bytes 签名、含 key\n  ID 的 Ed25519 `checksums.json`。Release installer 先验证签名和 SHA-256，再解包、版本预检并原子\n  替换。\n- Release binary 只信任随受支持 binary 提交的 Ed25519 public key/key ID。私钥只允许存在于受保护\n  `release` Environment secret；恢复副本只可存在于受控 macOS Keychain。私钥不能进入 CLI、源码、\n  GitHub Release、formula、日志或测试 fixture。\n- 当前随源码提交的 key ID 是 `ed25519-2c27e77742d3c33a`，其 public key 的 SPKI DER SHA-256\n  fingerprint 是 `2c27e77742d3c33ad14be867d4e0519229a220898c9a7c868447eaef0951b4cf`。它只能作为受支持\n  binary 的 trust root，不能代替私钥部署、Environment protection 或真实 Release 验收。\n- key rotation 先发布同时信任新 key ID 的 binary，保留旧 key 直到旧 binary 退出支持，再以新的\n  受签名 Release 停用旧 key。不得要求已发布 binary 突然信任一个未随其发布的 key。\n- Homebrew 使用独立 tap deploy key：tap repository 只登记公钥，source repository 的受保护\n  `release` Environment 才保存私钥。stable `pixiv-cli` 与 beta `pixiv-cli-beta` 相互冲突，并由\n  已验证 Release checksum 渲染；Go 通过精确 tag 更新。\n- 发布 workflow 必须先完成六 target build/test/license/archive 门禁，且在受保护 Environment 中签名；\n  草稿 Release 的 asset 集合经核验后才可公开。Homebrew audit/安装通过后才可 push tap。\n\n## Consequences\n\n- 自动检查是只读、限时且 stderr-only 的提示；它不能修改业务退出码或 JSON/MCP stdout。显式更新必须\n  将渠道切换、权限、HTTP、签名、checksum、archive 和替换失败如实暴露。\n- production public key/key ID/fingerprint 已进入 bootstrap wiring；私钥只存在于受保护 Environment\n  与 Keychain recovery copy，公开 source/tap remote 已创建且 tap 只登记 deploy key 公钥。v0.2.0 的\n  GitHub Release、immutable tag 和 `pixiv-cli` tap formula 已按受保护发布流程部署；六平台 archive、\n  checksum、签名以及四平台 formula 安装均由该 release workflow 验收。不能将单独的 `--check` 成功、\n  本地 fixture 或 workflow 文件视为已完成的安全发布。\n- staticlib/manifest、workflow policy 与六平台 native artifact evidence 已齐备；受保护 Environment\n  secrets 也已配置。v0.2.0 的正式 tag、签名 Release、tap formula 与安装验收已完成；后续版本仍须按\n  同一发布流程依次完成。\n- v0.1.0 用户仍可能看到 Gatekeeper/SmartScreen 警告；支持文档应指导用户回到已验证 Release、\n  checksum 和签名记录，而不是绕过系统信誉机制。\n",
+        "content": "# ADR 0008: Ed25519 \u7b7e\u540d\u7684\u591a\u6e20\u9053\u53d1\u5e03\u4fe1\u4efb\n\n## Status\n\nAccepted\uff1bv0.2.0 \u4e0e v0.3.0 production rollout \u5df2\u5b8c\u6210\uff1b\u540e\u7eed\u6b63\u5f0f\u53d1\u5e03\u7ee7\u7eed\u9075\u5faa\u672c\u51b3\u7b56\u3002\n\n## Context\n\n`pixiv update` \u9700\u8981\u6839\u636e\u672c\u673a\u5b89\u88c5\u6765\u6e90\u9009\u62e9 Homebrew\u3001`go install` \u6216 Release binary \u66f4\u65b0\u3002\u4e0d\u540c\u6e20\u9053\u7684\n\u66f4\u65b0\u5668\u4e0d\u80fd\u628a\u201cGitHub \u8fd4\u56de\u4e00\u4e2a asset URL\u201d\u89c6\u4e3a\u8db3\u591f\u4fe1\u4efb\uff1aRelease binary \u9700\u8981\u9a8c\u8bc1 archive \u7684\u5185\u5bb9\u548c\n\u7248\u672c\uff0cHomebrew stable/beta \u9700\u8981\u907f\u514d\u4e24\u4e2a\u90fd\u63d0\u4f9b `pixiv`\uff0c\u800c Go \u5b89\u88c5\u9700\u8981\u7cbe\u786e\u7ed1\u5b9a\u5df2\u9009 tag\u3002\u7528\u6237\u4e5f\u5fc5\u987b\n\u4e86\u89e3 v0.1.0 \u6ca1\u6709 Apple notarization/Windows Authenticode\uff0c\u76f4\u63a5\u4e0b\u8f7d\u53ef\u80fd\u89e6\u53d1\u7cfb\u7edf\u4fe1\u8a89\u63d0\u793a\u3002\n\n\u53d1\u5e03\u7b7e\u540d\u79c1\u94a5\u3001tap \u5199\u6743\u9650\u548c GitHub Actions token \u5177\u6709\u4e0d\u540c\u6743\u9650\u8303\u56f4\u3002\u628a\u5b83\u4eec\u63d0\u4ea4\u5230\u6e90\u7801\u3001\u653e\u8fdb\u666e\u901a\nrepository secret\uff0c\u6216\u590d\u7528\u540c\u4e00 SSH key\uff0c\u4f1a\u8ba9\u4efb\u610f tag/workflow \u6216\u516c\u5f00\u5386\u53f2\u53d6\u5f97\u4e0d\u5fc5\u8981\u7684\u53d1\u5e03\u80fd\u529b\u3002\n\n## Decision\n\n- GitHub Releases API \u662f\u66f4\u65b0\u67e5\u8be2\u7684\u552f\u4e00\u540e\u7aef\u3002draft \u4e0d\u53ef\u9009\uff1b\u81ea\u52a8\u68c0\u67e5\u53ea\u9009 stable\uff0c\u663e\u5f0f\n  `--prerelease` \u624d\u53ef\u9009\u62e9\u9884\u53d1\u5e03\u7248\u672c\u3002\n- \u6bcf\u4e2a\u6b63\u5f0f Release \u4f7f\u7528\u56fa\u5b9a\u516d\u76ee\u6807 asset \u540d\uff0c\u53d1\u5e03 `checksums.txt` \u4ee5\u53ca\u5bf9\u5176\u539f\u59cb bytes \u7b7e\u540d\u3001\u542b key\n  ID \u7684 Ed25519 `checksums.json`\u3002Release installer \u5148\u9a8c\u8bc1\u7b7e\u540d\u548c SHA-256\uff0c\u518d\u89e3\u5305\u3001\u7248\u672c\u9884\u68c0\u5e76\u539f\u5b50\n  \u66ff\u6362\u3002\n- Release binary \u53ea\u4fe1\u4efb\u968f\u53d7\u652f\u6301 binary \u63d0\u4ea4\u7684 Ed25519 public key/key ID\u3002\u79c1\u94a5\u53ea\u5141\u8bb8\u5b58\u5728\u4e8e\u53d7\u4fdd\u62a4\n  `release` Environment secret\uff1b\u6062\u590d\u526f\u672c\u53ea\u53ef\u5b58\u5728\u4e8e\u53d7\u63a7 macOS Keychain\u3002\u79c1\u94a5\u4e0d\u80fd\u8fdb\u5165 CLI\u3001\u6e90\u7801\u3001\n  GitHub Release\u3001formula\u3001\u65e5\u5fd7\u6216\u6d4b\u8bd5 fixture\u3002\n- \u5f53\u524d\u968f\u6e90\u7801\u63d0\u4ea4\u7684 key ID \u662f `ed25519-2c27e77742d3c33a`\uff0c\u5176 public key \u7684 SPKI DER SHA-256\n  fingerprint \u662f `2c27e77742d3c33ad14be867d4e0519229a220898c9a7c868447eaef0951b4cf`\u3002\u5b83\u53ea\u80fd\u4f5c\u4e3a\u53d7\u652f\u6301\n  binary \u7684 trust root\uff0c\u4e0d\u80fd\u4ee3\u66ff\u79c1\u94a5\u90e8\u7f72\u3001Environment protection \u6216\u771f\u5b9e Release \u9a8c\u6536\u3002\n- key rotation \u5148\u53d1\u5e03\u540c\u65f6\u4fe1\u4efb\u65b0 key ID \u7684 binary\uff0c\u4fdd\u7559\u65e7 key \u76f4\u5230\u65e7 binary \u9000\u51fa\u652f\u6301\uff0c\u518d\u4ee5\u65b0\u7684\n  \u53d7\u7b7e\u540d Release \u505c\u7528\u65e7 key\u3002\u4e0d\u5f97\u8981\u6c42\u5df2\u53d1\u5e03 binary \u7a81\u7136\u4fe1\u4efb\u4e00\u4e2a\u672a\u968f\u5176\u53d1\u5e03\u7684 key\u3002\n- Homebrew \u4f7f\u7528\u72ec\u7acb tap deploy key\uff1atap repository \u53ea\u767b\u8bb0\u516c\u94a5\uff0csource repository \u7684\u53d7\u4fdd\u62a4\n  `release` Environment \u624d\u4fdd\u5b58\u79c1\u94a5\u3002stable `pixiv-cli` \u4e0e beta `pixiv-cli-beta` \u76f8\u4e92\u51b2\u7a81\uff0c\u5e76\u7531\n  \u5df2\u9a8c\u8bc1 Release checksum \u6e32\u67d3\uff1bGo \u901a\u8fc7\u7cbe\u786e tag \u66f4\u65b0\u3002\n- \u53d1\u5e03 workflow \u5fc5\u987b\u5148\u5b8c\u6210\u516d target build/test/license/archive \u95e8\u7981\uff0c\u4e14\u5728\u53d7\u4fdd\u62a4 Environment \u4e2d\u7b7e\u540d\uff1b\n  \u8349\u7a3f Release \u7684 asset \u96c6\u5408\u7ecf\u6838\u9a8c\u540e\u624d\u53ef\u516c\u5f00\u3002Homebrew audit/\u5b89\u88c5\u901a\u8fc7\u540e\u624d\u53ef push tap\u3002\n\n## Consequences\n\n- \u81ea\u52a8\u68c0\u67e5\u662f\u53ea\u8bfb\u3001\u9650\u65f6\u4e14 stderr-only \u7684\u63d0\u793a\uff1b\u5b83\u4e0d\u80fd\u4fee\u6539\u4e1a\u52a1\u9000\u51fa\u7801\u6216 JSON/MCP stdout\u3002\u663e\u5f0f\u66f4\u65b0\u5fc5\u987b\n  \u5c06\u6e20\u9053\u5207\u6362\u3001\u6743\u9650\u3001HTTP\u3001\u7b7e\u540d\u3001checksum\u3001archive \u548c\u66ff\u6362\u5931\u8d25\u5982\u5b9e\u66b4\u9732\u3002\n- production public key/key ID/fingerprint \u5df2\u8fdb\u5165 bootstrap wiring\uff1b\u79c1\u94a5\u53ea\u5b58\u5728\u4e8e\u53d7\u4fdd\u62a4 Environment\n  \u4e0e Keychain recovery copy\uff0c\u516c\u5f00 source/tap remote \u5df2\u521b\u5efa\u4e14 tap \u53ea\u767b\u8bb0 deploy key \u516c\u94a5\u3002v0.3.0 \u7684\n  GitHub Release\u3001immutable tag \u548c `pixiv-cli` tap formula \u5df2\u6309\u53d7\u4fdd\u62a4\u53d1\u5e03\u6d41\u7a0b\u90e8\u7f72\uff1b\u516d\u5e73\u53f0 archive\u3001\n  checksum\u3001\u7b7e\u540d\u4ee5\u53ca\u56db\u5e73\u53f0 formula \u5b89\u88c5\u5747\u7531\u8be5 release workflow \u9a8c\u6536\u3002\u4e0d\u80fd\u5c06\u5355\u72ec\u7684 `--check` \u6210\u529f\u3001\n  \u672c\u5730 fixture \u6216 workflow \u6587\u4ef6\u89c6\u4e3a\u5df2\u5b8c\u6210\u7684\u5b89\u5168\u53d1\u5e03\u3002\n- staticlib/manifest\u3001workflow policy \u4e0e\u516d\u5e73\u53f0 native artifact evidence \u5df2\u9f50\u5907\uff1b\u53d7\u4fdd\u62a4 Environment\n  secrets \u4e5f\u5df2\u914d\u7f6e\u3002v0.2.0 \u4e0e v0.3.0 \u7684\u6b63\u5f0f tag\u3001\u7b7e\u540d Release\u3001tap formula \u4e0e\u5b89\u88c5\u9a8c\u6536\u5747\u5df2\u5b8c\u6210\uff1b\u540e\u7eed\u7248\u672c\u4ecd\u987b\u6309\n  \u540c\u4e00\u53d1\u5e03\u6d41\u7a0b\u4f9d\u6b21\u5b8c\u6210\u3002\n- v0.1.0 \u7528\u6237\u4ecd\u53ef\u80fd\u770b\u5230 Gatekeeper/SmartScreen \u8b66\u544a\uff1b\u652f\u6301\u6587\u6863\u5e94\u6307\u5bfc\u7528\u6237\u56de\u5230\u5df2\u9a8c\u8bc1 Release\u3001\n  checksum \u548c\u7b7e\u540d\u8bb0\u5f55\uff0c\u800c\u4e0d\u662f\u7ed5\u8fc7\u7cfb\u7edf\u4fe1\u8a89\u673a\u5236\u3002\n",
         "backlinks": []
       }
     },
     {
       "id": "article:adr/0009-public-pixiv-sdk-and-caller-adapter",
       "type": "article",
-      "name": "ADR 0009：公开 Pixiv SDK 与调用方 adapter",
+      "name": "ADR 0009\uff1a\u516c\u5f00 Pixiv SDK \u4e0e\u8c03\u7528\u65b9 adapter",
       "filePath": "adr/0009-public-pixiv-sdk-and-caller-adapter.md",
-      "summary": "已采纳。",
+      "summary": "\u5df2\u91c7\u7eb3\u3002",
       "tags": [
         "adr"
       ],
       "complexity": "simple",
       "knowledgeMeta": {
         "wikilinks": [],
-        "content": "# ADR 0009：公开 Pixiv SDK 与调用方 adapter\n\n## 状态\n\n已采纳。\n\n## 背景\n\n外部消费者需要 Pixiv 读取、写入、账号处理和安全媒体访问。早期替换讨论把它建模为 HTTP Provider，包含 discovery、source probe、RSS/crawler ingestion 与 capability negotiation。这些概念属于图库/采集调用方领域，不属于 CLI 仓库；加入它们会强制引入 service lifecycle、重复的持久化语义和宽而不稳定的接口。\n\n## 决策\n\n- 发布顶层 `pixiv` package（`github.com/FlanChanXwO/pixiv-cli/pixiv`），提供具体 `*pixiv.Client`、稳定模型、request/result、opaque cursor、typed error 和资源 API。\n- 公开契约只通过 package 提供；不提供 HTTP server、`Discover`、Probe、Capabilities、RSS 或 crawler。\n- `atri-setu-api` 等调用方拥有窄 adapter interface，以及自己的 source mode、budget、filter、cursor storage、persistence、scheduling 和 HTTP presentation。\n- 内部使用物理包 `internal/pixiv/appapi`、`webapi`、`oauth`、`resource`；公开 SDK 负责路由和规范化，但不泄漏这些包。\n- 有凭据时 App API 为主路径。匿名 Web read 仅在无 refresh token 时按配置 fallback；Web enrichment 必须显式，绝不隐藏 fallback。\n- 媒体通过 policy 验证过的 `ResourceRef`、`OpenResource`、`Download` 提供，保持 stream ownership 与 SSRF controls。\n\n## 后果\n\n- CLI/MCP 和外部 Go 程序消费同一个公开契约，无需额外进程或 transport translation。\n- 集成方可用小 mock 测试其 adapter，自选运行策略。\n- 本仓库不承诺 collector-specific discovery 兼容性；调用方须将这类行为迁移到自己的领域层。\n- 物理协议变更封装在顶层 `pixiv` 后，降低公开 API churn。\n",
+        "content": "# ADR 0009\uff1a\u516c\u5f00 Pixiv SDK \u4e0e\u8c03\u7528\u65b9 adapter\n\n## \u72b6\u6001\n\n\u5df2\u91c7\u7eb3\u3002\n\n## \u80cc\u666f\n\n\u5916\u90e8\u6d88\u8d39\u8005\u9700\u8981 Pixiv \u8bfb\u53d6\u3001\u5199\u5165\u3001\u8d26\u53f7\u5904\u7406\u548c\u5b89\u5168\u5a92\u4f53\u8bbf\u95ee\u3002\u65e9\u671f\u66ff\u6362\u8ba8\u8bba\u628a\u5b83\u5efa\u6a21\u4e3a HTTP Provider\uff0c\u5305\u542b discovery\u3001source probe\u3001RSS/crawler ingestion \u4e0e capability negotiation\u3002\u8fd9\u4e9b\u6982\u5ff5\u5c5e\u4e8e\u56fe\u5e93/\u91c7\u96c6\u8c03\u7528\u65b9\u9886\u57df\uff0c\u4e0d\u5c5e\u4e8e CLI \u4ed3\u5e93\uff1b\u52a0\u5165\u5b83\u4eec\u4f1a\u5f3a\u5236\u5f15\u5165 service lifecycle\u3001\u91cd\u590d\u7684\u6301\u4e45\u5316\u8bed\u4e49\u548c\u5bbd\u800c\u4e0d\u7a33\u5b9a\u7684\u63a5\u53e3\u3002\n\n## \u51b3\u7b56\n\n- \u53d1\u5e03\u9876\u5c42 `pixiv` package\uff08`github.com/FlanChanXwO/pixiv-cli/pixiv`\uff09\uff0c\u63d0\u4f9b\u5177\u4f53 `*pixiv.Client`\u3001\u7a33\u5b9a\u6a21\u578b\u3001request/result\u3001opaque cursor\u3001typed error \u548c\u8d44\u6e90 API\u3002\n- \u516c\u5f00\u5951\u7ea6\u53ea\u901a\u8fc7 package \u63d0\u4f9b\uff1b\u4e0d\u63d0\u4f9b HTTP server\u3001`Discover`\u3001Probe\u3001Capabilities\u3001RSS \u6216 crawler\u3002\n- `atri-setu-api` \u7b49\u8c03\u7528\u65b9\u62e5\u6709\u7a84 adapter interface\uff0c\u4ee5\u53ca\u81ea\u5df1\u7684 source mode\u3001budget\u3001filter\u3001cursor storage\u3001persistence\u3001scheduling \u548c HTTP presentation\u3002\n- \u5185\u90e8\u4f7f\u7528\u7269\u7406\u5305 `internal/pixiv/appapi`\u3001`webapi`\u3001`oauth`\u3001`resource`\uff1b\u516c\u5f00 SDK \u8d1f\u8d23\u8def\u7531\u548c\u89c4\u8303\u5316\uff0c\u4f46\u4e0d\u6cc4\u6f0f\u8fd9\u4e9b\u5305\u3002\n- \u6709\u51ed\u636e\u65f6 App API \u4e3a\u4e3b\u8def\u5f84\u3002\u533f\u540d Web read \u4ec5\u5728\u65e0 refresh token \u65f6\u6309\u914d\u7f6e fallback\uff1bWeb enrichment \u5fc5\u987b\u663e\u5f0f\uff0c\u7edd\u4e0d\u9690\u85cf fallback\u3002\n- \u5a92\u4f53\u901a\u8fc7 policy \u9a8c\u8bc1\u8fc7\u7684 `ResourceRef`\u3001`OpenResource`\u3001`Download` \u63d0\u4f9b\uff0c\u4fdd\u6301 stream ownership \u4e0e SSRF controls\u3002\n\n## \u540e\u679c\n\n- CLI/MCP \u548c\u5916\u90e8 Go \u7a0b\u5e8f\u6d88\u8d39\u540c\u4e00\u4e2a\u516c\u5f00\u5951\u7ea6\uff0c\u65e0\u9700\u989d\u5916\u8fdb\u7a0b\u6216 transport translation\u3002\n- \u96c6\u6210\u65b9\u53ef\u7528\u5c0f mock \u6d4b\u8bd5\u5176 adapter\uff0c\u81ea\u9009\u8fd0\u884c\u7b56\u7565\u3002\n- \u672c\u4ed3\u5e93\u4e0d\u627f\u8bfa collector-specific discovery \u517c\u5bb9\u6027\uff1b\u8c03\u7528\u65b9\u987b\u5c06\u8fd9\u7c7b\u884c\u4e3a\u8fc1\u79fb\u5230\u81ea\u5df1\u7684\u9886\u57df\u5c42\u3002\n- \u7269\u7406\u534f\u8bae\u53d8\u66f4\u5c01\u88c5\u5728\u9876\u5c42 `pixiv` \u540e\uff0c\u964d\u4f4e\u516c\u5f00 API churn\u3002\n",
         "backlinks": []
       }
     },
@@ -163,30 +163,30 @@
       "type": "article",
       "name": "Documentation Guidelines",
       "filePath": "agents/documentation-guidelines.md",
-      "summary": "文档按读者和稳定性分层，避免把所有内容塞进根文件。",
+      "summary": "\u6587\u6863\u6309\u8bfb\u8005\u548c\u7a33\u5b9a\u6027\u5206\u5c42\uff0c\u907f\u514d\u628a\u6240\u6709\u5185\u5bb9\u585e\u8fdb\u6839\u6587\u4ef6\u3002",
       "tags": [
         "agents"
       ],
       "complexity": "simple",
       "knowledgeMeta": {
         "wikilinks": [],
-        "content": "# Documentation Guidelines\n\n文档按读者和稳定性分层，避免把所有内容塞进根文件。\n\n## 文件职责\n\n- `README.md`：用户入口，描述 CLI/MCP 用法、配置、环境变量和主要行为。\n- `docs/index.md`：文档导航。\n- `docs/architecture.md`：包职责、运行流程和已知约束。\n- `docs/development.md`：本地环境、测试、构建、Git、changelog 和开发流程。\n- `docs/mcp-tools.md`：MCP tools 的名称、参数和返回语义。\n- `CONTEXT.md`：Pixiv/MCP 领域词汇与关系；不要放通用工程流程。\n- `docs/adr/`：难以逆转、未来会疑惑、经过真实取舍的决策。\n- `CHANGELOG.md`：用户和集成方可感知的变化。\n- `AGENTS.md`：agent 的短主规则和路由。\n- `.github/copilot-instructions.md`：Copilot 短提示。\n- `.agents/skills/`：高频 agent 工作流。\n- `.understand-anything/`、`docs/.understand-anything/`：入库的 understand-anything 知识图谱快照（代码图谱与文档图谱），是 agent 快速认识项目的首选入口；结构性变更后重新生成并随改动提交。\n\n## 更新规则\n\n- 功能、API、配置、CLI/MCP 行为、输出语义、测试流程或限制变化时，同步 README 或 docs。\n- 公开行为变化优先写 `README.md`；内部边界变化优先写 `docs/architecture.md` 或 ADR。\n- 术语冲突或领域概念变化才更新 `CONTEXT.md`。\n- 纯内部重构、测试补充、文档清理通常不需要 changelog。\n- 不为短期实现细节创建 ADR；只有真实取舍且未来维护者需要背景时才新增。\n",
+        "content": "# Documentation Guidelines\n\n\u6587\u6863\u6309\u8bfb\u8005\u548c\u7a33\u5b9a\u6027\u5206\u5c42\uff0c\u907f\u514d\u628a\u6240\u6709\u5185\u5bb9\u585e\u8fdb\u6839\u6587\u4ef6\u3002\n\n## \u6587\u4ef6\u804c\u8d23\n\n- `README.md`\uff1a\u7528\u6237\u5165\u53e3\uff0c\u63cf\u8ff0 CLI/MCP \u7528\u6cd5\u3001\u914d\u7f6e\u3001\u73af\u5883\u53d8\u91cf\u548c\u4e3b\u8981\u884c\u4e3a\u3002\n- `docs/index.md`\uff1a\u6587\u6863\u5bfc\u822a\u3002\n- `docs/architecture.md`\uff1a\u5305\u804c\u8d23\u3001\u8fd0\u884c\u6d41\u7a0b\u548c\u5df2\u77e5\u7ea6\u675f\u3002\n- `docs/development.md`\uff1a\u672c\u5730\u73af\u5883\u3001\u6d4b\u8bd5\u3001\u6784\u5efa\u3001Git\u3001changelog \u548c\u5f00\u53d1\u6d41\u7a0b\u3002\n- `docs/mcp-tools.md`\uff1aMCP tools \u7684\u540d\u79f0\u3001\u53c2\u6570\u548c\u8fd4\u56de\u8bed\u4e49\u3002\n- `CONTEXT.md`\uff1aPixiv/MCP \u9886\u57df\u8bcd\u6c47\u4e0e\u5173\u7cfb\uff1b\u4e0d\u8981\u653e\u901a\u7528\u5de5\u7a0b\u6d41\u7a0b\u3002\n- `docs/adr/`\uff1a\u96be\u4ee5\u9006\u8f6c\u3001\u672a\u6765\u4f1a\u7591\u60d1\u3001\u7ecf\u8fc7\u771f\u5b9e\u53d6\u820d\u7684\u51b3\u7b56\u3002\n- `CHANGELOG.md`\uff1a\u7528\u6237\u548c\u96c6\u6210\u65b9\u53ef\u611f\u77e5\u7684\u53d8\u5316\u3002\n- `AGENTS.md`\uff1aagent \u7684\u77ed\u4e3b\u89c4\u5219\u548c\u8def\u7531\u3002\n- `.github/copilot-instructions.md`\uff1aCopilot \u77ed\u63d0\u793a\u3002\n- `.agents/skills/`\uff1a\u9ad8\u9891 agent \u5de5\u4f5c\u6d41\u3002\n- `.understand-anything/`\u3001`docs/.understand-anything/`\uff1a\u5165\u5e93\u7684 understand-anything \u77e5\u8bc6\u56fe\u8c31\u5feb\u7167\uff08\u4ee3\u7801\u56fe\u8c31\u4e0e\u6587\u6863\u56fe\u8c31\uff09\uff0c\u662f agent \u5feb\u901f\u8ba4\u8bc6\u9879\u76ee\u7684\u9996\u9009\u5165\u53e3\uff1b\u7ed3\u6784\u6027\u53d8\u66f4\u540e\u91cd\u65b0\u751f\u6210\u5e76\u968f\u6539\u52a8\u63d0\u4ea4\u3002\n\n## \u66f4\u65b0\u89c4\u5219\n\n- \u529f\u80fd\u3001API\u3001\u914d\u7f6e\u3001CLI/MCP \u884c\u4e3a\u3001\u8f93\u51fa\u8bed\u4e49\u3001\u6d4b\u8bd5\u6d41\u7a0b\u6216\u9650\u5236\u53d8\u5316\u65f6\uff0c\u540c\u6b65 README \u6216 docs\u3002\n- \u516c\u5f00\u884c\u4e3a\u53d8\u5316\u4f18\u5148\u5199 `README.md`\uff1b\u5185\u90e8\u8fb9\u754c\u53d8\u5316\u4f18\u5148\u5199 `docs/architecture.md` \u6216 ADR\u3002\n- \u672f\u8bed\u51b2\u7a81\u6216\u9886\u57df\u6982\u5ff5\u53d8\u5316\u624d\u66f4\u65b0 `CONTEXT.md`\u3002\n- \u7eaf\u5185\u90e8\u91cd\u6784\u3001\u6d4b\u8bd5\u8865\u5145\u3001\u6587\u6863\u6e05\u7406\u901a\u5e38\u4e0d\u9700\u8981 changelog\u3002\n- \u4e0d\u4e3a\u77ed\u671f\u5b9e\u73b0\u7ec6\u8282\u521b\u5efa ADR\uff1b\u53ea\u6709\u771f\u5b9e\u53d6\u820d\u4e14\u672a\u6765\u7ef4\u62a4\u8005\u9700\u8981\u80cc\u666f\u65f6\u624d\u65b0\u589e\u3002\n",
         "backlinks": []
       }
     },
     {
       "id": "article:agents/index",
       "type": "article",
-      "name": "AI 协作文档",
+      "name": "AI \u534f\u4f5c\u6587\u6863",
       "filePath": "agents/index.md",
-      "summary": "本目录承接 `AGENTS.md` 不适合长期展开的协作细则。根指令保持短而硬；需要专项规则时再读取这里或 `.agents/skills/`。",
+      "summary": "\u672c\u76ee\u5f55\u627f\u63a5 `AGENTS.md` \u4e0d\u9002\u5408\u957f\u671f\u5c55\u5f00\u7684\u534f\u4f5c\u7ec6\u5219\u3002\u6839\u6307\u4ee4\u4fdd\u6301\u77ed\u800c\u786c\uff1b\u9700\u8981\u4e13\u9879\u89c4\u5219\u65f6\u518d\u8bfb\u53d6\u8fd9\u91cc\u6216 `.agents/skills/`\u3002",
       "tags": [
         "agents"
       ],
       "complexity": "simple",
       "knowledgeMeta": {
         "wikilinks": [],
-        "content": "# AI 协作文档\n\n本目录承接 `AGENTS.md` 不适合长期展开的协作细则。根指令保持短而硬；需要专项规则时再读取这里或 `.agents/skills/`。\n\n## 文档地图\n\n- [Review checklist](review-checklist.md)：本仓库 code review 的边界、风险和测试清单。\n- [Documentation guidelines](documentation-guidelines.md)：README、docs、ADR、CONTEXT、CHANGELOG、AGENTS 和 skills 的职责边界。\n\n## 使用原则\n\n- `AGENTS.md` 是跨 agent 的 canonical source of truth。\n- `CLAUDE.md` 只包含 `@AGENTS.md`，不维护第二份规则。\n- `.github/copilot-instructions.md` 是短提示，不复制主规则全文。\n- `.agents/skills/` 只放高频、可复用、能减少误操作的项目技能。\n",
+        "content": "# AI \u534f\u4f5c\u6587\u6863\n\n\u672c\u76ee\u5f55\u627f\u63a5 `AGENTS.md` \u4e0d\u9002\u5408\u957f\u671f\u5c55\u5f00\u7684\u534f\u4f5c\u7ec6\u5219\u3002\u6839\u6307\u4ee4\u4fdd\u6301\u77ed\u800c\u786c\uff1b\u9700\u8981\u4e13\u9879\u89c4\u5219\u65f6\u518d\u8bfb\u53d6\u8fd9\u91cc\u6216 `.agents/skills/`\u3002\n\n## \u6587\u6863\u5730\u56fe\n\n- [Review checklist](review-checklist.md)\uff1a\u672c\u4ed3\u5e93 code review \u7684\u8fb9\u754c\u3001\u98ce\u9669\u548c\u6d4b\u8bd5\u6e05\u5355\u3002\n- [Documentation guidelines](documentation-guidelines.md)\uff1aREADME\u3001docs\u3001ADR\u3001CONTEXT\u3001CHANGELOG\u3001AGENTS \u548c skills \u7684\u804c\u8d23\u8fb9\u754c\u3002\n\n## \u4f7f\u7528\u539f\u5219\n\n- `AGENTS.md` \u662f\u8de8 agent \u7684 canonical source of truth\u3002\n- `CLAUDE.md` \u53ea\u5305\u542b `@AGENTS.md`\uff0c\u4e0d\u7ef4\u62a4\u7b2c\u4e8c\u4efd\u89c4\u5219\u3002\n- `.github/copilot-instructions.md` \u662f\u77ed\u63d0\u793a\uff0c\u4e0d\u590d\u5236\u4e3b\u89c4\u5219\u5168\u6587\u3002\n- `.agents/skills/` \u53ea\u653e\u9ad8\u9891\u3001\u53ef\u590d\u7528\u3001\u80fd\u51cf\u5c11\u8bef\u64cd\u4f5c\u7684\u9879\u76ee\u6280\u80fd\u3002\n",
         "backlinks": []
       }
     },
@@ -195,128 +195,156 @@
       "type": "article",
       "name": "Review Checklist",
       "filePath": "agents/review-checklist.md",
-      "summary": "代码审查时先看行为风险，再看风格。输出 finding-first，按严重程度排序，并给出文件/行号。",
+      "summary": "\u4ee3\u7801\u5ba1\u67e5\u65f6\u5148\u770b\u884c\u4e3a\u98ce\u9669\uff0c\u518d\u770b\u98ce\u683c\u3002\u8f93\u51fa finding-first\uff0c\u6309\u4e25\u91cd\u7a0b\u5ea6\u6392\u5e8f\uff0c\u5e76\u7ed9\u51fa\u6587\u4ef6/\u884c\u53f7\u3002",
       "tags": [
         "agents"
       ],
       "complexity": "simple",
       "knowledgeMeta": {
         "wikilinks": [],
-        "content": "# Review Checklist\n\n代码审查时先看行为风险，再看风格。输出 finding-first，按严重程度排序，并给出文件/行号。\n\n## 边界\n\n- `internal/cli` 是否只做 Cobra、TTY、OAuth loopback 和 presenter；业务用例是否留在 `internal/application`。\n- `internal/bootstrap` 是否仍是生产 wiring 的唯一入口；MCP runtime 是否仍由 bootstrap 启动。\n- CLI/MCP 是否通过 `internal/pixiv` facade 使用 Pixiv 能力；不要无故绕到 `api` 或 `web` 子包。\n- `internal/config` 是否只维护 `config.toml` schema、defaults、effective runtime config 和 sparse writes。\n- `internal/utils/*` 是否保持协议无关；Pixiv/MCP/config 协议值不要搬进 generic utils/common。\n- 结构性变更（新增/移动包、文件大规模迁移、公开接口大改）是否重新生成了 `.understand-anything/` 与 `docs/.understand-anything/` 知识图谱并随改动提交。\n\n## 行为风险\n\n- refresh token 不得打印到 stdout、stderr、JSON、MCP result 或测试 fixture。\n- 认证、网络、Pixiv API、文件系统、`ffmpeg` 错误要暴露真实原因，不要返回空成功。\n- 不新增无依据的 timeout、截断、分页上限、重试上限、静默 fallback 或隐藏降级。\n- Pixiv web fallback 只在无 refresh token 且 `web_fallback_enabled=true` 时使用；App API 错误不要自动 fallback。\n- MCP stdout 保留给 JSON-RPC；日志和人类可读诊断写 stderr。\n\n## MCP 与 CLI\n\n- MCP tool 名称、参数、structured output、delivery mode 或文本语义变化时，更新 `docs/mcp-tools.md` 和聚焦测试。\n- CLI 命令、flag、输出 JSON、token 优先级、账号/config 行为变化时，更新 README 或 docs。\n- 用户可见变化、兼容性影响、废弃/移除或安全影响要写入 `CHANGELOG.md` 的 `[Unreleased]`。\n\n## 测试\n\n- 代码改动需要新增或更新聚焦测试，并运行相关包测试。\n- 共享行为、CLI/MCP 公开接口、下载、认证或 config 变更，优先运行 `go test ./...`。\n- 文档/agent-only 改动至少运行 `git diff --check` 并检查链接。\n- 真实 Pixiv e2e 是 opt-in；不能运行时说明原因和剩余风险。\n",
+        "content": "# Review Checklist\n\n\u4ee3\u7801\u5ba1\u67e5\u65f6\u5148\u770b\u884c\u4e3a\u98ce\u9669\uff0c\u518d\u770b\u98ce\u683c\u3002\u8f93\u51fa finding-first\uff0c\u6309\u4e25\u91cd\u7a0b\u5ea6\u6392\u5e8f\uff0c\u5e76\u7ed9\u51fa\u6587\u4ef6/\u884c\u53f7\u3002\n\n## \u8fb9\u754c\n\n- `internal/cli` \u662f\u5426\u53ea\u505a Cobra\u3001TTY\u3001OAuth loopback \u548c presenter\uff1b\u4e1a\u52a1\u7528\u4f8b\u662f\u5426\u7559\u5728 `internal/application`\u3002\n- `internal/bootstrap` \u662f\u5426\u4ecd\u662f\u751f\u4ea7 wiring \u7684\u552f\u4e00\u5165\u53e3\uff1bMCP runtime \u662f\u5426\u4ecd\u7531 bootstrap \u542f\u52a8\u3002\n- CLI/MCP \u662f\u5426\u7ecf `internal/application.SDKService` \u8c03\u7528\u9876\u5c42 `pixiv` public SDK\uff1b\u4e0d\u5f97\u7ed5\u5230 `internal/pixiv/appapi`\u3001`webapi`\u3001`oauth` \u6216 `resource` \u534f\u8bae\u9002\u914d\u5305\u3002\n- `internal/config` \u662f\u5426\u53ea\u7ef4\u62a4 `config.toml` schema\u3001defaults\u3001effective runtime config \u548c sparse writes\u3002\n- `internal/utils/*` \u662f\u5426\u4fdd\u6301\u534f\u8bae\u65e0\u5173\uff1bPixiv/MCP/config \u534f\u8bae\u503c\u4e0d\u8981\u642c\u8fdb generic utils/common\u3002\n- \u7ed3\u6784\u6027\u53d8\u66f4\uff08\u65b0\u589e/\u79fb\u52a8\u5305\u3001\u6587\u4ef6\u5927\u89c4\u6a21\u8fc1\u79fb\u3001\u516c\u5f00\u63a5\u53e3\u5927\u6539\uff09\u662f\u5426\u91cd\u65b0\u751f\u6210\u4e86 `.understand-anything/` \u4e0e `docs/.understand-anything/` \u77e5\u8bc6\u56fe\u8c31\u5e76\u968f\u6539\u52a8\u63d0\u4ea4\u3002\n\n## \u884c\u4e3a\u98ce\u9669\n\n- refresh token \u4e0d\u5f97\u6253\u5370\u5230 stdout\u3001stderr\u3001JSON\u3001MCP result \u6216\u6d4b\u8bd5 fixture\u3002\n- \u8ba4\u8bc1\u3001\u7f51\u7edc\u3001Pixiv API\u3001\u6587\u4ef6\u7cfb\u7edf\u3001`ffmpeg` \u9519\u8bef\u8981\u66b4\u9732\u771f\u5b9e\u539f\u56e0\uff0c\u4e0d\u8981\u8fd4\u56de\u7a7a\u6210\u529f\u3002\n- \u4e0d\u65b0\u589e\u65e0\u4f9d\u636e\u7684 timeout\u3001\u622a\u65ad\u3001\u5206\u9875\u4e0a\u9650\u3001\u91cd\u8bd5\u4e0a\u9650\u3001\u9759\u9ed8 fallback \u6216\u9690\u85cf\u964d\u7ea7\u3002\n- Pixiv web fallback \u53ea\u5728\u65e0 refresh token \u4e14 `web_fallback_enabled=true` \u65f6\u4f7f\u7528\uff1bApp API \u9519\u8bef\u4e0d\u8981\u81ea\u52a8 fallback\u3002\n- MCP stdout \u4fdd\u7559\u7ed9 JSON-RPC\uff1b\u65e5\u5fd7\u548c\u4eba\u7c7b\u53ef\u8bfb\u8bca\u65ad\u5199 stderr\u3002\n\n## MCP \u4e0e CLI\n\n- MCP tool \u540d\u79f0\u3001\u53c2\u6570\u3001structured output\u3001delivery mode \u6216\u6587\u672c\u8bed\u4e49\u53d8\u5316\u65f6\uff0c\u66f4\u65b0 `docs/mcp-tools.md` \u548c\u805a\u7126\u6d4b\u8bd5\u3002\n- CLI \u547d\u4ee4\u3001flag\u3001\u8f93\u51fa JSON\u3001token \u4f18\u5148\u7ea7\u3001\u8d26\u53f7/config \u884c\u4e3a\u53d8\u5316\u65f6\uff0c\u66f4\u65b0 README \u6216 docs\u3002\n- \u7528\u6237\u53ef\u89c1\u53d8\u5316\u3001\u517c\u5bb9\u6027\u5f71\u54cd\u3001\u5e9f\u5f03/\u79fb\u9664\u6216\u5b89\u5168\u5f71\u54cd\u8981\u5199\u5165 `CHANGELOG.md` \u7684 `[Unreleased]`\u3002\n\n## \u6d4b\u8bd5\n\n- \u4ee3\u7801\u6539\u52a8\u9700\u8981\u65b0\u589e\u6216\u66f4\u65b0\u805a\u7126\u6d4b\u8bd5\uff0c\u5e76\u8fd0\u884c\u76f8\u5173\u5305\u6d4b\u8bd5\u3002\n- \u5171\u4eab\u884c\u4e3a\u3001CLI/MCP \u516c\u5f00\u63a5\u53e3\u3001\u4e0b\u8f7d\u3001\u8ba4\u8bc1\u6216 config \u53d8\u66f4\uff0c\u4f18\u5148\u8fd0\u884c `go test ./...`\u3002\n- \u6587\u6863/agent-only \u6539\u52a8\u81f3\u5c11\u8fd0\u884c `git diff --check` \u5e76\u68c0\u67e5\u94fe\u63a5\u3002\n- \u771f\u5b9e Pixiv e2e \u662f opt-in\uff1b\u4e0d\u80fd\u8fd0\u884c\u65f6\u8bf4\u660e\u539f\u56e0\u548c\u5269\u4f59\u98ce\u9669\u3002\n",
         "backlinks": []
       }
     },
     {
       "id": "article:architecture",
       "type": "article",
-      "name": "架构说明",
+      "name": "\u67b6\u6784\u8bf4\u660e",
       "filePath": "architecture.md",
-      "summary": "`cmd/pixiv/main.go` 是唯一官方二进制入口，它只负责调用 `internal/cli`：",
-      "tags": [
-        "documentation"
-      ],
+      "summary": "`cmd/pixiv/main.go` \u662f\u552f\u4e00\u5b98\u65b9\u4e8c\u8fdb\u5236\u5165\u53e3\uff0c\u5b83\u53ea\u8d1f\u8d23\u8c03\u7528 `internal/cli`\uff1a",
+      "tags": [],
       "complexity": "simple",
       "knowledgeMeta": {
         "wikilinks": [],
-        "content": "# 架构说明\n\n## 总体流程\n\n`cmd/pixiv/main.go` 是唯一官方二进制入口，它只负责调用 `internal/cli`：\n\n1. `pixiv` 无参数显示 CLI 帮助。\n2. `pixiv auth/config/version/update/search/detail/ranking/recommended/user/bookmark/follow/download` 进入 CLI 模式。\n3. `pixiv mcp` 委托 `internal/bootstrap` 组装并运行 MCP stdio server。\n4. CLI 与 MCP 通过 `internal/bootstrap` 共享生产 wiring：\n   - 账号认证来自 `os.UserConfigDir()/pixiv/auth.json`\n   - 全局配置来自 `os.UserConfigDir()/pixiv/config.toml`\n   - 公开环境变量作为覆盖层参与合并\n5. MCP 模式若没有 `PIXIV_REFRESH_TOKEN`，会回退到 `auth.json.default_user_id`；若仍无 refresh token 且 `web_fallback_enabled=true`，支持匿名能力的路径会走 Pixiv web/ajax API。\n\n## 包职责\n\n### `cmd/pixiv`\n\n负责生成 `pixiv` binary 的 `main` package。它不承载业务逻辑，只委托 `internal/cli.Run` 并返回进程退出码。\n\n### `internal/cli`\n\n负责 CLI 用户态的命令分发与输出：\n\n- Cobra 命令树、help 和 flag 解析。\n- 文本/JSON 输出。\n- `auth login` 的 loopback OAuth、浏览器打开和 TTY 交互。\n- `pixiv mcp` 分发。\n- `pixiv version`、根 `--version` 与 `pixiv update` 的输入/输出适配。\n- 普通 CLI 成功命令后的只读自动更新提示；提示和失败 warning 仅写 stderr。\n\n它不直接拥有账号存储变更、Pixiv client 构造或下载管理器构造；这些职责由 `internal/application` 与 `internal/bootstrap` 承接。\n\n`version` 的 JSON stdout 精确为 `version`、`commit`、`build_date`。自动更新只在普通业务命令\n成功后运行，跳过 MCP、help、`version`、`update` 和开发构建；它选择 stable Release、使用用户\ncache 的 24 小时节流，并最多等待 3 秒。配置、网络、来源识别失败只作为 stderr warning，不能\n改变已成功业务命令的退出码，也不能混入 JSON stdout 或 MCP JSON-RPC。\n\n### `internal/buildinfo`\n\n保存由 Go linker 注入的 `Version`、`Commit`、`BuildDate`。本地默认是 `dev`/`unknown`/`unknown`；\n只有 version 为 `dev` 的构建被视为开发构建，并必须拒绝自更新。\n\n### `internal/application`\n\n负责 CLI/MCP 之外的应用用例编排：\n\n- `AccountService`：账号 add/list/remove/use/check。\n- `ConfigService`：`config.toml` path/get/set/unset。\n- `ArtworkService`：search/detail/ranking/recommended。\n- `DownloadService`：按 ID 下载作品。\n- `LoginService`：生成 PKCE/state、authorization-code exchange，并保存账号；Pixiv 登录 URL 构造仍留在 CLI adapter。\n- `SDKService`：为 CLI/MCP 打开顶层 `pixiv` client，并把调用方选择的账号/代理/JSON 设置映射到 SDK operation snapshot。\n\n### `internal/bootstrap`\n\n生产 composition root，负责把 `internal/config`、`internal/storage/auth`、顶层 `pixiv`、`internal/download`、`internal/mcpserver`、更新 release client/installer 和 application services 组装起来。测试可以替换 service 里的小接口或 factory，不需要复制生产 wiring。\n\n`NewUpdateCoordinator` 通过 `productionReleaseInstallerOptions` 为 Release installer 注入随受支持\nbinary 提交的 Ed25519 key ID→public key 映射，并在每次组装时复制 map 与 key bytes，避免调用方污染\nproduction trust root。该公开 key 的 SPKI fingerprint 与已知签名 fixture 由同包测试验证；私钥不在\nbootstrap、源码或运行时配置中。只读更新检查不需要该 key；当前 v0.2.0 已是可安装的公开 Release，\n但该 wiring 本身仍不能代替每个版本独立的发布验收。\n\n### `internal/storage/auth`\n\n负责本地账号状态：\n\n- `auth.json` 读写与默认 UID 管理。\n- 认证文件路径解析和 `0600` 权限写入。\n\n### `internal/config`\n\n负责 `config.toml` 及运行时配置：\n\n- `config.toml` schema、默认值和配置键定义。\n- 运行时配置合并：`config.toml` 与公开环境变量。\n- `pixiv config path/get/set/unset` 需要的强类型解析与稀疏写回。\n\n配置拆分如下：\n\n- `auth.json`：只保存 `default_user_id` 与 `accounts[].user_id/username/refresh_token`，文件权限固定为 `0600`。\n- `config.toml`：只保存用户显式设置过的全局配置键，文件权限固定为 `0600`。\n\n运行时设置使用 `koanf` 合并 `config.toml` 与公开环境变量；`config set/unset` 使用 `tomledit` 写回，尽量保留注释、顺序和布局。\n\n`update_check_enabled` 对应 `[updat",
+        "content": "# \u67b6\u6784\u8bf4\u660e\n\n## \u603b\u4f53\u6d41\u7a0b\n\n`cmd/pixiv/main.go` \u662f\u552f\u4e00\u5b98\u65b9\u4e8c\u8fdb\u5236\u5165\u53e3\uff0c\u5b83\u53ea\u8d1f\u8d23\u8c03\u7528 `internal/cli`\uff1a\n\n1. `pixiv` \u65e0\u53c2\u6570\u663e\u793a CLI \u5e2e\u52a9\u3002\n2. `pixiv auth/config/version/update/search/detail/ranking/recommended/user/bookmark/follow/download` \u8fdb\u5165 CLI \u6a21\u5f0f\u3002\n3. `pixiv mcp` \u59d4\u6258 `internal/bootstrap` \u7ec4\u88c5\u5e76\u8fd0\u884c MCP stdio server\u3002\n4. CLI \u4e0e MCP \u901a\u8fc7 `internal/bootstrap` \u5171\u4eab\u751f\u4ea7 wiring\uff1a\n   - \u8d26\u53f7\u8ba4\u8bc1\u6765\u81ea `os.UserConfigDir()/pixiv/auth.json`\n   - \u5168\u5c40\u914d\u7f6e\u6765\u81ea `os.UserConfigDir()/pixiv/config.toml`\n   - \u516c\u5f00\u73af\u5883\u53d8\u91cf\u4f5c\u4e3a\u8986\u76d6\u5c42\u53c2\u4e0e\u5408\u5e76\n5. MCP \u6a21\u5f0f\u82e5\u6ca1\u6709 `PIXIV_REFRESH_TOKEN`\uff0c\u4f1a\u56de\u9000\u5230 `auth.json.default_user_id`\uff1b\u82e5\u4ecd\u65e0 refresh token \u4e14 `web_fallback_enabled=true`\uff0c\u652f\u6301\u533f\u540d\u80fd\u529b\u7684\u8def\u5f84\u4f1a\u8d70 Pixiv web/ajax API\u3002\n\n## \u5305\u804c\u8d23\n\n### `cmd/pixiv`\n\n\u8d1f\u8d23\u751f\u6210 `pixiv` binary \u7684 `main` package\u3002\u5b83\u4e0d\u627f\u8f7d\u4e1a\u52a1\u903b\u8f91\uff0c\u53ea\u59d4\u6258 `internal/cli.Run` \u5e76\u8fd4\u56de\u8fdb\u7a0b\u9000\u51fa\u7801\u3002\n\n### `internal/cli`\n\n\u8d1f\u8d23 CLI \u7528\u6237\u6001\u7684\u547d\u4ee4\u5206\u53d1\u4e0e\u8f93\u51fa\uff1a\n\n- Cobra \u547d\u4ee4\u6811\u3001help \u548c flag \u89e3\u6790\u3002\n- \u6587\u672c/JSON \u8f93\u51fa\u3002\n- `auth login` \u7684 loopback OAuth\u3001\u6d4f\u89c8\u5668\u6253\u5f00\u548c TTY \u4ea4\u4e92\u3002\n- `pixiv mcp` \u5206\u53d1\u3002\n- `pixiv version`\u3001\u6839 `--version` \u4e0e `pixiv update` \u7684\u8f93\u5165/\u8f93\u51fa\u9002\u914d\u3002\n- \u666e\u901a CLI \u6210\u529f\u547d\u4ee4\u540e\u7684\u53ea\u8bfb\u81ea\u52a8\u66f4\u65b0\u63d0\u793a\uff1b\u63d0\u793a\u548c\u5931\u8d25 warning \u4ec5\u5199 stderr\u3002\n\n\u5b83\u4e0d\u76f4\u63a5\u62e5\u6709\u8d26\u53f7\u5b58\u50a8\u53d8\u66f4\u3001Pixiv client \u6784\u9020\u6216\u4e0b\u8f7d\u7ba1\u7406\u5668\u6784\u9020\uff1b\u8fd9\u4e9b\u804c\u8d23\u7531 `internal/application` \u4e0e `internal/bootstrap` \u627f\u63a5\u3002\n\n`version` \u7684 JSON stdout \u7cbe\u786e\u4e3a `version`\u3001`commit`\u3001`build_date`\u3002\u81ea\u52a8\u66f4\u65b0\u53ea\u5728\u666e\u901a\u4e1a\u52a1\u547d\u4ee4\n\u6210\u529f\u540e\u8fd0\u884c\uff0c\u8df3\u8fc7 MCP\u3001help\u3001`version`\u3001`update` \u548c\u5f00\u53d1\u6784\u5efa\uff1b\u5b83\u9009\u62e9 stable Release\u3001\u4f7f\u7528\u7528\u6237\ncache \u7684 24 \u5c0f\u65f6\u8282\u6d41\uff0c\u5e76\u6700\u591a\u7b49\u5f85 3 \u79d2\u3002\u914d\u7f6e\u3001\u7f51\u7edc\u3001\u6765\u6e90\u8bc6\u522b\u5931\u8d25\u53ea\u4f5c\u4e3a stderr warning\uff0c\u4e0d\u80fd\n\u6539\u53d8\u5df2\u6210\u529f\u4e1a\u52a1\u547d\u4ee4\u7684\u9000\u51fa\u7801\uff0c\u4e5f\u4e0d\u80fd\u6df7\u5165 JSON stdout \u6216 MCP JSON-RPC\u3002\n\n### `internal/buildinfo`\n\n\u4fdd\u5b58\u7531 Go linker \u6ce8\u5165\u7684 `Version`\u3001`Commit`\u3001`BuildDate`\u3002\u672c\u5730\u9ed8\u8ba4\u662f `dev`/`unknown`/`unknown`\uff1b\n\u53ea\u6709 version \u4e3a `dev` \u7684\u6784\u5efa\u88ab\u89c6\u4e3a\u5f00\u53d1\u6784\u5efa\uff0c\u5e76\u5fc5\u987b\u62d2\u7edd\u81ea\u66f4\u65b0\u3002\n\n### `internal/application`\n\n\u8d1f\u8d23 CLI/MCP \u4e4b\u5916\u7684\u5e94\u7528\u7528\u4f8b\u7f16\u6392\uff1a\n\n- `AccountService`\uff1a\u8d26\u53f7 add/list/remove/use/check\u3002\n- `ConfigService`\uff1a`config.toml` path/get/set/unset\u3002\n- `LoginService`\uff1a\u751f\u6210 PKCE/state\u3001authorization-code exchange\uff0c\u5e76\u4fdd\u5b58\u8d26\u53f7\uff1bPixiv \u767b\u5f55 URL \u6784\u9020\u4ecd\u7559\u5728 CLI adapter\u3002\n- `SDKService`\uff1a\u4e3a CLI/MCP \u6253\u5f00\u9876\u5c42 `pixiv` client\uff0c\u5e76\u628a\u8c03\u7528\u65b9\u9009\u62e9\u7684\u8d26\u53f7/\u4ee3\u7406/JSON \u8bbe\u7f6e\u6620\u5c04\u5230 SDK operation snapshot\uff1b\u4f5c\u54c1\u67e5\u8be2\u548c\u4e0b\u8f7d\u5747\u4ece\u8be5 snapshot \u7684 public SDK \u80fd\u529b\u7ee7\u7eed\u6267\u884c\u3002\n\n### `internal/bootstrap`\n\n\u751f\u4ea7 composition root\uff0c\u8d1f\u8d23\u628a `internal/config`\u3001`internal/storage/auth`\u3001\u9876\u5c42 `pixiv`\u3001`internal/download`\u3001`internal/mcpserver`\u3001\u66f4\u65b0 release client/installer \u548c application services \u7ec4\u88c5\u8d77\u6765\u3002\u6d4b\u8bd5\u53ef\u4ee5\u66ff\u6362 service \u91cc\u7684\u5c0f\u63a5\u53e3\u6216 factory\uff0c\u4e0d\u9700\u8981\u590d\u5236\u751f\u4ea7 wiring\u3002\n\n`NewUpdateCoordinator` \u901a\u8fc7 `productionReleaseInstallerOptions` \u4e3a Release installer \u6ce8\u5165\u968f\u53d7\u652f\u6301\nbinary \u63d0\u4ea4\u7684 Ed25519 key ID\u2192public key \u6620\u5c04\uff0c\u5e76\u5728\u6bcf\u6b21\u7ec4\u88c5\u65f6\u590d\u5236 map \u4e0e key bytes\uff0c\u907f\u514d\u8c03\u7528\u65b9\u6c61\u67d3\nproduction trust root\u3002\u8be5\u516c\u5f00 key \u7684 SPKI fingerprint \u4e0e\u5df2\u77e5\u7b7e\u540d fixture \u7531\u540c\u5305\u6d4b\u8bd5\u9a8c\u8bc1\uff1b\u79c1\u94a5\u4e0d\u5728\nbootstrap\u3001\u6e90\u7801\u6216\u8fd0\u884c\u65f6\u914d\u7f6e\u4e2d\u3002\u53ea\u8bfb\u66f4\u65b0\u68c0\u67e5\u4e0d\u9700\u8981\u8be5 key\uff1b\u5f53\u524d v0.3.0 \u5df2\u662f\u53ef\u5b89\u88c5\u7684\u516c\u5f00 Release\uff0c\n\u4f46\u8be5 wiring \u672c\u8eab\u4ecd\u4e0d\u80fd\u4ee3\u66ff\u6bcf\u4e2a\u7248\u672c\u72ec\u7acb\u7684\u53d1\u5e03\u9a8c\u6536\u3002\n\n### `internal/storage/auth`\n\n\u8d1f\u8d23\u672c\u5730\u8d26\u53f7\u72b6\u6001\uff1a\n\n- `auth.json` \u8bfb\u5199\u4e0e\u9ed8\u8ba4 UID \u7ba1\u7406\u3002\n- \u8ba4\u8bc1\u6587\u4ef6\u8def\u5f84\u89e3\u6790\u548c `0600` \u6743\u9650\u5199\u5165\u3002\n\n### `internal/config`\n\n\u8d1f\u8d23 `config.toml` \u53ca\u8fd0\u884c\u65f6\u914d\u7f6e\uff1a\n\n- `config.toml` schema\u3001\u9ed8\u8ba4\u503c\u548c\u914d\u7f6e\u952e\u5b9a\u4e49\u3002\n- \u8fd0\u884c\u65f6\u914d\u7f6e\u5408\u5e76\uff1a`config.toml` \u4e0e\u516c\u5f00\u73af\u5883\u53d8\u91cf\u3002\n- `pixiv config path/get/set/unset` \u9700\u8981\u7684\u5f3a\u7c7b\u578b\u89e3\u6790\u4e0e\u7a00\u758f\u5199\u56de\u3002\n\n\u914d\u7f6e\u62c6\u5206\u5982\u4e0b\uff1a\n\n- `auth.json`\uff1a\u53ea\u4fdd\u5b58 `default_user_id` \u4e0e `accounts[].user_id/username/refresh_token`\uff0c\u6587\u4ef6\u6743\u9650\u56fa\u5b9a\u4e3a `0600`\u3002\n- `config.toml`\uff1a\u53ea\u4fdd\u5b58\u7528\u6237\u663e\u5f0f\u8bbe\u7f6e\u8fc7\u7684\u5168\u5c40\u914d\u7f6e\u952e\uff0c\u6587\u4ef6\u6743\u9650\u56fa\u5b9a\u4e3a `0600`\u3002\n\n\u8fd0\u884c\u65f6\u8bbe\u7f6e\u4f7f\u7528 `koanf` \u5408\u5e76 `config.toml` \u4e0e\u516c\u5f00\u73af\u5883\u53d8\u91cf\uff1b`config set/unset` \u4f7f\u7528 `tomledit` \u5199\u56de\uff0c\u5c3d\u91cf\u4fdd\u7559\u6ce8\u91ca\u3001\u987a\u5e8f\u548c\u5e03\u5c40\u3002\n\n`update_check_enabled` \u5bf9\u5e94 `[update] check_enabled`\uff0c\u9ed8\u8ba4 `true`\uff1b\u5b83\u53ea\u63a7\u5236\u666e\u901a CLI \u6210\u529f\u540e\u7684\n\u81ea",
         "backlinks": []
       }
     },
     {
       "id": "article:development",
       "type": "article",
-      "name": "开发流程",
+      "name": "\u5f00\u53d1\u6d41\u7a0b",
       "filePath": "development.md",
-      "summary": "项目是 Go module，当前 `go.mod` 声明：",
-      "tags": [
-        "documentation"
-      ],
+      "summary": "\u9879\u76ee\u662f Go module\uff0c\u5f53\u524d `go.mod` \u58f0\u660e\uff1a",
+      "tags": [],
       "complexity": "simple",
       "knowledgeMeta": {
         "wikilinks": [],
-        "content": "# 开发流程\n\n## 环境检查\n\n项目是 Go module，当前 `go.mod` 声明：\n\n```text\ngo 1.26.3\n```\n\n开工前建议检查 Go/cgo、Rust 与常规测试环境：\n\n```bash\ngo version\ngo env GOVERSION CGO_ENABLED CC GOOS GOARCH\ncargo --version\ngo test ./...\n```\n\n## Rust ugoira staticlib\n\n生产 ugoira GIF/APNG 由内置 Rust encoder 完成，运行时不依赖 `ffmpeg`。`ffmpeg` 只可作为\n开发质量对照：显式设置 `PIXIV_UGOIRA_QUALITY_FFMPEG=1` 后，Rust quality gate 才会调用它；\n它不是本地构建或用户运行的前置条件。\n\n受支持的 Go 源码构建需要下列条件：\n\n- Go `1.26.3`；\n- `CGO_ENABLED=1`；\n- 当前 `GOOS/GOARCH` 对应的 C linker；\n- Rust crate 对应 target 的 committed `staticlib`；\n- 同一份 Rust source 生成的六目标 `staticlib/manifest.json`。\n\n固定 target 是 darwin/linux/windows 的 amd64/arm64。`scripts/build-staticlibs.sh` 使用 locked\nCargo 输入生成 target library；只有同一次成功得到全部六个真实库并逐个核验 SHA-256 后，才会\n写入带 Rust source digest 的 `manifest.json`。单 target 调用会使已有 manifest 失效，避免用\n局部重建证明全平台一致性。\n\n当前工作树已回填 run `29192425899`（head\n`a1c6b838b9096dd68571b1f477ccace331ddedc9`）产生的六个真实 library 与统一 manifest。六个 runner\n均完成 locked/offline Rust build、真实 cgo GIF/APNG smoke、版本化 binary、archive 与 record；受控\n`consolidate` 又在本地重验 source identity、staticlib/binary/archive SHA 和全部 archive members 后\n生成提交输入。`sh scripts/build.sh` 现会先校验完整 manifest，再在具备本机 cgo/C linker 时构建。\n\n可在具备目标工具链的受控环境运行：\n\n```bash\nsh scripts/build-staticlibs.sh --target <rust-target>\ngo test ./internal/download -run '^TestCommittedUgoiraStaticlibManifestWhenPresent$' -count=1\n```\n\n不要提交 `internal/download/ugoira_rs/target/`；它是机器产物。完成验证的\n`internal/download/ugoira_rs/staticlib/`、其 `manifest.json` 和两份 knowledge graph 则是可追溯\n输入，不能以 ignore 规则隐藏。\n\nRust crate 的 `.cargo/config.toml` 将 crates.io 替换为其相邻 `vendor/` 中完整的 locked\n依赖闭包。`vendor/` 的每个 package 都带 Cargo 生成的 `.cargo-checksum.json`；它、Cargo config、\n`Cargo.toml`/`Cargo.lock`、`build.rs`、`.cargo/**`、Rust source 和本地 `quantette` 都计入\nstaticlib source digest。不要手工编辑 vendor 内容；升级依赖时必须重新以\n`cargo vendor --locked --offline` 生成完整闭包并更新 digest\nfixture 与许可证 bundle。根 `.gitattributes` 对上述 first-party crate 输入、整个 `vendor/**` 与固定本地\n`quantette` source 设置 `-text`；这只保留 Git blob 原始 bytes，不会重写正常内容，并防止 Windows\ncheckout 把 LF 改为 CRLF 后破坏 Cargo checksum、source digest 或 licensebundle。对\nrelease archive 的 `LICENSE`、licensebundle 的 `THIRD_PARTY_LICENSES.md` 与\n`third_party/licenses/**` 则固定 `text eol=lf`，使 archive member audit 与 byte-for-byte `--check` 在\nWindows 保持稳定。\n摘要器还必须在判断 `src/`、`.cargo/` 与 `vendor/` 之前，把 `filepath.Rel` 的平台分隔符规范化为\nslash；否则 Windows 的反斜杠路径会静默漏掉这些输入。run `29189725013` 的六个 matrix job 虽均\nsuccess，但其 Unix/Windows source digest 因该路径筛选缺陷分裂，`consolidate` 必须拒绝该 run；其\nartifacts 不可回填或跨 run 拼接，修复后仍须从新 SHA 完整重跑六目标证据。\nrun `29191200569` 的六个 matrix job 均 success，且六份 record 已统一为同一 source identity，证明\n上述 source digest 修复有效；但其 Windows archive 中 `LICENSE` 仍因 CRLF checkout 与 Unix/Git\nblob bytes 不同，`consolidate` 再次 fail-closed，且未生成输出目录。该 run 同样不可回填或跨 run\n拼接；固定 `LICENSE` 为 LF 后仍必须从新 SHA 完整重跑。\n`target/` 仍是机器产物，不计入 digest，也不得提交。\n\n直接运行 Cargo 时必须在 crate 目录启动，确保 Cargo 发现 source replacement：\n\n```bash\n(\n  cd internal/download/ugoira_rs\n  cargo test --locked --offline\n  cargo clippy --locked --offline --al",
+        "content": "# \u5f00\u53d1\u6d41\u7a0b\n\n## \u73af\u5883\u68c0\u67e5\n\n\u9879\u76ee\u662f Go module\uff0c\u5f53\u524d `go.mod` \u58f0\u660e\uff1a\n\n```text\ngo 1.26.3\n```\n\n\u5f00\u5de5\u524d\u5efa\u8bae\u68c0\u67e5 Go/cgo\u3001Rust \u4e0e\u5e38\u89c4\u6d4b\u8bd5\u73af\u5883\uff1a\n\n```bash\ngo version\ngo env GOVERSION CGO_ENABLED CC GOOS GOARCH\ncargo --version\ngo test ./...\n```\n\n## Rust ugoira staticlib\n\n\u751f\u4ea7 ugoira GIF/APNG \u7531\u5185\u7f6e Rust encoder \u5b8c\u6210\uff0c\u8fd0\u884c\u65f6\u4e0d\u4f9d\u8d56 `ffmpeg`\u3002`ffmpeg` \u53ea\u53ef\u4f5c\u4e3a\n\u5f00\u53d1\u8d28\u91cf\u5bf9\u7167\uff1a\u663e\u5f0f\u8bbe\u7f6e `PIXIV_UGOIRA_QUALITY_FFMPEG=1` \u540e\uff0cRust quality gate \u624d\u4f1a\u8c03\u7528\u5b83\uff1b\n\u5b83\u4e0d\u662f\u672c\u5730\u6784\u5efa\u6216\u7528\u6237\u8fd0\u884c\u7684\u524d\u7f6e\u6761\u4ef6\u3002\n\n\u53d7\u652f\u6301\u7684 Go \u6e90\u7801\u6784\u5efa\u9700\u8981\u4e0b\u5217\u6761\u4ef6\uff1a\n\n- Go `1.26.3`\uff1b\n- `CGO_ENABLED=1`\uff1b\n- \u5f53\u524d `GOOS/GOARCH` \u5bf9\u5e94\u7684 C linker\uff1b\n- Rust crate \u5bf9\u5e94 target \u7684 committed `staticlib`\uff1b\n- \u540c\u4e00\u4efd Rust source \u751f\u6210\u7684\u516d\u76ee\u6807 `staticlib/manifest.json`\u3002\n\n\u56fa\u5b9a target \u662f darwin/linux/windows \u7684 amd64/arm64\u3002`scripts/build-staticlibs.sh` \u4f7f\u7528 locked\nCargo \u8f93\u5165\u751f\u6210 target library\uff1b\u53ea\u6709\u540c\u4e00\u6b21\u6210\u529f\u5f97\u5230\u5168\u90e8\u516d\u4e2a\u771f\u5b9e\u5e93\u5e76\u9010\u4e2a\u6838\u9a8c SHA-256 \u540e\uff0c\u624d\u4f1a\n\u5199\u5165\u5e26 Rust source digest \u7684 `manifest.json`\u3002\u5355 target \u8c03\u7528\u4f1a\u4f7f\u5df2\u6709 manifest \u5931\u6548\uff0c\u907f\u514d\u7528\n\u5c40\u90e8\u91cd\u5efa\u8bc1\u660e\u5168\u5e73\u53f0\u4e00\u81f4\u6027\u3002\n\n\u5f53\u524d\u5de5\u4f5c\u6811\u5df2\u56de\u586b run `29192425899`\uff08head\n`a1c6b838b9096dd68571b1f477ccace331ddedc9`\uff09\u4ea7\u751f\u7684\u516d\u4e2a\u771f\u5b9e library \u4e0e\u7edf\u4e00 manifest\u3002\u516d\u4e2a runner\n\u5747\u5b8c\u6210 locked/offline Rust build\u3001\u771f\u5b9e cgo GIF/APNG smoke\u3001\u7248\u672c\u5316 binary\u3001archive \u4e0e record\uff1b\u53d7\u63a7\n`consolidate` \u53c8\u5728\u672c\u5730\u91cd\u9a8c source identity\u3001staticlib/binary/archive SHA \u548c\u5168\u90e8 archive members \u540e\n\u751f\u6210\u63d0\u4ea4\u8f93\u5165\u3002`sh scripts/build.sh` \u73b0\u4f1a\u5148\u6821\u9a8c\u5b8c\u6574 manifest\uff0c\u518d\u5728\u5177\u5907\u672c\u673a cgo/C linker \u65f6\u6784\u5efa\u3002\n\n\u8fd9\u4e9b committed library \u7684\u7f16\u8bd1\u5668 provenance \u6309 target \u56fa\u5b9a\uff0c\u800c\u4e0d\u662f\u4f7f\u7528\u53ef\u79fb\u52a8\u7684 runner \u9ed8\u8ba4\ntoolchain\uff1a`x86_64-apple-darwin` \u4e0e `x86_64-pc-windows-msvc` \u6765\u81ea Rust `1.96.0`\uff1b\n`aarch64-apple-darwin`\u3001`aarch64-pc-windows-msvc`\u3001`x86_64-unknown-linux-gnu` \u4e0e\n`aarch64-unknown-linux-gnu` \u6765\u81ea Rust `1.96.1`\u3002release test \u4e0e production matrix \u90fd\u5fc5\u987b\u643a\u5e26\u8fd9\u4efd\n\u7cbe\u786e\u6620\u5c04\uff0c\u5e76\u901a\u8fc7 `RUSTUP_TOOLCHAIN` \u548c\u5e26 `--no-self-update` \u7684 `rustup toolchain install` \u4f7f\u7528\u5b83\uff1b\n\u4e0d\u80fd\u8ba9 runner image \u7684 `stable` \u66f4\u65b0\u6539\u53d8\u91cd\u5efa bytes\u3002\u8be5\u6620\u5c04\u8bb0\u5f55\u5f53\u524d\u516d\u5e93\u53ca v0.3.0 recovery \u7684\u6765\u6e90\uff0c\n\u4e0d\u662f\u5141\u8bb8\u6c38\u4e45\u6df7\u7528\u5de5\u5177\u94fe\u7684\u60ef\u4f8b\u3002\u540e\u7eed\u5347\u7ea7 Rust \u65f6\u5fc5\u987b\u4ece\u540c\u4e00\u53d7\u5ba1\u8ba1 source \u5b8c\u6574\u91cd\u5efa\u3001\u94fe\u63a5\u5e76 smoke\n\u9a8c\u8bc1\u516d\u76ee\u6807\uff0c\u540c\u65f6\u66f4\u65b0\u516d\u5e93\u3001manifest\u3001native evidence \u4e0e release matrix\uff1b\u4e0d\u5f97\u53ea\u66f4\u65b0\u5355\u4e2a\u5e73\u53f0\u7684 pin\u3002\n\n\u53ef\u5728\u5177\u5907\u76ee\u6807\u5de5\u5177\u94fe\u7684\u53d7\u63a7\u73af\u5883\u8fd0\u884c\uff1a\n\n```bash\nsh scripts/build-staticlibs.sh --target <rust-target>\ngo test ./internal/download -run '^TestCommittedUgoiraStaticlibManifestWhenPresent$' -count=1\n```\n\n\u4e0d\u8981\u63d0\u4ea4 `internal/download/ugoira_rs/target/`\uff1b\u5b83\u662f\u673a\u5668\u4ea7\u7269\u3002\u5b8c\u6210\u9a8c\u8bc1\u7684\n`internal/download/ugoira_rs/staticlib/`\u3001\u5176 `manifest.json` \u548c\u4e24\u4efd knowledge graph \u5219\u662f\u53ef\u8ffd\u6eaf\n\u8f93\u5165\uff0c\u4e0d\u80fd\u4ee5 ignore \u89c4\u5219\u9690\u85cf\u3002\n\nRust crate \u7684 `.cargo/config.toml` \u5c06 crates.io \u66ff\u6362\u4e3a\u5176\u76f8\u90bb `vendor/` \u4e2d\u5b8c\u6574\u7684 locked\n\u4f9d\u8d56\u95ed\u5305\u3002`vendor/` \u7684\u6bcf\u4e2a package \u90fd\u5e26 Cargo \u751f\u6210\u7684 `.cargo-checksum.json`\uff1b\u5b83\u3001Cargo config\u3001\n`Cargo.toml`/`Cargo.lock`\u3001`build.rs`\u3001`.cargo/**`\u3001Rust source \u548c\u672c\u5730 `quantette` \u90fd\u8ba1\u5165\nstaticlib source digest\u3002\u4e0d\u8981\u624b\u5de5\u7f16\u8f91 vendor \u5185\u5bb9\uff1b\u5347\u7ea7\u4f9d\u8d56\u65f6\u5fc5\u987b\u91cd\u65b0\u4ee5\n`cargo vendor --locked --offline` \u751f\u6210\u5b8c\u6574\u95ed\u5305\u5e76\u66f4\u65b0 digest\nfixture \u4e0e\u8bb8\u53ef\u8bc1 bundle\u3002\u6839 `.gitattributes` \u5bf9\u4e0a\u8ff0 first-party crate \u8f93\u5165\u3001\u6574\u4e2a `vendor/**` \u4e0e\u56fa\u5b9a\u672c\u5730\n`quantette` source \u8bbe\u7f6e `-text`\uff1b\u8fd9\u53ea\u4fdd\u7559 Git blob \u539f\u59cb bytes\uff0c\u4e0d\u4f1a\u91cd\u5199\u6b63\u5e38\u5185\u5bb9\uff0c\u5e76\u9632\u6b62 Windows\ncheckout \u628a LF \u6539\u4e3a CRLF \u540e\u7834\u574f Cargo checksum\u3001source digest \u6216 licensebundle\u3002\u5bf9\nrelease archive \u7684 `LICENSE`\u3001licensebundle \u7684 `THIRD_PARTY_LICENSES.md` \u4e0e\n`third_party/licenses/**` \u5219\u56fa\u5b9a `text eol=lf`\uff0c\u4f7f archive member audit \u4e0e byte-for-byte `--check` \u5728\nWindows \u4fdd\u6301\u7a33\u5b9a\u3002\n\u6458\u8981\u5668\u8fd8\u5fc5\u987b\u5728\u5224\u65ad `src/`\u3001`.cargo/` \u4e0e `vendor/` \u4e4b\u524d\uff0c\u628a `filepath.Rel` \u7684\u5e73\u53f0\u5206\u9694\u7b26\u89c4\u8303\u5316\u4e3a\nslash\uff1b\u5426\u5219 Windows \u7684\u53cd\u659c\u6760\u8def\u5f84\u4f1a\u9759\u9ed8\u6f0f\u6389\u8fd9\u4e9b\u8f93\u5165\u3002run `29189725013` \u7684\u516d\u4e2a matrix job \u867d\u5747\nsucce",
         "backlinks": []
       }
     },
     {
       "id": "article:mcp-tools",
       "type": "article",
-      "name": "MCP 工具",
+      "name": "MCP \u5de5\u5177",
       "filePath": "mcp-tools.md",
-      "summary": "以 `pixiv mcp` 启动 stdio server。stdout 仅用于 JSON-RPC，日志写 stderr。MCP 不提供 HTTP endpoint。",
-      "tags": [
-        "documentation"
-      ],
+      "summary": "\u4ee5 `pixiv mcp` \u542f\u52a8 stdio server\u3002stdout \u4ec5\u7528\u4e8e JSON-RPC\uff0c\u65e5\u5fd7\u5199 stderr\u3002MCP \u4e0d\u63d0\u4f9b HTTP endpoint\u3002",
+      "tags": [],
       "complexity": "simple",
       "knowledgeMeta": {
         "wikilinks": [],
-        "content": "# MCP 工具\n\n以 `pixiv mcp` 启动 stdio server。stdout 仅用于 JSON-RPC，日志写 stderr。MCP 不提供 HTTP endpoint。\n\n有 refresh token 时 App API 为主路径，失败不自动回落 Web；无 refresh token 且 `web_fallback_enabled=true` 时，仅匿名白名单读 tool 可用 Web API。SDK 路径的用户详情、用户列表和收藏/关注写操作同时返回文本内容与 structured output；其可分类失败会令 result `isError=true`，保留安全错误文本和对应 structured output。遗留 MCP tool 保持既有文本结果兼容，不承诺统一 `isError` 语义。\n\n## 分页\n\n新 SDK 列表 tool 均使用：\n\n- `limit`：最大项目数；`0` 表示跟随上游直到没有下一批；不传时兼容为一个上游批次。\n- `page`：从 1 开始的逻辑页，必须配正数 `limit`。\n- 输出 `pagination.page`、`limit`、`returned`、`has_more`、可选 `next_page`。\n\nSDK cursor 不出现在 MCP 参数或输出。`user_bookmarks.max_bookmark_id` 是旧 continuation，已废弃，不能与 `page` 或 `limit` 同用。`user_following.offset` 是旧逻辑 offset，已废弃，仅与 `page` 互斥，允许和 `limit` 同用。\n\n## 配置、认证与下载\n\n| tool | 参数 | structured output |\n| --- | --- | --- |\n| `set_download_path` | `path` | 文本状态。 |\n| `refresh_token` | 无 | 当前认证账号摘要。 |\n| `set_refresh_token` | 原始 App API `refresh_token` | 当前会话认证结果；不写 `auth.json`；Cookie 输入会被拒绝。 |\n| `download` | `illust_id` 或 `illust_ids`，可选 `delivery` | 下载文件、URI、MIME、大小；`image_content` 另附 ImageContent。 |\n| `download_random_from_recommendation` | `count`，可选 `delivery` | 同 `download`。 |\n\n## 作品与用户读取\n\n| tool | 参数 | structured output |\n| --- | --- | --- |\n| `search_illust` | `word`、`search_target`、`sort`、`duration`、`offset`、`search_r18`、`include_thumbnail` | 作品列表。 |\n| `illust_detail` | `illust_id` | 作品详情。 |\n| `illust_related` | `illust_id`、`offset`、`include_thumbnail` | 相关作品。 |\n| `illust_ranking` | `mode`、`date`、`offset`、`include_thumbnail` | 排行榜作品。 |\n| `illust_recommended` | `offset`、`include_thumbnail` | 兼容旧推荐作品 tool；保留既有文本输出，但经公开 SDK 调用链执行。 |\n| `recommended` | 必填 `kind`（`all`、`illust`、`manga`、`novel`、`user`），可选 `page`、`limit` | 通过认证 App SDK 返回 `{kind, illusts, manga, novels, user_previews, pagination}`；单类只填对应流，`all` 顺序读取四流。每条流独立应用分页，`pagination` 按流给出逻辑页信息；不暴露 SDK cursor，不支持 Web fallback。 |\n| `trending_tags_illust` | 无 | 热门标签。 |\n| `illust_follow` | `restrict`、`offset`、`include_thumbnail` | 关注新作；需要认证。 |\n| `search_user` | `word`、`offset` | 用户列表；匿名 fallback 是相关作者去重，不是官方用户名搜索。 |\n| `get_thumbnail_base64` | `illust_id` | `data:image/jpeg;base64,...`。 |\n| `user_detail` | 必填 `user_id` | 完整稳定的 `{user, profile, profile_publicity, workspace}`；需要认证，不支持 Web fallback。 |\n| `user_artworks` | 可选 `user_id`、`type`、`page`、`limit` | `{user_id, items, pagination}`；缺省 UID 为当前认证用户。 |\n| `user_bookmarks` | 可选 `user_id`、旧 alias `user_id_to_check`、`restrict`、`tag`、`page`、`limit`、废弃 `max_bookmark_id` | `{user_id, items, pagination}`；缺省 UID 为当前认证用户。 |\n| `user_following` | 可选 `user_id`、旧 alias `user_id_to_check`、`restrict`、`page`、`limit`、废弃 `offset` | `{user_id, items, pagination}`；缺省 UID 为当前认证用户。 |\n\n## 写操作\n\n| tool | 参数 | structured output |\n| --- | --- | --- |\n| `add_bookmark` | `illust_id`、可选 `restrict`、`tags` | `{success, action, illust_id}`。 |\n| `remove_bookmark` | `illust_id` | `{success, action, illust_id}`。 |\n| `follow_user` | `user_id`、可选 `restrict` | `{success, action, user_id}`。 |\n| `unfollow_user` | `user_id` | `{success",
+        "content": "# MCP \u5de5\u5177\n\n\u4ee5 `pixiv mcp` \u542f\u52a8 stdio server\u3002stdout \u4ec5\u7528\u4e8e JSON-RPC\uff0c\u65e5\u5fd7\u5199 stderr\u3002MCP \u4e0d\u63d0\u4f9b HTTP endpoint\u3002\n\n\u6709 refresh token \u65f6 App API \u4e3a\u4e3b\u8def\u5f84\uff0c\u5931\u8d25\u4e0d\u81ea\u52a8\u56de\u843d Web\uff1b\u65e0 refresh token \u4e14 `web_fallback_enabled=true` \u65f6\uff0c\u4ec5\u533f\u540d\u767d\u540d\u5355\u8bfb tool \u53ef\u7528 Web API\u3002SDK \u8def\u5f84\u7684\u7528\u6237\u8be6\u60c5\u3001\u7528\u6237\u5217\u8868\u548c\u6536\u85cf/\u5173\u6ce8\u5199\u64cd\u4f5c\u540c\u65f6\u8fd4\u56de\u6587\u672c\u5185\u5bb9\u4e0e structured output\uff1b\u5176\u53ef\u5206\u7c7b\u5931\u8d25\u4f1a\u4ee4 result `isError=true`\uff0c\u4fdd\u7559\u5b89\u5168\u9519\u8bef\u6587\u672c\u548c\u5bf9\u5e94 structured output\u3002\u9057\u7559 MCP tool \u4fdd\u6301\u65e2\u6709\u6587\u672c\u7ed3\u679c\u517c\u5bb9\uff0c\u4e0d\u627f\u8bfa\u7edf\u4e00 `isError` \u8bed\u4e49\u3002\n\n## \u5206\u9875\n\n\u65b0 SDK \u5217\u8868 tool \u5747\u4f7f\u7528\uff1a\n\n- `limit`\uff1a\u6700\u5927\u9879\u76ee\u6570\uff1b`0` \u8868\u793a\u8ddf\u968f\u4e0a\u6e38\u76f4\u5230\u6ca1\u6709\u4e0b\u4e00\u6279\uff1b\u4e0d\u4f20\u65f6\u517c\u5bb9\u4e3a\u4e00\u4e2a\u4e0a\u6e38\u6279\u6b21\u3002\n- `page`\uff1a\u4ece 1 \u5f00\u59cb\u7684\u903b\u8f91\u9875\uff0c\u5fc5\u987b\u914d\u6b63\u6570 `limit`\u3002\n- \u8f93\u51fa `pagination.page`\u3001`limit`\u3001`returned`\u3001`has_more`\u3001\u53ef\u9009 `next_page`\u3002\n\nSDK cursor \u4e0d\u51fa\u73b0\u5728 MCP \u53c2\u6570\u6216\u8f93\u51fa\u3002`user_bookmarks.max_bookmark_id` \u662f\u65e7 continuation\uff0c\u5df2\u5e9f\u5f03\uff0c\u4e0d\u80fd\u4e0e `page` \u6216 `limit` \u540c\u7528\u3002`user_following.offset` \u662f\u65e7\u903b\u8f91 offset\uff0c\u5df2\u5e9f\u5f03\uff0c\u4ec5\u4e0e `page` \u4e92\u65a5\uff0c\u5141\u8bb8\u548c `limit` \u540c\u7528\u3002\n\n## \u914d\u7f6e\u3001\u8ba4\u8bc1\u4e0e\u4e0b\u8f7d\n\n| tool | \u53c2\u6570 | structured output |\n| --- | --- | --- |\n| `set_download_path` | `path` | \u6587\u672c\u72b6\u6001\u3002 |\n| `refresh_token` | \u65e0 | \u5f53\u524d\u8ba4\u8bc1\u8d26\u53f7\u6458\u8981\u3002 |\n| `set_refresh_token` | \u539f\u59cb App API `refresh_token` | \u5f53\u524d\u4f1a\u8bdd\u8ba4\u8bc1\u7ed3\u679c\uff1b\u4e0d\u5199 `auth.json`\uff1bCookie \u8f93\u5165\u4f1a\u88ab\u62d2\u7edd\u3002 |\n| `download` | `illust_id` \u6216 `illust_ids`\uff0c\u53ef\u9009 `delivery` | \u4e0b\u8f7d\u6587\u4ef6\u3001URI\u3001MIME\u3001\u5927\u5c0f\uff1b`image_content` \u53e6\u9644 ImageContent\u3002 |\n| `download_random_from_recommendation` | `count`\uff0c\u53ef\u9009 `delivery` | \u540c `download`\u3002 |\n\n## \u4f5c\u54c1\u4e0e\u7528\u6237\u8bfb\u53d6\n\n| tool | \u53c2\u6570 | structured output |\n| --- | --- | --- |\n| `search_illust` | `word`\u3001`search_target`\u3001`sort`\u3001`duration`\u3001`offset`\u3001`search_r18`\u3001`include_thumbnail` | \u4f5c\u54c1\u5217\u8868\u3002 |\n| `illust_detail` | `illust_id` | \u4f5c\u54c1\u8be6\u60c5\u3002 |\n| `illust_related` | `illust_id`\u3001`offset`\u3001`include_thumbnail` | \u76f8\u5173\u4f5c\u54c1\u3002 |\n| `illust_ranking` | `mode`\u3001`date`\u3001`offset`\u3001`include_thumbnail` | \u6392\u884c\u699c\u4f5c\u54c1\u3002 |\n| `illust_recommended` | `offset`\u3001`include_thumbnail` | \u517c\u5bb9\u65e7\u63a8\u8350\u4f5c\u54c1 tool\uff1b\u4fdd\u7559\u65e2\u6709\u6587\u672c\u8f93\u51fa\uff0c\u4f46\u7ecf\u516c\u5f00 SDK \u8c03\u7528\u94fe\u6267\u884c\u3002 |\n| `recommended` | \u5fc5\u586b `kind`\uff08`all`\u3001`illust`\u3001`manga`\u3001`novel`\u3001`user`\uff09\uff0c\u53ef\u9009 `page`\u3001`limit` | \u901a\u8fc7\u8ba4\u8bc1 App SDK \u8fd4\u56de `{kind, illusts, manga, novels, user_previews, pagination}`\uff1b\u5355\u7c7b\u53ea\u586b\u5bf9\u5e94\u6d41\uff0c`all` \u987a\u5e8f\u8bfb\u53d6\u56db\u6d41\u3002\u6bcf\u6761\u6d41\u72ec\u7acb\u5e94\u7528\u5206\u9875\uff0c`pagination` \u6309\u6d41\u7ed9\u51fa\u903b\u8f91\u9875\u4fe1\u606f\uff1b\u4e0d\u66b4\u9732 SDK cursor\uff0c\u4e0d\u652f\u6301 Web fallback\u3002 |\n| `trending_tags_illust` | \u65e0 | \u70ed\u95e8\u6807\u7b7e\u3002 |\n| `illust_follow` | `restrict`\u3001`offset`\u3001`include_thumbnail` | \u5173\u6ce8\u65b0\u4f5c\uff1b\u9700\u8981\u8ba4\u8bc1\u3002 |\n| `search_user` | `word`\u3001`offset` | \u7528\u6237\u5217\u8868\uff1b\u533f\u540d fallback \u662f\u76f8\u5173\u4f5c\u8005\u53bb\u91cd\uff0c\u4e0d\u662f\u5b98\u65b9\u7528\u6237\u540d\u641c\u7d22\u3002 |\n| `get_thumbnail_base64` | `illust_id` | `data:image/jpeg;base64,...`\u3002 |\n| `user_detail` | \u5fc5\u586b `user_id` | \u5b8c\u6574\u7a33\u5b9a\u7684 `{user, profile, profile_publicity, workspace}`\uff1b\u9700\u8981\u8ba4\u8bc1\uff0c\u4e0d\u652f\u6301 Web fallback\u3002 |\n| `user_artworks` | \u53ef\u9009 `user_id`\u3001`type`\u3001`page`\u3001`limit` | `{user_id, items, pagination}`\uff1b\u7f3a\u7701 UID \u4e3a\u5f53\u524d\u8ba4\u8bc1\u7528\u6237\u3002 |\n| `user_bookmarks` | \u53ef\u9009 `user_id`\u3001\u65e7 alias `user_id_to_check`\u3001`restrict`\u3001`tag`\u3001`page`\u3001`limit`\u3001\u5e9f\u5f03 `max_bookmark_id` | `{user_id, items, pagination}`\uff1b\u7f3a\u7701 UID \u4e3a\u5f53\u524d\u8ba4\u8bc1\u7528\u6237\u3002 |\n| `user_following` | \u53ef\u9009 `user_id`\u3001\u65e7 alias `user_id_to_check`\u3001`restrict`\u3001`page`\u3001`limit`\u3001\u5e9f\u5f03 `offset` | `{user_id, items, pagination}`\uff1b\u7f3a\u7701 UID \u4e3a\u5f53\u524d\u8ba4\u8bc1\u7528\u6237\u3002 |\n\n## \u5199\u64cd\u4f5c\n\n| tool | \u53c2\u6570 | structured output |\n| --- | --- | --- |\n| `add_bookmark` | `illust_id`\u3001\u53ef\u9009 `restrict`\u3001`tags` | `{success, action, illust_id}`\u3002 |\n| `remove_bookmark` | `illust_id` | `{success, action, illust_id}`\u3002 |\n| `follow_user` | `user_id`\u3001\u53ef\u9009 `restrict` | `{success, action, user_id}`\u3002 |\n| `unfollow_user` | `user_id` | `{success",
         "backlinks": []
       }
     },
     {
-      "id": "topic:项目定位",
+      "id": "topic:\u9879\u76ee\u5b9a\u4f4d",
       "type": "topic",
-      "name": "项目定位",
-      "summary": "Category from index: 项目定位 (0 articles)",
+      "name": "\u9879\u76ee\u5b9a\u4f4d",
+      "summary": "Category from index: \u9879\u76ee\u5b9a\u4f4d (0 articles)",
       "tags": [
         "category"
       ],
       "complexity": "simple"
     },
     {
-      "id": "topic:文档目录",
+      "id": "topic:\u6587\u6863\u76ee\u5f55",
       "type": "topic",
-      "name": "文档目录",
-      "summary": "Category from index: 文档目录 (0 articles)",
+      "name": "\u6587\u6863\u76ee\u5f55",
+      "summary": "Category from index: \u6587\u6863\u76ee\u5f55 (0 articles)",
       "tags": [
         "category"
       ],
       "complexity": "simple"
     },
     {
-      "id": "topic:快速命令",
+      "id": "topic:\u5feb\u901f\u547d\u4ee4",
       "type": "topic",
-      "name": "快速命令",
-      "summary": "Category from index: 快速命令 (0 articles)",
+      "name": "\u5feb\u901f\u547d\u4ee4",
+      "summary": "Category from index: \u5feb\u901f\u547d\u4ee4 (0 articles)",
       "tags": [
         "category"
       ],
       "complexity": "simple"
     },
     {
-      "id": "entity:pixiv-app-api",
+      "id": "entity:pixiv",
       "type": "entity",
-      "name": "Pixiv App API",
-      "summary": "使用 refresh token 的认证内容 API，是 SDK 有凭据操作和四类个性化推荐的主数据路径。",
+      "name": "Pixiv",
+      "summary": "\u9879\u76ee\u901a\u8fc7 App API\u3001\u53d7\u9650 Web \u8865\u5168\u548c OAuth \u767b\u5f55\u8bbf\u95ee\u7684\u4e0a\u6e38\u5185\u5bb9\u5e73\u53f0\u3002",
       "tags": [
         "entity",
-        "协议",
-        "认证"
+        "platform"
       ],
       "complexity": "simple"
     },
     {
-      "id": "entity:pixiv-web-api",
+      "id": "entity:go",
       "type": "entity",
-      "name": "Pixiv Web/Ajax API",
-      "summary": "仅承担无 refresh token 且显式启用时的匿名白名单读取，以及被明确请求的资源 metadata 补全。",
+      "name": "Go",
+      "summary": "pixiv-cli\u3001\u516c\u5f00 SDK\u3001CLI \u4e0e MCP server \u7684\u4e3b\u8981\u5b9e\u73b0\u8bed\u8a00\u548c\u6784\u5efa\u5de5\u5177\u94fe\u3002",
       "tags": [
         "entity",
-        "协议",
-        "web-fallback"
+        "language"
       ],
       "complexity": "simple"
     },
     {
-      "id": "entity:pixiv-oauth",
+      "id": "entity:rust",
       "type": "entity",
-      "name": "Pixiv OAuth",
-      "summary": "以 PKCE、state 和授权码交换取得 Pixiv App API refresh token 的官方认证流程。",
+      "name": "Rust",
+      "summary": "\u5185\u7f6e ugoira GIF/APNG encoder \u53ca\u516d\u76ee\u6807 staticlib \u7684\u5b9e\u73b0\u8bed\u8a00\u3002",
       "tags": [
         "entity",
-        "认证",
-        "OAuth"
+        "language",
+        "native"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "entity:cargo",
+      "type": "entity",
+      "name": "Cargo",
+      "summary": "\u4ee5 locked\u3001offline \u548c vendored \u8f93\u5165\u6784\u5efa Rust staticlib \u7684\u5305\u7ba1\u7406\u4e0e\u6784\u5efa\u5de5\u5177\u3002",
+      "tags": [
+        "entity",
+        "tool",
+        "native"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "entity:github-actions",
+      "type": "entity",
+      "name": "GitHub Actions",
+      "summary": "\u6267\u884c\u516d\u5e73\u53f0\u6784\u5efa\u3001\u53d1\u5e03\u95e8\u7981\u3001\u7b7e\u540d\u548c Homebrew \u9a8c\u6536\u7684 CI \u5e73\u53f0\u3002",
+      "tags": [
+        "entity",
+        "ci",
+        "release"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "entity:homebrew",
+      "type": "entity",
+      "name": "Homebrew",
+      "summary": "\u627f\u8f7d pixiv-cli stable \u4e0e beta formula \u7684 macOS/Linux \u5206\u53d1\u6e20\u9053\u3002",
+      "tags": [
+        "entity",
+        "distribution",
+        "release"
       ],
       "complexity": "simple"
     },
@@ -324,448 +352,486 @@
       "id": "entity:ed25519",
       "type": "entity",
       "name": "Ed25519",
-      "summary": "用于正式 Release checksum 清单签名和受支持二进制信任根验证的公开密钥签名算法。",
+      "summary": "\u7528\u4e8e\u7b7e\u7f72 Release checksum manifest \u5e76\u7531 production binary \u5185\u7f6e\u4fe1\u4efb\u6839\u9a8c\u8bc1\u7684\u7b7e\u540d\u7b97\u6cd5\u3002",
       "tags": [
         "entity",
-        "发布",
-        "签名"
+        "security",
+        "release"
       ],
       "complexity": "simple"
     },
     {
-      "id": "claim:adr-0001:adapter-only-cli-mcp-boundary",
-      "type": "claim",
-      "name": "CLI 与 MCP 是公开 SDK 的适配层",
-      "summary": "CLI 负责交互和展示，MCP 负责 tool 注册与协议适配；二者经 application/bootstrap 使用顶层 pixiv.Client，而不是拥有 Pixiv 协议实现。",
+      "id": "entity:model-context-protocol",
+      "type": "entity",
+      "name": "Model Context Protocol",
+      "summary": "pixiv mcp \u901a\u8fc7 stdio \u66b4\u9732\u5de5\u5177\u65f6\u4f7f\u7528\u7684\u534f\u8bae\u3002",
       "tags": [
-        "claim",
-        "架构",
-        "SDK"
+        "entity",
+        "protocol",
+        "mcp"
       ],
       "complexity": "simple"
     },
     {
-      "id": "claim:adr-0002:protocol-free-utils-only",
-      "type": "claim",
-      "name": "通用工具不得承载协议策略",
-      "summary": "internal/utils 只容纳无 CLI、MCP、OAuth、Pixiv 协议或配置 schema 语义的复用能力；协议值与适配逻辑保留在所属包。",
+      "id": "entity:cobra",
+      "type": "entity",
+      "name": "Cobra",
+      "summary": "internal/cli \u7528\u4e8e\u547d\u4ee4\u6811\u3001\u53c2\u6570\u548c flag \u89e3\u6790\u7684 Go CLI \u6846\u67b6\u3002",
       "tags": [
-        "claim",
-        "架构",
-        "包边界"
+        "entity",
+        "tool",
+        "cli"
       ],
       "complexity": "simple"
     },
     {
-      "id": "claim:adr-0004:accounts-keyed-by-pixiv-uid",
-      "type": "claim",
-      "name": "本地账号以 Pixiv UID 为主键",
-      "summary": "auth.json 以 user_id 保存账号并以 default_user_id 指向默认账号，username 仅为展示元数据，避免脚本选择器与 Pixiv 身份漂移。",
+      "id": "entity:understand-anything",
+      "type": "entity",
+      "name": "understand-anything",
+      "summary": "\u751f\u6210\u5e76\u7ef4\u62a4\u4ed3\u5e93\u4ee3\u7801\u4e0e\u6587\u6863\u77e5\u8bc6\u56fe\u8c31\u5feb\u7167\u7684\u5206\u6790\u5de5\u5177\u3002",
       "tags": [
-        "claim",
-        "认证",
-        "账号"
+        "entity",
+        "tool",
+        "documentation"
       ],
       "complexity": "simple"
     },
     {
-      "id": "claim:adr-0005:explicit-callback-handoff-only",
-      "type": "claim",
-      "name": "登录回调必须经显式交接",
-      "summary": "auth login 只接受本轮 loopback、当前尝试的 pixiv:// helper 或用户明确粘贴的值；禁止受管浏览器、CDP、浏览器历史、存储、标签页和网络事件观察。",
+      "id": "entity:ffmpeg",
+      "type": "entity",
+      "name": "FFmpeg",
+      "summary": "\u4ec5\u5141\u8bb8\u4f5c\u4e3a\u663e\u5f0f\u5f00\u53d1\u8d28\u91cf\u5bf9\u7167\u3001\u4e0d\u5f97\u6210\u4e3a\u751f\u4ea7 ugoira fallback \u7684\u5a92\u4f53\u5de5\u5177\u3002",
       "tags": [
-        "claim",
-        "认证",
-        "安全"
+        "entity",
+        "tool",
+        "media"
       ],
       "complexity": "simple"
     },
     {
-      "id": "claim:adr-0006:ugoira-web-enrichment-is-explicit",
-      "type": "claim",
-      "name": "ugoira Web metadata 补全不是失败回落",
-      "summary": "quality=original 的 Web metadata 查询仅补全 App API 未提供的 original ugoira 资源；App API 失败仍返回失败，资源必须经验证的 ResourceRef 流式处理。",
+      "id": "entity:oauth",
+      "type": "entity",
+      "name": "OAuth",
+      "summary": "\u4f7f\u7528 PKCE\u3001state\u3001authorization code \u548c refresh token \u7684 Pixiv App API \u8ba4\u8bc1\u534f\u8bae\u3002",
       "tags": [
-        "claim",
-        "资源",
-        "web-fallback"
+        "entity",
+        "protocol",
+        "authentication"
       ],
       "complexity": "simple"
     },
     {
-      "id": "claim:adr-0007:staticlib-evidence-is-release-input",
+      "id": "claim:0009-public-pixiv-sdk-and-caller-adapter:single-public-sdk-chain",
       "type": "claim",
-      "name": "六目标 staticlib 是可审计发布输入",
-      "summary": "受支持的源码构建依赖同源六目标 Rust staticlib、manifest、hash 与 native smoke 证据；缺失任一必需输入时构建应清晰失败而不能降级。",
+      "name": "CLI \u4e0e MCP \u5171\u7528\u9876\u5c42\u516c\u5f00 SDK",
+      "summary": "CLI \u4e0e MCP \u5fc5\u987b\u7ecf internal/application.SDKService \u4f7f\u7528\u9876\u5c42 pixiv public SDK\uff1b\u5185\u90e8 App/Web/OAuth/resource adapter \u4e0d\u6784\u6210\u7b2c\u4e8c\u6761\u516c\u5f00\u6216\u751f\u4ea7\u8c03\u7528\u94fe\u3002",
       "tags": [
         "claim",
-        "构建",
-        "发布"
+        "architecture",
+        "sdk"
       ],
       "complexity": "simple"
     },
     {
-      "id": "claim:adr-0008:release-verifies-signed-checksums",
+      "id": "claim:architecture:dto-model-public-protocol-isolation",
       "type": "claim",
-      "name": "正式发布以签名 checksum 建立信任",
-      "summary": "Release 安装器必须验证带 key ID 的 Ed25519 签名和 SHA-256 后才解包替换；正式 tag、签名资产与渠道安装验收共同构成发布完成条件。",
+      "name": "\u4e0a\u6e38\u534f\u8bae\u4e0e\u516c\u5f00\u6a21\u578b\u5206\u5c42\u9694\u79bb",
+      "summary": "App API raw DTO \u5148\u6620\u5c04\u5230 internal/pixiv/model\uff0c\u518d\u6620\u5c04\u4e3a\u516c\u5f00\u6a21\u578b\uff1bprotocol \u96c6\u4e2d endpoint\u3001profile \u4e0e\u8131\u654f failure\uff0c\u7269\u7406 adapter \u53ef\u968f\u4e0a\u6e38\u53d8\u5316\u800c\u4e0d\u6cc4\u6f0f\u5230\u516c\u5f00\u63a5\u53e3\u3002",
       "tags": [
         "claim",
-        "发布",
-        "安全"
+        "architecture",
+        "protocol"
       ],
       "complexity": "simple"
     },
     {
-      "id": "claim:adr-0009:public-sdk-is-stable-protocol-firewall",
+      "id": "claim:0005-auth-login-real-browser-relay-without-ui-automation:explicit-callback-only",
       "type": "claim",
-      "name": "公开 SDK 是稳定的协议防火墙",
-      "summary": "顶层 pixiv package 提供具体 Client、稳定模型、opaque cursor、typed error 和资源 API；内部 appapi、webapi、oauth、resource 的变化不泄漏给调用方。",
+      "name": "\u767b\u5f55\u53ea\u63a5\u53d7\u663e\u5f0f callback handoff",
+      "summary": "auth login \u53ea\u4fe1\u4efb\u672c\u8f6e loopback\u3001\u53d7\u63a7 pixiv:// helper \u8f6c\u4ea4\u6216\u7528\u6237\u663e\u5f0f\u56de\u586b\uff0c\u4e0d\u8bfb\u53d6 Cookie\u3001\u5386\u53f2\u3001\u5b58\u50a8\u3001\u4f1a\u8bdd\u3001\u6807\u7b7e\u9875\u6216\u7f51\u7edc\u4e8b\u4ef6\uff0c\u4e5f\u4e0d\u542f\u52a8\u53d7\u7ba1 Chromium/CDP\u3002",
       "tags": [
         "claim",
-        "SDK",
-        "协议隔离"
+        "security",
+        "authentication"
       ],
       "complexity": "simple"
     },
     {
-      "id": "claim:architecture:cookie-input-is-rejected-before-oauth",
+      "id": "claim:architecture:cookie-input-rejected-before-oauth",
       "type": "claim",
-      "name": "Cookie 形态凭据在 OAuth 前统一拒绝",
-      "summary": "SDK、CLI、MCP、环境变量和已存账号只接受原始 Pixiv App API refresh token；Cookie 形态输入不被提取、转换、发送或回显。",
+      "name": "Cookie \u5f62\u6001\u51ed\u636e\u5728 OAuth \u524d\u62d2\u7edd",
+      "summary": "SDK\u3001CLI\u3001MCP\u3001\u73af\u5883\u53d8\u91cf\u548c\u5df2\u5b58\u8d26\u53f7\u53ea\u63a5\u53d7\u539f\u59cb Pixiv App API refresh token\uff1bCookie \u5f62\u6001\u8f93\u5165\u4e0d\u63d0\u53d6\u3001\u4e0d\u8f6c\u6362\u3001\u4e0d\u53d1\u9001\u3002",
       "tags": [
         "claim",
-        "认证",
-        "安全"
+        "security",
+        "authentication"
       ],
       "complexity": "simple"
     },
     {
-      "id": "claim:mcp-tools:recommendations-have-four-independent-streams",
+      "id": "claim:mcp-tools:complete-user-detail-envelope",
       "type": "claim",
-      "name": "推荐由四条独立认证流组成",
-      "summary": "recommended 支持插画、漫画、小说和作者；all 在边缘层按固定顺序组合四次 SDK 调用，并对每条流独立分页而不暴露 cursor。",
+      "name": "\u7528\u6237\u8be6\u60c5\u4fdd\u6301\u56db\u6bb5\u7a33\u5b9a\u6a21\u578b",
+      "summary": "\u516c\u5f00 SDK\u3001pixiv user detail \u4e0e MCP user_detail \u7edf\u4e00\u8fd4\u56de user\u3001profile\u3001profile_publicity\u3001workspace \u56db\u6bb5\u5b8c\u6574\u7a33\u5b9a\u8be6\u60c5\uff0c\u4e14\u8be5\u80fd\u529b\u9700\u8981\u8ba4\u8bc1\u3002",
       "tags": [
         "claim",
-        "MCP",
-        "推荐"
+        "sdk",
+        "user-detail"
       ],
       "complexity": "simple"
     },
     {
-      "id": "claim:mcp-tools:user-detail-is-complete-authenticated-envelope",
+      "id": "claim:mcp-tools:four-recommendations-use-opaque-pagination",
       "type": "claim",
-      "name": "用户详情返回完整稳定 envelope",
-      "summary": "user_detail 需要认证且不支持匿名 Web fallback，返回 user、profile、profile_publicity 和 workspace 四个稳定部分。",
+      "name": "\u56db\u7c7b\u63a8\u8350\u4f7f\u7528\u72ec\u7acb\u4e0d\u900f\u660e\u5206\u9875",
+      "summary": "\u63d2\u753b\u3001\u6f2b\u753b\u3001\u5c0f\u8bf4\u3001\u4f5c\u8005\u63a8\u8350\u662f\u56db\u6761\u8ba4\u8bc1\u6d41\uff1bCLI \u4e0e MCP \u7684 kind \u5fc5\u586b\uff0call \u987a\u5e8f\u7ec4\u5408\u56db\u6d41\u5e76\u72ec\u7acb\u5206\u9875\uff0c\u4e0d\u516c\u5f00 SDK cursor \u6216\u4e0a\u6e38 next_url\u3002",
       "tags": [
         "claim",
-        "MCP",
-        "用户详情"
+        "sdk",
+        "recommendation"
       ],
       "complexity": "simple"
     },
     {
-      "id": "claim:documentation-guidelines:structural-changes-refresh-graphs",
+      "id": "claim:0007-platform-staticlibs-for-supported-source-builds:per-target-rust-provenance",
       "type": "claim",
-      "name": "结构变更必须同步知识图谱",
-      "summary": "包、公开接口或文档结构发生实质变化后，应重新生成代码和文档知识图谱，并将快照作为可追溯文档输入提交。",
+      "name": "Staticlib \u6309 target \u56fa\u5b9a Rust provenance",
+      "summary": "x86_64 Apple/Windows staticlib \u56fa\u5b9a Rust 1.96.0\uff0c\u5176\u4f59\u56db\u76ee\u6807\u56fa\u5b9a 1.96.1\uff1btest \u4e0e production \u4f7f\u7528\u540c\u4e00\u6620\u5c04\uff0c\u7981\u6b62\u8ddf\u968f runner stable \u6f02\u79fb\u3002",
       "tags": [
         "claim",
-        "文档",
-        "维护"
+        "native",
+        "release"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "claim:0008-ed25519-signed-multi-channel-release-trust:v030-release-gated",
+      "type": "claim",
+      "name": "v0.3.0 \u5df2\u5b8c\u6210\u7b7e\u540d\u591a\u6e20\u9053\u53d1\u5e03",
+      "summary": "v0.3.0 \u5df2\u5b8c\u6210\u4e0d\u53ef\u53d8 tag\u3001Ed25519 \u7b7e\u540d Release\u3001\u516d\u5e73\u53f0\u8d44\u4ea7\u548c stable Homebrew \u9a8c\u6536\uff1b\u4efb\u4f55\u540e\u7eed\u7248\u672c\u4ecd\u5fc5\u987b\u72ec\u7acb\u901a\u8fc7\u540c\u4e00\u95e8\u7981\u3002",
+      "tags": [
+        "claim",
+        "security",
+        "release"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "claim:documentation-guidelines:graphs-follow-structural-changes",
+      "type": "claim",
+      "name": "\u7ed3\u6784\u53d8\u66f4\u5fc5\u987b\u540c\u6b65\u77e5\u8bc6\u56fe\u8c31",
+      "summary": "\u65b0\u589e\u6216\u79fb\u52a8\u5305\u3001\u516c\u5f00\u63a5\u53e3\u5927\u6539\u7b49\u7ed3\u6784\u6027\u53d8\u5316\u540e\uff0c\u5e94\u91cd\u65b0\u751f\u6210\u4ee3\u7801\u548c\u6587\u6863 knowledge graph\uff0c\u5e76\u4e0e\u5b9e\u73b0\u3001agent \u89c4\u5219\u53ca\u6587\u6863\u4e00\u540c\u63d0\u4ea4\u3002",
+      "tags": [
+        "claim",
+        "documentation",
+        "agent"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "claim:development:recovery-preserves-immutable-tag",
+      "type": "claim",
+      "name": "Release recovery \u4e0d\u8986\u76d6\u751f\u4ea7 tag \u6e90\u7801",
+      "summary": "\u6062\u590d workflow \u7684 test-only overlay \u6709\u7cbe\u786e allowlist\uff1bproduction \u5728\u65b0 runner \u4ece immutable tag clean checkout\uff0c\u91cd\u5efa staticlib \u540e\u4ee5 git diff fail-closed\uff0c\u4e0d\u79fb\u52a8 tag \u6216\u8986\u76d6\u751f\u4ea7\u6e90\u7801\u3002",
+      "tags": [
+        "claim",
+        "release",
+        "security"
       ],
       "complexity": "simple"
     }
   ],
   "edges": [
     {
-      "source": "article:adr/0001-cli-thin-controller-and-bootstrap",
-      "target": "claim:adr-0001:adapter-only-cli-mcp-boundary",
+      "source": "article:adr/0009-public-pixiv-sdk-and-caller-adapter",
+      "target": "claim:0009-public-pixiv-sdk-and-caller-adapter:single-public-sdk-chain",
       "type": "exemplifies",
       "direction": "forward",
       "weight": 0.7,
-      "description": "ADR 明确限定 CLI/MCP 的控制器和协议适配职责。"
+      "description": "ADR 0009 \u4ee5\u9876\u5c42 pixiv.Client \u548c caller adapter \u7684\u804c\u8d23\u5212\u5206\u5177\u4f53\u5b9a\u4e49\u5355\u4e00\u516c\u5f00 SDK \u8c03\u7528\u94fe\u3002"
     },
     {
-      "source": "article:adr/0002-utils-and-common-boundaries",
-      "target": "claim:adr-0002:protocol-free-utils-only",
+      "source": "article:architecture",
+      "target": "claim:architecture:dto-model-public-protocol-isolation",
       "type": "exemplifies",
       "direction": "forward",
       "weight": 0.7,
-      "description": "ADR 给出了工具包与协议包的准入边界。"
-    },
-    {
-      "source": "article:adr/0004-auth-accounts-use-pixiv-uid",
-      "target": "claim:adr-0004:accounts-keyed-by-pixiv-uid",
-      "type": "exemplifies",
-      "direction": "forward",
-      "weight": 0.7,
-      "description": "ADR 将 UID、默认账号指针和兼容性变化定义为本地账号模型。"
+      "description": "\u67b6\u6784\u6587\u6863\u5177\u4f53\u5217\u51fa protocol\u3001appapi\u3001webapi\u3001oauth\u3001resource\u3001internal model \u4e0e public facade \u7684\u5206\u5c42\u3002"
     },
     {
       "source": "article:adr/0005-auth-login-real-browser-relay-without-ui-automation",
-      "target": "entity:pixiv-oauth",
+      "target": "claim:0005-auth-login-real-browser-relay-without-ui-automation:explicit-callback-only",
       "type": "exemplifies",
       "direction": "forward",
       "weight": 0.7,
-      "description": "登录流程以 PKCE、state 与授权码交换的 Pixiv OAuth 为前提。"
+      "description": "ADR 0005 \u660e\u786e\u679a\u4e3e\u5141\u8bb8\u7684 callback handoff\uff0c\u5e76\u6392\u9664\u6d4f\u89c8\u5668\u89c2\u5bdf\u3001UI \u81ea\u52a8\u5316\u548c\u51ed\u636e\u63d0\u53d6\u3002"
     },
     {
-      "source": "article:adr/0005-auth-login-real-browser-relay-without-ui-automation",
-      "target": "claim:adr-0005:explicit-callback-handoff-only",
+      "source": "article:architecture",
+      "target": "claim:architecture:cookie-input-rejected-before-oauth",
       "type": "exemplifies",
       "direction": "forward",
       "weight": 0.7,
-      "description": "安全修订把回调来源限制为当前尝试的显式交接通道。"
+      "description": "\u67b6\u6784\u8fb9\u754c\u628a Cookie \u62d2\u7edd\u843d\u5b9e\u5230 SDK\u3001CLI\u3001MCP\u3001\u73af\u5883\u53d8\u91cf\u548c\u5df2\u5b58\u8d26\u53f7\u5165\u53e3\u3002"
     },
     {
-      "source": "article:adr/0006-original-ugoira-resource-resolution",
-      "target": "entity:pixiv-web-api",
+      "source": "article:mcp-tools",
+      "target": "claim:mcp-tools:complete-user-detail-envelope",
       "type": "exemplifies",
       "direction": "forward",
       "weight": 0.7,
-      "description": "ADR 把 Web metadata 限定为 original ugoira 的显式资源补全。"
+      "description": "MCP \u5de5\u5177\u5951\u7ea6\u5c06 user_detail \u660e\u786e\u5b9a\u4e49\u4e3a\u8ba4\u8bc1\u7684\u56db\u6bb5\u5b8c\u6574 structured output\u3002"
     },
     {
-      "source": "article:adr/0006-original-ugoira-resource-resolution",
-      "target": "claim:adr-0006:ugoira-web-enrichment-is-explicit",
+      "source": "article:mcp-tools",
+      "target": "claim:mcp-tools:four-recommendations-use-opaque-pagination",
       "type": "exemplifies",
       "direction": "forward",
       "weight": 0.7,
-      "description": "ADR 明确区分资源补全和 App API 失败后的自动回落。"
+      "description": "recommended \u5de5\u5177\u8868\u660e\u786e kind\u3001all \u987a\u5e8f\u3001\u6bcf\u6d41\u5206\u9875\u4e0e\u4e0d\u66b4\u9732 SDK cursor \u7684\u7ea6\u675f\u3002"
     },
     {
       "source": "article:adr/0007-platform-staticlibs-for-supported-source-builds",
-      "target": "claim:adr-0007:staticlib-evidence-is-release-input",
+      "target": "claim:0007-platform-staticlibs-for-supported-source-builds:per-target-rust-provenance",
       "type": "exemplifies",
       "direction": "forward",
       "weight": 0.7,
-      "description": "ADR 规定 manifest、hash、六目标库和 smoke 证据的发布地位。"
+      "description": "ADR 0007 \u8bb0\u5f55\u516d\u76ee\u6807\u5b9e\u9645\u7f16\u8bd1\u5668\u7248\u672c\u6620\u5c04\u53ca release matrix \u7684\u7981\u6b62\u6f02\u79fb\u89c4\u5219\u3002"
     },
     {
       "source": "article:adr/0008-ed25519-signed-multi-channel-release-trust",
-      "target": "entity:ed25519",
+      "target": "claim:0008-ed25519-signed-multi-channel-release-trust:v030-release-gated",
       "type": "exemplifies",
       "direction": "forward",
       "weight": 0.7,
-      "description": "ADR 使用 Ed25519 对 checksum 清单建立二进制安装信任。"
-    },
-    {
-      "source": "article:adr/0008-ed25519-signed-multi-channel-release-trust",
-      "target": "claim:adr-0008:release-verifies-signed-checksums",
-      "type": "exemplifies",
-      "direction": "forward",
-      "weight": 0.7,
-      "description": "ADR 规定签名、checksum、资产和安装验收的发布门槛。"
-    },
-    {
-      "source": "article:adr/0009-public-pixiv-sdk-and-caller-adapter",
-      "target": "entity:pixiv-app-api",
-      "type": "exemplifies",
-      "direction": "forward",
-      "weight": 0.7,
-      "description": "ADR 将有凭据 App API 定义为公开 SDK 的主路径。"
-    },
-    {
-      "source": "article:adr/0009-public-pixiv-sdk-and-caller-adapter",
-      "target": "entity:pixiv-web-api",
-      "type": "exemplifies",
-      "direction": "forward",
-      "weight": 0.7,
-      "description": "ADR 将匿名 Web read 限制为无 refresh token 的显式配置 fallback。"
-    },
-    {
-      "source": "article:adr/0009-public-pixiv-sdk-and-caller-adapter",
-      "target": "claim:adr-0009:public-sdk-is-stable-protocol-firewall",
-      "type": "exemplifies",
-      "direction": "forward",
-      "weight": 0.7,
-      "description": "ADR 明确公开契约与内部协议实现之间的隔离关系。"
-    },
-    {
-      "source": "article:architecture",
-      "target": "claim:adr-0001:adapter-only-cli-mcp-boundary",
-      "type": "builds_on",
-      "direction": "forward",
-      "weight": 0.8,
-      "description": "架构说明将 CLI、application、bootstrap 与 MCP 的运行职责落实为包边界。"
-    },
-    {
-      "source": "article:architecture",
-      "target": "claim:adr-0009:public-sdk-is-stable-protocol-firewall",
-      "type": "builds_on",
-      "direction": "forward",
-      "weight": 0.8,
-      "description": "架构说明列出顶层 SDK 与 appapi、webapi、oauth、resource 的协议隔离。"
-    },
-    {
-      "source": "article:architecture",
-      "target": "claim:architecture:cookie-input-is-rejected-before-oauth",
-      "type": "exemplifies",
-      "direction": "forward",
-      "weight": 0.7,
-      "description": "架构说明规定所有认证入口在 OAuth 前拒绝 Cookie 形态凭据。"
-    },
-    {
-      "source": "article:mcp-tools",
-      "target": "entity:pixiv-app-api",
-      "type": "exemplifies",
-      "direction": "forward",
-      "weight": 0.7,
-      "description": "MCP 文档将认证推荐和完整用户详情绑定到 App SDK 路径。"
-    },
-    {
-      "source": "article:mcp-tools",
-      "target": "claim:mcp-tools:recommendations-have-four-independent-streams",
-      "type": "exemplifies",
-      "direction": "forward",
-      "weight": 0.7,
-      "description": "recommended 的 kind、all 聚合和分页语义在工具契约中明确列出。"
-    },
-    {
-      "source": "article:mcp-tools",
-      "target": "claim:mcp-tools:user-detail-is-complete-authenticated-envelope",
-      "type": "exemplifies",
-      "direction": "forward",
-      "weight": 0.7,
-      "description": "user_detail 的认证要求、完整 envelope 和无 Web fallback 在工具契约中明确列出。"
+      "description": "ADR 0008 \u8bb0\u5f55 v0.3.0 rollout \u5b9e\u7ee9\uff0c\u540c\u65f6\u4fdd\u7559\u540e\u7eed\u7248\u672c\u9010\u6b21\u9a8c\u6536\u8981\u6c42\u3002"
     },
     {
       "source": "article:agents/documentation-guidelines",
-      "target": "claim:documentation-guidelines:structural-changes-refresh-graphs",
+      "target": "claim:documentation-guidelines:graphs-follow-structural-changes",
       "type": "exemplifies",
       "direction": "forward",
       "weight": 0.7,
-      "description": "文档准则要求结构性变更后提交两份更新的知识图谱快照。"
+      "description": "\u6587\u6863\u7ef4\u62a4\u89c4\u5219\u660e\u786e\u628a\u4e24\u4efd knowledge graph \u4f5c\u4e3a\u7ed3\u6784\u6027\u53d8\u66f4\u5fc5\u987b\u540c\u6b65\u7684\u5165\u5e93\u5feb\u7167\u3002"
     },
     {
       "source": "article:development",
-      "target": "claim:adr-0007:staticlib-evidence-is-release-input",
+      "target": "claim:development:recovery-preserves-immutable-tag",
+      "type": "exemplifies",
+      "direction": "forward",
+      "weight": 0.7,
+      "description": "\u5f00\u53d1\u6d41\u7a0b\u7ed9\u51fa recovery allowlist\u3001fresh production runner\u3001tag checkout \u4e0e byte diff \u7684\u5177\u4f53\u95e8\u7981\u3002"
+    },
+    {
+      "source": "article:adr/0009-public-pixiv-sdk-and-caller-adapter",
+      "target": "article:adr/0001-cli-thin-controller-and-bootstrap",
       "type": "builds_on",
       "direction": "forward",
       "weight": 0.8,
-      "description": "开发流程把 staticlib、manifest 和 native 验证落实为可执行的构建与测试门禁。"
+      "description": "ADR 0001 \u660e\u786e\u8bf4\u660e\u65e9\u671f\u5185\u5bb9\u4e0e\u4e0b\u8f7d seam \u5df2\u7531 ADR 0009 \u7684 public SDK \u51b3\u7b56\u53d6\u4ee3\u3002"
+    },
+    {
+      "source": "article:adr/0002-utils-and-common-boundaries",
+      "target": "article:adr/0001-cli-thin-controller-and-bootstrap",
+      "type": "builds_on",
+      "direction": "forward",
+      "weight": 0.8,
+      "description": "ADR 0002 \u660e\u786e\u4ee5 ADR 0001 \u7684\u8fb9\u754c guardrail \u4e3a\u57fa\u7840\u6536\u7a84 utils/common \u7684\u6240\u6709\u6743\u3002"
+    },
+    {
+      "source": "article:agents/documentation-guidelines",
+      "target": "article:adr/0003-agent-instruction-precedent-strategy",
+      "type": "builds_on",
+      "direction": "forward",
+      "weight": 0.8,
+      "description": "\u8be6\u7ec6\u6587\u6863\u804c\u8d23\u548c graph \u540c\u6b65\u89c4\u5219\u843d\u5b9e ADR 0003 \u5c06\u534f\u4f5c\u7ec6\u5219\u653e\u5165 docs/agents \u7684\u51b3\u7b56\u3002"
+    },
+    {
+      "source": "article:agents/review-checklist",
+      "target": "article:adr/0009-public-pixiv-sdk-and-caller-adapter",
+      "type": "builds_on",
+      "direction": "forward",
+      "weight": 0.8,
+      "description": "\u5ba1\u67e5\u6e05\u5355\u628a ADR 0009 \u7684 public SDK \u5355\u94fe\u8def\u8f6c\u5316\u4e3a\u53ef\u6267\u884c\u7684 import \u4e0e\u8c03\u7528\u8fb9\u754c\u68c0\u67e5\u3002"
+    },
+    {
+      "source": "article:architecture",
+      "target": "article:adr/0009-public-pixiv-sdk-and-caller-adapter",
+      "type": "exemplifies",
+      "direction": "forward",
+      "weight": 0.7,
+      "description": "\u5f53\u524d package wiring \u662f ADR 0009 \u9876\u5c42 SDK\u3001\u8c03\u7528\u65b9\u7a84 seam \u548c\u5185\u90e8 adapter \u9694\u79bb\u7684\u5177\u4f53\u5b9e\u73b0\u3002"
+    },
+    {
+      "source": "article:architecture",
+      "target": "article:adr/0004-auth-accounts-use-pixiv-uid",
+      "type": "exemplifies",
+      "direction": "forward",
+      "weight": 0.7,
+      "description": "\u67b6\u6784\u4e2d\u7684 auth.json default_user_id \u548c UID \u8d26\u53f7\u6a21\u578b\u5177\u4f53\u843d\u5b9e ADR 0004\u3002"
+    },
+    {
+      "source": "article:architecture",
+      "target": "article:adr/0005-auth-login-real-browser-relay-without-ui-automation",
+      "type": "exemplifies",
+      "direction": "forward",
+      "weight": 0.7,
+      "description": "\u67b6\u6784\u5b89\u5168\u8fb9\u754c\u4fdd\u7559 loopback/\u663e\u5f0f\u56de\u586b\u5e76\u6392\u9664\u6d4f\u89c8\u5668\u51ed\u636e\u8bfb\u53d6\uff0c\u843d\u5b9e ADR 0005\u3002"
     },
     {
       "source": "article:development",
-      "target": "claim:adr-0008:release-verifies-signed-checksums",
-      "type": "builds_on",
+      "target": "article:adr/0007-platform-staticlibs-for-supported-source-builds",
+      "type": "exemplifies",
       "direction": "forward",
-      "weight": 0.8,
-      "description": "开发流程说明正式 tag、受保护签名和渠道安装验收的执行次序。"
+      "weight": 0.7,
+      "description": "\u5f00\u53d1\u6d41\u7a0b\u7ed9\u51fa\u516d\u76ee\u6807 staticlib\u3001manifest\u3001vendor\u3001source digest \u4e0e per-target Rust pin \u7684\u64cd\u4f5c\u89c4\u8303\u3002"
+    },
+    {
+      "source": "article:development",
+      "target": "article:adr/0008-ed25519-signed-multi-channel-release-trust",
+      "type": "exemplifies",
+      "direction": "forward",
+      "weight": 0.7,
+      "description": "\u5f00\u53d1\u6d41\u7a0b\u628a\u7b7e\u540d\u3001production trust\u3001Homebrew \u9a8c\u6536\u548c recovery \u7ea6\u675f\u843d\u5b9e\u4e3a\u5177\u4f53\u53d1\u5e03\u95e8\u7981\u3002"
+    },
+    {
+      "source": "article:mcp-tools",
+      "target": "article:adr/0009-public-pixiv-sdk-and-caller-adapter",
+      "type": "exemplifies",
+      "direction": "forward",
+      "weight": 0.7,
+      "description": "MCP \u5de5\u5177\u5951\u7ea6\u5c55\u793a legacy tool \u548c\u65b0 structured tool \u5747\u901a\u8fc7\u516c\u5f00 SDK\uff0c\u800c\u4e0d\u66b4\u9732\u5185\u90e8\u534f\u8bae adapter\u3002"
     }
   ],
   "layers": [
     {
-      "id": "layer:文档入口与运行说明",
-      "name": "文档入口与运行说明",
-      "description": "项目定位、架构、开发流程、MCP 工具与当前运行时安全约束。",
+      "id": "layer:entrypoints-and-contracts",
+      "name": "\u6587\u6863\u5165\u53e3\u4e0e\u7528\u6237\u5951\u7ea6",
+      "description": "\u9879\u76ee\u5b9a\u4f4d\u3001\u67b6\u6784\u3001\u5f00\u53d1\u3001MCP \u4ee5\u53ca\u7528\u6237\u8be6\u60c5\u4e0e\u56db\u7c7b\u63a8\u8350\u5951\u7ea6\u3002",
       "nodeIds": [
-        "topic:项目定位",
-        "topic:文档目录",
-        "topic:快速命令",
+        "topic:\u9879\u76ee\u5b9a\u4f4d",
+        "topic:\u6587\u6863\u76ee\u5f55",
+        "topic:\u5feb\u901f\u547d\u4ee4",
         "article:architecture",
         "article:development",
         "article:mcp-tools",
-        "claim:architecture:cookie-input-is-rejected-before-oauth",
-        "claim:mcp-tools:recommendations-have-four-independent-streams",
-        "claim:mcp-tools:user-detail-is-complete-authenticated-envelope"
+        "entity:pixiv",
+        "entity:go",
+        "entity:model-context-protocol",
+        "entity:cobra",
+        "entity:ffmpeg",
+        "claim:mcp-tools:complete-user-detail-envelope",
+        "claim:mcp-tools:four-recommendations-use-opaque-pagination"
       ]
     },
     {
-      "id": "layer:架构决策记录",
-      "name": "架构决策记录",
-      "description": "ADR 记录 CLI、账号、登录、资源、发布与公开 SDK 的稳定边界。",
+      "id": "layer:architecture-and-auth",
+      "name": "\u67b6\u6784\u4e0e\u8ba4\u8bc1\u8fb9\u754c",
+      "description": "CLI\u3001MCP \u4e0e\u516c\u5f00 SDK \u7684\u5355\u4e00\u8c03\u7528\u94fe\uff0c\u4ee5\u53ca OAuth\u3001callback \u548c\u4e0a\u6e38\u534f\u8bae\u9694\u79bb\u3002",
       "nodeIds": [
         "article:adr/0001-cli-thin-controller-and-bootstrap",
         "article:adr/0002-utils-and-common-boundaries",
-        "article:adr/0003-agent-instruction-precedent-strategy",
         "article:adr/0004-auth-accounts-use-pixiv-uid",
         "article:adr/0005-auth-login-real-browser-relay-without-ui-automation",
         "article:adr/0006-original-ugoira-resource-resolution",
+        "article:adr/0009-public-pixiv-sdk-and-caller-adapter",
+        "entity:oauth",
+        "claim:0009-public-pixiv-sdk-and-caller-adapter:single-public-sdk-chain",
+        "claim:architecture:dto-model-public-protocol-isolation",
+        "claim:0005-auth-login-real-browser-relay-without-ui-automation:explicit-callback-only",
+        "claim:architecture:cookie-input-rejected-before-oauth"
+      ]
+    },
+    {
+      "id": "layer:release-and-provenance",
+      "name": "\u53d1\u5e03\u4e0e\u4f9b\u5e94\u94fe\u4fe1\u4efb",
+      "description": "\u5e73\u53f0 staticlib provenance\u3001Ed25519 \u7b7e\u540d\u3001GitHub Release\u3001Homebrew \u4e0e\u4e0d\u53ef\u53d8 tag recovery\u3002",
+      "nodeIds": [
         "article:adr/0007-platform-staticlibs-for-supported-source-builds",
         "article:adr/0008-ed25519-signed-multi-channel-release-trust",
-        "article:adr/0009-public-pixiv-sdk-and-caller-adapter"
-      ]
-    },
-    {
-      "id": "layer:领域契约与安全边界",
-      "name": "领域契约与安全边界",
-      "description": "Pixiv API、OAuth、Web fallback、SDK 协议隔离和发布信任相关实体与 claim。",
-      "nodeIds": [
-        "entity:pixiv-app-api",
-        "entity:pixiv-web-api",
-        "entity:pixiv-oauth",
+        "entity:rust",
+        "entity:cargo",
+        "entity:github-actions",
+        "entity:homebrew",
         "entity:ed25519",
-        "claim:adr-0001:adapter-only-cli-mcp-boundary",
-        "claim:adr-0002:protocol-free-utils-only",
-        "claim:adr-0004:accounts-keyed-by-pixiv-uid",
-        "claim:adr-0005:explicit-callback-handoff-only",
-        "claim:adr-0006:ugoira-web-enrichment-is-explicit",
-        "claim:adr-0007:staticlib-evidence-is-release-input",
-        "claim:adr-0008:release-verifies-signed-checksums",
-        "claim:adr-0009:public-sdk-is-stable-protocol-firewall"
+        "claim:0007-platform-staticlibs-for-supported-source-builds:per-target-rust-provenance",
+        "claim:0008-ed25519-signed-multi-channel-release-trust:v030-release-gated",
+        "claim:development:recovery-preserves-immutable-tag"
       ]
     },
     {
-      "id": "layer:协作与维护规则",
-      "name": "协作与维护规则",
-      "description": "文档路由、评审要求与图谱维护规则。",
+      "id": "layer:collaboration-and-maintenance",
+      "name": "\u534f\u4f5c\u4e0e\u7ef4\u62a4\u89c4\u5219",
+      "description": "Agent \u89c4\u5219\u3001\u6587\u6863\u8def\u7531\u3001\u8bc4\u5ba1\u6e05\u5355\u4e0e\u77e5\u8bc6\u56fe\u8c31\u540c\u6b65\u8981\u6c42\u3002",
       "nodeIds": [
+        "article:adr/0003-agent-instruction-precedent-strategy",
         "article:agents/documentation-guidelines",
         "article:agents/index",
         "article:agents/review-checklist",
-        "claim:documentation-guidelines:structural-changes-refresh-graphs"
+        "entity:understand-anything",
+        "claim:documentation-guidelines:graphs-follow-structural-changes"
       ]
     }
   ],
   "tour": [
     {
       "order": 1,
-      "title": "项目定位",
-      "description": "先了解 pixiv-cli 同时提供 CLI、MCP stdio server 和公开 Go SDK，以及它们共享同一公开调用链。",
+      "title": "\u9879\u76ee\u5b9a\u4f4d",
+      "description": "\u5148\u4e86\u89e3 pixiv-cli \u5bf9 CLI\u3001MCP \u548c Go SDK \u7684\u7edf\u4e00\u5bf9\u5916\u80fd\u529b\u3002",
       "nodeIds": [
-        "topic:项目定位",
+        "topic:\u9879\u76ee\u5b9a\u4f4d",
         "article:architecture"
       ]
     },
     {
       "order": 2,
-      "title": "公开 SDK 与协议隔离",
-      "description": "阅读公开 SDK 的协议防火墙决策，理解调用方为何不依赖内部 App/Web/OAuth adapter。",
+      "title": "\u516c\u5f00 SDK \u4e0e\u534f\u8bae\u9694\u79bb",
+      "description": "\u7406\u89e3\u5355\u4e00\u516c\u5f00 SDK \u8c03\u7528\u94fe\u5982\u4f55\u9694\u79bb\u4e0a\u6e38 DTO\u3001\u5185\u90e8 model \u548c\u7a33\u5b9a\u516c\u5f00 model\u3002",
       "nodeIds": [
         "article:adr/0009-public-pixiv-sdk-and-caller-adapter",
-        "claim:adr-0009:public-sdk-is-stable-protocol-firewall"
+        "claim:0009-public-pixiv-sdk-and-caller-adapter:single-public-sdk-chain",
+        "claim:architecture:dto-model-public-protocol-isolation"
       ]
     },
     {
       "order": 3,
-      "title": "认证与显式回调",
-      "description": "认证只接受 App API refresh token；登录只能通过本轮 loopback、受控 helper 或用户显式回填完成。",
+      "title": "\u8ba4\u8bc1\u4e0e\u663e\u5f0f callback",
+      "description": "\u8ba4\u8bc1\u4f7f\u7528 refresh token\uff1b\u767b\u5f55\u53ea\u63a5\u53d7\u672c\u8f6e\u663e\u5f0f callback handoff\uff0c\u4e0d\u63a5\u53d7 Cookie \u5f62\u6001\u51ed\u636e\u3002",
       "nodeIds": [
         "article:adr/0005-auth-login-real-browser-relay-without-ui-automation",
-        "claim:adr-0005:explicit-callback-handoff-only",
-        "claim:architecture:cookie-input-is-rejected-before-oauth"
+        "claim:0005-auth-login-real-browser-relay-without-ui-automation:explicit-callback-only",
+        "claim:architecture:cookie-input-rejected-before-oauth"
       ]
     },
     {
       "order": 4,
-      "title": "推荐与用户契约",
-      "description": "MCP 的四类推荐流和完整用户详情均建立在认证 SDK 契约之上，兼容旧工具名但不保留双调用链。",
+      "title": "\u7528\u6237\u8be6\u60c5\u4e0e\u56db\u7c7b\u63a8\u8350",
+      "description": "\u67e5\u770b\u7528\u6237\u8be6\u60c5\u7684\u56db\u6bb5\u7a33\u5b9a\u6a21\u578b\uff0c\u4ee5\u53ca\u63d2\u753b\u3001\u6f2b\u753b\u3001\u5c0f\u8bf4\u548c\u7528\u6237\u56db\u6761\u72ec\u7acb\u63a8\u8350\u6d41\u3002",
       "nodeIds": [
         "article:mcp-tools",
-        "claim:mcp-tools:recommendations-have-four-independent-streams",
-        "claim:mcp-tools:user-detail-is-complete-authenticated-envelope"
+        "claim:mcp-tools:complete-user-detail-envelope",
+        "claim:mcp-tools:four-recommendations-use-opaque-pagination"
       ]
     },
     {
       "order": 5,
-      "title": "开发与发布门禁",
-      "description": "最后查看开发流程、staticlib 与签名发布决策，理解为什么图谱和可审计发布输入必须随结构变化同步。",
+      "title": "\u53ef\u5ba1\u8ba1\u53d1\u5e03",
+      "description": "\u4e86\u89e3\u6309 target \u56fa\u5b9a Rust provenance\u3001Ed25519 \u7b7e\u540d\u3001Homebrew \u4ea4\u4ed8\u4e0e\u4e0d\u53ef\u53d8 tag recovery\u3002",
       "nodeIds": [
         "article:development",
         "article:adr/0007-platform-staticlibs-for-supported-source-builds",
-        "article:adr/0008-ed25519-signed-multi-channel-release-trust"
+        "article:adr/0008-ed25519-signed-multi-channel-release-trust",
+        "claim:0008-ed25519-signed-multi-channel-release-trust:v030-release-gated"
+      ]
+    },
+    {
+      "order": 6,
+      "title": "\u6587\u6863\u4e0e\u56fe\u8c31\u7ef4\u62a4",
+      "description": "\u7ed3\u6784\u3001\u516c\u5f00 API \u6216\u6d41\u7a0b\u53d8\u66f4\u65f6\uff0c\u540c\u6b65\u6587\u6863\u3001\u8bc4\u5ba1\u89c4\u5219\u548c\u77e5\u8bc6\u56fe\u8c31\u3002",
+      "nodeIds": [
+        "article:agents/documentation-guidelines",
+        "article:agents/review-checklist",
+        "claim:documentation-guidelines:graphs-follow-structural-changes"
       ]
     }
   ]
