@@ -386,7 +386,7 @@ Homebrew tap 是独立发布面：stable 使用 `pixiv-cli`，pre-release 使用
 都安装 `pixiv` 并相互冲突。Task 20 已创建专用 tap deploy key；其私钥只放在 source repository
 的受保护 `release` Environment secret `HOMEBREW_TAP_DEPLOY_KEY`，公开 tap 只登记对应公钥。workflow
 在独立 renderer 中生成 staging formula，并在四个原生 runner 验证安装，再由最终 protected job 做
-受限提交/push。v0.1.1 的 stable formula 已提交到公开 tap；后续 stable/beta 发布仍不能从本仓库或
+受限提交/push。v0.3.0 的 stable formula 已提交到公开 tap；后续 stable/beta 发布仍不能从本仓库或
 workflow artifact 读取、生成或记录 deploy key。
 
 当前 Release 不会进行 Apple notarization 或 Windows Authenticode。直接下载仍可能被 Gatekeeper

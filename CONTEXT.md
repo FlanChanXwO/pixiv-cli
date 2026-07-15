@@ -7,10 +7,10 @@
 ## 架构词汇
 
 - **CLI controller**：`internal/cli`；Cobra commands、flags、prompts、loopback browser interaction，以及 stdout/stderr presenter。
-- **Application services**：`internal/application`；账号、配置、作品查询、下载与登录完成的 use case。
+- **Application services**：`internal/application`；账号、配置、登录完成，以及为 CLI/MCP 打开 public SDK operation snapshot 的 use case。
 - **Composition root**：`internal/bootstrap`；组装 config、auth storage、Pixiv client、OAuth client、download manager、update dependency 与 application service。
 - **Auth storage**：`internal/storage/auth`；以 UID 为 key 的 `auth.json`、默认 UID、私有路径与 `0600` 写入。
-- **Pixiv facade**：`internal/pixiv` 与顶层 `pixiv`；前者封装 App API 与匿名 web fallback 协议适配，后者提供唯一公开调用链。
+- **Pixiv SDK 与协议适配**：顶层 `pixiv` 提供唯一公开调用链；`internal/pixiv` 根包只保留共享 HTTP transport helper，`appapi`、`webapi`、`oauth`、`protocol` 与 `resource` 子包封装上游协议。
 - **SDK client**：`pixiv` 的具体 `*pixiv.Client`；外部 Go 程序通过它访问规范化 Pixiv 原子能力。
 - **Caller adapter**：调用方自己的窄接口与业务层；它拥有 source mode、budget、filter、cursor 持久化、入库与调度。
 - **Operation snapshot**：`OpenDefault` 每个公开操作读取一次 auth/config/OAuth 快照；`Snapshot(ctx)` 可显式固定一个高层操作。
@@ -36,7 +36,7 @@
 这只是领域模型，不代表所有渠道已公开可用：受支持 binary 的 production Ed25519 public key、key ID
 与 fingerprint 已随 [`internal/bootstrap/release_trust.go`](internal/bootstrap/release_trust.go) 提交；公开
 source/tap remote、受保护 `release` Environment、私钥恢复副本与完整六目标 staticlib manifest 已按
-Task 20 的审计流程配置或回填。v0.1.1 已发布为正式 Release，公开 tap 已有 stable formula；后续版本
+Task 20 的审计流程配置或回填。v0.3.0 已发布为正式 Release，公开 tap 已有对应 stable formula；后续版本
 仍必须完成相同的 tag、签名、资产和安装门禁，不能只因 trust root 存在就声称可安装。
 
 ## 边界规则

@@ -10,7 +10,7 @@ description: Add or change a pixiv-cli MCP tool with full sync of registration, 
 ## 边界
 
 - tool 注册、参数 schema、structured output 和 tool 文本在 `internal/mcpserver`；stdio runtime 由 `internal/bootstrap` 启动。
-- Pixiv 能力只通过 `internal/pixiv` facade 获取，不直连 `api`/`web` 子包。
+- Pixiv 能力只经 `internal/application.SDKService` 调用顶层 `pixiv` public SDK，不直连 `internal/pixiv/appapi`、`webapi`、`oauth` 或 `resource`。
 - MCP stdout 保留给 JSON-RPC；日志和诊断写 stderr。
 - web fallback 遵守 `AGENTS.md` 注意事项中的唯一规则；fallback 不支持的能力要报真实错误，不伪造数据。
 

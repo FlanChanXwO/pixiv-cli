@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted.
+Accepted；内容查询与下载 seam 已由 [ADR 0009](0009-public-pixiv-sdk-and-caller-adapter.md) 的 public SDK 决策取代。
 
 ## Context
 
@@ -19,9 +19,8 @@ The project needs a clearer internal structure without changing CLI/MCP behavior
 - Add `internal/application` for use cases:
   - `AccountService`
   - `ConfigService`
-  - `ArtworkService`
-  - `DownloadService`
   - `LoginService`
+  - `SDKService`（取代早期独立的 `ArtworkService` / `DownloadService` seam）
 - Add `internal/bootstrap` as the production composition root.
 - Publish Pixiv access through concrete `pixiv.Client`; CLI/MCP reach it through application-owned narrow seams rather than importing internal App/Web transports.
 - Move `internal/cli/state` to `internal/storage/auth`.
