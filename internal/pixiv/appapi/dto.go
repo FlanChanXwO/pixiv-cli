@@ -148,13 +148,59 @@ type profileDTO struct {
 	IsUsingCustomProfileImage  bool    `json:"is_using_custom_profile_image"`
 }
 type profilePublicityDTO struct {
-	Gender    bool `json:"gender"`
-	Region    bool `json:"region"`
-	BirthDay  bool `json:"birth_day"`
-	BirthYear bool `json:"birth_year"`
-	Job       bool `json:"job"`
-	Pawoo     bool `json:"pawoo"`
+	Gender    profilePublicityValue `json:"gender"`
+	Region    profilePublicityValue `json:"region"`
+	BirthDay  profilePublicityValue `json:"birth_day"`
+	BirthYear profilePublicityValue `json:"birth_year"`
+	Job       profilePublicityValue `json:"job"`
+	Pawoo     profilePublicityValue `json:"pawoo"`
 }
+
+// profilePublicityValue 隔离 App API 的 wire 差异：该接口既会返回 bool，
+// 也会以 public/private 字符串表示档案可见性。公开 SDK 始终只暴露 bool。
+type profilePublicityValue struct {
+	Value   bool
+	Present bool
+	Valid   bool
+}
+
+func (v *profilePublicityValue) UnmarshalJSON(data []byte) error {
+	*v = profilePublicityValue{Present: true}
+	switch string(bytes.TrimSpace(data)) {
+	case "true":
+		v.Value = true
+		v.Valid = true
+		return nil
+	case "false":
+		v.Valid = true
+		return nil
+	}
+
+	var visibility string
+	if err := json.Unmarshal(data, &visibility); err != nil {
+		return nil
+	}
+	switch visibility {
+	case "public":
+		v.Value = true
+		v.Valid = true
+	case "private":
+		v.Valid = true
+	}
+	return nil
+}
+
+func (d profilePublicityDTO) valid() bool {
+	// 公开模型以零值表示上游没有给出的可见性字段；只有实际出现的字段
+	// 才需要通过 wire 值校验。外层 profile_publicity object 仍由调用方强制要求。
+	return (!d.Gender.Present || d.Gender.Valid) &&
+		(!d.Region.Present || d.Region.Valid) &&
+		(!d.BirthDay.Present || d.BirthDay.Valid) &&
+		(!d.BirthYear.Present || d.BirthYear.Valid) &&
+		(!d.Job.Present || d.Job.Valid) &&
+		(!d.Pawoo.Present || d.Pawoo.Valid)
+}
+
 type workspaceDTO struct {
 	PC                string  `json:"pc"`
 	Monitor           string  `json:"monitor"`

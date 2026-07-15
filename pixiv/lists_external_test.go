@@ -542,7 +542,7 @@ func TestUserDetailReturnsCompleteStableProfileFromOneAppRequest(t *testing.T) {
 		fmt.Fprint(w, `{
 			"user":{"id":42,"name":"alice","account":"alice_account","comment":"hello","is_followed":true,"profile_image_urls":{"medium":"https://img.example/profile.jpg"}},
 			"profile":{"webpage":"https://alice.example","gender":"female","birth":"2000-01-02","birth_day":"01-02","birth_year":2000,"region":"Tokyo","address_id":13,"country_code":"JP","job":"illustrator","job_id":9,"total_follow_users":10,"total_mypixiv_users":11,"total_illusts":12,"total_manga":13,"total_novels":14,"total_illust_bookmarks_public":15,"total_illust_series":16,"total_novel_series":17,"background_image_url":"https://img.example/background.jpg","twitter_account":"alice","twitter_url":"https://x.example/alice","pawoo_url":"https://pawoo.example/@alice","is_premium":true,"is_using_custom_profile_image":true},
-			"profile_publicity":{"gender":true,"region":true,"birth_day":true,"birth_year":true,"job":true,"pawoo":true},
+			"profile_publicity":{"gender":"public","region":"private","birth_day":"public","birth_year":"private","job":"public","pawoo":true},
 			"workspace":{"pc":"PC","monitor":"Monitor","tool":"Tool","scanner":"Scanner","tablet":"Tablet","mouse":"Mouse","printer":"Printer","desktop":"Desktop","music":"Music","desk":"Desk","chair":"Chair","comment":"Workspace","workspace_image_url":"https://img.example/workspace.jpg"}
 		}`)
 	}))
@@ -562,7 +562,7 @@ func TestUserDetailReturnsCompleteStableProfileFromOneAppRequest(t *testing.T) {
 	if detail.Profile.Webpage == nil || *detail.Profile.Webpage != "https://alice.example" || detail.Profile.TotalNovelSeries != 17 || detail.Profile.BackgroundImageURL == nil || *detail.Profile.BackgroundImageURL != "https://img.example/background.jpg" || detail.Profile.TwitterURL == nil || detail.Profile.PawooURL == nil || !detail.Profile.IsPremium || !detail.Profile.IsUsingCustomProfileImage {
 		t.Fatalf("profile=%#v", detail.Profile)
 	}
-	if !detail.ProfilePublicity.Gender || !detail.ProfilePublicity.Region || !detail.ProfilePublicity.BirthDay || !detail.ProfilePublicity.BirthYear || !detail.ProfilePublicity.Job || !detail.ProfilePublicity.Pawoo {
+	if !detail.ProfilePublicity.Gender || detail.ProfilePublicity.Region || !detail.ProfilePublicity.BirthDay || detail.ProfilePublicity.BirthYear || !detail.ProfilePublicity.Job || !detail.ProfilePublicity.Pawoo {
 		t.Fatalf("profile_publicity=%#v", detail.ProfilePublicity)
 	}
 	if detail.Workspace.PC != "PC" || detail.Workspace.Comment != "Workspace" || detail.Workspace.WorkspaceImageURL == nil || *detail.Workspace.WorkspaceImageURL != "https://img.example/workspace.jpg" {

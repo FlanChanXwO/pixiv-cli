@@ -50,7 +50,9 @@ func TestMapUserDetailPreservesNormalizedEnvelopeAndOptionalURLs(t *testing.T) {
 			PawooURL: &pawoo, IsPremium: true, IsUsingCustomProfileImage: true,
 		}},
 		ProfilePublicity: requiredObject[profilePublicityDTO]{Present: true, Valid: true, Value: profilePublicityDTO{
-			Gender: true, Region: true, BirthDay: true, BirthYear: true, Job: true, Pawoo: true,
+			Gender: profilePublicityValue{Value: true, Present: true, Valid: true}, Region: profilePublicityValue{Value: true, Present: true, Valid: true},
+			BirthDay: profilePublicityValue{Value: true, Present: true, Valid: true}, BirthYear: profilePublicityValue{Value: true, Present: true, Valid: true},
+			Job: profilePublicityValue{Value: true, Present: true, Valid: true}, Pawoo: profilePublicityValue{Value: true, Present: true, Valid: true},
 		}},
 		Workspace: requiredObject[workspaceDTO]{Present: true, Valid: true, Value: workspaceDTO{
 			PC: "pc", Monitor: "monitor", Tool: "tool", Scanner: "scanner", Tablet: "tablet", Mouse: "mouse",

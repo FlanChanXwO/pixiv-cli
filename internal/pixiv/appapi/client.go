@@ -137,7 +137,7 @@ func (c *Client) UserDetail(ctx context.Context, userID int64) (*model.UserDetai
 	}
 	if !raw.User.Present || !raw.User.Valid || raw.User.Value.ID <= 0 ||
 		!raw.Profile.Present || !raw.Profile.Valid ||
-		!raw.ProfilePublicity.Present || !raw.ProfilePublicity.Valid ||
+		!raw.ProfilePublicity.Present || !raw.ProfilePublicity.Valid || !raw.ProfilePublicity.Value.valid() ||
 		!raw.Workspace.Present || !raw.Workspace.Valid {
 		return nil, ErrMalformedResponse
 	}

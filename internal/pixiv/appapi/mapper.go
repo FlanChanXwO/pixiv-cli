@@ -120,7 +120,10 @@ func mapProfile(dto profileDTO) model.Profile {
 }
 
 func mapProfilePublicity(dto profilePublicityDTO) model.ProfilePublicity {
-	return model.ProfilePublicity{Gender: dto.Gender, Region: dto.Region, BirthDay: dto.BirthDay, BirthYear: dto.BirthYear, Job: dto.Job, Pawoo: dto.Pawoo}
+	return model.ProfilePublicity{
+		Gender: dto.Gender.Value, Region: dto.Region.Value, BirthDay: dto.BirthDay.Value,
+		BirthYear: dto.BirthYear.Value, Job: dto.Job.Value, Pawoo: dto.Pawoo.Value,
+	}
 }
 
 func mapWorkspace(dto workspaceDTO) model.Workspace {
