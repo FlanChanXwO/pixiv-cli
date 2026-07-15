@@ -345,7 +345,7 @@ func (a *App) refreshToken(ctx context.Context, _ *mcp.CallToolRequest, _ emptyI
 		if errors.As(err, &sdkErr) {
 			return toolText("Token刷新失败：" + sdkErr.Error() + "。")
 		}
-		return toolText(fmt.Sprintf("Token刷新失败。可能的原因：refresh_token已过期、网络连接问题或代理设置问题。错误详情: %v", err))
+		return toolText("Token刷新失败。请检查 refresh token 是否有效，以及网络连接或代理设置。")
 	}
 	a.sdkRequest.UserID = account.UserID
 	return toolText(fmt.Sprintf("Token刷新成功！%s。现在可以正常使用Pixiv API功能了。", authIdentityText(*account)))

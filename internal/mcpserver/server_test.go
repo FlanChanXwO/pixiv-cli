@@ -537,6 +537,65 @@ func TestRefreshTokenFailureClassification(t *testing.T) {
 	}
 }
 
+func TestRefreshTokenUnknownFailureIsRedacted(t *testing.T) {
+	const rawFailure = "refresh failed: proxy=http://proxy-user:proxy-password@127.0.0.1:7890/oauth?query_token=query-secret Cookie=PHPSESSID=cookie-secret refresh_token=refresh-secret config=/Users/private/.config/pixiv/config.yaml"
+	const want = "Token刷新失败。请检查 refresh token 是否有效，以及网络连接或代理设置。"
+
+	var logs bytes.Buffer
+	service := application.SDKService{NewClient: func(application.SDKClientRequest) (application.SDKClient, error) {
+		return &failingRefreshSDKClient{err: errors.New(rawFailure)}, nil
+	}}
+	server := NewWithSDK(&fakeAPI{}, &fakeDownloads{}, slog.New(slog.NewJSONHandler(&logs, nil)), service, application.SDKClientRequest{})
+	clientTransport, serverTransport := mcp.NewInMemoryTransports()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() { _ = server.Run(ctx, serverTransport) }()
+	client := mcp.NewClient(&mcp.Implementation{Name: "test", Version: "1"}, nil)
+	session, err := client.Connect(ctx, clientTransport, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer session.Close()
+
+	result := callTool(t, session, "refresh_token", map[string]any{})
+	if result.IsError {
+		t.Fatalf("legacy refresh_token error shape changed: %+v", result)
+	}
+	var out textOut
+	decodeStructured(t, result, &out)
+	if out.Text != want {
+		t.Fatalf("structured output=%q, want %q", out.Text, want)
+	}
+	if len(result.Content) != 1 {
+		t.Fatalf("content len=%d, want 1", len(result.Content))
+	}
+	text, ok := result.Content[0].(*mcp.TextContent)
+	if !ok {
+		t.Fatalf("content[0]=%T, want *mcp.TextContent", result.Content[0])
+	}
+	var contentOut textOut
+	if err := json.Unmarshal([]byte(text.Text), &contentOut); err != nil {
+		t.Fatalf("decode text content %q: %v", text.Text, err)
+	}
+	if contentOut != out {
+		t.Fatalf("text content=%+v, structured output=%+v", contentOut, out)
+	}
+	if logs.Len() == 0 {
+		t.Fatal("injected MCP logger produced no refresh_token event")
+	}
+	for _, secret := range []string{
+		"proxy-user", "proxy-password", "127.0.0.1:7890", "query-secret",
+		"PHPSESSID", "cookie-secret", "refresh-secret", "/Users/private/.config/pixiv/config.yaml",
+	} {
+		if strings.Contains(text.Text, secret) || strings.Contains(out.Text, secret) {
+			t.Fatalf("MCP output leaked %q: content=%q structured=%q", secret, text.Text, out.Text)
+		}
+		if strings.Contains(logs.String(), secret) {
+			t.Fatalf("MCP log leaked %q: %s", secret, logs.String())
+		}
+	}
+}
+
 func TestSetRefreshTokenSuccessIncludesUserName(t *testing.T) {
 	session, closeSession := newSDKTestSession(t, &fakeSDKClient{userID: 1})
 	defer closeSession()

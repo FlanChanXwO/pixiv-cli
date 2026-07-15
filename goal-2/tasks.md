@@ -39,13 +39,13 @@
 
 ## F01 — 关闭 C01 的 MCP Refresh unknown-error 泄露
 
-- 状态：未完成
+- 状态：已完成
 - 来源：C01 Important。`client.Refresh` 的 unknown raw error fallback 仍把 `%v` 暴露给 MCP 调用方。
 - 范围：只把非 context、非 typed unauthorized、非安全 `*sdk.Error` 的 Refresh 错误改为固定、可操作且脱敏的提示；不得改变 open/factory 分支、typed SDK 诊断、missing-token 兼容文案、成功输出、legacy structured/text shape、`IsError` 或日志语义。
 - 验收：public in-memory MCP test 以包含 proxy username/password、完整 URL、token、Cookie 和配置路径的 raw canary 实际 RED→GREEN；输出及日志均不含 canary；refresh 聚焦、mcpserver 全包、race、vet 与全仓测试通过；独立 spec/quality review APPROVE。
-- 实际：
-- 证据：
-- 风险/下一步：
+- 实际：`client.Refresh` 的 unknown fallback 不再格式化任意 `err`，改为固定可操作文案“Token刷新失败。请检查 refresh token 是否有效，以及网络连接或代理设置。”；context、deadline、typed unauthorized、安全 `*sdk.Error`、open/factory、成功分支与 legacy result/log shape 均未改。新增 public in-memory MCP canary test 同时检查 text content、structured output 和实际非空注入日志；`[Unreleased]` 现准确说明 unknown Refresh execution error 不再回显原始详情。
+- 证据：只加测试时旧实现实际 RED，输出完整包含 proxy username/password、地址、query token、Cookie、refresh token 与配置路径；移除 `%v` 后 GREEN，所有 canary 在 Content、StructuredContent 和日志中均不可见。独立 spec review 与 quality review 均 APPROVE且无 finding；质量审查另通过聚焦测试 20 次与 race 5 次。主线程复验 `go test ./internal/mcpserver -run '^TestRefreshToken' -count=1 -v`、mcpserver 全包、聚焦 race、vet、gofmt、`git diff --check` 和 `go test ./... -count=1` 全部通过。
+- 风险/下一步：公开 `*sdk.Error` 仍按 public SDK 的稳定安全诊断契约输出；任意外部 adapter 主动伪造其公开字段属于受信注入边界。C01 的 Important 已关闭；下一任务 T04 分类本地 snapshot/auth/config 真因。
 
 ## T04 — 分类本地 snapshot/auth/config 真因
 
