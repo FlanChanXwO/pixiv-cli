@@ -944,13 +944,7 @@
       "fileCategory": "config"
     },
     {
-      "path": "pixiv-integration-replacement-prd.md",
-      "language": "markdown",
-      "sizeLines": 92,
-      "fileCategory": "docs"
-    },
-    {
-      "path": "pixiv-sdk-interface.md",
+      "path": "docs/sdk.md",
       "language": "markdown",
       "sizeLines": 107,
       "fileCategory": "docs"
@@ -1274,20 +1268,20 @@
       "fileCategory": "docs"
     }
   ],
-  "totalFiles": 212,
+  "totalFiles": 211,
   "filteredByIgnore": 200,
   "estimatedComplexity": "large",
   "stats": {
-    "filesScanned": 212,
+    "filesScanned": 211,
     "byCategory": {
-      "docs": 34,
+      "docs": 33,
       "code": 160,
       "infra": 4,
       "config": 6,
       "script": 8
     },
     "byLanguage": {
-      "markdown": 33,
+      "markdown": 32,
       "unknown": 1,
       "yaml": 5,
       "go": 154,
@@ -2584,8 +2578,6 @@
     "internal/utils/uri/uri_test.go": [],
     "internal/utils/uri/uri.go": [],
     "manifest.json": [],
-    "pixiv-integration-replacement-prd.md": [],
-    "pixiv-sdk-interface.md": [],
     "pixiv/account_external_test.go": [
       "pixiv/account_external_test.go",
       "pixiv/account.go",
@@ -3049,6 +3041,7 @@
       "pixiv/routing.go"
     ],
     "test/e2e/version_binary_test.go": [],
-    "THIRD_PARTY_LICENSES.md": []
+    "THIRD_PARTY_LICENSES.md": [],
+    "docs/sdk.md": []
   }
 }

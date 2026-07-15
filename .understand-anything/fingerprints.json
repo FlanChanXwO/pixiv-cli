@@ -1,7 +1,7 @@
 {
   "version": "1.0.0",
-  "gitCommitHash": "8d1561cee88a54ff2f929ed323053c43ce5554be",
-  "generatedAt": "2026-07-15T10:58:49.387Z",
+  "gitCommitHash": "4b0ffb10f8e95d7e7835695f68bfcb709ea17bf8",
+  "generatedAt": "2026-07-15T12:12:19.861Z",
   "files": {
     ".agents/skills/pixiv-commit-msg/SKILL.md": {
       "filePath": ".agents/skills/pixiv-commit-msg/SKILL.md",
@@ -315,7 +315,7 @@
     },
     "docs/development.md": {
       "filePath": "docs/development.md",
-      "contentHash": "75b788268990c3496f01d16f82e41556f0c76a62a68e2dd0b4173707182c66e1",
+      "contentHash": "dd536e4009fdd918e139ff6902d0a41c57a0ad43672c2b10cad20ea58aa4d0cc",
       "functions": [],
       "classes": [],
       "imports": [],
@@ -325,7 +325,7 @@
     },
     "docs/index.md": {
       "filePath": "docs/index.md",
-      "contentHash": "5c192ea0665f98132dae05c666ce06fd08fbe87701a60d30ec2e1a0601133f20",
+      "contentHash": "b3a1433a43423745b2ba9bd512637a564386342e87ee355f7c7f3dca8b79e308",
       "functions": [],
       "classes": [],
       "imports": [],
@@ -385,7 +385,7 @@
     },
     "goal-1/tasks.md": {
       "filePath": "goal-1/tasks.md",
-      "contentHash": "fa4ccefcda065992d718a3a8dab84ae0f6669df2fe66d3c837dc9b0fabb59185",
+      "contentHash": "57db54b5c90b685d9cede49bb3cd9ecc9ce2bd52bfaa24d9d0e5f06f6ca1a882",
       "functions": [],
       "classes": [],
       "imports": [],
@@ -20892,19 +20892,9 @@
       "totalLines": 56,
       "hasStructuralAnalysis": true
     },
-    "pixiv-integration-replacement-prd.md": {
-      "filePath": "pixiv-integration-replacement-prd.md",
-      "contentHash": "a4366705ea35bfae037df443e70be467dd6c683a390b607a5c90af8755678db0",
-      "functions": [],
-      "classes": [],
-      "imports": [],
-      "exports": [],
-      "totalLines": 93,
-      "hasStructuralAnalysis": true
-    },
-    "pixiv-sdk-interface.md": {
-      "filePath": "pixiv-sdk-interface.md",
-      "contentHash": "07d61d26bcf6146b3d8b9f1dd04338b84f7846b277a1338ec7c9d6781b01e571",
+    "docs/sdk.md": {
+      "filePath": "docs/sdk.md",
+      "contentHash": "0fcbd0197fc6d48d0211c110cacaee8e0b8897c02bfa16145295d68d26b62675",
       "functions": [],
       "classes": [],
       "imports": [],
@@ -26417,7 +26407,7 @@
     },
     "README.md": {
       "filePath": "README.md",
-      "contentHash": "2c2e07609783b950241dc31b55fe1cf5d84ed8cec055cce0066c49bd3fe99096",
+      "contentHash": "469b2857965927377cd3a0e4afa3b5fe042b5b7f6bbb81a60d3d5eb6bf339b51",
       "functions": [],
       "classes": [],
       "imports": [],
