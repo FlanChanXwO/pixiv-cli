@@ -13,11 +13,11 @@
 
 - Breaking: 公开 Go SDK 已迁移至 `github.com/FlanChanXwO/pixiv-cli/pixiv`；旧导入路径不保留兼容 package。
 - Breaking: 认证入口只接受原始 Pixiv App API refresh token；网页 Cookie（包括 `refresh_token=...`）不再被解析、提取或转换。
+- Breaking: `pixiv recommended` 现要求 `all|illust|manga|novel|user` kind；`all` 原子返回四类个性化推荐。
 
 ### Added
 
 - MCP 新增 `recommended`：以必填 kind 返回插画、漫画、小说或作者推荐；`all` 以每流独立分页的 structured output 返回四类推荐。
-- `pixiv recommended` 现要求 `all|illust|manga|novel|user` kind；`all` 原子返回四类个性化推荐。
 - MCP 新增 `user_detail`，以必填 `user_id` 返回完整稳定的用户详情 structured output。
 - 新增 `pixiv user detail USER_ID`；可用 `--json` 输出完整、稳定的用户详情 SDK envelope。
 - `pixiv search` 新增 `--rating`、`--type` 与 `--ai-type` 本地结果过滤；带 `--limit`/`--page` 时会按匹配结果继续读取 opaque cursor。
