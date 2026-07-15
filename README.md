@@ -411,4 +411,4 @@ sh scripts/build.sh
 PIXIV_E2E_WEB_API=1 PIXIV_WEB_API_PROXY=http://127.0.0.1:7890 go test ./test/e2e -run WebAPIFallbackReal -count=1 -v
 ```
 
-真实 Pixiv web fallback e2e 默认跳过；只有设置 `PIXIV_E2E_WEB_API=1` 时才会联网。需要认证的 App API canary 另须显式的独立测试 token，触发方式与凭据边界见[开发文档的测试章节](docs/development.md#测试)。
+真实 Pixiv web fallback e2e 默认跳过；只有设置 `PIXIV_E2E_WEB_API=1` 时才会联网。需要认证的 App API canary 还须显式选择隔离测试 token 或本机账号 store，触发方式与凭据边界见[开发文档的测试章节](docs/development.md#测试)。

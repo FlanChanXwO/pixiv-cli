@@ -5,10 +5,14 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -305,48 +309,192 @@ func TestPixivBinaryRealAPISearchOptIn(t *testing.T) {
 
 	// App API 认证失败时，stdout/stderr 都可能带上服务端回显；统一交给
 	// canary helper 分流并在测试诊断前脱敏，避免显式注入的 token 泄露。
-	stdout := runPixivCanary(t, repoRoot, binaryPath, env, refreshToken, "search", "初音ミク")
+	stdout := runPixivCanary(t, repoRoot, binaryPath, env, authenticatedCanaryAuth{kind: canaryAuthExplicitToken, refreshToken: refreshToken}, "search", "初音ミク")
 	if !strings.Contains(string(stdout), "found ") {
 		t.Fatalf("real API search did not print result summary:\n%s", redactCanaryDiagnostic(refreshToken, string(stdout)))
 	}
 }
 
+func TestResolveAuthenticatedCanaryAuth(t *testing.T) {
+	t.Parallel()
+
+	for _, test := range []struct {
+		name         string
+		refreshToken string
+		useLocalAuth string
+		wantKind     canaryAuthKind
+		wantSkip     bool
+		wantError    bool
+	}{
+		{name: "neither credential source skips", wantSkip: true},
+		{name: "explicit temporary token", refreshToken: "temporary-token", wantKind: canaryAuthExplicitToken},
+		{name: "explicit local auth", useLocalAuth: "1", wantKind: canaryAuthLocalStore},
+		{name: "both sources are rejected", refreshToken: "temporary-token", useLocalAuth: "1", wantError: true},
+		{name: "invalid local auth value is rejected", useLocalAuth: "true", wantError: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			auth, skip, err := resolveAuthenticatedCanaryAuth(test.refreshToken, test.useLocalAuth)
+			if (err != nil) != test.wantError {
+				t.Fatalf("error = %v, want error=%t", err, test.wantError)
+			}
+			if skip != test.wantSkip {
+				t.Fatalf("skip = %t, want %t", skip, test.wantSkip)
+			}
+			if !test.wantError && !test.wantSkip && auth.kind != test.wantKind {
+				t.Fatalf("auth kind = %d, want %d", auth.kind, test.wantKind)
+			}
+		})
+	}
+}
+
+func TestLocalAuthCanaryEnvironmentRemovesRefreshTokenOverride(t *testing.T) {
+	t.Parallel()
+
+	env := localAuthCanaryEnvFrom([]string{
+		"HOME=/actual-home",
+		"XDG_CONFIG_HOME=/actual-config",
+		"PIXIV_REFRESH_TOKEN=must-not-reach-child",
+		"PATH=/bin",
+	})
+	if slices.Contains(env, "PIXIV_REFRESH_TOKEN=must-not-reach-child") {
+		t.Fatal("local auth canary inherited PIXIV_REFRESH_TOKEN")
+	}
+	for _, required := range []string{"HOME=/actual-home", "XDG_CONFIG_HOME=/actual-config", "PATH=/bin"} {
+		if !slices.Contains(env, required) {
+			t.Fatalf("local auth canary environment lost %q", required)
+		}
+	}
+}
+
+func TestLocalAuthCanaryRejectsExternalBinary(t *testing.T) {
+	t.Parallel()
+
+	if err := validateLocalAuthCanaryBinary(canaryAuthLocalStore, "/untrusted/pixiv"); err == nil {
+		t.Fatal("local-auth canary accepted PIXIV_E2E_BINARY")
+	}
+	if err := validateLocalAuthCanaryBinary(canaryAuthLocalStore, ""); err != nil {
+		t.Fatalf("local-auth canary rejected source build: %v", err)
+	}
+	if err := validateLocalAuthCanaryBinary(canaryAuthExplicitToken, "/release/pixiv"); err != nil {
+		t.Fatalf("explicit-token canary unexpectedly rejected external binary: %v", err)
+	}
+}
+
+func TestRedactCanaryDiagnostic(t *testing.T) {
+	t.Parallel()
+
+	for _, test := range []struct {
+		name   string
+		token  string
+		input  string
+		secret string
+	}{
+		{name: "explicit token", token: "temporary-token", input: "failure temporary-token", secret: "temporary-token"},
+		{name: "query-style refresh token", input: "refresh_token=local-token", secret: "local-token"},
+		{name: "JSON refresh token", input: `{"refresh_token":"local-token"}`, secret: "local-token"},
+		{name: "query-style access token", input: "access_token=local-access-token", secret: "local-access-token"},
+		{name: "JSON access token", input: `{"access_token":"local-access-token"}`, secret: "local-access-token"},
+		{name: "cookie header", input: "Cookie: PHPSESSID=local-cookie; other=value", secret: "local-cookie"},
+		{name: "set-cookie header", input: "Set-Cookie: session=local-cookie; Secure", secret: "local-cookie"},
+		{name: "bearer authorization", input: "Authorization: Bearer local-token", secret: "local-token"},
+		{name: "basic authorization", input: "Authorization: Basic bG9jYWwtdG9rZW4=", secret: "bG9jYWwtdG9rZW4="},
+		{name: "OAuth code query", input: "https://example.test/callback?code=oauth-code&state=state", secret: "oauth-code"},
+		{name: "OAuth code verifier JSON", input: `{"code_verifier":"oauth-verifier"}`, secret: "oauth-verifier"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			redacted := redactCanaryDiagnostic(test.token, test.input)
+			if strings.Contains(redacted, test.secret) {
+				t.Fatalf("diagnostic leaked credential: %q", redacted)
+			}
+			if !strings.Contains(redacted, "[redacted]") {
+				t.Fatalf("diagnostic did not show redaction: %q", redacted)
+			}
+		})
+	}
+}
+
+func TestLocalStoreCanaryFailureDiagnosticsOmitChildOutput(t *testing.T) {
+	t.Parallel()
+
+	const unknownLocalToken = "unknown-local-token"
+	diagnostic := canaryFailureDiagnostics(
+		authenticatedCanaryAuth{kind: canaryAuthLocalStore},
+		"exit status 1",
+		"oauth body refresh_token="+unknownLocalToken,
+		"Authorization: Bearer "+unknownLocalToken,
+	)
+	if strings.Contains(diagnostic, unknownLocalToken) {
+		t.Fatalf("local-store diagnostic leaked credential: %q", diagnostic)
+	}
+	if !strings.Contains(diagnostic, "omitted") {
+		t.Fatalf("local-store diagnostic did not explain output omission: %q", diagnostic)
+	}
+}
+
+func TestExplicitTokenCanaryFailureDiagnosticsRedactKnownToken(t *testing.T) {
+	t.Parallel()
+
+	const explicitToken = "explicit-test-token"
+	diagnostic := canaryFailureDiagnostics(
+		authenticatedCanaryAuth{kind: canaryAuthExplicitToken, refreshToken: explicitToken},
+		"exit status 1",
+		"oauth body "+explicitToken,
+		"server echoed "+explicitToken,
+	)
+	if strings.Contains(diagnostic, explicitToken) {
+		t.Fatalf("explicit-token diagnostic leaked credential: %q", diagnostic)
+	}
+}
+
 // TestPixivBinaryAuthenticatedAppAPICanary 覆盖需要登录态的稳定公开 SDK
-// 能力。它只接受调用者显式传入的临时测试 token，绝不复用本机认证配置，避免
-// 误把日常开发环境的凭据用于联网发布门禁。
+// 能力。调用者必须明确选择隔离的临时 token 或本机持久化账号；默认绝不复用
+// 本机认证配置，避免误把日常开发环境的凭据用于联网发布门禁。
 func TestPixivBinaryAuthenticatedAppAPICanary(t *testing.T) {
 	if os.Getenv("PIXIV_E2E_REAL_API") != "1" {
 		t.Skip("set PIXIV_E2E_REAL_API=1 to run authenticated App API canary")
 	}
-	refreshToken := os.Getenv("PIXIV_E2E_REFRESH_TOKEN")
-	if refreshToken == "" {
-		t.Skip("set PIXIV_E2E_REFRESH_TOKEN with PIXIV_E2E_REAL_API=1 to run authenticated App API canary")
+	auth, skip, err := resolveAuthenticatedCanaryAuth(os.Getenv("PIXIV_E2E_REFRESH_TOKEN"), os.Getenv("PIXIV_E2E_USE_LOCAL_AUTH"))
+	if err != nil {
+		t.Fatalf("invalid authenticated App API canary credential mode: %v", err)
+	}
+	if skip {
+		t.Skip("set PIXIV_E2E_REFRESH_TOKEN or PIXIV_E2E_USE_LOCAL_AUTH=1 with PIXIV_E2E_REAL_API=1 to run authenticated App API canary")
+	}
+	if err := validateLocalAuthCanaryBinary(auth.kind, os.Getenv("PIXIV_E2E_BINARY")); err != nil {
+		t.Fatal(err)
 	}
 
 	repoRoot := filepath.Join("..", "..")
 	binaryPath := buildPixivBinary(t, repoRoot)
-	env := isolatedEnv(t).values
-	env = append(env, "PIXIV_REFRESH_TOKEN="+refreshToken)
+	var env []string
+	if auth.kind == canaryAuthLocalStore {
+		// 本机模式必须沿 CLI 的默认 store 路径刷新并持久化 token，不能让父进程
+		// 的运行期覆盖把 rotation 留在内存中。
+		env = localAuthCanaryEnv()
+	} else {
+		env = isolatedEnv(t).values
+		env = append(env, "PIXIV_REFRESH_TOKEN="+auth.refreshToken)
+	}
 	if proxy := firstNonEmpty(os.Getenv("PIXIV_E2E_PROXY"), os.Getenv("PIXIV_WEB_API_PROXY")); proxy != "" {
 		env = append(env, "https_proxy="+proxy, "HTTPS_PROXY="+proxy)
 	}
 
-	accountOut := runPixivCanary(t, repoRoot, binaryPath, env, refreshToken, "auth", "check", "--json")
+	accountOut := runPixivCanary(t, repoRoot, binaryPath, env, auth, "auth", "check", "--json")
 	var account struct {
 		UserID int64 `json:"user_id"`
 	}
-	requireCanaryJSON(t, accountOut, refreshToken, &account)
+	requireCanaryJSON(t, accountOut, auth, &account)
 	if account.UserID <= 0 {
 		t.Fatalf("auth check returned invalid user_id: %d", account.UserID)
 	}
 
-	userDetailOut := runPixivCanary(t, repoRoot, binaryPath, env, refreshToken, "user", "detail", strconvFormatInt(account.UserID), "--json")
+	userDetailOut := runPixivCanary(t, repoRoot, binaryPath, env, auth, "user", "detail", strconvFormatInt(account.UserID), "--json")
 	var detail pixiv.UserDetailResult
-	requireCanaryJSON(t, userDetailOut, refreshToken, &detail)
+	requireCanaryJSON(t, userDetailOut, auth, &detail)
 	if detail.User.ID != account.UserID {
 		t.Fatalf("user detail returned user id %d, want %d", detail.User.ID, account.UserID)
 	}
-	requireCanaryVisibleJSONFields(t, userDetailOut, refreshToken, "user", "profile", "profile_publicity", "workspace")
+	requireCanaryVisibleJSONFields(t, userDetailOut, auth, "user", "profile", "profile_publicity", "workspace")
 
 	for _, recommendation := range []struct {
 		kind  string
@@ -358,22 +506,81 @@ func TestPixivBinaryAuthenticatedAppAPICanary(t *testing.T) {
 		{kind: "user", field: "user_previews"},
 	} {
 		t.Run(recommendation.kind, func(t *testing.T) {
-			out := runPixivCanary(t, repoRoot, binaryPath, env, refreshToken, "recommended", recommendation.kind, "--limit", "1", "--json")
-			requireCanaryJSONArrayField(t, out, refreshToken, recommendation.field)
+			out := runPixivCanary(t, repoRoot, binaryPath, env, auth, "recommended", recommendation.kind, "--limit", "1", "--json")
+			requireCanaryJSONArrayField(t, out, auth, recommendation.field)
 			requireNoCanaryContinuationFields(t, out)
 		})
 	}
 
-	allOut := runPixivCanary(t, repoRoot, binaryPath, env, refreshToken, "recommended", "all", "--limit", "1", "--json")
+	allOut := runPixivCanary(t, repoRoot, binaryPath, env, auth, "recommended", "all", "--limit", "1", "--json")
 	for _, field := range []string{"illusts", "manga", "novels", "user_previews"} {
-		requireCanaryJSONArrayField(t, allOut, refreshToken, field)
+		requireCanaryJSONArrayField(t, allOut, auth, field)
 	}
 	requireNoCanaryContinuationFields(t, allOut)
 }
 
-// runPixivCanary 保留命令的真实失败原因，同时在测试框架输出前删除显式注入的
-// refresh token，避免失败日志意外暴露认证材料。
-func runPixivCanary(t *testing.T, repoRoot, binaryPath string, env []string, refreshToken string, args ...string) []byte {
+type canaryAuthKind uint8
+
+const (
+	canaryAuthNone canaryAuthKind = iota
+	canaryAuthExplicitToken
+	canaryAuthLocalStore
+)
+
+type authenticatedCanaryAuth struct {
+	kind         canaryAuthKind
+	refreshToken string
+}
+
+// resolveAuthenticatedCanaryAuth 强制认证来源互斥，避免运行期 token 覆盖本机
+// store 后，使 App API rotation 未能按正常 CLI 路径持久化。
+func resolveAuthenticatedCanaryAuth(refreshToken, useLocalAuth string) (authenticatedCanaryAuth, bool, error) {
+	if useLocalAuth != "" && useLocalAuth != "1" {
+		return authenticatedCanaryAuth{}, false, errors.New("PIXIV_E2E_USE_LOCAL_AUTH must be exactly 1 when set")
+	}
+	if refreshToken != "" && useLocalAuth == "1" {
+		return authenticatedCanaryAuth{}, false, errors.New("PIXIV_E2E_REFRESH_TOKEN and PIXIV_E2E_USE_LOCAL_AUTH=1 are mutually exclusive")
+	}
+	if refreshToken != "" {
+		return authenticatedCanaryAuth{kind: canaryAuthExplicitToken, refreshToken: refreshToken}, false, nil
+	}
+	if useLocalAuth == "1" {
+		return authenticatedCanaryAuth{kind: canaryAuthLocalStore}, false, nil
+	}
+	return authenticatedCanaryAuth{kind: canaryAuthNone}, true, nil
+}
+
+// validateLocalAuthCanaryBinary 拒绝将本机长期凭据交给任意外部 binary。
+// 显式 token 模式仍可用于 release archive 的离线二进制验证；本机模式则仅运行
+// 当前工作树构建出的 CLI，避免错误或恶意二进制读取持久化账号 store。
+func validateLocalAuthCanaryBinary(kind canaryAuthKind, externalBinary string) error {
+	if kind == canaryAuthLocalStore && externalBinary != "" {
+		return errors.New("PIXIV_E2E_BINARY is not permitted with PIXIV_E2E_USE_LOCAL_AUTH=1; unset it to build and test the current source")
+	}
+	return nil
+}
+
+// localAuthCanaryEnv 保留调用者的 HOME/XDG 配置，使子 CLI 使用默认账号 store。
+// 唯一刻意移除的覆盖是 PIXIV_REFRESH_TOKEN，避免跳过正常 rotation 持久化路径。
+func localAuthCanaryEnv() []string {
+	return localAuthCanaryEnvFrom(os.Environ())
+}
+
+func localAuthCanaryEnvFrom(environ []string) []string {
+	filtered := make([]string, 0, len(environ))
+	for _, entry := range environ {
+		name, _, found := strings.Cut(entry, "=")
+		if found && strings.EqualFold(name, "PIXIV_REFRESH_TOKEN") {
+			continue
+		}
+		filtered = append(filtered, entry)
+	}
+	return filtered
+}
+
+// runPixivCanary 在显式 token 模式保留经过脱敏的诊断；本机 store 模式没有可
+// 精确匹配的长期凭据，因此失败时绝不回显子进程输出。
+func runPixivCanary(t *testing.T, repoRoot, binaryPath string, env []string, auth authenticatedCanaryAuth, args ...string) []byte {
 	t.Helper()
 
 	run := exec.CommandContext(testCommandContext(t), binaryPath, args...)
@@ -384,28 +591,65 @@ func runPixivCanary(t *testing.T, repoRoot, binaryPath string, env []string, ref
 	run.Stderr = &stderr
 	err := run.Run()
 	if err != nil {
-		t.Fatalf("pixiv %s failed: %s\nstdout:\n%s\nstderr:\n%s", strings.Join(args, " "), redactCanaryDiagnostic(refreshToken, err.Error()), redactCanaryDiagnostic(refreshToken, stdout.String()), redactCanaryDiagnostic(refreshToken, stderr.String()))
+		failure := err.Error()
+		if auth.kind == canaryAuthLocalStore {
+			failure = canaryCommandFailureSummary(err)
+		}
+		t.Fatalf("pixiv %s failed: %s", strings.Join(args, " "), canaryFailureDiagnostics(auth, failure, stdout.String(), stderr.String()))
 	}
 	return stdout.Bytes()
 }
 
-func requireCanaryJSON(t *testing.T, body []byte, refreshToken string, out any) {
+func canaryCommandFailureSummary(err error) string {
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) && exitErr.ProcessState != nil {
+		return exitErr.ProcessState.String()
+	}
+	return "child process could not be started"
+}
+
+func canaryFailureDiagnostics(auth authenticatedCanaryAuth, failure, stdout, stderr string) string {
+	if auth.kind == canaryAuthLocalStore {
+		return failure + "; child stdout/stderr omitted to protect local-store credentials"
+	}
+	return fmt.Sprintf("%s\nstdout:\n%s\nstderr:\n%s", redactCanaryDiagnostic(auth.refreshToken, failure), redactCanaryDiagnostic(auth.refreshToken, stdout), redactCanaryDiagnostic(auth.refreshToken, stderr))
+}
+
+func requireCanaryJSON(t *testing.T, body []byte, auth authenticatedCanaryAuth, out any) {
 	t.Helper()
 
 	if err := json.Unmarshal(body, out); err != nil {
-		t.Fatalf("decode canary JSON failed: %v\n%s", err, redactCanaryDiagnostic(refreshToken, string(body)))
+		if auth.kind == canaryAuthLocalStore {
+			t.Fatalf("decode local-store canary JSON failed: %v; response body omitted to protect local-store credentials", err)
+		}
+		t.Fatalf("decode canary JSON failed: %v\n%s", err, redactCanaryDiagnostic(auth.refreshToken, string(body)))
 	}
 }
 
 func redactCanaryDiagnostic(refreshToken, value string) string {
-	return strings.ReplaceAll(value, refreshToken, "[redacted]")
+	if refreshToken != "" {
+		value = strings.ReplaceAll(value, refreshToken, "[redacted]")
+	}
+	// 本机 store 模式没有可直接比对的 token。CLI/SDK 本身应当脱敏错误，仍在
+	// 测试框架输出前清理常见的凭据键值形式，避免上游服务意外回显认证材料。
+	for _, pattern := range canaryCredentialPatterns {
+		value = pattern.ReplaceAllString(value, "$1[redacted]")
+	}
+	return value
 }
 
-func requireCanaryVisibleJSONFields(t *testing.T, body []byte, refreshToken string, fields ...string) {
+var canaryCredentialPatterns = []*regexp.Regexp{
+	regexp.MustCompile(`(?im)^((?:set-)?cookie\s*:\s*)[^\r\n]*`),
+	regexp.MustCompile(`(?im)^(authorization\s*:\s*(?:bearer|basic)\s+)[^\r\n]*`),
+	regexp.MustCompile(`(?i)((?:"(?:refresh_token|access_token|code_verifier|code)"\s*:\s*"))[^"]*`),
+	regexp.MustCompile(`(?i)((?:refresh_token|access_token|code_verifier|code)\s*=\s*)[^&\s,"'}\]]+`),
+}
+
+func requireCanaryVisibleJSONFields(t *testing.T, body []byte, auth authenticatedCanaryAuth, fields ...string) {
 	t.Helper()
 
 	var document map[string]json.RawMessage
-	requireCanaryJSON(t, body, refreshToken, &document)
+	requireCanaryJSON(t, body, auth, &document)
 	for _, field := range fields {
 		value, ok := document[field]
 		if !ok || len(value) == 0 || bytes.Equal(value, []byte("null")) {
@@ -414,11 +658,11 @@ func requireCanaryVisibleJSONFields(t *testing.T, body []byte, refreshToken stri
 	}
 }
 
-func requireCanaryJSONArrayField(t *testing.T, body []byte, refreshToken, field string) {
+func requireCanaryJSONArrayField(t *testing.T, body []byte, auth authenticatedCanaryAuth, field string) {
 	t.Helper()
 
 	var document map[string]json.RawMessage
-	requireCanaryJSON(t, body, refreshToken, &document)
+	requireCanaryJSON(t, body, auth, &document)
 	value, ok := document[field]
 	if !ok || bytes.Equal(value, []byte("null")) {
 		t.Fatalf("JSON field %q is missing or null", field)

@@ -239,11 +239,12 @@ go test ./...
 sh scripts/build.sh
 PIXIV_E2E_WEB_API=1 PIXIV_WEB_API_PROXY=http://127.0.0.1:7890 go test ./test/e2e -run WebAPIFallbackReal -count=1 -v
 PIXIV_E2E_REAL_API=1 PIXIV_E2E_REFRESH_TOKEN="<独立测试 refresh token>" PIXIV_E2E_PROXY=http://127.0.0.1:7890 go test ./test/e2e -run AuthenticatedAppAPICanary -count=1 -v
+PIXIV_E2E_REAL_API=1 PIXIV_E2E_USE_LOCAL_AUTH=1 PIXIV_E2E_PROXY=http://127.0.0.1:7890 go test ./test/e2e -run AuthenticatedAppAPICanary -count=1 -v
 ```
 
 `go test ./...` 保持默认离线稳定；真实 Pixiv web API fallback e2e 默认跳过，只有设置 `PIXIV_E2E_WEB_API=1` 时才会联网。未设置 `PIXIV_WEB_API_PROXY` 时会直连。
 
-认证 App API canary 还必须同时设置 `PIXIV_E2E_REAL_API=1` 和 `PIXIV_E2E_REFRESH_TOKEN`，缺一即跳过；它只使用这个显式传入的独立测试 token，不读取本机 auth 配置、浏览器数据，也不会匿名 fallback。该 canary 验证 `auth check`、完整用户详情和插画/漫画/小说/作者四类推荐。可选 `PIXIV_E2E_PROXY`（或 `PIXIV_WEB_API_PROXY`）只作用于该次测试；请勿把 token 写入 shell history、日志或仓库文件。
+认证 App API canary 必须设置 `PIXIV_E2E_REAL_API=1`，再明确选择一种认证来源；未选择则跳过，也不会匿名 fallback。`PIXIV_E2E_REFRESH_TOKEN` 是隔离模式：只使用显式传入的独立测试 token，不读取或写入本机 auth 配置、浏览器数据。`PIXIV_E2E_USE_LOCAL_AUTH=1` 是本机模式：子 CLI 复用当前用户的 `HOME`/`XDG_CONFIG_HOME` 和默认账号 store，按正常 CLI 行为把 rotated refresh token 写回本机 store；它不会继承 `PIXIV_REFRESH_TOKEN` 运行期覆盖，也拒绝 `PIXIV_E2E_BINARY`，只构建当前源码后运行。两种来源不能同时设置，且本机模式只应在用户明确授权时使用；运行期间不要并发启动其他使用同一账号 store 的 `pixiv` CLI 或 MCP 进程，以免 rotation 覆盖或旧 token 请求失败。该 canary 验证 `auth check`、完整用户详情和插画/漫画/小说/作者四类推荐。可选 `PIXIV_E2E_PROXY`（或 `PIXIV_WEB_API_PROXY`）只作用于该次测试；请勿把 token 写入 shell history、日志或仓库文件。
 
 `PIXIV_E2E_BINARY` 与 `PIXIV_E2E_EXPECTED_VERSION` 供 CI 对已构建、已解压的 release binary 执行离线 e2e；它们不注入 token，也不启用真实 Pixiv API/Web fallback。`platform-smoke.yml` 在六个受支持 runner 上构建、封装、解压并运行这组 CLI/config/MCP stdio 验证。
 
