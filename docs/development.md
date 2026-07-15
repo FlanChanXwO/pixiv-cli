@@ -294,7 +294,7 @@ GitHub Release。workflow 使用 full-SHA Actions、最小权限及 `release` En
 `workflow_dispatch` 提交同一个 `release_tag` 进行恢复。validate 会校验该 tag 为 SemVer、存在、
 已包含于默认分支且尚未有 Release；构建与发布始终 checkout 该 tag。恢复 run 可以只在无 Environment
 的六平台 test job 中应用固定白名单的默认分支测试覆盖。v0.2.0 已完成的历史恢复使用四条路径：当时的
-release workflow、位于 `pkg/pixiv/account_external_test.go` 的 Windows ACL 测试，以及 canonical
+release workflow、位于 `pixiv/account_external_test.go` 的 Windows ACL 测试，以及 canonical
 verifier 与其测试；这是不可改写的历史证据，不定义后续 tag 的 allowlist。
 
 当前 v0.3.0 tag 已包含与默认分支相同的顶层 `pixiv/account_external_test.go`，质量门直接运行 tag 中的

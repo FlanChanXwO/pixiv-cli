@@ -104,4 +104,4 @@ if errors.Is(err, pixiv.ErrUnauthorized) { /* re-auth */ }
 
 调用方 adapter 决定采集模式、budget、filter、cursor 存储、数据库事务、任务调度、重试与对外 HTTP API。`atri-setu-api` 的随机选图、审查、图库和图片代理不属于 SDK；它可使用 SDK 的规范化模型和资源流实现这些功能。
 
-更多替换边界见 [PRD](pixiv-integration-replacement-prd.md) 与 [ADR 0009](docs/adr/0009-public-pixiv-sdk-and-caller-adapter.md)。
+更多边界说明见 [ADR 0009](adr/0009-public-pixiv-sdk-and-caller-adapter.md)。

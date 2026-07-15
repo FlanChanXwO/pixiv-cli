@@ -11,8 +11,8 @@
     ],
     "frameworks": [],
     "description": "Go 版 Pixiv CLI、MCP stdio server 与公开 pixiv SDK；以单一公开调用链封装 App API、受限匿名 Web fallback、认证、下载和更新能力。",
-    "analyzedAt": "2026-07-15T10:57:59.162Z",
-    "gitCommitHash": "8d1561cee88a54ff2f929ed323053c43ce5554be"
+    "analyzedAt": "2026-07-15T12:12:19.396442+00:00",
+    "gitCommitHash": "4b0ffb10f8e95d7e7835695f68bfcb709ea17bf8"
   },
   "nodes": [
     {
@@ -25589,30 +25589,16 @@
       "complexity": "moderate"
     },
     {
-      "id": "document:pixiv-integration-replacement-prd.md",
+      "id": "document:docs/sdk.md",
       "type": "document",
-      "name": "pixiv-integration-replacement-prd.md",
-      "filePath": "pixiv-integration-replacement-prd.md",
-      "summary": "项目支持层中的 pixiv-integration-replacement-prd.md 实现，承载该层的核心职责并保持与相邻层的边界。",
+      "name": "sdk.md",
+      "filePath": "docs/sdk.md",
+      "summary": "顶层 pixiv public SDK 的构造、稳定模型、分页、认证、错误与资源契约说明。",
       "tags": [
         "go",
         "pixiv",
-        "project",
-        "implementation"
-      ],
-      "complexity": "moderate"
-    },
-    {
-      "id": "document:pixiv-sdk-interface.md",
-      "type": "document",
-      "name": "pixiv-sdk-interface.md",
-      "filePath": "pixiv-sdk-interface.md",
-      "summary": "项目支持层中的 pixiv-sdk-interface.md 实现，承载该层的核心职责并保持与相邻层的边界。",
-      "tags": [
-        "go",
-        "pixiv",
-        "project",
-        "implementation"
+        "sdk",
+        "documentation"
       ],
       "complexity": "moderate"
     },
@@ -59616,8 +59602,7 @@
         "config:go.mod",
         "config:go.sum",
         "config:manifest.json",
-        "document:pixiv-integration-replacement-prd.md",
-        "document:pixiv-sdk-interface.md",
+        "document:docs/sdk.md",
         "document:docs/adr/0001-cli-thin-controller-and-bootstrap.md",
         "document:docs/adr/0002-utils-and-common-boundaries.md",
         "document:docs/adr/0003-agent-instruction-precedent-strategy.md",
