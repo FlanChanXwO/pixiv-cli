@@ -1026,6 +1026,257 @@ func TestDownloadRandomFromRecommendationUsesSDKAndPreservesCount(t *testing.T) 
 	}
 }
 
+func TestDownloadRandomRejectsExplicitZeroBeforeOpeningSDK(t *testing.T) {
+	session, closeSession, probe := newDownloadRandomProbeSession(t, []int64{1, 2, 3, 4, 5})
+	defer closeSession()
+
+	result := callTool(t, session, "download_random_from_recommendation", map[string]any{"count": 0})
+	assertDownloadRandomCountError(t, result)
+	assertNoDownloadRandomDownstream(t, probe)
+}
+
+func TestDownloadRandomCountErrorPreservesImageContentDelivery(t *testing.T) {
+	session, closeSession, probe := newDownloadRandomProbeSession(t, []int64{1, 2, 3, 4, 5})
+	defer closeSession()
+
+	result := callTool(t, session, "download_random_from_recommendation", map[string]any{
+		"count":    0,
+		"delivery": deliveryImageContent,
+	})
+	out := decodeDownloadOut(t, result)
+	const wantText = "错误：count 必须是 1 到 20 之间的整数。"
+	if result.IsError || out.Delivery != deliveryImageContent || out.Text != wantText || len(out.Items) != 0 || len(out.Files) != 0 {
+		t.Fatalf("result=%+v output=%+v", result, out)
+	}
+	if len(result.Content) != 1 {
+		t.Fatalf("content=%+v want one text item", result.Content)
+	}
+	textContent, ok := result.Content[0].(*mcp.TextContent)
+	if !ok || textContent.Text != wantText {
+		t.Fatalf("content=%+v want text %q", result.Content, wantText)
+	}
+	assertNoDownloadRandomDownstream(t, probe)
+}
+
+func TestDownloadRandomInvalidDeliveryPrecedesCountValidation(t *testing.T) {
+	session, closeSession, probe := newDownloadRandomProbeSession(t, []int64{1, 2, 3, 4, 5})
+	defer closeSession()
+
+	result := callTool(t, session, "download_random_from_recommendation", map[string]any{
+		"count":    0,
+		"delivery": "invalid-delivery",
+	})
+	out := decodeDownloadOut(t, result)
+	const wantText = `错误：delivery 仅支持 "local_path" 或 "image_content"。`
+	if result.IsError || out.Delivery != deliveryLocalPath || out.Text != wantText || len(out.Items) != 0 || len(out.Files) != 0 {
+		t.Fatalf("result=%+v output=%+v", result, out)
+	}
+	if len(result.Content) != 1 {
+		t.Fatalf("content=%+v want one text item", result.Content)
+	}
+	textContent, ok := result.Content[0].(*mcp.TextContent)
+	if !ok || textContent.Text != wantText {
+		t.Fatalf("content=%+v want text %q", result.Content, wantText)
+	}
+	assertNoDownloadRandomDownstream(t, probe)
+}
+
+func TestDownloadRandomRejectsExplicitNegativeCountBeforeOpeningSDK(t *testing.T) {
+	session, closeSession, probe := newDownloadRandomProbeSession(t, []int64{1, 2, 3, 4, 5})
+	defer closeSession()
+
+	result := callTool(t, session, "download_random_from_recommendation", map[string]any{"count": -1})
+	assertDownloadRandomCountError(t, result)
+	assertNoDownloadRandomDownstream(t, probe)
+}
+
+func TestDownloadRandomRejectsCountAboveMaximumBeforeOpeningSDK(t *testing.T) {
+	ids := make([]int64, 21)
+	for i := range ids {
+		ids[i] = int64(i + 1)
+	}
+	session, closeSession, probe := newDownloadRandomProbeSession(t, ids)
+	defer closeSession()
+
+	result := callTool(t, session, "download_random_from_recommendation", map[string]any{"count": 21})
+	assertDownloadRandomCountError(t, result)
+	assertNoDownloadRandomDownstream(t, probe)
+}
+
+func assertDownloadRandomCountError(t *testing.T, result *mcp.CallToolResult) {
+	t.Helper()
+	out := decodeDownloadOut(t, result)
+	const wantText = "错误：count 必须是 1 到 20 之间的整数。"
+	if result.IsError || out.Delivery != deliveryLocalPath || out.Text != wantText || len(out.Items) != 0 || len(out.Files) != 0 {
+		t.Fatalf("result=%+v output=%+v", result, out)
+	}
+	if len(result.Content) != 1 {
+		t.Fatalf("content=%+v want one text item", result.Content)
+	}
+	textContent, ok := result.Content[0].(*mcp.TextContent)
+	if !ok || textContent.Text != wantText {
+		t.Fatalf("content=%+v want text %q", result.Content, wantText)
+	}
+}
+
+func assertNoDownloadRandomDownstream(t *testing.T, probe *downloadRandomProbe) {
+	t.Helper()
+	if probe.openCalls != 0 || probe.recommendationCalls != 0 || probe.managerFactoryCalls != 0 || len(probe.downloads.downloadIDs) != 0 {
+		t.Fatalf("downstream calls: open=%d recommendation=%d manager_factory=%d download_ids=%v", probe.openCalls, probe.recommendationCalls, probe.managerFactoryCalls, probe.downloads.downloadIDs)
+	}
+}
+
+func TestDownloadRandomOmittedCountDefaultsToFive(t *testing.T) {
+	recommendationIDs := []int64{1, 2, 3, 4, 5, 6}
+	session, closeSession, probe := newDownloadRandomProbeSession(t, recommendationIDs)
+	defer closeSession()
+
+	result := callTool(t, session, "download_random_from_recommendation", map[string]any{})
+	if result.IsError || probe.openCalls != 1 || probe.recommendationCalls != 1 || len(probe.downloads.downloadIDs) != downloadRandomDefaultCount {
+		t.Fatalf("result=%+v open=%d recommendation=%d download_ids=%v", result, probe.openCalls, probe.recommendationCalls, probe.downloads.downloadIDs)
+	}
+	seen := make(map[int64]struct{}, len(probe.downloads.downloadIDs))
+	for _, id := range probe.downloads.downloadIDs {
+		if !slices.Contains(recommendationIDs, id) {
+			t.Fatalf("download ID %d is not from recommendations %v", id, recommendationIDs)
+		}
+		seen[id] = struct{}{}
+	}
+	if len(seen) != downloadRandomDefaultCount {
+		t.Fatalf("download IDs are not unique: %v", probe.downloads.downloadIDs)
+	}
+}
+
+func TestDownloadRandomNullCountDefaultsToFive(t *testing.T) {
+	recommendationIDs := []int64{1, 2, 3, 4, 5, 6}
+	session, closeSession, probe := newDownloadRandomProbeSession(t, recommendationIDs)
+	defer closeSession()
+
+	result := callTool(t, session, "download_random_from_recommendation", map[string]any{"count": nil})
+	if result.IsError || probe.openCalls != 1 || probe.recommendationCalls != 1 || len(probe.downloads.downloadIDs) != downloadRandomDefaultCount {
+		t.Fatalf("result=%+v open=%d recommendation=%d download_ids=%v", result, probe.openCalls, probe.recommendationCalls, probe.downloads.downloadIDs)
+	}
+}
+
+func TestDownloadRandomToolSchemaDocumentsOptionalCountContract(t *testing.T) {
+	session, closeSession, _ := newDownloadRandomProbeSession(t, nil)
+	defer closeSession()
+
+	var inputSchema any
+	for tool, err := range session.Tools(context.Background(), nil) {
+		if err != nil {
+			t.Fatal(err)
+		}
+		if tool.Name == "download_random_from_recommendation" {
+			inputSchema = tool.InputSchema
+			break
+		}
+	}
+	if inputSchema == nil {
+		t.Fatal("download_random_from_recommendation tool not found")
+	}
+	raw, err := json.Marshal(inputSchema)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var schema struct {
+		Required   []string `json:"required"`
+		Properties map[string]struct {
+			Description string `json:"description"`
+		} `json:"properties"`
+	}
+	if err := json.Unmarshal(raw, &schema); err != nil {
+		t.Fatal(err)
+	}
+	if slices.Contains(schema.Required, "count") {
+		t.Fatalf("count must remain optional: schema=%s", raw)
+	}
+	description := schema.Properties["count"].Description
+	if !strings.Contains(description, "defaults to 5") || !strings.Contains(description, "1 to 20") {
+		t.Fatalf("count schema does not document default/range: %s", raw)
+	}
+}
+
+func TestDownloadRandomAcceptsMaximumCount(t *testing.T) {
+	recommendationIDs := make([]int64, downloadRandomMaxCount+1)
+	for i := range recommendationIDs {
+		recommendationIDs[i] = int64(i + 1)
+	}
+	session, closeSession, probe := newDownloadRandomProbeSession(t, recommendationIDs)
+	defer closeSession()
+
+	result := callTool(t, session, "download_random_from_recommendation", map[string]any{"count": downloadRandomMaxCount})
+	if result.IsError || probe.openCalls != 1 || probe.recommendationCalls != 1 || len(probe.downloads.downloadIDs) != downloadRandomMaxCount {
+		t.Fatalf("result=%+v open=%d recommendation=%d download_ids=%v", result, probe.openCalls, probe.recommendationCalls, probe.downloads.downloadIDs)
+	}
+	seen := make(map[int64]struct{}, len(probe.downloads.downloadIDs))
+	for _, id := range probe.downloads.downloadIDs {
+		if !slices.Contains(recommendationIDs, id) {
+			t.Fatalf("download ID %d is not from recommendations %v", id, recommendationIDs)
+		}
+		seen[id] = struct{}{}
+	}
+	if len(seen) != downloadRandomMaxCount {
+		t.Fatalf("download IDs are not unique: %v", probe.downloads.downloadIDs)
+	}
+}
+
+func TestDownloadRandomUsesAvailableRecommendationsWhenListIsShorter(t *testing.T) {
+	recommendationIDs := []int64{11, 12, 13}
+	session, closeSession, probe := newDownloadRandomProbeSession(t, recommendationIDs)
+	defer closeSession()
+
+	result := callTool(t, session, "download_random_from_recommendation", map[string]any{"count": 5})
+	if result.IsError || probe.openCalls != 1 || probe.recommendationCalls != 1 || len(probe.downloads.downloadIDs) != len(recommendationIDs) {
+		t.Fatalf("result=%+v open=%d recommendation=%d download_ids=%v", result, probe.openCalls, probe.recommendationCalls, probe.downloads.downloadIDs)
+	}
+	got := append([]int64(nil), probe.downloads.downloadIDs...)
+	slices.Sort(got)
+	if !slices.Equal(got, recommendationIDs) {
+		t.Fatalf("download IDs=%v want available recommendations %v", got, recommendationIDs)
+	}
+}
+
+type downloadRandomProbe struct {
+	openCalls           int
+	recommendationCalls int
+	managerFactoryCalls int
+	downloads           *fakeDownloads
+}
+
+func newDownloadRandomProbeSession(t *testing.T, recommendationIDs []int64) (*mcp.ClientSession, func(), *downloadRandomProbe) {
+	t.Helper()
+	probe := &downloadRandomProbe{downloads: &fakeDownloads{}}
+	service := application.SDKService{NewClient: func(application.SDKClientRequest) (application.SDKClient, error) {
+		probe.openCalls++
+		return &fakeSDKClient{illustRecommended: func(context.Context, sdk.IllustRecommendedRequest) (*sdk.IllustListResult, error) {
+			probe.recommendationCalls++
+			illusts := make([]sdk.Illust, len(recommendationIDs))
+			for i, id := range recommendationIDs {
+				illusts[i] = testSDKIllust(id, "recommended", 1)
+			}
+			return &sdk.IllustListResult{Illusts: illusts}, nil
+		}}, nil
+	}}
+	server := NewWithSDKDownloadFactory(probe.downloads, func(application.SDKClient) DownloadManager {
+		probe.managerFactoryCalls++
+		return probe.downloads
+	}, slog.New(slog.NewTextHandler(io.Discard, nil)), service, application.SDKClientRequest{})
+	clientTransport, serverTransport := mcp.NewInMemoryTransports()
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() { _ = server.Run(ctx, serverTransport) }()
+	client := mcp.NewClient(&mcp.Implementation{Name: "test", Version: "1"}, nil)
+	session, err := client.Connect(ctx, clientTransport, nil)
+	if err != nil {
+		cancel()
+		t.Fatal(err)
+	}
+	return session, func() {
+		session.Close()
+		cancel()
+	}, probe
+}
+
 func TestSDKDownloadFactoryUsesSelectedAccountAfterTokenSwitch(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "work.jpg")
 	if err := os.WriteFile(path, []byte("image"), 0o644); err != nil {

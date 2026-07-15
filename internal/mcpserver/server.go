@@ -388,21 +388,49 @@ func authIdentityText(account sdk.Account) string {
 }
 
 type downloadRandomIn struct {
-	Count    int    `json:"count,omitempty" jsonschema:"number of random artworks to download"`
+	Count    *int   `json:"count,omitempty" jsonschema:"optional artwork count; defaults to 5; explicit value must be from 1 to 20"`
 	Delivery string `json:"delivery,omitempty" jsonschema:"delivery mode: local_path or image_content"`
+}
+
+const (
+	downloadRandomDefaultCount = 5
+	// 一次请求可触发多个作品下载，每个作品又可展开为多页/多文件，全部产物
+	// 元数据会进入同一 structured response；20 约束作品数，避免无界放大下载工作与 JSON-RPC 输出。
+	downloadRandomMaxCount = 20
+)
+
+var errDownloadRandomCount = errors.New("count 必须是 1 到 20 之间的整数")
+
+func parseDownloadRandomCount(value *int) (int, error) {
+	if value == nil {
+		return downloadRandomDefaultCount, nil
+	}
+	if *value <= 0 || *value > downloadRandomMaxCount {
+		return 0, errDownloadRandomCount
+	}
+	return *value, nil
 }
 
 func (a *App) downloadRandom(ctx context.Context, req *mcp.CallToolRequest, in downloadRandomIn) (*mcp.CallToolResult, downloadOut, error) {
 	delivery, errText := normalizeDelivery(in.Delivery)
 	if errText != "" {
-		return nil, downloadOut{Delivery: deliveryLocalPath, Text: errText}, nil
+		out := downloadOut{
+			Delivery: deliveryLocalPath,
+			Items:    []downloadItemOut{},
+			Files:    []downloadFileOut{},
+			Text:     errText,
+		}
+		return downloadResult(out), out, nil
 	}
-	count := in.Count
-	if count <= 0 {
-		count = 5
-	}
-	if count > 20 {
-		count = 20
+	count, err := parseDownloadRandomCount(in.Count)
+	if err != nil {
+		out := downloadOut{
+			Delivery: delivery,
+			Items:    []downloadItemOut{},
+			Files:    []downloadFileOut{},
+			Text:     "错误：" + err.Error() + "。",
+		}
+		return downloadResult(out), out, nil
 	}
 	client, release, err := a.openSDKOperation(ctx)
 	if err != nil {

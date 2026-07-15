@@ -67,12 +67,12 @@
 
 ## T06 — 移除 MCP 推荐下载静默 count 钳制
 
-- 状态：未完成
+- 状态：已完成
 - 范围：P2-6。为默认 count 提供明确产品语义；超出有依据范围时返回显式参数错误，不静默改为 20；同步 MCP 文档和 changelog。
 - 验收：count 缺省、非正数、合法值、超限值均有 public tool 测试；无合法请求被静默截断。
-- 实际：
-- 证据：
-- 风险/下一步：
+- 实际：`download_random_from_recommendation.count` 改为可选整数：省略或 `null` 默认 5，显式值仅接受 1..20；0、负数和大于 20 的值在打开 SDK、请求推荐或创建/调用下载 manager 前返回稳定参数错误，不再静默改写。20 约束单次请求作品数，依据是多作品与每作品多页/多文件会放大下载工作及同一 structured response 的文件元数据，不截断单作品文件；推荐不足时使用实际可用项。delivery 校验仍优先，count 错误保留规范化 delivery，错误输出显式提供空 `items/files` 以满足 public output schema。MCP schema、canonical tool 文档、README、架构说明与 changelog 已同步，并澄清 random tool 当前不附加 ImageContent。
+- 证据：旧实现对显式 `count=0` 实际打开 SDK、请求推荐并下载默认 5 项，对 `count=21` 实际下载 20 项，形成两条真实 public-tool RED；最小实现后转 GREEN。负数、缺省、`null`、合法 1、最大 20、推荐不足、schema optional/default/range 均有 public in-memory MCP 测试；随机选择断言集合与数量而非顺序。spec review 发现 `count=0 + image_content` 的 structured delivery 漂移，补测先 RED 后修复；组合测试又暴露非法 delivery 被 `items:null` output-schema 错误遮蔽，补为显式空数组后 GREEN。独立 spec review APPROVE；quality review 发现上限依据误称 random 会附加 ImageContent，收窄代码注释与文档后窄复审 APPROVE。主线程复验 `TestDownloadRandom` 单次与 20 次、MCP package/race/vet、`go test ./...`、pre-commit、gofmt 与 `git diff --check` 全部通过。
+- 风险/下一步：为保持既有 legacy wire 兼容，参数错误仍是 `IsError=false` 的文本与 structured result；T13 负责统一 legacy 错误可观测性。random tool 的 `delivery=image_content` 当前不附加 ImageContent，已在 canonical 文档明确，本任务未扩展该既有能力。下一任务 C02 集中复核 T04–T06 的 composition boundary、错误真因、限制依据、CLI/MCP 契约与全量门禁。
 
 ## C02 — 集中检查 2（T04–T06）
 

@@ -22,7 +22,9 @@ SDK cursor 不出现在 MCP 参数或输出。`user_bookmarks.max_bookmark_id` �
 | `refresh_token` | 无 | 当前认证账号摘要。 |
 | `set_refresh_token` | 原始 App API `refresh_token` | 当前会话认证结果；不写 `auth.json`；Cookie 输入会被拒绝。 |
 | `download` | `illust_id` 或 `illust_ids`，可选 `delivery` | 下载文件、URI、MIME、大小；`image_content` 另附 ImageContent。 |
-| `download_random_from_recommendation` | `count`，可选 `delivery` | 同 `download`。 |
+| `download_random_from_recommendation` | 可选 `count`（省略或 `null` 时默认 5；显式值须为 1..20），可选 `delivery` | 下载结果文本与 structured 文件元数据；不附加 ImageContent。 |
+
+`download_random_from_recommendation.count` 限制本次请求的作品数，不限制一个作品展开的文件数。显式传入 0、负数或大于 20 的值会返回参数错误，不会改写为默认值或边界值；推荐列表少于请求数时则下载列表中实际可用的作品。该 tool 当前返回下载结果文本与 structured 文件元数据，不会像 `download` 的 `delivery=image_content` 路径那样附加 ImageContent。
 
 ## 作品与用户读取
 

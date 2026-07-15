@@ -234,7 +234,7 @@ SmartScreen 提示时，必须回到已验证的项目 GitHub Release、checksum
 - `pixiv mcp` 是 MCP stdio server 的显式启动方式；直接执行 `pixiv` 不会启动 MCP。
 - CLI 账号文件以明文 JSON 保存 refresh token、user ID 和可选 username，不保存 access token，文件权限固定为 `0600`；需要系统钥匙串时再扩展。
 - `config.toml` 采用稀疏写入，不会把默认值整份落盘。
-- `download_random_from_recommendation` 默认下载 5 个，当前代码将输入数量限制在最多 20 个。
+- `download_random_from_recommendation` 的 `count` 缺省为 5，显式值须为 1..20，超范围会返回参数错误而非静默钳制。20 限制的是请求作品数：一次请求可触发多个作品下载，每个作品又可展开为多页/多文件，全部产物元数据会进入同一 structured response；该边界避免无界放大下载工作与 JSON-RPC 输出，不截断单个作品的文件。推荐列表不足请求数时下载实际可用数量。
 - `download` 默认只返回本地路径和 `file://` URI；当 `delivery=image_content` 时，会把所有下载产物作为 MCP `ImageContent` 一并返回，不做无依据截断。
 - `get_thumbnail_base64` 会将缩略图完整编码为 base64 文本返回，调用方需注意输出体积。
 - 匿名 `search_user` fallback 语义是“作品搜索结果中的相关作者去重”，不是 Pixiv 官方用户名搜索。
