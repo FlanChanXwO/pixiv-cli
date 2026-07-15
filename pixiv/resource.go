@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/protocol"
 	internalresource "github.com/FlanChanXwO/pixiv-cli/internal/pixiv/resource"
 	"github.com/FlanChanXwO/pixiv-cli/internal/utils/files"
 )
@@ -135,6 +136,9 @@ func (c *Client) OpenResource(ctx context.Context, request OpenResourceRequest) 
 			return nil, invalidResourceError(OperationOpenResource, "resource request header is invalid")
 		}
 	}
+	if _, err := c.resourcePolicy.validate(request.Ref.URL, OperationOpenResource); err != nil {
+		return nil, err
+	}
 	headers := make(http.Header)
 	setOptionalHeader(headers, "Range", request.Range)
 	setOptionalHeader(headers, "If-None-Match", request.IfNoneMatch)
@@ -146,10 +150,22 @@ func (c *Client) OpenResource(ctx context.Context, request OpenResourceRequest) 
 		DisableCookies: true,
 		Validate: func(rawURL string) error {
 			_, err := c.resourcePolicy.validate(rawURL, OperationOpenResource)
-			return err
+			if err == nil {
+				return nil
+			}
+			// redirect validator 的公开 *Error 不能穿过 resource adapter；仅保留
+			// 稳定的 policy 分类，避免 URL 在 net/url.Error 中回流。
+			if errors.Is(err, ErrForbidden) {
+				return protocol.Forbidden()
+			}
+			return protocol.UpstreamRejected()
 		},
 	})
 	if err != nil {
+		var failure protocol.Failure
+		if errors.As(err, &failure) && failure.Kind == protocol.FailureForbidden {
+			return nil, forbiddenResourceError(OperationOpenResource)
+		}
 		return nil, mapResourceTransportError(err, OperationOpenResource)
 	}
 	if response.StatusCode != http.StatusOK && response.StatusCode != http.StatusPartialContent && response.StatusCode != http.StatusNotModified {
@@ -294,13 +310,7 @@ func mapResourceTransportError(err error, operation Operation) error {
 	if errors.As(err, &typed) {
 		return typed
 	}
-	if errors.Is(err, context.Canceled) {
-		return newError(CodeUpstreamUnavailable, operation, BackendResource, false, 0, 0, context.Canceled)
-	}
-	if errors.Is(err, context.DeadlineExceeded) {
-		return newError(CodeUpstreamUnavailable, operation, BackendResource, false, 0, 0, context.DeadlineExceeded)
-	}
-	return newError(CodeUpstreamUnavailable, operation, BackendResource, true, 0, 0, errors.New("resource transport failed"))
+	return mapAdapterFailure(err, operation, BackendResource, 0, 0)
 }
 
 func (p resourcePolicy) validate(rawURL string, operation Operation) (*url.URL, error) {

@@ -8,13 +8,14 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"os"
 	"strings"
 	"testing"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/application"
-	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv"
 	"github.com/FlanChanXwO/pixiv-cli/internal/storage/auth"
-	sdk "github.com/FlanChanXwO/pixiv-cli/pkg/pixiv"
+	sdk "github.com/FlanChanXwO/pixiv-cli/pixiv"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -34,7 +35,7 @@ func TestSearchRoutesArgumentsAndPrintsSDKJSON(t *testing.T) {
 	assert.Equal(t, sdk.SearchIllustRequest{
 		Word: "初音ミク", Target: sdk.SearchTargetPartialMatchForTags, Sort: sdk.SortModeDateDesc,
 	}, got)
-	assert.JSONEq(t, `{"illusts":[{"id":123,"title":"work","type":"","page_count":0,"total_bookmarks":0,"total_view":0,"x_restrict":0,"user":{"id":0,"name":"artist","account":"","comment":"","is_followed":false},"tags":null,"image_urls":{"square_medium":"","medium":"","large":"","original":""},"meta_single_page":{"original_image_url":""},"meta_pages":null,"ai_type":0,"create_date":"","width":0,"height":0}]}`, stdout.String())
+	assert.JSONEq(t, `{"illusts":[{"id":123,"title":"work","type":"","page_count":0,"total_bookmarks":0,"total_view":0,"x_restrict":0,"user":{"id":0,"name":"artist","account":"","comment":"","is_followed":false,"profile_image_urls":{}},"tags":null,"image_urls":{"square_medium":"","medium":"","large":"","original":""},"meta_single_page":{"original_image_url":""},"meta_pages":null,"ai_type":0,"create_date":"","width":0,"height":0}]}`, stdout.String())
 }
 
 func TestSearchFiltersResultsAndFollowsCursorUntilLimit(t *testing.T) {
@@ -143,7 +144,7 @@ func TestSDKDataCommandsPassProxyOverride(t *testing.T) {
 		{name: "search", args: []string{"pixiv", "search", "miku", "--proxy", "http://flag-proxy"}},
 		{name: "detail", args: []string{"pixiv", "detail", "42", "--proxy", "http://flag-proxy"}},
 		{name: "ranking", args: []string{"pixiv", "ranking", "--proxy", "http://flag-proxy"}},
-		{name: "recommended", args: []string{"pixiv", "recommended", "--proxy", "http://flag-proxy"}},
+		{name: "recommended", args: []string{"pixiv", "recommended", "illust", "--proxy", "http://flag-proxy"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -170,7 +171,7 @@ func TestSDKDataCommandsEmptyProxyOverrideClearsRuntimeProxy(t *testing.T) {
 		{name: "search", args: []string{"pixiv", "search", "miku", "--proxy", ""}},
 		{name: "detail", args: []string{"pixiv", "detail", "42", "--proxy", ""}},
 		{name: "ranking", args: []string{"pixiv", "ranking", "--proxy", ""}},
-		{name: "recommended", args: []string{"pixiv", "recommended", "--proxy", ""}},
+		{name: "recommended", args: []string{"pixiv", "recommended", "illust", "--proxy", ""}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -220,7 +221,7 @@ func TestNetworkDataCommandsNoProxyFlagClearsRuntimeProxy(t *testing.T) {
 		{"pixiv", "search", "miku", "--no-proxy"},
 		{"pixiv", "detail", "42", "--no-proxy"},
 		{"pixiv", "ranking", "--no-proxy"},
-		{"pixiv", "recommended", "--no-proxy"},
+		{"pixiv", "recommended", "illust", "--no-proxy"},
 	} {
 		t.Run(strings.Join(args[1:], " "), func(t *testing.T) {
 			useTempPaths(t)
@@ -253,20 +254,75 @@ func TestNetworkCommandsRejectConflictingProxyFlags(t *testing.T) {
 }
 
 func TestDownloadProxyFlagPassesRuntimeOverride(t *testing.T) {
-	for _, proxy := range []string{"http://flag-proxy", ""} {
-		t.Run(proxy, func(t *testing.T) {
+	for _, useProxy := range []bool{true, false} {
+		t.Run(fmt.Sprintf("use_proxy=%t", useProxy), func(t *testing.T) {
 			_, configPath := useTempPaths(t)
-			require.NoError(t, auth.WritePrivateFile(configPath, []byte("[network]\nhttps_proxy = \"http://file-proxy\"\n[download]\npath = \""+strings.ReplaceAll(t.TempDir(), "\\", "\\\\")+"\"\n")))
-			t.Setenv("https_proxy", "http://env-proxy")
+			proxy := newTestForwardProxy(t)
+			downloadPath := t.TempDir()
+			require.NoError(t, auth.WritePrivateFile(configPath, []byte("[network]\nhttps_proxy = \""+proxy.URL+"\"\n[download]\npath = \""+strings.ReplaceAll(downloadPath, "\\", "\\\\")+"\"\n")))
+			t.Setenv("https_proxy", proxy.URL)
 			t.Setenv("PIXIV_REFRESH_TOKEN", "token")
-			seenProxy := "unset"
-			setTestCLIClientFactory(t, func(cfg clientConfig) (cliPixivClient, error) {
-				seenProxy = cfg.HTTPSProxy
-				return proxyFlagPixivClient{}, nil
+
+			var upstream *httptest.Server
+			upstream = httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				switch r.URL.Path {
+				case "/auth/token":
+					require.NoError(t, r.ParseForm())
+					assert.Equal(t, "token", r.Form.Get("refresh_token"))
+					_, _ = io.WriteString(w, `{"access_token":"access","refresh_token":"token","user":{"id":123,"name":"proxy-user"}}`)
+				case "/v1/illust/detail":
+					assert.Equal(t, "42", r.URL.Query().Get("illust_id"))
+					_, _ = fmt.Fprintf(w, `{"illust":{"id":42,"title":"proxy","type":"illust","page_count":1,"user":{"id":123,"name":"artist"},"tags":[],"image_urls":{},"meta_single_page":{"original_image_url":%q},"meta_pages":[]}}`, upstream.URL+"/resource/proxy.jpg")
+				case "/ajax/illust/42/pages":
+					_, _ = io.WriteString(w, `{"error":false,"body":[]}`)
+				case "/resource/proxy.jpg":
+					_, _ = io.WriteString(w, "image")
+				default:
+					http.NotFound(w, r)
+				}
+			}))
+			t.Cleanup(upstream.Close)
+			upstreamURL, err := url.Parse(upstream.URL)
+			require.NoError(t, err)
+			resourcePolicy := sdk.ResourcePolicy{Mirrors: []sdk.ResourceMirrorPolicy{{Host: upstreamURL.Host, PathPrefixes: []string{"/resource/"}}}}
+			probe, err := sdk.NewClient(sdk.Options{ResourcePolicy: resourcePolicy})
+			require.NoError(t, err)
+			_, err = probe.ParseResourceRef(upstream.URL + "/resource/proxy.jpg")
+			require.NoError(t, err)
+			setTestPublicSDKFactoryWithHTTPClient(t, upstream.URL, upstream.URL, upstream.URL, resourcePolicy, func(proxyValue string) (*http.Client, error) {
+				transport := upstream.Client().Transport.(*http.Transport).Clone()
+				transport.Proxy = nil
+				if proxyValue != "" {
+					proxyURL, err := url.Parse(proxyValue)
+					if err != nil {
+						return nil, err
+					}
+					transport.Proxy = http.ProxyURL(proxyURL)
+				}
+				return &http.Client{Transport: transport}, nil
+			}, func(request application.SDKClientRequest) {
+				require.NotNil(t, request.HTTPSProxyOverride)
+				if useProxy {
+					assert.Equal(t, proxy.URL, *request.HTTPSProxyOverride)
+					return
+				}
+				assert.Empty(t, *request.HTTPSProxyOverride)
 			})
 			var stdout, stderr bytes.Buffer
-			require.Equal(t, 0, Run([]string{"pixiv", "download", "42", "--proxy", proxy}, strings.NewReader(""), &stdout, &stderr), stderr.String())
-			assert.Equal(t, proxy, seenProxy)
+			proxyValue := ""
+			if useProxy {
+				proxyValue = proxy.URL
+			}
+			require.Equal(t, 0, Run([]string{"pixiv", "download", "42", "--proxy", proxyValue}, strings.NewReader(""), &stdout, &stderr), stderr.String())
+			assert.Contains(t, stdout.String(), `downloaded 42 "proxy" by artist`)
+			files, err := os.ReadDir(downloadPath)
+			require.NoError(t, err)
+			require.Len(t, files, 1)
+			if useProxy {
+				assert.NotZero(t, proxy.Requests())
+			} else {
+				assert.Zero(t, proxy.Requests())
+			}
 		})
 	}
 }
@@ -286,33 +342,4 @@ func proxySDKClient() sdkCommandFake {
 			return &sdk.IllustListResult{}, nil
 		},
 	}
-}
-
-type proxyFlagPixivClient struct{}
-
-func (proxyFlagPixivClient) Refresh(context.Context) error { return nil }
-func (proxyFlagPixivClient) RefreshTokenValue() string     { return "token" }
-func (proxyFlagPixivClient) UserID() int64                 { return 123 }
-func (proxyFlagPixivClient) UserName() string              { return "proxy-user" }
-func (proxyFlagPixivClient) UserDetail(context.Context, int64) (*pixiv.User, error) {
-	return &pixiv.User{ID: 123, Name: "proxy-user"}, nil
-}
-func (proxyFlagPixivClient) SearchIllust(context.Context, string, string, string, string, int) (*pixiv.IllustList, error) {
-	return &pixiv.IllustList{}, nil
-}
-func (proxyFlagPixivClient) IllustDetail(context.Context, int64) (*pixiv.IllustDetail, error) {
-	return &pixiv.IllustDetail{Illust: pixiv.Illust{ID: 42, Title: "proxy", Type: string(pixiv.IllustTypeIllust), PageCount: 1, User: pixiv.User{Name: "artist"}, MetaSinglePage: pixiv.SinglePage{OriginalImageURL: "https://img.example/proxy.jpg"}}}, nil
-}
-func (proxyFlagPixivClient) IllustRanking(context.Context, string, string, int) (*pixiv.IllustList, error) {
-	return &pixiv.IllustList{}, nil
-}
-func (proxyFlagPixivClient) IllustRecommended(context.Context, int) (*pixiv.IllustList, error) {
-	return &pixiv.IllustList{}, nil
-}
-func (proxyFlagPixivClient) UgoiraMetadata(context.Context, int64) (*pixiv.UgoiraMetadataResult, error) {
-	return &pixiv.UgoiraMetadataResult{}, nil
-}
-func (proxyFlagPixivClient) Download(_ context.Context, _ string, dst io.Writer) error {
-	_, err := dst.Write([]byte("image"))
-	return err
 }

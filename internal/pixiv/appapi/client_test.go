@@ -3,6 +3,7 @@ package appapi
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -55,18 +56,96 @@ func TestUserDetailFetchesUserName(t *testing.T) {
 			t.Fatalf("user_id = %q, want 123", got)
 		}
 		_ = json.NewEncoder(w).Encode(map[string]any{
-			"user": map[string]any{"id": 123, "name": "alice"},
+			"user":              map[string]any{"id": 123, "name": "alice"},
+			"profile":           map[string]any{},
+			"profile_publicity": map[string]any{"gender": false, "region": false, "birth_day": false, "birth_year": false, "job": false, "pawoo": false},
+			"workspace":         map[string]any{},
 		})
 	}))
 	defer api.Close()
 
 	client := New(WithBaseURL(api.URL), WithAccessToken("access"))
-	user, err := client.UserDetail(context.Background(), 123)
+	detail, err := client.UserDetail(context.Background(), 123)
 	if err != nil {
 		t.Fatalf("UserDetail returned error: %v", err)
 	}
-	if user.ID != 123 || user.Name != "alice" {
-		t.Fatalf("unexpected user: %+v", user)
+	if detail.User.ID != 123 || detail.User.Name != "alice" {
+		t.Fatalf("unexpected detail: %+v", detail)
+	}
+}
+
+func TestUserDetailNormalizesProfilePublicityWireValues(t *testing.T) {
+	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/user/detail" {
+			t.Fatalf("unexpected api path %s", r.URL.Path)
+		}
+		_, _ = w.Write([]byte(`{
+			"user":{"id":123},
+			"profile":{},
+			"profile_publicity":{"gender":"pub\u006cic","region":"private","birth_day":true,"birth_year":false,"job":"public","pawoo":true},
+			"workspace":{}
+		}`))
+	}))
+	defer api.Close()
+
+	client := New(WithBaseURL(api.URL), WithAccessToken("access"))
+	detail, err := client.UserDetail(context.Background(), 123)
+	if err != nil {
+		t.Fatalf("UserDetail returned error: %v", err)
+	}
+	got := detail.ProfilePublicity
+	if !got.Gender || got.Region || !got.BirthDay || got.BirthYear || !got.Job || !got.Pawoo {
+		t.Fatalf("profile publicity = %#v", got)
+	}
+}
+
+func TestUserDetailNormalizesMissingProfilePublicityFieldsToFalse(t *testing.T) {
+	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{
+			"user":{"id":123},
+			"profile":{},
+			"profile_publicity":{"gender":"public"},
+			"workspace":{}
+		}`))
+	}))
+	defer api.Close()
+
+	client := New(WithBaseURL(api.URL), WithAccessToken("access"))
+	detail, err := client.UserDetail(context.Background(), 123)
+	if err != nil {
+		t.Fatalf("UserDetail returned error: %v", err)
+	}
+	got := detail.ProfilePublicity
+	if !got.Gender || got.Region || got.BirthDay || got.BirthYear || got.Job || got.Pawoo {
+		t.Fatalf("profile publicity = %#v", got)
+	}
+}
+
+func TestUserDetailRejectsMalformedProfilePublicityWireValues(t *testing.T) {
+	tests := []struct {
+		name      string
+		publicity string
+	}{
+		{name: "unknown string", publicity: `{"gender":"friends","region":true,"birth_day":true,"birth_year":true,"job":true,"pawoo":true}`},
+		{name: "null", publicity: `{"gender":null,"region":true,"birth_day":true,"birth_year":true,"job":true,"pawoo":true}`},
+		{name: "number", publicity: `{"gender":1,"region":true,"birth_day":true,"birth_year":true,"job":true,"pawoo":true}`},
+		{name: "array", publicity: `{"gender":[],"region":true,"birth_day":true,"birth_year":true,"job":true,"pawoo":true}`},
+		{name: "object", publicity: `{"gender":{},"region":true,"birth_day":true,"birth_year":true,"job":true,"pawoo":true}`},
+	}
+	for _, test := range tests {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				_, _ = w.Write([]byte(`{"user":{"id":123},"profile":{},"profile_publicity":` + test.publicity + `,"workspace":{}}`))
+			}))
+			defer api.Close()
+
+			client := New(WithBaseURL(api.URL), WithAccessToken("access"))
+			detail, err := client.UserDetail(context.Background(), 123)
+			if detail != nil || !errors.Is(err, ErrMalformedResponse) {
+				t.Fatalf("detail=%#v err=%v", detail, err)
+			}
+		})
 	}
 }
 

@@ -16,7 +16,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv"
+	pixiv "github.com/FlanChanXwO/pixiv-cli/pixiv"
 )
 
 func TestRustUgoiraEncoderNativeGIFAndAPNG(t *testing.T) {
@@ -64,7 +64,9 @@ func TestRustUgoiraEncoderNativeGIFAndAPNG(t *testing.T) {
 }
 
 func TestCGODisabledBuildRejectsMissingRustStaticlib(t *testing.T) {
-	command := exec.Command("go", "build", "./cmd/pixiv")
+	// 顶层 pixiv 是公开 SDK 源码目录；显式输出到临时目录，确保本测试验证的是
+	// CGO/staticlib 编译门，而不是 Go 对同名默认二进制输出的目录冲突。
+	command := exec.Command("go", "build", "-o", filepath.Join(t.TempDir(), "pixiv"), "./cmd/pixiv")
 	command.Dir = filepath.Clean(filepath.Join("..", ".."))
 	command.Env = append(os.Environ(), "CGO_ENABLED=0")
 	body, err := command.CombinedOutput()

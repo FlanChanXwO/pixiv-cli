@@ -2,7 +2,7 @@
 
 ## 项目定位
 
-`pixiv-cli` 是一个 Go 版 Pixiv CLI、MCP stdio server 与 public `pkg/pixiv` SDK。CLI/MCP 是 SDK consumer；调用方在自身 adapter 中定义采集、budget、filter 与持久化。无 refresh token 时，允许的匿名读操作可使用 Pixiv web/ajax API。
+`pixiv-cli` 是一个 Go 版 Pixiv CLI、MCP stdio server 与 public `pixiv` SDK（`github.com/FlanChanXwO/pixiv-cli/pixiv`）。CLI/MCP 是 SDK consumer；调用方在自身 adapter 中定义采集、budget、filter 与持久化。无 refresh token 时，允许的匿名读操作可使用 Pixiv web/ajax API。
 
 ## 文档目录
 
@@ -16,7 +16,7 @@
 - [ADR 0002](adr/0002-utils-and-common-boundaries.md)：`utils/*` 与 `common/constants` 的边界规则。
 - [ADR 0003](adr/0003-agent-instruction-precedent-strategy.md)：AI agent 指令采用选择性先例而非单一模板的决策。
 - [ADR 0004](adr/0004-auth-accounts-use-pixiv-uid.md)：本地 auth 账号使用 Pixiv UID 的决策。
-- [ADR 0005](adr/0005-auth-login-real-browser-relay-without-ui-automation.md)：`auth login` 使用真实浏览器接力且不做 UI 自动化的决策。
+- [ADR 0005](adr/0005-auth-login-real-browser-relay-without-ui-automation.md)：`auth login` 只接受显式 callback handoff、不读取浏览器凭据的决策。
 - [ADR 0006](adr/0006-original-ugoira-resource-resolution.md)：认证会话下显式 Web ugoira original enrichment 的决策。
 - [ADR 0007](adr/0007-platform-staticlibs-for-supported-source-builds.md)：提交平台 staticlib 以维持受支持源码构建的决策与 native evidence 约束。
 - [ADR 0008](adr/0008-ed25519-signed-multi-channel-release-trust.md)：Ed25519 签名、多渠道更新和 tap 发布信任边界的决策。

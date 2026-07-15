@@ -2,7 +2,6 @@ package mcpserver
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -11,9 +10,7 @@ import (
 	"time"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/application"
-	legacy "github.com/FlanChanXwO/pixiv-cli/internal/pixiv"
-	"github.com/FlanChanXwO/pixiv-cli/internal/storage/auth"
-	sdk "github.com/FlanChanXwO/pixiv-cli/pkg/pixiv"
+	sdk "github.com/FlanChanXwO/pixiv-cli/pixiv"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -132,6 +129,23 @@ func (a *App) openSDKOperation(ctx context.Context) (client application.SDKClien
 	return client, a.releaseSDKOperation, nil
 }
 
+// openSDKMutable 用于账号导入、选择和刷新。它持有与普通 operation 相同的 gate，
+// 但不能先 Snapshot：ImportAccount 的输入 refresh token 尚未进入本地 store。
+func (a *App) openSDKMutable(ctx context.Context) (client application.SDKClient, release func(), err error) {
+	if a.sdk.NewClient == nil {
+		return nil, nil, errors.New("pixiv sdk is not configured")
+	}
+	if err = a.acquireSDKGate(ctx); err != nil {
+		return nil, nil, err
+	}
+	client, err = a.sdk.Client(a.sdkRequest)
+	if err != nil {
+		a.releaseSDKGate()
+		return nil, nil, err
+	}
+	return client, a.releaseSDKGate, nil
+}
+
 func (a *App) currentSDKUser(ctx context.Context) (client application.SDKClient, userID int64, release func(), err error) {
 	started := time.Now()
 	defer func() { a.operationLog("current_sdk_user", started, err != nil, err, 0, userID) }()
@@ -192,9 +206,6 @@ func (a *App) operationLog(operation string, started time.Time, failed bool, err
 }
 
 func (a *App) releaseSDKOperation() {
-	// SDK 已在 selected store 内写入旋转 token；同步 legacy Source 仅为让旧 tool
-	// 后续 refresh 继续使用同一权威状态。同步失败不改变已完成的 SDK 调用结果。
-	a.syncSourceTokenFromStore()
 	a.releaseSDKGate()
 }
 
@@ -212,69 +223,185 @@ func (a *App) acquireSDKGate(ctx context.Context) error {
 
 func (a *App) releaseSDKGate() { <-a.sdkGate }
 
-func (a *App) syncSourceTokenFromStore() {
-	if a.api == nil {
-		return
-	}
-	path := a.sdkRequest.AuthFilePath
-	if path == "" {
-		var err error
-		path, err = auth.AuthFilePath()
-		if err != nil {
-			return
-		}
-	}
-	store, err := auth.LoadAuthStore(path)
-	if err != nil {
-		return
-	}
-	userID := a.sdkRequest.UserID
-	if userID == 0 {
-		userID = store.DefaultUserID
-	}
-	if _, account, ok := store.Get(userID); ok {
-		a.api.SetRefreshToken(account.RefreshToken)
-	}
-}
-
-// persistSourceAuth 把 legacy Source 已验证的认证结果同步到公共 SDK 的本地 store。
-// 只在 NewWithSDK 下调用；SDK 后续 OpenDefault 快照会从该 store 取得并安全持久化 rotation。
-func (a *App) persistSourceAuth() error {
-	if a.sdk.NewClient == nil {
-		return nil
-	}
-	if a.api == nil || a.api.UserID() <= 0 || a.api.RefreshTokenValue() == "" {
-		return errors.New("authenticated source did not provide account state")
-	}
-	path := a.sdkRequest.AuthFilePath
-	if path == "" {
-		var err error
-		path, err = auth.AuthFilePath()
-		if err != nil {
-			return err
-		}
-	}
-	store, err := auth.LoadAuthStore(path)
-	if err != nil {
-		return err
-	}
-	store.Upsert(auth.Account{UserID: a.api.UserID(), Username: a.api.UserName(), RefreshToken: a.api.RefreshTokenValue()})
-	store.DefaultUserID = a.api.UserID()
-	if err := auth.SaveAuthStore(path, store); err != nil {
-		return err
-	}
-	// 调用者在 sdkMu 内完成 Source refresh、store 保存和选择切换，确保 set_refresh_token
-	// 认证到另一 UID 后，下一次 SDK OpenDefault 不会仍优先旧 UserID。
-	a.sdkRequest.UserID = a.api.UserID()
-	return nil
-}
-
 func resolveSDKUser(ctx context.Context, app *App, userID int64) (application.SDKClient, int64, func(), error) {
 	if userID != 0 {
 		client, release, err := app.openSDKOperation(ctx)
 		return client, userID, release, err
 	}
 	return app.currentSDKUser(ctx)
+}
+
+// userDetailIn 只接受明确指定的目标用户，避免把请求误解析为当前认证账号。
+type userDetailIn struct {
+	UserID int64 `json:"user_id" jsonschema:"required positive Pixiv user ID"`
+}
+
+// userDetail 直接返回稳定的公开 SDK envelope；MCP 不重新映射或裁剪详情字段。
+func (a *App) userDetail(ctx context.Context, _ *mcp.CallToolRequest, in userDetailIn) (*mcp.CallToolResult, sdk.UserDetailResult, error) {
+	if in.UserID <= 0 {
+		return a.userDetailError(ctx, fmt.Errorf("user_id must be a positive integer"))
+	}
+	client, release, err := a.openSDKOperation(ctx)
+	if err != nil {
+		return a.userDetailError(ctx, err)
+	}
+	defer release()
+	result, err := client.UserDetail(ctx, sdk.UserDetailRequest{UserID: in.UserID})
+	if err != nil {
+		return a.userDetailError(ctx, err)
+	}
+	if result == nil {
+		return a.userDetailError(ctx, errors.New("pixiv sdk returned an empty user detail result"))
+	}
+	return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("已获取用户 %d 的详情。", in.UserID)}}}, *result, nil
+}
+
+func (a *App) userDetailError(ctx context.Context, err error) (*mcp.CallToolResult, sdk.UserDetailResult, error) {
+	recordToolError(ctx, err)
+	return &mcp.CallToolResult{
+		IsError: true,
+		Content: []mcp.Content{&mcp.TextContent{Text: "错误: " + err.Error()}},
+	}, sdk.UserDetailResult{}, nil
+}
+
+type recommendedIn struct {
+	Kind string `json:"kind" jsonschema:"required: all, illust, manga, novel, or user"`
+	pageLimitIn
+}
+type recommendedOut struct {
+	Kind         string                       `json:"kind"`
+	Illusts      []sdk.Illust                 `json:"illusts"`
+	Manga        []sdk.Illust                 `json:"manga"`
+	Novels       []sdk.Novel                  `json:"novels"`
+	UserPreviews []sdk.RecommendedUserPreview `json:"user_previews"`
+	Pagination   recommendedPaginationOut     `json:"pagination"`
+}
+
+// recommendedPaginationOut 分别表达每条推荐流的逻辑分页；SDK opaque cursor 不离开适配层。
+// 单类查询只有其对应字段，all 则始终含四个字段。
+type recommendedPaginationOut struct {
+	Illust *paginationOut `json:"illust,omitempty"`
+	Manga  *paginationOut `json:"manga,omitempty"`
+	Novel  *paginationOut `json:"novel,omitempty"`
+	User   *paginationOut `json:"user,omitempty"`
+}
+
+func newRecommendedOut(kind string) recommendedOut {
+	return recommendedOut{
+		Kind: kind, Illusts: []sdk.Illust{}, Manga: []sdk.Illust{}, Novels: []sdk.Novel{}, UserPreviews: []sdk.RecommendedUserPreview{},
+	}
+}
+
+func recommendedPagination(plan mcpListPlan, limit *int, returned int, more bool) *paginationOut {
+	value := listPagination(plan, limit, returned, more)
+	return &value
+}
+
+func (a *App) recommended(ctx context.Context, _ *mcp.CallToolRequest, in recommendedIn) (*mcp.CallToolResult, recommendedOut, error) {
+	out := newRecommendedOut(in.Kind)
+	plan, err := parseMCPListPlan(in.pageLimitIn)
+	if err == nil && in.Kind != "all" && in.Kind != "illust" && in.Kind != "manga" && in.Kind != "novel" && in.Kind != "user" {
+		err = errors.New("kind must be one of: all, illust, manga, novel, user")
+	}
+	if err != nil {
+		return a.recommendedError(ctx, err)
+	}
+	client, release, err := a.openSDKOperation(ctx)
+	if err != nil {
+		return a.recommendedError(ctx, err)
+	}
+	defer release()
+	if in.Kind == "all" || in.Kind == "illust" {
+		items, more, fetchErr := collectPages(ctx, plan, func(ctx context.Context, c sdk.Cursor) ([]sdk.Illust, sdk.Cursor, error) {
+			r, e := client.IllustRecommended(ctx, sdk.IllustRecommendedRequest{Cursor: c})
+			if e != nil {
+				return nil, "", e
+			}
+			return r.Illusts, r.NextCursor, nil
+		})
+		if fetchErr != nil {
+			return a.recommendedError(ctx, fetchErr)
+		}
+		out.Illusts = items
+		out.Pagination.Illust = recommendedPagination(plan, in.Limit, len(items), more)
+	}
+	if in.Kind == "all" || in.Kind == "manga" {
+		items, more, fetchErr := collectPages(ctx, plan, func(ctx context.Context, c sdk.Cursor) ([]sdk.Illust, sdk.Cursor, error) {
+			r, e := client.MangaRecommended(ctx, sdk.IllustRecommendedRequest{Cursor: c})
+			if e != nil {
+				return nil, "", e
+			}
+			return r.Illusts, r.NextCursor, nil
+		})
+		if fetchErr != nil {
+			return a.recommendedError(ctx, fetchErr)
+		}
+		out.Manga = items
+		out.Pagination.Manga = recommendedPagination(plan, in.Limit, len(items), more)
+	}
+	if in.Kind == "all" || in.Kind == "novel" {
+		items, more, fetchErr := collectPages(ctx, plan, func(ctx context.Context, c sdk.Cursor) ([]sdk.Novel, sdk.Cursor, error) {
+			r, e := client.NovelRecommended(ctx, sdk.NovelRecommendedRequest{Cursor: c})
+			if e != nil {
+				return nil, "", e
+			}
+			return r.Novels, r.NextCursor, nil
+		})
+		if fetchErr != nil {
+			return a.recommendedError(ctx, fetchErr)
+		}
+		out.Novels = normalizeRecommendedNovels(items)
+		out.Pagination.Novel = recommendedPagination(plan, in.Limit, len(items), more)
+	}
+	if in.Kind == "all" || in.Kind == "user" {
+		items, more, fetchErr := collectPages(ctx, plan, func(ctx context.Context, c sdk.Cursor) ([]sdk.RecommendedUserPreview, sdk.Cursor, error) {
+			r, e := client.UserRecommended(ctx, sdk.UserRecommendedRequest{Cursor: c})
+			if e != nil {
+				return nil, "", e
+			}
+			return r.UserPreviews, r.NextCursor, nil
+		})
+		if fetchErr != nil {
+			return a.recommendedError(ctx, fetchErr)
+		}
+		out.UserPreviews = normalizeRecommendedUserPreviews(items)
+		out.Pagination.User = recommendedPagination(plan, in.Limit, len(items), more)
+	}
+	return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("已获取 %s 推荐。", in.Kind)}}}, out, nil
+}
+
+// normalizeRecommendedUserPreviews 只在 MCP 输出边界把可选作品预览归一为空数组，
+// 使其满足 tool schema；公共 SDK 仍保留 nil 与空切片的原始 Go 语义。
+func normalizeRecommendedUserPreviews(items []sdk.RecommendedUserPreview) []sdk.RecommendedUserPreview {
+	result := make([]sdk.RecommendedUserPreview, len(items))
+	copy(result, items)
+	for index := range result {
+		if result[index].Illusts == nil {
+			result[index].Illusts = []sdk.Illust{}
+		}
+		if result[index].Novels == nil {
+			result[index].Novels = []sdk.Novel{}
+		}
+		result[index].Novels = normalizeRecommendedNovels(result[index].Novels)
+	}
+	return result
+}
+
+// normalizeRecommendedNovels 保证 MCP schema 的 tags 字段始终编码为数组。
+func normalizeRecommendedNovels(items []sdk.Novel) []sdk.Novel {
+	result := make([]sdk.Novel, len(items))
+	copy(result, items)
+	for index := range result {
+		if result[index].Tags == nil {
+			result[index].Tags = []sdk.Tag{}
+		}
+	}
+	return result
+}
+
+func (a *App) recommendedError(ctx context.Context, err error) (*mcp.CallToolResult, recommendedOut, error) {
+	recordToolError(ctx, err)
+	return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: "错误: " + err.Error()}}}, newRecommendedOut(""), nil
 }
 
 type userArtworksIn struct {
@@ -347,11 +474,6 @@ func (in bookmarksSDKIn) resolvedUserID() int64 {
 }
 
 func (a *App) userBookmarks(ctx context.Context, _ *mcp.CallToolRequest, in bookmarksSDKIn) (*mcp.CallToolResult, illustListOut, error) {
-	// New 保持旧构造器的完整行为：嵌入方尚未迁移到 SDK 时，既有 tool 名和所有
-	// legacy 参数仍由 Source 处理。生产 MCP 通过 NewWithSDK 进入下方公共 SDK 路径。
-	if a.sdk.NewClient == nil {
-		return a.legacyBookmarks(ctx, in)
-	}
 	plan, err := parseMCPListPlan(in.pageLimitIn)
 	userID := in.resolvedUserID()
 	if err != nil {
@@ -361,15 +483,27 @@ func (a *App) userBookmarks(ctx context.Context, _ *mcp.CallToolRequest, in book
 		if in.Page != nil || in.Limit != nil {
 			return a.illustListError(ctx, userID, errors.New("max_bookmark_id cannot be combined with page or limit"))
 		}
-		return a.legacyBookmarks(ctx, in)
 	}
 	client, userID, release, err := resolveSDKUser(ctx, a, userID)
 	if err != nil {
 		return a.illustListError(ctx, userID, err)
 	}
 	defer release()
+	request := sdk.UserBookmarksRequest{UserID: userID, Restrict: sdk.Restrict(in.Restrict), Tag: in.Tag}
+	legacyCursor := sdk.Cursor("")
+	if in.MaxBookmarkID > 0 {
+		legacyCursor, err = client.UserBookmarksCursor(ctx, request, in.MaxBookmarkID)
+		if err != nil {
+			return a.illustListError(ctx, userID, err)
+		}
+	}
 	items, more, err := collectPages(ctx, plan, func(ctx context.Context, cursor sdk.Cursor) ([]sdk.Illust, sdk.Cursor, error) {
-		result, err := client.UserBookmarks(ctx, sdk.UserBookmarksRequest{UserID: userID, Restrict: sdk.Restrict(in.Restrict), Tag: in.Tag, Cursor: cursor})
+		if cursor == "" && legacyCursor != "" {
+			request.Cursor = legacyCursor
+		} else {
+			request.Cursor = cursor
+		}
+		result, err := client.UserBookmarks(ctx, request)
 		if err != nil {
 			return nil, "", err
 		}
@@ -384,62 +518,6 @@ func (a *App) userBookmarks(ctx context.Context, _ *mcp.CallToolRequest, in book
 	}
 	out := illustListOut{UserID: userID, Items: items, Pagination: listPagination(plan, in.Limit, len(items), more), Text: text}
 	return illustListResult(out), out, nil
-}
-
-// legacyBookmarks 只处理旧 MCP 已公开的 max_bookmark_id continuation。公共 SDK 有意隐藏
-// 上游 ID 并以 opaque cursor 取代它，因此新 page/limit 调用不会经过这里。
-func (a *App) legacyBookmarks(ctx context.Context, in bookmarksSDKIn) (*mcp.CallToolResult, illustListOut, error) {
-	if err := a.ensureAuth(ctx); err != nil {
-		return a.legacyIllustListError(ctx, in.resolvedUserID(), err)
-	}
-	userID := in.resolvedUserID()
-	if userID == 0 {
-		userID = a.api.UserID()
-	}
-	if userID == 0 {
-		return a.legacyIllustListError(ctx, 0, errors.New("错误: 查询自己的收藏时，需要先认证以获取用户ID。"))
-	}
-	restrict := in.Restrict
-	if restrict == "" {
-		restrict = string(sdk.RestrictPublic)
-	}
-	result, err := a.api.UserBookmarks(ctx, userID, restrict, in.Tag, in.MaxBookmarkID)
-	if err != nil {
-		return a.legacyIllustListError(ctx, userID, err)
-	}
-	items, err := normalizeLegacyIllusts(result.Illusts)
-	if err != nil {
-		return a.legacyIllustListError(ctx, userID, err)
-	}
-	text := fmt.Sprintf("找到用户 %d 的 %d 个收藏:\n\n%s", userID, len(items), formatSDKIllusts(items))
-	if len(items) == 0 {
-		text = fmt.Sprintf("找不到用户 %d 的收藏。", userID)
-	}
-	out := illustListOut{UserID: userID, Items: items, Pagination: paginationOut{Page: 1, Returned: len(items)}, Text: text}
-	return illustListResult(out), out, nil
-}
-
-func (a *App) legacyIllustListError(ctx context.Context, userID int64, err error) (*mcp.CallToolResult, illustListOut, error) {
-	recordToolError(ctx, err)
-	out := illustListOut{UserID: userID, Items: []sdk.Illust{}, Text: err.Error()}
-	result := illustListResult(out)
-	result.IsError = true
-	return result, out, nil
-}
-
-func normalizeLegacyIllusts(items []legacy.Illust) ([]sdk.Illust, error) {
-	encoded, err := json.Marshal(items)
-	if err != nil {
-		return nil, err
-	}
-	var normalized []sdk.Illust
-	if err := json.Unmarshal(encoded, &normalized); err != nil {
-		return nil, err
-	}
-	if normalized == nil {
-		normalized = []sdk.Illust{}
-	}
-	return normalized, nil
 }
 
 type followingSDKIn struct {
@@ -469,9 +547,6 @@ func userListResult(out userListOut) *mcp.CallToolResult {
 }
 
 func (a *App) userFollowing(ctx context.Context, _ *mcp.CallToolRequest, in followingSDKIn) (*mcp.CallToolResult, userListOut, error) {
-	if a.sdk.NewClient == nil {
-		return a.legacyFollowing(ctx, in)
-	}
 	plan, err := parseMCPListPlan(in.pageLimitIn)
 	userID := in.resolvedUserID()
 	if err != nil {
@@ -508,64 +583,6 @@ func (a *App) userFollowing(ctx context.Context, _ *mcp.CallToolRequest, in foll
 	}
 	out := userListOut{UserID: userID, Items: items, Pagination: listPagination(plan, in.Limit, len(items), more), Text: text}
 	return userListResult(out), out, nil
-}
-
-func (a *App) legacyFollowing(ctx context.Context, in followingSDKIn) (*mcp.CallToolResult, userListOut, error) {
-	if err := a.ensureAuth(ctx); err != nil {
-		return a.legacyUserListError(ctx, in.resolvedUserID(), err)
-	}
-	userID := in.resolvedUserID()
-	if userID == 0 {
-		userID = a.api.UserID()
-	}
-	if userID == 0 {
-		return a.legacyUserListError(ctx, 0, errors.New("错误: 查询自己的关注列表时，需要先认证以获取用户ID。"))
-	}
-	restrict := in.Restrict
-	if restrict == "" {
-		restrict = string(sdk.RestrictPublic)
-	}
-	offset := 0
-	if in.Offset != nil {
-		offset = *in.Offset
-	}
-	result, err := a.api.UserFollowing(ctx, userID, restrict, offset)
-	if err != nil {
-		return a.legacyUserListError(ctx, userID, err)
-	}
-	items, err := normalizeLegacyUsers(result.UserPreviews)
-	if err != nil {
-		return a.legacyUserListError(ctx, userID, err)
-	}
-	text := fmt.Sprintf("用户 %d 关注了 %d 位用户:\n\n%s", userID, len(items), formatSDKUsers(items))
-	if len(items) == 0 {
-		text = fmt.Sprintf("用户 %d 没有关注任何人。", userID)
-	}
-	out := userListOut{UserID: userID, Items: items, Pagination: paginationOut{Page: 1, Returned: len(items)}, Text: text}
-	return userListResult(out), out, nil
-}
-
-func normalizeLegacyUsers(items []legacy.UserPreview) ([]sdk.UserPreview, error) {
-	encoded, err := json.Marshal(items)
-	if err != nil {
-		return nil, err
-	}
-	var normalized []sdk.UserPreview
-	if err := json.Unmarshal(encoded, &normalized); err != nil {
-		return nil, err
-	}
-	if normalized == nil {
-		normalized = []sdk.UserPreview{}
-	}
-	return normalized, nil
-}
-
-func (a *App) legacyUserListError(ctx context.Context, userID int64, err error) (*mcp.CallToolResult, userListOut, error) {
-	recordToolError(ctx, err)
-	out := userListOut{UserID: userID, Items: []sdk.UserPreview{}, Text: err.Error()}
-	result := userListResult(out)
-	result.IsError = true
-	return result, out, nil
 }
 
 func (a *App) userListError(ctx context.Context, userID int64, err error) (*mcp.CallToolResult, userListOut, error) {

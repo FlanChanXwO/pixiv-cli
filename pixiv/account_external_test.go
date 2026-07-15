@@ -18,8 +18,122 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/FlanChanXwO/pixiv-cli/pkg/pixiv"
+	"github.com/FlanChanXwO/pixiv-cli/pixiv"
 )
+
+func TestBuildLoginAuthorizationURLUsesOfficialLoginRoute(t *testing.T) {
+	t.Parallel()
+	rawURL := pixiv.BuildLoginAuthorizationURL("challenge/value", "state value")
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if parsed.Scheme != "https" || parsed.Host != "app-api.pixiv.net" || parsed.Path != "/web/v1/login" {
+		t.Fatalf("authorization url=%q", rawURL)
+	}
+	if parsed.Query().Get("code_challenge") != "challenge/value" || parsed.Query().Get("state") != "state value" || parsed.Query().Get("code_challenge_method") != "S256" || parsed.Query().Get("client") != "pixiv-android" {
+		t.Fatalf("authorization query=%v", parsed.Query())
+	}
+}
+
+func TestOfficialOAuthURLHelpersAcceptOnlyCatalogRoutes(t *testing.T) {
+	t.Parallel()
+	callback := "https://app-api.pixiv.net/web/v1/users/auth/pixiv/callback?code=callback-code"
+	if !pixiv.IsOfficialOAuthCallbackURL(callback) {
+		t.Fatal("official callback was rejected")
+	}
+	if pixiv.IsOfficialOAuthCallbackURL("https://example.test/web/v1/users/auth/pixiv/callback?code=callback-code") {
+		t.Fatal("foreign callback was accepted")
+	}
+	if pixiv.OAuthCallbackURLPrefix() != "https://app-api.pixiv.net/web/v1/users/auth/pixiv/callback?" {
+		t.Fatalf("callback prefix=%q", pixiv.OAuthCallbackURLPrefix())
+	}
+	if !pixiv.IsOfficialOAuthStartURL("https://app-api.pixiv.net/web/v1/users/auth/pixiv/start?code_challenge=challenge") {
+		t.Fatal("official start URL was rejected")
+	}
+	if pixiv.IsOfficialOAuthStartURL("https://app-api.pixiv.net/not-start?code_challenge=challenge") {
+		t.Fatal("foreign start URL was accepted")
+	}
+}
+
+func TestImportAccountRejectsCookieBeforeNetwork(t *testing.T) {
+	var requests atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		requests.Add(1)
+	}))
+	defer server.Close()
+
+	client, err := pixiv.NewClient(pixiv.Options{HTTPClient: server.Client(), OAuthBaseURL: server.URL})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = client.ImportAccount(context.Background(), "refresh_token=secret")
+	var sdkErr *pixiv.Error
+	if !errors.As(err, &sdkErr) || sdkErr.Code != pixiv.CodeInvalidArgument {
+		t.Fatalf("ImportAccount() error = %#v", err)
+	}
+	if !strings.Contains(errors.Unwrap(err).Error(), "cookie input is not supported; provide a Pixiv App API refresh token") {
+		t.Fatalf("unexpected safe cause: %v", errors.Unwrap(err))
+	}
+	if requests.Load() != 0 {
+		t.Fatalf("oauth requests = %d", requests.Load())
+	}
+}
+
+func TestOpenDefaultRejectsCookieRefreshToken(t *testing.T) {
+	_, err := pixiv.OpenDefault(pixiv.Options{RefreshToken: "refresh_token=secret"})
+	var sdkErr *pixiv.Error
+	if !errors.As(err, &sdkErr) || sdkErr.Code != pixiv.CodeInvalidArgument {
+		t.Fatalf("OpenDefault() error = %#v", err)
+	}
+}
+
+func TestOpenDefaultRejectsCookieEnvironmentTokenBeforeNetwork(t *testing.T) {
+	dir := t.TempDir()
+	authPath := filepath.Join(dir, "auth.json")
+	configPath := filepath.Join(dir, "config.toml")
+	if err := os.WriteFile(authPath, []byte(`{"accounts":[]}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(configPath, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PIXIV_REFRESH_TOKEN", "session=secret")
+	client, err := pixiv.OpenDefault(pixiv.Options{AuthFilePath: authPath, ConfigFilePath: configPath})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = client.CurrentUserID(context.Background())
+	var sdkErr *pixiv.Error
+	if !errors.As(err, &sdkErr) || sdkErr.Code != pixiv.CodeInvalidArgument {
+		t.Fatalf("CurrentUserID() error = %#v", err)
+	}
+}
+
+func TestStoredCookieRefreshTokenIsRejectedBeforeOAuthRequest(t *testing.T) {
+	dir := t.TempDir()
+	authPath := filepath.Join(dir, "auth.json")
+	if err := os.WriteFile(authPath, []byte(`{"default_user_id":7,"accounts":[{"user_id":7,"refresh_token":"refresh_token=secret"}]}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var requests atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		requests.Add(1)
+	}))
+	defer server.Close()
+	client, err := pixiv.NewClient(pixiv.Options{AuthFilePath: authPath, OAuthBaseURL: server.URL, HTTPClient: server.Client()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = client.CheckAccount(context.Background(), 7)
+	var sdkErr *pixiv.Error
+	if !errors.As(err, &sdkErr) || sdkErr.Code != pixiv.CodeInvalidArgument || sdkErr.UserID != 7 {
+		t.Fatalf("CheckAccount() error = %#v", err)
+	}
+	if requests.Load() != 0 {
+		t.Fatalf("oauth requests = %d", requests.Load())
+	}
+}
 
 func TestExplicitAccountStoreRefreshesRotatedTokenWithoutExposingIt(t *testing.T) {
 	t.Parallel()
@@ -59,6 +173,50 @@ func TestExplicitAccountStoreRefreshesRotatedTokenWithoutExposingIt(t *testing.T
 	body, err := os.ReadFile(authPath)
 	if err != nil || !strings.Contains(string(body), "rotated-refresh-secret") || strings.Contains(string(body), "old-refresh-secret") {
 		t.Fatalf("auth store not rotated: %s err=%v", body, err)
+	}
+}
+
+func TestCheckRefreshTokenVerifiesExternalTokenWithoutChangingStoredDefault(t *testing.T) {
+	dir := t.TempDir()
+	authPath := filepath.Join(dir, "auth.json")
+	configPath := filepath.Join(dir, "config.toml")
+	const storedAuth = `{"default_user_id":7,"accounts":[{"user_id":7,"username":"stored","refresh_token":"stored-refresh-secret"}]}`
+	if err := os.WriteFile(authPath, []byte(storedAuth), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/auth/token" {
+			t.Fatalf("path=%s", r.URL.Path)
+		}
+		if err := r.ParseForm(); err != nil {
+			t.Fatal(err)
+		}
+		if got := r.Form.Get("refresh_token"); got != "environment-refresh-secret" {
+			t.Fatalf("refresh_token=%q", got)
+		}
+		_, _ = w.Write([]byte(`{"access_token":"access-secret","refresh_token":"rotated-environment-secret","user":{"id":8,"name":"environment"}}`))
+	}))
+	defer server.Close()
+
+	client, err := pixiv.OpenDefault(pixiv.Options{
+		AuthFilePath: authPath, ConfigFilePath: configPath, HTTPClient: server.Client(), OAuthBaseURL: server.URL,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	account, err := client.CheckRefreshToken(context.Background(), "environment-refresh-secret")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if account.UserID != 8 || account.Username != "environment" || account.Default || !account.HasToken {
+		t.Fatalf("account=%+v", account)
+	}
+	gotAuth, err := os.ReadFile(authPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(gotAuth) != storedAuth {
+		t.Fatalf("auth.json was changed: %s", gotAuth)
 	}
 }
 
@@ -175,6 +333,34 @@ func TestLoginSessionIsOpaqueOneTimeAndValidatesCallback(t *testing.T) {
 	other, _ := pixiv.NewClient(pixiv.Options{AuthFilePath: authPath})
 	if _, err := other.CompleteLogin(context.Background(), session, "code-secret", pixiv.LoginOptions{}); !errors.Is(err, pixiv.ErrInvalidArgument) || exchanges.Load() != 1 {
 		t.Fatalf("cross client err=%v exchanges=%d", err, exchanges.Load())
+	}
+}
+
+// CLI browser watchers need a public way to reject callbacks for a different
+// login session without reading the opaque PKCE verifier or state, and without
+// consuming the session before CompleteLogin performs the exchange.
+func TestLoginSessionAcceptsOnlyItsOwnCallbackWithoutConsumingIt(t *testing.T) {
+	client, err := pixiv.NewClient(pixiv.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	session, err := client.StartLogin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	parsed, err := url.Parse(session.AuthorizationURL())
+	if err != nil {
+		t.Fatal(err)
+	}
+	state := parsed.Query().Get("state")
+	if state == "" {
+		t.Fatal("authorization URL did not contain state")
+	}
+	if session.AcceptsCallbackURL("https://app-api.pixiv.net/web/v1/users/auth/pixiv/callback?code=bad&state=other") {
+		t.Fatal("foreign callback was accepted")
+	}
+	if !session.AcceptsCallbackURL("https://app-api.pixiv.net/web/v1/users/auth/pixiv/callback?code=good&state=" + url.QueryEscape(state)) {
+		t.Fatal("matching callback was rejected")
 	}
 }
 

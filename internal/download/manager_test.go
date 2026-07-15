@@ -5,15 +5,14 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"io"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv"
 	"github.com/FlanChanXwO/pixiv-cli/internal/utils"
+	pixiv "github.com/FlanChanXwO/pixiv-cli/pixiv"
 )
 
 func TestSanitizeAndGenerateFilename(t *testing.T) {
@@ -87,6 +86,31 @@ func TestDownloadSingleArtworkReturnsPath(t *testing.T) {
 		t.Fatalf("download path = %q", got[0].Files[0].Path)
 	}
 	assertFileBody(t, got[0].Files[0].Path, "jpg")
+}
+
+// 下载管理器只能把作品中取得的资源地址交给公开 SDK 解析和下载；它不再保留
+// legacy Source 的原始 URL 写入接口，也不自行实现 SDK 已提供的原子替换。
+func TestDownloadUsesSDKResourceReferenceAndDestination(t *testing.T) {
+	dir := t.TempDir()
+	client := &fakePixivClient{
+		details: map[int64]pixiv.Illust{42: {
+			ID: 42, Title: "single", PageCount: 1, Type: "illust",
+			User:           pixiv.User{Name: "author"},
+			MetaSinglePage: pixiv.SinglePage{OriginalImageURL: "https://i.example/42.jpg"},
+		}},
+		downloads: map[string][]byte{"https://i.example/42.jpg": []byte("jpg")},
+	}
+	m := NewManager(client, nil, dir, "{id}")
+
+	if _, err := m.Download(context.Background(), []int64{42}); err != nil {
+		t.Fatalf("Download returned error: %v", err)
+	}
+	if got := client.parsedURLs; !slices.Equal(got, []string{"https://i.example/42.jpg"}) {
+		t.Fatalf("ParseResourceRef URLs = %v", got)
+	}
+	if got := client.destinations; len(got) != 1 || filepath.Base(got[0]) != "42.jpg" {
+		t.Fatalf("SDK destinations = %v", got)
+	}
 }
 
 func TestDownloadKeepsArtworkInsideDownloadRoot(t *testing.T) {
@@ -442,10 +466,12 @@ func makeZip(t *testing.T, name string, body []byte) []byte {
 }
 
 type fakePixivClient struct {
-	details     map[int64]pixiv.Illust
-	ugoira      map[int64]pixiv.UgoiraMetadata
-	downloads   map[string][]byte
-	downloadErr error
+	details      map[int64]pixiv.Illust
+	ugoira       map[int64]pixiv.UgoiraMetadata
+	downloads    map[string][]byte
+	downloadErr  error
+	parsedURLs   []string
+	destinations []string
 }
 
 func (c *fakePixivClient) IllustDetail(_ context.Context, id int64) (*pixiv.IllustDetail, error) {
@@ -464,16 +490,21 @@ func (c *fakePixivClient) UgoiraMetadata(_ context.Context, id int64) (*pixiv.Ug
 	return &pixiv.UgoiraMetadataResult{UgoiraMetadata: meta}, nil
 }
 
-func (c *fakePixivClient) Download(_ context.Context, rawURL string, dst io.Writer) error {
+func (c *fakePixivClient) ParseResourceRef(rawURL string) (pixiv.ResourceRef, error) {
+	c.parsedURLs = append(c.parsedURLs, rawURL)
+	return pixiv.ResourceRef{URL: rawURL}, nil
+}
+
+func (c *fakePixivClient) Download(_ context.Context, ref pixiv.ResourceRef, destination string) error {
 	if c.downloadErr != nil {
 		return c.downloadErr
 	}
-	body, ok := c.downloads[rawURL]
+	body, ok := c.downloads[ref.URL]
 	if !ok {
 		return os.ErrNotExist
 	}
-	_, err := dst.Write(body)
-	return err
+	c.destinations = append(c.destinations, destination)
+	return os.WriteFile(destination, body, 0o644)
 }
 
 func assertFileBody(t *testing.T, path, want string) {

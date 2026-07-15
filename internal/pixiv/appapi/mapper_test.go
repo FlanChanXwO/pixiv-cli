@@ -30,3 +30,53 @@ func TestMapIllustPreservesEveryNormalizedField(t *testing.T) {
 		t.Fatalf("mapIllust() = %#v, want %#v", got, want)
 	}
 }
+
+func TestMapUserDetailPreservesNormalizedEnvelopeAndOptionalURLs(t *testing.T) {
+	profileImageURL := "profile"
+	webpage := "webpage"
+	background := "background"
+	twitter := "twitter"
+	pawoo := "pawoo"
+	workspaceImage := "workspace"
+	dto := userDetailDTO{
+		User: requiredObject[userDTO]{Present: true, Valid: true, Value: userDTO{
+			ID: 1, Name: "name", ProfileImageURLs: profileImageURLsDTO{Medium: &profileImageURL},
+		}},
+		Profile: requiredObject[profileDTO]{Present: true, Valid: true, Value: profileDTO{
+			Webpage: &webpage, Gender: "gender", Birth: "birth", BirthDay: "day", BirthYear: 2000, Region: "region",
+			AddressID: 2, CountryCode: "JP", Job: "job", JobID: 3, TotalFollowUsers: 4, TotalMyPixivUsers: 5,
+			TotalIllusts: 6, TotalManga: 7, TotalNovels: 8, TotalIllustBookmarksPublic: 9, TotalIllustSeries: 10,
+			TotalNovelSeries: 11, BackgroundImageURL: &background, TwitterAccount: "account", TwitterURL: &twitter,
+			PawooURL: &pawoo, IsPremium: true, IsUsingCustomProfileImage: true,
+		}},
+		ProfilePublicity: requiredObject[profilePublicityDTO]{Present: true, Valid: true, Value: profilePublicityDTO{
+			Gender: profilePublicityValue{Value: true, Present: true, Valid: true}, Region: profilePublicityValue{Value: true, Present: true, Valid: true},
+			BirthDay: profilePublicityValue{Value: true, Present: true, Valid: true}, BirthYear: profilePublicityValue{Value: true, Present: true, Valid: true},
+			Job: profilePublicityValue{Value: true, Present: true, Valid: true}, Pawoo: profilePublicityValue{Value: true, Present: true, Valid: true},
+		}},
+		Workspace: requiredObject[workspaceDTO]{Present: true, Valid: true, Value: workspaceDTO{
+			PC: "pc", Monitor: "monitor", Tool: "tool", Scanner: "scanner", Tablet: "tablet", Mouse: "mouse",
+			Printer: "printer", Desktop: "desktop", Music: "music", Desk: "desk", Chair: "chair", Comment: "comment",
+			WorkspaceImageURL: &workspaceImage,
+		}},
+	}
+	want := model.UserDetail{
+		User: model.User{ID: 1, Name: "name", ProfileImageURLs: model.ProfileImageURLs{Medium: &profileImageURL}},
+		Profile: model.Profile{
+			Webpage: &webpage, Gender: "gender", Birth: "birth", BirthDay: "day", BirthYear: 2000, Region: "region",
+			AddressID: 2, CountryCode: "JP", Job: "job", JobID: 3, TotalFollowUsers: 4, TotalMyPixivUsers: 5,
+			TotalIllusts: 6, TotalManga: 7, TotalNovels: 8, TotalIllustBookmarksPublic: 9, TotalIllustSeries: 10,
+			TotalNovelSeries: 11, BackgroundImageURL: &background, TwitterAccount: "account", TwitterURL: &twitter,
+			PawooURL: &pawoo, IsPremium: true, IsUsingCustomProfileImage: true,
+		},
+		ProfilePublicity: model.ProfilePublicity{Gender: true, Region: true, BirthDay: true, BirthYear: true, Job: true, Pawoo: true},
+		Workspace: model.Workspace{
+			PC: "pc", Monitor: "monitor", Tool: "tool", Scanner: "scanner", Tablet: "tablet", Mouse: "mouse",
+			Printer: "printer", Desktop: "desktop", Music: "music", Desk: "desk", Chair: "chair", Comment: "comment",
+			WorkspaceImageURL: &workspaceImage,
+		},
+	}
+	if got := mapUserDetail(dto); !reflect.DeepEqual(got, want) {
+		t.Fatalf("mapUserDetail() = %#v, want %#v", got, want)
+	}
+}

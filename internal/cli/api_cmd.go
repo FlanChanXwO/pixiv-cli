@@ -6,8 +6,10 @@ import (
 	"io"
 	"strings"
 
+	"github.com/FlanChanXwO/pixiv-cli/internal/application"
+	"github.com/FlanChanXwO/pixiv-cli/internal/download"
 	"github.com/FlanChanXwO/pixiv-cli/internal/utils/parse"
-	sdk "github.com/FlanChanXwO/pixiv-cli/pkg/pixiv"
+	sdk "github.com/FlanChanXwO/pixiv-cli/pixiv"
 	"github.com/spf13/cobra"
 )
 
@@ -264,46 +266,16 @@ func (a app) runRanking(cmd *cobra.Command, opts rankingOptions) error {
 func (a app) newRecommendedCommand() *cobra.Command {
 	opts := recommendedOptions{}
 	cmd := &cobra.Command{
-		Use:   "recommended",
+		Use:   "recommended all|illust|manga|novel|user",
 		Short: "Show personalized recommendations",
-		Args:  requireExactArgs(0, "pixiv recommended [options]"),
+		Args:  requireExactArgs(1, "pixiv recommended all|illust|manga|novel|user [options]"),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return a.runRecommended(cmd, opts)
+			return a.runRecommended(cmd, args[0], opts)
 		},
 	}
 	a.bindCommonFlags(cmd, &opts.commandOptions)
 	bindListFlags(cmd, &opts.listOptions)
 	return cmd
-}
-
-func (a app) runRecommended(cmd *cobra.Command, opts recommendedOptions) error {
-	plan, err := parseListPlan(cmd, opts.listOptions)
-	if err != nil {
-		return err
-	}
-	services := a.services()
-	clientReq, jsonOverride, err := a.sdkRequest(cmd, opts.commandOptions)
-	if err != nil {
-		return err
-	}
-	jsonOut, err := services.SDK.JSONOut(jsonOverride)
-	if err != nil {
-		return err
-	}
-	client, err := services.SDK.OpenOperation(cmd.Context(), clientReq)
-	if err != nil {
-		return err
-	}
-	if !jsonOut {
-		fmt.Fprintln(a.out, "recommended illustrations")
-	}
-	return a.runIllustList(cmd.Context(), plan, jsonOut, func(ctx context.Context, cursor sdk.Cursor) ([]sdk.Illust, sdk.Cursor, error) {
-		result, err := client.IllustRecommended(ctx, sdk.IllustRecommendedRequest{Cursor: cursor})
-		if err != nil {
-			return nil, "", err
-		}
-		return result.Illusts, result.NextCursor, nil
-	}, func(items []sdk.Illust, start int) { printIllusts(a.out, items, start, false) })
 }
 
 func (a app) newDownloadCommand() *cobra.Command {
@@ -334,7 +306,27 @@ func (a app) runDownload(cmd *cobra.Command, args []string, opts commandOptions)
 	if err != nil {
 		return err
 	}
-	artworks, jsonOut, err := services.Download.Download(cmd.Context(), clientReq, ids)
+	jsonOut, err := services.SDK.JSONOut(clientReq.JSONOverride)
+	if err != nil {
+		return err
+	}
+	runtime, err := services.SDK.Runtime()
+	if err != nil {
+		return err
+	}
+	if clientReq.DownloadPathOverride != nil {
+		runtime.DownloadPath = *clientReq.DownloadPathOverride
+	}
+	if clientReq.FilenameTemplateOverride != nil {
+		runtime.FilenameTemplate = *clientReq.FilenameTemplateOverride
+	}
+	client, err := services.SDK.OpenOperation(cmd.Context(), application.SDKClientRequest{
+		UserID: clientReq.UserID, RefreshToken: clientReq.RefreshToken, HTTPSProxyOverride: clientReq.HTTPSProxyOverride,
+	})
+	if err != nil {
+		return err
+	}
+	artworks, err := download.NewManager(client, a.logger, runtime.DownloadPath, runtime.FilenameTemplate).Download(cmd.Context(), ids)
 	if err != nil {
 		return err
 	}

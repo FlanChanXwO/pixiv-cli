@@ -150,11 +150,83 @@ func (c *Client) IllustRecommended(ctx context.Context, request IllustRecommende
 	if err := c.requireRoute(OperationIllustRecommended, routeApp, 0, 0); err != nil {
 		return nil, err
 	}
-	list, err := c.app.IllustRecommended(ctx, offset)
+	list, err := c.app.IllustRecommended(ctx, offset, request.Cursor != "")
 	if err != nil {
 		return nil, mapAppOperationError(err, OperationIllustRecommended, 0)
 	}
 	return publicIllustList(list, OperationIllustRecommended, digest, "offset", c.cursorSource), nil
+}
+
+// MangaRecommended 返回一个认证漫画推荐批次；它与插画推荐使用相同 catalog，但游标互不兼容。
+func (c *Client) MangaRecommended(ctx context.Context, request IllustRecommendedRequest) (result *IllustListResult, err error) {
+	started := time.Now()
+	defer func() { c.delegatedOperationLog(OperationMangaRecommended, started, err, 0, 0) }()
+	if scoped, err := c.operationClient(ctx, OperationMangaRecommended); err != nil {
+		return nil, err
+	} else if scoped != c {
+		return scoped.MangaRecommended(ctx, request)
+	}
+	digest := queryDigest(OperationMangaRecommended, struct{}{})
+	offset, err := c.cursorOffset(request.Cursor, OperationMangaRecommended, digest, 0)
+	if err != nil {
+		return nil, err
+	}
+	if err := c.requireRoute(OperationMangaRecommended, routeApp, 0, 0); err != nil {
+		return nil, err
+	}
+	list, err := c.app.MangaRecommended(ctx, offset, request.Cursor != "")
+	if err != nil {
+		return nil, mapAppOperationError(err, OperationMangaRecommended, 0)
+	}
+	return publicIllustList(list, OperationMangaRecommended, digest, "offset", c.cursorSource), nil
+}
+
+// NovelRecommended 返回一个认证小说推荐批次；其 opaque cursor 不能用于其他推荐种类。
+func (c *Client) NovelRecommended(ctx context.Context, request NovelRecommendedRequest) (result *NovelListResult, err error) {
+	started := time.Now()
+	defer func() { c.delegatedOperationLog(OperationNovelRecommended, started, err, 0, 0) }()
+	if scoped, err := c.operationClient(ctx, OperationNovelRecommended); err != nil {
+		return nil, err
+	} else if scoped != c {
+		return scoped.NovelRecommended(ctx, request)
+	}
+	digest := queryDigest(OperationNovelRecommended, struct{}{})
+	offset, err := c.cursorOffset(request.Cursor, OperationNovelRecommended, digest, 0)
+	if err != nil {
+		return nil, err
+	}
+	if err := c.requireRoute(OperationNovelRecommended, routeApp, 0, 0); err != nil {
+		return nil, err
+	}
+	list, err := c.app.NovelRecommended(ctx, offset, request.Cursor != "")
+	if err != nil {
+		return nil, mapAppOperationError(err, OperationNovelRecommended, 0)
+	}
+	return publicNovelList(list, OperationNovelRecommended, digest, c.cursorSource), nil
+}
+
+// UserRecommended 返回一个认证作者推荐批次及对应作品预览。
+func (c *Client) UserRecommended(ctx context.Context, request UserRecommendedRequest) (result *UserRecommendedResult, err error) {
+	started := time.Now()
+	defer func() { c.delegatedOperationLog(OperationUserRecommended, started, err, 0, 0) }()
+	if scoped, err := c.operationClient(ctx, OperationUserRecommended); err != nil {
+		return nil, err
+	} else if scoped != c {
+		return scoped.UserRecommended(ctx, request)
+	}
+	digest := queryDigest(OperationUserRecommended, struct{}{})
+	offset, err := c.cursorOffset(request.Cursor, OperationUserRecommended, digest, 0)
+	if err != nil {
+		return nil, err
+	}
+	if err := c.requireRoute(OperationUserRecommended, routeApp, 0, 0); err != nil {
+		return nil, err
+	}
+	list, err := c.app.UserRecommended(ctx, offset, request.Cursor != "")
+	if err != nil {
+		return nil, mapAppOperationError(err, OperationUserRecommended, 0)
+	}
+	return publicRecommendedUsers(list, OperationUserRecommended, digest, c.cursorSource), nil
 }
 
 // FollowingIllusts 返回当前认证账号所关注用户的一个作品批次。
@@ -227,7 +299,7 @@ func (c *Client) SearchUser(ctx context.Context, request SearchUserRequest) (res
 	return publicUserList(list, OperationSearchUser, digest, c.cursorSource), nil
 }
 
-// UserDetail 返回指定用户的稳定摘要。
+// UserDetail 返回指定用户的稳定完整详情。
 func (c *Client) UserDetail(ctx context.Context, request UserDetailRequest) (result *UserDetailResult, err error) {
 	started := time.Now()
 	defer func() { c.delegatedOperationLog(OperationUserDetail, started, err, 0, request.UserID) }()
@@ -242,11 +314,11 @@ func (c *Client) UserDetail(ctx context.Context, request UserDetailRequest) (res
 	if err := c.requireRoute(OperationUserDetail, routeApp, 0, request.UserID); err != nil {
 		return nil, err
 	}
-	user, err := c.app.UserDetail(ctx, request.UserID)
+	detail, err := c.app.UserDetail(ctx, request.UserID)
 	if err != nil {
 		return nil, mapAppOperationError(err, OperationUserDetail, request.UserID)
 	}
-	return &UserDetailResult{User: mapUser(*user)}, nil
+	return mapUserDetail(*detail), nil
 }
 
 // UserArtworks 返回指定用户的一个作品批次。
@@ -315,6 +387,31 @@ func (c *Client) UserBookmarks(ctx context.Context, request UserBookmarksRequest
 		return nil, mapAppOperationError(err, OperationUserBookmarks, request.UserID)
 	}
 	return publicIllustList(list, OperationUserBookmarks, digest, "max_bookmark_id", c.cursorSource), nil
+}
+
+// UserBookmarksCursor 将旧调用方持有的 max_bookmark_id 适配为绑定用户、可见性和
+// tag 查询的公开 opaque cursor。它不请求上游，也不暴露 cursor 的编码细节；调用方
+// 仍只能把返回值交回 UserBookmarks。
+func (c *Client) UserBookmarksCursor(ctx context.Context, request UserBookmarksRequest, maxBookmarkID int64) (cursor Cursor, err error) {
+	if scoped, err := c.operationClient(ctx, OperationUserBookmarks); err != nil {
+		return "", err
+	} else if scoped != c {
+		return scoped.UserBookmarksCursor(ctx, request, maxBookmarkID)
+	}
+	if request.UserID <= 0 || maxBookmarkID <= 0 {
+		return "", invalidArgument(OperationUserBookmarks, request.UserID, errors.New("user id and max bookmark id must be positive"))
+	}
+	query := userBookmarksQuery{request.UserID, request.Restrict, request.Tag}
+	if query.Restrict == "" {
+		query.Restrict = RestrictPublic
+	}
+	if !validRestrict(query.Restrict) {
+		return "", invalidArgument(OperationUserBookmarks, request.UserID, errors.New("restrict is invalid"))
+	}
+	if request.Cursor != "" {
+		return "", invalidArgument(OperationUserBookmarks, request.UserID, errors.New("legacy cursor cannot be combined with cursor"))
+	}
+	return encodeCursorForSource(OperationUserBookmarks, queryDigest(OperationUserBookmarks, query), "max_bookmark_id", maxBookmarkID, c.cursorSource), nil
 }
 
 // UserFollowing 返回指定用户关注的一个用户批次。
@@ -396,8 +493,67 @@ func publicUserList(list *model.UserPreviewList, operation Operation, digest, so
 	return result
 }
 
+func publicNovelList(list *model.NovelList, operation Operation, digest, source string) *NovelListResult {
+	result := &NovelListResult{Novels: make([]Novel, len(list.Novels))}
+	for index, item := range list.Novels {
+		result.Novels[index] = mapNovel(item)
+	}
+	if list.ContinuationExists {
+		result.NextCursor = encodeCursorForSource(operation, digest, "offset", int64(list.NextOffset), source)
+	}
+	return result
+}
+
+func publicRecommendedUsers(list *model.RecommendedUserList, operation Operation, digest, source string) *UserRecommendedResult {
+	result := &UserRecommendedResult{UserPreviews: make([]RecommendedUserPreview, len(list.UserPreviews))}
+	for index, item := range list.UserPreviews {
+		preview := RecommendedUserPreview{User: mapUser(item.User), Illusts: make([]Illust, len(item.Illusts)), Novels: make([]Novel, len(item.Novels))}
+		for illustIndex, illust := range item.Illusts {
+			preview.Illusts[illustIndex] = mapIllust(illust)
+		}
+		for novelIndex, novel := range item.Novels {
+			preview.Novels[novelIndex] = mapNovel(novel)
+		}
+		result.UserPreviews[index] = preview
+	}
+	if list.ContinuationExists {
+		result.NextCursor = encodeCursorForSource(operation, digest, "offset", int64(list.NextOffset), source)
+	}
+	return result
+}
+
 func mapUser(user model.User) User {
-	return User{ID: user.ID, Name: user.Name, Account: user.Account, Comment: user.Comment, IsFollowed: user.IsFollowed}
+	return User{
+		ID: user.ID, Name: user.Name, Account: user.Account, Comment: user.Comment, IsFollowed: user.IsFollowed,
+		ProfileImageURLs: ProfileImageURLs{Medium: user.ProfileImageURLs.Medium},
+	}
+}
+
+func mapUserDetail(detail model.UserDetail) *UserDetailResult {
+	return &UserDetailResult{
+		User: mapUser(detail.User),
+		Profile: Profile{
+			Webpage: detail.Profile.Webpage, Gender: detail.Profile.Gender, Birth: detail.Profile.Birth, BirthDay: detail.Profile.BirthDay,
+			BirthYear: detail.Profile.BirthYear, Region: detail.Profile.Region, AddressID: detail.Profile.AddressID,
+			CountryCode: detail.Profile.CountryCode, Job: detail.Profile.Job, JobID: detail.Profile.JobID,
+			TotalFollowUsers: detail.Profile.TotalFollowUsers, TotalMyPixivUsers: detail.Profile.TotalMyPixivUsers,
+			TotalIllusts: detail.Profile.TotalIllusts, TotalManga: detail.Profile.TotalManga, TotalNovels: detail.Profile.TotalNovels,
+			TotalIllustBookmarksPublic: detail.Profile.TotalIllustBookmarksPublic, TotalIllustSeries: detail.Profile.TotalIllustSeries,
+			TotalNovelSeries: detail.Profile.TotalNovelSeries, BackgroundImageURL: detail.Profile.BackgroundImageURL,
+			TwitterAccount: detail.Profile.TwitterAccount, TwitterURL: detail.Profile.TwitterURL, PawooURL: detail.Profile.PawooURL,
+			IsPremium: detail.Profile.IsPremium, IsUsingCustomProfileImage: detail.Profile.IsUsingCustomProfileImage,
+		},
+		ProfilePublicity: ProfilePublicity{
+			Gender: detail.ProfilePublicity.Gender, Region: detail.ProfilePublicity.Region, BirthDay: detail.ProfilePublicity.BirthDay,
+			BirthYear: detail.ProfilePublicity.BirthYear, Job: detail.ProfilePublicity.Job, Pawoo: detail.ProfilePublicity.Pawoo,
+		},
+		Workspace: Workspace{
+			PC: detail.Workspace.PC, Monitor: detail.Workspace.Monitor, Tool: detail.Workspace.Tool, Scanner: detail.Workspace.Scanner,
+			Tablet: detail.Workspace.Tablet, Mouse: detail.Workspace.Mouse, Printer: detail.Workspace.Printer, Desktop: detail.Workspace.Desktop,
+			Music: detail.Workspace.Music, Desk: detail.Workspace.Desk, Chair: detail.Workspace.Chair, Comment: detail.Workspace.Comment,
+			WorkspaceImageURL: detail.Workspace.WorkspaceImageURL,
+		},
+	}
 }
 
 func invalidArgument(operation Operation, userID int64, cause error) error {

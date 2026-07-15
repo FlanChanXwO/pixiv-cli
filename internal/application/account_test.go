@@ -5,256 +5,133 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/config"
-	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv"
 	"github.com/FlanChanXwO/pixiv-cli/internal/storage/auth"
+	sdk "github.com/FlanChanXwO/pixiv-cli/pixiv"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
-
-func TestResolveRefreshTokenPriority(t *testing.T) {
-	store := auth.AuthStore{
-		DefaultUserID: 111,
-		Accounts: []auth.Account{
-			{UserID: 111, RefreshToken: "main-token"},
-			{UserID: 222, RefreshToken: "other-token"},
-		},
-	}
-
-	token, err := ResolveRefreshToken(store, 0, "", func() string { return "env-token" })
-	require.NoError(t, err)
-	assert.Equal(t, "env-token", token)
-
-	token, err = ResolveRefreshToken(store, 222, "", func() string { return "env-token" })
-	require.NoError(t, err)
-	assert.Equal(t, "other-token", token)
-
-	token, err = ResolveRefreshToken(store, 222, "flag-token", func() string { return "env-token" })
-	require.NoError(t, err)
-	assert.Equal(t, "flag-token", token)
-}
-
-func TestClientResolverDoesNotReadEnvironmentWithoutInjectedProvider(t *testing.T) {
-	t.Setenv("PIXIV_REFRESH_TOKEN", "env-token")
-	repo := &memoryAuthRepository{}
-	resolver := ClientResolver{
-		Auth:        repo,
-		LoadRuntime: func() (config.RuntimeConfig, error) { return config.RuntimeConfig{}, nil },
-		NewClient: func(cfg config.RuntimeConfig) (ClientBundle, error) {
-			assert.Empty(t, cfg.RefreshToken)
-			return ClientBundle{}, assert.AnError
-		},
-	}
-
-	_, err := resolver.Resolve(context.Background(), ClientRequest{})
-	require.ErrorIs(t, err, assert.AnError)
-}
 
 func TestApplicationServicesReportMissingDependencies(t *testing.T) {
 	_, err := ConfigService{}.Path()
 	require.ErrorContains(t, err, "config store is not configured")
 
-	_, err = ClientResolver{
-		Auth:        &memoryAuthRepository{},
-		LoadRuntime: func() (config.RuntimeConfig, error) { return config.RuntimeConfig{}, nil },
-	}.Resolve(context.Background(), ClientRequest{})
-	require.ErrorContains(t, err, "pixiv client factory is not configured")
+	_, err = AccountService{}.Check(context.Background(), 123)
+	require.ErrorContains(t, err, "pixiv sdk client factory is not configured")
 
-	_, err = AccountService{
-		Auth:        &memoryAuthRepository{store: auth.AuthStore{Accounts: []auth.Account{{UserID: 123, RefreshToken: "token"}}}},
-		LoadRuntime: func() (config.RuntimeConfig, error) { return config.RuntimeConfig{}, nil },
-	}.Check(context.Background(), 123)
-	require.ErrorContains(t, err, "pixiv client factory is not configured")
-
-	_, err = LoginService{
-		Auth:        &memoryAuthRepository{},
-		LoadRuntime: func() (config.RuntimeConfig, error) { return config.RuntimeConfig{}, nil },
-	}.Complete(context.Background(), LoginCompleteRequest{Code: "code", Verifier: "verifier"})
-	require.ErrorContains(t, err, "oauth client factory is not configured")
 }
 
-func TestAccountServiceAddListUsesAuthenticatedUID(t *testing.T) {
-	repo := &memoryAuthRepository{}
-	service := AccountService{
-		Auth:        repo,
-		LoadRuntime: func() (config.RuntimeConfig, error) { return config.RuntimeConfig{}, nil },
-		NewClient: func(cfg config.RuntimeConfig) (AuthenticatedPixivClient, error) {
-			return &fakeAuthenticatedPixivClient{userID: 123, username: "alice"}, nil
-		},
+func TestAccountServiceUsesPublicSDKAccountStore(t *testing.T) {
+	client := &fakeAccountSDKClient{accounts: sdk.AccountsResult{DefaultUserID: 123, Accounts: []sdk.Account{{UserID: 123, Username: "alice", Default: true, HasToken: true}}}}
+	client.importAccount = func(_ context.Context, token string) (*sdk.Account, error) {
+		if token != "main/token" {
+			t.Fatalf("ImportAccount token=%q", token)
+		}
+		return &sdk.Account{UserID: 456, Username: "bob", HasToken: true}, nil
 	}
+	service := newAccountServiceForTest(client)
 
-	first, err := service.Add(context.Background(), AccountAddRequest{TokenInput: "foo=bar; refresh_token=main%2Ftoken"})
+	result, err := service.Add(context.Background(), AccountAddRequest{TokenInput: "main/token"})
 	require.NoError(t, err)
-	assert.Equal(t, AccountResult{UserID: 123, Username: "alice", Default: true, HasToken: true}, first)
-
-	service.NewClient = func(cfg config.RuntimeConfig) (AuthenticatedPixivClient, error) {
-		return &fakeAuthenticatedPixivClient{userID: 456, username: "bob"}, nil
-	}
-	second, err := service.Add(context.Background(), AccountAddRequest{TokenInput: "other-token"})
-	require.NoError(t, err)
-	assert.Equal(t, AccountResult{UserID: 456, Username: "bob", Default: false, HasToken: true}, second)
-
+	assert.Equal(t, AccountResult{UserID: 456, Username: "bob", HasToken: true}, result)
 	list, err := service.List()
 	require.NoError(t, err)
 	assert.Equal(t, int64(123), list.DefaultUserID)
-	require.Len(t, list.Accounts, 2)
+	require.Len(t, list.Accounts, 1)
 	assert.Equal(t, int64(123), list.Accounts[0].UserID)
-	assert.Equal(t, "alice", list.Accounts[0].Username)
-	assert.Equal(t, int64(456), list.Accounts[1].UserID)
-	assert.Equal(t, "bob", list.Accounts[1].Username)
-	assert.True(t, list.Accounts[0].HasToken)
-	assert.True(t, list.Accounts[1].HasToken)
-
-	store, err := repo.Load()
-	require.NoError(t, err)
-	require.Len(t, store.Accounts, 2)
-	assert.Equal(t, "main/token", store.Accounts[0].RefreshToken)
-	assert.Equal(t, "other-token", store.Accounts[1].RefreshToken)
 }
 
-func TestAccountServiceAddWarnsWhenUsernameLookupFails(t *testing.T) {
-	repo := &memoryAuthRepository{}
-	service := AccountService{
-		Auth:        repo,
-		LoadRuntime: func() (config.RuntimeConfig, error) { return config.RuntimeConfig{}, nil },
-		NewClient: func(cfg config.RuntimeConfig) (AuthenticatedPixivClient, error) {
-			return &fakeAuthenticatedPixivClient{
-				userID:    999,
-				detailErr: errors.New("detail unavailable"),
-			}, nil
-		},
+func TestAccountServiceCheckUsesPublicSDKRequest(t *testing.T) {
+	client := &fakeAccountSDKClient{}
+	client.checkAccount = func(_ context.Context, userID int64) (*sdk.Account, error) {
+		assert.Equal(t, int64(123), userID)
+		return &sdk.Account{UserID: 123, Username: "alice", Default: true, HasToken: true}, nil
 	}
-
-	result, err := service.Add(context.Background(), AccountAddRequest{TokenInput: "refresh-token"})
+	result, err := newAccountServiceForTest(client).CheckWithRequest(context.Background(), AccountCheckRequest{UserID: 123})
 	require.NoError(t, err)
-	assert.Equal(t, int64(999), result.UserID)
-	assert.Empty(t, result.Username)
-	assert.Contains(t, result.Warning, "detail unavailable")
-
-	store, err := repo.Load()
-	require.NoError(t, err)
-	require.Len(t, store.Accounts, 1)
-	assert.Equal(t, int64(999), store.Accounts[0].UserID)
-	assert.Empty(t, store.Accounts[0].Username)
+	assert.Equal(t, AccountResult{UserID: 123, Username: "alice", Default: true, HasToken: true}, result)
 }
 
-func TestAccountServiceAddRecreatesLegacyAuthStore(t *testing.T) {
-	repo := &legacyThenMemoryAuthRepository{}
-	service := AccountService{
-		Auth:        repo,
-		LoadRuntime: func() (config.RuntimeConfig, error) { return config.RuntimeConfig{}, nil },
-		NewClient: func(cfg config.RuntimeConfig) (AuthenticatedPixivClient, error) {
-			return &fakeAuthenticatedPixivClient{userID: 101, username: "new-user"}, nil
-		},
+func TestAccountServiceCheckPrefersEnvironmentTokenWithoutSelectingStoredAccount(t *testing.T) {
+	client := &fakeAccountSDKClient{}
+	client.checkAccount = func(_ context.Context, userID int64) (*sdk.Account, error) {
+		t.Fatalf("stored CheckAccount(%d) was called while an environment token exists", userID)
+		return nil, nil
 	}
-
-	result, err := service.Add(context.Background(), AccountAddRequest{TokenInput: "new-refresh"})
-	require.NoError(t, err)
-	assert.Equal(t, AccountResult{UserID: 101, Username: "new-user", Default: true, HasToken: true}, result)
-
-	store, err := repo.Load()
-	require.NoError(t, err)
-	assert.Equal(t, int64(101), store.DefaultUserID)
-	require.Len(t, store.Accounts, 1)
-	assert.Equal(t, "new-refresh", store.Accounts[0].RefreshToken)
-}
-
-func TestAccountServiceCheckRejectsMismatchedUID(t *testing.T) {
-	repo := &memoryAuthRepository{store: auth.AuthStore{
-		DefaultUserID: 123,
-		Accounts:      []auth.Account{{UserID: 123, RefreshToken: "wrong-token"}},
-	}}
-	service := AccountService{
-		Auth:        repo,
-		LoadRuntime: func() (config.RuntimeConfig, error) { return config.RuntimeConfig{}, nil },
-		NewClient: func(cfg config.RuntimeConfig) (AuthenticatedPixivClient, error) {
-			return &fakeAuthenticatedPixivClient{userID: 456, username: "other-user"}, nil
-		},
+	client.checkRefreshToken = func(_ context.Context, token string) (*sdk.Account, error) {
+		assert.Equal(t, "environment-token", token)
+		return &sdk.Account{UserID: 456, Username: "environment", HasToken: true}, nil
 	}
+	service := newAccountServiceForTest(client)
+	service.RefreshTokenFromEnv = func() (string, error) { return "environment-token", nil }
 
-	_, err := service.Check(context.Background(), 123)
-	require.ErrorContains(t, err, "returned uid 456")
-
-	store, err := repo.Load()
+	result, err := service.CheckWithRequest(context.Background(), AccountCheckRequest{})
 	require.NoError(t, err)
-	assert.Equal(t, int64(123), store.DefaultUserID)
-	require.Len(t, store.Accounts, 1)
-	assert.Equal(t, int64(123), store.Accounts[0].UserID)
-	assert.Empty(t, store.Accounts[0].Username)
+	assert.Equal(t, AccountResult{UserID: 456, Username: "environment", HasToken: true}, result)
 }
 
-func TestLoginServiceCompleteStoresOAuthUID(t *testing.T) {
-	repo := &memoryAuthRepository{}
-	service := LoginService{
-		Auth:        repo,
-		LoadRuntime: func() (config.RuntimeConfig, error) { return config.RuntimeConfig{}, nil },
-		NewOAuth: func(config.RuntimeConfig, string) (OAuthExchanger, error) {
-			return fakeOAuthExchanger{
-				token: OAuthToken{RefreshToken: "login-refresh", UserID: 789, Username: "carol"},
-			}, nil
-		},
+func TestAccountServiceCheckExplicitUIDDoesNotUseEnvironmentToken(t *testing.T) {
+	client := &fakeAccountSDKClient{}
+	client.checkAccount = func(_ context.Context, userID int64) (*sdk.Account, error) {
+		assert.Equal(t, int64(123), userID)
+		return &sdk.Account{UserID: 123, Username: "stored", Default: true, HasToken: true}, nil
 	}
-
-	result, err := service.Complete(context.Background(), LoginCompleteRequest{
-		Code:          "code",
-		Verifier:      "verifier",
-		UseAfterLogin: true,
-	})
-	require.NoError(t, err)
-	assert.Equal(t, AccountResult{UserID: 789, Username: "carol", Default: true, HasToken: true}, result)
-
-	store, err := repo.Load()
-	require.NoError(t, err)
-	assert.Equal(t, int64(789), store.DefaultUserID)
-	require.Len(t, store.Accounts, 1)
-	assert.Equal(t, int64(789), store.Accounts[0].UserID)
-	assert.Equal(t, "carol", store.Accounts[0].Username)
-	assert.Equal(t, "login-refresh", store.Accounts[0].RefreshToken)
-}
-
-func TestLoginServiceCompleteRecreatesLegacyAuthStore(t *testing.T) {
-	repo := &legacyThenMemoryAuthRepository{}
-	service := LoginService{
-		Auth:        repo,
-		LoadRuntime: func() (config.RuntimeConfig, error) { return config.RuntimeConfig{}, nil },
-		NewOAuth: func(config.RuntimeConfig, string) (OAuthExchanger, error) {
-			return fakeOAuthExchanger{token: OAuthToken{RefreshToken: "login-refresh", UserID: 202, Username: "login-user"}}, nil
-		},
+	client.checkRefreshToken = func(_ context.Context, token string) (*sdk.Account, error) {
+		t.Fatalf("CheckRefreshToken(%q) was called for an explicit UID", token)
+		return nil, nil
 	}
+	service := newAccountServiceForTest(client)
+	service.RefreshTokenFromEnv = func() (string, error) { return "environment-token", nil }
 
-	result, err := service.Complete(context.Background(), LoginCompleteRequest{Code: "code", Verifier: "verifier"})
+	result, err := service.CheckWithRequest(context.Background(), AccountCheckRequest{UserID: 123})
 	require.NoError(t, err)
-	assert.Equal(t, AccountResult{UserID: 202, Username: "login-user", Default: true, HasToken: true}, result)
-
-	store, err := repo.Load()
-	require.NoError(t, err)
-	assert.Equal(t, int64(202), store.DefaultUserID)
-	require.Len(t, store.Accounts, 1)
+	assert.Equal(t, AccountResult{UserID: 123, Username: "stored", Default: true, HasToken: true}, result)
 }
 
-type fakeOAuthExchanger struct {
-	token OAuthToken
+func TestAccountServiceAddRejectsCookieBeforeOpeningSDK(t *testing.T) {
+	service := AccountService{SDK: SDKService{NewClient: func(SDKClientRequest) (SDKClient, error) {
+		t.Fatal("SDK client was opened for a cookie input")
+		return nil, nil
+	}}}
+
+	_, err := service.Add(context.Background(), AccountAddRequest{TokenInput: "refresh_token=secret"})
+	require.ErrorContains(t, err, "cookie input is not supported")
 }
 
-func (e fakeOAuthExchanger) ExchangeAuthorizationCode(context.Context, string, string) (OAuthToken, error) {
-	return e.token, nil
+// fakeAccountSDKClient 嵌入完整公开 facade，只覆写本组测试经过的账号方法；这样
+// 测试从 application 到公开 SDK 边界观察行为，不再模拟 legacy Source。
+type fakeAccountSDKClient struct {
+	SDKClient
+	accounts          sdk.AccountsResult
+	importAccount     func(context.Context, string) (*sdk.Account, error)
+	checkAccount      func(context.Context, int64) (*sdk.Account, error)
+	checkRefreshToken func(context.Context, string) (*sdk.Account, error)
 }
 
-type fakeAuthenticatedPixivClient struct {
-	userID    int64
-	username  string
-	detailErr error
-}
-
-func (c *fakeAuthenticatedPixivClient) Refresh(context.Context) error { return nil }
-func (c *fakeAuthenticatedPixivClient) RefreshTokenValue() string     { return "" }
-func (c *fakeAuthenticatedPixivClient) UserID() int64                 { return c.userID }
-func (c *fakeAuthenticatedPixivClient) UserName() string              { return c.username }
-func (c *fakeAuthenticatedPixivClient) UserDetail(context.Context, int64) (*pixiv.User, error) {
-	if c.detailErr != nil {
-		return nil, c.detailErr
+func (f *fakeAccountSDKClient) ImportAccount(ctx context.Context, token string) (*sdk.Account, error) {
+	if f.importAccount != nil {
+		return f.importAccount(ctx, token)
 	}
-	return &pixiv.User{ID: c.userID, Name: c.username}, nil
+	return nil, errors.New("unexpected import")
+}
+func (f *fakeAccountSDKClient) ListAccounts() (*sdk.AccountsResult, error) { return &f.accounts, nil }
+func (*fakeAccountSDKClient) SelectAccount(int64) error                    { return nil }
+func (*fakeAccountSDKClient) RemoveAccount(int64) error                    { return nil }
+func (f *fakeAccountSDKClient) CheckAccount(ctx context.Context, userID int64) (*sdk.Account, error) {
+	if f.checkAccount != nil {
+		return f.checkAccount(ctx, userID)
+	}
+	return nil, errors.New("unexpected check")
+}
+
+func (f *fakeAccountSDKClient) CheckRefreshToken(ctx context.Context, token string) (*sdk.Account, error) {
+	if f.checkRefreshToken != nil {
+		return f.checkRefreshToken(ctx, token)
+	}
+	return nil, errors.New("unexpected refresh token check")
+}
+
+func newAccountServiceForTest(client SDKClient) AccountService {
+	return AccountService{SDK: SDKService{NewClient: func(SDKClientRequest) (SDKClient, error) { return client, nil }}}
 }
 
 type memoryAuthRepository struct {

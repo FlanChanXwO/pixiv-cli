@@ -184,6 +184,8 @@ func TestRunDevelopmentBuildSkipsAutomaticUpdate(t *testing.T) {
 
 func TestRunAutomaticUpdateUsesCurrentCommandProxyOverride(t *testing.T) {
 	useTempPaths(t)
+	// 命令完成日志是 info 级诊断；测试应显式声明其可见性，不能依赖默认日志级别。
+	t.Setenv("PIXIV_LOG_LEVEL", "info")
 	useReleaseBuildInfo(t, "v0.1.0")
 	setTestSDKCommandClient(t, proxySDKClient())
 	checker := &cliAutomaticReleaseChecker{}
@@ -205,6 +207,8 @@ func TestRunAutomaticUpdateUsesCurrentCommandProxyOverride(t *testing.T) {
 
 func TestRunAutomaticUpdateUsesCurrentCommandNoProxyOverride(t *testing.T) {
 	useTempPaths(t)
+	// 命令完成日志是 info 级诊断；测试应显式声明其可见性，不能依赖默认日志级别。
+	t.Setenv("PIXIV_LOG_LEVEL", "info")
 	useReleaseBuildInfo(t, "v0.1.0")
 	setTestSDKCommandClient(t, proxySDKClient())
 	checker := &cliAutomaticReleaseChecker{}

@@ -79,7 +79,7 @@ var settingSpecs = []SettingSpec{
 	{Alias: "login_open_browser", KoanfKey: "login.open_browser", Table: []string{"login"}, Key: "open_browser", Kind: settingBool, HasDefault: true, Default: true},
 	{Alias: "login_timeout", KoanfKey: "login.timeout", Table: []string{"login"}, Key: "timeout", Kind: settingDuration, HasDefault: true, Default: time.Duration(0)},
 	{Alias: "login_use_after_login", KoanfKey: "login.use_after_login", Table: []string{"login"}, Key: "use_after_login", Kind: settingBool, HasDefault: true, Default: false},
-	{Alias: "log_level", KoanfKey: "logging.level", Table: []string{"logging"}, Key: "level", Kind: settingString, HasDefault: true, Default: "info"},
+	{Alias: "log_level", KoanfKey: "logging.level", Table: []string{"logging"}, Key: "level", Kind: settingString, HasDefault: true, Default: "warn"},
 	{Alias: "log_format", KoanfKey: "logging.format", Table: []string{"logging"}, Key: "format", Kind: settingString, HasDefault: true, Default: "text"},
 }
 
@@ -101,9 +101,10 @@ func ValidSettingAliases() []string {
 	return keys
 }
 
-func RefreshTokenFromEnv() string {
-	token, _ := utils.ParsePixivWebRefreshTokenInput(os.Getenv("PIXIV_REFRESH_TOKEN"))
-	return token
+// RefreshTokenFromEnv 读取 App API refresh token。Cookie 形态在此处即被拒绝，
+// 不能继续流入默认 SDK 的 OAuth 请求。
+func RefreshTokenFromEnv() (string, error) {
+	return utils.ValidateRefreshTokenInput(os.Getenv("PIXIV_REFRESH_TOKEN"))
 }
 
 func EnvValue(spec SettingSpec) (string, bool) {

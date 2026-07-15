@@ -13,6 +13,21 @@ type illustListDTO struct {
 type illustDetailDTO struct {
 	Illust *illustDTO `json:"illust"`
 }
+type novelListDTO struct {
+	Novels  requiredList[novelDTO] `json:"novels"`
+	NextURL *string                `json:"next_url"`
+}
+type novelDTO struct {
+	ID             int64        `json:"id"`
+	Title          string       `json:"title"`
+	Caption        string       `json:"caption"`
+	User           userDTO      `json:"user"`
+	Tags           []tagDTO     `json:"tags"`
+	ImageURLs      imageURLsDTO `json:"image_urls"`
+	CreateDate     string       `json:"create_date"`
+	TotalBookmarks int          `json:"total_bookmarks"`
+	TotalView      int          `json:"total_view"`
+}
 type illustDTO struct {
 	ID             int64         `json:"id"`
 	Title          string        `json:"title"`
@@ -32,11 +47,15 @@ type illustDTO struct {
 	Height         int           `json:"height"`
 }
 type userDTO struct {
-	ID         int64  `json:"id"`
-	Name       string `json:"name"`
-	Account    string `json:"account"`
-	Comment    string `json:"comment"`
-	IsFollowed bool   `json:"is_followed"`
+	ID               int64               `json:"id"`
+	Name             string              `json:"name"`
+	Account          string              `json:"account"`
+	Comment          string              `json:"comment"`
+	IsFollowed       bool                `json:"is_followed"`
+	ProfileImageURLs profileImageURLsDTO `json:"profile_image_urls"`
+}
+type profileImageURLsDTO struct {
+	Medium *string `json:"medium"`
 }
 type tagDTO struct {
 	Name           string `json:"name"`
@@ -65,6 +84,15 @@ type userPreviewListDTO struct {
 type userPreviewDTO struct {
 	User userDTO `json:"user"`
 }
+type recommendedUserListDTO struct {
+	UserPreviews requiredList[recommendedUserPreviewDTO] `json:"user_previews"`
+	NextURL      *string                                 `json:"next_url"`
+}
+type recommendedUserPreviewDTO struct {
+	User    userDTO     `json:"user"`
+	Illusts []illustDTO `json:"illusts"`
+	Novels  []novelDTO  `json:"novels"`
+}
 type trendTagsDTO struct {
 	TrendTags requiredList[trendTagDTO] `json:"trend_tags"`
 }
@@ -88,7 +116,105 @@ type ugoiraFrameDTO struct {
 	Delay int    `json:"delay"`
 }
 type userDetailDTO struct {
-	User *userDTO `json:"user"`
+	User             requiredObject[userDTO]             `json:"user"`
+	Profile          requiredObject[profileDTO]          `json:"profile"`
+	ProfilePublicity requiredObject[profilePublicityDTO] `json:"profile_publicity"`
+	Workspace        requiredObject[workspaceDTO]        `json:"workspace"`
+}
+type profileDTO struct {
+	Webpage                    *string `json:"webpage"`
+	Gender                     string  `json:"gender"`
+	Birth                      string  `json:"birth"`
+	BirthDay                   string  `json:"birth_day"`
+	BirthYear                  int     `json:"birth_year"`
+	Region                     string  `json:"region"`
+	AddressID                  int64   `json:"address_id"`
+	CountryCode                string  `json:"country_code"`
+	Job                        string  `json:"job"`
+	JobID                      int64   `json:"job_id"`
+	TotalFollowUsers           int     `json:"total_follow_users"`
+	TotalMyPixivUsers          int     `json:"total_mypixiv_users"`
+	TotalIllusts               int     `json:"total_illusts"`
+	TotalManga                 int     `json:"total_manga"`
+	TotalNovels                int     `json:"total_novels"`
+	TotalIllustBookmarksPublic int     `json:"total_illust_bookmarks_public"`
+	TotalIllustSeries          int     `json:"total_illust_series"`
+	TotalNovelSeries           int     `json:"total_novel_series"`
+	BackgroundImageURL         *string `json:"background_image_url"`
+	TwitterAccount             string  `json:"twitter_account"`
+	TwitterURL                 *string `json:"twitter_url"`
+	PawooURL                   *string `json:"pawoo_url"`
+	IsPremium                  bool    `json:"is_premium"`
+	IsUsingCustomProfileImage  bool    `json:"is_using_custom_profile_image"`
+}
+type profilePublicityDTO struct {
+	Gender    profilePublicityValue `json:"gender"`
+	Region    profilePublicityValue `json:"region"`
+	BirthDay  profilePublicityValue `json:"birth_day"`
+	BirthYear profilePublicityValue `json:"birth_year"`
+	Job       profilePublicityValue `json:"job"`
+	Pawoo     profilePublicityValue `json:"pawoo"`
+}
+
+// profilePublicityValue 隔离 App API 的 wire 差异：该接口既会返回 bool，
+// 也会以 public/private 字符串表示档案可见性。公开 SDK 始终只暴露 bool。
+type profilePublicityValue struct {
+	Value   bool
+	Present bool
+	Valid   bool
+}
+
+func (v *profilePublicityValue) UnmarshalJSON(data []byte) error {
+	*v = profilePublicityValue{Present: true}
+	switch string(bytes.TrimSpace(data)) {
+	case "true":
+		v.Value = true
+		v.Valid = true
+		return nil
+	case "false":
+		v.Valid = true
+		return nil
+	}
+
+	var visibility string
+	if err := json.Unmarshal(data, &visibility); err != nil {
+		return nil
+	}
+	switch visibility {
+	case "public":
+		v.Value = true
+		v.Valid = true
+	case "private":
+		v.Valid = true
+	}
+	return nil
+}
+
+func (d profilePublicityDTO) valid() bool {
+	// 公开模型以零值表示上游没有给出的可见性字段；只有实际出现的字段
+	// 才需要通过 wire 值校验。外层 profile_publicity object 仍由调用方强制要求。
+	return (!d.Gender.Present || d.Gender.Valid) &&
+		(!d.Region.Present || d.Region.Valid) &&
+		(!d.BirthDay.Present || d.BirthDay.Valid) &&
+		(!d.BirthYear.Present || d.BirthYear.Valid) &&
+		(!d.Job.Present || d.Job.Valid) &&
+		(!d.Pawoo.Present || d.Pawoo.Valid)
+}
+
+type workspaceDTO struct {
+	PC                string  `json:"pc"`
+	Monitor           string  `json:"monitor"`
+	Tool              string  `json:"tool"`
+	Scanner           string  `json:"scanner"`
+	Tablet            string  `json:"tablet"`
+	Mouse             string  `json:"mouse"`
+	Printer           string  `json:"printer"`
+	Desktop           string  `json:"desktop"`
+	Music             string  `json:"music"`
+	Desk              string  `json:"desk"`
+	Chair             string  `json:"chair"`
+	Comment           string  `json:"comment"`
+	WorkspaceImageURL *string `json:"workspace_image_url"`
 }
 
 // requiredList 区分 wire 的显式空数组与缺失/null；只有前者是合法空批次。

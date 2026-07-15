@@ -2,14 +2,16 @@
   "version": "1.0.0",
   "kind": "knowledge",
   "project": {
-    "name": "pixiv-cli 文档",
+    "name": "Pixiv CLI 文档",
     "languages": [
       "markdown"
     ],
-    "frameworks": [],
-    "description": "Pixiv CLI、MCP 与公开 SDK 的架构、开发与接口知识库。",
-    "analyzedAt": "2026-07-13T08:44:07.480Z",
-    "gitCommitHash": "f193a160012c0439464370cb6b01d650355ad4c8"
+    "frameworks": [
+      "karpathy-wiki"
+    ],
+    "description": "Knowledge graph for Pixiv CLI 文档",
+    "analyzedAt": "2026-07-14T17:41:28.216Z",
+    "gitCommitHash": "446f5239747506b059db33a1bd84c66e08b38f89"
   },
   "nodes": [
     {
@@ -24,7 +26,7 @@
       "complexity": "simple",
       "knowledgeMeta": {
         "wikilinks": [],
-        "content": "# ADR 0001: CLI Thin Controller And Bootstrap\n\n## Status\n\nAccepted.\n\n## Context\n\n`internal/cli` originally owned Cobra command wiring, prompts, output formatting, account storage mutation, config reads/writes, Pixiv client construction, download manager construction, OAuth token exchange, and MCP runtime wiring. That made the directory feel like both frontend controller and application runtime.\n\nThe project needs a clearer internal structure without changing CLI/MCP behavior.\n\n## Decision\n\n- Keep `internal/cli` as the CLI controller layer:\n  - Cobra command tree, flags and positional arguments.\n  - TTY prompts and loopback browser OAuth receiver.\n  - Text/JSON presenters and process exit handling.\n- Add `internal/application` for use cases:\n  - `AccountService`\n  - `ConfigService`\n  - `ArtworkService`\n  - `DownloadService`\n  - `LoginService`\n- Add `internal/bootstrap` as the production composition root.\n- Publish Pixiv access through concrete `pkg/pixiv.Client`; CLI/MCP reach it through application-owned narrow seams rather than importing internal App/Web transports.\n- Move `internal/cli/state` to `internal/storage/auth`.\n- Merge `internal/cli/mcpapp` into `internal/bootstrap` as MCP runtime wiring.\n\n## Consequences\n\n- CLI tests continue to validate user-visible behavior, while `internal/application` and `internal/storage/auth` gain focused package tests.\n- Production wiring is centralized in `internal/bootstrap`, making future client/storage replacement less invasive.\n- `auth login` intentionally keeps loopback HTTP and browser/prompt adapters in CLI; the application layer handles PKCE/state generation, authorization-code exchange, and account persistence.\n- `internal/mcpserver` owns MCP tool registration; `internal/bootstrap` owns stdio runtime startup.\n- Public SDK construction and logger injection remain in bootstrap/application. CLI and MCP remain presentation/protocol adapters, not Pixiv protocol owners.\n\n## Guardrails\n\n- Preserve token priority:\n  - CLI: flag token, UID-selected account, env token, default UID.\n  - MCP: env token, default UID.\n- Preserve output contracts and do not print refresh tokens.\n- Do not move durable config schema into CLI.\n- Do not add generic `ports` packages unless a real duplication or dependency problem appears.\n- Do not create an HTTP provider server or repository-owned generic Provider interface; external callers own their narrow adapters.\n- `internal/common/constants` is allowed only as the narrow infrastructure-constant exception defined by ADR 0002.\n",
+        "content": "# ADR 0001: CLI Thin Controller And Bootstrap\n\n## Status\n\nAccepted.\n\n## Context\n\n`internal/cli` originally owned Cobra command wiring, prompts, output formatting, account storage mutation, config reads/writes, Pixiv client construction, download manager construction, OAuth token exchange, and MCP runtime wiring. That made the directory feel like both frontend controller and application runtime.\n\nThe project needs a clearer internal structure without changing CLI/MCP behavior.\n\n## Decision\n\n- Keep `internal/cli` as the CLI controller layer:\n  - Cobra command tree, flags and positional arguments.\n  - TTY prompts and loopback browser OAuth receiver.\n  - Text/JSON presenters and process exit handling.\n- Add `internal/application` for use cases:\n  - `AccountService`\n  - `ConfigService`\n  - `ArtworkService`\n  - `DownloadService`\n  - `LoginService`\n- Add `internal/bootstrap` as the production composition root.\n- Publish Pixiv access through concrete `pixiv.Client`; CLI/MCP reach it through application-owned narrow seams rather than importing internal App/Web transports.\n- Move `internal/cli/state` to `internal/storage/auth`.\n- Merge `internal/cli/mcpapp` into `internal/bootstrap` as MCP runtime wiring.\n\n## Consequences\n\n- CLI tests continue to validate user-visible behavior, while `internal/application` and `internal/storage/auth` gain focused package tests.\n- Production wiring is centralized in `internal/bootstrap`, making future client/storage replacement less invasive.\n- `auth login` intentionally keeps loopback HTTP and browser/prompt adapters in CLI; the application layer handles PKCE/state generation, authorization-code exchange, and account persistence.\n- `internal/mcpserver` owns MCP tool registration; `internal/bootstrap` owns stdio runtime startup.\n- Public SDK construction and logger injection remain in bootstrap/application. CLI and MCP remain presentation/protocol adapters, not Pixiv protocol owners.\n\n## Guardrails\n\n- Preserve token priority:\n  - CLI: flag token, UID-selected account, env token, default UID.\n  - MCP: env token, default UID.\n- Preserve output contracts and do not print refresh tokens.\n- Do not move durable config schema into CLI.\n- Do not add generic `ports` packages unless a real duplication or dependency problem appears.\n- Do not create an HTTP provider server or repository-owned generic Provider interface; external callers own their narrow adapters.\n- `internal/common/constants` is allowed only as the narrow infrastructure-constant exception defined by ADR 0002.\n",
         "backlinks": []
       }
     },
@@ -79,16 +81,16 @@
     {
       "id": "article:adr/0005-auth-login-real-browser-relay-without-ui-automation",
       "type": "article",
-      "name": "ADR 0005: Auth Login Captures Browser Callback Without UI Automation",
+      "name": "ADR 0005: Auth Login Uses Explicit Callback Handoff Only",
       "filePath": "adr/0005-auth-login-real-browser-relay-without-ui-automation.md",
-      "summary": "Accepted.",
+      "summary": "Accepted，2026-07 v0.3 安全边界修订。",
       "tags": [
         "adr"
       ],
       "complexity": "simple",
       "knowledgeMeta": {
         "wikilinks": [],
-        "content": "# ADR 0005: Auth Login Captures Browser Callback Without UI Automation\n\n## Status\n\nAccepted.\n\n## Context\n\nPixiv OAuth login can pass through `accounts.pixiv.net/post-redirect` before reaching the final `pixiv://account/login` or App API callback request. In real browsers this page may appear blank or require Pixiv-side account confirmation. The relay URL contains a `return_to` App API start URL, but opening that `return_to` directly is not equivalent to Pixiv's relay page and can produce Pixiv's \"endpoint does not exist\" page.\n\nFANBOX uses Pixiv account login as a first-party web product, but that does not establish a compatible Pixiv App API authorization code. The CLI needs a refresh token from `oauth.secure.pixiv.net/auth/token` using the App API callback URI, so FANBOX-style web session login is not a substitute.\n\n## Decision\n\n- Keep `pixiv auth login` based on PKCE and the local loopback/manual fallback page.\n- On macOS, default browser opening first registers a repo-owned local `pixiv://` URL handler app and opens the normal system browser. This keeps the user's existing Pixiv browser session available while forwarding only the final callback URL to the current CLI loopback server.\n- If the URL handler path is unavailable, fall back to a managed Chromium/Edge browser profile with a DevTools connection.\n- The DevTools connection only enables network event observation and extracts Pixiv OAuth callback URLs; it must not click pages, fill forms, read cookies, read tokens, or inspect page storage.\n- Keep macOS read-only URL/session/history observation as an additional fallback detector.\n- Treat `accounts.pixiv.net/post-redirect` as a Pixiv authorization relay page, not as a callback.\n- When the relay page belongs to the current `code_challenge`, report that the CLI is waiting for Pixiv's `pixiv://` handoff. The CLI validates `return_to` but does not bypass or automatically reopen the relay page.\n- Let users paste a relay URL into the terminal or local fallback page to explicitly open that relay URL once.\n- Do not implement HTTPS MITM, automatic certificate installation, host rewriting, or FANBOX session import for `auth login`.\n\n## Consequences\n\n- The CLI can reuse the user's existing browser login state on macOS without reading browser cookies or tokens.\n- The CLI can capture the same short-lived callback request that users previously had to copy from DevTools manually.\n- Users still need to confirm their Pixiv account in the browser.\n- The local URL handler is registered as the `pixiv://` handler while a login attempt is active; users may see a browser prompt the first time Edge/Chrome opens it.\n- A browser can remain visually parked on the white Pixiv relay page after the handoff; CLI success/failure is determined by whether the terminal receives and exchanges the callback code.\n- If Pixiv or reCAPTCHA does not generate a callback, the CLI cannot synthesize success and must keep manual fallback available.\n- Browser URL observation remains int",
+        "content": "# ADR 0005: Auth Login Uses Explicit Callback Handoff Only\n\n## Status\n\nAccepted，2026-07 v0.3 安全边界修订。\n\n## Context\n\nPixiv OAuth login can pass through `accounts.pixiv.net/post-redirect` before reaching the final `pixiv://account/login` or App API callback request. In real browsers this page may appear blank or require Pixiv-side account confirmation. The relay URL contains a `return_to` App API start URL, but opening that `return_to` directly is not equivalent to Pixiv's relay page and can produce Pixiv's \"endpoint does not exist\" page.\n\nFANBOX uses Pixiv account login as a first-party web product, but that does not establish a compatible Pixiv App API authorization code. The CLI needs a refresh token from `oauth.secure.pixiv.net/auth/token` using the App API callback URI, so FANBOX-style web session login is not a substitute.\n\n## Decision\n\n- Keep `pixiv auth login` based on PKCE and the local loopback/manual fallback page.\n- On macOS, default browser opening may register a repo-owned local `pixiv://` URL handler app for the current login attempt and opens the normal system browser. It forwards only the final callback URL to the current CLI loopback server.\n- If the URL handler path is unavailable, keep normal browser opening plus loopback/manual fallback; do not start a managed Chromium/Edge profile or DevTools/CDP connection.\n- Do not read browser cookies, tokens, storage, history, session files, active tabs or network events. Do not automate browser UI, install an extension, or retrieve browser credentials by any other means.\n- Treat `accounts.pixiv.net/post-redirect` as a Pixiv authorization relay page, not as a callback.\n- When the relay page belongs to the current `code_challenge`, the user may explicitly submit it. The CLI validates `return_to` before opening that relay URL once; it never scans a browser to discover the URL.\n- Let users paste a relay URL into the terminal or local fallback page to explicitly open that relay URL once.\n- Do not implement HTTPS MITM, automatic certificate installation, host rewriting, or FANBOX session import for `auth login`.\n\n## Consequences\n\n- The CLI can reuse the user's existing browser login state on macOS without reading browser cookies or tokens.\n- Callback receipt has an explicit trust boundary: the current loopback listener, the current helper handoff, or a value the user explicitly pastes.\n- Users still need to confirm their Pixiv account in the browser.\n- The local URL handler is registered as the `pixiv://` handler while a login attempt is active; users may see a browser prompt the first time Edge/Chrome opens it.\n- A browser can remain visually parked on the white Pixiv relay page after the handoff; CLI success/failure is determined by whether the terminal receives and exchanges the callback code.\n- If Pixiv or reCAPTCHA does not generate a callback, the CLI cannot synthesize success and must keep manual fallback available.\n- No browser observation mechanism is retained; adding one requires a new ",
         "backlinks": []
       }
     },
@@ -104,7 +106,7 @@
       "complexity": "simple",
       "knowledgeMeta": {
         "wikilinks": [],
-        "content": "# ADR 0006：通过 Web metadata 解析 original ugoira 资源\n\n## Status\n\n已采纳。\n\n## Decision\n\n请求 `quality=original` 时，认证会话可以查询 Pixiv Web metadata 以解析 original ugoira zip，因为 App API metadata 只提供 medium variant。这是明确的资源版本补全，不是 App API 失败后的自动 fallback。\n\n同一界限适用于 `pkg/pixiv` detail/pages enrichment：App API 仍是主数据路径；App 失败即返回失败。资源 URL 只能作为已验证的 `ResourceRef` 进入代理/下载流程，并经 `OpenResource`/`Download` 流式处理。\n\n## Consequences\n\n- 调用方可请求 original 资源，不需要暗中降级质量。\n- Web 路由保持范围明确、可审计。\n- 资源代理保留 SSRF policy、header filtering 与流所有权边界。\n",
+        "content": "# ADR 0006：通过 Web metadata 解析 original ugoira 资源\n\n## Status\n\n已采纳。\n\n## Decision\n\n请求 `quality=original` 时，认证会话可以查询 Pixiv Web metadata 以解析 original ugoira zip，因为 App API metadata 只提供 medium variant。这是明确的资源版本补全，不是 App API 失败后的自动 fallback。\n\n同一界限适用于顶层 `pixiv` detail/pages enrichment：App API 仍是主数据路径；App 失败即返回失败。资源 URL 只能作为已验证的 `ResourceRef` 进入代理/下载流程，并经 `OpenResource`/`Download` 流式处理。\n\n## Consequences\n\n- 调用方可请求 original 资源，不需要暗中降级质量。\n- Web 路由保持范围明确、可审计。\n- 资源代理保留 SSRF policy、header filtering 与流所有权边界。\n",
         "backlinks": []
       }
     },
@@ -129,14 +131,14 @@
       "type": "article",
       "name": "ADR 0008: Ed25519 签名的多渠道发布信任",
       "filePath": "adr/0008-ed25519-signed-multi-channel-release-trust.md",
-      "summary": "Accepted；production rollout 尚未开始。",
+      "summary": "Accepted；v0.2.0 production rollout 已完成；后续正式发布继续遵循本决策。",
       "tags": [
         "adr"
       ],
       "complexity": "simple",
       "knowledgeMeta": {
         "wikilinks": [],
-        "content": "# ADR 0008: Ed25519 签名的多渠道发布信任\n\n## Status\n\nAccepted；production rollout 尚未开始。\n\n## Context\n\n`pixiv update` 需要根据本机安装来源选择 Homebrew、`go install` 或 Release binary 更新。不同渠道的\n更新器不能把“GitHub 返回一个 asset URL”视为足够信任：Release binary 需要验证 archive 的内容和\n版本，Homebrew stable/beta 需要避免两个都提供 `pixiv`，而 Go 安装需要精确绑定已选 tag。用户也必须\n了解 v0.1.0 没有 Apple notarization/Windows Authenticode，直接下载可能触发系统信誉提示。\n\n发布签名私钥、tap 写权限和 GitHub Actions token 具有不同权限范围。把它们提交到源码、放进普通\nrepository secret，或复用同一 SSH key，会让任意 tag/workflow 或公开历史取得不必要的发布能力。\n\n## Decision\n\n- GitHub Releases API 是更新查询的唯一后端。draft 不可选；自动检查只选 stable，显式\n  `--prerelease` 才可选择预发布版本。\n- 每个正式 Release 使用固定六目标 asset 名，发布 `checksums.txt` 以及对其原始 bytes 签名、含 key\n  ID 的 Ed25519 `checksums.json`。Release installer 先验证签名和 SHA-256，再解包、版本预检并原子\n  替换。\n- Release binary 只信任随受支持 binary 提交的 Ed25519 public key/key ID。私钥只允许存在于受保护\n  `release` Environment secret；恢复副本只可存在于受控 macOS Keychain。私钥不能进入 CLI、源码、\n  GitHub Release、formula、日志或测试 fixture。\n- 当前随源码提交的 key ID 是 `ed25519-2c27e77742d3c33a`，其 public key 的 SPKI DER SHA-256\n  fingerprint 是 `2c27e77742d3c33ad14be867d4e0519229a220898c9a7c868447eaef0951b4cf`。它只能作为受支持\n  binary 的 trust root，不能代替私钥部署、Environment protection 或真实 Release 验收。\n- key rotation 先发布同时信任新 key ID 的 binary，保留旧 key 直到旧 binary 退出支持，再以新的\n  受签名 Release 停用旧 key。不得要求已发布 binary 突然信任一个未随其发布的 key。\n- Homebrew 使用独立 tap deploy key：tap repository 只登记公钥，source repository 的受保护\n  `release` Environment 才保存私钥。stable `pixiv-cli` 与 beta `pixiv-cli-beta` 相互冲突，并由\n  已验证 Release checksum 渲染；Go 通过精确 tag 更新。\n- 发布 workflow 必须先完成六 target build/test/license/archive 门禁，且在受保护 Environment 中签名；\n  草稿 Release 的 asset 集合经核验后才可公开。Homebrew audit/安装通过后才可 push tap。\n\n## Consequences\n\n- 自动检查是只读、限时且 stderr-only 的提示；它不能修改业务退出码或 JSON/MCP stdout。显式更新必须\n  将渠道切换、权限、HTTP、签名、checksum、archive 和替换失败如实暴露。\n- production public key/key ID/fingerprint 已进入 bootstrap wiring；私钥只存在于受保护 Environment\n  与 Keychain recovery copy，公开 source/tap remote 已创建且 tap 只登记 deploy key 公钥。GitHub\n  Release、tag 和 tap formula 仍未部署。不能将 `--check` 成功、本地 fixture 或 workflow 文件视为\n  已完成的安全发布。\n- staticlib/manifest、workflow policy 与六平台 native artifact evidence 已齐备；受保护 Environment\n  secrets 也已配置。正式 tag、签名 Release、tap formula 与安装验收仍须按发布流程依次完成。\n- v0.1.0 用户仍可能看到 Gatekeeper/SmartScreen 警告；支持文档应指导用户回到已验证 Release、\n  checksum 和签名记录，而不是绕过系统信誉机制。\n",
+        "content": "# ADR 0008: Ed25519 签名的多渠道发布信任\n\n## Status\n\nAccepted；v0.2.0 production rollout 已完成；后续正式发布继续遵循本决策。\n\n## Context\n\n`pixiv update` 需要根据本机安装来源选择 Homebrew、`go install` 或 Release binary 更新。不同渠道的\n更新器不能把“GitHub 返回一个 asset URL”视为足够信任：Release binary 需要验证 archive 的内容和\n版本，Homebrew stable/beta 需要避免两个都提供 `pixiv`，而 Go 安装需要精确绑定已选 tag。用户也必须\n了解 v0.1.0 没有 Apple notarization/Windows Authenticode，直接下载可能触发系统信誉提示。\n\n发布签名私钥、tap 写权限和 GitHub Actions token 具有不同权限范围。把它们提交到源码、放进普通\nrepository secret，或复用同一 SSH key，会让任意 tag/workflow 或公开历史取得不必要的发布能力。\n\n## Decision\n\n- GitHub Releases API 是更新查询的唯一后端。draft 不可选；自动检查只选 stable，显式\n  `--prerelease` 才可选择预发布版本。\n- 每个正式 Release 使用固定六目标 asset 名，发布 `checksums.txt` 以及对其原始 bytes 签名、含 key\n  ID 的 Ed25519 `checksums.json`。Release installer 先验证签名和 SHA-256，再解包、版本预检并原子\n  替换。\n- Release binary 只信任随受支持 binary 提交的 Ed25519 public key/key ID。私钥只允许存在于受保护\n  `release` Environment secret；恢复副本只可存在于受控 macOS Keychain。私钥不能进入 CLI、源码、\n  GitHub Release、formula、日志或测试 fixture。\n- 当前随源码提交的 key ID 是 `ed25519-2c27e77742d3c33a`，其 public key 的 SPKI DER SHA-256\n  fingerprint 是 `2c27e77742d3c33ad14be867d4e0519229a220898c9a7c868447eaef0951b4cf`。它只能作为受支持\n  binary 的 trust root，不能代替私钥部署、Environment protection 或真实 Release 验收。\n- key rotation 先发布同时信任新 key ID 的 binary，保留旧 key 直到旧 binary 退出支持，再以新的\n  受签名 Release 停用旧 key。不得要求已发布 binary 突然信任一个未随其发布的 key。\n- Homebrew 使用独立 tap deploy key：tap repository 只登记公钥，source repository 的受保护\n  `release` Environment 才保存私钥。stable `pixiv-cli` 与 beta `pixiv-cli-beta` 相互冲突，并由\n  已验证 Release checksum 渲染；Go 通过精确 tag 更新。\n- 发布 workflow 必须先完成六 target build/test/license/archive 门禁，且在受保护 Environment 中签名；\n  草稿 Release 的 asset 集合经核验后才可公开。Homebrew audit/安装通过后才可 push tap。\n\n## Consequences\n\n- 自动检查是只读、限时且 stderr-only 的提示；它不能修改业务退出码或 JSON/MCP stdout。显式更新必须\n  将渠道切换、权限、HTTP、签名、checksum、archive 和替换失败如实暴露。\n- production public key/key ID/fingerprint 已进入 bootstrap wiring；私钥只存在于受保护 Environment\n  与 Keychain recovery copy，公开 source/tap remote 已创建且 tap 只登记 deploy key 公钥。v0.2.0 的\n  GitHub Release、immutable tag 和 `pixiv-cli` tap formula 已按受保护发布流程部署；六平台 archive、\n  checksum、签名以及四平台 formula 安装均由该 release workflow 验收。不能将单独的 `--check` 成功、\n  本地 fixture 或 workflow 文件视为已完成的安全发布。\n- staticlib/manifest、workflow policy 与六平台 native artifact evidence 已齐备；受保护 Environment\n  secrets 也已配置。v0.2.0 的正式 tag、签名 Release、tap formula 与安装验收已完成；后续版本仍须按\n  同一发布流程依次完成。\n- v0.1.0 用户仍可能看到 Gatekeeper/SmartScreen 警告；支持文档应指导用户回到已验证 Release、\n  checksum 和签名记录，而不是绕过系统信誉机制。\n",
         "backlinks": []
       }
     },
@@ -152,7 +154,7 @@
       "complexity": "simple",
       "knowledgeMeta": {
         "wikilinks": [],
-        "content": "# ADR 0009：公开 Pixiv SDK 与调用方 adapter\n\n## 状态\n\n已采纳。\n\n## 背景\n\n外部消费者需要 Pixiv 读取、写入、账号处理和安全媒体访问。早期替换讨论把它建模为 HTTP Provider，包含 discovery、source probe、RSS/crawler ingestion 与 capability negotiation。这些概念属于图库/采集调用方领域，不属于 CLI 仓库；加入它们会强制引入 service lifecycle、重复的持久化语义和宽而不稳定的接口。\n\n## 决策\n\n- 发布 `pkg/pixiv`，提供具体 `*pixiv.Client`、稳定模型、request/result、opaque cursor、typed error 和资源 API。\n- 公开契约只通过 package 提供；不提供 HTTP server、`Discover`、Probe、Capabilities、RSS 或 crawler。\n- `atri-setu-api` 等调用方拥有窄 adapter interface，以及自己的 source mode、budget、filter、cursor storage、persistence、scheduling 和 HTTP presentation。\n- 内部使用物理包 `internal/pixiv/appapi`、`webapi`、`oauth`、`resource`；公开 SDK 负责路由和规范化，但不泄漏这些包。\n- 有凭据时 App API 为主路径。匿名 Web read 仅在无 refresh token 时按配置 fallback；Web enrichment 必须显式，绝不隐藏 fallback。\n- 媒体通过 policy 验证过的 `ResourceRef`、`OpenResource`、`Download` 提供，保持 stream ownership 与 SSRF controls。\n\n## 后果\n\n- CLI/MCP 和外部 Go 程序消费同一个公开契约，无需额外进程或 transport translation。\n- 集成方可用小 mock 测试其 adapter，自选运行策略。\n- 本仓库不承诺 collector-specific discovery 兼容性；调用方须将这类行为迁移到自己的领域层。\n- 物理协议变更封装在 `pkg/pixiv` 后，降低公开 API churn。\n",
+        "content": "# ADR 0009：公开 Pixiv SDK 与调用方 adapter\n\n## 状态\n\n已采纳。\n\n## 背景\n\n外部消费者需要 Pixiv 读取、写入、账号处理和安全媒体访问。早期替换讨论把它建模为 HTTP Provider，包含 discovery、source probe、RSS/crawler ingestion 与 capability negotiation。这些概念属于图库/采集调用方领域，不属于 CLI 仓库；加入它们会强制引入 service lifecycle、重复的持久化语义和宽而不稳定的接口。\n\n## 决策\n\n- 发布顶层 `pixiv` package（`github.com/FlanChanXwO/pixiv-cli/pixiv`），提供具体 `*pixiv.Client`、稳定模型、request/result、opaque cursor、typed error 和资源 API。\n- 公开契约只通过 package 提供；不提供 HTTP server、`Discover`、Probe、Capabilities、RSS 或 crawler。\n- `atri-setu-api` 等调用方拥有窄 adapter interface，以及自己的 source mode、budget、filter、cursor storage、persistence、scheduling 和 HTTP presentation。\n- 内部使用物理包 `internal/pixiv/appapi`、`webapi`、`oauth`、`resource`；公开 SDK 负责路由和规范化，但不泄漏这些包。\n- 有凭据时 App API 为主路径。匿名 Web read 仅在无 refresh token 时按配置 fallback；Web enrichment 必须显式，绝不隐藏 fallback。\n- 媒体通过 policy 验证过的 `ResourceRef`、`OpenResource`、`Download` 提供，保持 stream ownership 与 SSRF controls。\n\n## 后果\n\n- CLI/MCP 和外部 Go 程序消费同一个公开契约，无需额外进程或 transport translation。\n- 集成方可用小 mock 测试其 adapter，自选运行策略。\n- 本仓库不承诺 collector-specific discovery 兼容性；调用方须将这类行为迁移到自己的领域层。\n- 物理协议变更封装在顶层 `pixiv` 后，降低公开 API churn。\n",
         "backlinks": []
       }
     },
@@ -216,7 +218,7 @@
       "complexity": "simple",
       "knowledgeMeta": {
         "wikilinks": [],
-        "content": "# 架构说明\n\n## 总体流程\n\n`cmd/pixiv/main.go` 是唯一官方二进制入口，它只负责调用 `internal/cli`：\n\n1. `pixiv` 无参数显示 CLI 帮助。\n2. `pixiv auth/config/version/update/search/detail/ranking/recommended/user/bookmark/follow/download` 进入 CLI 模式。\n3. `pixiv mcp` 委托 `internal/bootstrap` 组装并运行 MCP stdio server。\n4. CLI 与 MCP 通过 `internal/bootstrap` 共享生产 wiring：\n   - 账号认证来自 `os.UserConfigDir()/pixiv/auth.json`\n   - 全局配置来自 `os.UserConfigDir()/pixiv/config.toml`\n   - 公开环境变量作为覆盖层参与合并\n5. MCP 模式若没有 `PIXIV_REFRESH_TOKEN`，会回退到 `auth.json.default_user_id`；若仍无 refresh token 且 `web_fallback_enabled=true`，支持匿名能力的路径会走 Pixiv web/ajax API。\n\n## 包职责\n\n### `cmd/pixiv`\n\n负责生成 `pixiv` binary 的 `main` package。它不承载业务逻辑，只委托 `internal/cli.Run` 并返回进程退出码。\n\n### `internal/cli`\n\n负责 CLI 用户态的命令分发与输出：\n\n- Cobra 命令树、help 和 flag 解析。\n- 文本/JSON 输出。\n- `auth login` 的 loopback OAuth、浏览器打开和 TTY 交互。\n- `pixiv mcp` 分发。\n- `pixiv version`、根 `--version` 与 `pixiv update` 的输入/输出适配。\n- 普通 CLI 成功命令后的只读自动更新提示；提示和失败 warning 仅写 stderr。\n\n它不直接拥有账号存储变更、Pixiv client 构造或下载管理器构造；这些职责由 `internal/application` 与 `internal/bootstrap` 承接。\n\n`version` 的 JSON stdout 精确为 `version`、`commit`、`build_date`。自动更新只在普通业务命令\n成功后运行，跳过 MCP、help、`version`、`update` 和开发构建；它选择 stable Release、使用用户\ncache 的 24 小时节流，并最多等待 3 秒。配置、网络、来源识别失败只作为 stderr warning，不能\n改变已成功业务命令的退出码，也不能混入 JSON stdout 或 MCP JSON-RPC。\n\n### `internal/buildinfo`\n\n保存由 Go linker 注入的 `Version`、`Commit`、`BuildDate`。本地默认是 `dev`/`unknown`/`unknown`；\n只有 version 为 `dev` 的构建被视为开发构建，并必须拒绝自更新。\n\n### `internal/application`\n\n负责 CLI/MCP 之外的应用用例编排：\n\n- `AccountService`：账号 add/list/remove/use/check。\n- `ConfigService`：`config.toml` path/get/set/unset。\n- `ArtworkService`：search/detail/ranking/recommended。\n- `DownloadService`：按 ID 下载作品。\n- `LoginService`：生成 PKCE/state、authorization-code exchange，并保存账号；Pixiv 登录 URL 构造仍留在 CLI adapter。\n- `SDKService`：为 CLI/MCP 打开 `pkg/pixiv` client，并把调用方选择的账号/代理/JSON 设置映射到 SDK operation snapshot。\n\n### `internal/bootstrap`\n\n生产 composition root，负责把 `internal/config`、`internal/storage/auth`、`pkg/pixiv`、`internal/download`、`internal/mcpserver`、更新 release client/installer 和 application services 组装起来。测试可以替换 service 里的小接口或 factory，不需要复制生产 wiring。\n\n`NewUpdateCoordinator` 通过 `productionReleaseInstallerOptions` 为 Release installer 注入随受支持\nbinary 提交的 Ed25519 key ID→public key 映射，并在每次组装时复制 map 与 key bytes，避免调用方污染\nproduction trust root。该公开 key 的 SPKI fingerprint 与已知签名 fixture 由同包测试验证；私钥不在\nbootstrap、源码或运行时配置中。只读更新检查不需要该 key，且该 wiring 不代表存在一个可安装的公开\nRelease。\n\n### `internal/storage/auth`\n\n负责本地账号状态：\n\n- `auth.json` 读写与默认 UID 管理。\n- 认证文件路径解析和 `0600` 权限写入。\n\n### `internal/config`\n\n负责 `config.toml` 及运行时配置：\n\n- `config.toml` schema、默认值和配置键定义。\n- 运行时配置合并：`config.toml` 与公开环境变量。\n- `pixiv config path/get/set/unset` 需要的强类型解析与稀疏写回。\n\n配置拆分如下：\n\n- `auth.json`：只保存 `default_user_id` 与 `accounts[].user_id/username/refresh_token`，文件权限固定为 `0600`。\n- `config.toml`：只保存用户显式设置过的全局配置键，文件权限固定为 `0600`。\n\n运行时设置使用 `koanf` 合并 `config.toml` 与公开环境变量；`config set/unset` 使用 `tomledit` 写回，尽量保留注释、顺序和布局。\n\n`update_check_enabled` 对应 `[update] check_enabled`，默认 `",
+        "content": "# 架构说明\n\n## 总体流程\n\n`cmd/pixiv/main.go` 是唯一官方二进制入口，它只负责调用 `internal/cli`：\n\n1. `pixiv` 无参数显示 CLI 帮助。\n2. `pixiv auth/config/version/update/search/detail/ranking/recommended/user/bookmark/follow/download` 进入 CLI 模式。\n3. `pixiv mcp` 委托 `internal/bootstrap` 组装并运行 MCP stdio server。\n4. CLI 与 MCP 通过 `internal/bootstrap` 共享生产 wiring：\n   - 账号认证来自 `os.UserConfigDir()/pixiv/auth.json`\n   - 全局配置来自 `os.UserConfigDir()/pixiv/config.toml`\n   - 公开环境变量作为覆盖层参与合并\n5. MCP 模式若没有 `PIXIV_REFRESH_TOKEN`，会回退到 `auth.json.default_user_id`；若仍无 refresh token 且 `web_fallback_enabled=true`，支持匿名能力的路径会走 Pixiv web/ajax API。\n\n## 包职责\n\n### `cmd/pixiv`\n\n负责生成 `pixiv` binary 的 `main` package。它不承载业务逻辑，只委托 `internal/cli.Run` 并返回进程退出码。\n\n### `internal/cli`\n\n负责 CLI 用户态的命令分发与输出：\n\n- Cobra 命令树、help 和 flag 解析。\n- 文本/JSON 输出。\n- `auth login` 的 loopback OAuth、浏览器打开和 TTY 交互。\n- `pixiv mcp` 分发。\n- `pixiv version`、根 `--version` 与 `pixiv update` 的输入/输出适配。\n- 普通 CLI 成功命令后的只读自动更新提示；提示和失败 warning 仅写 stderr。\n\n它不直接拥有账号存储变更、Pixiv client 构造或下载管理器构造；这些职责由 `internal/application` 与 `internal/bootstrap` 承接。\n\n`version` 的 JSON stdout 精确为 `version`、`commit`、`build_date`。自动更新只在普通业务命令\n成功后运行，跳过 MCP、help、`version`、`update` 和开发构建；它选择 stable Release、使用用户\ncache 的 24 小时节流，并最多等待 3 秒。配置、网络、来源识别失败只作为 stderr warning，不能\n改变已成功业务命令的退出码，也不能混入 JSON stdout 或 MCP JSON-RPC。\n\n### `internal/buildinfo`\n\n保存由 Go linker 注入的 `Version`、`Commit`、`BuildDate`。本地默认是 `dev`/`unknown`/`unknown`；\n只有 version 为 `dev` 的构建被视为开发构建，并必须拒绝自更新。\n\n### `internal/application`\n\n负责 CLI/MCP 之外的应用用例编排：\n\n- `AccountService`：账号 add/list/remove/use/check。\n- `ConfigService`：`config.toml` path/get/set/unset。\n- `ArtworkService`：search/detail/ranking/recommended。\n- `DownloadService`：按 ID 下载作品。\n- `LoginService`：生成 PKCE/state、authorization-code exchange，并保存账号；Pixiv 登录 URL 构造仍留在 CLI adapter。\n- `SDKService`：为 CLI/MCP 打开顶层 `pixiv` client，并把调用方选择的账号/代理/JSON 设置映射到 SDK operation snapshot。\n\n### `internal/bootstrap`\n\n生产 composition root，负责把 `internal/config`、`internal/storage/auth`、顶层 `pixiv`、`internal/download`、`internal/mcpserver`、更新 release client/installer 和 application services 组装起来。测试可以替换 service 里的小接口或 factory，不需要复制生产 wiring。\n\n`NewUpdateCoordinator` 通过 `productionReleaseInstallerOptions` 为 Release installer 注入随受支持\nbinary 提交的 Ed25519 key ID→public key 映射，并在每次组装时复制 map 与 key bytes，避免调用方污染\nproduction trust root。该公开 key 的 SPKI fingerprint 与已知签名 fixture 由同包测试验证；私钥不在\nbootstrap、源码或运行时配置中。只读更新检查不需要该 key；当前 v0.2.0 已是可安装的公开 Release，\n但该 wiring 本身仍不能代替每个版本独立的发布验收。\n\n### `internal/storage/auth`\n\n负责本地账号状态：\n\n- `auth.json` 读写与默认 UID 管理。\n- 认证文件路径解析和 `0600` 权限写入。\n\n### `internal/config`\n\n负责 `config.toml` 及运行时配置：\n\n- `config.toml` schema、默认值和配置键定义。\n- 运行时配置合并：`config.toml` 与公开环境变量。\n- `pixiv config path/get/set/unset` 需要的强类型解析与稀疏写回。\n\n配置拆分如下：\n\n- `auth.json`：只保存 `default_user_id` 与 `accounts[].user_id/username/refresh_token`，文件权限固定为 `0600`。\n- `config.toml`：只保存用户显式设置过的全局配置键，文件权限固定为 `0600`。\n\n运行时设置使用 `koanf` 合并 `config.toml` 与公开环境变量；`config set/unset` 使用 `tomledit` 写回，尽量保留注释、顺序和布局。\n\n`update_check_enabled` 对应 `[updat",
         "backlinks": []
       }
     },
@@ -248,7 +250,7 @@
       "complexity": "simple",
       "knowledgeMeta": {
         "wikilinks": [],
-        "content": "# MCP 工具\n\n以 `pixiv mcp` 启动 stdio server。stdout 仅用于 JSON-RPC，日志写 stderr。MCP 不提供 HTTP endpoint。\n\n有 refresh token 时 App API 为主路径，失败不自动回落 Web；无 refresh token 且 `web_fallback_enabled=true` 时，仅匿名白名单读 tool 可用 Web API。SDK 路径的用户列表和收藏/关注写操作同时返回文本内容与 structured output；其可分类失败会令 result `isError=true`，保留安全错误文本和对应 structured output。遗留 MCP tool 保持既有文本结果兼容，不承诺统一 `isError` 语义。\n\n## 分页\n\n新 SDK 列表 tool 均使用：\n\n- `limit`：最大项目数；`0` 表示跟随上游直到没有下一批；不传时兼容为一个上游批次。\n- `page`：从 1 开始的逻辑页，必须配正数 `limit`。\n- 输出 `pagination.page`、`limit`、`returned`、`has_more`、可选 `next_page`。\n\nSDK cursor 不出现在 MCP 参数或输出。`user_bookmarks.max_bookmark_id` 是旧 continuation，已废弃，不能与 `page` 或 `limit` 同用。`user_following.offset` 是旧逻辑 offset，已废弃，仅与 `page` 互斥，允许和 `limit` 同用。\n\n## 配置、认证与下载\n\n| tool | 参数 | structured output |\n| --- | --- | --- |\n| `set_download_path` | `path` | 文本状态。 |\n| `refresh_token` | 无 | 当前认证账号摘要。 |\n| `set_refresh_token` | `refresh_token` | 当前会话认证结果；不写 `auth.json`。 |\n| `download` | `illust_id` 或 `illust_ids`，可选 `delivery` | 下载文件、URI、MIME、大小；`image_content` 另附 ImageContent。 |\n| `download_random_from_recommendation` | `count`，可选 `delivery` | 同 `download`。 |\n\n## 作品与用户读取\n\n| tool | 参数 | structured output |\n| --- | --- | --- |\n| `search_illust` | `word`、`search_target`、`sort`、`duration`、`offset`、`search_r18`、`include_thumbnail` | 作品列表。 |\n| `illust_detail` | `illust_id` | 作品详情。 |\n| `illust_related` | `illust_id`、`offset`、`include_thumbnail` | 相关作品。 |\n| `illust_ranking` | `mode`、`date`、`offset`、`include_thumbnail` | 排行榜作品。 |\n| `illust_recommended` | `offset`、`include_thumbnail` | 推荐作品；需要认证。 |\n| `trending_tags_illust` | 无 | 热门标签。 |\n| `illust_follow` | `restrict`、`offset`、`include_thumbnail` | 关注新作；需要认证。 |\n| `search_user` | `word`、`offset` | 用户列表；匿名 fallback 是相关作者去重，不是官方用户名搜索。 |\n| `get_thumbnail_base64` | `illust_id` | `data:image/jpeg;base64,...`。 |\n| `user_artworks` | 可选 `user_id`、`type`、`page`、`limit` | `{user_id, items, pagination}`；缺省 UID 为当前认证用户。 |\n| `user_bookmarks` | 可选 `user_id`、旧 alias `user_id_to_check`、`restrict`、`tag`、`page`、`limit`、废弃 `max_bookmark_id` | `{user_id, items, pagination}`；缺省 UID 为当前认证用户。 |\n| `user_following` | 可选 `user_id`、旧 alias `user_id_to_check`、`restrict`、`page`、`limit`、废弃 `offset` | `{user_id, items, pagination}`；缺省 UID 为当前认证用户。 |\n\n## 写操作\n\n| tool | 参数 | structured output |\n| --- | --- | --- |\n| `add_bookmark` | `illust_id`、可选 `restrict`、`tags` | `{success, action, illust_id}`。 |\n| `remove_bookmark` | `illust_id` | `{success, action, illust_id}`。 |\n| `follow_user` | `user_id`、可选 `restrict` | `{success, action, user_id}`。 |\n| `unfollow_user` | `user_id` | `{success, action, user_id}`。 |\n\n表中写操作均走 SDK 路径、需要认证；失败 `success=false` 且 MCP result 为 `isError=true`。\n",
+        "content": "# MCP 工具\n\n以 `pixiv mcp` 启动 stdio server。stdout 仅用于 JSON-RPC，日志写 stderr。MCP 不提供 HTTP endpoint。\n\n有 refresh token 时 App API 为主路径，失败不自动回落 Web；无 refresh token 且 `web_fallback_enabled=true` 时，仅匿名白名单读 tool 可用 Web API。SDK 路径的用户详情、用户列表和收藏/关注写操作同时返回文本内容与 structured output；其可分类失败会令 result `isError=true`，保留安全错误文本和对应 structured output。遗留 MCP tool 保持既有文本结果兼容，不承诺统一 `isError` 语义。\n\n## 分页\n\n新 SDK 列表 tool 均使用：\n\n- `limit`：最大项目数；`0` 表示跟随上游直到没有下一批；不传时兼容为一个上游批次。\n- `page`：从 1 开始的逻辑页，必须配正数 `limit`。\n- 输出 `pagination.page`、`limit`、`returned`、`has_more`、可选 `next_page`。\n\nSDK cursor 不出现在 MCP 参数或输出。`user_bookmarks.max_bookmark_id` 是旧 continuation，已废弃，不能与 `page` 或 `limit` 同用。`user_following.offset` 是旧逻辑 offset，已废弃，仅与 `page` 互斥，允许和 `limit` 同用。\n\n## 配置、认证与下载\n\n| tool | 参数 | structured output |\n| --- | --- | --- |\n| `set_download_path` | `path` | 文本状态。 |\n| `refresh_token` | 无 | 当前认证账号摘要。 |\n| `set_refresh_token` | 原始 App API `refresh_token` | 当前会话认证结果；不写 `auth.json`；Cookie 输入会被拒绝。 |\n| `download` | `illust_id` 或 `illust_ids`，可选 `delivery` | 下载文件、URI、MIME、大小；`image_content` 另附 ImageContent。 |\n| `download_random_from_recommendation` | `count`，可选 `delivery` | 同 `download`。 |\n\n## 作品与用户读取\n\n| tool | 参数 | structured output |\n| --- | --- | --- |\n| `search_illust` | `word`、`search_target`、`sort`、`duration`、`offset`、`search_r18`、`include_thumbnail` | 作品列表。 |\n| `illust_detail` | `illust_id` | 作品详情。 |\n| `illust_related` | `illust_id`、`offset`、`include_thumbnail` | 相关作品。 |\n| `illust_ranking` | `mode`、`date`、`offset`、`include_thumbnail` | 排行榜作品。 |\n| `illust_recommended` | `offset`、`include_thumbnail` | 兼容旧推荐作品 tool；保留既有文本输出，但经公开 SDK 调用链执行。 |\n| `recommended` | 必填 `kind`（`all`、`illust`、`manga`、`novel`、`user`），可选 `page`、`limit` | 通过认证 App SDK 返回 `{kind, illusts, manga, novels, user_previews, pagination}`；单类只填对应流，`all` 顺序读取四流。每条流独立应用分页，`pagination` 按流给出逻辑页信息；不暴露 SDK cursor，不支持 Web fallback。 |\n| `trending_tags_illust` | 无 | 热门标签。 |\n| `illust_follow` | `restrict`、`offset`、`include_thumbnail` | 关注新作；需要认证。 |\n| `search_user` | `word`、`offset` | 用户列表；匿名 fallback 是相关作者去重，不是官方用户名搜索。 |\n| `get_thumbnail_base64` | `illust_id` | `data:image/jpeg;base64,...`。 |\n| `user_detail` | 必填 `user_id` | 完整稳定的 `{user, profile, profile_publicity, workspace}`；需要认证，不支持 Web fallback。 |\n| `user_artworks` | 可选 `user_id`、`type`、`page`、`limit` | `{user_id, items, pagination}`；缺省 UID 为当前认证用户。 |\n| `user_bookmarks` | 可选 `user_id`、旧 alias `user_id_to_check`、`restrict`、`tag`、`page`、`limit`、废弃 `max_bookmark_id` | `{user_id, items, pagination}`；缺省 UID 为当前认证用户。 |\n| `user_following` | 可选 `user_id`、旧 alias `user_id_to_check`、`restrict`、`page`、`limit`、废弃 `offset` | `{user_id, items, pagination}`；缺省 UID 为当前认证用户。 |\n\n## 写操作\n\n| tool | 参数 | structured output |\n| --- | --- | --- |\n| `add_bookmark` | `illust_id`、可选 `restrict`、`tags` | `{success, action, illust_id}`。 |\n| `remove_bookmark` | `illust_id` | `{success, action, illust_id}`。 |\n| `follow_user` | `user_id`、可选 `restrict` | `{success, action, user_id}`。 |\n| `unfollow_user` | `user_id` | `{success",
         "backlinks": []
       }
     },
@@ -283,151 +285,397 @@
       "complexity": "simple"
     },
     {
-      "id": "claim:public-sdk-adapter-boundary",
-      "type": "claim",
-      "name": "公开 SDK 与调用方 adapter 边界",
-      "summary": "pkg/pixiv 提供稳定客户端和资源流；HTTP presentation、采集策略和持久化留给调用方。",
+      "id": "entity:pixiv-app-api",
+      "type": "entity",
+      "name": "Pixiv App API",
+      "summary": "使用 refresh token 的认证内容 API，是 SDK 有凭据操作和四类个性化推荐的主数据路径。",
       "tags": [
-        "sdk",
-        "architecture",
-        "boundary"
+        "entity",
+        "协议",
+        "认证"
       ],
-      "complexity": "moderate"
+      "complexity": "simple"
+    },
+    {
+      "id": "entity:pixiv-web-api",
+      "type": "entity",
+      "name": "Pixiv Web/Ajax API",
+      "summary": "仅承担无 refresh token 且显式启用时的匿名白名单读取，以及被明确请求的资源 metadata 补全。",
+      "tags": [
+        "entity",
+        "协议",
+        "web-fallback"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "entity:pixiv-oauth",
+      "type": "entity",
+      "name": "Pixiv OAuth",
+      "summary": "以 PKCE、state 和授权码交换取得 Pixiv App API refresh token 的官方认证流程。",
+      "tags": [
+        "entity",
+        "认证",
+        "OAuth"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "entity:ed25519",
+      "type": "entity",
+      "name": "Ed25519",
+      "summary": "用于正式 Release checksum 清单签名和受支持二进制信任根验证的公开密钥签名算法。",
+      "tags": [
+        "entity",
+        "发布",
+        "签名"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "claim:adr-0001:adapter-only-cli-mcp-boundary",
+      "type": "claim",
+      "name": "CLI 与 MCP 是公开 SDK 的适配层",
+      "summary": "CLI 负责交互和展示，MCP 负责 tool 注册与协议适配；二者经 application/bootstrap 使用顶层 pixiv.Client，而不是拥有 Pixiv 协议实现。",
+      "tags": [
+        "claim",
+        "架构",
+        "SDK"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "claim:adr-0002:protocol-free-utils-only",
+      "type": "claim",
+      "name": "通用工具不得承载协议策略",
+      "summary": "internal/utils 只容纳无 CLI、MCP、OAuth、Pixiv 协议或配置 schema 语义的复用能力；协议值与适配逻辑保留在所属包。",
+      "tags": [
+        "claim",
+        "架构",
+        "包边界"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "claim:adr-0004:accounts-keyed-by-pixiv-uid",
+      "type": "claim",
+      "name": "本地账号以 Pixiv UID 为主键",
+      "summary": "auth.json 以 user_id 保存账号并以 default_user_id 指向默认账号，username 仅为展示元数据，避免脚本选择器与 Pixiv 身份漂移。",
+      "tags": [
+        "claim",
+        "认证",
+        "账号"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "claim:adr-0005:explicit-callback-handoff-only",
+      "type": "claim",
+      "name": "登录回调必须经显式交接",
+      "summary": "auth login 只接受本轮 loopback、当前尝试的 pixiv:// helper 或用户明确粘贴的值；禁止受管浏览器、CDP、浏览器历史、存储、标签页和网络事件观察。",
+      "tags": [
+        "claim",
+        "认证",
+        "安全"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "claim:adr-0006:ugoira-web-enrichment-is-explicit",
+      "type": "claim",
+      "name": "ugoira Web metadata 补全不是失败回落",
+      "summary": "quality=original 的 Web metadata 查询仅补全 App API 未提供的 original ugoira 资源；App API 失败仍返回失败，资源必须经验证的 ResourceRef 流式处理。",
+      "tags": [
+        "claim",
+        "资源",
+        "web-fallback"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "claim:adr-0007:staticlib-evidence-is-release-input",
+      "type": "claim",
+      "name": "六目标 staticlib 是可审计发布输入",
+      "summary": "受支持的源码构建依赖同源六目标 Rust staticlib、manifest、hash 与 native smoke 证据；缺失任一必需输入时构建应清晰失败而不能降级。",
+      "tags": [
+        "claim",
+        "构建",
+        "发布"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "claim:adr-0008:release-verifies-signed-checksums",
+      "type": "claim",
+      "name": "正式发布以签名 checksum 建立信任",
+      "summary": "Release 安装器必须验证带 key ID 的 Ed25519 签名和 SHA-256 后才解包替换；正式 tag、签名资产与渠道安装验收共同构成发布完成条件。",
+      "tags": [
+        "claim",
+        "发布",
+        "安全"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "claim:adr-0009:public-sdk-is-stable-protocol-firewall",
+      "type": "claim",
+      "name": "公开 SDK 是稳定的协议防火墙",
+      "summary": "顶层 pixiv package 提供具体 Client、稳定模型、opaque cursor、typed error 和资源 API；内部 appapi、webapi、oauth、resource 的变化不泄漏给调用方。",
+      "tags": [
+        "claim",
+        "SDK",
+        "协议隔离"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "claim:architecture:cookie-input-is-rejected-before-oauth",
+      "type": "claim",
+      "name": "Cookie 形态凭据在 OAuth 前统一拒绝",
+      "summary": "SDK、CLI、MCP、环境变量和已存账号只接受原始 Pixiv App API refresh token；Cookie 形态输入不被提取、转换、发送或回显。",
+      "tags": [
+        "claim",
+        "认证",
+        "安全"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "claim:mcp-tools:recommendations-have-four-independent-streams",
+      "type": "claim",
+      "name": "推荐由四条独立认证流组成",
+      "summary": "recommended 支持插画、漫画、小说和作者；all 在边缘层按固定顺序组合四次 SDK 调用，并对每条流独立分页而不暴露 cursor。",
+      "tags": [
+        "claim",
+        "MCP",
+        "推荐"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "claim:mcp-tools:user-detail-is-complete-authenticated-envelope",
+      "type": "claim",
+      "name": "用户详情返回完整稳定 envelope",
+      "summary": "user_detail 需要认证且不支持匿名 Web fallback，返回 user、profile、profile_publicity 和 workspace 四个稳定部分。",
+      "tags": [
+        "claim",
+        "MCP",
+        "用户详情"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "claim:documentation-guidelines:structural-changes-refresh-graphs",
+      "type": "claim",
+      "name": "结构变更必须同步知识图谱",
+      "summary": "包、公开接口或文档结构发生实质变化后，应重新生成代码和文档知识图谱，并将快照作为可追溯文档输入提交。",
+      "tags": [
+        "claim",
+        "文档",
+        "维护"
+      ],
+      "complexity": "simple"
     }
   ],
   "edges": [
     {
-      "source": "topic:文档目录",
-      "target": "article:adr/0001-cli-thin-controller-and-bootstrap",
-      "type": "categorized_under",
+      "source": "article:adr/0001-cli-thin-controller-and-bootstrap",
+      "target": "claim:adr-0001:adapter-only-cli-mcp-boundary",
+      "type": "exemplifies",
       "direction": "forward",
-      "weight": 0.5
+      "weight": 0.7,
+      "description": "ADR 明确限定 CLI/MCP 的控制器和协议适配职责。"
     },
     {
-      "source": "topic:文档目录",
-      "target": "article:adr/0002-utils-and-common-boundaries",
-      "type": "categorized_under",
+      "source": "article:adr/0002-utils-and-common-boundaries",
+      "target": "claim:adr-0002:protocol-free-utils-only",
+      "type": "exemplifies",
       "direction": "forward",
-      "weight": 0.5
+      "weight": 0.7,
+      "description": "ADR 给出了工具包与协议包的准入边界。"
     },
     {
-      "source": "topic:文档目录",
-      "target": "article:adr/0003-agent-instruction-precedent-strategy",
-      "type": "categorized_under",
+      "source": "article:adr/0004-auth-accounts-use-pixiv-uid",
+      "target": "claim:adr-0004:accounts-keyed-by-pixiv-uid",
+      "type": "exemplifies",
       "direction": "forward",
-      "weight": 0.5
+      "weight": 0.7,
+      "description": "ADR 将 UID、默认账号指针和兼容性变化定义为本地账号模型。"
     },
     {
-      "source": "topic:文档目录",
-      "target": "article:adr/0004-auth-accounts-use-pixiv-uid",
-      "type": "categorized_under",
+      "source": "article:adr/0005-auth-login-real-browser-relay-without-ui-automation",
+      "target": "entity:pixiv-oauth",
+      "type": "exemplifies",
       "direction": "forward",
-      "weight": 0.5
+      "weight": 0.7,
+      "description": "登录流程以 PKCE、state 与授权码交换的 Pixiv OAuth 为前提。"
     },
     {
-      "source": "topic:文档目录",
-      "target": "article:adr/0005-auth-login-real-browser-relay-without-ui-automation",
-      "type": "categorized_under",
+      "source": "article:adr/0005-auth-login-real-browser-relay-without-ui-automation",
+      "target": "claim:adr-0005:explicit-callback-handoff-only",
+      "type": "exemplifies",
       "direction": "forward",
-      "weight": 0.5
+      "weight": 0.7,
+      "description": "安全修订把回调来源限制为当前尝试的显式交接通道。"
     },
     {
-      "source": "topic:文档目录",
-      "target": "article:adr/0006-original-ugoira-resource-resolution",
-      "type": "categorized_under",
+      "source": "article:adr/0006-original-ugoira-resource-resolution",
+      "target": "entity:pixiv-web-api",
+      "type": "exemplifies",
       "direction": "forward",
-      "weight": 0.5
+      "weight": 0.7,
+      "description": "ADR 把 Web metadata 限定为 original ugoira 的显式资源补全。"
     },
     {
-      "source": "topic:文档目录",
-      "target": "article:adr/0007-platform-staticlibs-for-supported-source-builds",
-      "type": "categorized_under",
+      "source": "article:adr/0006-original-ugoira-resource-resolution",
+      "target": "claim:adr-0006:ugoira-web-enrichment-is-explicit",
+      "type": "exemplifies",
       "direction": "forward",
-      "weight": 0.5
+      "weight": 0.7,
+      "description": "ADR 明确区分资源补全和 App API 失败后的自动回落。"
     },
     {
-      "source": "topic:文档目录",
-      "target": "article:adr/0008-ed25519-signed-multi-channel-release-trust",
-      "type": "categorized_under",
+      "source": "article:adr/0007-platform-staticlibs-for-supported-source-builds",
+      "target": "claim:adr-0007:staticlib-evidence-is-release-input",
+      "type": "exemplifies",
       "direction": "forward",
-      "weight": 0.5
+      "weight": 0.7,
+      "description": "ADR 规定 manifest、hash、六目标库和 smoke 证据的发布地位。"
     },
     {
-      "source": "topic:文档目录",
-      "target": "article:adr/0009-public-pixiv-sdk-and-caller-adapter",
-      "type": "categorized_under",
+      "source": "article:adr/0008-ed25519-signed-multi-channel-release-trust",
+      "target": "entity:ed25519",
+      "type": "exemplifies",
       "direction": "forward",
-      "weight": 0.5
+      "weight": 0.7,
+      "description": "ADR 使用 Ed25519 对 checksum 清单建立二进制安装信任。"
     },
     {
-      "source": "topic:文档目录",
-      "target": "article:agents/documentation-guidelines",
-      "type": "categorized_under",
+      "source": "article:adr/0008-ed25519-signed-multi-channel-release-trust",
+      "target": "claim:adr-0008:release-verifies-signed-checksums",
+      "type": "exemplifies",
       "direction": "forward",
-      "weight": 0.5
-    },
-    {
-      "source": "topic:文档目录",
-      "target": "article:agents/index",
-      "type": "categorized_under",
-      "direction": "forward",
-      "weight": 0.5
-    },
-    {
-      "source": "topic:文档目录",
-      "target": "article:agents/review-checklist",
-      "type": "categorized_under",
-      "direction": "forward",
-      "weight": 0.5
-    },
-    {
-      "source": "topic:文档目录",
-      "target": "article:architecture",
-      "type": "categorized_under",
-      "direction": "forward",
-      "weight": 0.5
-    },
-    {
-      "source": "topic:文档目录",
-      "target": "article:development",
-      "type": "categorized_under",
-      "direction": "forward",
-      "weight": 0.5
-    },
-    {
-      "source": "topic:文档目录",
-      "target": "article:mcp-tools",
-      "type": "categorized_under",
-      "direction": "forward",
-      "weight": 0.5
+      "weight": 0.7,
+      "description": "ADR 规定签名、checksum、资产和安装验收的发布门槛。"
     },
     {
       "source": "article:adr/0009-public-pixiv-sdk-and-caller-adapter",
-      "target": "claim:public-sdk-adapter-boundary",
-      "type": "documents",
+      "target": "entity:pixiv-app-api",
+      "type": "exemplifies",
       "direction": "forward",
-      "weight": 0.8
+      "weight": 0.7,
+      "description": "ADR 将有凭据 App API 定义为公开 SDK 的主路径。"
+    },
+    {
+      "source": "article:adr/0009-public-pixiv-sdk-and-caller-adapter",
+      "target": "entity:pixiv-web-api",
+      "type": "exemplifies",
+      "direction": "forward",
+      "weight": 0.7,
+      "description": "ADR 将匿名 Web read 限制为无 refresh token 的显式配置 fallback。"
+    },
+    {
+      "source": "article:adr/0009-public-pixiv-sdk-and-caller-adapter",
+      "target": "claim:adr-0009:public-sdk-is-stable-protocol-firewall",
+      "type": "exemplifies",
+      "direction": "forward",
+      "weight": 0.7,
+      "description": "ADR 明确公开契约与内部协议实现之间的隔离关系。"
     },
     {
       "source": "article:architecture",
-      "target": "claim:public-sdk-adapter-boundary",
-      "type": "documents",
+      "target": "claim:adr-0001:adapter-only-cli-mcp-boundary",
+      "type": "builds_on",
       "direction": "forward",
-      "weight": 0.7
+      "weight": 0.8,
+      "description": "架构说明将 CLI、application、bootstrap 与 MCP 的运行职责落实为包边界。"
+    },
+    {
+      "source": "article:architecture",
+      "target": "claim:adr-0009:public-sdk-is-stable-protocol-firewall",
+      "type": "builds_on",
+      "direction": "forward",
+      "weight": 0.8,
+      "description": "架构说明列出顶层 SDK 与 appapi、webapi、oauth、resource 的协议隔离。"
+    },
+    {
+      "source": "article:architecture",
+      "target": "claim:architecture:cookie-input-is-rejected-before-oauth",
+      "type": "exemplifies",
+      "direction": "forward",
+      "weight": 0.7,
+      "description": "架构说明规定所有认证入口在 OAuth 前拒绝 Cookie 形态凭据。"
     },
     {
       "source": "article:mcp-tools",
-      "target": "claim:public-sdk-adapter-boundary",
-      "type": "documents",
+      "target": "entity:pixiv-app-api",
+      "type": "exemplifies",
       "direction": "forward",
-      "weight": 0.5
+      "weight": 0.7,
+      "description": "MCP 文档将认证推荐和完整用户详情绑定到 App SDK 路径。"
+    },
+    {
+      "source": "article:mcp-tools",
+      "target": "claim:mcp-tools:recommendations-have-four-independent-streams",
+      "type": "exemplifies",
+      "direction": "forward",
+      "weight": 0.7,
+      "description": "recommended 的 kind、all 聚合和分页语义在工具契约中明确列出。"
+    },
+    {
+      "source": "article:mcp-tools",
+      "target": "claim:mcp-tools:user-detail-is-complete-authenticated-envelope",
+      "type": "exemplifies",
+      "direction": "forward",
+      "weight": 0.7,
+      "description": "user_detail 的认证要求、完整 envelope 和无 Web fallback 在工具契约中明确列出。"
+    },
+    {
+      "source": "article:agents/documentation-guidelines",
+      "target": "claim:documentation-guidelines:structural-changes-refresh-graphs",
+      "type": "exemplifies",
+      "direction": "forward",
+      "weight": 0.7,
+      "description": "文档准则要求结构性变更后提交两份更新的知识图谱快照。"
+    },
+    {
+      "source": "article:development",
+      "target": "claim:adr-0007:staticlib-evidence-is-release-input",
+      "type": "builds_on",
+      "direction": "forward",
+      "weight": 0.8,
+      "description": "开发流程把 staticlib、manifest 和 native 验证落实为可执行的构建与测试门禁。"
+    },
+    {
+      "source": "article:development",
+      "target": "claim:adr-0008:release-verifies-signed-checksums",
+      "type": "builds_on",
+      "direction": "forward",
+      "weight": 0.8,
+      "description": "开发流程说明正式 tag、受保护签名和渠道安装验收的执行次序。"
     }
   ],
   "layers": [
     {
-      "id": "layer:architecture",
-      "name": "架构决策",
-      "description": "架构说明与 ADR。",
+      "id": "layer:文档入口与运行说明",
+      "name": "文档入口与运行说明",
+      "description": "项目定位、架构、开发流程、MCP 工具与当前运行时安全约束。",
+      "nodeIds": [
+        "topic:项目定位",
+        "topic:文档目录",
+        "topic:快速命令",
+        "article:architecture",
+        "article:development",
+        "article:mcp-tools",
+        "claim:architecture:cookie-input-is-rejected-before-oauth",
+        "claim:mcp-tools:recommendations-have-four-independent-streams",
+        "claim:mcp-tools:user-detail-is-complete-authenticated-envelope"
+      ]
+    },
+    {
+      "id": "layer:架构决策记录",
+      "name": "架构决策记录",
+      "description": "ADR 记录 CLI、账号、登录、资源、发布与公开 SDK 的稳定边界。",
       "nodeIds": [
         "article:adr/0001-cli-thin-controller-and-bootstrap",
         "article:adr/0002-utils-and-common-boundaries",
@@ -437,74 +685,87 @@
         "article:adr/0006-original-ugoira-resource-resolution",
         "article:adr/0007-platform-staticlibs-for-supported-source-builds",
         "article:adr/0008-ed25519-signed-multi-channel-release-trust",
-        "article:adr/0009-public-pixiv-sdk-and-caller-adapter",
-        "article:architecture",
-        "claim:public-sdk-adapter-boundary"
+        "article:adr/0009-public-pixiv-sdk-and-caller-adapter"
       ]
     },
     {
-      "id": "layer:operations",
-      "name": "开发与协作",
-      "description": "开发、测试与协作规则。",
+      "id": "layer:领域契约与安全边界",
+      "name": "领域契约与安全边界",
+      "description": "Pixiv API、OAuth、Web fallback、SDK 协议隔离和发布信任相关实体与 claim。",
+      "nodeIds": [
+        "entity:pixiv-app-api",
+        "entity:pixiv-web-api",
+        "entity:pixiv-oauth",
+        "entity:ed25519",
+        "claim:adr-0001:adapter-only-cli-mcp-boundary",
+        "claim:adr-0002:protocol-free-utils-only",
+        "claim:adr-0004:accounts-keyed-by-pixiv-uid",
+        "claim:adr-0005:explicit-callback-handoff-only",
+        "claim:adr-0006:ugoira-web-enrichment-is-explicit",
+        "claim:adr-0007:staticlib-evidence-is-release-input",
+        "claim:adr-0008:release-verifies-signed-checksums",
+        "claim:adr-0009:public-sdk-is-stable-protocol-firewall"
+      ]
+    },
+    {
+      "id": "layer:协作与维护规则",
+      "name": "协作与维护规则",
+      "description": "文档路由、评审要求与图谱维护规则。",
       "nodeIds": [
         "article:agents/documentation-guidelines",
         "article:agents/index",
         "article:agents/review-checklist",
-        "article:development"
-      ]
-    },
-    {
-      "id": "layer:interfaces",
-      "name": "接口文档",
-      "description": "MCP 工具文档。",
-      "nodeIds": [
-        "article:mcp-tools"
-      ]
-    },
-    {
-      "id": "layer:topics",
-      "name": "导航主题",
-      "description": "文档索引主题。",
-      "nodeIds": [
-        "topic:项目定位",
-        "topic:文档目录",
-        "topic:快速命令"
+        "claim:documentation-guidelines:structural-changes-refresh-graphs"
       ]
     }
   ],
   "tour": [
     {
       "order": 1,
-      "title": "架构",
-      "description": "从架构说明了解 CLI、MCP 与 SDK 的边界。",
+      "title": "项目定位",
+      "description": "先了解 pixiv-cli 同时提供 CLI、MCP stdio server 和公开 Go SDK，以及它们共享同一公开调用链。",
       "nodeIds": [
-        "article:architecture",
-        "article:adr/0009-public-pixiv-sdk-and-caller-adapter"
+        "topic:项目定位",
+        "article:architecture"
       ]
     },
     {
       "order": 2,
-      "title": "SDK 边界",
-      "description": "查看公开 SDK 与调用方 adapter 的取舍。",
+      "title": "公开 SDK 与协议隔离",
+      "description": "阅读公开 SDK 的协议防火墙决策，理解调用方为何不依赖内部 App/Web/OAuth adapter。",
       "nodeIds": [
         "article:adr/0009-public-pixiv-sdk-and-caller-adapter",
-        "claim:public-sdk-adapter-boundary"
+        "claim:adr-0009:public-sdk-is-stable-protocol-firewall"
       ]
     },
     {
       "order": 3,
-      "title": "开发验证",
-      "description": "查看本地和 CI 验证流程。",
+      "title": "认证与显式回调",
+      "description": "认证只接受 App API refresh token；登录只能通过本轮 loopback、受控 helper 或用户显式回填完成。",
       "nodeIds": [
-        "article:development"
+        "article:adr/0005-auth-login-real-browser-relay-without-ui-automation",
+        "claim:adr-0005:explicit-callback-handoff-only",
+        "claim:architecture:cookie-input-is-rejected-before-oauth"
       ]
     },
     {
       "order": 4,
-      "title": "MCP 工具",
-      "description": "查看 MCP stdio tool 契约。",
+      "title": "推荐与用户契约",
+      "description": "MCP 的四类推荐流和完整用户详情均建立在认证 SDK 契约之上，兼容旧工具名但不保留双调用链。",
       "nodeIds": [
-        "article:mcp-tools"
+        "article:mcp-tools",
+        "claim:mcp-tools:recommendations-have-four-independent-streams",
+        "claim:mcp-tools:user-detail-is-complete-authenticated-envelope"
+      ]
+    },
+    {
+      "order": 5,
+      "title": "开发与发布门禁",
+      "description": "最后查看开发流程、staticlib 与签名发布决策，理解为什么图谱和可审计发布输入必须随结构变化同步。",
+      "nodeIds": [
+        "article:development",
+        "article:adr/0007-platform-staticlibs-for-supported-source-builds",
+        "article:adr/0008-ed25519-signed-multi-channel-release-trust"
       ]
     }
   ]

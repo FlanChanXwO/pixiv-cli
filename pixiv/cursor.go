@@ -70,10 +70,22 @@ func decodeCursorForSource(raw Cursor, operation Operation, digest, kind, source
 		return 0, errors.New("cursor does not match this operation source")
 	}
 	value, err := strconv.ParseInt(payload.Value, 10, 64)
-	if err != nil || value <= 0 {
+	if err != nil || value < 0 || value == 0 && !allowsZeroCursorContinuation(operation, kind) {
 		return 0, errors.New("cursor continuation is invalid")
 	}
 	return value, nil
+}
+
+func allowsZeroCursorContinuation(operation Operation, kind string) bool {
+	if kind != "offset" {
+		return false
+	}
+	switch operation {
+	case OperationIllustRecommended, OperationMangaRecommended, OperationNovelRecommended, OperationUserRecommended:
+		return true
+	default:
+		return false
+	}
 }
 
 func ensureCursorEOF(decoder *json.Decoder) error {

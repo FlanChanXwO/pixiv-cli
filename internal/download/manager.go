@@ -10,17 +10,19 @@ import (
 	"sync"
 	"time"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv"
 	"github.com/FlanChanXwO/pixiv-cli/internal/utils"
-	"github.com/FlanChanXwO/pixiv-cli/internal/utils/files"
 	"github.com/FlanChanXwO/pixiv-cli/internal/utils/text"
 	uriutil "github.com/FlanChanXwO/pixiv-cli/internal/utils/uri"
+	sdk "github.com/FlanChanXwO/pixiv-cli/pixiv"
 )
 
+// PixivClient 是下载路径所需的公开 SDK 窄接口。资源 URL 只能先转成 SDK
+// ResourceRef，再由 SDK 负责 policy 校验、流式写入与原子替换。
 type PixivClient interface {
-	IllustDetail(context.Context, int64) (*pixiv.IllustDetail, error)
-	UgoiraMetadata(context.Context, int64) (*pixiv.UgoiraMetadataResult, error)
-	Download(context.Context, string, io.Writer) error
+	IllustDetail(context.Context, int64) (*sdk.IllustDetail, error)
+	UgoiraMetadata(context.Context, int64) (*sdk.UgoiraMetadataResult, error)
+	ParseResourceRef(string) (sdk.ResourceRef, error)
+	Download(context.Context, sdk.ResourceRef, string) error
 }
 
 type DownloadedArtwork struct {
@@ -125,7 +127,7 @@ func (m *Manager) downloadArtwork(ctx context.Context, id int64) (out Downloaded
 	if err != nil {
 		return DownloadedArtwork{}, err
 	}
-	if illust.PageCount > 1 || illust.Type == string(pixiv.IllustTypeUgoira) {
+	if illust.PageCount > 1 || illust.Type == string(sdk.IllustTypeUgoira) {
 		base = filepath.Join(base, utils.SanitizeFilename(fmt.Sprintf("%d - %s", illust.ID, text.DefaultString(illust.Title, "Untitled"))))
 	}
 	if err := os.MkdirAll(base, 0o755); err != nil {
@@ -139,7 +141,7 @@ func (m *Manager) downloadArtwork(ctx context.Context, id int64) (out Downloaded
 		Type:     illust.Type,
 	}
 
-	if illust.Type == string(pixiv.IllustTypeUgoira) {
+	if illust.Type == string(sdk.IllustTypeUgoira) {
 		path, err := m.downloadUgoira(ctx, illust, base)
 		if err != nil {
 			return DownloadedArtwork{}, err
@@ -198,7 +200,7 @@ func (m *Manager) operationLog(operation string, started time.Time, err error, i
 	)
 }
 
-func (m *Manager) downloadUgoira(ctx context.Context, illust pixiv.Illust, base string) (string, error) {
+func (m *Manager) downloadUgoira(ctx context.Context, illust sdk.Illust, base string) (string, error) {
 	meta, err := m.client.UgoiraMetadata(ctx, illust.ID)
 	if err != nil {
 		return "", err
@@ -227,34 +229,14 @@ func (m *Manager) downloadUgoira(ctx context.Context, illust pixiv.Illust, base 
 }
 
 func (m *Manager) downloadURL(ctx context.Context, rawURL, path string) error {
-	dir := filepath.Dir(path)
-	tmp, err := os.CreateTemp(dir, ".download-*")
+	ref, err := m.client.ParseResourceRef(rawURL)
 	if err != nil {
 		return err
 	}
-	tmpPath := tmp.Name()
-	cleanup := true
-	defer func() {
-		if cleanup {
-			_ = os.Remove(tmpPath)
-		}
-	}()
-	if err := m.client.Download(ctx, rawURL, tmp); err != nil {
-		_ = tmp.Close()
-		return err
-	}
-	if err := tmp.Close(); err != nil {
-		return err
-	}
-	// 只在完整下载并成功落盘后替换目标，避免网络中断留下半文件或破坏旧文件。
-	if err := files.ReplaceFile(tmpPath, path); err != nil {
-		return err
-	}
-	cleanup = false
-	return nil
+	return m.client.Download(ctx, ref, path)
 }
 
-func (m *Manager) ConvertUgoira(ctx context.Context, zipPath string, frames []pixiv.UgoiraFrame, workDir, outputGIF string) error {
+func (m *Manager) ConvertUgoira(ctx context.Context, zipPath string, frames []sdk.UgoiraFrame, workDir, outputGIF string) error {
 	if m.ugoiraEncoder == nil {
 		return fmt.Errorf("ugoira encoder is not configured")
 	}
@@ -267,7 +249,7 @@ func (m *Manager) ConvertUgoira(ctx context.Context, zipPath string, frames []pi
 	})
 }
 
-func filenameData(illust pixiv.Illust) utils.FilenameData {
+func filenameData(illust sdk.Illust) utils.FilenameData {
 	return utils.FilenameData{
 		ID:        illust.ID,
 		Author:    illust.User.Name,

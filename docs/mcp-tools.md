@@ -2,7 +2,7 @@
 
 以 `pixiv mcp` 启动 stdio server。stdout 仅用于 JSON-RPC，日志写 stderr。MCP 不提供 HTTP endpoint。
 
-有 refresh token 时 App API 为主路径，失败不自动回落 Web；无 refresh token 且 `web_fallback_enabled=true` 时，仅匿名白名单读 tool 可用 Web API。SDK 路径的用户列表和收藏/关注写操作同时返回文本内容与 structured output；其可分类失败会令 result `isError=true`，保留安全错误文本和对应 structured output。遗留 MCP tool 保持既有文本结果兼容，不承诺统一 `isError` 语义。
+有 refresh token 时 App API 为主路径，失败不自动回落 Web；无 refresh token 且 `web_fallback_enabled=true` 时，仅匿名白名单读 tool 可用 Web API。SDK 路径的用户详情、用户列表和收藏/关注写操作同时返回文本内容与 structured output；其可分类失败会令 result `isError=true`，保留安全错误文本和对应 structured output。遗留 MCP tool 保持既有文本结果兼容，不承诺统一 `isError` 语义。
 
 ## 分页
 
@@ -20,7 +20,7 @@ SDK cursor 不出现在 MCP 参数或输出。`user_bookmarks.max_bookmark_id` �
 | --- | --- | --- |
 | `set_download_path` | `path` | 文本状态。 |
 | `refresh_token` | 无 | 当前认证账号摘要。 |
-| `set_refresh_token` | `refresh_token` | 当前会话认证结果；不写 `auth.json`。 |
+| `set_refresh_token` | 原始 App API `refresh_token` | 当前会话认证结果；不写 `auth.json`；Cookie 输入会被拒绝。 |
 | `download` | `illust_id` 或 `illust_ids`，可选 `delivery` | 下载文件、URI、MIME、大小；`image_content` 另附 ImageContent。 |
 | `download_random_from_recommendation` | `count`，可选 `delivery` | 同 `download`。 |
 
@@ -32,11 +32,13 @@ SDK cursor 不出现在 MCP 参数或输出。`user_bookmarks.max_bookmark_id` �
 | `illust_detail` | `illust_id` | 作品详情。 |
 | `illust_related` | `illust_id`、`offset`、`include_thumbnail` | 相关作品。 |
 | `illust_ranking` | `mode`、`date`、`offset`、`include_thumbnail` | 排行榜作品。 |
-| `illust_recommended` | `offset`、`include_thumbnail` | 推荐作品；需要认证。 |
+| `illust_recommended` | `offset`、`include_thumbnail` | 兼容旧推荐作品 tool；保留既有文本输出，但经公开 SDK 调用链执行。 |
+| `recommended` | 必填 `kind`（`all`、`illust`、`manga`、`novel`、`user`），可选 `page`、`limit` | 通过认证 App SDK 返回 `{kind, illusts, manga, novels, user_previews, pagination}`；单类只填对应流，`all` 顺序读取四流。每条流独立应用分页，`pagination` 按流给出逻辑页信息；不暴露 SDK cursor，不支持 Web fallback。 |
 | `trending_tags_illust` | 无 | 热门标签。 |
 | `illust_follow` | `restrict`、`offset`、`include_thumbnail` | 关注新作；需要认证。 |
 | `search_user` | `word`、`offset` | 用户列表；匿名 fallback 是相关作者去重，不是官方用户名搜索。 |
 | `get_thumbnail_base64` | `illust_id` | `data:image/jpeg;base64,...`。 |
+| `user_detail` | 必填 `user_id` | 完整稳定的 `{user, profile, profile_publicity, workspace}`；需要认证，不支持 Web fallback。 |
 | `user_artworks` | 可选 `user_id`、`type`、`page`、`limit` | `{user_id, items, pagination}`；缺省 UID 为当前认证用户。 |
 | `user_bookmarks` | 可选 `user_id`、旧 alias `user_id_to_check`、`restrict`、`tag`、`page`、`limit`、废弃 `max_bookmark_id` | `{user_id, items, pagination}`；缺省 UID 为当前认证用户。 |
 | `user_following` | 可选 `user_id`、旧 alias `user_id_to_check`、`restrict`、`page`、`limit`、废弃 `offset` | `{user_id, items, pagination}`；缺省 UID 为当前认证用户。 |

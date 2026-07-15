@@ -10,7 +10,7 @@
 
 ## 决策
 
-- 发布 `pkg/pixiv`，提供具体 `*pixiv.Client`、稳定模型、request/result、opaque cursor、typed error 和资源 API。
+- 发布顶层 `pixiv` package（`github.com/FlanChanXwO/pixiv-cli/pixiv`），提供具体 `*pixiv.Client`、稳定模型、request/result、opaque cursor、typed error 和资源 API。
 - 公开契约只通过 package 提供；不提供 HTTP server、`Discover`、Probe、Capabilities、RSS 或 crawler。
 - `atri-setu-api` 等调用方拥有窄 adapter interface，以及自己的 source mode、budget、filter、cursor storage、persistence、scheduling 和 HTTP presentation。
 - 内部使用物理包 `internal/pixiv/appapi`、`webapi`、`oauth`、`resource`；公开 SDK 负责路由和规范化，但不泄漏这些包。
@@ -22,4 +22,4 @@
 - CLI/MCP 和外部 Go 程序消费同一个公开契约，无需额外进程或 transport translation。
 - 集成方可用小 mock 测试其 adapter，自选运行策略。
 - 本仓库不承诺 collector-specific discovery 兼容性；调用方须将这类行为迁移到自己的领域层。
-- 物理协议变更封装在 `pkg/pixiv` 后，降低公开 API churn。
+- 物理协议变更封装在顶层 `pixiv` 后，降低公开 API churn。

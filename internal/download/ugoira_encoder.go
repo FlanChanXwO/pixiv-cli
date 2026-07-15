@@ -6,8 +6,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv"
 	"github.com/FlanChanXwO/pixiv-cli/internal/utils/files"
+	sdk "github.com/FlanChanXwO/pixiv-cli/pixiv"
 )
 
 // AnimationFormat 是 Rust 动图编码器内部支持的输出容器；当前下载命令仍固定 GIF。
@@ -38,7 +38,7 @@ type UgoiraEncoder interface {
 // UgoiraEncodeInput 是 Go 下载器与 Rust FFI 之间的窄边界。
 type UgoiraEncodeInput struct {
 	ZipPath    string
-	Frames     []pixiv.UgoiraFrame
+	Frames     []sdk.UgoiraFrame
 	WorkDir    string
 	OutputPath string
 	Format     AnimationFormat

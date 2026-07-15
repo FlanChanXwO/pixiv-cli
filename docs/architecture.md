@@ -51,17 +51,17 @@ cache 的 24 小时节流，并最多等待 3 秒。配置、网络、来源识�
 - `ArtworkService`：search/detail/ranking/recommended。
 - `DownloadService`：按 ID 下载作品。
 - `LoginService`：生成 PKCE/state、authorization-code exchange，并保存账号；Pixiv 登录 URL 构造仍留在 CLI adapter。
-- `SDKService`：为 CLI/MCP 打开 `pkg/pixiv` client，并把调用方选择的账号/代理/JSON 设置映射到 SDK operation snapshot。
+- `SDKService`：为 CLI/MCP 打开顶层 `pixiv` client，并把调用方选择的账号/代理/JSON 设置映射到 SDK operation snapshot。
 
 ### `internal/bootstrap`
 
-生产 composition root，负责把 `internal/config`、`internal/storage/auth`、`pkg/pixiv`、`internal/download`、`internal/mcpserver`、更新 release client/installer 和 application services 组装起来。测试可以替换 service 里的小接口或 factory，不需要复制生产 wiring。
+生产 composition root，负责把 `internal/config`、`internal/storage/auth`、顶层 `pixiv`、`internal/download`、`internal/mcpserver`、更新 release client/installer 和 application services 组装起来。测试可以替换 service 里的小接口或 factory，不需要复制生产 wiring。
 
 `NewUpdateCoordinator` 通过 `productionReleaseInstallerOptions` 为 Release installer 注入随受支持
 binary 提交的 Ed25519 key ID→public key 映射，并在每次组装时复制 map 与 key bytes，避免调用方污染
 production trust root。该公开 key 的 SPKI fingerprint 与已知签名 fixture 由同包测试验证；私钥不在
-bootstrap、源码或运行时配置中。只读更新检查不需要该 key，且该 wiring 不代表存在一个可安装的公开
-Release。
+bootstrap、源码或运行时配置中。只读更新检查不需要该 key；当前 v0.2.0 已是可安装的公开 Release，
+但该 wiring 本身仍不能代替每个版本独立的发布验收。
 
 ### `internal/storage/auth`
 
@@ -105,19 +105,20 @@ Release。
 
 该包不得把签名、checksum、HTTP、archive、替换或权限错误伪装成“无更新”。production trusted key、
 签名私钥与 Keychain 恢复副本、受保护 `release` Environment 和公开 remote 已按 Task 20 配置；完整六目标
-native evidence 与 staticlib manifest 已回填。v0.1.1 已完成正式 tag、受签名 Release 与 stable tap formula；
+native evidence 与 staticlib manifest 已回填。v0.2.0 已完成正式 tag、受签名 Release 与 stable tap formula；
 Release 安装的失败语义仍是保护边界，而不是临时降级。
 
-### `pkg/pixiv`
+### `pixiv`
 
 公开 concrete facade。`NewClient` 只使用显式 options；`OpenDefault` 复用本地 auth/config，并在每个公开操作开始时取得一次 snapshot。它暴露规范化模型、opaque cursor、`*pixiv.Error`、账号/config、登录 session、资源流和下载；CLI/MCP 与外部 Go 程序消费同一契约。
 
 调用方在自身 adapter 中定义 source mode、budget、filter、cursor 持久化和 HTTP presentation。本仓库不提供 HTTP Provider、Discover、Probe、Capabilities、RSS 或 crawler。
 
-### `internal/pixiv/appapi`、`webapi`、`oauth`、`resource`
+### `internal/pixiv/protocol`、`appapi`、`webapi`、`oauth`、`resource`
 
 内部协议包只由 facade 组合：
 
+- `protocol`：上游 base、profile header、endpoint catalog 与脱敏 adapter failure 的唯一来源；不读配置、不发请求，也不保存响应 body、URL、header 或凭据。
 - `appapi`：有凭据的 App content API 与 raw DTO/mapper。
 - `webapi`：匿名白名单读与明确 metadata enrichment；不接收 SDK Authorization/Cookie。
 - `oauth`：PKCE、code exchange、refresh 与 token state。
@@ -189,7 +190,7 @@ full-SHA Actions，并在草稿 Release 上传后核对 asset 集合才发布。
 tap 后，以 tap-qualified formula name 真实安装并核对 `pixiv version --json`；此路径不使用或写入
 公开 tap，Homebrew 6 所需的 trust 仅精确写入 runner 本地 staging tap 的临时 trust store。最终受保护
 job 才能读取独立 tap deploy key 并只 push 对应 formula。
-v0.1.1 的正式 tag 已走完此发布路径并推送 stable formula；后续 tag 仍必须独立满足同一安装 gate。完整
+v0.2.0 的正式 tag 已走完此发布路径并推送 stable formula；后续 tag 仍必须独立满足同一安装 gate。完整
 六目标 native 成功证据已回填 staticlib/manifest。production signing 私钥、Environment 与公开 remote
 已按 Task 20 配置，受支持 binary 的公开 trust root 已在 `internal/bootstrap/release_trust.go` 配置。Rust crates.io 依赖已由
 crate 内 source replacement 固定到完整 vendor 闭包，并以空 Cargo cache 离线 metadata/build/test 与六
@@ -198,7 +199,7 @@ target 许可证检查验证。
 Homebrew formula 模板由已验证的六目标 `checksums.txt` 生成，仅使用 macOS/Linux asset；stable
 `pixiv-cli` 与 beta `pixiv-cli-beta` 相互冲突且同装 `pixiv`。tap credential 与发布 key 是不同的
 信任域：tap 私钥只允许进入最终受保护 deploy job 的最后 push step，不能代替 Release Ed25519 trust
-root。公开 tap 的 stable formula 已对应 v0.1.1；beta formula 仍只由 pre-release 通道写入。由于 draft
+root。公开 tap 的 stable formula 已对应 v0.2.0；beta formula 仍只由 pre-release 通道写入。由于 draft
 Release 的匿名 URL 不可安装，Release 会先公开再执行四架构 gate；失败会保留已公开 Release 供处置，
 但不会写对应 formula。
 
@@ -218,7 +219,7 @@ SmartScreen 提示时，必须回到已验证的项目 GitHub Release、checksum
 - 支持 `{author}`、`{title}`、`{id}` 模板字段。
 - 多页作品追加 `_pN` 后缀。
 - 下载 ID 去重时会丢弃小于等于 0 的 ID，并排序。
-- refresh token 输入可从包含 `refresh_token=...` 的 Cookie 字符串中提取真实 token。
+- refresh token 只接受原始 Pixiv App API token；Cookie 形态（含 `refresh_token=...`）在 SDK、CLI、MCP、环境变量和已存账号边界统一拒绝，绝不提取、转换或发送。
 
 `internal/utils/*` 子包提供无业务语义的通用工具：
 

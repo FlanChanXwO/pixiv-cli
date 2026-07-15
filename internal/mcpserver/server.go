@@ -14,33 +14,13 @@ import (
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/application"
 	"github.com/FlanChanXwO/pixiv-cli/internal/download"
-	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv"
 	"github.com/FlanChanXwO/pixiv-cli/internal/utils"
 	"github.com/FlanChanXwO/pixiv-cli/internal/utils/media"
 	"github.com/FlanChanXwO/pixiv-cli/internal/utils/text"
 	uriutil "github.com/FlanChanXwO/pixiv-cli/internal/utils/uri"
+	sdk "github.com/FlanChanXwO/pixiv-cli/pixiv"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
-
-type PixivAPI interface {
-	Refresh(context.Context) error
-	SetRefreshToken(string)
-	RefreshTokenValue() string
-	UserID() int64
-	UserName() string
-	IsAuthenticated() bool
-	SearchIllust(context.Context, string, string, string, string, int) (*pixiv.IllustList, error)
-	IllustDetail(context.Context, int64) (*pixiv.IllustDetail, error)
-	IllustRelated(context.Context, int64, int) (*pixiv.IllustList, error)
-	IllustRanking(context.Context, string, string, int) (*pixiv.IllustList, error)
-	SearchUser(context.Context, string, int) (*pixiv.UserPreviewList, error)
-	IllustRecommended(context.Context, int) (*pixiv.IllustList, error)
-	TrendingTagsIllust(context.Context) (*pixiv.TrendTags, error)
-	IllustFollow(context.Context, string, int) (*pixiv.IllustList, error)
-	UserBookmarks(context.Context, int64, string, string, int64) (*pixiv.IllustList, error)
-	UserFollowing(context.Context, int64, string, int) (*pixiv.UserPreviewList, error)
-	Download(context.Context, string, io.Writer) error
-}
 
 type DownloadManager interface {
 	SetDownloadPath(string) error
@@ -49,11 +29,13 @@ type DownloadManager interface {
 }
 
 type App struct {
-	api        PixivAPI
-	downloads  DownloadManager
-	logger     *slog.Logger
-	sdk        application.SDKService
-	sdkRequest application.SDKClientRequest
+	downloads DownloadManager
+	// newDownloads 在每个 SDK operation 的稳定认证 snapshot 上创建下载器。
+	// 固定 downloads 仅保留给未注入 SDK 的嵌入测试兼容路径。
+	newDownloads func(application.SDKClient) DownloadManager
+	logger       *slog.Logger
+	sdk          application.SDKService
+	sdkRequest   application.SDKClientRequest
 	// sdkGate 串行化同一 MCP 实例中会刷新 OAuth 的 SDK operation，避免两个
 	// OpenDefault 快照同时消费同一个 rotation token；channel select 可响应 ctx。
 	sdkGate chan struct{}
@@ -75,16 +57,24 @@ func recordToolError(ctx context.Context, err error) {
 	}
 }
 
-func New(api PixivAPI, downloads DownloadManager, logger *slog.Logger) *mcp.Server {
+// New 保留构造参数位置以便嵌入方平滑升级；第一个参数不再被读取，所有 Pixiv
+// 能力必须由 public SDK service 提供。
+func New(_ any, downloads DownloadManager, logger *slog.Logger) *mcp.Server {
 	logger = loggerOrDiscard(logger)
-	return newServer(&App{api: api, downloads: downloads, logger: logger})
+	return newServer(&App{downloads: downloads, logger: logger})
 }
 
-// NewWithSDK 在保留旧 Source 工具的同时，为新增领域工具注入公共 SDK 接缝。
-// SDKService 会在每次 MCP tool 调用时建立独立的配置/认证 operation snapshot。
-func NewWithSDK(api PixivAPI, downloads DownloadManager, logger *slog.Logger, service application.SDKService, request application.SDKClientRequest) *mcp.Server {
+// NewWithSDK 通过公共 SDK 为每个 MCP tool 建立独立 operation snapshot。
+// 首个参数仅是已废弃的兼容占位，绝不构成内容、认证或资源调用链。
+func NewWithSDK(_ any, downloads DownloadManager, logger *slog.Logger, service application.SDKService, request application.SDKClientRequest) *mcp.Server {
 	logger = loggerOrDiscard(logger)
-	return newServer(&App{api: api, downloads: downloads, logger: logger, sdk: service, sdkRequest: request})
+	return newServer(&App{downloads: downloads, logger: logger, sdk: service, sdkRequest: request})
+}
+
+// NewWithSDKDownloadFactory 为生产 MCP 注入 snapshot-scoped 下载器构造器。
+func NewWithSDKDownloadFactory(downloads DownloadManager, newDownloads func(application.SDKClient) DownloadManager, logger *slog.Logger, service application.SDKService, request application.SDKClientRequest) *mcp.Server {
+	logger = loggerOrDiscard(logger)
+	return newServer(&App{downloads: downloads, newDownloads: newDownloads, logger: logger, sdk: service, sdkRequest: request})
 }
 
 func loggerOrDiscard(logger *slog.Logger) *slog.Logger {
@@ -105,7 +95,7 @@ func newServer(app *App) *mcp.Server {
 	return server
 }
 
-// addTool 在注册层统一观测所有 MCP tool（包括 legacy Source tool）。wrapper 不读取
+// addTool 在注册层统一观测所有 MCP tool（包括旧兼容 tool）。wrapper 不读取
 // request arguments，避免 token、cookie、URL 或用户查询进入日志；日志仍只经注入的
 // stderr logger 输出，绝不触碰 JSON-RPC transport。
 func addTool[In, Out any](a *App, server *mcp.Server, tool *mcp.Tool, handler mcp.ToolHandlerFor[In, Out]) {
@@ -137,8 +127,10 @@ func (a *App) register(server *mcp.Server) {
 	addTool(a, server, &mcp.Tool{Name: "illust_ranking", Description: "Browse Pixiv rankings."}, a.illustRanking)
 	addTool(a, server, &mcp.Tool{Name: "search_user", Description: "Search for users/artists on Pixiv."}, a.searchUser)
 	addTool(a, server, &mcp.Tool{Name: "illust_recommended", Description: "Get personalized artwork recommendations."}, a.illustRecommended)
+	addTool(a, server, &mcp.Tool{Name: "recommended", Description: "Get typed personalized recommendations through the Pixiv SDK."}, a.recommended)
 	addTool(a, server, &mcp.Tool{Name: "trending_tags_illust", Description: "Get currently trending illustration tags."}, a.trendingTags)
 	addTool(a, server, &mcp.Tool{Name: "illust_follow", Description: "Browse artworks from followed artists."}, a.illustFollow)
+	addTool(a, server, &mcp.Tool{Name: "user_detail", Description: "Get a user's complete profile through the authenticated Pixiv SDK."}, a.userDetail)
 	addTool(a, server, &mcp.Tool{Name: "user_artworks", Description: "Browse a user's artworks."}, a.userArtworks)
 	addTool(a, server, &mcp.Tool{Name: "user_bookmarks", Description: "Browse user's bookmarked artworks."}, a.userBookmarks)
 	addTool(a, server, &mcp.Tool{Name: "user_following", Description: "View user's following list."}, a.userFollowing)
@@ -222,7 +214,7 @@ func (a *App) download(ctx context.Context, _ *mcp.CallToolRequest, in downloadI
 		out := downloadOut{Delivery: deliveryLocalPath, Text: errText}
 		return downloadResult(out), out, nil
 	}
-	artworks, err := a.downloads.Download(ctx, ids)
+	artworks, err := a.downloadArtworks(ctx, ids, nil)
 	if err != nil {
 		out := downloadOut{Delivery: delivery, Text: "下载失败: " + err.Error()}
 		return downloadResult(out), out, nil
@@ -249,6 +241,21 @@ func (a *App) download(ctx context.Context, _ *mcp.CallToolRequest, in downloadI
 	return result, out, nil
 }
 
+func (a *App) downloadArtworks(ctx context.Context, ids []int64, client application.SDKClient) ([]download.DownloadedArtwork, error) {
+	if a.newDownloads == nil {
+		return a.downloads.Download(ctx, ids)
+	}
+	if client == nil {
+		opened, release, err := a.openSDKOperation(ctx)
+		if err != nil {
+			return nil, err
+		}
+		defer release()
+		client = opened
+	}
+	return a.newDownloads(client).Download(ctx, ids)
+}
+
 func downloadResult(out downloadOut) *mcp.CallToolResult {
 	return &mcp.CallToolResult{
 		Content: []mcp.Content{&mcp.TextContent{Text: out.Text}},
@@ -267,7 +274,7 @@ func normalizeDelivery(value string) (string, string) {
 }
 
 func buildDownloadOut(delivery string, artworks []download.DownloadedArtwork) (downloadOut, error) {
-	out := downloadOut{Delivery: delivery}
+	out := downloadOut{Delivery: delivery, Items: []downloadItemOut{}, Files: []downloadFileOut{}}
 	lines := []string{fmt.Sprintf("下载完成，交付方式: %s。", delivery)}
 	for _, artwork := range artworks {
 		item := downloadItemOut{
@@ -275,6 +282,7 @@ func buildDownloadOut(delivery string, artworks []download.DownloadedArtwork) (d
 			Title:    artwork.Title,
 			Author:   artwork.Author,
 			Type:     artwork.Type,
+			Files:    []downloadFileOut{},
 		}
 		lines = append(lines, fmt.Sprintf("作品 %d - %q / 作者: %s / 类型: %s", artwork.IllustID, artwork.Title, artwork.Author, artwork.Type))
 		for _, file := range artwork.Files {
@@ -306,22 +314,17 @@ func buildDownloadOut(delivery string, artworks []download.DownloadedArtwork) (d
 type emptyIn struct{}
 
 func (a *App) refreshToken(ctx context.Context, _ *mcp.CallToolRequest, _ emptyIn) (*mcp.CallToolResult, textOut, error) {
-	if a.sdk.NewClient != nil {
-		if err := a.acquireSDKGate(ctx); err != nil {
-			return toolText(err.Error())
-		}
-		defer a.releaseSDKGate()
-	}
-	if a.api.RefreshTokenValue() == "" {
+	client, release, err := a.openSDKMutable(ctx)
+	if err != nil {
 		return toolText("错误：未设置 refresh token。请先使用 set_refresh_token 工具设置 token。")
 	}
-	if err := a.api.Refresh(ctx); err != nil {
+	defer release()
+	account, err := client.Refresh(ctx)
+	if err != nil {
 		return toolText(fmt.Sprintf("Token刷新失败。可能的原因：refresh_token已过期、网络连接问题或代理设置问题。错误详情: %v", err))
 	}
-	if err := a.persistSourceAuth(); err != nil {
-		return toolText("Token刷新成功，但无法同步认证状态: " + err.Error())
-	}
-	return toolText(fmt.Sprintf("Token刷新成功！%s。现在可以正常使用Pixiv API功能了。", a.authIdentityText()))
+	a.sdkRequest.UserID = account.UserID
+	return toolText(fmt.Sprintf("Token刷新成功！%s。现在可以正常使用Pixiv API功能了。", authIdentityText(*account)))
 }
 
 type setRefreshTokenIn struct {
@@ -329,32 +332,32 @@ type setRefreshTokenIn struct {
 }
 
 func (a *App) setRefreshToken(ctx context.Context, _ *mcp.CallToolRequest, in setRefreshTokenIn) (*mcp.CallToolResult, textOut, error) {
-	token, parsedCookie := utils.ParsePixivWebRefreshTokenInput(in.RefreshToken)
+	token, err := utils.ValidateRefreshTokenInput(in.RefreshToken)
+	if err != nil {
+		return toolText("错误：" + err.Error())
+	}
 	if token == "" {
-		if parsedCookie {
-			return toolText("错误：检测到您输入的是 Cookie 字符串，但其中没有 refresh_token。Pixiv 网页 Cookie 里的 PHPSESSID/device_token 不能直接用于 App API OAuth 刷新。请提供真正的 Pixiv refresh token，或包含 refresh_token=... 的 Cookie。")
-		}
 		return toolText("错误：refresh token 不能为空。")
 	}
-	if a.sdk.NewClient != nil {
-		if err := a.acquireSDKGate(ctx); err != nil {
-			return toolText(err.Error())
-		}
-		defer a.releaseSDKGate()
+	client, release, err := a.openSDKMutable(ctx)
+	if err != nil {
+		return toolText("Refresh token 已在当前会话设置，但认证失败: " + err.Error())
 	}
-	a.api.SetRefreshToken(token)
-	if err := a.api.Refresh(ctx); err != nil {
+	defer release()
+	account, err := client.ImportAccount(ctx, token)
+	if err != nil {
 		return toolText(fmt.Sprintf("Refresh token 已在当前会话设置，但认证失败: %v\n\n请检查 token 是否有效，或稍后使用 refresh_token 工具重试认证。", err))
 	}
-	if err := a.persistSourceAuth(); err != nil {
-		return toolText("Refresh token 已在当前会话设置并完成认证，但无法同步认证状态: " + err.Error())
+	if err := client.SelectAccount(account.UserID); err != nil {
+		return toolText("Refresh token 已在当前会话设置并完成认证，但无法选择认证账号: " + err.Error())
 	}
-	return toolText(fmt.Sprintf("Refresh token 已在当前会话设置并完成认证！\n%s\n\n现在您可以使用所有 Pixiv 功能了。", a.authIdentityText()))
+	a.sdkRequest.UserID = account.UserID
+	return toolText(fmt.Sprintf("Refresh token 已在当前会话设置并完成认证！\n%s\n\n现在您可以使用所有 Pixiv 功能了。", authIdentityText(*account)))
 }
 
-func (a *App) authIdentityText() string {
-	identity := fmt.Sprintf("用户 ID: %d", a.api.UserID())
-	if username := strings.TrimSpace(a.api.UserName()); username != "" {
+func authIdentityText(account sdk.Account) string {
+	identity := fmt.Sprintf("用户 ID: %d", account.UserID)
+	if username := strings.TrimSpace(account.Username); username != "" {
 		identity += "\n用户名: " + username
 	}
 	return identity
@@ -366,8 +369,9 @@ type downloadRandomIn struct {
 }
 
 func (a *App) downloadRandom(ctx context.Context, req *mcp.CallToolRequest, in downloadRandomIn) (*mcp.CallToolResult, downloadOut, error) {
-	if err := a.ensureAuth(ctx); err != nil {
-		return nil, downloadOut{Delivery: deliveryLocalPath, Text: err.Error()}, nil
+	delivery, errText := normalizeDelivery(in.Delivery)
+	if errText != "" {
+		return nil, downloadOut{Delivery: deliveryLocalPath, Text: errText}, nil
 	}
 	count := in.Count
 	if count <= 0 {
@@ -376,7 +380,12 @@ func (a *App) downloadRandom(ctx context.Context, req *mcp.CallToolRequest, in d
 	if count > 20 {
 		count = 20
 	}
-	result, err := a.api.IllustRecommended(ctx, 0)
+	client, release, err := a.openSDKOperation(ctx)
+	if err != nil {
+		return nil, downloadOut{Delivery: deliveryLocalPath, Text: "获取推荐列表失败: " + err.Error()}, nil
+	}
+	defer release()
+	result, err := client.IllustRecommended(ctx, sdk.IllustRecommendedRequest{})
 	if err != nil {
 		return nil, downloadOut{Delivery: deliveryLocalPath, Text: "获取推荐列表失败: " + err.Error()}, nil
 	}
@@ -391,7 +400,15 @@ func (a *App) downloadRandom(ctx context.Context, req *mcp.CallToolRequest, in d
 	for _, illust := range result.Illusts[:count] {
 		ids = append(ids, illust.ID)
 	}
-	return a.download(ctx, req, downloadIn{IllustIDs: ids, Delivery: in.Delivery})
+	artworks, err := a.downloadArtworks(ctx, ids, client)
+	if err != nil {
+		return nil, downloadOut{Delivery: deliveryLocalPath, Text: "下载失败: " + err.Error()}, nil
+	}
+	out, err := buildDownloadOut(delivery, artworks)
+	if err != nil {
+		return nil, downloadOut{Delivery: deliveryLocalPath, Text: "整理下载结果失败: " + err.Error()}, nil
+	}
+	return downloadResult(out), out, nil
 }
 
 type searchIllustIn struct {
@@ -406,23 +423,34 @@ type searchIllustIn struct {
 
 func (a *App) searchIllust(ctx context.Context, _ *mcp.CallToolRequest, in searchIllustIn) (*mcp.CallToolResult, textOut, error) {
 	if in.SearchTarget == "" {
-		in.SearchTarget = string(pixiv.SearchTargetPartialMatchForTags)
+		in.SearchTarget = string(sdk.SearchTargetPartialMatchForTags)
 	}
 	if in.Sort == "" {
-		in.Sort = string(pixiv.SortModeDateDesc)
+		in.Sort = string(sdk.SortModeDateDesc)
 	}
 	word := in.Word
 	if in.SearchR18 {
 		word += " R-18"
 	}
-	result, err := a.api.SearchIllust(ctx, word, in.SearchTarget, in.Sort, in.Duration, in.Offset)
+	client, release, err := a.openSDKOperation(ctx)
 	if err != nil {
 		return toolText(err.Error())
 	}
-	if len(result.Illusts) == 0 {
+	defer release()
+	items, _, err := collectPages(ctx, offsetPlan(in.Offset), func(ctx context.Context, cursor sdk.Cursor) ([]sdk.Illust, sdk.Cursor, error) {
+		result, err := client.SearchIllust(ctx, sdk.SearchIllustRequest{Word: word, Target: sdk.SearchTarget(in.SearchTarget), Sort: sdk.SortMode(in.Sort), Duration: in.Duration, Cursor: cursor})
+		if err != nil {
+			return nil, "", err
+		}
+		return result.Illusts, result.NextCursor, nil
+	})
+	if err != nil {
+		return toolText(err.Error())
+	}
+	if len(items) == 0 {
 		return toolText(fmt.Sprintf("抱歉，根据您提供的关键词 '%s'，未能找到相关的插画。", word))
 	}
-	return toolText(fmt.Sprintf("找到 %d 张关于 '%s' 的插画:\n\n%s", len(result.Illusts), word, formatIllusts(result.Illusts, in.IncludeThumbnail, in.Offset, false)))
+	return toolText(fmt.Sprintf("找到 %d 张关于 '%s' 的插画:\n\n%s", len(items), word, formatIllusts(items, in.IncludeThumbnail, in.Offset, false)))
 }
 
 type illustIDIn struct {
@@ -430,7 +458,12 @@ type illustIDIn struct {
 }
 
 func (a *App) illustDetail(ctx context.Context, _ *mcp.CallToolRequest, in illustIDIn) (*mcp.CallToolResult, textOut, error) {
-	result, err := a.api.IllustDetail(ctx, in.IllustID)
+	client, release, err := a.openSDKOperation(ctx)
+	if err != nil {
+		return toolText(err.Error())
+	}
+	defer release()
+	result, err := client.IllustDetail(ctx, in.IllustID)
 	if err != nil {
 		return toolText(err.Error())
 	}
@@ -445,14 +478,25 @@ type relatedIn struct {
 }
 
 func (a *App) illustRelated(ctx context.Context, _ *mcp.CallToolRequest, in relatedIn) (*mcp.CallToolResult, textOut, error) {
-	result, err := a.api.IllustRelated(ctx, in.IllustID, in.Offset)
+	client, release, err := a.openSDKOperation(ctx)
 	if err != nil {
 		return toolText(err.Error())
 	}
-	if len(result.Illusts) == 0 {
+	defer release()
+	items, _, err := collectPages(ctx, offsetPlan(in.Offset), func(ctx context.Context, cursor sdk.Cursor) ([]sdk.Illust, sdk.Cursor, error) {
+		result, err := client.IllustRelated(ctx, sdk.IllustRelatedRequest{IllustID: in.IllustID, Cursor: cursor})
+		if err != nil {
+			return nil, "", err
+		}
+		return result.Illusts, result.NextCursor, nil
+	})
+	if err != nil {
+		return toolText(err.Error())
+	}
+	if len(items) == 0 {
 		return toolText(fmt.Sprintf("找不到与插画 %d 相关的推荐。", in.IllustID))
 	}
-	return toolText(fmt.Sprintf("找到 %d 张相关推荐:\n\n%s", len(result.Illusts), formatIllusts(result.Illusts, in.IncludeThumbnail, in.Offset, false)))
+	return toolText(fmt.Sprintf("找到 %d 张相关推荐:\n\n%s", len(items), formatIllusts(items, in.IncludeThumbnail, in.Offset, false)))
 }
 
 type rankingIn struct {
@@ -464,16 +508,27 @@ type rankingIn struct {
 
 func (a *App) illustRanking(ctx context.Context, _ *mcp.CallToolRequest, in rankingIn) (*mcp.CallToolResult, textOut, error) {
 	if in.Mode == "" {
-		in.Mode = string(pixiv.RankingModeDay)
+		in.Mode = string(sdk.RankingModeDay)
 	}
-	result, err := a.api.IllustRanking(ctx, in.Mode, in.Date, in.Offset)
+	client, release, err := a.openSDKOperation(ctx)
 	if err != nil {
 		return toolText(err.Error())
 	}
-	if len(result.Illusts) == 0 {
+	defer release()
+	items, _, err := collectPages(ctx, offsetPlan(in.Offset), func(ctx context.Context, cursor sdk.Cursor) ([]sdk.Illust, sdk.Cursor, error) {
+		result, err := client.IllustRanking(ctx, sdk.IllustRankingRequest{Mode: sdk.RankingMode(in.Mode), Date: in.Date, Cursor: cursor})
+		if err != nil {
+			return nil, "", err
+		}
+		return result.Illusts, result.NextCursor, nil
+	})
+	if err != nil {
+		return toolText(err.Error())
+	}
+	if len(items) == 0 {
 		return toolText(fmt.Sprintf("找不到模式为 '%s' 的排行榜结果。", in.Mode))
 	}
-	return toolText(fmt.Sprintf("%s 排行榜:\n\n%s", strings.Title(in.Mode), formatIllusts(result.Illusts, in.IncludeThumbnail, in.Offset, true)))
+	return toolText(fmt.Sprintf("%s 排行榜:\n\n%s", strings.Title(in.Mode), formatIllusts(items, in.IncludeThumbnail, in.Offset, true)))
 }
 
 type searchUserIn struct {
@@ -482,14 +537,34 @@ type searchUserIn struct {
 }
 
 func (a *App) searchUser(ctx context.Context, _ *mcp.CallToolRequest, in searchUserIn) (*mcp.CallToolResult, textOut, error) {
-	result, err := a.api.SearchUser(ctx, in.Word, in.Offset)
+	client, release, err := a.openSDKOperation(ctx)
 	if err != nil {
 		return toolText(err.Error())
 	}
-	if len(result.UserPreviews) == 0 {
+	defer release()
+	items, _, err := collectPages(ctx, offsetPlan(in.Offset), func(ctx context.Context, cursor sdk.Cursor) ([]sdk.UserPreview, sdk.Cursor, error) {
+		result, err := client.SearchUser(ctx, sdk.SearchUserRequest{Word: in.Word, Cursor: cursor})
+		if err != nil {
+			return nil, "", err
+		}
+		return result.UserPreviews, result.NextCursor, nil
+	})
+	if err != nil {
+		return toolText(err.Error())
+	}
+	if len(items) == 0 {
 		return toolText(fmt.Sprintf("抱歉，未能找到名为 '%s' 的用户。", in.Word))
 	}
-	return toolText(fmt.Sprintf("找到 %d 位用户:\n\n%s", len(result.UserPreviews), formatUsers(result.UserPreviews)))
+	return toolText(fmt.Sprintf("找到 %d 位用户:\n\n%s", len(items), formatUsers(items)))
+}
+
+// offsetPlan 将 legacy offset 映射为 SDK cursor 的逻辑跳过。它保留旧工具“从
+// offset 位置取一批”的可观察选择，不把已废弃上游 offset 泄露给公开 SDK。
+func offsetPlan(offset int) mcpListPlan {
+	if offset < 0 {
+		offset = 0
+	}
+	return mcpListPlan{page: 1, limit: -1, oneBatch: true, skip: offset}
 }
 
 type offsetThumbnailIn struct {
@@ -498,21 +573,34 @@ type offsetThumbnailIn struct {
 }
 
 func (a *App) illustRecommended(ctx context.Context, _ *mcp.CallToolRequest, in offsetThumbnailIn) (*mcp.CallToolResult, textOut, error) {
-	if err := a.ensureAuth(ctx); err != nil {
-		return toolText(err.Error())
-	}
-	result, err := a.api.IllustRecommended(ctx, in.Offset)
+	client, release, err := a.openSDKOperation(ctx)
 	if err != nil {
 		return toolText(err.Error())
 	}
-	if len(result.Illusts) == 0 {
+	defer release()
+	items, _, err := collectPages(ctx, offsetPlan(in.Offset), func(ctx context.Context, cursor sdk.Cursor) ([]sdk.Illust, sdk.Cursor, error) {
+		result, err := client.IllustRecommended(ctx, sdk.IllustRecommendedRequest{Cursor: cursor})
+		if err != nil {
+			return nil, "", err
+		}
+		return result.Illusts, result.NextCursor, nil
+	})
+	if err != nil {
+		return toolText(err.Error())
+	}
+	if len(items) == 0 {
 		return toolText("暂无推荐内容。")
 	}
-	return toolText(fmt.Sprintf("为您推荐 %d 张插画:\n\n%s", len(result.Illusts), formatIllusts(result.Illusts, in.IncludeThumbnail, in.Offset, false)))
+	return toolText(fmt.Sprintf("为您推荐 %d 张插画:\n\n%s", len(items), formatIllusts(items, in.IncludeThumbnail, in.Offset, false)))
 }
 
 func (a *App) trendingTags(ctx context.Context, _ *mcp.CallToolRequest, _ emptyIn) (*mcp.CallToolResult, textOut, error) {
-	result, err := a.api.TrendingTagsIllust(ctx)
+	client, release, err := a.openSDKOperation(ctx)
+	if err != nil {
+		return toolText(err.Error())
+	}
+	defer release()
+	result, err := client.TrendingTagsIllust(ctx)
 	if err != nil {
 		return toolText(err.Error())
 	}
@@ -537,24 +625,37 @@ type followIn struct {
 }
 
 func (a *App) illustFollow(ctx context.Context, _ *mcp.CallToolRequest, in followIn) (*mcp.CallToolResult, textOut, error) {
-	if err := a.ensureAuth(ctx); err != nil {
-		return toolText(err.Error())
-	}
 	if in.Restrict == "" {
-		in.Restrict = string(pixiv.RestrictPublic)
+		in.Restrict = string(sdk.RestrictPublic)
 	}
-	result, err := a.api.IllustFollow(ctx, in.Restrict, in.Offset)
+	client, release, err := a.openSDKOperation(ctx)
 	if err != nil {
 		return toolText(err.Error())
 	}
-	if len(result.Illusts) == 0 {
+	defer release()
+	items, _, err := collectPages(ctx, offsetPlan(in.Offset), func(ctx context.Context, cursor sdk.Cursor) ([]sdk.Illust, sdk.Cursor, error) {
+		result, err := client.FollowingIllusts(ctx, sdk.FollowingIllustsRequest{Restrict: sdk.Restrict(in.Restrict), Cursor: cursor})
+		if err != nil {
+			return nil, "", err
+		}
+		return result.Illusts, result.NextCursor, nil
+	})
+	if err != nil {
+		return toolText(err.Error())
+	}
+	if len(items) == 0 {
 		return toolText("您的关注动态中暂时没有新作品。")
 	}
-	return toolText(fmt.Sprintf("找到 %d 篇关注动态:\n\n%s", len(result.Illusts), formatIllusts(result.Illusts, in.IncludeThumbnail, in.Offset, false)))
+	return toolText(fmt.Sprintf("找到 %d 篇关注动态:\n\n%s", len(items), formatIllusts(items, in.IncludeThumbnail, in.Offset, false)))
 }
 
 func (a *App) thumbnailBase64(ctx context.Context, _ *mcp.CallToolRequest, in illustIDIn) (*mcp.CallToolResult, textOut, error) {
-	result, err := a.api.IllustDetail(ctx, in.IllustID)
+	client, release, err := a.openSDKOperation(ctx)
+	if err != nil {
+		return toolText("错误: 无法获取插画信息: " + err.Error())
+	}
+	defer release()
+	result, err := client.IllustDetail(ctx, in.IllustID)
 	if err != nil {
 		return toolText("错误: 无法获取插画信息: " + err.Error())
 	}
@@ -562,43 +663,28 @@ func (a *App) thumbnailBase64(ctx context.Context, _ *mcp.CallToolRequest, in il
 	if rawURL == "" {
 		return toolText("错误: 无法找到缩略图URL")
 	}
+	ref, err := client.ParseResourceRef(rawURL)
+	if err != nil {
+		return toolText("错误: 获取缩略图失败: " + err.Error())
+	}
+	response, err := client.OpenResource(ctx, sdk.OpenResourceRequest{Ref: ref})
+	if err != nil {
+		return toolText("错误: 获取缩略图失败: " + err.Error())
+	}
+	defer response.Body.Close()
 	var buf strings.Builder
 	writer := base64.NewEncoder(base64.StdEncoding, stringWriter{&buf})
-	if err := a.api.Download(ctx, rawURL, writer); err != nil {
+	if _, err := io.Copy(writer, response.Body); err != nil {
 		_ = writer.Close()
 		return toolText("错误: 获取缩略图失败: " + err.Error())
 	}
-	_ = writer.Close()
+	if err := writer.Close(); err != nil {
+		return toolText("错误: 获取缩略图失败: " + err.Error())
+	}
 	return toolText(fmt.Sprintf("缩略图数据 (插画ID: %d):\ndata:image/jpeg;base64,%s", in.IllustID, buf.String()))
 }
 
-func (a *App) ensureAuth(ctx context.Context) error {
-	if a.api.IsAuthenticated() {
-		return nil
-	}
-	if a.sdk.NewClient != nil {
-		if err := a.acquireSDKGate(ctx); err != nil {
-			return err
-		}
-		defer a.releaseSDKGate()
-		// 锁等待期间另一 tool 可能已经完成认证。
-		if a.api.IsAuthenticated() {
-			return nil
-		}
-	}
-	if a.api.RefreshTokenValue() == "" {
-		return fmt.Errorf("错误: 此功能需要认证。请先使用 set_refresh_token 工具或在客户端设置 PIXIV_REFRESH_TOKEN 环境变量。")
-	}
-	if err := a.api.Refresh(ctx); err != nil {
-		return fmt.Errorf("错误: 自动认证失败: %v", err)
-	}
-	if err := a.persistSourceAuth(); err != nil {
-		return fmt.Errorf("错误: 自动认证成功，但无法同步认证状态: %v", err)
-	}
-	return nil
-}
-
-func formatIllusts(illusts []pixiv.Illust, includeThumbnail bool, offset int, ranked bool) string {
+func formatIllusts(illusts []sdk.Illust, includeThumbnail bool, offset int, ranked bool) string {
 	lines := make([]string, 0, len(illusts))
 	for i, illust := range illusts {
 		prefix := ""
@@ -610,7 +696,7 @@ func formatIllusts(illusts []pixiv.Illust, includeThumbnail bool, offset int, ra
 	return strings.Join(lines, "\n\n")
 }
 
-func formatIllust(illust pixiv.Illust, includeThumbnail bool) string {
+func formatIllust(illust sdk.Illust, includeThumbnail bool) string {
 	tags := make([]string, 0, min(len(illust.Tags), 5))
 	for _, tag := range illust.Tags {
 		if len(tags) == 5 {
@@ -630,7 +716,7 @@ func formatIllust(illust pixiv.Illust, includeThumbnail bool) string {
 	return text
 }
 
-func formatUsers(users []pixiv.UserPreview) string {
+func formatUsers(users []sdk.UserPreview) string {
 	lines := make([]string, 0, len(users))
 	for _, preview := range users {
 		user := preview.User
@@ -647,7 +733,7 @@ func formatUsers(users []pixiv.UserPreview) string {
 	return strings.Join(lines, "\n\n")
 }
 
-func thumbnailURL(illust pixiv.Illust) string {
+func thumbnailURL(illust sdk.Illust) string {
 	for _, value := range []string{illust.ImageURLs.SquareMedium, illust.ImageURLs.Medium} {
 		if value != "" {
 			return value

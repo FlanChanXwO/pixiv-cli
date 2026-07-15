@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted；production rollout 尚未开始。
+Accepted；v0.2.0 production rollout 已完成；后续正式发布继续遵循本决策。
 
 ## Context
 
@@ -40,10 +40,12 @@ repository secret，或复用同一 SSH key，会让任意 tag/workflow 或公�
 - 自动检查是只读、限时且 stderr-only 的提示；它不能修改业务退出码或 JSON/MCP stdout。显式更新必须
   将渠道切换、权限、HTTP、签名、checksum、archive 和替换失败如实暴露。
 - production public key/key ID/fingerprint 已进入 bootstrap wiring；私钥只存在于受保护 Environment
-  与 Keychain recovery copy，公开 source/tap remote 已创建且 tap 只登记 deploy key 公钥。GitHub
-  Release、tag 和 tap formula 仍未部署。不能将 `--check` 成功、本地 fixture 或 workflow 文件视为
-  已完成的安全发布。
+  与 Keychain recovery copy，公开 source/tap remote 已创建且 tap 只登记 deploy key 公钥。v0.2.0 的
+  GitHub Release、immutable tag 和 `pixiv-cli` tap formula 已按受保护发布流程部署；六平台 archive、
+  checksum、签名以及四平台 formula 安装均由该 release workflow 验收。不能将单独的 `--check` 成功、
+  本地 fixture 或 workflow 文件视为已完成的安全发布。
 - staticlib/manifest、workflow policy 与六平台 native artifact evidence 已齐备；受保护 Environment
-  secrets 也已配置。正式 tag、签名 Release、tap formula 与安装验收仍须按发布流程依次完成。
+  secrets 也已配置。v0.2.0 的正式 tag、签名 Release、tap formula 与安装验收已完成；后续版本仍须按
+  同一发布流程依次完成。
 - v0.1.0 用户仍可能看到 Gatekeeper/SmartScreen 警告；支持文档应指导用户回到已验证 Release、
   checksum 和签名记录，而不是绕过系统信誉机制。

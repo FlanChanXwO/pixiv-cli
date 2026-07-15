@@ -5,20 +5,42 @@ import (
 	"errors"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/config"
-	sdk "github.com/FlanChanXwO/pixiv-cli/pkg/pixiv"
+	sdk "github.com/FlanChanXwO/pixiv-cli/pixiv"
 )
 
 // SDKClient 是 CLI 数据命令所需的窄 facade。它刻意不复用或导出旧 Source 的大接口，
 // 让 CLI 通过公共 SDK 获得 cursor、错误和路由语义。
 type SDKClient interface {
+	ImportAccount(context.Context, string) (*sdk.Account, error)
+	ListAccounts() (*sdk.AccountsResult, error)
+	SelectAccount(int64) error
+	RemoveAccount(int64) error
+	CheckAccount(context.Context, int64) (*sdk.Account, error)
+	CheckRefreshToken(context.Context, string) (*sdk.Account, error)
+	Refresh(context.Context) (*sdk.Account, error)
+	StartLogin() (*sdk.LoginSession, error)
+	CompleteLogin(context.Context, *sdk.LoginSession, string, sdk.LoginOptions) (*sdk.Account, error)
 	CurrentUserID(context.Context) (int64, error)
 	SearchIllust(context.Context, sdk.SearchIllustRequest) (*sdk.IllustListResult, error)
 	IllustDetail(context.Context, int64) (*sdk.IllustDetail, error)
+	IllustRelated(context.Context, sdk.IllustRelatedRequest) (*sdk.IllustListResult, error)
 	IllustRanking(context.Context, sdk.IllustRankingRequest) (*sdk.IllustListResult, error)
 	IllustRecommended(context.Context, sdk.IllustRecommendedRequest) (*sdk.IllustListResult, error)
+	MangaRecommended(context.Context, sdk.IllustRecommendedRequest) (*sdk.IllustListResult, error)
+	NovelRecommended(context.Context, sdk.NovelRecommendedRequest) (*sdk.NovelListResult, error)
+	UserRecommended(context.Context, sdk.UserRecommendedRequest) (*sdk.UserRecommendedResult, error)
+	UserDetail(context.Context, sdk.UserDetailRequest) (*sdk.UserDetailResult, error)
 	UserArtworks(context.Context, sdk.UserArtworksRequest) (*sdk.IllustListResult, error)
 	UserBookmarks(context.Context, sdk.UserBookmarksRequest) (*sdk.IllustListResult, error)
+	UserBookmarksCursor(context.Context, sdk.UserBookmarksRequest, int64) (sdk.Cursor, error)
 	UserFollowing(context.Context, sdk.UserFollowingRequest) (*sdk.UserListResult, error)
+	FollowingIllusts(context.Context, sdk.FollowingIllustsRequest) (*sdk.IllustListResult, error)
+	SearchUser(context.Context, sdk.SearchUserRequest) (*sdk.UserListResult, error)
+	TrendingTagsIllust(context.Context) (*sdk.TrendingTagsIllustResult, error)
+	UgoiraMetadata(context.Context, int64) (*sdk.UgoiraMetadataResult, error)
+	ParseResourceRef(string) (sdk.ResourceRef, error)
+	OpenResource(context.Context, sdk.OpenResourceRequest) (*sdk.ResourceResponse, error)
+	Download(context.Context, sdk.ResourceRef, string) error
 	AddBookmark(context.Context, sdk.AddBookmarkRequest) error
 	RemoveBookmark(context.Context, sdk.RemoveBookmarkRequest) error
 	FollowUser(context.Context, sdk.FollowUserRequest) error
@@ -80,6 +102,14 @@ func (s SDKService) JSONOut(override *bool) (bool, error) {
 		return *override, nil
 	}
 	return runtime.OutputJSON, nil
+}
+
+// Runtime 返回当前本地运行配置，供下载路径这类 SDK 之外的本地输出策略使用。
+func (s SDKService) Runtime() (config.RuntimeConfig, error) {
+	if s.LoadRuntime == nil {
+		return config.RuntimeConfig{}, errors.New("runtime config loader is not configured")
+	}
+	return s.LoadRuntime()
 }
 
 // CurrentUserID 通过 SDK OAuth 快照获取真实身份。这样 --refresh-token 和环境 token

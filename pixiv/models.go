@@ -27,11 +27,17 @@ type Illust struct {
 
 // User 是作品作者的规范化摘要。
 type User struct {
-	ID         int64  `json:"id"`
-	Name       string `json:"name"`
-	Account    string `json:"account"`
-	Comment    string `json:"comment"`
-	IsFollowed bool   `json:"is_followed"`
+	ID               int64            `json:"id"`
+	Name             string           `json:"name"`
+	Account          string           `json:"account"`
+	Comment          string           `json:"comment"`
+	IsFollowed       bool             `json:"is_followed"`
+	ProfileImageURLs ProfileImageURLs `json:"profile_image_urls"`
+}
+
+// ProfileImageURLs 是用户头像的可选 URL 集合，不与作品 ImageURLs 混用。
+type ProfileImageURLs struct {
+	Medium *string `json:"medium,omitempty"`
 }
 
 // UserPreview 是用户列表中的稳定 envelope。
@@ -99,6 +105,16 @@ type IllustRankingRequest struct {
 type IllustRecommendedRequest struct {
 	Cursor Cursor `json:"cursor,omitempty"`
 }
+
+// NovelRecommendedRequest 仅包含本操作的 opaque continuation。
+type NovelRecommendedRequest struct {
+	Cursor Cursor `json:"cursor,omitempty"`
+}
+
+// UserRecommendedRequest 仅包含本操作的 opaque continuation。
+type UserRecommendedRequest struct {
+	Cursor Cursor `json:"cursor,omitempty"`
+}
 type FollowingIllustsRequest struct {
 	Restrict Restrict `json:"restrict,omitempty"`
 	Cursor   Cursor   `json:"cursor,omitempty"`
@@ -160,13 +176,104 @@ type IllustListResult struct {
 	NextCursor Cursor   `json:"next_cursor,omitempty"`
 }
 
+// Novel 是小说推荐结果中的稳定必要字段。
+type Novel struct {
+	ID             int64     `json:"id"`
+	Title          string    `json:"title"`
+	Caption        string    `json:"caption"`
+	User           User      `json:"user"`
+	Tags           []Tag     `json:"tags"`
+	ImageURLs      ImageURLs `json:"image_urls"`
+	CreateDate     string    `json:"create_date"`
+	TotalBookmarks int       `json:"total_bookmarks"`
+	TotalView      int       `json:"total_view"`
+}
+
+// NovelListResult 包含小说推荐批次与仅能续用到该操作的 opaque cursor。
+type NovelListResult struct {
+	Novels     []Novel `json:"novels"`
+	NextCursor Cursor  `json:"next_cursor,omitempty"`
+}
+
+// RecommendedUserPreview 只公开用户与可用作品预览，不传递上游排名或 UI 策略字段。
+type RecommendedUserPreview struct {
+	User    User     `json:"user"`
+	Illusts []Illust `json:"illusts"`
+	Novels  []Novel  `json:"novels"`
+}
+
+// UserRecommendedResult 包含作者推荐批次与仅能续用到该操作的 opaque cursor。
+type UserRecommendedResult struct {
+	UserPreviews []RecommendedUserPreview `json:"user_previews"`
+	NextCursor   Cursor                   `json:"next_cursor,omitempty"`
+}
+
 type UserListResult struct {
 	UserPreviews []UserPreview `json:"user_previews"`
 	NextCursor   Cursor        `json:"next_cursor,omitempty"`
 }
 
+// UserDetailResult 是用户详情的稳定完整 envelope。
 type UserDetailResult struct {
-	User User `json:"user"`
+	User             User             `json:"user"`
+	Profile          Profile          `json:"profile"`
+	ProfilePublicity ProfilePublicity `json:"profile_publicity"`
+	Workspace        Workspace        `json:"workspace"`
+}
+
+// Profile 是用户公开档案的稳定字段集合；上游未公开数据保持零值。
+type Profile struct {
+	Webpage                    *string `json:"webpage,omitempty"`
+	Gender                     string  `json:"gender"`
+	Birth                      string  `json:"birth"`
+	BirthDay                   string  `json:"birth_day"`
+	BirthYear                  int     `json:"birth_year"`
+	Region                     string  `json:"region"`
+	AddressID                  int64   `json:"address_id"`
+	CountryCode                string  `json:"country_code"`
+	Job                        string  `json:"job"`
+	JobID                      int64   `json:"job_id"`
+	TotalFollowUsers           int     `json:"total_follow_users"`
+	TotalMyPixivUsers          int     `json:"total_mypixiv_users"`
+	TotalIllusts               int     `json:"total_illusts"`
+	TotalManga                 int     `json:"total_manga"`
+	TotalNovels                int     `json:"total_novels"`
+	TotalIllustBookmarksPublic int     `json:"total_illust_bookmarks_public"`
+	TotalIllustSeries          int     `json:"total_illust_series"`
+	TotalNovelSeries           int     `json:"total_novel_series"`
+	BackgroundImageURL         *string `json:"background_image_url,omitempty"`
+	TwitterAccount             string  `json:"twitter_account"`
+	TwitterURL                 *string `json:"twitter_url,omitempty"`
+	PawooURL                   *string `json:"pawoo_url,omitempty"`
+	IsPremium                  bool    `json:"is_premium"`
+	IsUsingCustomProfileImage  bool    `json:"is_using_custom_profile_image"`
+}
+
+// ProfilePublicity 表示档案字段的公开状态。
+type ProfilePublicity struct {
+	Gender    bool `json:"gender"`
+	Region    bool `json:"region"`
+	BirthDay  bool `json:"birth_day"`
+	BirthYear bool `json:"birth_year"`
+	Job       bool `json:"job"`
+	Pawoo     bool `json:"pawoo"`
+}
+
+// Workspace 是用户公开工作环境信息；图片 URL 可选。
+type Workspace struct {
+	PC                string  `json:"pc"`
+	Monitor           string  `json:"monitor"`
+	Tool              string  `json:"tool"`
+	Scanner           string  `json:"scanner"`
+	Tablet            string  `json:"tablet"`
+	Mouse             string  `json:"mouse"`
+	Printer           string  `json:"printer"`
+	Desktop           string  `json:"desktop"`
+	Music             string  `json:"music"`
+	Desk              string  `json:"desk"`
+	Chair             string  `json:"chair"`
+	Comment           string  `json:"comment"`
+	WorkspaceImageURL *string `json:"workspace_image_url,omitempty"`
 }
 
 type TrendingTagsIllustResult struct {

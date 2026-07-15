@@ -208,7 +208,7 @@ CLI 使用 Cobra/pflag，flag 可以写在位置参数前后；例如 `pixiv aut
 
 ## 获取 refresh token
 
-浏览器 Cookie 里的 `PHPSESSID`、`device_token` 不是 Pixiv App API OAuth refresh token。推荐直接登录并保存账号：
+浏览器 Cookie（包括 `refresh_token=...`、`PHPSESSID`、`device_token`）不是可接受的 Pixiv App API OAuth refresh token，CLI、MCP、环境变量、SDK 与已存账号都会拒绝这类输入。推荐直接登录并保存账号：
 
 ```bash
 pixiv auth login
@@ -218,11 +218,11 @@ pixiv auth login
 | --- | --- |
 | 本地服务 | CLI 生成 PKCE/state，并启动本地 loopback HTTP server。 |
 | 浏览器 | macOS 默认优先注册本地 `pixiv://` callback helper 并打开默认浏览器，因此可复用已有 Pixiv 登录态；需要用户在 Pixiv 页面确认账号；`--no-open` 可改为只打印登录 URL。 |
-| 自动/手动回填 | CLI 默认通过 `pixiv://` helper、浏览器 URL/session 只读观察或 DevTools fallback 捕获 `pixiv://account/login`/官方 callback 请求，并保留终端粘贴兜底；若浏览器没有自动返回，也可在本地页面粘贴 callback URL、`pixiv://...` URL、Pixiv relay URL 或原始 code。 |
+| 自动/手动回填 | CLI 接收本轮 loopback callback、当前登录尝试注册的 `pixiv://` helper 转交、终端粘贴和本地页面表单；若浏览器没有返回，也可手动粘贴 callback URL、`pixiv://...` URL、Pixiv relay URL 或原始 code。 |
 | state 校验 | 本地 loopback 回调必须匹配本次 state；Pixiv 官方 callback URL 与 `pixiv://account/login` 可在 Pixiv 未返回 state 时作为显式 fallback。 |
 | token 保存 | refresh/access token 不打印；refresh token 按 Pixiv UID 写入 `auth.json`，权限为 `0600`。 |
 
-默认浏览器打开时，macOS 会优先安装/注册一个本地 `PixivCLIURLHandler.app`，只把 Pixiv 返回的 `pixiv://account/login?...` URL 转交给本轮 CLI loopback，不读取 cookie、token 或浏览器存储。若本机无法注册该 helper，CLI 才退回专用 Chromium/Edge 用户资料目录并通过 DevTools 只监听 Pixiv OAuth 请求 URL；该 fallback 不安装扩展、不点击页面、不读取 cookie 或 token。macOS 的浏览器 URL 观察仍支持 Microsoft Edge、Chrome、Chromium 与 Safari，会读取浏览器标签页 URL，并扫描 Chromium 系浏览器的 session/history 状态文件；遇到 Pixiv `post-redirect` 授权接力页时会校验其 `return_to` 属于本轮 OAuth，然后等待 Pixiv 触发 `pixiv://` handoff，不再自动重开白页。浏览器可能停留在白色 relay 页，是否成功以终端最终输出为准。若手动粘贴 Pixiv relay URL，CLI 会打开该 relay URL 一次。状态不可读或 Pixiv 未生成 callback 时不会隐藏失败或假装登录成功，用户仍可用终端 prompt 或本地页面手动回填授权码。
+默认浏览器打开时，macOS 会注册一个仅服务于当前登录尝试的本地 `PixivCLIURLHandler.app`，只把 Pixiv 返回的 `pixiv://account/login?...` URL 转交给本轮 CLI loopback。它不读取浏览器 Cookie、存储、历史、会话文件、标签页或网络流量；helper 不可用时不会启动受管 Chromium、DevTools/CDP 或浏览器状态扫描，只保留正常浏览器、loopback 和手动回填。遇到 Pixiv `post-redirect` 授权接力页时，用户可手动粘贴 relay URL；CLI 只在校验其属于本轮 OAuth 后打开一次。浏览器可能停留在白色 relay 页，是否成功以终端最终输出为准；若未生成 callback，CLI 不会隐藏失败或假装登录成功。
 
 浏览器使用的系统代理不会自动传给 Go CLI。若 Pixiv token exchange 需要代理，请配置 `pixiv config set https_proxy http://127.0.0.1:7890`，在单次命令前设置 `https_proxy=...`，或对网络命令使用运行期覆盖 `--proxy http://127.0.0.1:7890`。`--no-proxy` 会清空本次命令的代理，即使环境变量或 `config.toml` 设置了 `https_proxy`；`--proxy` 和 `--no-proxy` 不能同用，也不会写入 `config.toml`。
 
@@ -232,15 +232,19 @@ pixiv auth login
 
 ## 测试
 
-当前测试覆盖 CLI 命令与 build metadata、显式/自动更新、`internal/application` 应用用例、`internal/config` 配置、`internal/storage/auth` 认证存储、Pixiv App API 认证重试、Pixiv facade/source、web fallback、HTTP client wiring、下载管理、Rust encoder/staticlib 合约和 MCP tool 注册：
+当前测试覆盖 CLI 命令与 build metadata、显式/自动更新、`internal/application` 应用用例、`internal/config` 配置、`internal/storage/auth` 认证存储、Pixiv App API 认证重试、公开 Pixiv SDK/facade、web fallback、HTTP client wiring、下载管理、Rust encoder/staticlib 合约和 MCP tool 注册：
 
 ```bash
 go test ./...
 sh scripts/build.sh
 PIXIV_E2E_WEB_API=1 PIXIV_WEB_API_PROXY=http://127.0.0.1:7890 go test ./test/e2e -run WebAPIFallbackReal -count=1 -v
+PIXIV_E2E_REAL_API=1 PIXIV_E2E_REFRESH_TOKEN="<独立测试 refresh token>" PIXIV_E2E_PROXY=http://127.0.0.1:7890 go test ./test/e2e -run AuthenticatedAppAPICanary -count=1 -v
+PIXIV_E2E_REAL_API=1 PIXIV_E2E_USE_LOCAL_AUTH=1 PIXIV_E2E_PROXY=http://127.0.0.1:7890 go test ./test/e2e -run AuthenticatedAppAPICanary -count=1 -v
 ```
 
 `go test ./...` 保持默认离线稳定；真实 Pixiv web API fallback e2e 默认跳过，只有设置 `PIXIV_E2E_WEB_API=1` 时才会联网。未设置 `PIXIV_WEB_API_PROXY` 时会直连。
+
+认证 App API canary 必须设置 `PIXIV_E2E_REAL_API=1`，再明确选择一种认证来源；未选择则跳过，也不会匿名 fallback。`PIXIV_E2E_REFRESH_TOKEN` 是隔离模式：只使用显式传入的独立测试 token，不读取或写入本机 auth 配置、浏览器数据。`PIXIV_E2E_USE_LOCAL_AUTH=1` 是本机模式：子 CLI 复用当前用户的 `HOME`/`XDG_CONFIG_HOME` 和默认账号 store，按正常 CLI 行为把 rotated refresh token 写回本机 store；它不会继承 `PIXIV_REFRESH_TOKEN` 运行期覆盖，也拒绝 `PIXIV_E2E_BINARY`，只构建当前源码后运行。两种来源不能同时设置，且本机模式只应在用户明确授权时使用；运行期间不要并发启动其他使用同一账号 store 的 `pixiv` CLI 或 MCP 进程，以免 rotation 覆盖或旧 token 请求失败。该 canary 验证 `auth check`、完整用户详情和插画/漫画/小说/作者四类推荐。可选 `PIXIV_E2E_PROXY`（或 `PIXIV_WEB_API_PROXY`）只作用于该次测试；请勿把 token 写入 shell history、日志或仓库文件。
 
 `PIXIV_E2E_BINARY` 与 `PIXIV_E2E_EXPECTED_VERSION` 供 CI 对已构建、已解压的 release binary 执行离线 e2e；它们不注入 token，也不启用真实 Pixiv API/Web fallback。`platform-smoke.yml` 在六个受支持 runner 上构建、封装、解压并运行这组 CLI/config/MCP stdio 验证。
 
@@ -281,12 +285,14 @@ GitHub Release。workflow 使用 full-SHA Actions、最小权限及 `release` En
 `workflow_dispatch` 提交同一个 `release_tag` 进行恢复。validate 会校验该 tag 为 SemVer、存在、
 已包含于默认分支且尚未有 Release；构建与发布始终 checkout 该 tag。恢复 run 可以只在无 Environment
 的六平台 test job 中应用固定白名单的默认分支测试覆盖：当前 release workflow、Windows ACL 所需的
-`pkg/pixiv/account_external_test.go`，以及该 workflow 的 canonical verifier 与其测试（共 4 条路径）。覆盖通过
+`pixiv/account_external_test.go`，以及该 workflow 的 canonical verifier 与其测试（共 4 条路径）。覆盖通过
 一次 `git archive` 提取，再逐项核对工作树 diff 与空 cached diff，不能加入任意路径或生产源码，且不生成
 release artifact。该 job 成功后，独立的新 runner
 才会以 `clean: true` checkout tag、重新构建 selected staticlib 并生成唯一可被 publish 下载的
 `verified-release-*` assets；测试进程对环境变量、PATH 或临时目录的副作用不会进入生产 job。因此它不能用于
-替换生产资产源码、移动 tag，或重发已经存在的 Release。
+替换生产资产源码、移动 tag，或重发已经存在的 Release。v0.2.0 的不可变 tag 中对应测试仍位于
+`pkg/pixiv/account_external_test.go`；它是该次已完成恢复的历史证据，不能被改写为当前工作树路径。当前
+workflow 只覆盖顶层 `pixiv/account_external_test.go`，用于之后采用顶层 SDK 的新 tag。
 
 `sh scripts/test-release-workflow.sh` 启动 `scripts/releaseworkflow` 的 YAML AST policy，而不是依赖
 文本排版或行号。它精确检查 tag trigger、八份 job 的权限/依赖、六个 test/production runner matrix、每一个
