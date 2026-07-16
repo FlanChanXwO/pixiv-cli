@@ -50,16 +50,27 @@ func TestServerListsExpectedTools(t *testing.T) {
 		}
 		names = append(names, tool.Name)
 	}
-	for _, want := range []string{"set_download_path", "download", "refresh_token", "set_refresh_token", "download_random_from_recommendation", "search_illust", "search_user", "trending_tags_illust", "illust_related", "illust_recommended", "recommended", "illust_follow", "user_artworks", "user_bookmarks", "user_following", "add_bookmark", "remove_bookmark", "follow_user", "unfollow_user", "illust_detail", "illust_ranking", "get_thumbnail_base64"} {
-		if !slices.Contains(names, want) {
-			t.Fatalf("tool %q missing from %v", want, names)
-		}
+	want := []string{
+		"set_download_path", "download", "refresh_token", "set_refresh_token",
+		"download_random_from_recommendation", "search_illust", "illust_detail",
+		"illust_related", "illust_ranking", "search_user", "illust_recommended",
+		"recommended", "trending_tags_illust", "illust_follow", "user_detail",
+		"user_artworks", "user_bookmarks", "user_following", "add_bookmark",
+		"remove_bookmark", "follow_user", "unfollow_user", "get_thumbnail_base64",
+	}
+	slices.Sort(names)
+	slices.Sort(want)
+	if !slices.Equal(names, want) {
+		t.Fatalf("tools=%v, want exact registration set %v", names, want)
 	}
 }
 
 func TestLegacyToolLogsSafelyOutsideMCPProtocol(t *testing.T) {
 	var logs bytes.Buffer
-	server := New(&fakeAPI{}, &fakeDownloads{}, slog.New(slog.NewJSONHandler(&logs, nil)))
+	service := application.SDKService{NewClient: func(application.SDKClientRequest) (application.SDKClient, error) {
+		return &fakeSDKClient{}, nil
+	}}
+	server := NewWithSDK(&fakeAPI{}, &fakeDownloads{}, slog.New(slog.NewJSONHandler(&logs, nil)), service, application.SDKClientRequest{})
 	clientTransport, serverTransport := mcp.NewInMemoryTransports()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -2005,6 +2016,8 @@ func decodeStructured(t *testing.T, result *mcp.CallToolResult, out any) {
 
 type fakeSDKClient struct {
 	userID                int64
+	searchIllust          func(context.Context, sdk.SearchIllustRequest) (*sdk.IllustListResult, error)
+	illustDetail          func(context.Context, int64) (*sdk.IllustDetail, error)
 	artworks              []sdk.Illust
 	bookmarks             []sdk.Illust
 	following             []sdk.UserPreview
@@ -2078,10 +2091,18 @@ func (*fakeSDKClient) StartLogin() (*sdk.LoginSession, error) {
 func (*fakeSDKClient) CompleteLogin(context.Context, *sdk.LoginSession, string, sdk.LoginOptions) (*sdk.Account, error) {
 	return nil, errors.New("login is not configured")
 }
-func (*fakeSDKClient) SearchIllust(context.Context, sdk.SearchIllustRequest) (*sdk.IllustListResult, error) {
+
+func (f *fakeSDKClient) SearchIllust(ctx context.Context, request sdk.SearchIllustRequest) (*sdk.IllustListResult, error) {
+	if f.searchIllust != nil {
+		return f.searchIllust(ctx, request)
+	}
 	return &sdk.IllustListResult{}, nil
 }
-func (*fakeSDKClient) IllustDetail(context.Context, int64) (*sdk.IllustDetail, error) {
+
+func (f *fakeSDKClient) IllustDetail(ctx context.Context, illustID int64) (*sdk.IllustDetail, error) {
+	if f.illustDetail != nil {
+		return f.illustDetail(ctx, illustID)
+	}
 	return &sdk.IllustDetail{}, nil
 }
 func (*fakeSDKClient) IllustRelated(context.Context, sdk.IllustRelatedRequest) (*sdk.IllustListResult, error) {

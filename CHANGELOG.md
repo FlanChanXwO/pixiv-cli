@@ -14,6 +14,7 @@
 
 ### Fixed
 
+- 修复 legacy MCP handler 把输入、认证、上游读取、下载与资源失败转换为兼容文本后，统一 operation wrapper 仍误记 `result=success` 的问题；wire 继续保持原 Content、structured output、文本与 `isError=false`，stderr 现以 error level 和安全 typed metadata 记录真实失败；事件不记录或输出原始错误文本、tool 输入、query、凭据、URL、path 或 response body。正常空结果仍记为成功。
 - 规范化下载 URL path 推导扩展名中的跨平台非法文件名字符、ASCII 控制字符和 Windows 非法尾随点/空格；单页与多页下载共用同一清理边界，既有模板和 ugoira `.gif` 语义不变。
 - 修复 MCP 作品列表文本静默只显示前 5 个 tags 的问题；文本现按上游顺序完整输出全部 tags，structured output 不变。
 - 修复 MCP `illust_ranking` 依赖 deprecated title-case 转换而产生不稳定英文标题的问题；已知 mode 现使用稳定中文标题，未来 mode 保留原值作为可读 fallback。

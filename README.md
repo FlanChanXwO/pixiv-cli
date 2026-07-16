@@ -356,7 +356,7 @@ MCP 的代理覆盖是启动期设置：
 
 未设置 `PIXIV_REFRESH_TOKEN` 时，`pixiv mcp` 会先回退到 `auth.json.default_user_id`；如果仍没有 refresh token 且 `web_fallback_enabled=true`，支持匿名 fallback 的 MCP tools 会直接使用 Pixiv web/ajax API。真实 token 写在 inline 环境变量里也可能进入 shell history；长期使用建议通过 MCP client 的私密环境配置或本地账号管理。
 
-日志写入 stderr，stdout 保留给 MCP JSON-RPC。
+Logs are written to stderr, while stdout remains reserved for MCP JSON-RPC. Typed SDK tool failures use `isError=true`. Legacy tool failures keep their existing `isError=false`, Content, structured output, and text for wire compatibility, but their stderr operation event is emitted at error level with `result=error`. Events contain only safe operation/classification metadata; they do not include raw errors, tool inputs, queries, tokens, cookies, URLs, paths, or response bodies. Normal empty results remain successful events.
 
 MCP client 配置示例：
 

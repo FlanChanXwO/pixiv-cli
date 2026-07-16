@@ -154,6 +154,8 @@ Release 安装的失败语义仍是保护边界，而不是临时降级。
 
 负责将 Pixiv 与下载能力注册为 MCP tools。所有 Pixiv 内容、认证、资源和写操作都通过 `SDKService` 使用 public SDK；旧构造器保留的首个 API 参数只是废弃占位，生产路径不会读取。下载由 operation snapshot 对应的 `DownloadManager` 执行。MCP 的 nullable `page`/`limit` 与旧 offset 输入只在本 adapter 解析，逻辑分页遍历由 application 共享引擎执行。stdio runtime 由 `internal/bootstrap` 组装和启动。
 
+包内按职责拆分：`server.go` 负责构造与统一 observability wrapper，`registration.go` 只维护 tool 注册，`auth_tools.go` 和 `download_tools.go` 分别承载认证与下载，`legacy_tools.go` 保留 legacy 读取适配，`formatting.go` 集中文本/output helper，`sdk_runtime.go` 负责分页、operation snapshot、gate 与安全日志，`sdk_tools.go` 承载 SDK typed tools。legacy handler 可把失败继续转换为兼容的 `isError=false` 结果，但必须把真实 cause 交给 wrapper；wrapper 只在 stderr 记录安全分类 metadata，不读取参数或原始错误文本。正常空结果不会伪装成失败。
+
 输出目前以中文文本为主，适合直接返回给 LLM/MCP 客户端。认证相关工具会显式提示缺少 token、认证失败或自动认证失败的真实原因。
 
 ### `internal/download`

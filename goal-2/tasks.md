@@ -174,12 +174,12 @@
 
 ## T13 — 拆分 MCP server 并修复 legacy 错误 observability
 
-- 状态：未完成
+- 状态：已完成
 - 范围：P2-10。按注册/认证/下载/legacy/格式化职责拆 `server.go` 与 `sdk_tools.go`；legacy tool 失败仍保持已文档化 result 兼容，但日志/metrics 必须走 `recordToolError` 而不是 success。
 - 验收：MCP JSON-RPC/stdout、structured/text、legacy compatibility 不变；失败 observability 聚焦测试先 RED；拆分后文件职责清晰。
-- 实际：
-- 证据：
-- 风险/下一步：
+- 实际：统一 `addTool` wrapper 现把 handler Go error、`result.IsError` 与 context-scoped `recordToolError` capture 一并纳入失败判定；legacy handler 仍原样返回既有 Content、structured output、文本、Go error=nil 与 `isError=false`，但输入/业务校验、认证、SDK open/fetch/pagination、下载/结果整理/文件读取及 thumbnail/resource 的真实失败都会产生 error-level、`result=error` 的 tool operation event。正常空搜索/推荐/排行/标签/关注结果仍记为 success，SDK typed error 继续 `isError=true`。日志不读取 tool 参数或格式化 raw error，只从 `*sdk.Error` 提取白名单化的 9 个 ErrorCode、4 个 Backend 与数值 status/IDs；公开可写的未知 Code 记为空、未知 Backend 归为 `local`，不回显任意字符串。原 `server.go`/`sdk_tools.go` 已按 core observability、registration、auth、download、legacy read、formatting/output、SDK runtime/pagination/gate/log 与 SDK typed tools 拆为具名文件，package API 与 23 个 tool 的名称、描述、顺序、schema 不变。README、canonical MCP 文档、architecture 与 `[Unreleased]` 已同步；知识图谱按计划留 T20 重建。
+- 证据：四条 public in-memory MCP tracer 逐项真实 RED→GREEN：typed `search_illust` 失败旧 wire 已兼容但 tool event 为 `INFO/success/local/0`，修后为 `ERROR/error/app_api/502`；无 ID `download`、unauthorized `refresh_token`、thumbnail resource open 失败旧日志也均为 success，修后为 error，原 wire 逐字段不变。正常空搜索保持 success，SDK mutation 保持 `isError=true` 与 typed metadata。质量审查进一步以恶意公开 `sdk.Error.Code="code-token-secret"`、`Backend="https://secret.example/?token=backend-secret"` 复现 stderr 泄漏，新增 public CallTool canary 先 RED；MCP 日志白名单后 GREEN，hostile 值不进入事件而合法 `upstream_error/app_api/502`、`unauthorized/oauth` 保持。独立 spec review APPROVE；quality review 的唯一 P2 经 TDD 修复后窄复审 APPROVE。主线程通过 observability/SDK mutation/stdio/registration 聚焦测试 20 次、`go test ./... -count=1`、`go test -race ./... -count=1`、`go vet ./...`、`sh scripts/build.sh`、`pre-commit run --all-files` 与 `git diff --check`；registration addTool 行与 `0a5189b` 逐行一致，精确检索无真实 legacy failure 仍直接走普通 success helper，MCP 无协议子包直连。
+- 风险/下一步：公开 `sdk.Error.Error()` 本身仍会按既有 wire 兼容渲染调用方提供的公开字段；T13 只保证 MCP stderr logging boundary 不把未知字段作为日志载荷，未改变 public SDK 或 legacy text。未运行真实 Pixiv 联网 E2E；本机 darwin/arm64 全量 build/test/race 已覆盖拆分，CLI/MCP 完整 CGO-disabled 异构链接仍受既有 ugoira Rust staticlib/C linker 门禁限制并留待 T21 六平台 CI。结构变化使两份知识图谱继续滞后，按 T20 集中重建；下一轮只执行 T14，拆分 macOS 登录 helper 安装器。
 
 ## T14 — 拆分 macOS 登录 helper 安装器
 
