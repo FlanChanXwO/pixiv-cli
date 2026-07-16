@@ -236,11 +236,11 @@
 
 ## C06 — 集中检查 6（T16–T18）
 
-- 状态：未完成
+- 状态：已完成
 - 检查：公开 SDK 兼容/ADR、fallback 不变量、发布供应链门禁、脚本拆分等价性、全量 test/race/vet/release/Rust。
-- 实际：
-- 证据：
-- 风险/下一步：
+- 实际：独立审计逐项证明 T16 的公开 SDK 仍保持 `IllustDetail`/`UgoiraMetadata` 原子 enrichment failure、App 失败不自动 Web fallback、SDK 不主动向 Web 注入 App bearer/Cookie/refresh token，`MetaPages` 结论只覆盖 wire/mapper 能力且 `docs/sdk.md`、ADR 0006/0009 与代码一致；T17 的五项 YAML helper 确实由 `scripts/internal/workflowpolicy` 单点提供，release/native 特有 fail-closed policy 未被抽象弱化；T18 对拆分前 `ad3dd85` 的 238 个旧顶层声明重新做源码哈希核对，236 个完全等价，仅 recovery 实现与数量绑定测试按批准范围变化，新增恰为两个 recovery/Git isolation tests 和六个 fixture helpers。exact-14 recovery、tracked/staged/untracked/cached 检查、Git local environment 隔离及 action/permissions/tag/source/staticlib/signing/checksum/Homebrew/native evidence 门禁均有 production checker 与 mutation/真实临时 Git 证据。首次 quality/supply-chain review 随后发现共享 `secrets` 正则会被合法 GitHub expression 单引号字符串内的 `}` 提前截断，允许 `${{ format('{0}', secrets.RELEASE_SIGNING_PRIVATE_KEY) }}` 绕过 protected publish job 的签名 secret reachability gate；按 TDD 用真实 `checkWorkflow` mutation 固定 RED 后，以识别 `${{ ... }}`、单引号字符串、`''` 转义、expression 边界及 ASCII identifier boundary 的线性 scanner 替换正则，并在 `[Unreleased]` 记录安全影响。
+- 证据：release tracer test 在旧实现上确定性返回 `policy error = <nil>` 而 RED，同一测试在修复后返回精确 `publish job must not reference secrets outside its signing metadata step` 并 GREEN；shared public helper tests 覆盖 `format('{0}', secrets.KEY)`、多层 braces、bracket、`toJSON`、多行、字符串内 `}}`、escaped quote、quoted secret literal、多个 expression 间普通文本及 identifier substring，canonical dot/bracket signing expressions与 native policy 继续通过。原 quality reviewer手工重放 `/dev/stdin` 攻击后确认不再进入 known-hosts 尾部读取，并对 scanner 的 bounds/progress、合法 expression 变体、误报边界、release integration 和 native 共用路径窄复审 APPROVE；原 spec reviewer也在修复后窄复审 APPROVE。修复后的 `gofmt -d`、`go test ./... -count=1`、`go test -race ./... -count=1`、`go vet ./...`、`sh scripts/test-release-workflow.sh`、native evidence policy、`sh scripts/build.sh`、`sh scripts/test-rust-vendor.sh`（40 unit + 3 quality）、`pre-commit run --all-files` 与 `git diff --check` 全部通过；测试后仓库 local config 仍安全。
+- 风险/下一步：未真实触发 GitHub-hosted 六平台 recovery，主要残余仍是 Windows Git Bash/runner 差异；未来 Git 扩展 `--local-env-vars` 或 GitHub expression 新增字符串/escape 语法时须同步隔离清单或 scanner fixtures。SDK fixture 不证明实时 Pixiv 上游对所有作品的 `MetaPages` 完整性，调用方显式注入的 `HTTPClient` 仍由调用方负责其 CookieJar/Transport。下一轮 T19 补齐剩余 bootstrap 纯逻辑覆盖并按原报告逐项重建 finding closure matrix。
 
 ## T19 — 覆盖剩余 bootstrap 纯逻辑与评审矩阵复扫
 

@@ -225,6 +225,53 @@ func TestContainsSecretReferenceFindsExpressionRecursively(t *testing.T) {
 			node: &yaml.Node{Kind: yaml.ScalarNode, Value: `${{ secrets['RELEASE_SIGNING_PRIVATE_KEY'] }}`},
 			want: true,
 		},
+		{
+			name: "formatted dot reference",
+			node: &yaml.Node{Kind: yaml.ScalarNode, Value: `${{ format('{0}', secrets.KEY) }}`},
+			want: true,
+		},
+		{
+			name: "formatted bracket reference after brace literal",
+			node: &yaml.Node{Kind: yaml.ScalarNode, Value: `${{ format('{{{0}}}', secrets['KEY']) }}`},
+			want: true,
+		},
+		{
+			name: "formatted serialized context",
+			node: &yaml.Node{Kind: yaml.ScalarNode, Value: `${{ format('{0}', toJSON(secrets)) }}`},
+			want: true,
+		},
+		{
+			name: "multiline expression",
+			node: &yaml.Node{Kind: yaml.ScalarNode, Value: `${{
+format(
+  '{0}',
+  secrets.KEY
+)
+}}`},
+			want: true,
+		},
+		{
+			name: "single quoted secret literal",
+			node: &yaml.Node{Kind: yaml.ScalarNode, Value: `${{ format('{0}', 'secrets.KEY') }}`},
+		},
+		{
+			name: "plain secret text between expressions",
+			node: &yaml.Node{Kind: yaml.ScalarNode, Value: `${{ github.ref }} secrets.KEY ${{ github.sha }}`},
+		},
+		{
+			name: "closing braces inside string before secret",
+			node: &yaml.Node{Kind: yaml.ScalarNode, Value: `${{ format('}}', secrets.KEY) }}`},
+			want: true,
+		},
+		{
+			name: "escaped quote and brace before secret",
+			node: &yaml.Node{Kind: yaml.ScalarNode, Value: `${{ format('it''s }', secrets.KEY) }}`},
+			want: true,
+		},
+		{
+			name: "secret text inside identifiers",
+			node: &yaml.Node{Kind: yaml.ScalarNode, Value: `${{ notsecrets.KEY }} ${{ secrets2.KEY }}`},
+		},
 		{name: "plain text outside expression", node: &yaml.Node{Kind: yaml.ScalarNode, Value: "do not print secrets"}},
 		{name: "singular context", node: &yaml.Node{Kind: yaml.ScalarNode, Value: "${{ secret.KEY }}"}},
 		{name: "nil node"},

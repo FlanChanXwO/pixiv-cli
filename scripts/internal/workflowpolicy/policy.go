@@ -4,14 +4,10 @@ package workflowpolicy
 import (
 	"errors"
 	"fmt"
-	"regexp"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 )
-
-// secretReferencePattern 识别 GitHub expression 内独立的 secrets context，
-// 包括 bare、toJSON(secrets)、dot 和 bracket 访问形式。
-var secretReferencePattern = regexp.MustCompile(`(?is)\$\{\{[^}]*\bsecrets\b[^}]*\}\}`)
 
 // RejectAmbiguousYAML 在 verifier 读取字段前拒绝有歧义的 YAML 构造。
 func RejectAmbiguousYAML(node *yaml.Node) error {
@@ -112,7 +108,7 @@ func ContainsSecretReference(node *yaml.Node) bool {
 	if node == nil {
 		return false
 	}
-	if node.Kind == yaml.ScalarNode && secretReferencePattern.MatchString(node.Value) {
+	if node.Kind == yaml.ScalarNode && scalarContainsSecretReference(node.Value) {
 		return true
 	}
 	for _, child := range node.Content {
@@ -121,4 +117,76 @@ func ContainsSecretReference(node *yaml.Node) bool {
 		}
 	}
 	return false
+}
+
+func scalarContainsSecretReference(value string) bool {
+	for searchFrom := 0; searchFrom < len(value); {
+		relativeStart := strings.Index(value[searchFrom:], "${{")
+		if relativeStart < 0 {
+			return false
+		}
+		expressionStart := searchFrom + relativeStart + len("${{")
+		expressionEnd, containsSecret, closed := scanGitHubExpression(value, expressionStart)
+		if !closed {
+			return false
+		}
+		if containsSecret {
+			return true
+		}
+		searchFrom = expressionEnd
+	}
+	return false
+}
+
+// scanGitHubExpression 只把单引号字符串外的 }} 视为表达式结束符；GitHub
+// expression 以两个连续单引号转义单引号，因此转义字符不会提前退出字符串。
+func scanGitHubExpression(value string, start int) (end int, containsSecret, closed bool) {
+	inSingleQuotedString := false
+	for index := start; index < len(value); {
+		if inSingleQuotedString {
+			if value[index] != '\'' {
+				index++
+				continue
+			}
+			if index+1 < len(value) && value[index+1] == '\'' {
+				index += 2
+				continue
+			}
+			inSingleQuotedString = false
+			index++
+			continue
+		}
+
+		if value[index] == '\'' {
+			inSingleQuotedString = true
+			index++
+			continue
+		}
+		if index+1 < len(value) && value[index] == '}' && value[index+1] == '}' {
+			return index + 2, containsSecret, true
+		}
+		if isSecretContextTokenAt(value, index) {
+			containsSecret = true
+			index += len("secrets")
+			continue
+		}
+		index++
+	}
+	return len(value), false, false
+}
+
+func isSecretContextTokenAt(value string, index int) bool {
+	const token = "secrets"
+	if index+len(token) > len(value) || !strings.EqualFold(value[index:index+len(token)], token) {
+		return false
+	}
+	return (index == 0 || !isASCIIIdentifierByte(value[index-1])) &&
+		(index+len(token) == len(value) || !isASCIIIdentifierByte(value[index+len(token)]))
+}
+
+func isASCIIIdentifierByte(value byte) bool {
+	return value >= 'a' && value <= 'z' ||
+		value >= 'A' && value <= 'Z' ||
+		value >= '0' && value <= '9' ||
+		value == '_'
 }

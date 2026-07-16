@@ -24,6 +24,10 @@
 - 修复 MCP `download_random_from_recommendation` 把显式 0、负数或大于 20 的 `count` 静默改写为默认值或边界值的问题；非法值现明确报错，省略时仍默认 5，同时传入非法 `delivery` 时仍优先返回 delivery 参数错误而非 schema 错误。
 - 修复 MCP `refresh_token` 在 SDK 初始化、配置或代理失败时误报“未设置 refresh token”的问题；取消、超时和公开 SDK 错误现保留安全分类，未知初始化错误保持脱敏，未知刷新执行错误也不再回显原始错误详情。
 
+### Security
+
+- 修复 Release workflow policy 在 GitHub expression 的单引号格式字符串含 `}` 或 `}}` 时可能漏检后续 `secrets` context 的问题；共享 scanner 现在按 expression 边界和单引号转义解析，确保 protected publish job 只能在受审计的签名 metadata step 引用发布签名 secret。
+
 ## [0.3.0] - 2026-07-15
 
 ### Changed

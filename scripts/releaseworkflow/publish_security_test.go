@@ -23,6 +23,39 @@ func TestCheckWorkflowAcceptsIndependentReleaseSourceVerification(t *testing.T) 
 	}
 }
 
+func TestCheckWorkflowRejectsFormattedSigningSecretBeforeSigningMetadata(t *testing.T) {
+	t.Parallel()
+
+	root := releaseWorkflowRoot(t)
+	publish := jobNode(t, root, "publish")
+	steps := requireMappingValue(t, publish, "steps")
+	signingStep := stepWithRun(t, publish, "go run ./scripts/releaseassets finalize")
+	signingIndex := -1
+	for index, step := range steps.Content {
+		if step == signingStep {
+			signingIndex = index
+			break
+		}
+	}
+	if signingIndex < 0 {
+		t.Fatal("publish job has no signing metadata step")
+	}
+	insertRunStep(t, publish, signingIndex, "Read signing secret early", "printf '%s\\n' \"$EARLY_SIGNING_REFERENCE\"")
+	appendMappingValue(t, steps.Content[signingIndex], "env", mappingNode(
+		"EARLY_SIGNING_REFERENCE", scalarNode(`${{ format('{0}', secrets.RELEASE_SIGNING_PRIVATE_KEY) }}`),
+	))
+
+	body, err := yaml.Marshal(root)
+	if err != nil {
+		t.Fatalf("marshal mutated workflow: %v", err)
+	}
+	err = checkWorkflow(body)
+	want := "publish job must not reference secrets outside its signing metadata step"
+	if err == nil || err.Error() != want {
+		t.Fatalf("policy error = %v, want %q", err, want)
+	}
+}
+
 func TestCheckWorkflowRejectsSecurityAndQualityPolicyMutations(t *testing.T) {
 	t.Parallel()
 
