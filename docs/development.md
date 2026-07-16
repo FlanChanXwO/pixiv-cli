@@ -298,13 +298,32 @@ release workflow、位于 `pixiv/account_external_test.go` 的 Windows ACL 测�
 verifier 与其测试；这是不可改写的历史证据，不定义后续 tag 的 allowlist。
 
 当前 v0.3.0 tag 已包含与默认分支相同的顶层 `pixiv/account_external_test.go`，质量门直接运行 tag 中的
-测试，不需要也不能再次 overlay。v0.3.0 恢复 allowlist 因而精确收敛为四条路径：
-`.github/workflows/release.yml`、`scripts/internal/workflowpolicy/policy.go`、
-`scripts/releaseworkflow/main.go` 与 `scripts/releaseworkflow/main_test.go`。共享 production helper 是两个
-verifier 共用的 YAML policy 实现，也是从默认分支编译 release verifier 的必要依赖；它不参与生产资产
-构建，且共享包自己的 `policy_test.go` 不进入恢复 overlay。覆盖通过一次 `git archive` 提取，再逐项
-核对工作树 diff 与空 cached diff；重新加入 account test、任意第五路径或生产源码都必须失败，test job
-也不生成 release artifact。该 job 成功后，独立的新 runner
+测试，不需要也不能再次 overlay。该 tag 尚未包含拆分后的 release verifier 文件，所以当前恢复
+allowlist 必须逐字列出以下路径，不能改成目录或 glob：
+
+- `.github/workflows/release.yml`
+- `scripts/internal/workflowpolicy/policy.go`
+- `scripts/releaseworkflow/build_policy.go`
+- `scripts/releaseworkflow/build_recovery_test.go`
+- `scripts/releaseworkflow/homebrew_policy.go`
+- `scripts/releaseworkflow/homebrew_policy_test.go`
+- `scripts/releaseworkflow/main.go`
+- `scripts/releaseworkflow/main_test.go`
+- `scripts/releaseworkflow/publish_policy.go`
+- `scripts/releaseworkflow/publish_security_test.go`
+- `scripts/releaseworkflow/recovery_policy.go`
+- `scripts/releaseworkflow/test_helpers_test.go`
+- `scripts/releaseworkflow/workflow_policy.go`
+- `scripts/releaseworkflow/workflow_policy_test.go`
+
+全部拆出的 release test files 都必须 overlay，才能保留当前 mutation suite。共享 production helper
+`scripts/internal/workflowpolicy/policy.go` 是两个 verifier 共用的 YAML policy 实现，也是从默认分支编译
+release verifier 的必要依赖；它不参与生产资产构建，且共享包自己的 `policy_test.go` 仍不进入恢复
+overlay。提取前必须用 `git status --porcelain=v1 --untracked-files=all` 确认工作树为空，并显式确认 cached
+diff 为空；覆盖通过一次 `git archive` 提取后，将 tracked diff 与未忽略的 untracked files 合并、按 C locale
+排序，再与上述逐字 allowlist 比较，同时再次确认 cached diff 为空。这使旧 tag 中尚不存在的拆分文件也参与
+fail-closed 核对。重新加入 account test、任意额外路径或生产源码都必须失败，test job 也不生成 release
+artifact。该 job 成功后，独立的新 runner
 才会以 `clean: true` checkout tag、重新构建 selected staticlib 并生成唯一可被 publish 下载的
 `verified-release-*` assets；测试进程对环境变量、PATH 或临时目录的副作用不会进入生产 job。因此它不能用于
 替换生产资产源码、移动 tag，或重发已经存在的 Release。
@@ -314,6 +333,22 @@ v0.3.0 tag 已提交 staticlib，test 与 production job 从相同六目标 matr
 toolchain，并在执行 tag 自带的构建脚本前精确安装；这属于 runner 构建环境约束，不把 main 文件或新库
 覆盖进 production。重建库必须继续与 tag blob 通过 `git diff --exit-code` 的 byte-for-byte 检查；
 toolchain pin 不能用来替换 tag staticlib、恢复 manifest、放宽 diff 或移动 tag。
+
+### Verifier 源码导航
+
+`scripts/releaseworkflow/` 按发布职责分卷：`main.go` 负责命令入口、文件读取与顶层 dispatch；
+`build_policy.go` 负责 validate、test build 与 production build；`recovery_policy.go` 负责 tag trigger、
+恢复覆盖与覆盖后的质量门顺序；`publish_policy.go` 负责 source verification、发布、签名与 channel；
+`homebrew_policy.go` 负责 formula render、四平台验证与 tap deploy；`workflow_policy.go` 保存各领域共用的
+job、step、command、action 与 permission helper。测试相应分为 `build_recovery_test.go`、
+`publish_security_test.go`、`homebrew_policy_test.go` 与 `workflow_policy_test.go`；`main_test.go` 只保留
+顶层入口行为，`test_helpers_test.go` 集中无策略含义的 YAML fixture 操作。
+
+`scripts/nativeevidence/` 按 evidence 生命周期分卷：`main.go` 负责 subcommand 与 flag；`models.go` 保存
+target 和 evidence schema；`record.go` 记录单 runner evidence；`consolidate.go` 校验并合并六目标结果；
+`archive.go` 负责 release archive member 与 JSON；`filesystem.go` 负责路径、hash 和安全文件操作；
+`workflow_policy.go` 只验证 native-evidence workflow。测试分别覆盖 policy、record、consolidate，fixture
+helper 再按 workflow 与 evidence/archive 分开，避免把策略测试重新堆进单一文件。
 
 `sh scripts/test-release-workflow.sh` 启动 `scripts/releaseworkflow` 的 YAML AST policy，而不是依赖
 文本排版或行号。它精确检查 tag trigger、八份 job 的权限/依赖、六个 test/production runner matrix、每一个

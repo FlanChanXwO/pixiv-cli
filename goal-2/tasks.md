@@ -227,12 +227,12 @@
 
 ## T18 — 拆分超大 release verifier 文件
 
-- 状态：未完成
+- 状态：已完成
 - 范围：P3。按 job/policy/native evidence 职责拆 `scripts/releaseworkflow/main.go` 与 `scripts/nativeevidence/main.go`，测试 helper 也按领域拆分；只做机械迁移和必要共享抽取。
 - 验收：所有 verifier 输出与退出语义不变；mutation tests 和 release scripts 全绿；文件职责可导航。
-- 实际：
-- 证据：
-- 风险/下一步：
+- 实际：`releaseworkflow` 从 1812 行 production/2314 行 test 两个巨型文件拆为 6 个 production 与 6 个 test 文件：thin `main.go`、build、recovery、publish/signing、Homebrew、common workflow policy，以及对应 build/recovery、publish/security、Homebrew、common policy、fixture helper tests；最大文件为单一 publish/security mutation suite 817 行。`nativeevidence` 从 1267/719 行拆为 7 个 production 与 6 个 test 文件：thin command/flags、models、record、consolidate、archive、filesystem、workflow policy，以及对应 policy、record、consolidate 与两类 fixture helpers；最大 production 文件 387 行。拆分保持 package、声明、函数体、错误、命令输出和退出语义；唯一初始 spec 分卷偏差是 common helper test 留在 `main_test.go`，已原样移至 `workflow_policy_test.go` 并窄复审通过。release recovery overlay 因 v0.3.0 tag 不含拆分文件而精确扩为 14 路径：workflow、共享 production `policy.go` 与全部 12 个 release production/test 文件；不含 glob、shared `policy_test.go` 或 native 文件。`docs/development.md` 已同步 exact allowlist、tracked/untracked 校验语义与两 verifier 导航。
+- 证据：改动前 normal/race 与两条 policy 命令全绿；纯 refactor 按 TDD 的 GREEN→小步搬移→GREEN 执行，没有伪造行为 RED。Go parser/formatter 对照 HEAD 四个原文件：release production/test 78/61、native production/test 68/31 个原顶层声明全部恰好出现一次；除获批 recovery body、数量绑定 overlay test 的稳定改名/措辞外，其余 236 个声明与注释 gofmt-byte-equivalent。原 Test* 保持 release 39/39、native 13/13；另为审查发现的 recovery 与 test-isolation 缺陷新增两个 tests 和六个本地 Git/环境 fixture helpers。独立 spec reviewer 发现并复审唯一测试分卷偏差后 APPROVE。独立 quality/supply-chain reviewer 首先发现原 overlay 仅用 `git diff --name-only`，会漏掉旧 tag 中新增的 11 个 untracked 文件并使 recovery 永久失败；TDD test 先真实复现 exact overlay 与 dirty-untracked 两个 RED，再将 canonical shell 改为解包前以 porcelain 拒绝 tracked/staged/non-ignored untracked 污染，解包后合并 tracked diff 与 non-ignored untracked、按 C locale 排序后与 exact 14 路径比较，并继续检查 cached diff。临时 Git repo 直接执行从 checked-in workflow AST 读取的真实 run body，exact overlay 成功且额外 untracked 在解包前失败；完整 v0.3.0 tag 树覆盖 14 路径后 release tests 与 policy command 通过。真实 commit hook 随后揭示 fixture 会继承 `GIT_DIR`/`GIT_INDEX_FILE` 等 repository-local 环境并曾把共享仓库误设为 bare；提交按门禁失败且未产生 commit，主线程恢复 `core.bare=false`、移除错误 `core.worktree`，两 worktree 状态均恢复。第二轮 TDD 先以缺失隔离 helper 的 compile RED 固定行为，再过滤 `git rev-parse --local-env-vars` 报告的全部 15 项及 `GIT_INTERNAL_SUPER_PREFIX`，让所有临时 `git`/canonical Bash 子进程保留平台变量但隔离调用方仓库状态，并唯一覆盖 `GITHUB_SHA`；纯 helper test、显式污染环境下的 integration、normal/race/policy 与真实 hook 全绿，执行前后仓库配置保持安全。quality reviewer 将 release/native 分别连续运行 20 次并执行 shuffle/race/vet，对两个 blocker 窄复审后零剩余 finding、最终 APPROVE。主线程最终通过 exact 14 omission/account/extra mutation、integration 两子项、环境隔离测试、两包 normal/race、完整 tag overlay、release/native policy、`go test ./... -count=1`、`go test -race ./... -count=1`、`go vet ./...`、`sh scripts/build.sh`、`sh scripts/test-rust-vendor.sh`（40 unit + 3 quality）、pre-commit 与 `git diff --check`。
+- 风险/下一步：未真实触发 GitHub-hosted 六平台 `workflow_dispatch` recovery；同一 canonical shell 已在本地 Git repo 和完整 v0.3.0 tag tree 执行，主要残余为 Windows Git Bash/runner 环境差异。未来 Git 若扩展 `--local-env-vars` 集合，fixture 的硬编码隔离清单须同步。拆分新增路径与知识图谱结构仍须由 T20 全量重建。下一轮先执行 C06 集中检查 T16–T18 的 SDK/ADR、fallback、release supply-chain 与机械等价性，再进入 T19。
 
 ## C06 — 集中检查 6（T16–T18）
 
