@@ -192,12 +192,12 @@
 
 ## T15 — 按职责拆分 webapi client
 
-- 状态：未完成
+- 状态：已完成
 - 范围：P2-11。机械拆分 transport、分页/枚举、DTO、decoder、mapper；对齐 appapi 结构，不改变 endpoint/wire/fallback。
 - 验收：文件规模和职责明显收敛；现有 webapi 与 public SDK tests 全绿；匿名 fallback 规则不变。
-- 实际：
-- 证据：
-- 风险/下一步：
+- 实际：`internal/pixiv/webapi/client.go` 从 791 行收敛至 237 行，只保留 `Client`/options/`New` 与 SearchIllust、IllustDetail、IllustPages、IllustRanking、SearchUser、UgoiraMetadata 六个 Web operation 编排；新增 `transport.go` 统一 HTTP、headers 与脱敏 adapter error，`pagination.go` 持有 endpoint-specific page size 与安全页码换算，`parameters.go` 持有 search/ranking/duration wire 参数映射，`dto.go` 只声明 Web JSON shape，`decoder.go` 保留 ajax envelope、required list 与弹性数值的 presence/validity 解码，`mapper.go` 负责 DTO 到共享 model 的规范化。文件规模均为 62–237 行，与同层 appapi 的 client/dto/mapper 导航结构对齐；package API、endpoint、query/header/wire、错误、分页、映射、operation 顺序与 fallback/enrichment 均未改。`docs/architecture.md` 已同步包内职责；纯内部机械重构未修改测试契约、README、changelog 或 ADR。
+- 证据：迁移前先确认 `go test ./internal/pixiv/webapi ./pixiv -count=1` 与相同范围 race 直接 GREEN，作为既有公开 characterization；现有 tests 已覆盖 HTTP client/context、60/50 wire page boundary、cursor overflow/continuation、六个 operation mapping、missing/null/empty wire、HTTP/transport/envelope 脱敏、匿名白名单、认证 App 失败绝不 Web fallback、enrichment 失败无 partial 以及非白名单联网前拒绝，因此未新增绑定私有文件布局的脆弱测试。实现按 transport→pagination→parameters→mapper→DTO/decoder 逐段迁移，每段后恢复 webapi/public SDK GREEN。实现代理与独立 spec reviewer 分别对旧 HEAD 单文件和新 production 文件做逐声明归一化比较：61/61 个非 const 声明、4/4 个常量全部等价，缺失/额外/函数体/type/tag/value 变化均为 0；spec review APPROVE。独立 quality reviewer 复核安全、context/body close、分页溢出、DTO presence、mapping、耦合与文档，零 finding、APPROVE。主线程通过 webapi 全包与关键 fallback/enrichment tests 连续 20 次、`go test ./... -count=1`、`go test -race ./... -count=1`、`go vet ./...`、`sh scripts/build.sh`、`pre-commit run --all-files`、Linux/Windows/Wasm webapi `go test -c`、gofmt 与 `git diff --check`。
+- 风险/下一步：未运行需联网的真实 Pixiv Web e2e，因此本 task 只能证明本地实现与既有 fixture/wire 契约等价，不能证明上游当前页面接口未漂移；这不影响纯机械拆分结论，真实 canary 仍按最终门禁显式执行。结构变化后的两份知识图谱继续留 T20 集中重建。下一轮只执行 C05，集中复核 T13–T15 的拆分等价性、MCP observability、跨平台 build 与 Web fallback。
 
 ## C05 — 集中检查 5（T13–T15）
 

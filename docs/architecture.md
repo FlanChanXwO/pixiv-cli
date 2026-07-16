@@ -150,6 +150,10 @@ Release 安装的失败语义仍是保护边界，而不是临时降级。
 - `oauth`：PKCE、code exchange、refresh 与 token state。
 - `resource`：受 policy 约束的 resource transport、redirect/header/body 边界。
 
+`webapi` 包内按职责导航：`client.go` 编排各 Web operation，`transport.go` 负责 HTTP 与脱敏错误边界，
+`pagination.go` 和 `parameters.go` 分别处理 Web 页码以及 endpoint 参数映射，`dto.go` 只声明 wire shape，
+`decoder.go` 校验弹性数值、必需列表与 ajax envelope，`mapper.go` 将 Web DTO 规范化为共享 model。
+
 有 token 时 App API 是主路径，失败不自动 Web fallback；无 token 且 `web_fallback_enabled=true` 时才允许明确白名单 Web read。pages/original ugoira enrichment 必须由 operation policy 显式选择。
 
 ### `internal/pixiv/model`
