@@ -25,6 +25,7 @@
 
 - Cobra 命令树、help 和 flag 解析。
 - 文本/JSON 输出。
+- CLI 协议的 `--page`/`--limit`/deprecated `--offset` 解析与错误文案；解析后的逻辑分页计划交给 application 共享遍历引擎。
 - `auth login` 的 loopback OAuth、浏览器打开和 TTY 交互。
 - `pixiv mcp` 分发。
 - `pixiv version`、根 `--version` 与 `pixiv update` 的输入/输出适配。
@@ -51,6 +52,7 @@ cache 的 24 小时节流，并最多等待 3 秒。配置、网络、来源识�
 - `LoginService`：生成 PKCE/state、authorization-code exchange，并保存账号；Pixiv 登录 URL 构造仍留在 CLI adapter。
 - `SDKService`：为 CLI/MCP 打开顶层 `pixiv` client，并把调用方选择的账号/代理/JSON 设置映射到 SDK operation snapshot；作品查询和下载均从该 snapshot 的 public SDK 能力继续执行。
 - `DownloadService`：把同一 operation snapshot、本次下载路径和文件名模板交给 bootstrap 注入的窄 factory，并委托下载；应用层不构造具体 manager。
+- 分页遍历：统一负责 opaque cursor 跟随、逻辑 skip/limit、单批兼容语义与重复 cursor 止环；CLI 可按批流式消费，MCP 可经同一引擎收集结果。各 adapter 只解析各自协议输入并组织输出。
 
 ### `internal/bootstrap`
 
@@ -150,7 +152,7 @@ Release 安装的失败语义仍是保护边界，而不是临时降级。
 
 ### `internal/mcpserver`
 
-负责将 Pixiv 与下载能力注册为 MCP tools。所有 Pixiv 内容、认证、资源和写操作都通过 `SDKService` 使用 public SDK；旧构造器保留的首个 API 参数只是废弃占位，生产路径不会读取。下载由 operation snapshot 对应的 `DownloadManager` 执行。stdio runtime 由 `internal/bootstrap` 组装和启动。
+负责将 Pixiv 与下载能力注册为 MCP tools。所有 Pixiv 内容、认证、资源和写操作都通过 `SDKService` 使用 public SDK；旧构造器保留的首个 API 参数只是废弃占位，生产路径不会读取。下载由 operation snapshot 对应的 `DownloadManager` 执行。MCP 的 nullable `page`/`limit` 与旧 offset 输入只在本 adapter 解析，逻辑分页遍历由 application 共享引擎执行。stdio runtime 由 `internal/bootstrap` 组装和启动。
 
 输出目前以中文文本为主，适合直接返回给 LLM/MCP 客户端。认证相关工具会显式提示缺少 token、认证失败或自动认证失败的真实原因。
 

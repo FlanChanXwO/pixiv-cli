@@ -67,49 +67,22 @@ func listPagination(plan mcpListPlan, limit *int, returned int, hasMore bool) pa
 	return out
 }
 
-// collectPages 与 CLI 同样只受 caller limit、上游 cursor 和 context 约束。seen 不设产品上限，
-// 仅防御上游错误重复 cursor 导致无限请求。
+// collectPages 仅把 MCP 的兼容 sentinel 映射到 application 分页语义；成功空结果
+// 仍保持 non-nil slice，失败时共享 collector 会丢弃部分结果。
 func collectPages[T any](ctx context.Context, plan mcpListPlan, fetch func(context.Context, sdk.Cursor) ([]T, sdk.Cursor, error)) ([]T, bool, error) {
-	cursor := sdk.Cursor("")
-	seen := make(map[sdk.Cursor]struct{})
-	skip := plan.skip
-	seekingOffset := skip > 0
-	itemsOut := make([]T, 0)
-	for {
-		if _, exists := seen[cursor]; exists {
-			return nil, false, fmt.Errorf("pagination cursor repeated: %q", cursor)
-		}
-		seen[cursor] = struct{}{}
-		items, next, err := fetch(ctx, cursor)
-		if err != nil {
-			return nil, false, err
-		}
-		if skip > 0 {
-			if skip >= len(items) {
-				skip -= len(items)
-				items = nil
-			} else {
-				items = items[skip:]
-				skip = 0
-			}
-		}
-		if seekingOffset && skip == 0 && len(items) > 0 {
-			seekingOffset = false
-		}
-		if plan.limit > 0 && len(items) > plan.limit-len(itemsOut) {
-			items = items[:plan.limit-len(itemsOut)]
-			// 当前批次还有未输出元素，逻辑页后仍有内容。
-			return append(itemsOut, items...), true, nil
-		}
-		itemsOut = append(itemsOut, items...)
-		if (plan.oneBatch && !seekingOffset) || (plan.limit > 0 && len(itemsOut) >= plan.limit) {
-			return itemsOut, next != "", nil
-		}
-		if next == "" {
-			return itemsOut, false, nil
-		}
-		cursor = next
+	limit := plan.limit
+	if limit < 0 {
+		limit = 0
 	}
+	items, result, err := application.CollectPages(ctx, application.PagePlan{
+		Skip:     plan.skip,
+		Limit:    limit,
+		OneBatch: plan.oneBatch,
+	}, fetch)
+	if err != nil {
+		return nil, false, err
+	}
+	return items, result.HasMore, nil
 }
 
 func (a *App) openSDKOperation(ctx context.Context) (client application.SDKClient, release func(), err error) {

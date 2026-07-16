@@ -148,12 +148,12 @@
 
 ## T11 — 复用分页遍历并收敛 Web page-size 常量
 
-- 状态：未完成
+- 状态：已完成
 - 范围：P3 重复分页与散落 60/50。把 CLI/MCP 等价 cursor/page/limit 遍历下沉 application 深模块；Web API 用具名、按 endpoint 有依据的 page-size 常量。
 - 验收：CLI/MCP 输出、重复 cursor 止环和 `limit=0` 语义不变；application 公共 helper 测试先 RED；匿名 Web 请求 wire 值测试通过。
-- 实际：
-- 证据：
-- 风险/下一步：
+- 实际：新增 `internal/application/pagination.go` 作为唯一逻辑分页引擎：`TraversePages` 统一负责 SDK opaque cursor 跟随、跨空批/整批 skip、limit 批内截断、默认单批兼容、`HasMore` 判定与重复 cursor 请求前止环；`CollectPages` 只在原本就收集结果的 MCP 路径复用同一引擎，成功空结果保持 non-nil slice，失败丢弃 partial items。CLI 的 `pageItems` 与 MCP 的 `collectPages` 仅保留协议 sentinel 到 `application.PagePlan` 的薄映射；CLI 继续按批消费并在完整成功后 commit JSON spool，MCP 7 个 SDK tool callsite 和 `server.go` 6 个 legacy offset tool callsite 均进入共享 collector。Web artwork search 与 ranking 的固定 wire batch 边界分别具名为 `artworkSearchPageSize=60`、`illustRankingPageSize=50`，production 的 page/trim/continuation 计算不再散落裸值；`SearchUser` 继续复用 artwork search。架构文档同步 application 与 adapter 职责；纯内部等价重构未改 CHANGELOG、README、tool schema 或 public SDK 文档。
+- 证据：public application helper tracer 首先因 `PagePlan`/`PageResult`/`TraversePages` 不存在真实 compile-RED，再最小 GREEN；随后 limit=0 跨页、skip 跨空/整批、批内 limit 截断与 `HasMore`、OneBatch+Skip、重复 cursor 请求前止环、负 plan 输入分别暴露真实缺口并逐项 RED→GREEN。`CollectPages` 缺失先 compile-RED；成功空 slice、错误丢 partial、fetch/consume error identity、context 逐次传递、long cycle 与 exact-limit 属新增实现后的聚焦/characterization 证据。Web 以硬编码期望先在旧实现上 characterization GREEN，锁定 search offset 59/60 对应 `p=1/2`、ranking 49/50 对应 `p=1/2`，常量化后继续 GREEN。CLI 默认单批、page/offset/limit、显式 limit=0、cycle 与 JSON 无 partial stdout，以及 MCP structured pagination、nil/zero limit、legacy offset 与 cycle tests 均通过；关键测试各连续 20 次通过。精确检索确认 CLI/MCP production 无本地 seen/seeking/skip-stop loop，Web production 无相关裸 60/50。独立 spec review 与 quality review 均 APPROVE。实现代理、评审与主线程通过相关四包 normal/race/vet、`go test ./... -count=1`、`go test -race ./... -count=1`、`go vet ./...`、`sh scripts/build.sh`、pre-commit、gofmt、`git diff --check`，以及 application/webapi Linux/Windows amd64 测试二进制交叉编译。
+- 风险/下一步：未联网重新探测真实 Pixiv Web endpoint 的 60/50 batch 约定；本任务没有改变 wire 值，独立 fixture 与既有分页回归锁定等价性。CLI/MCP 的 Linux/Windows 完整异构链接仍受仓库既有 CGO、目标 Rust staticlib 与 C linker 门禁限制，本机 native build/test/race 已覆盖本 diff，纯 Go application/webapi 已交叉编译。`limit=0` 按既定契约不设任意页数上限，只由空 next cursor、重复 cursor、fetch/context error 收敛。下一轮只执行 T12；结构变化后的知识图谱继续按 T20 集中重建。
 
 ## T12 — 输出与文件名小项加固
 

@@ -22,6 +22,10 @@ import (
 const (
 	DefaultWebBase = protocol.WebAPIBase
 	defaultUA      = protocol.WebUserAgent
+	// 两个值是对应 Pixiv Web endpoint 的固定 wire batch 边界；边界测试
+	// 分别以 59/60 与 49/50 锁定换页行为，不是本地结果条数限制。
+	artworkSearchPageSize = 60
+	illustRankingPageSize = 50
 )
 
 // ErrMalformedResponse 标识成功 HTTP 响应无法构成约定 JSON，不包含原始响应体。
@@ -78,7 +82,7 @@ func New(opts ...Option) *Client {
 }
 
 func (c *Client) SearchIllust(ctx context.Context, word, target, sort, duration string, offset int) (*model.IllustList, error) {
-	pagination, err := checkedWebPagination(offset, 60)
+	pagination, err := checkedWebPagination(offset, artworkSearchPageSize)
 	if err != nil {
 		return nil, err
 	}
@@ -112,7 +116,7 @@ func (c *Client) SearchIllust(ctx context.Context, word, target, sort, duration 
 	}
 	items := group.Data.Items
 	rawCount := len(items)
-	items = trimWebPageOffset(items, offset, 60)
+	items = trimWebPageOffset(items, offset, artworkSearchPageSize)
 	illusts := make([]model.Illust, 0, len(items))
 	for _, item := range items {
 		if item.ID <= 0 {
@@ -121,7 +125,7 @@ func (c *Client) SearchIllust(ctx context.Context, word, target, sort, duration 
 		illusts = append(illusts, mapSearchIllust(item))
 	}
 	result := &model.IllustList{Illusts: illusts}
-	if webHasNext(offset, rawCount, int64(group.Total), 60) {
+	if webHasNext(offset, rawCount, int64(group.Total), artworkSearchPageSize) {
 		result.NextOffset = pagination.nextOffset
 		result.ContinuationExists = true
 	}
@@ -172,7 +176,7 @@ func (c *Client) IllustPages(ctx context.Context, id int64) ([]model.MetaPage, e
 }
 
 func (c *Client) IllustRanking(ctx context.Context, mode, date string, offset int) (*model.IllustList, error) {
-	pagination, err := checkedWebPagination(offset, 50)
+	pagination, err := checkedWebPagination(offset, illustRankingPageSize)
 	if err != nil {
 		return nil, err
 	}
@@ -197,13 +201,13 @@ func (c *Client) IllustRanking(ctx context.Context, mode, date string, offset in
 		}
 	}
 	rawCount := len(out.Contents.Items)
-	items := trimWebPageOffset(out.Contents.Items, offset, 50)
+	items := trimWebPageOffset(out.Contents.Items, offset, illustRankingPageSize)
 	illusts := make([]model.Illust, 0, len(items))
 	for _, item := range items {
 		illusts = append(illusts, mapRankingIllust(item))
 	}
 	result := &model.IllustList{Illusts: illusts}
-	if webHasNext(offset, rawCount, int64(out.RankTotal), 50) {
+	if webHasNext(offset, rawCount, int64(out.RankTotal), illustRankingPageSize) {
 		result.NextOffset = pagination.nextOffset
 		result.ContinuationExists = true
 	}

@@ -1677,13 +1677,25 @@ func TestSDKListPageRequiresPositiveLimitAndPositiveValue(t *testing.T) {
 func TestSDKListsFollowOpaqueCursorForLimitAndRejectCycles(t *testing.T) {
 	first := testSDKIllust(1, "first", 7)
 	second := testSDKIllust(2, "second", 7)
+	legacyDefault := &fakeSDKClient{userID: 7, artworkResults: map[sdk.Cursor]sdk.IllustListResult{
+		"":     {Illusts: []sdk.Illust{first}, NextCursor: "next"},
+		"next": {Illusts: []sdk.Illust{second}},
+	}}
+	defaultSession, closeDefaultSession := newSDKTestSession(t, legacyDefault)
+	defer closeDefaultSession()
+	result := callTool(t, defaultSession, "user_artworks", map[string]any{})
+	var out illustListOut
+	decodeStructured(t, result, &out)
+	if len(out.Items) != 1 || !out.Pagination.HasMore || out.Pagination.Limit != nil || out.Pagination.NextPage != nil || len(legacyDefault.artworksRequests) != 1 {
+		t.Fatalf("default single-batch output=%+v requests=%+v", out, legacyDefault.artworksRequests)
+	}
+
 	paged := &fakeSDKClient{userID: 7, artworkResults: map[sdk.Cursor]sdk.IllustListResult{
 		"": {Illusts: []sdk.Illust{first}, NextCursor: "next"},
 	}}
 	pagedSession, closePagedSession := newSDKTestSession(t, paged)
 	defer closePagedSession()
-	result := callTool(t, pagedSession, "user_artworks", map[string]any{"limit": 1})
-	var out illustListOut
+	result = callTool(t, pagedSession, "user_artworks", map[string]any{"limit": 1})
 	decodeStructured(t, result, &out)
 	if !out.Pagination.HasMore || out.Pagination.NextPage == nil || *out.Pagination.NextPage != 2 {
 		t.Fatalf("single-page pagination=%+v", out.Pagination)
