@@ -128,6 +128,9 @@ fsync 的等价保证。
   原子替换。
 - GitHub Releases API 是唯一查询后端；draft 被排除，stable 检查不纳入 prerelease。ETag/cache
   用于节流与原子保存。
+- 更新选择器对当前检查通道的 published Release 强制 canonical SemVer；任一 tag 不合法时
+  fail-closed 并报告该 tag，不会跳过它而选择较旧版本。stable 选择会在校验前先排除
+  GitHub 已标记的 prerelease；完整信任边界见 [ADR 0008](adr/0008-ed25519-signed-multi-channel-release-trust.md)。
 
 该包不得把签名、checksum、HTTP、archive、替换或权限错误伪装成“无更新”。production trusted key、
 签名私钥与 Keychain 恢复副本、受保护 `release` Environment 和公开 remote 已按 Task 20 配置；完整六目标
@@ -166,7 +169,7 @@ Release 安装的失败语义仍是保护边界，而不是临时降级。
 
 包内按职责拆分：`server.go` 负责构造与统一 observability wrapper，`registration.go` 只维护 tool 注册，`auth_tools.go` 和 `download_tools.go` 分别承载认证与下载，`legacy_tools.go` 保留 legacy 读取适配，`formatting.go` 集中文本/output helper，`sdk_runtime.go` 负责分页、operation snapshot、gate 与安全日志，`sdk_tools.go` 承载 SDK typed tools。legacy handler 可把失败继续转换为兼容的 `isError=false` 结果，但必须把真实 cause 交给 wrapper；wrapper 只在 stderr 记录安全分类 metadata，不读取参数或原始错误文本。正常空结果不会伪装成失败。
 
-输出目前以中文文本为主，适合直接返回给 LLM/MCP 客户端。认证相关工具会显式提示缺少 token、认证失败或自动认证失败的真实原因。
+输出目前以中文文本为主，适合直接返回给 LLM/MCP 客户端。其中 `refresh_token` tool 会区分缺少 token、context 取消/deadline、安全 typed SDK 失败与未知失败；其未知底层错误只返回脱敏排查提示，不回显原始原因。完整 wire 语义见 [MCP 工具](mcp-tools.md#配置认证与下载)。
 
 ### `internal/download`
 

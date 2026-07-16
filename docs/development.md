@@ -354,8 +354,10 @@ helper 再按 workflow 与 evidence/archive 分开，避免把策略测试重新
 文本排版或行号。它精确检查 tag trigger、八份 job 的权限/依赖、六个 test/production runner matrix、每一个
 `uses` 的 40 位 SHA，以及 publish 的 SemVer channel 调用。默认分支 ancestry 必须在无
 `environment`、无 secret 的 `verify_release_source` job 中完成；只有该 job 成功后，publish 才可
-依赖它并声明精确的 `release` Environment、使用签名 metadata step 的两个预期 secret。policy 还会
-拒绝 required job、默认分支 ancestry step 与 quality gate 的 `continue-on-error` 或条件 `if`；validate
+依赖它并声明精确的 `release` Environment、使用签名 metadata step 的两个预期 secret。policy 对所有
+scalar 中的 GitHub expression 按表达式边界扫描 `secrets` context；单引号字符串中的 `}`/`}}`
+以及两个单引号转义不会提前结束扫描，因此签名 metadata step 之外的格式化 secret 引用也会
+fail-closed。policy 还会拒绝 required job、默认分支 ancestry step 与 quality gate 的 `continue-on-error` 或条件 `if`；validate
 与 build checkout 也必须显式 `persist-credentials: false`。为避免 shell 控制流隐藏 gate，每项质量
 检查都是唯一的单命令 `bash` step：policy 精确验证其 run、crate cwd（Rust gate）和 shell，并拒绝
 未审计的 `env`、`defaults` 或其它 step 字段。唯一允许的变量是 root 的 `RELEASE_TAG`，以及 build
