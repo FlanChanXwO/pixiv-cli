@@ -121,8 +121,18 @@
 
 ## C03 — 集中检查 3（T07–T09）
 
-- 状态：未完成
+- 状态：已完成（发现 P1/P2/P3 修复项）
 - 检查：死代码证据、更新 fail-open/fail-closed 边界、文件原子性/权限/掉电风险、race、全量 test/vet、回滚路径。
+- 实际：集中复核 `0f92eb5..447b568` 的 T07–T09 生产代码、测试、发布 workflow 与文档。T07 的目标死符号及不可达 auth 字符串 fallback 已删除，source-aware cursor 与合法 refresh-token 入口、typed 401/403 refresh/replay 保持；T08 的唯一仓库内 Release 创建入口、canonical SemVer validator、selected-channel strict fail-closed 与 policy bypass 防线闭合；T09 的 config/auth 私有 writer 对同目录 staging、完整写入、file Sync、关闭、替换、Unix-like `0700`/`0600`、目标目录 fsync 及 Windows private recovery/ACL 限定成立。集中检查同时发现三项遗漏：P1 是 public `ReplaceFile`/`ReplaceFileWithBackup` 丢弃 Windows 1177 restore-fail 的 `preserveSource` outcome，resource、ugoira、updater 与 release cache 的错误清理都会删除新 artifact；P2 是首次 `MkdirAll` 新建配置目录后未同步该目录在外层父目录中的新 entry；P3 是 `docs/architecture.md` 仍描述 T07 已删除的 `Enqueue` 与固定并发 5 semaphore。已插入 F03，阻断 T10。
+- 证据：目标 dead symbol 精确 `rg` 零命中；`RuntimeConfig` 无 token 字段而 auth store、环境变量、SDK options、CLI/MCP 合法入口仍在；appapi GET/POST 仅以 typed HTTP 401/403 触发 refresh/replay。仓库生产 `gh release create` 仅在 `.github/workflows/release.yml`，tag push/必填 dispatch 共用 `RELEASE_TAG`，validate/build/production/publish 与 ADR 0008 一致；selector、超 `uint64` SemVer 与 workflow mutation tests 通过。P1 由 `replace_windows.go` 丢弃 outcome 到 `resource.go`、`ugoira_encoder.go`、`installer.go` 与 `releases.go` 的 cleanup 数据流直接证明；其中 release cache defer 的 `if removeErr := os.Remove(temporaryPath); ...` 会无条件先执行 init，named `err` 只控制是否合并 remove error，不能保护 source。P2 由 `files.go` 只调用 `syncParent(filepath.Dir(path))`、没有同步新建目录外层父 entry 直接证明。独立 checkpoint auditor REQUEST_CHANGES，独立 spec reviewer确认三项均属于 C03/T07–T09。主线程通过 T07 五包、T08 selector 20 次、release workflow、T09 十类故障状态 20 次、Windows/Linux 交叉编译、`go test ./... -count=1`、`go test -race ./... -count=1`、`go vet ./...`、`sh scripts/test-release-workflow.sh`、`sh scripts/build.sh` 与开发 binary `version --json`；构建产物已清理，worktree 恢复干净。`git show` 确认 T07 `9b2a5f4`、T08 `8a614d0`、T09 `447b568` 分属 dead-code、release、storage 三个提交，生产文件无交叉依赖；整体回滚以逆提交顺序最稳妥，单独回滚文档/`tasks.md` 冲突须人工保留较新事实。
+- 风险/下一步：在 F03 完成前，极端 Windows 1177 且自动恢复失败会让目标路径缺失、旧内容仅留 recovery backup，并被部分调用方继续删除新 source；首次成功创建 config/auth 目录也没有完整的掉电持久性证据。下一轮必须先执行 F03：以 public/caller-visible recovery contract 逐个 RED→GREEN，补新建目录链 fsync 顺序/失败测试并删除旧架构陈述；经过 spec/quality 窄复审和全量门禁后才能开始 T10。F03 将建立在 T09 的 outcome/durability 模型上，未来若必须撤销 T09，应先撤销 F03、再撤销 `447b568`；这会重新暴露原 config/auth 掉电风险，只是紧急回滚路径而不是等价修复。T08 与 T07 的生产改动可再按 `8a614d0`、`9b2a5f4` 逆序撤销，且不得移动不可变 v0.3.0 tag。真实 Windows 故障注入仍留 T21，知识图谱仍按 T20 集中重建。
+
+## F03 — 关闭 C03 的 Windows recovery 与首次目录 durability 缺口
+
+- 状态：未完成
+- 来源：C03 P1/P2/P3。公共替换 API 丢失 unresolved recovery outcome；首次创建目录未同步外层 parent entry；架构文档残留已删除后台队列。
+- 范围：让 `files.ReplaceFile` 与 `ReplaceFileWithBackup` 的调用方可稳定识别“必须保留 source”的恢复状态，并修正 resource、ugoira、updater 与 release cache 的清理所有权。Windows 1177 restore fail 必须同时保留 old backup 与 new source，1177 restore success 恢复旧 target 并清理临时 source，1175/1176/普通失败仍保持旧 target 且不留无用临时文件，成功路径不变。Unix-like 首次创建一层或多层目录时，在最终 file rename 后按可证明顺序同步目标目录及每个新建目录的外层 parent entry；既有目录不新增无依据同步，任何 post-commit sync/cleanup 失败 fail-loud 且不伪装回滚。删除 architecture 的 `Enqueue`/semaphore 陈述，不扩展到 T10 timeout 或其他文件写入协议。
+- 验收：按 TDD vertical slices，至少由 caller-visible 测试先 RED 覆盖 resource download、ugoira publish、Windows updater 与 release cache 的 preserve-source cleanup；platform-neutral recovery tests 与 Windows build-tag classifier/交叉编译覆盖 public contract。Unix-like 测试先 RED 覆盖新建单层/多层目录的 fsync 顺序、既有目录仅同步目标目录、各 sync failure 的组合错误与已提交状态；普通失败/成功无临时残留、权限不放宽。相关 package/race/vet、Windows/Linux 交叉编译、全量 test/race/vet、build、pre-commit 和独立 spec/quality review 通过。
 - 实际：
 - 证据：
 - 风险/下一步：
