@@ -188,6 +188,12 @@ func (c *Client) Download(ctx context.Context, ref ResourceRef, destinationPath 
 		}
 		return scoped.Download(ctx, ref, destinationPath)
 	}
+	return c.downloadWithReplacer(ctx, ref, destinationPath, files.ReplaceFile)
+}
+
+// downloadWithReplacer 仅把不可稳定触发的替换故障作为每次调用的私有注入点；
+// 生产公开入口始终传入 files.ReplaceFile，不使用全局可变 hook。
+func (c *Client) downloadWithReplacer(ctx context.Context, ref ResourceRef, destinationPath string, replaceFile func(string, string) error) error {
 	if strings.TrimSpace(destinationPath) == "" {
 		return invalidResourceError(OperationDownload, "destination path is invalid")
 	}
@@ -231,7 +237,10 @@ func (c *Client) Download(ctx context.Context, ref ResourceRef, destinationPath 
 	if tmpCloseErr != nil {
 		return invalidResourceError(OperationDownload, "destination temporary file close failed")
 	}
-	if err := files.ReplaceFile(tmpPath, destinationPath); err != nil {
+	if err := replaceFile(tmpPath, destinationPath); err != nil {
+		if files.MustPreserveReplacementSource(err) {
+			keepTemp = false
+		}
 		return invalidResourceError(OperationDownload, "destination replacement failed")
 	}
 	keepTemp = false

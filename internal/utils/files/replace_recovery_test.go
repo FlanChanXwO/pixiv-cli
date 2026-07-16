@@ -2,6 +2,7 @@ package files
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -10,6 +11,22 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func TestUnresolvedReplacementRecoveryContractSurvivesWrapping(t *testing.T) {
+	replaceErr := errors.New("replacement moved old target")
+	restoreErr := errors.New("restore failed")
+	_, err := recoverReplacementAttempt(replacementAttempt{
+		state: replacementOldMovedToBackup,
+		err:   replaceErr,
+	}, "backup", "target", func(string, string) error {
+		return restoreErr
+	})
+	wrapped := fmt.Errorf("caller context: %w", err)
+
+	assert.True(t, MustPreserveReplacementSource(wrapped))
+	require.ErrorIs(t, wrapped, replaceErr)
+	require.ErrorIs(t, wrapped, restoreErr)
+}
 
 func TestWritePrivateFileRestoresOldTargetAfterReplacementMovesItToBackup(t *testing.T) {
 	dir := t.TempDir()

@@ -71,6 +71,8 @@ type GitHubReleaseClient struct {
 	cacheDir   string
 	cachePath  string
 	now        func() time.Time
+	// replaceFile 是每个 client 独立的替换 seam；生产构造固定使用 files.ReplaceFile。
+	replaceFile func(string, string) error
 }
 
 // NewGitHubReleaseClient 建立唯一使用 GitHub Releases API 的更新查询客户端。
@@ -114,11 +116,12 @@ func NewGitHubReleaseClient(options ReleaseClientOptions) (*GitHubReleaseClient,
 		now = time.Now
 	}
 	return &GitHubReleaseClient{
-		endpoint:   endpoint,
-		httpClient: httpClient,
-		cacheDir:   cacheDir,
-		cachePath:  filepath.Join(cacheDir, releaseCacheFilename),
-		now:        now,
+		endpoint:    endpoint,
+		httpClient:  httpClient,
+		cacheDir:    cacheDir,
+		cachePath:   filepath.Join(cacheDir, releaseCacheFilename),
+		now:         now,
+		replaceFile: files.ReplaceFile,
 	}, nil
 }
 
@@ -420,8 +423,10 @@ func (c *GitHubReleaseClient) writeCache(cache releaseCache) (err error) {
 	temporaryPath := cacheFile.Name()
 	defer func() {
 		_ = cacheFile.Close()
-		if removeErr := os.Remove(temporaryPath); err == nil && removeErr != nil && !os.IsNotExist(removeErr) {
-			err = fmt.Errorf("remove temporary GitHub Releases cache %q: %w", temporaryPath, removeErr)
+		if !files.MustPreserveReplacementSource(err) {
+			if removeErr := os.Remove(temporaryPath); err == nil && removeErr != nil && !os.IsNotExist(removeErr) {
+				err = fmt.Errorf("remove temporary GitHub Releases cache %q: %w", temporaryPath, removeErr)
+			}
 		}
 	}()
 	if err := cacheFile.Chmod(0o600); err != nil {
@@ -437,7 +442,7 @@ func (c *GitHubReleaseClient) writeCache(cache releaseCache) (err error) {
 		return fmt.Errorf("close temporary GitHub Releases cache %q: %w", temporaryPath, err)
 	}
 	// ReplaceFile 在 Windows 对已有目标使用 ReplaceFileW，首次创建才用不覆盖的 MoveFileEx。
-	if err := files.ReplaceFile(temporaryPath, c.cachePath); err != nil {
+	if err := c.replaceFile(temporaryPath, c.cachePath); err != nil {
 		return fmt.Errorf("atomically replace GitHub Releases cache %q: %w", c.cachePath, err)
 	}
 	return nil

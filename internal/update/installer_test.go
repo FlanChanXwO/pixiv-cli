@@ -132,6 +132,56 @@ func TestReleaseInstallerPreservesExecutableSymlink(t *testing.T) {
 	requireNoUpdateTemporaryPaths(t, filepath.Dir(expectedTarget))
 }
 
+type preserveInstallerSourceError struct {
+	err error
+}
+
+func (e preserveInstallerSourceError) Error() string            { return e.err.Error() }
+func (e preserveInstallerSourceError) Unwrap() error            { return e.err }
+func (preserveInstallerSourceError) PreserveReplacementSource() {}
+
+func TestReleaseInstallerPreservesStagedSourceWhenReplacementRecoveryIsUnresolved(t *testing.T) {
+	archive := fixtureRuntimeArchive(t, map[string]string{releaseBinaryName(runtime.GOOS): "new executable"})
+	installer, release, target := verifiedFixtureInstaller(t, archive, nil)
+	installer.checker = releaseBinaryCheckerFunc(func(context.Context, string, string) error { return nil })
+	var stagedPath string
+	replaceCause := errors.New("replacement recovery unresolved")
+	installer.replacer = releaseFileReplacerFunc(func(source, _ string) error {
+		stagedPath = source
+		return preserveInstallerSourceError{err: replaceCause}
+	})
+
+	err := installer.Install(context.Background(), release)
+	require.ErrorIs(t, err, replaceCause)
+
+	oldBody, readErr := os.ReadFile(target)
+	require.NoError(t, readErr)
+	require.Equal(t, "old executable", string(oldBody))
+	newBody, readErr := os.ReadFile(stagedPath)
+	require.NoError(t, readErr)
+	require.Equal(t, "new executable", string(newBody))
+}
+
+func TestReleaseInstallerCleansStagedSourceAfterOrdinaryReplacementFailure(t *testing.T) {
+	archive := fixtureRuntimeArchive(t, map[string]string{releaseBinaryName(runtime.GOOS): "new executable"})
+	installer, release, target := verifiedFixtureInstaller(t, archive, nil)
+	installer.checker = releaseBinaryCheckerFunc(func(context.Context, string, string) error { return nil })
+	var stagedPath string
+	replaceCause := errors.New("replacement unchanged")
+	installer.replacer = releaseFileReplacerFunc(func(source, _ string) error {
+		stagedPath = source
+		return replaceCause
+	})
+
+	err := installer.Install(context.Background(), release)
+	require.ErrorIs(t, err, replaceCause)
+	_, statErr := os.Stat(stagedPath)
+	require.ErrorIs(t, statErr, os.ErrNotExist)
+	oldBody, readErr := os.ReadFile(target)
+	require.NoError(t, readErr)
+	require.Equal(t, "old executable", string(oldBody))
+}
+
 // TestReleaseInstallerRejectsBrokenExecutableSymlink 确保断开的软链接在版本预检、
 // staging 和替换之前就暴露真实解析错误，不能被更新流程悄然替换为普通文件。
 func TestReleaseInstallerRejectsBrokenExecutableSymlink(t *testing.T) {

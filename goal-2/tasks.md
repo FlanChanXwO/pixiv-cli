@@ -129,13 +129,13 @@
 
 ## F03 — 关闭 C03 的 Windows recovery 与首次目录 durability 缺口
 
-- 状态：未完成
+- 状态：已完成
 - 来源：C03 P1/P2/P3。公共替换 API 丢失 unresolved recovery outcome；首次创建目录未同步外层 parent entry；架构文档残留已删除后台队列。
 - 范围：让 `files.ReplaceFile` 与 `ReplaceFileWithBackup` 的调用方可稳定识别“必须保留 source”的恢复状态，并修正 resource、ugoira、updater 与 release cache 的清理所有权。Windows 1177 restore fail 必须同时保留 old backup 与 new source，1177 restore success 恢复旧 target 并清理临时 source，1175/1176/普通失败仍保持旧 target 且不留无用临时文件，成功路径不变。Unix-like 首次创建一层或多层目录时，在最终 file rename 后按可证明顺序同步目标目录及每个新建目录的外层 parent entry；既有目录不新增无依据同步，任何 post-commit sync/cleanup 失败 fail-loud 且不伪装回滚。删除 architecture 的 `Enqueue`/semaphore 陈述，不扩展到 T10 timeout 或其他文件写入协议。
 - 验收：按 TDD vertical slices，至少由 caller-visible 测试先 RED 覆盖 resource download、ugoira publish、Windows updater 与 release cache 的 preserve-source cleanup；platform-neutral recovery tests 与 Windows build-tag classifier/交叉编译覆盖 public contract。Unix-like 测试先 RED 覆盖新建单层/多层目录的 fsync 顺序、既有目录仅同步目标目录、各 sync failure 的组合错误与已提交状态；普通失败/成功无临时残留、权限不放宽。相关 package/race/vet、Windows/Linux 交叉编译、全量 test/race/vet、build、pre-commit 和独立 spec/quality review 通过。
-- 实际：
-- 证据：
-- 风险/下一步：
+- 实际：`internal/utils/files` 新增 `ReplacementSourcePreservationError` marker 与 `MustPreserveReplacementSource`，Windows 1177 的 target restore 也失败时把原 replace/restore cause 包装成支持 `errors.As`、`errors.Is`、`Unwrap` 的 typed error，错误文本不加入 source/target 路径。resource download、ugoira publish、release installer 与 GitHub release cache 的 per-call/per-instance cleanup 只在该 marker 可达时移交 source 所有权并保留恢复材料；普通替换错误仍清理 source，成功与 installer `.old` 语义不变。`WritePrivateFile` 在调用开始记录缺失目录链，replacement committed 后按 leaf→root 同步 target directory 及每个新目录的外层 parent；所有同步均继续尝试并以 `errors.Join` 返回，未提交路径不执行 durability sync，Windows helper 仍明确 no-op。architecture 删除 `Enqueue`/固定 semaphore 旧描述；按 docs 路由只在 architecture 记录内部边界，并在 `[Unreleased]` 合并记录用户可感知的数据保留与首次目录 durability 修复。
+- 证据：resource 与 ugoira 首条 caller artifact tests 均先因缺少 per-call seam 真实 compile-RED，再 GREEN；installer 测试先实际 RED 为 staged source 被 defer 删除后的 `os.ErrNotExist`，再 GREEN；release cache 测试先 compile-RED（缺 per-client replacer），再 GREEN。Unix-like 单层新目录测试先实际 RED，观测同步序列只有 `[leaf]` 而预期 `[leaf, outer parent]`，修复后 GREEN；多层顺序、既有目录仅 target、三层 sync failure 全部尝试/`errors.Join`、wrapped marker 与普通 cleanup 在通用实现后首次 GREEN，均如实作为 characterization。独立 spec review 与 quality review 均 APPROVE；spec 另确认 resource 既有外部测试已覆盖普通 ReplaceFile 失败的零临时残留，quality 核对 1175/1176/1177、committed cleanup、relative/root/symlink/concurrent-create 与四处 named/defer 语义。主线程将新增 recovery/durability tests 各运行 20 次，通过四包 normal/race/vet、Windows/Linux amd64 的 files/update/pixiv 交叉编译、`go test ./... -count=1`、`go test -race ./... -count=1`、`go vet ./...`、`sh scripts/build.sh` 与开发 binary `version --json`；构建及交叉编译产物已清理。
+- 风险/下一步：真实 Windows 文件系统仍未注入 1177 + restore-fail；当前证据是共享状态模型、Windows classifier/build-tag、caller artifact tests 与交叉编译，真实故障矩阵仍留 T21。`internal/download` 异构编译继续受仓库既有 CGO/Rust staticlib/目标 linker 门禁限制，本机 build/race/vet 已覆盖本 diff。unresolved recovery 会刻意留下 old backup 与 new source，错误返回后调用方或人工流程负责恢复，不能按普通临时残留清理。下一轮开始 T10；结构变化后的两份知识图谱仍按 T20 集中重建。
 
 ## T10 — 决定并统一 HTTP client timeout 策略
 

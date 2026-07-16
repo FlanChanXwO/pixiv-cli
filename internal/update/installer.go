@@ -203,7 +203,7 @@ func (i *releaseInstaller) Install(ctx context.Context, release Release) (err er
 	}
 	stagedPath := staged.Name()
 	defer func() {
-		if err != nil {
+		if err != nil && !files.MustPreserveReplacementSource(err) {
 			if removeErr := os.Remove(stagedPath); removeErr != nil && !os.IsNotExist(removeErr) {
 				err = errors.Join(err, fmt.Errorf("remove staged update file %q: %w", stagedPath, removeErr))
 			}

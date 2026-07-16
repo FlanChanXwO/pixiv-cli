@@ -14,7 +14,7 @@
 
 ### Fixed
 
-- 修复写回 `config.toml` 时原地截断可能损坏旧配置，以及 `auth.json` 原子替换前未同步文件的问题；两者现共用同目录临时文件、完整写入、file sync、关闭和原子替换流程，Unix-like 平台主动使用 `0700`/`0600` 并同步父目录。Windows 使用 recovery backup 处理 `ReplaceFileW` 部分完成失败，无法自动恢复时保留新旧两份材料；首次创建继承父目录 ACL、替换既有目标保留其 ACL，不声称主动收紧 DACL 或提供 POSIX directory fsync。
+- 修复写回 `config.toml` 时原地截断可能损坏旧配置，以及 `auth.json` 原子替换前未同步文件的问题；两者现共用同目录临时文件、完整写入、file sync、关闭和原子替换流程。Unix-like 平台主动使用 `0700`/`0600`；替换提交后同步目标目录，首次创建目录时还按 leaf→root 同步每层新目录的外层 parent entry，并合并所有同步错误。Windows 使用 recovery backup 处理 `ReplaceFileW` 部分完成失败；公开替换错误会以 typed contract 告知资源下载、ugoira 发布、更新安装和 release cache 保留新 source，自动恢复也失败时因此保留 old backup 与 new source 两份材料。该路径已有状态模型、classifier 与交叉编译测试，但不声称在真实 Windows 文件系统注入 1177；首次创建继承父目录 ACL、替换既有目标保留其 ACL，不声称主动收紧 DACL 或提供 POSIX directory fsync。
 - 修复 MCP `download` 与 `download_random_from_recommendation` 的参数、SDK、推荐、下载、结果整理或文件读取失败被 typed output schema 的 `null` 数组校验错误遮蔽的问题；失败现保留原业务文本与规范化 `delivery`，并返回空 `items`/`files` 数组。
 - 修复 MCP `download_random_from_recommendation` 把显式 0、负数或大于 20 的 `count` 静默改写为默认值或边界值的问题；非法值现明确报错，省略时仍默认 5，同时传入非法 `delivery` 时仍优先返回 delivery 参数错误而非 schema 错误。
 - 修复 MCP `refresh_token` 在 SDK 初始化、配置或代理失败时误报“未设置 refresh token”的问题；取消、超时和公开 SDK 错误现保留安全分类，未知初始化错误保持脱敏，未知刷新执行错误也不再回显原始错误详情。

@@ -46,10 +46,10 @@ func recoverReplacementAttempt(attempt replacementAttempt, backupPath, targetPat
 		return privateFileReplaceOutcome{committed: true}, attempt.err
 	case replacementOldMovedToBackup:
 		if restoreErr := restore(backupPath, targetPath); restoreErr != nil {
-			return privateFileReplaceOutcome{preserveSource: true}, errors.Join(
+			return privateFileReplaceOutcome{preserveSource: true}, markReplacementSourceForPreservation(errors.Join(
 				attempt.err,
 				fmt.Errorf("restore replaced target from backup: %w", restoreErr),
-			)
+			))
 		}
 		return privateFileReplaceOutcome{}, attempt.err
 	default:
