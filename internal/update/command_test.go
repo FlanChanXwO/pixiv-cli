@@ -2,32 +2,72 @@ package update
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"testing"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/buildinfo"
+	"github.com/FlanChanXwO/pixiv-cli/internal/utils/uri"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 func TestNewReleaseHTTPClientUsesOnlyConfiguredProxyWithoutFixedTimeout(t *testing.T) {
-	client, err := NewReleaseHTTPClient("http://proxy.example:7890")
+	for _, configuredProxy := range []string{"http://proxy.example:7890", "https://proxy.example:7890"} {
+		t.Run(configuredProxy, func(t *testing.T) {
+			client, err := NewReleaseHTTPClient(configuredProxy)
+			require.NoError(t, err)
+			assert.Zero(t, client.Timeout)
+
+			transport, ok := client.Transport.(*http.Transport)
+			require.True(t, ok)
+			request, err := http.NewRequest(http.MethodGet, "https://api.github.com/repos/FlanChanXwO/pixiv-cli/releases", nil)
+			require.NoError(t, err)
+			proxy, err := transport.Proxy(request)
+			require.NoError(t, err)
+			require.NotNil(t, proxy)
+			assert.Equal(t, configuredProxy, proxy.String())
+		})
+	}
+}
+
+func TestNewReleaseHTTPClientEmptyProxyDisablesEnvironmentFallback(t *testing.T) {
+	client, err := NewReleaseHTTPClient("")
 	require.NoError(t, err)
-	assert.Zero(t, client.Timeout)
 
 	transport, ok := client.Transport.(*http.Transport)
 	require.True(t, ok)
-	request, err := http.NewRequest(http.MethodGet, "https://api.github.com/repos/FlanChanXwO/pixiv-cli/releases", nil)
-	require.NoError(t, err)
-	proxy, err := transport.Proxy(request)
-	require.NoError(t, err)
-	require.NotNil(t, proxy)
-	assert.Equal(t, "http://proxy.example:7890", proxy.String())
+	assert.Nil(t, transport.Proxy)
 }
 
 func TestNewReleaseHTTPClientRejectsNonHTTPProxy(t *testing.T) {
-	_, err := NewReleaseHTTPClient("socks5://proxy.example:1080")
+	proxy := "socks5://proxy-user-secret:proxy-pass-secret@proxy-host-secret.example:1080/proxy-path-secret?proxy-query-secret=value"
+
+	client, err := NewReleaseHTTPClient(proxy)
+
+	require.Nil(t, client)
+	require.ErrorIs(t, err, uri.ErrInvalidProxy)
 	require.ErrorContains(t, err, "absolute HTTP(S) URL")
+	for current := err; current != nil; current = errors.Unwrap(current) {
+		for _, secret := range []string{"proxy-user-secret", "proxy-pass-secret", "proxy-host-secret", "proxy-path-secret", "proxy-query-secret"} {
+			require.NotContains(t, current.Error(), secret)
+		}
+	}
+}
+
+func TestNewReleaseHTTPClientRejectsMalformedProxyWithoutLeakingSensitiveComponents(t *testing.T) {
+	proxy := "http://proxy-user-secret:proxy-pass-secret@proxy-host-secret.invalid/proxy-path-secret-%zz?proxy-query-secret=value"
+
+	client, err := NewReleaseHTTPClient(proxy)
+
+	require.Nil(t, client)
+	require.ErrorIs(t, err, uri.ErrInvalidProxy)
+	require.ErrorContains(t, err, "parse update proxy URL")
+	for current := err; current != nil; current = errors.Unwrap(current) {
+		for _, secret := range []string{"proxy-user-secret", "proxy-pass-secret", "proxy-host-secret", "proxy-path-secret", "proxy-query-secret"} {
+			require.NotContains(t, current.Error(), secret)
+		}
+	}
 }
 
 func TestUpdateCoordinatorDefaultReleaseInstallerReportsMissingTrustedKey(t *testing.T) {

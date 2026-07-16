@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"net/url"
 	"os/exec"
+
+	"github.com/FlanChanXwO/pixiv-cli/internal/utils/uri"
 )
 
 // NewReleaseHTTPClient 建立只供更新查询使用的 HTTP client。
@@ -22,10 +24,10 @@ func NewReleaseHTTPClient(proxyURL string) (*http.Client, error) {
 	if proxyURL != "" {
 		parsedProxy, err := url.ParseRequestURI(proxyURL)
 		if err != nil {
-			return nil, fmt.Errorf("parse update proxy URL %q: %w", proxyURL, err)
+			return nil, fmt.Errorf("parse update proxy URL: %w", uri.ErrInvalidProxy)
 		}
 		if (parsedProxy.Scheme != "http" && parsedProxy.Scheme != "https") || parsedProxy.Host == "" {
-			return nil, fmt.Errorf("update proxy URL %q must be an absolute HTTP(S) URL", proxyURL)
+			return nil, fmt.Errorf("update proxy URL must be an absolute HTTP(S) URL: %w", uri.ErrInvalidProxy)
 		}
 		clonedTransport.Proxy = http.ProxyURL(parsedProxy)
 	}

@@ -87,6 +87,21 @@ func TestRunUpdateUsesConfiguredProxyAndDoesNotInheritOutputJSON(t *testing.T) {
 	assert.Empty(t, stderr.String())
 }
 
+func TestRunUpdateRejectsMalformedExplicitProxyWithoutLeakingSensitiveComponents(t *testing.T) {
+	useTempPaths(t)
+	proxy := "http://proxy-user-secret:proxy-pass-secret@proxy-host-secret.invalid/proxy-path-secret-%zz?proxy-query-secret=value"
+
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"pixiv", "update", "--check", "--proxy", proxy}, strings.NewReader(""), &stdout, &stderr)
+
+	require.NotZero(t, code)
+	assert.Empty(t, stdout.String())
+	assert.Contains(t, stderr.String(), "invalid proxy configuration")
+	for _, secret := range []string{"proxy-user-secret", "proxy-pass-secret", "proxy-host-secret", "proxy-path-secret", "proxy-query-secret"} {
+		assert.NotContains(t, stderr.String(), secret)
+	}
+}
+
 func stubUpdateCommand(t *testing.T, runtimeConfig config.RuntimeConfig, coordinator func(string, io.Writer, io.Writer) (*update.UpdateCoordinator, error)) func() {
 	t.Helper()
 	oldLoad := loadUpdateRuntimeConfig

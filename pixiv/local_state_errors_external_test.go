@@ -1,9 +1,11 @@
 package pixiv_test
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -73,7 +75,7 @@ func TestOpenDefaultClassifiesLegacyAuthSchemaLocalStateMalformed(t *testing.T) 
 func TestOpenDefaultClassifiesInvalidProxyLocalState(t *testing.T) {
 	dir := t.TempDir()
 	configPath := filepath.Join(dir, "proxy-config-path-secret.toml")
-	proxy := "http://proxy-user-secret:proxy-pass-secret@proxy.invalid/proxy-path-secret-%zz?proxy-query-secret=value"
+	proxy := "http://proxy-user-secret:proxy-pass-secret@proxy-host-secret.invalid/proxy-path-secret-%zz?proxy-query-secret=value"
 	// lower-case 代理优先于文件与 upper-case；两者都固定为同一非法值，保证
 	// 调用进程的环境不能覆盖本测试要验证的 proxy snapshot。
 	t.Setenv("https_proxy", proxy)
@@ -88,18 +90,28 @@ func TestOpenDefaultClassifiesInvalidProxyLocalState(t *testing.T) {
 		http.Error(w, "unexpected oauth request", http.StatusInternalServerError)
 	}))
 	defer server.Close()
+	var logs bytes.Buffer
 	client, err := pixiv.OpenDefault(pixiv.Options{
 		AuthFilePath:   filepath.Join(dir, "missing-auth.json"),
 		ConfigFilePath: configPath,
 		OAuthBaseURL:   server.URL,
+		Logger:         slog.New(slog.NewTextHandler(&logs, nil)),
 	})
 	if err != nil {
 		t.Fatalf("OpenDefault() error = %v", err)
 	}
 	_, err = client.CheckRefreshToken(context.Background(), "unused-token")
-	assertSafeLocalStateError(t, err, pixiv.OperationCheckRefreshToken, pixiv.LocalStateKindInvalidProxy, "configured proxy URL is invalid", "proxy-config-path-secret", "proxy-user-secret", "proxy-pass-secret", "proxy-path-secret", "proxy-query-secret", server.URL)
+	assertSafeLocalStateError(t, err, pixiv.OperationCheckRefreshToken, pixiv.LocalStateKindInvalidProxy, "configured proxy URL is invalid", "proxy-config-path-secret", "proxy-user-secret", "proxy-pass-secret", "proxy-host-secret", "proxy-path-secret", "proxy-query-secret", server.URL)
 	if calls := networkCalls.Load(); calls != 0 {
 		t.Fatalf("OAuth network calls = %d, want 0", calls)
+	}
+	if !strings.Contains(logs.String(), "pixiv operation") || !strings.Contains(logs.String(), "error_code=invalid_argument") {
+		t.Fatalf("safe operation log missing classification: %q", logs.String())
+	}
+	for _, canary := range []string{"proxy-config-path-secret", "proxy-user-secret", "proxy-pass-secret", "proxy-host-secret", "proxy-path-secret", "proxy-query-secret", server.URL} {
+		if strings.Contains(logs.String(), canary) {
+			t.Fatalf("operation log leaked %q in %q", canary, logs.String())
+		}
 	}
 }
 

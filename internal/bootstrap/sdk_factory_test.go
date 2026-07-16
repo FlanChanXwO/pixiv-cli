@@ -10,6 +10,7 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/application"
 	"github.com/FlanChanXwO/pixiv-cli/internal/config"
 	"github.com/FlanChanXwO/pixiv-cli/internal/storage/auth"
+	"github.com/FlanChanXwO/pixiv-cli/internal/utils/uri"
 	sdk "github.com/FlanChanXwO/pixiv-cli/pixiv"
 	"github.com/stretchr/testify/require"
 )
@@ -57,14 +58,19 @@ func TestNewServicesSDKExplicitEmptyProxyOverridesConfiguredProxy(t *testing.T) 
 }
 
 func TestNewServicesSDKRejectsMalformedExplicitProxyAtConstruction(t *testing.T) {
-	invalidProxy := "http://bootstrap-proxy.invalid/path-%zz"
+	invalidProxy := "http://proxy-user-secret:proxy-pass-secret@proxy-host-secret.invalid/proxy-path-secret-%zz?proxy-query-secret=value"
 
 	client, err := NewServices(nil).SDK.Client(application.SDKClientRequest{HTTPSProxyOverride: &invalidProxy})
 
 	require.Nil(t, client)
 	require.Error(t, err)
-	require.Contains(t, err.Error(), "invalid proxy URL")
-	require.NotContains(t, err.Error(), "refresh_token")
+	require.ErrorIs(t, err, uri.ErrInvalidProxy)
+	require.Contains(t, err.Error(), "invalid proxy")
+	for current := err; current != nil; current = errors.Unwrap(current) {
+		for _, secret := range []string{"proxy-user-secret", "proxy-pass-secret", "proxy-host-secret", "proxy-path-secret", "proxy-query-secret"} {
+			require.NotContains(t, current.Error(), secret)
+		}
+	}
 }
 
 func TestNewServicesSDKOpenOperationRejectsMissingRequestedAccountBeforeOAuth(t *testing.T) {

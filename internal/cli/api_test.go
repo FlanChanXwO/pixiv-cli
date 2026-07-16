@@ -125,6 +125,21 @@ func TestSearchRejectsInvalidFilterValuesBeforeOpeningSDK(t *testing.T) {
 	}
 }
 
+func TestRunSearchRejectsMalformedExplicitProxyWithoutLeakingSensitiveComponents(t *testing.T) {
+	useTempPaths(t)
+	proxy := "http://proxy-user-secret:proxy-pass-secret@proxy-host-secret.invalid/proxy-path-secret-%zz?proxy-query-secret=value"
+
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"pixiv", "search", "miku", "--proxy", proxy}, strings.NewReader(""), &stdout, &stderr)
+
+	require.NotZero(t, code)
+	assert.Empty(t, stdout.String())
+	assert.Contains(t, stderr.String(), "invalid proxy configuration")
+	for _, secret := range []string{"proxy-user-secret", "proxy-pass-secret", "proxy-host-secret", "proxy-path-secret", "proxy-query-secret"} {
+		assert.NotContains(t, stderr.String(), secret)
+	}
+}
+
 func TestSearchUsesOutputJSONFromConfig(t *testing.T) {
 	_, configPath := useTempPaths(t)
 	require.NoError(t, auth.WritePrivateFile(configPath, []byte("[output]\njson = true\n")))

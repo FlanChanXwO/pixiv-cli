@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+
+	"github.com/FlanChanXwO/pixiv-cli/internal/utils/uri"
 )
 
 // HTTPClient 是公开 SDK 创建 operation transport 的内部基础设施；它不构造
@@ -17,7 +19,7 @@ func HTTPClient(proxyValue string) (*http.Client, error) {
 	}
 	proxyURL, err := url.Parse(proxyValue)
 	if err != nil {
-		return nil, fmt.Errorf("invalid proxy URL %q: %w", proxyValue, err)
+		return nil, fmt.Errorf("parse proxy URL: %w", uri.ErrInvalidProxy)
 	}
 	transport.Proxy = http.ProxyURL(proxyURL)
 	return client, nil

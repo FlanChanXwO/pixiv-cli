@@ -26,6 +26,7 @@
 
 ### Security
 
+- 修复 SDK、CLI、MCP、显式更新与自动更新在代理 URL 格式错误或 update 代理不是 absolute HTTP(S) URL 时，错误、unwrap 链或 stderr warning 可能回显代理 userinfo、path 与 query 的问题；非法代理现在保留可分类的安全原因与静态上下文，并继续在联网前明确失败。有效 HTTP(S) 代理、显式空代理、`--no-proxy`、动态配置 snapshot 与代理优先级不变。
 - 修复 Release workflow policy 在 GitHub expression 的单引号格式字符串含 `}` 或 `}}` 时可能漏检后续 `secrets` context 的问题；共享 scanner 现在按 expression 边界和单引号转义解析，确保 protected publish job 只能在受审计的签名 metadata step 引用发布签名 secret。
 
 ## [0.3.0] - 2026-07-15
