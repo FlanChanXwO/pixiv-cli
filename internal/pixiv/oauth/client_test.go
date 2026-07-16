@@ -3,13 +3,37 @@ package oauth
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func TestNewLeavesRequestLifetimeToContext(t *testing.T) {
+	client := New("")
+	httpClient := client.restyClient.GetClient()
+	require.NotSame(t, http.DefaultClient, httpClient)
+	require.Zero(t, httpClient.Timeout)
+}
+
+func TestNewPreservesExplicitHTTPClient(t *testing.T) {
+	want := &http.Client{Timeout: 23 * time.Second}
+	got := New("", WithHTTPClient(want)).restyClient.GetClient()
+	require.Same(t, want, got)
+	require.Equal(t, want.Timeout, got.Timeout)
+}
+
+func TestRefreshPreservesCanceledContext(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	err := New("refresh-token", WithBaseURL("https://example.invalid")).Refresh(ctx)
+	require.True(t, errors.Is(err, context.Canceled), "error = %v", err)
+}
 
 func TestRefreshOwnsIdentityState(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

@@ -8,10 +8,32 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func TestNewUsesDedicatedClientWithoutTotalTimeout(t *testing.T) {
+	client := New()
+	require.NotSame(t, http.DefaultClient, client.httpClient)
+	require.Zero(t, client.httpClient.Timeout)
+}
+
+func TestNewPreservesExplicitHTTPClient(t *testing.T) {
+	want := &http.Client{Timeout: 29 * time.Second}
+	got := New(WithHTTPClient(want)).httpClient
+	require.Same(t, want, got)
+	require.Equal(t, want.Timeout, got.Timeout)
+}
+
+func TestSearchIllustPreservesCanceledContext(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	_, err := New(WithWebBase("https://example.invalid")).SearchIllust(ctx, "cat", "partial_match_for_tags", "date_desc", "", 0)
+	require.True(t, errors.Is(err, context.Canceled), "error = %v", err)
+}
 
 func TestCheckedWebPaginationUsesMachineArithmeticBoundaries(t *testing.T) {
 	maxInt := int(^uint(0) >> 1)

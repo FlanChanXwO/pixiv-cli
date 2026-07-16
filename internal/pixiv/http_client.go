@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
-	"time"
 )
 
 // HTTPClient 是公开 SDK 创建 operation transport 的内部基础设施；它不构造
@@ -12,7 +11,7 @@ import (
 func HTTPClient(proxyValue string) (*http.Client, error) {
 	transport := http.DefaultTransport.(*http.Transport).Clone()
 	transport.Proxy = nil
-	client := &http.Client{Transport: transport, Timeout: 60 * time.Second}
+	client := &http.Client{Transport: transport}
 	if proxyValue == "" {
 		return client, nil
 	}

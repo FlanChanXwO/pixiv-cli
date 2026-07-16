@@ -247,7 +247,7 @@ SmartScreen 提示时，必须回到已验证的项目 GitHub Release、checksum
 
 ## 已知约束
 
-- `appapi`、`webapi` 与 resource transport 使用 caller/SDK 注入的 HTTP client；SDK 不新增无依据固定请求超时，取消由 context 传播。
+- `appapi`、`webapi`、`oauth` 与 resource transport 使用 caller/SDK 注入的 HTTP client；默认 client 专用于当前 SDK client、无整请求固定 timeout，取消与 deadline 由 context 传播。显式 client 保持调用方策略；详见 [ADR 0010](adr/0010-http-client-timeout-and-context.md)。
 - `pixiv mcp` 是 MCP stdio server 的显式启动方式；直接执行 `pixiv` 不会启动 MCP。
 - CLI 账号文件以明文 JSON 保存 refresh token、user ID 和可选 username，不保存 access token；Unix-like 文件权限为 `0600`，Windows 依赖父目录/既有目标 ACL，当前不主动配置私有 DACL；需要系统钥匙串时再扩展。
 - `config.toml` 采用稀疏写入，不会把默认值整份落盘。

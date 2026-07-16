@@ -21,6 +21,7 @@
 - [ADR 0007](adr/0007-platform-staticlibs-for-supported-source-builds.md)：提交平台 staticlib 以维持受支持源码构建的决策与 native evidence 约束。
 - [ADR 0008](adr/0008-ed25519-signed-multi-channel-release-trust.md)：Ed25519 签名、多渠道更新和 tap 发布信任边界的决策。
 - [ADR 0009](adr/0009-public-pixiv-sdk-and-caller-adapter.md)：public SDK、调用方 adapter 与无 HTTP Provider 的边界。
+- [ADR 0010](adr/0010-http-client-timeout-and-context.md)：Pixiv HTTP client、显式注入与 context 生命周期策略。
 
 ## 快速命令
 

@@ -187,11 +187,7 @@ func (c *Client) checkRefreshToken(ctx context.Context, refreshToken string) (*A
 	if refreshToken == "" {
 		return nil, newError(CodeInvalidArgument, OperationCheckRefreshToken, "", false, 0, 0, errors.New("refresh token is required"))
 	}
-	httpClient := c.httpClient
-	if httpClient == nil {
-		httpClient = http.DefaultClient
-	}
-	account, err := c.refreshIdentity(ctx, OperationCheckRefreshToken, httpClient, refreshToken)
+	account, err := c.refreshIdentity(ctx, OperationCheckRefreshToken, c.httpClient, refreshToken)
 	if err != nil {
 		return nil, err
 	}
@@ -311,11 +307,7 @@ func (c *Client) accountState(operation Operation, needsHTTP bool) (localSnapsho
 	if err != nil {
 		return localSnapshot{}, nil, localSnapshotError(operation, markLocalState(localStateStageAuth, err))
 	}
-	client := c.httpClient
-	if client == nil {
-		client = http.DefaultClient
-	}
-	return localSnapshot{authPath: c.authFilePath, configPath: c.configFilePath, store: store}, client, nil
+	return localSnapshot{authPath: c.authFilePath, configPath: c.configFilePath, store: store}, c.httpClient, nil
 }
 
 // GetConfig 读取 alias 的有效值，包含现有环境变量覆盖规则。

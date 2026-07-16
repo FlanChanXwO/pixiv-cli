@@ -10,7 +10,6 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/model"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/protocol"
@@ -81,13 +80,11 @@ func New(opts ...Option) *Client {
 		restyClient: resty.New(),
 		apiBase:     DefaultAPIBase,
 	}
-	c.restyClient.SetTimeout(60 * time.Second)
 	for _, opt := range opts {
 		opt(c)
 	}
 	if c.restyClient == nil {
 		c.restyClient = resty.New()
-		c.restyClient.SetTimeout(60 * time.Second)
 	}
 	return c
 }

@@ -67,7 +67,7 @@ func WithWebBase(base string) Option {
 
 func New(opts ...Option) *Client {
 	c := &Client{
-		httpClient: http.DefaultClient,
+		httpClient: &http.Client{},
 		webBase:    DefaultWebBase,
 		userAgent:  defaultUA,
 	}

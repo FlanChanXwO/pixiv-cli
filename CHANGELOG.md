@@ -14,6 +14,7 @@
 
 ### Fixed
 
+- 修复 App API、OAuth 与代理快照隐藏的 60 秒整请求 timeout 可能中断正常资源流，以及 Web/resource 裸用全局 `http.DefaultClient` 导致策略不一致的问题；public SDK 现在默认使用专用零 timeout client，由每次调用的 context 控制总生命周期，显式注入 client 的指针、timeout 与 transport 保持不变。
 - 修复写回 `config.toml` 时原地截断可能损坏旧配置，以及 `auth.json` 原子替换前未同步文件的问题；两者现共用同目录临时文件、完整写入、file sync、关闭和原子替换流程。Unix-like 平台主动使用 `0700`/`0600`；替换提交后同步目标目录，首次创建目录时还按 leaf→root 同步每层新目录的外层 parent entry，并合并所有同步错误。Windows 使用 recovery backup 处理 `ReplaceFileW` 部分完成失败；公开替换错误会以 typed contract 告知资源下载、ugoira 发布、更新安装和 release cache 保留新 source，自动恢复也失败时因此保留 old backup 与 new source 两份材料。该路径已有状态模型、classifier 与交叉编译测试，但不声称在真实 Windows 文件系统注入 1177；首次创建继承父目录 ACL、替换既有目标保留其 ACL，不声称主动收紧 DACL 或提供 POSIX directory fsync。
 - 修复 MCP `download` 与 `download_random_from_recommendation` 的参数、SDK、推荐、下载、结果整理或文件读取失败被 typed output schema 的 `null` 数组校验错误遮蔽的问题；失败现保留原业务文本与规范化 `delivery`，并返回空 `items`/`files` 数组。
 - 修复 MCP `download_random_from_recommendation` 把显式 0、负数或大于 20 的 `count` 静默改写为默认值或边界值的问题；非法值现明确报错，省略时仍默认 5，同时传入非法 `delivery` 时仍优先返回 delivery 参数错误而非 schema 错误。

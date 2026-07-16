@@ -7,9 +7,39 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/model"
 )
+
+func TestNewLeavesRequestLifetimeToContext(t *testing.T) {
+	client := New()
+	httpClient := client.restyClient.GetClient()
+	if httpClient == http.DefaultClient {
+		t.Fatal("HTTP client unexpectedly aliases http.DefaultClient")
+	}
+	if httpClient.Timeout != 0 {
+		t.Fatalf("timeout = %v, want zero", httpClient.Timeout)
+	}
+}
+
+func TestNewPreservesExplicitHTTPClient(t *testing.T) {
+	want := &http.Client{Timeout: 17 * time.Second}
+	got := New(WithHTTPClient(want)).restyClient.GetClient()
+	if got != want || got.Timeout != want.Timeout {
+		t.Fatalf("HTTP client = %p timeout %v, want %p timeout %v", got, got.Timeout, want, want.Timeout)
+	}
+}
+
+func TestIllustDetailPreservesCanceledContext(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	_, err := New(WithBaseURL("https://example.invalid"), WithAccessToken("access")).IllustDetail(ctx, 42)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("error = %v, want context.Canceled", err)
+	}
+}
 
 func TestRefreshAndRetryOnceOnTypedAuthStatus(t *testing.T) {
 	for _, status := range []int{http.StatusUnauthorized, http.StatusForbidden} {

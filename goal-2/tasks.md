@@ -139,12 +139,12 @@
 
 ## T10 — 决定并统一 HTTP client timeout 策略
 
-- 状态：未完成
+- 状态：已完成
 - 范围：P3 timeout 一致性。先形成 ADR，决定默认由 context/显式 client 控制，或为 60s 提供可配置、可观测的客观依据；随后让 webapi 不再裸用 `http.DefaultClient`，统一 App/OAuth/resource/Web 策略，流式资源不得被整请求固定 timeout 误伤。
 - 验收：client 构造测试证明显式 client 优先、默认策略一致、context 语义保持；不新增无据 timeout。
-- 实际：
-- 证据：
-- 风险/下一步：
+- 实际：ADR 0010 采纳“context/显式 client 控制总生命周期”：移除 App API、OAuth 与 operation proxy snapshot 的固定 60 秒 `http.Client.Timeout`；Web API 与 resource constructor 不再复用全局可变的 `http.DefaultClient`。public `pixiv.NewClient` 在调用方未注入时创建一个专用、零整请求 timeout 的 client，并将同一指针贯穿 App、Web、resource 与账号/OAuth 动态路径；显式 `Options.HTTPClient` 的指针、timeout、transport、jar 与 redirect policy 保持不变。`OpenDefault` 仍按 snapshot 配置克隆 `http.DefaultTransport` 并应用显式代理，只移除 total timeout，不改变标准 transport 的 dial、TLS handshake、idle connection 等阶段策略。resource stream 返回后继续由请求 context 控制 body 读取；未新增 timeout 配置、重试或 fallback。SDK、架构、文档索引与 changelog 已同步。
+- 证据：shared/proxy、App、OAuth 的零 timeout tests 在旧实现上分别因 `1m0s` 真实 RED，Web/resource tests 因别名 `http.DefaultClient` 真实 RED，public `NewClient` test 因默认 `HTTP client is nil` 真实 RED；最小实现后全部 GREEN。显式 client identity/timeout、各 adapter 的 context cancellation 与 resource 返回 response 后取消 context 的 body read 属既有语义 characterization，首次 GREEN；既有公开 transport tests 另覆盖 `context.DeadlineExceeded` 的 `errors.Is` 链。生产 Pixiv 路径精确检索无残留 `http.DefaultClient`、`SetTimeout(60...)` 或 `Timeout: 60...`。独立 spec review 与 quality review 均 APPROVE；quality reviewer 将 streaming test 连续运行 50 次。实现代理与主线程通过六包聚焦测试、相关 race/vet、`go test -race ./...`、`go test ./...`、`go vet ./...`、`sh scripts/build.sh`、pre-commit、Linux/Windows amd64 changed-package 交叉编译、gofmt 与 `git diff --check`。
+- 风险/下一步：未对真实 Pixiv 长时间资源流执行超过 60 秒的联网 wall-clock E2E；零 timeout 构造断言、context body cancellation 与既有资源回归直接覆盖隐藏 total timeout 的代码路径。调用方若需要操作级 deadline，必须通过每次调用的 context 或显式 client 表达；默认策略仍保留 Go transport 的阶段性保护。下一轮只执行 T11；两份知识图谱继续按 T20 集中重建。
 
 ## T11 — 复用分页遍历并收敛 Web page-size 常量
 

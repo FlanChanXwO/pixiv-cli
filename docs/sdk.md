@@ -21,6 +21,14 @@ local, err := pixiv.OpenDefault(pixiv.Options{
 
 `Options` 支持显式 `HTTPClient`、`AppAPIBaseURL`、`WebAPIBaseURL`、`OAuthBaseURL`、`WebFallbackEnabled`、`ResourcePolicy` 与 `Logger`。`AccessToken` 与 `WebFallbackEnabled` 只供 `NewClient`；`OpenDefault` 每次 snapshot 从本地 `web_fallback_enabled` 读取 Web fallback 设置。不要把 refresh token 或 logger 全局化。
 
+### HTTP client 与请求生命周期
+
+未提供 `Options.HTTPClient` 时，SDK 为该 `Client` 创建专用的 `http.Client`，其整请求 `Timeout` 为零；App API、Web API、OAuth 与资源读取复用这一个 client，不依赖全局可变的 `http.DefaultClient`。零值只表示 SDK 不添加覆盖 response body 读取的固定总时限；Go 默认 transport 的连接、TLS handshake 与 idle connection 等阶段策略保持不变。
+
+每次操作的总生命周期由传入的 `context.Context` 控制。调用方应按操作建立 cancel 或 deadline；`context.Canceled` 与 `context.DeadlineExceeded` 可继续通过 `errors.Is` 判断。`OpenResource` 返回后，context 也覆盖后续 body 读取，调用方须关闭 body，并在不再消费流时取消 context。
+
+显式提供 `Options.HTTPClient` 时，SDK constructor 保留同一指针及其 `Timeout`、`Transport`、cookie jar 与 redirect policy，不修改调用方对象。需要 client-wide timeout 的集成方可在该 client 上自行设置；SDK 不另加默认 timeout。资源请求仍按下文安全契约在逐请求副本上禁用 cookie 并包装 redirect 校验。完整决策见 [ADR 0010](adr/0010-http-client-timeout-and-context.md)。
+
 ## 读取与写入
 
 `Client` 提供以下稳定的公开操作：
@@ -108,4 +116,4 @@ if errors.Is(err, pixiv.ErrUnauthorized) { /* re-auth */ }
 
 调用方 adapter 决定采集模式、budget、filter、cursor 存储、数据库事务、任务调度、重试与对外 HTTP API。`atri-setu-api` 的随机选图、审查、图库和图片代理不属于 SDK；它可使用 SDK 的规范化模型和资源流实现这些功能。
 
-更多边界说明见 [ADR 0009](adr/0009-public-pixiv-sdk-and-caller-adapter.md)。
+更多边界说明见 [ADR 0009](adr/0009-public-pixiv-sdk-and-caller-adapter.md) 与 [ADR 0010](adr/0010-http-client-timeout-and-context.md)。
