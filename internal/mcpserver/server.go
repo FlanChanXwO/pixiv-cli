@@ -550,6 +550,23 @@ type rankingIn struct {
 	IncludeThumbnail bool   `json:"include_thumbnail,omitempty"`
 }
 
+var rankingLabels = map[sdk.RankingMode]string{
+	sdk.RankingModeDay:          "每日排行榜",
+	sdk.RankingModeDayMale:      "男性向每日排行榜",
+	sdk.RankingModeDayFemale:    "女性向每日排行榜",
+	sdk.RankingModeWeek:         "每周排行榜",
+	sdk.RankingModeWeekOriginal: "原创作品排行榜",
+	sdk.RankingModeWeekRookie:   "新人排行榜",
+	sdk.RankingModeMonth:        "每月排行榜",
+}
+
+func rankingLabel(mode string) string {
+	if label, ok := rankingLabels[sdk.RankingMode(mode)]; ok {
+		return label
+	}
+	return mode + " 排行榜"
+}
+
 func (a *App) illustRanking(ctx context.Context, _ *mcp.CallToolRequest, in rankingIn) (*mcp.CallToolResult, textOut, error) {
 	if in.Mode == "" {
 		in.Mode = string(sdk.RankingModeDay)
@@ -572,7 +589,7 @@ func (a *App) illustRanking(ctx context.Context, _ *mcp.CallToolRequest, in rank
 	if len(items) == 0 {
 		return toolText(fmt.Sprintf("找不到模式为 '%s' 的排行榜结果。", in.Mode))
 	}
-	return toolText(fmt.Sprintf("%s 排行榜:\n\n%s", strings.Title(in.Mode), formatIllusts(items, in.IncludeThumbnail, in.Offset, true)))
+	return toolText(fmt.Sprintf("%s:\n\n%s", rankingLabel(in.Mode), formatIllusts(items, in.IncludeThumbnail, in.Offset, true)))
 }
 
 type searchUserIn struct {
@@ -741,11 +758,8 @@ func formatIllusts(illusts []sdk.Illust, includeThumbnail bool, offset int, rank
 }
 
 func formatIllust(illust sdk.Illust, includeThumbnail bool) string {
-	tags := make([]string, 0, min(len(illust.Tags), 5))
+	tags := make([]string, 0, len(illust.Tags))
 	for _, tag := range illust.Tags {
-		if len(tags) == 5 {
-			break
-		}
 		tags = append(tags, tag.Name)
 	}
 	text := fmt.Sprintf("ID: %d - %q\n  作者: %s (ID: %d)\n  类型: %s\n  标签: %s\n  收藏数: %d, 浏览数: %d",

@@ -645,11 +645,8 @@ func (a *App) unfollowUser(ctx context.Context, _ *mcp.CallToolRequest, in userI
 func formatSDKIllusts(illusts []sdk.Illust) string {
 	lines := make([]string, 0, len(illusts))
 	for _, illust := range illusts {
-		tags := make([]string, 0, min(len(illust.Tags), 5))
+		tags := make([]string, 0, len(illust.Tags))
 		for _, tag := range illust.Tags {
-			if len(tags) == 5 {
-				break
-			}
 			tags = append(tags, tag.Name)
 		}
 		lines = append(lines, fmt.Sprintf("ID: %d - %q\n  作者: %s (ID: %d)\n  类型: %s\n  标签: %s\n  收藏数: %d, 浏览数: %d",

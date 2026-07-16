@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -126,7 +127,7 @@ func (m *Manager) downloadArtwork(ctx context.Context, id int64) (out Downloaded
 		if rawURL == "" {
 			return DownloadedArtwork{}, fmt.Errorf("illust %d has no downloadable image url", illust.ID)
 		}
-		path := filepath.Join(base, utils.GenerateFilename(filenameData(illust), 0, m.filenameTemplate)+filepath.Ext(uriutil.PathFromURL(rawURL)))
+		path := filepath.Join(base, utils.GenerateFilename(filenameData(illust), 0, m.filenameTemplate)+downloadExtension(rawURL))
 		if err := m.downloadURL(ctx, rawURL, path); err != nil {
 			return DownloadedArtwork{}, err
 		}
@@ -139,7 +140,7 @@ func (m *Manager) downloadArtwork(ctx context.Context, id int64) (out Downloaded
 		if rawURL == "" {
 			return DownloadedArtwork{}, fmt.Errorf("illust %d page %d has no downloadable image url", illust.ID, i)
 		}
-		path := filepath.Join(base, utils.GenerateFilename(filenameData(illust), i, m.filenameTemplate)+filepath.Ext(uriutil.PathFromURL(rawURL)))
+		path := filepath.Join(base, utils.GenerateFilename(filenameData(illust), i, m.filenameTemplate)+downloadExtension(rawURL))
 		if err := m.downloadURL(ctx, rawURL, path); err != nil {
 			return DownloadedArtwork{}, err
 		}
@@ -216,6 +217,20 @@ func (m *Manager) ConvertUgoira(ctx context.Context, zipPath string, frames []sd
 		OutputPath: outputGIF,
 		Format:     AnimationFormatGIF,
 	})
+}
+
+// downloadExtension 清理 URL path 推导出的扩展名，避免跨平台非法文件名字符
+// 绕过作品标题和模板已有的文件名规范化边界。ASCII C0/DEL 控制字符
+// 不适合作为文件名内容，Windows 还不接受尾随点或空格，因而在扩展名边界统一处理。
+func downloadExtension(rawURL string) string {
+	extension := utils.SanitizeFilename(filepath.Ext(uriutil.PathFromURL(rawURL)))
+	extension = strings.Map(func(character rune) rune {
+		if character < 0x20 || character == 0x7f {
+			return '_'
+		}
+		return character
+	}, extension)
+	return strings.TrimRight(extension, ". ")
 }
 
 func filenameData(illust sdk.Illust) utils.FilenameData {

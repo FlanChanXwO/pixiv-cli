@@ -157,12 +157,12 @@
 
 ## T12 — 输出与文件名小项加固
 
-- 状态：未完成
+- 状态：已完成
 - 范围：P3。下载推导扩展名经过安全规范化；取消 MCP legacy/SDK text 对 tags 的无依据 5 项截断并完整输出；用稳定 label map 替换 deprecated `strings.Title`，保持用户可见文本可读。
 - 验收：恶意/异常扩展名、6+ tags、ranking label 的 public behavior 测试 RED→GREEN；无路径遍历或静默信息丢失。
-- 实际：
-- 证据：
-- 风险/下一步：
+- 实际：单页与多页下载的 URL path 推导扩展名统一进入专用 `downloadExtension` 边界：跨平台文件名禁用字符与 ASCII C0/DEL 控制字符替换为下划线，并移除 Windows 不接受的尾随点/空格；无扩展名不臆造默认值，ugoira 固定 `.gif` 路径不变，未增加扩展名 allowlist、MIME 猜测、长度限制或 fallback。legacy `formatIllust` 与 SDK `formatSDKIllusts` 均按上游顺序完整输出全部 tags，structured output/schema/registration 不变。ranking 标题改用 7 个已知 mode 的稳定中文 label map，未知 mode 保留原值并追加“ 排行榜”；请求 mode/date/cursor 与 offset 排名语义不变。README、MCP canonical 文档、架构说明和 `[Unreleased]` changelog 已同步。
+- 证据：单页/多页恶意扩展名、无扩展名、legacy/SDK 7 tags、`day_male` ranking heading 的 public Manager/MCP `CallTool` 测试均先实际 RED 后 GREEN；7 个 known modes 与 future fallback 表测通过。质量审查进一步发现旧 sanitizer 未覆盖 NUL、换行和 Windows 尾随点/空格：NUL 实际导致 `invalid argument`，其余分别实际生成含换行、尾随空格或尾随点的 basename；补充硬编码 public 表测后最小修复并经窄复审 APPROVE。独立 spec review 与 quality review 最终均 APPROVE。主线程通过 `go test ./... -count=1`、`go test -race ./... -count=1`、`go vet ./...`、`sh scripts/build.sh`、`pre-commit run --all-files`、`git diff --check`；聚焦 download/mcpserver test、race、vet 与关键行为 20 次重复测试亦通过，精确检索无 production `strings.Title` 或 5-tag 截断残留。
+- 风险/下一步：未在真实 Windows 文件系统运行，也未启用真实 Pixiv 联网 e2e；跨平台非法字符集合、控制字符、尾随点/空格与下载根目录 containment 已由确定性 public tests 覆盖，本机 darwin/arm64 全量 build/test/race 通过。Linux/Windows 完整 CGO-disabled 链接仍受仓库既有 ugoira Rust staticlib/C linker 门禁限制。下一轮只执行 C04，集中复核 T10–T12 的 timeout 依据、分页无截断、输出兼容、路径安全及全量门禁。
 
 ## C04 — 集中检查 4（T10–T12）
 

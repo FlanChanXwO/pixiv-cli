@@ -198,6 +198,8 @@ CLI 使用 Cobra/pflag，选项可以写在位置参数前后，例如 `pixiv au
 | `download` | `pixiv download [options] ILLUST_ID...` | 下载一个或多个作品；无 token 时默认走匿名 web fallback。 |
 | `mcp` | `pixiv mcp [--proxy URL\|--no-proxy]` | 启动 MCP stdio server；代理覆盖只在本次启动时生效。 |
 
+下载文件名会规范化文件名模板以及 URL 推导扩展名中的跨平台非法字符；扩展名还会替换 ASCII 控制字符并移除 Windows 不接受的尾随点或空格。扩展名仍来自上游 URL，不使用 allowlist、MIME 猜测或静默替代。
+
 ### `auth login` 参数
 
 | 参数 | 默认值 | 说明 |
@@ -398,6 +400,8 @@ MCP tools：
 and `get_thumbnail_base64`.
 
 `user_detail` 接受必填的 `user_id`，返回完整稳定的用户详情 structured output；它需要认证，不支持匿名 Web fallback。各 MCP tool 的参数与返回语义见 [MCP 工具](docs/mcp-tools.md)。
+
+作品列表的 MCP 文本按上游顺序完整显示全部 tags；具备作品模型的 SDK tools 继续返回不变的完整 structured output。`illust_ranking` 的已知 mode 使用稳定中文标题，未来 mode 保留原值并追加“排行榜”。
 
 `download_random_from_recommendation` 的 `count` 可省略（默认 5），显式值须为 1..20；完整参数、错误与推荐不足时的语义见 [MCP 工具](docs/mcp-tools.md#配置认证与下载)。
 

@@ -1119,6 +1119,94 @@ func TestIllustRecommendedUsesSDKAndPreservesLegacyOffset(t *testing.T) {
 	}
 }
 
+func TestIllustRecommendedTextIncludesAllTagsInUpstreamOrder(t *testing.T) {
+	illust := testSDKIllust(77, "tagged", 9)
+	illust.Tags = []sdk.Tag{
+		{Name: "tag-1"}, {Name: "tag-2"}, {Name: "tag-3"}, {Name: "tag-4"},
+		{Name: "tag-5"}, {Name: "tag-6"}, {Name: "tag-7"},
+	}
+	client := &fakeSDKClient{illustRecommended: func(context.Context, sdk.IllustRecommendedRequest) (*sdk.IllustListResult, error) {
+		return &sdk.IllustListResult{Illusts: []sdk.Illust{illust}}, nil
+	}}
+	session, closeSession := newSDKTestSession(t, client)
+	defer closeSession()
+
+	result := callTool(t, session, "illust_recommended", map[string]any{})
+	var out textOut
+	decodeStructured(t, result, &out)
+	if result.IsError {
+		t.Fatalf("illust_recommended returned MCP error: %+v", result)
+	}
+	want := "标签: tag-1, tag-2, tag-3, tag-4, tag-5, tag-6, tag-7"
+	if !strings.Contains(out.Text, want) {
+		t.Fatalf("illust_recommended text = %q, want substring %q", out.Text, want)
+	}
+}
+
+func TestIllustRankingUsesStableLabelAndPreservesRequestAndRank(t *testing.T) {
+	var requests []sdk.IllustRankingRequest
+	client := &fakeSDKClient{illustRanking: func(_ context.Context, request sdk.IllustRankingRequest) (*sdk.IllustListResult, error) {
+		requests = append(requests, request)
+		return &sdk.IllustListResult{Illusts: []sdk.Illust{
+			testSDKIllust(11, "first", 1),
+			testSDKIllust(12, "second", 1),
+			testSDKIllust(13, "third", 1),
+		}}, nil
+	}}
+	session, closeSession := newSDKTestSession(t, client)
+	defer closeSession()
+
+	result := callTool(t, session, "illust_ranking", map[string]any{
+		"mode": "day_male", "date": "2025-02-03", "offset": 2,
+	})
+	var out textOut
+	decodeStructured(t, result, &out)
+	if result.IsError {
+		t.Fatalf("illust_ranking returned MCP error: %+v", result)
+	}
+	if len(requests) != 1 || requests[0].Mode != sdk.RankingModeDayMale || requests[0].Date != "2025-02-03" || requests[0].Cursor != "" {
+		t.Fatalf("ranking requests = %+v", requests)
+	}
+	if !strings.HasPrefix(out.Text, "男性向每日排行榜:\n\n") || !strings.Contains(out.Text, "第 3 名: ID: 13") {
+		t.Fatalf("illust_ranking text = %q", out.Text)
+	}
+}
+
+func TestIllustRankingUsesStableLabelsForAllModesAndFutureFallback(t *testing.T) {
+	tests := []struct {
+		mode string
+		want string
+	}{
+		{mode: "day", want: "每日排行榜"},
+		{mode: "day_male", want: "男性向每日排行榜"},
+		{mode: "day_female", want: "女性向每日排行榜"},
+		{mode: "week", want: "每周排行榜"},
+		{mode: "week_original", want: "原创作品排行榜"},
+		{mode: "week_rookie", want: "新人排行榜"},
+		{mode: "month", want: "每月排行榜"},
+		{mode: "future_mode", want: "future_mode 排行榜"},
+	}
+	for _, test := range tests {
+		t.Run(test.mode, func(t *testing.T) {
+			client := &fakeSDKClient{illustRanking: func(_ context.Context, request sdk.IllustRankingRequest) (*sdk.IllustListResult, error) {
+				if string(request.Mode) != test.mode {
+					t.Fatalf("ranking mode = %q, want %q", request.Mode, test.mode)
+				}
+				return &sdk.IllustListResult{Illusts: []sdk.Illust{testSDKIllust(13, "ranked", 1)}}, nil
+			}}
+			session, closeSession := newSDKTestSession(t, client)
+			defer closeSession()
+
+			result := callTool(t, session, "illust_ranking", map[string]any{"mode": test.mode})
+			var out textOut
+			decodeStructured(t, result, &out)
+			if result.IsError || !strings.HasPrefix(out.Text, test.want+":\n\n") {
+				t.Fatalf("illust_ranking(%q) text = %q", test.mode, out.Text)
+			}
+		})
+	}
+}
+
 func TestDownloadRandomFromRecommendationUsesSDKAndPreservesCount(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "recommended.jpg")
 	if err := os.WriteFile(path, []byte("recommended"), 0o644); err != nil {
@@ -1606,6 +1694,28 @@ func TestSDKMutationToolsReturnStructuredSuccess(t *testing.T) {
 	}
 }
 
+func TestUserArtworksTextIncludesAllTagsInUpstreamOrder(t *testing.T) {
+	illust := testSDKIllust(15, "tagged", 9)
+	illust.Tags = []sdk.Tag{
+		{Name: "tag-1"}, {Name: "tag-2"}, {Name: "tag-3"}, {Name: "tag-4"},
+		{Name: "tag-5"}, {Name: "tag-6"}, {Name: "tag-7"},
+	}
+	client := &fakeSDKClient{artworks: []sdk.Illust{illust}}
+	session, closeSession := newSDKTestSession(t, client)
+	defer closeSession()
+
+	result := callTool(t, session, "user_artworks", map[string]any{"user_id": 9})
+	var out illustListOut
+	decodeStructured(t, result, &out)
+	if result.IsError {
+		t.Fatalf("user_artworks returned MCP error: %+v", result)
+	}
+	want := "标签: tag-1, tag-2, tag-3, tag-4, tag-5, tag-6, tag-7"
+	if !strings.Contains(out.Text, want) {
+		t.Fatalf("user_artworks text = %q, want substring %q", out.Text, want)
+	}
+}
+
 func TestUserBookmarksAcceptsLegacyMaxBookmarkID(t *testing.T) {
 	client := &fakeSDKClient{bookmarks: []sdk.Illust{testSDKIllust(15, "saved", 99)}}
 	session, closeSession := newSDKTestSession(t, client)
@@ -1899,6 +2009,7 @@ type fakeSDKClient struct {
 	bookmarks             []sdk.Illust
 	following             []sdk.UserPreview
 	illustRecommended     func(context.Context, sdk.IllustRecommendedRequest) (*sdk.IllustListResult, error)
+	illustRanking         func(context.Context, sdk.IllustRankingRequest) (*sdk.IllustListResult, error)
 	mangaRecommended      func(context.Context, sdk.IllustRecommendedRequest) (*sdk.IllustListResult, error)
 	novelRecommended      func(context.Context, sdk.NovelRecommendedRequest) (*sdk.NovelListResult, error)
 	userRecommended       func(context.Context, sdk.UserRecommendedRequest) (*sdk.UserRecommendedResult, error)
@@ -1976,7 +2087,11 @@ func (*fakeSDKClient) IllustDetail(context.Context, int64) (*sdk.IllustDetail, e
 func (*fakeSDKClient) IllustRelated(context.Context, sdk.IllustRelatedRequest) (*sdk.IllustListResult, error) {
 	return &sdk.IllustListResult{}, nil
 }
-func (*fakeSDKClient) IllustRanking(context.Context, sdk.IllustRankingRequest) (*sdk.IllustListResult, error) {
+
+func (f *fakeSDKClient) IllustRanking(ctx context.Context, request sdk.IllustRankingRequest) (*sdk.IllustListResult, error) {
+	if f.illustRanking != nil {
+		return f.illustRanking(ctx, request)
+	}
 	return &sdk.IllustListResult{}, nil
 }
 func (*fakeSDKClient) FollowingIllusts(context.Context, sdk.FollowingIllustsRequest) (*sdk.IllustListResult, error) {

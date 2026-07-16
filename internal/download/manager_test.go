@@ -88,6 +88,126 @@ func TestDownloadSingleArtworkReturnsPath(t *testing.T) {
 	assertFileBody(t, got[0].Files[0].Path, "jpg")
 }
 
+func TestDownloadSingleArtworkSanitizesExtensionFromURL(t *testing.T) {
+	dir := t.TempDir()
+	rawURL := "https://i.example/42.jp%2Ag%3A%7C"
+	client := &fakePixivClient{
+		details: map[int64]pixiv.Illust{42: {
+			ID: 42, Title: "single", PageCount: 1, Type: "illust",
+			User:           pixiv.User{Name: "author"},
+			MetaSinglePage: pixiv.SinglePage{OriginalImageURL: rawURL},
+		}},
+		downloads: map[string][]byte{rawURL: []byte("image")},
+	}
+	m := NewManager(client, nil, dir, "{id}")
+
+	got, err := m.Download(context.Background(), []int64{42})
+	if err != nil {
+		t.Fatalf("Download returned error: %v", err)
+	}
+	if len(got) != 1 || len(got[0].Files) != 1 {
+		t.Fatalf("Download returned unexpected artworks: %+v", got)
+	}
+	path := got[0].Files[0].Path
+	if base := filepath.Base(path); base != "42.jp_g__" {
+		t.Fatalf("download filename = %q, want %q", base, "42.jp_g__")
+	}
+	if strings.ContainsAny(filepath.Base(path), `/\:*?"<>|`) {
+		t.Fatalf("download filename contains an unsafe character: %q", path)
+	}
+	rel, err := filepath.Rel(dir, path)
+	if err != nil {
+		t.Fatalf("Rel returned error: %v", err)
+	}
+	if rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) || filepath.IsAbs(rel) {
+		t.Fatalf("download escaped root: path=%q root=%q rel=%q", path, dir, rel)
+	}
+	assertFileBody(t, path, "image")
+}
+
+func TestDownloadSingleArtworkNormalizesPlatformInvalidExtensionEndings(t *testing.T) {
+	tests := []struct {
+		name   string
+		rawURL string
+		want   string
+	}{
+		{name: "nul", rawURL: "https://i.example/42.jp%00", want: "42.jp_"},
+		{name: "newline", rawURL: "https://i.example/42.jp%0A", want: "42.jp_"},
+		{name: "trailing space", rawURL: "https://i.example/42.jpg%20", want: "42.jpg"},
+		{name: "trailing dot", rawURL: "https://i.example/42.", want: "42"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			dir := t.TempDir()
+			client := &fakePixivClient{
+				details: map[int64]pixiv.Illust{42: {
+					ID: 42, Title: "single", PageCount: 1, Type: "illust",
+					User:           pixiv.User{Name: "author"},
+					MetaSinglePage: pixiv.SinglePage{OriginalImageURL: test.rawURL},
+				}},
+				downloads: map[string][]byte{test.rawURL: []byte("image")},
+			}
+			m := NewManager(client, nil, dir, "{id}")
+
+			got, err := m.Download(context.Background(), []int64{42})
+			if err != nil {
+				t.Fatalf("Download returned error: %v", err)
+			}
+			if len(got) != 1 || len(got[0].Files) != 1 {
+				t.Fatalf("Download returned unexpected artworks: %+v", got)
+			}
+			path := got[0].Files[0].Path
+			base := filepath.Base(path)
+			if base != test.want {
+				t.Fatalf("download filename = %q, want %q", base, test.want)
+			}
+			for _, character := range base {
+				if character < 0x20 || character == 0x7f {
+					t.Fatalf("download filename contains ASCII control %#U: %q", character, base)
+				}
+			}
+			if strings.TrimRight(base, ". ") != base {
+				t.Fatalf("download filename has a Windows-invalid ending: %q", base)
+			}
+			rel, err := filepath.Rel(dir, path)
+			if err != nil {
+				t.Fatalf("Rel returned error: %v", err)
+			}
+			if rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) || filepath.IsAbs(rel) {
+				t.Fatalf("download escaped root: path=%q root=%q rel=%q", path, dir, rel)
+			}
+			assertFileBody(t, path, "image")
+		})
+	}
+}
+
+func TestDownloadSingleArtworkWithoutURLExtensionDoesNotInventOne(t *testing.T) {
+	dir := t.TempDir()
+	rawURL := "https://i.example/42"
+	client := &fakePixivClient{
+		details: map[int64]pixiv.Illust{42: {
+			ID: 42, Title: "single", PageCount: 1, Type: "illust",
+			User:           pixiv.User{Name: "author"},
+			MetaSinglePage: pixiv.SinglePage{OriginalImageURL: rawURL},
+		}},
+		downloads: map[string][]byte{rawURL: []byte("image")},
+	}
+	m := NewManager(client, nil, dir, "{id}")
+
+	got, err := m.Download(context.Background(), []int64{42})
+	if err != nil {
+		t.Fatalf("Download returned error: %v", err)
+	}
+	if len(got) != 1 || len(got[0].Files) != 1 {
+		t.Fatalf("Download returned unexpected artworks: %+v", got)
+	}
+	path := got[0].Files[0].Path
+	if base := filepath.Base(path); base != "42" {
+		t.Fatalf("download filename = %q, want %q", base, "42")
+	}
+	assertFileBody(t, path, "image")
+}
+
 // 下载管理器只能把作品中取得的资源地址交给公开 SDK 解析和下载；它不再保留
 // legacy Source 的原始 URL 写入接口，也不自行实现 SDK 已提供的原子替换。
 func TestDownloadUsesSDKResourceReferenceAndDestination(t *testing.T) {
@@ -243,6 +363,55 @@ func TestDownloadMultiPageArtworkReturnsAllPaths(t *testing.T) {
 	}
 	if filepath.Base(got[0].Files[0].Path) != "7_p0.png" || filepath.Base(got[0].Files[1].Path) != "7_p1.png" {
 		t.Fatalf("download paths = %+v", got[0].Files)
+	}
+	assertFileBody(t, got[0].Files[0].Path, "p0")
+	assertFileBody(t, got[0].Files[1].Path, "p1")
+}
+
+func TestDownloadMultiPageArtworkSanitizesExtensionsFromURLs(t *testing.T) {
+	dir := t.TempDir()
+	urls := []string{
+		"https://i.example/7_p0.jp%2Ag%3A%7C",
+		"https://i.example/7_p1.pn%2Ag%3A%7C",
+	}
+	client := &fakePixivClient{
+		details: map[int64]pixiv.Illust{7: {
+			ID: 7, Title: "multi", PageCount: 2, Type: "illust",
+			User: pixiv.User{Name: "author"},
+			MetaPages: []pixiv.MetaPage{
+				{ImageURLs: pixiv.ImageURLs{Original: urls[0]}},
+				{ImageURLs: pixiv.ImageURLs{Original: urls[1]}},
+			},
+		}},
+		downloads: map[string][]byte{
+			urls[0]: []byte("p0"),
+			urls[1]: []byte("p1"),
+		},
+	}
+	m := NewManager(client, nil, dir, "{id}")
+
+	got, err := m.Download(context.Background(), []int64{7})
+	if err != nil {
+		t.Fatalf("Download returned error: %v", err)
+	}
+	if len(got) != 1 || len(got[0].Files) != 2 {
+		t.Fatalf("Download returned unexpected files: %+v", got)
+	}
+	wantBases := []string{"7_p0.jp_g__", "7_p1.pn_g__"}
+	for index, file := range got[0].Files {
+		if base := filepath.Base(file.Path); base != wantBases[index] {
+			t.Fatalf("file %d basename = %q, want %q", index, base, wantBases[index])
+		}
+		if strings.ContainsAny(filepath.Base(file.Path), `/\:*?"<>|`) {
+			t.Fatalf("file %d contains an unsafe character: %q", index, file.Path)
+		}
+		rel, err := filepath.Rel(dir, file.Path)
+		if err != nil {
+			t.Fatalf("Rel(%d) returned error: %v", index, err)
+		}
+		if rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) || filepath.IsAbs(rel) {
+			t.Fatalf("file %d escaped root: path=%q root=%q rel=%q", index, file.Path, dir, rel)
+		}
 	}
 	assertFileBody(t, got[0].Files[0].Path, "p0")
 	assertFileBody(t, got[0].Files[1].Path, "p1")

@@ -163,6 +163,7 @@ Release 安装的失败语义仍是保护边界，而不是临时降级。
 - `Download` 会同步下载 ID 列表，并返回每个作品的实际产物路径。
 - 单页作品保存到下载目录。
 - 多页作品和 ugoira 会建立作品子目录。
+- 单页与多页作品从上游 URL path 推导扩展名，并与模板生成的文件名一样规范化跨平台非法字符；扩展名还会替换 ASCII 控制字符并移除 Windows 非法尾随点/空格，但不猜测或静默替换扩展名。
 - ugoira 先下载 zip，再由 Rust FFI encoder 合成为 GIF/APNG。
 
 Rust crate 以 target 专用 staticlib 接入 cgo：darwin/linux/windows 各有 amd64/arm64 selector；Linux
@@ -233,7 +234,7 @@ SmartScreen 提示时，必须回到已验证的项目 GitHub Release、checksum
 
 提供文件名清理、模板展开、ID 去重和 refresh token 输入规范化：
 
-- 非法文件名字符替换为 `_`。
+- 模板内容及 URL path 推导扩展名中的非法文件名字符替换为 `_`；扩展名额外处理 ASCII 控制字符和 Windows 非法尾随点/空格。
 - 支持 `{author}`、`{title}`、`{id}` 模板字段。
 - 多页作品追加 `_pN` 后缀。
 - 下载 ID 去重时会丢弃小于等于 0 的 ID，并排序。

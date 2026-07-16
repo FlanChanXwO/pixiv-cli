@@ -47,6 +47,8 @@ SDK cursor 不出现在 MCP 参数或输出。`user_bookmarks.max_bookmark_id` �
 | `user_bookmarks` | 可选 `user_id`、旧 alias `user_id_to_check`、`restrict`、`tag`、`page`、`limit`、废弃 `max_bookmark_id` | `{user_id, items, pagination}`；缺省 UID 为当前认证用户。 |
 | `user_following` | 可选 `user_id`、旧 alias `user_id_to_check`、`restrict`、`page`、`limit`、废弃 `offset` | `{user_id, items, pagination}`；缺省 UID 为当前认证用户。 |
 
+作品列表的 MCP 文本按上游顺序完整列出每个作品的全部 tags，不做前 5 项截断；SDK tool 的 structured output schema 和内容保持不变。`illust_ranking` 对已知 mode 使用稳定中文标题：`day`、`day_male`、`day_female`、`week`、`week_original`、`week_rookie`、`month` 分别显示为“每日排行榜”“男性向每日排行榜”“女性向每日排行榜”“每周排行榜”“原创作品排行榜”“新人排行榜”“每月排行榜”；未来 mode 在上游成功时显示原 mode 后接“排行榜”。
+
 ## 写操作
 
 | tool | 参数 | structured output |
