@@ -568,6 +568,73 @@ func TestCheckRecoveryPolicyRequiresDispatchFromDefaultBranch(t *testing.T) {
 	}
 }
 
+func TestCheckWorkflowRequiresUnconditionalDedicatedSemVerValidatorStep(t *testing.T) {
+	t.Parallel()
+
+	const validator = `go run ./scripts/releaseassets validate --version "${RELEASE_TAG#v}"`
+	for _, test := range []struct {
+		name   string
+		mutate func(t *testing.T, step *yaml.Node)
+	}{
+		{
+			name: "conditional step",
+			mutate: func(t *testing.T, step *yaml.Node) {
+				appendMappingValue(t, step, "if", scalarNode("false"))
+			},
+		},
+		{
+			name: "continue on error",
+			mutate: func(t *testing.T, step *yaml.Node) {
+				appendMappingValue(t, step, "continue-on-error", scalarNode("true"))
+			},
+		},
+		{
+			name: "validator inside false branch",
+			mutate: func(t *testing.T, step *yaml.Node) {
+				replaceRunFragment(t, step, validator, "if false; then\n  "+validator+"\nfi")
+			},
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			root := releaseWorkflowRoot(t)
+			step := stepWithRun(t, jobNode(t, root, "validate"), validator)
+			test.mutate(t, step)
+			if err := checkWorkflow(mustMarshalYAML(t, root)); err == nil || !strings.Contains(err.Error(), "Validate release SemVer") {
+				t.Fatalf("policy error = %v, want unconditional dedicated validator rejection", err)
+			}
+		})
+	}
+}
+
+func TestCheckWorkflowRejectsBypassedValidateSemVerCommand(t *testing.T) {
+	t.Parallel()
+
+	root := releaseWorkflowRoot(t)
+	step := stepWithRun(t, jobNode(t, root, "validate"), `go run ./scripts/releaseassets validate --version "${RELEASE_TAG#v}"`)
+	replaceRunFragment(t, step,
+		`go run ./scripts/releaseassets validate --version "${RELEASE_TAG#v}"`,
+		`go run ./scripts/releaseassets validate --version "${RELEASE_TAG#v}" || true`,
+	)
+	if err := checkWorkflow(mustMarshalYAML(t, root)); err == nil || !strings.Contains(err.Error(), "Validate release SemVer") {
+		t.Fatalf("policy error = %v, want bypassed SemVer validator rejection", err)
+	}
+}
+
+func TestCheckWorkflowRequiresValidateSemVerCommandBoundToReleaseTag(t *testing.T) {
+	t.Parallel()
+
+	root := releaseWorkflowRoot(t)
+	step := stepWithRun(t, jobNode(t, root, "validate"), `go run ./scripts/releaseassets validate --version "${RELEASE_TAG#v}"`)
+	replaceRunFragment(t, step,
+		`go run ./scripts/releaseassets validate --version "${RELEASE_TAG#v}"`,
+		`go run ./scripts/releaseassets validate --version "1.2.3"`,
+	)
+	if err := checkWorkflow(mustMarshalYAML(t, root)); err == nil || !strings.Contains(err.Error(), "Validate release SemVer") {
+		t.Fatalf("policy error = %v, want validator binding rejection", err)
+	}
+}
+
 func TestCheckRecoveryPolicyRejectsRecoveryTrustMutations(t *testing.T) {
 	t.Parallel()
 

@@ -230,6 +230,60 @@ func TestGitHubReleaseClientRejectsNonSemVerPublishedRelease(t *testing.T) {
 	}
 }
 
+func TestGitHubReleaseClientRejectsMixedValidAndInvalidPublishedSemVerTags(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `[
+			{"tag_name":"v2.0.0","draft":false,"prerelease":false},
+			{"tag_name":"latest","draft":false,"prerelease":false}
+		]`)
+	}))
+	defer server.Close()
+
+	client, err := update.NewGitHubReleaseClient(update.ReleaseClientOptions{
+		APIBaseURL: server.URL,
+		CacheDir:   t.TempDir(),
+	})
+	if err != nil {
+		t.Fatalf("NewGitHubReleaseClient() error = %v", err)
+	}
+
+	result, err := client.Check(context.Background(), update.ReleaseCheckOptions{})
+	if err == nil || !strings.Contains(err.Error(), `parse GitHub release tag "latest"`) {
+		t.Fatalf("Check() result = %#v, error = %v, want visible invalid tag rejection", result, err)
+	}
+	if result.Release != nil {
+		t.Fatalf("Check() release = %#v, want none after mixed invalid tag rejection", result.Release)
+	}
+}
+
+func TestGitHubReleaseClientRejectsAllInvalidPublishedSemVerTagsWithoutRelease(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `[
+			{"tag_name":"latest","draft":false,"prerelease":false},
+			{"tag_name":"release-candidate","draft":false,"prerelease":false}
+		]`)
+	}))
+	defer server.Close()
+
+	client, err := update.NewGitHubReleaseClient(update.ReleaseClientOptions{
+		APIBaseURL: server.URL,
+		CacheDir:   t.TempDir(),
+	})
+	if err != nil {
+		t.Fatalf("NewGitHubReleaseClient() error = %v", err)
+	}
+
+	result, err := client.Check(context.Background(), update.ReleaseCheckOptions{})
+	if err == nil || !strings.Contains(err.Error(), `parse GitHub release tag "latest"`) {
+		t.Fatalf("Check() error = %v, want visible invalid tag rejection", err)
+	}
+	if result.Release != nil {
+		t.Fatalf("Check() release = %#v, want none after invalid tag rejection", result.Release)
+	}
+}
+
 func TestGitHubReleaseClientSkipsGitHubPrereleaseBeforeTagValidation(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")

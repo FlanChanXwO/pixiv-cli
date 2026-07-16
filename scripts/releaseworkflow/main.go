@@ -595,16 +595,16 @@ func checkValidateJob(job *yaml.Node) error {
 		return fmt.Errorf("validate job: %w", err)
 	}
 	steps, err := jobSteps(job)
-	if err != nil || len(steps) < 3 {
+	if err != nil || len(steps) < 4 {
 		return errors.New("validate job must contain the audited workflow checkout and release tag gates")
 	}
 	if err := requireCanonicalCheckout(steps[0], "validate job", checkoutWithRequirement{"fetch-depth", "0"}, checkoutWithRequirement{"persist-credentials", "false"}, checkoutWithRequirement{"ref", "${{ github.sha }}"}); err != nil {
 		return err
 	}
-	validateStep, ok := rootStepWithRunFragment(job, "go run ./scripts/releaseassets validate --version \"${RELEASE_TAG#v}\"")
-	if !ok {
-		return errors.New("validate job must validate RELEASE_TAG with releaseassets")
+	if err := requireCanonicalNamedRunStep(steps[2], "Validate release SemVer", `go run ./scripts/releaseassets validate --version "${RELEASE_TAG#v}"`); err != nil {
+		return err
 	}
+	validateStep := steps[3]
 	if err := requireRunFragments(validateStep, "validate release tag step", "test \"$GITHUB_REF\" = \"refs/heads/$DEFAULT_BRANCH\"", "git show-ref --verify --quiet \"refs/tags/$RELEASE_TAG\"", "git merge-base --is-ancestor \"$tag_commit\" \"origin/$DEFAULT_BRANCH\"", "gh api --include \"repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG\"", "HTTP/[0-9.]+ 404"); err != nil {
 		return err
 	}

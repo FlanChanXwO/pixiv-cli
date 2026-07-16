@@ -103,12 +103,12 @@
 
 ## T08 — 审计更新 SemVer fail-closed 策略并拆出模块
 
-- 状态：未完成
+- 状态：已完成
 - 范围：P2-8 与 P3 semver 拆分。核对 release workflow 是否已对所有受信发布入口强制 SemVer；若完整则保留 strict reject、补 fail-closed 依据和跨 verifier 测试，若不完整才实现安全 skip + 可观测诊断。将解析/比较从 `releases.go` 拆到 `semver.go`，保持合法版本排序和 prerelease 策略。
 - 验收：混合合法/非法 tag、全非法、stable/prerelease 与 workflow tag policy 均有测试；策略选择有代码注释和文档证据；不把网络/签名失败伪装成无更新。
-- 实际：
-- 证据：
-- 风险/下一步：
+- 实际：审计确认仓库内唯一 Release 创建点是 `.github/workflows/release.yml`：tag push 与必填 `workflow_dispatch.release_tag` 共用 `RELEASE_TAG`，validate/test build/production build 均校验同一 SemVer tag，publish 再以同一值判定 channel。故保留 selected-channel strict fail-closed：stable 仍先忽略 GitHub 标记的 prerelease，显式 prerelease 则验证它们；当前通道出现非 SemVer published tag 被视为发布入口绕过或 policy 漂移，返回含 tag 的错误而不静默选择旧版本。SemVer 类型及 parse/validate/render/compare、build metadata、无界数字比较已从 `releases.go` 原样移至 `semver.go`。release workflow 把 validator 拆为固定位置、只含精确命令的 canonical bash step，policy 用既有 canonical-step 校验拒绝条件、软失败和额外命令；ADR 0008 记录取舍并链接既有开发门禁。未改变网络、HTTP、cache、签名、安装或 checker 错误语义；既有行为与内部重构不记 changelog。
+- 证据：首个跨 verifier tracer 把 validator 改为 `... || true` 时，旧 policy 实际返回 nil（RED），改为精确 command 检查后 GREEN。质量复审又证明旧多命令 step 会接受 `if:false`、`continue-on-error:true` 与 `if false; then ... fi` 三种 bypass；新增 table mutation 后三项均真实 RED，拆出 canonical dedicated step 后 GREEN，固定版本、`|| true` 与额外命令也均被拒绝。mixed valid+invalid、多个 all-invalid、stable/prerelease、build metadata、超 `uint64` SemVer 数字均经 public `GitHubReleaseClient.Check` 覆盖；新增 selector cases 为既有 strict 行为的首次 GREEN characterization，错误含非法 tag 且 result 无 Release。spec review 首轮要求 mixed case 补 nil Release 断言，修后窄复审 APPROVE；quality review 的 P1 policy bypass 修复后窄复审 APPROVE。主线程通过 selector 与 policy 聚焦测试各 20 次、`sh scripts/test-release-workflow.sh`、update/releaseworkflow race、`go vet ./...`、`go test ./... -count=1`、gofmt、`git diff --check`、唯一创建入口检索，以及新 `semver.go` 与 HEAD 原实现块逐字等价检查。
+- 风险/下一步：本任务证明的是入库 workflow 与本地 policy；远端 Environment protection、tag protection 和实际 GitHub runner 配置仍须在 T21 远端终审/六平台 CI 复核。真实发布没有被触发，既有 tag/Release 均未改动。release workflow 结构与 SemVer 文件拆分会使两份知识图谱滞后，仍按 T20 集中重建。下一轮执行 T09 的 config/auth 持久化原子性与 durability。
 
 ## T09 — 加固 config/auth 持久化原子性与 durability
 
