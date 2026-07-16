@@ -201,11 +201,11 @@
 
 ## C05 — 集中检查 5（T13–T15）
 
-- 状态：未完成
+- 状态：已完成（未发现新增修复项）
 - 检查：大文件拆分是否纯机械、MCP stdout/observability、跨平台 build、Web fallback、知识图谱待更新清单。
-- 实际：
-- 证据：
-- 风险/下一步：
+- 实际：复核 `0a5189b..a045cbd` 后，T13 的 23 个 MCP registration 与基线逐行一致，legacy failure 仅改变 stderr operation event 为 error，既有 `isError=false`/Content/structured/text wire 保持，SDK typed error 与正常空结果语义未变；日志 metadata 继续以 9 个 ErrorCode、4 个 Backend 与数值 status/IDs 白名单隔离 hostile 值。T14 的 Swift/Info.plist/`swiftc`/`swift`/`lsregister`、endpoint 与 handler 保存恢复全部只在 Darwin helper，CLI controller 的 callback/browser/TTY/manual 流程无额外 diff，非 Darwin 错误保持。T15 的 496 条迁出有效实现行在新职责文件中逐行完整出现，package API、endpoint/query/headers/wire/pagination/mapper/fallback/enrichment 均无变化。CLI/MCP 仍不直连协议 adapter；未启动 T16 或改变 enrichment 决策。两份图谱的精确 stale inventory 已补入 T20，而非以泛化“以后重建”关闭。
+- 证据：MCP observability/stdio、CLI login/fallback、webapi 与 public fallback/enrichment/secret-safe 聚焦 tests 各连续 20 次通过；`go test -race ./internal/mcpserver ./internal/cli ./internal/pixiv/webapi ./pixiv -count=1` 通过。loginhelper 的 Linux/Windows 以及 webapi 的 Linux/Windows/Wasm `go test -c` 均成功生成 ELF、PE32+ 或 Wasm；独立 C05 spec reviewer 另通过全仓 normal/race、native build 和相同异构 compile，并确认 T13/T14/T15 生产实现全部合规，唯一初始 finding 是本记录与 T20 inventory 当时为空，补写后窄复审 APPROVE。独立 quality/security reviewer 复核 MCP wire/logging、helper 平台副作用、Web transport/DTO/fallback、图谱库存与 CGO 边界，零 Critical/Important/Minor，并再次通过聚焦 20 次、全仓 normal/race/vet/build、异构 compile 与静态检索，最终 APPROVE。
+- 风险/下一步：完整 CLI 的 CGO-disabled 异构链接仍被既有 ugoira Rust staticlib/C linker 门禁按设计拒绝，`internal/download` 在本 range 零 diff，不能写成 T13–T15 回归；真实六平台 CI 继续由 T21 验收。未运行真实 Pixiv Web e2e、Swift/LaunchServices helper 安装与 handler 恢复，不能用 fixture/机械等价性证明外部系统当前状态。两份知识图谱仍是旧快照，必须由 T20 全量重建而非手工局部补点。下一轮只执行 T16，证据驱动重新审计既有 enrichment 失败策略，不因本 checkpoint 通过而预设结论。
 
 ## T16 — 重新审计 App/Web enrichment 失败策略
 
@@ -256,6 +256,11 @@
 - 状态：未完成
 - 范围：汇总所有用户可见错误/行为/安全变化到 `[Unreleased]`；更新 README、SDK、MCP、architecture/development/ADR；重建代码与文档图谱及指纹。
 - 验收：文档链接有效；图谱无 duplicate/dangling/unassigned；meta/fingerprint 对齐实现提交；文档不保留已删除符号或旧行为。
+- C05 已核实的图谱待办库存（不得只局部手工补点）：
+  - `.understand-anything/meta.json` 与 `docs/.understand-anything/meta.json` 的 `gitCommitHash` 均仍为 `4b0ffb10f8e95d7e7835695f68bfcb709ea17bf8`；相对当前 HEAD 已有 89 个 Go 文件和 12 个 Markdown 文件发生变化，必须完整重建两份图谱、layers/tour、实体/claim/edge、meta 与 fingerprint。
+  - code graph 缺失 16 个新 path：`internal/cli/loginhelper/install_darwin.go`、`install_other.go`、`install_other_test.go`；`internal/mcpserver/auth_tools.go`、`download_tools.go`、`formatting.go`、`legacy_observability_test.go`、`legacy_tools.go`、`registration.go`、`sdk_runtime.go`；`internal/pixiv/webapi/decoder.go`、`dto.go`、`mapper.go`、`pagination.go`、`parameters.go`、`transport.go`。
+  - code graph 中 6 个已有 path 的 file/function 节点、line range 与 `contains`/`calls`/`imports`/`tested_by` 边已 stale：`internal/cli/account_login.go`、`internal/cli/account_test.go`、`internal/mcpserver/sdk_tools.go`、`internal/mcpserver/server.go`、`internal/mcpserver/server_test.go`、`internal/pixiv/webapi/client.go`。
+  - `README.md`、`CHANGELOG.md`、`docs/architecture.md`、`docs/mcp-tools.md` 的 document 内容已 stale；docs graph 的 architecture/mcp article、相关 entity/claim/edge 与 content hash 也已 stale。T20 还须覆盖同一快照后变更的 `docs/adr/0008-*`、`docs/adr/0010-*`、`docs/development.md`、`docs/index.md`、`docs/sdk.md` 及 Goal 文档，最终以生成器验证结果而不是本清单数量作为完整性结论。
 - 实际：
 - 证据：
 - 风险/下一步：
