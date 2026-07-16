@@ -166,11 +166,11 @@
 
 ## C04 — 集中检查 4（T10–T12）
 
-- 状态：未完成
+- 状态：已完成（未发现新增修复项）
 - 检查：timeout 依据、分页无截断、输出兼容、路径安全、全量 test/race/vet、文档同步。
-- 实际：
-- 证据：
-- 风险/下一步：
+- 实际：集中复核 `645ee44..48e953f` 的 T10–T12 生产代码、公开测试、ADR 与用户文档。T10 的默认零整请求 timeout、显式 `http.Client` identity/策略保持、App/OAuth/Web/resource/snapshot 一致性及 context/stream body 生命周期符合 ADR 0010，生产路径无固定 60 秒 total timeout 或裸用 `http.DefaultClient`。T11 的 application 分页引擎完整承接 CLI/MCP cursor 遍历，保持默认单批、`limit=0` 全量、跨批 skip、批内截断、`HasMore`、重复 cursor 请求前止环、opaque cursor/context、CLI human streaming、CLI JSON/MCP aggregate 失败不提交 partial 的既有语义；Web 60/50 仅为 endpoint-specific wire batch 常量。T12 的扩展名安全边界、完整 tags 与稳定 ranking label 均保持，未改变 structured schema/registration，也未引入 allowlist、默认扩展名、截断或 fallback。文档与 changelog 准确，T11 的内部等价重构没有被夸大为用户功能变化；知识图谱滞后继续按 T20 集中重建。
+- 证据：独立 spec reviewer 与独立 code-quality reviewer 均 APPROVE、无 finding；后者通过相关 application/CLI/MCP/download/Pixiv 包的 race 与 vet，主线程将 pagination、CLI JSON/cycle、MCP pagination/tags/ranking、异常扩展名及 HTTP client/context 关键测试连续运行 20 次均通过。精确检索确认生产代码无 `strings.Title`、5-tag 截断、固定 60 秒 total timeout 或 `http.DefaultClient`，CLI/MCP 等价列表入口均调用共享引擎，Web 60/50 只经具名常量使用。主线程通过 `go test ./... -count=1`、`go test -race ./... -count=1`、`go vet ./...`、`sh scripts/build.sh`、`pre-commit run --all-files` 与 `git diff --check 645ee44..HEAD`；fail-fast `GOOS=linux/windows GOARCH=amd64 CGO_ENABLED=0 go test -c` 通过 application、public Pixiv facade 及 appapi/oauth/resource/webapi/internal Pixiv 包。
+- 风险/下一步：未在真实 Windows 文件系统执行扩展名落盘测试，未运行超过 60 秒的真实 Pixiv streaming E2E，也未联网重新确认 Web endpoint 的 60/50 batch 约定；当前确定性 public tests 证明跨平台非法字符/containment、context body cancellation 与 wire 等价性。CLI/MCP/download 的完整 CGO-disabled 异构链接被仓库既有 ugoira Rust staticlib/C linker 门禁按设计拒绝，不能冒充跨平台通过；留待 T21 六平台 CI。`limit=0` 按明确产品契约不设任意页数上限，只由空/重复 cursor、context 或 fetch error 收敛。下一轮只执行 T13，拆分 MCP server 并修复 legacy 错误 observability。
 
 ## T13 — 拆分 MCP server 并修复 legacy 错误 observability
 
