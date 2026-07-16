@@ -207,31 +207,26 @@ func (a *App) download(ctx context.Context, _ *mcp.CallToolRequest, in downloadI
 		ids = append(ids, in.IllustID)
 	}
 	if len(ids) == 0 {
-		out := downloadOut{Delivery: deliveryLocalPath, Text: "错误：必须提供 illust_id (单个ID) 或 illust_ids (ID列表) 参数之一。"}
-		return downloadResult(out), out, nil
+		return emptyDownloadResult(deliveryLocalPath, "错误：必须提供 illust_id (单个ID) 或 illust_ids (ID列表) 参数之一。")
 	}
 	delivery, errText := normalizeDelivery(in.Delivery)
 	if errText != "" {
-		out := downloadOut{Delivery: deliveryLocalPath, Text: errText}
-		return downloadResult(out), out, nil
+		return emptyDownloadResult(deliveryLocalPath, errText)
 	}
 	artworks, err := a.downloadArtworks(ctx, ids, nil)
 	if err != nil {
-		out := downloadOut{Delivery: delivery, Text: "下载失败: " + err.Error()}
-		return downloadResult(out), out, nil
+		return emptyDownloadResult(delivery, "下载失败: "+err.Error())
 	}
 	out, err := buildDownloadOut(delivery, artworks)
 	if err != nil {
-		out := downloadOut{Delivery: delivery, Text: "整理下载结果失败: " + err.Error()}
-		return downloadResult(out), out, nil
+		return emptyDownloadResult(delivery, "整理下载结果失败: "+err.Error())
 	}
 	result := downloadResult(out)
 	if delivery == deliveryImageContent {
 		for _, file := range out.Files {
 			data, err := os.ReadFile(file.Path)
 			if err != nil {
-				out := downloadOut{Delivery: delivery, Text: "读取下载文件失败: " + err.Error()}
-				return downloadResult(out), out, nil
+				return emptyDownloadResult(delivery, "读取下载文件失败: "+err.Error())
 			}
 			result.Content = append(result.Content, &mcp.ImageContent{
 				Data:     data,
@@ -261,6 +256,16 @@ func downloadResult(out downloadOut) *mcp.CallToolResult {
 	return &mcp.CallToolResult{
 		Content: []mcp.Content{&mcp.TextContent{Text: out.Text}},
 	}
+}
+
+func emptyDownloadResult(delivery, text string) (*mcp.CallToolResult, downloadOut, error) {
+	out := downloadOut{
+		Delivery: delivery,
+		Items:    []downloadItemOut{},
+		Files:    []downloadFileOut{},
+		Text:     text,
+	}
+	return downloadResult(out), out, nil
 }
 
 func normalizeDelivery(value string) (string, string) {
@@ -414,35 +419,23 @@ func parseDownloadRandomCount(value *int) (int, error) {
 func (a *App) downloadRandom(ctx context.Context, req *mcp.CallToolRequest, in downloadRandomIn) (*mcp.CallToolResult, downloadOut, error) {
 	delivery, errText := normalizeDelivery(in.Delivery)
 	if errText != "" {
-		out := downloadOut{
-			Delivery: deliveryLocalPath,
-			Items:    []downloadItemOut{},
-			Files:    []downloadFileOut{},
-			Text:     errText,
-		}
-		return downloadResult(out), out, nil
+		return emptyDownloadResult(deliveryLocalPath, errText)
 	}
 	count, err := parseDownloadRandomCount(in.Count)
 	if err != nil {
-		out := downloadOut{
-			Delivery: delivery,
-			Items:    []downloadItemOut{},
-			Files:    []downloadFileOut{},
-			Text:     "错误：" + err.Error() + "。",
-		}
-		return downloadResult(out), out, nil
+		return emptyDownloadResult(delivery, "错误："+err.Error()+"。")
 	}
 	client, release, err := a.openSDKOperation(ctx)
 	if err != nil {
-		return nil, downloadOut{Delivery: deliveryLocalPath, Text: "获取推荐列表失败: " + err.Error()}, nil
+		return emptyDownloadResult(delivery, "获取推荐列表失败: "+err.Error())
 	}
 	defer release()
 	result, err := client.IllustRecommended(ctx, sdk.IllustRecommendedRequest{})
 	if err != nil {
-		return nil, downloadOut{Delivery: deliveryLocalPath, Text: "获取推荐列表失败: " + err.Error()}, nil
+		return emptyDownloadResult(delivery, "获取推荐列表失败: "+err.Error())
 	}
 	if len(result.Illusts) == 0 {
-		return nil, downloadOut{Delivery: deliveryLocalPath, Text: "无法获取推荐内容，列表为空。"}, nil
+		return emptyDownloadResult(delivery, "无法获取推荐内容，列表为空。")
 	}
 	if count > len(result.Illusts) {
 		count = len(result.Illusts)
@@ -454,11 +447,11 @@ func (a *App) downloadRandom(ctx context.Context, req *mcp.CallToolRequest, in d
 	}
 	artworks, err := a.downloadArtworks(ctx, ids, client)
 	if err != nil {
-		return nil, downloadOut{Delivery: deliveryLocalPath, Text: "下载失败: " + err.Error()}, nil
+		return emptyDownloadResult(delivery, "下载失败: "+err.Error())
 	}
 	out, err := buildDownloadOut(delivery, artworks)
 	if err != nil {
-		return nil, downloadOut{Delivery: deliveryLocalPath, Text: "整理下载结果失败: " + err.Error()}, nil
+		return emptyDownloadResult(delivery, "整理下载结果失败: "+err.Error())
 	}
 	return downloadResult(out), out, nil
 }

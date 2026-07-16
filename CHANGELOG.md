@@ -14,6 +14,7 @@
 
 ### Fixed
 
+- 修复 MCP `download` 与 `download_random_from_recommendation` 的参数、SDK、推荐、下载、结果整理或文件读取失败被 typed output schema 的 `null` 数组校验错误遮蔽的问题；失败现保留原业务文本与规范化 `delivery`，并返回空 `items`/`files` 数组。
 - 修复 MCP `download_random_from_recommendation` 把显式 0、负数或大于 20 的 `count` 静默改写为默认值或边界值的问题；非法值现明确报错，省略时仍默认 5，同时传入非法 `delivery` 时仍优先返回 delivery 参数错误而非 schema 错误。
 - 修复 MCP `refresh_token` 在 SDK 初始化、配置或代理失败时误报“未设置 refresh token”的问题；取消、超时和公开 SDK 错误现保留安全分类，未知初始化错误保持脱敏，未知刷新执行错误也不再回显原始错误详情。
 

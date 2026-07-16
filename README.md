@@ -401,6 +401,8 @@ and `get_thumbnail_base64`.
 
 `download_random_from_recommendation` 的 `count` 可省略（默认 5），显式值须为 1..20；完整参数、错误与推荐不足时的语义见 [MCP 工具](docs/mcp-tools.md#配置认证与下载)。
 
+On failure, `download` and `download_random_from_recommendation` preserve the business error text and return valid structured output with empty `items` and `files` arrays. See [MCP tools](docs/mcp-tools.md#配置认证与下载) for the full wire semantics.
+
 `recommended` 接受必填 `kind`：`all`、`illust`、`manga`、`novel` 或 `user`。它经认证 App SDK 返回结构化推荐；`all` 对四条流分别应用 `page`/`limit`，不暴露 SDK cursor，也不支持匿名 Web fallback。`illust_recommended` 保留旧 tool 名、参数和文本输出兼容性，但同样经公开 SDK 调用链执行。
 
 ## 开发验证

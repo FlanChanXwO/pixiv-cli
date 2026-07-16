@@ -84,13 +84,13 @@
 
 ## F02 — 修复 MCP 下载错误被 output schema 遮蔽
 
-- 状态：未完成
+- 状态：已完成
 - 来源：C02 P1。typed `downloadOut` 的 `items/files` 必须是 JSON array，现有多个失败/空结果分支返回 nil slices，导致 go-sdk output validation 覆盖真正错误。
 - 范围：为 direct `download` 与 `download_random_from_recommendation` 的所有参数错误、SDK/推荐失败、空推荐、manager/download 失败、结果整理失败和 image-content 读取失败统一构造显式空 `items/files` 与 `downloadResult(out)`；完成 delivery 规范化后保留规范化值，尚未规范化或非法 delivery 继续使用 `local_path`。保持现有安全错误文本、legacy `IsError=false`、日志语义和成功输出；不得给 random 新增 ImageContent，也不得顺手处理 T13 observability。
 - 验收：public in-memory MCP tracer bullets 逐类实际 RED→GREEN，至少覆盖 direct no-ID/invalid-delivery/download/build/read-file 与 random SDK-open/recommendation/empty/download/build；每个分支返回原有业务错误而非 `validating tool output`，structured `items/files` 是空数组，delivery 正确，失败前不发生不应有的下游调用；MCP package/race/vet、全仓测试、文档/changelog 审核和独立 spec/quality review 通过。
-- 实际：
-- 证据：
-- 风险/下一步：
+- 实际：新增 `emptyDownloadResult`，让 direct `download` 与 `download_random_from_recommendation` 的参数、SDK/推荐、空推荐、下载、结果整理和文件读取失败统一返回显式空 `items/files`、原业务文本与正确 `delivery`；非法或尚未规范化的 delivery 使用 `local_path`，其余保留规范化值。成功路径、legacy `IsError=false`、日志语义与 random 不附加 ImageContent 的行为未改变。同步更新 README（英文）、`docs/mcp-tools.md` 与 CHANGELOG。
+- 证据：10 个 public in-memory MCP tracer tests 均先实际 RED，错误为 typed output 把 `items:null` 判为非 array 并覆盖业务错误，随后 GREEN；覆盖 direct no-ID/invalid-delivery/manager/build/read-file 与 random SDK-open/recommendation/empty/manager/build。既有 random 非法 count/delivery 测试首次即 GREEN，未伪造 RED。补充 `downloadCalls` 断言后，前置失败确认零次下载调用，manager/build/read 失败确认恰好一次调用。独立 spec 复审与独立 quality review 均 APPROVE、无 P0/P1/P2；后者另验证 release、无部分 ImageContent 泄露及无范围外变更。主线程通过 focused `TestDownload`、`-count=20`、MCP package、MCP race、`go vet ./...`、`go test ./... -count=1`、`pre-commit run --all-files` 与 `git diff --check`。
+- 风险/下一步：文件系统错误 fixture 会按运行平台动态生成期望文案，但尚未在六个平台实际执行；留待 T21 跨平台矩阵验证。失败仍保持 legacy `IsError=false`，按既定 T13 单独处理。真实 Pixiv 联网 e2e 不属于本修复且未启用。下一轮开始 T07；T05/F02 后的知识图谱滞后仍按 T20 集中重建。
 
 ## T07 — 删除已证实死代码和诱导性 token 字段
 

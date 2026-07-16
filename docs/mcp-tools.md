@@ -26,6 +26,8 @@ SDK cursor 不出现在 MCP 参数或输出。`user_bookmarks.max_bookmark_id` �
 
 `download_random_from_recommendation.count` 限制本次请求的作品数，不限制一个作品展开的文件数。显式传入 0、负数或大于 20 的值会返回参数错误，不会改写为默认值或边界值；推荐列表少于请求数时则下载列表中实际可用的作品。该 tool 当前返回下载结果文本与 structured 文件元数据，不会像 `download` 的 `delivery=image_content` 路径那样附加 ImageContent。
 
+两个下载 tool 在参数校验、SDK、推荐获取、下载、结果整理或文件读取失败时，都会保留原有业务错误文本，并返回有效 structured output：`delivery` 保留已规范化的交付方式（无 ID 或非法 `delivery` 时为 `local_path`），`items` 与 `files` 是空数组而不是 `null`。这些遗留失败结果继续保持 `isError=false`，不会被 typed output schema 的校验错误替代。`download_random_from_recommendation` 在成功和失败时都不附加 ImageContent，即使请求了 `delivery=image_content`。
+
 ## 作品与用户读取
 
 | tool | 参数 | structured output |

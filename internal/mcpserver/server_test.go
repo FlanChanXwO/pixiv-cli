@@ -336,6 +336,129 @@ func TestSDKMutationTypedErrorIsMCPErrorAndWrapperLogsMetadata(t *testing.T) {
 	}
 }
 
+func TestDownloadWithoutIDsPreservesBusinessErrorShape(t *testing.T) {
+	downloads := &fakeDownloads{}
+	session, closeSession := newTestSession(t, downloads)
+	defer closeSession()
+
+	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{
+		Name:      "download",
+		Arguments: map[string]any{},
+	})
+	if err != nil {
+		t.Fatalf("call tool: %v", err)
+	}
+	const wantText = "错误：必须提供 illust_id (单个ID) 或 illust_ids (ID列表) 参数之一。"
+	assertEmptyDownloadResult(t, result, deliveryLocalPath, wantText)
+	if downloads.downloadCalls != 0 || len(downloads.downloadIDs) != 0 {
+		t.Fatalf("download calls=%d IDs=%v want no downstream call", downloads.downloadCalls, downloads.downloadIDs)
+	}
+}
+
+func TestDownloadInvalidDeliveryPreservesBusinessErrorShape(t *testing.T) {
+	downloads := &fakeDownloads{}
+	session, closeSession := newTestSession(t, downloads)
+	defer closeSession()
+
+	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{
+		Name: "download",
+		Arguments: map[string]any{
+			"illust_id": 42,
+			"delivery":  "invalid-delivery",
+		},
+	})
+	if err != nil {
+		t.Fatalf("call tool: %v", err)
+	}
+	const wantText = `错误：delivery 仅支持 "local_path" 或 "image_content"。`
+	assertEmptyDownloadResult(t, result, deliveryLocalPath, wantText)
+	if downloads.downloadCalls != 0 || len(downloads.downloadIDs) != 0 {
+		t.Fatalf("download calls=%d IDs=%v want no downstream call", downloads.downloadCalls, downloads.downloadIDs)
+	}
+}
+
+func TestDownloadManagerErrorPreservesBusinessErrorShape(t *testing.T) {
+	downloads := &fakeDownloads{err: errors.New("download sentinel")}
+	session, closeSession := newTestSession(t, downloads)
+	defer closeSession()
+
+	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{
+		Name: "download",
+		Arguments: map[string]any{
+			"illust_id": 42,
+			"delivery":  deliveryImageContent,
+		},
+	})
+	if err != nil {
+		t.Fatalf("call tool: %v", err)
+	}
+	const wantText = "下载失败: download sentinel"
+	assertEmptyDownloadResult(t, result, deliveryImageContent, wantText)
+	if downloads.downloadCalls != 1 || !slices.Equal(downloads.downloadIDs, []int64{42}) {
+		t.Fatalf("download calls=%d IDs=%v want one manager call", downloads.downloadCalls, downloads.downloadIDs)
+	}
+}
+
+func TestDownloadBuildErrorPreservesBusinessErrorShape(t *testing.T) {
+	missing := filepath.Join(t.TempDir(), "missing.png")
+	_, statErr := os.Stat(missing)
+	if statErr == nil {
+		t.Fatal("missing test file unexpectedly exists")
+	}
+	downloads := &fakeDownloads{artworks: []download.DownloadedArtwork{{
+		IllustID: 42,
+		Files:    []download.DownloadedFile{{Path: missing}},
+	}}}
+	session, closeSession := newTestSession(t, downloads)
+	defer closeSession()
+
+	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{
+		Name: "download",
+		Arguments: map[string]any{
+			"illust_id": 42,
+			"delivery":  deliveryImageContent,
+		},
+	})
+	if err != nil {
+		t.Fatalf("call tool: %v", err)
+	}
+	wantText := "整理下载结果失败: " + statErr.Error()
+	assertEmptyDownloadResult(t, result, deliveryImageContent, wantText)
+	if downloads.downloadCalls != 1 || !slices.Equal(downloads.downloadIDs, []int64{42}) {
+		t.Fatalf("download calls=%d IDs=%v want one manager call", downloads.downloadCalls, downloads.downloadIDs)
+	}
+}
+
+func TestDownloadImageReadErrorPreservesBusinessErrorShape(t *testing.T) {
+	directory := t.TempDir()
+	_, readErr := os.ReadFile(directory)
+	if readErr == nil {
+		t.Fatal("reading test directory unexpectedly succeeded")
+	}
+	downloads := &fakeDownloads{artworks: []download.DownloadedArtwork{{
+		IllustID: 42,
+		Files:    []download.DownloadedFile{{Path: directory}},
+	}}}
+	session, closeSession := newTestSession(t, downloads)
+	defer closeSession()
+
+	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{
+		Name: "download",
+		Arguments: map[string]any{
+			"illust_id": 42,
+			"delivery":  deliveryImageContent,
+		},
+	})
+	if err != nil {
+		t.Fatalf("call tool: %v", err)
+	}
+	wantText := "读取下载文件失败: " + readErr.Error()
+	assertEmptyDownloadResult(t, result, deliveryImageContent, wantText)
+	if downloads.downloadCalls != 1 || !slices.Equal(downloads.downloadIDs, []int64{42}) {
+		t.Fatalf("download calls=%d IDs=%v want one manager call", downloads.downloadCalls, downloads.downloadIDs)
+	}
+}
+
 func TestDownloadDefaultsToLocalPathResult(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "42.jpg")
@@ -1021,8 +1144,162 @@ func TestDownloadRandomFromRecommendationUsesSDKAndPreservesCount(t *testing.T) 
 	}
 	defer session.Close()
 	result := callTool(t, session, "download_random_from_recommendation", map[string]any{"count": 1})
-	if result.IsError || len(requests) != 1 || requests[0] != (sdk.IllustRecommendedRequest{}) || !slices.Equal(downloads.downloadIDs, []int64{77}) {
+	if result.IsError || len(result.Content) != 1 || len(requests) != 1 || requests[0] != (sdk.IllustRecommendedRequest{}) || !slices.Equal(downloads.downloadIDs, []int64{77}) {
 		t.Fatalf("result=%+v requests=%+v ids=%v", result, requests, downloads.downloadIDs)
+	}
+}
+
+func TestDownloadRandomSDKOpenErrorPreservesBusinessErrorShape(t *testing.T) {
+	var openCalls, managerFactoryCalls int
+	downloads := &fakeDownloads{}
+	service := application.SDKService{NewClient: func(application.SDKClientRequest) (application.SDKClient, error) {
+		openCalls++
+		return nil, errors.New("open sentinel")
+	}}
+	server := NewWithSDKDownloadFactory(downloads, func(application.SDKClient) DownloadManager {
+		managerFactoryCalls++
+		return downloads
+	}, slog.New(slog.NewTextHandler(io.Discard, nil)), service, application.SDKClientRequest{})
+	clientTransport, serverTransport := mcp.NewInMemoryTransports()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() { _ = server.Run(ctx, serverTransport) }()
+	client := mcp.NewClient(&mcp.Implementation{Name: "test", Version: "1"}, nil)
+	session, err := client.Connect(ctx, clientTransport, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer session.Close()
+
+	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{
+		Name: "download_random_from_recommendation",
+		Arguments: map[string]any{
+			"count":    1,
+			"delivery": deliveryImageContent,
+		},
+	})
+	if err != nil {
+		t.Fatalf("call tool: %v", err)
+	}
+	const wantText = "获取推荐列表失败: open sentinel"
+	assertEmptyDownloadResult(t, result, deliveryImageContent, wantText)
+	if openCalls != 1 || managerFactoryCalls != 0 || len(downloads.downloadIDs) != 0 {
+		t.Fatalf("downstream calls: open=%d manager_factory=%d download_ids=%v", openCalls, managerFactoryCalls, downloads.downloadIDs)
+	}
+}
+
+func TestDownloadRandomRecommendationErrorPreservesBusinessErrorShape(t *testing.T) {
+	var openCalls, recommendationCalls, managerFactoryCalls int
+	downloads := &fakeDownloads{}
+	service := application.SDKService{NewClient: func(application.SDKClientRequest) (application.SDKClient, error) {
+		openCalls++
+		return &fakeSDKClient{illustRecommended: func(context.Context, sdk.IllustRecommendedRequest) (*sdk.IllustListResult, error) {
+			recommendationCalls++
+			return nil, errors.New("recommendation sentinel")
+		}}, nil
+	}}
+	server := NewWithSDKDownloadFactory(downloads, func(application.SDKClient) DownloadManager {
+		managerFactoryCalls++
+		return downloads
+	}, slog.New(slog.NewTextHandler(io.Discard, nil)), service, application.SDKClientRequest{})
+	clientTransport, serverTransport := mcp.NewInMemoryTransports()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() { _ = server.Run(ctx, serverTransport) }()
+	client := mcp.NewClient(&mcp.Implementation{Name: "test", Version: "1"}, nil)
+	session, err := client.Connect(ctx, clientTransport, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer session.Close()
+
+	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{
+		Name: "download_random_from_recommendation",
+		Arguments: map[string]any{
+			"count":    1,
+			"delivery": deliveryImageContent,
+		},
+	})
+	if err != nil {
+		t.Fatalf("call tool: %v", err)
+	}
+	const wantText = "获取推荐列表失败: recommendation sentinel"
+	assertEmptyDownloadResult(t, result, deliveryImageContent, wantText)
+	if openCalls != 1 || recommendationCalls != 1 || managerFactoryCalls != 0 || len(downloads.downloadIDs) != 0 {
+		t.Fatalf("downstream calls: open=%d recommendation=%d manager_factory=%d download_ids=%v", openCalls, recommendationCalls, managerFactoryCalls, downloads.downloadIDs)
+	}
+}
+
+func TestDownloadRandomEmptyRecommendationPreservesBusinessErrorShape(t *testing.T) {
+	session, closeSession, probe := newDownloadRandomProbeSession(t, nil)
+	defer closeSession()
+
+	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{
+		Name: "download_random_from_recommendation",
+		Arguments: map[string]any{
+			"count":    1,
+			"delivery": deliveryImageContent,
+		},
+	})
+	if err != nil {
+		t.Fatalf("call tool: %v", err)
+	}
+	const wantText = "无法获取推荐内容，列表为空。"
+	assertEmptyDownloadResult(t, result, deliveryImageContent, wantText)
+	if probe.openCalls != 1 || probe.recommendationCalls != 1 || probe.managerFactoryCalls != 0 || len(probe.downloads.downloadIDs) != 0 {
+		t.Fatalf("downstream calls: open=%d recommendation=%d manager_factory=%d download_ids=%v", probe.openCalls, probe.recommendationCalls, probe.managerFactoryCalls, probe.downloads.downloadIDs)
+	}
+}
+
+func TestDownloadRandomManagerErrorPreservesBusinessErrorShape(t *testing.T) {
+	session, closeSession, probe := newDownloadRandomProbeSession(t, []int64{77})
+	defer closeSession()
+	probe.downloads.err = errors.New("download sentinel")
+
+	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{
+		Name: "download_random_from_recommendation",
+		Arguments: map[string]any{
+			"count":    1,
+			"delivery": deliveryImageContent,
+		},
+	})
+	if err != nil {
+		t.Fatalf("call tool: %v", err)
+	}
+	const wantText = "下载失败: download sentinel"
+	assertEmptyDownloadResult(t, result, deliveryImageContent, wantText)
+	if probe.openCalls != 1 || probe.recommendationCalls != 1 || probe.managerFactoryCalls != 1 || probe.downloads.downloadCalls != 1 || !slices.Equal(probe.downloads.downloadIDs, []int64{77}) {
+		t.Fatalf("downstream calls: open=%d recommendation=%d manager_factory=%d downloads=%d download_ids=%v", probe.openCalls, probe.recommendationCalls, probe.managerFactoryCalls, probe.downloads.downloadCalls, probe.downloads.downloadIDs)
+	}
+}
+
+func TestDownloadRandomBuildErrorPreservesBusinessErrorShape(t *testing.T) {
+	missing := filepath.Join(t.TempDir(), "missing.png")
+	_, statErr := os.Stat(missing)
+	if statErr == nil {
+		t.Fatal("missing test file unexpectedly exists")
+	}
+	session, closeSession, probe := newDownloadRandomProbeSession(t, []int64{77})
+	defer closeSession()
+	probe.downloads.artworks = []download.DownloadedArtwork{{
+		IllustID: 77,
+		Files:    []download.DownloadedFile{{Path: missing}},
+	}}
+
+	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{
+		Name: "download_random_from_recommendation",
+		Arguments: map[string]any{
+			"count":    1,
+			"delivery": deliveryImageContent,
+		},
+	})
+	if err != nil {
+		t.Fatalf("call tool: %v", err)
+	}
+	wantText := "整理下载结果失败: " + statErr.Error()
+	assertEmptyDownloadResult(t, result, deliveryImageContent, wantText)
+	if probe.openCalls != 1 || probe.recommendationCalls != 1 || probe.managerFactoryCalls != 1 || probe.downloads.downloadCalls != 1 || !slices.Equal(probe.downloads.downloadIDs, []int64{77}) {
+		t.Fatalf("downstream calls: open=%d recommendation=%d manager_factory=%d downloads=%d download_ids=%v", probe.openCalls, probe.recommendationCalls, probe.managerFactoryCalls, probe.downloads.downloadCalls, probe.downloads.downloadIDs)
 	}
 }
 
@@ -1043,18 +1320,8 @@ func TestDownloadRandomCountErrorPreservesImageContentDelivery(t *testing.T) {
 		"count":    0,
 		"delivery": deliveryImageContent,
 	})
-	out := decodeDownloadOut(t, result)
 	const wantText = "错误：count 必须是 1 到 20 之间的整数。"
-	if result.IsError || out.Delivery != deliveryImageContent || out.Text != wantText || len(out.Items) != 0 || len(out.Files) != 0 {
-		t.Fatalf("result=%+v output=%+v", result, out)
-	}
-	if len(result.Content) != 1 {
-		t.Fatalf("content=%+v want one text item", result.Content)
-	}
-	textContent, ok := result.Content[0].(*mcp.TextContent)
-	if !ok || textContent.Text != wantText {
-		t.Fatalf("content=%+v want text %q", result.Content, wantText)
-	}
+	assertEmptyDownloadResult(t, result, deliveryImageContent, wantText)
 	assertNoDownloadRandomDownstream(t, probe)
 }
 
@@ -1066,18 +1333,8 @@ func TestDownloadRandomInvalidDeliveryPrecedesCountValidation(t *testing.T) {
 		"count":    0,
 		"delivery": "invalid-delivery",
 	})
-	out := decodeDownloadOut(t, result)
 	const wantText = `错误：delivery 仅支持 "local_path" 或 "image_content"。`
-	if result.IsError || out.Delivery != deliveryLocalPath || out.Text != wantText || len(out.Items) != 0 || len(out.Files) != 0 {
-		t.Fatalf("result=%+v output=%+v", result, out)
-	}
-	if len(result.Content) != 1 {
-		t.Fatalf("content=%+v want one text item", result.Content)
-	}
-	textContent, ok := result.Content[0].(*mcp.TextContent)
-	if !ok || textContent.Text != wantText {
-		t.Fatalf("content=%+v want text %q", result.Content, wantText)
-	}
+	assertEmptyDownloadResult(t, result, deliveryLocalPath, wantText)
 	assertNoDownloadRandomDownstream(t, probe)
 }
 
@@ -1105,24 +1362,14 @@ func TestDownloadRandomRejectsCountAboveMaximumBeforeOpeningSDK(t *testing.T) {
 
 func assertDownloadRandomCountError(t *testing.T, result *mcp.CallToolResult) {
 	t.Helper()
-	out := decodeDownloadOut(t, result)
 	const wantText = "错误：count 必须是 1 到 20 之间的整数。"
-	if result.IsError || out.Delivery != deliveryLocalPath || out.Text != wantText || len(out.Items) != 0 || len(out.Files) != 0 {
-		t.Fatalf("result=%+v output=%+v", result, out)
-	}
-	if len(result.Content) != 1 {
-		t.Fatalf("content=%+v want one text item", result.Content)
-	}
-	textContent, ok := result.Content[0].(*mcp.TextContent)
-	if !ok || textContent.Text != wantText {
-		t.Fatalf("content=%+v want text %q", result.Content, wantText)
-	}
+	assertEmptyDownloadResult(t, result, deliveryLocalPath, wantText)
 }
 
 func assertNoDownloadRandomDownstream(t *testing.T, probe *downloadRandomProbe) {
 	t.Helper()
-	if probe.openCalls != 0 || probe.recommendationCalls != 0 || probe.managerFactoryCalls != 0 || len(probe.downloads.downloadIDs) != 0 {
-		t.Fatalf("downstream calls: open=%d recommendation=%d manager_factory=%d download_ids=%v", probe.openCalls, probe.recommendationCalls, probe.managerFactoryCalls, probe.downloads.downloadIDs)
+	if probe.openCalls != 0 || probe.recommendationCalls != 0 || probe.managerFactoryCalls != 0 || probe.downloads.downloadCalls != 0 || len(probe.downloads.downloadIDs) != 0 {
+		t.Fatalf("downstream calls: open=%d recommendation=%d manager_factory=%d downloads=%d download_ids=%v", probe.openCalls, probe.recommendationCalls, probe.managerFactoryCalls, probe.downloads.downloadCalls, probe.downloads.downloadIDs)
 	}
 }
 
@@ -1831,14 +2078,32 @@ func decodeDownloadOut(t *testing.T, result *mcp.CallToolResult) downloadOut {
 	return out
 }
 
+func assertEmptyDownloadResult(t *testing.T, result *mcp.CallToolResult, wantDelivery, wantText string) {
+	t.Helper()
+	out := decodeDownloadOut(t, result)
+	if result.IsError || out.Delivery != wantDelivery || out.Text != wantText || out.Items == nil || len(out.Items) != 0 || out.Files == nil || len(out.Files) != 0 {
+		t.Fatalf("result=%+v output=%+v", result, out)
+	}
+	if len(result.Content) != 1 {
+		t.Fatalf("content=%+v want one text item without image", result.Content)
+	}
+	text, ok := result.Content[0].(*mcp.TextContent)
+	if !ok || text.Text != wantText {
+		t.Fatalf("content=%+v want text %q", result.Content, wantText)
+	}
+}
+
 type fakeDownloads struct {
-	artworks    []download.DownloadedArtwork
-	downloadIDs []int64
+	artworks      []download.DownloadedArtwork
+	downloadCalls int
+	downloadIDs   []int64
+	err           error
 }
 
 func (fakeDownloads) SetDownloadPath(string) error         { return nil }
 func (fakeDownloads) Enqueue(context.Context, []int64) int { return 1 }
 func (d *fakeDownloads) Download(_ context.Context, ids []int64) ([]download.DownloadedArtwork, error) {
+	d.downloadCalls++
 	d.downloadIDs = append([]int64(nil), ids...)
-	return d.artworks, nil
+	return d.artworks, d.err
 }
