@@ -244,12 +244,19 @@
 
 ## T19 — 覆盖剩余 bootstrap 纯逻辑与评审矩阵复扫
 
-- 状态：未完成
+- 状态：已完成（发现 NEW-P1，F04 阻断 T20）
 - 范围：P2-13 剩余项及全报告复扫。补 `LoadRuntimeConfig`/proxy override/production factory 的高价值测试；逐条 `rg` 和 coverage 验证所有 finding 已关闭，发现遗漏则追加修复任务。
 - 验收：bootstrap 聚焦 coverage 明显覆盖纯逻辑而非只追百分比；finding closure matrix 有 file/test 证据。
-- 实际：
-- 证据：
-- 风险/下一步：
+- 实际：新增按职责分卷的 `sdk_factory_test.go`、`logger_test.go` 与 `config_store_test.go`，只通过 `NewServices().SDK/Config`、`OpenOperation`、public SDK 错误/结果和 `NewApplicationLogger` 验证 production wiring，不修改 production。SDK factory 覆盖 nil proxy override 在 operation 时读取最新配置、显式空 override 固定 no-proxy、malformed override 在构造阶段失败、missing requested UID 在 OAuth 前返回 typed user error、Cookie refresh token 在构造/OAuth 前拒绝、显式 `AuthFilePath` 覆盖全局路径；logger 覆盖 malformed TOML 不破坏离线初始化、非法 logging 设置 fail-loud、有效 JSON/text 只写注入的 stderr writer且不改全局 `slog`；Config adapter 以临时真实文件覆盖 Path/Set/Get/Unset、typed parsing、env override metadata 和 malformed file 传播。新建 `goal-2/finding-closure.md`，把原报告拆为 36 个 concrete finding：P1 2 项、P2 11 项、P3 dead-code 8 项、consistency 7 项、duplication 2 项、small 6 项；每行均有当前 implementation symbol、focused test/gate 与 Goal 决策证据，另把原报告三项未覆盖范围作为残余边界而非伪造 closure。复扫额外发现 NEW-P1：`internal/pixiv.HTTPClient` 在显式 proxy 语法错误时把 raw `proxyValue` 和 `url.Parse` error一并回显，`newSDKClient` 原样传播，CLI `app.exit` 再直接输出；`internal/update.NewReleaseHTTPClient` 的 parse-error 与 non-HTTP(S)-scheme 分支也回显 raw proxy，bootstrap 显式/automatic update factory继续 wrap，显式 update 由 `app.exit` 输出，普通命令后的 automatic update 则可经 `%v` warning 输出 runtime-configured proxy。两条链均可能泄露 proxy userinfo、path 和 query；已插入 F04，T20 在其关闭前不得开始。
+- 证据：保留的 production tests 除一次 AuthPath fixture 对公开 `HasToken` 的错误预期先 RED、修正测试后 GREEN外，既有正确行为首次均为 characterization GREEN，未伪造产品 RED。额外安全 tracer `TestNewServicesSDKMalformedExplicitProxyDoesNotEchoSensitiveComponents` 使用纯测试 user/password/path/query canary，经 `NewServices(nil).SDK.Client` 首次真实 RED，首个 `proxy-user-canary` `NotContains` 即失败；主线程又以 public `pixiv search --proxy <canary>` 复现 exit 1，stderr 完整包含四类 canary，且在联网/OAuth前失败。quality reviewer以 public `pixiv update --check --proxy <canary>` 再复现 update parse-error链完整回显；automatic warning 本轮未冒充 runtime实测，其可达性由 runtime config→automatic factory→`automaticUpdateWarning(%v)` 的当前源码数据流证明。按审计任务边界取证后移除临时红测试，production 未在本轮暗改；永久 regression 与修复归 F04。bootstrap statement coverage 从 17.7% 提升至 50.0%，`NewServices/newSDKClient/ConfigFileStore.Path` 为 100%，logger 与 Get/Set/Unset 关键分支为 80.0%–85.7%，既有 `LoadRuntimeConfig/applyRuntimeProxyOverride` 保持 100%；没有为覆盖 `NewMCPRuntime/RunMCP` 启动 OAuth、stdio 或真实网络。聚焦 verbose、bootstrap normal/coverage/race/vet、finding 涉及包的组合 gate、gofmt 与 `git diff --check` 通过；矩阵 36 个原 finding 均为 `PROVEN`，NEW-P1 为 `CONTRADICTED`，131 个相对链接与显式 symbol 均存在。
+- 风险/下一步：T19 已完成“补高价值覆盖并以强证据复扫”的审计职责，但 NEW-P1 证明整个 Goal 尚未关闭。下一轮必须先执行 F04：以 public factory/CLI tracer 重新 RED，修复 malformed explicit proxy 错误的 secret-safe contract，复核 runtime configured proxy 的 `LocalStateKindInvalidProxy` 与有效/空 proxy 正常路径，并同步安全 changelog；F04 spec/quality review和全量门禁通过后才能进入 T20。原报告的真实 Pixiv/R-18、Rust unsafe/FFI 完整审计、GitHub-hosted workflow实跑仍是明确残余边界，分别留给联网 canary、独立专项与 T21，不能由本地单测冒充。
+
+## F04 — 脱敏 malformed 显式 proxy 构造错误
+
+- 状态：未完成
+- 来源：T19 NEW-P1。`internal/pixiv.HTTPClient` 当前以 `%q` 回显完整 `proxyValue` 并 wrap 含原 URL 的 parse error，bootstrap production SDK factory 原样返回；`internal/update.NewReleaseHTTPClient` 的 parse 与 non-HTTP(S) scheme 错误也回显原值，bootstrap 显式/automatic update factory继续 wrap。CLI command error或automatic warning可因此暴露 proxy username、password、path 与 query，包括来自 runtime config 的值。
+- 范围：建立两条 HTTP client 构造链统一、可分类且不含原始 proxy/URL component 的 invalid-proxy error contract；让显式 CLI/SDK factory override、OpenDefault runtime configured proxy、显式 update coordinator 与 automatic update checker都保留真实“代理配置无效”类别，但错误文本、unwrap、日志、CLI/MCP error与automatic warning不得包含 userinfo/path/query。覆盖 update parse-error 和合法可解析但非 HTTP(S) scheme 两分支。不得改变有效 HTTP(S) proxy、显式空 `--no-proxy`、nil override动态snapshot、update runtime/flag优先级、context、fallback或网络请求语义；不得借机新增timeout、scheme fallback或静默忽略非法proxy。
+- 验收：按 TDD 先恢复 public SDK production-factory、显式 CLI search/update 与 automatic-update canary RED，再最小修复；internal Pixiv/update HTTP clients、bootstrap SDK/update factories、CLI显式与automatic路径、public SDK tests覆盖 credential-bearing parse error、non-HTTP(S) scheme、wrapped/unwrap/log/warning安全、valid/empty/nil proxy回归及联网前拒绝。Automatic regression必须用注入 seam和临时 runtime config确定性触发，不依赖真实GitHub网络或开发构建偶然路径。同步 `[Unreleased] Security`，通过相关normal/race/vet、全仓test/race/vet、build、release/native/Rust、pre-commit与独立spec/quality/security review；把 `finding-closure.md` 的 NEW-P1更新为 `PROVEN` 后方可开始T20。
 
 ## T20 — 同步文档、changelog 与两份知识图谱
 
