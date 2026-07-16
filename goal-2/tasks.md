@@ -183,12 +183,12 @@
 
 ## T14 — 拆分 macOS 登录 helper 安装器
 
-- 状态：未完成
+- 状态：已完成
 - 范围：P2-9。把内嵌 Swift/Info.plist/swiftc/lsregister 平台安装逻辑从 673 行 controller 移出到 Darwin 专属文件或独立 package；CLI 只保留 OAuth/TTY 编排。
 - 验收：Darwin 与非 Darwin build/test 均通过；回调页、helper 安装、手工 fallback 行为不变；不启动受管浏览器/CDP。
-- 实际：
-- 证据：
-- 风险/下一步：
+- 实际：新增纯 Go 深模块 `internal/cli/loginhelper`，以单一 `Install(context.Context, manualURL)` 入口隔离平台能力；`install_darwin.go` 完整承接 bundle ID、Swift source、Info.plist、`swiftc`/`swift`、`lsregister`、endpoint 私有文件、默认 URL handler 保存/恢复与 cleanup，`install_other.go` 用 build tag 保留原有非 macOS unsupported error。`internal/cli/account_login.go` 从 673 行降至 481 行，只保留 Cobra/OAuth、loopback HTTP callback、系统浏览器、TTY 与 relay 编排及可替换的窄 installer hook；回调成功页、用户消息、路径、权限、命令顺序和失败 fallback 未改。`docs/architecture.md` 已同步内部包边界；纯机械重构未更新 changelog、README 或 ADR，也未引入 managed browser、CDP 或浏览器数据读取。
+- 证据：先新增 public CLI characterization `TestAccountLoginRelayInstallerFailureKeepsBrowserAndManualFallback`，在迁移前旧实现直接 GREEN（如实记录而非伪造 RED），锁定 installer 收到当前 `http://<addr>/manual`、安装失败 warning、官方登录 URL 仍由 browser hook 打开、手工页面仍完成登录及 refresh token 不进入 stdout/stderr；迁移后与既有 callback/browser/TTY/manual relay tests 继续 GREEN。新增 `!darwin` 外部包契约测试锁定 nil cleanup 与精确错误；Darwin 只选择 `install_darwin.go`，Linux/Windows 选择 `install_other.go` 与该测试，并分别成功交叉编译为 ELF/PE32+ test binary；native `scripts/build.sh` 生成 darwin/arm64 Mach-O。独立 spec reviewer 逐行比较旧 helper 关键 181 行与新 Darwin 文件后 APPROVE；独立 quality reviewer 连跑聚焦登录测试 20 次、race、vet 与三平台 helper 编译后零 finding、APPROVE。主线程通过 `go test ./... -count=1`、`go test -race ./... -count=1`、`go vet ./...`、`sh scripts/build.sh`、`pre-commit run --all-files`、Linux/Windows helper `go test -c`、gofmt 与 `git diff --check`。
+- 风险/下一步：按安全边界未实际注册 LaunchServices、切换系统默认 handler、运行 Swift helper 或启动真实浏览器；Darwin 行为由原生编译、逐行机械等价与 public fake-hook 回归证明。当前主机不能执行 `!darwin` test，只完成其 Linux/Windows 编译；完整 CLI 的 CGO-disabled 异构链接在本 task 基线即被既有 ugoira Rust staticlib/C linker 门禁拒绝，非本 diff 回归，六平台真实门禁留 T21。原实现忽略 handler 查询失败及中途失败可能遗留 endpoint 的语义原样保留，未在纯拆分中偷改。结构变化后的两份知识图谱仍按 T20 集中重建；下一轮只执行 T15。
 
 ## T15 — 按职责拆分 webapi client
 

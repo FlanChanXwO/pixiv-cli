@@ -38,6 +38,12 @@
 cache 的 24 小时节流，并最多等待 3 秒。配置、网络、来源识别失败只作为 stderr warning，不能
 改变已成功业务命令的退出码，也不能混入 JSON stdout 或 MCP JSON-RPC。
 
+### `internal/cli/loginhelper`
+
+负责 `auth login` 使用的系统 URL scheme helper 安装。`internal/cli` 只经 `Install` 入口请求本次登录的
+helper 并保留 OAuth、loopback HTTP、系统浏览器和 TTY 编排；Darwin 实现独立持有内嵌 Swift、
+`Info.plist`、LaunchServices 注册及默认 handler 恢复逻辑，其他平台显式报告不支持该 helper。
+
 ### `internal/buildinfo`
 
 保存由 Go linker 注入的 `Version`、`Commit`、`BuildDate`。本地默认是 `dev`/`unknown`/`unknown`；

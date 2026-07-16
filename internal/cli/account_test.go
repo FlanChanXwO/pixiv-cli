@@ -629,6 +629,67 @@ func TestAccountLoginBrowserSuccessStillAcceptsTerminalPrompt(t *testing.T) {
 	assert.NotContains(t, stderr.String(), "pasted-refresh-secret")
 }
 
+func TestAccountLoginRelayInstallerFailureKeepsBrowserAndManualFallback(t *testing.T) {
+	authPath, _ := useTempPaths(t)
+	addr := freeLoopbackAddr(t)
+	oauth := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.NoError(t, r.ParseForm())
+		assert.Equal(t, "manual-fallback-code", r.Form.Get("code"))
+		require.NoError(t, json.NewEncoder(w).Encode(map[string]any{
+			"refresh_token": "manual-fallback-refresh-secret",
+			"user":          map[string]any{"id": "86420", "name": "manual-fallback-user"},
+		}))
+	}))
+	defer oauth.Close()
+	restoreOAuthBase := setTestOAuthBase(t, oauth.URL)
+	defer restoreOAuthBase()
+
+	installedEndpoint := make(chan string, 1)
+	restoreRelay := setTestURLSchemeRelayInstaller(t, func(_ context.Context, manualURL string) (func(), error) {
+		installedEndpoint <- manualURL
+		return nil, errors.New("test helper install unavailable")
+	})
+	defer restoreRelay()
+
+	openedURL := make(chan string, 1)
+	restoreOpen := setTestOpenBrowser(t, func(rawURL string) error {
+		openedURL <- rawURL
+		return nil
+	})
+	defer restoreOpen()
+
+	var stdout, stderr bytes.Buffer
+	run := startAsyncCLIRun([]string{"pixiv", "auth", "login", "--addr", addr, "--timeout", "5s"}, strings.NewReader(""), &stdout, &stderr)
+	defer run.wait()
+
+	page := waitForLoginServer(t, addr)
+	loginURL := loginURLFromPage(t, page)
+
+	resp, err := http.PostForm("http://"+addr+"/manual", url.Values{"code": {"manual-fallback-code"}})
+	require.NoError(t, err)
+	body, _ := io.ReadAll(resp.Body)
+	_ = resp.Body.Close()
+	require.Equal(t, http.StatusOK, resp.StatusCode, string(body))
+
+	require.Equal(t, 0, run.waitWithin(t, 5*time.Second), stderr.String())
+	require.Len(t, installedEndpoint, 1)
+	assert.Equal(t, "http://"+addr+"/manual", <-installedEndpoint)
+	require.Len(t, openedURL, 1)
+	assert.Equal(t, loginURL, <-openedURL)
+	assert.Contains(t, stderr.String(), "warning: pixiv:// callback handler is unavailable: test helper install unavailable")
+	assert.Contains(t, stderr.String(), "Manual fallback page: http://"+addr+"/")
+	assert.Equal(t, "登录成功（UID: 86420）\n", stdout.String())
+
+	store, err := auth.LoadAuthStore(authPath)
+	require.NoError(t, err)
+	require.Len(t, store.Accounts, 1)
+	assert.Equal(t, int64(86420), store.Accounts[0].UserID)
+	assert.Equal(t, "manual-fallback-user", store.Accounts[0].Username)
+	assert.Equal(t, "manual-fallback-refresh-secret", store.Accounts[0].RefreshToken)
+	assert.NotContains(t, stdout.String(), "manual-fallback-refresh-secret")
+	assert.NotContains(t, stderr.String(), "manual-fallback-refresh-secret")
+}
+
 func TestAccountLoginAcceptsPixivCallbackURLWithoutState(t *testing.T) {
 	authPath, _ := useTempPaths(t)
 	addr := freeLoopbackAddr(t)
