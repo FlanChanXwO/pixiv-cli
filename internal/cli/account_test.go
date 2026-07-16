@@ -826,8 +826,7 @@ func TestPixivAuthStartMatchesChallenge(t *testing.T) {
 func assertPrivateFileMode(t *testing.T, actual os.FileMode, want os.FileMode) {
 	t.Helper()
 	if runtime.GOOS == "windows" {
-		// Windows 通过 ACL 管理访问控制，os.FileMode 不保留 Unix 的 0600 位。
-		assert.Equal(t, os.FileMode(0o666), actual)
+		// Windows mode bits 不作为 ACL 证据；DACL 边界由平台持久化契约说明。
 		return
 	}
 	assert.Equal(t, want, actual)

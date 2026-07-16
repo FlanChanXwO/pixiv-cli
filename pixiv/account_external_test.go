@@ -250,10 +250,7 @@ func TestConfigUsesExistingAliasesPrivateFileAndEnvPriority(t *testing.T) {
 		t.Fatal(err)
 	}
 	if runtime.GOOS == "windows" {
-		// Windows 通过 ACL 管理访问控制，os.FileMode 不保留 Unix 的 0600 位。
-		if info.Mode().Perm() != 0o666 {
-			t.Fatalf("Windows mode=%v, want 0666 ACL representation", info.Mode())
-		}
+		// Windows mode bits 不作为 ACL 证据；这里只继续验证 SDK 配置读写语义。
 	} else if info.Mode().Perm() != 0o600 {
 		t.Fatalf("mode=%v, want 0600", info.Mode())
 	}

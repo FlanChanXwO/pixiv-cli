@@ -7,8 +7,16 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/sys/windows"
 )
+
+func TestReplacementStateForWindowsPartialCompletionErrors(t *testing.T) {
+	assert.Equal(t, replacementUnchanged, replacementStateForWindowsError(windows.ERROR_UNABLE_TO_MOVE_REPLACEMENT))
+	assert.Equal(t, replacementOldMovedToBackup, replacementStateForWindowsError(windows.ERROR_UNABLE_TO_MOVE_REPLACEMENT_2))
+	assert.Equal(t, replacementUnchanged, replacementStateForWindowsError(windows.ERROR_UNABLE_TO_REMOVE_REPLACED))
+}
 
 func TestReplaceFileWithBackupPreservesOldTargetForDeferredCleanup(t *testing.T) {
 	directory := t.TempDir()

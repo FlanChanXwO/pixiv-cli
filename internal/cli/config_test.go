@@ -77,8 +77,7 @@ func TestConfigStrongTypesAndSparseWrite(t *testing.T) {
 	info, err := os.Stat(configPath)
 	require.NoError(t, err)
 	if runtime.GOOS == "windows" {
-		// Windows 通过 ACL 管理访问控制，os.FileMode 不保留 Unix 的 0600 位。
-		assert.Equal(t, os.FileMode(0o666), info.Mode().Perm())
+		// Windows mode bits 不作为 ACL 证据；这里只继续验证配置功能语义。
 	} else {
 		assert.Equal(t, os.FileMode(config.DefaultConfigFileMode), info.Mode().Perm())
 	}

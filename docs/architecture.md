@@ -67,7 +67,7 @@ bootstrap、源码或运行时配置中。只读更新检查不需要该 key；�
 负责本地账号状态：
 
 - `auth.json` 读写与默认 UID 管理。
-- 认证文件路径解析和 `0600` 权限写入。
+- 认证文件路径解析和平台对应的凭据文件写入保护。
 
 ### `internal/config`
 
@@ -79,10 +79,27 @@ bootstrap、源码或运行时配置中。只读更新检查不需要该 key；�
 
 配置拆分如下：
 
-- `auth.json`：只保存 `default_user_id` 与 `accounts[].user_id/username/refresh_token`，文件权限固定为 `0600`。
-- `config.toml`：只保存用户显式设置过的全局配置键，文件权限固定为 `0600`。
+- `auth.json`：只保存 `default_user_id` 与 `accounts[].user_id/username/refresh_token`；Unix-like 文件权限为 `0600`。
+- `config.toml`：只保存用户显式设置过的全局配置键；Unix-like 文件权限为 `0600`。
 
 运行时设置使用 `koanf` 合并 `config.toml` 与公开环境变量；`config set/unset` 使用 `tomledit` 写回，尽量保留注释、顺序和布局。
+
+`auth.json` 与 `config.toml` 共用 `internal/utils/files` 的原子写入协议：于目标同目录使用不含
+凭据内容的随机文件名创建临时文件，完成全部写入并执行 file `Sync`，关闭文件后才替换目标。Unix-like 平台
+主动把父目录与文件分别收紧为 `0700`、`0600`，原子替换后继续同步父目录；若目录同步失败，
+替换已经提交，调用方会收到真实错误但不能假定旧文件仍在。替换前的写入、file `Sync` 或关闭
+失败会保持旧目标；普通替换失败以及可恢复的部分完成失败也会保持或恢复旧目标，并清理临时
+文件。若部分完成后的恢复本身失败，调用方会收到组合错误，目标路径可能暂时缺失，但旧内容的
+同目录 recovery backup 与新内容的 source temp 都会保留供人工恢复；此时“No temp residual”不适用。
+其他临时文件清理失败不会被吞掉，而会与主错误一并返回。
+
+Windows 在替换前同样执行 file `Sync` 与关闭：目标存在时，使用带同目录唯一 recovery backup 的
+`ReplaceFileW`；首次创建使用不覆盖目标的 `MoveFileEx`。`ERROR_UNABLE_TO_MOVE_REPLACEMENT`
+保持 target/source 原名；`ERROR_UNABLE_TO_MOVE_REPLACEMENT_2` 会尝试把已移动到 backup 的旧目标
+恢复，恢复失败则保留 backup/source。成功替换后的 backup 清理失败属于已提交错误，仍按已提交
+路径处理。Windows 首次创建的文件继承父目录 ACL，替换既有目标时保留该目标 ACL；本协议不会
+主动添加或放宽 ACL，但也不声称 `Mkdir`/`Chmod` 会收紧 DACL，亦不提供 POSIX mode 或 directory
+fsync 的等价保证。
 
 `update_check_enabled` 对应 `[update] check_enabled`，默认 `true`；它只控制普通 CLI 成功后的
 自动检查，不禁用用户显式执行的 `pixiv update`。
@@ -232,7 +249,7 @@ SmartScreen 提示时，必须回到已验证的项目 GitHub Release、checksum
 
 - `appapi`、`webapi` 与 resource transport 使用 caller/SDK 注入的 HTTP client；SDK 不新增无依据固定请求超时，取消由 context 传播。
 - `pixiv mcp` 是 MCP stdio server 的显式启动方式；直接执行 `pixiv` 不会启动 MCP。
-- CLI 账号文件以明文 JSON 保存 refresh token、user ID 和可选 username，不保存 access token，文件权限固定为 `0600`；需要系统钥匙串时再扩展。
+- CLI 账号文件以明文 JSON 保存 refresh token、user ID 和可选 username，不保存 access token；Unix-like 文件权限为 `0600`，Windows 依赖父目录/既有目标 ACL，当前不主动配置私有 DACL；需要系统钥匙串时再扩展。
 - `config.toml` 采用稀疏写入，不会把默认值整份落盘。
 - `download_random_from_recommendation` 的 `count` 缺省为 5，显式值须为 1..20，超范围会返回参数错误而非静默钳制。20 限制的是请求作品数：一次请求可触发多个作品下载，每个作品又可展开为多页/多文件，全部产物元数据会进入同一 structured response；该边界避免无界放大下载工作与 JSON-RPC 输出，不截断单个作品的文件。推荐列表不足请求数时下载实际可用数量。
 - `download` 默认只返回本地路径和 `file://` URI；当 `delivery=image_content` 时，会把所有下载产物作为 MCP `ImageContent` 一并返回，不做无依据截断。

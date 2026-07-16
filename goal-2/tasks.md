@@ -112,12 +112,12 @@
 
 ## T09 — 加固 config/auth 持久化原子性与 durability
 
-- 状态：未完成
+- 状态：已完成
 - 范围：P3 一致性。`config.toml` 使用同目录临时文件、权限、Sync、原子替换；`auth.json` 在 rename 前 Sync，并按平台安全处理目录 durability。
 - 验收：临时目录集成测试覆盖成功、写/Sync/rename 失败时旧文件保留、权限不放宽、无临时残留；Windows 行为不伪造 POSIX 保证。
-- 实际：
-- 证据：
-- 风险/下一步：
+- 实际：`config.toml` 与 `auth.json` 现共用 `internal/utils/files.WritePrivateFile`：在目标同目录以随机名 staging，设置平台对应权限，完整写入、file `Sync`、关闭后才原子替换。Unix-like 替换后同步父目录；Windows 首次创建使用不覆盖目标的 `MoveFileEx`，既有目标使用带同目录唯一 recovery backup 的 `ReplaceFileW`，不伪造 POSIX directory fsync 或 DACL 保证。Windows 1177 部分完成会恢复旧 target；恢复失败则显式保留 old backup 与 new source，避免清理逻辑造成二次数据丢失；已提交后的 backup 清理错误仍继续执行并合并 parent durability。Unix-like 主动使用 `0700`/`0600`；Windows 首次创建继承父 ACL、替换既有目标保留目标 ACL，文档与测试均不再把 mode bits 当作 ACL 证据。同步更新 README、architecture、development 与 CHANGELOG。
+- 证据：1177 恢复成功用例先因缺少 outcome/recovery 模型真实 compile-RED，再 GREEN；Windows 生产接线先 cross-compile RED，再 GREEN。写失败、file Sync 失败、replace unchanged、短写、首次创建替换失败、1177 恢复成功/失败、已提交 backup 清理失败与 parent sync 合并共 10 个状态/失败用例连续运行 20 次通过；config `set/unset` 与 auth `Save/Load` 集成测试验证数据、Unix-like 权限及正常路径无临时残留。独立 spec review APPROVE；quality review 首轮发现 Windows 1176/1177 数据丢失与 ACL 过度承诺，修复后 P1 窄复审闭合，P2 文档/旧测试残留再修后最终 APPROVE。主线程通过相关三包普通/race/vet、Windows/Linux amd64 三包交叉编译、`go test ./... -count=1`、gofmt、`git diff --check` 与 `pre-commit run --all-files`。
+- 风险/下一步：Win32 错误码分类已由 Windows build-tag 测试覆盖并交叉编译，但本轮未在真实 Windows 文件系统注入 1176/1177；留待 T21 六平台矩阵复核。1177 自动恢复也失败时，为保护数据会刻意残留 recovery backup 与 source temp，此状态不适用“无临时残留”，需按组合错误人工恢复。Windows 主动配置私有 DACL 不在本任务范围，当前保证已明确限定。下一轮执行 C03；结构变化后的两份知识图谱仍按 T20 集中重建。
 
 ## C03 — 集中检查 3（T07–T09）
 

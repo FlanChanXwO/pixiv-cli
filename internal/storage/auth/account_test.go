@@ -1,7 +1,6 @@
 package auth
 
 import (
-	"errors"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -11,21 +10,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestWritePrivateFileKeepsOldAuthWhenReplacementFails(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "auth.json")
-	require.NoError(t, os.WriteFile(path, []byte("old"), DefaultAuthFileMode))
-	err := writePrivateFile(path, []byte("new"), func(string, string) error { return errors.New("replace failed") })
-	require.Error(t, err)
-	body, readErr := os.ReadFile(path)
-	require.NoError(t, readErr)
-	assert.Equal(t, "old", string(body))
-	matches, globErr := filepath.Glob(filepath.Join(filepath.Dir(path), ".auth-*"))
-	require.NoError(t, globErr)
-	assert.Empty(t, matches)
-}
-
-func TestLoadSaveAuthStoreKeepsPrivatePermissionsAndDefaultUserID(t *testing.T) {
+func TestLoadSaveAuthStorePreservesDataAndAppliesPlatformPermissions(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "pixiv", "auth.json")
+	require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o755))
+	require.NoError(t, os.WriteFile(path, []byte("old"), 0o644))
 	store := AuthStore{
 		DefaultUserID: 123,
 		Accounts: []Account{
@@ -39,17 +27,24 @@ func TestLoadSaveAuthStoreKeepsPrivatePermissionsAndDefaultUserID(t *testing.T) 
 	info, err := os.Stat(path)
 	require.NoError(t, err)
 	if runtime.GOOS == "windows" {
-		// Windows 通过 ACL 管理访问控制，os.FileMode 不保留 Unix 的 0600 位。
-		assert.Equal(t, os.FileMode(0o666), info.Mode().Perm())
+		// Windows mode bits 不能证明 DACL 私有性；这里只验证数据与原子替换行为。
 	} else {
 		assert.Equal(t, os.FileMode(DefaultAuthFileMode), info.Mode().Perm())
 	}
 
 	loaded, err := LoadAuthStore(path)
 	require.NoError(t, err)
-	assert.Equal(t, store.DefaultUserID, loaded.DefaultUserID)
-	assert.Equal(t, []int64{123, 456}, loaded.UserIDs())
-	assert.Equal(t, "alice", loaded.Accounts[0].Username)
+	assert.Equal(t, store, loaded)
+	matches, globErr := filepath.Glob(filepath.Join(filepath.Dir(path), ".pixiv-private-*"))
+	require.NoError(t, globErr)
+	assert.Empty(t, matches)
+	parent, err := os.Stat(filepath.Dir(path))
+	require.NoError(t, err)
+	if runtime.GOOS == "windows" {
+		// Windows 首次创建继承父目录 ACL，本任务不把 mode bits 当作 ACL 断言。
+	} else {
+		assert.Equal(t, os.FileMode(0o700), parent.Mode().Perm())
+	}
 }
 
 func TestLoadAuthStoreDropsMissingDefaultUserID(t *testing.T) {
