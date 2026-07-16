@@ -298,11 +298,13 @@ release workflow、位于 `pixiv/account_external_test.go` 的 Windows ACL 测�
 verifier 与其测试；这是不可改写的历史证据，不定义后续 tag 的 allowlist。
 
 当前 v0.3.0 tag 已包含与默认分支相同的顶层 `pixiv/account_external_test.go`，质量门直接运行 tag 中的
-测试，不需要也不能再次 overlay。v0.3.0 恢复 allowlist 因而精确收敛为三条实际有 diff 的路径：
-`.github/workflows/release.yml`、`scripts/releaseworkflow/main.go` 与
-`scripts/releaseworkflow/main_test.go`。覆盖通过一次 `git archive` 提取，再逐项核对工作树 diff 与空
-cached diff；重新加入 account test、任意第四路径或生产源码都必须失败，test job 也不生成 release
-artifact。该 job 成功后，独立的新 runner
+测试，不需要也不能再次 overlay。v0.3.0 恢复 allowlist 因而精确收敛为四条路径：
+`.github/workflows/release.yml`、`scripts/internal/workflowpolicy/policy.go`、
+`scripts/releaseworkflow/main.go` 与 `scripts/releaseworkflow/main_test.go`。共享 production helper 是两个
+verifier 共用的 YAML policy 实现，也是从默认分支编译 release verifier 的必要依赖；它不参与生产资产
+构建，且共享包自己的 `policy_test.go` 不进入恢复 overlay。覆盖通过一次 `git archive` 提取，再逐项
+核对工作树 diff 与空 cached diff；重新加入 account test、任意第五路径或生产源码都必须失败，test job
+也不生成 release artifact。该 job 成功后，独立的新 runner
 才会以 `clean: true` checkout tag、重新构建 selected staticlib 并生成唯一可被 publish 下载的
 `verified-release-*` assets；测试进程对环境变量、PATH 或临时目录的副作用不会进入生产 job。因此它不能用于
 替换生产资产源码、移动 tag，或重发已经存在的 Release。

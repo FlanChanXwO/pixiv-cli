@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/FlanChanXwO/pixiv-cli/scripts/internal/workflowpolicy"
 	"gopkg.in/yaml.v3"
 )
 
@@ -18,6 +19,15 @@ func TestCheckWorkflowRequiresRustFormatGate(t *testing.T) {
 	}
 	if err := checkWorkflow(body); err != nil {
 		t.Fatalf("release workflow policy rejected checked-in workflow: %v", err)
+	}
+}
+
+func TestRequireOnlyMappingKeysPreservesRequiredKeyError(t *testing.T) {
+	t.Parallel()
+
+	err := requireOnlyMappingKeys(mappingNode("unexpected", scalarNode("value")), "required")
+	if err == nil || err.Error() != "must contain exactly the required keys" {
+		t.Fatalf("requireOnlyMappingKeys() error = %v, want exact required-key error", err)
 	}
 }
 
@@ -51,7 +61,7 @@ func TestCheckWorkflowRequiresPinnedRustToolchainForReleaseBuilds(t *testing.T) 
 		t.Run(test.job, func(t *testing.T) {
 			job := jobNode(t, root, test.job)
 			env := requireMappingValue(t, job, "env")
-			toolchain, ok := mappingValue(env, "RUSTUP_TOOLCHAIN")
+			toolchain, ok := workflowpolicy.MappingValue(env, "RUSTUP_TOOLCHAIN")
 			if !ok {
 				t.Fatalf("%s RUSTUP_TOOLCHAIN is missing", test.job)
 			}
@@ -201,7 +211,7 @@ func TestCheckWorkflowRequiresProductionCacheIsolation(t *testing.T) {
 	root := releaseWorkflowRoot(t)
 	steps := requireMappingValue(t, jobNode(t, root, "build_production"), "steps")
 	with := requireMappingValue(t, steps.Content[1], "with")
-	cache, ok := mappingValue(with, "cache")
+	cache, ok := workflowpolicy.MappingValue(with, "cache")
 	if !ok || cache.Value != "false" {
 		t.Fatal("build_production setup-go must explicitly disable cross-job Go caches")
 	}
@@ -222,7 +232,7 @@ func TestCheckWorkflowRequiresSixExactProductionArtifactDownloads(t *testing.T) 
 	}
 	var got []string
 	for _, step := range steps.Content {
-		uses, ok := mappingValue(step, "uses")
+		uses, ok := workflowpolicy.MappingValue(step, "uses")
 		if !ok || uses.Value != downloadArtifactAction {
 			continue
 		}
@@ -398,7 +408,7 @@ func TestCheckWorkflowRequiresHomebrewReleaseGate(t *testing.T) {
 
 	root := releaseWorkflowRoot(t)
 	for _, name := range []string{"render_homebrew_formula", "verify_homebrew_formula", "deploy_homebrew_tap"} {
-		if _, ok := mappingValue(requireMappingValue(t, root, "jobs"), name); !ok {
+		if _, ok := workflowpolicy.MappingValue(requireMappingValue(t, root, "jobs"), name); !ok {
 			t.Errorf("release workflow is missing %q job", name)
 		}
 	}
@@ -473,9 +483,9 @@ func TestCheckRecoveryPolicyRequiresTrustedReleaseTag(t *testing.T) {
 	}
 }
 
-// v0.3.0 tag 已包含顶层 account external test；恢复只覆盖 tag 与默认分支之间
-// 实际变化的 workflow 及其 verifier，生产源码仍只来自 tag。
-func TestCheckRecoveryPolicyRequiresExactThreePathOverlay(t *testing.T) {
+// v0.3.0 tag 已包含顶层 account external test；恢复只覆盖 workflow、verifier、
+// verifier 测试和编译 verifier 必需的共享 production helper，生产资产源码仍只来自 tag。
+func TestCheckRecoveryPolicyRequiresExactFourPathOverlay(t *testing.T) {
 	t.Parallel()
 
 	const commands = `set -euo pipefail
@@ -483,15 +493,18 @@ test -z "$(git diff --name-only)"
 test -z "$(git diff --cached --name-only)"
 git archive --format=tar "$GITHUB_SHA" -- \
   .github/workflows/release.yml \
+  scripts/internal/workflowpolicy/policy.go \
   scripts/releaseworkflow/main.go \
   scripts/releaseworkflow/main_test.go | tar -xf -
 test "$(git diff --name-only)" = "$(printf '%s\n' \
   .github/workflows/release.yml \
+  scripts/internal/workflowpolicy/policy.go \
   scripts/releaseworkflow/main.go \
   scripts/releaseworkflow/main_test.go)"
 test -z "$(git diff --cached --name-only)"`
 	paths := []string{
 		".github/workflows/release.yml",
+		"scripts/internal/workflowpolicy/policy.go",
 		"scripts/releaseworkflow/main.go",
 		"scripts/releaseworkflow/main_test.go",
 	}
@@ -499,7 +512,7 @@ test -z "$(git diff --cached --name-only)"`
 	step := stepWithRun(t, jobNode(t, root, "build"), `git archive --format=tar "$GITHUB_SHA"`)
 	run := requireMappingValue(t, step, "run")
 	if run.Value != commands+"\n" {
-		t.Fatalf("recovery overlay command = %q, want exact three-path audited command", run.Value)
+		t.Fatalf("recovery overlay command = %q, want exact four-path audited command", run.Value)
 	}
 	if err := checkRecoveryPolicy(root); err != nil {
 		t.Fatalf("checked-in recovery policy rejected: %v", err)
@@ -525,7 +538,7 @@ test -z "$(git diff --cached --name-only)"`
 			t.Fatal("release recovery policy accepted the redundant account test overlay")
 		}
 	})
-	t.Run("arbitrary fourth path added", func(t *testing.T) {
+	t.Run("arbitrary fifth path added", func(t *testing.T) {
 		root := releaseWorkflowRoot(t)
 		step := stepWithRun(t, jobNode(t, root, "build"), `git archive --format=tar "$GITHUB_SHA"`)
 		run := requireMappingValue(t, step, "run")
@@ -1719,7 +1732,7 @@ func TestCheckWorkflowRequiresCanonicalPublishCheckout(t *testing.T) {
 			root := releaseWorkflowRoot(t)
 			checkout := checkoutStep(t, jobNode(t, root, "publish"))
 			with := requireMappingValue(t, checkout, "with")
-			if value, ok := mappingValue(with, test.key); ok {
+			if value, ok := workflowpolicy.MappingValue(with, test.key); ok {
 				value.Value = test.value
 			} else {
 				appendMappingValue(t, with, test.key, scalarNode(test.value))
@@ -1755,7 +1768,7 @@ func TestCheckWorkflowRequiresCanonicalValidateAndBuildCheckouts(t *testing.T) {
 				root := releaseWorkflowRoot(t)
 				checkout := checkoutStep(t, jobNode(t, root, jobName))
 				with := requireMappingValue(t, checkout, "with")
-				if value, ok := mappingValue(with, test.key); ok {
+				if value, ok := workflowpolicy.MappingValue(with, test.key); ok {
 					value.Value = test.value
 				} else {
 					appendMappingValue(t, with, test.key, scalarNode(test.value))
@@ -2071,7 +2084,7 @@ func jobNode(t *testing.T, root *yaml.Node, name string) *yaml.Node {
 
 func requireMappingValue(t *testing.T, mapping *yaml.Node, key string) *yaml.Node {
 	t.Helper()
-	value, ok := mappingValue(mapping, key)
+	value, ok := workflowpolicy.MappingValue(mapping, key)
 	if !ok {
 		t.Fatalf("mapping has no %q key", key)
 	}
@@ -2120,7 +2133,7 @@ func stepWithRun(t *testing.T, job *yaml.Node, command string) *yaml.Node {
 	t.Helper()
 	steps := requireMappingValue(t, job, "steps")
 	for _, step := range steps.Content {
-		run, ok := mappingValue(step, "run")
+		run, ok := workflowpolicy.MappingValue(step, "run")
 		if ok && strings.Contains(run.Value, command) {
 			return step
 		}
@@ -2133,7 +2146,7 @@ func checkoutStep(t *testing.T, job *yaml.Node) *yaml.Node {
 	t.Helper()
 	steps := requireMappingValue(t, job, "steps")
 	for _, step := range steps.Content {
-		uses, ok := mappingValue(step, "uses")
+		uses, ok := workflowpolicy.MappingValue(step, "uses")
 		if ok && strings.HasPrefix(uses.Value, "actions/checkout@") {
 			return step
 		}

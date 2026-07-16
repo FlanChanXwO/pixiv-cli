@@ -9,6 +9,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/FlanChanXwO/pixiv-cli/scripts/internal/workflowpolicy"
 	"gopkg.in/yaml.v3"
 )
 
@@ -16,10 +17,6 @@ import (
 var actionReferencePattern = regexp.MustCompile(`^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+@[0-9a-f]{40}$`)
 
 const canonicalCheckoutAction = "actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5"
-
-// 解析后的 YAML scalar 保留 GitHub expression。任一 `${{ ... }}` 内独立的 secrets context
-// （包括 bare、toJSON(secrets)、dot 和 bracket）都视为凭据引用，不能依赖具体访问语法。
-var secretReferencePattern = regexp.MustCompile(`(?is)\$\{\{[^}]*\bsecrets\b[^}]*\}\}`)
 
 // releaseMatrixTargets 将 runner、Go 平台、Rust target、生成已提交 staticlib 的 Rust toolchain
 // 和 release asset 名称绑为同一集合，防止任一字段的局部改动让六平台发布遗漏或错配。
@@ -90,7 +87,7 @@ func checkWorkflow(body []byte) error {
 	if err := yaml.Unmarshal(body, &document); err != nil {
 		return fmt.Errorf("parse YAML: %w", err)
 	}
-	if err := rejectAmbiguousYAML(&document); err != nil {
+	if err := workflowpolicy.RejectAmbiguousYAML(&document); err != nil {
 		return err
 	}
 	if document.Kind != yaml.DocumentNode || len(document.Content) != 1 {
@@ -112,42 +109,42 @@ func checkWorkflow(body []byte) error {
 	if err := checkGlobalPermissions(root); err != nil {
 		return err
 	}
-	jobs, ok := mappingValue(root, "jobs")
+	jobs, ok := workflowpolicy.MappingValue(root, "jobs")
 	if !ok || jobs.Kind != yaml.MappingNode {
 		return errors.New("workflow must have a jobs mapping")
 	}
 	if err := requireOnlyMappingKeys(jobs, "validate", "build", "build_production", "verify_release_source", "publish", "render_homebrew_formula", "verify_homebrew_formula", "deploy_homebrew_tap"); err != nil {
 		return fmt.Errorf("workflow jobs: %w", err)
 	}
-	validate, ok := mappingValue(jobs, "validate")
+	validate, ok := workflowpolicy.MappingValue(jobs, "validate")
 	if !ok || validate.Kind != yaml.MappingNode {
 		return errors.New("workflow must have a validate job")
 	}
-	build, ok := mappingValue(jobs, "build")
+	build, ok := workflowpolicy.MappingValue(jobs, "build")
 	if !ok || build.Kind != yaml.MappingNode {
 		return errors.New("workflow must have a build job")
 	}
-	productionBuild, ok := mappingValue(jobs, "build_production")
+	productionBuild, ok := workflowpolicy.MappingValue(jobs, "build_production")
 	if !ok || productionBuild.Kind != yaml.MappingNode {
 		return errors.New("workflow must have a build_production job")
 	}
-	verifyReleaseSource, ok := mappingValue(jobs, "verify_release_source")
+	verifyReleaseSource, ok := workflowpolicy.MappingValue(jobs, "verify_release_source")
 	if !ok || verifyReleaseSource.Kind != yaml.MappingNode {
 		return errors.New("workflow must have a verify_release_source job")
 	}
-	publish, ok := mappingValue(jobs, "publish")
+	publish, ok := workflowpolicy.MappingValue(jobs, "publish")
 	if !ok || publish.Kind != yaml.MappingNode {
 		return errors.New("workflow must have a publish job")
 	}
-	renderHomebrew, ok := mappingValue(jobs, "render_homebrew_formula")
+	renderHomebrew, ok := workflowpolicy.MappingValue(jobs, "render_homebrew_formula")
 	if !ok || renderHomebrew.Kind != yaml.MappingNode {
 		return errors.New("workflow must have a render_homebrew_formula job")
 	}
-	verifyHomebrew, ok := mappingValue(jobs, "verify_homebrew_formula")
+	verifyHomebrew, ok := workflowpolicy.MappingValue(jobs, "verify_homebrew_formula")
 	if !ok || verifyHomebrew.Kind != yaml.MappingNode {
 		return errors.New("workflow must have a verify_homebrew_formula job")
 	}
-	deployHomebrew, ok := mappingValue(jobs, "deploy_homebrew_tap")
+	deployHomebrew, ok := workflowpolicy.MappingValue(jobs, "deploy_homebrew_tap")
 	if !ok || deployHomebrew.Kind != yaml.MappingNode {
 		return errors.New("workflow must have a deploy_homebrew_tap job")
 	}
@@ -195,34 +192,34 @@ func checkWorkflow(body []byte) error {
 }
 
 func checkTagTrigger(root *yaml.Node) error {
-	on, ok := mappingValue(root, "on")
+	on, ok := workflowpolicy.MappingValue(root, "on")
 	if !ok || on.Kind != yaml.MappingNode {
 		return errors.New("workflow must have an on mapping")
 	}
 	if err := requireOnlyMappingKeys(on, "push", "workflow_dispatch"); err != nil {
 		return errors.New("on must contain only push and workflow_dispatch triggers")
 	}
-	push, ok := mappingValue(on, "push")
+	push, ok := workflowpolicy.MappingValue(on, "push")
 	if !ok || push.Kind != yaml.MappingNode {
 		return errors.New("on.push must be a mapping")
 	}
 	if err := requireOnlyMappingKeys(push, "tags"); err != nil {
 		return errors.New("on.push must contain only tags")
 	}
-	tags, ok := mappingValue(push, "tags")
+	tags, ok := workflowpolicy.MappingValue(push, "tags")
 	if !ok || tags.Kind != yaml.SequenceNode || len(tags.Content) != 1 || tags.Content[0].Value != "v[0-9]*" {
 		return errors.New("on.push.tags must equal [v[0-9]*]")
 	}
-	dispatch, ok := mappingValue(on, "workflow_dispatch")
+	dispatch, ok := workflowpolicy.MappingValue(on, "workflow_dispatch")
 	if !ok || requireOnlyMappingKeys(dispatch, "inputs") != nil {
 		return errors.New("workflow_dispatch must contain only the exact release_tag input")
 	}
-	inputs, ok := mappingValue(dispatch, "inputs")
+	inputs, ok := workflowpolicy.MappingValue(dispatch, "inputs")
 	if !ok || requireOnlyMappingKeys(inputs, "release_tag") != nil {
 		return errors.New("workflow_dispatch must contain only the exact release_tag input")
 	}
-	releaseTag, ok := mappingValue(inputs, "release_tag")
-	if !ok || requireOnlyMappingKeys(releaseTag, "description", "required", "type") != nil || requireScalar(releaseTag, "required", "true") != nil || requireScalar(releaseTag, "type", "string") != nil {
+	releaseTag, ok := workflowpolicy.MappingValue(inputs, "release_tag")
+	if !ok || requireOnlyMappingKeys(releaseTag, "description", "required", "type") != nil || workflowpolicy.RequireScalar(releaseTag, "required", "true") != nil || workflowpolicy.RequireScalar(releaseTag, "type", "string") != nil {
 		return errors.New("workflow_dispatch release_tag must be a required string")
 	}
 	return nil
@@ -232,20 +229,20 @@ func checkRecoveryPolicy(root *yaml.Node) error {
 	if err := checkTagTrigger(root); err != nil {
 		return err
 	}
-	env, ok := mappingValue(root, "env")
-	if !ok || requireOnlyMappingKeys(env, "RELEASE_TAG") != nil || requireScalar(env, "RELEASE_TAG", "${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}") != nil {
+	env, ok := workflowpolicy.MappingValue(root, "env")
+	if !ok || requireOnlyMappingKeys(env, "RELEASE_TAG") != nil || workflowpolicy.RequireScalar(env, "RELEASE_TAG", "${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}") != nil {
 		return errors.New("workflow must bind RELEASE_TAG only to the push tag or required dispatch input")
 	}
-	jobs, ok := mappingValue(root, "jobs")
+	jobs, ok := workflowpolicy.MappingValue(root, "jobs")
 	if !ok {
 		return errors.New("workflow must have jobs for recovery policy")
 	}
-	build, ok := mappingValue(jobs, "build")
+	build, ok := workflowpolicy.MappingValue(jobs, "build")
 	if !ok {
 		return errors.New("workflow must have a build job for recovery policy")
 	}
-	buildEnv, ok := mappingValue(build, "env")
-	if !ok || requireOnlyMappingKeys(buildEnv, "CC", "RUSTUP_TOOLCHAIN", "GIT_CONFIG_COUNT", "GIT_CONFIG_KEY_0", "GIT_CONFIG_VALUE_0") != nil || requireScalar(buildEnv, "CC", "${{ matrix.cc }}") != nil || requireScalar(buildEnv, "RUSTUP_TOOLCHAIN", "${{ matrix.rust_toolchain }}") != nil || requireScalar(buildEnv, "GIT_CONFIG_COUNT", "1") != nil || requireScalar(buildEnv, "GIT_CONFIG_KEY_0", "core.autocrlf") != nil || requireScalar(buildEnv, "GIT_CONFIG_VALUE_0", "false") != nil {
+	buildEnv, ok := workflowpolicy.MappingValue(build, "env")
+	if !ok || requireOnlyMappingKeys(buildEnv, "CC", "RUSTUP_TOOLCHAIN", "GIT_CONFIG_COUNT", "GIT_CONFIG_KEY_0", "GIT_CONFIG_VALUE_0") != nil || workflowpolicy.RequireScalar(buildEnv, "CC", "${{ matrix.cc }}") != nil || workflowpolicy.RequireScalar(buildEnv, "RUSTUP_TOOLCHAIN", "${{ matrix.rust_toolchain }}") != nil || workflowpolicy.RequireScalar(buildEnv, "GIT_CONFIG_COUNT", "1") != nil || workflowpolicy.RequireScalar(buildEnv, "GIT_CONFIG_KEY_0", "core.autocrlf") != nil || workflowpolicy.RequireScalar(buildEnv, "GIT_CONFIG_VALUE_0", "false") != nil {
 		return errors.New("build job must bind the audited compiler, Rust toolchain, and immutable source byte checkout")
 	}
 	matrix := mustMappingPath(build, "strategy", "matrix")
@@ -255,7 +252,7 @@ func checkRecoveryPolicy(root *yaml.Node) error {
 	if err := checkReleaseMatrix(matrix); err != nil {
 		return err
 	}
-	productionBuild, ok := mappingValue(jobs, "build_production")
+	productionBuild, ok := workflowpolicy.MappingValue(jobs, "build_production")
 	if !ok || productionBuild.Kind != yaml.MappingNode {
 		return errors.New("workflow must have an isolated production build job for recovery")
 	}
@@ -327,7 +324,7 @@ func stepIndexWithRunFragment(steps []*yaml.Node, fragment string) int {
 func actionStepIndices(steps []*yaml.Node, action string) []int {
 	var indices []int
 	for index, step := range steps {
-		uses, ok := mappingValue(step, "uses")
+		uses, ok := workflowpolicy.MappingValue(step, "uses")
 		if ok && uses.Kind == yaml.ScalarNode && uses.Value == action {
 			indices = append(indices, index)
 		}
@@ -370,7 +367,7 @@ func requireCanonicalBuildSteps(steps []*yaml.Node) error {
 	if err := requireRecoveryOverlayStep(steps[7]); err != nil {
 		return err
 	}
-	if err := requireScalar(steps[7], "name", "Apply the audited test-only recovery overlay"); err != nil {
+	if err := workflowpolicy.RequireScalar(steps[7], "name", "Apply the audited test-only recovery overlay"); err != nil {
 		return errors.New("recovery overlay must keep its canonical name")
 	}
 	if err := requireOverlayQualitySequence(steps, 7, 15); err != nil {
@@ -383,14 +380,14 @@ func requireCanonicalNamedRunStep(step *yaml.Node, name, command string) error {
 	if err := requireCanonicalRunStep(step, name, command); err != nil {
 		return err
 	}
-	if err := requireScalar(step, "name", name); err != nil {
+	if err := workflowpolicy.RequireScalar(step, "name", name); err != nil {
 		return fmt.Errorf("%s must keep its canonical name", name)
 	}
 	return nil
 }
 
 func requireCanonicalNamedRunStepInDirectory(step *yaml.Node, name, directory, command string) error {
-	if err := requireOnlyMappingKeys(step, "name", "shell", "working-directory", "run"); err != nil || requireScalar(step, "name", name) != nil || requireScalar(step, "shell", "bash") != nil || requireScalar(step, "working-directory", directory) != nil || requireScalar(step, "run", command) != nil {
+	if err := requireOnlyMappingKeys(step, "name", "shell", "working-directory", "run"); err != nil || workflowpolicy.RequireScalar(step, "name", name) != nil || workflowpolicy.RequireScalar(step, "shell", "bash") != nil || workflowpolicy.RequireScalar(step, "working-directory", directory) != nil || workflowpolicy.RequireScalar(step, "run", command) != nil {
 		return fmt.Errorf("%s must be the exact canonical step in %s", name, directory)
 	}
 	return nil
@@ -403,10 +400,12 @@ test -z "$(git diff --name-only)"
 test -z "$(git diff --cached --name-only)"
 git archive --format=tar "$GITHUB_SHA" -- \
   .github/workflows/release.yml \
+  scripts/internal/workflowpolicy/policy.go \
   scripts/releaseworkflow/main.go \
   scripts/releaseworkflow/main_test.go | tar -xf -
 test "$(git diff --name-only)" = "$(printf '%s\n' \
   .github/workflows/release.yml \
+  scripts/internal/workflowpolicy/policy.go \
   scripts/releaseworkflow/main.go \
   scripts/releaseworkflow/main_test.go)"
 test -z "$(git diff --cached --name-only)"`
@@ -437,7 +436,7 @@ func requireOverlayQualitySequence(steps []*yaml.Node, overlayIndex, freshChecko
 		if err := requireOverlayQualityGate(step, gate.name, gate.command); err != nil {
 			return errors.New("overlay quality sequence must preserve exact canonical gate commands and order")
 		}
-		if err := requireScalar(step, "name", gate.name); err != nil {
+		if err := workflowpolicy.RequireScalar(step, "name", gate.name); err != nil {
 			return errors.New("overlay quality sequence must preserve exact canonical gate names and order")
 		}
 	}
@@ -505,10 +504,10 @@ func requireCanonicalConditionalRunStep(step *yaml.Node, context, condition, can
 	if err := requireOnlyMappingKeys(step, "name", "if", "shell", "run"); err != nil {
 		return fmt.Errorf("%s must be the canonical conditional bash step", context)
 	}
-	if err := requireScalar(step, "if", condition); err != nil {
+	if err := workflowpolicy.RequireScalar(step, "if", condition); err != nil {
 		return fmt.Errorf("%s must use only the approved condition", context)
 	}
-	if err := requireScalar(step, "shell", "bash"); err != nil || !equalCommands(splitCommands(requireRunValue(step)), splitCommands(canonical)) {
+	if err := workflowpolicy.RequireScalar(step, "shell", "bash"); err != nil || !equalCommands(splitCommands(requireRunValue(step)), splitCommands(canonical)) {
 		return fmt.Errorf("%s must use the exact command sequence", context)
 	}
 	return nil
@@ -518,7 +517,7 @@ func mustMappingPath(root *yaml.Node, keys ...string) *yaml.Node {
 	current := root
 	for _, key := range keys {
 		var ok bool
-		current, ok = mappingValue(current, key)
+		current, ok = workflowpolicy.MappingValue(current, key)
 		if !ok {
 			return nil
 		}
@@ -527,7 +526,7 @@ func mustMappingPath(root *yaml.Node, keys ...string) *yaml.Node {
 }
 
 func checkGlobalPermissions(root *yaml.Node) error {
-	permissions, ok := mappingValue(root, "permissions")
+	permissions, ok := workflowpolicy.MappingValue(root, "permissions")
 	if !ok || permissions.Kind != yaml.MappingNode || len(permissions.Content) != 0 {
 		return errors.New("global permissions must be an empty mapping")
 	}
@@ -585,10 +584,10 @@ func checkValidateJob(job *yaml.Node) error {
 	if err := requireOnlyMappingKeys(job, "name", "runs-on", "permissions", "steps"); err != nil {
 		return fmt.Errorf("validate job: %w", err)
 	}
-	if err := requireScalar(job, "runs-on", "ubuntu-24.04"); err != nil {
+	if err := workflowpolicy.RequireScalar(job, "runs-on", "ubuntu-24.04"); err != nil {
 		return fmt.Errorf("validate job: %w", err)
 	}
-	if _, exists := mappingValue(job, "needs"); exists {
+	if _, exists := workflowpolicy.MappingValue(job, "needs"); exists {
 		return errors.New("validate job must not depend on another job")
 	}
 	if err := requireContentsPermission(job, "read"); err != nil {
@@ -624,10 +623,10 @@ func checkBuildJob(job *yaml.Node) error {
 	if err := requireOnlyMappingKeys(job, "name", "needs", "runs-on", "permissions", "env", "strategy", "steps"); err != nil {
 		return fmt.Errorf("build job: %w", err)
 	}
-	if err := requireScalar(job, "needs", "validate"); err != nil {
+	if err := workflowpolicy.RequireScalar(job, "needs", "validate"); err != nil {
 		return fmt.Errorf("build job: %w", err)
 	}
-	if err := requireScalar(job, "runs-on", "${{ matrix.runner }}"); err != nil {
+	if err := workflowpolicy.RequireScalar(job, "runs-on", "${{ matrix.runner }}"); err != nil {
 		return fmt.Errorf("build job: %w", err)
 	}
 	if err := requireContentsPermission(job, "read"); err != nil {
@@ -640,14 +639,14 @@ func checkBuildJob(job *yaml.Node) error {
 	if err := requireCanonicalCheckout(steps[0], "build job", checkoutWithRequirement{"fetch-depth", "0"}, checkoutWithRequirement{"persist-credentials", "false"}, checkoutWithRequirement{"ref", "${{ env.RELEASE_TAG }}"}); err != nil {
 		return err
 	}
-	strategy, ok := mappingValue(job, "strategy")
+	strategy, ok := workflowpolicy.MappingValue(job, "strategy")
 	if !ok || strategy.Kind != yaml.MappingNode {
 		return errors.New("build job must have a matrix strategy")
 	}
-	if err := requireScalar(strategy, "fail-fast", "false"); err != nil {
+	if err := workflowpolicy.RequireScalar(strategy, "fail-fast", "false"); err != nil {
 		return fmt.Errorf("build strategy: %w", err)
 	}
-	matrix, ok := mappingValue(strategy, "matrix")
+	matrix, ok := workflowpolicy.MappingValue(strategy, "matrix")
 	if !ok || matrix.Kind != yaml.MappingNode {
 		return errors.New("build job must have a matrix")
 	}
@@ -709,24 +708,24 @@ func checkProductionBuildJob(job *yaml.Node) error {
 	if err := requireOnlyMappingKeys(job, "name", "needs", "runs-on", "permissions", "env", "strategy", "steps"); err != nil {
 		return fmt.Errorf("build_production job: %w", err)
 	}
-	if err := requireScalar(job, "name", "Build production ${{ matrix.goos }}/${{ matrix.goarch }}"); err != nil {
+	if err := workflowpolicy.RequireScalar(job, "name", "Build production ${{ matrix.goos }}/${{ matrix.goarch }}"); err != nil {
 		return fmt.Errorf("build_production job: %w", err)
 	}
-	if err := requireScalar(job, "needs", "build"); err != nil {
+	if err := workflowpolicy.RequireScalar(job, "needs", "build"); err != nil {
 		return fmt.Errorf("build_production job: %w", err)
 	}
-	if err := requireScalar(job, "runs-on", "${{ matrix.runner }}"); err != nil {
+	if err := workflowpolicy.RequireScalar(job, "runs-on", "${{ matrix.runner }}"); err != nil {
 		return fmt.Errorf("build_production job: %w", err)
 	}
 	if err := requireContentsPermission(job, "read"); err != nil {
 		return fmt.Errorf("build_production job: %w", err)
 	}
-	env, ok := mappingValue(job, "env")
-	if !ok || requireOnlyMappingKeys(env, "CC", "RUSTUP_TOOLCHAIN") != nil || requireScalar(env, "CC", "${{ matrix.cc }}") != nil || requireScalar(env, "RUSTUP_TOOLCHAIN", "${{ matrix.rust_toolchain }}") != nil {
+	env, ok := workflowpolicy.MappingValue(job, "env")
+	if !ok || requireOnlyMappingKeys(env, "CC", "RUSTUP_TOOLCHAIN") != nil || workflowpolicy.RequireScalar(env, "CC", "${{ matrix.cc }}") != nil || workflowpolicy.RequireScalar(env, "RUSTUP_TOOLCHAIN", "${{ matrix.rust_toolchain }}") != nil {
 		return errors.New("build_production job must bind CC and the Rust toolchain from the audited release policy")
 	}
-	strategy, ok := mappingValue(job, "strategy")
-	if !ok || requireOnlyMappingKeys(strategy, "fail-fast", "matrix") != nil || requireScalar(strategy, "fail-fast", "false") != nil {
+	strategy, ok := workflowpolicy.MappingValue(job, "strategy")
+	if !ok || requireOnlyMappingKeys(strategy, "fail-fast", "matrix") != nil || workflowpolicy.RequireScalar(strategy, "fail-fast", "false") != nil {
 		return errors.New("build_production strategy must contain only fail-fast: false and the release matrix")
 	}
 	matrix := mustMappingPath(job, "strategy", "matrix")
@@ -749,16 +748,16 @@ func checkProductionBuildJob(job *yaml.Node) error {
 	if err := requireCanonicalNamedRunStep(steps[3], "Install the pinned native Rust toolchain", prodRustInstallCommand); err != nil {
 		return err
 	}
-	if err := requireProductionRebuildStep(steps[4]); err != nil || requireScalar(steps[4], "name", "Rebuild the selected static library from the immutable tag") != nil {
+	if err := requireProductionRebuildStep(steps[4]); err != nil || workflowpolicy.RequireScalar(steps[4], "name", "Rebuild the selected static library from the immutable tag") != nil {
 		return errors.New("build_production job must rebuild the selected static library from the immutable tag")
 	}
 	if err := requireCanonicalNamedRunStep(steps[5], "Check the generated diff", "git diff --check"); err != nil {
 		return err
 	}
-	if err := requireProductionBuildStep(steps[6]); err != nil || requireScalar(steps[6], "name", "Build the versioned native executable") != nil {
+	if err := requireProductionBuildStep(steps[6]); err != nil || workflowpolicy.RequireScalar(steps[6], "name", "Build the versioned native executable") != nil {
 		return errors.New("build_production job must build the tag-bound executable")
 	}
-	if err := requireProductionPackageStep(steps[7]); err != nil || requireScalar(steps[7], "name", "Package the fixed-name platform asset") != nil {
+	if err := requireProductionPackageStep(steps[7]); err != nil || workflowpolicy.RequireScalar(steps[7], "name", "Package the fixed-name platform asset") != nil {
 		return errors.New("build_production job must package the tag-bound executable")
 	}
 	return requireExactActionStep(steps[8], "verified release build artifact upload", uploadArtifactAction, map[string]string{
@@ -769,58 +768,15 @@ func checkProductionBuildJob(job *yaml.Node) error {
 	})
 }
 
-// rejectAmbiguousYAML 在策略读取字段前拒绝 GitHub Actions 与 yaml.v3 可能采用不同语义的
-// YAML 构造。mappingValue 只会返回第一个同名字段，故必须先消除重复键和 merge 的歧义。
-func rejectAmbiguousYAML(node *yaml.Node) error {
-	if node == nil {
-		return errors.New("workflow must not contain nil YAML nodes")
-	}
-	if node.Kind == yaml.AliasNode {
-		return errors.New("workflow must not use YAML aliases")
-	}
-	if node.Kind == yaml.MappingNode {
-		if len(node.Content)%2 != 0 {
-			return errors.New("workflow mappings must contain key-value pairs")
-		}
-		keys := make(map[string]struct{}, len(node.Content)/2)
-		for index := 0; index < len(node.Content); index += 2 {
-			key, value := node.Content[index], node.Content[index+1]
-			if key.Kind != yaml.ScalarNode {
-				return errors.New("workflow mapping keys must be scalars")
-			}
-			if key.Value == "<<" {
-				return errors.New("workflow must not use YAML merge keys")
-			}
-			if _, duplicate := keys[key.Value]; duplicate {
-				return fmt.Errorf("workflow must not contain duplicate mapping key %q", key.Value)
-			}
-			keys[key.Value] = struct{}{}
-			if err := rejectAmbiguousYAML(key); err != nil {
-				return err
-			}
-			if err := rejectAmbiguousYAML(value); err != nil {
-				return err
-			}
-		}
-		return nil
-	}
-	for _, child := range node.Content {
-		if err := rejectAmbiguousYAML(child); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
 func requireNoWorkflowExecutionOverrides(root *yaml.Node) error {
-	if _, exists := mappingValue(root, "defaults"); exists {
+	if _, exists := workflowpolicy.MappingValue(root, "defaults"); exists {
 		return errors.New("workflow root must not declare defaults")
 	}
 	return nil
 }
 
 func requireNoEnvironment(job *yaml.Node, jobName string) error {
-	if _, exists := mappingValue(job, "environment"); exists {
+	if _, exists := workflowpolicy.MappingValue(job, "environment"); exists {
 		return fmt.Errorf("%s must not declare an environment", jobName)
 	}
 	return nil
@@ -828,11 +784,11 @@ func requireNoEnvironment(job *yaml.Node, jobName string) error {
 
 func requireRequiredJobExecution(job *yaml.Node, jobName string) error {
 	for _, key := range []string{"if", "continue-on-error"} {
-		if _, exists := mappingValue(job, key); exists {
+		if _, exists := workflowpolicy.MappingValue(job, key); exists {
 			return fmt.Errorf("%s must not define if or continue-on-error", jobName)
 		}
 	}
-	if _, exists := mappingValue(job, "defaults"); exists {
+	if _, exists := workflowpolicy.MappingValue(job, "defaults"); exists {
 		return fmt.Errorf("%s must not declare defaults", jobName)
 	}
 	return nil
@@ -856,7 +812,7 @@ func requireIndependentQualityGate(job *yaml.Node, directory, command string) er
 	}
 	step := matches[0]
 	for _, key := range []string{"continue-on-error", "if"} {
-		if _, exists := mappingValue(step, key); exists {
+		if _, exists := workflowpolicy.MappingValue(step, key); exists {
 			return fmt.Errorf("build quality gate %s must not define continue-on-error or if", command)
 		}
 	}
@@ -867,16 +823,16 @@ func requireIndependentQualityGate(job *yaml.Node, directory, command string) er
 	if err := requireOnlyMappingKeys(step, keys...); err != nil {
 		return fmt.Errorf("build quality gate %s must be an independent direct bash step", command)
 	}
-	if err := requireScalar(step, "shell", "bash"); err != nil {
+	if err := workflowpolicy.RequireScalar(step, "shell", "bash"); err != nil {
 		return fmt.Errorf("build quality gate %s must use shell bash", command)
 	}
 	if directory == "" {
-		if _, exists := mappingValue(step, "working-directory"); exists {
+		if _, exists := workflowpolicy.MappingValue(step, "working-directory"); exists {
 			return fmt.Errorf("build quality gate %s must run from the repository root", command)
 		}
 		return nil
 	}
-	if err := requireScalar(step, "working-directory", directory); err != nil {
+	if err := workflowpolicy.RequireScalar(step, "working-directory", directory); err != nil {
 		return fmt.Errorf("build quality gate %s must run from %s", command, directory)
 	}
 	return nil
@@ -886,7 +842,7 @@ func checkReleaseMatrix(matrix *yaml.Node) error {
 	if err := requireOnlyMappingKeys(matrix, "include"); err != nil {
 		return errors.New("build matrix must contain only the six release targets")
 	}
-	include, ok := mappingValue(matrix, "include")
+	include, ok := workflowpolicy.MappingValue(matrix, "include")
 	if !ok || include.Kind != yaml.SequenceNode || len(include.Content) != len(releaseMatrixTargets) {
 		return errors.New("build matrix must contain exactly the six release targets")
 	}
@@ -900,7 +856,7 @@ func checkReleaseMatrix(matrix *yaml.Node) error {
 		}
 		fields := make([]string, 0, 7)
 		for _, key := range []string{"runner", "goos", "goarch", "rust_target", "rust_toolchain", "artifact", "cc"} {
-			value, ok := mappingValue(entry, key)
+			value, ok := workflowpolicy.MappingValue(entry, key)
 			if !ok || value.Kind != yaml.ScalarNode {
 				return errors.New("build matrix must contain exactly the six release targets")
 			}
@@ -928,10 +884,10 @@ func checkVerifyReleaseSourceJob(job *yaml.Node) error {
 	if err := requireOnlyMappingKeys(job, "name", "needs", "runs-on", "permissions", "steps"); err != nil {
 		return fmt.Errorf("verify_release_source job: %w", err)
 	}
-	if err := requireScalar(job, "needs", "build_production"); err != nil {
+	if err := workflowpolicy.RequireScalar(job, "needs", "build_production"); err != nil {
 		return fmt.Errorf("verify_release_source job: %w", err)
 	}
-	if err := requireScalar(job, "runs-on", "ubuntu-24.04"); err != nil {
+	if err := workflowpolicy.RequireScalar(job, "runs-on", "ubuntu-24.04"); err != nil {
 		return fmt.Errorf("verify_release_source job: %w", err)
 	}
 	if err := requireContentsPermission(job, "read"); err != nil {
@@ -957,8 +913,8 @@ func checkVerifyReleaseSourceJob(job *yaml.Node) error {
 	if !hasStepCommand(ancestryGate, "git show-ref --verify --quiet \"refs/remotes/origin/$DEFAULT_BRANCH\"") {
 		return errors.New("verify_release_source default-branch ancestry gate must verify origin/$DEFAULT_BRANCH")
 	}
-	env, ok := mappingValue(ancestryGate, "env")
-	if !ok || requireOnlyMappingKeys(env, "DEFAULT_BRANCH") != nil || requireScalar(env, "DEFAULT_BRANCH", "${{ github.event.repository.default_branch }}") != nil {
+	env, ok := workflowpolicy.MappingValue(ancestryGate, "env")
+	if !ok || requireOnlyMappingKeys(env, "DEFAULT_BRANCH") != nil || workflowpolicy.RequireScalar(env, "DEFAULT_BRANCH", "${{ github.event.repository.default_branch }}") != nil {
 		return errors.New("verify_release_source default-branch ancestry gate must derive DEFAULT_BRANCH from the release repository")
 	}
 	return nil
@@ -975,10 +931,10 @@ func requireCanonicalCheckout(step *yaml.Node, jobName string, requirements ...c
 	if err := requireOnlyMappingKeys(step, "uses", "with"); err != nil {
 		return fmt.Errorf("%s must use the canonical checkout", jobName)
 	}
-	if err := requireScalar(step, "uses", canonicalCheckoutAction); err != nil {
+	if err := workflowpolicy.RequireScalar(step, "uses", canonicalCheckoutAction); err != nil {
 		return fmt.Errorf("%s must use the canonical checkout", jobName)
 	}
-	with, ok := mappingValue(step, "with")
+	with, ok := workflowpolicy.MappingValue(step, "with")
 	if !ok {
 		return fmt.Errorf("%s must use the canonical checkout", jobName)
 	}
@@ -990,7 +946,7 @@ func requireCanonicalCheckout(step *yaml.Node, jobName string, requirements ...c
 		return fmt.Errorf("%s must use the canonical checkout", jobName)
 	}
 	for _, requirement := range requirements {
-		if err := requireScalar(with, requirement.key, requirement.value); err != nil {
+		if err := workflowpolicy.RequireScalar(with, requirement.key, requirement.value); err != nil {
 			return fmt.Errorf("%s must use the canonical checkout", jobName)
 		}
 	}
@@ -1031,13 +987,13 @@ func checkPublishJob(job *yaml.Node) (int, []*yaml.Node, error) {
 	if err := requireOnlyMappingKeys(job, "name", "needs", "runs-on", "environment", "permissions", "steps"); err != nil {
 		return 0, nil, fmt.Errorf("publish job: %w", err)
 	}
-	if err := requireScalar(job, "needs", "verify_release_source"); err != nil {
+	if err := workflowpolicy.RequireScalar(job, "needs", "verify_release_source"); err != nil {
 		return 0, nil, fmt.Errorf("publish job: %w", err)
 	}
-	if err := requireScalar(job, "runs-on", "ubuntu-24.04"); err != nil {
+	if err := workflowpolicy.RequireScalar(job, "runs-on", "ubuntu-24.04"); err != nil {
 		return 0, nil, fmt.Errorf("publish job: %w", err)
 	}
-	if err := requireScalar(job, "environment", "release"); err != nil {
+	if err := workflowpolicy.RequireScalar(job, "environment", "release"); err != nil {
 		return 0, nil, errors.New("publish environment must be release")
 	}
 	if err := requireContentsPermission(job, "write"); err != nil {
@@ -1061,7 +1017,7 @@ func checkPublishJob(job *yaml.Node) (int, []*yaml.Node, error) {
 		return 0, nil, err
 	}
 	for _, step := range steps {
-		run, hasRun := mappingValue(step, "run")
+		run, hasRun := workflowpolicy.MappingValue(step, "run")
 		if hasRun && strings.Contains(run.Value, "${RELEASE_TAG#v}") && strings.Contains(run.Value, "*-*") {
 			return 0, nil, errors.New("publish job must not classify prereleases with a hyphen shell pattern")
 		}
@@ -1145,15 +1101,15 @@ func requireExactActionStep(step *yaml.Node, context, action string, withValues 
 	if err := requireOnlyMappingKeys(step, "uses", "with"); err != nil {
 		return fmt.Errorf("%s must be the exact pinned action step", context)
 	}
-	if err := requireScalar(step, "uses", action); err != nil {
+	if err := workflowpolicy.RequireScalar(step, "uses", action); err != nil {
 		return fmt.Errorf("%s must be the exact pinned action step", context)
 	}
-	with, ok := mappingValue(step, "with")
+	with, ok := workflowpolicy.MappingValue(step, "with")
 	if !ok || with.Kind != yaml.MappingNode || len(with.Content) != len(withValues)*2 {
 		return fmt.Errorf("%s must be the exact pinned action step", context)
 	}
 	for key, value := range withValues {
-		if err := requireScalar(with, key, value); err != nil {
+		if err := workflowpolicy.RequireScalar(with, key, value); err != nil {
 			return fmt.Errorf("%s must be the exact pinned action step", context)
 		}
 	}
@@ -1164,7 +1120,7 @@ func requireCanonicalRunStep(step *yaml.Node, context, canonical string) error {
 	if err := requireOnlyMappingKeys(step, "name", "shell", "run"); err != nil {
 		return fmt.Errorf("%s must be the canonical direct bash step", context)
 	}
-	if err := requireScalar(step, "shell", "bash"); err != nil {
+	if err := workflowpolicy.RequireScalar(step, "shell", "bash"); err != nil {
 		return fmt.Errorf("%s must be the canonical direct bash step", context)
 	}
 	if !equalCommands(splitCommands(requireRunValue(step)), splitCommands(canonical)) {
@@ -1206,10 +1162,10 @@ printf '%s\n' "$formula_name" > staging-formula/formula-name`
 	if err := requireOnlyMappingKeys(job, "name", "needs", "runs-on", "permissions", "steps"); err != nil {
 		return fmt.Errorf("render_homebrew_formula job: %w", err)
 	}
-	if err := requireScalar(job, "needs", "publish"); err != nil {
+	if err := workflowpolicy.RequireScalar(job, "needs", "publish"); err != nil {
 		return fmt.Errorf("render_homebrew_formula job: %w", err)
 	}
-	if err := requireScalar(job, "runs-on", "ubuntu-24.04"); err != nil {
+	if err := workflowpolicy.RequireScalar(job, "runs-on", "ubuntu-24.04"); err != nil {
 		return fmt.Errorf("render_homebrew_formula job: %w", err)
 	}
 	if err := requireContentsPermission(job, "read"); err != nil {
@@ -1274,20 +1230,20 @@ pixiv version --json | python3 -c 'import json, sys; actual = json.load(sys.stdi
 	if err := requireOnlyMappingKeys(job, "name", "needs", "runs-on", "permissions", "strategy", "steps"); err != nil {
 		return fmt.Errorf("verify_homebrew_formula job: %w", err)
 	}
-	if err := requireScalar(job, "needs", "render_homebrew_formula"); err != nil {
+	if err := workflowpolicy.RequireScalar(job, "needs", "render_homebrew_formula"); err != nil {
 		return fmt.Errorf("verify_homebrew_formula job: %w", err)
 	}
-	if err := requireScalar(job, "runs-on", "${{ matrix.runner }}"); err != nil {
+	if err := workflowpolicy.RequireScalar(job, "runs-on", "${{ matrix.runner }}"); err != nil {
 		return fmt.Errorf("verify_homebrew_formula job: %w", err)
 	}
 	if err := requireContentsPermission(job, "read"); err != nil {
 		return fmt.Errorf("verify_homebrew_formula job: %w", err)
 	}
-	strategy, ok := mappingValue(job, "strategy")
-	if !ok || requireOnlyMappingKeys(strategy, "fail-fast", "matrix") != nil || requireScalar(strategy, "fail-fast", "false") != nil {
+	strategy, ok := workflowpolicy.MappingValue(job, "strategy")
+	if !ok || requireOnlyMappingKeys(strategy, "fail-fast", "matrix") != nil || workflowpolicy.RequireScalar(strategy, "fail-fast", "false") != nil {
 		return errors.New("verify_homebrew_formula strategy must use fail-fast false and the exact four-target matrix")
 	}
-	matrix, _ := mappingValue(strategy, "matrix")
+	matrix, _ := workflowpolicy.MappingValue(strategy, "matrix")
 	if err := checkHomebrewMatrix(matrix); err != nil {
 		return err
 	}
@@ -1308,7 +1264,7 @@ func checkHomebrewMatrix(matrix *yaml.Node) error {
 	if err := requireOnlyMappingKeys(matrix, "include"); err != nil {
 		return errors.New("verify_homebrew_formula matrix must contain exactly the four native targets")
 	}
-	include, ok := mappingValue(matrix, "include")
+	include, ok := workflowpolicy.MappingValue(matrix, "include")
 	if !ok || include.Kind != yaml.SequenceNode || len(include.Content) != len(homebrewMatrixTargets) {
 		return errors.New("verify_homebrew_formula matrix must contain exactly the four native targets")
 	}
@@ -1319,7 +1275,7 @@ func checkHomebrewMatrix(matrix *yaml.Node) error {
 		}
 		fields := make([]string, 0, 3)
 		for _, key := range []string{"runner", "os", "arch"} {
-			value, ok := mappingValue(entry, key)
+			value, ok := workflowpolicy.MappingValue(entry, key)
 			if !ok || value.Kind != yaml.ScalarNode {
 				return errors.New("verify_homebrew_formula matrix must contain exactly the four native targets")
 			}
@@ -1376,13 +1332,13 @@ git -C "$tap_dir" push origin HEAD:main`
 	if err := requireOnlyMappingKeys(job, "name", "needs", "runs-on", "environment", "permissions", "steps"); err != nil {
 		return fmt.Errorf("deploy_homebrew_tap job: %w", err)
 	}
-	if err := requireScalar(job, "needs", "verify_homebrew_formula"); err != nil {
+	if err := workflowpolicy.RequireScalar(job, "needs", "verify_homebrew_formula"); err != nil {
 		return fmt.Errorf("deploy_homebrew_tap job: %w", err)
 	}
-	if err := requireScalar(job, "runs-on", "ubuntu-24.04"); err != nil {
+	if err := workflowpolicy.RequireScalar(job, "runs-on", "ubuntu-24.04"); err != nil {
 		return fmt.Errorf("deploy_homebrew_tap job: %w", err)
 	}
-	if err := requireScalar(job, "environment", "release"); err != nil {
+	if err := workflowpolicy.RequireScalar(job, "environment", "release"); err != nil {
 		return errors.New("deploy_homebrew_tap environment must be release")
 	}
 	if err := requireContentsPermission(job, "read"); err != nil {
@@ -1414,7 +1370,7 @@ func requireCanonicalRunStepWithEnvironment(step *yaml.Node, context, canonical 
 	if err := requireOnlyMappingKeys(step, "name", "shell", "env", "run"); err != nil {
 		return fmt.Errorf("%s must be the canonical direct bash step", context)
 	}
-	if err := requireScalar(step, "shell", "bash"); err != nil {
+	if err := workflowpolicy.RequireScalar(step, "shell", "bash"); err != nil {
 		return fmt.Errorf("%s must be the canonical direct bash step", context)
 	}
 	if !equalCommands(splitCommands(requireRunValue(step)), splitCommands(canonical)) {
@@ -1425,14 +1381,14 @@ func requireCanonicalRunStepWithEnvironment(step *yaml.Node, context, canonical 
 
 func requireUnconditionalAncestryGate(step *yaml.Node) error {
 	for _, key := range []string{"continue-on-error", "if"} {
-		if _, exists := mappingValue(step, key); exists {
+		if _, exists := workflowpolicy.MappingValue(step, key); exists {
 			return errors.New("verify_release_source default-branch ancestry gate must not define if or continue-on-error")
 		}
 	}
 	if err := requireOnlyMappingKeys(step, "name", "shell", "env", "run"); err != nil {
 		return errors.New("verify_release_source default-branch ancestry gate must be a direct bash step")
 	}
-	if err := requireScalar(step, "shell", "bash"); err != nil {
+	if err := workflowpolicy.RequireScalar(step, "shell", "bash"); err != nil {
 		return errors.New("verify_release_source default-branch ancestry gate must use shell bash")
 	}
 	if commands := splitCommands(requireRunValue(step)); !equalCommands(commands, []string{
@@ -1523,17 +1479,17 @@ func checkSigningSecretReachability(validate, build, productionBuild, verifyRele
 	// 非发布 job、publish 的 job 级字段和非签名 step 都不允许引用 secrets，防止同一 job
 	// 启动即注入的 credential 在 shell gate 或其它步骤被提前访问。
 	for _, job := range []*yaml.Node{validate, build, productionBuild, verifyReleaseSource} {
-		if containsSigningSecretReference(job) {
+		if workflowpolicy.ContainsSecretReference(job) {
 			return errors.New("non-release job must not reference secrets")
 		}
 	}
 	for index := 0; index+1 < len(publish.Content); index += 2 {
-		if publish.Content[index].Value != "steps" && containsSigningSecretReference(publish.Content[index+1]) {
+		if publish.Content[index].Value != "steps" && workflowpolicy.ContainsSecretReference(publish.Content[index+1]) {
 			return errors.New("publish job must not reference secrets outside its signing metadata step")
 		}
 	}
 	for index, step := range publishSteps {
-		if index != signingIndex && containsSigningSecretReference(step) {
+		if index != signingIndex && workflowpolicy.ContainsSecretReference(step) {
 			return errors.New("publish job must not reference secrets outside its signing metadata step")
 		}
 		if index == signingIndex && containsSigningSecretReferenceOutsideEnvironment(step) {
@@ -1544,11 +1500,11 @@ func checkSigningSecretReachability(validate, build, productionBuild, verifyRele
 }
 
 func checkHomebrewSecretReachability(render, verify, deploy *yaml.Node) error {
-	if containsSigningSecretReference(render) || containsSigningSecretReference(verify) {
+	if workflowpolicy.ContainsSecretReference(render) || workflowpolicy.ContainsSecretReference(verify) {
 		return errors.New("Homebrew render and install jobs must not reference secrets")
 	}
 	for index := 0; index+1 < len(deploy.Content); index += 2 {
-		if deploy.Content[index].Value != "steps" && containsSigningSecretReference(deploy.Content[index+1]) {
+		if deploy.Content[index].Value != "steps" && workflowpolicy.ContainsSecretReference(deploy.Content[index+1]) {
 			return errors.New("deploy_homebrew_tap job must not reference secrets outside its final push step")
 		}
 	}
@@ -1557,7 +1513,7 @@ func checkHomebrewSecretReachability(render, verify, deploy *yaml.Node) error {
 		return nil
 	}
 	for index, step := range steps {
-		if index != len(steps)-1 && containsSigningSecretReference(step) {
+		if index != len(steps)-1 && workflowpolicy.ContainsSecretReference(step) {
 			return errors.New("deploy_homebrew_tap job must not reference secrets outside its final push step")
 		}
 		if index == len(steps)-1 && containsSigningSecretReferenceOutsideEnvironment(step) {
@@ -1567,11 +1523,11 @@ func checkHomebrewSecretReachability(render, verify, deploy *yaml.Node) error {
 	if len(steps) == 0 {
 		return nil
 	}
-	env, ok := mappingValue(steps[len(steps)-1], "env")
+	env, ok := workflowpolicy.MappingValue(steps[len(steps)-1], "env")
 	if !ok || requireOnlyMappingKeys(env, "HOMEBREW_TAP_DEPLOY_KEY") != nil {
 		return errors.New("tap final push step must declare only HOMEBREW_TAP_DEPLOY_KEY")
 	}
-	value, ok := mappingValue(env, "HOMEBREW_TAP_DEPLOY_KEY")
+	value, ok := workflowpolicy.MappingValue(env, "HOMEBREW_TAP_DEPLOY_KEY")
 	if !ok || value.Kind != yaml.ScalarNode || !expectedSigningSecretExpression("HOMEBREW_TAP_DEPLOY_KEY").MatchString(value.Value) {
 		return errors.New("tap final push step must use the protected HOMEBREW_TAP_DEPLOY_KEY secret")
 	}
@@ -1579,7 +1535,7 @@ func checkHomebrewSecretReachability(render, verify, deploy *yaml.Node) error {
 }
 
 func checkSigningStep(step *yaml.Node) error {
-	env, ok := mappingValue(step, "env")
+	env, ok := workflowpolicy.MappingValue(step, "env")
 	if !ok || env.Kind != yaml.MappingNode {
 		return errors.New("signing-secret step must declare its secret environment")
 	}
@@ -1603,7 +1559,7 @@ func checkSigningStep(step *yaml.Node) error {
 			return fmt.Errorf("signing-secret step must run %s", command)
 		}
 	}
-	run, _ := mappingValue(step, "run")
+	run, _ := workflowpolicy.MappingValue(step, "run")
 	if err := requireRunFragments(step, "signing-secret step", "trap 'rm -f \"$key_path\"'", "go run ./scripts/releaseassets finalize", "--input-dir dist", "--output-dir release", "--private-key \"$key_path\""); err != nil {
 		return err
 	}
@@ -1614,7 +1570,7 @@ func checkSigningStep(step *yaml.Node) error {
 }
 
 func requireExpectedSigningSecret(env *yaml.Node, key string) error {
-	value, ok := mappingValue(env, key)
+	value, ok := workflowpolicy.MappingValue(env, key)
 	if !ok || value.Kind != yaml.ScalarNode || !expectedSigningSecretExpression(key).MatchString(value.Value) {
 		return fmt.Errorf("%s must be its exact signing secret expression", key)
 	}
@@ -1626,30 +1582,15 @@ func expectedSigningSecretExpression(key string) *regexp.Regexp {
 	return regexp.MustCompile(`^\$\{\{\s*secrets\s*(?:\.\s*` + quotedKey + `|\[\s*['"]` + quotedKey + `['"]\s*\])\s*\}\}$`)
 }
 
-func containsSigningSecretReference(node *yaml.Node) bool {
-	if node == nil {
-		return false
-	}
-	if node.Kind == yaml.ScalarNode && secretReferencePattern.MatchString(node.Value) {
-		return true
-	}
-	for _, child := range node.Content {
-		if containsSigningSecretReference(child) {
-			return true
-		}
-	}
-	return false
-}
-
 func containsSigningSecretReferenceOutsideEnvironment(step *yaml.Node) bool {
 	if step == nil || step.Kind != yaml.MappingNode {
-		return containsSigningSecretReference(step)
+		return workflowpolicy.ContainsSecretReference(step)
 	}
 	for index := 0; index+1 < len(step.Content); index += 2 {
 		if step.Content[index].Value == "env" {
 			continue
 		}
-		if containsSigningSecretReference(step.Content[index+1]) {
+		if workflowpolicy.ContainsSecretReference(step.Content[index+1]) {
 			return true
 		}
 	}
@@ -1663,7 +1604,7 @@ func requireCredentialFreeCheckout(job *yaml.Node, jobName string) error {
 	}
 	checkoutCount := 0
 	for _, step := range steps {
-		uses, hasUses := mappingValue(step, "uses")
+		uses, hasUses := workflowpolicy.MappingValue(step, "uses")
 		if !hasUses || uses.Kind != yaml.ScalarNode || !strings.HasPrefix(uses.Value, "actions/checkout@") {
 			continue
 		}
@@ -1680,66 +1621,37 @@ func requireCredentialFreeCheckout(job *yaml.Node, jobName string) error {
 
 func signingStepIndex(steps []*yaml.Node) (int, *yaml.Node) {
 	for index, step := range steps {
-		env, ok := mappingValue(step, "env")
+		env, ok := workflowpolicy.MappingValue(step, "env")
 		if !ok {
 			continue
 		}
-		if _, exists := mappingValue(env, "RELEASE_SIGNING_PRIVATE_KEY"); exists {
+		if _, exists := workflowpolicy.MappingValue(env, "RELEASE_SIGNING_PRIVATE_KEY"); exists {
 			return index, step
 		}
 	}
 	return -1, nil
 }
 
-func mappingValue(mapping *yaml.Node, key string) (*yaml.Node, bool) {
-	if mapping == nil || mapping.Kind != yaml.MappingNode {
-		return nil, false
-	}
-	for index := 0; index+1 < len(mapping.Content); index += 2 {
-		if mapping.Content[index].Value == key {
-			return mapping.Content[index+1], true
-		}
-	}
-	return nil, false
-}
-
 func requireOnlyMappingKeys(mapping *yaml.Node, keys ...string) error {
-	if mapping == nil || mapping.Kind != yaml.MappingNode || len(mapping.Content) != len(keys)*2 {
+	if !workflowpolicy.HasExactMappingKeys(mapping, keys...) {
 		return errors.New("must contain exactly the required keys")
-	}
-	allowed := make(map[string]struct{}, len(keys))
-	for _, key := range keys {
-		allowed[key] = struct{}{}
-	}
-	for index := 0; index+1 < len(mapping.Content); index += 2 {
-		if _, ok := allowed[mapping.Content[index].Value]; !ok {
-			return errors.New("must contain exactly the required keys")
-		}
-	}
-	return nil
-}
-
-func requireScalar(mapping *yaml.Node, key, want string) error {
-	value, ok := mappingValue(mapping, key)
-	if !ok || value.Kind != yaml.ScalarNode || value.Value != want {
-		return fmt.Errorf("%s must equal %q", key, want)
 	}
 	return nil
 }
 
 func requireContentsPermission(job *yaml.Node, level string) error {
-	permissions, ok := mappingValue(job, "permissions")
+	permissions, ok := workflowpolicy.MappingValue(job, "permissions")
 	if !ok || permissions.Kind != yaml.MappingNode || len(permissions.Content) != 2 {
 		return fmt.Errorf("permissions must contain only contents: %s", level)
 	}
-	if err := requireScalar(permissions, "contents", level); err != nil {
+	if err := workflowpolicy.RequireScalar(permissions, "contents", level); err != nil {
 		return fmt.Errorf("permissions must contain only contents: %s", level)
 	}
 	return nil
 }
 
 func jobSteps(job *yaml.Node) ([]*yaml.Node, error) {
-	steps, ok := mappingValue(job, "steps")
+	steps, ok := workflowpolicy.MappingValue(job, "steps")
 	if !ok || steps.Kind != yaml.SequenceNode || len(steps.Content) == 0 {
 		return nil, errors.New("must contain a non-empty steps sequence")
 	}
@@ -1752,8 +1664,8 @@ func hasCommandInWorkingDirectory(job *yaml.Node, directory, command string) boo
 		return false
 	}
 	for _, step := range steps {
-		workingDirectory, hasWorkingDirectory := mappingValue(step, "working-directory")
-		run, hasRun := mappingValue(step, "run")
+		workingDirectory, hasWorkingDirectory := workflowpolicy.MappingValue(step, "working-directory")
+		run, hasRun := workflowpolicy.MappingValue(step, "run")
 		if !hasWorkingDirectory || !hasRun || workingDirectory.Value != directory {
 			continue
 		}
@@ -1775,7 +1687,7 @@ func hasCommand(job *yaml.Node, directory, command string) bool {
 		return false
 	}
 	for _, step := range steps {
-		workingDirectory, hasWorkingDirectory := mappingValue(step, "working-directory")
+		workingDirectory, hasWorkingDirectory := workflowpolicy.MappingValue(step, "working-directory")
 		if hasWorkingDirectory && (workingDirectory.Kind != yaml.ScalarNode || workingDirectory.Value != ".") {
 			continue
 		}
@@ -1792,11 +1704,11 @@ func rootStepWithRunFragment(job *yaml.Node, fragment string) (*yaml.Node, bool)
 		return nil, false
 	}
 	for _, step := range steps {
-		workingDirectory, hasWorkingDirectory := mappingValue(step, "working-directory")
+		workingDirectory, hasWorkingDirectory := workflowpolicy.MappingValue(step, "working-directory")
 		if hasWorkingDirectory && (workingDirectory.Kind != yaml.ScalarNode || workingDirectory.Value != ".") {
 			continue
 		}
-		run, hasRun := mappingValue(step, "run")
+		run, hasRun := workflowpolicy.MappingValue(step, "run")
 		if hasRun && run.Kind == yaml.ScalarNode && strings.Contains(run.Value, fragment) {
 			return step, true
 		}
@@ -1818,7 +1730,7 @@ func requireRunFragments(step *yaml.Node, context string, fragments ...string) e
 }
 
 func requireRunValue(step *yaml.Node) string {
-	run, hasRun := mappingValue(step, "run")
+	run, hasRun := workflowpolicy.MappingValue(step, "run")
 	if !hasRun || run.Kind != yaml.ScalarNode {
 		return ""
 	}
@@ -1849,7 +1761,7 @@ func countRunFragment(step *yaml.Node, fragment string) int {
 }
 
 func hasShellArgument(step *yaml.Node, argument string) bool {
-	run, hasRun := mappingValue(step, "run")
+	run, hasRun := workflowpolicy.MappingValue(step, "run")
 	if !hasRun || run.Kind != yaml.ScalarNode {
 		return false
 	}
@@ -1864,7 +1776,7 @@ func hasShellArgument(step *yaml.Node, argument string) bool {
 }
 
 func hasStepCommand(step *yaml.Node, command string) bool {
-	run, hasRun := mappingValue(step, "run")
+	run, hasRun := workflowpolicy.MappingValue(step, "run")
 	if !hasRun || run.Kind != yaml.ScalarNode {
 		return false
 	}

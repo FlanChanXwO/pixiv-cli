@@ -15,6 +15,7 @@ import (
 	"testing"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/download/staticlib"
+	"github.com/FlanChanXwO/pixiv-cli/scripts/internal/workflowpolicy"
 	"gopkg.in/yaml.v3"
 )
 
@@ -53,6 +54,15 @@ func TestCheckWorkflowAcceptsAuditedNativeEvidenceEntry(t *testing.T) {
 	}
 	if err := checkWorkflow(body); err != nil {
 		t.Fatalf("native evidence policy rejected an audited non-release fixture: %v", err)
+	}
+}
+
+func TestRequireOnlyMappingKeysPreservesAuditedKeyError(t *testing.T) {
+	t.Parallel()
+
+	err := requireOnlyMappingKeys(mappingNode("unexpected", scalarNode("value")), "audited")
+	if err == nil || err.Error() != "must contain exactly the audited keys" {
+		t.Fatalf("requireOnlyMappingKeys() error = %v, want exact audited-key error", err)
 	}
 }
 
@@ -608,7 +618,7 @@ func checkedInWorkflowRoot(t *testing.T) *yaml.Node {
 
 func requireMappingValue(t *testing.T, mapping *yaml.Node, key string) *yaml.Node {
 	t.Helper()
-	value, ok := mappingValue(mapping, key)
+	value, ok := workflowpolicy.MappingValue(mapping, key)
 	if !ok {
 		t.Fatalf("missing mapping value %q", key)
 	}
@@ -636,7 +646,7 @@ func appendMappingValue(t *testing.T, mapping *yaml.Node, key string, value *yam
 func removeStepNamed(t *testing.T, steps *yaml.Node, name string) {
 	t.Helper()
 	for index, step := range steps.Content {
-		stepName, ok := mappingValue(step, "name")
+		stepName, ok := workflowpolicy.MappingValue(step, "name")
 		if ok && stepName.Value == name {
 			steps.Content = append(steps.Content[:index], steps.Content[index+1:]...)
 			return

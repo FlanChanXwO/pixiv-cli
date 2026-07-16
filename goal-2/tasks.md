@@ -218,12 +218,12 @@
 
 ## T17 — 合并 releaseworkflow/nativeevidence YAML policy helper
 
-- 状态：未完成
+- 状态：已完成
 - 范围：P3 重复 YAML helper。提取内部共享 package，保持 release/native evidence fail-closed 校验、错误文本和测试 mutation coverage。
 - 验收：两个 verifier 使用同一 helper；policy tests、release workflow/Rust vendor scripts 全绿；不得弱化 allowlist/secret/tag/staticlib 门禁。
-- 实际：
-- 证据：
-- 风险/下一步：
+- 实际：新增只允许 `scripts/**` 导入的 `scripts/internal/workflowpolicy` 深模块，集中 `RejectAmbiguousYAML`、`MappingValue`、`HasExactMappingKeys`、`RequireScalar` 与 `ContainsSecretReference` 五项公共 YAML AST policy。`releaseworkflow` 与 `nativeevidence` 删除各自重复的递归歧义检查、mapping lookup、scalar 校验和 secret regex/walker，直接使用同一共享实现；release-only secret environment 例外、native-only scalar 收集及双方 job/matrix/tag/staticlib/release side-effect policy 仍留在原 verifier。两个 exact-key 薄 wrapper 分别保留旧错误 `must contain exactly the required keys` 与 `must contain exactly the audited keys`。共享 production helper 是从不可变 v0.3.0 tag 编译当前 release verifier 的必要依赖，因此 recovery overlay 从三路径精确扩为四路径，只增加 `scripts/internal/workflowpolicy/policy.go`；不加入 `policy_test.go`、目录 glob 或其它默认分支源码。`.github/workflows/release.yml`、verifier canonical command、逐路径 mutation tests 与 `docs/development.md` 已同步，v0.2 历史证据保持不变。
+- 证据：TDD 首个外部 package test 在无 production Go 文件时以 `no non-test Go files` RED；nil/alias/奇数 mapping/non-scalar key/merge/duplicate/递归 ambiguity，以及 mapping lookup、exact keys、scalar exact error、递归 secret reference 均逐项 RED→GREEN。四路径 overlay test 先因实际仍为三路径 RED，再由 canonical verifier/workflow 同步转 GREEN；mutation 覆盖四个 required path 任一遗漏、account test 重加、任意第五路径和 production source 注入均失败。`rg` 确认五项公共 helper 与 secret regex 只剩共享 production 定义，`go list -deps` 确认两个 verifier 都直接依赖同一 package。独立 spec reviewer 逐项对照 HEAD 行为、错误与门禁后 APPROVE；独立 quality/supply-chain reviewer 将 release/shared tests 连续跑 20 次、native tests 连续跑 20 次（约 239 秒），并复核 Go internal 边界、canonical shell、secret/tag/staticlib/runner/action/permissions/production isolation，零 finding、APPROVE。主线程在临时完整 v0.3.0 tag 树只覆盖四个 allowlist 文件且确认没有 `policy_test.go`，实际 `go test ./scripts/releaseworkflow` 与 release policy command 均通过。最终 `go test ./... -count=1`、`go test -race ./... -count=1`、`go vet ./...`、`sh scripts/build.sh`、release workflow policy、native evidence policy、`sh scripts/test-rust-vendor.sh`（40 unit + 3 quality tests）与 `git diff --check` 全部通过。
+- 风险/下一步：未真实触发 GitHub Actions `workflow_dispatch` recovery run；本地完整 tag overlay 已消除新增 package/编译依赖风险，剩余仅为真实 runner/tar 环境差异。共享 helper 与两份超大 verifier 的新路径仍须由 T20 重建知识图谱；T18 下一步只按职责拆分两份 verifier 大文件，必须保持本次共享 policy、canonical 输出和供应链门禁不变。
 
 ## T18 — 拆分超大 release verifier 文件
 

@@ -22,11 +22,11 @@ import (
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/buildinfo"
 	"github.com/FlanChanXwO/pixiv-cli/internal/download/staticlib"
+	"github.com/FlanChanXwO/pixiv-cli/scripts/internal/workflowpolicy"
 	"gopkg.in/yaml.v3"
 )
 
 var actionReferencePattern = regexp.MustCompile(`^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+@[0-9a-f]{40}$`)
-var secretReferencePattern = regexp.MustCompile(`(?is)\$\{\{[^}]*\bsecrets\b[^}]*\}\}`)
 
 const canonicalCheckoutAction = "actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5"
 const canonicalSetupGoAction = "actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff"
@@ -905,7 +905,7 @@ func checkWorkflow(body []byte) error {
 	if err := yaml.Unmarshal(body, &document); err != nil {
 		return fmt.Errorf("parse YAML: %w", err)
 	}
-	if err := rejectAmbiguousYAML(&document); err != nil {
+	if err := workflowpolicy.RejectAmbiguousYAML(&document); err != nil {
 		return err
 	}
 	if document.Kind != yaml.DocumentNode || len(document.Content) != 1 || document.Content[0].Kind != yaml.MappingNode {
@@ -915,7 +915,7 @@ func checkWorkflow(body []byte) error {
 	if err := requireOnlyMappingKeys(root, "name", "on", "permissions", "jobs"); err != nil {
 		return errors.New("native evidence workflow root must contain only its audited fields")
 	}
-	if containsSecretReference(root) {
+	if workflowpolicy.ContainsSecretReference(root) {
 		return errors.New("native evidence workflow must not reference secrets")
 	}
 	if err := checkNativeEvidenceTrigger(root); err != nil {
@@ -924,7 +924,7 @@ func checkWorkflow(body []byte) error {
 	if err := checkEmptyPermissions(root); err != nil {
 		return err
 	}
-	jobs, ok := mappingValue(root, "jobs")
+	jobs, ok := workflowpolicy.MappingValue(root, "jobs")
 	if !ok || jobs.Kind != yaml.MappingNode || len(jobs.Content) != 2 {
 		return errors.New("native evidence workflow must have exactly one job")
 	}
@@ -945,24 +945,24 @@ func checkNativeEvidenceJob(job *yaml.Node) error {
 	if err := requireOnlyMappingKeys(job, "name", "runs-on", "permissions", "strategy", "steps"); err != nil {
 		return errors.New("native evidence job must contain only its audited fields")
 	}
-	if err := requireScalar(job, "runs-on", "${{ matrix.runner }}"); err != nil {
+	if err := workflowpolicy.RequireScalar(job, "runs-on", "${{ matrix.runner }}"); err != nil {
 		return errors.New("native evidence job must run only on its audited matrix runner")
 	}
 	if err := checkContentsReadPermission(job); err != nil {
 		return err
 	}
-	strategy, ok := mappingValue(job, "strategy")
-	if !ok || strategy.Kind != yaml.MappingNode || requireOnlyMappingKeys(strategy, "fail-fast", "matrix") != nil || requireScalar(strategy, "fail-fast", "false") != nil {
+	strategy, ok := workflowpolicy.MappingValue(job, "strategy")
+	if !ok || strategy.Kind != yaml.MappingNode || requireOnlyMappingKeys(strategy, "fail-fast", "matrix") != nil || workflowpolicy.RequireScalar(strategy, "fail-fast", "false") != nil {
 		return errors.New("native evidence job must have a fail-fast false matrix strategy")
 	}
-	matrix, ok := mappingValue(strategy, "matrix")
+	matrix, ok := workflowpolicy.MappingValue(strategy, "matrix")
 	if !ok || matrix.Kind != yaml.MappingNode {
 		return errors.New("native evidence job must have a matrix")
 	}
 	if err := checkNativeEvidenceMatrix(matrix); err != nil {
 		return err
 	}
-	steps, ok := mappingValue(job, "steps")
+	steps, ok := workflowpolicy.MappingValue(job, "steps")
 	if !ok || steps.Kind != yaml.SequenceNode || len(steps.Content) != 12 {
 		return errors.New("native evidence job must contain its complete audited step sequence")
 	}
@@ -1018,7 +1018,7 @@ func checkNativeEvidenceMatrix(matrix *yaml.Node) error {
 	if requireOnlyMappingKeys(matrix, "include") != nil {
 		return errors.New("native evidence matrix must contain only its six audited targets")
 	}
-	include, ok := mappingValue(matrix, "include")
+	include, ok := workflowpolicy.MappingValue(matrix, "include")
 	if !ok || include.Kind != yaml.SequenceNode || len(include.Content) != len(nativeEvidenceMatrixTargets) {
 		return errors.New("native evidence matrix must contain exactly the six audited targets")
 	}
@@ -1029,7 +1029,7 @@ func checkNativeEvidenceMatrix(matrix *yaml.Node) error {
 		}
 		parts := make([]string, 0, 5)
 		for _, key := range []string{"runner", "goos", "goarch", "rust_target", "artifact"} {
-			value, ok := mappingValue(entry, key)
+			value, ok := workflowpolicy.MappingValue(entry, key)
 			if !ok || value.Kind != yaml.ScalarNode {
 				return errors.New("native evidence matrix must contain exactly the six audited targets")
 			}
@@ -1048,29 +1048,29 @@ func checkNativeEvidenceMatrix(matrix *yaml.Node) error {
 }
 
 func requireCanonicalCheckout(step *yaml.Node) error {
-	if requireOnlyMappingKeys(step, "uses", "with") != nil || requireScalar(step, "uses", canonicalCheckoutAction) != nil {
+	if requireOnlyMappingKeys(step, "uses", "with") != nil || workflowpolicy.RequireScalar(step, "uses", canonicalCheckoutAction) != nil {
 		return errors.New("native evidence job must use the canonical credential-free checkout")
 	}
-	with, ok := mappingValue(step, "with")
-	if !ok || requireOnlyMappingKeys(with, "persist-credentials") != nil || requireScalar(with, "persist-credentials", "false") != nil {
+	with, ok := workflowpolicy.MappingValue(step, "with")
+	if !ok || requireOnlyMappingKeys(with, "persist-credentials") != nil || workflowpolicy.RequireScalar(with, "persist-credentials", "false") != nil {
 		return errors.New("native evidence job must use the canonical credential-free checkout")
 	}
 	return nil
 }
 
 func requireCanonicalSetupGo(step *yaml.Node) error {
-	if requireOnlyMappingKeys(step, "uses", "with") != nil || requireScalar(step, "uses", canonicalSetupGoAction) != nil {
+	if requireOnlyMappingKeys(step, "uses", "with") != nil || workflowpolicy.RequireScalar(step, "uses", canonicalSetupGoAction) != nil {
 		return errors.New("native evidence job must use the canonical Go setup action")
 	}
-	with, ok := mappingValue(step, "with")
-	if !ok || requireOnlyMappingKeys(with, "go-version") != nil || requireScalar(with, "go-version", "1.26.3") != nil {
+	with, ok := workflowpolicy.MappingValue(step, "with")
+	if !ok || requireOnlyMappingKeys(with, "go-version") != nil || workflowpolicy.RequireScalar(with, "go-version", "1.26.3") != nil {
 		return errors.New("native evidence job must use the canonical Go setup action")
 	}
 	return nil
 }
 
 func requireDirectRunStep(step *yaml.Node, name, command string) error {
-	if requireOnlyMappingKeys(step, "name", "shell", "run") != nil || requireScalar(step, "name", name) != nil || requireScalar(step, "shell", "bash") != nil || requireScalar(step, "run", command) != nil {
+	if requireOnlyMappingKeys(step, "name", "shell", "run") != nil || workflowpolicy.RequireScalar(step, "name", name) != nil || workflowpolicy.RequireScalar(step, "shell", "bash") != nil || workflowpolicy.RequireScalar(step, "run", command) != nil {
 		return fmt.Errorf("native evidence job must retain direct step %q", name)
 	}
 	return nil
@@ -1143,10 +1143,10 @@ go run ./scripts/nativeevidence record \
 `
 
 func requireMultilineRunStep(step *yaml.Node, name, canonical string) error {
-	if requireOnlyMappingKeys(step, "name", "shell", "run") != nil || requireScalar(step, "name", name) != nil || requireScalar(step, "shell", "bash") != nil {
+	if requireOnlyMappingKeys(step, "name", "shell", "run") != nil || workflowpolicy.RequireScalar(step, "name", name) != nil || workflowpolicy.RequireScalar(step, "shell", "bash") != nil {
 		return fmt.Errorf("native evidence job must retain step %q", name)
 	}
-	run, ok := mappingValue(step, "run")
+	run, ok := workflowpolicy.MappingValue(step, "run")
 	if !ok || run.Kind != yaml.ScalarNode || run.Value != canonical {
 		return fmt.Errorf("native evidence job must retain guarded step %q", name)
 	}
@@ -1154,27 +1154,27 @@ func requireMultilineRunStep(step *yaml.Node, name, canonical string) error {
 }
 
 func requireUploadEvidenceStep(step *yaml.Node) error {
-	if requireOnlyMappingKeys(step, "name", "uses", "with") != nil || requireScalar(step, "name", "Upload native evidence") != nil || requireScalar(step, "uses", canonicalUploadArtifactAction) != nil {
+	if requireOnlyMappingKeys(step, "name", "uses", "with") != nil || workflowpolicy.RequireScalar(step, "name", "Upload native evidence") != nil || workflowpolicy.RequireScalar(step, "uses", canonicalUploadArtifactAction) != nil {
 		return errors.New("native evidence job must upload only its audited evidence artifact")
 	}
-	with, ok := mappingValue(step, "with")
-	if !ok || requireOnlyMappingKeys(with, "name", "path", "if-no-files-found") != nil || requireScalar(with, "name", "native-evidence-${{ matrix.artifact }}") != nil || requireScalar(with, "path", "evidence") != nil || requireScalar(with, "if-no-files-found", "error") != nil {
+	with, ok := workflowpolicy.MappingValue(step, "with")
+	if !ok || requireOnlyMappingKeys(with, "name", "path", "if-no-files-found") != nil || workflowpolicy.RequireScalar(with, "name", "native-evidence-${{ matrix.artifact }}") != nil || workflowpolicy.RequireScalar(with, "path", "evidence") != nil || workflowpolicy.RequireScalar(with, "if-no-files-found", "error") != nil {
 		return errors.New("native evidence job must upload only its audited evidence artifact")
 	}
 	return nil
 }
 
 func checkNativeEvidenceTrigger(root *yaml.Node) error {
-	on, ok := mappingValue(root, "on")
+	on, ok := workflowpolicy.MappingValue(root, "on")
 	if !ok || on.Kind != yaml.MappingNode {
 		return errors.New("native evidence workflow must have an on mapping")
 	}
-	push, hasPush := mappingValue(on, "push")
-	dispatch, hasDispatch := mappingValue(on, "workflow_dispatch")
+	push, hasPush := workflowpolicy.MappingValue(on, "push")
+	dispatch, hasDispatch := workflowpolicy.MappingValue(on, "workflow_dispatch")
 	if !hasPush || !hasDispatch || len(on.Content) != 4 || push.Kind != yaml.MappingNode || dispatch.Kind != yaml.MappingNode || len(dispatch.Content) != 0 {
 		return errors.New("native evidence workflow must use only main push and workflow_dispatch triggers")
 	}
-	branches, ok := mappingValue(push, "branches")
+	branches, ok := workflowpolicy.MappingValue(push, "branches")
 	if !ok || len(push.Content) != 2 || branches.Kind != yaml.SequenceNode || len(branches.Content) != 1 || branches.Content[0].Value != "main" {
 		return errors.New("native evidence workflow push trigger must be limited to main")
 	}
@@ -1182,7 +1182,7 @@ func checkNativeEvidenceTrigger(root *yaml.Node) error {
 }
 
 func checkEmptyPermissions(root *yaml.Node) error {
-	permissions, ok := mappingValue(root, "permissions")
+	permissions, ok := workflowpolicy.MappingValue(root, "permissions")
 	if !ok || permissions.Kind != yaml.MappingNode || len(permissions.Content) != 0 {
 		return errors.New("native evidence workflow global permissions must be an empty mapping")
 	}
@@ -1190,11 +1190,11 @@ func checkEmptyPermissions(root *yaml.Node) error {
 }
 
 func checkContentsReadPermission(job *yaml.Node) error {
-	permissions, ok := mappingValue(job, "permissions")
+	permissions, ok := workflowpolicy.MappingValue(job, "permissions")
 	if !ok || permissions.Kind != yaml.MappingNode || len(permissions.Content) != 2 {
 		return errors.New("native evidence job permissions must contain only contents: read")
 	}
-	value, ok := mappingValue(permissions, "contents")
+	value, ok := workflowpolicy.MappingValue(permissions, "contents")
 	if !ok || value.Kind != yaml.ScalarNode || value.Value != "read" {
 		return errors.New("native evidence job permissions must contain only contents: read")
 	}
@@ -1247,69 +1247,9 @@ func checkNoReleaseSideEffects(node *yaml.Node) error {
 	return nil
 }
 
-// rejectAmbiguousYAML 在读取任何字段前拒绝 alias、merge 和 duplicate key，避免 yaml.v3
-// 与 GitHub Actions 对覆盖语义的解释差异使本地 policy 漏掉可执行内容。
-func rejectAmbiguousYAML(node *yaml.Node) error {
-	if node == nil {
-		return errors.New("workflow must not contain nil YAML nodes")
-	}
-	if node.Kind == yaml.AliasNode {
-		return errors.New("workflow must not use YAML aliases")
-	}
-	if node.Kind == yaml.MappingNode {
-		if len(node.Content)%2 != 0 {
-			return errors.New("workflow mappings must contain key-value pairs")
-		}
-		seen := make(map[string]struct{}, len(node.Content)/2)
-		for index := 0; index < len(node.Content); index += 2 {
-			key, value := node.Content[index], node.Content[index+1]
-			if key.Kind != yaml.ScalarNode {
-				return errors.New("workflow mapping keys must be scalars")
-			}
-			if key.Value == "<<" {
-				return errors.New("workflow must not use YAML merge keys")
-			}
-			if _, duplicate := seen[key.Value]; duplicate {
-				return fmt.Errorf("workflow must not contain duplicate mapping key %q", key.Value)
-			}
-			seen[key.Value] = struct{}{}
-			if err := rejectAmbiguousYAML(key); err != nil {
-				return err
-			}
-			if err := rejectAmbiguousYAML(value); err != nil {
-				return err
-			}
-		}
-		return nil
-	}
-	for _, child := range node.Content {
-		if err := rejectAmbiguousYAML(child); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
 func requireOnlyMappingKeys(mapping *yaml.Node, keys ...string) error {
-	if mapping == nil || mapping.Kind != yaml.MappingNode || len(mapping.Content) != len(keys)*2 {
+	if !workflowpolicy.HasExactMappingKeys(mapping, keys...) {
 		return errors.New("must contain exactly the audited keys")
-	}
-	allowed := make(map[string]struct{}, len(keys))
-	for _, key := range keys {
-		allowed[key] = struct{}{}
-	}
-	for index := 0; index+1 < len(mapping.Content); index += 2 {
-		if _, ok := allowed[mapping.Content[index].Value]; !ok {
-			return errors.New("must contain exactly the audited keys")
-		}
-	}
-	return nil
-}
-
-func requireScalar(mapping *yaml.Node, key, want string) error {
-	value, ok := mappingValue(mapping, key)
-	if !ok || value.Kind != yaml.ScalarNode || value.Value != want {
-		return fmt.Errorf("%s must equal %q", key, want)
 	}
 	return nil
 }
@@ -1324,31 +1264,4 @@ func collectScalarValues(node *yaml.Node, values *[]string) {
 	for _, child := range node.Content {
 		collectScalarValues(child, values)
 	}
-}
-
-func containsSecretReference(node *yaml.Node) bool {
-	if node == nil {
-		return false
-	}
-	if node.Kind == yaml.ScalarNode && secretReferencePattern.MatchString(node.Value) {
-		return true
-	}
-	for _, child := range node.Content {
-		if containsSecretReference(child) {
-			return true
-		}
-	}
-	return false
-}
-
-func mappingValue(mapping *yaml.Node, key string) (*yaml.Node, bool) {
-	if mapping == nil || mapping.Kind != yaml.MappingNode {
-		return nil, false
-	}
-	for index := 0; index+1 < len(mapping.Content); index += 2 {
-		if mapping.Content[index].Value == key {
-			return mapping.Content[index+1], true
-		}
-	}
-	return nil, false
 }
