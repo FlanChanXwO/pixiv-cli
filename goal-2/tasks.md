@@ -94,12 +94,12 @@
 
 ## T07 — 删除已证实死代码和诱导性 token 字段
 
-- 状态：未完成
+- 状态：已完成
 - 范围：P2-7 与 P3 dead-code 清单。删除无生产调用方的 `download.Manager.Enqueue` 后台队列及其固定并发/吞错/不可取消链；逐项验证并删除 `malformedError`、`transportError`、cursor helpers、appapi helpers/不可达 auth branch、`RuntimeConfig.RefreshToken` 或记录仍可达证据。
 - 验收：调用图无生产引用；删除后相关包与全量测试通过；配置 schema/序列化不出现 refresh token。
-- 实际：
-- 证据：
-- 风险/下一步：
+- 实际：删除 `download.Manager.Enqueue`，并连同仅服务该入口的固定容量 5 semaphore、`context.WithoutCancel` goroutine、`downloadOne` 吞错链一起移除；MCP 内部 `DownloadManager` method set 与测试 fake 同步收窄。删除无调用的 `malformedError`、`transportError`、无 source cursor wrappers、`getMapped` 和 `baseHeaders`。GET/POST 重试现共用只识别 typed HTTP 401/403 的 `isAuthAPIResponse`，保留认证 refresh/replay 并删除不可达字符串匹配 fallback。删除无读写方、从未进入 setting specs/TOML 的 `RuntimeConfig.RefreshToken`；auth storage、环境变量、SDK request/options、OAuth、CLI 与 MCP 的合法 token 能力保持不变。纯内部清理无用户可见行为变化，因此未改 changelog/文档；知识图谱留待 T20 重建。
+- 证据：`TestRuntimeConfigSurfaceExcludesRefreshToken` 在旧字段存在时真实 RED（runtime DTO JSON surface 含 `RefreshToken`），删除字段后 GREEN；该测试同时用含 `[auth].refresh_token` 的 TOML fixture 验证值不进入 runtime DTO，并检查 aliases/setting surface 不提供 token 配置。GET typed 401/403 恰好 refresh 一次并总请求两次、non-auth 502 正文含 `oauth unauthorized invalid_grant` 仍只请求一次且不 refresh/replay，均为既有正确行为的首次 GREEN characterization，未伪造 RED。精确全仓检索确认全部目标符号、`.Enqueue(`、semaphore、`downloadOne` 与 `context.WithoutCancel` 零残留，source-aware cursor 调用仍完整。独立 spec review 与 quality review 均 APPROVE、无 finding；主线程通过聚焦测试（appapi 20 次）、五包 race、`go vet ./...`、`go test ./... -count=1`、九文件 gofmt、`git diff --check` 和精确调用图门禁。
+- 风险/下一步：RuntimeConfig 当前不参与生产 JSON 序列化，JSON 仅作为稳定可枚举的 DTO surface 测试手段；TOML 输入与 alias 另有独立断言。真实 Pixiv 联网 e2e 未启用，本任务不改网络 endpoint/fallback。未单独运行会生成范围外 build 产物的 `scripts/build.sh`，全仓测试已完成当前平台编译链接；跨平台矩阵留待 T21。下一轮执行 T08；结构删除后的两份知识图谱继续按 T20 集中更新。
 
 ## T08 — 审计更新 SemVer fail-closed 策略并拆出模块
 

@@ -25,7 +25,6 @@ import (
 
 type DownloadManager interface {
 	SetDownloadPath(string) error
-	Enqueue(context.Context, []int64) int
 	Download(context.Context, []int64) ([]download.DownloadedArtwork, error)
 }
 

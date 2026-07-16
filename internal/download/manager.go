@@ -30,7 +30,6 @@ type Manager struct {
 	ugoiraEncoder    UgoiraEncoder
 	downloadPath     string
 	filenameTemplate string
-	sem              chan struct{}
 	mu               sync.RWMutex
 }
 
@@ -39,15 +38,13 @@ func NewManager(client PixivClient, logger *slog.Logger, downloadPath, filenameT
 		// 下载管理器可由 SDK/嵌入方单独使用；未注入时严格静默，不能落到可变全局 logger。
 		logger = slog.New(slog.NewTextHandler(io.Discard, nil))
 	}
-	m := &Manager{
+	return &Manager{
 		client:           client,
 		logger:           logger,
 		ugoiraEncoder:    defaultUgoiraEncoder(),
 		downloadPath:     downloadPath,
 		filenameTemplate: filenameTemplate,
-		sem:              make(chan struct{}, 5),
 	}
-	return m
 }
 
 // SetUgoiraEncoder 设置动图编码器，供启动装配和聚焦测试替换。
@@ -73,14 +70,6 @@ func (m *Manager) DownloadPath() string {
 	return m.downloadPath
 }
 
-func (m *Manager) Enqueue(ctx context.Context, ids []int64) int {
-	unique := utils.Deduplicate(ids)
-	for _, id := range unique {
-		go m.downloadOne(context.WithoutCancel(ctx), id)
-	}
-	return len(unique)
-}
-
 func (m *Manager) Download(ctx context.Context, ids []int64) ([]DownloadedArtwork, error) {
 	unique := utils.Deduplicate(ids)
 	artworks := make([]DownloadedArtwork, 0, len(unique))
@@ -92,12 +81,6 @@ func (m *Manager) Download(ctx context.Context, ids []int64) ([]DownloadedArtwor
 		artworks = append(artworks, artwork)
 	}
 	return artworks, nil
-}
-
-func (m *Manager) downloadOne(ctx context.Context, id int64) {
-	m.sem <- struct{}{}
-	defer func() { <-m.sem }()
-	_, _ = m.downloadArtwork(ctx, id)
 }
 
 func (m *Manager) downloadArtwork(ctx context.Context, id int64) (out DownloadedArtwork, err error) {

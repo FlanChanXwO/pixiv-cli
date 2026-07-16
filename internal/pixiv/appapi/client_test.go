@@ -11,27 +11,55 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/model"
 )
 
-func TestRefreshAndRetryOnAuthError(t *testing.T) {
+func TestRefreshAndRetryOnceOnTypedAuthStatus(t *testing.T) {
+	for _, status := range []int{http.StatusUnauthorized, http.StatusForbidden} {
+		t.Run(http.StatusText(status), func(t *testing.T) {
+			session := &fakeSession{token: "old-access"}
+			requests := 0
+			api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				requests++
+				if r.URL.Path != "/v1/illust/detail" {
+					t.Fatalf("unexpected api path %s", r.URL.Path)
+				}
+				if r.Header.Get("Authorization") != "Bearer new-access" {
+					http.Error(w, `{"error":{"message":"auth required"}}`, status)
+					return
+				}
+				_ = json.NewEncoder(w).Encode(model.IllustDetail{Illust: model.Illust{ID: 42, Title: "ok"}})
+			}))
+			defer api.Close()
+
+			client := New(WithBaseURL(api.URL), WithSession(session))
+			result, err := client.IllustDetail(context.Background(), 42)
+			if err != nil {
+				t.Fatalf("IllustDetail returned error: %v", err)
+			}
+			if result.Illust.ID != 42 || session.refreshCalls != 1 || requests != 2 {
+				t.Fatalf("result=%+v refresh calls=%d requests=%d", result, session.refreshCalls, requests)
+			}
+		})
+	}
+}
+
+func TestGETNonAuthStatusDoesNotRefreshOrReplayForAuthWordsInBody(t *testing.T) {
 	session := &fakeSession{token: "old-access"}
+	requests := 0
 	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
 		if r.URL.Path != "/v1/illust/detail" {
 			t.Fatalf("unexpected api path %s", r.URL.Path)
 		}
-		if r.Header.Get("Authorization") != "Bearer new-access" {
-			http.Error(w, `{"error":{"message":"unauthorized"}}`, http.StatusUnauthorized)
-			return
-		}
-		_ = json.NewEncoder(w).Encode(model.IllustDetail{Illust: model.Illust{ID: 42, Title: "ok"}})
+		w.WriteHeader(http.StatusBadGateway)
+		_, _ = w.Write([]byte("oauth unauthorized invalid_grant"))
 	}))
 	defer api.Close()
 
 	client := New(WithBaseURL(api.URL), WithSession(session))
-	result, err := client.IllustDetail(context.Background(), 42)
-	if err != nil {
-		t.Fatalf("IllustDetail returned error: %v", err)
+	if _, err := client.IllustDetail(context.Background(), 42); err == nil {
+		t.Fatal("IllustDetail unexpectedly succeeded")
 	}
-	if result.Illust.ID != 42 || session.refreshCalls != 1 {
-		t.Fatalf("unexpected result/session state: result=%+v refresh calls=%d", result, session.refreshCalls)
+	if requests != 1 || session.refreshCalls != 0 {
+		t.Fatalf("requests=%d refresh calls=%d", requests, session.refreshCalls)
 	}
 }
 

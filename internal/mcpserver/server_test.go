@@ -2100,8 +2100,7 @@ type fakeDownloads struct {
 	err           error
 }
 
-func (fakeDownloads) SetDownloadPath(string) error         { return nil }
-func (fakeDownloads) Enqueue(context.Context, []int64) int { return 1 }
+func (fakeDownloads) SetDownloadPath(string) error { return nil }
 func (d *fakeDownloads) Download(_ context.Context, ids []int64) ([]download.DownloadedArtwork, error) {
 	d.downloadCalls++
 	d.downloadIDs = append([]int64(nil), ids...)

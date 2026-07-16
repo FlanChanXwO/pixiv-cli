@@ -411,18 +411,9 @@ type requestOptions struct {
 	Query   url.Values
 }
 
-func getMapped[Raw, Out any](ctx context.Context, c *Client, path string, query url.Values, mapper func(Raw) Out) (*Out, error) {
-	var raw Raw
-	if err := c.getJSONWithRetry(ctx, path, query, &raw); err != nil {
-		return nil, err
-	}
-	out := mapper(raw)
-	return &out, nil
-}
-
 func (c *Client) getJSONWithRetry(ctx context.Context, path string, query url.Values, out any) error {
 	err := c.getJSON(ctx, path, query, out)
-	if !isAuthError(err) {
+	if !isAuthAPIResponse(err) {
 		return err
 	}
 	if c.session == nil {
@@ -498,10 +489,6 @@ func (c *Client) apiHeaders() map[string]string {
 	return protocol.AppHeaders(token)
 }
 
-func baseHeaders() map[string]string {
-	return protocol.AppHeaders("")
-}
-
 func (c *Client) doJSON(ctx context.Context, method, rawURL string, opts requestOptions, out any) error {
 	req := c.restyClient.R().SetContext(ctx)
 	if len(opts.Headers) > 0 {
@@ -545,18 +532,6 @@ func (c *Client) doForm(ctx context.Context, method, rawURL string, opts request
 
 // APIError 保留内部兼容名称；实际失败统一由 protocol.Failure 脱敏表示。
 type APIError = protocol.Failure
-
-func isAuthError(err error) bool {
-	if err == nil {
-		return false
-	}
-	var apiErr protocol.Failure
-	if errors.As(err, &apiErr) && apiErr.Kind == protocol.FailureHTTPStatus && (apiErr.StatusCode == http.StatusUnauthorized || apiErr.StatusCode == http.StatusForbidden) {
-		return true
-	}
-	text := strings.ToLower(err.Error())
-	return strings.Contains(text, "invalid_grant") || strings.Contains(text, "oauth") || strings.Contains(text, "unauthorized")
-}
 
 func setOptional(q url.Values, key, value string) {
 	if value != "" {

@@ -313,28 +313,6 @@ func mapAdapterFailure(err error, operation Operation, backend Backend, illustID
 	return mapped
 }
 
-func malformedError(operation Operation, backend Backend, illustID int64) error {
-	return newError(
-		CodeMalformedUpstreamResponse,
-		operation,
-		backend,
-		false,
-		0,
-		illustID,
-		errors.New("upstream response was malformed"),
-	)
-}
-
-func transportError(err error, operation Operation, backend Backend, illustID int64) error {
-	if errors.Is(err, context.Canceled) {
-		return newError(CodeUpstreamUnavailable, operation, backend, false, 0, illustID, context.Canceled)
-	}
-	if errors.Is(err, context.DeadlineExceeded) {
-		return newError(CodeUpstreamUnavailable, operation, backend, false, 0, illustID, context.DeadlineExceeded)
-	}
-	return newError(CodeUpstreamUnavailable, operation, backend, true, 0, illustID, errors.New("upstream transport failed"))
-}
-
 func codeForHTTPStatus(status int, operation Operation) (ErrorCode, bool) {
 	switch status {
 	case http.StatusBadRequest:
