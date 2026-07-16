@@ -72,7 +72,15 @@ cursor 是版本化、不透明、绑定操作和查询的 token；不可解析�
 
 ## 路由
 
-有 refresh token 时，App API 是主路径；App 的认证、网络、服务端失败不自动 Web fallback。`NewClient` 无 refresh token 且 `WebFallbackEnabled=true` 时，匿名白名单读操作使用 Web API；`OpenDefault` 则每次 snapshot 读取本地 `web_fallback_enabled`。`IllustDetail` 的 pages 和原始 ugoira metadata 可能调用 Web 做明确补全，不是失败回退。
+有 refresh token 时，App API 是主路径；App 的认证、网络、服务端失败不自动 Web fallback。`NewClient` 无 refresh token 且 `WebFallbackEnabled=true` 时，匿名白名单读操作使用 Web API；`OpenDefault` 则每次 snapshot 读取本地 `web_fallback_enabled`。
+
+`IllustDetail` 的 pages 和 original ugoira metadata 会调用 Web 做明确补全，不是失败回退，并采用原子结果契约：
+
+- 认证 `IllustDetail` 先读取 App detail，再读取 Web pages。即使 App 响应自带 `MetaPages`，Web pages 失败也返回 `nil` 与 typed error，不返回无标记的 App partial result。
+- `UgoiraMetadata` 的 App metadata 只有 medium zip；Web metadata 未能提供 original 时返回 `nil` 与 typed error，不暗中降级质量。
+- 匿名 `IllustDetail` 依次读取 Web detail 与 pages；任一阶段失败都不返回 partial result。
+
+SDK 不向 Web 补全请求注入 App bearer 或 Cookie。App `MetaPages` 可被 wire model 表达和 mapper 保留，但 SDK 不把这一能力解释为上游对所有作品的完整性保证。完整决策与未来引入显式 partial-result 状态的门槛见 [ADR 0006](adr/0006-original-ugoira-resource-resolution.md)。
 
 ## 资源与图片代理
 
@@ -107,6 +115,17 @@ if errors.Is(err, pixiv.ErrUnauthorized) { /* re-auth */ }
 ```
 
 稳定 code 包括 `invalid_argument`、`artwork_unavailable`、`unauthorized`、`forbidden`、`unsupported`、`rate_limited`、`upstream_error`、`upstream_unavailable`、`malformed_upstream_response`。错误带 operation/backend/retryable/status/已验证 ID；不含 token、cookie、完整 URL、header 或上游响应 body。
+
+补全失败的阶段可直接从 typed error 观察：
+
+| 调用与失败阶段 | 返回结果 | `Operation` | `Backend` |
+| --- | --- | --- | --- |
+| 认证 `IllustDetail` 的 App detail 失败 | `nil` | `OperationIllustDetail` | `BackendAppAPI` |
+| 认证或匿名 `IllustDetail` 的 Web pages 失败 | `nil` | `OperationIllustPages` | `BackendWebAPI` |
+| 匿名 `IllustDetail` 的 Web detail 失败 | `nil` | `OperationIllustDetail` | `BackendWebAPI` |
+| `UgoiraMetadata` 的 Web metadata 补全失败 | `nil` | `OperationUgoiraMetadata` | `BackendWebAPI` |
+
+例如登录墙返回 HTTP 403 时，pages 补全错误为 `CodeForbidden`、`BackendWebAPI`、`OperationIllustPages`，并保留 `UpstreamStatus=403`；App detail 失败时不会继续请求 Web。调用方应按这些字段处理失败，不应从结果中猜测补全是否完成。
 
 `upstream_unavailable` 的网络传输失败还可通过 `Error.TransportKind` 区分安全子类：`dns`、`tls`、`proxy`、`connection_refused`、`connection_reset`、`unknown`。分类只依据 Go 标准库的 typed/wrapped cause，不解析错误文本；例如没有 typed 信号的 HTTPS proxy CONNECT 非 200 文本错误会保持 `unknown`。`Error()` 只输出稳定枚举，不输出 DNS name、代理 userinfo、证书内容或原始 cause。`context.Canceled` 与 `context.DeadlineExceeded` 不设置 transport 子类，继续通过 `errors.Is` 判断。
 

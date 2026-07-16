@@ -329,6 +329,88 @@ func TestClientIllustDetailMapsWebEnrichmentFailureWithoutLeakingSecrets(t *test
 	}
 }
 
+func TestClientIllustDetailReturnsAtomicErrorForRestrictedLoginWallEnrichment(t *testing.T) {
+	t.Parallel()
+
+	const illustID int64 = 731
+	var appRequests atomic.Int32
+	appServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		appRequests.Add(1)
+		if r.Method != http.MethodGet || r.URL.Path != "/v1/illust/detail" || r.URL.Query().Get("illust_id") != "731" {
+			t.Errorf("App request = %s %s?%s, want GET /v1/illust/detail?illust_id=731", r.Method, r.URL.Path, r.URL.RawQuery)
+		}
+		if got := r.Header.Get("Authorization"); got != "Bearer app-test-token" {
+			t.Errorf("App Authorization = %q, want injected bearer", got)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{
+			"illust": {
+				"id": 731,
+				"title": "restricted detail",
+				"type": "illust",
+				"page_count": 2,
+				"x_restrict": 1,
+				"user": {},
+				"tags": [],
+				"image_urls": {},
+				"meta_single_page": {},
+				"meta_pages": [
+					{"page_index": 0, "width": 1200, "height": 1800, "extension": "jpg", "image_urls": {"square_medium": "https://i.pximg.net/app-page-0-square.jpg", "medium": "https://i.pximg.net/app-page-0.jpg", "large": "https://i.pximg.net/app-page-0-large.jpg", "original": "https://i.pximg.net/app-page-0-original.jpg"}},
+					{"page_index": 1, "width": 1600, "height": 1200, "extension": "png", "image_urls": {"square_medium": "https://i.pximg.net/app-page-1-square.jpg", "medium": "https://i.pximg.net/app-page-1.jpg", "large": "https://i.pximg.net/app-page-1-large.jpg", "original": "https://i.pximg.net/app-page-1-original.png"}}
+				]
+			}
+		}`)
+	}))
+	defer appServer.Close()
+
+	var webRequests atomic.Int32
+	webServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		webRequests.Add(1)
+		if r.Method != http.MethodGet || r.URL.Path != "/ajax/illust/731/pages" {
+			t.Errorf("Web request = %s %s, want GET /ajax/illust/731/pages", r.Method, r.URL.Path)
+		}
+		if got := r.Header.Get("Authorization"); got != "" {
+			t.Errorf("Web Authorization = %q, want empty", got)
+		}
+		if got := r.Header.Get("Cookie"); got != "" {
+			t.Errorf("Web Cookie = %q, want empty", got)
+		}
+		http.Error(w, "login required", http.StatusForbidden)
+	}))
+	defer webServer.Close()
+
+	client, err := pixiv.NewClient(pixiv.Options{
+		HTTPClient:    appServer.Client(),
+		AppAPIBaseURL: appServer.URL,
+		WebAPIBaseURL: webServer.URL,
+		AccessToken:   "app-test-token",
+	})
+	if err != nil {
+		t.Fatalf("NewClient() error = %v", err)
+	}
+
+	detail, err := client.IllustDetail(context.Background(), illustID)
+	if err == nil {
+		t.Fatal("IllustDetail() error = nil, want login-wall enrichment failure")
+	}
+	if detail != nil {
+		t.Errorf("IllustDetail() detail = %#v, want nil instead of unmarked App partial result", detail)
+	}
+	var typed *pixiv.Error
+	if !errors.As(err, &typed) {
+		t.Fatalf("IllustDetail() error = %v, want *pixiv.Error", err)
+	}
+	if typed.Code != pixiv.CodeForbidden || typed.Backend != pixiv.BackendWebAPI || typed.Operation != pixiv.OperationIllustPages || typed.Retryable || typed.UpstreamStatus != http.StatusForbidden || typed.IllustID != illustID {
+		t.Errorf("typed error = %#v, want forbidden Web illust_pages error for illust 731", typed)
+	}
+	if !errors.Is(err, pixiv.ErrForbidden) {
+		t.Error("errors.Is(err, ErrForbidden) = false")
+	}
+	if appRequests.Load() != 1 || webRequests.Load() != 1 {
+		t.Errorf("backend requests = App %d, Web %d; want App 1, Web 1", appRequests.Load(), webRequests.Load())
+	}
+}
+
 func TestClientIllustDetailMapsAppHTTPFailuresWithoutWebFallback(t *testing.T) {
 	t.Parallel()
 

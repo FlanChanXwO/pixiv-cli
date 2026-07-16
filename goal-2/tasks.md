@@ -209,12 +209,12 @@
 
 ## T16 — 重新审计 App/Web enrichment 失败策略
 
-- 状态：未完成
+- 状态：已完成
 - 范围：P2-12。当前 ADR 0006/0009 与外部测试明确要求 Web enrichment 失败时整体失败。用 R-18/登录墙 fixture、当前 App `MetaPages` 完整性和可用的真实 canary 评估是否应改为 partial result；若改，必须先形成 ADR、显式 enrichment 状态与兼容测试；若不改，以充分证据确认这是已采纳设计而非缺陷，并增强 SDK/错误文档。
 - 验收：App 成功/Web enrichment 失败、App 失败、匿名路径均有确定性测试；无静默 fallback；策略有 ADR 和用户可观察语义；真实联网可用时补充但不替代 fixture。
-- 实际：
-- 证据：
-- 风险/下一步：
+- 实际：证据驱动复核后维持既有“完整结果或明确失败”的原子 enrichment 契约，不新增 partial result、公开状态字段或 production fallback。App wire model/mapper 能表达并保留 `x_restrict`、`MetaPages` 与 original URL，但这只是可表达能力，不是所有作品和时间点的完整性保证；App ugoira metadata 又只有 medium zip，original 仍必须由 Web 补全。当前公开结果没有 completeness/provenance 状态，因此 Web 登录墙或网络失败时直接返回 App 数据会把可能不完整的结果无标记地伪装成成功，并令 detail 与 ugoira 完成语义不一致。新增公开 SDK fixture `TestClientIllustDetailReturnsAtomicErrorForRestrictedLoginWallEnrichment`：App 返回 `x_restrict=1`、两页完整 `MetaPages` 后，Web pages 返回 403 登录墙；SDK 仍返回 `nil` 与 `forbidden/web_api/illust_pages/status=403` typed error，且 Web 请求不携带 Authorization/Cookie。ADR 0006/0009 已明确这是已采纳公开语义，并规定未来若引入 partial result，必须先设计显式 enrichment 状态/provenance、detail/ugoira 一致规则、兼容迁移和完整 fixture；`docs/sdk.md` 同步记录各失败阶段的 result、operation、backend 与 status。
+- 证据：新 fixture 是既有行为的 GREEN characterization，首次及连续 20 次运行均通过；`go test -race ./pixiv -run '^TestClientIllustDetailReturnsAtomicErrorForRestrictedLoginWallEnrichment$' -count=1` 通过。现有 `TestClientIllustDetailMapsAppHTTPFailuresWithoutWebFallback` 证明 App 失败不请求 Web，`TestClientIllustDetailPreservesAnonymousPagesFailureStage` 与匿名 detail failure tests 证明匿名两阶段失败不返回 partial，`TestUgoiraWebEnrichmentFailureReturnsNoPartialResult` 证明 ugoira Web 补全失败不返回 App partial；`TestMapIllustPreservesEveryNormalizedField` 证明 App mapper 保留 `MetaPages`。聚焦测试、`go test ./pixiv ./internal/pixiv/appapi -count=1` 与 `git diff --check` 通过。真实联网补充证据中，`PIXIV_E2E_WEB_API=1` 匿名 Web fallback e2e 通过；匿名 `daily_r18` ranking 当前返回 HTTP 403 登录墙。认证 App canary 在 OAuth refresh 阶段返回脱敏的 `upstream_unavailable`，因此不可用于证明真实 App `MetaPages` 的普遍完整性，也未据此推断本地 token 无效。独立 spec reviewer 核对四条失败路径、ADR 与公开字段后 APPROVE；独立 quality/security reviewer 复核公开边界、凭据隔离、错误脱敏、race 与文档准确性，零 finding、APPROVE。
+- 风险/下一步：fixture 能证明 SDK 契约和错误映射，不替代实时上游兼容性；认证真实 canary 仍受当前 OAuth transport failure 限制。调用方显式提供的 `HTTPClient.CookieJar` 仍由调用方所有，本结论只保证 SDK 不主动向 Web enrichment 注入 App bearer/Cookie。T17 继续合并 releaseworkflow/nativeevidence 的重复 YAML policy helper，不修改本次 enrichment 决策。
 
 ## T17 — 合并 releaseworkflow/nativeevidence YAML policy helper
 
