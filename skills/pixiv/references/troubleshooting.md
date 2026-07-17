@@ -5,8 +5,10 @@ usually the answer. Never mask an error with retries or silent fallbacks.
 
 ## Binary / environment
 
-- `pixiv: command not found` → not installed or not on PATH. Point the user to
-  the README "Installation" section; do not pick an install method for them.
+- `pixiv: command not found` → report that the binary is unavailable as a
+  blocker. Do not install it or guess an installation method. Refer to setup
+  instructions only when the user supplied them or they are already present in
+  the current context.
 - Config/auth file locations: `pixiv config path` prints the config file path;
   `auth.json` lives in the same directory. Never read `auth.json` contents.
 
@@ -23,10 +25,10 @@ usually the answer. Never mask an error with retries or silent fallbacks.
 
 `pixiv auth list --json` only shows configured accounts. `pixiv auth check
 --json` performs the network validation and prints user_id / username (never
-the token) — use it as the first credential-validity diagnostic. On an empty
-profile, a successful list returns `{"accounts": null}`; treat that as zero
-accounts. Check the process exit code before parsing `--json`, because CLI
-failures can use plain stderr with empty stdout.
+the token) — use it when credential validity actually needs diagnosis. Do not
+list accounts as a routine session probe. Treat both `{"accounts": null}` and
+`{"accounts": []}` as zero accounts. Check the process exit code before
+parsing `--json`, because CLI failures can use plain stderr with empty stdout.
 
 Never run `pixiv auth token`: it prints the stored refresh token. If the user
 needs it, instruct them to run `pixiv auth token [UID]` only in their own
@@ -48,21 +50,18 @@ private terminal and never ask them to paste its output into the chat.
 - No token anywhere + `web_fallback_enabled=true` → `search` / `detail` /
   `ranking` / `download` silently use the anonymous web API. Anonymous results
   can differ: restricted search fails with an authentication requirement,
-  `search-options` is unavailable, user search is approximate, and some fields
-  are absent.
+  `search-options` is unavailable, and some fields may be absent.
 - Anonymous path failing entirely → check `pixiv config get
   web_fallback_enabled`; if `false`, that is the configured behavior.
 
 ## Empty or "missing" results
 
 - Empty search with filters: verify `--rating`, `--type`, `--ai-mode`,
-  `--aspect-ratio`, `--resolution`, and exact `--tool` together. Rating and
-  AI-only are SDK batch filters; a strict combination can legitimately return
-  nothing.
-- Wrong AI result: Pixiv `AIType==2` is AI-generated. Deprecated `--ai-type`
-  maps `0=exclude`, `1=only`, `2=all`; prefer `--ai-mode`.
-- Wrong resolution result: each tier constrains both dimensions: high
-  `>=3000`, medium `1000..2999`, low `<=999`.
+  `--aspect-ratio`, `--resolution`, and exact `--tool` together; a strict
+  combination can legitimately return nothing.
+- Wrong AI or resolution result: verify the documented `--ai-mode` and
+  `--resolution` values with `pixiv search --help`, then inspect the returned
+  records rather than assuming undocumented numeric mappings or thresholds.
 - Fewer items than expected: default `--limit` is one upstream batch. Pass an
   explicit `--limit N`, or `--limit 0` only if the user wants everything.
 - `--page` errors: it requires a positive `--limit`.

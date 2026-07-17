@@ -7,8 +7,9 @@ Downloads write to disk — always run the checklist first.
 1. `pixiv config get download_path` — confirm the target directory with the
    user (default `./downloads`, resolved against the *current working
    directory*, so state your cwd when confirming).
-2. Confirm the item count. For multi-ID or large batches, restate the list
-   before running.
+2. Confirm the exact ID list and item count immediately before each
+   `pixiv download` invocation. Approval is single-use and never carries over
+   to another download command.
 3. Only override with `--download-path DIR` / `--filename-template T` when the
    user asked for a specific location or naming; these flags never persist.
 
@@ -24,25 +25,30 @@ pixiv download 129543211 130000001 130000002
   `{title}`, `{author}`, `{author_id}`. Persist a new default with
   `pixiv config set filename_template "..."` (confirm first — config write).
 
-## Ugoira (animated works)
+## Animated works
 
-- The CLI downloads the frame zip and encodes GIF + APNG with a built-in Rust
-  encoder. No ffmpeg or any external tool is needed.
-- Encoding large ugoira takes noticeable time. Do NOT impose your own timeout
-  or kill the process because it "seems slow" — wait for completion or a real
-  error.
+- Animated downloads may take noticeable time. Do NOT impose your own timeout
+  or kill the process because it "seems slow" — wait for completion, user
+  cancellation, or a real error.
 
 ## Batch from a search/user listing
 
-Chain source-side, don't scrape human output:
+Chain from JSON rather than scraping human output:
 
-```
-pixiv user artworks 11 --limit 5 --json > "$TMPDIR/works.json"
-# extract ids (jq if available, otherwise Grep/Read on the temp file)
-pixiv download <id...>
-```
-
-Confirm the final ID list and count with the user before the `download` step.
+1. Create an environment-safe, uniquely named temporary file through the
+   agent runtime's temp-file facility or `mktemp`; do not construct a
+   predictable pathname or place it in a project/root directory.
+2. Redirect one bounded listing command's JSON stdout to that file, then check
+   its exit status before reading or parsing it. On failure, report stderr and
+   do not continue with partial or empty data.
+3. Inspect the successful response's actual JSON shape before choosing a
+   selector. Extract `id` only from the array/object that demonstrably contains
+   artwork records. Never recursively collect every field named `id`, because
+   author, user, and other nested records can also have IDs.
+4. Validate artwork IDs, deduplicate them while preserving order, then show the
+   exact list and count to the user. Run `pixiv download ...` only after a new,
+   explicit confirmation for that invocation.
+5. Remove the temporary file after parsing or on failure.
 
 ## Reporting results
 

@@ -1,27 +1,26 @@
 ---
 name: pixiv
-description: Operate Pixiv through the pixiv-cli binary — search illustrations, view details, rankings, personalized recommendations, user profiles/artworks, manage bookmarks and follows, and download artworks (including ugoira). Load when the user mentions Pixiv, illustrations, artists, illust IDs, or before running any `pixiv` command. Command syntax may change between versions — verify with `pixiv <cmd> --help` instead of relying on pre-trained knowledge.
+description: Operate Pixiv through the pixiv-cli binary — search works, inspect Pixiv artwork or user IDs/URLs, view rankings and recommendations, manage bookmarks/follows, and download works. Load only when the user explicitly mentions Pixiv or pixiv-cli, provides a pixiv.net URL or ID in a clear Pixiv context, or requests a specific Pixiv operation or `pixiv` command. Do not trigger for generic illustration, artist, image-search, or download requests without Pixiv context. Verify current syntax with `pixiv <cmd> --help`.
 ---
 
 # Pixiv CLI Skill
 
 Teaches an agent to drive the `pixiv` CLI correctly. This skill encodes workflow
 orchestration, safety rules, and semantic traps — flag details always defer to
-`pixiv <cmd> --help` and the project README.
+the installed binary's `pixiv <cmd> --help` output.
 
-## Preflight (run once per session)
+## Preflight and account checks
 
 1. Run `pixiv version --json`. The binary itself is the only environment probe:
-   if it fails, report the real error (not found / not executable) and point the
-   user to the "Installation" section of the project README. Do not guess an
-   installation method.
-2. Run `pixiv auth list --json` to see configured local accounts. Presence in
-   this list does not prove a credential is currently valid; use the networked
-   `pixiv auth check [UID] --json` when validation is needed. No account is not
-   an error: on an empty profile, the successful JSON shape is
-   `{"accounts": null}` rather than an empty array. Normalize `null` to an
-   empty account list. The documented anonymous web fallback remains available
-   when `web_fallback_enabled=true`.
+   if it is missing or not executable, report that blocker and do not install
+   or guess an installation method. Refer to installation instructions only
+   when the user supplied them or they already exist in the current context.
+2. Do not enumerate local accounts on every session. Run
+   `pixiv auth list --json` only when authentication, account selection, or an
+   anonymous-fallback decision actually requires it. Presence in this list does
+   not prove a credential is currently valid; use the networked
+   `pixiv auth check [UID] --json` only when validation is needed. Treat both
+   `{"accounts": null}` and `{"accounts": []}` as an empty account list.
 
 ## Hard rules
 
@@ -48,11 +47,13 @@ orchestration, safety rules, and semantic traps — flag details always defer to
 | Tier | Commands | Behavior |
 | --- | --- | --- |
 | Secret (user-only) | `auth token` `auth add`; any literal `--token` / `--refresh-token` | Never execute; give a placeholder-only command for the user's private terminal |
-| Read | `search` `search-options` `detail` `ranking` `recommended` `user *` `config get/path` `auth list/check` `version` `update --check` | Execute freely |
+| Read | `search` `search-options` `detail` `ranking` `recommended` `user *` `config get/path` `version` `update --check` | Execute when the user's task requires it |
+| Account diagnosis | `auth list/check` | List only for authentication/account/fallback decisions; check only when network validation is needed |
 | Write | `bookmark add/remove` `follow add/remove` | State the target (illust/user ID) in one line before executing |
-| Disk | `download` | Confirm target directory (`pixiv config get download_path`) and item count first; see `references/download.md` |
+| Disk | `download` | Confirm target directory and exact ID list before each invocation; approval never carries over; see `references/download.md` |
 | Interactive credential | `auth login` | Run only on explicit request while the user is present for browser OAuth |
 | Account/config state | `auth use/remove` `config set/unset` `update` (actual install) | Ask for explicit confirmation each time; approval does not carry over |
+| MCP server | `mcp` | Run only when the user explicitly asks to start it; it is a long-lived stdio JSON-RPC server, not a data command—do not auto-probe, auto-wait, or include it in preflight |
 
 ## Output & token control (in priority order)
 
@@ -61,9 +62,8 @@ orchestration, safety rules, and semantic traps — flag details always defer to
    `search`, `ranking`, `recommended`, `user artworks`, `user bookmarks`, and
    `user following`. Add `--page`, `--type`, `--rating`, or other flags only
    when that specific command's help exposes them.
-   Note: the default (no `--limit`) returns one upstream batch; `--limit 0`
-   keeps fetching until exhausted — never use `--limit 0` unless the user
-   explicitly asks for everything.
+   `--limit 0` requests all results, so never use it unless the user explicitly
+   asks for everything.
 2. **Small result, display only:** use the default human-readable output and
    relay it. JSON carries field names and metadata — it is *larger* than the
    table for display purposes.
@@ -83,7 +83,7 @@ orchestration, safety rules, and semantic traps — flag details always defer to
 Verify flags with `--help` before use; this list is orientation, not a contract.
 
 ```
-pixiv auth list --json                    # local accounts (never shows tokens)
+pixiv auth list --json                    # only when an account decision needs it
 pixiv auth check [UID] --json             # validate token, shows user_id/username
 pixiv auth use [UID]                      # switch default account (confirm first)
 pixiv config path                         # print config.toml location
@@ -96,7 +96,7 @@ pixiv search-options "WORD" --json         # authenticated dynamic tool choices
 pixiv detail ILLUST_ID --json             # single artwork detail
 pixiv ranking --mode day
 pixiv recommended illust --limit 10       # kind is REQUIRED; needs auth
-pixiv recommended all --limit 10          # all four result streams; needs auth
+pixiv recommended all --limit 10          # request all supported kinds; needs auth
 pixiv user detail USER_ID --json          # full public profile (USER_ID required)
 pixiv user artworks [USER_ID] --limit 20  # omit USER_ID = current account
 pixiv user bookmarks [USER_ID] --tag TAG --limit 20
@@ -112,13 +112,9 @@ pixiv update --check --json               # read-only update check
 Common per-command flags on Pixiv data commands: `--uid UID` (pick local account),
 `--json`, `--proxy URL` / `--no-proxy` (this command only, never persisted).
 
-Config keys: `download_path`, `filename_template`, `https_proxy`,
-`web_fallback_enabled`, `log_level`, `log_format`, `update_check_enabled`,
-`output_json`, `login_open_browser`, `login_timeout`, `login_use_after_login`.
-
-Auth priority: `--refresh-token` > `--uid` > `PIXIV_REFRESH_TOKEN` env >
-default account in `auth.json`. Settings priority: flag > env > `config.toml` >
-built-in default.
+Common config keys include `download_path`, `filename_template`, `https_proxy`,
+and `web_fallback_enabled`; inspect a key with `pixiv config get KEY` instead of
+assuming its effective value.
 
 ## Critical semantics (traps — read before assuming a bug)
 
@@ -127,24 +123,19 @@ built-in default.
    Anonymous fallback happens only when *no* token exists anywhere AND
    `web_fallback_enabled=true`, and only for `search` / `detail` / `ranking` /
    `download`.
-2. **`recommended` requires a kind.** `all` returns four independently
-   paginated streams (illust, manga, novel, user) in order; it requires
-   authentication and never works anonymously.
+2. **`recommended` requires a kind.** Choose one of the kinds shown by
+   `pixiv recommended --help`; it requires authentication and does not work
+   anonymously.
 3. **`--limit` is command-specific.** It is available on `search`, `ranking`,
    `recommended`, `user artworks`, `user bookmarks`, and `user following`;
    do not attach it to `detail`, `search-options`, auth/config commands, or
-   other commands whose help omits it. Where supported, unset = one upstream
-   batch (compat default), positive = keep fetching until N matches, and `0` =
-   fetch everything. `--page` requires a positive `--limit`. `--offset` is
-   deprecated.
-4. **Search filters are a shared SDK contract.** With a token, App API filters
-   content type, resolution, aspect ratio, tool, and AI exclusion; the public
-   SDK filters rating and AI-only (`AIType==2`) per batch. Every filter is
-   bound to the opaque cursor. With `--limit`, the CLI keeps reading upstream
-   batches until enough matches accumulate — a strict query may take multiple
-   requests. `--ai-type` is deprecated (`0=exclude`, `1=only`, `2=all`) and
-   conflicts with explicit `--ai-mode`; `--r18` is a deprecated alias for
-   `--rating r18` and never changes the keyword.
+   other commands whose help omits it. Where supported, a positive value sets
+   the maximum result count and `0` requests all results. `--page` requires a
+   positive `--limit`.
+4. **Search flags are command-scoped.** Verify `--rating`, `--type`,
+   `--ai-mode`, `--aspect-ratio`, `--resolution`, `--tool`, and
+   `--search-target` against `pixiv search --help`; do not infer undocumented
+   aliases or attach search filters to other commands.
 5. **Anonymous restricted search fails explicitly.** Web fallback uses only
    reliable search filters. `r18`, `r18g`, `mature`, and `search-options`
    require App authentication; do not present the failure as an empty result
@@ -154,15 +145,13 @@ built-in default.
 7. **Proxy is per-command.** The browser's system proxy is NOT inherited.
    Persist with `pixiv config set https_proxy URL`; override per command with
    `--proxy` / `--no-proxy` (mutually exclusive).
-8. **Anonymous `search_user` is approximate** — it dedupes authors from a web
-   work search, not the official user search.
-9. **Ugoira downloads take time**: the CLI downloads a zip and encodes GIF/APNG
-   with a built-in Rust encoder (no ffmpeg). Do not kill a slow ugoira
-   download; let it finish or fail with a real error.
-10. **`--tag` has two narrow meanings.** `user bookmarks --tag TAG` filters
-    bookmark listings; `bookmark add --tag TAG` adds a repeatable bookmark tag.
-    `search` has no `--tag` flag — put the tag text in its required `WORD` and
-    choose `--search-target` when exact matching is needed.
+8. **Long downloads may legitimately take time.** Do not impose an arbitrary
+   timeout or kill the process merely because it is slow; wait for completion,
+   user cancellation, or a real error.
+9. **`--tag` has two narrow meanings.** `user bookmarks --tag TAG` filters
+   bookmark listings; `bookmark add --tag TAG` adds a repeatable bookmark tag.
+   `search` has no `--tag` flag — put the tag text in its required `WORD` and
+   choose `--search-target` when exact matching is needed.
 
 ## Routing
 
