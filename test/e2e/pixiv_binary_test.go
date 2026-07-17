@@ -241,7 +241,12 @@ func TestPixivBinaryWebAPIFallbackReal(t *testing.T) {
 	// 高级筛选必须继续沿匿名 Web route 返回稳定 JSON；这里不要求结果非空，
 	// 避免把上游当前没有匹配作品误判成协议故障。
 	advancedSearchOut := runPixiv(t, repoRoot, binaryPath, env, "search", "初音ミク", "--aspect-ratio", "landscape", "--limit", "1", "--json")
-	requireIllustListJSONShape(t, advancedSearchOut, "anonymous web advanced search")
+	advancedIllusts := requireIllustListJSONShape(t, advancedSearchOut, "anonymous web advanced search")
+	for _, illust := range advancedIllusts {
+		if illust.Width <= illust.Height {
+			t.Fatalf("anonymous web landscape search returned illustration %d with dimensions %dx%d", illust.ID, illust.Width, illust.Height)
+		}
+	}
 
 	downloadID := int64(0)
 	for _, illust := range searchResult.Illusts {
@@ -543,8 +548,14 @@ func TestPixivBinaryAuthenticatedAppAPICanary(t *testing.T) {
 	}
 
 	if len(options.Tools) > 0 {
-		toolOut := runPixivCanary(t, repoRoot, binaryPath, env, auth, "search", "初音ミク", "--tool", options.Tools[0], "--limit", "1", "--json")
-		requireCanaryIllustListJSON(t, toolOut, auth)
+		selectedTool := options.Tools[0]
+		toolOut := runPixivCanary(t, repoRoot, binaryPath, env, auth, "search", "初音ミク", "--tool", selectedTool, "--limit", "1", "--json")
+		toolIllusts := requireCanaryIllustListJSON(t, toolOut, auth)
+		for _, illust := range toolIllusts {
+			if !slices.Contains(illust.Tools, selectedTool) {
+				t.Fatalf("tool-filter search returned illustration %d without the selected tool", illust.ID)
+			}
+		}
 	} else {
 		t.Log("search options returned no tools; tool-filter canary sub-check was not applicable")
 	}
@@ -797,7 +808,7 @@ func requireJSON(t *testing.T, body []byte, out any) {
 	}
 }
 
-func requireIllustListJSONShape(t *testing.T, body []byte, operation string) {
+func requireIllustListJSONShape(t *testing.T, body []byte, operation string) []pixiv.Illust {
 	t.Helper()
 
 	var document map[string]json.RawMessage
@@ -810,6 +821,7 @@ func requireIllustListJSONShape(t *testing.T, body []byte, operation string) {
 	if err := json.Unmarshal(raw, &illusts); err != nil {
 		t.Fatalf("%s JSON field %q is not an illustration array: %v", operation, "illusts", err)
 	}
+	return illusts
 }
 
 func strconvFormatInt(value int64) string {
