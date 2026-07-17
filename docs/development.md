@@ -41,6 +41,14 @@ diff，解析、行号匹配或调用目标有歧义时必须先修复根因，�
 开发质量对照：显式设置 `PIXIV_UGOIRA_QUALITY_FFMPEG=1` 后，Rust quality gate 才会调用它；
 它不是本地构建或用户运行的前置条件。
 
+帧源读取与 image decoder 使用同一条内存边界：边界值直接取 pinned `image` crate
+`Limits::default().max_alloc`，而不是另设经验常量。ZIP member 声明大小超过该值时在读取前失败；
+实际展开字节超过该值、内存预留失败或取消时也会在分块读取中显式失败，不截断输入或回退到
+其他 encoder。取消 token 会在每个读取块前后以及 image decode 前后检查；但 `image` crate 的单帧
+decoder 没有取消回调，所以已经进入其内部的 decode 不能中途打断，只能在返回后立即观察取消。
+聚焦回归覆盖声明大小超限、实际累计字节超限、读取中取消、正常边界输入、正常 GIF/APNG 和腐坏
+ZIP；这一限制的目的仅是防止帧源在 decoder 自身限制生效前无界占用内存，影响是超限作品明确报错。
+
 受支持的 Go 源码构建需要下列条件：
 
 - Go `1.26.3`；

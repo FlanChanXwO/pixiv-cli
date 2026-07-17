@@ -9,6 +9,10 @@ import (
 
 // Normalize 稳定 generator 的 Go package/module 图语义，并同步文档 article 的完整源正文。
 func Normalize(root string) error {
+	return normalizeWithContainedFileReader(root, readContainedRegularFile)
+}
+
+func normalizeWithContainedFileReader(root string, readFile containedFileReader) error {
 	ua := filepath.Join(root, ".understand-anything")
 	scanPath := filepath.Join(ua, "intermediate", "scan-result.json")
 	graphPath := filepath.Join(ua, "knowledge-graph.json")
@@ -38,7 +42,7 @@ func Normalize(root string) error {
 	if err != nil {
 		return err
 	}
-	goSources, packages, err := analyzeGoPackages(root, modulePath, files)
+	goSources, packages, err := analyzeGoPackages(root, modulePath, files, readFile)
 	if err != nil {
 		return err
 	}
@@ -168,7 +172,7 @@ func Normalize(root string) error {
 	if err := setField(graph, "edges", edges); err != nil {
 		return err
 	}
-	if err := normalizeKnowledgeArticles(root, docsGraph); err != nil {
+	if err := normalizeKnowledgeArticles(root, docsGraph, readFile); err != nil {
 		return err
 	}
 

@@ -71,6 +71,12 @@ func pixivURLHandlerEndpointPath() (string, error) {
 }
 
 func ensurePixivURLHandlerApp(ctx context.Context, appPath string) error {
+	return ensurePixivURLHandlerAppWithCompiler(ctx, appPath, compilePixivURLHandler)
+}
+
+type pixivURLHandlerCompiler func(context.Context, string, string) ([]byte, error)
+
+func ensurePixivURLHandlerAppWithCompiler(ctx context.Context, appPath string, compile pixivURLHandlerCompiler) error {
 	executablePath := filepath.Join(appPath, "Contents", "MacOS", "PixivCLIURLHandler")
 	infoPath := filepath.Join(appPath, "Contents", "Info.plist")
 	if fileExists(executablePath) && fileExists(infoPath) {
@@ -79,19 +85,42 @@ func ensurePixivURLHandlerApp(ctx context.Context, appPath string) error {
 	if err := os.MkdirAll(filepath.Dir(executablePath), constants.PrivateDirMode); err != nil {
 		return err
 	}
-	sourcePath := filepath.Join(os.TempDir(), "pixiv-cli-url-handler.swift")
-	if err := os.WriteFile(sourcePath, []byte(pixivURLHandlerSwiftSource), constants.PrivateFileMode); err != nil {
+	// Swift 源码可能包含后续敏感回调逻辑；私有随机目录和独占创建共同避免固定路径的 symlink 覆盖及并发竞态。
+	sourceDir, err := os.MkdirTemp("", "pixiv-cli-url-handler-*")
+	if err != nil {
 		return err
 	}
-	defer os.Remove(sourcePath)
-	cmd := exec.CommandContext(ctx, "swiftc", sourcePath, "-o", executablePath)
-	if out, err := cmd.CombinedOutput(); err != nil {
+	defer os.RemoveAll(sourceDir)
+	if err := os.Chmod(sourceDir, constants.PrivateDirMode); err != nil {
+		return err
+	}
+	source, err := os.CreateTemp(sourceDir, "url-handler-*.swift")
+	if err != nil {
+		return err
+	}
+	sourcePath := source.Name()
+	if err := source.Chmod(constants.PrivateFileMode); err != nil {
+		_ = source.Close()
+		return err
+	}
+	if _, err := source.WriteString(pixivURLHandlerSwiftSource); err != nil {
+		_ = source.Close()
+		return err
+	}
+	if err := source.Close(); err != nil {
+		return err
+	}
+	if out, err := compile(ctx, sourcePath, executablePath); err != nil {
 		return fmt.Errorf("compile pixiv:// callback helper: %w: %s", err, strings.TrimSpace(string(out)))
 	}
 	if err := os.WriteFile(infoPath, []byte(pixivURLHandlerInfoPlist), constants.PrivateFileMode); err != nil {
 		return err
 	}
 	return nil
+}
+
+func compilePixivURLHandler(ctx context.Context, sourcePath, executablePath string) ([]byte, error) {
+	return exec.CommandContext(ctx, "swiftc", sourcePath, "-o", executablePath).CombinedOutput()
 }
 
 func fileExists(path string) bool {

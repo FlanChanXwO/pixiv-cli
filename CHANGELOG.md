@@ -26,6 +26,9 @@
 
 ### Security
 
+- 修复 macOS 登录回调 helper 以固定临时 Swift 源文件路径编译时可能遭受 symlink 覆盖或并发替换的问题；源码现在写入权限为 `0700` 的随机私有目录，并以独占方式创建为 `0600` 普通文件，编译成功或失败都会清理该目录，同时保留真实编译错误。
+- 加固 understand-anything 图谱归一化对生成器输入路径的读取：Go scan 与 docs article 现在统一拒绝绝对路径、词法或 symlink 越界及非普通文件，并通过同一已打开文件描述符复核边界与文件身份；路径在校验期间被替换会显式失败，且不会写入四份图谱产物。
+- 修复 ugoira ZIP 帧在进入 image decoder 限制前被 `read_to_end` 无界展开的问题；帧源现在以 pinned `image` crate 的默认 `max_alloc` 为同一客观上限，读取前校验 ZIP 声明大小，并在分块读取时校验实际累计字节和响应取消。超限、内存预留失败或取消都会显式失败，不截断或静默降级；image crate 内部正在执行的单帧 decode 仍只能在返回后观察取消。
 - 修复 `pixiv config set/unset https_proxy` 在环境变量覆盖配置时把有效代理 URL 原样写入 stderr、可能暴露 userinfo、path 或 query 的问题；命令现在仍提示 effective value 由环境变量控制，但不再回显代理值。配置写入/删除、显式 `config get` 与小写 `https_proxy` 优先于大写 `HTTPS_PROXY` 的语义不变。
 - 加固 Release workflow 的 canonical SemVer 门禁：validator 现在是绑定 `RELEASE_TAG` 的独立、单命令 step，workflow policy 固定其位置与精确命令，并拒绝 `if`、`continue-on-error` 或额外 shell command 绕过 tag push/恢复入口的版本校验。更新选择器既有的当前通道非 SemVer fail-closed 语义保持不变。
 - 修复 SDK、CLI、MCP、显式更新与自动更新在代理 URL 格式错误或 update 代理不是 absolute HTTP(S) URL 时，错误、unwrap 链或 stderr warning 可能回显代理 userinfo、path 与 query 的问题；非法代理现在保留可分类的安全原因与静态上下文，并继续在联网前明确失败。有效 HTTP(S) 代理、显式空代理、`--no-proxy`、动态配置 snapshot 与代理优先级不变。

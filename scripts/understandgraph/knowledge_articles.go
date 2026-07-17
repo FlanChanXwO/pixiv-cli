@@ -4,27 +4,17 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
-	"os"
 	"path/filepath"
-	"strings"
 	"unicode/utf8"
 )
 
 // normalizeKnowledgeArticles 用当前 docs 源文件刷新 article 全文，避免 generator 的展示截断进入入库快照。
-func normalizeKnowledgeArticles(root string, graph map[string]json.RawMessage) error {
+func normalizeKnowledgeArticles(root string, graph map[string]json.RawMessage, readFile containedFileReader) error {
 	nodes, err := decodeField[[]graphNode](graph, "nodes")
 	if err != nil {
 		return fmt.Errorf("docs graph: %w", err)
 	}
 	docsRoot := filepath.Join(root, "docs")
-	resolvedDocsRoot, err := filepath.EvalSymlinks(docsRoot)
-	if err != nil {
-		return fmt.Errorf("resolve docs root: %w", err)
-	}
-	resolvedDocsRoot, err = filepath.Abs(resolvedDocsRoot)
-	if err != nil {
-		return fmt.Errorf("resolve absolute docs root: %w", err)
-	}
 	for index := range nodes {
 		node := &nodes[index]
 		if node.Type != "article" {
@@ -32,11 +22,6 @@ func normalizeKnowledgeArticles(root string, graph map[string]json.RawMessage) e
 		}
 		if node.FilePath == "" {
 			return fmt.Errorf("docs graph article %s is missing filePath", node.ID)
-		}
-		relativePath := filepath.Clean(filepath.FromSlash(node.FilePath))
-		// article path 来自生成产物，但仍需禁止越出 docs 根目录读取任意本机文件。
-		if filepath.IsAbs(relativePath) || relativePath == ".." || strings.HasPrefix(relativePath, ".."+string(filepath.Separator)) {
-			return fmt.Errorf("docs graph article %s has filePath outside docs: %s", node.ID, node.FilePath)
 		}
 		var knowledgeMeta map[string]json.RawMessage
 		if len(node.KnowledgeMeta) == 0 {
@@ -48,23 +33,8 @@ func normalizeKnowledgeArticles(root string, graph map[string]json.RawMessage) e
 		if knowledgeMeta == nil {
 			return fmt.Errorf("docs graph article %s knowledgeMeta must be an object", node.ID)
 		}
-		sourcePath := filepath.Join(docsRoot, relativePath)
-		resolvedSourcePath, err := filepath.EvalSymlinks(sourcePath)
-		if err != nil {
-			return fmt.Errorf("read docs graph article %s source %s: resolve path: %w", node.ID, node.FilePath, err)
-		}
-		resolvedSourcePath, err = filepath.Abs(resolvedSourcePath)
-		if err != nil {
-			return fmt.Errorf("resolve absolute docs graph article %s source %s: %w", node.ID, node.FilePath, err)
-		}
-		resolvedRelativePath, err := filepath.Rel(resolvedDocsRoot, resolvedSourcePath)
-		if err != nil {
-			return fmt.Errorf("resolve docs graph article %s source %s relative to docs: %w", node.ID, node.FilePath, err)
-		}
-		if resolvedRelativePath == ".." || strings.HasPrefix(resolvedRelativePath, ".."+string(filepath.Separator)) {
-			return fmt.Errorf("docs graph article %s source %s resolves outside docs", node.ID, node.FilePath)
-		}
-		content, err := os.ReadFile(resolvedSourcePath)
+		// article path 同样来自生成产物，统一复用普通文件边界，避免两套安全语义漂移。
+		content, err := readFile(docsRoot, node.FilePath, "docs")
 		if err != nil {
 			return fmt.Errorf("read docs graph article %s source %s: %w", node.ID, node.FilePath, err)
 		}

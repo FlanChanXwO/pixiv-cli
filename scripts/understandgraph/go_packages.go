@@ -49,20 +49,19 @@ func readModulePath(root string) (string, error) {
 	return modulePath, nil
 }
 
-func analyzeGoPackages(root, modulePath string, files []scanFile) ([]goSource, []goPackage, error) {
+func analyzeGoPackages(root, modulePath string, files []scanFile, readFile containedFileReader) ([]goSource, []goPackage, error) {
 	sources := make([]goSource, 0)
 	sourceIndexesByDir := map[string][]int{}
 	for _, file := range files {
 		if file.Language != "go" {
 			continue
 		}
-		absolute := filepath.Join(root, filepath.FromSlash(file.Path))
-		content, err := os.ReadFile(absolute)
+		content, err := readFile(root, file.Path, "repository")
 		if err != nil {
 			return nil, nil, fmt.Errorf("read Go source %s: %w", file.Path, err)
 		}
 		fileSet := token.NewFileSet()
-		parsed, err := parser.ParseFile(fileSet, absolute, content, 0)
+		parsed, err := parser.ParseFile(fileSet, filepath.FromSlash(file.Path), content, 0)
 		if err != nil {
 			return nil, nil, fmt.Errorf("parse Go source %s: %w", file.Path, err)
 		}
