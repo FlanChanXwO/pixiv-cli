@@ -238,6 +238,11 @@ func TestPixivBinaryWebAPIFallbackReal(t *testing.T) {
 		t.Fatalf("web fallback search returned no illustrations:\n%s", string(searchOut))
 	}
 
+	// 高级筛选必须继续沿匿名 Web route 返回稳定 JSON；这里不要求结果非空，
+	// 避免把上游当前没有匹配作品误判成协议故障。
+	advancedSearchOut := runPixiv(t, repoRoot, binaryPath, env, "search", "初音ミク", "--aspect-ratio", "landscape", "--limit", "1", "--json")
+	requireIllustListJSONShape(t, advancedSearchOut, "anonymous web advanced search")
+
 	downloadID := int64(0)
 	for _, illust := range searchResult.Illusts {
 		if illust.ID > 0 && illust.Type != "ugoira" {
@@ -488,6 +493,62 @@ func TestPixivBinaryAuthenticatedAppAPICanary(t *testing.T) {
 		t.Fatalf("auth check returned invalid user_id: %d", account.UserID)
 	}
 
+	optionsOut := runPixivCanary(t, repoRoot, binaryPath, env, auth, "search-options", "初音ミク", "--json")
+	var options pixiv.SearchIllustOptionsResult
+	requireCanaryJSON(t, optionsOut, auth, &options)
+	if options.Tools == nil {
+		t.Fatal("search options returned a null or missing tools array")
+	}
+
+	for _, search := range []struct {
+		name     string
+		args     []string
+		validate func(pixiv.Illust) bool
+		want     string
+	}{
+		{
+			name:     "high-resolution",
+			args:     []string{"search", "初音ミク", "--resolution", "high", "--limit", "1", "--json"},
+			validate: func(illust pixiv.Illust) bool { return illust.Width >= 3000 && illust.Height >= 3000 },
+			want:     "width and height >= 3000",
+		},
+		{
+			name:     "landscape",
+			args:     []string{"search", "初音ミク", "--aspect-ratio", "landscape", "--limit", "1", "--json"},
+			validate: func(illust pixiv.Illust) bool { return illust.Width > illust.Height },
+			want:     "width > height",
+		},
+		{
+			name:     "illustration-content-type",
+			args:     []string{"search", "初音ミク", "--type", "illust", "--limit", "1", "--json"},
+			validate: func(illust pixiv.Illust) bool { return illust.Type == "illust" },
+			want:     `type == "illust"`,
+		},
+		{
+			name:     "exclude-ai",
+			args:     []string{"search", "初音ミク", "--ai-mode", "exclude", "--limit", "1", "--json"},
+			validate: func(illust pixiv.Illust) bool { return illust.AIType != 2 },
+			want:     "ai_type != 2",
+		},
+	} {
+		t.Run("search-filter/"+search.name, func(t *testing.T) {
+			out := runPixivCanary(t, repoRoot, binaryPath, env, auth, search.args...)
+			illusts := requireCanaryIllustListJSON(t, out, auth)
+			for _, illust := range illusts {
+				if !search.validate(illust) {
+					t.Fatalf("search filter %s returned illustration %d that does not satisfy %s", search.name, illust.ID, search.want)
+				}
+			}
+		})
+	}
+
+	if len(options.Tools) > 0 {
+		toolOut := runPixivCanary(t, repoRoot, binaryPath, env, auth, "search", "初音ミク", "--tool", options.Tools[0], "--limit", "1", "--json")
+		requireCanaryIllustListJSON(t, toolOut, auth)
+	} else {
+		t.Log("search options returned no tools; tool-filter canary sub-check was not applicable")
+	}
+
 	userDetailOut := runPixivCanary(t, repoRoot, binaryPath, env, auth, "user", "detail", strconvFormatInt(account.UserID), "--json")
 	var detail pixiv.UserDetailResult
 	requireCanaryJSON(t, userDetailOut, auth, &detail)
@@ -626,6 +687,22 @@ func requireCanaryJSON(t *testing.T, body []byte, auth authenticatedCanaryAuth, 
 	}
 }
 
+func requireCanaryIllustListJSON(t *testing.T, body []byte, auth authenticatedCanaryAuth) []pixiv.Illust {
+	t.Helper()
+
+	var document map[string]json.RawMessage
+	requireCanaryJSON(t, body, auth, &document)
+	raw, ok := document["illusts"]
+	if !ok || bytes.Equal(raw, []byte("null")) {
+		t.Fatal(`canary JSON field "illusts" is missing or null`)
+	}
+	var illusts []pixiv.Illust
+	if err := json.Unmarshal(raw, &illusts); err != nil {
+		t.Fatalf(`canary JSON field "illusts" is not an illustration array: %v`, err)
+	}
+	return illusts
+}
+
 func redactCanaryDiagnostic(refreshToken, value string) string {
 	if refreshToken != "" {
 		value = strings.ReplaceAll(value, refreshToken, "[redacted]")
@@ -717,6 +794,21 @@ func requireJSON(t *testing.T, body []byte, out any) {
 
 	if err := json.Unmarshal(body, out); err != nil {
 		t.Fatalf("decode JSON failed: %v\n%s", err, string(body))
+	}
+}
+
+func requireIllustListJSONShape(t *testing.T, body []byte, operation string) {
+	t.Helper()
+
+	var document map[string]json.RawMessage
+	requireJSON(t, body, &document)
+	raw, ok := document["illusts"]
+	if !ok || bytes.Equal(raw, []byte("null")) {
+		t.Fatalf("%s JSON field %q is missing or null", operation, "illusts")
+	}
+	var illusts []pixiv.Illust
+	if err := json.Unmarshal(raw, &illusts); err != nil {
+		t.Fatalf("%s JSON field %q is not an illustration array: %v", operation, "illusts", err)
 	}
 }
 
