@@ -263,7 +263,7 @@
 
 ## T20 — 同步文档、changelog 与两份知识图谱
 
-- 状态：未完成
+- 状态：已完成
 - 范围：汇总所有用户可见错误/行为/安全变化到 `[Unreleased]`；更新 README、SDK、MCP、architecture/development/ADR；重建代码与文档图谱及指纹。
 - 验收：文档链接有效；图谱无 duplicate/dangling/unassigned；meta/fingerprint 对齐实现提交；文档不保留已删除符号或旧行为。
 - C05 已核实的图谱待办库存（不得只局部手工补点）：
@@ -271,9 +271,9 @@
   - code graph 缺失 16 个新 path：`internal/cli/loginhelper/install_darwin.go`、`install_other.go`、`install_other_test.go`；`internal/mcpserver/auth_tools.go`、`download_tools.go`、`formatting.go`、`legacy_observability_test.go`、`legacy_tools.go`、`registration.go`、`sdk_runtime.go`；`internal/pixiv/webapi/decoder.go`、`dto.go`、`mapper.go`、`pagination.go`、`parameters.go`、`transport.go`。
   - code graph 中 6 个已有 path 的 file/function 节点、line range 与 `contains`/`calls`/`imports`/`tested_by` 边已 stale：`internal/cli/account_login.go`、`internal/cli/account_test.go`、`internal/mcpserver/sdk_tools.go`、`internal/mcpserver/server.go`、`internal/mcpserver/server_test.go`、`internal/pixiv/webapi/client.go`。
   - `README.md`、`CHANGELOG.md`、`docs/architecture.md`、`docs/mcp-tools.md` 的 document 内容已 stale；docs graph 的 architecture/mcp article、相关 entity/claim/edge 与 content hash 也已 stale。T20 还须覆盖同一快照后变更的 `docs/adr/0008-*`、`docs/adr/0010-*`、`docs/development.md`、`docs/index.md`、`docs/sdk.md` 及 Goal 文档，最终以生成器验证结果而不是本清单数量作为完整性结论。
-- 实际：
-- 证据：
-- 风险/下一步：
+- 实际：统一 README、CHANGELOG、architecture、development、MCP 与文档索引中的最终错误、安全、持久化、分页、release verifier 和 SDK 契约；新增 repo-local `scripts/understandgraph` 归一化器，以 Go AST 把 generator 的 package-to-all-files 假 import 改为稳定 module 关系，所有 method ID/fingerprint receiver-qualified，并在写入前核验 scan/fingerprint/source 快照。后续质量复扫发现 generator 会把 6 篇长文的 article 正文硬截为 3000 字符，归一化器因此继续扩展为从 `docs/` 安全读取全部 17 篇 UTF-8 全文、写入 bytes SHA-256，拒绝 lexical/absolute/symlink 越界并把 docs graph 纳入四文件 staging。最终从空 scratch 以 `582dc4c7b7c4a88a97504eac0c78a1ab94cb33ed` 全量重建：292 files；code graph 2318 nodes/3873 edges/10 layers/11 tour；docs graph 49 nodes/55 edges/4 layers/3 tour。
+- 证据：TDD 覆盖 false Go fan-out、external test package、receiver ID、bare-call 歧义、stale module、unknown RawMessage、source snapshot、跨平台 ReplaceFile、edge 冲突、全文/Unicode/UTF-8/path/symlink/no-write/idempotence；两轮 normalizer spec 与 quality/security review 最终均 APPROVE。最终 292 inventory/fingerprint/file nodes 同集，230 Go files/42 modules/221 AST internal imports 精确相等，Go file-to-file imports、duplicate、dangling、self、unassigned 均为 0；17/17 article 正文逐字等于源文件且 hash 正确，6 篇长文均完整超过 3000 字符，15 条目录分类和 MCP claims 与文档/源码一致。`go test ./...`、normal/race/vet、`sh scripts/build.sh`、`pre-commit run --all-files`、`git diff --check` 全过；生成 artifact 提交为 `91bf6fa`。
+- 风险/下一步：真实 Pixiv 联网 E2E 与 GitHub-hosted 六平台 workflow 仍不由本地图谱任务冒充，留 T21；30 个 inventory-only orphan 是已分层且可独立理解的文档/config/pipeline/tool 节点，未编造关系边。图谱 meta/fingerprint 按生成器契约指向最后实现提交 `582dc4c`，本条 Goal 执行记录在 artifact 提交后追加，不改变已审准产品/代码快照。下一轮只执行 T21 的最终独立审查、PR/CI、合入和分支/worktree 收尾。
 
 ## T21 — 全量终审、PR、六平台 CI 与本地收尾
 
