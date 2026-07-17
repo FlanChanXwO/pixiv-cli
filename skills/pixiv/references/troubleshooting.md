@@ -19,11 +19,18 @@ usually the answer. Never mask an error with retries or silent fallbacks.
 | R18/R18G/mature search requires authentication | Anonymous Web session | Authenticate before retrying; never add a Cookie workaround |
 | `search-options` is unsupported | No App credential | Authenticate, then retry with the same word |
 | Wrong account acting | Multiple local accounts | `pixiv auth list --json`, then `--uid UID` per command, or `pixiv auth use UID` (confirm first) |
-| Cookie string rejected | By design | Only raw App API refresh tokens are accepted, via interactive `auth add` |
+| Cookie string rejected | By design | Only raw App API refresh tokens are accepted; if the user already has one, show the placeholder-only `pixiv auth add --token '<refresh-token>'` and have them run it in a private terminal |
 
 `pixiv auth list --json` only shows configured accounts. `pixiv auth check
 --json` performs the network validation and prints user_id / username (never
-the token) — use it as the first credential-validity diagnostic.
+the token) — use it as the first credential-validity diagnostic. On an empty
+profile, a successful list returns `{"accounts": null}`; treat that as zero
+accounts. Check the process exit code before parsing `--json`, because CLI
+failures can use plain stderr with empty stdout.
+
+Never run `pixiv auth token`: it prints the stored refresh token. If the user
+needs it, instruct them to run `pixiv auth token [UID]` only in their own
+private terminal and never ask them to paste its output into the chat.
 
 ## Network / proxy
 

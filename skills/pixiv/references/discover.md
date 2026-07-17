@@ -12,6 +12,9 @@ pixiv search "初音ミク" --limit 10 --json
 - Default search target is partial tag match (`--search-target
   partial_match_for_tags`); switch to `exact_match_for_tags` or
   `title_and_caption` when the user asks for exact tags or title search.
+- `search` does not have a `--tag` flag. Supply tag text as the required `WORD`;
+  reserve `--tag` for `user bookmarks` (filter) and `bookmark add` (repeatable
+  bookmark tag).
 - Sort defaults to `date_desc`. `popular_desc` may require Pixiv Premium on the
   account — if it errors, report the real API message; do not retry silently.
 - Stable filters include `--rating sfw|r18|r18g|mature|all`, `--type
@@ -49,6 +52,7 @@ re-searching.
 ```
 pixiv user detail 11
 pixiv user artworks 11 --limit 20
+pixiv user bookmarks 11 --tag "初音ミク" --limit 20
 pixiv user following 11 --limit 20
 ```
 
