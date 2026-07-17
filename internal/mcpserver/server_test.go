@@ -79,6 +79,31 @@ func TestServerListsExpectedTools(t *testing.T) {
 			t.Fatalf("search_illust input schema missing %q: %s", field, schema)
 		}
 	}
+	var schemaObject struct {
+		Properties map[string]struct {
+			Description string   `json:"description"`
+			Enum        []string `json:"enum"`
+		} `json:"properties"`
+	}
+	if err := json.Unmarshal(schema, &schemaObject); err != nil {
+		t.Fatalf("decode search_illust input schema: %v", err)
+	}
+	wantEnums := map[string][]string{
+		"rating":       {"all", "sfw", "r18", "r18g", "mature"},
+		"content_type": {"all", "illust-and-ugoira", "illust", "manga", "ugoira"},
+		"ai_mode":      {"all", "exclude", "only"},
+		"aspect_ratio": {"all", "landscape", "portrait", "square"},
+		"resolution":   {"all", "high", "medium", "low"},
+	}
+	for field, enum := range wantEnums {
+		property := schemaObject.Properties[field]
+		if property.Description == "" || !slices.Equal(property.Enum, enum) {
+			t.Fatalf("search_illust schema %s = %+v, want enum %v with description", field, property, enum)
+		}
+	}
+	if schemaObject.Properties["tool"].Description == "" {
+		t.Fatal("search_illust schema tool is missing description")
+	}
 }
 
 func TestSearchIllustMapsStableFiltersToPublicSDK(t *testing.T) {
@@ -163,6 +188,53 @@ func TestSearchIllustKeepsFiltersAcrossLogicalOffsetPagination(t *testing.T) {
 	}
 }
 
+func TestSearchIllustContinuesAfterFilteredEmptyBatch(t *testing.T) {
+	var requests []sdk.SearchIllustRequest
+	client := &fakeSDKClient{searchIllust: func(_ context.Context, request sdk.SearchIllustRequest) (*sdk.IllustListResult, error) {
+		requests = append(requests, request)
+		if request.Cursor == "" {
+			return &sdk.IllustListResult{Illusts: []sdk.Illust{}, NextCursor: "filtered-next"}, nil
+		}
+		return &sdk.IllustListResult{Illusts: []sdk.Illust{testSDKIllust(2, "visible", 7)}}, nil
+	}}
+	session, closeSession := newSDKTestSession(t, client)
+	defer closeSession()
+
+	result := callTool(t, session, "search_illust", map[string]any{"word": "cat", "rating": "r18"})
+	var out textOut
+	decodeStructured(t, result, &out)
+	if len(requests) != 2 || requests[1].Cursor != "filtered-next" || !strings.Contains(out.Text, `"visible"`) {
+		t.Fatalf("requests=%+v output=%+v", requests, out)
+	}
+}
+
+func TestSearchIllustSchemaRejectsInvalidEnumsBeforeOpeningSDK(t *testing.T) {
+	for _, test := range []struct {
+		field string
+		value string
+	}{
+		{"rating", "adult"},
+		{"content_type", "novel"},
+		{"ai_mode", "maybe"},
+		{"aspect_ratio", "wide"},
+		{"resolution", "ultra"},
+	} {
+		t.Run(test.field, func(t *testing.T) {
+			factoryCalls := 0
+			service := application.SDKService{NewClient: func(application.SDKClientRequest) (application.SDKClient, error) {
+				factoryCalls++
+				return &fakeSDKClient{}, nil
+			}}
+			session, closeSession := newSDKTestSessionWithService(t, &fakeAPI{}, service)
+			defer closeSession()
+			_, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: "search_illust", Arguments: map[string]any{"word": "cat", test.field: test.value}})
+			if err == nil || factoryCalls != 0 {
+				t.Fatalf("invalid %s=%q error=%v factoryCalls=%d", test.field, test.value, err, factoryCalls)
+			}
+		})
+	}
+}
+
 func TestSearchIllustOptionsReturnsStructuredToolsFromPublicSDK(t *testing.T) {
 	var got sdk.SearchIllustOptionsRequest
 	client := &fakeSDKClient{searchIllustOptions: func(_ context.Context, request sdk.SearchIllustOptionsRequest) (*sdk.SearchIllustOptionsResult, error) {
@@ -197,6 +269,32 @@ func TestSearchIllustOptionsExplainsEmptyToolList(t *testing.T) {
 	decodeStructured(t, result, &out)
 	if result.IsError || out.Tools == nil || len(out.Tools) != 0 || out.Text != "当前没有可用的绘图工具。" {
 		t.Fatalf("empty options output=%+v result=%+v", out, result)
+	}
+}
+
+func TestSearchIllustOptionsEscapesControlCharactersOnlyInCompatibilityText(t *testing.T) {
+	rawTools := []string{"safe\nforged\rline\x1b[31m\x01", "second"}
+	client := &fakeSDKClient{searchIllustOptions: func(_ context.Context, _ sdk.SearchIllustOptionsRequest) (*sdk.SearchIllustOptionsResult, error) {
+		return &sdk.SearchIllustOptionsResult{Tools: rawTools}, nil
+	}}
+	session, closeSession := newSDKTestSession(t, client)
+	defer closeSession()
+
+	result := callTool(t, session, "search_illust_options", map[string]any{"word": "cat"})
+	var out searchIllustOptionsOut
+	decodeStructured(t, result, &out)
+	if !slices.Equal(out.Tools, rawTools) {
+		t.Fatalf("structured tools changed: got %q want %q", out.Tools, rawTools)
+	}
+	for _, control := range []string{"safe\nforged", "\r", "\x1b", "\x01"} {
+		if strings.Contains(out.Text, control) {
+			t.Fatalf("compatibility text contains raw control %q: %q", control, out.Text)
+		}
+	}
+	for _, escaped := range []string{`\n`, `\r`, `\x1b`, `\x01`} {
+		if !strings.Contains(out.Text, escaped) {
+			t.Fatalf("compatibility text missing escape %q: %q", escaped, out.Text)
+		}
 	}
 }
 

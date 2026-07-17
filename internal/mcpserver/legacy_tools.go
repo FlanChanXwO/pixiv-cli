@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strconv"
 	"strings"
 
 	sdk "github.com/FlanChanXwO/pixiv-cli/pixiv"
@@ -29,6 +30,39 @@ type searchIllustIn struct {
 	Resolution       string `json:"resolution,omitempty"`
 	Tool             string `json:"tool,omitempty"`
 	IncludeThumbnail bool   `json:"include_thumbnail,omitempty"`
+}
+
+// searchIllustInputSchema 显式发布稳定筛选枚举。go-sdk 会在解码 handler 输入前
+// 校验该 schema，因此非法枚举不会打开 SDK snapshot 或发起网络请求。
+func searchIllustInputSchema() map[string]any {
+	stringProperty := func(description string) map[string]any {
+		return map[string]any{"type": "string", "description": description}
+	}
+	enumProperty := func(description string, values ...string) map[string]any {
+		property := stringProperty(description)
+		property["enum"] = values
+		return property
+	}
+	return map[string]any{
+		"type":                 "object",
+		"additionalProperties": false,
+		"required":             []string{"word"},
+		"properties": map[string]any{
+			"word":              stringProperty("Illustration search keyword."),
+			"search_target":     stringProperty("Pixiv search target."),
+			"sort":              stringProperty("Pixiv result order."),
+			"duration":          stringProperty("Pixiv search duration."),
+			"offset":            map[string]any{"type": "integer", "description": "Legacy logical result offset."},
+			"search_r18":        map[string]any{"type": "boolean", "description": "Deprecated compatibility alias for rating=r18."},
+			"rating":            enumProperty("Artwork age rating filter.", "all", "sfw", "r18", "r18g", "mature"),
+			"content_type":      enumProperty("Artwork content type filter.", "all", "illust-and-ugoira", "illust", "manga", "ugoira"),
+			"ai_mode":           enumProperty("AI-generated artwork filter.", "all", "exclude", "only"),
+			"aspect_ratio":      enumProperty("Artwork aspect ratio filter.", "all", "landscape", "portrait", "square"),
+			"resolution":        enumProperty("Artwork resolution tier filter.", "all", "high", "medium", "low"),
+			"tool":              stringProperty("Exact Pixiv drawing tool name from search_illust_options."),
+			"include_thumbnail": map[string]any{"type": "boolean", "description": "Include thumbnail URLs in compatibility text."},
+		},
+	}
 }
 
 type searchIllustOptionsIn struct {
@@ -69,7 +103,11 @@ func searchIllustOptionsText(tools []string) string {
 	if len(tools) == 0 {
 		return "当前没有可用的绘图工具。"
 	}
-	return fmt.Sprintf("可用绘图工具（%d 个）:\n- %s", len(tools), strings.Join(tools, "\n- "))
+	quoted := make([]string, len(tools))
+	for index, tool := range tools {
+		quoted[index] = strconv.Quote(tool)
+	}
+	return fmt.Sprintf("可用绘图工具（%d 个）:\n- %s", len(tools), strings.Join(quoted, "\n- "))
 }
 
 func (a *App) searchIllustOptionsError(ctx context.Context, err error) (*mcp.CallToolResult, searchIllustOptionsOut, error) {
@@ -107,11 +145,13 @@ func (a *App) searchIllust(ctx context.Context, _ *mcp.CallToolRequest, in searc
 	}
 	defer release()
 	items, _, err := collectPages(ctx, offsetPlan(in.Offset), func(ctx context.Context, cursor sdk.Cursor) ([]sdk.Illust, sdk.Cursor, error) {
-		result, err := client.SearchIllust(ctx, sdk.SearchIllustRequest{Word: word, Target: sdk.SearchTarget(in.SearchTarget), Sort: sdk.SortMode(in.Sort), Duration: in.Duration, Cursor: cursor, Filters: filters})
-		if err != nil {
-			return nil, "", err
-		}
-		return result.Illusts, result.NextCursor, nil
+		return nextNonEmptySearchBatch(ctx, cursor, func(ctx context.Context, cursor sdk.Cursor) ([]sdk.Illust, sdk.Cursor, error) {
+			result, err := client.SearchIllust(ctx, sdk.SearchIllustRequest{Word: word, Target: sdk.SearchTarget(in.SearchTarget), Sort: sdk.SortMode(in.Sort), Duration: in.Duration, Cursor: cursor, Filters: filters})
+			if err != nil {
+				return nil, "", err
+			}
+			return result.Illusts, result.NextCursor, nil
+		})
 	})
 	if err != nil {
 		return toolTextError(ctx, err, err.Error())
@@ -120,6 +160,26 @@ func (a *App) searchIllust(ctx context.Context, _ *mcp.CallToolRequest, in searc
 		return toolText(fmt.Sprintf("抱歉，根据您提供的关键词 '%s'，未能找到相关的插画。", word))
 	}
 	return toolText(fmt.Sprintf("找到 %d 张关于 '%s' 的插画:\n\n%s", len(items), word, formatIllusts(items, in.IncludeThumbnail, in.Offset, false)))
+}
+
+// nextNonEmptySearchBatch 把 SDK 本地过滤产生的连续空上游批次折叠为一个逻辑
+// 批次。它只在真正结束或首次出现结果时停止，不设置任意页数上限。
+func nextNonEmptySearchBatch(ctx context.Context, cursor sdk.Cursor, fetch func(context.Context, sdk.Cursor) ([]sdk.Illust, sdk.Cursor, error)) ([]sdk.Illust, sdk.Cursor, error) {
+	seen := make(map[sdk.Cursor]struct{})
+	for {
+		if _, exists := seen[cursor]; exists {
+			return nil, "", fmt.Errorf("pagination cursor repeated: %q", cursor)
+		}
+		seen[cursor] = struct{}{}
+		items, next, err := fetch(ctx, cursor)
+		if err != nil {
+			return nil, "", err
+		}
+		if len(items) > 0 || next == "" {
+			return items, next, nil
+		}
+		cursor = next
+	}
 }
 
 type illustIDIn struct {
