@@ -44,11 +44,15 @@ func TestServerListsExpectedTools(t *testing.T) {
 	defer session.Close()
 
 	var names []string
+	var searchIllustTool *mcp.Tool
 	for tool, err := range session.Tools(ctx, nil) {
 		if err != nil {
 			t.Fatalf("tools: %v", err)
 		}
 		names = append(names, tool.Name)
+		if tool.Name == "search_illust" {
+			searchIllustTool = tool
+		}
 	}
 	want := []string{
 		"set_download_path", "download", "refresh_token", "set_refresh_token",
@@ -62,6 +66,18 @@ func TestServerListsExpectedTools(t *testing.T) {
 	slices.Sort(want)
 	if !slices.Equal(names, want) {
 		t.Fatalf("tools=%v, want exact registration set %v", names, want)
+	}
+	if searchIllustTool == nil {
+		t.Fatal("search_illust tool is not registered")
+	}
+	schema, err := json.Marshal(searchIllustTool.InputSchema)
+	if err != nil {
+		t.Fatalf("marshal search_illust input schema: %v", err)
+	}
+	for _, field := range []string{"rating", "content_type", "ai_mode", "aspect_ratio", "resolution", "tool"} {
+		if !strings.Contains(string(schema), `"`+field+`"`) {
+			t.Fatalf("search_illust input schema missing %q: %s", field, schema)
+		}
 	}
 }
 
@@ -162,8 +178,25 @@ func TestSearchIllustOptionsReturnsStructuredToolsFromPublicSDK(t *testing.T) {
 	}
 	var out searchIllustOptionsOut
 	decodeStructured(t, result, &out)
-	if got.Word != "cat" || !slices.Equal(out.Tools, []string{"CLIP STUDIO PAINT", "Photoshop"}) || !strings.Contains(out.Text, "2") {
+	first := strings.Index(out.Text, "CLIP STUDIO PAINT")
+	second := strings.Index(out.Text, "Photoshop")
+	if got.Word != "cat" || !slices.Equal(out.Tools, []string{"CLIP STUDIO PAINT", "Photoshop"}) || first < 0 || second <= first {
 		t.Fatalf("request=%+v output=%+v", got, out)
+	}
+}
+
+func TestSearchIllustOptionsExplainsEmptyToolList(t *testing.T) {
+	client := &fakeSDKClient{searchIllustOptions: func(_ context.Context, _ sdk.SearchIllustOptionsRequest) (*sdk.SearchIllustOptionsResult, error) {
+		return &sdk.SearchIllustOptionsResult{Tools: nil}, nil
+	}}
+	session, closeSession := newSDKTestSession(t, client)
+	defer closeSession()
+
+	result := callTool(t, session, "search_illust_options", map[string]any{"word": "cat"})
+	var out searchIllustOptionsOut
+	decodeStructured(t, result, &out)
+	if result.IsError || out.Tools == nil || len(out.Tools) != 0 || out.Text != "当前没有可用的绘图工具。" {
+		t.Fatalf("empty options output=%+v result=%+v", out, result)
 	}
 }
 

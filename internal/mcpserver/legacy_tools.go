@@ -59,8 +59,17 @@ func (a *App) searchIllustOptions(ctx context.Context, _ *mcp.CallToolRequest, i
 	if tools == nil {
 		tools = []string{}
 	}
-	text := fmt.Sprintf("找到 %d 个可用绘图工具。", len(tools))
+	text := searchIllustOptionsText(tools)
 	return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: text}}}, searchIllustOptionsOut{Tools: tools, Text: text}, nil
+}
+
+// searchIllustOptionsText 保留全部工具名和上游顺序，兼容只读取 Content 文本、
+// 不读取 StructuredContent 的旧 MCP 客户端。
+func searchIllustOptionsText(tools []string) string {
+	if len(tools) == 0 {
+		return "当前没有可用的绘图工具。"
+	}
+	return fmt.Sprintf("可用绘图工具（%d 个）:\n- %s", len(tools), strings.Join(tools, "\n- "))
 }
 
 func (a *App) searchIllustOptionsError(ctx context.Context, err error) (*mcp.CallToolResult, searchIllustOptionsOut, error) {
