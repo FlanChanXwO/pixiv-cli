@@ -46,7 +46,44 @@ if [ -e "$temporary/staticlib/manifest.json" ]; then
 	exit 1
 fi
 
-if PATH="$temporary/bin:$PATH" sh "$repo_root/scripts/build-staticlibs.sh" --target made-up-target >/dev/null 2>&1; then
+tracked_manifest="$repo_root/internal/download/ugoira_rs/staticlib/manifest.json"
+[ -f "$tracked_manifest" ]
+tracked_manifest_hash_before=$(shasum -a 256 "$tracked_manifest" | awk '{print $1}')
+
+invalid_staticlib_dir="$temporary/invalid-staticlib"
+invalid_target_dir="$temporary/invalid-cargo-target"
+mkdir -p "$invalid_staticlib_dir"
+printf '%s\n' 'sentinel manifest that an invalid target must not invalidate' > "$invalid_staticlib_dir/manifest.json"
+sentinel_snapshot="$temporary/sentinel-manifest.snapshot"
+cp "$invalid_staticlib_dir/manifest.json" "$sentinel_snapshot"
+sentinel_hash_before=$(shasum -a 256 "$invalid_staticlib_dir/manifest.json" | awk '{print $1}')
+
+if PATH="$temporary/bin:$PATH" \
+	PIXIV_UGOIRA_STATICLIB_DIR="$invalid_staticlib_dir" \
+	PIXIV_UGOIRA_TARGET_DIR="$invalid_target_dir" \
+	sh "$repo_root/scripts/build-staticlibs.sh" --target made-up-target >"$temporary/invalid-target.out" 2>&1; then
 	echo 'unsupported target unexpectedly succeeded' >&2
 	exit 1
 fi
+if [ ! -f "$invalid_staticlib_dir/manifest.json" ]; then
+	echo 'unsupported target invalidated the sentinel manifest before validation' >&2
+	exit 1
+fi
+cmp -s "$invalid_staticlib_dir/manifest.json" "$sentinel_snapshot"
+[ "$(shasum -a 256 "$invalid_staticlib_dir/manifest.json" | awk '{print $1}')" = "$sentinel_hash_before" ]
+[ "$(shasum -a 256 "$tracked_manifest" | awk '{print $1}')" = "$tracked_manifest_hash_before" ]
+[ ! -e "$invalid_target_dir" ]
+grep -F 'unsupported Rust target made-up-target; expected one of the six release targets' "$temporary/invalid-target.out" >/dev/null
+
+if PATH="$temporary/bin:$PATH" \
+	PIXIV_UGOIRA_STATICLIB_DIR="$invalid_staticlib_dir" \
+	PIXIV_UGOIRA_TARGET_DIR="$invalid_target_dir" \
+	sh "$repo_root/scripts/build-staticlibs.sh" --target '' >"$temporary/empty-target.out" 2>&1; then
+	echo 'empty explicit target unexpectedly succeeded' >&2
+	exit 1
+fi
+cmp -s "$invalid_staticlib_dir/manifest.json" "$sentinel_snapshot"
+[ "$(shasum -a 256 "$invalid_staticlib_dir/manifest.json" | awk '{print $1}')" = "$sentinel_hash_before" ]
+[ "$(shasum -a 256 "$tracked_manifest" | awk '{print $1}')" = "$tracked_manifest_hash_before" ]
+[ ! -e "$invalid_target_dir" ]
+grep -F 'unsupported Rust target ; expected one of the six release targets' "$temporary/empty-target.out" >/dev/null

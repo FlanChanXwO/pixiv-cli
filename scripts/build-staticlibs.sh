@@ -8,6 +8,7 @@ crate_dir=$(dirname "$crate_manifest")
 staticlib_dir=${PIXIV_UGOIRA_STATICLIB_DIR:-"$repo_root/internal/download/ugoira_rs/staticlib"}
 target_dir=${PIXIV_UGOIRA_TARGET_DIR:-}
 target_arg=
+target_supplied=false
 
 usage() {
 	cat >&2 <<'EOF'
@@ -29,8 +30,9 @@ while [ "$#" -gt 0 ]; do
 	case "$1" in
 		--target)
 			[ "$#" -ge 2 ] || fail '--target requires a Rust target triple'
-			[ -z "$target_arg" ] || fail 'only one --target may be supplied per invocation'
+			[ "$target_supplied" = false ] || fail 'only one --target may be supplied per invocation'
 			target_arg=$2
+			target_supplied=true
 			shift 2
 			;;
 		-h|--help)
@@ -50,7 +52,7 @@ command -v go >/dev/null 2>&1 || fail 'Go 1.26.3 is required to verify the Rust 
 [ -f "$crate_manifest" ] || fail "Rust crate manifest is missing: $crate_manifest"
 
 targets='x86_64-apple-darwin aarch64-apple-darwin x86_64-unknown-linux-gnu aarch64-unknown-linux-gnu x86_64-pc-windows-msvc aarch64-pc-windows-msvc'
-if [ -n "$target_arg" ]; then
+if [ "$target_supplied" = true ]; then
 	targets=$target_arg
 fi
 
@@ -68,6 +70,11 @@ target_kind() {
 	esac
 }
 
+# 显式 target 必须先通过六平台白名单校验；非法输入不得创建目录、废止 manifest 或启动构建。
+if [ "$target_supplied" = true ]; then
+	target_kind "$target_arg" >/dev/null
+fi
+
 temporary_target_dir=
 if [ -z "$target_dir" ]; then
 	target_dir=$(mktemp -d "${TMPDIR:-/tmp}/pixiv-ugoira-staticlib.XXXXXX")
@@ -80,7 +87,7 @@ fi
 
 # 单 target build 不能证明其余五个库与当前 Rust source 同代；先废止旧 manifest，
 # 并且本次绝不重新发布它，避免把混代库伪装成受验证的六平台集合。
-if [ -n "$target_arg" ] && { [ -e "$staticlib_dir/manifest.json" ] || [ -L "$staticlib_dir/manifest.json" ]; }; then
+if [ "$target_supplied" = true ] && { [ -e "$staticlib_dir/manifest.json" ] || [ -L "$staticlib_dir/manifest.json" ]; }; then
 	rm -f "$staticlib_dir/manifest.json" || fail "cannot invalidate stale staticlib manifest: $staticlib_dir/manifest.json"
 	printf 'invalidated %s/manifest.json before single-target rebuild\n' "$staticlib_dir" >&2
 fi
@@ -106,7 +113,7 @@ for target in $targets; do
 	printf 'wrote %s\n' "$destination_dir/$archive"
 done
 
-if [ -n "$target_arg" ]; then
+if [ "$target_supplied" = true ]; then
 	printf '%s\n' 'manifest not written: a single-target build cannot prove a same-source six-target staticlib generation' >&2
 	exit 0
 fi
