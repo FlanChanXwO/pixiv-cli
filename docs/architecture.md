@@ -5,7 +5,7 @@
 `cmd/pixiv/main.go` 是唯一官方二进制入口，它只负责调用 `internal/cli`：
 
 1. `pixiv` 无参数显示 CLI 帮助。
-2. `pixiv auth/config/version/update/search/detail/ranking/recommended/user/bookmark/follow/download` 进入 CLI 模式。
+2. `pixiv auth/config/version/update/search/search-options/detail/ranking/recommended/user/bookmark/follow/download` 进入 CLI 模式。
 3. `pixiv mcp` 委托 `internal/bootstrap` 组装并运行 MCP stdio server。
 4. CLI 与 MCP 通过 `internal/bootstrap` 共享生产 wiring：
    - 账号认证来自 `os.UserConfigDir()/pixiv/auth.json`
@@ -157,7 +157,11 @@ Release 安装的失败语义仍是保护边界，而不是临时降级。
 `pagination.go` 和 `parameters.go` 分别处理 Web 页码以及 endpoint 参数映射，`dto.go` 只声明 wire shape，
 `decoder.go` 校验弹性数值、必需列表与 ajax envelope，`mapper.go` 将 Web DTO 规范化为共享 model。
 
-有 token 时 App API 是主路径，失败不自动 Web fallback；无 token 且 `web_fallback_enabled=true` 时才允许明确白名单 Web read。pages/original ugoira enrichment 必须由 operation policy 显式选择。
+有 token 时 App API 是主路径，失败不自动 Web fallback；搜索的分辨率、横纵比、绘图工具、作品类型与
+屏蔽 AI 在 `appapi` adapter 翻译成上游参数，分级和仅 AI 则由 public facade 基于规范化字段筛选。
+无 token 且 `web_fallback_enabled=true` 时才允许明确白名单 Web read；Web 搜索只转译已验证可靠的筛选，
+R18/R18G/mature 与动态搜索选项会返回认证需求，不伪造空结果。Web adapter 不接收 token 或 Cookie，
+也不提供 refresh-token-to-session 转换。pages/original ugoira enrichment 必须由 operation policy 显式选择。
 
 ### `internal/pixiv/model`
 

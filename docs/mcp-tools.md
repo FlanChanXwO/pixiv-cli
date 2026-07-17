@@ -34,7 +34,8 @@ SDK cursor 不出现在 MCP 参数或输出。`user_bookmarks.max_bookmark_id` �
 
 | tool | 参数 | structured output |
 | --- | --- | --- |
-| `search_illust` | `word`、`search_target`、`sort`、`duration`、`offset`、`search_r18`、`include_thumbnail` | 作品列表。 |
+| `search_illust` | `word`、`search_target`、`sort`、`duration`、`offset`、`rating`、`content_type`、`ai_mode`、`aspect_ratio`、`resolution`、`tool`、兼容字段 `search_r18`、`include_thumbnail` | Legacy structured output `{text}`；作品列表仍在文本中呈现。 |
+| `search_illust_options` | 必填 `word` | 当前搜索词可用的 `{tools,text}`；需要认证，不支持 Web fallback。 |
 | `illust_detail` | `illust_id` | 作品详情。 |
 | `illust_related` | `illust_id`、`offset`、`include_thumbnail` | 相关作品。 |
 | `illust_ranking` | `mode`、`date`、`offset`、`include_thumbnail` | 排行榜作品。 |
@@ -48,6 +49,22 @@ SDK cursor 不出现在 MCP 参数或输出。`user_bookmarks.max_bookmark_id` �
 | `user_artworks` | 可选 `user_id`、`type`、`page`、`limit` | `{user_id, items, pagination}`；缺省 UID 为当前认证用户。 |
 | `user_bookmarks` | 可选 `user_id`、旧 alias `user_id_to_check`、`restrict`、`tag`、`page`、`limit`、废弃 `max_bookmark_id` | `{user_id, items, pagination}`；缺省 UID 为当前认证用户。 |
 | `user_following` | 可选 `user_id`、旧 alias `user_id_to_check`、`restrict`、`page`、`limit`、废弃 `offset` | `{user_id, items, pagination}`；缺省 UID 为当前认证用户。 |
+
+`search_illust` 的筛选枚举为：
+
+- `rating`：`all|sfw|r18|r18g|mature`；
+- `content_type`：`all|illust-and-ugoira|illust|manga|ugoira`；
+- `ai_mode`：`all|exclude|only`，其中 Pixiv `AIType==2` 才表示 AI 生成；
+- `aspect_ratio`：`all|landscape|portrait|square`；
+- `resolution`：`all|high|medium|low`，三档分别为宽高均 `>=3000`、均在 `1000..2999`、均
+  `<=999`；
+- `tool`：上游绘图工具原值，不做模糊匹配。
+
+有 refresh token 时，分辨率、横纵比、工具、作品类型和 `ai_mode=exclude` 由 App 服务端筛选，
+`rating` 与 `ai_mode=only` 由 public SDK 基于 App 返回字段筛选；App 失败不回落 Web。无 token 的匿名
+Web 路径只执行已验证可靠的筛选；`rating=r18|r18g|mature` 在请求前返回需要登录，不伪装成空结果。
+`search_r18` 只为兼容保留：未提供 `rating` 时 `true` 映射为 `r18`，同时提供两个字段会返回参数冲突。
+`search_illust_options` 只走 App API。两项搜索 tool 都不接受 Cookie，当前也不提供收藏数筛选。
 
 作品列表的 MCP 文本按上游顺序完整列出每个作品的全部 tags，不做前 5 项截断；SDK tool 的 structured output schema 和内容保持不变。`illust_ranking` 对已知 mode 使用稳定中文标题：`day`、`day_male`、`day_female`、`week`、`week_original`、`week_rookie`、`month` 分别显示为“每日排行榜”“男性向每日排行榜”“女性向每日排行榜”“每周排行榜”“原创作品排行榜”“新人排行榜”“每月排行榜”；未来 mode 在上游成功时显示原 mode 后接“排行榜”。
 
