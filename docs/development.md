@@ -17,6 +17,22 @@ cargo --version
 go test ./...
 ```
 
+## understand-anything 图谱归一化
+
+每次重新生成代码图谱后、提交六个 tracked 图谱产物前，必须从仓库根目录运行：
+
+```bash
+go run ./scripts/understandgraph normalize --root .
+go test ./scripts/understandgraph -count=1
+```
+
+归一化器以 `go.mod`、Go AST 和已生成的 scan/graph/fingerprint 为输入：把 generator 展开的
+Go file-to-file imports 改为 package module 边，区分 external test package，并统一 method ID 与
+fingerprint 的 receiver-qualified name。它保留 non-Go importMap，不修改
+`docs/.understand-anything/knowledge-graph.json`。归一化前会用实际 Go 源码核验 scan 与 fingerprint 的
+SHA-256、文件行数和函数行数；快照已过期时会在写入前失败。命令应连续运行两次；第二次不得产生任何
+diff，解析、行号匹配或调用目标有歧义时必须先修复根因，不能手工猜测或跳过。
+
 ## Rust ugoira staticlib
 
 生产 ugoira GIF/APNG 由内置 Rust encoder 完成，运行时不依赖 `ffmpeg`。`ffmpeg` 只可作为
