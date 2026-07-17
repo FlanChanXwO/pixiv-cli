@@ -5,7 +5,7 @@
 `cmd/pixiv/main.go` 是唯一官方二进制入口，它只负责调用 `internal/cli`：
 
 1. `pixiv` 无参数显示 CLI 帮助。
-2. `pixiv auth/config/version/update/search/detail/ranking/recommended/user/bookmark/follow/download` 进入 CLI 模式。
+2. `pixiv auth/config/version/update/search/search-options/detail/ranking/recommended/user/bookmark/follow/download` 进入 CLI 模式。
 3. `pixiv mcp` 委托 `internal/bootstrap` 组装并运行 MCP stdio server。
 4. CLI 与 MCP 通过 `internal/bootstrap` 共享生产 wiring：
    - 账号认证来自 `os.UserConfigDir()/pixiv/auth.json`

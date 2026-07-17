@@ -13,8 +13,8 @@ semantic traps.
 
 1. Run `pixiv version --json` once. If it fails, report the real installation
    or execution error.
-2. Run `pixiv auth list --json`. It never prints tokens. No account is valid,
-   but only the documented anonymous Web fallback remains available.
+2. Run `pixiv auth list --json`. It never prints tokens. If no valid account is
+   available, only the documented anonymous Web fallback remains available.
 
 ## Hard rules
 

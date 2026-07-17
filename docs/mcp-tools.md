@@ -34,8 +34,8 @@ SDK cursor 不出现在 MCP 参数或输出。`user_bookmarks.max_bookmark_id` �
 
 | tool | 参数 | structured output |
 | --- | --- | --- |
-| `search_illust` | `word`、`search_target`、`sort`、`duration`、`offset`、`rating`、`content_type`、`ai_mode`、`aspect_ratio`、`resolution`、`tool`、兼容字段 `search_r18`、`include_thumbnail` | 作品列表；作品模型的 `tools` 完整保留 App 返回的绘图工具。 |
-| `search_illust_options` | 必填 `word` | 当前搜索词可用的 `{tools}`；需要认证，不支持 Web fallback。 |
+| `search_illust` | `word`、`search_target`、`sort`、`duration`、`offset`、`rating`、`content_type`、`ai_mode`、`aspect_ratio`、`resolution`、`tool`、兼容字段 `search_r18`、`include_thumbnail` | Legacy structured output `{text}`；作品列表仍在文本中呈现。 |
+| `search_illust_options` | 必填 `word` | 当前搜索词可用的 `{tools,text}`；需要认证，不支持 Web fallback。 |
 | `illust_detail` | `illust_id` | 作品详情。 |
 | `illust_related` | `illust_id`、`offset`、`include_thumbnail` | 相关作品。 |
 | `illust_ranking` | `mode`、`date`、`offset`、`include_thumbnail` | 排行榜作品。 |

@@ -236,7 +236,7 @@ CLI 使用 Cobra/pflag，选项可以写在位置参数前后，例如 `pixiv au
 | 列表命令 | `--limit` | 一个上游批次 | 最大条数；`0` 表示持续读取到没有下一批。 |
 | 列表命令 | `--page` | 空 | 从 1 开始的逻辑页；必须与正数 `--limit` 同用。 |
 | 列表命令 | `--offset` | `0` | 已废弃的逻辑偏移；不能与 `--page` 同用。 |
-| `search` | `--r18` | `false` | 在搜索词后追加 `R-18`。 |
+| `search` | `--r18` | `false` | Deprecated alias for `--rating r18`; never modifies the search word and conflicts with an explicitly supplied rating other than `r18`. |
 | `ranking` | `--mode` | `day` | 排行榜模式。 |
 | `ranking` | `--date` | 空 | 排行榜日期，格式通常为 `YYYY-MM-DD`。 |
 | `ranking` | `--offset` | `0` | 分页偏移。 |
@@ -419,6 +419,7 @@ CLI 命令：
 - `version`
 - `update`
 - `search`
+- `search-options`
 - `detail`
 - `ranking`
 - `recommended`

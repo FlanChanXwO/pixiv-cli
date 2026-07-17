@@ -35,14 +35,14 @@ local, err := pixiv.OpenDefault(pixiv.Options{
 
 | 类别 | 方法 |
 | --- | --- |
-| 作品与推荐 | `SearchIllust`、`IllustDetail`、`IllustPages`、`IllustRelated`、`IllustRanking`、`IllustRecommended`、`MangaRecommended`、`NovelRecommended`、`UserRecommended`、`FollowingIllusts`、`TrendingTagsIllust`、`UgoiraMetadata`。 |
+| 作品与推荐 | `SearchIllust`、`SearchIllustOptions`、`IllustDetail`、`IllustPages`、`IllustRelated`、`IllustRanking`、`IllustRecommended`、`MangaRecommended`、`NovelRecommended`、`UserRecommended`、`FollowingIllusts`、`TrendingTagsIllust`、`UgoiraMetadata`。 |
 | 用户 | `SearchUser`、`UserDetail`、`UserArtworks`、`UserBookmarks`、`UserFollowing`、`CurrentUserID`。 |
 | 写操作 | `AddBookmark`、`RemoveBookmark`、`FollowUser`、`UnfollowUser`。 |
 | 账号/配置 | `ImportAccount`、`ListAccounts`、`SelectAccount`、`RemoveAccount`、`CheckAccount`、`CheckRefreshToken`、`Refresh`、`RefreshAccount`、`GetConfig`、`SetConfig`、`UnsetConfig`。 |
 | 登录 | `StartLogin`、`CompleteLogin`、`BuildLoginAuthorizationURL`。SDK 不启动浏览器、loopback server 或 TTY。 |
 | 资源 | `ParseResourceRef`、`OpenResource`、`Download`。 |
 
-请求型方法使用命名 request，例如 `SearchIllustRequest`、`UserArtworksRequest`、`UserBookmarksRequest`、`UserFollowingRequest`、`AddBookmarkRequest`、`FollowUserRequest`。返回模型为 `IllustListResult`、`UserListResult`、`IllustDetail`、`UserDetailResult` 等，均来自顶层 `pixiv` package。
+请求型方法使用命名 request，例如 `SearchIllustRequest`、`SearchIllustOptionsRequest`、`UserArtworksRequest`、`UserBookmarksRequest`、`UserFollowingRequest`、`AddBookmarkRequest`、`FollowUserRequest`。返回模型为 `IllustListResult`、`SearchIllustOptionsResult`、`UserListResult`、`IllustDetail`、`UserDetailResult` 等，均来自顶层 `pixiv` package。
 
 `UserArtworksRequest.UserID` 等 SDK 用户 ID 必填；“省略 UID 就是自己”是 CLI/MCP adapter 行为，外部 Go 调用方先调用 `CurrentUserID(ctx)` 后再组装 request。
 
@@ -53,6 +53,28 @@ local, err := pixiv.OpenDefault(pixiv.Options{
 认证输入只能是原始 Pixiv App API refresh token。`ImportAccount`、`CheckRefreshToken`、`OpenDefault` 和由本地账号读取到的 token 会拒绝 Cookie 形态（包括 `refresh_token=...`），返回不含原始输入的 `invalid_argument`，且不会发起 OAuth 请求。
 
 `BuildLoginAuthorizationURL(challenge, state)` 仅构造官方授权 URL，适合自行持有 PKCE/state 的浏览器 adapter；它不生成或保存凭据。需要 SDK 管理 PKCE/session 时使用 `StartLogin`。
+
+### 插画搜索筛选
+
+`SearchIllustRequest.Filters` 是独立于 App/Web wire 参数的稳定 `SearchIllustFilters`：
+
+| 字段 | 稳定值 |
+| --- | --- |
+| `Rating` | `all`、`sfw`、`r18`、`r18g`、`mature` |
+| `ContentType` | `all`、`illust-and-ugoira`、`illust`、`manga`、`ugoira` |
+| `AIMode` | `all`、`exclude`、`only`；Pixiv `AIType==2` 表示 AI 生成 |
+| `AspectRatio` | `all`、`landscape`、`portrait`、`square` |
+| `Resolution` | `all`、`high`、`medium`、`low`；三档分别要求宽高均 `>=3000`、均在 `1000..2999`、均 `<=999` |
+| `Tool` | 上游绘图工具原值；不做模糊匹配 |
+
+枚举零值规范化为 `all`，`Tool` 会去除首尾空白；未知枚举返回 `invalid_argument`，不会发起上游
+请求。认证路径把分辨率、横纵比、工具、作品类型和 `exclude` AI 翻译为 App 服务端参数；分级与
+`only` AI 再基于当前 App 批次的规范化字段筛选。`Illust.Tools []string` 保留 App 返回的工具顺序和
+原值；该字段不是收藏数筛选。
+
+`SearchIllustOptions(ctx, SearchIllustOptionsRequest{Word: word})` 需要非空关键词和 App 认证，返回
+`SearchIllustOptionsResult{Tools []string}`。工具列表保持上游顺序与原值；上游未提供列表时返回非
+`nil` 空切片。该操作不公开 Premium 收藏数档位。
 
 ## 分页
 
@@ -68,11 +90,19 @@ next, err := client.UserArtworks(ctx, pixiv.UserArtworksRequest{
 _ = next
 ```
 
-cursor 是版本化、不透明、绑定操作和查询的 token；不可解析、编辑、跨请求复用或替换为上游 offset/page。SDK 不以 `page` 为输入；CLI/MCP 在边缘层将逻辑 `page`/`limit` 转为 cursor 遍历。
+cursor 是版本化、不透明、绑定操作和完整查询的 token；`SearchIllust` cursor 同时绑定规范化后的
+`Rating`、`ContentType`、`AIMode`、`AspectRatio`、`Resolution` 与 `Tool`。改变任一筛选字段后复用
+旧 cursor 会返回 `invalid_argument`。cursor 不可解析、编辑、跨请求复用或替换为上游 offset/page。
+SDK 不以 `page` 为输入；CLI/MCP 在边缘层将逻辑 `page`/`limit` 转为 cursor 遍历。
 
 ## 路由
 
-有 refresh token 时，App API 是主路径；App 的认证、网络、服务端失败不自动 Web fallback。`NewClient` 无 refresh token 且 `WebFallbackEnabled=true` 时，匿名白名单读操作使用 Web API；`OpenDefault` 则每次 snapshot 读取本地 `web_fallback_enabled`。
+有 refresh token 时，插画搜索只走 App API；App 的认证、网络、服务端失败不自动 Web fallback。
+`NewClient` 无 refresh token 且 `WebFallbackEnabled=true` 时，匿名白名单读操作使用 Web API；
+`OpenDefault` 则每次 snapshot 读取本地 `web_fallback_enabled`。匿名 `SearchIllust` 只执行 Web 能可靠
+表达的筛选；`Rating` 为 `r18`、`r18g` 或 `mature` 时在联网前返回 `unauthorized`，不会伪装为空结果。
+匿名 `SearchIllustOptions` 返回 `unsupported`，不会请求 Web。SDK 不读取或注入 Cookie，也不把 refresh
+token 转换为 Web session。
 
 `IllustDetail` 的 pages 和 original ugoira metadata 会调用 Web 做明确补全，不是失败回退，并采用原子结果契约：
 

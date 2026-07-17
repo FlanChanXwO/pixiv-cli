@@ -24,6 +24,8 @@
 - 有 refresh token 的搜索始终使用 App API，失败不回落 Web；无 token 的 Web 搜索只执行可靠筛选，
   R18/R18G/mature 与动态搜索选项会明确要求登录。分级与仅 AI 在 public SDK 筛选，其余新增筛选优先
   由 App 服务端执行；收藏数筛选仍不提供。
+- Deprecated `pixiv search --r18` 现在只作为 `--rating r18` 的 alias，不再向关键词追加 `R-18`；
+  它可与显式 `--rating r18` 同用，与其他显式 rating 冲突。
 
 ### Fixed
 
