@@ -50,14 +50,15 @@ func TestSearchIllustMapsNormalizedFiltersToAppQuery(t *testing.T) {
 	}{
 		{
 			name: "defaults omitted", filters: model.SearchIllustFilters{Rating: "all", ContentType: "all", AIMode: "all", AspectRatio: "all", Resolution: "all"},
-			absentQuery: []string{"search_ai_type", "ratio_pattern", "content_type", "width_min", "width_max", "height_min", "height_max", "tool"},
+			wantQuery:   map[string]string{"search_ai_type": "0"},
+			absentQuery: []string{"ratio_pattern", "content_type", "width_min", "width_max", "height_min", "height_max", "tool"},
 		},
 		{
 			name: "only AI square low illustration and ugoira", filters: model.SearchIllustFilters{
 				ContentType: "illust-and-ugoira", AIMode: "only", AspectRatio: "square", Resolution: "low", Tool: "tool",
 			},
-			wantQuery:   map[string]string{"content_type": "illust_and_ugoira", "ratio_pattern": "square", "width_max": "999", "height_max": "999", "tool": "tool"},
-			absentQuery: []string{"search_ai_type", "width_min", "height_min"},
+			wantQuery:   map[string]string{"search_ai_type": "0", "content_type": "illust_and_ugoira", "ratio_pattern": "square", "width_max": "999", "height_max": "999", "tool": "tool"},
+			absentQuery: []string{"width_min", "height_min"},
 		},
 		{
 			name: "exclude AI portrait high ugoira", filters: model.SearchIllustFilters{

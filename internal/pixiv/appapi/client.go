@@ -22,7 +22,6 @@ const (
 	DefaultAppOS        = protocol.AppOS
 	DefaultAppOSVersion = protocol.AppOSVersion
 	DefaultAppVersion   = protocol.AppVersion
-	searchOptionsPath   = "/v1/search/options"
 )
 
 // ErrMalformedResponse 标识成功 HTTP 响应无法构成约定 JSON，不包含原始响应体。
@@ -101,6 +100,7 @@ func (c *Client) SearchIllust(ctx context.Context, word, target, sort, duration 
 }
 
 func setSearchIllustFilters(query url.Values, filters model.SearchIllustFilters) {
+	query.Set("search_ai_type", "0")
 	if filters.AIMode == "exclude" {
 		query.Set("search_ai_type", "1")
 	}
@@ -139,7 +139,7 @@ func (c *Client) SearchIllustOptions(ctx context.Context, word string) (*model.S
 		"search_ai_type":                 {"0"},
 	}
 	var raw searchIllustOptionsDTO
-	if err := c.getJSONWithRetry(ctx, searchOptionsPath, query, &raw); err != nil {
+	if err := c.getJSONWithRetry(ctx, protocol.AppSearchIllustOptions, query, &raw); err != nil {
 		return nil, err
 	}
 	if raw.Illust == nil {

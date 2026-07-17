@@ -793,7 +793,10 @@ func TestSearchIllustAppResolutionLowAndAllDefaults(t *testing.T) {
 				t.Fatalf("low query = %v", query)
 			}
 		case "all":
-			for _, key := range []string{"search_ai_type", "ratio_pattern", "content_type", "width_min", "width_max", "height_min", "height_max", "tool"} {
+			if query.Get("search_ai_type") != "0" {
+				t.Fatalf("search_ai_type = %q, want 0; query=%v", query.Get("search_ai_type"), query)
+			}
+			for _, key := range []string{"ratio_pattern", "content_type", "width_min", "width_max", "height_min", "height_max", "tool"} {
 				if query.Has(key) {
 					t.Fatalf("default query unexpectedly has %q: %v", key, query)
 				}
@@ -822,8 +825,8 @@ func TestSearchIllustAppResolutionLowAndAllDefaults(t *testing.T) {
 func TestSearchIllustFiltersRatingAndOnlyAIInPublicSDK(t *testing.T) {
 	t.Parallel()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if got := r.URL.Query().Get("search_ai_type"); got != "" {
-			t.Fatalf("only-AI unexpectedly sent server exclusion %q", got)
+		if got := r.URL.Query().Get("search_ai_type"); got != "0" {
+			t.Fatalf("only-AI search_ai_type = %q, want 0", got)
 		}
 		fmt.Fprint(w, `{"illusts":[
 			{"id":1,"x_restrict":0,"ai_type":2},
@@ -914,9 +917,32 @@ func TestSearchIllustPreservesAppDrawingTools(t *testing.T) {
 	}
 }
 
-func TestIllustJSONNormalizesMissingDrawingToolsToEmptyArray(t *testing.T) {
+func TestSearchIllustNormalizesMissingAppDrawingToolsAtResultBoundary(t *testing.T) {
 	t.Parallel()
-	raw, err := json.Marshal(pixiv.Illust{ID: 1})
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		fmt.Fprint(w, `{"illusts":[{"id":1}]}`)
+	}))
+	defer server.Close()
+	client, err := pixiv.NewClient(pixiv.Options{HTTPClient: server.Client(), AppAPIBaseURL: server.URL, AccessToken: "token"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := client.SearchIllust(context.Background(), pixiv.SearchIllustRequest{Word: "miku"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Illusts[0].Tools == nil || len(result.Illusts[0].Tools) != 0 {
+		t.Fatalf("tools = %#v", result.Illusts[0].Tools)
+	}
+}
+
+func TestIllustJSONPreservesFieldsFromAnonymousEmbedding(t *testing.T) {
+	t.Parallel()
+	type Extended struct {
+		pixiv.Illust
+		Extra string `json:"extra"`
+	}
+	raw, err := json.Marshal(Extended{Illust: pixiv.Illust{ID: 1}, Extra: "preserved"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -924,9 +950,8 @@ func TestIllustJSONNormalizesMissingDrawingToolsToEmptyArray(t *testing.T) {
 	if err := json.Unmarshal(raw, &payload); err != nil {
 		t.Fatal(err)
 	}
-	tools, ok := payload["tools"].([]any)
-	if !ok || len(tools) != 0 {
-		t.Fatalf("tools = %#v", payload["tools"])
+	if payload["extra"] != "preserved" {
+		t.Fatalf("extra = %#v; JSON=%s", payload["extra"], raw)
 	}
 }
 
