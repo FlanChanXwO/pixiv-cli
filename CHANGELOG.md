@@ -9,6 +9,7 @@
 
 ### Added
 
+- 新增 `pixiv auth token [UID]` 与公开 SDK `ExportAccountRefreshToken(userID)`，用于显式导出默认或指定本地账号已保存的原始 refresh token；该路径只读 auth store，不联网、不刷新、不读取环境 token，也不提供 JSON/MCP 接口。
 - 插画搜索新增稳定的分级、作品类型、AI、横纵比、分辨率与绘图工具筛选；CLI 新增 `--ai-mode`、`--aspect-ratio`、`--resolution` 与 `--tool`，`--type` 支持 `illust-and-ugoira`/`manga` 并保留 `comics` alias。
 - 公开 Go SDK 新增 `SearchIllustFilters`、`SearchIllustOptions` 与 `Illust.Tools`；CLI 新增需要 App 认证的 `pixiv search-options WORD`，动态列出当前可用绘图工具，不引入收藏数或 Cookie 筛选。
 - MCP `search_illust` 新增与 SDK 一致的六个筛选字段，并新增需要认证、返回 `{tools,text}` structured output 的 `search_illust_options`；legacy `search_illust` 继续返回 `{text}`，旧 `search_r18` 继续作为兼容字段。
@@ -37,6 +38,7 @@
 
 ### Security
 
+- `auth token` 是唯一允许输出 refresh token 的显式命令：成功 stdout 只有原始 token 与换行，跳过配置型日志和自动更新；非法 UID、本地状态错误及缺失/空 token 均以脱敏 typed error 失败，不把输入、凭据或本地路径写入 stderr、日志或错误链。
 - 修复 native-evidence 六平台构建只向 runner 默认 Rust 安装 target、导致静态库实际由 movable
   toolchain 生成并与 release test/production 的 `1.96.0`/`1.96.1` provenance 不一致的问题；workflow
   现在逐目标固定版本、绑定 `RUSTUP_TOOLCHAIN` 并以 `--no-self-update` 安装，两个 verifier 共用同一
