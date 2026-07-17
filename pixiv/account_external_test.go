@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -18,6 +19,7 @@ import (
 	"sync/atomic"
 	"testing"
 
+	storageauth "github.com/FlanChanXwO/pixiv-cli/internal/storage/auth"
 	"github.com/FlanChanXwO/pixiv-cli/pixiv"
 )
 
@@ -383,6 +385,33 @@ func TestExportAccountRefreshTokenReportsSafeTypedErrors(t *testing.T) {
 			})
 		}
 	})
+}
+
+func TestExportAccountRefreshTokenReportsPermissionDeniedWithoutLeakingState(t *testing.T) {
+	const pathCanary = "/synthetic/private/auth-path-secret.json"
+	const tokenCanary = "synthetic-refresh-token-secret"
+	restore := storageauth.SetReadAuthStoreFileForTest(func(path string) ([]byte, error) {
+		if path != pathCanary {
+			t.Fatalf("auth path=%q", path)
+		}
+		return nil, &fs.PathError{Op: "open", Path: pathCanary, Err: fs.ErrPermission}
+	})
+	t.Cleanup(restore)
+	client, err := pixiv.NewClient(pixiv.Options{AuthFilePath: pathCanary})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = client.ExportAccountRefreshToken(0)
+	var sdkErr *pixiv.Error
+	if !errors.As(err, &sdkErr) || sdkErr.Operation != pixiv.OperationExportAccountRefreshToken || sdkErr.LocalStateKind != pixiv.LocalStateKindPermissionDenied {
+		t.Fatalf("error=%#v", err)
+	}
+	for _, secret := range []string{pathCanary, tokenCanary} {
+		if strings.Contains(err.Error(), secret) {
+			t.Fatalf("error leaked %q: %s", secret, err)
+		}
+	}
 }
 
 func TestConfigUsesExistingAliasesPrivateFileAndEnvPriority(t *testing.T) {

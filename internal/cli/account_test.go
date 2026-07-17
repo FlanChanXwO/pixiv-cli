@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"html"
 	"io"
+	"io/fs"
 	"log/slog"
 	"net"
 	"net/http"
@@ -517,6 +518,28 @@ func TestAuthTokenLocalStateErrorsAreSafe(t *testing.T) {
 			assert.NotContains(t, stderr.String(), authPath)
 		})
 	}
+}
+
+func TestAuthTokenPermissionDeniedIsTypedAndSafe(t *testing.T) {
+	const tokenCanary = "synthetic-permission-token-secret"
+	authPath, _ := useTempPaths(t)
+	require.NoError(t, auth.SaveAuthStore(authPath, auth.AuthStore{
+		DefaultUserID: 444,
+		Accounts:      []auth.Account{{UserID: 444, RefreshToken: tokenCanary}},
+	}))
+	restore := auth.SetReadAuthStoreFileForTest(func(path string) ([]byte, error) {
+		return nil, &fs.PathError{Op: "open", Path: path, Err: fs.ErrPermission}
+	})
+	t.Cleanup(restore)
+
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"pixiv", "auth", "token"}, strings.NewReader(""), &stdout, &stderr)
+
+	assert.Equal(t, 1, code)
+	assert.Empty(t, stdout.String())
+	assert.Equal(t, "error: pixiv invalid_argument operation=export_account_refresh_token local_state_kind=permission_denied\n", stderr.String())
+	assert.NotContains(t, stderr.String(), authPath)
+	assert.NotContains(t, stderr.String(), tokenCanary)
 }
 
 func TestAccountPromptFlows(t *testing.T) {

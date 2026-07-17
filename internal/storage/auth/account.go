@@ -18,6 +18,16 @@ type Account struct {
 	Username     string `json:"username,omitempty"`
 }
 
+var readAuthStoreFile = os.ReadFile
+
+// SetReadAuthStoreFileForTest 为跨平台本地状态错误测试替换单次文件读取边界。
+// 生产路径始终使用 os.ReadFile；调用方必须在测试结束时执行返回的恢复函数。
+func SetReadAuthStoreFileForTest(read func(string) ([]byte, error)) func() {
+	old := readAuthStoreFile
+	readAuthStoreFile = read
+	return func() { readAuthStoreFile = old }
+}
+
 type LegacySchemaError struct {
 	Field string
 }
@@ -33,7 +43,7 @@ func IsLegacySchemaError(err error) bool {
 
 func LoadAuthStore(path string) (AuthStore, error) {
 	store := AuthStore{Accounts: []Account{}}
-	body, err := os.ReadFile(path)
+	body, err := readAuthStoreFile(path)
 	if errors.Is(err, os.ErrNotExist) {
 		return store, nil
 	}
