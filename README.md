@@ -257,14 +257,14 @@ remains one upstream batch.
 
 | 参数 | 适用命令 | 默认值 | 说明 |
 | --- | --- | --- | --- |
-| `--uid UID` | `search/detail/ranking/recommended/user/download` | `auth.json.default_user_id` | 选择本地账号。 |
-| `--profile UID` | `search/detail/ranking/recommended/user/download` | 空 | `--uid` 的 deprecated alias。 |
-| `--refresh-token TOKEN` | `search/detail/ranking/recommended/user/download` | 空 | 临时覆盖账号/env token；只接受原始 App API refresh token。 |
+| `--uid UID` | `search/search-options/detail/ranking/recommended/user/download` | `auth.json.default_user_id` | 选择本地账号。 |
+| `--profile UID` | `search/search-options/detail/ranking/recommended/user/download` | 空 | `--uid` 的 deprecated alias。 |
+| `--refresh-token TOKEN` | `search/search-options/detail/ranking/recommended/user/download` | 空 | 临时覆盖账号/env token；只接受原始 App API refresh token。 |
 | `--json` | `auth` 子命令和数据命令 | `false` | 输出机器可解析 JSON。 |
 | `--download-path PATH` | 数据命令；实际只影响 `download` | `DOWNLOAD_PATH`、`config.toml` 或 `./downloads` | 下载目录。 |
 | `--filename-template TEMPLATE` | 数据命令；实际只影响 `download` | `FILENAME_TEMPLATE`、`config.toml` 或 `{author} - {title}_{id}` | 文件名模板。 |
-| `--proxy URL` | `auth add/login/check`、数据命令、`mcp` | `https_proxy`/`HTTPS_PROXY`、`config.toml` 或空 | 临时使用 HTTP(S) 代理；只影响当前命令。 |
-| `--no-proxy` | `auth add/login/check`、数据命令、`mcp` | 空 | 临时清空 HTTP(S) 代理；优先级同 `--proxy`，且不能与 `--proxy` 同用。 |
+| `--proxy URL` | `auth add/login/check`、`search/search-options/detail/ranking/recommended/user/download`、`mcp` | `https_proxy`/`HTTPS_PROXY`、`config.toml` 或空 | 临时使用 HTTP(S) 代理；只影响当前命令。 |
+| `--no-proxy` | `auth add/login/check`、`search/search-options/detail/ranking/recommended/user/download`、`mcp` | 空 | 临时清空 HTTP(S) 代理；优先级同 `--proxy`，且不能与 `--proxy` 同用。 |
 
 ### `config` 支持的键
 
@@ -412,7 +412,7 @@ MCP client 配置示例：
 
 ## 命令概览
 
-CLI 命令：
+Representative CLI commands (see the authoritative [CLI command table](#cli-命令表) above):
 
 - `auth add/login/list/remove/use/check`
 - `config path/get/set/unset`
@@ -426,7 +426,7 @@ CLI 命令：
 - `download`
 - `mcp`
 
-MCP tools：
+Representative MCP tools (see the authoritative [MCP tool contract](docs/mcp-tools.md)):
 
 `set_download_path`, `download`, `refresh_token`, `set_refresh_token`,
 `download_random_from_recommendation`, `search_illust`, `search_illust_options`, `illust_detail`,

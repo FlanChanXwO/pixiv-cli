@@ -271,7 +271,7 @@ pixiv auth login
 
 浏览器使用的系统代理不会自动传给 Go CLI。若 Pixiv token exchange 需要代理，请配置 `pixiv config set https_proxy http://127.0.0.1:7890`，在单次命令前设置 `https_proxy=...`，或对网络命令使用运行期覆盖 `--proxy http://127.0.0.1:7890`。`--no-proxy` 会清空本次命令的代理，即使环境变量或 `config.toml` 设置了 `https_proxy`；`--proxy` 和 `--no-proxy` 不能同用，也不会写入 `config.toml`。
 
-当前支持代理覆盖的网络入口是 `auth add`、`auth login`、`auth check`、`search`、`detail`、`ranking`、`recommended`、`download` 和 `mcp` 启动。`auth list/use/remove` 与 `config path/get/set/unset` 不接受这些 flag。
+当前支持代理覆盖的网络入口是 `auth add`、`auth login`、`auth check`、`search`、`search-options`、`detail`、`ranking`、`recommended`、`download` 和 `mcp` 启动。`auth list/use/remove` 与 `config path/get/set/unset` 不接受这些 flag。
 
 真实登录依赖 Pixiv OAuth 网页流程可用。自动化测试使用 fake OAuth server 覆盖 callback 和 token exchange，不访问真实 Pixiv。
 

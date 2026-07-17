@@ -13,12 +13,16 @@ semantic traps.
 
 1. Run `pixiv version --json` once. If it fails, report the real installation
    or execution error.
-2. Run `pixiv auth list --json`. It never prints tokens. If no valid account is
-   available, only the documented anonymous Web fallback remains available.
+2. Run `pixiv auth list --json`. It lists configured accounts and never prints
+   tokens, but does not prove their credentials are valid. Use the networked
+   `pixiv auth check [UID] --json` when validation is needed. If no configured
+   account is available, only the documented anonymous Web fallback remains.
 
 ## Hard rules
 
-1. Never read, print, echo, or store a refresh/access token.
+1. Never directly handle, print, echo, or persist a raw refresh/access token
+   outside the CLI-managed account store. `auth add` and `auth login` may store
+   credentials through the supported CLI path; never inspect `auth.json`.
 2. Never pass a literal token via `--token` or `--refresh-token`; direct the
    user to interactive `pixiv auth add` when importing one.
 3. Never accept or forward `PHPSESSID` or another browser Cookie. The CLI uses
