@@ -44,10 +44,11 @@ source 的关系保留给发布审计，需要可重算的 source digest、每�
   `ffmpeg` 或“部分可用”的 binary。
 - run `29567721284`（head `a93378631654f7a19b5e6052f68bdb3650438b03`）已按上述
   `1.96.0`/`1.96.1` 映射完整重建六目标，并通过 policy、精确源码 ref、locked/offline build、
-  GIF/APNG/cgo smoke、archive/record、artifact upload 与 consolidation；其六库及 manifest 已成套回填。
-  临时 review ref 仅用于合并前精确 checkout 该受审计 commit，回填后 workflow 恢复只接受
-  `refs/heads/main`。旧 run `29559729696` 的 runner 默认 Rust `1.97.0` 产物不得作为 recovery byte
-  rebuild 的合规证据，也不得只改 manifest 或文字声明来冒充重建。
+  GIF/APNG/cgo smoke、archive/record 与 artifact upload。下载六份证据后的本地 fail-closed
+  consolidation 继续核对 version、commit、source digest、目标集合与逐库 hash，随后将六库及 manifest
+  成套回填。临时 review ref 仅用于合并前精确 checkout 该受审计 commit；回填后 workflow 已恢复只接受
+  `refs/heads/main`。旧 run `29559729696` 的 runner 默认 Rust `1.97.0` 产物不得作为 recovery byte rebuild
+  的合规证据，也不得只改 manifest 或文字声明来冒充重建。
 - 上述 per-target pin 是当前六库及 v0.3.0 immutable-tag recovery 的实际 provenance。后续 Rust
   升级必须从同一受审计 source 成套重建、链接并 smoke 验证六目标，同时更新 staticlib、manifest、
   native evidence 与 release matrix；不能单独漂移某个 target 或用新编译器覆盖既有 tag 的 library。

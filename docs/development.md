@@ -65,8 +65,10 @@ Cargo 输入生成 target library；只有同一次成功得到全部六个真�
 当前工作树的六库来自 run `29567721284`（head
 `a93378631654f7a19b5e6052f68bdb3650438b03`）。该 run 在六个真实平台 runner 上按下述版本映射
 安装 pinned toolchain，并全部通过 policy、精确源码 ref、locked/offline build、真实 cgo GIF/APNG smoke、
-版本化 binary、archive/record、artifact upload 与 consolidation。合并前使用临时 review ref 只为让
-workflow 精确 checkout 该受审计 commit；产物回填后会恢复 workflow 的 `refs/heads/main` 限制。
+版本化 binary、archive/record 与 artifact upload。下载六份证据后，本地 fail-closed consolidation
+继续校验同一 version、commit、source digest、目标集合与逐库 hash，再成套生成本目录和 manifest。
+合并前使用临时 review ref 只为让 workflow 精确 checkout 该受审计 commit；产物回填后 workflow
+已经恢复只接受 `refs/heads/main`。
 六库 manifest 的 Rust source digest 为
 `2f076376eb8a0ce0142fa6b03e856ef0e570c3d99b5fe98a73de0df95c70cc91`，与该 commit 的 vendored
 Rust 输入一致；不得用旧 run `29559729696` 的 runner 默认 Rust `1.97.0` 产物替代。
