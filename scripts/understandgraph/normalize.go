@@ -7,17 +7,22 @@ import (
 	"sort"
 )
 
-// Normalize 将 bundled generator 的 Go package 展开结果转换为稳定的 package/module 图语义。
+// Normalize 稳定 generator 的 Go package/module 图语义，并同步文档 article 的完整源正文。
 func Normalize(root string) error {
 	ua := filepath.Join(root, ".understand-anything")
 	scanPath := filepath.Join(ua, "intermediate", "scan-result.json")
 	graphPath := filepath.Join(ua, "knowledge-graph.json")
+	docsGraphPath := filepath.Join(root, "docs", ".understand-anything", "knowledge-graph.json")
 
 	scan, err := readJSONObject(scanPath)
 	if err != nil {
 		return err
 	}
 	graph, err := readJSONObject(graphPath)
+	if err != nil {
+		return err
+	}
+	docsGraph, err := readJSONObject(docsGraphPath)
 	if err != nil {
 		return err
 	}
@@ -163,11 +168,15 @@ func Normalize(root string) error {
 	if err := setField(graph, "edges", edges); err != nil {
 		return err
 	}
+	if err := normalizeKnowledgeArticles(root, docsGraph); err != nil {
+		return err
+	}
 
 	return writeJSONObjects(
 		jsonObjectFile{Path: scanPath, Object: scan},
 		jsonObjectFile{Path: graphPath, Object: graph},
 		jsonObjectFile{Path: filepath.Join(ua, "fingerprints.json"), Object: fingerprints},
+		jsonObjectFile{Path: docsGraphPath, Object: docsGraph},
 	)
 }
 

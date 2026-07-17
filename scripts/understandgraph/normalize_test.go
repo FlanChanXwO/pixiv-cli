@@ -478,7 +478,188 @@ func TestNormalizeRejectsInvalidGoStructure(t *testing.T) {
 	}
 }
 
-func TestNormalizeIsByteIdenticalAndPreservesNonGoAndDocsData(t *testing.T) {
+func TestNormalizeRefreshesKnowledgeArticleContentAndHash(t *testing.T) {
+	root := writeGraphFixture(t, map[string]string{
+		"go.mod": "module example.com/pixiv\n\ngo 1.26.3\n",
+		"a/a.go": "package a\n",
+	})
+	content := "# 完整正文\n\n" + strings.Repeat("x", 3001) + "\n不可截断的结尾\n"
+	truncated := string([]rune(content)[:3000])
+	relativePath := "guides/long.md"
+	require.NoError(t, os.MkdirAll(filepath.Join(root, "docs", "guides"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "docs", filepath.FromSlash(relativePath)), []byte(content), 0o600))
+	docsGraphPath := filepath.Join(root, "docs", ".understand-anything", "knowledge-graph.json")
+	writeJSONFile(t, docsGraphPath, map[string]any{
+		"version": "1.0.0",
+		"project": map[string]any{"name": "fixture", "unknownProjectField": true},
+		"nodes": []any{map[string]any{
+			"id": "article:guides/long", "type": "article", "name": "Long", "filePath": relativePath,
+			"summary": "fixture", "tags": []any{"documentation"}, "complexity": "simple",
+			"knowledgeMeta": map[string]any{
+				"content": truncated, "wikilinks": []any{}, "confidence": 0.75,
+			},
+			"unknownNodeField": map[string]any{"keep": true},
+		}},
+		"edges": []any{}, "layers": []any{}, "tour": []any{},
+		"unknownGraphField": map[string]any{"keep": true},
+	})
+
+	require.NoError(t, Normalize(root))
+	var normalized map[string]any
+	readJSONFile(t, docsGraphPath, &normalized)
+	article := graphObjectByID(t, normalized["nodes"].([]any), "article:guides/long")
+	knowledgeMeta := article["knowledgeMeta"].(map[string]any)
+	require.Equal(t, content, knowledgeMeta["content"])
+	require.Equal(t, fixtureContentHash(content), knowledgeMeta["contentHash"])
+	require.Equal(t, 0.75, knowledgeMeta["confidence"])
+	require.Equal(t, map[string]any{"keep": true}, article["unknownNodeField"])
+	require.Equal(t, map[string]any{"keep": true}, normalized["unknownGraphField"])
+}
+
+func TestNormalizeRejectsKnowledgeArticleSymlinkEscapingDocsBeforeWritingArtifacts(t *testing.T) {
+	root := writeGraphFixture(t, map[string]string{
+		"go.mod": "module example.com/pixiv\n\ngo 1.26.3\n",
+		"a/a.go": "package a\n",
+	})
+	secret := "outside content must never enter the graph"
+	require.NoError(t, os.WriteFile(filepath.Join(root, "outside.md"), []byte(secret), 0o600))
+	linkPath := filepath.Join(root, "docs", "link.md")
+	if err := os.Symlink(filepath.Join("..", "outside.md"), linkPath); err != nil {
+		if os.IsPermission(err) || errors.Is(err, os.ErrPermission) {
+			t.Skipf("test environment does not permit symlink creation: %v", err)
+		}
+		require.NoError(t, err)
+	}
+	docsGraphPath := filepath.Join(root, "docs", ".understand-anything", "knowledge-graph.json")
+	writeJSONFile(t, docsGraphPath, map[string]any{
+		"version": "1.0.0", "project": map[string]any{"name": "fixture"},
+		"nodes": []any{map[string]any{
+			"id": "article:link", "type": "article", "name": "Link", "filePath": "link.md",
+			"summary": "fixture", "tags": []any{"documentation"}, "complexity": "simple",
+			"knowledgeMeta": map[string]any{"content": "stale"},
+		}},
+		"edges": []any{}, "layers": []any{}, "tour": []any{},
+	})
+	paths := []string{
+		filepath.Join(root, ".understand-anything", "intermediate", "scan-result.json"),
+		filepath.Join(root, ".understand-anything", "knowledge-graph.json"),
+		filepath.Join(root, ".understand-anything", "fingerprints.json"),
+		docsGraphPath,
+	}
+	before := make(map[string][]byte, len(paths))
+	for _, path := range paths {
+		before[path] = readFile(t, path)
+	}
+
+	err := Normalize(root)
+	require.ErrorContains(t, err, "resolves outside docs")
+	require.NotContains(t, err.Error(), secret)
+	for _, path := range paths {
+		require.Equal(t, before[path], readFile(t, path), "failed normalization changed %s", path)
+	}
+}
+
+func TestNormalizeAllowsKnowledgeArticleSymlinkRemainingInsideDocs(t *testing.T) {
+	root := writeGraphFixture(t, map[string]string{
+		"go.mod": "module example.com/pixiv\n\ngo 1.26.3\n",
+		"a/a.go": "package a\n",
+	})
+	content := "# Linked article\n\n仍在 docs 内。\n"
+	require.NoError(t, os.MkdirAll(filepath.Join(root, "docs", "guides"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "docs", "guides", "actual.md"), []byte(content), 0o600))
+	linkPath := filepath.Join(root, "docs", "link.md")
+	if err := os.Symlink(filepath.Join("guides", "actual.md"), linkPath); err != nil {
+		if os.IsPermission(err) || errors.Is(err, os.ErrPermission) {
+			t.Skipf("test environment does not permit symlink creation: %v", err)
+		}
+		require.NoError(t, err)
+	}
+	docsGraphPath := filepath.Join(root, "docs", ".understand-anything", "knowledge-graph.json")
+	writeJSONFile(t, docsGraphPath, map[string]any{
+		"version": "1.0.0", "project": map[string]any{"name": "fixture"},
+		"nodes": []any{map[string]any{
+			"id": "article:link", "type": "article", "name": "Link", "filePath": "link.md",
+			"summary": "fixture", "tags": []any{"documentation"}, "complexity": "simple",
+			"knowledgeMeta": map[string]any{"content": "stale", "unknownMeta": "keep"},
+		}},
+		"edges": []any{}, "layers": []any{}, "tour": []any{},
+	})
+
+	require.NoError(t, Normalize(root))
+	var normalized map[string]any
+	readJSONFile(t, docsGraphPath, &normalized)
+	article := graphObjectByID(t, normalized["nodes"].([]any), "article:link")
+	knowledgeMeta := article["knowledgeMeta"].(map[string]any)
+	require.Equal(t, content, knowledgeMeta["content"])
+	require.Equal(t, fixtureContentHash(content), knowledgeMeta["contentHash"])
+	require.Equal(t, "keep", knowledgeMeta["unknownMeta"])
+}
+
+func TestNormalizeRejectsInvalidKnowledgeArticlesBeforeWritingArtifacts(t *testing.T) {
+	tests := []struct {
+		name   string
+		mutate func(map[string]any)
+		want   string
+	}{
+		{
+			name:   "missing filePath",
+			mutate: func(article map[string]any) { delete(article, "filePath") },
+			want:   "is missing filePath",
+		},
+		{
+			name:   "missing knowledgeMeta",
+			mutate: func(article map[string]any) { delete(article, "knowledgeMeta") },
+			want:   "is missing knowledgeMeta",
+		},
+		{
+			name:   "non-object knowledgeMeta",
+			mutate: func(article map[string]any) { article["knowledgeMeta"] = []any{} },
+			want:   "knowledgeMeta must be an object",
+		},
+		{
+			name:   "missing source",
+			mutate: func(article map[string]any) { article["filePath"] = "missing.md" },
+			want:   "read docs graph article article:guide source missing.md",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			root := writeGraphFixture(t, map[string]string{
+				"go.mod": "module example.com/pixiv\n\ngo 1.26.3\n",
+				"a/a.go": "package a\n",
+			})
+			require.NoError(t, os.WriteFile(filepath.Join(root, "docs", "article.md"), []byte("# Article\n"), 0o600))
+			docsGraphPath := filepath.Join(root, "docs", ".understand-anything", "knowledge-graph.json")
+			article := map[string]any{
+				"id": "article:guide", "type": "article", "name": "Guide", "filePath": "article.md",
+				"summary": "fixture", "tags": []any{"documentation"}, "complexity": "simple",
+				"knowledgeMeta": map[string]any{"content": "stale"},
+			}
+			test.mutate(article)
+			writeJSONFile(t, docsGraphPath, map[string]any{
+				"version": "1.0.0", "project": map[string]any{"name": "fixture"}, "nodes": []any{article},
+				"edges": []any{}, "layers": []any{}, "tour": []any{},
+			})
+			paths := []string{
+				filepath.Join(root, ".understand-anything", "intermediate", "scan-result.json"),
+				filepath.Join(root, ".understand-anything", "knowledge-graph.json"),
+				filepath.Join(root, ".understand-anything", "fingerprints.json"),
+				docsGraphPath,
+			}
+			before := make(map[string][]byte, len(paths))
+			for _, path := range paths {
+				before[path] = readFile(t, path)
+			}
+
+			require.ErrorContains(t, Normalize(root), test.want)
+			for _, path := range paths {
+				require.Equal(t, before[path], readFile(t, path), "failed normalization changed %s", path)
+			}
+		})
+	}
+}
+
+func TestNormalizeIsByteIdenticalAndPreservesNonGoAndRefreshesDocsData(t *testing.T) {
 	root := writeGraphFixture(t, map[string]string{
 		"go.mod":               "module example.com/pixiv\n\ngo 1.26.3\n",
 		"a/a.go":               "package a\n",
@@ -493,15 +674,25 @@ func TestNormalizeIsByteIdenticalAndPreservesNonGoAndDocsData(t *testing.T) {
 	writeJSONFile(t, scanPath, scan)
 
 	docsPath := filepath.Join(root, "docs", ".understand-anything", "knowledge-graph.json")
-	docsBefore := []byte("{\n  \"mustRemain\": \"byte-identical\"\n}\n")
-	require.NoError(t, os.MkdirAll(filepath.Dir(docsPath), 0o755))
-	require.NoError(t, os.WriteFile(docsPath, docsBefore, 0o600))
+	docsContent := "# Idempotent guide\n\n完整正文。\n"
+	require.NoError(t, os.MkdirAll(filepath.Join(root, "docs", "guides"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "docs", "guides", "idempotent.md"), []byte(docsContent), 0o600))
+	writeJSONFile(t, docsPath, map[string]any{
+		"version": "1.0.0", "project": map[string]any{"name": "fixture"},
+		"nodes": []any{map[string]any{
+			"id": "article:guides/idempotent", "type": "article", "name": "Idempotent", "filePath": "guides/idempotent.md",
+			"summary": "fixture", "tags": []any{"documentation"}, "complexity": "simple",
+			"knowledgeMeta": map[string]any{"content": "stale", "wikilinks": []any{}, "unknownMeta": "keep"},
+		}},
+		"edges": []any{}, "layers": []any{}, "tour": []any{}, "unknownGraphField": map[string]any{"keep": true},
+	})
 
 	require.NoError(t, Normalize(root))
 	paths := []string{
 		scanPath,
 		filepath.Join(root, ".understand-anything", "knowledge-graph.json"),
 		filepath.Join(root, ".understand-anything", "fingerprints.json"),
+		docsPath,
 	}
 	first := make(map[string][]byte, len(paths))
 	for _, path := range paths {
@@ -511,12 +702,18 @@ func TestNormalizeIsByteIdenticalAndPreservesNonGoAndDocsData(t *testing.T) {
 	for _, path := range paths {
 		require.Equal(t, first[path], readFile(t, path), "second normalization changed %s", path)
 	}
-	require.Equal(t, docsBefore, readFile(t, docsPath))
-
 	var normalizedScan map[string]any
 	readJSONFile(t, scanPath, &normalizedScan)
 	require.Equal(t, []string{"web/dependency.ts"}, stringSliceMap(t, normalizedScan["importMap"])["web/app.ts"])
 	require.Equal(t, map[string]any{"preserve": true}, normalizedScan["customField"])
+	var normalizedDocs map[string]any
+	readJSONFile(t, docsPath, &normalizedDocs)
+	article := graphObjectByID(t, normalizedDocs["nodes"].([]any), "article:guides/idempotent")
+	knowledgeMeta := article["knowledgeMeta"].(map[string]any)
+	require.Equal(t, docsContent, knowledgeMeta["content"])
+	require.Equal(t, fixtureContentHash(docsContent), knowledgeMeta["contentHash"])
+	require.Equal(t, "keep", knowledgeMeta["unknownMeta"])
+	require.Equal(t, map[string]any{"keep": true}, normalizedDocs["unknownGraphField"])
 }
 
 func TestNormalizeRemovesOwnedModulesForDeletedPackages(t *testing.T) {
@@ -764,6 +961,10 @@ func writeGraphFixture(t *testing.T, sources map[string]string) string {
 	writeJSONFile(t, filepath.Join(root, ".understand-anything", "intermediate", "scan-result.json"), map[string]any{"files": files, "importMap": importMap})
 	writeJSONFile(t, filepath.Join(root, ".understand-anything", "knowledge-graph.json"), map[string]any{
 		"version": "1.0.0", "project": map[string]any{"name": "fixture"}, "nodes": fileNodes, "edges": edges,
+		"layers": []any{}, "tour": []any{},
+	})
+	writeJSONFile(t, filepath.Join(root, "docs", ".understand-anything", "knowledge-graph.json"), map[string]any{
+		"version": "1.0.0", "project": map[string]any{"name": "fixture"}, "nodes": []any{}, "edges": []any{},
 		"layers": []any{}, "tour": []any{},
 	})
 	writeJSONFile(t, filepath.Join(root, ".understand-anything", "fingerprints.json"), map[string]any{
