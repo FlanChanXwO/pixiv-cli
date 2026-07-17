@@ -120,7 +120,7 @@ func TestCheckWorkflowRejectsReleaseRustToolchainMutations(t *testing.T) {
 		},
 		{
 			name: "test matrix toolchain drifts",
-			want: "exactly the six release targets",
+			want: "release-pinned Rust toolchain",
 			mutate: func(t *testing.T, root *yaml.Node) {
 				entry := matrixEntry(t, root, "build", "x86_64-unknown-linux-gnu")
 				requireMappingValue(t, entry, "rust_toolchain").Value = "1.97.0"

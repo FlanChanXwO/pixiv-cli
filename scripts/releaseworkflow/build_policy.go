@@ -9,15 +9,15 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// releaseMatrixTargets 将 runner、Go 平台、Rust target、生成已提交 staticlib 的 Rust toolchain
-// 和 release asset 名称绑为同一集合，防止任一字段的局部改动让六平台发布遗漏或错配。
+// releaseMatrixTargets 将 runner、Go 平台、Rust target 与 release asset 名称绑为同一集合；
+// Rust toolchain 另由 workflowpolicy 的共享 provenance 映射校验，避免 release 与 evidence 漂移。
 var releaseMatrixTargets = map[string]struct{}{
-	"macos-15-intel|darwin|amd64|x86_64-apple-darwin|1.96.0|darwin-amd64|clang":                    {},
-	"macos-15|darwin|arm64|aarch64-apple-darwin|1.96.1|darwin-arm64|clang":                         {},
-	"ubuntu-24.04|linux|amd64|x86_64-unknown-linux-gnu|1.96.1|linux-amd64|gcc":                     {},
-	"ubuntu-24.04-arm|linux|arm64|aarch64-unknown-linux-gnu|1.96.1|linux-arm64|gcc":                {},
-	"windows-2025|windows|amd64|x86_64-pc-windows-msvc|1.96.0|windows-amd64|clang -fuse-ld=lld":    {},
-	"windows-11-arm|windows|arm64|aarch64-pc-windows-msvc|1.96.1|windows-arm64|clang -fuse-ld=lld": {},
+	"macos-15-intel|darwin|amd64|x86_64-apple-darwin|darwin-amd64|clang":                    {},
+	"macos-15|darwin|arm64|aarch64-apple-darwin|darwin-arm64|clang":                         {},
+	"ubuntu-24.04|linux|amd64|x86_64-unknown-linux-gnu|linux-amd64|gcc":                     {},
+	"ubuntu-24.04-arm|linux|arm64|aarch64-unknown-linux-gnu|linux-arm64|gcc":                {},
+	"windows-2025|windows|amd64|x86_64-pc-windows-msvc|windows-amd64|clang -fuse-ld=lld":    {},
+	"windows-11-arm|windows|arm64|aarch64-pc-windows-msvc|windows-arm64|clang -fuse-ld=lld": {},
 }
 
 func checkValidateJob(job *yaml.Node) error {
@@ -274,8 +274,14 @@ func checkReleaseMatrix(matrix *yaml.Node) error {
 		if err := requireOnlyMappingKeys(entry, "runner", "goos", "goarch", "rust_target", "rust_toolchain", "artifact", "cc"); err != nil {
 			return errors.New("build matrix entries must contain only the canonical release target fields")
 		}
-		fields := make([]string, 0, 7)
-		for _, key := range []string{"runner", "goos", "goarch", "rust_target", "rust_toolchain", "artifact", "cc"} {
+		target, _ := workflowpolicy.MappingValue(entry, "rust_target")
+		toolchain, _ := workflowpolicy.MappingValue(entry, "rust_toolchain")
+		wantToolchain, supported := workflowpolicy.PinnedRustToolchain(target.Value)
+		if !supported || toolchain.Value != wantToolchain {
+			return errors.New("build matrix must use the release-pinned Rust toolchain for every target")
+		}
+		fields := make([]string, 0, 6)
+		for _, key := range []string{"runner", "goos", "goarch", "rust_target", "artifact", "cc"} {
 			value, ok := workflowpolicy.MappingValue(entry, key)
 			if !ok || value.Kind != yaml.ScalarNode {
 				return errors.New("build matrix must contain exactly the six release targets")

@@ -16,6 +16,8 @@ jobs:
     runs-on: ${{ matrix.runner }}
     permissions:
       contents: read
+    env:
+      RUSTUP_TOOLCHAIN: ${{ matrix.rust_toolchain }}
     strategy:
       fail-fast: false
       matrix:
@@ -24,31 +26,37 @@ jobs:
             goos: darwin
             goarch: amd64
             rust_target: x86_64-apple-darwin
+            rust_toolchain: '1.96.0'
             artifact: darwin-amd64
           - runner: macos-15
             goos: darwin
             goarch: arm64
             rust_target: aarch64-apple-darwin
+            rust_toolchain: '1.96.1'
             artifact: darwin-arm64
           - runner: ubuntu-24.04
             goos: linux
             goarch: amd64
             rust_target: x86_64-unknown-linux-gnu
+            rust_toolchain: '1.96.1'
             artifact: linux-amd64
           - runner: ubuntu-24.04-arm
             goos: linux
             goarch: arm64
             rust_target: aarch64-unknown-linux-gnu
+            rust_toolchain: '1.96.1'
             artifact: linux-arm64
           - runner: windows-2025
             goos: windows
             goarch: amd64
             rust_target: x86_64-pc-windows-msvc
+            rust_toolchain: '1.96.0'
             artifact: windows-amd64
           - runner: windows-11-arm
             goos: windows
             goarch: arm64
             rust_target: aarch64-pc-windows-msvc
+            rust_toolchain: '1.96.1'
             artifact: windows-arm64
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
@@ -63,9 +71,9 @@ jobs:
       - name: Require audited main ref
         shell: bash
         run: test "$GITHUB_REF" = 'refs/heads/main'
-      - name: Install the native Rust target
+      - name: Install the pinned native Rust toolchain
         shell: bash
-        run: rustup target add '${{ matrix.rust_target }}'
+        run: rustup toolchain install '${{ matrix.rust_toolchain }}' --profile minimal --target '${{ matrix.rust_target }}' --no-self-update
       - name: Check vendored Rust sources
         shell: bash
         run: sh scripts/test-rust-vendor.sh

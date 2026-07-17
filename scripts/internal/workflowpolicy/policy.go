@@ -9,6 +9,22 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+var pinnedRustToolchains = map[string]string{
+	"x86_64-apple-darwin":       "1.96.0",
+	"aarch64-apple-darwin":      "1.96.1",
+	"x86_64-unknown-linux-gnu":  "1.96.1",
+	"aarch64-unknown-linux-gnu": "1.96.1",
+	"x86_64-pc-windows-msvc":    "1.96.0",
+	"aarch64-pc-windows-msvc":   "1.96.1",
+}
+
+// PinnedRustToolchain 返回 release 与 native evidence 共同审计的目标工具链。
+// staticlib 的字节身份包含 rustc，因此未知目标必须 fail closed。
+func PinnedRustToolchain(target string) (string, bool) {
+	toolchain, ok := pinnedRustToolchains[target]
+	return toolchain, ok
+}
+
 // RejectAmbiguousYAML 在 verifier 读取字段前拒绝有歧义的 YAML 构造。
 func RejectAmbiguousYAML(node *yaml.Node) error {
 	if node == nil {

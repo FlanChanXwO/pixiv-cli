@@ -52,6 +52,17 @@ func appendMappingValue(t *testing.T, mapping *yaml.Node, key string, value *yam
 	mapping.Content = append(mapping.Content, scalarNode(key), value)
 }
 
+func removeMappingValue(t *testing.T, mapping *yaml.Node, key string) {
+	t.Helper()
+	for index := 0; index+1 < len(mapping.Content); index += 2 {
+		if mapping.Content[index].Value == key {
+			mapping.Content = append(mapping.Content[:index], mapping.Content[index+2:]...)
+			return
+		}
+	}
+	t.Fatalf("mapping value %q not found", key)
+}
+
 func removeStepNamed(t *testing.T, steps *yaml.Node, name string) {
 	t.Helper()
 	for index, step := range steps.Content {

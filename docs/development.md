@@ -62,14 +62,15 @@ Cargo 输入生成 target library；只有同一次成功得到全部六个真�
 写入带 Rust source digest 的 `manifest.json`。单 target 调用会使已有 manifest 失效，避免用
 局部重建证明全平台一致性。
 
-当前工作树已回填 run `29559729696`（head
-`4caeb4d432a613fade0d226e8f6b755bb9e9c339`）产生的六个真实 library 与统一 manifest。六个 runner
-均完成 locked/offline Rust build、真实 cgo GIF/APNG smoke、版本化 binary、archive 与 record；受控
-`consolidate` 又在本地重验 source identity、staticlib/binary/archive SHA 和全部 archive members 后
-生成提交输入。`sh scripts/build.sh` 现会先校验完整 manifest，再在具备本机 cgo/C linker 时构建。
+当前工作树的六库来自 run `29559729696`（head
+`4caeb4d432a613fade0d226e8f6b755bb9e9c339`）；该 run 虽通过 locked/offline build、真实 cgo smoke、
+archive/record 与 consolidation，但 native-evidence 当时只执行 `rustup target add`，实际沿用了 runner
+默认 Rust `1.97.0`。因此这组 blob **不满足**下述 release provenance pin，不能继续作为“可按
+v0.3.0 recovery 字节重建”的合规证据。修复后的 workflow 必须在同一受审计 main SHA 上重新生成、
+链接并 smoke 六库；回填后还必须把本段 run/head 更新为新成功记录，不能保留旧 run 声称合规。
 
-这些 committed library 的编译器 provenance 按 target 固定，而不是使用可移动的 runner 默认
-toolchain：`x86_64-apple-darwin` 与 `x86_64-pc-windows-msvc` 来自 Rust `1.96.0`；
+合规 committed library 的编译器 provenance 必须按 target 固定，而不是使用可移动的 runner 默认
+toolchain：`x86_64-apple-darwin` 与 `x86_64-pc-windows-msvc` 使用 Rust `1.96.0`；
 `aarch64-apple-darwin`、`aarch64-pc-windows-msvc`、`x86_64-unknown-linux-gnu` 与
 `aarch64-unknown-linux-gnu` 来自 Rust `1.96.1`。release test 与 production matrix 都必须携带这份
 精确映射，并通过 `RUSTUP_TOOLCHAIN` 和带 `--no-self-update` 的 `rustup toolchain install` 使用它；
@@ -133,6 +134,11 @@ push 或指向 `refs/heads/main` 的 `workflow_dispatch`，全局 `permissions: 
 secret、tag/Release/tap/signing 命令；YAML AST policy 同时固定六个 runner、full-SHA action、无凭据
 checkout、vendored Rust 检查、单目标 staticlib、真实 cgo GIF/APNG smoke、版本化 binary 的
 `pixiv version --json`、release-style archive 以及 artifact upload。可离线检查声明本身：
+
+matrix 的每个 target 还必须声明与 release test/production 完全相同的 `rust_toolchain`，job 通过
+`RUSTUP_TOOLCHAIN` 绑定该值，并执行带 `--profile minimal --target ... --no-self-update` 的精确
+`rustup toolchain install`。两个 verifier 共用 `scripts/internal/workflowpolicy` 中唯一的目标版本映射；
+任一 workflow 删除、替换、重复或错误插值该映射，policy 都会 fail closed。
 
 Windows 两个 target 的 Rust library 使用 `*-pc-windows-msvc`；相应 cgo selector 必须以
 `-L${SRCDIR}/… -lugoira_rs` 声明库，不能把带盘符的绝对 `.lib` 路径直接传给 cgo；还必须显式携带
@@ -343,9 +349,10 @@ allowlist 必须逐字列出以下路径，不能改成目录或 glob：
 - `scripts/releaseworkflow/workflow_policy_test.go`
 
 全部拆出的 release test files 都必须 overlay，才能保留当前 mutation suite。共享 production helper
-`scripts/internal/workflowpolicy/policy.go` 是两个 verifier 共用的 YAML policy 实现，也是从默认分支编译
-release verifier 的必要依赖；它不参与生产资产构建，且共享包自己的 `policy_test.go` 仍不进入恢复
-overlay。提取前必须用 `git status --porcelain=v1 --untracked-files=all` 确认工作树为空，并显式确认 cached
+`scripts/internal/workflowpolicy/policy.go` 是两个 verifier 共用的 YAML policy 实现及唯一的 per-target
+Rust toolchain 映射，也是从默认分支编译 release verifier 的必要依赖；它不参与生产资产构建，且共享包
+自己的 `policy_test.go` 仍不进入恢复 overlay。提取前必须用
+`git status --porcelain=v1 --untracked-files=all` 确认工作树为空，并显式确认 cached
 diff 为空；覆盖通过一次 `git archive` 提取后，将 tracked diff 与未忽略的 untracked files 合并、按 C locale
 排序，再与上述逐字 allowlist 比较，同时再次确认 cached diff 为空。这使旧 tag 中尚不存在的拆分文件也参与
 fail-closed 核对。重新加入 account test、任意额外路径或生产源码都必须失败，test job 也不生成 release

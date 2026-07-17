@@ -62,7 +62,7 @@ func checkWorkflow(body []byte) error {
 }
 
 func checkNativeEvidenceJob(job *yaml.Node) error {
-	if err := requireOnlyMappingKeys(job, "name", "runs-on", "permissions", "strategy", "steps"); err != nil {
+	if err := requireOnlyMappingKeys(job, "name", "runs-on", "permissions", "env", "strategy", "steps"); err != nil {
 		return errors.New("native evidence job must contain only its audited fields")
 	}
 	if err := workflowpolicy.RequireScalar(job, "runs-on", "${{ matrix.runner }}"); err != nil {
@@ -70,6 +70,10 @@ func checkNativeEvidenceJob(job *yaml.Node) error {
 	}
 	if err := checkContentsReadPermission(job); err != nil {
 		return err
+	}
+	env, ok := workflowpolicy.MappingValue(job, "env")
+	if !ok || requireOnlyMappingKeys(env, "RUSTUP_TOOLCHAIN") != nil || workflowpolicy.RequireScalar(env, "RUSTUP_TOOLCHAIN", "${{ matrix.rust_toolchain }}") != nil {
+		return errors.New("native evidence job must bind the Rust toolchain from its audited matrix")
 	}
 	strategy, ok := workflowpolicy.MappingValue(job, "strategy")
 	if !ok || strategy.Kind != yaml.MappingNode || requireOnlyMappingKeys(strategy, "fail-fast", "matrix") != nil || workflowpolicy.RequireScalar(strategy, "fail-fast", "false") != nil {
@@ -98,7 +102,7 @@ func checkNativeEvidenceJob(job *yaml.Node) error {
 	if err := requireDirectRunStep(steps.Content[3], "Require audited main ref", "test \"$GITHUB_REF\" = 'refs/heads/main'"); err != nil {
 		return err
 	}
-	if err := requireDirectRunStep(steps.Content[4], "Install the native Rust target", "rustup target add '${{ matrix.rust_target }}'"); err != nil {
+	if err := requireDirectRunStep(steps.Content[4], "Install the pinned native Rust toolchain", "rustup toolchain install '${{ matrix.rust_toolchain }}' --profile minimal --target '${{ matrix.rust_target }}' --no-self-update"); err != nil {
 		return err
 	}
 	if err := requireDirectRunStep(steps.Content[5], "Check vendored Rust sources", "sh scripts/test-rust-vendor.sh"); err != nil {
@@ -144,8 +148,14 @@ func checkNativeEvidenceMatrix(matrix *yaml.Node) error {
 	}
 	seen := make(map[string]struct{}, len(include.Content))
 	for _, entry := range include.Content {
-		if entry.Kind != yaml.MappingNode || requireOnlyMappingKeys(entry, "runner", "goos", "goarch", "rust_target", "artifact") != nil {
+		if entry.Kind != yaml.MappingNode || requireOnlyMappingKeys(entry, "runner", "goos", "goarch", "rust_target", "rust_toolchain", "artifact") != nil {
 			return errors.New("native evidence matrix must contain exactly the six audited targets")
+		}
+		target, _ := workflowpolicy.MappingValue(entry, "rust_target")
+		toolchain, _ := workflowpolicy.MappingValue(entry, "rust_toolchain")
+		wantToolchain, supported := workflowpolicy.PinnedRustToolchain(target.Value)
+		if !supported || toolchain.Value != wantToolchain {
+			return errors.New("native evidence matrix must use the release-pinned Rust toolchain for every target")
 		}
 		parts := make([]string, 0, 5)
 		for _, key := range []string{"runner", "goos", "goarch", "rust_target", "artifact"} {

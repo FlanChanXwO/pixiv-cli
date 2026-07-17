@@ -202,6 +202,28 @@ func TestRequireScalarPreservesExactErrors(t *testing.T) {
 	}
 }
 
+func TestPinnedRustToolchainReturnsAuditedReleaseProvenance(t *testing.T) {
+	t.Parallel()
+
+	want := map[string]string{
+		"x86_64-apple-darwin":       "1.96.0",
+		"aarch64-apple-darwin":      "1.96.1",
+		"x86_64-unknown-linux-gnu":  "1.96.1",
+		"aarch64-unknown-linux-gnu": "1.96.1",
+		"x86_64-pc-windows-msvc":    "1.96.0",
+		"aarch64-pc-windows-msvc":   "1.96.1",
+	}
+	for target, toolchain := range want {
+		got, ok := workflowpolicy.PinnedRustToolchain(target)
+		if !ok || got != toolchain {
+			t.Errorf("PinnedRustToolchain(%q) = (%q, %v), want (%q, true)", target, got, ok, toolchain)
+		}
+	}
+	if got, ok := workflowpolicy.PinnedRustToolchain("unsupported-target"); ok || got != "" {
+		t.Fatalf("PinnedRustToolchain(unsupported) = (%q, %v), want (empty, false)", got, ok)
+	}
+}
+
 func TestContainsSecretReferenceFindsExpressionRecursively(t *testing.T) {
 	t.Parallel()
 

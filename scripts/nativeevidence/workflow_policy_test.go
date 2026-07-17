@@ -21,6 +21,44 @@ func TestCheckWorkflowAcceptsAuditedNativeEvidenceEntry(t *testing.T) {
 	}
 }
 
+func TestCheckWorkflowAcceptsPinnedRustToolchainProvenance(t *testing.T) {
+	t.Parallel()
+
+	root := checkedInWorkflowRoot(t)
+	job := requireJob(t, root)
+	env := requireMappingValue(t, job, "env")
+	if got := requireMappingValue(t, env, "RUSTUP_TOOLCHAIN").Value; got != "${{ matrix.rust_toolchain }}" {
+		t.Fatalf("native evidence RUSTUP_TOOLCHAIN = %q, want audited matrix binding", got)
+	}
+	wantToolchains := map[string]string{
+		"x86_64-apple-darwin":       "1.96.0",
+		"aarch64-apple-darwin":      "1.96.1",
+		"x86_64-unknown-linux-gnu":  "1.96.1",
+		"aarch64-unknown-linux-gnu": "1.96.1",
+		"x86_64-pc-windows-msvc":    "1.96.0",
+		"aarch64-pc-windows-msvc":   "1.96.1",
+	}
+	include := requireMappingValue(t, requireMappingValue(t, requireMappingValue(t, job, "strategy"), "matrix"), "include")
+	for _, entry := range include.Content {
+		target := requireMappingValue(t, entry, "rust_target").Value
+		if got := requireMappingValue(t, entry, "rust_toolchain").Value; got != wantToolchains[target] {
+			t.Errorf("native evidence Rust toolchain for %s = %q, want %q", target, got, wantToolchains[target])
+		}
+	}
+	install := requireJobSteps(t, root).Content[4]
+	if got := requireMappingValue(t, install, "run").Value; got != "rustup toolchain install '${{ matrix.rust_toolchain }}' --profile minimal --target '${{ matrix.rust_target }}' --no-self-update" {
+		t.Fatalf("native evidence Rust install = %q, want canonical pinned install", got)
+	}
+
+	body, err := yaml.Marshal(root)
+	if err != nil {
+		t.Fatalf("marshal audited workflow: %v", err)
+	}
+	if err := checkWorkflow(body); err != nil {
+		t.Fatalf("native evidence policy rejected pinned Rust provenance: %v", err)
+	}
+}
+
 func TestRequireOnlyMappingKeysPreservesAuditedKeyError(t *testing.T) {
 	t.Parallel()
 
@@ -31,6 +69,19 @@ func TestRequireOnlyMappingKeysPreservesAuditedKeyError(t *testing.T) {
 }
 
 func TestCheckWorkflowRejectsNativeEvidenceSecurityAndCompletenessMutations(t *testing.T) {
+	matrixEntry := func(t *testing.T, root *yaml.Node, rustTarget string) *yaml.Node {
+		t.Helper()
+		matrix := requireMappingValue(t, requireMappingValue(t, requireJob(t, root), "strategy"), "matrix")
+		include := requireMappingValue(t, matrix, "include")
+		for _, entry := range include.Content {
+			if requireMappingValue(t, entry, "rust_target").Value == rustTarget {
+				return entry
+			}
+		}
+		t.Fatalf("native evidence matrix has no Rust target %s", rustTarget)
+		return nil
+	}
+
 	for _, test := range []struct {
 		name   string
 		mutate func(t *testing.T, root *yaml.Node)
@@ -117,6 +168,67 @@ func TestCheckWorkflowRejectsNativeEvidenceSecurityAndCompletenessMutations(t *t
 				include := requireMappingValue(t, requireMappingValue(t, requireJob(t, root), "strategy"), "matrix")
 				include = requireMappingValue(t, include, "include")
 				include.Content = include.Content[:len(include.Content)-1]
+			},
+		},
+		{
+			name: "missing Rust toolchain environment binding",
+			mutate: func(t *testing.T, root *yaml.Node) {
+				removeMappingValue(t, requireJob(t, root), "env")
+			},
+		},
+		{
+			name: "mutable Rust toolchain environment binding",
+			mutate: func(t *testing.T, root *yaml.Node) {
+				requireMappingValue(t, requireMappingValue(t, requireJob(t, root), "env"), "RUSTUP_TOOLCHAIN").Value = "stable"
+			},
+		},
+		{
+			name: "matrix toolchain is missing",
+			mutate: func(t *testing.T, root *yaml.Node) {
+				removeMappingValue(t, matrixEntry(t, root, "x86_64-unknown-linux-gnu"), "rust_toolchain")
+			},
+		},
+		{
+			name: "matrix toolchain drifts from release provenance",
+			mutate: func(t *testing.T, root *yaml.Node) {
+				requireMappingValue(t, matrixEntry(t, root, "x86_64-apple-darwin"), "rust_toolchain").Value = "1.96.1"
+			},
+		},
+		{
+			name: "matrix target is duplicated",
+			mutate: func(t *testing.T, root *yaml.Node) {
+				first := matrixEntry(t, root, "x86_64-apple-darwin")
+				second := matrixEntry(t, root, "aarch64-apple-darwin")
+				for _, key := range []string{"runner", "goos", "goarch", "rust_target", "rust_toolchain", "artifact"} {
+					requireMappingValue(t, second, key).Value = requireMappingValue(t, first, key).Value
+				}
+			},
+		},
+		{
+			name: "install toolchain interpolation is replaced",
+			mutate: func(t *testing.T, root *yaml.Node) {
+				run := requireMappingValue(t, requireJobSteps(t, root).Content[4], "run")
+				run.Value = strings.ReplaceAll(run.Value, "'${{ matrix.rust_toolchain }}'", "stable")
+			},
+		},
+		{
+			name: "install target interpolation is replaced",
+			mutate: func(t *testing.T, root *yaml.Node) {
+				run := requireMappingValue(t, requireJobSteps(t, root).Content[4], "run")
+				run.Value = strings.ReplaceAll(run.Value, "'${{ matrix.rust_target }}'", "'x86_64-unknown-linux-gnu'")
+			},
+		},
+		{
+			name: "install permits rustup self update",
+			mutate: func(t *testing.T, root *yaml.Node) {
+				run := requireMappingValue(t, requireJobSteps(t, root).Content[4], "run")
+				run.Value = strings.ReplaceAll(run.Value, " --no-self-update", "")
+			},
+		},
+		{
+			name: "install only adds target to movable default",
+			mutate: func(t *testing.T, root *yaml.Node) {
+				requireMappingValue(t, requireJobSteps(t, root).Content[4], "run").Value = "rustup target add '${{ matrix.rust_target }}'"
 			},
 		},
 	} {
