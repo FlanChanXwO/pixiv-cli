@@ -6,11 +6,7 @@
 
 [English](README.md) · [简体中文](README.zh-CN.md)
 
-[![Quality gate](https://github.com/FlanChanXwO/pixiv-cli/actions/workflows/ci.yml/badge.svg)](https://github.com/FlanChanXwO/pixiv-cli/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/github/v/release/FlanChanXwO/pixiv-cli?style=flat-square)](https://github.com/FlanChanXwO/pixiv-cli/releases/latest)
-[![Go](https://img.shields.io/github/go-mod/go-version/FlanChanXwO/pixiv-cli?style=flat-square)](go.mod)
-[![License](https://img.shields.io/github/license/FlanChanXwO/pixiv-cli?style=flat-square)](LICENSE)
-![Views](https://hits.sh/github.com/FlanChanXwO/pixiv-cli.svg?style=flat-square&label=views)
+<p><a href="https://github.com/FlanChanXwO/pixiv-cli/actions/workflows/ci.yml"><img alt="Quality gate" src="https://github.com/FlanChanXwO/pixiv-cli/actions/workflows/ci.yml/badge.svg"></a> <a href="https://github.com/FlanChanXwO/pixiv-cli/releases/latest"><img alt="Release" src="https://img.shields.io/github/v/release/FlanChanXwO/pixiv-cli?style=flat-square"></a> <a href="go.mod"><img alt="Go" src="https://img.shields.io/github/go-mod/go-version/FlanChanXwO/pixiv-cli?style=flat-square"></a> <a href="LICENSE"><img alt="License" src="https://img.shields.io/github/license/FlanChanXwO/pixiv-cli?style=flat-square"></a> <img alt="Views" src="https://hits.sh/github.com/FlanChanXwO/pixiv-cli.svg?style=flat-square&amp;label=views"></p>
 
 [安装](#安装) · [快速开始](#60-秒快速开始) · [使用入口](#选择使用入口) · [文档](#文档) · [参与贡献](CONTRIBUTING.zh-CN.md)
 

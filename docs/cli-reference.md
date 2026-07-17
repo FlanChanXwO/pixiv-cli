@@ -194,7 +194,8 @@ pixiv download 123456 789012
 Account credentials are saved to `os.UserConfigDir()/pixiv/auth.json`, keyed by Pixiv UID; global settings live in
 `os.UserConfigDir()/pixiv/config.toml`. Unix-like systems actively use `0700` parent directories and `0600` files.
 On Windows, first creation inherits the parent ACL and replacement preserves the existing target ACL; the CLI does
-not claim to tighten or loosen the DACL. Output is human-readable by default; add `--json` for machine-parseable JSON.
+not claim to tighten or loosen the DACL. Output is human-readable by default; commands that expose `--json` can
+produce machine-parseable JSON. `auth token` deliberately does not expose that flag.
 The CLI uses Cobra/pflag, so options may appear before or after positional arguments — both
 `pixiv auth check 12345678 --json` and `pixiv search "初音ミク" --json` are officially supported forms.
 
@@ -221,11 +222,13 @@ The CLI uses Cobra/pflag, so options may appear before or after positional argum
 | `ranking` | `pixiv ranking [options]` | Shows Pixiv illustration rankings. |
 | `recommended` | `pixiv recommended all\|illust\|manga\|novel\|user [--page N --limit N --json]` | Shows personalized recommendations for the given kind; `all` returns illustrations, manga, novels, and users in full, in order, and requires authentication. |
 | `user detail` | `pixiv user detail USER_ID [--json]` | Shows a user's full public profile; `USER_ID` is required. |
-| `user artworks` | `pixiv user artworks [USER_ID] [--page N --limit N]` | Shows a user's artworks; uses the current authenticated user when `USER_ID` is omitted. |
-| `user bookmarks` | `pixiv user bookmarks [USER_ID] [--page N --limit N]` | Shows a user's bookmarks; uses the current authenticated user when `USER_ID` is omitted. |
-| `user following` | `pixiv user following [USER_ID] [--page N --limit N]` | Shows who a user follows; uses the current authenticated user when `USER_ID` is omitted. |
-| `bookmark add/remove` | `pixiv bookmark add/remove ILLUST_ID` | Bookmarks or un-bookmarks an artwork. |
-| `follow add/remove` | `pixiv follow add/remove USER_ID` | Follows or unfollows a user. |
+| `user artworks` | `pixiv user artworks [USER_ID] [--type TYPE --page N --limit N]` | Shows a user's artworks; uses the current authenticated user when `USER_ID` is omitted. |
+| `user bookmarks` | `pixiv user bookmarks [USER_ID] [--restrict public\|private --tag TAG --page N --limit N]` | Shows a user's bookmarks, optionally filtered by visibility and tag; uses the current authenticated user when `USER_ID` is omitted. |
+| `user following` | `pixiv user following [USER_ID] [--restrict public\|private --page N --limit N]` | Shows who a user follows, optionally filtered by visibility; uses the current authenticated user when `USER_ID` is omitted. |
+| `bookmark add` | `pixiv bookmark add ILLUST_ID [--restrict public\|private --tag TAG...]` | Bookmarks an artwork; `--tag` may be repeated. |
+| `bookmark remove` | `pixiv bookmark remove ILLUST_ID` | Removes an artwork bookmark; it does not accept visibility or tag flags. |
+| `follow add` | `pixiv follow add USER_ID [--restrict public\|private]` | Follows a user with the selected visibility. |
+| `follow remove` | `pixiv follow remove USER_ID` | Unfollows a user; it does not accept a visibility flag. |
 | `download` | `pixiv download [options] ILLUST_ID...` | Downloads one or more artworks; without a token, uses the anonymous web fallback by default. |
 | `mcp` | `pixiv mcp [--proxy URL\|--no-proxy]` | Starts the MCP stdio server; the proxy override applies only to this launch. |
 
@@ -267,6 +270,13 @@ used.
 | `ranking` | `--date` | empty | Ranking date, typically `YYYY-MM-DD`. |
 | `ranking` | `--offset` | `0` | Pagination offset. |
 | `recommended KIND` | `--page`, `--limit`, deprecated `--offset` | per-stream pagination | Each stream paginates independently; `all` applies the same pagination semantics to illustrations, manga, novels, and users separately. |
+| `user artworks` | `--type` | `illust` | Pixiv illustration type passed to the user-artworks request. |
+| `user bookmarks` | `--restrict` | `public` | Bookmark visibility: `public` or `private`. |
+| `user bookmarks` | `--tag` | empty | Exact bookmark-tag filter. |
+| `user following` | `--restrict` | `public` | Follow visibility: `public` or `private`. |
+| `bookmark add` | `--restrict` | `public` | Visibility of the new bookmark: `public` or `private`. |
+| `bookmark add` | `--tag` | empty | Bookmark tag; may be repeated. |
+| `follow add` | `--restrict` | `public` | Visibility of the new follow: `public` or `private`. |
 | `detail` | `ILLUST_ID` | required | Pixiv artwork ID. |
 | `download` | `ILLUST_ID...` | required | One or more Pixiv artwork IDs. |
 
@@ -284,7 +294,7 @@ collects enough matching works, the upstream has no next batch, or a repeated cu
 | `--uid UID` | `search/search-options/detail/ranking/recommended/user/download` | `auth.json.default_user_id` | Selects a local account. |
 | `--profile UID` | `search/search-options/detail/ranking/recommended/user/download` | empty | Deprecated alias of `--uid`. |
 | `--refresh-token TOKEN` | `search/search-options/detail/ranking/recommended/user/download` | empty | Temporarily overrides the account/env token; only raw App API refresh tokens are accepted. |
-| `--json` | `auth` subcommands and data commands | `false` | Machine-parseable JSON output. |
+| `--json` | `auth add/login/list/use/remove/check`, `version`, `update --check`, and data commands | `false` | Machine-parseable JSON output; `auth token` and actual update installation do not accept it. |
 | `--download-path PATH` | data commands; effectively only `download` | `DOWNLOAD_PATH`, `config.toml`, or `./downloads` | Download directory. |
 | `--filename-template TEMPLATE` | data commands; effectively only `download` | `FILENAME_TEMPLATE`, `config.toml`, or `{author} - {title}_{id}` | Filename template. |
 | `--proxy URL` | `auth add/login/check`, data commands, `mcp` | `https_proxy`/`HTTPS_PROXY`, `config.toml`, or empty | Uses an HTTP(S) proxy for this command only. |
@@ -396,7 +406,7 @@ protected `release` Environment and a controlled macOS Keychain recovery copy. v
 Release; `pixiv update --check` remains a read-only check and is not a substitute for verifying the selected
 version's assets, checksums, and signatures at install time.
 
-Successful regular CLI commands make a best-effort stable-update check. It skips MCP, help, `version`, `update`,
+Successful regular CLI commands make a best-effort stable-update check. It skips MCP, help, `version`, `update`, `auth token`,
 and development builds, queries at most once per 24 hours per user cache, and caps the automatic check at 3
 seconds. A discovered new version or a failed check only writes to stderr (failures as warnings), never changes
 the business command's exit code, and never pollutes JSON stdout or MCP JSON-RPC stdout. To disable the automatic

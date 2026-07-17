@@ -170,7 +170,7 @@ pixiv recommended all
 pixiv download 123456 789012
 ```
 
-账号认证保存到 `os.UserConfigDir()/pixiv/auth.json`，账号 key 是 Pixiv UID；全局配置保存到 `os.UserConfigDir()/pixiv/config.toml`。Unix-like 主动使用 `0700` 父目录与 `0600` 文件；Windows 首次创建继承父目录 ACL，替换既有目标保留其 ACL，不主动收紧或放宽 DACL。输出默认给人读；加 `--json` 输出机器可解析 JSON。
+账号认证保存到 `os.UserConfigDir()/pixiv/auth.json`，账号 key 是 Pixiv UID；全局配置保存到 `os.UserConfigDir()/pixiv/config.toml`。Unix-like 主动使用 `0700` 父目录与 `0600` 文件；Windows 首次创建继承父目录 ACL，替换既有目标保留其 ACL，不主动收紧或放宽 DACL。输出默认给人读；只有 help 中提供 `--json` 的命令可输出机器可解析 JSON，`auth token` 明确不提供该 flag。
 CLI 使用 Cobra/pflag，选项可以写在位置参数前后，例如 `pixiv auth check 12345678 --json` 和 `pixiv search "初音ミク" --json` 都是正式支持的写法。
 
 ### CLI 命令表
@@ -196,11 +196,13 @@ CLI 使用 Cobra/pflag，选项可以写在位置参数前后，例如 `pixiv au
 | `ranking` | `pixiv ranking [options]` | 查看 Pixiv 插画排行榜。 |
 | `recommended` | `pixiv recommended all\|illust\|manga\|novel\|user [--page N --limit N --json]` | 查看指定类个性化推荐；`all` 按插画、漫画、小说、作者顺序完整返回，需要认证。 |
 | `user detail` | `pixiv user detail USER_ID [--json]` | 查看指定用户的完整公开资料；`USER_ID` 必填。 |
-| `user artworks` | `pixiv user artworks [USER_ID] [--page N --limit N]` | 查看用户作品；省略 `USER_ID` 时使用当前认证用户。 |
-| `user bookmarks` | `pixiv user bookmarks [USER_ID] [--page N --limit N]` | 查看用户收藏；省略 `USER_ID` 时使用当前认证用户。 |
-| `user following` | `pixiv user following [USER_ID] [--page N --limit N]` | 查看用户关注；省略 `USER_ID` 时使用当前认证用户。 |
-| `bookmark add/remove` | `pixiv bookmark add/remove ILLUST_ID` | 收藏或取消收藏作品。 |
-| `follow add/remove` | `pixiv follow add/remove USER_ID` | 关注或取消关注用户。 |
+| `user artworks` | `pixiv user artworks [USER_ID] [--type TYPE --page N --limit N]` | 查看用户作品；省略 `USER_ID` 时使用当前认证用户。 |
+| `user bookmarks` | `pixiv user bookmarks [USER_ID] [--restrict public\|private --tag TAG --page N --limit N]` | 查看用户收藏，可按可见性和 tag 筛选；省略 `USER_ID` 时使用当前认证用户。 |
+| `user following` | `pixiv user following [USER_ID] [--restrict public\|private --page N --limit N]` | 查看用户关注，可按可见性筛选；省略 `USER_ID` 时使用当前认证用户。 |
+| `bookmark add` | `pixiv bookmark add ILLUST_ID [--restrict public\|private --tag TAG...]` | 收藏作品；`--tag` 可重复使用。 |
+| `bookmark remove` | `pixiv bookmark remove ILLUST_ID` | 取消收藏作品；不接受可见性或 tag 参数。 |
+| `follow add` | `pixiv follow add USER_ID [--restrict public\|private]` | 按选定可见性关注用户。 |
+| `follow remove` | `pixiv follow remove USER_ID` | 取消关注用户；不接受可见性参数。 |
 | `download` | `pixiv download [options] ILLUST_ID...` | 下载一个或多个作品；无 token 时默认走匿名 web fallback。 |
 | `mcp` | `pixiv mcp [--proxy URL\|--no-proxy]` | 启动 MCP stdio server；代理覆盖只在本次启动时生效。 |
 
@@ -238,7 +240,14 @@ CLI 使用 Cobra/pflag，选项可以写在位置参数前后，例如 `pixiv au
 | `ranking` | `--mode` | `day` | 排行榜模式。 |
 | `ranking` | `--date` | 空 | 排行榜日期，格式通常为 `YYYY-MM-DD`。 |
 | `ranking` | `--offset` | `0` | 分页偏移。 |
-| `recommended KIND` | `--page`、`--limit`、已废弃 `--offset` | 各流独立分页；`all` 会对插画、漫画、小说、作者分别应用相同分页语义。 |
+| `recommended KIND` | `--page`、`--limit`、已废弃 `--offset` | 各流独立分页 | 每条流独立分页；`all` 会对插画、漫画、小说、作者分别应用相同分页语义。 |
+| `user artworks` | `--type` | `illust` | 传给用户作品请求的 Pixiv illustration type。 |
+| `user bookmarks` | `--restrict` | `public` | 收藏可见性：`public` 或 `private`。 |
+| `user bookmarks` | `--tag` | 空 | 精确收藏 tag 筛选。 |
+| `user following` | `--restrict` | `public` | 关注可见性：`public` 或 `private`。 |
+| `bookmark add` | `--restrict` | `public` | 新收藏的可见性：`public` 或 `private`。 |
+| `bookmark add` | `--tag` | 空 | 收藏 tag；可重复使用。 |
+| `follow add` | `--restrict` | `public` | 新关注的可见性：`public` 或 `private`。 |
 | `detail` | `ILLUST_ID` | 必填 | Pixiv 作品 ID。 |
 | `download` | `ILLUST_ID...` | 必填 | 一个或多个 Pixiv 作品 ID。 |
 
@@ -251,7 +260,7 @@ CLI 使用 Cobra/pflag，选项可以写在位置参数前后，例如 `pixiv au
 | `--uid UID` | `search/search-options/detail/ranking/recommended/user/download` | `auth.json.default_user_id` | 选择本地账号。 |
 | `--profile UID` | `search/search-options/detail/ranking/recommended/user/download` | 空 | `--uid` 的 deprecated alias。 |
 | `--refresh-token TOKEN` | `search/search-options/detail/ranking/recommended/user/download` | 空 | 临时覆盖账号/env token；只接受原始 App API refresh token。 |
-| `--json` | `auth` 子命令和数据命令 | `false` | 输出机器可解析 JSON。 |
+| `--json` | `auth add/login/list/use/remove/check`、`version`、`update --check` 和数据命令 | `false` | 输出机器可解析 JSON；`auth token` 和实际更新安装不接受。 |
 | `--download-path PATH` | 数据命令；实际只影响 `download` | `DOWNLOAD_PATH`、`config.toml` 或 `./downloads` | 下载目录。 |
 | `--filename-template TEMPLATE` | 数据命令；实际只影响 `download` | `FILENAME_TEMPLATE`、`config.toml` 或 `{author} - {title}_{id}` | 文件名模板。 |
 | `--proxy URL` | `auth add/login/check`、数据命令、`mcp` | `https_proxy`/`HTTPS_PROXY`、`config.toml` 或空 | 临时使用 HTTP(S) 代理；只影响当前命令。 |
@@ -346,7 +355,7 @@ SemVer tag，检查会报告该 tag 并 fail-closed，不会跳过它而选择�
 `release` Environment 与受控 macOS Keychain 恢复副本。v0.3.0 是当前已发布的受签名 Release；
 `pixiv update --check` 仍只是只读检查，不能替代对选中版本资产、checksum 与签名的安装验证。
 
-普通 CLI 命令成功后会尽力检查 stable 更新。它跳过 MCP、help、`version`、`update` 与开发构建，
+普通 CLI 命令成功后会尽力检查 stable 更新。它跳过 MCP、help、`version`、`update`、`auth token` 与开发构建，
 对同一用户 cache 最多每 24 小时查询一次，并为自动检查设定最多 3 秒的等待时间。发现新版本或
 检查失败只写 stderr（失败为 warning），不改变业务命令退出码，也不会污染 JSON stdout 或 MCP
 JSON-RPC stdout。可关闭自动检查：
