@@ -62,8 +62,8 @@ Cargo 输入生成 target library；只有同一次成功得到全部六个真�
 写入带 Rust source digest 的 `manifest.json`。单 target 调用会使已有 manifest 失效，避免用
 局部重建证明全平台一致性。
 
-当前工作树已回填 run `29192425899`（head
-`a1c6b838b9096dd68571b1f477ccace331ddedc9`）产生的六个真实 library 与统一 manifest。六个 runner
+当前工作树已回填 run `29559729696`（head
+`4caeb4d432a613fade0d226e8f6b755bb9e9c339`）产生的六个真实 library 与统一 manifest。六个 runner
 均完成 locked/offline Rust build、真实 cgo GIF/APNG smoke、版本化 binary、archive 与 record；受控
 `consolidate` 又在本地重验 source identity、staticlib/binary/archive SHA 和全部 archive members 后
 生成提交输入。`sh scripts/build.sh` 现会先校验完整 manifest，再在具备本机 cgo/C linker 时构建。
