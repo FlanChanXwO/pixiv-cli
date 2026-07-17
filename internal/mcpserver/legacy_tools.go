@@ -22,10 +22,58 @@ type searchIllustIn struct {
 	Duration         string `json:"duration,omitempty"`
 	Offset           int    `json:"offset,omitempty"`
 	SearchR18        bool   `json:"search_r18,omitempty"`
+	Rating           string `json:"rating,omitempty"`
+	ContentType      string `json:"content_type,omitempty"`
+	AIMode           string `json:"ai_mode,omitempty"`
+	AspectRatio      string `json:"aspect_ratio,omitempty"`
+	Resolution       string `json:"resolution,omitempty"`
+	Tool             string `json:"tool,omitempty"`
 	IncludeThumbnail bool   `json:"include_thumbnail,omitempty"`
 }
 
+type searchIllustOptionsIn struct {
+	Word string `json:"word" jsonschema:"required illustration search keyword"`
+}
+
+type searchIllustOptionsOut struct {
+	Tools []string `json:"tools"`
+	Text  string   `json:"text"`
+}
+
+// searchIllustOptions 只把 MCP 输入转交给公开 SDK；工具名保持上游顺序和原值，
+// 使调用方不需要跟随 MCP 发版才能识别 Pixiv 新增的绘图工具。
+func (a *App) searchIllustOptions(ctx context.Context, _ *mcp.CallToolRequest, in searchIllustOptionsIn) (*mcp.CallToolResult, searchIllustOptionsOut, error) {
+	client, release, err := a.openSDKOperation(ctx)
+	if err != nil {
+		return a.searchIllustOptionsError(ctx, err)
+	}
+	defer release()
+	result, err := client.SearchIllustOptions(ctx, sdk.SearchIllustOptionsRequest{Word: in.Word})
+	if err != nil {
+		return a.searchIllustOptionsError(ctx, err)
+	}
+	if result == nil {
+		return a.searchIllustOptionsError(ctx, errors.New("pixiv sdk returned an empty search options result"))
+	}
+	tools := append([]string(nil), result.Tools...)
+	if tools == nil {
+		tools = []string{}
+	}
+	text := fmt.Sprintf("找到 %d 个可用绘图工具。", len(tools))
+	return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: text}}}, searchIllustOptionsOut{Tools: tools, Text: text}, nil
+}
+
+func (a *App) searchIllustOptionsError(ctx context.Context, err error) (*mcp.CallToolResult, searchIllustOptionsOut, error) {
+	recordToolError(ctx, err)
+	return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: "错误: " + err.Error()}}}, searchIllustOptionsOut{Tools: []string{}, Text: "错误: " + err.Error()}, nil
+}
+
 func (a *App) searchIllust(ctx context.Context, _ *mcp.CallToolRequest, in searchIllustIn) (*mcp.CallToolResult, textOut, error) {
+	// search_r18 是既有 MCP wire 字段；它只映射稳定 rating，不再改写用户关键词。
+	if in.SearchR18 && in.Rating != "" {
+		err := fmt.Errorf("rating and search_r18 cannot be used together: %w", errLegacyValidation)
+		return toolTextError(ctx, err, err.Error())
+	}
 	if in.SearchTarget == "" {
 		in.SearchTarget = string(sdk.SearchTargetPartialMatchForTags)
 	}
@@ -33,8 +81,16 @@ func (a *App) searchIllust(ctx context.Context, _ *mcp.CallToolRequest, in searc
 		in.Sort = string(sdk.SortModeDateDesc)
 	}
 	word := in.Word
+	filters := sdk.SearchIllustFilters{
+		Rating:      sdk.SearchRating(in.Rating),
+		ContentType: sdk.SearchContentType(in.ContentType),
+		AIMode:      sdk.SearchAIMode(in.AIMode),
+		AspectRatio: sdk.SearchAspectRatio(in.AspectRatio),
+		Resolution:  sdk.SearchResolution(in.Resolution),
+		Tool:        in.Tool,
+	}
 	if in.SearchR18 {
-		word += " R-18"
+		filters.Rating = sdk.SearchRatingR18
 	}
 	client, release, err := a.openSDKOperation(ctx)
 	if err != nil {
@@ -42,7 +98,7 @@ func (a *App) searchIllust(ctx context.Context, _ *mcp.CallToolRequest, in searc
 	}
 	defer release()
 	items, _, err := collectPages(ctx, offsetPlan(in.Offset), func(ctx context.Context, cursor sdk.Cursor) ([]sdk.Illust, sdk.Cursor, error) {
-		result, err := client.SearchIllust(ctx, sdk.SearchIllustRequest{Word: word, Target: sdk.SearchTarget(in.SearchTarget), Sort: sdk.SortMode(in.Sort), Duration: in.Duration, Cursor: cursor})
+		result, err := client.SearchIllust(ctx, sdk.SearchIllustRequest{Word: word, Target: sdk.SearchTarget(in.SearchTarget), Sort: sdk.SortMode(in.Sort), Duration: in.Duration, Cursor: cursor, Filters: filters})
 		if err != nil {
 			return nil, "", err
 		}
