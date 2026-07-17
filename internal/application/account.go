@@ -76,6 +76,16 @@ func (s AccountService) List() (AccountListResult, error) {
 	return out, nil
 }
 
+// Token 导出指定本地账号的 refresh token；账号选择与本地状态错误均由 public SDK
+// 负责，应用层不应用环境 token 或其他运行时覆盖规则。
+func (s AccountService) Token(userID int64) (string, error) {
+	client, err := s.SDK.Client(SDKClientRequest{})
+	if err != nil {
+		return "", err
+	}
+	return client.ExportAccountRefreshToken(userID)
+}
+
 func (s AccountService) Remove(userID int64) (AccountResult, int64, error) {
 	list, err := s.List()
 	if err != nil {

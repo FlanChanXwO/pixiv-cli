@@ -17,6 +17,7 @@ type SDKClient interface {
 	RemoveAccount(int64) error
 	CheckAccount(context.Context, int64) (*sdk.Account, error)
 	CheckRefreshToken(context.Context, string) (*sdk.Account, error)
+	ExportAccountRefreshToken(int64) (string, error)
 	Refresh(context.Context) (*sdk.Account, error)
 	StartLogin() (*sdk.LoginSession, error)
 	CompleteLogin(context.Context, *sdk.LoginSession, string, sdk.LoginOptions) (*sdk.Account, error)

@@ -349,6 +349,61 @@ func TestRefreshTokenFlagsOnlyDescribeAppAPIInput(t *testing.T) {
 	assert.Equal(t, "Pixiv App API refresh token", token.Usage)
 }
 
+func TestAuthTokenPrintsOnlyDefaultStoredRefreshToken(t *testing.T) {
+	authPath, _ := useTempPaths(t)
+	t.Setenv("PIXIV_LOG_LEVEL", "info")
+	t.Setenv("PIXIV_REFRESH_TOKEN", "environment-token-must-be-ignored")
+	require.NoError(t, auth.SaveAuthStore(authPath, auth.AuthStore{
+		DefaultUserID: 444,
+		Accounts:      []auth.Account{{UserID: 444, Username: "stored", RefreshToken: "opaque/default-token"}},
+	}))
+
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"pixiv", "auth", "token"}, strings.NewReader(""), &stdout, &stderr)
+
+	require.Equal(t, 0, code, stderr.String())
+	assert.Equal(t, "opaque/default-token\n", stdout.String())
+	assert.Empty(t, stderr.String())
+}
+
+func TestAuthTokenSelectsExplicitUIDAndRejectsNonContractInput(t *testing.T) {
+	authPath, _ := useTempPaths(t)
+	t.Setenv("PIXIV_LOG_LEVEL", "info")
+	require.NoError(t, auth.SaveAuthStore(authPath, auth.AuthStore{
+		DefaultUserID: 444,
+		Accounts: []auth.Account{
+			{UserID: 444, RefreshToken: "default-secret"},
+			{UserID: 555, RefreshToken: "selected-secret"},
+		},
+	}))
+
+	t.Run("explicit uid", func(t *testing.T) {
+		var stdout, stderr bytes.Buffer
+		code := Run([]string{"pixiv", "auth", "token", "555"}, strings.NewReader(""), &stdout, &stderr)
+		require.Equal(t, 0, code, stderr.String())
+		assert.Equal(t, "selected-secret\n", stdout.String())
+		assert.Empty(t, stderr.String())
+	})
+
+	for name, args := range map[string][]string{
+		"invalid uid":   {"pixiv", "auth", "token", "not-a-uid"},
+		"too many args": {"pixiv", "auth", "token", "444", "555"},
+		"json flag":     {"pixiv", "auth", "token", "--json"},
+		"proxy flag":    {"pixiv", "auth", "token", "--proxy", "http://localhost:7890"},
+		"no proxy flag": {"pixiv", "auth", "token", "--no-proxy"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			var stdout, stderr bytes.Buffer
+			code := Run(args, strings.NewReader(""), &stdout, &stderr)
+			assert.Equal(t, 1, code)
+			assert.Empty(t, stdout.String())
+			assert.NotEmpty(t, stderr.String())
+			assert.NotContains(t, stderr.String(), "default-secret")
+			assert.NotContains(t, stderr.String(), "selected-secret")
+		})
+	}
+}
+
 func TestAccountPromptFlows(t *testing.T) {
 	authPath, _ := useTempPaths(t)
 	setTestAuthClientFactory(t, map[string]authIdentity{

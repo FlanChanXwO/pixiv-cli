@@ -75,6 +75,8 @@ const (
 	OperationSnapshot            Operation = "snapshot"
 )
 
+const OperationExportAccountRefreshToken Operation = "export_account_refresh_token"
+
 // TransportKind 标识不携带目标地址、证书或凭据的稳定传输失败子类。
 type TransportKind string
 

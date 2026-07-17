@@ -55,8 +55,33 @@ func (a app) newAccountCommand() *cobra.Command {
 		a.newAccountRemoveCommand(),
 		a.newAccountUseCommand(),
 		a.newAccountCheckCommand(),
+		a.newAccountTokenCommand(),
 	)
 	return cmd
+}
+
+func (a app) newAccountTokenCommand() *cobra.Command {
+	return &cobra.Command{
+		Use:   "token [UID]",
+		Short: "Print a stored account refresh token",
+		Args:  requireMaxArgs(1, "pixiv auth token [UID]"),
+		RunE: func(_ *cobra.Command, args []string) error {
+			userID := int64(0)
+			if len(args) == 1 {
+				parsed, err := application.ParseUID(args[0])
+				if err != nil {
+					return err
+				}
+				userID = parsed
+			}
+			token, err := a.services().Account.Token(userID)
+			if err != nil {
+				return err
+			}
+			fmt.Fprintln(a.out, token)
+			return nil
+		},
+	}
 }
 
 func (a app) newAccountAddCommand() *cobra.Command {

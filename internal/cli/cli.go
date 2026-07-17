@@ -96,7 +96,7 @@ func (a app) commandLog(operation string, started time.Time, err error, suppress
 	}
 	// 纯本地 metadata/config 命令的 stdout/stderr 是稳定机器接口；它们不触发业务
 	// 网络流程，因此不额外产生日志。根命令覆盖 `pixiv --version` 的 Cobra 路径。
-	if suppress || strings.HasPrefix(operation, "pixiv config") || strings.HasPrefix(operation, "pixiv version") || strings.HasPrefix(operation, "pixiv update") {
+	if suppress || operation == "pixiv auth token" || strings.HasPrefix(operation, "pixiv config") || strings.HasPrefix(operation, "pixiv version") || strings.HasPrefix(operation, "pixiv update") {
 		return
 	}
 	result, code, backend, status := "success", "", "local", 0
