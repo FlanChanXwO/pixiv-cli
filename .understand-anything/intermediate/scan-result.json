@@ -47,7 +47,7 @@
     {
       "path": ".github/workflows/native-evidence.yml",
       "language": "yaml",
-      "sizeLines": 150,
+      "sizeLines": 158,
       "fileCategory": "infra"
     },
     {
@@ -77,7 +77,7 @@
     {
       "path": "CHANGELOG.md",
       "language": "markdown",
-      "sizeLines": 176,
+      "sizeLines": 180,
       "fileCategory": "docs"
     },
     {
@@ -137,7 +137,7 @@
     {
       "path": "docs/adr/0007-platform-staticlibs-for-supported-source-builds.md",
       "language": "markdown",
-      "sizeLines": 49,
+      "sizeLines": 56,
       "fileCategory": "docs"
     },
     {
@@ -185,7 +185,7 @@
     {
       "path": "docs/development.md",
       "language": "markdown",
-      "sizeLines": 496,
+      "sizeLines": 507,
       "fileCategory": "docs"
     },
     {
@@ -1433,13 +1433,13 @@
     {
       "path": "scripts/internal/workflowpolicy/policy_test.go",
       "language": "go",
-      "sizeLines": 287,
+      "sizeLines": 309,
       "fileCategory": "code"
     },
     {
       "path": "scripts/internal/workflowpolicy/policy.go",
       "language": "go",
-      "sizeLines": 192,
+      "sizeLines": 208,
       "fileCategory": "code"
     },
     {
@@ -1517,19 +1517,19 @@
     {
       "path": "scripts/nativeevidence/workflow_policy_test.go",
       "language": "go",
-      "sizeLines": 135,
+      "sizeLines": 247,
       "fileCategory": "code"
     },
     {
       "path": "scripts/nativeevidence/workflow_policy.go",
       "language": "go",
-      "sizeLines": 387,
+      "sizeLines": 397,
       "fileCategory": "code"
     },
     {
       "path": "scripts/nativeevidence/workflow_test_helpers_test.go",
       "language": "go",
-      "sizeLines": 93,
+      "sizeLines": 104,
       "fileCategory": "code"
     },
     {
@@ -1565,7 +1565,7 @@
     {
       "path": "scripts/releaseworkflow/build_policy.go",
       "language": "go",
-      "sizeLines": 295,
+      "sizeLines": 301,
       "fileCategory": "code"
     },
     {

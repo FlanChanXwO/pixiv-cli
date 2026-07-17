@@ -72,12 +72,12 @@
     },
     ".github/workflows/native-evidence.yml": {
       "filePath": ".github/workflows/native-evidence.yml",
-      "contentHash": "99fc16f83ffee57ab5ef72196f768ed1c7f02804071f977cfb6717354608161c",
+      "contentHash": "5db715c9f7137c8fa0ba37de5ec4f2babbec78ac9060f193038e3ffd80bd02f5",
       "functions": [],
       "classes": [],
       "imports": [],
       "exports": [],
-      "totalLines": 151,
+      "totalLines": 159,
       "hasStructuralAnalysis": true
     },
     ".github/workflows/platform-smoke.yml": {
@@ -122,12 +122,12 @@
     },
     "CHANGELOG.md": {
       "filePath": "CHANGELOG.md",
-      "contentHash": "176d5e401af2f1bdc2880d5faf65a8c88fd028d679e5204564006295b00c1c0a",
+      "contentHash": "69a6cf3d985ea5a84be282d4242cc278d7a4a5f4a380832aa64173b1e8a82555",
       "functions": [],
       "classes": [],
       "imports": [],
       "exports": [],
-      "totalLines": 177,
+      "totalLines": 181,
       "hasStructuralAnalysis": true
     },
     "CLAUDE.md": {
@@ -263,12 +263,12 @@
     },
     "docs/adr/0007-platform-staticlibs-for-supported-source-builds.md": {
       "filePath": "docs/adr/0007-platform-staticlibs-for-supported-source-builds.md",
-      "contentHash": "43fe186186ec2cd0c2e3210514c2f6b478f566ddc1ba41a3e338e747237f20a1",
+      "contentHash": "cf522520422f8900e0aef347c68a348df9fb453cbe72ded45dfd70b7ca1684a5",
       "functions": [],
       "classes": [],
       "imports": [],
       "exports": [],
-      "totalLines": 50,
+      "totalLines": 57,
       "hasStructuralAnalysis": true
     },
     "docs/adr/0008-ed25519-signed-multi-channel-release-trust.md": {
@@ -343,12 +343,12 @@
     },
     "docs/development.md": {
       "filePath": "docs/development.md",
-      "contentHash": "6d06be77187fc6ff011899c986f6acf94eef1cdec0e6c511e65588286beeb598",
+      "contentHash": "8dedf297693d66de39a07105f8fc2bd20507bce44d520eff2106e4ed8a5d42f3",
       "functions": [],
       "classes": [],
       "imports": [],
       "exports": [],
-      "totalLines": 497,
+      "totalLines": 508,
       "hasStructuralAnalysis": true
     },
     "docs/index.md": {
@@ -33793,8 +33793,9 @@
     },
     "scripts/internal/workflowpolicy/policy.go": {
       "classes": [],
-      "contentHash": "04523b794bf2bf0b39e1c9ae6d477fdbaab4bbf971f88c20ae2ed477627649a5",
+      "contentHash": "1fae987a9ec498a84e48e0673f99f2251762f870d5237394ac6d773c32828d05",
       "exports": [
+        "PinnedRustToolchain",
         "RejectAmbiguousYAML",
         "MappingValue",
         "HasExactMappingKeys",
@@ -33803,6 +33804,16 @@
       ],
       "filePath": "scripts/internal/workflowpolicy/policy.go",
       "functions": [
+        {
+          "exported": true,
+          "lineCount": 4,
+          "name": "PinnedRustToolchain",
+          "params": [
+            "target"
+          ],
+          "qualifiedName": "PinnedRustToolchain",
+          "returnType": "(string, bool)"
+        },
         {
           "exported": true,
           "lineCount": 40,
@@ -33926,11 +33937,11 @@
           ]
         }
       ],
-      "totalLines": 193
+      "totalLines": 209
     },
     "scripts/internal/workflowpolicy/policy_test.go": {
       "classes": [],
-      "contentHash": "f134c251c74b830d3059938608686df4c7ae9d6033c2a5e76d8e2386172b7cc9",
+      "contentHash": "fd70eb1cdaf416b510a0657d99683aae41739fcc8a97f087612b2c2374714738",
       "exports": [
         "TestRejectAmbiguousYAMLRejectsNilNode",
         "TestRejectAmbiguousYAMLRejectsAliasNode",
@@ -33943,6 +33954,7 @@
         "TestMappingValueReportsAbsentForMissingOrNonMappingInput",
         "TestHasExactMappingKeysRequiresTheWholeAllowlist",
         "TestRequireScalarPreservesExactErrors",
+        "TestPinnedRustToolchainReturnsAuditedReleaseProvenance",
         "TestContainsSecretReferenceFindsExpressionRecursively"
       ],
       "filePath": "scripts/internal/workflowpolicy/policy_test.go",
@@ -34048,6 +34060,15 @@
         },
         {
           "exported": true,
+          "lineCount": 21,
+          "name": "TestPinnedRustToolchainReturnsAuditedReleaseProvenance",
+          "params": [
+            "t"
+          ],
+          "qualifiedName": "TestPinnedRustToolchainReturnsAuditedReleaseProvenance"
+        },
+        {
+          "exported": true,
           "lineCount": 83,
           "name": "TestContainsSecretReferenceFindsExpressionRecursively",
           "params": [
@@ -34077,7 +34098,7 @@
           ]
         }
       ],
-      "totalLines": 288
+      "totalLines": 310
     },
     "scripts/licensebundle/main.go": {
       "classes": [
@@ -35933,7 +35954,7 @@
     },
     "scripts/nativeevidence/workflow_policy.go": {
       "classes": [],
-      "contentHash": "3ec3a91af4a668dbdd098bb3b37026bae57cdb6f70515a090f65bf0a99738be9",
+      "contentHash": "e3818019546e53f232d470b82df36d89c3e0aa51c15a0034bf9b509d9aa70497",
       "exports": [],
       "filePath": "scripts/nativeevidence/workflow_policy.go",
       "functions": [
@@ -35949,7 +35970,7 @@
         },
         {
           "exported": false,
-          "lineCount": 63,
+          "lineCount": 67,
           "name": "checkNativeEvidenceJob",
           "params": [
             "job"
@@ -35959,7 +35980,7 @@
         },
         {
           "exported": false,
-          "lineCount": 32,
+          "lineCount": 38,
           "name": "checkNativeEvidenceMatrix",
           "params": [
             "matrix"
@@ -36141,13 +36162,14 @@
           ]
         }
       ],
-      "totalLines": 388
+      "totalLines": 398
     },
     "scripts/nativeevidence/workflow_policy_test.go": {
       "classes": [],
-      "contentHash": "d3b8c4221ce631996082eb759bbab306d7012e4fd832e315d3c46905580b0d1a",
+      "contentHash": "db88bafa63cdaadf77ffe71688c151c28a5ac5853d768a2ee57b96c75d7b18e9",
       "exports": [
         "TestCheckWorkflowAcceptsAuditedNativeEvidenceEntry",
+        "TestCheckWorkflowAcceptsPinnedRustToolchainProvenance",
         "TestRequireOnlyMappingKeysPreservesAuditedKeyError",
         "TestCheckWorkflowRejectsNativeEvidenceSecurityAndCompletenessMutations"
       ],
@@ -36164,6 +36186,15 @@
         },
         {
           "exported": true,
+          "lineCount": 37,
+          "name": "TestCheckWorkflowAcceptsPinnedRustToolchainProvenance",
+          "params": [
+            "t"
+          ],
+          "qualifiedName": "TestCheckWorkflowAcceptsPinnedRustToolchainProvenance"
+        },
+        {
+          "exported": true,
           "lineCount": 8,
           "name": "TestRequireOnlyMappingKeysPreservesAuditedKeyError",
           "params": [
@@ -36173,7 +36204,7 @@
         },
         {
           "exported": true,
-          "lineCount": 103,
+          "lineCount": 177,
           "name": "TestCheckWorkflowRejectsNativeEvidenceSecurityAndCompletenessMutations",
           "params": [
             "t"
@@ -36214,11 +36245,11 @@
           ]
         }
       ],
-      "totalLines": 136
+      "totalLines": 248
     },
     "scripts/nativeevidence/workflow_test_helpers_test.go": {
       "classes": [],
-      "contentHash": "46ccb414f2bf44b7d95de81bb632161e399c7b4fc0c76be4bcc8041909f506e3",
+      "contentHash": "c24b30730e7f6817fa54a49c460f0246940dcef3ee2724cb0aed32a43cdfcc85",
       "exports": [],
       "filePath": "scripts/nativeevidence/workflow_test_helpers_test.go",
       "functions": [
@@ -36277,6 +36308,17 @@
             "value"
           ],
           "qualifiedName": "appendMappingValue"
+        },
+        {
+          "exported": false,
+          "lineCount": 10,
+          "name": "removeMappingValue",
+          "params": [
+            "t",
+            "mapping",
+            "key"
+          ],
+          "qualifiedName": "removeMappingValue"
         },
         {
           "exported": false,
@@ -36349,7 +36391,7 @@
           ]
         }
       ],
-      "totalLines": 94
+      "totalLines": 105
     },
     "scripts/package-release.sh": {
       "filePath": "scripts/package-release.sh",
@@ -37077,7 +37119,7 @@
     },
     "scripts/releaseworkflow/build_policy.go": {
       "classes": [],
-      "contentHash": "2aba67a001e949312d298cd4cdd3787a7d61a9e4349c83833cc5fc9a8c64c5f5",
+      "contentHash": "6f8b37f9e55cd3ebf4aa5850e1c0df37a6ca4ae6a6131608481c2ffca350dcf1",
       "exports": [],
       "filePath": "scripts/releaseworkflow/build_policy.go",
       "functions": [
@@ -37135,7 +37177,7 @@
         },
         {
           "exported": false,
-          "lineCount": 35,
+          "lineCount": 41,
           "name": "checkReleaseMatrix",
           "params": [
             "matrix"
@@ -37177,11 +37219,11 @@
           ]
         }
       ],
-      "totalLines": 296
+      "totalLines": 302
     },
     "scripts/releaseworkflow/build_recovery_test.go": {
       "classes": [],
-      "contentHash": "d38b4905c84ea61659e25c31f672ca8bd08c920a8e97d2102cb5819e2f61e611",
+      "contentHash": "f562e59e814f2d888ab5e86e35bdd0e42b8b7cf3bb1c30b2b7fe144130419f80",
       "exports": [
         "TestCheckWorkflowRequiresPinnedRustToolchainForReleaseBuilds",
         "TestCheckWorkflowRejectsReleaseRustToolchainMutations",
@@ -41710,7 +41752,7 @@
       "totalLines": 142
     }
   },
-  "generatedAt": "2026-07-17T07:18:36.891Z",
-  "gitCommitHash": "0a90464cdc465acc4b399974d8e34a245a7adb8a",
+  "generatedAt": "2026-07-17T09:39:11.265Z",
+  "gitCommitHash": "6e05181dc20c72a44bf311031fb3fb3c62e2b55f",
   "version": "1.0.0"
 }
