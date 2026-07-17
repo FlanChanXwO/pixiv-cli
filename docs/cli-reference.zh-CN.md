@@ -2,13 +2,10 @@
 
 [English](cli-reference.md) | 简体中文 | [项目首页](../README.zh-CN.md)
 
-Go 版 Pixiv 工具集：默认作为 `pixiv` CLI 使用，需要 MCP 时显式运行 `pixiv mcp`；Go 程序可导入公开 `pixiv` package（`github.com/FlanChanXwO/pixiv-cli/pixiv`）。
+本文是 `pixiv` 命令的完整契约：安装、认证、命令、flag、配置、环境变量、匿名 fallback 和更新。
+SDK 与 MCP 细节不在此重复，入口见[相关文档](#相关文档)。
 
-它优先复用 Pixiv App API，支持搜索、详情、排行、推荐、下载、多账号 refresh token 管理，以及 MCP stdio server。未配置 refresh token 时，默认对搜索、详情、排行、用户搜索和下载启用匿名 Pixiv web/ajax API fallback。它不是 HTTP 服务，也不提供 Discover、Probe、Capabilities、RSS 或 crawler。
-
-源码按 CLI controller、application services、bootstrap、public SDK、config、Pixiv facade/protocol adapters、download、MCP server 分包；账号存储在 `internal/storage/auth`，基础工具按 `internal/utils/*` 子包组织。公开 SDK 是具体 `*pixiv.Client`，内部协议实现分为 `internal/pixiv/appapi`、`webapi`、`oauth`、`resource`。
-
-用户可感知变化记录在 [CHANGELOG.md](../CHANGELOG.md)。SDK 契约见 [SDK 接口](sdk.md)，架构边界见 [ADR 0009](adr/0009-public-pixiv-sdk-and-caller-adapter.md)。
+用户可感知变化记录在 [CHANGELOG.md](../CHANGELOG.md)。
 
 ## 安装与构建
 
@@ -72,21 +69,6 @@ Ed25519 签名的 `checksums.json`。v0.3.0 已提供完整资产；后续版本
 下载，macOS Gatekeeper 或 Windows SmartScreen 仍可能显示系统信誉提示；请只从项目的
 GitHub Release 页面取得资产，核对版本、checksum 和签名说明，切勿绕过不明来源的警告。
 
-## Go SDK
-
-外部 Go 程序直接使用具体 `*pixiv.Client`，并在自己的 adapter 中定义业务窄接口：
-
-```go
-client, err := pixiv.OpenDefault(pixiv.Options{})
-if err != nil { /* handle local auth/config failure */ }
-result, err := client.SearchIllust(ctx, pixiv.SearchIllustRequest{Word: "初音ミク"})
-_ = result
-```
-
-`NewClient` 只使用显式 transport/token/options，不读取本地状态；`OpenDefault` 每个公开操作读取一次当前 auth/config snapshot。调用方负责采集模式、budget、filter、cursor 持久化、入库、调度和自己的 HTTP API。完整模型、资源流、错误与分页契约见 [SDK 接口](sdk.md)。
-
-搜索调用方可通过稳定的 `SearchIllustFilters` 契约设置分级、作品类型、AI 模式、横纵比、分辨率和绘图工具。`SearchIllustOptions` 按关键词返回当前 App API 的工具候选，`Illust.Tools` 保留上游工具列表。作品类型、屏蔽 AI、横纵比、分辨率和绘图工具由 App API 筛选；public SDK 对每个返回批次执行分级和仅 AI 筛选。
-
 ## 获取 refresh token
 
 `PIXIV_REFRESH_TOKEN` 必须是原始的 Pixiv App API OAuth refresh token。网页 Cookie（包括 `refresh_token=...`、`PHPSESSID`、`device_token`）一律拒绝，不会从中提取或转换凭据。
@@ -137,7 +119,7 @@ pixiv auth token 12345678  # 精确选择本地账号
 该命令只读取 `auth.json`：不刷新 token、不访问 Pixiv、不读取 `PIXIV_REFRESH_TOKEN`、不接受代理或 JSON
 flag、不写入本地状态，也不运行自动更新检查。成功时 stdout 精确包含已存原始 refresh token 和一个换行，
 stderr 为空。只能在私密终端中运行；必须交给另一个可信程序时应直接重定向。不要把输出粘贴到聊天、日志、
-shell history、issue、测试或 Agent transcript。其他命令、JSON 响应、MCP result、日志和错误仍禁止暴露
+shell history、issue、测试或 Agent transcript。其他 CLI 命令、JSON 响应、日志和错误仍禁止暴露
 refresh token。
 
 没有默认账号、指定 UID 不存在、UID 非法或 auth store 无法读取时，命令以非零状态退出，stderr 输出安全
@@ -260,7 +242,7 @@ CLI 使用 Cobra/pflag，选项可以写在位置参数前后，例如 `pixiv au
 | `detail` | `ILLUST_ID` | 必填 | Pixiv 作品 ID。 |
 | `download` | `ILLUST_ID...` | 必填 | 一个或多个 Pixiv 作品 ID。 |
 
-有 refresh token 时，`search` 始终使用 App API。分辨率、横纵比、工具、作品类型和 `ai-mode=exclude` 由 App 筛选，分级和 `ai-mode=only` 由 public SDK 对 App 返回批次筛选；App 失败不会回落 Web。全部筛选都会绑定 opaque cursor，旧 cursor 不能用于不同筛选组合。指定正数 `--limit` 或 `--page` 时，CLI 会持续读取上游批次，直到收集到对应数量的匹配作品、上游没有下一批，或检测到重复 cursor；未指定 `--limit` 时保留只读取一个上游批次的兼容默认行为。不提供收藏数筛选。
+有 refresh token 时，`search` 始终使用 App API。分辨率、横纵比、工具、作品类型和 `ai-mode=exclude` 由 App 筛选，分级和 `ai-mode=only` 对 App 返回批次筛选；App 失败不会回落 Web。全部筛选都会绑定 opaque cursor，旧 cursor 不能用于不同筛选组合。指定正数 `--limit` 或 `--page` 时，CLI 会持续读取上游批次，直到收集到对应数量的匹配作品、上游没有下一批，或检测到重复 cursor；未指定 `--limit` 时保留只读取一个上游批次的兼容默认行为。不提供收藏数筛选。
 
 ### 通用参数
 
@@ -308,7 +290,7 @@ CLI 使用 Cobra/pflag，选项可以写在位置参数前后，例如 `pixiv au
 
 ### 匿名 web fallback
 
-当 `--refresh-token`、`PIXIV_REFRESH_TOKEN` 和默认账号都没有提供 refresh token，且 `web_fallback_enabled=true` 时，下列能力自动走 Pixiv web/ajax API：`search`、`detail`、`ranking`、`download`，以及 MCP tools `search_illust`、`illust_detail`、`illust_ranking`、`search_user`、`download`、`get_thumbnail_base64`。
+当 `--refresh-token`、`PIXIV_REFRESH_TOKEN` 和默认账号都没有提供 refresh token，且 `web_fallback_enabled=true` 时，CLI 的 `search`、`detail`、`ranking` 和 `download` 自动走 Pixiv web/ajax API。
 
 有 refresh token 时仍优先使用 App API；token 无效、App API 网络错误或服务端错误不会自动 fallback，会直接返回安全、可分类的失败，不会将错误伪装成正常空结果。
 
@@ -322,7 +304,7 @@ CLI 使用 Cobra/pflag，选项可以写在位置参数前后，例如 `pixiv au
 - ugoira 下载使用 `/ajax/illust/{id}/ugoira_meta` 的 `originalSrc` zip 和 frames；受支持的发行构建通过内置 Rust encoder 生成 GIF/APNG，运行时不依赖 `ffmpeg`。
 - web fallback 不新增专用代理环境变量，继续使用 `--proxy` / `--no-proxy`、`https_proxy` / `HTTPS_PROXY` 或 `pixiv config set https_proxy ...`。
 
-代理 URL 格式错误时，SDK、CLI、MCP 与更新检查都会在联网前失败；诊断仅保留安全分类与静态上下文，不回显输入中的 userinfo、path 或 query。
+代理 URL 格式错误时，受影响的 CLI 数据命令与更新检查会在联网前失败；诊断仅保留安全分类与静态上下文，不回显输入中的 userinfo、path 或 query。
 
 关闭方式：
 
@@ -373,102 +355,12 @@ JSON-RPC stdout。可关闭自动检查：
 pixiv config set update_check_enabled false
 ```
 
-## MCP 使用
+## 相关文档
 
-MCP stdio server 需要显式启动：
+本参考手册只定义 CLI 边界；其他接口与维护流程以对应权威文档为准：
 
-```bash
-PIXIV_REFRESH_TOKEN=... \
-DOWNLOAD_PATH=./downloads \
-FILENAME_TEMPLATE="{author} - {title}_{id}" \
-./build/pixiv mcp
-```
-
-MCP 的代理覆盖是启动期设置：
-
-```bash
-./build/pixiv mcp --proxy http://127.0.0.1:7890
-./build/pixiv mcp --no-proxy
-```
-
-未设置 `PIXIV_REFRESH_TOKEN` 时，`pixiv mcp` 会先回退到 `auth.json.default_user_id`；如果仍没有 refresh token 且 `web_fallback_enabled=true`，支持匿名 fallback 的 MCP tools 会直接使用 Pixiv web/ajax API。真实 token 写在 inline 环境变量里也可能进入 shell history；长期使用建议通过 MCP client 的私密环境配置或本地账号管理。
-
-日志写入 stderr，stdout 仅保留给 MCP JSON-RPC。typed SDK tool 失败时使用 `isError=true`。legacy tool 为保持 wire 兼容，失败时仍保留既有的 `isError=false`、Content、structured output 与文本，但 stderr operation event 会以 error level 和 `result=error` 记录。事件只含安全的 operation/classification metadata，不含原始错误、tool 输入、query、token、Cookie、URL、path 或 response body。正常空结果仍记为成功。
-
-MCP client 配置示例：
-
-```json
-{
-  "mcpServers": {
-    "pixiv-server": {
-      "command": "/absolute/path/to/pixiv-cli/build/pixiv",
-      "args": ["mcp"],
-      "env": {
-        "PIXIV_REFRESH_TOKEN": "your Pixiv App API refresh token",
-        "DOWNLOAD_PATH": "./downloads",
-        "FILENAME_TEMPLATE": "{author} - {title}_{id}"
-      }
-    }
-  }
-}
-```
-
-## Agent Skill
-
-仓库内置一个面向 coding agent 的 skill（`skills/pixiv/`，全英文），教 agent 正确地驱动本 CLI：环境预检、凭据安全红线、写操作/下载确认分级、输出与 token 控制策略，以及常见语义陷阱。入口是 `skills/pixiv/SKILL.md`，工作流细节在 `skills/pixiv/references/`。
-
-Claude Code 用户以 symlink 安装（skill 随仓库更新自动生效）：
-
-```bash
-ln -s "$(pwd)/skills/pixiv" ~/.claude/skills/pixiv
-```
-
-Windows 上可用 `mklink /J`（junction）或直接复制目录。其他支持 SKILL.md 格式的 agent 按各自的 skill 目录放置即可。skill 不含任何凭据；它只调用已安装的 `pixiv` 二进制。
-
-## 命令概览
-
-代表性 CLI 命令（完整列表以上方[命令表](#cli-命令表)为准）：
-
-- `auth add/login/list/token/remove/use/check`
-- `config path/get/set/unset`
-- `version`
-- `update`
-- `search`
-- `search-options`
-- `detail`
-- `ranking`
-- `recommended`
-- `download`
-- `mcp`
-
-代表性 MCP tools（完整契约以 [MCP 工具](mcp-tools.md)为准）：
-
-`set_download_path`, `download`, `refresh_token`, `set_refresh_token`,
-`download_random_from_recommendation`, `search_illust`, `search_illust_options`, `illust_detail`,
-`illust_related`, `illust_ranking`, `search_user`, `illust_recommended`, `recommended`,
-`trending_tags_illust`, `illust_follow`, `user_detail`, `user_bookmarks`, `user_following`,
-以及 `get_thumbnail_base64`。
-
-`user_detail` 接受必填的 `user_id`，返回完整稳定的用户详情 structured output；它需要认证，不支持匿名 Web fallback。各 MCP tool 的参数与返回语义见 [MCP 工具](mcp-tools.md)。
-
-`search_illust` 接受与 SDK 一致的六个筛选字段：`rating`、`content_type`、`ai_mode`、`aspect_ratio`、`resolution` 和 `tool`。deprecated `search_r18` 保留为 `rating=r18` alias，与显式 `rating` 同时使用会被拒绝；legacy tool 继续返回 `{text}` structured output。已认证的 `search_illust_options` 接受 `word`，严格返回 `{tools,text}`，并按上游顺序保留动态工具名。两者都不提供收藏数筛选或 Cookie 认证。
-
-作品列表的 MCP 文本按上游顺序完整显示全部 tags；具备作品模型的 SDK tools 继续返回不变的完整 structured output。`illust_ranking` 的已知 mode 使用稳定中文标题，未来 mode 保留原值并追加“排行榜”。
-
-`download_random_from_recommendation` 的 `count` 可省略（默认 5），显式值须为 1..20；完整参数、错误与推荐不足时的语义见 [MCP 工具](mcp-tools.md#配置认证与下载)。
-
-`download` 与 `download_random_from_recommendation` 失败时保留业务错误文本，并返回含空 `items`/`files` 数组的有效 structured output。完整 wire 语义见 [MCP 工具](mcp-tools.md#配置认证与下载)。
-
-`recommended` 接受必填 `kind`：`all`、`illust`、`manga`、`novel` 或 `user`。它经认证 App SDK 返回结构化推荐；`all` 对四条流分别应用 `page`/`limit`，不暴露 SDK cursor，也不支持匿名 Web fallback。`illust_recommended` 保留旧 tool 名、参数和文本输出兼容性，但同样经公开 SDK 调用链执行。
-
-## 开发验证
-
-```bash
-go test ./...
-sh scripts/build.sh
-./build/pixiv --help
-./build/pixiv mcp --help
-PIXIV_E2E_WEB_API=1 PIXIV_WEB_API_PROXY=http://127.0.0.1:7890 go test ./test/e2e -run WebAPIFallbackReal -count=1 -v
-```
-
-真实 Pixiv web fallback e2e 默认跳过；只有设置 `PIXIV_E2E_WEB_API=1` 时才会联网。需要认证的 App API canary 还须显式选择隔离测试 token 或本机账号 store，触发方式与凭据边界见[开发文档的测试章节](development.md#测试)。
+- [Go SDK](sdk.md)：public client、模型、分页、资源和 typed error。
+- [MCP tools](mcp-tools.md)：tool 名称、输入 schema、输出和 stdio 行为。
+- [架构](architecture.md)：包职责和运行流程。
+- [开发流程](development.md)：环境、测试、构建和发布门禁。
+- [Agent skill](../skills/pixiv/SKILL.md)：供 Agent 安全驱动已安装 CLI 的说明。

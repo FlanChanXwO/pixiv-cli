@@ -2,13 +2,11 @@
 
 English | [简体中文](cli-reference.zh-CN.md) | [Project home](../README.md)
 
-A Pixiv toolset in Go: use it as the `pixiv` CLI by default, run `pixiv mcp` explicitly when you need MCP; Go programs can import the public `pixiv` package (`github.com/FlanChanXwO/pixiv-cli/pixiv`).
+This is the complete contract for the `pixiv` command: installation, authentication, commands, flags,
+configuration, environment variables, anonymous fallback, and updates. It does not duplicate SDK or MCP details;
+those interfaces are linked under [Related documentation](#related-documentation).
 
-It prefers the Pixiv App API and supports search, artwork detail, rankings, recommendations, downloads, multi-account refresh token management, and an MCP stdio server. When no refresh token is configured, it enables an anonymous Pixiv web/ajax API fallback for search, detail, ranking, user search, and download by default. It is not an HTTP service and does not provide Discover, Probe, Capabilities, RSS, or a crawler.
-
-The source is split into CLI controller, application services, bootstrap, public SDK, config, Pixiv facade/protocol adapters, download, and MCP server packages; accounts are stored in `internal/storage/auth`, and shared utilities live under `internal/utils/*` subpackages. The public SDK is a concrete `*pixiv.Client`; internal protocol implementations are split into `internal/pixiv/appapi`, `webapi`, `oauth`, and `resource`.
-
-User-visible changes are recorded in [CHANGELOG.md](../CHANGELOG.md). See [the SDK guide](sdk.md) for the SDK contract and [ADR 0009](adr/0009-public-pixiv-sdk-and-caller-adapter.md) for architecture boundaries.
+User-visible changes are recorded in [CHANGELOG.md](../CHANGELOG.md).
 
 ## Installation
 
@@ -77,28 +75,6 @@ Release, macOS Gatekeeper or Windows SmartScreen may still show a system reputat
 the project's GitHub Release page, verify the version, checksum, and signature notes, and never bypass warnings for
 assets of unknown origin.
 
-## Go SDK
-
-External Go programs use the concrete `*pixiv.Client` directly and define their own narrow business interfaces in
-their adapters:
-
-```go
-client, err := pixiv.OpenDefault(pixiv.Options{})
-if err != nil { /* handle local auth/config failure */ }
-result, err := client.SearchIllust(ctx, pixiv.SearchIllustRequest{Word: "初音ミク"})
-_ = result
-```
-
-`NewClient` only uses explicit transport/token/options and reads no local state; `OpenDefault` reads one current
-auth/config snapshot per public operation. Callers own their crawl patterns, budgets, filters, cursor persistence,
-storage, scheduling, and their own HTTP APIs. See the [SDK contract](sdk.md) for the full models, resource
-streams, error, and pagination semantics.
-
-Search callers can use the stable `SearchIllustFilters` contract for rating, content type, AI mode, aspect ratio,
-resolution, and drawing tool. `SearchIllustOptions` returns the current App API tool choices for a word, and
-`Illust.Tools` preserves the upstream tool list. App API performs content-type, AI-exclusion, aspect-ratio,
-resolution, and tool filtering; the public SDK applies rating and AI-only filtering to each returned batch.
-
 ## Getting a refresh token
 
 `PIXIV_REFRESH_TOKEN` must be a raw Pixiv App API OAuth refresh token. Web cookies (including `refresh_token=...`,
@@ -163,8 +139,8 @@ The command reads only `auth.json`: it does not refresh the token, contact Pixiv
 accept proxy/JSON flags, write local state, or run an automatic update check. On success, stdout contains exactly
 the raw stored refresh token followed by one newline, and stderr is empty. Run it only in a private terminal and
 redirect it directly to a trusted consumer when necessary. Never paste its output into chat, logs, shell history,
-issues, tests, or agent transcripts. Every other command, JSON response, MCP result, log, and error remains
-forbidden from exposing refresh tokens.
+issues, tests, or agent transcripts. Every other CLI command, JSON response, log, and error remains forbidden from
+exposing refresh tokens.
 
 If no default account exists, the requested UID is absent, the UID is invalid, or the auth store cannot be read,
 the command exits non-zero with a safe diagnostic on stderr and writes no token to stdout. It never includes token
@@ -295,7 +271,7 @@ used.
 | `download` | `ILLUST_ID...` | required | One or more Pixiv artwork IDs. |
 
 With a refresh token, `search` always uses App API. App applies resolution, aspect-ratio, tool, content-type, and
-`ai-mode=exclude` filters, while the public SDK applies rating and `ai-mode=only` to each App result batch. App
+`ai-mode=exclude` filters, while rating and `ai-mode=only` are applied to each App result batch. App
 failures never fall back to Web. Every filter is bound to the opaque cursor, so a cursor cannot be reused with a
 different filter set. With a positive `--limit` or `--page`, the CLI keeps reading upstream batches until it
 collects enough matching works, the upstream has no next batch, or a repeated cursor is detected; without
@@ -351,8 +327,7 @@ overrides are `--proxy URL` / `--no-proxy`, and they are never persisted.
 
 When none of `--refresh-token`, `PIXIV_REFRESH_TOKEN`, and the default account provides a refresh token, and
 `web_fallback_enabled=true`, the following capabilities automatically use the Pixiv web/ajax API: `search`,
-`detail`, `ranking`, `download`, and the MCP tools `search_illust`, `illust_detail`, `illust_ranking`,
-`search_user`, `download`, and `get_thumbnail_base64`.
+`detail`, `ranking`, and `download` CLI commands.
 
 With a refresh token, the App API is always preferred; an invalid token, App API network error, or server error
 never triggers an automatic fallback. The CLI surfaces a safe, classified failure instead of disguising it as a
@@ -374,7 +349,7 @@ Differences in the anonymous fallback:
 - The web fallback adds no dedicated proxy environment variable; it keeps using `--proxy` / `--no-proxy`,
   `https_proxy` / `HTTPS_PROXY`, or `pixiv config set https_proxy ...`.
 
-An invalid proxy URL makes the SDK, CLI, MCP server, and update check fail before any network request. Diagnostics
+An invalid proxy URL makes affected CLI data commands and update checks fail before any network request. Diagnostics
 retain only safe classification and static context; they never echo input userinfo, path, or query.
 
 To disable it:
@@ -431,133 +406,13 @@ check:
 pixiv config set update_check_enabled false
 ```
 
-## MCP usage
+## Related documentation
 
-The MCP stdio server must be started explicitly:
+This reference intentionally stops at the CLI boundary. Use the authoritative guides for other interfaces and
+maintainer workflows:
 
-```bash
-PIXIV_REFRESH_TOKEN=... \
-DOWNLOAD_PATH=./downloads \
-FILENAME_TEMPLATE="{author} - {title}_{id}" \
-./build/pixiv mcp
-```
-
-The MCP proxy override is a launch-time setting:
-
-```bash
-./build/pixiv mcp --proxy http://127.0.0.1:7890
-./build/pixiv mcp --no-proxy
-```
-
-When `PIXIV_REFRESH_TOKEN` is unset, `pixiv mcp` first falls back to `auth.json.default_user_id`; if there is
-still no refresh token and `web_fallback_enabled=true`, MCP tools that support the anonymous fallback use the
-Pixiv web/ajax API directly. A real token written as an inline environment variable may also end up in shell
-history; for long-term use, prefer the MCP client's private environment configuration or local account management.
-
-Logs go to stderr; stdout is reserved for MCP JSON-RPC. Typed SDK tool failures use `isError=true`. To preserve
-wire compatibility, legacy tool failures retain their existing `isError=false`, Content, structured output, and
-text, while the stderr operation event records error level and `result=error`. Events contain only safe
-operation/classification metadata — never raw errors, tool input, queries, tokens, cookies, URLs, paths, or
-response bodies. Normal empty results are still logged as success.
-
-Example MCP client configuration:
-
-```json
-{
-  "mcpServers": {
-    "pixiv-server": {
-      "command": "/absolute/path/to/pixiv-cli/build/pixiv",
-      "args": ["mcp"],
-      "env": {
-        "PIXIV_REFRESH_TOKEN": "your Pixiv App API refresh token",
-        "DOWNLOAD_PATH": "./downloads",
-        "FILENAME_TEMPLATE": "{author} - {title}_{id}"
-      }
-    }
-  }
-}
-```
-
-## Agent Skill
-
-The repository ships a skill for coding agents (`skills/pixiv/`, all English) that teaches an agent to drive this
-CLI correctly: environment preflight, credential safety rules, confirmation tiers for write/download operations,
-output and token control strategy, and the common semantic traps. The entry point is `skills/pixiv/SKILL.md`, with
-workflow details under `skills/pixiv/references/`.
-
-Claude Code users install it as a symlink (the skill stays up to date with the repository):
-
-```bash
-ln -s "$(pwd)/skills/pixiv" ~/.claude/skills/pixiv
-```
-
-On Windows, use `mklink /J` (a junction) or copy the directory. Other agents that support the SKILL.md format can
-place it in their own skill directory. The skill contains no credentials; it only invokes the installed `pixiv`
-binary.
-
-## Command overview
-
-Representative CLI commands (see the authoritative [CLI command table](#cli-command-table)):
-
-- `auth add/login/list/token/remove/use/check`
-- `config path/get/set/unset`
-- `version`
-- `update`
-- `search`
-- `search-options`
-- `detail`
-- `ranking`
-- `recommended`
-- `download`
-- `mcp`
-
-Representative MCP tools (see the authoritative [MCP tool contract](mcp-tools.md)):
-
-`set_download_path`, `download`, `refresh_token`, `set_refresh_token`,
-`download_random_from_recommendation`, `search_illust`, `search_illust_options`, `illust_detail`,
-`illust_related`, `illust_ranking`, `search_user`, `illust_recommended`, `recommended`,
-`trending_tags_illust`, `illust_follow`, `user_detail`, `user_bookmarks`, `user_following`,
-and `get_thumbnail_base64`.
-
-`user_detail` takes a required `user_id` and returns a complete, stable user-detail structured output; it requires
-authentication and does not support the anonymous web fallback. See [MCP tools](mcp-tools.md) for each tool's
-parameters and return semantics.
-
-`search_illust` accepts the same six filter fields as the SDK: `rating`, `content_type`, `ai_mode`, `aspect_ratio`,
-`resolution`, and `tool`. Its deprecated `search_r18` field remains an alias for `rating=r18`; combining it with an
-explicit `rating` is rejected. The legacy tool keeps its `{text}` structured output. Authenticated
-`search_illust_options` accepts `word` and returns exactly `{tools,text}`, preserving dynamic tool names in upstream
-order. Neither interface provides bookmark-count filtering or Cookie authentication.
-
-Artwork-list MCP text shows every tag in upstream order; SDK tools with artwork models keep returning their
-unchanged complete structured output. Known `illust_ranking` modes use stable Chinese titles, while future modes
-preserve the raw value and append `排行榜`.
-
-`download_random_from_recommendation.count` is optional and defaults to 5; an explicit value must be 1..20. See
-[MCP tools](mcp-tools.md#配置认证与下载) for complete parameter, error, and insufficient-recommendation
-semantics.
-
-On failure, `download` and `download_random_from_recommendation` preserve the business error text and return a
-valid structured output with empty `items`/`files` arrays. See [MCP tools](mcp-tools.md#配置认证与下载) for
-the complete wire semantics.
-
-`recommended` takes a required `kind`: `all`, `illust`, `manga`, `novel`, or `user`. It returns structured
-recommendations via the authenticated App SDK; `all` applies `page`/`limit` to each of the four streams
-separately, exposes no SDK cursor, and does not support the anonymous web fallback. `illust_recommended` keeps the
-legacy tool name, parameters, and text output for compatibility, but also executes through the public SDK call
-chain.
-
-## Development verification
-
-```bash
-go test ./...
-sh scripts/build.sh
-./build/pixiv --help
-./build/pixiv mcp --help
-PIXIV_E2E_WEB_API=1 PIXIV_WEB_API_PROXY=http://127.0.0.1:7890 go test ./test/e2e -run WebAPIFallbackReal -count=1 -v
-```
-
-The real Pixiv web fallback e2e is skipped by default; it only goes online when `PIXIV_E2E_WEB_API=1` is set. The
-authenticated App API canary additionally requires explicitly opting into an isolated test token or the local
-account store; see [the testing section of the development guide](development.md#测试) for triggers and
-credential boundaries.
+- [Go SDK](sdk.md): public client, models, pagination, resources, and typed errors.
+- [MCP tools](mcp-tools.md): tool names, input schemas, output, and stdio behavior.
+- [Architecture](architecture.md): package responsibilities and runtime flow.
+- [Development](development.md): environment, tests, builds, and release gates.
+- [Agent skill](../skills/pixiv/SKILL.md): safe instructions for an agent driving the installed CLI.

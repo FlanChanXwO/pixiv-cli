@@ -20,8 +20,11 @@
 
 ## 更新规则
 
-- 功能、API、配置、CLI/MCP 行为、输出语义、测试流程或限制变化时，同步 README 或 docs。
-- 公开行为变化优先写 `README.md`；内部边界变化优先写 `docs/architecture.md` 或 ADR。
+- 影响项目定位、安装入口、快速开始或用户必须先知道的安全提醒时，同步双语 README；不要把精确接口表复制回入口页。
+- CLI 命令、flag、账号、配置、环境变量、fallback、更新或输出契约变化时，同步双语 CLI reference。
+- SDK API/模型/错误契约写 `docs/sdk.md`；MCP tool/schema/wire 语义写 `docs/mcp-tools.md`；入口页只链接这些权威文档。
+- 内部边界变化优先写 `docs/architecture.md`；只有长期、难以逆转且未来维护者需要背景的取舍才写 ADR。
+- 测试、构建与开发流程变化写 `docs/development.md`；贡献者入口级要求变化时同步双语 CONTRIBUTING。
 - 术语冲突或领域概念变化才更新 `CONTEXT.md`。
 - 纯内部重构、测试补充、文档清理通常不需要 changelog。
-- 不为短期实现细节创建 ADR；只有真实取舍且未来维护者需要背景时才新增。
+- 不为短期实现细节创建 ADR。
