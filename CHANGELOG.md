@@ -29,7 +29,7 @@
 - 修复 native-evidence 六平台构建只向 runner 默认 Rust 安装 target、导致静态库实际由 movable
   toolchain 生成并与 release test/production 的 `1.96.0`/`1.96.1` provenance 不一致的问题；workflow
   现在逐目标固定版本、绑定 `RUSTUP_TOOLCHAIN` 并以 `--no-self-update` 安装，两个 verifier 共用同一
-  fail-closed 映射。现有 `1.97.0` 六库不再被文档视为合规证据，须由真实六平台 run 成套重建后回填。
+  fail-closed 映射。原 `1.97.0` 六库已由固定版本的真实六平台 run `29567721284` 成套重建并回填。
 - 修复 macOS 登录回调 helper 以固定临时 Swift 源文件路径编译时可能遭受 symlink 覆盖或并发替换的问题；源码现在写入权限为 `0700` 的随机私有目录，并以独占方式创建为 `0600` 普通文件，编译成功或失败都会清理该目录，同时保留真实编译错误。
 - 加固 understand-anything 图谱归一化对生成器输入路径的读取：Go scan 与 docs article 现在统一拒绝绝对路径、词法或 symlink 越界及非普通文件，并通过同一已打开文件描述符复核边界与文件身份；路径在校验期间被替换会显式失败，且不会写入四份图谱产物。
 - 修复 ugoira ZIP 帧在进入 image decoder 限制前被 `read_to_end` 无界展开的问题；帧源现在以 pinned `image` crate 的默认 `max_alloc` 为同一客观上限，读取前校验 ZIP 声明大小，并在分块读取时校验实际累计字节和响应取消。超限、内存预留失败或取消都会显式失败，不截断或静默降级；image crate 内部正在执行的单帧 decode 仍只能在返回后观察取消。

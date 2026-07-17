@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted；完整六目标必须由 pinned native runner 验证并受控回填；当前 `1.97.0` blob 待按本决策重建。
+Accepted；完整六目标由 pinned native runner 验证并受控回填，run `29567721284` 已完成本次重建。
 
 ## Context
 
@@ -42,10 +42,12 @@ source 的关系保留给发布审计，需要可重算的 source digest、每�
   native runner 证据。
 - 没有 cgo、target C linker、目标 staticlib 或完整 manifest 时，构建必须清晰失败；不能退回 stub、
   `ffmpeg` 或“部分可用”的 binary。
-- run `29559729696` 取得的六库使用 runner 默认 Rust `1.97.0`，即使其同源 manifest、hash、
-  GIF/APNG/cgo smoke 与 consolidation 均通过，也不符合上述 `1.96.0`/`1.96.1` provenance，不能作为
-  recovery byte rebuild 的合规证据。必须用修复后的 workflow 完整重建六目标，并在回填时把本条替换为
-  新成功 run/head；不得只改 manifest 或文字声明。
+- run `29567721284`（head `a93378631654f7a19b5e6052f68bdb3650438b03`）已按上述
+  `1.96.0`/`1.96.1` 映射完整重建六目标，并通过 policy、精确源码 ref、locked/offline build、
+  GIF/APNG/cgo smoke、archive/record、artifact upload 与 consolidation；其六库及 manifest 已成套回填。
+  临时 review ref 仅用于合并前精确 checkout 该受审计 commit，回填后 workflow 恢复只接受
+  `refs/heads/main`。旧 run `29559729696` 的 runner 默认 Rust `1.97.0` 产物不得作为 recovery byte
+  rebuild 的合规证据，也不得只改 manifest 或文字声明来冒充重建。
 - 上述 per-target pin 是当前六库及 v0.3.0 immutable-tag recovery 的实际 provenance。后续 Rust
   升级必须从同一受审计 source 成套重建、链接并 smoke 验证六目标，同时更新 staticlib、manifest、
   native evidence 与 release matrix；不能单独漂移某个 target 或用新编译器覆盖既有 tag 的 library。

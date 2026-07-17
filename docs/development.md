@@ -62,12 +62,14 @@ Cargo 输入生成 target library；只有同一次成功得到全部六个真�
 写入带 Rust source digest 的 `manifest.json`。单 target 调用会使已有 manifest 失效，避免用
 局部重建证明全平台一致性。
 
-当前工作树的六库来自 run `29559729696`（head
-`4caeb4d432a613fade0d226e8f6b755bb9e9c339`）；该 run 虽通过 locked/offline build、真实 cgo smoke、
-archive/record 与 consolidation，但 native-evidence 当时只执行 `rustup target add`，实际沿用了 runner
-默认 Rust `1.97.0`。因此这组 blob **不满足**下述 release provenance pin，不能继续作为“可按
-v0.3.0 recovery 字节重建”的合规证据。修复后的 workflow 必须在同一受审计 main SHA 上重新生成、
-链接并 smoke 六库；回填后还必须把本段 run/head 更新为新成功记录，不能保留旧 run 声称合规。
+当前工作树的六库来自 run `29567721284`（head
+`a93378631654f7a19b5e6052f68bdb3650438b03`）。该 run 在六个真实平台 runner 上按下述版本映射
+安装 pinned toolchain，并全部通过 policy、精确源码 ref、locked/offline build、真实 cgo GIF/APNG smoke、
+版本化 binary、archive/record、artifact upload 与 consolidation。合并前使用临时 review ref 只为让
+workflow 精确 checkout 该受审计 commit；产物回填后会恢复 workflow 的 `refs/heads/main` 限制。
+六库 manifest 的 Rust source digest 为
+`2f076376eb8a0ce0142fa6b03e856ef0e570c3d99b5fe98a73de0df95c70cc91`，与该 commit 的 vendored
+Rust 输入一致；不得用旧 run `29559729696` 的 runner 默认 Rust `1.97.0` 产物替代。
 
 合规 committed library 的编译器 provenance 必须按 target 固定，而不是使用可移动的 runner 默认
 toolchain：`x86_64-apple-darwin` 与 `x86_64-pc-windows-msvc` 使用 Rust `1.96.0`；
