@@ -1,7 +1,7 @@
 name: Native staticlib evidence
 
-# 这个入口绝不发布、签名、推送或创建 tag。Task 20 将唯一一次经审计的 main push
-# 触发六个平台 runner；手动 dispatch 只限同一受审计 main workflow 使用。
+# 这个临时 review 分支入口绝不发布、签名、推送或创建 tag；仅用于按新增的
+# pinned toolchain policy 重建六平台 staticlib，产物回填后即恢复 main-only ref。
 on:
   push:
     branches:
@@ -68,9 +68,9 @@ jobs:
       - name: Check native evidence workflow policy
         shell: bash
         run: go run ./scripts/nativeevidence policy --workflow .github/workflows/native-evidence.yml
-      - name: Require audited main ref
+      - name: Require audited review ref
         shell: bash
-        run: test "$GITHUB_REF" = 'refs/heads/main'
+        run: test "$GITHUB_REF" = 'refs/heads/codex/review-fixes'
       - name: Install the pinned native Rust toolchain
         shell: bash
         run: rustup toolchain install '${{ matrix.rust_toolchain }}' --profile minimal --target '${{ matrix.rust_target }}' --no-self-update

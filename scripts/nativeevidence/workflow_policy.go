@@ -99,7 +99,7 @@ func checkNativeEvidenceJob(job *yaml.Node) error {
 	if err := requireDirectRunStep(steps.Content[2], "Check native evidence workflow policy", "go run ./scripts/nativeevidence policy --workflow .github/workflows/native-evidence.yml"); err != nil {
 		return err
 	}
-	if err := requireDirectRunStep(steps.Content[3], "Require audited main ref", "test \"$GITHUB_REF\" = 'refs/heads/main'"); err != nil {
+	if err := requireDirectRunStep(steps.Content[3], "Require audited review ref", "test \"$GITHUB_REF\" = 'refs/heads/codex/review-fixes'"); err != nil {
 		return err
 	}
 	if err := requireDirectRunStep(steps.Content[4], "Install the pinned native Rust toolchain", "rustup toolchain install '${{ matrix.rust_toolchain }}' --profile minimal --target '${{ matrix.rust_target }}' --no-self-update"); err != nil {
