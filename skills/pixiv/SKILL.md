@@ -86,21 +86,25 @@ Verify flags with `--help` before use; this list is orientation, not a contract.
 pixiv auth list --json                    # local accounts (never shows tokens)
 pixiv auth check [UID] --json             # validate token, shows user_id/username
 pixiv auth use [UID]                      # switch default account (confirm first)
-pixiv config path | get KEY | set KEY V   # config.toml management
+pixiv config path                         # print config.toml location
+pixiv config get download_path            # read one effective setting
+pixiv config set download_path ./downloads # config write; confirm first
 pixiv search "WORD" --limit 10 --json     # illustration search
 pixiv search "WORD" --rating sfw --type illust --ai-mode exclude
 pixiv search "WORD" --resolution high --aspect-ratio landscape --tool "CLIP STUDIO PAINT"
 pixiv search-options "WORD" --json         # authenticated dynamic tool choices
 pixiv detail ILLUST_ID --json             # single artwork detail
-pixiv ranking --mode day [--date YYYY-MM-DD]
-pixiv recommended all|illust|manga|novel|user --limit 10     # kind is REQUIRED, needs auth
+pixiv ranking --mode day
+pixiv recommended illust --limit 10       # kind is REQUIRED; needs auth
+pixiv recommended all --limit 10          # all four result streams; needs auth
 pixiv user detail USER_ID --json          # full public profile (USER_ID required)
 pixiv user artworks [USER_ID] --limit 20  # omit USER_ID = current account
 pixiv user bookmarks [USER_ID] --tag TAG --limit 20
 pixiv user following [USER_ID] --limit 20
 pixiv bookmark add ILLUST_ID --tag TAG    # --tag repeatable; write op
 pixiv bookmark remove ILLUST_ID           # write op
-pixiv follow add|remove USER_ID           # write op
+pixiv follow add USER_ID                  # write op
+pixiv follow remove USER_ID               # write op
 pixiv download ILLUST_ID... [--download-path DIR]
 pixiv update --check --json               # read-only update check
 ```
