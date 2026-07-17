@@ -170,6 +170,81 @@ func TestConfigGetUsesEnvironmentOverrideAndSetWarns(t *testing.T) {
 	assert.Contains(t, string(body), `https_proxy = "http://written-proxy"`)
 }
 
+func TestConfigSetHTTPSProxyDoesNotRevealEnvironmentOverride(t *testing.T) {
+	clearConfigEnv(t)
+	_, configPath := useTempPaths(t)
+	t.Setenv("HTTPS_PROXY", "https://proxy-user:proxy-password@proxy-host/private?token=proxy-query")
+
+	var stdout, stderr bytes.Buffer
+	code := Run(
+		[]string{"pixiv", "config", "set", "https_proxy", "http://written-proxy"},
+		strings.NewReader(""),
+		&stdout,
+		&stderr,
+	)
+
+	require.Equal(t, 0, code, stderr.String())
+	assert.Equal(t, "https_proxy updated\n", stdout.String())
+	assert.Equal(t, "note: https_proxy is currently overridden by environment; effective value remains controlled by environment\n", stderr.String())
+	for _, secret := range []string{"proxy-user", "proxy-password", "proxy-host", "/private", "proxy-query"} {
+		assert.NotContains(t, stdout.String(), secret)
+		assert.NotContains(t, stderr.String(), secret)
+	}
+
+	body, err := os.ReadFile(configPath)
+	require.NoError(t, err)
+	assert.Contains(t, string(body), `https_proxy = "http://written-proxy"`)
+}
+
+func TestConfigUnsetHTTPSProxyDoesNotRevealEnvironmentOverride(t *testing.T) {
+	clearConfigEnv(t)
+	_, configPath := useTempPaths(t)
+	require.NoError(t, config.WritePrivateFile(configPath, []byte("[network]\nhttps_proxy = \"http://file-proxy\"\n")))
+	t.Setenv("HTTPS_PROXY", "https://upper-user:upper-password@upper-host/upper-private?token=upper-query")
+	t.Setenv("https_proxy", "https://lower-user:lower-password@lower-host/lower-private?token=lower-query")
+
+	var stdout, stderr bytes.Buffer
+	code := Run(
+		[]string{"pixiv", "config", "unset", "https_proxy"},
+		strings.NewReader(""),
+		&stdout,
+		&stderr,
+	)
+
+	require.Equal(t, 0, code, stderr.String())
+	assert.Equal(t, "https_proxy removed\n", stdout.String())
+	assert.Equal(t, "note: https_proxy is currently overridden by environment; effective value remains controlled by environment\n", stderr.String())
+	for _, secret := range []string{
+		"upper-user", "upper-password", "upper-host", "upper-private", "upper-query",
+		"lower-user", "lower-password", "lower-host", "lower-private", "lower-query",
+	} {
+		assert.NotContains(t, stdout.String(), secret)
+		assert.NotContains(t, stderr.String(), secret)
+	}
+
+	body, err := os.ReadFile(configPath)
+	require.NoError(t, err)
+	assert.NotContains(t, string(body), "file-proxy")
+}
+
+func TestConfigSetNonSensitiveOverrideStillReportsEffectiveValue(t *testing.T) {
+	clearConfigEnv(t)
+	useTempPaths(t)
+	t.Setenv("DOWNLOAD_PATH", "/tmp/environment-downloads")
+
+	var stdout, stderr bytes.Buffer
+	code := Run(
+		[]string{"pixiv", "config", "set", "download_path", "/tmp/config-downloads"},
+		strings.NewReader(""),
+		&stdout,
+		&stderr,
+	)
+
+	require.Equal(t, 0, code, stderr.String())
+	assert.Equal(t, "download_path updated\n", stdout.String())
+	assert.Equal(t, "note: download_path is currently overridden by environment and effective value remains \"/tmp/environment-downloads\"\n", stderr.String())
+}
+
 func TestConfigLowercaseProxyBeatsUppercase(t *testing.T) {
 	clearConfigEnv(t)
 	useTempPaths(t)

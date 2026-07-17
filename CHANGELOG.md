@@ -26,6 +26,7 @@
 
 ### Security
 
+- 修复 `pixiv config set/unset https_proxy` 在环境变量覆盖配置时把有效代理 URL 原样写入 stderr、可能暴露 userinfo、path 或 query 的问题；命令现在仍提示 effective value 由环境变量控制，但不再回显代理值。配置写入/删除、显式 `config get` 与小写 `https_proxy` 优先于大写 `HTTPS_PROXY` 的语义不变。
 - 加固 Release workflow 的 canonical SemVer 门禁：validator 现在是绑定 `RELEASE_TAG` 的独立、单命令 step，workflow policy 固定其位置与精确命令，并拒绝 `if`、`continue-on-error` 或额外 shell command 绕过 tag push/恢复入口的版本校验。更新选择器既有的当前通道非 SemVer fail-closed 语义保持不变。
 - 修复 SDK、CLI、MCP、显式更新与自动更新在代理 URL 格式错误或 update 代理不是 absolute HTTP(S) URL 时，错误、unwrap 链或 stderr warning 可能回显代理 userinfo、path 与 query 的问题；非法代理现在保留可分类的安全原因与静态上下文，并继续在联网前明确失败。有效 HTTP(S) 代理、显式空代理、`--no-proxy`、动态配置 snapshot 与代理优先级不变。
 - 修复 Release workflow policy 在 GitHub expression 的单引号格式字符串含 `}` 或 `}}` 时可能漏检后续 `secrets` context 的问题；共享 scanner 现在按 expression 边界和单引号转义解析，确保 protected publish job 只能在受审计的签名 metadata step 引用发布签名 secret。
