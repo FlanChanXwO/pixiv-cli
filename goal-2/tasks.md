@@ -277,17 +277,17 @@
 
 ## T21 — 全量终审、PR、六平台 CI 与本地收尾
 
-- 状态：未完成
+- 状态：已完成
 - 范围：独立最终 spec/quality/security/supply-chain review；全量本地门禁；推送 PR，等待 quality 与六平台 smoke，合入后清理分支/worktree并确认 `main==origin/main`。
 - 验收：所有 reviewer APPROVE；`go test ./...`、race、vet、pre-commit、release/Rust scripts、真实认证 canary 通过；PR CI 全绿；v0.3.0 tag 不变。
-- 实际：
-- 证据：
-- 风险/下一步：
+- 实际：最终 spec、quality、security/supply-chain 三个独立 reviewer 均给出 APPROVE，覆盖公开 SDK/CLI/MCP 契约、包边界、错误与凭证脱敏、macOS login helper、Rust unsafe/FFI、release/native workflow、六平台 staticlib provenance、文档与两份知识图谱。实施分支以 squash PR #12 合入 `main`；原 `codex/review-fixes` 本地/远端分支和 worktree 已清理，合入后 `main`、`origin/main` 与 merge commit 均为 `04f24309f3486795842f75424f756f114a134b05`。真实认证 canary 已覆盖 illust、manga、novel、user，真实匿名 Web fallback canary 也通过；最终审计没有再次读取或轮换本机 refresh token。
+- 证据：PR #12 `https://github.com/FlanChanXwO/pixiv-cli/pull/12` 于 2026-07-17 squash merged；quality 以及 darwin amd64/arm64、linux amd64/arm64、windows amd64/arm64 六个 packaged binary smoke 均为 `SUCCESS`。Native evidence run `29567721284` 在同六目标全部成功，并由 security/supply-chain reviewer核对 consolidation、manifest/hash、Rust source digest、编译器版本和当前 staticlib 字节一致性。合入前主线程与独立 reviewer 均通过全仓 normal/race/vet、pre-commit、build、release/native policy、Rust 45 unit + 3 quality tests、staticlib build script、本机 native GIF/APNG smoke及图谱检查。`v0.3.0` 本地/远端 annotated tag object 均为 `25196141ca74949b6a8c2122dc34608db910dbfb`，peeled commit 均为 `ce1c79f3e929bb9fd2d3151663820fb57ccd9258`。
+- 风险/下一步：实时 Pixiv schema、OAuth 和登录墙仍是外部变化面，已有 fixture、typed failure、显式联网 canary与 adapter 边界负责暴露变化而非静默成功。Rust image decoder 单帧 decode/resize/quantization 只能在阶段边界取消，但分配受 pinned image limits 约束；macOS helper 的默认 URL handler 恢复和 endpoint 删除仍为 best-effort，失败会保留可诊断的用户态配置残留。这些是已审计并文档化的残余边界，不阻断本任务完成。
 
 ## C07 — 最终完成审计
 
-- 状态：未完成
+- 状态：已完成
 - 检查：逐条对照 `input.md`、附件每个 finding、所有 task 验收和外部状态；证据不足一律追加任务，不以“未发现”替代证明。
-- 实际：
-- 证据：
-- 风险/下一步：
+- 实际：重新读取原始附件、`input.md`、`plan.md`、全部 task 和 `finding-closure.md`，把原报告拆解为 P1 2 项、P2 11 项、P3 dead-code 8 项、consistency 7 项、duplication 2 项、small 6 项，共 36 项；再加入 T19 发现的 malformed-proxy NEW-P1。37/37 项当前均为 `PROVEN`，每项都有实现/删除/明确设计决策、聚焦测试或策略 gate 与 Goal task 证据；没有以“未发现”替代 closure。T01–T21、F01–F04 与 C01–C06 的验收、外部 CI/PR/tag 状态和分支收尾逐项复核后无缺口。C07 只追加执行证据，不改变产品行为，因此依 TDD 规则没有伪造 RED。
+- 证据：`finding-closure.md` 有 37 行 finding 且 37 行均为 `PROVEN`，无 `OPEN`、`PARTIAL`、`CONTRADICTED` 或 `UNPROVEN`；相关链接、production symbols、dead-code `rg` 结论和 focused tests 均可在 `04f24309` 树复核。最终审计又在合入后的同一提交通过 `go test ./... -count=1`、`go test -race ./... -count=1`、`go vet ./...`、`pre-commit run --all-files`、`sh scripts/build.sh`、`sh scripts/test-release-workflow.sh`、native evidence package/policy、`sh scripts/test-rust-vendor.sh`（45+3）、`sh scripts/test-build-staticlibs.sh`、`go test ./scripts/understandgraph -count=1` 与 `git diff --check`；运行这些门禁后产品树保持 clean，仅随后追加本审计状态记录。PR #12、run `29567721284`、远端唯一 `main` 分支与不可变 `v0.3.0` tag 又被实时查询确认。
+- 风险/下一步：本轮未重复真实认证 canary，以避免无必要地读取并轮换用户本机 token；采用 T21 已在最终源码树完成的 canary 证据，并由 merge tree identity、离线全门禁和外部 CI 交叉验证。执行记录位于 T20 已审准产品/代码图谱快照之后，不改变产品结构，因此不为 Goal 状态文本重建知识图谱。当前没有需要追加的修复任务。
