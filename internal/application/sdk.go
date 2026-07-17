@@ -22,6 +22,7 @@ type SDKClient interface {
 	CompleteLogin(context.Context, *sdk.LoginSession, string, sdk.LoginOptions) (*sdk.Account, error)
 	CurrentUserID(context.Context) (int64, error)
 	SearchIllust(context.Context, sdk.SearchIllustRequest) (*sdk.IllustListResult, error)
+	SearchIllustOptions(context.Context, sdk.SearchIllustOptionsRequest) (*sdk.SearchIllustOptionsResult, error)
 	IllustDetail(context.Context, int64) (*sdk.IllustDetail, error)
 	IllustRelated(context.Context, sdk.IllustRelatedRequest) (*sdk.IllustListResult, error)
 	IllustRanking(context.Context, sdk.IllustRankingRequest) (*sdk.IllustListResult, error)

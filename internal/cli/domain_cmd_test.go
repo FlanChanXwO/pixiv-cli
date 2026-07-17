@@ -25,6 +25,7 @@ import (
 type sdkCommandFake struct {
 	currentUserID    func(context.Context) (int64, error)
 	search           func(context.Context, sdk.SearchIllustRequest) (*sdk.IllustListResult, error)
+	searchOptions    func(context.Context, sdk.SearchIllustOptionsRequest) (*sdk.SearchIllustOptionsResult, error)
 	detail           func(context.Context, int64) (*sdk.IllustDetail, error)
 	ranking          func(context.Context, sdk.IllustRankingRequest) (*sdk.IllustListResult, error)
 	recommended      func(context.Context, sdk.IllustRecommendedRequest) (*sdk.IllustListResult, error)
@@ -72,6 +73,12 @@ func (f sdkCommandFake) CurrentUserID(ctx context.Context) (int64, error) {
 func (f sdkCommandFake) SearchIllust(ctx context.Context, r sdk.SearchIllustRequest) (*sdk.IllustListResult, error) {
 	if f.search != nil {
 		return f.search(ctx, r)
+	}
+	return nil, unimplementedSDKCommand()
+}
+func (f sdkCommandFake) SearchIllustOptions(ctx context.Context, r sdk.SearchIllustOptionsRequest) (*sdk.SearchIllustOptionsResult, error) {
+	if f.searchOptions != nil {
+		return f.searchOptions(ctx, r)
 	}
 	return nil, unimplementedSDKCommand()
 }

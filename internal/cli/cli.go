@@ -167,6 +167,7 @@ func (a app) newRootCommand() *cobra.Command {
 		a.newAccountCommand(),
 		a.newConfigCommand(),
 		a.newSearchCommand(),
+		a.newSearchOptionsCommand(),
 		a.newDetailCommand(),
 		a.newRankingCommand(),
 		a.newRecommendedCommand(),
