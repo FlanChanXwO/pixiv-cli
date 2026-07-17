@@ -12,7 +12,7 @@
 
 ## 行为风险
 
-- refresh token 不得打印到 stdout、stderr、JSON、MCP result 或测试 fixture。
+- refresh token 只允许显式 `pixiv auth token [UID]` 原样写 stdout；该命令必须离线、无额外输出，且 token 不得进入 stderr、JSON、MCP result、日志或错误。测试 fixture 禁止真实或可用凭据，但允许明显无效、不可认证的 synthetic canary 用于证明不会泄漏；其他命令不得打印 token。
 - 认证、网络、Pixiv API、文件系统、`ffmpeg` 错误要暴露真实原因，不要返回空成功。
 - 不新增无依据的 timeout、截断、分页上限、重试上限、静默 fallback 或隐藏降级。
 - Pixiv web fallback 只在无 refresh token 且 `web_fallback_enabled=true` 时使用；App API 错误不要自动 fallback。

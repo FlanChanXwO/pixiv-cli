@@ -4,7 +4,9 @@
 
 ## 文件职责
 
-- `README.md`：用户入口，描述 CLI/MCP 用法、配置、环境变量和主要行为。
+- `README.md` / `README.zh-CN.md`：双语用户入口，只保留定位、安装、快速开始、接口选择、安全提醒和文档导航。
+- `docs/cli-reference.md` / `docs/cli-reference.zh-CN.md`：双语 CLI 完整契约，包括命令、flag、账号认证、配置、环境变量、fallback 和更新行为。
+- `CONTRIBUTING.md` / `CONTRIBUTING.zh-CN.md`：双语贡献流程、环境、TDD、架构边界和 PR checklist。
 - `docs/index.md`：文档导航。
 - `docs/architecture.md`：包职责、运行流程和已知约束。
 - `docs/development.md`：本地环境、测试、构建、Git、changelog 和开发流程。
@@ -18,8 +20,11 @@
 
 ## 更新规则
 
-- 功能、API、配置、CLI/MCP 行为、输出语义、测试流程或限制变化时，同步 README 或 docs。
-- 公开行为变化优先写 `README.md`；内部边界变化优先写 `docs/architecture.md` 或 ADR。
+- 影响项目定位、安装入口、快速开始或用户必须先知道的安全提醒时，同步双语 README；不要把精确接口表复制回入口页。
+- CLI 命令、flag、账号、配置、环境变量、fallback、更新或输出契约变化时，同步双语 CLI reference。
+- SDK API/模型/错误契约写 `docs/sdk.md`；MCP tool/schema/wire 语义写 `docs/mcp-tools.md`；入口页只链接这些权威文档。
+- 内部边界变化优先写 `docs/architecture.md`；只有长期、难以逆转且未来维护者需要背景的取舍才写 ADR。
+- 测试、构建与开发流程变化写 `docs/development.md`；贡献者入口级要求变化时同步双语 CONTRIBUTING。
 - 术语冲突或领域概念变化才更新 `CONTEXT.md`。
 - 纯内部重构、测试补充、文档清理通常不需要 changelog。
-- 不为短期实现细节创建 ADR；只有真实取舍且未来维护者需要背景时才新增。
+- 不为短期实现细节创建 ADR。
