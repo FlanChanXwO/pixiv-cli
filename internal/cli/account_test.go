@@ -527,7 +527,7 @@ func TestAuthTokenPermissionDeniedIsTypedAndSafe(t *testing.T) {
 		DefaultUserID: 444,
 		Accounts:      []auth.Account{{UserID: 444, RefreshToken: tokenCanary}},
 	}))
-	restore := auth.SetReadAuthStoreFileForTest(func(path string) ([]byte, error) {
+	restore := auth.SetReadAuthStoreFileForTest(authPath, func(path string) ([]byte, error) {
 		return nil, &fs.PathError{Op: "open", Path: path, Err: fs.ErrPermission}
 	})
 	t.Cleanup(restore)
@@ -540,6 +540,27 @@ func TestAuthTokenPermissionDeniedIsTypedAndSafe(t *testing.T) {
 	assert.Equal(t, "error: pixiv invalid_argument operation=export_account_refresh_token local_state_kind=permission_denied\n", stderr.String())
 	assert.NotContains(t, stderr.String(), authPath)
 	assert.NotContains(t, stderr.String(), tokenCanary)
+}
+
+func TestAuthTokenRejectsBlankSelectedTokenSafely(t *testing.T) {
+	for name, token := range map[string]string{"empty": "", "whitespace": "   "} {
+		t.Run(name, func(t *testing.T) {
+			authPath, _ := useTempPaths(t)
+			body := fmt.Sprintf(`{"default_user_id":7,"accounts":[{"user_id":7,"refresh_token":%q}]}`, token)
+			require.NoError(t, auth.WritePrivateFile(authPath, []byte(body)))
+
+			var stdout, stderr bytes.Buffer
+			code := Run([]string{"pixiv", "auth", "token", "7"}, strings.NewReader(""), &stdout, &stderr)
+
+			assert.Equal(t, 1, code)
+			assert.Empty(t, stdout.String())
+			assert.Equal(t, "error: pixiv unauthorized operation=export_account_refresh_token user_id=7\n", stderr.String())
+			assert.NotContains(t, stderr.String(), authPath)
+			if token != "" {
+				assert.NotContains(t, stderr.String(), token)
+			}
+		})
+	}
 }
 
 func TestAccountPromptFlows(t *testing.T) {

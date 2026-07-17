@@ -388,9 +388,9 @@ func TestExportAccountRefreshTokenReportsSafeTypedErrors(t *testing.T) {
 }
 
 func TestExportAccountRefreshTokenReportsPermissionDeniedWithoutLeakingState(t *testing.T) {
-	const pathCanary = "/synthetic/private/auth-path-secret.json"
 	const tokenCanary = "synthetic-refresh-token-secret"
-	restore := storageauth.SetReadAuthStoreFileForTest(func(path string) ([]byte, error) {
+	const pathCanary = "/synthetic/private/auth-path-secret/" + tokenCanary + "/auth.json"
+	restore := storageauth.SetReadAuthStoreFileForTest(pathCanary, func(path string) ([]byte, error) {
 		if path != pathCanary {
 			t.Fatalf("auth path=%q", path)
 		}
@@ -411,6 +411,31 @@ func TestExportAccountRefreshTokenReportsPermissionDeniedWithoutLeakingState(t *
 		if strings.Contains(err.Error(), secret) {
 			t.Fatalf("error leaked %q: %s", secret, err)
 		}
+	}
+}
+
+func TestExportAccountRefreshTokenRejectsBlankSelectedTokenAsUnauthorized(t *testing.T) {
+	for name, token := range map[string]string{"empty": "", "whitespace": "   "} {
+		t.Run(name, func(t *testing.T) {
+			authPath := filepath.Join(t.TempDir(), "auth.json")
+			body := fmt.Sprintf(`{"default_user_id":7,"accounts":[{"user_id":7,"refresh_token":%q}]}`, token)
+			if err := os.WriteFile(authPath, []byte(body), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			client, err := pixiv.NewClient(pixiv.Options{AuthFilePath: authPath})
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			_, err = client.ExportAccountRefreshToken(7)
+			var sdkErr *pixiv.Error
+			if !errors.As(err, &sdkErr) || sdkErr.Code != pixiv.CodeUnauthorized || sdkErr.Operation != pixiv.OperationExportAccountRefreshToken || sdkErr.UserID != 7 {
+				t.Fatalf("error=%#v", err)
+			}
+			if strings.Contains(err.Error(), token) && token != "" {
+				t.Fatalf("error exposed blank token representation: %q", err)
+			}
+		})
 	}
 }
 

@@ -124,7 +124,14 @@ func (c *Client) ExportAccountRefreshToken(userID int64) (token string, err erro
 	}
 	store, loadErr := auth.LoadAuthStore(authPath)
 	if loadErr != nil {
-		return "", localSnapshotError(OperationExportAccountRefreshToken, markLocalState(localStateStageAuth, loadErr))
+		targetUserID := userID
+		if targetUserID == 0 {
+			targetUserID = store.DefaultUserID
+		}
+		_, selected, selectedOK := store.Get(targetUserID)
+		if !auth.IsMissingRefreshTokenError(loadErr) || !selectedOK || strings.TrimSpace(selected.RefreshToken) != "" {
+			return "", localSnapshotError(OperationExportAccountRefreshToken, markLocalState(localStateStageAuth, loadErr))
+		}
 	}
 	selectedUserID, account, ok := auth.SelectAuthAccount(store, userID)
 	if !ok {
@@ -136,6 +143,9 @@ func (c *Client) ExportAccountRefreshToken(userID int64) (token string, err erro
 	token, inputErr := utils.ValidateRefreshTokenInput(account.RefreshToken)
 	if inputErr != nil {
 		return "", newUserError(CodeInvalidArgument, OperationExportAccountRefreshToken, "", false, 0, selectedUserID, inputErr)
+	}
+	if token == "" {
+		return "", newUserError(CodeUnauthorized, OperationExportAccountRefreshToken, "", false, 0, selectedUserID, errors.New("account token is unavailable"))
 	}
 	return token, nil
 }
