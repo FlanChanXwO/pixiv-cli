@@ -142,8 +142,11 @@ func (c *Client) SearchIllustOptions(ctx context.Context, word string) (*model.S
 	if err := c.getJSONWithRetry(ctx, searchOptionsPath, query, &raw); err != nil {
 		return nil, err
 	}
+	if raw.Illust == nil {
+		return nil, ErrMalformedResponse
+	}
 	var tools []string
-	if raw.Illust != nil && raw.Illust.Tool != nil {
+	if raw.Illust.Tool != nil {
 		tools = raw.Illust.Tool.Options
 	}
 	if tools == nil {

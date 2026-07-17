@@ -93,6 +93,22 @@ func TestSearchIllustMapsNormalizedFiltersToAppQuery(t *testing.T) {
 	}
 }
 
+func TestSearchIllustOptionsRejectsMissingOrNullIllustEnvelope(t *testing.T) {
+	for _, body := range []string{`{}`, `{"illust":null}`} {
+		body := body
+		t.Run(body, func(t *testing.T) {
+			api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				_, _ = w.Write([]byte(body))
+			}))
+			defer api.Close()
+			result, err := New(WithBaseURL(api.URL), WithHTTPClient(api.Client()), WithAccessToken("access")).SearchIllustOptions(context.Background(), "miku")
+			if result != nil || !errors.Is(err, ErrMalformedResponse) {
+				t.Fatalf("result=%#v error=%v", result, err)
+			}
+		})
+	}
+}
+
 func TestRefreshAndRetryOnceOnTypedAuthStatus(t *testing.T) {
 	for _, status := range []int{http.StatusUnauthorized, http.StatusForbidden} {
 		t.Run(http.StatusText(status), func(t *testing.T) {

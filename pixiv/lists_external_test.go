@@ -1084,6 +1084,28 @@ func TestSearchIllustOptionsNormalizesMissingToolOptionsToEmpty(t *testing.T) {
 	}
 }
 
+func TestSearchIllustOptionsMapsMissingOrNullIllustEnvelope(t *testing.T) {
+	t.Parallel()
+	for _, body := range []string{`{}`, `{"illust":null}`} {
+		body := body
+		t.Run(body, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				fmt.Fprint(w, body)
+			}))
+			defer server.Close()
+			client, err := pixiv.NewClient(pixiv.Options{HTTPClient: server.Client(), AppAPIBaseURL: server.URL, AccessToken: "token"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			result, err := client.SearchIllustOptions(context.Background(), pixiv.SearchIllustOptionsRequest{Word: "miku"})
+			var typed *pixiv.Error
+			if result != nil || !errors.As(err, &typed) || typed.Code != pixiv.CodeMalformedUpstreamResponse || typed.Operation != pixiv.OperationSearchIllustOptions || typed.Backend != pixiv.BackendAppAPI {
+				t.Fatalf("result=%#v error=%#v", result, typed)
+			}
+		})
+	}
+}
+
 func TestSearchIllustOptionsMapsAppFailureWithoutLeakingBody(t *testing.T) {
 	t.Parallel()
 	const secret = "search-options-secret-body"
