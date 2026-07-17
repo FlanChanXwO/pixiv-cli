@@ -81,6 +81,13 @@ result, err := client.SearchIllust(ctx, pixiv.SearchIllustRequest{Word: "初音�
 _ = result
 ```
 
+`SearchIllustRequest.Filters` uses the stable `SearchIllustFilters` contract for
+rating, content type, AI, aspect ratio, resolution, and drawing-tool filters;
+callers never depend on raw App API parameter names. `Illust.Tools` preserves
+the drawing tools returned by App API. Use authenticated `SearchIllustOptions`
+for dynamic tool choices; it currently exposes only `Tools []string` and does
+not expose or emulate Premium bookmark-count tiers.
+
 `NewClient` 只使用显式 transport/token/options，不读取本地状态；`OpenDefault` 每个公开操作读取一次当前 auth/config snapshot。调用方负责采集模式、budget、filter、cursor 持久化、入库、调度和自己的 HTTP API。完整模型、资源流、错误与分页契约见 [SDK 接口](docs/sdk.md)。
 
 ## 获取 refresh token
@@ -186,6 +193,7 @@ CLI 使用 Cobra/pflag，选项可以写在位置参数前后，例如 `pixiv au
 | `version` | `pixiv version [--json]` | 输出当前二进制的 `version`、`commit`、`build_date`；根 `pixiv --version` 只输出版本。 |
 | `update` | `pixiv update [--check] [--prerelease] [--proxy URL]` | 检查或执行与当前安装来源匹配的更新；`--json` 仅可与 `--check` 同用。 |
 | `search` | `pixiv search [options] WORD` | 搜索插画。 |
+| `search-options` | `pixiv search-options WORD [--json]` | Lists dynamic drawing tools available to the current account; requires App authentication. |
 | `detail` | `pixiv detail [options] ILLUST_ID` | 查看单个作品详情。 |
 | `ranking` | `pixiv ranking [options]` | 查看 Pixiv 插画排行榜。 |
 | `recommended` | `pixiv recommended all\|illust\|manga\|novel\|user [--page N --limit N --json]` | 查看指定类个性化推荐；`all` 按插画、漫画、小说、作者顺序完整返回，需要认证。 |
@@ -218,9 +226,13 @@ CLI 使用 Cobra/pflag，选项可以写在位置参数前后，例如 `pixiv au
 | `search` | `--search-target` | `partial_match_for_tags` | 搜索范围。 |
 | `search` | `--sort` | `date_desc` | 排序方式。 |
 | `search` | `--duration` | 空 | Pixiv API 的时间范围参数。 |
-| `search` | `--rating` | `all` | 本地结果分级筛选：`sfw`、`r18`、`r18g`、`mature` 或 `all`。 |
-| `search` | `--type` | `all` | 本地作品类型筛选：`illust`、`comics`（Pixiv `manga`）、`ugoira` 或 `all`。 |
-| `search` | `--ai-type` | `2` | 本地 AI 类型筛选：`0` 非 AI、`1` 仅 AI、`2` 全部。 |
+| `search` | `--rating` | `all` | `sfw`, `r18`, `r18g`, `mature`, or `all`; the three restricted values explicitly require authentication in anonymous mode. |
+| `search` | `--type` | `all` | `all`, `illust-and-ugoira`, `illust`, `manga`, or `ugoira`; `comics` remains a compatibility alias for `manga`. |
+| `search` | `--ai-mode` | `all` | `all`, `exclude`, or `only`. Pixiv `AIType==2` means AI-generated. |
+| `search` | `--ai-type` | `2` (deprecated) | Compatibility mapping: `0=exclude`, `1=only`, `2=all`; conflicts with an explicitly supplied `--ai-mode`. |
+| `search` | `--aspect-ratio` | `all` | `all`, `landscape`, `portrait`, or `square`. |
+| `search` | `--resolution` | `all` | `high`: both dimensions >=3000; `medium`: both 1000..2999; `low`: both <=999. |
+| `search` | `--tool` | empty | Exact upstream drawing-tool name; query dynamic choices with `search-options`. |
 | 列表命令 | `--limit` | 一个上游批次 | 最大条数；`0` 表示持续读取到没有下一批。 |
 | 列表命令 | `--page` | 空 | 从 1 开始的逻辑页；必须与正数 `--limit` 同用。 |
 | 列表命令 | `--offset` | `0` | 已废弃的逻辑偏移；不能与 `--page` 同用。 |
@@ -232,7 +244,14 @@ CLI 使用 Cobra/pflag，选项可以写在位置参数前后，例如 `pixiv au
 | `detail` | `ILLUST_ID` | 必填 | Pixiv 作品 ID。 |
 | `download` | `ILLUST_ID...` | 必填 | 一个或多个 Pixiv 作品 ID。 |
 
-`search` 的 `--rating`、`--type` 与 `--ai-type` 在 CLI 输出端筛选上游结果，不改变 SDK 请求或 opaque cursor。当指定正数 `--limit` 或 `--page` 时，CLI 会持续读取上游批次直到收集到对应数量的匹配作品、上游没有下一批，或检测到重复 cursor；未指定 `--limit` 时仍保持只读取一个上游批次的兼容默认行为。
+With a refresh token, `search` always uses App API: App applies resolution,
+aspect-ratio, tool, content-type, and `ai-mode=exclude` filters, while the public
+SDK applies rating and `ai-mode=only` to App results. App failures never fall
+back to Web. Every filter is bound to the opaque cursor, so cursors cannot be
+reused across filter sets. With a positive `--limit` or `--page`, the CLI keeps
+reading upstream batches until it collects the requested matches, reaches the
+end, or detects a repeated cursor. Without `--limit`, the compatibility default
+remains one upstream batch.
 
 ### 通用参数
 
@@ -286,6 +305,15 @@ CLI 使用 Cobra/pflag，选项可以写在位置参数前后，例如 `pixiv au
 
 匿名 fallback 的差异：
 
+- Anonymous `search` applies only filters Web API can express reliably.
+  Resolution, aspect ratio, drawing tool, and content type are translated to
+  Web parameters; AI filtering uses returned fields. `rating=r18`, `r18g`, or
+  `mature` fails before the request with an authentication requirement instead
+  of pretending the result is empty. `all` means only the anonymous-visible
+  range.
+- `search-options` is App-only and explicitly unsupported without a refresh
+  token. Search never reads or stores browser Cookies such as `PHPSESSID`, and
+  never converts a refresh token into a Web session.
 - `search_user` 不是 Pixiv 官方用户搜索；它通过 web 作品搜索结果按 `userId` 去重，返回“相关作品作者”。
 - 静态单页/多页下载使用 `/ajax/illust/{id}/pages` 的 `original` URL。
 - ugoira 下载使用 `/ajax/illust/{id}/ugoira_meta` 的 `originalSrc` zip 和 frames；受支持的发行构建通过内置 Rust encoder 生成 GIF/APNG，运行时不依赖 `ffmpeg`。
@@ -400,12 +428,18 @@ CLI 命令：
 MCP tools：
 
 `set_download_path`, `download`, `refresh_token`, `set_refresh_token`,
-`download_random_from_recommendation`, `search_illust`, `illust_detail`,
+`download_random_from_recommendation`, `search_illust`, `search_illust_options`, `illust_detail`,
 `illust_related`, `illust_ranking`, `search_user`, `illust_recommended`, `recommended`,
 `trending_tags_illust`, `illust_follow`, `user_detail`, `user_bookmarks`, `user_following`,
 以及 `get_thumbnail_base64`。
 
 `user_detail` 接受必填的 `user_id`，返回完整稳定的用户详情 structured output；它需要认证，不支持匿名 Web fallback。各 MCP tool 的参数与返回语义见 [MCP 工具](docs/mcp-tools.md)。
+
+`search_illust` shares the CLI/SDK filter contract and accepts `rating`,
+`content_type`, `ai_mode`, `aspect_ratio`, `resolution`, and `tool`; the old
+`search_r18` field remains for compatibility. Authenticated
+`search_illust_options` returns dynamic drawing tools for the search word.
+Bookmark-count filtering and Cookie authentication are not provided.
 
 作品列表的 MCP 文本按上游顺序完整显示全部 tags；具备作品模型的 SDK tools 继续返回不变的完整 structured output。`illust_ranking` 的已知 mode 使用稳定中文标题，未来 mode 保留原值并追加“排行榜”。
 
