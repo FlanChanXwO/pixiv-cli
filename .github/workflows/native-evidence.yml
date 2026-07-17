@@ -1,7 +1,7 @@
 name: Native staticlib evidence
 
-# 这个临时 review 分支入口绝不发布、签名、推送或创建 tag；仅用于为当前
-# security fix 生成六个平台同源 staticlib，产物合并后即恢复 main-only policy。
+# 这个入口绝不发布、签名、推送或创建 tag。Task 20 将唯一一次经审计的 main push
+# 触发六个平台 runner；手动 dispatch 只限同一受审计 main workflow 使用。
 on:
   push:
     branches:
@@ -60,9 +60,9 @@ jobs:
       - name: Check native evidence workflow policy
         shell: bash
         run: go run ./scripts/nativeevidence policy --workflow .github/workflows/native-evidence.yml
-      - name: Require audited review ref
+      - name: Require audited main ref
         shell: bash
-        run: test "$GITHUB_REF" = 'refs/heads/codex/review-fixes'
+        run: test "$GITHUB_REF" = 'refs/heads/main'
       - name: Install the native Rust target
         shell: bash
         run: rustup target add '${{ matrix.rust_target }}'
