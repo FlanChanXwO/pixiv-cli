@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -18,6 +19,7 @@ import (
 	"sync/atomic"
 	"testing"
 
+	storageauth "github.com/FlanChanXwO/pixiv-cli/internal/storage/auth"
 	"github.com/FlanChanXwO/pixiv-cli/pixiv"
 )
 
@@ -231,6 +233,209 @@ func TestAccountAndConfigRequireExplicitStoreOnNewClient(t *testing.T) {
 	}
 	if _, err := client.GetConfig("web_fallback_enabled"); !errors.Is(err, pixiv.ErrUnsupported) {
 		t.Fatalf("GetConfig error=%v", err)
+	}
+}
+
+func TestExportAccountRefreshTokenReturnsDefaultWithoutChangingAuthStore(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	authPath := filepath.Join(dir, "auth.json")
+	const storedAuth = `{"default_user_id":7,"accounts":[{"user_id":7,"refresh_token":"opaque/default-token"}]}`
+	if err := os.WriteFile(authPath, []byte(storedAuth), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	client, err := pixiv.NewClient(pixiv.Options{AuthFilePath: authPath})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	token, err := client.ExportAccountRefreshToken(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if token != "opaque/default-token" {
+		t.Fatalf("token=%q", token)
+	}
+	body, err := os.ReadFile(authPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(body) != storedAuth {
+		t.Fatalf("auth store changed: %s", body)
+	}
+}
+
+func TestExportAccountRefreshTokenRejectsNonPositiveExplicitUID(t *testing.T) {
+	t.Parallel()
+	client, err := pixiv.NewClient(pixiv.Options{AuthFilePath: filepath.Join(t.TempDir(), "auth.json")})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = client.ExportAccountRefreshToken(-1)
+	var sdkErr *pixiv.Error
+	if !errors.As(err, &sdkErr) || sdkErr.Code != pixiv.CodeInvalidArgument || sdkErr.Operation != pixiv.OperationExportAccountRefreshToken {
+		t.Fatalf("error=%#v", err)
+	}
+	if cause := errors.Unwrap(err); cause == nil || cause.Error() != "user id must be positive" {
+		t.Fatalf("cause=%v", cause)
+	}
+}
+
+func TestExportAccountRefreshTokenUsesOnlyRequestedStoredAccount(t *testing.T) {
+	dir := t.TempDir()
+	authPath := filepath.Join(dir, "auth.json")
+	configPath := filepath.Join(dir, "config.toml")
+	const storedAuth = `{"default_user_id":7,"accounts":[{"user_id":7,"refresh_token":"default-token"},{"user_id":8,"refresh_token":"requested-token"}]}`
+	if err := os.WriteFile(authPath, []byte(storedAuth), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(configPath, []byte("not valid = [toml"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PIXIV_REFRESH_TOKEN", "environment-token")
+	var requests atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		requests.Add(1)
+	}))
+	defer server.Close()
+	client, err := pixiv.OpenDefault(pixiv.Options{
+		AuthFilePath: authPath, ConfigFilePath: configPath, UserID: 7,
+		RefreshToken: "options-token", HTTPClient: server.Client(), OAuthBaseURL: server.URL,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	token, err := client.ExportAccountRefreshToken(8)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if token != "requested-token" {
+		t.Fatalf("token=%q", token)
+	}
+	if requests.Load() != 0 {
+		t.Fatalf("network requests=%d", requests.Load())
+	}
+	body, err := os.ReadFile(authPath)
+	if err != nil || string(body) != storedAuth {
+		t.Fatalf("auth store changed: %s err=%v", body, err)
+	}
+}
+
+func TestExportAccountRefreshTokenReportsSafeTypedErrors(t *testing.T) {
+	t.Run("missing default", func(t *testing.T) {
+		client, err := pixiv.NewClient(pixiv.Options{AuthFilePath: filepath.Join(t.TempDir(), "auth.json")})
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, err = client.ExportAccountRefreshToken(0)
+		var sdkErr *pixiv.Error
+		if !errors.As(err, &sdkErr) || sdkErr.Code != pixiv.CodeUnauthorized || sdkErr.Operation != pixiv.OperationExportAccountRefreshToken {
+			t.Fatalf("error=%#v", err)
+		}
+	})
+
+	t.Run("missing explicit account", func(t *testing.T) {
+		client, err := pixiv.NewClient(pixiv.Options{AuthFilePath: filepath.Join(t.TempDir(), "auth.json")})
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, err = client.ExportAccountRefreshToken(99)
+		var sdkErr *pixiv.Error
+		if !errors.As(err, &sdkErr) || sdkErr.Code != pixiv.CodeInvalidArgument || sdkErr.UserID != 99 {
+			t.Fatalf("error=%#v", err)
+		}
+	})
+
+	t.Run("store not configured", func(t *testing.T) {
+		client, err := pixiv.NewClient(pixiv.Options{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := client.ExportAccountRefreshToken(0); !errors.Is(err, pixiv.ErrUnsupported) {
+			t.Fatalf("error=%#v", err)
+		}
+	})
+
+	t.Run("malformed and cookie values are redacted", func(t *testing.T) {
+		for name, body := range map[string]string{
+			"malformed": `{"accounts":[auth-body-secret]}`,
+			"cookie":    `{"default_user_id":7,"accounts":[{"user_id":7,"refresh_token":"session=cookie-token-secret; path=/"}]}`,
+		} {
+			t.Run(name, func(t *testing.T) {
+				authPath := filepath.Join(t.TempDir(), "auth-path-secret.json")
+				if err := os.WriteFile(authPath, []byte(body), 0o600); err != nil {
+					t.Fatal(err)
+				}
+				client, err := pixiv.NewClient(pixiv.Options{AuthFilePath: authPath})
+				if err != nil {
+					t.Fatal(err)
+				}
+				_, err = client.ExportAccountRefreshToken(0)
+				if err == nil {
+					t.Fatal("expected an error")
+				}
+				rendered := err.Error()
+				for _, secret := range []string{"auth-path-secret", "auth-body-secret", "cookie-token-secret"} {
+					if strings.Contains(rendered, secret) {
+						t.Fatalf("error leaked %q: %s", secret, rendered)
+					}
+				}
+			})
+		}
+	})
+}
+
+func TestExportAccountRefreshTokenReportsPermissionDeniedWithoutLeakingState(t *testing.T) {
+	const tokenCanary = "synthetic-refresh-token-secret"
+	const pathCanary = "/synthetic/private/auth-path-secret/" + tokenCanary + "/auth.json"
+	restore := storageauth.SetReadAuthStoreFileForTest(pathCanary, func(path string) ([]byte, error) {
+		if path != pathCanary {
+			t.Fatalf("auth path=%q", path)
+		}
+		return nil, &fs.PathError{Op: "open", Path: pathCanary, Err: fs.ErrPermission}
+	})
+	t.Cleanup(restore)
+	client, err := pixiv.NewClient(pixiv.Options{AuthFilePath: pathCanary})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = client.ExportAccountRefreshToken(0)
+	var sdkErr *pixiv.Error
+	if !errors.As(err, &sdkErr) || sdkErr.Operation != pixiv.OperationExportAccountRefreshToken || sdkErr.LocalStateKind != pixiv.LocalStateKindPermissionDenied {
+		t.Fatalf("error=%#v", err)
+	}
+	for _, secret := range []string{pathCanary, tokenCanary} {
+		if strings.Contains(err.Error(), secret) {
+			t.Fatalf("error leaked %q: %s", secret, err)
+		}
+	}
+}
+
+func TestExportAccountRefreshTokenRejectsBlankSelectedTokenAsUnauthorized(t *testing.T) {
+	for name, token := range map[string]string{"empty": "", "whitespace": "   "} {
+		t.Run(name, func(t *testing.T) {
+			authPath := filepath.Join(t.TempDir(), "auth.json")
+			body := fmt.Sprintf(`{"default_user_id":7,"accounts":[{"user_id":7,"refresh_token":%q}]}`, token)
+			if err := os.WriteFile(authPath, []byte(body), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			client, err := pixiv.NewClient(pixiv.Options{AuthFilePath: authPath})
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			_, err = client.ExportAccountRefreshToken(7)
+			var sdkErr *pixiv.Error
+			if !errors.As(err, &sdkErr) || sdkErr.Code != pixiv.CodeUnauthorized || sdkErr.Operation != pixiv.OperationExportAccountRefreshToken || sdkErr.UserID != 7 {
+				t.Fatalf("error=%#v", err)
+			}
+			if strings.Contains(err.Error(), token) && token != "" {
+				t.Fatalf("error exposed blank token representation: %q", err)
+			}
+		})
 	}
 }
 

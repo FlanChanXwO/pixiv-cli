@@ -98,6 +98,58 @@ func (c *Client) ListAccounts() (out *AccountsResult, err error) {
 	return result, nil
 }
 
+// ExportAccountRefreshToken 返回本地账号保存的 refresh token。该显式导出操作只
+// 读取 auth store，不应用环境变量或运行时账号优先级，也不会联网、刷新或改写凭据。
+func (c *Client) ExportAccountRefreshToken(userID int64) (token string, err error) {
+	// 这是唯一会把 refresh token 作为返回值交给调用方的公开操作；即使日志内容
+	// 本身已脱敏，成功事件也会污染 CLI 的凭据专用 stderr，因此此操作保持静默。
+	if userID < 0 {
+		return "", newError(CodeInvalidArgument, OperationExportAccountRefreshToken, "", false, 0, 0, errors.New("user id must be positive"))
+	}
+	c.authState.mu.Lock()
+	defer c.authState.mu.Unlock()
+
+	authPath := c.authFilePath
+	if c.defaults != nil {
+		authPath = strings.TrimSpace(c.defaults.options.AuthFilePath)
+		if authPath == "" {
+			authPath, err = auth.AuthFilePath()
+			if err != nil {
+				return "", localSnapshotError(OperationExportAccountRefreshToken, markLocalState(localStateStagePath, err))
+			}
+		}
+	}
+	if authPath == "" {
+		return "", unsupportedLocalStore(OperationExportAccountRefreshToken, "auth store path was not configured")
+	}
+	store, loadErr := auth.LoadAuthStore(authPath)
+	if loadErr != nil {
+		targetUserID := userID
+		if targetUserID == 0 {
+			targetUserID = store.DefaultUserID
+		}
+		_, selected, selectedOK := store.Get(targetUserID)
+		if !auth.IsMissingRefreshTokenError(loadErr) || !selectedOK || strings.TrimSpace(selected.RefreshToken) != "" {
+			return "", localSnapshotError(OperationExportAccountRefreshToken, markLocalState(localStateStageAuth, loadErr))
+		}
+	}
+	selectedUserID, account, ok := auth.SelectAuthAccount(store, userID)
+	if !ok {
+		if userID == 0 {
+			return "", newError(CodeUnauthorized, OperationExportAccountRefreshToken, "", false, 0, 0, errors.New("a stored account is required"))
+		}
+		return "", newUserError(CodeInvalidArgument, OperationExportAccountRefreshToken, "", false, 0, userID, errors.New("account does not exist"))
+	}
+	token, inputErr := utils.ValidateRefreshTokenInput(account.RefreshToken)
+	if inputErr != nil {
+		return "", newUserError(CodeInvalidArgument, OperationExportAccountRefreshToken, "", false, 0, selectedUserID, inputErr)
+	}
+	if token == "" {
+		return "", newUserError(CodeUnauthorized, OperationExportAccountRefreshToken, "", false, 0, selectedUserID, errors.New("account token is unavailable"))
+	}
+	return token, nil
+}
+
 // SelectAccount 将已有账号选为默认账号。
 func (c *Client) SelectAccount(userID int64) (err error) {
 	started := time.Now()

@@ -40,6 +40,24 @@ func TestAccountServiceUsesPublicSDKAccountStore(t *testing.T) {
 	assert.Equal(t, int64(123), list.Accounts[0].UserID)
 }
 
+func TestAccountServiceTokenUsesPublicSDKLocalExport(t *testing.T) {
+	client := &fakeAccountSDKClient{}
+	client.exportAccountRefreshToken = func(userID int64) (string, error) {
+		assert.Equal(t, int64(456), userID)
+		return "opaque-exported-token", nil
+	}
+	var gotRequest SDKClientRequest
+	service := AccountService{SDK: SDKService{NewClient: func(request SDKClientRequest) (SDKClient, error) {
+		gotRequest = request
+		return client, nil
+	}}}
+
+	token, err := service.Token(456)
+	require.NoError(t, err)
+	assert.Equal(t, "opaque-exported-token", token)
+	assert.Equal(t, SDKClientRequest{}, gotRequest)
+}
+
 func TestAccountServiceCheckUsesPublicSDKRequest(t *testing.T) {
 	client := &fakeAccountSDKClient{}
 	client.checkAccount = func(_ context.Context, userID int64) (*sdk.Account, error) {
@@ -235,13 +253,21 @@ func TestAccountServiceUsePropagatesDependencyErrors(t *testing.T) {
 // 测试从 application 到公开 SDK 边界观察行为，不再模拟 legacy Source。
 type fakeAccountSDKClient struct {
 	SDKClient
-	accounts          sdk.AccountsResult
-	importAccount     func(context.Context, string) (*sdk.Account, error)
-	listAccounts      func() (*sdk.AccountsResult, error)
-	selectAccount     func(int64) error
-	removeAccount     func(int64) error
-	checkAccount      func(context.Context, int64) (*sdk.Account, error)
-	checkRefreshToken func(context.Context, string) (*sdk.Account, error)
+	accounts                  sdk.AccountsResult
+	importAccount             func(context.Context, string) (*sdk.Account, error)
+	listAccounts              func() (*sdk.AccountsResult, error)
+	selectAccount             func(int64) error
+	removeAccount             func(int64) error
+	checkAccount              func(context.Context, int64) (*sdk.Account, error)
+	checkRefreshToken         func(context.Context, string) (*sdk.Account, error)
+	exportAccountRefreshToken func(int64) (string, error)
+}
+
+func (f *fakeAccountSDKClient) ExportAccountRefreshToken(userID int64) (string, error) {
+	if f.exportAccountRefreshToken != nil {
+		return f.exportAccountRefreshToken(userID)
+	}
+	return "", errors.New("unexpected account token export")
 }
 
 func (f *fakeAccountSDKClient) ImportAccount(ctx context.Context, token string) (*sdk.Account, error) {

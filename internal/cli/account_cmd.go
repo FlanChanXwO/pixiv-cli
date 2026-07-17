@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strconv"
 	"strings"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/application"
@@ -55,8 +56,42 @@ func (a app) newAccountCommand() *cobra.Command {
 		a.newAccountRemoveCommand(),
 		a.newAccountUseCommand(),
 		a.newAccountCheckCommand(),
+		a.newAccountTokenCommand(),
 	)
 	return cmd
+}
+
+func (a app) newAccountTokenCommand() *cobra.Command {
+	return &cobra.Command{
+		Use:   "token [UID]",
+		Short: "Print a stored account refresh token",
+		Args:  requireMaxArgs(1, "pixiv auth token [UID]"),
+		RunE: func(_ *cobra.Command, args []string) error {
+			userID := int64(0)
+			if len(args) == 1 {
+				parsed, err := parseAuthTokenUID(args[0])
+				if err != nil {
+					return err
+				}
+				userID = parsed
+			}
+			token, err := a.services().Account.Token(userID)
+			if err != nil {
+				return err
+			}
+			fmt.Fprintln(a.out, token)
+			return nil
+		},
+	}
+}
+
+// parseAuthTokenUID 不回显原始输入：调用者可能误把 token 或私有路径放在 UID 位。
+func parseAuthTokenUID(raw string) (int64, error) {
+	userID, err := strconv.ParseInt(strings.TrimSpace(raw), 10, 64)
+	if err != nil || userID <= 0 {
+		return 0, errors.New("uid must be a positive integer")
+	}
+	return userID, nil
 }
 
 func (a app) newAccountAddCommand() *cobra.Command {

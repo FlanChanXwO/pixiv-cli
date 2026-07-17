@@ -59,6 +59,10 @@ func shouldCheckAutomaticUpdate(cmd *cobra.Command) bool {
 	if buildinfo.Current().IsDevelopment() || cmd == nil || cmd.Root() == cmd {
 		return false
 	}
+	// 凭据导出必须是严格的本地机器接口，不能在成功后读取更新配置或访问 GitHub。
+	if cmd.CommandPath() == "pixiv auth token" {
+		return false
+	}
 	if helpFlag := cmd.Flags().Lookup("help"); helpFlag != nil && helpFlag.Changed {
 		return false
 	}

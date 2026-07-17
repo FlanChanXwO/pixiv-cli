@@ -14,6 +14,7 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/bootstrap"
 	"github.com/FlanChanXwO/pixiv-cli/internal/buildinfo"
 	"github.com/FlanChanXwO/pixiv-cli/internal/config"
+	"github.com/FlanChanXwO/pixiv-cli/internal/storage/auth"
 	"github.com/FlanChanXwO/pixiv-cli/internal/update"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -183,6 +184,24 @@ func TestRunDevelopmentBuildSkipsAutomaticUpdate(t *testing.T) {
 	require.NoError(t, json.Unmarshal(stdout.Bytes(), &result))
 	assert.NotContains(t, stderr.String(), "update available:")
 	assert.NotContains(t, stderr.String(), "warning:")
+}
+
+func TestRunReleaseBuildSkipsAutomaticUpdateForAuthToken(t *testing.T) {
+	authPath, _ := useTempPaths(t)
+	useReleaseBuildInfo(t, "v0.1.0")
+	restoreAutomatic := automaticUpdateMustNotRun(t)
+	t.Cleanup(restoreAutomatic)
+	require.NoError(t, auth.SaveAuthStore(authPath, auth.AuthStore{
+		DefaultUserID: 7,
+		Accounts:      []auth.Account{{UserID: 7, RefreshToken: "release-token"}},
+	}))
+
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"pixiv", "auth", "token"}, strings.NewReader(""), &stdout, &stderr)
+
+	require.Equal(t, 0, code, stderr.String())
+	assert.Equal(t, "release-token\n", stdout.String())
+	assert.Empty(t, stderr.String())
 }
 
 func TestRunAutomaticUpdateUsesCurrentCommandProxyOverride(t *testing.T) {

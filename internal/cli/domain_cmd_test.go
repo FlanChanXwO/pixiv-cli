@@ -42,6 +42,10 @@ type sdkCommandFake struct {
 	unfollow         func(context.Context, sdk.UnfollowUserRequest) error
 }
 
+func (sdkCommandFake) ExportAccountRefreshToken(int64) (string, error) {
+	return "", errors.New("unexpected account token export")
+}
+
 func unimplementedSDKCommand() error { return errors.New("unexpected sdk command") }
 func (sdkCommandFake) ImportAccount(context.Context, string) (*sdk.Account, error) {
 	return nil, unimplementedSDKCommand()

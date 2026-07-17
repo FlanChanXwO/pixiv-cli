@@ -5,6 +5,8 @@ import (
 	"errors"
 	"os"
 	"strings"
+	"sync"
+	"sync/atomic"
 )
 
 type AuthStore struct {
@@ -18,8 +20,53 @@ type Account struct {
 	Username     string `json:"username,omitempty"`
 }
 
+type authStoreReadHook struct {
+	path string
+	read func(string) ([]byte, error)
+}
+
+var (
+	authStoreReadHookState atomic.Pointer[authStoreReadHook]
+	authStoreReadHookMu    sync.Mutex
+)
+
+// SetReadAuthStoreFileForTest 仅为跨平台本地状态错误测试拦截指定 auth path。
+// 其他路径始终使用 os.ReadFile。hook 生命周期由互斥锁串行化，同一路径测试不得
+// 并行；调用方必须用 t.Cleanup 执行返回的恢复函数。
+func SetReadAuthStoreFileForTest(path string, read func(string) ([]byte, error)) func() {
+	if strings.TrimSpace(path) == "" || read == nil {
+		panic("auth store read test hook requires a path and reader")
+	}
+	authStoreReadHookMu.Lock()
+	authStoreReadHookState.Store(&authStoreReadHook{path: path, read: read})
+	var once sync.Once
+	return func() {
+		once.Do(func() {
+			authStoreReadHookState.Store(nil)
+			authStoreReadHookMu.Unlock()
+		})
+	}
+}
+
+func readAuthStore(path string) ([]byte, error) {
+	if hook := authStoreReadHookState.Load(); hook != nil && path == hook.path {
+		return hook.read(path)
+	}
+	return os.ReadFile(path)
+}
+
 type LegacySchemaError struct {
 	Field string
+}
+
+type missingRefreshTokenError struct{}
+
+func (missingRefreshTokenError) Error() string { return "auth account refresh_token is required" }
+
+// IsMissingRefreshTokenError 只暴露安全分类，不携带 token 或文件内容。
+func IsMissingRefreshTokenError(err error) bool {
+	var target missingRefreshTokenError
+	return errors.As(err, &target)
 }
 
 func (e LegacySchemaError) Error() string {
@@ -33,7 +80,7 @@ func IsLegacySchemaError(err error) bool {
 
 func LoadAuthStore(path string) (AuthStore, error) {
 	store := AuthStore{Accounts: []Account{}}
-	body, err := os.ReadFile(path)
+	body, err := readAuthStore(path)
 	if errors.Is(err, os.ErrNotExist) {
 		return store, nil
 	}
@@ -111,7 +158,7 @@ func validateAuthStore(store AuthStore, requireDefault bool) error {
 		}
 		seen[acct.UserID] = struct{}{}
 		if strings.TrimSpace(acct.RefreshToken) == "" {
-			return errors.New("auth account refresh_token is required")
+			return missingRefreshTokenError{}
 		}
 	}
 	if len(store.Accounts) > 0 && requireDefault && store.DefaultUserID == 0 {

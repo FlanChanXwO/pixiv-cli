@@ -2443,6 +2443,9 @@ func (f *fakeSDKClient) CheckAccount(context.Context, int64) (*sdk.Account, erro
 func (f *fakeSDKClient) CheckRefreshToken(context.Context, string) (*sdk.Account, error) {
 	return nil, errors.New("unexpected refresh token check")
 }
+func (*fakeSDKClient) ExportAccountRefreshToken(int64) (string, error) {
+	return "", errors.New("unexpected account token export")
+}
 func (f *fakeSDKClient) Refresh(context.Context) (*sdk.Account, error) {
 	return &sdk.Account{UserID: f.userID, Username: "alice"}, nil
 }

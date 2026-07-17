@@ -64,7 +64,7 @@ func RunContext(ctx context.Context, args []string, in io.Reader, out io.Writer,
 		fmt.Fprintf(errOut, "clean pending update: %v\n", err)
 		return 1
 	}
-	logger, err := bootstrap.NewApplicationLogger(errOut)
+	logger, err := applicationLoggerForArgs(args, errOut)
 	if err != nil {
 		fmt.Fprintln(errOut, "error:", err)
 		return 1
@@ -88,6 +88,15 @@ func RunContext(ctx context.Context, args []string, in io.Reader, out io.Writer,
 	return a.exit(err)
 }
 
+// applicationLoggerForArgs 在 Cobra 解析前识别凭据导出前缀，使成功、help 与参数
+// 错误路径都不依赖 config/logging 环境。其他命令仍沿用完整配置型 logger。
+func applicationLoggerForArgs(args []string, errOut io.Writer) (*slog.Logger, error) {
+	if len(args) >= 3 && args[1] == "auth" && args[2] == "token" {
+		return slog.New(slog.NewTextHandler(io.Discard, nil)), nil
+	}
+	return bootstrap.NewApplicationLogger(errOut)
+}
+
 // commandLog 仅记录命令名和稳定结果，不能记录 args：其中可能含 refresh token、
 // OAuth code 或本地路径。stdout 始终只保留命令业务输出。
 func (a app) commandLog(operation string, started time.Time, err error, suppress bool) {
@@ -96,7 +105,7 @@ func (a app) commandLog(operation string, started time.Time, err error, suppress
 	}
 	// 纯本地 metadata/config 命令的 stdout/stderr 是稳定机器接口；它们不触发业务
 	// 网络流程，因此不额外产生日志。根命令覆盖 `pixiv --version` 的 Cobra 路径。
-	if suppress || strings.HasPrefix(operation, "pixiv config") || strings.HasPrefix(operation, "pixiv version") || strings.HasPrefix(operation, "pixiv update") {
+	if suppress || operation == "pixiv auth token" || strings.HasPrefix(operation, "pixiv config") || strings.HasPrefix(operation, "pixiv version") || strings.HasPrefix(operation, "pixiv update") {
 		return
 	}
 	result, code, backend, status := "success", "", "local", 0
