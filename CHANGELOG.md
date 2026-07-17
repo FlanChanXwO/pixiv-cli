@@ -9,28 +9,22 @@
 
 ### Added
 
-- 插画搜索新增稳定的分级、作品类型、AI、横纵比、分辨率与绘图工具筛选；CLI 新增
-  `--ai-mode`、`--aspect-ratio`、`--resolution` 与 `--tool`，`--type` 支持
-  `illust-and-ugoira`/`manga` 并保留 `comics` alias。
-- 公开 Go SDK 新增 `SearchIllustFilters`、`SearchIllustOptions` 与 `Illust.Tools`；CLI 新增需要
-  App 登录的 `pixiv search-options WORD`，动态列出当前可用绘图工具，不引入收藏数或 Cookie 筛选。
-- MCP `search_illust` 新增与 SDK 一致的筛选字段，并新增需要认证的 `search_illust_options`；旧
-  `search_r18` 继续作为兼容字段。
+- 插画搜索新增稳定的分级、作品类型、AI、横纵比、分辨率与绘图工具筛选；CLI 新增 `--ai-mode`、`--aspect-ratio`、`--resolution` 与 `--tool`，`--type` 支持 `illust-and-ugoira`/`manga` 并保留 `comics` alias。
+- 公开 Go SDK 新增 `SearchIllustFilters`、`SearchIllustOptions` 与 `Illust.Tools`；CLI 新增需要 App 认证的 `pixiv search-options WORD`，动态列出当前可用绘图工具，不引入收藏数或 Cookie 筛选。
+- MCP `search_illust` 新增与 SDK 一致的六个筛选字段，并新增需要认证、返回 `{tools,text}` structured output 的 `search_illust_options`；legacy `search_illust` 继续返回 `{text}`，旧 `search_r18` 继续作为兼容字段。
 - 公开 Go SDK 的 `upstream_unavailable` 错误新增安全 `TransportKind` 分类，可区分 DNS、TLS、代理连接、拒绝连接、连接重置和无 typed 信号的未知传输失败；诊断仍不暴露 URL、主机、证书或凭据。
 - 公开 Go SDK 的本地 snapshot 错误新增安全 `LocalStateKind` 分类，可区分 auth/config 格式、权限、缺失、代理配置、账号身份不匹配、不可用和未知状态；`errors.Unwrap` 仅提供固定脱敏原因，缺失的可选 auth/config 文件仍按空状态正常加载。
+- 新增面向 coding agent 的 pixiv skill（`skills/pixiv/`，全英文）：SKILL.md 提供预检、凭据安全红线、操作确认分级、输出/token 控制策略与语义陷阱说明，`references/` 收录发现、下载与排障 playbook；README 提供 symlink 安装方式。
+- README 国际化：英文版成为默认 `README.md`，原中文内容迁移至 `README.zh-CN.md`，两份文档顶部互相链接。
 
 ### Changed
 
-- 有 refresh token 的搜索始终使用 App API，失败不回落 Web；无 token 的 Web 搜索只执行可靠筛选，
-  R18/R18G/mature 与动态搜索选项会明确要求登录。分级与仅 AI 在 public SDK 筛选，其余新增筛选优先
-  由 App 服务端执行；收藏数筛选仍不提供。
-- Deprecated `pixiv search --r18` 现在只作为 `--rating r18` 的 alias，不再向关键词追加 `R-18`；
-  它可与显式 `--rating r18` 同用，与其他显式 rating 冲突。
+- 有 refresh token 的搜索始终使用 App API，失败不回落 Web；无 token 的 Web 搜索只执行可靠筛选，R18/R18G/mature 与动态搜索选项会明确要求登录。分级与仅 AI 在 public SDK 筛选，其余新增筛选优先由 App 服务端执行；收藏数筛选仍不提供。
+- Deprecated `pixiv search --r18` 现在只作为 `--rating r18` 的 alias，不再向关键词追加 `R-18`；它可与显式 `--rating r18` 同用，与其他显式 rating 冲突。
 
 ### Fixed
 
-- 修复 `--ai-type` 的帮助语义与 Pixiv 字段不一致；Pixiv `AIType==2` 现正确识别为 AI，deprecated
-  `--ai-type` 保持 `0=exclude`、`1=only`、`2=all`，并拒绝与显式 `--ai-mode` 同用。
+- 修复 `--ai-type` 的帮助语义与 Pixiv 字段不一致；Pixiv `AIType==2` 现正确识别为 AI，deprecated `--ai-type` 保持 `0=exclude`、`1=only`、`2=all`，并拒绝与显式 `--ai-mode` 同用。
 - 修复 legacy MCP handler 把输入、认证、上游读取、下载与资源失败转换为兼容文本后，统一 operation wrapper 仍误记 `result=success` 的问题；wire 继续保持原 Content、structured output、文本与 `isError=false`，stderr 现以 error level 和安全 typed metadata 记录真实失败；事件不记录或输出原始错误文本、tool 输入、query、凭据、URL、path 或 response body。正常空结果仍记为成功。
 - 规范化下载 URL path 推导扩展名中的跨平台非法文件名字符、ASCII 控制字符和 Windows 非法尾随点/空格；单页与多页下载共用同一清理边界，既有模板和 ugoira `.gif` 语义不变。
 - 修复 MCP 作品列表文本静默只显示前 5 个 tags 的问题；文本现按上游顺序完整输出全部 tags，structured output 不变。
