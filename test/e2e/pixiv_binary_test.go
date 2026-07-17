@@ -7,9 +7,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"net/http"
-	"net/http/httptest"
-	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -18,11 +15,9 @@ import (
 	"slices"
 	"strconv"
 	"strings"
-	"sync/atomic"
 	"testing"
 	"time"
 
-	storageauth "github.com/FlanChanXwO/pixiv-cli/internal/storage/auth"
 	"github.com/FlanChanXwO/pixiv-cli/pixiv"
 )
 
@@ -477,17 +472,17 @@ func TestLocalAuthCanaryEnvironmentRemovesRefreshTokenOverride(t *testing.T) {
 	}
 }
 
-func TestAuthenticatedCanaryRejectsExternalBinary(t *testing.T) {
+func TestLocalAuthCanaryRejectsExternalBinary(t *testing.T) {
 	t.Parallel()
 
-	if err := validateAuthenticatedCanaryBinary(canaryAuthLocalStore, "/untrusted/pixiv"); err == nil {
+	if err := validateLocalAuthCanaryBinary(canaryAuthLocalStore, "/untrusted/pixiv"); err == nil {
 		t.Fatal("local-auth canary accepted PIXIV_E2E_BINARY")
 	}
-	if err := validateAuthenticatedCanaryBinary(canaryAuthLocalStore, ""); err != nil {
+	if err := validateLocalAuthCanaryBinary(canaryAuthLocalStore, ""); err != nil {
 		t.Fatalf("local-auth canary rejected source build: %v", err)
 	}
-	if err := validateAuthenticatedCanaryBinary(canaryAuthExplicitToken, "/release/pixiv"); err == nil {
-		t.Fatal("explicit-token SDK search canary accepted PIXIV_E2E_BINARY")
+	if err := validateLocalAuthCanaryBinary(canaryAuthExplicitToken, "/release/pixiv"); err != nil {
+		t.Fatalf("explicit-token canary unexpectedly rejected external binary: %v", err)
 	}
 }
 
@@ -557,358 +552,8 @@ func TestExplicitTokenCanaryFailureDiagnosticsRedactKnownToken(t *testing.T) {
 	}
 }
 
-func TestAuthenticatedCanarySearchSnapshotRefreshesOAuthOnce(t *testing.T) {
-	t.Setenv("PIXIV_REFRESH_TOKEN", "")
-
-	var oauthCalls atomic.Int32
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch r.URL.Path {
-		case "/auth/token":
-			oauthCalls.Add(1)
-			_, _ = w.Write([]byte(`{"access_token":"access","refresh_token":"rotated","user":{"id":7}}`))
-		case "/v1/search/options":
-			_, _ = w.Write([]byte(`{"illust":{"tool":{"options":[]}}}`))
-		case "/v1/search/illust":
-			_, _ = w.Write([]byte(`{"illusts":[],"next_url":null}`))
-		default:
-			t.Fatalf("unexpected request path %q", r.URL.Path)
-		}
-	}))
-	defer server.Close()
-
-	options := pixiv.Options{
-		RefreshToken:   "explicit-test-token",
-		AuthFilePath:   filepath.Join(t.TempDir(), "auth.json"),
-		ConfigFilePath: filepath.Join(t.TempDir(), "config.toml"),
-		HTTPClient:     server.Client(),
-		OAuthBaseURL:   server.URL,
-		AppAPIBaseURL:  server.URL,
-	}
-	snapshot, err := openAuthenticatedCanarySnapshot(context.Background(), options)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := snapshot.SearchIllustOptions(context.Background(), pixiv.SearchIllustOptionsRequest{Word: "miku"}); err != nil {
-		t.Fatal(err)
-	}
-	for _, filters := range []pixiv.SearchIllustFilters{
-		{},
-		{Resolution: pixiv.SearchResolutionHigh},
-		{AIMode: pixiv.SearchAIModeExclude},
-	} {
-		if _, err := snapshot.SearchIllust(context.Background(), pixiv.SearchIllustRequest{Word: "miku", Filters: filters}); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if got := oauthCalls.Load(); got != 1 {
-		t.Fatalf("OAuth refresh calls = %d, want 1 for one authenticated search snapshot", got)
-	}
-}
-
-func TestAuthenticatedCanarySDKOptionsKeepCredentialModesSeparated(t *testing.T) {
-	t.Run("explicit token", func(t *testing.T) {
-		options, err := authenticatedCanarySDKOptions(t, authenticatedCanaryAuth{
-			kind:         canaryAuthExplicitToken,
-			refreshToken: "explicit-test-token",
-		}, "socks5h://127.0.0.1:7890")
-		if err != nil {
-			t.Fatal(err)
-		}
-		if options.RefreshToken != "explicit-test-token" {
-			t.Fatal("explicit canary token was not passed to the SDK")
-		}
-		if options.AuthFilePath == "" || options.ConfigFilePath == "" {
-			t.Fatal("explicit token mode did not isolate both local-state paths")
-		}
-		for _, path := range []string{options.AuthFilePath, options.ConfigFilePath} {
-			if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
-				t.Fatalf("isolated explicit-token path unexpectedly exists: %v", err)
-			}
-		}
-		requireCanaryHTTPProxy(t, options.HTTPClient, "socks5h://127.0.0.1:7890")
-	})
-
-	t.Run("local store", func(t *testing.T) {
-		dir := t.TempDir()
-		authPath := filepath.Join(dir, "auth.json")
-		if err := os.WriteFile(authPath, []byte(`{"default_user_id":7,"accounts":[{"user_id":7,"refresh_token":"stored-token"}]}`), 0o600); err != nil {
-			t.Fatal(err)
-		}
-		t.Cleanup(storageauth.SetAuthFilePathForTest(authPath))
-		t.Setenv("PIXIV_REFRESH_TOKEN", "hostile-environment-token")
-		t.Setenv("HTTPS_PROXY", "http://hostile-environment-proxy.invalid")
-
-		options, err := authenticatedCanarySDKOptions(t, authenticatedCanaryAuth{kind: canaryAuthLocalStore}, "")
-		if err != nil {
-			t.Fatal(err)
-		}
-		if options.RefreshToken != "" {
-			t.Fatal("local-store mode unexpectedly set an explicit refresh token")
-		}
-		if options.AuthFilePath != "" {
-			t.Fatalf("local-store mode replaced the default auth path with %q", options.AuthFilePath)
-		}
-		if options.UserID != 7 {
-			t.Fatalf("local-store mode selected uid %d, want protected default uid 7", options.UserID)
-		}
-		requireCanaryHTTPProxy(t, options.HTTPClient, "")
-	})
-}
-
-func TestAuthenticatedCanaryLocalSnapshotIgnoresEnvironmentTokenAndPersistsRotation(t *testing.T) {
-	dir := t.TempDir()
-	authPath := filepath.Join(dir, "auth.json")
-	if err := os.WriteFile(authPath, []byte(`{"default_user_id":7,"accounts":[{"user_id":7,"refresh_token":"stored-token"}]}`), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(storageauth.SetAuthFilePathForTest(authPath))
-	t.Setenv("PIXIV_REFRESH_TOKEN", "hostile-environment-token")
-
-	var oauthCalls atomic.Int32
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch r.URL.Path {
-		case "/auth/token":
-			oauthCalls.Add(1)
-			if err := r.ParseForm(); err != nil {
-				t.Fatal(err)
-			}
-			if got := r.Form.Get("refresh_token"); got != "stored-token" {
-				t.Fatalf("local canary OAuth selected %q instead of the stored account token", got)
-			}
-			_, _ = w.Write([]byte(`{"access_token":"access","refresh_token":"rotated-token","user":{"id":7}}`))
-		case "/v1/search/options":
-			_, _ = w.Write([]byte(`{"illust":{"tool":{"options":[]}}}`))
-		default:
-			t.Fatalf("unexpected request path %q", r.URL.Path)
-		}
-	}))
-	defer server.Close()
-
-	options, err := authenticatedCanarySDKOptions(t, authenticatedCanaryAuth{kind: canaryAuthLocalStore}, "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	options.HTTPClient = server.Client()
-	options.OAuthBaseURL = server.URL
-	options.AppAPIBaseURL = server.URL
-	snapshot, err := openAuthenticatedCanarySnapshot(context.Background(), options)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := snapshot.SearchIllustOptions(context.Background(), pixiv.SearchIllustOptionsRequest{Word: "miku"}); err != nil {
-		t.Fatal(err)
-	}
-	if got := oauthCalls.Load(); got != 1 {
-		t.Fatalf("local canary OAuth refresh calls = %d, want 1", got)
-	}
-	body, err := os.ReadFile(authPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !bytes.Contains(body, []byte("rotated-token")) || bytes.Contains(body, []byte("hostile-environment-token")) {
-		t.Fatal("local canary did not safely persist the selected account rotation")
-	}
-}
-
-func TestAuthenticatedCanaryHTTPClientRejectsUnsafeProxyWithoutLeakingIt(t *testing.T) {
-	const secret = "proxy-password-secret"
-	_, err := authenticatedCanaryHTTPClient("https://user:" + secret + "@")
-	if err == nil {
-		t.Fatal("malformed authenticated canary proxy unexpectedly succeeded")
-	}
-	if strings.Contains(err.Error(), secret) {
-		t.Fatalf("proxy parse error leaked credentials: %v", err)
-	}
-}
-
-func requireCanaryHTTPProxy(t *testing.T, client *http.Client, wantProxy string) {
-	t.Helper()
-
-	transport, ok := client.Transport.(*http.Transport)
-	if !ok {
-		t.Fatalf("authenticated canary transport = %T, want *http.Transport", client.Transport)
-	}
-	if wantProxy == "" {
-		if transport.Proxy != nil {
-			t.Fatal("authenticated canary unexpectedly inherited an environment proxy function")
-		}
-		return
-	}
-	target, err := url.Parse("https://app-api.pixiv.net/v1/search/illust")
-	if err != nil {
-		t.Fatal(err)
-	}
-	got, err := transport.Proxy(&http.Request{URL: target})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got == nil || got.String() != wantProxy {
-		t.Fatalf("authenticated canary proxy = %v, want configured proxy", got)
-	}
-}
-
-func TestSearchCanaryNonemptyContinuesFilteredEmptyBatches(t *testing.T) {
-	client := &scriptedSearchCanaryClient{results: []*pixiv.IllustListResult{
-		{Illusts: []pixiv.Illust{}, NextCursor: "next-page"},
-		{Illusts: []pixiv.Illust{{ID: 7}}, NextCursor: ""},
-	}}
-	request := pixiv.SearchIllustRequest{
-		Word: "miku",
-		Filters: pixiv.SearchIllustFilters{
-			Resolution: pixiv.SearchResolutionHigh,
-			Tool:       "CLIP STUDIO PAINT",
-		},
-	}
-	result, err := searchCanaryNonempty(context.Background(), client, request)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(result.Illusts) != 1 || result.Illusts[0].ID != 7 {
-		t.Fatalf("search result = %#v", result.Illusts)
-	}
-	if len(client.requests) != 2 || client.requests[0].Cursor != "" || client.requests[1].Cursor != "next-page" {
-		t.Fatalf("search requests = %#v", client.requests)
-	}
-	for _, got := range client.requests {
-		if got.Word != request.Word || got.Filters != request.Filters {
-			t.Fatalf("pagination changed filtered request: %#v", got)
-		}
-	}
-}
-
-func TestSearchCanaryNonemptyRejectsRepeatedCursor(t *testing.T) {
-	client := &scriptedSearchCanaryClient{results: []*pixiv.IllustListResult{
-		{Illusts: []pixiv.Illust{}, NextCursor: "same-page"},
-		{Illusts: []pixiv.Illust{}, NextCursor: "same-page"},
-	}}
-	_, err := searchCanaryNonempty(context.Background(), client, pixiv.SearchIllustRequest{Word: "miku"})
-	if err == nil || !strings.Contains(err.Error(), "repeated pagination cursor") {
-		t.Fatalf("repeated cursor error = %v", err)
-	}
-}
-
-type scriptedSearchCanaryClient struct {
-	results  []*pixiv.IllustListResult
-	requests []pixiv.SearchIllustRequest
-}
-
-func (c *scriptedSearchCanaryClient) SearchIllust(_ context.Context, request pixiv.SearchIllustRequest) (*pixiv.IllustListResult, error) {
-	c.requests = append(c.requests, request)
-	if len(c.results) == 0 {
-		return nil, errors.New("unexpected extra search request")
-	}
-	result := c.results[0]
-	c.results = c.results[1:]
-	return result, nil
-}
-
-func authenticatedCanaryHTTPClient(proxyValue string) (*http.Client, error) {
-	base, ok := http.DefaultTransport.(*http.Transport)
-	if !ok {
-		return nil, fmt.Errorf("default HTTP transport has unexpected type %T", http.DefaultTransport)
-	}
-	transport := base.Clone()
-	// DefaultTransport 会读取 HTTP(S)_PROXY；真实 canary 必须只服从显式的
-	// PIXIV_E2E_PROXY，避免开发机环境在测试进程内悄悄改写网络路由。
-	transport.Proxy = nil
-	if proxyValue != "" {
-		parsed, err := url.ParseRequestURI(proxyValue)
-		if err != nil || parsed.Host == "" {
-			return nil, errors.New("PIXIV_E2E_PROXY must be an absolute http, https, socks5, or socks5h URL")
-		}
-		switch strings.ToLower(parsed.Scheme) {
-		case "http", "https", "socks5", "socks5h":
-		default:
-			return nil, errors.New("PIXIV_E2E_PROXY must use http, https, socks5, or socks5h")
-		}
-		transport.Proxy = http.ProxyURL(parsed)
-	}
-	return &http.Client{Transport: transport}, nil
-}
-
-func authenticatedCanarySDKOptions(t *testing.T, auth authenticatedCanaryAuth, proxy string) (pixiv.Options, error) {
-	t.Helper()
-
-	dir := t.TempDir()
-	httpClient, err := authenticatedCanaryHTTPClient(proxy)
-	if err != nil {
-		return pixiv.Options{}, err
-	}
-	options := pixiv.Options{
-		ConfigFilePath: filepath.Join(dir, "config.toml"),
-		HTTPClient:     httpClient,
-	}
-	switch auth.kind {
-	case canaryAuthExplicitToken:
-		// 显式 token 模式使用不存在的临时 auth 路径，因此 OpenDefault 即使加载
-		// 本地状态也只会看到空 store，绝不会读取或写回用户的默认账号文件。
-		options.AuthFilePath = filepath.Join(dir, "auth.json")
-		options.RefreshToken = auth.refreshToken
-	case canaryAuthLocalStore:
-		// 先经 public account API 读取不含 token 的摘要，再显式锁定默认 UID。
-		// UserID 的优先级高于 PIXIV_REFRESH_TOKEN，可保证 OAuth rotation 仍以
-		// selectedStored=true 写回用户授权的默认 store。
-		client, err := pixiv.OpenDefault(options)
-		if err != nil {
-			return pixiv.Options{}, err
-		}
-		accounts, err := client.ListAccounts()
-		if err != nil {
-			return pixiv.Options{}, err
-		}
-		for _, account := range accounts.Accounts {
-			if account.UserID == accounts.DefaultUserID && account.Default && account.HasToken {
-				options.UserID = account.UserID
-				return options, nil
-			}
-		}
-		return pixiv.Options{}, errors.New("local authenticated canary requires a default account with a refresh token")
-	default:
-		return pixiv.Options{}, errors.New("authenticated canary credential mode is required")
-	}
-	return options, nil
-}
-
-func openAuthenticatedCanarySnapshot(ctx context.Context, options pixiv.Options) (*pixiv.Client, error) {
-	client, err := pixiv.OpenDefault(options)
-	if err != nil {
-		return nil, err
-	}
-	return client.Snapshot(ctx)
-}
-
-type searchCanaryClient interface {
-	SearchIllust(context.Context, pixiv.SearchIllustRequest) (*pixiv.IllustListResult, error)
-}
-
-// searchCanaryNonempty 保留完整筛选条件跨过 SDK 本地过滤产生的空批次；游标
-// 结束即返回空结果，重复游标则显式报错，既不加任意请求上限也不静默卡死。
-func searchCanaryNonempty(ctx context.Context, client searchCanaryClient, request pixiv.SearchIllustRequest) (*pixiv.IllustListResult, error) {
-	seen := make(map[pixiv.Cursor]struct{})
-	for {
-		if request.Cursor != "" {
-			if _, ok := seen[request.Cursor]; ok {
-				return nil, errors.New("search canary detected a repeated pagination cursor")
-			}
-			seen[request.Cursor] = struct{}{}
-		}
-		result, err := client.SearchIllust(ctx, request)
-		if err != nil {
-			return nil, err
-		}
-		if result == nil {
-			return nil, errors.New("search canary received a nil result")
-		}
-		if len(result.Illusts) > 0 || result.NextCursor == "" {
-			return result, nil
-		}
-		request.Cursor = result.NextCursor
-	}
-}
-
-// TestPixivBinaryAuthenticatedAppAPICanary 覆盖需要登录态的稳定公开 SDK
-// 能力。调用者必须明确选择隔离的临时 token 或本机持久化账号；默认绝不复用
-// 本机认证配置，避免误把日常开发环境的凭据用于联网发布门禁。
+// TestPixivBinaryAuthenticatedAppAPICanary 覆盖需要登录态的 binary 命令能力。
+// 搜索筛选由独立的 SDK exact canary 验收，避免后续 CLI OAuth 波动掩盖搜索结果。
 func TestPixivBinaryAuthenticatedAppAPICanary(t *testing.T) {
 	if os.Getenv("PIXIV_E2E_REAL_API") != "1" {
 		t.Skip("set PIXIV_E2E_REAL_API=1 to run authenticated App API canary")
@@ -920,7 +565,7 @@ func TestPixivBinaryAuthenticatedAppAPICanary(t *testing.T) {
 	if skip {
 		t.Skip("set PIXIV_E2E_REFRESH_TOKEN or PIXIV_E2E_USE_LOCAL_AUTH=1 with PIXIV_E2E_REAL_API=1 to run authenticated App API canary")
 	}
-	if err := validateAuthenticatedCanaryBinary(auth.kind, os.Getenv("PIXIV_E2E_BINARY")); err != nil {
+	if err := validateLocalAuthCanaryBinary(auth.kind, os.Getenv("PIXIV_E2E_BINARY")); err != nil {
 		t.Fatal(err)
 	}
 
@@ -933,12 +578,9 @@ func TestPixivBinaryAuthenticatedAppAPICanary(t *testing.T) {
 		env = localAuthCanaryEnv()
 	} else {
 		env = isolatedEnv(t).values
-		env = append(env, "PIXIV_REFRESH_TOKEN="+auth.refreshToken)
 	}
 	proxy := firstNonEmpty(os.Getenv("PIXIV_E2E_PROXY"), os.Getenv("PIXIV_WEB_API_PROXY"))
-	if proxy != "" {
-		env = append(env, "https_proxy="+proxy, "HTTPS_PROXY="+proxy)
-	}
+	env = authenticatedCanaryChildEnvFrom(env, auth, proxy)
 
 	accountOut := runPixivCanary(t, repoRoot, binaryPath, env, auth, "auth", "check", "--json")
 	var account struct {
@@ -947,119 +589,6 @@ func TestPixivBinaryAuthenticatedAppAPICanary(t *testing.T) {
 	requireCanaryJSON(t, accountOut, auth, &account)
 	if account.UserID <= 0 {
 		t.Fatalf("auth check returned invalid user_id: %d", account.UserID)
-	}
-
-	const searchWord = "初音ミク"
-	// 搜索筛选共享一个明确的 SDK snapshot；这样所有请求只做一次 OAuth
-	// refresh，同时仍通过 public SDK 验证 App adapter 与稳定领域模型。
-	searchOptions, err := authenticatedCanarySDKOptions(t, auth, proxy)
-	if err != nil {
-		t.Fatalf("prepare authenticated search canary SDK: %v", err)
-	}
-	searchClient, err := openAuthenticatedCanarySnapshot(testCommandContext(t), searchOptions)
-	if err != nil {
-		t.Fatalf("open authenticated search canary snapshot: %v", err)
-	}
-	baseline, err := searchCanaryNonempty(testCommandContext(t), searchClient, pixiv.SearchIllustRequest{Word: searchWord})
-	if err != nil {
-		t.Fatalf("authenticated App search baseline failed: %v", err)
-	}
-	baselineIllusts := baseline.Illusts
-	if len(baselineIllusts) == 0 {
-		t.Fatal("authenticated App search baseline returned no illustrations")
-	}
-
-	options, err := searchClient.SearchIllustOptions(testCommandContext(t), pixiv.SearchIllustOptionsRequest{Word: searchWord})
-	if err != nil {
-		t.Fatalf("authenticated App search options failed: %v", err)
-	}
-	if options.Tools == nil {
-		t.Fatal("search options returned a null or missing tools array")
-	}
-	resolution := canaryFilterCandidateValue(baselineIllusts, canaryResolution)
-	if resolution == "" {
-		t.Fatal("authenticated App baseline returned no illustration in an official resolution bucket")
-	}
-	aspect := canaryFilterCandidateValue(baselineIllusts, canaryAspectRatio)
-	if aspect == "" {
-		t.Fatal("authenticated App baseline returned no illustration with classifiable dimensions")
-	}
-	contentType := canaryFilterCandidateValue(baselineIllusts, canaryContentType)
-	if contentType == "" {
-		t.Fatal("authenticated App baseline returned no illustration with a supported content type")
-	}
-	if !slices.ContainsFunc(baselineIllusts, func(illust pixiv.Illust) bool { return illust.AIType != 2 }) {
-		t.Fatal("authenticated App baseline returned no non-AI illustration candidate")
-	}
-
-	for _, search := range []struct {
-		name     string
-		filters  pixiv.SearchIllustFilters
-		validate func(pixiv.Illust) bool
-		want     string
-	}{
-		{
-			name:     "resolution-" + resolution,
-			filters:  pixiv.SearchIllustFilters{Resolution: pixiv.SearchResolution(resolution)},
-			validate: func(illust pixiv.Illust) bool { return canaryResolution(illust) == resolution },
-			want:     "official " + resolution + " resolution bucket",
-		},
-		{
-			name:     "aspect-" + aspect,
-			filters:  pixiv.SearchIllustFilters{AspectRatio: pixiv.SearchAspectRatio(aspect)},
-			validate: func(illust pixiv.Illust) bool { return canaryAspectRatio(illust) == aspect },
-			want:     aspect + " aspect ratio",
-		},
-		{
-			name:     "content-type-" + contentType,
-			filters:  pixiv.SearchIllustFilters{ContentType: pixiv.SearchContentType(contentType)},
-			validate: func(illust pixiv.Illust) bool { return canaryContentType(illust) == contentType },
-			want:     "content type " + contentType,
-		},
-		{
-			name:     "exclude-ai",
-			filters:  pixiv.SearchIllustFilters{AIMode: pixiv.SearchAIModeExclude},
-			validate: func(illust pixiv.Illust) bool { return illust.AIType != 2 },
-			want:     "ai_type != 2",
-		},
-	} {
-		t.Run("search-filter/"+search.name, func(t *testing.T) {
-			result, err := searchCanaryNonempty(testCommandContext(t), searchClient, pixiv.SearchIllustRequest{
-				Word: searchWord, Filters: search.filters,
-			})
-			if err != nil {
-				t.Fatalf("search filter %s failed: %v", search.name, err)
-			}
-			illusts := result.Illusts
-			if len(illusts) == 0 {
-				t.Fatalf("search filter %s returned no illustrations despite a matching baseline candidate", search.name)
-			}
-			for _, illust := range illusts {
-				if !search.validate(illust) {
-					t.Fatalf("search filter %s returned illustration %d that does not satisfy %s", search.name, illust.ID, search.want)
-				}
-			}
-		})
-	}
-
-	selectedTool, ok := canaryToolCandidate(options.Tools, baselineIllusts)
-	if !ok {
-		t.Fatal("search options and authenticated baseline returned no shared tool candidate")
-	}
-	toolResult, err := searchCanaryNonempty(testCommandContext(t), searchClient, pixiv.SearchIllustRequest{
-		Word: searchWord, Filters: pixiv.SearchIllustFilters{Tool: selectedTool},
-	})
-	if err != nil {
-		t.Fatalf("tool-filter search failed: %v", err)
-	}
-	toolIllusts := toolResult.Illusts
-	if len(toolIllusts) == 0 {
-		t.Fatal("tool-filter search returned no illustrations despite a matching baseline candidate")
-	}
-	for _, illust := range toolIllusts {
-		if !slices.Contains(illust.Tools, selectedTool) {
-			t.Fatalf("tool-filter search returned illustration %d without the selected tool", illust.ID)
-		}
 	}
 
 	userDetailOut := runPixivCanary(t, repoRoot, binaryPath, env, auth, "user", "detail", strconvFormatInt(account.UserID), "--json")
@@ -1124,11 +653,12 @@ func resolveAuthenticatedCanaryAuth(refreshToken, useLocalAuth string) (authenti
 	return authenticatedCanaryAuth{kind: canaryAuthNone}, true, nil
 }
 
-// validateAuthenticatedCanaryBinary 拒绝把认证 canary 与外部 binary 混用：搜索
-// 断言运行当前源码的 public SDK，若 CLI 指向其他版本就不再是同一验收对象。
-func validateAuthenticatedCanaryBinary(kind canaryAuthKind, externalBinary string) error {
-	if externalBinary != "" && (kind == canaryAuthLocalStore || kind == canaryAuthExplicitToken) {
-		return errors.New("PIXIV_E2E_BINARY is not supported by the authenticated SDK search canary; unset it to test the current source")
+// validateLocalAuthCanaryBinary 拒绝将本机长期凭据交给任意外部 binary。
+// 显式 token 模式仍可用于 release archive 的离线二进制验证；本机模式则仅运行
+// 当前工作树构建出的 CLI，避免错误或恶意二进制读取持久化账号 store。
+func validateLocalAuthCanaryBinary(kind canaryAuthKind, externalBinary string) error {
+	if kind == canaryAuthLocalStore && externalBinary != "" {
+		return errors.New("PIXIV_E2E_BINARY is not permitted with PIXIV_E2E_USE_LOCAL_AUTH=1; unset it to build and test the current source")
 	}
 	return nil
 }

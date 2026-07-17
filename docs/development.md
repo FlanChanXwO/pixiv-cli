@@ -283,13 +283,19 @@ pixiv auth login
 go test ./...
 sh scripts/build.sh
 PIXIV_E2E_WEB_API=1 PIXIV_WEB_API_PROXY=http://127.0.0.1:7890 go test ./test/e2e -run WebAPIFallbackReal -count=1 -v
-PIXIV_E2E_REAL_API=1 PIXIV_E2E_REFRESH_TOKEN="<独立测试 refresh token>" PIXIV_E2E_PROXY=http://127.0.0.1:7890 go test ./test/e2e -run AuthenticatedAppAPICanary -count=1 -v
-PIXIV_E2E_REAL_API=1 PIXIV_E2E_USE_LOCAL_AUTH=1 PIXIV_E2E_PROXY=http://127.0.0.1:7890 go test ./test/e2e -run AuthenticatedAppAPICanary -count=1 -v
+PIXIV_E2E_REAL_API=1 PIXIV_E2E_REFRESH_TOKEN="<独立测试 refresh token>" PIXIV_E2E_PROXY=http://127.0.0.1:7890 go test ./test/e2e -run '^TestPixivBinaryAuthenticatedAppAPICanary$' -count=1 -v
+PIXIV_E2E_REAL_API=1 PIXIV_E2E_USE_LOCAL_AUTH=1 PIXIV_E2E_PROXY=http://127.0.0.1:7890 go test ./test/e2e -run '^TestPixivBinaryAuthenticatedAppAPICanary$' -count=1 -v
+PIXIV_E2E_REAL_API=1 PIXIV_E2E_REFRESH_TOKEN="<独立测试 refresh token>" PIXIV_E2E_PROXY=http://127.0.0.1:7890 go test ./test/e2e -run '^TestPixivSDKAuthenticatedAppAPICanarySearchFilters$' -count=1 -v
+PIXIV_E2E_REAL_API=1 PIXIV_E2E_USE_LOCAL_AUTH=1 PIXIV_E2E_PROXY=http://127.0.0.1:7890 go test ./test/e2e -run '^TestPixivSDKAuthenticatedAppAPICanarySearchFilters$' -count=1 -v
 ```
 
 `go test ./...` 保持默认离线稳定；真实 Pixiv web API fallback e2e 默认跳过，只有设置 `PIXIV_E2E_WEB_API=1` 时才会联网。未设置 `PIXIV_WEB_API_PROXY` 时会直连。上述 Web canary 被显式调用时，会先从匿名搜索结果逐项读取 detail 取得真实宽高，选择可分类的横纵比候选，再执行带 `--aspect-ratio` 的高级搜索并通过 detail 复核返回作品的横纵比；该说明描述测试覆盖，不表示 canary 已经运行。
 
-认证 App API canary 必须设置 `PIXIV_E2E_REAL_API=1`，再明确选择一种认证来源；未选择则跳过，也不会匿名 fallback。`PIXIV_E2E_REFRESH_TOKEN` 是隔离模式：只使用显式传入的独立测试 token，并为 SDK 指定临时 auth/config 路径，不读取或写入本机 auth 配置、浏览器数据。`PIXIV_E2E_USE_LOCAL_AUTH=1` 是本机模式：先经 public SDK 账号列表锁定有 token 的默认 UID，再复用默认账号 store，按正常 SDK/CLI 行为把 rotated refresh token 写回；即使进程设置了 `PIXIV_REFRESH_TOKEN` 也不能覆盖该 UID。两种来源不能同时设置，且认证 canary 一律拒绝 `PIXIV_E2E_BINARY`，避免 binary 与当前源码 SDK 不是同一验收对象；本机模式只应在用户明确授权时使用，运行期间不要并发启动其他使用同一账号 store 的 `pixiv` CLI 或 MCP 进程，以免 rotation 覆盖或旧 token 请求失败。上述认证 canary 被显式调用时，覆盖 binary `auth check`、完整用户详情和插画/漫画/小说/作者四类推荐；`search-options`、认证 baseline 与分辨率、横纵比、作品类型、排除 AI、绘图工具筛选共用一次 public SDK snapshot（只做一次搜索阶段 OAuth refresh），动态选择实际存在的候选，并沿相同筛选 cursor 跨过空批次，要求非空结果且校验每个返回作品。该说明只描述测试代码及调用方式，不表示 canary 已经运行。可选 `PIXIV_E2E_PROXY`（或 `PIXIV_WEB_API_PROXY`）通过不继承系统代理环境的隔离 transport 只作用于该次测试；请勿把 token 写入 shell history、日志或仓库文件。
+两组认证 App API canary 都必须设置 `PIXIV_E2E_REAL_API=1`，再明确选择一种互斥认证来源；未选择则跳过，也不会匿名 fallback。`PIXIV_E2E_REFRESH_TOKEN` 使用显式独立测试 token；`PIXIV_E2E_USE_LOCAL_AUTH=1` 使用本机默认账号 store，且只应在用户明确授权时运行。运行本机模式期间不要并发启动其他使用同一 store 的 `pixiv` CLI 或 MCP 进程，以免 rotation 覆盖或旧 token 请求失败。
+
+`TestPixivBinaryAuthenticatedAppAPICanary` 单独验收 binary 的 `auth check`、完整用户详情和插画/漫画/小说/作者四类推荐。local-store 模式拒绝 `PIXIV_E2E_BINARY`，只运行当前源码构建产物；显式 token 模式保留外部 release binary 验收能力。binary 子进程会先移除宿主的 `https_proxy`、`HTTPS_PROXY` 和 `PIXIV_REFRESH_TOKEN`，再仅注入本次明确选择的 token 与 `PIXIV_E2E_PROXY`（其次 `PIXIV_WEB_API_PROXY`），避免重复环境键或宿主代理劫持。
+
+`TestPixivSDKAuthenticatedAppAPICanarySearchFilters` 独立验收当前源码 public SDK 的 `search-options`、认证 baseline、分辨率、横纵比、作品类型、排除 AI 与绘图工具筛选，因此拒绝 `PIXIV_E2E_BINARY`。显式 token 模式使用不会创建的临时 auth/config 路径，不读取或写入默认 store；local-store 模式先经 public SDK 账号列表锁定有 token 的默认 UID，使宿主 `PIXIV_REFRESH_TOKEN` 不能抢占且 OAuth rotation 仍写回授权 store。该 exact test 只创建一次 `OpenDefault + Snapshot`，搜索 options、baseline 和五类筛选共享该 snapshot，整个搜索测试阶段只做一次 OAuth refresh；筛选后的空批次沿相同 filters/cursor 自然续页，不设置任意请求上限，重复 cursor 明确失败。SDK 使用 `Proxy=nil` 的隔离 transport，仅在显式配置 canary proxy 时安全注入，且没有固定 client timeout。以上说明描述测试覆盖，不表示真实 canary 已经运行；请勿把 token 写入 shell history、日志或仓库文件。
 
 `PIXIV_E2E_BINARY` 与 `PIXIV_E2E_EXPECTED_VERSION` 供 CI 对已构建、已解压的 release binary 执行离线 e2e；它们不注入 token，也不启用真实 Pixiv API/Web fallback。`platform-smoke.yml` 在六个受支持 runner 上构建、封装、解压并运行这组 CLI/config/MCP stdio 验证。
 
