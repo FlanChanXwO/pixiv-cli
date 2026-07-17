@@ -6,11 +6,13 @@
 
 ## 文档目录
 
+- [CLI 参考手册（English）](cli-reference.md) / [简体中文](cli-reference.zh-CN.md)：完整命令、flag、账号认证、配置、环境变量、匿名 fallback、下载与更新契约。
 - [架构说明](architecture.md)：入口、Pixiv/config/update/download 包边界、运行流程、Release asset 与信任约束。
 - [开发流程](development.md)：本地环境、Rust staticlib、测试、构建、发布门禁、签名/tap 边界和 Git 注意事项。
 - [MCP 工具](mcp-tools.md)：当前注册的 tools 与参数概览。
 - [Go SDK 接口](sdk.md)：`*pixiv.Client` 的构造、模型、分页、错误和资源契约。
 - [更新日志](../CHANGELOG.md)：按 Keep a Changelog 风格记录用户可感知变化。
+- [贡献指南（English）](../CONTRIBUTING.md) / [简体中文](../CONTRIBUTING.zh-CN.md)：开发环境、TDD、架构边界、文档同步与 PR checklist。
 - [AI 协作文档](agents/index.md)：agent 规则、review checklist 和文档职责边界。
 - [ADR 0001](adr/0001-cli-thin-controller-and-bootstrap.md)：CLI thin controller、application services 与 bootstrap 分层决策。
 - [ADR 0002](adr/0002-utils-and-common-boundaries.md)：`utils/*` 与 `common/constants` 的边界规则。

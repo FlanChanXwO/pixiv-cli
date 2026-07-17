@@ -5,7 +5,7 @@
 `cmd/pixiv/main.go` 是唯一官方二进制入口，它只负责调用 `internal/cli`：
 
 1. `pixiv` 无参数显示 CLI 帮助。
-2. `pixiv auth/config/version/update/search/search-options/detail/ranking/recommended/user/bookmark/follow/download` 进入 CLI 模式。
+2. `pixiv auth/config/version/update/search/search-options/detail/ranking/recommended/user/bookmark/follow/download` 进入 CLI 模式；其中 `auth token [UID]` 是只读取本地 auth store 的显式 secret 导出。
 3. `pixiv mcp` 委托 `internal/bootstrap` 组装并运行 MCP stdio server。
 4. CLI 与 MCP 通过 `internal/bootstrap` 共享生产 wiring：
    - 账号认证来自 `os.UserConfigDir()/pixiv/auth.json`
@@ -25,6 +25,7 @@
 
 - Cobra 命令树、help 和 flag 解析。
 - 文本/JSON 输出。
+- `auth token [UID]` 的单一 secret-output adapter：成功 stdout 只有原始 token 与换行，不增加 JSON、日志或提示。
 - CLI 协议的 `--page`/`--limit`/deprecated `--offset` 解析与错误文案；解析后的逻辑分页计划交给 application 共享遍历引擎。
 - `auth login` 的 loopback OAuth、浏览器打开和 TTY 交互。
 - `pixiv mcp` 分发。
@@ -34,7 +35,7 @@
 它不直接拥有账号存储变更、Pixiv client 构造或下载管理器构造；这些职责由 `internal/application` 与 `internal/bootstrap` 承接。
 
 `version` 的 JSON stdout 精确为 `version`、`commit`、`build_date`。自动更新只在普通业务命令
-成功后运行，跳过 MCP、help、`version`、`update` 和开发构建；它选择 stable Release、使用用户
+成功后运行，跳过 MCP、help、`version`、`update`、`auth token` 和开发构建；它选择 stable Release、使用用户
 cache 的 24 小时节流，并最多等待 3 秒。配置、网络、来源识别失败只作为 stderr warning，不能
 改变已成功业务命令的退出码，也不能混入 JSON stdout 或 MCP JSON-RPC。
 
@@ -53,7 +54,7 @@ helper 并保留 OAuth、loopback HTTP、系统浏览器和 TTY 编排；Darwin 
 
 负责 CLI/MCP 之外的应用用例编排：
 
-- `AccountService`：账号 add/list/remove/use/check。
+- `AccountService`：账号 add/list/token/remove/use/check；token 导出只经 public SDK 读取本地 store。
 - `ConfigService`：`config.toml` path/get/set/unset。
 - `LoginService`：生成 PKCE/state、authorization-code exchange，并保存账号；Pixiv 登录 URL 构造仍留在 CLI adapter。
 - `SDKService`：为 CLI/MCP 打开顶层 `pixiv` client，并把调用方选择的账号/代理/JSON 设置映射到 SDK operation snapshot；作品查询和下载均从该 snapshot 的 public SDK 能力继续执行。
@@ -76,6 +77,7 @@ bootstrap、源码或运行时配置中。只读更新检查不需要该 key；�
 
 - `auth.json` 读写与默认 UID 管理。
 - 认证文件路径解析和平台对应的凭据文件写入保护。
+- 显式 token 导出只读取默认或精确 UID 的账号；不刷新、不联网、不修改状态。
 
 ### `internal/config`
 
@@ -139,7 +141,7 @@ Release 安装的失败语义仍是保护边界，而不是临时降级。
 
 ### `pixiv`
 
-公开 concrete facade。`NewClient` 只使用显式 options；`OpenDefault` 复用本地 auth/config，并在每个公开操作开始时取得一次 snapshot。它暴露规范化模型、opaque cursor、`*pixiv.Error`、账号/config、登录 session、资源流和下载；CLI/MCP 与外部 Go 程序消费同一契约。
+公开 concrete facade。`NewClient` 只使用显式 options；`OpenDefault` 复用本地 auth/config，并在需要 runtime configuration 的公开操作开始时取得一次 snapshot。它暴露规范化模型、opaque cursor、`*pixiv.Error`、账号/config、登录 session、资源流和下载；CLI/MCP 与外部 Go 程序消费同一契约。`ExportAccountRefreshToken(userID)` 是唯一显式 secret-returning 方法，只读 auth store，不读取环境覆盖或 config，不创建网络 transport，也不写回文件；调用方必须把返回值视为 opaque secret。
 
 调用方在自身 adapter 中定义 source mode、budget、filter、cursor 持久化和 HTTP presentation。本仓库不提供 HTTP Provider、Discover、Probe、Capabilities、RSS 或 crawler。
 

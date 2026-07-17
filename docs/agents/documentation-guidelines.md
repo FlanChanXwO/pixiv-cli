@@ -4,7 +4,9 @@
 
 ## 文件职责
 
-- `README.md`：用户入口，描述 CLI/MCP 用法、配置、环境变量和主要行为。
+- `README.md` / `README.zh-CN.md`：双语用户入口，只保留定位、安装、快速开始、接口选择、安全提醒和文档导航。
+- `docs/cli-reference.md` / `docs/cli-reference.zh-CN.md`：双语 CLI 完整契约，包括命令、flag、账号认证、配置、环境变量、fallback 和更新行为。
+- `CONTRIBUTING.md` / `CONTRIBUTING.zh-CN.md`：双语贡献流程、环境、TDD、架构边界和 PR checklist。
 - `docs/index.md`：文档导航。
 - `docs/architecture.md`：包职责、运行流程和已知约束。
 - `docs/development.md`：本地环境、测试、构建、Git、changelog 和开发流程。
