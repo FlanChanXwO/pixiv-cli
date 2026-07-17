@@ -62,6 +62,18 @@ func TestHelpAndConfigPathSurviveBrokenNonLoggingRuntimeConfig(t *testing.T) {
 	}
 }
 
+func TestInvalidLoggingConfigurationStillBlocksOtherCommands(t *testing.T) {
+	_, configPath := useTempPaths(t)
+	require.NoError(t, config.WritePrivateFile(configPath, []byte("[logging]\nlevel = 'loud'\n")))
+
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"pixiv", "auth", "list"}, strings.NewReader(""), &stdout, &stderr)
+
+	assert.Equal(t, 1, code)
+	assert.Empty(t, stdout.String())
+	assert.Equal(t, "error: log_level must be one of trace, debug, info, warn, error\n", stderr.String())
+}
+
 func TestRunUnknownCommandReturnsError(t *testing.T) {
 	_, configPath := useTempPaths(t)
 	if err := config.WritePrivateFile(configPath, []byte("[logging]\nformat = 'json'\nlevel = 'error'\n")); err != nil {

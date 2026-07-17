@@ -366,6 +366,23 @@ func TestAuthTokenPrintsOnlyDefaultStoredRefreshToken(t *testing.T) {
 	assert.Empty(t, stderr.String())
 }
 
+func TestAuthTokenIgnoresInvalidLoggingConfiguration(t *testing.T) {
+	authPath, configPath := useTempPaths(t)
+	t.Setenv("PIXIV_LOG_LEVEL", "loud")
+	require.NoError(t, auth.SaveAuthStore(authPath, auth.AuthStore{
+		DefaultUserID: 444,
+		Accounts:      []auth.Account{{UserID: 444, RefreshToken: "synthetic-invalid-refresh-token"}},
+	}))
+	require.NoError(t, config.WritePrivateFile(configPath, []byte("[logging]\nlevel = 'loud'\n")))
+
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"pixiv", "auth", "token"}, strings.NewReader(""), &stdout, &stderr)
+
+	require.Equal(t, 0, code, stderr.String())
+	assert.Equal(t, "synthetic-invalid-refresh-token\n", stdout.String())
+	assert.Empty(t, stderr.String())
+}
+
 func TestAuthTokenSelectsExplicitUIDAndRejectsNonContractInput(t *testing.T) {
 	authPath, _ := useTempPaths(t)
 	t.Setenv("PIXIV_LOG_LEVEL", "info")
@@ -400,6 +417,104 @@ func TestAuthTokenSelectsExplicitUIDAndRejectsNonContractInput(t *testing.T) {
 			assert.NotEmpty(t, stderr.String())
 			assert.NotContains(t, stderr.String(), "default-secret")
 			assert.NotContains(t, stderr.String(), "selected-secret")
+		})
+	}
+}
+
+func TestAuthTokenInvalidUIDDoesNotEchoSensitiveInput(t *testing.T) {
+	_, configPath := useTempPaths(t)
+	require.NoError(t, config.WritePrivateFile(configPath, []byte("[logging]\nformat = 'yaml'\n")))
+
+	for name, canary := range map[string]string{
+		"token-like": "synthetic-refresh-token-secret",
+		"path-like":  "/synthetic/private/auth-secret.json",
+	} {
+		t.Run(name, func(t *testing.T) {
+			var stdout, stderr bytes.Buffer
+			code := Run([]string{"pixiv", "auth", "token", canary}, strings.NewReader(""), &stdout, &stderr)
+
+			assert.Equal(t, 1, code)
+			assert.Empty(t, stdout.String())
+			assert.NotContains(t, stderr.String(), canary)
+			assert.Equal(t, "error: uid must be a positive integer\n", stderr.String())
+		})
+	}
+}
+
+func TestAuthTokenHelpAndArgumentErrorsIgnoreInvalidLoggingConfiguration(t *testing.T) {
+	_, configPath := useTempPaths(t)
+	require.NoError(t, config.WritePrivateFile(configPath, []byte("[logging]\nlevel = 'loud'\n")))
+
+	t.Run("help", func(t *testing.T) {
+		var stdout, stderr bytes.Buffer
+		code := Run([]string{"pixiv", "auth", "token", "--help"}, strings.NewReader(""), &stdout, &stderr)
+		require.Equal(t, 0, code, stderr.String())
+		assert.Contains(t, stdout.String(), "pixiv auth token [UID]")
+		assert.Empty(t, stderr.String())
+	})
+
+	t.Run("argument error", func(t *testing.T) {
+		var stdout, stderr bytes.Buffer
+		code := Run([]string{"pixiv", "auth", "token", "1", "2"}, strings.NewReader(""), &stdout, &stderr)
+		assert.Equal(t, 1, code)
+		assert.Empty(t, stdout.String())
+		assert.Equal(t, "error: usage: pixiv auth token [UID]\n", stderr.String())
+		assert.NotContains(t, stderr.String(), "log_level")
+	})
+}
+
+func TestAuthTokenLocalStateErrorsAreSafe(t *testing.T) {
+	const storedTokenCanary = "synthetic-stored-token-secret"
+	const malformedCanary = "synthetic-malformed-auth-secret"
+
+	for _, test := range []struct {
+		name      string
+		args      []string
+		prepare   func(*testing.T, string)
+		wantError string
+		forbidden string
+	}{
+		{
+			name:      "default account missing",
+			args:      []string{"pixiv", "auth", "token"},
+			prepare:   func(*testing.T, string) {},
+			wantError: "pixiv unauthorized operation=export_account_refresh_token",
+		},
+		{
+			name: "explicit account missing",
+			args: []string{"pixiv", "auth", "token", "999"},
+			prepare: func(t *testing.T, authPath string) {
+				require.NoError(t, auth.SaveAuthStore(authPath, auth.AuthStore{
+					DefaultUserID: 444,
+					Accounts:      []auth.Account{{UserID: 444, RefreshToken: storedTokenCanary}},
+				}))
+			},
+			wantError: "pixiv invalid_argument operation=export_account_refresh_token user_id=999",
+			forbidden: storedTokenCanary,
+		},
+		{
+			name: "malformed auth store",
+			args: []string{"pixiv", "auth", "token"},
+			prepare: func(t *testing.T, authPath string) {
+				require.NoError(t, auth.WritePrivateFile(authPath, []byte(`{"accounts":[`+malformedCanary+`]}`)))
+			},
+			wantError: "local_state_kind=auth_malformed",
+			forbidden: malformedCanary,
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			authPath, _ := useTempPaths(t)
+			test.prepare(t, authPath)
+			var stdout, stderr bytes.Buffer
+			code := Run(test.args, strings.NewReader(""), &stdout, &stderr)
+
+			assert.Equal(t, 1, code)
+			assert.Empty(t, stdout.String())
+			assert.Contains(t, stderr.String(), test.wantError)
+			if test.forbidden != "" {
+				assert.NotContains(t, stderr.String(), test.forbidden)
+			}
+			assert.NotContains(t, stderr.String(), authPath)
 		})
 	}
 }
@@ -1201,7 +1316,11 @@ func setPromptStub(t *testing.T, stub promptStub) {
 
 func useTempPaths(t *testing.T) (string, string) {
 	t.Helper()
-	base := filepath.Join(t.TempDir(), "pixiv")
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
+	base := filepath.Join(home, "pixiv")
 	authPath := filepath.Join(base, "auth.json")
 	configPath := filepath.Join(base, "config.toml")
 	t.Cleanup(auth.SetAuthFilePathForTest(authPath))

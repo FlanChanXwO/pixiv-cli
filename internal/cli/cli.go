@@ -64,7 +64,7 @@ func RunContext(ctx context.Context, args []string, in io.Reader, out io.Writer,
 		fmt.Fprintf(errOut, "clean pending update: %v\n", err)
 		return 1
 	}
-	logger, err := bootstrap.NewApplicationLogger(errOut)
+	logger, err := applicationLoggerForArgs(args, errOut)
 	if err != nil {
 		fmt.Fprintln(errOut, "error:", err)
 		return 1
@@ -86,6 +86,15 @@ func RunContext(ctx context.Context, args []string, in io.Reader, out io.Writer,
 	// machine-readable 输出，不能混入日志，前者则仍应留下命令诊断。
 	a.commandLog(operation, started, err, len(args) == 2 && args[1] == "--version")
 	return a.exit(err)
+}
+
+// applicationLoggerForArgs 在 Cobra 解析前识别凭据导出前缀，使成功、help 与参数
+// 错误路径都不依赖 config/logging 环境。其他命令仍沿用完整配置型 logger。
+func applicationLoggerForArgs(args []string, errOut io.Writer) (*slog.Logger, error) {
+	if len(args) >= 3 && args[1] == "auth" && args[2] == "token" {
+		return slog.New(slog.NewTextHandler(io.Discard, nil)), nil
+	}
+	return bootstrap.NewApplicationLogger(errOut)
 }
 
 // commandLog 仅记录命令名和稳定结果，不能记录 args：其中可能含 refresh token、

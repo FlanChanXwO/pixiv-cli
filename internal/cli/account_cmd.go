@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strconv"
 	"strings"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/application"
@@ -68,7 +69,7 @@ func (a app) newAccountTokenCommand() *cobra.Command {
 		RunE: func(_ *cobra.Command, args []string) error {
 			userID := int64(0)
 			if len(args) == 1 {
-				parsed, err := application.ParseUID(args[0])
+				parsed, err := parseAuthTokenUID(args[0])
 				if err != nil {
 					return err
 				}
@@ -82,6 +83,15 @@ func (a app) newAccountTokenCommand() *cobra.Command {
 			return nil
 		},
 	}
+}
+
+// parseAuthTokenUID 不回显原始输入：调用者可能误把 token 或私有路径放在 UID 位。
+func parseAuthTokenUID(raw string) (int64, error) {
+	userID, err := strconv.ParseInt(strings.TrimSpace(raw), 10, 64)
+	if err != nil || userID <= 0 {
+		return 0, errors.New("uid must be a positive integer")
+	}
+	return userID, nil
 }
 
 func (a app) newAccountAddCommand() *cobra.Command {
