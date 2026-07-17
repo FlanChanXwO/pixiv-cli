@@ -122,12 +122,12 @@
     },
     "CHANGELOG.md": {
       "filePath": "CHANGELOG.md",
-      "contentHash": "d73a4f5ffd0213245f7f1fc87ecb758b2f06c98eadb4d2b37da512467e12afd3",
+      "contentHash": "176d5e401af2f1bdc2880d5faf65a8c88fd028d679e5204564006295b00c1c0a",
       "functions": [],
       "classes": [],
       "imports": [],
       "exports": [],
-      "totalLines": 173,
+      "totalLines": 177,
       "hasStructuralAnalysis": true
     },
     "CLAUDE.md": {
@@ -343,12 +343,12 @@
     },
     "docs/development.md": {
       "filePath": "docs/development.md",
-      "contentHash": "a9ff0ed6de0dbe4dab29720aad19f722ef9d59474db9200b037fd980f2fc55f0",
+      "contentHash": "6d06be77187fc6ff011899c986f6acf94eef1cdec0e6c511e65588286beeb598",
       "functions": [],
       "classes": [],
       "imports": [],
       "exports": [],
-      "totalLines": 489,
+      "totalLines": 497,
       "hasStructuralAnalysis": true
     },
     "docs/index.md": {
@@ -463,7 +463,7 @@
     },
     "goal-2/tasks.md": {
       "filePath": "goal-2/tasks.md",
-      "contentHash": "38165f5caffa9e922ca144f6f5a55a1204ba879ab23fcf7d39d5ba8b9f89eb2e",
+      "contentHash": "e1cf0339524fcd5624162eaea64abbc00e421e8ccdb62799d4b103addbb2de61",
       "functions": [],
       "classes": [],
       "imports": [],
@@ -6543,7 +6543,7 @@
     },
     "internal/cli/config_cmd.go": {
       "classes": [],
-      "contentHash": "3b6b7dd95a8ae7c22ce6aab8b87807ce08ffbd48127d4e41fb4d2effb95447ea",
+      "contentHash": "f2264ec07a9cd16894d1517d839e2be9a53d39dc15973b312ac7f87951d7695c",
       "exports": [],
       "filePath": "internal/cli/config_cmd.go",
       "functions": [
@@ -6608,6 +6608,17 @@
         },
         {
           "exported": false,
+          "lineCount": 8,
+          "name": "writeConfigOverrideNote",
+          "params": [
+            "alias",
+            "envOverride"
+          ],
+          "qualifiedName": "app.writeConfigOverrideNote",
+          "receiver": "app"
+        },
+        {
+          "exported": false,
           "lineCount": 10,
           "name": "newConfigUnsetCommand",
           "params": [],
@@ -6648,11 +6659,11 @@
           ]
         }
       ],
-      "totalLines": 118
+      "totalLines": 127
     },
     "internal/cli/config_test.go": {
       "classes": [],
-      "contentHash": "166b9c4d64fd5036df7c85c4f6f533d1bd12654052749aec11a1034b3c1bca68",
+      "contentHash": "ae6b18e468472346b0f19ab1fe77b3d160842d0219f6c2dd64473228daff5073",
       "exports": [
         "TestConfigPathGetSetUnset",
         "TestConfigMissingValueReturnsPlaceholder",
@@ -6661,6 +6672,9 @@
         "TestConfigUpdateCheckDefaultEnabled",
         "TestConfigUpdateCheckCanBeExplicitlyDisabled",
         "TestConfigGetUsesEnvironmentOverrideAndSetWarns",
+        "TestConfigSetHTTPSProxyDoesNotRevealEnvironmentOverride",
+        "TestConfigUnsetHTTPSProxyDoesNotRevealEnvironmentOverride",
+        "TestConfigSetNonSensitiveOverrideStillReportsEffectiveValue",
         "TestConfigLowercaseProxyBeatsUppercase"
       ],
       "filePath": "internal/cli/config_test.go",
@@ -6727,6 +6741,33 @@
             "t"
           ],
           "qualifiedName": "TestConfigGetUsesEnvironmentOverrideAndSetWarns"
+        },
+        {
+          "exported": true,
+          "lineCount": 25,
+          "name": "TestConfigSetHTTPSProxyDoesNotRevealEnvironmentOverride",
+          "params": [
+            "t"
+          ],
+          "qualifiedName": "TestConfigSetHTTPSProxyDoesNotRevealEnvironmentOverride"
+        },
+        {
+          "exported": true,
+          "lineCount": 30,
+          "name": "TestConfigUnsetHTTPSProxyDoesNotRevealEnvironmentOverride",
+          "params": [
+            "t"
+          ],
+          "qualifiedName": "TestConfigUnsetHTTPSProxyDoesNotRevealEnvironmentOverride"
+        },
+        {
+          "exported": true,
+          "lineCount": 17,
+          "name": "TestConfigSetNonSensitiveOverrideStillReportsEffectiveValue",
+          "params": [
+            "t"
+          ],
+          "qualifiedName": "TestConfigSetNonSensitiveOverrideStillReportsEffectiveValue"
         },
         {
           "exported": true,
@@ -6798,7 +6839,7 @@
           ]
         }
       ],
-      "totalLines": 201
+      "totalLines": 276
     },
     "internal/cli/domain_cmd.go": {
       "classes": [
@@ -7868,7 +7909,7 @@
     },
     "internal/cli/loginhelper/install_darwin.go": {
       "classes": [],
-      "contentHash": "7ac9fc1966cdf4e48009e27b0ba07b2c18e18f5af14c90fd06b1f42c3989dcdb",
+      "contentHash": "7b0883f3314e0f9685c9eaa0798522103f766c2ced8cd5c0da5f6811b1ebbe50",
       "exports": [
         "Install"
       ],
@@ -7903,7 +7944,7 @@
         },
         {
           "exported": false,
-          "lineCount": 23,
+          "lineCount": 3,
           "name": "ensurePixivURLHandlerApp",
           "params": [
             "ctx",
@@ -7911,6 +7952,30 @@
           ],
           "qualifiedName": "ensurePixivURLHandlerApp",
           "returnType": "error"
+        },
+        {
+          "exported": false,
+          "lineCount": 42,
+          "name": "ensurePixivURLHandlerAppWithCompiler",
+          "params": [
+            "ctx",
+            "appPath",
+            "compile"
+          ],
+          "qualifiedName": "ensurePixivURLHandlerAppWithCompiler",
+          "returnType": "error"
+        },
+        {
+          "exported": false,
+          "lineCount": 3,
+          "name": "compilePixivURLHandler",
+          "params": [
+            "ctx",
+            "sourcePath",
+            "executablePath"
+          ],
+          "qualifiedName": "compilePixivURLHandler",
+          "returnType": "([]byte, error)"
         },
         {
           "exported": false,
@@ -8008,7 +8073,98 @@
           ]
         }
       ],
-      "totalLines": 202
+      "totalLines": 231
+    },
+    "internal/cli/loginhelper/install_darwin_test.go": {
+      "classes": [],
+      "contentHash": "d45e0880f519656a6b98a52c1ae8d623a2735654b748cb66f97f2a744190443a",
+      "exports": [
+        "TestEnsurePixivURLHandlerAppDoesNotFollowLegacyTemporarySourceSymlink",
+        "TestEnsurePixivURLHandlerAppCompilesPrivateRandomSourceAndCleansIt",
+        "TestEnsurePixivURLHandlerAppPreservesCompilerOutputAndCleansSourceOnFailure"
+      ],
+      "filePath": "internal/cli/loginhelper/install_darwin_test.go",
+      "functions": [
+        {
+          "exported": true,
+          "lineCount": 18,
+          "name": "TestEnsurePixivURLHandlerAppDoesNotFollowLegacyTemporarySourceSymlink",
+          "params": [
+            "t"
+          ],
+          "qualifiedName": "TestEnsurePixivURLHandlerAppDoesNotFollowLegacyTemporarySourceSymlink"
+        },
+        {
+          "exported": true,
+          "lineCount": 35,
+          "name": "TestEnsurePixivURLHandlerAppCompilesPrivateRandomSourceAndCleansIt",
+          "params": [
+            "t"
+          ],
+          "qualifiedName": "TestEnsurePixivURLHandlerAppCompilesPrivateRandomSourceAndCleansIt"
+        },
+        {
+          "exported": true,
+          "lineCount": 18,
+          "name": "TestEnsurePixivURLHandlerAppPreservesCompilerOutputAndCleansSourceOnFailure",
+          "params": [
+            "t"
+          ],
+          "qualifiedName": "TestEnsurePixivURLHandlerAppPreservesCompilerOutputAndCleansSourceOnFailure"
+        }
+      ],
+      "hasStructuralAnalysis": true,
+      "imports": [
+        {
+          "source": "context",
+          "specifiers": [
+            "context"
+          ]
+        },
+        {
+          "source": "errors",
+          "specifiers": [
+            "errors"
+          ]
+        },
+        {
+          "source": "os",
+          "specifiers": [
+            "os"
+          ]
+        },
+        {
+          "source": "path/filepath",
+          "specifiers": [
+            "filepath"
+          ]
+        },
+        {
+          "source": "strings",
+          "specifiers": [
+            "strings"
+          ]
+        },
+        {
+          "source": "testing",
+          "specifiers": [
+            "testing"
+          ]
+        },
+        {
+          "source": "github.com/FlanChanXwO/pixiv-cli/internal/common/constants",
+          "specifiers": [
+            "constants"
+          ]
+        },
+        {
+          "source": "github.com/stretchr/testify/require",
+          "specifiers": [
+            "require"
+          ]
+        }
+      ],
+      "totalLines": 90
     },
     "internal/cli/loginhelper/install_other.go": {
       "classes": [],
@@ -10749,7 +10905,7 @@
     },
     "internal/download/testdata/ugoira-source-digest.txt": {
       "filePath": "internal/download/testdata/ugoira-source-digest.txt",
-      "contentHash": "77cd43a2cd6ff421ce760537315638b3cce877aa84b283d8474f52fe7f547ae8",
+      "contentHash": "312bf1f3cce368d398ccf568747b9fbc7f352a09a9a5d337413e3469bdb8f39c",
       "functions": [],
       "classes": [],
       "imports": [],
@@ -11204,7 +11360,7 @@
     },
     "internal/download/ugoira_rs/src/lib.rs": {
       "filePath": "internal/download/ugoira_rs/src/lib.rs",
-      "contentHash": "831f7cd08c7b2fa90afb21e424e1ff16879d99e76f047ac36add38bdacdaf3c5",
+      "contentHash": "b53808ea229472f56aa806b38c20495abc28d3fff2a64024dc6d002d4fef12ab",
       "functions": [
         {
           "name": "cancel",
@@ -11297,7 +11453,7 @@
           ],
           "returnType": "Result\u003c(), EncodeError\u003e",
           "exported": true,
-          "lineCount": 68
+          "lineCount": 73
         },
         {
           "name": "scaled_dimensions",
@@ -11369,11 +11525,25 @@
           "name": "decode_frame",
           "params": [
             "archive",
-            "frame"
+            "frame",
+            "cancellation"
           ],
           "returnType": "Result\u003cRgbaImage, EncodeError\u003e",
           "exported": false,
-          "lineCount": 12
+          "lineCount": 31
+        },
+        {
+          "name": "read_frame_source",
+          "params": [
+            "reader",
+            "file",
+            "declared_size",
+            "limit",
+            "cancellation"
+          ],
+          "returnType": "Result\u003cVec\u003cu8\u003e, EncodeError\u003e",
+          "exported": false,
+          "lineCount": 78
         },
         {
           "name": "validate_frame_size",
@@ -11402,11 +11572,12 @@
             "archive",
             "frame",
             "original_size",
-            "output_size"
+            "output_size",
+            "cancellation"
           ],
           "returnType": "Result\u003cRgbaImage, EncodeError\u003e",
           "exported": false,
-          "lineCount": 11
+          "lineCount": 12
         },
         {
           "name": "changed_region",
@@ -11809,6 +11980,9 @@
             "Apng",
             "EmptyFrames",
             "Canceled",
+            "FrameSourceLimitUnavailable",
+            "FrameSourceTooLarge",
+            "FrameSourceAllocation",
             "NonPositiveDelay",
             "DelayTooLarge",
             "ApngDelayTooLarge",
@@ -11824,7 +11998,7 @@
             "InvalidAnimationFormat"
           ],
           "exported": true,
-          "lineCount": 56
+          "lineCount": 62
         },
         {
           "name": "AnimationFormat",
@@ -12070,7 +12244,7 @@
         "ugoira_encode",
         "ugoira_free_error"
       ],
-      "totalLines": 2609,
+      "totalLines": 2860,
       "hasStructuralAnalysis": true
     },
     "internal/download/ugoira_rs/tests/quality_gate.rs": {
@@ -33389,7 +33563,7 @@
     },
     "scripts/build-staticlibs.sh": {
       "filePath": "scripts/build-staticlibs.sh",
-      "contentHash": "ba46fe845e1f626ac17ca85f194726fdc1e1249a61578dd5235aef730d7e04b2",
+      "contentHash": "ed1fed35a4984087f6e7122b57ff89107a1c8a21f41f662eb49be24a93d50231",
       "functions": [
         {
           "name": "usage",
@@ -33413,7 +33587,7 @@
       "classes": [],
       "imports": [],
       "exports": [],
-      "totalLines": 158,
+      "totalLines": 165,
       "hasStructuralAnalysis": true
     },
     "scripts/build.sh": {
@@ -38935,12 +39109,12 @@
     },
     "scripts/test-build-staticlibs.sh": {
       "filePath": "scripts/test-build-staticlibs.sh",
-      "contentHash": "bc4b076f21b14d4ef6c1f3ff3776b8c81492c6ab058aa829224fc5ba79006337",
+      "contentHash": "ebe3ec2dd5e36c87987ca580673794c29dc197bd646efaef33c29a2a75de72ef",
       "functions": [],
       "classes": [],
       "imports": [],
       "exports": [],
-      "totalLines": 53,
+      "totalLines": 90,
       "hasStructuralAnalysis": true
     },
     "scripts/test-homebrew-formula.sh": {
@@ -39009,6 +39183,188 @@
       "exports": [],
       "totalLines": 38,
       "hasStructuralAnalysis": true
+    },
+    "scripts/understandgraph/contained_file.go": {
+      "classes": [
+        {
+          "name": "resolvedContainedFile",
+          "methods": [],
+          "properties": [
+            "path",
+            "info"
+          ],
+          "exported": false,
+          "lineCount": 4
+        }
+      ],
+      "contentHash": "982cf63752e2544902eb511d0d40bdfbd2e2f6b6d999c1aa1870f55fe367032e",
+      "exports": [],
+      "filePath": "scripts/understandgraph/contained_file.go",
+      "functions": [
+        {
+          "exported": false,
+          "lineCount": 3,
+          "name": "readContainedRegularFile",
+          "params": [
+            "root",
+            "relativePath",
+            "boundaryName"
+          ],
+          "qualifiedName": "readContainedRegularFile",
+          "returnType": "([]byte, error)"
+        },
+        {
+          "exported": false,
+          "lineCount": 30,
+          "name": "readContainedRegularFileWithHook",
+          "params": [
+            "root",
+            "relativePath",
+            "boundaryName",
+            "afterInitialResolution"
+          ],
+          "qualifiedName": "readContainedRegularFileWithHook",
+          "returnType": "(content []byte, returnErr error)"
+        },
+        {
+          "exported": false,
+          "lineCount": 20,
+          "name": "verifyOpenedContainedFile",
+          "params": [
+            "file",
+            "initialInfo",
+            "root",
+            "relativePath",
+            "boundaryName"
+          ],
+          "qualifiedName": "verifyOpenedContainedFile",
+          "returnType": "error"
+        },
+        {
+          "exported": false,
+          "lineCount": 45,
+          "name": "resolveContainedRegularFile",
+          "params": [
+            "root",
+            "relativePath",
+            "boundaryName"
+          ],
+          "qualifiedName": "resolveContainedRegularFile",
+          "returnType": "(resolvedContainedFile, error)"
+        },
+        {
+          "exported": false,
+          "lineCount": 3,
+          "name": "escapesRoot",
+          "params": [
+            "path"
+          ],
+          "qualifiedName": "escapesRoot",
+          "returnType": "bool"
+        }
+      ],
+      "hasStructuralAnalysis": true,
+      "imports": [
+        {
+          "source": "errors",
+          "specifiers": [
+            "errors"
+          ]
+        },
+        {
+          "source": "fmt",
+          "specifiers": [
+            "fmt"
+          ]
+        },
+        {
+          "source": "io",
+          "specifiers": [
+            "io"
+          ]
+        },
+        {
+          "source": "os",
+          "specifiers": [
+            "os"
+          ]
+        },
+        {
+          "source": "path/filepath",
+          "specifiers": [
+            "filepath"
+          ]
+        },
+        {
+          "source": "strings",
+          "specifiers": [
+            "strings"
+          ]
+        }
+      ],
+      "totalLines": 126
+    },
+    "scripts/understandgraph/contained_file_open_other.go": {
+      "classes": [],
+      "contentHash": "bd6765136c88e91c307569b2ab832ee5584dde50e7f41977be8c2256fcb66c9b",
+      "exports": [],
+      "filePath": "scripts/understandgraph/contained_file_open_other.go",
+      "functions": [
+        {
+          "exported": false,
+          "lineCount": 3,
+          "name": "openContainedFile",
+          "params": [
+            "path"
+          ],
+          "qualifiedName": "openContainedFile",
+          "returnType": "(*os.File, error)"
+        }
+      ],
+      "hasStructuralAnalysis": true,
+      "imports": [
+        {
+          "source": "os",
+          "specifiers": [
+            "os"
+          ]
+        }
+      ],
+      "totalLines": 10
+    },
+    "scripts/understandgraph/contained_file_open_unix.go": {
+      "classes": [],
+      "contentHash": "faed689a2f9584531818868a491df84257ade02712ad7cbbf2d1f7717ce4ec2e",
+      "exports": [],
+      "filePath": "scripts/understandgraph/contained_file_open_unix.go",
+      "functions": [
+        {
+          "exported": false,
+          "lineCount": 4,
+          "name": "openContainedFile",
+          "params": [
+            "path"
+          ],
+          "qualifiedName": "openContainedFile",
+          "returnType": "(*os.File, error)"
+        }
+      ],
+      "hasStructuralAnalysis": true,
+      "imports": [
+        {
+          "source": "os",
+          "specifiers": [
+            "os"
+          ]
+        },
+        {
+          "source": "syscall",
+          "specifiers": [
+            "syscall"
+          ]
+        }
+      ],
+      "totalLines": 14
     },
     "scripts/understandgraph/go_functions.go": {
       "classes": [
@@ -39104,7 +39460,7 @@
     },
     "scripts/understandgraph/go_packages.go": {
       "classes": [],
-      "contentHash": "c20693802141b7e017ce20cc458798553a4b883baf4bfd514ebc5bd98b2bbeaf",
+      "contentHash": "edb965f3a517726c4f8bc73314fdd36c64d10421c98ee1bfb92e3af8ff852f99",
       "exports": [],
       "filePath": "scripts/understandgraph/go_packages.go",
       "functions": [
@@ -39120,12 +39476,13 @@
         },
         {
           "exported": false,
-          "lineCount": 157,
+          "lineCount": 156,
           "name": "analyzeGoPackages",
           "params": [
             "root",
             "modulePath",
-            "files"
+            "files",
+            "readFile"
           ],
           "qualifiedName": "analyzeGoPackages",
           "returnType": "([]goSource, []goPackage, error)"
@@ -39243,7 +39600,186 @@
           ]
         }
       ],
-      "totalLines": 259
+      "totalLines": 258
+    },
+    "scripts/understandgraph/go_packages_security_test.go": {
+      "classes": [],
+      "contentHash": "59f171de9e9139c2f7d11af8ffbacaf6a72948eb3a09ebdb4802e7df9a38932a",
+      "exports": [
+        "TestNormalizeRejectsUnsafeGoSourcesBeforeWritingArtifacts",
+        "TestNormalizeAllowsRegularAndInternalSymlinkGoSources",
+        "TestNormalizeRejectsGoSourceSwapAfterInitialResolutionBeforeWritingArtifacts",
+        "TestNormalizeRejectsGoSourceIdentityChangeBeforeWritingArtifacts"
+      ],
+      "filePath": "scripts/understandgraph/go_packages_security_test.go",
+      "functions": [
+        {
+          "exported": true,
+          "lineCount": 88,
+          "name": "TestNormalizeRejectsUnsafeGoSourcesBeforeWritingArtifacts",
+          "params": [
+            "t"
+          ],
+          "qualifiedName": "TestNormalizeRejectsUnsafeGoSourcesBeforeWritingArtifacts"
+        },
+        {
+          "exported": true,
+          "lineCount": 29,
+          "name": "TestNormalizeAllowsRegularAndInternalSymlinkGoSources",
+          "params": [
+            "t"
+          ],
+          "qualifiedName": "TestNormalizeAllowsRegularAndInternalSymlinkGoSources"
+        },
+        {
+          "exported": true,
+          "lineCount": 33,
+          "name": "TestNormalizeRejectsGoSourceSwapAfterInitialResolutionBeforeWritingArtifacts",
+          "params": [
+            "t"
+          ],
+          "qualifiedName": "TestNormalizeRejectsGoSourceSwapAfterInitialResolutionBeforeWritingArtifacts"
+        },
+        {
+          "exported": true,
+          "lineCount": 33,
+          "name": "TestNormalizeRejectsGoSourceIdentityChangeBeforeWritingArtifacts",
+          "params": [
+            "t"
+          ],
+          "qualifiedName": "TestNormalizeRejectsGoSourceIdentityChangeBeforeWritingArtifacts"
+        },
+        {
+          "exported": false,
+          "lineCount": 9,
+          "name": "setOnlyGoScanPath",
+          "params": [
+            "t",
+            "root",
+            "path"
+          ],
+          "qualifiedName": "setOnlyGoScanPath"
+        },
+        {
+          "exported": false,
+          "lineCount": 16,
+          "name": "setGoSourceMetadata",
+          "params": [
+            "t",
+            "root",
+            "content"
+          ],
+          "qualifiedName": "setGoSourceMetadata"
+        },
+        {
+          "exported": false,
+          "lineCount": 8,
+          "name": "graphArtifactPaths",
+          "params": [
+            "root"
+          ],
+          "qualifiedName": "graphArtifactPaths",
+          "returnType": "[]string"
+        },
+        {
+          "exported": false,
+          "lineCount": 8,
+          "name": "snapshotFiles",
+          "params": [
+            "t",
+            "paths"
+          ],
+          "qualifiedName": "snapshotFiles",
+          "returnType": "map[string][]byte"
+        }
+      ],
+      "hasStructuralAnalysis": true,
+      "imports": [
+        {
+          "source": "errors",
+          "specifiers": [
+            "errors"
+          ]
+        },
+        {
+          "source": "os",
+          "specifiers": [
+            "os"
+          ]
+        },
+        {
+          "source": "path/filepath",
+          "specifiers": [
+            "filepath"
+          ]
+        },
+        {
+          "source": "strings",
+          "specifiers": [
+            "strings"
+          ]
+        },
+        {
+          "source": "testing",
+          "specifiers": [
+            "testing"
+          ]
+        },
+        {
+          "source": "github.com/stretchr/testify/require",
+          "specifiers": [
+            "require"
+          ]
+        }
+      ],
+      "totalLines": 244
+    },
+    "scripts/understandgraph/go_packages_security_unix_test.go": {
+      "classes": [],
+      "contentHash": "e9d5e8298e989b1d90ff7309fe9544b75a7efddc024996e0eed7b43ddcb5e2b4",
+      "exports": [
+        "TestNormalizeRejectsGoSourceSwapToFIFOBeforeWritingArtifacts"
+      ],
+      "filePath": "scripts/understandgraph/go_packages_security_unix_test.go",
+      "functions": [
+        {
+          "exported": true,
+          "lineCount": 29,
+          "name": "TestNormalizeRejectsGoSourceSwapToFIFOBeforeWritingArtifacts",
+          "params": [
+            "t"
+          ],
+          "qualifiedName": "TestNormalizeRejectsGoSourceSwapToFIFOBeforeWritingArtifacts"
+        }
+      ],
+      "hasStructuralAnalysis": true,
+      "imports": [
+        {
+          "source": "os",
+          "specifiers": [
+            "os"
+          ]
+        },
+        {
+          "source": "syscall",
+          "specifiers": [
+            "syscall"
+          ]
+        },
+        {
+          "source": "testing",
+          "specifiers": [
+            "testing"
+          ]
+        },
+        {
+          "source": "github.com/stretchr/testify/require",
+          "specifiers": [
+            "require"
+          ]
+        }
+      ],
+      "totalLines": 42
     },
     "scripts/understandgraph/jsonio.go": {
       "classes": [
@@ -39379,17 +39915,18 @@
     },
     "scripts/understandgraph/knowledge_articles.go": {
       "classes": [],
-      "contentHash": "e8157b83f520328e3ce2bedc440944ab17e2da8276c1ddd30ad4244dd8a55f90",
+      "contentHash": "644c049b5d4d005f37bf6eae740fe22fbb3c5179606c147aa99cf729f2f5fbb3",
       "exports": [],
       "filePath": "scripts/understandgraph/knowledge_articles.go",
       "functions": [
         {
           "exported": false,
-          "lineCount": 79,
+          "lineCount": 51,
           "name": "normalizeKnowledgeArticles",
           "params": [
             "root",
-            "graph"
+            "graph",
+            "readFile"
           ],
           "qualifiedName": "normalizeKnowledgeArticles",
           "returnType": "error"
@@ -39416,21 +39953,9 @@
           ]
         },
         {
-          "source": "os",
-          "specifiers": [
-            "os"
-          ]
-        },
-        {
           "source": "path/filepath",
           "specifiers": [
             "filepath"
-          ]
-        },
-        {
-          "source": "strings",
-          "specifiers": [
-            "strings"
           ]
         },
         {
@@ -39440,7 +39965,7 @@
           ]
         }
       ],
-      "totalLines": 93
+      "totalLines": 63
     },
     "scripts/understandgraph/knowledge_articles_security_test.go": {
       "classes": [],
@@ -39732,7 +40257,7 @@
     },
     "scripts/understandgraph/normalize.go": {
       "classes": [],
-      "contentHash": "65ab9a9f487565b595d261eda18c33c0699ffd672d26b7fcf0396697d97d142a",
+      "contentHash": "850d791a5dd33ddde027ac7340ad778cac2b0ee6c937672026f77c801628ba76",
       "exports": [
         "Normalize"
       ],
@@ -39740,12 +40265,23 @@
       "functions": [
         {
           "exported": true,
-          "lineCount": 171,
+          "lineCount": 3,
           "name": "Normalize",
           "params": [
             "root"
           ],
           "qualifiedName": "Normalize",
+          "returnType": "error"
+        },
+        {
+          "exported": false,
+          "lineCount": 171,
+          "name": "normalizeWithContainedFileReader",
+          "params": [
+            "root",
+            "readFile"
+          ],
+          "qualifiedName": "normalizeWithContainedFileReader",
           "returnType": "error"
         },
         {
@@ -39828,7 +40364,7 @@
           ]
         }
       ],
-      "totalLines": 243
+      "totalLines": 247
     },
     "scripts/understandgraph/normalize_test.go": {
       "classes": [
@@ -41174,7 +41710,7 @@
       "totalLines": 142
     }
   },
-  "generatedAt": "2026-07-17T04:37:37.235Z",
-  "gitCommitHash": "582dc4c7b7c4a88a97504eac0c78a1ab94cb33ed",
+  "generatedAt": "2026-07-17T07:18:36.891Z",
+  "gitCommitHash": "0a90464cdc465acc4b399974d8e34a245a7adb8a",
   "version": "1.0.0"
 }

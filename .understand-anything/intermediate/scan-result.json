@@ -1,5 +1,5 @@
 {
-  "description": "Go 版 Pixiv 工具集，以 pixiv CLI、MCP stdio server 与公开 Go SDK 提供搜索、详情、排行、推荐、下载及 refresh token 管理等能力。注意：项目包含超过 100 个源文件；为加快分析，建议将范围限定到子目录。",
+  "description": "Go 版 Pixiv 工具集，可作为 pixiv CLI、MCP stdio server 和公开 Go SDK 使用，并优先复用 Pixiv App API；未配置 refresh token 时，可对受支持能力启用匿名 web/ajax API fallback。注意：项目包含超过 100 个源文件；如需更快分析，可考虑将范围限定到子目录。",
   "estimatedComplexity": "large",
   "files": [
     {
@@ -77,7 +77,7 @@
     {
       "path": "CHANGELOG.md",
       "language": "markdown",
-      "sizeLines": 172,
+      "sizeLines": 176,
       "fileCategory": "docs"
     },
     {
@@ -185,7 +185,7 @@
     {
       "path": "docs/development.md",
       "language": "markdown",
-      "sizeLines": 488,
+      "sizeLines": 496,
       "fileCategory": "docs"
     },
     {
@@ -467,13 +467,13 @@
     {
       "path": "internal/cli/config_cmd.go",
       "language": "go",
-      "sizeLines": 117,
+      "sizeLines": 126,
       "fileCategory": "code"
     },
     {
       "path": "internal/cli/config_test.go",
       "language": "go",
-      "sizeLines": 200,
+      "sizeLines": 275,
       "fileCategory": "code"
     },
     {
@@ -489,9 +489,15 @@
       "fileCategory": "code"
     },
     {
+      "path": "internal/cli/loginhelper/install_darwin_test.go",
+      "language": "go",
+      "sizeLines": 89,
+      "fileCategory": "code"
+    },
+    {
       "path": "internal/cli/loginhelper/install_darwin.go",
       "language": "go",
-      "sizeLines": 201,
+      "sizeLines": 230,
       "fileCategory": "code"
     },
     {
@@ -653,7 +659,7 @@
     {
       "path": "internal/download/ugoira_rs/src/lib.rs",
       "language": "rust",
-      "sizeLines": 2608,
+      "sizeLines": 2859,
       "fileCategory": "code"
     },
     {
@@ -1409,7 +1415,7 @@
     {
       "path": "scripts/build-staticlibs.sh",
       "language": "shell",
-      "sizeLines": 157,
+      "sizeLines": 164,
       "fileCategory": "script"
     },
     {
@@ -1631,7 +1637,7 @@
     {
       "path": "scripts/test-build-staticlibs.sh",
       "language": "shell",
-      "sizeLines": 52,
+      "sizeLines": 89,
       "fileCategory": "script"
     },
     {
@@ -1659,15 +1665,45 @@
       "fileCategory": "script"
     },
     {
+      "path": "scripts/understandgraph/contained_file_open_other.go",
+      "language": "go",
+      "sizeLines": 9,
+      "fileCategory": "code"
+    },
+    {
+      "path": "scripts/understandgraph/contained_file_open_unix.go",
+      "language": "go",
+      "sizeLines": 13,
+      "fileCategory": "code"
+    },
+    {
+      "path": "scripts/understandgraph/contained_file.go",
+      "language": "go",
+      "sizeLines": 125,
+      "fileCategory": "code"
+    },
+    {
       "path": "scripts/understandgraph/go_functions.go",
       "language": "go",
       "sizeLines": 212,
       "fileCategory": "code"
     },
     {
+      "path": "scripts/understandgraph/go_packages_security_test.go",
+      "language": "go",
+      "sizeLines": 243,
+      "fileCategory": "code"
+    },
+    {
+      "path": "scripts/understandgraph/go_packages_security_unix_test.go",
+      "language": "go",
+      "sizeLines": 41,
+      "fileCategory": "code"
+    },
+    {
       "path": "scripts/understandgraph/go_packages.go",
       "language": "go",
-      "sizeLines": 258,
+      "sizeLines": 257,
       "fileCategory": "code"
     },
     {
@@ -1685,7 +1721,7 @@
     {
       "path": "scripts/understandgraph/knowledge_articles.go",
       "language": "go",
-      "sizeLines": 92,
+      "sizeLines": 62,
       "fileCategory": "code"
     },
     {
@@ -1709,7 +1745,7 @@
     {
       "path": "scripts/understandgraph/normalize.go",
       "language": "go",
-      "sizeLines": 242,
+      "sizeLines": 246,
       "fileCategory": "code"
     },
     {
@@ -1819,6 +1855,7 @@
     ],
     "module:github.com/FlanChanXwO/pixiv-cli/internal/cli/loginhelper": [
       "internal/cli/loginhelper/install_darwin.go",
+      "internal/cli/loginhelper/install_darwin_test.go",
       "internal/cli/loginhelper/install_other.go"
     ],
     "module:github.com/FlanChanXwO/pixiv-cli/internal/cli/loginhelper#loginhelper_test": [
@@ -2060,8 +2097,13 @@
       "scripts/releaseworkflow/workflow_policy_test.go"
     ],
     "module:github.com/FlanChanXwO/pixiv-cli/scripts/understandgraph": [
+      "scripts/understandgraph/contained_file.go",
+      "scripts/understandgraph/contained_file_open_other.go",
+      "scripts/understandgraph/contained_file_open_unix.go",
       "scripts/understandgraph/go_functions.go",
       "scripts/understandgraph/go_packages.go",
+      "scripts/understandgraph/go_packages_security_test.go",
+      "scripts/understandgraph/go_packages_security_unix_test.go",
       "scripts/understandgraph/jsonio.go",
       "scripts/understandgraph/knowledge_articles.go",
       "scripts/understandgraph/knowledge_articles_security_test.go",
@@ -2228,6 +2270,9 @@
     "internal/cli/loginhelper/install_darwin.go": [
       "module:github.com/FlanChanXwO/pixiv-cli/internal/common/constants",
       "module:github.com/FlanChanXwO/pixiv-cli/internal/utils/files"
+    ],
+    "internal/cli/loginhelper/install_darwin_test.go": [
+      "module:github.com/FlanChanXwO/pixiv-cli/internal/common/constants"
     ],
     "internal/cli/loginhelper/install_other.go": [],
     "internal/cli/loginhelper/install_other_test.go": [
@@ -2636,8 +2681,13 @@
       "module:github.com/FlanChanXwO/pixiv-cli/scripts/internal/workflowpolicy"
     ],
     "scripts/releaseworkflow/workflow_policy_test.go": [],
+    "scripts/understandgraph/contained_file.go": [],
+    "scripts/understandgraph/contained_file_open_other.go": [],
+    "scripts/understandgraph/contained_file_open_unix.go": [],
     "scripts/understandgraph/go_functions.go": [],
     "scripts/understandgraph/go_packages.go": [],
+    "scripts/understandgraph/go_packages_security_test.go": [],
+    "scripts/understandgraph/go_packages_security_unix_test.go": [],
     "scripts/understandgraph/jsonio.go": [
       "module:github.com/FlanChanXwO/pixiv-cli/internal/utils/files"
     ],
@@ -2737,6 +2787,7 @@
     "internal/cli/domain_cmd.go": [],
     "internal/cli/domain_cmd_test.go": [],
     "internal/cli/loginhelper/install_darwin.go": [],
+    "internal/cli/loginhelper/install_darwin_test.go": [],
     "internal/cli/loginhelper/install_other.go": [],
     "internal/cli/loginhelper/install_other_test.go": [],
     "internal/cli/prompt.go": [],
@@ -2930,8 +2981,13 @@
     "scripts/test-package-release.sh": [],
     "scripts/test-release-workflow.sh": [],
     "scripts/test-rust-vendor.sh": [],
+    "scripts/understandgraph/contained_file.go": [],
+    "scripts/understandgraph/contained_file_open_other.go": [],
+    "scripts/understandgraph/contained_file_open_unix.go": [],
     "scripts/understandgraph/go_functions.go": [],
     "scripts/understandgraph/go_packages.go": [],
+    "scripts/understandgraph/go_packages_security_test.go": [],
+    "scripts/understandgraph/go_packages_security_unix_test.go": [],
     "scripts/understandgraph/jsonio.go": [],
     "scripts/understandgraph/knowledge_articles.go": [],
     "scripts/understandgraph/knowledge_articles_security_test.go": [],
@@ -2962,5 +3018,5 @@
     "yaml"
   ],
   "name": "pixiv-cli",
-  "totalFiles": 292
+  "totalFiles": 298
 }
