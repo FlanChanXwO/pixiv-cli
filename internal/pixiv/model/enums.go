@@ -41,3 +41,13 @@ const (
 	IllustTypeManga  IllustType = "manga"
 	IllustTypeUgoira IllustType = "ugoira"
 )
+
+// SearchIllustFilters 是 facade 与协议 adapter 之间的规范化搜索筛选。
+type SearchIllustFilters struct {
+	Rating      string
+	ContentType string
+	AIMode      string
+	AspectRatio string
+	Resolution  string
+	Tool        string
+}

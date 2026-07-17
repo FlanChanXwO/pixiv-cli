@@ -11,10 +11,11 @@ import (
 )
 
 type searchIllustQuery struct {
-	Word     string       `json:"word"`
-	Target   SearchTarget `json:"target"`
-	Sort     SortMode     `json:"sort"`
-	Duration string       `json:"duration"`
+	Word     string              `json:"word"`
+	Target   SearchTarget        `json:"target"`
+	Sort     SortMode            `json:"sort"`
+	Duration string              `json:"duration"`
+	Filters  SearchIllustFilters `json:"filters"`
 }
 type rankingQuery struct {
 	Mode RankingMode `json:"mode"`
@@ -40,6 +41,32 @@ type userFollowingQuery struct {
 	Restrict Restrict `json:"restrict"`
 }
 
+func (c *Client) SearchIllustOptions(ctx context.Context, request SearchIllustOptionsRequest) (result *SearchIllustOptionsResult, err error) {
+	started := time.Now()
+	defer func() { c.delegatedOperationLog(OperationSearchIllustOptions, started, err, 0, 0) }()
+	if scoped, snapshotErr := c.operationClient(ctx, OperationSearchIllustOptions); snapshotErr != nil {
+		return nil, snapshotErr
+	} else if scoped != c {
+		return scoped.SearchIllustOptions(ctx, request)
+	}
+	word := strings.TrimSpace(request.Word)
+	if word == "" {
+		return nil, invalidArgument(OperationSearchIllustOptions, 0, errors.New("word is required"))
+	}
+	if err := c.requireRoute(OperationSearchIllustOptions, routeApp, 0, 0); err != nil {
+		return nil, err
+	}
+	options, err := c.app.SearchIllustOptions(ctx, word)
+	if err != nil {
+		return nil, mapAppOperationError(err, OperationSearchIllustOptions, 0)
+	}
+	tools := append([]string(nil), options.Tools...)
+	if tools == nil {
+		tools = []string{}
+	}
+	return &SearchIllustOptionsResult{Tools: tools}, nil
+}
+
 // SearchIllust 返回一个作品搜索上游批次。
 func (c *Client) SearchIllust(ctx context.Context, request SearchIllustRequest) (result *IllustListResult, err error) {
 	started := time.Now()
@@ -49,7 +76,7 @@ func (c *Client) SearchIllust(ctx context.Context, request SearchIllustRequest) 
 	} else if scoped != c {
 		return scoped.SearchIllust(ctx, request)
 	}
-	query := searchIllustQuery{strings.TrimSpace(request.Word), request.Target, request.Sort, strings.TrimSpace(request.Duration)}
+	query := searchIllustQuery{strings.TrimSpace(request.Word), request.Target, request.Sort, strings.TrimSpace(request.Duration), request.Filters}
 	if query.Word == "" {
 		return nil, invalidArgument(OperationSearchIllust, 0, errors.New("word is required"))
 	}
@@ -59,7 +86,7 @@ func (c *Client) SearchIllust(ctx context.Context, request SearchIllustRequest) 
 	if query.Sort == "" {
 		query.Sort = SortModeDateDesc
 	}
-	if !validSearchTarget(query.Target) || !validSortMode(query.Sort) || !validDuration(query.Duration) {
+	if !validSearchTarget(query.Target) || !validSortMode(query.Sort) || !validDuration(query.Duration) || !validSearchResolution(query.Filters.Resolution) {
 		return nil, invalidArgument(OperationSearchIllust, 0, errors.New("search enum is invalid"))
 	}
 	digest := queryDigest(OperationSearchIllust, query)
@@ -81,11 +108,20 @@ func (c *Client) SearchIllust(ctx context.Context, request SearchIllustRequest) 
 	if route != routeApp {
 		return nil, unexpectedRoute(OperationSearchIllust, 0, 0)
 	}
-	list, err := c.app.SearchIllust(ctx, query.Word, string(query.Target), string(query.Sort), query.Duration, offset)
+	list, err := c.app.SearchIllust(ctx, query.Word, string(query.Target), string(query.Sort), query.Duration, offset, model.SearchIllustFilters{Resolution: string(query.Filters.Resolution)})
 	if err != nil {
 		return nil, mapAppOperationError(err, OperationSearchIllust, 0)
 	}
 	return publicIllustList(list, OperationSearchIllust, digest, "offset", c.cursorSource), nil
+}
+
+func validSearchResolution(value SearchResolution) bool {
+	switch value {
+	case "", SearchResolutionAll, SearchResolutionHigh, SearchResolutionMedium, SearchResolutionLow:
+		return true
+	default:
+		return false
+	}
 }
 
 // IllustRanking 返回一个排行榜上游批次。

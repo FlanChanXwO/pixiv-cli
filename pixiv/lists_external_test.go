@@ -714,6 +714,56 @@ func TestAppListRejectsMissingItemsIDsAndMalformedContinuationSafely(t *testing.
 	}
 }
 
+func TestSearchIllustHighResolutionUsesAppServerBounds(t *testing.T) {
+	t.Parallel()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/search/illust" {
+			t.Fatalf("path = %q", r.URL.Path)
+		}
+		query := r.URL.Query()
+		if query.Get("width_min") != "3000" || query.Get("height_min") != "3000" {
+			t.Fatalf("query = %v", query)
+		}
+		fmt.Fprint(w, `{"illusts":[]}`)
+	}))
+	defer server.Close()
+	client, err := pixiv.NewClient(pixiv.Options{HTTPClient: server.Client(), AppAPIBaseURL: server.URL, AccessToken: "token"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = client.SearchIllust(context.Background(), pixiv.SearchIllustRequest{
+		Word: "miku",
+		Filters: pixiv.SearchIllustFilters{
+			Resolution: pixiv.SearchResolutionHigh,
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestSearchIllustOptionsUsesAuthenticatedApp(t *testing.T) {
+	t.Parallel()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/search/options" || r.URL.Query().Get("word") != "miku" {
+			t.Fatalf("request = %s?%s", r.URL.Path, r.URL.RawQuery)
+		}
+		fmt.Fprint(w, `{"illust":{"tool":{"options":["CLIP STUDIO PAINT","Photoshop"]}}}`)
+	}))
+	defer server.Close()
+	client, err := pixiv.NewClient(pixiv.Options{HTTPClient: server.Client(), AppAPIBaseURL: server.URL, AccessToken: "token"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := client.SearchIllustOptions(context.Background(), pixiv.SearchIllustOptionsRequest{Word: " miku "})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Tools) != 2 || result.Tools[0] != "CLIP STUDIO PAINT" || result.Tools[1] != "Photoshop" {
+		t.Fatalf("tools = %#v", result.Tools)
+	}
+}
+
 func TestAnonymousWebSearchRejectsMissingItemsAndIDsButAcceptsEmpty(t *testing.T) {
 	t.Parallel()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

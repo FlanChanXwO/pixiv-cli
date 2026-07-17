@@ -90,12 +90,78 @@ const (
 	IllustTypeUgoira IllustType = "ugoira"
 )
 
+// SearchResolution 是插画搜索使用的稳定分辨率档位。
+type SearchResolution string
+
+const (
+	SearchResolutionAll    SearchResolution = "all"
+	SearchResolutionHigh   SearchResolution = "high"
+	SearchResolutionMedium SearchResolution = "medium"
+	SearchResolutionLow    SearchResolution = "low"
+)
+
+type SearchRating string
+
+const (
+	SearchRatingAll    SearchRating = "all"
+	SearchRatingSFW    SearchRating = "sfw"
+	SearchRatingR18    SearchRating = "r18"
+	SearchRatingR18G   SearchRating = "r18g"
+	SearchRatingMature SearchRating = "mature"
+)
+
+type SearchContentType string
+
+const (
+	SearchContentTypeAll             SearchContentType = "all"
+	SearchContentTypeIllustAndUgoira SearchContentType = "illust-and-ugoira"
+	SearchContentTypeIllust          SearchContentType = "illust"
+	SearchContentTypeManga           SearchContentType = "manga"
+	SearchContentTypeUgoira          SearchContentType = "ugoira"
+)
+
+type SearchAIMode string
+
+const (
+	SearchAIModeAll     SearchAIMode = "all"
+	SearchAIModeExclude SearchAIMode = "exclude"
+	SearchAIModeOnly    SearchAIMode = "only"
+)
+
+type SearchAspectRatio string
+
+const (
+	SearchAspectRatioAll       SearchAspectRatio = "all"
+	SearchAspectRatioLandscape SearchAspectRatio = "landscape"
+	SearchAspectRatioPortrait  SearchAspectRatio = "portrait"
+	SearchAspectRatioSquare    SearchAspectRatio = "square"
+)
+
+// SearchIllustFilters 是独立于 App/Web wire 参数的稳定搜索筛选契约。
+type SearchIllustFilters struct {
+	Rating      SearchRating      `json:"rating,omitempty"`
+	ContentType SearchContentType `json:"content_type,omitempty"`
+	AIMode      SearchAIMode      `json:"ai_mode,omitempty"`
+	AspectRatio SearchAspectRatio `json:"aspect_ratio,omitempty"`
+	Resolution  SearchResolution  `json:"resolution,omitempty"`
+	Tool        string            `json:"tool,omitempty"`
+}
+
 type SearchIllustRequest struct {
-	Word     string       `json:"word"`
-	Target   SearchTarget `json:"search_target,omitempty"`
-	Sort     SortMode     `json:"sort,omitempty"`
-	Duration string       `json:"duration,omitempty"`
-	Cursor   Cursor       `json:"cursor,omitempty"`
+	Word     string              `json:"word"`
+	Target   SearchTarget        `json:"search_target,omitempty"`
+	Sort     SortMode            `json:"sort,omitempty"`
+	Duration string              `json:"duration,omitempty"`
+	Cursor   Cursor              `json:"cursor,omitempty"`
+	Filters  SearchIllustFilters `json:"filters,omitempty"`
+}
+
+type SearchIllustOptionsRequest struct {
+	Word string `json:"word"`
+}
+
+type SearchIllustOptionsResult struct {
+	Tools []string `json:"tools"`
 }
 type IllustRankingRequest struct {
 	Mode   RankingMode `json:"mode,omitempty"`
