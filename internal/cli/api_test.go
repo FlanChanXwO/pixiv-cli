@@ -81,6 +81,45 @@ func TestSearchPassesStableFiltersToSDKAndFollowsCursorUntilLimit(t *testing.T) 
 	assert.Equal(t, []int64{4, 5}, []int64{out.Illusts[0].ID, out.Illusts[1].ID})
 }
 
+func TestSearchMapsRemainingCanonicalFiltersToSDK(t *testing.T) {
+	tests := []struct {
+		name string
+		args []string
+		want sdk.SearchIllustFilters
+	}{
+		{name: "medium resolution", args: []string{"--resolution", "medium"}, want: sdk.SearchIllustFilters{Resolution: sdk.SearchResolutionMedium}},
+		{name: "low resolution", args: []string{"--resolution", "low"}, want: sdk.SearchIllustFilters{Resolution: sdk.SearchResolutionLow}},
+		{name: "landscape", args: []string{"--aspect-ratio", "landscape"}, want: sdk.SearchIllustFilters{AspectRatio: sdk.SearchAspectRatioLandscape}},
+		{name: "square", args: []string{"--aspect-ratio", "square"}, want: sdk.SearchIllustFilters{AspectRatio: sdk.SearchAspectRatioSquare}},
+		{name: "illust and ugoira", args: []string{"--type", "illust-and-ugoira"}, want: sdk.SearchIllustFilters{ContentType: sdk.SearchContentTypeIllustAndUgoira}},
+		{name: "illust", args: []string{"--type", "illust"}, want: sdk.SearchIllustFilters{ContentType: sdk.SearchContentTypeIllust}},
+		{name: "manga", args: []string{"--type", "manga"}, want: sdk.SearchIllustFilters{ContentType: sdk.SearchContentTypeManga}},
+		{name: "ugoira", args: []string{"--type", "ugoira"}, want: sdk.SearchIllustFilters{ContentType: sdk.SearchContentTypeUgoira}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			useTempPaths(t)
+			var got sdk.SearchIllustFilters
+			setTestSDKCommandClient(t, sdkCommandFake{search: func(_ context.Context, request sdk.SearchIllustRequest) (*sdk.IllustListResult, error) {
+				got = request.Filters
+				return &sdk.IllustListResult{}, nil
+			}})
+			var stdout, stderr bytes.Buffer
+			args := append([]string{"pixiv", "search", "miku", "--json"}, test.args...)
+			require.Equal(t, 0, Run(args, strings.NewReader(""), &stdout, &stderr), stderr.String())
+			if test.want.Resolution != "" {
+				assert.Equal(t, test.want.Resolution, got.Resolution)
+			}
+			if test.want.AspectRatio != "" {
+				assert.Equal(t, test.want.AspectRatio, got.AspectRatio)
+			}
+			if test.want.ContentType != "" {
+				assert.Equal(t, test.want.ContentType, got.ContentType)
+			}
+		})
+	}
+}
+
 func TestSearchDeprecatedAITypeUsesDocumentedSemanticMapping(t *testing.T) {
 	for _, test := range []struct {
 		value string
@@ -188,6 +227,27 @@ func TestSearchOptionsTextClearlyPrintsEmptyTools(t *testing.T) {
 	code := Run([]string{"pixiv", "search-options", "miku"}, strings.NewReader(""), &stdout, &stderr)
 	require.Equal(t, 0, code, stderr.String())
 	assert.Equal(t, "search options for \"miku\"\ntools: none\n", stdout.String())
+}
+
+func TestSearchOptionsTextEscapesControlCharactersInToolNames(t *testing.T) {
+	useTempPaths(t)
+	tool := "safe\nline\r\x1b[31mred"
+	setTestSDKCommandClient(t, sdkCommandFake{searchOptions: func(context.Context, sdk.SearchIllustOptionsRequest) (*sdk.SearchIllustOptionsResult, error) {
+		return &sdk.SearchIllustOptionsResult{Tools: []string{tool}}, nil
+	}})
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"pixiv", "search-options", "miku"}, strings.NewReader(""), &stdout, &stderr)
+	require.Equal(t, 0, code, stderr.String())
+	assert.Equal(t, "search options for \"miku\"\ntools:\n- safe\\nline\\r\\x1b[31mred\n", stdout.String())
+	assert.NotContains(t, stdout.String(), "\x1b")
+
+	stdout.Reset()
+	stderr.Reset()
+	code = Run([]string{"pixiv", "search-options", "miku", "--json"}, strings.NewReader(""), &stdout, &stderr)
+	require.Equal(t, 0, code, stderr.String())
+	var result sdk.SearchIllustOptionsResult
+	require.NoError(t, json.Unmarshal(stdout.Bytes(), &result))
+	assert.Equal(t, []string{tool}, result.Tools)
 }
 
 func TestRunSearchRejectsMalformedExplicitProxyWithoutLeakingSensitiveComponents(t *testing.T) {

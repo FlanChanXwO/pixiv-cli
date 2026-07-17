@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"strconv"
 	"strings"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/application"
@@ -223,9 +224,16 @@ func (a app) runSearchOptions(cmd *cobra.Command, word string, opts commandOptio
 	}
 	fmt.Fprintln(a.out, "tools:")
 	for _, tool := range result.Tools {
-		fmt.Fprintf(a.out, "- %s\n", tool)
+		fmt.Fprintf(a.out, "- %s\n", safeTextLine(tool))
 	}
 	return nil
+}
+
+// safeTextLine 保留可见 Unicode，同时转义换行、ANSI ESC 和其他控制字节，
+// 防止上游工具名破坏终端的逐行文本协议。JSON 输出仍交由 encoding/json 原样编码。
+func safeTextLine(value string) string {
+	quoted := strconv.QuoteToGraphic(value)
+	return quoted[1 : len(quoted)-1]
 }
 
 func (a app) newDetailCommand() *cobra.Command {
