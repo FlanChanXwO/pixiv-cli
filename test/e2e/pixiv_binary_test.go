@@ -552,9 +552,8 @@ func TestExplicitTokenCanaryFailureDiagnosticsRedactKnownToken(t *testing.T) {
 	}
 }
 
-// TestPixivBinaryAuthenticatedAppAPICanary 覆盖需要登录态的稳定公开 SDK
-// 能力。调用者必须明确选择隔离的临时 token 或本机持久化账号；默认绝不复用
-// 本机认证配置，避免误把日常开发环境的凭据用于联网发布门禁。
+// TestPixivBinaryAuthenticatedAppAPICanary 覆盖需要登录态的 binary 命令能力。
+// 搜索筛选由独立的 SDK exact canary 验收，避免后续 CLI OAuth 波动掩盖搜索结果。
 func TestPixivBinaryAuthenticatedAppAPICanary(t *testing.T) {
 	if os.Getenv("PIXIV_E2E_REAL_API") != "1" {
 		t.Skip("set PIXIV_E2E_REAL_API=1 to run authenticated App API canary")
@@ -579,11 +578,9 @@ func TestPixivBinaryAuthenticatedAppAPICanary(t *testing.T) {
 		env = localAuthCanaryEnv()
 	} else {
 		env = isolatedEnv(t).values
-		env = append(env, "PIXIV_REFRESH_TOKEN="+auth.refreshToken)
 	}
-	if proxy := firstNonEmpty(os.Getenv("PIXIV_E2E_PROXY"), os.Getenv("PIXIV_WEB_API_PROXY")); proxy != "" {
-		env = append(env, "https_proxy="+proxy, "HTTPS_PROXY="+proxy)
-	}
+	proxy := firstNonEmpty(os.Getenv("PIXIV_E2E_PROXY"), os.Getenv("PIXIV_WEB_API_PROXY"))
+	env = authenticatedCanaryChildEnvFrom(env, auth, proxy)
 
 	accountOut := runPixivCanary(t, repoRoot, binaryPath, env, auth, "auth", "check", "--json")
 	var account struct {
@@ -592,95 +589,6 @@ func TestPixivBinaryAuthenticatedAppAPICanary(t *testing.T) {
 	requireCanaryJSON(t, accountOut, auth, &account)
 	if account.UserID <= 0 {
 		t.Fatalf("auth check returned invalid user_id: %d", account.UserID)
-	}
-
-	const searchWord = "初音ミク"
-	baselineOut := runPixivCanary(t, repoRoot, binaryPath, env, auth, "search", searchWord, "--json")
-	baselineIllusts := requireCanaryIllustListJSON(t, baselineOut, auth)
-	if len(baselineIllusts) == 0 {
-		t.Fatal("authenticated App search baseline returned no illustrations")
-	}
-
-	optionsOut := runPixivCanary(t, repoRoot, binaryPath, env, auth, "search-options", searchWord, "--json")
-	var options pixiv.SearchIllustOptionsResult
-	requireCanaryJSON(t, optionsOut, auth, &options)
-	if options.Tools == nil {
-		t.Fatal("search options returned a null or missing tools array")
-	}
-	resolution := canaryFilterCandidateValue(baselineIllusts, canaryResolution)
-	if resolution == "" {
-		t.Fatal("authenticated App baseline returned no illustration in an official resolution bucket")
-	}
-	aspect := canaryFilterCandidateValue(baselineIllusts, canaryAspectRatio)
-	if aspect == "" {
-		t.Fatal("authenticated App baseline returned no illustration with classifiable dimensions")
-	}
-	contentType := canaryFilterCandidateValue(baselineIllusts, canaryContentType)
-	if contentType == "" {
-		t.Fatal("authenticated App baseline returned no illustration with a supported content type")
-	}
-	if !slices.ContainsFunc(baselineIllusts, func(illust pixiv.Illust) bool { return illust.AIType != 2 }) {
-		t.Fatal("authenticated App baseline returned no non-AI illustration candidate")
-	}
-
-	for _, search := range []struct {
-		name     string
-		args     []string
-		validate func(pixiv.Illust) bool
-		want     string
-	}{
-		{
-			name:     "resolution-" + resolution,
-			args:     []string{"search", searchWord, "--resolution", resolution, "--limit", "1", "--json"},
-			validate: func(illust pixiv.Illust) bool { return canaryResolution(illust) == resolution },
-			want:     "official " + resolution + " resolution bucket",
-		},
-		{
-			name:     "aspect-" + aspect,
-			args:     []string{"search", searchWord, "--aspect-ratio", aspect, "--limit", "1", "--json"},
-			validate: func(illust pixiv.Illust) bool { return canaryAspectRatio(illust) == aspect },
-			want:     aspect + " aspect ratio",
-		},
-		{
-			name:     "content-type-" + contentType,
-			args:     []string{"search", searchWord, "--type", contentType, "--limit", "1", "--json"},
-			validate: func(illust pixiv.Illust) bool { return canaryContentType(illust) == contentType },
-			want:     "content type " + contentType,
-		},
-		{
-			name:     "exclude-ai",
-			args:     []string{"search", searchWord, "--ai-mode", "exclude", "--limit", "1", "--json"},
-			validate: func(illust pixiv.Illust) bool { return illust.AIType != 2 },
-			want:     "ai_type != 2",
-		},
-	} {
-		t.Run("search-filter/"+search.name, func(t *testing.T) {
-			out := runPixivCanary(t, repoRoot, binaryPath, env, auth, search.args...)
-			illusts := requireCanaryIllustListJSON(t, out, auth)
-			if len(illusts) == 0 {
-				t.Fatalf("search filter %s returned no illustrations despite a matching baseline candidate", search.name)
-			}
-			for _, illust := range illusts {
-				if !search.validate(illust) {
-					t.Fatalf("search filter %s returned illustration %d that does not satisfy %s", search.name, illust.ID, search.want)
-				}
-			}
-		})
-	}
-
-	selectedTool, ok := canaryToolCandidate(options.Tools, baselineIllusts)
-	if !ok {
-		t.Fatal("search options and authenticated baseline returned no shared tool candidate")
-	}
-	toolOut := runPixivCanary(t, repoRoot, binaryPath, env, auth, "search", searchWord, "--tool", selectedTool, "--limit", "1", "--json")
-	toolIllusts := requireCanaryIllustListJSON(t, toolOut, auth)
-	if len(toolIllusts) == 0 {
-		t.Fatal("tool-filter search returned no illustrations despite a matching baseline candidate")
-	}
-	for _, illust := range toolIllusts {
-		if !slices.Contains(illust.Tools, selectedTool) {
-			t.Fatalf("tool-filter search returned illustration %d without the selected tool", illust.ID)
-		}
 	}
 
 	userDetailOut := runPixivCanary(t, repoRoot, binaryPath, env, auth, "user", "detail", strconvFormatInt(account.UserID), "--json")
@@ -819,22 +727,6 @@ func requireCanaryJSON(t *testing.T, body []byte, auth authenticatedCanaryAuth, 
 		}
 		t.Fatalf("decode canary JSON failed: %v\n%s", err, redactCanaryDiagnostic(auth.refreshToken, string(body)))
 	}
-}
-
-func requireCanaryIllustListJSON(t *testing.T, body []byte, auth authenticatedCanaryAuth) []pixiv.Illust {
-	t.Helper()
-
-	var document map[string]json.RawMessage
-	requireCanaryJSON(t, body, auth, &document)
-	raw, ok := document["illusts"]
-	if !ok || bytes.Equal(raw, []byte("null")) {
-		t.Fatal(`canary JSON field "illusts" is missing or null`)
-	}
-	var illusts []pixiv.Illust
-	if err := json.Unmarshal(raw, &illusts); err != nil {
-		t.Fatalf(`canary JSON field "illusts" is not an illustration array: %v`, err)
-	}
-	return illusts
 }
 
 func redactCanaryDiagnostic(refreshToken, value string) string {
