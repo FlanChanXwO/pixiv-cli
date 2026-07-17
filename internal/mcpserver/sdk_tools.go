@@ -101,7 +101,7 @@ func (a *App) recommended(ctx context.Context, _ *mcp.CallToolRequest, in recomm
 		if fetchErr != nil {
 			return a.recommendedError(ctx, fetchErr)
 		}
-		out.Illusts = items
+		out.Illusts = normalizeIllusts(items)
 		out.Pagination.Illust = recommendedPagination(plan, in.Limit, len(items), more)
 	}
 	if in.Kind == "all" || in.Kind == "manga" {
@@ -115,7 +115,7 @@ func (a *App) recommended(ctx context.Context, _ *mcp.CallToolRequest, in recomm
 		if fetchErr != nil {
 			return a.recommendedError(ctx, fetchErr)
 		}
-		out.Manga = items
+		out.Manga = normalizeIllusts(items)
 		out.Pagination.Manga = recommendedPagination(plan, in.Limit, len(items), more)
 	}
 	if in.Kind == "all" || in.Kind == "novel" {
@@ -155,9 +155,7 @@ func normalizeRecommendedUserPreviews(items []sdk.RecommendedUserPreview) []sdk.
 	result := make([]sdk.RecommendedUserPreview, len(items))
 	copy(result, items)
 	for index := range result {
-		if result[index].Illusts == nil {
-			result[index].Illusts = []sdk.Illust{}
-		}
+		result[index].Illusts = normalizeIllusts(result[index].Illusts)
 		if result[index].Novels == nil {
 			result[index].Novels = []sdk.Novel{}
 		}
@@ -173,6 +171,19 @@ func normalizeRecommendedNovels(items []sdk.Novel) []sdk.Novel {
 	for index := range result {
 		if result[index].Tags == nil {
 			result[index].Tags = []sdk.Tag{}
+		}
+	}
+	return result
+}
+
+// normalizeIllusts 只在 MCP structured output 边界把缺失的工具列表编码为空数组。
+// 复制作品切片可避免适配层改写 public SDK 返回值；非空工具名保持原值和上游顺序。
+func normalizeIllusts(items []sdk.Illust) []sdk.Illust {
+	result := make([]sdk.Illust, len(items))
+	copy(result, items)
+	for index := range result {
+		if result[index].Tools == nil {
+			result[index].Tools = []string{}
 		}
 	}
 	return result
@@ -224,7 +235,7 @@ func (a *App) userArtworks(ctx context.Context, _ *mcp.CallToolRequest, in userA
 	if len(items) == 0 {
 		text = fmt.Sprintf("找不到用户 %d 的作品。", userID)
 	}
-	out := illustListOut{UserID: userID, Items: items, Pagination: listPagination(plan, in.Limit, len(items), more), Text: text}
+	out := illustListOut{UserID: userID, Items: normalizeIllusts(items), Pagination: listPagination(plan, in.Limit, len(items), more), Text: text}
 	return illustListResult(out), out, nil
 }
 
@@ -295,7 +306,7 @@ func (a *App) userBookmarks(ctx context.Context, _ *mcp.CallToolRequest, in book
 	if len(items) == 0 {
 		text = fmt.Sprintf("找不到用户 %d 的收藏。", userID)
 	}
-	out := illustListOut{UserID: userID, Items: items, Pagination: listPagination(plan, in.Limit, len(items), more), Text: text}
+	out := illustListOut{UserID: userID, Items: normalizeIllusts(items), Pagination: listPagination(plan, in.Limit, len(items), more), Text: text}
 	return illustListResult(out), out, nil
 }
 

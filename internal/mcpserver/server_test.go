@@ -1098,6 +1098,31 @@ func TestSDKUserToolsResolveIdentityKeepLegacyInputAndReturnStructuredOutput(t *
 	}
 }
 
+func TestUserArtworksNormalizesNilToolsAndPreservesNonNilToolsAtMCPBoundary(t *testing.T) {
+	withNilTools := testSDKIllust(11, "without-tools", 71)
+	withTools := testSDKIllust(12, "with-tools", 71)
+	withTools.Tools = []string{"CLIP STUDIO PAINT", "Photoshop"}
+	client := &fakeSDKClient{userID: 71, artworks: []sdk.Illust{withNilTools, withTools}}
+	session, closeSession := newSDKTestSession(t, client)
+	defer closeSession()
+
+	result := callTool(t, session, "user_artworks", map[string]any{"user_id": 71})
+	if result.IsError {
+		t.Fatalf("user_artworks result=%+v", result)
+	}
+	var out illustListOut
+	decodeStructured(t, result, &out)
+	if out.Items[0].Tools == nil || len(out.Items[0].Tools) != 0 {
+		t.Fatalf("nil tools were not normalized to an empty array: %#v", out.Items[0].Tools)
+	}
+	if !slices.Equal(out.Items[1].Tools, withTools.Tools) {
+		t.Fatalf("non-nil tools changed: got %q want %q", out.Items[1].Tools, withTools.Tools)
+	}
+	if withNilTools.Tools != nil {
+		t.Fatalf("MCP normalization mutated the SDK value: %#v", withNilTools.Tools)
+	}
+}
+
 func TestSDKUserDetailReturnsStructuredSDKResult(t *testing.T) {
 	webpage := "https://example.test/artist"
 	workspaceImage := "https://example.test/workspace.png"
@@ -1250,6 +1275,54 @@ func TestSDKRecommendedAllReturnsEveryStreamAndPagination(t *testing.T) {
 	raw, err := json.Marshal(structured)
 	if err != nil || strings.Contains(string(raw), "cursor") || strings.Contains(string(raw), "next_url") {
 		t.Fatalf("structured output leaks continuation: %s, err=%v", raw, err)
+	}
+}
+
+func TestRecommendedNormalizesToolsAcrossTopLevelAndNestedIllusts(t *testing.T) {
+	withoutTools := testSDKIllust(1, "without-tools", 10)
+	withTools := testSDKIllust(2, "with-tools", 10)
+	withTools.Tools = []string{"SAI", "Photoshop"}
+	client := &fakeSDKClient{
+		illustRecommended: func(context.Context, sdk.IllustRecommendedRequest) (*sdk.IllustListResult, error) {
+			return &sdk.IllustListResult{Illusts: []sdk.Illust{withoutTools, withTools}}, nil
+		},
+		mangaRecommended: func(context.Context, sdk.IllustRecommendedRequest) (*sdk.IllustListResult, error) {
+			return &sdk.IllustListResult{Illusts: []sdk.Illust{withoutTools}}, nil
+		},
+		novelRecommended: func(context.Context, sdk.NovelRecommendedRequest) (*sdk.NovelListResult, error) {
+			return &sdk.NovelListResult{Novels: []sdk.Novel{}}, nil
+		},
+		userRecommended: func(context.Context, sdk.UserRecommendedRequest) (*sdk.UserRecommendedResult, error) {
+			return &sdk.UserRecommendedResult{UserPreviews: []sdk.RecommendedUserPreview{{
+				User:    sdk.User{ID: 10},
+				Illusts: []sdk.Illust{withoutTools, withTools},
+				Novels:  []sdk.Novel{},
+			}}}, nil
+		},
+	}
+	session, closeSession := newSDKTestSession(t, client)
+	defer closeSession()
+
+	result := callTool(t, session, "recommended", map[string]any{"kind": "all"})
+	if result.IsError {
+		t.Fatalf("recommended result=%+v", result)
+	}
+	var out recommendedOut
+	decodeStructured(t, result, &out)
+	for label, items := range map[string][]sdk.Illust{
+		"illusts": out.Illusts,
+		"manga":   out.Manga,
+		"nested":  out.UserPreviews[0].Illusts,
+	} {
+		if items[0].Tools == nil || len(items[0].Tools) != 0 {
+			t.Fatalf("%s nil tools were not normalized: %#v", label, items[0].Tools)
+		}
+	}
+	if !slices.Equal(out.Illusts[1].Tools, withTools.Tools) || !slices.Equal(out.UserPreviews[0].Illusts[1].Tools, withTools.Tools) {
+		t.Fatalf("non-nil tools changed: top=%q nested=%q want=%q", out.Illusts[1].Tools, out.UserPreviews[0].Illusts[1].Tools, withTools.Tools)
+	}
+	if withoutTools.Tools != nil {
+		t.Fatalf("MCP normalization mutated the SDK value: %#v", withoutTools.Tools)
 	}
 }
 
