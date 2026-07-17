@@ -22,6 +22,7 @@ const (
 	DefaultAppOS        = protocol.AppOS
 	DefaultAppOSVersion = protocol.AppOSVersion
 	DefaultAppVersion   = protocol.AppVersion
+	searchOptionsPath   = "/v1/search/options"
 )
 
 // ErrMalformedResponse 标识成功 HTTP 响应无法构成约定 JSON，不包含原始响应体。
@@ -92,12 +93,41 @@ func New(opts ...Option) *Client {
 func (c *Client) SearchIllust(ctx context.Context, word, target, sort, duration string, offset int, filterOptions ...model.SearchIllustFilters) (*model.IllustList, error) {
 	q := url.Values{"word": {word}, "search_target": {target}, "sort": {sort}}
 	setOptional(q, "duration", duration)
-	if len(filterOptions) > 0 && filterOptions[0].Resolution == "high" {
-		q.Set("width_min", "3000")
-		q.Set("height_min", "3000")
+	if len(filterOptions) > 0 {
+		setSearchIllustFilters(q, filterOptions[0])
 	}
 	setOffset(q, offset)
 	return c.getIllustList(ctx, protocol.AppSearchIllust, q, "offset")
+}
+
+func setSearchIllustFilters(query url.Values, filters model.SearchIllustFilters) {
+	if filters.AIMode == "exclude" {
+		query.Set("search_ai_type", "1")
+	}
+	switch filters.AspectRatio {
+	case "landscape", "portrait", "square":
+		query.Set("ratio_pattern", filters.AspectRatio)
+	}
+	switch filters.ContentType {
+	case "illust-and-ugoira":
+		query.Set("content_type", "illust_and_ugoira")
+	case "illust", "manga", "ugoira":
+		query.Set("content_type", filters.ContentType)
+	}
+	setOptional(query, "tool", filters.Tool)
+	switch filters.Resolution {
+	case "high":
+		query.Set("width_min", "3000")
+		query.Set("height_min", "3000")
+	case "medium":
+		query.Set("width_min", "1000")
+		query.Set("width_max", "2999")
+		query.Set("height_min", "1000")
+		query.Set("height_max", "2999")
+	case "low":
+		query.Set("width_max", "999")
+		query.Set("height_max", "999")
+	}
 }
 
 func (c *Client) SearchIllustOptions(ctx context.Context, word string) (*model.SearchIllustOptions, error) {
@@ -109,13 +139,13 @@ func (c *Client) SearchIllustOptions(ctx context.Context, word string) (*model.S
 		"search_ai_type":                 {"0"},
 	}
 	var raw searchIllustOptionsDTO
-	if err := c.getJSONWithRetry(ctx, "/v1/search/options", query, &raw); err != nil {
+	if err := c.getJSONWithRetry(ctx, searchOptionsPath, query, &raw); err != nil {
 		return nil, err
 	}
-	if raw.Illust == nil || raw.Illust.Tool == nil {
-		return nil, ErrMalformedResponse
+	var tools []string
+	if raw.Illust != nil && raw.Illust.Tool != nil {
+		tools = raw.Illust.Tool.Options
 	}
-	tools := raw.Illust.Tool.Options
 	if tools == nil {
 		tools = []string{}
 	}

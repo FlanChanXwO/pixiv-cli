@@ -54,6 +54,7 @@ type illustDTO struct {
 	CreateDate     string        `json:"create_date"`
 	Width          int           `json:"width"`
 	Height         int           `json:"height"`
+	Tools          []string      `json:"tools"`
 }
 type userDTO struct {
 	ID               int64               `json:"id"`

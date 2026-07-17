@@ -76,6 +76,7 @@ type Illust struct {
 	CreateDate     string     `json:"create_date"`
 	Width          int        `json:"width"`
 	Height         int        `json:"height"`
+	Tools          []string   `json:"tools"`
 }
 
 type User struct {

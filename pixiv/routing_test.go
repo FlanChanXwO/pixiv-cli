@@ -14,6 +14,7 @@ func TestOperationPolicyIsCompleteAndUnknownIsUnsupported(t *testing.T) {
 		{OperationIllustDetail, routeAppThenWeb, true}, {OperationIllustPages, routeWeb, true},
 		{OperationIllustRelated, routeApp, false}, {OperationTrendingTagsIllust, routeApp, false},
 		{OperationUgoiraMetadata, routeAppThenWeb, true}, {OperationSearchIllust, routeApp, true},
+		{OperationSearchIllustOptions, routeApp, false},
 		{OperationIllustRanking, routeApp, true}, {OperationIllustRecommended, routeApp, false},
 		{OperationMangaRecommended, routeApp, false}, {OperationNovelRecommended, routeApp, false}, {OperationUserRecommended, routeApp, false},
 		{OperationFollowingIllusts, routeApp, false}, {OperationSearchUser, routeApp, true},

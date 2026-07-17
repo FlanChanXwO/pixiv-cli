@@ -1,5 +1,7 @@
 package pixiv
 
+import "encoding/json"
+
 // IllustDetail 是作品详情响应；保留 Pixiv App API 的 illust envelope。
 type IllustDetail struct {
 	Illust Illust `json:"illust"`
@@ -23,6 +25,16 @@ type Illust struct {
 	CreateDate     string     `json:"create_date"`
 	Width          int        `json:"width"`
 	Height         int        `json:"height"`
+	Tools          []string   `json:"tools"`
+}
+
+// MarshalJSON 将未提供的绘图工具稳定编码为空数组，满足 SDK/MCP 的数组契约。
+func (illust Illust) MarshalJSON() ([]byte, error) {
+	type wireIllust Illust
+	if illust.Tools == nil {
+		illust.Tools = []string{}
+	}
+	return json.Marshal(wireIllust(illust))
 }
 
 // User 是作品作者的规范化摘要。

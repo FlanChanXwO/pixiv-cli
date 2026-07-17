@@ -37,7 +37,7 @@ func mapIllust(dto illustDTO) model.Illust {
 		TotalBookmarks: dto.TotalBookmarks, TotalView: dto.TotalView, XRestrict: dto.XRestrict,
 		User: mapUser(dto.User), Tags: tags, ImageURLs: mapImageURLs(dto.ImageURLs),
 		MetaSinglePage: model.SinglePage{OriginalImageURL: dto.MetaSinglePage.OriginalImageURL}, MetaPages: pages,
-		AIType: dto.AIType, CreateDate: dto.CreateDate, Width: dto.Width, Height: dto.Height,
+		AIType: dto.AIType, CreateDate: dto.CreateDate, Width: dto.Width, Height: dto.Height, Tools: append([]string(nil), dto.Tools...),
 	}
 }
 

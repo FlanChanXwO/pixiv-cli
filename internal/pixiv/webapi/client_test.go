@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/model"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -250,6 +251,50 @@ func TestClientSearchIllustMapsWebArtworkResults(t *testing.T) {
 	assert.Equal(t, "https://i.pximg.net/thumb.jpg", illust.ImageURLs.Medium)
 	require.Len(t, illust.Tags, 1)
 	assert.Equal(t, "初音ミク", illust.Tags[0].Name)
+}
+
+func TestClientSearchIllustMapsContentTypeAndFilterVariants(t *testing.T) {
+	tests := []struct {
+		name        string
+		filters     model.SearchIllustFilters
+		wantPath    string
+		wantQuery   map[string]string
+		absentQuery []string
+	}{
+		{name: "all", filters: model.SearchIllustFilters{ContentType: "all"}, wantPath: "/ajax/search/artworks/miku", wantQuery: map[string]string{"type": "all"}},
+		{name: "illustration", filters: model.SearchIllustFilters{ContentType: "illust"}, wantPath: "/ajax/search/illustrations/miku", wantQuery: map[string]string{"type": "illust"}},
+		{name: "ugoira", filters: model.SearchIllustFilters{ContentType: "ugoira"}, wantPath: "/ajax/search/illustrations/miku", wantQuery: map[string]string{"type": "ugoira"}},
+		{name: "illustration and ugoira", filters: model.SearchIllustFilters{ContentType: "illust-and-ugoira"}, wantPath: "/ajax/search/illustrations/miku", wantQuery: map[string]string{"type": "all"}},
+		{name: "portrait high", filters: model.SearchIllustFilters{AspectRatio: "portrait", Resolution: "high"}, wantPath: "/ajax/search/artworks/miku", wantQuery: map[string]string{"ratio": "-0.5", "wlt": "3000", "hlt": "3000"}, absentQuery: []string{"wgt", "hgt"}},
+		{name: "square low", filters: model.SearchIllustFilters{AspectRatio: "square", Resolution: "low"}, wantPath: "/ajax/search/artworks/miku", wantQuery: map[string]string{"ratio": "0", "wgt": "999", "hgt": "999"}, absentQuery: []string{"wlt", "hlt"}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path != test.wantPath {
+					t.Fatalf("path = %q, want %q", r.URL.Path, test.wantPath)
+				}
+				for key, value := range test.wantQuery {
+					if got := r.URL.Query().Get(key); got != value {
+						t.Fatalf("%s = %q, want %q; query=%v", key, got, value, r.URL.Query())
+					}
+				}
+				for _, key := range test.absentQuery {
+					if r.URL.Query().Has(key) {
+						t.Fatalf("query unexpectedly has %q: %v", key, r.URL.Query())
+					}
+				}
+				_, _ = w.Write([]byte(`{"error":false,"body":{"illustManga":{"data":[]}}}`))
+			}))
+			defer server.Close()
+			_, err := New(WithWebBase(server.URL), WithHTTPClient(server.Client())).SearchIllust(
+				context.Background(), "miku", "partial_match_for_tags", "date_desc", "", 0, test.filters,
+			)
+			if err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
 }
 
 func TestClientSearchIllustAppliesInPageOffset(t *testing.T) {

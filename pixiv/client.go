@@ -372,6 +372,7 @@ func mapIllust(illust model.Illust) Illust {
 		CreateDate:     illust.CreateDate,
 		Width:          illust.Width,
 		Height:         illust.Height,
+		Tools:          append([]string{}, illust.Tools...),
 	}
 }
 

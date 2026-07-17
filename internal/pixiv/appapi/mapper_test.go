@@ -15,7 +15,7 @@ func TestMapIllustPreservesEveryNormalizedField(t *testing.T) {
 		ImageURLs:      imageURLsDTO{SquareMedium: "square", Medium: "medium", Large: "large", Original: "original"},
 		MetaSinglePage: singlePageDTO{OriginalImageURL: "single"},
 		MetaPages:      []metaPageDTO{{PageIndex: 1, Width: 6, Height: 7, Extension: "png", ImageURLs: imageURLsDTO{Original: "page"}}},
-		AIType:         2, CreateDate: "2026-07-12", Width: 8, Height: 9,
+		AIType:         2, CreateDate: "2026-07-12", Width: 8, Height: 9, Tools: []string{"tool-a", "tool-b"},
 	}
 	want := model.Illust{
 		ID: 1, Title: "title", Type: "manga", PageCount: 2, TotalBookmarks: 3, TotalView: 4, XRestrict: 1,
@@ -24,7 +24,7 @@ func TestMapIllustPreservesEveryNormalizedField(t *testing.T) {
 		ImageURLs:      model.ImageURLs{SquareMedium: "square", Medium: "medium", Large: "large", Original: "original"},
 		MetaSinglePage: model.SinglePage{OriginalImageURL: "single"},
 		MetaPages:      []model.MetaPage{{PageIndex: 1, Width: 6, Height: 7, Extension: "png", ImageURLs: model.ImageURLs{Original: "page"}}},
-		AIType:         2, CreateDate: "2026-07-12", Width: 8, Height: 9,
+		AIType:         2, CreateDate: "2026-07-12", Width: 8, Height: 9, Tools: []string{"tool-a", "tool-b"},
 	}
 	if got := mapIllust(dto); !reflect.DeepEqual(got, want) {
 		t.Fatalf("mapIllust() = %#v, want %#v", got, want)

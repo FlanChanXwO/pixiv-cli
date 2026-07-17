@@ -41,6 +41,58 @@ func TestIllustDetailPreservesCanceledContext(t *testing.T) {
 	}
 }
 
+func TestSearchIllustMapsNormalizedFiltersToAppQuery(t *testing.T) {
+	tests := []struct {
+		name        string
+		filters     model.SearchIllustFilters
+		wantQuery   map[string]string
+		absentQuery []string
+	}{
+		{
+			name: "defaults omitted", filters: model.SearchIllustFilters{Rating: "all", ContentType: "all", AIMode: "all", AspectRatio: "all", Resolution: "all"},
+			absentQuery: []string{"search_ai_type", "ratio_pattern", "content_type", "width_min", "width_max", "height_min", "height_max", "tool"},
+		},
+		{
+			name: "only AI square low illustration and ugoira", filters: model.SearchIllustFilters{
+				ContentType: "illust-and-ugoira", AIMode: "only", AspectRatio: "square", Resolution: "low", Tool: "tool",
+			},
+			wantQuery:   map[string]string{"content_type": "illust_and_ugoira", "ratio_pattern": "square", "width_max": "999", "height_max": "999", "tool": "tool"},
+			absentQuery: []string{"search_ai_type", "width_min", "height_min"},
+		},
+		{
+			name: "exclude AI portrait high ugoira", filters: model.SearchIllustFilters{
+				ContentType: "ugoira", AIMode: "exclude", AspectRatio: "portrait", Resolution: "high",
+			},
+			wantQuery:   map[string]string{"content_type": "ugoira", "search_ai_type": "1", "ratio_pattern": "portrait", "width_min": "3000", "height_min": "3000"},
+			absentQuery: []string{"width_max", "height_max"},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				for key, value := range test.wantQuery {
+					if got := r.URL.Query().Get(key); got != value {
+						t.Fatalf("%s = %q, want %q; query=%v", key, got, value, r.URL.Query())
+					}
+				}
+				for _, key := range test.absentQuery {
+					if r.URL.Query().Has(key) {
+						t.Fatalf("query unexpectedly has %q: %v", key, r.URL.Query())
+					}
+				}
+				_, _ = w.Write([]byte(`{"illusts":[]}`))
+			}))
+			defer api.Close()
+			_, err := New(WithBaseURL(api.URL), WithHTTPClient(api.Client()), WithAccessToken("access")).SearchIllust(
+				context.Background(), "miku", "partial_match_for_tags", "date_desc", "", 0, test.filters,
+			)
+			if err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
+
 func TestRefreshAndRetryOnceOnTypedAuthStatus(t *testing.T) {
 	for _, status := range []int{http.StatusUnauthorized, http.StatusForbidden} {
 		t.Run(http.StatusText(status), func(t *testing.T) {
