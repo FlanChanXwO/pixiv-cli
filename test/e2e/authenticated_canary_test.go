@@ -25,6 +25,8 @@ func TestAuthenticatedCanaryChildEnvReplacesHostProxyOverrides(t *testing.T) {
 		"PATH=/bin",
 		"https_proxy=http://hostile-lower.invalid",
 		"HTTPS_PROXY=http://hostile-upper.invalid",
+		"Https_Proxy=http://hostile-mixed.invalid",
+		"hTtPs_PrOxY=http://hostile-other-mixed.invalid",
 		"PIXIV_REFRESH_TOKEN=hostile-token",
 	}
 	const proxy = "socks5h://127.0.0.1:7890"
@@ -34,6 +36,7 @@ func TestAuthenticatedCanaryChildEnvReplacesHostProxyOverrides(t *testing.T) {
 	assertCanaryEnvValue(t, local, "https_proxy", proxy, 1)
 	assertCanaryEnvValue(t, local, "HTTPS_PROXY", proxy, 1)
 	assertCanaryEnvValue(t, local, "PIXIV_REFRESH_TOKEN", "", 0)
+	assertCanaryProxyEnvCanonical(t, local)
 
 	explicit := authenticatedCanaryChildEnvFrom(base, authenticatedCanaryAuth{
 		kind:         canaryAuthExplicitToken,
@@ -42,6 +45,7 @@ func TestAuthenticatedCanaryChildEnvReplacesHostProxyOverrides(t *testing.T) {
 	assertCanaryEnvValue(t, explicit, "https_proxy", proxy, 1)
 	assertCanaryEnvValue(t, explicit, "HTTPS_PROXY", proxy, 1)
 	assertCanaryEnvValue(t, explicit, "PIXIV_REFRESH_TOKEN", "explicit-token", 1)
+	assertCanaryProxyEnvCanonical(t, explicit)
 }
 
 func authenticatedCanaryChildEnvFrom(environ []string, auth authenticatedCanaryAuth, proxy string) []string {
@@ -52,7 +56,7 @@ func authenticatedCanaryChildEnvFrom(environ []string, auth authenticatedCanaryA
 			filtered = append(filtered, entry)
 			continue
 		}
-		if name == "https_proxy" || name == "HTTPS_PROXY" || strings.EqualFold(name, "PIXIV_REFRESH_TOKEN") {
+		if strings.EqualFold(name, "https_proxy") || strings.EqualFold(name, "PIXIV_REFRESH_TOKEN") {
 			continue
 		}
 		filtered = append(filtered, entry)
@@ -567,6 +571,25 @@ func assertCanaryEnvValue(t *testing.T, env []string, name, want string, wantCou
 	}
 	if count != wantCount {
 		t.Fatalf("%s count = %d, want %d", name, count, wantCount)
+	}
+}
+
+func assertCanaryProxyEnvCanonical(t *testing.T, env []string) {
+	t.Helper()
+
+	count := 0
+	for _, entry := range env {
+		name, _, ok := strings.Cut(entry, "=")
+		if !ok || !strings.EqualFold(name, "https_proxy") {
+			continue
+		}
+		count++
+		if name != "https_proxy" && name != "HTTPS_PROXY" {
+			t.Fatalf("authenticated canary retained noncanonical proxy key %q", name)
+		}
+	}
+	if count != 2 {
+		t.Fatalf("case-insensitive proxy key count = %d, want 2", count)
 	}
 }
 
