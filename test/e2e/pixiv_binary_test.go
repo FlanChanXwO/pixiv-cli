@@ -238,13 +238,43 @@ func TestPixivBinaryWebAPIFallbackReal(t *testing.T) {
 		t.Fatalf("web fallback search returned no illustrations:\n%s", string(searchOut))
 	}
 
-	// 高级筛选必须继续沿匿名 Web route 返回稳定 JSON；这里不要求结果非空，
-	// 避免把上游当前没有匹配作品误判成协议故障。
-	advancedSearchOut := runPixiv(t, repoRoot, binaryPath, env, "search", "初音ミク", "--aspect-ratio", "landscape", "--limit", "1", "--json")
+	// 匿名 Web 搜索列表不包含真实宽高；必须经 detail 取得尺寸后才能从
+	// baseline 选择可靠候选，不能把列表模型中的零值解释成筛选失败。
+	firstAspect := ""
+	aspect := ""
+	for _, illust := range searchResult.Illusts {
+		if illust.ID <= 0 {
+			continue
+		}
+		detail := webCanaryIllustDetail(t, repoRoot, binaryPath, env, illust.ID)
+		currentAspect := canaryAspectRatio(detail)
+		if currentAspect == "" {
+			continue
+		}
+		if firstAspect == "" {
+			firstAspect = currentAspect
+			aspect = currentAspect
+			continue
+		}
+		// 优先选择不同于 baseline 首项的值；若后端忽略 ratio，limit=1
+		// 会返回首项并使语义断言失败，而不是偶然变绿。
+		if currentAspect != firstAspect {
+			aspect = currentAspect
+			break
+		}
+	}
+	if aspect == "" {
+		t.Fatal("web fallback baseline details returned no illustration with classifiable dimensions")
+	}
+	advancedSearchOut := runPixiv(t, repoRoot, binaryPath, env, "search", "初音ミク", "--aspect-ratio", aspect, "--limit", "1", "--json")
 	advancedIllusts := requireIllustListJSONShape(t, advancedSearchOut, "anonymous web advanced search")
+	if len(advancedIllusts) == 0 {
+		t.Fatalf("anonymous web %s search returned no illustrations despite a matching baseline candidate", aspect)
+	}
 	for _, illust := range advancedIllusts {
-		if illust.Width <= illust.Height {
-			t.Fatalf("anonymous web landscape search returned illustration %d with dimensions %dx%d", illust.ID, illust.Width, illust.Height)
+		detail := webCanaryIllustDetail(t, repoRoot, binaryPath, env, illust.ID)
+		if canaryAspectRatio(detail) != aspect {
+			t.Fatalf("anonymous web %s search returned illustration %d with dimensions %dx%d", aspect, illust.ID, detail.Width, detail.Height)
 		}
 	}
 
@@ -354,6 +384,72 @@ func TestResolveAuthenticatedCanaryAuth(t *testing.T) {
 				t.Fatalf("auth kind = %d, want %d", auth.kind, test.wantKind)
 			}
 		})
+	}
+}
+
+func TestCanarySearchCandidateClassifiers(t *testing.T) {
+	t.Parallel()
+
+	for _, test := range []struct {
+		name       string
+		illust     pixiv.Illust
+		resolution string
+		aspect     string
+		content    string
+	}{
+		{name: "high landscape illustration", illust: pixiv.Illust{Width: 4000, Height: 3000, Type: "illust"}, resolution: "high", aspect: "landscape", content: "illust"},
+		{name: "medium portrait manga", illust: pixiv.Illust{Width: 1000, Height: 2999, Type: "manga"}, resolution: "medium", aspect: "portrait", content: "manga"},
+		{name: "low square ugoira", illust: pixiv.Illust{Width: 999, Height: 999, Type: "ugoira"}, resolution: "low", aspect: "square", content: "ugoira"},
+		{name: "dimensions straddle official buckets", illust: pixiv.Illust{Width: 3000, Height: 2999, Type: "novel"}, aspect: "landscape"},
+		{name: "missing dimensions", illust: pixiv.Illust{Type: "illust"}, content: "illust"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if got := canaryResolution(test.illust); got != test.resolution {
+				t.Fatalf("resolution = %q, want %q", got, test.resolution)
+			}
+			if got := canaryAspectRatio(test.illust); got != test.aspect {
+				t.Fatalf("aspect ratio = %q, want %q", got, test.aspect)
+			}
+			if got := canaryContentType(test.illust); got != test.content {
+				t.Fatalf("content type = %q, want %q", got, test.content)
+			}
+		})
+	}
+}
+
+func TestCanaryToolCandidateUsesOptionsAndBaselineIntersection(t *testing.T) {
+	t.Parallel()
+
+	illusts := []pixiv.Illust{
+		{Tools: []string{"PaintTool SAI"}},
+		{Tools: []string{"CLIP STUDIO PAINT", "Photoshop"}},
+	}
+	if got, ok := canaryToolCandidate([]string{"Photoshop", "CLIP STUDIO PAINT"}, illusts); !ok || got != "Photoshop" {
+		t.Fatalf("candidate = %q, %t, want Photoshop, true", got, ok)
+	}
+	if got, ok := canaryToolCandidate([]string{"Procreate"}, illusts); ok || got != "" {
+		t.Fatalf("candidate = %q, %t, want empty, false", got, ok)
+	}
+	if got, ok := canaryToolCandidate([]string{"PaintTool SAI"}, illusts); !ok || got != "PaintTool SAI" {
+		t.Fatalf("fallback candidate = %q, %t, want PaintTool SAI, true", got, ok)
+	}
+}
+
+func TestCanaryFilterCandidatePrefersValueDifferentFromBaselineFirstItem(t *testing.T) {
+	t.Parallel()
+
+	illusts := []pixiv.Illust{
+		{Width: 1200, Height: 1800, Type: "illust"},
+		{Width: 4000, Height: 3000, Type: "manga"},
+	}
+	if got := canaryFilterCandidateValue(illusts, canaryResolution); got != "high" {
+		t.Fatalf("resolution candidate = %q, want high", got)
+	}
+	if got := canaryFilterCandidateValue(illusts, canaryAspectRatio); got != "landscape" {
+		t.Fatalf("aspect candidate = %q, want landscape", got)
+	}
+	if got := canaryFilterCandidateValue(illusts, canaryContentType); got != "manga" {
+		t.Fatalf("content candidate = %q, want manga", got)
 	}
 }
 
@@ -498,11 +594,33 @@ func TestPixivBinaryAuthenticatedAppAPICanary(t *testing.T) {
 		t.Fatalf("auth check returned invalid user_id: %d", account.UserID)
 	}
 
-	optionsOut := runPixivCanary(t, repoRoot, binaryPath, env, auth, "search-options", "初音ミク", "--json")
+	const searchWord = "初音ミク"
+	baselineOut := runPixivCanary(t, repoRoot, binaryPath, env, auth, "search", searchWord, "--json")
+	baselineIllusts := requireCanaryIllustListJSON(t, baselineOut, auth)
+	if len(baselineIllusts) == 0 {
+		t.Fatal("authenticated App search baseline returned no illustrations")
+	}
+
+	optionsOut := runPixivCanary(t, repoRoot, binaryPath, env, auth, "search-options", searchWord, "--json")
 	var options pixiv.SearchIllustOptionsResult
 	requireCanaryJSON(t, optionsOut, auth, &options)
 	if options.Tools == nil {
 		t.Fatal("search options returned a null or missing tools array")
+	}
+	resolution := canaryFilterCandidateValue(baselineIllusts, canaryResolution)
+	if resolution == "" {
+		t.Fatal("authenticated App baseline returned no illustration in an official resolution bucket")
+	}
+	aspect := canaryFilterCandidateValue(baselineIllusts, canaryAspectRatio)
+	if aspect == "" {
+		t.Fatal("authenticated App baseline returned no illustration with classifiable dimensions")
+	}
+	contentType := canaryFilterCandidateValue(baselineIllusts, canaryContentType)
+	if contentType == "" {
+		t.Fatal("authenticated App baseline returned no illustration with a supported content type")
+	}
+	if !slices.ContainsFunc(baselineIllusts, func(illust pixiv.Illust) bool { return illust.AIType != 2 }) {
+		t.Fatal("authenticated App baseline returned no non-AI illustration candidate")
 	}
 
 	for _, search := range []struct {
@@ -512,26 +630,26 @@ func TestPixivBinaryAuthenticatedAppAPICanary(t *testing.T) {
 		want     string
 	}{
 		{
-			name:     "high-resolution",
-			args:     []string{"search", "初音ミク", "--resolution", "high", "--limit", "1", "--json"},
-			validate: func(illust pixiv.Illust) bool { return illust.Width >= 3000 && illust.Height >= 3000 },
-			want:     "width and height >= 3000",
+			name:     "resolution-" + resolution,
+			args:     []string{"search", searchWord, "--resolution", resolution, "--limit", "1", "--json"},
+			validate: func(illust pixiv.Illust) bool { return canaryResolution(illust) == resolution },
+			want:     "official " + resolution + " resolution bucket",
 		},
 		{
-			name:     "landscape",
-			args:     []string{"search", "初音ミク", "--aspect-ratio", "landscape", "--limit", "1", "--json"},
-			validate: func(illust pixiv.Illust) bool { return illust.Width > illust.Height },
-			want:     "width > height",
+			name:     "aspect-" + aspect,
+			args:     []string{"search", searchWord, "--aspect-ratio", aspect, "--limit", "1", "--json"},
+			validate: func(illust pixiv.Illust) bool { return canaryAspectRatio(illust) == aspect },
+			want:     aspect + " aspect ratio",
 		},
 		{
-			name:     "illustration-content-type",
-			args:     []string{"search", "初音ミク", "--type", "illust", "--limit", "1", "--json"},
-			validate: func(illust pixiv.Illust) bool { return illust.Type == "illust" },
-			want:     `type == "illust"`,
+			name:     "content-type-" + contentType,
+			args:     []string{"search", searchWord, "--type", contentType, "--limit", "1", "--json"},
+			validate: func(illust pixiv.Illust) bool { return canaryContentType(illust) == contentType },
+			want:     "content type " + contentType,
 		},
 		{
 			name:     "exclude-ai",
-			args:     []string{"search", "初音ミク", "--ai-mode", "exclude", "--limit", "1", "--json"},
+			args:     []string{"search", searchWord, "--ai-mode", "exclude", "--limit", "1", "--json"},
 			validate: func(illust pixiv.Illust) bool { return illust.AIType != 2 },
 			want:     "ai_type != 2",
 		},
@@ -539,6 +657,9 @@ func TestPixivBinaryAuthenticatedAppAPICanary(t *testing.T) {
 		t.Run("search-filter/"+search.name, func(t *testing.T) {
 			out := runPixivCanary(t, repoRoot, binaryPath, env, auth, search.args...)
 			illusts := requireCanaryIllustListJSON(t, out, auth)
+			if len(illusts) == 0 {
+				t.Fatalf("search filter %s returned no illustrations despite a matching baseline candidate", search.name)
+			}
 			for _, illust := range illusts {
 				if !search.validate(illust) {
 					t.Fatalf("search filter %s returned illustration %d that does not satisfy %s", search.name, illust.ID, search.want)
@@ -547,17 +668,19 @@ func TestPixivBinaryAuthenticatedAppAPICanary(t *testing.T) {
 		})
 	}
 
-	if len(options.Tools) > 0 {
-		selectedTool := options.Tools[0]
-		toolOut := runPixivCanary(t, repoRoot, binaryPath, env, auth, "search", "初音ミク", "--tool", selectedTool, "--limit", "1", "--json")
-		toolIllusts := requireCanaryIllustListJSON(t, toolOut, auth)
-		for _, illust := range toolIllusts {
-			if !slices.Contains(illust.Tools, selectedTool) {
-				t.Fatalf("tool-filter search returned illustration %d without the selected tool", illust.ID)
-			}
+	selectedTool, ok := canaryToolCandidate(options.Tools, baselineIllusts)
+	if !ok {
+		t.Fatal("search options and authenticated baseline returned no shared tool candidate")
+	}
+	toolOut := runPixivCanary(t, repoRoot, binaryPath, env, auth, "search", searchWord, "--tool", selectedTool, "--limit", "1", "--json")
+	toolIllusts := requireCanaryIllustListJSON(t, toolOut, auth)
+	if len(toolIllusts) == 0 {
+		t.Fatal("tool-filter search returned no illustrations despite a matching baseline candidate")
+	}
+	for _, illust := range toolIllusts {
+		if !slices.Contains(illust.Tools, selectedTool) {
+			t.Fatalf("tool-filter search returned illustration %d without the selected tool", illust.ID)
 		}
-	} else {
-		t.Log("search options returned no tools; tool-filter canary sub-check was not applicable")
 	}
 
 	userDetailOut := runPixivCanary(t, repoRoot, binaryPath, env, auth, "user", "detail", strconvFormatInt(account.UserID), "--json")
@@ -785,6 +908,18 @@ func runPixiv(t *testing.T, repoRoot, binaryPath string, env []string, args ...s
 	return out
 }
 
+func webCanaryIllustDetail(t *testing.T, repoRoot, binaryPath string, env []string, illustID int64) pixiv.Illust {
+	t.Helper()
+
+	out := runPixiv(t, repoRoot, binaryPath, env, "detail", strconvFormatInt(illustID), "--json")
+	var detail pixiv.IllustDetail
+	requireJSON(t, out, &detail)
+	if detail.Illust.ID != illustID {
+		t.Fatalf("anonymous web detail returned illustration %d, want %d", detail.Illust.ID, illustID)
+	}
+	return detail.Illust
+}
+
 func runPixivStdout(t *testing.T, repoRoot, binaryPath string, env []string, args ...string) ([]byte, []byte) {
 	t.Helper()
 
@@ -822,6 +957,89 @@ func requireIllustListJSONShape(t *testing.T, body []byte, operation string) []p
 		t.Fatalf("%s JSON field %q is not an illustration array: %v", operation, "illusts", err)
 	}
 	return illusts
+}
+
+func canaryFilterCandidateValue(illusts []pixiv.Illust, classify func(pixiv.Illust) string) string {
+	firstValue := ""
+	if len(illusts) > 0 {
+		firstValue = classify(illusts[0])
+	}
+	fallback := ""
+	for _, illust := range illusts {
+		value := classify(illust)
+		if value == "" {
+			continue
+		}
+		if fallback == "" {
+			fallback = value
+		}
+		if value != firstValue {
+			return value
+		}
+	}
+	return fallback
+}
+
+// canaryResolution 只返回官方三档能够完整表达的尺寸。跨档作品不是任何
+// resolution flag 的可靠候选，不能用来证明服务端筛选生效。
+func canaryResolution(illust pixiv.Illust) string {
+	switch {
+	case illust.Width >= 3000 && illust.Height >= 3000:
+		return "high"
+	case illust.Width >= 1000 && illust.Width <= 2999 && illust.Height >= 1000 && illust.Height <= 2999:
+		return "medium"
+	case illust.Width > 0 && illust.Width <= 999 && illust.Height > 0 && illust.Height <= 999:
+		return "low"
+	default:
+		return ""
+	}
+}
+
+func canaryAspectRatio(illust pixiv.Illust) string {
+	if illust.Width <= 0 || illust.Height <= 0 {
+		return ""
+	}
+	switch {
+	case illust.Width > illust.Height:
+		return "landscape"
+	case illust.Width < illust.Height:
+		return "portrait"
+	default:
+		return "square"
+	}
+}
+
+func canaryContentType(illust pixiv.Illust) string {
+	switch illust.Type {
+	case "illust", "manga", "ugoira":
+		return illust.Type
+	default:
+		return ""
+	}
+}
+
+func canaryToolCandidate(options []string, illusts []pixiv.Illust) (string, bool) {
+	fallback := ""
+	for _, option := range options {
+		if option == "" {
+			continue
+		}
+		for _, illust := range illusts {
+			if slices.Contains(illust.Tools, option) {
+				if fallback == "" {
+					fallback = option
+				}
+				if !slices.Contains(illusts[0].Tools, option) {
+					return option, true
+				}
+				break
+			}
+		}
+	}
+	if fallback != "" {
+		return fallback, true
+	}
+	return "", false
 }
 
 func strconvFormatInt(value int64) string {
