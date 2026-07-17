@@ -15,7 +15,6 @@
 - `AGENTS.md`：agent 的短主规则和路由。
 - `.github/copilot-instructions.md`：Copilot 短提示。
 - `.agents/skills/`：高频 agent 工作流。
-- `.understand-anything/`、`docs/.understand-anything/`：入库的 understand-anything 知识图谱快照（代码图谱与文档图谱），是 agent 快速认识项目的首选入口；结构性变更后重新生成并随改动提交。
 
 ## 更新规则
 

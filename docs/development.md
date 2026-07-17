@@ -17,24 +17,6 @@ cargo --version
 go test ./...
 ```
 
-## understand-anything 图谱归一化
-
-每次重新生成代码图谱后、提交六个 tracked 图谱产物前，必须从仓库根目录运行：
-
-```bash
-go run ./scripts/understandgraph normalize --root .
-go test ./scripts/understandgraph -count=1
-```
-
-归一化器以 `go.mod`、Go AST 和已生成的 scan/graph/fingerprint 为输入：把 generator 展开的
-Go file-to-file imports 改为 package module 边，区分 external test package，并统一 method ID 与
-fingerprint 的 receiver-qualified name。它保留 non-Go importMap，并用 `docs/` 下当前 UTF-8 源文件
-刷新文档图谱中每个 article 的 `knowledgeMeta.content` 全文及 `contentHash` SHA-256，避免 generator
-的展示截断进入入库快照；缺少 article 路径、metadata object 或源文件时会在写入前显式失败。归一化前
-还会用实际 Go 源码核验 scan 与 fingerprint 的 SHA-256、文件行数和函数行数；快照已过期时同样不会
-写入。四份 JSON 会先完整 staging 再逐份 `ReplaceFile`。命令应连续运行两次；第二次不得产生任何
-diff，解析、行号匹配或调用目标有歧义时必须先修复根因，不能手工猜测或跳过。
-
 ## Rust ugoira staticlib
 
 生产 ugoira GIF/APNG 由内置 Rust encoder 完成，运行时不依赖 `ffmpeg`。`ffmpeg` 只可作为
@@ -90,8 +72,7 @@ go test ./internal/download -run '^TestCommittedUgoiraStaticlibManifestWhenPrese
 ```
 
 不要提交 `internal/download/ugoira_rs/target/`；它是机器产物。完成验证的
-`internal/download/ugoira_rs/staticlib/`、其 `manifest.json` 和两份 knowledge graph 则是可追溯
-输入，不能以 ignore 规则隐藏。
+`internal/download/ugoira_rs/staticlib/` 及其 `manifest.json` 是可追溯输入，不能以 ignore 规则隐藏。
 
 Rust crate 的 `.cargo/config.toml` 将 crates.io 替换为其相邻 `vendor/` 中完整的 locked
 依赖闭包。`vendor/` 的每个 package 都带 Cargo 生成的 `.cargo-checksum.json`；它、Cargo config、
@@ -203,7 +184,7 @@ Task 20 的 main push 成功后，Task 13 只能按以下过程回填可提交�
 4. 在回填后的工作树运行
    `go test ./internal/download -run '^TestCommittedUgoiraStaticlibManifestWhenPresent$' -count=1`、
    `go test ./internal/download -run '^TestRustUgoiraEncoderNativeGIFAndAPNG$' -count=1` 与
-   `git diff --check`，再把六个 blobs、manifest、对应 evidence/review 摘要和更新后的 knowledge graph
+   `git diff --check`，再把六个 blobs、manifest 和对应 evidence/review 摘要
    作为 Task 13 的独立审查提交。任一验证失败都阻断 release，不能以部分 artifact 继续。
 
 ## 运行
@@ -484,7 +465,6 @@ workflow artifact 读取、生成或记录 deploy key。
 - 本地数据库 `*.db`
 - 常见缓存、日志、临时文件
 - Rust `internal/download/ugoira_rs/target/`
-- 两份 understand-anything 图谱的临时/垃圾扫描目录（图谱 JSON 和已跟踪 scan result 除外）
 
 不要提交 Pixiv token、下载内容、本地数据库、机器相关配置、Ed25519 私钥或 tap deploy key。
 

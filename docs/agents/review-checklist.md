@@ -9,7 +9,6 @@
 - CLI/MCP 是否经 `internal/application.SDKService` 调用顶层 `pixiv` public SDK；不得绕到 `internal/pixiv/appapi`、`webapi`、`oauth` 或 `resource` 协议适配包。
 - `internal/config` 是否只维护 `config.toml` schema、defaults、effective runtime config 和 sparse writes。
 - `internal/utils/*` 是否保持协议无关；Pixiv/MCP/config 协议值不要搬进 generic utils/common。
-- 结构性变更（新增/移动包、文件大规模迁移、公开接口大改）是否重新生成了 `.understand-anything/` 与 `docs/.understand-anything/` 知识图谱并随改动提交。
 
 ## 行为风险
 
