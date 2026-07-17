@@ -46,6 +46,11 @@ type UgoiraEncodeInput struct {
 }
 
 func writeTempAnimation(ctx context.Context, outputPath string, encode func(tmpOutput string) error) error {
+	return writeTempAnimationWithReplacer(ctx, outputPath, encode, files.ReplaceFile)
+}
+
+// writeTempAnimationWithReplacer 以每次调用的私有 seam 注入不可稳定复现的替换故障。
+func writeTempAnimationWithReplacer(ctx context.Context, outputPath string, encode func(tmpOutput string) error, replaceFile func(string, string) error) error {
 	extension := filepath.Ext(outputPath)
 	if extension == "" {
 		return fmt.Errorf("ugoira output path %q has no file extension", outputPath)
@@ -72,7 +77,10 @@ func writeTempAnimation(ctx context.Context, outputPath string, encode func(tmpO
 		return err
 	}
 	// 动画转换以同目录临时文件发布，编码失败或取消都不会覆盖已有目标。
-	if err := files.ReplaceFile(tmpOutput, outputPath); err != nil {
+	if err := replaceFile(tmpOutput, outputPath); err != nil {
+		if files.MustPreserveReplacementSource(err) {
+			cleanup = false
+		}
 		return err
 	}
 	cleanup = false

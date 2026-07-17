@@ -17,11 +17,37 @@ cargo --version
 go test ./...
 ```
 
+## understand-anything 图谱归一化
+
+每次重新生成代码图谱后、提交六个 tracked 图谱产物前，必须从仓库根目录运行：
+
+```bash
+go run ./scripts/understandgraph normalize --root .
+go test ./scripts/understandgraph -count=1
+```
+
+归一化器以 `go.mod`、Go AST 和已生成的 scan/graph/fingerprint 为输入：把 generator 展开的
+Go file-to-file imports 改为 package module 边，区分 external test package，并统一 method ID 与
+fingerprint 的 receiver-qualified name。它保留 non-Go importMap，并用 `docs/` 下当前 UTF-8 源文件
+刷新文档图谱中每个 article 的 `knowledgeMeta.content` 全文及 `contentHash` SHA-256，避免 generator
+的展示截断进入入库快照；缺少 article 路径、metadata object 或源文件时会在写入前显式失败。归一化前
+还会用实际 Go 源码核验 scan 与 fingerprint 的 SHA-256、文件行数和函数行数；快照已过期时同样不会
+写入。四份 JSON 会先完整 staging 再逐份 `ReplaceFile`。命令应连续运行两次；第二次不得产生任何
+diff，解析、行号匹配或调用目标有歧义时必须先修复根因，不能手工猜测或跳过。
+
 ## Rust ugoira staticlib
 
 生产 ugoira GIF/APNG 由内置 Rust encoder 完成，运行时不依赖 `ffmpeg`。`ffmpeg` 只可作为
 开发质量对照：显式设置 `PIXIV_UGOIRA_QUALITY_FFMPEG=1` 后，Rust quality gate 才会调用它；
 它不是本地构建或用户运行的前置条件。
+
+帧源读取与 image decoder 使用同一条内存边界：边界值直接取 pinned `image` crate
+`Limits::default().max_alloc`，而不是另设经验常量。ZIP member 声明大小超过该值时在读取前失败；
+实际展开字节超过该值、内存预留失败或取消时也会在分块读取中显式失败，不截断输入或回退到
+其他 encoder。取消 token 会在每个读取块前后以及 image decode 前后检查；但 `image` crate 的单帧
+decoder 没有取消回调，所以已经进入其内部的 decode 不能中途打断，只能在返回后立即观察取消。
+聚焦回归覆盖声明大小超限、实际累计字节超限、读取中取消、正常边界输入、正常 GIF/APNG 和腐坏
+ZIP；这一限制的目的仅是防止帧源在 decoder 自身限制生效前无界占用内存，影响是超限作品明确报错。
 
 受支持的 Go 源码构建需要下列条件：
 
@@ -36,14 +62,19 @@ Cargo 输入生成 target library；只有同一次成功得到全部六个真�
 写入带 Rust source digest 的 `manifest.json`。单 target 调用会使已有 manifest 失效，避免用
 局部重建证明全平台一致性。
 
-当前工作树已回填 run `29192425899`（head
-`a1c6b838b9096dd68571b1f477ccace331ddedc9`）产生的六个真实 library 与统一 manifest。六个 runner
-均完成 locked/offline Rust build、真实 cgo GIF/APNG smoke、版本化 binary、archive 与 record；受控
-`consolidate` 又在本地重验 source identity、staticlib/binary/archive SHA 和全部 archive members 后
-生成提交输入。`sh scripts/build.sh` 现会先校验完整 manifest，再在具备本机 cgo/C linker 时构建。
+当前工作树的六库来自 run `29567721284`（head
+`a93378631654f7a19b5e6052f68bdb3650438b03`）。该 run 在六个真实平台 runner 上按下述版本映射
+安装 pinned toolchain，并全部通过 policy、精确源码 ref、locked/offline build、真实 cgo GIF/APNG smoke、
+版本化 binary、archive/record 与 artifact upload。下载六份证据后，本地 fail-closed consolidation
+继续校验同一 version、commit、source digest、目标集合与逐库 hash，再成套生成本目录和 manifest。
+合并前使用临时 review ref 只为让 workflow 精确 checkout 该受审计 commit；产物回填后 workflow
+已经恢复只接受 `refs/heads/main`。
+六库 manifest 的 Rust source digest 为
+`2f076376eb8a0ce0142fa6b03e856ef0e570c3d99b5fe98a73de0df95c70cc91`，与该 commit 的 vendored
+Rust 输入一致；不得用旧 run `29559729696` 的 runner 默认 Rust `1.97.0` 产物替代。
 
-这些 committed library 的编译器 provenance 按 target 固定，而不是使用可移动的 runner 默认
-toolchain：`x86_64-apple-darwin` 与 `x86_64-pc-windows-msvc` 来自 Rust `1.96.0`；
+合规 committed library 的编译器 provenance 必须按 target 固定，而不是使用可移动的 runner 默认
+toolchain：`x86_64-apple-darwin` 与 `x86_64-pc-windows-msvc` 使用 Rust `1.96.0`；
 `aarch64-apple-darwin`、`aarch64-pc-windows-msvc`、`x86_64-unknown-linux-gnu` 与
 `aarch64-unknown-linux-gnu` 来自 Rust `1.96.1`。release test 与 production matrix 都必须携带这份
 精确映射，并通过 `RUSTUP_TOOLCHAIN` 和带 `--no-self-update` 的 `rustup toolchain install` 使用它；
@@ -107,6 +138,11 @@ push 或指向 `refs/heads/main` 的 `workflow_dispatch`，全局 `permissions: 
 secret、tag/Release/tap/signing 命令；YAML AST policy 同时固定六个 runner、full-SHA action、无凭据
 checkout、vendored Rust 检查、单目标 staticlib、真实 cgo GIF/APNG smoke、版本化 binary 的
 `pixiv version --json`、release-style archive 以及 artifact upload。可离线检查声明本身：
+
+matrix 的每个 target 还必须声明与 release test/production 完全相同的 `rust_toolchain`，job 通过
+`RUSTUP_TOOLCHAIN` 绑定该值，并执行带 `--profile minimal --target ... --no-self-update` 的精确
+`rustup toolchain install`。两个 verifier 共用 `scripts/internal/workflowpolicy` 中唯一的目标版本映射；
+任一 workflow 删除、替换、重复或错误插值该映射，policy 都会 fail closed。
 
 Windows 两个 target 的 Rust library 使用 `*-pc-windows-msvc`；相应 cgo selector 必须以
 `-L${SRCDIR}/… -lugoira_rs` 声明库，不能把带盘符的绝对 `.lib` 路径直接传给 cgo；还必须显式携带
@@ -212,7 +248,7 @@ https_proxy=http://127.0.0.1:7890 ./build/pixiv mcp
 ./build/pixiv mcp --no-proxy
 ```
 
-CLI 多账号认证保存在 `os.UserConfigDir()/pixiv/auth.json`，账号 key 是 Pixiv UID；全局配置保存在 `os.UserConfigDir()/pixiv/config.toml`，两个文件权限都为 `0600`。推荐使用 `pixiv auth login` 通过本地 loopback server 和浏览器 OAuth 登录；`auth add` 仍可从 stdin 读取 token，也支持 `--token`，但不建议在共享 shell 历史环境中使用。可用 `pixiv config path/get/set/unset` 管理全局配置。无 refresh token 时默认启用匿名 Pixiv web/ajax API fallback，可用 `pixiv config set web_fallback_enabled false` 关闭。
+CLI 多账号认证保存在 `os.UserConfigDir()/pixiv/auth.json`，账号 key 是 Pixiv UID；全局配置保存在 `os.UserConfigDir()/pixiv/config.toml`。Unix-like 主动使用 `0700` 父目录与 `0600` 文件；Windows 首次创建继承父目录 ACL，替换既有目标保留其 ACL，不主动收紧或放宽 DACL。推荐使用 `pixiv auth login` 通过本地 loopback server 和浏览器 OAuth 登录；`auth add` 仍可从 stdin 读取 token，也支持 `--token`，但不建议在共享 shell 历史环境中使用。可用 `pixiv config path/get/set/unset` 管理全局配置。无 refresh token 时默认启用匿名 Pixiv web/ajax API fallback，可用 `pixiv config set web_fallback_enabled false` 关闭。
 CLI 使用 Cobra/pflag，flag 可以写在位置参数前后；例如 `pixiv auth check 12345678 --json` 和 `pixiv search "初音ミク" --json` 都受支持。
 
 ## 获取 refresh token
@@ -229,7 +265,7 @@ pixiv auth login
 | 浏览器 | macOS 默认优先注册本地 `pixiv://` callback helper 并打开默认浏览器，因此可复用已有 Pixiv 登录态；需要用户在 Pixiv 页面确认账号；`--no-open` 可改为只打印登录 URL。 |
 | 自动/手动回填 | CLI 接收本轮 loopback callback、当前登录尝试注册的 `pixiv://` helper 转交、终端粘贴和本地页面表单；若浏览器没有返回，也可手动粘贴 callback URL、`pixiv://...` URL、Pixiv relay URL 或原始 code。 |
 | state 校验 | 本地 loopback 回调必须匹配本次 state；Pixiv 官方 callback URL 与 `pixiv://account/login` 可在 Pixiv 未返回 state 时作为显式 fallback。 |
-| token 保存 | refresh/access token 不打印；refresh token 按 Pixiv UID 写入 `auth.json`，权限为 `0600`。 |
+| token 保存 | refresh/access token 不打印；refresh token 按 Pixiv UID 写入 `auth.json`。Unix-like 主动使用 `0700` 父目录与 `0600` 文件；Windows 首次创建继承父目录 ACL，替换既有目标保留其 ACL，不主动收紧或放宽 DACL。 |
 
 默认浏览器打开时，macOS 会注册一个仅服务于当前登录尝试的本地 `PixivCLIURLHandler.app`，只把 Pixiv 返回的 `pixiv://account/login?...` URL 转交给本轮 CLI loopback。它不读取浏览器 Cookie、存储、历史、会话文件、标签页或网络流量；helper 不可用时不会启动受管 Chromium、DevTools/CDP 或浏览器状态扫描，只保留正常浏览器、loopback 和手动回填。遇到 Pixiv `post-redirect` 授权接力页时，用户可手动粘贴 relay URL；CLI 只在校验其属于本轮 OAuth 后打开一次。浏览器可能停留在白色 relay 页，是否成功以终端最终输出为准；若未生成 callback，CLI 不会隐藏失败或假装登录成功。
 
@@ -298,10 +334,32 @@ release workflow、位于 `pixiv/account_external_test.go` 的 Windows ACL 测�
 verifier 与其测试；这是不可改写的历史证据，不定义后续 tag 的 allowlist。
 
 当前 v0.3.0 tag 已包含与默认分支相同的顶层 `pixiv/account_external_test.go`，质量门直接运行 tag 中的
-测试，不需要也不能再次 overlay。v0.3.0 恢复 allowlist 因而精确收敛为三条实际有 diff 的路径：
-`.github/workflows/release.yml`、`scripts/releaseworkflow/main.go` 与
-`scripts/releaseworkflow/main_test.go`。覆盖通过一次 `git archive` 提取，再逐项核对工作树 diff 与空
-cached diff；重新加入 account test、任意第四路径或生产源码都必须失败，test job 也不生成 release
+测试，不需要也不能再次 overlay。该 tag 尚未包含拆分后的 release verifier 文件，所以当前恢复
+allowlist 必须逐字列出以下路径，不能改成目录或 glob：
+
+- `.github/workflows/release.yml`
+- `scripts/internal/workflowpolicy/policy.go`
+- `scripts/releaseworkflow/build_policy.go`
+- `scripts/releaseworkflow/build_recovery_test.go`
+- `scripts/releaseworkflow/homebrew_policy.go`
+- `scripts/releaseworkflow/homebrew_policy_test.go`
+- `scripts/releaseworkflow/main.go`
+- `scripts/releaseworkflow/main_test.go`
+- `scripts/releaseworkflow/publish_policy.go`
+- `scripts/releaseworkflow/publish_security_test.go`
+- `scripts/releaseworkflow/recovery_policy.go`
+- `scripts/releaseworkflow/test_helpers_test.go`
+- `scripts/releaseworkflow/workflow_policy.go`
+- `scripts/releaseworkflow/workflow_policy_test.go`
+
+全部拆出的 release test files 都必须 overlay，才能保留当前 mutation suite。共享 production helper
+`scripts/internal/workflowpolicy/policy.go` 是两个 verifier 共用的 YAML policy 实现及唯一的 per-target
+Rust toolchain 映射，也是从默认分支编译 release verifier 的必要依赖；它不参与生产资产构建，且共享包
+自己的 `policy_test.go` 仍不进入恢复 overlay。提取前必须用
+`git status --porcelain=v1 --untracked-files=all` 确认工作树为空，并显式确认 cached
+diff 为空；覆盖通过一次 `git archive` 提取后，将 tracked diff 与未忽略的 untracked files 合并、按 C locale
+排序，再与上述逐字 allowlist 比较，同时再次确认 cached diff 为空。这使旧 tag 中尚不存在的拆分文件也参与
+fail-closed 核对。重新加入 account test、任意额外路径或生产源码都必须失败，test job 也不生成 release
 artifact。该 job 成功后，独立的新 runner
 才会以 `clean: true` checkout tag、重新构建 selected staticlib 并生成唯一可被 publish 下载的
 `verified-release-*` assets；测试进程对环境变量、PATH 或临时目录的副作用不会进入生产 job。因此它不能用于
@@ -313,12 +371,30 @@ toolchain，并在执行 tag 自带的构建脚本前精确安装；这属于 ru
 覆盖进 production。重建库必须继续与 tag blob 通过 `git diff --exit-code` 的 byte-for-byte 检查；
 toolchain pin 不能用来替换 tag staticlib、恢复 manifest、放宽 diff 或移动 tag。
 
+### Verifier 源码导航
+
+`scripts/releaseworkflow/` 按发布职责分卷：`main.go` 负责命令入口、文件读取与顶层 dispatch；
+`build_policy.go` 负责 validate、test build 与 production build；`recovery_policy.go` 负责 tag trigger、
+恢复覆盖与覆盖后的质量门顺序；`publish_policy.go` 负责 source verification、发布、签名与 channel；
+`homebrew_policy.go` 负责 formula render、四平台验证与 tap deploy；`workflow_policy.go` 保存各领域共用的
+job、step、command、action 与 permission helper。测试相应分为 `build_recovery_test.go`、
+`publish_security_test.go`、`homebrew_policy_test.go` 与 `workflow_policy_test.go`；`main_test.go` 只保留
+顶层入口行为，`test_helpers_test.go` 集中无策略含义的 YAML fixture 操作。
+
+`scripts/nativeevidence/` 按 evidence 生命周期分卷：`main.go` 负责 subcommand 与 flag；`models.go` 保存
+target 和 evidence schema；`record.go` 记录单 runner evidence；`consolidate.go` 校验并合并六目标结果；
+`archive.go` 负责 release archive member 与 JSON；`filesystem.go` 负责路径、hash 和安全文件操作；
+`workflow_policy.go` 只验证 native-evidence workflow。测试分别覆盖 policy、record、consolidate，fixture
+helper 再按 workflow 与 evidence/archive 分开，避免把策略测试重新堆进单一文件。
+
 `sh scripts/test-release-workflow.sh` 启动 `scripts/releaseworkflow` 的 YAML AST policy，而不是依赖
 文本排版或行号。它精确检查 tag trigger、八份 job 的权限/依赖、六个 test/production runner matrix、每一个
 `uses` 的 40 位 SHA，以及 publish 的 SemVer channel 调用。默认分支 ancestry 必须在无
 `environment`、无 secret 的 `verify_release_source` job 中完成；只有该 job 成功后，publish 才可
-依赖它并声明精确的 `release` Environment、使用签名 metadata step 的两个预期 secret。policy 还会
-拒绝 required job、默认分支 ancestry step 与 quality gate 的 `continue-on-error` 或条件 `if`；validate
+依赖它并声明精确的 `release` Environment、使用签名 metadata step 的两个预期 secret。policy 对所有
+scalar 中的 GitHub expression 按表达式边界扫描 `secrets` context；单引号字符串中的 `}`/`}}`
+以及两个单引号转义不会提前结束扫描，因此签名 metadata step 之外的格式化 secret 引用也会
+fail-closed。policy 还会拒绝 required job、默认分支 ancestry step 与 quality gate 的 `continue-on-error` 或条件 `if`；validate
 与 build checkout 也必须显式 `persist-credentials: false`。为避免 shell 控制流隐藏 gate，每项质量
 检查都是唯一的单命令 `bash` step：policy 精确验证其 run、crate cwd（Rust gate）和 shell，并拒绝
 未审计的 `env`、`defaults` 或其它 step 字段。唯一允许的变量是 root 的 `RELEASE_TAG`，以及 build

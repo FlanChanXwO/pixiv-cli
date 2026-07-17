@@ -50,16 +50,27 @@ func TestServerListsExpectedTools(t *testing.T) {
 		}
 		names = append(names, tool.Name)
 	}
-	for _, want := range []string{"set_download_path", "download", "refresh_token", "set_refresh_token", "download_random_from_recommendation", "search_illust", "search_user", "trending_tags_illust", "illust_related", "illust_recommended", "recommended", "illust_follow", "user_artworks", "user_bookmarks", "user_following", "add_bookmark", "remove_bookmark", "follow_user", "unfollow_user", "illust_detail", "illust_ranking", "get_thumbnail_base64"} {
-		if !slices.Contains(names, want) {
-			t.Fatalf("tool %q missing from %v", want, names)
-		}
+	want := []string{
+		"set_download_path", "download", "refresh_token", "set_refresh_token",
+		"download_random_from_recommendation", "search_illust", "illust_detail",
+		"illust_related", "illust_ranking", "search_user", "illust_recommended",
+		"recommended", "trending_tags_illust", "illust_follow", "user_detail",
+		"user_artworks", "user_bookmarks", "user_following", "add_bookmark",
+		"remove_bookmark", "follow_user", "unfollow_user", "get_thumbnail_base64",
+	}
+	slices.Sort(names)
+	slices.Sort(want)
+	if !slices.Equal(names, want) {
+		t.Fatalf("tools=%v, want exact registration set %v", names, want)
 	}
 }
 
 func TestLegacyToolLogsSafelyOutsideMCPProtocol(t *testing.T) {
 	var logs bytes.Buffer
-	server := New(&fakeAPI{}, &fakeDownloads{}, slog.New(slog.NewJSONHandler(&logs, nil)))
+	service := application.SDKService{NewClient: func(application.SDKClientRequest) (application.SDKClient, error) {
+		return &fakeSDKClient{}, nil
+	}}
+	server := NewWithSDK(&fakeAPI{}, &fakeDownloads{}, slog.New(slog.NewJSONHandler(&logs, nil)), service, application.SDKClientRequest{})
 	clientTransport, serverTransport := mcp.NewInMemoryTransports()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -336,6 +347,129 @@ func TestSDKMutationTypedErrorIsMCPErrorAndWrapperLogsMetadata(t *testing.T) {
 	}
 }
 
+func TestDownloadWithoutIDsPreservesBusinessErrorShape(t *testing.T) {
+	downloads := &fakeDownloads{}
+	session, closeSession := newTestSession(t, downloads)
+	defer closeSession()
+
+	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{
+		Name:      "download",
+		Arguments: map[string]any{},
+	})
+	if err != nil {
+		t.Fatalf("call tool: %v", err)
+	}
+	const wantText = "错误：必须提供 illust_id (单个ID) 或 illust_ids (ID列表) 参数之一。"
+	assertEmptyDownloadResult(t, result, deliveryLocalPath, wantText)
+	if downloads.downloadCalls != 0 || len(downloads.downloadIDs) != 0 {
+		t.Fatalf("download calls=%d IDs=%v want no downstream call", downloads.downloadCalls, downloads.downloadIDs)
+	}
+}
+
+func TestDownloadInvalidDeliveryPreservesBusinessErrorShape(t *testing.T) {
+	downloads := &fakeDownloads{}
+	session, closeSession := newTestSession(t, downloads)
+	defer closeSession()
+
+	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{
+		Name: "download",
+		Arguments: map[string]any{
+			"illust_id": 42,
+			"delivery":  "invalid-delivery",
+		},
+	})
+	if err != nil {
+		t.Fatalf("call tool: %v", err)
+	}
+	const wantText = `错误：delivery 仅支持 "local_path" 或 "image_content"。`
+	assertEmptyDownloadResult(t, result, deliveryLocalPath, wantText)
+	if downloads.downloadCalls != 0 || len(downloads.downloadIDs) != 0 {
+		t.Fatalf("download calls=%d IDs=%v want no downstream call", downloads.downloadCalls, downloads.downloadIDs)
+	}
+}
+
+func TestDownloadManagerErrorPreservesBusinessErrorShape(t *testing.T) {
+	downloads := &fakeDownloads{err: errors.New("download sentinel")}
+	session, closeSession := newTestSession(t, downloads)
+	defer closeSession()
+
+	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{
+		Name: "download",
+		Arguments: map[string]any{
+			"illust_id": 42,
+			"delivery":  deliveryImageContent,
+		},
+	})
+	if err != nil {
+		t.Fatalf("call tool: %v", err)
+	}
+	const wantText = "下载失败: download sentinel"
+	assertEmptyDownloadResult(t, result, deliveryImageContent, wantText)
+	if downloads.downloadCalls != 1 || !slices.Equal(downloads.downloadIDs, []int64{42}) {
+		t.Fatalf("download calls=%d IDs=%v want one manager call", downloads.downloadCalls, downloads.downloadIDs)
+	}
+}
+
+func TestDownloadBuildErrorPreservesBusinessErrorShape(t *testing.T) {
+	missing := filepath.Join(t.TempDir(), "missing.png")
+	_, statErr := os.Stat(missing)
+	if statErr == nil {
+		t.Fatal("missing test file unexpectedly exists")
+	}
+	downloads := &fakeDownloads{artworks: []download.DownloadedArtwork{{
+		IllustID: 42,
+		Files:    []download.DownloadedFile{{Path: missing}},
+	}}}
+	session, closeSession := newTestSession(t, downloads)
+	defer closeSession()
+
+	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{
+		Name: "download",
+		Arguments: map[string]any{
+			"illust_id": 42,
+			"delivery":  deliveryImageContent,
+		},
+	})
+	if err != nil {
+		t.Fatalf("call tool: %v", err)
+	}
+	wantText := "整理下载结果失败: " + statErr.Error()
+	assertEmptyDownloadResult(t, result, deliveryImageContent, wantText)
+	if downloads.downloadCalls != 1 || !slices.Equal(downloads.downloadIDs, []int64{42}) {
+		t.Fatalf("download calls=%d IDs=%v want one manager call", downloads.downloadCalls, downloads.downloadIDs)
+	}
+}
+
+func TestDownloadImageReadErrorPreservesBusinessErrorShape(t *testing.T) {
+	directory := t.TempDir()
+	_, readErr := os.ReadFile(directory)
+	if readErr == nil {
+		t.Fatal("reading test directory unexpectedly succeeded")
+	}
+	downloads := &fakeDownloads{artworks: []download.DownloadedArtwork{{
+		IllustID: 42,
+		Files:    []download.DownloadedFile{{Path: directory}},
+	}}}
+	session, closeSession := newTestSession(t, downloads)
+	defer closeSession()
+
+	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{
+		Name: "download",
+		Arguments: map[string]any{
+			"illust_id": 42,
+			"delivery":  deliveryImageContent,
+		},
+	})
+	if err != nil {
+		t.Fatalf("call tool: %v", err)
+	}
+	wantText := "读取下载文件失败: " + readErr.Error()
+	assertEmptyDownloadResult(t, result, deliveryImageContent, wantText)
+	if downloads.downloadCalls != 1 || !slices.Equal(downloads.downloadIDs, []int64{42}) {
+		t.Fatalf("download calls=%d IDs=%v want one manager call", downloads.downloadCalls, downloads.downloadIDs)
+	}
+}
+
 func TestDownloadDefaultsToLocalPathResult(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "42.jpg")
@@ -453,6 +587,146 @@ func TestSetRefreshTokenRejectsCookieInput(t *testing.T) {
 	}
 	if !strings.Contains(text.Text, "cookie input is not supported; provide a Pixiv App API refresh token") {
 		t.Fatalf("unexpected text: %s", text.Text)
+	}
+}
+
+func TestRefreshTokenOpenFailuresAreSafeAndDiagnostic(t *testing.T) {
+	const sensitiveFactoryError = "proxy http://proxy-user:proxy-password@127.0.0.1:7890 token=secret-token config=/secret/config.json"
+	tests := []struct {
+		name string
+		err  error
+		want string
+	}{
+		{
+			name: "unknown factory or config error",
+			err:  errors.New(sensitiveFactoryError),
+			want: "Token刷新失败：无法初始化 Pixiv SDK。请检查本地配置或代理设置。",
+		},
+		{name: "canceled", err: context.Canceled, want: "Token刷新已取消。"},
+		{name: "deadline", err: context.DeadlineExceeded, want: "Token刷新失败：操作超时。"},
+		{
+			name: "public SDK unauthorized is not treated as missing token",
+			err:  &sdk.Error{Code: sdk.CodeUnauthorized, Operation: sdk.OperationSnapshot},
+			want: "Token刷新失败：无法初始化 Pixiv SDK：pixiv unauthorized operation=snapshot。",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			service := application.SDKService{NewClient: func(application.SDKClientRequest) (application.SDKClient, error) {
+				return nil, tt.err
+			}}
+			session, cleanup := newSDKTestSessionWithService(t, &fakeAPI{}, service)
+			defer cleanup()
+
+			result := callTool(t, session, "refresh_token", map[string]any{})
+			var out textOut
+			decodeStructured(t, result, &out)
+			if out.Text != tt.want {
+				t.Fatalf("refresh_token output=%q, want %q", out.Text, tt.want)
+			}
+			for _, secret := range []string{"proxy-user", "proxy-password", "127.0.0.1:7890", "secret-token", "/secret/config.json"} {
+				if strings.Contains(out.Text, secret) {
+					t.Fatalf("refresh_token output leaked %q: %q", secret, out.Text)
+				}
+			}
+		})
+	}
+}
+
+func TestRefreshTokenFailureClassification(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+		want string
+	}{
+		{
+			name: "unauthorized keeps missing token hint",
+			err:  &sdk.Error{Code: sdk.CodeUnauthorized, Operation: sdk.OperationRefresh},
+			want: "错误：未设置 refresh token。请先使用 set_refresh_token 工具设置 token。",
+		},
+		{name: "canceled", err: context.Canceled, want: "Token刷新已取消。"},
+		{name: "deadline", err: context.DeadlineExceeded, want: "Token刷新失败：操作超时。"},
+		{
+			name: "public SDK error keeps safe cause",
+			err: &sdk.Error{
+				Code:      sdk.CodeUpstreamUnavailable,
+				Operation: sdk.OperationRefresh,
+				Backend:   sdk.BackendOAuth,
+			},
+			want: "Token刷新失败：pixiv upstream_unavailable operation=refresh backend=oauth。",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			session, cleanup := newSDKTestSession(t, &failingRefreshSDKClient{err: tt.err})
+			defer cleanup()
+
+			result := callTool(t, session, "refresh_token", map[string]any{})
+			var out textOut
+			decodeStructured(t, result, &out)
+			if out.Text != tt.want {
+				t.Fatalf("refresh_token output=%q, want %q", out.Text, tt.want)
+			}
+		})
+	}
+}
+
+func TestRefreshTokenUnknownFailureIsRedacted(t *testing.T) {
+	const rawFailure = "refresh failed: proxy=http://proxy-user:proxy-password@127.0.0.1:7890/oauth?query_token=query-secret Cookie=PHPSESSID=cookie-secret refresh_token=refresh-secret config=/Users/private/.config/pixiv/config.yaml"
+	const want = "Token刷新失败。请检查 refresh token 是否有效，以及网络连接或代理设置。"
+
+	var logs bytes.Buffer
+	service := application.SDKService{NewClient: func(application.SDKClientRequest) (application.SDKClient, error) {
+		return &failingRefreshSDKClient{err: errors.New(rawFailure)}, nil
+	}}
+	server := NewWithSDK(&fakeAPI{}, &fakeDownloads{}, slog.New(slog.NewJSONHandler(&logs, nil)), service, application.SDKClientRequest{})
+	clientTransport, serverTransport := mcp.NewInMemoryTransports()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() { _ = server.Run(ctx, serverTransport) }()
+	client := mcp.NewClient(&mcp.Implementation{Name: "test", Version: "1"}, nil)
+	session, err := client.Connect(ctx, clientTransport, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer session.Close()
+
+	result := callTool(t, session, "refresh_token", map[string]any{})
+	if result.IsError {
+		t.Fatalf("legacy refresh_token error shape changed: %+v", result)
+	}
+	var out textOut
+	decodeStructured(t, result, &out)
+	if out.Text != want {
+		t.Fatalf("structured output=%q, want %q", out.Text, want)
+	}
+	if len(result.Content) != 1 {
+		t.Fatalf("content len=%d, want 1", len(result.Content))
+	}
+	text, ok := result.Content[0].(*mcp.TextContent)
+	if !ok {
+		t.Fatalf("content[0]=%T, want *mcp.TextContent", result.Content[0])
+	}
+	var contentOut textOut
+	if err := json.Unmarshal([]byte(text.Text), &contentOut); err != nil {
+		t.Fatalf("decode text content %q: %v", text.Text, err)
+	}
+	if contentOut != out {
+		t.Fatalf("text content=%+v, structured output=%+v", contentOut, out)
+	}
+	if logs.Len() == 0 {
+		t.Fatal("injected MCP logger produced no refresh_token event")
+	}
+	for _, secret := range []string{
+		"proxy-user", "proxy-password", "127.0.0.1:7890", "query-secret",
+		"PHPSESSID", "cookie-secret", "refresh-secret", "/Users/private/.config/pixiv/config.yaml",
+	} {
+		if strings.Contains(text.Text, secret) || strings.Contains(out.Text, secret) {
+			t.Fatalf("MCP output leaked %q: content=%q structured=%q", secret, text.Text, out.Text)
+		}
+		if strings.Contains(logs.String(), secret) {
+			t.Fatalf("MCP log leaked %q: %s", secret, logs.String())
+		}
 	}
 }
 
@@ -856,6 +1130,94 @@ func TestIllustRecommendedUsesSDKAndPreservesLegacyOffset(t *testing.T) {
 	}
 }
 
+func TestIllustRecommendedTextIncludesAllTagsInUpstreamOrder(t *testing.T) {
+	illust := testSDKIllust(77, "tagged", 9)
+	illust.Tags = []sdk.Tag{
+		{Name: "tag-1"}, {Name: "tag-2"}, {Name: "tag-3"}, {Name: "tag-4"},
+		{Name: "tag-5"}, {Name: "tag-6"}, {Name: "tag-7"},
+	}
+	client := &fakeSDKClient{illustRecommended: func(context.Context, sdk.IllustRecommendedRequest) (*sdk.IllustListResult, error) {
+		return &sdk.IllustListResult{Illusts: []sdk.Illust{illust}}, nil
+	}}
+	session, closeSession := newSDKTestSession(t, client)
+	defer closeSession()
+
+	result := callTool(t, session, "illust_recommended", map[string]any{})
+	var out textOut
+	decodeStructured(t, result, &out)
+	if result.IsError {
+		t.Fatalf("illust_recommended returned MCP error: %+v", result)
+	}
+	want := "标签: tag-1, tag-2, tag-3, tag-4, tag-5, tag-6, tag-7"
+	if !strings.Contains(out.Text, want) {
+		t.Fatalf("illust_recommended text = %q, want substring %q", out.Text, want)
+	}
+}
+
+func TestIllustRankingUsesStableLabelAndPreservesRequestAndRank(t *testing.T) {
+	var requests []sdk.IllustRankingRequest
+	client := &fakeSDKClient{illustRanking: func(_ context.Context, request sdk.IllustRankingRequest) (*sdk.IllustListResult, error) {
+		requests = append(requests, request)
+		return &sdk.IllustListResult{Illusts: []sdk.Illust{
+			testSDKIllust(11, "first", 1),
+			testSDKIllust(12, "second", 1),
+			testSDKIllust(13, "third", 1),
+		}}, nil
+	}}
+	session, closeSession := newSDKTestSession(t, client)
+	defer closeSession()
+
+	result := callTool(t, session, "illust_ranking", map[string]any{
+		"mode": "day_male", "date": "2025-02-03", "offset": 2,
+	})
+	var out textOut
+	decodeStructured(t, result, &out)
+	if result.IsError {
+		t.Fatalf("illust_ranking returned MCP error: %+v", result)
+	}
+	if len(requests) != 1 || requests[0].Mode != sdk.RankingModeDayMale || requests[0].Date != "2025-02-03" || requests[0].Cursor != "" {
+		t.Fatalf("ranking requests = %+v", requests)
+	}
+	if !strings.HasPrefix(out.Text, "男性向每日排行榜:\n\n") || !strings.Contains(out.Text, "第 3 名: ID: 13") {
+		t.Fatalf("illust_ranking text = %q", out.Text)
+	}
+}
+
+func TestIllustRankingUsesStableLabelsForAllModesAndFutureFallback(t *testing.T) {
+	tests := []struct {
+		mode string
+		want string
+	}{
+		{mode: "day", want: "每日排行榜"},
+		{mode: "day_male", want: "男性向每日排行榜"},
+		{mode: "day_female", want: "女性向每日排行榜"},
+		{mode: "week", want: "每周排行榜"},
+		{mode: "week_original", want: "原创作品排行榜"},
+		{mode: "week_rookie", want: "新人排行榜"},
+		{mode: "month", want: "每月排行榜"},
+		{mode: "future_mode", want: "future_mode 排行榜"},
+	}
+	for _, test := range tests {
+		t.Run(test.mode, func(t *testing.T) {
+			client := &fakeSDKClient{illustRanking: func(_ context.Context, request sdk.IllustRankingRequest) (*sdk.IllustListResult, error) {
+				if string(request.Mode) != test.mode {
+					t.Fatalf("ranking mode = %q, want %q", request.Mode, test.mode)
+				}
+				return &sdk.IllustListResult{Illusts: []sdk.Illust{testSDKIllust(13, "ranked", 1)}}, nil
+			}}
+			session, closeSession := newSDKTestSession(t, client)
+			defer closeSession()
+
+			result := callTool(t, session, "illust_ranking", map[string]any{"mode": test.mode})
+			var out textOut
+			decodeStructured(t, result, &out)
+			if result.IsError || !strings.HasPrefix(out.Text, test.want+":\n\n") {
+				t.Fatalf("illust_ranking(%q) text = %q", test.mode, out.Text)
+			}
+		})
+	}
+}
+
 func TestDownloadRandomFromRecommendationUsesSDKAndPreservesCount(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "recommended.jpg")
 	if err := os.WriteFile(path, []byte("recommended"), 0o644); err != nil {
@@ -881,9 +1243,384 @@ func TestDownloadRandomFromRecommendationUsesSDKAndPreservesCount(t *testing.T) 
 	}
 	defer session.Close()
 	result := callTool(t, session, "download_random_from_recommendation", map[string]any{"count": 1})
-	if result.IsError || len(requests) != 1 || requests[0] != (sdk.IllustRecommendedRequest{}) || !slices.Equal(downloads.downloadIDs, []int64{77}) {
+	if result.IsError || len(result.Content) != 1 || len(requests) != 1 || requests[0] != (sdk.IllustRecommendedRequest{}) || !slices.Equal(downloads.downloadIDs, []int64{77}) {
 		t.Fatalf("result=%+v requests=%+v ids=%v", result, requests, downloads.downloadIDs)
 	}
+}
+
+func TestDownloadRandomSDKOpenErrorPreservesBusinessErrorShape(t *testing.T) {
+	var openCalls, managerFactoryCalls int
+	downloads := &fakeDownloads{}
+	service := application.SDKService{NewClient: func(application.SDKClientRequest) (application.SDKClient, error) {
+		openCalls++
+		return nil, errors.New("open sentinel")
+	}}
+	server := NewWithSDKDownloadFactory(downloads, func(application.SDKClient) DownloadManager {
+		managerFactoryCalls++
+		return downloads
+	}, slog.New(slog.NewTextHandler(io.Discard, nil)), service, application.SDKClientRequest{})
+	clientTransport, serverTransport := mcp.NewInMemoryTransports()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() { _ = server.Run(ctx, serverTransport) }()
+	client := mcp.NewClient(&mcp.Implementation{Name: "test", Version: "1"}, nil)
+	session, err := client.Connect(ctx, clientTransport, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer session.Close()
+
+	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{
+		Name: "download_random_from_recommendation",
+		Arguments: map[string]any{
+			"count":    1,
+			"delivery": deliveryImageContent,
+		},
+	})
+	if err != nil {
+		t.Fatalf("call tool: %v", err)
+	}
+	const wantText = "获取推荐列表失败: open sentinel"
+	assertEmptyDownloadResult(t, result, deliveryImageContent, wantText)
+	if openCalls != 1 || managerFactoryCalls != 0 || len(downloads.downloadIDs) != 0 {
+		t.Fatalf("downstream calls: open=%d manager_factory=%d download_ids=%v", openCalls, managerFactoryCalls, downloads.downloadIDs)
+	}
+}
+
+func TestDownloadRandomRecommendationErrorPreservesBusinessErrorShape(t *testing.T) {
+	var openCalls, recommendationCalls, managerFactoryCalls int
+	downloads := &fakeDownloads{}
+	service := application.SDKService{NewClient: func(application.SDKClientRequest) (application.SDKClient, error) {
+		openCalls++
+		return &fakeSDKClient{illustRecommended: func(context.Context, sdk.IllustRecommendedRequest) (*sdk.IllustListResult, error) {
+			recommendationCalls++
+			return nil, errors.New("recommendation sentinel")
+		}}, nil
+	}}
+	server := NewWithSDKDownloadFactory(downloads, func(application.SDKClient) DownloadManager {
+		managerFactoryCalls++
+		return downloads
+	}, slog.New(slog.NewTextHandler(io.Discard, nil)), service, application.SDKClientRequest{})
+	clientTransport, serverTransport := mcp.NewInMemoryTransports()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() { _ = server.Run(ctx, serverTransport) }()
+	client := mcp.NewClient(&mcp.Implementation{Name: "test", Version: "1"}, nil)
+	session, err := client.Connect(ctx, clientTransport, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer session.Close()
+
+	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{
+		Name: "download_random_from_recommendation",
+		Arguments: map[string]any{
+			"count":    1,
+			"delivery": deliveryImageContent,
+		},
+	})
+	if err != nil {
+		t.Fatalf("call tool: %v", err)
+	}
+	const wantText = "获取推荐列表失败: recommendation sentinel"
+	assertEmptyDownloadResult(t, result, deliveryImageContent, wantText)
+	if openCalls != 1 || recommendationCalls != 1 || managerFactoryCalls != 0 || len(downloads.downloadIDs) != 0 {
+		t.Fatalf("downstream calls: open=%d recommendation=%d manager_factory=%d download_ids=%v", openCalls, recommendationCalls, managerFactoryCalls, downloads.downloadIDs)
+	}
+}
+
+func TestDownloadRandomEmptyRecommendationPreservesBusinessErrorShape(t *testing.T) {
+	session, closeSession, probe := newDownloadRandomProbeSession(t, nil)
+	defer closeSession()
+
+	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{
+		Name: "download_random_from_recommendation",
+		Arguments: map[string]any{
+			"count":    1,
+			"delivery": deliveryImageContent,
+		},
+	})
+	if err != nil {
+		t.Fatalf("call tool: %v", err)
+	}
+	const wantText = "无法获取推荐内容，列表为空。"
+	assertEmptyDownloadResult(t, result, deliveryImageContent, wantText)
+	if probe.openCalls != 1 || probe.recommendationCalls != 1 || probe.managerFactoryCalls != 0 || len(probe.downloads.downloadIDs) != 0 {
+		t.Fatalf("downstream calls: open=%d recommendation=%d manager_factory=%d download_ids=%v", probe.openCalls, probe.recommendationCalls, probe.managerFactoryCalls, probe.downloads.downloadIDs)
+	}
+}
+
+func TestDownloadRandomManagerErrorPreservesBusinessErrorShape(t *testing.T) {
+	session, closeSession, probe := newDownloadRandomProbeSession(t, []int64{77})
+	defer closeSession()
+	probe.downloads.err = errors.New("download sentinel")
+
+	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{
+		Name: "download_random_from_recommendation",
+		Arguments: map[string]any{
+			"count":    1,
+			"delivery": deliveryImageContent,
+		},
+	})
+	if err != nil {
+		t.Fatalf("call tool: %v", err)
+	}
+	const wantText = "下载失败: download sentinel"
+	assertEmptyDownloadResult(t, result, deliveryImageContent, wantText)
+	if probe.openCalls != 1 || probe.recommendationCalls != 1 || probe.managerFactoryCalls != 1 || probe.downloads.downloadCalls != 1 || !slices.Equal(probe.downloads.downloadIDs, []int64{77}) {
+		t.Fatalf("downstream calls: open=%d recommendation=%d manager_factory=%d downloads=%d download_ids=%v", probe.openCalls, probe.recommendationCalls, probe.managerFactoryCalls, probe.downloads.downloadCalls, probe.downloads.downloadIDs)
+	}
+}
+
+func TestDownloadRandomBuildErrorPreservesBusinessErrorShape(t *testing.T) {
+	missing := filepath.Join(t.TempDir(), "missing.png")
+	_, statErr := os.Stat(missing)
+	if statErr == nil {
+		t.Fatal("missing test file unexpectedly exists")
+	}
+	session, closeSession, probe := newDownloadRandomProbeSession(t, []int64{77})
+	defer closeSession()
+	probe.downloads.artworks = []download.DownloadedArtwork{{
+		IllustID: 77,
+		Files:    []download.DownloadedFile{{Path: missing}},
+	}}
+
+	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{
+		Name: "download_random_from_recommendation",
+		Arguments: map[string]any{
+			"count":    1,
+			"delivery": deliveryImageContent,
+		},
+	})
+	if err != nil {
+		t.Fatalf("call tool: %v", err)
+	}
+	wantText := "整理下载结果失败: " + statErr.Error()
+	assertEmptyDownloadResult(t, result, deliveryImageContent, wantText)
+	if probe.openCalls != 1 || probe.recommendationCalls != 1 || probe.managerFactoryCalls != 1 || probe.downloads.downloadCalls != 1 || !slices.Equal(probe.downloads.downloadIDs, []int64{77}) {
+		t.Fatalf("downstream calls: open=%d recommendation=%d manager_factory=%d downloads=%d download_ids=%v", probe.openCalls, probe.recommendationCalls, probe.managerFactoryCalls, probe.downloads.downloadCalls, probe.downloads.downloadIDs)
+	}
+}
+
+func TestDownloadRandomRejectsExplicitZeroBeforeOpeningSDK(t *testing.T) {
+	session, closeSession, probe := newDownloadRandomProbeSession(t, []int64{1, 2, 3, 4, 5})
+	defer closeSession()
+
+	result := callTool(t, session, "download_random_from_recommendation", map[string]any{"count": 0})
+	assertDownloadRandomCountError(t, result)
+	assertNoDownloadRandomDownstream(t, probe)
+}
+
+func TestDownloadRandomCountErrorPreservesImageContentDelivery(t *testing.T) {
+	session, closeSession, probe := newDownloadRandomProbeSession(t, []int64{1, 2, 3, 4, 5})
+	defer closeSession()
+
+	result := callTool(t, session, "download_random_from_recommendation", map[string]any{
+		"count":    0,
+		"delivery": deliveryImageContent,
+	})
+	const wantText = "错误：count 必须是 1 到 20 之间的整数。"
+	assertEmptyDownloadResult(t, result, deliveryImageContent, wantText)
+	assertNoDownloadRandomDownstream(t, probe)
+}
+
+func TestDownloadRandomInvalidDeliveryPrecedesCountValidation(t *testing.T) {
+	session, closeSession, probe := newDownloadRandomProbeSession(t, []int64{1, 2, 3, 4, 5})
+	defer closeSession()
+
+	result := callTool(t, session, "download_random_from_recommendation", map[string]any{
+		"count":    0,
+		"delivery": "invalid-delivery",
+	})
+	const wantText = `错误：delivery 仅支持 "local_path" 或 "image_content"。`
+	assertEmptyDownloadResult(t, result, deliveryLocalPath, wantText)
+	assertNoDownloadRandomDownstream(t, probe)
+}
+
+func TestDownloadRandomRejectsExplicitNegativeCountBeforeOpeningSDK(t *testing.T) {
+	session, closeSession, probe := newDownloadRandomProbeSession(t, []int64{1, 2, 3, 4, 5})
+	defer closeSession()
+
+	result := callTool(t, session, "download_random_from_recommendation", map[string]any{"count": -1})
+	assertDownloadRandomCountError(t, result)
+	assertNoDownloadRandomDownstream(t, probe)
+}
+
+func TestDownloadRandomRejectsCountAboveMaximumBeforeOpeningSDK(t *testing.T) {
+	ids := make([]int64, 21)
+	for i := range ids {
+		ids[i] = int64(i + 1)
+	}
+	session, closeSession, probe := newDownloadRandomProbeSession(t, ids)
+	defer closeSession()
+
+	result := callTool(t, session, "download_random_from_recommendation", map[string]any{"count": 21})
+	assertDownloadRandomCountError(t, result)
+	assertNoDownloadRandomDownstream(t, probe)
+}
+
+func assertDownloadRandomCountError(t *testing.T, result *mcp.CallToolResult) {
+	t.Helper()
+	const wantText = "错误：count 必须是 1 到 20 之间的整数。"
+	assertEmptyDownloadResult(t, result, deliveryLocalPath, wantText)
+}
+
+func assertNoDownloadRandomDownstream(t *testing.T, probe *downloadRandomProbe) {
+	t.Helper()
+	if probe.openCalls != 0 || probe.recommendationCalls != 0 || probe.managerFactoryCalls != 0 || probe.downloads.downloadCalls != 0 || len(probe.downloads.downloadIDs) != 0 {
+		t.Fatalf("downstream calls: open=%d recommendation=%d manager_factory=%d downloads=%d download_ids=%v", probe.openCalls, probe.recommendationCalls, probe.managerFactoryCalls, probe.downloads.downloadCalls, probe.downloads.downloadIDs)
+	}
+}
+
+func TestDownloadRandomOmittedCountDefaultsToFive(t *testing.T) {
+	recommendationIDs := []int64{1, 2, 3, 4, 5, 6}
+	session, closeSession, probe := newDownloadRandomProbeSession(t, recommendationIDs)
+	defer closeSession()
+
+	result := callTool(t, session, "download_random_from_recommendation", map[string]any{})
+	if result.IsError || probe.openCalls != 1 || probe.recommendationCalls != 1 || len(probe.downloads.downloadIDs) != downloadRandomDefaultCount {
+		t.Fatalf("result=%+v open=%d recommendation=%d download_ids=%v", result, probe.openCalls, probe.recommendationCalls, probe.downloads.downloadIDs)
+	}
+	seen := make(map[int64]struct{}, len(probe.downloads.downloadIDs))
+	for _, id := range probe.downloads.downloadIDs {
+		if !slices.Contains(recommendationIDs, id) {
+			t.Fatalf("download ID %d is not from recommendations %v", id, recommendationIDs)
+		}
+		seen[id] = struct{}{}
+	}
+	if len(seen) != downloadRandomDefaultCount {
+		t.Fatalf("download IDs are not unique: %v", probe.downloads.downloadIDs)
+	}
+}
+
+func TestDownloadRandomNullCountDefaultsToFive(t *testing.T) {
+	recommendationIDs := []int64{1, 2, 3, 4, 5, 6}
+	session, closeSession, probe := newDownloadRandomProbeSession(t, recommendationIDs)
+	defer closeSession()
+
+	result := callTool(t, session, "download_random_from_recommendation", map[string]any{"count": nil})
+	if result.IsError || probe.openCalls != 1 || probe.recommendationCalls != 1 || len(probe.downloads.downloadIDs) != downloadRandomDefaultCount {
+		t.Fatalf("result=%+v open=%d recommendation=%d download_ids=%v", result, probe.openCalls, probe.recommendationCalls, probe.downloads.downloadIDs)
+	}
+}
+
+func TestDownloadRandomToolSchemaDocumentsOptionalCountContract(t *testing.T) {
+	session, closeSession, _ := newDownloadRandomProbeSession(t, nil)
+	defer closeSession()
+
+	var inputSchema any
+	for tool, err := range session.Tools(context.Background(), nil) {
+		if err != nil {
+			t.Fatal(err)
+		}
+		if tool.Name == "download_random_from_recommendation" {
+			inputSchema = tool.InputSchema
+			break
+		}
+	}
+	if inputSchema == nil {
+		t.Fatal("download_random_from_recommendation tool not found")
+	}
+	raw, err := json.Marshal(inputSchema)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var schema struct {
+		Required   []string `json:"required"`
+		Properties map[string]struct {
+			Description string `json:"description"`
+		} `json:"properties"`
+	}
+	if err := json.Unmarshal(raw, &schema); err != nil {
+		t.Fatal(err)
+	}
+	if slices.Contains(schema.Required, "count") {
+		t.Fatalf("count must remain optional: schema=%s", raw)
+	}
+	description := schema.Properties["count"].Description
+	if !strings.Contains(description, "defaults to 5") || !strings.Contains(description, "1 to 20") {
+		t.Fatalf("count schema does not document default/range: %s", raw)
+	}
+}
+
+func TestDownloadRandomAcceptsMaximumCount(t *testing.T) {
+	recommendationIDs := make([]int64, downloadRandomMaxCount+1)
+	for i := range recommendationIDs {
+		recommendationIDs[i] = int64(i + 1)
+	}
+	session, closeSession, probe := newDownloadRandomProbeSession(t, recommendationIDs)
+	defer closeSession()
+
+	result := callTool(t, session, "download_random_from_recommendation", map[string]any{"count": downloadRandomMaxCount})
+	if result.IsError || probe.openCalls != 1 || probe.recommendationCalls != 1 || len(probe.downloads.downloadIDs) != downloadRandomMaxCount {
+		t.Fatalf("result=%+v open=%d recommendation=%d download_ids=%v", result, probe.openCalls, probe.recommendationCalls, probe.downloads.downloadIDs)
+	}
+	seen := make(map[int64]struct{}, len(probe.downloads.downloadIDs))
+	for _, id := range probe.downloads.downloadIDs {
+		if !slices.Contains(recommendationIDs, id) {
+			t.Fatalf("download ID %d is not from recommendations %v", id, recommendationIDs)
+		}
+		seen[id] = struct{}{}
+	}
+	if len(seen) != downloadRandomMaxCount {
+		t.Fatalf("download IDs are not unique: %v", probe.downloads.downloadIDs)
+	}
+}
+
+func TestDownloadRandomUsesAvailableRecommendationsWhenListIsShorter(t *testing.T) {
+	recommendationIDs := []int64{11, 12, 13}
+	session, closeSession, probe := newDownloadRandomProbeSession(t, recommendationIDs)
+	defer closeSession()
+
+	result := callTool(t, session, "download_random_from_recommendation", map[string]any{"count": 5})
+	if result.IsError || probe.openCalls != 1 || probe.recommendationCalls != 1 || len(probe.downloads.downloadIDs) != len(recommendationIDs) {
+		t.Fatalf("result=%+v open=%d recommendation=%d download_ids=%v", result, probe.openCalls, probe.recommendationCalls, probe.downloads.downloadIDs)
+	}
+	got := append([]int64(nil), probe.downloads.downloadIDs...)
+	slices.Sort(got)
+	if !slices.Equal(got, recommendationIDs) {
+		t.Fatalf("download IDs=%v want available recommendations %v", got, recommendationIDs)
+	}
+}
+
+type downloadRandomProbe struct {
+	openCalls           int
+	recommendationCalls int
+	managerFactoryCalls int
+	downloads           *fakeDownloads
+}
+
+func newDownloadRandomProbeSession(t *testing.T, recommendationIDs []int64) (*mcp.ClientSession, func(), *downloadRandomProbe) {
+	t.Helper()
+	probe := &downloadRandomProbe{downloads: &fakeDownloads{}}
+	service := application.SDKService{NewClient: func(application.SDKClientRequest) (application.SDKClient, error) {
+		probe.openCalls++
+		return &fakeSDKClient{illustRecommended: func(context.Context, sdk.IllustRecommendedRequest) (*sdk.IllustListResult, error) {
+			probe.recommendationCalls++
+			illusts := make([]sdk.Illust, len(recommendationIDs))
+			for i, id := range recommendationIDs {
+				illusts[i] = testSDKIllust(id, "recommended", 1)
+			}
+			return &sdk.IllustListResult{Illusts: illusts}, nil
+		}}, nil
+	}}
+	server := NewWithSDKDownloadFactory(probe.downloads, func(application.SDKClient) DownloadManager {
+		probe.managerFactoryCalls++
+		return probe.downloads
+	}, slog.New(slog.NewTextHandler(io.Discard, nil)), service, application.SDKClientRequest{})
+	clientTransport, serverTransport := mcp.NewInMemoryTransports()
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() { _ = server.Run(ctx, serverTransport) }()
+	client := mcp.NewClient(&mcp.Implementation{Name: "test", Version: "1"}, nil)
+	session, err := client.Connect(ctx, clientTransport, nil)
+	if err != nil {
+		cancel()
+		t.Fatal(err)
+	}
+	return session, func() {
+		session.Close()
+		cancel()
+	}, probe
 }
 
 func TestSDKDownloadFactoryUsesSelectedAccountAfterTokenSwitch(t *testing.T) {
@@ -968,6 +1705,28 @@ func TestSDKMutationToolsReturnStructuredSuccess(t *testing.T) {
 	}
 }
 
+func TestUserArtworksTextIncludesAllTagsInUpstreamOrder(t *testing.T) {
+	illust := testSDKIllust(15, "tagged", 9)
+	illust.Tags = []sdk.Tag{
+		{Name: "tag-1"}, {Name: "tag-2"}, {Name: "tag-3"}, {Name: "tag-4"},
+		{Name: "tag-5"}, {Name: "tag-6"}, {Name: "tag-7"},
+	}
+	client := &fakeSDKClient{artworks: []sdk.Illust{illust}}
+	session, closeSession := newSDKTestSession(t, client)
+	defer closeSession()
+
+	result := callTool(t, session, "user_artworks", map[string]any{"user_id": 9})
+	var out illustListOut
+	decodeStructured(t, result, &out)
+	if result.IsError {
+		t.Fatalf("user_artworks returned MCP error: %+v", result)
+	}
+	want := "标签: tag-1, tag-2, tag-3, tag-4, tag-5, tag-6, tag-7"
+	if !strings.Contains(out.Text, want) {
+		t.Fatalf("user_artworks text = %q, want substring %q", out.Text, want)
+	}
+}
+
 func TestUserBookmarksAcceptsLegacyMaxBookmarkID(t *testing.T) {
 	client := &fakeSDKClient{bookmarks: []sdk.Illust{testSDKIllust(15, "saved", 99)}}
 	session, closeSession := newSDKTestSession(t, client)
@@ -1039,13 +1798,25 @@ func TestSDKListPageRequiresPositiveLimitAndPositiveValue(t *testing.T) {
 func TestSDKListsFollowOpaqueCursorForLimitAndRejectCycles(t *testing.T) {
 	first := testSDKIllust(1, "first", 7)
 	second := testSDKIllust(2, "second", 7)
+	legacyDefault := &fakeSDKClient{userID: 7, artworkResults: map[sdk.Cursor]sdk.IllustListResult{
+		"":     {Illusts: []sdk.Illust{first}, NextCursor: "next"},
+		"next": {Illusts: []sdk.Illust{second}},
+	}}
+	defaultSession, closeDefaultSession := newSDKTestSession(t, legacyDefault)
+	defer closeDefaultSession()
+	result := callTool(t, defaultSession, "user_artworks", map[string]any{})
+	var out illustListOut
+	decodeStructured(t, result, &out)
+	if len(out.Items) != 1 || !out.Pagination.HasMore || out.Pagination.Limit != nil || out.Pagination.NextPage != nil || len(legacyDefault.artworksRequests) != 1 {
+		t.Fatalf("default single-batch output=%+v requests=%+v", out, legacyDefault.artworksRequests)
+	}
+
 	paged := &fakeSDKClient{userID: 7, artworkResults: map[sdk.Cursor]sdk.IllustListResult{
 		"": {Illusts: []sdk.Illust{first}, NextCursor: "next"},
 	}}
 	pagedSession, closePagedSession := newSDKTestSession(t, paged)
 	defer closePagedSession()
-	result := callTool(t, pagedSession, "user_artworks", map[string]any{"limit": 1})
-	var out illustListOut
+	result = callTool(t, pagedSession, "user_artworks", map[string]any{"limit": 1})
 	decodeStructured(t, result, &out)
 	if !out.Pagination.HasMore || out.Pagination.NextPage == nil || *out.Pagination.NextPage != 2 {
 		t.Fatalf("single-page pagination=%+v", out.Pagination)
@@ -1245,10 +2016,13 @@ func decodeStructured(t *testing.T, result *mcp.CallToolResult, out any) {
 
 type fakeSDKClient struct {
 	userID                int64
+	searchIllust          func(context.Context, sdk.SearchIllustRequest) (*sdk.IllustListResult, error)
+	illustDetail          func(context.Context, int64) (*sdk.IllustDetail, error)
 	artworks              []sdk.Illust
 	bookmarks             []sdk.Illust
 	following             []sdk.UserPreview
 	illustRecommended     func(context.Context, sdk.IllustRecommendedRequest) (*sdk.IllustListResult, error)
+	illustRanking         func(context.Context, sdk.IllustRankingRequest) (*sdk.IllustListResult, error)
 	mangaRecommended      func(context.Context, sdk.IllustRecommendedRequest) (*sdk.IllustListResult, error)
 	novelRecommended      func(context.Context, sdk.NovelRecommendedRequest) (*sdk.NovelListResult, error)
 	userRecommended       func(context.Context, sdk.UserRecommendedRequest) (*sdk.UserRecommendedResult, error)
@@ -1272,6 +2046,15 @@ type fakeSDKClient struct {
 type failingMutationSDKClient struct {
 	fakeSDKClient
 	err error
+}
+
+type failingRefreshSDKClient struct {
+	fakeSDKClient
+	err error
+}
+
+func (f *failingRefreshSDKClient) Refresh(context.Context) (*sdk.Account, error) {
+	return nil, f.err
 }
 
 func (f *failingMutationSDKClient) AddBookmark(context.Context, sdk.AddBookmarkRequest) error {
@@ -1308,16 +2091,28 @@ func (*fakeSDKClient) StartLogin() (*sdk.LoginSession, error) {
 func (*fakeSDKClient) CompleteLogin(context.Context, *sdk.LoginSession, string, sdk.LoginOptions) (*sdk.Account, error) {
 	return nil, errors.New("login is not configured")
 }
-func (*fakeSDKClient) SearchIllust(context.Context, sdk.SearchIllustRequest) (*sdk.IllustListResult, error) {
+
+func (f *fakeSDKClient) SearchIllust(ctx context.Context, request sdk.SearchIllustRequest) (*sdk.IllustListResult, error) {
+	if f.searchIllust != nil {
+		return f.searchIllust(ctx, request)
+	}
 	return &sdk.IllustListResult{}, nil
 }
-func (*fakeSDKClient) IllustDetail(context.Context, int64) (*sdk.IllustDetail, error) {
+
+func (f *fakeSDKClient) IllustDetail(ctx context.Context, illustID int64) (*sdk.IllustDetail, error) {
+	if f.illustDetail != nil {
+		return f.illustDetail(ctx, illustID)
+	}
 	return &sdk.IllustDetail{}, nil
 }
 func (*fakeSDKClient) IllustRelated(context.Context, sdk.IllustRelatedRequest) (*sdk.IllustListResult, error) {
 	return &sdk.IllustListResult{}, nil
 }
-func (*fakeSDKClient) IllustRanking(context.Context, sdk.IllustRankingRequest) (*sdk.IllustListResult, error) {
+
+func (f *fakeSDKClient) IllustRanking(ctx context.Context, request sdk.IllustRankingRequest) (*sdk.IllustListResult, error) {
+	if f.illustRanking != nil {
+		return f.illustRanking(ctx, request)
+	}
 	return &sdk.IllustListResult{}, nil
 }
 func (*fakeSDKClient) FollowingIllusts(context.Context, sdk.FollowingIllustsRequest) (*sdk.IllustListResult, error) {
@@ -1431,14 +2226,31 @@ func decodeDownloadOut(t *testing.T, result *mcp.CallToolResult) downloadOut {
 	return out
 }
 
-type fakeDownloads struct {
-	artworks    []download.DownloadedArtwork
-	downloadIDs []int64
+func assertEmptyDownloadResult(t *testing.T, result *mcp.CallToolResult, wantDelivery, wantText string) {
+	t.Helper()
+	out := decodeDownloadOut(t, result)
+	if result.IsError || out.Delivery != wantDelivery || out.Text != wantText || out.Items == nil || len(out.Items) != 0 || out.Files == nil || len(out.Files) != 0 {
+		t.Fatalf("result=%+v output=%+v", result, out)
+	}
+	if len(result.Content) != 1 {
+		t.Fatalf("content=%+v want one text item without image", result.Content)
+	}
+	text, ok := result.Content[0].(*mcp.TextContent)
+	if !ok || text.Text != wantText {
+		t.Fatalf("content=%+v want text %q", result.Content, wantText)
+	}
 }
 
-func (fakeDownloads) SetDownloadPath(string) error         { return nil }
-func (fakeDownloads) Enqueue(context.Context, []int64) int { return 1 }
+type fakeDownloads struct {
+	artworks      []download.DownloadedArtwork
+	downloadCalls int
+	downloadIDs   []int64
+	err           error
+}
+
+func (fakeDownloads) SetDownloadPath(string) error { return nil }
 func (d *fakeDownloads) Download(_ context.Context, ids []int64) ([]download.DownloadedArtwork, error) {
+	d.downloadCalls++
 	d.downloadIDs = append([]int64(nil), ids...)
-	return d.artworks, nil
+	return d.artworks, d.err
 }

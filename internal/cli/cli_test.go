@@ -165,6 +165,21 @@ func TestRunMCPDispatchError(t *testing.T) {
 	assert.Contains(t, stderr.String(), "boom")
 }
 
+func TestRunMCPRejectsMalformedExplicitProxyWithoutLeakingSensitiveComponents(t *testing.T) {
+	useTempPaths(t)
+	proxy := "http://proxy-user-secret:proxy-pass-secret@proxy-host-secret.invalid/proxy-path-secret-%zz?proxy-query-secret=value"
+
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"pixiv", "mcp", "--proxy", proxy}, strings.NewReader(""), &stdout, &stderr)
+
+	require.NotZero(t, code)
+	assert.Empty(t, stdout.String())
+	assert.Contains(t, stderr.String(), "invalid proxy configuration")
+	for _, secret := range []string{"proxy-user-secret", "proxy-pass-secret", "proxy-host-secret", "proxy-path-secret", "proxy-query-secret"} {
+		assert.NotContains(t, stderr.String(), secret)
+	}
+}
+
 func TestNonNetworkCommandsRejectProxyFlags(t *testing.T) {
 	tests := [][]string{
 		{"pixiv", "auth", "list", "--proxy", "http://flag-proxy"},

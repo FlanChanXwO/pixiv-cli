@@ -12,10 +12,42 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func TestNewAppUsesDedicatedClientWithoutTotalTimeout(t *testing.T) {
+	client := NewApp(nil)
+	require.NotSame(t, http.DefaultClient, client.httpClient)
+	require.Zero(t, client.httpClient.Timeout)
+}
+
+func TestNewAppPreservesExplicitHTTPClient(t *testing.T) {
+	want := &http.Client{Timeout: 31 * time.Second}
+	got := NewApp(want).httpClient
+	require.Same(t, want, got)
+	require.Equal(t, want.Timeout, got.Timeout)
+}
+
+func TestOpenStreamingBodyLifetimeIsControlledByContext(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.(http.Flusher).Flush()
+		<-r.Context().Done()
+	}))
+	defer server.Close()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	response, err := NewApp(nil).Open(ctx, OpenRequest{URL: server.URL})
+	require.NoError(t, err)
+	cancel()
+	defer response.Body.Close()
+
+	_, err = io.ReadAll(response.Body)
+	require.ErrorIs(t, err, context.Canceled)
+}
 
 func TestClientsPreserveHeadersStatusAndCopy(t *testing.T) {
 	tests := []struct {

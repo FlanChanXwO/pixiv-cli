@@ -62,7 +62,7 @@ func NewWeb(httpClient *http.Client, webBase string) *Client {
 
 func newClient(httpClient *http.Client, referer, userAgent string) *Client {
 	if httpClient == nil {
-		httpClient = http.DefaultClient
+		httpClient = &http.Client{}
 	}
 	return &Client{httpClient: httpClient, referer: referer, userAgent: userAgent}
 }

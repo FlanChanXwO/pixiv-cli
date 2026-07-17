@@ -21,6 +21,14 @@ local, err := pixiv.OpenDefault(pixiv.Options{
 
 `Options` 支持显式 `HTTPClient`、`AppAPIBaseURL`、`WebAPIBaseURL`、`OAuthBaseURL`、`WebFallbackEnabled`、`ResourcePolicy` 与 `Logger`。`AccessToken` 与 `WebFallbackEnabled` 只供 `NewClient`；`OpenDefault` 每次 snapshot 从本地 `web_fallback_enabled` 读取 Web fallback 设置。不要把 refresh token 或 logger 全局化。
 
+### HTTP client 与请求生命周期
+
+未提供 `Options.HTTPClient` 时，SDK 为该 `Client` 创建专用的 `http.Client`，其整请求 `Timeout` 为零；App API、Web API、OAuth 与资源读取复用这一个 client，不依赖全局可变的 `http.DefaultClient`。零值只表示 SDK 不添加覆盖 response body 读取的固定总时限；Go 默认 transport 的连接、TLS handshake 与 idle connection 等阶段策略保持不变。
+
+每次操作的总生命周期由传入的 `context.Context` 控制。调用方应按操作建立 cancel 或 deadline；`context.Canceled` 与 `context.DeadlineExceeded` 可继续通过 `errors.Is` 判断。`OpenResource` 返回后，context 也覆盖后续 body 读取，调用方须关闭 body，并在不再消费流时取消 context。
+
+显式提供 `Options.HTTPClient` 时，SDK constructor 保留同一指针及其 `Timeout`、`Transport`、cookie jar 与 redirect policy，不修改调用方对象。需要 client-wide timeout 的集成方可在该 client 上自行设置；SDK 不另加默认 timeout。资源请求仍按下文安全契约在逐请求副本上禁用 cookie 并包装 redirect 校验。完整决策见 [ADR 0010](adr/0010-http-client-timeout-and-context.md)。
+
 ## 读取与写入
 
 `Client` 提供以下稳定的公开操作：
@@ -64,7 +72,15 @@ cursor 是版本化、不透明、绑定操作和查询的 token；不可解析�
 
 ## 路由
 
-有 refresh token 时，App API 是主路径；App 的认证、网络、服务端失败不自动 Web fallback。`NewClient` 无 refresh token 且 `WebFallbackEnabled=true` 时，匿名白名单读操作使用 Web API；`OpenDefault` 则每次 snapshot 读取本地 `web_fallback_enabled`。`IllustDetail` 的 pages 和原始 ugoira metadata 可能调用 Web 做明确补全，不是失败回退。
+有 refresh token 时，App API 是主路径；App 的认证、网络、服务端失败不自动 Web fallback。`NewClient` 无 refresh token 且 `WebFallbackEnabled=true` 时，匿名白名单读操作使用 Web API；`OpenDefault` 则每次 snapshot 读取本地 `web_fallback_enabled`。
+
+`IllustDetail` 的 pages 和 original ugoira metadata 会调用 Web 做明确补全，不是失败回退，并采用原子结果契约：
+
+- 认证 `IllustDetail` 先读取 App detail，再读取 Web pages。即使 App 响应自带 `MetaPages`，Web pages 失败也返回 `nil` 与 typed error，不返回无标记的 App partial result。
+- `UgoiraMetadata` 的 App metadata 只有 medium zip；Web metadata 未能提供 original 时返回 `nil` 与 typed error，不暗中降级质量。
+- 匿名 `IllustDetail` 依次读取 Web detail 与 pages；任一阶段失败都不返回 partial result。
+
+SDK 不向 Web 补全请求注入 App bearer 或 Cookie。App `MetaPages` 可被 wire model 表达和 mapper 保留，但 SDK 不把这一能力解释为上游对所有作品的完整性保证。完整决策与未来引入显式 partial-result 状态的门槛见 [ADR 0006](adr/0006-original-ugoira-resource-resolution.md)。
 
 ## 资源与图片代理
 
@@ -100,8 +116,23 @@ if errors.Is(err, pixiv.ErrUnauthorized) { /* re-auth */ }
 
 稳定 code 包括 `invalid_argument`、`artwork_unavailable`、`unauthorized`、`forbidden`、`unsupported`、`rate_limited`、`upstream_error`、`upstream_unavailable`、`malformed_upstream_response`。错误带 operation/backend/retryable/status/已验证 ID；不含 token、cookie、完整 URL、header 或上游响应 body。
 
+补全失败的阶段可直接从 typed error 观察：
+
+| 调用与失败阶段 | 返回结果 | `Operation` | `Backend` |
+| --- | --- | --- | --- |
+| 认证 `IllustDetail` 的 App detail 失败 | `nil` | `OperationIllustDetail` | `BackendAppAPI` |
+| 认证或匿名 `IllustDetail` 的 Web pages 失败 | `nil` | `OperationIllustPages` | `BackendWebAPI` |
+| 匿名 `IllustDetail` 的 Web detail 失败 | `nil` | `OperationIllustDetail` | `BackendWebAPI` |
+| `UgoiraMetadata` 的 Web metadata 补全失败 | `nil` | `OperationUgoiraMetadata` | `BackendWebAPI` |
+
+例如登录墙返回 HTTP 403 时，pages 补全错误为 `CodeForbidden`、`BackendWebAPI`、`OperationIllustPages`，并保留 `UpstreamStatus=403`；App detail 失败时不会继续请求 Web。调用方应按这些字段处理失败，不应从结果中猜测补全是否完成。
+
+`upstream_unavailable` 的网络传输失败还可通过 `Error.TransportKind` 区分安全子类：`dns`、`tls`、`proxy`、`connection_refused`、`connection_reset`、`unknown`。分类只依据 Go 标准库的 typed/wrapped cause，不解析错误文本；例如没有 typed 信号的 HTTPS proxy CONNECT 非 200 文本错误会保持 `unknown`。`Error()` 只输出稳定枚举，不输出 DNS name、代理 userinfo、证书内容或原始 cause。`context.Canceled` 与 `context.DeadlineExceeded` 不设置 transport 子类，继续通过 `errors.Is` 判断。
+
+`OpenDefault` 和本地账号/配置操作的 `invalid_argument` 还可通过 `Error.LocalStateKind` 区分安全子类：`auth_malformed`、`config_malformed`、`permission_denied`、`not_found`、`invalid_proxy`、`account_mismatch`、`unavailable`、`unknown`。顶层 code、operation、backend、user ID 与 retryable 语义保持不变；`account_mismatch` 仍带 `oauth` backend 和所选 user ID。`errors.Unwrap` 只返回固定的脱敏原因，不返回原始 filesystem/parser 错误、路径、配置/auth 内容或含 userinfo 的代理 URL；`Error()` 也只输出白名单枚举。正常加载时缺失的可选 `auth.json` 或 `config.toml` 继续视为空状态并成功，不会产生 `not_found`。
+
 ## 调用方责任
 
 调用方 adapter 决定采集模式、budget、filter、cursor 存储、数据库事务、任务调度、重试与对外 HTTP API。`atri-setu-api` 的随机选图、审查、图库和图片代理不属于 SDK；它可使用 SDK 的规范化模型和资源流实现这些功能。
 
-更多边界说明见 [ADR 0009](adr/0009-public-pixiv-sdk-and-caller-adapter.md)。
+更多边界说明见 [ADR 0009](adr/0009-public-pixiv-sdk-and-caller-adapter.md) 与 [ADR 0010](adr/0010-http-client-timeout-and-context.md)。

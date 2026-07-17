@@ -13,7 +13,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/protocol"
 	"github.com/FlanChanXwO/pixiv-cli/internal/utils"
@@ -74,13 +73,11 @@ func WithAccessToken(token string) Option {
 func New(refreshToken string, opts ...Option) *Client {
 	refreshToken, refreshTokenErr := utils.ValidateRefreshTokenInput(refreshToken)
 	c := &Client{restyClient: resty.New(), baseURL: DefaultBase, refreshToken: refreshToken, refreshTokenErr: refreshTokenErr}
-	c.restyClient.SetTimeout(60 * time.Second)
 	for _, opt := range opts {
 		opt(c)
 	}
 	if c.restyClient == nil {
 		c.restyClient = resty.New()
-		c.restyClient.SetTimeout(60 * time.Second)
 	}
 	return c
 }

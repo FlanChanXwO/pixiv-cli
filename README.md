@@ -101,7 +101,7 @@ pixiv auth login
 | 浏览器 | macOS 默认优先注册本地 `pixiv://` callback helper 并打开默认浏览器，因此可复用已有 Pixiv 登录态；需要用户在 Pixiv 页面确认账号；使用 `--no-open` 时只打印登录 URL 和本地页面地址。 |
 | 回调 | CLI 仅接收本轮 loopback callback、当前登录尝试注册的 `pixiv://` helper 转交、终端粘贴或本地页面表单；浏览器若没有返回，可手动粘贴 callback URL、`pixiv://...` URL、Pixiv relay URL 或原始 authorization code。 |
 | 校验 | 本地 loopback 回调必须匹配本次 state；Pixiv 官方 callback URL 与 `pixiv://account/login` 可在 Pixiv 未返回 state 时作为显式 fallback。 |
-| 保存 | refresh/access token 不会打印；refresh token 按 Pixiv UID 保存到 `auth.json`，文件权限为 `0600`。 |
+| 保存 | refresh/access token 不会打印；refresh token 按 Pixiv UID 保存到 `auth.json`。Unix-like 主动使用 `0700` 父目录与 `0600` 文件；Windows 首次创建继承父目录 ACL，替换既有目标保留其 ACL，不主动收紧或放宽 DACL。 |
 
 默认浏览器打开时，macOS 会注册一个仅服务于当前登录尝试的本地 `PixivCLIURLHandler.app`，只把 Pixiv 返回的 `pixiv://account/login?...` URL 转交给本轮 CLI loopback；它不读取浏览器 Cookie、存储、历史、会话文件、标签页或网络流量。若 helper 不可用，CLI 仍打开正常浏览器并等待 loopback 或手动回填，不会启动受管 Chromium、DevTools/CDP 或浏览器状态扫描。遇到 Pixiv `post-redirect` 授权接力页时，用户可手动粘贴 relay URL；CLI 只在校验其属于本轮 OAuth 后打开该 relay URL 一次。浏览器可能停留在白色 relay 页，是否成功以终端最终输出为准；若 Pixiv 未生成 callback，CLI 不会伪造成功。
 
@@ -166,7 +166,7 @@ pixiv recommended all
 pixiv download 123456 789012
 ```
 
-账号认证保存到 `os.UserConfigDir()/pixiv/auth.json`，账号 key 是 Pixiv UID；全局配置保存到 `os.UserConfigDir()/pixiv/config.toml`，两个文件权限都固定为 `0600`。输出默认给人读；加 `--json` 输出机器可解析 JSON。
+账号认证保存到 `os.UserConfigDir()/pixiv/auth.json`，账号 key 是 Pixiv UID；全局配置保存到 `os.UserConfigDir()/pixiv/config.toml`。Unix-like 主动使用 `0700` 父目录与 `0600` 文件；Windows 首次创建继承父目录 ACL，替换既有目标保留其 ACL，不主动收紧或放宽 DACL。输出默认给人读；加 `--json` 输出机器可解析 JSON。
 CLI 使用 Cobra/pflag，选项可以写在位置参数前后，例如 `pixiv auth check 12345678 --json` 和 `pixiv search "初音ミク" --json` 都是正式支持的写法。
 
 ### CLI 命令表
@@ -197,6 +197,8 @@ CLI 使用 Cobra/pflag，选项可以写在位置参数前后，例如 `pixiv au
 | `follow add/remove` | `pixiv follow add/remove USER_ID` | 关注或取消关注用户。 |
 | `download` | `pixiv download [options] ILLUST_ID...` | 下载一个或多个作品；无 token 时默认走匿名 web fallback。 |
 | `mcp` | `pixiv mcp [--proxy URL\|--no-proxy]` | 启动 MCP stdio server；代理覆盖只在本次启动时生效。 |
+
+下载文件名会规范化文件名模板以及 URL 推导扩展名中的跨平台非法字符；扩展名还会替换 ASCII 控制字符并移除 Windows 不接受的尾随点或空格。扩展名仍来自上游 URL，不使用 allowlist、MIME 猜测或静默替代。
 
 ### `auth login` 参数
 
@@ -280,7 +282,7 @@ CLI 使用 Cobra/pflag，选项可以写在位置参数前后，例如 `pixiv au
 
 当 `--refresh-token`、`PIXIV_REFRESH_TOKEN` 和默认账号都没有提供 refresh token，且 `web_fallback_enabled=true` 时，下列能力自动走 Pixiv web/ajax API：`search`、`detail`、`ranking`、`download`，以及 MCP tools `search_illust`、`illust_detail`、`illust_ranking`、`search_user`、`download`、`get_thumbnail_base64`。
 
-有 refresh token 时仍优先使用 App API；token 无效、App API 网络错误或服务端错误不会自动 fallback，会直接暴露真实错误。
+有 refresh token 时仍优先使用 App API；token 无效、App API 网络错误或服务端错误不会自动 fallback，会直接返回安全、可分类的失败，不会将错误伪装成正常空结果。
 
 匿名 fallback 的差异：
 
@@ -288,6 +290,8 @@ CLI 使用 Cobra/pflag，选项可以写在位置参数前后，例如 `pixiv au
 - 静态单页/多页下载使用 `/ajax/illust/{id}/pages` 的 `original` URL。
 - ugoira 下载使用 `/ajax/illust/{id}/ugoira_meta` 的 `originalSrc` zip 和 frames；受支持的发行构建通过内置 Rust encoder 生成 GIF/APNG，运行时不依赖 `ffmpeg`。
 - web fallback 不新增专用代理环境变量，继续使用 `--proxy` / `--no-proxy`、`https_proxy` / `HTTPS_PROXY` 或 `pixiv config set https_proxy ...`。
+
+代理 URL 格式错误时，SDK、CLI、MCP 与更新检查都会在联网前失败；诊断仅保留安全分类与静态上下文，不回显输入中的 userinfo、path 或 query。
 
 关闭方式：
 
@@ -320,6 +324,10 @@ pixiv update --proxy http://127.0.0.1:7890
 安装失败，会显式尝试恢复原 formula 并报告原错误和恢复结果。`go install` 使用精确 Release
 tag；Release binary 在下载前校验 Ed25519 签名的 checksum 清单和 archive SHA-256，再预检
 `pixiv version --json` 并原子替换可执行文件。
+
+更新检查只选择 canonical SemVer tag。stable 检查先排除 GitHub 已标记的 prerelease；
+`--prerelease` 则将其纳入当前通道。若当前通道的任一非 draft published Release 使用非
+SemVer tag，检查会报告该 tag 并 fail-closed，不会跳过它而选择较旧版本。
 
 受支持 binary 已内置 production Ed25519 public key/key ID/fingerprint；私钥只保存在受保护的
 `release` Environment 与受控 macOS Keychain 恢复副本。v0.3.0 是当前已发布的受签名 Release；
@@ -354,7 +362,7 @@ MCP 的代理覆盖是启动期设置：
 
 未设置 `PIXIV_REFRESH_TOKEN` 时，`pixiv mcp` 会先回退到 `auth.json.default_user_id`；如果仍没有 refresh token 且 `web_fallback_enabled=true`，支持匿名 fallback 的 MCP tools 会直接使用 Pixiv web/ajax API。真实 token 写在 inline 环境变量里也可能进入 shell history；长期使用建议通过 MCP client 的私密环境配置或本地账号管理。
 
-日志写入 stderr，stdout 保留给 MCP JSON-RPC。
+日志写入 stderr，stdout 仅保留给 MCP JSON-RPC。typed SDK tool 失败时使用 `isError=true`。legacy tool 为保持 wire 兼容，失败时仍保留既有的 `isError=false`、Content、structured output 与文本，但 stderr operation event 会以 error level 和 `result=error` 记录。事件只含安全的 operation/classification metadata，不含原始错误、tool 输入、query、token、Cookie、URL、path 或 response body。正常空结果仍记为成功。
 
 MCP client 配置示例：
 
@@ -395,9 +403,15 @@ MCP tools：
 `download_random_from_recommendation`, `search_illust`, `illust_detail`,
 `illust_related`, `illust_ranking`, `search_user`, `illust_recommended`, `recommended`,
 `trending_tags_illust`, `illust_follow`, `user_detail`, `user_bookmarks`, `user_following`,
-and `get_thumbnail_base64`.
+以及 `get_thumbnail_base64`。
 
 `user_detail` 接受必填的 `user_id`，返回完整稳定的用户详情 structured output；它需要认证，不支持匿名 Web fallback。各 MCP tool 的参数与返回语义见 [MCP 工具](docs/mcp-tools.md)。
+
+作品列表的 MCP 文本按上游顺序完整显示全部 tags；具备作品模型的 SDK tools 继续返回不变的完整 structured output。`illust_ranking` 的已知 mode 使用稳定中文标题，未来 mode 保留原值并追加“排行榜”。
+
+`download_random_from_recommendation` 的 `count` 可省略（默认 5），显式值须为 1..20；完整参数、错误与推荐不足时的语义见 [MCP 工具](docs/mcp-tools.md#配置认证与下载)。
+
+`download` 与 `download_random_from_recommendation` 失败时保留业务错误文本，并返回含空 `items`/`files` 数组的有效 structured output。完整 wire 语义见 [MCP 工具](docs/mcp-tools.md#配置认证与下载)。
 
 `recommended` 接受必填 `kind`：`all`、`illust`、`manga`、`novel` 或 `user`。它经认证 App SDK 返回结构化推荐；`all` 对四条流分别应用 `page`/`limit`，不暴露 SDK cursor，也不支持匿名 Web fallback。`illust_recommended` 保留旧 tool 名、参数和文本输出兼容性，但同样经公开 SDK 调用链执行。
 

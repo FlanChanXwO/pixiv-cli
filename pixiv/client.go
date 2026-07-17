@@ -25,7 +25,8 @@ import (
 type Options struct {
 	// Logger 接收调用方显式注入的诊断 logger；为空时 SDK 严格静默，绝不使用 slog.Default。
 	Logger *slog.Logger
-	// HTTPClient 同时承载 App 与 Web 请求；为空时使用各内部客户端默认值。
+	// HTTPClient 同时承载 App、Web、OAuth 与资源请求；为空时 SDK 创建一个
+	// 无整请求固定超时的专用 client，请求生命周期由 context 控制。
 	HTTPClient *http.Client
 	// AppAPIBaseURL 覆盖 App API 地址，主要用于代理与测试。
 	AppAPIBaseURL string
@@ -126,14 +127,18 @@ func NewClient(options Options) (*Client, error) {
 		return nil, err
 	}
 	accessToken := strings.TrimSpace(options.AccessToken)
+	httpClient := options.HTTPClient
+	if httpClient == nil {
+		httpClient = &http.Client{}
+	}
 	appOptions := []appapi.Option{
 		appapi.WithBaseURL(options.AppAPIBaseURL),
 		appapi.WithAccessToken(accessToken),
+		appapi.WithHTTPClient(httpClient),
 	}
-	webOptions := []webapi.Option{webapi.WithWebBase(options.WebAPIBaseURL)}
-	if options.HTTPClient != nil {
-		appOptions = append(appOptions, appapi.WithHTTPClient(options.HTTPClient))
-		webOptions = append(webOptions, webapi.WithHTTPClient(options.HTTPClient))
+	webOptions := []webapi.Option{
+		webapi.WithWebBase(options.WebAPIBaseURL),
+		webapi.WithHTTPClient(httpClient),
 	}
 	return &Client{
 		app:                appapi.New(appOptions...),
@@ -141,8 +146,8 @@ func NewClient(options Options) (*Client, error) {
 		authenticated:      accessToken != "",
 		webFallbackEnabled: options.WebFallbackEnabled,
 		resourcePolicy:     resourcePolicy,
-		resource:           internalresource.NewApp(options.HTTPClient),
-		httpClient:         options.HTTPClient,
+		resource:           internalresource.NewApp(httpClient),
+		httpClient:         httpClient,
 		authFilePath:       strings.TrimSpace(options.AuthFilePath),
 		configFilePath:     strings.TrimSpace(options.ConfigFilePath),
 		oauthBaseURL:       strings.TrimSpace(options.OAuthBaseURL),
@@ -266,6 +271,7 @@ func mapAppError(err error, operation Operation, illustID int64) error {
 func mapAdapterFailure(err error, operation Operation, backend Backend, illustID, userID int64) error {
 	code, retryable, status := CodeUpstreamUnavailable, true, 0
 	cause := error(errors.New("upstream transport failed"))
+	transportKind := TransportKind("")
 	var failure protocol.Failure
 	if errors.As(err, &failure) {
 		switch failure.Kind {
@@ -287,6 +293,7 @@ func mapAdapterFailure(err error, operation Operation, backend Backend, illustID
 			code, retryable = CodeForbidden, false
 			cause = errors.New("request was forbidden by policy")
 		case protocol.FailureTransport:
+			transportKind = TransportKind(failure.TransportKind)
 			if errors.Is(failure, context.Canceled) {
 				retryable, cause = false, context.Canceled
 			} else if errors.Is(failure, context.DeadlineExceeded) {
@@ -302,31 +309,13 @@ func mapAdapterFailure(err error, operation Operation, backend Backend, illustID
 		retryable, cause = false, context.DeadlineExceeded
 	}
 	if userID > 0 {
-		return newUserError(code, operation, backend, retryable, status, userID, cause)
+		mapped := newUserError(code, operation, backend, retryable, status, userID, cause)
+		mapped.TransportKind = transportKind
+		return mapped
 	}
-	return newError(code, operation, backend, retryable, status, illustID, cause)
-}
-
-func malformedError(operation Operation, backend Backend, illustID int64) error {
-	return newError(
-		CodeMalformedUpstreamResponse,
-		operation,
-		backend,
-		false,
-		0,
-		illustID,
-		errors.New("upstream response was malformed"),
-	)
-}
-
-func transportError(err error, operation Operation, backend Backend, illustID int64) error {
-	if errors.Is(err, context.Canceled) {
-		return newError(CodeUpstreamUnavailable, operation, backend, false, 0, illustID, context.Canceled)
-	}
-	if errors.Is(err, context.DeadlineExceeded) {
-		return newError(CodeUpstreamUnavailable, operation, backend, false, 0, illustID, context.DeadlineExceeded)
-	}
-	return newError(CodeUpstreamUnavailable, operation, backend, true, 0, illustID, errors.New("upstream transport failed"))
+	mapped := newError(code, operation, backend, retryable, status, illustID, cause)
+	mapped.TransportKind = transportKind
+	return mapped
 }
 
 func codeForHTTPStatus(status int, operation Operation) (ErrorCode, bool) {

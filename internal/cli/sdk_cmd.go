@@ -76,49 +76,19 @@ func (a app) sdkRequest(cmd *cobra.Command, options commandOptions) (application
 	}, client.JSONOverride, nil
 }
 
-// pageItems 自动跟随 SDK opaque cursor。没有任意遍历上限：0 limit 只会在 SDK
-// 明确没有 next cursor 时停止，context 取消会直接传给每个请求。
+// pageItems 仅把 CLI 的兼容 sentinel 映射到 application 分页语义；cursor 遍历、
+// 跳过、限量与止环都由共享 application 引擎负责。
 func pageItems[T any](ctx context.Context, plan listPlan, fetch func(context.Context, sdk.Cursor) ([]T, sdk.Cursor, error), consume func([]T) error) error {
-	cursor := sdk.Cursor("")
-	seenCursors := make(map[sdk.Cursor]struct{})
-	skip := plan.skip
-	seekingOffset := skip > 0
-	emitted := 0
-	for {
-		if _, seen := seenCursors[cursor]; seen {
-			return fmt.Errorf("pagination cursor repeated: %q", cursor)
-		}
-		seenCursors[cursor] = struct{}{}
-		items, next, err := fetch(ctx, cursor)
-		if err != nil {
-			return err
-		}
-		if skip > 0 {
-			if skip >= len(items) {
-				skip -= len(items)
-				items = nil
-			} else {
-				items = items[skip:]
-				skip = 0
-			}
-		}
-		if seekingOffset && skip == 0 && len(items) > 0 {
-			seekingOffset = false
-		}
-		if plan.limit > 0 && len(items) > plan.limit-emitted {
-			items = items[:plan.limit-emitted]
-		}
-		if len(items) > 0 {
-			if err := consume(items); err != nil {
-				return err
-			}
-			emitted += len(items)
-		}
-		if (plan.oneBatch && !seekingOffset) || (plan.limit > 0 && emitted >= plan.limit) || next == "" {
-			return nil
-		}
-		cursor = next
+	limit := plan.limit
+	if limit < 0 {
+		limit = 0
 	}
+	_, err := application.TraversePages(ctx, application.PagePlan{
+		Skip:     plan.skip,
+		Limit:    limit,
+		OneBatch: plan.oneBatch,
+	}, fetch, consume)
+	return err
 }
 
 func (a app) runIllustList(ctx context.Context, plan listPlan, jsonOut bool, fetch func(context.Context, sdk.Cursor) ([]sdk.Illust, sdk.Cursor, error), print func([]sdk.Illust, int)) error {

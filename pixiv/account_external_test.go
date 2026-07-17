@@ -250,10 +250,7 @@ func TestConfigUsesExistingAliasesPrivateFileAndEnvPriority(t *testing.T) {
 		t.Fatal(err)
 	}
 	if runtime.GOOS == "windows" {
-		// Windows 通过 ACL 管理访问控制，os.FileMode 不保留 Unix 的 0600 位。
-		if info.Mode().Perm() != 0o666 {
-			t.Fatalf("Windows mode=%v, want 0666 ACL representation", info.Mode())
-		}
+		// Windows mode bits 不作为 ACL 证据；这里只继续验证 SDK 配置读写语义。
 	} else if info.Mode().Perm() != 0o600 {
 		t.Fatalf("mode=%v, want 0600", info.Mode())
 	}
@@ -740,8 +737,16 @@ func TestOpenDefaultMissingSelectedUIDAndStoredMismatchNeverReachContent(t *test
 	client, _ := pixiv.OpenDefault(options)
 	_, err := client.IllustRecommended(context.Background(), pixiv.IllustRecommendedRequest{})
 	var typed *pixiv.Error
-	if !errors.As(err, &typed) || typed.UserID != 7 || typed.Operation != pixiv.OperationIllustRecommended || contentCalls.Load() != 0 {
+	if !errors.As(err, &typed) || typed.Code != pixiv.CodeInvalidArgument || typed.UserID != 7 || typed.Operation != pixiv.OperationIllustRecommended || typed.Backend != pixiv.BackendOAuth || typed.Retryable || typed.LocalStateKind != pixiv.LocalStateKindAccountMismatch || contentCalls.Load() != 0 {
 		t.Fatalf("mismatch err=%#v content=%d", err, contentCalls.Load())
+	}
+	if cause := errors.Unwrap(err); cause == nil || cause.Error() != "oauth identity does not match selected account" {
+		t.Fatalf("mismatch cause=%v", cause)
+	}
+	for _, rendered := range []string{err.Error(), errors.Unwrap(err).Error(), fmt.Sprintf("%+v", typed)} {
+		if strings.Contains(rendered, "stored-token") || strings.Contains(rendered, "wrong-rotated") || strings.Contains(rendered, authPath) {
+			t.Fatalf("mismatch secret leaked: %q", rendered)
+		}
 	}
 	body, readErr := os.ReadFile(authPath)
 	if readErr != nil || strings.Contains(string(body), "wrong-rotated") || !strings.Contains(string(body), "stored-token") {

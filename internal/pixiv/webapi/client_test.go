@@ -8,10 +8,78 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func TestNewUsesDedicatedClientWithoutTotalTimeout(t *testing.T) {
+	client := New()
+	require.NotSame(t, http.DefaultClient, client.httpClient)
+	require.Zero(t, client.httpClient.Timeout)
+}
+
+func TestNewPreservesExplicitHTTPClient(t *testing.T) {
+	want := &http.Client{Timeout: 29 * time.Second}
+	got := New(WithHTTPClient(want)).httpClient
+	require.Same(t, want, got)
+	require.Equal(t, want.Timeout, got.Timeout)
+}
+
+func TestSearchIllustPreservesCanceledContext(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	_, err := New(WithWebBase("https://example.invalid")).SearchIllust(ctx, "cat", "partial_match_for_tags", "date_desc", "", 0)
+	require.True(t, errors.Is(err, context.Canceled), "error = %v", err)
+}
+
+func TestWebEndpointPageSizesDefineWirePageBoundaries(t *testing.T) {
+	tests := []struct {
+		name      string
+		offset    int
+		wantPage  string
+		operation string
+		itemCount int
+	}{
+		{name: "artwork search last offset on first page", offset: 59, wantPage: "1", operation: "search", itemCount: 60},
+		{name: "artwork search first offset on second page", offset: 60, wantPage: "2", operation: "search", itemCount: 1},
+		{name: "ranking last offset on first page", offset: 49, wantPage: "1", operation: "ranking", itemCount: 50},
+		{name: "ranking first offset on second page", offset: 50, wantPage: "2", operation: "ranking", itemCount: 1},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			var gotPage string
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+				gotPage = request.URL.Query().Get("p")
+				items := make([]map[string]any, test.itemCount)
+				for index := range items {
+					items[index] = map[string]any{
+						"id": index + 1, "illust_id": index + 1,
+						"userId": index + 101, "user_id": index + 101,
+					}
+				}
+				if test.operation == "ranking" {
+					_ = json.NewEncoder(w).Encode(map[string]any{"contents": items, "rank_total": test.offset + test.itemCount})
+					return
+				}
+				_ = json.NewEncoder(w).Encode(map[string]any{"error": false, "body": map[string]any{"illustManga": map[string]any{"data": items, "total": test.offset + test.itemCount}}})
+			}))
+			defer server.Close()
+			client := New(WithHTTPClient(server.Client()), WithWebBase(server.URL))
+
+			if test.operation == "ranking" {
+				_, err := client.IllustRanking(context.Background(), "day", "", test.offset)
+				require.NoError(t, err)
+			} else {
+				_, err := client.SearchIllust(context.Background(), "miku", "partial_match_for_tags", "date_desc", "", test.offset)
+				require.NoError(t, err)
+			}
+			assert.Equal(t, test.wantPage, gotPage)
+		})
+	}
+}
 
 func TestCheckedWebPaginationUsesMachineArithmeticBoundaries(t *testing.T) {
 	maxInt := int(^uint(0) >> 1)

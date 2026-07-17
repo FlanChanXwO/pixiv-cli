@@ -5,10 +5,13 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
+	"os"
 	"strings"
 	"testing"
 
+	"github.com/FlanChanXwO/pixiv-cli/internal/bootstrap"
 	"github.com/FlanChanXwO/pixiv-cli/internal/buildinfo"
 	"github.com/FlanChanXwO/pixiv-cli/internal/config"
 	"github.com/FlanChanXwO/pixiv-cli/internal/update"
@@ -226,6 +229,51 @@ func TestRunAutomaticUpdateUsesCurrentCommandNoProxyOverride(t *testing.T) {
 	require.NoError(t, json.Unmarshal(stdout.Bytes(), &result))
 	assert.Contains(t, stderr.String(), "pixiv operation")
 	assert.Equal(t, []update.ReleaseCheckOptions{{Automatic: true}}, checker.options)
+}
+
+func TestRunAutomaticUpdateMalformedRuntimeProxyWritesSafeWarningWithoutNetwork(t *testing.T) {
+	_, configPath := useTempPaths(t)
+	useReleaseBuildInfo(t, "v0.1.0")
+	proxy := "http://proxy-user-secret:proxy-pass-secret@proxy-host-secret.invalid/proxy-path-secret-%zz?proxy-query-secret=value"
+	require.NoError(t, config.WritePrivateFile(configPath, []byte("[network]\nhttps_proxy = "+fmt.Sprintf("%q", proxy)+"\n[update]\ncheck_enabled = true\n")))
+	// 环境代理优先于文件配置；显式移除它们，确保 canary 来自临时 runtime config。
+	for _, name := range []string{"https_proxy", "HTTPS_PROXY"} {
+		value, existed := os.LookupEnv(name)
+		require.NoError(t, os.Unsetenv(name))
+		t.Cleanup(func() {
+			if existed {
+				require.NoError(t, os.Setenv(name, value))
+				return
+			}
+			require.NoError(t, os.Unsetenv(name))
+		})
+	}
+
+	oldLoad := loadAutomaticUpdateRuntimeConfig
+	oldNew := newCLIAutomaticUpdateChecker
+	loadAutomaticUpdateRuntimeConfig = bootstrap.LoadRuntimeConfig
+	constructorCalls := 0
+	newCLIAutomaticUpdateChecker = func(gotProxy string) (*update.AutomaticUpdateChecker, error) {
+		constructorCalls++
+		require.Equal(t, proxy, gotProxy)
+		return bootstrap.NewAutomaticUpdateChecker(gotProxy)
+	}
+	t.Cleanup(func() {
+		loadAutomaticUpdateRuntimeConfig = oldLoad
+		newCLIAutomaticUpdateChecker = oldNew
+	})
+
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"pixiv", "config", "path"}, strings.NewReader(""), &stdout, &stderr)
+
+	require.Equal(t, 0, code, stderr.String())
+	assert.Equal(t, configPath+"\n", stdout.String())
+	assert.Equal(t, 1, constructorCalls)
+	for _, secret := range []string{"proxy-user-secret", "proxy-pass-secret", "proxy-host-secret", "proxy-path-secret", "proxy-query-secret"} {
+		assert.NotContains(t, stderr.String(), secret)
+	}
+	assert.Contains(t, stderr.String(), "warning: create automatic update checker")
+	assert.Contains(t, stderr.String(), "invalid proxy configuration")
 }
 
 func stubAutomaticUpdateCheck(t *testing.T, runtimeConfig config.RuntimeConfig, constructor func(string) (*update.AutomaticUpdateChecker, error)) func() {

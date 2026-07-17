@@ -18,6 +18,16 @@ repository secret，或复用同一 SSH key，会让任意 tag/workflow 或公�
 
 - GitHub Releases API 是更新查询的唯一后端。draft 不可选；自动检查只选 stable，显式
   `--prerelease` 才可选择预发布版本。
+- 当前受信发布入口只有 `.github/workflows/release.yml` 的 tag push 与必填 `release_tag` 的
+  `workflow_dispatch`，两者共用 `RELEASE_TAG`；validate、test build 与 production build 均以该值执行
+  SemVer 校验，publish 再以同一值判定 stable/prerelease channel。workflow policy 要求 validate job 中
+  固定位置是绑定 `RELEASE_TAG`、仅含精确 validator command 的 canonical step，并拒绝该 step 的 `if`、
+  `continue-on-error` 与额外 shell command。门禁及恢复流程的完整证据见
+  [开发文档](../development.md#发布门禁签名与-homebrew-边界)。
+- 因此 update selector 对进入当前检查通道的非 draft published Release 采用 fail-closed：stable 检查先
+  忽略 GitHub 已标记的 prerelease；显式 prerelease 检查则必须验证这些 tag。当前通道若出现非 SemVer
+  tag，表示受信入口被绕过或 policy 漂移，必须返回包含该 tag 的诊断，不能静默跳过后选择旧 Release，
+  更不能把网络、HTTP、cache、签名或安装失败解释成“无更新”。
 - 每个正式 Release 使用固定六目标 asset 名，发布 `checksums.txt` 以及对其原始 bytes 签名、含 key
   ID 的 Ed25519 `checksums.json`。Release installer 先验证签名和 SHA-256，再解包、版本预检并原子
   替换。

@@ -25,6 +25,7 @@
 
 - Cobra 命令树、help 和 flag 解析。
 - 文本/JSON 输出。
+- CLI 协议的 `--page`/`--limit`/deprecated `--offset` 解析与错误文案；解析后的逻辑分页计划交给 application 共享遍历引擎。
 - `auth login` 的 loopback OAuth、浏览器打开和 TTY 交互。
 - `pixiv mcp` 分发。
 - `pixiv version`、根 `--version` 与 `pixiv update` 的输入/输出适配。
@@ -36,6 +37,12 @@
 成功后运行，跳过 MCP、help、`version`、`update` 和开发构建；它选择 stable Release、使用用户
 cache 的 24 小时节流，并最多等待 3 秒。配置、网络、来源识别失败只作为 stderr warning，不能
 改变已成功业务命令的退出码，也不能混入 JSON stdout 或 MCP JSON-RPC。
+
+### `internal/cli/loginhelper`
+
+负责 `auth login` 使用的系统 URL scheme helper 安装。`internal/cli` 只经 `Install` 入口请求本次登录的
+helper 并保留 OAuth、loopback HTTP、系统浏览器和 TTY 编排；Darwin 实现独立持有内嵌 Swift、
+`Info.plist`、LaunchServices 注册及默认 handler 恢复逻辑，其他平台显式报告不支持该 helper。
 
 ### `internal/buildinfo`
 
@@ -50,6 +57,8 @@ cache 的 24 小时节流，并最多等待 3 秒。配置、网络、来源识�
 - `ConfigService`：`config.toml` path/get/set/unset。
 - `LoginService`：生成 PKCE/state、authorization-code exchange，并保存账号；Pixiv 登录 URL 构造仍留在 CLI adapter。
 - `SDKService`：为 CLI/MCP 打开顶层 `pixiv` client，并把调用方选择的账号/代理/JSON 设置映射到 SDK operation snapshot；作品查询和下载均从该 snapshot 的 public SDK 能力继续执行。
+- `DownloadService`：把同一 operation snapshot、本次下载路径和文件名模板交给 bootstrap 注入的窄 factory，并委托下载；应用层不构造具体 manager。
+- 分页遍历：统一负责 opaque cursor 跟随、逻辑 skip/limit、单批兼容语义与重复 cursor 止环；CLI 可按批流式消费，MCP 可经同一引擎收集结果。各 adapter 只解析各自协议输入并组织输出。
 
 ### `internal/bootstrap`
 
@@ -66,7 +75,7 @@ bootstrap、源码或运行时配置中。只读更新检查不需要该 key；�
 负责本地账号状态：
 
 - `auth.json` 读写与默认 UID 管理。
-- 认证文件路径解析和 `0600` 权限写入。
+- 认证文件路径解析和平台对应的凭据文件写入保护。
 
 ### `internal/config`
 
@@ -78,10 +87,29 @@ bootstrap、源码或运行时配置中。只读更新检查不需要该 key；�
 
 配置拆分如下：
 
-- `auth.json`：只保存 `default_user_id` 与 `accounts[].user_id/username/refresh_token`，文件权限固定为 `0600`。
-- `config.toml`：只保存用户显式设置过的全局配置键，文件权限固定为 `0600`。
+- `auth.json`：只保存 `default_user_id` 与 `accounts[].user_id/username/refresh_token`；Unix-like 文件权限为 `0600`。
+- `config.toml`：只保存用户显式设置过的全局配置键；Unix-like 文件权限为 `0600`。
 
 运行时设置使用 `koanf` 合并 `config.toml` 与公开环境变量；`config set/unset` 使用 `tomledit` 写回，尽量保留注释、顺序和布局。
+
+`auth.json` 与 `config.toml` 共用 `internal/utils/files` 的原子写入协议：于目标同目录使用不含
+凭据内容的随机文件名创建临时文件，完成全部写入并执行 file `Sync`，关闭文件后才替换目标。Unix-like 平台
+主动把父目录与文件分别收紧为 `0700`、`0600`，原子替换后继续同步目标目录；
+若本次调用新建了一层或多层目录，则在替换提交后按 leaf→root 顺序同步目标目录及每个新目录
+的外层 parent，使文件 entry 与新目录 entry 均进入 durability 边界；既有目录仍只同步目标目录。
+任一目录同步失败时仍会尝试其余目录并合并错误，替换已经提交，调用方不能假定旧文件仍在。替换前的写入、file `Sync` 或关闭
+失败会保持旧目标；普通替换失败以及可恢复的部分完成失败也会保持或恢复旧目标，并清理临时
+文件。若部分完成后的恢复本身失败，调用方会收到组合错误，目标路径可能暂时缺失，但旧内容的
+同目录 recovery backup 与新内容的 source temp 都会保留供人工恢复；此时“No temp residual”不适用。
+其他临时文件清理失败不会被吞掉，而会与主错误一并返回。
+
+Windows 在替换前同样执行 file `Sync` 与关闭：目标存在时，使用带同目录唯一 recovery backup 的
+`ReplaceFileW`；首次创建使用不覆盖目标的 `MoveFileEx`。`ERROR_UNABLE_TO_MOVE_REPLACEMENT`
+保持 target/source 原名；`ERROR_UNABLE_TO_MOVE_REPLACEMENT_2` 会尝试把已移动到 backup 的旧目标
+恢复，恢复失败则保留 backup/source。成功替换后的 backup 清理失败属于已提交错误，仍按已提交
+路径处理。Windows 首次创建的文件继承父目录 ACL，替换既有目标时保留该目标 ACL；本协议不会
+主动添加或放宽 ACL，但也不声称 `Mkdir`/`Chmod` 会收紧 DACL，亦不提供 POSIX mode 或 directory
+fsync 的等价保证。
 
 `update_check_enabled` 对应 `[update] check_enabled`，默认 `true`；它只控制普通 CLI 成功后的
 自动检查，不禁用用户显式执行的 `pixiv update`。
@@ -100,6 +128,9 @@ bootstrap、源码或运行时配置中。只读更新检查不需要该 key；�
   原子替换。
 - GitHub Releases API 是唯一查询后端；draft 被排除，stable 检查不纳入 prerelease。ETag/cache
   用于节流与原子保存。
+- 更新选择器对当前检查通道的 published Release 强制 canonical SemVer；任一 tag 不合法时
+  fail-closed 并报告该 tag，不会跳过它而选择较旧版本。stable 选择会在校验前先排除
+  GitHub 已标记的 prerelease；完整信任边界见 [ADR 0008](adr/0008-ed25519-signed-multi-channel-release-trust.md)。
 
 该包不得把签名、checksum、HTTP、archive、替换或权限错误伪装成“无更新”。production trusted key、
 签名私钥与 Keychain 恢复副本、受保护 `release` Environment 和公开 remote 已按 Task 20 配置；完整六目标
@@ -122,6 +153,10 @@ Release 安装的失败语义仍是保护边界，而不是临时降级。
 - `oauth`：PKCE、code exchange、refresh 与 token state。
 - `resource`：受 policy 约束的 resource transport、redirect/header/body 边界。
 
+`webapi` 包内按职责导航：`client.go` 编排各 Web operation，`transport.go` 负责 HTTP 与脱敏错误边界，
+`pagination.go` 和 `parameters.go` 分别处理 Web 页码以及 endpoint 参数映射，`dto.go` 只声明 wire shape，
+`decoder.go` 校验弹性数值、必需列表与 ajax envelope，`mapper.go` 将 Web DTO 规范化为共享 model。
+
 有 token 时 App API 是主路径，失败不自动 Web fallback；无 token 且 `web_fallback_enabled=true` 时才允许明确白名单 Web read。pages/original ugoira enrichment 必须由 operation policy 显式选择。
 
 ### `internal/pixiv/model`
@@ -130,19 +165,20 @@ Release 安装的失败语义仍是保护边界，而不是临时降级。
 
 ### `internal/mcpserver`
 
-负责将 Pixiv 与下载能力注册为 MCP tools。所有 Pixiv 内容、认证、资源和写操作都通过 `SDKService` 使用 public SDK；旧构造器保留的首个 API 参数只是废弃占位，生产路径不会读取。下载由 operation snapshot 对应的 `DownloadManager` 执行。stdio runtime 由 `internal/bootstrap` 组装和启动。
+负责将 Pixiv 与下载能力注册为 MCP tools。所有 Pixiv 内容、认证、资源和写操作都通过 `SDKService` 使用 public SDK；旧构造器保留的首个 API 参数只是废弃占位，生产路径不会读取。下载由 operation snapshot 对应的 `DownloadManager` 执行。MCP 的 nullable `page`/`limit` 与旧 offset 输入只在本 adapter 解析，逻辑分页遍历由 application 共享引擎执行。stdio runtime 由 `internal/bootstrap` 组装和启动。
 
-输出目前以中文文本为主，适合直接返回给 LLM/MCP 客户端。认证相关工具会显式提示缺少 token、认证失败或自动认证失败的真实原因。
+包内按职责拆分：`server.go` 负责构造与统一 observability wrapper，`registration.go` 只维护 tool 注册，`auth_tools.go` 和 `download_tools.go` 分别承载认证与下载，`legacy_tools.go` 保留 legacy 读取适配，`formatting.go` 集中文本/output helper，`sdk_runtime.go` 负责分页、operation snapshot、gate 与安全日志，`sdk_tools.go` 承载 SDK typed tools。legacy handler 可把失败继续转换为兼容的 `isError=false` 结果，但必须把真实 cause 交给 wrapper；wrapper 只在 stderr 记录安全分类 metadata，不读取参数或原始错误文本。正常空结果不会伪装成失败。
+
+输出目前以中文文本为主，适合直接返回给 LLM/MCP 客户端。其中 `refresh_token` tool 会区分缺少 token、context 取消/deadline、安全 typed SDK 失败与未知失败；其未知底层错误只返回脱敏排查提示，不回显原始原因。完整 wire 语义见 [MCP 工具](mcp-tools.md#配置认证与下载)。
 
 ### `internal/download`
 
 负责下载和本地文件落盘：
 
 - `Download` 会同步下载 ID 列表，并返回每个作品的实际产物路径。
-- `Enqueue` 会去重、排序并为每个 ID 启动后台任务。
-- 内部 semaphore 当前并发为 5。
 - 单页作品保存到下载目录。
 - 多页作品和 ugoira 会建立作品子目录。
+- 单页与多页作品从上游 URL path 推导扩展名，并与模板生成的文件名一样规范化跨平台非法字符；扩展名还会替换 ASCII 控制字符并移除 Windows 非法尾随点/空格，但不猜测或静默替换扩展名。
 - ugoira 先下载 zip，再由 Rust FFI encoder 合成为 GIF/APNG。
 
 Rust crate 以 target 专用 staticlib 接入 cgo：darwin/linux/windows 各有 amd64/arm64 selector；Linux
@@ -213,7 +249,7 @@ SmartScreen 提示时，必须回到已验证的项目 GitHub Release、checksum
 
 提供文件名清理、模板展开、ID 去重和 refresh token 输入规范化：
 
-- 非法文件名字符替换为 `_`。
+- 模板内容及 URL path 推导扩展名中的非法文件名字符替换为 `_`；扩展名额外处理 ASCII 控制字符和 Windows 非法尾随点/空格。
 - 支持 `{author}`、`{title}`、`{id}` 模板字段。
 - 多页作品追加 `_pN` 后缀。
 - 下载 ID 去重时会丢弃小于等于 0 的 ID，并排序。
@@ -229,11 +265,11 @@ SmartScreen 提示时，必须回到已验证的项目 GitHub Release、checksum
 
 ## 已知约束
 
-- `appapi`、`webapi` 与 resource transport 使用 caller/SDK 注入的 HTTP client；SDK 不新增无依据固定请求超时，取消由 context 传播。
+- `appapi`、`webapi`、`oauth` 与 resource transport 使用 caller/SDK 注入的 HTTP client；默认 client 专用于当前 SDK client、无整请求固定 timeout，取消与 deadline 由 context 传播。显式 client 保持调用方策略；详见 [ADR 0010](adr/0010-http-client-timeout-and-context.md)。
 - `pixiv mcp` 是 MCP stdio server 的显式启动方式；直接执行 `pixiv` 不会启动 MCP。
-- CLI 账号文件以明文 JSON 保存 refresh token、user ID 和可选 username，不保存 access token，文件权限固定为 `0600`；需要系统钥匙串时再扩展。
+- CLI 账号文件以明文 JSON 保存 refresh token、user ID 和可选 username，不保存 access token；Unix-like 文件权限为 `0600`，Windows 依赖父目录/既有目标 ACL，当前不主动配置私有 DACL；需要系统钥匙串时再扩展。
 - `config.toml` 采用稀疏写入，不会把默认值整份落盘。
-- `download_random_from_recommendation` 默认下载 5 个，当前代码将输入数量限制在最多 20 个。
+- `download_random_from_recommendation` 的 `count` 缺省为 5，显式值须为 1..20，超范围会返回参数错误而非静默钳制。20 限制的是请求作品数：一次请求可触发多个作品下载，每个作品又可展开为多页/多文件，全部产物元数据会进入同一 structured response；该边界避免无界放大下载工作与 JSON-RPC 输出，不截断单个作品的文件。推荐列表不足请求数时下载实际可用数量。
 - `download` 默认只返回本地路径和 `file://` URI；当 `delivery=image_content` 时，会把所有下载产物作为 MCP `ImageContent` 一并返回，不做无依据截断。
 - `get_thumbnail_base64` 会将缩略图完整编码为 base64 文本返回，调用方需注意输出体积。
 - 匿名 `search_user` fallback 语义是“作品搜索结果中的相关作者去重”，不是 Pixiv 官方用户名搜索。

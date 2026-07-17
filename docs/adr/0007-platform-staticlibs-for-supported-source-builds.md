@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted；完整六目标已由 native runner 验证并受控回填。
+Accepted；完整六目标由 pinned native runner 验证并受控回填，run `29567721284` 已完成本次重建。
 
 ## Context
 
@@ -27,6 +27,9 @@ source 的关系保留给发布审计，需要可重算的 source digest、每�
   `x86_64-apple-darwin` 与 `x86_64-pc-windows-msvc` 使用 `1.96.0`，其余四个 release target 使用
   `1.96.1`。test 与 production job 必须从同一受审计 matrix 选择版本，禁止使用可移动的 `stable`
   或 runner 默认值；production 仍只 checkout immutable tag，toolchain pin 不构成源码 overlay。
+- native-evidence workflow 必须使用同一目标映射：matrix 显式携带版本，job 通过
+  `RUSTUP_TOOLCHAIN` 绑定，并以 `rustup toolchain install ... --no-self-update` 安装版本和目标；
+  release 与 native-evidence verifier 共用唯一 policy 映射，禁止三份独立事实源漂移。
 - Rust `target/` 始终是忽略的机器产物；已验证 staticlib 与 manifest 是可审计发布输入，不能忽略。
 - production ugoira 路径只使用 Rust encoder；`ffmpeg` 仅保留给显式启用的开发质量对照，不作为运行
   时 fallback。
@@ -39,9 +42,13 @@ source 的关系保留给发布审计，需要可重算的 source digest、每�
   native runner 证据。
 - 没有 cgo、target C linker、目标 staticlib 或完整 manifest 时，构建必须清晰失败；不能退回 stub、
   `ffmpeg` 或“部分可用”的 binary。
-- run `29192425899` 已取得六个真实 staticlib、同源 manifest 与每平台 GIF/APNG/cgo smoke 证据，
-  并经 fail-closed consolidation 回填；source build 与 future exact-tag `go install` 会消费这些
-  committed libraries。正式 Release 与安装验收仍由后续发布任务独立证明。
+- run `29567721284`（head `a93378631654f7a19b5e6052f68bdb3650438b03`）已按上述
+  `1.96.0`/`1.96.1` 映射完整重建六目标，并通过 policy、精确源码 ref、locked/offline build、
+  GIF/APNG/cgo smoke、archive/record 与 artifact upload。下载六份证据后的本地 fail-closed
+  consolidation 继续核对 version、commit、source digest、目标集合与逐库 hash，随后将六库及 manifest
+  成套回填。临时 review ref 仅用于合并前精确 checkout 该受审计 commit；回填后 workflow 已恢复只接受
+  `refs/heads/main`。旧 run `29559729696` 的 runner 默认 Rust `1.97.0` 产物不得作为 recovery byte rebuild
+  的合规证据，也不得只改 manifest 或文字声明来冒充重建。
 - 上述 per-target pin 是当前六库及 v0.3.0 immutable-tag recovery 的实际 provenance。后续 Rust
   升级必须从同一受审计 source 成套重建、链接并 smoke 验证六目标，同时更新 staticlib、manifest、
   native evidence 与 release matrix；不能单独漂移某个 target 或用新编译器覆盖既有 tag 的 library。

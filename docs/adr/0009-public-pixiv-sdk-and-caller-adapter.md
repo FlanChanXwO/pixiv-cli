@@ -14,7 +14,7 @@
 - 公开契约只通过 package 提供；不提供 HTTP server、`Discover`、Probe、Capabilities、RSS 或 crawler。
 - `atri-setu-api` 等调用方拥有窄 adapter interface，以及自己的 source mode、budget、filter、cursor storage、persistence、scheduling 和 HTTP presentation。
 - 内部使用物理包 `internal/pixiv/appapi`、`webapi`、`oauth`、`resource`；公开 SDK 负责路由和规范化，但不泄漏这些包。
-- 有凭据时 App API 为主路径。匿名 Web read 仅在无 refresh token 时按配置 fallback；Web enrichment 必须显式，绝不隐藏 fallback。
+- 有凭据时 App API 为主路径。匿名 Web read 仅在无 refresh token 时按配置 fallback；Web enrichment 必须显式，绝不隐藏 fallback。需要补全的公开操作遵循“完整结果或明确失败”的原子契约，具体取舍与未来 partial-result 变更门槛见 [ADR 0006](0006-original-ugoira-resource-resolution.md)。
 - 媒体通过 policy 验证过的 `ResourceRef`、`OpenResource`、`Download` 提供，保持 stream ownership 与 SSRF controls。
 
 ## 后果
@@ -23,3 +23,4 @@
 - 集成方可用小 mock 测试其 adapter，自选运行策略。
 - 本仓库不承诺 collector-specific discovery 兼容性；调用方须将这类行为迁移到自己的领域层。
 - 物理协议变更封装在顶层 `pixiv` 后，降低公开 API churn。
+- 调用方可用 stable code、operation、backend 和 upstream status 区分主路径与补全失败，不需要猜测返回模型是否静默降级。

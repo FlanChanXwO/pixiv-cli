@@ -86,10 +86,19 @@ func (a app) configSet(alias, raw string) error {
 		return err
 	}
 	if result.HasOverride {
-		fmt.Fprintf(a.errOut, "note: %s is currently overridden by environment and effective value remains %q\n", alias, result.EnvOverride)
+		a.writeConfigOverrideNote(alias, result.EnvOverride)
 	}
 	fmt.Fprintf(a.out, "%s updated\n", alias)
 	return nil
+}
+
+func (a app) writeConfigOverrideNote(alias, envOverride string) {
+	if alias == "https_proxy" {
+		// 代理 URL 可能携带 userinfo、路径或 query，提示覆盖来源即可，不能回显其值。
+		fmt.Fprintf(a.errOut, "note: %s is currently overridden by environment; effective value remains controlled by environment\n", alias)
+		return
+	}
+	fmt.Fprintf(a.errOut, "note: %s is currently overridden by environment and effective value remains %q\n", alias, envOverride)
 }
 
 func (a app) newConfigUnsetCommand() *cobra.Command {
@@ -110,7 +119,7 @@ func (a app) configUnset(alias string) error {
 		return err
 	}
 	if result.HasOverride {
-		fmt.Fprintf(a.errOut, "note: %s is currently overridden by environment and effective value remains %q\n", alias, result.EnvOverride)
+		a.writeConfigOverrideNote(alias, result.EnvOverride)
 	}
 	fmt.Fprintf(a.out, "%s removed\n", alias)
 	return nil

@@ -54,7 +54,6 @@ type SettingsState struct {
 }
 
 type RuntimeConfig struct {
-	RefreshToken       string
 	DownloadPath       string
 	FilenameTemplate   string
 	HTTPSProxy         string

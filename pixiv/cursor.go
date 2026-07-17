@@ -33,17 +33,9 @@ func queryDigest(operation Operation, query any) string {
 	return hex.EncodeToString(sum[:])
 }
 
-func encodeCursor(operation Operation, digest, kind string, value int64) Cursor {
-	return encodeCursorForSource(operation, digest, kind, value, "")
-}
-
 func encodeCursorForSource(operation Operation, digest, kind string, value int64, source string) Cursor {
 	payload, _ := json.Marshal(cursorPayload{Version: cursorVersion, Operation: operation, QueryDigest: digest, Kind: kind, Value: strconv.FormatInt(value, 10), Source: source})
 	return Cursor(base64.RawURLEncoding.EncodeToString(payload))
-}
-
-func decodeCursor(raw Cursor, operation Operation, digest, kind string) (int64, error) {
-	return decodeCursorForSource(raw, operation, digest, kind, "", false)
 }
 
 func decodeCursorForSource(raw Cursor, operation Operation, digest, kind, source string, requireSource bool) (int64, error) {

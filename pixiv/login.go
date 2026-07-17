@@ -179,7 +179,7 @@ func (c *Client) CompleteLogin(ctx context.Context, session *LoginSession, callb
 		state.store.DefaultUserID = account.UserID
 	}
 	if err := auth.SaveAuthStore(state.authPath, state.store); err != nil {
-		return nil, localSnapshotError(OperationCompleteLogin, err)
+		return nil, localSnapshotError(OperationCompleteLogin, markLocalState(localStateStageAuth, err))
 	}
 	result := publicAccount(account, state.store.DefaultUserID)
 	return &result, nil

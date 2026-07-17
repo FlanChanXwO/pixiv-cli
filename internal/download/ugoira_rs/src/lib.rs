@@ -69,6 +69,12 @@ pub enum EncodeError {
     EmptyFrames,
     #[error("ugoira encoding canceled")]
     Canceled,
+    #[error("image decoder does not expose a frame source allocation limit")]
+    FrameSourceLimitUnavailable,
+    #[error("frame {file} source is {size} bytes, exceeding image allocation limit {limit} bytes")]
+    FrameSourceTooLarge { file: String, size: u64, limit: u64 },
+    #[error("cannot allocate {requested} bytes for frame {file} source")]
+    FrameSourceAllocation { file: String, requested: u64 },
     #[error("frame {file} has non-positive delay {delay_ms}ms")]
     NonPositiveDelay { file: String, delay_ms: i64 },
     #[error("frame {file} delay {delay_ms}ms exceeds GIF delay field limit")]
@@ -254,7 +260,7 @@ pub fn encode_apng(
     let mut archive = open_archive(zip_path)?;
     let first_meta = &frames[0];
     let first_delay = apng_delay_fraction(first_meta.delay, &first_meta.file)?;
-    let first = decode_frame(&mut archive, first_meta)?;
+    let first = decode_frame(&mut archive, first_meta, cancellation)?;
     let original_size = first.dimensions();
     if original_size.0 == 0 || original_size.1 == 0 {
         return Err(EncodeError::EmptyImage);
@@ -285,8 +291,13 @@ pub fn encode_apng(
     for frame_meta in &frames[1..] {
         cancellation.check()?;
         let delay = apng_delay_fraction(frame_meta.delay, &frame_meta.file)?;
-        let current =
-            decode_and_resize_frame(&mut archive, frame_meta, original_size, output_size)?;
+        let current = decode_and_resize_frame(
+            &mut archive,
+            frame_meta,
+            original_size,
+            output_size,
+            cancellation,
+        )?;
         let region = changed_region(&previous, &current);
         write_apng_frame(
             &mut output,
@@ -338,7 +349,7 @@ fn collect_global_histogram(
     for frame_meta in frames {
         cancellation.check()?;
         let _ = gif_delay_ticks(frame_meta.delay, &frame_meta.file)?;
-        let decoded = decode_frame(&mut archive, frame_meta)?;
+        let decoded = decode_frame(&mut archive, frame_meta, cancellation)?;
         let dimensions = decoded.dimensions();
         validate_frame_size(frame_meta, dimensions, original_size)?;
         if dimensions.0 == 0 || dimensions.1 == 0 {
@@ -420,7 +431,7 @@ fn write_global_palette_gif(
 
     for frame_meta in frames {
         cancellation.check()?;
-        let decoded = decode_frame(&mut archive, frame_meta)?;
+        let decoded = decode_frame(&mut archive, frame_meta, cancellation)?;
         validate_frame_size(
             frame_meta,
             decoded.dimensions(),
@@ -506,14 +517,112 @@ fn open_archive(path: &Path) -> Result<ZipArchive<File>, EncodeError> {
 fn decode_frame(
     archive: &mut ZipArchive<File>,
     frame: &UgoiraFrame,
+    cancellation: &CancellationToken,
 ) -> Result<RgbaImage, EncodeError> {
     let mut zip_frame = archive.by_name(&frame.file)?;
-    let mut compressed = Vec::new();
-    zip_frame.read_to_end(&mut compressed)?;
-    Ok(ImageReader::new(Cursor::new(compressed))
+    // 帧源与解码结果共处于一次 encode 生命周期。这里复用 pinned image crate 的默认
+    // max_alloc 作为客观上限：ZIP 声明或实际解压字节超过它就显式失败，不截断合法输入，
+    // 也不再让 read_to_end 在进入 image 自身限制前无界增长。
+    let source_limit = image::Limits::default()
+        .max_alloc
+        .ok_or(EncodeError::FrameSourceLimitUnavailable)?;
+    let declared_size = zip_frame.size();
+    let source = read_frame_source(
+        &mut zip_frame,
+        &frame.file,
+        declared_size,
+        source_limit,
+        cancellation,
+    )?;
+    cancellation.check()?;
+    let decoded = ImageReader::new(Cursor::new(source))
         .with_guessed_format()?
-        .decode()?
-        .into_rgba8())
+        .decode()?;
+    // image crate 的 decoder 内部没有可注入的取消回调；本检查只能保证其返回后立即
+    // 响应取消，不能宣称能中断正在进行的单帧 decode。
+    cancellation.check()?;
+    let decoded = decoded.into_rgba8();
+    cancellation.check()?;
+    Ok(decoded)
+}
+
+fn read_frame_source<R: Read>(
+    reader: &mut R,
+    file: &str,
+    declared_size: u64,
+    limit: u64,
+    cancellation: &CancellationToken,
+) -> Result<Vec<u8>, EncodeError> {
+    cancellation.check()?;
+    if declared_size > limit {
+        return Err(EncodeError::FrameSourceTooLarge {
+            file: file.to_string(),
+            size: declared_size,
+            limit,
+        });
+    }
+
+    let initial_capacity =
+        usize::try_from(declared_size).map_err(|_| EncodeError::FrameSourceAllocation {
+            file: file.to_string(),
+            requested: declared_size,
+        })?;
+    let mut source = Vec::new();
+    source
+        .try_reserve_exact(initial_capacity)
+        .map_err(|_| EncodeError::FrameSourceAllocation {
+            file: file.to_string(),
+            requested: declared_size,
+        })?;
+
+    // 固定块只决定取消检查的粒度，不限制或截断输入；每次 read 前后都观察 token。
+    let mut chunk = [0_u8; 32 * 1024];
+    loop {
+        cancellation.check()?;
+        let read = reader.read(&mut chunk)?;
+        cancellation.check()?;
+        if read == 0 {
+            break;
+        }
+
+        let actual_size = u64::try_from(source.len())
+            .unwrap_or(u64::MAX)
+            .saturating_add(u64::try_from(read).unwrap_or(u64::MAX));
+        if actual_size > limit {
+            return Err(EncodeError::FrameSourceTooLarge {
+                file: file.to_string(),
+                size: actual_size,
+                limit,
+            });
+        }
+        let required_capacity =
+            source
+                .len()
+                .checked_add(read)
+                .ok_or_else(|| EncodeError::FrameSourceAllocation {
+                    file: file.to_string(),
+                    requested: actual_size,
+                })?;
+        if required_capacity > source.capacity() {
+            let limit_capacity = usize::try_from(limit).unwrap_or(usize::MAX);
+            let target_capacity = source
+                .capacity()
+                .saturating_mul(2)
+                .max(required_capacity)
+                .min(limit_capacity);
+            // Vec::try_reserve_exact 的 additional 是相对当前 len，而不是 capacity；
+            // 按 target-len 预留可保证下面的 extend 不会绕过显式错误路径隐式扩容。
+            source
+                .try_reserve_exact(target_capacity.saturating_sub(source.len()))
+                .map_err(|_| EncodeError::FrameSourceAllocation {
+                    file: file.to_string(),
+                    requested: u64::try_from(target_capacity).unwrap_or(u64::MAX),
+                })?;
+        }
+        source.extend_from_slice(&chunk[..read]);
+    }
+    cancellation.check()?;
+    Ok(source)
 }
 
 fn validate_frame_size(
@@ -550,8 +659,9 @@ fn decode_and_resize_frame(
     frame: &UgoiraFrame,
     original_size: (u32, u32),
     output_size: (u32, u32),
+    cancellation: &CancellationToken,
 ) -> Result<RgbaImage, EncodeError> {
-    let decoded = decode_frame(archive, frame)?;
+    let decoded = decode_frame(archive, frame, cancellation)?;
     validate_frame_size(frame, decoded.dimensions(), Some(original_size))?;
     // decoded 被 move 进 resize_frame；helper 返回时只剩输出尺寸的 RGBA image。
     Ok(resize_frame(decoded, output_size))
@@ -1447,6 +1557,147 @@ mod tests {
             statistics.opaque_pixels,
             MAX_GLOBAL_COLOR_SAMPLES as u64 + 1
         );
+    }
+
+    #[test]
+    fn frame_source_rejects_declared_size_above_image_allocation_limit_without_reading() {
+        struct MustNotRead;
+
+        impl Read for MustNotRead {
+            fn read(&mut self, _buffer: &mut [u8]) -> io::Result<usize> {
+                panic!("declared oversized frame source must be rejected before reading");
+            }
+        }
+
+        let error = read_frame_source(
+            &mut MustNotRead,
+            "000000.png",
+            9,
+            8,
+            &CancellationToken::default(),
+        )
+        .unwrap_err();
+
+        assert!(matches!(
+            error,
+            EncodeError::FrameSourceTooLarge {
+                ref file,
+                size: 9,
+                limit: 8,
+            } if file == "000000.png"
+        ));
+        assert_eq!(
+            error.to_string(),
+            "frame 000000.png source is 9 bytes, exceeding image allocation limit 8 bytes"
+        );
+    }
+
+    #[test]
+    fn frame_source_rejects_actual_bytes_above_declared_size_limit() {
+        let mut source = Cursor::new(vec![1_u8; 9]);
+
+        let error = read_frame_source(
+            &mut source,
+            "000001.png",
+            4,
+            8,
+            &CancellationToken::default(),
+        )
+        .unwrap_err();
+
+        assert!(matches!(
+            error,
+            EncodeError::FrameSourceTooLarge {
+                ref file,
+                size: 9,
+                limit: 8,
+            } if file == "000001.png"
+        ));
+    }
+
+    #[test]
+    fn frame_source_stops_when_canceled_during_a_chunk_read() {
+        struct CancelingReader<'a> {
+            cancellation: &'a CancellationToken,
+            read_once: bool,
+        }
+
+        impl Read for CancelingReader<'_> {
+            fn read(&mut self, buffer: &mut [u8]) -> io::Result<usize> {
+                assert!(!self.read_once, "reader was polled after cancellation");
+                self.read_once = true;
+                buffer[..4].copy_from_slice(&[1, 2, 3, 4]);
+                self.cancellation.cancel();
+                Ok(4)
+            }
+        }
+
+        let cancellation = CancellationToken::default();
+        let mut source = CancelingReader {
+            cancellation: &cancellation,
+            read_once: false,
+        };
+
+        let error = read_frame_source(&mut source, "000002.png", 4, 8, &cancellation).unwrap_err();
+
+        assert!(matches!(error, EncodeError::Canceled));
+        assert!(source.read_once);
+    }
+
+    #[test]
+    fn frame_source_accepts_normal_content_at_the_limit() {
+        let mut source = Cursor::new(vec![1_u8, 2, 3, 4]);
+
+        let bytes = read_frame_source(
+            &mut source,
+            "000003.png",
+            4,
+            4,
+            &CancellationToken::default(),
+        )
+        .unwrap();
+
+        assert_eq!(bytes, [1, 2, 3, 4]);
+    }
+
+    #[test]
+    fn frame_source_short_reads_do_not_implicitly_grow_capacity_past_limit() {
+        struct ShortReader {
+            body: [u8; 8],
+            offset: usize,
+            chunk_index: usize,
+        }
+
+        impl Read for ShortReader {
+            fn read(&mut self, buffer: &mut [u8]) -> io::Result<usize> {
+                let Some(&chunk_size) = [4_usize, 2, 2].get(self.chunk_index) else {
+                    return Ok(0);
+                };
+                self.chunk_index += 1;
+                let end = self.offset + chunk_size;
+                buffer[..chunk_size].copy_from_slice(&self.body[self.offset..end]);
+                self.offset = end;
+                Ok(chunk_size)
+            }
+        }
+
+        let mut reader = ShortReader {
+            body: [1, 2, 3, 4, 5, 6, 7, 8],
+            offset: 0,
+            chunk_index: 0,
+        };
+
+        let bytes = read_frame_source(
+            &mut reader,
+            "000004.png",
+            5,
+            8,
+            &CancellationToken::default(),
+        )
+        .unwrap();
+
+        assert_eq!(bytes, [1, 2, 3, 4, 5, 6, 7, 8]);
+        assert_eq!(bytes.capacity(), 8, "extend performed a hidden reserve");
     }
 
     #[test]

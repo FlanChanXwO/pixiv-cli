@@ -7,31 +7,89 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/model"
 )
 
-func TestRefreshAndRetryOnAuthError(t *testing.T) {
+func TestNewLeavesRequestLifetimeToContext(t *testing.T) {
+	client := New()
+	httpClient := client.restyClient.GetClient()
+	if httpClient == http.DefaultClient {
+		t.Fatal("HTTP client unexpectedly aliases http.DefaultClient")
+	}
+	if httpClient.Timeout != 0 {
+		t.Fatalf("timeout = %v, want zero", httpClient.Timeout)
+	}
+}
+
+func TestNewPreservesExplicitHTTPClient(t *testing.T) {
+	want := &http.Client{Timeout: 17 * time.Second}
+	got := New(WithHTTPClient(want)).restyClient.GetClient()
+	if got != want || got.Timeout != want.Timeout {
+		t.Fatalf("HTTP client = %p timeout %v, want %p timeout %v", got, got.Timeout, want, want.Timeout)
+	}
+}
+
+func TestIllustDetailPreservesCanceledContext(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	_, err := New(WithBaseURL("https://example.invalid"), WithAccessToken("access")).IllustDetail(ctx, 42)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("error = %v, want context.Canceled", err)
+	}
+}
+
+func TestRefreshAndRetryOnceOnTypedAuthStatus(t *testing.T) {
+	for _, status := range []int{http.StatusUnauthorized, http.StatusForbidden} {
+		t.Run(http.StatusText(status), func(t *testing.T) {
+			session := &fakeSession{token: "old-access"}
+			requests := 0
+			api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				requests++
+				if r.URL.Path != "/v1/illust/detail" {
+					t.Fatalf("unexpected api path %s", r.URL.Path)
+				}
+				if r.Header.Get("Authorization") != "Bearer new-access" {
+					http.Error(w, `{"error":{"message":"auth required"}}`, status)
+					return
+				}
+				_ = json.NewEncoder(w).Encode(model.IllustDetail{Illust: model.Illust{ID: 42, Title: "ok"}})
+			}))
+			defer api.Close()
+
+			client := New(WithBaseURL(api.URL), WithSession(session))
+			result, err := client.IllustDetail(context.Background(), 42)
+			if err != nil {
+				t.Fatalf("IllustDetail returned error: %v", err)
+			}
+			if result.Illust.ID != 42 || session.refreshCalls != 1 || requests != 2 {
+				t.Fatalf("result=%+v refresh calls=%d requests=%d", result, session.refreshCalls, requests)
+			}
+		})
+	}
+}
+
+func TestGETNonAuthStatusDoesNotRefreshOrReplayForAuthWordsInBody(t *testing.T) {
 	session := &fakeSession{token: "old-access"}
+	requests := 0
 	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
 		if r.URL.Path != "/v1/illust/detail" {
 			t.Fatalf("unexpected api path %s", r.URL.Path)
 		}
-		if r.Header.Get("Authorization") != "Bearer new-access" {
-			http.Error(w, `{"error":{"message":"unauthorized"}}`, http.StatusUnauthorized)
-			return
-		}
-		_ = json.NewEncoder(w).Encode(model.IllustDetail{Illust: model.Illust{ID: 42, Title: "ok"}})
+		w.WriteHeader(http.StatusBadGateway)
+		_, _ = w.Write([]byte("oauth unauthorized invalid_grant"))
 	}))
 	defer api.Close()
 
 	client := New(WithBaseURL(api.URL), WithSession(session))
-	result, err := client.IllustDetail(context.Background(), 42)
-	if err != nil {
-		t.Fatalf("IllustDetail returned error: %v", err)
+	if _, err := client.IllustDetail(context.Background(), 42); err == nil {
+		t.Fatal("IllustDetail unexpectedly succeeded")
 	}
-	if result.Illust.ID != 42 || session.refreshCalls != 1 {
-		t.Fatalf("unexpected result/session state: result=%+v refresh calls=%d", result, session.refreshCalls)
+	if requests != 1 || session.refreshCalls != 0 {
+		t.Fatalf("requests=%d refresh calls=%d", requests, session.refreshCalls)
 	}
 }
 

@@ -34,6 +34,9 @@ jobs:
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
         with:
           go-version: '1.26.3'
+      - name: Validate release SemVer
+        shell: bash
+        run: go run ./scripts/releaseassets validate --version "${RELEASE_TAG#v}"
       - name: Verify the exact immutable release tag
         shell: bash
         env:
@@ -48,7 +51,6 @@ jobs:
           if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then
             test "$GITHUB_REF" = "refs/heads/$DEFAULT_BRANCH"
           fi
-          go run ./scripts/releaseassets validate --version "${RELEASE_TAG#v}"
           git show-ref --verify --quiet "refs/tags/$RELEASE_TAG"
           tag_commit=$(git rev-parse "$RELEASE_TAG^{commit}")
           git show-ref --verify --quiet "refs/remotes/origin/$DEFAULT_BRANCH"
@@ -158,16 +160,43 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test -z "$(git diff --name-only)"
+          test -z "$(git status --porcelain=v1 --untracked-files=all)"
           test -z "$(git diff --cached --name-only)"
           git archive --format=tar "$GITHUB_SHA" -- \
             .github/workflows/release.yml \
+            scripts/internal/workflowpolicy/policy.go \
+            scripts/releaseworkflow/build_policy.go \
+            scripts/releaseworkflow/build_recovery_test.go \
+            scripts/releaseworkflow/homebrew_policy.go \
+            scripts/releaseworkflow/homebrew_policy_test.go \
             scripts/releaseworkflow/main.go \
-            scripts/releaseworkflow/main_test.go | tar -xf -
-          test "$(git diff --name-only)" = "$(printf '%s\n' \
+            scripts/releaseworkflow/main_test.go \
+            scripts/releaseworkflow/publish_policy.go \
+            scripts/releaseworkflow/publish_security_test.go \
+            scripts/releaseworkflow/recovery_policy.go \
+            scripts/releaseworkflow/test_helpers_test.go \
+            scripts/releaseworkflow/workflow_policy.go \
+            scripts/releaseworkflow/workflow_policy_test.go | tar -xf -
+          test "$(
+            {
+              git diff --name-only
+              git ls-files --others --exclude-standard
+            } | LC_ALL=C sort
+          )" = "$(printf '%s\n' \
             .github/workflows/release.yml \
+            scripts/internal/workflowpolicy/policy.go \
+            scripts/releaseworkflow/build_policy.go \
+            scripts/releaseworkflow/build_recovery_test.go \
+            scripts/releaseworkflow/homebrew_policy.go \
+            scripts/releaseworkflow/homebrew_policy_test.go \
             scripts/releaseworkflow/main.go \
-            scripts/releaseworkflow/main_test.go)"
+            scripts/releaseworkflow/main_test.go \
+            scripts/releaseworkflow/publish_policy.go \
+            scripts/releaseworkflow/publish_security_test.go \
+            scripts/releaseworkflow/recovery_policy.go \
+            scripts/releaseworkflow/test_helpers_test.go \
+            scripts/releaseworkflow/workflow_policy.go \
+            scripts/releaseworkflow/workflow_policy_test.go)"
           test -z "$(git diff --cached --name-only)"
       - name: Test Go sources
         shell: bash

@@ -7,36 +7,23 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
+	"github.com/FlanChanXwO/pixiv-cli/internal/application"
 	"github.com/FlanChanXwO/pixiv-cli/internal/utils"
 	"github.com/FlanChanXwO/pixiv-cli/internal/utils/text"
 	uriutil "github.com/FlanChanXwO/pixiv-cli/internal/utils/uri"
 	sdk "github.com/FlanChanXwO/pixiv-cli/pixiv"
 )
 
-// PixivClient 是下载路径所需的公开 SDK 窄接口。资源 URL 只能先转成 SDK
-// ResourceRef，再由 SDK 负责 policy 校验、流式写入与原子替换。
-type PixivClient interface {
-	IllustDetail(context.Context, int64) (*sdk.IllustDetail, error)
-	UgoiraMetadata(context.Context, int64) (*sdk.UgoiraMetadataResult, error)
-	ParseResourceRef(string) (sdk.ResourceRef, error)
-	Download(context.Context, sdk.ResourceRef, string) error
-}
+// PixivClient 保留原有名称供内部调用方源码兼容；能力边界由 application 统一拥有。
+type PixivClient = application.DownloadClient
 
-type DownloadedArtwork struct {
-	IllustID int64
-	Title    string
-	Author   string
-	Type     string
-	Files    []DownloadedFile
-}
-
-type DownloadedFile struct {
-	Path string
-	Page int
-}
+// 下载结果属于应用层稳定 DTO；alias 让现有 MCP/下载包调用方保持源码兼容。
+type DownloadedArtwork = application.DownloadedArtwork
+type DownloadedFile = application.DownloadedFile
 
 type Manager struct {
 	client           PixivClient
@@ -44,7 +31,6 @@ type Manager struct {
 	ugoiraEncoder    UgoiraEncoder
 	downloadPath     string
 	filenameTemplate string
-	sem              chan struct{}
 	mu               sync.RWMutex
 }
 
@@ -53,15 +39,13 @@ func NewManager(client PixivClient, logger *slog.Logger, downloadPath, filenameT
 		// 下载管理器可由 SDK/嵌入方单独使用；未注入时严格静默，不能落到可变全局 logger。
 		logger = slog.New(slog.NewTextHandler(io.Discard, nil))
 	}
-	m := &Manager{
+	return &Manager{
 		client:           client,
 		logger:           logger,
 		ugoiraEncoder:    defaultUgoiraEncoder(),
 		downloadPath:     downloadPath,
 		filenameTemplate: filenameTemplate,
-		sem:              make(chan struct{}, 5),
 	}
-	return m
 }
 
 // SetUgoiraEncoder 设置动图编码器，供启动装配和聚焦测试替换。
@@ -87,14 +71,6 @@ func (m *Manager) DownloadPath() string {
 	return m.downloadPath
 }
 
-func (m *Manager) Enqueue(ctx context.Context, ids []int64) int {
-	unique := utils.Deduplicate(ids)
-	for _, id := range unique {
-		go m.downloadOne(context.WithoutCancel(ctx), id)
-	}
-	return len(unique)
-}
-
 func (m *Manager) Download(ctx context.Context, ids []int64) ([]DownloadedArtwork, error) {
 	unique := utils.Deduplicate(ids)
 	artworks := make([]DownloadedArtwork, 0, len(unique))
@@ -106,12 +82,6 @@ func (m *Manager) Download(ctx context.Context, ids []int64) ([]DownloadedArtwor
 		artworks = append(artworks, artwork)
 	}
 	return artworks, nil
-}
-
-func (m *Manager) downloadOne(ctx context.Context, id int64) {
-	m.sem <- struct{}{}
-	defer func() { <-m.sem }()
-	_, _ = m.downloadArtwork(ctx, id)
 }
 
 func (m *Manager) downloadArtwork(ctx context.Context, id int64) (out DownloadedArtwork, err error) {
@@ -157,7 +127,7 @@ func (m *Manager) downloadArtwork(ctx context.Context, id int64) (out Downloaded
 		if rawURL == "" {
 			return DownloadedArtwork{}, fmt.Errorf("illust %d has no downloadable image url", illust.ID)
 		}
-		path := filepath.Join(base, utils.GenerateFilename(filenameData(illust), 0, m.filenameTemplate)+filepath.Ext(uriutil.PathFromURL(rawURL)))
+		path := filepath.Join(base, utils.GenerateFilename(filenameData(illust), 0, m.filenameTemplate)+downloadExtension(rawURL))
 		if err := m.downloadURL(ctx, rawURL, path); err != nil {
 			return DownloadedArtwork{}, err
 		}
@@ -170,7 +140,7 @@ func (m *Manager) downloadArtwork(ctx context.Context, id int64) (out Downloaded
 		if rawURL == "" {
 			return DownloadedArtwork{}, fmt.Errorf("illust %d page %d has no downloadable image url", illust.ID, i)
 		}
-		path := filepath.Join(base, utils.GenerateFilename(filenameData(illust), i, m.filenameTemplate)+filepath.Ext(uriutil.PathFromURL(rawURL)))
+		path := filepath.Join(base, utils.GenerateFilename(filenameData(illust), i, m.filenameTemplate)+downloadExtension(rawURL))
 		if err := m.downloadURL(ctx, rawURL, path); err != nil {
 			return DownloadedArtwork{}, err
 		}
@@ -247,6 +217,20 @@ func (m *Manager) ConvertUgoira(ctx context.Context, zipPath string, frames []sd
 		OutputPath: outputGIF,
 		Format:     AnimationFormatGIF,
 	})
+}
+
+// downloadExtension 清理 URL path 推导出的扩展名，避免跨平台非法文件名字符
+// 绕过作品标题和模板已有的文件名规范化边界。ASCII C0/DEL 控制字符
+// 不适合作为文件名内容，Windows 还不接受尾随点或空格，因而在扩展名边界统一处理。
+func downloadExtension(rawURL string) string {
+	extension := utils.SanitizeFilename(filepath.Ext(uriutil.PathFromURL(rawURL)))
+	extension = strings.Map(func(character rune) rune {
+		if character < 0x20 || character == 0x7f {
+			return '_'
+		}
+		return character
+	}, extension)
+	return strings.TrimRight(extension, ". ")
 }
 
 func filenameData(illust sdk.Illust) utils.FilenameData {
