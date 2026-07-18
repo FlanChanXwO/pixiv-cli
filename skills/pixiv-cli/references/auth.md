@@ -14,11 +14,15 @@ Choose the input path according to where the secret currently exists:
   disclosed token cannot be erased. After that disclosure, run the positional
   form `pixiv auth import 'RFT'` with the actual value safely shell-quoted. Do
   not restate the token, create a token file, or include it in the result.
-- If the token has not been disclosed, do not ask for it in chat. Run
-  `pixiv auth import` in a private interactive terminal for its hidden prompt,
-  or pipe the real secret-manager retrieval command directly to
-  `pixiv auth import` in the same shell command. With non-TTY stdin the CLI
-  reads the token automatically. Do not invent or pass a `--stdin` flag.
+- If the token has not been disclosed, do not ask for it in chat. Start
+  `pixiv auth import` for its hidden prompt only when the runtime provides an
+  interactive terminal that the user can type into directly. A standard agent
+  PTY may have no user-input channel; do not launch the command there and leave
+  it waiting. Give `pixiv auth import` to the user for their private terminal,
+  or pipe an authorized real secret-manager retrieval command directly to it
+  in one shell command. With non-TTY stdin the CLI reads the token
+  automatically. Do not invent or pass a `--stdin` flag. This routing reflects
+  the environment's interaction capability, not a ban on agent execution.
 
 `--proxy URL` and `--no-proxy` apply only to the OAuth validation performed by
 a single-token import; they are mutually exclusive. Both successful text output
@@ -49,8 +53,13 @@ The output mode changes what stdout contains:
   supplied. Use `--force` only when the user explicitly intends replacement.
 
 Run a bare stdout export only when the user explicitly asks to receive or see
-the raw token or bundle. Otherwise, prefer `--output` or connect stdout directly
-to its intended consumer in the same shell command, for example:
+the raw token or bundle for that invocation. Before executing, explain that the
+secret necessarily enters tool output/transcript and may be retained there,
+then obtain the user's explicit confirmation. The binary's raw stdout is the
+only permitted disclosure: after execution, do not restate, quote, reformat,
+parse, summarize, or log it. In every other case, use `--output` or connect
+stdout directly to its intended consumer in the same shell command, for
+example:
 
 ```
 pixiv auth export UID | consumer-command

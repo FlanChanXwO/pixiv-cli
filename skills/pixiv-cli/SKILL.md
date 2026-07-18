@@ -25,23 +25,33 @@ the installed binary's `pixiv <cmd> --help` output.
 
 ## Hard rules
 
-1. Refresh tokens and authentication export bundles contain secrets. Do not
-   echo, log, summarize, or reproduce them in commentary or results. Use the
-   controlled import/export workflows in `references/auth.md` when the user's
-   task requires moving a credential.
-2. If the user already disclosed a refresh token in the conversation and
+1. Refresh tokens and authentication export bundles contain secrets. Except
+   for the explicit bare-stdout export case below, do not echo, log, summarize,
+   or reproduce them in commentary or results. Use the controlled workflows in
+   `references/auth.md` when the user's task requires moving a credential.
+2. A bare `auth export` is allowed only when the user explicitly asks to
+   receive or see its raw token or bundle for that invocation. Before running
+   it, explain that the secret necessarily enters tool output/transcript and
+   may be retained there, then obtain the user's explicit confirmation. After
+   execution, do not repeat, transform, parse, or log the secret. This is the
+   sole exception to rule 1; otherwise use `--output` or a direct same-command
+   pipeline to the intended consumer.
+3. If the user already disclosed a refresh token in the conversation and
    explicitly asks to import it, the agent may run the positional
    `pixiv auth import 'RFT'` form. Do not create an extra file or repeat the
    secret in the result. The token will still be copied into the tool call,
    process arguments, shell history, and process context; disclose that before
    execution, and explain that an already-disclosed token cannot be erased.
-3. For a token not already disclosed, keep it out of chat and command
-   arguments. Prefer the hidden TTY prompt from `pixiv auth import`, or pipe a
-   secret manager's stdout directly into that command. Non-TTY input is read
-   automatically; there is no `--stdin` flag.
-4. Run interactive `pixiv auth login` only when the user explicitly asks and
+4. For a token not already disclosed, keep it out of chat and command
+   arguments. Use the hidden `pixiv auth import` prompt only when the runtime
+   gives the user a terminal they can type into directly. Do not start it in a
+   standard agent PTY with no user-input channel and leave it waiting; instead,
+   give the command to the user for their private terminal, or use an authorized
+   secret-manager-to-stdin pipeline. Non-TTY input is read automatically; there
+   is no `--stdin` flag. This is an environment constraint, not a command ban.
+5. Run interactive `pixiv auth login` only when the user explicitly asks and
    is present to complete browser OAuth.
-5. Do not accept or forward cookies (`PHPSESSID`, `refresh_token=...` cookie
+6. Do not accept or forward cookies (`PHPSESSID`, `refresh_token=...` cookie
    strings) as credentials — the CLI rejects them by design; only raw Pixiv App
    API refresh tokens work.
 

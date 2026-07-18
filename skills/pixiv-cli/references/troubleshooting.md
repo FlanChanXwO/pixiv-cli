@@ -20,6 +20,7 @@ usually the answer. Never mask an error with retries or silent fallbacks.
 | R18/R18G/mature search requires authentication | Anonymous Web session | Authenticate before retrying; never add a Cookie workaround |
 | `search-options` is unsupported | No App credential | Authenticate, then retry with the same word |
 | Wrong account acting | Multiple local accounts | `pixiv auth list --json`, then `--uid UID` per command, or `pixiv auth use UID` (confirm first) |
+| `auth import` waits for hidden input the user cannot enter | Agent PTY has no direct user-input channel | Cancel the waiting command; give it to the user for their private terminal, or use an authorized secret-manager-to-stdin pipeline as described in `auth.md` |
 | Cookie string rejected | By design | Only raw App API refresh tokens are accepted; for an explicit import request follow `auth.md` without asking the user to disclose an undisclosed token |
 
 `pixiv auth list --json` only shows configured accounts. `pixiv auth check
