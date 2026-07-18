@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"strconv"
 	"strings"
 	"time"
 
@@ -103,27 +104,48 @@ func isAuthExportInvocation(args []string) bool {
 	if len(args) < 3 {
 		return false
 	}
-	index := 1
-	for index < len(args) && isLeadingRootBooleanFlag(args[index]) {
-		index++
+	index, continues := skipFalseRootBooleanFlags(args, 1)
+	if !continues {
+		return false
 	}
 	if index >= len(args) || args[index] != "auth" {
 		return false
 	}
-	index++
-	for index < len(args) && isLeadingRootBooleanFlag(args[index]) {
-		index++
+	index, continues = skipFalseRootBooleanFlags(args, index+1)
+	if !continues {
+		return false
 	}
 	return index < len(args) && args[index] == "export"
 }
 
-func isLeadingRootBooleanFlag(argument string) bool {
-	switch argument {
-	case "--help", "-h", "--version", "--help=true", "--help=false", "-h=true", "-h=false":
-		return true
-	default:
-		return false
+// skipFalseRootBooleanFlags 按 pflag/strconv.ParseBool 语义跳过不会短路命令执行的
+// root bool flags。true 会转入 help/version，非法值交回 Cobra 报错；二者都不是 export。
+func skipFalseRootBooleanFlags(args []string, index int) (int, bool) {
+	for index < len(args) {
+		value, recognized, err := rootBooleanFlagValue(args[index])
+		if !recognized {
+			return index, true
+		}
+		if err != nil || value {
+			return index, false
+		}
+		index++
 	}
+	return index, true
+}
+
+func rootBooleanFlagValue(argument string) (value bool, recognized bool, err error) {
+	name, rawValue, assigned := strings.Cut(argument, "=")
+	switch name {
+	case "--help", "-h", "--version":
+	default:
+		return false, false, nil
+	}
+	if !assigned {
+		return true, true, nil
+	}
+	value, err = strconv.ParseBool(rawValue)
+	return value, true, err
 }
 
 // commandLog 仅记录命令名和稳定结果，不能记录 args：其中可能含 refresh token、

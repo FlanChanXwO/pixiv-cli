@@ -40,24 +40,77 @@ func TestRunAuthExportSkipsPendingUpdateCleanupWithLeadingRootFlags(t *testing.T
 	original := cleanupPendingWindowsUpdate
 	t.Cleanup(func() { cleanupPendingWindowsUpdate = original })
 
-	for name, args := range map[string][]string{
-		"leading long":  {"pixiv", "--help=false", "auth", "export"},
-		"leading short": {"pixiv", "-h=false", "auth", "export"},
-		"between":       {"pixiv", "auth", "--help=false", "export"},
+	for _, test := range []struct {
+		name       string
+		args       []string
+		wantExport bool
+	}{
+		{name: "version false", args: []string{"pixiv", "--version=false", "auth", "export"}},
+		{name: "help zero", args: []string{"pixiv", "--help=0", "auth", "export"}, wantExport: true},
+		{name: "short false", args: []string{"pixiv", "-h=false", "auth", "export"}, wantExport: true},
+		{name: "between", args: []string{"pixiv", "auth", "--help=false", "export"}, wantExport: true},
 	} {
-		t.Run(name, func(t *testing.T) {
+		t.Run(test.name, func(t *testing.T) {
 			called := false
 			cleanupPendingWindowsUpdate = func() error {
 				called = true
 				return errors.New("cleanup must not run")
 			}
 			var stdout, stderr bytes.Buffer
-			code := Run(args, strings.NewReader(""), &stdout, &stderr)
+			code := Run(test.args, strings.NewReader(""), &stdout, &stderr)
 
-			if code != 0 || called || stdout.String() != "root-flag-export-secret\n" || stderr.Len() != 0 {
+			if called || strings.Contains(stderr.String(), "cleanup must not run") {
+				t.Fatalf("root bool flag triggered cleanup: code=%d cleanup_called=%t stdout_bytes=%d stderr_bytes=%d", code, called, stdout.Len(), stderr.Len())
+			}
+			if test.wantExport && (code != 0 || stdout.String() != "root-flag-export-secret\n" || stderr.Len() != 0) {
 				t.Fatalf("root-flag export startup contract failed: code=%d cleanup_called=%t stdout_bytes=%d stderr_bytes=%d", code, called, stdout.Len(), stderr.Len())
 			}
 		})
+	}
+}
+
+func TestRunRootTrueFlagsAndNonExportCommandsStillRunPendingUpdateCleanup(t *testing.T) {
+	original := cleanupPendingWindowsUpdate
+	t.Cleanup(func() { cleanupPendingWindowsUpdate = original })
+
+	for _, test := range []struct {
+		name string
+		args []string
+	}{
+		{name: "help true", args: []string{"pixiv", "--help=true", "auth", "export"}},
+		{name: "version one", args: []string{"pixiv", "--version=1", "auth", "export"}},
+		{name: "version command", args: []string{"pixiv", "version", "--json"}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			called := false
+			cleanupPendingWindowsUpdate = func() error {
+				called = true
+				return errors.New("expected cleanup failure")
+			}
+			var stdout, stderr bytes.Buffer
+			code := Run(test.args, strings.NewReader(""), &stdout, &stderr)
+
+			if code != 1 || !called || !strings.Contains(stderr.String(), "clean pending update: expected cleanup failure") {
+				t.Fatalf("normal startup cleanup contract failed: code=%d cleanup_called=%t stdout_bytes=%d stderr_bytes=%d", code, called, stdout.Len(), stderr.Len())
+			}
+		})
+	}
+}
+
+func TestRunInvalidRootBoolKeepsCobraParseError(t *testing.T) {
+	original := cleanupPendingWindowsUpdate
+	t.Cleanup(func() { cleanupPendingWindowsUpdate = original })
+	called := false
+	cleanupPendingWindowsUpdate = func() error {
+		called = true
+		return nil
+	}
+	var stdout, stderr bytes.Buffer
+
+	code := Run([]string{"pixiv", "--help=not-bool", "auth", "export"}, strings.NewReader(""), &stdout, &stderr)
+
+	if code != 1 || !called || !strings.Contains(stderr.String(), "invalid argument") {
+		t.Fatalf("invalid root bool did not preserve Cobra error: code=%d cleanup_called=%t stdout_bytes=%d stderr_bytes=%d", code, called, stdout.Len(), stderr.Len())
 	}
 }
 
