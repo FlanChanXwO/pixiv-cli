@@ -115,7 +115,8 @@ func TestCLIReferenceLocalesExposeStableCommands(t *testing.T) {
 			t.Fatal(err)
 		}
 		for _, contract := range []string{
-			"pixiv auth token [UID]",
+			"pixiv auth import [REFRESH_TOKEN]",
+			"pixiv auth export [UID]",
 			"pixiv search-options",
 			"pixiv recommended",
 			"pixiv mcp",

@@ -130,32 +130,53 @@ pixiv auth login --proxy http://127.0.0.1:7890
 `--proxy URL` と `--no-proxy` は現在の command だけに適用され、同時使用できず、`config.toml` に保存されません。
 実 Pixiv login は OAuth Web flow に依存し、自動 test は fake OAuth server を使用します。
 
-### 保存済み token の export
+### 認証の import
 
-refresh token を意図的に表示する唯一の command は `pixiv auth token [UID]` です：
+v0.4.0 では `auth add`、`auth token`、`--token` を alias なしで削除します。direct import は次の形式です：
 
 ```bash
-pixiv auth token           # default local account
-pixiv auth token 12345678  # exact local account
+pixiv auth import                         # TTY では非表示入力
+printf '%s\n' 'YOUR_REFRESH_TOKEN' | pixiv auth import
+pixiv auth import 'YOUR_REFRESH_TOKEN'    # argv/shell history に残ります
 ```
 
-`auth.json` だけを読み、refresh、Pixiv network request、`PIXIV_REFRESH_TOKEN`、proxy/JSON flag、local state
-変更、automatic update check は行いません。成功時の stdout は raw refresh token と改行 1 つだけで、stderr は
-空です。プライベートな terminal だけで実行し、chat、log、shell history、issue、test、Agent transcript に
-貼り付けないでください。他の command、JSON、log、error は token を公開しません。
+`pixiv auth import [REFRESH_TOKEN]` は raw token を App OAuth で検証し、Pixiv が返す UID を正として、rotation 後の refresh token を保存します。引数なしの TTY は非表示 prompt、非 TTY は stdin の opaque な 1 行を読み、末尾の LF または CRLF を 1 つだけ除きます。位置引数は process list、shell history、wrapper、監査 tool に記録される可能性があります。`--json` は secret を含まない account summary だけを変更します。`--proxy` と `--no-proxy` は direct validation にだけ適用され、併用できません。
 
-default account 不在、UID 不在・不正、auth store 読み取り失敗では、安全な diagnostic を stderr に出して
-non-zero exit し、stdout に token を書きません。diagnostic に token や auth file path は含まれません。
+export bundle を Pixiv に接続せず restore する例：
+
+```bash
+pixiv auth import --file account.pxauth
+pixiv auth export --all | ssh trusted-host pixiv auth import --file -
+```
+
+`--file PATH` は file、`--file -` は stdin から完全な bundle を読みます。この mode は offline で token の検証や rotation を行わず、位置 token、`--proxy`、`--no-proxy` を拒否します。全 account を UID ごとに atomic merge し、既存 account は更新、新規 account は追加します。local default は保持し、default がない場合だけ bundle default を採用します。通常出力と `--json` は added/updated UID と最終 default の secret-free report です。
+
+### 認証の export と backup
+
+```bash
+pixiv auth export                         # default account の raw token
+pixiv auth export 12345678                # 指定 account の raw token
+pixiv auth export --all                   # stdout へ versioned all-account bundle
+pixiv auth export 12345678 --output account.pxauth
+pixiv auth export --all --output accounts.pxauth
+pixiv auth export --all --output accounts.pxauth --force
+```
+
+`--output` なしで secret を stdout に書けるのは 2 形式だけです。default/UID export は保存済み raw token と改行 1 つ、`--all` は versioned JSON bundle だけを出力し、成功時の stderr は空です。export は local-only で、`auth.json` だけを読み、`PIXIV_REFRESH_TOKEN`、refresh、Pixiv network、auth/config mutation を使用せず、startup pending-update cleanup、automatic update、operation log も skip します。`--all` と UID は併用できず、`--force` には `--output` が必要です。JSON/proxy flag はありません。
+
+`--output PATH` を指定すると single-account でも `--all` でも raw token ではなく bundle を書きます。既存 destination は既定で拒否し、明示的な `--force` だけが replacement を許可します。成功 stdout は output path と account count だけで secret を含みません。Unix-like の file は `0600` で、既存 parent の permission/ownership は変更しません。Windows は owner と protected DACL を明示し、current user、LocalSystem、builtin Administrators だけに full control を許可します。この Windows policy は CI tests で検証しますが、本 release の検証を実 Windows filesystem で実行したとは主張しません。
+
+bundle は暗号化されていない secret の point-in-time backup で、live sync ではありません。元 token と同様に保護し、token rotation 後の古い bundle や別 machine の copy は stale になり得ます。strict versioned codec は unsupported schema/version、unknown/duplicate field、trailing JSON、duplicate/non-positive UID、empty token、bundle 内 account を指さない default UID を拒否します。
+
+export selection/I/O failure は stdout に secret diagnostic を書きません。restore の atomic write failure では `LocalWriteCommitOutcome=not_committed` は replacement 前、`committed` は replacement 後の durability/cleanup failure、`unknown` は recovery で target state を確定できない状態です。後 2 つを rollback 成功として扱わず、store reload または手動確認が必要です。他の stdout/stderr、JSON、MCP result、log、error は refresh token を公開しません。persistent auth import/export MCP tool は追加せず、既存 session-scoped MCP 認証は不変です。
 
 ## CLI の使用方法
 
 ```bash
 pixiv auth login
 
-# 高度な/scripted setup
-printf '%s\n' 'YOUR_REFRESH_TOKEN' | pixiv auth add
-# --token は shell history に残る可能性があります
-pixiv auth add --token 'YOUR_REFRESH_TOKEN'
+# 高度な/scripted setup（token を argv に置かない）
+printf '%s\n' 'YOUR_REFRESH_TOKEN' | pixiv auth import
 ```
 
 代表的な command：
@@ -185,17 +206,17 @@ pixiv download 123456 789012
 
 credential は Pixiv UID ごとに `os.UserConfigDir()/pixiv/auth.json`、global setting は
 `os.UserConfigDir()/pixiv/config.toml` に保存されます。既定は読みやすい出力で、対応 command は `--json` を
-利用できます。`auth token` は意図的に JSON flag を持ちません。Cobra/pflag の option は positional argument
+利用できます。`auth export` は意図的に JSON flag を持ちません。Cobra/pflag の option は positional argument
 の前後どちらでも指定できます。
 
 ### CLI command 一覧
 
 | Command | Usage | 説明 |
 | --- | --- | --- |
-| `auth add` | `pixiv auth add [--token TOKEN] [--json] [--proxy URL\|--no-proxy]` | raw App API refresh token を検証し、UID ごとに追加・置換します。Cookie は拒否します。`--token` なしでは TTY/stdin から読みます。 |
+| `auth import` | `pixiv auth import [REFRESH_TOKEN] [--file PATH] [--json] [--proxy URL\|--no-proxy]` | direct input は rotation 後の token を検証・保存します。引数なし TTY は非表示、非 TTY は raw stdin です。`--file PATH|-` は offline atomic bundle restore となり、token/proxy input と競合します。 |
 | `auth login` | `pixiv auth login [--json] [--no-open] [--addr 127.0.0.1:0] [--use] [--timeout DURATION] [--proxy URL\|--no-proxy]` | loopback server と browser OAuth で login し、token を表示せず UID ごとに保存します。 |
 | `auth list` | `pixiv auth list [--json]` | local account を一覧表示し、refresh token は表示しません。 |
-| `auth token` | `pixiv auth token [UID]` | 選択した local account の raw refresh token と改行を stdout に出します。network/refresh はなく、JSON/proxy flag もありません。 |
+| `auth export` | `pixiv auth export [UID] [--all] [--output PATH] [--force]` | default/指定/all account を local export します。`--output` なしは single raw token または `--all` bundle、指定時は private bundle と安全な stdout summary です。 |
 | `auth use` | `pixiv auth use [UID] [--json]` | default account を設定し、TTY では対話選択できます。 |
 | `auth remove` | `pixiv auth remove [UID] [--yes] [--json]` | account を削除します。default 削除後は残りの先頭を選択します。 |
 | `auth check` | `pixiv auth check [UID] [--json] [--proxy URL\|--no-proxy]` | token を refresh して account を検証します。 |
@@ -281,11 +302,11 @@ Web に fallback しません。filter は opaque cursor に binding され、�
 | `--uid UID` | `search/search-options/detail/ranking/recommended/user/download` | `auth.json.default_user_id` | local account を選びます。 |
 | `--profile UID` | 同上 | empty | deprecated `--uid` alias。 |
 | `--refresh-token TOKEN` | 同上 | empty | account/env token を一時上書きします。raw App token だけを受け付けます。 |
-| `--json` | auth の一部、`version`、`update --check`、data commands | `false` | machine-readable JSON。`auth token` と実更新にはありません。 |
+| `--json` | `auth import/login/list/use/remove/check`、`version`、`update --check`、data commands | `false` | machine-readable JSON。`auth export` と実更新にはありません。 |
 | `--download-path PATH` | data commands（実質 `download`） | env/config/`./downloads` | download directory。 |
 | `--filename-template TEMPLATE` | data commands（実質 `download`） | env/config/`{author} - {title}_{id}` | filename template。 |
-| `--proxy URL` | auth network/data/`mcp` | env/config/empty | この command だけの HTTP(S) proxy。 |
-| `--no-proxy` | 同上 | empty | この command の proxy を解除します。`--proxy` と併用不可。 |
+| `--proxy URL` | direct-token `auth import`、`auth login/check`、data/`mcp` | env/config/empty | この command だけの HTTP(S) proxy。`auth import --file` では使用不可。 |
+| `--no-proxy` | 同上 | empty | この command の proxy を解除します。`--proxy` または bundle restore と併用不可。 |
 
 ### 対応 `config` key
 
@@ -361,7 +382,7 @@ update check は canonical SemVer tag だけを選びます。対象 channel に
 古い version へ暗黙に戻らず fail closed します。private key は保護された `release` Environment と管理された
 recovery copy にだけ存在します。
 
-通常 command 成功後の best-effort stable check は MCP、help、`version`、`update`、`auth token`、development
+通常 command 成功後の best-effort stable check は MCP、help、`version`、`update`、全 `auth export`、`auth import --file`、development
 build を除外し、user cache ごとに 24 時間 1 回、3 秒上限です。新 version や check failure は stderr のみに
 出し、business exit code、JSON stdout、MCP stdout を汚しません。無効化：
 

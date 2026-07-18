@@ -143,7 +143,7 @@ pixiv auth use 12345678
 pixiv auth check
 ```
 
-`pixiv auth token [UID]` is an explicit secret-export command for interoperability. It reads only the selected local account, performs no refresh or network request, and writes only the raw refresh token plus a newline to stdout. Run it only in a private terminal; do not paste its output into chat, logs, shell history, issue reports, or agent transcripts. All other commands, JSON output, MCP results, logs, and errors must never reveal refresh tokens.
+v0.4.0 replaces `auth add`/`auth token` with `auth import`/`auth export`; the removed names and `--token` have no aliases. Prefer hidden `pixiv auth import` input or raw stdin because a positional token is visible in argv/shell history. `pixiv auth export [UID]` and `pixiv auth export --all`, both without `--output`, are the only explicit secret stdout forms; use `--output` for a private bundle file. Bundles are unencrypted point-in-time backups, not live sync, and may become stale after token rotation. Never paste secret output into chat, logs, shell history, issues, or agent transcripts; other stdout/stderr, JSON, MCP results, logs, and errors must not reveal refresh tokens. See the [CLI reference](docs/en/cli-reference.md#getting-a-refresh-token) for the complete import/export and file-protection contract.
 
 ## Documentation
 

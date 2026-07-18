@@ -15,10 +15,10 @@ The project needs local account selection to stay scriptable while matching Pixi
 - Store local auth accounts by Pixiv `user_id`.
 - Use `default_user_id` as the default account pointer in `auth.json`.
 - Keep optional `username` only as display metadata.
-- Remove name prompts from `pixiv auth add` and `pixiv auth login`.
+- Remove name prompts from account import and `pixiv auth login`; direct token import is now `pixiv auth import [REFRESH_TOKEN]`.
 - Use UID selectors for `pixiv auth use/remove/check`.
 - Add canonical `--uid`; keep `--profile` only as a deprecated alias.
-- Treat old `default_account/accounts[].name` auth files as incompatible and require users to recreate auth state with `pixiv auth add` or `pixiv auth login`.
+- Treat old `default_account/accounts[].name` auth files as incompatible and require users to recreate auth state with `pixiv auth import` or `pixiv auth login`.
 
 ## Consequences
 

@@ -229,7 +229,7 @@ https_proxy=http://127.0.0.1:7890 ./build/pixiv mcp
 ./build/pixiv mcp --no-proxy
 ```
 
-CLI 多账号认证保存在 `os.UserConfigDir()/pixiv/auth.json`，账号 key 是 Pixiv UID；全局配置保存在 `os.UserConfigDir()/pixiv/config.toml`。Unix-like 主动使用 `0700` 父目录与 `0600` 文件；Windows 首次创建继承父目录 ACL，替换既有目标保留其 ACL，不主动收紧或放宽 DACL。推荐使用 `pixiv auth login` 通过本地 loopback server 和浏览器 OAuth 登录；`auth add` 仍可从 stdin 读取 token，也支持 `--token`，但不建议在共享 shell 历史环境中使用。显式 `pixiv auth token [UID]` 是唯一导出已存 refresh token 的命令，只读本地 auth store、完全离线，且 stdout 仅包含 token 与换行；不要在 Agent transcript、日志或共享终端中运行。可用 `pixiv config path/get/set/unset` 管理全局配置。无 refresh token 时默认启用匿名 Pixiv web/ajax API fallback，可用 `pixiv config set web_fallback_enabled false` 关闭。
+CLI 多账号认证保存在 `os.UserConfigDir()/pixiv/auth.json`，账号 key 是 Pixiv UID；全局配置保存在 `os.UserConfigDir()/pixiv/config.toml`。Unix-like 主动使用 `0700` 父目录与 `0600` 文件；Windows 首次创建继承父目录 ACL，替换既有目标保留其 ACL，不主动收紧或放宽 DACL。推荐使用 `pixiv auth login` 通过本地 loopback server 和浏览器 OAuth 登录；已有 raw token 可用 `pixiv auth import` 输入，账号备份/迁移使用 `auth export` 与 `auth import --file`。`auth add`、`auth token` 与 `--token` 已在 v0.4.0 删除且无 alias。可用 `pixiv config path/get/set/unset` 管理全局配置。无 refresh token 时默认启用匿名 Pixiv web/ajax API fallback，可用 `pixiv config set web_fallback_enabled false` 关闭。
 CLI 使用 Cobra/pflag，flag 可以写在位置参数前后；例如 `pixiv auth check 12345678 --json` 和 `pixiv search "初音ミク" --json` 都受支持。
 
 ## 获取 refresh token
@@ -252,15 +252,17 @@ pixiv auth login
 
 浏览器使用的系统代理不会自动传给 Go CLI。若 Pixiv token exchange 需要代理，请配置 `pixiv config set https_proxy http://127.0.0.1:7890`，在单次命令前设置 `https_proxy=...`，或对网络命令使用运行期覆盖 `--proxy http://127.0.0.1:7890`。`--no-proxy` 会清空本次命令的代理，即使环境变量或 `config.toml` 设置了 `https_proxy`；`--proxy` 和 `--no-proxy` 不能同用，也不会写入 `config.toml`。
 
-当前支持代理覆盖的网络入口是 `auth add`、`auth login`、`auth check`、`search`、`search-options`、`detail`、`ranking`、`recommended`、`download` 和 `mcp` 启动。`auth list/token/use/remove` 与 `config path/get/set/unset` 不接受这些 flag。`auth token` 也不接受 `--json`，不会读取网络代理或触发自动更新检查。
+当前支持代理覆盖的网络入口是 direct-token `auth import`、`auth login`、`auth check`、`search`、`search-options`、`detail`、`ranking`、`recommended`、`download` 和 `mcp` 启动。`auth import --file` 明确拒绝代理 flag；`auth export/list/use/remove` 与 `config path/get/set/unset` 不接受这些 flag。
 
-### 显式导出已存 token
+### 认证 import/export
 
-`pixiv auth token [UID]` 省略 UID 时读取默认账号，指定 UID 时只读取该本地账号。它不读取
-`PIXIV_REFRESH_TOKEN`，不刷新 token，不加载网络 transport，不写回 auth/config；成功时 stdout 精确输出
-原始 refresh token 与一个换行，stderr 为空。该行为是“不得打印 refresh token”规则的唯一例外；
-其他 CLI 命令、SDK 日志、JSON、MCP result 和错误仍不得暴露 token。测试必须使用无真实凭据的隔离
-auth fixture，并验证网络未被调用、auth 文件字节未变化、日志与错误不含 fixture token。
+`pixiv auth import [REFRESH_TOKEN]` 会经 App OAuth 校验输入并保存 rotation 后的 token。位置参数会进入 argv/shell history；无参 TTY 使用隐藏输入，无参非 TTY 从 raw stdin 读取一行。`--file PATH` 或 `--file -` 则 strict decode versioned bundle，完全离线地 merge 并原子写回；它与位置 token、`--proxy`、`--no-proxy` 冲突。restore 保留已有 default，仅当本地尚无 default 时采用 bundle default。
+
+`pixiv auth export [UID]` 省略 UID 时选择默认账号；不带 `--output` 时只向 stdout 写 raw token 与换行。`pixiv auth export --all` 不带 `--output` 时只向 stdout 写 versioned secret bundle。两者是唯一 secret stdout 例外，且都只读本地 store，不读 `PIXIV_REFRESH_TOKEN`、不刷新、不联网、不修改状态，并跳过 startup pending-update cleanup、automatic update 与 operation logging。`--output PATH` 总是写 bundle，默认拒绝覆盖，只有 `--force` 可 replacement；stdout 仅为 path/account count 摘要。其他 stdout、stderr、JSON、MCP result、日志与错误仍不得暴露 secret。
+
+bundle 是未加密、含 secret 的 point-in-time backup，不是 live sync；token rotation 后旧 bundle及其他机器副本可能 stale。任意目标 export writer 在 Unix-like 使用 `0600` 文件且不改变既有 parent；Windows 明确设置 owner 与 protected DACL，只授权当前用户、LocalSystem、builtin Administrators。Windows 行为有 CI tests，后续验收可本地交叉编译；这里不声称已在真实 Windows 主机执行。
+
+restore 原子写失败时检查 public `LocalWriteCommitOutcome`：pre-commit 是 `not_committed`；replacement 后 durability/cleanup 失败是 `committed`，须重新加载确认；recovery 状态无法确定是 `unknown`，须人工核验。不得把 `committed` 或 `unknown` 描述为成功 rollback。
 
 真实登录依赖 Pixiv OAuth 网页流程可用。自动化测试使用 fake OAuth server 覆盖 callback 和 token exchange，不访问真实 Pixiv。
 

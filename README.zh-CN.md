@@ -143,7 +143,7 @@ pixiv auth use 12345678
 pixiv auth check
 ```
 
-`pixiv auth token [UID]` 是用于互操作的显式 secret 导出命令。它只读取选中的本地账号，不刷新、不联网，并且 stdout 只输出原始 refresh token 和换行。只能在私密终端中运行；不要把输出粘贴到聊天、日志、shell history、issue 或 Agent transcript。其他命令、JSON、MCP result、日志和错误都不得暴露 refresh token。
+v0.4.0 以 `auth import`/`auth export` 取代 `auth add`/`auth token`，已删除的名称和 `--token` 均无 alias。导入时优先使用无参隐藏输入或 raw stdin；位置参数会暴露在 argv/shell history。只有不带 `--output` 的 `pixiv auth export [UID]` 与 `pixiv auth export --all` 可以向 stdout 输出 secret；需要文件时使用 `--output` 写私有 bundle。bundle 是未加密的 point-in-time backup，不是 live sync，token rotation 后可能 stale。不要把 secret 输出粘贴到聊天、日志、shell history、issue 或 Agent transcript；其他 stdout/stderr、JSON、MCP result、日志和错误均不得暴露 refresh token。完整 import/export 与文件保护契约见 [CLI reference](docs/zh-CN/cli-reference.md#获取-refresh-token)。
 
 ## 文档
 

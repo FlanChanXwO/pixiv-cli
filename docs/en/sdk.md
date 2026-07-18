@@ -55,7 +55,7 @@ redirects. See [ADR 0010](../maintainers/adr/0010-http-client-timeout-and-contex
 | Works and recommendations | `SearchIllust`, `SearchIllustOptions`, `IllustDetail`, `IllustPages`, `IllustRelated`, `IllustRanking`, `IllustRecommended`, `MangaRecommended`, `NovelRecommended`, `UserRecommended`, `FollowingIllusts`, `TrendingTagsIllust`, `UgoiraMetadata`. |
 | Users | `SearchUser`, `UserDetail`, `UserArtworks`, `UserBookmarks`, `UserFollowing`, `CurrentUserID`. |
 | Writes | `AddBookmark`, `RemoveBookmark`, `FollowUser`, `UnfollowUser`. |
-| Accounts/configuration | `ImportAccount`, `ListAccounts`, `SelectAccount`, `RemoveAccount`, `ExportAccountRefreshToken`, `CheckAccount`, `CheckRefreshToken`, `Refresh`, `RefreshAccount`, `GetConfig`, `SetConfig`, `UnsetConfig`. |
+| Accounts/configuration | `ImportAccount`, `ListAccounts`, `SelectAccount`, `RemoveAccount`, `ExportAccountRefreshToken`, `ExportAuthBundle`, `RestoreAuthBundle`, `CheckAccount`, `CheckRefreshToken`, `Refresh`, `RefreshAccount`, `GetConfig`, `SetConfig`, `UnsetConfig`; bundle codec functions are package-level. |
 | Login | `StartLogin`, `CompleteLogin`, `BuildLoginAuthorizationURL`; the SDK does not start a browser, loopback server, or TTY. |
 | Resources | `ParseResourceRef`, `OpenResource`, `Download`. |
 
@@ -88,6 +88,28 @@ selects that exact account. It reads only the auth store, ignores `PIXIV_REFRESH
 performs no refresh or network request, and does not modify files. `NewClient` without a local auth path returns
 `unsupported`. Treat the returned string as an opaque secret: never log it, format it into an error, send it to
 telemetry, or expose it through MCP/JSON.
+
+### Authentication bundles and offline restore
+
+`AuthExportSelection{}` selects the local default account, `AuthExportSelection{UserID: id}` selects one exact
+account, and `AuthExportSelection{All: true}` selects every stored account. `UserID` must not be negative and cannot
+be combined with `All`. `Client.ExportAuthBundle` is a locked, read-only local snapshot: it ignores environment
+tokens and runtime account overrides, performs no network/refresh, and does not mutate state. It returns
+`AuthExportBundle{Schema, Version, DefaultUserID, Accounts}`; each `AuthExportSecretAccount` contains UID, optional
+username, and an opaque refresh-token secret.
+
+`EncodeAuthExportBundle` emits the stable indented JSON form with a final newline. `DecodeAuthExportBundle` is
+strict: it rejects unsupported schema/version, unknown or duplicate fields, trailing JSON, empty account lists,
+duplicate or non-positive UIDs, empty refresh tokens, and a default UID that is absent from the account list. Both
+functions return redacted typed errors and never include bundle contents.
+
+`Client.RestoreAuthBundle` validates an already decoded bundle, locks the local auth state, merges accounts by UID,
+and performs one atomic store write without OAuth or any transport. Existing accounts are updated, new accounts are
+added, and the local default is preserved unless it was empty, in which case the bundle default is adopted.
+`AuthRestoreResult` reports only `DefaultUserID`, secret-free `Added`, and secret-free `Updated` account summaries.
+
+The format is an unencrypted point-in-time backup, not live sync. Callers must protect the encoded bytes like the
+original tokens, and account for an old bundle or another machine's copy becoming stale after token rotation.
 
 `BuildLoginAuthorizationURL(challenge, state)` only constructs the official authorization URL for adapters that
 manage their own PKCE and state. Use `StartLogin` when the SDK should manage the PKCE session.
@@ -213,6 +235,11 @@ Local account/configuration `invalid_argument` failures may expose `Error.LocalS
 `config_malformed`, `permission_denied`, `not_found`, `invalid_proxy`, `account_mismatch`, `unavailable`, or
 `unknown`. `errors.Unwrap` and `Error()` remain redacted and never expose filesystem/parser errors, paths, local
 contents, or proxy userinfo. Missing optional `auth.json` or `config.toml` remains a valid empty state.
+
+Atomic auth-store write failures additionally expose `Error.LocalWriteCommitOutcome`. `not_committed` means the
+replacement did not happen; `committed` means replacement happened but a subsequent durability or cleanup step
+failed, so callers must reload the target; `unknown` means recovery could not establish the target state and manual
+inspection is required. Callers must not report `committed` or `unknown` as a successful rollback.
 
 ## Caller responsibilities
 
