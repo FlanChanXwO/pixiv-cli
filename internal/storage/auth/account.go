@@ -25,9 +25,16 @@ type authStoreReadHook struct {
 	read func(string) ([]byte, error)
 }
 
+type authStoreWriteHook struct {
+	path  string
+	write func(string, []byte) error
+}
+
 var (
-	authStoreReadHookState atomic.Pointer[authStoreReadHook]
-	authStoreReadHookMu    sync.Mutex
+	authStoreReadHookState  atomic.Pointer[authStoreReadHook]
+	authStoreReadHookMu     sync.Mutex
+	authStoreWriteHookState atomic.Pointer[authStoreWriteHook]
+	authStoreWriteHookMu    sync.Mutex
 )
 
 // SetReadAuthStoreFileForTest 仅为跨平台本地状态错误测试拦截指定 auth path。
@@ -53,6 +60,31 @@ func readAuthStore(path string) ([]byte, error) {
 		return hook.read(path)
 	}
 	return os.ReadFile(path)
+}
+
+// SetWriteAuthStoreFileForTest 仅为本地状态原子失败测试拦截指定 auth path。
+// hook 在编码与完整 store 校验之后、真实原子写入之前执行；调用方必须用
+// t.Cleanup 执行返回的恢复函数，且不得并行使用同一路径。
+func SetWriteAuthStoreFileForTest(path string, write func(string, []byte) error) func() {
+	if strings.TrimSpace(path) == "" || write == nil {
+		panic("auth store write test hook requires a path and writer")
+	}
+	authStoreWriteHookMu.Lock()
+	authStoreWriteHookState.Store(&authStoreWriteHook{path: path, write: write})
+	var once sync.Once
+	return func() {
+		once.Do(func() {
+			authStoreWriteHookState.Store(nil)
+			authStoreWriteHookMu.Unlock()
+		})
+	}
+}
+
+func writeAuthStore(path string, body []byte) error {
+	if hook := authStoreWriteHookState.Load(); hook != nil && path == hook.path {
+		return hook.write(path, body)
+	}
+	return WritePrivateFile(path, body)
 }
 
 type LegacySchemaError struct {
@@ -144,7 +176,7 @@ func SaveAuthStore(path string, store AuthStore) error {
 		return err
 	}
 	body = append(body, '\n')
-	return WritePrivateFile(path, body)
+	return writeAuthStore(path, body)
 }
 
 func validateAuthStore(store AuthStore, requireDefault bool) error {
