@@ -454,4 +454,4 @@ maintainer workflows:
 - [MCP tools](mcp-tools.md): tool names, input schemas, output, and stdio behavior.
 - [Architecture](architecture.md): package responsibilities and runtime flow.
 - [Development](development.md): environment, tests, builds, and release gates.
-- [Agent skill](../skills/pixiv/SKILL.md): safe instructions for an agent driving the installed CLI.
+- [Agent skill](../skills/pixiv-cli/SKILL.md): safe instructions for an agent driving the installed CLI.

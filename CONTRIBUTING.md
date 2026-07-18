@@ -62,7 +62,7 @@ Update documentation in the same pull request when changing a command, flag, SDK
 - Keep `docs/cli-reference.md` and `docs/cli-reference.zh-CN.md` aligned.
 - Update `docs/sdk.md`, `docs/mcp-tools.md`, `docs/development.md`, or `docs/architecture.md` according to their documented responsibility.
 - Update `[Unreleased]` in `CHANGELOG.md` for user-visible additions, fixes, changes, deprecations, removals, or security effects.
-- Check `skills/pixiv/` when CLI commands, flags, or safety semantics change.
+- Check `skills/pixiv-cli/` when CLI commands, flags, or safety semantics change.
 
 Keep stable rules in one authoritative document and link to them elsewhere instead of copying large sections.
 

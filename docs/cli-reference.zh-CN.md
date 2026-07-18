@@ -399,4 +399,4 @@ pixiv config set update_check_enabled false
 - [MCP tools](mcp-tools.md)：tool 名称、输入 schema、输出和 stdio 行为。
 - [架构](architecture.md)：包职责和运行流程。
 - [开发流程](development.md)：环境、测试、构建和发布门禁。
-- [Agent skill](../skills/pixiv/SKILL.md)：供 Agent 安全驱动已安装 CLI 的说明。
+- [Agent skill](../skills/pixiv-cli/SKILL.md)：供 Agent 安全驱动已安装 CLI 的说明。

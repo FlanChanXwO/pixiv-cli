@@ -16,7 +16,7 @@
 - MCP `search_illust` 新增与 SDK 一致的六个筛选字段，并新增需要认证、返回 `{tools,text}` structured output 的 `search_illust_options`；legacy `search_illust` 继续返回 `{text}`，旧 `search_r18` 继续作为兼容字段。
 - 公开 Go SDK 的 `upstream_unavailable` 错误新增安全 `TransportKind` 分类，可区分 DNS、TLS、代理连接、拒绝连接、连接重置和无 typed 信号的未知传输失败；诊断仍不暴露 URL、主机、证书或凭据。
 - 公开 Go SDK 的本地 snapshot 错误新增安全 `LocalStateKind` 分类，可区分 auth/config 格式、权限、缺失、代理配置、账号身份不匹配、不可用和未知状态；`errors.Unwrap` 仅提供固定脱敏原因，缺失的可选 auth/config 文件仍按空状态正常加载。
-- 新增面向 coding agent 的 pixiv skill（`skills/pixiv/`，全英文）：SKILL.md 提供预检、凭据安全红线、操作确认分级、输出/token 控制策略与语义陷阱说明，`references/` 收录发现、下载与排障 playbook；README 提供 symlink 安装方式。
+- 新增面向 coding agent 的 `pixiv-cli` skill（`skills/pixiv-cli/`，全英文）：SKILL.md 提供预检、凭据安全红线、操作确认分级、输出/token 控制策略与语义陷阱说明，`references/` 收录安装、发现、下载与排障 playbook。
 - README 国际化：英文版成为默认 `README.md`，原中文内容迁移至 `README.zh-CN.md`，两份文档顶部互相链接。
 
 ### Changed

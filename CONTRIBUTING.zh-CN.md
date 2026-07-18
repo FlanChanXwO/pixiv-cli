@@ -62,7 +62,7 @@ Native library 校验、opt-in 真实 API 测试、发布门禁和平台细节�
 - 保持 `docs/cli-reference.md` 与 `docs/cli-reference.zh-CN.md` 对应。
 - 按文件职责更新 `docs/sdk.md`、`docs/mcp-tools.md`、`docs/development.md` 或 `docs/architecture.md`。
 - 用户可感知的新增、修复、变更、废弃、移除或安全影响写入 `CHANGELOG.md` 的 `[Unreleased]`。
-- CLI 命令、flag 或安全语义变化时检查 `skills/pixiv/`。
+- CLI 命令、flag 或安全语义变化时检查 `skills/pixiv-cli/`。
 
 稳定规则只在一个权威文档中定义，其他位置应链接过去，避免复制大段内容。
 

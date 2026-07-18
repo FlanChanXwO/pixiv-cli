@@ -1,9 +1,9 @@
 ---
-name: pixiv
+name: pixiv-cli
 description: Operate Pixiv through the pixiv-cli binary — search works, inspect Pixiv artwork or user IDs/URLs, view rankings and recommendations, manage bookmarks/follows, and download works. Load only when the user explicitly mentions Pixiv or pixiv-cli, provides a pixiv.net URL or ID in a clear Pixiv context, or requests a specific Pixiv operation or `pixiv` command. Do not trigger for generic illustration, artist, image-search, or download requests without Pixiv context. Verify current syntax with `pixiv <cmd> --help`.
 ---
 
-# Pixiv CLI Skill
+# pixiv-cli Operator
 
 Teaches an agent to drive the `pixiv` CLI correctly. This skill encodes workflow
 orchestration, safety rules, and semantic traps — flag details always defer to

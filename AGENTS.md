@@ -33,7 +33,7 @@ PIXIV_E2E_WEB_API=1 PIXIV_WEB_API_PROXY=http://127.0.0.1:7890 go test ./test/e2e
 - MCP 模式 stdout 保留给 JSON-RPC；日志和诊断写 stderr。
 - 不新增无依据的固定超时、截断、条数限制、重试上限、静默 fallback 或隐藏降级。确需新增时，必须有证据、代码注释、测试或文档说明。
 - 现存知识图谱仅作为历史快照保留，不是当前代码或文档的权威依据，也不作为开发、审查或交付门禁；常规功能分支不得生成或更新图谱产物。
-- 修改 CLI/MCP tool、配置键、环境变量、输出语义、下载/认证/代理流程时，同步更新双语 README、双语 CLI reference 或对应 `docs/`；涉及命令语义时同步检查 `skills/pixiv/`。
+- 修改 CLI/MCP tool、配置键、环境变量、输出语义、下载/认证/代理流程时，同步更新双语 README、双语 CLI reference 或对应 `docs/`；涉及命令语义时同步检查 `skills/pixiv-cli/`。
 - 用户可感知的新增、修复、变更、废弃、移除或安全影响，同步更新 `CHANGELOG.md` 的 `[Unreleased]`；纯内部重构、测试和文档清理可不记。
 - 代码改动必须补充或更新聚焦测试，并运行相关回归；不能测试时说明原因和风险。
 
@@ -45,4 +45,4 @@ PIXIV_E2E_WEB_API=1 PIXIV_WEB_API_PROXY=http://127.0.0.1:7890 go test ./test/e2e
 - 开发流程、配置、测试：`docs/development.md`。
 - AI 协作文档地图与 checklist：`docs/agents/`。
 - Repo-local skills：`.agents/skills/`（review / docs / commit-msg / mcp-tool），只在对应任务需要时读取。
-- 产品 skill（教 agent 使用 `pixiv` CLI，面向使用者分发）：`skills/pixiv/`，全英文；改 CLI 命令/flag/语义时同步更新。
+- 产品 skill（教 agent 使用 `pixiv` CLI，面向使用者分发）：`skills/pixiv-cli/`，全英文；改 CLI 命令/flag/语义时同步更新。
