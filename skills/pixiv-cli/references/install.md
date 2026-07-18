@@ -29,8 +29,8 @@ The installer itself must select the latest stable official Release and report
 4. If `curl`, `tar`, the checksum tool, or another declared prerequisite is
    missing, stop and ask before installing it. Never silently switch to another
    download or extraction path.
-5. Never read `auth.json`, run `auth token`, or request a Pixiv credential as
-   part of installation.
+5. Never read authentication storage, import/export authentication, or request
+   a Pixiv credential as part of installation.
 6. Require installer success, then run `pixiv version`. Report the installed
    version, binary path, profile/registry PATH change, and any warning exactly.
 
