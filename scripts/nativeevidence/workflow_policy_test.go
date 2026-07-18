@@ -21,6 +21,25 @@ func TestCheckWorkflowAcceptsAuditedNativeEvidenceEntry(t *testing.T) {
 	}
 }
 
+func TestNativeEvidenceLocksPortableLinuxABI(t *testing.T) {
+	t.Parallel()
+
+	body, err := os.ReadFile(filepath.Join(findRepositoryRoot(t), ".github", "workflows", "native-evidence.yml"))
+	if err != nil {
+		t.Fatalf("read native evidence workflow: %v", err)
+	}
+	workflow := string(body)
+	for _, required := range []string{
+		"runner: ubuntu-22.04\n            goos: linux\n            goarch: amd64",
+		"runner: ubuntu-22.04-arm\n            goos: linux\n            goarch: arm64",
+		`go run ./scripts/linuxabi --binary "$binary"`,
+	} {
+		if !strings.Contains(workflow, required) {
+			t.Fatalf("native evidence workflow missing Linux ABI contract %q", required)
+		}
+	}
+}
+
 func TestCheckWorkflowAcceptsPinnedRustToolchainProvenance(t *testing.T) {
 	t.Parallel()
 

@@ -26,6 +26,10 @@
 
 ### Fixed
 
+- 修复 Linux Release 在 Ubuntu 24.04 上通过 cgo 链接后隐式要求 `GLIBC_2.39`、导致 Debian 12 等
+  glibc 2.35–2.38 系统无法启动的问题；后续 Linux amd64/arm64 资产统一在 Ubuntu 22.04 构建，
+  release、native evidence 与 packaged smoke 在打包前检查 ELF 的 GNU version requirement，任何
+  高于公开 `GLIBC_2.35` 基线的依赖都会 fail closed。
 - 修复 `--ai-type` 的帮助语义与 Pixiv 字段不一致；Pixiv `AIType==2` 现正确识别为 AI，deprecated `--ai-type` 保持 `0=exclude`、`1=only`、`2=all`，并拒绝与显式 `--ai-mode` 同用。
 - 修复 legacy MCP handler 把输入、认证、上游读取、下载与资源失败转换为兼容文本后，统一 operation wrapper 仍误记 `result=success` 的问题；wire 继续保持原 Content、structured output、文本与 `isError=false`，stderr 现以 error level 和安全 typed metadata 记录真实失败；事件不记录或输出原始错误文本、tool 输入、query、凭据、URL、path 或 response body。正常空结果仍记为成功。
 - 规范化下载 URL path 推导扩展名中的跨平台非法文件名字符、ASCII 控制字符和 Windows 非法尾随点/空格；单页与多页下载共用同一清理边界，既有模板和 ugoira `.gif` 语义不变。

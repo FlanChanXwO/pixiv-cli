@@ -4,12 +4,30 @@ import (
 	"errors"
 	"io/fs"
 	"os"
+	"strings"
 	"testing"
 )
 
 func TestPlatformSmokeWorkflowPolicy(t *testing.T) {
 	if err := Validate("../../.github/workflows/platform-smoke.yml"); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestPlatformSmokeLocksPortableLinuxABI(t *testing.T) {
+	payload, err := os.ReadFile("../../.github/workflows/platform-smoke.yml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	workflow := string(payload)
+	for _, required := range []string{
+		"runner: ubuntu-22.04\n            goos: linux\n            goarch: amd64",
+		"runner: ubuntu-22.04-arm\n            goos: linux\n            goarch: arm64",
+		`go run ./scripts/linuxabi --binary "$binary"`,
+	} {
+		if !strings.Contains(workflow, required) {
+			t.Fatalf("platform smoke workflow missing Linux ABI contract %q", required)
+		}
 	}
 }
 

@@ -38,6 +38,11 @@ AMD64 与 ARM64，默认安装到 `%LOCALAPPDATA%\Programs\pixiv`。两个脚本
 `$HOME/.local/bin`，Windows 则只更新当前用户的 `Path`。脚本不会请求管理员/root 权限、安装前置工具、
 读取 Pixiv 凭据或绕过系统信誉警告。
 
+v0.3.0 之后构建的 Linux Release 资产要求 glibc 2.35 或更新版本。release、native-evidence 与
+packaged-smoke job 都在 Ubuntu 22.04 上为两个 Linux 架构构建，并拒绝 GNU version requirement
+高于 `GLIBC_2.35` 的 ELF。v0.3.0 早于此门禁，可能要求 `GLIBC_2.39`，因此与 Debian 12 不兼容；
+安装器的 binary 预检会在替换现有安装前显露该 loader 失败。
+
 这是首次 bootstrap 的信任边界：`pixiv` 尚不存在时，脚本没有内置 Ed25519 verifier。SHA-256 校验可以
 发现传输损坏或 archive 不匹配，但来源真实性仍依赖 HTTPS 与官方 GitHub repository/Release 账号；执行前
 应审阅安装脚本。安装完成后，后续 `pixiv update` 会使用 binary 内置的 Ed25519 trust root 验证 Release 更新。
@@ -117,6 +122,24 @@ pixiv auth login
 | 保存 | refresh/access token 不会打印；refresh token 按 Pixiv UID 保存到 `auth.json`。Unix-like 主动使用 `0700` 父目录与 `0600` 文件；Windows 首次创建继承父目录 ACL，替换既有目标保留其 ACL，不主动收紧或放宽 DACL。 |
 
 默认浏览器打开时，macOS 会注册一个仅服务于当前登录尝试的本地 `PixivCLIURLHandler.app`，只把 Pixiv 返回的 `pixiv://account/login?...` URL 转交给本轮 CLI loopback；它不读取浏览器 Cookie、存储、历史、会话文件、标签页或网络流量。若 helper 不可用，CLI 仍打开正常浏览器并等待 loopback 或手动回填，不会启动受管 Chromium、DevTools/CDP 或浏览器状态扫描。遇到 Pixiv `post-redirect` 授权接力页时，用户可手动粘贴 relay URL；CLI 只在校验其属于本轮 OAuth 后打开该 relay URL 一次。浏览器可能停留在白色 relay 页，是否成功以终端最终输出为准；若 Pixiv 未生成 callback，CLI 不会伪造成功。
+
+在无 GUI 的 SSH 服务器上，应继续把 listener 绑定到 loopback，并选择一个未占用的固定端口，方便从
+本地转发。先在服务器运行：
+
+```bash
+pixiv auth login --no-open --addr 127.0.0.1:41871
+```
+
+再在本机另一个终端运行：
+
+```bash
+ssh -N -L 41871:127.0.0.1:41871 USER@SERVER
+```
+
+随后用本地浏览器打开 `http://127.0.0.1:41871/`。该 tunnel 只连接服务器 loopback，不会把 callback
+端口暴露到公网。也可以使用交互式 SSH terminal，把最终 callback URL、`pixiv://` URL、relay URL 或原始
+authorization code 粘贴回原 `auth login` prompt。不要把登录 listener 绑定到公网接口；`--addr` 会刻意
+只接受 loopback 地址。
 
 浏览器使用的系统代理不会自动传给 Go CLI。若 Pixiv token 端点在当前网络下需要代理，请先配置：
 

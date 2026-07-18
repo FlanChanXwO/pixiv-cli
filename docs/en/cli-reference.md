@@ -41,6 +41,11 @@ changes. `--add-to-path` is restricted to `$HOME/.local/bin` on Unix and updates
 on Windows. Neither script requests administrator/root privileges, installs prerequisites, reads Pixiv credentials,
 or bypasses system reputation warnings.
 
+Linux Release assets built after v0.3.0 require glibc 2.35 or newer. The release, native-evidence, and packaged-smoke
+jobs build both Linux architectures on Ubuntu 22.04 and reject any ELF whose GNU version requirements exceed
+`GLIBC_2.35`. v0.3.0 predates this gate and may require `GLIBC_2.39`; it is therefore incompatible with Debian 12.
+The installer binary preflight exposes that loader failure before it replaces an existing installation.
+
 This is an initial-bootstrap boundary: before `pixiv` exists, the scripts have no embedded Ed25519 verifier. The
 SHA-256 check detects corruption or a mismatched archive, while authenticity still depends on HTTPS and the official
 GitHub repository/Release account. Inspect the installer before execution. Once installed, `pixiv update` uses the
@@ -133,6 +138,24 @@ managed Chromium, DevTools/CDP, or any browser state scanning. When Pixiv shows 
 relay page, you can manually paste the relay URL; the CLI opens that relay URL exactly once, and only after
 verifying it belongs to this OAuth round. The browser may stay on a blank relay page — the terminal's final output
 is the source of truth; if Pixiv never produced a callback, the CLI will not fake success.
+
+On a headless SSH server, keep the listener on loopback and choose an unused fixed port so the local machine can
+forward it. Run on the server:
+
+```bash
+pixiv auth login --no-open --addr 127.0.0.1:41871
+```
+
+Then run on the local machine in another terminal:
+
+```bash
+ssh -N -L 41871:127.0.0.1:41871 USER@SERVER
+```
+
+Open `http://127.0.0.1:41871/` in the local browser. The tunnel reaches only the server's loopback listener and does
+not expose the callback port publicly. Alternatively, use an interactive SSH terminal and paste the final callback
+URL, `pixiv://` URL, relay URL, or raw authorization code into the original `auth login` prompt. Never bind the login
+listener to a public interface; `--addr` intentionally accepts loopback addresses only.
 
 The system proxy used by the browser is not automatically passed to the Go CLI. If the Pixiv token endpoint needs a
 proxy on your network, configure it first:

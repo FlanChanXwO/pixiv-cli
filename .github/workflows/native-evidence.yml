@@ -34,13 +34,13 @@ jobs:
             rust_target: aarch64-apple-darwin
             rust_toolchain: '1.96.1'
             artifact: darwin-arm64
-          - runner: ubuntu-24.04
+          - runner: ubuntu-22.04
             goos: linux
             goarch: amd64
             rust_target: x86_64-unknown-linux-gnu
             rust_toolchain: '1.96.1'
             artifact: linux-amd64
-          - runner: ubuntu-24.04-arm
+          - runner: ubuntu-22.04-arm
             goos: linux
             goarch: arm64
             rust_target: aarch64-unknown-linux-gnu
@@ -105,6 +105,9 @@ jobs:
           go build -trimpath -buildvcs=false \
             -ldflags "-X github.com/FlanChanXwO/pixiv-cli/internal/buildinfo.Version=v${version} -X github.com/FlanChanXwO/pixiv-cli/internal/buildinfo.Commit=${GITHUB_SHA} -X github.com/FlanChanXwO/pixiv-cli/internal/buildinfo.BuildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
             -o "$binary" ./cmd/pixiv
+          if [ '${{ matrix.goos }}' = linux ]; then
+            go run ./scripts/linuxabi --binary "$binary"
+          fi
           "$binary" version --json
       - name: Package the versioned native binary
         shell: bash

@@ -14,8 +14,8 @@ import (
 var homebrewMatrixTargets = map[string]struct{}{
 	"macos-15-intel|darwin|amd64":  {},
 	"macos-15|darwin|arm64":        {},
-	"ubuntu-24.04|linux|amd64":     {},
-	"ubuntu-24.04-arm|linux|arm64": {},
+	"ubuntu-22.04|linux|amd64":     {},
+	"ubuntu-22.04-arm|linux|arm64": {},
 }
 
 func checkRenderHomebrewJob(job *yaml.Node) error {

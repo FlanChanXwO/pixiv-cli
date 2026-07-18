@@ -132,8 +132,8 @@ func checkNativeEvidenceJob(job *yaml.Node) error {
 var nativeEvidenceMatrixTargets = map[string]struct{}{
 	"macos-15-intel|darwin|amd64|x86_64-apple-darwin|darwin-amd64":       {},
 	"macos-15|darwin|arm64|aarch64-apple-darwin|darwin-arm64":            {},
-	"ubuntu-24.04|linux|amd64|x86_64-unknown-linux-gnu|linux-amd64":      {},
-	"ubuntu-24.04-arm|linux|arm64|aarch64-unknown-linux-gnu|linux-arm64": {},
+	"ubuntu-22.04|linux|amd64|x86_64-unknown-linux-gnu|linux-amd64":      {},
+	"ubuntu-22.04-arm|linux|arm64|aarch64-unknown-linux-gnu|linux-arm64": {},
 	"windows-2025|windows|amd64|x86_64-pc-windows-msvc|windows-amd64":    {},
 	"windows-11-arm|windows|arm64|aarch64-pc-windows-msvc|windows-arm64": {},
 }
@@ -227,6 +227,9 @@ fi
 go build -trimpath -buildvcs=false \
   -ldflags "-X github.com/FlanChanXwO/pixiv-cli/internal/buildinfo.Version=v${version} -X github.com/FlanChanXwO/pixiv-cli/internal/buildinfo.Commit=${GITHUB_SHA} -X github.com/FlanChanXwO/pixiv-cli/internal/buildinfo.BuildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
   -o "$binary" ./cmd/pixiv
+if [ '${{ matrix.goos }}' = linux ]; then
+  go run ./scripts/linuxabi --binary "$binary"
+fi
 "$binary" version --json
 `
 
