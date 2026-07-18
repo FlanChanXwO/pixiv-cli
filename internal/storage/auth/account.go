@@ -70,7 +70,7 @@ func IsMissingRefreshTokenError(err error) bool {
 }
 
 func (e LegacySchemaError) Error() string {
-	return "legacy auth schema field " + e.Field + " is not supported; recreate auth.json with pixiv auth add/login"
+	return "legacy auth schema field " + e.Field + " is not supported; recreate auth.json with pixiv auth import/login"
 }
 
 func IsLegacySchemaError(err error) bool {
@@ -151,7 +151,7 @@ func validateAuthStore(store AuthStore, requireDefault bool) error {
 	seen := map[int64]struct{}{}
 	for _, acct := range store.Accounts {
 		if acct.UserID <= 0 {
-			return errors.New("auth account user_id is required; recreate auth.json with pixiv auth add/login")
+			return errors.New("auth account user_id is required; recreate auth.json with pixiv auth import/login")
 		}
 		if _, ok := seen[acct.UserID]; ok {
 			return errors.New("auth account user_id values must be unique")
