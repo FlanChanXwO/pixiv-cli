@@ -12,9 +12,7 @@
 
 </div>
 
-`pixiv-cli` gives humans, coding agents, and Go applications one consistent way to use Pixiv. The CLI and MCP server both call the same public Go SDK, with the Pixiv App API as the authenticated source of truth.
-
-> This is an unofficial third-party project and is not affiliated with or endorsed by Pixiv Inc. Use it in accordance with Pixiv's terms and applicable law.
+`pixiv-cli` is an independent, unofficial third-party tool that gives humans, coding agents, and Go applications one consistent way to use Pixiv; it is not affiliated with or endorsed by Pixiv Inc. The CLI and MCP server both call the same public Go SDK, with the Pixiv App API as the authenticated source of truth. Use it in accordance with Pixiv's terms and applicable law.
 
 ## Why pixiv-cli?
 

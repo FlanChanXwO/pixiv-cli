@@ -12,9 +12,7 @@
 
 </div>
 
-`pixiv-cli` 为用户、Coding Agent 和 Go 应用提供一致的 Pixiv 能力。CLI 与 MCP server 共同调用 public Go SDK，并以 Pixiv App API 作为已认证能力的数据源。
-
-> 这是非官方第三方项目，与 Pixiv Inc. 无隶属或背书关系。请遵守 Pixiv 条款与适用法律。
+`pixiv-cli` 是独立开发的非官方第三方工具，为用户、Coding Agent 和 Go 应用提供一致的 Pixiv 能力，与 Pixiv Inc. 无隶属或背书关系。CLI 与 MCP server 共同调用 public Go SDK，并以 Pixiv App API 作为已认证能力的数据源；使用时请遵守 Pixiv 条款与适用法律。
 
 ## 为什么选择 pixiv-cli？
 
