@@ -75,6 +75,25 @@ func TestCheckWorkflowRequiresPinnedRustToolchainForReleaseBuilds(t *testing.T) 
 	}
 }
 
+func TestReleaseBuildLocksPortableLinuxABI(t *testing.T) {
+	t.Parallel()
+
+	payload, err := os.ReadFile("../../.github/workflows/release.yml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	workflow := string(payload)
+	for _, required := range []string{
+		"runner: ubuntu-22.04\n            goos: linux\n            goarch: amd64",
+		"runner: ubuntu-22.04-arm\n            goos: linux\n            goarch: arm64",
+		`go run ./scripts/linuxabi --binary "$output"`,
+	} {
+		if !strings.Contains(workflow, required) {
+			t.Fatalf("release workflow missing Linux ABI contract %q", required)
+		}
+	}
+}
+
 func TestCheckWorkflowRejectsReleaseRustToolchainMutations(t *testing.T) {
 	t.Parallel()
 

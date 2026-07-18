@@ -246,7 +246,10 @@ output='dist/pixiv.exe'
 fi
 go build -trimpath -buildvcs=false \
 -ldflags "-X github.com/FlanChanXwO/pixiv-cli/internal/buildinfo.Version=${RELEASE_TAG} -X github.com/FlanChanXwO/pixiv-cli/internal/buildinfo.Commit=$(git rev-parse HEAD) -X github.com/FlanChanXwO/pixiv-cli/internal/buildinfo.BuildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
--o "$output" ./cmd/pixiv`
+-o "$output" ./cmd/pixiv
+if [ '${{ matrix.goos }}' = linux ]; then
+go run ./scripts/linuxabi --binary "$output"
+fi`
 	if err := requireCanonicalRunStep(step, "production versioned binary build", commands); err != nil {
 		return errors.New("production build must use the exact tag-bound metadata and output command sequence")
 	}

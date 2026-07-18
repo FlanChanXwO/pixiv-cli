@@ -44,6 +44,21 @@ Cargo 输入生成 target library；只有同一次成功得到全部六个真�
 写入带 Rust source digest 的 `manifest.json`。单 target 调用会使已有 manifest 失效，避免用
 局部重建证明全平台一致性。
 
+Linux Release 的公开 ABI 基线是 glibc 2.35。release test/production、native evidence、packaged
+binary smoke 与 Homebrew install matrix 的 Linux runner 必须固定为 `ubuntu-22.04` 和
+`ubuntu-22.04-arm`；quality、validate、publish 等不产出 Linux binary 的 job 可继续使用更新 runner。
+每次生成 Linux executable 后必须运行：
+
+```bash
+go run ./scripts/linuxabi --binary <linux-elf>
+```
+
+该门禁读取 ELF `SHT_GNU_verneed` 的真实 loader contract，并兼查 imported symbol version；任何高于
+`GLIBC_2.35` 的依赖都会在打包前失败。不能只依赖“binary 在构建 runner 上能运行”的 smoke，因为这会
+让 runner 自身的新 glibc 隐藏向后兼容回归。v0.3.0 的 Ubuntu 24.04 构建曾引入
+`pidfd_spawnp@GLIBC_2.39` 与 `pidfd_getpid@GLIBC_2.39`，导致 Debian 12（glibc 2.36）在进入 CLI 前
+即被 loader 拒绝；这正是该基线与 fail-closed 检查所防止的真实故障。
+
 当前工作树的六库来自 run `29567721284`（head
 `a93378631654f7a19b5e6052f68bdb3650438b03`）。该 run 在六个真实平台 runner 上按下述版本映射
 安装 pinned toolchain，并全部通过 policy、精确源码 ref、locked/offline build、真实 cgo GIF/APNG smoke、

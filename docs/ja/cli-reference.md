@@ -41,6 +41,12 @@ SHA-256 を検証し、staged binary の動作を確認してから `pixiv` を�
 Windows では現在のユーザーの `Path` だけを更新します。root/admin 権限を要求せず、前提ツールを勝手に
 インストールせず、Pixiv credential を読み取らず、OS の reputation warning を回避しません。
 
+v0.3.0 より後に build される Linux Release asset は glibc 2.35 以降を必要とします。release、
+native-evidence、packaged-smoke job は両方の Linux architecture を Ubuntu 22.04 上で build し、GNU
+version requirement が `GLIBC_2.35` を超える ELF を拒否します。v0.3.0 はこの gate より前の asset
+で `GLIBC_2.39` を要求する場合があり、Debian 12 とは互換性がありません。installer の binary
+preflight は既存の install を置き換える前に loader failure を明示します。
+
 初回 bootstrap の script には Ed25519 verifier を埋め込めません。SHA-256 は破損・取り違えを検出しますが、
 真正性は HTTPS と公式 GitHub repository/Release account に依存します。実行前に script を確認してください。
 導入後の `pixiv update` は binary に埋め込まれた Ed25519 trust root を使用します。
@@ -119,6 +125,25 @@ file、tab、network traffic を読みません。利用できなくても通常
 managed Chromium、DevTools/CDP、browser state scan は行いません。relay URL はこの OAuth 試行に属すると
 確認した後、一度だけ開きます。browser が空白ページでも terminal の最終結果を正とし、callback がなければ
 成功を偽装しません。
+
+GUI のない SSH server では listener を loopback に保ち、local machine から転送できる未使用の固定 port を
+選びます。まず server で実行します：
+
+```bash
+pixiv auth login --no-open --addr 127.0.0.1:41871
+```
+
+次に local machine の別 terminal で実行します：
+
+```bash
+ssh -N -L 41871:127.0.0.1:41871 USER@SERVER
+```
+
+local browser で `http://127.0.0.1:41871/` を開きます。この tunnel は server の loopback listener
+だけに接続し、callback port を公開しません。別案として interactive SSH terminal を使い、最終 callback
+URL、`pixiv://` URL、relay URL、raw authorization code を元の `auth login` prompt に貼り付けられます。
+login listener を public interface に bind しないでください。`--addr` は意図的に loopback address だけを
+受理します。
 
 browser の system proxy は Go CLI に自動継承されません。必要なら先に設定します：
 

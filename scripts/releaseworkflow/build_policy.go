@@ -14,8 +14,8 @@ import (
 var releaseMatrixTargets = map[string]struct{}{
 	"macos-15-intel|darwin|amd64|x86_64-apple-darwin|darwin-amd64|clang":                    {},
 	"macos-15|darwin|arm64|aarch64-apple-darwin|darwin-arm64|clang":                         {},
-	"ubuntu-24.04|linux|amd64|x86_64-unknown-linux-gnu|linux-amd64|gcc":                     {},
-	"ubuntu-24.04-arm|linux|arm64|aarch64-unknown-linux-gnu|linux-arm64|gcc":                {},
+	"ubuntu-22.04|linux|amd64|x86_64-unknown-linux-gnu|linux-amd64|gcc":                     {},
+	"ubuntu-22.04-arm|linux|arm64|aarch64-unknown-linux-gnu|linux-arm64|gcc":                {},
 	"windows-2025|windows|amd64|x86_64-pc-windows-msvc|windows-amd64|clang -fuse-ld=lld":    {},
 	"windows-11-arm|windows|arm64|aarch64-pc-windows-msvc|windows-arm64|clang -fuse-ld=lld": {},
 }
