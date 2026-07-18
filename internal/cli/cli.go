@@ -104,48 +104,69 @@ func isAuthExportInvocation(args []string) bool {
 	if len(args) < 3 {
 		return false
 	}
-	index, continues := skipFalseRootBooleanFlags(args, 1)
-	if !continues {
-		return false
-	}
+	state := rootBooleanFlagState{}
+	index := scanRootBooleanFlags(args, 1, &state)
 	if index >= len(args) || args[index] != "auth" {
 		return false
 	}
-	index, continues = skipFalseRootBooleanFlags(args, index+1)
-	if !continues {
+	index = scanRootBooleanFlags(args, index+1, &state)
+	if index >= len(args) || args[index] != "export" || state.invalid {
 		return false
 	}
-	return index < len(args) && args[index] == "export"
+	return !state.help && !state.version
 }
 
-// skipFalseRootBooleanFlags 按 pflag/strconv.ParseBool 语义跳过不会短路命令执行的
-// root bool flags。true 会转入 help/version，非法值交回 Cobra 报错；二者都不是 export。
-func skipFalseRootBooleanFlags(args []string, index int) (int, bool) {
+// rootBooleanFlagState 按 pflag 的重复 flag 语义保存每个 logical flag 的最后值。
+// -h 与 --help 属于同一 logical flag；非法值由 Cobra 报错，不能被后值覆盖。
+type rootBooleanFlagState struct {
+	help    bool
+	version bool
+	invalid bool
+}
+
+type rootBooleanFlag uint8
+
+const (
+	rootBooleanFlagHelp rootBooleanFlag = iota + 1
+	rootBooleanFlagVersion
+)
+
+func scanRootBooleanFlags(args []string, index int, state *rootBooleanFlagState) int {
 	for index < len(args) {
-		value, recognized, err := rootBooleanFlagValue(args[index])
+		flag, value, recognized, err := rootBooleanFlagValue(args[index])
 		if !recognized {
-			return index, true
+			return index
 		}
-		if err != nil || value {
-			return index, false
+		if err != nil {
+			state.invalid = true
+		} else {
+			switch flag {
+			case rootBooleanFlagHelp:
+				state.help = value
+			case rootBooleanFlagVersion:
+				state.version = value
+			}
 		}
 		index++
 	}
-	return index, true
+	return index
 }
 
-func rootBooleanFlagValue(argument string) (value bool, recognized bool, err error) {
+func rootBooleanFlagValue(argument string) (flag rootBooleanFlag, value bool, recognized bool, err error) {
 	name, rawValue, assigned := strings.Cut(argument, "=")
 	switch name {
-	case "--help", "-h", "--version":
+	case "--help", "-h":
+		flag = rootBooleanFlagHelp
+	case "--version":
+		flag = rootBooleanFlagVersion
 	default:
-		return false, false, nil
+		return 0, false, false, nil
 	}
 	if !assigned {
-		return true, true, nil
+		return flag, true, true, nil
 	}
 	value, err = strconv.ParseBool(rawValue)
-	return value, true, err
+	return flag, value, true, err
 }
 
 // commandLog 仅记录命令名和稳定结果，不能记录 args：其中可能含 refresh token、

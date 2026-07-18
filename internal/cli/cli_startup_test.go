@@ -45,6 +45,9 @@ func TestRunAuthExportSkipsPendingUpdateCleanupWithLeadingRootFlags(t *testing.T
 		args       []string
 		wantExport bool
 	}{
+		{name: "help true then false", args: []string{"pixiv", "--help=true", "--help=false", "auth", "export"}, wantExport: true},
+		{name: "mixed help true then false", args: []string{"pixiv", "-h=true", "--help=false", "auth", "export"}, wantExport: true},
+		{name: "version true then false", args: []string{"pixiv", "--version=true", "--version=false", "auth", "export"}},
 		{name: "version false", args: []string{"pixiv", "--version=false", "auth", "export"}},
 		{name: "help zero", args: []string{"pixiv", "--help=0", "auth", "export"}, wantExport: true},
 		{name: "short false", args: []string{"pixiv", "-h=false", "auth", "export"}, wantExport: true},
@@ -78,7 +81,10 @@ func TestRunRootTrueFlagsAndNonExportCommandsStillRunPendingUpdateCleanup(t *tes
 		args []string
 	}{
 		{name: "help true", args: []string{"pixiv", "--help=true", "auth", "export"}},
+		{name: "help false then true", args: []string{"pixiv", "--help=false", "--help=true", "auth", "export"}},
+		{name: "mixed help false then true", args: []string{"pixiv", "--help=false", "-h=true", "auth", "export"}},
 		{name: "version one", args: []string{"pixiv", "--version=1", "auth", "export"}},
+		{name: "version false then true", args: []string{"pixiv", "--version=false", "--version=true", "auth", "export"}},
 		{name: "version command", args: []string{"pixiv", "version", "--json"}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -107,7 +113,7 @@ func TestRunInvalidRootBoolKeepsCobraParseError(t *testing.T) {
 	}
 	var stdout, stderr bytes.Buffer
 
-	code := Run([]string{"pixiv", "--help=not-bool", "auth", "export"}, strings.NewReader(""), &stdout, &stderr)
+	code := Run([]string{"pixiv", "--help=not-bool", "--help=false", "auth", "export"}, strings.NewReader(""), &stdout, &stderr)
 
 	if code != 1 || !called || !strings.Contains(stderr.String(), "invalid argument") {
 		t.Fatalf("invalid root bool did not preserve Cobra error: code=%d cleanup_called=%t stdout_bytes=%d stderr_bytes=%d", code, called, stdout.Len(), stderr.Len())
