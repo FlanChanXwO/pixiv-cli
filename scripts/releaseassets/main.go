@@ -181,6 +181,8 @@ func runFinalize(arguments []string) (err error) {
 	inputDir := flags.String("input-dir", "", "directory containing the six packaged archives")
 	outputDir := flags.String("output-dir", "", "new directory receiving final release assets")
 	changelog := flags.String("changelog", "", "CHANGELOG.md path")
+	installSh := flags.String("install-sh", "", "verified install.sh path")
+	installCmd := flags.String("install-cmd", "", "verified install.cmd path")
 	privateKeyPath := flags.String("private-key", "", "PKCS#8 PEM Ed25519 private-key path")
 	keyID := flags.String("key-id", "", "public signing-key identifier")
 	if err := flags.Parse(arguments); err != nil {
@@ -212,6 +214,12 @@ func runFinalize(arguments []string) (err error) {
 	if err != nil {
 		return err
 	}
+	if err := requireSecureRegularFile(*installSh, "install.sh"); err != nil {
+		return err
+	}
+	if err := requireSecureRegularFile(*installCmd, "install.cmd"); err != nil {
+		return err
+	}
 	parent := filepath.Dir(*outputDir)
 	if err := requireSecureDirectory(parent, "output parent directory"); err != nil {
 		return err
@@ -235,7 +243,7 @@ func runFinalize(arguments []string) (err error) {
 		}
 	}()
 
-	checksums, err := copyRequiredArchives(*inputDir, stage, *version)
+	checksums, err := copyRequiredAssets(*inputDir, stage, *version, *installSh, *installCmd)
 	if err != nil {
 		return err
 	}
@@ -259,16 +267,23 @@ func runFinalize(arguments []string) (err error) {
 	return nil
 }
 
-func copyRequiredArchives(inputDir, outputDir, version string) ([]byte, error) {
-	names := make([]string, 0, len(fixedTargets))
+func copyRequiredAssets(inputDir, outputDir, version, installSh, installCmd string) ([]byte, error) {
+	sources := make(map[string]string, len(fixedTargets)+2)
 	for _, target := range fixedTargets {
-		names = append(names, archiveName(version, target))
+		name := archiveName(version, target)
+		sources[name] = filepath.Join(inputDir, name)
+	}
+	sources["install.sh"] = installSh
+	sources["install.cmd"] = installCmd
+	names := make([]string, 0, len(sources))
+	for name := range sources {
+		names = append(names, name)
 	}
 	sort.Strings(names)
 	checksums := make([]byte, 0, len(names)*96)
 	for _, name := range names {
-		source := filepath.Join(inputDir, name)
-		if err := requireRegularFile(source, "input archive"); err != nil {
+		source := sources[name]
+		if err := requireRegularFile(source, "input release asset"); err != nil {
 			return nil, fmt.Errorf("%s: %w", name, err)
 		}
 		sum, err := copyRegularFile(source, filepath.Join(outputDir, name))

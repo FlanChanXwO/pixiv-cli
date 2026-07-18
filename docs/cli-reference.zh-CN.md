@@ -15,6 +15,33 @@ SDK 与 MCP 细节不在此重复，入口见[相关文档](#相关文档)。
 > 平台 archive、checksum 与签名清单；stable Homebrew formula 已推送。后续版本仍必须通过同一套 tag、签名、资产与
 > Homebrew 门禁后才可作为可用下载来源。
 
+### 官方安装脚本
+
+仓库提供两个面向最新 stable Release 的用户级 bootstrap 脚本：
+
+```bash
+# Linux/macOS
+curl -fsSLo /tmp/pixiv-install.sh https://raw.githubusercontent.com/FlanChanXwO/pixiv-cli/main/scripts/install.sh
+sh /tmp/pixiv-install.sh --add-to-path
+```
+
+```bat
+rem Windows 命令提示符；不依赖 PowerShell
+curl.exe -fsSLo "%TEMP%\pixiv-install.cmd" https://raw.githubusercontent.com/FlanChanXwO/pixiv-cli/main/scripts/install.cmd
+call "%TEMP%\pixiv-install.cmd" --add-to-path
+```
+
+`install.sh` 支持 Linux/macOS AMD64 与 ARM64，默认安装到 `$HOME/.local/bin`；`install.cmd` 支持 Windows
+AMD64 与 ARM64，默认安装到 `%LOCALAPPDATA%\Programs\pixiv`。两个脚本都只从官方最新 stable Release 下载
+`checksums.txt` 与唯一匹配的 archive，先校验 SHA-256，再解压并预检暂存 binary，最后才替换 `pixiv`。
+`--install-dir DIR` 可指定目录；`--no-path` 不修改 profile/registry。Unix 的 `--add-to-path` 只支持
+`$HOME/.local/bin`，Windows 则只更新当前用户的 `Path`。脚本不会请求管理员/root 权限、安装前置工具、
+读取 Pixiv 凭据或绕过系统信誉警告。
+
+这是首次 bootstrap 的信任边界：`pixiv` 尚不存在时，脚本没有内置 Ed25519 verifier。SHA-256 校验可以
+发现传输损坏或 archive 不匹配，但来源真实性仍依赖 HTTPS 与官方 GitHub repository/Release 账号；执行前
+应审阅安装脚本。安装完成后，后续 `pixiv update` 会使用 binary 内置的 Ed25519 trust root 验证 Release 更新。
+
 ### 从源码构建
 
 ```bash

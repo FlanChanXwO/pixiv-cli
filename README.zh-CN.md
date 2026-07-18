@@ -27,6 +27,32 @@
 
 ## 安装
 
+### 安装脚本（Windows、Linux 与 macOS）
+
+Linux/macOS（`sh`）：
+
+```bash
+curl -fsSLo /tmp/pixiv-install.sh https://raw.githubusercontent.com/FlanChanXwO/pixiv-cli/main/scripts/install.sh && sh /tmp/pixiv-install.sh --add-to-path
+```
+
+Windows 命令提示符（`cmd.exe`，不依赖 PowerShell）：
+
+```bat
+curl.exe -fsSLo "%TEMP%\pixiv-install.cmd" https://raw.githubusercontent.com/FlanChanXwO/pixiv-cli/main/scripts/install.cmd && call "%TEMP%\pixiv-install.cmd" --add-to-path
+```
+
+两个脚本都会检测 AMD64/ARM64、选择最新 stable 官方 Release archive、校验发布的 SHA-256、预检暂存
+binary，并在修改 PATH 前完成用户级安装。可用 `--no-path` 保持 PATH 不变，或用 `--install-dir DIR`
+选择其他目录；执行前也可以先审阅下载的脚本。
+
+### 让 Coding Agent 安装
+
+把下面这一段 prompt 复制给能够操作本机终端的 Codex、Claude Code、Cursor 或其他 Coding Agent：
+
+```text
+请为这台机器安装 https://github.com/FlanChanXwO/pixiv-cli 的最新 stable 版本：先审阅仓库中的 scripts/install.sh 或 scripts/install.cmd，再根据检测到的操作系统与架构选择对应脚本（Windows 必须使用 cmd.exe，禁止调用 PowerShell），只下载官方 GitHub Release 资产，只有发布的 SHA-256 校验通过后才能替换文件，使用无需管理员或 root 权限的用户级目录，只把选定安装目录加入用户 PATH，缺少任何前置工具时先征求同意，绝不读取或输出 Pixiv 凭据，最后运行 pixiv version 验证，并报告安装版本及全部文件和 PATH 变更。
+```
+
 ### Homebrew（macOS 与 Linux 推荐）
 
 ```bash

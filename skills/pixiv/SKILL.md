@@ -12,9 +12,10 @@ the installed binary's `pixiv <cmd> --help` output.
 ## Preflight and account checks
 
 1. Run `pixiv version --json`. The binary itself is the only environment probe:
-   if it is missing or not executable, report that blocker and do not install
-   or guess an installation method. Refer to installation instructions only
-   when the user supplied them or they already exist in the current context.
+   if it is missing or not executable, report that blocker. Install only when
+   the user explicitly asked for installation; then read
+   `references/install.md` and use the official platform script. Otherwise do
+   not install or guess an installation method.
 2. Do not enumerate local accounts on every session. Run
    `pixiv auth list --json` only when authentication, account selection, or an
    anonymous-fallback decision actually requires it. Presence in this list does
@@ -157,6 +158,7 @@ assuming its effective value.
 
 | Task | Read |
 | --- | --- |
+| Explicitly install or repair the missing `pixiv` binary | `references/install.md` |
 | Find works/artists (search → filter → detail chains) | `references/discover.md` |
 | Download workflows (single, batch, ugoira) | `references/download.md` |
 | Errors: auth failures, network/proxy, empty results | `references/troubleshooting.md` |

@@ -308,6 +308,11 @@ smoke、版本化 archive 内容和 Homebrew 安装验收。
 
 `.github/workflows/ci.yml` 在 PR/main 运行 Linux quality gate（test、race、vet、build、package/release policy、pre-commit）。`.github/workflows/platform-smoke.yml` 在 PR/main 运行六平台离线已打包 binary smoke。两者都使用只读权限、固定 SHA action 与取消过期并发 run；真实 Pixiv e2e 不进入 GitHub Actions。
 
+`scripts/installers` 使用本地伪 Release、伪 `curl` 与 checksum fixture 验证安装器，不访问 GitHub。Unix
+job 实际运行 `install.sh`，覆盖 SHA-256、带空格目录、版本预检和校验失败不覆盖旧 binary；Windows
+amd64/arm64 platform-smoke 还会用真实 `cmd.exe`、`certutil.exe` 与 `tar.exe` 运行 `install.cmd`，并始终
+传入 `--no-path`，因此测试不修改 runner 用户注册表。平台 workflow policy 固定要求这项测试存在。
+
 其中 Windows 的 `.zip` 由 GitHub runner 镜像预装的 `7z` 生成；其他平台继续使用 `zip`。
 `scripts/test-package-release.sh` 会在 Windows runner 把伪造的调用委托给真实 `7z`，在其他开发机使用
 `zip` fixture，并核对 archive member；因此 Git Bash 缺少 `zip` 会在 release test gate 直接暴露。
@@ -320,6 +325,11 @@ smoke、版本化 archive 内容和 Homebrew 安装验收。
 darwin/linux/windows × amd64/arm64 runner 上构建 Rust staticlib、测试 Go/Rust、检查许可证并
 封装固定名称的 archive；全部通过后才创建带 `checksums.txt` 和 Ed25519 `checksums.json` 的
 GitHub Release。workflow 使用 full-SHA Actions、最小权限及 `release` Environment。
+
+`releaseassets finalize` 还从 immutable tag 读取 `scripts/install.sh` 与 `scripts/install.cmd`，把它们以固定
+名称复制到 Release，并与六个平台 archive 一同写入 `checksums.txt` 和 Ed25519 签名 manifest。publish
+policy 锁定 finalize 参数及完整八资产上传集合；Homebrew renderer 也要求 checksum 集合包含两个 installer，
+但 formula 仍只下载对应平台 archive。
 
 若不可变 tag 的首次 run 在创建 GitHub Release 前失败，维护者只能从默认分支通过
 `workflow_dispatch` 提交同一个 `release_tag` 进行恢复。validate 会校验该 tag 为 SemVer、存在、
