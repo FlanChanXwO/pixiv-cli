@@ -29,13 +29,20 @@ func PrivateFileWriteCommitOutcome(err error) WriteCommitOutcome {
 	return writeErr.outcome
 }
 
-func withPrivateFileWriteCommitOutcome(err error, committed bool) error {
+// HasPrivateFileWriteCommitOutcome 报告错误是否由 private writer 标注 outcome。
+func HasPrivateFileWriteCommitOutcome(err error) bool {
+	var writeErr *privateFileWriteError
+	return errors.As(err, &writeErr)
+}
+
+func withPrivateFileWriteCommitOutcome(err error, outcome WriteCommitOutcome) error {
 	if err == nil {
 		return nil
 	}
-	outcome := WriteCommitOutcomeNotCommitted
-	if committed {
-		outcome = WriteCommitOutcomeCommitted
+	switch outcome {
+	case WriteCommitOutcomeNotCommitted, WriteCommitOutcomeCommitted, WriteCommitOutcomeUnknown:
+	default:
+		outcome = WriteCommitOutcomeUnknown
 	}
 	return &privateFileWriteError{outcome: outcome, cause: err}
 }

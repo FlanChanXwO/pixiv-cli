@@ -58,7 +58,9 @@ Add the versioned bundle domain independently of CLI file flags:
   order, preserve an existing destination default, otherwise restore the source
   default, and leave the store unchanged on parse, validation, destination-load,
   or pre-commit write errors. Post-commit cleanup/durability errors must expose a
-  typed `committed` outcome; callers reload/inspect instead of assuming rollback.
+  typed `committed` outcome; unresolved replacement recovery must expose
+  `unknown`, requiring callers to inspect the destination and recovery artifacts
+  instead of assuming rollback or the continued existence of old bytes.
 - Return only non-secret added/updated account summaries.
 - Keep existing `ImportAccount` and `ExportAccountRefreshToken` public SDK
   operations stable.

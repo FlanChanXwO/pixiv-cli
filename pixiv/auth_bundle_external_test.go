@@ -362,6 +362,47 @@ func TestRestoreAuthBundleReportsCommittedAfterPostCommitSyncFailure(t *testing.
 	}
 }
 
+func TestRestoreAuthBundleReportsUnknownForUnresolvedReplacementRecovery(t *testing.T) {
+	authPath := filepath.Join(t.TempDir(), "auth-path-secret.json")
+	const storedAuth = `{"default_user_id":10,"accounts":[{"user_id":10,"refresh_token":"destination-secret"}]}`
+	if err := os.WriteFile(authPath, []byte(storedAuth), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	restoreHook := storageauth.SetWriteAuthStoreFileForTest(authPath, func(path string, body []byte) error {
+		return storagefiles.WritePrivateFileWithUnresolvedReplacementForTest(
+			path,
+			body,
+			storageauth.DefaultAuthFileMode,
+			errors.New("unresolved-recovery-token-secret"),
+		)
+	})
+	t.Cleanup(restoreHook)
+	client, err := pixiv.NewClient(pixiv.Options{AuthFilePath: authPath})
+	if err != nil {
+		t.Fatal(err)
+	}
+	bundle := &pixiv.AuthExportBundle{
+		Schema:        pixiv.AuthExportBundleSchema,
+		Version:       pixiv.AuthExportBundleVersion,
+		DefaultUserID: 7,
+		Accounts:      []pixiv.AuthExportSecretAccount{{UserID: 7, RefreshToken: "bundle-secret"}},
+	}
+
+	_, err = client.RestoreAuthBundle(bundle)
+	var typed *pixiv.Error
+	if !errors.As(err, &typed) || typed.Operation != pixiv.OperationRestoreAuthBundle || typed.LocalWriteCommitOutcome != pixiv.LocalWriteCommitOutcomeUnknown {
+		t.Fatalf("error=%#v", err)
+	}
+	if !strings.Contains(err.Error(), "local_write_commit_outcome=unknown") {
+		t.Fatalf("diagnostic=%q", err.Error())
+	}
+	for _, secret := range []string{"auth-path-secret", "destination-secret", "bundle-secret", "unresolved-recovery-token-secret"} {
+		if strings.Contains(err.Error(), secret) || strings.Contains(errorCause(err), secret) {
+			t.Fatalf("error exposed %q", secret)
+		}
+	}
+}
+
 func TestRestoreAuthBundleRejectsUnknownSchemaWithoutChangingDestination(t *testing.T) {
 	t.Parallel()
 	authPath := filepath.Join(t.TempDir(), "auth.json")

@@ -12,3 +12,20 @@ func WritePrivateFileWithSyncParentForTest(path string, body []byte, mode os.Fil
 	ops.syncParent = syncParent
 	return writePrivateFile(path, body, mode, ops)
 }
+
+// WritePrivateFileWithUnresolvedReplacementForTest 使用真实 staging，并模拟旧目标已
+// 移入 recovery backup、目标恢复未决的 replacement outcome。新旧 recovery
+// artifacts 都必须保留，生产代码不得调用。
+func WritePrivateFileWithUnresolvedReplacementForTest(path string, body []byte, mode os.FileMode, cause error) error {
+	if cause == nil {
+		panic("private file unresolved-replacement test hook requires an error")
+	}
+	ops := defaultPrivateFileOps()
+	ops.replaceFile = func(sourcePath, targetPath string) (privateFileReplaceOutcome, error) {
+		if err := os.Rename(targetPath, sourcePath+".recovery"); err != nil {
+			return privateFileReplaceOutcome{}, err
+		}
+		return privateFileReplaceOutcome{preserveSource: true}, cause
+	}
+	return writePrivateFile(path, body, mode, ops)
+}

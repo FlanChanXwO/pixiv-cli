@@ -205,7 +205,10 @@ validation, destination-load, and pre-commit save failures leave the destination
 store unchanged and return a non-zero exit status with stdout empty. If file
 replacement commits but cleanup or durability synchronization then fails, the
 operation returns a typed `committed` local-write outcome instead of claiming a
-rollback; callers must reload and inspect the destination store.
+rollback; callers must reload and inspect the destination store. An `unknown`
+outcome means replacement recovery is unresolved: callers must inspect both the
+destination path and preserved recovery artifacts and must not assume the old
+store still exists.
 
 On success, text mode prints one redacted status line per restored account and
 the resulting default UID. `--json` prints one object with `accounts` and

@@ -93,10 +93,19 @@ func SetWriteAuthStoreFileForTest(path string, write func(string, []byte) error)
 
 func writeAuthStore(path string, body []byte) error {
 	if hook := authStoreWriteHookState.Load(); hook != nil && path == hook.path {
-		return hook.write(path, body)
+		err := hook.write(path, body)
+		if err != nil && !files.HasPrivateFileWriteCommitOutcome(err) {
+			return authStorePreCommitWriteError{cause: err}
+		}
+		return err
 	}
 	return WritePrivateFile(path, body)
 }
+
+type authStorePreCommitWriteError struct{ cause error }
+
+func (e authStorePreCommitWriteError) Error() string { return e.cause.Error() }
+func (e authStorePreCommitWriteError) Unwrap() error { return e.cause }
 
 type LegacySchemaError struct {
 	Field string
@@ -196,14 +205,17 @@ func SaveAuthStoreWithOutcome(path string, store AuthStore) (SaveCommitOutcome, 
 	}
 	body = append(body, '\n')
 	if err := writeAuthStore(path, body); err != nil {
+		var preCommitErr authStorePreCommitWriteError
+		if errors.As(err, &preCommitErr) {
+			return SaveCommitOutcomeNotCommitted, err
+		}
 		switch files.PrivateFileWriteCommitOutcome(err) {
 		case files.WriteCommitOutcomeCommitted:
 			return SaveCommitOutcomeCommitted, err
 		case files.WriteCommitOutcomeNotCommitted:
 			return SaveCommitOutcomeNotCommitted, err
 		default:
-			// 测试 hook 或 writer 外部错误发生在真实 replacement 之前。
-			return SaveCommitOutcomeNotCommitted, err
+			return SaveCommitOutcomeUnknown, err
 		}
 	}
 	return SaveCommitOutcomeCommitted, nil
