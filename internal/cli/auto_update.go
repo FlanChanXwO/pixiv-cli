@@ -60,8 +60,14 @@ func shouldCheckAutomaticUpdate(cmd *cobra.Command) bool {
 		return false
 	}
 	// 凭据导出必须是严格的本地机器接口，不能在成功后读取更新配置或访问 GitHub。
-	if cmd.CommandPath() == "pixiv auth token" {
+	if cmd.CommandPath() == "pixiv auth export" {
 		return false
+	}
+	// bundle restore 是完整离线工作流；成功后也不能被通用更新检查引入网络。
+	if cmd.CommandPath() == "pixiv auth import" {
+		if fileFlag := cmd.Flags().Lookup("file"); fileFlag != nil && fileFlag.Changed {
+			return false
+		}
 	}
 	if helpFlag := cmd.Flags().Lookup("help"); helpFlag != nil && helpFlag.Changed {
 		return false

@@ -4,10 +4,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"strconv"
 	"strings"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/application"
+	"github.com/FlanChanXwO/pixiv-cli/internal/utils/files"
 	"github.com/spf13/cobra"
 )
 
@@ -27,6 +29,13 @@ type accountListOut struct {
 type accountImportOptions struct {
 	proxyOptions
 	jsonOut bool
+	file    string
+}
+
+type accountExportOptions struct {
+	all    bool
+	output string
+	force  bool
 }
 
 type accountRemoveOptions struct {
@@ -55,37 +64,62 @@ func (a app) newAccountCommand() *cobra.Command {
 		a.newAccountRemoveCommand(),
 		a.newAccountUseCommand(),
 		a.newAccountCheckCommand(),
-		a.newAccountTokenCommand(),
+		a.newAccountExportCommand(),
 	)
 	return cmd
 }
 
-func (a app) newAccountTokenCommand() *cobra.Command {
-	return &cobra.Command{
-		Use:   "token [UID]",
-		Short: "Print a stored account refresh token",
-		Args:  requireMaxArgs(1, "pixiv auth token [UID]"),
-		RunE: func(_ *cobra.Command, args []string) error {
+func (a app) newAccountExportCommand() *cobra.Command {
+	opts := accountExportOptions{}
+	cmd := &cobra.Command{
+		Use:   "export [UID]",
+		Short: "Export stored authentication",
+		Args:  requireMaxArgs(1, "pixiv auth export [UID]"),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if opts.force && !cmd.Flags().Changed("output") {
+				return errors.New("--force requires --output")
+			}
+			if opts.all && len(args) != 0 {
+				return errors.New("--all cannot be combined with a UID")
+			}
 			userID := int64(0)
 			if len(args) == 1 {
-				parsed, err := parseAuthTokenUID(args[0])
+				parsed, err := parseAuthExportUID(args[0])
 				if err != nil {
 					return err
 				}
 				userID = parsed
 			}
-			token, err := a.services().Account.Token(userID)
+			result, err := a.services().Account.Export(application.AccountExportRequest{UserID: userID, All: opts.all})
 			if err != nil {
 				return err
 			}
-			fmt.Fprintln(a.out, token)
+			if cmd.Flags().Changed("output") {
+				if strings.TrimSpace(opts.output) == "" {
+					return errors.New("--output requires a path")
+				}
+				if err := files.WriteSecretFile(opts.output, result.Bundle, opts.force); err != nil {
+					return err
+				}
+				fmt.Fprintf(a.out, "output: %s\naccounts: %d\n", opts.output, result.AccountCount)
+				return nil
+			}
+			if opts.all {
+				_, err = a.out.Write(result.Bundle)
+				return err
+			}
+			fmt.Fprintln(a.out, result.RefreshToken)
 			return nil
 		},
 	}
+	cmd.Flags().BoolVar(&opts.all, "all", false, "export all stored accounts")
+	cmd.Flags().StringVar(&opts.output, "output", "", "write a versioned authentication bundle to PATH")
+	cmd.Flags().BoolVar(&opts.force, "force", false, "replace an existing output file")
+	return cmd
 }
 
-// parseAuthTokenUID 不回显原始输入：调用者可能误把 token 或私有路径放在 UID 位。
-func parseAuthTokenUID(raw string) (int64, error) {
+// parseAuthExportUID 不回显原始输入：调用者可能误把 token 或私有路径放在 UID 位。
+func parseAuthExportUID(raw string) (int64, error) {
 	userID, err := strconv.ParseInt(strings.TrimSpace(raw), 10, 64)
 	if err != nil || userID <= 0 {
 		return 0, errors.New("uid must be a positive integer")
@@ -106,11 +140,36 @@ func (a app) newAccountImportCommand() *cobra.Command {
 	}
 	flags := cmd.Flags()
 	flags.BoolVar(&opts.jsonOut, "json", false, "print JSON")
+	flags.StringVar(&opts.file, "file", "", "restore an authentication export bundle from PATH or stdin with -")
 	a.bindProxyFlags(cmd, &opts.proxyOptions)
 	return cmd
 }
 
 func (a app) accountImport(cmd *cobra.Command, args []string, opts accountImportOptions) error {
+	if cmd.Flags().Changed("file") {
+		if len(args) != 0 || cmd.Flags().Changed("proxy") || cmd.Flags().Changed("no-proxy") {
+			return errors.New("--file cannot be combined with a refresh token, --proxy, or --no-proxy")
+		}
+		body, err := readAuthBundleInput(a.in, opts.file)
+		if err != nil {
+			return err
+		}
+		result, err := a.services().Account.ImportBundle(body)
+		if err != nil {
+			return err
+		}
+		if opts.jsonOut {
+			return a.printJSON(result)
+		}
+		for _, account := range result.Added {
+			fmt.Fprintf(a.out, "added uid:%d\n", account.UserID)
+		}
+		for _, account := range result.Updated {
+			fmt.Fprintf(a.out, "updated uid:%d\n", account.UserID)
+		}
+		fmt.Fprintf(a.out, "default uid: %d\n", result.DefaultUserID)
+		return nil
+	}
 	proxyOverride, err := proxyOverrideFromFlags(cmd, opts.proxyOptions)
 	if err != nil {
 		return err
@@ -142,6 +201,24 @@ func (a app) accountImport(cmd *cobra.Command, args []string, opts accountImport
 		fmt.Fprintf(a.errOut, "warning: %s\n", out.Warning)
 	}
 	return nil
+}
+
+func readAuthBundleInput(stdin io.Reader, path string) ([]byte, error) {
+	if path == "-" {
+		body, err := io.ReadAll(stdin)
+		if err != nil {
+			return nil, errors.New("cannot read authentication export bundle from stdin")
+		}
+		return body, nil
+	}
+	if strings.TrimSpace(path) == "" {
+		return nil, errors.New("--file requires a path or -")
+	}
+	body, err := os.ReadFile(path)
+	if err != nil {
+		return nil, errors.New("cannot read authentication export bundle file")
+	}
+	return body, nil
 }
 
 func (a app) newAccountListCommand() *cobra.Command {

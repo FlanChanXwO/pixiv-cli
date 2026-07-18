@@ -49,6 +49,13 @@ type SDKClient interface {
 	UnfollowUser(context.Context, sdk.UnfollowUserRequest) error
 }
 
+// AuthBundleSDKClient 是离线认证 bundle 所需的独立 public SDK facade，避免把
+// secret-bearing 方法扩散到内容命令和 MCP 的通用测试替身。
+type AuthBundleSDKClient interface {
+	ExportAuthBundle(sdk.AuthExportSelection) (*sdk.AuthExportBundle, error)
+	RestoreAuthBundle(*sdk.AuthExportBundle) (*sdk.AuthRestoreResult, error)
+}
+
 // SDKClientRequest 只携带 CLI 显式覆写；其余 config/auth 优先级由 OpenDefault
 // 在每次 SDK 操作快照中处理。
 type SDKClientRequest struct {
@@ -72,6 +79,18 @@ func (s SDKService) Client(req SDKClientRequest) (SDKClient, error) {
 		return nil, errors.New("pixiv sdk client factory is not configured")
 	}
 	return s.NewClient(req)
+}
+
+func (s SDKService) AuthBundleClient(req SDKClientRequest) (AuthBundleSDKClient, error) {
+	client, err := s.Client(req)
+	if err != nil {
+		return nil, err
+	}
+	authClient, ok := client.(AuthBundleSDKClient)
+	if !ok {
+		return nil, errors.New("pixiv sdk auth bundle client is not configured")
+	}
+	return authClient, nil
 }
 
 // OpenOperation 让一个 CLI 命令的 self 身份解析和所有 cursor 页面共享同一个

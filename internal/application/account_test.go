@@ -40,11 +40,16 @@ func TestAccountServiceUsesPublicSDKAccountStore(t *testing.T) {
 	assert.Equal(t, int64(123), list.Accounts[0].UserID)
 }
 
-func TestAccountServiceTokenUsesPublicSDKLocalExport(t *testing.T) {
+func TestAccountServiceExportUsesPublicSDKLocalBundle(t *testing.T) {
 	client := &fakeAccountSDKClient{}
-	client.exportAccountRefreshToken = func(userID int64) (string, error) {
-		assert.Equal(t, int64(456), userID)
-		return "opaque-exported-token", nil
+	client.exportAuthBundle = func(selection sdk.AuthExportSelection) (*sdk.AuthExportBundle, error) {
+		assert.Equal(t, sdk.AuthExportSelection{UserID: 456}, selection)
+		return &sdk.AuthExportBundle{
+			Schema:        sdk.AuthExportBundleSchema,
+			Version:       sdk.AuthExportBundleVersion,
+			DefaultUserID: 456,
+			Accounts:      []sdk.AuthExportSecretAccount{{UserID: 456, RefreshToken: "opaque-exported-token"}},
+		}, nil
 	}
 	var gotRequest SDKClientRequest
 	service := AccountService{SDK: SDKService{NewClient: func(request SDKClientRequest) (SDKClient, error) {
@@ -52,10 +57,38 @@ func TestAccountServiceTokenUsesPublicSDKLocalExport(t *testing.T) {
 		return client, nil
 	}}}
 
-	token, err := service.Token(456)
+	result, err := service.Export(AccountExportRequest{UserID: 456})
 	require.NoError(t, err)
-	assert.Equal(t, "opaque-exported-token", token)
+	assert.Equal(t, "opaque-exported-token", result.RefreshToken)
+	assert.Equal(t, 1, result.AccountCount)
+	assert.JSONEq(t, `{"schema":"pixiv-cli.auth-export","version":1,"default_user_id":456,"accounts":[{"user_id":456,"username":"","refresh_token":"opaque-exported-token"}]}`, string(result.Bundle))
 	assert.Equal(t, SDKClientRequest{}, gotRequest)
+}
+
+func TestAccountServiceImportBundleUsesPublicSDKOfflineRestore(t *testing.T) {
+	client := &fakeAccountSDKClient{}
+	client.restoreAuthBundle = func(bundle *sdk.AuthExportBundle) (*sdk.AuthRestoreResult, error) {
+		require.Len(t, bundle.Accounts, 1)
+		assert.Equal(t, "offline-secret", bundle.Accounts[0].RefreshToken)
+		return &sdk.AuthRestoreResult{
+			DefaultUserID: 321,
+			Added:         []sdk.Account{{UserID: 321, Username: "restored", Default: true, HasToken: true}},
+			Updated:       []sdk.Account{},
+		}, nil
+	}
+	var gotRequest SDKClientRequest
+	service := AccountService{SDK: SDKService{NewClient: func(request SDKClientRequest) (SDKClient, error) {
+		gotRequest = request
+		return client, nil
+	}}}
+	const body = `{"schema":"pixiv-cli.auth-export","version":1,"default_user_id":321,"accounts":[{"user_id":321,"username":"restored","refresh_token":"offline-secret"}]}`
+
+	result, err := service.ImportBundle([]byte(body))
+	require.NoError(t, err)
+	assert.Equal(t, SDKClientRequest{}, gotRequest)
+	assert.Equal(t, int64(321), result.DefaultUserID)
+	require.Len(t, result.Added, 1)
+	assert.Empty(t, result.Updated)
 }
 
 func TestAccountServiceCheckUsesPublicSDKRequest(t *testing.T) {
@@ -253,21 +286,29 @@ func TestAccountServiceUsePropagatesDependencyErrors(t *testing.T) {
 // 测试从 application 到公开 SDK 边界观察行为，不再模拟 legacy Source。
 type fakeAccountSDKClient struct {
 	SDKClient
-	accounts                  sdk.AccountsResult
-	importAccount             func(context.Context, string) (*sdk.Account, error)
-	listAccounts              func() (*sdk.AccountsResult, error)
-	selectAccount             func(int64) error
-	removeAccount             func(int64) error
-	checkAccount              func(context.Context, int64) (*sdk.Account, error)
-	checkRefreshToken         func(context.Context, string) (*sdk.Account, error)
-	exportAccountRefreshToken func(int64) (string, error)
+	accounts          sdk.AccountsResult
+	importAccount     func(context.Context, string) (*sdk.Account, error)
+	listAccounts      func() (*sdk.AccountsResult, error)
+	selectAccount     func(int64) error
+	removeAccount     func(int64) error
+	checkAccount      func(context.Context, int64) (*sdk.Account, error)
+	checkRefreshToken func(context.Context, string) (*sdk.Account, error)
+	exportAuthBundle  func(sdk.AuthExportSelection) (*sdk.AuthExportBundle, error)
+	restoreAuthBundle func(*sdk.AuthExportBundle) (*sdk.AuthRestoreResult, error)
 }
 
-func (f *fakeAccountSDKClient) ExportAccountRefreshToken(userID int64) (string, error) {
-	if f.exportAccountRefreshToken != nil {
-		return f.exportAccountRefreshToken(userID)
+func (f *fakeAccountSDKClient) ExportAuthBundle(selection sdk.AuthExportSelection) (*sdk.AuthExportBundle, error) {
+	if f.exportAuthBundle != nil {
+		return f.exportAuthBundle(selection)
 	}
-	return "", errors.New("unexpected account token export")
+	return nil, errors.New("unexpected auth bundle export")
+}
+
+func (f *fakeAccountSDKClient) RestoreAuthBundle(bundle *sdk.AuthExportBundle) (*sdk.AuthRestoreResult, error) {
+	if f.restoreAuthBundle != nil {
+		return f.restoreAuthBundle(bundle)
+	}
+	return nil, errors.New("unexpected auth bundle restore")
 }
 
 func (f *fakeAccountSDKClient) ImportAccount(ctx context.Context, token string) (*sdk.Account, error) {

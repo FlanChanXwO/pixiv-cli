@@ -23,9 +23,26 @@ type AccountImportRequest struct {
 	HTTPSProxyOverride *string
 }
 
+type AccountBundleImportResult struct {
+	DefaultUserID int64           `json:"default_user_id"`
+	Added         []AccountResult `json:"added"`
+	Updated       []AccountResult `json:"updated"`
+}
+
 type AccountCheckRequest struct {
 	UserID             int64
 	HTTPSProxyOverride *string
+}
+
+type AccountExportRequest struct {
+	UserID int64
+	All    bool
+}
+
+type AccountExportResult struct {
+	RefreshToken string
+	Bundle       []byte
+	AccountCount int
 }
 
 type AccountResult struct {
@@ -60,6 +77,34 @@ func (s AccountService) Import(ctx context.Context, request AccountImportRequest
 	return sdkAccountResult(*account), nil
 }
 
+// ImportBundle 解码并离线恢复 bundle；身份验证和 transport 均不参与此路径。
+func (s AccountService) ImportBundle(body []byte) (AccountBundleImportResult, error) {
+	bundle, err := sdk.DecodeAuthExportBundle(body)
+	if err != nil {
+		return AccountBundleImportResult{}, err
+	}
+	client, err := s.SDK.AuthBundleClient(SDKClientRequest{})
+	if err != nil {
+		return AccountBundleImportResult{}, err
+	}
+	restored, err := client.RestoreAuthBundle(bundle)
+	if err != nil {
+		return AccountBundleImportResult{}, err
+	}
+	result := AccountBundleImportResult{
+		DefaultUserID: restored.DefaultUserID,
+		Added:         make([]AccountResult, len(restored.Added)),
+		Updated:       make([]AccountResult, len(restored.Updated)),
+	}
+	for i, account := range restored.Added {
+		result.Added[i] = sdkAccountResult(account)
+	}
+	for i, account := range restored.Updated {
+		result.Updated[i] = sdkAccountResult(account)
+	}
+	return result, nil
+}
+
 func (s AccountService) List() (AccountListResult, error) {
 	client, err := s.SDK.Client(SDKClientRequest{})
 	if err != nil {
@@ -76,14 +121,25 @@ func (s AccountService) List() (AccountListResult, error) {
 	return out, nil
 }
 
-// Token 导出指定本地账号的 refresh token；账号选择与本地状态错误均由 public SDK
-// 负责，应用层不应用环境 token 或其他运行时覆盖规则。
-func (s AccountService) Token(userID int64) (string, error) {
-	client, err := s.SDK.Client(SDKClientRequest{})
+// Export 只通过 public SDK 读取本地认证快照；它不应用环境 token 或运行时 UID 覆写。
+func (s AccountService) Export(request AccountExportRequest) (AccountExportResult, error) {
+	client, err := s.SDK.AuthBundleClient(SDKClientRequest{})
 	if err != nil {
-		return "", err
+		return AccountExportResult{}, err
 	}
-	return client.ExportAccountRefreshToken(userID)
+	bundle, err := client.ExportAuthBundle(sdk.AuthExportSelection{UserID: request.UserID, All: request.All})
+	if err != nil {
+		return AccountExportResult{}, err
+	}
+	body, err := sdk.EncodeAuthExportBundle(bundle)
+	if err != nil {
+		return AccountExportResult{}, err
+	}
+	result := AccountExportResult{Bundle: body, AccountCount: len(bundle.Accounts)}
+	if !request.All && len(bundle.Accounts) == 1 {
+		result.RefreshToken = bundle.Accounts[0].RefreshToken
+	}
+	return result, nil
 }
 
 func (s AccountService) Remove(userID int64) (AccountResult, int64, error) {
