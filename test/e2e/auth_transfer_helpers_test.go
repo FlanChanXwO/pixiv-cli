@@ -1,14 +1,27 @@
 package e2e
 
 import (
+	"bufio"
 	"bytes"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/tls"
+	"crypto/x509"
+	"crypto/x509/pkix"
 	"encoding/json"
+	"encoding/pem"
 	"fmt"
+	"math/big"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/FlanChanXwO/pixiv-cli/pixiv"
 )
@@ -27,6 +40,188 @@ type syntheticAuthCommandResult struct {
 	stdout []byte
 	stderr []byte
 	err    error
+}
+
+type syntheticOAuthProxy struct {
+	server       *httptest.Server
+	caPath       string
+	certificate  tls.Certificate
+	rotatedToken string
+	accessToken  string
+	userID       int64
+	mu           sync.Mutex
+	received     [][]byte
+	errors       []string
+}
+
+func newSyntheticOAuthProxy(t *testing.T, rotatedToken, accessToken string, userID int64) *syntheticOAuthProxy {
+	t.Helper()
+	certificate, caPEM := newSyntheticOAuthCertificate(t)
+	caPath := filepath.Join(t.TempDir(), "synthetic-oauth-ca.pem")
+	if err := os.WriteFile(caPath, caPEM, 0o600); err != nil {
+		t.Fatalf("write synthetic OAuth CA: %v", err)
+	}
+	proxy := &syntheticOAuthProxy{
+		caPath:       caPath,
+		certificate:  certificate,
+		rotatedToken: rotatedToken,
+		accessToken:  accessToken,
+		userID:       userID,
+	}
+	proxy.server = httptest.NewServer(http.HandlerFunc(proxy.serveHTTP))
+	t.Cleanup(proxy.server.Close)
+	return proxy
+}
+
+func newSyntheticOAuthCertificate(t *testing.T) (tls.Certificate, []byte) {
+	t.Helper()
+	now := time.Now()
+	caKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatalf("generate synthetic OAuth CA key: %v", err)
+	}
+	caTemplate := &x509.Certificate{
+		SerialNumber:          big.NewInt(1),
+		Subject:               pkix.Name{CommonName: "pixiv-cli synthetic OAuth test CA"},
+		NotBefore:             now.Add(-time.Minute),
+		NotAfter:              now.Add(time.Hour),
+		KeyUsage:              x509.KeyUsageCertSign | x509.KeyUsageDigitalSignature,
+		BasicConstraintsValid: true,
+		IsCA:                  true,
+	}
+	caDER, err := x509.CreateCertificate(rand.Reader, caTemplate, caTemplate, &caKey.PublicKey, caKey)
+	if err != nil {
+		t.Fatalf("create synthetic OAuth CA certificate: %v", err)
+	}
+	leafKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatalf("generate synthetic OAuth server key: %v", err)
+	}
+	leafTemplate := &x509.Certificate{
+		SerialNumber: big.NewInt(2),
+		Subject:      pkix.Name{CommonName: "oauth.secure.pixiv.net"},
+		DNSNames:     []string{"oauth.secure.pixiv.net"},
+		NotBefore:    now.Add(-time.Minute),
+		NotAfter:     now.Add(time.Hour),
+		KeyUsage:     x509.KeyUsageDigitalSignature,
+		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+	}
+	leafDER, err := x509.CreateCertificate(rand.Reader, leafTemplate, caTemplate, &leafKey.PublicKey, caKey)
+	if err != nil {
+		t.Fatalf("create synthetic OAuth server certificate: %v", err)
+	}
+	return tls.Certificate{Certificate: [][]byte{leafDER, caDER}, PrivateKey: leafKey}, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: caDER})
+}
+
+func (p *syntheticOAuthProxy) serveHTTP(w http.ResponseWriter, request *http.Request) {
+	if request.Method != http.MethodConnect || request.Host != "oauth.secure.pixiv.net:443" {
+		p.recordError("proxy received an unexpected CONNECT target")
+		http.Error(w, "synthetic OAuth proxy rejected request", http.StatusBadGateway)
+		return
+	}
+	hijacker, ok := w.(http.Hijacker)
+	if !ok {
+		p.recordError("proxy response writer cannot hijack")
+		http.Error(w, "synthetic OAuth proxy cannot connect", http.StatusInternalServerError)
+		return
+	}
+	connection, buffered, err := hijacker.Hijack()
+	if err != nil {
+		p.recordError("proxy CONNECT hijack failed")
+		return
+	}
+	defer connection.Close()
+	if _, err := buffered.WriteString("HTTP/1.1 200 Connection Established\r\n\r\n"); err != nil {
+		p.recordError("proxy CONNECT response write failed")
+		return
+	}
+	if err := buffered.Flush(); err != nil {
+		p.recordError("proxy CONNECT response flush failed")
+		return
+	}
+
+	tlsConnection := tls.Server(connection, &tls.Config{
+		Certificates: []tls.Certificate{p.certificate},
+		MinVersion:   tls.VersionTLS12,
+	})
+	if err := tlsConnection.Handshake(); err != nil {
+		p.recordError("synthetic OAuth TLS handshake failed")
+		return
+	}
+	oauthRequest, err := http.ReadRequest(bufio.NewReader(tlsConnection))
+	if err != nil {
+		p.recordError("synthetic OAuth request read failed")
+		return
+	}
+	defer oauthRequest.Body.Close()
+	if oauthRequest.Method != http.MethodPost || oauthRequest.URL.Path != "/auth/token" || oauthRequest.Host != "oauth.secure.pixiv.net" {
+		p.recordError("synthetic OAuth request target mismatch")
+		return
+	}
+	if err := oauthRequest.ParseForm(); err != nil {
+		p.recordError("synthetic OAuth form decode failed")
+		return
+	}
+	p.mu.Lock()
+	p.received = append(p.received, []byte(oauthRequest.Form.Get("refresh_token")))
+	p.mu.Unlock()
+	body, err := json.Marshal(map[string]any{
+		"access_token":  p.accessToken,
+		"refresh_token": p.rotatedToken,
+		"user": map[string]any{
+			"id": p.userID, "name": "synthetic-import-user",
+		},
+	})
+	if err != nil {
+		p.recordError("synthetic OAuth response encode failed")
+		return
+	}
+	if _, err := fmt.Fprintf(tlsConnection, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: %d\r\nConnection: close\r\n\r\n", len(body)); err != nil {
+		p.recordError("synthetic OAuth response header write failed")
+		return
+	}
+	if _, err := tlsConnection.Write(body); err != nil {
+		p.recordError("synthetic OAuth response body write failed")
+	}
+}
+
+func (p *syntheticOAuthProxy) recordError(message string) {
+	p.mu.Lock()
+	p.errors = append(p.errors, message)
+	p.mu.Unlock()
+}
+
+func (p *syntheticOAuthProxy) proxyURL() string { return p.server.URL }
+
+func (p *syntheticOAuthProxy) trustedEnv(env isolatedProcessEnv) isolatedProcessEnv {
+	values := make([]string, 0, len(env.values)+1)
+	for _, entry := range env.values {
+		name, _, found := strings.Cut(entry, "=")
+		if found && strings.EqualFold(name, "SSL_CERT_FILE") {
+			continue
+		}
+		values = append(values, entry)
+	}
+	values = append(values, "SSL_CERT_FILE="+p.caPath)
+	env.values = values
+	return env
+}
+
+func (p *syntheticOAuthProxy) requireReceivedToken(t *testing.T, want string, count int) {
+	t.Helper()
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if len(p.errors) != 0 {
+		t.Fatalf("synthetic OAuth proxy errors: count=%d first=%q", len(p.errors), p.errors[0])
+	}
+	if len(p.received) != count {
+		t.Fatalf("synthetic OAuth request count=%d, want %d", len(p.received), count)
+	}
+	for index, got := range p.received {
+		if !bytes.Equal(got, []byte(want)) {
+			t.Fatalf("synthetic OAuth refresh token mismatch at secret index %d: bytes=%d", index, len(got))
+		}
+	}
 }
 
 func newSyntheticAuthBinaryFixture(t *testing.T) syntheticAuthBinaryFixture {
@@ -196,6 +391,29 @@ func (f syntheticAuthBinaryFixture) requireSingleBundleFile(t *testing.T, path s
 	if !bytes.Equal([]byte(bundle.Accounts[0].RefreshToken), []byte(token)) {
 		t.Fatal("single export bundle token mismatch")
 	}
+}
+
+func (f syntheticAuthBinaryFixture) requireStoredToken(t *testing.T, path string, userID int64, token string) {
+	t.Helper()
+	body, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read synthetic auth store: %v", err)
+	}
+	var store struct {
+		Accounts []syntheticAuthAccount `json:"accounts"`
+	}
+	if err := json.Unmarshal(body, &store); err != nil {
+		t.Fatalf("decode synthetic auth store: %v; body omitted", err)
+	}
+	for _, account := range store.Accounts {
+		if account.UserID == userID {
+			if !bytes.Equal([]byte(account.RefreshToken), []byte(token)) {
+				t.Fatalf("stored rotated token mismatch: uid=%d bytes=%d", userID, len(account.RefreshToken))
+			}
+			return
+		}
+	}
+	t.Fatalf("stored imported account missing: uid=%d accounts=%d", userID, len(store.Accounts))
 }
 
 func (f syntheticAuthBinaryFixture) requireSafeRestoreReport(t *testing.T, result syntheticAuthCommandResult) {

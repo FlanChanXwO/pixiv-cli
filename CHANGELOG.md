@@ -25,12 +25,14 @@
 ### Changed
 
 - Breaking: v0.4.0 删除 `pixiv auth add`、`pixiv auth token` 与 `--token`，不保留 alias/stub；direct token 入口统一为 `auth import`，显式 secret stdout 统一为不带 `--output` 的 `auth export [UID]` 或 `auth export --all`。
+- `auth import` 的 direct 与 bundle 成功报告统一使用不含 secret 的 `{user_id,username,status}` account item，其中 `status` 为 `added|updated`；bundle JSON 固定为 `{accounts,default_user_id}` 并按输入 bundle 顺序逐项报告，不再暴露 `default`/`has_token` 或按 added/updated 分组。
 - `auth import --file` 严格解码未加密 bundle，并按 UID merge 后原子保存：保留本地已有 default，仅空 store 采用 bundle default；该离线路径拒绝 token/proxy 组合，不刷新、不联网。bundle 是 point-in-time backup 而非 live sync，token rotation 后旧 bundle 与其他机器副本可能 stale。
 - 有 refresh token 的搜索始终使用 App API，失败不回落 Web；无 token 的 Web 搜索只执行可靠筛选，R18/R18G/mature 与动态搜索选项会明确要求登录。分级与仅 AI 在 public SDK 筛选，其余新增筛选优先由 App 服务端执行；收藏数筛选仍不提供。
 - Deprecated `pixiv search --r18` 现在只作为 `--rating r18` 的 alias，不再向关键词追加 `R-18`；它可与显式 `--rating r18` 同用，与其他显式 rating 冲突。
 
 ### Fixed
 
+- 修复 auth bundle JSON decoder 因 Go struct field 的大小写宽松匹配而接受 `Schema`、`Default_User_ID`、`User_ID`、`Refresh_Token` 等非 canonical alias 的问题；顶层和 account object 现严格要求 exact canonical key，并拒绝 canonical/case alias 冲突。
 - 修复 `--ai-type` 的帮助语义与 Pixiv 字段不一致；Pixiv `AIType==2` 现正确识别为 AI，deprecated `--ai-type` 保持 `0=exclude`、`1=only`、`2=all`，并拒绝与显式 `--ai-mode` 同用。
 - 修复 legacy MCP handler 把输入、认证、上游读取、下载与资源失败转换为兼容文本后，统一 operation wrapper 仍误记 `result=success` 的问题；wire 继续保持原 Content、structured output、文本与 `isError=false`，stderr 现以 error level 和安全 typed metadata 记录真实失败；事件不记录或输出原始错误文本、tool 输入、query、凭据、URL、path 或 response body。正常空结果仍记为成功。
 - 规范化下载 URL path 推导扩展名中的跨平台非法文件名字符、ASCII 控制字符和 Windows 非法尾随点/空格；单页与多页下载共用同一清理边界，既有模板和 ugoira `.gif` 语义不变。

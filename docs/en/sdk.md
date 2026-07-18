@@ -100,8 +100,10 @@ username, and an opaque refresh-token secret.
 
 `EncodeAuthExportBundle` emits the stable indented JSON form with a final newline. `DecodeAuthExportBundle` is
 strict: it rejects unsupported schema/version, unknown or duplicate fields, trailing JSON, empty account lists,
-duplicate or non-positive UIDs, empty refresh tokens, and a default UID that is absent from the account list. Both
-functions return redacted typed errors and never include bundle contents.
+duplicate or non-positive UIDs, empty refresh tokens, and a default UID that is absent from the account list.
+Top-level and account-object keys must exactly match the documented canonical spelling and case; case aliases and
+canonical-plus-alias conflicts are rejected. Both functions return redacted typed errors and never include bundle
+contents.
 
 `Client.RestoreAuthBundle` validates an already decoded bundle, locks the local auth state, merges accounts by UID,
 and performs one atomic store write without OAuth or any transport. Existing accounts are updated, new accounts are

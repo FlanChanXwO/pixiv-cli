@@ -146,6 +146,8 @@ pixiv auth import 'YOUR_REFRESH_TOKEN'    # 会出现在 argv/shell history
 
 `pixiv auth import [REFRESH_TOKEN]` 通过 App OAuth 校验 raw token，以 Pixiv 返回的 UID 为准，并保存 rotation 后的 refresh token。无参数时，TTY 使用隐藏输入；非 TTY 从 stdin 读取一行 opaque 内容，只移除一个末尾 LF 或 CRLF。位置参数虽方便，却可能被进程列表、shell history、wrapper 或审计工具记录。`--json` 只改变不含 secret 的账号摘要；`--proxy` 与 `--no-proxy` 只影响本次 direct validation，且不能同用。
 
+direct import 成功时报告 `added uid:UID` 或 `updated uid:UID`，text 在 username 可用时另输出 `username:NAME`。JSON 精确为一个无 secret account item，例如 `{"user_id":12345678,"username":"display name","status":"added"}`。`status` 仅为 `added` 或 `updated`；两种形式均不暴露 default、token 是否存在、输入 token 或 rotation 后的 token。
+
 离线恢复 export bundle：
 
 ```bash
@@ -153,7 +155,7 @@ pixiv auth import --file account.pxauth
 pixiv auth export --all | ssh trusted-host pixiv auth import --file -
 ```
 
-`--file PATH` 从文件读取，`--file -` 从 stdin 读取完整 bundle。该模式完全离线，不校验或 rotation token，并拒绝位置 token、`--proxy`、`--no-proxy`。restore 按 UID 原子 merge 全部账号：已有账号更新，新账号添加；本地已有 default 保持不变，仅本地无 default 时采用 bundle default。人类输出列出安全的 added/updated UID 和最终 default，`--json` 返回同一份无 secret report。
+`--file PATH` 从文件读取，`--file -` 从 stdin 读取完整 bundle。该模式完全离线，不校验或 rotation token，并拒绝位置 token、`--proxy`、`--no-proxy`。restore 按 UID 原子 merge 全部账号：已有账号更新，新账号添加；本地已有 default 保持不变，仅本地无 default 时采用 bundle default。人类输出按输入 bundle 顺序逐项列出安全的 added/updated UID 和最终 default。`--json` 返回 `{"accounts":[{"user_id":12345678,"username":"display name","status":"added"}],"default_user_id":12345678}`；account item 只暴露 `user_id`、`username` 与 `status`。
 
 ### 导出与备份认证
 
@@ -170,7 +172,7 @@ pixiv auth export --all --output accounts.pxauth --force
 
 带 `--output PATH` 时，单账号和 `--all` 都写 bundle，不写 raw token。默认拒绝覆盖既有文件，只有显式 `--force` 才 replacement；成功 stdout 只有 output path 与 account count。Unix-like 目标文件为 `0600`，既有 parent 权限与 ownership 不变。Windows 明确设置文件 owner 与 protected DACL，只允许当前用户、LocalSystem、builtin Administrators 完全控制。CI tests 覆盖该 Windows policy；本文不声称本次 release 验收已在真实 Windows filesystem 运行。
 
-bundle 是未加密、含 secret 的 point-in-time backup，不是 live sync。必须像原始 token 一样保存和传输；token rotation 会令旧 bundle 或其他机器副本 stale。strict versioned codec 拒绝不支持的 schema/version、未知或重复字段、尾随 JSON、重复/非正 UID、空 token，以及未指向 bundle 内账号的 default UID。
+bundle 是未加密、含 secret 的 point-in-time backup，不是 live sync。必须像原始 token 一样保存和传输；token rotation 会令旧 bundle 或其他机器副本 stale。strict versioned codec 拒绝不支持的 schema/version、未知或重复字段、尾随 JSON、重复/非正 UID、空 token，以及未指向 bundle 内账号的 default UID。顶层与 account object 的 key 必须严格使用 canonical 拼写和大小写；`Schema`、`Default_User_ID`、`User_ID`、`Refresh_Token` 等 alias 即使与 canonical key 并存也会被拒绝。
 
 export 选择或 I/O 失败时，stdout 不会收到 secret 诊断。restore 原子写失败时，`LocalWriteCommitOutcome=not_committed` 表示 replacement 未发生；`committed` 表示 replacement 已发生但后续 durability/cleanup 失败，必须重新加载 store；`unknown` 表示 recovery 无法确认目标状态，需人工检查。不得把 `committed` 或 `unknown` 视为已成功 rollback。其他 stdout/stderr、JSON、MCP result、日志和错误仍禁止暴露 refresh token。不会新增 persistent auth import/export MCP tool；既有 session-scoped MCP 认证行为不变。
 

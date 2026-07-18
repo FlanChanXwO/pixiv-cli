@@ -174,11 +174,8 @@ func (a app) accountImport(cmd *cobra.Command, args []string, opts accountImport
 		if opts.jsonOut {
 			return a.printJSON(result)
 		}
-		for _, account := range result.Added {
-			fmt.Fprintf(a.out, "added uid:%d\n", account.UserID)
-		}
-		for _, account := range result.Updated {
-			fmt.Fprintf(a.out, "updated uid:%d\n", account.UserID)
+		for _, account := range result.Accounts {
+			fmt.Fprintf(a.out, "%s uid:%d\n", account.Status, account.UserID)
 		}
 		fmt.Fprintf(a.out, "default uid: %d\n", result.DefaultUserID)
 		return nil
@@ -199,19 +196,12 @@ func (a app) accountImport(cmd *cobra.Command, args []string, opts accountImport
 	if err != nil {
 		return err
 	}
-	out := accountOutFromResult(result)
 	if opts.jsonOut {
-		return a.printJSON(out)
+		return a.printJSON(result)
 	}
-	fmt.Fprintf(a.out, "account uid:%d saved\n", out.UserID)
-	if out.Username != "" {
-		fmt.Fprintf(a.out, "username:%s\n", out.Username)
-	}
-	if out.Default {
-		fmt.Fprintf(a.out, "default uid: %d\n", out.UserID)
-	}
-	if out.Warning != "" {
-		fmt.Fprintf(a.errOut, "warning: %s\n", out.Warning)
+	fmt.Fprintf(a.out, "%s uid:%d\n", result.Status, result.UserID)
+	if result.Username != "" {
+		fmt.Fprintf(a.out, "username:%s\n", result.Username)
 	}
 	return nil
 }

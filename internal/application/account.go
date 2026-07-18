@@ -24,9 +24,21 @@ type AccountImportRequest struct {
 }
 
 type AccountBundleImportResult struct {
-	DefaultUserID int64           `json:"default_user_id"`
-	Added         []AccountResult `json:"added"`
-	Updated       []AccountResult `json:"updated"`
+	Accounts      []AccountImportResult `json:"accounts"`
+	DefaultUserID int64                 `json:"default_user_id"`
+}
+
+const (
+	AccountImportStatusAdded   = "added"
+	AccountImportStatusUpdated = "updated"
+)
+
+// AccountImportResult 是 direct import 与 bundle restore 共用的安全报告 DTO。
+// 它刻意不携带 token、default 或 has_token，避免导入报告复用账号列表契约。
+type AccountImportResult struct {
+	UserID   int64  `json:"user_id"`
+	Username string `json:"username"`
+	Status   string `json:"status"`
 }
 
 type AccountCheckRequest struct {
@@ -58,23 +70,36 @@ type AccountListResult struct {
 	Accounts      []AccountResult
 }
 
-func (s AccountService) Import(ctx context.Context, request AccountImportRequest) (AccountResult, error) {
+func (s AccountService) Import(ctx context.Context, request AccountImportRequest) (AccountImportResult, error) {
 	validatedToken, err := utils.ValidateRefreshTokenInput(request.TokenInput)
 	if err != nil {
-		return AccountResult{}, err
+		return AccountImportResult{}, err
 	}
 	if validatedToken == "" {
-		return AccountResult{}, errors.New("refresh token cannot be empty")
+		return AccountImportResult{}, errors.New("refresh token cannot be empty")
 	}
 	client, err := s.SDK.Client(SDKClientRequest{HTTPSProxyOverride: request.HTTPSProxyOverride})
 	if err != nil {
-		return AccountResult{}, err
+		return AccountImportResult{}, err
+	}
+	// 先读取 public SDK 的非 secret snapshot；OAuth 返回的 UID 仍是身份权威值，
+	// snapshot 只用于区分本次写入是 added 还是 updated。
+	accountsBeforeImport, err := client.ListAccounts()
+	if err != nil {
+		return AccountImportResult{}, err
 	}
 	account, err := client.ImportAccount(ctx, request.TokenInput)
 	if err != nil {
-		return AccountResult{}, err
+		return AccountImportResult{}, err
 	}
-	return sdkAccountResult(*account), nil
+	status := AccountImportStatusAdded
+	for _, existing := range accountsBeforeImport.Accounts {
+		if existing.UserID == account.UserID {
+			status = AccountImportStatusUpdated
+			break
+		}
+	}
+	return accountImportResult(*account, status), nil
 }
 
 // ImportBundle 解码并离线恢复 bundle；身份验证和 transport 均不参与此路径。
@@ -92,15 +117,23 @@ func (s AccountService) ImportBundle(body []byte) (AccountBundleImportResult, er
 		return AccountBundleImportResult{}, err
 	}
 	result := AccountBundleImportResult{
+		Accounts:      make([]AccountImportResult, 0, len(bundle.Accounts)),
 		DefaultUserID: restored.DefaultUserID,
-		Added:         make([]AccountResult, len(restored.Added)),
-		Updated:       make([]AccountResult, len(restored.Updated)),
 	}
-	for i, account := range restored.Added {
-		result.Added[i] = sdkAccountResult(account)
+	restoredByUserID := make(map[int64]AccountImportResult, len(restored.Added)+len(restored.Updated))
+	for _, account := range restored.Added {
+		restoredByUserID[account.UserID] = accountImportResult(account, AccountImportStatusAdded)
 	}
-	for i, account := range restored.Updated {
-		result.Updated[i] = sdkAccountResult(account)
+	for _, account := range restored.Updated {
+		restoredByUserID[account.UserID] = accountImportResult(account, AccountImportStatusUpdated)
+	}
+	// SDK 的 restore outcome 按状态分组；按照已验证 bundle 的账号顺序重新组装报告。
+	for _, imported := range bundle.Accounts {
+		account, ok := restoredByUserID[imported.UserID]
+		if !ok {
+			return AccountBundleImportResult{}, errors.New("auth restore result omitted an imported account")
+		}
+		result.Accounts = append(result.Accounts, account)
 	}
 	return result, nil
 }
@@ -213,6 +246,10 @@ func (s AccountService) CheckWithRequest(ctx context.Context, request AccountChe
 
 func sdkAccountResult(account sdk.Account) AccountResult {
 	return AccountResult{UserID: account.UserID, Username: account.Username, Default: account.Default, HasToken: account.HasToken}
+}
+
+func accountImportResult(account sdk.Account, status string) AccountImportResult {
+	return AccountImportResult{UserID: account.UserID, Username: account.Username, Status: status}
 }
 
 func (s AccountService) refreshTokenFromEnv() (string, error) {

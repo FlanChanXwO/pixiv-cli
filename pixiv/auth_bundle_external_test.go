@@ -466,6 +466,34 @@ func TestDecodeAuthExportBundleRejectsUnknownFieldsWithoutExposingThem(t *testin
 	}
 }
 
+func TestDecodeAuthExportBundleRejectsNonCanonicalKeyAliases(t *testing.T) {
+	t.Parallel()
+	cases := map[string]string{
+		"top schema alias":       `{"Schema":"pixiv-cli.auth-export","version":1,"default_user_id":7,"accounts":[{"user_id":7,"username":"alice","refresh_token":"bundle-secret"}]}`,
+		"top version alias":      `{"schema":"pixiv-cli.auth-export","Version":1,"default_user_id":7,"accounts":[{"user_id":7,"username":"alice","refresh_token":"bundle-secret"}]}`,
+		"top default alias":      `{"schema":"pixiv-cli.auth-export","version":1,"Default_User_ID":7,"accounts":[{"user_id":7,"username":"alice","refresh_token":"bundle-secret"}]}`,
+		"account user id alias":  `{"schema":"pixiv-cli.auth-export","version":1,"default_user_id":7,"accounts":[{"User_ID":7,"username":"alice","refresh_token":"bundle-secret"}]}`,
+		"account username alias": `{"schema":"pixiv-cli.auth-export","version":1,"default_user_id":7,"accounts":[{"user_id":7,"Username":"alice","refresh_token":"bundle-secret"}]}`,
+		"account token alias":    `{"schema":"pixiv-cli.auth-export","version":1,"default_user_id":7,"accounts":[{"user_id":7,"username":"alice","Refresh_Token":"bundle-secret"}]}`,
+		"top canonical conflict": `{"schema":"pixiv-cli.auth-export","Schema":"pixiv-cli.auth-export","version":1,"default_user_id":7,"accounts":[{"user_id":7,"username":"alice","refresh_token":"bundle-secret"}]}`,
+		"account key conflict":   `{"schema":"pixiv-cli.auth-export","version":1,"default_user_id":7,"accounts":[{"user_id":7,"User_ID":7,"username":"alice","refresh_token":"bundle-secret"}]}`,
+	}
+	for name, body := range cases {
+		name, body := name, body
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			bundle, err := pixiv.DecodeAuthExportBundle([]byte(body))
+			var typed *pixiv.Error
+			if bundle != nil || !errors.As(err, &typed) || typed.Code != pixiv.CodeInvalidArgument || typed.Operation != pixiv.OperationDecodeAuthBundle {
+				t.Fatalf("bundle=%+v error=%#v", bundle, err)
+			}
+			if strings.Contains(err.Error(), "bundle-secret") || strings.Contains(errorCause(err), "bundle-secret") {
+				t.Fatal("decode error exposed secret")
+			}
+		})
+	}
+}
+
 func TestDecodeAuthExportBundleRejectsDuplicateObjectKeysRecursively(t *testing.T) {
 	t.Parallel()
 	cases := map[string]string{

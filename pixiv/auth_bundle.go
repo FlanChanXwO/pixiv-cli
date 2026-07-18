@@ -152,7 +152,7 @@ func DecodeAuthExportBundle(body []byte) (*AuthExportBundle, error) {
 
 func rejectDuplicateAuthBundleKeys(body []byte) error {
 	decoder := json.NewDecoder(bytes.NewReader(body))
-	if err := scanAuthBundleJSONValue(decoder); err != nil {
+	if err := scanAuthBundleRoot(decoder); err != nil {
 		return err
 	}
 	if _, err := decoder.Token(); !errors.Is(err, io.EOF) {
@@ -161,11 +161,97 @@ func rejectDuplicateAuthBundleKeys(body []byte) error {
 	return nil
 }
 
+var authBundleRootKeys = map[string]struct{}{
+	"schema": {}, "version": {}, "default_user_id": {}, "accounts": {},
+}
+
+var authBundleAccountKeys = map[string]struct{}{
+	"user_id": {}, "username": {}, "refresh_token": {},
+}
+
+// scanAuthBundleRoot 在正式 decode 前验证 wire key。encoding/json 会大小写不敏感地
+// 匹配 struct field，因此 canonical key 必须由 token scanner 单独做 exact allowlist。
+func scanAuthBundleRoot(decoder *json.Decoder) error {
+	token, err := decoder.Token()
+	if err != nil {
+		return err
+	}
+	if delim, ok := token.(json.Delim); !ok || delim != '{' {
+		return scanAuthBundleJSONValueFromToken(decoder, token)
+	}
+	return scanAuthBundleObject(decoder, authBundleRootKeys, func(key string) error {
+		if key == "accounts" {
+			return scanAuthBundleAccounts(decoder)
+		}
+		return scanAuthBundleJSONValue(decoder)
+	})
+}
+
+func scanAuthBundleAccounts(decoder *json.Decoder) error {
+	token, err := decoder.Token()
+	if err != nil {
+		return err
+	}
+	delim, ok := token.(json.Delim)
+	if !ok || delim != '[' {
+		return scanAuthBundleJSONValueFromToken(decoder, token)
+	}
+	for decoder.More() {
+		token, err := decoder.Token()
+		if err != nil {
+			return err
+		}
+		if object, ok := token.(json.Delim); ok && object == '{' {
+			if err := scanAuthBundleObject(decoder, authBundleAccountKeys, func(string) error {
+				return scanAuthBundleJSONValue(decoder)
+			}); err != nil {
+				return err
+			}
+			continue
+		}
+		if err := scanAuthBundleJSONValueFromToken(decoder, token); err != nil {
+			return err
+		}
+	}
+	_, err = decoder.Token()
+	return err
+}
+
+func scanAuthBundleObject(decoder *json.Decoder, allowed map[string]struct{}, scanValue func(string) error) error {
+	keys := map[string]struct{}{}
+	for decoder.More() {
+		keyToken, err := decoder.Token()
+		if err != nil {
+			return err
+		}
+		key, ok := keyToken.(string)
+		if !ok {
+			return errors.New("auth export bundle object key is invalid")
+		}
+		if _, ok := allowed[key]; !ok {
+			return errors.New("auth export bundle object key is not canonical")
+		}
+		if _, exists := keys[key]; exists {
+			return errors.New("auth export bundle contains a duplicate object key")
+		}
+		keys[key] = struct{}{}
+		if err := scanValue(key); err != nil {
+			return err
+		}
+	}
+	_, err := decoder.Token()
+	return err
+}
+
 func scanAuthBundleJSONValue(decoder *json.Decoder) error {
 	token, err := decoder.Token()
 	if err != nil {
 		return err
 	}
+	return scanAuthBundleJSONValueFromToken(decoder, token)
+}
+
+func scanAuthBundleJSONValueFromToken(decoder *json.Decoder, token json.Token) error {
 	delim, composite := token.(json.Delim)
 	if !composite {
 		return nil
@@ -190,7 +276,7 @@ func scanAuthBundleJSONValue(decoder *json.Decoder) error {
 				return err
 			}
 		}
-		_, err = decoder.Token()
+		_, err := decoder.Token()
 		return err
 	case '[':
 		for decoder.More() {
@@ -198,7 +284,7 @@ func scanAuthBundleJSONValue(decoder *json.Decoder) error {
 				return err
 			}
 		}
-		_, err = decoder.Token()
+		_, err := decoder.Token()
 		return err
 	default:
 		return errors.New("auth export bundle JSON delimiter is invalid")

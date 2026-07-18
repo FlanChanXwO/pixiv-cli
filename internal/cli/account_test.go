@@ -52,12 +52,21 @@ func TestAccountImportAcceptsPositionalRefreshToken(t *testing.T) {
 	code := Run([]string{"pixiv", "auth", "import", "opaque/import-token"}, strings.NewReader(""), &stdout, &stderr)
 
 	require.Equal(t, 0, code, stderr.String())
+	assert.Equal(t, "added uid:333\nusername:import-user\n", stdout.String())
+	assert.Empty(t, stderr.String())
 	store, err := auth.LoadAuthStore(authPath)
 	require.NoError(t, err)
 	require.Len(t, store.Accounts, 1)
 	assert.Equal(t, int64(333), store.Accounts[0].UserID)
 	assert.Equal(t, "import-user", store.Accounts[0].Username)
 	assert.Equal(t, "opaque/import-token", store.Accounts[0].RefreshToken)
+
+	stdout.Reset()
+	stderr.Reset()
+	code = Run([]string{"pixiv", "auth", "import", "opaque/import-token"}, strings.NewReader(""), &stdout, &stderr)
+	require.Equal(t, 0, code, stderr.String())
+	assert.Equal(t, "updated uid:333\nusername:import-user\n", stdout.String())
+	assert.Empty(t, stderr.String())
 }
 
 func TestAccountImportJSONDoesNotEchoInputOrRotatedToken(t *testing.T) {
@@ -82,9 +91,7 @@ func TestAccountImportJSONDoesNotEchoInputOrRotatedToken(t *testing.T) {
 	code := Run([]string{"pixiv", "auth", "import", inputToken, "--json"}, strings.NewReader(""), &stdout, &stderr)
 
 	require.Equal(t, 0, code, stderr.String())
-	var out accountOut
-	require.NoError(t, json.Unmarshal(stdout.Bytes(), &out))
-	assert.Equal(t, int64(335), out.UserID)
+	assert.JSONEq(t, `{"user_id":335,"username":"redacted-user","status":"added"}`, stdout.String())
 	for _, canary := range []string{inputToken, rotatedToken, "access-token-canary"} {
 		assert.NotContains(t, stdout.String(), canary)
 		assert.NotContains(t, stderr.String(), canary)
@@ -572,19 +579,30 @@ func TestAuthExportAllBundleCanBeRestoredFromFile(t *testing.T) {
 
 func TestAuthImportBundleFromStdinPrintsSafeJSONReport(t *testing.T) {
 	authPath, _ := useTempPaths(t)
-	const bundle = `{"schema":"pixiv-cli.auth-export","version":1,"default_user_id":777,"accounts":[{"user_id":777,"username":"restored","refresh_token":"stdin-bundle-secret"}]}`
+	require.NoError(t, auth.SaveAuthStore(authPath, auth.AuthStore{
+		DefaultUserID: 888,
+		Accounts:      []auth.Account{{UserID: 888, Username: "before", RefreshToken: "old-local-secret"}},
+	}))
+	const bundle = `{"schema":"pixiv-cli.auth-export","version":1,"default_user_id":777,"accounts":[{"user_id":777,"username":"new","refresh_token":"stdin-bundle-secret"},{"user_id":888,"username":"updated","refresh_token":"updated-bundle-secret"}]}`
 
 	var stdout, stderr bytes.Buffer
 	code := Run([]string{"pixiv", "auth", "import", "--file", "-", "--json"}, strings.NewReader(bundle), &stdout, &stderr)
 	require.Equal(t, 0, code, stderr.String())
-	assert.JSONEq(t, `{"default_user_id":777,"added":[{"user_id":777,"username":"restored","default":true,"has_token":true}],"updated":[]}`, stdout.String())
+	assert.JSONEq(t, `{"accounts":[{"user_id":777,"username":"new","status":"added"},{"user_id":888,"username":"updated","status":"updated"}],"default_user_id":888}`, stdout.String())
 	assert.NotContains(t, stdout.String(), "stdin-bundle-secret")
 	assert.NotContains(t, stderr.String(), "stdin-bundle-secret")
+	assert.NotContains(t, stdout.String(), "updated-bundle-secret")
+	assert.NotContains(t, stderr.String(), "updated-bundle-secret")
 
 	store, err := auth.LoadAuthStore(authPath)
 	require.NoError(t, err)
-	require.Len(t, store.Accounts, 1)
-	assert.Equal(t, "stdin-bundle-secret", store.Accounts[0].RefreshToken)
+	require.Len(t, store.Accounts, 2)
+	_, added, ok := store.Get(777)
+	require.True(t, ok)
+	assert.Equal(t, "stdin-bundle-secret", added.RefreshToken)
+	_, updated, ok := store.Get(888)
+	require.True(t, ok)
+	assert.Equal(t, "updated-bundle-secret", updated.RefreshToken)
 }
 
 func TestAuthImportBundleRejectsTokenAndProxyFlagsWithoutReadingSecrets(t *testing.T) {

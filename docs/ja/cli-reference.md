@@ -142,6 +142,8 @@ pixiv auth import 'YOUR_REFRESH_TOKEN'    # argv/shell history に残ります
 
 `pixiv auth import [REFRESH_TOKEN]` は raw token を App OAuth で検証し、Pixiv が返す UID を正として、rotation 後の refresh token を保存します。引数なしの TTY は非表示 prompt、非 TTY は stdin の opaque な 1 行を読み、末尾の LF または CRLF を 1 つだけ除きます。位置引数は process list、shell history、wrapper、監査 tool に記録される可能性があります。`--json` は secret を含まない account summary だけを変更します。`--proxy` と `--no-proxy` は direct validation にだけ適用され、併用できません。
 
+direct import の成功時は `added uid:UID` または `updated uid:UID` を報告し、username がある場合は text に `username:NAME` も出力します。JSON は `{"user_id":12345678,"username":"display name","status":"added"}` のような secret-free account item 1 件だけです。`status` は `added` または `updated` で、default、token の有無、入力 token、rotation 後の token は公開しません。
+
 export bundle を Pixiv に接続せず restore する例：
 
 ```bash
@@ -149,7 +151,7 @@ pixiv auth import --file account.pxauth
 pixiv auth export --all | ssh trusted-host pixiv auth import --file -
 ```
 
-`--file PATH` は file、`--file -` は stdin から完全な bundle を読みます。この mode は offline で token の検証や rotation を行わず、位置 token、`--proxy`、`--no-proxy` を拒否します。全 account を UID ごとに atomic merge し、既存 account は更新、新規 account は追加します。local default は保持し、default がない場合だけ bundle default を採用します。通常出力と `--json` は added/updated UID と最終 default の secret-free report です。
+`--file PATH` は file、`--file -` は stdin から完全な bundle を読みます。この mode は offline で token の検証や rotation を行わず、位置 token、`--proxy`、`--no-proxy` を拒否します。全 account を UID ごとに atomic merge し、既存 account は更新、新規 account は追加します。local default は保持し、default がない場合だけ bundle default を採用します。通常出力は入力 bundle 順に added/updated UID と最終 default を表示します。`--json` は `{"accounts":[{"user_id":12345678,"username":"display name","status":"added"}],"default_user_id":12345678}` を返し、account item は `user_id`、`username`、`status` だけを公開します。
 
 ### 認証の export と backup
 
@@ -166,7 +168,7 @@ pixiv auth export --all --output accounts.pxauth --force
 
 `--output PATH` を指定すると single-account でも `--all` でも raw token ではなく bundle を書きます。既存 destination は既定で拒否し、明示的な `--force` だけが replacement を許可します。成功 stdout は output path と account count だけで secret を含みません。Unix-like の file は `0600` で、既存 parent の permission/ownership は変更しません。Windows は owner と protected DACL を明示し、current user、LocalSystem、builtin Administrators だけに full control を許可します。この Windows policy は CI tests で検証しますが、本 release の検証を実 Windows filesystem で実行したとは主張しません。
 
-bundle は暗号化されていない secret の point-in-time backup で、live sync ではありません。元 token と同様に保護し、token rotation 後の古い bundle や別 machine の copy は stale になり得ます。strict versioned codec は unsupported schema/version、unknown/duplicate field、trailing JSON、duplicate/non-positive UID、empty token、bundle 内 account を指さない default UID を拒否します。
+bundle は暗号化されていない secret の point-in-time backup で、live sync ではありません。元 token と同様に保護し、token rotation 後の古い bundle や別 machine の copy は stale になり得ます。strict versioned codec は unsupported schema/version、unknown/duplicate field、trailing JSON、duplicate/non-positive UID、empty token、bundle 内 account を指さない default UID を拒否します。top-level と account object の key は canonical な spelling/case と完全一致する必要があり、`Schema`、`Default_User_ID`、`User_ID`、`Refresh_Token` などの alias は canonical key と併存する場合も拒否します。
 
 export selection/I/O failure は stdout に secret diagnostic を書きません。restore の atomic write failure では `LocalWriteCommitOutcome=not_committed` は replacement 前、`committed` は replacement 後の durability/cleanup failure、`unknown` は recovery で target state を確定できない状態です。後 2 つを rollback 成功として扱わず、store reload または手動確認が必要です。他の stdout/stderr、JSON、MCP result、log、error は refresh token を公開しません。persistent auth import/export MCP tool は追加せず、既存 session-scoped MCP 認証は不変です。
 

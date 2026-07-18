@@ -170,6 +170,11 @@ read as one opaque line, removing only one final LF or CRLF. A positional token 
 process listings, shell history, wrappers, and audit tooling. `--json` changes only the safe account summary.
 `--proxy` and `--no-proxy` apply only to this direct validation and cannot be combined.
 
+Successful direct import reports `added uid:UID` or `updated uid:UID`; text adds `username:NAME` when available.
+JSON is exactly one secret-free account item such as
+`{"user_id":12345678,"username":"display name","status":"added"}`. `status` is `added` or `updated`; neither
+form exposes default state, token presence, the input token, or the rotated token.
+
 To restore an export bundle without contacting Pixiv:
 
 ```bash
@@ -180,8 +185,10 @@ pixiv auth export --all | ssh trusted-host pixiv auth import --file -
 `--file PATH` reads a bundle from a file; `--file -` reads the complete bundle from stdin. This mode is offline,
 does not validate or rotate tokens, rejects a positional token/`--proxy`/`--no-proxy`, and atomically merges every
 account by UID. Existing accounts are replaced, new accounts are added, the current default is preserved, and the
-bundle default is adopted only when the local store has no default. Human output lists safe added/updated UIDs and
-the resulting default; `--json` returns the same secret-free report.
+bundle default is adopted only when the local store has no default. Human output lists each safe added/updated UID
+in input-bundle order and the resulting default. `--json` returns
+`{"accounts":[{"user_id":12345678,"username":"display name","status":"added"}],"default_user_id":12345678}`;
+account items expose only `user_id`, `username`, and `status`.
 
 ### Exporting and backing up authentication
 
@@ -210,7 +217,9 @@ does not claim the current release validation was run on a real Windows filesyst
 The bundle is an unencrypted point-in-time secret backup, not live sync. Store and transport it like the original
 tokens. Token rotation can make an older bundle or a copy on another machine stale. The strict versioned codec
 rejects unsupported schema/version, unknown or duplicate fields, trailing JSON, duplicate/non-positive UIDs, empty
-tokens, and a default UID that does not name an included account.
+tokens, and a default UID that does not name an included account. Top-level and account-object keys must use the
+documented canonical spelling and case exactly; aliases such as `Schema`, `Default_User_ID`, `User_ID`, or
+`Refresh_Token` are rejected even when a canonical key is also present.
 
 If export selection or I/O fails, stdout never receives a secret diagnostic. If restore's atomic write fails,
 `LocalWriteCommitOutcome=not_committed` means replacement did not occur; `committed` means replacement occurred but

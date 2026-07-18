@@ -2,13 +2,88 @@ package e2e
 
 import (
 	"bytes"
+	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
+	"strings"
 	"testing"
 )
 
 func TestPixivBinarySyntheticAuthTransfer(t *testing.T) {
 	fixture := newSyntheticAuthBinaryFixture(t)
+
+	t.Run("positional direct import uses synthetic OAuth and persists rotation", func(t *testing.T) {
+		// Go 在 Darwin/Windows 上通过系统 API 校验证书，不接受测试进程提供的
+		// SSL_CERT_FILE；不能为 e2e 降低 TLS 校验或修改用户 trust store。
+		if runtime.GOOS == "darwin" || runtime.GOOS == "windows" {
+			t.Skip("synthetic OAuth CA requires SSL_CERT_FILE support from the platform verifier")
+		}
+		const inputToken = "synthetic-direct-input-secret"
+		const rotatedToken = "synthetic-direct-rotated-secret"
+		const accessToken = "synthetic-direct-access-secret"
+		const userID = int64(303)
+		fixture.secrets = append(fixture.secrets, []byte(inputToken), []byte(rotatedToken), []byte(accessToken))
+		oauth := newSyntheticOAuthProxy(t, rotatedToken, accessToken, userID)
+		env := oauth.trustedEnv(fixture.env)
+
+		textResult := fixture.runWithEnv(t, env, nil, "auth", "import", inputToken, "--proxy", oauth.proxyURL())
+		fixture.requireSuccess(t, textResult)
+		fixture.requireNoSecrets(t, textResult.stdout, "direct import text stdout")
+		fixture.requireNoSecrets(t, textResult.stderr, "direct import text stderr")
+		fixture.requireEmpty(t, textResult.stderr, "direct import text stderr")
+		if want := []byte("added uid:303\nusername:synthetic-import-user\n"); !bytes.Equal(textResult.stdout, want) {
+			t.Fatalf("direct import text report mismatch: got bytes=%d; want bytes=%d", len(textResult.stdout), len(want))
+		}
+
+		jsonResult := fixture.runWithEnv(t, env, nil, "auth", "import", inputToken, "--proxy", oauth.proxyURL(), "--json")
+		fixture.requireSuccess(t, jsonResult)
+		fixture.requireNoSecrets(t, jsonResult.stdout, "direct import JSON stdout")
+		fixture.requireNoSecrets(t, jsonResult.stderr, "direct import JSON stderr")
+		fixture.requireEmpty(t, jsonResult.stderr, "direct import JSON stderr")
+		var report struct {
+			UserID   int64  `json:"user_id"`
+			Username string `json:"username"`
+			Status   string `json:"status"`
+		}
+		if err := json.Unmarshal(jsonResult.stdout, &report); err != nil {
+			t.Fatalf("decode direct import JSON report: %v; body omitted", err)
+		}
+		if report.UserID != userID || report.Username != "synthetic-import-user" || report.Status != "updated" {
+			t.Fatalf("direct import JSON report mismatch: uid=%d username_bytes=%d status=%q", report.UserID, len(report.Username), report.Status)
+		}
+
+		oauth.requireReceivedToken(t, inputToken, 2)
+		fixture.requireStoredToken(t, fixture.authPath, userID, rotatedToken)
+	})
+
+	t.Run("removed direct-token entries fail and stay absent from auth help", func(t *testing.T) {
+		const addToken = "synthetic-removed-add-secret"
+		const flagToken = "synthetic-removed-flag-secret"
+		fixture.secrets = append(fixture.secrets, []byte(addToken), []byte(flagToken))
+		for name, args := range map[string][]string{
+			"auth add":          {"auth", "add", addToken},
+			"auth token":        {"auth", "token"},
+			"auth import token": {"auth", "import", "--token", flagToken},
+		} {
+			result := fixture.run(t, nil, args...)
+			fixture.requireFailure(t, result, name)
+			fixture.requireNoSecrets(t, result.stdout, name+" stdout")
+			fixture.requireNoSecrets(t, result.stderr, name+" stderr")
+		}
+
+		help := fixture.run(t, nil, "auth", "--help")
+		fixture.requireSuccess(t, help)
+		fixture.requireNoSecrets(t, help.stdout, "auth help stdout")
+		fixture.requireNoSecrets(t, help.stderr, "auth help stderr")
+		fixture.requireEmpty(t, help.stderr, "auth help stderr")
+		for _, line := range strings.Split(string(help.stdout), "\n") {
+			command := strings.TrimSpace(line)
+			if strings.HasPrefix(command, "add ") || strings.HasPrefix(command, "token ") || strings.HasPrefix(command, "--token") {
+				t.Fatalf("auth help listed a removed entry: line bytes=%d", len(line))
+			}
+		}
+	})
 
 	t.Run("default and explicit export print exact raw tokens", func(t *testing.T) {
 		defaultResult := fixture.run(t, nil, "auth", "export")

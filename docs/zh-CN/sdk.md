@@ -64,7 +64,7 @@ auth store，不读取 `PIXIV_REFRESH_TOKEN` 或 runtime config，不刷新、�
 
 `AuthExportSelection{}` 选择本地 default，`AuthExportSelection{UserID: id}` 精确选择单账号，`AuthExportSelection{All: true}` 选择全部已存账号。`UserID` 不能为负，也不能和 `All` 同用。`Client.ExportAuthBundle` 在锁内取得只读本地 snapshot：忽略环境 token 与 runtime 账号覆盖，不联网、不刷新、不修改状态。它返回 `AuthExportBundle{Schema, Version, DefaultUserID, Accounts}`；每个 `AuthExportSecretAccount` 包含 UID、可选 username 与 opaque refresh-token secret。
 
-`EncodeAuthExportBundle` 输出带末尾换行的稳定缩进 JSON。`DecodeAuthExportBundle` 使用 strict codec，拒绝不支持的 schema/version、未知或重复字段、尾随 JSON、空账号列表、重复/非正 UID、空 refresh token，以及未指向账号列表成员的 default UID。两者只返回脱敏 typed error，不包含 bundle 内容。
+`EncodeAuthExportBundle` 输出带末尾换行的稳定缩进 JSON。`DecodeAuthExportBundle` 使用 strict codec，拒绝不支持的 schema/version、未知或重复字段、尾随 JSON、空账号列表、重复/非正 UID、空 refresh token，以及未指向账号列表成员的 default UID。顶层与 account object 的 key 必须严格匹配 canonical 拼写和大小写；case alias 以及 canonical key 与 alias 冲突均会被拒绝。两者只返回脱敏 typed error，不包含 bundle 内容。
 
 `Client.RestoreAuthBundle` 校验已 decode 的 bundle，在锁内按 UID merge 本地 auth state，并执行一次原子 store write；全过程不使用 OAuth 或 transport。已有账号更新，新账号添加；local default 非空时保持不变，仅为空时采用 bundle default。`AuthRestoreResult` 只报告 `DefaultUserID`、不含 secret 的 `Added` 与 `Updated` 账号摘要。
 

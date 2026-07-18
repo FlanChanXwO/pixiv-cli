@@ -2,6 +2,7 @@ package application
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"testing"
 
@@ -21,8 +22,14 @@ func TestApplicationServicesReportMissingDependencies(t *testing.T) {
 }
 
 func TestAccountServiceUsesPublicSDKAccountStore(t *testing.T) {
+	callOrder := make([]string, 0, 2)
 	client := &fakeAccountSDKClient{accounts: sdk.AccountsResult{DefaultUserID: 123, Accounts: []sdk.Account{{UserID: 123, Username: "alice", Default: true, HasToken: true}}}}
+	client.listAccounts = func() (*sdk.AccountsResult, error) {
+		callOrder = append(callOrder, "list")
+		return &client.accounts, nil
+	}
 	client.importAccount = func(_ context.Context, token string) (*sdk.Account, error) {
+		callOrder = append(callOrder, "import")
 		if token != "  main/token  " {
 			t.Fatalf("ImportAccount token=%q", token)
 		}
@@ -32,12 +39,28 @@ func TestAccountServiceUsesPublicSDKAccountStore(t *testing.T) {
 
 	result, err := service.Import(context.Background(), AccountImportRequest{TokenInput: "  main/token  "})
 	require.NoError(t, err)
-	assert.Equal(t, AccountResult{UserID: 456, Username: "bob", HasToken: true}, result)
+	assert.Equal(t, []string{"list", "import"}, callOrder)
+	body, err := json.Marshal(result)
+	require.NoError(t, err)
+	assert.JSONEq(t, `{"user_id":456,"username":"bob","status":"added"}`, string(body))
 	list, err := service.List()
 	require.NoError(t, err)
 	assert.Equal(t, int64(123), list.DefaultUserID)
 	require.Len(t, list.Accounts, 1)
 	assert.Equal(t, int64(123), list.Accounts[0].UserID)
+}
+
+func TestAccountServiceImportReportsUpdatedByAuthoritativeReturnedUID(t *testing.T) {
+	client := &fakeAccountSDKClient{accounts: sdk.AccountsResult{Accounts: []sdk.Account{{UserID: 456, Username: "before", HasToken: true}}}}
+	client.importAccount = func(context.Context, string) (*sdk.Account, error) {
+		return &sdk.Account{UserID: 456, Username: "after", Default: true, HasToken: true}, nil
+	}
+
+	result, err := newAccountServiceForTest(client).Import(context.Background(), AccountImportRequest{TokenInput: "opaque-token"})
+	require.NoError(t, err)
+	body, err := json.Marshal(result)
+	require.NoError(t, err)
+	assert.JSONEq(t, `{"user_id":456,"username":"after","status":"updated"}`, string(body))
 }
 
 func TestAccountServiceExportUsesPublicSDKLocalBundle(t *testing.T) {
@@ -68,12 +91,13 @@ func TestAccountServiceExportUsesPublicSDKLocalBundle(t *testing.T) {
 func TestAccountServiceImportBundleUsesPublicSDKOfflineRestore(t *testing.T) {
 	client := &fakeAccountSDKClient{}
 	client.restoreAuthBundle = func(bundle *sdk.AuthExportBundle) (*sdk.AuthRestoreResult, error) {
-		require.Len(t, bundle.Accounts, 1)
-		assert.Equal(t, "offline-secret", bundle.Accounts[0].RefreshToken)
+		require.Len(t, bundle.Accounts, 2)
+		assert.Equal(t, "new-secret", bundle.Accounts[0].RefreshToken)
+		assert.Equal(t, "updated-secret", bundle.Accounts[1].RefreshToken)
 		return &sdk.AuthRestoreResult{
 			DefaultUserID: 321,
-			Added:         []sdk.Account{{UserID: 321, Username: "restored", Default: true, HasToken: true}},
-			Updated:       []sdk.Account{},
+			Added:         []sdk.Account{{UserID: 654, Username: "new", HasToken: true}},
+			Updated:       []sdk.Account{{UserID: 321, Username: "updated", Default: true, HasToken: true}},
 		}, nil
 	}
 	var gotRequest SDKClientRequest
@@ -81,14 +105,15 @@ func TestAccountServiceImportBundleUsesPublicSDKOfflineRestore(t *testing.T) {
 		gotRequest = request
 		return client, nil
 	}}}
-	const body = `{"schema":"pixiv-cli.auth-export","version":1,"default_user_id":321,"accounts":[{"user_id":321,"username":"restored","refresh_token":"offline-secret"}]}`
+	const body = `{"schema":"pixiv-cli.auth-export","version":1,"default_user_id":321,"accounts":[{"user_id":654,"username":"new","refresh_token":"new-secret"},{"user_id":321,"username":"updated","refresh_token":"updated-secret"}]}`
 
 	result, err := service.ImportBundle([]byte(body))
 	require.NoError(t, err)
 	assert.Equal(t, SDKClientRequest{}, gotRequest)
 	assert.Equal(t, int64(321), result.DefaultUserID)
-	require.Len(t, result.Added, 1)
-	assert.Empty(t, result.Updated)
+	resultBody, err := json.Marshal(result)
+	require.NoError(t, err)
+	assert.JSONEq(t, `{"accounts":[{"user_id":654,"username":"new","status":"added"},{"user_id":321,"username":"updated","status":"updated"}],"default_user_id":321}`, string(resultBody))
 }
 
 func TestAccountServiceCheckUsesPublicSDKRequest(t *testing.T) {
