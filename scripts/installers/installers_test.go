@@ -208,8 +208,8 @@ func TestInstallCmdExtractionContractRejectsMissingSuccessPopd(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	withoutSuccessPopd := strings.Replace(string(payload), "\npopd\nif not exist ", "\nif not exist ", 1)
-	if withoutSuccessPopd == string(payload) {
+	withoutSuccessPopd, ok := removeInstallCmdSuccessPopd(string(payload))
+	if !ok {
 		t.Fatal("test fixture did not locate the success-path popd")
 	}
 	if err := validateInstallCmdExtraction(withoutSuccessPopd); err == nil {
@@ -217,11 +217,37 @@ func TestInstallCmdExtractionContractRejectsMissingSuccessPopd(t *testing.T) {
 	}
 }
 
+const installCmdSystemTarExtraction = `"%system_tar%" -xf "%asset%" -c "extract" pixiv.exe`
+
+func removeInstallCmdSuccessPopd(script string) (string, bool) {
+	normalized := strings.ReplaceAll(script, "\r\n", "\n")
+	const successPath = "\npopd\nif not exist \"%EXTRACT_DIR%\\pixiv.exe\""
+	withoutPopd := strings.Replace(normalized, successPath, strings.TrimPrefix(successPath, "\npopd"), 1)
+	return withoutPopd, withoutPopd != normalized
+}
+
+func TestRemoveInstallCmdSuccessPopdHandlesCRLF(t *testing.T) {
+	const script = "pushd \"%WORK_DIR%\"\r\n" +
+		"\"%SYSTEM_TAR%\" -xf \"%ASSET%\" -C \"extract\" pixiv.exe || (popd & goto fatal)\r\n" +
+		"popd\r\n" +
+		"if not exist \"%EXTRACT_DIR%\\pixiv.exe\" goto fatal\r\n"
+
+	mutated, ok := removeInstallCmdSuccessPopd(script)
+	if !ok {
+		t.Fatal("CRLF fixture did not locate the success-path popd")
+	}
+	if count := strings.Count(strings.ToLower(mutated), "popd"); count != 1 {
+		t.Fatalf("mutation changed the failure-path popd: remaining count=%d, want 1", count)
+	}
+	if strings.Contains(strings.ReplaceAll(mutated, "\r\n", "\n"), "\npopd\n") {
+		t.Fatal("mutation preserved the independent success-path popd")
+	}
+}
+
 func validateInstallCmdExtraction(script string) error {
 	content := strings.ToLower(strings.ReplaceAll(script, "\r\n", "\n"))
 	pushIndex := strings.Index(content, `pushd "%work_dir%"`)
-	tarNeedle := `"%system_tar%" -xf "%asset%" -c "extract" pixiv.exe`
-	tarIndex := strings.Index(content, tarNeedle)
+	tarIndex := strings.Index(content, installCmdSystemTarExtraction)
 	if pushIndex < 0 || tarIndex < 0 || pushIndex > tarIndex {
 		return fmt.Errorf("install.cmd must extract the relative archive inside its temporary working directory")
 	}
@@ -231,7 +257,7 @@ func validateInstallCmdExtraction(script string) error {
 
 	lines := strings.Split(content, "\n")
 	for index, line := range lines {
-		if !strings.Contains(line, tarNeedle) {
+		if !strings.Contains(line, installCmdSystemTarExtraction) {
 			continue
 		}
 		for next := index + 1; next < len(lines); next++ {
