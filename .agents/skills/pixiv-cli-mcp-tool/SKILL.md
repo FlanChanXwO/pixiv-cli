@@ -1,9 +1,9 @@
 ---
-name: pixiv-mcp-tool
+name: pixiv-cli-mcp-tool
 description: Add or change a pixiv-cli MCP tool with full sync of registration, tests, docs/mcp-tools.md, README, and CHANGELOG.
 ---
 
-# Pixiv MCP Tool
+# pixiv-cli MCP Tool
 
 新增或修改 MCP tool 时使用，防止漏同步测试和文档。
 

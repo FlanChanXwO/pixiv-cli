@@ -1,9 +1,9 @@
 ---
-name: pixiv-docs
+name: pixiv-cli-docs
 description: Maintain pixiv-cli documentation; file responsibilities and routing live in docs/agents/documentation-guidelines.md.
 ---
 
-# Pixiv Docs
+# pixiv-cli Docs
 
 新增、修改或审查本仓库文档。文件职责与路由表以 `docs/agents/documentation-guidelines.md` 为准；本文件只定义流程，不复制路由表。
 

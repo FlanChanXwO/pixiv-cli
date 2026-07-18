@@ -1,9 +1,9 @@
 ---
-name: pixiv-review
+name: pixiv-cli-review
 description: Review pixiv-cli changes with finding-first output; review criteria live in docs/agents/review-checklist.md.
 ---
 
-# Pixiv Review
+# pixiv-cli Review
 
 审查本仓库改动。审查标准以 `docs/agents/review-checklist.md` 为准；本文件只定义流程和输出格式，不复制清单内容。
 

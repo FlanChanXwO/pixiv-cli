@@ -41,7 +41,7 @@ PIXIV_E2E_WEB_API=1 PIXIV_WEB_API_PROXY=http://127.0.0.1:7890 go test ./test/e2e
 
 - 架构与包职责：`docs/architecture.md`、`CONTEXT.md`、`docs/adr/`。
 - CLI 完整契约：`docs/cli-reference.md`、`docs/cli-reference.zh-CN.md`；README 只作为双语入口。
-- MCP tools：`docs/mcp-tools.md`；改 tool 时用 `.agents/skills/pixiv-mcp-tool/`。
+- MCP tools：`docs/mcp-tools.md`；改 tool 时用 `.agents/skills/pixiv-cli-mcp-tool/`。
 - 开发流程、配置、测试：`docs/development.md`。
 - AI 协作文档地图与 checklist：`docs/agents/`。
 - Repo-local skills：`.agents/skills/`（review / docs / commit-msg / mcp-tool），只在对应任务需要时读取。
