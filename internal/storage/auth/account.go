@@ -7,6 +7,17 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+
+	"github.com/FlanChanXwO/pixiv-cli/internal/utils/files"
+)
+
+// SaveCommitOutcome 标识 auth store 的目标文件 replacement 是否已提交。
+type SaveCommitOutcome string
+
+const (
+	SaveCommitOutcomeUnknown      SaveCommitOutcome = "unknown"
+	SaveCommitOutcomeNotCommitted SaveCommitOutcome = "not_committed"
+	SaveCommitOutcomeCommitted    SaveCommitOutcome = "committed"
 )
 
 type AuthStore struct {
@@ -25,9 +36,16 @@ type authStoreReadHook struct {
 	read func(string) ([]byte, error)
 }
 
+type authStoreWriteHook struct {
+	path  string
+	write func(string, []byte) error
+}
+
 var (
-	authStoreReadHookState atomic.Pointer[authStoreReadHook]
-	authStoreReadHookMu    sync.Mutex
+	authStoreReadHookState  atomic.Pointer[authStoreReadHook]
+	authStoreReadHookMu     sync.Mutex
+	authStoreWriteHookState atomic.Pointer[authStoreWriteHook]
+	authStoreWriteHookMu    sync.Mutex
 )
 
 // SetReadAuthStoreFileForTest 仅为跨平台本地状态错误测试拦截指定 auth path。
@@ -55,6 +73,40 @@ func readAuthStore(path string) ([]byte, error) {
 	return os.ReadFile(path)
 }
 
+// SetWriteAuthStoreFileForTest 仅为本地状态原子失败测试拦截指定 auth path。
+// hook 在编码与完整 store 校验之后、真实原子写入之前执行；调用方必须用
+// t.Cleanup 执行返回的恢复函数，且不得并行使用同一路径。
+func SetWriteAuthStoreFileForTest(path string, write func(string, []byte) error) func() {
+	if strings.TrimSpace(path) == "" || write == nil {
+		panic("auth store write test hook requires a path and writer")
+	}
+	authStoreWriteHookMu.Lock()
+	authStoreWriteHookState.Store(&authStoreWriteHook{path: path, write: write})
+	var once sync.Once
+	return func() {
+		once.Do(func() {
+			authStoreWriteHookState.Store(nil)
+			authStoreWriteHookMu.Unlock()
+		})
+	}
+}
+
+func writeAuthStore(path string, body []byte) error {
+	if hook := authStoreWriteHookState.Load(); hook != nil && path == hook.path {
+		err := hook.write(path, body)
+		if err != nil && !files.HasPrivateFileWriteCommitOutcome(err) {
+			return authStorePreCommitWriteError{cause: err}
+		}
+		return err
+	}
+	return WritePrivateFile(path, body)
+}
+
+type authStorePreCommitWriteError struct{ cause error }
+
+func (e authStorePreCommitWriteError) Error() string { return e.cause.Error() }
+func (e authStorePreCommitWriteError) Unwrap() error { return e.cause }
+
 type LegacySchemaError struct {
 	Field string
 }
@@ -70,7 +122,7 @@ func IsMissingRefreshTokenError(err error) bool {
 }
 
 func (e LegacySchemaError) Error() string {
-	return "legacy auth schema field " + e.Field + " is not supported; recreate auth.json with pixiv auth add/login"
+	return "legacy auth schema field " + e.Field + " is not supported; recreate auth.json with pixiv auth import/login"
 }
 
 func IsLegacySchemaError(err error) bool {
@@ -133,25 +185,47 @@ func rejectLegacyAuthSchema(body []byte) error {
 }
 
 func SaveAuthStore(path string, store AuthStore) error {
+	_, err := SaveAuthStoreWithOutcome(path, store)
+	return err
+}
+
+// SaveAuthStoreWithOutcome 保存 auth store，并在失败时返回稳定的 commit outcome。
+// not_committed 表示新内容未替换目标；committed 表示 replacement 已完成，但后续
+// cleanup 或 durability 步骤失败，调用方必须重新加载目标确认当前状态。
+func SaveAuthStoreWithOutcome(path string, store AuthStore) (SaveCommitOutcome, error) {
 	if store.Accounts == nil {
 		store.Accounts = []Account{}
 	}
 	if err := validateAuthStore(store, true); err != nil {
-		return err
+		return SaveCommitOutcomeNotCommitted, err
 	}
 	body, err := json.MarshalIndent(store, "", "  ")
 	if err != nil {
-		return err
+		return SaveCommitOutcomeNotCommitted, err
 	}
 	body = append(body, '\n')
-	return WritePrivateFile(path, body)
+	if err := writeAuthStore(path, body); err != nil {
+		var preCommitErr authStorePreCommitWriteError
+		if errors.As(err, &preCommitErr) {
+			return SaveCommitOutcomeNotCommitted, err
+		}
+		switch files.PrivateFileWriteCommitOutcome(err) {
+		case files.WriteCommitOutcomeCommitted:
+			return SaveCommitOutcomeCommitted, err
+		case files.WriteCommitOutcomeNotCommitted:
+			return SaveCommitOutcomeNotCommitted, err
+		default:
+			return SaveCommitOutcomeUnknown, err
+		}
+	}
+	return SaveCommitOutcomeCommitted, nil
 }
 
 func validateAuthStore(store AuthStore, requireDefault bool) error {
 	seen := map[int64]struct{}{}
 	for _, acct := range store.Accounts {
 		if acct.UserID <= 0 {
-			return errors.New("auth account user_id is required; recreate auth.json with pixiv auth add/login")
+			return errors.New("auth account user_id is required; recreate auth.json with pixiv auth import/login")
 		}
 		if _, ok := seen[acct.UserID]; ok {
 			return errors.New("auth account user_id values must be unique")

@@ -78,6 +78,7 @@ func TestWritePrivateFilePreservesOldBackupAndNewSourceWhenRestoreFails(t *testi
 	err := writePrivateFile(target, []byte("new"), constants.PrivateFileMode, ops)
 	require.ErrorIs(t, err, replaceErr)
 	require.ErrorIs(t, err, restoreErr)
+	assert.Equal(t, WriteCommitOutcomeUnknown, PrivateFileWriteCommitOutcome(err))
 	_, statErr := os.Stat(target)
 	require.ErrorIs(t, statErr, os.ErrNotExist)
 	assertRecoveryArtifactBodies(t, dir, "old", "new")
@@ -118,6 +119,7 @@ func TestWritePrivateFileCleansNewSourceWhenFirstCreateReplacementFails(t *testi
 
 	err := writePrivateFile(target, []byte("new"), constants.PrivateFileMode, ops)
 	require.ErrorIs(t, err, replaceErr)
+	assert.Equal(t, WriteCommitOutcomeNotCommitted, PrivateFileWriteCommitOutcome(err))
 	_, statErr := os.Stat(target)
 	require.ErrorIs(t, statErr, os.ErrNotExist)
 	assertNoPrivateFileArtifacts(t, dir)

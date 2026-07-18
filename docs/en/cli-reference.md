@@ -177,26 +177,79 @@ config.
 Real login depends on the Pixiv OAuth web flow being available; automated tests use a fake OAuth server and never
 touch real Pixiv.
 
-### Exporting a stored token
+### Importing authentication
 
-`pixiv auth token [UID]` is the only command that intentionally prints a refresh token. It exists for explicit
-interoperability with another trusted local program:
+v0.4.0 removes `auth add`, `auth token`, and `--token` with no aliases. Direct import is now:
 
 ```bash
-pixiv auth token           # default local account
-pixiv auth token 12345678  # exact local account
+pixiv auth import                         # hidden prompt on a TTY
+printf '%s\n' 'YOUR_REFRESH_TOKEN' | pixiv auth import
+pixiv auth import 'YOUR_REFRESH_TOKEN'    # visible in argv/shell history
 ```
 
-The command reads only `auth.json`: it does not refresh the token, contact Pixiv, consult `PIXIV_REFRESH_TOKEN`,
-accept proxy/JSON flags, write local state, or run an automatic update check. On success, stdout contains exactly
-the raw stored refresh token followed by one newline, and stderr is empty. Run it only in a private terminal and
-redirect it directly to a trusted consumer when necessary. Never paste its output into chat, logs, shell history,
-issues, tests, or agent transcripts. Every other CLI command, JSON response, log, and error remains forbidden from
-exposing refresh tokens.
+`pixiv auth import [REFRESH_TOKEN]` validates a raw token through App OAuth, uses Pixiv's returned UID as
+authoritative, and stores the rotated refresh token. With no argument, a TTY uses a hidden prompt; non-TTY stdin is
+read as one opaque line, removing only one final LF or CRLF. A positional token is convenient but can be exposed by
+process listings, shell history, wrappers, and audit tooling. `--json` changes only the safe account summary.
+`--proxy` and `--no-proxy` apply only to this direct validation and cannot be combined.
 
-If no default account exists, the requested UID is absent, the UID is invalid, or the auth store cannot be read,
-the command exits non-zero with a safe diagnostic on stderr and writes no token to stdout. It never includes token
-contents or an auth-file path in that diagnostic.
+Successful direct import reports `added uid:UID` or `updated uid:UID`; text adds `username:NAME` when available.
+JSON is exactly one secret-free account item such as
+`{"user_id":12345678,"username":"display name","status":"added"}`. `status` is `added` or `updated`; neither
+form exposes default state, token presence, the input token, or the rotated token.
+
+To restore an export bundle without contacting Pixiv:
+
+```bash
+pixiv auth import --file account.pxauth
+pixiv auth export --all | ssh trusted-host pixiv auth import --file -
+```
+
+`--file PATH` reads a bundle from a file; `--file -` reads the complete bundle from stdin. This mode is offline,
+does not validate or rotate tokens, rejects a positional token/`--proxy`/`--no-proxy`, and atomically merges every
+account by UID. Existing accounts are replaced, new accounts are added, the current default is preserved, and the
+bundle default is adopted only when the local store has no default. Human output lists each safe added/updated UID
+in input-bundle order and the resulting default. `--json` returns
+`{"accounts":[{"user_id":12345678,"username":"display name","status":"added"}],"default_user_id":12345678}`;
+account items expose only `user_id`, `username`, and `status`.
+
+### Exporting and backing up authentication
+
+```bash
+pixiv auth export                         # raw token for the default account
+pixiv auth export 12345678                # raw token for one exact local account
+pixiv auth export --all                   # versioned all-account bundle on stdout
+pixiv auth export 12345678 --output account.pxauth
+pixiv auth export --all --output accounts.pxauth
+pixiv auth export --all --output accounts.pxauth --force
+```
+
+Without `--output`, exactly two forms may write secrets to stdout: default/UID export writes the raw stored token
+plus one newline; `--all` writes only the versioned JSON bundle. They write no stderr on success. Export is strictly
+local-only: it reads `auth.json`, never consults `PIXIV_REFRESH_TOKEN`, never refreshes or contacts Pixiv, never
+mutates auth/config, and skips startup pending-update cleanup, automatic update checks, and operation logging.
+`--all` cannot be combined with a UID, `--force` requires `--output`, and export accepts no JSON/proxy flags.
+
+With `--output PATH`, both a single-account selection and `--all` write a bundle instead of a raw token. The command
+refuses an existing destination unless `--force` is explicit; successful stdout contains only the output path and
+account count, never a token or bundle. On Unix-like systems the destination file is `0600`; existing parent
+permissions and ownership are unchanged. On Windows the file owner and protected DACL explicitly grant full control
+only to the current user, LocalSystem, and builtin Administrators. CI tests cover this Windows policy; this document
+does not claim the current release validation was run on a real Windows filesystem.
+
+The bundle is an unencrypted point-in-time secret backup, not live sync. Store and transport it like the original
+tokens. Token rotation can make an older bundle or a copy on another machine stale. The strict versioned codec
+rejects unsupported schema/version, unknown or duplicate fields, trailing JSON, duplicate/non-positive UIDs, empty
+tokens, and a default UID that does not name an included account. Top-level and account-object keys must use the
+documented canonical spelling and case exactly; aliases such as `Schema`, `Default_User_ID`, `User_ID`, or
+`Refresh_Token` are rejected even when a canonical key is also present.
+
+If export selection or I/O fails, stdout never receives a secret diagnostic. If restore's atomic write fails,
+`LocalWriteCommitOutcome=not_committed` means replacement did not occur; `committed` means replacement occurred but
+a later durability/cleanup step failed and the store must be reloaded; `unknown` means recovery could not establish
+the target state and requires inspection. Neither `committed` nor `unknown` may be treated as a successful rollback.
+All other stdout/stderr, JSON, MCP results, logs, and errors remain forbidden from exposing refresh tokens. No
+persistent auth import/export MCP tools are added; existing session-scoped MCP authentication behavior is unchanged.
 
 ## CLI usage
 
@@ -206,16 +259,10 @@ Log in and save an account first:
 pixiv auth login
 ```
 
-Advanced/scripted setups can also import an existing token:
+Advanced/scripted setups can also import an existing token without placing it in argv:
 
 ```bash
-printf '%s\n' 'YOUR_REFRESH_TOKEN' | pixiv auth add
-```
-
-Passing the token directly also works, but `--token` may end up in shell history:
-
-```bash
-pixiv auth add --token 'YOUR_REFRESH_TOKEN'
+printf '%s\n' 'YOUR_REFRESH_TOKEN' | pixiv auth import
 ```
 
 Common commands:
@@ -247,7 +294,7 @@ Account credentials are saved to `os.UserConfigDir()/pixiv/auth.json`, keyed by 
 `os.UserConfigDir()/pixiv/config.toml`. Unix-like systems actively use `0700` parent directories and `0600` files.
 On Windows, first creation inherits the parent ACL and replacement preserves the existing target ACL; the CLI does
 not claim to tighten or loosen the DACL. Output is human-readable by default; commands that expose `--json` can
-produce machine-parseable JSON. `auth token` deliberately does not expose that flag.
+produce machine-parseable JSON. `auth export` deliberately does not expose that flag.
 The CLI uses Cobra/pflag, so options may appear before or after positional arguments — both
 `pixiv auth check 12345678 --json` and `pixiv search "初音ミク" --json` are officially supported forms.
 
@@ -255,10 +302,10 @@ The CLI uses Cobra/pflag, so options may appear before or after positional argum
 
 | Command | Usage | Description |
 | --- | --- | --- |
-| `auth add` | `pixiv auth add [--token TOKEN] [--json] [--proxy URL\|--no-proxy]` | Validates a raw Pixiv App API refresh token and adds or replaces the account keyed by Pixiv UID; cookie input is rejected. Without `--token`, reads from TTY/stdin. |
+| `auth import` | `pixiv auth import [REFRESH_TOKEN] [--file PATH] [--json] [--proxy URL\|--no-proxy]` | Direct input validates and stores the rotated token; no-argument TTY input is hidden and non-TTY input is raw stdin. `--file PATH|-` instead restores a bundle offline and atomically, and conflicts with token/proxy input. |
 | `auth login` | `pixiv auth login [--json] [--no-open] [--addr 127.0.0.1:0] [--use] [--timeout DURATION] [--proxy URL\|--no-proxy]` | Logs in via a local loopback server and browser OAuth, saving the account keyed by Pixiv UID; never prints the refresh token. |
 | `auth list` | `pixiv auth list [--json]` | Lists local accounts; never prints refresh tokens. |
-| `auth token` | `pixiv auth token [UID]` | Prints the selected local account's raw refresh token and a newline to stdout; defaults to the current account, performs no network request or refresh, and accepts no JSON/proxy flags. |
+| `auth export` | `pixiv auth export [UID] [--all] [--output PATH] [--force]` | Exports a default/exact account or all accounts locally. Without `--output`, one account is raw token stdout and `--all` is bundle stdout; with `--output`, both write a private bundle and only a safe summary goes to stdout. |
 | `auth use` | `pixiv auth use [UID] [--json]` | Sets the default account; interactive selection on a TTY. |
 | `auth remove` | `pixiv auth remove [UID] [--yes] [--json]` | Removes an account; confirms by default on a TTY. After removing the default account, the first remaining account is selected automatically. |
 | `auth check` | `pixiv auth check [UID] [--json] [--proxy URL\|--no-proxy]` | Refreshes the token and validates the account; on success records `user_id` and the username when available. |
@@ -346,11 +393,11 @@ collects enough matching works, the upstream has no next batch, or a repeated cu
 | `--uid UID` | `search/search-options/detail/ranking/recommended/user/download` | `auth.json.default_user_id` | Selects a local account. |
 | `--profile UID` | `search/search-options/detail/ranking/recommended/user/download` | empty | Deprecated alias of `--uid`. |
 | `--refresh-token TOKEN` | `search/search-options/detail/ranking/recommended/user/download` | empty | Temporarily overrides the account/env token; only raw App API refresh tokens are accepted. |
-| `--json` | `auth add/login/list/use/remove/check`, `version`, `update --check`, and data commands | `false` | Machine-parseable JSON output; `auth token` and actual update installation do not accept it. |
+| `--json` | `auth import/login/list/use/remove/check`, `version`, `update --check`, and data commands | `false` | Machine-parseable JSON output; `auth export` and actual update installation do not accept it. |
 | `--download-path PATH` | data commands; effectively only `download` | `DOWNLOAD_PATH`, `config.toml`, or `./downloads` | Download directory. |
 | `--filename-template TEMPLATE` | data commands; effectively only `download` | `FILENAME_TEMPLATE`, `config.toml`, or `{author} - {title}_{id}` | Filename template. |
-| `--proxy URL` | `auth add/login/check`, data commands, `mcp` | `https_proxy`/`HTTPS_PROXY`, `config.toml`, or empty | Uses an HTTP(S) proxy for this command only. |
-| `--no-proxy` | `auth add/login/check`, data commands, `mcp` | empty | Clears the HTTP(S) proxy for this command; same precedence as `--proxy`, cannot be combined with it. |
+| `--proxy URL` | direct-token `auth import`, `auth login/check`, data commands, `mcp` | `https_proxy`/`HTTPS_PROXY`, `config.toml`, or empty | Uses an HTTP(S) proxy for this command only; forbidden with `auth import --file`. |
+| `--no-proxy` | direct-token `auth import`, `auth login/check`, data commands, `mcp` | empty | Clears the HTTP(S) proxy for this command; same precedence as `--proxy`, cannot be combined with it or bundle restore. |
 
 ### Supported `config` keys
 
@@ -458,7 +505,7 @@ protected `release` Environment and a controlled macOS Keychain recovery copy. v
 Release; `pixiv update --check` remains a read-only check and is not a substitute for verifying the selected
 version's assets, checksums, and signatures at install time.
 
-Successful regular CLI commands make a best-effort stable-update check. It skips MCP, help, `version`, `update`, `auth token`,
+Successful regular CLI commands make a best-effort stable-update check. It skips MCP, help, `version`, `update`, every `auth export`, `auth import --file`,
 and development builds, queries at most once per 24 hours per user cache, and caps the automatic check at 3
 seconds. A discovered new version or a failed check only writes to stderr (failures as warnings), never changes
 the business command's exit code, and never pollutes JSON stdout or MCP JSON-RPC stdout. To disable the automatic

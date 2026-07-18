@@ -1,14 +1,15 @@
 package cli
 
 import (
-	"bufio"
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"strconv"
 	"strings"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/application"
+	"github.com/FlanChanXwO/pixiv-cli/internal/utils/files"
 	"github.com/spf13/cobra"
 )
 
@@ -25,10 +26,16 @@ type accountListOut struct {
 	Accounts      []accountOut `json:"accounts"`
 }
 
-type accountAddOptions struct {
+type accountImportOptions struct {
 	proxyOptions
-	token   string
 	jsonOut bool
+	file    string
+}
+
+type accountExportOptions struct {
+	all    bool
+	output string
+	force  bool
 }
 
 type accountRemoveOptions struct {
@@ -45,48 +52,87 @@ func (a app) newAccountCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "auth",
 		Short: "Manage local Pixiv authentication",
+		Args:  requireExactArgs(0, "pixiv auth <command>"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return cmd.Help()
 		},
 	}
 	cmd.AddCommand(
-		a.newAccountAddCommand(),
+		a.newAccountImportCommand(),
 		a.newAccountLoginCommand(),
 		a.newAccountListCommand(),
 		a.newAccountRemoveCommand(),
 		a.newAccountUseCommand(),
 		a.newAccountCheckCommand(),
-		a.newAccountTokenCommand(),
+		a.newAccountExportCommand(),
 	)
 	return cmd
 }
 
-func (a app) newAccountTokenCommand() *cobra.Command {
-	return &cobra.Command{
-		Use:   "token [UID]",
-		Short: "Print a stored account refresh token",
-		Args:  requireMaxArgs(1, "pixiv auth token [UID]"),
-		RunE: func(_ *cobra.Command, args []string) error {
+func (a app) newAccountExportCommand() *cobra.Command {
+	opts := accountExportOptions{}
+	cmd := &cobra.Command{
+		Use:   "export [UID]",
+		Short: "Export stored authentication",
+		Args:  requireMaxArgs(1, "pixiv auth export [UID]"),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if opts.force && !cmd.Flags().Changed("output") {
+				return errors.New("--force requires --output")
+			}
+			if opts.all && len(args) != 0 {
+				return errors.New("--all cannot be combined with a UID")
+			}
 			userID := int64(0)
 			if len(args) == 1 {
-				parsed, err := parseAuthTokenUID(args[0])
+				parsed, err := parseAuthExportUID(args[0])
 				if err != nil {
 					return err
 				}
 				userID = parsed
 			}
-			token, err := a.services().Account.Token(userID)
+			result, err := a.services().Account.Export(application.AccountExportRequest{UserID: userID, All: opts.all})
 			if err != nil {
 				return err
 			}
-			fmt.Fprintln(a.out, token)
-			return nil
+			if cmd.Flags().Changed("output") {
+				if strings.TrimSpace(opts.output) == "" {
+					return errors.New("--output requires a path")
+				}
+				if err := files.WriteSecretFile(opts.output, result.Bundle, opts.force); err != nil {
+					return err
+				}
+				return writeAuthExportStdout(a.out, []byte(fmt.Sprintf("output: %s\naccounts: %d\n", opts.output, result.AccountCount)))
+			}
+			if opts.all {
+				return writeAuthExportStdout(a.out, result.Bundle)
+			}
+			return writeAuthExportStdout(a.out, []byte(result.RefreshToken+"\n"))
 		},
 	}
+	cmd.Flags().BoolVar(&opts.all, "all", false, "export all stored accounts")
+	cmd.Flags().StringVar(&opts.output, "output", "", "write a versioned authentication bundle to PATH")
+	cmd.Flags().BoolVar(&opts.force, "force", false, "replace an existing output file")
+	return cmd
 }
 
-// parseAuthTokenUID 不回显原始输入：调用者可能误把 token 或私有路径放在 UID 位。
-func parseAuthTokenUID(raw string) (int64, error) {
+type authExportStdoutError struct{ cause error }
+
+func (e authExportStdoutError) Error() string { return "write stdout failed" }
+func (e authExportStdoutError) Unwrap() error { return e.cause }
+
+func writeAuthExportStdout(writer io.Writer, body []byte) error {
+	written, err := writer.Write(body)
+	if err != nil {
+		return authExportStdoutError{cause: err}
+	}
+	if written != len(body) {
+		return authExportStdoutError{cause: io.ErrShortWrite}
+	}
+	return nil
+}
+
+// parseAuthExportUID 不回显原始输入：调用者可能误把 token 或私有路径放在 UID 位。
+func parseAuthExportUID(raw string) (int64, error) {
 	userID, err := strconv.ParseInt(strings.TrimSpace(raw), 10, 64)
 	if err != nil || userID <= 0 {
 		return 0, errors.New("uid must be a positive integer")
@@ -94,56 +140,125 @@ func parseAuthTokenUID(raw string) (int64, error) {
 	return userID, nil
 }
 
-func (a app) newAccountAddCommand() *cobra.Command {
-	opts := accountAddOptions{}
+func (a app) newAccountImportCommand() *cobra.Command {
+	opts := accountImportOptions{}
 	cmd := &cobra.Command{
-		Use:     "add",
-		Short:   "Add or replace an account",
-		Example: "pixiv auth add --token YOUR_REFRESH_TOKEN",
-		Args:    requireExactArgs(0, "pixiv auth add [--token TOKEN]"),
+		Use:     "import [REFRESH_TOKEN]",
+		Short:   "Import or replace an account",
+		Example: "pixiv auth import YOUR_REFRESH_TOKEN",
+		Args:    requireMaxArgs(1, "pixiv auth import [REFRESH_TOKEN]"),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return a.accountAdd(cmd, opts)
+			return a.accountImport(cmd, args, opts)
 		},
 	}
 	flags := cmd.Flags()
-	flags.StringVar(&opts.token, "token", "", "Pixiv App API refresh token")
 	flags.BoolVar(&opts.jsonOut, "json", false, "print JSON")
+	flags.StringVar(&opts.file, "file", "", "restore an authentication export bundle from PATH or stdin with -")
 	a.bindProxyFlags(cmd, &opts.proxyOptions)
 	return cmd
 }
 
-func (a app) accountAdd(cmd *cobra.Command, opts accountAddOptions) error {
+func (a app) accountImport(cmd *cobra.Command, args []string, opts accountImportOptions) error {
+	if cmd.Flags().Changed("file") {
+		if len(args) != 0 || cmd.Flags().Changed("proxy") || cmd.Flags().Changed("no-proxy") {
+			return errors.New("--file cannot be combined with a refresh token, --proxy, or --no-proxy")
+		}
+		body, err := readAuthBundleInput(a.in, opts.file)
+		if err != nil {
+			return err
+		}
+		result, err := a.services().Account.ImportBundle(body)
+		if err != nil {
+			return err
+		}
+		if opts.jsonOut {
+			return a.printJSON(result)
+		}
+		for _, account := range result.Accounts {
+			fmt.Fprintf(a.out, "%s uid:%d\n", account.Status, account.UserID)
+		}
+		fmt.Fprintf(a.out, "default uid: %d\n", result.DefaultUserID)
+		return nil
+	}
 	proxyOverride, err := proxyOverrideFromFlags(cmd, opts.proxyOptions)
 	if err != nil {
 		return err
 	}
-	tokenInput, err := a.resolveRefreshTokenInput(opts.token)
+	tokenInput, err := a.resolveRefreshTokenInput(args)
 	if err != nil {
 		return err
 	}
 	services := a.services()
-	result, err := services.Account.Add(cmd.Context(), application.AccountAddRequest{
+	result, err := services.Account.Import(cmd.Context(), application.AccountImportRequest{
 		TokenInput:         tokenInput,
 		HTTPSProxyOverride: proxyOverride,
 	})
 	if err != nil {
 		return err
 	}
-	out := accountOutFromResult(result)
 	if opts.jsonOut {
-		return a.printJSON(out)
+		return a.printJSON(result)
 	}
-	fmt.Fprintf(a.out, "account uid:%d saved\n", out.UserID)
-	if out.Username != "" {
-		fmt.Fprintf(a.out, "username:%s\n", out.Username)
-	}
-	if out.Default {
-		fmt.Fprintf(a.out, "default uid: %d\n", out.UserID)
-	}
-	if out.Warning != "" {
-		fmt.Fprintf(a.errOut, "warning: %s\n", out.Warning)
+	fmt.Fprintf(a.out, "%s uid:%d\n", result.Status, result.UserID)
+	if result.Username != "" {
+		fmt.Fprintf(a.out, "username:%s\n", result.Username)
 	}
 	return nil
+}
+
+func readAuthBundleInput(stdin io.Reader, path string) ([]byte, error) {
+	if path == "-" {
+		body, err := io.ReadAll(stdin)
+		if err != nil {
+			return nil, errors.New("cannot read authentication export bundle from stdin")
+		}
+		return body, nil
+	}
+	if strings.TrimSpace(path) == "" {
+		return nil, errors.New("--file requires a path or -")
+	}
+	body, err := os.ReadFile(path)
+	if err != nil {
+		return nil, classifyAuthBundleFileReadError(path, err)
+	}
+	return body, nil
+}
+
+type authBundleFileReadCategory string
+
+const (
+	authBundleFileReadNotFound         authBundleFileReadCategory = "not_found"
+	authBundleFileReadPermissionDenied authBundleFileReadCategory = "permission_denied"
+	authBundleFileReadIsDirectory      authBundleFileReadCategory = "is_directory"
+	authBundleFileReadIO               authBundleFileReadCategory = "io"
+)
+
+type authBundleFileReadError struct {
+	category authBundleFileReadCategory
+	cause    error
+}
+
+func (e authBundleFileReadError) Error() string {
+	return "read authentication export bundle failed: " + string(e.category)
+}
+
+func (e authBundleFileReadError) Unwrap() error { return e.cause }
+
+func (e authBundleFileReadError) Category() string { return string(e.category) }
+
+func classifyAuthBundleFileReadError(path string, err error) error {
+	category := authBundleFileReadIO
+	switch {
+	case errors.Is(err, os.ErrNotExist):
+		category = authBundleFileReadNotFound
+	case errors.Is(err, os.ErrPermission):
+		category = authBundleFileReadPermissionDenied
+	default:
+		if info, statErr := os.Stat(path); statErr == nil && info.IsDir() {
+			category = authBundleFileReadIsDirectory
+		}
+	}
+	return authBundleFileReadError{category: category, cause: err}
 }
 
 func (a app) newAccountListCommand() *cobra.Command {
@@ -355,23 +470,37 @@ func (a app) resolveExistingUID(list application.AccountListResult, args []strin
 	return application.ParseUID(fields[0])
 }
 
-func (a app) resolveRefreshTokenInput(tokenFlag string) (string, error) {
-	if strings.TrimSpace(tokenFlag) != "" {
-		return tokenFlag, nil
+func (a app) resolveRefreshTokenInput(args []string) (string, error) {
+	if len(args) == 1 {
+		return args[0], nil
 	}
 	if canPrompt(a) {
 		return promptSecret(a, "Refresh token")
 	}
 	writePrompt(a.errOut, "refresh token: ")
-	return readTokenLine(a.in)
+	return readRefreshTokenInput(a.in)
 }
 
-func readTokenLine(r io.Reader) (string, error) {
-	line, err := bufio.NewReader(r).ReadString('\n')
-	if err != nil && !errors.Is(err, io.EOF) {
+// readRefreshTokenInput 读取完整 stdin，只消费管道输出常见的一个末尾行结束符；
+// token 的其他字节保持 opaque，不能用 TrimSpace 改写。
+func readRefreshTokenInput(r io.Reader) (string, error) {
+	input, err := io.ReadAll(r)
+	if err != nil {
 		return "", err
 	}
-	return strings.TrimSpace(line), nil
+	token := string(input)
+	if strings.HasSuffix(token, "\r\n") {
+		token = strings.TrimSuffix(token, "\r\n")
+	} else {
+		token = strings.TrimSuffix(token, "\n")
+	}
+	if strings.ContainsAny(token, "\r\n") {
+		return "", errors.New("refresh token input must contain exactly one line")
+	}
+	if token == "" {
+		return "", errors.New("refresh token cannot be empty")
+	}
+	return token, nil
 }
 
 func accountOutFromResult(result application.AccountResult) accountOut {

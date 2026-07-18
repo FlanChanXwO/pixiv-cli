@@ -73,6 +73,10 @@ const (
 	OperationCompleteLogin       Operation = "complete_login"
 	OperationCurrentUserID       Operation = "current_user_id"
 	OperationSnapshot            Operation = "snapshot"
+	OperationExportAuthBundle    Operation = "export_auth_bundle"
+	OperationEncodeAuthBundle    Operation = "encode_auth_bundle"
+	OperationDecodeAuthBundle    Operation = "decode_auth_bundle"
+	OperationRestoreAuthBundle   Operation = "restore_auth_bundle"
 )
 
 const OperationExportAccountRefreshToken Operation = "export_account_refresh_token"
@@ -103,18 +107,28 @@ const (
 	LocalStateKindUnknown          LocalStateKind = "unknown"
 )
 
+// LocalWriteCommitOutcome 标识本地原子写入失败时 replacement 的提交状态。
+type LocalWriteCommitOutcome string
+
+const (
+	LocalWriteCommitOutcomeUnknown      LocalWriteCommitOutcome = "unknown"
+	LocalWriteCommitOutcomeNotCommitted LocalWriteCommitOutcome = "not_committed"
+	LocalWriteCommitOutcomeCommitted    LocalWriteCommitOutcome = "committed"
+)
+
 // Error 是公开 SDK 的安全、可分类错误。cause 只保存已脱敏原因。
 type Error struct {
-	Code           ErrorCode
-	Operation      Operation
-	Backend        Backend
-	Retryable      bool
-	UpstreamStatus int
-	IllustID       int64
-	UserID         int64
-	TransportKind  TransportKind
-	LocalStateKind LocalStateKind
-	cause          error
+	Code                    ErrorCode
+	Operation               Operation
+	Backend                 Backend
+	Retryable               bool
+	UpstreamStatus          int
+	IllustID                int64
+	UserID                  int64
+	TransportKind           TransportKind
+	LocalStateKind          LocalStateKind
+	LocalWriteCommitOutcome LocalWriteCommitOutcome
+	cause                   error
 }
 
 func newUserError(code ErrorCode, operation Operation, backend Backend, retryable bool, status int, userID int64, cause error) *Error {
@@ -150,6 +164,9 @@ func (e *Error) Error() string {
 	if kind := safeLocalStateKind(e.LocalStateKind); kind != "" {
 		parts = append(parts, "local_state_kind="+string(kind))
 	}
+	if outcome := safeLocalWriteCommitOutcome(e.LocalWriteCommitOutcome); outcome != "" {
+		parts = append(parts, "local_write_commit_outcome="+string(outcome))
+	}
 	return strings.Join(parts, " ")
 }
 
@@ -184,6 +201,19 @@ func safeLocalStateKind(kind LocalStateKind) LocalStateKind {
 		return kind
 	default:
 		return LocalStateKindUnknown
+	}
+}
+
+// safeLocalWriteCommitOutcome 防止公开可写字段把任意内容带入诊断。
+func safeLocalWriteCommitOutcome(outcome LocalWriteCommitOutcome) LocalWriteCommitOutcome {
+	switch outcome {
+	case "",
+		LocalWriteCommitOutcomeUnknown,
+		LocalWriteCommitOutcomeNotCommitted,
+		LocalWriteCommitOutcomeCommitted:
+		return outcome
+	default:
+		return LocalWriteCommitOutcomeUnknown
 	}
 }
 

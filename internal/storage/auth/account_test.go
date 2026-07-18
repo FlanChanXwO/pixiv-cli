@@ -85,6 +85,8 @@ func TestLoadAuthStoreRejectsLegacyAccountNameSchema(t *testing.T) {
 
 	_, err := LoadAuthStore(path)
 	require.ErrorContains(t, err, "legacy")
+	assert.ErrorContains(t, err, "pixiv auth import/login")
+	assert.NotContains(t, err.Error(), "pixiv auth add")
 }
 
 func TestLoadAuthStoreRejectsMixedLegacyNameSchema(t *testing.T) {
@@ -101,6 +103,16 @@ func TestLoadAuthStoreRejectsLegacyKeysEvenWhenNull(t *testing.T) {
 
 	_, err := LoadAuthStore(path)
 	require.ErrorContains(t, err, "legacy")
+}
+
+func TestLoadAuthStoreMissingUserIDUsesImportRecoveryGuidance(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "auth.json")
+	require.NoError(t, os.WriteFile(path, []byte(`{"accounts":[{"refresh_token":"secret"}]}`), 0o600))
+
+	_, err := LoadAuthStore(path)
+	require.ErrorContains(t, err, "user_id is required")
+	assert.ErrorContains(t, err, "pixiv auth import/login")
+	assert.NotContains(t, err.Error(), "pixiv auth add")
 }
 
 func TestAuthStoreRemovePromotesFirstRemainingUserID(t *testing.T) {

@@ -25,21 +25,33 @@ the installed binary's `pixiv <cmd> --help` output.
 
 ## Hard rules
 
-1. NEVER run `pixiv auth token`. It prints a stored refresh token to stdout.
-   If the user needs it, tell them to run `pixiv auth token [UID]` in their own
-   private terminal and never ask them to paste the output into the chat.
-2. NEVER directly read, print, echo, or persist a raw refresh/access token
-   outside the CLI-managed account store. `auth list` / `auth check` outputs
-   are safe because they do not expose the stored token.
-3. Run interactive `pixiv auth login` only when the user explicitly asks and
+1. Refresh tokens and authentication export bundles contain secrets. Except
+   for the explicit bare-stdout export case below, do not echo, log, summarize,
+   or reproduce them in commentary or results. Use the controlled workflows in
+   `references/auth.md` when the user's task requires moving a credential.
+2. A bare `auth export` is allowed only when the user explicitly asks to
+   receive or see its raw token or bundle for that invocation. Before running
+   it, explain that the secret necessarily enters tool output/transcript and
+   may be retained there, then obtain the user's explicit confirmation. After
+   execution, do not repeat, transform, parse, or log the secret. This is the
+   sole exception to rule 1; otherwise use `--output` or a direct same-command
+   pipeline to the intended consumer.
+3. If the user already disclosed a refresh token in the conversation and
+   explicitly asks to import it, the agent may run the positional
+   `pixiv auth import 'RFT'` form. Do not create an extra file or repeat the
+   secret in the result. The token will still be copied into the tool call,
+   process arguments, shell history, and process context; disclose that before
+   execution, and explain that an already-disclosed token cannot be erased.
+4. For a token not already disclosed, keep it out of chat and command
+   arguments. Use the hidden `pixiv auth import` prompt only when the runtime
+   gives the user a terminal they can type into directly. Do not start it in a
+   standard agent PTY with no user-input channel and leave it waiting; instead,
+   give the command to the user for their private terminal, or use an authorized
+   secret-manager-to-stdin pipeline. Non-TTY input is read automatically; there
+   is no `--stdin` flag. This is an environment constraint, not a command ban.
+5. Run interactive `pixiv auth login` only when the user explicitly asks and
    is present to complete browser OAuth.
-4. NEVER run `pixiv auth add` or place a secret in `--token` /
-   `--refresh-token`. The binary exposes `auth add --token string`, not an
-   interactive token prompt, so credential import is user-only: show
-   `pixiv auth add --token '<refresh-token>'` with a placeholder and ask the
-   user to run it in a private terminal. Warn that command arguments may be
-   retained by shell history or visible to local process-inspection tools.
-5. NEVER accept or forward cookies (`PHPSESSID`, `refresh_token=...` cookie
+6. Do not accept or forward cookies (`PHPSESSID`, `refresh_token=...` cookie
    strings) as credentials — the CLI rejects them by design; only raw Pixiv App
    API refresh tokens work.
 
@@ -47,7 +59,7 @@ the installed binary's `pixiv <cmd> --help` output.
 
 | Tier | Commands | Behavior |
 | --- | --- | --- |
-| Secret (user-only) | `auth token` `auth add`; any literal `--token` / `--refresh-token` | Never execute; give a placeholder-only command for the user's private terminal |
+| Credential transfer | `auth import` `auth export` | Execute only for the user's explicit import/export task; follow `references/auth.md` so secret input/output is not exposed accidentally |
 | Read | `search` `search-options` `detail` `ranking` `recommended` `user *` `config get/path` `version` `update --check` | Execute when the user's task requires it |
 | Account diagnosis | `auth list/check` | List only for authentication/account/fallback decisions; check only when network validation is needed |
 | Write | `bookmark add/remove` `follow add/remove` | State the target (illust/user ID) in one line before executing |
@@ -86,6 +98,10 @@ Verify flags with `--help` before use; this list is orientation, not a contract.
 ```
 pixiv auth list --json                    # only when an account decision needs it
 pixiv auth check [UID] --json             # validate token, shows user_id/username
+pixiv auth import                         # hidden TTY prompt, or automatic non-TTY stdin
+pixiv auth import --file PATH             # restore a versioned bundle offline
+pixiv auth export UID --output PATH       # write one private versioned bundle
+pixiv auth export --all --output PATH     # write all accounts to a private bundle
 pixiv auth use [UID]                      # switch default account (confirm first)
 pixiv config path                         # print config.toml location
 pixiv config get download_path            # read one effective setting
@@ -159,6 +175,7 @@ assuming its effective value.
 | Task | Read |
 | --- | --- |
 | Explicitly install or repair the missing `pixiv` binary | `references/install.md` |
+| Import, export, back up, or restore authentication | `references/auth.md` |
 | Find works/artists (search → filter → detail chains) | `references/discover.md` |
 | Download workflows (single, batch, ugoira) | `references/download.md` |
 | Errors: auth failures, network/proxy, empty results | `references/troubleshooting.md` |

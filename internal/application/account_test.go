@@ -2,6 +2,7 @@ package application
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"testing"
 
@@ -21,18 +22,27 @@ func TestApplicationServicesReportMissingDependencies(t *testing.T) {
 }
 
 func TestAccountServiceUsesPublicSDKAccountStore(t *testing.T) {
+	callOrder := make([]string, 0, 2)
 	client := &fakeAccountSDKClient{accounts: sdk.AccountsResult{DefaultUserID: 123, Accounts: []sdk.Account{{UserID: 123, Username: "alice", Default: true, HasToken: true}}}}
+	client.listAccounts = func() (*sdk.AccountsResult, error) {
+		callOrder = append(callOrder, "list")
+		return &client.accounts, nil
+	}
 	client.importAccount = func(_ context.Context, token string) (*sdk.Account, error) {
-		if token != "main/token" {
+		callOrder = append(callOrder, "import")
+		if token != "  main/token  " {
 			t.Fatalf("ImportAccount token=%q", token)
 		}
 		return &sdk.Account{UserID: 456, Username: "bob", HasToken: true}, nil
 	}
 	service := newAccountServiceForTest(client)
 
-	result, err := service.Add(context.Background(), AccountAddRequest{TokenInput: "main/token"})
+	result, err := service.Import(context.Background(), AccountImportRequest{TokenInput: "  main/token  "})
 	require.NoError(t, err)
-	assert.Equal(t, AccountResult{UserID: 456, Username: "bob", HasToken: true}, result)
+	assert.Equal(t, []string{"list", "import"}, callOrder)
+	body, err := json.Marshal(result)
+	require.NoError(t, err)
+	assert.JSONEq(t, `{"user_id":456,"username":"bob","status":"added"}`, string(body))
 	list, err := service.List()
 	require.NoError(t, err)
 	assert.Equal(t, int64(123), list.DefaultUserID)
@@ -40,11 +50,29 @@ func TestAccountServiceUsesPublicSDKAccountStore(t *testing.T) {
 	assert.Equal(t, int64(123), list.Accounts[0].UserID)
 }
 
-func TestAccountServiceTokenUsesPublicSDKLocalExport(t *testing.T) {
+func TestAccountServiceImportReportsUpdatedByAuthoritativeReturnedUID(t *testing.T) {
+	client := &fakeAccountSDKClient{accounts: sdk.AccountsResult{Accounts: []sdk.Account{{UserID: 456, Username: "before", HasToken: true}}}}
+	client.importAccount = func(context.Context, string) (*sdk.Account, error) {
+		return &sdk.Account{UserID: 456, Username: "after", Default: true, HasToken: true}, nil
+	}
+
+	result, err := newAccountServiceForTest(client).Import(context.Background(), AccountImportRequest{TokenInput: "opaque-token"})
+	require.NoError(t, err)
+	body, err := json.Marshal(result)
+	require.NoError(t, err)
+	assert.JSONEq(t, `{"user_id":456,"username":"after","status":"updated"}`, string(body))
+}
+
+func TestAccountServiceExportUsesPublicSDKLocalBundle(t *testing.T) {
 	client := &fakeAccountSDKClient{}
-	client.exportAccountRefreshToken = func(userID int64) (string, error) {
-		assert.Equal(t, int64(456), userID)
-		return "opaque-exported-token", nil
+	client.exportAuthBundle = func(selection sdk.AuthExportSelection) (*sdk.AuthExportBundle, error) {
+		assert.Equal(t, sdk.AuthExportSelection{UserID: 456}, selection)
+		return &sdk.AuthExportBundle{
+			Schema:        sdk.AuthExportBundleSchema,
+			Version:       sdk.AuthExportBundleVersion,
+			DefaultUserID: 456,
+			Accounts:      []sdk.AuthExportSecretAccount{{UserID: 456, RefreshToken: "opaque-exported-token"}},
+		}, nil
 	}
 	var gotRequest SDKClientRequest
 	service := AccountService{SDK: SDKService{NewClient: func(request SDKClientRequest) (SDKClient, error) {
@@ -52,10 +80,40 @@ func TestAccountServiceTokenUsesPublicSDKLocalExport(t *testing.T) {
 		return client, nil
 	}}}
 
-	token, err := service.Token(456)
+	result, err := service.Export(AccountExportRequest{UserID: 456})
 	require.NoError(t, err)
-	assert.Equal(t, "opaque-exported-token", token)
+	assert.Equal(t, "opaque-exported-token", result.RefreshToken)
+	assert.Equal(t, 1, result.AccountCount)
+	assert.JSONEq(t, `{"schema":"pixiv-cli.auth-export","version":1,"default_user_id":456,"accounts":[{"user_id":456,"username":"","refresh_token":"opaque-exported-token"}]}`, string(result.Bundle))
 	assert.Equal(t, SDKClientRequest{}, gotRequest)
+}
+
+func TestAccountServiceImportBundleUsesPublicSDKOfflineRestore(t *testing.T) {
+	client := &fakeAccountSDKClient{}
+	client.restoreAuthBundle = func(bundle *sdk.AuthExportBundle) (*sdk.AuthRestoreResult, error) {
+		require.Len(t, bundle.Accounts, 2)
+		assert.Equal(t, "new-secret", bundle.Accounts[0].RefreshToken)
+		assert.Equal(t, "updated-secret", bundle.Accounts[1].RefreshToken)
+		return &sdk.AuthRestoreResult{
+			DefaultUserID: 321,
+			Added:         []sdk.Account{{UserID: 654, Username: "new", HasToken: true}},
+			Updated:       []sdk.Account{{UserID: 321, Username: "updated", Default: true, HasToken: true}},
+		}, nil
+	}
+	var gotRequest SDKClientRequest
+	service := AccountService{SDK: SDKService{NewClient: func(request SDKClientRequest) (SDKClient, error) {
+		gotRequest = request
+		return client, nil
+	}}}
+	const body = `{"schema":"pixiv-cli.auth-export","version":1,"default_user_id":321,"accounts":[{"user_id":654,"username":"new","refresh_token":"new-secret"},{"user_id":321,"username":"updated","refresh_token":"updated-secret"}]}`
+
+	result, err := service.ImportBundle([]byte(body))
+	require.NoError(t, err)
+	assert.Equal(t, SDKClientRequest{}, gotRequest)
+	assert.Equal(t, int64(321), result.DefaultUserID)
+	resultBody, err := json.Marshal(result)
+	require.NoError(t, err)
+	assert.JSONEq(t, `{"accounts":[{"user_id":654,"username":"new","status":"added"},{"user_id":321,"username":"updated","status":"updated"}],"default_user_id":321}`, string(resultBody))
 }
 
 func TestAccountServiceCheckUsesPublicSDKRequest(t *testing.T) {
@@ -105,13 +163,13 @@ func TestAccountServiceCheckExplicitUIDDoesNotUseEnvironmentToken(t *testing.T) 
 	assert.Equal(t, AccountResult{UserID: 123, Username: "stored", Default: true, HasToken: true}, result)
 }
 
-func TestAccountServiceAddRejectsCookieBeforeOpeningSDK(t *testing.T) {
+func TestAccountServiceImportRejectsCookieBeforeOpeningSDK(t *testing.T) {
 	service := AccountService{SDK: SDKService{NewClient: func(SDKClientRequest) (SDKClient, error) {
 		t.Fatal("SDK client was opened for a cookie input")
 		return nil, nil
 	}}}
 
-	_, err := service.Add(context.Background(), AccountAddRequest{TokenInput: "refresh_token=secret"})
+	_, err := service.Import(context.Background(), AccountImportRequest{TokenInput: "refresh_token=secret"})
 	require.ErrorContains(t, err, "cookie input is not supported")
 }
 
@@ -253,21 +311,29 @@ func TestAccountServiceUsePropagatesDependencyErrors(t *testing.T) {
 // 测试从 application 到公开 SDK 边界观察行为，不再模拟 legacy Source。
 type fakeAccountSDKClient struct {
 	SDKClient
-	accounts                  sdk.AccountsResult
-	importAccount             func(context.Context, string) (*sdk.Account, error)
-	listAccounts              func() (*sdk.AccountsResult, error)
-	selectAccount             func(int64) error
-	removeAccount             func(int64) error
-	checkAccount              func(context.Context, int64) (*sdk.Account, error)
-	checkRefreshToken         func(context.Context, string) (*sdk.Account, error)
-	exportAccountRefreshToken func(int64) (string, error)
+	accounts          sdk.AccountsResult
+	importAccount     func(context.Context, string) (*sdk.Account, error)
+	listAccounts      func() (*sdk.AccountsResult, error)
+	selectAccount     func(int64) error
+	removeAccount     func(int64) error
+	checkAccount      func(context.Context, int64) (*sdk.Account, error)
+	checkRefreshToken func(context.Context, string) (*sdk.Account, error)
+	exportAuthBundle  func(sdk.AuthExportSelection) (*sdk.AuthExportBundle, error)
+	restoreAuthBundle func(*sdk.AuthExportBundle) (*sdk.AuthRestoreResult, error)
 }
 
-func (f *fakeAccountSDKClient) ExportAccountRefreshToken(userID int64) (string, error) {
-	if f.exportAccountRefreshToken != nil {
-		return f.exportAccountRefreshToken(userID)
+func (f *fakeAccountSDKClient) ExportAuthBundle(selection sdk.AuthExportSelection) (*sdk.AuthExportBundle, error) {
+	if f.exportAuthBundle != nil {
+		return f.exportAuthBundle(selection)
 	}
-	return "", errors.New("unexpected account token export")
+	return nil, errors.New("unexpected auth bundle export")
+}
+
+func (f *fakeAccountSDKClient) RestoreAuthBundle(bundle *sdk.AuthExportBundle) (*sdk.AuthRestoreResult, error) {
+	if f.restoreAuthBundle != nil {
+		return f.restoreAuthBundle(bundle)
+	}
+	return nil, errors.New("unexpected auth bundle restore")
 }
 
 func (f *fakeAccountSDKClient) ImportAccount(ctx context.Context, token string) (*sdk.Account, error) {

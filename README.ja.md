@@ -143,7 +143,7 @@ pixiv auth use 12345678
 pixiv auth check
 ```
 
-`pixiv auth token [UID]` は相互運用のための明示的な secret export command です。選択したローカルアカウントだけを読み、refresh や network request を行わず、stdout には raw refresh token と改行だけを出力します。必ずプライベートな端末で実行し、出力を chat、log、shell history、issue、Agent transcript に貼り付けないでください。他の command、JSON、MCP result、log、error は refresh token を公開してはなりません。
+v0.4.0 では `auth add`/`auth token` を `auth import`/`auth export` に置き換え、削除した名前と `--token` に alias はありません。import は引数なしの非表示入力または raw stdin を推奨します。位置引数の token は argv/shell history に残ります。stdout へ secret を出力できるのは、`--output` を付けない `pixiv auth export [UID]` と `pixiv auth export --all` だけです。ファイルには `--output` で private bundle を作成します。bundle は暗号化されていない point-in-time backup であり live sync ではなく、token rotation 後は stale になる場合があります。secret 出力を chat、log、shell history、issue、Agent transcript に貼り付けないでください。他の stdout/stderr、JSON、MCP result、log、error は refresh token を公開してはなりません。完全な契約は [CLI リファレンス](docs/ja/cli-reference.md#refresh-token-の取得)を参照してください。
 
 ## ドキュメント
 

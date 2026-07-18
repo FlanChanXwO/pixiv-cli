@@ -27,7 +27,7 @@ PIXIV_E2E_WEB_API=1 PIXIV_WEB_API_PROXY=http://127.0.0.1:7890 go test ./test/e2e
 ## 注意事项
 
 - 不提交 token、下载内容、本地数据库、缓存或机器相关配置。
-- refresh token 只允许用户显式执行 `pixiv auth token [UID]` 时原样写 stdout；该命令之外不得写入 stdout、stderr、JSON、MCP、日志或错误。认证错误、网络错误、Pixiv/API 错误要暴露真实原因。
+- refresh token 只允许用户显式执行不带 `--output` 的 `pixiv auth export [UID]` 或 `pixiv auth export --all` 时写 stdout；前者输出 raw token，后者输出含 secret 的 bundle。除此之外不得写入 stdout、stderr、JSON、MCP、日志或错误；完整契约见三语 CLI reference。
 - web fallback 只有一条规则：refresh token 为空且 `web_fallback_enabled=true` 时走匿名 web/ajax API；有 refresh token 一律优先 App API，App API 出错不自动 fallback。
 - token 优先级：CLI 为 `--refresh-token` > `--uid` > `PIXIV_REFRESH_TOKEN` > 默认 UID；MCP 为 `PIXIV_REFRESH_TOKEN` > 默认 UID。
 - MCP 模式 stdout 保留给 JSON-RPC；日志和诊断写 stderr。

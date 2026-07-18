@@ -157,23 +157,47 @@ pixiv auth login --proxy http://127.0.0.1:7890
 
 真实登录依赖 Pixiv OAuth 网页流程可用；自动化测试使用 fake OAuth server，不访问真实 Pixiv。
 
-### 导出已存 token
+### 导入认证
 
-`pixiv auth token [UID]` 是唯一会主动打印 refresh token 的命令，用于与另一个可信本地程序显式互操作：
+v0.4.0 删除 `auth add`、`auth token` 与 `--token`，且不保留 alias。direct import 改为：
 
 ```bash
-pixiv auth token           # 默认本地账号
-pixiv auth token 12345678  # 精确选择本地账号
+pixiv auth import                         # TTY 隐藏输入
+printf '%s\n' 'YOUR_REFRESH_TOKEN' | pixiv auth import
+pixiv auth import 'YOUR_REFRESH_TOKEN'    # 会出现在 argv/shell history
 ```
 
-该命令只读取 `auth.json`：不刷新 token、不访问 Pixiv、不读取 `PIXIV_REFRESH_TOKEN`、不接受代理或 JSON
-flag、不写入本地状态，也不运行自动更新检查。成功时 stdout 精确包含已存原始 refresh token 和一个换行，
-stderr 为空。只能在私密终端中运行；必须交给另一个可信程序时应直接重定向。不要把输出粘贴到聊天、日志、
-shell history、issue、测试或 Agent transcript。其他 CLI 命令、JSON 响应、日志和错误仍禁止暴露
-refresh token。
+`pixiv auth import [REFRESH_TOKEN]` 通过 App OAuth 校验 raw token，以 Pixiv 返回的 UID 为准，并保存 rotation 后的 refresh token。无参数时，TTY 使用隐藏输入；非 TTY 从 stdin 读取一行 opaque 内容，只移除一个末尾 LF 或 CRLF。位置参数虽方便，却可能被进程列表、shell history、wrapper 或审计工具记录。`--json` 只改变不含 secret 的账号摘要；`--proxy` 与 `--no-proxy` 只影响本次 direct validation，且不能同用。
 
-没有默认账号、指定 UID 不存在、UID 非法或 auth store 无法读取时，命令以非零状态退出，stderr 输出安全
-诊断，stdout 不输出 token；诊断不会包含 token 内容或 auth 文件路径。
+direct import 成功时报告 `added uid:UID` 或 `updated uid:UID`，text 在 username 可用时另输出 `username:NAME`。JSON 精确为一个无 secret account item，例如 `{"user_id":12345678,"username":"display name","status":"added"}`。`status` 仅为 `added` 或 `updated`；两种形式均不暴露 default、token 是否存在、输入 token 或 rotation 后的 token。
+
+离线恢复 export bundle：
+
+```bash
+pixiv auth import --file account.pxauth
+pixiv auth export --all | ssh trusted-host pixiv auth import --file -
+```
+
+`--file PATH` 从文件读取，`--file -` 从 stdin 读取完整 bundle。该模式完全离线，不校验或 rotation token，并拒绝位置 token、`--proxy`、`--no-proxy`。restore 按 UID 原子 merge 全部账号：已有账号更新，新账号添加；本地已有 default 保持不变，仅本地无 default 时采用 bundle default。人类输出按输入 bundle 顺序逐项列出安全的 added/updated UID 和最终 default。`--json` 返回 `{"accounts":[{"user_id":12345678,"username":"display name","status":"added"}],"default_user_id":12345678}`；account item 只暴露 `user_id`、`username` 与 `status`。
+
+### 导出与备份认证
+
+```bash
+pixiv auth export                         # 默认账号 raw token
+pixiv auth export 12345678                # 指定账号 raw token
+pixiv auth export --all                   # stdout 上的全账号 versioned bundle
+pixiv auth export 12345678 --output account.pxauth
+pixiv auth export --all --output accounts.pxauth
+pixiv auth export --all --output accounts.pxauth --force
+```
+
+不带 `--output` 时，只有两种形式可向 stdout 写 secret：默认/UID export 精确输出已存 raw token 与一个换行；`--all` 只输出 versioned JSON bundle。成功时 stderr 为空。export 严格 local-only：只读 `auth.json`，不读取 `PIXIV_REFRESH_TOKEN`，不刷新、不访问 Pixiv、不修改 auth/config，并跳过 startup pending-update cleanup、automatic update 与 operation log。`--all` 不能和 UID 同用，`--force` 必须配合 `--output`，export 不接受 JSON/代理 flag。
+
+带 `--output PATH` 时，单账号和 `--all` 都写 bundle，不写 raw token。默认拒绝覆盖既有文件，只有显式 `--force` 才 replacement；成功 stdout 只有 output path 与 account count。Unix-like 目标文件为 `0600`，既有 parent 权限与 ownership 不变。Windows 明确设置文件 owner 与 protected DACL，只允许当前用户、LocalSystem、builtin Administrators 完全控制。CI tests 覆盖该 Windows policy；本文不声称本次 release 验收已在真实 Windows filesystem 运行。
+
+bundle 是未加密、含 secret 的 point-in-time backup，不是 live sync。必须像原始 token 一样保存和传输；token rotation 会令旧 bundle 或其他机器副本 stale。strict versioned codec 拒绝不支持的 schema/version、未知或重复字段、尾随 JSON、重复/非正 UID、空 token，以及未指向 bundle 内账号的 default UID。顶层与 account object 的 key 必须严格使用 canonical 拼写和大小写；`Schema`、`Default_User_ID`、`User_ID`、`Refresh_Token` 等 alias 即使与 canonical key 并存也会被拒绝。
+
+export 选择或 I/O 失败时，stdout 不会收到 secret 诊断。restore 原子写失败时，`LocalWriteCommitOutcome=not_committed` 表示 replacement 未发生；`committed` 表示 replacement 已发生但后续 durability/cleanup 失败，必须重新加载 store；`unknown` 表示 recovery 无法确认目标状态，需人工检查。不得把 `committed` 或 `unknown` 视为已成功 rollback。其他 stdout/stderr、JSON、MCP result、日志和错误仍禁止暴露 refresh token。不会新增 persistent auth import/export MCP tool；既有 session-scoped MCP 认证行为不变。
 
 ## CLI 使用
 
@@ -183,16 +207,10 @@ refresh token。
 pixiv auth login
 ```
 
-高级/脚本场景也可以导入已有 token：
+高级/脚本场景也可在不把 token 放进 argv 的情况下导入：
 
 ```bash
-printf '%s\n' 'YOUR_REFRESH_TOKEN' | pixiv auth add
-```
-
-也可以直接传 token，但 `--token` 参数可能进入 shell history：
-
-```bash
-pixiv auth add --token 'YOUR_REFRESH_TOKEN'
+printf '%s\n' 'YOUR_REFRESH_TOKEN' | pixiv auth import
 ```
 
 常用命令：
@@ -220,17 +238,17 @@ pixiv recommended all
 pixiv download 123456 789012
 ```
 
-账号认证保存到 `os.UserConfigDir()/pixiv/auth.json`，账号 key 是 Pixiv UID；全局配置保存到 `os.UserConfigDir()/pixiv/config.toml`。Unix-like 主动使用 `0700` 父目录与 `0600` 文件；Windows 首次创建继承父目录 ACL，替换既有目标保留其 ACL，不主动收紧或放宽 DACL。输出默认给人读；只有 help 中提供 `--json` 的命令可输出机器可解析 JSON，`auth token` 明确不提供该 flag。
+账号认证保存到 `os.UserConfigDir()/pixiv/auth.json`，账号 key 是 Pixiv UID；全局配置保存到 `os.UserConfigDir()/pixiv/config.toml`。Unix-like 主动使用 `0700` 父目录与 `0600` 文件；Windows 首次创建继承父目录 ACL，替换既有目标保留其 ACL，不主动收紧或放宽 DACL。输出默认给人读；只有 help 中提供 `--json` 的命令可输出机器可解析 JSON，`auth export` 明确不提供该 flag。
 CLI 使用 Cobra/pflag，选项可以写在位置参数前后，例如 `pixiv auth check 12345678 --json` 和 `pixiv search "初音ミク" --json` 都是正式支持的写法。
 
 ### CLI 命令表
 
 | 命令 | 用法 | 说明 |
 | --- | --- | --- |
-| `auth add` | `pixiv auth add [--token TOKEN] [--json] [--proxy URL\|--no-proxy]` | 校验原始 Pixiv App API refresh token，并按 Pixiv UID 添加或替换账号；Cookie 输入会被拒绝。不传 `--token` 时从 TTY/stdin 读取。 |
+| `auth import` | `pixiv auth import [REFRESH_TOKEN] [--file PATH] [--json] [--proxy URL\|--no-proxy]` | direct input 校验并保存 rotation 后的 token；无参 TTY 隐藏输入，非 TTY 读取 raw stdin。`--file PATH|-` 改为离线原子恢复 bundle，并与 token/代理输入冲突。 |
 | `auth login` | `pixiv auth login [--json] [--no-open] [--addr 127.0.0.1:0] [--use] [--timeout DURATION] [--proxy URL\|--no-proxy]` | 通过本地 loopback server 和浏览器 OAuth 登录，按 Pixiv UID 保存账号；不会输出 refresh token。 |
 | `auth list` | `pixiv auth list [--json]` | 列出本地账号；不会输出 refresh token。 |
-| `auth token` | `pixiv auth token [UID]` | 向 stdout 输出选中本地账号的原始 refresh token 和换行；默认使用当前账号，不联网、不刷新，也不接受 JSON/代理 flag。 |
+| `auth export` | `pixiv auth export [UID] [--all] [--output PATH] [--force]` | 本地导出默认/指定账号或全部账号；无 `--output` 时单账号输出 raw token、`--all` 输出 bundle；带 `--output` 时都写私有 bundle，stdout 仅安全摘要。 |
 | `auth use` | `pixiv auth use [UID] [--json]` | 设置默认账号；TTY 下可交互选择。 |
 | `auth remove` | `pixiv auth remove [UID] [--yes] [--json]` | 删除账号；TTY 下默认确认，删除默认账号后会自动选第一个剩余账号。 |
 | `auth check` | `pixiv auth check [UID] [--json] [--proxy URL\|--no-proxy]` | 刷新 token 并验证账号；成功后会记录 `user_id` 和可获取到的 username。 |
@@ -310,11 +328,11 @@ CLI 使用 Cobra/pflag，选项可以写在位置参数前后，例如 `pixiv au
 | `--uid UID` | `search/search-options/detail/ranking/recommended/user/download` | `auth.json.default_user_id` | 选择本地账号。 |
 | `--profile UID` | `search/search-options/detail/ranking/recommended/user/download` | 空 | `--uid` 的 deprecated alias。 |
 | `--refresh-token TOKEN` | `search/search-options/detail/ranking/recommended/user/download` | 空 | 临时覆盖账号/env token；只接受原始 App API refresh token。 |
-| `--json` | `auth add/login/list/use/remove/check`、`version`、`update --check` 和数据命令 | `false` | 输出机器可解析 JSON；`auth token` 和实际更新安装不接受。 |
+| `--json` | `auth import/login/list/use/remove/check`、`version`、`update --check` 和数据命令 | `false` | 输出机器可解析 JSON；`auth export` 和实际更新安装不接受。 |
 | `--download-path PATH` | 数据命令；实际只影响 `download` | `DOWNLOAD_PATH`、`config.toml` 或 `./downloads` | 下载目录。 |
 | `--filename-template TEMPLATE` | 数据命令；实际只影响 `download` | `FILENAME_TEMPLATE`、`config.toml` 或 `{author} - {title}_{id}` | 文件名模板。 |
-| `--proxy URL` | `auth add/login/check`、数据命令、`mcp` | `https_proxy`/`HTTPS_PROXY`、`config.toml` 或空 | 临时使用 HTTP(S) 代理；只影响当前命令。 |
-| `--no-proxy` | `auth add/login/check`、数据命令、`mcp` | 空 | 临时清空 HTTP(S) 代理；优先级同 `--proxy`，且不能与 `--proxy` 同用。 |
+| `--proxy URL` | direct-token `auth import`、`auth login/check`、数据命令、`mcp` | `https_proxy`/`HTTPS_PROXY`、`config.toml` 或空 | 临时使用 HTTP(S) 代理；`auth import --file` 禁用。 |
+| `--no-proxy` | direct-token `auth import`、`auth login/check`、数据命令、`mcp` | 空 | 临时清空 HTTP(S) 代理；不能与 `--proxy` 或 bundle restore 同用。 |
 
 ### `config` 支持的键
 
@@ -405,7 +423,7 @@ SemVer tag，检查会报告该 tag 并 fail-closed，不会跳过它而选择�
 `release` Environment 与受控 macOS Keychain 恢复副本。v0.3.0 是当前已发布的受签名 Release；
 `pixiv update --check` 仍只是只读检查，不能替代对选中版本资产、checksum 与签名的安装验证。
 
-普通 CLI 命令成功后会尽力检查 stable 更新。它跳过 MCP、help、`version`、`update`、`auth token` 与开发构建，
+普通 CLI 命令成功后会尽力检查 stable 更新。它跳过 MCP、help、`version`、`update`、全部 `auth export`、`auth import --file` 与开发构建，
 对同一用户 cache 最多每 24 小时查询一次，并为自动检查设定最多 3 秒的等待时间。发现新版本或
 检查失败只写 stderr（失败为 warning），不改变业务命令退出码，也不会污染 JSON stdout 或 MCP
 JSON-RPC stdout。可关闭自动检查：

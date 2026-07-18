@@ -12,7 +12,9 @@
 
 ## 行为风险
 
-- refresh token 只允许显式 `pixiv auth token [UID]` 原样写 stdout；该命令必须离线、无额外输出，且 token 不得进入 stderr、JSON、MCP result、日志或错误。测试 fixture 禁止真实或可用凭据，但允许明显无效、不可认证的 synthetic canary 用于证明不会泄漏；其他命令不得打印 token。
+- refresh token 只允许显式、不带 `--output` 的 `pixiv auth export [UID]` 以 raw token 加换行输出，或 `pixiv auth export --all` 以 versioned secret bundle 输出；两者必须 local-only、无额外输出，且不得读取环境 token、联网、刷新、修改状态、运行 startup cleanup/automatic update 或写 operation log。带 `--output` 的 export stdout 只能是无 secret 摘要。token 不得进入 stderr、JSON、MCP result、日志或错误；测试 fixture 禁止真实或可用凭据，但允许明显无效、不可认证的 synthetic canary 用于证明不会泄漏；其他命令不得打印 token。
+- `auth import [REFRESH_TOKEN]` 的位置参数有 argv/shell history 泄露风险；无参 TTY 必须隐藏输入，非 TTY 才读取 raw stdin。`auth import --file PATH|-` 是离线、原子 bundle restore，必须拒绝 token 与 proxy flag 组合；不得新增 `auth add`、`auth token`、`--token` alias，也不得新增持久认证 MCP tool。
+- auth bundle 是未加密、含 secret 的 point-in-time backup，不是 live sync；rotation 后旧 bundle 与其他机器副本可能 stale。restore 写失败必须准确保留 `LocalWriteCommitOutcome`：提交前为 `not_committed`，replacement 后 durability/cleanup 失败为 `committed`，无法确认恢复结果为 `unknown`，不得伪造 rollback。
 - 认证、网络、Pixiv API、文件系统、`ffmpeg` 错误要暴露真实原因，不要返回空成功。
 - 不新增无依据的 timeout、截断、分页上限、重试上限、静默 fallback 或隐藏降级。
 - Pixiv web fallback 只在无 refresh token 且 `web_fallback_enabled=true` 时使用；App API 错误不要自动 fallback。

@@ -20,7 +20,8 @@ usually the answer. Never mask an error with retries or silent fallbacks.
 | R18/R18G/mature search requires authentication | Anonymous Web session | Authenticate before retrying; never add a Cookie workaround |
 | `search-options` is unsupported | No App credential | Authenticate, then retry with the same word |
 | Wrong account acting | Multiple local accounts | `pixiv auth list --json`, then `--uid UID` per command, or `pixiv auth use UID` (confirm first) |
-| Cookie string rejected | By design | Only raw App API refresh tokens are accepted; if the user already has one, show the placeholder-only `pixiv auth add --token '<refresh-token>'` and have them run it in a private terminal |
+| `auth import` waits for hidden input the user cannot enter | Agent PTY has no direct user-input channel | Cancel the waiting command; give it to the user for their private terminal, or use an authorized secret-manager-to-stdin pipeline as described in `auth.md` |
+| Cookie string rejected | By design | Only raw App API refresh tokens are accepted; for an explicit import request follow `auth.md` without asking the user to disclose an undisclosed token |
 
 `pixiv auth list --json` only shows configured accounts. `pixiv auth check
 --json` performs the network validation and prints user_id / username (never
@@ -28,10 +29,8 @@ the token) — use it when credential validity actually needs diagnosis. Do not
 list accounts as a routine session probe. Treat both `{"accounts": null}` and
 `{"accounts": []}` as zero accounts. Check the process exit code before
 parsing `--json`, because CLI failures can use plain stderr with empty stdout.
-
-Never run `pixiv auth token`: it prints the stored refresh token. If the user
-needs it, instruct them to run `pixiv auth token [UID]` only in their own
-private terminal and never ask them to paste its output into the chat.
+For credential import/export, backup, or restore, follow `auth.md`; successful
+safe metadata output does not make raw token or bundle stdout safe to display.
 
 ## Network / proxy
 

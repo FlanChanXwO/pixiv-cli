@@ -24,6 +24,7 @@ func TestWritePrivateFileReturnsParentSyncFailureAfterReplacement(t *testing.T) 
 
 	err := writePrivateFile(path, []byte("new"), constants.PrivateFileMode, ops)
 	require.ErrorContains(t, err, "parent sync failed")
+	assert.Equal(t, WriteCommitOutcomeCommitted, PrivateFileWriteCommitOutcome(err))
 
 	body, readErr := os.ReadFile(path)
 	require.NoError(t, readErr)
