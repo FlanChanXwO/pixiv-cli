@@ -7,6 +7,17 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+
+	"github.com/FlanChanXwO/pixiv-cli/internal/utils/files"
+)
+
+// SaveCommitOutcome 标识 auth store 的目标文件 replacement 是否已提交。
+type SaveCommitOutcome string
+
+const (
+	SaveCommitOutcomeUnknown      SaveCommitOutcome = "unknown"
+	SaveCommitOutcomeNotCommitted SaveCommitOutcome = "not_committed"
+	SaveCommitOutcomeCommitted    SaveCommitOutcome = "committed"
 )
 
 type AuthStore struct {
@@ -165,18 +176,37 @@ func rejectLegacyAuthSchema(body []byte) error {
 }
 
 func SaveAuthStore(path string, store AuthStore) error {
+	_, err := SaveAuthStoreWithOutcome(path, store)
+	return err
+}
+
+// SaveAuthStoreWithOutcome 保存 auth store，并在失败时返回稳定的 commit outcome。
+// not_committed 表示新内容未替换目标；committed 表示 replacement 已完成，但后续
+// cleanup 或 durability 步骤失败，调用方必须重新加载目标确认当前状态。
+func SaveAuthStoreWithOutcome(path string, store AuthStore) (SaveCommitOutcome, error) {
 	if store.Accounts == nil {
 		store.Accounts = []Account{}
 	}
 	if err := validateAuthStore(store, true); err != nil {
-		return err
+		return SaveCommitOutcomeNotCommitted, err
 	}
 	body, err := json.MarshalIndent(store, "", "  ")
 	if err != nil {
-		return err
+		return SaveCommitOutcomeNotCommitted, err
 	}
 	body = append(body, '\n')
-	return writeAuthStore(path, body)
+	if err := writeAuthStore(path, body); err != nil {
+		switch files.PrivateFileWriteCommitOutcome(err) {
+		case files.WriteCommitOutcomeCommitted:
+			return SaveCommitOutcomeCommitted, err
+		case files.WriteCommitOutcomeNotCommitted:
+			return SaveCommitOutcomeNotCommitted, err
+		default:
+			// 测试 hook 或 writer 外部错误发生在真实 replacement 之前。
+			return SaveCommitOutcomeNotCommitted, err
+		}
+	}
+	return SaveCommitOutcomeCommitted, nil
 }
 
 func validateAuthStore(store AuthStore, requireDefault bool) error {

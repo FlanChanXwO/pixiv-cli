@@ -188,8 +188,9 @@ path, or machine metadata. `username` is display metadata; token validation
 supplies the authoritative current identity during import.
 
 Bundle parsing validates schema, version, positive and unique declared UIDs,
-non-empty tokens, a valid default reference, and unknown structural conflicts
-before a local write. Unknown future versions fail explicitly.
+non-empty tokens, a valid default reference, unknown structural conflicts, and
+duplicate object keys at every nesting level before a local write. Unknown
+future versions fail explicitly.
 
 Bundle import is an offline restore, not a series of OAuth imports. After fully
 validating the bundle, the SDK merges all declared accounts into a copy of the
@@ -200,8 +201,11 @@ bundle order, and accounts not present in the bundle remain unchanged.
 
 If the destination already has a default, it is preserved. Otherwise the valid
 source default is restored. A bundle with no accounts is rejected. Bundle parse,
-validation, or save failure leaves the destination store unchanged and returns
-a non-zero exit status with stdout empty.
+validation, destination-load, and pre-commit save failures leave the destination
+store unchanged and return a non-zero exit status with stdout empty. If file
+replacement commits but cleanup or durability synchronization then fails, the
+operation returns a typed `committed` local-write outcome instead of claiming a
+rollback; callers must reload and inspect the destination store.
 
 On success, text mode prints one redacted status line per restored account and
 the resulting default UID. `--json` prints one object with `accounts` and

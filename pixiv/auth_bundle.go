@@ -132,6 +132,9 @@ func EncodeAuthExportBundle(bundle *AuthExportBundle) ([]byte, error) {
 
 // DecodeAuthExportBundle 解码认证导出 JSON。
 func DecodeAuthExportBundle(body []byte) (*AuthExportBundle, error) {
+	if err := rejectDuplicateAuthBundleKeys(body); err != nil {
+		return nil, newError(CodeInvalidArgument, OperationDecodeAuthBundle, "", false, 0, 0, errors.New("auth export bundle is malformed"))
+	}
 	var bundle AuthExportBundle
 	decoder := json.NewDecoder(bytes.NewReader(body))
 	decoder.DisallowUnknownFields()
@@ -145,6 +148,61 @@ func DecodeAuthExportBundle(body []byte) (*AuthExportBundle, error) {
 		return nil, newError(CodeInvalidArgument, OperationDecodeAuthBundle, "", false, 0, 0, err)
 	}
 	return &bundle, nil
+}
+
+func rejectDuplicateAuthBundleKeys(body []byte) error {
+	decoder := json.NewDecoder(bytes.NewReader(body))
+	if err := scanAuthBundleJSONValue(decoder); err != nil {
+		return err
+	}
+	if _, err := decoder.Token(); !errors.Is(err, io.EOF) {
+		return errors.New("auth export bundle contains trailing JSON")
+	}
+	return nil
+}
+
+func scanAuthBundleJSONValue(decoder *json.Decoder) error {
+	token, err := decoder.Token()
+	if err != nil {
+		return err
+	}
+	delim, composite := token.(json.Delim)
+	if !composite {
+		return nil
+	}
+	switch delim {
+	case '{':
+		keys := map[string]struct{}{}
+		for decoder.More() {
+			keyToken, err := decoder.Token()
+			if err != nil {
+				return err
+			}
+			key, ok := keyToken.(string)
+			if !ok {
+				return errors.New("auth export bundle object key is invalid")
+			}
+			if _, exists := keys[key]; exists {
+				return errors.New("auth export bundle contains a duplicate object key")
+			}
+			keys[key] = struct{}{}
+			if err := scanAuthBundleJSONValue(decoder); err != nil {
+				return err
+			}
+		}
+		_, err = decoder.Token()
+		return err
+	case '[':
+		for decoder.More() {
+			if err := scanAuthBundleJSONValue(decoder); err != nil {
+				return err
+			}
+		}
+		_, err = decoder.Token()
+		return err
+	default:
+		return errors.New("auth export bundle JSON delimiter is invalid")
+	}
 }
 
 // RestoreAuthBundle 将已解码的认证导出离线合并到配置的本地 auth store。
@@ -188,8 +246,13 @@ func (c *Client) RestoreAuthBundle(bundle *AuthExportBundle) (*AuthRestoreResult
 	if existingDefault == 0 {
 		store.DefaultUserID = bundle.DefaultUserID
 	}
-	if err := auth.SaveAuthStore(authPath, store); err != nil {
-		return nil, localSnapshotError(OperationRestoreAuthBundle, markLocalState(localStateStageAuth, err))
+	if outcome, err := auth.SaveAuthStoreWithOutcome(authPath, store); err != nil {
+		mapped := localSnapshotError(OperationRestoreAuthBundle, markLocalState(localStateStageAuth, err))
+		var typed *Error
+		if errors.As(mapped, &typed) {
+			typed.LocalWriteCommitOutcome = publicLocalWriteCommitOutcome(outcome)
+		}
+		return nil, mapped
 	}
 	result := &AuthRestoreResult{
 		DefaultUserID: store.DefaultUserID,
@@ -203,6 +266,17 @@ func (c *Client) RestoreAuthBundle(bundle *AuthExportBundle) (*AuthRestoreResult
 		result.Updated[i] = publicAccount(account, store.DefaultUserID)
 	}
 	return result, nil
+}
+
+func publicLocalWriteCommitOutcome(outcome auth.SaveCommitOutcome) LocalWriteCommitOutcome {
+	switch outcome {
+	case auth.SaveCommitOutcomeNotCommitted:
+		return LocalWriteCommitOutcomeNotCommitted
+	case auth.SaveCommitOutcomeCommitted:
+		return LocalWriteCommitOutcomeCommitted
+	default:
+		return LocalWriteCommitOutcomeUnknown
+	}
 }
 
 func validateAuthExportBundleHeader(bundle *AuthExportBundle) error {

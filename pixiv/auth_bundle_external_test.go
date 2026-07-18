@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	storageauth "github.com/FlanChanXwO/pixiv-cli/internal/storage/auth"
+	storagefiles "github.com/FlanChanXwO/pixiv-cli/internal/utils/files"
 	"github.com/FlanChanXwO/pixiv-cli/pixiv"
 )
 
@@ -90,6 +91,34 @@ func TestExportAuthBundleSnapshotsAllAccountsInStoreOrder(t *testing.T) {
 	}
 	if bundle.Accounts[0].UserID != 7 || bundle.Accounts[0].RefreshToken != "opaque/first-secret" || bundle.Accounts[1].UserID != 8 || bundle.Accounts[1].RefreshToken != "opaque/default-secret" {
 		t.Fatalf("accounts=%+v", bundle.Accounts)
+	}
+}
+
+func TestExportAuthBundleSnapshotsOnlyExplicitAccount(t *testing.T) {
+	t.Parallel()
+	authPath := filepath.Join(t.TempDir(), "auth.json")
+	const storedAuth = `{"default_user_id":7,"accounts":[{"user_id":7,"username":"default","refresh_token":"default-secret"},{"user_id":8,"username":"explicit","refresh_token":"explicit-secret"}]}`
+	if err := os.WriteFile(authPath, []byte(storedAuth), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	client, err := pixiv.NewClient(pixiv.Options{AuthFilePath: authPath})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	bundle, err := client.ExportAuthBundle(pixiv.AuthExportSelection{UserID: 8})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bundle.DefaultUserID != 8 || len(bundle.Accounts) != 1 {
+		t.Fatalf("bundle=%+v", bundle)
+	}
+	account := bundle.Accounts[0]
+	if account.UserID != 8 || account.Username != "explicit" || account.RefreshToken != "explicit-secret" {
+		t.Fatalf("account=%+v", account)
+	}
+	if got, readErr := os.ReadFile(authPath); readErr != nil || string(got) != storedAuth {
+		t.Fatalf("source changed: %s err=%v", got, readErr)
 	}
 }
 
@@ -288,11 +317,48 @@ func TestRestoreAuthBundleSaveFailureLeavesDestinationBytesUnchanged(t *testing.
 
 	_, err = client.RestoreAuthBundle(bundle)
 	var typed *pixiv.Error
-	if !errors.As(err, &typed) || typed.Operation != pixiv.OperationRestoreAuthBundle || typed.LocalStateKind != pixiv.LocalStateKindPermissionDenied {
+	if !errors.As(err, &typed) || typed.Operation != pixiv.OperationRestoreAuthBundle || typed.LocalStateKind != pixiv.LocalStateKindPermissionDenied || typed.LocalWriteCommitOutcome != pixiv.LocalWriteCommitOutcomeNotCommitted {
 		t.Fatalf("error=%#v", err)
 	}
 	if got, readErr := os.ReadFile(authPath); readErr != nil || string(got) != storedAuth {
 		t.Fatalf("destination changed: %s err=%v", got, readErr)
+	}
+}
+
+func TestRestoreAuthBundleReportsCommittedAfterPostCommitSyncFailure(t *testing.T) {
+	authPath := filepath.Join(t.TempDir(), "auth.json")
+	const storedAuth = `{"default_user_id":10,"accounts":[{"user_id":10,"refresh_token":"destination-secret"}]}`
+	if err := os.WriteFile(authPath, []byte(storedAuth), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	restoreHook := storageauth.SetWriteAuthStoreFileForTest(authPath, func(path string, body []byte) error {
+		return storagefiles.WritePrivateFileWithSyncParentForTest(path, body, storageauth.DefaultAuthFileMode, func(string) error {
+			return errors.New("parent sync failed")
+		})
+	})
+	t.Cleanup(restoreHook)
+	client, err := pixiv.NewClient(pixiv.Options{AuthFilePath: authPath})
+	if err != nil {
+		t.Fatal(err)
+	}
+	bundle := &pixiv.AuthExportBundle{
+		Schema:        pixiv.AuthExportBundleSchema,
+		Version:       pixiv.AuthExportBundleVersion,
+		DefaultUserID: 7,
+		Accounts:      []pixiv.AuthExportSecretAccount{{UserID: 7, RefreshToken: "bundle-secret"}},
+	}
+
+	_, err = client.RestoreAuthBundle(bundle)
+	var typed *pixiv.Error
+	if !errors.As(err, &typed) || typed.Operation != pixiv.OperationRestoreAuthBundle || typed.LocalWriteCommitOutcome != pixiv.LocalWriteCommitOutcomeCommitted {
+		t.Fatalf("error=%#v", err)
+	}
+	if !strings.Contains(err.Error(), "local_write_commit_outcome=committed") {
+		t.Fatalf("diagnostic=%q", err.Error())
+	}
+	token, exportErr := client.ExportAccountRefreshToken(7)
+	if exportErr != nil || token != "bundle-secret" {
+		t.Fatalf("committed token=%q err=%v", token, exportErr)
 	}
 }
 
@@ -356,6 +422,33 @@ func TestDecodeAuthExportBundleRejectsUnknownFieldsWithoutExposingThem(t *testin
 		if strings.Contains(err.Error(), secret) || strings.Contains(errorCause(err), secret) {
 			t.Fatalf("decode error exposed %q", secret)
 		}
+	}
+}
+
+func TestDecodeAuthExportBundleRejectsDuplicateObjectKeysRecursively(t *testing.T) {
+	t.Parallel()
+	cases := map[string]string{
+		"top-level schema":  `{"schema":"pixiv-cli.auth-export","schema":"pixiv-cli.auth-export","version":1,"default_user_id":7,"accounts":[{"user_id":7,"username":"alice","refresh_token":"bundle-secret"}]}`,
+		"top-level version": `{"schema":"pixiv-cli.auth-export","version":1,"version":1,"default_user_id":7,"accounts":[{"user_id":7,"username":"alice","refresh_token":"bundle-secret"}]}`,
+		"top-level default": `{"schema":"pixiv-cli.auth-export","version":1,"default_user_id":7,"default_user_id":7,"accounts":[{"user_id":7,"username":"alice","refresh_token":"bundle-secret"}]}`,
+		"account user id":   `{"schema":"pixiv-cli.auth-export","version":1,"default_user_id":7,"accounts":[{"user_id":7,"user_id":7,"username":"alice","refresh_token":"bundle-secret"}]}`,
+		"account token":     `{"schema":"pixiv-cli.auth-export","version":1,"default_user_id":7,"accounts":[{"user_id":7,"username":"alice","refresh_token":"bundle-secret","refresh_token":"replacement-secret"}]}`,
+	}
+	for name, body := range cases {
+		name, body := name, body
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			bundle, err := pixiv.DecodeAuthExportBundle([]byte(body))
+			var typed *pixiv.Error
+			if bundle != nil || !errors.As(err, &typed) || typed.Code != pixiv.CodeInvalidArgument || typed.Operation != pixiv.OperationDecodeAuthBundle {
+				t.Fatalf("bundle=%+v error=%#v", bundle, err)
+			}
+			for _, secret := range []string{"bundle-secret", "replacement-secret"} {
+				if strings.Contains(err.Error(), secret) || strings.Contains(errorCause(err), secret) {
+					t.Fatalf("decode error exposed %q", secret)
+				}
+			}
+		})
 	}
 }
 

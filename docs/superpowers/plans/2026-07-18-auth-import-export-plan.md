@@ -56,7 +56,9 @@ Add the versioned bundle domain independently of CLI file flags:
   invalid default reference.
 - Restore merges atomically: replace matching UIDs, append new UIDs in bundle
   order, preserve an existing destination default, otherwise restore the source
-  default, and leave the store unchanged on any error.
+  default, and leave the store unchanged on parse, validation, destination-load,
+  or pre-commit write errors. Post-commit cleanup/durability errors must expose a
+  typed `committed` outcome; callers reload/inspect instead of assuming rollback.
 - Return only non-secret added/updated account summaries.
 - Keep existing `ImportAccount` and `ExportAccountRefreshToken` public SDK
   operations stable.
@@ -65,13 +67,15 @@ TDD tracer order:
 
 1. Single coherent export snapshot and exact codec round trip.
 2. Offline merge/default behavior and repeat restore.
-3. validation, malformed/future schema, local-state typed errors, zero HTTP,
-   byte-for-byte unchanged store on failure, and token redaction.
+3. validation, malformed/future schema, recursive duplicate JSON keys,
+   local-state typed errors, zero HTTP, byte-for-byte unchanged store on
+   pre-commit failure, explicit post-commit outcomes, and token redaction.
 
 Focused verification:
 
 ```bash
-go test ./pixiv ./internal/storage/auth -count=1
+go test ./internal/utils/files ./internal/storage/auth ./pixiv -count=1
+go test -race ./internal/utils/files ./internal/storage/auth ./pixiv -count=1
 git diff --check
 ```
 

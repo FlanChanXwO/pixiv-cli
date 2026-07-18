@@ -177,6 +177,25 @@ func TestErrorPreservesDeclaredLocalStateKinds(t *testing.T) {
 	}
 }
 
+func TestErrorNormalizesLocalWriteCommitOutcome(t *testing.T) {
+	t.Parallel()
+	for _, outcome := range []pixiv.LocalWriteCommitOutcome{
+		pixiv.LocalWriteCommitOutcomeUnknown,
+		pixiv.LocalWriteCommitOutcomeNotCommitted,
+		pixiv.LocalWriteCommitOutcomeCommitted,
+	} {
+		diagnostic := (&pixiv.Error{Code: pixiv.CodeInvalidArgument, LocalWriteCommitOutcome: outcome}).Error()
+		if !strings.Contains(diagnostic, "local_write_commit_outcome="+string(outcome)) {
+			t.Errorf("outcome %q diagnostic=%q", outcome, diagnostic)
+		}
+	}
+	raw := pixiv.LocalWriteCommitOutcome("source-secret")
+	diagnostic := (&pixiv.Error{Code: pixiv.CodeInvalidArgument, LocalWriteCommitOutcome: raw}).Error()
+	if strings.Contains(diagnostic, string(raw)) || !strings.Contains(diagnostic, "local_write_commit_outcome=unknown") {
+		t.Fatalf("diagnostic=%q", diagnostic)
+	}
+}
+
 func TestNonLocalErrorLeavesLocalStateKindEmpty(t *testing.T) {
 	t.Parallel()
 	client, err := pixiv.NewClient(pixiv.Options{})
