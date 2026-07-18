@@ -60,9 +60,11 @@ func RunContext(ctx context.Context, args []string, in io.Reader, out io.Writer,
 	if len(args) == 0 {
 		args = []string{"pixiv"}
 	}
-	if err := cleanupPendingWindowsUpdate(); err != nil {
-		fmt.Fprintf(errOut, "clean pending update: %v\n", err)
-		return 1
+	if !isAuthExportInvocation(args) {
+		if err := cleanupPendingWindowsUpdate(); err != nil {
+			fmt.Fprintf(errOut, "clean pending update: %v\n", err)
+			return 1
+		}
 	}
 	logger, err := applicationLoggerForArgs(args, errOut)
 	if err != nil {
@@ -91,10 +93,37 @@ func RunContext(ctx context.Context, args []string, in io.Reader, out io.Writer,
 // applicationLoggerForArgs 在 Cobra 解析前识别凭据导出前缀，使成功、help 与参数
 // 错误路径都不依赖 config/logging 环境。其他命令仍沿用完整配置型 logger。
 func applicationLoggerForArgs(args []string, errOut io.Writer) (*slog.Logger, error) {
-	if len(args) >= 3 && args[1] == "auth" && args[2] == "export" {
+	if isAuthExportInvocation(args) {
 		return slog.New(slog.NewTextHandler(io.Discard, nil)), nil
 	}
 	return bootstrap.NewApplicationLogger(errOut)
+}
+
+func isAuthExportInvocation(args []string) bool {
+	if len(args) < 3 {
+		return false
+	}
+	index := 1
+	for index < len(args) && isLeadingRootBooleanFlag(args[index]) {
+		index++
+	}
+	if index >= len(args) || args[index] != "auth" {
+		return false
+	}
+	index++
+	for index < len(args) && isLeadingRootBooleanFlag(args[index]) {
+		index++
+	}
+	return index < len(args) && args[index] == "export"
+}
+
+func isLeadingRootBooleanFlag(argument string) bool {
+	switch argument {
+	case "--help", "-h", "--version", "--help=true", "--help=false", "-h=true", "-h=false":
+		return true
+	default:
+		return false
+	}
 }
 
 // commandLog 仅记录命令名和稳定结果，不能记录 args：其中可能含 refresh token、

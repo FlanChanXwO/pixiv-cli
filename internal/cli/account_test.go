@@ -482,6 +482,60 @@ func TestAuthExportPrintsOnlyDefaultStoredRefreshToken(t *testing.T) {
 	assert.Equal(t, before, after)
 }
 
+func TestAuthExportRawTokenPropagatesStdoutWriterErrorSafely(t *testing.T) {
+	authPath, _ := useTempPaths(t)
+	const token = "raw-writer-error-secret"
+	require.NoError(t, auth.SaveAuthStore(authPath, auth.AuthStore{
+		DefaultUserID: 444,
+		Accounts:      []auth.Account{{UserID: 444, RefreshToken: token}},
+	}))
+	stdout := &syntheticFailingWriter{err: errors.New(token)}
+	directErr := writeAuthExportStdout(stdout, []byte(token))
+	require.ErrorIs(t, directErr, stdout.err)
+	assert.NotContains(t, directErr.Error(), token)
+	var stderr bytes.Buffer
+
+	code := Run([]string{"pixiv", "auth", "export"}, strings.NewReader(""), stdout, &stderr)
+
+	require.Equal(t, 1, code)
+	assert.NotContains(t, stderr.String(), token)
+	assert.Contains(t, stderr.String(), "write stdout")
+}
+
+type syntheticFailingWriter struct{ err error }
+
+func (w *syntheticFailingWriter) Write([]byte) (int, error) { return 0, w.err }
+
+func TestAuthExportBundleAndSummaryPropagateShortStdoutWritesSafely(t *testing.T) {
+	authPath, _ := useTempPaths(t)
+	const token = "short-writer-secret"
+	require.NoError(t, auth.SaveAuthStore(authPath, auth.AuthStore{
+		DefaultUserID: 444,
+		Accounts:      []auth.Account{{UserID: 444, RefreshToken: token}},
+	}))
+
+	for name, args := range map[string][]string{
+		"bundle":  {"pixiv", "auth", "export", "--all"},
+		"summary": {"pixiv", "auth", "export", "--output", filepath.Join(t.TempDir(), "export.json")},
+	} {
+		t.Run(name, func(t *testing.T) {
+			var stderr bytes.Buffer
+			code := Run(args, strings.NewReader(""), syntheticShortWriter{}, &stderr)
+
+			require.Equal(t, 1, code)
+			assert.Contains(t, stderr.String(), "write stdout failed")
+			assert.NotContains(t, stderr.String(), token)
+		})
+	}
+	directErr := writeAuthExportStdout(syntheticShortWriter{}, []byte(token))
+	require.ErrorIs(t, directErr, io.ErrShortWrite)
+	assert.NotContains(t, directErr.Error(), token)
+}
+
+type syntheticShortWriter struct{}
+
+func (syntheticShortWriter) Write(body []byte) (int, error) { return len(body) - 1, nil }
+
 func TestAuthExportAllBundleCanBeRestoredFromFile(t *testing.T) {
 	authPath, _ := useTempPaths(t)
 	require.NoError(t, auth.SaveAuthStore(authPath, auth.AuthStore{
@@ -550,6 +604,69 @@ func TestAuthImportBundleRejectsTokenAndProxyFlagsWithoutReadingSecrets(t *testi
 			for _, secret := range []string{"positional-secret", "private-path-secret", "proxy-secret", "stdin-secret"} {
 				assert.NotContains(t, stderr.String(), secret)
 			}
+		})
+	}
+}
+
+func TestAuthImportBundleMissingFileReportsSafeStableCategory(t *testing.T) {
+	useTempPaths(t)
+	privatePath := filepath.Join(t.TempDir(), "private-missing-bundle-secret.json")
+	stdin := &syntheticMustNotRead{err: errors.New("stdin-must-not-be-read")}
+	var stdout, stderr bytes.Buffer
+
+	code := Run([]string{"pixiv", "auth", "import", "--file", privatePath}, stdin, &stdout, &stderr)
+
+	require.Equal(t, 1, code)
+	assert.Empty(t, stdout.String())
+	assert.Contains(t, stderr.String(), "error: read authentication export bundle failed: not_found\n")
+	assert.NotContains(t, stderr.String(), privatePath)
+	assert.NotContains(t, stderr.String(), "stdin-must-not-be-read")
+	assert.Zero(t, stdin.calls)
+}
+
+type syntheticMustNotRead struct {
+	calls int
+	err   error
+}
+
+func (r *syntheticMustNotRead) Read([]byte) (int, error) {
+	r.calls++
+	return 0, r.err
+}
+
+func TestAuthImportBundleDirectoryReportsSafeStableCategory(t *testing.T) {
+	useTempPaths(t)
+	privatePath := filepath.Join(t.TempDir(), "private-bundle-directory-secret")
+	require.NoError(t, os.Mkdir(privatePath, 0o700))
+	var stdout, stderr bytes.Buffer
+
+	code := Run([]string{"pixiv", "auth", "import", "--file", privatePath}, strings.NewReader("stdin-must-not-be-read"), &stdout, &stderr)
+
+	require.Equal(t, 1, code)
+	assert.Empty(t, stdout.String())
+	assert.Contains(t, stderr.String(), "error: read authentication export bundle failed: is_directory\n")
+	assert.NotContains(t, stderr.String(), privatePath)
+	assert.NotContains(t, stderr.String(), "stdin-must-not-be-read")
+}
+
+func TestAuthBundleFileReadErrorsExposeTypedSafeCategories(t *testing.T) {
+	privatePath := "/private/path/bundle-secret.json"
+	for _, test := range []struct {
+		name     string
+		cause    error
+		category string
+	}{
+		{name: "permission", cause: &fs.PathError{Op: "open", Path: privatePath, Err: fs.ErrPermission}, category: "permission_denied"},
+		{name: "other io", cause: errors.New("other-io-secret-cause"), category: "io"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			err := classifyAuthBundleFileReadError(privatePath, test.cause)
+			var typed authBundleFileReadError
+			require.ErrorAs(t, err, &typed)
+			assert.Equal(t, test.category, typed.Category())
+			assert.ErrorIs(t, err, test.cause)
+			assert.NotContains(t, err.Error(), privatePath)
+			assert.NotContains(t, err.Error(), "other-io-secret-cause")
 		})
 	}
 }

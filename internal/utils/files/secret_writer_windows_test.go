@@ -14,7 +14,7 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-func TestWriteSecretFileAppliesExplicitPrivateWindowsDACL(t *testing.T) {
+func TestWriteSecretFileAppliesExplicitPrivateWindowsSecurity(t *testing.T) {
 	for _, force := range []bool{false, true} {
 		t.Run(map[bool]string{false: "exclusive create", true: "force replace"}[force], func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "auth-export.json")
@@ -24,9 +24,40 @@ func TestWriteSecretFileAppliesExplicitPrivateWindowsDACL(t *testing.T) {
 			}
 
 			require.NoError(t, WriteSecretFile(path, []byte("secret"), force))
-			assertPrivateWindowsFileDACL(t, path)
+			assertPrivateWindowsFileSecurity(t, path)
 		})
 	}
+}
+
+func TestWriteSecretFileForceReplacesDifferentWindowsOwner(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "auth-export.json")
+	require.NoError(t, os.WriteFile(path, []byte("old"), 0o600))
+	makeWindowsFileWorldAccessible(t, path)
+	administrators, err := windows.CreateWellKnownSid(windows.WinBuiltinAdministratorsSid)
+	require.NoError(t, err)
+	err = windows.SetNamedSecurityInfo(
+		path,
+		windows.SE_FILE_OBJECT,
+		windows.OWNER_SECURITY_INFORMATION,
+		administrators,
+		nil,
+		nil,
+		nil,
+	)
+	if errors.Is(err, windows.ERROR_PRIVILEGE_NOT_HELD) || errors.Is(err, windows.ERROR_ACCESS_DENIED) {
+		t.Skip("Windows runner cannot assign the different-owner fixture without additional privilege")
+	}
+	require.NoError(t, err)
+	descriptor, err := windows.GetNamedSecurityInfo(path, windows.SE_FILE_OBJECT, windows.OWNER_SECURITY_INFORMATION)
+	require.NoError(t, err)
+	owner, _, err := descriptor.Owner()
+	require.NoError(t, err)
+	currentUser, err := windows.GetCurrentProcessToken().GetTokenUser()
+	require.NoError(t, err)
+	require.NotEqual(t, currentUser.User.Sid.String(), owner.String())
+
+	require.NoError(t, WriteSecretFile(path, []byte("secret"), true))
+	assertPrivateWindowsFileSecurity(t, path)
 }
 
 func makeWindowsFileWorldAccessible(t *testing.T, path string) {
@@ -46,7 +77,7 @@ func makeWindowsFileWorldAccessible(t *testing.T, path string) {
 	))
 }
 
-func assertPrivateWindowsFileDACL(t *testing.T, path string) {
+func assertPrivateWindowsFileSecurity(t *testing.T, path string) {
 	t.Helper()
 	descriptor, err := windows.GetNamedSecurityInfo(
 		path,
@@ -60,6 +91,9 @@ func assertPrivateWindowsFileDACL(t *testing.T, path string) {
 
 	currentUser, err := windows.GetCurrentProcessToken().GetTokenUser()
 	require.NoError(t, err)
+	owner, _, err := descriptor.Owner()
+	require.NoError(t, err)
+	assert.Equal(t, currentUser.User.Sid.String(), owner.String())
 	wantSIDs := map[string]bool{
 		currentUser.User.Sid.String(): false,
 		"S-1-5-18":                    false,

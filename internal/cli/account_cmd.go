@@ -101,21 +101,34 @@ func (a app) newAccountExportCommand() *cobra.Command {
 				if err := files.WriteSecretFile(opts.output, result.Bundle, opts.force); err != nil {
 					return err
 				}
-				fmt.Fprintf(a.out, "output: %s\naccounts: %d\n", opts.output, result.AccountCount)
-				return nil
+				return writeAuthExportStdout(a.out, []byte(fmt.Sprintf("output: %s\naccounts: %d\n", opts.output, result.AccountCount)))
 			}
 			if opts.all {
-				_, err = a.out.Write(result.Bundle)
-				return err
+				return writeAuthExportStdout(a.out, result.Bundle)
 			}
-			fmt.Fprintln(a.out, result.RefreshToken)
-			return nil
+			return writeAuthExportStdout(a.out, []byte(result.RefreshToken+"\n"))
 		},
 	}
 	cmd.Flags().BoolVar(&opts.all, "all", false, "export all stored accounts")
 	cmd.Flags().StringVar(&opts.output, "output", "", "write a versioned authentication bundle to PATH")
 	cmd.Flags().BoolVar(&opts.force, "force", false, "replace an existing output file")
 	return cmd
+}
+
+type authExportStdoutError struct{ cause error }
+
+func (e authExportStdoutError) Error() string { return "write stdout failed" }
+func (e authExportStdoutError) Unwrap() error { return e.cause }
+
+func writeAuthExportStdout(writer io.Writer, body []byte) error {
+	written, err := writer.Write(body)
+	if err != nil {
+		return authExportStdoutError{cause: err}
+	}
+	if written != len(body) {
+		return authExportStdoutError{cause: io.ErrShortWrite}
+	}
+	return nil
 }
 
 // parseAuthExportUID 不回显原始输入：调用者可能误把 token 或私有路径放在 UID 位。
@@ -216,9 +229,46 @@ func readAuthBundleInput(stdin io.Reader, path string) ([]byte, error) {
 	}
 	body, err := os.ReadFile(path)
 	if err != nil {
-		return nil, errors.New("cannot read authentication export bundle file")
+		return nil, classifyAuthBundleFileReadError(path, err)
 	}
 	return body, nil
+}
+
+type authBundleFileReadCategory string
+
+const (
+	authBundleFileReadNotFound         authBundleFileReadCategory = "not_found"
+	authBundleFileReadPermissionDenied authBundleFileReadCategory = "permission_denied"
+	authBundleFileReadIsDirectory      authBundleFileReadCategory = "is_directory"
+	authBundleFileReadIO               authBundleFileReadCategory = "io"
+)
+
+type authBundleFileReadError struct {
+	category authBundleFileReadCategory
+	cause    error
+}
+
+func (e authBundleFileReadError) Error() string {
+	return "read authentication export bundle failed: " + string(e.category)
+}
+
+func (e authBundleFileReadError) Unwrap() error { return e.cause }
+
+func (e authBundleFileReadError) Category() string { return string(e.category) }
+
+func classifyAuthBundleFileReadError(path string, err error) error {
+	category := authBundleFileReadIO
+	switch {
+	case errors.Is(err, os.ErrNotExist):
+		category = authBundleFileReadNotFound
+	case errors.Is(err, os.ErrPermission):
+		category = authBundleFileReadPermissionDenied
+	default:
+		if info, statErr := os.Stat(path); statErr == nil && info.IsDir() {
+			category = authBundleFileReadIsDirectory
+		}
+	}
+	return authBundleFileReadError{category: category, cause: err}
 }
 
 func (a app) newAccountListCommand() *cobra.Command {

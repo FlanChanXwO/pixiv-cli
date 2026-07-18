@@ -54,17 +54,23 @@ func applySecretPathProtection(path string) error {
 	if err != nil {
 		return err
 	}
+	owner, _, err := descriptor.Owner()
+	if err != nil {
+		return err
+	}
 	// ReplaceFileW 可能从旧 target 保留 DACL；replacement 已提交后必须重设
 	// protected DACL。此后失败由上层准确报告 committed，不能伪造 rollback。
-	return windows.SetNamedSecurityInfo(
+	err = windows.SetNamedSecurityInfo(
 		path,
 		windows.SE_FILE_OBJECT,
-		windows.DACL_SECURITY_INFORMATION|windows.PROTECTED_DACL_SECURITY_INFORMATION,
-		nil,
+		windows.OWNER_SECURITY_INFORMATION|windows.DACL_SECURITY_INFORMATION|windows.PROTECTED_DACL_SECURITY_INFORMATION,
+		owner,
 		nil,
 		dacl,
 		nil,
 	)
+	runtime.KeepAlive(descriptor)
+	return err
 }
 
 func currentUserSecretDescriptor() (*windows.SECURITY_DESCRIPTOR, error) {
