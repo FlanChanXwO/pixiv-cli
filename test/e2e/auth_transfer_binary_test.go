@@ -23,24 +23,24 @@ func TestPixivBinarySyntheticAuthTransfer(t *testing.T) {
 		const rotatedToken = "synthetic-direct-rotated-secret"
 		const accessToken = "synthetic-direct-access-secret"
 		const userID = int64(303)
-		fixture.secrets = append(fixture.secrets, []byte(inputToken), []byte(rotatedToken), []byte(accessToken))
+		directFixture := fixture.newDirectImportFixture(t, inputToken, rotatedToken, accessToken)
 		oauth := newSyntheticOAuthProxy(t, rotatedToken, accessToken, userID)
-		env := oauth.trustedEnv(fixture.env)
+		env := oauth.trustedEnv(directFixture.env)
 
-		textResult := fixture.runWithEnv(t, env, nil, "auth", "import", inputToken, "--proxy", oauth.proxyURL())
-		fixture.requireSuccess(t, textResult)
-		fixture.requireNoSecrets(t, textResult.stdout, "direct import text stdout")
-		fixture.requireNoSecrets(t, textResult.stderr, "direct import text stderr")
-		fixture.requireEmpty(t, textResult.stderr, "direct import text stderr")
+		textResult := directFixture.runWithEnv(t, env, nil, "auth", "import", inputToken, "--proxy", oauth.proxyURL())
+		directFixture.requireSuccess(t, textResult)
+		directFixture.requireNoSecrets(t, textResult.stdout, "direct import text stdout")
+		directFixture.requireNoSecrets(t, textResult.stderr, "direct import text stderr")
+		directFixture.requireEmpty(t, textResult.stderr, "direct import text stderr")
 		if want := []byte("added uid:303\nusername:synthetic-import-user\n"); !bytes.Equal(textResult.stdout, want) {
 			t.Fatalf("direct import text report mismatch: got bytes=%d; want bytes=%d", len(textResult.stdout), len(want))
 		}
 
-		jsonResult := fixture.runWithEnv(t, env, nil, "auth", "import", inputToken, "--proxy", oauth.proxyURL(), "--json")
-		fixture.requireSuccess(t, jsonResult)
-		fixture.requireNoSecrets(t, jsonResult.stdout, "direct import JSON stdout")
-		fixture.requireNoSecrets(t, jsonResult.stderr, "direct import JSON stderr")
-		fixture.requireEmpty(t, jsonResult.stderr, "direct import JSON stderr")
+		jsonResult := directFixture.runWithEnv(t, env, nil, "auth", "import", inputToken, "--proxy", oauth.proxyURL(), "--json")
+		directFixture.requireSuccess(t, jsonResult)
+		directFixture.requireNoSecrets(t, jsonResult.stdout, "direct import JSON stdout")
+		directFixture.requireNoSecrets(t, jsonResult.stderr, "direct import JSON stderr")
+		directFixture.requireEmpty(t, jsonResult.stderr, "direct import JSON stderr")
 		var report struct {
 			UserID   int64  `json:"user_id"`
 			Username string `json:"username"`
@@ -54,7 +54,7 @@ func TestPixivBinarySyntheticAuthTransfer(t *testing.T) {
 		}
 
 		oauth.requireReceivedToken(t, inputToken, 2)
-		fixture.requireStoredToken(t, fixture.authPath, userID, rotatedToken)
+		directFixture.requireOnlyStoredToken(t, directFixture.authPath, userID, rotatedToken)
 	})
 
 	t.Run("removed direct-token entries fail and stay absent from auth help", func(t *testing.T) {

@@ -243,6 +243,23 @@ func newSyntheticAuthBinaryFixture(t *testing.T) syntheticAuthBinaryFixture {
 	return fixture
 }
 
+// newDirectImportFixture 复用最终 binary，但为 direct OAuth 子测分配独立的
+// HOME/XDG/auth store。这样 UID 303 的 added/updated 状态不依赖 transfer fixture。
+func (f syntheticAuthBinaryFixture) newDirectImportFixture(t *testing.T, secrets ...string) syntheticAuthBinaryFixture {
+	t.Helper()
+	fixture := syntheticAuthBinaryFixture{
+		repoRoot:   f.repoRoot,
+		binaryPath: f.binaryPath,
+		env:        isolatedEnv(t),
+		secrets:    make([][]byte, len(secrets)),
+	}
+	for index, secret := range secrets {
+		fixture.secrets[index] = []byte(secret)
+	}
+	fixture.authPath = fixture.resolveAuthPath(t, fixture.env)
+	return fixture
+}
+
 type syntheticAuthAccount struct {
 	UserID       int64  `json:"user_id"`
 	Username     string `json:"username"`
@@ -393,7 +410,7 @@ func (f syntheticAuthBinaryFixture) requireSingleBundleFile(t *testing.T, path s
 	}
 }
 
-func (f syntheticAuthBinaryFixture) requireStoredToken(t *testing.T, path string, userID int64, token string) {
+func (f syntheticAuthBinaryFixture) requireOnlyStoredToken(t *testing.T, path string, userID int64, token string) {
 	t.Helper()
 	body, err := os.ReadFile(path)
 	if err != nil {
@@ -404,6 +421,9 @@ func (f syntheticAuthBinaryFixture) requireStoredToken(t *testing.T, path string
 	}
 	if err := json.Unmarshal(body, &store); err != nil {
 		t.Fatalf("decode synthetic auth store: %v; body omitted", err)
+	}
+	if len(store.Accounts) != 1 {
+		t.Fatalf("direct import auth store account count=%d, want 1", len(store.Accounts))
 	}
 	for _, account := range store.Accounts {
 		if account.UserID == userID {
