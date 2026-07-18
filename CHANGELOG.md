@@ -7,11 +7,11 @@
 
 ## [Unreleased]
 
-目标版本：v0.4.0。当前最新正式版本仍为 v0.3.0。
+## [0.4.0] - 2026-07-19
 
 ### Added
 
-- 新增 `scripts/install.sh` 与不依赖 PowerShell 的 `scripts/install.cmd`：自动选择最新 stable Release 的当前 OS/arch archive，先验证发布 SHA-256 和暂存 binary，再执行无管理员权限的用户级安装；后续 Release 将以固定名称发布两个脚本并把它们纳入签名 checksum 集合，现有 locale 的 README 同步提供可复制的人类命令与 Coding Agent 安装 prompt。
+- 新增 `scripts/install.sh` 与不依赖 PowerShell 的 `scripts/install.cmd`：自动选择最新 stable Release 的当前 OS/arch archive，先验证发布 SHA-256 和暂存 binary，再执行无管理员权限的用户级安装；Release 以固定名称发布两个脚本并把它们纳入签名 checksum 集合，现有 locale 的 README 同步提供可复制的人类命令与 Coding Agent 安装 prompt。
 - 新增 `pixiv auth import [REFRESH_TOKEN]` 与 `pixiv auth export [UID] [--all] [--output PATH] [--force]`：支持隐藏 TTY/raw stdin direct token import、单账号 raw export、全部账号 versioned bundle export，以及 `--file PATH|-` 离线原子 restore。
 - 公开 Go SDK 新增 `AuthExportSelection`、versioned auth bundle model/strict codec、`ExportAuthBundle`、`RestoreAuthBundle`、`AuthRestoreResult` 与 `LocalWriteCommitOutcome`，供调用方实现 point-in-time secret backup 与可分类的离线恢复。
 - 插画搜索新增稳定的分级、作品类型、AI、横纵比、分辨率与绘图工具筛选；CLI 新增 `--ai-mode`、`--aspect-ratio`、`--resolution` 与 `--tool`，`--type` 支持 `illust-and-ugoira`/`manga` 并保留 `comics` alias。
@@ -206,3 +206,9 @@
 
 [Keep a Changelog 1.1.0]: https://keepachangelog.com/zh-CN/1.1.0/
 [Semantic Versioning]: https://semver.org/spec/v2.0.0.html
+[Unreleased]: https://github.com/FlanChanXwO/pixiv-cli/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/FlanChanXwO/pixiv-cli/compare/v0.3.0...v0.4.0
+[0.3.0]: https://github.com/FlanChanXwO/pixiv-cli/compare/v0.2.0...v0.3.0
+[0.2.0]: https://github.com/FlanChanXwO/pixiv-cli/compare/v0.1.1...v0.2.0
+[0.1.1]: https://github.com/FlanChanXwO/pixiv-cli/compare/v0.1.0...v0.1.1
+[0.1.0]: https://github.com/FlanChanXwO/pixiv-cli/releases/tag/v0.1.0

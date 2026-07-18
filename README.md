@@ -44,7 +44,7 @@ preflight the staged binary, and install per-user before changing PATH. Use `--n
 `--install-dir DIR` to choose another destination. You can inspect the downloaded script before running it.
 
 Linux compatibility note: the v0.3.0 archives were linked on Ubuntu 24.04 and can require glibc 2.39, so they do not
-run on Debian 12. This is fixed for the next Release: Linux assets are built against and checked for a glibc 2.35
+run on Debian 12. v0.4.0 fixes this at build time: Linux assets are built against and checked for a glibc 2.35
 maximum requirement. The installer preflight reports an incompatible staged binary before replacing an installation.
 
 ### Install with a coding agent

@@ -44,7 +44,7 @@ binary，并在修改 PATH 前完成用户级安装。可用 `--no-path` 保持 
 选择其他目录；执行前也可以先审阅下载的脚本。
 
 Linux 兼容性说明：v0.3.0 archive 在 Ubuntu 24.04 上链接，可能要求 glibc 2.39，因此不能在 Debian 12
-运行。下一版 Release 已从构建侧修复：Linux 资产以 glibc 2.35 为最高依赖并经过 ABI 门禁。安装器会在
+运行。v0.4.0 已从构建侧修复：Linux 资产以 glibc 2.35 为最高依赖并经过 ABI 门禁。安装器会在
 替换现有安装前预检 staged binary，并明确报告不兼容。
 
 ### 让 Coding Agent 安装

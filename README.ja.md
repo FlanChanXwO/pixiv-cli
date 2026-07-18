@@ -41,7 +41,7 @@ curl.exe -fsSLo "%TEMP%\pixiv-install.cmd" https://raw.githubusercontent.com/Fla
 
 どちらのスクリプトも AMD64/ARM64 を検出し、最新の安定版公式 Release archive を選択して公開 SHA-256 を検証します。staging した binary を事前確認してからユーザー単位でインストールし、その後にのみ PATH を変更します。PATH を変更しない場合は `--no-path`、別の保存先には `--install-dir DIR` を使用できます。実行前にダウンロードしたスクリプトを確認できます。
 
-Linux の互換性に関する注意：v0.3.0 archive は Ubuntu 24.04 で link されており、glibc 2.39 を要求する場合があるため Debian 12 では動作しません。次の Release では build 側で修正し、Linux asset の glibc 要求を最大 2.35 に固定して ABI gate で検証します。installer は既存の install を置き換える前に staged binary を確認し、非互換を明示します。
+Linux の互換性に関する注意：v0.3.0 archive は Ubuntu 24.04 で link されており、glibc 2.39 を要求する場合があるため Debian 12 では動作しません。v0.4.0 では build 側で修正し、Linux asset の glibc 要求を最大 2.35 に固定して ABI gate で検証します。installer は既存の install を置き換える前に staged binary を確認し、非互換を明示します。
 
 ### Coding Agent にインストールさせる
 
