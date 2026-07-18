@@ -179,7 +179,7 @@ if errors.Is(err, pixiv.ErrUnauthorized) { /* re-auth */ }
 
 `OpenDefault` 和本地账号/配置操作的 `invalid_argument` 还可通过 `Error.LocalStateKind` 区分安全子类：`auth_malformed`、`config_malformed`、`permission_denied`、`not_found`、`invalid_proxy`、`account_mismatch`、`unavailable`、`unknown`。顶层 code、operation、backend、user ID 与 retryable 语义保持不变；`account_mismatch` 仍带 `oauth` backend 和所选 user ID。`errors.Unwrap` 只返回固定的脱敏原因，不返回原始 filesystem/parser 错误、路径、配置/auth 内容或含 userinfo 的代理 URL；`Error()` 也只输出白名单枚举。正常加载时缺失的可选 `auth.json` 或 `config.toml` 继续视为空状态并成功，不会产生 `not_found`。
 
-auth store 原子写失败还会设置 `Error.LocalWriteCommitOutcome`：`not_committed` 表示 replacement 未发生；`committed` 表示 replacement 已发生但后续 durability/cleanup 失败，调用方必须重新加载目标；`unknown` 表示 recovery 无法确认目标状态，需要人工检查。不得把 `committed` 或 `unknown` 报告为成功 rollback。
+`RestoreAuthBundle` 保存 merge 后的 auth store 失败时，其 error 还会设置 `Error.LocalWriteCommitOutcome`：`not_committed` 表示 replacement 未发生；`committed` 表示 replacement 已发生但后续 durability/cleanup 失败，调用方必须重新加载目标；`unknown` 表示 recovery 无法确认目标状态，需要人工检查。不得把 `committed` 或 `unknown` 报告为成功 rollback。
 
 ## 调用方责任
 

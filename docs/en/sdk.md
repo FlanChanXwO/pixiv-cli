@@ -236,10 +236,11 @@ Local account/configuration `invalid_argument` failures may expose `Error.LocalS
 `unknown`. `errors.Unwrap` and `Error()` remain redacted and never expose filesystem/parser errors, paths, local
 contents, or proxy userinfo. Missing optional `auth.json` or `config.toml` remains a valid empty state.
 
-Atomic auth-store write failures additionally expose `Error.LocalWriteCommitOutcome`. `not_committed` means the
-replacement did not happen; `committed` means replacement happened but a subsequent durability or cleanup step
-failed, so callers must reload the target; `unknown` means recovery could not establish the target state and manual
-inspection is required. Callers must not report `committed` or `unknown` as a successful rollback.
+When `RestoreAuthBundle` fails while saving the merged auth store, its error additionally exposes
+`Error.LocalWriteCommitOutcome`. `not_committed` means the replacement did not happen; `committed` means replacement
+happened but a subsequent durability or cleanup step failed, so callers must reload the target; `unknown` means
+recovery could not establish the target state and manual inspection is required. Callers must not report
+`committed` or `unknown` as a successful rollback.
 
 ## Caller responsibilities
 
