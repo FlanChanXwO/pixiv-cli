@@ -17,6 +17,7 @@
 - 不新增无依据的 timeout、截断、分页上限、重试上限、静默 fallback 或隐藏降级。
 - Pixiv web fallback 只在无 refresh token 且 `web_fallback_enabled=true` 时使用；App API 错误不要自动 fallback。
 - MCP stdout 保留给 JSON-RPC；日志和人类可读诊断写 stderr。
+- bootstrap 安装脚本必须固定官方 Release 来源，先验证 checksum 和暂存 binary 再替换；不得静默安装前置工具、提权、读取凭据或把初始 SHA-256 完整性检查误写成 Ed25519 来源认证。
 
 ## MCP 与 CLI
 

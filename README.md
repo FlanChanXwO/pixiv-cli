@@ -27,6 +27,32 @@
 
 ## Install
 
+### Installer scripts (Windows, Linux, and macOS)
+
+Linux/macOS (`sh`):
+
+```bash
+curl -fsSLo /tmp/pixiv-install.sh https://raw.githubusercontent.com/FlanChanXwO/pixiv-cli/main/scripts/install.sh && sh /tmp/pixiv-install.sh --add-to-path
+```
+
+Windows Command Prompt (`cmd.exe`, no PowerShell):
+
+```bat
+curl.exe -fsSLo "%TEMP%\pixiv-install.cmd" https://raw.githubusercontent.com/FlanChanXwO/pixiv-cli/main/scripts/install.cmd && call "%TEMP%\pixiv-install.cmd" --add-to-path
+```
+
+Both scripts detect AMD64/ARM64, select the latest stable official Release archive, verify its published SHA-256,
+preflight the staged binary, and install per-user before changing PATH. Use `--no-path` to leave PATH untouched or
+`--install-dir DIR` to choose another destination. You can inspect the downloaded script before running it.
+
+### Install with a coding agent
+
+Copy this single prompt into Codex, Claude Code, Cursor, or another local coding agent with terminal access:
+
+```text
+Install the latest stable pixiv-cli from https://github.com/FlanChanXwO/pixiv-cli for this machine: inspect the repository's scripts/install.sh or scripts/install.cmd first, choose the script matching the detected OS and architecture (the Windows path must use cmd.exe and must not invoke PowerShell), download only official GitHub Release assets, require the published SHA-256 check to pass before replacing anything, install per-user without administrator or root privileges, add only the chosen install directory to the user PATH, ask before installing any missing prerequisite, never read or output Pixiv credentials, verify with pixiv version, and report the installed version plus every file and PATH change.
+```
+
 ### Homebrew (recommended on macOS and Linux)
 
 ```bash

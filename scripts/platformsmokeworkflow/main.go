@@ -24,6 +24,7 @@ func Validate(path string) error {
 		"windows-2025",
 		"windows-11-arm",
 		"go run ./scripts/releaseassets package",
+		"go test ./scripts/installers -count=1",
 		"PIXIV_E2E_BINARY=",
 		"PIXIV_E2E_EXPECTED_VERSION=",
 		"go test ./test/e2e -run '^TestPixivBinary' -count=1",

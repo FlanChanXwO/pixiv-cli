@@ -17,6 +17,35 @@ User-visible changes are recorded in [CHANGELOG.md](../CHANGELOG.md).
 > has been pushed. Future versions must still pass the same tag, signing, asset, and Homebrew gates before they can
 > be treated as trusted download sources.
 
+### Official installer scripts
+
+The repository provides two per-user bootstrap scripts for the latest stable Release:
+
+```bash
+# Linux/macOS
+curl -fsSLo /tmp/pixiv-install.sh https://raw.githubusercontent.com/FlanChanXwO/pixiv-cli/main/scripts/install.sh
+sh /tmp/pixiv-install.sh --add-to-path
+```
+
+```bat
+rem Windows Command Prompt; no PowerShell dependency
+curl.exe -fsSLo "%TEMP%\pixiv-install.cmd" https://raw.githubusercontent.com/FlanChanXwO/pixiv-cli/main/scripts/install.cmd
+call "%TEMP%\pixiv-install.cmd" --add-to-path
+```
+
+`install.sh` supports Linux/macOS AMD64 and ARM64 and defaults to `$HOME/.local/bin`. `install.cmd` supports Windows
+AMD64 and ARM64 and defaults to `%LOCALAPPDATA%\Programs\pixiv`. Both download `checksums.txt` and exactly one matching
+archive from the official latest stable Release, verify SHA-256 before extraction, preflight the staged binary, and
+only then replace `pixiv`. `--install-dir DIR` selects a different destination; `--no-path` suppresses profile/registry
+changes. `--add-to-path` is restricted to `$HOME/.local/bin` on Unix and updates only the current user's `Path` value
+on Windows. Neither script requests administrator/root privileges, installs prerequisites, reads Pixiv credentials,
+or bypasses system reputation warnings.
+
+This is an initial-bootstrap boundary: before `pixiv` exists, the scripts have no embedded Ed25519 verifier. The
+SHA-256 check detects corruption or a mismatched archive, while authenticity still depends on HTTPS and the official
+GitHub repository/Release account. Inspect the installer before execution. Once installed, `pixiv update` uses the
+binary's embedded Ed25519 trust root for subsequent Release updates.
+
 ### Build from source
 
 ```bash

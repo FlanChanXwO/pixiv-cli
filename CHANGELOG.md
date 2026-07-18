@@ -9,6 +9,7 @@
 
 ### Added
 
+- 新增 `scripts/install.sh` 与不依赖 PowerShell 的 `scripts/install.cmd`：自动选择最新 stable Release 的当前 OS/arch archive，先验证发布 SHA-256 和暂存 binary，再执行无管理员权限的用户级安装；后续 Release 将以固定名称发布两个脚本并把它们纳入签名 checksum 集合，双语 README 同步提供可复制的人类命令与 Coding Agent 安装 prompt。
 - 新增 `pixiv auth token [UID]` 与公开 SDK `ExportAccountRefreshToken(userID)`，用于显式导出默认或指定本地账号已保存的原始 refresh token；该路径只读 auth store，不联网、不刷新、不读取环境 token，也不提供 JSON/MCP 接口。
 - 插画搜索新增稳定的分级、作品类型、AI、横纵比、分辨率与绘图工具筛选；CLI 新增 `--ai-mode`、`--aspect-ratio`、`--resolution` 与 `--tool`，`--type` 支持 `illust-and-ugoira`/`manga` 并保留 `comics` alias。
 - 公开 Go SDK 新增 `SearchIllustFilters`、`SearchIllustOptions` 与 `Illust.Tools`；CLI 新增需要 App 认证的 `pixiv search-options WORD`，动态列出当前可用绘图工具，不引入收藏数或 Cookie 筛选。
@@ -38,6 +39,7 @@
 
 ### Security
 
+- 安装脚本只使用固定官方 GitHub Release 来源，不接受自定义下载源；checksum 缺失、重复、格式异常、SHA-256 不匹配或暂存 binary 预检失败时均在替换前显式终止。默认用户级目录不提权，PATH 修改必须由 `--add-to-path` 明确请求，也不会读取 Pixiv 认证状态。
 - `auth token` 是唯一允许输出 refresh token 的显式命令：成功 stdout 只有原始 token 与换行，跳过配置型日志和自动更新；非法 UID、本地状态错误及缺失/空 token 均以脱敏 typed error 失败，不把输入、凭据或本地路径写入 stderr、日志或错误链。
 - 修复 native-evidence 六平台构建只向 runner 默认 Rust 安装 target、导致静态库实际由 movable
   toolchain 生成并与 release test/production 的 `1.96.0`/`1.96.1` provenance 不一致的问题；workflow

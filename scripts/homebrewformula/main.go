@@ -122,10 +122,12 @@ func readChecksums(path, version string) (map[string]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	expected := make(map[string]struct{}, len(fixedTargets))
+	expected := make(map[string]struct{}, len(fixedTargets)+2)
 	for _, target := range fixedTargets {
 		expected[archiveName(version, target)] = struct{}{}
 	}
+	expected["install.cmd"] = struct{}{}
+	expected["install.sh"] = struct{}{}
 	checksums := make(map[string]string, len(expected))
 	lines := strings.Split(strings.TrimSuffix(string(body), "\n"), "\n")
 	if len(lines) == 1 && lines[0] == "" {
@@ -146,7 +148,7 @@ func readChecksums(path, version string) (map[string]string, error) {
 	}
 	for name := range expected {
 		if _, ok := checksums[name]; !ok {
-			return nil, fmt.Errorf("checksums file has no entry for required release archive %q", name)
+			return nil, fmt.Errorf("checksums file has no entry for required release asset %q", name)
 		}
 	}
 	return checksums, nil

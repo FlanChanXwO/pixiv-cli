@@ -18,6 +18,8 @@ cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc  pixiv-cli_${ve
 dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd  pixiv-cli_${version}_linux_arm64.tar.gz
 eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee  pixiv-cli_${version}_windows_amd64.zip
 ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff  pixiv-cli_${version}_windows_arm64.zip
+1111111111111111111111111111111111111111111111111111111111111111  install.cmd
+2222222222222222222222222222222222222222222222222222222222222222  install.sh
 EOF
 
 go run ./scripts/homebrewformula render --formula pixiv-cli --version "$version" --checksums "$checksums" --output "$formula"
@@ -84,8 +86,8 @@ expect_failure 'stable formula "pixiv-cli" only accepts a stable semantic versio
 expect_failure 'beta formula "pixiv-cli-beta" only accepts a prerelease semantic version' \
 	go run ./scripts/homebrewformula render --formula pixiv-cli-beta --version "$version" --checksums "$checksums" --output "$temporary/wrong-beta.rb"
 missing_checksums="$temporary/missing-checksums.txt"
-sed '$d' "$checksums" > "$missing_checksums"
-expect_failure 'has no entry for required release archive' \
+sed '/install[.]sh/d' "$checksums" > "$missing_checksums"
+expect_failure 'has no entry for required release asset' \
 	go run ./scripts/homebrewformula render --formula pixiv-cli --version "$version" --checksums "$missing_checksums" --output "$temporary/missing.rb"
 duplicate_checksums="$temporary/duplicate-checksums.txt"
 cat "$checksums" "$checksums" > "$duplicate_checksums"

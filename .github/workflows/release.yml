@@ -420,6 +420,8 @@ jobs:
             --version "${RELEASE_TAG#v}" \
             --input-dir dist \
             --output-dir release \
+            --install-sh scripts/install.sh \
+            --install-cmd scripts/install.cmd \
             --key-id "$RELEASE_SIGNING_KEY_ID" \
             --private-key "$key_path" \
             --changelog CHANGELOG.md
@@ -449,6 +451,8 @@ jobs:
             "${prerelease[@]}" \
             release/pixiv-cli_*.tar.gz \
             release/pixiv-cli_*.zip \
+            release/install.sh \
+            release/install.cmd \
             release/checksums.txt \
             release/checksums.json
           expected=$(find release -maxdepth 1 -type f ! -name release-notes.md -exec basename {} \; | LC_ALL=C sort)

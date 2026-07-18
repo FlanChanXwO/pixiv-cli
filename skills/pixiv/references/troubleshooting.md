@@ -6,9 +6,8 @@ usually the answer. Never mask an error with retries or silent fallbacks.
 ## Binary / environment
 
 - `pixiv: command not found` → report that the binary is unavailable as a
-  blocker. Do not install it or guess an installation method. Refer to setup
-  instructions only when the user supplied them or they are already present in
-  the current context.
+  blocker. If the user explicitly asks you to install it, follow
+  `references/install.md`; otherwise do not install it or guess a method.
 - Config/auth file locations: `pixiv config path` prints the config file path;
   `auth.json` lives in the same directory. Never read `auth.json` contents.
 

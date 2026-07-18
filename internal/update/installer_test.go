@@ -35,6 +35,18 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
+func TestVerifyArchiveChecksumAllowsFixedInstallerAssets(t *testing.T) {
+	archive := []byte("verified platform archive")
+	archiveSum := sha256.Sum256(archive)
+	checksums := fmt.Sprintf(
+		"%x  install.cmd\n%x  install.sh\n%x  pixiv-cli_1.2.3_linux_amd64.tar.gz\n",
+		sha256.Sum256([]byte("cmd")),
+		sha256.Sum256([]byte("sh")),
+		archiveSum,
+	)
+	require.NoError(t, verifyArchiveChecksum([]byte(checksums), "pixiv-cli_1.2.3_linux_amd64.tar.gz", archive))
+}
+
 // TestReleaseInstallerInstallsOnlyVerifiedPlatformArchive 覆盖公开安装路径：选择当前平台资产，
 // 验证带签名的 checksum manifest，再在内嵌版本证明目标 tag 后原子替换可执行文件。
 func TestReleaseInstallerInstallsOnlyVerifiedPlatformArchive(t *testing.T) {

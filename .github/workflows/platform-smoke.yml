@@ -70,6 +70,9 @@ jobs:
       - name: Check vendored Rust sources
         shell: bash
         run: sh scripts/test-rust-vendor.sh
+      - name: Test the platform installer
+        shell: bash
+        run: go test ./scripts/installers -count=1
       - name: Build the native Rust static library
         shell: bash
         run: bash scripts/build-staticlibs.sh --target '${{ matrix.rust_target }}'
