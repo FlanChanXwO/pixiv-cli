@@ -82,7 +82,10 @@ echo SHA-256 verified.
 
 set "EXTRACT_DIR=%WORK_DIR%\extract"
 mkdir "%EXTRACT_DIR%" >nul 2>&1 || (set "ERROR_MESSAGE=cannot create the extraction directory" & goto fatal)
-tar.exe -xf "%ARCHIVE%" -C "%EXTRACT_DIR%" pixiv.exe || (set "ERROR_MESSAGE=the verified archive does not contain pixiv.exe" & goto fatal)
+rem GNU tar 会把 C:\... 中的冒号解释成 remote archive；在临时目录内只传 basename。
+pushd "%WORK_DIR%" || (set "ERROR_MESSAGE=cannot enter the private temporary directory" & goto fatal)
+tar.exe -xf "%ASSET%" -C "extract" pixiv.exe || (popd & set "ERROR_MESSAGE=the verified archive does not contain pixiv.exe" & goto fatal)
+popd
 if not exist "%EXTRACT_DIR%\pixiv.exe" (set "ERROR_MESSAGE=the archive does not contain pixiv.exe" & goto fatal)
 
 if not exist "%INSTALL_DIR%" mkdir "%INSTALL_DIR%" >nul 2>&1

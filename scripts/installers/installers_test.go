@@ -173,6 +173,23 @@ func TestInstallCmdUsesOnlyNativeCmdTools(t *testing.T) {
 	}
 }
 
+func TestInstallCmdExtractsArchiveFromTemporaryWorkingDirectory(t *testing.T) {
+	payload, err := os.ReadFile(filepath.Join("..", "install.cmd"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	content := strings.ToLower(string(payload))
+	pushIndex := strings.Index(content, `pushd "%work_dir%"`)
+	tarIndex := strings.Index(content, `tar.exe -xf "%asset%" -c "extract" pixiv.exe`)
+	popIndex := strings.Index(content, "popd")
+	if pushIndex < 0 || tarIndex < 0 || popIndex < 0 || pushIndex > tarIndex || tarIndex > popIndex {
+		t.Fatal("install.cmd must extract the relative archive inside its temporary working directory")
+	}
+	if strings.Contains(content, `tar.exe -xf "%archive%"`) {
+		t.Fatal("install.cmd passed an absolute drive path directly to tar.exe")
+	}
+}
+
 func TestInstallCmdInvocationKeepsPathsAsSeparateArguments(t *testing.T) {
 	script := `C:\workspace with spaces\scripts\install.cmd`
 	installDir := `C:\Users\tester\pixiv bin`
