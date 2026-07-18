@@ -1,6 +1,6 @@
 ---
 name: pixiv-cli-mcp-tool
-description: Add or change a pixiv-cli MCP tool with full sync of registration, tests, docs/mcp-tools.md, README, and CHANGELOG.
+description: Add or change a pixiv-cli MCP tool with full sync of registration, tests, localized MCP docs, README, and CHANGELOG.
 ---
 
 # pixiv-cli MCP Tool
@@ -18,6 +18,6 @@ description: Add or change a pixiv-cli MCP tool with full sync of registration, 
 
 1. 在 `internal/mcpserver` 注册/修改 tool；认证类错误要暴露真实原因。
 2. 补充或更新 `internal/mcpserver` 聚焦测试，运行 `go test ./internal/mcpserver/...`，涉及共享行为时运行 `go test ./...`。
-3. 同步 `docs/mcp-tools.md`：名称、参数、返回语义和 fallback 行为。
+3. 同步 `docs/en/mcp-tools.md` 与 `docs/zh-CN/mcp-tools.md`：名称、参数、返回语义和 fallback 行为。
 4. 用户可见变化同步 `README.md`，并写入 `CHANGELOG.md` 的 `[Unreleased]`。
 5. 新增任何 timeout、截断、条数或重试限制必须有依据，并落实代码注释 + 文档 + 测试。

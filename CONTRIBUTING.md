@@ -29,7 +29,7 @@ sh scripts/build.sh
 ./build/pixiv --help
 ```
 
-See the [development guide](docs/development.md) for native-library verification, opt-in real API tests, release gates, and platform details.
+See the [development guide (Simplified Chinese)](docs/maintainers/development.md) for native-library verification, opt-in real API tests, release gates, and platform details.
 
 ## Architecture guardrails
 
@@ -39,7 +39,7 @@ See the [development guide](docs/development.md) for native-library verification
 - MCP registration and transport adaptation belong in `internal/mcpserver`; stdout is reserved for JSON-RPC.
 - Keep protocol-independent utilities under `internal/utils/*`, and keep files focused on one responsibility or a few tightly related responsibilities.
 
-Read [docs/architecture.md](docs/architecture.md) and the repository [AGENTS.md](AGENTS.md) before changing these boundaries.
+Read [the architecture guide (Simplified Chinese)](docs/maintainers/architecture.md) and the repository [AGENTS.md](AGENTS.md) before changing these boundaries.
 
 ## Develop with tests
 
@@ -58,9 +58,9 @@ Real Pixiv Web and authenticated App canaries are opt-in. Never run them with a 
 
 Update documentation in the same pull request when changing a command, flag, SDK API, MCP tool, configuration key, environment variable, output contract, authentication flow, proxy behavior, download behavior, or known limitation.
 
-- Keep `README.md` and `README.zh-CN.md` aligned.
-- Keep `docs/cli-reference.md` and `docs/cli-reference.zh-CN.md` aligned.
-- Update `docs/sdk.md`, `docs/mcp-tools.md`, `docs/development.md`, or `docs/architecture.md` according to their documented responsibility.
+- Keep `README.md`, `README.zh-CN.md`, and `README.ja.md` behaviorally aligned.
+- Keep all existing locale versions under `docs/<locale>/` behaviorally aligned; never use untranslated placeholder content.
+- Update localized SDK/MCP contracts or `docs/maintainers/` according to their documented responsibility.
 - Update `[Unreleased]` in `CHANGELOG.md` for user-visible additions, fixes, changes, deprecations, removals, or security effects.
 - Check `skills/pixiv-cli/` when CLI commands, flags, or safety semantics change.
 

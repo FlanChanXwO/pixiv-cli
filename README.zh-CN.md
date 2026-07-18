@@ -4,7 +4,7 @@
 
 **Pixiv CLI · MCP stdio server · Go SDK**
 
-[English](README.md) · [简体中文](README.zh-CN.md)
+[English](README.md) · [简体中文](README.zh-CN.md) · [日本語](README.ja.md)
 
 <p><a href="https://github.com/FlanChanXwO/pixiv-cli/actions/workflows/ci.yml"><img alt="Quality gate" src="https://github.com/FlanChanXwO/pixiv-cli/actions/workflows/ci.yml/badge.svg"></a> <a href="https://github.com/FlanChanXwO/pixiv-cli/releases/latest"><img alt="Release" src="https://img.shields.io/github/v/release/FlanChanXwO/pixiv-cli?style=flat-square"></a> <a href="go.mod"><img alt="Go" src="https://img.shields.io/github/go-mod/go-version/FlanChanXwO/pixiv-cli?style=flat-square"></a> <a href="LICENSE"><img alt="License" src="https://img.shields.io/github/license/FlanChanXwO/pixiv-cli?style=flat-square"></a> <img alt="Views" src="https://hits.sh/github.com/FlanChanXwO/pixiv-cli.svg?style=flat-square&amp;label=views"></p>
 
@@ -80,7 +80,7 @@ go install github.com/FlanChanXwO/pixiv-cli/cmd/pixiv@vX.Y.Z
 sh scripts/build.sh
 ```
 
-直接下载提供 checksum 与签名 manifest。平台与信任细节见 [CLI 参考手册](docs/cli-reference.zh-CN.md#安装与构建)。
+直接下载提供 checksum 与签名 manifest。平台与信任细节见 [CLI 参考手册](docs/zh-CN/cli-reference.md#安装与构建)。
 
 ## 60 秒快速开始
 
@@ -97,7 +97,7 @@ pixiv recommended all --limit 10
 pixiv download 123456
 ```
 
-运行 `pixiv --help`，或打开[完整 CLI 参考手册](docs/cli-reference.zh-CN.md)，查看全部命令、flag、配置键、环境变量、fallback 规则和更新行为。
+运行 `pixiv --help`，或打开[完整 CLI 参考手册](docs/zh-CN/cli-reference.md)，查看全部命令、flag、配置键、环境变量、fallback 规则和更新行为。
 
 ## 选择使用入口
 
@@ -119,7 +119,7 @@ pixiv search-options "初音ミク"
 pixiv mcp
 ```
 
-[MCP tool 契约](docs/mcp-tools.md)记录了 tools、参数、structured output 和认证行为。
+[MCP tool 契约](docs/zh-CN/mcp-tools.md)记录了 tools、参数、structured output 和认证行为。
 
 ### Go SDK
 
@@ -131,7 +131,7 @@ if err != nil {
 result, err := client.SearchIllust(ctx, pixiv.SearchIllustRequest{Word: "初音ミク"})
 ```
 
-导入 `github.com/FlanChanXwO/pixiv-cli/pixiv`。[SDK 指南](docs/sdk.md)说明模型、cursor、资源、错误和调用方职责。
+导入 `github.com/FlanChanXwO/pixiv-cli/pixiv`。[SDK 指南](docs/zh-CN/sdk.md)说明模型、cursor、资源、错误和调用方职责。
 
 ## 认证与 token 安全
 
@@ -149,11 +149,11 @@ pixiv auth check
 
 | 文档 | 用途 |
 | --- | --- |
-| [CLI 参考手册](docs/cli-reference.zh-CN.md) | 命令、flag、认证、配置、fallback、下载和更新 |
-| [Go SDK](docs/sdk.md) | Public client、模型、分页、资源和 typed error |
-| [MCP tools](docs/mcp-tools.md) | Tool schema 与输出语义 |
-| [架构](docs/architecture.md) | 包边界和运行流程 |
-| [开发流程](docs/development.md) | 工具链、测试、构建和发布 |
+| [CLI 参考手册](docs/zh-CN/cli-reference.md) | 命令、flag、认证、配置、fallback、下载和更新 |
+| [Go SDK](docs/zh-CN/sdk.md) | Public client、模型、分页、资源和 typed error |
+| [MCP tools](docs/zh-CN/mcp-tools.md) | Tool schema 与输出语义 |
+| [架构](docs/maintainers/architecture.md) | 包边界和运行流程 |
+| [开发流程](docs/maintainers/development.md) | 工具链、测试、构建和发布 |
 | [更新日志](CHANGELOG.md) | 用户可感知变化 |
 
 ## 参与贡献
@@ -162,7 +162,7 @@ pixiv auth check
 
 ## 关于 views badge
 
-免费的 `hits.sh` badge 统计 badge 图片请求，不代表 unique people。重复访问、机器人、浏览器缓存和中间缓存都会影响数字；加载 badge 也会向第三方 `hits.sh` 发出普通图片请求。两份语言首页使用同一 badge URL，因此共享一个近似的仓库浏览量。
+免费的 `hits.sh` badge 统计 badge 图片请求，不代表 unique people。重复访问、机器人、浏览器缓存和中间缓存都会影响数字；加载 badge 也会向第三方 `hits.sh` 发出普通图片请求。所有语言首页使用同一 badge URL，因此共享一个近似的仓库浏览量。
 
 ## 许可证
 

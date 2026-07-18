@@ -4,7 +4,7 @@
 
 **Pixiv CLI · MCP stdio server · Go SDK**
 
-[English](README.md) · [简体中文](README.zh-CN.md)
+[English](README.md) · [简体中文](README.zh-CN.md) · [日本語](README.ja.md)
 
 <p><a href="https://github.com/FlanChanXwO/pixiv-cli/actions/workflows/ci.yml"><img alt="Quality gate" src="https://github.com/FlanChanXwO/pixiv-cli/actions/workflows/ci.yml/badge.svg"></a> <a href="https://github.com/FlanChanXwO/pixiv-cli/releases/latest"><img alt="Release" src="https://img.shields.io/github/v/release/FlanChanXwO/pixiv-cli?style=flat-square"></a> <a href="go.mod"><img alt="Go" src="https://img.shields.io/github/go-mod/go-version/FlanChanXwO/pixiv-cli?style=flat-square"></a> <a href="LICENSE"><img alt="License" src="https://img.shields.io/github/license/FlanChanXwO/pixiv-cli?style=flat-square"></a> <img alt="Views" src="https://hits.sh/github.com/FlanChanXwO/pixiv-cli.svg?style=flat-square&amp;label=views"></p>
 
@@ -80,7 +80,7 @@ Download a supported archive from [GitHub Releases](https://github.com/FlanChanX
 sh scripts/build.sh
 ```
 
-Direct downloads include checksums and a signed manifest. See the [CLI reference](docs/cli-reference.md#installation) for platform and trust details.
+Direct downloads include checksums and a signed manifest. See the [CLI reference](docs/en/cli-reference.md#installation) for platform and trust details.
 
 ## 60-second quick start
 
@@ -97,7 +97,7 @@ pixiv recommended all --limit 10
 pixiv download 123456
 ```
 
-Run `pixiv --help` or open the [complete CLI reference](docs/cli-reference.md) for every command, flag, configuration key, environment variable, fallback rule, and update behavior.
+Run `pixiv --help` or open the [complete CLI reference](docs/en/cli-reference.md) for every command, flag, configuration key, environment variable, fallback rule, and update behavior.
 
 ## Choose your interface
 
@@ -119,7 +119,7 @@ Start the stdio server explicitly. stdout remains reserved for JSON-RPC and diag
 pixiv mcp
 ```
 
-See the [MCP tool contract](docs/mcp-tools.md) for tools, parameters, structured output, and authentication behavior.
+See the [MCP tool contract](docs/en/mcp-tools.md) for tools, parameters, structured output, and authentication behavior.
 
 ### Go SDK
 
@@ -131,7 +131,7 @@ if err != nil {
 result, err := client.SearchIllust(ctx, pixiv.SearchIllustRequest{Word: "初音ミク"})
 ```
 
-Import `github.com/FlanChanXwO/pixiv-cli/pixiv`. The [SDK guide](docs/sdk.md) documents models, cursors, resources, errors, and caller responsibilities.
+Import `github.com/FlanChanXwO/pixiv-cli/pixiv`. The [SDK guide](docs/en/sdk.md) documents models, cursors, resources, errors, and caller responsibilities.
 
 ## Authentication and token safety
 
@@ -149,11 +149,11 @@ pixiv auth check
 
 | Guide | Use it for |
 | --- | --- |
-| [CLI reference](docs/cli-reference.md) | Commands, flags, auth, configuration, fallback, downloads, and updates |
-| [Go SDK](docs/sdk.md) | Public client, models, pagination, resources, and typed errors |
-| [MCP tools](docs/mcp-tools.md) | Tool schemas and output semantics |
-| [Architecture](docs/architecture.md) | Package boundaries and runtime flow |
-| [Development](docs/development.md) | Toolchain, tests, builds, and releases |
+| [CLI reference](docs/en/cli-reference.md) | Commands, flags, auth, configuration, fallback, downloads, and updates |
+| [Go SDK](docs/en/sdk.md) | Public client, models, pagination, resources, and typed errors |
+| [MCP tools](docs/en/mcp-tools.md) | Tool schemas and output semantics |
+| [Architecture (Simplified Chinese)](docs/maintainers/architecture.md) | Package boundaries and runtime flow |
+| [Development (Simplified Chinese)](docs/maintainers/development.md) | Toolchain, tests, builds, and releases |
 | [Changelog](CHANGELOG.md) | User-visible changes |
 
 ## Contributing
@@ -162,7 +162,7 @@ Bug reports, documentation fixes, tests, and focused features are welcome. Read 
 
 ## About the views badge
 
-The free `hits.sh` badge counts badge image requests, not unique people. Repeated visits, bots, browser caches, and intermediary caches can change the number, and loading the badge sends a normal third-party image request to `hits.sh`. Both language pages use the same badge URL so they share one approximate repository-view count.
+The free `hits.sh` badge counts badge image requests, not unique people. Repeated visits, bots, browser caches, and intermediary caches can change the number, and loading the badge sends a normal third-party image request to `hits.sh`. All language pages use the same badge URL so they share one approximate repository-view count.
 
 ## License
 

@@ -9,7 +9,7 @@
 
 ### Added
 
-- 新增 `scripts/install.sh` 与不依赖 PowerShell 的 `scripts/install.cmd`：自动选择最新 stable Release 的当前 OS/arch archive，先验证发布 SHA-256 和暂存 binary，再执行无管理员权限的用户级安装；后续 Release 将以固定名称发布两个脚本并把它们纳入签名 checksum 集合，双语 README 同步提供可复制的人类命令与 Coding Agent 安装 prompt。
+- 新增 `scripts/install.sh` 与不依赖 PowerShell 的 `scripts/install.cmd`：自动选择最新 stable Release 的当前 OS/arch archive，先验证发布 SHA-256 和暂存 binary，再执行无管理员权限的用户级安装；后续 Release 将以固定名称发布两个脚本并把它们纳入签名 checksum 集合，现有 locale 的 README 同步提供可复制的人类命令与 Coding Agent 安装 prompt。
 - 新增 `pixiv auth token [UID]` 与公开 SDK `ExportAccountRefreshToken(userID)`，用于显式导出默认或指定本地账号已保存的原始 refresh token；该路径只读 auth store，不联网、不刷新、不读取环境 token，也不提供 JSON/MCP 接口。
 - 插画搜索新增稳定的分级、作品类型、AI、横纵比、分辨率与绘图工具筛选；CLI 新增 `--ai-mode`、`--aspect-ratio`、`--resolution` 与 `--tool`，`--type` 支持 `illust-and-ugoira`/`manga` 并保留 `comics` alias。
 - 公开 Go SDK 新增 `SearchIllustFilters`、`SearchIllustOptions` 与 `Illust.Tools`；CLI 新增需要 App 认证的 `pixiv search-options WORD`，动态列出当前可用绘图工具，不引入收藏数或 Cookie 筛选。
@@ -17,7 +17,7 @@
 - 公开 Go SDK 的 `upstream_unavailable` 错误新增安全 `TransportKind` 分类，可区分 DNS、TLS、代理连接、拒绝连接、连接重置和无 typed 信号的未知传输失败；诊断仍不暴露 URL、主机、证书或凭据。
 - 公开 Go SDK 的本地 snapshot 错误新增安全 `LocalStateKind` 分类，可区分 auth/config 格式、权限、缺失、代理配置、账号身份不匹配、不可用和未知状态；`errors.Unwrap` 仅提供固定脱敏原因，缺失的可选 auth/config 文件仍按空状态正常加载。
 - 新增面向 coding agent 的 `pixiv-cli` skill（`skills/pixiv-cli/`，全英文）：SKILL.md 提供预检、凭据安全红线、操作确认分级、输出/token 控制策略与语义陷阱说明，`references/` 收录安装、发现、下载与排障 playbook。
-- README 国际化：英文版成为默认 `README.md`，原中文内容迁移至 `README.zh-CN.md`，两份文档顶部互相链接。
+- README 国际化扩展为英文、简体中文与日语入口；新增日语 CLI reference，并补齐英文 SDK/MCP contract。Public docs 现按 `docs/<locale>/` 组织，架构、开发、ADR 与 Agent 规则集中到 `docs/maintainers/`，旧路径保留兼容导航。
 
 ### Changed
 

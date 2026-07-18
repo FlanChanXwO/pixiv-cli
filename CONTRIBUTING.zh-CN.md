@@ -29,7 +29,7 @@ sh scripts/build.sh
 ./build/pixiv --help
 ```
 
-Native library 校验、opt-in 真实 API 测试、发布门禁和平台细节见[开发流程](docs/development.md)。
+Native library 校验、opt-in 真实 API 测试、发布门禁和平台细节见[开发流程](docs/maintainers/development.md)。
 
 ## 架构边界
 
@@ -39,7 +39,7 @@ Native library 校验、opt-in 真实 API 测试、发布门禁和平台细节�
 - MCP 注册和 transport 适配放在 `internal/mcpserver`；stdout 只用于 JSON-RPC。
 - `internal/utils/*` 保持协议无关；文件应聚焦于一个职责或少数紧密相关职责。
 
-修改这些边界前，请阅读 [docs/architecture.md](docs/architecture.md) 与仓库 [AGENTS.md](AGENTS.md)。
+修改这些边界前，请阅读[架构说明](docs/maintainers/architecture.md)与仓库 [AGENTS.md](AGENTS.md)。
 
 ## 使用测试驱动开发
 
@@ -58,9 +58,9 @@ Native library 校验、opt-in 真实 API 测试、发布门禁和平台细节�
 
 修改命令、flag、SDK API、MCP tool、配置键、环境变量、输出契约、认证流程、代理行为、下载行为或已知限制时，在同一 pull request 同步文档。
 
-- 保持 `README.md` 与 `README.zh-CN.md` 对应。
-- 保持 `docs/cli-reference.md` 与 `docs/cli-reference.zh-CN.md` 对应。
-- 按文件职责更新 `docs/sdk.md`、`docs/mcp-tools.md`、`docs/development.md` 或 `docs/architecture.md`。
+- 保持 `README.md`、`README.zh-CN.md` 与 `README.ja.md` 的行为语义对应。
+- 保持 `docs/<locale>/` 下已有语言版本的行为语义对应；不得用未翻译占位内容冒充对应语言。
+- 按文件职责更新 localized SDK/MCP contract 或 `docs/maintainers/`。
 - 用户可感知的新增、修复、变更、废弃、移除或安全影响写入 `CHANGELOG.md` 的 `[Unreleased]`。
 - CLI 命令、flag 或安全语义变化时检查 `skills/pixiv-cli/`。
 

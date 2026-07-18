@@ -1,57 +1,34 @@
-# Pixiv CLI 文档
+# pixiv-cli Documentation
 
-## 项目定位
+`pixiv-cli` is an unofficial third-party Pixiv CLI, MCP stdio server, and public Go SDK. Choose a language for
+user-facing interface documentation; maintainer documents have one canonical version and are not mechanically
+duplicated for every locale.
 
-`pixiv-cli` 是一个 Go 版 Pixiv CLI、MCP stdio server 与 public `pixiv` SDK（`github.com/FlanChanXwO/pixiv-cli/pixiv`）。CLI/MCP 是 SDK consumer；调用方在自身 adapter 中定义采集、budget、filter 与持久化。无 refresh token 时，允许的匿名读操作可使用 Pixiv web/ajax API。
+## User documentation
 
-## 文档目录
+| Interface | English | 简体中文 | 日本語 |
+| --- | --- | --- | --- |
+| Project overview | [README](../README.md) | [README](../README.zh-CN.md) | [README](../README.ja.md) |
+| CLI reference | [English](en/cli-reference.md) | [简体中文](zh-CN/cli-reference.md) | [日本語](ja/cli-reference.md) |
+| Go SDK | [English](en/sdk.md) | [简体中文](zh-CN/sdk.md) | Not translated; use English |
+| MCP tools | [English](en/mcp-tools.md) | [简体中文](zh-CN/mcp-tools.md) | Not translated; use English |
+| Contributing | [English](../CONTRIBUTING.md) | [简体中文](../CONTRIBUTING.zh-CN.md) | Not translated; use English |
 
-- [CLI 参考手册（English）](cli-reference.md) / [简体中文](cli-reference.zh-CN.md)：完整命令、flag、账号认证、配置、环境变量、匿名 fallback、下载与更新契约。
-- [架构说明](architecture.md)：入口、Pixiv/config/update/download 包边界、运行流程、Release asset 与信任约束。
-- [开发流程](development.md)：本地环境、Rust staticlib、测试、构建、发布门禁、签名/tap 边界和 Git 注意事项。
-- [MCP 工具](mcp-tools.md)：当前注册的 tools 与参数概览。
-- [Go SDK 接口](sdk.md)：`*pixiv.Client` 的构造、模型、分页、错误和资源契约。
-- [更新日志](../CHANGELOG.md)：按 Keep a Changelog 风格记录用户可感知变化。
-- [贡献指南（English）](../CONTRIBUTING.md) / [简体中文](../CONTRIBUTING.zh-CN.md)：开发环境、TDD、架构边界、文档同步与 PR checklist。
-- [AI 协作文档](agents/index.md)：agent 规则、review checklist 和文档职责边界。
-- [ADR 0001](adr/0001-cli-thin-controller-and-bootstrap.md)：CLI thin controller、application services 与 bootstrap 分层决策。
-- [ADR 0002](adr/0002-utils-and-common-boundaries.md)：`utils/*` 与 `common/constants` 的边界规则。
-- [ADR 0003](adr/0003-agent-instruction-precedent-strategy.md)：AI agent 指令采用选择性先例而非单一模板的决策。
-- [ADR 0004](adr/0004-auth-accounts-use-pixiv-uid.md)：本地 auth 账号使用 Pixiv UID 的决策。
-- [ADR 0005](adr/0005-auth-login-real-browser-relay-without-ui-automation.md)：`auth login` 只接受显式 callback handoff、不读取浏览器凭据的决策。
-- [ADR 0006](adr/0006-original-ugoira-resource-resolution.md)：显式 Web ugoira original/pages enrichment 与原子补全失败契约的决策。
-- [ADR 0007](adr/0007-platform-staticlibs-for-supported-source-builds.md)：提交平台 staticlib 以维持受支持源码构建的决策与 native evidence 约束。
-- [ADR 0008](adr/0008-ed25519-signed-multi-channel-release-trust.md)：Ed25519 签名、多渠道更新和 tap 发布信任边界的决策。
-- [ADR 0009](adr/0009-public-pixiv-sdk-and-caller-adapter.md)：public SDK、调用方 adapter 与无 HTTP Provider 的边界。
-- [ADR 0010](adr/0010-http-client-timeout-and-context.md)：Pixiv HTTP client、显式注入与 context 生命周期策略。
+Public interface documents are organized by BCP 47 locale directory. English is the canonical public contract;
+translations must preserve behavior while using natural language for their audience.
 
-## 快速命令
+## Maintainer documentation
 
-```bash
-go test ./...
-sh scripts/build.sh
-go test ./scripts/platformsmokeworkflow -count=1
-```
+- [Architecture](maintainers/architecture.md): package boundaries, runtime flow, Release assets, and trust model.
+- [Development](maintainers/development.md): local environment, tests, builds, releases, and native evidence.
+- [AI collaboration](maintainers/agents/index.md): repository agent rules, review checklist, and documentation policy.
+- [Architecture decisions](maintainers/adr/): long-lived decisions and their tradeoffs.
+- [Changelog](../CHANGELOG.md): user-visible changes.
 
-CLI 示例：
+Maintainer documents keep their existing canonical language and are currently primarily Simplified Chinese.
+Translate one only when there is a demonstrated maintainer need; do not create empty locale copies.
 
-```bash
-pixiv auth login
-pixiv version --json
-pixiv update --check
-pixiv search "初音ミク" --json
-pixiv download 123456
-```
+## Compatibility paths
 
-MCP 运行示例：
-
-```bash
-PIXIV_REFRESH_TOKEN=... \
-DOWNLOAD_PATH=./downloads \
-FILENAME_TEMPLATE="{author} - {title}_{id}" \
-./build/pixiv mcp
-```
-
-真实 token 写在 inline 环境变量里也可能进入 shell history；长期使用建议通过 MCP client 的私密环境配置或本地账号管理。
-
-stdout 保留给 MCP JSON-RPC；日志写入 stderr。
+The former top-level documentation paths remain as small navigation stubs so existing bookmarks do not fail.
+New links and edits must target the locale or `maintainers/` path directly.
