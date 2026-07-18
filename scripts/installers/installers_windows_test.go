@@ -65,8 +65,7 @@ func runInstallCmd(t *testing.T, fakeBin, fixtureDir, installDir string) ([]byte
 	if err != nil {
 		t.Fatal(err)
 	}
-	commandLine := fmt.Sprintf(`call "%s" --install-dir "%s" --no-path`, script, installDir)
-	command := exec.Command("cmd.exe", "/d", "/c", commandLine)
+	command := exec.Command("cmd.exe", installCmdInvocation(script, installDir)...)
 	command.Env = append(os.Environ(),
 		"PATH="+fakeBin+string(os.PathListSeparator)+os.Getenv("PATH"),
 		"PIXIV_INSTALLER_FIXTURES="+fixtureDir,

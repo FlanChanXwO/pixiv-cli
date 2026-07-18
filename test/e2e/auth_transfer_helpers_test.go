@@ -18,6 +18,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -230,7 +231,7 @@ func newSyntheticAuthBinaryFixture(t *testing.T) syntheticAuthBinaryFixture {
 	fixture := syntheticAuthBinaryFixture{
 		repoRoot:      repoRoot,
 		binaryPath:    buildPixivBinary(t, repoRoot),
-		env:           isolatedEnv(t),
+		env:           newSyntheticAuthProcessEnv(t),
 		defaultToken:  "synthetic-default-refresh-secret",
 		explicitToken: "synthetic-explicit-refresh-secret",
 	}
@@ -250,7 +251,7 @@ func (f syntheticAuthBinaryFixture) newDirectImportFixture(t *testing.T, secrets
 	fixture := syntheticAuthBinaryFixture{
 		repoRoot:   f.repoRoot,
 		binaryPath: f.binaryPath,
-		env:        isolatedEnv(t),
+		env:        newSyntheticAuthProcessEnv(t),
 		secrets:    make([][]byte, len(secrets)),
 	}
 	for index, secret := range secrets {
@@ -316,7 +317,7 @@ func (f syntheticAuthBinaryFixture) runWithEnv(t *testing.T, env isolatedProcess
 
 func (f syntheticAuthBinaryFixture) newOfflineEnv(t *testing.T) isolatedProcessEnv {
 	t.Helper()
-	env := isolatedEnv(t)
+	env := newSyntheticAuthProcessEnv(t)
 	values := make([]string, 0, len(env.values)+3)
 	for _, entry := range env.values {
 		name, _, found := strings.Cut(entry, "=")
@@ -332,6 +333,27 @@ func (f syntheticAuthBinaryFixture) newOfflineEnv(t *testing.T) isolatedProcessE
 		"ALL_PROXY=http://127.0.0.1:1",
 	)
 	env.values = values
+	return env
+}
+
+// newSyntheticAuthProcessEnv 在首次运行待测 binary 前关闭自动更新检查。
+// packaged smoke 可指向较早的已发布 binary；其更新提示与 auth transfer
+// 协议无关，不能污染本测试对 stdout/stderr 的精确断言。
+func newSyntheticAuthProcessEnv(t *testing.T) isolatedProcessEnv {
+	t.Helper()
+	env := isolatedEnv(t)
+	configRoot := env.configRoot
+	if runtime.GOOS == "darwin" {
+		// Darwin 的 os.UserConfigDir 固定使用 HOME 下的 Application Support。
+		configRoot = filepath.Join(env.home, "Library", "Application Support")
+	}
+	configPath := filepath.Join(configRoot, "pixiv", "config.toml")
+	if err := os.MkdirAll(filepath.Dir(configPath), 0o700); err != nil {
+		t.Fatalf("create synthetic auth config directory: %v", err)
+	}
+	if err := os.WriteFile(configPath, []byte("[update]\ncheck_enabled = false\n"), 0o600); err != nil {
+		t.Fatalf("write synthetic auth config: %v", err)
+	}
 	return env
 }
 

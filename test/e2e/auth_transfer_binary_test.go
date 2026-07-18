@@ -169,3 +169,19 @@ func TestPixivBinarySyntheticAuthTransfer(t *testing.T) {
 		}
 	})
 }
+
+func TestSyntheticAuthProcessEnvDisablesAutomaticUpdateBeforeFirstCommand(t *testing.T) {
+	env := newSyntheticAuthProcessEnv(t)
+	configRoot := env.configRoot
+	if runtime.GOOS == "darwin" {
+		configRoot = filepath.Join(env.home, "Library", "Application Support")
+	}
+	configPath := filepath.Join(configRoot, "pixiv", "config.toml")
+	body, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatalf("read synthetic auth config: %v", err)
+	}
+	if want := []byte("[update]\ncheck_enabled = false\n"); !bytes.Equal(body, want) {
+		t.Fatalf("synthetic auth config mismatch: got bytes=%d; want bytes=%d", len(body), len(want))
+	}
+}

@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -170,6 +171,21 @@ func TestInstallCmdUsesOnlyNativeCmdTools(t *testing.T) {
 			t.Errorf("install.cmd must not depend on %q", forbidden)
 		}
 	}
+}
+
+func TestInstallCmdInvocationKeepsPathsAsSeparateArguments(t *testing.T) {
+	script := `C:\workspace with spaces\scripts\install.cmd`
+	installDir := `C:\Users\tester\pixiv bin`
+	want := []string{"/d", "/c", "call", script, "--install-dir", installDir, "--no-path"}
+	if got := installCmdInvocation(script, installDir); !slices.Equal(got, want) {
+		t.Fatalf("install.cmd invocation arguments mismatch: got %#v; want %#v", got, want)
+	}
+}
+
+// installCmdInvocation 让 Go 分别引用每个 Windows 参数；若先拼接含引号的
+// command line，os/exec 会为 cmd.exe 再次转义，脚本名可能变成字面 \"path\"。
+func installCmdInvocation(script, installDir string) []string {
+	return []string{"/d", "/c", "call", script, "--install-dir", installDir, "--no-path"}
 }
 
 func prepareUnixFixture(t *testing.T, corruptChecksum bool) (string, string) {
