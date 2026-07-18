@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"bufio"
 	"errors"
 	"fmt"
 	"io"
@@ -25,9 +24,8 @@ type accountListOut struct {
 	Accounts      []accountOut `json:"accounts"`
 }
 
-type accountAddOptions struct {
+type accountImportOptions struct {
 	proxyOptions
-	token   string
 	jsonOut bool
 }
 
@@ -45,12 +43,13 @@ func (a app) newAccountCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "auth",
 		Short: "Manage local Pixiv authentication",
+		Args:  requireExactArgs(0, "pixiv auth <command>"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return cmd.Help()
 		},
 	}
 	cmd.AddCommand(
-		a.newAccountAddCommand(),
+		a.newAccountImportCommand(),
 		a.newAccountLoginCommand(),
 		a.newAccountListCommand(),
 		a.newAccountRemoveCommand(),
@@ -94,35 +93,34 @@ func parseAuthTokenUID(raw string) (int64, error) {
 	return userID, nil
 }
 
-func (a app) newAccountAddCommand() *cobra.Command {
-	opts := accountAddOptions{}
+func (a app) newAccountImportCommand() *cobra.Command {
+	opts := accountImportOptions{}
 	cmd := &cobra.Command{
-		Use:     "add",
-		Short:   "Add or replace an account",
-		Example: "pixiv auth add --token YOUR_REFRESH_TOKEN",
-		Args:    requireExactArgs(0, "pixiv auth add [--token TOKEN]"),
+		Use:     "import [REFRESH_TOKEN]",
+		Short:   "Import or replace an account",
+		Example: "pixiv auth import YOUR_REFRESH_TOKEN",
+		Args:    requireMaxArgs(1, "pixiv auth import [REFRESH_TOKEN]"),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return a.accountAdd(cmd, opts)
+			return a.accountImport(cmd, args, opts)
 		},
 	}
 	flags := cmd.Flags()
-	flags.StringVar(&opts.token, "token", "", "Pixiv App API refresh token")
 	flags.BoolVar(&opts.jsonOut, "json", false, "print JSON")
 	a.bindProxyFlags(cmd, &opts.proxyOptions)
 	return cmd
 }
 
-func (a app) accountAdd(cmd *cobra.Command, opts accountAddOptions) error {
+func (a app) accountImport(cmd *cobra.Command, args []string, opts accountImportOptions) error {
 	proxyOverride, err := proxyOverrideFromFlags(cmd, opts.proxyOptions)
 	if err != nil {
 		return err
 	}
-	tokenInput, err := a.resolveRefreshTokenInput(opts.token)
+	tokenInput, err := a.resolveRefreshTokenInput(args)
 	if err != nil {
 		return err
 	}
 	services := a.services()
-	result, err := services.Account.Add(cmd.Context(), application.AccountAddRequest{
+	result, err := services.Account.Import(cmd.Context(), application.AccountImportRequest{
 		TokenInput:         tokenInput,
 		HTTPSProxyOverride: proxyOverride,
 	})
@@ -355,23 +353,37 @@ func (a app) resolveExistingUID(list application.AccountListResult, args []strin
 	return application.ParseUID(fields[0])
 }
 
-func (a app) resolveRefreshTokenInput(tokenFlag string) (string, error) {
-	if strings.TrimSpace(tokenFlag) != "" {
-		return tokenFlag, nil
+func (a app) resolveRefreshTokenInput(args []string) (string, error) {
+	if len(args) == 1 {
+		return args[0], nil
 	}
 	if canPrompt(a) {
 		return promptSecret(a, "Refresh token")
 	}
 	writePrompt(a.errOut, "refresh token: ")
-	return readTokenLine(a.in)
+	return readRefreshTokenInput(a.in)
 }
 
-func readTokenLine(r io.Reader) (string, error) {
-	line, err := bufio.NewReader(r).ReadString('\n')
-	if err != nil && !errors.Is(err, io.EOF) {
+// readRefreshTokenInput 读取完整 stdin，只消费管道输出常见的一个末尾行结束符；
+// token 的其他字节保持 opaque，不能用 TrimSpace 改写。
+func readRefreshTokenInput(r io.Reader) (string, error) {
+	input, err := io.ReadAll(r)
+	if err != nil {
 		return "", err
 	}
-	return strings.TrimSpace(line), nil
+	token := string(input)
+	if strings.HasSuffix(token, "\r\n") {
+		token = strings.TrimSuffix(token, "\r\n")
+	} else {
+		token = strings.TrimSuffix(token, "\n")
+	}
+	if strings.ContainsAny(token, "\r\n") {
+		return "", errors.New("refresh token input must contain exactly one line")
+	}
+	if token == "" {
+		return "", errors.New("refresh token cannot be empty")
+	}
+	return token, nil
 }
 
 func accountOutFromResult(result application.AccountResult) accountOut {

@@ -23,14 +23,14 @@ func TestApplicationServicesReportMissingDependencies(t *testing.T) {
 func TestAccountServiceUsesPublicSDKAccountStore(t *testing.T) {
 	client := &fakeAccountSDKClient{accounts: sdk.AccountsResult{DefaultUserID: 123, Accounts: []sdk.Account{{UserID: 123, Username: "alice", Default: true, HasToken: true}}}}
 	client.importAccount = func(_ context.Context, token string) (*sdk.Account, error) {
-		if token != "main/token" {
+		if token != "  main/token  " {
 			t.Fatalf("ImportAccount token=%q", token)
 		}
 		return &sdk.Account{UserID: 456, Username: "bob", HasToken: true}, nil
 	}
 	service := newAccountServiceForTest(client)
 
-	result, err := service.Add(context.Background(), AccountAddRequest{TokenInput: "main/token"})
+	result, err := service.Import(context.Background(), AccountImportRequest{TokenInput: "  main/token  "})
 	require.NoError(t, err)
 	assert.Equal(t, AccountResult{UserID: 456, Username: "bob", HasToken: true}, result)
 	list, err := service.List()
@@ -105,13 +105,13 @@ func TestAccountServiceCheckExplicitUIDDoesNotUseEnvironmentToken(t *testing.T) 
 	assert.Equal(t, AccountResult{UserID: 123, Username: "stored", Default: true, HasToken: true}, result)
 }
 
-func TestAccountServiceAddRejectsCookieBeforeOpeningSDK(t *testing.T) {
+func TestAccountServiceImportRejectsCookieBeforeOpeningSDK(t *testing.T) {
 	service := AccountService{SDK: SDKService{NewClient: func(SDKClientRequest) (SDKClient, error) {
 		t.Fatal("SDK client was opened for a cookie input")
 		return nil, nil
 	}}}
 
-	_, err := service.Add(context.Background(), AccountAddRequest{TokenInput: "refresh_token=secret"})
+	_, err := service.Import(context.Background(), AccountImportRequest{TokenInput: "refresh_token=secret"})
 	require.ErrorContains(t, err, "cookie input is not supported")
 }
 

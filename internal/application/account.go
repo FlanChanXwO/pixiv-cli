@@ -18,7 +18,7 @@ type AccountService struct {
 	RefreshTokenFromEnv func() (string, error)
 }
 
-type AccountAddRequest struct {
+type AccountImportRequest struct {
 	TokenInput         string
 	HTTPSProxyOverride *string
 }
@@ -41,19 +41,19 @@ type AccountListResult struct {
 	Accounts      []AccountResult
 }
 
-func (s AccountService) Add(ctx context.Context, request AccountAddRequest) (AccountResult, error) {
-	token, err := utils.ValidateRefreshTokenInput(request.TokenInput)
+func (s AccountService) Import(ctx context.Context, request AccountImportRequest) (AccountResult, error) {
+	validatedToken, err := utils.ValidateRefreshTokenInput(request.TokenInput)
 	if err != nil {
 		return AccountResult{}, err
 	}
-	if token == "" {
+	if validatedToken == "" {
 		return AccountResult{}, errors.New("refresh token cannot be empty")
 	}
 	client, err := s.SDK.Client(SDKClientRequest{HTTPSProxyOverride: request.HTTPSProxyOverride})
 	if err != nil {
 		return AccountResult{}, err
 	}
-	account, err := client.ImportAccount(ctx, token)
+	account, err := client.ImportAccount(ctx, request.TokenInput)
 	if err != nil {
 		return AccountResult{}, err
 	}

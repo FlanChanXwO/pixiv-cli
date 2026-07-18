@@ -42,7 +42,110 @@ func loginOAuthSuccessHandler(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(map[string]any{"access_token": "access", "refresh_token": "rotated", "user": map[string]any{"id": 456, "name": "login-user"}})
 }
 
-func TestAccountAddListUseRemovePreservesOrder(t *testing.T) {
+func TestAccountImportAcceptsPositionalRefreshToken(t *testing.T) {
+	authPath, _ := useTempPaths(t)
+	setTestAuthClientFactory(t, map[string]authIdentity{
+		"opaque/import-token": {userID: 333, username: "import-user"},
+	})
+
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"pixiv", "auth", "import", "opaque/import-token"}, strings.NewReader(""), &stdout, &stderr)
+
+	require.Equal(t, 0, code, stderr.String())
+	store, err := auth.LoadAuthStore(authPath)
+	require.NoError(t, err)
+	require.Len(t, store.Accounts, 1)
+	assert.Equal(t, int64(333), store.Accounts[0].UserID)
+	assert.Equal(t, "import-user", store.Accounts[0].Username)
+	assert.Equal(t, "opaque/import-token", store.Accounts[0].RefreshToken)
+}
+
+func TestAccountImportJSONDoesNotEchoInputOrRotatedToken(t *testing.T) {
+	useTempPaths(t)
+	t.Setenv("PIXIV_LOG_LEVEL", "info")
+	const inputToken = "input-token-canary"
+	const rotatedToken = "rotated-token-canary"
+	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, "/auth/token", r.URL.Path)
+		require.NoError(t, r.ParseForm())
+		assert.Equal(t, inputToken, r.Form.Get("refresh_token"))
+		require.NoError(t, json.NewEncoder(w).Encode(map[string]any{
+			"access_token":  "access-token-canary",
+			"refresh_token": rotatedToken,
+			"user":          map[string]any{"id": 335, "name": "redacted-user"},
+		}))
+	}))
+	defer api.Close()
+	setTestPublicSDKFactory(t, api.URL, api.URL, api.URL, publicpixiv.ResourcePolicy{}, nil)
+
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"pixiv", "auth", "import", inputToken, "--json"}, strings.NewReader(""), &stdout, &stderr)
+
+	require.Equal(t, 0, code, stderr.String())
+	var out accountOut
+	require.NoError(t, json.Unmarshal(stdout.Bytes(), &out))
+	assert.Equal(t, int64(335), out.UserID)
+	for _, canary := range []string{inputToken, rotatedToken, "access-token-canary"} {
+		assert.NotContains(t, stdout.String(), canary)
+		assert.NotContains(t, stderr.String(), canary)
+	}
+}
+
+func TestAccountImportStdinRemovesOnlyOneTrailingLF(t *testing.T) {
+	for name, input := range map[string]string{
+		"LF":   "  opaque stdin token  \n",
+		"CRLF": "  opaque stdin token  \r\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			token, err := readRefreshTokenInput(strings.NewReader(input))
+			require.NoError(t, err)
+			assert.Equal(t, "  opaque stdin token  ", token)
+		})
+	}
+}
+
+func TestAccountImportStdinRejectsAdditionalNewline(t *testing.T) {
+	_, err := readRefreshTokenInput(strings.NewReader("first-line\nsecond-line\n"))
+	require.EqualError(t, err, "refresh token input must contain exactly one line")
+}
+
+func TestAccountImportStdinRejectsEmptyInput(t *testing.T) {
+	_, err := readRefreshTokenInput(strings.NewReader(""))
+	require.EqualError(t, err, "refresh token cannot be empty")
+}
+
+func TestAccountAddIsRemovedWithoutEchoingToken(t *testing.T) {
+	useTempPaths(t)
+	const token = "removed-command-token-canary"
+
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"pixiv", "auth", "add", token}, strings.NewReader(""), &stdout, &stderr)
+
+	require.NotZero(t, code)
+	assert.NotContains(t, stdout.String(), token)
+	assert.NotContains(t, stderr.String(), token)
+}
+
+func TestAccountImportRejectsLegacyFlagAndExtraArgumentWithoutEchoingTokens(t *testing.T) {
+	for name, args := range map[string][]string{
+		"legacy token flag": {"pixiv", "auth", "import", "--token", "legacy-flag-token-canary"},
+		"extra argument":    {"pixiv", "auth", "import", "first-token-canary", "second-token-canary"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			useTempPaths(t)
+			var stdout, stderr bytes.Buffer
+			code := Run(args, strings.NewReader(""), &stdout, &stderr)
+
+			require.NotZero(t, code)
+			for _, canary := range []string{"legacy-flag-token-canary", "first-token-canary", "second-token-canary"} {
+				assert.NotContains(t, stdout.String(), canary)
+				assert.NotContains(t, stderr.String(), canary)
+			}
+		})
+	}
+}
+
+func TestAccountImportListUseRemovePreservesOrder(t *testing.T) {
 	authPath, _ := useTempPaths(t)
 	setTestAuthClientFactory(t, map[string]authIdentity{
 		"main/token":  {userID: 111, username: "alice"},
@@ -50,7 +153,7 @@ func TestAccountAddListUseRemovePreservesOrder(t *testing.T) {
 	})
 
 	var stdout, stderr bytes.Buffer
-	code := Run([]string{"pixiv", "auth", "add", "--token", "main/token"}, strings.NewReader(""), &stdout, &stderr)
+	code := Run([]string{"pixiv", "auth", "import", "main/token"}, strings.NewReader(""), &stdout, &stderr)
 	require.Equal(t, 0, code, stderr.String())
 
 	info, err := os.Stat(authPath)
@@ -67,7 +170,7 @@ func TestAccountAddListUseRemovePreservesOrder(t *testing.T) {
 
 	stdout.Reset()
 	stderr.Reset()
-	code = Run([]string{"pixiv", "auth", "add", "--token", "other-token"}, strings.NewReader(""), &stdout, &stderr)
+	code = Run([]string{"pixiv", "auth", "import", "other-token"}, strings.NewReader(""), &stdout, &stderr)
 	require.Equal(t, 0, code, stderr.String())
 
 	store, err = auth.LoadAuthStore(authPath)
@@ -112,14 +215,14 @@ func TestAccountAddListUseRemovePreservesOrder(t *testing.T) {
 	assert.Equal(t, int64(111), store.Accounts[0].UserID)
 }
 
-func TestAccountAddReadsTokenFromStdin(t *testing.T) {
+func TestAccountImportReadsTokenFromStdin(t *testing.T) {
 	authPath, _ := useTempPaths(t)
 	setTestAuthClientFactory(t, map[string]authIdentity{
 		"stdin-token": {userID: 333, username: "stdin-user"},
 	})
 
 	var stdout, stderr bytes.Buffer
-	code := Run([]string{"pixiv", "auth", "add"}, strings.NewReader("stdin-token\n"), &stdout, &stderr)
+	code := Run([]string{"pixiv", "auth", "import"}, strings.NewReader("stdin-token\n"), &stdout, &stderr)
 
 	require.Equal(t, 0, code, stderr.String())
 	store, err := auth.LoadAuthStore(authPath)
@@ -129,7 +232,7 @@ func TestAccountAddReadsTokenFromStdin(t *testing.T) {
 	assert.Equal(t, "stdin-token", store.Accounts[0].RefreshToken)
 }
 
-func TestAccountAddProxyFlagOverridesEnvAndConfig(t *testing.T) {
+func TestAccountImportProxyFlagOverridesEnvAndConfig(t *testing.T) {
 	_, configPath := useTempPaths(t)
 	require.NoError(t, auth.WritePrivateFile(configPath, []byte("[network]\nhttps_proxy = \"http://file-proxy\"\n")))
 	t.Setenv("https_proxy", "http://env-proxy")
@@ -155,13 +258,13 @@ func TestAccountAddProxyFlagOverridesEnvAndConfig(t *testing.T) {
 	})
 
 	var stdout, stderr bytes.Buffer
-	code := Run([]string{"pixiv", "auth", "add", "--token", "input-token", "--proxy", proxy.URL}, strings.NewReader(""), &stdout, &stderr)
+	code := Run([]string{"pixiv", "auth", "import", "input-token", "--proxy", proxy.URL}, strings.NewReader(""), &stdout, &stderr)
 
 	require.Equal(t, 0, code, stderr.String())
 	assert.NotZero(t, proxy.Requests())
 }
 
-func TestAccountAddNoProxyFlagClearsEnvAndConfig(t *testing.T) {
+func TestAccountImportNoProxyFlagClearsEnvAndConfig(t *testing.T) {
 	_, configPath := useTempPaths(t)
 	proxy := newTestForwardProxy(t)
 	require.NoError(t, auth.WritePrivateFile(configPath, []byte("[network]\nhttps_proxy = \""+proxy.URL+"\"\n")))
@@ -187,7 +290,7 @@ func TestAccountAddNoProxyFlagClearsEnvAndConfig(t *testing.T) {
 	})
 
 	var stdout, stderr bytes.Buffer
-	code := Run([]string{"pixiv", "auth", "add", "--token", "input-token", "--no-proxy"}, strings.NewReader(""), &stdout, &stderr)
+	code := Run([]string{"pixiv", "auth", "import", "input-token", "--no-proxy"}, strings.NewReader(""), &stdout, &stderr)
 
 	require.Equal(t, 0, code, stderr.String())
 	assert.Zero(t, proxy.Requests())
@@ -304,7 +407,7 @@ func TestAccountCheckProxyFlagOverridesEnvAndConfig(t *testing.T) {
 
 func TestAccountNetworkCommandsRejectConflictingProxyFlags(t *testing.T) {
 	tests := [][]string{
-		{"pixiv", "auth", "add", "--proxy", "http://flag-proxy", "--no-proxy"},
+		{"pixiv", "auth", "import", "--proxy", "http://flag-proxy", "--no-proxy"},
 		{"pixiv", "auth", "login", "--proxy", "http://flag-proxy", "--no-proxy"},
 		{"pixiv", "auth", "check", "--proxy", "http://flag-proxy", "--no-proxy"},
 	}
@@ -321,11 +424,11 @@ func TestAccountNetworkCommandsRejectConflictingProxyFlags(t *testing.T) {
 	}
 }
 
-func TestAccountAddRejectsCookieInput(t *testing.T) {
+func TestAccountImportRejectsCookieInput(t *testing.T) {
 	useTempPaths(t)
 
 	var stdout, stderr bytes.Buffer
-	code := Run([]string{"pixiv", "auth", "add", "--token", "PHPSESSID=web; device_token=device"}, strings.NewReader(""), &stdout, &stderr)
+	code := Run([]string{"pixiv", "auth", "import", "PHPSESSID=web; device_token=device"}, strings.NewReader(""), &stdout, &stderr)
 
 	require.NotZero(t, code)
 	assert.Contains(t, stderr.String(), "cookie input is not supported; provide a Pixiv App API refresh token")
@@ -342,12 +445,8 @@ func TestRefreshTokenFlagsOnlyDescribeAppAPIInput(t *testing.T) {
 	}
 	assert.Equal(t, "Pixiv App API refresh token", common.Usage)
 
-	add := a.newAccountAddCommand()
-	token := add.Flags().Lookup("token")
-	if token == nil {
-		t.Fatal("missing auth add --token flag")
-	}
-	assert.Equal(t, "Pixiv App API refresh token", token.Usage)
+	importCommand := a.newAccountImportCommand()
+	assert.Nil(t, importCommand.Flags().Lookup("token"))
 }
 
 func TestAuthTokenPrintsOnlyDefaultStoredRefreshToken(t *testing.T) {
@@ -575,7 +674,7 @@ func TestAccountPromptFlows(t *testing.T) {
 	})
 
 	var stdout, stderr bytes.Buffer
-	code := Run([]string{"pixiv", "auth", "add"}, strings.NewReader(""), &stdout, &stderr)
+	code := Run([]string{"pixiv", "auth", "import"}, strings.NewReader(""), &stdout, &stderr)
 	require.Equal(t, 0, code, stderr.String())
 
 	store, err := auth.LoadAuthStore(authPath)
