@@ -173,21 +173,80 @@ func TestInstallCmdUsesOnlyNativeCmdTools(t *testing.T) {
 	}
 }
 
-func TestInstallCmdExtractsArchiveFromTemporaryWorkingDirectory(t *testing.T) {
+func TestInstallCmdBindsWindowsSystemTarForZIPExtraction(t *testing.T) {
 	payload, err := os.ReadFile(filepath.Join("..", "install.cmd"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	content := strings.ToLower(string(payload))
+	for _, required := range []string{
+		`set "system_tar=%systemroot%\system32\tar.exe"`,
+		`if not exist "%system_tar%"`,
+		`"%system_tar%" -xf "%asset%" -c "extract" pixiv.exe`,
+	} {
+		if !strings.Contains(content, required) {
+			t.Fatalf("install.cmd must bind Windows system tar for ZIP extraction; missing %q", required)
+		}
+	}
+	if strings.Contains(content, `tar.exe -xf`) {
+		t.Fatal("install.cmd must not resolve ZIP extraction through PATH")
+	}
+}
+
+func TestInstallCmdExtractsArchiveFromTemporaryWorkingDirectory(t *testing.T) {
+	payload, err := os.ReadFile(filepath.Join("..", "install.cmd"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := validateInstallCmdExtraction(string(payload)); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestInstallCmdExtractionContractRejectsMissingSuccessPopd(t *testing.T) {
+	payload, err := os.ReadFile(filepath.Join("..", "install.cmd"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	withoutSuccessPopd := strings.Replace(string(payload), "\npopd\nif not exist ", "\nif not exist ", 1)
+	if withoutSuccessPopd == string(payload) {
+		t.Fatal("test fixture did not locate the success-path popd")
+	}
+	if err := validateInstallCmdExtraction(withoutSuccessPopd); err == nil {
+		t.Fatal("install.cmd extraction contract accepted a missing success-path popd")
+	}
+}
+
+func validateInstallCmdExtraction(script string) error {
+	content := strings.ToLower(strings.ReplaceAll(script, "\r\n", "\n"))
 	pushIndex := strings.Index(content, `pushd "%work_dir%"`)
-	tarIndex := strings.Index(content, `tar.exe -xf "%asset%" -c "extract" pixiv.exe`)
-	popIndex := strings.Index(content, "popd")
-	if pushIndex < 0 || tarIndex < 0 || popIndex < 0 || pushIndex > tarIndex || tarIndex > popIndex {
-		t.Fatal("install.cmd must extract the relative archive inside its temporary working directory")
+	tarNeedle := `"%system_tar%" -xf "%asset%" -c "extract" pixiv.exe`
+	tarIndex := strings.Index(content, tarNeedle)
+	if pushIndex < 0 || tarIndex < 0 || pushIndex > tarIndex {
+		return fmt.Errorf("install.cmd must extract the relative archive inside its temporary working directory")
 	}
-	if strings.Contains(content, `tar.exe -xf "%archive%"`) {
-		t.Fatal("install.cmd passed an absolute drive path directly to tar.exe")
+	if strings.Contains(content, `-xf "%archive%"`) {
+		return fmt.Errorf("install.cmd passed an absolute drive path directly to tar.exe")
 	}
+
+	lines := strings.Split(content, "\n")
+	for index, line := range lines {
+		if !strings.Contains(line, tarNeedle) {
+			continue
+		}
+		for next := index + 1; next < len(lines); next++ {
+			trimmed := strings.TrimSpace(lines[next])
+			if trimmed == "" || strings.HasPrefix(trimmed, "rem ") {
+				continue
+			}
+			if trimmed != "popd" {
+				return fmt.Errorf("install.cmd must restore the working directory after successful extraction")
+			}
+			return nil
+		}
+		return fmt.Errorf("install.cmd must restore the working directory after successful extraction")
+	}
+	return fmt.Errorf("install.cmd system tar invocation was not found")
 }
 
 func TestInstallCmdInvocationKeepsPathsAsSeparateArguments(t *testing.T) {

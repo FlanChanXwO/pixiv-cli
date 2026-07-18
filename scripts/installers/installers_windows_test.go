@@ -65,12 +65,30 @@ func runInstallCmd(t *testing.T, fakeBin, fixtureDir, installDir string) ([]byte
 	if err != nil {
 		t.Fatal(err)
 	}
+	tempRoot := t.TempDir()
 	command := exec.Command("cmd.exe", installCmdInvocation(script, installDir)...)
 	command.Env = append(os.Environ(),
 		"PATH="+fakeBin+string(os.PathListSeparator)+os.Getenv("PATH"),
 		"PIXIV_INSTALLER_FIXTURES="+fixtureDir,
+		"TEMP="+tempRoot,
+		"TMP="+tempRoot,
 	)
-	return command.CombinedOutput()
+	output, runErr := command.CombinedOutput()
+	requireNoWindowsInstallerTemporaryDirectory(t, tempRoot)
+	return output, runErr
+}
+
+func requireNoWindowsInstallerTemporaryDirectory(t *testing.T, tempRoot string) {
+	t.Helper()
+	entries, err := os.ReadDir(tempRoot)
+	if err != nil {
+		t.Fatalf("read isolated installer TEMP: %v", err)
+	}
+	for _, entry := range entries {
+		if strings.HasPrefix(strings.ToLower(entry.Name()), "pixiv-install-") {
+			t.Fatalf("Windows installer left temporary directory %q", entry.Name())
+		}
+	}
 }
 
 func prepareWindowsFixture(t *testing.T, corruptChecksum bool) (string, string) {

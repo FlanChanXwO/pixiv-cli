@@ -40,7 +40,8 @@ if not defined INSTALL_DIR (set "ERROR_MESSAGE=install directory cannot be empty
 
 where curl.exe >nul 2>&1 || (set "ERROR_MESSAGE=curl.exe is required" & goto fatal)
 where certutil.exe >nul 2>&1 || (set "ERROR_MESSAGE=certutil.exe is required" & goto fatal)
-where tar.exe >nul 2>&1 || (set "ERROR_MESSAGE=tar.exe is required" & goto fatal)
+set "SYSTEM_TAR=%SystemRoot%\System32\tar.exe"
+if not exist "%SYSTEM_TAR%" (set "ERROR_MESSAGE=Windows system tar.exe is required" & goto fatal)
 
 set "MACHINE_ARCH=%PROCESSOR_ARCHITECTURE%"
 if defined PROCESSOR_ARCHITEW6432 set "MACHINE_ARCH=%PROCESSOR_ARCHITEW6432%"
@@ -84,7 +85,7 @@ set "EXTRACT_DIR=%WORK_DIR%\extract"
 mkdir "%EXTRACT_DIR%" >nul 2>&1 || (set "ERROR_MESSAGE=cannot create the extraction directory" & goto fatal)
 rem GNU tar 会把 C:\... 中的冒号解释成 remote archive；在临时目录内只传 basename。
 pushd "%WORK_DIR%" || (set "ERROR_MESSAGE=cannot enter the private temporary directory" & goto fatal)
-tar.exe -xf "%ASSET%" -C "extract" pixiv.exe || (popd & set "ERROR_MESSAGE=the verified archive does not contain pixiv.exe" & goto fatal)
+"%SYSTEM_TAR%" -xf "%ASSET%" -C "extract" pixiv.exe || (popd & set "ERROR_MESSAGE=the verified archive does not contain pixiv.exe" & goto fatal)
 popd
 if not exist "%EXTRACT_DIR%\pixiv.exe" (set "ERROR_MESSAGE=the archive does not contain pixiv.exe" & goto fatal)
 
