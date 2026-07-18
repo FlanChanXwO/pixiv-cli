@@ -7,6 +7,8 @@
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-07-18
+
 ### Added
 
 - 新增 `scripts/install.sh` 与不依赖 PowerShell 的 `scripts/install.cmd`：自动选择最新 stable Release 的当前 OS/arch archive，先验证发布 SHA-256 和暂存 binary，再执行无管理员权限的用户级安装；后续 Release 将以固定名称发布两个脚本并把它们纳入签名 checksum 集合，现有 locale 的 README 同步提供可复制的人类命令与 Coding Agent 安装 prompt。

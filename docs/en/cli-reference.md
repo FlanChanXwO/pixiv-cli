@@ -12,7 +12,7 @@ User-visible changes are recorded in [CHANGELOG.md](../../CHANGELOG.md).
 
 > **Release status**: the Ed25519 public key, key ID, and fingerprint for supported binaries are committed in
 > [`internal/bootstrap/release_trust.go`](../../internal/bootstrap/release_trust.go); the public source/tap repositories,
-> the protected `release` Environment, and isolated credentials are configured. v0.3.0 has been published as an
+> the protected `release` Environment, and isolated credentials are configured. v0.4.0 has been published as an
 > official GitHub Release with six platform archives, checksums, and a signed manifest; the stable Homebrew formula
 > has been pushed. Future versions must still pass the same tag, signing, asset, and Homebrew gates before they can
 > be treated as trusted download sources.
@@ -70,7 +70,7 @@ go install github.com/FlanChanXwO/pixiv-cli/cmd/pixiv@vX.Y.Z
 ```
 
 This still uses the local Go toolchain, cgo, a C linker, and the committed staticlib for the target. The six target
-libraries and manifest are complete — for example, the current official release can be installed with `@v0.3.0`;
+libraries and manifest are complete — for example, the current official release can be installed with `@v0.4.0`;
 always use the exact tag for later versions, never a branch name.
 
 ### Homebrew
@@ -96,7 +96,7 @@ public tap; the beta formula will only ship with future pre-releases.
 
 The release process produces six fixed-name archives for darwin, linux, and windows on amd64/arm64:
 `pixiv-cli_<version>_<os>_<arch>.tar.gz` (`.zip` on Windows), plus `checksums.txt` and an Ed25519-signed
-`checksums.json`. v0.3.0 ships the complete asset set; later versions should only be trusted as direct download
+`checksums.json`. v0.4.0 ships the complete asset set; later versions should only be trusted as direct download
 sources after passing the same release gates.
 
 Current Releases do not include Apple notarization or Windows Authenticode. Even when downloading from a verified
@@ -431,7 +431,7 @@ Update checks only select canonical SemVer tags. Stable checks first exclude Git
 non-SemVer tag, the check reports that tag and fails closed instead of skipping it for an older version.
 
 Supported binaries embed the production Ed25519 public key/key ID/fingerprint; the private key exists only in the
-protected `release` Environment and a controlled macOS Keychain recovery copy. v0.3.0 is the current signed
+protected `release` Environment and a controlled macOS Keychain recovery copy. v0.4.0 is the current signed
 Release; `pixiv update --check` remains a read-only check and is not a substitute for verifying the selected
 version's assets, checksums, and signatures at install time.
 

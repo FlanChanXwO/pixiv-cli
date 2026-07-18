@@ -13,7 +13,7 @@ fallback、更新を扱います。SDK と MCP の詳細は重複させず、[�
 > **Release の状態**：対応 binary の Ed25519 public key、key ID、fingerprint は
 > [`internal/bootstrap/release_trust.go`](../../internal/bootstrap/release_trust.go) に commit されています。
 > public source/tap repository、保護された `release` Environment、分離された credential は設定済みです。
-> v0.3.0 は 6 platform archive、checksum、署名付き manifest を含む公式 GitHub Release として公開され、
+> v0.4.0 は 6 platform archive、checksum、署名付き manifest を含む公式 GitHub Release として公開され、
 > stable Homebrew formula も push 済みです。将来の version も同じ tag、署名、asset、Homebrew gate を
 > 通過するまでは信頼済み download source とみなしません。
 
@@ -89,7 +89,7 @@ brew install FlanChanXwO/tap/pixiv-cli-beta
 
 Release は darwin、linux、windows の amd64/arm64 向けに
 `pixiv-cli_<version>_<os>_<arch>.tar.gz`（Windows は `.zip`）を生成し、`checksums.txt` と Ed25519 署名付き
-`checksums.json` を添付します。v0.3.0 は 6 種類すべてを含みます。
+`checksums.json` を添付します。v0.4.0 は 6 種類すべてを含みます。
 
 現在 Apple notarization と Windows Authenticode はありません。macOS Gatekeeper や Windows SmartScreen が
 警告する場合があります。公式 GitHub Release からだけ取得し、version、checksum、signature note を確認し、
