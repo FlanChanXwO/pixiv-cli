@@ -1,9 +1,9 @@
 ---
-name: pixiv-commit-msg
+name: pixiv-cli-commit-message
 description: Generate a one-line Conventional Commits message for pixiv-cli from staged changes.
 ---
 
-# Pixiv Commit Message
+# pixiv-cli Commit Message
 
 根据暂存区生成一行提交信息。默认只看 staged changes；暂存区为空时直接说明，不编造。
 

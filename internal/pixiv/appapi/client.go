@@ -89,11 +89,70 @@ func New(opts ...Option) *Client {
 	return c
 }
 
-func (c *Client) SearchIllust(ctx context.Context, word, target, sort, duration string, offset int) (*model.IllustList, error) {
+func (c *Client) SearchIllust(ctx context.Context, word, target, sort, duration string, offset int, filterOptions ...model.SearchIllustFilters) (*model.IllustList, error) {
 	q := url.Values{"word": {word}, "search_target": {target}, "sort": {sort}}
 	setOptional(q, "duration", duration)
+	if len(filterOptions) > 0 {
+		setSearchIllustFilters(q, filterOptions[0])
+	}
 	setOffset(q, offset)
 	return c.getIllustList(ctx, protocol.AppSearchIllust, q, "offset")
+}
+
+func setSearchIllustFilters(query url.Values, filters model.SearchIllustFilters) {
+	query.Set("search_ai_type", "0")
+	if filters.AIMode == "exclude" {
+		query.Set("search_ai_type", "1")
+	}
+	switch filters.AspectRatio {
+	case "landscape", "portrait", "square":
+		query.Set("ratio_pattern", filters.AspectRatio)
+	}
+	switch filters.ContentType {
+	case "illust-and-ugoira":
+		query.Set("content_type", "illust_and_ugoira")
+	case "illust", "manga", "ugoira":
+		query.Set("content_type", filters.ContentType)
+	}
+	setOptional(query, "tool", filters.Tool)
+	switch filters.Resolution {
+	case "high":
+		query.Set("width_min", "3000")
+		query.Set("height_min", "3000")
+	case "medium":
+		query.Set("width_min", "1000")
+		query.Set("width_max", "2999")
+		query.Set("height_min", "1000")
+		query.Set("height_max", "2999")
+	case "low":
+		query.Set("width_max", "999")
+		query.Set("height_max", "999")
+	}
+}
+
+func (c *Client) SearchIllustOptions(ctx context.Context, word string) (*model.SearchIllustOptions, error) {
+	query := url.Values{
+		"word":                           {word},
+		"search_target":                  {"partial_match_for_tags"},
+		"merge_plain_keyword_results":    {"true"},
+		"include_translated_tag_results": {"true"},
+		"search_ai_type":                 {"0"},
+	}
+	var raw searchIllustOptionsDTO
+	if err := c.getJSONWithRetry(ctx, protocol.AppSearchIllustOptions, query, &raw); err != nil {
+		return nil, err
+	}
+	if raw.Illust == nil {
+		return nil, ErrMalformedResponse
+	}
+	var tools []string
+	if raw.Illust.Tool != nil {
+		tools = raw.Illust.Tool.Options
+	}
+	if tools == nil {
+		tools = []string{}
+	}
+	return &model.SearchIllustOptions{Tools: tools}, nil
 }
 
 func (c *Client) IllustDetail(ctx context.Context, id int64) (*model.IllustDetail, error) {

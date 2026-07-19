@@ -52,7 +52,7 @@ func New(opts ...Option) *Client {
 	return c
 }
 
-func (c *Client) SearchIllust(ctx context.Context, word, target, sort, duration string, offset int) (*model.IllustList, error) {
+func (c *Client) SearchIllust(ctx context.Context, word, target, sort, duration string, offset int, filterOptions ...model.SearchIllustFilters) (*model.IllustList, error) {
 	pagination, err := checkedWebPagination(offset, artworkSearchPageSize)
 	if err != nil {
 		return nil, err
@@ -66,11 +66,16 @@ func (c *Client) SearchIllust(ctx context.Context, word, target, sort, duration 
 		"type":   {"all"},
 		"lang":   {"zh"},
 	}
+	filters := model.SearchIllustFilters{}
+	if len(filterOptions) > 0 {
+		filters = filterOptions[0]
+		setWebSearchIllustFilters(q, filters)
+	}
 	if err := setDuration(q, duration); err != nil {
 		return nil, err
 	}
 	var out ajaxEnvelope[webSearchBody]
-	if err := c.getJSON(ctx, protocol.WebSearchArtworks(word), q, &out); err != nil {
+	if err := c.getJSON(ctx, webSearchIllustPath(word, filters.ContentType, q), q, &out); err != nil {
 		return nil, err
 	}
 	if out.Error {
@@ -101,6 +106,54 @@ func (c *Client) SearchIllust(ctx context.Context, word, target, sort, duration 
 		result.ContinuationExists = true
 	}
 	return result, nil
+}
+
+func webSearchIllustPath(word, contentType string, query url.Values) string {
+	escapedWord := url.PathEscape(word)
+	switch contentType {
+	case "manga":
+		query.Del("type")
+		return "/ajax/search/manga/" + escapedWord
+	case "illust", "ugoira":
+		query.Set("type", contentType)
+		return "/ajax/search/illustrations/" + escapedWord
+	case "illust-and-ugoira":
+		query.Set("type", "all")
+		return "/ajax/search/illustrations/" + escapedWord
+	default:
+		return protocol.WebSearchArtworks(word)
+	}
+}
+
+func setWebSearchIllustFilters(query url.Values, filters model.SearchIllustFilters) {
+	switch filters.AspectRatio {
+	case "landscape":
+		query.Set("ratio", "0.5")
+	case "portrait":
+		query.Set("ratio", "-0.5")
+	case "square":
+		query.Set("ratio", "0")
+	}
+	setOptionalSearchValue(query, "tool", filters.Tool)
+	switch filters.Resolution {
+	case "high":
+		query.Set("wlt", "3000")
+		query.Set("hlt", "3000")
+	case "medium":
+		query.Set("wlt", "1000")
+		query.Set("wgt", "2999")
+		query.Set("hlt", "1000")
+		query.Set("hgt", "2999")
+	case "low":
+		query.Set("wgt", "999")
+		query.Set("hgt", "999")
+	}
+}
+
+func setOptionalSearchValue(query url.Values, key, value string) {
+	if value != "" {
+		query.Set(key, value)
+	}
 }
 
 func (c *Client) IllustDetail(ctx context.Context, id int64) (*model.IllustDetail, error) {

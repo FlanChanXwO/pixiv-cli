@@ -714,6 +714,444 @@ func TestAppListRejectsMissingItemsIDsAndMalformedContinuationSafely(t *testing.
 	}
 }
 
+func TestSearchIllustHighResolutionUsesAppServerBounds(t *testing.T) {
+	t.Parallel()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/search/illust" {
+			t.Fatalf("path = %q", r.URL.Path)
+		}
+		query := r.URL.Query()
+		if query.Get("width_min") != "3000" || query.Get("height_min") != "3000" {
+			t.Fatalf("query = %v", query)
+		}
+		fmt.Fprint(w, `{"illusts":[]}`)
+	}))
+	defer server.Close()
+	client, err := pixiv.NewClient(pixiv.Options{HTTPClient: server.Client(), AppAPIBaseURL: server.URL, AccessToken: "token"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = client.SearchIllust(context.Background(), pixiv.SearchIllustRequest{
+		Word: "miku",
+		Filters: pixiv.SearchIllustFilters{
+			Resolution: pixiv.SearchResolutionHigh,
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestSearchIllustTranslatesStableFiltersToAppParameters(t *testing.T) {
+	t.Parallel()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		query := r.URL.Query()
+		want := map[string]string{
+			"search_ai_type": "1",
+			"ratio_pattern":  "landscape",
+			"content_type":   "manga",
+			"width_min":      "1000",
+			"width_max":      "2999",
+			"height_min":     "1000",
+			"height_max":     "2999",
+			"tool":           "CLIP STUDIO PAINT",
+		}
+		for key, value := range want {
+			if got := query.Get(key); got != value {
+				t.Fatalf("%s = %q, want %q; query=%v", key, got, value, query)
+			}
+		}
+		fmt.Fprint(w, `{"illusts":[]}`)
+	}))
+	defer server.Close()
+	client, err := pixiv.NewClient(pixiv.Options{HTTPClient: server.Client(), AppAPIBaseURL: server.URL, AccessToken: "token"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = client.SearchIllust(context.Background(), pixiv.SearchIllustRequest{
+		Word: "miku",
+		Filters: pixiv.SearchIllustFilters{
+			ContentType: pixiv.SearchContentTypeManga,
+			AIMode:      pixiv.SearchAIModeExclude,
+			AspectRatio: pixiv.SearchAspectRatioLandscape,
+			Resolution:  pixiv.SearchResolutionMedium,
+			Tool:        " CLIP STUDIO PAINT ",
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestSearchIllustAppResolutionLowAndAllDefaults(t *testing.T) {
+	t.Parallel()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		query := r.URL.Query()
+		switch query.Get("word") {
+		case "low":
+			if query.Get("width_max") != "999" || query.Get("height_max") != "999" || query.Has("width_min") || query.Has("height_min") {
+				t.Fatalf("low query = %v", query)
+			}
+		case "all":
+			if query.Get("search_ai_type") != "0" {
+				t.Fatalf("search_ai_type = %q, want 0; query=%v", query.Get("search_ai_type"), query)
+			}
+			for _, key := range []string{"ratio_pattern", "content_type", "width_min", "width_max", "height_min", "height_max", "tool"} {
+				if query.Has(key) {
+					t.Fatalf("default query unexpectedly has %q: %v", key, query)
+				}
+			}
+		}
+		fmt.Fprint(w, `{"illusts":[]}`)
+	}))
+	defer server.Close()
+	client, err := pixiv.NewClient(pixiv.Options{HTTPClient: server.Client(), AppAPIBaseURL: server.URL, AccessToken: "token"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := client.SearchIllust(context.Background(), pixiv.SearchIllustRequest{Word: "low", Filters: pixiv.SearchIllustFilters{Resolution: pixiv.SearchResolutionLow}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := client.SearchIllust(context.Background(), pixiv.SearchIllustRequest{
+		Word: "all", Filters: pixiv.SearchIllustFilters{
+			Rating: pixiv.SearchRatingAll, ContentType: pixiv.SearchContentTypeAll, AIMode: pixiv.SearchAIModeAll,
+			AspectRatio: pixiv.SearchAspectRatioAll, Resolution: pixiv.SearchResolutionAll,
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestSearchIllustFiltersRatingAndOnlyAIInPublicSDK(t *testing.T) {
+	t.Parallel()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.URL.Query().Get("search_ai_type"); got != "0" {
+			t.Fatalf("only-AI search_ai_type = %q, want 0", got)
+		}
+		fmt.Fprint(w, `{"illusts":[
+			{"id":1,"x_restrict":0,"ai_type":2},
+			{"id":2,"x_restrict":1,"ai_type":2},
+			{"id":3,"x_restrict":2,"ai_type":2},
+			{"id":4,"x_restrict":0,"ai_type":1}
+		],"next_url":"https://app-api.pixiv.net/v1/search/illust?offset=30"}`)
+	}))
+	defer server.Close()
+	client, err := pixiv.NewClient(pixiv.Options{HTTPClient: server.Client(), AppAPIBaseURL: server.URL, AccessToken: "token"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := client.SearchIllust(context.Background(), pixiv.SearchIllustRequest{
+		Word: "miku",
+		Filters: pixiv.SearchIllustFilters{
+			Rating: pixiv.SearchRatingMature,
+			AIMode: pixiv.SearchAIModeOnly,
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Illusts) != 2 || result.Illusts[0].ID != 1 || result.Illusts[1].ID != 2 {
+		t.Fatalf("illusts = %#v", result.Illusts)
+	}
+	if result.NextCursor == "" {
+		t.Fatal("filtered batch lost upstream continuation")
+	}
+}
+
+func TestSearchIllustCursorIsBoundToEveryFilter(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name    string
+		first   pixiv.SearchIllustFilters
+		changed pixiv.SearchIllustFilters
+	}{
+		{name: "rating", first: pixiv.SearchIllustFilters{Rating: pixiv.SearchRatingAll}, changed: pixiv.SearchIllustFilters{Rating: pixiv.SearchRatingSFW}},
+		{name: "content type", first: pixiv.SearchIllustFilters{ContentType: pixiv.SearchContentTypeAll}, changed: pixiv.SearchIllustFilters{ContentType: pixiv.SearchContentTypeManga}},
+		{name: "AI mode", first: pixiv.SearchIllustFilters{AIMode: pixiv.SearchAIModeAll}, changed: pixiv.SearchIllustFilters{AIMode: pixiv.SearchAIModeExclude}},
+		{name: "aspect ratio", first: pixiv.SearchIllustFilters{AspectRatio: pixiv.SearchAspectRatioAll}, changed: pixiv.SearchIllustFilters{AspectRatio: pixiv.SearchAspectRatioPortrait}},
+		{name: "resolution", first: pixiv.SearchIllustFilters{Resolution: pixiv.SearchResolutionHigh}, changed: pixiv.SearchIllustFilters{Resolution: pixiv.SearchResolutionLow}},
+		{name: "tool", first: pixiv.SearchIllustFilters{Tool: "tool-a"}, changed: pixiv.SearchIllustFilters{Tool: "tool-b"}},
+	}
+	var requests atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		requests.Add(1)
+		fmt.Fprint(w, `{"illusts":[],"next_url":"https://app-api.pixiv.net/v1/search/illust?offset=30"}`)
+	}))
+	defer server.Close()
+	client, err := pixiv.NewClient(pixiv.Options{HTTPClient: server.Client(), AppAPIBaseURL: server.URL, AccessToken: "token"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for index, test := range tests {
+		first, err := client.SearchIllust(context.Background(), pixiv.SearchIllustRequest{Word: "miku", Filters: test.first})
+		if err != nil {
+			t.Fatalf("%s first: %v", test.name, err)
+		}
+		result, err := client.SearchIllust(context.Background(), pixiv.SearchIllustRequest{Word: "miku", Cursor: first.NextCursor, Filters: test.changed})
+		if result != nil || !errors.Is(err, pixiv.ErrInvalidArgument) {
+			t.Fatalf("%s result=%#v error=%v", test.name, result, err)
+		}
+		if want := int32(index + 1); requests.Load() != want {
+			t.Fatalf("%s network requests = %d, want %d", test.name, requests.Load(), want)
+		}
+	}
+}
+
+func TestSearchIllustPreservesAppDrawingTools(t *testing.T) {
+	t.Parallel()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		fmt.Fprint(w, `{"illusts":[{"id":1,"tools":["CLIP STUDIO PAINT","Photoshop"]}]}`)
+	}))
+	defer server.Close()
+	client, err := pixiv.NewClient(pixiv.Options{HTTPClient: server.Client(), AppAPIBaseURL: server.URL, AccessToken: "token"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := client.SearchIllust(context.Background(), pixiv.SearchIllustRequest{Word: "miku"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	tools := result.Illusts[0].Tools
+	if len(tools) != 2 || tools[0] != "CLIP STUDIO PAINT" || tools[1] != "Photoshop" {
+		t.Fatalf("tools = %#v", tools)
+	}
+}
+
+func TestSearchIllustNormalizesMissingAppDrawingToolsAtResultBoundary(t *testing.T) {
+	t.Parallel()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		fmt.Fprint(w, `{"illusts":[{"id":1}]}`)
+	}))
+	defer server.Close()
+	client, err := pixiv.NewClient(pixiv.Options{HTTPClient: server.Client(), AppAPIBaseURL: server.URL, AccessToken: "token"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := client.SearchIllust(context.Background(), pixiv.SearchIllustRequest{Word: "miku"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Illusts[0].Tools == nil || len(result.Illusts[0].Tools) != 0 {
+		t.Fatalf("tools = %#v", result.Illusts[0].Tools)
+	}
+}
+
+func TestIllustJSONPreservesFieldsFromAnonymousEmbedding(t *testing.T) {
+	t.Parallel()
+	type Extended struct {
+		pixiv.Illust
+		Extra string `json:"extra"`
+	}
+	raw, err := json.Marshal(Extended{Illust: pixiv.Illust{ID: 1}, Extra: "preserved"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(raw, &payload); err != nil {
+		t.Fatal(err)
+	}
+	if payload["extra"] != "preserved" {
+		t.Fatalf("extra = %#v; JSON=%s", payload["extra"], raw)
+	}
+}
+
+func TestAnonymousSearchIllustTranslatesReliableWebFilters(t *testing.T) {
+	t.Parallel()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/ajax/search/manga/miku" {
+			t.Fatalf("path = %q", r.URL.Path)
+		}
+		query := r.URL.Query()
+		want := map[string]string{
+			"ratio": "0.5", "wlt": "1000", "wgt": "2999", "hlt": "1000", "hgt": "2999", "tool": "CLIP STUDIO PAINT",
+		}
+		for key, value := range want {
+			if got := query.Get(key); got != value {
+				t.Fatalf("%s = %q, want %q; query=%v", key, got, value, query)
+			}
+		}
+		fmt.Fprint(w, `{"error":false,"body":{"illustManga":{"data":[]}}}`)
+	}))
+	defer server.Close()
+	client, err := pixiv.NewClient(pixiv.Options{HTTPClient: server.Client(), WebAPIBaseURL: server.URL, WebFallbackEnabled: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = client.SearchIllust(context.Background(), pixiv.SearchIllustRequest{
+		Word: "miku",
+		Filters: pixiv.SearchIllustFilters{
+			ContentType: pixiv.SearchContentTypeManga,
+			AspectRatio: pixiv.SearchAspectRatioLandscape,
+			Resolution:  pixiv.SearchResolutionMedium,
+			Tool:        "CLIP STUDIO PAINT",
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestAnonymousSearchIllustRejectsRestrictedRatingsBeforeNetwork(t *testing.T) {
+	t.Parallel()
+	var requests atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		requests.Add(1)
+		fmt.Fprint(w, `{"error":false,"body":{"illustManga":{"data":[]}}}`)
+	}))
+	defer server.Close()
+	client, err := pixiv.NewClient(pixiv.Options{HTTPClient: server.Client(), WebAPIBaseURL: server.URL, WebFallbackEnabled: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, rating := range []pixiv.SearchRating{pixiv.SearchRatingR18, pixiv.SearchRatingR18G, pixiv.SearchRatingMature} {
+		result, err := client.SearchIllust(context.Background(), pixiv.SearchIllustRequest{
+			Word: "miku", Filters: pixiv.SearchIllustFilters{Rating: rating},
+		})
+		var typed *pixiv.Error
+		if result != nil || !errors.As(err, &typed) || typed.Code != pixiv.CodeUnauthorized || typed.Operation != pixiv.OperationSearchIllust || typed.Backend != "" {
+			t.Fatalf("rating=%q result=%#v error=%#v", rating, result, typed)
+		}
+	}
+	if requests.Load() != 0 {
+		t.Fatalf("network requests = %d", requests.Load())
+	}
+}
+
+func TestAnonymousSearchIllustAppliesSFWAndAISemantics(t *testing.T) {
+	t.Parallel()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		fmt.Fprint(w, `{"error":false,"body":{"illustManga":{"data":[
+			{"id":"1","xRestrict":0,"aiType":1},
+			{"id":"2","xRestrict":0,"aiType":2},
+			{"id":"3","xRestrict":1,"aiType":1}
+		]}}}`)
+	}))
+	defer server.Close()
+	client, err := pixiv.NewClient(pixiv.Options{HTTPClient: server.Client(), WebAPIBaseURL: server.URL, WebFallbackEnabled: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := client.SearchIllust(context.Background(), pixiv.SearchIllustRequest{
+		Word: "miku", Filters: pixiv.SearchIllustFilters{Rating: pixiv.SearchRatingSFW, AIMode: pixiv.SearchAIModeExclude},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Illusts) != 1 || result.Illusts[0].ID != 1 {
+		t.Fatalf("illusts = %#v", result.Illusts)
+	}
+}
+
+func TestSearchIllustOptionsUsesAuthenticatedApp(t *testing.T) {
+	t.Parallel()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/search/options" || r.URL.Query().Get("word") != "miku" {
+			t.Fatalf("request = %s?%s", r.URL.Path, r.URL.RawQuery)
+		}
+		query := r.URL.Query()
+		if query.Get("search_target") != "partial_match_for_tags" || query.Get("merge_plain_keyword_results") != "true" || query.Get("include_translated_tag_results") != "true" || query.Get("search_ai_type") != "0" {
+			t.Fatalf("query = %v", query)
+		}
+		fmt.Fprint(w, `{"illust":{"tool":{"options":["CLIP STUDIO PAINT","Photoshop"]}}}`)
+	}))
+	defer server.Close()
+	client, err := pixiv.NewClient(pixiv.Options{HTTPClient: server.Client(), AppAPIBaseURL: server.URL, AccessToken: "token"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := client.SearchIllustOptions(context.Background(), pixiv.SearchIllustOptionsRequest{Word: " miku "})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Tools) != 2 || result.Tools[0] != "CLIP STUDIO PAINT" || result.Tools[1] != "Photoshop" {
+		t.Fatalf("tools = %#v", result.Tools)
+	}
+}
+
+func TestSearchIllustOptionsRejectsAnonymousWebFallbackWithoutNetwork(t *testing.T) {
+	t.Parallel()
+	var requests atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		requests.Add(1)
+		fmt.Fprint(w, `{}`)
+	}))
+	defer server.Close()
+	client, err := pixiv.NewClient(pixiv.Options{HTTPClient: server.Client(), WebAPIBaseURL: server.URL, WebFallbackEnabled: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := client.SearchIllustOptions(context.Background(), pixiv.SearchIllustOptionsRequest{Word: "miku"})
+	var typed *pixiv.Error
+	if result != nil || !errors.As(err, &typed) || typed.Code != pixiv.CodeUnsupported || typed.Operation != pixiv.OperationSearchIllustOptions || typed.Backend != "" {
+		t.Fatalf("result=%#v error=%#v", result, typed)
+	}
+	if requests.Load() != 0 {
+		t.Fatalf("network requests = %d", requests.Load())
+	}
+}
+
+func TestSearchIllustOptionsNormalizesMissingToolOptionsToEmpty(t *testing.T) {
+	t.Parallel()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		fmt.Fprint(w, `{"illust":{}}`)
+	}))
+	defer server.Close()
+	client, err := pixiv.NewClient(pixiv.Options{HTTPClient: server.Client(), AppAPIBaseURL: server.URL, AccessToken: "token"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := client.SearchIllustOptions(context.Background(), pixiv.SearchIllustOptionsRequest{Word: "miku"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Tools == nil || len(result.Tools) != 0 {
+		t.Fatalf("tools = %#v", result.Tools)
+	}
+}
+
+func TestSearchIllustOptionsMapsMissingOrNullIllustEnvelope(t *testing.T) {
+	t.Parallel()
+	for _, body := range []string{`{}`, `{"illust":null}`} {
+		body := body
+		t.Run(body, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				fmt.Fprint(w, body)
+			}))
+			defer server.Close()
+			client, err := pixiv.NewClient(pixiv.Options{HTTPClient: server.Client(), AppAPIBaseURL: server.URL, AccessToken: "token"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			result, err := client.SearchIllustOptions(context.Background(), pixiv.SearchIllustOptionsRequest{Word: "miku"})
+			var typed *pixiv.Error
+			if result != nil || !errors.As(err, &typed) || typed.Code != pixiv.CodeMalformedUpstreamResponse || typed.Operation != pixiv.OperationSearchIllustOptions || typed.Backend != pixiv.BackendAppAPI {
+				t.Fatalf("result=%#v error=%#v", result, typed)
+			}
+		})
+	}
+}
+
+func TestSearchIllustOptionsMapsAppFailureWithoutLeakingBody(t *testing.T) {
+	t.Parallel()
+	const secret = "search-options-secret-body"
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, secret, http.StatusBadGateway)
+	}))
+	defer server.Close()
+	client, err := pixiv.NewClient(pixiv.Options{HTTPClient: server.Client(), AppAPIBaseURL: server.URL, AccessToken: "token"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := client.SearchIllustOptions(context.Background(), pixiv.SearchIllustOptionsRequest{Word: "miku"})
+	var typed *pixiv.Error
+	if result != nil || !errors.As(err, &typed) || typed.Operation != pixiv.OperationSearchIllustOptions || typed.Backend != pixiv.BackendAppAPI || typed.UpstreamStatus != http.StatusBadGateway {
+		t.Fatalf("result=%#v error=%#v", result, typed)
+	}
+	if strings.Contains(fmt.Sprint(err), secret) || strings.Contains(fmt.Sprint(errors.Unwrap(err)), secret) {
+		t.Fatalf("error leaked response body: %v", err)
+	}
+}
+
 func TestAnonymousWebSearchRejectsMissingItemsAndIDsButAcceptsEmpty(t *testing.T) {
 	t.Parallel()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -1078,6 +1516,10 @@ func TestInvalidListEnumsFailBeforeNetwork(t *testing.T) {
 	}
 	calls := []func() error{
 		func() error {
+			_, err := client.SearchIllustOptions(context.Background(), pixiv.SearchIllustOptionsRequest{})
+			return err
+		},
+		func() error {
 			_, err := client.SearchIllust(context.Background(), pixiv.SearchIllustRequest{Word: "x", Target: "bad"})
 			return err
 		},
@@ -1087,6 +1529,26 @@ func TestInvalidListEnumsFailBeforeNetwork(t *testing.T) {
 		},
 		func() error {
 			_, err := client.SearchIllust(context.Background(), pixiv.SearchIllustRequest{Word: "x", Duration: "bad"})
+			return err
+		},
+		func() error {
+			_, err := client.SearchIllust(context.Background(), pixiv.SearchIllustRequest{Word: "x", Filters: pixiv.SearchIllustFilters{Rating: "bad"}})
+			return err
+		},
+		func() error {
+			_, err := client.SearchIllust(context.Background(), pixiv.SearchIllustRequest{Word: "x", Filters: pixiv.SearchIllustFilters{ContentType: "bad"}})
+			return err
+		},
+		func() error {
+			_, err := client.SearchIllust(context.Background(), pixiv.SearchIllustRequest{Word: "x", Filters: pixiv.SearchIllustFilters{AIMode: "bad"}})
+			return err
+		},
+		func() error {
+			_, err := client.SearchIllust(context.Background(), pixiv.SearchIllustRequest{Word: "x", Filters: pixiv.SearchIllustFilters{AspectRatio: "bad"}})
+			return err
+		},
+		func() error {
+			_, err := client.SearchIllust(context.Background(), pixiv.SearchIllustRequest{Word: "x", Filters: pixiv.SearchIllustFilters{Resolution: "bad"}})
 			return err
 		},
 		func() error {

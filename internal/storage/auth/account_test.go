@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"io/fs"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -9,6 +10,28 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func TestAuthStoreReadHookIsScopedAndRestored(t *testing.T) {
+	interceptedPath := filepath.Join(t.TempDir(), "intercepted-auth.json")
+	otherPath := filepath.Join(t.TempDir(), "other-auth.json")
+	require.NoError(t, os.WriteFile(otherPath, []byte(`{"default_user_id":7,"accounts":[{"user_id":7,"refresh_token":"synthetic-other-token"}]}`), 0o600))
+	restore := SetReadAuthStoreFileForTest(interceptedPath, func(path string) ([]byte, error) {
+		return nil, &fs.PathError{Op: "open", Path: path, Err: fs.ErrPermission}
+	})
+	t.Cleanup(restore)
+
+	_, err := LoadAuthStore(interceptedPath)
+	require.ErrorIs(t, err, fs.ErrPermission)
+	store, err := LoadAuthStore(otherPath)
+	require.NoError(t, err)
+	assert.Equal(t, int64(7), store.DefaultUserID)
+	require.Len(t, store.Accounts, 1)
+
+	restore()
+	store, err = LoadAuthStore(interceptedPath)
+	require.NoError(t, err)
+	assert.Empty(t, store.Accounts)
+}
 
 func TestLoadSaveAuthStorePreservesDataAndAppliesPlatformPermissions(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "pixiv", "auth.json")
@@ -62,6 +85,8 @@ func TestLoadAuthStoreRejectsLegacyAccountNameSchema(t *testing.T) {
 
 	_, err := LoadAuthStore(path)
 	require.ErrorContains(t, err, "legacy")
+	assert.ErrorContains(t, err, "pixiv auth import/login")
+	assert.NotContains(t, err.Error(), "pixiv auth add")
 }
 
 func TestLoadAuthStoreRejectsMixedLegacyNameSchema(t *testing.T) {
@@ -78,6 +103,16 @@ func TestLoadAuthStoreRejectsLegacyKeysEvenWhenNull(t *testing.T) {
 
 	_, err := LoadAuthStore(path)
 	require.ErrorContains(t, err, "legacy")
+}
+
+func TestLoadAuthStoreMissingUserIDUsesImportRecoveryGuidance(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "auth.json")
+	require.NoError(t, os.WriteFile(path, []byte(`{"accounts":[{"refresh_token":"secret"}]}`), 0o600))
+
+	_, err := LoadAuthStore(path)
+	require.ErrorContains(t, err, "user_id is required")
+	assert.ErrorContains(t, err, "pixiv auth import/login")
+	assert.NotContains(t, err.Error(), "pixiv auth add")
 }
 
 func TestAuthStoreRemovePromotesFirstRemainingUserID(t *testing.T) {

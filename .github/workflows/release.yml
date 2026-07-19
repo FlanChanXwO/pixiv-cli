@@ -100,14 +100,14 @@ jobs:
             rust_toolchain: '1.96.1'
             artifact: darwin-arm64
             cc: clang
-          - runner: ubuntu-24.04
+          - runner: ubuntu-22.04
             goos: linux
             goarch: amd64
             rust_target: x86_64-unknown-linux-gnu
             rust_toolchain: '1.96.1'
             artifact: linux-amd64
             cc: gcc
-          - runner: ubuntu-24.04-arm
+          - runner: ubuntu-22.04-arm
             goos: linux
             goarch: arm64
             rust_target: aarch64-unknown-linux-gnu
@@ -251,14 +251,14 @@ jobs:
             rust_toolchain: '1.96.1'
             artifact: darwin-arm64
             cc: clang
-          - runner: ubuntu-24.04
+          - runner: ubuntu-22.04
             goos: linux
             goarch: amd64
             rust_target: x86_64-unknown-linux-gnu
             rust_toolchain: '1.96.1'
             artifact: linux-amd64
             cc: gcc
-          - runner: ubuntu-24.04-arm
+          - runner: ubuntu-22.04-arm
             goos: linux
             goarch: arm64
             rust_target: aarch64-unknown-linux-gnu
@@ -323,6 +323,9 @@ jobs:
           go build -trimpath -buildvcs=false \
             -ldflags "-X github.com/FlanChanXwO/pixiv-cli/internal/buildinfo.Version=${RELEASE_TAG} -X github.com/FlanChanXwO/pixiv-cli/internal/buildinfo.Commit=$(git rev-parse HEAD) -X github.com/FlanChanXwO/pixiv-cli/internal/buildinfo.BuildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
             -o "$output" ./cmd/pixiv
+          if [ '${{ matrix.goos }}' = linux ]; then
+            go run ./scripts/linuxabi --binary "$output"
+          fi
       - name: Package the fixed-name platform asset
         shell: bash
         run: |
@@ -420,6 +423,8 @@ jobs:
             --version "${RELEASE_TAG#v}" \
             --input-dir dist \
             --output-dir release \
+            --install-sh scripts/install.sh \
+            --install-cmd scripts/install.cmd \
             --key-id "$RELEASE_SIGNING_KEY_ID" \
             --private-key "$key_path" \
             --changelog CHANGELOG.md
@@ -449,6 +454,8 @@ jobs:
             "${prerelease[@]}" \
             release/pixiv-cli_*.tar.gz \
             release/pixiv-cli_*.zip \
+            release/install.sh \
+            release/install.cmd \
             release/checksums.txt \
             release/checksums.json
           expected=$(find release -maxdepth 1 -type f ! -name release-notes.md -exec basename {} \; | LC_ALL=C sort)
@@ -533,10 +540,10 @@ jobs:
           - runner: macos-15
             os: darwin
             arch: arm64
-          - runner: ubuntu-24.04
+          - runner: ubuntu-22.04
             os: linux
             arch: amd64
-          - runner: ubuntu-24.04-arm
+          - runner: ubuntu-22.04-arm
             os: linux
             arch: arm64
     steps:

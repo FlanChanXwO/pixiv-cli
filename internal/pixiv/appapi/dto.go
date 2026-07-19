@@ -13,6 +13,15 @@ type illustListDTO struct {
 type illustDetailDTO struct {
 	Illust *illustDTO `json:"illust"`
 }
+type searchIllustOptionsDTO struct {
+	Illust *searchOptionsScopeDTO `json:"illust"`
+}
+type searchOptionsScopeDTO struct {
+	Tool *searchToolOptionsDTO `json:"tool"`
+}
+type searchToolOptionsDTO struct {
+	Options []string `json:"options"`
+}
 type novelListDTO struct {
 	Novels  requiredList[novelDTO] `json:"novels"`
 	NextURL *string                `json:"next_url"`
@@ -45,6 +54,7 @@ type illustDTO struct {
 	CreateDate     string        `json:"create_date"`
 	Width          int           `json:"width"`
 	Height         int           `json:"height"`
+	Tools          []string      `json:"tools"`
 }
 type userDTO struct {
 	ID               int64               `json:"id"`

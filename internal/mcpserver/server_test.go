@@ -44,15 +44,19 @@ func TestServerListsExpectedTools(t *testing.T) {
 	defer session.Close()
 
 	var names []string
+	var searchIllustTool *mcp.Tool
 	for tool, err := range session.Tools(ctx, nil) {
 		if err != nil {
 			t.Fatalf("tools: %v", err)
 		}
 		names = append(names, tool.Name)
+		if tool.Name == "search_illust" {
+			searchIllustTool = tool
+		}
 	}
 	want := []string{
 		"set_download_path", "download", "refresh_token", "set_refresh_token",
-		"download_random_from_recommendation", "search_illust", "illust_detail",
+		"download_random_from_recommendation", "search_illust", "search_illust_options", "illust_detail",
 		"illust_related", "illust_ranking", "search_user", "illust_recommended",
 		"recommended", "trending_tags_illust", "illust_follow", "user_detail",
 		"user_artworks", "user_bookmarks", "user_following", "add_bookmark",
@@ -62,6 +66,284 @@ func TestServerListsExpectedTools(t *testing.T) {
 	slices.Sort(want)
 	if !slices.Equal(names, want) {
 		t.Fatalf("tools=%v, want exact registration set %v", names, want)
+	}
+	if searchIllustTool == nil {
+		t.Fatal("search_illust tool is not registered")
+	}
+	schema, err := json.Marshal(searchIllustTool.InputSchema)
+	if err != nil {
+		t.Fatalf("marshal search_illust input schema: %v", err)
+	}
+	for _, field := range []string{"rating", "content_type", "ai_mode", "aspect_ratio", "resolution", "tool"} {
+		if !strings.Contains(string(schema), `"`+field+`"`) {
+			t.Fatalf("search_illust input schema missing %q: %s", field, schema)
+		}
+	}
+	var schemaObject struct {
+		Properties map[string]struct {
+			Description string   `json:"description"`
+			Enum        []string `json:"enum"`
+		} `json:"properties"`
+	}
+	if err := json.Unmarshal(schema, &schemaObject); err != nil {
+		t.Fatalf("decode search_illust input schema: %v", err)
+	}
+	wantEnums := map[string][]string{
+		"rating":       {"all", "sfw", "r18", "r18g", "mature"},
+		"content_type": {"all", "illust-and-ugoira", "illust", "manga", "ugoira"},
+		"ai_mode":      {"all", "exclude", "only"},
+		"aspect_ratio": {"all", "landscape", "portrait", "square"},
+		"resolution":   {"all", "high", "medium", "low"},
+	}
+	for field, enum := range wantEnums {
+		property := schemaObject.Properties[field]
+		if property.Description == "" || !slices.Equal(property.Enum, enum) {
+			t.Fatalf("search_illust schema %s = %+v, want enum %v with description", field, property, enum)
+		}
+	}
+	if schemaObject.Properties["tool"].Description == "" {
+		t.Fatal("search_illust schema tool is missing description")
+	}
+}
+
+func TestSearchIllustMapsStableFiltersToPublicSDK(t *testing.T) {
+	var got sdk.SearchIllustRequest
+	client := &fakeSDKClient{searchIllust: func(_ context.Context, request sdk.SearchIllustRequest) (*sdk.IllustListResult, error) {
+		got = request
+		return &sdk.IllustListResult{}, nil
+	}}
+	session, closeSession := newSDKTestSession(t, client)
+	defer closeSession()
+
+	result := callTool(t, session, "search_illust", map[string]any{
+		"word": "cat", "rating": "r18g", "content_type": "manga", "ai_mode": "only",
+		"aspect_ratio": "landscape", "resolution": "high", "tool": "CLIP STUDIO PAINT",
+	})
+	if result.IsError {
+		t.Fatalf("search_illust returned MCP error: %+v", result)
+	}
+	want := sdk.SearchIllustFilters{
+		Rating: sdk.SearchRatingR18G, ContentType: sdk.SearchContentTypeManga,
+		AIMode: sdk.SearchAIModeOnly, AspectRatio: sdk.SearchAspectRatioLandscape,
+		Resolution: sdk.SearchResolutionHigh, Tool: "CLIP STUDIO PAINT",
+	}
+	if got.Word != "cat" || got.Filters != want {
+		t.Fatalf("SearchIllust request = %+v, want word=cat filters=%+v", got, want)
+	}
+}
+
+func TestSearchIllustRejectsRatingWithLegacyR18BeforeSDKCall(t *testing.T) {
+	calls := 0
+	client := &fakeSDKClient{searchIllust: func(_ context.Context, _ sdk.SearchIllustRequest) (*sdk.IllustListResult, error) {
+		calls++
+		return &sdk.IllustListResult{}, nil
+	}}
+	session, closeSession := newSDKTestSession(t, client)
+	defer closeSession()
+
+	result := callTool(t, session, "search_illust", map[string]any{"word": "cat", "rating": "sfw", "search_r18": true})
+	var out textOut
+	decodeStructured(t, result, &out)
+	if calls != 0 || !strings.Contains(out.Text, "rating") || !strings.Contains(out.Text, "search_r18") {
+		t.Fatalf("conflict result=%+v calls=%d", out, calls)
+	}
+}
+
+func TestSearchIllustMapsLegacyR18ToRatingWithoutChangingWord(t *testing.T) {
+	var got sdk.SearchIllustRequest
+	client := &fakeSDKClient{searchIllust: func(_ context.Context, request sdk.SearchIllustRequest) (*sdk.IllustListResult, error) {
+		got = request
+		return &sdk.IllustListResult{}, nil
+	}}
+	session, closeSession := newSDKTestSession(t, client)
+	defer closeSession()
+
+	callTool(t, session, "search_illust", map[string]any{"word": "cat", "search_r18": true})
+	if got.Word != "cat" || got.Filters.Rating != sdk.SearchRatingR18 {
+		t.Fatalf("legacy R18 request = %+v", got)
+	}
+}
+
+func TestSearchIllustKeepsFiltersAcrossLogicalOffsetPagination(t *testing.T) {
+	var requests []sdk.SearchIllustRequest
+	client := &fakeSDKClient{searchIllust: func(_ context.Context, request sdk.SearchIllustRequest) (*sdk.IllustListResult, error) {
+		requests = append(requests, request)
+		switch request.Cursor {
+		case "":
+			return &sdk.IllustListResult{Illusts: []sdk.Illust{testSDKIllust(1, "first", 7)}, NextCursor: "next"}, nil
+		case "next":
+			return &sdk.IllustListResult{Illusts: []sdk.Illust{testSDKIllust(2, "second", 7)}}, nil
+		default:
+			return &sdk.IllustListResult{}, nil
+		}
+	}}
+	session, closeSession := newSDKTestSession(t, client)
+	defer closeSession()
+
+	result := callTool(t, session, "search_illust", map[string]any{"word": "cat", "offset": 1, "ai_mode": "exclude"})
+	var out textOut
+	decodeStructured(t, result, &out)
+	if len(requests) != 2 || requests[1].Cursor != "next" || requests[0].Filters.AIMode != sdk.SearchAIModeExclude || requests[1].Filters.AIMode != sdk.SearchAIModeExclude || !strings.Contains(out.Text, `"second"`) {
+		t.Fatalf("requests=%+v output=%+v", requests, out)
+	}
+}
+
+func TestSearchIllustContinuesAfterFilteredEmptyBatch(t *testing.T) {
+	var requests []sdk.SearchIllustRequest
+	client := &fakeSDKClient{searchIllust: func(_ context.Context, request sdk.SearchIllustRequest) (*sdk.IllustListResult, error) {
+		requests = append(requests, request)
+		if request.Cursor == "" {
+			return &sdk.IllustListResult{Illusts: []sdk.Illust{}, NextCursor: "filtered-next"}, nil
+		}
+		return &sdk.IllustListResult{Illusts: []sdk.Illust{testSDKIllust(2, "visible", 7)}}, nil
+	}}
+	session, closeSession := newSDKTestSession(t, client)
+	defer closeSession()
+
+	result := callTool(t, session, "search_illust", map[string]any{"word": "cat", "rating": "r18"})
+	var out textOut
+	decodeStructured(t, result, &out)
+	if len(requests) != 2 || requests[1].Cursor != "filtered-next" || !strings.Contains(out.Text, `"visible"`) {
+		t.Fatalf("requests=%+v output=%+v", requests, out)
+	}
+}
+
+func TestSearchIllustSchemaRejectsInvalidEnumsBeforeOpeningSDK(t *testing.T) {
+	for _, test := range []struct {
+		field string
+		value string
+	}{
+		{"rating", "adult"},
+		{"content_type", "novel"},
+		{"ai_mode", "maybe"},
+		{"aspect_ratio", "wide"},
+		{"resolution", "ultra"},
+	} {
+		t.Run(test.field, func(t *testing.T) {
+			factoryCalls := 0
+			service := application.SDKService{NewClient: func(application.SDKClientRequest) (application.SDKClient, error) {
+				factoryCalls++
+				return &fakeSDKClient{}, nil
+			}}
+			session, closeSession := newSDKTestSessionWithService(t, &fakeAPI{}, service)
+			defer closeSession()
+			_, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: "search_illust", Arguments: map[string]any{"word": "cat", test.field: test.value}})
+			if err == nil || factoryCalls != 0 {
+				t.Fatalf("invalid %s=%q error=%v factoryCalls=%d", test.field, test.value, err, factoryCalls)
+			}
+		})
+	}
+}
+
+func TestSearchIllustOptionsReturnsStructuredToolsFromPublicSDK(t *testing.T) {
+	var got sdk.SearchIllustOptionsRequest
+	client := &fakeSDKClient{searchIllustOptions: func(_ context.Context, request sdk.SearchIllustOptionsRequest) (*sdk.SearchIllustOptionsResult, error) {
+		got = request
+		return &sdk.SearchIllustOptionsResult{Tools: []string{"CLIP STUDIO PAINT", "Photoshop"}}, nil
+	}}
+	session, closeSession := newSDKTestSession(t, client)
+	defer closeSession()
+
+	result := callTool(t, session, "search_illust_options", map[string]any{"word": "cat"})
+	if result.IsError {
+		t.Fatalf("search_illust_options returned MCP error: %+v", result)
+	}
+	var out searchIllustOptionsOut
+	decodeStructured(t, result, &out)
+	first := strings.Index(out.Text, "CLIP STUDIO PAINT")
+	second := strings.Index(out.Text, "Photoshop")
+	if got.Word != "cat" || !slices.Equal(out.Tools, []string{"CLIP STUDIO PAINT", "Photoshop"}) || first < 0 || second <= first {
+		t.Fatalf("request=%+v output=%+v", got, out)
+	}
+}
+
+func TestSearchIllustOptionsExplainsEmptyToolList(t *testing.T) {
+	client := &fakeSDKClient{searchIllustOptions: func(_ context.Context, _ sdk.SearchIllustOptionsRequest) (*sdk.SearchIllustOptionsResult, error) {
+		return &sdk.SearchIllustOptionsResult{Tools: nil}, nil
+	}}
+	session, closeSession := newSDKTestSession(t, client)
+	defer closeSession()
+
+	result := callTool(t, session, "search_illust_options", map[string]any{"word": "cat"})
+	var out searchIllustOptionsOut
+	decodeStructured(t, result, &out)
+	if result.IsError || out.Tools == nil || len(out.Tools) != 0 || out.Text != "当前没有可用的绘图工具。" {
+		t.Fatalf("empty options output=%+v result=%+v", out, result)
+	}
+}
+
+func TestSearchIllustOptionsEscapesControlCharactersOnlyInCompatibilityText(t *testing.T) {
+	rawTools := []string{"safe\nforged\rline\x1b[31m\x01", "second"}
+	client := &fakeSDKClient{searchIllustOptions: func(_ context.Context, _ sdk.SearchIllustOptionsRequest) (*sdk.SearchIllustOptionsResult, error) {
+		return &sdk.SearchIllustOptionsResult{Tools: rawTools}, nil
+	}}
+	session, closeSession := newSDKTestSession(t, client)
+	defer closeSession()
+
+	result := callTool(t, session, "search_illust_options", map[string]any{"word": "cat"})
+	var out searchIllustOptionsOut
+	decodeStructured(t, result, &out)
+	if !slices.Equal(out.Tools, rawTools) {
+		t.Fatalf("structured tools changed: got %q want %q", out.Tools, rawTools)
+	}
+	for _, control := range []string{"safe\nforged", "\r", "\x1b", "\x01"} {
+		if strings.Contains(out.Text, control) {
+			t.Fatalf("compatibility text contains raw control %q: %q", control, out.Text)
+		}
+	}
+	for _, escaped := range []string{`\n`, `\r`, `\x1b`, `\x01`} {
+		if !strings.Contains(out.Text, escaped) {
+			t.Fatalf("compatibility text missing escape %q: %q", escaped, out.Text)
+		}
+	}
+}
+
+func TestSearchIllustOptionsSchemaRequiresWord(t *testing.T) {
+	session, closeSession := newSDKTestSession(t, &fakeSDKClient{})
+	defer closeSession()
+
+	_, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: "search_illust_options", Arguments: map[string]any{}})
+	if err == nil || !strings.Contains(err.Error(), "word") {
+		t.Fatalf("missing word error = %v", err)
+	}
+}
+
+func TestSearchIllustOptionsExposesSDKErrorAndKeepsArgumentsOutOfLogs(t *testing.T) {
+	const wordCanary = "query-secret-canary"
+	typed := &sdk.Error{Code: sdk.CodeUnsupported, Operation: sdk.OperationSearchIllustOptions, Backend: sdk.BackendAppAPI}
+	client := &fakeSDKClient{searchIllustOptions: func(_ context.Context, _ sdk.SearchIllustOptionsRequest) (*sdk.SearchIllustOptionsResult, error) {
+		return nil, typed
+	}}
+	var logs bytes.Buffer
+	service := application.SDKService{NewClient: func(application.SDKClientRequest) (application.SDKClient, error) { return client, nil }}
+	server := NewWithSDK(&fakeAPI{}, &fakeDownloads{}, slog.New(slog.NewJSONHandler(&logs, nil)), service, application.SDKClientRequest{})
+	clientTransport, serverTransport := mcp.NewInMemoryTransports()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() { _ = server.Run(ctx, serverTransport) }()
+	mcpClient := mcp.NewClient(&mcp.Implementation{Name: "test", Version: "1"}, nil)
+	session, err := mcpClient.Connect(ctx, clientTransport, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer session.Close()
+
+	result := callTool(t, session, "search_illust_options", map[string]any{"word": wordCanary})
+	var out searchIllustOptionsOut
+	decodeStructured(t, result, &out)
+	if !result.IsError || !strings.Contains(out.Text, string(sdk.CodeUnsupported)) || out.Tools == nil {
+		t.Fatalf("error output=%+v result=%+v", out, result)
+	}
+	logText := logs.String()
+	for _, secret := range []string{wordCanary, typed.Error()} {
+		if strings.Contains(logText, secret) {
+			t.Fatalf("MCP log leaked %q: %s", secret, logText)
+		}
+	}
+	for _, want := range []string{`"operation":"search_illust_options"`, `"result":"error"`, `"error_code":"unsupported"`} {
+		if !strings.Contains(logText, want) {
+			t.Fatalf("MCP log missing %q: %s", want, logText)
+		}
 	}
 }
 
@@ -81,7 +363,7 @@ func TestLegacyToolLogsSafelyOutsideMCPProtocol(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer session.Close()
-	result := callTool(t, session, "search_illust", map[string]any{"word": "query-secret-canary"})
+	result := callTool(t, session, "search_illust", map[string]any{"word": "query-secret-canary", "tool": "tool-secret-canary"})
 	if result.IsError {
 		t.Fatalf("unexpected MCP result: %+v", result)
 	}
@@ -94,8 +376,10 @@ func TestLegacyToolLogsSafelyOutsideMCPProtocol(t *testing.T) {
 			t.Fatalf("missing %s in %s", want, got)
 		}
 	}
-	if strings.Contains(got, "query-secret-canary") {
-		t.Fatalf("MCP log leaked tool argument: %s", got)
+	for _, secret := range []string{"query-secret-canary", "tool-secret-canary"} {
+		if strings.Contains(got, secret) {
+			t.Fatalf("MCP log leaked tool argument %q: %s", secret, got)
+		}
 	}
 }
 
@@ -122,14 +406,15 @@ func TestMCPStdioKeepsJSONRPCOnStdoutAndLogsOnStderr(t *testing.T) {
 		`{"jsonrpc":"2.0","method":"notifications/initialized","params":{}}`,
 		`{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"search_illust","arguments":{"word":"stdio-secret-canary"}}}`,
 		`{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"add_bookmark","arguments":{"illust_id":41}}}`,
+		`{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"search_illust_options","arguments":{"word":"options-stdio-secret-canary"}}}`,
 	} {
 		if _, err := io.WriteString(stdin, message+"\n"); err != nil {
 			t.Fatal(err)
 		}
 	}
 	scanner := bufio.NewScanner(stdout)
-	lines := make([]string, 0, 3)
-	for range 3 {
+	lines := make([]string, 0, 4)
+	for range 4 {
 		if !scanner.Scan() {
 			t.Fatalf("stdio server ended before responses: %v; stderr=%s", scanner.Err(), stderr.String())
 		}
@@ -145,11 +430,13 @@ func TestMCPStdioKeepsJSONRPCOnStdoutAndLogsOnStderr(t *testing.T) {
 	if !strings.Contains(protocol, `"jsonrpc":"2.0"`) || !strings.Contains(protocol, `"isError":true`) || strings.Contains(protocol, `"component":"mcp"`) {
 		t.Fatalf("stdout is not protocol-only: %s; stderr=%s", protocol, stderr.String())
 	}
-	if !strings.Contains(stderr.String(), `"component":"mcp"`) || !strings.Contains(stderr.String(), `"operation":"search_illust"`) || !strings.Contains(stderr.String(), `"operation":"add_bookmark"`) || !strings.Contains(stderr.String(), `"result":"error"`) {
+	if !strings.Contains(stderr.String(), `"component":"mcp"`) || !strings.Contains(stderr.String(), `"operation":"search_illust"`) || !strings.Contains(stderr.String(), `"operation":"search_illust_options"`) || !strings.Contains(stderr.String(), `"operation":"add_bookmark"`) || !strings.Contains(stderr.String(), `"result":"error"`) {
 		t.Fatalf("stderr lacks MCP event: %s", stderr.String())
 	}
-	if strings.Contains(stderr.String(), "stdio-secret-canary") {
-		t.Fatalf("stderr leaked tool input: %s", stderr.String())
+	for _, secret := range []string{"stdio-secret-canary", "options-stdio-secret-canary"} {
+		if strings.Contains(stderr.String(), secret) {
+			t.Fatalf("stderr leaked tool input %q: %s", secret, stderr.String())
+		}
 	}
 }
 
@@ -811,6 +1098,31 @@ func TestSDKUserToolsResolveIdentityKeepLegacyInputAndReturnStructuredOutput(t *
 	}
 }
 
+func TestUserArtworksNormalizesNilToolsAndPreservesNonNilToolsAtMCPBoundary(t *testing.T) {
+	withNilTools := testSDKIllust(11, "without-tools", 71)
+	withTools := testSDKIllust(12, "with-tools", 71)
+	withTools.Tools = []string{"CLIP STUDIO PAINT", "Photoshop"}
+	client := &fakeSDKClient{userID: 71, artworks: []sdk.Illust{withNilTools, withTools}}
+	session, closeSession := newSDKTestSession(t, client)
+	defer closeSession()
+
+	result := callTool(t, session, "user_artworks", map[string]any{"user_id": 71})
+	if result.IsError {
+		t.Fatalf("user_artworks result=%+v", result)
+	}
+	var out illustListOut
+	decodeStructured(t, result, &out)
+	if out.Items[0].Tools == nil || len(out.Items[0].Tools) != 0 {
+		t.Fatalf("nil tools were not normalized to an empty array: %#v", out.Items[0].Tools)
+	}
+	if !slices.Equal(out.Items[1].Tools, withTools.Tools) {
+		t.Fatalf("non-nil tools changed: got %q want %q", out.Items[1].Tools, withTools.Tools)
+	}
+	if withNilTools.Tools != nil {
+		t.Fatalf("MCP normalization mutated the SDK value: %#v", withNilTools.Tools)
+	}
+}
+
 func TestSDKUserDetailReturnsStructuredSDKResult(t *testing.T) {
 	webpage := "https://example.test/artist"
 	workspaceImage := "https://example.test/workspace.png"
@@ -963,6 +1275,54 @@ func TestSDKRecommendedAllReturnsEveryStreamAndPagination(t *testing.T) {
 	raw, err := json.Marshal(structured)
 	if err != nil || strings.Contains(string(raw), "cursor") || strings.Contains(string(raw), "next_url") {
 		t.Fatalf("structured output leaks continuation: %s, err=%v", raw, err)
+	}
+}
+
+func TestRecommendedNormalizesToolsAcrossTopLevelAndNestedIllusts(t *testing.T) {
+	withoutTools := testSDKIllust(1, "without-tools", 10)
+	withTools := testSDKIllust(2, "with-tools", 10)
+	withTools.Tools = []string{"SAI", "Photoshop"}
+	client := &fakeSDKClient{
+		illustRecommended: func(context.Context, sdk.IllustRecommendedRequest) (*sdk.IllustListResult, error) {
+			return &sdk.IllustListResult{Illusts: []sdk.Illust{withoutTools, withTools}}, nil
+		},
+		mangaRecommended: func(context.Context, sdk.IllustRecommendedRequest) (*sdk.IllustListResult, error) {
+			return &sdk.IllustListResult{Illusts: []sdk.Illust{withoutTools}}, nil
+		},
+		novelRecommended: func(context.Context, sdk.NovelRecommendedRequest) (*sdk.NovelListResult, error) {
+			return &sdk.NovelListResult{Novels: []sdk.Novel{}}, nil
+		},
+		userRecommended: func(context.Context, sdk.UserRecommendedRequest) (*sdk.UserRecommendedResult, error) {
+			return &sdk.UserRecommendedResult{UserPreviews: []sdk.RecommendedUserPreview{{
+				User:    sdk.User{ID: 10},
+				Illusts: []sdk.Illust{withoutTools, withTools},
+				Novels:  []sdk.Novel{},
+			}}}, nil
+		},
+	}
+	session, closeSession := newSDKTestSession(t, client)
+	defer closeSession()
+
+	result := callTool(t, session, "recommended", map[string]any{"kind": "all"})
+	if result.IsError {
+		t.Fatalf("recommended result=%+v", result)
+	}
+	var out recommendedOut
+	decodeStructured(t, result, &out)
+	for label, items := range map[string][]sdk.Illust{
+		"illusts": out.Illusts,
+		"manga":   out.Manga,
+		"nested":  out.UserPreviews[0].Illusts,
+	} {
+		if items[0].Tools == nil || len(items[0].Tools) != 0 {
+			t.Fatalf("%s nil tools were not normalized: %#v", label, items[0].Tools)
+		}
+	}
+	if !slices.Equal(out.Illusts[1].Tools, withTools.Tools) || !slices.Equal(out.UserPreviews[0].Illusts[1].Tools, withTools.Tools) {
+		t.Fatalf("non-nil tools changed: top=%q nested=%q want=%q", out.Illusts[1].Tools, out.UserPreviews[0].Illusts[1].Tools, withTools.Tools)
+	}
+	if withoutTools.Tools != nil {
+		t.Fatalf("MCP normalization mutated the SDK value: %#v", withoutTools.Tools)
 	}
 }
 
@@ -2017,6 +2377,7 @@ func decodeStructured(t *testing.T, result *mcp.CallToolResult, out any) {
 type fakeSDKClient struct {
 	userID                int64
 	searchIllust          func(context.Context, sdk.SearchIllustRequest) (*sdk.IllustListResult, error)
+	searchIllustOptions   func(context.Context, sdk.SearchIllustOptionsRequest) (*sdk.SearchIllustOptionsResult, error)
 	illustDetail          func(context.Context, int64) (*sdk.IllustDetail, error)
 	artworks              []sdk.Illust
 	bookmarks             []sdk.Illust
@@ -2082,6 +2443,9 @@ func (f *fakeSDKClient) CheckAccount(context.Context, int64) (*sdk.Account, erro
 func (f *fakeSDKClient) CheckRefreshToken(context.Context, string) (*sdk.Account, error) {
 	return nil, errors.New("unexpected refresh token check")
 }
+func (*fakeSDKClient) ExportAccountRefreshToken(int64) (string, error) {
+	return "", errors.New("unexpected account token export")
+}
 func (f *fakeSDKClient) Refresh(context.Context) (*sdk.Account, error) {
 	return &sdk.Account{UserID: f.userID, Username: "alice"}, nil
 }
@@ -2097,6 +2461,13 @@ func (f *fakeSDKClient) SearchIllust(ctx context.Context, request sdk.SearchIllu
 		return f.searchIllust(ctx, request)
 	}
 	return &sdk.IllustListResult{}, nil
+}
+
+func (f *fakeSDKClient) SearchIllustOptions(ctx context.Context, request sdk.SearchIllustOptionsRequest) (*sdk.SearchIllustOptionsResult, error) {
+	if f.searchIllustOptions != nil {
+		return f.searchIllustOptions(ctx, request)
+	}
+	return &sdk.SearchIllustOptionsResult{Tools: []string{}}, nil
 }
 
 func (f *fakeSDKClient) IllustDetail(ctx context.Context, illustID int64) (*sdk.IllustDetail, error) {

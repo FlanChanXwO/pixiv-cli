@@ -11,10 +11,11 @@ import (
 )
 
 type searchIllustQuery struct {
-	Word     string       `json:"word"`
-	Target   SearchTarget `json:"target"`
-	Sort     SortMode     `json:"sort"`
-	Duration string       `json:"duration"`
+	Word     string              `json:"word"`
+	Target   SearchTarget        `json:"target"`
+	Sort     SortMode            `json:"sort"`
+	Duration string              `json:"duration"`
+	Filters  SearchIllustFilters `json:"filters"`
 }
 type rankingQuery struct {
 	Mode RankingMode `json:"mode"`
@@ -40,6 +41,35 @@ type userFollowingQuery struct {
 	Restrict Restrict `json:"restrict"`
 }
 
+func (c *Client) SearchIllustOptions(ctx context.Context, request SearchIllustOptionsRequest) (result *SearchIllustOptionsResult, err error) {
+	started := time.Now()
+	defer func() { c.delegatedOperationLog(OperationSearchIllustOptions, started, err, 0, 0) }()
+	if scoped, snapshotErr := c.operationClient(ctx, OperationSearchIllustOptions); snapshotErr != nil {
+		return nil, snapshotErr
+	} else if scoped != c {
+		return scoped.SearchIllustOptions(ctx, request)
+	}
+	word := strings.TrimSpace(request.Word)
+	if word == "" {
+		return nil, invalidArgument(OperationSearchIllustOptions, 0, errors.New("word is required"))
+	}
+	if !c.authenticated {
+		return nil, localRouteError(CodeUnsupported, OperationSearchIllustOptions, 0, 0, errors.New("search options require authenticated App API access"))
+	}
+	if err := c.requireRoute(OperationSearchIllustOptions, routeApp, 0, 0); err != nil {
+		return nil, err
+	}
+	options, err := c.app.SearchIllustOptions(ctx, word)
+	if err != nil {
+		return nil, mapAppOperationError(err, OperationSearchIllustOptions, 0)
+	}
+	tools := append([]string(nil), options.Tools...)
+	if tools == nil {
+		tools = []string{}
+	}
+	return &SearchIllustOptionsResult{Tools: tools}, nil
+}
+
 // SearchIllust 返回一个作品搜索上游批次。
 func (c *Client) SearchIllust(ctx context.Context, request SearchIllustRequest) (result *IllustListResult, err error) {
 	started := time.Now()
@@ -49,7 +79,7 @@ func (c *Client) SearchIllust(ctx context.Context, request SearchIllustRequest) 
 	} else if scoped != c {
 		return scoped.SearchIllust(ctx, request)
 	}
-	query := searchIllustQuery{strings.TrimSpace(request.Word), request.Target, request.Sort, strings.TrimSpace(request.Duration)}
+	query := searchIllustQuery{strings.TrimSpace(request.Word), request.Target, request.Sort, strings.TrimSpace(request.Duration), normalizeSearchIllustFilters(request.Filters)}
 	if query.Word == "" {
 		return nil, invalidArgument(OperationSearchIllust, 0, errors.New("word is required"))
 	}
@@ -59,7 +89,7 @@ func (c *Client) SearchIllust(ctx context.Context, request SearchIllustRequest) 
 	if query.Sort == "" {
 		query.Sort = SortModeDateDesc
 	}
-	if !validSearchTarget(query.Target) || !validSortMode(query.Sort) || !validDuration(query.Duration) {
+	if !validSearchTarget(query.Target) || !validSortMode(query.Sort) || !validDuration(query.Duration) || !validSearchIllustFilters(query.Filters) {
 		return nil, invalidArgument(OperationSearchIllust, 0, errors.New("search enum is invalid"))
 	}
 	digest := queryDigest(OperationSearchIllust, query)
@@ -72,20 +102,105 @@ func (c *Client) SearchIllust(ctx context.Context, request SearchIllustRequest) 
 		return nil, err
 	}
 	if route == routeWeb {
-		list, err := c.web.SearchIllust(ctx, query.Word, string(query.Target), string(query.Sort), query.Duration, offset)
+		if query.Filters.Rating == SearchRatingR18 || query.Filters.Rating == SearchRatingR18G || query.Filters.Rating == SearchRatingMature {
+			return nil, localRouteError(CodeUnauthorized, OperationSearchIllust, 0, 0, errors.New("authenticated App API search is required for the requested rating"))
+		}
+		list, err := c.web.SearchIllust(ctx, query.Word, string(query.Target), string(query.Sort), query.Duration, offset, internalSearchIllustFilters(query.Filters))
 		if err != nil {
 			return nil, mapWebListError(err, OperationSearchIllust, 0)
 		}
+		filterSearchIllustBatch(list, query.Filters)
 		return publicIllustList(list, OperationSearchIllust, digest, "offset", c.cursorSource), nil
 	}
 	if route != routeApp {
 		return nil, unexpectedRoute(OperationSearchIllust, 0, 0)
 	}
-	list, err := c.app.SearchIllust(ctx, query.Word, string(query.Target), string(query.Sort), query.Duration, offset)
+	list, err := c.app.SearchIllust(ctx, query.Word, string(query.Target), string(query.Sort), query.Duration, offset, internalSearchIllustFilters(query.Filters))
 	if err != nil {
 		return nil, mapAppOperationError(err, OperationSearchIllust, 0)
 	}
+	filterSearchIllustBatch(list, query.Filters)
 	return publicIllustList(list, OperationSearchIllust, digest, "offset", c.cursorSource), nil
+}
+
+func filterSearchIllustBatch(list *model.IllustList, filters SearchIllustFilters) {
+	filtered := make([]model.Illust, 0, len(list.Illusts))
+	for _, illust := range list.Illusts {
+		if searchRatingAccepts(filters.Rating, illust.XRestrict) && searchAIModeAccepts(filters.AIMode, illust.AIType) {
+			filtered = append(filtered, illust)
+		}
+	}
+	list.Illusts = filtered
+}
+
+func searchRatingAccepts(rating SearchRating, xRestrict int) bool {
+	switch rating {
+	case SearchRatingSFW:
+		return xRestrict == 0
+	case SearchRatingR18:
+		return xRestrict == 1
+	case SearchRatingR18G:
+		return xRestrict == 2
+	case SearchRatingMature:
+		return xRestrict == 0 || xRestrict == 1
+	default:
+		return true
+	}
+}
+
+func searchAIModeAccepts(mode SearchAIMode, aiType int) bool {
+	switch mode {
+	case SearchAIModeExclude:
+		return aiType != 2
+	case SearchAIModeOnly:
+		return aiType == 2
+	default:
+		return true
+	}
+}
+
+func normalizeSearchIllustFilters(filters SearchIllustFilters) SearchIllustFilters {
+	if filters.Rating == "" {
+		filters.Rating = SearchRatingAll
+	}
+	if filters.ContentType == "" {
+		filters.ContentType = SearchContentTypeAll
+	}
+	if filters.AIMode == "" {
+		filters.AIMode = SearchAIModeAll
+	}
+	if filters.AspectRatio == "" {
+		filters.AspectRatio = SearchAspectRatioAll
+	}
+	if filters.Resolution == "" {
+		filters.Resolution = SearchResolutionAll
+	}
+	filters.Tool = strings.TrimSpace(filters.Tool)
+	return filters
+}
+
+func internalSearchIllustFilters(filters SearchIllustFilters) model.SearchIllustFilters {
+	return model.SearchIllustFilters{
+		Rating: string(filters.Rating), ContentType: string(filters.ContentType), AIMode: string(filters.AIMode),
+		AspectRatio: string(filters.AspectRatio), Resolution: string(filters.Resolution), Tool: filters.Tool,
+	}
+}
+
+func validSearchIllustFilters(filters SearchIllustFilters) bool {
+	return oneOf(string(filters.Rating), "all", "sfw", "r18", "r18g", "mature") &&
+		oneOf(string(filters.ContentType), "all", "illust-and-ugoira", "illust", "manga", "ugoira") &&
+		oneOf(string(filters.AIMode), "all", "exclude", "only") &&
+		oneOf(string(filters.AspectRatio), "all", "landscape", "portrait", "square") &&
+		oneOf(string(filters.Resolution), "all", "high", "medium", "low")
+}
+
+func oneOf(value string, allowed ...string) bool {
+	for _, item := range allowed {
+		if value == item {
+			return true
+		}
+	}
+	return false
 }
 
 // IllustRanking 返回一个排行榜上游批次。

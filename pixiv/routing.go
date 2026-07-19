@@ -28,6 +28,8 @@ func policyFor(operation Operation) (operationPolicy, bool) {
 		OperationIllustRecommended, OperationMangaRecommended, OperationNovelRecommended, OperationUserRecommended, OperationFollowingIllusts,
 		OperationUserDetail, OperationUserArtworks, OperationUserBookmarks, OperationUserFollowing:
 		return operationPolicy{authenticated: routeApp}, true
+	case OperationSearchIllustOptions:
+		return operationPolicy{authenticated: routeApp}, true
 	case OperationAddBookmark, OperationRemoveBookmark, OperationFollowUser, OperationUnfollowUser:
 		return operationPolicy{authenticated: routeApp}, true
 	default:

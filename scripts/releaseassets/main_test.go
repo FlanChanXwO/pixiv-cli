@@ -104,6 +104,21 @@ func TestFinalizeBuildsSignedReleaseDirectory(t *testing.T) {
 	}
 	version := "0.1.0"
 	archiveContents := writeArchiveFixtures(t, inputDir, version)
+	installSh := filepath.Join(workDir, "install.sh")
+	installCmd := filepath.Join(workDir, "install.cmd")
+	installerContents := map[string]string{
+		"install.sh":  "#!/bin/sh\nprintf fixture-installer\\n\n",
+		"install.cmd": "@echo fixture-installer\r\n",
+	}
+	if err := os.WriteFile(installSh, []byte(installerContents["install.sh"]), 0o755); err != nil {
+		t.Fatalf("write install.sh fixture: %v", err)
+	}
+	if err := os.WriteFile(installCmd, []byte(installerContents["install.cmd"]), 0o644); err != nil {
+		t.Fatalf("write install.cmd fixture: %v", err)
+	}
+	for name, contents := range installerContents {
+		archiveContents[name] = contents
+	}
 	changelog := filepath.Join(workDir, "CHANGELOG.md")
 	if err := os.WriteFile(changelog, []byte("# Changelog\n\n## [Unreleased]\n\nPending.\n\n## [0.1.0] - 2026-07-12\n\n### Added\n\n- Public change.\n\n## [0.0.1]\n\nPrevious.\n"), 0o644); err != nil {
 		t.Fatalf("write changelog fixture: %v", err)
@@ -127,6 +142,8 @@ func TestFinalizeBuildsSignedReleaseDirectory(t *testing.T) {
 		"--input-dir", inputDir,
 		"--output-dir", outputDir,
 		"--changelog", changelog,
+		"--install-sh", installSh,
+		"--install-cmd", installCmd,
 		"--private-key", privateKeyPath,
 		"--key-id", "fixture-2026",
 	}); err != nil {

@@ -7,13 +7,37 @@
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-07-19
+
 ### Added
 
+- 新增 `scripts/install.sh` 与不依赖 PowerShell 的 `scripts/install.cmd`：自动选择最新 stable Release 的当前 OS/arch archive，先验证发布 SHA-256 和暂存 binary，再执行无管理员权限的用户级安装；Release 以固定名称发布两个脚本并把它们纳入签名 checksum 集合，现有 locale 的 README 同步提供可复制的人类命令与 Coding Agent 安装 prompt。
+- 新增 `pixiv auth import [REFRESH_TOKEN]` 与 `pixiv auth export [UID] [--all] [--output PATH] [--force]`：支持隐藏 TTY/raw stdin direct token import、单账号 raw export、全部账号 versioned bundle export，以及 `--file PATH|-` 离线原子 restore。
+- 公开 Go SDK 新增 `AuthExportSelection`、versioned auth bundle model/strict codec、`ExportAuthBundle`、`RestoreAuthBundle`、`AuthRestoreResult` 与 `LocalWriteCommitOutcome`，供调用方实现 point-in-time secret backup 与可分类的离线恢复。
+- 插画搜索新增稳定的分级、作品类型、AI、横纵比、分辨率与绘图工具筛选；CLI 新增 `--ai-mode`、`--aspect-ratio`、`--resolution` 与 `--tool`，`--type` 支持 `illust-and-ugoira`/`manga` 并保留 `comics` alias。
+- 公开 Go SDK 新增 `SearchIllustFilters`、`SearchIllustOptions` 与 `Illust.Tools`；CLI 新增需要 App 认证的 `pixiv search-options WORD`，动态列出当前可用绘图工具，不引入收藏数或 Cookie 筛选。
+- MCP `search_illust` 新增与 SDK 一致的六个筛选字段，并新增需要认证、返回 `{tools,text}` structured output 的 `search_illust_options`；legacy `search_illust` 继续返回 `{text}`，旧 `search_r18` 继续作为兼容字段。
 - 公开 Go SDK 的 `upstream_unavailable` 错误新增安全 `TransportKind` 分类，可区分 DNS、TLS、代理连接、拒绝连接、连接重置和无 typed 信号的未知传输失败；诊断仍不暴露 URL、主机、证书或凭据。
 - 公开 Go SDK 的本地 snapshot 错误新增安全 `LocalStateKind` 分类，可区分 auth/config 格式、权限、缺失、代理配置、账号身份不匹配、不可用和未知状态；`errors.Unwrap` 仅提供固定脱敏原因，缺失的可选 auth/config 文件仍按空状态正常加载。
+- 新增面向 coding agent 的 `pixiv-cli` skill（`skills/pixiv-cli/`，全英文）：SKILL.md 提供预检、凭据安全红线、操作确认分级、输出/token 控制策略与语义陷阱说明，`references/` 收录安装、发现、下载与排障 playbook。
+- README 国际化扩展为英文、简体中文与日语入口；新增日语 CLI reference，并补齐英文 SDK/MCP contract。Public docs 现按 `docs/<locale>/` 组织，架构、开发、ADR 与 Agent 规则集中到 `docs/maintainers/`，旧路径保留兼容导航。
+
+### Changed
+
+- Breaking: v0.4.0 删除 `pixiv auth add`、`pixiv auth token` 与 `--token`，不保留 alias/stub；direct token 入口统一为 `auth import`，显式 secret stdout 统一为不带 `--output` 的 `auth export [UID]` 或 `auth export --all`。
+- `auth import` 的 direct 与 bundle 成功报告统一使用不含 secret 的 `{user_id,username,status}` account item，其中 `status` 为 `added|updated`；bundle JSON 固定为 `{accounts,default_user_id}` 并按输入 bundle 顺序逐项报告，不再暴露 `default`/`has_token` 或按 added/updated 分组。
+- `auth import --file` 严格解码未加密 bundle，并按 UID merge 后原子保存：保留本地已有 default，仅空 store 采用 bundle default；该离线路径拒绝 token/proxy 组合，不刷新、不联网。bundle 是 point-in-time backup 而非 live sync，token rotation 后旧 bundle 与其他机器副本可能 stale。
+- 有 refresh token 的搜索始终使用 App API，失败不回落 Web；无 token 的 Web 搜索只执行可靠筛选，R18/R18G/mature 与动态搜索选项会明确要求登录。分级与仅 AI 在 public SDK 筛选，其余新增筛选优先由 App 服务端执行；收藏数筛选仍不提供。
+- Deprecated `pixiv search --r18` 现在只作为 `--rating r18` 的 alias，不再向关键词追加 `R-18`；它可与显式 `--rating r18` 同用，与其他显式 rating 冲突。
 
 ### Fixed
 
+- 修复 Linux Release 在 Ubuntu 24.04 上通过 cgo 链接后隐式要求 `GLIBC_2.39`、导致 Debian 12 等
+  glibc 2.35–2.38 系统无法启动的问题；后续 Linux amd64/arm64 资产统一在 Ubuntu 22.04 构建，
+  release、native evidence 与 packaged smoke 在打包前检查 ELF 的 GNU version requirement，任何
+  高于公开 `GLIBC_2.35` 基线的依赖都会 fail closed。
+- 修复 auth bundle JSON decoder 因 Go struct field 的大小写宽松匹配而接受 `Schema`、`Default_User_ID`、`User_ID`、`Refresh_Token` 等非 canonical alias 的问题；顶层和 account object 现严格要求 exact canonical key，并拒绝 canonical/case alias 冲突。
+- 修复 `--ai-type` 的帮助语义与 Pixiv 字段不一致；Pixiv `AIType==2` 现正确识别为 AI，deprecated `--ai-type` 保持 `0=exclude`、`1=only`、`2=all`，并拒绝与显式 `--ai-mode` 同用。
 - 修复 legacy MCP handler 把输入、认证、上游读取、下载与资源失败转换为兼容文本后，统一 operation wrapper 仍误记 `result=success` 的问题；wire 继续保持原 Content、structured output、文本与 `isError=false`，stderr 现以 error level 和安全 typed metadata 记录真实失败；事件不记录或输出原始错误文本、tool 输入、query、凭据、URL、path 或 response body。正常空结果仍记为成功。
 - 规范化下载 URL path 推导扩展名中的跨平台非法文件名字符、ASCII 控制字符和 Windows 非法尾随点/空格；单页与多页下载共用同一清理边界，既有模板和 ugoira `.gif` 语义不变。
 - 修复 MCP 作品列表文本静默只显示前 5 个 tags 的问题；文本现按上游顺序完整输出全部 tags，structured output 不变。
@@ -26,6 +50,10 @@
 
 ### Security
 
+- 安装脚本只使用固定官方 GitHub Release 来源，不接受自定义下载源；checksum 缺失、重复、格式异常、SHA-256 不匹配或暂存 binary 预检失败时均在替换前显式终止。默认用户级目录不提权，PATH 修改必须由 `--add-to-path` 明确请求，也不会读取 Pixiv 认证状态。
+- 只有不带 `--output` 的 `auth export [UID]` 与 `auth export --all` 可向 stdout 输出 secret：前者只有 raw token 与换行，后者只有 versioned bundle。export 全程 local-only，不读取环境 token、不联网、不刷新、不修改状态，并跳过 startup update cleanup、自动更新与 operation log；其他 stdout/stderr、JSON、MCP、日志与错误继续禁止泄露 refresh token。
+- `auth export --output` 使用独立 secret writer：Unix-like 文件为 `0600` 且不改变既有 parent；Windows 从创建时设置 owner 与 protected DACL，只授权当前用户、LocalSystem、builtin Administrators，并在 replacement 后重新应用。Windows policy 有 CI test 与后续本地交叉编译验收要求，不声称已在真实 Windows filesystem 运行。
+- auth restore 写失败以 `LocalWriteCommitOutcome` 准确区分 pre-commit `not_committed`、replacement 后 durability/cleanup 失败 `committed` 与 unresolved recovery `unknown`，不把已提交或未知状态伪装为 rollback。
 - 修复 native-evidence 六平台构建只向 runner 默认 Rust 安装 target、导致静态库实际由 movable
   toolchain 生成并与 release test/production 的 `1.96.0`/`1.96.1` provenance 不一致的问题；workflow
   现在逐目标固定版本、绑定 `RUSTUP_TOOLCHAIN` 并以 `--no-self-update` 安装，两个 verifier 共用同一
@@ -178,3 +206,9 @@
 
 [Keep a Changelog 1.1.0]: https://keepachangelog.com/zh-CN/1.1.0/
 [Semantic Versioning]: https://semver.org/spec/v2.0.0.html
+[Unreleased]: https://github.com/FlanChanXwO/pixiv-cli/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/FlanChanXwO/pixiv-cli/compare/v0.3.0...v0.4.0
+[0.3.0]: https://github.com/FlanChanXwO/pixiv-cli/compare/v0.2.0...v0.3.0
+[0.2.0]: https://github.com/FlanChanXwO/pixiv-cli/compare/v0.1.1...v0.2.0
+[0.1.1]: https://github.com/FlanChanXwO/pixiv-cli/compare/v0.1.0...v0.1.1
+[0.1.0]: https://github.com/FlanChanXwO/pixiv-cli/releases/tag/v0.1.0

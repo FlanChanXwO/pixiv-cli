@@ -34,45 +34,52 @@ const (
 type Operation string
 
 const (
-	OperationIllustDetail       Operation = "illust_detail"
-	OperationIllustPages        Operation = "illust_pages"
-	OperationIllustRelated      Operation = "illust_related"
-	OperationTrendingTagsIllust Operation = "trending_tags_illust"
-	OperationUgoiraMetadata     Operation = "ugoira_metadata"
-	OperationSearchIllust       Operation = "search_illust"
-	OperationIllustRanking      Operation = "illust_ranking"
-	OperationIllustRecommended  Operation = "illust_recommended"
-	OperationMangaRecommended   Operation = "manga_recommended"
-	OperationNovelRecommended   Operation = "novel_recommended"
-	OperationUserRecommended    Operation = "user_recommended"
-	OperationFollowingIllusts   Operation = "following_illusts"
-	OperationSearchUser         Operation = "search_user"
-	OperationUserDetail         Operation = "user_detail"
-	OperationUserArtworks       Operation = "user_artworks"
-	OperationUserBookmarks      Operation = "user_bookmarks"
-	OperationUserFollowing      Operation = "user_following"
-	OperationAddBookmark        Operation = "add_bookmark"
-	OperationRemoveBookmark     Operation = "remove_bookmark"
-	OperationFollowUser         Operation = "follow_user"
-	OperationUnfollowUser       Operation = "unfollow_user"
-	OperationParseResourceRef   Operation = "parse_resource_ref"
-	OperationOpenResource       Operation = "open_resource"
-	OperationDownload           Operation = "download"
-	OperationRefresh            Operation = "refresh"
-	OperationImportAccount      Operation = "import_account"
-	OperationListAccounts       Operation = "list_accounts"
-	OperationSelectAccount      Operation = "select_account"
-	OperationRemoveAccount      Operation = "remove_account"
-	OperationCheckAccount       Operation = "check_account"
-	OperationCheckRefreshToken  Operation = "check_refresh_token"
-	OperationConfigGet          Operation = "config_get"
-	OperationConfigSet          Operation = "config_set"
-	OperationConfigUnset        Operation = "config_unset"
-	OperationStartLogin         Operation = "start_login"
-	OperationCompleteLogin      Operation = "complete_login"
-	OperationCurrentUserID      Operation = "current_user_id"
-	OperationSnapshot           Operation = "snapshot"
+	OperationIllustDetail        Operation = "illust_detail"
+	OperationIllustPages         Operation = "illust_pages"
+	OperationIllustRelated       Operation = "illust_related"
+	OperationTrendingTagsIllust  Operation = "trending_tags_illust"
+	OperationUgoiraMetadata      Operation = "ugoira_metadata"
+	OperationSearchIllust        Operation = "search_illust"
+	OperationSearchIllustOptions Operation = "search_illust_options"
+	OperationIllustRanking       Operation = "illust_ranking"
+	OperationIllustRecommended   Operation = "illust_recommended"
+	OperationMangaRecommended    Operation = "manga_recommended"
+	OperationNovelRecommended    Operation = "novel_recommended"
+	OperationUserRecommended     Operation = "user_recommended"
+	OperationFollowingIllusts    Operation = "following_illusts"
+	OperationSearchUser          Operation = "search_user"
+	OperationUserDetail          Operation = "user_detail"
+	OperationUserArtworks        Operation = "user_artworks"
+	OperationUserBookmarks       Operation = "user_bookmarks"
+	OperationUserFollowing       Operation = "user_following"
+	OperationAddBookmark         Operation = "add_bookmark"
+	OperationRemoveBookmark      Operation = "remove_bookmark"
+	OperationFollowUser          Operation = "follow_user"
+	OperationUnfollowUser        Operation = "unfollow_user"
+	OperationParseResourceRef    Operation = "parse_resource_ref"
+	OperationOpenResource        Operation = "open_resource"
+	OperationDownload            Operation = "download"
+	OperationRefresh             Operation = "refresh"
+	OperationImportAccount       Operation = "import_account"
+	OperationListAccounts        Operation = "list_accounts"
+	OperationSelectAccount       Operation = "select_account"
+	OperationRemoveAccount       Operation = "remove_account"
+	OperationCheckAccount        Operation = "check_account"
+	OperationCheckRefreshToken   Operation = "check_refresh_token"
+	OperationConfigGet           Operation = "config_get"
+	OperationConfigSet           Operation = "config_set"
+	OperationConfigUnset         Operation = "config_unset"
+	OperationStartLogin          Operation = "start_login"
+	OperationCompleteLogin       Operation = "complete_login"
+	OperationCurrentUserID       Operation = "current_user_id"
+	OperationSnapshot            Operation = "snapshot"
+	OperationExportAuthBundle    Operation = "export_auth_bundle"
+	OperationEncodeAuthBundle    Operation = "encode_auth_bundle"
+	OperationDecodeAuthBundle    Operation = "decode_auth_bundle"
+	OperationRestoreAuthBundle   Operation = "restore_auth_bundle"
 )
+
+const OperationExportAccountRefreshToken Operation = "export_account_refresh_token"
 
 // TransportKind 标识不携带目标地址、证书或凭据的稳定传输失败子类。
 type TransportKind string
@@ -100,18 +107,28 @@ const (
 	LocalStateKindUnknown          LocalStateKind = "unknown"
 )
 
+// LocalWriteCommitOutcome 标识本地原子写入失败时 replacement 的提交状态。
+type LocalWriteCommitOutcome string
+
+const (
+	LocalWriteCommitOutcomeUnknown      LocalWriteCommitOutcome = "unknown"
+	LocalWriteCommitOutcomeNotCommitted LocalWriteCommitOutcome = "not_committed"
+	LocalWriteCommitOutcomeCommitted    LocalWriteCommitOutcome = "committed"
+)
+
 // Error 是公开 SDK 的安全、可分类错误。cause 只保存已脱敏原因。
 type Error struct {
-	Code           ErrorCode
-	Operation      Operation
-	Backend        Backend
-	Retryable      bool
-	UpstreamStatus int
-	IllustID       int64
-	UserID         int64
-	TransportKind  TransportKind
-	LocalStateKind LocalStateKind
-	cause          error
+	Code                    ErrorCode
+	Operation               Operation
+	Backend                 Backend
+	Retryable               bool
+	UpstreamStatus          int
+	IllustID                int64
+	UserID                  int64
+	TransportKind           TransportKind
+	LocalStateKind          LocalStateKind
+	LocalWriteCommitOutcome LocalWriteCommitOutcome
+	cause                   error
 }
 
 func newUserError(code ErrorCode, operation Operation, backend Backend, retryable bool, status int, userID int64, cause error) *Error {
@@ -147,6 +164,9 @@ func (e *Error) Error() string {
 	if kind := safeLocalStateKind(e.LocalStateKind); kind != "" {
 		parts = append(parts, "local_state_kind="+string(kind))
 	}
+	if outcome := safeLocalWriteCommitOutcome(e.LocalWriteCommitOutcome); outcome != "" {
+		parts = append(parts, "local_write_commit_outcome="+string(outcome))
+	}
 	return strings.Join(parts, " ")
 }
 
@@ -181,6 +201,19 @@ func safeLocalStateKind(kind LocalStateKind) LocalStateKind {
 		return kind
 	default:
 		return LocalStateKindUnknown
+	}
+}
+
+// safeLocalWriteCommitOutcome 防止公开可写字段把任意内容带入诊断。
+func safeLocalWriteCommitOutcome(outcome LocalWriteCommitOutcome) LocalWriteCommitOutcome {
+	switch outcome {
+	case "",
+		LocalWriteCommitOutcomeUnknown,
+		LocalWriteCommitOutcomeNotCommitted,
+		LocalWriteCommitOutcomeCommitted:
+		return outcome
+	default:
+		return LocalWriteCommitOutcomeUnknown
 	}
 }
 

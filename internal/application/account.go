@@ -18,14 +18,43 @@ type AccountService struct {
 	RefreshTokenFromEnv func() (string, error)
 }
 
-type AccountAddRequest struct {
+type AccountImportRequest struct {
 	TokenInput         string
 	HTTPSProxyOverride *string
+}
+
+type AccountBundleImportResult struct {
+	Accounts      []AccountImportResult `json:"accounts"`
+	DefaultUserID int64                 `json:"default_user_id"`
+}
+
+const (
+	AccountImportStatusAdded   = "added"
+	AccountImportStatusUpdated = "updated"
+)
+
+// AccountImportResult 是 direct import 与 bundle restore 共用的安全报告 DTO。
+// 它刻意不携带 token、default 或 has_token，避免导入报告复用账号列表契约。
+type AccountImportResult struct {
+	UserID   int64  `json:"user_id"`
+	Username string `json:"username"`
+	Status   string `json:"status"`
 }
 
 type AccountCheckRequest struct {
 	UserID             int64
 	HTTPSProxyOverride *string
+}
+
+type AccountExportRequest struct {
+	UserID int64
+	All    bool
+}
+
+type AccountExportResult struct {
+	RefreshToken string
+	Bundle       []byte
+	AccountCount int
 }
 
 type AccountResult struct {
@@ -41,23 +70,72 @@ type AccountListResult struct {
 	Accounts      []AccountResult
 }
 
-func (s AccountService) Add(ctx context.Context, request AccountAddRequest) (AccountResult, error) {
-	token, err := utils.ValidateRefreshTokenInput(request.TokenInput)
+func (s AccountService) Import(ctx context.Context, request AccountImportRequest) (AccountImportResult, error) {
+	validatedToken, err := utils.ValidateRefreshTokenInput(request.TokenInput)
 	if err != nil {
-		return AccountResult{}, err
+		return AccountImportResult{}, err
 	}
-	if token == "" {
-		return AccountResult{}, errors.New("refresh token cannot be empty")
+	if validatedToken == "" {
+		return AccountImportResult{}, errors.New("refresh token cannot be empty")
 	}
 	client, err := s.SDK.Client(SDKClientRequest{HTTPSProxyOverride: request.HTTPSProxyOverride})
 	if err != nil {
-		return AccountResult{}, err
+		return AccountImportResult{}, err
 	}
-	account, err := client.ImportAccount(ctx, token)
+	// 先读取 public SDK 的非 secret snapshot；OAuth 返回的 UID 仍是身份权威值，
+	// snapshot 只用于区分本次写入是 added 还是 updated。
+	accountsBeforeImport, err := client.ListAccounts()
 	if err != nil {
-		return AccountResult{}, err
+		return AccountImportResult{}, err
 	}
-	return sdkAccountResult(*account), nil
+	account, err := client.ImportAccount(ctx, request.TokenInput)
+	if err != nil {
+		return AccountImportResult{}, err
+	}
+	status := AccountImportStatusAdded
+	for _, existing := range accountsBeforeImport.Accounts {
+		if existing.UserID == account.UserID {
+			status = AccountImportStatusUpdated
+			break
+		}
+	}
+	return accountImportResult(*account, status), nil
+}
+
+// ImportBundle 解码并离线恢复 bundle；身份验证和 transport 均不参与此路径。
+func (s AccountService) ImportBundle(body []byte) (AccountBundleImportResult, error) {
+	bundle, err := sdk.DecodeAuthExportBundle(body)
+	if err != nil {
+		return AccountBundleImportResult{}, err
+	}
+	client, err := s.SDK.AuthBundleClient(SDKClientRequest{})
+	if err != nil {
+		return AccountBundleImportResult{}, err
+	}
+	restored, err := client.RestoreAuthBundle(bundle)
+	if err != nil {
+		return AccountBundleImportResult{}, err
+	}
+	result := AccountBundleImportResult{
+		Accounts:      make([]AccountImportResult, 0, len(bundle.Accounts)),
+		DefaultUserID: restored.DefaultUserID,
+	}
+	restoredByUserID := make(map[int64]AccountImportResult, len(restored.Added)+len(restored.Updated))
+	for _, account := range restored.Added {
+		restoredByUserID[account.UserID] = accountImportResult(account, AccountImportStatusAdded)
+	}
+	for _, account := range restored.Updated {
+		restoredByUserID[account.UserID] = accountImportResult(account, AccountImportStatusUpdated)
+	}
+	// SDK 的 restore outcome 按状态分组；按照已验证 bundle 的账号顺序重新组装报告。
+	for _, imported := range bundle.Accounts {
+		account, ok := restoredByUserID[imported.UserID]
+		if !ok {
+			return AccountBundleImportResult{}, errors.New("auth restore result omitted an imported account")
+		}
+		result.Accounts = append(result.Accounts, account)
+	}
+	return result, nil
 }
 
 func (s AccountService) List() (AccountListResult, error) {
@@ -74,6 +152,27 @@ func (s AccountService) List() (AccountListResult, error) {
 		out.Accounts[index] = sdkAccountResult(account)
 	}
 	return out, nil
+}
+
+// Export 只通过 public SDK 读取本地认证快照；它不应用环境 token 或运行时 UID 覆写。
+func (s AccountService) Export(request AccountExportRequest) (AccountExportResult, error) {
+	client, err := s.SDK.AuthBundleClient(SDKClientRequest{})
+	if err != nil {
+		return AccountExportResult{}, err
+	}
+	bundle, err := client.ExportAuthBundle(sdk.AuthExportSelection{UserID: request.UserID, All: request.All})
+	if err != nil {
+		return AccountExportResult{}, err
+	}
+	body, err := sdk.EncodeAuthExportBundle(bundle)
+	if err != nil {
+		return AccountExportResult{}, err
+	}
+	result := AccountExportResult{Bundle: body, AccountCount: len(bundle.Accounts)}
+	if !request.All && len(bundle.Accounts) == 1 {
+		result.RefreshToken = bundle.Accounts[0].RefreshToken
+	}
+	return result, nil
 }
 
 func (s AccountService) Remove(userID int64) (AccountResult, int64, error) {
@@ -147,6 +246,10 @@ func (s AccountService) CheckWithRequest(ctx context.Context, request AccountChe
 
 func sdkAccountResult(account sdk.Account) AccountResult {
 	return AccountResult{UserID: account.UserID, Username: account.Username, Default: account.Default, HasToken: account.HasToken}
+}
+
+func accountImportResult(account sdk.Account, status string) AccountImportResult {
+	return AccountImportResult{UserID: account.UserID, Username: account.Username, Status: status}
 }
 
 func (s AccountService) refreshTokenFromEnv() (string, error) {

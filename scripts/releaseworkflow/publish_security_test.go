@@ -377,11 +377,43 @@ func TestCheckWorkflowRejectsSecurityAndQualityPolicyMutations(t *testing.T) {
 			},
 		},
 		{
+			name: "finalize Unix installer argument removed",
+			want: "signing-secret step must contain --install-sh scripts/install.sh",
+			mutate: func(t *testing.T, root *yaml.Node) {
+				t.Helper()
+				removeRunFragment(t, stepWithRun(t, jobNode(t, root, "publish"), "go run ./scripts/releaseassets finalize"), "--install-sh scripts/install.sh")
+			},
+		},
+		{
+			name: "finalize Windows installer argument removed",
+			want: "signing-secret step must contain --install-cmd scripts/install.cmd",
+			mutate: func(t *testing.T, root *yaml.Node) {
+				t.Helper()
+				removeRunFragment(t, stepWithRun(t, jobNode(t, root, "publish"), "go run ./scripts/releaseassets finalize"), "--install-cmd scripts/install.cmd")
+			},
+		},
+		{
 			name: "release draft flag removed",
 			want: "release publishing step must contain --draft",
 			mutate: func(t *testing.T, root *yaml.Node) {
 				t.Helper()
 				removeRunFragment(t, stepWithRun(t, jobNode(t, root, "publish"), "gh release create"), "--draft")
+			},
+		},
+		{
+			name: "Unix installer release asset removed",
+			want: "release publishing step must preserve the verified asset set",
+			mutate: func(t *testing.T, root *yaml.Node) {
+				t.Helper()
+				removeRunFragment(t, stepWithRun(t, jobNode(t, root, "publish"), "gh release create"), "release/install.sh")
+			},
+		},
+		{
+			name: "Windows installer release asset removed",
+			want: "release publishing step must preserve the verified asset set",
+			mutate: func(t *testing.T, root *yaml.Node) {
+				t.Helper()
+				removeRunFragment(t, stepWithRun(t, jobNode(t, root, "publish"), "gh release create"), "release/install.cmd")
 			},
 		},
 		{

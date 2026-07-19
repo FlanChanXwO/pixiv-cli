@@ -37,12 +37,12 @@ jobs:
             goarch: arm64
             rust_target: aarch64-apple-darwin
             cc: clang
-          - runner: ubuntu-24.04
+          - runner: ubuntu-22.04
             goos: linux
             goarch: amd64
             rust_target: x86_64-unknown-linux-gnu
             cc: gcc
-          - runner: ubuntu-24.04-arm
+          - runner: ubuntu-22.04-arm
             goos: linux
             goarch: arm64
             rust_target: aarch64-unknown-linux-gnu
@@ -70,6 +70,9 @@ jobs:
       - name: Check vendored Rust sources
         shell: bash
         run: sh scripts/test-rust-vendor.sh
+      - name: Test the platform installer
+        shell: bash
+        run: go test ./scripts/installers -count=1
       - name: Build the native Rust static library
         shell: bash
         run: bash scripts/build-staticlibs.sh --target '${{ matrix.rust_target }}'
@@ -89,6 +92,9 @@ jobs:
           go build -trimpath -buildvcs=false \
             -ldflags "-X github.com/FlanChanXwO/pixiv-cli/internal/buildinfo.Version=v${version} -X github.com/FlanChanXwO/pixiv-cli/internal/buildinfo.Commit=${GITHUB_SHA} -X github.com/FlanChanXwO/pixiv-cli/internal/buildinfo.BuildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
             -o "$binary" ./cmd/pixiv
+          if [ '${{ matrix.goos }}' = linux ]; then
+            go run ./scripts/linuxabi --binary "$binary"
+          fi
           go run ./scripts/releaseassets package \
             --repo-root . \
             --version "$version" \
