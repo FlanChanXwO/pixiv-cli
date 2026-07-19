@@ -7,6 +7,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- 修复 Linux Homebrew packaging validation 的 formula buildpath 可能与 Cellar 跨文件系统、使 FileUtils 移动返回 `EINVAL` 的问题；Linux gate 现将 `HOMEBREW_TEMP` 置于 Homebrew prefix 内，macOS 与公开 formula 路径保持不变。
+
 ## [0.4.3] - 2026-07-19
 
 ### Fixed
