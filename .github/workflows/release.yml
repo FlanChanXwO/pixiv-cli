@@ -557,11 +557,6 @@ jobs:
           set -euo pipefail
           if [ '${{ matrix.os }}' = linux ]; then
             eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
-            # Formula buildpath 必须与 Homebrew Cellar 同属 prefix filesystem，避免
-            # Linux runner 上 FileUtils 跨设备移动 buildpath 时返回 EINVAL。
-            homebrew_temp="$(brew --prefix)/var/tmp"
-            mkdir -p "$homebrew_temp"
-            export HOMEBREW_TEMP="$homebrew_temp"
           fi
           formula_name=$(cat staging-formula/formula-name)
           case "$formula_name" in
@@ -574,7 +569,11 @@ jobs:
           brew tap-new "$staging_tap" --no-git
           brew trust --tap "$staging_tap"
           cp "staging-formula/$formula_name.rb" "$tap_dir/Formula/$formula_name.rb"
-          brew install --formula "$staging_tap/$formula_name"
+          if [ '${{ matrix.os }}' = linux ]; then
+            brew install --keep-tmp --verbose --formula "$staging_tap/$formula_name"
+          else
+            brew install --formula "$staging_tap/$formula_name"
+          fi
           pixiv version --json | python3 -c 'import json, sys; actual = json.load(sys.stdin)["version"]; expected = sys.argv[1]; assert actual == expected, f"version {actual!r} != {expected!r}"' "$RELEASE_TAG"
 
   deploy_homebrew_tap:
