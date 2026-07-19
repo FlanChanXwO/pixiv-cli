@@ -13,6 +13,10 @@ internal/download/ugoira_rs/src/**/*.rs -text
 internal/download/ugoira_rs/vendor/** -text
 third_party/rust/quantette-0.6.0/** -text
 
+# Windows 的 cmd.exe 不能可靠解析 LF 脚本。Release 测试会关闭 autocrlf 以保留
+# 其他受审计输入的字节，因此仅对此公开安装入口强制 checkout 为 CRLF。
+scripts/install.cmd text eol=crlf
+
 # release archive 与 licensebundle gate 会按字节比较这些许可证输入。保留 LF，避免 Windows checkout
 # 改成 CRLF 后让跨平台 archive evidence 分裂，或把未修改的许可证 bundle 误报为 stale。
 LICENSE text eol=lf
