@@ -446,7 +446,7 @@ prerelease 结果直接映射为 `pixiv-cli`/`pixiv-cli-beta`。随后精确四�
 Linux amd64/arm64）先用 `brew tap-new pixiv-cli-release/staging --no-git` 创建各 runner 的隔离
 local tap，再以 `brew trust --tap pixiv-cli-release/staging` 显式信任这一个临时命名空间；将唯一
 staging formula 放入其 `Formula/`，随后用 `pixiv-cli-release/staging/<formula>` 执行真实
-`brew install --debug-symbols --verbose --formula`，解析
+`brew install --build-from-source --debug-symbols --verbose --formula`，解析
 `pixiv version --json` 并与 tag 比较。它不使用 workspace formula path、developer/环境变量 bypass，
 也不克隆、写入或信任公开 tap。只有全部成功，最终受保护 `deploy_homebrew_tap` 才以 HTTPS
 clone public tap、核对唯一 staged formula，并在最后一个 step 读取 deploy key；SSH push 固定官方
@@ -459,11 +459,12 @@ secret 和 tag protection 的远端实际状态；它不替代 Task 20 的远端
 会先公开 Release 再安装；若安装失败，Release 已公开但 tap 不变，需要维护者显式处置，不能绕过 gate
 手工 push。
 
-`--debug-symbols --verbose` 仅用于短命 GitHub release-validation runner 的 Linux 分支，macOS 继续使用
-原来的 `brew install --formula`：Linuxbrew 的 Resource staging 发生在 `--keep-tmp` 生效前，且其
-Mktemp cleanup 已有直接 backtrace 证据会在 runner 上触发 `FileUtils.chmod` 的 `EINVAL`。`--debug-symbols`
-使 Resource 的 source-cache staging 保留，以避免该 cleanup；`--verbose` 则保留可审计的 Homebrew 操作
-输出。此方案尚须真实 Linux runner 验证；二者不进入公开 formula，也不改变终端用户的 `brew install` 行为。
+`--build-from-source --debug-symbols --verbose` 仅用于短命 GitHub release-validation runner 的 Linux 分支，
+macOS 继续使用原来的 `brew install --formula`：Linuxbrew 的 Resource staging 发生在 `--keep-tmp` 生效前，且
+其 Mktemp cleanup 已有直接 backtrace 证据会在 runner 上触发 `FileUtils.chmod` 的 `EINVAL`。真实 runner 已证明
+Homebrew 会在开始 staging 前拒绝未显式配合 `--build-from-source` 的 `--debug-symbols`；这两个 flag 必须作为同一
+个非交互组合出现，`--verbose` 则保留可审计的 Homebrew 操作输出。该组合仍须通过真实 Linux resource-stage
+验证；它不进入公开 formula，也不改变终端用户的 `brew install` 行为。
 
 ### 发布前只读 Homebrew 演练
 
@@ -474,7 +475,8 @@ tag 与输入一致；随后只下载该 Release 已发布的 `checksums.txt`，
 macOS Intel/arm64 与 Linux amd64/arm64 四个生产同款 runner 上执行真实的本地 staging-tap 安装。
 
 这是一项只读 rehearsal：它没有 `release` Environment、secret、tag checkout、Release/asset 编辑或创建，
-也不会 clone、提交或推送 Homebrew tap。Linux 分支使用 `--debug-symbols --verbose`，macOS 保持普通安装命令。
+也不会 clone、提交或推送 Homebrew tap。Linux 分支使用
+`--build-from-source --debug-symbols --verbose`，macOS 保持普通安装命令。
 它用于在正式发布之前复现 Homebrew 安装链路，**不替代**正式 tag 发布、签名 Release、tap 部署或发布后的
 安装验收。`sh scripts/test-homebrew-prepublish-workflow.sh` 会在本地和质量门中检查该 workflow 的不可变边界。
 

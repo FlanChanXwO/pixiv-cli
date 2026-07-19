@@ -29,7 +29,7 @@ func TestCheckWorkflowRequiresTapQualifiedStagingFormulaInstall(t *testing.T) {
 
 	root := releaseWorkflowRoot(t)
 	step := stepWithRun(t, jobNode(t, root, "verify_homebrew_formula"), "brew install")
-	replaceRunFragment(t, step, "brew install --debug-symbols --verbose --formula \"$staging_tap/$formula_name\"", "brew install --debug-symbols --verbose --formula \"staging-formula/$formula_name.rb\"")
+	replaceRunFragment(t, step, "brew install --build-from-source --debug-symbols --verbose --formula \"$staging_tap/$formula_name\"", "brew install --build-from-source --debug-symbols --verbose --formula \"staging-formula/$formula_name.rb\"")
 	err := checkWorkflow(mustMarshalYAML(t, root))
 	if err == nil || !strings.Contains(err.Error(), "Homebrew native install gate must use the required direct command sequence") {
 		t.Fatalf("policy error = %v, want workspace-path Homebrew formula install rejection", err)
@@ -50,10 +50,9 @@ func TestCheckWorkflowRequiresStagingTapTrust(t *testing.T) {
 	}
 }
 
-// Linuxbrew 的 Resource staging 在 --keep-tmp 生效前会触发 Mktemp cleanup，且已在
-// 短命 GitHub runner 上报出 chmod EINVAL。--debug-symbols 会让 Resource staging 的
-// source cache 保留；它只适用于 Linux 发布验收，macOS 保持原本的安装命令。
-func TestWorkflowUsesLinuxOnlyDebugSymbolsForHomebrewResourceStaging(t *testing.T) {
+// Linuxbrew 已明确拒绝单独使用 --debug-symbols：它必须显式配合 --build-from-source。
+// 此组合只适用于 Linux 发布验收；macOS 保持原本的安装命令。
+func TestWorkflowUsesLinuxOnlySourceBuildDebugSymbolsForHomebrewResourceStaging(t *testing.T) {
 	t.Parallel()
 
 	root := releaseWorkflowRoot(t)
@@ -62,7 +61,7 @@ func TestWorkflowUsesLinuxOnlyDebugSymbolsForHomebrewResourceStaging(t *testing.
 	for _, command := range []string{
 		`eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"`,
 		`if [ '${{ matrix.os }}' = linux ]; then
-  brew install --debug-symbols --verbose --formula "$staging_tap/$formula_name"
+  brew install --build-from-source --debug-symbols --verbose --formula "$staging_tap/$formula_name"
 else
   brew install --formula "$staging_tap/$formula_name"
 fi`,
@@ -173,49 +172,63 @@ func TestCheckWorkflowRejectsHomebrewReleaseGateMutations(t *testing.T) {
 			},
 		},
 		{
+			name: "Linux Homebrew source build required by debug symbols is removed",
+			want: "Homebrew native install gate must use the required direct command sequence",
+			mutate: func(t *testing.T, root *yaml.Node) {
+				replaceRunFragment(t, stepWithRun(t, jobNode(t, root, "verify_homebrew_formula"), "brew install --build-from-source"), "brew install --build-from-source --debug-symbols --verbose --formula \"$staging_tap/$formula_name\"", "brew install --debug-symbols --verbose --formula \"$staging_tap/$formula_name\"")
+			},
+		},
+		{
+			name: "Linux Homebrew changes the required source build and debug-symbol ordering",
+			want: "Homebrew native install gate must use the required direct command sequence",
+			mutate: func(t *testing.T, root *yaml.Node) {
+				replaceRunFragment(t, stepWithRun(t, jobNode(t, root, "verify_homebrew_formula"), "brew install --build-from-source"), "brew install --build-from-source --debug-symbols --verbose --formula \"$staging_tap/$formula_name\"", "brew install --debug-symbols --build-from-source --verbose --formula \"$staging_tap/$formula_name\"")
+			},
+		},
+		{
 			name: "Linux Homebrew Resource staging debug symbols are removed",
 			want: "Homebrew native install gate must use the required direct command sequence",
 			mutate: func(t *testing.T, root *yaml.Node) {
-				replaceRunFragment(t, stepWithRun(t, jobNode(t, root, "verify_homebrew_formula"), "brew install --debug-symbols"), "brew install --debug-symbols --verbose --formula \"$staging_tap/$formula_name\"", "brew install --verbose --formula \"$staging_tap/$formula_name\"")
+				replaceRunFragment(t, stepWithRun(t, jobNode(t, root, "verify_homebrew_formula"), "brew install --build-from-source"), "brew install --build-from-source --debug-symbols --verbose --formula \"$staging_tap/$formula_name\"", "brew install --build-from-source --verbose --formula \"$staging_tap/$formula_name\"")
 			},
 		},
 		{
 			name: "Linux Homebrew Resource staging retains obsolete keep tmp",
 			want: "Homebrew native install gate must use the required direct command sequence",
 			mutate: func(t *testing.T, root *yaml.Node) {
-				replaceRunFragment(t, stepWithRun(t, jobNode(t, root, "verify_homebrew_formula"), "brew install --debug-symbols"), "brew install --debug-symbols --verbose --formula \"$staging_tap/$formula_name\"", "brew install --debug-symbols --keep-tmp --verbose --formula \"$staging_tap/$formula_name\"")
+				replaceRunFragment(t, stepWithRun(t, jobNode(t, root, "verify_homebrew_formula"), "brew install --build-from-source"), "brew install --build-from-source --debug-symbols --verbose --formula \"$staging_tap/$formula_name\"", "brew install --build-from-source --debug-symbols --keep-tmp --verbose --formula \"$staging_tap/$formula_name\"")
 			},
 		},
 		{
 			name: "Linux Homebrew staging install is not verbose",
 			want: "Homebrew native install gate must use the required direct command sequence",
 			mutate: func(t *testing.T, root *yaml.Node) {
-				replaceRunFragment(t, stepWithRun(t, jobNode(t, root, "verify_homebrew_formula"), "brew install --debug-symbols"), "brew install --debug-symbols --verbose --formula \"$staging_tap/$formula_name\"", "brew install --debug-symbols --formula \"$staging_tap/$formula_name\"")
+				replaceRunFragment(t, stepWithRun(t, jobNode(t, root, "verify_homebrew_formula"), "brew install --build-from-source"), "brew install --build-from-source --debug-symbols --verbose --formula \"$staging_tap/$formula_name\"", "brew install --build-from-source --debug-symbols --formula \"$staging_tap/$formula_name\"")
 			},
 		},
 		{
 			name: "Linux Homebrew debug symbols leave the Linux conditional",
 			want: "Homebrew native install gate must use the required direct command sequence",
 			mutate: func(t *testing.T, root *yaml.Node) {
-				replaceRunFragment(t, stepWithRun(t, jobNode(t, root, "verify_homebrew_formula"), "brew install --debug-symbols"), `if [ '${{ matrix.os }}' = linux ]; then
-  brew install --debug-symbols --verbose --formula "$staging_tap/$formula_name"
+				replaceRunFragment(t, stepWithRun(t, jobNode(t, root, "verify_homebrew_formula"), "brew install --build-from-source"), `if [ '${{ matrix.os }}' = linux ]; then
+  brew install --build-from-source --debug-symbols --verbose --formula "$staging_tap/$formula_name"
 else
   brew install --formula "$staging_tap/$formula_name"
-fi`, `brew install --debug-symbols --verbose --formula "$staging_tap/$formula_name"`)
+fi`, `brew install --build-from-source --debug-symbols --verbose --formula "$staging_tap/$formula_name"`)
 			},
 		},
 		{
 			name: "Linux Homebrew debug symbols leak to macOS",
 			want: "Homebrew native install gate must use the required direct command sequence",
 			mutate: func(t *testing.T, root *yaml.Node) {
-				replaceRunFragment(t, stepWithRun(t, jobNode(t, root, "verify_homebrew_formula"), "brew install --debug-symbols"), "brew install --formula \"$staging_tap/$formula_name\"", "brew install --debug-symbols --verbose --formula \"$staging_tap/$formula_name\"")
+				replaceRunFragment(t, stepWithRun(t, jobNode(t, root, "verify_homebrew_formula"), "brew install --build-from-source"), "brew install --formula \"$staging_tap/$formula_name\"", "brew install --build-from-source --debug-symbols --verbose --formula \"$staging_tap/$formula_name\"")
 			},
 		},
 		{
 			name: "staging formula install is not tap qualified",
 			want: "Homebrew native install gate must use the required direct command sequence",
 			mutate: func(t *testing.T, root *yaml.Node) {
-				replaceRunFragment(t, stepWithRun(t, jobNode(t, root, "verify_homebrew_formula"), "brew install --debug-symbols"), "brew install --debug-symbols --verbose --formula \"$staging_tap/$formula_name\"", "brew install --debug-symbols --verbose --formula \"staging-formula/$formula_name.rb\"")
+				replaceRunFragment(t, stepWithRun(t, jobNode(t, root, "verify_homebrew_formula"), "brew install --build-from-source"), "brew install --build-from-source --debug-symbols --verbose --formula \"$staging_tap/$formula_name\"", "brew install --build-from-source --debug-symbols --verbose --formula \"staging-formula/$formula_name.rb\"")
 			},
 		},
 		{

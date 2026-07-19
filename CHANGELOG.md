@@ -9,7 +9,7 @@
 
 ### Fixed
 
-- Linux Homebrew hosted staging verification now uses `brew install --debug-symbols --verbose`: Homebrew Resource staging happens before `--keep-tmp` can affect its Mktemp cleanup, while `--debug-symbols` retains the source-cache staging path. This is limited to short-lived Linux verification runners, leaves macOS and end-user Homebrew installs unchanged, and still requires real-runner validation before release.
+- Linux Homebrew hosted staging verification now uses `brew install --build-from-source --debug-symbols --verbose`: Homebrew rejects `--debug-symbols` without the explicit source-build flag before staging begins. This Linux-only, non-interactive verification combination leaves macOS and end-user Homebrew installs unchanged and still requires real resource-stage validation before release.
 
 ## [0.4.4] - 2026-07-19
 
