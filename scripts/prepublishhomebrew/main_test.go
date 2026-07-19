@@ -21,6 +21,26 @@ func TestWorkflowEnforcesReadOnlyStableReleaseRehearsal(t *testing.T) {
 	}
 }
 
+// Linuxbrew 的 Resource staging 在 --keep-tmp 生效前会清理 Mktemp 并可能在 hosted
+// runner 上失败。预发布演练必须只在 Linux 传入 --debug-symbols，让 source cache staging
+// 保留；macOS 仍使用普通安装命令，且旧 --keep-tmp 不得残留。
+func TestWorkflowUsesLinuxOnlyDebugSymbolsForHomebrewResourceStaging(t *testing.T) {
+	root := prepublishWorkflowRoot(t)
+	step := runStepWith(t, job(t, root, "verify_homebrew_formula"), "brew install")
+	run := mappingValue(t, step, "run").Value
+	want := `if [ '${{ matrix.os }}' = linux ]; then
+  brew install --debug-symbols --verbose --formula "$staging_tap/$formula_name"
+else
+  brew install --formula "$staging_tap/$formula_name"
+fi`
+	if !strings.Contains(run, want) {
+		t.Fatalf("prepublish install must retain Resource staging sources only on Linux and preserve macOS install; missing %q", want)
+	}
+	if strings.Contains(run, "--keep-tmp") {
+		t.Fatal("prepublish install must not retain obsolete --keep-tmp")
+	}
+}
+
 func findRepositoryRoot(t *testing.T) string {
 	t.Helper()
 	root, err := filepath.Abs(filepath.Join("..", ".."))
@@ -62,15 +82,21 @@ func TestWorkflowRejectsReadOnlyBoundaryMutations(t *testing.T) {
 			},
 		},
 		{
-			name: "removes Linux staging retention",
+			name: "removes Linux Resource staging debug symbols",
 			mutate: func(t *testing.T, root *yaml.Node) {
-				replaceRun(t, runStepWith(t, job(t, root, "verify_homebrew_formula"), "brew install --keep-tmp"), "brew install --keep-tmp --verbose", "brew install --verbose")
+				replaceRun(t, runStepWith(t, job(t, root, "verify_homebrew_formula"), "brew install --debug-symbols"), "brew install --debug-symbols --verbose", "brew install --verbose")
 			},
 		},
 		{
-			name: "applies Linux flags to macOS",
+			name: "retains obsolete Linux keep tmp",
 			mutate: func(t *testing.T, root *yaml.Node) {
-				replaceRun(t, runStepWith(t, job(t, root, "verify_homebrew_formula"), "brew install --keep-tmp"), "brew install --formula \"$staging_tap/$formula_name\"", "brew install --keep-tmp --verbose --formula \"$staging_tap/$formula_name\"")
+				replaceRun(t, runStepWith(t, job(t, root, "verify_homebrew_formula"), "brew install --debug-symbols"), "brew install --debug-symbols --verbose", "brew install --debug-symbols --keep-tmp --verbose")
+			},
+		},
+		{
+			name: "applies Linux debug symbols to macOS",
+			mutate: func(t *testing.T, root *yaml.Node) {
+				replaceRun(t, runStepWith(t, job(t, root, "verify_homebrew_formula"), "brew install --debug-symbols"), "brew install --formula \"$staging_tap/$formula_name\"", "brew install --debug-symbols --verbose --formula \"$staging_tap/$formula_name\"")
 			},
 		},
 		{
