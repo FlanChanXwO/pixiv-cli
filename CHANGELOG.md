@@ -7,6 +7,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Linux Homebrew release validation now retains its staging buildpath with `brew install --keep-tmp --verbose` to bypass the documented GitHub runner cleanup `chmod` `EINVAL`; this affects only the short-lived release-validation runner, not end-user Homebrew installs.
+
 ## [0.4.4] - 2026-07-19
 
 ### Fixed
