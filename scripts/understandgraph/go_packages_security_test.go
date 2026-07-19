@@ -90,7 +90,9 @@ func TestNormalizeRejectsUnsafeGoSourcesBeforeWritingArtifacts(t *testing.T) {
 
 			err := Normalize(root)
 			require.ErrorContains(t, err, test.want)
-			require.ErrorContains(t, err, controlledPath)
+			// scan-result.json 的路径协议固定为 slash；Windows 上错误也必须反映该输入，
+			// 不能把宿主文件系统的分隔符当成安全契约的一部分。
+			require.ErrorContains(t, err, filepath.ToSlash(controlledPath))
 			require.NotContains(t, err.Error(), secret)
 			for _, artifact := range artifacts {
 				require.Equal(t, before[artifact], readFile(t, artifact), "failed normalization changed %s", artifact)
@@ -190,6 +192,35 @@ func TestNormalizeRejectsGoSourceIdentityChangeBeforeWritingArtifacts(t *testing
 
 	err := normalizeWithContainedFileReader(root, reader)
 	require.True(t, swapped)
+	require.ErrorContains(t, err, "changed after initial validation")
+	require.NotContains(t, err.Error(), secret)
+	for _, artifact := range artifacts {
+		require.Equal(t, before[artifact], readFile(t, artifact), "failed normalization changed %s", artifact)
+	}
+}
+
+func TestNormalizeRejectsGoSourceContentChangeBeforeWritingArtifacts(t *testing.T) {
+	root := writeGraphFixture(t, map[string]string{
+		"go.mod": "module example.com/pixiv\n\ngo 1.26.3\n",
+		"a/a.go": "package a\n",
+	})
+	secret := "IN_PLACE_RACE_SECRET_MUST_NOT_BE_READ"
+	artifacts := graphArtifactPaths(root)
+	before := snapshotFiles(t, artifacts)
+
+	changed := false
+	reader := func(root, relativePath, boundaryName string) ([]byte, error) {
+		return readContainedRegularFileWithHook(root, relativePath, boundaryName, func(resolvedPath string) error {
+			if changed || boundaryName != "repository" {
+				return nil
+			}
+			changed = true
+			return os.WriteFile(resolvedPath, []byte(secret+"\n"), 0o600)
+		})
+	}
+
+	err := normalizeWithContainedFileReader(root, reader)
+	require.True(t, changed)
 	require.ErrorContains(t, err, "changed after initial validation")
 	require.NotContains(t, err.Error(), secret)
 	for _, artifact := range artifacts {
