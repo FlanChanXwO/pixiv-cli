@@ -8,15 +8,17 @@ fallback、更新を扱います。SDK と MCP の詳細は重複させず、[�
 
 ユーザーに影響する変更は [CHANGELOG.md](../../CHANGELOG.md) に記録されます。
 
+[GitHub Releases ページ]: https://github.com/FlanChanXwO/pixiv-cli/releases
+
 ## インストール
 
 > **Release の状態**：対応 binary の Ed25519 public key、key ID、fingerprint は
 > [`internal/bootstrap/release_trust.go`](../../internal/bootstrap/release_trust.go) に commit されています。
 > public source/tap repository、保護された `release` Environment、分離された credential は設定済みです。
-> v0.4.3 は 6 platform archive、checksum、署名付き manifest を含む公開 GitHub Release として公開されています。
-> public tap の stable Homebrew formula は v0.3.0 のままで、v0.4.4 の Linuxbrew install validation 待ちです。
-> v0.4.4 はまだ公開されていません。将来の version も同じ tag、署名、asset、Homebrew gate を通過するまでは
-> 信頼済み download source とみなしません。
+> v0.4.4 は 6 platform archive、checksum、署名付き manifest を含む公開 GitHub Release として公開されています。
+> GitHub Release と tap は独立した公開物です。現在の状態は公式の [GitHub Releases ページ]と
+> `brew info FlanChanXwO/tap/pixiv-cli` で確認してください。将来の version も同じ tag、署名、asset、
+> Homebrew gate を通過するまでは信頼済み download source とみなしません。
 
 ### 公式インストールスクリプト
 
@@ -92,14 +94,15 @@ brew install FlanChanXwO/tap/pixiv-cli-beta
 両 formula は同じ `pixiv` binary を配置するため競合します。macOS/Linux の検証済み Release asset だけを
 取得し、runtime の `ffmpeg` dependency は追加しません。
 
-public tap の現在の stable `pixiv-cli` formula は v0.3.0 のままです。v0.4.3 は現在 GitHub Release からのみ
-取得でき、tap の更新は v0.4.4 の Linuxbrew install validation 完了後です。
+GitHub Release と public tap は別々の公開 channel です。現在の状態は
+`brew info FlanChanXwO/tap/pixiv-cli` と [GitHub Releases ページ]で確認し、この reference の固定 version に
+依存しないでください。
 
 ### 直接ダウンロード
 
 Release は darwin、linux、windows の amd64/arm64 向けに
 `pixiv-cli_<version>_<os>_<arch>.tar.gz`（Windows は `.zip`）を生成し、`checksums.txt` と Ed25519 署名付き
-`checksums.json` を添付します。v0.4.3 は 6 種類すべてを含みます。
+`checksums.json` を添付します。公開済みの v0.4.4 は 6 種類すべてを含みます。
 
 現在 Apple notarization と Windows Authenticode はありません。macOS Gatekeeper や Windows SmartScreen が
 警告する場合があります。公式 GitHub Release からだけ取得し、version、checksum、signature note を確認し、

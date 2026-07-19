@@ -7,9 +7,11 @@
 
 ## [Unreleased]
 
+## [0.4.5] - 2026-07-20
+
 ### Fixed
 
-- Linux Homebrew hosted staging verification now runs the real local staging-tap `brew install` in a short-lived `homebrew/brew` container pinned by immutable digest. This avoids the hosted Linuxbrew `Resource` staging cleanup `EINVAL` while retaining a read-only formula mount, no secrets, a local-only tap and an exact installed-version check. The pinned Homebrew 4.6 image has no `brew trust` or standalone `python3`, so trust remains only in the native macOS path and the container uses its bundled Ruby JSON parser after installation. The Linux container tap is created locally, fed only by the read-only mount and discarded with `--rm`. macOS and end-user Homebrew installs remain unchanged. Local Docker experiments have passed on arm64 and amd64 emulation; GitHub runner prepublish evidence is still required before release.
+- Linux Homebrew hosted staging verification now runs the real local staging-tap `brew install` in a short-lived `homebrew/brew` container pinned by immutable digest. This avoids the hosted Linuxbrew `Resource` staging cleanup `EINVAL` while retaining a read-only formula mount, no secrets, a local-only tap and an exact installed-version check. The pinned Homebrew 4.6 image has no `brew trust` or standalone `python3`, so trust remains only in the native macOS path and the container uses its bundled Ruby JSON parser after installation. The Linux container tap is created locally, fed only by the read-only mount and discarded with `--rm`. macOS and end-user Homebrew installs remain unchanged. The GitHub prepublish workflow has passed this verification on all four Homebrew platform/architecture combinations using the published v0.4.4 assets.
 
 ## [0.4.4] - 2026-07-19
 
@@ -223,7 +225,8 @@
 
 [Keep a Changelog 1.1.0]: https://keepachangelog.com/zh-CN/1.1.0/
 [Semantic Versioning]: https://semver.org/spec/v2.0.0.html
-[Unreleased]: https://github.com/FlanChanXwO/pixiv-cli/compare/v0.4.4...HEAD
+[Unreleased]: https://github.com/FlanChanXwO/pixiv-cli/compare/v0.4.5...HEAD
+[0.4.5]: https://github.com/FlanChanXwO/pixiv-cli/compare/v0.4.4...v0.4.5
 [0.4.4]: https://github.com/FlanChanXwO/pixiv-cli/compare/v0.4.3...v0.4.4
 [0.4.3]: https://github.com/FlanChanXwO/pixiv-cli/compare/v0.4.2...v0.4.3
 [0.4.2]: https://github.com/FlanChanXwO/pixiv-cli/compare/v0.3.0...v0.4.2
