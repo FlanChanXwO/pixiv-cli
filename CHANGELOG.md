@@ -7,9 +7,11 @@
 
 ## [Unreleased]
 
+## [0.4.4] - 2026-07-19
+
 ### Fixed
 
-- 修复 Linux Homebrew packaging validation 的 formula buildpath 可能与 Cellar 跨文件系统、使 FileUtils 移动返回 `EINVAL` 的问题；Linux gate 现将 `HOMEBREW_TEMP` 置于 Homebrew prefix 内，macOS 与公开 formula 路径保持不变。
+- Linux Homebrew release validation keeps buildpaths in Homebrew prefix to avoid cross-filesystem FileUtils EINVAL.
 
 ## [0.4.3] - 2026-07-19
 
@@ -217,7 +219,8 @@
 
 [Keep a Changelog 1.1.0]: https://keepachangelog.com/zh-CN/1.1.0/
 [Semantic Versioning]: https://semver.org/spec/v2.0.0.html
-[Unreleased]: https://github.com/FlanChanXwO/pixiv-cli/compare/v0.4.3...HEAD
+[Unreleased]: https://github.com/FlanChanXwO/pixiv-cli/compare/v0.4.4...HEAD
+[0.4.4]: https://github.com/FlanChanXwO/pixiv-cli/compare/v0.4.3...v0.4.4
 [0.4.3]: https://github.com/FlanChanXwO/pixiv-cli/compare/v0.4.2...v0.4.3
 [0.4.2]: https://github.com/FlanChanXwO/pixiv-cli/compare/v0.3.0...v0.4.2
 [0.3.0]: https://github.com/FlanChanXwO/pixiv-cli/compare/v0.2.0...v0.3.0
