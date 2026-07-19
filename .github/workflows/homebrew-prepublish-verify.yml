@@ -1,0 +1,155 @@
+name: Homebrew prepublish verification
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Existing public stable Release tag to verify
+        required: true
+        type: string
+
+# 手动演练只从执行所在的默认分支读取受审 workflow；输入 tag 仅绑定已公开的 Release 资产。
+env:
+  RELEASE_TAG: ${{ inputs.release_tag }}
+
+permissions:
+  contents: read
+
+jobs:
+  validate_existing_release:
+    name: Validate an existing public stable Release
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+        with:
+          go-version: '1.26.3'
+      - name: Validate the manual tag and the public Release
+        shell: bash
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = "refs/heads/$DEFAULT_BRANCH"
+          go run ./scripts/releaseassets validate --version "${RELEASE_TAG#v}"
+          case "$RELEASE_TAG" in
+            v[0-9]*) ;;
+            *) printf '%s\n' 'release tag must start with v and a digit' >&2; exit 1 ;;
+          esac
+          gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" > release.json
+          python3 - "$RELEASE_TAG" release.json <<'PY'
+          import json
+          import pathlib
+          import sys
+
+          tag = sys.argv[1]
+          release = json.loads(pathlib.Path(sys.argv[2]).read_text(encoding="utf-8"))
+          if release.get("tag_name") != tag:
+              raise SystemExit("release tag does not match the requested tag")
+          if release.get("draft") or release.get("prerelease") or not release.get("published_at"):
+              raise SystemExit("requested release must already be public and stable")
+          PY
+
+  render_stable_formula:
+    name: Render a stable formula from Release checksums
+    needs: validate_existing_release
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+        with:
+          go-version: '1.26.3'
+      - name: Download only the public Release checksums
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p verified-release
+          gh release download "$RELEASE_TAG" --pattern checksums.txt --dir verified-release
+          test "$(find verified-release -maxdepth 1 -type f -print | LC_ALL=C sort)" = "verified-release/checksums.txt"
+      - name: Render exactly the stable formula
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${RELEASE_TAG#v}"
+          test "$(go run ./scripts/releaseassets channel --version "$version")" = stable
+          mkdir -p staging-formula
+          go run ./scripts/homebrewformula render \
+            --formula pixiv-cli \
+            --version "$version" \
+            --checksums verified-release/checksums.txt \
+            --output staging-formula/pixiv-cli.rb
+          printf '%s\n' pixiv-cli > staging-formula/formula-name
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: staging-homebrew-formula
+          path: staging-formula
+          if-no-files-found: error
+          retention-days: 1
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: verified-release-checksums
+          path: verified-release/checksums.txt
+          if-no-files-found: error
+          retention-days: 1
+
+  verify_homebrew_formula:
+    name: Verify Homebrew on ${{ matrix.os }}/${{ matrix.arch }}
+    needs: render_stable_formula
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15-intel
+            os: darwin
+            arch: amd64
+          - runner: macos-15
+            os: darwin
+            arch: arm64
+          - runner: ubuntu-22.04
+            os: linux
+            arch: amd64
+          - runner: ubuntu-22.04-arm
+            os: linux
+            arch: arm64
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: staging-homebrew-formula
+          path: staging-formula
+      - name: Install the local staging formula and verify its version
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ '${{ matrix.os }}' = linux ]; then
+            eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
+          fi
+          formula_name=$(cat staging-formula/formula-name)
+          test "$formula_name" = pixiv-cli
+          test "$(find staging-formula -maxdepth 1 -type f -print | LC_ALL=C sort)" = "$(printf '%s\n%s\n' staging-formula/formula-name staging-formula/pixiv-cli.rb | LC_ALL=C sort)"
+          staging_tap=pixiv-cli-release/staging
+          tap_dir="$(brew --repository)/Library/Taps/pixiv-cli-release/homebrew-staging"
+          brew tap-new "$staging_tap" --no-git
+          brew trust --tap "$staging_tap"
+          cp staging-formula/pixiv-cli.rb "$tap_dir/Formula/pixiv-cli.rb"
+          if [ '${{ matrix.os }}' = linux ]; then
+            brew install --keep-tmp --verbose --formula "$staging_tap/$formula_name"
+          else
+            brew install --formula "$staging_tap/$formula_name"
+          fi
+          pixiv version --json | python3 -c 'import json, sys; actual = json.load(sys.stdin)["version"]; expected = sys.argv[1]; assert actual == expected, f"version {actual!r} != {expected!r}"' "$RELEASE_TAG"

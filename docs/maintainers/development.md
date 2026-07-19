@@ -465,6 +465,19 @@ secret 和 tag protection 的远端实际状态；它不替代 Task 20 的远端
 不执行；`--verbose` 则保留可审计的 Homebrew 操作输出。二者不进入公开 formula，也不改变终端用户的
 `brew install` 行为。
 
+### 发布前只读 Homebrew 演练
+
+在创建任何新 tag 或 Release 前，维护者可从默认分支手动运行
+`.github/workflows/homebrew-prepublish-verify.yml`，并传入一个**已公开、非 draft、非 prerelease** 的
+stable Release tag。它先验证输入为带 `v` 前缀的 SemVer、执行分支为默认分支，并确认 GitHub Release 的
+tag 与输入一致；随后只下载该 Release 已发布的 `checksums.txt`，渲染 `pixiv-cli` staging formula，最后在
+macOS Intel/arm64 与 Linux amd64/arm64 四个生产同款 runner 上执行真实的本地 staging-tap 安装。
+
+这是一项只读 rehearsal：它没有 `release` Environment、secret、tag checkout、Release/asset 编辑或创建，
+也不会 clone、提交或推送 Homebrew tap。Linux 分支保留 `--keep-tmp --verbose`，macOS 保持普通安装命令。
+它用于在正式发布之前复现 Homebrew 安装链路，**不替代**正式 tag 发布、签名 Release、tap 部署或发布后的
+安装验收。`sh scripts/test-homebrew-prepublish-workflow.sh` 会在本地和质量门中检查该 workflow 的不可变边界。
+
 正式发布目前仍必须被正式 tag、签名 GitHub Release、tap formula 与后续安装验收阻断。完整
 six-target staticlib/manifest 与真实 native artifact 证据已由 run `29192425899` 收集并受控回填；
 受保护 `release` Environment、生产 signing 私钥与公开仓库也已按 Task 20 配置，但这些前置条件本身
