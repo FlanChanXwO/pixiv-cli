@@ -50,23 +50,26 @@ func TestCheckWorkflowRequiresStagingTapTrust(t *testing.T) {
 	}
 }
 
-// GitHub Linux runner 的 Homebrew 默认临时目录 /var/tmp 会在实际安装时触发
-// EINVAL；验证门禁必须仅在 Linux 分支创建并导出 runner 私有临时目录。
-func TestWorkflowUsesRunnerTemporaryDirectoryForLinuxHomebrew(t *testing.T) {
+// Linux Homebrew 的 formula buildpath 必须和 Cellar 位于同一 Homebrew prefix
+// filesystem；runner 临时目录及裸 /var/tmp 都可能跨设备，从而令 FileUtils mv 返回 EINVAL。
+func TestWorkflowUsesHomebrewPrefixTemporaryDirectoryForLinuxHomebrew(t *testing.T) {
 	t.Parallel()
 
 	root := releaseWorkflowRoot(t)
 	step := stepWithRun(t, jobNode(t, root, "verify_homebrew_formula"), "brew install")
 	run := requireMappingValue(t, step, "run").Value
-	const linuxTemporaryDirectory = `if [ '${{ matrix.os }}' = linux ]; then
-  eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
-  # GitHub Linux runner 的 /var/tmp 会使 Homebrew 安装触发 EINVAL；只为
-  # Linux Homebrew 验证使用 runner 私有的普通临时目录，macOS 保持默认行为。
-  mkdir -p "$RUNNER_TEMP/homebrew-tmp"
-  export HOMEBREW_TEMP="$RUNNER_TEMP/homebrew-tmp"
-fi`
-	if !strings.Contains(run, linuxTemporaryDirectory) {
-		t.Fatalf("Homebrew install gate must create and export the Linux-only runner temporary directory")
+	for _, command := range []string{
+		`eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"`,
+		`homebrew_temp="$(brew --prefix)/var/tmp"`,
+		`mkdir -p "$homebrew_temp"`,
+		`export HOMEBREW_TEMP="$homebrew_temp"`,
+	} {
+		if !strings.Contains(run, command) {
+			t.Fatalf("Homebrew install gate must create and export a Linux-only Homebrew prefix temporary directory; missing %q", command)
+		}
+	}
+	if strings.Contains(run, "$RUNNER_TEMP/homebrew-tmp") || strings.Contains(run, `export HOMEBREW_TEMP="/var/tmp"`) {
+		t.Fatal("Homebrew install gate must not use a runner temporary directory or a bare /var/tmp")
 	}
 }
 
@@ -165,10 +168,17 @@ func TestCheckWorkflowRejectsHomebrewReleaseGateMutations(t *testing.T) {
 			},
 		},
 		{
-			name: "Linux Homebrew temporary directory export removed",
+			name: "Linux Homebrew temporary directory leaves the Homebrew prefix",
 			want: "Homebrew native install gate must use the required direct command sequence",
 			mutate: func(t *testing.T, root *yaml.Node) {
-				removeRunFragment(t, stepWithRun(t, jobNode(t, root, "verify_homebrew_formula"), "HOMEBREW_TEMP"), "export HOMEBREW_TEMP=\"$RUNNER_TEMP/homebrew-tmp\"")
+				replaceRunFragment(t, stepWithRun(t, jobNode(t, root, "verify_homebrew_formula"), "HOMEBREW_TEMP"), "homebrew_temp=\"$(brew --prefix)/var/tmp\"", "homebrew_temp=\"$RUNNER_TEMP/homebrew-tmp\"")
+			},
+		},
+		{
+			name: "Linux Homebrew temporary directory uses bare var tmp",
+			want: "Homebrew native install gate must use the required direct command sequence",
+			mutate: func(t *testing.T, root *yaml.Node) {
+				replaceRunFragment(t, stepWithRun(t, jobNode(t, root, "verify_homebrew_formula"), "HOMEBREW_TEMP"), "homebrew_temp=\"$(brew --prefix)/var/tmp\"", "homebrew_temp=\"/var/tmp\"")
 			},
 		},
 		{
