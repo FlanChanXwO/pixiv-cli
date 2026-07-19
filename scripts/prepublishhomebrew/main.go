@@ -21,6 +21,68 @@ var nativeTargets = map[string]struct{}{
 	"ubuntu-22.04-arm|linux|arm64": {},
 }
 
+// 四段 shell 都是只读演练的完整 allowlist。逐字绑定而不是检查片段，避免通过
+// 在既有步骤尾部追加 Release、tap 或网络写入命令绕过 workflow policy。
+const validateReleaseRun = `set -euo pipefail
+test "$GITHUB_REF" = "refs/heads/$DEFAULT_BRANCH"
+go run ./scripts/releaseassets validate --version "${RELEASE_TAG#v}"
+case "$RELEASE_TAG" in
+  v[0-9]*) ;;
+  *) printf '%s\n' 'release tag must start with v and a digit' >&2; exit 1 ;;
+esac
+gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" > release.json
+python3 - "$RELEASE_TAG" release.json <<'PY'
+import json
+import pathlib
+import sys
+
+tag = sys.argv[1]
+release = json.loads(pathlib.Path(sys.argv[2]).read_text(encoding="utf-8"))
+if release.get("tag_name") != tag:
+    raise SystemExit("release tag does not match the requested tag")
+if release.get("draft") or release.get("prerelease") or not release.get("published_at"):
+    raise SystemExit("requested release must already be public and stable")
+PY
+`
+
+const downloadChecksumsRun = `set -euo pipefail
+mkdir -p verified-release
+gh release download "$RELEASE_TAG" --pattern checksums.txt --dir verified-release
+test "$(find verified-release -maxdepth 1 -type f -print | LC_ALL=C sort)" = "verified-release/checksums.txt"
+`
+
+const renderStableFormulaRun = `set -euo pipefail
+version="${RELEASE_TAG#v}"
+test "$(go run ./scripts/releaseassets channel --version "$version")" = stable
+mkdir -p staging-formula
+go run ./scripts/homebrewformula render \
+  --formula pixiv-cli \
+  --version "$version" \
+  --checksums verified-release/checksums.txt \
+  --output staging-formula/pixiv-cli.rb
+printf '%s\n' pixiv-cli > staging-formula/formula-name
+`
+
+const verifyStagingFormulaRun = `set -euo pipefail
+if [ '${{ matrix.os }}' = linux ]; then
+  eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
+fi
+formula_name=$(cat staging-formula/formula-name)
+test "$formula_name" = pixiv-cli
+test "$(find staging-formula -maxdepth 1 -type f -print | LC_ALL=C sort)" = "$(printf '%s\n%s\n' staging-formula/formula-name staging-formula/pixiv-cli.rb | LC_ALL=C sort)"
+staging_tap=pixiv-cli-release/staging
+tap_dir="$(brew --repository)/Library/Taps/pixiv-cli-release/homebrew-staging"
+brew tap-new "$staging_tap" --no-git
+brew trust --tap "$staging_tap"
+cp staging-formula/pixiv-cli.rb "$tap_dir/Formula/pixiv-cli.rb"
+if [ '${{ matrix.os }}' = linux ]; then
+  brew install --keep-tmp --verbose --formula "$staging_tap/$formula_name"
+else
+  brew install --formula "$staging_tap/$formula_name"
+fi
+pixiv version --json | python3 -c 'import json, sys; actual = json.load(sys.stdin)["version"]; expected = sys.argv[1]; assert actual == expected, f"version {actual!r} != {expected!r}"' "$RELEASE_TAG"
+`
+
 func main() {
 	if len(os.Args) != 3 || os.Args[1] != "--workflow" {
 		fmt.Fprintln(os.Stderr, "prepublish Homebrew workflow policy: usage: prepublishhomebrew --workflow PATH")
@@ -96,16 +158,11 @@ func checkValidate(job *yaml.Node) error {
 	if len(steps) != 3 || !checkoutStep(steps[0]) || !goSetupStep(steps[1]) {
 		return errors.New("validate job must use the fixed checkout and Go setup")
 	}
-	run := runStep(steps[2], "Validate the manual tag and the public Release")
-	for _, required := range []string{
-		"test \"$GITHUB_REF\" = \"refs/heads/$DEFAULT_BRANCH\"", "go run ./scripts/releaseassets validate --version \"${RELEASE_TAG#v}\"", "case \"$RELEASE_TAG\" in", "gh api \"repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG\"", "release.get(\"tag_name\")", "release.get(\"draft\")", "release.get(\"prerelease\")", "release.get(\"published_at\")",
-	} {
-		if !strings.Contains(run, required) {
-			return errors.New("validate job must check the main ref, SemVer, and public stable Release metadata")
-		}
-	}
-	if !exactStringMap(value(steps[2], "env"), map[string]string{"DEFAULT_BRANCH": "${{ github.event.repository.default_branch }}", "GH_TOKEN": "${{ github.token }}"}) {
-		return errors.New("validate job has unexpected credentials")
+	if !canonicalRunStep(steps[2], "Validate the manual tag and the public Release", validateReleaseRun, map[string]string{
+		"DEFAULT_BRANCH": "${{ github.event.repository.default_branch }}",
+		"GH_TOKEN":       "${{ github.token }}",
+	}) {
+		return errors.New("validate job must use the canonical read-only release check")
 	}
 	return nil
 }
@@ -118,17 +175,11 @@ func checkRender(job *yaml.Node) error {
 	if len(steps) != 6 || !checkoutStep(steps[0]) || !goSetupStep(steps[1]) {
 		return errors.New("render job must use the fixed checkout and Go setup")
 	}
-	download := runStep(steps[2], "Download only the public Release checksums")
-	render := runStep(steps[3], "Render exactly the stable formula")
-	if !strings.Contains(download, "gh release download \"$RELEASE_TAG\" --pattern checksums.txt --dir verified-release") ||
-		!strings.Contains(render, "go run ./scripts/releaseassets channel --version \"$version\"") ||
-		!strings.Contains(render, "--formula pixiv-cli") || strings.Contains(render, "pixiv-cli-beta") ||
+	if !canonicalRunStep(steps[2], "Download only the public Release checksums", downloadChecksumsRun, map[string]string{"GH_TOKEN": "${{ github.token }}"}) ||
+		!canonicalRunStep(steps[3], "Render exactly the stable formula", renderStableFormulaRun, nil) ||
 		!artifactStep(steps[4], "staging-homebrew-formula", "staging-formula") ||
 		!artifactStep(steps[5], "verified-release-checksums", "verified-release/checksums.txt") {
 		return errors.New("render job must download Release checksums and render only pixiv-cli")
-	}
-	if !exactStringMap(value(steps[2], "env"), map[string]string{"GH_TOKEN": "${{ github.token }}"}) {
-		return errors.New("checksum download has unexpected credentials")
 	}
 	return nil
 }
@@ -147,18 +198,8 @@ func checkVerify(job *yaml.Node) error {
 		scalar(value(steps[0], "with"), "path") != "staging-formula" {
 		return errors.New("verify job must download only the staging formula")
 	}
-	run := runStep(steps[1], "Install the local staging formula and verify its version")
-	for _, required := range []string{
-		"eval \"$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)\"", "test \"$formula_name\" = pixiv-cli", "brew tap-new \"$staging_tap\" --no-git", "brew trust --tap \"$staging_tap\"", "brew install --keep-tmp --verbose --formula \"$staging_tap/$formula_name\"", "brew install --formula \"$staging_tap/$formula_name\"", "pixiv version --json",
-	} {
-		if !strings.Contains(run, required) {
-			return errors.New("verify job must keep the canonical Linux and macOS Homebrew install paths")
-		}
-	}
-	for _, forbidden := range []string{"git clone", "git push", "gh release create", "gh release edit", "brew tap \"FlanChanXwO/tap\""} {
-		if strings.Contains(run, forbidden) {
-			return errors.New("verify job must not publish a tap or Release")
-		}
+	if !canonicalRunStep(steps[1], "Install the local staging formula and verify its version", verifyStagingFormulaRun, nil) {
+		return errors.New("verify job must use the canonical Linux and macOS Homebrew install paths")
 	}
 	return nil
 }
@@ -234,11 +275,15 @@ func artifactStep(step *yaml.Node, name, path string) bool {
 		})
 }
 
-func runStep(step *yaml.Node, name string) string {
-	if step == nil || scalar(step, "name") != name || scalar(step, "shell") != "bash" {
-		return ""
+func canonicalRunStep(step *yaml.Node, name, run string, env map[string]string) bool {
+	keys := []string{"name", "shell", "run"}
+	if env != nil {
+		keys = append(keys, "env")
 	}
-	return scalar(step, "run")
+	if !exactKeys(step, keys...) || scalar(step, "name") != name || scalar(step, "shell") != "bash" || scalar(step, "run") != run {
+		return false
+	}
+	return env == nil || exactStringMap(value(step, "env"), env)
 }
 
 func stepsOf(job *yaml.Node) []*yaml.Node {

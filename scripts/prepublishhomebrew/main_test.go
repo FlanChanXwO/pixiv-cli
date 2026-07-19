@@ -85,6 +85,30 @@ func TestWorkflowRejectsReadOnlyBoundaryMutations(t *testing.T) {
 				mappingValue(t, mappingValue(t, job(t, root, "validate_existing_release"), "steps").Content[0], "uses").Value = "actions/checkout@v4"
 			},
 		},
+		{
+			name: "validate creates a Release after checking it",
+			mutate: func(t *testing.T, root *yaml.Node) {
+				appendRun(t, runStepWith(t, job(t, root, "validate_existing_release"), "gh api"), "gh release create \"$RELEASE_TAG\" --title unsafe")
+			},
+		},
+		{
+			name: "checksum download pushes a tap commit",
+			mutate: func(t *testing.T, root *yaml.Node) {
+				appendRun(t, runStepWith(t, job(t, root, "render_stable_formula"), "gh release download"), "git push origin HEAD:main")
+			},
+		},
+		{
+			name: "checksum download trusts the public tap",
+			mutate: func(t *testing.T, root *yaml.Node) {
+				appendRun(t, runStepWith(t, job(t, root, "render_stable_formula"), "gh release download"), "brew tap \"FlanChanXwO/tap\"")
+			},
+		},
+		{
+			name: "native verification creates a Release through the API",
+			mutate: func(t *testing.T, root *yaml.Node) {
+				appendRun(t, runStepWith(t, job(t, root, "verify_homebrew_formula"), "pixiv version --json"), "gh api --method POST \"repos/$GITHUB_REPOSITORY/releases\"")
+			},
+		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
@@ -161,6 +185,12 @@ func replaceRun(t *testing.T, step *yaml.Node, old, new string) {
 		t.Fatalf("run step has no %q", old)
 	}
 	run.Value = strings.Replace(run.Value, old, new, 1)
+}
+
+func appendRun(t *testing.T, step *yaml.Node, command string) {
+	t.Helper()
+	run := mappingValue(t, step, "run")
+	run.Value += "\n" + command
 }
 
 func appendMappingValue(t *testing.T, node *yaml.Node, key string, value *yaml.Node) {
