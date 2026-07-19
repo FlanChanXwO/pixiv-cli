@@ -159,7 +159,7 @@ pixiv auth login --proxy http://127.0.0.1:7890
 
 ### 导入认证
 
-v0.4.0 删除 `auth add`、`auth token` 与 `--token`，且不保留 alias。direct import 改为：
+v0.4.1 删除 `auth add`、`auth token` 与 `--token`，且不保留 alias。direct import 改为：
 
 ```bash
 pixiv auth import                         # TTY 隐藏输入

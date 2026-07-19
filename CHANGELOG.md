@@ -7,7 +7,7 @@
 
 ## [Unreleased]
 
-## [0.4.0] - 2026-07-19
+## [0.4.1] - 2026-07-19
 
 ### Added
 
@@ -24,7 +24,7 @@
 
 ### Changed
 
-- Breaking: v0.4.0 删除 `pixiv auth add`、`pixiv auth token` 与 `--token`，不保留 alias/stub；direct token 入口统一为 `auth import`，显式 secret stdout 统一为不带 `--output` 的 `auth export [UID]` 或 `auth export --all`。
+- Breaking: v0.4.1 删除 `pixiv auth add`、`pixiv auth token` 与 `--token`，不保留 alias/stub；direct token 入口统一为 `auth import`，显式 secret stdout 统一为不带 `--output` 的 `auth export [UID]` 或 `auth export --all`。
 - `auth import` 的 direct 与 bundle 成功报告统一使用不含 secret 的 `{user_id,username,status}` account item，其中 `status` 为 `added|updated`；bundle JSON 固定为 `{accounts,default_user_id}` 并按输入 bundle 顺序逐项报告，不再暴露 `default`/`has_token` 或按 added/updated 分组。
 - `auth import --file` 严格解码未加密 bundle，并按 UID merge 后原子保存：保留本地已有 default，仅空 store 采用 bundle default；该离线路径拒绝 token/proxy 组合，不刷新、不联网。bundle 是 point-in-time backup 而非 live sync，token rotation 后旧 bundle 与其他机器副本可能 stale。
 - 有 refresh token 的搜索始终使用 App API，失败不回落 Web；无 token 的 Web 搜索只执行可靠筛选，R18/R18G/mature 与动态搜索选项会明确要求登录。分级与仅 AI 在 public SDK 筛选，其余新增筛选优先由 App 服务端执行；收藏数筛选仍不提供。
@@ -206,8 +206,8 @@
 
 [Keep a Changelog 1.1.0]: https://keepachangelog.com/zh-CN/1.1.0/
 [Semantic Versioning]: https://semver.org/spec/v2.0.0.html
-[Unreleased]: https://github.com/FlanChanXwO/pixiv-cli/compare/v0.4.0...HEAD
-[0.4.0]: https://github.com/FlanChanXwO/pixiv-cli/compare/v0.3.0...v0.4.0
+[Unreleased]: https://github.com/FlanChanXwO/pixiv-cli/compare/v0.4.1...HEAD
+[0.4.1]: https://github.com/FlanChanXwO/pixiv-cli/compare/v0.3.0...v0.4.1
 [0.3.0]: https://github.com/FlanChanXwO/pixiv-cli/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/FlanChanXwO/pixiv-cli/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/FlanChanXwO/pixiv-cli/compare/v0.1.0...v0.1.1
