@@ -41,7 +41,7 @@ curl.exe -fsSLo "%TEMP%\pixiv-install.cmd" https://raw.githubusercontent.com/Fla
 
 どちらのスクリプトも AMD64/ARM64 を検出し、最新の安定版公式 Release archive を選択して公開 SHA-256 を検証します。staging した binary を事前確認してからユーザー単位でインストールし、その後にのみ PATH を変更します。PATH を変更しない場合は `--no-path`、別の保存先には `--install-dir DIR` を使用できます。実行前にダウンロードしたスクリプトを確認できます。
 
-Linux の互換性に関する注意：v0.3.0 archive は Ubuntu 24.04 で link されており、glibc 2.39 を要求する場合があるため Debian 12 では動作しません。v0.4.0 では build 側で修正し、Linux asset の glibc 要求を最大 2.35 に固定して ABI gate で検証します。installer は既存の install を置き換える前に staged binary を確認し、非互換を明示します。
+Linux の互換性に関する注意：v0.3.0 archive は Ubuntu 24.04 で link されており、glibc 2.39 を要求する場合があるため Debian 12 では動作しません。v0.4.1 では build 側で修正し、Linux asset の glibc 要求を最大 2.35 に固定して ABI gate で検証します。installer は既存の install を置き換える前に staged binary を確認し、非互換を明示します。
 
 ### Coding Agent にインストールさせる
 
@@ -143,7 +143,7 @@ pixiv auth use 12345678
 pixiv auth check
 ```
 
-v0.4.0 では `auth add`/`auth token` を `auth import`/`auth export` に置き換え、削除した名前と `--token` に alias はありません。import は引数なしの非表示入力または raw stdin を推奨します。位置引数の token は argv/shell history に残ります。stdout へ secret を出力できるのは、`--output` を付けない `pixiv auth export [UID]` と `pixiv auth export --all` だけです。ファイルには `--output` で private bundle を作成します。bundle は暗号化されていない point-in-time backup であり live sync ではなく、token rotation 後は stale になる場合があります。secret 出力を chat、log、shell history、issue、Agent transcript に貼り付けないでください。他の stdout/stderr、JSON、MCP result、log、error は refresh token を公開してはなりません。完全な契約は [CLI リファレンス](docs/ja/cli-reference.md#refresh-token-の取得)を参照してください。
+v0.4.1 では `auth add`/`auth token` を `auth import`/`auth export` に置き換え、削除した名前と `--token` に alias はありません。import は引数なしの非表示入力または raw stdin を推奨します。位置引数の token は argv/shell history に残ります。stdout へ secret を出力できるのは、`--output` を付けない `pixiv auth export [UID]` と `pixiv auth export --all` だけです。ファイルには `--output` で private bundle を作成します。bundle は暗号化されていない point-in-time backup であり live sync ではなく、token rotation 後は stale になる場合があります。secret 出力を chat、log、shell history、issue、Agent transcript に貼り付けないでください。他の stdout/stderr、JSON、MCP result、log、error は refresh token を公開してはなりません。完全な契約は [CLI リファレンス](docs/ja/cli-reference.md#refresh-token-の取得)を参照してください。
 
 ## ドキュメント
 

@@ -44,7 +44,7 @@ preflight the staged binary, and install per-user before changing PATH. Use `--n
 `--install-dir DIR` to choose another destination. You can inspect the downloaded script before running it.
 
 Linux compatibility note: the v0.3.0 archives were linked on Ubuntu 24.04 and can require glibc 2.39, so they do not
-run on Debian 12. v0.4.0 fixes this at build time: Linux assets are built against and checked for a glibc 2.35
+run on Debian 12. v0.4.1 fixes this at build time: Linux assets are built against and checked for a glibc 2.35
 maximum requirement. The installer preflight reports an incompatible staged binary before replacing an installation.
 
 ### Install with a coding agent
@@ -147,7 +147,7 @@ pixiv auth use 12345678
 pixiv auth check
 ```
 
-v0.4.0 replaces `auth add`/`auth token` with `auth import`/`auth export`; the removed names and `--token` have no aliases. Prefer hidden `pixiv auth import` input or raw stdin because a positional token is visible in argv/shell history. `pixiv auth export [UID]` and `pixiv auth export --all`, both without `--output`, are the only explicit secret stdout forms; use `--output` for a private bundle file. Bundles are unencrypted point-in-time backups, not live sync, and may become stale after token rotation. Never paste secret output into chat, logs, shell history, issues, or agent transcripts; other stdout/stderr, JSON, MCP results, logs, and errors must not reveal refresh tokens. See the [CLI reference](docs/en/cli-reference.md#getting-a-refresh-token) for the complete import/export and file-protection contract.
+v0.4.1 replaces `auth add`/`auth token` with `auth import`/`auth export`; the removed names and `--token` have no aliases. Prefer hidden `pixiv auth import` input or raw stdin because a positional token is visible in argv/shell history. `pixiv auth export [UID]` and `pixiv auth export --all`, both without `--output`, are the only explicit secret stdout forms; use `--output` for a private bundle file. Bundles are unencrypted point-in-time backups, not live sync, and may become stale after token rotation. Never paste secret output into chat, logs, shell history, issues, or agent transcripts; other stdout/stderr, JSON, MCP results, logs, and errors must not reveal refresh tokens. See the [CLI reference](docs/en/cli-reference.md#getting-a-refresh-token) for the complete import/export and file-protection contract.
 
 ## Documentation
 
