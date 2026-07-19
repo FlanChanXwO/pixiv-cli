@@ -21,22 +21,41 @@ func TestWorkflowEnforcesReadOnlyStableReleaseRehearsal(t *testing.T) {
 	}
 }
 
-// Homebrew 已明确拒绝未配合 --build-from-source 的 --debug-symbols。预发布演练必须仅
-// 在 Linux 使用这个正式、非交互的参数组合；macOS 保持普通安装命令，旧 --keep-tmp 不得残留。
-func TestWorkflowUsesLinuxOnlySourceBuildDebugSymbolsForHomebrewResourceStaging(t *testing.T) {
+// Linux hosted runner 的 Linuxbrew Resource staging 会在 Homebrew 内部 cleanup 触发
+// EINVAL；Linux 验证必须转入固定镜像的短生命周期容器，macOS 仍保留原生 Homebrew。
+func TestWorkflowUsesLinuxOnlyContainerizedHomebrewVerification(t *testing.T) {
 	root := prepublishWorkflowRoot(t)
 	step := runStepWith(t, job(t, root, "verify_homebrew_formula"), "brew install")
 	run := mappingValue(t, step, "run").Value
-	want := `if [ '${{ matrix.os }}' = linux ]; then
-  brew install --build-from-source --debug-symbols --verbose --formula "$staging_tap/$formula_name"
-else
-  brew install --formula "$staging_tap/$formula_name"
-fi`
-	if !strings.Contains(run, want) {
-		t.Fatalf("prepublish install must retain Resource staging sources only on Linux and preserve macOS install; missing %q", want)
+	for _, want := range []string{
+		`docker run --rm`,
+		`homebrew/brew@sha256:b0072bfdebf5934ae24b93b44a1928a88057399b3283ffa0177bb86084fdedfd`,
+		`--entrypoint bash`,
+		`type=bind,src=$staging_dir,dst=/staging-formula,readonly`,
+		`--env RELEASE_TAG`,
+		`HOMEBREW_NO_AUTO_UPDATE=1`,
+		`HOMEBREW_NO_ENV_HINTS=1`,
+		`brew install --formula "$staging_tap/$formula_name"`,
+		`pixiv version --json`,
+	} {
+		if !strings.Contains(run, want) {
+			t.Fatalf("prepublish Linux container verification missing %q", want)
+		}
 	}
-	if strings.Contains(run, "--keep-tmp") {
-		t.Fatal("prepublish install must not retain obsolete --keep-tmp")
+	for _, forbidden := range []string{"--build-from-source", "--debug-symbols", "--keep-tmp", "HOMEBREW_TEMP"} {
+		if strings.Contains(run, forbidden) {
+			t.Fatalf("prepublish Linux container verification retains obsolete %q", forbidden)
+		}
+	}
+	linuxBranch, macOSBranch, ok := strings.Cut(run, "\nelse\n")
+	if !ok || strings.Contains(linuxBranch, "brew trust --tap") || strings.Contains(linuxBranch, "python3 -c") {
+		t.Fatal("fixed Linux Homebrew 4.6 container must not call unavailable brew trust or Python")
+	}
+	if !strings.Contains(linuxBranch, `brew ruby -rjson -e`) {
+		t.Fatal("fixed Linux container must compare the JSON version with Ruby standard JSON")
+	}
+	if !strings.Contains(macOSBranch, "brew trust --tap \"$staging_tap\"") {
+		t.Fatal("macOS native Homebrew must retain explicit staging-tap trust")
 	}
 }
 
@@ -81,33 +100,27 @@ func TestWorkflowRejectsReadOnlyBoundaryMutations(t *testing.T) {
 			},
 		},
 		{
-			name: "removes Linux source build required by debug symbols",
+			name: "uses a mutable Linux container image",
 			mutate: func(t *testing.T, root *yaml.Node) {
-				replaceRun(t, runStepWith(t, job(t, root, "verify_homebrew_formula"), "brew install --build-from-source"), "brew install --build-from-source --debug-symbols --verbose", "brew install --debug-symbols --verbose")
+				replaceRun(t, runStepWith(t, job(t, root, "verify_homebrew_formula"), "docker run --rm"), "homebrew/brew@sha256:b0072bfdebf5934ae24b93b44a1928a88057399b3283ffa0177bb86084fdedfd", "homebrew/brew:latest")
 			},
 		},
 		{
-			name: "changes the required Linux debug-symbol ordering",
+			name: "makes the Linux staging mount writable",
 			mutate: func(t *testing.T, root *yaml.Node) {
-				replaceRun(t, runStepWith(t, job(t, root, "verify_homebrew_formula"), "brew install --build-from-source"), "brew install --build-from-source --debug-symbols --verbose", "brew install --debug-symbols --build-from-source --verbose")
+				replaceRun(t, runStepWith(t, job(t, root, "verify_homebrew_formula"), "docker run --rm"), ",readonly", "")
 			},
 		},
 		{
-			name: "removes Linux Resource staging debug symbols",
+			name: "omits release tag from Linux container",
 			mutate: func(t *testing.T, root *yaml.Node) {
-				replaceRun(t, runStepWith(t, job(t, root, "verify_homebrew_formula"), "brew install --build-from-source"), "brew install --build-from-source --debug-symbols --verbose", "brew install --build-from-source --verbose")
+				replaceRun(t, runStepWith(t, job(t, root, "verify_homebrew_formula"), "docker run --rm"), "--env RELEASE_TAG", "")
 			},
 		},
 		{
-			name: "retains obsolete Linux keep tmp",
+			name: "uses obsolete Linux source flags",
 			mutate: func(t *testing.T, root *yaml.Node) {
-				replaceRun(t, runStepWith(t, job(t, root, "verify_homebrew_formula"), "brew install --build-from-source"), "brew install --build-from-source --debug-symbols --verbose", "brew install --build-from-source --debug-symbols --keep-tmp --verbose")
-			},
-		},
-		{
-			name: "applies Linux debug symbols to macOS",
-			mutate: func(t *testing.T, root *yaml.Node) {
-				replaceRun(t, runStepWith(t, job(t, root, "verify_homebrew_formula"), "brew install --build-from-source"), "brew install --formula \"$staging_tap/$formula_name\"", "brew install --build-from-source --debug-symbols --verbose --formula \"$staging_tap/$formula_name\"")
+				replaceRun(t, runStepWith(t, job(t, root, "verify_homebrew_formula"), "docker run --rm"), "brew install --formula", "brew install --debug-symbols --formula")
 			},
 		},
 		{

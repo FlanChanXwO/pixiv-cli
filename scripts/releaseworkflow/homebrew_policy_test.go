@@ -22,59 +22,84 @@ func TestCheckWorkflowRequiresHomebrewReleaseGate(t *testing.T) {
 	}
 }
 
-// Homebrew 6 不接受任意 workspace formula 路径；四平台门禁必须通过隔离 staging tap
-// 的 tap-qualified 标识符安装。
+// Homebrew 6 不接受任意 workspace formula 路径；Linux 必须通过只读 mount 的容器内
+// staging tap 安装，macOS 仍保留原生 staging tap。
 func TestCheckWorkflowRequiresTapQualifiedStagingFormulaInstall(t *testing.T) {
 	t.Parallel()
 
 	root := releaseWorkflowRoot(t)
 	step := stepWithRun(t, jobNode(t, root, "verify_homebrew_formula"), "brew install")
-	replaceRunFragment(t, step, "brew install --build-from-source --debug-symbols --verbose --formula \"$staging_tap/$formula_name\"", "brew install --build-from-source --debug-symbols --verbose --formula \"staging-formula/$formula_name.rb\"")
+	replaceRunFragment(t, step, "brew install --formula \"$staging_tap/$formula_name\"", "brew install --formula \"staging-formula/$formula_name.rb\"")
 	err := checkWorkflow(mustMarshalYAML(t, root))
 	if err == nil || !strings.Contains(err.Error(), "Homebrew native install gate must use the required direct command sequence") {
 		t.Fatalf("policy error = %v, want workspace-path Homebrew formula install rejection", err)
 	}
 }
 
-// Homebrew 6 默认要求 tap trust；staging tap 只在 runner 本地临时存在，仍必须通过
-// `brew trust --tap` 显式登记，不能用环境变量或 developer mode 绕过。
-func TestCheckWorkflowRequiresStagingTapTrust(t *testing.T) {
+// 固定的 Linux 容器镜像是 Homebrew 4.6，不具有 trust 子命令；其 tap 只在 --rm
+// 容器中创建，formula 仅从只读 mount 复制。macOS 原生 Homebrew 仍必须显式 trust。
+func TestWorkflowUsesTrustOnlyForMacOSNativeHomebrew(t *testing.T) {
 	t.Parallel()
 
 	root := releaseWorkflowRoot(t)
-	step := stepWithRun(t, jobNode(t, root, "verify_homebrew_formula"), "brew trust --tap")
-	removeRunFragment(t, step, "brew trust --tap \"$staging_tap\"")
-	err := checkWorkflow(mustMarshalYAML(t, root))
-	if err == nil || !strings.Contains(err.Error(), "Homebrew native install gate must use the required direct command sequence") {
-		t.Fatalf("policy error = %v, want untrusted staging tap install rejection", err)
+	run := requireMappingValue(t, stepWithRun(t, jobNode(t, root, "verify_homebrew_formula"), "docker run --rm"), "run").Value
+	linuxBranch, macOSBranch, ok := strings.Cut(run, "\nelse\n")
+	if !ok {
+		t.Fatal("Homebrew verification must retain a Linux/macOS split")
+	}
+	if strings.Contains(linuxBranch, "brew trust --tap") {
+		t.Fatal("fixed Linux Homebrew 4.6 container must not call unavailable brew trust")
+	}
+	if !strings.Contains(macOSBranch, "brew trust --tap \"$staging_tap\"") {
+		t.Fatal("macOS native Homebrew must retain explicit staging-tap trust")
 	}
 }
 
-// Linuxbrew 已明确拒绝单独使用 --debug-symbols：它必须显式配合 --build-from-source。
-// 此组合只适用于 Linux 发布验收；macOS 保持原本的安装命令。
-func TestWorkflowUsesLinuxOnlySourceBuildDebugSymbolsForHomebrewResourceStaging(t *testing.T) {
+func TestWorkflowUsesLinuxOnlyContainerizedHomebrewVerification(t *testing.T) {
 	t.Parallel()
 
 	root := releaseWorkflowRoot(t)
 	step := stepWithRun(t, jobNode(t, root, "verify_homebrew_formula"), "brew install")
 	run := requireMappingValue(t, step, "run").Value
 	for _, command := range []string{
-		`eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"`,
-		`if [ '${{ matrix.os }}' = linux ]; then
-  brew install --build-from-source --debug-symbols --verbose --formula "$staging_tap/$formula_name"
-else
-  brew install --formula "$staging_tap/$formula_name"
-fi`,
+		`docker run --rm`,
+		`homebrew/brew@sha256:b0072bfdebf5934ae24b93b44a1928a88057399b3283ffa0177bb86084fdedfd`,
+		`--entrypoint bash`,
+		`type=bind,src=$staging_dir,dst=/staging-formula,readonly`,
+		`--env RELEASE_TAG`,
+		`HOMEBREW_NO_AUTO_UPDATE=1`,
+		`HOMEBREW_NO_ENV_HINTS=1`,
+		`brew install --formula "$staging_tap/$formula_name"`,
+		`pixiv version --json`,
 	} {
 		if !strings.Contains(run, command) {
-			t.Fatalf("Homebrew install gate must retain Resource staging sources only on Linux and preserve the macOS install command; missing %q", command)
+			t.Fatalf("Homebrew install gate must retain Linux container verification and the macOS native install command; missing %q", command)
 		}
 	}
-	for _, forbidden := range []string{"HOMEBREW_TEMP", "homebrew_temp=", "mkdir -p \"$homebrew_temp\"", "--keep-tmp"} {
+	for _, forbidden := range []string{"HOMEBREW_TEMP", "homebrew_temp=", "mkdir -p \"$homebrew_temp\"", "--keep-tmp", "--build-from-source", "--debug-symbols", "/home/linuxbrew/.linuxbrew/bin/brew"} {
 		if strings.Contains(run, forbidden) {
 			t.Fatalf("Homebrew install gate must not override Homebrew's temporary directory; found %q", forbidden)
 		}
 	}
+	linuxBranch, _, ok := strings.Cut(run, "\nelse\n")
+	if !ok || strings.Contains(linuxBranch, "brew trust --tap") || strings.Contains(linuxBranch, "python3 -c") {
+		t.Fatal("Linux container branch must not use unavailable Homebrew 6 trust or Python")
+	}
+	if !strings.Contains(linuxBranch, `brew ruby -rjson -e`) {
+		t.Fatal("Linux container branch must compare the JSON version with Ruby's standard JSON library")
+	}
+	if !strings.Contains(macOSBranchFromVerifyRun(t, run), "python3 -c") {
+		t.Fatal("macOS native Homebrew must retain the host Python JSON assertion")
+	}
+}
+
+func macOSBranchFromVerifyRun(t *testing.T, run string) string {
+	t.Helper()
+	_, macOSBranch, ok := strings.Cut(run, "\nelse\n")
+	if !ok {
+		t.Fatal("Homebrew verification must retain a Linux/macOS split")
+	}
+	return macOSBranch
 }
 
 func TestCheckWorkflowRejectsHomebrewReleaseGateMutations(t *testing.T) {
@@ -165,70 +190,38 @@ func TestCheckWorkflowRejectsHomebrewReleaseGateMutations(t *testing.T) {
 			},
 		},
 		{
-			name: "Linux Homebrew activation removed",
+			name: "Linux container image is mutable",
 			want: "Homebrew native install gate must use the required direct command sequence",
 			mutate: func(t *testing.T, root *yaml.Node) {
-				removeRunFragment(t, stepWithRun(t, jobNode(t, root, "verify_homebrew_formula"), "/home/linuxbrew/.linuxbrew/bin/brew"), "eval \"$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)\"")
+				replaceRunFragment(t, stepWithRun(t, jobNode(t, root, "verify_homebrew_formula"), "docker run --rm"), "homebrew/brew@sha256:b0072bfdebf5934ae24b93b44a1928a88057399b3283ffa0177bb86084fdedfd", "homebrew/brew:latest")
 			},
 		},
 		{
-			name: "Linux Homebrew source build required by debug symbols is removed",
+			name: "Linux container staging mount is writable",
 			want: "Homebrew native install gate must use the required direct command sequence",
 			mutate: func(t *testing.T, root *yaml.Node) {
-				replaceRunFragment(t, stepWithRun(t, jobNode(t, root, "verify_homebrew_formula"), "brew install --build-from-source"), "brew install --build-from-source --debug-symbols --verbose --formula \"$staging_tap/$formula_name\"", "brew install --debug-symbols --verbose --formula \"$staging_tap/$formula_name\"")
+				replaceRunFragment(t, stepWithRun(t, jobNode(t, root, "verify_homebrew_formula"), "docker run --rm"), ",readonly", "")
 			},
 		},
 		{
-			name: "Linux Homebrew changes the required source build and debug-symbol ordering",
+			name: "Linux container does not receive release tag",
 			want: "Homebrew native install gate must use the required direct command sequence",
 			mutate: func(t *testing.T, root *yaml.Node) {
-				replaceRunFragment(t, stepWithRun(t, jobNode(t, root, "verify_homebrew_formula"), "brew install --build-from-source"), "brew install --build-from-source --debug-symbols --verbose --formula \"$staging_tap/$formula_name\"", "brew install --debug-symbols --build-from-source --verbose --formula \"$staging_tap/$formula_name\"")
+				removeRunFragment(t, stepWithRun(t, jobNode(t, root, "verify_homebrew_formula"), "docker run --rm"), "--env RELEASE_TAG")
 			},
 		},
 		{
-			name: "Linux Homebrew Resource staging debug symbols are removed",
+			name: "Linux container uses obsolete source flags",
 			want: "Homebrew native install gate must use the required direct command sequence",
 			mutate: func(t *testing.T, root *yaml.Node) {
-				replaceRunFragment(t, stepWithRun(t, jobNode(t, root, "verify_homebrew_formula"), "brew install --build-from-source"), "brew install --build-from-source --debug-symbols --verbose --formula \"$staging_tap/$formula_name\"", "brew install --build-from-source --verbose --formula \"$staging_tap/$formula_name\"")
-			},
-		},
-		{
-			name: "Linux Homebrew Resource staging retains obsolete keep tmp",
-			want: "Homebrew native install gate must use the required direct command sequence",
-			mutate: func(t *testing.T, root *yaml.Node) {
-				replaceRunFragment(t, stepWithRun(t, jobNode(t, root, "verify_homebrew_formula"), "brew install --build-from-source"), "brew install --build-from-source --debug-symbols --verbose --formula \"$staging_tap/$formula_name\"", "brew install --build-from-source --debug-symbols --keep-tmp --verbose --formula \"$staging_tap/$formula_name\"")
-			},
-		},
-		{
-			name: "Linux Homebrew staging install is not verbose",
-			want: "Homebrew native install gate must use the required direct command sequence",
-			mutate: func(t *testing.T, root *yaml.Node) {
-				replaceRunFragment(t, stepWithRun(t, jobNode(t, root, "verify_homebrew_formula"), "brew install --build-from-source"), "brew install --build-from-source --debug-symbols --verbose --formula \"$staging_tap/$formula_name\"", "brew install --build-from-source --debug-symbols --formula \"$staging_tap/$formula_name\"")
-			},
-		},
-		{
-			name: "Linux Homebrew debug symbols leave the Linux conditional",
-			want: "Homebrew native install gate must use the required direct command sequence",
-			mutate: func(t *testing.T, root *yaml.Node) {
-				replaceRunFragment(t, stepWithRun(t, jobNode(t, root, "verify_homebrew_formula"), "brew install --build-from-source"), `if [ '${{ matrix.os }}' = linux ]; then
-  brew install --build-from-source --debug-symbols --verbose --formula "$staging_tap/$formula_name"
-else
-  brew install --formula "$staging_tap/$formula_name"
-fi`, `brew install --build-from-source --debug-symbols --verbose --formula "$staging_tap/$formula_name"`)
-			},
-		},
-		{
-			name: "Linux Homebrew debug symbols leak to macOS",
-			want: "Homebrew native install gate must use the required direct command sequence",
-			mutate: func(t *testing.T, root *yaml.Node) {
-				replaceRunFragment(t, stepWithRun(t, jobNode(t, root, "verify_homebrew_formula"), "brew install --build-from-source"), "brew install --formula \"$staging_tap/$formula_name\"", "brew install --build-from-source --debug-symbols --verbose --formula \"$staging_tap/$formula_name\"")
+				replaceRunFragment(t, stepWithRun(t, jobNode(t, root, "verify_homebrew_formula"), "docker run --rm"), "brew install --formula", "brew install --build-from-source --formula")
 			},
 		},
 		{
 			name: "staging formula install is not tap qualified",
 			want: "Homebrew native install gate must use the required direct command sequence",
 			mutate: func(t *testing.T, root *yaml.Node) {
-				replaceRunFragment(t, stepWithRun(t, jobNode(t, root, "verify_homebrew_formula"), "brew install --build-from-source"), "brew install --build-from-source --debug-symbols --verbose --formula \"$staging_tap/$formula_name\"", "brew install --build-from-source --debug-symbols --verbose --formula \"staging-formula/$formula_name.rb\"")
+				replaceRunFragment(t, stepWithRun(t, jobNode(t, root, "verify_homebrew_formula"), "docker run --rm"), "brew install --formula \"$staging_tap/$formula_name\"", "brew install --formula \"/staging-formula/$formula_name.rb\"")
 			},
 		},
 		{

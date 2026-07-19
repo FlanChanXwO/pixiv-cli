@@ -64,23 +64,39 @@ printf '%s\n' pixiv-cli > staging-formula/formula-name
 `
 
 const verifyStagingFormulaRun = `set -euo pipefail
-if [ '${{ matrix.os }}' = linux ]; then
-  eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
-fi
 formula_name=$(cat staging-formula/formula-name)
 test "$formula_name" = pixiv-cli
 test "$(find staging-formula -maxdepth 1 -type f -print | LC_ALL=C sort)" = "$(printf '%s\n%s\n' staging-formula/formula-name staging-formula/pixiv-cli.rb | LC_ALL=C sort)"
-staging_tap=pixiv-cli-release/staging
-tap_dir="$(brew --repository)/Library/Taps/pixiv-cli-release/homebrew-staging"
-brew tap-new "$staging_tap" --no-git
-brew trust --tap "$staging_tap"
-cp staging-formula/pixiv-cli.rb "$tap_dir/Formula/pixiv-cli.rb"
 if [ '${{ matrix.os }}' = linux ]; then
-  brew install --build-from-source --debug-symbols --verbose --formula "$staging_tap/$formula_name"
+  staging_dir="$(pwd)/staging-formula"
+  case "$staging_dir" in /*) ;; *) exit 1 ;; esac
+  docker run --rm \
+    --mount "type=bind,src=$staging_dir,dst=/staging-formula,readonly" \
+    --env RELEASE_TAG \
+    --env HOMEBREW_NO_AUTO_UPDATE=1 \
+    --env HOMEBREW_NO_ENV_HINTS=1 \
+    --entrypoint bash \
+    homebrew/brew@sha256:b0072bfdebf5934ae24b93b44a1928a88057399b3283ffa0177bb86084fdedfd \
+    -euo pipefail -c '
+      formula_name=$(cat /staging-formula/formula-name)
+      test "$formula_name" = pixiv-cli
+      test "$(find /staging-formula -maxdepth 1 -type f -print | LC_ALL=C sort)" = "$(printf "%s\\n%s\\n" /staging-formula/formula-name /staging-formula/pixiv-cli.rb | LC_ALL=C sort)"
+      staging_tap=pixiv-cli-release/staging
+      tap_dir="$(brew --repository)/Library/Taps/pixiv-cli-release/homebrew-staging"
+      brew tap-new "$staging_tap" --no-git
+      cp /staging-formula/pixiv-cli.rb "$tap_dir/Formula/pixiv-cli.rb"
+      brew install --formula "$staging_tap/$formula_name"
+      pixiv version --json | brew ruby -rjson -e "actual = JSON.parse(STDIN.read).fetch(\"version\"); expected = ARGV.fetch(0); abort(\"version #{actual.inspect} != #{expected.inspect}\") unless actual == expected" "$RELEASE_TAG"
+    '
 else
+  staging_tap=pixiv-cli-release/staging
+  tap_dir="$(brew --repository)/Library/Taps/pixiv-cli-release/homebrew-staging"
+  brew tap-new "$staging_tap" --no-git
+  brew trust --tap "$staging_tap"
+  cp staging-formula/pixiv-cli.rb "$tap_dir/Formula/pixiv-cli.rb"
   brew install --formula "$staging_tap/$formula_name"
+  pixiv version --json | python3 -c 'import json, sys; actual = json.load(sys.stdin)["version"]; expected = sys.argv[1]; assert actual == expected, f"version {actual!r} != {expected!r}"' "$RELEASE_TAG"
 fi
-pixiv version --json | python3 -c 'import json, sys; actual = json.load(sys.stdin)["version"]; expected = sys.argv[1]; assert actual == expected, f"version {actual!r} != {expected!r}"' "$RELEASE_TAG"
 `
 
 func main() {

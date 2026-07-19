@@ -9,7 +9,7 @@
 
 ### Fixed
 
-- Linux Homebrew hosted staging verification now uses `brew install --build-from-source --debug-symbols --verbose`: Homebrew rejects `--debug-symbols` without the explicit source-build flag before staging begins. This Linux-only, non-interactive verification combination leaves macOS and end-user Homebrew installs unchanged and still requires real resource-stage validation before release.
+- Linux Homebrew hosted staging verification now runs the real local staging-tap `brew install` in a short-lived `homebrew/brew` container pinned by immutable digest. This avoids the hosted Linuxbrew `Resource` staging cleanup `EINVAL` while retaining a read-only formula mount, no secrets, a local-only tap and an exact installed-version check. The pinned Homebrew 4.6 image has no `brew trust` or standalone `python3`, so trust remains only in the native macOS path and the container uses its bundled Ruby JSON parser after installation. The Linux container tap is created locally, fed only by the read-only mount and discarded with `--rm`. macOS and end-user Homebrew installs remain unchanged. Local Docker experiments have passed on arm64 and amd64 emulation; GitHub runner prepublish evidence is still required before release.
 
 ## [0.4.4] - 2026-07-19
 
