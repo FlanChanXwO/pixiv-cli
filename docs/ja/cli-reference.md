@@ -157,7 +157,7 @@ pixiv auth login --proxy http://127.0.0.1:7890
 
 ### 認証の import
 
-v0.4.1 では `auth add`、`auth token`、`--token` を alias なしで削除します。direct import は次の形式です：
+v0.4.2 では `auth add`、`auth token`、`--token` を alias なしで削除します。direct import は次の形式です：
 
 ```bash
 pixiv auth import                         # TTY では非表示入力
