@@ -44,6 +44,7 @@ jobs:
         run: |
           sh scripts/test-package-release.sh
           sh scripts/test-release-workflow.sh
+          sh scripts/test-homebrew-prepublish-workflow.sh
           go test ./scripts/platformsmokeworkflow -count=1
       - name: Install pinned pre-commit
         shell: bash
