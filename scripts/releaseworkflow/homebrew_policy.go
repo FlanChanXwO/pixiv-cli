@@ -95,6 +95,10 @@ func checkVerifyHomebrewJob(job *yaml.Node) error {
 set -euo pipefail
 if [ '${{ matrix.os }}' = linux ]; then
 eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
+# GitHub Linux runner 的 /var/tmp 会使 Homebrew 安装触发 EINVAL；只为
+# Linux Homebrew 验证使用 runner 私有的普通临时目录，macOS 保持默认行为。
+mkdir -p "$RUNNER_TEMP/homebrew-tmp"
+export HOMEBREW_TEMP="$RUNNER_TEMP/homebrew-tmp"
 fi
 formula_name=$(cat staging-formula/formula-name)
 case "$formula_name" in

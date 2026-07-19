@@ -50,6 +50,26 @@ func TestCheckWorkflowRequiresStagingTapTrust(t *testing.T) {
 	}
 }
 
+// GitHub Linux runner 的 Homebrew 默认临时目录 /var/tmp 会在实际安装时触发
+// EINVAL；验证门禁必须仅在 Linux 分支创建并导出 runner 私有临时目录。
+func TestWorkflowUsesRunnerTemporaryDirectoryForLinuxHomebrew(t *testing.T) {
+	t.Parallel()
+
+	root := releaseWorkflowRoot(t)
+	step := stepWithRun(t, jobNode(t, root, "verify_homebrew_formula"), "brew install")
+	run := requireMappingValue(t, step, "run").Value
+	const linuxTemporaryDirectory = `if [ '${{ matrix.os }}' = linux ]; then
+  eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
+  # GitHub Linux runner 的 /var/tmp 会使 Homebrew 安装触发 EINVAL；只为
+  # Linux Homebrew 验证使用 runner 私有的普通临时目录，macOS 保持默认行为。
+  mkdir -p "$RUNNER_TEMP/homebrew-tmp"
+  export HOMEBREW_TEMP="$RUNNER_TEMP/homebrew-tmp"
+fi`
+	if !strings.Contains(run, linuxTemporaryDirectory) {
+		t.Fatalf("Homebrew install gate must create and export the Linux-only runner temporary directory")
+	}
+}
+
 func TestCheckWorkflowRejectsHomebrewReleaseGateMutations(t *testing.T) {
 	t.Parallel()
 
@@ -142,6 +162,13 @@ func TestCheckWorkflowRejectsHomebrewReleaseGateMutations(t *testing.T) {
 			want: "Homebrew native install gate must use the required direct command sequence",
 			mutate: func(t *testing.T, root *yaml.Node) {
 				removeRunFragment(t, stepWithRun(t, jobNode(t, root, "verify_homebrew_formula"), "/home/linuxbrew/.linuxbrew/bin/brew"), "eval \"$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)\"")
+			},
+		},
+		{
+			name: "Linux Homebrew temporary directory export removed",
+			want: "Homebrew native install gate must use the required direct command sequence",
+			mutate: func(t *testing.T, root *yaml.Node) {
+				removeRunFragment(t, stepWithRun(t, jobNode(t, root, "verify_homebrew_formula"), "HOMEBREW_TEMP"), "export HOMEBREW_TEMP=\"$RUNNER_TEMP/homebrew-tmp\"")
 			},
 		},
 		{
