@@ -7,14 +7,16 @@ SDK 与 MCP 细节不在此重复，入口见[相关文档](#相关文档)。
 
 用户可感知变化记录在 [CHANGELOG.md](../../CHANGELOG.md)。
 
+[GitHub Releases 页面]: https://github.com/FlanChanXwO/pixiv-cli/releases
+
 ## 安装与构建
 
 > **发布状态**：受支持 binary 的 Ed25519 公钥、key ID 与 fingerprint 已提交到
 > [`internal/bootstrap/release_trust.go`](../../internal/bootstrap/release_trust.go)；公开 source/tap repositories、
-> 受保护 `release` Environment 与隔离 credentials 已配置。v0.4.3 已作为公开 GitHub Release 发布，包含六个
-> 平台 archive、checksum 与签名清单。公开 tap 中的 stable Homebrew formula 仍为 v0.3.0，待 v0.4.4 的
-> Linuxbrew 安装验证完成后才会更新；v0.4.4 尚未发布。后续版本仍必须通过同一套 tag、签名、资产与 Homebrew
-> 门禁后才可作为可用下载来源。
+> 受保护 `release` Environment 与隔离 credentials 已配置。v0.4.4 已作为公开 GitHub Release 发布，包含六个
+> 平台 archive、checksum 与签名清单。GitHub Release 与 tap 是相互独立的发布物；当前状态请以官方
+> [GitHub Releases 页面]和 `brew info FlanChanXwO/tap/pixiv-cli` 为准。后续版本仍必须通过同一套 tag、签名、
+> 资产与 Homebrew 门禁后才可作为可信下载来源。
 
 ### 官方安装脚本
 
@@ -71,11 +73,11 @@ go install github.com/FlanChanXwO/pixiv-cli/cmd/pixiv@vX.Y.Z
 ```
 
 它仍使用本机 Go、cgo、C linker 和该 target 的 committed staticlib。六目标库与 manifest 已完整，
-例如当前正式版本可使用 `@v0.4.3`；后续版本始终使用其精确 tag，而不是分支名。
+例如已发布的 v0.4.4 可使用 `@v0.4.4`；始终使用已发布的精确 tag，而不是分支名。
 
 ### Homebrew
 
-正式 stable Release 和真实 tap 均通过 audit/安装验证后，macOS/Linux 用户可安装：
+macOS/Linux 用户可通过 stable formula 安装：
 
 ```bash
 brew install FlanChanXwO/tap/pixiv-cli
@@ -88,15 +90,15 @@ brew install FlanChanXwO/tap/pixiv-cli-beta
 ```
 
 两个 formula 都安装同名 `pixiv`，因此相互冲突；它们只下载已验证的 macOS/Linux Release
-资产，不引入 `ffmpeg` 依赖。公开 tap 中当前 stable `pixiv-cli` formula 仍为 v0.3.0；v0.4.3 目前仅可通过
-GitHub Release 获取，待 v0.4.4 的 Linuxbrew 安装验证完成后才会更新 tap。beta formula 只随后续 pre-release
-发布。
+资产，不引入 `ffmpeg` 依赖。GitHub Release 与公开 tap 属于独立发布通道，请用
+`brew info FlanChanXwO/tap/pixiv-cli` 和 [GitHub Releases 页面]查询当前状态，不要依赖本手册中硬编码的
+版本。beta formula 只随 pre-release 发布。
 
 ### 直接下载
 
 发布流程会为 darwin、linux、windows 的 amd64/arm64 生成六个固定名称的 archive：
 `pixiv-cli_<version>_<os>_<arch>.tar.gz`（Windows 为 `.zip`），以及 `checksums.txt` 与
-Ed25519 签名的 `checksums.json`。v0.4.3 已提供完整资产；后续版本只有在同一发布门禁完成后才应作为
+Ed25519 签名的 `checksums.json`。已发布的 v0.4.4 提供完整资产；后续版本只有在同一发布门禁完成后才应作为
 可供信任的直接下载来源。
 
 当前 Release 不包含 Apple notarization 或 Windows Authenticode。即使从已验证 Release
@@ -422,8 +424,9 @@ tag；Release binary 在下载前校验 Ed25519 签名的 checksum 清单和 arc
 SemVer tag，检查会报告该 tag 并 fail-closed，不会跳过它而选择较旧版本。
 
 受支持 binary 已内置 production Ed25519 public key/key ID/fingerprint；私钥只保存在受保护的
-`release` Environment 与受控 macOS Keychain 恢复副本。v0.4.3 是当前已发布的受签名 Release；
-`pixiv update --check` 仍只是只读检查，不能替代对选中版本资产、checksum 与签名的安装验证。
+`release` Environment 与受控 macOS Keychain 恢复副本。当前已发布的受签名 Release 请以
+[GitHub Releases 页面]为准；`pixiv update --check` 仍只是只读检查，不能替代对选中版本资产、checksum 与
+签名的安装验证。
 
 普通 CLI 命令成功后会尽力检查 stable 更新。它跳过 MCP、help、`version`、`update`、全部 `auth export`、`auth import --file` 与开发构建，
 对同一用户 cache 最多每 24 小时查询一次，并为自动检查设定最多 3 秒的等待时间。发现新版本或

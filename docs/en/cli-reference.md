@@ -8,15 +8,17 @@ those interfaces are linked under [Related documentation](#related-documentation
 
 User-visible changes are recorded in [CHANGELOG.md](../../CHANGELOG.md).
 
+[GitHub Releases page]: https://github.com/FlanChanXwO/pixiv-cli/releases
+
 ## Installation
 
 > **Release status**: the Ed25519 public key, key ID, and fingerprint for supported binaries are committed in
 > [`internal/bootstrap/release_trust.go`](../../internal/bootstrap/release_trust.go); the public source/tap repositories,
-> the protected `release` Environment, and isolated credentials are configured. v0.4.3 has been published as a
-> public GitHub Release with six platform archives, checksums, and a signed manifest. The stable Homebrew formula in
-> the public tap remains v0.3.0 pending v0.4.4 Linuxbrew installation validation; v0.4.4 is not published. Future
-> versions must still pass the same tag, signing, asset, and Homebrew gates before they can be treated as trusted
-> download sources.
+> the protected `release` Environment, and isolated credentials are configured. v0.4.4 is a published public GitHub
+> Release with six platform archives, checksums, and a signed manifest. Use the official [GitHub Releases page]
+> and `brew info FlanChanXwO/tap/pixiv-cli` for the current Release and tap state: they are independently published
+> artifacts. Every future version must pass the same tag, signing, asset, and Homebrew gates before it is treated as
+> a trusted download source.
 
 ### Official installer scripts
 
@@ -76,13 +78,12 @@ go install github.com/FlanChanXwO/pixiv-cli/cmd/pixiv@vX.Y.Z
 ```
 
 This still uses the local Go toolchain, cgo, a C linker, and the committed staticlib for the target. The six target
-libraries and manifest are complete — for example, the current official release can be installed with `@v0.4.3`;
-always use the exact tag for later versions, never a branch name.
+libraries and manifest are complete — for example, the published v0.4.4 release can be installed with `@v0.4.4`;
+always use the exact published tag, never a branch name.
 
 ### Homebrew
 
-Once the official stable Release and the real tap have both passed audit/install verification, macOS/Linux users can
-install:
+macOS/Linux users install the stable formula with:
 
 ```bash
 brew install FlanChanXwO/tap/pixiv-cli
@@ -95,16 +96,16 @@ brew install FlanChanXwO/tap/pixiv-cli-beta
 ```
 
 Both formulas install the same `pixiv` binary and therefore conflict with each other; they only download verified
-macOS/Linux Release assets and introduce no `ffmpeg` dependency. The public tap's current stable `pixiv-cli` formula
-remains v0.3.0; v0.4.3 is available from GitHub Release only while v0.4.4 Linuxbrew installation validation is
-pending. The beta formula will only ship with future pre-releases.
+macOS/Linux Release assets and introduce no `ffmpeg` dependency. The GitHub Release and public tap are separate
+publication channels, so use `brew info FlanChanXwO/tap/pixiv-cli` and the [GitHub Releases page] rather than a
+version hard-coded in this reference. The beta formula only ships with pre-releases.
 
 ### Direct download
 
 The release process produces six fixed-name archives for darwin, linux, and windows on amd64/arm64:
 `pixiv-cli_<version>_<os>_<arch>.tar.gz` (`.zip` on Windows), plus `checksums.txt` and an Ed25519-signed
-`checksums.json`. v0.4.3 ships the complete asset set; later versions should only be trusted as direct download
-sources after passing the same release gates.
+`checksums.json`. Published v0.4.4 ships the complete asset set; later versions should only be trusted as direct
+download sources after passing the same release gates.
 
 Current Releases do not include Apple notarization or Windows Authenticode. Even when downloading from a verified
 Release, macOS Gatekeeper or Windows SmartScreen may still show a system reputation prompt; only obtain assets from
@@ -503,9 +504,9 @@ Update checks only select canonical SemVer tags. Stable checks first exclude Git
 non-SemVer tag, the check reports that tag and fails closed instead of skipping it for an older version.
 
 Supported binaries embed the production Ed25519 public key/key ID/fingerprint; the private key exists only in the
-protected `release` Environment and a controlled macOS Keychain recovery copy. v0.4.3 is the current signed
-Release; `pixiv update --check` remains a read-only check and is not a substitute for verifying the selected
-version's assets, checksums, and signatures at install time.
+protected `release` Environment and a controlled macOS Keychain recovery copy. Select the currently published signed
+Release from the [GitHub Releases page]; `pixiv update --check` remains a read-only check and is not a substitute for
+verifying the selected version's assets, checksums, and signatures at install time.
 
 Successful regular CLI commands make a best-effort stable-update check. It skips MCP, help, `version`, `update`, every `auth export`, `auth import --file`,
 and development builds, queries at most once per 24 hours per user cache, and caps the automatic check at 3
