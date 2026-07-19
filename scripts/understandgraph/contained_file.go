@@ -63,13 +63,23 @@ func verifyOpenedContainedFile(file *os.File, initialInfo os.FileInfo, root, rel
 	if err != nil {
 		return err
 	}
-	if !os.SameFile(openedInfo, currentFile.info) {
+	if !sameContainedFile(openedInfo, currentFile.info) {
 		return fmt.Errorf("path %q within %s changed during secure read", relativePath, boundaryName)
 	}
-	if !os.SameFile(initialInfo, openedInfo) {
+	if !sameContainedFile(initialInfo, openedInfo) {
 		return fmt.Errorf("path %q within %s changed after initial validation", relativePath, boundaryName)
 	}
 	return nil
+}
+
+// sameContainedFile 同时校验文件身份和可观察元数据。Windows 文件系统可能在
+// 替换发生后仍给出相同的身份信息；大小、权限或修改时间变化时一律在解析前拒绝，
+// 避免这类已观测到的替换把受控源码内容带入错误或图谱产物。
+func sameContainedFile(left, right os.FileInfo) bool {
+	return os.SameFile(left, right) &&
+		left.Mode() == right.Mode() &&
+		left.Size() == right.Size() &&
+		left.ModTime().Equal(right.ModTime())
 }
 
 // resolveContainedRegularFile 校验生成器输入只能指向指定根目录内的普通文件。
@@ -116,6 +126,11 @@ func resolveContainedRegularFile(root, relativePath, boundaryName string) (resol
 	}
 	if !info.Mode().IsRegular() {
 		return resolvedContainedFile{}, fmt.Errorf("path %q within %s is not a regular file", relativePath, boundaryName)
+	}
+	// Windows 的 os.SameFile 会延迟按路径取得文件 ID。必须在路径仍对应本次
+	// 解析结果时触发该读取；否则替换后的路径会被误当成初始文件。
+	if !os.SameFile(info, info) {
+		return resolvedContainedFile{}, fmt.Errorf("stat path %q within %s cannot establish a stable file identity", relativePath, boundaryName)
 	}
 	return resolvedContainedFile{path: resolvedPath, info: info}, nil
 }
