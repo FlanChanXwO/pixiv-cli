@@ -446,7 +446,8 @@ prerelease 结果直接映射为 `pixiv-cli`/`pixiv-cli-beta`。随后精确四�
 Linux amd64/arm64）先用 `brew tap-new pixiv-cli-release/staging --no-git` 创建各 runner 的隔离
 local tap，再以 `brew trust --tap pixiv-cli-release/staging` 显式信任这一个临时命名空间；将唯一
 staging formula 放入其 `Formula/`，随后用 `pixiv-cli-release/staging/<formula>` 执行真实
-`brew install --build-from-source --debug-symbols --verbose --formula`，解析
+`brew install --formula`。macOS 在原生 runner 的临时 tap 中运行；Linux 在短生命周期、固定 digest 的
+`homebrew/brew` 容器内运行，并将 staging formula 目录以只读 bind mount 传入容器。随后解析
 `pixiv version --json` 并与 tag 比较。它不使用 workspace formula path、developer/环境变量 bypass，
 也不克隆、写入或信任公开 tap。只有全部成功，最终受保护 `deploy_homebrew_tap` 才以 HTTPS
 clone public tap、核对唯一 staged formula，并在最后一个 step 读取 deploy key；SSH push 固定官方
@@ -459,12 +460,15 @@ secret 和 tag protection 的远端实际状态；它不替代 Task 20 的远端
 会先公开 Release 再安装；若安装失败，Release 已公开但 tap 不变，需要维护者显式处置，不能绕过 gate
 手工 push。
 
-`--build-from-source --debug-symbols --verbose` 仅用于短命 GitHub release-validation runner 的 Linux 分支，
-macOS 继续使用原来的 `brew install --formula`：Linuxbrew 的 Resource staging 发生在 `--keep-tmp` 生效前，且
-其 Mktemp cleanup 已有直接 backtrace 证据会在 runner 上触发 `FileUtils.chmod` 的 `EINVAL`。真实 runner 已证明
-Homebrew 会在开始 staging 前拒绝未显式配合 `--build-from-source` 的 `--debug-symbols`；这两个 flag 必须作为同一
-个非交互组合出现，`--verbose` 则保留可审计的 Homebrew 操作输出。该组合仍须通过真实 Linux resource-stage
-验证；它不进入公开 formula，也不改变终端用户的 `brew install` 行为。
+GitHub hosted Linux runner 上 Linuxbrew 的 `Resource` staging cleanup 有直接 backtrace 证据会触发
+`FileUtils.chmod` 的 `EINVAL`，且该错误早于 `--keep-tmp` 等候选项可介入的阶段。为保证门禁仍是真实的
+formula 安装，Linux 分支使用 `docker run --rm` 启动固定 digest 的 `homebrew/brew` 镜像，向容器传入只读的
+绝对 staging-formula bind mount；容器只创建本地 staging tap、复制该 formula、执行普通 tap-qualified
+`brew install --formula` 并把 `pixiv version --json` 与 `RELEASE_TAG` 精确比较。`HOMEBREW_NO_AUTO_UPDATE=1`
+与 `HOMEBREW_NO_ENV_HINTS=1` 仅消除自动更新及提示造成的漂移，不改变 formula 或安装语义。容器不读取
+secret、不写 host mount、不使用公开 tap，也不使用 `HOMEBREW_TEMP`、source/debug/keep-tmp flags。macOS
+继续使用原生 `brew install --formula`。本地 Docker 已在 arm64 和 amd64 QEMU 做过同一 formula 安装实验；
+GitHub runner 的预发布演练仍是正式发布前必须取得的外部证据。
 
 ### 发布前只读 Homebrew 演练
 
@@ -475,8 +479,8 @@ tag 与输入一致；随后只下载该 Release 已发布的 `checksums.txt`，
 macOS Intel/arm64 与 Linux amd64/arm64 四个生产同款 runner 上执行真实的本地 staging-tap 安装。
 
 这是一项只读 rehearsal：它没有 `release` Environment、secret、tag checkout、Release/asset 编辑或创建，
-也不会 clone、提交或推送 Homebrew tap。Linux 分支使用
-`--build-from-source --debug-symbols --verbose`，macOS 保持普通安装命令。
+也不会 clone、提交或推送 Homebrew tap。Linux 分支在固定 digest、短生命周期 Homebrew 容器中安装只读挂载的
+本地 staging formula；macOS 保持原生普通安装命令。
 它用于在正式发布之前复现 Homebrew 安装链路，**不替代**正式 tag 发布、签名 Release、tap 部署或发布后的
 安装验收。`sh scripts/test-homebrew-prepublish-workflow.sh` 会在本地和质量门中检查该 workflow 的不可变边界。
 
