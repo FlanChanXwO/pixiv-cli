@@ -179,7 +179,7 @@ touch real Pixiv.
 
 ### Importing authentication
 
-v0.4.1 removes `auth add`, `auth token`, and `--token` with no aliases. Direct import is now:
+v0.4.2 removes `auth add`, `auth token`, and `--token` with no aliases. Direct import is now:
 
 ```bash
 pixiv auth import                         # hidden prompt on a TTY

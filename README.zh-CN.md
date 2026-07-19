@@ -44,7 +44,7 @@ binary，并在修改 PATH 前完成用户级安装。可用 `--no-path` 保持 
 选择其他目录；执行前也可以先审阅下载的脚本。
 
 Linux 兼容性说明：v0.3.0 archive 在 Ubuntu 24.04 上链接，可能要求 glibc 2.39，因此不能在 Debian 12
-运行。v0.4.1 已从构建侧修复：Linux 资产以 glibc 2.35 为最高依赖并经过 ABI 门禁。安装器会在
+运行。v0.4.2 已从构建侧修复：Linux 资产以 glibc 2.35 为最高依赖并经过 ABI 门禁。安装器会在
 替换现有安装前预检 staged binary，并明确报告不兼容。
 
 ### 让 Coding Agent 安装
@@ -147,7 +147,7 @@ pixiv auth use 12345678
 pixiv auth check
 ```
 
-v0.4.1 以 `auth import`/`auth export` 取代 `auth add`/`auth token`，已删除的名称和 `--token` 均无 alias。导入时优先使用无参隐藏输入或 raw stdin；位置参数会暴露在 argv/shell history。只有不带 `--output` 的 `pixiv auth export [UID]` 与 `pixiv auth export --all` 可以向 stdout 输出 secret；需要文件时使用 `--output` 写私有 bundle。bundle 是未加密的 point-in-time backup，不是 live sync，token rotation 后可能 stale。不要把 secret 输出粘贴到聊天、日志、shell history、issue 或 Agent transcript；其他 stdout/stderr、JSON、MCP result、日志和错误均不得暴露 refresh token。完整 import/export 与文件保护契约见 [CLI reference](docs/zh-CN/cli-reference.md#获取-refresh-token)。
+v0.4.2 以 `auth import`/`auth export` 取代 `auth add`/`auth token`，已删除的名称和 `--token` 均无 alias。导入时优先使用无参隐藏输入或 raw stdin；位置参数会暴露在 argv/shell history。只有不带 `--output` 的 `pixiv auth export [UID]` 与 `pixiv auth export --all` 可以向 stdout 输出 secret；需要文件时使用 `--output` 写私有 bundle。bundle 是未加密的 point-in-time backup，不是 live sync，token rotation 后可能 stale。不要把 secret 输出粘贴到聊天、日志、shell history、issue 或 Agent transcript；其他 stdout/stderr、JSON、MCP result、日志和错误均不得暴露 refresh token。完整 import/export 与文件保护契约见 [CLI reference](docs/zh-CN/cli-reference.md#获取-refresh-token)。
 
 ## 文档
 
