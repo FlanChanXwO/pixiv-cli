@@ -51,7 +51,7 @@ func TestCheckWorkflowRequiresStagingTapTrust(t *testing.T) {
 }
 
 // Linuxbrew 的 Mktemp cleanup 会在短命 GitHub runner 上触发已证实的 chmod EINVAL；
-// 发布验收必须保留 buildpath，并输出 Homebrew 操作，便于保留现场诊断。
+// 仅 Linux 发布验收保留 buildpath，macOS 继续使用其原本的安装命令。
 func TestWorkflowRetainsLinuxHomebrewStagingBuildPath(t *testing.T) {
 	t.Parallel()
 
@@ -60,10 +60,14 @@ func TestWorkflowRetainsLinuxHomebrewStagingBuildPath(t *testing.T) {
 	run := requireMappingValue(t, step, "run").Value
 	for _, command := range []string{
 		`eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"`,
-		`brew install --keep-tmp --verbose --formula "$staging_tap/$formula_name"`,
+		`if [ '${{ matrix.os }}' = linux ]; then
+  brew install --keep-tmp --verbose --formula "$staging_tap/$formula_name"
+else
+  brew install --formula "$staging_tap/$formula_name"
+fi`,
 	} {
 		if !strings.Contains(run, command) {
-			t.Fatalf("Homebrew install gate must retain the Linux staging buildpath and show operations; missing %q", command)
+			t.Fatalf("Homebrew install gate must retain only the Linux staging buildpath and preserve the macOS install command; missing %q", command)
 		}
 	}
 	for _, forbidden := range []string{"HOMEBREW_TEMP", "homebrew_temp=", "mkdir -p \"$homebrew_temp\""} {
@@ -179,6 +183,17 @@ func TestCheckWorkflowRejectsHomebrewReleaseGateMutations(t *testing.T) {
 			want: "Homebrew native install gate must use the required direct command sequence",
 			mutate: func(t *testing.T, root *yaml.Node) {
 				replaceRunFragment(t, stepWithRun(t, jobNode(t, root, "verify_homebrew_formula"), "brew install --keep-tmp"), "brew install --keep-tmp --verbose --formula \"$staging_tap/$formula_name\"", "brew install --keep-tmp --formula \"$staging_tap/$formula_name\"")
+			},
+		},
+		{
+			name: "Linux Homebrew retention flags leave the Linux conditional",
+			want: "Homebrew native install gate must use the required direct command sequence",
+			mutate: func(t *testing.T, root *yaml.Node) {
+				replaceRunFragment(t, stepWithRun(t, jobNode(t, root, "verify_homebrew_formula"), "brew install --keep-tmp"), `if [ '${{ matrix.os }}' = linux ]; then
+  brew install --keep-tmp --verbose --formula "$staging_tap/$formula_name"
+else
+  brew install --formula "$staging_tap/$formula_name"
+fi`, `brew install --keep-tmp --verbose --formula "$staging_tap/$formula_name"`)
 			},
 		},
 		{

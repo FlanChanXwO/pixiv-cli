@@ -459,7 +459,8 @@ secret 和 tag protection 的远端实际状态；它不替代 Task 20 的远端
 会先公开 Release 再安装；若安装失败，Release 已公开但 tap 不变，需要维护者显式处置，不能绕过 gate
 手工 push。
 
-`--keep-tmp` 仅用于短命 GitHub release-validation runner：Linuxbrew 的 Resource/Mktemp cleanup 已有
+`--keep-tmp --verbose` 仅用于短命 GitHub release-validation runner 的 Linux 分支，macOS 继续使用
+原来的 `brew install --formula`：Linuxbrew 的 Resource/Mktemp cleanup 已有
 直接 backtrace 证据会在 runner 上触发 `FileUtils.chmod` 的 `EINVAL`，而保留 buildpath 能让该 cleanup
 不执行；`--verbose` 则保留可审计的 Homebrew 操作输出。二者不进入公开 formula，也不改变终端用户的
 `brew install` 行为。
