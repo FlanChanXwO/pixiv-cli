@@ -2,6 +2,7 @@ package installers_test
 
 import (
 	"archive/tar"
+	"bytes"
 	"compress/gzip"
 	"crypto/sha256"
 	"fmt"
@@ -171,6 +172,83 @@ func TestInstallCmdUsesOnlyNativeCmdTools(t *testing.T) {
 			t.Errorf("install.cmd must not depend on %q", forbidden)
 		}
 	}
+}
+
+// TestInstallCmdCheckoutUsesCRLFWhenAutocrlfDisabled 固化 Windows 发布测试的
+// checkout 契约：即使 Git for Windows 被要求关闭 autocrlf，cmd.exe 脚本也必须
+// 由仓库属性以 CRLF 写入工作树，避免 cmd.exe 将 LF 脚本错误地连成一行。
+func TestInstallCmdCheckoutUsesCRLFWhenAutocrlfDisabled(t *testing.T) {
+	temporaryRepository := t.TempDir()
+	for source, destination := range map[string]string{
+		filepath.Join("..", "..", ".gitattributes"): filepath.Join(temporaryRepository, ".gitattributes"),
+		filepath.Join("..", "install.cmd"):          filepath.Join(temporaryRepository, "scripts", "install.cmd"),
+	} {
+		payload, err := os.ReadFile(source)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.MkdirAll(filepath.Dir(destination), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(destination, payload, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	runGitCommand(t, temporaryRepository, "init", "--quiet")
+	runGitCommand(t, temporaryRepository, "config", "user.email", "installer-test@example.invalid")
+	runGitCommand(t, temporaryRepository, "config", "user.name", "installer test")
+	runGitCommand(t, temporaryRepository, "add", ".gitattributes", "scripts/install.cmd")
+	runGitCommand(t, temporaryRepository, "commit", "--quiet", "-m", "fixture")
+
+	checkout := filepath.Join(t.TempDir(), "checkout")
+	command := exec.Command("git", "-c", "core.autocrlf=false", "clone", "--quiet", temporaryRepository, checkout)
+	command.Env = isolatedGitEnvironment()
+	if output, err := command.CombinedOutput(); err != nil {
+		t.Fatalf("clone fixture with autocrlf disabled: %v\n%s", err, output)
+	}
+	payload, err := os.ReadFile(filepath.Join(checkout, "scripts", "install.cmd"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for lineNumber, line := range bytes.SplitAfter(payload, []byte("\n")) {
+		if len(line) == 0 || line[len(line)-1] != '\n' {
+			continue
+		}
+		if len(line) < 2 || line[len(line)-2] != '\r' {
+			t.Fatalf("scripts/install.cmd checkout line %d uses LF instead of CRLF", lineNumber+1)
+		}
+	}
+}
+
+func runGitCommand(t *testing.T, directory string, arguments ...string) {
+	t.Helper()
+	command := exec.Command("git", append([]string{"-C", directory}, arguments...)...)
+	command.Env = isolatedGitEnvironment()
+	if output, err := command.CombinedOutput(); err != nil {
+		t.Fatalf("git %s: %v\n%s", strings.Join(arguments, " "), err, output)
+	}
+}
+
+// isolatedGitEnvironment 移除提交 hook 注入的仓库位置变量。临时仓库命令若继承
+// GIT_DIR 或 GIT_WORK_TREE，会把 fixture 的 init/config 写入正在提交的仓库。
+func isolatedGitEnvironment() []string {
+	locations := map[string]struct{}{
+		"GIT_ALTERNATE_OBJECT_DIRECTORIES": {},
+		"GIT_COMMON_DIR":                   {},
+		"GIT_DIR":                          {},
+		"GIT_INDEX_FILE":                   {},
+		"GIT_OBJECT_DIRECTORY":             {},
+		"GIT_WORK_TREE":                    {},
+	}
+	environment := make([]string, 0, len(os.Environ()))
+	for _, entry := range os.Environ() {
+		name, _, _ := strings.Cut(entry, "=")
+		if _, found := locations[name]; !found {
+			environment = append(environment, entry)
+		}
+	}
+	return environment
 }
 
 func TestInstallCmdBindsWindowsSystemTarForZIPExtraction(t *testing.T) {
