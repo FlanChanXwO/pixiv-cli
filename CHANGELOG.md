@@ -9,7 +9,7 @@
 
 ### Fixed
 
-- Linux Homebrew release validation now retains its staging buildpath with `brew install --keep-tmp --verbose` to bypass the documented GitHub runner cleanup `chmod` `EINVAL`; this affects only the short-lived release-validation runner, not end-user Homebrew installs.
+- Linux Homebrew hosted staging verification now uses `brew install --debug-symbols --verbose`: Homebrew Resource staging happens before `--keep-tmp` can affect its Mktemp cleanup, while `--debug-symbols` retains the source-cache staging path. This is limited to short-lived Linux verification runners, leaves macOS and end-user Homebrew installs unchanged, and still requires real-runner validation before release.
 
 ## [0.4.4] - 2026-07-19
 
