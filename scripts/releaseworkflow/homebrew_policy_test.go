@@ -82,9 +82,24 @@ func TestWorkflowUsesLinuxOnlyContainerizedHomebrewVerification(t *testing.T) {
 		}
 	}
 	linuxBranch, _, ok := strings.Cut(run, "\nelse\n")
-	if !ok || strings.Contains(linuxBranch, "brew trust --tap") {
-		t.Fatal("Linux container branch must not use Homebrew 6-only tap trust")
+	if !ok || strings.Contains(linuxBranch, "brew trust --tap") || strings.Contains(linuxBranch, "python3 -c") {
+		t.Fatal("Linux container branch must not use unavailable Homebrew 6 trust or Python")
 	}
+	if !strings.Contains(linuxBranch, `brew ruby -rjson -e`) {
+		t.Fatal("Linux container branch must compare the JSON version with Ruby's standard JSON library")
+	}
+	if !strings.Contains(macOSBranchFromVerifyRun(t, run), "python3 -c") {
+		t.Fatal("macOS native Homebrew must retain the host Python JSON assertion")
+	}
+}
+
+func macOSBranchFromVerifyRun(t *testing.T, run string) string {
+	t.Helper()
+	_, macOSBranch, ok := strings.Cut(run, "\nelse\n")
+	if !ok {
+		t.Fatal("Homebrew verification must retain a Linux/macOS split")
+	}
+	return macOSBranch
 }
 
 func TestCheckWorkflowRejectsHomebrewReleaseGateMutations(t *testing.T) {

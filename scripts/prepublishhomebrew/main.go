@@ -86,7 +86,7 @@ if [ '${{ matrix.os }}' = linux ]; then
       brew tap-new "$staging_tap" --no-git
       cp /staging-formula/pixiv-cli.rb "$tap_dir/Formula/pixiv-cli.rb"
       brew install --formula "$staging_tap/$formula_name"
-      pixiv version --json | python3 -c "import json, sys; actual = json.load(sys.stdin)[\"version\"]; expected = sys.argv[1]; assert actual == expected, f\"version {actual!r} != {expected!r}\"" "$RELEASE_TAG"
+      pixiv version --json | brew ruby -rjson -e "actual = JSON.parse(STDIN.read).fetch(\"version\"); expected = ARGV.fetch(0); abort(\"version #{actual.inspect} != #{expected.inspect}\") unless actual == expected" "$RELEASE_TAG"
     '
 else
   staging_tap=pixiv-cli-release/staging

@@ -48,8 +48,11 @@ func TestWorkflowUsesLinuxOnlyContainerizedHomebrewVerification(t *testing.T) {
 		}
 	}
 	linuxBranch, macOSBranch, ok := strings.Cut(run, "\nelse\n")
-	if !ok || strings.Contains(linuxBranch, "brew trust --tap") {
-		t.Fatal("fixed Linux Homebrew 4.6 container must not call unavailable brew trust")
+	if !ok || strings.Contains(linuxBranch, "brew trust --tap") || strings.Contains(linuxBranch, "python3 -c") {
+		t.Fatal("fixed Linux Homebrew 4.6 container must not call unavailable brew trust or Python")
+	}
+	if !strings.Contains(linuxBranch, `brew ruby -rjson -e`) {
+		t.Fatal("fixed Linux container must compare the JSON version with Ruby standard JSON")
 	}
 	if !strings.Contains(macOSBranch, "brew trust --tap \"$staging_tap\"") {
 		t.Fatal("macOS native Homebrew must retain explicit staging-tap trust")

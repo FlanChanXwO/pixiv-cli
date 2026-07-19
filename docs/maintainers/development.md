@@ -469,7 +469,10 @@ formula 安装，Linux 分支使用 `docker run --rm` 启动固定 digest 的 `h
 secret、不写 host mount、不使用公开 tap，也不使用 `HOMEBREW_TEMP`、source/debug/keep-tmp flags。固定的
 Homebrew 4.6 容器镜像不提供 `brew trust`；这不是安全绕过：该 tap 仅在 `--rm` 容器内由 `brew tap-new`
 创建，唯一 formula 从只读 mount 复制，且不会触及公开 tap。macOS 原生 Homebrew 保留显式
-`brew trust --tap`。本地 Docker 已在 arm64 和 amd64 QEMU 做过同一 formula 安装实验；
+`brew trust --tap`。该固定镜像亦没有 standalone `python3`；Linux 分支在安装成功后用
+`brew ruby -rjson` 的 bundled Ruby 标准 JSON 库严格比较版本。这一命令可能仅在短生命周期容器中开启
+Homebrew developer mode，且发生在 `brew install` 之后，不能改变安装验收路径。macOS 继续保留原来的
+Python JSON 断言。本地 Docker 已在 arm64 和 amd64 QEMU 做过同一 formula 安装实验；
 GitHub runner 的预发布演练仍是正式发布前必须取得的外部证据。
 
 ### 发布前只读 Homebrew 演练
