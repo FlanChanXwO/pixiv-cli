@@ -47,6 +47,13 @@ func TestWorkflowUsesLinuxOnlyContainerizedHomebrewVerification(t *testing.T) {
 			t.Fatalf("prepublish Linux container verification retains obsolete %q", forbidden)
 		}
 	}
+	linuxBranch, macOSBranch, ok := strings.Cut(run, "\nelse\n")
+	if !ok || strings.Contains(linuxBranch, "brew trust --tap") {
+		t.Fatal("fixed Linux Homebrew 4.6 container must not call unavailable brew trust")
+	}
+	if !strings.Contains(macOSBranch, "brew trust --tap \"$staging_tap\"") {
+		t.Fatal("macOS native Homebrew must retain explicit staging-tap trust")
+	}
 }
 
 func findRepositoryRoot(t *testing.T) string {

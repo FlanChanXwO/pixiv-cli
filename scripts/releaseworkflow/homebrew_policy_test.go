@@ -36,17 +36,22 @@ func TestCheckWorkflowRequiresTapQualifiedStagingFormulaInstall(t *testing.T) {
 	}
 }
 
-// Homebrew 6 默认要求 tap trust；staging tap 只在 runner 本地临时存在，仍必须通过
-// `brew trust --tap` 显式登记，不能用环境变量或 developer mode 绕过。
-func TestCheckWorkflowRequiresStagingTapTrust(t *testing.T) {
+// 固定的 Linux 容器镜像是 Homebrew 4.6，不具有 trust 子命令；其 tap 只在 --rm
+// 容器中创建，formula 仅从只读 mount 复制。macOS 原生 Homebrew 仍必须显式 trust。
+func TestWorkflowUsesTrustOnlyForMacOSNativeHomebrew(t *testing.T) {
 	t.Parallel()
 
 	root := releaseWorkflowRoot(t)
-	step := stepWithRun(t, jobNode(t, root, "verify_homebrew_formula"), "brew trust --tap")
-	removeRunFragment(t, step, "brew trust --tap \"$staging_tap\"")
-	err := checkWorkflow(mustMarshalYAML(t, root))
-	if err == nil || !strings.Contains(err.Error(), "Homebrew native install gate must use the required direct command sequence") {
-		t.Fatalf("policy error = %v, want untrusted staging tap install rejection", err)
+	run := requireMappingValue(t, stepWithRun(t, jobNode(t, root, "verify_homebrew_formula"), "docker run --rm"), "run").Value
+	linuxBranch, macOSBranch, ok := strings.Cut(run, "\nelse\n")
+	if !ok {
+		t.Fatal("Homebrew verification must retain a Linux/macOS split")
+	}
+	if strings.Contains(linuxBranch, "brew trust --tap") {
+		t.Fatal("fixed Linux Homebrew 4.6 container must not call unavailable brew trust")
+	}
+	if !strings.Contains(macOSBranch, "brew trust --tap \"$staging_tap\"") {
+		t.Fatal("macOS native Homebrew must retain explicit staging-tap trust")
 	}
 }
 
@@ -75,6 +80,10 @@ func TestWorkflowUsesLinuxOnlyContainerizedHomebrewVerification(t *testing.T) {
 		if strings.Contains(run, forbidden) {
 			t.Fatalf("Homebrew install gate must not override Homebrew's temporary directory; found %q", forbidden)
 		}
+	}
+	linuxBranch, _, ok := strings.Cut(run, "\nelse\n")
+	if !ok || strings.Contains(linuxBranch, "brew trust --tap") {
+		t.Fatal("Linux container branch must not use Homebrew 6-only tap trust")
 	}
 }
 

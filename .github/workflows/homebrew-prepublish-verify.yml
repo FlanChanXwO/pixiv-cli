@@ -156,7 +156,6 @@ jobs:
                 staging_tap=pixiv-cli-release/staging
                 tap_dir="$(brew --repository)/Library/Taps/pixiv-cli-release/homebrew-staging"
                 brew tap-new "$staging_tap" --no-git
-                brew trust --tap "$staging_tap"
                 cp /staging-formula/pixiv-cli.rb "$tap_dir/Formula/pixiv-cli.rb"
                 brew install --formula "$staging_tap/$formula_name"
                 pixiv version --json | python3 -c "import json, sys; actual = json.load(sys.stdin)[\"version\"]; expected = sys.argv[1]; assert actual == expected, f\"version {actual!r} != {expected!r}\"" "$RELEASE_TAG"
