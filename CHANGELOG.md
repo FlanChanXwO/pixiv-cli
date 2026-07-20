@@ -1,11 +1,7 @@
-# Changelog
-
-本文件记录项目中值得用户和集成方关注的变化。
-
-格式遵循 [Keep a Changelog 1.1.0]。项目开始切正式版本后，再按
-[Semantic Versioning] 维护版本段与比较链接。
-
 ## [Unreleased]
+### Fixed
+- App 作品 AI 字段优先读取 `illust_ai_type`，并兼容旧 `ai_type`；本地 AI 判定仍固定 `AIType==2`。
+
 
 ## [0.4.5] - 2026-07-20
 

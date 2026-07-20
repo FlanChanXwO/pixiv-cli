@@ -50,12 +50,38 @@ type illustDTO struct {
 	ImageURLs      imageURLsDTO  `json:"image_urls"`
 	MetaSinglePage singlePageDTO `json:"meta_single_page"`
 	MetaPages      []metaPageDTO `json:"meta_pages"`
-	AIType         int           `json:"ai_type"`
-	CreateDate     string        `json:"create_date"`
-	Width          int           `json:"width"`
-	Height         int           `json:"height"`
-	Tools          []string      `json:"tools"`
+	// AIType 由 UnmarshalJSON 从 illust_ai_type / ai_type 归一化；
+	// 本地 AI 判定固定 AIType==2。不直接绑定单一 wire 字段。
+	AIType     int      `json:"-"`
+	CreateDate string   `json:"create_date"`
+	Width      int      `json:"width"`
+	Height     int      `json:"height"`
+	Tools      []string `json:"tools"`
 }
+
+// UnmarshalJSON 优先读取 illust_ai_type，缺失时回退 ai_type；两者都缺则为 0。
+// 显式 0 的 illust_ai_type 也优先于 ai_type，避免旧字段覆盖新字段语义。
+func (d *illustDTO) UnmarshalJSON(data []byte) error {
+	type wire illustDTO
+	aux := struct {
+		*wire
+		IllustAIType *int `json:"illust_ai_type"`
+		LegacyAIType *int `json:"ai_type"`
+	}{wire: (*wire)(d)}
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+	switch {
+	case aux.IllustAIType != nil:
+		d.AIType = *aux.IllustAIType
+	case aux.LegacyAIType != nil:
+		d.AIType = *aux.LegacyAIType
+	default:
+		d.AIType = 0
+	}
+	return nil
+}
+
 type userDTO struct {
 	ID               int64               `json:"id"`
 	Name             string              `json:"name"`

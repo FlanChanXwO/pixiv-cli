@@ -13,12 +13,12 @@
 
 ## T02 — App DTO 读取 `illust_ai_type` 并兼容旧字段
 
-- 状态：未开始
+- 状态：已完成
 - 范围：修复 App API DTO/mapper，优先 `illust_ai_type`，回退 `ai_type`；本地 AI 判断固定 `== 2`；补契约测试（仅新字段、仅旧字段、双字段、非 2 值）。
 - 验收：相关 appapi/public SDK 测试 RED→GREEN；映射不依赖未验证假设。
-- 实际：
-- 证据：
-- 风险/下一步：
+- 实际：`illustDTO` 自定义 `UnmarshalJSON`：优先 `illust_ai_type`（含显式 0），否则回退 `ai_type`，都缺为 0；`mapIllust` 透传 `AIType`；`searchAIModeAccepts` 注释明确 `==2`；CHANGELOG `[Unreleased]` 记录用户可见修复。
+- 证据：先写 `dto_ai_type_test.go` 实际 RED（only `illust_ai_type` 读到 0）；实现后 GREEN。`TestIllustListDTOUnmarshalIllustAITypeThroughList`、`pixiv.TestSearchIllustMapsIllustAITypeFromAppWire`（only/all + 双字段优先级）通过；`go test -race ./internal/pixiv/appapi ./pixiv -count=1`、`go vet` 通过。
+- 风险/下一步：Web API 仍用 `aiType` camelCase，本 task 不改。下一轮 T03：后端参数与本地筛选语义（rating/only AI/exclude 双保险、search-options）。
 
 ## T03 — 搜索后端参数与本地筛选语义
 

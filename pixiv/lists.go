@@ -149,6 +149,7 @@ func searchRatingAccepts(rating SearchRating, xRestrict int) bool {
 }
 
 func searchAIModeAccepts(mode SearchAIMode, aiType int) bool {
+	// 本地 AI 判定固定以 AIType==2 为 AI；与 App wire 归一化后的 public AIType 对齐。
 	switch mode {
 	case SearchAIModeExclude:
 		return aiType != 2
