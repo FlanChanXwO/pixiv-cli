@@ -33,7 +33,7 @@ it conflicts only with `page` and may still be used with `limit`.
 | `set_download_path` | `path` | Text status. |
 | `refresh_token` | none | Current authenticated-account summary. |
 | `set_refresh_token` | raw App API `refresh_token` | Current-session authentication result; does not write `auth.json`; rejects cookies. |
-| `download` | `illust_id` or `illust_ids`, optional `delivery` | Files, URI, MIME, and size; `image_content` also attaches ImageContent. |
+| `download` | `illust_id` or `illust_ids`, optional `delivery` | Files, URI, MIME, and size; `local_path` also attaches ImageContent. |
 | `download_random_from_recommendation` | optional `count` (omitted/`null` defaults to 5; explicit value must be 1..20), optional `delivery` | Text plus structured file metadata; never attaches ImageContent. |
 
 `refresh_token` does not misreport SDK/config/proxy initialization failures as a missing token. Context cancellation
@@ -43,7 +43,7 @@ missing-token hint. This legacy tool remains `isError=false`; stderr events expo
 
 `download_random_from_recommendation.count` limits works, not files expanded from each work. Explicit 0, negative,
 or values above 20 fail validation instead of being clamped. If fewer recommendations exist, the tool downloads the
-available works. It never attaches ImageContent, including with `delivery=image_content`.
+available works. Download tools return local file metadata only and never attach ImageContent.
 
 Both download tools return valid structured output on validation, SDK, recommendation, download, result-building,
 or file-read failure: `delivery` retains the normalized mode (`local_path` when IDs/delivery are invalid), and
@@ -64,7 +64,6 @@ business error text.
 | `trending_tags_illust` | none | Trending tags. |
 | `illust_follow` | `restrict`, `page`, `limit` | Followed works; authentication required. |
 | `search_user` | `word`, `page`, `limit` | Users; anonymous fallback deduplicates related-work authors and is not official username search. |
-| `get_thumbnail_base64` | `illust_id` | `data:image/jpeg;base64,...`. |
 | `user_detail` | required `user_id` | Stable `{user, profile, profile_publicity, workspace}`; authenticated App only. |
 | `user_artworks` | optional `user_id`, `type`, `page`, `limit` | `{user_id, items, pagination}`; omitted UID uses the authenticated user. |
 | `user_bookmarks` | optional `user_id`, `restrict`, `tag`, `page`, `limit` | `{user_id, items, pagination}`. |

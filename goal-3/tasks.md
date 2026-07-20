@@ -92,12 +92,12 @@
 
 ## T09 — CLI/MCP 接入下载 pages/quality，MCP 仅本地文件交付
 
-- 状态：未开始
+- 状态：已完成
 - 范围：CLI/MCP 共用 SDK 下载选项；MCP 只返回 path/file_uri/mime_type/页号/大小；移除 `image_content` 与 base64 缩略图工具；更新 skill 指导宿主本地附件，否则只分享作品 URL。
 - 验收：CLI/MCP 黑盒与 in-memory MCP 测试通过；无内嵌图片内容。
-- 实际：
-- 证据：
-- 风险/下一步：
+- 实际：MCP `download`/`download_random` 增加 `pages`/`quality` 并透传到 `application.DownloadRequest`；`delivery` 仅 `local_path`；移除 `ImageContent` 内嵌与 `get_thumbnail_base64`；skill 增加宿主本地附件指引。
+- 证据：`TestDownloadRejectsImageContentDelivery`、`TestDownloadPassesPagesAndQualityToManager`、`TestDownloadRejectsInvalidPagesAndQualityBeforeManager` 与既有下载测试通过；文档/architecture/skill/CHANGELOG 已同步。
+- 风险/下一步：下一轮 C03 集中检查 T07–T09。
 
 ## C03 — 集中检查 3（T07–T09）
 

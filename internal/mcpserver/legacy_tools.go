@@ -2,11 +2,9 @@ package mcpserver
 
 import (
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"strconv"
 	"strings"
 
@@ -403,39 +401,4 @@ func (a *App) illustFollow(ctx context.Context, _ *mcp.CallToolRequest, in follo
 		return toolText("您的关注动态中暂时没有新作品。")
 	}
 	return toolText(fmt.Sprintf("找到 %d 篇关注动态:\n\n%s", len(items), formatIllusts(items, plan.skip, false)))
-}
-
-func (a *App) thumbnailBase64(ctx context.Context, _ *mcp.CallToolRequest, in illustIDIn) (*mcp.CallToolResult, textOut, error) {
-	client, release, err := a.openSDKOperation(ctx)
-	if err != nil {
-		return toolTextError(ctx, err, "错误: 无法获取插画信息: "+err.Error())
-	}
-	defer release()
-	result, err := client.IllustDetail(ctx, in.IllustID)
-	if err != nil {
-		return toolTextError(ctx, err, "错误: 无法获取插画信息: "+err.Error())
-	}
-	rawURL := thumbnailURL(result.Illust)
-	if rawURL == "" {
-		return toolTextError(ctx, errLegacyThumbnailUnavailable, "错误: 无法找到缩略图URL")
-	}
-	ref, err := client.ParseResourceRef(rawURL)
-	if err != nil {
-		return toolTextError(ctx, err, "错误: 获取缩略图失败: "+err.Error())
-	}
-	response, err := client.OpenResource(ctx, sdk.OpenResourceRequest{Ref: ref})
-	if err != nil {
-		return toolTextError(ctx, err, "错误: 获取缩略图失败: "+err.Error())
-	}
-	defer response.Body.Close()
-	var buf strings.Builder
-	writer := base64.NewEncoder(base64.StdEncoding, stringWriter{&buf})
-	if _, err := io.Copy(writer, response.Body); err != nil {
-		_ = writer.Close()
-		return toolTextError(ctx, err, "错误: 获取缩略图失败: "+err.Error())
-	}
-	if err := writer.Close(); err != nil {
-		return toolTextError(ctx, err, "错误: 获取缩略图失败: "+err.Error())
-	}
-	return toolText(fmt.Sprintf("缩略图数据 (插画ID: %d):\ndata:image/jpeg;base64,%s", in.IllustID, buf.String()))
 }

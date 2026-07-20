@@ -1,9 +1,11 @@
 ## [Unreleased]
 ### Added
+- MCP `download` / `download_random_from_recommendation` 支持 `pages` 与 `quality`，与 CLI 共用下载选项。
 - 下载新增 `--pages`（1-based，支持 `1,3-5`）与 `--quality original|regular|small|thumb|mini`；默认仍下载全部原图。Ugoira 对派生质量或页选择返回 unsupported。public SDK 暴露 `ParsePageSpec`/`DownloadQuality`/`DownloadOptions`。
 - 所有作品模型、CLI JSON/文本与 MCP 结构化/文本输出增加作品页 `url`（`https://www.pixiv.net/artworks/${id}`），JSON 为 public Illust 首字段，文本输出放在每件作品第一行。
 
 ### Changed
+- Breaking: MCP 下载仅返回本地 `path`/`file_uri`/`mime_type`/页号/大小；移除 `delivery=image_content` 内嵌图片与 `get_thumbnail_base64` 工具。Agent 应使用宿主本地附件能力发送文件；宿主不支持时仅分享作品 URL。
 - Breaking: 移除 MCP 旧 wire 字段 `search_r18`、`user_id_to_check`、`max_bookmark_id`、`offset`、`include_thumbnail`；列表与搜索统一使用规范字段 `user_id`、`rating`、`page`/`limit`。
 - Breaking: 移除 CLI 兼容入口 `--ai-type`、`--r18`、`--profile`、`--offset` 与 `search --type comics`；请分别使用 `--ai-mode`、`--rating r18`、`--uid`、`--page`/`--limit` 与 `--type manga`。
 

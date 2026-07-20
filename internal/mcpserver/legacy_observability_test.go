@@ -215,48 +215,6 @@ func TestLegacyRefreshAuthenticationFailurePreservesTextAndLogsTypedError(t *tes
 	}
 }
 
-func TestLegacyThumbnailResourceFailurePreservesTextAndLogsErrorWithoutURL(t *testing.T) {
-	const rawURL = "https://secret.example/image.jpg?token=resource-token-canary"
-	client := &fakeSDKClient{illustDetail: func(context.Context, int64) (*sdk.IllustDetail, error) {
-		return &sdk.IllustDetail{Illust: sdk.Illust{ImageURLs: sdk.ImageURLs{Medium: rawURL}}}, nil
-	}}
-	var logs bytes.Buffer
-	service := application.SDKService{NewClient: func(application.SDKClientRequest) (application.SDKClient, error) {
-		return client, nil
-	}}
-	server := NewWithSDK(&fakeAPI{}, &fakeDownloads{}, slog.New(slog.NewJSONHandler(&logs, nil)), service, application.SDKClientRequest{})
-	clientTransport, serverTransport := mcp.NewInMemoryTransports()
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	go func() { _ = server.Run(ctx, serverTransport) }()
-	mcpClient := mcp.NewClient(&mcp.Implementation{Name: "test", Version: "1"}, nil)
-	session, err := mcpClient.Connect(ctx, clientTransport, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer session.Close()
-
-	result := callTool(t, session, "get_thumbnail_base64", map[string]any{"illust_id": 77})
-	if result.IsError {
-		t.Fatalf("legacy thumbnail failure changed isError: %+v", result)
-	}
-	var out textOut
-	decodeStructured(t, result, &out)
-	want := "错误: 获取缩略图失败: resource is not configured"
-	if out.Text != want {
-		t.Fatalf("thumbnail output=%q, want %q", out.Text, want)
-	}
-	event := findOperationEvent(t, logs.String(), "get_thumbnail_base64")
-	if event["level"] != "ERROR" || event["result"] != "error" || event["backend"] != "local" {
-		t.Fatalf("thumbnail resource event=%v", event)
-	}
-	for _, secret := range []string{"secret.example", "resource-token-canary", "resource is not configured"} {
-		if strings.Contains(logs.String(), secret) {
-			t.Fatalf("thumbnail log leaked %q: %s", secret, logs.String())
-		}
-	}
-}
-
 func findOperationEvent(t *testing.T, logs, operation string) map[string]any {
 	t.Helper()
 	for _, line := range strings.Split(strings.TrimSpace(logs), "\n") {

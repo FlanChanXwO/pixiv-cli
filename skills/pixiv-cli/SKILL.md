@@ -179,3 +179,7 @@ assuming its effective value.
 | Find works/artists (search → filter → detail chains) | `references/discover.md` |
 | Download workflows (single, batch, ugoira) | `references/download.md` |
 | Errors: auth failures, network/proxy, empty results | `references/troubleshooting.md` |
+
+## Image delivery for agents
+
+After `pixiv download` or MCP `download`, share local file paths via the host attachment API. If the host cannot attach files, share the artwork `url` only and do not claim an image was sent.

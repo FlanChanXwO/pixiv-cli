@@ -33,7 +33,10 @@ func (a *App) setDownloadPath(ctx context.Context, _ *mcp.CallToolRequest, in se
 type downloadIn struct {
 	IllustID  int64   `json:"illust_id,omitempty" jsonschema:"single artwork ID to download"`
 	IllustIDs []int64 `json:"illust_ids,omitempty" jsonschema:"artwork IDs to download"`
-	Delivery  string  `json:"delivery,omitempty" jsonschema:"delivery mode: local_path or image_content"`
+	Pages     string  `json:"pages,omitempty" jsonschema:"1-based page selection, e.g. 1,3-5; default all pages"`
+	Quality   string  `json:"quality,omitempty" jsonschema:"static image quality: original, regular, small, thumb, mini"`
+	// Delivery 仅保留 local_path 兼容字段；image_content 已移除。
+	Delivery string `json:"delivery,omitempty" jsonschema:"delivery mode: local_path only"`
 }
 
 type downloadOut struct {
@@ -63,8 +66,7 @@ type downloadFileOut struct {
 }
 
 const (
-	deliveryLocalPath    = "local_path"
-	deliveryImageContent = "image_content"
+	deliveryLocalPath = "local_path"
 )
 
 func (a *App) download(ctx context.Context, _ *mcp.CallToolRequest, in downloadIn) (*mcp.CallToolResult, downloadOut, error) {
@@ -79,7 +81,11 @@ func (a *App) download(ctx context.Context, _ *mcp.CallToolRequest, in downloadI
 	if errText != "" {
 		return emptyDownloadError(ctx, errLegacyValidation, deliveryLocalPath, errText)
 	}
-	artworks, err := a.downloadArtworks(ctx, ids, nil)
+	pages, quality, err := parseDownloadSelection(in.Pages, in.Quality)
+	if err != nil {
+		return emptyDownloadError(ctx, err, delivery, "错误："+err.Error())
+	}
+	artworks, err := a.downloadArtworks(ctx, ids, nil, pages, quality)
 	if err != nil {
 		return emptyDownloadError(ctx, err, delivery, "下载失败: "+err.Error())
 	}
@@ -87,25 +93,18 @@ func (a *App) download(ctx context.Context, _ *mcp.CallToolRequest, in downloadI
 	if err != nil {
 		return emptyDownloadError(ctx, err, delivery, "整理下载结果失败: "+err.Error())
 	}
-	result := downloadResult(out)
-	if delivery == deliveryImageContent {
-		for _, file := range out.Files {
-			data, err := os.ReadFile(file.Path)
-			if err != nil {
-				return emptyDownloadError(ctx, err, delivery, "读取下载文件失败: "+err.Error())
-			}
-			result.Content = append(result.Content, &mcp.ImageContent{
-				Data:     data,
-				MIMEType: file.MIMEType,
-			})
-		}
-	}
-	return result, out, nil
+	// MCP 下载只返回本地 path/file_uri/mime_type/页号/大小，不再内嵌 ImageContent。
+	return downloadResult(out), out, nil
 }
 
-func (a *App) downloadArtworks(ctx context.Context, ids []int64, client application.SDKClient) ([]download.DownloadedArtwork, error) {
+func (a *App) downloadArtworks(ctx context.Context, ids []int64, client application.SDKClient, pages []int, quality application.DownloadQuality) ([]download.DownloadedArtwork, error) {
+	req := application.DownloadRequest{
+		IllustIDs: ids,
+		Pages:     pages,
+		Quality:   quality,
+	}
 	if a.newDownloads == nil {
-		return a.downloads.Download(ctx, application.DownloadRequest{IllustIDs: ids, Quality: application.DownloadQualityOriginal})
+		return a.downloads.Download(ctx, req)
 	}
 	if client == nil {
 		opened, release, err := a.openSDKOperation(ctx)
@@ -115,7 +114,22 @@ func (a *App) downloadArtworks(ctx context.Context, ids []int64, client applicat
 		defer release()
 		client = opened
 	}
-	return a.newDownloads(client).Download(ctx, application.DownloadRequest{IllustIDs: ids, Quality: application.DownloadQualityOriginal})
+	return a.newDownloads(client).Download(ctx, req)
+}
+
+func parseDownloadSelection(pagesSpec, qualitySpec string) ([]int, application.DownloadQuality, error) {
+	pages, err := application.ParsePageSpec(pagesSpec)
+	if err != nil {
+		return nil, "", err
+	}
+	quality := application.DownloadQuality(strings.TrimSpace(qualitySpec))
+	if quality == "" {
+		quality = application.DownloadQualityOriginal
+	}
+	if err := application.ValidateDownloadQuality(quality); err != nil {
+		return nil, "", err
+	}
+	return pages, quality, nil
 }
 
 func downloadResult(out downloadOut) *mcp.CallToolResult {
@@ -143,10 +157,8 @@ func normalizeDelivery(value string) (string, string) {
 	switch strings.TrimSpace(value) {
 	case "", deliveryLocalPath:
 		return deliveryLocalPath, ""
-	case deliveryImageContent:
-		return deliveryImageContent, ""
 	default:
-		return "", fmt.Sprintf("错误：delivery 仅支持 %q 或 %q。", deliveryLocalPath, deliveryImageContent)
+		return "", fmt.Sprintf("错误：delivery 仅支持 %q。", deliveryLocalPath)
 	}
 }
 
@@ -190,7 +202,9 @@ func buildDownloadOut(delivery string, artworks []download.DownloadedArtwork) (d
 
 type downloadRandomIn struct {
 	Count    *int   `json:"count,omitempty" jsonschema:"optional artwork count; defaults to 5; explicit value must be from 1 to 20"`
-	Delivery string `json:"delivery,omitempty" jsonschema:"delivery mode: local_path or image_content"`
+	Pages    string `json:"pages,omitempty" jsonschema:"1-based page selection, e.g. 1,3-5; default all pages"`
+	Quality  string `json:"quality,omitempty" jsonschema:"static image quality: original, regular, small, thumb, mini"`
+	Delivery string `json:"delivery,omitempty" jsonschema:"delivery mode: local_path only"`
 }
 
 const (
@@ -221,6 +235,10 @@ func (a *App) downloadRandom(ctx context.Context, req *mcp.CallToolRequest, in d
 	if err != nil {
 		return emptyDownloadError(ctx, err, delivery, "错误："+err.Error()+"。")
 	}
+	pages, quality, err := parseDownloadSelection(in.Pages, in.Quality)
+	if err != nil {
+		return emptyDownloadError(ctx, err, delivery, "错误："+err.Error())
+	}
 	client, release, err := a.openSDKOperation(ctx)
 	if err != nil {
 		return emptyDownloadError(ctx, err, delivery, "获取推荐列表失败: "+err.Error())
@@ -241,7 +259,7 @@ func (a *App) downloadRandom(ctx context.Context, req *mcp.CallToolRequest, in d
 	for _, illust := range result.Illusts[:count] {
 		ids = append(ids, illust.ID)
 	}
-	artworks, err := a.downloadArtworks(ctx, ids, client)
+	artworks, err := a.downloadArtworks(ctx, ids, client, pages, quality)
 	if err != nil {
 		return emptyDownloadError(ctx, err, delivery, "下载失败: "+err.Error())
 	}

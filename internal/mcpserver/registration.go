@@ -26,5 +26,4 @@ func (a *App) register(server *mcp.Server) {
 	addTool(a, server, &mcp.Tool{Name: "remove_bookmark", Description: "Remove an artwork from bookmarks."}, a.removeBookmark)
 	addTool(a, server, &mcp.Tool{Name: "follow_user", Description: "Follow a Pixiv user."}, a.followUser)
 	addTool(a, server, &mcp.Tool{Name: "unfollow_user", Description: "Unfollow a Pixiv user."}, a.unfollowUser)
-	addTool(a, server, &mcp.Tool{Name: "get_thumbnail_base64", Description: "Get artwork thumbnail as base64 data URL."}, a.thumbnailBase64)
 }
