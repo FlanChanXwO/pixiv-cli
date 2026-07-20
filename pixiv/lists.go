@@ -124,6 +124,9 @@ func (c *Client) SearchIllust(ctx context.Context, request SearchIllustRequest) 
 }
 
 func filterSearchIllustBatch(list *model.IllustList, filters SearchIllustFilters) {
+	// 本地后筛选仅覆盖 App 无可靠 query 的能力：rating(x_restrict) 与 AI。
+	// only AI 纯本地；exclude AI 另发 search_ai_type=1，但 canary 证明前仍保留本地后筛。
+	// tool/aspect-ratio/type/resolution 只编码上游参数，这里绝不二次过滤。
 	filtered := make([]model.Illust, 0, len(list.Illusts))
 	for _, illust := range list.Illusts {
 		if searchRatingAccepts(filters.Rating, illust.XRestrict) && searchAIModeAccepts(filters.AIMode, illust.AIType) {

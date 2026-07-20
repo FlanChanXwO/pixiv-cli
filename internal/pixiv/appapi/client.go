@@ -100,6 +100,8 @@ func (c *Client) SearchIllust(ctx context.Context, word, target, sort, duration 
 }
 
 func setSearchIllustFilters(query url.Values, filters model.SearchIllustFilters) {
+	// 后端可验证参数：tool / ratio_pattern / content_type / resolution bounds / search_ai_type。
+	// rating 与 only AI 不在此编码；exclude AI 发 search_ai_type=1，本地后筛见 public SDK。
 	query.Set("search_ai_type", "0")
 	if filters.AIMode == "exclude" {
 		query.Set("search_ai_type", "1")

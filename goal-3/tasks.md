@@ -22,12 +22,12 @@
 
 ## T03 — 搜索后端参数与本地筛选语义
 
-- 状态：未开始
+- 状态：已完成
 - 范围：tool/aspect-ratio/type/resolution 只编码为 App query，不做本地重复过滤；rating 按 `x_restrict` 本地筛；only AI 本地筛；exclude AI 发送 `search_ai_type=1` 并在 canary 证明前保留本地后筛；`search-options` 动态工具列表。
 - 验收：appapi client 与 CLI/MCP 聚焦测试覆盖 query 编码与筛选矩阵。
-- 实际：
-- 证据：
-- 风险/下一步：
+- 实际：审计确认现有实现已符合分层：`setSearchIllustFilters` 编码 tool/ratio/type/resolution/`search_ai_type`；`filterSearchIllustBatch` 仅 rating+AI；`SearchIllustOptions` 动态读上游 tools。补强分层注释，并新增 public 契约测试锁定 exclude 双保险、后端参数不本地复筛、rating 仅 x_restrict、search-options 动态列表。无用户可见行为变化，未改 changelog。
+- 证据：`TestSearchIllustExcludeAISendsBackendParamAndLocalPostFilters`、`TestSearchIllustBackendOnlyFiltersDoNotLocallyRefilterBatch`、`TestSearchIllustRatingFiltersLocallyByXRestrictOnly`、`TestSearchIllustOptionsReturnsDynamicToolListFromApp` 通过；既有 `TestSearchIllustMapsNormalizedFiltersToAppQuery` / `TestSearchIllustTranslatesStableFiltersToAppParameters` / options 测试仍绿；`go test ./internal/pixiv/appapi ./pixiv ./internal/cli ./internal/mcpserver -count=1`、race、vet 通过。
+- 风险/下一步：exclude AI 本地后筛是否可移除依赖 T14 canary。下一轮 C01 集中检查 T01–T03。
 
 ## C01 — 集中检查 1（T01–T03）
 
