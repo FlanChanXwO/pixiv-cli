@@ -101,11 +101,11 @@
 
 ## C03 — 集中检查 3（T07–T09）
 
-- 状态：未开始
+- 状态：已完成（无新增修复项）
 - 检查：URL 字段序、下载契约、循环依赖、MCP 交付变更、文档/changelog、全量门禁。
-- 实际：
-- 证据：
-- 风险/下一步：
+- 实际：T07 url 首字段、T08 pages/quality、T09 MCP 本地交付均符合 input；public SDK 不依赖 internal/download；生产无 image_content/thumbnail 工具；CLI/MCP/application 无协议子包直连。
+- 证据：`go test ./... -count=1`、`go vet ./...`、`git diff --check 074586f..HEAD` 通过；日志 `/tmp/goal3-c03-gotest.log`。
+- 风险/下一步：无 C03 插入修复 task。下一轮 T10：登录 callback 最终页。
 
 ## T10 — 登录 callback 最终页与 CLI 成功提示空行
 
