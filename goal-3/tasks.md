@@ -66,11 +66,11 @@
 
 ## C02 — 集中检查 2（T04–T06）
 
-- 状态：未开始
+- 状态：已完成（无新增修复项）
 - 检查：分页/空批次契约、兼容入口删除完整性、CLI/MCP 文档与测试、全量门禁。
-- 实际：
-- 证据：
-- 风险/下一步：
+- 实际：T04 OneBatch 空批补拉与 MCP page/limit、T05 CLI 旧 flag 删除、T06 MCP 旧 wire 删除均符合 input；生产代码无 legacy 字段残留；无协议子包直连。
+- 证据：`go test ./... -count=1`、`go vet ./...`、`git diff --check 074586f..HEAD` 通过；日志 `/tmp/goal3-c02-gotest.log`。
+- 风险/下一步：无 C02 插入修复 task。下一轮 T07：public Illust 首字段 `url`。
 
 ## T07 — public Illust 与输出加入首字段 `url`
 
