@@ -31,11 +31,11 @@
 
 ## C01 — 集中检查 1（T01–T03）
 
-- 状态：未开始
+- 状态：已完成（无新增修复项）
 - 检查：需求是否偏离；AI/评级分层是否正确；是否出现无据限制/静默 fallback；全量 test/vet/diff-check；脱敏与架构边界。
-- 实际：
-- 证据：
-- 风险/下一步：
+- 实际：对照 input 前三段搜索契约：T01 基线隔离、T02 `illust_ai_type` 优先映射、T03 后端/本地筛选分层与 search-options 动态工具均符合。未发现无据 timeout/截断/静默 fallback；CLI/MCP/application 无协议子包直连；diff 无 secret 字面量；工作树干净。
+- 证据：`go test ./... -count=1` exit 0；`go vet ./...` exit 0；`git diff --check 074586f..HEAD` 通过；`git diff --name-status` 仅 goal-3 规划、appapi AI DTO、lists 注释、契约测试与 changelog；日志 `/tmp/goal3-c01-gotest.log`。
+- 风险/下一步：无 C01 插入修复 task。下一轮 T04：CLI/MCP 逻辑批次补拉与逻辑分页。
 
 ## T04 — CLI/MCP 逻辑批次补拉与逻辑分页
 
