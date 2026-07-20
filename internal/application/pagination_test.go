@@ -95,6 +95,80 @@ func TestTraversePagesAtExactLimitUsesNextCursorForHasMore(t *testing.T) {
 	}
 }
 
+func TestTraversePagesOneBatchSkipsLeadingEmptyBatches(t *testing.T) {
+	pages := map[sdk.Cursor]struct {
+		items []int
+		next  sdk.Cursor
+	}{
+		"":       {next: "empty2"},
+		"empty2": {next: "data"},
+		"data":   {items: []int{7, 8}, next: "later"},
+		"later":  {items: []int{9}},
+	}
+	var cursors []sdk.Cursor
+	var got []int
+
+	result, err := application.TraversePages(context.Background(), application.PagePlan{OneBatch: true}, func(_ context.Context, cursor sdk.Cursor) ([]int, sdk.Cursor, error) {
+		cursors = append(cursors, cursor)
+		page := pages[cursor]
+		return page.items, page.next, nil
+	}, func(items []int) error {
+		got = append(got, items...)
+		return nil
+	})
+
+	require.NoError(t, err)
+	assert.Equal(t, []sdk.Cursor{"", "empty2", "data"}, cursors)
+	assert.Equal(t, []int{7, 8}, got)
+	assert.Equal(t, application.PageResult{Returned: 2, HasMore: true}, result)
+}
+
+func TestTraversePagesOneBatchEndsWhenOnlyEmptyBatchesRemain(t *testing.T) {
+	pages := map[sdk.Cursor]struct {
+		items []int
+		next  sdk.Cursor
+	}{
+		"":      {next: "empty"},
+		"empty": {},
+	}
+	var cursors []sdk.Cursor
+	result, err := application.TraversePages(context.Background(), application.PagePlan{OneBatch: true}, func(_ context.Context, cursor sdk.Cursor) ([]int, sdk.Cursor, error) {
+		cursors = append(cursors, cursor)
+		page := pages[cursor]
+		return page.items, page.next, nil
+	}, func([]int) error { return nil })
+
+	require.NoError(t, err)
+	assert.Equal(t, []sdk.Cursor{"", "empty"}, cursors)
+	assert.Equal(t, application.PageResult{Returned: 0, HasMore: false}, result)
+}
+
+func TestTraversePagesLimitFillsAcrossEmptyBatches(t *testing.T) {
+	pages := map[sdk.Cursor]struct {
+		items []int
+		next  sdk.Cursor
+	}{
+		"":      {items: []int{1}, next: "empty"},
+		"empty": {next: "more"},
+		"more":  {items: []int{2, 3}, next: "tail"},
+		"tail":  {items: []int{4}},
+	}
+	var cursors []sdk.Cursor
+	var got []int
+	result, err := application.TraversePages(context.Background(), application.PagePlan{Limit: 3}, func(_ context.Context, cursor sdk.Cursor) ([]int, sdk.Cursor, error) {
+		cursors = append(cursors, cursor)
+		page := pages[cursor]
+		return page.items, page.next, nil
+	}, func(items []int) error {
+		got = append(got, items...)
+		return nil
+	})
+	require.NoError(t, err)
+	assert.Equal(t, []sdk.Cursor{"", "empty", "more"}, cursors)
+	assert.Equal(t, []int{1, 2, 3}, got)
+	assert.Equal(t, application.PageResult{Returned: 3, HasMore: true}, result)
+}
+
 func TestTraversePagesOneBatchStopsAtFirstNonEmptyBatchAfterSkip(t *testing.T) {
 	pages := map[sdk.Cursor]struct {
 		items []int

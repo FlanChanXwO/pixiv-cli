@@ -188,6 +188,85 @@ func TestSearchIllustKeepsFiltersAcrossLogicalOffsetPagination(t *testing.T) {
 	}
 }
 
+func TestSearchIllustPageLimitFillsLogicalResultsAcrossEmptyBatches(t *testing.T) {
+	var requests []sdk.SearchIllustRequest
+	client := &fakeSDKClient{searchIllust: func(_ context.Context, request sdk.SearchIllustRequest) (*sdk.IllustListResult, error) {
+		requests = append(requests, request)
+		switch request.Cursor {
+		case "":
+			return &sdk.IllustListResult{Illusts: []sdk.Illust{testSDKIllust(1, "a", 7)}, NextCursor: "empty"}, nil
+		case "empty":
+			return &sdk.IllustListResult{Illusts: []sdk.Illust{}, NextCursor: "more"}, nil
+		case "more":
+			return &sdk.IllustListResult{Illusts: []sdk.Illust{testSDKIllust(2, "b", 7), testSDKIllust(3, "c", 7)}, NextCursor: "tail"}, nil
+		default:
+			return &sdk.IllustListResult{Illusts: []sdk.Illust{testSDKIllust(4, "d", 7)}}, nil
+		}
+	}}
+	session, closeSession := newSDKTestSession(t, client)
+	defer closeSession()
+
+	result := callTool(t, session, "search_illust", map[string]any{"word": "cat", "limit": 3})
+	var out textOut
+	decodeStructured(t, result, &out)
+	if len(requests) != 3 || requests[1].Cursor != "empty" || requests[2].Cursor != "more" {
+		t.Fatalf("requests=%+v", requests)
+	}
+	if !strings.Contains(out.Text, `"a"`) || !strings.Contains(out.Text, `"b"`) || !strings.Contains(out.Text, `"c"`) || strings.Contains(out.Text, `"d"`) {
+		t.Fatalf("output=%+v", out)
+	}
+}
+
+func TestSearchIllustPageTwoUsesLogicalLimit(t *testing.T) {
+	var requests []sdk.SearchIllustRequest
+	client := &fakeSDKClient{searchIllust: func(_ context.Context, request sdk.SearchIllustRequest) (*sdk.IllustListResult, error) {
+		requests = append(requests, request)
+		switch request.Cursor {
+		case "":
+			return &sdk.IllustListResult{Illusts: []sdk.Illust{testSDKIllust(1, "a", 7), testSDKIllust(2, "b", 7)}, NextCursor: "next"}, nil
+		case "next":
+			return &sdk.IllustListResult{Illusts: []sdk.Illust{testSDKIllust(3, "c", 7), testSDKIllust(4, "d", 7)}}, nil
+		default:
+			return &sdk.IllustListResult{}, nil
+		}
+	}}
+	session, closeSession := newSDKTestSession(t, client)
+	defer closeSession()
+
+	result := callTool(t, session, "search_illust", map[string]any{"word": "cat", "page": 2, "limit": 2})
+	var out textOut
+	decodeStructured(t, result, &out)
+	if len(requests) != 2 || requests[1].Cursor != "next" {
+		t.Fatalf("requests=%+v", requests)
+	}
+	if !strings.Contains(out.Text, `"c"`) || !strings.Contains(out.Text, `"d"`) || strings.Contains(out.Text, `"a"`) {
+		t.Fatalf("output=%+v", out)
+	}
+}
+
+func TestSearchIllustRejectsOffsetWithPageOrLimit(t *testing.T) {
+	client := &fakeSDKClient{searchIllust: func(context.Context, sdk.SearchIllustRequest) (*sdk.IllustListResult, error) {
+		t.Fatal("SDK should not open for invalid page plan")
+		return nil, nil
+	}}
+	session, closeSession := newSDKTestSession(t, client)
+	defer closeSession()
+	for _, args := range []map[string]any{
+		{"word": "cat", "offset": 1, "page": 1, "limit": 1},
+		{"word": "cat", "offset": 1, "limit": 1},
+	} {
+		result := callTool(t, session, "search_illust", args)
+		var out textOut
+		decodeStructured(t, result, &out)
+		if !strings.Contains(out.Text, "offset") || !strings.Contains(out.Text, "page") && !strings.Contains(out.Text, "limit") {
+			// accept either combined message
+			if !strings.Contains(out.Text, "offset cannot be combined") {
+				t.Fatalf("args=%v output=%+v", args, out)
+			}
+		}
+	}
+}
+
 func TestSearchIllustContinuesAfterFilteredEmptyBatch(t *testing.T) {
 	var requests []sdk.SearchIllustRequest
 	client := &fakeSDKClient{searchIllust: func(_ context.Context, request sdk.SearchIllustRequest) (*sdk.IllustListResult, error) {

@@ -72,9 +72,14 @@ func TraversePages[T any](ctx context.Context, plan PagePlan, fetch func(context
 			}
 			return result, nil
 		}
+		// OneBatch 表示“一个逻辑批次”：本地筛选后的连续空上游批次要跳过，
+		// 直到拿到首个非空逻辑结果或真正结束；不得在空批上提前停。
 		if plan.OneBatch && !seekingOffset {
-			result.HasMore = next != ""
-			return result, nil
+			if result.Returned > 0 || next == "" {
+				result.HasMore = next != ""
+				return result, nil
+			}
+			// 空批且仍有上游：继续补拉。
 		}
 		if next == "" {
 			return result, nil

@@ -21,7 +21,9 @@ type searchIllustIn struct {
 	SearchTarget     string `json:"search_target,omitempty"`
 	Sort             string `json:"sort,omitempty"`
 	Duration         string `json:"duration,omitempty"`
-	Offset           int    `json:"offset,omitempty"`
+	Offset           *int   `json:"offset,omitempty"`
+	Page             *int   `json:"page,omitempty"`
+	Limit            *int   `json:"limit,omitempty"`
 	SearchR18        bool   `json:"search_r18,omitempty"`
 	Rating           string `json:"rating,omitempty"`
 	ContentType      string `json:"content_type,omitempty"`
@@ -53,6 +55,8 @@ func searchIllustInputSchema() map[string]any {
 			"sort":              stringProperty("Pixiv result order."),
 			"duration":          stringProperty("Pixiv search duration."),
 			"offset":            map[string]any{"type": "integer", "description": "Legacy logical result offset."},
+			"page":              map[string]any{"type": "integer", "description": "1-based logical page; requires a positive limit."},
+			"limit":             map[string]any{"type": "integer", "description": "Maximum logical results; 0 returns all; omit for one logical batch."},
 			"search_r18":        map[string]any{"type": "boolean", "description": "Deprecated compatibility alias for rating=r18."},
 			"rating":            enumProperty("Artwork age rating filter.", "all", "sfw", "r18", "r18g", "mature"),
 			"content_type":      enumProperty("Artwork content type filter.", "all", "illust-and-ugoira", "illust", "manga", "ugoira"),
@@ -139,12 +143,18 @@ func (a *App) searchIllust(ctx context.Context, _ *mcp.CallToolRequest, in searc
 	if in.SearchR18 {
 		filters.Rating = sdk.SearchRatingR18
 	}
+	plan, err := searchIllustListPlan(in)
+	if err != nil {
+		return toolTextError(ctx, err, err.Error())
+	}
 	client, release, err := a.openSDKOperation(ctx)
 	if err != nil {
 		return toolTextError(ctx, err, err.Error())
 	}
 	defer release()
-	items, _, err := collectPages(ctx, offsetPlan(in.Offset), func(ctx context.Context, cursor sdk.Cursor) ([]sdk.Illust, sdk.Cursor, error) {
+	// 本地筛选（rating/AI）可能产生空上游批次；nextNonEmpty + CollectPages 共同保证
+	// 默认逻辑批、limit 填满与 page 逻辑分页都跳过连续空批。
+	items, _, err := collectPages(ctx, plan, func(ctx context.Context, cursor sdk.Cursor) ([]sdk.Illust, sdk.Cursor, error) {
 		return nextNonEmptySearchBatch(ctx, cursor, func(ctx context.Context, cursor sdk.Cursor) ([]sdk.Illust, sdk.Cursor, error) {
 			result, err := client.SearchIllust(ctx, sdk.SearchIllustRequest{Word: word, Target: sdk.SearchTarget(in.SearchTarget), Sort: sdk.SortMode(in.Sort), Duration: in.Duration, Cursor: cursor, Filters: filters})
 			if err != nil {
@@ -159,7 +169,23 @@ func (a *App) searchIllust(ctx context.Context, _ *mcp.CallToolRequest, in searc
 	if len(items) == 0 {
 		return toolText(fmt.Sprintf("抱歉，根据您提供的关键词 '%s'，未能找到相关的插画。", word))
 	}
-	return toolText(fmt.Sprintf("找到 %d 张关于 '%s' 的插画:\n\n%s", len(items), word, formatIllusts(items, in.IncludeThumbnail, in.Offset, false)))
+	displayOffset := plan.skip
+	return toolText(fmt.Sprintf("找到 %d 张关于 '%s' 的插画:\n\n%s", len(items), word, formatIllusts(items, in.IncludeThumbnail, displayOffset, false)))
+}
+
+// searchIllustListPlan 将 search_illust 的 page/limit 与 legacy offset 归一为 mcpListPlan。
+// page+limit 与 offset 互斥；省略 limit 时保持单逻辑批次（含空批补拉）。
+func searchIllustListPlan(in searchIllustIn) (mcpListPlan, error) {
+	if in.Offset != nil && (in.Page != nil || in.Limit != nil) {
+		return mcpListPlan{}, fmt.Errorf("offset cannot be combined with page or limit: %w", errLegacyValidation)
+	}
+	if in.Offset != nil {
+		if *in.Offset < 0 {
+			return mcpListPlan{}, fmt.Errorf("offset must be zero or a positive integer: %w", errLegacyValidation)
+		}
+		return offsetPlan(*in.Offset), nil
+	}
+	return parseMCPListPlan(pageLimitIn{Page: in.Page, Limit: in.Limit})
 }
 
 // nextNonEmptySearchBatch 把 SDK 本地过滤产生的连续空上游批次折叠为一个逻辑

@@ -560,6 +560,33 @@ func TestUserCommandsRouteOptionalIDAndMutationsThroughSDK(t *testing.T) {
 	assert.Equal(t, sdk.UnfollowUserRequest{UserID: 88}, unfollowed)
 }
 
+func TestSearchDefaultOneBatchSkipsLeadingEmptyUpstreamBatches(t *testing.T) {
+	useTempPaths(t)
+	var cursors []sdk.Cursor
+	setTestSDKCommandClient(t, sdkCommandFake{search: func(_ context.Context, request sdk.SearchIllustRequest) (*sdk.IllustListResult, error) {
+		cursors = append(cursors, request.Cursor)
+		switch request.Cursor {
+		case "":
+			// 模拟本地筛选后的空上游批次，但仍有 continuation。
+			return &sdk.IllustListResult{Illusts: nil, NextCursor: "next"}, nil
+		case "next":
+			return &sdk.IllustListResult{Illusts: []sdk.Illust{commandIllust(9)}, NextCursor: "later"}, nil
+		default:
+			return nil, errors.New("unexpected cursor " + string(request.Cursor))
+		}
+	}})
+
+	var stdout, stderr bytes.Buffer
+	require.Equal(t, 0, Run([]string{"pixiv", "search", "miku", "--json"}, strings.NewReader(""), &stdout, &stderr), stderr.String())
+	assert.Equal(t, []sdk.Cursor{"", "next"}, cursors, "default one logical batch must skip leading empty batches")
+	var out struct {
+		Illusts []sdk.Illust `json:"illusts"`
+	}
+	require.NoError(t, json.Unmarshal(stdout.Bytes(), &out))
+	require.Len(t, out.Illusts, 1)
+	assert.Equal(t, int64(9), out.Illusts[0].ID)
+}
+
 func TestListPaginationAndValidationUseOpaqueCursorWithoutCursorFlag(t *testing.T) {
 	useTempPaths(t)
 	var cursors []sdk.Cursor

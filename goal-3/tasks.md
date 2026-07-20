@@ -39,12 +39,12 @@
 
 ## T04 — CLI/MCP 逻辑批次补拉与逻辑分页
 
-- 状态：未开始
+- 状态：已完成
 - 范围：本地筛选启用时跳过连续空批次；默认补拉到首个非空逻辑批次或结束；`--limit N` 填满 N；`--limit 0` 全量；`--page N --limit M` 按过滤后结果分页；SDK 仍一次上游批次。
 - 验收：CLI 与 MCP 公共测试覆盖空批次、limit、page、结束游标。
-- 实际：
-- 证据：
-- 风险/下一步：
+- 实际：`application.TraversePages` 的 `OneBatch` 改为跳过前导空批直至非空或结束；limit 路径本就会跨批填满。MCP `search_illust` 新增 `page`/`limit`，与 legacy `offset` 互斥，经 `searchIllustListPlan` + `nextNonEmptySearchBatch` + `CollectPages` 统一逻辑分页。CLI 默认搜索自动受益。CHANGELOG 已记。
+- 证据：application 三测 RED→GREEN；`TestSearchDefaultOneBatchSkipsLeadingEmptyUpstreamBatches`；MCP `PageLimitFills`/`PageTwo`/`RejectsOffset` 与既有 `ContinuesAfterFilteredEmptyBatch` 通过；`go test -race ./internal/application ./internal/cli ./internal/mcpserver`、vet 通过。
+- 风险/下一步：SDK 仍一次上游批次未改。下一轮 T05 移除冗余 CLI 兼容入口。
 
 ## T05 — 移除冗余 CLI 兼容入口
 
