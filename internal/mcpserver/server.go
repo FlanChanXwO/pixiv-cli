@@ -14,7 +14,7 @@ import (
 
 type DownloadManager interface {
 	SetDownloadPath(string) error
-	Download(context.Context, []int64) ([]download.DownloadedArtwork, error)
+	Download(context.Context, application.DownloadRequest) ([]download.DownloadedArtwork, error)
 }
 
 type App struct {

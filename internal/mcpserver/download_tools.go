@@ -105,7 +105,7 @@ func (a *App) download(ctx context.Context, _ *mcp.CallToolRequest, in downloadI
 
 func (a *App) downloadArtworks(ctx context.Context, ids []int64, client application.SDKClient) ([]download.DownloadedArtwork, error) {
 	if a.newDownloads == nil {
-		return a.downloads.Download(ctx, ids)
+		return a.downloads.Download(ctx, application.DownloadRequest{IllustIDs: ids, Quality: application.DownloadQualityOriginal})
 	}
 	if client == nil {
 		opened, release, err := a.openSDKOperation(ctx)
@@ -115,7 +115,7 @@ func (a *App) downloadArtworks(ctx context.Context, ids []int64, client applicat
 		defer release()
 		client = opened
 	}
-	return a.newDownloads(client).Download(ctx, ids)
+	return a.newDownloads(client).Download(ctx, application.DownloadRequest{IllustIDs: ids, Quality: application.DownloadQualityOriginal})
 }
 
 func downloadResult(out downloadOut) *mcp.CallToolResult {

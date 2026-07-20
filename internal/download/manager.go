@@ -71,11 +71,18 @@ func (m *Manager) DownloadPath() string {
 	return m.downloadPath
 }
 
-func (m *Manager) Download(ctx context.Context, ids []int64) ([]DownloadedArtwork, error) {
-	unique := utils.Deduplicate(ids)
+func (m *Manager) Download(ctx context.Context, request application.DownloadRequest) ([]DownloadedArtwork, error) {
+	unique := utils.Deduplicate(request.IllustIDs)
+	quality := request.Quality
+	if quality == "" {
+		quality = application.DownloadQualityOriginal
+	}
+	if err := application.ValidateDownloadQuality(quality); err != nil {
+		return nil, err
+	}
 	artworks := make([]DownloadedArtwork, 0, len(unique))
 	for _, id := range unique {
-		artwork, err := m.downloadArtwork(ctx, id)
+		artwork, err := m.downloadArtwork(ctx, id, request.Pages, quality)
 		if err != nil {
 			return nil, fmt.Errorf("download illust %d: %w", id, err)
 		}
@@ -84,7 +91,7 @@ func (m *Manager) Download(ctx context.Context, ids []int64) ([]DownloadedArtwor
 	return artworks, nil
 }
 
-func (m *Manager) downloadArtwork(ctx context.Context, id int64) (out DownloadedArtwork, err error) {
+func (m *Manager) downloadArtwork(ctx context.Context, id int64, pages []int, quality application.DownloadQuality) (out DownloadedArtwork, err error) {
 	started := time.Now()
 	defer func() { m.operationLog("download", started, err, id) }()
 	detail, err := m.client.IllustDetail(ctx, id)
@@ -112,41 +119,135 @@ func (m *Manager) downloadArtwork(ctx context.Context, id int64) (out Downloaded
 	}
 
 	if illust.Type == string(sdk.IllustTypeUgoira) {
+		// Ugoira 只支持现有原始 GIF/APNG 流程；派生质量或页选择显式 unsupported。
+		if quality != application.DownloadQualityOriginal {
+			return DownloadedArtwork{}, fmt.Errorf("ugoira quality %q is unsupported; only original is supported", quality)
+		}
+		if len(pages) > 0 {
+			return DownloadedArtwork{}, fmt.Errorf("ugoira page selection is unsupported")
+		}
 		path, err := m.downloadUgoira(ctx, illust, base)
 		if err != nil {
 			return DownloadedArtwork{}, err
 		}
-		artwork.Files = append(artwork.Files, DownloadedFile{Path: path})
-		return artwork, nil
-	}
-	if illust.PageCount <= 1 {
-		rawURL := illust.MetaSinglePage.OriginalImageURL
-		if rawURL == "" {
-			rawURL = text.FirstNonEmpty(illust.ImageURLs.Original, illust.ImageURLs.Large)
-		}
-		if rawURL == "" {
-			return DownloadedArtwork{}, fmt.Errorf("illust %d has no downloadable image url", illust.ID)
-		}
-		path := filepath.Join(base, utils.GenerateFilename(filenameData(illust), 0, m.filenameTemplate)+downloadExtension(rawURL))
-		if err := m.downloadURL(ctx, rawURL, path); err != nil {
-			return DownloadedArtwork{}, err
-		}
-		artwork.Files = append(artwork.Files, DownloadedFile{Path: path})
+		artwork.Files = append(artwork.Files, DownloadedFile{Path: path, Page: 1})
 		return artwork, nil
 	}
 
-	for i, page := range illust.MetaPages {
-		rawURL := text.FirstNonEmpty(page.ImageURLs.Original, page.ImageURLs.Large)
-		if rawURL == "" {
-			return DownloadedArtwork{}, fmt.Errorf("illust %d page %d has no downloadable image url", illust.ID, i)
+	selected, err := selectStaticPages(illust, pages)
+	if err != nil {
+		return DownloadedArtwork{}, err
+	}
+	for _, item := range selected {
+		rawURL, err := selectImageURL(item.urls, item.singleOriginal, quality)
+		if err != nil {
+			return DownloadedArtwork{}, fmt.Errorf("illust %d page %d: %w", illust.ID, item.page1, err)
 		}
-		path := filepath.Join(base, utils.GenerateFilename(filenameData(illust), i, m.filenameTemplate)+downloadExtension(rawURL))
+		// 文件名页索引仍用 0-based，保持既有模板语义；DownloadedFile.Page 改为 1-based 用户页号。
+		path := filepath.Join(base, utils.GenerateFilename(filenameData(illust), item.page1-1, m.filenameTemplate)+downloadExtension(rawURL))
 		if err := m.downloadURL(ctx, rawURL, path); err != nil {
 			return DownloadedArtwork{}, err
 		}
-		artwork.Files = append(artwork.Files, DownloadedFile{Path: path, Page: i})
+		artwork.Files = append(artwork.Files, DownloadedFile{Path: path, Page: item.page1})
 	}
 	return artwork, nil
+}
+
+type staticPage struct {
+	page1          int
+	urls           sdk.ImageURLs
+	singleOriginal string
+}
+
+// selectStaticPages 返回按自然页序排列的 1-based 页。pages 为空表示全部。
+func selectStaticPages(illust sdk.Illust, pages []int) ([]staticPage, error) {
+	total := illust.PageCount
+	if total <= 0 {
+		total = 1
+	}
+	if total == 1 && len(illust.MetaPages) == 0 {
+		if len(pages) > 0 {
+			for _, page := range pages {
+				if page != 1 {
+					return nil, fmt.Errorf("page %d does not exist (page_count=1)", page)
+				}
+			}
+		}
+		return []staticPage{{
+			page1:          1,
+			urls:           illust.ImageURLs,
+			singleOriginal: illust.MetaSinglePage.OriginalImageURL,
+		}}, nil
+	}
+	if len(illust.MetaPages) == 0 {
+		return nil, fmt.Errorf("illust %d has no page metadata", illust.ID)
+	}
+	if total < len(illust.MetaPages) {
+		total = len(illust.MetaPages)
+	}
+	want := map[int]struct{}{}
+	if len(pages) == 0 {
+		for i := 1; i <= len(illust.MetaPages); i++ {
+			want[i] = struct{}{}
+		}
+	} else {
+		for _, page := range pages {
+			if page < 1 || page > total || page > len(illust.MetaPages) {
+				return nil, fmt.Errorf("page %d does not exist (page_count=%d)", page, total)
+			}
+			want[page] = struct{}{}
+		}
+	}
+	var selected []staticPage
+	for i, page := range illust.MetaPages {
+		page1 := i + 1
+		if _, ok := want[page1]; !ok {
+			continue
+		}
+		selected = append(selected, staticPage{page1: page1, urls: page.ImageURLs})
+	}
+	return selected, nil
+}
+
+// selectImageURL 按固定质量语义选 URL：original/regular/small/thumb/mini。
+// mini 优先 SquareMedium（web thumb_mini/mini）；thumb 在 SquareMedium 更像 48 时回退 Medium。
+func selectImageURL(urls sdk.ImageURLs, singleOriginal string, quality application.DownloadQuality) (string, error) {
+	switch quality {
+	case application.DownloadQualityOriginal:
+		raw := text.FirstNonEmpty(singleOriginal, urls.Original, urls.Large)
+		if raw == "" {
+			return "", fmt.Errorf("no original image url")
+		}
+		return raw, nil
+	case application.DownloadQualityRegular:
+		raw := text.FirstNonEmpty(urls.Large, urls.Medium, urls.Original, singleOriginal)
+		if raw == "" {
+			return "", fmt.Errorf("no regular image url")
+		}
+		return raw, nil
+	case application.DownloadQualitySmall:
+		raw := text.FirstNonEmpty(urls.Medium, urls.Large, urls.Original, singleOriginal)
+		if raw == "" {
+			return "", fmt.Errorf("no small image url")
+		}
+		return raw, nil
+	case application.DownloadQualityThumb:
+		// 250x250 居中裁剪：优先 SquareMedium，缺失时 Medium。
+		raw := text.FirstNonEmpty(urls.SquareMedium, urls.Medium, urls.Large, urls.Original, singleOriginal)
+		if raw == "" {
+			return "", fmt.Errorf("no thumb image url")
+		}
+		return raw, nil
+	case application.DownloadQualityMini:
+		// 48x48 居中裁剪：优先 SquareMedium（web mini/thumb_mini）。
+		raw := text.FirstNonEmpty(urls.SquareMedium, urls.Medium, urls.Large, urls.Original, singleOriginal)
+		if raw == "" {
+			return "", fmt.Errorf("no mini image url")
+		}
+		return raw, nil
+	default:
+		return "", fmt.Errorf("quality must be one of original, regular, small, thumb, mini")
+	}
 }
 
 // operationLog 只写稳定诊断字段；下载错误可能携带上游 URL 或文件系统路径，

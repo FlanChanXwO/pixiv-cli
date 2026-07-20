@@ -385,9 +385,9 @@ func TestDownloadDelegatesOperationSnapshotAndFlagOverrides(t *testing.T) {
 		require.Same(t, client, gotClient)
 		require.Equal(t, "/flag/path", gotPath)
 		require.Equal(t, "flag-template", gotTemplate)
-		return downloadManagerFake{download: func(gotContext context.Context, gotIDs []int64) ([]application.DownloadedArtwork, error) {
+		return downloadManagerFake{download: func(gotContext context.Context, request application.DownloadRequest) ([]application.DownloadedArtwork, error) {
 			require.Same(t, ctx, gotContext)
-			require.Equal(t, []int64{42, 84}, gotIDs)
+			require.Equal(t, []int64{42, 84}, request.IllustIDs)
 			return []application.DownloadedArtwork{{
 				IllustID: 42,
 				Title:    "work",
@@ -422,7 +422,7 @@ func TestDownloadDelegatesRuntimePathAndTemplateWithoutFlags(t *testing.T) {
 	}, config.RuntimeConfig{DownloadPath: "/runtime/path", FilenameTemplate: "runtime-template"}, func(_ application.DownloadClient, path, template string) (application.DownloadManager, error) {
 		require.Equal(t, "/runtime/path", path)
 		require.Equal(t, "runtime-template", template)
-		return downloadManagerFake{download: func(context.Context, []int64) ([]application.DownloadedArtwork, error) {
+		return downloadManagerFake{download: func(context.Context, application.DownloadRequest) ([]application.DownloadedArtwork, error) {
 			return nil, nil
 		}}, nil
 	})
@@ -457,7 +457,7 @@ func TestDownloadReportsManagerFailure(t *testing.T) {
 	setTestDownloadCommandServices(t, func(application.SDKClientRequest) (application.SDKClient, error) {
 		return &sdkCommandFake{}, nil
 	}, config.RuntimeConfig{}, func(application.DownloadClient, string, string) (application.DownloadManager, error) {
-		return downloadManagerFake{download: func(context.Context, []int64) ([]application.DownloadedArtwork, error) {
+		return downloadManagerFake{download: func(context.Context, application.DownloadRequest) ([]application.DownloadedArtwork, error) {
 			return nil, want
 		}}, nil
 	})
@@ -475,7 +475,7 @@ func TestDownloadPreservesJSONOutputShape(t *testing.T) {
 	setTestDownloadCommandServices(t, func(application.SDKClientRequest) (application.SDKClient, error) {
 		return &sdkCommandFake{}, nil
 	}, config.RuntimeConfig{}, func(application.DownloadClient, string, string) (application.DownloadManager, error) {
-		return downloadManagerFake{download: func(context.Context, []int64) ([]application.DownloadedArtwork, error) {
+		return downloadManagerFake{download: func(context.Context, application.DownloadRequest) ([]application.DownloadedArtwork, error) {
 			return []application.DownloadedArtwork{{
 				IllustID: 42,
 				Title:    "work",
@@ -493,12 +493,40 @@ func TestDownloadPreservesJSONOutputShape(t *testing.T) {
 	require.JSONEq(t, `[{"IllustID":42,"Title":"work","Author":"artist","Type":"illust","Files":[{"Path":"/downloads/42.jpg","Page":2}]}]`, stdout.String())
 }
 
-type downloadManagerFake struct {
-	download func(context.Context, []int64) ([]application.DownloadedArtwork, error)
+func TestDownloadRejectsInvalidPagesAndQuality(t *testing.T) {
+	useTempPaths(t)
+	for _, test := range []struct {
+		name string
+		args []string
+		want string
+	}{
+		{name: "pages", args: []string{"--pages", "0"}, want: "page numbers must be positive"},
+		{name: "quality", args: []string{"--quality", "huge"}, want: "quality must be one of"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			calls := 0
+			setTestDownloadCommandServices(t, func(application.SDKClientRequest) (application.SDKClient, error) {
+				calls++
+				return sdkCommandFake{}, nil
+			}, config.RuntimeConfig{}, func(application.DownloadClient, string, string) (application.DownloadManager, error) {
+				calls++
+				return downloadManagerFake{}, nil
+			})
+			var stdout, stderr bytes.Buffer
+			code := Run(append([]string{"pixiv", "download", "42"}, test.args...), strings.NewReader(""), &stdout, &stderr)
+			require.NotZero(t, code)
+			assert.Contains(t, stderr.String(), test.want)
+			assert.Zero(t, calls)
+		})
+	}
 }
 
-func (m downloadManagerFake) Download(ctx context.Context, ids []int64) ([]application.DownloadedArtwork, error) {
-	return m.download(ctx, ids)
+type downloadManagerFake struct {
+	download func(context.Context, application.DownloadRequest) ([]application.DownloadedArtwork, error)
+}
+
+func (m downloadManagerFake) Download(ctx context.Context, request application.DownloadRequest) ([]application.DownloadedArtwork, error) {
+	return m.download(ctx, request)
 }
 
 func setTestDownloadCommandServices(t *testing.T, newClient application.SDKClientFactory, runtime config.RuntimeConfig, newManager application.DownloadManagerFactory) {

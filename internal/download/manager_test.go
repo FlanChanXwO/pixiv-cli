@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"github.com/FlanChanXwO/pixiv-cli/internal/application"
 	"os"
 	"path/filepath"
 	"slices"
@@ -72,7 +73,7 @@ func TestDownloadSingleArtworkReturnsPath(t *testing.T) {
 	}
 	m := NewManager(client, nil, dir, "{id}")
 
-	got, err := m.Download(context.Background(), []int64{42})
+	got, err := m.Download(context.Background(), application.DownloadRequest{IllustIDs: []int64{42}})
 	if err != nil {
 		t.Fatalf("Download returned error: %v", err)
 	}
@@ -101,7 +102,7 @@ func TestDownloadSingleArtworkSanitizesExtensionFromURL(t *testing.T) {
 	}
 	m := NewManager(client, nil, dir, "{id}")
 
-	got, err := m.Download(context.Background(), []int64{42})
+	got, err := m.Download(context.Background(), application.DownloadRequest{IllustIDs: []int64{42}})
 	if err != nil {
 		t.Fatalf("Download returned error: %v", err)
 	}
@@ -149,7 +150,7 @@ func TestDownloadSingleArtworkNormalizesPlatformInvalidExtensionEndings(t *testi
 			}
 			m := NewManager(client, nil, dir, "{id}")
 
-			got, err := m.Download(context.Background(), []int64{42})
+			got, err := m.Download(context.Background(), application.DownloadRequest{IllustIDs: []int64{42}})
 			if err != nil {
 				t.Fatalf("Download returned error: %v", err)
 			}
@@ -194,7 +195,7 @@ func TestDownloadSingleArtworkWithoutURLExtensionDoesNotInventOne(t *testing.T) 
 	}
 	m := NewManager(client, nil, dir, "{id}")
 
-	got, err := m.Download(context.Background(), []int64{42})
+	got, err := m.Download(context.Background(), application.DownloadRequest{IllustIDs: []int64{42}})
 	if err != nil {
 		t.Fatalf("Download returned error: %v", err)
 	}
@@ -222,7 +223,7 @@ func TestDownloadUsesSDKResourceReferenceAndDestination(t *testing.T) {
 	}
 	m := NewManager(client, nil, dir, "{id}")
 
-	if _, err := m.Download(context.Background(), []int64{42}); err != nil {
+	if _, err := m.Download(context.Background(), application.DownloadRequest{IllustIDs: []int64{42}}); err != nil {
 		t.Fatalf("Download returned error: %v", err)
 	}
 	if got := client.parsedURLs; !slices.Equal(got, []string{"https://i.example/42.jpg"}) {
@@ -252,7 +253,7 @@ func TestDownloadKeepsArtworkInsideDownloadRoot(t *testing.T) {
 	}
 	m := NewManager(client, nil, dir, "../escape/{id}")
 
-	got, err := m.Download(context.Background(), []int64{42})
+	got, err := m.Download(context.Background(), application.DownloadRequest{IllustIDs: []int64{42}})
 	if err != nil {
 		t.Fatalf("Download returned error: %v", err)
 	}
@@ -292,7 +293,7 @@ func TestDownloadFailureDoesNotReplaceExistingFile(t *testing.T) {
 	}
 	m := NewManager(client, nil, dir, "{id}")
 
-	_, err := m.Download(context.Background(), []int64{42})
+	_, err := m.Download(context.Background(), application.DownloadRequest{IllustIDs: []int64{42}})
 	if err == nil {
 		t.Fatal("Download returned nil error")
 	}
@@ -322,7 +323,7 @@ func TestDownloadSuccessReplacesExistingFile(t *testing.T) {
 	}
 	m := NewManager(client, nil, dir, "{id}")
 
-	if _, err := m.Download(context.Background(), []int64{42}); err != nil {
+	if _, err := m.Download(context.Background(), application.DownloadRequest{IllustIDs: []int64{42}}); err != nil {
 		t.Fatalf("Download returned error: %v", err)
 	}
 	assertFileBody(t, target, "new")
@@ -351,7 +352,7 @@ func TestDownloadMultiPageArtworkReturnsAllPaths(t *testing.T) {
 	}
 	m := NewManager(client, nil, dir, "{id}")
 
-	got, err := m.Download(context.Background(), []int64{7})
+	got, err := m.Download(context.Background(), application.DownloadRequest{IllustIDs: []int64{7}})
 	if err != nil {
 		t.Fatalf("Download returned error: %v", err)
 	}
@@ -390,7 +391,7 @@ func TestDownloadMultiPageArtworkSanitizesExtensionsFromURLs(t *testing.T) {
 	}
 	m := NewManager(client, nil, dir, "{id}")
 
-	got, err := m.Download(context.Background(), []int64{7})
+	got, err := m.Download(context.Background(), application.DownloadRequest{IllustIDs: []int64{7}})
 	if err != nil {
 		t.Fatalf("Download returned error: %v", err)
 	}
@@ -499,7 +500,7 @@ func TestDownloadUgoiraZipFailureCleansTemporaryZip(t *testing.T) {
 	m := NewManager(client, nil, dir, "{id}")
 	m.SetUgoiraEncoder(&recordingUgoiraEncoder{output: []byte("gif")})
 
-	_, err := m.Download(context.Background(), []int64{9})
+	_, err := m.Download(context.Background(), application.DownloadRequest{IllustIDs: []int64{9}})
 	if err == nil {
 		t.Fatal("Download returned nil error")
 	}
@@ -537,7 +538,7 @@ func TestDownloadUgoiraReturnsFinalGIFOnly(t *testing.T) {
 	m := NewManager(client, nil, dir, "{id}")
 	m.SetUgoiraEncoder(encoder)
 
-	got, err := m.Download(context.Background(), []int64{9})
+	got, err := m.Download(context.Background(), application.DownloadRequest{IllustIDs: []int64{9}})
 	if err != nil {
 		t.Fatalf("Download returned error: %v", err)
 	}
@@ -560,8 +561,8 @@ func TestDownloadMissingImageURLReturnsError(t *testing.T) {
 		},
 	}, nil, t.TempDir(), "{id}")
 
-	_, err := m.Download(context.Background(), []int64{1})
-	if err == nil || !strings.Contains(err.Error(), "no downloadable image url") {
+	_, err := m.Download(context.Background(), application.DownloadRequest{IllustIDs: []int64{1}})
+	if err == nil || !strings.Contains(err.Error(), "no original image url") {
 		t.Fatalf("Download error = %v", err)
 	}
 }
@@ -580,7 +581,7 @@ func TestDownloadUgoiraWithoutFFmpegUsesRustEncoder(t *testing.T) {
 	encoder := &recordingUgoiraEncoder{output: []byte("gif")}
 	m.SetUgoiraEncoder(encoder)
 
-	got, err := m.Download(context.Background(), []int64{1})
+	got, err := m.Download(context.Background(), application.DownloadRequest{IllustIDs: []int64{1}})
 	if err != nil {
 		t.Fatalf("Download returned error: %v", err)
 	}

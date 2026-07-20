@@ -308,8 +308,14 @@ func (a app) newRecommendedCommand() *cobra.Command {
 	return cmd
 }
 
+type downloadOptions struct {
+	commandOptions
+	pages   string
+	quality string
+}
+
 func (a app) newDownloadCommand() *cobra.Command {
-	var opts commandOptions
+	opts := downloadOptions{quality: string(application.DownloadQualityOriginal)}
 	cmd := &cobra.Command{
 		Use:   "download ILLUST_ID...",
 		Short: "Download illustrations",
@@ -318,11 +324,14 @@ func (a app) newDownloadCommand() *cobra.Command {
 			return a.runDownload(cmd, args, opts)
 		},
 	}
-	a.bindCommonFlags(cmd, &opts)
+	a.bindCommonFlags(cmd, &opts.commandOptions)
+	flags := cmd.Flags()
+	flags.StringVar(&opts.pages, "pages", "", "1-based page selection, e.g. 1,3-5; default all pages")
+	flags.StringVar(&opts.quality, "quality", opts.quality, "static image quality: original, regular, small, thumb, mini")
 	return cmd
 }
 
-func (a app) runDownload(cmd *cobra.Command, args []string, opts commandOptions) error {
+func (a app) runDownload(cmd *cobra.Command, args []string, opts downloadOptions) error {
 	ids := make([]int64, 0, len(args))
 	for _, arg := range args {
 		id, err := parse.PositiveInt64(arg, fmt.Sprintf("illust_id %q", arg))
@@ -331,8 +340,19 @@ func (a app) runDownload(cmd *cobra.Command, args []string, opts commandOptions)
 		}
 		ids = append(ids, id)
 	}
+	pages, err := application.ParsePageSpec(opts.pages)
+	if err != nil {
+		return err
+	}
+	quality := application.DownloadQuality(opts.quality)
+	if quality == "" {
+		quality = application.DownloadQualityOriginal
+	}
+	if err := application.ValidateDownloadQuality(quality); err != nil {
+		return err
+	}
 	services := a.services()
-	clientReq, err := a.clientRequest(cmd, opts, false)
+	clientReq, err := a.clientRequest(cmd, opts.commandOptions, false)
 	if err != nil {
 		return err
 	}
@@ -360,6 +380,8 @@ func (a app) runDownload(cmd *cobra.Command, args []string, opts commandOptions)
 		IllustIDs:        ids,
 		DownloadPath:     runtime.DownloadPath,
 		FilenameTemplate: runtime.FilenameTemplate,
+		Pages:            pages,
+		Quality:          quality,
 	})
 	if err != nil {
 		return err

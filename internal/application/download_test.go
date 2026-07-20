@@ -36,9 +36,9 @@ func TestDownloadServiceDelegatesOperationClientAndRequest(t *testing.T) {
 		Type:     "illust",
 		Files:    []application.DownloadedFile{{Path: "/tmp/downloads/42.jpg", Page: 3}},
 	}}
-	manager := &downloadManagerStub{download: func(gotContext context.Context, gotIDs []int64) ([]application.DownloadedArtwork, error) {
+	manager := &downloadManagerStub{download: func(gotContext context.Context, request application.DownloadRequest) ([]application.DownloadedArtwork, error) {
 		require.Same(t, ctx, gotContext)
-		require.Equal(t, []int64{42, 84}, gotIDs)
+		require.Equal(t, []int64{42, 84}, request.IllustIDs)
 		return want, nil
 	}}
 	service := application.DownloadService{NewManager: func(gotClient application.DownloadClient, gotPath, gotTemplate string) (application.DownloadManager, error) {
@@ -68,7 +68,7 @@ func TestDownloadServiceRejectsMissingOperationClient(t *testing.T) {
 	factoryCalled := false
 	service := application.DownloadService{NewManager: func(application.DownloadClient, string, string) (application.DownloadManager, error) {
 		factoryCalled = true
-		return &downloadManagerStub{download: func(context.Context, []int64) ([]application.DownloadedArtwork, error) {
+		return &downloadManagerStub{download: func(context.Context, application.DownloadRequest) ([]application.DownloadedArtwork, error) {
 			return nil, nil
 		}}, nil
 	}}
@@ -84,7 +84,7 @@ func TestDownloadServiceRejectsTypedNilOperationClient(t *testing.T) {
 	factoryCalls := 0
 	service := application.DownloadService{NewManager: func(application.DownloadClient, string, string) (application.DownloadManager, error) {
 		factoryCalls++
-		return &downloadManagerStub{download: func(context.Context, []int64) ([]application.DownloadedArtwork, error) {
+		return &downloadManagerStub{download: func(context.Context, application.DownloadRequest) ([]application.DownloadedArtwork, error) {
 			return nil, nil
 		}}, nil
 	}}
@@ -119,7 +119,7 @@ func TestDownloadServiceRejectsTypedNilManager(t *testing.T) {
 func TestDownloadServicePropagatesManagerFailure(t *testing.T) {
 	want := errors.New("download failed")
 	service := application.DownloadService{NewManager: func(application.DownloadClient, string, string) (application.DownloadManager, error) {
-		return &downloadManagerStub{download: func(context.Context, []int64) ([]application.DownloadedArtwork, error) {
+		return &downloadManagerStub{download: func(context.Context, application.DownloadRequest) ([]application.DownloadedArtwork, error) {
 			return nil, want
 		}}, nil
 	}}
@@ -130,17 +130,17 @@ func TestDownloadServicePropagatesManagerFailure(t *testing.T) {
 }
 
 type downloadManagerStub struct {
-	download func(context.Context, []int64) ([]application.DownloadedArtwork, error)
+	download func(context.Context, application.DownloadRequest) ([]application.DownloadedArtwork, error)
 }
 
 type typedNilDownloadManager struct{}
 
-func (*typedNilDownloadManager) Download(context.Context, []int64) ([]application.DownloadedArtwork, error) {
+func (*typedNilDownloadManager) Download(context.Context, application.DownloadRequest) ([]application.DownloadedArtwork, error) {
 	panic("typed-nil download manager must not be called")
 }
 
-func (m *downloadManagerStub) Download(ctx context.Context, ids []int64) ([]application.DownloadedArtwork, error) {
-	return m.download(ctx, ids)
+func (m *downloadManagerStub) Download(ctx context.Context, request application.DownloadRequest) ([]application.DownloadedArtwork, error) {
+	return m.download(ctx, request)
 }
 
 type downloadClientStub struct{}

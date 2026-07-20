@@ -2705,7 +2705,9 @@ type fakeDownloads struct {
 }
 
 func (fakeDownloads) SetDownloadPath(string) error { return nil }
-func (d *fakeDownloads) Download(_ context.Context, ids []int64) ([]download.DownloadedArtwork, error) {
+func (d *fakeDownloads) Download(_ context.Context, request application.DownloadRequest) ([]download.DownloadedArtwork, error) {
+	ids := request.IllustIDs
+
 	d.downloadCalls++
 	d.downloadIDs = append([]int64(nil), ids...)
 	return d.artworks, d.err

@@ -17,6 +17,22 @@ type DownloadClient interface {
 	Download(context.Context, sdk.ResourceRef, string) error
 }
 
+// 质量与页选择契约由 public SDK 拥有，application 仅 alias 以便 CLI/MCP 共用。
+type DownloadQuality = sdk.DownloadQuality
+
+const (
+	DownloadQualityOriginal = sdk.DownloadQualityOriginal
+	DownloadQualityRegular  = sdk.DownloadQualityRegular
+	DownloadQualitySmall    = sdk.DownloadQualitySmall
+	DownloadQualityThumb    = sdk.DownloadQualityThumb
+	DownloadQualityMini     = sdk.DownloadQualityMini
+)
+
+var (
+	ParsePageSpec           = sdk.ParsePageSpec
+	ValidateDownloadQuality = sdk.ValidateDownloadQuality
+)
+
 type DownloadedArtwork struct {
 	IllustID int64
 	Title    string
@@ -30,8 +46,9 @@ type DownloadedFile struct {
 	Page int
 }
 
+// DownloadManager 接收完整 DownloadRequest，避免 CLI/MCP 与实现各自解析 pages/quality。
 type DownloadManager interface {
-	Download(context.Context, []int64) ([]DownloadedArtwork, error)
+	Download(context.Context, DownloadRequest) ([]DownloadedArtwork, error)
 }
 
 type DownloadManagerFactory func(client DownloadClient, downloadPath, filenameTemplate string) (DownloadManager, error)
@@ -40,6 +57,10 @@ type DownloadRequest struct {
 	IllustIDs        []int64
 	DownloadPath     string
 	FilenameTemplate string
+	// Pages 为 1-based 页码列表；空表示全部页。由 ParsePageSpec 生成。
+	Pages []int
+	// Quality 默认 original。
+	Quality DownloadQuality
 }
 
 type DownloadService struct {
@@ -54,6 +75,12 @@ func (s DownloadService) Download(ctx context.Context, client DownloadClient, re
 	if isNilLike(client) {
 		return nil, errors.New("download operation client is not configured")
 	}
+	if request.Quality == "" {
+		request.Quality = DownloadQualityOriginal
+	}
+	if err := ValidateDownloadQuality(request.Quality); err != nil {
+		return nil, err
+	}
 	manager, err := s.NewManager(client, request.DownloadPath, request.FilenameTemplate)
 	if err != nil {
 		return nil, err
@@ -61,7 +88,7 @@ func (s DownloadService) Download(ctx context.Context, client DownloadClient, re
 	if isNilLike(manager) {
 		return nil, errors.New("download manager factory returned nil")
 	}
-	return manager.Download(ctx, request.IllustIDs)
+	return manager.Download(ctx, request)
 }
 
 // isNilLike 处理 Go interface 携带 typed nil 的情况；仅对允许 IsNil 的 kind

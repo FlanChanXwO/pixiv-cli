@@ -83,12 +83,12 @@
 
 ## T08 — 下载 pages/quality 解析与 public SDK 暴露
 
-- 状态：未开始
+- 状态：已完成
 - 范围：实现 `--pages 1,3-5`（1-based 闭区间、去重、自然序）与 `--quality original|regular|small|thumb|mini`；静态图质量语义按计划；页不存在报错；Ugoira 派生质量/页选择 unsupported；暴露到 public SDK 与结果类型；重构避免循环依赖。
 - 验收：SDK/download 单元测试覆盖解析、质量、Ugoira 拒绝、错误路径。
-- 实际：
-- 证据：
-- 风险/下一步：
+- 实际：public SDK 拥有 `ParsePageSpec`/`DownloadQuality`/`DownloadOptions`；application alias 并扩展 `DownloadRequest`/`DownloadManager`；download.Manager 按页与质量选 URL，`DownloadedFile.Page` 改为 1-based；CLI 增加 `--pages`/`--quality`。无 public↔ download 循环依赖。
+- 证据：`TestParsePageSpec*`、`TestDownloadPagesSelection*`、`TestDownloadQualitySelectsMappedURLs`、`TestDownloadUgoiraRejectsQualityAndPages`、CLI 非法参数测试；相关包 test/vet 通过。
+- 风险/下一步：MCP 参数与本地文件交付在 T09。
 
 ## T09 — CLI/MCP 接入下载 pages/quality，MCP 仅本地文件交付
 

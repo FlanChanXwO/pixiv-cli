@@ -1,5 +1,6 @@
 ## [Unreleased]
 ### Added
+- 下载新增 `--pages`（1-based，支持 `1,3-5`）与 `--quality original|regular|small|thumb|mini`；默认仍下载全部原图。Ugoira 对派生质量或页选择返回 unsupported。public SDK 暴露 `ParsePageSpec`/`DownloadQuality`/`DownloadOptions`。
 - 所有作品模型、CLI JSON/文本与 MCP 结构化/文本输出增加作品页 `url`（`https://www.pixiv.net/artworks/${id}`），JSON 为 public Illust 首字段，文本输出放在每件作品第一行。
 
 ### Changed
