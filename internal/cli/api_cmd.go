@@ -395,11 +395,17 @@ func printIllust(w io.Writer, illust sdk.Illust, rank int, compact bool) {
 	for _, tag := range illust.Tags {
 		tags = append(tags, tag.Name)
 	}
+	url := illust.URL
+	if url == "" && illust.ID > 0 {
+		url = fmt.Sprintf("https://www.pixiv.net/artworks/%d", illust.ID)
+	}
 	if compact {
-		fmt.Fprintf(w, "%s%d %q by %s bookmarks:%d views:%d tags:%s\n",
-			prefix, illust.ID, illust.Title, illust.User.Name, illust.TotalBookmarks, illust.TotalView, strings.Join(tags, ","))
+		fmt.Fprintf(w, "%s%s\n", prefix, url)
+		fmt.Fprintf(w, "%d %q by %s bookmarks:%d views:%d tags:%s\n",
+			illust.ID, illust.Title, illust.User.Name, illust.TotalBookmarks, illust.TotalView, strings.Join(tags, ","))
 		return
 	}
+	fmt.Fprintf(w, "url: %s\n", url)
 	fmt.Fprintf(w, "id: %d\n", illust.ID)
 	fmt.Fprintf(w, "title: %s\n", illust.Title)
 	fmt.Fprintf(w, "author: %s (%d)\n", illust.User.Name, illust.User.ID)

@@ -18,7 +18,8 @@ func TestMapIllustPreservesEveryNormalizedField(t *testing.T) {
 		AIType:         2, CreateDate: "2026-07-12", Width: 8, Height: 9, Tools: []string{"tool-a", "tool-b"},
 	}
 	want := model.Illust{
-		ID: 1, Title: "title", Type: "manga", PageCount: 2, TotalBookmarks: 3, TotalView: 4, XRestrict: 1,
+		URL: "https://www.pixiv.net/artworks/1",
+		ID:  1, Title: "title", Type: "manga", PageCount: 2, TotalBookmarks: 3, TotalView: 4, XRestrict: 1,
 		User:           model.User{ID: 5, Name: "name", Account: "account", Comment: "comment", IsFollowed: true},
 		Tags:           []model.Tag{{Name: "tag", TranslatedName: "translated"}},
 		ImageURLs:      model.ImageURLs{SquareMedium: "square", Medium: "medium", Large: "large", Original: "original"},

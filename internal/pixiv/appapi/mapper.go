@@ -1,6 +1,10 @@
 package appapi
 
-import "github.com/FlanChanXwO/pixiv-cli/internal/pixiv/model"
+import (
+	"fmt"
+
+	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/model"
+)
 
 func mapIllustList(dto illustListDTO) model.IllustList {
 	var result model.IllustList
@@ -33,7 +37,8 @@ func mapIllust(dto illustDTO) model.Illust {
 		pages[i] = mapMetaPage(page)
 	}
 	return model.Illust{
-		ID: dto.ID, Title: dto.Title, Type: dto.Type, PageCount: dto.PageCount,
+		URL: artworkURL(dto.ID),
+		ID:  dto.ID, Title: dto.Title, Type: dto.Type, PageCount: dto.PageCount,
 		TotalBookmarks: dto.TotalBookmarks, TotalView: dto.TotalView, XRestrict: dto.XRestrict,
 		User: mapUser(dto.User), Tags: tags, ImageURLs: mapImageURLs(dto.ImageURLs),
 		MetaSinglePage: model.SinglePage{OriginalImageURL: dto.MetaSinglePage.OriginalImageURL}, MetaPages: pages,
@@ -180,4 +185,12 @@ func mapUgoiraMetadata(dto ugoiraMetadataResultDTO) model.UgoiraMetadataResult {
 		result.UgoiraMetadata.Frames[i] = model.UgoiraFrame{File: frame.File, Delay: frame.Delay}
 	}
 	return result
+}
+
+// artworkURL 固定作品页 URL；public SDK/CLI/MCP 统一使用该格式。
+func artworkURL(id int64) string {
+	if id <= 0 {
+		return ""
+	}
+	return "https://www.pixiv.net/artworks/" + fmt.Sprint(id)
 }

@@ -1,6 +1,7 @@
 package webapi
 
 import (
+	"fmt"
 	"net/url"
 	"path"
 	"strconv"
@@ -17,6 +18,7 @@ func mapSearchIllust(item webSearchIllust) model.Illust {
 	}
 	imageURLs := model.ImageURLs{SquareMedium: item.URL, Medium: item.URL}
 	return model.Illust{
+		URL:       artworkURL(int64(item.ID)),
 		ID:        int64(item.ID),
 		Title:     item.Title,
 		Type:      illustType(int(item.IllustType)),
@@ -44,6 +46,7 @@ func mapDetailIllust(item webIllustDetail, metaPages []model.MetaPage) model.Ill
 		pageCount = len(metaPages)
 	}
 	illust := model.Illust{
+		URL:            artworkURL(int64(firstFlexInt64(item.ID, item.IllustID))),
 		ID:             int64(firstFlexInt64(item.ID, item.IllustID)),
 		Title:          text.FirstNonEmpty(item.Title, item.IllustTitle),
 		Type:           illustType(int(item.IllustType)),
@@ -84,6 +87,7 @@ func mapRankingIllust(item webRankingItem) model.Illust {
 		tags = append(tags, model.Tag{Name: tag})
 	}
 	return model.Illust{
+		URL:            artworkURL(int64(item.IllustID)),
 		ID:             int64(item.IllustID),
 		Title:          item.Title,
 		Type:           illustType(int(item.IllustType)),
@@ -157,4 +161,11 @@ func firstFlexInt64(values ...flexInt64) flexInt64 {
 		}
 	}
 	return 0
+}
+
+func artworkURL(id int64) string {
+	if id <= 0 {
+		return ""
+	}
+	return "https://www.pixiv.net/artworks/" + fmt.Sprint(id)
 }

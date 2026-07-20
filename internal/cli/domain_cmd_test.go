@@ -368,7 +368,7 @@ func setTestSDKCommandFactory(t *testing.T, factory application.SDKClientFactory
 }
 
 func commandIllust(id int64) sdk.Illust {
-	return sdk.Illust{ID: id, Title: "work", User: sdk.User{Name: "artist"}}
+	return sdk.Illust{URL: fmt.Sprintf("https://www.pixiv.net/artworks/%d", id), ID: id, Title: "work", User: sdk.User{Name: "artist"}}
 }
 
 func TestUserDetailRoutesRequiredIDAndPrintsCompleteSDKJSON(t *testing.T) {

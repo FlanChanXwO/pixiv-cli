@@ -350,6 +350,7 @@ func mapIllust(illust model.Illust) Illust {
 		tags[index] = Tag{Name: tag.Name, TranslatedName: tag.TranslatedName}
 	}
 	return Illust{
+		URL:            artworkURL(illust.ID),
 		ID:             illust.ID,
 		Title:          illust.Title,
 		Type:           illust.Type,
@@ -408,4 +409,11 @@ func mapImageURLs(urls model.ImageURLs) ImageURLs {
 		Large:        urls.Large,
 		Original:     urls.Original,
 	}
+}
+
+func artworkURL(id int64) string {
+	if id <= 0 {
+		return ""
+	}
+	return "https://www.pixiv.net/artworks/" + fmt.Sprint(id)
 }

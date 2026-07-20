@@ -74,12 +74,12 @@
 
 ## T07 — public Illust 与输出加入首字段 `url`
 
-- 状态：未开始
+- 状态：已完成
 - 范围：所有 public `Illust`、CLI JSON、MCP 结构化输出及嵌套推荐作品加入 `url=https://www.pixiv.net/artworks/${pid}` 为首字段；CLI/MCP 文本输出把 URL 放在每件作品第一行。
 - 验收：JSON 字段序与文本输出契约测试通过；不新增 like 字段。
-- 实际：
-- 证据：
-- 风险/下一步：
+- 实际：public/internal Illust 增加首字段 `URL`；appapi/webapi/public mapper 生成固定作品页 URL；CLI `printIllust` 与 MCP `formatIllust`/`formatSDKIllusts` 将 URL 置于每件作品第一行；MCP `normalizeIllusts` 补全 URL 与空数组字段。
+- 证据：`TestIllustJSONPutsURLFirstAndUsesArtworkPage`、`TestClientIllustDetailEnrichesCompletePages` URL 序断言、CLI/MCP/appapi/webapi 包测试通过；CHANGELOG Added 已记。
+- 风险/下一步：嵌套推荐经同一 Illust 模型自动带 url。下一轮 T08：下载 pages/quality。
 
 ## T08 — 下载 pages/quality 解析与 public SDK 暴露
 

@@ -182,8 +182,17 @@ func normalizeIllusts(items []sdk.Illust) []sdk.Illust {
 	result := make([]sdk.Illust, len(items))
 	copy(result, items)
 	for index := range result {
+		if result[index].URL == "" && result[index].ID > 0 {
+			result[index].URL = fmt.Sprintf("https://www.pixiv.net/artworks/%d", result[index].ID)
+		}
 		if result[index].Tools == nil {
 			result[index].Tools = []string{}
+		}
+		if result[index].Tags == nil {
+			result[index].Tags = []sdk.Tag{}
+		}
+		if result[index].MetaPages == nil {
+			result[index].MetaPages = []sdk.MetaPage{}
 		}
 	}
 	return result

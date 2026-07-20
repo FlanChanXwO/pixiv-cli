@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync/atomic"
 	"testing"
 
@@ -177,13 +178,26 @@ func TestClientIllustDetailEnrichesCompletePages(t *testing.T) {
 		t.Fatalf("json.Unmarshal(illust) error = %v", err)
 	}
 	for _, key := range []string{
-		"id", "title", "type", "page_count", "total_bookmarks", "total_view", "x_restrict",
+		"url", "id", "title", "type", "page_count", "total_bookmarks", "total_view", "x_restrict",
 		"user", "tags", "image_urls", "meta_single_page", "meta_pages",
 		"ai_type", "create_date", "width", "height",
 	} {
 		if _, ok := illustJSON[key]; !ok {
 			t.Errorf("illust JSON missing key %q: %s", key, encoded)
 		}
+	}
+
+	encodedText := string(encoded)
+	if !strings.Contains(encodedText, `"url":"https://www.pixiv.net/artworks/123"`) {
+		t.Errorf("illust JSON missing artwork url: %s", encodedText)
+	}
+	illustStart := strings.Index(encodedText, `"illust":{`)
+	if illustStart < 0 {
+		t.Fatalf("detail JSON missing illust object: %s", encodedText)
+	}
+	illustBody := encodedText[illustStart+len(`"illust":`):]
+	if !strings.HasPrefix(illustBody, `{"url":`) {
+		t.Errorf("illust JSON field order = %s, want url first", illustBody)
 	}
 
 	var pagesJSON []map[string]json.RawMessage

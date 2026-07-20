@@ -25,8 +25,13 @@ func formatIllust(illust sdk.Illust) string {
 	for _, tag := range illust.Tags {
 		tags = append(tags, tag.Name)
 	}
-	return fmt.Sprintf("ID: %d - %q\n  作者: %s (ID: %d)\n  类型: %s\n  标签: %s\n  收藏数: %d, 浏览数: %d",
-		illust.ID, illust.Title, illust.User.Name, illust.User.ID, illust.Type, strings.Join(tags, ", "), illust.TotalBookmarks, illust.TotalView)
+	// 作品页 URL 固定放在每件作品文本的第一行，便于 Agent/人类直接打开。
+	url := illust.URL
+	if url == "" && illust.ID > 0 {
+		url = fmt.Sprintf("https://www.pixiv.net/artworks/%d", illust.ID)
+	}
+	return fmt.Sprintf("%s\nID: %d - %q\n  作者: %s (ID: %d)\n  类型: %s\n  标签: %s\n  收藏数: %d, 浏览数: %d",
+		url, illust.ID, illust.Title, illust.User.Name, illust.User.ID, illust.Type, strings.Join(tags, ", "), illust.TotalBookmarks, illust.TotalView)
 }
 
 func formatUsers(users []sdk.UserPreview) string {
@@ -51,12 +56,7 @@ func formatUsers(users []sdk.UserPreview) string {
 func formatSDKIllusts(illusts []sdk.Illust) string {
 	lines := make([]string, 0, len(illusts))
 	for _, illust := range illusts {
-		tags := make([]string, 0, len(illust.Tags))
-		for _, tag := range illust.Tags {
-			tags = append(tags, tag.Name)
-		}
-		lines = append(lines, fmt.Sprintf("ID: %d - %q\n  作者: %s (ID: %d)\n  类型: %s\n  标签: %s\n  收藏数: %d, 浏览数: %d",
-			illust.ID, illust.Title, illust.User.Name, illust.User.ID, illust.Type, strings.Join(tags, ", "), illust.TotalBookmarks, illust.TotalView))
+		lines = append(lines, formatIllust(illust))
 	}
 	return strings.Join(lines, "\n\n")
 }

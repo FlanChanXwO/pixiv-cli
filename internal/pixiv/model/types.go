@@ -60,6 +60,7 @@ type RecommendedUserList struct {
 }
 
 type Illust struct {
+	URL            string     `json:"url"`
 	ID             int64      `json:"id"`
 	Title          string     `json:"title"`
 	Type           string     `json:"type"`

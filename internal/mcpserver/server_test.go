@@ -1615,7 +1615,7 @@ func TestIllustRankingUsesStableLabelAndPreservesRequestAndRank(t *testing.T) {
 	if len(requests) != 1 || requests[0].Mode != sdk.RankingModeDayMale || requests[0].Date != "2025-02-03" || requests[0].Cursor != "" {
 		t.Fatalf("ranking requests = %+v", requests)
 	}
-	if !strings.HasPrefix(out.Text, "男性向每日排行榜:\n\n") || !strings.Contains(out.Text, "第 3 名: ID: 13") {
+	if !strings.HasPrefix(out.Text, "男性向每日排行榜:\n\n") || !strings.Contains(out.Text, "第 3 名: https://www.pixiv.net/artworks/13\nID: 13") {
 		t.Fatalf("illust_ranking text = %q", out.Text)
 	}
 }
@@ -2102,6 +2102,7 @@ func TestSDKDownloadFactoryUsesSelectedAccountAfterTokenSwitch(t *testing.T) {
 
 func testSDKIllust(id int64, title string, userID int64) sdk.Illust {
 	return sdk.Illust{
+		URL:       fmt.Sprintf("https://www.pixiv.net/artworks/%d", id),
 		ID:        id,
 		Title:     title,
 		User:      sdk.User{ID: userID, Name: "artist"},

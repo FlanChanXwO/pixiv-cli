@@ -7,6 +7,7 @@ type IllustDetail struct {
 
 // Illust 是供调用方稳定使用的规范化作品模型。
 type Illust struct {
+	URL            string     `json:"url"`
 	ID             int64      `json:"id"`
 	Title          string     `json:"title"`
 	Type           string     `json:"type"`
