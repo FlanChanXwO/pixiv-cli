@@ -109,34 +109,66 @@ func (a app) accountLogin(cmd *cobra.Command, opts accountLoginOptions) error {
 
 	browserOpener, schemeRelayInstaller := currentLoginHooks()
 	loginURL := loginFlow.AuthorizationURL
-	callbackOrCode, err := a.waitForLoginCode(ctx, opts.addr, loginFlow.AcceptsCallbackURL, loginURL, opts.noOpen, browserOpener, schemeRelayInstaller)
+	callbackOrCode, notifyFinal, cleanupLoginServer, err := a.waitForLoginCode(ctx, opts.addr, loginFlow.AcceptsCallbackURL, loginURL, opts.noOpen, browserOpener, schemeRelayInstaller)
 	if err != nil {
 		return err
 	}
+	defer cleanupLoginServer()
 
 	result, err := services.Login.Complete(ctx, loginFlow, application.LoginCompleteRequest{CallbackOrCode: callbackOrCode, UseAfterLogin: opts.useAfterLogin})
 	if err != nil {
+		// OAuth 真正失败后才向浏览器回最终失败页；页面不回显敏感原因。
+		notifyFinal(false)
 		return err
 	}
+	notifyFinal(true)
 
 	out := accountOutFromResult(result)
 	if opts.jsonOut {
 		return a.printJSON(out)
 	}
-	fmt.Fprintf(a.out, "登录成功（UID: %d）\n", out.UserID)
+	// 成功提示前空一行，便于与前面的授权引导输出分隔。
+	fmt.Fprintf(a.out, "\n登录成功（UID: %d）\n", out.UserID)
 	return nil
 }
 
-func (a app) waitForLoginCode(ctx context.Context, addr string, acceptsCallback callbackURLAccepter, loginURL string, noOpen bool, browserOpener func(string) error, schemeRelayInstaller urlSchemeRelayInstaller) (string, error) {
+func (a app) waitForLoginCode(ctx context.Context, addr string, acceptsCallback callbackURLAccepter, loginURL string, noOpen bool, browserOpener func(string) error, schemeRelayInstaller urlSchemeRelayInstaller) (code string, notifyFinal func(bool), cleanup func(), err error) {
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {
-		return "", err
+		return "", func(bool) {}, func() {}, err
 	}
 	actualAddr := ln.Addr().String()
 	resultCh := make(chan loginServerResult, 1)
+	// finalCh 在 OAuth Complete 结束后通知仍挂起的浏览器 callback 响应。
+	finalCh := make(chan bool, 1)
 	var submitOnce sync.Once
+	var finalOnce sync.Once
+	var finalPageWaiters sync.WaitGroup
 	submit := func(result loginServerResult) {
 		submitOnce.Do(func() { resultCh <- result })
+	}
+	// notifyFinal 先通知最终页，再等待浏览器 handler 写完响应。
+	// 服务器生命周期由调用方 cleanup 负责，避免过早 Shutdown 打断最终页。
+	notifyFinal = func(ok bool) {
+		finalOnce.Do(func() {
+			select {
+			case finalCh <- ok:
+			default:
+			}
+			finalPageWaiters.Wait()
+		})
+	}
+	waitFinalPage := func(w http.ResponseWriter, r *http.Request) {
+		finalPageWaiters.Add(1)
+		defer finalPageWaiters.Done()
+		select {
+		case ok := <-finalCh:
+			writeLoginFinalPage(w, ok)
+		case <-r.Context().Done():
+			writeLoginFinalPage(w, false)
+		case <-ctx.Done():
+			writeLoginFinalPage(w, false)
+		}
 	}
 	var errOutMu sync.Mutex
 	writeErr := func(format string, args ...any) {
@@ -175,11 +207,15 @@ func (a app) waitForLoginCode(ctx context.Context, addr string, acceptsCallback 
 	})
 	mux.HandleFunc("/callback", func(w http.ResponseWriter, r *http.Request) {
 		result := loginCodeFromInput(callbackURLFromRequest(r), acceptsCallback)
-		writeLoginResult(w, result.err)
 		reportInvalidSubmission(result.err)
-		if result.err == nil {
-			submit(result)
+		if result.err != nil {
+			// 输入校验失败可立即回失败页；不泄露敏感细节。
+			writeLoginFinalPage(w, false)
+			return
 		}
+		submit(result)
+		// 等 OAuth 真正完成后再返回最终成功/失败页。
+		waitFinalPage(w, r)
 	})
 	mux.HandleFunc("/manual", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodGet {
@@ -191,9 +227,8 @@ func (a app) waitForLoginCode(ctx context.Context, addr string, acceptsCallback 
 			return
 		}
 		if err := r.ParseForm(); err != nil {
-			result := loginServerResult{err: err}
-			writeLoginResult(w, result.err)
-			reportInvalidSubmission(result.err)
+			reportInvalidSubmission(err)
+			writeLoginFinalPage(w, false)
 			return
 		}
 		input := r.Form.Get("code")
@@ -205,11 +240,13 @@ func (a app) waitForLoginCode(ctx context.Context, addr string, acceptsCallback 
 			writeLoginRelayResult(w)
 			return
 		}
-		writeLoginResult(w, result.err)
 		reportInvalidSubmission(result.err)
-		if result.err == nil {
-			submit(result.loginServerResult)
+		if result.err != nil {
+			writeLoginFinalPage(w, false)
+			return
 		}
+		submit(result.loginServerResult)
+		waitFinalPage(w, r)
 	})
 
 	server := &http.Server{Handler: mux}
@@ -221,7 +258,10 @@ func (a app) waitForLoginCode(ctx context.Context, addr string, acceptsCallback 
 		}
 		serveErr <- err
 	}()
-	defer func() { _ = server.Shutdown(context.Background()) }()
+	var cleanupOnce sync.Once
+	cleanup = func() {
+		cleanupOnce.Do(func() { _ = server.Shutdown(context.Background()) })
+	}
 
 	writeErr("Open this Pixiv login URL:\n%s\n", loginURL)
 	if noOpen {
@@ -260,16 +300,20 @@ func (a app) waitForLoginCode(ctx context.Context, addr string, acceptsCallback 
 	select {
 	case result := <-resultCh:
 		if result.err != nil {
-			return "", result.err
+			cleanup()
+			return "", notifyFinal, cleanup, result.err
 		}
-		return result.code, nil
+		// 成功拿到 code 后保持服务器存活，直到调用方 notifyFinal + cleanup。
+		return result.code, notifyFinal, cleanup, nil
 	case err := <-serveErr:
+		cleanup()
 		if err != nil {
-			return "", err
+			return "", notifyFinal, cleanup, err
 		}
-		return "", errors.New("login server stopped before receiving authorization code")
+		return "", notifyFinal, cleanup, errors.New("login server stopped before receiving authorization code")
 	case <-ctx.Done():
-		return "", ctx.Err()
+		cleanup()
+		return "", notifyFinal, cleanup, ctx.Err()
 	}
 }
 
@@ -285,16 +329,29 @@ func writeLoginForm(w http.ResponseWriter, loginURL string) {
 </body></html>`, html.EscapeString(loginURL))
 }
 
-func writeLoginResult(w http.ResponseWriter, err error) {
-	if err != nil {
-		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
+// writeLoginFinalPage 在 OAuth 真正完成后返回最终页。
+// 成功/失败标题与正文均居中；失败页使用固定文案，不回显敏感原因。
+func writeLoginFinalPage(w http.ResponseWriter, ok bool) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if !ok {
+		w.WriteHeader(http.StatusBadRequest)
+	}
+	title := "登录成功"
+	body := "登录已完成，可以关闭此页面并返回终端。"
+	if !ok {
+		title = "登录失败"
+		body = "登录未能完成，请返回终端查看提示或重试。"
+	}
 	_, _ = io.WriteString(w, `<!doctype html>
-<html lang="zh-CN"><head><meta charset="utf-8"><title>授权已收到</title></head>
-<body><p>已收到授权，正在回到 CLI 完成登录。</p></body></html>`)
+<html lang="zh-CN"><head><meta charset="utf-8"><title>`+title+`</title>
+<style>
+html,body{height:100%;margin:0}
+body{display:flex;align-items:center;justify-content:center;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#f7f7f8;color:#222}
+.card{text-align:center;padding:2rem 2.5rem;max-width:28rem}
+h1{margin:0 0 .75rem;font-size:1.75rem;font-weight:600}
+p{margin:0;line-height:1.6;color:#555}
+</style></head>
+<body><div class="card"><h1>`+title+`</h1><p>`+body+`</p></div></body></html>`)
 }
 
 func writeLoginRelayResult(w http.ResponseWriter) {

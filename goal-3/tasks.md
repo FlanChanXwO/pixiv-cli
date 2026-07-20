@@ -109,12 +109,12 @@
 
 ## T10 — 登录 callback 最终页与 CLI 成功提示空行
 
-- 状态：未开始
+- 状态：已完成
 - 范围：OAuth 真正完成后再返回成功/失败页；标题与正文居中；失败页不泄露敏感原因；CLI 成功提示前增加一个空行。
 - 验收：OAuth 页面与 CLI 输出测试/手工可复现证据。
-- 实际：
-- 证据：
-- 风险/下一步：
+- 实际：`waitForLoginCode` 在拿到 code 后保持 loopback server，等 `CompleteLogin` 后 `notifyFinal` 再写最终页；服务器 cleanup 延后到最终页写完；成功/失败页 flex 居中；失败页固定文案；CLI 成功输出前空行。
+- 证据：`TestWriteLoginFinalPageCentersAndHidesSensitiveFailure`、登录相关 CLI 测试通过；`go test ./internal/cli -count=1` 通过。
+- 风险/下一步：下一轮 T11 文件日志子系统。
 
 ## T11 — 文件日志子系统
 

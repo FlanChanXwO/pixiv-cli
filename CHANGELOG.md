@@ -10,6 +10,7 @@
 - Breaking: 移除 CLI 兼容入口 `--ai-type`、`--r18`、`--profile`、`--offset` 与 `search --type comics`；请分别使用 `--ai-mode`、`--rating r18`、`--uid`、`--page`/`--limit` 与 `--type manga`。
 
 ### Fixed
+- 登录 callback 在 OAuth 真正完成后才向浏览器返回最终成功/失败页；标题与正文居中，失败页不泄露敏感原因；CLI 成功提示前增加一个空行。
 - 搜索在本地筛选产生连续空上游批次时，CLI/MCP 会补拉到首个非空逻辑批次；`--limit N`/`limit` 填满逻辑结果，`--limit 0`/`limit=0` 遍历全部，`--page`/`page` 按过滤后结果分页。
 - App 作品 AI 字段优先读取 `illust_ai_type`，并兼容旧 `ai_type`；本地 AI 判定仍固定 `AIType==2`。
 

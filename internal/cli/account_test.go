@@ -1029,16 +1029,18 @@ func TestAccountLoginNoOpenStoresProfile(t *testing.T) {
 	_ = resp.Body.Close()
 	require.Equal(t, http.StatusOK, resp.StatusCode, string(body))
 	assert.Equal(t, "text/html; charset=utf-8", resp.Header.Get("Content-Type"))
-	assert.Contains(t, string(body), "已收到授权，正在回到 CLI 完成登录")
-	assert.NotContains(t, string(body), "登录成功")
+	// 最终页在 OAuth 真正完成后返回；成功标题居中，且不回显 code。
+	assert.Contains(t, string(body), "登录成功")
+	assert.Contains(t, string(body), "text-align:center")
 	assert.NotContains(t, string(body), "callback-code")
+	assert.NotContains(t, string(body), "refresh-secret")
 
 	require.Equal(t, 0, run.waitWithin(t, 5*time.Second), stderr.String())
 	assert.False(t, calledOpen)
 	assert.Contains(t, stderr.String(), "Browser opening is disabled")
 	assert.Contains(t, stderr.String(), "Manual fallback page")
 	assert.NotContains(t, stderr.String(), "Authorization code received; exchanging it for a refresh token.")
-	assert.Equal(t, "登录成功（UID: 12345）\n", stdout.String())
+	assert.Equal(t, "\n登录成功（UID: 12345）\n", stdout.String())
 
 	store, err := auth.LoadAuthStore(authPath)
 	require.NoError(t, err)
@@ -1259,7 +1261,7 @@ func TestAccountLoginRelayInstallerFailureKeepsBrowserAndManualFallback(t *testi
 	assert.Equal(t, loginURL, <-openedURL)
 	assert.Contains(t, stderr.String(), "warning: pixiv:// callback handler is unavailable: test helper install unavailable")
 	assert.Contains(t, stderr.String(), "Manual fallback page: http://"+addr+"/")
-	assert.Equal(t, "登录成功（UID: 86420）\n", stdout.String())
+	assert.Equal(t, "\n登录成功（UID: 86420）\n", stdout.String())
 
 	store, err := auth.LoadAuthStore(authPath)
 	require.NoError(t, err)
