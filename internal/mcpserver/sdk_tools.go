@@ -248,31 +248,17 @@ func (a *App) illustListError(ctx context.Context, userID int64, err error) (*mc
 }
 
 type bookmarksSDKIn struct {
-	UserID        int64  `json:"user_id,omitempty" jsonschema:"optional user ID; defaults to the authenticated user"`
-	UserIDToCheck int64  `json:"user_id_to_check,omitempty" jsonschema:"legacy alias for user_id"`
-	Restrict      string `json:"restrict,omitempty" jsonschema:"public or private"`
-	Tag           string `json:"tag,omitempty"`
-	MaxBookmarkID int64  `json:"max_bookmark_id,omitempty" jsonschema:"deprecated legacy continuation parameter"`
+	UserID   int64  `json:"user_id,omitempty" jsonschema:"optional user ID; defaults to the authenticated user"`
+	Restrict string `json:"restrict,omitempty" jsonschema:"public or private"`
+	Tag      string `json:"tag,omitempty"`
 	pageLimitIn
-}
-
-func (in bookmarksSDKIn) resolvedUserID() int64 {
-	if in.UserID != 0 {
-		return in.UserID
-	}
-	return in.UserIDToCheck
 }
 
 func (a *App) userBookmarks(ctx context.Context, _ *mcp.CallToolRequest, in bookmarksSDKIn) (*mcp.CallToolResult, illustListOut, error) {
 	plan, err := parseMCPListPlan(in.pageLimitIn)
-	userID := in.resolvedUserID()
+	userID := in.UserID
 	if err != nil {
 		return a.illustListError(ctx, userID, err)
-	}
-	if in.MaxBookmarkID != 0 {
-		if in.Page != nil || in.Limit != nil {
-			return a.illustListError(ctx, userID, errors.New("max_bookmark_id cannot be combined with page or limit"))
-		}
 	}
 	client, userID, release, err := resolveSDKUser(ctx, a, userID)
 	if err != nil {
@@ -280,19 +266,8 @@ func (a *App) userBookmarks(ctx context.Context, _ *mcp.CallToolRequest, in book
 	}
 	defer release()
 	request := sdk.UserBookmarksRequest{UserID: userID, Restrict: sdk.Restrict(in.Restrict), Tag: in.Tag}
-	legacyCursor := sdk.Cursor("")
-	if in.MaxBookmarkID > 0 {
-		legacyCursor, err = client.UserBookmarksCursor(ctx, request, in.MaxBookmarkID)
-		if err != nil {
-			return a.illustListError(ctx, userID, err)
-		}
-	}
 	items, more, err := collectPages(ctx, plan, func(ctx context.Context, cursor sdk.Cursor) ([]sdk.Illust, sdk.Cursor, error) {
-		if cursor == "" && legacyCursor != "" {
-			request.Cursor = legacyCursor
-		} else {
-			request.Cursor = cursor
-		}
+		request.Cursor = cursor
 		result, err := client.UserBookmarks(ctx, request)
 		if err != nil {
 			return nil, "", err
@@ -311,18 +286,9 @@ func (a *App) userBookmarks(ctx context.Context, _ *mcp.CallToolRequest, in book
 }
 
 type followingSDKIn struct {
-	UserID        int64  `json:"user_id,omitempty" jsonschema:"optional user ID; defaults to the authenticated user"`
-	UserIDToCheck int64  `json:"user_id_to_check,omitempty" jsonschema:"legacy alias for user_id"`
-	Restrict      string `json:"restrict,omitempty" jsonschema:"public or private"`
-	Offset        *int   `json:"offset,omitempty" jsonschema:"deprecated legacy logical result offset"`
+	UserID   int64  `json:"user_id,omitempty" jsonschema:"optional user ID; defaults to the authenticated user"`
+	Restrict string `json:"restrict,omitempty" jsonschema:"public or private"`
 	pageLimitIn
-}
-
-func (in followingSDKIn) resolvedUserID() int64 {
-	if in.UserID != 0 {
-		return in.UserID
-	}
-	return in.UserIDToCheck
 }
 
 type userListOut struct {
@@ -338,19 +304,9 @@ func userListResult(out userListOut) *mcp.CallToolResult {
 
 func (a *App) userFollowing(ctx context.Context, _ *mcp.CallToolRequest, in followingSDKIn) (*mcp.CallToolResult, userListOut, error) {
 	plan, err := parseMCPListPlan(in.pageLimitIn)
-	userID := in.resolvedUserID()
+	userID := in.UserID
 	if err != nil {
 		return a.userListError(ctx, userID, err)
-	}
-	if in.Offset != nil {
-		if in.Page != nil {
-			return a.userListError(ctx, userID, errors.New("page and deprecated offset cannot be used together"))
-		}
-		if *in.Offset < 0 {
-			return a.userListError(ctx, userID, errors.New("offset must be zero or a positive integer"))
-		}
-		plan.skip = *in.Offset
-		plan.oneBatch = in.Limit == nil
 	}
 	client, userID, release, err := resolveSDKUser(ctx, a, userID)
 	if err != nil {

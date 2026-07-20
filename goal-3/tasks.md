@@ -57,12 +57,12 @@
 
 ## T06 — 移除冗余 MCP 旧 wire 字段
 
-- 状态：未开始
+- 状态：已完成
 - 范围：删除 MCP `search_r18`、`user_id_to_check`、`max_bookmark_id`、`offset`、`include_thumbnail` 等已确认旧字段；改用唯一规范字段；更新 schema/测试/文档。
 - 验收：schema 不再暴露旧字段；旧输入测试改为拒绝或不识别；规范路径通过。
-- 实际：
-- 证据：
-- 风险/下一步：
+- 实际：legacy/search/related/ranking/recommended/follow/user tools 统一为 `page`/`limit` 与 `user_id`/`rating`；`formatIllusts` 去掉缩略图开关；schema 拒绝旧字段；MCP docs 与 CHANGELOG Breaking 同步。
+- 证据：`go test ./internal/mcpserver -count=1`、`go test ./scripts/documentation -count=1`、vet 通过；schema rejection 与规范路径测试覆盖。
+- 风险/下一步：下一轮 C02 集中检查 T04–T06。
 
 ## C02 — 集中检查 2（T04–T06）
 

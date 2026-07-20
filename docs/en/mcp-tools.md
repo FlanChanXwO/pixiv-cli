@@ -22,7 +22,7 @@ New SDK list tools use:
 - `page`: 1-based logical page and requires a positive `limit`.
 - output fields `pagination.page`, `limit`, `returned`, `has_more`, and optional `next_page`.
 
-SDK cursors never appear in MCP input or output. `user_bookmarks.max_bookmark_id` is a deprecated legacy
+SDK cursors never appear in MCP input or output.
 continuation and cannot be combined with `page` or `limit`. `user_following.offset` is a deprecated logical offset;
 it conflicts only with `page` and may still be used with `limit`.
 
@@ -54,21 +54,21 @@ business error text.
 
 | Tool | Input | Structured output |
 | --- | --- | --- |
-| `search_illust` | `word`, `search_target`, `sort`, `duration`, `offset`, `rating`, `content_type`, `ai_mode`, `aspect_ratio`, `resolution`, `tool`, compatibility `search_r18`, `include_thumbnail` | Legacy `{text}`; works remain in text. |
+| `search_illust` | `word`, `search_target`, `sort`, `duration`, `page`, `limit`, `rating`, `content_type`, `ai_mode`, `aspect_ratio`, `resolution`, `tool` | Legacy `{text}`; works remain in text. |
 | `search_illust_options` | required `word` | `{tools,text}` for the word; authenticated App only. |
 | `illust_detail` | `illust_id` | Work detail. |
-| `illust_related` | `illust_id`, `offset`, `include_thumbnail` | Related works. |
-| `illust_ranking` | `mode`, `date`, `offset`, `include_thumbnail` | Ranked works. |
-| `illust_recommended` | `offset`, `include_thumbnail` | Legacy illustration recommendation text through the public SDK path. |
+| `illust_related` | `illust_id`, `page`, `limit` | Related works. |
+| `illust_ranking` | `mode`, `date`, `page`, `limit` | Ranked works. |
+| `illust_recommended` | `page`, `limit` | Illustration recommendation text through the public SDK path. |
 | `recommended` | required `kind` (`all`, `illust`, `manga`, `novel`, `user`), optional `page`, `limit` | `{kind, illusts, manga, novels, user_previews, pagination}`; `all` reads four authenticated streams in order. |
 | `trending_tags_illust` | none | Trending tags. |
-| `illust_follow` | `restrict`, `offset`, `include_thumbnail` | Followed works; authentication required. |
-| `search_user` | `word`, `offset` | Users; anonymous fallback deduplicates related-work authors and is not official username search. |
+| `illust_follow` | `restrict`, `page`, `limit` | Followed works; authentication required. |
+| `search_user` | `word`, `page`, `limit` | Users; anonymous fallback deduplicates related-work authors and is not official username search. |
 | `get_thumbnail_base64` | `illust_id` | `data:image/jpeg;base64,...`. |
 | `user_detail` | required `user_id` | Stable `{user, profile, profile_publicity, workspace}`; authenticated App only. |
 | `user_artworks` | optional `user_id`, `type`, `page`, `limit` | `{user_id, items, pagination}`; omitted UID uses the authenticated user. |
-| `user_bookmarks` | optional `user_id`, legacy `user_id_to_check`, `restrict`, `tag`, `page`, `limit`, deprecated `max_bookmark_id` | `{user_id, items, pagination}`. |
-| `user_following` | optional `user_id`, legacy `user_id_to_check`, `restrict`, `page`, `limit`, deprecated `offset` | `{user_id, items, pagination}`. |
+| `user_bookmarks` | optional `user_id`, `restrict`, `tag`, `page`, `limit` | `{user_id, items, pagination}`. |
+| `user_following` | optional `user_id`, `restrict`, `page`, `limit` | `{user_id, items, pagination}`. |
 
 `search_illust` filter values are:
 
@@ -82,7 +82,6 @@ business error text.
 With a refresh token, App performs resolution, aspect ratio, tool, content type, and AI exclusion filtering;
 rating and AI-only filtering use public SDK normalized App fields. App failures never fall back to Web. Anonymous
 Web applies only verified filters; `r18|r18g|mature` fails before the request with an authentication requirement.
-`search_r18=true` maps to `r18` only when `rating` is absent; supplying both conflicts. `search_illust_options` is
 App-only. Neither search tool accepts cookies or bookmark-count filters.
 
 Artwork text preserves every tag in upstream order without a five-tag truncation. Known ranking modes use stable

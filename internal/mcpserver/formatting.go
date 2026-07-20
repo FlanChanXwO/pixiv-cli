@@ -8,33 +8,25 @@ import (
 	sdk "github.com/FlanChanXwO/pixiv-cli/pixiv"
 )
 
-func formatIllusts(illusts []sdk.Illust, includeThumbnail bool, offset int, ranked bool) string {
+func formatIllusts(illusts []sdk.Illust, offset int, ranked bool) string {
 	lines := make([]string, 0, len(illusts))
 	for i, illust := range illusts {
 		prefix := ""
 		if ranked {
 			prefix = fmt.Sprintf("第 %d 名: ", i+1+offset)
 		}
-		lines = append(lines, prefix+formatIllust(illust, includeThumbnail))
+		lines = append(lines, prefix+formatIllust(illust))
 	}
 	return strings.Join(lines, "\n\n")
 }
 
-func formatIllust(illust sdk.Illust, includeThumbnail bool) string {
+func formatIllust(illust sdk.Illust) string {
 	tags := make([]string, 0, len(illust.Tags))
 	for _, tag := range illust.Tags {
 		tags = append(tags, tag.Name)
 	}
-	text := fmt.Sprintf("ID: %d - %q\n  作者: %s (ID: %d)\n  类型: %s\n  标签: %s\n  收藏数: %d, 浏览数: %d",
+	return fmt.Sprintf("ID: %d - %q\n  作者: %s (ID: %d)\n  类型: %s\n  标签: %s\n  收藏数: %d, 浏览数: %d",
 		illust.ID, illust.Title, illust.User.Name, illust.User.ID, illust.Type, strings.Join(tags, ", "), illust.TotalBookmarks, illust.TotalView)
-	if includeThumbnail {
-		if url := thumbnailURL(illust); url != "" {
-			text += "\n  缩略图: " + url
-		} else {
-			text += "\n  缩略图: 暂无"
-		}
-	}
-	return text
 }
 
 func formatUsers(users []sdk.UserPreview) string {

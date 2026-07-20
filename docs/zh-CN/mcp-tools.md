@@ -14,7 +14,7 @@
 - `page`：从 1 开始的逻辑页，必须配正数 `limit`。
 - 输出 `pagination.page`、`limit`、`returned`、`has_more`、可选 `next_page`。
 
-SDK cursor 不出现在 MCP 参数或输出。`user_bookmarks.max_bookmark_id` 是旧 continuation，已废弃，不能与 `page` 或 `limit` 同用。`user_following.offset` 是旧逻辑 offset，已废弃，仅与 `page` 互斥，允许和 `limit` 同用。
+SDK cursor 不出现在 MCP 参数或输出。列表工具统一使用逻辑 `page`/`limit`。
 
 ## 配置、认证与下载
 
@@ -36,21 +36,21 @@ SDK cursor 不出现在 MCP 参数或输出。`user_bookmarks.max_bookmark_id` �
 
 | tool | 参数 | structured output |
 | --- | --- | --- |
-| `search_illust` | `word`、`search_target`、`sort`、`duration`、`offset`、`rating`、`content_type`、`ai_mode`、`aspect_ratio`、`resolution`、`tool`、兼容字段 `search_r18`、`include_thumbnail` | Legacy structured output `{text}`；作品列表仍在文本中呈现。 |
+| `search_illust` | `word`、`search_target`、`sort`、`duration`、`page`、`limit`、`rating`、`content_type`、`ai_mode`、`aspect_ratio`、`resolution`、`tool` | Legacy structured output `{text}`；作品列表仍在文本中呈现。 |
 | `search_illust_options` | 必填 `word` | 当前搜索词可用的 `{tools,text}`；需要认证，不支持 Web fallback。 |
 | `illust_detail` | `illust_id` | 作品详情。 |
-| `illust_related` | `illust_id`、`offset`、`include_thumbnail` | 相关作品。 |
-| `illust_ranking` | `mode`、`date`、`offset`、`include_thumbnail` | 排行榜作品。 |
-| `illust_recommended` | `offset`、`include_thumbnail` | 兼容旧推荐作品 tool；保留既有文本输出，但经公开 SDK 调用链执行。 |
+| `illust_related` | `illust_id`、`page`、`limit` | 相关作品。 |
+| `illust_ranking` | `mode`、`date`、`page`、`limit` | 排行榜作品。 |
+| `illust_recommended` | `page`、`limit` | 推荐作品；文本输出经公开 SDK 调用链执行。 |
 | `recommended` | 必填 `kind`（`all`、`illust`、`manga`、`novel`、`user`），可选 `page`、`limit` | 通过认证 App SDK 返回 `{kind, illusts, manga, novels, user_previews, pagination}`；单类只填对应流，`all` 顺序读取四流。每条流独立应用分页，`pagination` 按流给出逻辑页信息；不暴露 SDK cursor，不支持 Web fallback。 |
 | `trending_tags_illust` | 无 | 热门标签。 |
-| `illust_follow` | `restrict`、`offset`、`include_thumbnail` | 关注新作；需要认证。 |
-| `search_user` | `word`、`offset` | 用户列表；匿名 fallback 是相关作者去重，不是官方用户名搜索。 |
+| `illust_follow` | `restrict`、`page`、`limit` | 关注新作；需要认证。 |
+| `search_user` | `word`、`page`、`limit` | 用户列表；匿名 fallback 是相关作者去重，不是官方用户名搜索。 |
 | `get_thumbnail_base64` | `illust_id` | `data:image/jpeg;base64,...`。 |
 | `user_detail` | 必填 `user_id` | 完整稳定的 `{user, profile, profile_publicity, workspace}`；需要认证，不支持 Web fallback。 |
 | `user_artworks` | 可选 `user_id`、`type`、`page`、`limit` | `{user_id, items, pagination}`；缺省 UID 为当前认证用户。 |
-| `user_bookmarks` | 可选 `user_id`、旧 alias `user_id_to_check`、`restrict`、`tag`、`page`、`limit`、废弃 `max_bookmark_id` | `{user_id, items, pagination}`；缺省 UID 为当前认证用户。 |
-| `user_following` | 可选 `user_id`、旧 alias `user_id_to_check`、`restrict`、`page`、`limit`、废弃 `offset` | `{user_id, items, pagination}`；缺省 UID 为当前认证用户。 |
+| `user_bookmarks` | 可选 `user_id`、`restrict`、`tag`、`page`、`limit` | `{user_id, items, pagination}`；缺省 UID 为当前认证用户。 |
+| `user_following` | 可选 `user_id`、`restrict`、`page`、`limit` | `{user_id, items, pagination}`；缺省 UID 为当前认证用户。 |
 
 `search_illust` 的筛选枚举为：
 
@@ -65,7 +65,6 @@ SDK cursor 不出现在 MCP 参数或输出。`user_bookmarks.max_bookmark_id` �
 有 refresh token 时，分辨率、横纵比、工具、作品类型和 `ai_mode=exclude` 由 App 服务端筛选，
 `rating` 与 `ai_mode=only` 由 public SDK 基于 App 返回字段筛选；App 失败不回落 Web。无 token 的匿名
 Web 路径只执行已验证可靠的筛选；`rating=r18|r18g|mature` 在请求前返回需要登录，不伪装成空结果。
-`search_r18` 只为兼容保留：未提供 `rating` 时 `true` 映射为 `r18`，同时提供两个字段会返回参数冲突。
 `search_illust_options` 只走 App API。两项搜索 tool 都不接受 Cookie，当前也不提供收藏数筛选。
 
 作品列表的 MCP 文本按上游顺序完整列出每个作品的全部 tags，不做前 5 项截断；SDK tool 的 structured output schema 和内容保持不变。`illust_ranking` 对已知 mode 使用稳定中文标题：`day`、`day_male`、`day_female`、`week`、`week_original`、`week_rookie`、`month` 分别显示为“每日排行榜”“男性向每日排行榜”“女性向每日排行榜”“每周排行榜”“原创作品排行榜”“新人排行榜”“每月排行榜”；未来 mode 在上游成功时显示原 mode 后接“排行榜”。

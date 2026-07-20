@@ -1,5 +1,6 @@
 ## [Unreleased]
 ### Changed
+- Breaking: 移除 MCP 旧 wire 字段 `search_r18`、`user_id_to_check`、`max_bookmark_id`、`offset`、`include_thumbnail`；列表与搜索统一使用规范字段 `user_id`、`rating`、`page`/`limit`。
 - Breaking: 移除 CLI 兼容入口 `--ai-type`、`--r18`、`--profile`、`--offset` 与 `search --type comics`；请分别使用 `--ai-mode`、`--rating r18`、`--uid`、`--page`/`--limit` 与 `--type manga`。
 
 ### Fixed

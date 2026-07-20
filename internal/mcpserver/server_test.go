@@ -132,7 +132,7 @@ func TestSearchIllustMapsStableFiltersToPublicSDK(t *testing.T) {
 	}
 }
 
-func TestSearchIllustRejectsRatingWithLegacyR18BeforeSDKCall(t *testing.T) {
+func TestSearchIllustSchemaRejectsRemovedLegacyWireFields(t *testing.T) {
 	calls := 0
 	client := &fakeSDKClient{searchIllust: func(_ context.Context, _ sdk.SearchIllustRequest) (*sdk.IllustListResult, error) {
 		calls++
@@ -140,16 +140,22 @@ func TestSearchIllustRejectsRatingWithLegacyR18BeforeSDKCall(t *testing.T) {
 	}}
 	session, closeSession := newSDKTestSession(t, client)
 	defer closeSession()
-
-	result := callTool(t, session, "search_illust", map[string]any{"word": "cat", "rating": "sfw", "search_r18": true})
-	var out textOut
-	decodeStructured(t, result, &out)
-	if calls != 0 || !strings.Contains(out.Text, "rating") || !strings.Contains(out.Text, "search_r18") {
-		t.Fatalf("conflict result=%+v calls=%d", out, calls)
+	for _, args := range []map[string]any{
+		{"word": "cat", "search_r18": true},
+		{"word": "cat", "offset": 1},
+		{"word": "cat", "include_thumbnail": true},
+	} {
+		_, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: "search_illust", Arguments: args})
+		if err == nil || !strings.Contains(err.Error(), "additional properties") {
+			t.Fatalf("args=%v err=%v", args, err)
+		}
+	}
+	if calls != 0 {
+		t.Fatalf("legacy wire fields opened SDK %d times", calls)
 	}
 }
 
-func TestSearchIllustMapsLegacyR18ToRatingWithoutChangingWord(t *testing.T) {
+func TestSearchIllustMapsRatingR18WithoutChangingWord(t *testing.T) {
 	var got sdk.SearchIllustRequest
 	client := &fakeSDKClient{searchIllust: func(_ context.Context, request sdk.SearchIllustRequest) (*sdk.IllustListResult, error) {
 		got = request
@@ -158,13 +164,13 @@ func TestSearchIllustMapsLegacyR18ToRatingWithoutChangingWord(t *testing.T) {
 	session, closeSession := newSDKTestSession(t, client)
 	defer closeSession()
 
-	callTool(t, session, "search_illust", map[string]any{"word": "cat", "search_r18": true})
+	callTool(t, session, "search_illust", map[string]any{"word": "cat", "rating": "r18"})
 	if got.Word != "cat" || got.Filters.Rating != sdk.SearchRatingR18 {
-		t.Fatalf("legacy R18 request = %+v", got)
+		t.Fatalf("rating r18 request = %+v", got)
 	}
 }
 
-func TestSearchIllustKeepsFiltersAcrossLogicalOffsetPagination(t *testing.T) {
+func TestSearchIllustKeepsFiltersAcrossLogicalPagePagination(t *testing.T) {
 	var requests []sdk.SearchIllustRequest
 	client := &fakeSDKClient{searchIllust: func(_ context.Context, request sdk.SearchIllustRequest) (*sdk.IllustListResult, error) {
 		requests = append(requests, request)
@@ -180,7 +186,7 @@ func TestSearchIllustKeepsFiltersAcrossLogicalOffsetPagination(t *testing.T) {
 	session, closeSession := newSDKTestSession(t, client)
 	defer closeSession()
 
-	result := callTool(t, session, "search_illust", map[string]any{"word": "cat", "offset": 1, "ai_mode": "exclude"})
+	result := callTool(t, session, "search_illust", map[string]any{"word": "cat", "page": 2, "limit": 1, "ai_mode": "exclude"})
 	var out textOut
 	decodeStructured(t, result, &out)
 	if len(requests) != 2 || requests[1].Cursor != "next" || requests[0].Filters.AIMode != sdk.SearchAIModeExclude || requests[1].Filters.AIMode != sdk.SearchAIModeExclude || !strings.Contains(out.Text, `"second"`) {
@@ -244,26 +250,18 @@ func TestSearchIllustPageTwoUsesLogicalLimit(t *testing.T) {
 	}
 }
 
-func TestSearchIllustRejectsOffsetWithPageOrLimit(t *testing.T) {
+func TestSearchIllustRejectsPageWithoutPositiveLimit(t *testing.T) {
 	client := &fakeSDKClient{searchIllust: func(context.Context, sdk.SearchIllustRequest) (*sdk.IllustListResult, error) {
 		t.Fatal("SDK should not open for invalid page plan")
 		return nil, nil
 	}}
 	session, closeSession := newSDKTestSession(t, client)
 	defer closeSession()
-	for _, args := range []map[string]any{
-		{"word": "cat", "offset": 1, "page": 1, "limit": 1},
-		{"word": "cat", "offset": 1, "limit": 1},
-	} {
-		result := callTool(t, session, "search_illust", args)
-		var out textOut
-		decodeStructured(t, result, &out)
-		if !strings.Contains(out.Text, "offset") || !strings.Contains(out.Text, "page") && !strings.Contains(out.Text, "limit") {
-			// accept either combined message
-			if !strings.Contains(out.Text, "offset cannot be combined") {
-				t.Fatalf("args=%v output=%+v", args, out)
-			}
-		}
+	result := callTool(t, session, "search_illust", map[string]any{"word": "cat", "page": 1})
+	var out textOut
+	decodeStructured(t, result, &out)
+	if !strings.Contains(out.Text, "page") || !strings.Contains(out.Text, "limit") {
+		t.Fatalf("output=%+v", out)
 	}
 }
 
@@ -652,7 +650,7 @@ func TestSDKUserBookmarksFailureReturnsMCPErrorWithStructuredOutput(t *testing.T
 	})
 	defer closeSession()
 
-	result := callTool(t, session, "user_bookmarks", map[string]any{"user_id_to_check": 9})
+	result := callTool(t, session, "user_bookmarks", map[string]any{"user_id": 9})
 	if !result.IsError {
 		t.Fatalf("SDK failure must be an MCP error result: %+v", result)
 	}
@@ -1139,7 +1137,7 @@ func TestSetRefreshTokenFailureSaysSessionOnly(t *testing.T) {
 	}
 }
 
-func TestSDKUserToolsResolveIdentityKeepLegacyInputAndReturnStructuredOutput(t *testing.T) {
+func TestSDKUserToolsResolveIdentityAndReturnStructuredOutput(t *testing.T) {
 	client := &fakeSDKClient{
 		userID:    71,
 		artworks:  []sdk.Illust{testSDKIllust(11, "work", 71)},
@@ -1156,7 +1154,7 @@ func TestSDKUserToolsResolveIdentityKeepLegacyInputAndReturnStructuredOutput(t *
 		t.Fatalf("user artworks = request=%+v output=%+v", client.artworksRequest, artworksOut)
 	}
 
-	bookmarks := callTool(t, session, "user_bookmarks", map[string]any{"user_id_to_check": 99, "tag": "tag", "limit": 0})
+	bookmarks := callTool(t, session, "user_bookmarks", map[string]any{"user_id": 99, "tag": "tag", "limit": 0})
 	var bookmarksOut illustListOut
 	decodeStructured(t, bookmarks, &bookmarksOut)
 	if client.bookmarksRequest.UserID != 99 || client.bookmarksRequest.Tag != "tag" || bookmarksOut.UserID != 99 || len(bookmarksOut.Items) != 1 || bookmarksOut.Pagination.HasMore {
@@ -1166,7 +1164,7 @@ func TestSDKUserToolsResolveIdentityKeepLegacyInputAndReturnStructuredOutput(t *
 		t.Fatalf("bookmark text missing: %q", bookmarksOut.Text)
 	}
 
-	following := callTool(t, session, "user_following", map[string]any{"user_id_to_check": 99, "offset": 0})
+	following := callTool(t, session, "user_following", map[string]any{"user_id": 99, "limit": 1})
 	var followingOut userListOut
 	decodeStructured(t, following, &followingOut)
 	if client.followingRequest.UserID != 99 || followingOut.UserID != 99 || len(followingOut.Items) != 1 {
@@ -1548,20 +1546,20 @@ func TestSDKRecommendedAllAppliesPageTwoIndependently(t *testing.T) {
 	}
 }
 
-func TestIllustRecommendedUsesSDKAndPreservesLegacyOffset(t *testing.T) {
+func TestIllustRecommendedUsesSDKAndLogicalPageSkip(t *testing.T) {
 	var requests []sdk.IllustRecommendedRequest
 	client := &fakeSDKClient{
 		illustRecommended: func(_ context.Context, request sdk.IllustRecommendedRequest) (*sdk.IllustListResult, error) {
 			requests = append(requests, request)
 			return &sdk.IllustListResult{Illusts: []sdk.Illust{
 				testSDKIllust(11, "first", 1),
-				testSDKIllust(77, "after-offset", 1),
+				testSDKIllust(77, "after-skip", 1),
 			}}, nil
 		},
 	}
 	session, closeSession := newSDKTestSession(t, client)
 	defer closeSession()
-	result := callTool(t, session, "illust_recommended", map[string]any{"offset": 1})
+	result := callTool(t, session, "illust_recommended", map[string]any{"page": 2, "limit": 1})
 	var out textOut
 	decodeStructured(t, result, &out)
 	if result.IsError || len(requests) != 1 || requests[0].Cursor != "" || !strings.Contains(out.Text, "77") || strings.Contains(out.Text, "11") {
@@ -1607,7 +1605,7 @@ func TestIllustRankingUsesStableLabelAndPreservesRequestAndRank(t *testing.T) {
 	defer closeSession()
 
 	result := callTool(t, session, "illust_ranking", map[string]any{
-		"mode": "day_male", "date": "2025-02-03", "offset": 2,
+		"mode": "day_male", "date": "2025-02-03", "page": 3, "limit": 1,
 	})
 	var out textOut
 	decodeStructured(t, result, &out)
@@ -2166,55 +2164,62 @@ func TestUserArtworksTextIncludesAllTagsInUpstreamOrder(t *testing.T) {
 	}
 }
 
-func TestUserBookmarksAcceptsLegacyMaxBookmarkID(t *testing.T) {
-	client := &fakeSDKClient{bookmarks: []sdk.Illust{testSDKIllust(15, "saved", 99)}}
-	session, closeSession := newSDKTestSession(t, client)
-	defer closeSession()
-	result := callTool(t, session, "user_bookmarks", map[string]any{"user_id_to_check": 99, "max_bookmark_id": 101})
-	var out illustListOut
-	decodeStructured(t, result, &out)
-	if client.bookmarksRequest.UserID != 99 || client.bookmarksRequest.Cursor != "bookmark-101" || len(out.Items) != 1 || out.Items[0].ID != 15 {
-		t.Fatalf("max_bookmark_id compatibility = request=%+v output=%+v", client.bookmarksRequest, out)
-	}
-}
-
-func TestSDKUserListToolsPreserveLegacyParameters(t *testing.T) {
+func TestSDKUserListToolsUseCanonicalUserIDAndFilters(t *testing.T) {
 	client := &fakeSDKClient{
 		bookmarks: []sdk.Illust{testSDKIllust(15, "saved", 9)},
 		following: []sdk.UserPreview{
-			{User: sdk.User{ID: 30, Name: "before-offset"}},
-			{User: sdk.User{ID: 31, Name: "after-offset"}},
+			{User: sdk.User{ID: 30, Name: "first"}},
+			{User: sdk.User{ID: 31, Name: "second"}},
 		},
 	}
 	session, closeSession := newSDKTestSession(t, client)
 	defer closeSession()
 
 	bookmarkResult := callTool(t, session, "user_bookmarks", map[string]any{
-		"user_id_to_check": 9, "restrict": "private", "tag": "legacy-tag", "max_bookmark_id": 101,
+		"user_id": 9, "restrict": "private", "tag": "tag-a", "limit": 1,
 	})
 	var bookmarksOut illustListOut
 	decodeStructured(t, bookmarkResult, &bookmarksOut)
-	if client.bookmarksRequest.UserID != 9 || client.bookmarksRequest.Restrict != sdk.RestrictPrivate || client.bookmarksRequest.Tag != "legacy-tag" || client.bookmarksRequest.Cursor != "bookmark-101" || !strings.Contains(bookmarksOut.Text, "找到用户 9 的 1 个收藏") {
+	if client.bookmarksRequest.UserID != 9 || client.bookmarksRequest.Restrict != sdk.RestrictPrivate || client.bookmarksRequest.Tag != "tag-a" || client.bookmarksRequest.Cursor != "" || !strings.Contains(bookmarksOut.Text, "找到用户 9 的 1 个收藏") {
 		t.Fatalf("bookmarks request=%+v output=%+v", client.bookmarksRequest, bookmarksOut)
 	}
 
 	followingResult := callTool(t, session, "user_following", map[string]any{
-		"user_id_to_check": 8, "restrict": "private", "offset": 12,
+		"user_id": 8, "restrict": "private", "page": 2, "limit": 1,
 	})
 	var followingOut userListOut
 	decodeStructured(t, followingResult, &followingOut)
-	if client.followingRequest.UserID != 8 || client.followingRequest.Restrict != sdk.RestrictPrivate || len(followingOut.Items) != 0 || followingOut.Text != "用户 8 没有关注任何人。" {
-		t.Fatalf("following offset request=%+v output=%+v", client.followingRequest, followingOut)
+	if client.followingRequest.UserID != 8 || client.followingRequest.Restrict != sdk.RestrictPrivate || len(followingOut.Items) != 1 || followingOut.Items[0].User.ID != 31 {
+		t.Fatalf("following page request=%+v output=%+v", client.followingRequest, followingOut)
 	}
 
 	client.bookmarks = []sdk.Illust{}
 	client.following = []sdk.UserPreview{}
-	bookmarkResult = callTool(t, session, "user_bookmarks", map[string]any{"user_id_to_check": 9})
+	bookmarkResult = callTool(t, session, "user_bookmarks", map[string]any{"user_id": 9})
 	decodeStructured(t, bookmarkResult, &bookmarksOut)
-	followingResult = callTool(t, session, "user_following", map[string]any{"user_id_to_check": 8})
+	followingResult = callTool(t, session, "user_following", map[string]any{"user_id": 8})
 	decodeStructured(t, followingResult, &followingOut)
 	if bookmarksOut.Text != "找不到用户 9 的收藏。" || followingOut.Text != "用户 8 没有关注任何人。" {
 		t.Fatalf("empty text bookmarks=%q following=%q", bookmarksOut.Text, followingOut.Text)
+	}
+}
+
+func TestSDKUserListToolsSchemaRejectsRemovedLegacyFields(t *testing.T) {
+	session, closeSession := newSDKTestSession(t, &fakeSDKClient{userID: 1})
+	defer closeSession()
+	for _, call := range []struct {
+		name string
+		args map[string]any
+	}{
+		{"user_bookmarks", map[string]any{"user_id_to_check": 9}},
+		{"user_bookmarks", map[string]any{"user_id": 9, "max_bookmark_id": 1}},
+		{"user_following", map[string]any{"user_id_to_check": 8}},
+		{"user_following", map[string]any{"user_id": 8, "offset": 1}},
+	} {
+		_, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: call.name, Arguments: call.args})
+		if err == nil || !strings.Contains(err.Error(), "additional properties") {
+			t.Fatalf("%s args=%v err=%v", call.name, call.args, err)
+		}
 	}
 }
 
