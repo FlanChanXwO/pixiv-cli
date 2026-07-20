@@ -17,9 +17,8 @@ import (
 // listOptions 是所有 CLI 列表命令共享的逻辑分页语义。limit=-1 表示用户没有
 // 指定 --limit，因而保持“仅一个上游批次”的兼容默认值。
 type listOptions struct {
-	limit  int
-	page   int
-	offset int
+	limit int
+	page  int
 }
 
 type listPlan struct {
@@ -35,22 +34,14 @@ func bindListFlags(cmd *cobra.Command, options *listOptions) {
 	flags.SetOutput(cmd.ErrOrStderr())
 	flags.IntVar(&options.limit, "limit", -1, "maximum results; 0 returns all results")
 	flags.IntVar(&options.page, "page", 0, "1-based logical page (requires --limit > 0)")
-	flags.IntVar(&options.offset, "offset", 0, "deprecated logical result offset")
-	_ = flags.MarkDeprecated("offset", "use --page with --limit instead")
 }
 
 func parseListPlan(cmd *cobra.Command, options listOptions) (listPlan, error) {
 	if cmd.Flags().Changed("limit") && options.limit < 0 {
 		return listPlan{}, errors.New("limit must be zero or a positive integer")
 	}
-	if options.offset < 0 {
-		return listPlan{}, errors.New("offset must be zero or a positive integer")
-	}
 	if cmd.Flags().Changed("page") && options.page <= 0 {
 		return listPlan{}, errors.New("page must be a positive integer")
-	}
-	if cmd.Flags().Changed("page") && cmd.Flags().Changed("offset") {
-		return listPlan{}, errors.New("--page and deprecated --offset cannot be used together")
 	}
 	if options.page > 0 {
 		if options.limit <= 0 {
@@ -61,7 +52,7 @@ func parseListPlan(cmd *cobra.Command, options listOptions) (listPlan, error) {
 		}
 		return listPlan{limit: options.limit, skip: (options.page - 1) * options.limit}, nil
 	}
-	return listPlan{limit: options.limit, skip: options.offset, oneBatch: options.limit == -1}, nil
+	return listPlan{limit: options.limit, oneBatch: options.limit == -1}, nil
 }
 
 func (a app) sdkRequest(cmd *cobra.Command, options commandOptions) (application.SDKClientRequest, *bool, error) {

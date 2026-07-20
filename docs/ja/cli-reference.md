@@ -299,20 +299,17 @@ allowlist、MIME 推測、暗黙置換は行いません。
 | `search` | `--sort` | `date_desc` | sort order。 |
 | `search` | `--duration` | empty | Pixiv API duration。 |
 | `search` | `--rating` | `all` | `sfw`, `r18`, `r18g`, `mature`, `all`。 |
-| `search` | `--type` | `all` | `all`, `illust-and-ugoira`, `illust`, `manga`, `ugoira`。`comics` は `manga` の互換 alias。 |
+| `search` | `--type` | `all` | `all`, `illust-and-ugoira`, `illust`, `manga`, `ugoira`。 |
 | `search` | `--ai-mode` | `all` | `all`, `exclude`, `only`。Pixiv `AIType==2` が AI 生成です。 |
-| `search` | `--ai-type` | `2` | deprecated alias：`0=exclude`, `1=only`, `2=all`。明示 `--ai-mode` と競合します。 |
 | `search` | `--aspect-ratio` | `all` | `all`, `landscape`, `portrait`, `square`。 |
 | `search` | `--resolution` | `all` | `all`, `high`, `medium`, `low`。両辺がそれぞれ `>=3000`, `1000..2999`, `<=999`。 |
 | `search` | `--tool` | empty | upstream の正確な制作ツール名。認証済み `search-options` で取得します。 |
 | list commands | `--limit` | one upstream batch | 最大件数。`0` は next batch がなくなるまで取得します。 |
 | list commands | `--page` | empty | 1-based logical page。正数 `--limit` が必要です。 |
-| list commands | `--offset` | `0` | deprecated logical offset。`--page` と併用不可。 |
-| `search` | `--r18` | `false` | deprecated `--rating r18` alias。明示 non-R18 rating と競合します。 |
 | `ranking` | `--mode` | `day` | ranking mode。 |
 | `ranking` | `--date` | empty | 通常 `YYYY-MM-DD`。 |
 | `ranking` | `--offset` | `0` | pagination offset。 |
-| `recommended KIND` | `--page`, `--limit`, deprecated `--offset` | per-stream | `all` でも 4 stream を独立に pagination します。 |
+| `recommended KIND` | `--page`, `--limit` | per-stream | `all` でも 4 stream を独立に pagination します。 |
 | `user artworks` | `--type` | `illust` | user-artworks request の種類。 |
 | `user bookmarks` | `--restrict` | `public` | `public` または `private`。 |
 | `user bookmarks` | `--tag` | empty | 正確な bookmark tag filter。 |
@@ -334,7 +331,6 @@ Web に fallback しません。filter は opaque cursor に binding され、�
 | Flag | 適用先 | Default | 説明 |
 | --- | --- | --- | --- |
 | `--uid UID` | `search/search-options/detail/ranking/recommended/user/download` | `auth.json.default_user_id` | local account を選びます。 |
-| `--profile UID` | 同上 | empty | deprecated `--uid` alias。 |
 | `--refresh-token TOKEN` | 同上 | empty | account/env token を一時上書きします。raw App token だけを受け付けます。 |
 | `--json` | `auth import/login/list/use/remove/check`、`version`、`update --check`、data commands | `false` | machine-readable JSON。`auth export` と実更新にはありません。 |
 | `--download-path PATH` | data commands（実質 `download`） | env/config/`./downloads` | download directory。 |
@@ -369,7 +365,7 @@ Web に fallback しません。filter は opaque cursor に binding され、�
 | `FILENAME_TEMPLATE` | `{author} - {title}_{id}` | filename template。 |
 | `https_proxy` / `HTTPS_PROXY` | empty | HTTP(S) proxy。lowercase が優先。 |
 
-認証優先順：`--refresh-token` > `--uid`/deprecated `--profile` > `PIXIV_REFRESH_TOKEN` >
+認証優先順：`--refresh-token` > `--uid` > `PIXIV_REFRESH_TOKEN` >
 `auth.json.default_user_id`。
 
 設定優先順：CLI flag > environment > `config.toml` > built-in default。proxy override は保存されません。

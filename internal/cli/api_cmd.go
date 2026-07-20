@@ -23,10 +23,8 @@ type searchOptions struct {
 	tool        string
 	aiMode      string
 	listOptions
-	r18    bool
 	rating string
 	typ    string
-	aiType int
 }
 
 type rankingOptions struct {
@@ -50,7 +48,6 @@ func (a app) newSearchCommand() *cobra.Command {
 		resolution:  string(sdk.SearchResolutionAll),
 		aspectRatio: string(sdk.SearchAspectRatioAll),
 		aiMode:      string(sdk.SearchAIModeAll),
-		aiType:      2,
 	}
 	cmd := &cobra.Command{
 		Use:     "search WORD",
@@ -72,11 +69,7 @@ func (a app) newSearchCommand() *cobra.Command {
 	flags.StringVar(&opts.aspectRatio, "aspect-ratio", opts.aspectRatio, "aspect ratio filter: all, landscape, portrait, square")
 	flags.StringVar(&opts.tool, "tool", "", "drawing tool name from search-options")
 	flags.StringVar(&opts.aiMode, "ai-mode", opts.aiMode, "AI artwork filter: all, exclude, only")
-	flags.IntVar(&opts.aiType, "ai-type", opts.aiType, "AI artwork filter: 0 non-AI, 1 AI only, 2 all")
-	_ = flags.MarkDeprecated("ai-type", "use --ai-mode instead")
 	bindListFlags(cmd, &opts.listOptions)
-	flags.BoolVar(&opts.r18, "r18", false, "search R-18 illustrations")
-	_ = flags.MarkDeprecated("r18", "use --rating r18 instead")
 	return cmd
 }
 
@@ -118,7 +111,7 @@ func (a app) runSearch(cmd *cobra.Command, args []string, opts searchOptions) er
 	}, func(items []sdk.Illust, start int) { printIllusts(a.out, items, start, false) })
 }
 
-func resolveSearchFilters(cmd *cobra.Command, opts searchOptions) (sdk.SearchIllustFilters, error) {
+func resolveSearchFilters(_ *cobra.Command, opts searchOptions) (sdk.SearchIllustFilters, error) {
 	filters := sdk.SearchIllustFilters{}
 	switch opts.rating {
 	case "sfw", "r18", "r18g", "mature", "all":
@@ -129,10 +122,8 @@ func resolveSearchFilters(cmd *cobra.Command, opts searchOptions) (sdk.SearchIll
 	switch opts.typ {
 	case "all", "illust-and-ugoira", "illust", "manga", "ugoira":
 		filters.ContentType = sdk.SearchContentType(opts.typ)
-	case "comics":
-		filters.ContentType = sdk.SearchContentTypeManga
 	default:
-		return filters, fmt.Errorf("type must be one of all, illust-and-ugoira, illust, manga, ugoira, comics")
+		return filters, fmt.Errorf("type must be one of all, illust-and-ugoira, illust, manga, ugoira")
 	}
 	switch opts.resolution {
 	case "all", "high", "medium", "low":
@@ -146,36 +137,11 @@ func resolveSearchFilters(cmd *cobra.Command, opts searchOptions) (sdk.SearchIll
 	default:
 		return filters, fmt.Errorf("aspect-ratio must be one of all, landscape, portrait, square")
 	}
-	if cmd.Flags().Changed("ai-mode") && cmd.Flags().Changed("ai-type") {
-		return filters, fmt.Errorf("ai-mode and ai-type cannot be used together")
-	}
-	// 旧数值 flag 的帮助文本已经形成兼容契约；只在用户显式传入时翻译，
-	// 避免默认值 2 覆盖新的 --ai-mode。
-	if cmd.Flags().Changed("ai-type") {
-		switch opts.aiType {
-		case 0:
-			filters.AIMode = sdk.SearchAIModeExclude
-		case 1:
-			filters.AIMode = sdk.SearchAIModeOnly
-		case 2:
-			filters.AIMode = sdk.SearchAIModeAll
-		default:
-			return filters, fmt.Errorf("ai-type must be 0, 1, or 2")
-		}
-	} else {
-		switch opts.aiMode {
-		case "all", "exclude", "only":
-			filters.AIMode = sdk.SearchAIMode(opts.aiMode)
-		default:
-			return filters, fmt.Errorf("ai-mode must be one of all, exclude, only")
-		}
-	}
-	if opts.r18 {
-		// --r18 仅作为 rating alias，不再篡改关键词，防止搜索语义依赖特殊标签文本。
-		if cmd.Flags().Changed("rating") && filters.Rating != sdk.SearchRatingR18 {
-			return filters, fmt.Errorf("r18 conflicts with rating %q", opts.rating)
-		}
-		filters.Rating = sdk.SearchRatingR18
+	switch opts.aiMode {
+	case "all", "exclude", "only":
+		filters.AIMode = sdk.SearchAIMode(opts.aiMode)
+	default:
+		return filters, fmt.Errorf("ai-mode must be one of all, exclude, only")
 	}
 	filters.Tool = opts.tool
 	return filters, nil

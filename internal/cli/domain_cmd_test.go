@@ -617,18 +617,9 @@ func TestListPaginationAndValidationUseOpaqueCursorWithoutCursorFlag(t *testing.
 	require.NoError(t, json.Unmarshal(stdout.Bytes(), &out))
 	require.Equal(t, []int64{3, 4}, []int64{out.Illusts[0].ID, out.Illusts[1].ID})
 
-	cursors = nil
-	stdout.Reset()
-	stderr.Reset()
-	require.Equal(t, 0, Run([]string{"pixiv", "search", "miku", "--json", "--offset", "2"}, strings.NewReader(""), &stdout, &stderr), stderr.String())
-	assert.Equal(t, []sdk.Cursor{"", "next"}, cursors, "deprecated offset traverses opaque cursors internally")
-	require.NoError(t, json.Unmarshal(stdout.Bytes(), &out))
-	require.Equal(t, []int64{3, 4}, []int64{out.Illusts[0].ID, out.Illusts[1].ID})
-
 	for _, args := range [][]string{
 		{"pixiv", "search", "miku", "--page", "0", "--limit", "1"},
 		{"pixiv", "search", "miku", "--page", "1"},
-		{"pixiv", "search", "miku", "--page", "1", "--limit", "1", "--offset", "1"},
 		{"pixiv", "search", "miku", "--limit", "-1"},
 		{"pixiv", "search", "miku", "--cursor", "secret"},
 	} {

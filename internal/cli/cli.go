@@ -29,7 +29,6 @@ type app struct {
 
 type commandOptions struct {
 	proxyOptions
-	profile          string
 	uid              string
 	refreshToken     string
 	downloadPath     string
@@ -285,8 +284,6 @@ func (a app) newMCPCommand() *cobra.Command {
 func (a app) bindCommonFlags(cmd *cobra.Command, opts *commandOptions) {
 	flags := cmd.Flags()
 	flags.StringVar(&opts.uid, "uid", "", "Pixiv UID from auth.json")
-	flags.StringVar(&opts.profile, "profile", "", "deprecated alias for --uid")
-	_ = flags.MarkDeprecated("profile", "use --uid instead")
 	flags.StringVar(&opts.refreshToken, "refresh-token", "", "Pixiv App API refresh token")
 	flags.StringVar(&opts.downloadPath, "download-path", "", "download directory")
 	flags.StringVar(&opts.filenameTemplate, "filename-template", "", "filename template")
@@ -302,13 +299,7 @@ func (a app) bindProxyFlags(cmd *cobra.Command, opts *proxyOptions) {
 
 func (a app) clientRequest(cmd *cobra.Command, opts commandOptions, needsAuth bool) (application.ClientRequest, error) {
 	userID := int64(0)
-	if cmd.Flags().Changed("uid") && cmd.Flags().Changed("profile") {
-		return application.ClientRequest{}, fmt.Errorf("use either --uid or deprecated --profile, not both")
-	}
 	rawUID := opts.uid
-	if rawUID == "" {
-		rawUID = opts.profile
-	}
 	if rawUID != "" {
 		parsed, err := application.ParseUID(rawUID)
 		if err != nil {

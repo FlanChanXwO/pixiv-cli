@@ -358,20 +358,17 @@ used.
 | `search` | `--sort` | `date_desc` | Sort order. |
 | `search` | `--duration` | empty | Pixiv API duration parameter. |
 | `search` | `--rating` | `all` | Rating filter: `sfw`, `r18`, `r18g`, `mature`, or `all`. |
-| `search` | `--type` | `all` | Content type: `all`, `illust-and-ugoira`, `illust`, `manga`, or `ugoira`; `comics` is a compatibility alias for `manga`. |
+| `search` | `--type` | `all` | Content type: `all`, `illust-and-ugoira`, `illust`, `manga`, or `ugoira`. |
 | `search` | `--ai-mode` | `all` | AI filter: `all`, `exclude`, or `only`; Pixiv `AIType==2` is AI-generated. |
-| `search` | `--ai-type` | `2` | Deprecated alias: `0=exclude`, `1=only`, `2=all`; conflicts with an explicitly supplied `--ai-mode`. |
 | `search` | `--aspect-ratio` | `all` | Aspect ratio: `all`, `landscape`, `portrait`, or `square`. |
 | `search` | `--resolution` | `all` | Resolution: `all`, `high`, `medium`, or `low`; both dimensions are respectively `>=3000`, `1000..2999`, or `<=999`. |
 | `search` | `--tool` | empty | Exact upstream drawing-tool name; obtain current values with authenticated `search-options`. |
 | list commands | `--limit` | one upstream batch | Maximum item count; `0` keeps reading until there is no next batch. |
 | list commands | `--page` | empty | 1-based logical page; must be used with a positive `--limit`. |
-| list commands | `--offset` | `0` | Deprecated logical offset; cannot be combined with `--page`. |
-| `search` | `--r18` | `false` | Deprecated alias for `--rating r18`; it does not modify the search word and conflicts with an explicitly supplied non-R18 rating. |
 | `ranking` | `--mode` | `day` | Ranking mode. |
 | `ranking` | `--date` | empty | Ranking date, typically `YYYY-MM-DD`. |
 | `ranking` | `--offset` | `0` | Pagination offset. |
-| `recommended KIND` | `--page`, `--limit`, deprecated `--offset` | per-stream pagination | Each stream paginates independently; `all` applies the same pagination semantics to illustrations, manga, novels, and users separately. |
+| `recommended KIND` | `--page`, `--limit` | per-stream pagination | Each stream paginates independently; `all` applies the same pagination semantics to illustrations, manga, novels, and users separately. |
 | `user artworks` | `--type` | `illust` | Pixiv illustration type passed to the user-artworks request. |
 | `user bookmarks` | `--restrict` | `public` | Bookmark visibility: `public` or `private`. |
 | `user bookmarks` | `--tag` | empty | Exact bookmark-tag filter. |
@@ -394,7 +391,6 @@ collects enough matching works, the upstream has no next batch, or a repeated cu
 | Flag | Applies to | Default | Description |
 | --- | --- | --- | --- |
 | `--uid UID` | `search/search-options/detail/ranking/recommended/user/download` | `auth.json.default_user_id` | Selects a local account. |
-| `--profile UID` | `search/search-options/detail/ranking/recommended/user/download` | empty | Deprecated alias of `--uid`. |
 | `--refresh-token TOKEN` | `search/search-options/detail/ranking/recommended/user/download` | empty | Temporarily overrides the account/env token; only raw App API refresh tokens are accepted. |
 | `--json` | `auth import/login/list/use/remove/check`, `version`, `update --check`, and data commands | `false` | Machine-parseable JSON output; `auth export` and actual update installation do not accept it. |
 | `--download-path PATH` | data commands; effectively only `download` | `DOWNLOAD_PATH`, `config.toml`, or `./downloads` | Download directory. |
@@ -429,7 +425,7 @@ collects enough matching works, the upstream has no next batch, or a repeated cu
 | `FILENAME_TEMPLATE` | `{author} - {title}_{id}` | Filename template. |
 | `https_proxy` / `HTTPS_PROXY` | empty | HTTP(S) proxy; the lowercase `https_proxy` takes precedence. |
 
-Authentication precedence: `--refresh-token` > `--uid`/deprecated `--profile` > `PIXIV_REFRESH_TOKEN` >
+Authentication precedence: `--refresh-token` > `--uid` > `PIXIV_REFRESH_TOKEN` >
 `auth.json.default_user_id`.
 
 Settings precedence: CLI flag > environment variable > `config.toml` > built-in default. The only CLI proxy

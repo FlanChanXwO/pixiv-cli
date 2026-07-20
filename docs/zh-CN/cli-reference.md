@@ -299,20 +299,17 @@ CLI 使用 Cobra/pflag，选项可以写在位置参数前后，例如 `pixiv au
 | `search` | `--sort` | `date_desc` | 排序方式。 |
 | `search` | `--duration` | 空 | Pixiv API 的时间范围参数。 |
 | `search` | `--rating` | `all` | 分级筛选：`sfw`、`r18`、`r18g`、`mature` 或 `all`。 |
-| `search` | `--type` | `all` | 作品类型：`all`、`illust-and-ugoira`、`illust`、`manga` 或 `ugoira`；`comics` 是 `manga` 的兼容 alias。 |
+| `search` | `--type` | `all` | 作品类型：`all`、`illust-and-ugoira`、`illust`、`manga` 或 `ugoira`。 |
 | `search` | `--ai-mode` | `all` | AI 筛选：`all`、`exclude` 或 `only`；Pixiv `AIType==2` 表示 AI 生成。 |
-| `search` | `--ai-type` | `2` | Deprecated alias：`0=exclude`、`1=only`、`2=all`；与显式 `--ai-mode` 冲突。 |
 | `search` | `--aspect-ratio` | `all` | 横纵比：`all`、`landscape`、`portrait` 或 `square`。 |
 | `search` | `--resolution` | `all` | 分辨率：`all`、`high`、`medium` 或 `low`；宽高两个维度分别都需满足 `>=3000`、`1000..2999` 或 `<=999`。 |
 | `search` | `--tool` | 空 | 上游绘图工具的精确名称；用已认证的 `search-options` 查询当前值。 |
 | 列表命令 | `--limit` | 一个上游批次 | 最大条数；`0` 表示持续读取到没有下一批。 |
 | 列表命令 | `--page` | 空 | 从 1 开始的逻辑页；必须与正数 `--limit` 同用。 |
-| 列表命令 | `--offset` | `0` | 已废弃的逻辑偏移；不能与 `--page` 同用。 |
-| `search` | `--r18` | `false` | Deprecated `--rating r18` alias；不再修改关键词，与显式非 R18 rating 冲突。 |
 | `ranking` | `--mode` | `day` | 排行榜模式。 |
 | `ranking` | `--date` | 空 | 排行榜日期，格式通常为 `YYYY-MM-DD`。 |
 | `ranking` | `--offset` | `0` | 分页偏移。 |
-| `recommended KIND` | `--page`、`--limit`、已废弃 `--offset` | 各流独立分页 | 每条流独立分页；`all` 会对插画、漫画、小说、作者分别应用相同分页语义。 |
+| `recommended KIND` | `--page`、`--limit` | 各流独立分页 | 每条流独立分页；`all` 会对插画、漫画、小说、作者分别应用相同分页语义。 |
 | `user artworks` | `--type` | `illust` | 传给用户作品请求的 Pixiv illustration type。 |
 | `user bookmarks` | `--restrict` | `public` | 收藏可见性：`public` 或 `private`。 |
 | `user bookmarks` | `--tag` | 空 | 精确收藏 tag 筛选。 |
@@ -330,7 +327,6 @@ CLI 使用 Cobra/pflag，选项可以写在位置参数前后，例如 `pixiv au
 | 参数 | 适用命令 | 默认值 | 说明 |
 | --- | --- | --- | --- |
 | `--uid UID` | `search/search-options/detail/ranking/recommended/user/download` | `auth.json.default_user_id` | 选择本地账号。 |
-| `--profile UID` | `search/search-options/detail/ranking/recommended/user/download` | 空 | `--uid` 的 deprecated alias。 |
 | `--refresh-token TOKEN` | `search/search-options/detail/ranking/recommended/user/download` | 空 | 临时覆盖账号/env token；只接受原始 App API refresh token。 |
 | `--json` | `auth import/login/list/use/remove/check`、`version`、`update --check` 和数据命令 | `false` | 输出机器可解析 JSON；`auth export` 和实际更新安装不接受。 |
 | `--download-path PATH` | 数据命令；实际只影响 `download` | `DOWNLOAD_PATH`、`config.toml` 或 `./downloads` | 下载目录。 |
@@ -365,7 +361,7 @@ CLI 使用 Cobra/pflag，选项可以写在位置参数前后，例如 `pixiv au
 | `FILENAME_TEMPLATE` | `{author} - {title}_{id}` | 文件名模板。 |
 | `https_proxy` / `HTTPS_PROXY` | 空 | HTTP(S) 代理；优先使用小写 `https_proxy`。 |
 
-认证优先级：`--refresh-token` > `--uid`/deprecated `--profile` > `PIXIV_REFRESH_TOKEN` > `auth.json.default_user_id`。
+认证优先级：`--refresh-token` > `--uid` > `PIXIV_REFRESH_TOKEN` > `auth.json.default_user_id`。
 
 设置类字段优先级：命令行 flag > 环境变量 > `config.toml` > 默认值。代理的命令行覆盖只支持 `--proxy URL` / `--no-proxy`，且不会持久化。
 

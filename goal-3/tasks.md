@@ -48,12 +48,12 @@
 
 ## T05 — 移除冗余 CLI 兼容入口
 
-- 状态：未开始
+- 状态：已完成
 - 范围：删除 CLI `--ai-type`、`--r18`、`--profile`、`--offset`、`comics`；能力保留在规范字段（`--ai-mode`、`--rating`、`--uid`、`--page/--limit`、规范 type）；更新测试与帮助。
 - 验收：旧 flag 被拒绝或不再注册；规范路径行为不变；文档/changelog 同步。
-- 实际：
-- 证据：
-- 风险/下一步：
+- 实际：从 `api_cmd`/`cli`/`sdk_cmd` 删除上述兼容入口与映射逻辑；`TestSearchRejectsRemovedCompatibilityFlags` 断言 unknown flag / comics 类型错误且不打开 SDK；三语 CLI reference、architecture、CHANGELOG Breaking 已同步。
+- 证据：`go test ./internal/cli -count=1`、`go test ./scripts/documentation -count=1`、vet 通过；新测试五子场景全 PASS。
+- 风险/下一步：产品 skill 无这些旧 flag 残留。下一轮 T06 移除 MCP 旧 wire 字段。
 
 ## T06 — 移除冗余 MCP 旧 wire 字段
 

@@ -64,7 +64,7 @@ func TestSearchPassesStableFiltersToSDKAndFollowsCursorUntilLimit(t *testing.T) 
 	}})
 
 	var stdout, stderr bytes.Buffer
-	code := Run([]string{"pixiv", "search", "miku", "--rating", "r18", "--type", "comics", "--ai-mode", "only", "--resolution", "high", "--aspect-ratio", "portrait", "--tool", "CLIP STUDIO PAINT", "--limit", "2", "--json"}, strings.NewReader(""), &stdout, &stderr)
+	code := Run([]string{"pixiv", "search", "miku", "--rating", "r18", "--type", "manga", "--ai-mode", "only", "--resolution", "high", "--aspect-ratio", "portrait", "--tool", "CLIP STUDIO PAINT", "--limit", "2", "--json"}, strings.NewReader(""), &stdout, &stderr)
 
 	require.Equal(t, 0, code, stderr.String())
 	assert.Equal(t, []sdk.Cursor{"", "second"}, cursors)
@@ -120,26 +120,6 @@ func TestSearchMapsRemainingCanonicalFiltersToSDK(t *testing.T) {
 	}
 }
 
-func TestSearchDeprecatedAITypeUsesDocumentedSemanticMapping(t *testing.T) {
-	for _, test := range []struct {
-		value string
-		want  sdk.SearchAIMode
-	}{{"0", sdk.SearchAIModeExclude}, {"1", sdk.SearchAIModeOnly}, {"2", sdk.SearchAIModeAll}} {
-		t.Run(test.value, func(t *testing.T) {
-			useTempPaths(t)
-			var got sdk.SearchIllustRequest
-			setTestSDKCommandClient(t, sdkCommandFake{search: func(_ context.Context, request sdk.SearchIllustRequest) (*sdk.IllustListResult, error) {
-				got = request
-				return &sdk.IllustListResult{}, nil
-			}})
-			var stdout, stderr bytes.Buffer
-			code := Run([]string{"pixiv", "search", "miku", "--ai-type", test.value, "--json"}, strings.NewReader(""), &stdout, &stderr)
-			require.Equal(t, 0, code, stderr.String())
-			assert.Equal(t, test.want, got.Filters.AIMode)
-		})
-	}
-}
-
 func TestSearchRejectsInvalidFilterValuesBeforeOpeningSDK(t *testing.T) {
 	for _, test := range []struct {
 		name string
@@ -148,7 +128,6 @@ func TestSearchRejectsInvalidFilterValuesBeforeOpeningSDK(t *testing.T) {
 	}{
 		{name: "rating", args: []string{"--rating", "adult"}, want: "rating must be one of"},
 		{name: "type", args: []string{"--type", "novel"}, want: "type must be one of"},
-		{name: "ai type", args: []string{"--ai-type", "3"}, want: "ai-type must be 0, 1, or 2"},
 		{name: "ai mode", args: []string{"--ai-mode", "sometimes"}, want: "ai-mode must be one of"},
 		{name: "resolution", args: []string{"--resolution", "huge"}, want: "resolution must be one of"},
 		{name: "aspect ratio", args: []string{"--aspect-ratio", "wide"}, want: "aspect-ratio must be one of"},
@@ -170,38 +149,32 @@ func TestSearchRejectsInvalidFilterValuesBeforeOpeningSDK(t *testing.T) {
 	}
 }
 
-func TestSearchRejectsConflictingCompatibilityFlags(t *testing.T) {
+func TestSearchRejectsRemovedCompatibilityFlags(t *testing.T) {
 	for _, test := range []struct {
 		name string
 		args []string
 		want string
 	}{
-		{name: "ai", args: []string{"--ai-mode", "only", "--ai-type", "1"}, want: "ai-mode and ai-type cannot be used together"},
-		{name: "r18", args: []string{"--r18", "--rating", "sfw"}, want: "r18 conflicts with rating"},
+		{name: "ai-type", args: []string{"--ai-type", "1"}, want: "unknown flag: --ai-type"},
+		{name: "r18", args: []string{"--r18"}, want: "unknown flag: --r18"},
+		{name: "profile", args: []string{"--profile", "111"}, want: "unknown flag: --profile"},
+		{name: "offset", args: []string{"--offset", "1"}, want: "unknown flag: --offset"},
+		{name: "comics type", args: []string{"--type", "comics"}, want: "type must be one of"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			useTempPaths(t)
-			setTestSDKCommandClient(t, sdkCommandFake{})
+			calls := 0
+			setTestSDKCommandFactory(t, func(application.SDKClientRequest) (application.SDKClient, error) {
+				calls++
+				return sdkCommandFake{}, nil
+			})
 			var stdout, stderr bytes.Buffer
 			code := Run(append([]string{"pixiv", "search", "miku"}, test.args...), strings.NewReader(""), &stdout, &stderr)
 			require.NotZero(t, code)
 			assert.Contains(t, stderr.String(), test.want)
+			assert.Zero(t, calls)
 		})
 	}
-}
-
-func TestSearchR18AliasSetsRatingWithoutChangingWord(t *testing.T) {
-	useTempPaths(t)
-	var got sdk.SearchIllustRequest
-	setTestSDKCommandClient(t, sdkCommandFake{search: func(_ context.Context, request sdk.SearchIllustRequest) (*sdk.IllustListResult, error) {
-		got = request
-		return &sdk.IllustListResult{}, nil
-	}})
-	var stdout, stderr bytes.Buffer
-	code := Run([]string{"pixiv", "search", "miku", "--r18", "--json"}, strings.NewReader(""), &stdout, &stderr)
-	require.Equal(t, 0, code, stderr.String())
-	assert.Equal(t, "miku", got.Word)
-	assert.Equal(t, sdk.SearchRatingR18, got.Filters.Rating)
 }
 
 func TestSearchOptionsRoutesWordAndPrintsJSON(t *testing.T) {
@@ -349,7 +322,7 @@ func TestSearchPassesSelectedUIDWithoutResolvingCredentialInCLI(t *testing.T) {
 
 	for _, args := range [][]string{
 		{"pixiv", "search", "miku", "--uid", "222"},
-		{"pixiv", "search", "miku", "--profile", "111"},
+		{"pixiv", "search", "miku", "--uid", "111"},
 	} {
 		var stdout, stderr bytes.Buffer
 		require.Equal(t, 0, Run(args, strings.NewReader(""), &stdout, &stderr), stderr.String())

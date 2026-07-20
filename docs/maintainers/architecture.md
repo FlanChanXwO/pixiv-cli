@@ -27,7 +27,7 @@
 - 文本/JSON 输出。
 - `auth import [REFRESH_TOKEN]` 的输入 adapter：位置参数直接作为 opaque token；无参 TTY 隐藏输入，非 TTY 读取 raw stdin；`--file PATH|-` 解码并离线恢复 bundle。
 - `auth export` 的 secret-output adapter：不带 `--output` 时，默认/UID 选择只输出 raw token 与换行，`--all` 只输出 versioned bundle；`--output` 改为私有文件并只输出无 secret 摘要。
-- CLI 协议的 `--page`/`--limit`/deprecated `--offset` 解析与错误文案；解析后的逻辑分页计划交给 application 共享遍历引擎。
+- CLI 协议的 `--page`/`--limit` 解析与错误文案；解析后的逻辑分页计划交给 application 共享遍历引擎。
 - `auth login` 的 loopback OAuth、浏览器打开和 TTY 交互。
 - `pixiv mcp` 分发。
 - `pixiv version`、根 `--version` 与 `pixiv update` 的输入/输出适配。
