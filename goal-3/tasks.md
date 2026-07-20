@@ -118,12 +118,12 @@
 
 ## T11 — 文件日志子系统
 
-- 状态：未开始
+- 状态：已完成
 - 范围：`os.UserStateDir()/pixiv/logs` 按日 JSONL 轮转，默认保留 7 天，仅清理识别出的历史日志；脱敏操作摘要；终端无日志痕迹；目录/轮转/清理失败静默；仅特殊非认证故障可建议查看日志。
 - 验收：日志脱敏 canary 测试、保留策略测试、CLI/MCP 终端无痕迹。
-- 实际：
-- 证据：
-- 风险/下一步：
+- 实际：新增 `internal/bootstrap/filelog.go`：跨平台 state 目录（兼容无 `os.UserStateDir` 的工具链）、按日 `pixiv-YYYY-MM-DD.jsonl` 轮转、默认保留 7 天且只删可识别文件名；`NewApplicationLogger` 固定写文件 JSONL，终端 `errOut` 静默；CLI 仅对 upstream/malformed/rate_limit 类错误提示日志目录；登录/token 失败不提示。测试隔离 `XDG_STATE_HOME`/`LocalAppData`。CHANGELOG/AGENTS/MCP 文档同步。
+- 证据：`go test ./internal/bootstrap ./internal/cli ./scripts/documentation -count=1` 通过；`go vet ./internal/bootstrap ./internal/cli` 通过；新增 `TestCleanupOldLogFilesOnlyRemovesRecognizedLogs`、`TestNewApplicationLoggerKeepsTerminalSilentAndWritesJSONLFile`、`TestShouldSuggestLogDirOnlyForSpecialNonAuthFailures` 等；SDK 既有 redaction canary 仍覆盖脱敏。日志：`/tmp/goal3-t11-gotest.log`。
+- 风险/下一步：全量文档文案中的“stderr 日志”可能仍有遗漏，T13 再扫。下一轮 T12：e2e 迁移与删除过时目录。
 
 ## T12 — 仓库清理：e2e 迁移与删除过时目录
 

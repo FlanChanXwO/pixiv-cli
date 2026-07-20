@@ -2,17 +2,23 @@ package bootstrap
 
 import (
 	"bytes"
-	"encoding/json"
 	"log/slog"
+	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/config"
 	"github.com/stretchr/testify/require"
 )
 
-func TestNewApplicationLoggerUsesDiscardWhenConfigIsMalformed(t *testing.T) {
+func TestNewApplicationLoggerKeepsTerminalSilentWhenConfigIsMalformed(t *testing.T) {
 	clearRuntimeEnvironment(t)
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_STATE_HOME", filepath.Join(home, "state"))
+	t.Setenv("LocalAppData", filepath.Join(home, "localapp"))
 	configPath := filepath.Join(t.TempDir(), "config.toml")
 	t.Cleanup(config.SetFilePathForTest(configPath))
 	require.NoError(t, config.WritePrivateFile(configPath, []byte("[logging\nlevel = broken")))
@@ -23,6 +29,7 @@ func TestNewApplicationLoggerUsesDiscardWhenConfigIsMalformed(t *testing.T) {
 	require.NoError(t, err)
 	logger.Error("must remain local")
 
+	// 配置损坏时仍不得污染终端；文件日志尽力写入，失败则静默。
 	require.Empty(t, output.String())
 	require.Same(t, global, slog.Default())
 }
@@ -52,32 +59,33 @@ func TestNewApplicationLoggerRejectsInvalidExplicitLoggingSettings(t *testing.T)
 	}
 }
 
-func TestNewApplicationLoggerWritesConfiguredFormatsOnlyToProvidedWriter(t *testing.T) {
-	for _, format := range []string{"json", "text"} {
-		t.Run(format, func(t *testing.T) {
-			clearRuntimeEnvironment(t)
-			configPath := filepath.Join(t.TempDir(), "config.toml")
-			t.Cleanup(config.SetFilePathForTest(configPath))
-			body := "[logging]\nlevel = \"info\"\nformat = \"" + format + "\"\n"
-			require.NoError(t, config.WritePrivateFile(configPath, []byte(body)))
-			var output bytes.Buffer
-			global := slog.Default()
+func TestNewApplicationLoggerKeepsTerminalSilentAndWritesJSONLFile(t *testing.T) {
+	clearRuntimeEnvironment(t)
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_STATE_HOME", filepath.Join(home, "state"))
+	t.Setenv("LocalAppData", filepath.Join(home, "localapp"))
 
-			logger, err := NewApplicationLogger(&output)
-			require.NoError(t, err)
-			logger.Info("bootstrap logger probe", "format", format)
+	configPath := filepath.Join(t.TempDir(), "config.toml")
+	t.Cleanup(config.SetFilePathForTest(configPath))
+	require.NoError(t, config.WritePrivateFile(configPath, []byte("[logging]\nlevel = \"info\"\nformat = \"text\"\n")))
 
-			require.Same(t, global, slog.Default())
-			require.Contains(t, output.String(), "bootstrap logger probe")
-			if format == "json" {
-				var event map[string]any
-				require.NoError(t, json.Unmarshal(output.Bytes(), &event))
-				require.Equal(t, "INFO", event["level"])
-				require.Equal(t, format, event["format"])
-			} else {
-				require.Contains(t, output.String(), "level=INFO")
-				require.Contains(t, output.String(), "format=text")
-			}
-		})
-	}
+	var output bytes.Buffer
+	global := slog.Default()
+	logger, err := NewApplicationLogger(&output)
+	require.NoError(t, err)
+	logger.Info("bootstrap logger probe", "component", "cli", "operation", "pixiv search")
+	require.Same(t, global, slog.Default())
+	// 终端不得出现日志痕迹
+	require.Empty(t, output.String())
+
+	logDir, err := DefaultLogDir()
+	require.NoError(t, err)
+	day := time.Now().Format("2006-01-02")
+	path := filepath.Join(logDir, "pixiv-"+day+".jsonl")
+	body, err := os.ReadFile(path)
+	require.NoError(t, err)
+	require.Contains(t, string(body), "bootstrap logger probe")
+	require.NotContains(t, string(body), "refresh_token")
+	require.True(t, strings.Contains(string(body), "operation"))
 }

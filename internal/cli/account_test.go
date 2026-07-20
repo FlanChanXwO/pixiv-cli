@@ -1733,6 +1733,9 @@ func useTempPaths(t *testing.T) (string, string) {
 	t.Setenv("HOME", home)
 	t.Setenv("USERPROFILE", home)
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
+	// 文件日志写入 UserStateDir/pixiv/logs；测试必须隔离 state 目录，避免污染真实用户日志。
+	t.Setenv("XDG_STATE_HOME", filepath.Join(home, ".local", "state"))
+	t.Setenv("LocalAppData", filepath.Join(home, "AppData", "Local"))
 	base := filepath.Join(home, "pixiv")
 	authPath := filepath.Join(base, "auth.json")
 	configPath := filepath.Join(base, "config.toml")

@@ -2,9 +2,9 @@
 
 [English](../en/mcp-tools.md) | 简体中文 | [文档索引](../index.md)
 
-以 `pixiv mcp` 启动 stdio server。stdout 仅用于 JSON-RPC，日志写 stderr。MCP 不提供 HTTP endpoint。
+以 `pixiv mcp` 启动 stdio server。stdout 仅用于 JSON-RPC；操作日志写入用户 state 目录下 `pixiv/logs` 的按日 JSONL（默认保留 7 天），终端默认无日志痕迹。MCP 不提供 HTTP endpoint。
 
-有 refresh token 时 App API 为主路径，失败不自动回落 Web；无 refresh token 且 `web_fallback_enabled=true` 时，仅匿名白名单读 tool 可用 Web API。SDK 路径的用户详情、用户列表和收藏/关注写操作同时返回文本内容与 structured output；其可分类失败会令 result `isError=true`，保留安全错误文本和对应 structured output。遗留 MCP tool 的失败继续保持既有 Content、structured output、文本和 `isError=false` wire 兼容，但对应 stderr operation event 会使用 error level 和 `result=error`；事件只保留 operation、稳定 SDK 分类、backend/status 及安全 ID，不记录原始错误文本、tool 输入、query、token、Cookie、URL、path 或 response body。公开可写的未知 SDK error code 不进入事件，未知 backend 归类为 `local`，不会回显原值。正常空结果仍记录为成功。
+有 refresh token 时 App API 为主路径，失败不自动回落 Web；无 refresh token 且 `web_fallback_enabled=true` 时，仅匿名白名单读 tool 可用 Web API。SDK 路径的用户详情、用户列表和收藏/关注写操作同时返回文本内容与 structured output；其可分类失败会令 result `isError=true`，保留安全错误文本和对应 structured output。遗留 MCP tool 的失败继续保持既有 Content、structured output、文本和 `isError=false` wire 兼容，但对应文件日志 operation event 会使用 error level 和 `result=error`；事件只保留 operation、稳定 SDK 分类、backend/status 及安全 ID，不记录原始错误文本、tool 输入、query、token、Cookie、URL、path 或 response body。公开可写的未知 SDK error code 不进入事件，未知 backend 归类为 `local`，不会回显原值。正常空结果仍记录为成功。
 
 ## 分页
 
@@ -23,14 +23,14 @@ SDK cursor 不出现在 MCP 参数或输出。列表工具统一使用逻辑 `pa
 | `set_download_path` | `path` | 文本状态。 |
 | `refresh_token` | 无 | 当前认证账号摘要。 |
 | `set_refresh_token` | 原始 App API `refresh_token` | 当前会话认证结果；不写 `auth.json`；Cookie 输入会被拒绝。 |
-| `download` | `illust_id` 或 `illust_ids`，可选 `delivery` | 下载文件、URI、MIME、大小；`local_path` 另附 ImageContent。 |
-| `download_random_from_recommendation` | 可选 `count`（省略或 `null` 时默认 5；显式值须为 1..20），可选 `delivery` | 下载结果文本与 structured 文件元数据；不附加 ImageContent。 |
+| `download` | `illust_id` 或 `illust_ids`，可选 `pages`/`quality`；`delivery` 仅 `local_path` | 本地文件 path/file_uri/mime_type/页号/大小；不内嵌图片内容。 |
+| `download_random_from_recommendation` | 可选 `count`（省略或 `null` 时默认 5；显式值须为 1..20），可选 `pages`/`quality`；`delivery` 仅 `local_path` | 下载结果文本与 structured 本地文件元数据；不内嵌图片内容。 |
 
-`refresh_token` 在 SDK/config/proxy 初始化失败时不会误报“未设置 refresh token”：context 取消与 deadline 保留明确文案，公开 `*pixiv.Error` 保留安全 code/operation/backend 分类，其他未知初始化错误不回显原始细节。真正执行 refresh 时，仅 `unauthorized` 保留缺少 token 提示；未知执行错误同样返回脱敏排查提示。该 legacy tool 的 wire 仍保持 `isError=false`，真实失败通过前述 stderr event 可观测。
+`refresh_token` 在 SDK/config/proxy 初始化失败时不会误报“未设置 refresh token”：context 取消与 deadline 保留明确文案，公开 `*pixiv.Error` 保留安全 code/operation/backend 分类，其他未知初始化错误不回显原始细节。真正执行 refresh 时，仅 `unauthorized` 保留缺少 token 提示；未知执行错误同样返回脱敏排查提示。该 legacy tool 的 wire 仍保持 `isError=false`，真实失败通过前述文件日志 event 可观测。
 
-`download_random_from_recommendation.count` 限制本次请求的作品数，不限制一个作品展开的文件数。显式传入 0、负数或大于 20 的值会返回参数错误，不会改写为默认值或边界值；推荐列表少于请求数时则下载列表中实际可用的作品。该 tool 与 `download` 一样只返回下载结果文本与 structured 本地文件元数据，不附加 ImageContent。
+`download_random_from_recommendation.count` 限制本次请求的作品数，不限制一个作品展开的文件数。显式传入 0、负数或大于 20 的值会返回参数错误，不会改写为默认值或边界值；推荐列表少于请求数时则下载列表中实际可用的作品。该 tool 与 `download` 一样只返回下载结果文本与 structured 本地文件元数据，不内嵌图片内容。
 
-两个下载 tool 在参数校验、SDK、推荐获取、下载、结果整理失败时，都会保留原有业务错误文本，并返回有效 structured output：`delivery` 固定为 `local_path`（非法 `delivery` 时同样回落到该值），`items` 与 `files` 是空数组而不是 `null`。这些遗留失败结果继续保持 `isError=false`，不会被 typed output schema 的校验错误替代。成功与失败均不附加 ImageContent。
+两个下载 tool 在参数校验、SDK、推荐获取、下载、结果整理失败时，都会保留原有业务错误文本，并返回有效 structured output：`delivery` 固定为 `local_path`（非法 `delivery` 时同样回落到该值），`items` 与 `files` 是空数组而不是 `null`。这些遗留失败结果继续保持 `isError=false`，不会被 typed output schema 的校验错误替代。成功与失败均不内嵌图片内容。
 
 ## 作品与用户读取
 

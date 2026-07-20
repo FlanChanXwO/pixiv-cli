@@ -212,7 +212,28 @@ func (a app) exit(err error) int {
 		return 0
 	}
 	fmt.Fprintln(a.errOut, "error:", err)
+	// 仅对特殊非认证故障提示查看日志；登录失败与 token 过期不提示。
+	if shouldSuggestLogDir(err) {
+		if hint := bootstrap.SuggestLogDirHint(); hint != "" {
+			fmt.Fprintln(a.errOut, hint)
+		}
+	}
 	return 1
+}
+
+func shouldSuggestLogDir(err error) bool {
+	var typed *sdk.Error
+	if !errors.As(err, &typed) {
+		return false
+	}
+	switch typed.Code {
+	case sdk.CodeUnauthorized, sdk.CodeForbidden:
+		return false
+	case sdk.CodeUpstreamUnavailable, sdk.CodeUpstreamError, sdk.CodeMalformedUpstreamResponse, sdk.CodeRateLimited:
+		return true
+	default:
+		return false
+	}
 }
 
 func runMCP(ctx context.Context, errOut io.Writer, proxyOverride *string) error {

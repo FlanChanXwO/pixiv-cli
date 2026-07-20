@@ -2,17 +2,18 @@
 
 English | [简体中文](../zh-CN/mcp-tools.md) | [Documentation index](../index.md)
 
-Run `pixiv mcp` to start the stdio server. stdout is reserved for JSON-RPC and logs go to stderr. MCP exposes no
-HTTP endpoint.
+Run `pixiv mcp` to start the stdio server. stdout is reserved for JSON-RPC. Operation logs are written as daily
+JSONL under the user state directory at `pixiv/logs` (default retention 7 days); the terminal stays free of log
+traces by default. MCP exposes no HTTP endpoint.
 
 With a refresh token, App API is the primary path and failures never fall back to Web automatically. Without a
 token and with `web_fallback_enabled=true`, only allowlisted anonymous read tools may use Web API. SDK-based user
 detail/list and bookmark/follow write tools return text plus structured output; classified failures set
 `isError=true`. Legacy tool failures retain their existing Content, structured output, text, and `isError=false`
-wire behavior, while stderr records an error-level operation event with `result=error`. Events contain only the
-operation, stable SDK classification, backend/status, and safe IDs; they never include raw errors, inputs, queries,
-tokens, cookies, URLs, paths, or response bodies. Unknown public SDK codes are omitted and unknown backends
-normalize to `local`. A normal empty result remains a success.
+wire behavior, while the file log records an error-level operation event with `result=error`. Events contain only
+the operation, stable SDK classification, backend/status, and safe IDs; they never include raw errors, inputs,
+queries, tokens, cookies, URLs, paths, or response bodies. Unknown public SDK codes are omitted and unknown
+backends normalize to `local`. A normal empty result remains a success.
 
 ## Pagination
 
@@ -33,17 +34,17 @@ it conflicts only with `page` and may still be used with `limit`.
 | `set_download_path` | `path` | Text status. |
 | `refresh_token` | none | Current authenticated-account summary. |
 | `set_refresh_token` | raw App API `refresh_token` | Current-session authentication result; does not write `auth.json`; rejects cookies. |
-| `download` | `illust_id` or `illust_ids`, optional `delivery` | Files, URI, MIME, and size; `local_path` also attaches ImageContent. |
-| `download_random_from_recommendation` | optional `count` (omitted/`null` defaults to 5; explicit value must be 1..20), optional `delivery` | Text plus structured file metadata; never attaches ImageContent. |
+| `download` | `illust_id` or `illust_ids`, optional `pages`/`quality`; `delivery` is `local_path` only | Local file path/file_uri/mime_type/page/size; never embeds image bytes. |
+| `download_random_from_recommendation` | optional `count` (omitted/`null` defaults to 5; explicit value must be 1..20), optional `pages`/`quality`; `delivery` is `local_path` only | Text plus structured local file metadata; never embeds image bytes. |
 
 `refresh_token` does not misreport SDK/config/proxy initialization failures as a missing token. Context cancellation
 and deadlines retain explicit messages; public `*pixiv.Error` values retain safe code/operation/backend fields;
 unknown initialization/execution failures use a redacted diagnostic. Only a real `unauthorized` refresh keeps the
-missing-token hint. This legacy tool remains `isError=false`; stderr events expose real failures safely.
+missing-token hint. This legacy tool remains `isError=false`; file-log events expose real failures safely.
 
 `download_random_from_recommendation.count` limits works, not files expanded from each work. Explicit 0, negative,
 or values above 20 fail validation instead of being clamped. If fewer recommendations exist, the tool downloads the
-available works. Download tools return local file metadata only and never attach ImageContent.
+available works. Download tools return local file metadata only and never embed image bytes.
 
 Both download tools return valid structured output on validation, SDK, recommendation, download, result-building,
 or file-read failure: `delivery` retains the normalized mode (`local_path` when IDs/delivery are invalid), and

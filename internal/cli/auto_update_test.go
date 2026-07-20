@@ -238,7 +238,7 @@ func TestRunAutomaticUpdateUsesCurrentCommandProxyOverride(t *testing.T) {
 	require.Equal(t, 0, code, stderr.String())
 	var result map[string]any
 	require.NoError(t, json.Unmarshal(stdout.Bytes(), &result))
-	assert.Contains(t, stderr.String(), "pixiv operation")
+	assert.NotContains(t, stderr.String(), "pixiv operation")
 	assert.Equal(t, []update.ReleaseCheckOptions{{Automatic: true}}, checker.options)
 }
 
@@ -261,7 +261,7 @@ func TestRunAutomaticUpdateUsesCurrentCommandNoProxyOverride(t *testing.T) {
 	require.Equal(t, 0, code, stderr.String())
 	var result map[string]any
 	require.NoError(t, json.Unmarshal(stdout.Bytes(), &result))
-	assert.Contains(t, stderr.String(), "pixiv operation")
+	assert.NotContains(t, stderr.String(), "pixiv operation")
 	assert.Equal(t, []update.ReleaseCheckOptions{{Automatic: true}}, checker.options)
 }
 

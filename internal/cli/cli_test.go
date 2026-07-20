@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/config"
+	sdk "github.com/FlanChanXwO/pixiv-cli/pixiv"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -26,7 +27,7 @@ func TestRunNoArgsPrintsHelp(t *testing.T) {
 	assert.NotContains(t, stdout.String(), "completion")
 }
 
-func TestRunWritesJSONLogsOnlyToStderr(t *testing.T) {
+func TestRunKeepsTerminalFreeOfOperationLogs(t *testing.T) {
 	_, configPath := useTempPaths(t)
 	if err := config.WritePrivateFile(configPath, []byte("[logging]\nformat = 'json'\nlevel = 'info'\n")); err != nil {
 		t.Fatal(err)
@@ -39,8 +40,8 @@ func TestRunWritesJSONLogsOnlyToStderr(t *testing.T) {
 	if !strings.Contains(stdout.String(), "Usage:") || strings.Contains(stdout.String(), `"component":"cli"`) {
 		t.Fatalf("stdout mixed with log: %q", stdout.String())
 	}
-	if !strings.Contains(stderr.String(), `"component":"cli"`) || !strings.Contains(stderr.String(), `"operation":"pixiv"`) {
-		t.Fatalf("stderr lacks CLI JSON log: %q", stderr.String())
+	if strings.Contains(stderr.String(), `"component":"cli"`) || strings.Contains(stderr.String(), "pixiv operation") {
+		t.Fatalf("stderr unexpectedly contains operation logs: %q", stderr.String())
 	}
 }
 
@@ -85,7 +86,51 @@ func TestRunUnknownCommandReturnsError(t *testing.T) {
 
 	require.NotZero(t, code)
 	assert.Contains(t, stderr.String(), `unknown command "wat"`)
-	assert.Contains(t, stderr.String(), `"level":"ERROR"`)
+	assert.NotContains(t, stderr.String(), `"level":"ERROR"`)
+	assert.NotContains(t, stderr.String(), "pixiv operation")
+}
+
+func TestShouldSuggestLogDirOnlyForSpecialNonAuthFailures(t *testing.T) {
+	cases := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{name: "nil", err: nil, want: false},
+		{name: "plain", err: errors.New("boom"), want: false},
+		{name: "unauthorized", err: &sdk.Error{Code: sdk.CodeUnauthorized}, want: false},
+		{name: "forbidden", err: &sdk.Error{Code: sdk.CodeForbidden}, want: false},
+		{name: "upstream_unavailable", err: &sdk.Error{Code: sdk.CodeUpstreamUnavailable}, want: true},
+		{name: "upstream_error", err: &sdk.Error{Code: sdk.CodeUpstreamError}, want: true},
+		{name: "malformed", err: &sdk.Error{Code: sdk.CodeMalformedUpstreamResponse}, want: true},
+		{name: "rate_limited", err: &sdk.Error{Code: sdk.CodeRateLimited}, want: true},
+		{name: "invalid_argument", err: &sdk.Error{Code: sdk.CodeInvalidArgument}, want: false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := shouldSuggestLogDir(tc.err); got != tc.want {
+				t.Fatalf("shouldSuggestLogDir(%v)=%v want %v", tc.err, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestExitSuggestsLogDirForUpstreamErrorOnly(t *testing.T) {
+	useTempPaths(t)
+	var errOut bytes.Buffer
+	a := app{errOut: &errOut}
+	code := a.exit(&sdk.Error{Code: sdk.CodeUpstreamError, Operation: sdk.OperationSearchIllust})
+	require.Equal(t, 1, code)
+	assert.Contains(t, errOut.String(), "error:")
+	assert.Contains(t, errOut.String(), "详见日志目录:")
+	assert.NotContains(t, errOut.String(), "refresh_token")
+	assert.NotContains(t, errOut.String(), "pixiv operation")
+
+	errOut.Reset()
+	code = a.exit(&sdk.Error{Code: sdk.CodeUnauthorized, Operation: sdk.OperationStartLogin})
+	require.Equal(t, 1, code)
+	assert.Contains(t, errOut.String(), "error:")
+	assert.NotContains(t, errOut.String(), "详见日志目录:")
 }
 
 func TestRunAccountCommandIsRemoved(t *testing.T) {
