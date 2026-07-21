@@ -136,11 +136,11 @@
 
 ## C04 — 集中检查 4（T10–T12）
 
-- 状态：未开始
+- 状态：已完成（含 2 项修复）
 - 检查：登录页安全、日志脱敏、仓库清理完整性、引用同步、全量门禁。
-- 实际：
-- 证据：
-- 风险/下一步：
+- 实际：对照 input 登录/日志/仓库清理段：T10 最终页居中且失败固定文案不回显敏感原因；T11 文件 JSONL、终端静默、仅特殊非认证故障提示日志目录、脱敏 canary 仍在；T12 e2e 顶层迁移完成，无 `test/`/`goal-2/`/`docs/adr/`/`docs/superpowers/`，`docs/maintainers/adr/` 11 篇保留，引用已同步。架构边界：CLI/MCP/application 无协议子包直连；diff 无 secret 字面量。发现并修复：(1) T11 轮转测试在真实日历跨日后 RED——`Write` 用 `time.Now` 与测试固定日不一致，改为可注入时钟；(2) T10 `finalPageWaiters` 在 submit 之后 Add，与 `notifyFinal.Wait` 竞态——改为 submit 前 Add。未发现无据 timeout/截断/静默 fallback。
+- 证据：`go test ./... -count=1` exit 0；`go vet ./...` exit 0；`git diff --check 074586f..HEAD` 通过；`go test -race ./internal/cli ./internal/bootstrap ./e2e -count=1` 通过（修复前 login race RED）。日志：`/tmp/goal3-c04-gotest-final.log`、`/tmp/goal3-c04-race-final.log`。
+- 风险/下一步：stderr/文档残留文案留给 T13。下一轮 T13：文档与产品 skill 全量同步。
 
 ## T13 — 文档与产品 skill 全量同步
 
