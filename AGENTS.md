@@ -12,7 +12,7 @@ sh scripts/build.sh
 真实 Pixiv web fallback e2e 默认跳过；需要联网时显式运行：
 
 ```bash
-PIXIV_E2E_WEB_API=1 PIXIV_WEB_API_PROXY=http://127.0.0.1:7890 go test ./test/e2e -run WebAPIFallbackReal -count=1 -v
+PIXIV_E2E_WEB_API=1 PIXIV_WEB_API_PROXY=http://127.0.0.1:7890 go test ./e2e -run WebAPIFallbackReal -count=1 -v
 ```
 
 ## 边界规则

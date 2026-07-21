@@ -10,7 +10,7 @@
 - `docs/ja/`：日语公开接口文档；只创建已完成翻译的文件，不用英文占位冒充日语。
 - `docs/maintainers/`：架构、开发流程、ADR 与 Agent 协作规则；每篇只保留一个 canonical 版本。
 - `docs/index.md`：语言与维护者文档总导航。
-- `docs/*.md`、`docs/agents/`、`docs/adr/` 的旧路径：兼容导航 stub，不再承载权威内容。
+- `docs/*.md`、`docs/agents/` 的旧路径：兼容导航 stub，不再承载权威内容；`docs/adr/` 与 `docs/superpowers/` 已移除，权威 ADR 仅在 `docs/maintainers/adr/`。
 - `CONTRIBUTING.md` / `CONTRIBUTING.zh-CN.md`：GitHub 可发现的贡献入口；新增 locale 只在有真实贡献者需求时进行。
 - `CONTEXT.md`：Pixiv/MCP 领域词汇与关系；不要放通用工程流程。
 - `CHANGELOG.md`：用户和集成方可感知的变化。

@@ -22,7 +22,7 @@ import (
 )
 
 func TestPixivBinaryBuildsFromCmdPixivAndPrintsHelp(t *testing.T) {
-	repoRoot := filepath.Join("..", "..")
+	repoRoot := ".."
 	binaryPath := buildPixivBinary(t, repoRoot)
 
 	run := exec.Command(binaryPath, "--help")
@@ -37,7 +37,7 @@ func TestPixivBinaryBuildsFromCmdPixivAndPrintsHelp(t *testing.T) {
 }
 
 func TestPixivBinaryUsesAuthCommandAndRemovesAccountCommand(t *testing.T) {
-	repoRoot := filepath.Join("..", "..")
+	repoRoot := ".."
 	binaryPath := buildPixivBinary(t, repoRoot)
 
 	authHelp := exec.Command(binaryPath, "auth", "--help")
@@ -80,7 +80,7 @@ func TestPixivBinaryUsesAuthCommandAndRemovesAccountCommand(t *testing.T) {
 }
 
 func TestPixivBinaryOfflineConfigAndMCPHelp(t *testing.T) {
-	repoRoot := filepath.Join("..", "..")
+	repoRoot := ".."
 	binaryPath := buildPixivBinary(t, repoRoot)
 	env := isolatedEnv(t)
 
@@ -126,7 +126,7 @@ func TestPixivBinaryOfflineConfigAndMCPHelp(t *testing.T) {
 }
 
 func TestPixivBinaryMCPStdioListsLegacyAndSDKTools(t *testing.T) {
-	repoRoot := filepath.Join("..", "..")
+	repoRoot := ".."
 	binaryPath := buildPixivBinary(t, repoRoot)
 	command := exec.CommandContext(testCommandContext(t), binaryPath, "mcp")
 	command.Dir = repoRoot
@@ -205,7 +205,7 @@ func TestPixivBinaryUsesProvidedBinaryAndExpectedVersion(t *testing.T) {
 		t.Fatal("PIXIV_E2E_EXPECTED_VERSION is required with PIXIV_E2E_BINARY")
 	}
 
-	repoRoot := filepath.Join("..", "..")
+	repoRoot := ".."
 	binaryPath := buildPixivBinary(t, repoRoot)
 	out, _ := runPixivStdout(t, repoRoot, binaryPath, isolatedEnv(t).values, "version", "--json")
 	var version struct {
@@ -222,7 +222,7 @@ func TestPixivBinaryWebAPIFallbackReal(t *testing.T) {
 		t.Skip("set PIXIV_E2E_WEB_API=1 to run real Pixiv web fallback e2e")
 	}
 
-	repoRoot := filepath.Join("..", "..")
+	repoRoot := ".."
 	binaryPath := buildPixivBinary(t, repoRoot)
 	env := isolatedEnv(t).values
 	downloadPath := t.TempDir()
@@ -320,7 +320,7 @@ func TestPixivBinaryRealAPISearchOptIn(t *testing.T) {
 		t.Skip("set PIXIV_E2E_REAL_API=1 to run real Pixiv API e2e")
 	}
 
-	repoRoot := filepath.Join("..", "..")
+	repoRoot := ".."
 	binaryPath := buildPixivBinary(t, repoRoot)
 	env := isolatedEnv(t).values
 	if proxy := firstNonEmpty(os.Getenv("PIXIV_E2E_PROXY"), os.Getenv("PIXIV_WEB_API_PROXY")); proxy != "" {
@@ -569,7 +569,7 @@ func TestPixivBinaryAuthenticatedAppAPICanary(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	repoRoot := filepath.Join("..", "..")
+	repoRoot := ".."
 	binaryPath := buildPixivBinary(t, repoRoot)
 	var env []string
 	if auth.kind == canaryAuthLocalStore {

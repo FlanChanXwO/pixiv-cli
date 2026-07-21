@@ -227,7 +227,7 @@ func (p *syntheticOAuthProxy) requireReceivedToken(t *testing.T, want string, co
 
 func newSyntheticAuthBinaryFixture(t *testing.T) syntheticAuthBinaryFixture {
 	t.Helper()
-	repoRoot := filepath.Join("..", "..")
+	repoRoot := ".."
 	fixture := syntheticAuthBinaryFixture{
 		repoRoot:      repoRoot,
 		binaryPath:    buildPixivBinary(t, repoRoot),

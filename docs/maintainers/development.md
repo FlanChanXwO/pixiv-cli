@@ -288,11 +288,11 @@ restore 原子写失败时检查 public `LocalWriteCommitOutcome`：pre-commit �
 ```bash
 go test ./...
 sh scripts/build.sh
-PIXIV_E2E_WEB_API=1 PIXIV_WEB_API_PROXY=http://127.0.0.1:7890 go test ./test/e2e -run WebAPIFallbackReal -count=1 -v
-PIXIV_E2E_REAL_API=1 PIXIV_E2E_REFRESH_TOKEN="<独立测试 refresh token>" PIXIV_E2E_PROXY=http://127.0.0.1:7890 go test ./test/e2e -run '^TestPixivBinaryAuthenticatedAppAPICanary$' -count=1 -v
-PIXIV_E2E_REAL_API=1 PIXIV_E2E_USE_LOCAL_AUTH=1 PIXIV_E2E_PROXY=http://127.0.0.1:7890 go test ./test/e2e -run '^TestPixivBinaryAuthenticatedAppAPICanary$' -count=1 -v
-PIXIV_E2E_REAL_API=1 PIXIV_E2E_REFRESH_TOKEN="<独立测试 refresh token>" PIXIV_E2E_PROXY=http://127.0.0.1:7890 go test ./test/e2e -run '^TestPixivSDKAuthenticatedAppAPICanarySearchFilters$' -count=1 -v
-PIXIV_E2E_REAL_API=1 PIXIV_E2E_USE_LOCAL_AUTH=1 PIXIV_E2E_PROXY=http://127.0.0.1:7890 go test ./test/e2e -run '^TestPixivSDKAuthenticatedAppAPICanarySearchFilters$' -count=1 -v
+PIXIV_E2E_WEB_API=1 PIXIV_WEB_API_PROXY=http://127.0.0.1:7890 go test ./e2e -run WebAPIFallbackReal -count=1 -v
+PIXIV_E2E_REAL_API=1 PIXIV_E2E_REFRESH_TOKEN="<独立测试 refresh token>" PIXIV_E2E_PROXY=http://127.0.0.1:7890 go test ./e2e -run '^TestPixivBinaryAuthenticatedAppAPICanary$' -count=1 -v
+PIXIV_E2E_REAL_API=1 PIXIV_E2E_USE_LOCAL_AUTH=1 PIXIV_E2E_PROXY=http://127.0.0.1:7890 go test ./e2e -run '^TestPixivBinaryAuthenticatedAppAPICanary$' -count=1 -v
+PIXIV_E2E_REAL_API=1 PIXIV_E2E_REFRESH_TOKEN="<独立测试 refresh token>" PIXIV_E2E_PROXY=http://127.0.0.1:7890 go test ./e2e -run '^TestPixivSDKAuthenticatedAppAPICanarySearchFilters$' -count=1 -v
+PIXIV_E2E_REAL_API=1 PIXIV_E2E_USE_LOCAL_AUTH=1 PIXIV_E2E_PROXY=http://127.0.0.1:7890 go test ./e2e -run '^TestPixivSDKAuthenticatedAppAPICanarySearchFilters$' -count=1 -v
 ```
 
 `go test ./...` 保持默认离线稳定；真实 Pixiv web API fallback e2e 默认跳过，只有设置 `PIXIV_E2E_WEB_API=1` 时才会联网。未设置 `PIXIV_WEB_API_PROXY` 时会直连。上述 Web canary 被显式调用时，会先从匿名搜索结果逐项读取 detail 取得真实宽高，选择可分类的横纵比候选，再执行带 `--aspect-ratio` 的高级搜索并通过 detail 复核返回作品的横纵比；该说明描述测试覆盖，不表示 canary 已经运行。

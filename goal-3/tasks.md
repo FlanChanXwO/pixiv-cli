@@ -127,12 +127,12 @@
 
 ## T12 — 仓库清理：e2e 迁移与删除过时目录
 
-- 状态：未开始
+- 状态：已完成
 - 范围：`test/e2e` → 顶层 `e2e/`；删除空 `test/`；删除 tracked `goal-2/`、`docs/adr/`、`docs/superpowers/`；保留 `docs/maintainers/adr/`；同步脚本、测试命令、文档路由、AGENTS。
 - 验收：本地树与引用一致；相关测试路径可运行；无误删 maintainers ADR。
-- 实际：
-- 证据：
-- 风险/下一步：
+- 实际：`git mv test/e2e e2e` 并删除空 `test/`；删除 tracked `goal-2/`、`docs/adr/`（仅 stub）、`docs/superpowers/`；`docs/maintainers/adr/` 11 篇完整保留。e2e 内 `repoRoot` 从 `filepath.Join("..","..")` 改为 `".."`。同步 `AGENTS.md`、`docs/maintainers/development.md`、`.github/workflows/platform-smoke.yml`、`scripts/platformsmokeworkflow/main.go` 与 documentation-guidelines 中对旧 `docs/adr` 的说明。纯仓库清理，未改 CHANGELOG。
+- 证据：`go test ./e2e -run '^TestPixivBinary' -count=1` 通过；`go test ./scripts/platformsmokeworkflow ./scripts/documentation -count=1` 通过；`go vet ./e2e ./scripts/platformsmokeworkflow` 通过；`git ls-files` 无 `test/`、`goal-2/`、`docs/adr/`、`docs/superpowers/`；日志 `/tmp/goal3-t12-e2e.log`、`/tmp/goal3-t12-scripts.log`。
+- 风险/下一步：无误删 maintainers ADR。下一轮 C04：集中检查 T10–T12。
 
 ## C04 — 集中检查 4（T10–T12）
 

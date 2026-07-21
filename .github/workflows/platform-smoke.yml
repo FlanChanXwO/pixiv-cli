@@ -120,4 +120,4 @@ jobs:
           PIXIV_E2E_EXPECTED_VERSION="v${version}" \
           PIXIV_E2E_REAL_API= \
           PIXIV_E2E_WEB_API= \
-          go test ./test/e2e -run '^TestPixivBinary' -count=1
+          go test ./e2e -run '^TestPixivBinary' -count=1

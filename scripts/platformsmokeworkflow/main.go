@@ -28,7 +28,7 @@ func Validate(path string) error {
 		"go test ./scripts/installers -count=1",
 		"PIXIV_E2E_BINARY=",
 		"PIXIV_E2E_EXPECTED_VERSION=",
-		"go test ./test/e2e -run '^TestPixivBinary' -count=1",
+		"go test ./e2e -run '^TestPixivBinary' -count=1",
 	} {
 		if !strings.Contains(workflow, required) {
 			return fmt.Errorf("platform smoke workflow missing %q", required)

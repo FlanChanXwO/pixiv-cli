@@ -11,7 +11,7 @@ import (
 )
 
 func TestPixivBinaryReportsBuildMetadata(t *testing.T) {
-	repoRoot := filepath.Join("..", "..")
+	repoRoot := ".."
 
 	t.Run("development build uses defaults", func(t *testing.T) {
 		assertPixivBuildMetadata(t, repoRoot, buildPixivVersionBinary(t, repoRoot), "dev", "unknown", "unknown")
