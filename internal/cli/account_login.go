@@ -158,8 +158,9 @@ func (a app) waitForLoginCode(ctx context.Context, addr string, acceptsCallback 
 			finalPageWaiters.Wait()
 		})
 	}
+	// waitFinalPage 假定调用方已在 submit 之前 finalPageWaiters.Add(1)，
+	// 避免 submit 放行主流程后与 Wait 竞态。
 	waitFinalPage := func(w http.ResponseWriter, r *http.Request) {
-		finalPageWaiters.Add(1)
 		defer finalPageWaiters.Done()
 		select {
 		case ok := <-finalCh:
@@ -213,6 +214,8 @@ func (a app) waitForLoginCode(ctx context.Context, addr string, acceptsCallback 
 			writeLoginFinalPage(w, false)
 			return
 		}
+		// 先登记最终页 waiter，再 submit 放行主流程，保证 notifyFinal.Wait 可见该 waiter。
+		finalPageWaiters.Add(1)
 		submit(result)
 		// 等 OAuth 真正完成后再返回最终成功/失败页。
 		waitFinalPage(w, r)
@@ -245,6 +248,8 @@ func (a app) waitForLoginCode(ctx context.Context, addr string, acceptsCallback 
 			writeLoginFinalPage(w, false)
 			return
 		}
+		// 与 /callback 相同：Add 必须先于 submit，避免与 notifyFinal 的 Wait 竞态。
+		finalPageWaiters.Add(1)
 		submit(result.loginServerResult)
 		waitFinalPage(w, r)
 	})

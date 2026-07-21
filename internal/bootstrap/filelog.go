@@ -69,9 +69,11 @@ func userStateDir() (string, error) {
 type dailyJSONLWriter struct {
 	dir        string
 	retainDays int
-	mu         sync.Mutex
-	day        string
-	file       *os.File
+	// now 仅供测试注入固定时钟；生产路径保持 nil，等价于 time.Now。
+	now  func() time.Time
+	mu   sync.Mutex
+	day  string
+	file *os.File
 }
 
 func newDailyJSONLWriter(dir string, retainDays int) *dailyJSONLWriter {
@@ -81,10 +83,17 @@ func newDailyJSONLWriter(dir string, retainDays int) *dailyJSONLWriter {
 	return &dailyJSONLWriter{dir: dir, retainDays: retainDays}
 }
 
+func (w *dailyJSONLWriter) currentTime() time.Time {
+	if w.now != nil {
+		return w.now()
+	}
+	return time.Now()
+}
+
 func (w *dailyJSONLWriter) Write(p []byte) (int, error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	if err := w.ensureFileLocked(time.Now()); err != nil {
+	if err := w.ensureFileLocked(w.currentTime()); err != nil {
 		// 日志不得拖垮业务：写失败当作已消费。
 		return len(p), nil
 	}

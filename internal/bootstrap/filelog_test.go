@@ -12,11 +12,9 @@ func TestDailyJSONLWriterWritesAndRotatesByDay(t *testing.T) {
 	dir := t.TempDir()
 	w := newDailyJSONLWriter(dir, 7)
 
-	// 固定“今天”
+	// 注入固定时钟，避免 Write 依赖真实 time.Now 导致跨日测试与日历耦合。
 	now := time.Date(2026, 7, 20, 10, 0, 0, 0, time.Local)
-	if err := w.ensureFileLocked(now); err != nil {
-		t.Fatal(err)
-	}
+	w.now = func() time.Time { return now }
 	if _, err := w.Write([]byte("{\"msg\":\"a\"}\n")); err != nil {
 		t.Fatal(err)
 	}
@@ -31,14 +29,27 @@ func TestDailyJSONLWriterWritesAndRotatesByDay(t *testing.T) {
 
 	// 跨日轮转
 	next := time.Date(2026, 7, 21, 1, 0, 0, 0, time.Local)
-	if err := w.ensureFileLocked(next); err != nil {
-		t.Fatal(err)
-	}
+	w.now = func() time.Time { return next }
 	if _, err := w.Write([]byte("{\"msg\":\"b\"}\n")); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(filepath.Join(dir, "pixiv-2026-07-21.jsonl")); err != nil {
 		t.Fatal(err)
+	}
+	nextBody, err := os.ReadFile(filepath.Join(dir, "pixiv-2026-07-21.jsonl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(nextBody), `"msg":"b"`) {
+		t.Fatalf("next day body=%s", nextBody)
+	}
+	// 旧日文件内容仍在，不被跨日写覆盖。
+	oldBody, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(oldBody), `"msg":"a"`) {
+		t.Fatalf("old day body lost after rotate: %s", oldBody)
 	}
 	_ = w.Close()
 }
