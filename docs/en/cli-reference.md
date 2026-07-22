@@ -308,7 +308,7 @@ The CLI uses Cobra/pflag, so options may appear before or after positional argum
 | `auth import` | `pixiv auth import [REFRESH_TOKEN] [--file PATH] [--json] [--proxy URL\|--no-proxy]` | Direct input validates and stores the rotated token; no-argument TTY input is hidden and non-TTY input is raw stdin. `--file PATH|-` instead restores a bundle offline and atomically, and conflicts with token/proxy input. |
 | `auth login` | `pixiv auth login [--json] [--no-open] [--addr 127.0.0.1:0] [--use] [--timeout DURATION] [--proxy URL\|--no-proxy]` | Logs in via a local loopback server and browser OAuth, saving the account keyed by Pixiv UID; never prints the refresh token. |
 | `auth list` | `pixiv auth list [--json]` | Lists local accounts; never prints refresh tokens. |
-| `auth export` | `pixiv auth export [UID] [--all] [--output PATH] [--force]` | Exports a default/exact account or all accounts locally. Without `--output`, one account is raw token stdout and `--all` is bundle stdout; with `--output`, both write a private bundle and only a safe summary goes to stdout. |
+| `auth export` | `pixiv auth export [UID] [--all] [--output PATH] [--force]` | Exports a default/exact account or all accounts locally. Without `--output`, one account is raw token stdout and `--all` is bundle stdout; with `--output`, both write a private bundle and only a safe summary goes to stdout. `--force` requires `--output`. |
 | `auth use` | `pixiv auth use [UID] [--json]` | Sets the default account; interactive selection on a TTY. |
 | `auth remove` | `pixiv auth remove [UID] [--yes] [--json]` | Removes an account; confirms by default on a TTY. After removing the default account, the first remaining account is selected automatically. |
 | `auth check` | `pixiv auth check [UID] [--json] [--proxy URL\|--no-proxy]` | Refreshes the token and validates the account; on success records `user_id` and the username when available. |
@@ -354,16 +354,16 @@ used.
 
 | Command | Flag | Default | Description |
 | --- | --- | --- | --- |
-| `search` | `--search-target` | `partial_match_for_tags` | Search scope. |
-| `search` | `--sort` | `date_desc` | Sort order. |
-| `search` | `--duration` | empty | Pixiv API duration parameter. |
+| `search` | `--target` | `tag-partial` | Search target: `tag-partial`, `tag-exact`, or `title-caption`. |
+| `search` | `--sort` | `date_desc` | Sort order: `date_desc` or `date_asc`. |
+| `search` | `--period` | empty | Time range: `day`, `week`, or `month`; omit for no range. |
 | `search` | `--rating` | `all` | Rating filter: `sfw`, `r18`, `r18g`, `mature`, or `all`. |
 | `search` | `--type` | `all` | Content type: `all`, `illust-and-ugoira`, `illust`, `manga`, or `ugoira`. |
 | `search` | `--ai-mode` | `all` | AI filter: `all`, `exclude`, or `only`; Pixiv `AIType==2` is AI-generated. |
 | `search` | `--aspect-ratio` | `all` | Aspect ratio: `all`, `landscape`, `portrait`, or `square`. |
 | `search` | `--resolution` | `all` | Resolution: `all`, `high`, `medium`, or `low`; both dimensions are respectively `>=3000`, `1000..2999`, or `<=999`. |
 | `search` | `--tool` | empty | Exact upstream drawing-tool name; obtain current values with authenticated `search-options`. |
-| list commands | `--limit` | one upstream batch | Maximum item count; `0` keeps reading until there is no next batch. |
+| list commands | `--limit` | one upstream batch | Maximum item count; omit for one upstream batch, or use `0` to keep reading until there is no next batch. |
 | list commands | `--page` | empty | 1-based logical page; must be used with a positive `--limit`. |
 | `ranking` | `--mode` | `day` | One of `day`, `day_male`, `day_female`, `week`, `week_original`, `week_rookie`, `month`, `day_manga`, `week_manga`, `month_manga`, `week_rookie_manga`, `day_r18`, `day_male_r18`, `day_female_r18`, `week_r18`, `week_r18g`. The final nine require authentication. |
 | `ranking` | `--date` | empty | Ranking date, typically `YYYY-MM-DD`. |
@@ -371,8 +371,8 @@ used.
 | `download` | `--pages` | empty | 1-based page selection such as `1,3-5` (closed ranges, de-duplicated, natural order); default downloads every page. Missing pages fail explicitly. |
 | `download` | `--quality` | `original` | Static image quality: `original`, `regular` (longest side 1200), `small` (longest side 540), `thumb` (250×250 center crop), or `mini` (48×48 center crop). Ugoira rejects non-original quality or page selection as unsupported. |
 | `download` | `--download-path` | `DOWNLOAD_PATH`, `config.toml`, or `./downloads` | Download directory. This flag is not accepted by other commands. |
-| `download` | `--filename-template` | `FILENAME_TEMPLATE`, `config.toml`, or `{author} - {title}_{id}` | Filename template. This flag is not accepted by other commands. |
-| `user artworks` | `--type` | `illust` | Pixiv illustration type passed to the user-artworks request. |
+| `download` | `--filename-template` | `FILENAME_TEMPLATE`, `config.toml`, or `{author} - {title}_{id}` | Filename template; placeholders are `{id}`, `{title}`, and `{author}`. This flag is not accepted by other commands. |
+| `user artworks` | `--type` | `illust` | Pixiv illustration type: `illust`, `manga`, or `ugoira`. |
 | `user bookmarks` | `--restrict` | `public` | Bookmark visibility: `public` or `private`. |
 | `user bookmarks` | `--tag` | empty | Exact bookmark-tag filter. |
 | `user following` | `--restrict` | `public` | Follow visibility: `public` or `private`. |

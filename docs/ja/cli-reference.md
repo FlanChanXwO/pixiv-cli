@@ -250,7 +250,7 @@ credential は Pixiv UID ごとに `os.UserConfigDir()/pixiv/auth.json`、global
 | `auth import` | `pixiv auth import [REFRESH_TOKEN] [--file PATH] [--json] [--proxy URL\|--no-proxy]` | direct input は rotation 後の token を検証・保存します。引数なし TTY は非表示、非 TTY は raw stdin です。`--file PATH|-` は offline atomic bundle restore となり、token/proxy input と競合します。 |
 | `auth login` | `pixiv auth login [--json] [--no-open] [--addr 127.0.0.1:0] [--use] [--timeout DURATION] [--proxy URL\|--no-proxy]` | loopback server と browser OAuth で login し、token を表示せず UID ごとに保存します。 |
 | `auth list` | `pixiv auth list [--json]` | local account を一覧表示し、refresh token は表示しません。 |
-| `auth export` | `pixiv auth export [UID] [--all] [--output PATH] [--force]` | default/指定/all account を local export します。`--output` なしは single raw token または `--all` bundle、指定時は private bundle と安全な stdout summary です。 |
+| `auth export` | `pixiv auth export [UID] [--all] [--output PATH] [--force]` | default/指定/all account を local export します。`--output` なしは single raw token または `--all` bundle、指定時は private bundle と安全な stdout summary です。`--force` には `--output` が必要です。 |
 | `auth use` | `pixiv auth use [UID] [--json]` | default account を設定し、TTY では対話選択できます。 |
 | `auth remove` | `pixiv auth remove [UID] [--yes] [--json]` | account を削除します。default 削除後は残りの先頭を選択します。 |
 | `auth check` | `pixiv auth check [UID] [--json] [--proxy URL\|--no-proxy]` | token を refresh して account を検証します。 |
@@ -295,16 +295,16 @@ allowlist、MIME 推測、暗黙置換は行いません。
 
 | Command | Flag | Default | 説明 |
 | --- | --- | --- | --- |
-| `search` | `--search-target` | `partial_match_for_tags` | 検索範囲。 |
-| `search` | `--sort` | `date_desc` | sort order。 |
-| `search` | `--duration` | empty | Pixiv API duration。 |
+| `search` | `--target` | `tag-partial` | 検索対象: `tag-partial`、`tag-exact`、`title-caption`。 |
+| `search` | `--sort` | `date_desc` | sort order: `date_desc` または `date_asc`。 |
+| `search` | `--period` | empty | time range: `day`、`week`、`month`。省略時は期間指定なし。 |
 | `search` | `--rating` | `all` | `sfw`, `r18`, `r18g`, `mature`, `all`。 |
 | `search` | `--type` | `all` | `all`, `illust-and-ugoira`, `illust`, `manga`, `ugoira`。 |
 | `search` | `--ai-mode` | `all` | `all`, `exclude`, `only`。Pixiv `AIType==2` が AI 生成です。 |
 | `search` | `--aspect-ratio` | `all` | `all`, `landscape`, `portrait`, `square`。 |
 | `search` | `--resolution` | `all` | `all`, `high`, `medium`, `low`。両辺がそれぞれ `>=3000`, `1000..2999`, `<=999`。 |
 | `search` | `--tool` | empty | upstream の正確な制作ツール名。認証済み `search-options` で取得します。 |
-| list commands | `--limit` | one upstream batch | 最大件数。`0` は next batch がなくなるまで取得します。 |
+| list commands | `--limit` | one upstream batch | 最大件数。省略時は one upstream batch、`0` は next batch がなくなるまで取得します。 |
 | list commands | `--page` | empty | 1-based logical page。正数 `--limit` が必要です。 |
 | `ranking` | `--mode` | `day` | `day`、`day_male`、`day_female`、`week`、`week_original`、`week_rookie`、`month`、`day_manga`、`week_manga`、`month_manga`、`week_rookie_manga`、`day_r18`、`day_male_r18`、`day_female_r18`、`week_r18`、`week_r18g`。後半の 9 mode は認証が必要です。 |
 | `ranking` | `--date` | empty | 通常 `YYYY-MM-DD`。 |
@@ -312,8 +312,8 @@ allowlist、MIME 推測、暗黙置換は行いません。
 | `download` | `--pages` | empty | 1-based のページ指定（例: `1,3-5`、閉区間・重複排除・自然順）。省略時は全ページ。存在しないページは明示失敗します。 |
 | `download` | `--quality` | `original` | 静止画品質: `original`、`regular`（長辺 1200）、`small`（長辺 540）、`thumb`（250×250 中央 crop）、`mini`（48×48 中央 crop）。Ugoira は original 以外の quality または pages 指定を unsupported として拒否します。 |
 | `download` | `--download-path` | env/config/`./downloads` | download directory。他の command では受け付けません。 |
-| `download` | `--filename-template` | env/config/`{author} - {title}_{id}` | filename template。他の command では受け付けません。 |
-| `user artworks` | `--type` | `illust` | user-artworks request の種類。 |
+| `download` | `--filename-template` | env/config/`{author} - {title}_{id}` | filename template。placeholder は `{id}`、`{title}`、`{author}`。他の command では受け付けません。 |
+| `user artworks` | `--type` | `illust` | Pixiv 作品種別: `illust`、`manga`、`ugoira`。 |
 | `user bookmarks` | `--restrict` | `public` | `public` または `private`。 |
 | `user bookmarks` | `--tag` | empty | 正確な bookmark tag filter。 |
 | `user following` | `--restrict` | `public` | follow visibility。 |

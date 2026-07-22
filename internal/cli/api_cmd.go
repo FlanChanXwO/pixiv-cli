@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"strconv"
@@ -17,7 +18,7 @@ type searchOptions struct {
 	commandOptions
 	target      string
 	sortMode    string
-	duration    string
+	period      string
 	resolution  string
 	aspectRatio string
 	tool        string
@@ -39,9 +40,15 @@ type recommendedOptions struct {
 	listOptions
 }
 
+const (
+	searchTargetTagPartial   = "tag-partial"
+	searchTargetTagExact     = "tag-exact"
+	searchTargetTitleCaption = "title-caption"
+)
+
 func (a app) newSearchCommand() *cobra.Command {
 	opts := searchOptions{
-		target:      string(sdk.SearchTargetPartialMatchForTags),
+		target:      searchTargetTagPartial,
 		sortMode:    string(sdk.SortModeDateDesc),
 		rating:      "all",
 		typ:         "all",
@@ -60,9 +67,9 @@ func (a app) newSearchCommand() *cobra.Command {
 	}
 	a.bindCommonFlags(cmd, &opts.commandOptions)
 	flags := cmd.Flags()
-	flags.StringVar(&opts.target, "search-target", opts.target, "search target")
-	flags.StringVar(&opts.sortMode, "sort", opts.sortMode, "sort mode")
-	flags.StringVar(&opts.duration, "duration", "", "duration")
+	flags.StringVar(&opts.target, "target", opts.target, "search target: tag-partial, tag-exact, title-caption")
+	flags.StringVar(&opts.sortMode, "sort", opts.sortMode, "sort mode: date_desc, date_asc")
+	flags.StringVar(&opts.period, "period", "", "time range: day, week, month")
 	flags.StringVar(&opts.rating, "rating", opts.rating, "rating filter: sfw, r18, r18g, mature, all")
 	flags.StringVar(&opts.typ, "type", opts.typ, "artwork type filter: all, illust-and-ugoira, illust, manga, ugoira")
 	flags.StringVar(&opts.resolution, "resolution", opts.resolution, "resolution filter: all, high, medium, low")
@@ -75,6 +82,14 @@ func (a app) newSearchCommand() *cobra.Command {
 
 func (a app) runSearch(cmd *cobra.Command, args []string, opts searchOptions) error {
 	filters, err := resolveSearchFilters(cmd, opts)
+	if err != nil {
+		return err
+	}
+	target, err := resolveSearchTarget(opts.target)
+	if err != nil {
+		return err
+	}
+	period, err := resolveSearchPeriod(opts.period)
 	if err != nil {
 		return err
 	}
@@ -101,14 +116,42 @@ func (a app) runSearch(cmd *cobra.Command, args []string, opts searchOptions) er
 	}
 	return a.runIllustList(cmd.Context(), plan, jsonOut, func(ctx context.Context, cursor sdk.Cursor) ([]sdk.Illust, sdk.Cursor, error) {
 		result, err := client.SearchIllust(ctx, sdk.SearchIllustRequest{
-			Word: word, Target: sdk.SearchTarget(opts.target), Sort: sdk.SortMode(opts.sortMode),
-			Duration: opts.duration, Cursor: cursor, Filters: filters,
+			Word: word, Target: target, Sort: sdk.SortMode(opts.sortMode),
+			Duration: period, Cursor: cursor, Filters: filters,
 		})
 		if err != nil {
 			return nil, "", err
 		}
 		return result.Illusts, result.NextCursor, nil
 	}, func(items []sdk.Illust, start int) { printIllusts(a.out, items, start, false) })
+}
+
+func resolveSearchTarget(value string) (sdk.SearchTarget, error) {
+	switch value {
+	case searchTargetTagPartial:
+		return sdk.SearchTargetPartialMatchForTags, nil
+	case searchTargetTagExact:
+		return sdk.SearchTargetExactMatchForTags, nil
+	case searchTargetTitleCaption:
+		return sdk.SearchTargetTitleAndCaption, nil
+	default:
+		return "", fmt.Errorf("target must be one of %s, %s, %s", searchTargetTagPartial, searchTargetTagExact, searchTargetTitleCaption)
+	}
+}
+
+func resolveSearchPeriod(value string) (string, error) {
+	switch value {
+	case "":
+		return "", nil
+	case "day":
+		return "within_last_day", nil
+	case "week":
+		return "within_last_week", nil
+	case "month":
+		return "within_last_month", nil
+	default:
+		return "", errors.New("period must be one of day, week, month")
+	}
 }
 
 func resolveSearchFilters(_ *cobra.Command, opts searchOptions) (sdk.SearchIllustFilters, error) {
@@ -257,7 +300,7 @@ func (a app) newRankingCommand() *cobra.Command {
 	}
 	a.bindCommonFlags(cmd, &opts.commandOptions)
 	flags := cmd.Flags()
-	flags.StringVar(&opts.mode, "mode", opts.mode, "ranking mode")
+	flags.StringVar(&opts.mode, "mode", opts.mode, "ranking mode: day, day_male, day_female, week, week_original, week_rookie, month, day_manga, week_manga, month_manga, week_rookie_manga, day_r18, day_male_r18, day_female_r18, week_r18, week_r18g; the last nine require authentication")
 	flags.StringVar(&opts.date, "date", "", "YYYY-MM-DD")
 	bindListFlags(cmd, &opts.listOptions)
 	return cmd
@@ -338,7 +381,7 @@ func (a app) newDownloadCommand() *cobra.Command {
 func (a app) bindDownloadRuntimeFlags(cmd *cobra.Command, opts *downloadOptions) {
 	flags := cmd.Flags()
 	flags.StringVar(&opts.downloadPath, "download-path", "", "download directory")
-	flags.StringVar(&opts.filenameTemplate, "filename-template", "", "filename template")
+	flags.StringVar(&opts.filenameTemplate, "filename-template", "", "filename template placeholders: {id}, {title}, {author}")
 }
 
 func (a app) runDownload(cmd *cobra.Command, args []string, opts downloadOptions) error {

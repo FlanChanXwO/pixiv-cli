@@ -109,9 +109,9 @@ func (a app) newAccountExportCommand() *cobra.Command {
 			return writeAuthExportStdout(a.out, []byte(result.RefreshToken+"\n"))
 		},
 	}
-	cmd.Flags().BoolVar(&opts.all, "all", false, "export all stored accounts")
+	cmd.Flags().BoolVar(&opts.all, "all", false, "export all stored accounts; cannot be combined with UID")
 	cmd.Flags().StringVar(&opts.output, "output", "", "write a versioned authentication bundle to PATH")
-	cmd.Flags().BoolVar(&opts.force, "force", false, "replace an existing output file")
+	cmd.Flags().BoolVar(&opts.force, "force", false, "replace an existing output file; requires --output")
 	return cmd
 }
 

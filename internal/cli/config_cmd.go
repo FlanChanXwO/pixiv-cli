@@ -9,6 +9,8 @@ import (
 
 const configMissingPlaceholder = "<unset>"
 
+const configKeyHelp = "download_path, filename_template, https_proxy, log_format, log_level, login_open_browser, login_timeout, login_use_after_login, output_json, update_check_enabled, web_fallback_enabled"
+
 func (a app) newConfigCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "config",
@@ -47,6 +49,7 @@ func (a app) newConfigGetCommand() *cobra.Command {
 	return &cobra.Command{
 		Use:   "get KEY",
 		Short: "Print one effective config value",
+		Long:  "Print one effective config value. KEY must be one of: " + configKeyHelp,
 		Args:  requireExactArgs(1, "pixiv config get KEY"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return a.configGet(args[0])
@@ -72,6 +75,7 @@ func (a app) newConfigSetCommand() *cobra.Command {
 	return &cobra.Command{
 		Use:   "set KEY VALUE",
 		Short: "Set one config value in config.toml",
+		Long:  "Set one config value in config.toml. KEY must be one of: " + configKeyHelp,
 		Args:  requireExactArgs(2, "pixiv config set KEY VALUE"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return a.configSet(args[0], args[1])
@@ -105,6 +109,7 @@ func (a app) newConfigUnsetCommand() *cobra.Command {
 	return &cobra.Command{
 		Use:   "unset KEY",
 		Short: "Remove one config value from config.toml",
+		Long:  "Remove one config value from config.toml. KEY must be one of: " + configKeyHelp,
 		Args:  requireExactArgs(1, "pixiv config unset KEY"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return a.configUnset(args[0])

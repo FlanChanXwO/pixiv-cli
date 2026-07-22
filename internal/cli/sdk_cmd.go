@@ -14,8 +14,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// listOptions 是所有 CLI 列表命令共享的逻辑分页语义。limit=-1 表示用户没有
-// 指定 --limit，因而保持“仅一个上游批次”的兼容默认值。
+// listOptions 是所有 CLI 列表命令共享的逻辑分页语义。
 type listOptions struct {
 	limit int
 	page  int
@@ -29,15 +28,13 @@ type listPlan struct {
 
 func bindListFlags(cmd *cobra.Command, options *listOptions) {
 	flags := cmd.Flags()
-	// pflag 的 deprecated 提示默认写 command output；对 --json 列表必须留在 stderr，
-	// 否则合法的完整 JSON 会被提示文本污染。
 	flags.SetOutput(cmd.ErrOrStderr())
-	flags.IntVar(&options.limit, "limit", -1, "maximum results; 0 returns all results")
+	flags.IntVar(&options.limit, "limit", 0, "maximum results; omitted returns one upstream batch; 0 returns all results")
 	flags.IntVar(&options.page, "page", 0, "1-based logical page (requires --limit > 0)")
 }
 
 func parseListPlan(cmd *cobra.Command, options listOptions) (listPlan, error) {
-	if cmd.Flags().Changed("limit") && options.limit < 0 {
+	if options.limit < 0 {
 		return listPlan{}, errors.New("limit must be zero or a positive integer")
 	}
 	if cmd.Flags().Changed("page") && options.page <= 0 {
@@ -52,7 +49,7 @@ func parseListPlan(cmd *cobra.Command, options listOptions) (listPlan, error) {
 		}
 		return listPlan{limit: options.limit, skip: (options.page - 1) * options.limit}, nil
 	}
-	return listPlan{limit: options.limit, oneBatch: options.limit == -1}, nil
+	return listPlan{limit: options.limit, oneBatch: !cmd.Flags().Changed("limit")}, nil
 }
 
 func (a app) sdkRequest(cmd *cobra.Command, options commandOptions) (application.SDKClientRequest, *bool, error) {
@@ -67,16 +64,12 @@ func (a app) sdkRequest(cmd *cobra.Command, options commandOptions) (application
 	}, client.JSONOverride, nil
 }
 
-// pageItems 仅把 CLI 的兼容 sentinel 映射到 application 分页语义；cursor 遍历、
-// 跳过、限量与止环都由共享 application 引擎负责。
+// pageItems 只把 CLI 的分页计划交给 application；cursor 遍历、跳过、限量与止环
+// 都由共享 application 引擎负责。
 func pageItems[T any](ctx context.Context, plan listPlan, fetch func(context.Context, sdk.Cursor) ([]T, sdk.Cursor, error), consume func([]T) error) error {
-	limit := plan.limit
-	if limit < 0 {
-		limit = 0
-	}
 	_, err := application.TraversePages(ctx, application.PagePlan{
 		Skip:     plan.skip,
-		Limit:    limit,
+		Limit:    plan.limit,
 		OneBatch: plan.oneBatch,
 	}, fetch, consume)
 	return err

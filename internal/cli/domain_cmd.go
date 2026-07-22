@@ -148,7 +148,7 @@ func (a app) newUserArtworksCommand() *cobra.Command {
 	}}
 	a.bindCommonFlags(cmd, &opts.commandOptions)
 	bindListFlags(cmd, &opts.listOptions)
-	cmd.Flags().StringVar(&opts.illustType, "type", opts.illustType, "illust type")
+	cmd.Flags().StringVar(&opts.illustType, "type", opts.illustType, "illust type: illust, manga, ugoira")
 	return cmd
 }
 

@@ -151,10 +151,10 @@ assuming its effective value.
    other commands whose help omits it. Where supported, a positive value sets
    the maximum result count and `0` requests all results. `--page` requires a
    positive `--limit`.
-4. **Search flags are command-scoped.** Verify `--rating`, `--type`,
-   `--ai-mode`, `--aspect-ratio`, `--resolution`, `--tool`, and
-   `--search-target` against `pixiv search --help`; do not infer undocumented
-   aliases or attach search filters to other commands.
+4. **Search flags are command-scoped.** Verify `--target`, `--period`,
+   `--sort`, `--rating`, `--type`, `--ai-mode`, `--aspect-ratio`,
+   `--resolution`, and `--tool` against `pixiv search --help`; do not infer
+   undocumented aliases or attach search filters to other commands.
 5. **Anonymous restricted search fails explicitly.** Web fallback uses only
    reliable search filters. `r18`, `r18g`, `mature`, and `search-options`
    require App authentication; do not present the failure as an empty result
@@ -177,7 +177,7 @@ assuming its effective value.
 12. **`--tag` has two narrow meanings.** `user bookmarks --tag TAG` filters
    bookmark listings; `bookmark add --tag TAG` adds a repeatable bookmark tag.
    `search` has no `--tag` flag — put the tag text in its required `WORD` and
-   choose `--search-target` when exact matching is needed.
+   choose `--target tag-exact` when exact matching is needed.
 
 ## Routing
 

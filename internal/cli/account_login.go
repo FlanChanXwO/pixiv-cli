@@ -64,9 +64,9 @@ func (a app) newAccountLoginCommand() *cobra.Command {
 	flags := cmd.Flags()
 	flags.BoolVar(&opts.jsonOut, "json", false, "print JSON")
 	flags.BoolVar(&opts.noOpen, "no-open", false, "do not open the browser")
-	flags.StringVar(&opts.addr, "addr", defaultLoginAddr, "local loopback listen address")
+	flags.StringVar(&opts.addr, "addr", defaultLoginAddr, "local loopback callback address; use 127.0.0.1:0 for an available port")
 	flags.BoolVar(&opts.useAfterLogin, "use", false, "set as default account after login")
-	flags.DurationVar(&opts.timeout, "timeout", 0, "maximum time to wait for login flow")
+	flags.DurationVar(&opts.timeout, "timeout", 0, "maximum time to wait for login flow; 0 adds no deadline")
 	a.bindProxyFlags(cmd, &opts.proxyOptions)
 	return cmd
 }

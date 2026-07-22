@@ -9,14 +9,14 @@ in SKILL.md already ran. Verify flags with `pixiv <cmd> --help`.
 pixiv search "初音ミク" --limit 10 --json
 ```
 
-- Default search target is partial tag match (`--search-target
-  partial_match_for_tags`); switch to `exact_match_for_tags` or
-  `title_and_caption` when the user asks for exact tags or title search.
+- Default search target is partial tag match (`--target tag-partial`); switch
+  to `--target tag-exact` or `--target title-caption` when the user asks for
+  exact tags or title/caption search. Use `--period day|week|month` to limit
+  the time range, or `--sort date_desc|date_asc` to choose the order.
 - `search` does not have a `--tag` flag. Supply tag text as the required `WORD`;
   reserve `--tag` for `user bookmarks` (filter) and `bookmark add` (repeatable
   bookmark tag).
-- Sort defaults to `date_desc`. `popular_desc` may require Pixiv Premium on the
-  account — if it errors, report the real API message; do not retry silently.
+- Sort defaults to `date_desc`; `date_asc` is the only other supported value.
 - Stable filters include `--rating sfw|r18|r18g|mature|all`, `--type
   all|illust-and-ugoira|illust|manga|ugoira`, `--ai-mode all|exclude|only`,
   `--aspect-ratio all|landscape|portrait|square`, `--resolution

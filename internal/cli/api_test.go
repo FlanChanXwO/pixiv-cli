@@ -66,6 +66,96 @@ func TestSearchRejectsDownloadOnlyFlags(t *testing.T) {
 	}
 }
 
+func TestSearchUsesTargetInsteadOfSearchTarget(t *testing.T) {
+	useTempPaths(t)
+	var got sdk.SearchIllustRequest
+	setTestSDKCommandClient(t, sdkCommandFake{search: func(_ context.Context, request sdk.SearchIllustRequest) (*sdk.IllustListResult, error) {
+		got = request
+		return &sdk.IllustListResult{}, nil
+	}})
+
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"pixiv", "search", "miku", "--target", "title-caption", "--json"}, strings.NewReader(""), &stdout, &stderr)
+
+	require.Equal(t, 0, code, stderr.String())
+	assert.Equal(t, sdk.SearchTargetTitleAndCaption, got.Target)
+
+	stdout.Reset()
+	stderr.Reset()
+	code = Run([]string{"pixiv", "search", "miku", "--search-target", "title_and_caption"}, strings.NewReader(""), &stdout, &stderr)
+	require.NotZero(t, code)
+	assert.Contains(t, stderr.String(), "unknown flag: --search-target")
+}
+
+func TestSearchUsesPeriodInsteadOfDuration(t *testing.T) {
+	useTempPaths(t)
+	var got sdk.SearchIllustRequest
+	setTestSDKCommandClient(t, sdkCommandFake{search: func(_ context.Context, request sdk.SearchIllustRequest) (*sdk.IllustListResult, error) {
+		got = request
+		return &sdk.IllustListResult{}, nil
+	}})
+
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"pixiv", "search", "miku", "--period", "week", "--json"}, strings.NewReader(""), &stdout, &stderr)
+
+	require.Equal(t, 0, code, stderr.String())
+	assert.Equal(t, "within_last_week", got.Duration)
+
+	stdout.Reset()
+	stderr.Reset()
+	code = Run([]string{"pixiv", "search", "miku", "--duration", "within_last_week"}, strings.NewReader(""), &stdout, &stderr)
+	require.NotZero(t, code)
+	assert.Contains(t, stderr.String(), "unknown flag: --duration")
+}
+
+func TestListHelpDoesNotExposeInternalLimitSentinel(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"pixiv", "search", "--help"}, strings.NewReader(""), &stdout, &stderr)
+
+	require.Equal(t, 0, code, stderr.String())
+	assert.NotContains(t, stdout.String(), "default -1")
+	assert.Contains(t, stdout.String(), "omitted returns one upstream batch; 0 returns all results")
+}
+
+func TestRankingHelpListsAllModesAndAuthenticationRequirement(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"pixiv", "ranking", "--help"}, strings.NewReader(""), &stdout, &stderr)
+
+	require.Equal(t, 0, code, stderr.String())
+	for _, mode := range []string{
+		"day", "day_male", "day_female", "week", "week_original", "week_rookie", "month",
+		"day_manga", "week_manga", "month_manga", "week_rookie_manga",
+		"day_r18", "day_male_r18", "day_female_r18", "week_r18", "week_r18g",
+	} {
+		assert.Contains(t, stdout.String(), mode)
+	}
+	assert.Contains(t, stdout.String(), "require authentication")
+}
+
+func TestCommandHelpListsRemainingParameterDomains(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		args []string
+		want string
+	}{
+		{name: "search sort", args: []string{"pixiv", "search", "--help"}, want: "date_desc, date_asc"},
+		{name: "user artworks type", args: []string{"pixiv", "user", "artworks", "--help"}, want: "illust, manga, ugoira"},
+		{name: "download filename template", args: []string{"pixiv", "download", "--help"}, want: "{id}, {title}, {author}"},
+		{name: "login callback address", args: []string{"pixiv", "auth", "login", "--help"}, want: "127.0.0.1:0"},
+		{name: "login timeout", args: []string{"pixiv", "auth", "login", "--help"}, want: "0 adds no deadline"},
+		{name: "auth export force", args: []string{"pixiv", "auth", "export", "--help"}, want: "requires --output"},
+		{name: "config key", args: []string{"pixiv", "config", "set", "--help"}, want: "login_use_after_login"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			var stdout, stderr bytes.Buffer
+			code := Run(test.args, strings.NewReader(""), &stdout, &stderr)
+
+			require.Equal(t, 0, code, stderr.String())
+			assert.Contains(t, stdout.String(), test.want)
+		})
+	}
+}
+
 func TestEveryOtherDataCommandRejectsDownloadOnlyFlags(t *testing.T) {
 	commands := [][]string{
 		{"pixiv", "search-options", "miku"},
