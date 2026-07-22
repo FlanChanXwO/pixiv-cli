@@ -122,7 +122,7 @@ pixiv bookmark add ILLUST_ID --tag TAG    # --tag repeatable; write op
 pixiv bookmark remove ILLUST_ID           # write op
 pixiv follow add USER_ID                  # write op
 pixiv follow remove USER_ID               # write op
-pixiv download ILLUST_ID... [--download-path DIR]
+pixiv download ILLUST_ID... [--pages 1,3-5] [--quality original|regular|small|thumb|mini] [--download-path DIR]
 pixiv update --check --json               # read-only update check
 ```
 
@@ -157,15 +157,17 @@ assuming its effective value.
    reliable search filters. `r18`, `r18g`, `mature`, and `search-options`
    require App authentication; do not present the failure as an empty result
    or add a Cookie workaround. Bookmark-count filtering is unavailable.
-6. **`update --json` is only valid with `--check`.** The actual install never
+6. **Empty filtered batches are skipped.** With local filters, search continues past leading empty upstream batches to the first non-empty logical batch or true end; `--limit N` fills logical results and `--limit 0` walks all filtered results. Do not invent request caps.
+7. **No like-count field.** Do not invent or label bookmark totals as likes.
+8. **`update --json` is only valid with `--check`.** The actual install never
    emits JSON.
-7. **Proxy is per-command.** The browser's system proxy is NOT inherited.
+9. **Proxy is per-command.** The browser's system proxy is NOT inherited.
    Persist with `pixiv config set https_proxy URL`; override per command with
    `--proxy` / `--no-proxy` (mutually exclusive).
-8. **Long downloads may legitimately take time.** Do not impose an arbitrary
+10. **Long downloads may legitimately take time.** Do not impose an arbitrary
    timeout or kill the process merely because it is slow; wait for completion,
    user cancellation, or a real error.
-9. **`--tag` has two narrow meanings.** `user bookmarks --tag TAG` filters
+11. **`--tag` has two narrow meanings.** `user bookmarks --tag TAG` filters
    bookmark listings; `bookmark add --tag TAG` adds a repeatable bookmark tag.
    `search` has no `--tag` flag — put the tag text in its required `WORD` and
    choose `--search-target` when exact matching is needed.

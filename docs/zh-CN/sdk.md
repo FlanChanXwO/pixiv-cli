@@ -45,6 +45,7 @@ local, err := pixiv.OpenDefault(pixiv.Options{
 | 资源 | `ParseResourceRef`、`OpenResource`、`Download`。 |
 
 请求型方法使用命名 request，例如 `SearchIllustRequest`、`SearchIllustOptionsRequest`、`UserArtworksRequest`、`UserBookmarksRequest`、`UserFollowingRequest`、`AddBookmarkRequest`、`FollowUserRequest`。返回模型为 `IllustListResult`、`SearchIllustOptionsResult`、`UserListResult`、`IllustDetail`、`UserDetailResult` 等，均来自顶层 `pixiv` package。
+每个 public `Illust` 都包含稳定作品页 URL `https://www.pixiv.net/artworks/{id}`，JSON 首字段为 `url`。SDK 不提供点赞数字段，不得把收藏数文案为点赞。`Download` 支持 `DownloadOptions`：`ParsePageSpec` 页选择与 `DownloadQuality`（`original|regular|small|thumb|mini`）；ugoira 对页选择或非 original 质量返回 unsupported。
 
 `UserArtworksRequest.UserID` 等 SDK 用户 ID 必填；“省略 UID 就是自己”是 CLI/MCP adapter 行为，外部 Go 调用方先调用 `CurrentUserID(ctx)` 后再组装 request。
 

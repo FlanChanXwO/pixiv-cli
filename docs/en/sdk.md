@@ -63,6 +63,12 @@ Request methods use named request types such as `SearchIllustRequest`, `SearchIl
 `UserArtworksRequest`, `UserBookmarksRequest`, `UserFollowingRequest`, `AddBookmarkRequest`, and
 `FollowUserRequest`. Result models such as `IllustListResult`, `SearchIllustOptionsResult`, `UserListResult`,
 `IllustDetail`, and `UserDetailResult` all live in the top-level `pixiv` package.
+Every public `Illust` includes a stable artwork page URL
+`https://www.pixiv.net/artworks/{id}` as the first JSON field `url`. The SDK does not
+expose a like-count field; bookmark totals must not be labeled as likes.
+`Download` accepts `DownloadOptions` with `ParsePageSpec` page selection and
+`DownloadQuality` (`original|regular|small|thumb|mini`); ugoira rejects page selection
+or non-original quality as unsupported.
 
 SDK user IDs such as `UserArtworksRequest.UserID` are required. Omitting a UID to mean “the current user” is a
 CLI/MCP adapter feature; Go callers should call `CurrentUserID(ctx)` and then build the request.

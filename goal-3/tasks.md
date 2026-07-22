@@ -144,12 +144,12 @@
 
 ## T13 — 文档与产品 skill 全量同步
 
-- 状态：未开始
+- 状态：已完成
 - 范围：双语 README、三语 CLI reference、MCP tools、产品 skill、development、AGENTS、CHANGELOG `[Unreleased]`；Agent 安装提示同 tag 完整 skill 目录；明确官方 Pixiv 能力面，不宣称 Lolicon 聚合/随机 API；不新增 like count 文案。
 - 验收：文档与实现一致；安装说明不猜路径、不跟 main。
-- 实际：
-- 证据：
-- 风险/下一步：
+- 实际：三语 CLI reference 删除 ranking `--offset`，补 `--pages`/`--quality`、空批补拉/逻辑分页、`url` 首字段、文件日志（state `pixiv/logs` JSONL，终端无痕迹）；三语 README 同步 MCP 日志语义、quickstart pages/quality、Agent 安装同 tag 完整 `skills/pixiv-cli/`（不跟 main、不猜路径），并写明官方 Pixiv 能力面、不复刻第三方聚合/随机 API。产品 skill 补 pages/quality、空批/like-count 禁令、文件日志诊断；discover/download/troubleshooting 同步。EN/ZH SDK 补 Illust `url` 与 DownloadOptions；architecture/CONTEXT 去掉旧 offset/profile/stderr 操作日志表述。MCP tools、AGENTS、development、CHANGELOG `[Unreleased]` 已由前序 task 覆盖，本轮复核一致。
+- 证据：`go test ./scripts/documentation ./scripts/installers -count=1` 通过；残留扫描无 `test/e2e`/`image_content`/`--ai-type`/stderr 操作日志等过时契约；日志 `/tmp/goal3-t13-docs.log`。
+- 风险/下一步：纯文档同步未改运行时。下一轮 T14：opt-in App canary 与契约回归补强。
 
 ## T14 — Opt-in App canary 与契约回归补强
 

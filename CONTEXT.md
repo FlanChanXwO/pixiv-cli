@@ -61,7 +61,7 @@ Task 20 的审计流程配置或回填。v0.3.0 已发布为正式 Release，公
 ## 行为约束
 
 - **Local account**：以 Pixiv UID 为 key 的已保存身份，含 refresh token 与可选 username。
-- CLI token priority：`--refresh-token` > `--uid`/deprecated `--profile` > `PIXIV_REFRESH_TOKEN` > default UID。
+- CLI token priority：`--refresh-token` > `--uid` > `PIXIV_REFRESH_TOKEN` > default UID。
 - MCP token priority：`PIXIV_REFRESH_TOKEN` > default UID。
 - Runtime proxy priority：`--proxy URL` 或 `--no-proxy` > `https_proxy`/`HTTPS_PROXY` > `config.toml`；CLI proxy flag 只影响本次网络命令，绝不持久化。
 - JSON/text output shape 应保持稳定；refresh token、Ed25519 private key 与 tap deploy key 绝不打印。

@@ -53,6 +53,8 @@ Copy this single prompt into Codex, Claude Code, Cursor, or another local coding
 
 ```text
 Install the latest stable pixiv-cli from https://github.com/FlanChanXwO/pixiv-cli for this machine: inspect the repository's scripts/install.sh or scripts/install.cmd first, choose the script matching the detected OS and architecture (the Windows path must use cmd.exe and must not invoke PowerShell), download only official GitHub Release assets, require the published SHA-256 check to pass before replacing anything, install per-user without administrator or root privileges, add only the chosen install directory to the user PATH, ask before installing any missing prerequisite, never read or output Pixiv credentials, verify with pixiv version, and report the installed version plus every file and PATH change.
+
+Also install the product skill that matches the same stable release tag (not main): download the full skills/pixiv-cli/ directory from that tag into the agent skills directory the user confirms. Do not guess the skills path and do not follow the main branch for skill content.
 ```
 
 ### Homebrew (recommended on macOS and Linux)
@@ -98,7 +100,7 @@ pixiv search "初音ミク" --type illust --ai-mode exclude --resolution high
 # Inspect, discover recommendations, and download.
 pixiv detail 123456
 pixiv recommended all --limit 10
-pixiv download 123456
+pixiv download 123456 --pages 1,3-5 --quality regular
 ```
 
 Run `pixiv --help` or open the [complete CLI reference](docs/en/cli-reference.md) for every command, flag, configuration key, environment variable, fallback rule, and update behavior.
@@ -117,7 +119,7 @@ pixiv search-options "初音ミク"
 
 ### MCP
 
-Start the stdio server explicitly. stdout remains reserved for JSON-RPC and diagnostics go to stderr.
+Start the stdio server explicitly. stdout remains reserved for JSON-RPC. Operation summaries are written as daily JSONL under the user state directory `pixiv/logs` (default retention 7 days); the terminal stays free of log traces by default.
 
 ```bash
 pixiv mcp

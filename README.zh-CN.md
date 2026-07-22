@@ -53,6 +53,8 @@ Linux 兼容性说明：v0.3.0 archive 在 Ubuntu 24.04 上链接，可能要求
 
 ```text
 请为这台机器安装 https://github.com/FlanChanXwO/pixiv-cli 的最新 stable 版本：先审阅仓库中的 scripts/install.sh 或 scripts/install.cmd，再根据检测到的操作系统与架构选择对应脚本（Windows 必须使用 cmd.exe，禁止调用 PowerShell），只下载官方 GitHub Release 资产，只有发布的 SHA-256 校验通过后才能替换文件，使用无需管理员或 root 权限的用户级目录，只把选定安装目录加入用户 PATH，缺少任何前置工具时先征求同意，绝不读取或输出 Pixiv 凭据，最后运行 pixiv version 验证，并报告安装版本及全部文件和 PATH 变更。
+
+同时安装与该 stable 发布 tag 完全一致的产品 skill（不要跟随 main）：把该 tag 下的完整 skills/pixiv-cli/ 目录安装到用户确认的 Agent skills 目录。不要猜测 skills 路径，也不要用 main 上的 skill 内容。
 ```
 
 ### Homebrew（macOS 与 Linux 推荐）
@@ -98,7 +100,7 @@ pixiv search "初音ミク" --type illust --ai-mode exclude --resolution high
 # 查看详情、获取推荐并下载。
 pixiv detail 123456
 pixiv recommended all --limit 10
-pixiv download 123456
+pixiv download 123456 --pages 1,3-5 --quality regular
 ```
 
 运行 `pixiv --help`，或打开[完整 CLI 参考手册](docs/zh-CN/cli-reference.md)，查看全部命令、flag、配置键、环境变量、fallback 规则和更新行为。
@@ -117,7 +119,7 @@ pixiv search-options "初音ミク"
 
 ### MCP
 
-显式启动 stdio server。stdout 只用于 JSON-RPC，诊断写入 stderr。
+显式启动 stdio server。stdout 只用于 JSON-RPC。操作摘要写入用户 state 目录 `pixiv/logs` 的按日 JSONL（默认保留 7 天），终端默认无日志痕迹。
 
 ```bash
 pixiv mcp

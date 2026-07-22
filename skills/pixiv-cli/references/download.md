@@ -18,9 +18,17 @@ Downloads write to disk — always run the checklist first.
 ```
 pixiv download 129543211
 pixiv download 129543211 130000001 130000002
+pixiv download 129543211 --pages 1,3-5 --quality regular
 ```
 
-- Multi-page works: every page is downloaded automatically (`_p0`, `_p1`, ...).
+- Multi-page works: every page is downloaded by default (`_p0`, `_p1`, ...).
+- `--pages` is 1-based (`1,3-5` closed ranges, de-duplicated, natural order).
+  A missing selected page fails explicitly rather than silently skipping.
+- `--quality` for static images: `original` (default), `regular` (longest side
+  1200), `small` (540), `thumb` (250×250 center crop), `mini` (48×48 center
+  crop). Preserve the upstream JPEG/PNG format and alpha channel.
+- Ugoira keeps the existing GIF/APNG original flow; page selection or a
+  non-original quality returns unsupported.
 - Filename template default: `{author} - {title}_{id}`. Placeholders: `{id}`,
   `{title}`, `{author}`, `{author_id}`. Persist a new default with
   `pixiv config set filename_template "..."` (confirm first — config write).

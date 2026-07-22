@@ -367,8 +367,9 @@ used.
 | list commands | `--page` | empty | 1-based logical page; must be used with a positive `--limit`. |
 | `ranking` | `--mode` | `day` | Ranking mode. |
 | `ranking` | `--date` | empty | Ranking date, typically `YYYY-MM-DD`. |
-| `ranking` | `--offset` | `0` | Pagination offset. |
 | `recommended KIND` | `--page`, `--limit` | per-stream pagination | Each stream paginates independently; `all` applies the same pagination semantics to illustrations, manga, novels, and users separately. |
+| `download` | `--pages` | empty | 1-based page selection such as `1,3-5` (closed ranges, de-duplicated, natural order); default downloads every page. Missing pages fail explicitly. |
+| `download` | `--quality` | `original` | Static image quality: `original`, `regular` (longest side 1200), `small` (longest side 540), `thumb` (250×250 center crop), or `mini` (48×48 center crop). Ugoira rejects non-original quality or page selection as unsupported. |
 | `user artworks` | `--type` | `illust` | Pixiv illustration type passed to the user-artworks request. |
 | `user bookmarks` | `--restrict` | `public` | Bookmark visibility: `public` or `private`. |
 | `user bookmarks` | `--tag` | empty | Exact bookmark-tag filter. |
@@ -382,9 +383,12 @@ used.
 With a refresh token, `search` always uses App API. App applies resolution, aspect-ratio, tool, content-type, and
 `ai-mode=exclude` filters, while rating and `ai-mode=only` are applied to each App result batch. App
 failures never fall back to Web. Every filter is bound to the opaque cursor, so a cursor cannot be reused with a
-different filter set. With a positive `--limit` or `--page`, the CLI keeps reading upstream batches until it
-collects enough matching works, the upstream has no next batch, or a repeated cursor is detected; without
-`--limit`, the compatible one-batch default is preserved. Bookmark-count filtering is not provided.
+different filter set. When local filters skip leading empty upstream batches, CLI/MCP continue until the first
+non-empty logical batch or the upstream ends. With a positive `--limit` or `--page`, the CLI fills logical
+results across batches until it collects enough matching works, the upstream has no next batch, or a repeated
+cursor is detected; `--limit 0` walks the entire filtered stream; without `--limit`, the compatible one-batch
+default still skips leading empty batches. Bookmark-count filtering and like-count fields are not provided.
+Artwork JSON/text include a stable page URL `https://www.pixiv.net/artworks/{id}` as the first field/line.
 
 ### Common flags
 
@@ -406,8 +410,8 @@ collects enough matching works, the upstream has no next batch, or a repeated cu
 | `filename_template` | string | `{author} - {title}_{id}` | Filename template. |
 | `https_proxy` | string | empty | HTTP(S) proxy; the lowercase `https_proxy` environment variable takes precedence. |
 | `web_fallback_enabled` | bool | `true` | Allows the anonymous Pixiv web/ajax API fallback when no refresh token exists; stored as `[web] fallback_enabled = true/false`. |
-| `log_level` | string | `warn` | Structured stderr log level; can be overridden by `PIXIV_LOG_LEVEL`. Set explicitly to `info` to keep operational diagnostics. |
-| `log_format` | string | `text` | Log format, `text` or `json`; can be overridden by `PIXIV_LOG_FORMAT`. |
+| `log_level` | string | `warn` | Operation-log level for the daily JSONL file under the user state directory `pixiv/logs`; can be overridden by `PIXIV_LOG_LEVEL`. Set explicitly to `info` to keep more operational summaries. The terminal stays free of log traces by default. |
+| `log_format` | string | `text` | Validated as `text` or `json` (overridable by `PIXIV_LOG_FORMAT`), but file logs are always JSONL lines. Invalid values fail closed instead of silently falling back. |
 | `update_check_enabled` | bool | `true` | Whether successful regular CLI commands check for stable updates; stored as `[update] check_enabled = true/false`. |
 | `output_json` | bool | `false` | Makes data commands output JSON by default. |
 | `login_open_browser` | bool | `true` | Whether `auth login` auto-opens the browser by default. |

@@ -16,7 +16,7 @@
 
 ## pixiv-cli を選ぶ理由
 
-- **統一された機能** — CLI・MCP・SDK から、検索、詳細、ランキング、おすすめ、ユーザー、ブックマーク、フォロー、ダウンロード、うごイラを利用できます。
+- **統一された機能** — CLI・MCP・SDK から公式 Pixiv の検索、詳細、ランキング、おすすめ、ユーザー、ブックマーク、フォロー、ダウンロード、うごイラを利用できます。第三者の集約/ランダム画像 API を再現しません。
 - **App API 優先** — refresh token が設定されている場合は常に認証済み App 経路を使用し、App の失敗を Web に暗黙フォールバックしません。
 - **実用的な検索フィルター** — レーティング、作品種別、AI モード、縦横比、解像度、動的な制作ツール候補に対応します。
 - **ローカル複数アカウント OAuth** — ブラウザーの Cookie や profile を読み取らず、ブラウザーログイン、アカウント選択、refresh token rotation を行います。
@@ -49,6 +49,8 @@ Linux の互換性に関する注意：v0.3.0 archive は Ubuntu 24.04 で link 
 
 ```text
 Install the latest stable pixiv-cli from https://github.com/FlanChanXwO/pixiv-cli for this machine: inspect the repository's scripts/install.sh or scripts/install.cmd first, choose the script matching the detected OS and architecture (the Windows path must use cmd.exe and must not invoke PowerShell), download only official GitHub Release assets, require the published SHA-256 check to pass before replacing anything, install per-user without administrator or root privileges, add only the chosen install directory to the user PATH, ask before installing any missing prerequisite, never read or output Pixiv credentials, verify with pixiv version, and report the installed version plus every file and PATH change.
+
+Also install the product skill that matches the same stable release tag (not main): download the full skills/pixiv-cli/ directory from that tag into the agent skills directory the user confirms. Do not guess the skills path and do not follow the main branch for skill content.
 ```
 
 ### Homebrew（macOS/Linux の推奨方法）
@@ -94,7 +96,7 @@ pixiv search "初音ミク" --type illust --ai-mode exclude --resolution high
 # 詳細、おすすめ、ダウンロードを利用します。
 pixiv detail 123456
 pixiv recommended all --limit 10
-pixiv download 123456
+pixiv download 123456 --pages 1,3-5 --quality regular
 ```
 
 すべての command、flag、設定キー、環境変数、fallback、更新動作は `pixiv --help` または[完全な CLI リファレンス](docs/ja/cli-reference.md)で確認できます。
@@ -113,7 +115,7 @@ pixiv search-options "初音ミク"
 
 ### MCP
 
-stdio server は明示的に起動します。stdout は JSON-RPC 専用で、diagnostic は stderr に出力されます。
+stdio server は明示的に起動します。stdout は JSON-RPC 専用です。操作要約は user state ディレクトリ `pixiv/logs` の日次 JSONL（既定保持 7 日）に書き、端末は既定で log 痕跡を出しません。
 
 ```bash
 pixiv mcp

@@ -66,7 +66,11 @@ safe metadata output does not make raw token or bundle stdout safe to display.
 
 ## Diagnostics
 
-- Increase verbosity per run: `PIXIV_LOG_LEVEL=info pixiv <cmd>` (or `debug`).
-  Logs go to stderr; JSON output on stdout stays clean.
+- Operation summaries are written as daily JSONL under the user state directory
+  `pixiv/logs` (default retention 7 days). The terminal stays free of log
+  traces by default; JSON stdout stays clean.
+- Increase file-log verbosity per run with `PIXIV_LOG_LEVEL=info pixiv <cmd>`
+  (or `debug`). Only special non-auth upstream failures may print a log-directory
+  hint; login/token failures do not.
 - `pixiv update --check --json` is read-only and safe; a real `pixiv update`
   installs a new binary — treat as account/config-state tier (confirm).

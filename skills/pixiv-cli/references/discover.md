@@ -28,6 +28,12 @@ pixiv search "初音ミク" --limit 10 --json
   `search-options` require authentication; never add a Cookie workaround or
   report an authentication failure as an empty result.
 - Need page 2+: `--page N` (1-based) with a positive `--limit`.
+- Local filters skip leading empty upstream batches until the first non-empty
+  logical batch or true end. `--limit N` fills filtered results across batches;
+  `--limit 0` walks all filtered results. Do not invent request caps.
+- There is no like-count field; do not treat bookmark totals as likes.
+- Artwork JSON/text include the stable page URL
+  `https://www.pixiv.net/artworks/{id}` as the first field/line.
 
 ## From a search hit to full detail
 

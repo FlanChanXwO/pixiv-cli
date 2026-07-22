@@ -308,8 +308,9 @@ allowlist、MIME 推測、暗黙置換は行いません。
 | list commands | `--page` | empty | 1-based logical page。正数 `--limit` が必要です。 |
 | `ranking` | `--mode` | `day` | ranking mode。 |
 | `ranking` | `--date` | empty | 通常 `YYYY-MM-DD`。 |
-| `ranking` | `--offset` | `0` | pagination offset。 |
 | `recommended KIND` | `--page`, `--limit` | per-stream | `all` でも 4 stream を独立に pagination します。 |
+| `download` | `--pages` | empty | 1-based のページ指定（例: `1,3-5`、閉区間・重複排除・自然順）。省略時は全ページ。存在しないページは明示失敗します。 |
+| `download` | `--quality` | `original` | 静止画品質: `original`、`regular`（長辺 1200）、`small`（長辺 540）、`thumb`（250×250 中央 crop）、`mini`（48×48 中央 crop）。Ugoira は original 以外の quality または pages 指定を unsupported として拒否します。 |
 | `user artworks` | `--type` | `illust` | user-artworks request の種類。 |
 | `user bookmarks` | `--restrict` | `public` | `public` または `private`。 |
 | `user bookmarks` | `--tag` | empty | 正確な bookmark tag filter。 |
@@ -322,9 +323,11 @@ allowlist、MIME 推測、暗黙置換は行いません。
 
 refresh token がある `search` は常に App API を使います。App は解像度、縦横比、tool、content type、
 `ai-mode=exclude` を処理し、rating と `ai-mode=only` は App result batch ごとに適用されます。App failure は
-Web に fallback しません。filter は opaque cursor に binding され、別条件へ再利用できません。正数
-`--limit`/`--page` では必要件数、upstream 終端、repeated cursor まで batch を取得し、`--limit` なしでは
-互換の 1 batch 既定を維持します。bookmark-count filter はありません。
+Web に fallback しません。filter は opaque cursor に binding され、別条件へ再利用できません。ローカル filter が
+連続 empty upstream batch を飛ばす場合、CLI/MCP は最初の非 empty 論理 batch か upstream 終端まで続けます。
+正数 `--limit`/`--page` は filter 後の論理結果を跨 batch で埋め、`--limit 0` は全件走査、`--limit` なしでも
+先頭 empty batch は skip します。bookmark-count filter も like-count フィールドもありません。作品 JSON/text は
+`https://www.pixiv.net/artworks/{id}` を先頭フィールド/先頭行として含めます。
 
 ### 共通 flag
 
@@ -346,8 +349,8 @@ Web に fallback しません。filter は opaque cursor に binding され、�
 | `filename_template` | string | `{author} - {title}_{id}` | filename template。 |
 | `https_proxy` | string | empty | HTTP(S) proxy。lowercase env が優先。 |
 | `web_fallback_enabled` | bool | `true` | token がない場合に匿名 Web fallback を許可します。 |
-| `log_level` | string | `warn` | stderr log level。`PIXIV_LOG_LEVEL` で上書き。 |
-| `log_format` | string | `text` | `text` または `json`。 |
+| `log_level` | string | `warn` | user state ディレクトリ `pixiv/logs` の日次 JSONL operation summary level。`PIXIV_LOG_LEVEL` で上書き。端末は既定で log 痕跡を出しません。 |
+| `log_format` | string | `text` | 設定は `text`/`json` を検証（`PIXIV_LOG_FORMAT` で上書き可）しますが、file log は常に JSONL 行です。不正値は fail closed です。 |
 | `update_check_enabled` | bool | `true` | 通常 command 成功後の stable update check。 |
 | `output_json` | bool | `false` | data command の既定を JSON にします。 |
 | `login_open_browser` | bool | `true` | `auth login` で browser を自動起動します。 |
