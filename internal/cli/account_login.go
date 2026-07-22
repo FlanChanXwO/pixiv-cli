@@ -128,7 +128,7 @@ func (a app) accountLogin(cmd *cobra.Command, opts accountLoginOptions) error {
 		return a.printJSON(out)
 	}
 	// 成功提示前空一行，便于与前面的授权引导输出分隔。
-	fmt.Fprintf(a.out, "\n登录成功（UID: %d）\n", out.UserID)
+	fmt.Fprintf(a.out, "\nLogin successful (UID: %d)\n", out.UserID)
 	return nil
 }
 
@@ -341,14 +341,14 @@ func writeLoginFinalPage(w http.ResponseWriter, ok bool) {
 	if !ok {
 		w.WriteHeader(http.StatusBadRequest)
 	}
-	title := "登录成功"
-	body := "登录已完成，可以关闭此页面并返回终端。"
+	title := "Login successful"
+	body := "Login completed. You can close this page and return to the terminal."
 	if !ok {
-		title = "登录失败"
-		body = "登录未能完成，请返回终端查看提示或重试。"
+		title = "Login failed"
+		body = "Login could not be completed. Return to the terminal to view details or try again."
 	}
 	_, _ = io.WriteString(w, `<!doctype html>
-<html lang="zh-CN"><head><meta charset="utf-8"><title>`+title+`</title>
+<html lang="en"><head><meta charset="utf-8"><title>`+title+`</title>
 <style>
 html,body{height:100%;margin:0}
 body{display:flex;align-items:center;justify-content:center;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#f7f7f8;color:#222}

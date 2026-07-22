@@ -122,7 +122,7 @@ func TestExitSuggestsLogDirForUpstreamErrorOnly(t *testing.T) {
 	code := a.exit(&sdk.Error{Code: sdk.CodeUpstreamError, Operation: sdk.OperationSearchIllust})
 	require.Equal(t, 1, code)
 	assert.Contains(t, errOut.String(), "error:")
-	assert.Contains(t, errOut.String(), "详见日志目录:")
+	assert.Contains(t, errOut.String(), "See log directory:")
 	assert.NotContains(t, errOut.String(), "refresh_token")
 	assert.NotContains(t, errOut.String(), "pixiv operation")
 
@@ -130,7 +130,7 @@ func TestExitSuggestsLogDirForUpstreamErrorOnly(t *testing.T) {
 	code = a.exit(&sdk.Error{Code: sdk.CodeUnauthorized, Operation: sdk.OperationStartLogin})
 	require.Equal(t, 1, code)
 	assert.Contains(t, errOut.String(), "error:")
-	assert.NotContains(t, errOut.String(), "详见日志目录:")
+	assert.NotContains(t, errOut.String(), "See log directory:")
 }
 
 func TestRunAccountCommandIsRemoved(t *testing.T) {

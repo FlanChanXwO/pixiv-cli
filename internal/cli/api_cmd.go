@@ -59,7 +59,7 @@ func (a app) newSearchCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "search WORD",
 		Short:   "Search illustrations",
-		Example: "pixiv search \"初音ミク\" --json",
+		Example: "pixiv search \"miku\" --json",
 		Args:    requireMinArgs(1, "pixiv search [options] WORD"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return a.runSearch(cmd, args, opts)
@@ -195,7 +195,7 @@ func (a app) newSearchOptionsCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "search-options WORD",
 		Short:   "Show available illustration search options",
-		Example: "pixiv search-options \"初音ミク\" --json",
+		Example: "pixiv search-options \"miku\" --json",
 		Args:    requireMinArgs(1, "pixiv search-options [options] WORD"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return a.runSearchOptions(cmd, strings.Join(args, " "), opts)

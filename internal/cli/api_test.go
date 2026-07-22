@@ -46,6 +46,19 @@ func TestSearchRoutesArgumentsAndPrintsSDKJSON(t *testing.T) {
 	assert.JSONEq(t, `{"illusts":[{"url":"https://www.pixiv.net/artworks/123","id":123,"title":"work","type":"","page_count":0,"total_bookmarks":0,"total_view":0,"x_restrict":0,"user":{"id":0,"name":"artist","account":"","comment":"","is_followed":false,"profile_image_urls":{}},"tags":null,"image_urls":{"square_medium":"","medium":"","large":"","original":""},"meta_single_page":{"original_image_url":""},"meta_pages":null,"ai_type":0,"create_date":"","width":0,"height":0,"tools":null}]}`, stdout.String())
 }
 
+func TestSearchHelpUsesEnglishExamples(t *testing.T) {
+	for _, command := range []string{"search", "search-options"} {
+		t.Run(command, func(t *testing.T) {
+			var stdout, stderr bytes.Buffer
+			code := Run([]string{"pixiv", command, "--help"}, strings.NewReader(""), &stdout, &stderr)
+
+			require.Equal(t, 0, code, stderr.String())
+			assert.Contains(t, stdout.String(), `pixiv `+command+` "miku" --json`)
+			assert.NotContains(t, stdout.String(), "初音ミク")
+		})
+	}
+}
+
 func TestSearchRejectsDownloadOnlyFlags(t *testing.T) {
 	for _, args := range [][]string{
 		{"--download-path", "/tmp/downloads"},

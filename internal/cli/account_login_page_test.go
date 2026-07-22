@@ -17,8 +17,11 @@ func TestWriteLoginFinalPageCentersAndHidesSensitiveFailure(t *testing.T) {
 	if !strings.Contains(body, "text-align:center") || !strings.Contains(body, "display:flex") {
 		t.Fatalf("success page not centered: %s", body)
 	}
-	if !strings.Contains(body, "登录成功") || !strings.Contains(body, "<h1>登录成功</h1>") {
+	if !strings.Contains(body, "Login successful") || !strings.Contains(body, "<h1>Login successful</h1>") || !strings.Contains(body, `<html lang="en">`) {
 		t.Fatalf("success title missing: %s", body)
+	}
+	if strings.Contains(body, "登录") {
+		t.Fatalf("success page contains non-English fixed text: %s", body)
 	}
 
 	rec = httptest.NewRecorder()
@@ -30,8 +33,11 @@ func TestWriteLoginFinalPageCentersAndHidesSensitiveFailure(t *testing.T) {
 	if !strings.Contains(body, "text-align:center") || !strings.Contains(body, "display:flex") {
 		t.Fatalf("failure page not centered: %s", body)
 	}
-	if !strings.Contains(body, "登录失败") {
+	if !strings.Contains(body, "Login failed") {
 		t.Fatalf("failure title missing: %s", body)
+	}
+	if strings.Contains(body, "登录") {
+		t.Fatalf("failure page contains non-English fixed text: %s", body)
 	}
 	// 失败页不得回显敏感片段
 	for _, secret := range []string{"token", "refresh", "Bearer", "code=", "password", "secret"} {

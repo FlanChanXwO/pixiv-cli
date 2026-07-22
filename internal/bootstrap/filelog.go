@@ -182,5 +182,5 @@ func SuggestLogDirHint() string {
 	if err != nil {
 		return ""
 	}
-	return fmt.Sprintf("详见日志目录: %s", dir)
+	return fmt.Sprintf("See log directory: %s", dir)
 }

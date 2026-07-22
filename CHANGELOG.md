@@ -8,6 +8,7 @@
 - 插画排行榜扩展为 16 个 App API mode：新增四个 manga 与五个 R18 mode；CLI `--mode`、MCP 稳定标签和 SDK 常量同步支持，新增 mode 明确要求认证。
 
 ### Changed
+- CLI terminal prompts, OAuth completion pages, log-directory hints, and fixed help examples now use English. Artwork metadata and user-supplied query text remain unchanged.
 - Breaking: `pixiv search --search-target` and `--duration` have been removed without aliases. Use `--target tag-partial|tag-exact|title-caption` and `--period day|week|month`; the user-facing `--limit` default no longer exposes the internal `-1` sentinel.
 - Breaking: `--download-path` and `--filename-template` are now accepted only by `pixiv download`. All other data, user, bookmark, and follow commands reject the previously ignored flags instead of silently accepting a no-op.
 - Breaking: CLI/MCP 诊断日志改写用户 state 目录文件，不再默认输出到 stderr；MCP stdout 仍仅用于 JSON-RPC。
