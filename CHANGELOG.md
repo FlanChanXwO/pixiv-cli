@@ -8,6 +8,7 @@
 - 插画排行榜扩展为 16 个 App API mode：新增四个 manga 与五个 R18 mode；CLI `--mode`、MCP 稳定标签和 SDK 常量同步支持，新增 mode 明确要求认证。
 
 ### Changed
+- Breaking: `--download-path` and `--filename-template` are now accepted only by `pixiv download`. All other data, user, bookmark, and follow commands reject the previously ignored flags instead of silently accepting a no-op.
 - Breaking: CLI/MCP 诊断日志改写用户 state 目录文件，不再默认输出到 stderr；MCP stdout 仍仅用于 JSON-RPC。
 - Breaking: MCP 下载仅返回本地 `path`/`file_uri`/`mime_type`/页号/大小；移除 `delivery=image_content` 内嵌图片与 `get_thumbnail_base64` 工具。Agent 应使用宿主本地附件能力发送文件；宿主不支持时仅分享作品 URL。
 - Breaking: 移除 MCP 旧 wire 字段 `search_r18`、`user_id_to_check`、`max_bookmark_id`、`offset`、`include_thumbnail`；列表与搜索统一使用规范字段 `user_id`、`rating`、`page`/`limit`。

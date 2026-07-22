@@ -310,8 +310,10 @@ func (a app) newRecommendedCommand() *cobra.Command {
 
 type downloadOptions struct {
 	commandOptions
-	pages   string
-	quality string
+	downloadPath     string
+	filenameTemplate string
+	pages            string
+	quality          string
 }
 
 func (a app) newDownloadCommand() *cobra.Command {
@@ -325,10 +327,18 @@ func (a app) newDownloadCommand() *cobra.Command {
 		},
 	}
 	a.bindCommonFlags(cmd, &opts.commandOptions)
+	a.bindDownloadRuntimeFlags(cmd, &opts)
 	flags := cmd.Flags()
 	flags.StringVar(&opts.pages, "pages", "", "1-based page selection, e.g. 1,3-5; default all pages")
 	flags.StringVar(&opts.quality, "quality", opts.quality, "static image quality: original, regular, small, thumb, mini")
 	return cmd
+}
+
+// bindDownloadRuntimeFlags 只注册真正影响下载落盘的参数，避免非下载命令静默接受无效 flag。
+func (a app) bindDownloadRuntimeFlags(cmd *cobra.Command, opts *downloadOptions) {
+	flags := cmd.Flags()
+	flags.StringVar(&opts.downloadPath, "download-path", "", "download directory")
+	flags.StringVar(&opts.filenameTemplate, "filename-template", "", "filename template")
 }
 
 func (a app) runDownload(cmd *cobra.Command, args []string, opts downloadOptions) error {
@@ -364,11 +374,11 @@ func (a app) runDownload(cmd *cobra.Command, args []string, opts downloadOptions
 	if err != nil {
 		return err
 	}
-	if clientReq.DownloadPathOverride != nil {
-		runtime.DownloadPath = *clientReq.DownloadPathOverride
+	if cmd.Flags().Changed("download-path") {
+		runtime.DownloadPath = opts.downloadPath
 	}
-	if clientReq.FilenameTemplateOverride != nil {
-		runtime.FilenameTemplate = *clientReq.FilenameTemplateOverride
+	if cmd.Flags().Changed("filename-template") {
+		runtime.FilenameTemplate = opts.filenameTemplate
 	}
 	client, err := services.SDK.OpenOperation(cmd.Context(), application.SDKClientRequest{
 		UserID: clientReq.UserID, RefreshToken: clientReq.RefreshToken, HTTPSProxyOverride: clientReq.HTTPSProxyOverride,

@@ -370,6 +370,8 @@ used.
 | `recommended KIND` | `--page`, `--limit` | per-stream pagination | Each stream paginates independently; `all` applies the same pagination semantics to illustrations, manga, novels, and users separately. |
 | `download` | `--pages` | empty | 1-based page selection such as `1,3-5` (closed ranges, de-duplicated, natural order); default downloads every page. Missing pages fail explicitly. |
 | `download` | `--quality` | `original` | Static image quality: `original`, `regular` (longest side 1200), `small` (longest side 540), `thumb` (250×250 center crop), or `mini` (48×48 center crop). Ugoira rejects non-original quality or page selection as unsupported. |
+| `download` | `--download-path` | `DOWNLOAD_PATH`, `config.toml`, or `./downloads` | Download directory. This flag is not accepted by other commands. |
+| `download` | `--filename-template` | `FILENAME_TEMPLATE`, `config.toml`, or `{author} - {title}_{id}` | Filename template. This flag is not accepted by other commands. |
 | `user artworks` | `--type` | `illust` | Pixiv illustration type passed to the user-artworks request. |
 | `user bookmarks` | `--restrict` | `public` | Bookmark visibility: `public` or `private`. |
 | `user bookmarks` | `--tag` | empty | Exact bookmark-tag filter. |
@@ -403,8 +405,6 @@ invalid/missing headers, a second 429, writes, and resource downloads are never 
 | `--uid UID` | `search/search-options/detail/ranking/recommended/user/download` | `auth.json.default_user_id` | Selects a local account. |
 | `--refresh-token TOKEN` | `search/search-options/detail/ranking/recommended/user/download` | empty | Temporarily overrides the account/env token; only raw App API refresh tokens are accepted. |
 | `--json` | `auth import/login/list/use/remove/check`, `version`, `update --check`, and data commands | `false` | Machine-parseable JSON output; `auth export` and actual update installation do not accept it. |
-| `--download-path PATH` | data commands; effectively only `download` | `DOWNLOAD_PATH`, `config.toml`, or `./downloads` | Download directory. |
-| `--filename-template TEMPLATE` | data commands; effectively only `download` | `FILENAME_TEMPLATE`, `config.toml`, or `{author} - {title}_{id}` | Filename template. |
 | `--proxy URL` | direct-token `auth import`, `auth login/check`, data commands, `mcp` | `https_proxy`/`HTTPS_PROXY`, `config.toml`, or empty | Uses an HTTP(S) proxy for this command only; forbidden with `auth import --file`. |
 | `--no-proxy` | direct-token `auth import`, `auth login/check`, data commands, `mcp` | empty | Clears the HTTP(S) proxy for this command; same precedence as `--proxy`, cannot be combined with it or bundle restore. |
 

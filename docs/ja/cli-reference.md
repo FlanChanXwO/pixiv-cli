@@ -311,6 +311,8 @@ allowlist、MIME 推測、暗黙置換は行いません。
 | `recommended KIND` | `--page`, `--limit` | per-stream | `all` でも 4 stream を独立に pagination します。 |
 | `download` | `--pages` | empty | 1-based のページ指定（例: `1,3-5`、閉区間・重複排除・自然順）。省略時は全ページ。存在しないページは明示失敗します。 |
 | `download` | `--quality` | `original` | 静止画品質: `original`、`regular`（長辺 1200）、`small`（長辺 540）、`thumb`（250×250 中央 crop）、`mini`（48×48 中央 crop）。Ugoira は original 以外の quality または pages 指定を unsupported として拒否します。 |
+| `download` | `--download-path` | env/config/`./downloads` | download directory。他の command では受け付けません。 |
+| `download` | `--filename-template` | env/config/`{author} - {title}_{id}` | filename template。他の command では受け付けません。 |
 | `user artworks` | `--type` | `illust` | user-artworks request の種類。 |
 | `user bookmarks` | `--restrict` | `public` | `public` または `private`。 |
 | `user bookmarks` | `--tag` | empty | 正確な bookmark tag filter。 |
@@ -338,8 +340,6 @@ Web に fallback しません。filter は opaque cursor に binding され、�
 | `--uid UID` | `search/search-options/detail/ranking/recommended/user/download` | `auth.json.default_user_id` | local account を選びます。 |
 | `--refresh-token TOKEN` | 同上 | empty | account/env token を一時上書きします。raw App token だけを受け付けます。 |
 | `--json` | `auth import/login/list/use/remove/check`、`version`、`update --check`、data commands | `false` | machine-readable JSON。`auth export` と実更新にはありません。 |
-| `--download-path PATH` | data commands（実質 `download`） | env/config/`./downloads` | download directory。 |
-| `--filename-template TEMPLATE` | data commands（実質 `download`） | env/config/`{author} - {title}_{id}` | filename template。 |
 | `--proxy URL` | direct-token `auth import`、`auth login/check`、data/`mcp` | env/config/empty | この command だけの HTTP(S) proxy。`auth import --file` では使用不可。 |
 | `--no-proxy` | 同上 | empty | この command の proxy を解除します。`--proxy` または bundle restore と併用不可。 |
 

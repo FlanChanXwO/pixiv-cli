@@ -46,6 +46,57 @@ func TestSearchRoutesArgumentsAndPrintsSDKJSON(t *testing.T) {
 	assert.JSONEq(t, `{"illusts":[{"url":"https://www.pixiv.net/artworks/123","id":123,"title":"work","type":"","page_count":0,"total_bookmarks":0,"total_view":0,"x_restrict":0,"user":{"id":0,"name":"artist","account":"","comment":"","is_followed":false,"profile_image_urls":{}},"tags":null,"image_urls":{"square_medium":"","medium":"","large":"","original":""},"meta_single_page":{"original_image_url":""},"meta_pages":null,"ai_type":0,"create_date":"","width":0,"height":0,"tools":null}]}`, stdout.String())
 }
 
+func TestSearchRejectsDownloadOnlyFlags(t *testing.T) {
+	for _, args := range [][]string{
+		{"--download-path", "/tmp/downloads"},
+		{"--filename-template", "{id}"},
+	} {
+		t.Run(args[0], func(t *testing.T) {
+			useTempPaths(t)
+			setTestSDKCommandClient(t, sdkCommandFake{search: func(context.Context, sdk.SearchIllustRequest) (*sdk.IllustListResult, error) {
+				return &sdk.IllustListResult{}, nil
+			}})
+
+			var stdout, stderr bytes.Buffer
+			code := Run(append([]string{"pixiv", "search", "miku"}, args...), strings.NewReader(""), &stdout, &stderr)
+
+			require.NotZero(t, code)
+			assert.Contains(t, stderr.String(), "unknown flag: "+args[0])
+		})
+	}
+}
+
+func TestEveryOtherDataCommandRejectsDownloadOnlyFlags(t *testing.T) {
+	commands := [][]string{
+		{"pixiv", "search-options", "miku"},
+		{"pixiv", "detail", "1"},
+		{"pixiv", "ranking"},
+		{"pixiv", "recommended", "illust"},
+		{"pixiv", "user", "detail", "1"},
+		{"pixiv", "user", "artworks"},
+		{"pixiv", "user", "bookmarks"},
+		{"pixiv", "user", "following"},
+		{"pixiv", "bookmark", "add", "1"},
+		{"pixiv", "bookmark", "remove", "1"},
+		{"pixiv", "follow", "add", "1"},
+		{"pixiv", "follow", "remove", "1"},
+	}
+	for _, command := range commands {
+		for _, flag := range []string{"--download-path", "--filename-template"} {
+			t.Run(strings.Join(append(command[1:], flag), " "), func(t *testing.T) {
+				useTempPaths(t)
+
+				var stdout, stderr bytes.Buffer
+				args := append(append([]string(nil), command...), flag, "ignored")
+				code := Run(args, strings.NewReader(""), &stdout, &stderr)
+
+				require.NotZero(t, code)
+				assert.Contains(t, stderr.String(), "unknown flag: "+flag)
+			})
+		}
+	}
+}
+
 func TestRankingPassesExtendedModeToSDK(t *testing.T) {
 	useTempPaths(t)
 	var got sdk.IllustRankingRequest

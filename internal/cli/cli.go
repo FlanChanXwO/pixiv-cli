@@ -29,11 +29,9 @@ type app struct {
 
 type commandOptions struct {
 	proxyOptions
-	uid              string
-	refreshToken     string
-	downloadPath     string
-	filenameTemplate string
-	jsonOut          bool
+	uid          string
+	refreshToken string
+	jsonOut      bool
 }
 
 type proxyOptions struct {
@@ -306,8 +304,6 @@ func (a app) bindCommonFlags(cmd *cobra.Command, opts *commandOptions) {
 	flags := cmd.Flags()
 	flags.StringVar(&opts.uid, "uid", "", "Pixiv UID from auth.json")
 	flags.StringVar(&opts.refreshToken, "refresh-token", "", "Pixiv App API refresh token")
-	flags.StringVar(&opts.downloadPath, "download-path", "", "download directory")
-	flags.StringVar(&opts.filenameTemplate, "filename-template", "", "filename template")
 	flags.BoolVar(&opts.jsonOut, "json", false, "print JSON")
 	a.bindProxyFlags(cmd, &opts.proxyOptions)
 }
@@ -338,12 +334,6 @@ func (a app) clientRequest(cmd *cobra.Command, opts commandOptions, needsAuth bo
 		return application.ClientRequest{}, err
 	}
 	req.HTTPSProxyOverride = proxyOverride
-	if cmd.Flags().Changed("download-path") {
-		req.DownloadPathOverride = &opts.downloadPath
-	}
-	if cmd.Flags().Changed("filename-template") {
-		req.FilenameTemplateOverride = &opts.filenameTemplate
-	}
 	if cmd.Flags().Changed("json") {
 		req.JSONOverride = &opts.jsonOut
 	}
