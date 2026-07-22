@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"os"
 	"strings"
 	"testing"
 
@@ -88,6 +89,19 @@ func TestRunUnknownCommandReturnsError(t *testing.T) {
 	assert.Contains(t, stderr.String(), `unknown command "wat"`)
 	assert.NotContains(t, stderr.String(), `"level":"ERROR"`)
 	assert.NotContains(t, stderr.String(), "pixiv operation")
+}
+
+func TestRunClosesApplicationLogWriter(t *testing.T) {
+	home, configPath := useTempPaths(t)
+	require.NoError(t, config.WritePrivateFile(configPath, []byte("[logging]\nformat = 'json'\nlevel = 'error'\n")))
+
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"pixiv", "wat"}, strings.NewReader(""), &stdout, &stderr)
+
+	require.NotZero(t, code)
+	// Windows 不允许临时目录清理删除仍被打开的 JSONL。该断言确保 CLI 在返回前
+	// 已释放根 logger 的文件 writer，而不是依赖进程退出回收句柄。
+	require.NoError(t, os.RemoveAll(home))
 }
 
 func TestShouldSuggestLogDirOnlyForSpecialNonAuthFailures(t *testing.T) {

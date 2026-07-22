@@ -64,10 +64,13 @@ func RunContext(ctx context.Context, args []string, in io.Reader, out io.Writer,
 			return 1
 		}
 	}
-	logger, err := applicationLoggerForArgs(args, errOut)
+	logger, logCloser, err := applicationLoggerForArgs(args, errOut)
 	if err != nil {
 		fmt.Fprintln(errOut, "error:", err)
 		return 1
+	}
+	if logCloser != nil {
+		defer func() { _ = logCloser.Close() }()
 	}
 	a := app{in: in, out: out, errOut: errOut, logger: logger}
 	cmd := a.newRootCommand()
@@ -90,9 +93,9 @@ func RunContext(ctx context.Context, args []string, in io.Reader, out io.Writer,
 
 // applicationLoggerForArgs 在 Cobra 解析前识别凭据导出前缀，使成功、help 与参数
 // 错误路径都不依赖 config/logging 环境。其他命令仍沿用完整配置型 logger。
-func applicationLoggerForArgs(args []string, errOut io.Writer) (*slog.Logger, error) {
+func applicationLoggerForArgs(args []string, errOut io.Writer) (*slog.Logger, io.Closer, error) {
 	if isAuthExportInvocation(args) {
-		return slog.New(slog.NewTextHandler(io.Discard, nil)), nil
+		return slog.New(slog.NewTextHandler(io.Discard, nil)), nil, nil
 	}
 	return bootstrap.NewApplicationLogger(errOut)
 }

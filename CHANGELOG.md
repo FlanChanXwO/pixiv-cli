@@ -21,6 +21,7 @@
 - Breaking: 移除 CLI 兼容入口 `--ai-type`、`--r18`、`--profile`、`--offset` 与 `search --type comics`；请分别使用 `--ai-mode`、`--rating r18`、`--uid`、`--page`/`--limit` 与 `--type manga`。
 
 ### Fixed
+- 修复 CLI 命令与 MCP 会话结束后未关闭按日 JSONL 日志文件的问题；Windows 现可在命令返回后清理用户 state 临时目录，不再依赖进程退出释放文件句柄。
 - 修复认证态作品详情、分页和 ugoira metadata 在 App API 成功后仍访问匿名 Web 补全、致使 R18 作品遭遇 403/404 的问题。认证路径现只使用 App 数据；多页直接读取 `meta_pages`，单页派生规范页面，缺失或不一致明确返回上游响应错误，不伪装 partial result。
 - 修复 App API 幂等 JSON 读取限流恢复：仅首次 HTTP 429 且 `Retry-After` 有效时按调用方 context 等待并重试一次；无效 header、第二次 429、写操作和资源下载均保留真实错误且不重放，安全 info 日志不含 URL、header 或凭据。
 - 修复 macOS `pixiv://` helper 在后台吞掉 loopback 最终响应、导致浏览器停留在 Pixiv 白色 relay 页的问题。helper 现打开本地桥接页，并在 OAuth 真正完成后显示居中的最终成功/失败页；callback 仅短暂位于 URL fragment，提交前即从地址栏和历史中清除，失败页不泄露敏感原因；CLI 成功提示前增加一个空行。

@@ -71,34 +71,44 @@ func newSDKClient(logger *slog.Logger, request application.SDKClientRequest) (ap
 }
 
 // NewApplicationLogger 从当前配置建立一次应用根 logger。它不触碰 slog 全局默认值；
-// CLI 与 MCP 将其显式传入所有下游组件。
+// CLI 与 MCP 将其显式传入所有下游组件。返回的 closer 必须在命令或 MCP 会话结束时关闭，
+// 以释放 Windows 上不能由临时目录删除的 JSONL 文件句柄。
 // 终端（errOut）默认不输出日志痕迹；操作摘要写入 UserStateDir/pixiv/logs 按日 JSONL。
 // 日志目录创建/轮转/清理失败时静默继续。errOut 参数保留以兼容调用签名。
-func NewApplicationLogger(errOut io.Writer) (*slog.Logger, error) {
+func NewApplicationLogger(errOut io.Writer) (*slog.Logger, io.Closer, error) {
 	_ = errOut
+	writer := openFileLogWriter()
 	settings, err := config.LoadSettingsState()
 	if err != nil {
 		// 根 logger 的初始化不得抢在 Cobra 前把帮助、config path 等本地协议变成
 		// 失败。配置文件不可读或语法损坏时静默 logger；只要文件可解析，下面对
 		// log_level/log_format 的显式校验仍会把非法日志配置返回给调用方。
-		return slog.New(slog.NewJSONHandler(openFileLogWriter(), &slog.HandlerOptions{Level: slog.LevelWarn})), nil
+		return slog.New(slog.NewJSONHandler(writer, &slog.HandlerOptions{Level: slog.LevelWarn})), writer, nil
 	}
 	// 根 logger 只依赖 logging 自己的两项设置。这样无关 runtime 配置（例如
 	// web.fallback_enabled）的错误不会破坏 help/config path 等离线协议；反之
 	// 无效 log_level/log_format 仍明确失败，绝不静默回退。
 	level, err := settings.Effective("log_level")
 	if err != nil {
-		return nil, err
+		_ = writer.Close()
+		return nil, nil, err
 	}
 	format, err := settings.Effective("log_format")
 	if err != nil {
-		return nil, err
+		_ = writer.Close()
+		return nil, nil, err
 	}
 	// 仍校验 log_format 配置合法性，但文件日志固定 JSONL，不把文本日志写回终端。
 	if _, err := config.NewLogger(io.Discard, config.RuntimeConfig{LogLevel: level.Value.(string), LogFormat: format.Value.(string)}); err != nil {
-		return nil, err
+		_ = writer.Close()
+		return nil, nil, err
 	}
-	return config.NewLogger(openFileLogWriter(), config.RuntimeConfig{LogLevel: level.Value.(string), LogFormat: "json"})
+	logger, err := config.NewLogger(writer, config.RuntimeConfig{LogLevel: level.Value.(string), LogFormat: "json"})
+	if err != nil {
+		_ = writer.Close()
+		return nil, nil, err
+	}
+	return logger, writer, nil
 }
 
 func LoadRuntimeConfig() (config.RuntimeConfig, error) {
@@ -238,10 +248,11 @@ func (r MCPRuntime) mcpLog(operation string, started time.Time, result string, u
 }
 
 func RunMCP(ctx context.Context, errOut io.Writer, proxyOverride *string) error {
-	logger, err := NewApplicationLogger(errOut)
+	logger, closer, err := NewApplicationLogger(errOut)
 	if err != nil {
 		return err
 	}
+	defer func() { _ = closer.Close() }()
 	runtime, err := NewMCPRuntime(ctx, logger, proxyOverride)
 	if err != nil {
 		return err

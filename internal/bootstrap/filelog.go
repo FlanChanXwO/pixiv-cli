@@ -167,11 +167,19 @@ func cleanupOldLogFiles(dir string, now time.Time, retainDays int) {
 	}
 }
 
+// discardWriteCloser 为日志不可用路径提供无副作用的关闭操作，便于调用方统一管理生命周期。
+type discardWriteCloser struct {
+	io.Writer
+}
+
+func (discardWriteCloser) Close() error { return nil }
+
 // openFileLogWriter 尝试打开默认文件日志 writer；任何失败返回 discard。
-func openFileLogWriter() io.Writer {
+// 调用方必须在进程或命令结束时 Close，避免 Windows 持有 JSONL 文件句柄。
+func openFileLogWriter() io.WriteCloser {
 	dir, err := DefaultLogDir()
 	if err != nil {
-		return io.Discard
+		return discardWriteCloser{Writer: io.Discard}
 	}
 	return newDailyJSONLWriter(dir, defaultLogRetainDays)
 }

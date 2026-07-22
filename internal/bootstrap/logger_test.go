@@ -25,8 +25,9 @@ func TestNewApplicationLoggerKeepsTerminalSilentWhenConfigIsMalformed(t *testing
 	var output bytes.Buffer
 	global := slog.Default()
 
-	logger, err := NewApplicationLogger(&output)
+	logger, closer, err := NewApplicationLogger(&output)
 	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, closer.Close()) })
 	logger.Error("must remain local")
 
 	// 配置损坏时仍不得污染终端；文件日志尽力写入，失败则静默。
@@ -50,9 +51,10 @@ func TestNewApplicationLoggerRejectsInvalidExplicitLoggingSettings(t *testing.T)
 			require.NoError(t, config.WritePrivateFile(configPath, []byte(test.body)))
 			global := slog.Default()
 
-			logger, err := NewApplicationLogger(&bytes.Buffer{})
+			logger, closer, err := NewApplicationLogger(&bytes.Buffer{})
 
 			require.Nil(t, logger)
+			require.Nil(t, closer)
 			require.ErrorContains(t, err, test.wantError)
 			require.Same(t, global, slog.Default())
 		})
@@ -72,7 +74,7 @@ func TestNewApplicationLoggerKeepsTerminalSilentAndWritesJSONLFile(t *testing.T)
 
 	var output bytes.Buffer
 	global := slog.Default()
-	logger, err := NewApplicationLogger(&output)
+	logger, closer, err := NewApplicationLogger(&output)
 	require.NoError(t, err)
 	logger.Info("bootstrap logger probe", "component", "cli", "operation", "pixiv search")
 	require.Same(t, global, slog.Default())
@@ -88,4 +90,8 @@ func TestNewApplicationLoggerKeepsTerminalSilentAndWritesJSONLFile(t *testing.T)
 	require.Contains(t, string(body), "bootstrap logger probe")
 	require.NotContains(t, string(body), "refresh_token")
 	require.True(t, strings.Contains(string(body), "operation"))
+	// Windows 不允许删除仍被当前进程打开的文件。命令结束时必须主动关闭
+	// writer，避免各次 CLI 调用遗留日志句柄。
+	require.NoError(t, closer.Close())
+	require.NoError(t, os.RemoveAll(home))
 }
