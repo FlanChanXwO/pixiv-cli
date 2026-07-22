@@ -163,6 +163,8 @@ pixiv auth login --proxy http://127.0.0.1:7890
 ```
 
 `--proxy URL` と `--no-proxy` は現在の command だけに適用され、同時使用できず、`config.toml` に保存されません。
+
+HTTP(S) proxy を設定した場合、ugoira を含む `download` などの media resource transfer は意図的に HTTP/1.1 を使います。App API、OAuth、Web metadata request は通常どおり protocol negotiation を維持します。これは proxy 固有の HTTP/2 stream reset を回避するためであり、認証や選択した download quality は変わりません。
 実 Pixiv login は OAuth Web flow に依存し、自動 test は fake OAuth server を使用します。
 
 ### 認証の import

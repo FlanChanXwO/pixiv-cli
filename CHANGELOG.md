@@ -1,5 +1,9 @@
 ## [Unreleased]
 
+### Fixed
+
+- 修复经显式 HTTP(S) 代理下载静态图或 ugoira 时可能出现的 HTTP/2 资源流中断：资源传输现在单独协商 HTTP/1.1，App API、OAuth 和 Web 元数据请求保持原有协议协商。
+
 ## [0.5.0] - 2026-07-22
 
 ### Added

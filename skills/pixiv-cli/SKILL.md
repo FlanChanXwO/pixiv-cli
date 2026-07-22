@@ -76,7 +76,9 @@ the installed binary's `pixiv <cmd> --help` output.
    `user following`. Add `--page`, `--type`, `--rating`, or other flags only
    when that specific command's help exposes them.
    `--limit 0` requests all results, so never use it unless the user explicitly
-   asks for everything.
+   asks for everything. A result that reaches `--limit N` is not proof that
+   only N matches exist; follow the pagination and completeness contract in
+   [`references/discover.md`](references/discover.md#pagination-and-completeness).
 2. **Small result, display only:** use the default human-readable output and
    relay it. JSON carries field names and metadata — it is *larger* than the
    table for display purposes.
@@ -170,7 +172,9 @@ assuming its effective value.
    emits JSON.
 10. **Proxy is per-command.** The browser's system proxy is NOT inherited.
    Persist with `pixiv config set https_proxy URL`; override per command with
-   `--proxy` / `--no-proxy` (mutually exclusive).
+   `--proxy` / `--no-proxy` (mutually exclusive). With an HTTP(S) proxy,
+   resource downloads deliberately use HTTP/1.1; App API, OAuth, and Web
+   metadata requests retain normal protocol negotiation.
 11. **Long downloads may legitimately take time.** Do not impose an arbitrary
    timeout or kill the process merely because it is slow; wait for completion,
    user cancellation, or a real error.

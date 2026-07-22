@@ -30,6 +30,8 @@ SDK cursor 不出现在 MCP 参数或输出。列表工具统一使用逻辑 `pa
 
 `download_random_from_recommendation.count` 限制本次请求的作品数，不限制一个作品展开的文件数。显式传入 0、负数或大于 20 的值会返回参数错误，不会改写为默认值或边界值；推荐列表少于请求数时则下载列表中实际可用的作品。该 tool 与 `download` 一样只返回下载结果文本与 structured 本地文件元数据，不内嵌图片内容。
 
+以 HTTP(S) 代理启动 MCP server 时，其媒体资源下载会刻意使用 HTTP/1.1。App API、OAuth 与 Web 元数据请求仍保留常规协议协商；此行为规避部分代理特有的 HTTP/2 流重置，不改变认证或所选下载质量。
+
 两个下载 tool 在参数校验、SDK、推荐获取、下载、结果整理失败时，都会保留原有业务错误文本，并返回有效 structured output：`delivery` 固定为 `local_path`（非法 `delivery` 时同样回落到该值），`items` 与 `files` 是空数组而不是 `null`。这些遗留失败结果继续保持 `isError=false`，不会被 typed output schema 的校验错误替代。成功与失败均不内嵌图片内容。
 
 ## 作品与用户读取

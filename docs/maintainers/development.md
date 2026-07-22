@@ -293,7 +293,7 @@ PIXIV_E2E_REAL_API=1 PIXIV_E2E_REFRESH_TOKEN="<独立测试 refresh token>" PIXI
 PIXIV_E2E_REAL_API=1 PIXIV_E2E_USE_LOCAL_AUTH=1 PIXIV_E2E_PROXY=http://127.0.0.1:7890 go test ./e2e -run '^TestPixivBinaryAuthenticatedAppAPICanary$' -count=1 -v
 PIXIV_E2E_REAL_API=1 PIXIV_E2E_REFRESH_TOKEN="<独立测试 refresh token>" PIXIV_E2E_PROXY=http://127.0.0.1:7890 go test ./e2e -run '^TestPixivSDKAuthenticatedAppAPICanarySearchFilters$' -count=1 -v
 PIXIV_E2E_REAL_API=1 PIXIV_E2E_USE_LOCAL_AUTH=1 PIXIV_E2E_PROXY=http://127.0.0.1:7890 go test ./e2e -run '^TestPixivSDKAuthenticatedAppAPICanarySearchFilters$' -count=1 -v
-PIXIV_E2E_REAL_API=1 PIXIV_E2E_USE_LOCAL_AUTH=1 PIXIV_E2E_SFW_ILLUST_ID=147502481 PIXIV_E2E_R18_ILLUST_ID=147070125 PIXIV_E2E_R18_UGOIRA_ID=145973617 go test ./e2e -run 'TestPixiv(SDK|Binary)AuthenticatedR18RegressionCanary' -count=1 -v
+PIXIV_E2E_REAL_API=1 PIXIV_E2E_USE_LOCAL_AUTH=1 PIXIV_E2E_PROXY=http://127.0.0.1:7890 PIXIV_E2E_SFW_ILLUST_ID=147502481 PIXIV_E2E_R18_ILLUST_ID=147070125 PIXIV_E2E_R18_UGOIRA_ID=145973617 go test ./e2e -run 'TestPixiv(SDK|Binary)AuthenticatedR18RegressionCanary' -count=1 -v
 ```
 
 `go test ./...` 保持默认离线稳定；真实 Pixiv web API fallback e2e 默认跳过，只有设置 `PIXIV_E2E_WEB_API=1` 时才会联网。未设置 `PIXIV_WEB_API_PROXY` 时会直连。上述 Web canary 被显式调用时，会先从匿名搜索结果逐项读取 detail 取得真实宽高，选择可分类的横纵比候选，再执行带 `--aspect-ratio` 的高级搜索并通过 detail 复核返回作品的横纵比；该说明描述测试覆盖，不表示 canary 已经运行。
@@ -309,6 +309,8 @@ PIXIV_E2E_REAL_API=1 PIXIV_E2E_USE_LOCAL_AUTH=1 PIXIV_E2E_SFW_ILLUST_ID=14750248
 `download_url`、质量和帧；binary canary 从当前源码构建 CLI，验证 SFW/R18 `detail --json` 并将 R18 ugoira 下载到
 `t.TempDir()`，要求至少一个非空文件。若 Pixiv 返回不带有效 `Retry-After` 的 429，该真实 canary 保留诊断并明确失败，
 不会猜测等待或无限重试。
+
+显式 HTTP(S) proxy 下，资源传输固定协商 HTTP/1.1，而 App API、OAuth 与 Web metadata 保持原有协议协商。该 canary 的 ugoira 下载用于回归这一资源传输边界；它不为慢速正常下载增加固定超时。
 
 `PIXIV_E2E_BINARY` 与 `PIXIV_E2E_EXPECTED_VERSION` 供 CI 对已构建、已解压的 release binary 执行离线 e2e；它们不注入 token，也不启用真实 Pixiv API/Web fallback。`platform-smoke.yml` 在六个受支持 runner 上构建、封装、解压并运行这组 CLI/config/MCP stdio 验证。
 

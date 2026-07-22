@@ -46,6 +46,10 @@ missing-token hint. This legacy tool remains `isError=false`; file-log events ex
 or values above 20 fail validation instead of being clamped. If fewer recommendations exist, the tool downloads the
 available works. Download tools return local file metadata only and never embed image bytes.
 
+When the MCP server is started with an HTTP(S) proxy, its media-resource downloads deliberately use HTTP/1.1. App
+API, OAuth, and Web metadata requests retain normal protocol negotiation; this avoids proxy-specific HTTP/2 stream
+resets without changing authentication or selected download quality.
+
 Both download tools return valid structured output on validation, SDK, recommendation, download, result-building,
 or file-read failure: `delivery` retains the normalized mode (`local_path` when IDs/delivery are invalid), and
 `items`/`files` are empty arrays rather than `null`. Legacy failures keep `isError=false` and the original safe

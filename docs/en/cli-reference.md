@@ -179,6 +179,10 @@ pixiv auth login --proxy http://127.0.0.1:7890
 be used together. `--no-proxy` clears the proxy for this command even if `https_proxy` exists in the environment or
 config.
 
+When an HTTP(S) proxy is configured, media-resource transfers such as `download` (including Ugoira) deliberately use
+HTTP/1.1. App API, OAuth, and Web metadata requests retain their normal protocol negotiation. This avoids
+proxy-specific HTTP/2 stream resets and does not change authentication or the selected download quality.
+
 Real login depends on the Pixiv OAuth web flow being available; automated tests use a fake OAuth server and never
 touch real Pixiv.
 

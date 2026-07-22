@@ -159,6 +159,8 @@ pixiv auth login --proxy http://127.0.0.1:7890
 
 `--proxy URL` 与 `--no-proxy` 都只影响当前命令，不写入 `config.toml`；两者不能同时使用。`--no-proxy` 会清空本次命令的代理，即使环境变量或配置里存在 `https_proxy`。
 
+配置 HTTP(S) 代理时，媒体资源传输（如 `download`，包括 ugoira）会刻意使用 HTTP/1.1；App API、OAuth 与 Web 元数据请求仍保留其常规协议协商。此行为规避部分代理特有的 HTTP/2 流重置，不改变认证或所选下载质量。
+
 真实登录依赖 Pixiv OAuth 网页流程可用；自动化测试使用 fake OAuth server，不访问真实 Pixiv。
 
 ### 导入认证

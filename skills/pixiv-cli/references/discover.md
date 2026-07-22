@@ -35,6 +35,24 @@ pixiv search "初音ミク" --limit 10 --json
 - Artwork JSON/text include the stable page URL
   `https://www.pixiv.net/artworks/{id}` as the first field/line.
 
+## Pagination and completeness
+
+- A search without an explicit `--limit` returns one logical upstream batch. It
+  is a sample, never evidence that no further matches exist.
+- `--limit N` continues across upstream batches until it has N filtered results
+  or reaches the current end. If it returns exactly N, say “found N matching
+  works” or “first N matches”; never say “only N matches exist”. If it returns
+  fewer than N, the current query reached its end and that fact may be stated.
+- When the user asks for a specific number of candidates, request that number
+  with `--limit N`; do not stop at a smaller first batch. To continue a prior
+  bounded search, keep WORD, search fields, filters, and sort identical, then
+  increment `--page N` (1-based). `--page` always requires a positive
+  `--limit`.
+- Only use `--limit 0` for an explicit request to enumerate every result the
+  current search can return. State that this is an exhaustive traversal of the
+  current API search result, not an unsupported claim about a permanent global
+  corpus.
+
 ## From a search hit to full detail
 
 Extract `id` fields from the search JSON, then:

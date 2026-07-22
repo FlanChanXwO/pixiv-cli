@@ -3,6 +3,7 @@ package pixiv
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"io"
@@ -141,13 +142,14 @@ func NewClient(options Options) (*Client, error) {
 		webapi.WithWebBase(options.WebAPIBaseURL),
 		webapi.WithHTTPClient(httpClient),
 	}
+	resourceHTTPClient := resourceHTTPClientForExplicitProxy(httpClient)
 	return &Client{
 		app:                appapi.New(appOptions...),
 		web:                webapi.New(webOptions...),
 		authenticated:      accessToken != "",
 		webFallbackEnabled: options.WebFallbackEnabled,
 		resourcePolicy:     resourcePolicy,
-		resource:           internalresource.NewApp(httpClient),
+		resource:           internalresource.NewApp(resourceHTTPClient),
 		httpClient:         httpClient,
 		authFilePath:       strings.TrimSpace(options.AuthFilePath),
 		configFilePath:     strings.TrimSpace(options.ConfigFilePath),
@@ -156,6 +158,29 @@ func NewClient(options Options) (*Client, error) {
 		authState:          &authTransactionState{},
 		logger:             loggerOrDiscard(options.Logger),
 	}, nil
+}
+
+// resourceHTTPClientForExplicitProxy 为显式代理的资源流单独复制 transport。
+// 一些本地 HTTP(S) 代理会在 HTTP/2 资源流中断开连接；控制面仍保持调用方原有
+// 协议协商，只有媒体传输固定为 HTTP/1.1。
+func resourceHTTPClientForExplicitProxy(httpClient *http.Client) *http.Client {
+	transport, ok := httpClient.Transport.(*http.Transport)
+	if !ok || transport.Proxy == nil {
+		return httpClient
+	}
+	resourceClient := *httpClient
+	resourceTransport := transport.Clone()
+	resourceTransport.ForceAttemptHTTP2 = false
+	// Transport.Clone 会完成源 transport 的协议初始化，可能已把 h2 写入
+	// TLSClientConfig。显式清除该协商并安装空 TLSNextProto，才能确保此副本
+	// 不会因后续 RoundTrip 再次自动启用 HTTP/2。
+	resourceTransport.TLSNextProto = make(map[string]func(string, *tls.Conn) http.RoundTripper)
+	if resourceTransport.TLSClientConfig == nil {
+		resourceTransport.TLSClientConfig = &tls.Config{}
+	}
+	resourceTransport.TLSClientConfig.NextProtos = []string{"http/1.1"}
+	resourceClient.Transport = resourceTransport
+	return &resourceClient
 }
 
 func loggerOrDiscard(logger *slog.Logger) *slog.Logger {
