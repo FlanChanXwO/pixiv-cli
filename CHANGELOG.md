@@ -1,5 +1,7 @@
 ## [Unreleased]
 
+## [0.5.0] - 2026-07-22
+
 ### Added
 - CLI/MCP 操作摘要写入用户 state 目录下 `pixiv/logs` 的按日 JSONL（默认保留 7 天，仅清理可识别的历史日志文件）；终端默认不再输出日志痕迹。日志只记录脱敏操作摘要，不含 token、查询串、绝对路径、上游 body 或原始错误。目录创建/轮转/清理失败时静默继续。仅上游不可用、上游错误、响应畸形、限流等特殊非认证故障会在 CLI 错误中提示日志目录；登录失败与 token 过期不提示。
 - MCP `download` / `download_random_from_recommendation` 支持 `pages` 与 `quality`，与 CLI 共用下载选项。
@@ -244,7 +246,8 @@
 
 [Keep a Changelog 1.1.0]: https://keepachangelog.com/zh-CN/1.1.0/
 [Semantic Versioning]: https://semver.org/spec/v2.0.0.html
-[Unreleased]: https://github.com/FlanChanXwO/pixiv-cli/compare/v0.4.5...HEAD
+[Unreleased]: https://github.com/FlanChanXwO/pixiv-cli/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/FlanChanXwO/pixiv-cli/compare/v0.4.5...v0.5.0
 [0.4.5]: https://github.com/FlanChanXwO/pixiv-cli/compare/v0.4.4...v0.4.5
 [0.4.4]: https://github.com/FlanChanXwO/pixiv-cli/compare/v0.4.3...v0.4.4
 [0.4.3]: https://github.com/FlanChanXwO/pixiv-cli/compare/v0.4.2...v0.4.3
