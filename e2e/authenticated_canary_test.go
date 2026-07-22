@@ -442,12 +442,6 @@ func runAuthenticatedSearchCanary(t *testing.T, client *pixiv.Client) {
 			validate: func(illust pixiv.Illust) bool { return canaryContentType(illust) == contentType },
 			want:     "content type " + contentType,
 		},
-		{
-			name:     "exclude-ai",
-			filters:  pixiv.SearchIllustFilters{AIMode: pixiv.SearchAIModeExclude},
-			validate: func(illust pixiv.Illust) bool { return illust.AIType != 2 },
-			want:     "ai_type != 2",
-		},
 	} {
 		t.Run(search.name, func(t *testing.T) {
 			result, err := searchCanaryNonempty(testCommandContext(t), client, pixiv.SearchIllustRequest{Word: searchWord, Filters: search.filters})
@@ -464,6 +458,27 @@ func runAuthenticatedSearchCanary(t *testing.T, client *pixiv.Client) {
 			}
 		})
 	}
+
+	// exclude AI：仅在基线含 AIType==2 时判定；否则 inconclusive，不得当作成功。
+	t.Run("exclude-ai", func(t *testing.T) {
+		if ok, reason := canaryExcludeAIRunnable(baseline.Illusts); !ok {
+			t.Skipf("exclude-ai canary inconclusive: %s; not treating as success", reason)
+		}
+		result, err := searchCanaryNonempty(testCommandContext(t), client, pixiv.SearchIllustRequest{
+			Word: searchWord, Filters: pixiv.SearchIllustFilters{AIMode: pixiv.SearchAIModeExclude},
+		})
+		if err != nil {
+			t.Fatalf("search filter exclude-ai failed: %v", err)
+		}
+		if len(result.Illusts) == 0 {
+			t.Fatal("search filter exclude-ai returned no illustrations despite a non-AI baseline candidate")
+		}
+		for _, illust := range result.Illusts {
+			if illust.AIType == 2 {
+				t.Fatalf("search filter exclude-ai returned illustration %d with AIType==2", illust.ID)
+			}
+		}
+	})
 
 	selectedTool, ok := canaryToolCandidate(searchOptions.Tools, baseline.Illusts)
 	if !ok {

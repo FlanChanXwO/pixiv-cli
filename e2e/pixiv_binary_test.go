@@ -453,6 +453,19 @@ func TestCanaryFilterCandidatePrefersValueDifferentFromBaselineFirstItem(t *test
 	}
 }
 
+func TestCanaryExcludeAIRunnableRequiresBaselineAISample(t *testing.T) {
+	t.Parallel()
+	if ok, reason := canaryExcludeAIRunnable([]pixiv.Illust{{ID: 1, AIType: 0}, {ID: 2, AIType: 1}}); ok || reason == "" {
+		t.Fatalf("no-AI baseline runnable=%v reason=%q, want false with reason", ok, reason)
+	}
+	if ok, reason := canaryExcludeAIRunnable([]pixiv.Illust{{ID: 1, AIType: 0}, {ID: 3, AIType: 2}}); !ok || reason != "" {
+		t.Fatalf("AI baseline runnable=%v reason=%q, want true", ok, reason)
+	}
+	if ok, reason := canaryExcludeAIRunnable(nil); ok || reason == "" {
+		t.Fatalf("empty baseline runnable=%v reason=%q, want false with reason", ok, reason)
+	}
+}
+
 func TestLocalAuthCanaryEnvironmentRemovesRefreshTokenOverride(t *testing.T) {
 	t.Parallel()
 
@@ -849,6 +862,17 @@ func requireIllustListJSONShape(t *testing.T, body []byte, operation string) []p
 		t.Fatalf("%s JSON field %q is not an illustration array: %v", operation, "illusts", err)
 	}
 	return illusts
+}
+
+// canaryExcludeAIRunnable 仅在基线批次含 AIType==2 时允许判定 exclude AI。
+// 基线无 AI 样本时返回 false，调用方必须记为 inconclusive，不得当作成功。
+func canaryExcludeAIRunnable(baseline []pixiv.Illust) (ok bool, reason string) {
+	for _, illust := range baseline {
+		if illust.AIType == 2 {
+			return true, ""
+		}
+	}
+	return false, "baseline has no AIType==2 sample"
 }
 
 func canaryFilterCandidateValue(illusts []pixiv.Illust, classify func(pixiv.Illust) string) string {

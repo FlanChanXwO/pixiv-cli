@@ -153,12 +153,12 @@
 
 ## T14 — Opt-in App canary 与契约回归补强
 
-- 状态：未开始
+- 状态：已完成
 - 范围：补齐/运行单元与契约测试清单；opt-in 真实 App canary 验证 search-options、tool/ratio/type/resolution；AI exclude 仅在基线含 AI 时判定，否则 inconclusive。
 - 验收：测试清单勾选；canary 结果有记录，不把 inconclusive 当成功。
-- 实际：
-- 证据：
-- 风险/下一步：
+- 实际：离线契约包全绿（appapi query 编码、illust_ai_type、rating/AI 分层、空批补拉/逻辑分页、URL 首字段、pages/quality、OAuth 最终页、日志脱敏/保留、MCP/CLI 聚焦测试）。补强 `canaryExcludeAIRunnable`：baseline 无 `AIType==2` 时 exclude-ai 记 inconclusive 并 `t.Skipf`，不得 PASS。opt-in 真实 App canary：`PIXIV_E2E_REAL_API=1 PIXIV_E2E_USE_LOCAL_AUTH=1 PIXIV_E2E_PROXY=http://127.0.0.1:7890 go test ./e2e -run '^TestPixivSDKAuthenticatedAppAPICanarySearchFilters$'` —— search-options、resolution-medium、aspect-landscape、content-type-illust、tool 均 PASS；exclude-ai SKIP/inconclusive（baseline 无 AI 样本）。未移除 exclude AI 本地后筛。development.md 同步 inconclusive 语义。
+- 证据：契约 `/tmp/goal3-t14-contract2.log`；canary `/tmp/goal3-t14-canary-search.log`；单元 `TestCanaryExcludeAIRunnableRequiresBaselineAISample` PASS。
+- 风险/下一步：exclude AI 后端是否可单独信任仍 inconclusive，本地后筛继续保留。下一轮 T15：全量门禁、黑盒、合并推送与远端树验证。
 
 ## T15 — 全量门禁、黑盒验收、合并推送与远端树验证
 
