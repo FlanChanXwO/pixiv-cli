@@ -24,14 +24,29 @@ func (c *Client) IllustPages(ctx context.Context, illustID int64) (result []Meta
 	if illustID <= 0 {
 		return nil, invalidIllustArgument(OperationIllustPages, errors.New("illust id must be positive"))
 	}
-	if err := c.requireRoute(OperationIllustPages, routeWeb, illustID, 0); err != nil {
-		return nil, err
+	route, routeErr := c.selectRoute(OperationIllustPages, illustID, 0)
+	if routeErr != nil {
+		return nil, routeErr
 	}
-	pages, err := c.web.IllustPages(ctx, illustID)
+	if route == routeWeb {
+		pages, err := c.web.IllustPages(ctx, illustID)
+		if err != nil {
+			return nil, mapWebError(err, OperationIllustPages, illustID)
+		}
+		return mapMetaPages(pages), nil
+	}
+	if route != routeApp {
+		return nil, unexpectedRoute(OperationIllustPages, illustID, 0)
+	}
+	detail, err := c.app.IllustDetail(ctx, illustID)
 	if err != nil {
-		return nil, mapWebError(err, OperationIllustPages, illustID)
+		return nil, mapAppError(err, OperationIllustPages, illustID)
 	}
-	return mapMetaPages(pages), nil
+	pages, err := appDetailMetaPages(detail.Illust)
+	if err != nil {
+		return nil, mapAppError(err, OperationIllustPages, illustID)
+	}
+	return pages, nil
 }
 
 // IllustRelated 返回与指定作品相关的一个 App API 批次。
@@ -85,7 +100,7 @@ func (c *Client) TrendingTagsIllust(ctx context.Context) (result *TrendingTagsIl
 	return out, nil
 }
 
-// UgoiraMetadata 以 App 数据为主，并用 Web 的真实 originalSrc 补全原始压缩包 URL。
+// UgoiraMetadata 返回可下载 ZIP 的明确质量；认证态仅使用 App API 提供的资源。
 func (c *Client) UgoiraMetadata(ctx context.Context, illustID int64) (result *UgoiraMetadataResult, err error) {
 	started := time.Now()
 	defer func() { c.delegatedOperationLog(OperationUgoiraMetadata, started, err, illustID, 0) }()
@@ -108,20 +123,14 @@ func (c *Client) UgoiraMetadata(ctx context.Context, illustID int64) (result *Ug
 		}
 		return publicUgoiraMetadata(webResult), nil
 	}
-	if route != routeAppThenWeb {
+	if route != routeApp {
 		return nil, unexpectedRoute(OperationUgoiraMetadata, illustID, 0)
 	}
 	appResult, err := c.app.UgoiraMetadata(ctx, illustID)
 	if err != nil {
 		return nil, mapAppError(err, OperationUgoiraMetadata, illustID)
 	}
-	webResult, err := c.web.UgoiraMetadata(ctx, illustID)
-	if err != nil {
-		return nil, mapWebError(err, OperationUgoiraMetadata, illustID)
-	}
-	out := publicUgoiraMetadata(appResult)
-	out.UgoiraMetadata.ZipURLs.Original = webResult.UgoiraMetadata.ZipURLs.Original
-	return out, nil
+	return publicUgoiraMetadata(appResult), nil
 }
 
 func publicUgoiraMetadata(value *model.UgoiraMetadataResult) *UgoiraMetadataResult {
@@ -129,10 +138,18 @@ func publicUgoiraMetadata(value *model.UgoiraMetadataResult) *UgoiraMetadataResu
 	for i, frame := range value.UgoiraMetadata.Frames {
 		frames[i] = UgoiraFrame{File: frame.File, Delay: frame.Delay}
 	}
-	return &UgoiraMetadataResult{UgoiraMetadata: UgoiraMetadata{
+	result := &UgoiraMetadataResult{UgoiraMetadata: UgoiraMetadata{
 		ZipURLs: UgoiraZipURLs{Medium: value.UgoiraMetadata.ZipURLs.Medium, Original: value.UgoiraMetadata.ZipURLs.Original},
 		Frames:  frames,
 	}}
+	if result.UgoiraMetadata.ZipURLs.Original != "" {
+		result.UgoiraMetadata.DownloadURL = result.UgoiraMetadata.ZipURLs.Original
+		result.UgoiraMetadata.DownloadQuality = UgoiraZipQualityOriginal
+	} else {
+		result.UgoiraMetadata.DownloadURL = result.UgoiraMetadata.ZipURLs.Medium
+		result.UgoiraMetadata.DownloadQuality = UgoiraZipQualityMedium
+	}
+	return result
 }
 
 func (c *Client) cursorIllustOffset(cursor Cursor, operation Operation, digest string, illustID int64) (int, error) {

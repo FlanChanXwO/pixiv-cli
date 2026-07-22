@@ -66,7 +66,7 @@ SDK cursor 不出现在 MCP 参数或输出。列表工具统一使用逻辑 `pa
 Web 路径只执行已验证可靠的筛选；`rating=r18|r18g|mature` 在请求前返回需要登录，不伪装成空结果。
 `search_illust_options` 只走 App API。两项搜索 tool 都不接受 Cookie，当前也不提供收藏数筛选。
 
-作品列表的 MCP 文本按上游顺序完整列出每个作品的全部 tags，不做前 5 项截断；SDK tool 的 structured output schema 和内容保持不变。`illust_ranking` 对已知 mode 使用稳定中文标题：`day`、`day_male`、`day_female`、`week`、`week_original`、`week_rookie`、`month` 分别显示为“每日排行榜”“男性向每日排行榜”“女性向每日排行榜”“每周排行榜”“原创作品排行榜”“新人排行榜”“每月排行榜”；未来 mode 在上游成功时显示原 mode 后接“排行榜”。
+作品列表的 MCP 文本按上游顺序完整列出每个作品的全部 tags，不做前 5 项截断；SDK tool 的 structured output schema 和内容保持不变。`illust_ranking` 对已知 mode 使用稳定中文标题：`day`、`day_male`、`day_female`、`week`、`week_original`、`week_rookie`、`month` 分别显示为“每日排行榜”“男性向每日排行榜”“女性向每日排行榜”“每周排行榜”“原创作品排行榜”“新人排行榜”“每月排行榜”；`day_manga`、`week_manga`、`month_manga`、`week_rookie_manga`、`day_r18`、`day_male_r18`、`day_female_r18`、`week_r18`、`week_r18g` 分别显示为“漫画每日排行榜”“漫画每周排行榜”“漫画每月排行榜”“漫画新人排行榜”“R-18 每日排行榜”“男性向 R-18 每日排行榜”“女性向 R-18 每日排行榜”“R-18 每周排行榜”“R-18G 每周排行榜”。最后九种需要 App 认证；无认证时明确返回认证错误，不会代换为匿名日榜。未来 mode 在上游成功时显示原 mode 后接“排行榜”。
 
 ## 写操作
 

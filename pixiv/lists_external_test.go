@@ -1367,6 +1367,57 @@ func TestExtendedRankingModesUseAppAndWebWireValuesAndBindCursor(t *testing.T) {
 	}
 }
 
+func TestAdditionalRankingModesUseAppAndRequireAuthentication(t *testing.T) {
+	t.Parallel()
+	modes := []pixiv.RankingMode{
+		pixiv.RankingModeDayManga,
+		pixiv.RankingModeWeekManga,
+		pixiv.RankingModeMonthManga,
+		pixiv.RankingModeWeekRookieManga,
+		pixiv.RankingModeDayR18,
+		pixiv.RankingModeDayMaleR18,
+		pixiv.RankingModeDayFemaleR18,
+		pixiv.RankingModeWeekR18,
+		pixiv.RankingModeWeekR18G,
+	}
+	for _, mode := range modes {
+		t.Run(string(mode), func(t *testing.T) {
+			var appRequests atomic.Int32
+			app := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				appRequests.Add(1)
+				if got := r.URL.Query().Get("mode"); got != string(mode) {
+					t.Errorf("App mode = %q, want %q", got, mode)
+				}
+				fmt.Fprint(w, `{"illusts":[{"id":1}],"next_url":null}`)
+			}))
+			defer app.Close()
+			authenticated, err := pixiv.NewClient(pixiv.Options{HTTPClient: app.Client(), AppAPIBaseURL: app.URL, AccessToken: "token"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := authenticated.IllustRanking(context.Background(), pixiv.IllustRankingRequest{Mode: mode}); err != nil || appRequests.Load() != 1 {
+				t.Fatalf("authenticated ranking error = %v, calls = %d", err, appRequests.Load())
+			}
+
+			var webRequests atomic.Int32
+			web := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				webRequests.Add(1)
+				t.Fatal("anonymous extended ranking must not call Web")
+			}))
+			defer web.Close()
+			anonymous, err := pixiv.NewClient(pixiv.Options{HTTPClient: web.Client(), WebAPIBaseURL: web.URL, WebFallbackEnabled: true})
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, err = anonymous.IllustRanking(context.Background(), pixiv.IllustRankingRequest{Mode: mode})
+			var typed *pixiv.Error
+			if !errors.As(err, &typed) || typed.Code != pixiv.CodeUnauthorized || typed.Operation != pixiv.OperationIllustRanking || webRequests.Load() != 0 {
+				t.Fatalf("anonymous ranking error = %#v, Web calls = %d", err, webRequests.Load())
+			}
+		})
+	}
+}
+
 func TestRankingDateRequiresCanonicalDateAndBindsCursor(t *testing.T) {
 	t.Parallel()
 	var requests atomic.Int32

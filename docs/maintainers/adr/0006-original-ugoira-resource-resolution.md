@@ -1,4 +1,4 @@
-# ADR 0006：通过 Web metadata 解析 original ugoira 资源
+# ADR 0006：认证态以 App API 元数据提供作品和动图资源
 
 ## Status
 
@@ -6,23 +6,21 @@
 
 ## Decision
 
-请求 `quality=original` 时，认证会话可以查询 Pixiv Web metadata 以解析 original ugoira zip，因为 App API metadata 只提供 medium variant。这是明确的资源版本补全，不是 App API 失败后的自动 fallback。
+认证会话只从 App API 读取 `IllustDetail`、`IllustPages` 和 `UgoiraMetadata`。多页直接采用 App
+`meta_pages`；单页从 App 的 single-page/image 字段派生一项公开 `meta_pages`。页面缺失或页数不符是明确的
+上游 malformed error，不会改发匿名 Web 请求。
 
-同一界限适用于顶层 `pixiv` detail/pages enrichment：App API 仍是主数据路径；App 失败即返回失败。资源 URL 只能作为已验证的 `ResourceRef` 进入代理/下载流程，并经 `OpenResource`/`Download` 流式处理。
+动图公开模型把“确实可下载的资源”与历史 URL 槽位分开：`download_url` 和 `download_quality` 必须成对、非空，
+只指向 SDK 已验证的最佳 ZIP。App 只获得 medium 时，公开质量就是 `medium`，`zip_urls.original` 保持省略；
+绝不把 medium 冒充 original。匿名 Web 取得 original ZIP 时才将其标记为 `original`。下载器只使用
+`download_url`，资源 URL 仍须通过已验证的 `ResourceRef`、`OpenResource`/`Download` 流式处理。
 
-补全采用原子结果契约：`IllustDetail` 或 `UgoiraMetadata` 只有在其主数据与必需的 Web 补全都成功时才返回结果。Web 补全失败时返回 `nil` 与对应的 typed error，不返回 App 已取得的数据。匿名 `IllustDetail` 的 Web detail/pages 两阶段也遵循同一契约；任一阶段失败均不返回 partial result。
-
-这一行为是已采纳的公开语义，而不是隐藏 fallback：
-
-- App detail 的 wire model 与 mapper 可以表达并保留 `MetaPages`，但这不构成所有作品、所有时间都完整的上游保证；已有 App pages 也不会跳过明确的 Web pages 补全。
-- App ugoira metadata 只提供 medium zip，无法单独满足 original 质量。
-- 当前公开结果没有 enrichment completeness 或 provenance 状态。Web 登录墙等失败发生时若直接返回 App 数据，调用方无法区分完整结果与降级结果，会形成静默降级，并令 detail 与 ugoira 的完成语义不一致。
-
-未来若要引入 partial result，必须先设计显式、稳定的 enrichment 状态或 provenance，说明 detail 与 ugoira 的一致规则，提供兼容迁移方案，并以登录墙、App 数据不完整和成功补全 fixture 覆盖新旧调用方；不得把 partial result 作为无标记的错误兜底。
+这不是隐藏 fallback：App detail、页面或 ugoira metadata 的认证错误、网络错误和服务端错误原样成为 typed error。
+匿名路径仍独立使用 Web detail/pages 或原图 ugoira metadata，且自身的多阶段读取维持原子结果契约。
 
 ## Consequences
 
-- 调用方可请求 original 资源，不需要暗中降级质量。
-- Web 路由保持范围明确、可审计。
-- 登录墙、权限或网络导致的 Web 补全失败会成为用户可观察的 typed error；不会伪装成成功。
+- 认证 R18 作品不再依赖常会受登录墙影响的匿名 Web metadata，detail/pages/ugoira 的 App 失败可直接定位。
+- 调用方始终能从非空下载资源对判断实际 ZIP 质量，不需要猜测 `original` 是否存在。
+- Web 路由保持仅匿名白名单、范围明确且可审计。
 - 资源代理保留 SSRF policy、header filtering 与流所有权边界。

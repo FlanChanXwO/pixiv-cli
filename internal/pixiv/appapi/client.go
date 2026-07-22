@@ -6,10 +6,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/model"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/protocol"
@@ -31,6 +33,7 @@ type Client struct {
 	restyClient *resty.Client
 	apiBase     string
 	session     Session
+	logger      *slog.Logger
 }
 
 // Session 是 App 内容 API 仅需知道的最小认证边界。
@@ -66,6 +69,11 @@ func WithBaseURL(apiBase string) Option {
 
 func WithSession(session Session) Option {
 	return func(c *Client) { c.session = session }
+}
+
+// WithLogger 注入调用方显式提供的安全诊断 logger；nil 保持静默。
+func WithLogger(logger *slog.Logger) Option {
+	return func(c *Client) { c.logger = logger }
 }
 
 // WithAccessToken 注入已取得的 access token，供无需刷新流程的 SDK 调用复用 App API。
@@ -470,6 +478,34 @@ type requestOptions struct {
 }
 
 func (c *Client) getJSONWithRetry(ctx context.Context, path string, query url.Values, out any) error {
+	err := c.getJSONWithAuthRetry(ctx, path, query, out)
+	retryAfter, shouldRetry := retryAfterForRateLimit(err)
+	if !shouldRetry {
+		return err
+	}
+	// 产品契约只允许依据服务端有效 Retry-After 重试一次，避免对读取端点进行猜测性重放。
+	c.logRateLimitRetry(retryAfter)
+	if err := waitForRetryAfter(ctx, retryAfter); err != nil {
+		return protocol.Transport(err)
+	}
+	return c.getJSONWithAuthRetry(ctx, path, query, out)
+}
+
+func (c *Client) logRateLimitRetry(retryAfter time.Duration) {
+	if c.logger == nil {
+		return
+	}
+	c.logger.LogAttrs(nil, slog.LevelInfo, "pixiv app api rate limit retry",
+		slog.String("component", "pixiv_app_api"),
+		slog.String("operation", "read"),
+		slog.String("result", "rate_limit_retry"),
+		slog.Int("status", http.StatusTooManyRequests),
+		slog.Duration("retry_after", retryAfter),
+		slog.Int("attempt", 2),
+	)
+}
+
+func (c *Client) getJSONWithAuthRetry(ctx context.Context, path string, query url.Values, out any) error {
 	err := c.getJSON(ctx, path, query, out)
 	if !isAuthAPIResponse(err) {
 		return err
@@ -482,6 +518,25 @@ func (c *Client) getJSONWithRetry(ctx context.Context, path string, query url.Va
 		return err
 	}
 	return c.getJSON(ctx, path, query, out)
+}
+
+func retryAfterForRateLimit(err error) (time.Duration, bool) {
+	var failure protocol.Failure
+	if !errors.As(err, &failure) || failure.Kind != protocol.FailureHTTPStatus || failure.StatusCode != http.StatusTooManyRequests || !failure.HasRetryAfter {
+		return 0, false
+	}
+	return failure.RetryAfter, true
+}
+
+func waitForRetryAfter(ctx context.Context, duration time.Duration) error {
+	timer := time.NewTimer(duration)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
 }
 
 func (c *Client) getJSON(ctx context.Context, path string, query url.Values, out any) error {
@@ -561,7 +616,8 @@ func (c *Client) doJSON(ctx context.Context, method, rawURL string, opts request
 	}
 	body := resp.Body()
 	if resp.StatusCode() < 200 || resp.StatusCode() >= 300 {
-		return protocol.HTTPStatus(resp.StatusCode())
+		retryAfter, present := parseRetryAfter(resp.Header().Get("Retry-After"), time.Now())
+		return protocol.HTTPStatusWithRetryAfter(resp.StatusCode(), retryAfter, present)
 	}
 	if len(bytes.TrimSpace(body)) == 0 {
 		return protocol.MalformedResponse()
@@ -570,6 +626,31 @@ func (c *Client) doJSON(ctx context.Context, method, rawURL string, opts request
 		return protocol.MalformedResponse()
 	}
 	return nil
+}
+
+func parseRetryAfter(value string, now time.Time) (time.Duration, bool) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return 0, false
+	}
+	if seconds, err := strconv.ParseInt(value, 10, 64); err == nil {
+		// time.Duration 以 int64 纳秒表示；不能表达的服务端秒数若乘法溢出会
+		// 伪装成负等待，必须按无效 Retry-After 保留原始限流错误。
+		const maxDurationSeconds = int64(1<<63-1) / int64(time.Second)
+		if seconds < 0 || seconds > maxDurationSeconds {
+			return 0, false
+		}
+		return time.Duration(seconds) * time.Second, true
+	}
+	when, err := http.ParseTime(value)
+	if err != nil {
+		return 0, false
+	}
+	duration := when.Sub(now)
+	if duration < 0 {
+		duration = 0
+	}
+	return duration, true
 }
 
 // doForm 保留所有 2xx 成功状态；mutation endpoint 不保证返回 JSON body。

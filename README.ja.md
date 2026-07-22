@@ -18,6 +18,7 @@
 
 - **統一された機能** — CLI・MCP・SDK から公式 Pixiv の検索、詳細、ランキング、おすすめ、ユーザー、ブックマーク、フォロー、ダウンロード、うごイラを利用できます。第三者の集約/ランダム画像 API を再現しません。
 - **App API 優先** — refresh token が設定されている場合は常に認証済み App 経路を使用し、App の失敗を Web に暗黙フォールバックしません。
+- **認証済み R18 読み取り** — detail、pages、ugoira metadata と全 16 ranking mode は App API を使い、original が得られない場合は検証済み medium ugoira ZIP を正しく使用します。
 - **実用的な検索フィルター** — レーティング、作品種別、AI モード、縦横比、解像度、動的な制作ツール候補に対応します。
 - **ローカル複数アカウント OAuth** — ブラウザーの Cookie や profile を読み取らず、ブラウザーログイン、アカウント選択、refresh token rotation を行います。
 - **安全な自動化** — typed SDK error、JSON 出力、クリーンな MCP stdio、署名付き更新を備え、結果を暗黙に切り捨てません。

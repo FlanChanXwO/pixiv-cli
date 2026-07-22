@@ -239,13 +239,22 @@ type rankingIn struct {
 }
 
 var rankingLabels = map[sdk.RankingMode]string{
-	sdk.RankingModeDay:          "每日排行榜",
-	sdk.RankingModeDayMale:      "男性向每日排行榜",
-	sdk.RankingModeDayFemale:    "女性向每日排行榜",
-	sdk.RankingModeWeek:         "每周排行榜",
-	sdk.RankingModeWeekOriginal: "原创作品排行榜",
-	sdk.RankingModeWeekRookie:   "新人排行榜",
-	sdk.RankingModeMonth:        "每月排行榜",
+	sdk.RankingModeDay:             "每日排行榜",
+	sdk.RankingModeDayMale:         "男性向每日排行榜",
+	sdk.RankingModeDayFemale:       "女性向每日排行榜",
+	sdk.RankingModeWeek:            "每周排行榜",
+	sdk.RankingModeWeekOriginal:    "原创作品排行榜",
+	sdk.RankingModeWeekRookie:      "新人排行榜",
+	sdk.RankingModeMonth:           "每月排行榜",
+	sdk.RankingModeDayManga:        "漫画每日排行榜",
+	sdk.RankingModeWeekManga:       "漫画每周排行榜",
+	sdk.RankingModeMonthManga:      "漫画每月排行榜",
+	sdk.RankingModeWeekRookieManga: "漫画新人排行榜",
+	sdk.RankingModeDayR18:          "R-18 每日排行榜",
+	sdk.RankingModeDayMaleR18:      "男性向 R-18 每日排行榜",
+	sdk.RankingModeDayFemaleR18:    "女性向 R-18 每日排行榜",
+	sdk.RankingModeWeekR18:         "R-18 每周排行榜",
+	sdk.RankingModeWeekR18G:        "R-18G 每周排行榜",
 }
 
 func rankingLabel(mode string) string {

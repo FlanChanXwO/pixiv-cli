@@ -27,8 +27,11 @@ pixiv download 129543211 --pages 1,3-5 --quality regular
 - `--quality` for static images: `original` (default), `regular` (longest side
   1200), `small` (540), `thumb` (250×250 center crop), `mini` (48×48 center
   crop). Preserve the upstream JPEG/PNG format and alpha channel.
-- Ugoira keeps the existing GIF/APNG original flow; page selection or a
-  non-original quality returns unsupported.
+- Ugoira keeps the GIF/APNG flow; page selection or a non-original quality
+  returns unsupported. With authentication, Pixiv may expose only a verified
+  medium ZIP; this is still the legitimate download resource and must never be
+  described as original. Do not add a Web/Cookie workaround to obtain another
+  variant.
 - Filename template default: `{author} - {title}_{id}`. Placeholders: `{id}`,
   `{title}`, `{author}`, `{author_id}`. Persist a new default with
   `pixiv config set filename_template "..."` (confirm first — config write).

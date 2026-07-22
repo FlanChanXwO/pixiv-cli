@@ -236,6 +236,9 @@ func (c *Client) IllustRanking(ctx context.Context, request IllustRankingRequest
 		return nil, err
 	}
 	if route == routeWeb {
+		if rankingModeRequiresAuthentication(query.Mode) {
+			return nil, localRouteError(CodeUnauthorized, OperationIllustRanking, 0, 0, errors.New("access token is required for this ranking mode"))
+		}
 		list, err := c.web.IllustRanking(ctx, string(query.Mode), query.Date, offset)
 		if err != nil {
 			return nil, mapWebListError(err, OperationIllustRanking, 0)
@@ -706,7 +709,16 @@ func validSortMode(value SortMode) bool { return value == SortModeDateDesc || va
 func validRankingMode(value RankingMode) bool {
 	return value == RankingModeDay || value == RankingModeDayMale || value == RankingModeDayFemale ||
 		value == RankingModeWeek || value == RankingModeWeekOriginal || value == RankingModeWeekRookie ||
-		value == RankingModeMonth
+		value == RankingModeMonth || value == RankingModeDayManga || value == RankingModeWeekManga ||
+		value == RankingModeMonthManga || value == RankingModeWeekRookieManga || value == RankingModeDayR18 ||
+		value == RankingModeDayMaleR18 || value == RankingModeDayFemaleR18 || value == RankingModeWeekR18 ||
+		value == RankingModeWeekR18G
+}
+
+func rankingModeRequiresAuthentication(value RankingMode) bool {
+	return value == RankingModeDayManga || value == RankingModeWeekManga || value == RankingModeMonthManga ||
+		value == RankingModeWeekRookieManga || value == RankingModeDayR18 || value == RankingModeDayMaleR18 ||
+		value == RankingModeDayFemaleR18 || value == RankingModeWeekR18 || value == RankingModeWeekR18G
 }
 
 func validRankingDate(value string) bool {

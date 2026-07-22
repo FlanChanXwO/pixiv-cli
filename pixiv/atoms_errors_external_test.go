@@ -163,7 +163,7 @@ func TestIllustPagesDistinguishesMissingNullAndExplicitEmptyBody(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte(tt.body)) }))
 			defer server.Close()
-			client, _ := pixiv.NewClient(pixiv.Options{HTTPClient: server.Client(), WebAPIBaseURL: server.URL, AccessToken: "token"})
+			client, _ := pixiv.NewClient(pixiv.Options{HTTPClient: server.Client(), WebAPIBaseURL: server.URL, WebFallbackEnabled: true})
 			pages, err := client.IllustPages(context.Background(), 731)
 			if tt.valid {
 				if err != nil || pages == nil || len(pages) != 0 {

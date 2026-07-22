@@ -26,17 +26,11 @@ func TestClientUsesCentralProfilesAndCatalogWithExplicitBases(t *testing.T) {
 		if r.Header.Get("User-Agent") != "PixivAndroidApp/5.0.234 (Android 11; Pixel 5)" || r.Header.Get("Referer") != "https://app-api.pixiv.net/" || r.Header.Get("Authorization") != "Bearer app-token" {
 			t.Fatalf("app profile=%v", r.Header)
 		}
-		fmt.Fprint(w, `{"illust":{"id":51,"title":"safe","type":"illust","page_count":1,"user":{},"tags":[],"image_urls":{},"meta_single_page":{},"meta_pages":[]}}`)
+		fmt.Fprint(w, `{"illust":{"id":51,"title":"safe","type":"illust","page_count":0,"user":{},"tags":[],"image_urls":{},"meta_single_page":{},"meta_pages":[]}}`)
 	}))
 	defer app.Close()
 	web := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/ajax/illust/51/pages" {
-			t.Fatalf("web request=%s", r.URL.String())
-		}
-		if r.Header.Get("User-Agent") != "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36" || r.Header.Get("Authorization") != "" || r.Header.Get("Cookie") != "" {
-			t.Fatalf("web profile=%v", r.Header)
-		}
-		fmt.Fprint(w, `{"error":false,"body":[]}`)
+		t.Fatalf("authenticated detail unexpectedly requested Web: %s", r.URL.String())
 	}))
 	defer web.Close()
 

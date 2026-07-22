@@ -18,6 +18,7 @@
 
 - **一致的能力面**——CLI、MCP 与 SDK 均可完成搜索、详情、排行、推荐、用户、收藏、关注、下载和 ugoira 处理。
 - **App API 优先**——配置 refresh token 后始终走已认证 App 路径；App 失败不会静默回落 Web。
+- **认证 R18 读取**——详情、分页、ugoira metadata 和全部 16 种排行榜都走 App API；无法取得 original 时会诚实使用已验证的 medium ugoira ZIP。
 - **实用搜索筛选**——支持分级、作品类型、AI 模式、横纵比、分辨率和动态绘图工具。
 - **本地多账号 OAuth**——支持浏览器登录、账号选择和 refresh token rotation，不读取浏览器 Cookie 或 profile。
 - **适合自动化**——typed SDK error、JSON 输出、纯净 MCP stdio、签名更新且不隐藏截断结果。

@@ -365,7 +365,7 @@ used.
 | `search` | `--tool` | empty | Exact upstream drawing-tool name; obtain current values with authenticated `search-options`. |
 | list commands | `--limit` | one upstream batch | Maximum item count; `0` keeps reading until there is no next batch. |
 | list commands | `--page` | empty | 1-based logical page; must be used with a positive `--limit`. |
-| `ranking` | `--mode` | `day` | Ranking mode. |
+| `ranking` | `--mode` | `day` | One of `day`, `day_male`, `day_female`, `week`, `week_original`, `week_rookie`, `month`, `day_manga`, `week_manga`, `month_manga`, `week_rookie_manga`, `day_r18`, `day_male_r18`, `day_female_r18`, `week_r18`, `week_r18g`. The final nine require authentication. |
 | `ranking` | `--date` | empty | Ranking date, typically `YYYY-MM-DD`. |
 | `recommended KIND` | `--page`, `--limit` | per-stream pagination | Each stream paginates independently; `all` applies the same pagination semantics to illustrations, manga, novels, and users separately. |
 | `download` | `--pages` | empty | 1-based page selection such as `1,3-5` (closed ranges, de-duplicated, natural order); default downloads every page. Missing pages fail explicitly. |
@@ -389,6 +389,12 @@ results across batches until it collects enough matching works, the upstream has
 cursor is detected; `--limit 0` walks the entire filtered stream; without `--limit`, the compatible one-batch
 default still skips leading empty batches. Bookmark-count filtering and like-count fields are not provided.
 Artwork JSON/text include a stable page URL `https://www.pixiv.net/artworks/{id}` as the first field/line.
+
+Authenticated `detail`, pages, and ugoira metadata use App API only. A page-count mismatch or missing App page
+resource fails explicitly rather than making an anonymous Web request. Authenticated ugoira downloads use the
+verified App medium ZIP when no original ZIP was obtained; the downloader selects that resource directly. For
+idempotent App JSON reads, a first 429 with a valid `Retry-After` waits and retries once under the command context;
+invalid/missing headers, a second 429, writes, and resource downloads are never replayed.
 
 ### Common flags
 
@@ -453,6 +459,9 @@ Differences in the anonymous fallback:
   than pretending the result is empty. `rating=all` means only content visible anonymously.
 - `search-options` is App-only and explicitly unsupported without a refresh token. Search does not read or store
   browser cookies such as `PHPSESSID`, and never converts a refresh token into a Web session.
+- The nine extended ranking modes (`day_manga`, `week_manga`, `month_manga`, `week_rookie_manga`, `day_r18`,
+  `day_male_r18`, `day_female_r18`, `week_r18`, `week_r18g`) require authentication; they do not fall back to
+  anonymous daily ranking.
 - `search_user` is not Pixiv's official user search; it dedupes web work-search results by `userId` and returns
   "authors of related works".
 - Static single/multi-page downloads use the `original` URLs from `/ajax/illust/{id}/pages`.

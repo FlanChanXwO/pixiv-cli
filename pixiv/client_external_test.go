@@ -3,6 +3,7 @@ package pixiv_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -13,7 +14,7 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/pixiv"
 )
 
-func TestClientIllustDetailEnrichesCompletePages(t *testing.T) {
+func TestClientIllustDetailUsesAppPagesWithoutWebEnrichment(t *testing.T) {
 	t.Parallel()
 
 	const illustID int64 = 123
@@ -50,7 +51,32 @@ func TestClientIllustDetailEnrichesCompletePages(t *testing.T) {
 					"original": ""
 				},
 				"meta_single_page": {"original_image_url": ""},
-				"meta_pages": [],
+				"meta_pages": [
+					{
+						"page_index": 0,
+						"width": 1200,
+						"height": 1600,
+						"extension": "png",
+						"image_urls": {
+							"square_medium": "https://i.pximg.net/page-0-thumb.jpg",
+							"medium": "https://i.pximg.net/page-0-small.jpg",
+							"large": "https://i.pximg.net/page-0-regular.jpg",
+							"original": "https://i.pximg.net/page-0-original.png"
+						}
+					},
+					{
+						"page_index": 1,
+						"width": 2400,
+						"height": 1800,
+						"extension": "jpg",
+						"image_urls": {
+							"square_medium": "https://i.pximg.net/page-1-thumb.jpg",
+							"medium": "https://i.pximg.net/page-1-small.jpg",
+							"large": "https://i.pximg.net/page-1-regular.jpg",
+							"original": "https://i.pximg.net/page-1-original.jpg"
+						}
+					}
+				],
 				"ai_type": 2,
 				"create_date": "2025-01-02T03:04:05+09:00",
 				"width": 1200,
@@ -63,38 +89,7 @@ func TestClientIllustDetailEnrichesCompletePages(t *testing.T) {
 	var webRequests atomic.Int32
 	webServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		webRequests.Add(1)
-		if r.Method != http.MethodGet || r.URL.Path != "/ajax/illust/123/pages" {
-			t.Errorf("Web request = %s %s, want GET /ajax/illust/123/pages", r.Method, r.URL.Path)
-			http.NotFound(w, r)
-			return
-		}
-		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(w, `{
-			"error": false,
-			"message": "",
-			"body": [
-				{
-					"width": 1200,
-					"height": 1600,
-					"urls": {
-						"thumb_mini": "https://i.pximg.net/page-0-thumb.jpg",
-						"small": "https://i.pximg.net/page-0-small.jpg",
-						"regular": "https://i.pximg.net/page-0-regular.jpg",
-						"original": "https://i.pximg.net/page-0-original.png"
-					}
-				},
-				{
-					"width": 2400,
-					"height": 1800,
-					"urls": {
-						"thumb_mini": "https://i.pximg.net/page-1-thumb.jpg",
-						"small": "https://i.pximg.net/page-1-small.jpg",
-						"regular": "https://i.pximg.net/page-1-regular.jpg",
-						"original": "https://i.pximg.net/page-1-original.jpg"
-					}
-				}
-			]
-		}`)
+		http.NotFound(w, r)
 	}))
 	defer webServer.Close()
 
@@ -112,8 +107,8 @@ func TestClientIllustDetailEnrichesCompletePages(t *testing.T) {
 	if err != nil {
 		t.Fatalf("IllustDetail() error = %v", err)
 	}
-	if appRequests.Load() != 1 || webRequests.Load() != 1 {
-		t.Fatalf("backend requests = App %d, Web %d; want App 1, Web 1", appRequests.Load(), webRequests.Load())
+	if appRequests.Load() != 1 || webRequests.Load() != 0 {
+		t.Fatalf("backend requests = App %d, Web %d; want App 1, Web 0", appRequests.Load(), webRequests.Load())
 	}
 
 	illust := detail.Illust
@@ -223,5 +218,73 @@ func TestClientIllustDetailEnrichesCompletePages(t *testing.T) {
 				t.Errorf("meta_pages[%d].image_urls JSON missing key %q: %s", i, key, encoded)
 			}
 		}
+	}
+}
+
+func TestClientIllustDetailDerivesSingleAppPage(t *testing.T) {
+	t.Parallel()
+
+	appServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/illust/detail" || r.URL.Query().Get("illust_id") != "124" {
+			t.Fatalf("App request = %s?%s", r.URL.Path, r.URL.RawQuery)
+		}
+		_, _ = w.Write([]byte(`{"illust":{
+			"id":124,"page_count":1,"width":1200,"height":1600,
+			"image_urls":{"square_medium":"https://i.pximg.net/thumb.jpg","medium":"https://i.pximg.net/medium.jpg","large":"https://i.pximg.net/large.jpg"},
+			"meta_single_page":{"original_image_url":"https://i.pximg.net/124_p0.png"},
+			"meta_pages":[]
+		}}`))
+	}))
+	t.Cleanup(appServer.Close)
+
+	var webRequests atomic.Int32
+	webServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		webRequests.Add(1)
+		http.NotFound(w, r)
+	}))
+	t.Cleanup(webServer.Close)
+
+	client, err := pixiv.NewClient(pixiv.Options{HTTPClient: appServer.Client(), AppAPIBaseURL: appServer.URL, WebAPIBaseURL: webServer.URL, AccessToken: "token"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	detail, err := client.IllustDetail(context.Background(), 124)
+	if err != nil {
+		t.Fatalf("IllustDetail() error = %v", err)
+	}
+	if len(detail.Illust.MetaPages) != 1 {
+		t.Fatalf("len(meta_pages) = %d, want 1", len(detail.Illust.MetaPages))
+	}
+	page := detail.Illust.MetaPages[0]
+	if page.PageIndex != 0 || page.Width != 1200 || page.Height != 1600 || page.Extension != "png" || page.ImageURLs.Original != "https://i.pximg.net/124_p0.png" || page.ImageURLs.Large != "https://i.pximg.net/large.jpg" {
+		t.Fatalf("derived page = %#v", page)
+	}
+	if webRequests.Load() != 0 {
+		t.Fatalf("Web requests = %d, want 0", webRequests.Load())
+	}
+}
+
+func TestClientIllustDetailRejectsIncompleteAppPages(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/illust/detail" {
+			t.Fatalf("request path = %s", r.URL.Path)
+		}
+		_, _ = w.Write([]byte(`{"illust":{"id":125,"page_count":2,"meta_pages":[{"page_index":0,"image_urls":{"original":"https://img/125_p0.png"}}]}}`))
+	}))
+	t.Cleanup(server.Close)
+
+	client, err := pixiv.NewClient(pixiv.Options{HTTPClient: server.Client(), AppAPIBaseURL: server.URL, WebAPIBaseURL: server.URL, AccessToken: "token"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	detail, err := client.IllustDetail(context.Background(), 125)
+	if detail != nil {
+		t.Fatalf("IllustDetail() detail = %#v, want nil", detail)
+	}
+	var typed *pixiv.Error
+	if !errors.As(err, &typed) || typed.Code != pixiv.CodeMalformedUpstreamResponse || typed.Backend != pixiv.BackendAppAPI || typed.Operation != pixiv.OperationIllustDetail || typed.IllustID != 125 {
+		t.Fatalf("IllustDetail() error = %#v", err)
 	}
 }

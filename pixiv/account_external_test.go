@@ -617,7 +617,7 @@ func TestOpenDefaultReadsOneCurrentSnapshotPerOperation(t *testing.T) {
 			if r.Header.Get("Authorization") != "Bearer current-access" {
 				t.Fatalf("app Authorization=%q", r.Header.Get("Authorization"))
 			}
-			_, _ = w.Write([]byte(`{"illust":{"id":1,"type":"illust","page_count":1,"user":{},"tags":[],"image_urls":{},"meta_single_page":{},"meta_pages":[]}}`))
+			_, _ = w.Write([]byte(`{"illust":{"id":1,"type":"illust","page_count":1,"user":{},"tags":[],"image_urls":{},"meta_single_page":{"original_image_url":"https://i.pximg.net/img-original/x.jpg"},"meta_pages":[]}}`))
 		default:
 			t.Fatalf("unexpected path=%s", r.URL.Path)
 		}
@@ -633,7 +633,7 @@ func TestOpenDefaultReadsOneCurrentSnapshotPerOperation(t *testing.T) {
 	if err := os.WriteFile(authPath, []byte(`{"default_user_id":7,"accounts":[{"user_id":7,"refresh_token":"stored"}]}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := client.IllustDetail(context.Background(), 1); err != nil || appCalls.Load() != 1 || webCalls.Load() != 2 || oauthCalls.Load() != 1 {
+	if _, err := client.IllustDetail(context.Background(), 1); err != nil || appCalls.Load() != 1 || webCalls.Load() != 1 || oauthCalls.Load() != 1 {
 		t.Fatalf("authenticated detail err=%v app=%d web=%d oauth=%d", err, appCalls.Load(), webCalls.Load(), oauthCalls.Load())
 	}
 	if body, err := os.ReadFile(authPath); err != nil || !strings.Contains(string(body), "rotated") || strings.Contains(string(body), `"refresh_token":"stored"`) {
@@ -645,7 +645,7 @@ func TestOpenDefaultReadsOneCurrentSnapshotPerOperation(t *testing.T) {
 	if err := os.WriteFile(configPath, []byte("[web]\nfallback_enabled = false\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := client.IllustDetail(context.Background(), 1); !errors.Is(err, pixiv.ErrUnauthorized) || appCalls.Load() != 1 || webCalls.Load() != 2 {
+	if _, err := client.IllustDetail(context.Background(), 1); !errors.Is(err, pixiv.ErrUnauthorized) || appCalls.Load() != 1 || webCalls.Load() != 1 {
 		t.Fatalf("changed snapshot error=%v app=%d web=%d", err, appCalls.Load(), webCalls.Load())
 	}
 }

@@ -88,6 +88,13 @@ Artwork text preserves every tag in upstream order without a five-tag truncation
 Chinese display titles for legacy compatibility; a future successful mode displays the raw mode followed by
 “排行榜”.
 
+`illust_ranking.mode` accepts `day`, `day_male`, `day_female`, `week`, `week_original`, `week_rookie`, `month`,
+`day_manga`, `week_manga`, `month_manga`, `week_rookie_manga`, `day_r18`, `day_male_r18`, `day_female_r18`,
+`week_r18`, and `week_r18g`. The last nine require App authentication and return a classified authentication error
+without substituting an anonymous daily ranking. Their stable Chinese labels are respectively “漫画每日排行榜”、
+“漫画每周排行榜”、“漫画每月排行榜”、“漫画新人排行榜”、“R-18 每日排行榜”、“男性向 R-18 每日排行榜”、
+“女性向 R-18 每日排行榜”、“R-18 每周排行榜”、and “R-18G 每周排行榜”.
+
 ## Writes
 
 | Tool | Input | Structured output |

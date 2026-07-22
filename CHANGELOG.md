@@ -4,6 +4,8 @@
 - MCP `download` / `download_random_from_recommendation` 支持 `pages` 与 `quality`，与 CLI 共用下载选项。
 - 下载新增 `--pages`（1-based，支持 `1,3-5`）与 `--quality original|regular|small|thumb|mini`；默认仍下载全部原图。Ugoira 对派生质量或页选择返回 unsupported。public SDK 暴露 `ParsePageSpec`/`DownloadQuality`/`DownloadOptions`。
 - 所有作品模型、CLI JSON/文本与 MCP 结构化/文本输出增加作品页 `url`（`https://www.pixiv.net/artworks/${id}`），JSON 为 public Illust 首字段，文本输出放在每件作品第一行。
+- 公开 SDK 的 `UgoiraMetadata` 新增成对且非空的 `download_url`/`download_quality`（`medium|original`）；`zip_urls.original` 仅在真正取得 original ZIP 时输出。下载器、CLI 与 MCP 统一使用该已验证资源。
+- 插画排行榜扩展为 16 个 App API mode：新增四个 manga 与五个 R18 mode；CLI `--mode`、MCP 稳定标签和 SDK 常量同步支持，新增 mode 明确要求认证。
 
 ### Changed
 - Breaking: CLI/MCP 诊断日志改写用户 state 目录文件，不再默认输出到 stderr；MCP stdout 仍仅用于 JSON-RPC。
@@ -12,6 +14,8 @@
 - Breaking: 移除 CLI 兼容入口 `--ai-type`、`--r18`、`--profile`、`--offset` 与 `search --type comics`；请分别使用 `--ai-mode`、`--rating r18`、`--uid`、`--page`/`--limit` 与 `--type manga`。
 
 ### Fixed
+- 修复认证态作品详情、分页和 ugoira metadata 在 App API 成功后仍访问匿名 Web 补全、致使 R18 作品遭遇 403/404 的问题。认证路径现只使用 App 数据；多页直接读取 `meta_pages`，单页派生规范页面，缺失或不一致明确返回上游响应错误，不伪装 partial result。
+- 修复 App API 幂等 JSON 读取限流恢复：仅首次 HTTP 429 且 `Retry-After` 有效时按调用方 context 等待并重试一次；无效 header、第二次 429、写操作和资源下载均保留真实错误且不重放，安全 info 日志不含 URL、header 或凭据。
 - 登录 callback 在 OAuth 真正完成后才向浏览器返回最终成功/失败页；标题与正文居中，失败页不泄露敏感原因；CLI 成功提示前增加一个空行。
 - 搜索在本地筛选产生连续空上游批次时，CLI/MCP 会补拉到首个非空逻辑批次；`--limit N`/`limit` 填满逻辑结果，`--limit 0`/`limit=0` 遍历全部，`--page`/`page` 按过滤后结果分页。
 - App 作品 AI 字段优先读取 `illust_ai_type`，并兼容旧 `ai_type`；本地 AI 判定仍固定 `AIType==2`。

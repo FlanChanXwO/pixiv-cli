@@ -68,13 +68,22 @@ const (
 type RankingMode string
 
 const (
-	RankingModeDay          RankingMode = "day"
-	RankingModeDayMale      RankingMode = "day_male"
-	RankingModeDayFemale    RankingMode = "day_female"
-	RankingModeWeek         RankingMode = "week"
-	RankingModeWeekOriginal RankingMode = "week_original"
-	RankingModeWeekRookie   RankingMode = "week_rookie"
-	RankingModeMonth        RankingMode = "month"
+	RankingModeDay             RankingMode = "day"
+	RankingModeDayMale         RankingMode = "day_male"
+	RankingModeDayFemale       RankingMode = "day_female"
+	RankingModeWeek            RankingMode = "week"
+	RankingModeWeekOriginal    RankingMode = "week_original"
+	RankingModeWeekRookie      RankingMode = "week_rookie"
+	RankingModeMonth           RankingMode = "month"
+	RankingModeDayManga        RankingMode = "day_manga"
+	RankingModeWeekManga       RankingMode = "week_manga"
+	RankingModeMonthManga      RankingMode = "month_manga"
+	RankingModeWeekRookieManga RankingMode = "week_rookie_manga"
+	RankingModeDayR18          RankingMode = "day_r18"
+	RankingModeDayMaleR18      RankingMode = "day_male_r18"
+	RankingModeDayFemaleR18    RankingMode = "day_female_r18"
+	RankingModeWeekR18         RankingMode = "week_r18"
+	RankingModeWeekR18G        RankingMode = "week_r18g"
 )
 
 type Restrict string
@@ -359,14 +368,24 @@ type UgoiraMetadataResult struct {
 }
 
 type UgoiraMetadata struct {
-	ZipURLs UgoiraZipURLs `json:"zip_urls"`
-	Frames  []UgoiraFrame `json:"frames"`
+	ZipURLs         UgoiraZipURLs    `json:"zip_urls"`
+	Frames          []UgoiraFrame    `json:"frames"`
+	DownloadURL     string           `json:"download_url"`
+	DownloadQuality UgoiraZipQuality `json:"download_quality"`
 }
 
 type UgoiraZipURLs struct {
 	Medium   string `json:"medium"`
-	Original string `json:"original"`
+	Original string `json:"original,omitempty"`
 }
+
+// UgoiraZipQuality 标识 SDK 为动图选择的可下载 ZIP 质量。
+type UgoiraZipQuality string
+
+const (
+	UgoiraZipQualityMedium   UgoiraZipQuality = "medium"
+	UgoiraZipQualityOriginal UgoiraZipQuality = "original"
+)
 
 type UgoiraFrame struct {
 	File  string `json:"file"`

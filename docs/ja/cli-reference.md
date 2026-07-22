@@ -306,7 +306,7 @@ allowlist、MIME 推測、暗黙置換は行いません。
 | `search` | `--tool` | empty | upstream の正確な制作ツール名。認証済み `search-options` で取得します。 |
 | list commands | `--limit` | one upstream batch | 最大件数。`0` は next batch がなくなるまで取得します。 |
 | list commands | `--page` | empty | 1-based logical page。正数 `--limit` が必要です。 |
-| `ranking` | `--mode` | `day` | ranking mode。 |
+| `ranking` | `--mode` | `day` | `day`、`day_male`、`day_female`、`week`、`week_original`、`week_rookie`、`month`、`day_manga`、`week_manga`、`month_manga`、`week_rookie_manga`、`day_r18`、`day_male_r18`、`day_female_r18`、`week_r18`、`week_r18g`。後半の 9 mode は認証が必要です。 |
 | `ranking` | `--date` | empty | 通常 `YYYY-MM-DD`。 |
 | `recommended KIND` | `--page`, `--limit` | per-stream | `all` でも 4 stream を独立に pagination します。 |
 | `download` | `--pages` | empty | 1-based のページ指定（例: `1,3-5`、閉区間・重複排除・自然順）。省略時は全ページ。存在しないページは明示失敗します。 |
@@ -328,6 +328,8 @@ Web に fallback しません。filter は opaque cursor に binding され、�
 正数 `--limit`/`--page` は filter 後の論理結果を跨 batch で埋め、`--limit 0` は全件走査、`--limit` なしでも
 先頭 empty batch は skip します。bookmark-count filter も like-count フィールドもありません。作品 JSON/text は
 `https://www.pixiv.net/artworks/{id}` を先頭フィールド/先頭行として含めます。
+
+認証済みの `detail`、pages、ugoira metadata は App API のみを使います。App のページ数不一致またはページ資源不足は明示的に失敗し、匿名 Web request は行いません。認証済み ugoira は original ZIP が得られないとき、検証済み App medium ZIP を直接 download します。冪等 App JSON read だけは、最初の 429 に有効な `Retry-After` がある場合に command context 配下で一度だけ待機・再試行します。header 不正/欠落、二度目の 429、write、resource download は replay しません。
 
 ### 共通 flag
 
@@ -382,6 +384,8 @@ server error を自動 fallback しません。
 - 匿名 `search` は Web が確実に表現できる filter だけを使用します。AI は返却 field で判定します。
 - `rating=r18|r18g|mature` は request 前に認証要求として失敗し、空結果に見せません。`all` は匿名で見える範囲です。
 - `search-options` は App 専用です。Cookie を読み取らず、refresh token を Web session に変換しません。
+- 拡張 ranking mode（`day_manga`、`week_manga`、`month_manga`、`week_rookie_manga`、`day_r18`、
+  `day_male_r18`、`day_female_r18`、`week_r18`、`week_r18g`）は認証が必要で、匿名の日次ランキングに fallback しません。
 - `search_user` は公式 user search ではなく、work search の author を `userId` で dedupe します。
 - 静止画は `/ajax/illust/{id}/pages` の `original`、ugoira は `/ajax/illust/{id}/ugoira_meta` の
   `originalSrc` と frame を使い、対応 build は内蔵 Rust encoder で GIF/APNG を生成します。

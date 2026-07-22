@@ -135,6 +135,7 @@ func NewClient(options Options) (*Client, error) {
 		appapi.WithBaseURL(options.AppAPIBaseURL),
 		appapi.WithAccessToken(accessToken),
 		appapi.WithHTTPClient(httpClient),
+		appapi.WithLogger(options.Logger),
 	}
 	webOptions := []webapi.Option{
 		webapi.WithWebBase(options.WebAPIBaseURL),
@@ -203,8 +204,7 @@ func newHTTPClientForSnapshot(options Options, proxy string) (*http.Client, erro
 	return internalpixiv.HTTPClient(proxy)
 }
 
-// IllustDetail 先读取 App API 详情，再用 Web pages 显式补全页面元数据。
-// App 失败时不会请求 Web；Web 补全失败会直接返回错误。
+// IllustDetail 在认证态使用 App API 返回的详情和页面元数据；App 失败时不会请求 Web。
 func (c *Client) IllustDetail(ctx context.Context, id int64) (result *IllustDetail, err error) {
 	started := time.Now()
 	defer func() { c.delegatedOperationLog(OperationIllustDetail, started, err, id, 0) }()
@@ -236,20 +236,19 @@ func (c *Client) IllustDetail(ctx context.Context, id int64) (result *IllustDeta
 		result := mapIllustDetail(*detail)
 		return &result, nil
 	}
-	if route != routeAppThenWeb {
+	if route != routeApp {
 		return nil, unexpectedRoute(OperationIllustDetail, id, 0)
 	}
 	detail, err := c.app.IllustDetail(ctx, id)
 	if err != nil {
 		return nil, mapAppError(err, OperationIllustDetail, id)
 	}
-	pages, err := c.web.IllustPages(ctx, id)
+	pages, err := appDetailMetaPages(detail.Illust)
 	if err != nil {
-		return nil, mapWebError(err, OperationIllustPages, id)
+		return nil, mapAppError(err, OperationIllustDetail, id)
 	}
-
 	out := mapIllustDetail(*detail)
-	out.Illust.MetaPages = mapMetaPages(pages)
+	out.Illust.MetaPages = pages
 	return &out, nil
 }
 

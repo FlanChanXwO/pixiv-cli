@@ -18,6 +18,7 @@
 
 - **One capability surface** — search, details, rankings, recommendations, users, bookmarks, follows, downloads, and ugoira across CLI, MCP, and SDK.
 - **App API first** — a configured refresh token always uses the authenticated App path; App failures never silently fall back to Web.
+- **Authenticated R18 reads** — details, pages, ugoira metadata, and all 16 ranking modes use the App API; a verified medium ugoira ZIP is reported honestly when original is unavailable.
 - **Useful search filters** — rating, content type, AI mode, aspect ratio, resolution, and dynamic drawing tools.
 - **Local multi-account OAuth** — browser login, account selection, and refresh-token rotation without reading browser cookies or profiles.
 - **Safe automation** — typed SDK errors, JSON output, clean MCP stdio, signed release updates, and no hidden result truncation.

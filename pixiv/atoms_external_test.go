@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/FlanChanXwO/pixiv-cli/pixiv"
@@ -15,14 +16,11 @@ import (
 func TestClientExportsRemainingReadAtoms(t *testing.T) {
 	t.Parallel()
 	mux := http.NewServeMux()
-	mux.HandleFunc("/ajax/illust/731/pages", func(w http.ResponseWriter, r *http.Request) {
-		if got := r.Header.Get("Authorization"); got != "" {
-			t.Fatalf("web Authorization = %q", got)
+	mux.HandleFunc("/v1/illust/detail", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("illust_id") != "731" {
+			t.Fatalf("illust_id = %q", r.URL.Query().Get("illust_id"))
 		}
-		if got := r.Header.Get("Cookie"); got != "" {
-			t.Fatalf("web Cookie = %q", got)
-		}
-		_, _ = w.Write([]byte(`{"error":false,"body":[{"urls":{"original":"https://img/page.png"},"width":10,"height":20}]}`))
+		_, _ = w.Write([]byte(`{"illust":{"id":731,"page_count":1,"width":10,"height":20,"meta_single_page":{"original_image_url":"https://img/page.png"}}}`))
 	})
 	mux.HandleFunc("/v2/illust/related", func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Query().Get("illust_id") != "731" {
@@ -37,13 +35,7 @@ func TestClientExportsRemainingReadAtoms(t *testing.T) {
 		_, _ = w.Write([]byte(`{"ugoira_metadata":{"zip_urls":{"medium":"https://app/medium.zip"},"frames":[{"file":"000000.jpg","delay":60}]}}`))
 	})
 	mux.HandleFunc("/ajax/illust/731/ugoira_meta", func(w http.ResponseWriter, r *http.Request) {
-		if got := r.Header.Get("Authorization"); got != "" {
-			t.Fatalf("web Authorization = %q", got)
-		}
-		if got := r.Header.Get("Cookie"); got != "" {
-			t.Fatalf("web Cookie = %q", got)
-		}
-		_, _ = w.Write([]byte(`{"error":false,"body":{"src":"https://web/medium.zip","originalSrc":"https://web/original.zip","frames":[{"file":"different.jpg","delay":1}]}}`))
+		http.NotFound(w, r)
 	})
 	server := httptest.NewServer(mux)
 	t.Cleanup(server.Close)
@@ -67,12 +59,74 @@ func TestClientExportsRemainingReadAtoms(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if ugoira.UgoiraMetadata.ZipURLs.Medium != "https://app/medium.zip" || ugoira.UgoiraMetadata.ZipURLs.Original != "https://web/original.zip" || len(ugoira.UgoiraMetadata.Frames) != 1 || ugoira.UgoiraMetadata.Frames[0].File != "000000.jpg" {
+	if ugoira.UgoiraMetadata.ZipURLs.Medium != "https://app/medium.zip" || ugoira.UgoiraMetadata.ZipURLs.Original != "" || ugoira.UgoiraMetadata.DownloadURL != "https://app/medium.zip" || ugoira.UgoiraMetadata.DownloadQuality != pixiv.UgoiraZipQualityMedium || len(ugoira.UgoiraMetadata.Frames) != 1 || ugoira.UgoiraMetadata.Frames[0].File != "000000.jpg" {
 		t.Fatalf("ugoira=%+v", ugoira)
 	}
 	wire, _ := json.Marshal(ugoira)
-	if string(wire) != `{"ugoira_metadata":{"zip_urls":{"medium":"https://app/medium.zip","original":"https://web/original.zip"},"frames":[{"file":"000000.jpg","delay":60}]}}` {
+	if strings.Contains(string(wire), `"original"`) || !strings.Contains(string(wire), `"download_url":"https://app/medium.zip"`) || !strings.Contains(string(wire), `"download_quality":"medium"`) {
 		t.Fatalf("wire=%s", wire)
+	}
+}
+
+func TestIllustPagesUsesAppDetailWithoutWebEnrichment(t *testing.T) {
+	t.Parallel()
+
+	const illustID int64 = 731
+	appServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet || r.URL.Path != "/v1/illust/detail" || r.URL.Query().Get("illust_id") != "731" {
+			t.Fatalf("App request = %s %s?%s", r.Method, r.URL.Path, r.URL.RawQuery)
+		}
+		_, _ = w.Write([]byte(`{"illust":{"id":731,"page_count":2,"meta_pages":[
+			{"page_index":0,"width":100,"height":200,"extension":"png","image_urls":{"original":"https://img/731_p0.png"}},
+			{"page_index":1,"width":300,"height":400,"extension":"jpg","image_urls":{"original":"https://img/731_p1.jpg"}}
+		]}}`))
+	}))
+	t.Cleanup(appServer.Close)
+
+	var webRequests atomic.Int32
+	webServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		webRequests.Add(1)
+		http.NotFound(w, r)
+	}))
+	t.Cleanup(webServer.Close)
+
+	client, err := pixiv.NewClient(pixiv.Options{HTTPClient: appServer.Client(), AppAPIBaseURL: appServer.URL, WebAPIBaseURL: webServer.URL, AccessToken: "token"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	pages, err := client.IllustPages(context.Background(), illustID)
+	if err != nil {
+		t.Fatalf("IllustPages() error = %v", err)
+	}
+	if len(pages) != 2 || pages[0].ImageURLs.Original != "https://img/731_p0.png" || pages[1].ImageURLs.Original != "https://img/731_p1.jpg" {
+		t.Fatalf("pages = %#v", pages)
+	}
+	if webRequests.Load() != 0 {
+		t.Fatalf("Web requests = %d, want 0", webRequests.Load())
+	}
+}
+
+func TestIllustPagesDerivesSingleAppPage(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/illust/detail" || r.URL.Query().Get("illust_id") != "732" {
+			t.Fatalf("request = %s?%s", r.URL.Path, r.URL.RawQuery)
+		}
+		_, _ = w.Write([]byte(`{"illust":{"id":732,"page_count":1,"width":80,"height":90,"image_urls":{"large":"https://img/large.jpg"},"meta_single_page":{"original_image_url":"https://img/732_p0.webp"}}}`))
+	}))
+	t.Cleanup(server.Close)
+
+	client, err := pixiv.NewClient(pixiv.Options{HTTPClient: server.Client(), AppAPIBaseURL: server.URL, WebAPIBaseURL: server.URL, AccessToken: "token"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	pages, err := client.IllustPages(context.Background(), 732)
+	if err != nil {
+		t.Fatalf("IllustPages() error = %v", err)
+	}
+	if len(pages) != 1 || pages[0].PageIndex != 0 || pages[0].Extension != "webp" || pages[0].ImageURLs.Original != "https://img/732_p0.webp" {
+		t.Fatalf("pages = %#v", pages)
 	}
 }
 
@@ -132,7 +186,7 @@ func TestAnonymousUgoiraUsesRealWebFields(t *testing.T) {
 	defer server.Close()
 	client, _ := pixiv.NewClient(pixiv.Options{HTTPClient: server.Client(), AppAPIBaseURL: server.URL, WebAPIBaseURL: server.URL, WebFallbackEnabled: true})
 	got, err := client.UgoiraMetadata(context.Background(), 731)
-	if err != nil || got.UgoiraMetadata.ZipURLs.Medium != "medium" || got.UgoiraMetadata.ZipURLs.Original != "original" {
+	if err != nil || got.UgoiraMetadata.ZipURLs.Medium != "medium" || got.UgoiraMetadata.ZipURLs.Original != "original" || got.UgoiraMetadata.DownloadURL != "original" || got.UgoiraMetadata.DownloadQuality != pixiv.UgoiraZipQualityOriginal {
 		t.Fatalf("got=%+v err=%v", got, err)
 	}
 }
@@ -174,14 +228,12 @@ func TestIllustRelatedCursorIsBoundToIllustAndUsesOnlyOffset(t *testing.T) {
 	}
 }
 
-func TestUgoiraWebEnrichmentFailureReturnsNoPartialResult(t *testing.T) {
+func TestUgoiraAppMetadataProvidesMediumDownloadWithoutWeb(t *testing.T) {
 	t.Parallel()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/v1/ugoira/metadata":
 			_, _ = w.Write([]byte(`{"ugoira_metadata":{"zip_urls":{"medium":"app-medium"},"frames":[{"file":"0.jpg","delay":10}]}}`))
-		case "/ajax/illust/731/ugoira_meta":
-			_, _ = w.Write([]byte(`{"error":false,"body":{"src":"web-medium","frames":[{"file":"0.jpg","delay":10}]}}`))
 		default:
 			t.Fatalf("path=%s", r.URL.Path)
 		}
@@ -189,12 +241,8 @@ func TestUgoiraWebEnrichmentFailureReturnsNoPartialResult(t *testing.T) {
 	defer server.Close()
 	client, _ := pixiv.NewClient(pixiv.Options{HTTPClient: server.Client(), AppAPIBaseURL: server.URL, WebAPIBaseURL: server.URL, AccessToken: "token"})
 	result, err := client.UgoiraMetadata(context.Background(), 731)
-	if result != nil {
-		t.Fatalf("partial=%+v", result)
-	}
-	var typed *pixiv.Error
-	if !errors.As(err, &typed) || typed.Code != pixiv.CodeMalformedUpstreamResponse || typed.Backend != pixiv.BackendWebAPI || typed.Operation != pixiv.OperationUgoiraMetadata || typed.IllustID != 731 {
-		t.Fatalf("err=%#v", err)
+	if err != nil || result == nil || result.UgoiraMetadata.DownloadURL != "app-medium" || result.UgoiraMetadata.DownloadQuality != pixiv.UgoiraZipQualityMedium {
+		t.Fatalf("result=%+v err=%v", result, err)
 	}
 }
 

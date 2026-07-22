@@ -482,6 +482,7 @@ func TestDownloadUgoiraZipFailureCleansTemporaryZip(t *testing.T) {
 		Frames: []pixiv.UgoiraFrame{{File: "000000.jpg", Delay: 80}},
 	}
 	meta.ZipURLs.Medium = "https://i.example/ugoira.zip"
+	meta.DownloadURL = "https://i.example/ugoira.zip"
 	client := &fakePixivClient{
 		details: map[int64]pixiv.Illust{
 			9: {
@@ -519,6 +520,7 @@ func TestDownloadUgoiraReturnsFinalGIFOnly(t *testing.T) {
 		Frames: []pixiv.UgoiraFrame{{File: "000000.jpg", Delay: 80}},
 	}
 	meta.ZipURLs.Medium = "https://i.example/ugoira.zip"
+	meta.DownloadURL = "https://i.example/ugoira.zip"
 	client := &fakePixivClient{
 		details: map[int64]pixiv.Illust{
 			9: {
@@ -554,6 +556,32 @@ func TestDownloadUgoiraReturnsFinalGIFOnly(t *testing.T) {
 	assertFileBody(t, got[0].Files[0].Path, "gif")
 }
 
+func TestDownloadUgoiraUsesSDKDownloadURL(t *testing.T) {
+	dir := t.TempDir()
+	meta := pixiv.UgoiraMetadata{
+		ZipURLs:         pixiv.UgoiraZipURLs{Medium: "https://i.example/medium.zip", Original: "https://i.example/original.zip"},
+		Frames:          []pixiv.UgoiraFrame{{File: "000000.jpg", Delay: 80}},
+		DownloadURL:     "https://i.example/selected.zip",
+		DownloadQuality: pixiv.UgoiraZipQualityOriginal,
+	}
+	client := &fakePixivClient{
+		details: map[int64]pixiv.Illust{
+			9: {ID: 9, Title: "ugo", PageCount: 1, Type: "ugoira", User: pixiv.User{Name: "author"}},
+		},
+		ugoira:    map[int64]pixiv.UgoiraMetadata{9: meta},
+		downloads: map[string][]byte{"https://i.example/selected.zip": makeZip(t, "000000.jpg", []byte("frame"))},
+	}
+	m := NewManager(client, nil, dir, "{id}")
+	m.SetUgoiraEncoder(&recordingUgoiraEncoder{output: []byte("gif")})
+
+	if _, err := m.Download(context.Background(), application.DownloadRequest{IllustIDs: []int64{9}}); err != nil {
+		t.Fatalf("Download() error = %v", err)
+	}
+	if len(client.parsedURLs) != 1 || client.parsedURLs[0] != "https://i.example/selected.zip" {
+		t.Fatalf("parsed URLs = %v", client.parsedURLs)
+	}
+}
+
 func TestDownloadMissingImageURLReturnsError(t *testing.T) {
 	m := NewManager(&fakePixivClient{
 		details: map[int64]pixiv.Illust{
@@ -571,6 +599,7 @@ func TestDownloadUgoiraWithoutFFmpegUsesRustEncoder(t *testing.T) {
 	dir := t.TempDir()
 	meta := pixiv.UgoiraMetadata{Frames: []pixiv.UgoiraFrame{{File: "000000.jpg", Delay: 80}}}
 	meta.ZipURLs.Medium = "https://i.example/ugoira.zip"
+	meta.DownloadURL = "https://i.example/ugoira.zip"
 	m := NewManager(&fakePixivClient{
 		details: map[int64]pixiv.Illust{
 			1: {ID: 1, Title: "ugo", PageCount: 1, Type: "ugoira"},

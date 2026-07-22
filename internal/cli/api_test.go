@@ -46,6 +46,24 @@ func TestSearchRoutesArgumentsAndPrintsSDKJSON(t *testing.T) {
 	assert.JSONEq(t, `{"illusts":[{"url":"https://www.pixiv.net/artworks/123","id":123,"title":"work","type":"","page_count":0,"total_bookmarks":0,"total_view":0,"x_restrict":0,"user":{"id":0,"name":"artist","account":"","comment":"","is_followed":false,"profile_image_urls":{}},"tags":null,"image_urls":{"square_medium":"","medium":"","large":"","original":""},"meta_single_page":{"original_image_url":""},"meta_pages":null,"ai_type":0,"create_date":"","width":0,"height":0,"tools":null}]}`, stdout.String())
 }
 
+func TestRankingPassesExtendedModeToSDK(t *testing.T) {
+	useTempPaths(t)
+	var got sdk.IllustRankingRequest
+	setTestSDKCommandClient(t, sdkCommandFake{ranking: func(_ context.Context, request sdk.IllustRankingRequest) (*sdk.IllustListResult, error) {
+		got = request
+		return &sdk.IllustListResult{}, nil
+	}})
+
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"pixiv", "ranking", "--mode", "week_r18g", "--json"}, strings.NewReader(""), &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("Run() code=%d stderr=%s", code, stderr.String())
+	}
+	if got.Mode != sdk.RankingModeWeekR18G || got.Date != "" || got.Cursor != "" {
+		t.Fatalf("ranking request = %#v", got)
+	}
+}
+
 func TestSearchPassesStableFiltersToSDKAndFollowsCursorUntilLimit(t *testing.T) {
 	useTempPaths(t)
 	var cursors []sdk.Cursor

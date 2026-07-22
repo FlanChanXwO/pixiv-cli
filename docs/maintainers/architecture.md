@@ -158,8 +158,8 @@ Release 安装的失败语义仍是保护边界，而不是临时降级。
 内部协议包只由 facade 组合：
 
 - `protocol`：上游 base、profile header、endpoint catalog 与脱敏 adapter failure 的唯一来源；不读配置、不发请求，也不保存响应 body、URL、header 或凭据。
-- `appapi`：有凭据的 App content API 与 raw DTO/mapper。
-- `webapi`：匿名白名单读与明确 metadata enrichment；不接收 SDK Authorization/Cookie。
+- `appapi`：有凭据的 App content API 与 raw DTO/mapper；幂等 JSON 读取只会在首次 429 的有效 `Retry-After` 后按 context 重试一次。
+- `webapi`：匿名白名单读；不接收 SDK Authorization/Cookie，也不承担认证态 metadata enrichment。
 - `oauth`：PKCE、code exchange、refresh 与 token state。
 - `resource`：受 policy 约束的 resource transport、redirect/header/body 边界。
 
@@ -171,7 +171,8 @@ Release 安装的失败语义仍是保护边界，而不是临时降级。
 屏蔽 AI 在 `appapi` adapter 翻译成上游参数，分级和仅 AI 则由 public facade 基于规范化字段筛选。
 无 token 且 `web_fallback_enabled=true` 时才允许明确白名单 Web read；Web 搜索只转译已验证可靠的筛选，
 R18/R18G/mature 与动态搜索选项会返回认证需求，不伪造空结果。Web adapter 不接收 token 或 Cookie，
-也不提供 refresh-token-to-session 转换。pages/original ugoira enrichment 必须由 operation policy 显式选择。
+也不提供 refresh-token-to-session 转换。认证态 detail/pages/ugoira metadata 均由 App API 提供；App 的页数不完整
+或动图资源异常必须显式失败，不能转交 Web 补全。匿名 Web 的原图 ugoira 资源仍是其独立读路径。
 
 ### `internal/pixiv/model`
 
@@ -193,7 +194,7 @@ R18/R18G/mature 与动态搜索选项会返回认证需求，不伪造空结果�
 - 单页作品保存到下载目录。
 - 多页作品和 ugoira 会建立作品子目录。
 - 单页与多页作品从上游 URL path 推导扩展名，并与模板生成的文件名一样规范化跨平台非法字符；扩展名还会替换 ASCII 控制字符并移除 Windows 非法尾随点/空格，但不猜测或静默替换扩展名。
-- ugoira 先下载 zip，再由 Rust FFI encoder 合成为 GIF/APNG。
+- ugoira 先下载 SDK 验证的 `download_url` zip，再由 Rust FFI encoder 合成为 GIF/APNG；认证态可合法选择 App medium，绝不把它标记成 original。
 
 Rust crate 以 target 专用 staticlib 接入 cgo：darwin/linux/windows 各有 amd64/arm64 selector；Linux
 selector 还显式链接系统 `libm`，承接 Rust/image staticlib 的 `sinf`/`expf` 符号；Windows selector 以

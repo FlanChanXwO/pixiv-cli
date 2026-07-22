@@ -144,6 +144,14 @@ App server parameters. Rating and AI-only filtering use normalized fields from t
 authentication. It returns `SearchIllustOptionsResult{Tools []string}` in upstream order; a missing list becomes a
 non-nil empty slice. Premium bookmark tiers are not exposed.
 
+### Illustration rankings
+
+`IllustRankingRequest.Mode` accepts all 16 App API modes: `day`, `day_male`, `day_female`, `week`,
+`week_original`, `week_rookie`, `month`, `day_manga`, `week_manga`, `month_manga`, `week_rookie_manga`,
+`day_r18`, `day_male_r18`, `day_female_r18`, `week_r18`, and `week_r18g`. The first seven remain available to the
+anonymous Web allowlist. The other nine require authentication and return `unauthorized` before a Web request when
+no refresh token is available; they never silently become the daily ranking.
+
 ## Pagination
 
 List results expose an opaque `pixiv.Cursor`. Pass it back to the same operation and query:
@@ -172,17 +180,17 @@ uses only filters Web can express reliably. `r18`, `r18g`, and `mature` fail wit
 they are never disguised as empty results. Anonymous `SearchIllustOptions` returns `unsupported`. The SDK never
 reads/injects cookies or converts a refresh token into a Web session.
 
-`IllustDetail` pages and original ugoira metadata use Web for explicit enrichment, not failure fallback, and the
-result is atomic:
+Authenticated `IllustDetail`, `IllustPages`, and `UgoiraMetadata` use App API only. `IllustPages` takes multi-page
+data from App `meta_pages`; for a single-page work it derives `meta_pages[0]` from the App single-page/image fields
+without changing the public JSON shape. Missing page data or a page-count mismatch is a typed
+`malformed_upstream_response`, never an unlabeled partial result. An App failure never makes a Web request.
 
-- Authenticated `IllustDetail` reads App detail and then Web pages. A Web failure returns `nil` and a typed error,
-  even if App supplied `MetaPages`; no unlabeled partial result is returned.
-- App ugoira metadata contains only the medium zip. If Web cannot provide the original, `UgoiraMetadata` returns
-  `nil` and a typed error instead of silently lowering quality.
-- Anonymous `IllustDetail` reads Web detail and pages; failure at either stage returns no partial result.
-
-Web enrichment receives no App bearer token or cookie. App `MetaPages` is representable by the wire model and
-mapper, but that does not guarantee completeness for every work. See
+`UgoiraMetadata.UgoiraMetadata` exposes a verified resource pair: non-empty `download_url` and
+`download_quality` (`medium` or `original`). `zip_urls.original` is omitted unless that original ZIP was actually
+obtained. An authenticated App response selects its medium ZIP (`download_quality=medium`) and does not ask Web to
+fill it in; an anonymous Web response that provides an original ZIP selects `original`. `Download` uses
+`download_url`, so consumers must not assume `zip_urls.original` exists. Anonymous `IllustDetail` still reads Web
+detail/pages and fails atomically if either stage fails. See
 [ADR 0006](../maintainers/adr/0006-original-ugoira-resource-resolution.md).
 
 ## Resources and image proxying
@@ -202,6 +210,12 @@ defer response.Body.Close()
 official Pixiv resources. Callers may add explicit host/path prefixes through `ResourcePolicy.Mirrors`. The SDK
 accepts only `Range`, `If-None-Match`, and `If-Modified-Since`, filters response headers, disables cookies, and
 validates redirects to reduce SSRF risk. `Download` streams to a temporary file and atomically replaces the target.
+
+For idempotent App API JSON reads only, the first HTTP 429 is retried once when its `Retry-After` is a valid
+seconds value or HTTP date. The wait observes the caller context. Invalid or missing headers, a second 429, and all
+other errors remain the original typed error; mutations and resource downloads are never replayed. The optional
+`info` logger records only the retry attempt and parsed wait duration, never a URL, header value, credential, or
+response body.
 
 ## Errors
 
@@ -227,13 +241,15 @@ headers, or upstream response bodies.
 
 | Call and failure stage | Result | `Operation` | `Backend` |
 | --- | --- | --- | --- |
-| Authenticated `IllustDetail` App detail | `nil` | `OperationIllustDetail` | `BackendAppAPI` |
-| Authenticated/anonymous `IllustDetail` Web pages | `nil` | `OperationIllustPages` | `BackendWebAPI` |
+| Authenticated `IllustDetail` App detail/pages | `nil` | `OperationIllustDetail` | `BackendAppAPI` |
+| Authenticated `IllustPages` App detail/pages | `nil` | `OperationIllustPages` | `BackendAppAPI` |
+| Anonymous `IllustDetail` Web pages | `nil` | `OperationIllustPages` | `BackendWebAPI` |
 | Anonymous `IllustDetail` Web detail | `nil` | `OperationIllustDetail` | `BackendWebAPI` |
-| `UgoiraMetadata` Web enrichment | `nil` | `OperationUgoiraMetadata` | `BackendWebAPI` |
+| Authenticated `UgoiraMetadata` App metadata | `nil` | `OperationUgoiraMetadata` | `BackendAppAPI` |
+| Anonymous `UgoiraMetadata` Web metadata | `nil` | `OperationUgoiraMetadata` | `BackendWebAPI` |
 
-For example, a 403 login wall during page enrichment becomes `CodeForbidden`, `BackendWebAPI`,
-`OperationIllustPages`, and `UpstreamStatus=403`. An App detail failure does not continue to Web.
+For example, an App 403 during authenticated page retrieval becomes `CodeForbidden`, `BackendAppAPI`,
+`OperationIllustPages`, and `UpstreamStatus=403`; it does not continue to Web.
 
 Transport failures with `upstream_unavailable` additionally expose a safe `Error.TransportKind`: `dns`, `tls`,
 `proxy`, `connection_refused`, `connection_reset`, or `unknown`. Classification uses typed/wrapped Go causes, not

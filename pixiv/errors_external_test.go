@@ -41,11 +41,6 @@ func TestClientIllustDetailClassifiesMalformedTransportAndContextFailures(t *tes
 		{name: "app type mismatch", failure: "app-type-mismatch", backend: pixiv.BackendAppAPI, operation: pixiv.OperationIllustDetail, code: pixiv.CodeMalformedUpstreamResponse},
 		{name: "app network", failure: "app-network", backend: pixiv.BackendAppAPI, operation: pixiv.OperationIllustDetail, code: pixiv.CodeUpstreamUnavailable, retryable: true},
 		{name: "app canceled", failure: "app-canceled", backend: pixiv.BackendAppAPI, operation: pixiv.OperationIllustDetail, code: pixiv.CodeUpstreamUnavailable, contextErr: context.Canceled},
-		{name: "web empty", failure: "web-empty", backend: pixiv.BackendWebAPI, operation: pixiv.OperationIllustPages, code: pixiv.CodeMalformedUpstreamResponse},
-		{name: "web invalid json", failure: "web-invalid-json", backend: pixiv.BackendWebAPI, operation: pixiv.OperationIllustPages, code: pixiv.CodeMalformedUpstreamResponse},
-		{name: "web type mismatch", failure: "web-type-mismatch", backend: pixiv.BackendWebAPI, operation: pixiv.OperationIllustPages, code: pixiv.CodeMalformedUpstreamResponse},
-		{name: "web network", failure: "web-network", backend: pixiv.BackendWebAPI, operation: pixiv.OperationIllustPages, code: pixiv.CodeUpstreamUnavailable, retryable: true},
-		{name: "web deadline", failure: "web-deadline", backend: pixiv.BackendWebAPI, operation: pixiv.OperationIllustPages, code: pixiv.CodeUpstreamUnavailable, contextErr: context.DeadlineExceeded},
 	}
 
 	for _, test := range tests {
@@ -255,34 +250,20 @@ func TestClientIllustDetailRoutesAnonymousAccessExplicitly(t *testing.T) {
 func TestClientIllustDetailMapsWebEnrichmentFailureWithoutLeakingSecrets(t *testing.T) {
 	t.Parallel()
 
-	const (
-		accessToken  = "access-token-canary"
-		refreshToken = "refresh-token-canary"
-		cookie       = "PHPSESSID=cookie-canary"
-		queryURL     = "https://example.invalid/callback?oauth_code=query-canary"
-		proxyURL     = "http://proxy-user:proxy-password-canary@proxy.invalid:7890"
-		responseBody = "response-body-canary"
-	)
+	const accessToken = "access-token-canary"
 	appServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if got := r.Header.Get("Authorization"); got != "Bearer "+accessToken {
 			t.Errorf("App Authorization = %q, want injected bearer", got)
 		}
 		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(w, `{"illust":{"id":731,"title":"safe detail","type":"illust","page_count":1,"user":{},"tags":[],"image_urls":{},"meta_single_page":{},"meta_pages":[]}}`)
+		fmt.Fprint(w, `{"illust":{"id":731,"title":"safe detail","type":"illust","page_count":1,"user":{},"tags":[],"image_urls":{},"meta_single_page":{"original_image_url":"https://i.pximg.net/731_p0.jpg"},"meta_pages":[]}}`)
 	}))
 	defer appServer.Close()
 
 	var webRequests atomic.Int32
 	webServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		webRequests.Add(1)
-		if got := r.Header.Get("Authorization"); got != "" {
-			t.Errorf("Web Authorization = %q, want empty", got)
-		}
-		if got := r.Header.Get("Cookie"); got != "" {
-			t.Errorf("Web Cookie = %q, want empty", got)
-		}
-		w.WriteHeader(http.StatusBadGateway)
-		fmt.Fprintf(w, "Authorization: Bearer %s Cookie: %s refresh_token=%s url=%s proxy=%s body=%s", accessToken, cookie, refreshToken, queryURL, proxyURL, responseBody)
+		http.Error(w, "unexpected Web enrichment", http.StatusBadGateway)
 	}))
 	defer webServer.Close()
 
@@ -296,40 +277,16 @@ func TestClientIllustDetailMapsWebEnrichmentFailureWithoutLeakingSecrets(t *test
 		t.Fatalf("NewClient() error = %v", err)
 	}
 
-	_, err = client.IllustDetail(context.Background(), 731)
-	if err == nil {
-		t.Fatal("IllustDetail() error = nil, want Web enrichment error")
+	detail, err := client.IllustDetail(context.Background(), 731)
+	if err != nil || detail == nil || len(detail.Illust.MetaPages) != 1 {
+		t.Fatalf("IllustDetail() detail=%#v error=%v", detail, err)
 	}
-	var typed *pixiv.Error
-	if !errors.As(err, &typed) {
-		t.Fatalf("errors.As(%T) = false, want *pixiv.Error", err)
-	}
-	if typed.Code != pixiv.CodeUpstreamError || typed.Operation != pixiv.OperationIllustPages || typed.Backend != pixiv.BackendWebAPI || !typed.Retryable || typed.UpstreamStatus != http.StatusBadGateway || typed.IllustID != 731 {
-		t.Errorf("typed error = %#v, want Web pages upstream_error", typed)
-	}
-	if webRequests.Load() != 1 {
-		t.Errorf("Web requests = %d, want 1", webRequests.Load())
-	}
-	if !errors.Is(err, pixiv.ErrUpstreamError) {
-		t.Error("errors.Is(err, ErrUpstreamError) = false")
-	}
-
-	unwrapped := errors.Unwrap(err)
-	if unwrapped == nil {
-		t.Fatal("errors.Unwrap(err) = nil, want safe cause")
-	}
-	outputs := []string{err.Error(), fmt.Sprint(err), fmt.Sprintf("%v", err), fmt.Sprintf("%+v", err), unwrapped.Error()}
-	canaries := []string{accessToken, refreshToken, cookie, queryURL, "query-canary", proxyURL, "proxy-password-canary", responseBody}
-	for _, output := range outputs {
-		for _, canary := range canaries {
-			if strings.Contains(output, canary) {
-				t.Errorf("public error output leaked canary %q: %q", canary, output)
-			}
-		}
+	if webRequests.Load() != 0 {
+		t.Errorf("Web requests = %d, want 0", webRequests.Load())
 	}
 }
 
-func TestClientIllustDetailReturnsAtomicErrorForRestrictedLoginWallEnrichment(t *testing.T) {
+func TestClientIllustDetailUsesAppPagesForRestrictedWorkWithoutWebEnrichment(t *testing.T) {
 	t.Parallel()
 
 	const illustID int64 = 731
@@ -390,24 +347,11 @@ func TestClientIllustDetailReturnsAtomicErrorForRestrictedLoginWallEnrichment(t 
 	}
 
 	detail, err := client.IllustDetail(context.Background(), illustID)
-	if err == nil {
-		t.Fatal("IllustDetail() error = nil, want login-wall enrichment failure")
+	if err != nil || detail == nil || detail.Illust.XRestrict != 1 || len(detail.Illust.MetaPages) != 2 {
+		t.Fatalf("IllustDetail() detail=%#v error=%v", detail, err)
 	}
-	if detail != nil {
-		t.Errorf("IllustDetail() detail = %#v, want nil instead of unmarked App partial result", detail)
-	}
-	var typed *pixiv.Error
-	if !errors.As(err, &typed) {
-		t.Fatalf("IllustDetail() error = %v, want *pixiv.Error", err)
-	}
-	if typed.Code != pixiv.CodeForbidden || typed.Backend != pixiv.BackendWebAPI || typed.Operation != pixiv.OperationIllustPages || typed.Retryable || typed.UpstreamStatus != http.StatusForbidden || typed.IllustID != illustID {
-		t.Errorf("typed error = %#v, want forbidden Web illust_pages error for illust 731", typed)
-	}
-	if !errors.Is(err, pixiv.ErrForbidden) {
-		t.Error("errors.Is(err, ErrForbidden) = false")
-	}
-	if appRequests.Load() != 1 || webRequests.Load() != 1 {
-		t.Errorf("backend requests = App %d, Web %d; want App 1, Web 1", appRequests.Load(), webRequests.Load())
+	if appRequests.Load() != 1 || webRequests.Load() != 0 {
+		t.Errorf("backend requests = App %d, Web %d; want App 1, Web 0", appRequests.Load(), webRequests.Load())
 	}
 }
 
@@ -508,7 +452,6 @@ func TestClientIllustDetailMapsWebEnvelopeErrorsSafely(t *testing.T) {
 		sentinel    error
 	}{
 		{name: "anonymous detail unavailable", fallback: true, failurePath: "/ajax/illust/731", code: pixiv.CodeArtworkUnavailable, operation: pixiv.OperationIllustDetail, sentinel: pixiv.ErrArtworkUnavailable},
-		{name: "authenticated pages rejected", token: "app-token", failurePath: "/ajax/illust/731/pages", code: pixiv.CodeUpstreamError, operation: pixiv.OperationIllustPages, retryable: true, sentinel: pixiv.ErrUpstreamError},
 	}
 
 	for _, test := range tests {
@@ -729,58 +672,30 @@ func TestClientIllustDetailRejectsWebBodyWithoutRequiredID(t *testing.T) {
 	assertMalformedDetailError(t, err, pixiv.BackendWebAPI)
 }
 
-func TestClientIllustDetailDistinguishesMissingAndEmptyWebPagesBody(t *testing.T) {
+func TestClientIllustDetailAcceptsAppZeroPageCountWithoutWeb(t *testing.T) {
 	t.Parallel()
 
-	tests := []struct {
-		name      string
-		webBody   string
-		wantError bool
-	}{
-		{name: "missing body is malformed", webBody: `{"error":false,"message":""}`, wantError: true},
-		{name: "empty array is valid", webBody: `{"error":false,"message":"","body":[]}`},
+	webRequests := 0
+	transport := roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		if request.URL.Host == "app.invalid" {
+			return testHTTPResponse(request, http.StatusOK, `{"illust":{"id":731,"title":"safe","type":"illust","page_count":0,"user":{},"tags":[],"image_urls":{},"meta_single_page":{},"meta_pages":[]}}`), nil
+		}
+		webRequests++
+		return testHTTPResponse(request, http.StatusBadGateway, "unexpected Web request"), nil
+	})
+	client, err := pixiv.NewClient(pixiv.Options{
+		HTTPClient:    &http.Client{Transport: transport},
+		AppAPIBaseURL: "https://app.invalid",
+		WebAPIBaseURL: "https://web.invalid",
+		AccessToken:   "app-token",
+	})
+	if err != nil {
+		t.Fatalf("NewClient() error = %v", err)
 	}
-	for _, test := range tests {
-		test := test
-		t.Run(test.name, func(t *testing.T) {
-			t.Parallel()
-			transport := roundTripFunc(func(request *http.Request) (*http.Response, error) {
-				if request.URL.Host == "app.invalid" {
-					return testHTTPResponse(request, http.StatusOK, `{"illust":{"id":731,"title":"safe","type":"illust","page_count":0,"user":{},"tags":[],"image_urls":{},"meta_single_page":{},"meta_pages":[]}}`), nil
-				}
-				return testHTTPResponse(request, http.StatusOK, test.webBody), nil
-			})
-			client, err := pixiv.NewClient(pixiv.Options{
-				HTTPClient:    &http.Client{Transport: transport},
-				AppAPIBaseURL: "https://app.invalid",
-				WebAPIBaseURL: "https://web.invalid",
-				AccessToken:   "app-token",
-			})
-			if err != nil {
-				t.Fatalf("NewClient() error = %v", err)
-			}
 
-			detail, err := client.IllustDetail(context.Background(), 731)
-			if !test.wantError {
-				if err != nil {
-					t.Fatalf("IllustDetail() error = %v, want valid empty pages", err)
-				}
-				if detail == nil || detail.Illust.MetaPages == nil || len(detail.Illust.MetaPages) != 0 {
-					t.Errorf("meta pages = %#v, want non-nil empty slice", detail)
-				}
-				return
-			}
-			if detail != nil {
-				t.Errorf("IllustDetail() detail = %#v, want nil", detail)
-			}
-			var typed *pixiv.Error
-			if !errors.As(err, &typed) {
-				t.Fatalf("error = %v, want *pixiv.Error", err)
-			}
-			if typed.Code != pixiv.CodeMalformedUpstreamResponse || typed.Backend != pixiv.BackendWebAPI || typed.Operation != pixiv.OperationIllustPages || typed.Retryable || typed.UpstreamStatus != 0 || typed.IllustID != 731 {
-				t.Errorf("typed error = %#v, want malformed Web pages error", typed)
-			}
-		})
+	detail, err := client.IllustDetail(context.Background(), 731)
+	if err != nil || detail == nil || detail.Illust.MetaPages == nil || len(detail.Illust.MetaPages) != 0 || webRequests != 0 {
+		t.Fatalf("detail=%#v error=%v Web requests=%d", detail, err, webRequests)
 	}
 }
 

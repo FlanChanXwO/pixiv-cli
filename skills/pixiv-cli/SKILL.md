@@ -139,7 +139,9 @@ assuming its effective value.
    errors are surfaced as-is and NEVER auto-fall back to the anonymous web API.
    Anonymous fallback happens only when *no* token exists anywhere AND
    `web_fallback_enabled=true`, and only for `search` / `detail` / `ranking` /
-   `download`.
+   `download`. Authenticated `detail`, pages, and ugoira metadata therefore
+   come from App API; a missing App page resource is a real error, not a reason
+   to scrape or retry Web.
 2. **`recommended` requires a kind.** Choose one of the kinds shown by
    `pixiv recommended --help`; it requires authentication and does not work
    anonymously.
@@ -157,17 +159,22 @@ assuming its effective value.
    reliable search filters. `r18`, `r18g`, `mature`, and `search-options`
    require App authentication; do not present the failure as an empty result
    or add a Cookie workaround. Bookmark-count filtering is unavailable.
-6. **Empty filtered batches are skipped.** With local filters, search continues past leading empty upstream batches to the first non-empty logical batch or true end; `--limit N` fills logical results and `--limit 0` walks all filtered results. Do not invent request caps.
-7. **No like-count field.** Do not invent or label bookmark totals as likes.
-8. **`update --json` is only valid with `--check`.** The actual install never
+6. **Extended rankings need authentication.** Valid modes are `day`,
+   `day_male`, `day_female`, `week`, `week_original`, `week_rookie`, `month`,
+   `day_manga`, `week_manga`, `month_manga`, `week_rookie_manga`, `day_r18`,
+   `day_male_r18`, `day_female_r18`, `week_r18`, `week_r18g`. The final nine
+   must not be replaced with an anonymous day ranking.
+7. **Empty filtered batches are skipped.** With local filters, search continues past leading empty upstream batches to the first non-empty logical batch or true end; `--limit N` fills logical results and `--limit 0` walks all filtered results. Do not invent request caps.
+8. **No like-count field.** Do not invent or label bookmark totals as likes.
+9. **`update --json` is only valid with `--check`.** The actual install never
    emits JSON.
-9. **Proxy is per-command.** The browser's system proxy is NOT inherited.
+10. **Proxy is per-command.** The browser's system proxy is NOT inherited.
    Persist with `pixiv config set https_proxy URL`; override per command with
    `--proxy` / `--no-proxy` (mutually exclusive).
-10. **Long downloads may legitimately take time.** Do not impose an arbitrary
+11. **Long downloads may legitimately take time.** Do not impose an arbitrary
    timeout or kill the process merely because it is slow; wait for completion,
    user cancellation, or a real error.
-11. **`--tag` has two narrow meanings.** `user bookmarks --tag TAG` filters
+12. **`--tag` has two narrow meanings.** `user bookmarks --tag TAG` filters
    bookmark listings; `bookmark add --tag TAG` adds a repeatable bookmark tag.
    `search` has no `--tag` flag — put the tag text in its required `WORD` and
    choose `--search-target` when exact matching is needed.

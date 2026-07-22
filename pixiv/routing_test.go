@@ -11,9 +11,9 @@ func TestOperationPolicyIsCompleteAndUnknownIsUnsupported(t *testing.T) {
 		authenticated contentRoute
 		anonymousWeb  bool
 	}{
-		{OperationIllustDetail, routeAppThenWeb, true}, {OperationIllustPages, routeWeb, true},
+		{OperationIllustDetail, routeApp, true}, {OperationIllustPages, routeApp, true},
 		{OperationIllustRelated, routeApp, false}, {OperationTrendingTagsIllust, routeApp, false},
-		{OperationUgoiraMetadata, routeAppThenWeb, true}, {OperationSearchIllust, routeApp, true},
+		{OperationUgoiraMetadata, routeApp, true}, {OperationSearchIllust, routeApp, true},
 		{OperationSearchIllustOptions, routeApp, false},
 		{OperationIllustRanking, routeApp, true}, {OperationIllustRecommended, routeApp, false},
 		{OperationMangaRecommended, routeApp, false}, {OperationNovelRecommended, routeApp, false}, {OperationUserRecommended, routeApp, false},
@@ -49,7 +49,7 @@ func TestOperationPolicyIsCompleteAndUnknownIsUnsupported(t *testing.T) {
 	if !ok || typed.Code != CodeUnsupported || typed.Backend != "" || typed.IllustID != 1 || typed.UserID != 2 {
 		t.Fatalf("err=%#v", err)
 	}
-	err = client.requireRoute(OperationIllustDetail, routeApp, 7, 8)
+	err = client.requireRoute(OperationIllustDetail, routeAppThenWeb, 7, 8)
 	assertLocalRouteCode(t, err, CodeUnsupported, OperationIllustDetail)
 }
 

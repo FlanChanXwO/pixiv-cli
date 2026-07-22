@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net"
 	"syscall"
+	"time"
 )
 
 // Failure 是 adapter 向 facade 交付的脱敏失败。它绝不保存响应 body、URL、
@@ -17,6 +18,8 @@ type Failure struct {
 	Kind          FailureKind
 	TransportKind TransportKind
 	StatusCode    int
+	RetryAfter    time.Duration
+	HasRetryAfter bool
 	cause         error
 }
 
@@ -45,9 +48,12 @@ const (
 var ErrMalformedResponse = errors.New("pixiv upstream returned a malformed response")
 
 func HTTPStatus(status int) Failure { return Failure{Kind: FailureHTTPStatus, StatusCode: status} }
-func MalformedResponse() Failure    { return Failure{Kind: FailureMalformed} }
-func UpstreamRejected() Failure     { return Failure{Kind: FailureRejected} }
-func Forbidden() Failure            { return Failure{Kind: FailureForbidden} }
+func HTTPStatusWithRetryAfter(status int, retryAfter time.Duration, present bool) Failure {
+	return Failure{Kind: FailureHTTPStatus, StatusCode: status, RetryAfter: retryAfter, HasRetryAfter: present}
+}
+func MalformedResponse() Failure { return Failure{Kind: FailureMalformed} }
+func UpstreamRejected() Failure  { return Failure{Kind: FailureRejected} }
+func Forbidden() Failure         { return Failure{Kind: FailureForbidden} }
 func Transport(err error) Failure {
 	var failure Failure
 	if errors.As(err, &failure) {

@@ -276,7 +276,7 @@ func (m *Manager) downloadUgoira(ctx context.Context, illust sdk.Illust, base st
 	if err != nil {
 		return "", err
 	}
-	zipURL := meta.UgoiraMetadata.ZipURLs.Medium
+	zipURL := meta.UgoiraMetadata.DownloadURL
 	if zipURL == "" {
 		return "", fmt.Errorf("ugoira %d has no zip url", illust.ID)
 	}

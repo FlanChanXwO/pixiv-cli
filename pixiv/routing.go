@@ -18,10 +18,12 @@ type operationPolicy struct {
 // policyFor 是公开 content operation 的唯一、不可变路由表。
 func policyFor(operation Operation) (operationPolicy, bool) {
 	switch operation {
-	case OperationIllustDetail, OperationUgoiraMetadata:
-		return operationPolicy{authenticated: routeAppThenWeb, anonymousWeb: true}, true
+	case OperationIllustDetail:
+		return operationPolicy{authenticated: routeApp, anonymousWeb: true}, true
+	case OperationUgoiraMetadata:
+		return operationPolicy{authenticated: routeApp, anonymousWeb: true}, true
 	case OperationIllustPages:
-		return operationPolicy{authenticated: routeWeb, anonymousWeb: true}, true
+		return operationPolicy{authenticated: routeApp, anonymousWeb: true}, true
 	case OperationSearchIllust, OperationIllustRanking, OperationSearchUser:
 		return operationPolicy{authenticated: routeApp, anonymousWeb: true}, true
 	case OperationIllustRelated, OperationTrendingTagsIllust,

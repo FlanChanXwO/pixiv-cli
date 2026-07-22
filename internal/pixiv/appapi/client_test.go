@@ -1,11 +1,14 @@
 package appapi
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -159,6 +162,155 @@ func TestGETNonAuthStatusDoesNotRefreshOrReplayForAuthWordsInBody(t *testing.T) 
 	}
 	if requests != 1 || session.refreshCalls != 0 {
 		t.Fatalf("requests=%d refresh calls=%d", requests, session.refreshCalls)
+	}
+}
+
+func TestGETRetriesOnceAfterValidRateLimitResponse(t *testing.T) {
+	requests := 0
+	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		if r.Method != http.MethodGet || r.URL.Path != "/v1/illust/detail" {
+			t.Fatalf("request = %s %s", r.Method, r.URL.Path)
+		}
+		if requests == 1 {
+			w.Header().Set("Retry-After", "0")
+			w.WriteHeader(http.StatusTooManyRequests)
+			return
+		}
+		_ = json.NewEncoder(w).Encode(model.IllustDetail{Illust: model.Illust{ID: 42}})
+	}))
+	defer api.Close()
+
+	result, err := New(WithBaseURL(api.URL), WithHTTPClient(api.Client()), WithAccessToken("access")).IllustDetail(context.Background(), 42)
+	if err != nil || result.Illust.ID != 42 || requests != 2 {
+		t.Fatalf("result=%#v err=%v requests=%d", result, err, requests)
+	}
+}
+
+func TestGETLogsSafeRateLimitRetry(t *testing.T) {
+	var output bytes.Buffer
+	requests := 0
+	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		requests++
+		if requests == 1 {
+			w.Header().Set("Retry-After", "0")
+			w.Header().Set("X-Secret-Header", "header-secret")
+			w.WriteHeader(http.StatusTooManyRequests)
+			return
+		}
+		_ = json.NewEncoder(w).Encode(model.IllustDetail{Illust: model.Illust{ID: 42}})
+	}))
+	defer api.Close()
+
+	client := New(
+		WithBaseURL(api.URL),
+		WithHTTPClient(api.Client()),
+		WithAccessToken("access-secret"),
+		WithLogger(slog.New(slog.NewJSONHandler(&output, nil))),
+	)
+	if _, err := client.IllustDetail(context.Background(), 42); err != nil {
+		t.Fatal(err)
+	}
+	logs := output.String()
+	if !strings.Contains(logs, `"result":"rate_limit_retry"`) || !strings.Contains(logs, `"status":429`) || !strings.Contains(logs, `"retry_after":0`) {
+		t.Fatalf("logs = %s", logs)
+	}
+	for _, secret := range []string{"header-secret", "access-secret", api.URL, "Retry-After"} {
+		if strings.Contains(logs, secret) {
+			t.Fatalf("logs leaked %q: %s", secret, logs)
+		}
+	}
+}
+
+func TestGETDoesNotRetryRateLimitWithoutValidRetryAfter(t *testing.T) {
+	for _, header := range []string{"", "not-a-delay", "-1"} {
+		t.Run(header, func(t *testing.T) {
+			requests := 0
+			api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				requests++
+				if header != "" {
+					w.Header().Set("Retry-After", header)
+				}
+				w.WriteHeader(http.StatusTooManyRequests)
+			}))
+			defer api.Close()
+
+			_, err := New(WithBaseURL(api.URL), WithHTTPClient(api.Client()), WithAccessToken("access")).IllustDetail(context.Background(), 42)
+			if err == nil || requests != 1 {
+				t.Fatalf("error=%v requests=%d", err, requests)
+			}
+		})
+	}
+}
+
+func TestGETStopsAfterSecondRateLimitResponse(t *testing.T) {
+	requests := 0
+	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		requests++
+		w.Header().Set("Retry-After", "0")
+		w.WriteHeader(http.StatusTooManyRequests)
+	}))
+	defer api.Close()
+
+	_, err := New(WithBaseURL(api.URL), WithHTTPClient(api.Client()), WithAccessToken("access")).IllustDetail(context.Background(), 42)
+	if err == nil || requests != 2 {
+		t.Fatalf("error=%v requests=%d", err, requests)
+	}
+}
+
+func TestGETRateLimitWaitHonorsContextCancellation(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	requests := 0
+	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		requests++
+		w.Header().Set("Retry-After", "60")
+		w.WriteHeader(http.StatusTooManyRequests)
+		cancel()
+	}))
+	defer api.Close()
+
+	_, err := New(WithBaseURL(api.URL), WithHTTPClient(api.Client()), WithAccessToken("access")).IllustDetail(ctx, 42)
+	if !errors.Is(err, context.Canceled) || requests != 1 {
+		t.Fatalf("error=%v requests=%d", err, requests)
+	}
+}
+
+func TestMutationRateLimitIsNotReplayed(t *testing.T) {
+	requests := 0
+	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		if r.Method != http.MethodPost {
+			t.Fatalf("method = %s", r.Method)
+		}
+		w.Header().Set("Retry-After", "0")
+		w.WriteHeader(http.StatusTooManyRequests)
+	}))
+	defer api.Close()
+
+	err := New(WithBaseURL(api.URL), WithHTTPClient(api.Client()), WithAccessToken("access")).AddBookmark(context.Background(), 42, "public", nil)
+	if err == nil || requests != 1 {
+		t.Fatalf("error=%v requests=%d", err, requests)
+	}
+}
+
+func TestParseRetryAfterSupportsSecondsAndHTTPDate(t *testing.T) {
+	now := time.Date(2026, time.July, 22, 12, 0, 0, 0, time.UTC)
+	for _, test := range []struct {
+		value string
+		want  time.Duration
+		ok    bool
+	}{
+		{value: "5", want: 5 * time.Second, ok: true},
+		{value: now.Add(3 * time.Second).Format(http.TimeFormat), want: 3 * time.Second, ok: true},
+		{value: now.Add(-time.Second).Format(http.TimeFormat), want: 0, ok: true},
+		{value: "invalid", ok: false},
+		{value: "9223372036854775807", ok: false}, // Go duration 无法表达的秒数不是可用等待值。
+	} {
+		got, ok := parseRetryAfter(test.value, now)
+		if ok != test.ok || got != test.want {
+			t.Fatalf("parseRetryAfter(%q) = (%v, %t), want (%v, %t)", test.value, got, ok, test.want, test.ok)
+		}
 	}
 }
 

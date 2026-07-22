@@ -67,12 +67,18 @@ pixiv user following 11 --limit 20
 
 ```
 pixiv ranking --mode day --limit 10
-pixiv ranking --mode weekly --date 2026-07-01 --limit 10
+pixiv ranking --mode week --date 2026-07-01 --limit 10
+pixiv ranking --mode week_r18 --limit 10
 pixiv recommended illust --limit 10
 pixiv recommended all --limit 5
 ```
 
-- `ranking` works anonymously (web fallback); R-18 modes need authentication.
+- `ranking` supports `day`, `day_male`, `day_female`, `week`, `week_original`,
+  `week_rookie`, `month`, `day_manga`, `week_manga`, `month_manga`,
+  `week_rookie_manga`, `day_r18`, `day_male_r18`, `day_female_r18`,
+  `week_r18`, and `week_r18g`. The first seven work anonymously through the
+  Web fallback; the final nine require authentication. Never substitute a
+  failed extended mode with `day`.
 - `recommended` always needs authentication and a kind. For `all`, inspect the
   actual output shape and keep the returned categories separate rather than
   assuming one flat list.

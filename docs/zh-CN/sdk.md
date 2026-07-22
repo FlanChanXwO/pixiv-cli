@@ -95,6 +95,13 @@ auth store，不读取 `PIXIV_REFRESH_TOKEN` 或 runtime config，不刷新、�
 `SearchIllustOptionsResult{Tools []string}`。工具列表保持上游顺序与原值；上游未提供列表时返回非
 `nil` 空切片。该操作不公开 Premium 收藏数档位。
 
+### 插画排行榜
+
+`IllustRankingRequest.Mode` 支持全部 16 种 App API mode：`day`、`day_male`、`day_female`、`week`、
+`week_original`、`week_rookie`、`month`、`day_manga`、`week_manga`、`month_manga`、`week_rookie_manga`、
+`day_r18`、`day_male_r18`、`day_female_r18`、`week_r18`、`week_r18g`。前七种仍属于匿名 Web 白名单；后九种
+必须认证，无 refresh token 时会在请求 Web 前返回 `unauthorized`，绝不会静默变成日榜。
+
 ## 分页
 
 列表 result 的 `NextCursor` 类型为 `pixiv.Cursor`。将它原样传到同一个请求的 `Cursor` 字段：
@@ -123,13 +130,15 @@ SDK 不以 `page` 为输入；CLI/MCP 在边缘层将逻辑 `page`/`limit` 转�
 匿名 `SearchIllustOptions` 返回 `unsupported`，不会请求 Web。SDK 不读取或注入 Cookie，也不把 refresh
 token 转换为 Web session。
 
-`IllustDetail` 的 pages 和 original ugoira metadata 会调用 Web 做明确补全，不是失败回退，并采用原子结果契约：
+认证态的 `IllustDetail`、`IllustPages` 与 `UgoiraMetadata` 只使用 App API。多页 `IllustPages` 直接使用 App
+`meta_pages`；单页从 App 的单页/图片字段派生 `meta_pages[0]`，公开 JSON 结构保持不变。缺页或 page count
+不一致会明确返回 `malformed_upstream_response`，绝不返回无标记 partial result；App 失败也不会继续请求 Web。
 
-- 认证 `IllustDetail` 先读取 App detail，再读取 Web pages。即使 App 响应自带 `MetaPages`，Web pages 失败也返回 `nil` 与 typed error，不返回无标记的 App partial result。
-- `UgoiraMetadata` 的 App metadata 只有 medium zip；Web metadata 未能提供 original 时返回 `nil` 与 typed error，不暗中降级质量。
-- 匿名 `IllustDetail` 依次读取 Web detail 与 pages；任一阶段失败都不返回 partial result。
-
-SDK 不向 Web 补全请求注入 App bearer 或 Cookie。App `MetaPages` 可被 wire model 表达和 mapper 保留，但 SDK 不把这一能力解释为上游对所有作品的完整性保证。完整决策与未来引入显式 partial-result 状态的门槛见 [ADR 0006](../maintainers/adr/0006-original-ugoira-resource-resolution.md)。
+`UgoiraMetadata.UgoiraMetadata` 提供已验证的下载资源对：非空 `download_url` 与 `download_quality`（`medium`
+或 `original`）。`zip_urls.original` 只有实际取得 original ZIP 时才输出。认证 App 响应选择 medium ZIP
+（`download_quality=medium`），不请求 Web 补全；匿名 Web 响应若取得 original 则选择 `original`。`Download`
+使用 `download_url`，调用方不得假设 `zip_urls.original` 必定存在。匿名 `IllustDetail` 仍依次读取 Web detail
+与 pages，任一阶段失败都不返回 partial result。完整决策见 [ADR 0006](../maintainers/adr/0006-original-ugoira-resource-resolution.md)。
 
 ## 资源与图片代理
 
@@ -145,6 +154,10 @@ defer response.Body.Close()
 ```
 
 `ResourceRef` 只是可持久化引用；每次 `OpenResource` 都重新校验。默认仅官方 Pixiv 资源，调用方可在 `ResourcePolicy.Mirrors` 加入明确 host/path prefix。SDK 只接受 `Range`、`If-None-Match`、`If-Modified-Since` 条件 header，过滤响应 header，禁用 cookie，并验证 redirect，避免 SSRF。`Download` 在本地以流式临时文件加原子替换落盘。
+
+仅对幂等 App API JSON 读取：首次 HTTP 429 且 `Retry-After` 是有效秒数或 HTTP-date 时，SDK 等待一次并重试一次；
+等待受调用方 context 取消控制。header 缺失/非法、第二次 429 和其他错误都保留真实 typed error；写操作和资源下载
+绝不重放。可选 `info` 日志仅记录重试次数与解析出的等待时长，不记录 URL、header 原文、凭据或响应 body。
 
 ## 错误
 
@@ -169,12 +182,14 @@ if errors.Is(err, pixiv.ErrUnauthorized) { /* re-auth */ }
 
 | 调用与失败阶段 | 返回结果 | `Operation` | `Backend` |
 | --- | --- | --- | --- |
-| 认证 `IllustDetail` 的 App detail 失败 | `nil` | `OperationIllustDetail` | `BackendAppAPI` |
-| 认证或匿名 `IllustDetail` 的 Web pages 失败 | `nil` | `OperationIllustPages` | `BackendWebAPI` |
+| 认证 `IllustDetail` 的 App detail/pages 失败 | `nil` | `OperationIllustDetail` | `BackendAppAPI` |
+| 认证 `IllustPages` 的 App detail/pages 失败 | `nil` | `OperationIllustPages` | `BackendAppAPI` |
+| 匿名 `IllustDetail` 的 Web pages 失败 | `nil` | `OperationIllustPages` | `BackendWebAPI` |
 | 匿名 `IllustDetail` 的 Web detail 失败 | `nil` | `OperationIllustDetail` | `BackendWebAPI` |
-| `UgoiraMetadata` 的 Web metadata 补全失败 | `nil` | `OperationUgoiraMetadata` | `BackendWebAPI` |
+| 认证 `UgoiraMetadata` 的 App metadata 失败 | `nil` | `OperationUgoiraMetadata` | `BackendAppAPI` |
+| 匿名 `UgoiraMetadata` 的 Web metadata 失败 | `nil` | `OperationUgoiraMetadata` | `BackendWebAPI` |
 
-例如登录墙返回 HTTP 403 时，pages 补全错误为 `CodeForbidden`、`BackendWebAPI`、`OperationIllustPages`，并保留 `UpstreamStatus=403`；App detail 失败时不会继续请求 Web。调用方应按这些字段处理失败，不应从结果中猜测补全是否完成。
+例如认证 pages 读取返回 HTTP 403 时，错误为 `CodeForbidden`、`BackendAppAPI`、`OperationIllustPages`，并保留 `UpstreamStatus=403`；不会继续请求 Web。调用方应按这些字段处理失败，不应从结果中猜测补全是否完成。
 
 `upstream_unavailable` 的网络传输失败还可通过 `Error.TransportKind` 区分安全子类：`dns`、`tls`、`proxy`、`connection_refused`、`connection_reset`、`unknown`。分类只依据 Go 标准库的 typed/wrapped cause，不解析错误文本；例如没有 typed 信号的 HTTPS proxy CONNECT 非 200 文本错误会保持 `unknown`。`Error()` 只输出稳定枚举，不输出 DNS name、代理 userinfo、证书内容或原始 cause。`context.Canceled` 与 `context.DeadlineExceeded` 不设置 transport 子类，继续通过 `errors.Is` 判断。
 

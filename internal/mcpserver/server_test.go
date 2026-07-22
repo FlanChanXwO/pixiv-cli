@@ -1641,6 +1641,15 @@ func TestIllustRankingUsesStableLabelsForAllModesAndFutureFallback(t *testing.T)
 		{mode: "week_original", want: "原创作品排行榜"},
 		{mode: "week_rookie", want: "新人排行榜"},
 		{mode: "month", want: "每月排行榜"},
+		{mode: "day_manga", want: "漫画每日排行榜"},
+		{mode: "week_manga", want: "漫画每周排行榜"},
+		{mode: "month_manga", want: "漫画每月排行榜"},
+		{mode: "week_rookie_manga", want: "漫画新人排行榜"},
+		{mode: "day_r18", want: "R-18 每日排行榜"},
+		{mode: "day_male_r18", want: "男性向 R-18 每日排行榜"},
+		{mode: "day_female_r18", want: "女性向 R-18 每日排行榜"},
+		{mode: "week_r18", want: "R-18 每周排行榜"},
+		{mode: "week_r18g", want: "R-18G 每周排行榜"},
 		{mode: "future_mode", want: "future_mode 排行榜"},
 	}
 	for _, test := range tests {
