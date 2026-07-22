@@ -127,6 +127,7 @@ pixiv mcp
 ```
 
 See the [MCP tool contract](docs/en/mcp-tools.md) for tools, parameters, structured output, and authentication behavior.
+Fixed MCP status, error, and display text is English; Pixiv metadata and user-supplied text are preserved verbatim.
 
 ### Go SDK
 

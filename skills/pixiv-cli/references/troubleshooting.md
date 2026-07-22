@@ -55,7 +55,7 @@ safe metadata output does not make raw token or bundle stdout safe to display.
 ## Empty or "missing" results
 
 - Empty search with filters: verify `--rating`, `--type`, `--ai-mode`,
-  `--aspect-ratio`, `--resolution`, and exact `--tool` together; a strict
+  `--aspect-ratio`, `--resolution`, and exact `--draw-tool` together; a strict
   combination can legitimately return nothing.
 - Wrong AI or resolution result: verify the documented `--ai-mode` and
   `--resolution` values with `pixiv search --help`, then inspect the returned

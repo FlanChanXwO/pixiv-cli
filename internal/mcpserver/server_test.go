@@ -344,7 +344,7 @@ func TestSearchIllustOptionsExplainsEmptyToolList(t *testing.T) {
 	result := callTool(t, session, "search_illust_options", map[string]any{"word": "cat"})
 	var out searchIllustOptionsOut
 	decodeStructured(t, result, &out)
-	if result.IsError || out.Tools == nil || len(out.Tools) != 0 || out.Text != "当前没有可用的绘图工具。" {
+	if result.IsError || out.Tools == nil || len(out.Tools) != 0 || out.Text != "No drawing tools are available." {
 		t.Fatalf("empty options output=%+v result=%+v", out, result)
 	}
 }
@@ -723,7 +723,7 @@ func TestDownloadWithoutIDsPreservesBusinessErrorShape(t *testing.T) {
 	if err != nil {
 		t.Fatalf("call tool: %v", err)
 	}
-	const wantText = "错误：必须提供 illust_id (单个ID) 或 illust_ids (ID列表) 参数之一。"
+	const wantText = "Error: provide either illust_id (single ID) or illust_ids (list of IDs)."
 	assertEmptyDownloadResult(t, result, deliveryLocalPath, wantText)
 	if downloads.downloadCalls != 0 || len(downloads.downloadIDs) != 0 {
 		t.Fatalf("download calls=%d IDs=%v want no downstream call", downloads.downloadCalls, downloads.downloadIDs)
@@ -745,7 +745,7 @@ func TestDownloadInvalidDeliveryPreservesBusinessErrorShape(t *testing.T) {
 	if err != nil {
 		t.Fatalf("call tool: %v", err)
 	}
-	const wantText = `错误：delivery 仅支持 "local_path"。`
+	const wantText = `Error: delivery supports only "local_path".`
 	assertEmptyDownloadResult(t, result, deliveryLocalPath, wantText)
 	if downloads.downloadCalls != 0 || len(downloads.downloadIDs) != 0 {
 		t.Fatalf("download calls=%d IDs=%v want no downstream call", downloads.downloadCalls, downloads.downloadIDs)
@@ -767,7 +767,7 @@ func TestDownloadManagerErrorPreservesBusinessErrorShape(t *testing.T) {
 	if err != nil {
 		t.Fatalf("call tool: %v", err)
 	}
-	const wantText = "下载失败: download sentinel"
+	const wantText = "Download failed: download sentinel"
 	assertEmptyDownloadResult(t, result, deliveryLocalPath, wantText)
 	if downloads.downloadCalls != 1 || !slices.Equal(downloads.downloadIDs, []int64{42}) {
 		t.Fatalf("download calls=%d IDs=%v want one manager call", downloads.downloadCalls, downloads.downloadIDs)
@@ -797,7 +797,7 @@ func TestDownloadBuildErrorPreservesBusinessErrorShape(t *testing.T) {
 	if err != nil {
 		t.Fatalf("call tool: %v", err)
 	}
-	wantText := "整理下载结果失败: " + statErr.Error()
+	wantText := "Could not build the download result: " + statErr.Error()
 	assertEmptyDownloadResult(t, result, deliveryLocalPath, wantText)
 	if downloads.downloadCalls != 1 || !slices.Equal(downloads.downloadIDs, []int64{42}) {
 		t.Fatalf("download calls=%d IDs=%v want one manager call", downloads.downloadCalls, downloads.downloadIDs)
@@ -819,7 +819,7 @@ func TestDownloadRejectsImageContentDelivery(t *testing.T) {
 	if err != nil {
 		t.Fatalf("call tool: %v", err)
 	}
-	assertEmptyDownloadResult(t, result, deliveryLocalPath, `错误：delivery 仅支持 "local_path"。`)
+	assertEmptyDownloadResult(t, result, deliveryLocalPath, `Error: delivery supports only "local_path".`)
 	if downloads.downloadCalls != 0 {
 		t.Fatalf("download calls=%d", downloads.downloadCalls)
 	}
@@ -890,7 +890,7 @@ func TestDownloadRejectsInvalidPagesAndQualityBeforeManager(t *testing.T) {
 			t.Fatalf("call tool: %v", err)
 		}
 		out := decodeDownloadOut(t, result)
-		if out.Delivery != deliveryLocalPath || len(out.Files) != 0 || !strings.HasPrefix(out.Text, "错误：") {
+		if out.Delivery != deliveryLocalPath || len(out.Files) != 0 || !strings.HasPrefix(out.Text, "Error: ") {
 			t.Fatalf("args=%v output=%+v", args, out)
 		}
 	}
@@ -973,14 +973,14 @@ func TestRefreshTokenOpenFailuresAreSafeAndDiagnostic(t *testing.T) {
 		{
 			name: "unknown factory or config error",
 			err:  errors.New(sensitiveFactoryError),
-			want: "Token刷新失败：无法初始化 Pixiv SDK。请检查本地配置或代理设置。",
+			want: "Refresh failed: could not initialize the Pixiv SDK. Check the local configuration or proxy settings.",
 		},
-		{name: "canceled", err: context.Canceled, want: "Token刷新已取消。"},
-		{name: "deadline", err: context.DeadlineExceeded, want: "Token刷新失败：操作超时。"},
+		{name: "canceled", err: context.Canceled, want: "Refresh canceled."},
+		{name: "deadline", err: context.DeadlineExceeded, want: "Refresh failed: operation timed out."},
 		{
 			name: "public SDK unauthorized is not treated as missing token",
 			err:  &sdk.Error{Code: sdk.CodeUnauthorized, Operation: sdk.OperationSnapshot},
-			want: "Token刷新失败：无法初始化 Pixiv SDK：pixiv unauthorized operation=snapshot。",
+			want: "Refresh failed: could not initialize the Pixiv SDK: pixiv unauthorized operation=snapshot",
 		},
 	}
 	for _, tt := range tests {
@@ -1015,10 +1015,10 @@ func TestRefreshTokenFailureClassification(t *testing.T) {
 		{
 			name: "unauthorized keeps missing token hint",
 			err:  &sdk.Error{Code: sdk.CodeUnauthorized, Operation: sdk.OperationRefresh},
-			want: "错误：未设置 refresh token。请先使用 set_refresh_token 工具设置 token。",
+			want: "Error: no refresh token is configured. Use set_refresh_token to set one first.",
 		},
-		{name: "canceled", err: context.Canceled, want: "Token刷新已取消。"},
-		{name: "deadline", err: context.DeadlineExceeded, want: "Token刷新失败：操作超时。"},
+		{name: "canceled", err: context.Canceled, want: "Refresh canceled."},
+		{name: "deadline", err: context.DeadlineExceeded, want: "Refresh failed: operation timed out."},
 		{
 			name: "public SDK error keeps safe cause",
 			err: &sdk.Error{
@@ -1026,7 +1026,7 @@ func TestRefreshTokenFailureClassification(t *testing.T) {
 				Operation: sdk.OperationRefresh,
 				Backend:   sdk.BackendOAuth,
 			},
-			want: "Token刷新失败：pixiv upstream_unavailable operation=refresh backend=oauth。",
+			want: "Refresh failed: pixiv upstream_unavailable operation=refresh backend=oauth",
 		},
 	}
 	for _, tt := range tests {
@@ -1046,7 +1046,7 @@ func TestRefreshTokenFailureClassification(t *testing.T) {
 
 func TestRefreshTokenUnknownFailureIsRedacted(t *testing.T) {
 	const rawFailure = "refresh failed: proxy=http://proxy-user:proxy-password@127.0.0.1:7890/oauth?query_token=query-secret Cookie=PHPSESSID=cookie-secret refresh_token=refresh-secret config=/Users/private/.config/pixiv/config.yaml"
-	const want = "Token刷新失败。请检查 refresh token 是否有效，以及网络连接或代理设置。"
+	const want = "Refresh failed. Check whether the refresh token is valid and verify the network or proxy settings."
 
 	var logs bytes.Buffer
 	service := application.SDKService{NewClient: func(application.SDKClientRequest) (application.SDKClient, error) {
@@ -1118,7 +1118,8 @@ func TestSetRefreshTokenSuccessIncludesUserName(t *testing.T) {
 	if !ok {
 		t.Fatalf("content[0] = %T", result.Content[0])
 	}
-	if !strings.Contains(text.Text, "用户 ID: 1") || !strings.Contains(text.Text, "用户名: alice") {
+	if !strings.Contains(text.Text, "The refresh token was set for this session and authenticated.") ||
+		!strings.Contains(text.Text, "User ID: 1") || !strings.Contains(text.Text, "Username: alice") {
 		t.Fatalf("unexpected success text: %s", text.Text)
 	}
 }
@@ -1138,10 +1139,10 @@ func TestSetRefreshTokenFailureSaysSessionOnly(t *testing.T) {
 	if !ok {
 		t.Fatalf("content[0] = %T", result.Content[0])
 	}
-	if strings.Contains(text.Text, "已保存") {
+	if strings.Contains(strings.ToLower(text.Text), "saved") {
 		t.Fatalf("failure text claims token was saved: %s", text.Text)
 	}
-	if !strings.Contains(text.Text, "当前会话") {
+	if !strings.Contains(text.Text, "set for this session") {
 		t.Fatalf("failure text should clarify session-only scope: %s", text.Text)
 	}
 }
@@ -1169,7 +1170,7 @@ func TestSDKUserToolsResolveIdentityAndReturnStructuredOutput(t *testing.T) {
 	if client.bookmarksRequest.UserID != 99 || client.bookmarksRequest.Tag != "tag" || bookmarksOut.UserID != 99 || len(bookmarksOut.Items) != 1 || bookmarksOut.Pagination.HasMore {
 		t.Fatalf("bookmarks = request=%+v output=%+v", client.bookmarksRequest, bookmarksOut)
 	}
-	if !strings.Contains(bookmarksOut.Text, "找到用户 99 的 1 个收藏") {
+	if !strings.Contains(bookmarksOut.Text, "Found 1 bookmarks for user 99") {
 		t.Fatalf("bookmark text missing: %q", bookmarksOut.Text)
 	}
 
@@ -1179,7 +1180,7 @@ func TestSDKUserToolsResolveIdentityAndReturnStructuredOutput(t *testing.T) {
 	if client.followingRequest.UserID != 99 || followingOut.UserID != 99 || len(followingOut.Items) != 1 {
 		t.Fatalf("following = request=%+v output=%+v", client.followingRequest, followingOut)
 	}
-	if !strings.Contains(followingOut.Text, "用户 99 关注了 1 位用户") {
+	if !strings.Contains(followingOut.Text, "User 99 follows 1 users") {
 		t.Fatalf("following text missing: %q", followingOut.Text)
 	}
 }
@@ -1235,7 +1236,7 @@ func TestSDKUserDetailReturnsStructuredSDKResult(t *testing.T) {
 		t.Fatalf("user_detail text content = %+v", result.Content)
 	}
 	text, ok := result.Content[0].(*mcp.TextContent)
-	if !ok || !strings.Contains(text.Text, "用户 42") {
+	if !ok || !strings.Contains(text.Text, "Retrieved details for user 42") {
 		t.Fatalf("user_detail text content = %+v", result.Content)
 	}
 	var out sdk.UserDetailResult
@@ -1594,7 +1595,7 @@ func TestIllustRecommendedTextIncludesAllTagsInUpstreamOrder(t *testing.T) {
 	if result.IsError {
 		t.Fatalf("illust_recommended returned MCP error: %+v", result)
 	}
-	want := "标签: tag-1, tag-2, tag-3, tag-4, tag-5, tag-6, tag-7"
+	want := "Tags: tag-1, tag-2, tag-3, tag-4, tag-5, tag-6, tag-7"
 	if !strings.Contains(out.Text, want) {
 		t.Fatalf("illust_recommended text = %q, want substring %q", out.Text, want)
 	}
@@ -1624,7 +1625,7 @@ func TestIllustRankingUsesStableLabelAndPreservesRequestAndRank(t *testing.T) {
 	if len(requests) != 1 || requests[0].Mode != sdk.RankingModeDayMale || requests[0].Date != "2025-02-03" || requests[0].Cursor != "" {
 		t.Fatalf("ranking requests = %+v", requests)
 	}
-	if !strings.HasPrefix(out.Text, "男性向每日排行榜:\n\n") || !strings.Contains(out.Text, "第 3 名: https://www.pixiv.net/artworks/13\nID: 13") {
+	if !strings.HasPrefix(out.Text, "Daily ranking (male):\n\n") || !strings.Contains(out.Text, "Rank 3: https://www.pixiv.net/artworks/13\nID: 13") {
 		t.Fatalf("illust_ranking text = %q", out.Text)
 	}
 }
@@ -1634,23 +1635,23 @@ func TestIllustRankingUsesStableLabelsForAllModesAndFutureFallback(t *testing.T)
 		mode string
 		want string
 	}{
-		{mode: "day", want: "每日排行榜"},
-		{mode: "day_male", want: "男性向每日排行榜"},
-		{mode: "day_female", want: "女性向每日排行榜"},
-		{mode: "week", want: "每周排行榜"},
-		{mode: "week_original", want: "原创作品排行榜"},
-		{mode: "week_rookie", want: "新人排行榜"},
-		{mode: "month", want: "每月排行榜"},
-		{mode: "day_manga", want: "漫画每日排行榜"},
-		{mode: "week_manga", want: "漫画每周排行榜"},
-		{mode: "month_manga", want: "漫画每月排行榜"},
-		{mode: "week_rookie_manga", want: "漫画新人排行榜"},
-		{mode: "day_r18", want: "R-18 每日排行榜"},
-		{mode: "day_male_r18", want: "男性向 R-18 每日排行榜"},
-		{mode: "day_female_r18", want: "女性向 R-18 每日排行榜"},
-		{mode: "week_r18", want: "R-18 每周排行榜"},
-		{mode: "week_r18g", want: "R-18G 每周排行榜"},
-		{mode: "future_mode", want: "future_mode 排行榜"},
+		{mode: "day", want: "Daily ranking"},
+		{mode: "day_male", want: "Daily ranking (male)"},
+		{mode: "day_female", want: "Daily ranking (female)"},
+		{mode: "week", want: "Weekly ranking"},
+		{mode: "week_original", want: "Weekly original ranking"},
+		{mode: "week_rookie", want: "Weekly rookie ranking"},
+		{mode: "month", want: "Monthly ranking"},
+		{mode: "day_manga", want: "Daily manga ranking"},
+		{mode: "week_manga", want: "Weekly manga ranking"},
+		{mode: "month_manga", want: "Monthly manga ranking"},
+		{mode: "week_rookie_manga", want: "Weekly rookie manga ranking"},
+		{mode: "day_r18", want: "Daily R-18 ranking"},
+		{mode: "day_male_r18", want: "Daily male R-18 ranking"},
+		{mode: "day_female_r18", want: "Daily female R-18 ranking"},
+		{mode: "week_r18", want: "Weekly R-18 ranking"},
+		{mode: "week_r18g", want: "Weekly R-18G ranking"},
+		{mode: "future_mode", want: "future_mode ranking"},
 	}
 	for _, test := range tests {
 		t.Run(test.mode, func(t *testing.T) {
@@ -1735,7 +1736,7 @@ func TestDownloadRandomSDKOpenErrorPreservesBusinessErrorShape(t *testing.T) {
 	if err != nil {
 		t.Fatalf("call tool: %v", err)
 	}
-	const wantText = "获取推荐列表失败: open sentinel"
+	const wantText = "Could not retrieve recommendations: open sentinel"
 	assertEmptyDownloadResult(t, result, deliveryLocalPath, wantText)
 	if openCalls != 1 || managerFactoryCalls != 0 || len(downloads.downloadIDs) != 0 {
 		t.Fatalf("downstream calls: open=%d manager_factory=%d download_ids=%v", openCalls, managerFactoryCalls, downloads.downloadIDs)
@@ -1777,7 +1778,7 @@ func TestDownloadRandomRecommendationErrorPreservesBusinessErrorShape(t *testing
 	if err != nil {
 		t.Fatalf("call tool: %v", err)
 	}
-	const wantText = "获取推荐列表失败: recommendation sentinel"
+	const wantText = "Could not retrieve recommendations: recommendation sentinel"
 	assertEmptyDownloadResult(t, result, deliveryLocalPath, wantText)
 	if openCalls != 1 || recommendationCalls != 1 || managerFactoryCalls != 0 || len(downloads.downloadIDs) != 0 {
 		t.Fatalf("downstream calls: open=%d recommendation=%d manager_factory=%d download_ids=%v", openCalls, recommendationCalls, managerFactoryCalls, downloads.downloadIDs)
@@ -1798,7 +1799,7 @@ func TestDownloadRandomEmptyRecommendationPreservesBusinessErrorShape(t *testing
 	if err != nil {
 		t.Fatalf("call tool: %v", err)
 	}
-	const wantText = "无法获取推荐内容，列表为空。"
+	const wantText = "Could not retrieve recommendations: the list is empty."
 	assertEmptyDownloadResult(t, result, deliveryLocalPath, wantText)
 	if probe.openCalls != 1 || probe.recommendationCalls != 1 || probe.managerFactoryCalls != 0 || len(probe.downloads.downloadIDs) != 0 {
 		t.Fatalf("downstream calls: open=%d recommendation=%d manager_factory=%d download_ids=%v", probe.openCalls, probe.recommendationCalls, probe.managerFactoryCalls, probe.downloads.downloadIDs)
@@ -1820,7 +1821,7 @@ func TestDownloadRandomManagerErrorPreservesBusinessErrorShape(t *testing.T) {
 	if err != nil {
 		t.Fatalf("call tool: %v", err)
 	}
-	const wantText = "下载失败: download sentinel"
+	const wantText = "Download failed: download sentinel"
 	assertEmptyDownloadResult(t, result, deliveryLocalPath, wantText)
 	if probe.openCalls != 1 || probe.recommendationCalls != 1 || probe.managerFactoryCalls != 1 || probe.downloads.downloadCalls != 1 || !slices.Equal(probe.downloads.downloadIDs, []int64{77}) {
 		t.Fatalf("downstream calls: open=%d recommendation=%d manager_factory=%d downloads=%d download_ids=%v", probe.openCalls, probe.recommendationCalls, probe.managerFactoryCalls, probe.downloads.downloadCalls, probe.downloads.downloadIDs)
@@ -1850,7 +1851,7 @@ func TestDownloadRandomBuildErrorPreservesBusinessErrorShape(t *testing.T) {
 	if err != nil {
 		t.Fatalf("call tool: %v", err)
 	}
-	wantText := "整理下载结果失败: " + statErr.Error()
+	wantText := "Could not build the download result: " + statErr.Error()
 	assertEmptyDownloadResult(t, result, deliveryLocalPath, wantText)
 	if probe.openCalls != 1 || probe.recommendationCalls != 1 || probe.managerFactoryCalls != 1 || probe.downloads.downloadCalls != 1 || !slices.Equal(probe.downloads.downloadIDs, []int64{77}) {
 		t.Fatalf("downstream calls: open=%d recommendation=%d manager_factory=%d downloads=%d download_ids=%v", probe.openCalls, probe.recommendationCalls, probe.managerFactoryCalls, probe.downloads.downloadCalls, probe.downloads.downloadIDs)
@@ -1874,7 +1875,7 @@ func TestDownloadRandomCountErrorPreservesLocalPathDelivery(t *testing.T) {
 		"count":    0,
 		"delivery": deliveryLocalPath,
 	})
-	const wantText = "错误：count 必须是 1 到 20 之间的整数。"
+	const wantText = "Error: count must be an integer from 1 to 20"
 	assertEmptyDownloadResult(t, result, deliveryLocalPath, wantText)
 	assertNoDownloadRandomDownstream(t, probe)
 }
@@ -1887,7 +1888,7 @@ func TestDownloadRandomInvalidDeliveryPrecedesCountValidation(t *testing.T) {
 		"count":    0,
 		"delivery": "invalid-delivery",
 	})
-	const wantText = `错误：delivery 仅支持 "local_path"。`
+	const wantText = `Error: delivery supports only "local_path".`
 	assertEmptyDownloadResult(t, result, deliveryLocalPath, wantText)
 	assertNoDownloadRandomDownstream(t, probe)
 }
@@ -1916,7 +1917,7 @@ func TestDownloadRandomRejectsCountAboveMaximumBeforeOpeningSDK(t *testing.T) {
 
 func assertDownloadRandomCountError(t *testing.T, result *mcp.CallToolResult) {
 	t.Helper()
-	const wantText = "错误：count 必须是 1 到 20 之间的整数。"
+	const wantText = "Error: count must be an integer from 1 to 20"
 	assertEmptyDownloadResult(t, result, deliveryLocalPath, wantText)
 }
 
@@ -2135,20 +2136,21 @@ func TestSDKMutationToolsReturnStructuredSuccess(t *testing.T) {
 	defer closeSession()
 
 	for _, test := range []struct {
-		name string
-		args map[string]any
-		want string
+		name     string
+		args     map[string]any
+		want     string
+		wantText string
 	}{
-		{"add_bookmark", map[string]any{"illust_id": 9, "restrict": "private", "tags": []string{"one"}}, "add_bookmark"},
-		{"remove_bookmark", map[string]any{"illust_id": 9}, "remove_bookmark"},
-		{"follow_user", map[string]any{"user_id": 8, "restrict": "private"}, "follow_user"},
-		{"unfollow_user", map[string]any{"user_id": 8}, "unfollow_user"},
+		{"add_bookmark", map[string]any{"illust_id": 9, "restrict": "private", "tags": []string{"one"}}, "add_bookmark", "Bookmarked artwork 9."},
+		{"remove_bookmark", map[string]any{"illust_id": 9}, "remove_bookmark", "Removed bookmark from artwork 9."},
+		{"follow_user", map[string]any{"user_id": 8, "restrict": "private"}, "follow_user", "Followed user 8."},
+		{"unfollow_user", map[string]any{"user_id": 8}, "unfollow_user", "Unfollowed user 8."},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			result := callTool(t, session, test.name, test.args)
 			var out mutationOut
 			decodeStructured(t, result, &out)
-			if !out.Success || out.Action != test.want || !strings.Contains(out.Text, "已") {
+			if !out.Success || out.Action != test.want || out.Text != test.wantText {
 				t.Fatalf("mutation output = %+v", out)
 			}
 		})
@@ -2177,7 +2179,7 @@ func TestUserArtworksTextIncludesAllTagsInUpstreamOrder(t *testing.T) {
 	if result.IsError {
 		t.Fatalf("user_artworks returned MCP error: %+v", result)
 	}
-	want := "标签: tag-1, tag-2, tag-3, tag-4, tag-5, tag-6, tag-7"
+	want := "Tags: tag-1, tag-2, tag-3, tag-4, tag-5, tag-6, tag-7"
 	if !strings.Contains(out.Text, want) {
 		t.Fatalf("user_artworks text = %q, want substring %q", out.Text, want)
 	}
@@ -2199,7 +2201,7 @@ func TestSDKUserListToolsUseCanonicalUserIDAndFilters(t *testing.T) {
 	})
 	var bookmarksOut illustListOut
 	decodeStructured(t, bookmarkResult, &bookmarksOut)
-	if client.bookmarksRequest.UserID != 9 || client.bookmarksRequest.Restrict != sdk.RestrictPrivate || client.bookmarksRequest.Tag != "tag-a" || client.bookmarksRequest.Cursor != "" || !strings.Contains(bookmarksOut.Text, "找到用户 9 的 1 个收藏") {
+	if client.bookmarksRequest.UserID != 9 || client.bookmarksRequest.Restrict != sdk.RestrictPrivate || client.bookmarksRequest.Tag != "tag-a" || client.bookmarksRequest.Cursor != "" || !strings.Contains(bookmarksOut.Text, "Found 1 bookmarks for user 9") {
 		t.Fatalf("bookmarks request=%+v output=%+v", client.bookmarksRequest, bookmarksOut)
 	}
 
@@ -2218,7 +2220,7 @@ func TestSDKUserListToolsUseCanonicalUserIDAndFilters(t *testing.T) {
 	decodeStructured(t, bookmarkResult, &bookmarksOut)
 	followingResult = callTool(t, session, "user_following", map[string]any{"user_id": 8})
 	decodeStructured(t, followingResult, &followingOut)
-	if bookmarksOut.Text != "找不到用户 9 的收藏。" || followingOut.Text != "用户 8 没有关注任何人。" {
+	if bookmarksOut.Text != "No bookmarks found for user 9." || followingOut.Text != "User 8 does not follow anyone." {
 		t.Fatalf("empty text bookmarks=%q following=%q", bookmarksOut.Text, followingOut.Text)
 	}
 }
@@ -2360,7 +2362,7 @@ func TestSDKToolsPersistRotationAfterSessionTokenAndSerializeConcurrentOperation
 	set := callTool(t, session, "set_refresh_token", map[string]any{"refresh_token": "r0"})
 	var setOut textOut
 	decodeStructured(t, set, &setOut)
-	if !strings.Contains(setOut.Text, "完成认证") {
+	if !strings.Contains(setOut.Text, "and authenticated.") {
 		t.Fatalf("set_refresh_token=%q", setOut.Text)
 	}
 	for _, result := range []*mcp.CallToolResult{

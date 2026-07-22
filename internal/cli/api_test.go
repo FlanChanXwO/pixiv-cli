@@ -79,7 +79,7 @@ func TestSearchRejectsDownloadOnlyFlags(t *testing.T) {
 	}
 }
 
-func TestSearchUsesTargetInsteadOfSearchTarget(t *testing.T) {
+func TestSearchUsesSearchByAndRejectsRemovedTargetFlags(t *testing.T) {
 	useTempPaths(t)
 	var got sdk.SearchIllustRequest
 	setTestSDKCommandClient(t, sdkCommandFake{search: func(_ context.Context, request sdk.SearchIllustRequest) (*sdk.IllustListResult, error) {
@@ -88,16 +88,20 @@ func TestSearchUsesTargetInsteadOfSearchTarget(t *testing.T) {
 	}})
 
 	var stdout, stderr bytes.Buffer
-	code := Run([]string{"pixiv", "search", "miku", "--target", "title-caption", "--json"}, strings.NewReader(""), &stdout, &stderr)
+	code := Run([]string{"pixiv", "search", "miku", "--search-by", "title-caption", "--json"}, strings.NewReader(""), &stdout, &stderr)
 
 	require.Equal(t, 0, code, stderr.String())
 	assert.Equal(t, sdk.SearchTargetTitleAndCaption, got.Target)
 
 	stdout.Reset()
 	stderr.Reset()
-	code = Run([]string{"pixiv", "search", "miku", "--search-target", "title_and_caption"}, strings.NewReader(""), &stdout, &stderr)
-	require.NotZero(t, code)
-	assert.Contains(t, stderr.String(), "unknown flag: --search-target")
+	for _, removed := range []string{"--target", "--search-target"} {
+		stdout.Reset()
+		stderr.Reset()
+		code = Run([]string{"pixiv", "search", "miku", removed, "title-caption"}, strings.NewReader(""), &stdout, &stderr)
+		require.NotZero(t, code)
+		assert.Contains(t, stderr.String(), "unknown flag: "+removed)
+	}
 }
 
 func TestSearchUsesPeriodInsteadOfDuration(t *testing.T) {
@@ -236,7 +240,7 @@ func TestSearchPassesStableFiltersToSDKAndFollowsCursorUntilLimit(t *testing.T) 
 	}})
 
 	var stdout, stderr bytes.Buffer
-	code := Run([]string{"pixiv", "search", "miku", "--rating", "r18", "--type", "manga", "--ai-mode", "only", "--resolution", "high", "--aspect-ratio", "portrait", "--tool", "CLIP STUDIO PAINT", "--limit", "2", "--json"}, strings.NewReader(""), &stdout, &stderr)
+	code := Run([]string{"pixiv", "search", "miku", "--rating", "r18", "--type", "manga", "--ai-mode", "only", "--resolution", "high", "--aspect-ratio", "portrait", "--draw-tool", "CLIP STUDIO PAINT", "--limit", "2", "--json"}, strings.NewReader(""), &stdout, &stderr)
 
 	require.Equal(t, 0, code, stderr.String())
 	assert.Equal(t, []sdk.Cursor{"", "second"}, cursors)
@@ -251,6 +255,12 @@ func TestSearchPassesStableFiltersToSDKAndFollowsCursorUntilLimit(t *testing.T) 
 	}
 	require.NoError(t, json.Unmarshal(stdout.Bytes(), &out))
 	assert.Equal(t, []int64{4, 5}, []int64{out.Illusts[0].ID, out.Illusts[1].ID})
+
+	stdout.Reset()
+	stderr.Reset()
+	code = Run([]string{"pixiv", "search", "miku", "--tool", "CLIP STUDIO PAINT"}, strings.NewReader(""), &stdout, &stderr)
+	require.NotZero(t, code)
+	assert.Contains(t, stderr.String(), "unknown flag: --tool")
 }
 
 func TestSearchMapsRemainingCanonicalFiltersToSDK(t *testing.T) {

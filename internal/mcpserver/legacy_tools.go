@@ -97,18 +97,18 @@ func (a *App) searchIllustOptions(ctx context.Context, _ *mcp.CallToolRequest, i
 // 不读取 StructuredContent 的旧 MCP 客户端。
 func searchIllustOptionsText(tools []string) string {
 	if len(tools) == 0 {
-		return "当前没有可用的绘图工具。"
+		return "No drawing tools are available."
 	}
 	quoted := make([]string, len(tools))
 	for index, tool := range tools {
 		quoted[index] = strconv.Quote(tool)
 	}
-	return fmt.Sprintf("可用绘图工具（%d 个）:\n- %s", len(tools), strings.Join(quoted, "\n- "))
+	return fmt.Sprintf("Available drawing tools (%d):\n- %s", len(tools), strings.Join(quoted, "\n- "))
 }
 
 func (a *App) searchIllustOptionsError(ctx context.Context, err error) (*mcp.CallToolResult, searchIllustOptionsOut, error) {
 	recordToolError(ctx, err)
-	return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: "错误: " + err.Error()}}}, searchIllustOptionsOut{Tools: []string{}, Text: "错误: " + err.Error()}, nil
+	return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: "Error: " + err.Error()}}}, searchIllustOptionsOut{Tools: []string{}, Text: "Error: " + err.Error()}, nil
 }
 
 func (a *App) searchIllust(ctx context.Context, _ *mcp.CallToolRequest, in searchIllustIn) (*mcp.CallToolResult, textOut, error) {
@@ -151,10 +151,10 @@ func (a *App) searchIllust(ctx context.Context, _ *mcp.CallToolRequest, in searc
 		return toolTextError(ctx, err, err.Error())
 	}
 	if len(items) == 0 {
-		return toolText(fmt.Sprintf("抱歉，根据您提供的关键词 '%s'，未能找到相关的插画。", word))
+		return toolText(fmt.Sprintf("No illustrations found for %q.", word))
 	}
 	displayOffset := plan.skip
-	return toolText(fmt.Sprintf("找到 %d 张关于 '%s' 的插画:\n\n%s", len(items), word, formatIllusts(items, displayOffset, false)))
+	return toolText(fmt.Sprintf("Found %d illustrations for %q:\n\n%s", len(items), word, formatIllusts(items, displayOffset, false)))
 }
 
 // searchIllustListPlan 将 search_illust 的 page/limit 归一为 mcpListPlan。
@@ -227,9 +227,9 @@ func (a *App) illustRelated(ctx context.Context, _ *mcp.CallToolRequest, in rela
 		return toolTextError(ctx, err, err.Error())
 	}
 	if len(items) == 0 {
-		return toolText(fmt.Sprintf("找不到与插画 %d 相关的推荐。", in.IllustID))
+		return toolText(fmt.Sprintf("No related illustrations found for artwork %d.", in.IllustID))
 	}
-	return toolText(fmt.Sprintf("找到 %d 张相关推荐:\n\n%s", len(items), formatIllusts(items, plan.skip, false)))
+	return toolText(fmt.Sprintf("Found %d related illustrations:\n\n%s", len(items), formatIllusts(items, plan.skip, false)))
 }
 
 type rankingIn struct {
@@ -239,29 +239,29 @@ type rankingIn struct {
 }
 
 var rankingLabels = map[sdk.RankingMode]string{
-	sdk.RankingModeDay:             "每日排行榜",
-	sdk.RankingModeDayMale:         "男性向每日排行榜",
-	sdk.RankingModeDayFemale:       "女性向每日排行榜",
-	sdk.RankingModeWeek:            "每周排行榜",
-	sdk.RankingModeWeekOriginal:    "原创作品排行榜",
-	sdk.RankingModeWeekRookie:      "新人排行榜",
-	sdk.RankingModeMonth:           "每月排行榜",
-	sdk.RankingModeDayManga:        "漫画每日排行榜",
-	sdk.RankingModeWeekManga:       "漫画每周排行榜",
-	sdk.RankingModeMonthManga:      "漫画每月排行榜",
-	sdk.RankingModeWeekRookieManga: "漫画新人排行榜",
-	sdk.RankingModeDayR18:          "R-18 每日排行榜",
-	sdk.RankingModeDayMaleR18:      "男性向 R-18 每日排行榜",
-	sdk.RankingModeDayFemaleR18:    "女性向 R-18 每日排行榜",
-	sdk.RankingModeWeekR18:         "R-18 每周排行榜",
-	sdk.RankingModeWeekR18G:        "R-18G 每周排行榜",
+	sdk.RankingModeDay:             "Daily ranking",
+	sdk.RankingModeDayMale:         "Daily ranking (male)",
+	sdk.RankingModeDayFemale:       "Daily ranking (female)",
+	sdk.RankingModeWeek:            "Weekly ranking",
+	sdk.RankingModeWeekOriginal:    "Weekly original ranking",
+	sdk.RankingModeWeekRookie:      "Weekly rookie ranking",
+	sdk.RankingModeMonth:           "Monthly ranking",
+	sdk.RankingModeDayManga:        "Daily manga ranking",
+	sdk.RankingModeWeekManga:       "Weekly manga ranking",
+	sdk.RankingModeMonthManga:      "Monthly manga ranking",
+	sdk.RankingModeWeekRookieManga: "Weekly rookie manga ranking",
+	sdk.RankingModeDayR18:          "Daily R-18 ranking",
+	sdk.RankingModeDayMaleR18:      "Daily male R-18 ranking",
+	sdk.RankingModeDayFemaleR18:    "Daily female R-18 ranking",
+	sdk.RankingModeWeekR18:         "Weekly R-18 ranking",
+	sdk.RankingModeWeekR18G:        "Weekly R-18G ranking",
 }
 
 func rankingLabel(mode string) string {
 	if label, ok := rankingLabels[sdk.RankingMode(mode)]; ok {
 		return label
 	}
-	return mode + " 排行榜"
+	return mode + " ranking"
 }
 
 func (a *App) illustRanking(ctx context.Context, _ *mcp.CallToolRequest, in rankingIn) (*mcp.CallToolResult, textOut, error) {
@@ -288,7 +288,7 @@ func (a *App) illustRanking(ctx context.Context, _ *mcp.CallToolRequest, in rank
 		return toolTextError(ctx, err, err.Error())
 	}
 	if len(items) == 0 {
-		return toolText(fmt.Sprintf("找不到模式为 '%s' 的排行榜结果。", in.Mode))
+		return toolText(fmt.Sprintf("No ranking results found for mode %q.", in.Mode))
 	}
 	return toolText(fmt.Sprintf("%s:\n\n%s", rankingLabel(in.Mode), formatIllusts(items, plan.skip, true)))
 }
@@ -319,9 +319,9 @@ func (a *App) searchUser(ctx context.Context, _ *mcp.CallToolRequest, in searchU
 		return toolTextError(ctx, err, err.Error())
 	}
 	if len(items) == 0 {
-		return toolText(fmt.Sprintf("抱歉，未能找到名为 '%s' 的用户。", in.Word))
+		return toolText(fmt.Sprintf("No users found for %q.", in.Word))
 	}
-	return toolText(fmt.Sprintf("找到 %d 位用户:\n\n%s", len(items), formatUsers(items)))
+	return toolText(fmt.Sprintf("Found %d users:\n\n%s", len(items), formatUsers(items)))
 }
 
 type recommendedLegacyIn struct {
@@ -349,9 +349,9 @@ func (a *App) illustRecommended(ctx context.Context, _ *mcp.CallToolRequest, in 
 		return toolTextError(ctx, err, err.Error())
 	}
 	if len(items) == 0 {
-		return toolText("暂无推荐内容。")
+		return toolText("No recommendations are available.")
 	}
-	return toolText(fmt.Sprintf("为您推荐 %d 张插画:\n\n%s", len(items), formatIllusts(items, plan.skip, false)))
+	return toolText(fmt.Sprintf("Recommended %d illustrations:\n\n%s", len(items), formatIllusts(items, plan.skip, false)))
 }
 
 func (a *App) trendingTags(ctx context.Context, _ *mcp.CallToolRequest, _ emptyIn) (*mcp.CallToolResult, textOut, error) {
@@ -365,17 +365,17 @@ func (a *App) trendingTags(ctx context.Context, _ *mcp.CallToolRequest, _ emptyI
 		return toolTextError(ctx, err, err.Error())
 	}
 	if len(result.TrendTags) == 0 {
-		return toolText("无法获取热门标签。")
+		return toolText("Could not retrieve trending tags.")
 	}
 	lines := make([]string, 0, len(result.TrendTags))
 	for _, tag := range result.TrendTags {
 		translated := tag.TranslatedName
 		if translated == "" {
-			translated = "无"
+			translated = "none"
 		}
-		lines = append(lines, fmt.Sprintf("- %s (翻译: %s)", tag.Tag, translated))
+		lines = append(lines, fmt.Sprintf("- %s (translation: %s)", tag.Tag, translated))
 	}
-	return toolText("当前的热门标签:\n" + strings.Join(lines, "\n"))
+	return toolText("Trending tags:\n" + strings.Join(lines, "\n"))
 }
 
 type followIn struct {
@@ -407,7 +407,7 @@ func (a *App) illustFollow(ctx context.Context, _ *mcp.CallToolRequest, in follo
 		return toolTextError(ctx, err, err.Error())
 	}
 	if len(items) == 0 {
-		return toolText("您的关注动态中暂时没有新作品。")
+		return toolText("No new artworks from followed users.")
 	}
-	return toolText(fmt.Sprintf("找到 %d 篇关注动态:\n\n%s", len(items), formatIllusts(items, plan.skip, false)))
+	return toolText(fmt.Sprintf("Found %d new artworks from followed users:\n\n%s", len(items), formatIllusts(items, plan.skip, false)))
 }

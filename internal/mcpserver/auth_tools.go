@@ -15,37 +15,37 @@ func (a *App) refreshToken(ctx context.Context, _ *mcp.CallToolRequest, _ emptyI
 	client, release, err := a.openSDKMutable(ctx)
 	if err != nil {
 		if errors.Is(err, context.Canceled) {
-			return toolTextError(ctx, err, "Token刷新已取消。")
+			return toolTextError(ctx, err, "Refresh canceled.")
 		}
 		if errors.Is(err, context.DeadlineExceeded) {
-			return toolTextError(ctx, err, "Token刷新失败：操作超时。")
+			return toolTextError(ctx, err, "Refresh failed: operation timed out.")
 		}
 		var sdkErr *sdk.Error
 		if errors.As(err, &sdkErr) {
-			return toolTextError(ctx, err, "Token刷新失败：无法初始化 Pixiv SDK："+sdkErr.Error()+"。")
+			return toolTextError(ctx, err, "Refresh failed: could not initialize the Pixiv SDK: "+sdkErr.Error())
 		}
-		return toolTextError(ctx, err, "Token刷新失败：无法初始化 Pixiv SDK。请检查本地配置或代理设置。")
+		return toolTextError(ctx, err, "Refresh failed: could not initialize the Pixiv SDK. Check the local configuration or proxy settings.")
 	}
 	defer release()
 	account, err := client.Refresh(ctx)
 	if err != nil {
 		if errors.Is(err, context.Canceled) {
-			return toolTextError(ctx, err, "Token刷新已取消。")
+			return toolTextError(ctx, err, "Refresh canceled.")
 		}
 		if errors.Is(err, context.DeadlineExceeded) {
-			return toolTextError(ctx, err, "Token刷新失败：操作超时。")
+			return toolTextError(ctx, err, "Refresh failed: operation timed out.")
 		}
 		if errors.Is(err, sdk.ErrUnauthorized) {
-			return toolTextError(ctx, err, "错误：未设置 refresh token。请先使用 set_refresh_token 工具设置 token。")
+			return toolTextError(ctx, err, "Error: no refresh token is configured. Use set_refresh_token to set one first.")
 		}
 		var sdkErr *sdk.Error
 		if errors.As(err, &sdkErr) {
-			return toolTextError(ctx, err, "Token刷新失败："+sdkErr.Error()+"。")
+			return toolTextError(ctx, err, "Refresh failed: "+sdkErr.Error())
 		}
-		return toolTextError(ctx, err, "Token刷新失败。请检查 refresh token 是否有效，以及网络连接或代理设置。")
+		return toolTextError(ctx, err, "Refresh failed. Check whether the refresh token is valid and verify the network or proxy settings.")
 	}
 	a.sdkRequest.UserID = account.UserID
-	return toolText(fmt.Sprintf("Token刷新成功！%s。现在可以正常使用Pixiv API功能了。", authIdentityText(*account)))
+	return toolText(fmt.Sprintf("Refresh successful.\n%s\n\nYou can now use Pixiv API features.", authIdentityText(*account)))
 }
 
 type setRefreshTokenIn struct {
@@ -55,31 +55,31 @@ type setRefreshTokenIn struct {
 func (a *App) setRefreshToken(ctx context.Context, _ *mcp.CallToolRequest, in setRefreshTokenIn) (*mcp.CallToolResult, textOut, error) {
 	token, err := utils.ValidateRefreshTokenInput(in.RefreshToken)
 	if err != nil {
-		return toolTextError(ctx, err, "错误："+err.Error())
+		return toolTextError(ctx, err, "Error: "+err.Error())
 	}
 	if token == "" {
-		return toolTextError(ctx, errLegacyValidation, "错误：refresh token 不能为空。")
+		return toolTextError(ctx, errLegacyValidation, "Error: refresh token must not be empty.")
 	}
 	client, release, err := a.openSDKMutable(ctx)
 	if err != nil {
-		return toolTextError(ctx, err, "Refresh token 已在当前会话设置，但认证失败: "+err.Error())
+		return toolTextError(ctx, err, "The refresh token was set for this session, but authentication failed: "+err.Error())
 	}
 	defer release()
 	account, err := client.ImportAccount(ctx, token)
 	if err != nil {
-		return toolTextError(ctx, err, fmt.Sprintf("Refresh token 已在当前会话设置，但认证失败: %v\n\n请检查 token 是否有效，或稍后使用 refresh_token 工具重试认证。", err))
+		return toolTextError(ctx, err, fmt.Sprintf("The refresh token was set for this session, but authentication failed: %v\n\nCheck that the token is valid, then retry with refresh_token.", err))
 	}
 	if err := client.SelectAccount(account.UserID); err != nil {
-		return toolTextError(ctx, err, "Refresh token 已在当前会话设置并完成认证，但无法选择认证账号: "+err.Error())
+		return toolTextError(ctx, err, "The refresh token was set for this session and authenticated, but the authenticated account could not be selected: "+err.Error())
 	}
 	a.sdkRequest.UserID = account.UserID
-	return toolText(fmt.Sprintf("Refresh token 已在当前会话设置并完成认证！\n%s\n\n现在您可以使用所有 Pixiv 功能了。", authIdentityText(*account)))
+	return toolText(fmt.Sprintf("The refresh token was set for this session and authenticated.\n%s\n\nYou can now use all Pixiv features.", authIdentityText(*account)))
 }
 
 func authIdentityText(account sdk.Account) string {
-	identity := fmt.Sprintf("用户 ID: %d", account.UserID)
+	identity := fmt.Sprintf("User ID: %d", account.UserID)
 	if username := strings.TrimSpace(account.Username); username != "" {
-		identity += "\n用户名: " + username
+		identity += "\nUsername: " + username
 	}
 	return identity
 }

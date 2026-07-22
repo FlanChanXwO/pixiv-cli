@@ -16,12 +16,12 @@ import (
 
 type searchOptions struct {
 	commandOptions
-	target      string
+	searchBy    string
 	sortMode    string
 	period      string
 	resolution  string
 	aspectRatio string
-	tool        string
+	drawTool    string
 	aiMode      string
 	listOptions
 	rating string
@@ -48,7 +48,7 @@ const (
 
 func (a app) newSearchCommand() *cobra.Command {
 	opts := searchOptions{
-		target:      searchTargetTagPartial,
+		searchBy:    searchTargetTagPartial,
 		sortMode:    string(sdk.SortModeDateDesc),
 		rating:      "all",
 		typ:         "all",
@@ -67,14 +67,14 @@ func (a app) newSearchCommand() *cobra.Command {
 	}
 	a.bindCommonFlags(cmd, &opts.commandOptions)
 	flags := cmd.Flags()
-	flags.StringVar(&opts.target, "target", opts.target, "search target: tag-partial, tag-exact, title-caption")
+	flags.StringVar(&opts.searchBy, "search-by", opts.searchBy, "search field: tag-partial, tag-exact, title-caption")
 	flags.StringVar(&opts.sortMode, "sort", opts.sortMode, "sort mode: date_desc, date_asc")
 	flags.StringVar(&opts.period, "period", "", "time range: day, week, month")
 	flags.StringVar(&opts.rating, "rating", opts.rating, "rating filter: sfw, r18, r18g, mature, all")
 	flags.StringVar(&opts.typ, "type", opts.typ, "artwork type filter: all, illust-and-ugoira, illust, manga, ugoira")
 	flags.StringVar(&opts.resolution, "resolution", opts.resolution, "resolution filter: all, high, medium, low")
 	flags.StringVar(&opts.aspectRatio, "aspect-ratio", opts.aspectRatio, "aspect ratio filter: all, landscape, portrait, square")
-	flags.StringVar(&opts.tool, "tool", "", "drawing tool name from search-options")
+	flags.StringVar(&opts.drawTool, "draw-tool", "", "drawing tool name from search-options")
 	flags.StringVar(&opts.aiMode, "ai-mode", opts.aiMode, "AI artwork filter: all, exclude, only")
 	bindListFlags(cmd, &opts.listOptions)
 	return cmd
@@ -85,7 +85,7 @@ func (a app) runSearch(cmd *cobra.Command, args []string, opts searchOptions) er
 	if err != nil {
 		return err
 	}
-	target, err := resolveSearchTarget(opts.target)
+	target, err := resolveSearchBy(opts.searchBy)
 	if err != nil {
 		return err
 	}
@@ -126,7 +126,7 @@ func (a app) runSearch(cmd *cobra.Command, args []string, opts searchOptions) er
 	}, func(items []sdk.Illust, start int) { printIllusts(a.out, items, start, false) })
 }
 
-func resolveSearchTarget(value string) (sdk.SearchTarget, error) {
+func resolveSearchBy(value string) (sdk.SearchTarget, error) {
 	switch value {
 	case searchTargetTagPartial:
 		return sdk.SearchTargetPartialMatchForTags, nil
@@ -135,7 +135,7 @@ func resolveSearchTarget(value string) (sdk.SearchTarget, error) {
 	case searchTargetTitleCaption:
 		return sdk.SearchTargetTitleAndCaption, nil
 	default:
-		return "", fmt.Errorf("target must be one of %s, %s, %s", searchTargetTagPartial, searchTargetTagExact, searchTargetTitleCaption)
+		return "", fmt.Errorf("search-by must be one of %s, %s, %s", searchTargetTagPartial, searchTargetTagExact, searchTargetTitleCaption)
 	}
 }
 
@@ -186,7 +186,7 @@ func resolveSearchFilters(_ *cobra.Command, opts searchOptions) (sdk.SearchIllus
 	default:
 		return filters, fmt.Errorf("ai-mode must be one of all, exclude, only")
 	}
-	filters.Tool = opts.tool
+	filters.Tool = opts.drawTool
 	return filters, nil
 }
 

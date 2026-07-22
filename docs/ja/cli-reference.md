@@ -295,7 +295,7 @@ allowlist、MIME 推測、暗黙置換は行いません。
 
 | Command | Flag | Default | 説明 |
 | --- | --- | --- | --- |
-| `search` | `--target` | `tag-partial` | 検索対象: `tag-partial`、`tag-exact`、`title-caption`。 |
+| `search` | `--search-by` | `tag-partial` | 検索フィールド: `tag-partial`、`tag-exact`、`title-caption`。 |
 | `search` | `--sort` | `date_desc` | sort order: `date_desc` または `date_asc`。 |
 | `search` | `--period` | empty | time range: `day`、`week`、`month`。省略時は期間指定なし。 |
 | `search` | `--rating` | `all` | `sfw`, `r18`, `r18g`, `mature`, `all`。 |
@@ -303,7 +303,7 @@ allowlist、MIME 推測、暗黙置換は行いません。
 | `search` | `--ai-mode` | `all` | `all`, `exclude`, `only`。Pixiv `AIType==2` が AI 生成です。 |
 | `search` | `--aspect-ratio` | `all` | `all`, `landscape`, `portrait`, `square`。 |
 | `search` | `--resolution` | `all` | `all`, `high`, `medium`, `low`。両辺がそれぞれ `>=3000`, `1000..2999`, `<=999`。 |
-| `search` | `--tool` | empty | upstream の正確な制作ツール名。認証済み `search-options` で取得します。 |
+| `search` | `--draw-tool` | empty | upstream の正確な制作ツール名。認証済み `search-options` で取得します。 |
 | list commands | `--limit` | one upstream batch | 最大件数。省略時は one upstream batch、`0` は next batch がなくなるまで取得します。 |
 | list commands | `--page` | empty | 1-based logical page。正数 `--limit` が必要です。 |
 | `ranking` | `--mode` | `day` | `day`、`day_male`、`day_female`、`week`、`week_original`、`week_rookie`、`month`、`day_manga`、`week_manga`、`month_manga`、`week_rookie_manga`、`day_r18`、`day_male_r18`、`day_female_r18`、`week_r18`、`week_r18g`。後半の 9 mode は認証が必要です。 |

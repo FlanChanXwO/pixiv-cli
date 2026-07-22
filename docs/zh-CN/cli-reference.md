@@ -295,7 +295,7 @@ CLI 使用 Cobra/pflag，选项可以写在位置参数前后，例如 `pixiv au
 
 | 命令 | 参数 | 默认值 | 说明 |
 | --- | --- | --- | --- |
-| `search` | `--target` | `tag-partial` | 搜索目标：`tag-partial`、`tag-exact` 或 `title-caption`。 |
+| `search` | `--search-by` | `tag-partial` | 搜索字段：`tag-partial`、`tag-exact` 或 `title-caption`。 |
 | `search` | `--sort` | `date_desc` | 排序方式：`date_desc` 或 `date_asc`。 |
 | `search` | `--period` | 空 | 时间范围：`day`、`week` 或 `month`；省略则不限制时间。 |
 | `search` | `--rating` | `all` | 分级筛选：`sfw`、`r18`、`r18g`、`mature` 或 `all`。 |
@@ -303,7 +303,7 @@ CLI 使用 Cobra/pflag，选项可以写在位置参数前后，例如 `pixiv au
 | `search` | `--ai-mode` | `all` | AI 筛选：`all`、`exclude` 或 `only`；Pixiv `AIType==2` 表示 AI 生成。 |
 | `search` | `--aspect-ratio` | `all` | 横纵比：`all`、`landscape`、`portrait` 或 `square`。 |
 | `search` | `--resolution` | `all` | 分辨率：`all`、`high`、`medium` 或 `low`；宽高两个维度分别都需满足 `>=3000`、`1000..2999` 或 `<=999`。 |
-| `search` | `--tool` | 空 | 上游绘图工具的精确名称；用已认证的 `search-options` 查询当前值。 |
+| `search` | `--draw-tool` | 空 | 上游绘图工具的精确名称；用已认证的 `search-options` 查询当前值。 |
 | 列表命令 | `--limit` | 一个上游批次 | 最大条数；省略时只取一个上游批次，`0` 表示持续读取到没有下一批。 |
 | 列表命令 | `--page` | 空 | 从 1 开始的逻辑页；必须与正数 `--limit` 同用。 |
 | `ranking` | `--mode` | `day` | 可用 `day`、`day_male`、`day_female`、`week`、`week_original`、`week_rookie`、`month`、`day_manga`、`week_manga`、`month_manga`、`week_rookie_manga`、`day_r18`、`day_male_r18`、`day_female_r18`、`week_r18`、`week_r18g`；最后九种需要认证。 |

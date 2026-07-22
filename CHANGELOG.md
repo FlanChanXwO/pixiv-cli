@@ -9,7 +9,8 @@
 
 ### Changed
 - CLI terminal prompts, OAuth completion pages, log-directory hints, and fixed help examples now use English. Artwork metadata and user-supplied query text remain unchanged.
-- Breaking: `pixiv search --search-target` and `--duration` have been removed without aliases. Use `--target tag-partial|tag-exact|title-caption` and `--period day|week|month`; the user-facing `--limit` default no longer exposes the internal `-1` sentinel.
+- Breaking: MCP fixed status, error, and display text now uses English. Structured output, Pixiv metadata, and user-supplied text remain unchanged.
+- Breaking: `pixiv search --search-target`, `--target`, `--duration`, and `--tool` have been removed without aliases. Use `--search-by tag-partial|tag-exact|title-caption`, `--period day|week|month`, and `--draw-tool`; the user-facing `--limit` default no longer exposes the internal `-1` sentinel.
 - Breaking: `--download-path` and `--filename-template` are now accepted only by `pixiv download`. All other data, user, bookmark, and follow commands reject the previously ignored flags instead of silently accepting a no-op.
 - Breaking: CLI/MCP 诊断日志改写用户 state 目录文件，不再默认输出到 stderr；MCP stdout 仍仅用于 JSON-RPC。
 - Breaking: MCP 下载仅返回本地 `path`/`file_uri`/`mime_type`/页号/大小；移除 `delivery=image_content` 内嵌图片与 `get_thumbnail_base64` 工具。Agent 应使用宿主本地附件能力发送文件；宿主不支持时仅分享作品 URL。

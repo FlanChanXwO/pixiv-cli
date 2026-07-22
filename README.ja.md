@@ -123,6 +123,7 @@ pixiv mcp
 ```
 
 tool、parameter、structured output、認証動作は [MCP tool contract（English）](docs/en/mcp-tools.md)を参照してください。
+MCP の固定 status、error、display text は英語です。Pixiv metadata と user-supplied text は原文のまま保持します。
 
 ### Go SDK
 

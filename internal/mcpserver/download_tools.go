@@ -22,12 +22,12 @@ type setDownloadPathIn struct {
 
 func (a *App) setDownloadPath(ctx context.Context, _ *mcp.CallToolRequest, in setDownloadPathIn) (*mcp.CallToolResult, textOut, error) {
 	if strings.TrimSpace(in.Path) == "" {
-		return toolTextError(ctx, errLegacyValidation, "错误：path 不能为空。")
+		return toolTextError(ctx, errLegacyValidation, "Error: path must not be empty.")
 	}
 	if err := a.downloads.SetDownloadPath(in.Path); err != nil {
-		return toolTextError(ctx, err, fmt.Sprintf("错误：无法设置下载路径。请检查路径 '%s' 是否有效且程序有写入权限。错误详情: %v", in.Path, err))
+		return toolTextError(ctx, err, fmt.Sprintf("Error: could not set the download path. Ensure %q is valid and writable. Details: %v", in.Path, err))
 	}
-	return toolText(fmt.Sprintf("下载路径已成功更新为: %s。之后所有下载的文件都将保存于此。", in.Path))
+	return toolText(fmt.Sprintf("Download path updated: %s. Future downloads will be saved there.", in.Path))
 }
 
 type downloadIn struct {
@@ -75,7 +75,7 @@ func (a *App) download(ctx context.Context, _ *mcp.CallToolRequest, in downloadI
 		ids = append(ids, in.IllustID)
 	}
 	if len(ids) == 0 {
-		return emptyDownloadError(ctx, errLegacyValidation, deliveryLocalPath, "错误：必须提供 illust_id (单个ID) 或 illust_ids (ID列表) 参数之一。")
+		return emptyDownloadError(ctx, errLegacyValidation, deliveryLocalPath, "Error: provide either illust_id (single ID) or illust_ids (list of IDs).")
 	}
 	delivery, errText := normalizeDelivery(in.Delivery)
 	if errText != "" {
@@ -83,15 +83,15 @@ func (a *App) download(ctx context.Context, _ *mcp.CallToolRequest, in downloadI
 	}
 	pages, quality, err := parseDownloadSelection(in.Pages, in.Quality)
 	if err != nil {
-		return emptyDownloadError(ctx, err, delivery, "错误："+err.Error())
+		return emptyDownloadError(ctx, err, delivery, "Error: "+err.Error())
 	}
 	artworks, err := a.downloadArtworks(ctx, ids, nil, pages, quality)
 	if err != nil {
-		return emptyDownloadError(ctx, err, delivery, "下载失败: "+err.Error())
+		return emptyDownloadError(ctx, err, delivery, "Download failed: "+err.Error())
 	}
 	out, err := buildDownloadOut(delivery, artworks)
 	if err != nil {
-		return emptyDownloadError(ctx, err, delivery, "整理下载结果失败: "+err.Error())
+		return emptyDownloadError(ctx, err, delivery, "Could not build the download result: "+err.Error())
 	}
 	// MCP 下载只返回本地 path/file_uri/mime_type/页号/大小，不再内嵌 ImageContent。
 	return downloadResult(out), out, nil
@@ -158,13 +158,13 @@ func normalizeDelivery(value string) (string, string) {
 	case "", deliveryLocalPath:
 		return deliveryLocalPath, ""
 	default:
-		return "", fmt.Sprintf("错误：delivery 仅支持 %q。", deliveryLocalPath)
+		return "", fmt.Sprintf("Error: delivery supports only %q.", deliveryLocalPath)
 	}
 }
 
 func buildDownloadOut(delivery string, artworks []download.DownloadedArtwork) (downloadOut, error) {
 	out := downloadOut{Delivery: delivery, Items: []downloadItemOut{}, Files: []downloadFileOut{}}
-	lines := []string{fmt.Sprintf("下载完成，交付方式: %s。", delivery)}
+	lines := []string{fmt.Sprintf("Download completed; delivery: %s.", delivery)}
 	for _, artwork := range artworks {
 		item := downloadItemOut{
 			IllustID: artwork.IllustID,
@@ -173,7 +173,7 @@ func buildDownloadOut(delivery string, artworks []download.DownloadedArtwork) (d
 			Type:     artwork.Type,
 			Files:    []downloadFileOut{},
 		}
-		lines = append(lines, fmt.Sprintf("作品 %d - %q / 作者: %s / 类型: %s", artwork.IllustID, artwork.Title, artwork.Author, artwork.Type))
+		lines = append(lines, fmt.Sprintf("Artwork %d - %q / Author: %s / Type: %s", artwork.IllustID, artwork.Title, artwork.Author, artwork.Type))
 		for _, file := range artwork.Files {
 			info, err := os.Stat(file.Path)
 			if err != nil {
@@ -192,7 +192,7 @@ func buildDownloadOut(delivery string, artworks []download.DownloadedArtwork) (d
 			}
 			item.Files = append(item.Files, fileOut)
 			out.Files = append(out.Files, fileOut)
-			lines = append(lines, fmt.Sprintf("- %s\n  URI: %s\n  MIME: %s\n  大小: %d bytes", fileOut.Path, fileOut.FileURI, fileOut.MIMEType, fileOut.SizeBytes))
+			lines = append(lines, fmt.Sprintf("- %s\n  URI: %s\n  MIME: %s\n  Size: %d bytes", fileOut.Path, fileOut.FileURI, fileOut.MIMEType, fileOut.SizeBytes))
 		}
 		out.Items = append(out.Items, item)
 	}
@@ -214,7 +214,7 @@ const (
 	downloadRandomMaxCount = 20
 )
 
-var errDownloadRandomCount = errors.New("count 必须是 1 到 20 之间的整数")
+var errDownloadRandomCount = errors.New("count must be an integer from 1 to 20")
 
 func parseDownloadRandomCount(value *int) (int, error) {
 	if value == nil {
@@ -233,23 +233,23 @@ func (a *App) downloadRandom(ctx context.Context, req *mcp.CallToolRequest, in d
 	}
 	count, err := parseDownloadRandomCount(in.Count)
 	if err != nil {
-		return emptyDownloadError(ctx, err, delivery, "错误："+err.Error()+"。")
+		return emptyDownloadError(ctx, err, delivery, "Error: "+err.Error())
 	}
 	pages, quality, err := parseDownloadSelection(in.Pages, in.Quality)
 	if err != nil {
-		return emptyDownloadError(ctx, err, delivery, "错误："+err.Error())
+		return emptyDownloadError(ctx, err, delivery, "Error: "+err.Error())
 	}
 	client, release, err := a.openSDKOperation(ctx)
 	if err != nil {
-		return emptyDownloadError(ctx, err, delivery, "获取推荐列表失败: "+err.Error())
+		return emptyDownloadError(ctx, err, delivery, "Could not retrieve recommendations: "+err.Error())
 	}
 	defer release()
 	result, err := client.IllustRecommended(ctx, sdk.IllustRecommendedRequest{})
 	if err != nil {
-		return emptyDownloadError(ctx, err, delivery, "获取推荐列表失败: "+err.Error())
+		return emptyDownloadError(ctx, err, delivery, "Could not retrieve recommendations: "+err.Error())
 	}
 	if len(result.Illusts) == 0 {
-		return emptyDownloadResult(delivery, "无法获取推荐内容，列表为空。")
+		return emptyDownloadResult(delivery, "Could not retrieve recommendations: the list is empty.")
 	}
 	if count > len(result.Illusts) {
 		count = len(result.Illusts)
@@ -261,11 +261,11 @@ func (a *App) downloadRandom(ctx context.Context, req *mcp.CallToolRequest, in d
 	}
 	artworks, err := a.downloadArtworks(ctx, ids, client, pages, quality)
 	if err != nil {
-		return emptyDownloadError(ctx, err, delivery, "下载失败: "+err.Error())
+		return emptyDownloadError(ctx, err, delivery, "Download failed: "+err.Error())
 	}
 	out, err := buildDownloadOut(delivery, artworks)
 	if err != nil {
-		return emptyDownloadError(ctx, err, delivery, "整理下载结果失败: "+err.Error())
+		return emptyDownloadError(ctx, err, delivery, "Could not build the download result: "+err.Error())
 	}
 	return downloadResult(out), out, nil
 }

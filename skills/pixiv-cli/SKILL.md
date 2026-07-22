@@ -108,7 +108,7 @@ pixiv config get download_path            # read one effective setting
 pixiv config set download_path ./downloads # config write; confirm first
 pixiv search "WORD" --limit 10 --json     # illustration search
 pixiv search "WORD" --rating sfw --type illust --ai-mode exclude
-pixiv search "WORD" --resolution high --aspect-ratio landscape --tool "CLIP STUDIO PAINT"
+pixiv search "WORD" --resolution high --aspect-ratio landscape --draw-tool "CLIP STUDIO PAINT"
 pixiv search-options "WORD" --json         # authenticated dynamic tool choices
 pixiv detail ILLUST_ID --json             # single artwork detail
 pixiv ranking --mode day
@@ -151,9 +151,9 @@ assuming its effective value.
    other commands whose help omits it. Where supported, a positive value sets
    the maximum result count and `0` requests all results. `--page` requires a
    positive `--limit`.
-4. **Search flags are command-scoped.** Verify `--target`, `--period`,
+4. **Search flags are command-scoped.** Verify `--search-by`, `--period`,
    `--sort`, `--rating`, `--type`, `--ai-mode`, `--aspect-ratio`,
-   `--resolution`, and `--tool` against `pixiv search --help`; do not infer
+   `--resolution`, and `--draw-tool` against `pixiv search --help`; do not infer
    undocumented aliases or attach search filters to other commands.
 5. **Anonymous restricted search fails explicitly.** Web fallback uses only
    reliable search filters. `r18`, `r18g`, `mature`, and `search-options`
@@ -177,7 +177,7 @@ assuming its effective value.
 12. **`--tag` has two narrow meanings.** `user bookmarks --tag TAG` filters
    bookmark listings; `bookmark add --tag TAG` adds a repeatable bookmark tag.
    `search` has no `--tag` flag — put the tag text in its required `WORD` and
-   choose `--target tag-exact` when exact matching is needed.
+   choose `--search-by tag-exact` when exact matching is needed.
 
 ## Routing
 

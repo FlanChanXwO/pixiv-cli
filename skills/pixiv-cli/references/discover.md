@@ -9,8 +9,8 @@ in SKILL.md already ran. Verify flags with `pixiv <cmd> --help`.
 pixiv search "初音ミク" --limit 10 --json
 ```
 
-- Default search target is partial tag match (`--target tag-partial`); switch
-  to `--target tag-exact` or `--target title-caption` when the user asks for
+- Default search field is partial tag match (`--search-by tag-partial`); switch
+  to `--search-by tag-exact` or `--search-by title-caption` when the user asks for
   exact tags or title/caption search. Use `--period day|week|month` to limit
   the time range, or `--sort date_desc|date_asc` to choose the order.
 - `search` does not have a `--tag` flag. Supply tag text as the required `WORD`;
@@ -20,7 +20,7 @@ pixiv search "初音ミク" --limit 10 --json
 - Stable filters include `--rating sfw|r18|r18g|mature|all`, `--type
   all|illust-and-ugoira|illust|manga|ugoira`, `--ai-mode all|exclude|only`,
   `--aspect-ratio all|landscape|portrait|square`, `--resolution
-  all|high|medium|low`, and exact `--tool` names. Only pass restricted ratings
+  all|high|medium|low`, and exact `--draw-tool` names. Only pass restricted ratings
   when the user explicitly asks.
 - Tool names are dynamic. Run authenticated `pixiv search-options "WORD"
   --json`, then pass the returned name exactly. Do not hard-code a list.

@@ -32,14 +32,14 @@ func (a *App) userDetail(ctx context.Context, _ *mcp.CallToolRequest, in userDet
 	if result == nil {
 		return a.userDetailError(ctx, errors.New("pixiv sdk returned an empty user detail result"))
 	}
-	return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("已获取用户 %d 的详情。", in.UserID)}}}, *result, nil
+	return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("Retrieved details for user %d.", in.UserID)}}}, *result, nil
 }
 
 func (a *App) userDetailError(ctx context.Context, err error) (*mcp.CallToolResult, sdk.UserDetailResult, error) {
 	recordToolError(ctx, err)
 	return &mcp.CallToolResult{
 		IsError: true,
-		Content: []mcp.Content{&mcp.TextContent{Text: "错误: " + err.Error()}},
+		Content: []mcp.Content{&mcp.TextContent{Text: "Error: " + err.Error()}},
 	}, sdk.UserDetailResult{}, nil
 }
 
@@ -146,7 +146,7 @@ func (a *App) recommended(ctx context.Context, _ *mcp.CallToolRequest, in recomm
 		out.UserPreviews = normalizeRecommendedUserPreviews(items)
 		out.Pagination.User = recommendedPagination(plan, in.Limit, len(items), more)
 	}
-	return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("已获取 %s 推荐。", in.Kind)}}}, out, nil
+	return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("Retrieved %s recommendations.", in.Kind)}}}, out, nil
 }
 
 // normalizeRecommendedUserPreviews 只在 MCP 输出边界把可选作品预览归一为空数组，
@@ -200,7 +200,7 @@ func normalizeIllusts(items []sdk.Illust) []sdk.Illust {
 
 func (a *App) recommendedError(ctx context.Context, err error) (*mcp.CallToolResult, recommendedOut, error) {
 	recordToolError(ctx, err)
-	return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: "错误: " + err.Error()}}}, newRecommendedOut(""), nil
+	return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: "Error: " + err.Error()}}}, newRecommendedOut(""), nil
 }
 
 type userArtworksIn struct {
@@ -240,9 +240,9 @@ func (a *App) userArtworks(ctx context.Context, _ *mcp.CallToolRequest, in userA
 	if err != nil {
 		return a.illustListError(ctx, userID, err)
 	}
-	text := fmt.Sprintf("找到用户 %d 的 %d 个作品:\n\n%s", userID, len(items), formatSDKIllusts(items))
+	text := fmt.Sprintf("Found %d artworks by user %d:\n\n%s", len(items), userID, formatSDKIllusts(items))
 	if len(items) == 0 {
-		text = fmt.Sprintf("找不到用户 %d 的作品。", userID)
+		text = fmt.Sprintf("No artworks found for user %d.", userID)
 	}
 	out := illustListOut{UserID: userID, Items: normalizeIllusts(items), Pagination: listPagination(plan, in.Limit, len(items), more), Text: text}
 	return illustListResult(out), out, nil
@@ -250,7 +250,7 @@ func (a *App) userArtworks(ctx context.Context, _ *mcp.CallToolRequest, in userA
 
 func (a *App) illustListError(ctx context.Context, userID int64, err error) (*mcp.CallToolResult, illustListOut, error) {
 	recordToolError(ctx, err)
-	out := illustListOut{UserID: userID, Items: []sdk.Illust{}, Text: "错误: " + err.Error()}
+	out := illustListOut{UserID: userID, Items: []sdk.Illust{}, Text: "Error: " + err.Error()}
 	result := illustListResult(out)
 	result.IsError = true
 	return result, out, nil
@@ -286,9 +286,9 @@ func (a *App) userBookmarks(ctx context.Context, _ *mcp.CallToolRequest, in book
 	if err != nil {
 		return a.illustListError(ctx, userID, err)
 	}
-	text := fmt.Sprintf("找到用户 %d 的 %d 个收藏:\n\n%s", userID, len(items), formatSDKIllusts(items))
+	text := fmt.Sprintf("Found %d bookmarks for user %d:\n\n%s", len(items), userID, formatSDKIllusts(items))
 	if len(items) == 0 {
-		text = fmt.Sprintf("找不到用户 %d 的收藏。", userID)
+		text = fmt.Sprintf("No bookmarks found for user %d.", userID)
 	}
 	out := illustListOut{UserID: userID, Items: normalizeIllusts(items), Pagination: listPagination(plan, in.Limit, len(items), more), Text: text}
 	return illustListResult(out), out, nil
@@ -332,9 +332,9 @@ func (a *App) userFollowing(ctx context.Context, _ *mcp.CallToolRequest, in foll
 	if err != nil {
 		return a.userListError(ctx, userID, err)
 	}
-	text := fmt.Sprintf("用户 %d 关注了 %d 位用户:\n\n%s", userID, len(items), formatSDKUsers(items))
+	text := fmt.Sprintf("User %d follows %d users:\n\n%s", userID, len(items), formatSDKUsers(items))
 	if len(items) == 0 {
-		text = fmt.Sprintf("用户 %d 没有关注任何人。", userID)
+		text = fmt.Sprintf("User %d does not follow anyone.", userID)
 	}
 	out := userListOut{UserID: userID, Items: items, Pagination: listPagination(plan, in.Limit, len(items), more), Text: text}
 	return userListResult(out), out, nil
@@ -342,7 +342,7 @@ func (a *App) userFollowing(ctx context.Context, _ *mcp.CallToolRequest, in foll
 
 func (a *App) userListError(ctx context.Context, userID int64, err error) (*mcp.CallToolResult, userListOut, error) {
 	recordToolError(ctx, err)
-	out := userListOut{UserID: userID, Items: []sdk.UserPreview{}, Text: "错误: " + err.Error()}
+	out := userListOut{UserID: userID, Items: []sdk.UserPreview{}, Text: "Error: " + err.Error()}
 	result := userListResult(out)
 	result.IsError = true
 	return result, out, nil
@@ -387,7 +387,7 @@ func (a *App) runMutation(ctx context.Context, out mutationOut, run func(applica
 	}
 	if err != nil {
 		recordToolError(ctx, err)
-		out.Text = "错误: " + err.Error()
+		out.Text = "Error: " + err.Error()
 		return mutationResult(out), out, nil
 	}
 	out.Success = true
@@ -395,28 +395,28 @@ func (a *App) runMutation(ctx context.Context, out mutationOut, run func(applica
 }
 
 func (a *App) addBookmark(ctx context.Context, _ *mcp.CallToolRequest, in bookmarkMutationIn) (*mcp.CallToolResult, mutationOut, error) {
-	out := mutationOut{Action: "add_bookmark", IllustID: in.IllustID, Text: fmt.Sprintf("已收藏作品 %d。", in.IllustID)}
+	out := mutationOut{Action: "add_bookmark", IllustID: in.IllustID, Text: fmt.Sprintf("Bookmarked artwork %d.", in.IllustID)}
 	return a.runMutation(ctx, out, func(client application.SDKClient) error {
 		return client.AddBookmark(ctx, sdk.AddBookmarkRequest{IllustID: in.IllustID, Restrict: sdk.Restrict(in.Restrict), Tags: in.Tags})
 	})
 }
 
 func (a *App) removeBookmark(ctx context.Context, _ *mcp.CallToolRequest, in illustIDSDKIn) (*mcp.CallToolResult, mutationOut, error) {
-	out := mutationOut{Action: "remove_bookmark", IllustID: in.IllustID, Text: fmt.Sprintf("已取消收藏作品 %d。", in.IllustID)}
+	out := mutationOut{Action: "remove_bookmark", IllustID: in.IllustID, Text: fmt.Sprintf("Removed bookmark from artwork %d.", in.IllustID)}
 	return a.runMutation(ctx, out, func(client application.SDKClient) error {
 		return client.RemoveBookmark(ctx, sdk.RemoveBookmarkRequest{IllustID: in.IllustID})
 	})
 }
 
 func (a *App) followUser(ctx context.Context, _ *mcp.CallToolRequest, in userMutationIn) (*mcp.CallToolResult, mutationOut, error) {
-	out := mutationOut{Action: "follow_user", UserID: in.UserID, Text: fmt.Sprintf("已关注用户 %d。", in.UserID)}
+	out := mutationOut{Action: "follow_user", UserID: in.UserID, Text: fmt.Sprintf("Followed user %d.", in.UserID)}
 	return a.runMutation(ctx, out, func(client application.SDKClient) error {
 		return client.FollowUser(ctx, sdk.FollowUserRequest{UserID: in.UserID, Restrict: sdk.Restrict(in.Restrict)})
 	})
 }
 
 func (a *App) unfollowUser(ctx context.Context, _ *mcp.CallToolRequest, in userIDSDKIn) (*mcp.CallToolResult, mutationOut, error) {
-	out := mutationOut{Action: "unfollow_user", UserID: in.UserID, Text: fmt.Sprintf("已取消关注用户 %d。", in.UserID)}
+	out := mutationOut{Action: "unfollow_user", UserID: in.UserID, Text: fmt.Sprintf("Unfollowed user %d.", in.UserID)}
 	return a.runMutation(ctx, out, func(client application.SDKClient) error {
 		return client.UnfollowUser(ctx, sdk.UnfollowUserRequest{UserID: in.UserID})
 	})

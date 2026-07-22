@@ -13,7 +13,7 @@ func formatIllusts(illusts []sdk.Illust, offset int, ranked bool) string {
 	for i, illust := range illusts {
 		prefix := ""
 		if ranked {
-			prefix = fmt.Sprintf("第 %d 名: ", i+1+offset)
+			prefix = fmt.Sprintf("Rank %d: ", i+1+offset)
 		}
 		lines = append(lines, prefix+formatIllust(illust))
 	}
@@ -30,7 +30,7 @@ func formatIllust(illust sdk.Illust) string {
 	if url == "" && illust.ID > 0 {
 		url = fmt.Sprintf("https://www.pixiv.net/artworks/%d", illust.ID)
 	}
-	return fmt.Sprintf("%s\nID: %d - %q\n  作者: %s (ID: %d)\n  类型: %s\n  标签: %s\n  收藏数: %d, 浏览数: %d",
+	return fmt.Sprintf("%s\nID: %d - %q\n  Author: %s (ID: %d)\n  Type: %s\n  Tags: %s\n  Bookmarks: %d, Views: %d",
 		url, illust.ID, illust.Title, illust.User.Name, illust.User.ID, illust.Type, strings.Join(tags, ", "), illust.TotalBookmarks, illust.TotalView)
 }
 
@@ -38,15 +38,15 @@ func formatUsers(users []sdk.UserPreview) string {
 	lines := make([]string, 0, len(users))
 	for _, preview := range users {
 		user := preview.User
-		followed := "未关注"
+		followed := "not following"
 		if user.IsFollowed {
-			followed = "已关注"
+			followed = "following"
 		}
 		comment := user.Comment
 		if comment == "" {
-			comment = "无"
+			comment = "none"
 		}
-		lines = append(lines, fmt.Sprintf("用户ID: %d - %s (@%s)\n  关注状态: %s\n  简介: %s", user.ID, user.Name, user.Account, followed, comment))
+		lines = append(lines, fmt.Sprintf("User ID: %d - %s (@%s)\n  Follow status: %s\n  Bio: %s", user.ID, user.Name, user.Account, followed, comment))
 	}
 	return strings.Join(lines, "\n\n")
 }
@@ -65,15 +65,15 @@ func formatSDKUsers(users []sdk.UserPreview) string {
 	lines := make([]string, 0, len(users))
 	for _, preview := range users {
 		user := preview.User
-		followed := "未关注"
+		followed := "not following"
 		if user.IsFollowed {
-			followed = "已关注"
+			followed = "following"
 		}
 		comment := user.Comment
 		if comment == "" {
-			comment = "无"
+			comment = "none"
 		}
-		lines = append(lines, fmt.Sprintf("用户ID: %d - %s (@%s)\n  关注状态: %s\n  简介: %s", user.ID, user.Name, user.Account, followed, comment))
+		lines = append(lines, fmt.Sprintf("User ID: %d - %s (@%s)\n  Follow status: %s\n  Bio: %s", user.ID, user.Name, user.Account, followed, comment))
 	}
 	return strings.Join(lines, "\n\n")
 }

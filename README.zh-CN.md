@@ -127,6 +127,7 @@ pixiv mcp
 ```
 
 [MCP tool 契约](docs/zh-CN/mcp-tools.md)记录了 tools、参数、structured output 和认证行为。
+MCP 固定状态、错误和展示文本使用英文；Pixiv 元数据及用户提供的文本保持原文。
 
 ### Go SDK
 

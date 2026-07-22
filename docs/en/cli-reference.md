@@ -354,7 +354,7 @@ used.
 
 | Command | Flag | Default | Description |
 | --- | --- | --- | --- |
-| `search` | `--target` | `tag-partial` | Search target: `tag-partial`, `tag-exact`, or `title-caption`. |
+| `search` | `--search-by` | `tag-partial` | Search field: `tag-partial`, `tag-exact`, or `title-caption`. |
 | `search` | `--sort` | `date_desc` | Sort order: `date_desc` or `date_asc`. |
 | `search` | `--period` | empty | Time range: `day`, `week`, or `month`; omit for no range. |
 | `search` | `--rating` | `all` | Rating filter: `sfw`, `r18`, `r18g`, `mature`, or `all`. |
@@ -362,7 +362,7 @@ used.
 | `search` | `--ai-mode` | `all` | AI filter: `all`, `exclude`, or `only`; Pixiv `AIType==2` is AI-generated. |
 | `search` | `--aspect-ratio` | `all` | Aspect ratio: `all`, `landscape`, `portrait`, or `square`. |
 | `search` | `--resolution` | `all` | Resolution: `all`, `high`, `medium`, or `low`; both dimensions are respectively `>=3000`, `1000..2999`, or `<=999`. |
-| `search` | `--tool` | empty | Exact upstream drawing-tool name; obtain current values with authenticated `search-options`. |
+| `search` | `--draw-tool` | empty | Exact upstream drawing-tool name; obtain current values with authenticated `search-options`. |
 | list commands | `--limit` | one upstream batch | Maximum item count; omit for one upstream batch, or use `0` to keep reading until there is no next batch. |
 | list commands | `--page` | empty | 1-based logical page; must be used with a positive `--limit`. |
 | `ranking` | `--mode` | `day` | One of `day`, `day_male`, `day_female`, `week`, `week_original`, `week_rookie`, `month`, `day_manga`, `week_manga`, `month_manga`, `week_rookie_manga`, `day_r18`, `day_male_r18`, `day_female_r18`, `week_r18`, `week_r18g`. The final nine require authentication. |

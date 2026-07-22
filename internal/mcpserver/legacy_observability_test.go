@@ -169,7 +169,7 @@ func TestLegacyDownloadValidationPreservesStructuredResultAndLogsError(t *testin
 	defer session.Close()
 
 	result := callTool(t, session, "download", map[string]any{})
-	wantText := "错误：必须提供 illust_id (单个ID) 或 illust_ids (ID列表) 参数之一。"
+	wantText := "Error: provide either illust_id (single ID) or illust_ids (list of IDs)."
 	assertEmptyDownloadResult(t, result, deliveryLocalPath, wantText)
 	event := findOperationEvent(t, logs.String(), "download")
 	if event["level"] != "ERROR" || event["result"] != "error" || event["backend"] != "local" || event["error_code"] != "" || event["status"] != float64(0) {
@@ -205,7 +205,7 @@ func TestLegacyRefreshAuthenticationFailurePreservesTextAndLogsTypedError(t *tes
 	}
 	var out textOut
 	decodeStructured(t, result, &out)
-	want := "错误：未设置 refresh token。请先使用 set_refresh_token 工具设置 token。"
+	want := "Error: no refresh token is configured. Use set_refresh_token to set one first."
 	if out.Text != want {
 		t.Fatalf("refresh output=%q, want %q", out.Text, want)
 	}
