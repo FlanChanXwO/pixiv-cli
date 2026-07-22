@@ -164,10 +164,6 @@ v0.4.2 では `auth add`/`auth token` を `auth import`/`auth export` に置き�
 
 bug report、文書修正、test、範囲を絞った機能追加を歓迎します。pull request の前に [CONTRIBUTING.md](CONTRIBUTING.md) を読み、大規模または互換性に影響する変更は先に相談してください。
 
-## Views badge について
-
-無料の `hits.sh` badge は一意の訪問者ではなく badge image request を数えます。再訪問、bot、browser cache、中継 cache により数値は変動し、badge の読み込み時には `hits.sh` へ通常の third-party image request が送信されます。3 言語のページは同じ badge URL を使うため、概算の repository view 数を共有します。
-
 ## ライセンス
 
 [MIT](LICENSE)

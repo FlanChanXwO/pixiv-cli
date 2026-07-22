@@ -168,10 +168,6 @@ v0.4.2 以 `auth import`/`auth export` 取代 `auth add`/`auth token`，已删�
 
 欢迎提交 bug、文档修复、测试和聚焦功能。发起 pull request 前请阅读 [CONTRIBUTING.zh-CN.md](CONTRIBUTING.zh-CN.md)；较大或影响兼容性的变更请先讨论。
 
-## 关于 views badge
-
-免费的 `hits.sh` badge 统计 badge 图片请求，不代表 unique people。重复访问、机器人、浏览器缓存和中间缓存都会影响数字；加载 badge 也会向第三方 `hits.sh` 发出普通图片请求。所有语言首页使用同一 badge URL，因此共享一个近似的仓库浏览量。
-
 ## 许可证
 
 [MIT](LICENSE)

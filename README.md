@@ -168,10 +168,6 @@ v0.4.2 replaces `auth add`/`auth token` with `auth import`/`auth export`; the re
 
 Bug reports, documentation fixes, tests, and focused features are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request; discuss large or compatibility-sensitive changes first.
 
-## About the views badge
-
-The free `hits.sh` badge counts badge image requests, not unique people. Repeated visits, bots, browser caches, and intermediary caches can change the number, and loading the badge sends a normal third-party image request to `hits.sh`. All language pages use the same badge URL so they share one approximate repository-view count.
-
 ## License
 
 [MIT](LICENSE)
