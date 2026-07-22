@@ -123,15 +123,18 @@ pixiv auth login
 | --- | --- |
 | 初期化 | PKCE verifier/challenge と OAuth state を生成し、local loopback HTTP server を起動します。 |
 | Browser | macOS では一時的な `pixiv://` callback helper を登録して default browser を開き、既存 Pixiv session を再利用できます。`--no-open` では login URL と local page だけを表示します。 |
-| Callback | この試行の loopback callback、一時 helper からの hand-off、terminal paste、local page form だけを受理します。戻らない場合は callback URL、`pixiv://...` URL、Pixiv relay URL、raw authorization code を貼り付けられます。 |
+| Callback | この試行の loopback callback、一時 helper からの hand-off、terminal paste、local page form だけを受理します。macOS helper の hand-off 後は、OAuth exchange 完了時に default browser が local の最終 success/failure page を開きます。戻らない場合は callback URL、`pixiv://...` URL、Pixiv relay URL、raw authorization code を貼り付けられます。 |
 | 検証 | local callback はこの試行の state と一致する必要があります。Pixiv が state を返さない場合だけ、公式 callback URL と `pixiv://account/login` を明示 fallback として使えます。 |
 | 保存 | refresh/access token は表示せず、refresh token を UID ごとに `auth.json` へ保存します。Unix-like は parent `0700`・file `0600`、Windows は既存 ACL を維持します。 |
 
-macOS の `PixivCLIURLHandler.app` は現在の login 試行だけを転送し、browser cookie、storage、history、session
-file、tab、network traffic を読みません。利用できなくても通常の browser と loopback/manual paste を使い、
-managed Chromium、DevTools/CDP、browser state scan は行いません。relay URL はこの OAuth 試行に属すると
-確認した後、一度だけ開きます。browser が空白ページでも terminal の最終結果を正とし、callback がなければ
-成功を偽装しません。
+macOS の `PixivCLIURLHandler.app` は現在の login 試行だけを扱います。Pixiv が
+`pixiv://account/login?...` を呼ぶと、helper は local loopback の browser bridge を開きます。callback は URL
+fragment だけに置かれ、address/history からすぐに消去された後、現在の listener へ POST されます。OAuth
+exchange の完了後、browser は中央配置の最終 success/failure page を受け取ります。helper は browser cookie、
+storage、history、session file、tab、network traffic を読みません。利用できなくても通常の browser と
+loopback/manual paste を使い、managed Chromium、DevTools/CDP、browser state scan は行いません。relay URL は
+この OAuth 試行に属すると確認した後、一度だけ開きます。元の Pixiv relay tab は空白のままでも、callback が
+生成されれば local の最終結果 page が開きます。callback がなければ成功を偽装しません。
 
 GUI のない SSH server では listener を loopback に保ち、local machine から転送できる未使用の固定 port を
 選びます。まず server で実行します：

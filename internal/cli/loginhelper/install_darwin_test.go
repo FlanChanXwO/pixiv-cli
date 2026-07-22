@@ -65,8 +65,39 @@ func TestEnsurePixivURLHandlerAppCompilesPrivateRandomSourceAndCleansIt(t *testi
 
 	require.NoError(t, ensurePixivURLHandlerAppWithCompiler(context.Background(), appPath, compile))
 	require.NotEmpty(t, sourcePath)
-	_, err := os.Stat(filepath.Dir(sourcePath))
+	version, err := os.ReadFile(filepath.Join(appPath, "Contents", "Resources", "source-version"))
+	require.NoError(t, err)
+	require.Equal(t, pixivURLHandlerSourceVersion+"\n", string(version))
+	_, err = os.Stat(filepath.Dir(sourcePath))
 	require.ErrorIs(t, err, os.ErrNotExist)
+}
+
+func TestEnsurePixivURLHandlerAppRebuildsHelperWithoutCurrentSourceVersion(t *testing.T) {
+	appPath := filepath.Join(t.TempDir(), "PixivCLIURLHandler.app")
+	executablePath := filepath.Join(appPath, "Contents", "MacOS", "PixivCLIURLHandler")
+	infoPath := filepath.Join(appPath, "Contents", "Info.plist")
+	require.NoError(t, os.MkdirAll(filepath.Dir(executablePath), constants.PrivateDirMode))
+	require.NoError(t, os.WriteFile(executablePath, []byte("old helper"), constants.PrivateFileMode))
+	require.NoError(t, os.WriteFile(infoPath, []byte("old metadata"), constants.PrivateFileMode))
+
+	compiled := false
+	compile := func(_ context.Context, _ string, executable string) ([]byte, error) {
+		compiled = true
+		require.NoError(t, os.WriteFile(executable, []byte("new helper"), constants.PrivateFileMode))
+		return nil, nil
+	}
+
+	require.NoError(t, ensurePixivURLHandlerAppWithCompiler(context.Background(), appPath, compile))
+	require.True(t, compiled)
+	version, err := os.ReadFile(filepath.Join(appPath, "Contents", "Resources", "source-version"))
+	require.NoError(t, err)
+	require.Equal(t, pixivURLHandlerSourceVersion+"\n", string(version))
+}
+
+func TestPixivURLHandlerOpensLoopbackBrowserRelay(t *testing.T) {
+	require.Contains(t, pixivURLHandlerSwiftSource, "components.fragment = callbackURL")
+	require.Contains(t, pixivURLHandlerSwiftSource, "NSWorkspace.shared.open(relayURL)")
+	require.NotContains(t, pixivURLHandlerSwiftSource, "URLSession.shared.dataTask")
 }
 
 func TestEnsurePixivURLHandlerAppPreservesCompilerOutputAndCleansSourceOnFailure(t *testing.T) {

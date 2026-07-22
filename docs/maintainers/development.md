@@ -263,7 +263,7 @@ pixiv auth login
 | state 校验 | 本地 loopback 回调必须匹配本次 state；Pixiv 官方 callback URL 与 `pixiv://account/login` 可在 Pixiv 未返回 state 时作为显式 fallback。 |
 | token 保存 | refresh/access token 不打印；refresh token 按 Pixiv UID 写入 `auth.json`。Unix-like 主动使用 `0700` 父目录与 `0600` 文件；Windows 首次创建继承父目录 ACL，替换既有目标保留其 ACL，不主动收紧或放宽 DACL。 |
 
-默认浏览器打开时，macOS 会注册一个仅服务于当前登录尝试的本地 `PixivCLIURLHandler.app`，只把 Pixiv 返回的 `pixiv://account/login?...` URL 转交给本轮 CLI loopback。它不读取浏览器 Cookie、存储、历史、会话文件、标签页或网络流量；helper 不可用时不会启动受管 Chromium、DevTools/CDP 或浏览器状态扫描，只保留正常浏览器、loopback 和手动回填。遇到 Pixiv `post-redirect` 授权接力页时，用户可手动粘贴 relay URL；CLI 只在校验其属于本轮 OAuth 后打开一次。浏览器可能停留在白色 relay 页，是否成功以终端最终输出为准；若未生成 callback，CLI 不会隐藏失败或假装登录成功。
+默认浏览器打开时，macOS 会注册一个仅服务于当前登录尝试的本地 `PixivCLIURLHandler.app`。Pixiv 返回 `pixiv://account/login?...` 后，helper 会打开 loopback bridge：callback 仅放在 URL fragment，随后先从地址栏和浏览器历史中移除，再 POST 给本轮 CLI listener。OAuth exchange 真正完成后，该浏览器页才会收到最终成功或失败 HTML。它不读取浏览器 Cookie、存储、历史、会话文件、标签页或网络流量；helper 不可用时不会启动受管 Chromium、DevTools/CDP 或浏览器状态扫描，只保留正常浏览器、loopback 和手动回填。遇到 Pixiv `post-redirect` 授权接力页时，用户可手动粘贴 relay URL；CLI 只在校验其属于本轮 OAuth 后打开一次。原 Pixiv relay 标签页仍可能停留白页，但 callback 产生后会打开本地最终结果页；若未生成 callback，CLI 不会隐藏失败或假装登录成功。
 
 浏览器使用的系统代理不会自动传给 Go CLI。若 Pixiv token exchange 需要代理，请配置 `pixiv config set https_proxy http://127.0.0.1:7890`，在单次命令前设置 `https_proxy=...`，或对网络命令使用运行期覆盖 `--proxy http://127.0.0.1:7890`。`--no-proxy` 会清空本次命令的代理，即使环境变量或 `config.toml` 设置了 `https_proxy`；`--proxy` 和 `--no-proxy` 不能同用，也不会写入 `config.toml`。
 

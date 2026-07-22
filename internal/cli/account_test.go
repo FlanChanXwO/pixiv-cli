@@ -1256,7 +1256,7 @@ func TestAccountLoginRelayInstallerFailureKeepsBrowserAndManualFallback(t *testi
 
 	require.Equal(t, 0, run.waitWithin(t, 5*time.Second), stderr.String())
 	require.Len(t, installedEndpoint, 1)
-	assert.Equal(t, "http://"+addr+"/manual", <-installedEndpoint)
+	assert.Equal(t, "http://"+addr+"/callback", <-installedEndpoint)
 	require.Len(t, openedURL, 1)
 	assert.Equal(t, loginURL, <-openedURL)
 	assert.Contains(t, stderr.String(), "warning: pixiv:// callback handler is unavailable: test helper install unavailable")
@@ -1271,6 +1271,99 @@ func TestAccountLoginRelayInstallerFailureKeepsBrowserAndManualFallback(t *testi
 	assert.Equal(t, "manual-fallback-refresh-secret", store.Accounts[0].RefreshToken)
 	assert.NotContains(t, stdout.String(), "manual-fallback-refresh-secret")
 	assert.NotContains(t, stderr.String(), "manual-fallback-refresh-secret")
+}
+
+func TestAccountLoginHelperRelayShowsFinalSuccessPageInBrowser(t *testing.T) {
+	useTempPaths(t)
+	addr := freeLoopbackAddr(t)
+	oauth := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.NoError(t, r.ParseForm())
+		assert.Equal(t, "helper-relay-code", r.Form.Get("code"))
+		require.NoError(t, json.NewEncoder(w).Encode(map[string]any{
+			"refresh_token": "helper-relay-refresh-secret",
+			"user":          map[string]any{"id": "97542", "name": "helper-relay-user"},
+		}))
+	}))
+	defer oauth.Close()
+	restoreOAuthBase := setTestOAuthBase(t, oauth.URL)
+	defer restoreOAuthBase()
+
+	helperEndpoint := make(chan string, 1)
+	restoreRelay := setTestURLSchemeRelayInstaller(t, func(_ context.Context, endpoint string) (func(), error) {
+		helperEndpoint <- endpoint
+		return func() {}, nil
+	})
+	defer restoreRelay()
+	restoreOpen := setTestOpenBrowser(t, func(string) error { return nil })
+	defer restoreOpen()
+
+	var stdout, stderr bytes.Buffer
+	run := startAsyncCLIRun([]string{"pixiv", "auth", "login", "--addr", addr, "--timeout", "5s"}, strings.NewReader(""), &stdout, &stderr)
+	defer run.wait()
+
+	waitForLoginServer(t, addr)
+	endpoint := <-helperEndpoint
+	require.Equal(t, "http://"+addr+"/callback", endpoint)
+
+	bridgeResp, err := http.Get(endpoint)
+	require.NoError(t, err)
+	bridge, _ := io.ReadAll(bridgeResp.Body)
+	_ = bridgeResp.Body.Close()
+	require.Equal(t, http.StatusOK, bridgeResp.StatusCode, string(bridge))
+	assert.Contains(t, string(bridge), "Completing login")
+	assert.Contains(t, string(bridge), "window.location.hash")
+	assert.Contains(t, string(bridge), "form.action = \"/manual\"")
+
+	finalResp, err := http.PostForm("http://"+addr+"/manual", url.Values{"code": {"pixiv://account/login?code=helper-relay-code"}})
+	require.NoError(t, err)
+	finalPage, _ := io.ReadAll(finalResp.Body)
+	_ = finalResp.Body.Close()
+	require.Equal(t, http.StatusOK, finalResp.StatusCode, string(finalPage))
+	assert.Contains(t, string(finalPage), "Login successful")
+	require.Equal(t, 0, run.waitWithin(t, 5*time.Second), stderr.String())
+	assert.Equal(t, "\nLogin successful (UID: 97542)\n", stdout.String())
+	assert.NotContains(t, stdout.String(), "helper-relay-refresh-secret")
+	assert.NotContains(t, stderr.String(), "helper-relay-refresh-secret")
+}
+
+func TestAccountLoginHelperRelayShowsFinalFailurePageInBrowser(t *testing.T) {
+	useTempPaths(t)
+	addr := freeLoopbackAddr(t)
+	oauth := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.NoError(t, r.ParseForm())
+		assert.Equal(t, "helper-relay-failure-code", r.Form.Get("code"))
+		http.Error(w, "upstream failure canary", http.StatusBadGateway)
+	}))
+	defer oauth.Close()
+	restoreOAuthBase := setTestOAuthBase(t, oauth.URL)
+	defer restoreOAuthBase()
+
+	helperEndpoint := make(chan string, 1)
+	restoreRelay := setTestURLSchemeRelayInstaller(t, func(_ context.Context, endpoint string) (func(), error) {
+		helperEndpoint <- endpoint
+		return func() {}, nil
+	})
+	defer restoreRelay()
+	restoreOpen := setTestOpenBrowser(t, func(string) error { return nil })
+	defer restoreOpen()
+
+	var stdout, stderr bytes.Buffer
+	run := startAsyncCLIRun([]string{"pixiv", "auth", "login", "--addr", addr, "--timeout", "5s"}, strings.NewReader(""), &stdout, &stderr)
+	defer run.wait()
+
+	waitForLoginServer(t, addr)
+	require.Equal(t, "http://"+addr+"/callback", <-helperEndpoint)
+	finalResp, err := http.PostForm("http://"+addr+"/manual", url.Values{"code": {"pixiv://account/login?code=helper-relay-failure-code"}})
+	require.NoError(t, err)
+	finalPage, _ := io.ReadAll(finalResp.Body)
+	_ = finalResp.Body.Close()
+	require.Equal(t, http.StatusBadRequest, finalResp.StatusCode, string(finalPage))
+	assert.Contains(t, string(finalPage), "Login failed")
+	assert.NotContains(t, string(finalPage), "upstream failure canary")
+	assert.NotContains(t, string(finalPage), "helper-relay-failure-code")
+	require.NotZero(t, run.waitWithin(t, 5*time.Second), stderr.String())
+	assert.Empty(t, stdout.String())
+	assert.NotContains(t, stderr.String(), "helper-relay-failure-code")
 }
 
 func TestAccountLoginAcceptsPixivCallbackURLWithoutState(t *testing.T) {

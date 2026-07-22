@@ -13,7 +13,7 @@ FANBOX uses Pixiv account login as a first-party web product, but that does not 
 ## Decision
 
 - Keep `pixiv auth login` based on PKCE and the local loopback/manual fallback page.
-- On macOS, default browser opening may register a repo-owned local `pixiv://` URL handler app for the current login attempt and opens the normal system browser. It forwards only the final callback URL to the current CLI loopback server.
+- On macOS, default browser opening may register a repo-owned local `pixiv://` URL handler app for the current login attempt and opens the normal system browser. The helper opens a current-loopback browser bridge with the final callback in a URL fragment; the bridge removes that fragment before submitting the callback to the CLI and waiting for the final page.
 - If the URL handler path is unavailable, keep normal browser opening plus loopback/manual fallback; do not start a managed Chromium/Edge profile or DevTools/CDP connection.
 - Do not read browser cookies, tokens, storage, history, session files, active tabs or network events. Do not automate browser UI, install an extension, or retrieve browser credentials by any other means.
 - Treat `accounts.pixiv.net/post-redirect` as a Pixiv authorization relay page, not as a callback.
@@ -27,6 +27,6 @@ FANBOX uses Pixiv account login as a first-party web product, but that does not 
 - Callback receipt has an explicit trust boundary: the current loopback listener, the current helper handoff, or a value the user explicitly pastes.
 - Users still need to confirm their Pixiv account in the browser.
 - The local URL handler is registered as the `pixiv://` handler while a login attempt is active; users may see a browser prompt the first time Edge/Chrome opens it.
-- A browser can remain visually parked on the white Pixiv relay page after the handoff; CLI success/failure is determined by whether the terminal receives and exchanges the callback code.
+- The original Pixiv relay tab can remain visually parked on a white page after the handoff, but the helper opens a local final success/failure page once the CLI exchanges the callback code. The code is never sent in the bridge's loopback GET request or retained in its browser history.
 - If Pixiv or reCAPTCHA does not generate a callback, the CLI cannot synthesize success and must keep manual fallback available.
 - No browser observation mechanism is retained; adding one requires a new ADR and security review.

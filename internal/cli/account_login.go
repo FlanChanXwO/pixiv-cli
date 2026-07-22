@@ -188,13 +188,13 @@ func (a app) waitForLoginCode(ctx context.Context, addr string, acceptsCallback 
 		return browserOpener(rawURL)
 	}
 	if !noOpen {
-		cleanup, err := schemeRelayInstaller(ctx, "http://"+actualAddr+"/manual")
+		cleanup, err := schemeRelayInstaller(ctx, "http://"+actualAddr+"/callback")
 		if err != nil {
 			writeErr("warning: pixiv:// callback handler is unavailable: %v\n", err)
 		} else if cleanup != nil {
 			defer cleanup()
 			writeErr("Registered pixiv:// callback handler for this login attempt.\n")
-			writeErr("After confirming Pixiv account, the browser may stay on a white Pixiv relay page; keep this terminal open for the result.\n")
+			writeErr("After confirming the Pixiv account, keep this terminal open while the browser shows the final result.\n")
 		}
 	}
 
@@ -207,6 +207,16 @@ func (a app) waitForLoginCode(ctx context.Context, addr string, acceptsCallback 
 		writeLoginForm(w, loginURL)
 	})
 	mux.HandleFunc("/callback", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		if r.URL.RawQuery == "" {
+			// macOS helper 将 callback 放入 fragment，避免授权码进入 loopback GET 请求和浏览器历史。
+			// 浏览器脚本会先清空 fragment，再通过本地 POST 提交给 /manual 并等待最终页。
+			writeLoginCallbackRelayPage(w)
+			return
+		}
 		result := loginCodeFromInput(callbackURLFromRequest(r), acceptsCallback)
 		reportInvalidSubmission(result.err)
 		if result.err != nil {
@@ -332,6 +342,43 @@ func writeLoginForm(w http.ResponseWriter, loginURL string) {
 <button type="submit">Submit</button>
 </form>
 </body></html>`, html.EscapeString(loginURL))
+}
+
+// writeLoginCallbackRelayPage 将 helper 传来的 fragment 安全地转为本地 POST。
+// fragment 不会随 GET 发送给 loopback，脚本会在提交前将其从浏览器地址和历史记录中清除。
+func writeLoginCallbackRelayPage(w http.ResponseWriter) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	_, _ = io.WriteString(w, `<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Completing login</title>
+<style>
+html,body{height:100%;margin:0}
+body{display:flex;align-items:center;justify-content:center;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#f7f7f8;color:#222}
+.card{text-align:center;padding:2rem 2.5rem;max-width:28rem}
+h1{margin:0 0 .75rem;font-size:1.75rem;font-weight:600}
+p{margin:0;line-height:1.6;color:#555}
+</style></head>
+<body><div class="card"><h1>Completing login...</h1><p>Please keep this page open.</p></div>
+<script>
+(() => {
+  const callbackURL = window.location.hash.slice(1);
+  window.history.replaceState(null, "", window.location.pathname);
+  if (!callbackURL) {
+    document.title = "Login failed";
+    document.querySelector(".card").innerHTML = "<h1>Login failed</h1><p>Login could not be completed. Return to the terminal to view details or try again.</p>";
+    return;
+  }
+  const form = document.createElement("form");
+  form.method = "post";
+  form.action = "/manual";
+  const input = document.createElement("input");
+  input.type = "hidden";
+  input.name = "code";
+  input.value = callbackURL;
+  form.appendChild(input);
+  document.body.appendChild(form);
+  form.submit();
+})();
+</script></body></html>`)
 }
 
 // writeLoginFinalPage 在 OAuth 真正完成后返回最终页。

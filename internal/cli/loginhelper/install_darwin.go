@@ -15,9 +15,10 @@ import (
 )
 
 const pixivURLHandlerBundleID = "com.flanchan.pixiv-cli.url-handler"
+const pixivURLHandlerSourceVersion = "2"
 
 // Install 为本次登录安装 pixiv:// 回调 helper，并返回清理函数。
-func Install(ctx context.Context, manualURL string) (func(), error) {
+func Install(ctx context.Context, callbackRelayURL string) (func(), error) {
 	if _, err := exec.LookPath("swiftc"); err != nil {
 		return nil, err
 	}
@@ -35,7 +36,7 @@ func Install(ctx context.Context, manualURL string) (func(), error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := files.WritePrivateFile(endpointPath, []byte(strings.TrimSpace(manualURL)+"\n"), constants.PrivateFileMode); err != nil {
+	if err := files.WritePrivateFile(endpointPath, []byte(strings.TrimSpace(callbackRelayURL)+"\n"), constants.PrivateFileMode); err != nil {
 		return nil, err
 	}
 	previous, _ := defaultURLSchemeHandler(ctx, "pixiv")
@@ -79,7 +80,8 @@ type pixivURLHandlerCompiler func(context.Context, string, string) ([]byte, erro
 func ensurePixivURLHandlerAppWithCompiler(ctx context.Context, appPath string, compile pixivURLHandlerCompiler) error {
 	executablePath := filepath.Join(appPath, "Contents", "MacOS", "PixivCLIURLHandler")
 	infoPath := filepath.Join(appPath, "Contents", "Info.plist")
-	if fileExists(executablePath) && fileExists(infoPath) {
+	versionPath := filepath.Join(appPath, "Contents", "Resources", "source-version")
+	if fileExists(executablePath) && fileExists(infoPath) && handlerSourceVersionMatches(versionPath) {
 		return nil
 	}
 	if err := os.MkdirAll(filepath.Dir(executablePath), constants.PrivateDirMode); err != nil {
@@ -116,7 +118,15 @@ func ensurePixivURLHandlerAppWithCompiler(ctx context.Context, appPath string, c
 	if err := os.WriteFile(infoPath, []byte(pixivURLHandlerInfoPlist), constants.PrivateFileMode); err != nil {
 		return err
 	}
+	if err := files.WritePrivateFile(versionPath, []byte(pixivURLHandlerSourceVersion+"\n"), constants.PrivateFileMode); err != nil {
+		return err
+	}
 	return nil
+}
+
+func handlerSourceVersionMatches(versionPath string) bool {
+	version, err := os.ReadFile(versionPath)
+	return err == nil && strings.TrimSpace(string(version)) == pixivURLHandlerSourceVersion
 }
 
 func compilePixivURLHandler(ctx context.Context, sourcePath, executablePath string) ([]byte, error) {
@@ -184,35 +194,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSAppleEventManager.shared().setEventHandler(self, andSelector: #selector(handleGetURLEvent(_:withReplyEvent:)), forEventClass: AEEventClass(kInternetEventClass), andEventID: AEEventID(kAEGetURL))
     }
 
-    @objc func handleGetURLEvent(_ event: NSAppleEventDescriptor, withReplyEvent replyEvent: NSAppleEventDescriptor) {
-        guard let callbackURL = event.paramDescriptor(forKeyword: keyDirectObject)?.stringValue else {
-            NSApp.terminate(nil)
-            return
-        }
-        post(callbackURL)
-        NSApp.terminate(nil)
-    }
+	@objc func handleGetURLEvent(_ event: NSAppleEventDescriptor, withReplyEvent replyEvent: NSAppleEventDescriptor) {
+		guard let callbackURL = event.paramDescriptor(forKeyword: keyDirectObject)?.stringValue else {
+			NSApp.terminate(nil)
+			return
+		}
+		openRelay(callbackURL)
+		NSApp.terminate(nil)
+	}
 
-    private func post(_ callbackURL: String) {
-        guard let endpointPath = endpointPath(),
-              let endpoint = try? String(contentsOfFile: endpointPath, encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines),
-              let url = URL(string: endpoint),
-              !endpoint.isEmpty else {
-            return
-        }
-        var components = URLComponents()
-        components.queryItems = [URLQueryItem(name: "code", value: callbackURL)]
-        let body = components.percentEncodedQuery ?? ""
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
-        request.httpBody = body.data(using: .utf8)
-        let semaphore = DispatchSemaphore(value: 0)
-        URLSession.shared.dataTask(with: request) { _, _, _ in
-            semaphore.signal()
-        }.resume()
-        _ = semaphore.wait(timeout: .now() + 10)
-    }
+	private func openRelay(_ callbackURL: String) {
+		guard let endpointPath = endpointPath(),
+			  let endpoint = try? String(contentsOfFile: endpointPath, encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines),
+			  var components = URLComponents(string: endpoint),
+			  !endpoint.isEmpty else {
+			return
+		}
+		components.fragment = callbackURL
+		guard let relayURL = components.url else {
+			return
+		}
+		NSWorkspace.shared.open(relayURL)
+	}
 
     private func endpointPath() -> String? {
         guard let supportDir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {

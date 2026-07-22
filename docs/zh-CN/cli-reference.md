@@ -121,11 +121,11 @@ pixiv auth login
 | --- | --- |
 | 初始化 | CLI 生成 PKCE verifier/challenge 和 OAuth state，并启动本地 loopback HTTP server。 |
 | 浏览器 | macOS 默认优先注册本地 `pixiv://` callback helper 并打开默认浏览器，因此可复用已有 Pixiv 登录态；需要用户在 Pixiv 页面确认账号；使用 `--no-open` 时只打印登录 URL 和本地页面地址。 |
-| 回调 | CLI 仅接收本轮 loopback callback、当前登录尝试注册的 `pixiv://` helper 转交、终端粘贴或本地页面表单；浏览器若没有返回，可手动粘贴 callback URL、`pixiv://...` URL、Pixiv relay URL 或原始 authorization code。 |
+| 回调 | CLI 仅接收本轮 loopback callback、当前登录尝试注册的 `pixiv://` helper 转交、终端粘贴或本地页面表单。macOS helper 转交后，默认浏览器会在 OAuth exchange 完成时打开本地最终成功或失败页；浏览器若没有返回，可手动粘贴 callback URL、`pixiv://...` URL、Pixiv relay URL 或原始 authorization code。 |
 | 校验 | 本地 loopback 回调必须匹配本次 state；Pixiv 官方 callback URL 与 `pixiv://account/login` 可在 Pixiv 未返回 state 时作为显式 fallback。 |
 | 保存 | refresh/access token 不会打印；refresh token 按 Pixiv UID 保存到 `auth.json`。Unix-like 主动使用 `0700` 父目录与 `0600` 文件；Windows 首次创建继承父目录 ACL，替换既有目标保留其 ACL，不主动收紧或放宽 DACL。 |
 
-默认浏览器打开时，macOS 会注册一个仅服务于当前登录尝试的本地 `PixivCLIURLHandler.app`，只把 Pixiv 返回的 `pixiv://account/login?...` URL 转交给本轮 CLI loopback；它不读取浏览器 Cookie、存储、历史、会话文件、标签页或网络流量。若 helper 不可用，CLI 仍打开正常浏览器并等待 loopback 或手动回填，不会启动受管 Chromium、DevTools/CDP 或浏览器状态扫描。遇到 Pixiv `post-redirect` 授权接力页时，用户可手动粘贴 relay URL；CLI 只在校验其属于本轮 OAuth 后打开该 relay URL 一次。浏览器可能停留在白色 relay 页，是否成功以终端最终输出为准；若 Pixiv 未生成 callback，CLI 不会伪造成功。
+默认浏览器打开时，macOS 会注册一个仅服务于当前登录尝试的本地 `PixivCLIURLHandler.app`。Pixiv 调用 `pixiv://account/login?...` 后，helper 会打开本地 loopback 浏览器桥接页：callback 仅存于 URL fragment，随即从地址栏和历史中清除，再 POST 至本轮 listener。浏览器只会在 OAuth exchange 完成后收到居中的最终成功或失败页。helper 不读取浏览器 Cookie、存储、历史、会话文件、标签页或网络流量。若 helper 不可用，CLI 仍打开正常浏览器并等待 loopback 或手动回填，不会启动受管 Chromium、DevTools/CDP 或浏览器状态扫描。遇到 Pixiv `post-redirect` 授权接力页时，用户可手动粘贴 relay URL；CLI 只在校验其属于本轮 OAuth 后打开该 relay URL 一次。原 Pixiv relay 标签页仍可能停留白页，但 callback 产生后会打开本地最终结果页；若 Pixiv 未生成 callback，CLI 不会伪造成功。
 
 在无 GUI 的 SSH 服务器上，应继续把 listener 绑定到 loopback，并选择一个未占用的固定端口，方便从
 本地转发。先在服务器运行：

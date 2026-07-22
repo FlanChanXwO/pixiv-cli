@@ -1,4 +1,5 @@
 ## [Unreleased]
+
 ### Added
 - CLI/MCP 操作摘要写入用户 state 目录下 `pixiv/logs` 的按日 JSONL（默认保留 7 天，仅清理可识别的历史日志文件）；终端默认不再输出日志痕迹。日志只记录脱敏操作摘要，不含 token、查询串、绝对路径、上游 body 或原始错误。目录创建/轮转/清理失败时静默继续。仅上游不可用、上游错误、响应畸形、限流等特殊非认证故障会在 CLI 错误中提示日志目录；登录失败与 token 过期不提示。
 - MCP `download` / `download_random_from_recommendation` 支持 `pages` 与 `quality`，与 CLI 共用下载选项。
@@ -20,7 +21,7 @@
 ### Fixed
 - 修复认证态作品详情、分页和 ugoira metadata 在 App API 成功后仍访问匿名 Web 补全、致使 R18 作品遭遇 403/404 的问题。认证路径现只使用 App 数据；多页直接读取 `meta_pages`，单页派生规范页面，缺失或不一致明确返回上游响应错误，不伪装 partial result。
 - 修复 App API 幂等 JSON 读取限流恢复：仅首次 HTTP 429 且 `Retry-After` 有效时按调用方 context 等待并重试一次；无效 header、第二次 429、写操作和资源下载均保留真实错误且不重放，安全 info 日志不含 URL、header 或凭据。
-- 登录 callback 在 OAuth 真正完成后才向浏览器返回最终成功/失败页；标题与正文居中，失败页不泄露敏感原因；CLI 成功提示前增加一个空行。
+- 修复 macOS `pixiv://` helper 在后台吞掉 loopback 最终响应、导致浏览器停留在 Pixiv 白色 relay 页的问题。helper 现打开本地桥接页，并在 OAuth 真正完成后显示居中的最终成功/失败页；callback 仅短暂位于 URL fragment，提交前即从地址栏和历史中清除，失败页不泄露敏感原因；CLI 成功提示前增加一个空行。
 - 搜索在本地筛选产生连续空上游批次时，CLI/MCP 会补拉到首个非空逻辑批次；`--limit N`/`limit` 填满逻辑结果，`--limit 0`/`limit=0` 遍历全部，`--page`/`page` 按过滤后结果分页。
 - App 作品 AI 字段优先读取 `illust_ai_type`，并兼容旧 `ai_type`；本地 AI 判定仍固定 `AIType==2`。
 

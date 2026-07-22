@@ -129,18 +129,20 @@ The `auth login` flow:
 | --- | --- |
 | Init | The CLI generates a PKCE verifier/challenge and OAuth state, and starts a local loopback HTTP server. |
 | Browser | On macOS it first registers a local `pixiv://` callback helper and opens the default browser, so an existing Pixiv login session can be reused; the user must confirm the account on the Pixiv page. With `--no-open`, only the login URL and the local page address are printed. |
-| Callback | The CLI only accepts this round's loopback callback, a hand-off from the `pixiv://` helper registered for the current login attempt, a terminal paste, or the local page form; if the browser doesn't return, you can manually paste the callback URL, a `pixiv://...` URL, a Pixiv relay URL, or the raw authorization code. |
+| Callback | The CLI only accepts this round's loopback callback, a hand-off from the `pixiv://` helper registered for the current login attempt, a terminal paste, or the local page form. After a macOS helper hand-off, the default browser opens the final local success or failure page once OAuth exchange completes. If the browser doesn't return, you can manually paste the callback URL, a `pixiv://...` URL, a Pixiv relay URL, or the raw authorization code. |
 | Validation | The local loopback callback must match this round's state; Pixiv's official callback URL and `pixiv://account/login` can be used as an explicit fallback when Pixiv doesn't return a state. |
 | Save | Refresh/access tokens are never printed; the refresh token is saved to `auth.json` keyed by Pixiv UID. Unix-like systems actively use `0700` parent directories and `0600` files. On Windows, first creation inherits the parent ACL and replacement preserves the existing target ACL; the CLI does not claim to tighten or loosen the DACL. |
 
 When the default browser opens, macOS registers a local `PixivCLIURLHandler.app` that serves only the current login
-attempt and merely forwards the `pixiv://account/login?...` URL returned by Pixiv to this round's CLI loopback; it
-does not read browser cookies, storage, history, session files, tabs, or network traffic. If the helper is
-unavailable, the CLI still opens a normal browser and waits for the loopback or a manual paste — it never launches a
-managed Chromium, DevTools/CDP, or any browser state scanning. When Pixiv shows a `post-redirect` authorization
+attempt. After Pixiv invokes `pixiv://account/login?...`, the helper opens a loopback browser bridge whose callback
+is held only in the URL fragment, immediately removed from the address and history, and then posted to the current
+listener. The browser receives the centered final success or failure page only after the OAuth exchange completes.
+The helper does not read browser cookies, storage, history, session files, tabs, or network traffic. If the helper
+is unavailable, the CLI still opens a normal browser and waits for the loopback or a manual paste — it never launches
+a managed Chromium, DevTools/CDP, or any browser state scanning. When Pixiv shows a `post-redirect` authorization
 relay page, you can manually paste the relay URL; the CLI opens that relay URL exactly once, and only after
-verifying it belongs to this OAuth round. The browser may stay on a blank relay page — the terminal's final output
-is the source of truth; if Pixiv never produced a callback, the CLI will not fake success.
+verifying it belongs to this OAuth round. The original Pixiv relay tab may remain blank, but a produced callback
+opens the final local result page; if Pixiv never produced a callback, the CLI will not fake success.
 
 On a headless SSH server, keep the listener on loopback and choose an unused fixed port so the local machine can
 forward it. Run on the server:
