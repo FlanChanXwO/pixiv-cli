@@ -94,7 +94,7 @@ func TestPixivBinaryOfflineConfigAndMCPHelp(t *testing.T) {
 	if !strings.HasPrefix(gotConfigPath, env.home) {
 		t.Fatalf("config path escaped isolated home:\n%s", string(out))
 	}
-	if want := filepath.Join(env.home, "pixiv-cli", "config.toml"); gotConfigPath != want {
+	if want := filepath.Join(env.home, ".pixiv-cli", "config.toml"); gotConfigPath != want {
 		t.Fatalf("config path = %q, want %q", gotConfigPath, want)
 	}
 

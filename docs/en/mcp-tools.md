@@ -3,7 +3,7 @@
 English | [简体中文](../zh-CN/mcp-tools.md) | [Documentation index](../index.md)
 
 Run `pixiv mcp` to start the stdio server. stdout is reserved for JSON-RPC. Operation logs are written as daily
-plain-text files named `YYYY-MM-DD.txt` under `~/pixiv-cli/logs` (on Windows, `%USERPROFILE%\pixiv-cli\logs`; default
+plain-text files named `YYYY-MM-DD.txt` under `~/.pixiv-cli/logs` (on Windows, `%USERPROFILE%\.pixiv-cli\logs`; default
 retention 7 days); the terminal stays free of log traces by default. MCP exposes no HTTP endpoint.
 
 With a refresh token, App API is the primary path and failures never fall back to Web automatically. Without a

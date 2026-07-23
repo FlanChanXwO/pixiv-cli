@@ -303,12 +303,13 @@ pixiv recommended all
 pixiv download 123456 789012
 ```
 
-All local application data is stored directly under the current user's home directory: `~/pixiv-cli` on macOS/Linux
-and `%USERPROFILE%\pixiv-cli` on Windows. Account credentials are saved in `auth.json`, keyed by Pixiv UID; global
-settings live in `config.toml`. Unix-like systems actively use `0700` parent directories and `0600` files. On Windows,
-first creation inherits the parent ACL and replacement preserves the existing target ACL; the CLI does not claim to
-tighten or loosen the DACL. Output is human-readable by default; commands that expose `--json` can produce
-machine-parseable JSON. `auth export` deliberately does not expose that flag.
+All persistent application-managed data is stored directly under the current user's home directory: `~/.pixiv-cli` on
+macOS/Linux and `%USERPROFILE%\.pixiv-cli` on Windows. It contains `auth.json`, `config.toml`, callback-bridge state,
+daily logs, the Release-check cache, and the macOS callback helper. Account credentials are keyed by Pixiv UID.
+Unix-like systems actively use `0700` parent directories and `0600` files. On Windows, first creation inherits the
+parent ACL and replacement preserves the existing target ACL; the CLI does not claim to tighten or loosen the DACL.
+Output is human-readable by default; commands that expose `--json` can produce machine-parseable JSON. `auth export`
+deliberately does not expose that flag.
 The CLI uses Cobra/pflag, so options may appear before or after positional arguments — both
 `pixiv auth check 12345678 --json` and `pixiv search "初音ミク" --json` are officially supported forms.
 
@@ -440,7 +441,7 @@ never includes captions in artwork list output.
 | `filename_template` | string | `{author} - {title}_{id}` | Filename template. |
 | `https_proxy` | string | empty | HTTP(S) proxy; the lowercase `https_proxy` environment variable takes precedence. |
 | `web_fallback_enabled` | bool | `true` | Allows the anonymous Pixiv web/ajax API fallback when no refresh token exists; stored as `[web] fallback_enabled = true/false`. |
-| `log_level` | string | `warn` | Operation-log level for the daily plain-text `YYYY-MM-DD.txt` file under `~/pixiv-cli/logs` (Windows: `%USERPROFILE%\pixiv-cli\logs`); can be overridden by `PIXIV_LOG_LEVEL`. Set explicitly to `info` to keep more operational summaries. The terminal stays free of log traces by default. |
+| `log_level` | string | `warn` | Operation-log level for the daily plain-text `YYYY-MM-DD.txt` file under `~/.pixiv-cli/logs` (Windows: `%USERPROFILE%\.pixiv-cli\logs`); can be overridden by `PIXIV_LOG_LEVEL`. Set explicitly to `info` to keep more operational summaries. The terminal stays free of log traces by default. |
 | `update_check_enabled` | bool | `true` | Whether successful regular CLI commands check for stable updates; stored as `[update] check_enabled = true/false`. |
 | `output_json` | bool | `false` | Makes data commands output JSON by default. |
 | `login_open_browser` | bool | `true` | Whether `auth login` auto-opens the browser by default. |

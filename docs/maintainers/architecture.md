@@ -8,8 +8,8 @@
 2. `pixiv auth/config/version/update/search/search-options/detail/ranking/recommended/user/bookmark/follow/download` 进入 CLI 模式；`auth import` 负责 direct token import 或 bundle restore，`auth export` 负责本地 secret snapshot。
 3. `pixiv mcp` 委托 `internal/bootstrap` 组装并运行 MCP stdio server。
 4. CLI 与 MCP 通过 `internal/bootstrap` 共享生产 wiring：
-   - 账号认证来自 `~/pixiv-cli/auth.json`（Windows：`%USERPROFILE%\pixiv-cli\auth.json`）
-   - 全局配置来自 `~/pixiv-cli/config.toml`（Windows：`%USERPROFILE%\pixiv-cli\config.toml`）
+   - 账号认证来自 `~/.pixiv-cli/auth.json`（Windows：`%USERPROFILE%\.pixiv-cli\auth.json`）
+   - 全局配置来自 `~/.pixiv-cli/config.toml`（Windows：`%USERPROFILE%\.pixiv-cli\config.toml`）
    - 公开环境变量作为覆盖层参与合并
 5. MCP 模式若没有 `PIXIV_REFRESH_TOKEN`，会回退到 `auth.json.default_user_id`；若仍无 refresh token 且 `web_fallback_enabled=true`，支持匿名能力的路径会走 Pixiv web/ajax API。
 
@@ -182,7 +182,7 @@ R18/R18G/mature 与动态搜索选项会返回认证需求，不伪造空结果�
 
 负责将 Pixiv 与下载能力注册为 MCP tools。所有 Pixiv 内容、认证、资源和写操作都通过 `SDKService` 使用 public SDK；旧构造器保留的首个 API 参数只是废弃占位，生产路径不会读取。下载由 operation snapshot 对应的 `DownloadManager` 执行。MCP 的 nullable `page`/`limit` 只在本 adapter 解析，逻辑分页遍历由 application 共享引擎执行；旧 offset wire 字段已移除。stdio runtime 由 `internal/bootstrap` 组装和启动。
 
-包内按职责拆分：`server.go` 负责构造与统一 observability wrapper，`registration.go` 只维护 tool 注册，`auth_tools.go` 和 `download_tools.go` 分别承载认证与下载，`legacy_tools.go` 承载文本型读取适配，`formatting.go` 集中文本/output helper，`sdk_runtime.go` 负责分页、operation snapshot、gate 与安全日志，`sdk_tools.go` 承载 SDK typed tools。文本型 handler 的失败结果可使用 `isError=false`，但必须把真实 cause 交给 wrapper；wrapper 把安全分类 metadata 写入 `~/pixiv-cli/logs`（Windows：`%USERPROFILE%\pixiv-cli\logs`）的按日纯文本 `YYYY-MM-DD.txt`，不读取参数或原始错误文本，也不把操作日志写到终端。正常空结果不会伪装成失败。
+包内按职责拆分：`server.go` 负责构造与统一 observability wrapper，`registration.go` 只维护 tool 注册，`auth_tools.go` 和 `download_tools.go` 分别承载认证与下载，`legacy_tools.go` 承载文本型读取适配，`formatting.go` 集中文本/output helper，`sdk_runtime.go` 负责分页、operation snapshot、gate 与安全日志，`sdk_tools.go` 承载 SDK typed tools。文本型 handler 的失败结果可使用 `isError=false`，但必须把真实 cause 交给 wrapper；wrapper 把安全分类 metadata 写入 `~/.pixiv-cli/logs`（Windows：`%USERPROFILE%\.pixiv-cli\logs`）的按日纯文本 `YYYY-MM-DD.txt`，不读取参数或原始错误文本，也不把操作日志写到终端。正常空结果不会伪装成失败。
 
 输出目前以中文文本为主，适合直接返回给 LLM/MCP 客户端。其中 `refresh_token` tool 会区分缺少 token、context 取消/deadline、安全 typed SDK 失败与未知失败；其未知底层错误只返回脱敏排查提示，不回显原始原因。完整 wire 语义见 [MCP 工具](../zh-CN/mcp-tools.md#配置认证与下载)。
 

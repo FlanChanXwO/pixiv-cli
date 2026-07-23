@@ -2,7 +2,7 @@
 
 [English](../en/mcp-tools.md) | 简体中文 | [文档索引](../index.md)
 
-以 `pixiv mcp` 启动 stdio server。stdout 仅用于 JSON-RPC；操作日志写入用户主目录 `~/pixiv-cli/logs`（Windows 为 `%USERPROFILE%\pixiv-cli\logs`）下的按日纯文本文件 `YYYY-MM-DD.txt`（默认保留 7 天），终端默认无日志痕迹。MCP 不提供 HTTP endpoint。
+以 `pixiv mcp` 启动 stdio server。stdout 仅用于 JSON-RPC；操作日志写入用户主目录 `~/.pixiv-cli/logs`（Windows 为 `%USERPROFILE%\.pixiv-cli\logs`）下的按日纯文本文件 `YYYY-MM-DD.txt`（默认保留 7 天），终端默认无日志痕迹。MCP 不提供 HTTP endpoint。
 
 有 refresh token 时 App API 为主路径，失败不自动回落 Web；无 refresh token 且 `web_fallback_enabled=true` 时，仅匿名白名单读 tool 可用 Web API。SDK 路径的用户详情、用户列表和收藏/关注写操作同时返回文本内容与 structured output；其可分类失败会令 result `isError=true`，保留安全错误文本和对应 structured output。文本型 MCP tool 的失败保留既有 Content、structured output、文本和 `isError=false` wire 形式，但对应文件日志 operation event 会使用 error level 和 `result=error`；事件只保留 operation、稳定 SDK 分类、backend/status 及安全 ID，不记录原始错误文本、tool 输入、query、token、Cookie、URL、path 或 response body。公开可写的未知 SDK error code 不进入事件，未知 backend 归类为 `local`，不会回显原值。正常空结果仍记录为成功。
 

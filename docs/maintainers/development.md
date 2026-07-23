@@ -244,7 +244,7 @@ https_proxy=http://127.0.0.1:7890 ./build/pixiv mcp
 ./build/pixiv mcp --no-proxy
 ```
 
-CLI 的认证、配置、回调桥接与日志都位于当前用户主目录下的 `pixiv-cli`：macOS/Linux 为 `~/pixiv-cli`，Windows 为 `%USERPROFILE%\pixiv-cli`。多账号认证保存在 `auth.json`，账号 key 是 Pixiv UID；全局配置保存在 `config.toml`。Unix-like 主动使用 `0700` 父目录与 `0600` 文件；Windows 首次创建继承父目录 ACL，替换既有目标保留其 ACL，不主动收紧或放宽 DACL。推荐使用 `pixiv auth login` 通过本地 loopback server 和浏览器 OAuth 登录；已有 raw token 可用 `pixiv auth import` 输入，账号备份使用 `auth export` 与 `auth import --file`。可用 `pixiv config path/get/set/unset` 管理全局配置。无 refresh token 时默认启用匿名 Pixiv web/ajax API fallback，可用 `pixiv config set web_fallback_enabled false` 关闭。
+CLI 的认证、配置、回调桥接、日志、Release 检查缓存与 macOS 回调 helper 都位于当前用户主目录下的 `.pixiv-cli`：macOS/Linux 为 `~/.pixiv-cli`，Windows 为 `%USERPROFILE%\.pixiv-cli`。多账号认证保存在 `auth.json`，账号 key 是 Pixiv UID；全局配置保存在 `config.toml`。Unix-like 主动使用 `0700` 父目录与 `0600` 文件；Windows 首次创建继承父目录 ACL，替换既有目标保留其 ACL，不主动收紧或放宽 DACL。推荐使用 `pixiv auth login` 通过本地 loopback server 和浏览器 OAuth 登录；已有 raw token 可用 `pixiv auth import` 输入，账号备份使用 `auth export` 与 `auth import --file`。可用 `pixiv config path/get/set/unset` 管理全局配置。无 refresh token 时默认启用匿名 Pixiv web/ajax API fallback，可用 `pixiv config set web_fallback_enabled false` 关闭。
 CLI 使用 Cobra/pflag，flag 可以写在位置参数前后；例如 `pixiv auth check 12345678 --json` 和 `pixiv search "初音ミク" --json` 都受支持。
 
 ## 获取 refresh token

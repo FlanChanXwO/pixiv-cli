@@ -1918,7 +1918,7 @@ func useTempPaths(t *testing.T) (string, string) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("USERPROFILE", home)
-	// 应用数据直接位于 home/pixiv-cli；测试隔离 home 即可隔离认证、配置与日志。
+	// 应用数据直接位于 home/.pixiv-cli；测试隔离 home 即可隔离认证、配置与日志。
 	base := filepath.Join(home, constants.AppDataDirName)
 	authPath := filepath.Join(base, "auth.json")
 	configPath := filepath.Join(base, "config.toml")

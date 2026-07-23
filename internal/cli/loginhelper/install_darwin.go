@@ -63,11 +63,11 @@ func Install(ctx context.Context, callbackRelayURL string) (func(), error) {
 }
 
 func pixivURLHandlerAppPath() (string, error) {
-	home, err := os.UserHomeDir()
+	appDataDir, err := files.UserDataSubdir(constants.AppDataDirName)
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(home, "Applications", "PixivCLIURLHandler.app"), nil
+	return filepath.Join(appDataDir, "url-handler", "PixivCLIURLHandler.app"), nil
 }
 
 func ensurePixivURLHandlerApp(ctx context.Context, appPath string) error {

@@ -636,7 +636,7 @@ func TestGitHubReleaseClientUsesETagAndAtomicallyPersistedCache(t *testing.T) {
 }
 
 func TestGitHubReleaseClientTightensExistingCacheDirectoryPermissions(t *testing.T) {
-	cacheDir := filepath.Join(t.TempDir(), "pixiv-cli")
+	cacheDir := filepath.Join(t.TempDir(), ".pixiv-cli")
 	if err := os.Mkdir(cacheDir, 0o700); err != nil {
 		t.Fatalf("create cache directory fixture: %v", err)
 	}

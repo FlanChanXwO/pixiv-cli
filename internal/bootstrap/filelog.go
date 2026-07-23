@@ -22,7 +22,7 @@ const defaultLogRetainDays = 7
 // logFileNamePattern 只识别当前纯文本按日日志，避免保留期清理误删用户文件。
 var logFileNamePattern = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}\.txt$`)
 
-// DefaultLogDir 返回用户 home 下 pixiv-cli/logs。认证、配置、回调桥接与日志
+// DefaultLogDir 返回用户 home 下 .pixiv-cli/logs。认证、配置、回调桥接与日志
 // 共用同一应用数据根目录；Windows 上 home 对应当前用户 profile。
 func DefaultLogDir() (string, error) {
 	dir, err := files.UserDataSubdir(constants.AppDataDirName)
@@ -152,7 +152,20 @@ func openFileLogWriter() io.WriteCloser {
 	if err != nil {
 		return discardWriteCloser{Writer: io.Discard}
 	}
+	if err := ensurePrivateLogApplicationDataRoot(dir); err != nil {
+		return discardWriteCloser{Writer: io.Discard}
+	}
 	return newDailyTextWriter(dir, defaultLogRetainDays)
+}
+
+// ensurePrivateLogApplicationDataRoot 先创建并收紧日志父目录，也就是 .pixiv-cli。
+// 日志子目录可以被读取，但认证、配置、缓存和回调状态所在的根目录不能被其他用户枚举。
+func ensurePrivateLogApplicationDataRoot(logDir string) error {
+	root := filepath.Dir(logDir)
+	if err := os.MkdirAll(root, constants.PrivateDirMode); err != nil {
+		return err
+	}
+	return os.Chmod(root, constants.PrivateDirMode)
 }
 
 // SuggestLogDirHint 仅用于特殊非认证故障的用户提示；失败时返回空串。

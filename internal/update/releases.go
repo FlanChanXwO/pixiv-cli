@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/FlanChanXwO/pixiv-cli/internal/common/constants"
 	"github.com/FlanChanXwO/pixiv-cli/internal/utils/files"
 )
 
@@ -105,11 +106,11 @@ func NewGitHubReleaseClient(options ReleaseClientOptions) (*GitHubReleaseClient,
 	}
 	cacheDir := options.CacheDir
 	if cacheDir == "" {
-		userCacheDir, err := os.UserCacheDir()
+		appDataDir, err := files.UserDataSubdir(constants.AppDataDirName)
 		if err != nil {
-			return nil, fmt.Errorf("determine user cache directory: %w", err)
+			return nil, fmt.Errorf("determine application data directory: %w", err)
 		}
-		cacheDir = filepath.Join(userCacheDir, "pixiv-cli")
+		cacheDir = filepath.Join(appDataDir, "cache")
 	}
 	now := options.Now
 	if now == nil {

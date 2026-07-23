@@ -232,11 +232,11 @@ pixiv recommended all
 pixiv download 123456 789012
 ```
 
-local application data は current user の home directory 直下に保存されます。macOS/Linux は
-`~/pixiv-cli`、Windows は `%USERPROFILE%\pixiv-cli` です。credential は Pixiv UID ごとに `auth.json`、
-global setting は `config.toml` に保存されます。既定は読みやすい出力で、対応 command は `--json` を利用できます。
-`auth export` は意図的に JSON flag を持ちません。Cobra/pflag の option は positional argument の前後どちらでも
-指定できます。
+永続的な application-managed data は current user の home directory 直下に保存されます。macOS/Linux は
+`~/.pixiv-cli`、Windows は `%USERPROFILE%\.pixiv-cli` です。Pixiv UID ごとの `auth.json`、`config.toml`、
+callback bridge state、daily log、Release-check cache、macOS callback helper がここに含まれます。既定は読みやすい
+出力で、対応 command は `--json` を利用できます。`auth export` は意図的に JSON flag を持ちません。Cobra/pflag の
+option は positional argument の前後どちらでも指定できます。
 
 ### CLI command 一覧
 
@@ -358,7 +358,7 @@ typed upstream-response failure になります。filter が batch を飛ばす�
 | `filename_template` | string | `{author} - {title}_{id}` | filename template。 |
 | `https_proxy` | string | empty | HTTP(S) proxy。lowercase env が優先。 |
 | `web_fallback_enabled` | bool | `true` | token がない場合に匿名 Web fallback を許可します。 |
-| `log_level` | string | `warn` | `~/pixiv-cli/logs`（Windows は `%USERPROFILE%\pixiv-cli\logs`）の日次 plain-text `YYYY-MM-DD.txt` operation summary level。`PIXIV_LOG_LEVEL` で上書き。端末は既定で log 痕跡を出しません。 |
+| `log_level` | string | `warn` | `~/.pixiv-cli/logs`（Windows は `%USERPROFILE%\.pixiv-cli\logs`）の日次 plain-text `YYYY-MM-DD.txt` operation summary level。`PIXIV_LOG_LEVEL` で上書き。端末は既定で log 痕跡を出しません。 |
 | `update_check_enabled` | bool | `true` | 通常 command 成功後の stable update check。 |
 | `output_json` | bool | `false` | data command の既定を JSON にします。 |
 | `login_open_browser` | bool | `true` | `auth login` で browser を自動起動します。 |

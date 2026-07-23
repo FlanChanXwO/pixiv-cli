@@ -7,7 +7,7 @@
 
 ## Changed
 
-- Local authentication, configuration, callback-bridge state, and logs now live directly in `~/pixiv-cli` on macOS/Linux and `%USERPROFILE%\pixiv-cli` on Windows. Earlier storage paths are not read or migrated.
+- Persistent local application data now lives directly in `~/.pixiv-cli` on macOS/Linux and `%USERPROFILE%\.pixiv-cli` on Windows, including authentication, configuration, callback-bridge state, logs, the Release-check cache, and the macOS callback helper. Earlier storage paths are not read or migrated.
 - Artwork detail now includes `caption`. The SDK, CLI JSON, and MCP preserve Pixiv's original HTML; the normal CLI detail view safely renders plain text. Lists do not add captions.
 - Release tags must now pass the complete authenticated E2E suite in the protected `pixiv-e2e` Environment. Pull-request and `main` CI remain offline and secret-free; a real-regression failure blocks production build and publication.
 - Operation diagnostics in the CLI, MCP, SDK, downloader, and App API now use safe structured events that never contain tokens, URLs, raw headers, request inputs, or response bodies.

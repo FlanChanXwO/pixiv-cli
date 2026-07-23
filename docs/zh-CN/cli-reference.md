@@ -241,7 +241,7 @@ pixiv recommended all
 pixiv download 123456 789012
 ```
 
-所有本地应用数据直接保存到当前用户主目录：macOS/Linux 为 `~/pixiv-cli`，Windows 为 `%USERPROFILE%\pixiv-cli`。账号认证位于 `auth.json`，账号 key 是 Pixiv UID；全局配置位于 `config.toml`。Unix-like 主动使用 `0700` 父目录与 `0600` 文件；Windows 首次创建继承父目录 ACL，替换既有目标保留其 ACL，不主动收紧或放宽 DACL。输出默认给人读；只有 help 中提供 `--json` 的命令可输出机器可解析 JSON，`auth export` 明确不提供该 flag。
+所有持久的应用管理数据直接保存到当前用户主目录：macOS/Linux 为 `~/.pixiv-cli`，Windows 为 `%USERPROFILE%\.pixiv-cli`。其中包括 `auth.json`、`config.toml`、回调桥接状态、按日日志、Release 检查缓存和 macOS 回调 helper；账号认证以 Pixiv UID 为 key。Unix-like 主动使用 `0700` 父目录与 `0600` 文件；Windows 首次创建继承父目录 ACL，替换既有目标保留其 ACL，不主动收紧或放宽 DACL。输出默认给人读；只有 help 中提供 `--json` 的命令可输出机器可解析 JSON，`auth export` 明确不提供该 flag。
 CLI 使用 Cobra/pflag，选项可以写在位置参数前后，例如 `pixiv auth check 12345678 --json` 和 `pixiv search "初音ミク" --json` 都是正式支持的写法。
 
 ### CLI 命令表
@@ -355,7 +355,7 @@ App JSON 读取在首次 429 且 `Retry-After` 有效时按命令 context 等待
 | `filename_template` | string | `{author} - {title}_{id}` | 文件名模板。 |
 | `https_proxy` | string | 空 | HTTP(S) 代理，优先使用环境变量中的小写 `https_proxy`。 |
 | `web_fallback_enabled` | bool | `true` | 无 refresh token 时，允许匿名 Pixiv web/ajax API fallback；写入为 `[web] fallback_enabled = true/false`。 |
-| `log_level` | string | `warn` | 用户主目录 `~/pixiv-cli/logs`（Windows：`%USERPROFILE%\pixiv-cli\logs`）下按日纯文本 `YYYY-MM-DD.txt` 操作摘要级别；可由 `PIXIV_LOG_LEVEL` 覆盖。显式设为 `info` 可保留更多操作摘要。终端默认无日志痕迹。 |
+| `log_level` | string | `warn` | 用户主目录 `~/.pixiv-cli/logs`（Windows：`%USERPROFILE%\.pixiv-cli\logs`）下按日纯文本 `YYYY-MM-DD.txt` 操作摘要级别；可由 `PIXIV_LOG_LEVEL` 覆盖。显式设为 `info` 可保留更多操作摘要。终端默认无日志痕迹。 |
 | `update_check_enabled` | bool | `true` | 普通 CLI 成功命令后是否检查稳定版更新；写入为 `[update] check_enabled = true/false`。 |
 | `output_json` | bool | `false` | 数据命令默认输出 JSON。 |
 | `login_open_browser` | bool | `true` | `auth login` 默认是否自动打开浏览器。 |

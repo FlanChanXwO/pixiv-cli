@@ -3,6 +3,7 @@ package bootstrap
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -122,7 +123,7 @@ func TestDefaultLogDirUsesPixivCLIUnderUserHome(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if dir != filepath.Join(home, "pixiv-cli", "logs") {
+	if dir != filepath.Join(home, ".pixiv-cli", "logs") {
 		t.Fatalf("unexpected log dir: %s", dir)
 	}
 }
@@ -175,6 +176,15 @@ func TestOpenFileLogWriterAcceptsAndRedactsCallerCanariesViaSafeAttrsOnly(t *tes
 	for _, secret := range []string{canaryToken, canaryPath, canaryQuery} {
 		if strings.Contains(got, secret) {
 			t.Fatalf("file log leaked %q: %s", secret, got)
+		}
+	}
+	if runtime.GOOS != "windows" {
+		root, statErr := os.Stat(filepath.Dir(dir))
+		if statErr != nil {
+			t.Fatal(statErr)
+		}
+		if root.Mode().Perm() != 0o700 {
+			t.Fatalf("application data root mode = %o, want 700", root.Mode().Perm())
 		}
 	}
 }

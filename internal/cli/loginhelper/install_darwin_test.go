@@ -33,6 +33,16 @@ func TestEnsurePixivURLHandlerAppDoesNotFollowLegacyTemporarySourceSymlink(t *te
 	require.Equal(t, "do not overwrite", string(content))
 }
 
+func TestPixivURLHandlerAppPathUsesApplicationDataDirectory(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+
+	path, err := pixivURLHandlerAppPath()
+	require.NoError(t, err)
+	require.Equal(t, filepath.Join(home, constants.AppDataDirName, "url-handler", "PixivCLIURLHandler.app"), path)
+}
+
 func TestEnsurePixivURLHandlerAppCompilesPrivateRandomSourceAndCleansIt(t *testing.T) {
 	tempDir := t.TempDir()
 	t.Setenv("TMPDIR", tempDir)

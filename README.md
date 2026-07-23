@@ -120,7 +120,7 @@ pixiv search-options "初音ミク"
 
 ### MCP
 
-Start the stdio server explicitly. stdout remains reserved for JSON-RPC. Operation summaries are written as daily plain-text files named `YYYY-MM-DD.txt` under `~/pixiv-cli/logs` (on Windows, `%USERPROFILE%\pixiv-cli\logs`; default retention 7 days); the terminal stays free of log traces by default.
+Start the stdio server explicitly. stdout remains reserved for JSON-RPC. Operation summaries are written as daily plain-text files named `YYYY-MM-DD.txt` under `~/.pixiv-cli/logs` (on Windows, `%USERPROFILE%\.pixiv-cli\logs`; default retention 7 days); the terminal stays free of log traces by default.
 
 ```bash
 pixiv mcp

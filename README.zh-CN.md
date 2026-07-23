@@ -120,7 +120,7 @@ pixiv search-options "初音ミク"
 
 ### MCP
 
-显式启动 stdio server。stdout 只用于 JSON-RPC。操作摘要写入用户主目录下 `~/pixiv-cli/logs` 的按日纯文本文件 `YYYY-MM-DD.txt`（Windows 为 `%USERPROFILE%\pixiv-cli\logs`；默认保留 7 天），终端默认无日志痕迹。
+显式启动 stdio server。stdout 只用于 JSON-RPC。操作摘要写入用户主目录下 `~/.pixiv-cli/logs` 的按日纯文本文件 `YYYY-MM-DD.txt`（Windows 为 `%USERPROFILE%\.pixiv-cli\logs`；默认保留 7 天），终端默认无日志痕迹。
 
 ```bash
 pixiv mcp

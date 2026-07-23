@@ -1,9 +1,9 @@
 package constants
 
 const (
-	// AppDataDirName 是所有本地应用数据的唯一根目录名。它直接位于当前用户的
-	// home 目录，避免与其他名为 pixiv 的应用共用配置、认证或日志路径。
-	AppDataDirName  = "pixiv-cli"
+	// AppDataDirName 是所有持久本地应用数据的唯一根目录名。它直接位于当前用户的
+	// home 目录，避免与其他名为 pixiv 的应用共用配置、认证、日志或缓存路径。
+	AppDataDirName  = ".pixiv-cli"
 	PrivateDirMode  = 0o700
 	PrivateFileMode = 0o600
 

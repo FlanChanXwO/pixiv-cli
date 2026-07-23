@@ -341,7 +341,7 @@ func (f syntheticAuthBinaryFixture) newOfflineEnv(t *testing.T) isolatedProcessE
 func newSyntheticAuthProcessEnv(t *testing.T) isolatedProcessEnv {
 	t.Helper()
 	env := isolatedEnv(t)
-	configPath := filepath.Join(env.home, "pixiv-cli", "config.toml")
+	configPath := filepath.Join(env.home, ".pixiv-cli", "config.toml")
 	if err := os.MkdirAll(filepath.Dir(configPath), 0o700); err != nil {
 		t.Fatalf("create synthetic auth config directory: %v", err)
 	}

@@ -118,7 +118,7 @@ pixiv search-options "初音ミク"
 
 ### MCP
 
-stdio server は明示的に起動します。stdout は JSON-RPC 専用です。操作要約は `~/pixiv-cli/logs`（Windows では `%USERPROFILE%\pixiv-cli\logs`）の日次 plain-text file `YYYY-MM-DD.txt`（既定保持 7 日）に書き、端末は既定で log 痕跡を出しません。
+stdio server は明示的に起動します。stdout は JSON-RPC 専用です。操作要約は `~/.pixiv-cli/logs`（Windows では `%USERPROFILE%\.pixiv-cli\logs`）の日次 plain-text file `YYYY-MM-DD.txt`（既定保持 7 日）に書き、端末は既定で log 痕跡を出しません。
 
 ```bash
 pixiv mcp

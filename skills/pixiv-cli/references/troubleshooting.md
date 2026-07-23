@@ -67,7 +67,7 @@ safe metadata output does not make raw token or bundle stdout safe to display.
 ## Diagnostics
 
 - Operation summaries are written as daily plain-text files named `YYYY-MM-DD.txt`
-  under `~/pixiv-cli/logs` (on Windows, `%USERPROFILE%\pixiv-cli\logs`; default retention 7 days). The terminal stays free of log
+  under `~/.pixiv-cli/logs` (on Windows, `%USERPROFILE%\.pixiv-cli\logs`; default retention 7 days). The terminal stays free of log
   traces by default; JSON stdout stays clean.
 - Increase file-log verbosity per run with `PIXIV_LOG_LEVEL=info pixiv <cmd>`
   (or `debug`). Only special non-auth upstream failures may print a log-directory

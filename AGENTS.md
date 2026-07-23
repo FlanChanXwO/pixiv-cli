@@ -30,7 +30,7 @@ PIXIV_E2E_WEB_API=1 PIXIV_WEB_API_PROXY=http://127.0.0.1:7890 go test ./e2e -run
 - refresh token 只允许用户显式执行不带 `--output` 的 `pixiv auth export [UID]` 或 `pixiv auth export --all` 时写 stdout；前者输出 raw token，后者输出含 secret 的 bundle。除此之外不得写入 stdout、stderr、JSON、MCP、日志或错误；完整契约见三语 CLI reference。
 - web fallback 只有一条规则：refresh token 为空且 `web_fallback_enabled=true` 时走匿名 web/ajax API；有 refresh token 一律优先 App API，App API 出错不自动 fallback。
 - token 优先级：CLI 为 `--refresh-token` > `--uid` > `PIXIV_REFRESH_TOKEN` > 默认 UID；MCP 为 `PIXIV_REFRESH_TOKEN` > 默认 UID。
-- MCP 模式 stdout 保留给 JSON-RPC；操作日志写用户主目录 `~/pixiv-cli/logs`（Windows 为 `%USERPROFILE%\pixiv-cli\logs`）的按日纯文本 `YYYY-MM-DD.txt`，终端默认无日志痕迹。
+- MCP 模式 stdout 保留给 JSON-RPC；操作日志写用户主目录 `~/.pixiv-cli/logs`（Windows 为 `%USERPROFILE%\.pixiv-cli\logs`）的按日纯文本 `YYYY-MM-DD.txt`，终端默认无日志痕迹。
 - 不新增无依据的固定超时、截断、条数限制、重试上限、静默 fallback 或隐藏降级。确需新增时，必须有证据、代码注释、测试或文档说明。
 - 修改 CLI/MCP tool、配置键、环境变量、输出语义、下载/认证/代理流程时，同步更新现有 locale 的 README、CLI reference 或对应 `docs/<locale>/`；涉及命令语义时同步检查 `skills/pixiv-cli/`。
 - 用户可感知的新增、修复、变更、废弃、移除或安全影响，同步更新 `changelog/unreleased/en.md` 与 `changelog/unreleased/zh-CN.md`；纯内部重构、测试和文档清理可不记。

@@ -7,7 +7,7 @@
 
 ## 变更
 
-- 本地认证、配置、回调桥接状态和日志统一直接位于用户主目录下：macOS/Linux 为 `~/pixiv-cli`，Windows 为 `%USERPROFILE%\pixiv-cli`。旧存储路径不会被读取或迁移。
+- 持久的本地应用数据统一直接位于用户主目录下：macOS/Linux 为 `~/.pixiv-cli`，Windows 为 `%USERPROFILE%\.pixiv-cli`；其中包括认证、配置、回调桥接状态、日志、Release 检查缓存和 macOS 回调 helper。旧存储路径不会被读取或迁移。
 - 作品详情新增 `caption`：SDK/CLI JSON/MCP 保留 Pixiv 原始 HTML，普通 CLI 详情安全显示纯文本；列表输出不增加作品说明。
 - 发布 tag 现在必须先通过受保护 `pixiv-e2e` Environment 的完整认证 E2E；PR 与 `main` 常规 CI 仍保持离线、无 secret。真实回归失败会阻止后续生产构建与发布。
 - CLI、MCP、SDK、下载器与 App API 的 operation diagnostics 统一使用安全结构化事件；事件不记录 token、URL、原始 header、请求输入或响应 body。
