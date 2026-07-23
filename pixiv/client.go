@@ -6,20 +6,20 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
-	"io"
 	"log/slog"
 	"net/http"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/FlanChanXwO/pixiv-cli/internal/logging"
 	internalpixiv "github.com/FlanChanXwO/pixiv-cli/internal/pixiv"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/appapi"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/model"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/protocol"
 	internalresource "github.com/FlanChanXwO/pixiv-cli/internal/pixiv/resource"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/webapi"
-	"github.com/FlanChanXwO/pixiv-cli/internal/utils"
+	"github.com/FlanChanXwO/pixiv-cli/internal/utils/credentials"
 )
 
 // Options 配置 Client 当前所需的传输端点与 App API 身份。
@@ -156,7 +156,7 @@ func NewClient(options Options) (*Client, error) {
 		oauthBaseURL:       strings.TrimSpace(options.OAuthBaseURL),
 		appAPIBaseURL:      strings.TrimSpace(options.AppAPIBaseURL),
 		authState:          &authTransactionState{},
-		logger:             loggerOrDiscard(options.Logger),
+		logger:             logging.OrDiscard(options.Logger),
 	}, nil
 }
 
@@ -183,20 +183,13 @@ func resourceHTTPClientForExplicitProxy(httpClient *http.Client) *http.Client {
 	return &resourceClient
 }
 
-func loggerOrDiscard(logger *slog.Logger) *slog.Logger {
-	if logger != nil {
-		return logger
-	}
-	return slog.New(slog.NewTextHandler(io.Discard, nil))
-}
-
 // OpenDefault 构造使用本地 auth.json、config.toml 与环境变量的客户端。
 // 它不缓存这些状态：每次公开操作开始时都会取得一次新快照。
 func OpenDefault(options Options) (*Client, error) {
 	if strings.TrimSpace(options.AccessToken) != "" {
 		return nil, newError(CodeInvalidArgument, "", "", false, 0, 0, errors.New("AccessToken is only supported by NewClient"))
 	}
-	if _, err := utils.ValidateRefreshTokenInput(options.RefreshToken); err != nil {
+	if _, err := credentials.ValidateRefreshTokenInput(options.RefreshToken); err != nil {
 		return nil, newError(CodeInvalidArgument, "", "", false, 0, 0, err)
 	}
 	options = cloneOptions(options)
@@ -377,6 +370,7 @@ func mapIllust(illust model.Illust) Illust {
 		URL:            artworkURL(illust.ID),
 		ID:             illust.ID,
 		Title:          illust.Title,
+		Caption:        illust.Caption,
 		Type:           illust.Type,
 		PageCount:      illust.PageCount,
 		TotalBookmarks: illust.TotalBookmarks,
@@ -407,9 +401,17 @@ func mapNovel(novel model.Novel) Novel {
 		tags[index] = Tag{Name: tag.Name, TranslatedName: tag.TranslatedName}
 	}
 	return Novel{
-		ID: novel.ID, Title: novel.Title, Caption: novel.Caption, User: mapUser(novel.User), Tags: tags,
+		URL: novelURL(novel.ID), ID: novel.ID, Title: novel.Title, Caption: novel.Caption,
+		XRestrict: novel.XRestrict, TextLength: novel.TextLength, IsOriginal: novel.IsOriginal, User: mapUser(novel.User), Tags: tags,
 		ImageURLs: mapImageURLs(novel.ImageURLs), CreateDate: novel.CreateDate, TotalBookmarks: novel.TotalBookmarks, TotalView: novel.TotalView,
 	}
+}
+
+func novelURL(id int64) string {
+	if id <= 0 {
+		return ""
+	}
+	return "https://www.pixiv.net/novel/show.php?id=" + fmt.Sprint(id)
 }
 
 func mapMetaPages(pages []model.MetaPage) []MetaPage {

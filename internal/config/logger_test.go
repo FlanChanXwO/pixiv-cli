@@ -9,7 +9,6 @@ import (
 
 func TestRuntimeLoggerDefaultsToWarn(t *testing.T) {
 	clearEnvironmentForTest(t, "PIXIV_LOG_LEVEL")
-	clearEnvironmentForTest(t, "PIXIV_LOG_FORMAT")
 
 	state, err := LoadSettingsStateAt(t.TempDir() + "/config.toml")
 	if err != nil {
@@ -34,13 +33,12 @@ func TestRuntimeLoggerDefaultsToWarn(t *testing.T) {
 	}
 }
 
-func TestRuntimeLoggerUsesEnvironmentOverFileAndEmitsJSON(t *testing.T) {
+func TestRuntimeLoggerUsesEnvironmentOverFileAndEmitsText(t *testing.T) {
 	path := t.TempDir() + "/config.toml"
-	if err := WritePrivateFile(path, []byte("[logging]\nlevel = 'error'\nformat = 'text'\n")); err != nil {
+	if err := WritePrivateFile(path, []byte("[logging]\nlevel = 'error'\n")); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("PIXIV_LOG_LEVEL", "trace")
-	t.Setenv("PIXIV_LOG_FORMAT", "json")
 	state, err := LoadSettingsStateAt(path)
 	if err != nil {
 		t.Fatal(err)
@@ -49,7 +47,7 @@ func TestRuntimeLoggerUsesEnvironmentOverFileAndEmitsJSON(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if runtime.LogLevel != "trace" || runtime.LogFormat != "json" {
+	if runtime.LogLevel != "trace" {
 		t.Fatalf("runtime logger = %+v", runtime)
 	}
 	var output bytes.Buffer
@@ -58,8 +56,8 @@ func TestRuntimeLoggerUsesEnvironmentOverFileAndEmitsJSON(t *testing.T) {
 		t.Fatal(err)
 	}
 	logger.Debug("trace-visible", "component", "test")
-	if !strings.Contains(output.String(), `"msg":"trace-visible"`) {
-		t.Fatalf("trace JSON log missing: %q", output.String())
+	if !strings.Contains(output.String(), "msg=trace-visible") || strings.Contains(output.String(), `{"msg"`) {
+		t.Fatalf("trace text log missing: %q", output.String())
 	}
 }
 
@@ -128,7 +126,6 @@ func TestRuntimeLoggerRejectsInvalidConfiguredValues(t *testing.T) {
 		want string
 	}{
 		{name: "level", body: "[logging]\nlevel = 'loud'\n", want: "log_level"},
-		{name: "format", body: "[logging]\nformat = 'yaml'\n", want: "log_format"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			path := t.TempDir() + "/config.toml"
@@ -144,5 +141,12 @@ func TestRuntimeLoggerRejectsInvalidConfiguredValues(t *testing.T) {
 				t.Fatalf("Runtime error = %v, want %q", err, tc.want)
 			}
 		})
+	}
+}
+
+func TestLogFormatIsNotAConfigSetting(t *testing.T) {
+	t.Parallel()
+	if _, ok := SettingSpecByAlias("log_format"); ok {
+		t.Fatal("log_format must not remain a configurable JSON/text switch")
 	}
 }

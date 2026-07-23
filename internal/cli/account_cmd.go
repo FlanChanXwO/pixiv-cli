@@ -60,6 +60,7 @@ func (a app) newAccountCommand() *cobra.Command {
 	cmd.AddCommand(
 		a.newAccountImportCommand(),
 		a.newAccountLoginCommand(),
+		a.newAccountURLCallbackCommand(),
 		a.newAccountListCommand(),
 		a.newAccountRemoveCommand(),
 		a.newAccountUseCommand(),

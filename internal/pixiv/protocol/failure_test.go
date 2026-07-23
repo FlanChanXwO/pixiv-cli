@@ -57,6 +57,11 @@ func TestTransportClassifiesStableKinds(t *testing.T) {
 			kind: protocol.TransportConnectionReset,
 		},
 		{
+			name: "typed network timeout",
+			err:  fmt.Errorf("outer: %w", &net.OpError{Op: "dial", Net: "tcp", Err: transportTimeoutError{}}),
+			kind: protocol.TransportTimeout,
+		},
+		{
 			name: "unknown",
 			err:  errors.New("raw transport URL and credential canary"),
 			kind: protocol.TransportUnknown,
@@ -79,6 +84,12 @@ func TestTransportClassifiesStableKinds(t *testing.T) {
 		})
 	}
 }
+
+type transportTimeoutError struct{}
+
+func (transportTimeoutError) Error() string   { return "transport timeout canary" }
+func (transportTimeoutError) Timeout() bool   { return true }
+func (transportTimeoutError) Temporary() bool { return true }
 
 // TestTransportPreservesContextIdentity 验证安全分类不会替代取消和 deadline 的标准语义。
 func TestTransportPreservesContextIdentity(t *testing.T) {

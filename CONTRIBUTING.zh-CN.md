@@ -2,12 +2,12 @@
 
 [English](CONTRIBUTING.md) | 简体中文
 
-感谢你帮助改进 `pixiv-cli`。我们欢迎聚焦的 bug report、文档修复、测试、兼容性工作和边界清晰的功能。
+感谢你帮助改进 `pixiv-cli`。我们欢迎聚焦的 bug report、文档修复、测试和边界清晰的功能。
 
 ## 开始之前
 
 - 先检索已有 issue 和 pull request，避免重复提交。
-- 大功能、public API 变更、新依赖、认证变更或兼容性破坏应在实施前讨论。
+- 大功能、public API 变更、新依赖或认证变更应在实施前讨论。
 - 不要在 issue、fixture、commit 或 CI 日志中包含 Pixiv token、Cookie、下载作品、本地数据库、缓存、机器配置或私有 API 响应。
 - 保持改动聚焦；无关清理更适合单独提交 pull request。
 
@@ -54,14 +54,14 @@ Native library 校验、opt-in 真实 API 测试、发布门禁和平台细节�
 
 真实 Pixiv Web 与已认证 App canary 均为 opt-in。未经用户明确授权，不得使用其本地账号运行；也不要把真实 token 放入可能写入 shell history 的命令行。
 
-## 文档与兼容性
+## 文档
 
 修改命令、flag、SDK API、MCP tool、配置键、环境变量、输出契约、认证流程、代理行为、下载行为或已知限制时，在同一 pull request 同步文档。
 
 - 保持 `README.md`、`README.zh-CN.md` 与 `README.ja.md` 的行为语义对应。
 - 保持 `docs/<locale>/` 下已有语言版本的行为语义对应；不得用未翻译占位内容冒充对应语言。
 - 按文件职责更新 localized SDK/MCP contract 或 `docs/maintainers/`。
-- 用户可感知的新增、修复、变更、废弃、移除或安全影响写入 `CHANGELOG.md` 的 `[Unreleased]`。
+- 用户可感知的新增、修复、变更、废弃、移除或安全影响必须同时写入[英文未发布说明](changelog/unreleased/en.md)与[简体中文未发布说明](changelog/unreleased/zh-CN.md)。正式发布时，将这对文件移入对应版本目录，并更新[更新日志索引](changelog/README.zh-CN.md)。
 - CLI 命令、flag 或安全语义变化时检查 `skills/pixiv-cli/`。
 
 稳定规则只在一个权威文档中定义，其他位置应链接过去，避免复制大段内容。

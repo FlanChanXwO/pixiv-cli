@@ -17,6 +17,13 @@ type searchIllustQuery struct {
 	Duration string              `json:"duration"`
 	Filters  SearchIllustFilters `json:"filters"`
 }
+type searchNovelQuery struct {
+	Word     string             `json:"word"`
+	Target   SearchTarget       `json:"target"`
+	Sort     SortMode           `json:"sort"`
+	Duration string             `json:"duration"`
+	Filters  NovelSearchFilters `json:"filters"`
+}
 type rankingQuery struct {
 	Mode RankingMode `json:"mode"`
 	Date string      `json:"date"`
@@ -123,6 +130,66 @@ func (c *Client) SearchIllust(ctx context.Context, request SearchIllustRequest) 
 	return publicIllustList(list, OperationSearchIllust, digest, "offset", c.cursorSource), nil
 }
 
+// SearchNovel 返回一个认证 App API 小说搜索批次。筛选语义由公开小说字段在后续批次内统一验证。
+func (c *Client) SearchNovel(ctx context.Context, request SearchNovelRequest) (result *NovelListResult, err error) {
+	started := time.Now()
+	defer func() { c.delegatedOperationLog(OperationSearchNovel, started, err, 0, 0) }()
+	if scoped, snapshotErr := c.operationClient(ctx, OperationSearchNovel); snapshotErr != nil {
+		return nil, snapshotErr
+	} else if scoped != c {
+		return scoped.SearchNovel(ctx, request)
+	}
+	query := searchNovelQuery{Word: strings.TrimSpace(request.Word), Target: request.Target, Sort: request.Sort, Duration: strings.TrimSpace(request.Duration), Filters: normalizeNovelSearchFilters(request.Filters)}
+	if query.Word == "" {
+		return nil, invalidArgument(OperationSearchNovel, 0, errors.New("word is required"))
+	}
+	if query.Target == "" {
+		query.Target = SearchTargetPartialMatchForTags
+	}
+	if query.Sort == "" {
+		query.Sort = SortModeDateDesc
+	}
+	if !validSearchTarget(query.Target) || !validSortMode(query.Sort) || !validDuration(query.Duration) || !validNovelSearchFilters(query.Filters) {
+		return nil, invalidArgument(OperationSearchNovel, 0, errors.New("novel search parameters are invalid"))
+	}
+	digest := queryDigest(OperationSearchNovel, query)
+	offset, cursorErr := c.cursorOffset(request.Cursor, OperationSearchNovel, digest, 0)
+	if cursorErr != nil {
+		return nil, cursorErr
+	}
+	if routeErr := c.requireRoute(OperationSearchNovel, routeApp, 0, 0); routeErr != nil {
+		return nil, routeErr
+	}
+	list, searchErr := c.app.SearchNovel(ctx, query.Word, string(query.Target), string(query.Sort), query.Duration, offset)
+	if searchErr != nil {
+		return nil, mapAppOperationError(searchErr, OperationSearchNovel, 0)
+	}
+	filterNovelSearchBatch(list, query.Filters)
+	return publicNovelList(list, OperationSearchNovel, digest, c.cursorSource), nil
+}
+
+// filterNovelSearchBatch 只使用 App 没有可靠 query 参数的稳定返回字段。筛选不改变
+// upstream offset，调用方必须沿 cursor 继续读取以填满逻辑 page/limit。
+func filterNovelSearchBatch(list *model.NovelList, filters NovelSearchFilters) {
+	filtered := make([]model.Novel, 0, len(list.Novels))
+	for _, novel := range list.Novels {
+		if !searchRatingAccepts(filters.Rating, novel.XRestrict) {
+			continue
+		}
+		if filters.MinTextLength > 0 && novel.TextLength < filters.MinTextLength {
+			continue
+		}
+		if filters.MaxTextLength > 0 && novel.TextLength > filters.MaxTextLength {
+			continue
+		}
+		if filters.OriginalOnly && !novel.IsOriginal {
+			continue
+		}
+		filtered = append(filtered, novel)
+	}
+	list.Novels = filtered
+}
+
 func filterSearchIllustBatch(list *model.IllustList, filters SearchIllustFilters) {
 	// 本地后筛选仅覆盖 App 无可靠 query 的能力：rating(x_restrict) 与 AI。
 	// only AI 纯本地；exclude AI 另发 search_ai_type=1，但 canary 证明前仍保留本地后筛。
@@ -181,6 +248,19 @@ func normalizeSearchIllustFilters(filters SearchIllustFilters) SearchIllustFilte
 	}
 	filters.Tool = strings.TrimSpace(filters.Tool)
 	return filters
+}
+
+func normalizeNovelSearchFilters(filters NovelSearchFilters) NovelSearchFilters {
+	if filters.Rating == "" {
+		filters.Rating = SearchRatingAll
+	}
+	return filters
+}
+
+func validNovelSearchFilters(filters NovelSearchFilters) bool {
+	return oneOf(string(filters.Rating), "all", "sfw", "r18", "r18g", "mature") &&
+		filters.MinTextLength >= 0 && filters.MaxTextLength >= 0 &&
+		(filters.MaxTextLength == 0 || filters.MinTextLength <= filters.MaxTextLength)
 }
 
 func internalSearchIllustFilters(filters SearchIllustFilters) model.SearchIllustFilters {
@@ -409,7 +489,9 @@ func (c *Client) SearchUser(ctx context.Context, request SearchUserRequest) (res
 		if err != nil {
 			return nil, mapWebListError(err, OperationSearchUser, 0)
 		}
-		return publicUserList(list, OperationSearchUser, digest, c.cursorSource), nil
+		result := publicUserList(list, OperationSearchUser, digest, c.cursorSource)
+		result.Source = UserSearchSourceRelatedIllustAuthors
+		return result, nil
 	}
 	if route != routeApp {
 		return nil, unexpectedRoute(OperationSearchUser, 0, 0)
@@ -418,7 +500,9 @@ func (c *Client) SearchUser(ctx context.Context, request SearchUserRequest) (res
 	if err != nil {
 		return nil, mapAppOperationError(err, OperationSearchUser, 0)
 	}
-	return publicUserList(list, OperationSearchUser, digest, c.cursorSource), nil
+	result = publicUserList(list, OperationSearchUser, digest, c.cursorSource)
+	result.Source = UserSearchSourceApp
+	return result, nil
 }
 
 // UserDetail 返回指定用户的稳定完整详情。

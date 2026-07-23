@@ -18,7 +18,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -342,12 +341,7 @@ func (f syntheticAuthBinaryFixture) newOfflineEnv(t *testing.T) isolatedProcessE
 func newSyntheticAuthProcessEnv(t *testing.T) isolatedProcessEnv {
 	t.Helper()
 	env := isolatedEnv(t)
-	configRoot := env.configRoot
-	if runtime.GOOS == "darwin" {
-		// Darwin 的 os.UserConfigDir 固定使用 HOME 下的 Application Support。
-		configRoot = filepath.Join(env.home, "Library", "Application Support")
-	}
-	configPath := filepath.Join(configRoot, "pixiv", "config.toml")
+	configPath := filepath.Join(env.home, "pixiv-cli", "config.toml")
 	if err := os.MkdirAll(filepath.Dir(configPath), 0o700); err != nil {
 		t.Fatalf("create synthetic auth config directory: %v", err)
 	}

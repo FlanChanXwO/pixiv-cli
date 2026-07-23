@@ -1238,11 +1238,11 @@ func TestAnonymousSearchUserCursorFollowsArtworkBatchNotDeduplicatedUsers(t *tes
 		t.Fatal(err)
 	}
 	first, err := client.SearchUser(context.Background(), pixiv.SearchUserRequest{Word: "artist"})
-	if err != nil || len(first.UserPreviews) != 2 || first.NextCursor == "" {
+	if err != nil || first.Source != pixiv.UserSearchSourceRelatedIllustAuthors || len(first.UserPreviews) != 2 || first.NextCursor == "" {
 		t.Fatalf("first = %#v, %v", first, err)
 	}
 	second, err := client.SearchUser(context.Background(), pixiv.SearchUserRequest{Word: "artist", Cursor: first.NextCursor})
-	if err != nil || len(second.UserPreviews) != 1 || second.UserPreviews[0].User.ID != 30 || second.NextCursor != "" {
+	if err != nil || second.Source != pixiv.UserSearchSourceRelatedIllustAuthors || len(second.UserPreviews) != 1 || second.UserPreviews[0].User.ID != 30 || second.NextCursor != "" {
 		t.Fatalf("second = %#v, %v", second, err)
 	}
 }

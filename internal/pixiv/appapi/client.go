@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/FlanChanXwO/pixiv-cli/internal/logging"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/model"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/protocol"
 	"github.com/go-resty/resty/v2"
@@ -105,6 +106,14 @@ func (c *Client) SearchIllust(ctx context.Context, word, target, sort, duration 
 	}
 	setOffset(q, offset)
 	return c.getIllustList(ctx, protocol.AppSearchIllust, q, "offset")
+}
+
+// SearchNovel 返回一个 App API 小说搜索批次。小说搜索不复用推荐接口的 offset=0 continuation 语义。
+func (c *Client) SearchNovel(ctx context.Context, word, target, sort, duration string, offset int) (*model.NovelList, error) {
+	q := url.Values{"word": {word}, "search_target": {target}, "sort": {sort}}
+	setOptional(q, "duration", duration)
+	setOffset(q, offset)
+	return c.getNovelSearchList(ctx, protocol.AppSearchNovel, q)
 }
 
 func setSearchIllustFilters(query url.Values, filters model.SearchIllustFilters) {
@@ -339,6 +348,14 @@ func (c *Client) getUserPreviewList(ctx context.Context, path string, query url.
 }
 
 func (c *Client) getNovelList(ctx context.Context, path string, query url.Values) (*model.NovelList, error) {
+	return c.getNovelListWithContinuationPolicy(ctx, path, query, recommendationOffsetContinuation, false)
+}
+
+func (c *Client) getNovelSearchList(ctx context.Context, path string, query url.Values) (*model.NovelList, error) {
+	return c.getNovelListWithContinuationPolicy(ctx, path, query, positiveContinuation, true)
+}
+
+func (c *Client) getNovelListWithContinuationPolicy(ctx context.Context, path string, query url.Values, policy continuationPolicy, requireSearchFields bool) (*model.NovelList, error) {
 	var raw novelListDTO
 	if err := c.getJSONWithRetry(ctx, path, query, &raw); err != nil {
 		return nil, err
@@ -347,7 +364,7 @@ func (c *Client) getNovelList(ctx context.Context, path string, query url.Values
 		return nil, ErrMalformedResponse
 	}
 	for _, novel := range raw.Novels.Items {
-		if novel.ID <= 0 || novel.User.ID <= 0 {
+		if novel.ID <= 0 || novel.User.ID <= 0 || requireSearchFields && (novel.XRestrict == nil || novel.TextLength == nil || novel.IsOriginal == nil) {
 			return nil, ErrMalformedResponse
 		}
 	}
@@ -356,7 +373,7 @@ func (c *Client) getNovelList(ctx context.Context, path string, query url.Values
 		if *raw.NextURL == "" {
 			return nil, ErrMalformedResponse
 		}
-		value, err := continuationValueWithPolicy(*raw.NextURL, "offset", recommendationOffsetContinuation)
+		value, err := continuationValueWithPolicy(*raw.NextURL, "offset", policy)
 		if err != nil {
 			return nil, err
 		}
@@ -492,17 +509,7 @@ func (c *Client) getJSONWithRetry(ctx context.Context, path string, query url.Va
 }
 
 func (c *Client) logRateLimitRetry(retryAfter time.Duration) {
-	if c.logger == nil {
-		return
-	}
-	c.logger.LogAttrs(nil, slog.LevelInfo, "pixiv app api rate limit retry",
-		slog.String("component", "pixiv_app_api"),
-		slog.String("operation", "read"),
-		slog.String("result", "rate_limit_retry"),
-		slog.Int("status", http.StatusTooManyRequests),
-		slog.Duration("retry_after", retryAfter),
-		slog.Int("attempt", 2),
-	)
+	logging.LogRateLimitRetry(c.logger, retryAfter, 2)
 }
 
 func (c *Client) getJSONWithAuthRetry(ctx context.Context, path string, query url.Values, out any) error {

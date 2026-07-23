@@ -10,6 +10,7 @@ type Illust struct {
 	URL            string     `json:"url"`
 	ID             int64      `json:"id"`
 	Title          string     `json:"title"`
+	Caption        string     `json:"caption,omitempty"`
 	Type           string     `json:"type"`
 	PageCount      int        `json:"page_count"`
 	TotalBookmarks int        `json:"total_bookmarks"`
@@ -46,6 +47,14 @@ type ProfileImageURLs struct {
 type UserPreview struct {
 	User User `json:"user"`
 }
+
+// UserSearchSource 表示用户列表的上游语义，避免将匿名相关作者误解为官方用户名搜索。
+type UserSearchSource string
+
+const (
+	UserSearchSourceApp                  UserSearchSource = "app_search"
+	UserSearchSourceRelatedIllustAuthors UserSearchSource = "related_illust_authors"
+)
 
 // Cursor 是版本化、不透明且绑定查询的分页游标；零值表示没有下一批。
 type Cursor string
@@ -174,6 +183,23 @@ type SearchIllustOptionsRequest struct {
 type SearchIllustOptionsResult struct {
 	Tools []string `json:"tools"`
 }
+
+// NovelSearchFilters 是小说搜索可由稳定结果字段验证的本地筛选条件。
+type NovelSearchFilters struct {
+	Rating        SearchRating `json:"rating,omitempty"`
+	MinTextLength int          `json:"min_text_length,omitempty"`
+	MaxTextLength int          `json:"max_text_length,omitempty"`
+	OriginalOnly  bool         `json:"original_only,omitempty"`
+}
+
+type SearchNovelRequest struct {
+	Word     string             `json:"word"`
+	Target   SearchTarget       `json:"search_target,omitempty"`
+	Sort     SortMode           `json:"sort,omitempty"`
+	Duration string             `json:"duration,omitempty"`
+	Cursor   Cursor             `json:"cursor,omitempty"`
+	Filters  NovelSearchFilters `json:"filters,omitempty"`
+}
 type IllustRankingRequest struct {
 	Mode   RankingMode `json:"mode,omitempty"`
 	Date   string      `json:"date,omitempty"`
@@ -255,9 +281,13 @@ type IllustListResult struct {
 
 // Novel 是小说推荐结果中的稳定必要字段。
 type Novel struct {
+	URL            string    `json:"url"`
 	ID             int64     `json:"id"`
 	Title          string    `json:"title"`
 	Caption        string    `json:"caption"`
+	XRestrict      int       `json:"x_restrict"`
+	TextLength     int       `json:"text_length"`
+	IsOriginal     bool      `json:"is_original"`
 	User           User      `json:"user"`
 	Tags           []Tag     `json:"tags"`
 	ImageURLs      ImageURLs `json:"image_urls"`
@@ -286,8 +316,9 @@ type UserRecommendedResult struct {
 }
 
 type UserListResult struct {
-	UserPreviews []UserPreview `json:"user_previews"`
-	NextCursor   Cursor        `json:"next_cursor,omitempty"`
+	UserPreviews []UserPreview    `json:"user_previews"`
+	NextCursor   Cursor           `json:"next_cursor,omitempty"`
+	Source       UserSearchSource `json:"source,omitempty"`
 }
 
 // UserDetailResult 是用户详情的稳定完整 envelope。

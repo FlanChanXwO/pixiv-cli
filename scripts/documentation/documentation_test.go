@@ -17,6 +17,10 @@ func TestLocalizedDocumentationLayout(t *testing.T) {
 		"README.md",
 		"README.zh-CN.md",
 		"README.ja.md",
+		"changelog/README.md",
+		"changelog/README.zh-CN.md",
+		"changelog/unreleased/en.md",
+		"changelog/unreleased/zh-CN.md",
 		"docs/en/cli-reference.md",
 		"docs/en/sdk.md",
 		"docs/en/mcp-tools.md",
@@ -68,6 +72,23 @@ func TestMarkdownRelativeLinksResolve(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	changelogRoot := filepath.Join(repositoryRoot, "changelog")
+	err = filepath.WalkDir(changelogRoot, func(path string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if entry.IsDir() {
+			return nil
+		}
+		if strings.EqualFold(filepath.Ext(path), ".md") {
+			candidates = append(candidates, path)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	for _, documentPath := range candidates {
 		payload, readErr := os.ReadFile(documentPath)
 		if readErr != nil {
@@ -98,6 +119,49 @@ func TestMarkdownRelativeLinksResolve(t *testing.T) {
 			if _, statErr := os.Stat(resolved); statErr != nil {
 				relativeDocument, _ := filepath.Rel(repositoryRoot, documentPath)
 				t.Errorf("%s links to missing %q: %v", filepath.ToSlash(relativeDocument), match[1], statErr)
+			}
+		}
+	}
+}
+
+func TestVersionedChangelogHasEnglishAndSimplifiedChinesePairs(t *testing.T) {
+	repositoryRoot := filepath.Clean(filepath.Join("..", ".."))
+	changelogRoot := filepath.Join(repositoryRoot, "changelog")
+	err := filepath.WalkDir(changelogRoot, func(path string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if entry.IsDir() || entry.Name() != "en.md" {
+			return nil
+		}
+		if _, err := os.Stat(filepath.Join(filepath.Dir(path), "zh-CN.md")); err != nil {
+			relative, _ := filepath.Rel(repositoryRoot, path)
+			t.Errorf("%s has no matching Simplified Chinese changelog: %v", filepath.ToSlash(relative), err)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestContributionTemplatesArePresentAndEnglish(t *testing.T) {
+	repositoryRoot := filepath.Clean(filepath.Join("..", ".."))
+	for _, relativePath := range []string{
+		".github/ISSUE_TEMPLATE/config.yml",
+		".github/ISSUE_TEMPLATE/bug-report.yml",
+		".github/ISSUE_TEMPLATE/feature-request.yml",
+		".github/PULL_REQUEST_TEMPLATE.md",
+	} {
+		payload, err := os.ReadFile(filepath.Join(repositoryRoot, filepath.FromSlash(relativePath)))
+		if err != nil {
+			t.Errorf("read contribution template %s: %v", relativePath, err)
+			continue
+		}
+		for _, character := range string(payload) {
+			if character > 127 {
+				t.Errorf("contribution template %s contains non-ASCII character %q", relativePath, character)
+				break
 			}
 		}
 	}

@@ -25,7 +25,7 @@
 
 - MCP tool 名称、参数、structured output、delivery mode 或文本语义变化时，更新 `docs/en/mcp-tools.md`、`docs/zh-CN/mcp-tools.md` 和聚焦测试。
 - CLI 命令、flag、输出 JSON、token 优先级、账号/config 行为变化时，更新 README 或 docs。
-- 用户可见变化、兼容性影响、废弃/移除或安全影响要写入 `CHANGELOG.md` 的 `[Unreleased]`。
+- 用户可见变化、兼容性影响、废弃/移除或安全影响要同步写入 `changelog/unreleased/en.md` 与 `changelog/unreleased/zh-CN.md`。
 
 ## 测试
 

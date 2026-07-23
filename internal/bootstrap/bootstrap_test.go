@@ -126,7 +126,6 @@ func clearRuntimeEnvironment(t *testing.T) {
 		"https_proxy",
 		"HTTPS_PROXY",
 		"PIXIV_LOG_LEVEL",
-		"PIXIV_LOG_FORMAT",
 	} {
 		value, ok := os.LookupEnv(name)
 		require.NoError(t, os.Unsetenv(name))

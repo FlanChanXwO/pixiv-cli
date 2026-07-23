@@ -14,6 +14,8 @@
 
 `pixiv-cli` 是独立开发的非官方第三方工具，为用户、Coding Agent 和 Go 应用提供一致的 Pixiv 能力，与 Pixiv Inc. 无隶属或背书关系。CLI 与 MCP server 共同调用 public Go SDK，并以 Pixiv App API 作为已认证能力的数据源；使用时请遵守 Pixiv 条款与适用法律。
 
+维护者注意：发布 tag 受保护的认证 E2E 门禁阻断。refresh token 只能放入 GitHub `pixiv-e2e` Environment Secret；作品 ID 与搜索输入使用 Environment Variables。PR 与 `main` CI 保持离线且不使用 secret，详见[开发流程](docs/maintainers/development.md#测试)。
+
 ## 为什么选择 pixiv-cli？
 
 - **一致的能力面**——CLI、MCP 与 SDK 均可完成搜索、详情、排行、推荐、用户、收藏、关注、下载和 ugoira 处理。
@@ -43,10 +45,6 @@ curl.exe -fsSLo "%TEMP%\pixiv-install.cmd" https://raw.githubusercontent.com/Fla
 两个脚本都会检测 AMD64/ARM64、选择最新 stable 官方 Release archive、校验发布的 SHA-256、预检暂存
 binary，并在修改 PATH 前完成用户级安装。可用 `--no-path` 保持 PATH 不变，或用 `--install-dir DIR`
 选择其他目录；执行前也可以先审阅下载的脚本。
-
-Linux 兼容性说明：v0.3.0 archive 在 Ubuntu 24.04 上链接，可能要求 glibc 2.39，因此不能在 Debian 12
-运行。v0.4.2 已从构建侧修复：Linux 资产以 glibc 2.35 为最高依赖并经过 ABI 门禁。安装器会在
-替换现有安装前预检 staged binary，并明确报告不兼容。
 
 ### 让 Coding Agent 安装
 
@@ -97,6 +95,7 @@ pixiv auth login
 
 # 使用 App 服务端筛选搜索。
 pixiv search "初音ミク" --type illust --ai-mode exclude --resolution high
+pixiv novel search "初音ミク" --rating sfw --min-text-length 1000
 
 # 查看详情、获取推荐并下载。
 pixiv detail 123456
@@ -114,13 +113,14 @@ pixiv download 123456 --pages 1,3-5 --quality regular
 
 ```bash
 pixiv ranking --mode day --json
+pixiv user search "miku" --limit 10 --json
 pixiv user detail 12345678
 pixiv search-options "初音ミク"
 ```
 
 ### MCP
 
-显式启动 stdio server。stdout 只用于 JSON-RPC。操作摘要写入用户 state 目录 `pixiv/logs` 的按日 JSONL（默认保留 7 天），终端默认无日志痕迹。
+显式启动 stdio server。stdout 只用于 JSON-RPC。操作摘要写入用户主目录下 `~/pixiv-cli/logs` 的按日纯文本文件 `YYYY-MM-DD.txt`（Windows 为 `%USERPROFILE%\pixiv-cli\logs`；默认保留 7 天），终端默认无日志痕迹。
 
 ```bash
 pixiv mcp
@@ -145,13 +145,13 @@ result, err := client.SearchIllust(ctx, pixiv.SearchIllustRequest{Word: "初音�
 
 推荐使用 `pixiv auth login` 完成配置。它把原始 Pixiv App OAuth refresh token 按 UID 保存在本地账号 store；`PHPSESSID` 等浏览器 Cookie 会被拒绝，也不会转换为 App 凭据。
 
+macOS、桌面 Linux 与 Windows 的 `pixiv://` callback handler 只在当前登录期间安装，随后恢复原有设置。无 GUI SSH 服务器继续使用现有的 `--no-open --addr` 与本机 `ssh -L` tunnel；转发 fallback 页面可在同一个浏览器中继续已校验的 Pixiv relay，无需在浏览器机器安装 pixiv。详见 [CLI 参考手册](docs/zh-CN/cli-reference.md#获取-refresh-token)。
+
 ```bash
 pixiv auth list
 pixiv auth use 12345678
 pixiv auth check
 ```
-
-v0.4.2 以 `auth import`/`auth export` 取代 `auth add`/`auth token`，已删除的名称和 `--token` 均无 alias。导入时优先使用无参隐藏输入或 raw stdin；位置参数会暴露在 argv/shell history。只有不带 `--output` 的 `pixiv auth export [UID]` 与 `pixiv auth export --all` 可以向 stdout 输出 secret；需要文件时使用 `--output` 写私有 bundle。bundle 是未加密的 point-in-time backup，不是 live sync，token rotation 后可能 stale。不要把 secret 输出粘贴到聊天、日志、shell history、issue 或 Agent transcript；其他 stdout/stderr、JSON、MCP result、日志和错误均不得暴露 refresh token。完整 import/export 与文件保护契约见 [CLI reference](docs/zh-CN/cli-reference.md#获取-refresh-token)。
 
 ## 文档
 
@@ -162,12 +162,12 @@ v0.4.2 以 `auth import`/`auth export` 取代 `auth add`/`auth token`，已删�
 | [MCP tools](docs/zh-CN/mcp-tools.md) | Tool schema 与输出语义 |
 | [架构](docs/maintainers/architecture.md) | 包边界和运行流程 |
 | [开发流程](docs/maintainers/development.md) | 工具链、测试、构建和发布 |
-| [更新日志](CHANGELOG.md) | 用户可感知变化 |
+| [更新日志](changelog/README.zh-CN.md) | 用户可感知变化 |
 
 ## 参与贡献
 
-欢迎提交 bug、文档修复、测试和聚焦功能。发起 pull request 前请阅读 [CONTRIBUTING.zh-CN.md](CONTRIBUTING.zh-CN.md)；较大或影响兼容性的变更请先讨论。
+欢迎提交 bug、文档修复、测试和聚焦功能。发起 pull request 前请阅读 [CONTRIBUTING.zh-CN.md](CONTRIBUTING.zh-CN.md)；较大或影响公开接口的变更请先讨论。
 
 ## 许可证
 
-[MIT](LICENSE)
+[MIT](LICENSE) © FlanChanXwO

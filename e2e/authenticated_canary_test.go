@@ -371,6 +371,10 @@ func TestPixivSDKAuthenticatedAppAPICanarySearchFilters(t *testing.T) {
 	if err := validateAuthenticatedSDKCanaryBinary(os.Getenv("PIXIV_E2E_BINARY")); err != nil {
 		t.Fatal(err)
 	}
+	words, err := authenticatedCanarySearchWordsFromEnvironment(os.Getenv)
+	if err != nil {
+		t.Fatal(err)
+	}
 	proxy := firstNonEmpty(os.Getenv("PIXIV_E2E_PROXY"), os.Getenv("PIXIV_WEB_API_PROXY"))
 	options, err := authenticatedCanarySDKOptions(t, auth, proxy)
 	if err != nil {
@@ -380,13 +384,12 @@ func TestPixivSDKAuthenticatedAppAPICanarySearchFilters(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open authenticated search canary snapshot: %v", err)
 	}
-	runAuthenticatedSearchCanary(t, client)
+	runAuthenticatedSearchCanary(t, client, words.illust)
 }
 
-func runAuthenticatedSearchCanary(t *testing.T, client *pixiv.Client) {
+func runAuthenticatedSearchCanary(t *testing.T, client *pixiv.Client, searchWord string) {
 	t.Helper()
 
-	const searchWord = "初音ミク"
 	baseline, err := searchCanaryNonempty(testCommandContext(t), client, pixiv.SearchIllustRequest{Word: searchWord})
 	if err != nil {
 		t.Fatalf("authenticated App search baseline failed: %v", err)

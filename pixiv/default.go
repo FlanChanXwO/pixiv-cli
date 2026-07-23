@@ -13,7 +13,7 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/config"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/oauth"
 	"github.com/FlanChanXwO/pixiv-cli/internal/storage/auth"
-	"github.com/FlanChanXwO/pixiv-cli/internal/utils"
+	"github.com/FlanChanXwO/pixiv-cli/internal/utils/credentials"
 )
 
 type defaultOptions struct {
@@ -115,7 +115,7 @@ func (d *defaultOptions) snapshot(ctx context.Context, operation Operation) (*Cl
 	}
 	refreshToken, selectedUserID, selectedStored, err := d.selectRefreshToken(snapshot.store)
 	if err != nil {
-		if errors.Is(err, utils.ErrCookieRefreshTokenInput) {
+		if errors.Is(err, credentials.ErrCookieRefreshTokenInput) {
 			return nil, newError(CodeInvalidArgument, operation, "", false, 0, 0, err)
 		}
 		return nil, newUserError(CodeInvalidArgument, operation, "", false, 0, d.options.UserID, errors.New("selected account does not exist"))
@@ -179,12 +179,12 @@ func (d *defaultOptions) snapshot(ctx context.Context, operation Operation) (*Cl
 
 func (d *defaultOptions) selectRefreshToken(store auth.AuthStore) (string, int64, bool, error) {
 	if token := strings.TrimSpace(d.options.RefreshToken); token != "" {
-		token, err := utils.ValidateRefreshTokenInput(token)
+		token, err := credentials.ValidateRefreshTokenInput(token)
 		return token, 0, false, err
 	}
 	if d.options.UserID != 0 {
 		if _, account, ok := store.Get(d.options.UserID); ok {
-			token, err := utils.ValidateRefreshTokenInput(account.RefreshToken)
+			token, err := credentials.ValidateRefreshTokenInput(account.RefreshToken)
 			return token, account.UserID, true, err
 		}
 		return "", 0, false, errors.New("selected account does not exist")
@@ -195,7 +195,7 @@ func (d *defaultOptions) selectRefreshToken(store auth.AuthStore) (string, int64
 		return token, 0, false, nil
 	}
 	if userID, account, ok := auth.SelectAuthAccount(store, 0); ok {
-		token, err := utils.ValidateRefreshTokenInput(account.RefreshToken)
+		token, err := credentials.ValidateRefreshTokenInput(account.RefreshToken)
 		return token, userID, true, err
 	}
 	return "", 0, false, nil

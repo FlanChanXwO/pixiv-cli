@@ -69,7 +69,7 @@ func checkBuildJob(job *yaml.Node) error {
 	if err := requireOnlyMappingKeys(job, "name", "needs", "runs-on", "permissions", "env", "strategy", "steps"); err != nil {
 		return fmt.Errorf("build job: %w", err)
 	}
-	if err := workflowpolicy.RequireScalar(job, "needs", "validate"); err != nil {
+	if err := requireExactStringSequence(job, "needs", "validate", "e2e"); err != nil {
 		return fmt.Errorf("build job: %w", err)
 	}
 	if err := workflowpolicy.RequireScalar(job, "runs-on", "${{ matrix.runner }}"); err != nil {

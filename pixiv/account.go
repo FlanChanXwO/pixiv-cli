@@ -10,7 +10,7 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/config"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/oauth"
 	"github.com/FlanChanXwO/pixiv-cli/internal/storage/auth"
-	"github.com/FlanChanXwO/pixiv-cli/internal/utils"
+	"github.com/FlanChanXwO/pixiv-cli/internal/utils/credentials"
 )
 
 // AuthFilePath 返回此 Client 操作账号数据的路径。显式 NewClient 必须提供
@@ -55,7 +55,7 @@ func (c *Client) ImportAccount(ctx context.Context, refreshToken string) (out *A
 	defer func() { c.operationLog(OperationImportAccount, started, err, 0, 0) }()
 	c.authState.mu.Lock()
 	defer c.authState.mu.Unlock()
-	refreshToken, inputErr := utils.ValidateRefreshTokenInput(refreshToken)
+	refreshToken, inputErr := credentials.ValidateRefreshTokenInput(refreshToken)
 	if inputErr != nil {
 		return nil, newError(CodeInvalidArgument, OperationImportAccount, "", false, 0, 0, inputErr)
 	}
@@ -140,7 +140,7 @@ func (c *Client) ExportAccountRefreshToken(userID int64) (token string, err erro
 		}
 		return "", newUserError(CodeInvalidArgument, OperationExportAccountRefreshToken, "", false, 0, userID, errors.New("account does not exist"))
 	}
-	token, inputErr := utils.ValidateRefreshTokenInput(account.RefreshToken)
+	token, inputErr := credentials.ValidateRefreshTokenInput(account.RefreshToken)
 	if inputErr != nil {
 		return "", newUserError(CodeInvalidArgument, OperationExportAccountRefreshToken, "", false, 0, selectedUserID, inputErr)
 	}
@@ -232,7 +232,7 @@ func (c *Client) CheckRefreshToken(ctx context.Context, refreshToken string) (ou
 }
 
 func (c *Client) checkRefreshToken(ctx context.Context, refreshToken string) (*Account, error) {
-	refreshToken, inputErr := utils.ValidateRefreshTokenInput(refreshToken)
+	refreshToken, inputErr := credentials.ValidateRefreshTokenInput(refreshToken)
 	if inputErr != nil {
 		return nil, newError(CodeInvalidArgument, OperationCheckRefreshToken, "", false, 0, 0, inputErr)
 	}
@@ -292,7 +292,7 @@ func (c *Client) refreshStoredAccountFromState(ctx context.Context, operation Op
 	if !ok || strings.TrimSpace(stored.RefreshToken) == "" {
 		return nil, newUserError(CodeUnauthorized, operation, "", false, 0, userID, errors.New("account token is unavailable"))
 	}
-	refreshToken, inputErr := utils.ValidateRefreshTokenInput(stored.RefreshToken)
+	refreshToken, inputErr := credentials.ValidateRefreshTokenInput(stored.RefreshToken)
 	if inputErr != nil {
 		return nil, newUserError(CodeInvalidArgument, operation, "", false, 0, userID, inputErr)
 	}

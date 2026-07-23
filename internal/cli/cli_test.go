@@ -30,7 +30,7 @@ func TestRunNoArgsPrintsHelp(t *testing.T) {
 
 func TestRunKeepsTerminalFreeOfOperationLogs(t *testing.T) {
 	_, configPath := useTempPaths(t)
-	if err := config.WritePrivateFile(configPath, []byte("[logging]\nformat = 'json'\nlevel = 'info'\n")); err != nil {
+	if err := config.WritePrivateFile(configPath, []byte("[logging]\nlevel = 'info'\n")); err != nil {
 		t.Fatal(err)
 	}
 	var stdout, stderr bytes.Buffer
@@ -78,7 +78,7 @@ func TestInvalidLoggingConfigurationStillBlocksOtherCommands(t *testing.T) {
 
 func TestRunUnknownCommandReturnsError(t *testing.T) {
 	_, configPath := useTempPaths(t)
-	if err := config.WritePrivateFile(configPath, []byte("[logging]\nformat = 'json'\nlevel = 'error'\n")); err != nil {
+	if err := config.WritePrivateFile(configPath, []byte("[logging]\nlevel = 'error'\n")); err != nil {
 		t.Fatal(err)
 	}
 
@@ -93,13 +93,13 @@ func TestRunUnknownCommandReturnsError(t *testing.T) {
 
 func TestRunClosesApplicationLogWriter(t *testing.T) {
 	home, configPath := useTempPaths(t)
-	require.NoError(t, config.WritePrivateFile(configPath, []byte("[logging]\nformat = 'json'\nlevel = 'error'\n")))
+	require.NoError(t, config.WritePrivateFile(configPath, []byte("[logging]\nlevel = 'error'\n")))
 
 	var stdout, stderr bytes.Buffer
 	code := Run([]string{"pixiv", "wat"}, strings.NewReader(""), &stdout, &stderr)
 
 	require.NotZero(t, code)
-	// Windows 不允许临时目录清理删除仍被打开的 JSONL。该断言确保 CLI 在返回前
+	// Windows 不允许临时目录清理删除仍被打开的文本日志。该断言确保 CLI 在返回前
 	// 已释放根 logger 的文件 writer，而不是依赖进程退出回收句柄。
 	require.NoError(t, os.RemoveAll(home))
 }

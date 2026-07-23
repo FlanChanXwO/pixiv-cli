@@ -14,14 +14,7 @@ func NewLogger(writer io.Writer, cfg RuntimeConfig) (*slog.Logger, error) {
 	if err != nil {
 		return nil, err
 	}
-	format, err := normalizeLogFormat(cfg.LogFormat)
-	if err != nil {
-		return nil, err
-	}
 	options := &slog.HandlerOptions{Level: level}
-	if format == "json" {
-		return slog.New(slog.NewJSONHandler(writer, options)), nil
-	}
 	return slog.New(slog.NewTextHandler(writer, options)), nil
 }
 
@@ -32,16 +25,6 @@ func normalizeLogLevel(value string) (string, error) {
 		return value, nil
 	default:
 		return "", fmt.Errorf("log_level must be one of trace, debug, info, warn, error")
-	}
-}
-
-func normalizeLogFormat(value string) (string, error) {
-	value = strings.ToLower(strings.TrimSpace(value))
-	switch value {
-	case "text", "json":
-		return value, nil
-	default:
-		return "", fmt.Errorf("log_format must be text or json")
 	}
 }
 

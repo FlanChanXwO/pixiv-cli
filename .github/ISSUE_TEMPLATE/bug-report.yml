@@ -1,0 +1,80 @@
+name: Bug report
+description: Report a reproducible problem in the CLI, MCP server, or public Go SDK.
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for taking the time to report a problem. Remove or redact refresh tokens, cookies, proxy credentials, private URLs, downloaded work, and private API responses before submitting.
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: What happened?
+      description: Describe the observed behavior and why it is incorrect.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction steps
+      description: Provide the smallest safe sequence that reproduces the problem. Use placeholder IDs or redacted values when needed.
+      placeholder: |
+        1. Run `pixiv ...`
+        2. Provide the redacted input or configuration
+        3. Observe ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: Describe what you expected to happen instead.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Affected interface
+      description: Select every interface where you observed the problem.
+      multiple: true
+      options:
+        - CLI
+        - MCP server
+        - Public Go SDK
+        - OAuth or account management
+        - Download or ugoira processing
+        - Release installer or updater
+        - Documentation
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Include `pixiv version --json`, operating system, architecture, installation method, and any relevant proxy or authentication state. Do not include secrets.
+      render: text
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Redacted logs or output
+      description: Paste only redacted output. Never include refresh tokens, cookies, authorization codes, proxy userinfo, private URLs, or response bodies.
+      render: shell
+
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Safety confirmation
+      options:
+        - label: I have removed all secrets and private content from this report.
+          required: true

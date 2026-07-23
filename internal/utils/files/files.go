@@ -36,16 +36,19 @@ func defaultPrivateFileOps() privateFileOps {
 	}
 }
 
-func UserConfigSubdir(appName string) (string, error) {
-	dir, err := os.UserConfigDir()
+// UserDataSubdir 返回当前用户 home 下的应用数据目录。所有平台均使用相同的
+// `~/APP_NAME` 语义；Windows 上的 home 由 os.UserHomeDir 解析为用户 profile。
+func UserDataSubdir(appName string) (string, error) {
+	dir, err := os.UserHomeDir()
 	if err != nil {
 		return "", err
 	}
 	return filepath.Join(dir, appName), nil
 }
 
-func UserConfigFile(appName, filename string) (string, error) {
-	dir, err := UserConfigSubdir(appName)
+// UserDataFile 返回应用数据目录内的指定文件路径。
+func UserDataFile(appName, filename string) (string, error) {
+	dir, err := UserDataSubdir(appName)
 	if err != nil {
 		return "", err
 	}

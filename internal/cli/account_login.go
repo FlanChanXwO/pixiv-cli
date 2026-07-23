@@ -20,7 +20,10 @@ import (
 	"github.com/spf13/cobra"
 )
 
-const defaultLoginAddr = "127.0.0.1:0"
+const (
+	defaultLoginAddr = "127.0.0.1:0"
+	loginPageTitle   = "pixiv-cli"
+)
 
 var (
 	loginHooksMu          sync.RWMutex
@@ -35,7 +38,8 @@ type loginServerResult struct {
 
 type loginInputResult struct {
 	loginServerResult
-	relayed bool
+	relayed  bool
+	relayURL string
 }
 
 type callbackURLAccepter = func(string) bool
@@ -183,7 +187,7 @@ func (a app) waitForLoginCode(ctx context.Context, addr string, acceptsCallback 
 		}
 	}
 	loginChallenge := pixivLoginChallenge(loginURL)
-	openManualRelay := func(rawURL string) error {
+	openTerminalRelay := func(rawURL string) error {
 		writeErr("Detected Pixiv authorization relay page; opening Pixiv relay URL once.\n")
 		return browserOpener(rawURL)
 	}
@@ -248,9 +252,13 @@ func (a app) waitForLoginCode(ctx context.Context, addr string, acceptsCallback 
 		if input == "" {
 			input = r.Form.Get("callback_url")
 		}
-		result := loginInputFromText(input, acceptsCallback, loginChallenge, openManualRelay)
+		result := classifyLoginInput(input, acceptsCallback, loginChallenge)
 		if result.relayed && result.err == nil {
-			writeLoginRelayResult(w)
+			// fallback 页面可能经 SSH 转发在另一台机器的浏览器中打开。relay 必须由
+			// 当前请求的浏览器继续，不能在运行 CLI 的无 GUI 主机上调用 xdg-open。
+			writeErr("Detected Pixiv authorization relay page; continuing it in the current browser.\n")
+			w.Header().Set("Location", result.relayURL)
+			w.WriteHeader(http.StatusSeeOther)
 			return
 		}
 		reportInvalidSubmission(result.err)
@@ -299,7 +307,7 @@ func (a app) waitForLoginCode(ctx context.Context, addr string, acceptsCallback 
 				if err != nil {
 					return
 				}
-				result := loginInputFromText(input, acceptsCallback, loginChallenge, openManualRelay)
+				result := loginInputFromText(input, acceptsCallback, loginChallenge, openTerminalRelay)
 				reportInvalidSubmission(result.err)
 				if result.relayed {
 					continue
@@ -335,13 +343,13 @@ func (a app) waitForLoginCode(ctx context.Context, addr string, acceptsCallback 
 func writeLoginForm(w http.ResponseWriter, loginURL string) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	fmt.Fprintf(w, `<!doctype html>
-<html><body>
+<html lang="en"><head><meta charset="utf-8"><title>%s</title></head><body>
 <p>Open <a href="%s">Pixiv login</a>, then paste a callback URL, pixiv:// URL, Pixiv relay URL, or raw code.</p>
 <form method="post" action="/manual">
 <input name="code" autofocus>
 <button type="submit">Submit</button>
 </form>
-</body></html>`, html.EscapeString(loginURL))
+</body></html>`, loginPageTitle, html.EscapeString(loginURL))
 }
 
 // writeLoginCallbackRelayPage 将 helper 传来的 fragment 安全地转为本地 POST。
@@ -349,7 +357,7 @@ func writeLoginForm(w http.ResponseWriter, loginURL string) {
 func writeLoginCallbackRelayPage(w http.ResponseWriter) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	_, _ = io.WriteString(w, `<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><title>Completing login</title>
+<html lang="en"><head><meta charset="utf-8"><title>pixiv-cli</title>
 <style>
 html,body{height:100%;margin:0}
 body{display:flex;align-items:center;justify-content:center;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#f7f7f8;color:#222}
@@ -363,7 +371,7 @@ p{margin:0;line-height:1.6;color:#555}
   const callbackURL = window.location.hash.slice(1);
   window.history.replaceState(null, "", window.location.pathname);
   if (!callbackURL) {
-    document.title = "Login failed";
+    document.title = "pixiv-cli";
     document.querySelector(".card").innerHTML = "<h1>Login failed</h1><p>Login could not be completed. Return to the terminal to view details or try again.</p>";
     return;
   }
@@ -395,7 +403,7 @@ func writeLoginFinalPage(w http.ResponseWriter, ok bool) {
 		body = "Login could not be completed. Return to the terminal to view details or try again."
 	}
 	_, _ = io.WriteString(w, `<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><title>`+title+`</title>
+<html lang="en"><head><meta charset="utf-8"><title>`+loginPageTitle+`</title>
 <style>
 html,body{height:100%;margin:0}
 body{display:flex;align-items:center;justify-content:center;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#f7f7f8;color:#222}
@@ -406,25 +414,37 @@ p{margin:0;line-height:1.6;color:#555}
 <body><div class="card"><h1>`+title+`</h1><p>`+body+`</p></div></body></html>`)
 }
 
-func writeLoginRelayResult(w http.ResponseWriter) {
-	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-	_, _ = io.WriteString(w, "authorization relay opened; continue in the browser or paste the final callback/code\n")
-}
-
-func loginInputFromText(input string, acceptsCallback callbackURLAccepter, expectedChallenge string, openRelay func(string) error) loginInputResult {
+// classifyLoginInput 只解析并校验用户提交；HTTP fallback 可以让原浏览器继续 relay，
+// TTY fallback 则可选择调用本地 browser opener。两者不能混淆，否则 SSH 远端会错误地
+// 尝试在无 GUI 服务器上打开 relay。
+func classifyLoginInput(input string, acceptsCallback callbackURLAccepter, expectedChallenge string) loginInputResult {
 	if returnTo, ok, err := pixivPostRedirectRelayURL(input, expectedChallenge); ok {
 		if err != nil {
 			return loginInputResult{loginServerResult: loginServerResult{err: err}, relayed: true}
 		}
-		if openRelay == nil {
-			return loginInputResult{loginServerResult: loginServerResult{err: errors.New("browser opener is not configured")}, relayed: true}
-		}
-		if err := openRelay(returnTo); err != nil {
-			return loginInputResult{loginServerResult: loginServerResult{err: fmt.Errorf("could not open Pixiv authorization relay URL: %w", err)}, relayed: true}
-		}
-		return loginInputResult{relayed: true}
+		return loginInputResult{relayed: true, relayURL: returnTo}
 	}
 	return loginInputResult{loginServerResult: loginCodeFromInput(input, acceptsCallback)}
+}
+
+// loginInputFromText 保留终端回填的既有行为：用户显式粘贴已校验 relay URL 时，
+// 仅调用当前机器的 browser opener 一次。HTTP fallback 走 classifyLoginInput，
+// 由提交表单的浏览器自行跳转。
+func loginInputFromText(input string, acceptsCallback callbackURLAccepter, expectedChallenge string, openRelay func(string) error) loginInputResult {
+	result := classifyLoginInput(input, acceptsCallback, expectedChallenge)
+	if !result.relayed || result.err != nil {
+		return result
+	}
+	if result.relayURL == "" {
+		return loginInputResult{loginServerResult: loginServerResult{err: errors.New("Pixiv authorization relay URL is empty")}, relayed: true}
+	}
+	if openRelay == nil {
+		return loginInputResult{loginServerResult: loginServerResult{err: errors.New("browser opener is not configured")}, relayed: true}
+	}
+	if err := openRelay(result.relayURL); err != nil {
+		return loginInputResult{loginServerResult: loginServerResult{err: fmt.Errorf("could not open Pixiv authorization relay URL: %w", err)}, relayed: true}
+	}
+	return loginInputResult{relayed: true, relayURL: result.relayURL}
 }
 
 func loginCodeFromInput(input string, acceptsCallback callbackURLAccepter) loginServerResult {

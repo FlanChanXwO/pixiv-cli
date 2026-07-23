@@ -244,7 +244,7 @@ https_proxy=http://127.0.0.1:7890 ./build/pixiv mcp
 ./build/pixiv mcp --no-proxy
 ```
 
-CLI 多账号认证保存在 `os.UserConfigDir()/pixiv/auth.json`，账号 key 是 Pixiv UID；全局配置保存在 `os.UserConfigDir()/pixiv/config.toml`。Unix-like 主动使用 `0700` 父目录与 `0600` 文件；Windows 首次创建继承父目录 ACL，替换既有目标保留其 ACL，不主动收紧或放宽 DACL。推荐使用 `pixiv auth login` 通过本地 loopback server 和浏览器 OAuth 登录；已有 raw token 可用 `pixiv auth import` 输入，账号备份/迁移使用 `auth export` 与 `auth import --file`。`auth add`、`auth token` 与 `--token` 已在 v0.4.0 删除且无 alias。可用 `pixiv config path/get/set/unset` 管理全局配置。无 refresh token 时默认启用匿名 Pixiv web/ajax API fallback，可用 `pixiv config set web_fallback_enabled false` 关闭。
+CLI 的认证、配置、回调桥接与日志都位于当前用户主目录下的 `pixiv-cli`：macOS/Linux 为 `~/pixiv-cli`，Windows 为 `%USERPROFILE%\pixiv-cli`。多账号认证保存在 `auth.json`，账号 key 是 Pixiv UID；全局配置保存在 `config.toml`。Unix-like 主动使用 `0700` 父目录与 `0600` 文件；Windows 首次创建继承父目录 ACL，替换既有目标保留其 ACL，不主动收紧或放宽 DACL。推荐使用 `pixiv auth login` 通过本地 loopback server 和浏览器 OAuth 登录；已有 raw token 可用 `pixiv auth import` 输入，账号备份使用 `auth export` 与 `auth import --file`。可用 `pixiv config path/get/set/unset` 管理全局配置。无 refresh token 时默认启用匿名 Pixiv web/ajax API fallback，可用 `pixiv config set web_fallback_enabled false` 关闭。
 CLI 使用 Cobra/pflag，flag 可以写在位置参数前后；例如 `pixiv auth check 12345678 --json` 和 `pixiv search "初音ミク" --json` 都受支持。
 
 ## 获取 refresh token
@@ -263,7 +263,7 @@ pixiv auth login
 | state 校验 | 本地 loopback 回调必须匹配本次 state；Pixiv 官方 callback URL 与 `pixiv://account/login` 可在 Pixiv 未返回 state 时作为显式 fallback。 |
 | token 保存 | refresh/access token 不打印；refresh token 按 Pixiv UID 写入 `auth.json`。Unix-like 主动使用 `0700` 父目录与 `0600` 文件；Windows 首次创建继承父目录 ACL，替换既有目标保留其 ACL，不主动收紧或放宽 DACL。 |
 
-默认浏览器打开时，macOS 会注册一个仅服务于当前登录尝试的本地 `PixivCLIURLHandler.app`。Pixiv 返回 `pixiv://account/login?...` 后，helper 会打开 loopback bridge：callback 仅放在 URL fragment，随后先从地址栏和浏览器历史中移除，再 POST 给本轮 CLI listener。OAuth exchange 真正完成后，该浏览器页才会收到最终成功或失败 HTML。它不读取浏览器 Cookie、存储、历史、会话文件、标签页或网络流量；helper 不可用时不会启动受管 Chromium、DevTools/CDP 或浏览器状态扫描，只保留正常浏览器、loopback 和手动回填。遇到 Pixiv `post-redirect` 授权接力页时，用户可手动粘贴 relay URL；CLI 只在校验其属于本轮 OAuth 后打开一次。原 Pixiv relay 标签页仍可能停留白页，但 callback 产生后会打开本地最终结果页；若未生成 callback，CLI 不会隐藏失败或假装登录成功。
+默认浏览器打开时，macOS 注册仅服务本轮的 `PixivCLIURLHandler.app`，桌面 Linux 创建临时 XDG desktop entry，Windows 创建临时 HKCU 协议关联；三者都会在完成、失败或取消后恢复先前的 `pixiv://` handler。Pixiv 返回 `pixiv://account/login?...` 后，helper 会打开 loopback bridge：callback 仅放在 URL fragment，随后先从地址栏和浏览器历史中移除，再 POST 给本轮 CLI listener。OAuth exchange 真正完成后，该浏览器页才会收到最终成功或失败 HTML。它不读取浏览器 Cookie、存储、历史、会话文件、标签页或网络流量；helper 不可用时不会启动受管 Chromium、DevTools/CDP 或浏览器状态扫描，只保留正常浏览器、loopback 和手动回填。`post-redirect` relay 仍必须校验属于本轮 OAuth；终端提交只在 CLI 所在机打开一次，而 fallback 页面提交会由请求该页面的浏览器继续。因此无 GUI SSH server 可用 `pixiv auth login --no-open --addr 127.0.0.1:PORT` 配合本机 `ssh -N -L PORT:127.0.0.1:PORT HOST`：在转发页面提交 relay 或最终 callback 时，POST 只经 tunnel 回到 server loopback，不要求浏览器机器也安装 pixiv。若未生成 callback，CLI 不会隐藏失败或假装登录成功。
 
 浏览器使用的系统代理不会自动传给 Go CLI。若 Pixiv token exchange 需要代理，请配置 `pixiv config set https_proxy http://127.0.0.1:7890`，在单次命令前设置 `https_proxy=...`，或对网络命令使用运行期覆盖 `--proxy http://127.0.0.1:7890`。`--no-proxy` 会清空本次命令的代理，即使环境变量或 `config.toml` 设置了 `https_proxy`；`--proxy` 和 `--no-proxy` 不能同用，也不会写入 `config.toml`。
 
@@ -289,20 +289,28 @@ restore 原子写失败时检查 public `LocalWriteCommitOutcome`：pre-commit �
 go test ./...
 sh scripts/build.sh
 PIXIV_E2E_WEB_API=1 PIXIV_WEB_API_PROXY=http://127.0.0.1:7890 go test ./e2e -run WebAPIFallbackReal -count=1 -v
-PIXIV_E2E_REAL_API=1 PIXIV_E2E_REFRESH_TOKEN="<独立测试 refresh token>" PIXIV_E2E_PROXY=http://127.0.0.1:7890 go test ./e2e -run '^TestPixivBinaryAuthenticatedAppAPICanary$' -count=1 -v
-PIXIV_E2E_REAL_API=1 PIXIV_E2E_USE_LOCAL_AUTH=1 PIXIV_E2E_PROXY=http://127.0.0.1:7890 go test ./e2e -run '^TestPixivBinaryAuthenticatedAppAPICanary$' -count=1 -v
-PIXIV_E2E_REAL_API=1 PIXIV_E2E_REFRESH_TOKEN="<独立测试 refresh token>" PIXIV_E2E_PROXY=http://127.0.0.1:7890 go test ./e2e -run '^TestPixivSDKAuthenticatedAppAPICanarySearchFilters$' -count=1 -v
-PIXIV_E2E_REAL_API=1 PIXIV_E2E_USE_LOCAL_AUTH=1 PIXIV_E2E_PROXY=http://127.0.0.1:7890 go test ./e2e -run '^TestPixivSDKAuthenticatedAppAPICanarySearchFilters$' -count=1 -v
-PIXIV_E2E_REAL_API=1 PIXIV_E2E_USE_LOCAL_AUTH=1 PIXIV_E2E_PROXY=http://127.0.0.1:7890 PIXIV_E2E_SFW_ILLUST_ID=147502481 PIXIV_E2E_R18_ILLUST_ID=147070125 PIXIV_E2E_R18_UGOIRA_ID=145973617 go test ./e2e -run 'TestPixiv(SDK|Binary)AuthenticatedR18RegressionCanary' -count=1 -v
+# TTY: prompt missing values; refresh token input is not echoed.
+scripts/test-e2e.sh
+# CI or a configured shell: require every value without prompting.
+scripts/test-e2e.sh --non-interactive
 ```
 
 `go test ./...` 保持默认离线稳定；真实 Pixiv web API fallback e2e 默认跳过，只有设置 `PIXIV_E2E_WEB_API=1` 时才会联网。未设置 `PIXIV_WEB_API_PROXY` 时会直连。上述 Web canary 被显式调用时，会先从匿名搜索结果逐项读取 detail 取得真实宽高，选择可分类的横纵比候选，再执行带 `--aspect-ratio` 的高级搜索并通过 detail 复核返回作品的横纵比；该说明描述测试覆盖，不表示 canary 已经运行。
 
-两组认证 App API canary 都必须设置 `PIXIV_E2E_REAL_API=1`，再明确选择一种互斥认证来源；未选择则跳过，也不会匿名 fallback。`PIXIV_E2E_REFRESH_TOKEN` 使用显式独立测试 token；`PIXIV_E2E_USE_LOCAL_AUTH=1` 使用本机默认账号 store，且只应在用户明确授权时运行。运行本机模式期间不要并发启动其他使用同一 store 的 `pixiv` CLI 或 MCP 进程，以免 rotation 覆盖或旧 token 请求失败。
+完整真实 E2E 推荐只通过 `scripts/test-e2e.sh` 运行。它始终从当前源码构建测试、显式启用 App/Web real API，并拒绝读取本机 auth store 或调用外部已安装 binary。无位置参数时，它从环境读取配置，只在 TTY 中逐项提示缺失值；refresh token 使用隐藏输入。位置参数虽受支持，因会进入 shell history，维护者不应使用它传递 token。`--non-interactive` 适用于 CI，缺少任一必填值立即失败。
+
+完整 E2E 的配置如下。refresh token 必须是独立、可轮换的测试凭据，绝不写入仓库、文档、日志或命令行历史；三个作品 ID 与两个搜索词使发布回归输入稳定可审计。`PIXIV_E2E_PROXY` 可选，脚本会同步作为匿名 Web fallback 的 `PIXIV_WEB_API_PROXY` 使用。
+
+| 场景 | 必填配置 | 可选配置 |
+| --- | --- | --- |
+| 本地 `scripts/test-e2e.sh` | `PIXIV_E2E_REFRESH_TOKEN`、`PIXIV_E2E_SFW_ILLUST_ID`、`PIXIV_E2E_R18_ILLUST_ID`、`PIXIV_E2E_R18_UGOIRA_ID`、`PIXIV_E2E_ILLUST_SEARCH_WORD`、`PIXIV_E2E_DISCOVERY_WORD` | `PIXIV_E2E_PROXY` |
+| GitHub `pixiv-e2e` Environment | Secret: `PIXIV_E2E_REFRESH_TOKEN`；Variables: 三个作品 ID、`PIXIV_E2E_ILLUST_SEARCH_WORD`、`PIXIV_E2E_DISCOVERY_WORD` | Variables: `PIXIV_E2E_PROXY` |
+
+单项真实 canary 仍须设置 `PIXIV_E2E_REAL_API=1`，再明确选择一种互斥认证来源；未选择则跳过，也不会匿名 fallback。`PIXIV_E2E_REFRESH_TOKEN` 使用显式独立测试 token；`PIXIV_E2E_USE_LOCAL_AUTH=1` 只用于维护者经明确授权的定向诊断，不是完整 E2E 脚本的认证方式。运行本机模式期间不要并发启动其他使用同一 store 的 `pixiv` CLI 或 MCP 进程，以免 rotation 覆盖或旧 token 请求失败。
 
 `TestPixivBinaryAuthenticatedAppAPICanary` 单独验收 binary 的 `auth check`、完整用户详情和插画/漫画/小说/作者四类推荐。local-store 模式拒绝 `PIXIV_E2E_BINARY`，只运行当前源码构建产物；显式 token 模式保留外部 release binary 验收能力。binary 子进程会先移除宿主的 `https_proxy`、`HTTPS_PROXY` 和 `PIXIV_REFRESH_TOKEN`，再仅注入本次明确选择的 token 与 `PIXIV_E2E_PROXY`（其次 `PIXIV_WEB_API_PROXY`），避免重复环境键或宿主代理劫持。
 
-`TestPixivSDKAuthenticatedAppAPICanarySearchFilters` 独立验收当前源码 public SDK 的 `search-options`、认证 baseline、分辨率、横纵比、作品类型、排除 AI 与绘图工具筛选，因此拒绝 `PIXIV_E2E_BINARY`。排除 AI 仅在 baseline 含 `AIType==2` 样本时判定；否则该子项标记 inconclusive 并 skip，不得当作成功。显式 token 模式使用不会创建的临时 auth/config 路径，不读取或写入默认 store；local-store 模式先经 public SDK 账号列表锁定有 token 的默认 UID，使宿主 `PIXIV_REFRESH_TOKEN` 不能抢占且 OAuth rotation 仍写回授权 store。该 exact test 只创建一次 `OpenDefault + Snapshot`，搜索 options、baseline 和五类筛选共享该 snapshot，整个搜索测试阶段只做一次 OAuth refresh；筛选后的空批次沿相同 filters/cursor 自然续页，不设置任意请求上限，重复 cursor 明确失败。SDK 使用 `Proxy=nil` 的隔离 transport，仅在显式配置 canary proxy 时安全注入，且没有固定 client timeout。以上说明描述测试覆盖，不表示真实 canary 已经运行；请勿把 token 写入 shell history、日志或仓库文件。
+`TestPixivSDKAuthenticatedAppAPICanarySearchFilters` 独立验收当前源码 public SDK 的 `search-options`、认证 baseline、分辨率、横纵比、作品类型、排除 AI 与绘图工具筛选，因此拒绝 `PIXIV_E2E_BINARY`。它使用 `PIXIV_E2E_ILLUST_SEARCH_WORD`，并要求同时提供 `PIXIV_E2E_DISCOVERY_WORD`，避免完整发布 E2E 在不同搜索输入下产生未覆盖的分支。排除 AI 仅在 baseline 含 `AIType==2` 样本时判定；否则该子项标记 inconclusive 并 skip，不得当作成功。显式 token 模式使用不会创建的临时 auth/config 路径，不读取或写入默认 store；local-store 模式先经 public SDK 账号列表锁定有 token 的默认 UID，使宿主 `PIXIV_REFRESH_TOKEN` 不能抢占且 OAuth rotation 仍写回授权 store。该 exact test 只创建一次 `OpenDefault + Snapshot`，搜索 options、baseline 和五类筛选共享该 snapshot，整个搜索测试阶段只做一次 OAuth refresh；筛选后的空批次沿相同 filters/cursor 自然续页，不设置任意请求上限，重复 cursor 明确失败。SDK 使用 `Proxy=nil` 的隔离 transport，仅在显式配置 canary proxy 时安全注入，且没有固定 client timeout。以上说明描述测试覆盖，不表示真实 canary 已经运行；请勿把 token 写入 shell history、日志或仓库文件。
 
 `TestPixiv(SDK|Binary)AuthenticatedR18RegressionCanary` 只在三个作品 ID 环境变量全部显式给出时运行，源码不写死
 作品 ID。SDK canary 串行验证 SFW/R18 detail 和 pages、16 个 App ranking mode，以及 R18 ugoira 的 medium
@@ -311,6 +319,9 @@ PIXIV_E2E_REAL_API=1 PIXIV_E2E_USE_LOCAL_AUTH=1 PIXIV_E2E_PROXY=http://127.0.0.1
 不会猜测等待或无限重试。
 
 显式 HTTP(S) proxy 下，资源传输固定协商 HTTP/1.1，而 App API、OAuth 与 Web metadata 保持原有协议协商。该 canary 的 ugoira 下载用于回归这一资源传输边界；它不为慢速正常下载增加固定超时。
+
+`TestPixiv(SDK|Binary)AuthenticatedDiscoveryCanary` 使用 `PIXIV_E2E_DISCOVERY_WORD`，不将任何作品或作者 ID 写入源码。SDK
+canary 从 SFW 作品详情提取作者 ID，再验证作者详情和作品列表，并验证认证小说搜索和官方 App 用户搜索；binary canary 从当前源码构建 CLI，并通过同一认证环境验证 CLI 与 MCP 的作者详情、作者作品、`search_novel`/`search_user` 结构化输出、小说结果及 `app_search` 来源。整个 canary 只读取搜索数据，不执行收藏、关注或其他 Pixiv 写操作；本机 store 模式仍不回显子进程输出，避免泄露长期凭据。
 
 `PIXIV_E2E_BINARY` 与 `PIXIV_E2E_EXPECTED_VERSION` 供 CI 对已构建、已解压的 release binary 执行离线 e2e；它们不注入 token，也不启用真实 Pixiv API/Web fallback。`platform-smoke.yml` 在六个受支持 runner 上构建、封装、解压并运行这组 CLI/config/MCP stdio 验证。
 
@@ -332,7 +343,7 @@ git diff --check
 fixture 只证明格式、失败语义和本地策略，不替代六个 native runner 的真实静态链接、GIF/APNG
 smoke、版本化 archive 内容和 Homebrew 安装验收。
 
-`.github/workflows/ci.yml` 在 PR/main 运行 Linux quality gate（test、race、vet、build、package/release policy、pre-commit）。`.github/workflows/platform-smoke.yml` 在 PR/main 运行六平台离线已打包 binary smoke。两者都使用只读权限、固定 SHA action 与取消过期并发 run；真实 Pixiv e2e 不进入 GitHub Actions。
+`.github/workflows/ci.yml` 在 PR/main 运行 Linux quality gate（test、race、vet、build、package/release policy、pre-commit）。`.github/workflows/platform-smoke.yml` 在 PR/main 运行六平台离线已打包 binary smoke。两者都使用只读权限、固定 SHA action 与取消过期并发 run；真实 Pixiv E2E 不进入 PR/main 常规 CI。仅发布 tag 的 `release.yml` 会在 validate 后绑定受保护的 `pixiv-e2e` Environment，校验配置完整并执行完整 `go test ./e2e -count=1 -v`；production build 明确依赖该 job，因此真实 E2E 失败会阻止发布。
 
 `scripts/installers` 使用本地伪 Release、伪 `curl` 与 checksum fixture 验证安装器，不访问 GitHub。Unix
 job 实际运行 `install.sh`，覆盖 SHA-256、带空格目录、版本预检和校验失败不覆盖旧 binary；Windows
@@ -347,10 +358,16 @@ amd64/arm64 platform-smoke 还会用真实 `cmd.exe`、`certutil.exe` 与 `tar.e
 
 ## 发布门禁、签名与 Homebrew 边界
 
-`.github/workflows/release.yml` 默认由 `v[0-9]*` tag 触发：先验证 SemVer，再在
-darwin/linux/windows × amd64/arm64 runner 上构建 Rust staticlib、测试 Go/Rust、检查许可证并
-封装固定名称的 archive；全部通过后才创建带 `checksums.txt` 和 Ed25519 `checksums.json` 的
-GitHub Release。workflow 使用 full-SHA Actions、最小权限及 `release` Environment。
+`.github/workflows/release.yml` 默认由 `v[0-9]*` tag 触发：先验证 SemVer，然后在受保护的
+`pixiv-e2e` Environment 中 checkout 待发布 tag，使用独立 refresh token 和受控作品/搜索输入运行完整真实
+E2E；只有 E2E 通过，darwin/linux/windows × amd64/arm64 runner 才会构建 Rust staticlib、测试 Go/Rust、检查
+许可证并封装固定名称的 archive。全部通过后才创建带 `checksums.txt` 和 Ed25519 `checksums.json` 的 GitHub
+Release。workflow 使用 full-SHA Actions、最小权限及 `release` Environment。
+
+`pixiv-e2e` 只允许一个 secret：`PIXIV_E2E_REFRESH_TOKEN`；三个作品 ID、两个搜索词和可选代理必须作为 Environment
+Variables 配置。E2E job 不会输出 token、URL、响应 body 或原始 header，且 workflow policy 拒绝在 checkout、job
+metadata 或其它 step 引用该 secret。token 轮换由维护者在该 Environment 手动完成；任何已暴露的 token 都必须先撤销，
+再配置新的专用 token。
 
 `releaseassets finalize` 还从 immutable tag 读取 `scripts/install.sh` 与 `scripts/install.cmd`，把它们以固定
 名称复制到 Release，并与六个平台 archive 一同写入 `checksums.txt` 和 Ed25519 签名 manifest。publish
@@ -372,6 +389,8 @@ allowlist 必须逐字列出以下路径，不能改成目录或 glob：
 - `scripts/internal/workflowpolicy/policy.go`
 - `scripts/releaseworkflow/build_policy.go`
 - `scripts/releaseworkflow/build_recovery_test.go`
+- `scripts/releaseworkflow/e2e_policy.go`
+- `scripts/releaseworkflow/e2e_policy_test.go`
 - `scripts/releaseworkflow/homebrew_policy.go`
 - `scripts/releaseworkflow/homebrew_policy_test.go`
 - `scripts/releaseworkflow/main.go`
@@ -405,7 +424,8 @@ toolchain pin 不能用来替换 tag staticlib、恢复 manifest、放宽 diff �
 ### Verifier 源码导航
 
 `scripts/releaseworkflow/` 按发布职责分卷：`main.go` 负责命令入口、文件读取与顶层 dispatch；
-`build_policy.go` 负责 validate、test build 与 production build；`recovery_policy.go` 负责 tag trigger、
+`build_policy.go` 负责 validate、test build 与 production build；`e2e_policy.go` 锁定受保护真实 E2E 的
+Environment、secret 可达性、输入映射与 build 依赖；`recovery_policy.go` 负责 tag trigger、
 恢复覆盖与覆盖后的质量门顺序；`publish_policy.go` 负责 source verification、发布、签名与 channel；
 `homebrew_policy.go` 负责 formula render、四平台验证与 tap deploy；`workflow_policy.go` 保存各领域共用的
 job、step、command、action 与 permission helper。测试相应分为 `build_recovery_test.go`、
@@ -419,7 +439,7 @@ target 和 evidence schema；`record.go` 记录单 runner evidence；`consolidat
 helper 再按 workflow 与 evidence/archive 分开，避免把策略测试重新堆进单一文件。
 
 `sh scripts/test-release-workflow.sh` 启动 `scripts/releaseworkflow` 的 YAML AST policy，而不是依赖
-文本排版或行号。它精确检查 tag trigger、八份 job 的权限/依赖、六个 test/production runner matrix、每一个
+文本排版或行号。它精确检查 tag trigger、九份 job 的权限/依赖、受保护 E2E 的 secret 映射和发布阻断、六个 test/production runner matrix、每一个
 `uses` 的 40 位 SHA，以及 publish 的 SemVer channel 调用。默认分支 ancestry 必须在无
 `environment`、无 secret 的 `verify_release_source` job 中完成；只有该 job 成功后，publish 才可
 依赖它并声明精确的 `release` Environment、使用签名 metadata step 的两个预期 secret。policy 对所有
@@ -544,7 +564,9 @@ workflow artifact 读取、生成或记录 deploy key。
 
 ## Changelog
 
-`CHANGELOG.md` 使用 Keep a Changelog 1.1.0 风格维护。未发布改动先写入 `[Unreleased]`，等正式切版本时再移动到对应版本段。
+`changelog/` 使用 Keep a Changelog 1.1.0 风格维护，并按版本目录保存双语记录。未发布改动必须同时写入
+`changelog/unreleased/en.md` 与 `changelog/unreleased/zh-CN.md`；正式发版时，将这两份记录移入
+`changelog/vX.Y.Z/`，并更新两种语言的目录索引。
 
 需要记录的改动：
 

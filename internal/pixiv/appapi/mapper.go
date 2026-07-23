@@ -18,7 +18,9 @@ func mapIllustList(dto illustListDTO) model.IllustList {
 }
 
 func mapIllustDetail(dto illustDetailDTO) model.IllustDetail {
-	return model.IllustDetail{Illust: mapIllust(*dto.Illust)}
+	illust := mapIllust(*dto.Illust)
+	illust.Caption = dto.Illust.Caption
+	return model.IllustDetail{Illust: illust}
 }
 
 func mapIllust(dto illustDTO) model.Illust {
@@ -55,7 +57,7 @@ func mapNovel(dto novelDTO) model.Novel {
 		tags[i] = model.Tag{Name: tag.Name, TranslatedName: tag.TranslatedName}
 	}
 	return model.Novel{
-		ID: dto.ID, Title: dto.Title, Caption: dto.Caption, User: mapUser(dto.User), Tags: tags,
+		ID: dto.ID, Title: dto.Title, Caption: dto.Caption, XRestrict: optionalInt(dto.XRestrict), TextLength: optionalInt(dto.TextLength), IsOriginal: optionalBool(dto.IsOriginal), User: mapUser(dto.User), Tags: tags,
 		ImageURLs: mapImageURLs(dto.ImageURLs), CreateDate: dto.CreateDate, TotalBookmarks: dto.TotalBookmarks, TotalView: dto.TotalView,
 	}
 }
@@ -144,6 +146,17 @@ func optionalURL(value *string) *string {
 		return nil
 	}
 	return value
+}
+
+func optionalInt(value *int) int {
+	if value == nil {
+		return 0
+	}
+	return *value
+}
+
+func optionalBool(value *bool) bool {
+	return value != nil && *value
 }
 func mapImageURLs(dto imageURLsDTO) model.ImageURLs {
 	return model.ImageURLs{SquareMedium: dto.SquareMedium, Medium: dto.Medium, Large: dto.Large, Original: dto.Original}

@@ -489,4 +489,7 @@ func printIllust(w io.Writer, illust sdk.Illust, rank int, compact bool) {
 	fmt.Fprintf(w, "bookmarks: %d\n", illust.TotalBookmarks)
 	fmt.Fprintf(w, "views: %d\n", illust.TotalView)
 	fmt.Fprintf(w, "tags: %s\n", strings.Join(tags, ","))
+	if caption := captionPlainText(illust.Caption); caption != "" {
+		fmt.Fprintf(w, "caption:\n%s\n", caption)
+	}
 }

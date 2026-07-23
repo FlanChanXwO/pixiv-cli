@@ -17,8 +17,7 @@ func TestNewApplicationLoggerKeepsTerminalSilentWhenConfigIsMalformed(t *testing
 	clearRuntimeEnvironment(t)
 	home := t.TempDir()
 	t.Setenv("HOME", home)
-	t.Setenv("XDG_STATE_HOME", filepath.Join(home, "state"))
-	t.Setenv("LocalAppData", filepath.Join(home, "localapp"))
+	t.Setenv("USERPROFILE", home)
 	configPath := filepath.Join(t.TempDir(), "config.toml")
 	t.Cleanup(config.SetFilePathForTest(configPath))
 	require.NoError(t, config.WritePrivateFile(configPath, []byte("[logging\nlevel = broken")))
@@ -41,8 +40,7 @@ func TestNewApplicationLoggerRejectsInvalidExplicitLoggingSettings(t *testing.T)
 		body      string
 		wantError string
 	}{
-		{name: "level", body: "[logging]\nlevel = \"verbose\"\nformat = \"text\"\n", wantError: "log_level must be one of"},
-		{name: "format", body: "[logging]\nlevel = \"info\"\nformat = \"xml\"\n", wantError: "log_format must be text or json"},
+		{name: "level", body: "[logging]\nlevel = \"verbose\"\n", wantError: "log_level must be one of"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			clearRuntimeEnvironment(t)
@@ -61,16 +59,15 @@ func TestNewApplicationLoggerRejectsInvalidExplicitLoggingSettings(t *testing.T)
 	}
 }
 
-func TestNewApplicationLoggerKeepsTerminalSilentAndWritesJSONLFile(t *testing.T) {
+func TestNewApplicationLoggerKeepsTerminalSilentAndWritesTextFile(t *testing.T) {
 	clearRuntimeEnvironment(t)
 	home := t.TempDir()
 	t.Setenv("HOME", home)
-	t.Setenv("XDG_STATE_HOME", filepath.Join(home, "state"))
-	t.Setenv("LocalAppData", filepath.Join(home, "localapp"))
+	t.Setenv("USERPROFILE", home)
 
 	configPath := filepath.Join(t.TempDir(), "config.toml")
 	t.Cleanup(config.SetFilePathForTest(configPath))
-	require.NoError(t, config.WritePrivateFile(configPath, []byte("[logging]\nlevel = \"info\"\nformat = \"text\"\n")))
+	require.NoError(t, config.WritePrivateFile(configPath, []byte("[logging]\nlevel = \"info\"\n")))
 
 	var output bytes.Buffer
 	global := slog.Default()
@@ -84,10 +81,11 @@ func TestNewApplicationLoggerKeepsTerminalSilentAndWritesJSONLFile(t *testing.T)
 	logDir, err := DefaultLogDir()
 	require.NoError(t, err)
 	day := time.Now().Format("2006-01-02")
-	path := filepath.Join(logDir, "pixiv-"+day+".jsonl")
+	path := filepath.Join(logDir, day+".txt")
 	body, err := os.ReadFile(path)
 	require.NoError(t, err)
 	require.Contains(t, string(body), "bootstrap logger probe")
+	require.NotContains(t, string(body), `{"time"`)
 	require.NotContains(t, string(body), "refresh_token")
 	require.True(t, strings.Contains(string(body), "operation"))
 	// Windows 不允许删除仍被当前进程打开的文件。命令结束时必须主动关闭

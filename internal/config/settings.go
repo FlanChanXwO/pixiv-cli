@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/utils"
+	"github.com/FlanChanXwO/pixiv-cli/internal/utils/credentials"
 	"github.com/creachadair/tomledit"
 	"github.com/creachadair/tomledit/parser"
 	"github.com/creachadair/tomledit/transform"
@@ -63,9 +63,8 @@ type RuntimeConfig struct {
 	LoginOpenBrowser   bool
 	LoginTimeout       time.Duration
 	LoginUseAfterLogin bool
-	// LogLevel 与 LogFormat 只描述应用根 logger，不会改变 slog 默认全局 logger。
-	LogLevel  string
-	LogFormat string
+	// LogLevel 只描述应用根 logger，不会改变 slog 默认全局 logger。
+	LogLevel string
 }
 
 var settingSpecs = []SettingSpec{
@@ -79,7 +78,6 @@ var settingSpecs = []SettingSpec{
 	{Alias: "login_timeout", KoanfKey: "login.timeout", Table: []string{"login"}, Key: "timeout", Kind: settingDuration, HasDefault: true, Default: time.Duration(0)},
 	{Alias: "login_use_after_login", KoanfKey: "login.use_after_login", Table: []string{"login"}, Key: "use_after_login", Kind: settingBool, HasDefault: true, Default: false},
 	{Alias: "log_level", KoanfKey: "logging.level", Table: []string{"logging"}, Key: "level", Kind: settingString, HasDefault: true, Default: "warn"},
-	{Alias: "log_format", KoanfKey: "logging.format", Table: []string{"logging"}, Key: "format", Kind: settingString, HasDefault: true, Default: "text"},
 }
 
 func SettingSpecByAlias(alias string) (SettingSpec, bool) {
@@ -103,7 +101,7 @@ func ValidSettingAliases() []string {
 // RefreshTokenFromEnv 读取 App API refresh token。Cookie 形态在此处即被拒绝，
 // 不能继续流入默认 SDK 的 OAuth 请求。
 func RefreshTokenFromEnv() (string, error) {
-	return utils.ValidateRefreshTokenInput(os.Getenv("PIXIV_REFRESH_TOKEN"))
+	return credentials.ValidateRefreshTokenInput(os.Getenv("PIXIV_REFRESH_TOKEN"))
 }
 
 func EnvValue(spec SettingSpec) (string, bool) {
@@ -119,8 +117,6 @@ func EnvValue(spec SettingSpec) (string, bool) {
 		return envLookup("HTTPS_PROXY")
 	case "log_level":
 		return envLookup("PIXIV_LOG_LEVEL")
-	case "log_format":
-		return envLookup("PIXIV_LOG_FORMAT")
 	default:
 		return "", false
 	}
@@ -224,15 +220,7 @@ func (s SettingsState) Runtime() (RuntimeConfig, error) {
 	if err != nil {
 		return RuntimeConfig{}, err
 	}
-	logFormat, err := s.Effective("log_format")
-	if err != nil {
-		return RuntimeConfig{}, err
-	}
 	level, err := normalizeLogLevel(logLevel.Value.(string))
-	if err != nil {
-		return RuntimeConfig{}, err
-	}
-	format, err := normalizeLogFormat(logFormat.Value.(string))
 	if err != nil {
 		return RuntimeConfig{}, err
 	}
@@ -247,7 +235,6 @@ func (s SettingsState) Runtime() (RuntimeConfig, error) {
 		LoginTimeout:       loginTimeout.Value.(time.Duration),
 		LoginUseAfterLogin: loginUseAfterLogin.Value.(bool),
 		LogLevel:           level,
-		LogFormat:          format,
 	}
 	if httpsProxy.HasValue {
 		cfg.HTTPSProxy = httpsProxy.Value.(string)

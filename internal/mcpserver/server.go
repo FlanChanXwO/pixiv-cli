@@ -3,12 +3,12 @@ package mcpserver
 import (
 	"context"
 	"errors"
-	"io"
 	"log/slog"
 	"time"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/application"
 	"github.com/FlanChanXwO/pixiv-cli/internal/download"
+	"github.com/FlanChanXwO/pixiv-cli/internal/logging"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -49,28 +49,21 @@ func recordToolError(ctx context.Context, err error) {
 // New 保留构造参数位置以便嵌入方平滑升级；第一个参数不再被读取，所有 Pixiv
 // 能力必须由 public SDK service 提供。
 func New(_ any, downloads DownloadManager, logger *slog.Logger) *mcp.Server {
-	logger = loggerOrDiscard(logger)
+	logger = logging.OrDiscard(logger)
 	return newServer(&App{downloads: downloads, logger: logger})
 }
 
 // NewWithSDK 通过公共 SDK 为每个 MCP tool 建立独立 operation snapshot。
 // 首个参数仅是已废弃的兼容占位，绝不构成内容、认证或资源调用链。
 func NewWithSDK(_ any, downloads DownloadManager, logger *slog.Logger, service application.SDKService, request application.SDKClientRequest) *mcp.Server {
-	logger = loggerOrDiscard(logger)
+	logger = logging.OrDiscard(logger)
 	return newServer(&App{downloads: downloads, logger: logger, sdk: service, sdkRequest: request})
 }
 
 // NewWithSDKDownloadFactory 为生产 MCP 注入 snapshot-scoped 下载器构造器。
 func NewWithSDKDownloadFactory(downloads DownloadManager, newDownloads func(application.SDKClient) DownloadManager, logger *slog.Logger, service application.SDKService, request application.SDKClientRequest) *mcp.Server {
-	logger = loggerOrDiscard(logger)
+	logger = logging.OrDiscard(logger)
 	return newServer(&App{downloads: downloads, newDownloads: newDownloads, logger: logger, sdk: service, sdkRequest: request})
-}
-
-func loggerOrDiscard(logger *slog.Logger) *slog.Logger {
-	if logger != nil {
-		return logger
-	}
-	return slog.New(slog.NewTextHandler(io.Discard, nil))
 }
 
 func newServer(app *App) *mcp.Server {

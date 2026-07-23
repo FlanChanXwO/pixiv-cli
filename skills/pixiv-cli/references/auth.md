@@ -4,6 +4,23 @@ Use these workflows only when the user explicitly asks to import, export, back
 up, or restore authentication. Refresh tokens and every export bundle are
 plaintext secrets.
 
+## Browser OAuth login
+
+Run `pixiv auth login` only on the user's explicit request while they are
+present to approve the Pixiv page. On macOS, desktop Linux, and Windows, the
+CLI temporarily owns the `pixiv://` callback association for that one login;
+it restores the prior user association on completion, failure, or cancellation.
+Do not invoke the hidden protocol-handler helper directly.
+
+For a GUI-less SSH server, keep the existing public interface: run
+`pixiv auth login --no-open --addr 127.0.0.1:PORT` on the server and
+`ssh -N -L PORT:127.0.0.1:PORT HOST` on the browser machine. Open the forwarded
+fallback page locally. Submit a Pixiv relay or final callback there; an accepted
+relay continues in that same browser and the final submission returns through
+the tunnel to the server loopback listener. Do not bind the listener publicly,
+do not require pixiv on the browser machine, and do not read browser state or
+try to automate the authorization page.
+
 ## Import one refresh token
 
 Choose the input path according to where the secret currently exists:

@@ -49,6 +49,7 @@ func mapDetailIllust(item webIllustDetail, metaPages []model.MetaPage) model.Ill
 		URL:            artworkURL(int64(firstFlexInt64(item.ID, item.IllustID))),
 		ID:             int64(firstFlexInt64(item.ID, item.IllustID)),
 		Title:          text.FirstNonEmpty(item.Title, item.IllustTitle),
+		Caption:        item.Description,
 		Type:           illustType(int(item.IllustType)),
 		PageCount:      pageCount,
 		TotalBookmarks: int(item.BookmarkCount),

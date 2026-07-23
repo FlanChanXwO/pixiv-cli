@@ -180,7 +180,7 @@ func runFinalize(arguments []string) (err error) {
 	version := flags.String("version", "", "semantic version without v")
 	inputDir := flags.String("input-dir", "", "directory containing the six packaged archives")
 	outputDir := flags.String("output-dir", "", "new directory receiving final release assets")
-	changelog := flags.String("changelog", "", "CHANGELOG.md path")
+	changelog := flags.String("changelog", "", "version-specific English changelog path")
 	installSh := flags.String("install-sh", "", "verified install.sh path")
 	installCmd := flags.String("install-cmd", "", "verified install.cmd path")
 	privateKeyPath := flags.String("private-key", "", "PKCS#8 PEM Ed25519 private-key path")
@@ -375,21 +375,18 @@ func releaseNotesFromChangelog(path, version string) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("read changelog: %w", err)
 	}
-	header := regexp.MustCompile(`(?m)^## \[` + regexp.QuoteMeta(version) + `\](?:\s+-\s+.+)?\s*$`)
+	header := regexp.MustCompile(`(?m)^# v` + regexp.QuoteMeta(version) + `(?:\s+[—-]\s+.+)?\s*$`)
 	location := header.FindIndex(body)
 	if location == nil {
-		return nil, fmt.Errorf("changelog has no section headed [%s]", version)
+		return nil, fmt.Errorf("changelog has no release heading for v%s", version)
 	}
 	if second := header.FindIndex(body[location[1]:]); second != nil {
-		return nil, fmt.Errorf("changelog has more than one section headed [%s]", version)
+		return nil, fmt.Errorf("changelog has more than one release heading for v%s", version)
 	}
 	remainder := body[location[1]:]
-	if next := regexp.MustCompile(`(?m)^##\s+`).FindIndex(remainder); next != nil {
-		remainder = remainder[:next[0]]
-	}
 	notes := strings.Trim(string(remainder), "\n")
 	if notes == "" {
-		return nil, fmt.Errorf("changelog section [%s] has no release notes", version)
+		return nil, fmt.Errorf("changelog release v%s has no release notes", version)
 	}
 	return []byte(notes + "\n"), nil
 }

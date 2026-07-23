@@ -151,7 +151,33 @@ func appendJSONArray[T any](s *jsonArraySpool, items []T) error {
 }
 
 func (s *jsonArraySpool) Commit(out io.Writer) error {
-	if _, err := io.WriteString(s.file, "\n  ]\n}\n"); err != nil {
+	return s.commit(out, "", "")
+}
+
+// CommitWithStringField 在数组完成后追加稳定的顶层字符串字段，仍保持 stdout 的
+// 原子提交语义，供 source 这类列表元数据使用。
+func (s *jsonArraySpool) CommitWithStringField(out io.Writer, name, value string) error {
+	return s.commit(out, name, value)
+}
+
+func (s *jsonArraySpool) commit(out io.Writer, extraName, extraValue string) error {
+	if _, err := io.WriteString(s.file, "\n  ]"); err != nil {
+		return err
+	}
+	if extraName != "" {
+		encodedName, err := json.Marshal(extraName)
+		if err != nil {
+			return err
+		}
+		encodedValue, err := json.Marshal(extraValue)
+		if err != nil {
+			return err
+		}
+		if _, err := fmt.Fprintf(s.file, ",\n  %s: %s", encodedName, encodedValue); err != nil {
+			return err
+		}
+	}
+	if _, err := io.WriteString(s.file, "\n}\n"); err != nil {
 		return err
 	}
 	if _, err := s.file.Seek(0, io.SeekStart); err != nil {

@@ -17,7 +17,7 @@ Several small helpers were duplicated across config, auth storage, download, Pix
   - `media`: MIME type inference from file extension.
   - `parse`: generic positive integer parsing.
 - Keep `internal/utils` root for Pixiv/download utility APIs that carry project semantics, such as filename generation, ID deduplication, and Pixiv web refresh-token input parsing.
-- Allow `internal/common/constants` only for cross-package infrastructure constants with no protocol meaning. `AppConfigDirName` is a narrow path-namespace exception shared by config and auth storage.
+- Allow `internal/common/constants` only for cross-package infrastructure constants with no protocol meaning. `AppDataDirName` is a narrow path-namespace exception shared by local application-data storage.
 - Keep adapter-specific helpers in their adapter packages: CLI Cobra/prompt/OAuth loopback helpers stay in `internal/cli`; MCP delivery, formatting, and tool result helpers stay in `internal/mcpserver`.
 
 ## Consequences
@@ -29,5 +29,5 @@ Several small helpers were duplicated across config, auth storage, download, Pix
 ## Guardrails
 
 - A helper may enter `internal/utils/*` only if it has no CLI, MCP, OAuth, Pixiv protocol, or config schema semantics.
-- A constant may enter `internal/common/constants` only if it is cross-package, infrastructural, and stable without protocol context; `AppConfigDirName` is the only product-named path exception.
+- A constant may enter `internal/common/constants` only if it is cross-package, infrastructural, and stable without protocol context; `AppDataDirName` is the only product-named path exception.
 - Do not move values merely because they are repeated once; prefer local helpers until a real dependency or duplication problem exists.

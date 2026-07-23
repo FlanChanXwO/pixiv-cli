@@ -3,11 +3,12 @@ package mcpserver
 import (
 	"context"
 	"errors"
-	"log/slog"
 	"math"
 	"time"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/application"
+	"github.com/FlanChanXwO/pixiv-cli/internal/common/constants"
+	"github.com/FlanChanXwO/pixiv-cli/internal/logging"
 	sdk "github.com/FlanChanXwO/pixiv-cli/pixiv"
 )
 
@@ -144,16 +145,15 @@ func (a *App) operationLog(operation string, started time.Time, failed bool, err
 	if a == nil || a.logger == nil {
 		return
 	}
-	result, code, backend, status := "success", "", "local", 0
-	level := slog.LevelInfo
+	result, code, backend, status, transportKind := logging.ResultSuccess, "", constants.LogBackendLocal, 0, ""
 	var typed *sdk.Error
 	if failed {
-		result = "error"
-		level = slog.LevelError
+		result = logging.ResultError
 	}
 	if err != nil {
 		if errors.As(err, &typed) {
 			code, backend, status = safeMCPErrorCode(typed.Code), safeMCPBackend(typed.Backend), typed.UpstreamStatus
+			transportKind = string(typed.TransportKind)
 			if typed.IllustID != 0 {
 				illustID = typed.IllustID
 			}
@@ -162,14 +162,18 @@ func (a *App) operationLog(operation string, started time.Time, failed bool, err
 			}
 		}
 	}
-	attrs := []slog.Attr{slog.String("component", "mcp"), slog.String("operation", operation), slog.String("backend", backend), slog.Duration("duration", time.Since(started)), slog.String("result", result), slog.String("error_code", code), slog.Int("status", status)}
-	if illustID != 0 {
-		attrs = append(attrs, slog.Int64("illust_id", illustID))
-	}
-	if userID != 0 {
-		attrs = append(attrs, slog.Int64("user_id", userID))
-	}
-	a.logger.LogAttrs(nil, level, "pixiv operation", attrs...)
+	logging.LogOperation(a.logger, logging.OperationEvent{
+		Component:     "mcp",
+		Operation:     operation,
+		Backend:       backend,
+		Duration:      time.Since(started),
+		Result:        result,
+		ErrorCode:     code,
+		Status:        status,
+		TransportKind: transportKind,
+		IllustID:      illustID,
+		UserID:        userID,
+	})
 }
 
 // safeMCPErrorCode 只允许公开 SDK 定义的稳定枚举进入 stderr；Error 的字段
@@ -201,7 +205,7 @@ func safeMCPBackend(backend sdk.Backend) string {
 		sdk.BackendResource:
 		return string(backend)
 	default:
-		return "local"
+		return constants.LogBackendLocal
 	}
 }
 

@@ -2,8 +2,10 @@ package pixiv
 
 import (
 	"errors"
-	"log/slog"
 	"time"
+
+	"github.com/FlanChanXwO/pixiv-cli/internal/common/constants"
+	"github.com/FlanChanXwO/pixiv-cli/internal/logging"
 )
 
 // operationLog 在公开 SDK 边界写入稳定、安全的结果事件。它只记录本包已经
@@ -12,22 +14,22 @@ func (c *Client) operationLog(operation Operation, started time.Time, err error,
 	if c == nil || c.logger == nil {
 		return
 	}
-	backend := "local"
+	backend := constants.LogBackendLocal
 	code := ""
 	status := 0
-	result := "success"
-	level := slog.LevelInfo
+	transportKind := ""
+	result := logging.ResultSuccess
 	var pixivErr *Error
 	if err != nil {
-		result = "error"
-		level = slog.LevelError
+		result = logging.ResultError
 		if errors.As(err, &pixivErr) {
 			backend = string(pixivErr.Backend)
 			if backend == "" {
-				backend = "local"
+				backend = constants.LogBackendLocal
 			}
 			code = string(pixivErr.Code)
 			status = pixivErr.UpstreamStatus
+			transportKind = string(pixivErr.TransportKind)
 			if pixivErr.IllustID != 0 {
 				illustID = pixivErr.IllustID
 			}
@@ -36,22 +38,18 @@ func (c *Client) operationLog(operation Operation, started time.Time, err error,
 			}
 		}
 	}
-	attrs := []slog.Attr{
-		slog.String("component", "pixiv_sdk"),
-		slog.String("operation", string(operation)),
-		slog.String("backend", backend),
-		slog.Duration("duration", time.Since(started)),
-		slog.String("result", result),
-		slog.String("error_code", code),
-		slog.Int("status", status),
-	}
-	if illustID != 0 {
-		attrs = append(attrs, slog.Int64("illust_id", illustID))
-	}
-	if userID != 0 {
-		attrs = append(attrs, slog.Int64("user_id", userID))
-	}
-	c.logger.LogAttrs(nil, level, "pixiv operation", attrs...)
+	logging.LogOperation(c.logger, logging.OperationEvent{
+		Component:     "pixiv_sdk",
+		Operation:     string(operation),
+		Backend:       backend,
+		Duration:      time.Since(started),
+		Result:        result,
+		ErrorCode:     code,
+		Status:        status,
+		TransportKind: transportKind,
+		IllustID:      illustID,
+		UserID:        userID,
+	})
 }
 
 // delegatedOperationLog 用于 OpenDefault 会代理给 scoped Client 的内容/资源操作。

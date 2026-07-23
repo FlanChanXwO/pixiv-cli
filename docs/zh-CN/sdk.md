@@ -37,14 +37,14 @@ local, err := pixiv.OpenDefault(pixiv.Options{
 
 | 类别 | 方法 |
 | --- | --- |
-| 作品与推荐 | `SearchIllust`、`SearchIllustOptions`、`IllustDetail`、`IllustPages`、`IllustRelated`、`IllustRanking`、`IllustRecommended`、`MangaRecommended`、`NovelRecommended`、`UserRecommended`、`FollowingIllusts`、`TrendingTagsIllust`、`UgoiraMetadata`。 |
+| 作品与推荐 | `SearchIllust`、`SearchNovel`、`SearchIllustOptions`、`IllustDetail`、`IllustPages`、`IllustRelated`、`IllustRanking`、`IllustRecommended`、`MangaRecommended`、`NovelRecommended`、`UserRecommended`、`FollowingIllusts`、`TrendingTagsIllust`、`UgoiraMetadata`。 |
 | 用户 | `SearchUser`、`UserDetail`、`UserArtworks`、`UserBookmarks`、`UserFollowing`、`CurrentUserID`。 |
 | 写操作 | `AddBookmark`、`RemoveBookmark`、`FollowUser`、`UnfollowUser`。 |
 | 账号/配置 | `ImportAccount`、`ListAccounts`、`SelectAccount`、`RemoveAccount`、`ExportAccountRefreshToken`、`ExportAuthBundle`、`RestoreAuthBundle`、`CheckAccount`、`CheckRefreshToken`、`Refresh`、`RefreshAccount`、`GetConfig`、`SetConfig`、`UnsetConfig`；bundle codec 是 package-level function。 |
 | 登录 | `StartLogin`、`CompleteLogin`、`BuildLoginAuthorizationURL`。SDK 不启动浏览器、loopback server 或 TTY。 |
 | 资源 | `ParseResourceRef`、`OpenResource`、`Download`。 |
 
-请求型方法使用命名 request，例如 `SearchIllustRequest`、`SearchIllustOptionsRequest`、`UserArtworksRequest`、`UserBookmarksRequest`、`UserFollowingRequest`、`AddBookmarkRequest`、`FollowUserRequest`。返回模型为 `IllustListResult`、`SearchIllustOptionsResult`、`UserListResult`、`IllustDetail`、`UserDetailResult` 等，均来自顶层 `pixiv` package。
+请求型方法使用命名 request，例如 `SearchIllustRequest`、`SearchNovelRequest`、`SearchIllustOptionsRequest`、`UserArtworksRequest`、`UserBookmarksRequest`、`UserFollowingRequest`、`AddBookmarkRequest`、`FollowUserRequest`。返回模型为 `IllustListResult`、`NovelListResult`、`SearchIllustOptionsResult`、`UserListResult`、`IllustDetail`、`UserDetailResult` 等，均来自顶层 `pixiv` package。
 每个 public `Illust` 都包含稳定作品页 URL `https://www.pixiv.net/artworks/{id}`，JSON 首字段为 `url`。SDK 不提供点赞数字段，不得把收藏数文案为点赞。`Download` 支持 `DownloadOptions`：`ParsePageSpec` 页选择与 `DownloadQuality`（`original|regular|small|thumb|mini`）；ugoira 对页选择或非 original 质量返回 unsupported。
 
 `UserArtworksRequest.UserID` 等 SDK 用户 ID 必填；“省略 UID 就是自己”是 CLI/MCP adapter 行为，外部 Go 调用方先调用 `CurrentUserID(ctx)` 后再组装 request。
@@ -95,6 +95,22 @@ auth store，不读取 `PIXIV_REFRESH_TOKEN` 或 runtime config，不刷新、�
 `SearchIllustOptionsResult{Tools []string}`。工具列表保持上游顺序与原值；上游未提供列表时返回非
 `nil` 空切片。该操作不公开 Premium 收藏数档位。
 
+### 小说搜索与用户搜索来源
+
+`SearchNovel(ctx, SearchNovelRequest{...})` 仅支持认证 App API。`Target` 与插画搜索一样支持稳定值
+`partial_match_for_tags`、`exact_match_for_tags`、`title_and_caption`；`Sort` 支持 `date_desc|date_asc`；
+`Duration` 可为空，或为 `within_last_day|within_last_week|within_last_month`。`NovelSearchFilters` 包含
+`Rating`、`MinTextLength`、`MaxTextLength` 与 `OriginalOnly`。正文长度为零时关闭相应边界；非零上界小于下界时返回
+`invalid_argument`。
+
+App endpoint 没有经验证的分级、正文长度或原创 wire 参数。SDK 改为按稳定结果字段
+`Novel.XRestrict`、`Novel.TextLength`、`Novel.IsOriginal` 筛选。每个搜索响应都必须具备三项字段；缺失时返回 typed
+`malformed_upstream_response`，不会猜测匹配或返回无标记 partial result。返回的 `Novel` 还提供稳定 URL
+`https://www.pixiv.net/novel/show.php?id={id}`。
+
+`SearchUser` 始终在 `UserListResult.Source` 标识结果语义。认证 App 搜索为 `app_search`；匿名 Web fallback 为
+`related_illust_authors`，即从插画搜索去重得到的作者列表，而不是官方用户名搜索。同一 cursor 序列中的来源稳定不变。
+
 ### 插画排行榜
 
 `IllustRankingRequest.Mode` 支持全部 16 种 App API mode：`day`、`day_male`、`day_female`、`week`、
@@ -116,9 +132,9 @@ next, err := client.UserArtworks(ctx, pixiv.UserArtworksRequest{
 _ = next
 ```
 
-cursor 是版本化、不透明、绑定操作和完整查询的 token；`SearchIllust` cursor 同时绑定规范化后的
-`Rating`、`ContentType`、`AIMode`、`AspectRatio`、`Resolution` 与 `Tool`。改变任一筛选字段后复用
-旧 cursor 会返回 `invalid_argument`。cursor 不可解析、编辑、跨请求复用或替换为上游 offset/page。
+cursor 是版本化、不透明、绑定操作和完整查询的 token；插画 `SearchIllust` cursor 同时绑定规范化后的
+`Rating`、`ContentType`、`AIMode`、`AspectRatio`、`Resolution` 与 `Tool`；小说搜索 cursor 绑定 target、sort、duration、
+分级、正文长度边界与原创条件。改变任一筛选字段后复用旧 cursor 会返回 `invalid_argument`。cursor 不可解析、编辑、跨请求复用或替换为上游 offset/page。
 SDK 不以 `page` 为输入；CLI/MCP 在边缘层将逻辑 `page`/`limit` 转为 cursor 遍历。
 
 ## 路由
@@ -130,9 +146,14 @@ SDK 不以 `page` 为输入；CLI/MCP 在边缘层将逻辑 `page`/`limit` 转�
 匿名 `SearchIllustOptions` 返回 `unsupported`，不会请求 Web。SDK 不读取或注入 Cookie，也不把 refresh
 token 转换为 Web session。
 
+`SearchNovel` 需要 App 认证，绝不回落 Web。`SearchUser` 在认证态使用 App 搜索；其匿名 allowlist 路径始终以
+`Source=related_illust_authors` 输出，调用方不会将它误解为官方操作。
+
 认证态的 `IllustDetail`、`IllustPages` 与 `UgoiraMetadata` 只使用 App API。多页 `IllustPages` 直接使用 App
 `meta_pages`；单页从 App 的单页/图片字段派生 `meta_pages[0]`，公开 JSON 结构保持不变。缺页或 page count
 不一致会明确返回 `malformed_upstream_response`，绝不返回无标记 partial result；App 失败也不会继续请求 Web。
+`Illust.Caption` 保留原始 App `caption` 或匿名 Web `description`；是否将 HTML 转为展示文本由 public SDK 之外的
+展示适配层决定。
 
 `UgoiraMetadata.UgoiraMetadata` 提供已验证的下载资源对：非空 `download_url` 与 `download_quality`（`medium`
 或 `original`）。`zip_urls.original` 只有实际取得 original ZIP 时才输出。认证 App 响应选择 medium ZIP
@@ -191,7 +212,7 @@ if errors.Is(err, pixiv.ErrUnauthorized) { /* re-auth */ }
 
 例如认证 pages 读取返回 HTTP 403 时，错误为 `CodeForbidden`、`BackendAppAPI`、`OperationIllustPages`，并保留 `UpstreamStatus=403`；不会继续请求 Web。调用方应按这些字段处理失败，不应从结果中猜测补全是否完成。
 
-`upstream_unavailable` 的网络传输失败还可通过 `Error.TransportKind` 区分安全子类：`dns`、`tls`、`proxy`、`connection_refused`、`connection_reset`、`unknown`。分类只依据 Go 标准库的 typed/wrapped cause，不解析错误文本；例如没有 typed 信号的 HTTPS proxy CONNECT 非 200 文本错误会保持 `unknown`。`Error()` 只输出稳定枚举，不输出 DNS name、代理 userinfo、证书内容或原始 cause。`context.Canceled` 与 `context.DeadlineExceeded` 不设置 transport 子类，继续通过 `errors.Is` 判断。
+`upstream_unavailable` 的网络传输失败还可通过 `Error.TransportKind` 区分安全子类：`dns`、`tls`、`proxy`、`connection_refused`、`connection_reset`、`timeout`、`unknown`。分类只依据 Go 标准库的 typed/wrapped cause，不解析错误文本；例如没有 typed 信号的 HTTPS proxy CONNECT 非 200 文本错误会保持 `unknown`。`Error()` 只输出稳定枚举，不输出 DNS name、代理 userinfo、证书内容或原始 cause。`context.Canceled` 与 `context.DeadlineExceeded` 不设置 transport 子类，继续通过 `errors.Is` 判断。
 
 `OpenDefault` 和本地账号/配置操作的 `invalid_argument` 还可通过 `Error.LocalStateKind` 区分安全子类：`auth_malformed`、`config_malformed`、`permission_denied`、`not_found`、`invalid_proxy`、`account_mismatch`、`unavailable`、`unknown`。顶层 code、operation、backend、user ID 与 retryable 语义保持不变；`account_mismatch` 仍带 `oauth` backend 和所选 user ID。`errors.Unwrap` 只返回固定的脱敏原因，不返回原始 filesystem/parser 错误、路径、配置/auth 内容或含 userinfo 的代理 URL；`Error()` 也只输出白名单枚举。正常加载时缺失的可选 `auth.json` 或 `config.toml` 继续视为空状态并成功，不会产生 `not_found`。
 

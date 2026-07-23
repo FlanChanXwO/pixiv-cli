@@ -44,7 +44,7 @@ func TestServerListsExpectedTools(t *testing.T) {
 	defer session.Close()
 
 	var names []string
-	var searchIllustTool *mcp.Tool
+	var searchIllustTool, searchNovelTool *mcp.Tool
 	for tool, err := range session.Tools(ctx, nil) {
 		if err != nil {
 			t.Fatalf("tools: %v", err)
@@ -53,10 +53,13 @@ func TestServerListsExpectedTools(t *testing.T) {
 		if tool.Name == "search_illust" {
 			searchIllustTool = tool
 		}
+		if tool.Name == "search_novel" {
+			searchNovelTool = tool
+		}
 	}
 	want := []string{
 		"set_download_path", "download", "refresh_token", "set_refresh_token",
-		"download_random_from_recommendation", "search_illust", "search_illust_options", "illust_detail",
+		"download_random_from_recommendation", "search_illust", "search_novel", "search_illust_options", "illust_detail",
 		"illust_related", "illust_ranking", "search_user", "illust_recommended",
 		"recommended", "trending_tags_illust", "illust_follow", "user_detail",
 		"user_artworks", "user_bookmarks", "user_following", "add_bookmark",
@@ -69,6 +72,9 @@ func TestServerListsExpectedTools(t *testing.T) {
 	}
 	if searchIllustTool == nil {
 		t.Fatal("search_illust tool is not registered")
+	}
+	if searchNovelTool == nil {
+		t.Fatal("search_novel tool is not registered")
 	}
 	schema, err := json.Marshal(searchIllustTool.InputSchema)
 	if err != nil {
@@ -104,6 +110,15 @@ func TestServerListsExpectedTools(t *testing.T) {
 	if schemaObject.Properties["tool"].Description == "" {
 		t.Fatal("search_illust schema tool is missing description")
 	}
+	novelSchema, err := json.Marshal(searchNovelTool.InputSchema)
+	if err != nil {
+		t.Fatalf("marshal search_novel input schema: %v", err)
+	}
+	for _, field := range []string{"rating", "min_text_length", "max_text_length", "original_only", "page", "limit"} {
+		if !strings.Contains(string(novelSchema), `"`+field+`"`) {
+			t.Fatalf("search_novel input schema missing %q: %s", field, novelSchema)
+		}
+	}
 }
 
 func TestSearchIllustMapsStableFiltersToPublicSDK(t *testing.T) {
@@ -129,6 +144,85 @@ func TestSearchIllustMapsStableFiltersToPublicSDK(t *testing.T) {
 	}
 	if got.Word != "cat" || got.Filters != want {
 		t.Fatalf("SearchIllust request = %+v, want word=cat filters=%+v", got, want)
+	}
+}
+
+func TestSearchNovelMapsStableFiltersAndReturnsStructuredOutput(t *testing.T) {
+	var got sdk.SearchNovelRequest
+	client := &fakeSDKClient{searchNovel: func(_ context.Context, request sdk.SearchNovelRequest) (*sdk.NovelListResult, error) {
+		got = request
+		return &sdk.NovelListResult{Novels: []sdk.Novel{{ID: 12, Title: "novel", TextLength: 120, IsOriginal: true}}}, nil
+	}}
+	session, closeSession := newSDKTestSession(t, client)
+	defer closeSession()
+
+	result := callTool(t, session, "search_novel", map[string]any{
+		"word": "miku", "search_target": "title_and_caption", "sort": "date_asc", "duration": "within_last_week",
+		"rating": "r18", "min_text_length": 100, "max_text_length": 1000, "original_only": true, "limit": 1,
+	})
+	if result.IsError {
+		t.Fatalf("search_novel returned MCP error: %+v", result)
+	}
+	var out struct {
+		Novels     []sdk.Novel   `json:"novels"`
+		Pagination paginationOut `json:"pagination"`
+		Text       string        `json:"text"`
+	}
+	decodeStructured(t, result, &out)
+	wantFilters := sdk.NovelSearchFilters{Rating: sdk.SearchRatingR18, MinTextLength: 100, MaxTextLength: 1000, OriginalOnly: true}
+	if got.Word != "miku" || got.Target != sdk.SearchTargetTitleAndCaption || got.Sort != sdk.SortModeDateAsc || got.Duration != "within_last_week" || got.Filters != wantFilters {
+		t.Fatalf("SearchNovel request = %+v, want stable parameters and filters=%+v", got, wantFilters)
+	}
+	if len(out.Novels) != 1 || out.Novels[0].ID != 12 || out.Pagination.Returned != 1 || !strings.Contains(out.Text, "Found 1 novels") {
+		t.Fatalf("search_novel output = %+v", out)
+	}
+}
+
+func TestSearchNovelContinuesAfterLocallyFilteredEmptyBatch(t *testing.T) {
+	var requests []sdk.SearchNovelRequest
+	client := &fakeSDKClient{searchNovel: func(_ context.Context, request sdk.SearchNovelRequest) (*sdk.NovelListResult, error) {
+		requests = append(requests, request)
+		if request.Cursor == "" {
+			return &sdk.NovelListResult{Novels: []sdk.Novel{}, NextCursor: "filtered-next"}, nil
+		}
+		return &sdk.NovelListResult{Novels: []sdk.Novel{{ID: 19, Title: "visible", Tags: []sdk.Tag{}}}}, nil
+	}}
+	session, closeSession := newSDKTestSession(t, client)
+	defer closeSession()
+
+	result := callTool(t, session, "search_novel", map[string]any{"word": "miku", "rating": "r18"})
+	var out novelSearchOut
+	decodeStructured(t, result, &out)
+	if len(requests) != 2 || requests[1].Cursor != "filtered-next" || len(out.Novels) != 1 || out.Novels[0].ID != 19 {
+		t.Fatalf("requests=%+v output=%+v", requests, out)
+	}
+}
+
+func TestSearchUserReturnsSourceAndStructuredPreviews(t *testing.T) {
+	var got sdk.SearchUserRequest
+	client := &fakeSDKClient{searchUser: func(_ context.Context, request sdk.SearchUserRequest) (*sdk.UserListResult, error) {
+		got = request
+		return &sdk.UserListResult{
+			Source:       sdk.UserSearchSourceRelatedIllustAuthors,
+			UserPreviews: []sdk.UserPreview{{User: sdk.User{ID: 7, Name: "author", Account: "author_account"}}},
+		}, nil
+	}}
+	session, closeSession := newSDKTestSession(t, client)
+	defer closeSession()
+
+	result := callTool(t, session, "search_user", map[string]any{"word": "author", "limit": 1})
+	if result.IsError {
+		t.Fatalf("search_user returned MCP error: %+v", result)
+	}
+	var out struct {
+		Source       sdk.UserSearchSource `json:"source"`
+		UserPreviews []sdk.UserPreview    `json:"user_previews"`
+		Pagination   paginationOut        `json:"pagination"`
+		Text         string               `json:"text"`
+	}
+	decodeStructured(t, result, &out)
+	if got.Word != "author" || len(out.UserPreviews) != 1 || out.UserPreviews[0].User.ID != 7 || out.Source != sdk.UserSearchSourceRelatedIllustAuthors || out.Pagination.Returned != 1 || !strings.Contains(out.Text, "not a username search") {
+		t.Fatalf("search_user request=%+v output=%+v", got, out)
 	}
 }
 
@@ -2482,6 +2576,8 @@ func decodeStructured(t *testing.T, result *mcp.CallToolResult, out any) {
 type fakeSDKClient struct {
 	userID                int64
 	searchIllust          func(context.Context, sdk.SearchIllustRequest) (*sdk.IllustListResult, error)
+	searchNovel           func(context.Context, sdk.SearchNovelRequest) (*sdk.NovelListResult, error)
+	searchUser            func(context.Context, sdk.SearchUserRequest) (*sdk.UserListResult, error)
 	searchIllustOptions   func(context.Context, sdk.SearchIllustOptionsRequest) (*sdk.SearchIllustOptionsResult, error)
 	illustDetail          func(context.Context, int64) (*sdk.IllustDetail, error)
 	artworks              []sdk.Illust
@@ -2568,6 +2664,13 @@ func (f *fakeSDKClient) SearchIllust(ctx context.Context, request sdk.SearchIllu
 	return &sdk.IllustListResult{}, nil
 }
 
+func (f *fakeSDKClient) SearchNovel(ctx context.Context, request sdk.SearchNovelRequest) (*sdk.NovelListResult, error) {
+	if f.searchNovel != nil {
+		return f.searchNovel(ctx, request)
+	}
+	return &sdk.NovelListResult{Novels: []sdk.Novel{}}, nil
+}
+
 func (f *fakeSDKClient) SearchIllustOptions(ctx context.Context, request sdk.SearchIllustOptionsRequest) (*sdk.SearchIllustOptionsResult, error) {
 	if f.searchIllustOptions != nil {
 		return f.searchIllustOptions(ctx, request)
@@ -2594,8 +2697,11 @@ func (f *fakeSDKClient) IllustRanking(ctx context.Context, request sdk.IllustRan
 func (*fakeSDKClient) FollowingIllusts(context.Context, sdk.FollowingIllustsRequest) (*sdk.IllustListResult, error) {
 	return &sdk.IllustListResult{}, nil
 }
-func (*fakeSDKClient) SearchUser(context.Context, sdk.SearchUserRequest) (*sdk.UserListResult, error) {
-	return &sdk.UserListResult{}, nil
+func (f *fakeSDKClient) SearchUser(ctx context.Context, request sdk.SearchUserRequest) (*sdk.UserListResult, error) {
+	if f.searchUser != nil {
+		return f.searchUser(ctx, request)
+	}
+	return &sdk.UserListResult{UserPreviews: []sdk.UserPreview{}}, nil
 }
 func (*fakeSDKClient) TrendingTagsIllust(context.Context) (*sdk.TrendingTagsIllustResult, error) {
 	return &sdk.TrendingTagsIllustResult{}, nil

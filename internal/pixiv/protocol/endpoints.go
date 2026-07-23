@@ -7,6 +7,7 @@ import (
 
 const (
 	AppSearchIllust        = "/v1/search/illust"
+	AppSearchNovel         = "/v1/search/novel"
 	AppSearchIllustOptions = "/v1/search/options"
 	AppIllustDetail        = "/v1/illust/detail"
 	AppIllustRelated       = "/v2/illust/related"

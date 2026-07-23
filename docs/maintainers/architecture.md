@@ -8,8 +8,8 @@
 2. `pixiv auth/config/version/update/search/search-options/detail/ranking/recommended/user/bookmark/follow/download` 进入 CLI 模式；`auth import` 负责 direct token import 或 bundle restore，`auth export` 负责本地 secret snapshot。
 3. `pixiv mcp` 委托 `internal/bootstrap` 组装并运行 MCP stdio server。
 4. CLI 与 MCP 通过 `internal/bootstrap` 共享生产 wiring：
-   - 账号认证来自 `os.UserConfigDir()/pixiv/auth.json`
-   - 全局配置来自 `os.UserConfigDir()/pixiv/config.toml`
+   - 账号认证来自 `~/pixiv-cli/auth.json`（Windows：`%USERPROFILE%\pixiv-cli\auth.json`）
+   - 全局配置来自 `~/pixiv-cli/config.toml`（Windows：`%USERPROFILE%\pixiv-cli\config.toml`）
    - 公开环境变量作为覆盖层参与合并
 5. MCP 模式若没有 `PIXIV_REFRESH_TOKEN`，会回退到 `auth.json.default_user_id`；若仍无 refresh token 且 `web_fallback_enabled=true`，支持匿名能力的路径会走 Pixiv web/ajax API。
 
@@ -182,7 +182,7 @@ R18/R18G/mature 与动态搜索选项会返回认证需求，不伪造空结果�
 
 负责将 Pixiv 与下载能力注册为 MCP tools。所有 Pixiv 内容、认证、资源和写操作都通过 `SDKService` 使用 public SDK；旧构造器保留的首个 API 参数只是废弃占位，生产路径不会读取。下载由 operation snapshot 对应的 `DownloadManager` 执行。MCP 的 nullable `page`/`limit` 只在本 adapter 解析，逻辑分页遍历由 application 共享引擎执行；旧 offset wire 字段已移除。stdio runtime 由 `internal/bootstrap` 组装和启动。
 
-包内按职责拆分：`server.go` 负责构造与统一 observability wrapper，`registration.go` 只维护 tool 注册，`auth_tools.go` 和 `download_tools.go` 分别承载认证与下载，`legacy_tools.go` 保留 legacy 读取适配，`formatting.go` 集中文本/output helper，`sdk_runtime.go` 负责分页、operation snapshot、gate 与安全日志，`sdk_tools.go` 承载 SDK typed tools。legacy handler 可把失败继续转换为兼容的 `isError=false` 结果，但必须把真实 cause 交给 wrapper；wrapper 把安全分类 metadata 写入用户 state 目录 `pixiv/logs` 的按日 JSONL，不读取参数或原始错误文本，也不把操作日志写到终端。正常空结果不会伪装成失败。
+包内按职责拆分：`server.go` 负责构造与统一 observability wrapper，`registration.go` 只维护 tool 注册，`auth_tools.go` 和 `download_tools.go` 分别承载认证与下载，`legacy_tools.go` 承载文本型读取适配，`formatting.go` 集中文本/output helper，`sdk_runtime.go` 负责分页、operation snapshot、gate 与安全日志，`sdk_tools.go` 承载 SDK typed tools。文本型 handler 的失败结果可使用 `isError=false`，但必须把真实 cause 交给 wrapper；wrapper 把安全分类 metadata 写入 `~/pixiv-cli/logs`（Windows：`%USERPROFILE%\pixiv-cli\logs`）的按日纯文本 `YYYY-MM-DD.txt`，不读取参数或原始错误文本，也不把操作日志写到终端。正常空结果不会伪装成失败。
 
 输出目前以中文文本为主，适合直接返回给 LLM/MCP 客户端。其中 `refresh_token` tool 会区分缺少 token、context 取消/deadline、安全 typed SDK 失败与未知失败；其未知底层错误只返回脱敏排查提示，不回显原始原因。完整 wire 语义见 [MCP 工具](../zh-CN/mcp-tools.md#配置认证与下载)。
 
@@ -258,11 +258,15 @@ SmartScreen 提示时，必须回到已验证的项目 GitHub Release、checksum
 
 ### `internal/common/constants`
 
-只保存跨包复用、无协议语义的基础设施常量，例如私有文件权限、私有目录权限；`AppConfigDirName` 是 config/auth 共同使用的路径命名空间例外。Pixiv 协议值、MCP delivery 值、config key/default 等仍留在所属领域包。
+只保存跨包复用、无协议语义的基础设施常量，例如私有文件权限、私有目录权限和安全 operation log 的稳定事件/字段名；`AppDataDirName` 是本地应用数据根目录的路径命名空间例外。Pixiv 协议值、MCP delivery 值、config key/default 等仍留在所属领域包。
+
+### `internal/logging`
+
+集中定义 CLI、MCP、SDK、下载器与 App API 共用的结构化 operation event。`internal/config/logger.go` 仍是 runtime logger 的构造入口；本包只规范 event schema、丢弃 logger 与安全写入方式，不配置全局 logger。事件只允许 component、operation、backend、耗时、结果、安全错误分类、HTTP status、作品/用户 ID 以及限流重试的已解析等待时长；绝不记录 token、URL、原始 header、请求输入或响应 body。
 
 ### `internal/utils`
 
-提供文件名清理、模板展开、ID 去重和 refresh token 输入规范化：
+按单一职责拆分文件名清理、模板展开、ID 去重和 refresh token 输入规范化：
 
 - 模板内容及 URL path 推导扩展名中的非法文件名字符替换为 `_`；扩展名额外处理 ASCII 控制字符和 Windows 非法尾随点/空格。
 - 支持 `{author}`、`{title}`、`{id}` 模板字段。
@@ -272,6 +276,9 @@ SmartScreen 提示时，必须回到已验证的项目 GitHub Release、checksum
 
 `internal/utils/*` 子包提供无业务语义的通用工具：
 
+- `filename`：下载文件名清理、模板展开和 URL path 派生扩展名。
+- `ids`：正整数 ID 的排序去重。
+- `credentials`：refresh token 输入规范化，以及 Cookie 形态输入的拒绝。
 - `files`：用户配置路径拼接、配置 store 原子写入与任意目标 secret export writer。后者在 Unix-like 将文件设为 `0600` 且不改变既有 parent 权限/ownership；Windows 从创建时就设置 protected DACL 与 owner，只允许当前用户、LocalSystem、builtin Administrators 完全控制，replacement 后重新应用同一 owner/DACL。CI tests 提供该 Windows policy 的覆盖；本地交叉编译留给后续验收，文档不声称已在真实 Windows 主机运行本次验收。
 - `text`：字符串默认值和首个非空值。
 - `uri`：URL path 提取与 file URI 生成。

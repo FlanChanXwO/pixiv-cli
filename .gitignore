@@ -34,15 +34,4 @@ __pycache__/
 # Rust compiler output is machine-specific; verified staticlib/manifest stays tracked.
 /internal/download/ugoira_rs/target/
 
-# Understand Anything scratch files
-.understand-anything/tmp/
-.understand-anything/.trash-*/
-.understand-anything/intermediate/*
-!.understand-anything/intermediate/
-!.understand-anything/intermediate/scan-result.json
-docs/.understand-anything/tmp/
-docs/.understand-anything/.trash-*/
-docs/.understand-anything/intermediate/*
-!docs/.understand-anything/intermediate/
-!docs/.understand-anything/intermediate/scan-result.json
 .worktrees/

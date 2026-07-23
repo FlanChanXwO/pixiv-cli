@@ -2,12 +2,12 @@
 
 English | [简体中文](CONTRIBUTING.zh-CN.md)
 
-Thanks for helping improve `pixiv-cli`. Focused bug reports, documentation fixes, tests, compatibility work, and well-scoped features are welcome.
+Thanks for helping improve `pixiv-cli`. Focused bug reports, documentation fixes, tests, and well-scoped features are welcome.
 
 ## Before you start
 
 - Search existing issues and pull requests before opening a duplicate.
-- Discuss large features, public API changes, new dependencies, authentication changes, or compatibility breaks before implementation.
+- Discuss large features, public API changes, new dependencies, or authentication changes before implementation.
 - Never include Pixiv tokens, cookies, downloaded works, local databases, cache files, machine-specific configuration, or private API responses in an issue, fixture, commit, or CI log.
 - Keep changes focused. Unrelated cleanup is easier to review as a separate pull request.
 
@@ -54,14 +54,14 @@ Test public behavior through the public boundary whenever practical. Do not hide
 
 Real Pixiv Web and authenticated App canaries are opt-in. Never run them with a user's local account unless that user has explicitly authorized it; never put a real token on a command line that may be stored in shell history.
 
-## Documentation and compatibility
+## Documentation
 
 Update documentation in the same pull request when changing a command, flag, SDK API, MCP tool, configuration key, environment variable, output contract, authentication flow, proxy behavior, download behavior, or known limitation.
 
 - Keep `README.md`, `README.zh-CN.md`, and `README.ja.md` behaviorally aligned.
 - Keep all existing locale versions under `docs/<locale>/` behaviorally aligned; never use untranslated placeholder content.
 - Update localized SDK/MCP contracts or `docs/maintainers/` according to their documented responsibility.
-- Update `[Unreleased]` in `CHANGELOG.md` for user-visible additions, fixes, changes, deprecations, removals, or security effects.
+- Record user-visible additions, fixes, changes, deprecations, removals, and security effects in both the [English unreleased notes](changelog/unreleased/en.md) and the [Simplified Chinese unreleased notes](changelog/unreleased/zh-CN.md). At release time, move the paired notes into the matching version directory and update the [changelog index](changelog/README.md).
 - Check `skills/pixiv-cli/` when CLI commands, flags, or safety semantics change.
 
 Keep stable rules in one authoritative document and link to them elsewhere instead of copying large sections.

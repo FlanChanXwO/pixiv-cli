@@ -30,6 +30,9 @@ type novelDTO struct {
 	ID             int64        `json:"id"`
 	Title          string       `json:"title"`
 	Caption        string       `json:"caption"`
+	XRestrict      *int         `json:"x_restrict"`
+	TextLength     *int         `json:"text_length"`
+	IsOriginal     *bool        `json:"is_original"`
 	User           userDTO      `json:"user"`
 	Tags           []tagDTO     `json:"tags"`
 	ImageURLs      imageURLsDTO `json:"image_urls"`
@@ -40,6 +43,7 @@ type novelDTO struct {
 type illustDTO struct {
 	ID             int64         `json:"id"`
 	Title          string        `json:"title"`
+	Caption        string        `json:"caption"`
 	Type           string        `json:"type"`
 	PageCount      int           `json:"page_count"`
 	TotalBookmarks int           `json:"total_bookmarks"`

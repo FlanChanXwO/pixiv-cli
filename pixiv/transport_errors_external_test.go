@@ -289,6 +289,7 @@ func TestErrorPreservesDeclaredTransportKinds(t *testing.T) {
 		pixiv.TransportKindProxy,
 		pixiv.TransportKindConnectionRefused,
 		pixiv.TransportKindConnectionReset,
+		pixiv.TransportKindTimeout,
 		pixiv.TransportKindUnknown,
 	} {
 		diagnostic := (&pixiv.Error{Code: pixiv.CodeUpstreamUnavailable, TransportKind: kind}).Error()

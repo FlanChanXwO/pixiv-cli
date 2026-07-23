@@ -52,14 +52,14 @@ redirects. See [ADR 0010](../maintainers/adr/0010-http-client-timeout-and-contex
 
 | Category | Methods |
 | --- | --- |
-| Works and recommendations | `SearchIllust`, `SearchIllustOptions`, `IllustDetail`, `IllustPages`, `IllustRelated`, `IllustRanking`, `IllustRecommended`, `MangaRecommended`, `NovelRecommended`, `UserRecommended`, `FollowingIllusts`, `TrendingTagsIllust`, `UgoiraMetadata`. |
+| Works and recommendations | `SearchIllust`, `SearchNovel`, `SearchIllustOptions`, `IllustDetail`, `IllustPages`, `IllustRelated`, `IllustRanking`, `IllustRecommended`, `MangaRecommended`, `NovelRecommended`, `UserRecommended`, `FollowingIllusts`, `TrendingTagsIllust`, `UgoiraMetadata`. |
 | Users | `SearchUser`, `UserDetail`, `UserArtworks`, `UserBookmarks`, `UserFollowing`, `CurrentUserID`. |
 | Writes | `AddBookmark`, `RemoveBookmark`, `FollowUser`, `UnfollowUser`. |
 | Accounts/configuration | `ImportAccount`, `ListAccounts`, `SelectAccount`, `RemoveAccount`, `ExportAccountRefreshToken`, `ExportAuthBundle`, `RestoreAuthBundle`, `CheckAccount`, `CheckRefreshToken`, `Refresh`, `RefreshAccount`, `GetConfig`, `SetConfig`, `UnsetConfig`; bundle codec functions are package-level. |
 | Login | `StartLogin`, `CompleteLogin`, `BuildLoginAuthorizationURL`; the SDK does not start a browser, loopback server, or TTY. |
 | Resources | `ParseResourceRef`, `OpenResource`, `Download`. |
 
-Request methods use named request types such as `SearchIllustRequest`, `SearchIllustOptionsRequest`,
+Request methods use named request types such as `SearchIllustRequest`, `SearchNovelRequest`, `SearchIllustOptionsRequest`,
 `UserArtworksRequest`, `UserBookmarksRequest`, `UserFollowingRequest`, `AddBookmarkRequest`, and
 `FollowUserRequest`. Result models such as `IllustListResult`, `SearchIllustOptionsResult`, `UserListResult`,
 `IllustDetail`, and `UserDetailResult` all live in the top-level `pixiv` package.
@@ -144,6 +144,24 @@ App server parameters. Rating and AI-only filtering use normalized fields from t
 authentication. It returns `SearchIllustOptionsResult{Tools []string}` in upstream order; a missing list becomes a
 non-nil empty slice. Premium bookmark tiers are not exposed.
 
+### Novel search and user-search source
+
+`SearchNovel(ctx, SearchNovelRequest{...})` is authenticated App API only. `Target` accepts the same stable
+`partial_match_for_tags`, `exact_match_for_tags`, and `title_and_caption` values as illustration search; `Sort`
+accepts `date_desc|date_asc`; `Duration` is empty or `within_last_day|within_last_week|within_last_month`.
+`NovelSearchFilters` contains `Rating`, `MinTextLength`, `MaxTextLength`, and `OriginalOnly`. Zero text-length
+bounds are disabled; a non-zero maximum below the minimum is `invalid_argument`.
+
+The App endpoint has no verified wire parameters for rating, text length, or original-only. The SDK applies those
+filters to stable result fields instead: `Novel.XRestrict`, `Novel.TextLength`, and `Novel.IsOriginal`. Each search
+response must contain all three fields; missing data is a typed `malformed_upstream_response`, never a guessed match
+or an unlabeled partial result. Returned `Novel` values also expose the stable `URL` form
+`https://www.pixiv.net/novel/show.php?id={id}`.
+
+`SearchUser` always labels the result semantics in `UserListResult.Source`. Authenticated App search returns
+`app_search`; anonymous Web fallback returns `related_illust_authors`, which is a de-duplicated author list from
+illustration search rather than an official username search. The source is stable across a cursor sequence.
+
 ### Illustration rankings
 
 `IllustRankingRequest.Mode` accepts all 16 App API modes: `day`, `day_male`, `day_female`, `week`,
@@ -166,9 +184,10 @@ next, err := client.UserArtworks(ctx, pixiv.UserArtworksRequest{
 _ = next
 ```
 
-Cursors are versioned and bound to the operation and complete normalized query. A search cursor also binds
-`Rating`, `ContentType`, `AIMode`, `AspectRatio`, `Resolution`, and `Tool`; changing a filter and reusing the old
-cursor returns `invalid_argument`. Never parse, edit, reuse across requests, or replace a cursor with an upstream
+Cursors are versioned and bound to the operation and complete normalized query. An illustration-search cursor also
+binds `Rating`, `ContentType`, `AIMode`, `AspectRatio`, `Resolution`, and `Tool`; a novel-search cursor binds its
+target, sort, duration, rating, text-length bounds, and original-only condition. Changing a filter and reusing the
+old cursor returns `invalid_argument`. Never parse, edit, reuse across requests, or replace a cursor with an upstream
 offset/page. The SDK does not accept `page`; CLI/MCP translate logical pages and limits at their boundaries.
 
 ## Routing
@@ -180,10 +199,16 @@ uses only filters Web can express reliably. `r18`, `r18g`, and `mature` fail wit
 they are never disguised as empty results. Anonymous `SearchIllustOptions` returns `unsupported`. The SDK never
 reads/injects cookies or converts a refresh token into a Web session.
 
+`SearchNovel` requires App authentication and never falls back to Web. `SearchUser` uses App search when
+authenticated; its anonymous allowlist route is exposed only with `Source=related_illust_authors`, so callers cannot
+mistake it for the official operation.
+
 Authenticated `IllustDetail`, `IllustPages`, and `UgoiraMetadata` use App API only. `IllustPages` takes multi-page
 data from App `meta_pages`; for a single-page work it derives `meta_pages[0]` from the App single-page/image fields
 without changing the public JSON shape. Missing page data or a page-count mismatch is a typed
 `malformed_upstream_response`, never an unlabeled partial result. An App failure never makes a Web request.
+`Illust.Caption` preserves the raw App `caption` or anonymous Web `description`; presentation adapters, rather than
+the public SDK, decide whether to render its HTML.
 
 `UgoiraMetadata.UgoiraMetadata` exposes a verified resource pair: non-empty `download_url` and
 `download_quality` (`medium` or `original`). `zip_urls.original` is omitted unless that original ZIP was actually
@@ -252,7 +277,7 @@ For example, an App 403 during authenticated page retrieval becomes `CodeForbidd
 `OperationIllustPages`, and `UpstreamStatus=403`; it does not continue to Web.
 
 Transport failures with `upstream_unavailable` additionally expose a safe `Error.TransportKind`: `dns`, `tls`,
-`proxy`, `connection_refused`, `connection_reset`, or `unknown`. Classification uses typed/wrapped Go causes, not
+`proxy`, `connection_refused`, `connection_reset`, `timeout`, or `unknown`. Classification uses typed/wrapped Go causes, not
 error text. `context.Canceled` and `context.DeadlineExceeded` remain `errors.Is` signals and have no transport kind.
 
 Local account/configuration `invalid_argument` failures may expose `Error.LocalStateKind`: `auth_malformed`,

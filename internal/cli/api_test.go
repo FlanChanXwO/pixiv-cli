@@ -46,6 +46,61 @@ func TestSearchRoutesArgumentsAndPrintsSDKJSON(t *testing.T) {
 	assert.JSONEq(t, `{"illusts":[{"url":"https://www.pixiv.net/artworks/123","id":123,"title":"work","type":"","page_count":0,"total_bookmarks":0,"total_view":0,"x_restrict":0,"user":{"id":0,"name":"artist","account":"","comment":"","is_followed":false,"profile_image_urls":{}},"tags":null,"image_urls":{"square_medium":"","medium":"","large":"","original":""},"meta_single_page":{"original_image_url":""},"meta_pages":null,"ai_type":0,"create_date":"","width":0,"height":0,"tools":null}]}`, stdout.String())
 }
 
+func TestNovelSearchRoutesFiltersAndPrintsJSON(t *testing.T) {
+	useTempPaths(t)
+	var got sdk.SearchNovelRequest
+	setTestSDKCommandClient(t, sdkCommandFake{searchNovel: func(_ context.Context, request sdk.SearchNovelRequest) (*sdk.NovelListResult, error) {
+		got = request
+		return &sdk.NovelListResult{Novels: []sdk.Novel{{
+			URL: "https://www.pixiv.net/novel/show.php?id=9", ID: 9, Title: "novel", Caption: "description", XRestrict: 1, TextLength: 500, IsOriginal: true,
+			User: sdk.User{ID: 3, Name: "author"}, Tags: []sdk.Tag{}, ImageURLs: sdk.ImageURLs{},
+		}}}, nil
+	}})
+
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"pixiv", "novel", "search", "miku", "--search-by", "title-caption", "--period", "week", "--rating", "r18", "--min-text-length", "100", "--max-text-length", "1000", "--original-only", "--json"}, strings.NewReader(""), &stdout, &stderr)
+
+	require.Equal(t, 0, code, stderr.String())
+	assert.Equal(t, sdk.SearchNovelRequest{
+		Word: "miku", Target: sdk.SearchTargetTitleAndCaption, Sort: sdk.SortModeDateDesc, Duration: "within_last_week",
+		Filters: sdk.NovelSearchFilters{Rating: sdk.SearchRatingR18, MinTextLength: 100, MaxTextLength: 1000, OriginalOnly: true},
+	}, got)
+	assert.JSONEq(t, `{"novels":[{"url":"https://www.pixiv.net/novel/show.php?id=9","id":9,"title":"novel","caption":"description","x_restrict":1,"text_length":500,"is_original":true,"user":{"id":3,"name":"author","account":"","comment":"","is_followed":false,"profile_image_urls":{}},"tags":[],"image_urls":{"square_medium":"","medium":"","large":"","original":""},"create_date":"","total_bookmarks":0,"total_view":0}]}`, stdout.String())
+}
+
+func TestUserSearchLabelsRelatedAuthorFallbackInJSON(t *testing.T) {
+	useTempPaths(t)
+	var got sdk.SearchUserRequest
+	setTestSDKCommandClient(t, sdkCommandFake{searchUser: func(_ context.Context, request sdk.SearchUserRequest) (*sdk.UserListResult, error) {
+		got = request
+		return &sdk.UserListResult{
+			Source:       sdk.UserSearchSourceRelatedIllustAuthors,
+			UserPreviews: []sdk.UserPreview{{User: sdk.User{ID: 8, Name: "author", Account: "account", Comment: "profile"}}},
+		}, nil
+	}})
+
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"pixiv", "user", "search", "author", "--json"}, strings.NewReader(""), &stdout, &stderr)
+
+	require.Equal(t, 0, code, stderr.String())
+	assert.Equal(t, sdk.SearchUserRequest{Word: "author"}, got)
+	assert.JSONEq(t, `{"source":"related_illust_authors","user_previews":[{"user":{"id":8,"name":"author","account":"account","comment":"profile","is_followed":false,"profile_image_urls":{}}}]}`, stdout.String())
+}
+
+func TestDetailRendersCaptionAsSafePlainText(t *testing.T) {
+	useTempPaths(t)
+	setTestSDKCommandClient(t, sdkCommandFake{detail: func(context.Context, int64) (*sdk.IllustDetail, error) {
+		return &sdk.IllustDetail{Illust: sdk.Illust{ID: 42, Title: "work", User: sdk.User{ID: 7, Name: "artist"}, Caption: "<p>Line one<br>Line two &amp; \u001bunsafe</p>"}}, nil
+	}})
+
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"pixiv", "detail", "42"}, strings.NewReader(""), &stdout, &stderr)
+
+	require.Equal(t, 0, code, stderr.String())
+	assert.Contains(t, stdout.String(), "caption:\nLine one\nLine two & \\x1bunsafe\n")
+	assert.NotContains(t, stdout.String(), "<p>")
+}
+
 func TestSearchHelpUsesEnglishExamples(t *testing.T) {
 	for _, command := range []string{"search", "search-options"} {
 		t.Run(command, func(t *testing.T) {
@@ -54,6 +109,26 @@ func TestSearchHelpUsesEnglishExamples(t *testing.T) {
 
 			require.Equal(t, 0, code, stderr.String())
 			assert.Contains(t, stdout.String(), `pixiv `+command+` "miku" --json`)
+			assert.NotContains(t, stdout.String(), "初音ミク")
+		})
+	}
+}
+
+func TestNovelAndUserSearchHelpUsesEnglishExamples(t *testing.T) {
+	for _, test := range []struct {
+		name    string
+		args    []string
+		example string
+	}{
+		{name: "novel", args: []string{"pixiv", "novel", "search", "--help"}, example: `pixiv novel search "miku" --json`},
+		{name: "user", args: []string{"pixiv", "user", "search", "--help"}, example: `pixiv user search "miku" --json`},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			var stdout, stderr bytes.Buffer
+			code := Run(test.args, strings.NewReader(""), &stdout, &stderr)
+
+			require.Equal(t, 0, code, stderr.String())
+			assert.Contains(t, stdout.String(), test.example)
 			assert.NotContains(t, stdout.String(), "初音ミク")
 		})
 	}

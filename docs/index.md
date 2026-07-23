@@ -23,12 +23,7 @@ translations must preserve behavior while using natural language for their audie
 - [Development](maintainers/development.md): local environment, tests, builds, releases, and native evidence.
 - [AI collaboration](maintainers/agents/index.md): repository agent rules, review checklist, and documentation policy.
 - [Architecture decisions](maintainers/adr/): long-lived decisions and their tradeoffs.
-- [Changelog](../CHANGELOG.md): user-visible changes.
+- [Changelog](../changelog/README.md): user-visible changes.
 
 Maintainer documents keep their existing canonical language and are currently primarily Simplified Chinese.
 Translate one only when there is a demonstrated maintainer need; do not create empty locale copies.
-
-## Compatibility paths
-
-The former top-level documentation paths remain as small navigation stubs so existing bookmarks do not fail.
-New links and edits must target the locale or `maintainers/` path directly.

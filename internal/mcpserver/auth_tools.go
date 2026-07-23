@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/utils"
+	"github.com/FlanChanXwO/pixiv-cli/internal/utils/credentials"
 	sdk "github.com/FlanChanXwO/pixiv-cli/pixiv"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -53,7 +53,7 @@ type setRefreshTokenIn struct {
 }
 
 func (a *App) setRefreshToken(ctx context.Context, _ *mcp.CallToolRequest, in setRefreshTokenIn) (*mcp.CallToolResult, textOut, error) {
-	token, err := utils.ValidateRefreshTokenInput(in.RefreshToken)
+	token, err := credentials.ValidateRefreshTokenInput(in.RefreshToken)
 	if err != nil {
 		return toolTextError(ctx, err, "Error: "+err.Error())
 	}

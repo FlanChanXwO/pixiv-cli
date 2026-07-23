@@ -9,8 +9,10 @@ import (
 	"time"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/application"
+	"github.com/FlanChanXwO/pixiv-cli/internal/common/constants"
 	"github.com/FlanChanXwO/pixiv-cli/internal/config"
 	"github.com/FlanChanXwO/pixiv-cli/internal/download"
+	"github.com/FlanChanXwO/pixiv-cli/internal/logging"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver"
 	internalpixiv "github.com/FlanChanXwO/pixiv-cli/internal/pixiv"
 	"github.com/FlanChanXwO/pixiv-cli/internal/storage/auth"
@@ -72,8 +74,8 @@ func newSDKClient(logger *slog.Logger, request application.SDKClientRequest) (ap
 
 // NewApplicationLogger 从当前配置建立一次应用根 logger。它不触碰 slog 全局默认值；
 // CLI 与 MCP 将其显式传入所有下游组件。返回的 closer 必须在命令或 MCP 会话结束时关闭，
-// 以释放 Windows 上不能由临时目录删除的 JSONL 文件句柄。
-// 终端（errOut）默认不输出日志痕迹；操作摘要写入 UserStateDir/pixiv/logs 按日 JSONL。
+// 以释放 Windows 上不能由临时目录删除的文本日志文件句柄。
+// 终端（errOut）默认不输出日志痕迹；操作摘要写入 UserStateDir/pixiv/logs 按日 txt。
 // 日志目录创建/轮转/清理失败时静默继续。errOut 参数保留以兼容调用签名。
 func NewApplicationLogger(errOut io.Writer) (*slog.Logger, io.Closer, error) {
 	_ = errOut
@@ -82,28 +84,18 @@ func NewApplicationLogger(errOut io.Writer) (*slog.Logger, io.Closer, error) {
 	if err != nil {
 		// 根 logger 的初始化不得抢在 Cobra 前把帮助、config path 等本地协议变成
 		// 失败。配置文件不可读或语法损坏时静默 logger；只要文件可解析，下面对
-		// log_level/log_format 的显式校验仍会把非法日志配置返回给调用方。
-		return slog.New(slog.NewJSONHandler(writer, &slog.HandlerOptions{Level: slog.LevelWarn})), writer, nil
+		// log_level 的显式校验仍会把非法日志配置返回给调用方。
+		return slog.New(slog.NewTextHandler(writer, &slog.HandlerOptions{Level: slog.LevelWarn})), writer, nil
 	}
 	// 根 logger 只依赖 logging 自己的两项设置。这样无关 runtime 配置（例如
 	// web.fallback_enabled）的错误不会破坏 help/config path 等离线协议；反之
-	// 无效 log_level/log_format 仍明确失败，绝不静默回退。
+	// 无效 log_level 仍明确失败，绝不静默回退。
 	level, err := settings.Effective("log_level")
 	if err != nil {
 		_ = writer.Close()
 		return nil, nil, err
 	}
-	format, err := settings.Effective("log_format")
-	if err != nil {
-		_ = writer.Close()
-		return nil, nil, err
-	}
-	// 仍校验 log_format 配置合法性，但文件日志固定 JSONL，不把文本日志写回终端。
-	if _, err := config.NewLogger(io.Discard, config.RuntimeConfig{LogLevel: level.Value.(string), LogFormat: format.Value.(string)}); err != nil {
-		_ = writer.Close()
-		return nil, nil, err
-	}
-	logger, err := config.NewLogger(writer, config.RuntimeConfig{LogLevel: level.Value.(string), LogFormat: "json"})
+	logger, err := config.NewLogger(writer, config.RuntimeConfig{LogLevel: level.Value.(string)})
 	if err != nil {
 		_ = writer.Close()
 		return nil, nil, err
@@ -234,17 +226,14 @@ func applyRuntimeProxyOverride(cfg *config.RuntimeConfig, override *string) {
 }
 
 func (r MCPRuntime) mcpLog(operation string, started time.Time, result string, userID int64) {
-	if r.Logger == nil {
-		return
-	}
-	level := slog.LevelInfo
-	if result == "error" {
-		level = slog.LevelError
-	}
-	r.Logger.LogAttrs(nil, level, "pixiv operation",
-		slog.String("component", "mcp"), slog.String("operation", operation), slog.String("backend", "local"), slog.Duration("duration", time.Since(started)),
-		slog.String("result", result), slog.String("error_code", ""), slog.Int("status", 0), slog.Int64("user_id", userID),
-	)
+	logging.LogOperation(r.Logger, logging.OperationEvent{
+		Component: "mcp",
+		Operation: operation,
+		Backend:   constants.LogBackendLocal,
+		Duration:  time.Since(started),
+		Result:    result,
+		UserID:    userID,
+	})
 }
 
 func RunMCP(ctx context.Context, errOut io.Writer, proxyOverride *string) error {
@@ -262,9 +251,9 @@ func RunMCP(ctx context.Context, errOut io.Writer, proxyOverride *string) error 
 	}, runtime.Logger, runtime.SDK, runtime.SDKRequest)
 	started := time.Now()
 	err = server.Run(ctx, &mcp.StdioTransport{})
-	result := "success"
+	result := logging.ResultSuccess
 	if err != nil {
-		result = "error"
+		result = logging.ResultError
 	}
 	runtime.mcpLog("run", started, result, runtime.SDKRequest.UserID)
 	return err

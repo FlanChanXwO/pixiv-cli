@@ -1,0 +1,66 @@
+name: Feature request
+description: Propose a focused improvement to pixiv-cli.
+title: "[Feature]: "
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please describe the user problem first. Do not include refresh tokens, cookies, private URLs, downloaded works, or private API responses.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem to solve
+      description: Explain the concrete workflow or limitation that motivates this request.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+      description: Describe the desired CLI, MCP, SDK, or documentation behavior. Include examples when useful.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Affected interface
+      description: Select every interface that should expose the change.
+      multiple: true
+      options:
+        - CLI
+        - MCP server
+        - Public Go SDK
+        - OAuth or account management
+        - Download or ugoira processing
+        - Release installer or updater
+        - Documentation
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Describe existing commands, workarounds, or other designs you considered.
+
+  - type: checkboxes
+    id: compatibility
+    attributes:
+      label: Compatibility
+      options:
+        - label: This proposal may require a breaking CLI, MCP, SDK, configuration, or output-contract change.
+          required: false
+
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Safety confirmation
+      options:
+        - label: I have not included secrets or private content in this request.
+          required: true

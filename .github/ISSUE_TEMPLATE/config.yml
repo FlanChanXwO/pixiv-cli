@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Documentation and usage questions
+    url: https://github.com/FlanChanXwO/pixiv-cli/discussions
+    about: Ask for usage help or discuss an idea before opening a feature request.
+  - name: Security vulnerability
+    url: https://github.com/FlanChanXwO/pixiv-cli/security/advisories/new
+    about: Report suspected security issues privately. Do not disclose credentials or exploit details in a public issue.

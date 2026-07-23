@@ -6,67 +6,35 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"runtime"
 	"sort"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/FlanChanXwO/pixiv-cli/internal/common/constants"
+	"github.com/FlanChanXwO/pixiv-cli/internal/utils/files"
 )
 
 // defaultLogRetainDays 是按日日志的默认保留天数。
 // 仅清理识别出的历史日志文件名，避免误删用户其他文件。
 const defaultLogRetainDays = 7
 
-// logFileNamePattern 仅匹配本产品写入的按日 JSONL 日志。
-var logFileNamePattern = regexp.MustCompile(`^pixiv-\d{4}-\d{2}-\d{2}\.jsonl$`)
+// logFileNamePattern 只识别当前纯文本按日日志，避免保留期清理误删用户文件。
+var logFileNamePattern = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}\.txt$`)
 
-// DefaultLogDir 返回用户 state 目录下的 pixiv/logs。
-// 当前工具链未提供 os.UserStateDir，这里按同一语义实现：
-// Unix 使用 $XDG_STATE_HOME 或 $HOME/.local/state；
-// Darwin 使用 $HOME/Library/Application Support；
-// Windows 使用 %LocalAppData%。
-// 目录创建失败时返回 error，调用方应静默继续。
+// DefaultLogDir 返回用户 home 下 pixiv-cli/logs。认证、配置、回调桥接与日志
+// 共用同一应用数据根目录；Windows 上 home 对应当前用户 profile。
 func DefaultLogDir() (string, error) {
-	state, err := userStateDir()
+	dir, err := files.UserDataSubdir(constants.AppDataDirName)
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(state, "pixiv", "logs"), nil
+	return filepath.Join(dir, "logs"), nil
 }
 
-func userStateDir() (string, error) {
-	switch runtime.GOOS {
-	case "windows":
-		dir := os.Getenv("LocalAppData")
-		if dir == "" {
-			return "", fmt.Errorf("%%LocalAppData%% is not defined")
-		}
-		return dir, nil
-	case "darwin", "ios":
-		home := os.Getenv("HOME")
-		if home == "" {
-			return "", fmt.Errorf("$HOME is not defined")
-		}
-		return filepath.Join(home, "Library", "Application Support"), nil
-	default:
-		dir := os.Getenv("XDG_STATE_HOME")
-		if dir != "" {
-			if !filepath.IsAbs(dir) {
-				return "", fmt.Errorf("path in $XDG_STATE_HOME is relative")
-			}
-			return dir, nil
-		}
-		home := os.Getenv("HOME")
-		if home == "" {
-			return "", fmt.Errorf("neither $XDG_STATE_HOME nor $HOME are defined")
-		}
-		return filepath.Join(home, ".local", "state"), nil
-	}
-}
-
-// dailyJSONLWriter 将日志按本地日切到独立 JSONL 文件。
+// dailyTextWriter 将日志按本地日切到独立纯文本文件。
 // 写失败、轮转失败、清理失败一律静默，不影响业务。
-type dailyJSONLWriter struct {
+type dailyTextWriter struct {
 	dir        string
 	retainDays int
 	// now 仅供测试注入固定时钟；生产路径保持 nil，等价于 time.Now。
@@ -76,21 +44,21 @@ type dailyJSONLWriter struct {
 	file *os.File
 }
 
-func newDailyJSONLWriter(dir string, retainDays int) *dailyJSONLWriter {
+func newDailyTextWriter(dir string, retainDays int) *dailyTextWriter {
 	if retainDays <= 0 {
 		retainDays = defaultLogRetainDays
 	}
-	return &dailyJSONLWriter{dir: dir, retainDays: retainDays}
+	return &dailyTextWriter{dir: dir, retainDays: retainDays}
 }
 
-func (w *dailyJSONLWriter) currentTime() time.Time {
+func (w *dailyTextWriter) currentTime() time.Time {
 	if w.now != nil {
 		return w.now()
 	}
 	return time.Now()
 }
 
-func (w *dailyJSONLWriter) Write(p []byte) (int, error) {
+func (w *dailyTextWriter) Write(p []byte) (int, error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	if err := w.ensureFileLocked(w.currentTime()); err != nil {
@@ -104,7 +72,7 @@ func (w *dailyJSONLWriter) Write(p []byte) (int, error) {
 	return n, nil
 }
 
-func (w *dailyJSONLWriter) Close() error {
+func (w *dailyTextWriter) Close() error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	if w.file == nil {
@@ -115,7 +83,7 @@ func (w *dailyJSONLWriter) Close() error {
 	return err
 }
 
-func (w *dailyJSONLWriter) ensureFileLocked(now time.Time) error {
+func (w *dailyTextWriter) ensureFileLocked(now time.Time) error {
 	day := now.Format("2006-01-02")
 	if w.file != nil && w.day == day {
 		return nil
@@ -129,7 +97,7 @@ func (w *dailyJSONLWriter) ensureFileLocked(now time.Time) error {
 	}
 	// 轮转后尽力清理过期日志；失败静默。
 	cleanupOldLogFiles(w.dir, now, w.retainDays)
-	path := filepath.Join(w.dir, "pixiv-"+day+".jsonl")
+	path := filepath.Join(w.dir, day+".txt")
 	file, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
 	if err != nil {
 		return err
@@ -139,7 +107,7 @@ func (w *dailyJSONLWriter) ensureFileLocked(now time.Time) error {
 	return nil
 }
 
-// cleanupOldLogFiles 只删除识别出的 pixiv-YYYY-MM-DD.jsonl 历史文件。
+// cleanupOldLogFiles 只删除识别出的当前日志文件。
 func cleanupOldLogFiles(dir string, now time.Time, retainDays int) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
@@ -159,12 +127,15 @@ func cleanupOldLogFiles(dir string, now time.Time, retainDays int) {
 	}
 	sort.Strings(names)
 	for _, name := range names {
-		// pixiv-YYYY-MM-DD.jsonl
-		day := strings.TrimSuffix(strings.TrimPrefix(name, "pixiv-"), ".jsonl")
+		day := logFileDay(name)
 		if day < cutoff {
 			_ = os.Remove(filepath.Join(dir, name))
 		}
 	}
+}
+
+func logFileDay(name string) string {
+	return strings.TrimSuffix(name, ".txt")
 }
 
 // discardWriteCloser 为日志不可用路径提供无副作用的关闭操作，便于调用方统一管理生命周期。
@@ -175,13 +146,13 @@ type discardWriteCloser struct {
 func (discardWriteCloser) Close() error { return nil }
 
 // openFileLogWriter 尝试打开默认文件日志 writer；任何失败返回 discard。
-// 调用方必须在进程或命令结束时 Close，避免 Windows 持有 JSONL 文件句柄。
+// 调用方必须在进程或命令结束时 Close，避免 Windows 持有文本日志文件句柄。
 func openFileLogWriter() io.WriteCloser {
 	dir, err := DefaultLogDir()
 	if err != nil {
 		return discardWriteCloser{Writer: io.Discard}
 	}
-	return newDailyJSONLWriter(dir, defaultLogRetainDays)
+	return newDailyTextWriter(dir, defaultLogRetainDays)
 }
 
 // SuggestLogDirHint 仅用于特殊非认证故障的用户提示；失败时返回空串。

@@ -32,20 +32,27 @@ func Install(ctx context.Context, callbackRelayURL string) (func(), error) {
 	if err := ensurePixivURLHandlerApp(ctx, appPath); err != nil {
 		return nil, err
 	}
-	endpointPath, err := pixivURLHandlerEndpointPath()
+	endpointPath, err := writeCallbackEndpoint(callbackRelayURL)
 	if err != nil {
 		return nil, err
 	}
-	if err := files.WritePrivateFile(endpointPath, []byte(strings.TrimSpace(callbackRelayURL)+"\n"), constants.PrivateFileMode); err != nil {
-		return nil, err
-	}
+	installed := false
+	defer func() {
+		if !installed {
+			_ = os.Remove(endpointPath)
+		}
+	}()
 	previous, _ := defaultURLSchemeHandler(ctx, "pixiv")
 	if err := registerURLHandlerApp(ctx, appPath); err != nil {
 		return nil, err
 	}
 	if err := setDefaultURLSchemeHandler(ctx, "pixiv", pixivURLHandlerBundleID); err != nil {
+		if previous != "" && previous != pixivURLHandlerBundleID {
+			_ = setDefaultURLSchemeHandler(context.Background(), "pixiv", previous)
+		}
 		return nil, err
 	}
+	installed = true
 	cleanup := func() {
 		_ = os.Remove(endpointPath)
 		if previous != "" && previous != pixivURLHandlerBundleID {
@@ -61,14 +68,6 @@ func pixivURLHandlerAppPath() (string, error) {
 		return "", err
 	}
 	return filepath.Join(home, "Applications", "PixivCLIURLHandler.app"), nil
-}
-
-func pixivURLHandlerEndpointPath() (string, error) {
-	dir, err := files.UserConfigSubdir(constants.AppConfigDirName)
-	if err != nil {
-		return "", err
-	}
-	return filepath.Join(dir, "url-handler-endpoint"), nil
 }
 
 func ensurePixivURLHandlerApp(ctx context.Context, appPath string) error {

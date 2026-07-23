@@ -68,9 +68,50 @@ jobs:
         shell: bash
         run: sh scripts/test-release-workflow.sh
 
+  e2e:
+    name: Authenticated Pixiv E2E
+    needs:
+      - validate
+    runs-on: ubuntu-24.04
+    # 此 Environment 仅存放独立测试 token；validate 已验证 tag 存在且属于默认分支，
+    # 本 job 不拥有发布或仓库写权限。
+    environment: pixiv-e2e
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ env.RELEASE_TAG }}
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+        with:
+          go-version: '1.26.3'
+      - name: Run authenticated Pixiv E2E
+        shell: bash
+        env:
+          PIXIV_E2E_REFRESH_TOKEN: ${{ secrets.PIXIV_E2E_REFRESH_TOKEN }}
+          PIXIV_E2E_SFW_ILLUST_ID: ${{ vars.PIXIV_E2E_SFW_ILLUST_ID }}
+          PIXIV_E2E_R18_ILLUST_ID: ${{ vars.PIXIV_E2E_R18_ILLUST_ID }}
+          PIXIV_E2E_R18_UGOIRA_ID: ${{ vars.PIXIV_E2E_R18_UGOIRA_ID }}
+          PIXIV_E2E_ILLUST_SEARCH_WORD: ${{ vars.PIXIV_E2E_ILLUST_SEARCH_WORD }}
+          PIXIV_E2E_DISCOVERY_WORD: ${{ vars.PIXIV_E2E_DISCOVERY_WORD }}
+          PIXIV_E2E_PROXY: ${{ vars.PIXIV_E2E_PROXY }}
+        run: |
+          set -euo pipefail
+          test -n "$PIXIV_E2E_REFRESH_TOKEN"
+          test -n "$PIXIV_E2E_SFW_ILLUST_ID"
+          test -n "$PIXIV_E2E_R18_ILLUST_ID"
+          test -n "$PIXIV_E2E_R18_UGOIRA_ID"
+          test -n "$PIXIV_E2E_ILLUST_SEARCH_WORD"
+          test -n "$PIXIV_E2E_DISCOVERY_WORD"
+          PIXIV_E2E_REAL_API=1 PIXIV_E2E_WEB_API=1 PIXIV_WEB_API_PROXY="$PIXIV_E2E_PROXY" go test ./e2e -count=1 -v
+
   build:
     name: Build ${{ matrix.goos }}/${{ matrix.goarch }}
-    needs: validate
+    needs:
+      - validate
+      - e2e
     runs-on: ${{ matrix.runner }}
     permissions:
       contents: read
@@ -167,6 +208,8 @@ jobs:
             scripts/internal/workflowpolicy/policy.go \
             scripts/releaseworkflow/build_policy.go \
             scripts/releaseworkflow/build_recovery_test.go \
+            scripts/releaseworkflow/e2e_policy.go \
+            scripts/releaseworkflow/e2e_policy_test.go \
             scripts/releaseworkflow/homebrew_policy.go \
             scripts/releaseworkflow/homebrew_policy_test.go \
             scripts/releaseworkflow/main.go \
@@ -187,6 +230,8 @@ jobs:
             scripts/internal/workflowpolicy/policy.go \
             scripts/releaseworkflow/build_policy.go \
             scripts/releaseworkflow/build_recovery_test.go \
+            scripts/releaseworkflow/e2e_policy.go \
+            scripts/releaseworkflow/e2e_policy_test.go \
             scripts/releaseworkflow/homebrew_policy.go \
             scripts/releaseworkflow/homebrew_policy_test.go \
             scripts/releaseworkflow/main.go \
@@ -427,7 +472,7 @@ jobs:
             --install-cmd scripts/install.cmd \
             --key-id "$RELEASE_SIGNING_KEY_ID" \
             --private-key "$key_path" \
-            --changelog CHANGELOG.md
+            --changelog "changelog/v${RELEASE_TAG#v}/en.md"
       - name: Publish only the verified assets
         shell: bash
         env:

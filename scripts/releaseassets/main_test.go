@@ -119,8 +119,8 @@ func TestFinalizeBuildsSignedReleaseDirectory(t *testing.T) {
 	for name, contents := range installerContents {
 		archiveContents[name] = contents
 	}
-	changelog := filepath.Join(workDir, "CHANGELOG.md")
-	if err := os.WriteFile(changelog, []byte("# Changelog\n\n## [Unreleased]\n\nPending.\n\n## [0.1.0] - 2026-07-12\n\n### Added\n\n- Public change.\n\n## [0.0.1]\n\nPrevious.\n"), 0o644); err != nil {
+	changelog := filepath.Join(workDir, "v0.1.0.md")
+	if err := os.WriteFile(changelog, []byte("# v0.1.0 — 2026-07-12\n\n## Added\n\n- Public change.\n"), 0o644); err != nil {
 		t.Fatalf("write changelog fixture: %v", err)
 	}
 	publicKey, privateKey, err := ed25519.GenerateKey(rand.Reader)
@@ -188,7 +188,7 @@ func TestFinalizeBuildsSignedReleaseDirectory(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read release notes: %v", err)
 	}
-	if string(releaseNotes) != "### Added\n\n- Public change.\n" {
+	if string(releaseNotes) != "## Added\n\n- Public change.\n" {
 		t.Fatalf("release notes = %q", releaseNotes)
 	}
 	for name, contents := range archiveContents {
@@ -206,8 +206,8 @@ func TestFinalizeRejectsMissingOrDuplicateChangelogSectionWithoutPublishing(t *t
 	t.Parallel()
 
 	for name, changelogBody := range map[string]string{
-		"missing":   "# Changelog\n\n## [Unreleased]\n\nPending.\n",
-		"duplicate": "# Changelog\n\n## [0.1.0]\n\nFirst.\n\n## [0.1.0]\n\nSecond.\n",
+		"missing":   "# v0.2.0 — 2026-07-12\n\n## Added\n\nPending.\n",
+		"duplicate": "# v0.1.0 — 2026-07-12\n\nFirst.\n\n# v0.1.0 — 2026-07-12\n\nSecond.\n",
 	} {
 		t.Run(name, func(t *testing.T) {
 			workDir := newTestWorkDir(t)
@@ -216,7 +216,7 @@ func TestFinalizeRejectsMissingOrDuplicateChangelogSectionWithoutPublishing(t *t
 				t.Fatalf("create input directory: %v", err)
 			}
 			writeArchiveFixtures(t, inputDir, "0.1.0")
-			changelog := filepath.Join(workDir, "CHANGELOG.md")
+			changelog := filepath.Join(workDir, "v0.1.0.md")
 			if err := os.WriteFile(changelog, []byte(changelogBody), 0o644); err != nil {
 				t.Fatalf("write changelog fixture: %v", err)
 			}

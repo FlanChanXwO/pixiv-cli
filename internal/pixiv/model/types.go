@@ -33,6 +33,9 @@ type Novel struct {
 	ID             int64     `json:"id"`
 	Title          string    `json:"title"`
 	Caption        string    `json:"caption"`
+	XRestrict      int       `json:"x_restrict"`
+	TextLength     int       `json:"text_length"`
+	IsOriginal     bool      `json:"is_original"`
 	User           User      `json:"user"`
 	Tags           []Tag     `json:"tags"`
 	ImageURLs      ImageURLs `json:"image_urls"`
@@ -63,6 +66,7 @@ type Illust struct {
 	URL            string     `json:"url"`
 	ID             int64      `json:"id"`
 	Title          string     `json:"title"`
+	Caption        string     `json:"caption,omitempty"`
 	Type           string     `json:"type"`
 	PageCount      int        `json:"page_count"`
 	TotalBookmarks int        `json:"total_bookmarks"`

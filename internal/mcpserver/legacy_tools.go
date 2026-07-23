@@ -65,6 +65,112 @@ type searchIllustOptionsIn struct {
 	Word string `json:"word" jsonschema:"required illustration search keyword"`
 }
 
+type searchNovelIn struct {
+	Word          string `json:"word"`
+	SearchTarget  string `json:"search_target,omitempty"`
+	Sort          string `json:"sort,omitempty"`
+	Duration      string `json:"duration,omitempty"`
+	Rating        string `json:"rating,omitempty"`
+	MinTextLength int    `json:"min_text_length,omitempty"`
+	MaxTextLength int    `json:"max_text_length,omitempty"`
+	OriginalOnly  bool   `json:"original_only,omitempty"`
+	pageLimitIn
+}
+
+// searchNovelInputSchema 只声明 App API 的稳定检索语义与可由返回字段验证的筛选。
+// 正文长度和原创筛选由 public SDK 在连续批次中验证，因此没有伪造上游 query 参数。
+func searchNovelInputSchema() map[string]any {
+	stringProperty := func(description string) map[string]any {
+		return map[string]any{"type": "string", "description": description}
+	}
+	rating := stringProperty("Novel age rating filter.")
+	rating["enum"] = []string{"all", "sfw", "r18", "r18g", "mature"}
+	return map[string]any{
+		"type":                 "object",
+		"additionalProperties": false,
+		"required":             []string{"word"},
+		"properties": map[string]any{
+			"word":            stringProperty("Novel search keyword."),
+			"search_target":   stringProperty("Pixiv novel search target."),
+			"sort":            stringProperty("Pixiv novel result order."),
+			"duration":        stringProperty("Pixiv novel search duration."),
+			"rating":          rating,
+			"min_text_length": map[string]any{"type": "integer", "minimum": 0, "description": "Minimum novel text length; 0 disables the bound."},
+			"max_text_length": map[string]any{"type": "integer", "minimum": 0, "description": "Maximum novel text length; 0 disables the bound."},
+			"original_only":   map[string]any{"type": "boolean", "description": "Return only original novels."},
+			"page":            map[string]any{"type": "integer", "description": "1-based logical page; requires a positive limit."},
+			"limit":           map[string]any{"type": "integer", "description": "Maximum logical results; 0 returns all; omit for one logical batch."},
+		},
+	}
+}
+
+type novelSearchOut struct {
+	Novels     []sdk.Novel   `json:"novels"`
+	Pagination paginationOut `json:"pagination"`
+	Text       string        `json:"text"`
+}
+
+func novelSearchResult(out novelSearchOut) *mcp.CallToolResult {
+	return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: out.Text}}}
+}
+
+func (a *App) searchNovel(ctx context.Context, _ *mcp.CallToolRequest, in searchNovelIn) (*mcp.CallToolResult, novelSearchOut, error) {
+	if in.SearchTarget == "" {
+		in.SearchTarget = string(sdk.SearchTargetPartialMatchForTags)
+	}
+	if in.Sort == "" {
+		in.Sort = string(sdk.SortModeDateDesc)
+	}
+	plan, err := parseMCPListPlan(in.pageLimitIn)
+	if err != nil {
+		return a.searchNovelError(ctx, err)
+	}
+	filters := sdk.NovelSearchFilters{
+		Rating:        sdk.SearchRating(in.Rating),
+		MinTextLength: in.MinTextLength,
+		MaxTextLength: in.MaxTextLength,
+		OriginalOnly:  in.OriginalOnly,
+	}
+	client, release, err := a.openSDKOperation(ctx)
+	if err != nil {
+		return a.searchNovelError(ctx, err)
+	}
+	defer release()
+	items, more, err := collectPages(ctx, plan, func(ctx context.Context, cursor sdk.Cursor) ([]sdk.Novel, sdk.Cursor, error) {
+		return nextNonEmptySearchBatch(ctx, cursor, func(ctx context.Context, cursor sdk.Cursor) ([]sdk.Novel, sdk.Cursor, error) {
+			result, err := client.SearchNovel(ctx, sdk.SearchNovelRequest{
+				Word: in.Word, Target: sdk.SearchTarget(in.SearchTarget), Sort: sdk.SortMode(in.Sort), Duration: in.Duration, Cursor: cursor, Filters: filters,
+			})
+			if err != nil {
+				return nil, "", err
+			}
+			if result == nil {
+				return nil, "", errors.New("pixiv sdk returned an empty novel search result")
+			}
+			return result.Novels, result.NextCursor, nil
+		})
+	})
+	if err != nil {
+		return a.searchNovelError(ctx, err)
+	}
+	if items == nil {
+		items = []sdk.Novel{}
+	}
+	text := fmt.Sprintf("Found %d novels for %q:\n\n%s", len(items), in.Word, formatNovels(items))
+	if len(items) == 0 {
+		text = fmt.Sprintf("No novels found for %q.", in.Word)
+	}
+	out := novelSearchOut{Novels: normalizeNovels(items), Pagination: listPagination(plan, in.Limit, len(items), more), Text: text}
+	return novelSearchResult(out), out, nil
+}
+
+func (a *App) searchNovelError(ctx context.Context, err error) (*mcp.CallToolResult, novelSearchOut, error) {
+	recordToolError(ctx, err)
+	text := "Error: " + err.Error()
+	out := novelSearchOut{Novels: []sdk.Novel{}, Pagination: paginationOut{Page: 1}, Text: text}
+	return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: text}}}, out, nil
+}
+
 type searchIllustOptionsOut struct {
 	Tools []string `json:"tools"`
 	Text  string   `json:"text"`
@@ -165,7 +271,7 @@ func searchIllustListPlan(in searchIllustIn) (mcpListPlan, error) {
 
 // nextNonEmptySearchBatch 把 SDK 本地过滤产生的连续空上游批次折叠为一个逻辑
 // 批次。它只在真正结束或首次出现结果时停止，不设置任意页数上限。
-func nextNonEmptySearchBatch(ctx context.Context, cursor sdk.Cursor, fetch func(context.Context, sdk.Cursor) ([]sdk.Illust, sdk.Cursor, error)) ([]sdk.Illust, sdk.Cursor, error) {
+func nextNonEmptySearchBatch[T any](ctx context.Context, cursor sdk.Cursor, fetch func(context.Context, sdk.Cursor) ([]T, sdk.Cursor, error)) ([]T, sdk.Cursor, error) {
 	seen := make(map[sdk.Cursor]struct{})
 	for {
 		if _, exists := seen[cursor]; exists {
@@ -298,30 +404,81 @@ type searchUserIn struct {
 	pageLimitIn
 }
 
-func (a *App) searchUser(ctx context.Context, _ *mcp.CallToolRequest, in searchUserIn) (*mcp.CallToolResult, textOut, error) {
+type userSearchOut struct {
+	Source       sdk.UserSearchSource `json:"source"`
+	UserPreviews []sdk.UserPreview    `json:"user_previews"`
+	Pagination   paginationOut        `json:"pagination"`
+	Text         string               `json:"text"`
+}
+
+func userSearchResult(out userSearchOut) *mcp.CallToolResult {
+	return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: out.Text}}}
+}
+
+func (a *App) searchUser(ctx context.Context, _ *mcp.CallToolRequest, in searchUserIn) (*mcp.CallToolResult, userSearchOut, error) {
 	plan, err := parseMCPListPlan(in.pageLimitIn)
 	if err != nil {
-		return toolTextError(ctx, err, err.Error())
+		return a.searchUserError(ctx, err)
 	}
 	client, release, err := a.openSDKOperation(ctx)
 	if err != nil {
-		return toolTextError(ctx, err, err.Error())
+		return a.searchUserError(ctx, err)
 	}
 	defer release()
-	items, _, err := collectPages(ctx, plan, func(ctx context.Context, cursor sdk.Cursor) ([]sdk.UserPreview, sdk.Cursor, error) {
+	var source sdk.UserSearchSource
+	items, more, err := collectPages(ctx, plan, func(ctx context.Context, cursor sdk.Cursor) ([]sdk.UserPreview, sdk.Cursor, error) {
 		result, err := client.SearchUser(ctx, sdk.SearchUserRequest{Word: in.Word, Cursor: cursor})
 		if err != nil {
 			return nil, "", err
 		}
+		if result == nil {
+			return nil, "", errors.New("pixiv sdk returned an empty user search result")
+		}
+		if !validUserSearchSource(result.Source) {
+			return nil, "", fmt.Errorf("pixiv sdk returned an unknown user search source %q", result.Source)
+		}
+		if source == "" {
+			source = result.Source
+		} else if source != result.Source {
+			return nil, "", fmt.Errorf("pixiv sdk changed user search source from %q to %q across pages", source, result.Source)
+		}
 		return result.UserPreviews, result.NextCursor, nil
 	})
 	if err != nil {
-		return toolTextError(ctx, err, err.Error())
+		return a.searchUserError(ctx, err)
 	}
+	if items == nil {
+		items = []sdk.UserPreview{}
+	}
+	text := userSearchText(in.Word, source, items)
+	out := userSearchOut{Source: source, UserPreviews: items, Pagination: listPagination(plan, in.Limit, len(items), more), Text: text}
+	return userSearchResult(out), out, nil
+}
+
+func validUserSearchSource(source sdk.UserSearchSource) bool {
+	return source == sdk.UserSearchSourceApp || source == sdk.UserSearchSourceRelatedIllustAuthors
+}
+
+func userSearchText(word string, source sdk.UserSearchSource, items []sdk.UserPreview) string {
 	if len(items) == 0 {
-		return toolText(fmt.Sprintf("No users found for %q.", in.Word))
+		if source == sdk.UserSearchSourceRelatedIllustAuthors {
+			return fmt.Sprintf("No related illustration authors found for %q (source: %s; not a username search).", word, source)
+		}
+		return fmt.Sprintf("No users found for %q (source: %s).", word, source)
 	}
-	return toolText(fmt.Sprintf("Found %d users:\n\n%s", len(items), formatUsers(items)))
+	if source == sdk.UserSearchSourceRelatedIllustAuthors {
+		return fmt.Sprintf("Found %d related illustration authors for %q (source: %s; not a username search):\n\n%s", len(items), word, source, formatUsers(items))
+	}
+	return fmt.Sprintf("Found %d users for %q (source: %s):\n\n%s", len(items), word, source, formatUsers(items))
+}
+
+// searchUserError 保留既有 search_user 的非 isError wire 语义，同时新增的 structured
+// output 给调用方空数组与明确文本，避免把执行失败伪装为空搜索结果。
+func (a *App) searchUserError(ctx context.Context, err error) (*mcp.CallToolResult, userSearchOut, error) {
+	recordToolError(ctx, err)
+	text := err.Error()
+	out := userSearchOut{UserPreviews: []sdk.UserPreview{}, Pagination: paginationOut{Page: 1}, Text: text}
+	return userSearchResult(out), out, nil
 }
 
 type recommendedLegacyIn struct {

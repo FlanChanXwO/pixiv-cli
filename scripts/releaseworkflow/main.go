@@ -93,12 +93,16 @@ func checkWorkflow(body []byte) error {
 	if !ok || jobs.Kind != yaml.MappingNode {
 		return errors.New("workflow must have a jobs mapping")
 	}
-	if err := requireOnlyMappingKeys(jobs, "validate", "build", "build_production", "verify_release_source", "publish", "render_homebrew_formula", "verify_homebrew_formula", "deploy_homebrew_tap"); err != nil {
+	if err := requireOnlyMappingKeys(jobs, "validate", "e2e", "build", "build_production", "verify_release_source", "publish", "render_homebrew_formula", "verify_homebrew_formula", "deploy_homebrew_tap"); err != nil {
 		return fmt.Errorf("workflow jobs: %w", err)
 	}
 	validate, ok := workflowpolicy.MappingValue(jobs, "validate")
 	if !ok || validate.Kind != yaml.MappingNode {
 		return errors.New("workflow must have a validate job")
+	}
+	e2e, ok := workflowpolicy.MappingValue(jobs, "e2e")
+	if !ok || e2e.Kind != yaml.MappingNode {
+		return errors.New("workflow must have an e2e job")
 	}
 	build, ok := workflowpolicy.MappingValue(jobs, "build")
 	if !ok || build.Kind != yaml.MappingNode {
@@ -134,10 +138,16 @@ func checkWorkflow(body []byte) error {
 	if err := checkSigningSecretReachability(validate, build, productionBuild, verifyReleaseSource, publish, preflightPublishSteps, preflightSigningIndex); err != nil {
 		return err
 	}
+	if err := checkE2ESecretReachability(e2e); err != nil {
+		return err
+	}
 	if err := checkHomebrewSecretReachability(renderHomebrew, verifyHomebrew, deployHomebrew); err != nil {
 		return err
 	}
 	if err := checkValidateJob(validate); err != nil {
+		return err
+	}
+	if err := checkE2EJob(e2e); err != nil {
 		return err
 	}
 	if err := checkBuildJob(build); err != nil {

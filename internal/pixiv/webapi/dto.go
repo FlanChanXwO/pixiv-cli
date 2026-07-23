@@ -44,6 +44,7 @@ type webIllustDetail struct {
 	IllustID      flexInt64     `json:"illustId"`
 	Title         string        `json:"title"`
 	IllustTitle   string        `json:"illustTitle"`
+	Description   string        `json:"description"`
 	IllustType    flexInt       `json:"illustType"`
 	XRestrict     flexInt       `json:"xRestrict"`
 	PageCount     flexInt       `json:"pageCount"`

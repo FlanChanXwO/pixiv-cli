@@ -12,21 +12,22 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/utils"
+	"github.com/FlanChanXwO/pixiv-cli/internal/utils/filename"
+	"github.com/FlanChanXwO/pixiv-cli/internal/utils/ids"
 	pixiv "github.com/FlanChanXwO/pixiv-cli/pixiv"
 )
 
 func TestSanitizeAndGenerateFilename(t *testing.T) {
-	illust := utils.FilenameData{ID: 123, Title: `a/b:c`, PageCount: 2, Author: `x*y`}
-	got := utils.GenerateFilename(illust, 1, "{author}_{id}_{title}")
+	illust := filename.FilenameData{ID: 123, Title: `a/b:c`, PageCount: 2, Author: `x*y`}
+	got := filename.Generate(illust, 1, "{author}_{id}_{title}")
 	if got != "x_y_123_a_b_c_p1" {
 		t.Fatalf("filename = %q", got)
 	}
 }
 
 func TestGenerateFilenameSanitizesTemplatePathSeparators(t *testing.T) {
-	illust := utils.FilenameData{ID: 123, Title: "safe", PageCount: 1, Author: "artist"}
-	got := utils.GenerateFilename(illust, 0, "../nested/{author}/{id}")
+	illust := filename.FilenameData{ID: 123, Title: "safe", PageCount: 1, Author: "artist"}
+	got := filename.Generate(illust, 0, "../nested/{author}/{id}")
 	if got != ".._nested_artist_123" {
 		t.Fatalf("filename = %q", got)
 	}
@@ -36,7 +37,7 @@ func TestGenerateFilenameSanitizesTemplatePathSeparators(t *testing.T) {
 }
 
 func TestDeduplicate(t *testing.T) {
-	got := utils.Deduplicate([]int64{3, 1, 3, 0, -1, 2})
+	got := ids.DeduplicatePositive([]int64{3, 1, 3, 0, -1, 2})
 	want := []int64{1, 2, 3}
 	if !slices.Equal(got, want) {
 		t.Fatalf("Deduplicate = %v, want %v", got, want)

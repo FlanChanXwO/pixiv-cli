@@ -6,7 +6,7 @@
 fallback、更新を扱います。SDK と MCP の詳細は重複させず、[関連ドキュメント](#関連ドキュメント)へ
 案内します。
 
-ユーザーに影響する変更は [CHANGELOG.md](../../CHANGELOG.md) に記録されます。
+ユーザーに影響する変更は[バージョン別 changelog](../../changelog/README.md)に記録されます。
 
 [GitHub Releases ページ]: https://github.com/FlanChanXwO/pixiv-cli/releases
 
@@ -44,11 +44,10 @@ SHA-256 を検証し、staged binary の動作を確認してから `pixiv` を�
 Windows では現在のユーザーの `Path` だけを更新します。root/admin 権限を要求せず、前提ツールを勝手に
 インストールせず、Pixiv credential を読み取らず、OS の reputation warning を回避しません。
 
-v0.3.0 より後に build される Linux Release asset は glibc 2.35 以降を必要とします。release、
-native-evidence、packaged-smoke job は両方の Linux architecture を Ubuntu 22.04 上で build し、GNU
-version requirement が `GLIBC_2.35` を超える ELF を拒否します。v0.3.0 はこの gate より前の asset
-で `GLIBC_2.39` を要求する場合があり、Debian 12 とは互換性がありません。installer の binary
-preflight は既存の install を置き換える前に loader failure を明示します。
+Linux Release asset は glibc 2.35 以降を必要とします。release、native-evidence、packaged-smoke job は
+両方の Linux architecture を Ubuntu 22.04 上で build し、GNU version requirement が `GLIBC_2.35` を
+超える ELF を拒否します。installer の binary preflight は既存の install を置き換える前に loader failure を
+明示します。
 
 初回 bootstrap の script には Ed25519 verifier を埋め込めません。SHA-256 は破損・取り違えを検出しますが、
 真正性は HTTPS と公式 GitHub repository/Release account に依存します。実行前に script を確認してください。
@@ -122,19 +121,12 @@ pixiv auth login
 | 段階 | 動作 |
 | --- | --- |
 | 初期化 | PKCE verifier/challenge と OAuth state を生成し、local loopback HTTP server を起動します。 |
-| Browser | macOS では一時的な `pixiv://` callback helper を登録して default browser を開き、既存 Pixiv session を再利用できます。`--no-open` では login URL と local page だけを表示します。 |
-| Callback | この試行の loopback callback、一時 helper からの hand-off、terminal paste、local page form だけを受理します。macOS helper の hand-off 後は、OAuth exchange 完了時に default browser が local の最終 success/failure page を開きます。戻らない場合は callback URL、`pixiv://...` URL、Pixiv relay URL、raw authorization code を貼り付けられます。 |
+| Browser | macOS、desktop Linux、Windows では一時的な `pixiv://` callback helper を登録して default browser を開き、既存 Pixiv session を再利用できます。`--no-open` では login URL と local page だけを表示します。 |
+| Callback | この試行の loopback callback、一時 helper からの hand-off、terminal paste、local page form だけを受理します。helper の hand-off 後は、OAuth exchange 完了時に default browser が local の最終 success/failure page を開きます。戻らない場合は callback URL、`pixiv://...` URL、Pixiv relay URL、raw authorization code を貼り付けられます。 |
 | 検証 | local callback はこの試行の state と一致する必要があります。Pixiv が state を返さない場合だけ、公式 callback URL と `pixiv://account/login` を明示 fallback として使えます。 |
 | 保存 | refresh/access token は表示せず、refresh token を UID ごとに `auth.json` へ保存します。Unix-like は parent `0700`・file `0600`、Windows は既存 ACL を維持します。 |
 
-macOS の `PixivCLIURLHandler.app` は現在の login 試行だけを扱います。Pixiv が
-`pixiv://account/login?...` を呼ぶと、helper は local loopback の browser bridge を開きます。callback は URL
-fragment だけに置かれ、address/history からすぐに消去された後、現在の listener へ POST されます。OAuth
-exchange の完了後、browser は中央配置の最終 success/failure page を受け取ります。helper は browser cookie、
-storage、history、session file、tab、network traffic を読みません。利用できなくても通常の browser と
-loopback/manual paste を使い、managed Chromium、DevTools/CDP、browser state scan は行いません。relay URL は
-この OAuth 試行に属すると確認した後、一度だけ開きます。元の Pixiv relay tab は空白のままでも、callback が
-生成されれば local の最終結果 page が開きます。callback がなければ成功を偽装しません。
+macOS は `PixivCLIURLHandler.app`、desktop Linux は一時 XDG desktop entry、Windows は一時 current-user protocol association を使います。いずれも現在の login 試行だけを扱い、完了・失敗・cancel 後に元の `pixiv://` handler を復元します。Pixiv が `pixiv://account/login?...` を呼ぶと、helper は local loopback の browser bridge を開きます。callback は URL fragment だけに置かれ、address/history からすぐに消去された後、現在の listener へ POST されます。OAuth exchange の完了後、browser は中央配置の最終 success/failure page を受け取ります。local login、callback、success、failure page の browser title はすべて `pixiv-cli` です。helper は browser cookie、storage、history、session file、tab、network traffic を読みません。利用できなくても通常の browser と loopback/manual paste を使い、managed Chromium、DevTools/CDP、browser state scan は行いません。送信された relay URL はこの PKCE 試行に属すると確認します。terminal からは CLI host の browser で一度だけ開き、fallback page からはその browser 自身が続行します。callback がなければ成功を偽装しません。
 
 GUI のない SSH server では listener を loopback に保ち、local machine から転送できる未使用の固定 port を
 選びます。まず server で実行します：
@@ -150,10 +142,7 @@ ssh -N -L 41871:127.0.0.1:41871 USER@SERVER
 ```
 
 local browser で `http://127.0.0.1:41871/` を開きます。この tunnel は server の loopback listener
-だけに接続し、callback port を公開しません。別案として interactive SSH terminal を使い、最終 callback
-URL、`pixiv://` URL、relay URL、raw authorization code を元の `auth login` prompt に貼り付けられます。
-login listener を public interface に bind しないでください。`--addr` は意図的に loopback address だけを
-受理します。
+だけに接続し、callback port を公開しません。この forwarded page で login URL を開き、Pixiv relay または最終 callback を送信します。検証済み relay は同じ local browser で続行し、最終 callback は tunnel 経由で server listener へ POST されます。browser machine に pixiv の install は不要です。別案として interactive SSH terminal を使い、最終 callback URL、`pixiv://` URL、relay URL、raw authorization code を元の `auth login` prompt に貼り付けられます。login listener を public interface に bind しないでください。`--addr` は意図的に loopback address だけを受理します。
 
 browser の system proxy は Go CLI に自動継承されません。必要なら先に設定します：
 
@@ -169,7 +158,7 @@ HTTP(S) proxy を設定した場合、ugoira を含む `download` などの medi
 
 ### 認証の import
 
-v0.4.2 では `auth add`、`auth token`、`--token` を alias なしで削除します。direct import は次の形式です：
+direct import は raw Pixiv App OAuth refresh token を受け取ります：
 
 ```bash
 pixiv auth import                         # TTY では非表示入力
@@ -243,10 +232,11 @@ pixiv recommended all
 pixiv download 123456 789012
 ```
 
-credential は Pixiv UID ごとに `os.UserConfigDir()/pixiv/auth.json`、global setting は
-`os.UserConfigDir()/pixiv/config.toml` に保存されます。既定は読みやすい出力で、対応 command は `--json` を
-利用できます。`auth export` は意図的に JSON flag を持ちません。Cobra/pflag の option は positional argument
-の前後どちらでも指定できます。
+local application data は current user の home directory 直下に保存されます。macOS/Linux は
+`~/pixiv-cli`、Windows は `%USERPROFILE%\pixiv-cli` です。credential は Pixiv UID ごとに `auth.json`、
+global setting は `config.toml` に保存されます。既定は読みやすい出力で、対応 command は `--json` を利用できます。
+`auth export` は意図的に JSON flag を持ちません。Cobra/pflag の option は positional argument の前後どちらでも
+指定できます。
 
 ### CLI command 一覧
 
@@ -266,10 +256,12 @@ credential は Pixiv UID ごとに `os.UserConfigDir()/pixiv/auth.json`、global
 | `version` | `pixiv version [--json]` | `version`、`commit`、`build_date` を表示します。root `pixiv --version` は version だけです。 |
 | `update` | `pixiv update [--check] [--prerelease] [--proxy URL]` | 現在の install source に合わせて確認・更新します。`--json` は `--check` とだけ使用できます。 |
 | `search` | `pixiv search [options] WORD` | イラストを検索します。 |
+| `novel search` | `pixiv novel search [options] WORD` | 認証済み App API で小説を検索します。 |
 | `search-options` | `pixiv search-options [options] WORD` | keyword に対する App API 制作ツール候補を表示します。認証が必要です。 |
 | `detail` | `pixiv detail [options] ILLUST_ID` | 作品詳細を表示します。 |
 | `ranking` | `pixiv ranking [options]` | イラストランキングを表示します。 |
 | `recommended` | `pixiv recommended all\|illust\|manga\|novel\|user [--page N --limit N --json]` | 指定 kind の認証済みおすすめを表示します。`all` は 4 種類を順に返します。 |
+| `user search` | `pixiv user search WORD [--page N --limit N --json]` | ユーザーを検索します。JSON/text は公式 App 検索か匿名の関連作品作者 fallback かを示します。 |
 | `user detail` | `pixiv user detail USER_ID [--json]` | ユーザーの完全な公開 profile を表示します。 |
 | `user artworks` | `pixiv user artworks [USER_ID] [--type TYPE --page N --limit N]` | 作品一覧。UID 省略時は現在の認証ユーザーです。 |
 | `user bookmarks` | `pixiv user bookmarks [USER_ID] [--restrict public\|private --tag TAG --page N --limit N]` | visibility/tag で絞った bookmark 一覧。 |
@@ -300,15 +292,18 @@ allowlist、MIME 推測、暗黙置換は行いません。
 
 | Command | Flag | Default | 説明 |
 | --- | --- | --- | --- |
-| `search` | `--search-by` | `tag-partial` | 検索フィールド: `tag-partial`、`tag-exact`、`title-caption`。 |
-| `search` | `--sort` | `date_desc` | sort order: `date_desc` または `date_asc`。 |
-| `search` | `--period` | empty | time range: `day`、`week`、`month`。省略時は期間指定なし。 |
-| `search` | `--rating` | `all` | `sfw`, `r18`, `r18g`, `mature`, `all`。 |
+| `search`、`novel search` | `--search-by` | `tag-partial` | 検索フィールド: `tag-partial`、`tag-exact`、`title-caption`。 |
+| `search`、`novel search` | `--sort` | `date_desc` | sort order: `date_desc` または `date_asc`。 |
+| `search`、`novel search` | `--period` | empty | time range: `day`、`week`、`month`。省略時は期間指定なし。 |
+| `search`、`novel search` | `--rating` | `all` | `sfw`, `r18`, `r18g`, `mature`, `all`。 |
 | `search` | `--type` | `all` | `all`, `illust-and-ugoira`, `illust`, `manga`, `ugoira`。 |
 | `search` | `--ai-mode` | `all` | `all`, `exclude`, `only`。Pixiv `AIType==2` が AI 生成です。 |
 | `search` | `--aspect-ratio` | `all` | `all`, `landscape`, `portrait`, `square`。 |
 | `search` | `--resolution` | `all` | `all`, `high`, `medium`, `low`。両辺がそれぞれ `>=3000`, `1000..2999`, `<=999`。 |
 | `search` | `--draw-tool` | empty | upstream の正確な制作ツール名。認証済み `search-options` で取得します。 |
+| `novel search` | `--min-text-length` | `0` | 本文の最小文字数。`0` は下限を無効にします。 |
+| `novel search` | `--max-text-length` | `0` | 本文の最大文字数。`0` は上限を無効にし、非ゼロの下限より小さくできません。 |
+| `novel search` | `--original-only` | `false` | Pixiv がオリジナルと表示した小説だけを残します。 |
 | list commands | `--limit` | one upstream batch | 最大件数。省略時は one upstream batch、`0` は next batch がなくなるまで取得します。 |
 | list commands | `--page` | empty | 1-based logical page。正数 `--limit` が必要です。 |
 | `ranking` | `--mode` | `day` | `day`、`day_male`、`day_female`、`week`、`week_original`、`week_rookie`、`month`、`day_manga`、`week_manga`、`month_manga`、`week_rookie_manga`、`day_r18`、`day_male_r18`、`day_female_r18`、`week_r18`、`week_r18g`。後半の 9 mode は認証が必要です。 |
@@ -336,13 +331,20 @@ Web に fallback しません。filter は opaque cursor に binding され、�
 先頭 empty batch は skip します。bookmark-count filter も like-count フィールドもありません。作品 JSON/text は
 `https://www.pixiv.net/artworks/{id}` を先頭フィールド/先頭行として含めます。
 
+`novel search` は App 専用です。App request が表すのは keyword target、日付順、期間だけで、rating、本文長、
+original-only は各 batch の安定した response field で検証されます。必須 field がなければ無言の非一致ではなく
+typed upstream-response failure になります。filter が batch を飛ばす場合にも logical `--page`/`--limit` の意味は
+変わりません。小説 JSON には `https://www.pixiv.net/novel/show.php?id={id}`、`x_restrict`、`text_length`、
+`is_original` が含まれます。
+
 認証済みの `detail`、pages、ugoira metadata は App API のみを使います。App のページ数不一致またはページ資源不足は明示的に失敗し、匿名 Web request は行いません。認証済み ugoira は original ZIP が得られないとき、検証済み App medium ZIP を直接 download します。冪等 App JSON read だけは、最初の 429 に有効な `Retry-After` がある場合に command context 配下で一度だけ待機・再試行します。header 不正/欠落、二度目の 429、write、resource download は replay しません。
+`detail --json` は Pixiv の raw HTML `caption` を保持し、通常の `detail` 出力は安全な plain text に変換します。作品 list output には caption を含めません。
 
 ### 共通 flag
 
 | Flag | 適用先 | Default | 説明 |
 | --- | --- | --- | --- |
-| `--uid UID` | `search/search-options/detail/ranking/recommended/user/download` | `auth.json.default_user_id` | local account を選びます。 |
+| `--uid UID` | `search/novel/search-options/detail/ranking/recommended/user/download` | `auth.json.default_user_id` | local account を選びます。 |
 | `--refresh-token TOKEN` | 同上 | empty | account/env token を一時上書きします。raw App token だけを受け付けます。 |
 | `--json` | `auth import/login/list/use/remove/check`、`version`、`update --check`、data commands | `false` | machine-readable JSON。`auth export` と実更新にはありません。 |
 | `--proxy URL` | direct-token `auth import`、`auth login/check`、data/`mcp` | env/config/empty | この command だけの HTTP(S) proxy。`auth import --file` では使用不可。 |
@@ -356,8 +358,7 @@ Web に fallback しません。filter は opaque cursor に binding され、�
 | `filename_template` | string | `{author} - {title}_{id}` | filename template。 |
 | `https_proxy` | string | empty | HTTP(S) proxy。lowercase env が優先。 |
 | `web_fallback_enabled` | bool | `true` | token がない場合に匿名 Web fallback を許可します。 |
-| `log_level` | string | `warn` | user state ディレクトリ `pixiv/logs` の日次 JSONL operation summary level。`PIXIV_LOG_LEVEL` で上書き。端末は既定で log 痕跡を出しません。 |
-| `log_format` | string | `text` | 設定は `text`/`json` を検証（`PIXIV_LOG_FORMAT` で上書き可）しますが、file log は常に JSONL 行です。不正値は fail closed です。 |
+| `log_level` | string | `warn` | `~/pixiv-cli/logs`（Windows は `%USERPROFILE%\pixiv-cli\logs`）の日次 plain-text `YYYY-MM-DD.txt` operation summary level。`PIXIV_LOG_LEVEL` で上書き。端末は既定で log 痕跡を出しません。 |
 | `update_check_enabled` | bool | `true` | 通常 command 成功後の stable update check。 |
 | `output_json` | bool | `false` | data command の既定を JSON にします。 |
 | `login_open_browser` | bool | `true` | `auth login` で browser を自動起動します。 |
@@ -370,7 +371,6 @@ Web に fallback しません。filter は opaque cursor に binding され、�
 | --- | --- | --- |
 | `PIXIV_REFRESH_TOKEN` | empty | App API OAuth refresh token。account/flag で上書き可能。 |
 | `PIXIV_LOG_LEVEL` | empty | `log_level` を上書き。 |
-| `PIXIV_LOG_FORMAT` | empty | `log_format` を上書き。 |
 | `DOWNLOAD_PATH` | `./downloads` | download directory。 |
 | `FILENAME_TEMPLATE` | `{author} - {title}_{id}` | filename template。 |
 | `https_proxy` / `HTTPS_PROXY` | empty | HTTP(S) proxy。lowercase が優先。 |
@@ -389,9 +389,10 @@ server error を自動 fallback しません。
 - 匿名 `search` は Web が確実に表現できる filter だけを使用します。AI は返却 field で判定します。
 - `rating=r18|r18g|mature` は request 前に認証要求として失敗し、空結果に見せません。`all` は匿名で見える範囲です。
 - `search-options` は App 専用です。Cookie を読み取らず、refresh token を Web session に変換しません。
+- `novel search` は App 専用で、refresh token がなければ認証要求として失敗します。
 - 拡張 ranking mode（`day_manga`、`week_manga`、`month_manga`、`week_rookie_manga`、`day_r18`、
   `day_male_r18`、`day_female_r18`、`week_r18`、`week_r18g`）は認証が必要で、匿名の日次ランキングに fallback しません。
-- `search_user` は公式 user search ではなく、work search の author を `userId` で dedupe します。
+- 認証済み `user search` は公式 App user search を使用し、`source: "app_search"` を返します。匿名 fallback は work search の author を `userId` で dedupe し、`source: "related_illust_authors"` を返して username search ではないことを明示します。
 - 静止画は `/ajax/illust/{id}/pages` の `original`、ugoira は `/ajax/illust/{id}/ugoira_meta` の
   `originalSrc` と frame を使い、対応 build は内蔵 Rust encoder で GIF/APNG を生成します。
 - 専用 proxy env はなく、共通 `--proxy`、environment、config を使います。

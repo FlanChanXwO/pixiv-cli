@@ -3,11 +3,60 @@ package cli
 import (
 	"bytes"
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/FlanChanXwO/pixiv-cli/internal/common/constants"
 	"github.com/FlanChanXwO/pixiv-cli/internal/storage/auth"
+	"github.com/FlanChanXwO/pixiv-cli/internal/utils/files"
 )
+
+func TestAuthURLCallbackIsHiddenAndRelaysWithoutStartupSideEffects(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("USERPROFILE", os.Getenv("HOME"))
+	dir, err := files.UserDataSubdir(constants.AppDataDirName)
+	requireNoError(t, err)
+	requireNoError(t, os.MkdirAll(dir, constants.PrivateDirMode))
+	requireNoError(t, os.WriteFile(filepath.Join(dir, "url-handler-endpoint"), []byte("http://127.0.0.1:41871/callback\n"), constants.PrivateFileMode))
+
+	command := app{}.newAccountCommand()
+	callback, _, findErr := command.Find([]string{internalURLCallbackCommand})
+	requireNoError(t, findErr)
+	if callback == nil || !callback.Hidden {
+		t.Fatal("internal URL callback command must remain hidden")
+	}
+
+	originalCleanup := cleanupPendingWindowsUpdate
+	cleanupPendingWindowsUpdate = func() error {
+		t.Fatal("internal URL callback must not run startup cleanup")
+		return nil
+	}
+	t.Cleanup(func() { cleanupPendingWindowsUpdate = originalCleanup })
+
+	var opened string
+	restoreOpen := setTestOpenBrowser(t, func(rawURL string) error {
+		opened = rawURL
+		return nil
+	})
+	defer restoreOpen()
+
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"pixiv", "auth", internalURLCallbackCommand, "pixiv://account/login?code=one-time-code"}, strings.NewReader(""), &stdout, &stderr)
+	if code != 0 || opened != "http://127.0.0.1:41871/callback#pixiv://account/login?code=one-time-code" || stdout.Len() != 0 || stderr.Len() != 0 {
+		t.Fatalf("internal URL callback contract failed: code=%d opened=%q stdout_bytes=%d stderr_bytes=%d", code, opened, stdout.Len(), stderr.Len())
+	}
+}
+
+func TestAuthURLCallbackRejectsInputWithoutEchoingIt(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	const callback = "https://example.invalid/callback?code=one-time-code"
+	code := Run([]string{"pixiv", "auth", internalURLCallbackCommand, callback}, strings.NewReader(""), &stdout, &stderr)
+	if code != 1 || !strings.Contains(stderr.String(), "invalid Pixiv callback URL") || strings.Contains(stderr.String(), callback) || stdout.Len() != 0 {
+		t.Fatalf("internal URL callback error contract failed: code=%d stdout_bytes=%d stderr=%q", code, stdout.Len(), stderr.String())
+	}
+}
 
 func TestRunAuthExportSkipsPendingUpdateCleanupBeforeAnyMutation(t *testing.T) {
 	authPath, _ := useTempPaths(t)

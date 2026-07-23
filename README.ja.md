@@ -14,6 +14,8 @@
 
 `pixiv-cli` は、人・Coding Agent・Go アプリケーションから Pixiv を一貫した方法で利用できる、独立開発の非公式サードパーティーツールです。Pixiv Inc. との提携・所属関係はなく、同社による承認も受けていません。CLI と MCP server は同じ public Go SDK を使用し、認証済み機能では Pixiv App API を信頼できるデータソースとします。利用時は Pixiv の規約および適用法令を遵守してください。
 
+メンテナー向け：release tag は保護された認証 E2E gate により停止できます。refresh token は GitHub `pixiv-e2e` Environment Secret にのみ保存し、作品 ID と検索入力は Environment Variables に設定します。PR と `main` の CI は offline かつ secret-free のままです。詳細は[開発フロー](docs/maintainers/development.md#テスト)を参照してください。
+
 ## pixiv-cli を選ぶ理由
 
 - **統一された機能** — CLI・MCP・SDK から公式 Pixiv の検索、詳細、ランキング、おすすめ、ユーザー、ブックマーク、フォロー、ダウンロード、うごイラを利用できます。第三者の集約/ランダム画像 API を再現しません。
@@ -41,8 +43,6 @@ curl.exe -fsSLo "%TEMP%\pixiv-install.cmd" https://raw.githubusercontent.com/Fla
 ```
 
 どちらのスクリプトも AMD64/ARM64 を検出し、最新の安定版公式 Release archive を選択して公開 SHA-256 を検証します。staging した binary を事前確認してからユーザー単位でインストールし、その後にのみ PATH を変更します。PATH を変更しない場合は `--no-path`、別の保存先には `--install-dir DIR` を使用できます。実行前にダウンロードしたスクリプトを確認できます。
-
-Linux の互換性に関する注意：v0.3.0 archive は Ubuntu 24.04 で link されており、glibc 2.39 を要求する場合があるため Debian 12 では動作しません。v0.4.2 では build 側で修正し、Linux asset の glibc 要求を最大 2.35 に固定して ABI gate で検証します。installer は既存の install を置き換える前に staged binary を確認し、非互換を明示します。
 
 ### Coding Agent にインストールさせる
 
@@ -93,6 +93,7 @@ pixiv auth login
 
 # App 側フィルターを使って検索します。
 pixiv search "初音ミク" --type illust --ai-mode exclude --resolution high
+pixiv novel search "初音ミク" --rating sfw --min-text-length 1000
 
 # 詳細、おすすめ、ダウンロードを利用します。
 pixiv detail 123456
@@ -110,13 +111,14 @@ pixiv download 123456 --pages 1,3-5 --quality regular
 
 ```bash
 pixiv ranking --mode day --json
+pixiv user search "miku" --limit 10 --json
 pixiv user detail 12345678
 pixiv search-options "初音ミク"
 ```
 
 ### MCP
 
-stdio server は明示的に起動します。stdout は JSON-RPC 専用です。操作要約は user state ディレクトリ `pixiv/logs` の日次 JSONL（既定保持 7 日）に書き、端末は既定で log 痕跡を出しません。
+stdio server は明示的に起動します。stdout は JSON-RPC 専用です。操作要約は `~/pixiv-cli/logs`（Windows では `%USERPROFILE%\pixiv-cli\logs`）の日次 plain-text file `YYYY-MM-DD.txt`（既定保持 7 日）に書き、端末は既定で log 痕跡を出しません。
 
 ```bash
 pixiv mcp
@@ -141,13 +143,15 @@ result, err := client.SearchIllust(ctx, pixiv.SearchIllustRequest{Word: "初音�
 
 推奨設定は `pixiv auth login` です。Pixiv App OAuth の raw refresh token を UID ごとにローカル account store へ保存します。`PHPSESSID` などのブラウザー Cookie は拒否され、App credential へ変換されません。
 
+macOS、desktop Linux、Windows の `pixiv://` callback handler は現在の login 中だけ install され、その後に元の設定へ戻ります。GUI のない SSH server では既存の `--no-open --addr` と local の `ssh -L` tunnel を使います。forwarded fallback page は同じ browser で検証済み Pixiv relay を続行でき、browser machine に pixiv の install は不要です。詳細は [CLI リファレンス](docs/ja/cli-reference.md#refresh-token-の取得) を参照してください。
+
 ```bash
 pixiv auth list
 pixiv auth use 12345678
 pixiv auth check
 ```
 
-v0.4.2 では `auth add`/`auth token` を `auth import`/`auth export` に置き換え、削除した名前と `--token` に alias はありません。import は引数なしの非表示入力または raw stdin を推奨します。位置引数の token は argv/shell history に残ります。stdout へ secret を出力できるのは、`--output` を付けない `pixiv auth export [UID]` と `pixiv auth export --all` だけです。ファイルには `--output` で private bundle を作成します。bundle は暗号化されていない point-in-time backup であり live sync ではなく、token rotation 後は stale になる場合があります。secret 出力を chat、log、shell history、issue、Agent transcript に貼り付けないでください。他の stdout/stderr、JSON、MCP result、log、error は refresh token を公開してはなりません。完全な契約は [CLI リファレンス](docs/ja/cli-reference.md#refresh-token-の取得)を参照してください。
+import は引数なしの非表示入力または raw stdin を推奨します。位置引数の token は argv/shell history に残ります。stdout へ secret を出力できるのは、`--output` を付けない `pixiv auth export [UID]` と `pixiv auth export --all` だけです。ファイルには `--output` で private bundle を作成します。bundle は暗号化されていない point-in-time backup であり live sync ではなく、token rotation 後は stale になる場合があります。secret 出力を chat、log、shell history、issue、Agent transcript に貼り付けないでください。他の stdout/stderr、JSON、MCP result、log、error は refresh token を公開してはなりません。完全な契約は [CLI リファレンス](docs/ja/cli-reference.md#refresh-token-の取得)を参照してください。
 
 ## ドキュメント
 
@@ -158,11 +162,11 @@ v0.4.2 では `auth add`/`auth token` を `auth import`/`auth export` に置き�
 | [MCP tools（English）](docs/en/mcp-tools.md) | tool schema と出力 semantics |
 | [アーキテクチャ（中国語・簡体字）](docs/maintainers/architecture.md) | package boundary と runtime flow |
 | [開発フロー（中国語・簡体字）](docs/maintainers/development.md) | toolchain、test、build、release |
-| [Changelog](CHANGELOG.md) | ユーザーに影響する変更 |
+| [Changelog](changelog/README.md) | ユーザーに影響する変更 |
 
 ## コントリビューション
 
-bug report、文書修正、test、範囲を絞った機能追加を歓迎します。pull request の前に [CONTRIBUTING.md](CONTRIBUTING.md) を読み、大規模または互換性に影響する変更は先に相談してください。
+bug report、文書修正、test、範囲を絞った機能追加を歓迎します。pull request の前に [CONTRIBUTING.md](CONTRIBUTING.md) を読み、大規模または public interface に影響する変更は先に相談してください。
 
 ## ライセンス
 

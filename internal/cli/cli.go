@@ -14,7 +14,9 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/application"
 	"github.com/FlanChanXwO/pixiv-cli/internal/bootstrap"
 	"github.com/FlanChanXwO/pixiv-cli/internal/buildinfo"
+	"github.com/FlanChanXwO/pixiv-cli/internal/common/constants"
 	"github.com/FlanChanXwO/pixiv-cli/internal/config"
+	"github.com/FlanChanXwO/pixiv-cli/internal/logging"
 	"github.com/FlanChanXwO/pixiv-cli/internal/update"
 	sdk "github.com/FlanChanXwO/pixiv-cli/pixiv"
 	"github.com/spf13/cobra"
@@ -58,7 +60,7 @@ func RunContext(ctx context.Context, args []string, in io.Reader, out io.Writer,
 	if len(args) == 0 {
 		args = []string{"pixiv"}
 	}
-	if !isAuthExportInvocation(args) {
+	if !isAuthExportInvocation(args) && !isInternalLoginCallbackInvocation(args) {
 		if err := cleanupPendingWindowsUpdate(); err != nil {
 			fmt.Fprintf(errOut, "clean pending update: %v\n", err)
 			return 1
@@ -94,8 +96,8 @@ func RunContext(ctx context.Context, args []string, in io.Reader, out io.Writer,
 // applicationLoggerForArgs 在 Cobra 解析前识别凭据导出前缀，使成功、help 与参数
 // 错误路径都不依赖 config/logging 环境。其他命令仍沿用完整配置型 logger。
 func applicationLoggerForArgs(args []string, errOut io.Writer) (*slog.Logger, io.Closer, error) {
-	if isAuthExportInvocation(args) {
-		return slog.New(slog.NewTextHandler(io.Discard, nil)), nil, nil
+	if isAuthExportInvocation(args) || isInternalLoginCallbackInvocation(args) {
+		return logging.OrDiscard(nil), nil, nil
 	}
 	return bootstrap.NewApplicationLogger(errOut)
 }
@@ -114,6 +116,21 @@ func isAuthExportInvocation(args []string) bool {
 		return false
 	}
 	return !state.help && !state.version
+}
+
+// isInternalLoginCallbackInvocation 识别由操作系统协议关联启动的隐藏 helper。
+// 它携带一次性 authorization code，不能触发更新清理、配置型 logger 或业务日志。
+func isInternalLoginCallbackInvocation(args []string) bool {
+	if len(args) < 4 {
+		return false
+	}
+	state := rootBooleanFlagState{}
+	index := scanRootBooleanFlags(args, 1, &state)
+	if index >= len(args) || args[index] != "auth" {
+		return false
+	}
+	index = scanRootBooleanFlags(args, index+1, &state)
+	return index < len(args) && args[index] == internalURLCallbackCommand && !state.invalid && !state.help && !state.version
 }
 
 // rootBooleanFlagState 按 pflag 的重复 flag 语义保存每个 logical flag 的最后值。
@@ -177,35 +194,35 @@ func (a app) commandLog(operation string, started time.Time, err error, suppress
 	}
 	// 纯本地 metadata/config 命令的 stdout/stderr 是稳定机器接口；它们不触发业务
 	// 网络流程，因此不额外产生日志。根命令覆盖 `pixiv --version` 的 Cobra 路径。
-	if suppress || operation == "pixiv auth export" || strings.HasPrefix(operation, "pixiv config") || strings.HasPrefix(operation, "pixiv version") || strings.HasPrefix(operation, "pixiv update") {
+	if suppress || operation == "pixiv auth export" || operation == "pixiv auth "+internalURLCallbackCommand || strings.HasPrefix(operation, "pixiv config") || strings.HasPrefix(operation, "pixiv version") || strings.HasPrefix(operation, "pixiv update") {
 		return
 	}
-	result, code, backend, status := "success", "", "local", 0
-	level := slog.LevelInfo
+	result, code, backend, status, transportKind := logging.ResultSuccess, "", constants.LogBackendLocal, 0, ""
 	var illustID, userID int64
 	if err != nil {
-		result = "error"
-		level = slog.LevelError
+		result = logging.ResultError
 		var typed *sdk.Error
 		if errors.As(err, &typed) {
 			code, backend, status = string(typed.Code), string(typed.Backend), typed.UpstreamStatus
+			transportKind = string(typed.TransportKind)
 			if backend == "" {
-				backend = "local"
+				backend = constants.LogBackendLocal
 			}
 			illustID, userID = typed.IllustID, typed.UserID
 		}
 	}
-	attrs := []slog.Attr{
-		slog.String("component", "cli"), slog.String("operation", operation), slog.String("backend", backend),
-		slog.Duration("duration", time.Since(started)), slog.String("result", result), slog.String("error_code", code), slog.Int("status", status),
-	}
-	if illustID != 0 {
-		attrs = append(attrs, slog.Int64("illust_id", illustID))
-	}
-	if userID != 0 {
-		attrs = append(attrs, slog.Int64("user_id", userID))
-	}
-	a.logger.LogAttrs(nil, level, "pixiv operation", attrs...)
+	logging.LogOperation(a.logger, logging.OperationEvent{
+		Component:     "cli",
+		Operation:     operation,
+		Backend:       backend,
+		Duration:      time.Since(started),
+		Result:        result,
+		ErrorCode:     code,
+		Status:        status,
+		TransportKind: transportKind,
+		IllustID:      illustID,
+		UserID:        userID,
+	})
 }
 
 func (a app) exit(err error) int {
@@ -246,7 +263,7 @@ func (a app) services() application.Services {
 		return newCLIServices(a.logger)
 	}
 	// 仅供包内直接构造 app 的测试；生产入口始终显式创建根 logger。
-	return newCLIServices(slog.New(slog.NewTextHandler(io.Discard, nil)))
+	return newCLIServices(logging.OrDiscard(nil))
 }
 
 func (a app) newRootCommand() *cobra.Command {
@@ -270,6 +287,7 @@ func (a app) newRootCommand() *cobra.Command {
 		a.newConfigCommand(),
 		a.newSearchCommand(),
 		a.newSearchOptionsCommand(),
+		a.newNovelCommand(),
 		a.newDetailCommand(),
 		a.newRankingCommand(),
 		a.newRecommendedCommand(),

@@ -70,7 +70,7 @@ func TestOpenDefaultLogsOneEventForOnePublicOperation(t *testing.T) {
 
 func TestOpenDefaultCurrentUserSnapshotFailureLogsOnlyCurrentUserOperation(t *testing.T) {
 	configPath := t.TempDir() + "/config.toml"
-	if err := os.WriteFile(configPath, []byte("[logging]\nformat = 'invalid'\n"), 0o600); err != nil {
+	if err := os.WriteFile(configPath, []byte("[logging]\nlevel = 'invalid'\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	var output bytes.Buffer

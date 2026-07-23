@@ -35,6 +35,24 @@ pixiv search "初音ミク" --limit 10 --json
 - Artwork JSON/text include the stable page URL
   `https://www.pixiv.net/artworks/{id}` as the first field/line.
 
+## Find novels by keyword/tag
+
+```
+pixiv novel search "初音ミク" --rating sfw --min-text-length 1000 --limit 10 --json
+```
+
+- `novel search` requires App authentication and never falls back to anonymous Web search.
+- It supports `--search-by tag-partial|tag-exact|title-caption`, `--sort
+  date_desc|date_asc`, `--period day|week|month`, and `--rating
+  sfw|r18|r18g|mature|all`.
+- `--min-text-length` and `--max-text-length` are non-negative character bounds;
+  `0` disables a bound, and a non-zero maximum cannot be below the minimum.
+  Use `--original-only` only when the user explicitly wants original novels.
+- Rating, text length, and original-only are verified from returned novel fields.
+  They may therefore skip upstream batches; pagination follows the same logical
+  `--limit`/`--page` rules as illustration search. Never infer a request cap.
+- Novel JSON includes `url`, `x_restrict`, `text_length`, and `is_original`.
+
 ## Pagination and completeness
 
 - A search without an explicit `--limit` returns one logical upstream batch. It
@@ -73,13 +91,26 @@ pixiv user bookmarks 11 --tag "初音ミク" --limit 20
 pixiv user following 11 --limit 20
 ```
 
+To discover a user by name instead of starting from an artwork, use:
+
+```
+pixiv user search "NAME" --limit 20 --json
+```
+
+- Authenticated results use Pixiv's App user search and report
+  `source: "app_search"`.
+- Anonymous fallback reports `source: "related_illust_authors"`; it is a
+  deduplicated list of authors from illustration search, not username search.
+  State that distinction before claiming a name search is complete.
+
 - `user detail USER_ID` requires the ID (no self-default). `--json` gives the
   full stable profile envelope.
 - `user artworks` / `bookmarks` / `following` default to the current account
   when USER_ID is omitted.
-- Only the ID is accepted. If the user gives a name/URL: extract the numeric ID
-  from a `pixiv.net/users/<id>` URL, or search works first and take the author
-  ID from results.
+- `user detail` accepts only the ID. If the user gives a `pixiv.net/users/<id>`
+  URL, extract its numeric ID. For a name, prefer `user search` when authenticated;
+  otherwise search works and take the author ID from results while labeling the
+  anonymous source correctly.
 
 ## Rankings and recommendations
 

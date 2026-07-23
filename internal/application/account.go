@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/utils"
+	"github.com/FlanChanXwO/pixiv-cli/internal/utils/credentials"
 	sdk "github.com/FlanChanXwO/pixiv-cli/pixiv"
 )
 
@@ -71,7 +71,7 @@ type AccountListResult struct {
 }
 
 func (s AccountService) Import(ctx context.Context, request AccountImportRequest) (AccountImportResult, error) {
-	validatedToken, err := utils.ValidateRefreshTokenInput(request.TokenInput)
+	validatedToken, err := credentials.ValidateRefreshTokenInput(request.TokenInput)
 	if err != nil {
 		return AccountImportResult{}, err
 	}

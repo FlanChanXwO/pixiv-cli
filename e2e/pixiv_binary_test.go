@@ -91,11 +91,11 @@ func TestPixivBinaryOfflineConfigAndMCPHelp(t *testing.T) {
 		t.Fatalf("default CLI success emitted INFO diagnostic to stderr:\n%s", string(stderr))
 	}
 	gotConfigPath := strings.TrimSpace(string(out))
-	if !strings.HasPrefix(gotConfigPath, env.configRoot) && !strings.HasPrefix(gotConfigPath, env.home) {
-		t.Fatalf("config path escaped isolated config roots:\n%s", string(out))
+	if !strings.HasPrefix(gotConfigPath, env.home) {
+		t.Fatalf("config path escaped isolated home:\n%s", string(out))
 	}
-	if !strings.HasSuffix(gotConfigPath, filepath.Join("pixiv", "config.toml")) {
-		t.Fatalf("config path did not point at pixiv/config.toml:\n%s", string(out))
+	if want := filepath.Join(env.home, "pixiv-cli", "config.toml"); gotConfigPath != want {
+		t.Fatalf("config path = %q, want %q", gotConfigPath, want)
 	}
 
 	out, _ = runPixivStdout(t, repoRoot, binaryPath, env.values, "config", "get", "download_path")
@@ -341,8 +341,8 @@ func TestPixivBinaryRealAPISearchOptIn(t *testing.T) {
 		if err != nil {
 			t.Fatalf("unauthenticated real web fallback search failed: %v\n%s", err, string(out))
 		}
-		if !strings.Contains(string(out), "found ") {
-			t.Fatalf("unauthenticated real web fallback search did not print result summary:\n%s", string(out))
+		if !strings.Contains(string(out), `illustrations for "初音ミク"`) {
+			t.Fatalf("unauthenticated real web fallback search did not print the illustrations heading:\n%s", string(out))
 		}
 		return
 	}
@@ -1020,16 +1020,14 @@ func buildPixivBinary(t *testing.T, repoRoot string) string {
 }
 
 type isolatedProcessEnv struct {
-	values     []string
-	home       string
-	configRoot string
+	values []string
+	home   string
 }
 
 func isolatedEnv(t *testing.T) isolatedProcessEnv {
 	t.Helper()
 
 	home := t.TempDir()
-	configRoot := filepath.Join(t.TempDir(), "config")
 	filtered := make([]string, 0, len(os.Environ())+7)
 	for _, entry := range os.Environ() {
 		name, _, found := strings.Cut(entry, "=")
@@ -1038,26 +1036,24 @@ func isolatedEnv(t *testing.T) isolatedProcessEnv {
 		}
 		filtered = append(filtered, entry)
 	}
-	filtered = append(filtered, "HOME="+home, "XDG_CONFIG_HOME="+configRoot)
+	filtered = append(filtered, "HOME="+home)
 	if runtime.GOOS == "windows" {
-		// Windows 的 os.UserConfigDir 优先读取 APPDATA，不能继承 runner 的用户目录。
+		// Windows 的 os.UserHomeDir 优先读取 USERPROFILE，不能继承 runner 的用户目录。
 		volume := filepath.VolumeName(home)
 		filtered = append(filtered,
-			"APPDATA="+configRoot,
-			"LOCALAPPDATA="+filepath.Join(home, "AppData", "Local"),
 			"USERPROFILE="+home,
 			"HOMEDRIVE="+volume,
 			"HOMEPATH="+strings.TrimPrefix(home, volume),
 		)
 	}
-	return isolatedProcessEnv{values: filtered, home: home, configRoot: configRoot}
+	return isolatedProcessEnv{values: filtered, home: home}
 }
 
 func isIsolatedEnvKey(name string) bool {
 	for _, key := range []string{
 		"HOME", "XDG_CONFIG_HOME", "APPDATA", "LOCALAPPDATA", "USERPROFILE", "HOMEDRIVE", "HOMEPATH",
 		"DOWNLOAD_PATH", "FILENAME_TEMPLATE", "https_proxy", "HTTPS_PROXY", "PIXIV_REFRESH_TOKEN",
-		"PIXIV_LOG_LEVEL", "PIXIV_LOG_FORMAT",
+		"PIXIV_LOG_LEVEL",
 	} {
 		if strings.EqualFold(name, key) {
 			return true

@@ -13,17 +13,18 @@ FANBOX uses Pixiv account login as a first-party web product, but that does not 
 ## Decision
 
 - Keep `pixiv auth login` based on PKCE and the local loopback/manual fallback page.
-- On macOS, default browser opening may register a repo-owned local `pixiv://` URL handler app for the current login attempt and opens the normal system browser. The helper opens a current-loopback browser bridge with the final callback in a URL fragment; the bridge removes that fragment before submitting the callback to the CLI and waiting for the final page.
+- On macOS, desktop Linux, and Windows, default browser opening may temporarily register a repo-owned local `pixiv://` URL handler for the current login attempt and opens the normal system browser. macOS uses its app helper, Linux uses a temporary XDG desktop entry, and Windows uses a temporary HKCU protocol association. Every platform restores the previous association on completion, failure, or cancellation.
+- The helper opens a current-loopback browser bridge with the final callback in a URL fragment; the bridge removes that fragment before submitting the callback to the CLI and waiting for the final page.
 - If the URL handler path is unavailable, keep normal browser opening plus loopback/manual fallback; do not start a managed Chromium/Edge profile or DevTools/CDP connection.
 - Do not read browser cookies, tokens, storage, history, session files, active tabs or network events. Do not automate browser UI, install an extension, or retrieve browser credentials by any other means.
 - Treat `accounts.pixiv.net/post-redirect` as a Pixiv authorization relay page, not as a callback.
-- When the relay page belongs to the current `code_challenge`, the user may explicitly submit it. The CLI validates `return_to` before opening that relay URL once; it never scans a browser to discover the URL.
-- Let users paste a relay URL into the terminal or local fallback page to explicitly open that relay URL once.
+- When the relay page belongs to the current `code_challenge`, the user may explicitly submit it. The CLI validates `return_to`; terminal submission opens the relay once on the CLI host, while fallback-page submission returns a redirect for that same browser to continue.
+- For a headless SSH server, keep the listener on server loopback and let an explicit local `ssh -L` tunnel carry browser-page submissions back to it. The browser machine does not need a pixiv installation.
 - Do not implement HTTPS MITM, automatic certificate installation, host rewriting, or FANBOX session import for `auth login`.
 
 ## Consequences
 
-- The CLI can reuse the user's existing browser login state on macOS without reading browser cookies or tokens.
+- The CLI can reuse the user's existing browser login state on supported desktop systems without reading browser cookies or tokens.
 - Callback receipt has an explicit trust boundary: the current loopback listener, the current helper handoff, or a value the user explicitly pastes.
 - Users still need to confirm their Pixiv account in the browser.
 - The local URL handler is registered as the `pixiv://` handler while a login attempt is active; users may see a browser prompt the first time Edge/Chrome opens it.

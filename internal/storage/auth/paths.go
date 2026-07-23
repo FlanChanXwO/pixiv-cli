@@ -12,11 +12,11 @@ var (
 )
 
 func defaultAppConfigDir() (string, error) {
-	return files.UserConfigSubdir(constants.AppConfigDirName)
+	return files.UserDataSubdir(constants.AppDataDirName)
 }
 
 func defaultAuthFilePath() (string, error) {
-	return files.UserConfigFile(constants.AppConfigDirName, "auth.json")
+	return files.UserDataFile(constants.AppDataDirName, "auth.json")
 }
 
 func AuthFilePath() (string, error) {

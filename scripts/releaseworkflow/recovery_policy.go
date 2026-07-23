@@ -145,6 +145,8 @@ git archive --format=tar "$GITHUB_SHA" -- \
   scripts/internal/workflowpolicy/policy.go \
   scripts/releaseworkflow/build_policy.go \
   scripts/releaseworkflow/build_recovery_test.go \
+  scripts/releaseworkflow/e2e_policy.go \
+  scripts/releaseworkflow/e2e_policy_test.go \
   scripts/releaseworkflow/homebrew_policy.go \
   scripts/releaseworkflow/homebrew_policy_test.go \
   scripts/releaseworkflow/main.go \
@@ -165,6 +167,8 @@ test "$(
   scripts/internal/workflowpolicy/policy.go \
   scripts/releaseworkflow/build_policy.go \
   scripts/releaseworkflow/build_recovery_test.go \
+  scripts/releaseworkflow/e2e_policy.go \
+  scripts/releaseworkflow/e2e_policy_test.go \
   scripts/releaseworkflow/homebrew_policy.go \
   scripts/releaseworkflow/homebrew_policy_test.go \
   scripts/releaseworkflow/main.go \

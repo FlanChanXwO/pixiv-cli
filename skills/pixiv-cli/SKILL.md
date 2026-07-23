@@ -1,6 +1,6 @@
 ---
 name: pixiv-cli
-description: Operate Pixiv through the pixiv-cli binary — search works, inspect Pixiv artwork or user IDs/URLs, view rankings and recommendations, manage bookmarks/follows, and download works. Load only when the user explicitly mentions Pixiv or pixiv-cli, provides a pixiv.net URL or ID in a clear Pixiv context, or requests a specific Pixiv operation or `pixiv` command. Do not trigger for generic illustration, artist, image-search, or download requests without Pixiv context. Verify current syntax with `pixiv <cmd> --help`.
+description: Operate Pixiv through the pixiv-cli binary — search illustrations, novels, and users; inspect Pixiv artwork or user IDs/URLs; view rankings and recommendations; manage bookmarks/follows; and download works. Load only when the user explicitly mentions Pixiv or pixiv-cli, provides a pixiv.net URL or ID in a clear Pixiv context, or requests a specific Pixiv operation or `pixiv` command. Do not trigger for generic illustration, artist, image-search, or download requests without Pixiv context. Verify current syntax with `pixiv <cmd> --help`.
 ---
 
 # pixiv-cli Operator
@@ -60,7 +60,7 @@ the installed binary's `pixiv <cmd> --help` output.
 | Tier | Commands | Behavior |
 | --- | --- | --- |
 | Credential transfer | `auth import` `auth export` | Execute only for the user's explicit import/export task; follow `references/auth.md` so secret input/output is not exposed accidentally |
-| Read | `search` `search-options` `detail` `ranking` `recommended` `user *` `config get/path` `version` `update --check` | Execute when the user's task requires it |
+| Read | `search` `novel search` `search-options` `detail` `ranking` `recommended` `user *` `config get/path` `version` `update --check` | Execute when the user's task requires it |
 | Account diagnosis | `auth list/check` | List only for authentication/account/fallback decisions; check only when network validation is needed |
 | Write | `bookmark add/remove` `follow add/remove` | State the target (illust/user ID) in one line before executing |
 | Disk | `download` | Confirm target directory and exact ID list before each invocation; approval never carries over; see `references/download.md` |
@@ -72,7 +72,7 @@ the installed binary's `pixiv <cmd> --help` output.
 
 1. **Reduce at the source (preferred):** pass a positive `--limit N` only when
    that command's help exposes it. In the audited binary these commands are
-   `search`, `ranking`, `recommended`, `user artworks`, `user bookmarks`, and
+   `search`, `novel search`, `ranking`, `recommended`, `user search`, `user artworks`, `user bookmarks`, and
    `user following`. Add `--page`, `--type`, `--rating`, or other flags only
    when that specific command's help exposes them.
    `--limit 0` requests all results, so never use it unless the user explicitly
@@ -111,11 +111,13 @@ pixiv config set download_path ./downloads # config write; confirm first
 pixiv search "WORD" --limit 10 --json     # illustration search
 pixiv search "WORD" --rating sfw --type illust --ai-mode exclude
 pixiv search "WORD" --resolution high --aspect-ratio landscape --draw-tool "CLIP STUDIO PAINT"
+pixiv novel search "WORD" --rating sfw --min-text-length 1000 --limit 10 --json
 pixiv search-options "WORD" --json         # authenticated dynamic tool choices
 pixiv detail ILLUST_ID --json             # single artwork detail
 pixiv ranking --mode day
 pixiv recommended illust --limit 10       # kind is REQUIRED; needs auth
 pixiv recommended all --limit 10          # request all supported kinds; needs auth
+pixiv user search "WORD" --limit 10 --json # source labels App search vs related-author fallback
 pixiv user detail USER_ID --json          # full public profile (USER_ID required)
 pixiv user artworks [USER_ID] --limit 20  # omit USER_ID = current account
 pixiv user bookmarks [USER_ID] --tag TAG --limit 20
@@ -148,7 +150,7 @@ assuming its effective value.
    `pixiv recommended --help`; it requires authentication and does not work
    anonymously.
 3. **`--limit` is command-specific.** It is available on `search`, `ranking`,
-   `recommended`, `user artworks`, `user bookmarks`, and `user following`;
+   `recommended`, `user search`, `user artworks`, `user bookmarks`, and `user following`;
    do not attach it to `detail`, `search-options`, auth/config commands, or
    other commands whose help omits it. Where supported, a positive value sets
    the maximum result count and `0` requests all results. `--page` requires a
@@ -156,11 +158,15 @@ assuming its effective value.
 4. **Search flags are command-scoped.** Verify `--search-by`, `--period`,
    `--sort`, `--rating`, `--type`, `--ai-mode`, `--aspect-ratio`,
    `--resolution`, and `--draw-tool` against `pixiv search --help`; do not infer
-   undocumented aliases or attach search filters to other commands.
+   undocumented aliases or attach illustration-only filters to other commands.
+   `novel search` supports `--search-by`, `--sort`, `--period`, `--rating`,
+   `--min-text-length`, `--max-text-length`, and `--original-only`; it does not
+   support illustration AI, drawing-tool, resolution, aspect-ratio, or type filters.
 5. **Anonymous restricted search fails explicitly.** Web fallback uses only
-   reliable search filters. `r18`, `r18g`, `mature`, and `search-options`
+   reliable illustration-search filters. `r18`, `r18g`, `mature`, and `search-options`
    require App authentication; do not present the failure as an empty result
-   or add a Cookie workaround. Bookmark-count filtering is unavailable.
+   or add a Cookie workaround. `novel search` is App-only and requires authentication.
+   Bookmark-count filtering is unavailable.
 6. **Extended rankings need authentication.** Valid modes are `day`,
    `day_male`, `day_female`, `week`, `week_original`, `week_rookie`, `month`,
    `day_manga`, `week_manga`, `month_manga`, `week_rookie_manga`, `day_r18`,

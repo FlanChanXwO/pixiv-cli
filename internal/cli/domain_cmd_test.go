@@ -25,6 +25,7 @@ import (
 type sdkCommandFake struct {
 	currentUserID    func(context.Context) (int64, error)
 	search           func(context.Context, sdk.SearchIllustRequest) (*sdk.IllustListResult, error)
+	searchNovel      func(context.Context, sdk.SearchNovelRequest) (*sdk.NovelListResult, error)
 	searchOptions    func(context.Context, sdk.SearchIllustOptionsRequest) (*sdk.SearchIllustOptionsResult, error)
 	detail           func(context.Context, int64) (*sdk.IllustDetail, error)
 	ranking          func(context.Context, sdk.IllustRankingRequest) (*sdk.IllustListResult, error)
@@ -36,6 +37,7 @@ type sdkCommandFake struct {
 	artworks         func(context.Context, sdk.UserArtworksRequest) (*sdk.IllustListResult, error)
 	bookmarks        func(context.Context, sdk.UserBookmarksRequest) (*sdk.IllustListResult, error)
 	following        func(context.Context, sdk.UserFollowingRequest) (*sdk.UserListResult, error)
+	searchUser       func(context.Context, sdk.SearchUserRequest) (*sdk.UserListResult, error)
 	addBookmark      func(context.Context, sdk.AddBookmarkRequest) error
 	removeBookmark   func(context.Context, sdk.RemoveBookmarkRequest) error
 	follow           func(context.Context, sdk.FollowUserRequest) error
@@ -80,6 +82,12 @@ func (f sdkCommandFake) SearchIllust(ctx context.Context, r sdk.SearchIllustRequ
 	}
 	return nil, unimplementedSDKCommand()
 }
+func (f sdkCommandFake) SearchNovel(ctx context.Context, r sdk.SearchNovelRequest) (*sdk.NovelListResult, error) {
+	if f.searchNovel != nil {
+		return f.searchNovel(ctx, r)
+	}
+	return nil, unimplementedSDKCommand()
+}
 func (f sdkCommandFake) SearchIllustOptions(ctx context.Context, r sdk.SearchIllustOptionsRequest) (*sdk.SearchIllustOptionsResult, error) {
 	if f.searchOptions != nil {
 		return f.searchOptions(ctx, r)
@@ -104,7 +112,11 @@ func (f sdkCommandFake) IllustRanking(ctx context.Context, r sdk.IllustRankingRe
 func (sdkCommandFake) FollowingIllusts(context.Context, sdk.FollowingIllustsRequest) (*sdk.IllustListResult, error) {
 	return nil, unimplementedSDKCommand()
 }
-func (sdkCommandFake) SearchUser(context.Context, sdk.SearchUserRequest) (*sdk.UserListResult, error) {
+
+func (f sdkCommandFake) SearchUser(ctx context.Context, request sdk.SearchUserRequest) (*sdk.UserListResult, error) {
+	if f.searchUser != nil {
+		return f.searchUser(ctx, request)
+	}
 	return nil, unimplementedSDKCommand()
 }
 func (sdkCommandFake) TrendingTagsIllust(context.Context) (*sdk.TrendingTagsIllustResult, error) {
@@ -668,6 +680,7 @@ func TestCommandLogPreservesTypedSDKErrorMetadata(t *testing.T) {
 		Code:           sdk.CodeUpstreamError,
 		Backend:        sdk.BackendAppAPI,
 		UpstreamStatus: http.StatusBadGateway,
+		TransportKind:  sdk.TransportKindTimeout,
 		UserID:         88,
 	}, false)
 	var event map[string]any
@@ -676,6 +689,7 @@ func TestCommandLogPreservesTypedSDKErrorMetadata(t *testing.T) {
 	assert.Equal(t, string(sdk.CodeUpstreamError), event["error_code"])
 	assert.Equal(t, string(sdk.BackendAppAPI), event["backend"])
 	assert.Equal(t, float64(http.StatusBadGateway), event["status"])
+	assert.Equal(t, string(sdk.TransportKindTimeout), event["transport_kind"])
 	assert.Equal(t, float64(88), event["user_id"])
 }
 

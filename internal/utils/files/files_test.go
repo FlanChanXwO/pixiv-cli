@@ -87,13 +87,15 @@ func TestWritePrivateFileRejectsPartialWriteWithoutReplacingOldFile(t *testing.T
 	assertNoPrivateFileTemporaries(t, dir)
 }
 
-func TestUserConfigFileBuildsPathUnderNamedAppDir(t *testing.T) {
-	path, err := UserConfigFile(constants.AppConfigDirName, "auth.json")
+func TestUserDataFileBuildsPathDirectlyUnderUserHome(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+
+	path, err := UserDataFile(constants.AppDataDirName, "auth.json")
 	require.NoError(t, err)
 
-	configDir, err := os.UserConfigDir()
-	require.NoError(t, err)
-	assert.Equal(t, filepath.Join(configDir, constants.AppConfigDirName, "auth.json"), path)
+	assert.Equal(t, filepath.Join(home, constants.AppDataDirName, "auth.json"), path)
 }
 
 func TestWritePrivateFileCreatesParentAndFileWithPlatformPermissions(t *testing.T) {

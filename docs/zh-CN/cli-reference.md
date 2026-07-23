@@ -5,7 +5,7 @@
 本文是 `pixiv` 命令的完整契约：安装、认证、命令、flag、配置、环境变量、匿名 fallback 和更新。
 SDK 与 MCP 细节不在此重复，入口见[相关文档](#相关文档)。
 
-用户可感知变化记录在 [CHANGELOG.md](../../CHANGELOG.md)。
+用户可感知变化记录在[按版本归档的更新日志](../../changelog/README.zh-CN.md)。
 
 [GitHub Releases 页面]: https://github.com/FlanChanXwO/pixiv-cli/releases
 
@@ -41,10 +41,9 @@ AMD64 与 ARM64，默认安装到 `%LOCALAPPDATA%\Programs\pixiv`。两个脚本
 `$HOME/.local/bin`，Windows 则只更新当前用户的 `Path`。脚本不会请求管理员/root 权限、安装前置工具、
 读取 Pixiv 凭据或绕过系统信誉警告。
 
-v0.3.0 之后构建的 Linux Release 资产要求 glibc 2.35 或更新版本。release、native-evidence 与
-packaged-smoke job 都在 Ubuntu 22.04 上为两个 Linux 架构构建，并拒绝 GNU version requirement
-高于 `GLIBC_2.35` 的 ELF。v0.3.0 早于此门禁，可能要求 `GLIBC_2.39`，因此与 Debian 12 不兼容；
-安装器的 binary 预检会在替换现有安装前显露该 loader 失败。
+Linux Release 资产要求 glibc 2.35 或更新版本。release、native-evidence 与 packaged-smoke job 都在
+Ubuntu 22.04 上为两个 Linux 架构构建，并拒绝 GNU version requirement 高于 `GLIBC_2.35` 的 ELF。安装器的
+binary 预检会在替换现有安装前显露 loader 失败。
 
 这是首次 bootstrap 的信任边界：`pixiv` 尚不存在时，脚本没有内置 Ed25519 verifier。SHA-256 校验可以
 发现传输损坏或 archive 不匹配，但来源真实性仍依赖 HTTPS 与官方 GitHub repository/Release 账号；执行前
@@ -120,12 +119,12 @@ pixiv auth login
 | 阶段 | 行为 |
 | --- | --- |
 | 初始化 | CLI 生成 PKCE verifier/challenge 和 OAuth state，并启动本地 loopback HTTP server。 |
-| 浏览器 | macOS 默认优先注册本地 `pixiv://` callback helper 并打开默认浏览器，因此可复用已有 Pixiv 登录态；需要用户在 Pixiv 页面确认账号；使用 `--no-open` 时只打印登录 URL 和本地页面地址。 |
-| 回调 | CLI 仅接收本轮 loopback callback、当前登录尝试注册的 `pixiv://` helper 转交、终端粘贴或本地页面表单。macOS helper 转交后，默认浏览器会在 OAuth exchange 完成时打开本地最终成功或失败页；浏览器若没有返回，可手动粘贴 callback URL、`pixiv://...` URL、Pixiv relay URL 或原始 authorization code。 |
+| 浏览器 | macOS、桌面 Linux 和 Windows 会临时注册本地 `pixiv://` callback helper 并打开默认浏览器，因此可复用已有 Pixiv 登录态；需要用户在 Pixiv 页面确认账号；使用 `--no-open` 时只打印登录 URL 和本地页面地址。 |
+| 回调 | CLI 仅接收本轮 loopback callback、当前登录尝试注册的 `pixiv://` helper 转交、终端粘贴或本地页面表单。helper 转交后，默认浏览器会在 OAuth exchange 完成时打开本地最终成功或失败页；浏览器若没有返回，可手动粘贴 callback URL、`pixiv://...` URL、Pixiv relay URL 或原始 authorization code。 |
 | 校验 | 本地 loopback 回调必须匹配本次 state；Pixiv 官方 callback URL 与 `pixiv://account/login` 可在 Pixiv 未返回 state 时作为显式 fallback。 |
 | 保存 | refresh/access token 不会打印；refresh token 按 Pixiv UID 保存到 `auth.json`。Unix-like 主动使用 `0700` 父目录与 `0600` 文件；Windows 首次创建继承父目录 ACL，替换既有目标保留其 ACL，不主动收紧或放宽 DACL。 |
 
-默认浏览器打开时，macOS 会注册一个仅服务于当前登录尝试的本地 `PixivCLIURLHandler.app`。Pixiv 调用 `pixiv://account/login?...` 后，helper 会打开本地 loopback 浏览器桥接页：callback 仅存于 URL fragment，随即从地址栏和历史中清除，再 POST 至本轮 listener。浏览器只会在 OAuth exchange 完成后收到居中的最终成功或失败页。helper 不读取浏览器 Cookie、存储、历史、会话文件、标签页或网络流量。若 helper 不可用，CLI 仍打开正常浏览器并等待 loopback 或手动回填，不会启动受管 Chromium、DevTools/CDP 或浏览器状态扫描。遇到 Pixiv `post-redirect` 授权接力页时，用户可手动粘贴 relay URL；CLI 只在校验其属于本轮 OAuth 后打开该 relay URL 一次。原 Pixiv relay 标签页仍可能停留白页，但 callback 产生后会打开本地最终结果页；若 Pixiv 未生成 callback，CLI 不会伪造成功。
+默认浏览器打开时，macOS 注册 `PixivCLIURLHandler.app`，桌面 Linux 创建临时 XDG desktop entry，Windows 创建临时当前用户协议关联。它们都只服务当前登录尝试，并会在完成、失败或取消后恢复原有 `pixiv://` handler。Pixiv 调用 `pixiv://account/login?...` 后，helper 会打开本地 loopback 浏览器桥接页：callback 仅存于 URL fragment，随即从地址栏和历史中清除，再 POST 至本轮 listener。浏览器只会在 OAuth exchange 完成后收到居中的最终成功或失败页；本地登录、回调、成功和失败页的浏览器标题均为 `pixiv-cli`。helper 不读取浏览器 Cookie、存储、历史、会话文件、标签页或网络流量。若 helper 不可用，CLI 仍打开正常浏览器并等待 loopback 或手动回填，不会启动受管 Chromium、DevTools/CDP 或浏览器状态扫描。提交的 Pixiv `post-redirect` URL 会先校验属于本轮 PKCE：终端输入仅在 CLI 所在主机打开一次；fallback 页面提交则由当前浏览器继续，因此也适用于 SSH 转发。若 Pixiv 未生成 callback，CLI 不会伪造成功。
 
 在无 GUI 的 SSH 服务器上，应继续把 listener 绑定到 loopback，并选择一个未占用的固定端口，方便从
 本地转发。先在服务器运行：
@@ -141,9 +140,7 @@ ssh -N -L 41871:127.0.0.1:41871 USER@SERVER
 ```
 
 随后用本地浏览器打开 `http://127.0.0.1:41871/`。该 tunnel 只连接服务器 loopback，不会把 callback
-端口暴露到公网。也可以使用交互式 SSH terminal，把最终 callback URL、`pixiv://` URL、relay URL 或原始
-authorization code 粘贴回原 `auth login` prompt。不要把登录 listener 绑定到公网接口；`--addr` 会刻意
-只接受 loopback 地址。
+端口暴露到公网。请在这个转发页面打开登录 URL 并提交 Pixiv relay 或最终 callback：已校验的 relay 会由同一个本地浏览器继续，最终 callback 的提交会经 tunnel POST 回服务器 listener；浏览器所在机器不需要安装 pixiv。也可以使用交互式 SSH terminal，把最终 callback URL、`pixiv://` URL、relay URL 或原始 authorization code 粘贴回原 `auth login` prompt。不要把登录 listener 绑定到公网接口；`--addr` 会刻意只接受 loopback 地址。
 
 浏览器使用的系统代理不会自动传给 Go CLI。若 Pixiv token 端点在当前网络下需要代理，请先配置：
 
@@ -165,7 +162,7 @@ pixiv auth login --proxy http://127.0.0.1:7890
 
 ### 导入认证
 
-v0.4.2 删除 `auth add`、`auth token` 与 `--token`，且不保留 alias。direct import 改为：
+direct import 接受原始 Pixiv App OAuth refresh token：
 
 ```bash
 pixiv auth import                         # TTY 隐藏输入
@@ -244,7 +241,7 @@ pixiv recommended all
 pixiv download 123456 789012
 ```
 
-账号认证保存到 `os.UserConfigDir()/pixiv/auth.json`，账号 key 是 Pixiv UID；全局配置保存到 `os.UserConfigDir()/pixiv/config.toml`。Unix-like 主动使用 `0700` 父目录与 `0600` 文件；Windows 首次创建继承父目录 ACL，替换既有目标保留其 ACL，不主动收紧或放宽 DACL。输出默认给人读；只有 help 中提供 `--json` 的命令可输出机器可解析 JSON，`auth export` 明确不提供该 flag。
+所有本地应用数据直接保存到当前用户主目录：macOS/Linux 为 `~/pixiv-cli`，Windows 为 `%USERPROFILE%\pixiv-cli`。账号认证位于 `auth.json`，账号 key 是 Pixiv UID；全局配置位于 `config.toml`。Unix-like 主动使用 `0700` 父目录与 `0600` 文件；Windows 首次创建继承父目录 ACL，替换既有目标保留其 ACL，不主动收紧或放宽 DACL。输出默认给人读；只有 help 中提供 `--json` 的命令可输出机器可解析 JSON，`auth export` 明确不提供该 flag。
 CLI 使用 Cobra/pflag，选项可以写在位置参数前后，例如 `pixiv auth check 12345678 --json` 和 `pixiv search "初音ミク" --json` 都是正式支持的写法。
 
 ### CLI 命令表
@@ -265,10 +262,12 @@ CLI 使用 Cobra/pflag，选项可以写在位置参数前后，例如 `pixiv au
 | `version` | `pixiv version [--json]` | 输出当前二进制的 `version`、`commit`、`build_date`；根 `pixiv --version` 只输出版本。 |
 | `update` | `pixiv update [--check] [--prerelease] [--proxy URL]` | 检查或执行与当前安装来源匹配的更新；`--json` 仅可与 `--check` 同用。 |
 | `search` | `pixiv search [options] WORD` | 搜索插画。 |
+| `novel search` | `pixiv novel search [options] WORD` | 通过认证 App API 搜索小说。 |
 | `search-options` | `pixiv search-options [options] WORD` | 查询该关键词在 App API 中可用的绘图工具；需要认证，支持通用账号/token/代理参数和 `--json`。 |
 | `detail` | `pixiv detail [options] ILLUST_ID` | 查看单个作品详情。 |
 | `ranking` | `pixiv ranking [options]` | 查看 Pixiv 插画排行榜。 |
 | `recommended` | `pixiv recommended all\|illust\|manga\|novel\|user [--page N --limit N --json]` | 查看指定类个性化推荐；`all` 按插画、漫画、小说、作者顺序完整返回，需要认证。 |
+| `user search` | `pixiv user search WORD [--page N --limit N --json]` | 搜索用户；JSON 和文本会标明结果来自官方 App 用户搜索，还是匿名“相关插画作者”fallback。 |
 | `user detail` | `pixiv user detail USER_ID [--json]` | 查看指定用户的完整公开资料；`USER_ID` 必填。 |
 | `user artworks` | `pixiv user artworks [USER_ID] [--type TYPE --page N --limit N]` | 查看用户作品；省略 `USER_ID` 时使用当前认证用户。 |
 | `user bookmarks` | `pixiv user bookmarks [USER_ID] [--restrict public\|private --tag TAG --page N --limit N]` | 查看用户收藏，可按可见性和 tag 筛选；省略 `USER_ID` 时使用当前认证用户。 |
@@ -297,15 +296,18 @@ CLI 使用 Cobra/pflag，选项可以写在位置参数前后，例如 `pixiv au
 
 | 命令 | 参数 | 默认值 | 说明 |
 | --- | --- | --- | --- |
-| `search` | `--search-by` | `tag-partial` | 搜索字段：`tag-partial`、`tag-exact` 或 `title-caption`。 |
-| `search` | `--sort` | `date_desc` | 排序方式：`date_desc` 或 `date_asc`。 |
-| `search` | `--period` | 空 | 时间范围：`day`、`week` 或 `month`；省略则不限制时间。 |
-| `search` | `--rating` | `all` | 分级筛选：`sfw`、`r18`、`r18g`、`mature` 或 `all`。 |
+| `search`、`novel search` | `--search-by` | `tag-partial` | 搜索字段：`tag-partial`、`tag-exact` 或 `title-caption`。 |
+| `search`、`novel search` | `--sort` | `date_desc` | 排序方式：`date_desc` 或 `date_asc`。 |
+| `search`、`novel search` | `--period` | 空 | 时间范围：`day`、`week` 或 `month`；省略则不限制时间。 |
+| `search`、`novel search` | `--rating` | `all` | 分级筛选：`sfw`、`r18`、`r18g`、`mature` 或 `all`。 |
 | `search` | `--type` | `all` | 作品类型：`all`、`illust-and-ugoira`、`illust`、`manga` 或 `ugoira`。 |
 | `search` | `--ai-mode` | `all` | AI 筛选：`all`、`exclude` 或 `only`；Pixiv `AIType==2` 表示 AI 生成。 |
 | `search` | `--aspect-ratio` | `all` | 横纵比：`all`、`landscape`、`portrait` 或 `square`。 |
 | `search` | `--resolution` | `all` | 分辨率：`all`、`high`、`medium` 或 `low`；宽高两个维度分别都需满足 `>=3000`、`1000..2999` 或 `<=999`。 |
 | `search` | `--draw-tool` | 空 | 上游绘图工具的精确名称；用已认证的 `search-options` 查询当前值。 |
+| `novel search` | `--min-text-length` | `0` | 正文最少字符数；`0` 关闭下界。 |
+| `novel search` | `--max-text-length` | `0` | 正文最多字符数；`0` 关闭上界，且不能小于非零下界。 |
+| `novel search` | `--original-only` | `false` | 仅保留 Pixiv 标记为原创的小说。 |
 | 列表命令 | `--limit` | 一个上游批次 | 最大条数；省略时只取一个上游批次，`0` 表示持续读取到没有下一批。 |
 | 列表命令 | `--page` | 空 | 从 1 开始的逻辑页；必须与正数 `--limit` 同用。 |
 | `ranking` | `--mode` | `day` | 可用 `day`、`day_male`、`day_female`、`week`、`week_original`、`week_rookie`、`month`、`day_manga`、`week_manga`、`month_manga`、`week_rookie_manga`、`day_r18`、`day_male_r18`、`day_female_r18`、`week_r18`、`week_r18g`；最后九种需要认证。 |
@@ -325,19 +327,22 @@ CLI 使用 Cobra/pflag，选项可以写在位置参数前后，例如 `pixiv au
 | `detail` | `ILLUST_ID` | 必填 | Pixiv 作品 ID。 |
 | `download` | `ILLUST_ID...` | 必填 | 一个或多个 Pixiv 作品 ID。 |
 
-有 refresh token 时，`search` 始终使用 App API。分辨率、横纵比、工具、作品类型和 `ai-mode=exclude` 由 App 筛选，分级和 `ai-mode=only` 对 App 返回批次筛选；App 失败不会回落 Web。全部筛选都会绑定 opaque cursor，旧 cursor 不能用于不同筛选组合。本地筛选跳过连续空上游批次时，CLI/MCP 会补拉到首个非空逻辑批次或真正结束。指定正数 `--limit` 或 `--page` 时，按过滤后的逻辑结果跨批填满；`--limit 0` 遍历全部过滤结果；未指定 `--limit` 时仍兼容“一个上游批次”，但会跳过前导空批。不提供收藏数筛选，也不提供点赞数字段。作品 JSON/文本包含稳定作品页 URL `https://www.pixiv.net/artworks/{id}`，作为首字段/每件作品第一行。
+有 refresh token 时，`search` 始终使用 App API。分辨率、横纵比、工具、作品类型和 `ai-mode=exclude` 由 App 筛选，分级和 `ai-mode=only` 对 App 返回批次筛选；App 失败不会回落 Web。全部筛选都会绑定 opaque cursor，cursor 不能用于不同筛选组合。本地筛选跳过连续空上游批次时，CLI/MCP 会补拉到首个非空逻辑批次或真正结束。指定正数 `--limit` 或 `--page` 时，按过滤后的逻辑结果跨批填满；`--limit 0` 遍历全部过滤结果；未指定 `--limit` 时读取一个上游批次，但会跳过前导空批。不提供收藏数筛选，也不提供点赞数字段。作品 JSON/文本包含稳定作品页 URL `https://www.pixiv.net/artworks/{id}`，作为首字段/每件作品第一行。
+
+`novel search` 仅走 App API。App 请求只表达关键词匹配、日期排序和时间范围；分级、正文长度与原创条件逐批依据稳定返回字段验证。字段缺失会明确返回上游响应错误，不会静默视为不匹配。筛选跳过上游批次时，逻辑 `--page`/`--limit` 语义不变。小说 JSON 包含稳定作品页 URL `https://www.pixiv.net/novel/show.php?id={id}`、`x_restrict`、`text_length` 与 `is_original`。
 
 认证态 `detail`、pages 与 ugoira metadata 只使用 App API。App 的页数不一致或缺少页面资源会明确失败，不会改发
 匿名 Web 请求。认证 ugoira 未取得 original ZIP 时会使用已验证的 App medium ZIP，下载器直接选择该资源。仅幂等
 App JSON 读取在首次 429 且 `Retry-After` 有效时按命令 context 等待并重试一次；header 缺失/非法、第二次 429、
 写操作和资源下载绝不重放。
+`detail --json` 保留 Pixiv 原始 HTML `caption`；普通 `detail` 输出将其安全转为纯文本，作品列表不会输出 caption。
 
 ### 通用参数
 
 | 参数 | 适用命令 | 默认值 | 说明 |
 | --- | --- | --- | --- |
-| `--uid UID` | `search/search-options/detail/ranking/recommended/user/download` | `auth.json.default_user_id` | 选择本地账号。 |
-| `--refresh-token TOKEN` | `search/search-options/detail/ranking/recommended/user/download` | 空 | 临时覆盖账号/env token；只接受原始 App API refresh token。 |
+| `--uid UID` | `search/novel/search-options/detail/ranking/recommended/user/download` | `auth.json.default_user_id` | 选择本地账号。 |
+| `--refresh-token TOKEN` | `search/novel/search-options/detail/ranking/recommended/user/download` | 空 | 临时覆盖账号/env token；只接受原始 App API refresh token。 |
 | `--json` | `auth import/login/list/use/remove/check`、`version`、`update --check` 和数据命令 | `false` | 输出机器可解析 JSON；`auth export` 和实际更新安装不接受。 |
 | `--proxy URL` | direct-token `auth import`、`auth login/check`、数据命令、`mcp` | `https_proxy`/`HTTPS_PROXY`、`config.toml` 或空 | 临时使用 HTTP(S) 代理；`auth import --file` 禁用。 |
 | `--no-proxy` | direct-token `auth import`、`auth login/check`、数据命令、`mcp` | 空 | 临时清空 HTTP(S) 代理；不能与 `--proxy` 或 bundle restore 同用。 |
@@ -350,8 +355,7 @@ App JSON 读取在首次 429 且 `Retry-After` 有效时按命令 context 等待
 | `filename_template` | string | `{author} - {title}_{id}` | 文件名模板。 |
 | `https_proxy` | string | 空 | HTTP(S) 代理，优先使用环境变量中的小写 `https_proxy`。 |
 | `web_fallback_enabled` | bool | `true` | 无 refresh token 时，允许匿名 Pixiv web/ajax API fallback；写入为 `[web] fallback_enabled = true/false`。 |
-| `log_level` | string | `warn` | 用户 state 目录 `pixiv/logs` 下按日 JSONL 操作摘要级别；可由 `PIXIV_LOG_LEVEL` 覆盖。显式设为 `info` 可保留更多操作摘要。终端默认无日志痕迹。 |
-| `log_format` | string | `text` | 配置仍校验 `text` 或 `json`（可由 `PIXIV_LOG_FORMAT` 覆盖），但文件日志固定为 JSONL 行。非法值明确失败，不静默回退。 |
+| `log_level` | string | `warn` | 用户主目录 `~/pixiv-cli/logs`（Windows：`%USERPROFILE%\pixiv-cli\logs`）下按日纯文本 `YYYY-MM-DD.txt` 操作摘要级别；可由 `PIXIV_LOG_LEVEL` 覆盖。显式设为 `info` 可保留更多操作摘要。终端默认无日志痕迹。 |
 | `update_check_enabled` | bool | `true` | 普通 CLI 成功命令后是否检查稳定版更新；写入为 `[update] check_enabled = true/false`。 |
 | `output_json` | bool | `false` | 数据命令默认输出 JSON。 |
 | `login_open_browser` | bool | `true` | `auth login` 默认是否自动打开浏览器。 |
@@ -364,7 +368,6 @@ App JSON 读取在首次 429 且 `Retry-After` 有效时按命令 context 等待
 | --- | --- | --- |
 | `PIXIV_REFRESH_TOKEN` | 空 | Pixiv App API OAuth refresh token；可被账号选择或 `--refresh-token` 覆盖。 |
 | `PIXIV_LOG_LEVEL` | 空 | 覆盖 `log_level`。 |
-| `PIXIV_LOG_FORMAT` | 空 | 覆盖 `log_format`。 |
 | `DOWNLOAD_PATH` | `./downloads` | 下载目录。 |
 | `FILENAME_TEMPLATE` | `{author} - {title}_{id}` | 文件名模板。 |
 | `https_proxy` / `HTTPS_PROXY` | 空 | HTTP(S) 代理；优先使用小写 `https_proxy`。 |
@@ -384,9 +387,10 @@ App JSON 读取在首次 429 且 `Retry-After` 有效时按命令 context 等待
 - 匿名 `search` 只执行 Web API 能可靠表达的筛选。分辨率、横纵比、绘图工具和作品类型会转译为 Web 参数；AI 筛选使用返回的作品字段。
 - `rating=r18`、`r18g` 或 `mature` 会在匿名请求前明确返回需要认证，而不会伪装成空结果；`rating=all` 只表示匿名可见范围。
 - `search-options` 仅支持 App API，无 refresh token 时明确返回 unsupported。搜索不会读取或保存 `PHPSESSID` 等浏览器 Cookie，也不会把 refresh token 转换成 Web session。
+- `novel search` 仅支持 App API；无 refresh token 时明确返回需要认证。
 - 九个扩展排行榜 mode（`day_manga`、`week_manga`、`month_manga`、`week_rookie_manga`、`day_r18`、
   `day_male_r18`、`day_female_r18`、`week_r18`、`week_r18g`）需要认证，不会回落或伪装成匿名日榜。
-- `search_user` 不是 Pixiv 官方用户搜索；它通过 web 作品搜索结果按 `userId` 去重，返回“相关作品作者”。
+- 认证态 `user search` 使用官方 App 用户搜索，返回 `source: "app_search"`。匿名 fallback 通过 web 作品搜索结果按 `userId` 去重，返回 `source: "related_illust_authors"`，并明确标注为“相关插画作者”而非用户名搜索。
 - 静态单页/多页下载使用 `/ajax/illust/{id}/pages` 的 `original` URL。
 - ugoira 下载使用 `/ajax/illust/{id}/ugoira_meta` 的 `originalSrc` zip 和 frames；受支持的发行构建通过内置 Rust encoder 生成 GIF/APNG，运行时不依赖 `ffmpeg`。
 - web fallback 不新增专用代理环境变量，继续使用 `--proxy` / `--no-proxy`、`https_proxy` / `HTTPS_PROXY` 或 `pixiv config set https_proxy ...`。
@@ -427,7 +431,7 @@ tag；Release binary 在下载前校验 Ed25519 签名的 checksum 清单和 arc
 
 更新检查只选择 canonical SemVer tag。stable 检查先排除 GitHub 已标记的 prerelease；
 `--prerelease` 则将其纳入当前通道。若当前通道的任一非 draft published Release 使用非
-SemVer tag，检查会报告该 tag 并 fail-closed，不会跳过它而选择较旧版本。
+SemVer tag，检查会报告该 tag 并 fail-closed。
 
 受支持 binary 已内置 production Ed25519 public key/key ID/fingerprint；私钥只保存在受保护的
 `release` Environment 与受控 macOS Keychain 恢复副本。当前已发布的受签名 Release 请以

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/url"
+	"strings"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/application"
 	"github.com/FlanChanXwO/pixiv-cli/internal/utils/parse"
@@ -28,8 +29,101 @@ type mutationOptions struct {
 
 func (a app) newUserCommand() *cobra.Command {
 	cmd := &cobra.Command{Use: "user", Short: "Query a Pixiv user"}
-	cmd.AddCommand(a.newUserDetailCommand(), a.newUserArtworksCommand(), a.newUserBookmarksCommand(), a.newUserFollowingCommand())
+	cmd.AddCommand(a.newUserSearchCommand(), a.newUserDetailCommand(), a.newUserArtworksCommand(), a.newUserBookmarksCommand(), a.newUserFollowingCommand())
 	return cmd
+}
+
+func (a app) newUserSearchCommand() *cobra.Command {
+	opts := struct {
+		commandOptions
+		listOptions
+	}{}
+	cmd := &cobra.Command{Use: "search WORD", Short: "Search users", Example: "pixiv user search \"miku\" --json", Args: requireMinArgs(1, "pixiv user search [options] WORD"), RunE: func(cmd *cobra.Command, args []string) error {
+		return a.runUserSearch(cmd, args, opts.commandOptions, opts.listOptions)
+	}}
+	a.bindCommonFlags(cmd, &opts.commandOptions)
+	bindListFlags(cmd, &opts.listOptions)
+	return cmd
+}
+
+func (a app) runUserSearch(cmd *cobra.Command, args []string, options commandOptions, list listOptions) error {
+	plan, err := parseListPlan(cmd, list)
+	if err != nil {
+		return err
+	}
+	request, jsonOverride, err := a.sdkRequest(cmd, options)
+	if err != nil {
+		return err
+	}
+	services := a.services()
+	jsonOut, err := services.SDK.JSONOut(jsonOverride)
+	if err != nil {
+		return err
+	}
+	client, err := services.SDK.OpenOperation(cmd.Context(), request)
+	if err != nil {
+		return err
+	}
+	word := strings.Join(args, " ")
+	var source sdk.UserSearchSource
+	printedHeading := false
+	fetch := func(ctx context.Context, cursor sdk.Cursor) ([]sdk.UserPreview, sdk.Cursor, error) {
+		result, searchErr := client.SearchUser(ctx, sdk.SearchUserRequest{Word: word, Cursor: cursor})
+		if searchErr != nil {
+			return nil, "", searchErr
+		}
+		if result == nil || !validUserSearchSource(result.Source) {
+			return nil, "", fmt.Errorf("pixiv sdk returned a user search result without a valid source")
+		}
+		if source != "" && source != result.Source {
+			return nil, "", fmt.Errorf("pixiv sdk changed user search source during pagination")
+		}
+		source = result.Source
+		if !jsonOut && !printedHeading {
+			fmt.Fprintln(a.out, userSearchHeading(word, source))
+			printedHeading = true
+		}
+		return result.UserPreviews, result.NextCursor, nil
+	}
+	if jsonOut {
+		spool, spoolErr := newJSONArraySpool("user_previews")
+		if spoolErr != nil {
+			return spoolErr
+		}
+		defer spool.Close()
+		if err := pageItems(cmd.Context(), plan, fetch, func(items []sdk.UserPreview) error { return appendJSONArray(spool, items) }); err != nil {
+			return err
+		}
+		return spool.CommitWithStringField(a.out, "source", string(source))
+	}
+	return pageItems(cmd.Context(), plan, fetch, func(items []sdk.UserPreview) error {
+		printUserSearchPreviews(a.out, items)
+		return nil
+	})
+}
+
+func validUserSearchSource(source sdk.UserSearchSource) bool {
+	return source == sdk.UserSearchSourceApp || source == sdk.UserSearchSourceRelatedIllustAuthors
+}
+
+func userSearchHeading(word string, source sdk.UserSearchSource) string {
+	if source == sdk.UserSearchSourceRelatedIllustAuthors {
+		return fmt.Sprintf("related illustration authors for %q (source: %s; not a username search)", word, source)
+	}
+	return fmt.Sprintf("users for %q (source: %s)", word, source)
+}
+
+func printUserSearchPreviews(out io.Writer, items []sdk.UserPreview) {
+	for _, item := range items {
+		line := fmt.Sprintf("%d %s", item.User.ID, safeTextLine(item.User.Name))
+		if item.User.Account != "" {
+			line += " (@" + safeTextLine(item.User.Account) + ")"
+		}
+		if item.User.Comment != "" {
+			line += " — " + safeTextLine(item.User.Comment)
+		}
+		fmt.Fprintln(out, line)
+	}
 }
 
 func (a app) newUserDetailCommand() *cobra.Command {

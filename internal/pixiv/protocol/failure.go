@@ -32,6 +32,7 @@ const (
 	TransportProxy             TransportKind = "proxy"
 	TransportConnectionRefused TransportKind = "connection_refused"
 	TransportConnectionReset   TransportKind = "connection_reset"
+	TransportTimeout           TransportKind = "timeout"
 	TransportUnknown           TransportKind = "unknown"
 )
 
@@ -87,6 +88,10 @@ func classifyTransportKind(err error) TransportKind {
 	}
 	if errors.Is(err, syscall.ECONNRESET) {
 		return TransportConnectionReset
+	}
+	var networkError net.Error
+	if errors.As(err, &networkError) && networkError.Timeout() {
+		return TransportTimeout
 	}
 	return TransportUnknown
 }

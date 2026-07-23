@@ -3,7 +3,6 @@ package download
 import (
 	"context"
 	"fmt"
-	"io"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -12,7 +11,10 @@ import (
 	"time"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/application"
-	"github.com/FlanChanXwO/pixiv-cli/internal/utils"
+	"github.com/FlanChanXwO/pixiv-cli/internal/common/constants"
+	"github.com/FlanChanXwO/pixiv-cli/internal/logging"
+	"github.com/FlanChanXwO/pixiv-cli/internal/utils/filename"
+	"github.com/FlanChanXwO/pixiv-cli/internal/utils/ids"
 	"github.com/FlanChanXwO/pixiv-cli/internal/utils/text"
 	uriutil "github.com/FlanChanXwO/pixiv-cli/internal/utils/uri"
 	sdk "github.com/FlanChanXwO/pixiv-cli/pixiv"
@@ -35,13 +37,9 @@ type Manager struct {
 }
 
 func NewManager(client PixivClient, logger *slog.Logger, downloadPath, filenameTemplate string) *Manager {
-	if logger == nil {
-		// 下载管理器可由 SDK/嵌入方单独使用；未注入时严格静默，不能落到可变全局 logger。
-		logger = slog.New(slog.NewTextHandler(io.Discard, nil))
-	}
 	return &Manager{
 		client:           client,
-		logger:           logger,
+		logger:           logging.OrDiscard(logger),
 		ugoiraEncoder:    defaultUgoiraEncoder(),
 		downloadPath:     downloadPath,
 		filenameTemplate: filenameTemplate,
@@ -72,7 +70,7 @@ func (m *Manager) DownloadPath() string {
 }
 
 func (m *Manager) Download(ctx context.Context, request application.DownloadRequest) ([]DownloadedArtwork, error) {
-	unique := utils.Deduplicate(request.IllustIDs)
+	unique := ids.DeduplicatePositive(request.IllustIDs)
 	quality := request.Quality
 	if quality == "" {
 		quality = application.DownloadQualityOriginal
@@ -105,7 +103,7 @@ func (m *Manager) downloadArtwork(ctx context.Context, id int64, pages []int, qu
 		return DownloadedArtwork{}, err
 	}
 	if illust.PageCount > 1 || illust.Type == string(sdk.IllustTypeUgoira) {
-		base = filepath.Join(base, utils.SanitizeFilename(fmt.Sprintf("%d - %s", illust.ID, text.DefaultString(illust.Title, "Untitled"))))
+		base = filepath.Join(base, filename.Sanitize(fmt.Sprintf("%d - %s", illust.ID, text.DefaultString(illust.Title, "Untitled"))))
 	}
 	if err := os.MkdirAll(base, 0o755); err != nil {
 		return DownloadedArtwork{}, err
@@ -144,7 +142,7 @@ func (m *Manager) downloadArtwork(ctx context.Context, id int64, pages []int, qu
 			return DownloadedArtwork{}, fmt.Errorf("illust %d page %d: %w", illust.ID, item.page1, err)
 		}
 		// 文件名页索引仍用 0-based，保持既有模板语义；DownloadedFile.Page 改为 1-based 用户页号。
-		path := filepath.Join(base, utils.GenerateFilename(filenameData(illust), item.page1-1, m.filenameTemplate)+downloadExtension(rawURL))
+		path := filepath.Join(base, filename.Generate(filenameData(illust), item.page1-1, m.filenameTemplate)+downloadExtension(rawURL))
 		if err := m.downloadURL(ctx, rawURL, path); err != nil {
 			return DownloadedArtwork{}, err
 		}
@@ -253,22 +251,18 @@ func selectImageURL(urls sdk.ImageURLs, singleOriginal string, quality applicati
 // operationLog 只写稳定诊断字段；下载错误可能携带上游 URL 或文件系统路径，
 // 因而不能直接作为 slog 的 error 属性输出。
 func (m *Manager) operationLog(operation string, started time.Time, err error, illustID int64) {
-	result := "success"
-	level := slog.LevelInfo
+	result := logging.ResultSuccess
 	if err != nil {
-		result = "error"
-		level = slog.LevelError
+		result = logging.ResultError
 	}
-	m.logger.LogAttrs(nil, level, "pixiv operation",
-		slog.String("component", "download"),
-		slog.String("operation", operation),
-		slog.String("backend", "local"),
-		slog.Duration("duration", time.Since(started)),
-		slog.String("result", result),
-		slog.String("error_code", ""),
-		slog.Int("status", 0),
-		slog.Int64("illust_id", illustID),
-	)
+	logging.LogOperation(m.logger, logging.OperationEvent{
+		Component: "download",
+		Operation: operation,
+		Backend:   constants.LogBackendLocal,
+		Duration:  time.Since(started),
+		Result:    result,
+		IllustID:  illustID,
+	})
 }
 
 func (m *Manager) downloadUgoira(ctx context.Context, illust sdk.Illust, base string) (string, error) {
@@ -292,7 +286,7 @@ func (m *Manager) downloadUgoira(ctx context.Context, illust sdk.Illust, base st
 	if err := m.downloadURL(ctx, zipURL, zipPath); err != nil {
 		return "", err
 	}
-	outPath := filepath.Join(base, utils.GenerateFilename(filenameData(illust), 0, m.filenameTemplate)+".gif")
+	outPath := filepath.Join(base, filename.Generate(filenameData(illust), 0, m.filenameTemplate)+".gif")
 	if err := m.ConvertUgoira(ctx, zipPath, meta.UgoiraMetadata.Frames, base, outPath); err != nil {
 		return "", err
 	}
@@ -324,7 +318,7 @@ func (m *Manager) ConvertUgoira(ctx context.Context, zipPath string, frames []sd
 // 绕过作品标题和模板已有的文件名规范化边界。ASCII C0/DEL 控制字符
 // 不适合作为文件名内容，Windows 还不接受尾随点或空格，因而在扩展名边界统一处理。
 func downloadExtension(rawURL string) string {
-	extension := utils.SanitizeFilename(filepath.Ext(uriutil.PathFromURL(rawURL)))
+	extension := filename.Sanitize(filepath.Ext(uriutil.PathFromURL(rawURL)))
 	extension = strings.Map(func(character rune) rune {
 		if character < 0x20 || character == 0x7f {
 			return '_'
@@ -334,8 +328,8 @@ func downloadExtension(rawURL string) string {
 	return strings.TrimRight(extension, ". ")
 }
 
-func filenameData(illust sdk.Illust) utils.FilenameData {
-	return utils.FilenameData{
+func filenameData(illust sdk.Illust) filename.FilenameData {
+	return filename.FilenameData{
 		ID:        illust.ID,
 		Author:    illust.User.Name,
 		Title:     illust.Title,

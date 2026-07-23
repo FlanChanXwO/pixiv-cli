@@ -51,6 +51,19 @@ func formatUsers(users []sdk.UserPreview) string {
 	return strings.Join(lines, "\n\n")
 }
 
+func formatNovels(novels []sdk.Novel) string {
+	lines := make([]string, 0, len(novels))
+	for _, novel := range novels {
+		url := novel.URL
+		if url == "" && novel.ID > 0 {
+			url = fmt.Sprintf("https://www.pixiv.net/novel/show.php?id=%d", novel.ID)
+		}
+		lines = append(lines, fmt.Sprintf("%s\nID: %d - %q\n  Author: %s (ID: %d)\n  Text length: %d\n  Original: %t",
+			url, novel.ID, novel.Title, novel.User.Name, novel.User.ID, novel.TextLength, novel.IsOriginal))
+	}
+	return strings.Join(lines, "\n\n")
+}
+
 // formatSDKIllusts/formatSDKUsers 延续旧 MCP 中文文本结果，同时 structured content 提供
 // 面向调用方的规范化 SDK 模型。
 func formatSDKIllusts(illusts []sdk.Illust) string {

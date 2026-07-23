@@ -40,6 +40,7 @@ const (
 	OperationTrendingTagsIllust  Operation = "trending_tags_illust"
 	OperationUgoiraMetadata      Operation = "ugoira_metadata"
 	OperationSearchIllust        Operation = "search_illust"
+	OperationSearchNovel         Operation = "search_novel"
 	OperationSearchIllustOptions Operation = "search_illust_options"
 	OperationIllustRanking       Operation = "illust_ranking"
 	OperationIllustRecommended   Operation = "illust_recommended"
@@ -90,6 +91,7 @@ const (
 	TransportKindProxy             TransportKind = "proxy"
 	TransportKindConnectionRefused TransportKind = "connection_refused"
 	TransportKindConnectionReset   TransportKind = "connection_reset"
+	TransportKindTimeout           TransportKind = "timeout"
 	TransportKindUnknown           TransportKind = "unknown"
 )
 
@@ -179,6 +181,7 @@ func safeTransportKind(kind TransportKind) TransportKind {
 		TransportKindProxy,
 		TransportKindConnectionRefused,
 		TransportKindConnectionReset,
+		TransportKindTimeout,
 		TransportKindUnknown:
 		return kind
 	default:

@@ -15,7 +15,7 @@ import (
 	"sync"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/protocol"
-	"github.com/FlanChanXwO/pixiv-cli/internal/utils"
+	"github.com/FlanChanXwO/pixiv-cli/internal/utils/credentials"
 	"github.com/go-resty/resty/v2"
 )
 
@@ -71,7 +71,7 @@ func WithAccessToken(token string) Option {
 }
 
 func New(refreshToken string, opts ...Option) *Client {
-	refreshToken, refreshTokenErr := utils.ValidateRefreshTokenInput(refreshToken)
+	refreshToken, refreshTokenErr := credentials.ValidateRefreshTokenInput(refreshToken)
 	c := &Client{restyClient: resty.New(), baseURL: DefaultBase, refreshToken: refreshToken, refreshTokenErr: refreshTokenErr}
 	for _, opt := range opts {
 		opt(c)
@@ -83,7 +83,7 @@ func New(refreshToken string, opts ...Option) *Client {
 }
 
 func (c *Client) SetRefreshToken(token string) {
-	token, inputErr := utils.ValidateRefreshTokenInput(token)
+	token, inputErr := credentials.ValidateRefreshTokenInput(token)
 	c.mu.Lock()
 	c.refreshToken = strings.TrimSpace(token)
 	c.refreshTokenErr = inputErr

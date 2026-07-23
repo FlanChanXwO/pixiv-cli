@@ -14,6 +14,8 @@
 
 `pixiv-cli` is an independent, unofficial third-party tool that gives humans, coding agents, and Go applications one consistent way to use Pixiv; it is not affiliated with or endorsed by Pixiv Inc. The CLI and MCP server both call the same public Go SDK, with the Pixiv App API as the authenticated source of truth. Use it in accordance with Pixiv's terms and applicable law.
 
+Maintainers: release tags are blocked by a protected authenticated E2E gate. Its refresh token belongs only in the GitHub `pixiv-e2e` Environment Secret; work IDs and search inputs are Environment Variables. Pull request and `main` CI remain offline and secret-free. See the [development guide](docs/maintainers/development.md#测试).
+
 ## Why pixiv-cli?
 
 - **One capability surface** — search, details, rankings, recommendations, users, bookmarks, follows, downloads, and ugoira across CLI, MCP, and SDK.
@@ -43,10 +45,6 @@ curl.exe -fsSLo "%TEMP%\pixiv-install.cmd" https://raw.githubusercontent.com/Fla
 Both scripts detect AMD64/ARM64, select the latest stable official Release archive, verify its published SHA-256,
 preflight the staged binary, and install per-user before changing PATH. Use `--no-path` to leave PATH untouched or
 `--install-dir DIR` to choose another destination. You can inspect the downloaded script before running it.
-
-Linux compatibility note: the v0.3.0 archives were linked on Ubuntu 24.04 and can require glibc 2.39, so they do not
-run on Debian 12. v0.4.2 fixes this at build time: Linux assets are built against and checked for a glibc 2.35
-maximum requirement. The installer preflight reports an incompatible staged binary before replacing an installation.
 
 ### Install with a coding agent
 
@@ -97,6 +95,7 @@ pixiv auth login
 
 # Search with App-side filters.
 pixiv search "初音ミク" --type illust --ai-mode exclude --resolution high
+pixiv novel search "初音ミク" --rating sfw --min-text-length 1000
 
 # Inspect, discover recommendations, and download.
 pixiv detail 123456
@@ -114,13 +113,14 @@ Use human-readable output interactively and `--json` where the command supports 
 
 ```bash
 pixiv ranking --mode day --json
+pixiv user search "miku" --limit 10 --json
 pixiv user detail 12345678
 pixiv search-options "初音ミク"
 ```
 
 ### MCP
 
-Start the stdio server explicitly. stdout remains reserved for JSON-RPC. Operation summaries are written as daily JSONL under the user state directory `pixiv/logs` (default retention 7 days); the terminal stays free of log traces by default.
+Start the stdio server explicitly. stdout remains reserved for JSON-RPC. Operation summaries are written as daily plain-text files named `YYYY-MM-DD.txt` under `~/pixiv-cli/logs` (on Windows, `%USERPROFILE%\pixiv-cli\logs`; default retention 7 days); the terminal stays free of log traces by default.
 
 ```bash
 pixiv mcp
@@ -145,13 +145,13 @@ Import `github.com/FlanChanXwO/pixiv-cli/pixiv`. The [SDK guide](docs/en/sdk.md)
 
 `pixiv auth login` is the recommended setup. It saves raw Pixiv App OAuth refresh tokens by UID in the local account store; browser cookies such as `PHPSESSID` are rejected and are never converted into App credentials.
 
+On macOS, desktop Linux, and Windows, the `pixiv://` callback handler is installed only for the active login and then restored. For a headless SSH server, use the existing `--no-open --addr` flow with a local `ssh -L` tunnel; the forwarded fallback page can continue a validated Pixiv relay in that same browser without a local pixiv installation. See the [CLI reference](docs/en/cli-reference.md#getting-a-refresh-token).
+
 ```bash
 pixiv auth list
 pixiv auth use 12345678
 pixiv auth check
 ```
-
-v0.4.2 replaces `auth add`/`auth token` with `auth import`/`auth export`; the removed names and `--token` have no aliases. Prefer hidden `pixiv auth import` input or raw stdin because a positional token is visible in argv/shell history. `pixiv auth export [UID]` and `pixiv auth export --all`, both without `--output`, are the only explicit secret stdout forms; use `--output` for a private bundle file. Bundles are unencrypted point-in-time backups, not live sync, and may become stale after token rotation. Never paste secret output into chat, logs, shell history, issues, or agent transcripts; other stdout/stderr, JSON, MCP results, logs, and errors must not reveal refresh tokens. See the [CLI reference](docs/en/cli-reference.md#getting-a-refresh-token) for the complete import/export and file-protection contract.
 
 ## Documentation
 
@@ -162,12 +162,12 @@ v0.4.2 replaces `auth add`/`auth token` with `auth import`/`auth export`; the re
 | [MCP tools](docs/en/mcp-tools.md) | Tool schemas and output semantics |
 | [Architecture (Simplified Chinese)](docs/maintainers/architecture.md) | Package boundaries and runtime flow |
 | [Development (Simplified Chinese)](docs/maintainers/development.md) | Toolchain, tests, builds, and releases |
-| [Changelog](CHANGELOG.md) | User-visible changes |
+| [Changelog](changelog/README.md) | User-visible changes |
 
 ## Contributing
 
-Bug reports, documentation fixes, tests, and focused features are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request; discuss large or compatibility-sensitive changes first.
+Bug reports, documentation fixes, tests, and focused features are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request; discuss large or public-interface changes first.
 
 ## License
 
-[MIT](LICENSE)
+[MIT](LICENSE) © FlanChanXwO

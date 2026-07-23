@@ -10,11 +10,11 @@ const DefaultConfigFileMode = constants.PrivateFileMode
 var configFilePath = defaultConfigFilePath
 
 func defaultAppConfigDir() (string, error) {
-	return files.UserConfigSubdir(constants.AppConfigDirName)
+	return files.UserDataSubdir(constants.AppDataDirName)
 }
 
 func defaultConfigFilePath() (string, error) {
-	return files.UserConfigFile(constants.AppConfigDirName, "config.toml")
+	return files.UserDataFile(constants.AppDataDirName, "config.toml")
 }
 
 func ConfigFilePath() (string, error) {

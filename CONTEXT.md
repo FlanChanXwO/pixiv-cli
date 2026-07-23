@@ -55,7 +55,7 @@ Task 20 的审计流程配置或回填。v0.3.0 已发布为正式 Release，公
 - `pixiv` 是公开 facade；内部协议实现物理拆分为 `appapi`、`webapi`、`oauth`、`resource`，不得反向 import public package。
 - 有凭据时 App API 为主路径，失败不自动 Web fallback；Web pages/ugoira original 只能作为明确 enrichment。
 - 不新增 Discover、Probe、Capabilities、RSS、crawler、通用 Provider interface 或 HTTP server；这些属于调用方 adapter。
-- `internal/common/constants` 不含 Pixiv protocol、MCP delivery、config key 或 product default；`AppConfigDirName` 是唯一 product-named path exception。
+- `internal/common/constants` 不含 Pixiv protocol、MCP delivery、config key 或 product default；`AppDataDirName` 是唯一 product-named path exception。
 - CLI/MCP/OAuth loopback adapter helper 留在 adapter package，除非它们是 protocol-free parsing helper。
 
 ## 行为约束

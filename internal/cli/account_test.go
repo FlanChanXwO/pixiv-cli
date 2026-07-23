@@ -24,6 +24,7 @@ import (
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/application"
 	"github.com/FlanChanXwO/pixiv-cli/internal/bootstrap"
+	"github.com/FlanChanXwO/pixiv-cli/internal/common/constants"
 	"github.com/FlanChanXwO/pixiv-cli/internal/config"
 	internalpixiv "github.com/FlanChanXwO/pixiv-cli/internal/pixiv"
 	"github.com/FlanChanXwO/pixiv-cli/internal/storage/auth"
@@ -791,7 +792,7 @@ func TestAuthExportSelectsExplicitUIDAndRejectsNonContractInput(t *testing.T) {
 
 func TestAuthExportInvalidUIDDoesNotEchoSensitiveInput(t *testing.T) {
 	_, configPath := useTempPaths(t)
-	require.NoError(t, config.WritePrivateFile(configPath, []byte("[logging]\nformat = 'yaml'\n")))
+	require.NoError(t, config.WritePrivateFile(configPath, []byte("[logging]\nlevel = 'warn'\n")))
 
 	for name, canary := range map[string]string{
 		"token-like": "synthetic-refresh-token-secret",
@@ -1405,7 +1406,7 @@ func TestAccountLoginAcceptsPixivCallbackURLWithoutState(t *testing.T) {
 	assert.NotContains(t, stderr.String(), "pixiv-callback-refresh-secret")
 }
 
-func TestAccountLoginManualPageRelaysPostRedirectThenAcceptsCode(t *testing.T) {
+func TestAccountLoginManualPageRelaysPostRedirectInCurrentBrowserThenAcceptsCode(t *testing.T) {
 	authPath, _ := useTempPaths(t)
 	addr := freeLoopbackAddr(t)
 	oauth := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -1422,7 +1423,8 @@ func TestAccountLoginManualPageRelaysPostRedirectThenAcceptsCode(t *testing.T) {
 	restoreRelay := setTestURLSchemeRelayInstaller(t, func(context.Context, string) (func(), error) { return func() {}, nil })
 	defer restoreRelay()
 
-	// opener 由登录服务的 HTTP handler 调用，测试 goroutine 读取前须用同一把锁建立同步关系。
+	// browser opener 只应打开最初的登录页。通过 fallback 页面提交 relay 后，
+	// 浏览器自身必须继续跳转，不能让远端 CLI 尝试打开图形浏览器。
 	var openedURLsMu sync.Mutex
 	var openedURLs []string
 	restoreOpen := setTestOpenBrowser(t, func(rawURL string) error {
@@ -1442,17 +1444,20 @@ func TestAccountLoginManualPageRelaysPostRedirectThenAcceptsCode(t *testing.T) {
 	returnTo := pixivAuthStartURLForTest(pixivLoginChallenge(loginURL))
 	bridge := "https://accounts.pixiv.net/post-redirect?return_to=" + url.QueryEscape(returnTo)
 
-	resp, err := http.PostForm("http://"+addr+"/manual", url.Values{"code": {bridge}})
+	noRedirect := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error {
+		return http.ErrUseLastResponse
+	}}
+	resp, err := noRedirect.PostForm("http://"+addr+"/manual", url.Values{"code": {bridge}})
 	require.NoError(t, err)
 	body, _ := io.ReadAll(resp.Body)
 	_ = resp.Body.Close()
-	require.Equal(t, http.StatusOK, resp.StatusCode, string(body))
-	assert.Contains(t, string(body), "authorization relay opened")
+	require.Equal(t, http.StatusSeeOther, resp.StatusCode, string(body))
+	assert.Equal(t, bridge, resp.Header.Get("Location"))
 	openedURLsMu.Lock()
 	openedURLSnapshot := append([]string(nil), openedURLs...)
 	openedURLsMu.Unlock()
-	require.Contains(t, openedURLSnapshot, bridge)
-	assert.Contains(t, stderr.String(), "Detected Pixiv authorization relay page")
+	require.Equal(t, []string{loginURL}, openedURLSnapshot)
+	assert.Contains(t, stderr.String(), "Detected Pixiv authorization relay page; continuing it in the current browser.")
 
 	resp, err = http.PostForm("http://"+addr+"/manual", url.Values{"code": {"manual-relay-code"}})
 	require.NoError(t, err)
@@ -1468,6 +1473,81 @@ func TestAccountLoginManualPageRelaysPostRedirectThenAcceptsCode(t *testing.T) {
 	assert.Equal(t, "manual-relay-refresh-secret", store.Accounts[0].RefreshToken)
 	assert.NotContains(t, stdout.String(), "manual-relay-refresh-secret")
 	assert.NotContains(t, stderr.String(), "manual-relay-refresh-secret")
+}
+
+func TestAccountLoginManualPageAcceptsCallbackThroughLoopbackForwarder(t *testing.T) {
+	authPath, _ := useTempPaths(t)
+	remoteAddr := freeLoopbackAddr(t)
+	oauth := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.NoError(t, r.ParseForm())
+		assert.Equal(t, "forwarded-callback-code", r.Form.Get("code"))
+		require.NoError(t, json.NewEncoder(w).Encode(map[string]any{
+			"refresh_token": "forwarded-refresh-secret",
+			"user":          map[string]any{"id": "314159", "name": "forwarded-user"},
+		}))
+	}))
+	defer oauth.Close()
+	restoreOAuthBase := setTestOAuthBase(t, oauth.URL)
+	defer restoreOAuthBase()
+	restoreOpen := setTestOpenBrowser(t, func(string) error {
+		t.Fatal("--no-open must not start a browser on the remote host")
+		return nil
+	})
+	defer restoreOpen()
+
+	var stdout, stderr bytes.Buffer
+	run := startAsyncCLIRun([]string{"pixiv", "auth", "login", "--no-open", "--addr", remoteAddr, "--timeout", "5s"}, strings.NewReader(""), &stdout, &stderr)
+	defer run.wait()
+	waitForLoginServer(t, remoteAddr)
+	forwardedAddr := startLoopbackForwarder(t, remoteAddr)
+
+	client := &http.Client{Transport: &http.Transport{DisableKeepAlives: true}}
+	resp, err := client.PostForm("http://"+forwardedAddr+"/manual", url.Values{"code": {"pixiv://account/login?code=forwarded-callback-code"}})
+	require.NoError(t, err)
+	page, _ := io.ReadAll(resp.Body)
+	_ = resp.Body.Close()
+	require.Equal(t, http.StatusOK, resp.StatusCode, string(page))
+	assert.Contains(t, string(page), "Login successful")
+
+	require.Equal(t, 0, run.waitWithin(t, 5*time.Second), stderr.String())
+	store, err := auth.LoadAuthStore(authPath)
+	require.NoError(t, err)
+	require.Len(t, store.Accounts, 1)
+	assert.Equal(t, int64(314159), store.Accounts[0].UserID)
+	assert.Equal(t, "forwarded-user", store.Accounts[0].Username)
+	assert.NotContains(t, stdout.String(), "forwarded-refresh-secret")
+	assert.NotContains(t, stderr.String(), "forwarded-refresh-secret")
+	assert.Contains(t, stderr.String(), "Browser opening is disabled; use the manual fallback page or terminal prompt.")
+}
+
+func TestAccountLoginManualPageRejectsStaleRelayWithoutOpeningIt(t *testing.T) {
+	useTempPaths(t)
+	addr := freeLoopbackAddr(t)
+	restoreOpen := setTestOpenBrowser(t, func(string) error {
+		t.Fatal("--no-open must not open a stale relay on the server")
+		return nil
+	})
+	defer restoreOpen()
+
+	var stdout, stderr bytes.Buffer
+	run := startAsyncCLIRun([]string{"pixiv", "auth", "login", "--no-open", "--addr", addr, "--timeout", "100ms"}, strings.NewReader(""), &stdout, &stderr)
+	defer run.wait()
+	page := waitForLoginServer(t, addr)
+	returnTo := pixivAuthStartURLForTest("stale-challenge")
+	bridge := "https://accounts.pixiv.net/post-redirect?return_to=" + url.QueryEscape(returnTo)
+
+	resp, err := http.PostForm("http://"+addr+"/manual", url.Values{"code": {bridge}})
+	require.NoError(t, err)
+	body, _ := io.ReadAll(resp.Body)
+	_ = resp.Body.Close()
+	require.Equal(t, http.StatusBadRequest, resp.StatusCode, string(body))
+	assert.Contains(t, string(body), "Login failed")
+	assert.NotContains(t, string(body), "stale-challenge")
+	assert.NotContains(t, string(body), bridge)
+	assert.NotContains(t, stderr.String(), bridge)
+	assert.NotEmpty(t, loginURLFromPage(t, page))
+	require.NotZero(t, run.waitWithin(t, 2*time.Second), stderr.String())
+	assert.Empty(t, stdout.String())
 }
 
 func TestLoginCodeFromInputOnlyPixivCallbacksMayOmitState(t *testing.T) {
@@ -1822,14 +1902,24 @@ func setPromptStub(t *testing.T, stub promptStub) {
 
 func useTempPaths(t *testing.T) (string, string) {
 	t.Helper()
+	// 默认 transport 会读取宿主代理环境。没有显式验证代理语义的 CLI 测试必须
+	// 隔离这些变量，否则本机代理会把 httptest OAuth 请求导向外部地址并造成顺序相关失败。
+	for _, name := range []string{"HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy", "ALL_PROXY", "all_proxy", "NO_PROXY", "no_proxy"} {
+		oldValue, hadValue := os.LookupEnv(name)
+		require.NoError(t, os.Unsetenv(name))
+		t.Cleanup(func() {
+			if hadValue {
+				require.NoError(t, os.Setenv(name, oldValue))
+				return
+			}
+			require.NoError(t, os.Unsetenv(name))
+		})
+	}
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("USERPROFILE", home)
-	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
-	// 文件日志写入 UserStateDir/pixiv/logs；测试必须隔离 state 目录，避免污染真实用户日志。
-	t.Setenv("XDG_STATE_HOME", filepath.Join(home, ".local", "state"))
-	t.Setenv("LocalAppData", filepath.Join(home, "AppData", "Local"))
-	base := filepath.Join(home, "pixiv")
+	// 应用数据直接位于 home/pixiv-cli；测试隔离 home 即可隔离认证、配置与日志。
+	base := filepath.Join(home, constants.AppDataDirName)
 	authPath := filepath.Join(base, "auth.json")
 	configPath := filepath.Join(base, "config.toml")
 	t.Cleanup(auth.SetAuthFilePathForTest(authPath))
@@ -1905,6 +1995,49 @@ func freeLoopbackAddr(t *testing.T) string {
 	addr := ln.Addr().String()
 	require.NoError(t, ln.Close())
 	return addr
+}
+
+// startLoopbackForwarder 模拟 ssh -N -L LOCAL:127.0.0.1:REMOTE。测试只接受
+// loopback 端点，证明浏览器侧 POST 可以经转发回到运行 CLI 的另一端 listener。
+func startLoopbackForwarder(t *testing.T, remoteAddr string) string {
+	t.Helper()
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	var connections sync.WaitGroup
+	stopped := make(chan struct{})
+	go func() {
+		defer close(stopped)
+		for {
+			incoming, acceptErr := listener.Accept()
+			if acceptErr != nil {
+				return
+			}
+			connections.Add(1)
+			go func() {
+				defer connections.Done()
+				defer incoming.Close()
+				upstream, dialErr := net.Dial("tcp", remoteAddr)
+				if dialErr != nil {
+					return
+				}
+				defer upstream.Close()
+				copied := make(chan struct{})
+				go func() {
+					_, _ = io.Copy(upstream, incoming)
+					_ = upstream.Close()
+					close(copied)
+				}()
+				_, _ = io.Copy(incoming, upstream)
+				<-copied
+			}()
+		}
+	}()
+	t.Cleanup(func() {
+		_ = listener.Close()
+		<-stopped
+		connections.Wait()
+	})
+	return listener.Addr().String()
 }
 
 func waitForLoginServer(t *testing.T, addr string) string {

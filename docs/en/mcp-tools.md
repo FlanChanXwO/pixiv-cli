@@ -3,14 +3,14 @@
 English | [简体中文](../zh-CN/mcp-tools.md) | [Documentation index](../index.md)
 
 Run `pixiv mcp` to start the stdio server. stdout is reserved for JSON-RPC. Operation logs are written as daily
-JSONL under the user state directory at `pixiv/logs` (default retention 7 days); the terminal stays free of log
-traces by default. MCP exposes no HTTP endpoint.
+plain-text files named `YYYY-MM-DD.txt` under `~/pixiv-cli/logs` (on Windows, `%USERPROFILE%\pixiv-cli\logs`; default
+retention 7 days); the terminal stays free of log traces by default. MCP exposes no HTTP endpoint.
 
 With a refresh token, App API is the primary path and failures never fall back to Web automatically. Without a
 token and with `web_fallback_enabled=true`, only allowlisted anonymous read tools may use Web API. SDK-based user
 detail/list and bookmark/follow write tools return text plus structured output; classified failures set
-`isError=true`. Legacy tool failures retain their existing Content, structured output, text, and `isError=false`
-wire behavior, while the file log records an error-level operation event with `result=error`. Events contain only
+`isError=true`. Text-form MCP tool failures retain their documented Content, structured output, text, and
+`isError=false` wire behavior, while the file log records an error-level operation event with `result=error`. Events contain only
 the operation, stable SDK classification, backend/status, and safe IDs; they never include raw errors, inputs,
 queries, tokens, cookies, URLs, paths, or response bodies. Unknown public SDK codes are omitted and unknown
 backends normalize to `local`. A normal empty result remains a success.
@@ -23,9 +23,7 @@ New SDK list tools use:
 - `page`: 1-based logical page and requires a positive `limit`.
 - output fields `pagination.page`, `limit`, `returned`, `has_more`, and optional `next_page`.
 
-SDK cursors never appear in MCP input or output.
-continuation and cannot be combined with `page` or `limit`. `user_following.offset` is a deprecated logical offset;
-it conflicts only with `page` and may still be used with `limit`.
+SDK cursors never appear in MCP input or output. List tools use the logical `page`/`limit` pair.
 
 ## Configuration, authentication, and downloads
 
@@ -40,7 +38,7 @@ it conflicts only with `page` and may still be used with `limit`.
 `refresh_token` does not misreport SDK/config/proxy initialization failures as a missing token. Context cancellation
 and deadlines retain explicit messages; public `*pixiv.Error` values retain safe code/operation/backend fields;
 unknown initialization/execution failures use a redacted diagnostic. Only a real `unauthorized` refresh keeps the
-missing-token hint. This legacy tool remains `isError=false`; file-log events expose real failures safely.
+missing-token hint. The tool returns `isError=false`; file-log events expose real failures safely.
 
 `download_random_from_recommendation.count` limits works, not files expanded from each work. Explicit 0, negative,
 or values above 20 fail validation instead of being clamped. If fewer recommendations exist, the tool downloads the
@@ -52,23 +50,24 @@ resets without changing authentication or selected download quality.
 
 Both download tools return valid structured output on validation, SDK, recommendation, download, result-building,
 or file-read failure: `delivery` retains the normalized mode (`local_path` when IDs/delivery are invalid), and
-`items`/`files` are empty arrays rather than `null`. Legacy failures keep `isError=false` and the original safe
+`items`/`files` are empty arrays rather than `null`. These failures return `isError=false` and the original safe
 business error text.
 
 ## Work and user reads
 
 | Tool | Input | Structured output |
 | --- | --- | --- |
-| `search_illust` | `word`, `search_target`, `sort`, `duration`, `page`, `limit`, `rating`, `content_type`, `ai_mode`, `aspect_ratio`, `resolution`, `tool` | Legacy `{text}`; works remain in text. |
+| `search_illust` | `word`, `search_target`, `sort`, `duration`, `page`, `limit`, `rating`, `content_type`, `ai_mode`, `aspect_ratio`, `resolution`, `tool` | `{text}`; works remain in text. |
+| `search_novel` | `word`, `search_target`, `sort`, `duration`, `page`, `limit`, `rating`, `min_text_length`, `max_text_length`, `original_only` | App-only `{novels, pagination, text}`. A classified failure has `isError=true`. |
 | `search_illust_options` | required `word` | `{tools,text}` for the word; authenticated App only. |
-| `illust_detail` | `illust_id` | Work detail. |
+| `illust_detail` | `illust_id` | Work detail, including raw HTML `caption` when Pixiv provides it. |
 | `illust_related` | `illust_id`, `page`, `limit` | Related works. |
 | `illust_ranking` | `mode`, `date`, `page`, `limit` | Ranked works. |
 | `illust_recommended` | `page`, `limit` | Illustration recommendation text through the public SDK path. |
 | `recommended` | required `kind` (`all`, `illust`, `manga`, `novel`, `user`), optional `page`, `limit` | `{kind, illusts, manga, novels, user_previews, pagination}`; `all` reads four authenticated streams in order. |
 | `trending_tags_illust` | none | Trending tags. |
 | `illust_follow` | `restrict`, `page`, `limit` | Followed works; authentication required. |
-| `search_user` | `word`, `page`, `limit` | Users; anonymous fallback deduplicates related-work authors and is not official username search. |
+| `search_user` | `word`, `page`, `limit` | `{source, user_previews, pagination, text}`. `source` is `app_search` for official authenticated App search or `related_illust_authors` for anonymous fallback; the latter is not a username search. |
 | `user_detail` | required `user_id` | Stable `{user, profile, profile_publicity, workspace}`; authenticated App only. |
 | `user_artworks` | optional `user_id`, `type`, `page`, `limit` | `{user_id, items, pagination}`; omitted UID uses the authenticated user. |
 | `user_bookmarks` | optional `user_id`, `restrict`, `tag`, `page`, `limit` | `{user_id, items, pagination}`. |
@@ -86,7 +85,17 @@ business error text.
 With a refresh token, App performs resolution, aspect ratio, tool, content type, and AI exclusion filtering;
 rating and AI-only filtering use public SDK normalized App fields. App failures never fall back to Web. Anonymous
 Web applies only verified filters; `r18|r18g|mature` fails before the request with an authentication requirement.
-App-only. Neither search tool accepts cookies or bookmark-count filters.
+`search_illust_options` is App-only. None of the search tools accepts cookies or bookmark-count filters.
+
+`search_novel.rating` uses `all|sfw|r18|r18g|mature`. `min_text_length` and `max_text_length` are non-negative
+character bounds where `0` disables the corresponding bound; a non-zero maximum below the minimum fails validation.
+`original_only` keeps only novels marked original. Pixiv has no verified App wire parameters for these three
+conditions, so the public SDK validates them against every result's `x_restrict`, `text_length`, and `is_original`
+fields. Missing fields are an upstream error, not a silent non-match. `search_novel` itself is App-only.
+
+`search_user` returns text alongside structured `source`, `user_previews`, and `pagination`. Its fixed text explicitly
+says when anonymous fallback returned related illustration authors rather
+than official username-search results.
 
 Fixed MCP status, error, list-heading, field-label, and ranking text is English. Artwork metadata returned by
 Pixiv and tool arguments retain their original text. Artwork text preserves every tag in upstream order without a

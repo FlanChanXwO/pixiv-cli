@@ -129,7 +129,7 @@ func (a *App) recommended(ctx context.Context, _ *mcp.CallToolRequest, in recomm
 		if fetchErr != nil {
 			return a.recommendedError(ctx, fetchErr)
 		}
-		out.Novels = normalizeRecommendedNovels(items)
+		out.Novels = normalizeNovels(items)
 		out.Pagination.Novel = recommendedPagination(plan, in.Limit, len(items), more)
 	}
 	if in.Kind == "all" || in.Kind == "user" {
@@ -159,13 +159,13 @@ func normalizeRecommendedUserPreviews(items []sdk.RecommendedUserPreview) []sdk.
 		if result[index].Novels == nil {
 			result[index].Novels = []sdk.Novel{}
 		}
-		result[index].Novels = normalizeRecommendedNovels(result[index].Novels)
+		result[index].Novels = normalizeNovels(result[index].Novels)
 	}
 	return result
 }
 
-// normalizeRecommendedNovels 保证 MCP schema 的 tags 字段始终编码为数组。
-func normalizeRecommendedNovels(items []sdk.Novel) []sdk.Novel {
+// normalizeNovels 保证 MCP schema 的 tags 字段始终编码为数组。
+func normalizeNovels(items []sdk.Novel) []sdk.Novel {
 	result := make([]sdk.Novel, len(items))
 	copy(result, items)
 	for index := range result {
