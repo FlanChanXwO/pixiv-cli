@@ -28,6 +28,8 @@ func TestLocalizedDocumentationLayout(t *testing.T) {
 		"docs/zh-CN/sdk.md",
 		"docs/zh-CN/mcp-tools.md",
 		"docs/ja/cli-reference.md",
+		"docs/ja/sdk.md",
+		"docs/ja/mcp-tools.md",
 		"docs/maintainers/architecture.md",
 		"docs/maintainers/development.md",
 		"docs/maintainers/agents/documentation-guidelines.md",
@@ -191,6 +193,72 @@ func TestCLIReferenceLocalesExposeStableCommands(t *testing.T) {
 		} {
 			if !strings.Contains(string(payload), contract) {
 				t.Errorf("%s is missing CLI contract %q", relativePath, contract)
+			}
+		}
+	}
+}
+
+func TestSDKAndMCPDocumentationExposeJapaneseLocale(t *testing.T) {
+	repositoryRoot := filepath.Clean(filepath.Join("..", ".."))
+	for _, contract := range []struct {
+		indexPath       string
+		localizedPath   string
+		localizedTarget string
+		canonicalPaths  []string
+		requiredTerms   []string
+	}{
+		{
+			indexPath:       "docs/index.md",
+			localizedPath:   "docs/ja/sdk.md",
+			localizedTarget: "ja/sdk.md",
+			canonicalPaths:  []string{"docs/en/sdk.md", "docs/zh-CN/sdk.md"},
+			requiredTerms: []string{
+				"SearchNovel",
+				"IllustRankingRequest.Mode",
+				"week_r18g",
+				"download_url",
+				"malformed_upstream_response",
+				"LocalWriteCommitOutcome",
+			},
+		},
+		{
+			indexPath:       "docs/index.md",
+			localizedPath:   "docs/ja/mcp-tools.md",
+			localizedTarget: "ja/mcp-tools.md",
+			canonicalPaths:  []string{"docs/en/mcp-tools.md", "docs/zh-CN/mcp-tools.md"},
+			requiredTerms: []string{
+				"search_novel",
+				"search_user",
+				"illust_ranking",
+				"download_random_from_recommendation",
+				"week_r18g",
+			},
+		},
+	} {
+		index, err := os.ReadFile(filepath.Join(repositoryRoot, filepath.FromSlash(contract.indexPath)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(string(index), "("+contract.localizedTarget+")") {
+			t.Errorf("%s does not link %s", contract.indexPath, contract.localizedTarget)
+		}
+		localized, err := os.ReadFile(filepath.Join(repositoryRoot, filepath.FromSlash(contract.localizedPath)))
+		if err != nil {
+			t.Errorf("missing Japanese public contract %s: %v", contract.localizedPath, err)
+		} else {
+			for _, term := range contract.requiredTerms {
+				if !strings.Contains(string(localized), term) {
+					t.Errorf("%s is missing public contract %q", contract.localizedPath, term)
+				}
+			}
+		}
+		for _, canonicalPath := range contract.canonicalPaths {
+			payload, err := os.ReadFile(filepath.Join(repositoryRoot, filepath.FromSlash(canonicalPath)))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !strings.Contains(string(payload), "../"+contract.localizedTarget) {
+				t.Errorf("%s does not link %s", canonicalPath, contract.localizedTarget)
 			}
 		}
 	}

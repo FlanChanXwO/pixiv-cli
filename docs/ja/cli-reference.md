@@ -435,8 +435,8 @@ pixiv config set update_check_enabled false
 
 ## 関連ドキュメント
 
-- [Go SDK（English）](../en/sdk.md)：public client、model、pagination、resource、typed error。
-- [MCP tools（English）](../en/mcp-tools.md)：tool、input schema、output、stdio behavior。
+- [Go SDK](sdk.md)：public client、model、pagination、resource、typed error。
+- [MCP tools](mcp-tools.md)：tool、input schema、output、stdio behavior。
 - [アーキテクチャ（中国語・簡体字）](../maintainers/architecture.md)：package responsibility と runtime flow。
 - [開発フロー（中国語・簡体字）](../maintainers/development.md)：environment、test、build、release gate。
 - [Agent skill](../../skills/pixiv-cli/SKILL.md)：インストール済み CLI を安全に操作するための指示。

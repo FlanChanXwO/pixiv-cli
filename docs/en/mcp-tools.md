@@ -1,6 +1,6 @@
 # MCP Tools
 
-English | [简体中文](../zh-CN/mcp-tools.md) | [Documentation index](../index.md)
+English | [简体中文](../zh-CN/mcp-tools.md) | [日本語](../ja/mcp-tools.md) | [Documentation index](../index.md)
 
 Run `pixiv mcp` to start the stdio server. stdout is reserved for JSON-RPC. Operation logs are written as daily
 plain-text files named `YYYY-MM-DD.txt` under `~/.pixiv-cli/logs` (on Windows, `%USERPROFILE%\.pixiv-cli\logs`; default

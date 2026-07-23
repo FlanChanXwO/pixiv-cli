@@ -1,6 +1,6 @@
 # MCP 工具
 
-[English](../en/mcp-tools.md) | 简体中文 | [文档索引](../index.md)
+[English](../en/mcp-tools.md) | 简体中文 | [日本語](../ja/mcp-tools.md) | [文档索引](../index.md)
 
 以 `pixiv mcp` 启动 stdio server。stdout 仅用于 JSON-RPC；操作日志写入用户主目录 `~/.pixiv-cli/logs`（Windows 为 `%USERPROFILE%\.pixiv-cli\logs`）下的按日纯文本文件 `YYYY-MM-DD.txt`（默认保留 7 天），终端默认无日志痕迹。MCP 不提供 HTTP endpoint。
 

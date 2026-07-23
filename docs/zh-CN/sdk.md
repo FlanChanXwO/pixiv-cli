@@ -1,6 +1,6 @@
 # Pixiv Go SDK 接口
 
-[English](../en/sdk.md) | 简体中文 | [文档索引](../index.md)
+[English](../en/sdk.md) | 简体中文 | [日本語](../ja/sdk.md) | [文档索引](../index.md)
 
 本文件取代旧 HTTP Provider interface。公开入口是 `github.com/FlanChanXwO/pixiv-cli/pixiv` 的具体 `*pixiv.Client`，不是 HTTP endpoint、Provider server 或可发现服务。
 

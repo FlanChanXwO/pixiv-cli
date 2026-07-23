@@ -124,7 +124,7 @@ stdio server は明示的に起動します。stdout は JSON-RPC 専用です�
 pixiv mcp
 ```
 
-tool、parameter、structured output、認証動作は [MCP tool contract（English）](docs/en/mcp-tools.md)を参照してください。
+tool、parameter、structured output、認証動作は [MCP tool contract](docs/ja/mcp-tools.md)を参照してください。
 MCP の固定 status、error、display text は英語です。Pixiv metadata と user-supplied text は原文のまま保持します。
 
 ### Go SDK
@@ -137,7 +137,7 @@ if err != nil {
 result, err := client.SearchIllust(ctx, pixiv.SearchIllustRequest{Word: "初音ミク"})
 ```
 
-`github.com/FlanChanXwO/pixiv-cli/pixiv` を import します。モデル、cursor、resource、error、呼び出し側の責務は [SDK ガイド（English）](docs/en/sdk.md)を参照してください。
+`github.com/FlanChanXwO/pixiv-cli/pixiv` を import します。モデル、cursor、resource、error、呼び出し側の責務は [SDK ガイド](docs/ja/sdk.md)を参照してください。
 
 ## 認証と token の安全性
 
@@ -158,8 +158,8 @@ import は引数なしの非表示入力または raw stdin を推奨します�
 | ガイド | 内容 |
 | --- | --- |
 | [CLI リファレンス](docs/ja/cli-reference.md) | command、flag、認証、設定、fallback、download、update |
-| [Go SDK（English）](docs/en/sdk.md) | public client、model、pagination、resource、typed error |
-| [MCP tools（English）](docs/en/mcp-tools.md) | tool schema と出力 semantics |
+| [Go SDK](docs/ja/sdk.md) | public client、model、pagination、resource、typed error |
+| [MCP tools](docs/ja/mcp-tools.md) | tool schema と出力 semantics |
 | [アーキテクチャ（中国語・簡体字）](docs/maintainers/architecture.md) | package boundary と runtime flow |
 | [開発フロー（中国語・簡体字）](docs/maintainers/development.md) | toolchain、test、build、release |
 | [Changelog](changelog/README.md) | ユーザーに影響する変更 |

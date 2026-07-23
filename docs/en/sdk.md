@@ -1,6 +1,6 @@
 # Pixiv Go SDK
 
-English | [简体中文](../zh-CN/sdk.md) | [Documentation index](../index.md)
+English | [简体中文](../zh-CN/sdk.md) | [日本語](../ja/sdk.md) | [Documentation index](../index.md)
 
 This guide replaces the former HTTP Provider interface. The public entry point is the concrete `*pixiv.Client`
 from `github.com/FlanChanXwO/pixiv-cli/pixiv`, not an HTTP endpoint, Provider server, or discoverable service.
