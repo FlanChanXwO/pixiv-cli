@@ -123,6 +123,10 @@ func TestFinalizeBuildsSignedReleaseDirectory(t *testing.T) {
 	if err := os.WriteFile(changelog, []byte("# v0.1.0 — 2026-07-12\n\n## Added\n\n- Public change.\n"), 0o644); err != nil {
 		t.Fatalf("write changelog fixture: %v", err)
 	}
+	changelogChinese := filepath.Join(workDir, "v0.1.0.zh-CN.md")
+	if err := os.WriteFile(changelogChinese, []byte("# v0.1.0 — 2026-07-12\n\n## 新增\n\n- 公开变更。\n"), 0o644); err != nil {
+		t.Fatalf("write Simplified Chinese changelog fixture: %v", err)
+	}
 	publicKey, privateKey, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
 		t.Fatalf("generate fixture signing key: %v", err)
@@ -142,6 +146,7 @@ func TestFinalizeBuildsSignedReleaseDirectory(t *testing.T) {
 		"--input-dir", inputDir,
 		"--output-dir", outputDir,
 		"--changelog", changelog,
+		"--changelog-zh", changelogChinese,
 		"--install-sh", installSh,
 		"--install-cmd", installCmd,
 		"--private-key", privateKeyPath,
@@ -188,7 +193,7 @@ func TestFinalizeBuildsSignedReleaseDirectory(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read release notes: %v", err)
 	}
-	if string(releaseNotes) != "## Added\n\n- Public change.\n" {
+	if string(releaseNotes) != "# English\n\n## Added\n\n- Public change.\n\n---\n\n# 简体中文\n\n## 新增\n\n- 公开变更。\n" {
 		t.Fatalf("release notes = %q", releaseNotes)
 	}
 	for name, contents := range archiveContents {
@@ -220,6 +225,10 @@ func TestFinalizeRejectsMissingOrDuplicateChangelogSectionWithoutPublishing(t *t
 			if err := os.WriteFile(changelog, []byte(changelogBody), 0o644); err != nil {
 				t.Fatalf("write changelog fixture: %v", err)
 			}
+			changelogChinese := filepath.Join(workDir, "v0.1.0.zh-CN.md")
+			if err := os.WriteFile(changelogChinese, []byte("# v0.1.0 — 2026-07-12\n\n## 新增\n\n- 公开变更。\n"), 0o644); err != nil {
+				t.Fatalf("write Simplified Chinese changelog fixture: %v", err)
+			}
 			privateKeyPath := writeFixturePrivateKey(t, workDir)
 			outputDir := filepath.Join(workDir, "release")
 
@@ -229,6 +238,7 @@ func TestFinalizeRejectsMissingOrDuplicateChangelogSectionWithoutPublishing(t *t
 				"--input-dir", inputDir,
 				"--output-dir", outputDir,
 				"--changelog", changelog,
+				"--changelog-zh", changelogChinese,
 				"--private-key", privateKeyPath,
 				"--key-id", "fixture-2026",
 			})
@@ -239,6 +249,32 @@ func TestFinalizeRejectsMissingOrDuplicateChangelogSectionWithoutPublishing(t *t
 				t.Fatalf("failed finalize published output: %v", statErr)
 			}
 		})
+	}
+}
+
+func TestFinalizeRequiresSimplifiedChineseChangelog(t *testing.T) {
+	t.Parallel()
+
+	workDir := newTestWorkDir(t)
+	inputDir := filepath.Join(workDir, "input")
+	if err := os.Mkdir(inputDir, 0o755); err != nil {
+		t.Fatalf("create input directory: %v", err)
+	}
+	changelog := filepath.Join(workDir, "v0.1.0.md")
+	if err := os.WriteFile(changelog, []byte("# v0.1.0 — 2026-07-12\n\n## Added\n\n- Public change.\n"), 0o644); err != nil {
+		t.Fatalf("write changelog fixture: %v", err)
+	}
+
+	err := run([]string{
+		"finalize",
+		"--version", "0.1.0",
+		"--input-dir", inputDir,
+		"--output-dir", filepath.Join(workDir, "release"),
+		"--changelog", changelog,
+		"--key-id", "fixture-2026",
+	})
+	if err == nil || !strings.Contains(err.Error(), "Simplified Chinese changelog") {
+		t.Fatalf("finalize error = %v, want missing Simplified Chinese changelog rejection", err)
 	}
 }
 

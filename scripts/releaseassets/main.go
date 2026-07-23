@@ -181,6 +181,7 @@ func runFinalize(arguments []string) (err error) {
 	inputDir := flags.String("input-dir", "", "directory containing the six packaged archives")
 	outputDir := flags.String("output-dir", "", "new directory receiving final release assets")
 	changelog := flags.String("changelog", "", "version-specific English changelog path")
+	changelogChinese := flags.String("changelog-zh", "", "version-specific Simplified Chinese changelog path")
 	installSh := flags.String("install-sh", "", "verified install.sh path")
 	installCmd := flags.String("install-cmd", "", "verified install.cmd path")
 	privateKeyPath := flags.String("private-key", "", "PKCS#8 PEM Ed25519 private-key path")
@@ -203,6 +204,9 @@ func runFinalize(arguments []string) (err error) {
 	if err := requireSecureRegularFile(*changelog, "changelog"); err != nil {
 		return err
 	}
+	if err := requireSecureRegularFile(*changelogChinese, "Simplified Chinese changelog"); err != nil {
+		return err
+	}
 	if err := requireSecureRegularFile(*privateKeyPath, "private key"); err != nil {
 		return err
 	}
@@ -210,10 +214,15 @@ func runFinalize(arguments []string) (err error) {
 	if err != nil {
 		return err
 	}
-	notes, err := releaseNotesFromChangelog(*changelog, *version)
+	englishNotes, err := releaseNotesFromChangelog(*changelog, *version)
 	if err != nil {
 		return err
 	}
+	chineseNotes, err := releaseNotesFromChangelog(*changelogChinese, *version)
+	if err != nil {
+		return err
+	}
+	notes := bilingualReleaseNotes(englishNotes, chineseNotes)
 	if err := requireSecureRegularFile(*installSh, "install.sh"); err != nil {
 		return err
 	}
@@ -389,6 +398,12 @@ func releaseNotesFromChangelog(path, version string) ([]byte, error) {
 		return nil, fmt.Errorf("changelog release v%s has no release notes", version)
 	}
 	return []byte(notes + "\n"), nil
+}
+
+// bilingualReleaseNotes 为 GitHub Release body 增加稳定的语言标题。两个输入都已经
+// 由 releaseNotesFromChangelog 验证了对应版本标题，并且不会进入签名 checksum asset 集合。
+func bilingualReleaseNotes(english, chinese []byte) []byte {
+	return []byte("# English\n\n" + strings.TrimSpace(string(english)) + "\n\n---\n\n# 简体中文\n\n" + strings.TrimSpace(string(chinese)) + "\n")
 }
 
 func signedChecksumsManifest(keyID string, privateKey ed25519.PrivateKey, checksums []byte) ([]byte, error) {

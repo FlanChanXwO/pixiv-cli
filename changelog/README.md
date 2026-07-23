@@ -1,11 +1,12 @@
 # Changelog
 
 This directory contains the versioned release notes. Each release has matching English and Simplified Chinese files.
-The English notes are used as the GitHub Release body.
+GitHub Release bodies present the two versions together, with English first and Simplified Chinese second.
 
 | Version | Date | Release notes |
 | --- | --- | --- |
 | Unreleased | — | [English](unreleased/en.md) · [简体中文](unreleased/zh-CN.md) |
+| [v0.6.0](https://github.com/FlanChanXwO/pixiv-cli/compare/v0.5.0...v0.6.0) | 2026-07-24 | [English](v0.6.0/en.md) · [简体中文](v0.6.0/zh-CN.md) |
 | [v0.5.0](https://github.com/FlanChanXwO/pixiv-cli/compare/v0.4.5...v0.5.0) | 2026-07-22 | [English](v0.5.0/en.md) · [简体中文](v0.5.0/zh-CN.md) |
 | [v0.4.5](https://github.com/FlanChanXwO/pixiv-cli/compare/v0.4.4...v0.4.5) | 2026-07-20 | [English](v0.4.5/en.md) · [简体中文](v0.4.5/zh-CN.md) |
 | [v0.4.4](https://github.com/FlanChanXwO/pixiv-cli/compare/v0.4.3...v0.4.4) | 2026-07-19 | [English](v0.4.4/en.md) · [简体中文](v0.4.4/zh-CN.md) |

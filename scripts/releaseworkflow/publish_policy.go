@@ -381,7 +381,7 @@ func checkSigningStep(step *yaml.Node) error {
 		}
 	}
 	run, _ := workflowpolicy.MappingValue(step, "run")
-	if err := requireRunFragments(step, "signing-secret step", "trap 'rm -f \"$key_path\"'", "go run ./scripts/releaseassets finalize", "--input-dir dist", "--output-dir release", "--install-sh scripts/install.sh", "--install-cmd scripts/install.cmd", "--private-key \"$key_path\""); err != nil {
+	if err := requireRunFragments(step, "signing-secret step", "trap 'rm -f \"$key_path\"'", "go run ./scripts/releaseassets finalize", "--input-dir dist", "--output-dir release", "--install-sh scripts/install.sh", "--install-cmd scripts/install.cmd", "--private-key \"$key_path\"", "--changelog \"changelog/v${RELEASE_TAG#v}/en.md\"", "--changelog-zh \"changelog/v${RELEASE_TAG#v}/zh-CN.md\""); err != nil {
 		return err
 	}
 	if strings.Contains(run.Value, "set -x") || strings.Contains(run.Value, "echo $RELEASE_SIGNING") {

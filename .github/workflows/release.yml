@@ -472,7 +472,8 @@ jobs:
             --install-cmd scripts/install.cmd \
             --key-id "$RELEASE_SIGNING_KEY_ID" \
             --private-key "$key_path" \
-            --changelog "changelog/v${RELEASE_TAG#v}/en.md"
+            --changelog "changelog/v${RELEASE_TAG#v}/en.md" \
+            --changelog-zh "changelog/v${RELEASE_TAG#v}/zh-CN.md"
       - name: Publish only the verified assets
         shell: bash
         env:
