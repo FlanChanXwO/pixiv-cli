@@ -350,8 +350,8 @@ func TestPixivBinaryRealAPISearchOptIn(t *testing.T) {
 	// App API 认证失败时，stdout/stderr 都可能带上服务端回显；统一交给
 	// canary helper 分流并在测试诊断前脱敏，避免显式注入的 token 泄露。
 	stdout := runPixivCanary(t, repoRoot, binaryPath, env, authenticatedCanaryAuth{kind: canaryAuthExplicitToken, refreshToken: refreshToken}, "search", "初音ミク")
-	if !strings.Contains(string(stdout), "found ") {
-		t.Fatalf("real API search did not print result summary:\n%s", redactCanaryDiagnostic(refreshToken, string(stdout)))
+	if !strings.Contains(string(stdout), `illustrations for "初音ミク"`) {
+		t.Fatalf("real API search did not print the illustrations heading:\n%s", redactCanaryDiagnostic(refreshToken, string(stdout)))
 	}
 }
 
