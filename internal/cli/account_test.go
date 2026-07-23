@@ -1544,9 +1544,10 @@ func TestAccountLoginManualPageRejectsStaleRelayWithoutOpeningIt(t *testing.T) {
 	assert.Contains(t, string(body), "Login failed")
 	assert.NotContains(t, string(body), "stale-challenge")
 	assert.NotContains(t, string(body), bridge)
-	assert.NotContains(t, stderr.String(), bridge)
 	assert.NotEmpty(t, loginURLFromPage(t, page))
-	require.NotZero(t, run.waitWithin(t, 2*time.Second), stderr.String())
+	code := run.waitWithin(t, 2*time.Second)
+	assert.NotContains(t, stderr.String(), bridge)
+	require.NotZero(t, code, stderr.String())
 	assert.Empty(t, stdout.String())
 }
 
