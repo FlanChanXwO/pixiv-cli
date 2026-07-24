@@ -58,6 +58,98 @@ func TestDownloadServiceDelegatesOperationClientAndRequest(t *testing.T) {
 	require.Equal(t, want, got)
 }
 
+func TestDownloadServiceReportsArtworkFailuresAndPreservesInputOrder(t *testing.T) {
+	client := downloadTargetClientStub{}
+	var calls []int64
+	service := application.DownloadService{NewManager: func(application.DownloadClient, string, string) (application.DownloadManager, error) {
+		return &downloadManagerStub{download: func(_ context.Context, request application.DownloadRequest) ([]application.DownloadedArtwork, error) {
+			require.Len(t, request.IllustIDs, 1)
+			id := request.IllustIDs[0]
+			calls = append(calls, id)
+			if id == 2 {
+				return nil, errors.New("upstream unavailable")
+			}
+			return []application.DownloadedArtwork{{IllustID: id, Title: "work"}}, nil
+		}}, nil
+	}}
+
+	report, err := service.DownloadTargets(context.Background(), client, []sdk.Reference{
+		{Kind: sdk.ReferenceKindArtwork, ID: 1},
+		{Kind: sdk.ReferenceKindArtwork, ID: 2},
+		{Kind: sdk.ReferenceKindArtwork, ID: 1},
+	}, application.DownloadRequest{})
+
+	require.NoError(t, err)
+	require.Equal(t, []int64{1, 2, 1}, calls)
+	require.Equal(t, []application.DownloadedArtwork{{IllustID: 1, Title: "work"}, {IllustID: 1, Title: "work"}}, report.Items)
+	require.Len(t, report.Failures, 1)
+	require.Equal(t, int64(2), report.Failures[0].IllustID)
+	require.Equal(t, "https://www.pixiv.net/artworks/2", report.Failures[0].URL)
+	require.Equal(t, "upstream unavailable", report.Failures[0].Message)
+}
+
+func TestDownloadServiceExpandsEveryVisualArtworkTypeForUserTargets(t *testing.T) {
+	var requests []sdk.UserArtworksRequest
+	client := userArtworksDownloadClient{userArtworks: func(_ context.Context, request sdk.UserArtworksRequest) (*sdk.IllustListResult, error) {
+		requests = append(requests, request)
+		switch request.Type {
+		case sdk.IllustTypeIllust:
+			if request.Cursor == "" {
+				return &sdk.IllustListResult{Illusts: []sdk.Illust{{ID: 1, Type: "illust"}}, NextCursor: "illust-next"}, nil
+			}
+			return &sdk.IllustListResult{Illusts: []sdk.Illust{{ID: 2, Type: "illust"}}}, nil
+		case sdk.IllustTypeManga:
+			return &sdk.IllustListResult{Illusts: []sdk.Illust{{ID: 3, Type: "manga"}}}, nil
+		case sdk.IllustTypeUgoira:
+			return &sdk.IllustListResult{Illusts: []sdk.Illust{{ID: 4, Type: "ugoira"}}}, nil
+		default:
+			return nil, errors.New("unexpected artwork type")
+		}
+	}}
+	var downloaded []int64
+	service := application.DownloadService{NewManager: func(application.DownloadClient, string, string) (application.DownloadManager, error) {
+		return &downloadManagerStub{download: func(_ context.Context, request application.DownloadRequest) ([]application.DownloadedArtwork, error) {
+			id := request.IllustIDs[0]
+			downloaded = append(downloaded, id)
+			return []application.DownloadedArtwork{{IllustID: id}}, nil
+		}}, nil
+	}}
+
+	report, err := service.DownloadTargets(context.Background(), client, []sdk.Reference{{Kind: sdk.ReferenceKindUser, ID: 7}}, application.DownloadRequest{})
+
+	require.NoError(t, err)
+	require.Empty(t, report.Failures)
+	require.Equal(t, []int64{1, 2, 3, 4}, downloaded)
+	require.Equal(t, []sdk.UserArtworksRequest{
+		{UserID: 7, Type: sdk.IllustTypeIllust},
+		{UserID: 7, Type: sdk.IllustTypeIllust, Cursor: "illust-next"},
+		{UserID: 7, Type: sdk.IllustTypeManga},
+		{UserID: 7, Type: sdk.IllustTypeUgoira},
+	}, requests)
+}
+
+func TestDownloadServiceStopsImmediatelyWhenContextIsCanceled(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	calls := 0
+	service := application.DownloadService{NewManager: func(application.DownloadClient, string, string) (application.DownloadManager, error) {
+		return &downloadManagerStub{download: func(ctx context.Context, _ application.DownloadRequest) ([]application.DownloadedArtwork, error) {
+			calls++
+			return nil, ctx.Err()
+		}}, nil
+	}}
+
+	report, err := service.DownloadTargets(ctx, downloadTargetClientStub{}, []sdk.Reference{
+		{Kind: sdk.ReferenceKindArtwork, ID: 1},
+		{Kind: sdk.ReferenceKindArtwork, ID: 2},
+	}, application.DownloadRequest{})
+
+	require.ErrorIs(t, err, context.Canceled)
+	require.Zero(t, calls)
+	require.Empty(t, report.Items)
+	require.Empty(t, report.Failures)
+}
+
 func TestDownloadServiceRejectsMissingFactory(t *testing.T) {
 	_, err := (application.DownloadService{}).Download(context.Background(), downloadClientStub{}, application.DownloadRequest{})
 
@@ -145,6 +237,13 @@ func (m *downloadManagerStub) Download(ctx context.Context, request application.
 
 type downloadClientStub struct{}
 
+type downloadTargetClientStub struct{ downloadClientStub }
+
+type userArtworksDownloadClient struct {
+	downloadClientStub
+	userArtworks func(context.Context, sdk.UserArtworksRequest) (*sdk.IllustListResult, error)
+}
+
 type typedNilDownloadClient struct{}
 
 func (*typedNilDownloadClient) IllustDetail(context.Context, int64) (*sdk.IllustDetail, error) {
@@ -177,4 +276,12 @@ func (downloadClientStub) ParseResourceRef(string) (sdk.ResourceRef, error) {
 
 func (downloadClientStub) Download(context.Context, sdk.ResourceRef, string) error {
 	return nil
+}
+
+func (downloadTargetClientStub) UserArtworks(context.Context, sdk.UserArtworksRequest) (*sdk.IllustListResult, error) {
+	return &sdk.IllustListResult{}, nil
+}
+
+func (c userArtworksDownloadClient) UserArtworks(ctx context.Context, request sdk.UserArtworksRequest) (*sdk.IllustListResult, error) {
+	return c.userArtworks(ctx, request)
 }

@@ -70,6 +70,17 @@ expose a like-count field; bookmark totals must not be labeled as likes.
 `DownloadQuality` (`original|regular|small|thumb|mini`); ugoira rejects page selection
 or non-original quality as unsupported.
 
+### Local Pixiv references
+
+`ParseReference(raw)` performs no I/O and accepts either a positive artwork ID or a
+strict official Pixiv HTTPS URL. It returns `Reference{Kind, ID}`, where `Kind` is
+`artwork` for an ID or `/artworks/{id}`, and `user` for `/users/{id}` or
+`/users/{id}/artworks`. The URL host must be `pixiv.net` or `www.pixiv.net`; an
+optional locale, query, and fragment are allowed. `ParseArtworkReference(raw)` is the
+artwork-only variant, and `Reference.URL()` returns the canonical artwork or user page
+URL. The parser neither follows redirects nor fetches HTML, rejects all other Pixiv
+properties and URL forms, and its validation errors do not reproduce the supplied URL.
+
 SDK user IDs such as `UserArtworksRequest.UserID` are required. Omitting a UID to mean “the current user” is a
 CLI/MCP adapter feature; Go callers should call `CurrentUserID(ctx)` and then build the request.
 
@@ -134,10 +145,15 @@ manage their own PKCE and state. Use `StartLogin` when the SDK should manage the
 | `AspectRatio` | `all`, `landscape`, `portrait`, `square` |
 | `Resolution` | `all`, `high`, `medium`, `low`; both dimensions must respectively be `>=3000`, `1000..2999`, or `<=999` |
 | `Tool` | Exact upstream drawing-tool value; no fuzzy matching |
+| `BookmarkMin` / `BookmarkMax` | Optional inclusive non-negative public bookmark-count bounds; `Min` cannot exceed `Max` |
 
 Zero enum values normalize to `all`; `Tool` is trimmed. Unknown values return `invalid_argument` before any
-upstream request. The authenticated adapter maps resolution, aspect ratio, tool, content type, and AI exclusion to
-App server parameters. Rating and AI-only filtering use normalized fields from the current App batch.
+upstream request. `SearchIllustRequest.Target` also accepts `keyword` for tags, titles, and captions; `Duration`
+accepts `within_last_day|within_last_week|within_last_month`; `StartDate` and `EndDate`
+are optional inclusive `YYYY-MM-DD` bounds. A date range cannot be combined with `Duration`, and a supplied start
+cannot be later than end. The authenticated adapter maps resolution, aspect ratio, tool, content type, AI exclusion,
+date bounds, and bookmark bounds to App server parameters. Rating and AI-only filtering use normalized fields from
+the current App batch.
 `Illust.Tools []string` preserves upstream order and values and is unrelated to bookmark-count filtering.
 
 `SearchIllustOptions(ctx, SearchIllustOptionsRequest{Word: word})` requires a non-empty word and App
@@ -185,7 +201,7 @@ _ = next
 ```
 
 Cursors are versioned and bound to the operation and complete normalized query. An illustration-search cursor also
-binds `Rating`, `ContentType`, `AIMode`, `AspectRatio`, `Resolution`, and `Tool`; a novel-search cursor binds its
+binds target, duration, date bounds, `Rating`, `ContentType`, `AIMode`, `AspectRatio`, `Resolution`, `Tool`, and bookmark bounds; a novel-search cursor binds its
 target, sort, duration, rating, text-length bounds, and original-only condition. Changing a filter and reusing the
 old cursor returns `invalid_argument`. Never parse, edit, reuse across requests, or replace a cursor with an upstream
 offset/page. The SDK does not accept `page`; CLI/MCP translate logical pages and limits at their boundaries.
@@ -195,8 +211,8 @@ offset/page. The SDK does not accept `page`; CLI/MCP translate logical pages and
 With a refresh token, illustration search uses only App API. Authentication, network, and server failures never
 fall back to Web automatically. Without a token, `NewClient` can use the anonymous Web allowlist when
 `WebFallbackEnabled=true`; `OpenDefault` reads local `web_fallback_enabled` for each snapshot. Anonymous search
-uses only filters Web can express reliably. `r18`, `r18g`, and `mature` fail with `unauthorized` before networking;
-they are never disguised as empty results. Anonymous `SearchIllustOptions` returns `unsupported`. The SDK never
+uses only filters Web can express reliably. `r18`, `r18g`, `mature`, `Target=keyword`, and bookmark bounds fail
+with `unauthorized` before networking; they are never disguised as empty results. Anonymous `SearchIllustOptions` returns `unsupported`. The SDK never
 reads/injects cookies or converts a refresh token into a Web session.
 
 `SearchNovel` requires App authentication and never falls back to Web. `SearchUser` uses App search when

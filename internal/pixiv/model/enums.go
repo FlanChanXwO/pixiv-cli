@@ -59,4 +59,6 @@ type SearchIllustFilters struct {
 	AspectRatio string
 	Resolution  string
 	Tool        string
+	BookmarkMin *int
+	BookmarkMax *int
 }

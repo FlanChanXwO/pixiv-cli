@@ -45,14 +45,14 @@ func TestLegacySearchFailurePreservesWireResultAndLogsTypedError(t *testing.T) {
 	defer session.Close()
 
 	result := callTool(t, session, "search_illust", map[string]any{"word": queryCanary})
-	if result.IsError {
-		t.Fatalf("legacy search failure changed isError: %+v", result)
+	if !result.IsError {
+		t.Fatalf("structured search failure must set isError: %+v", result)
 	}
-	wantOut := textOut{Text: typedErr.Error()}
-	var gotOut textOut
+	wantText := "Error: " + typedErr.Error()
+	var gotOut illustQueryOut
 	decodeStructured(t, result, &gotOut)
-	if gotOut != wantOut {
-		t.Fatalf("structured output=%+v, want %+v", gotOut, wantOut)
+	if len(gotOut.Items) != 0 || gotOut.Text != wantText {
+		t.Fatalf("structured output=%+v, want empty items and %q", gotOut, wantText)
 	}
 	if len(result.Content) != 1 {
 		t.Fatalf("content len=%d, want 1", len(result.Content))
@@ -61,12 +61,8 @@ func TestLegacySearchFailurePreservesWireResultAndLogsTypedError(t *testing.T) {
 	if !ok {
 		t.Fatalf("content[0]=%T, want *mcp.TextContent", result.Content[0])
 	}
-	var contentOut textOut
-	if err := json.Unmarshal([]byte(textContent.Text), &contentOut); err != nil {
-		t.Fatalf("decode text content %q: %v", textContent.Text, err)
-	}
-	if contentOut != wantOut {
-		t.Fatalf("text content=%+v, want %+v", contentOut, wantOut)
+	if textContent.Text != wantText {
+		t.Fatalf("text content=%q, want %q", textContent.Text, wantText)
 	}
 
 	event := findOperationEvent(t, logs.String(), "search_illust")
@@ -119,14 +115,14 @@ func TestLegacySearchFailureRejectsHostileTypedLogMetadataWithoutChangingWire(t 
 	defer session.Close()
 
 	result := callTool(t, session, "search_illust", map[string]any{"word": "ordinary-query"})
-	if result.IsError {
-		t.Fatalf("legacy search failure changed isError: %+v", result)
+	if !result.IsError {
+		t.Fatalf("structured search failure must set isError: %+v", result)
 	}
-	wantOut := textOut{Text: typedErr.Error()}
-	var gotOut textOut
+	wantText := "Error: " + typedErr.Error()
+	var gotOut illustQueryOut
 	decodeStructured(t, result, &gotOut)
-	if gotOut != wantOut {
-		t.Fatalf("structured output=%+v, want %+v", gotOut, wantOut)
+	if len(gotOut.Items) != 0 || gotOut.Text != wantText {
+		t.Fatalf("structured output=%+v, want empty items and %q", gotOut, wantText)
 	}
 	if len(result.Content) != 1 {
 		t.Fatalf("content len=%d, want 1", len(result.Content))
@@ -135,12 +131,8 @@ func TestLegacySearchFailureRejectsHostileTypedLogMetadataWithoutChangingWire(t 
 	if !ok {
 		t.Fatalf("content[0]=%T, want *mcp.TextContent", result.Content[0])
 	}
-	var contentOut textOut
-	if err := json.Unmarshal([]byte(textContent.Text), &contentOut); err != nil {
-		t.Fatalf("decode text content %q: %v", textContent.Text, err)
-	}
-	if contentOut != wantOut {
-		t.Fatalf("text content=%+v, want %+v", contentOut, wantOut)
+	if textContent.Text != wantText {
+		t.Fatalf("text content=%q, want %q", textContent.Text, wantText)
 	}
 
 	event := findOperationEvent(t, logs.String(), "search_illust")

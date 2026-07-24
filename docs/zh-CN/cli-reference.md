@@ -24,7 +24,7 @@ SDK 与 MCP 细节不在此重复，入口见[相关文档](#相关文档)。
 
 ```bash
 # Linux/macOS
-curl -fsSLo /tmp/pixiv-install.sh https://raw.githubusercontent.com/FlanChanXwO/pixiv-cli/main/scripts/install.sh
+curl -fsSLo /tmp/pixiv-install.sh https://github.com/FlanChanXwO/pixiv-cli/releases/latest/download/install.sh
 sh /tmp/pixiv-install.sh --add-to-path
 ```
 
@@ -48,6 +48,8 @@ binary 预检会在替换现有安装前显露 loader 失败。
 这是首次 bootstrap 的信任边界：`pixiv` 尚不存在时，脚本没有内置 Ed25519 verifier。SHA-256 校验可以
 发现传输损坏或 archive 不匹配，但来源真实性仍依赖 HTTPS 与官方 GitHub repository/Release 账号；执行前
 应审阅安装脚本。安装完成后，后续 `pixiv update` 会使用 binary 内置的 Ed25519 trust root 验证 Release 更新。
+
+随正式版本发布的安装器内嵌静态 Release-source 列表。它始终从 GitHub HTTPS 直连获取权威 `checksums.txt`，再仅对匹配的平台 archive 探测免费候选；候选返回的 checksum 必须与直连文件逐字一致。安装前 archive 仍必须匹配该直连 SHA-256。列表不会从远端拉取，只会随签名 Release 更新。
 
 ### 从源码构建
 
@@ -264,7 +266,7 @@ CLI 使用 Cobra/pflag，选项可以写在位置参数前后，例如 `pixiv au
 | `search` | `pixiv search [options] WORD` | 搜索插画。 |
 | `novel search` | `pixiv novel search [options] WORD` | 通过认证 App API 搜索小说。 |
 | `search-options` | `pixiv search-options [options] WORD` | 查询该关键词在 App API 中可用的绘图工具；需要认证，支持通用账号/token/代理参数和 `--json`。 |
-| `detail` | `pixiv detail [options] ILLUST_ID` | 查看单个作品详情。 |
+| `detail` | `pixiv detail [options] ILLUST_ID_OR_URL` | 查看单个作品 ID 或受支持 Pixiv 作品 URL 的详情。 |
 | `ranking` | `pixiv ranking [options]` | 查看 Pixiv 插画排行榜。 |
 | `recommended` | `pixiv recommended all\|illust\|manga\|novel\|user [--page N --limit N --json]` | 查看指定类个性化推荐；`all` 按插画、漫画、小说、作者顺序完整返回，需要认证。 |
 | `user search` | `pixiv user search WORD [--page N --limit N --json]` | 搜索用户；JSON 和文本会标明结果来自官方 App 用户搜索，还是匿名“相关插画作者”fallback。 |
@@ -276,7 +278,7 @@ CLI 使用 Cobra/pflag，选项可以写在位置参数前后，例如 `pixiv au
 | `bookmark remove` | `pixiv bookmark remove ILLUST_ID` | 取消收藏作品；不接受可见性或 tag 参数。 |
 | `follow add` | `pixiv follow add USER_ID [--restrict public\|private]` | 按选定可见性关注用户。 |
 | `follow remove` | `pixiv follow remove USER_ID` | 取消关注用户；不接受可见性参数。 |
-| `download` | `pixiv download [options] ILLUST_ID...` | 下载一个或多个作品；无 token 时默认走匿名 web fallback。 |
+| `download` | `pixiv download [options] TARGET...` | 下载作品 ID/URL，或从受支持的用户 URL 下载全部视觉作品。 |
 | `mcp` | `pixiv mcp [--proxy URL\|--no-proxy]` | 启动 MCP stdio server；代理覆盖只在本次启动时生效。 |
 
 下载文件名会规范化文件名模板以及 URL 推导扩展名中的跨平台非法字符；扩展名还会替换 ASCII 控制字符并移除 Windows 不接受的尾随点或空格。扩展名仍来自上游 URL，不使用 allowlist、MIME 猜测或静默替代。
@@ -296,15 +298,19 @@ CLI 使用 Cobra/pflag，选项可以写在位置参数前后，例如 `pixiv au
 
 | 命令 | 参数 | 默认值 | 说明 |
 | --- | --- | --- | --- |
-| `search`、`novel search` | `--search-by` | `tag-partial` | 搜索字段：`tag-partial`、`tag-exact` 或 `title-caption`。 |
+| `search` | `--search-by` | `tag-partial` | 搜索字段：`tag-partial`、`tag-exact`、`title-caption`，或仅 App OAuth 可用的 `tag-title-caption`（标签、标题、说明文字）。 |
+| `novel search` | `--search-by` | `tag-partial` | 搜索字段：`tag-partial`、`tag-exact` 或 `title-caption`。 |
 | `search`、`novel search` | `--sort` | `date_desc` | 排序方式：`date_desc` 或 `date_asc`。 |
-| `search`、`novel search` | `--period` | 空 | 时间范围：`day`、`week` 或 `month`；省略则不限制时间。 |
+| `search` | `--period` | 空 | 快捷时间范围：`day`、`week`、`month`、`half-year` 或 `year`；省略则不限制时间。不能和 `--start-date`、`--end-date` 同用。 |
+| `novel search` | `--period` | 空 | 时间范围：`day`、`week` 或 `month`；省略则不限制时间。 |
+| `search` | `--start-date` / `--end-date` | 空 | 包含边界的 `YYYY-MM-DD` 日期；可只给一端，两端都给时起始不得晚于结束；不能和 `--period` 同用。 |
 | `search`、`novel search` | `--rating` | `all` | 分级筛选：`sfw`、`r18`、`r18g`、`mature` 或 `all`。 |
 | `search` | `--type` | `all` | 作品类型：`all`、`illust-and-ugoira`、`illust`、`manga` 或 `ugoira`。 |
 | `search` | `--ai-mode` | `all` | AI 筛选：`all`、`exclude` 或 `only`；Pixiv `AIType==2` 表示 AI 生成。 |
 | `search` | `--aspect-ratio` | `all` | 横纵比：`all`、`landscape`、`portrait` 或 `square`。 |
 | `search` | `--resolution` | `all` | 分辨率：`all`、`high`、`medium` 或 `low`；宽高两个维度分别都需满足 `>=3000`、`1000..2999` 或 `<=999`。 |
 | `search` | `--draw-tool` | 空 | 上游绘图工具的精确名称；用已认证的 `search-options` 查询当前值。 |
+| `search` | `--bookmark-min` / `--bookmark-max` | 空 | 包含边界的非负公开收藏数；需要 App OAuth，且最小值不能大于最大值。 |
 | `novel search` | `--min-text-length` | `0` | 正文最少字符数；`0` 关闭下界。 |
 | `novel search` | `--max-text-length` | `0` | 正文最多字符数；`0` 关闭上界，且不能小于非零下界。 |
 | `novel search` | `--original-only` | `false` | 仅保留 Pixiv 标记为原创的小说。 |
@@ -324,10 +330,20 @@ CLI 使用 Cobra/pflag，选项可以写在位置参数前后，例如 `pixiv au
 | `bookmark add` | `--restrict` | `public` | 新收藏的可见性：`public` 或 `private`。 |
 | `bookmark add` | `--tag` | 空 | 收藏 tag；可重复使用。 |
 | `follow add` | `--restrict` | `public` | 新关注的可见性：`public` 或 `private`。 |
-| `detail` | `ILLUST_ID` | 必填 | Pixiv 作品 ID。 |
-| `download` | `ILLUST_ID...` | 必填 | 一个或多个 Pixiv 作品 ID。 |
+| `detail` | `ILLUST_ID_OR_URL` | 必填 | 正整数作品 ID，或受支持的 Pixiv 作品 URL。 |
+| `download` | `TARGET...` | 必填 | 作品 ID、作品 URL，或受支持的用户主页/作品页 URL。 |
 
-有 refresh token 时，`search` 始终使用 App API。分辨率、横纵比、工具、作品类型和 `ai-mode=exclude` 由 App 筛选，分级和 `ai-mode=only` 对 App 返回批次筛选；App 失败不会回落 Web。全部筛选都会绑定 opaque cursor，cursor 不能用于不同筛选组合。本地筛选跳过连续空上游批次时，CLI/MCP 会补拉到首个非空逻辑批次或真正结束。指定正数 `--limit` 或 `--page` 时，按过滤后的逻辑结果跨批填满；`--limit 0` 遍历全部过滤结果；未指定 `--limit` 时读取一个上游批次，但会跳过前导空批。不提供收藏数筛选，也不提供点赞数字段。作品 JSON/文本包含稳定作品页 URL `https://www.pixiv.net/artworks/{id}`，作为首字段/每件作品第一行。
+有 refresh token 时，`search` 始终使用 App API。分辨率、横纵比、工具、作品类型和 `ai-mode=exclude` 由 App 筛选，分级和 `ai-mode=only` 对 App 返回批次筛选；App 失败不会回落 Web。全部筛选都会绑定 opaque cursor，cursor 不能用于不同筛选组合。本地筛选跳过连续空上游批次时，CLI/MCP 会补拉到首个非空逻辑批次或真正结束。指定正数 `--limit` 或 `--page` 时，按过滤后的逻辑结果跨批填满；`--limit 0` 遍历全部过滤结果；未指定 `--limit` 时读取一个上游批次，但会跳过前导空批。App 还会执行显式日期与收藏数边界；收藏数不是点赞字段，不得文案为点赞。作品 JSON/文本包含稳定作品页 URL `https://www.pixiv.net/artworks/{id}`，作为首字段/每件作品第一行。
+
+### 插画标签查询语法
+
+已在认证 App API 上验证：插画 `search` 选择标签模式时，`tag-exact` 适合布尔标签筛选。`tagA tagB`
+表示同时要求两个完整标签（AND），`tagA OR tagB` 表示任一完整标签即可（OR）；`OR` 必须大写。字面量
+`AND` 不是已验证的运算符，应以空格分隔两个标签。
+
+默认的 `tag-partial` 也接受已验证的大写 `OR` 语法，但每个词都是模糊标签条件，不能把结果描述成严格的
+精确标签 AND：它可能匹配部分标签、别名或翻译标签，而作品未必显式列出输入的完整标签。`title-caption` 和仅 App OAuth 可用的 `tag-title-caption`
+都没有已记录的布尔标签契约。尚未验证对字面量大写 `OR` 标签/关键词的转义语法；需要严格查询时请避免该 token 并使用精确标签。
 
 `novel search` 仅走 App API。App 请求只表达关键词匹配、日期排序和时间范围；分级、正文长度与原创条件逐批依据稳定返回字段验证。字段缺失会明确返回上游响应错误，不会静默视为不匹配。筛选跳过上游批次时，逻辑 `--page`/`--limit` 语义不变。小说 JSON 包含稳定作品页 URL `https://www.pixiv.net/novel/show.php?id={id}`、`x_restrict`、`text_length` 与 `is_original`。
 
@@ -336,6 +352,10 @@ CLI 使用 Cobra/pflag，选项可以写在位置参数前后，例如 `pixiv au
 App JSON 读取在首次 429 且 `Retry-After` 有效时按命令 context 等待并重试一次；header 缺失/非法、第二次 429、
 写操作和资源下载绝不重放。
 `detail --json` 保留 Pixiv 原始 HTML `caption`；普通 `detail` 输出将其安全转为纯文本，作品列表不会输出 caption。
+
+`detail` 接受正整数作品 ID，或规范 HTTPS `pixiv.net`/`www.pixiv.net` 作品 URL：`/artworks/{id}`；可带 locale、query 和 fragment。不接受用户页、小说、短链、FANBOX、Pixivision、Sketch、旧式或任意其他 URL。
+
+`download` 还接受 `/users/{id}` 与 `/users/{id}/artworks`。用户 URL 会完整遍历并下载 `illust`、`manga`、`ugoira`，不下载小说，且必须使用 App OAuth；不会走匿名 Web fallback。URL 只在本地解析，不抓取 HTML，也不跟随重定向。单个作品失败不会阻止其余作品，取消会立即停止。`download --json` 输出 `{"items":[...],"failures":[...]}`；成功项含规范作品 `url`、ID、类型和本地文件 path/page，任何失败都会令命令以非零码退出。不会保存下载历史，也不做跨次去重。
 
 ### 通用参数
 
@@ -385,7 +405,7 @@ App JSON 读取在首次 429 且 `Retry-After` 有效时按命令 context 等待
 匿名 fallback 的差异：
 
 - 匿名 `search` 只执行 Web API 能可靠表达的筛选。分辨率、横纵比、绘图工具和作品类型会转译为 Web 参数；AI 筛选使用返回的作品字段。
-- `rating=r18`、`r18g` 或 `mature` 会在匿名请求前明确返回需要认证，而不会伪装成空结果；`rating=all` 只表示匿名可见范围。
+- `rating=r18`、`r18g`、`mature`、`--search-by tag-title-caption` 或收藏数边界会在匿名请求前明确返回需要认证，而不会伪装成空结果；`rating=all` 只表示匿名可见范围。
 - `search-options` 仅支持 App API，无 refresh token 时明确返回 unsupported。搜索不会读取或保存 `PHPSESSID` 等浏览器 Cookie，也不会把 refresh token 转换成 Web session。
 - `novel search` 仅支持 App API；无 refresh token 时明确返回需要认证。
 - 九个扩展排行榜 mode（`day_manga`、`week_manga`、`month_manga`、`week_rookie_manga`、`day_r18`、
@@ -428,6 +448,8 @@ pixiv update --proxy http://127.0.0.1:7890
 安装失败，会显式尝试恢复原 formula 并报告原错误和恢复结果。`go install` 使用精确 Release
 tag；Release binary 在下载前校验 Ed25519 签名的 checksum 清单和 archive SHA-256，再预检
 `pixiv version --json` 并原子替换可执行文件。
+
+未显式使用 `--proxy`、已配置的 `https_proxy` 或 `HTTPS_PROXY` 时，Release binary 更新会并发探测内嵌 source 列表。支持 API 的候选用于 GitHub Releases API；支持 archive 的候选用于签名 manifest、checksum 与平台 archive。首个有效响应成为首选路由；某个 asset 下载失败时会静默依次尝试其余已声明路由各一次，全部失败才会在错误中列出每条失败路由。候选不会改变规范 Release URL、SemVer 选择、Ed25519 验证或 SHA-256 验证。自动更新通知只使用支持 API 的候选，并保持原有的三秒总时限和 24 小时缓存。
 
 更新检查只选择 canonical SemVer tag。stable 检查先排除 GitHub 已标记的 prerelease；
 `--prerelease` 则将其纳入当前通道。若当前通道的任一非 draft published Release 使用非

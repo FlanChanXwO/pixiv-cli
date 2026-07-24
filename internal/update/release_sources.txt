@@ -1,0 +1,8 @@
+# id|github_releases_api_template|release_asset_template
+# {url} inserts the canonical HTTPS URL as a path-style proxy target.
+# {url_query} percent-encodes the complete canonical HTTPS URL for a query parameter.
+gh-proxy|https://gh-proxy.com/{url}|https://gh-proxy.com/{url}
+ghfast|-|https://ghfast.top/{url}
+gh-xmly|-|https://gh.xmly.dev/{url}
+github-boki|-|https://github.boki.moe/{url}
+github-direct|{url}|{url}

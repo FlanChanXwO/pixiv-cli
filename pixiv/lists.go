@@ -11,11 +11,13 @@ import (
 )
 
 type searchIllustQuery struct {
-	Word     string              `json:"word"`
-	Target   SearchTarget        `json:"target"`
-	Sort     SortMode            `json:"sort"`
-	Duration string              `json:"duration"`
-	Filters  SearchIllustFilters `json:"filters"`
+	Word      string              `json:"word"`
+	Target    SearchTarget        `json:"target"`
+	Sort      SortMode            `json:"sort"`
+	Duration  string              `json:"duration"`
+	StartDate string              `json:"start_date"`
+	EndDate   string              `json:"end_date"`
+	Filters   SearchIllustFilters `json:"filters"`
 }
 type searchNovelQuery struct {
 	Word     string             `json:"word"`
@@ -86,7 +88,11 @@ func (c *Client) SearchIllust(ctx context.Context, request SearchIllustRequest) 
 	} else if scoped != c {
 		return scoped.SearchIllust(ctx, request)
 	}
-	query := searchIllustQuery{strings.TrimSpace(request.Word), request.Target, request.Sort, strings.TrimSpace(request.Duration), normalizeSearchIllustFilters(request.Filters)}
+	query := searchIllustQuery{
+		Word: strings.TrimSpace(request.Word), Target: request.Target, Sort: request.Sort,
+		Duration: strings.TrimSpace(request.Duration), StartDate: strings.TrimSpace(request.StartDate),
+		EndDate: strings.TrimSpace(request.EndDate), Filters: normalizeSearchIllustFilters(request.Filters),
+	}
 	if query.Word == "" {
 		return nil, invalidArgument(OperationSearchIllust, 0, errors.New("word is required"))
 	}
@@ -96,8 +102,14 @@ func (c *Client) SearchIllust(ctx context.Context, request SearchIllustRequest) 
 	if query.Sort == "" {
 		query.Sort = SortModeDateDesc
 	}
-	if !validSearchTarget(query.Target) || !validSortMode(query.Sort) || !validDuration(query.Duration) || !validSearchIllustFilters(query.Filters) {
+	if !validSearchTarget(query.Target) || !validSortMode(query.Sort) || !validIllustSearchDuration(query.Duration) || !validSearchIllustFilters(query.Filters) {
 		return nil, invalidArgument(OperationSearchIllust, 0, errors.New("search enum is invalid"))
+	}
+	if query.Duration != "" && (query.StartDate != "" || query.EndDate != "") {
+		return nil, invalidArgument(OperationSearchIllust, 0, errors.New("duration cannot be combined with start_date or end_date"))
+	}
+	if !validSearchDateRange(query.StartDate, query.EndDate) {
+		return nil, invalidArgument(OperationSearchIllust, 0, errors.New("start_date and end_date must use YYYY-MM-DD, with start_date no later than end_date"))
 	}
 	digest := queryDigest(OperationSearchIllust, query)
 	offset, err := c.cursorOffset(request.Cursor, OperationSearchIllust, digest, 0)
@@ -109,10 +121,10 @@ func (c *Client) SearchIllust(ctx context.Context, request SearchIllustRequest) 
 		return nil, err
 	}
 	if route == routeWeb {
-		if query.Filters.Rating == SearchRatingR18 || query.Filters.Rating == SearchRatingR18G || query.Filters.Rating == SearchRatingMature {
-			return nil, localRouteError(CodeUnauthorized, OperationSearchIllust, 0, 0, errors.New("authenticated App API search is required for the requested rating"))
+		if searchIllustRequiresAppAPI(query) {
+			return nil, localRouteError(CodeUnauthorized, OperationSearchIllust, 0, 0, errors.New("authenticated App API search is required for the requested target or filters"))
 		}
-		list, err := c.web.SearchIllust(ctx, query.Word, string(query.Target), string(query.Sort), query.Duration, offset, internalSearchIllustFilters(query.Filters))
+		list, err := c.web.SearchIllust(ctx, query.Word, string(query.Target), string(query.Sort), query.Duration, query.StartDate, query.EndDate, offset, internalSearchIllustFilters(query.Filters))
 		if err != nil {
 			return nil, mapWebListError(err, OperationSearchIllust, 0)
 		}
@@ -122,7 +134,7 @@ func (c *Client) SearchIllust(ctx context.Context, request SearchIllustRequest) 
 	if route != routeApp {
 		return nil, unexpectedRoute(OperationSearchIllust, 0, 0)
 	}
-	list, err := c.app.SearchIllust(ctx, query.Word, string(query.Target), string(query.Sort), query.Duration, offset, internalSearchIllustFilters(query.Filters))
+	list, err := c.app.SearchIllust(ctx, query.Word, string(query.Target), string(query.Sort), query.Duration, query.StartDate, query.EndDate, offset, internalSearchIllustFilters(query.Filters))
 	if err != nil {
 		return nil, mapAppOperationError(err, OperationSearchIllust, 0)
 	}
@@ -149,7 +161,7 @@ func (c *Client) SearchNovel(ctx context.Context, request SearchNovelRequest) (r
 	if query.Sort == "" {
 		query.Sort = SortModeDateDesc
 	}
-	if !validSearchTarget(query.Target) || !validSortMode(query.Sort) || !validDuration(query.Duration) || !validNovelSearchFilters(query.Filters) {
+	if !validSearchTarget(query.Target) || !validSortMode(query.Sort) || !validNovelSearchDuration(query.Duration) || !validNovelSearchFilters(query.Filters) {
 		return nil, invalidArgument(OperationSearchNovel, 0, errors.New("novel search parameters are invalid"))
 	}
 	digest := queryDigest(OperationSearchNovel, query)
@@ -267,6 +279,7 @@ func internalSearchIllustFilters(filters SearchIllustFilters) model.SearchIllust
 	return model.SearchIllustFilters{
 		Rating: string(filters.Rating), ContentType: string(filters.ContentType), AIMode: string(filters.AIMode),
 		AspectRatio: string(filters.AspectRatio), Resolution: string(filters.Resolution), Tool: filters.Tool,
+		BookmarkMin: filters.BookmarkMin, BookmarkMax: filters.BookmarkMax,
 	}
 }
 
@@ -275,7 +288,30 @@ func validSearchIllustFilters(filters SearchIllustFilters) bool {
 		oneOf(string(filters.ContentType), "all", "illust-and-ugoira", "illust", "manga", "ugoira") &&
 		oneOf(string(filters.AIMode), "all", "exclude", "only") &&
 		oneOf(string(filters.AspectRatio), "all", "landscape", "portrait", "square") &&
-		oneOf(string(filters.Resolution), "all", "high", "medium", "low")
+		oneOf(string(filters.Resolution), "all", "high", "medium", "low") &&
+		validBookmarkRange(filters.BookmarkMin, filters.BookmarkMax)
+}
+
+func validSearchDateRange(startDate, endDate string) bool {
+	if startDate != "" && !validRankingDate(startDate) {
+		return false
+	}
+	if endDate != "" && !validRankingDate(endDate) {
+		return false
+	}
+	return startDate == "" || endDate == "" || startDate <= endDate
+}
+
+func validBookmarkRange(minimum, maximum *int) bool {
+	if minimum != nil && *minimum < 0 || maximum != nil && *maximum < 0 {
+		return false
+	}
+	return minimum == nil || maximum == nil || *minimum <= *maximum
+}
+
+func searchIllustRequiresAppAPI(query searchIllustQuery) bool {
+	return query.Target == SearchTargetKeyword || query.Filters.BookmarkMin != nil || query.Filters.BookmarkMax != nil ||
+		query.Filters.Rating == SearchRatingR18 || query.Filters.Rating == SearchRatingR18G || query.Filters.Rating == SearchRatingMature
 }
 
 func oneOf(value string, allowed ...string) bool {
@@ -785,7 +821,7 @@ func mapWebListError(err error, operation Operation, userID int64) error {
 }
 
 func validSearchTarget(value SearchTarget) bool {
-	return value == SearchTargetPartialMatchForTags || value == SearchTargetExactMatchForTags || value == SearchTargetTitleAndCaption
+	return value == SearchTargetPartialMatchForTags || value == SearchTargetExactMatchForTags || value == SearchTargetTitleAndCaption || value == SearchTargetKeyword
 }
 
 func validSortMode(value SortMode) bool { return value == SortModeDateDesc || value == SortModeDateAsc }
@@ -819,6 +855,10 @@ func validIllustType(value IllustType) bool {
 	return value == IllustTypeIllust || value == IllustTypeManga || value == IllustTypeUgoira
 }
 
-func validDuration(value string) bool {
+func validIllustSearchDuration(value string) bool {
+	return value == "" || value == "within_last_day" || value == "within_last_week" || value == "within_last_month"
+}
+
+func validNovelSearchDuration(value string) bool {
 	return value == "" || value == "within_last_day" || value == "within_last_week" || value == "within_last_month"
 }

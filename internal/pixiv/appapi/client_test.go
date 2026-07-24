@@ -88,12 +88,40 @@ func TestSearchIllustMapsNormalizedFiltersToAppQuery(t *testing.T) {
 			}))
 			defer api.Close()
 			_, err := New(WithBaseURL(api.URL), WithHTTPClient(api.Client()), WithAccessToken("access")).SearchIllust(
-				context.Background(), "miku", "partial_match_for_tags", "date_desc", "", 0, test.filters,
+				context.Background(), "miku", "partial_match_for_tags", "date_desc", "", "", "", 0, test.filters,
 			)
 			if err != nil {
 				t.Fatal(err)
 			}
 		})
+	}
+}
+
+func TestSearchIllustMapsDateAndBookmarkBoundsToAppQuery(t *testing.T) {
+	minimum, maximum := 1000, 10000
+	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		query := r.URL.Query()
+		want := map[string]string{
+			"search_target":    "keyword",
+			"start_date":       "2026-01-01",
+			"end_date":         "2026-01-31",
+			"bookmark_num_min": "1000",
+			"bookmark_num_max": "10000",
+		}
+		for key, value := range want {
+			if got := query.Get(key); got != value {
+				t.Fatalf("%s = %q, want %q; query=%v", key, got, value, query)
+			}
+		}
+		_, _ = w.Write([]byte(`{"illusts":[]}`))
+	}))
+	defer api.Close()
+	_, err := New(WithBaseURL(api.URL), WithHTTPClient(api.Client()), WithAccessToken("access")).SearchIllust(
+		context.Background(), "miku", "keyword", "date_desc", "", "2026-01-01", "2026-01-31", 0,
+		model.SearchIllustFilters{BookmarkMin: &minimum, BookmarkMax: &maximum},
+	)
+	if err != nil {
+		t.Fatal(err)
 	}
 }
 

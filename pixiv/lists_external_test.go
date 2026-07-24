@@ -744,17 +744,23 @@ func TestSearchIllustHighResolutionUsesAppServerBounds(t *testing.T) {
 
 func TestSearchIllustTranslatesStableFiltersToAppParameters(t *testing.T) {
 	t.Parallel()
+	minimum, maximum := 1000, 10000
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		query := r.URL.Query()
 		want := map[string]string{
-			"search_ai_type": "1",
-			"ratio_pattern":  "landscape",
-			"content_type":   "manga",
-			"width_min":      "1000",
-			"width_max":      "2999",
-			"height_min":     "1000",
-			"height_max":     "2999",
-			"tool":           "CLIP STUDIO PAINT",
+			"search_target":    "keyword",
+			"start_date":       "2026-01-01",
+			"end_date":         "2026-01-31",
+			"bookmark_num_min": "1000",
+			"bookmark_num_max": "10000",
+			"search_ai_type":   "1",
+			"ratio_pattern":    "landscape",
+			"content_type":     "manga",
+			"width_min":        "1000",
+			"width_max":        "2999",
+			"height_min":       "1000",
+			"height_max":       "2999",
+			"tool":             "CLIP STUDIO PAINT",
 		}
 		for key, value := range want {
 			if got := query.Get(key); got != value {
@@ -769,13 +775,15 @@ func TestSearchIllustTranslatesStableFiltersToAppParameters(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, err = client.SearchIllust(context.Background(), pixiv.SearchIllustRequest{
-		Word: "miku",
+		Word: "miku", Target: pixiv.SearchTargetKeyword, StartDate: "2026-01-01", EndDate: "2026-01-31",
 		Filters: pixiv.SearchIllustFilters{
 			ContentType: pixiv.SearchContentTypeManga,
 			AIMode:      pixiv.SearchAIModeExclude,
 			AspectRatio: pixiv.SearchAspectRatioLandscape,
 			Resolution:  pixiv.SearchResolutionMedium,
 			Tool:        " CLIP STUDIO PAINT ",
+			BookmarkMin: &minimum,
+			BookmarkMax: &maximum,
 		},
 	})
 	if err != nil {
@@ -860,6 +868,7 @@ func TestSearchIllustFiltersRatingAndOnlyAIInPublicSDK(t *testing.T) {
 
 func TestSearchIllustCursorIsBoundToEveryFilter(t *testing.T) {
 	t.Parallel()
+	bookmarkMinimum, changedBookmarkMinimum := 1000, 5000
 	tests := []struct {
 		name    string
 		first   pixiv.SearchIllustFilters
@@ -871,6 +880,7 @@ func TestSearchIllustCursorIsBoundToEveryFilter(t *testing.T) {
 		{name: "aspect ratio", first: pixiv.SearchIllustFilters{AspectRatio: pixiv.SearchAspectRatioAll}, changed: pixiv.SearchIllustFilters{AspectRatio: pixiv.SearchAspectRatioPortrait}},
 		{name: "resolution", first: pixiv.SearchIllustFilters{Resolution: pixiv.SearchResolutionHigh}, changed: pixiv.SearchIllustFilters{Resolution: pixiv.SearchResolutionLow}},
 		{name: "tool", first: pixiv.SearchIllustFilters{Tool: "tool-a"}, changed: pixiv.SearchIllustFilters{Tool: "tool-b"}},
+		{name: "bookmark range", first: pixiv.SearchIllustFilters{BookmarkMin: &bookmarkMinimum}, changed: pixiv.SearchIllustFilters{BookmarkMin: &changedBookmarkMinimum}},
 	}
 	var requests atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -894,6 +904,28 @@ func TestSearchIllustCursorIsBoundToEveryFilter(t *testing.T) {
 		if want := int32(index + 1); requests.Load() != want {
 			t.Fatalf("%s network requests = %d, want %d", test.name, requests.Load(), want)
 		}
+	}
+}
+
+func TestSearchIllustCursorIsBoundToDateRange(t *testing.T) {
+	t.Parallel()
+	var requests atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		requests.Add(1)
+		fmt.Fprint(w, `{"illusts":[],"next_url":"https://app-api.pixiv.net/v1/search/illust?offset=30"}`)
+	}))
+	defer server.Close()
+	client, err := pixiv.NewClient(pixiv.Options{HTTPClient: server.Client(), AppAPIBaseURL: server.URL, AccessToken: "token"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, err := client.SearchIllust(context.Background(), pixiv.SearchIllustRequest{Word: "miku", StartDate: "2026-01-01", EndDate: "2026-01-31"})
+	if err != nil || first.NextCursor == "" {
+		t.Fatalf("first=%#v err=%v", first, err)
+	}
+	result, err := client.SearchIllust(context.Background(), pixiv.SearchIllustRequest{Word: "miku", StartDate: "2026-02-01", EndDate: "2026-02-28", Cursor: first.NextCursor})
+	if result != nil || !errors.Is(err, pixiv.ErrInvalidArgument) || requests.Load() != 1 {
+		t.Fatalf("result=%#v err=%v requests=%d", result, err, requests.Load())
 	}
 }
 
@@ -991,7 +1023,7 @@ func TestAnonymousSearchIllustTranslatesReliableWebFilters(t *testing.T) {
 	}
 }
 
-func TestAnonymousSearchIllustRejectsRestrictedRatingsBeforeNetwork(t *testing.T) {
+func TestAnonymousSearchIllustRejectsAppOnlySearchBeforeNetwork(t *testing.T) {
 	t.Parallel()
 	var requests atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -1003,13 +1035,18 @@ func TestAnonymousSearchIllustRejectsRestrictedRatingsBeforeNetwork(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, rating := range []pixiv.SearchRating{pixiv.SearchRatingR18, pixiv.SearchRatingR18G, pixiv.SearchRatingMature} {
-		result, err := client.SearchIllust(context.Background(), pixiv.SearchIllustRequest{
-			Word: "miku", Filters: pixiv.SearchIllustFilters{Rating: rating},
-		})
+	minimum := 1000
+	for _, request := range []pixiv.SearchIllustRequest{
+		{Word: "miku", Filters: pixiv.SearchIllustFilters{Rating: pixiv.SearchRatingR18}},
+		{Word: "miku", Filters: pixiv.SearchIllustFilters{Rating: pixiv.SearchRatingR18G}},
+		{Word: "miku", Filters: pixiv.SearchIllustFilters{Rating: pixiv.SearchRatingMature}},
+		{Word: "miku", Target: pixiv.SearchTargetKeyword},
+		{Word: "miku", Filters: pixiv.SearchIllustFilters{BookmarkMin: &minimum}},
+	} {
+		result, err := client.SearchIllust(context.Background(), request)
 		var typed *pixiv.Error
 		if result != nil || !errors.As(err, &typed) || typed.Code != pixiv.CodeUnauthorized || typed.Operation != pixiv.OperationSearchIllust || typed.Backend != "" {
-			t.Fatalf("rating=%q result=%#v error=%#v", rating, result, typed)
+			t.Fatalf("request=%+v result=%#v error=%#v", request, result, typed)
 		}
 	}
 	if requests.Load() != 0 {
@@ -1558,6 +1595,7 @@ func TestAuthenticatedAppFailureNeverFallsBackToWeb(t *testing.T) {
 
 func TestInvalidListEnumsFailBeforeNetwork(t *testing.T) {
 	t.Parallel()
+	bookmarkMinimum, bookmarkMaximum := 10000, 1000
 	var requests atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { requests.Add(1); fmt.Fprint(w, `{"illusts":[]}`) }))
 	defer server.Close()
@@ -1580,6 +1618,30 @@ func TestInvalidListEnumsFailBeforeNetwork(t *testing.T) {
 		},
 		func() error {
 			_, err := client.SearchIllust(context.Background(), pixiv.SearchIllustRequest{Word: "x", Duration: "bad"})
+			return err
+		},
+		func() error {
+			_, err := client.SearchIllust(context.Background(), pixiv.SearchIllustRequest{Word: "x", Duration: "within_half_year"})
+			return err
+		},
+		func() error {
+			_, err := client.SearchNovel(context.Background(), pixiv.SearchNovelRequest{Word: "x", Duration: "within_half_year"})
+			return err
+		},
+		func() error {
+			_, err := client.SearchIllust(context.Background(), pixiv.SearchIllustRequest{Word: "x", Duration: "within_last_week", StartDate: "2026-01-01"})
+			return err
+		},
+		func() error {
+			_, err := client.SearchIllust(context.Background(), pixiv.SearchIllustRequest{Word: "x", StartDate: "2026-02-30"})
+			return err
+		},
+		func() error {
+			_, err := client.SearchIllust(context.Background(), pixiv.SearchIllustRequest{Word: "x", StartDate: "2026-02-01", EndDate: "2026-01-31"})
+			return err
+		},
+		func() error {
+			_, err := client.SearchIllust(context.Background(), pixiv.SearchIllustRequest{Word: "x", Filters: pixiv.SearchIllustFilters{BookmarkMin: &bookmarkMinimum, BookmarkMax: &bookmarkMaximum}})
 			return err
 		},
 		func() error {

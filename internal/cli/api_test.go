@@ -101,6 +101,40 @@ func TestDetailRendersCaptionAsSafePlainText(t *testing.T) {
 	assert.NotContains(t, stdout.String(), "<p>")
 }
 
+func TestDetailAcceptsArtworkURL(t *testing.T) {
+	useTempPaths(t)
+	var gotID int64
+	setTestSDKCommandClient(t, sdkCommandFake{detail: func(_ context.Context, id int64) (*sdk.IllustDetail, error) {
+		gotID = id
+		return &sdk.IllustDetail{Illust: commandIllust(id)}, nil
+	}})
+
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"pixiv", "detail", "https://www.pixiv.net/en/artworks/42?utm_source=share#page=1", "--json"}, strings.NewReader(""), &stdout, &stderr)
+
+	require.Equal(t, 0, code, stderr.String())
+	assert.Equal(t, int64(42), gotID)
+	assert.JSONEq(t, `{"illust":{"url":"https://www.pixiv.net/artworks/42","id":42,"title":"work","type":"","page_count":0,"total_bookmarks":0,"total_view":0,"x_restrict":0,"user":{"id":0,"name":"artist","account":"","comment":"","is_followed":false,"profile_image_urls":{}},"tags":null,"image_urls":{"square_medium":"","medium":"","large":"","original":""},"meta_single_page":{"original_image_url":""},"meta_pages":null,"ai_type":0,"create_date":"","width":0,"height":0,"tools":null}}`, stdout.String())
+}
+
+func TestDetailRejectsUnsupportedURLBeforeOpeningSDK(t *testing.T) {
+	useTempPaths(t)
+	factoryCalls := 0
+	setTestSDKCommandFactory(t, func(application.SDKClientRequest) (application.SDKClient, error) {
+		factoryCalls++
+		return sdkCommandFake{}, nil
+	})
+
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"pixiv", "detail", "https://www.pixiv.net/users/7?secret=must-not-echo"}, strings.NewReader(""), &stdout, &stderr)
+
+	require.NotZero(t, code)
+	assert.Zero(t, factoryCalls)
+	assert.Empty(t, stdout.String())
+	assert.NotContains(t, stderr.String(), "must-not-echo")
+	assert.Contains(t, stderr.String(), "supported Pixiv URL")
+}
+
 func TestSearchHelpUsesEnglishExamples(t *testing.T) {
 	for _, command := range []string{"search", "search-options"} {
 		t.Run(command, func(t *testing.T) {
@@ -188,16 +222,79 @@ func TestSearchUsesPeriodInsteadOfDuration(t *testing.T) {
 	}})
 
 	var stdout, stderr bytes.Buffer
-	code := Run([]string{"pixiv", "search", "miku", "--period", "week", "--json"}, strings.NewReader(""), &stdout, &stderr)
-
-	require.Equal(t, 0, code, stderr.String())
-	assert.Equal(t, "within_last_week", got.Duration)
+	for _, test := range []struct {
+		period          string
+		duration        string
+		explicitDateSet bool
+	}{
+		{period: "week", duration: "within_last_week"},
+		{period: "half-year", explicitDateSet: true},
+		{period: "year", explicitDateSet: true},
+	} {
+		stdout.Reset()
+		stderr.Reset()
+		code := Run([]string{"pixiv", "search", "miku", "--period", test.period, "--json"}, strings.NewReader(""), &stdout, &stderr)
+		require.Equal(t, 0, code, stderr.String())
+		assert.Equal(t, test.duration, got.Duration)
+		if test.explicitDateSet {
+			assert.NotEmpty(t, got.StartDate)
+			assert.NotEmpty(t, got.EndDate)
+			assert.LessOrEqual(t, got.StartDate, got.EndDate)
+		} else {
+			assert.Empty(t, got.StartDate)
+			assert.Empty(t, got.EndDate)
+		}
+	}
 
 	stdout.Reset()
 	stderr.Reset()
-	code = Run([]string{"pixiv", "search", "miku", "--duration", "within_last_week"}, strings.NewReader(""), &stdout, &stderr)
+	code := Run([]string{"pixiv", "search", "miku", "--duration", "within_last_week"}, strings.NewReader(""), &stdout, &stderr)
 	require.NotZero(t, code)
 	assert.Contains(t, stderr.String(), "unknown flag: --duration")
+}
+
+func TestSearchMapsKeywordDateAndBookmarkFilters(t *testing.T) {
+	useTempPaths(t)
+	var got sdk.SearchIllustRequest
+	setTestSDKCommandClient(t, sdkCommandFake{search: func(_ context.Context, request sdk.SearchIllustRequest) (*sdk.IllustListResult, error) {
+		got = request
+		return &sdk.IllustListResult{}, nil
+	}})
+
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{
+		"pixiv", "search", "miku", "--search-by", "tag-title-caption", "--start-date", "2026-01-01", "--end-date", "2026-01-31",
+		"--bookmark-min", "1000", "--bookmark-max", "10000", "--json",
+	}, strings.NewReader(""), &stdout, &stderr)
+
+	require.Equal(t, 0, code, stderr.String())
+	assert.Equal(t, sdk.SearchTargetKeyword, got.Target)
+	assert.Equal(t, "2026-01-01", got.StartDate)
+	assert.Equal(t, "2026-01-31", got.EndDate)
+	if got.Filters.BookmarkMin == nil || *got.Filters.BookmarkMin != 1000 || got.Filters.BookmarkMax == nil || *got.Filters.BookmarkMax != 10000 {
+		t.Fatalf("bookmark filters = %+v", got.Filters)
+	}
+}
+
+func TestSearchRejectsInvalidDateAndBookmarkRangesBeforeSearch(t *testing.T) {
+	useTempPaths(t)
+	calls := 0
+	setTestSDKCommandClient(t, sdkCommandFake{search: func(_ context.Context, _ sdk.SearchIllustRequest) (*sdk.IllustListResult, error) {
+		calls++
+		return &sdk.IllustListResult{}, nil
+	}})
+
+	for _, args := range [][]string{
+		{"pixiv", "search", "miku", "--period", "week", "--start-date", "2026-01-01"},
+		{"pixiv", "search", "miku", "--start-date", "2026-02-30"},
+		{"pixiv", "search", "miku", "--start-date", "2026-02-01", "--end-date", "2026-01-31"},
+		{"pixiv", "search", "miku", "--bookmark-min", "10000", "--bookmark-max", "1000"},
+	} {
+		var stdout, stderr bytes.Buffer
+		code := Run(args, strings.NewReader(""), &stdout, &stderr)
+		require.NotZero(t, code, "args=%v", args)
+	}
+	assert.Zero(t, calls)
 }
 
 func TestListHelpDoesNotExposeInternalLimitSentinel(t *testing.T) {
@@ -635,6 +732,7 @@ func TestDownloadDelegatesOperationSnapshotAndFlagOverrides(t *testing.T) {
 	ctx := context.WithValue(context.Background(), contextKey("download"), "same-context")
 	client := &sdkCommandFake{}
 	var gotClientRequest application.SDKClientRequest
+	var downloadRequests []application.DownloadRequest
 	setTestDownloadCommandServices(t, func(request application.SDKClientRequest) (application.SDKClient, error) {
 		gotClientRequest = request
 		return client, nil
@@ -644,9 +742,10 @@ func TestDownloadDelegatesOperationSnapshotAndFlagOverrides(t *testing.T) {
 		require.Equal(t, "flag-template", gotTemplate)
 		return downloadManagerFake{download: func(gotContext context.Context, request application.DownloadRequest) ([]application.DownloadedArtwork, error) {
 			require.Same(t, ctx, gotContext)
-			require.Equal(t, []int64{42, 84}, request.IllustIDs)
+			require.Len(t, request.IllustIDs, 1)
+			downloadRequests = append(downloadRequests, request)
 			return []application.DownloadedArtwork{{
-				IllustID: 42,
+				IllustID: request.IllustIDs[0],
 				Title:    "work",
 				Author:   "artist",
 				Files:    []application.DownloadedFile{{Path: "/flag/path/42.jpg"}},
@@ -669,7 +768,45 @@ func TestDownloadDelegatesOperationSnapshotAndFlagOverrides(t *testing.T) {
 	require.Equal(t, "http://flag-proxy", *gotClientRequest.HTTPSProxyOverride)
 	require.Equal(t, int64(9), gotClientRequest.UserID)
 	require.Equal(t, "refresh", gotClientRequest.RefreshToken)
-	require.Equal(t, "downloaded 42 \"work\" by artist\n  /flag/path/42.jpg\n", stdout.String())
+	require.Equal(t, []int64{42, 84}, []int64{downloadRequests[0].IllustIDs[0], downloadRequests[1].IllustIDs[0]})
+	assert.Contains(t, stdout.String(), "downloaded 42 \"work\" by artist\n  /flag/path/42.jpg\n")
+	assert.Contains(t, stdout.String(), "downloaded 84 \"work\" by artist\n  /flag/path/42.jpg\n")
+}
+
+func TestDownloadAcceptsArtworkAndUserURLsAndPrintsReportJSON(t *testing.T) {
+	useTempPaths(t)
+	client := sdkCommandFake{artworks: func(_ context.Context, request sdk.UserArtworksRequest) (*sdk.IllustListResult, error) {
+		switch request.Type {
+		case sdk.IllustTypeIllust:
+			return &sdk.IllustListResult{Illusts: []sdk.Illust{{ID: 2, Type: "illust"}}}, nil
+		case sdk.IllustTypeManga:
+			return &sdk.IllustListResult{Illusts: []sdk.Illust{{ID: 3, Type: "manga"}}}, nil
+		case sdk.IllustTypeUgoira:
+			return &sdk.IllustListResult{Illusts: []sdk.Illust{{ID: 4, Type: "ugoira"}}}, nil
+		default:
+			return nil, errors.New("unexpected type")
+		}
+	}}
+	var requests []application.DownloadRequest
+	setTestDownloadCommandServices(t, func(application.SDKClientRequest) (application.SDKClient, error) {
+		return client, nil
+	}, config.RuntimeConfig{}, func(application.DownloadClient, string, string) (application.DownloadManager, error) {
+		return downloadManagerFake{download: func(_ context.Context, request application.DownloadRequest) ([]application.DownloadedArtwork, error) {
+			requests = append(requests, request)
+			id := request.IllustIDs[0]
+			return []application.DownloadedArtwork{{
+				IllustID: id, Title: "work", Author: "artist", Type: "illust",
+				Files: []application.DownloadedFile{{Path: fmt.Sprintf("/downloads/%d.jpg", id), Page: 1}},
+			}}, nil
+		}}, nil
+	})
+
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"pixiv", "download", "https://www.pixiv.net/artworks/1", "https://www.pixiv.net/en/users/7/artworks", "--json"}, strings.NewReader(""), &stdout, &stderr)
+
+	require.Equal(t, 0, code, stderr.String())
+	require.Equal(t, []int64{1, 2, 3, 4}, []int64{requests[0].IllustIDs[0], requests[1].IllustIDs[0], requests[2].IllustIDs[0], requests[3].IllustIDs[0]})
+	assert.JSONEq(t, `{"items":[{"url":"https://www.pixiv.net/artworks/1","illust_id":1,"title":"work","author":"artist","type":"illust","files":[{"path":"/downloads/1.jpg","page":1}]},{"url":"https://www.pixiv.net/artworks/2","illust_id":2,"title":"work","author":"artist","type":"illust","files":[{"path":"/downloads/2.jpg","page":1}]},{"url":"https://www.pixiv.net/artworks/3","illust_id":3,"title":"work","author":"artist","type":"illust","files":[{"path":"/downloads/3.jpg","page":1}]},{"url":"https://www.pixiv.net/artworks/4","illust_id":4,"title":"work","author":"artist","type":"illust","files":[{"path":"/downloads/4.jpg","page":1}]}],"failures":[]}`, stdout.String())
 }
 
 func TestDownloadDelegatesRuntimePathAndTemplateWithoutFlags(t *testing.T) {
@@ -723,11 +860,11 @@ func TestDownloadReportsManagerFailure(t *testing.T) {
 	code := Run([]string{"pixiv", "download", "42"}, strings.NewReader(""), &stdout, &stderr)
 
 	require.NotZero(t, code)
-	require.Empty(t, stdout.String())
-	require.Contains(t, stderr.String(), want.Error())
+	require.Contains(t, stdout.String(), "failed https://www.pixiv.net/artworks/42: "+want.Error())
+	require.Contains(t, stderr.String(), "download completed with 1 failures")
 }
 
-func TestDownloadPreservesJSONOutputShape(t *testing.T) {
+func TestDownloadJSONUsesReportShape(t *testing.T) {
 	useTempPaths(t)
 	setTestDownloadCommandServices(t, func(application.SDKClientRequest) (application.SDKClient, error) {
 		return &sdkCommandFake{}, nil
@@ -747,7 +884,7 @@ func TestDownloadPreservesJSONOutputShape(t *testing.T) {
 	code := Run([]string{"pixiv", "download", "42", "--json"}, strings.NewReader(""), &stdout, &stderr)
 
 	require.Equal(t, 0, code, stderr.String())
-	require.JSONEq(t, `[{"IllustID":42,"Title":"work","Author":"artist","Type":"illust","Files":[{"Path":"/downloads/42.jpg","Page":2}]}]`, stdout.String())
+	require.JSONEq(t, `{"items":[{"url":"https://www.pixiv.net/artworks/42","illust_id":42,"title":"work","author":"artist","type":"illust","files":[{"path":"/downloads/42.jpg","page":2}]}],"failures":[]}`, stdout.String())
 }
 
 func TestDownloadRejectsInvalidPagesAndQuality(t *testing.T) {

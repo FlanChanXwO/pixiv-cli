@@ -3,6 +3,14 @@ set -eu
 
 repository='FlanChanXwO/pixiv-cli'
 release_root="https://github.com/$repository/releases/latest/download"
+# 发布阶段会把 internal/update/release_sources.txt 注入此块。工作树模板保留直连，
+# 以便审阅中的脚本不会擅自依赖公共中继。
+# PIXIV_RELEASE_SOURCES_BEGIN
+release_sources='github-direct|{url}|{url}'
+# PIXIV_RELEASE_SOURCES_END
+if [ -n "${PIXIV_RELEASE_SOURCES:-}" ]; then
+	release_sources=$PIXIV_RELEASE_SOURCES
+fi
 user_home=${HOME:-}
 install_dir=${PIXIV_INSTALL_DIR:-${user_home:+"$user_home/.local/bin"}}
 path_mode=report
@@ -69,6 +77,9 @@ fi
 command -v curl >/dev/null 2>&1 || fail 'curl is required'
 command -v tar >/dev/null 2>&1 || fail 'tar is required'
 command -v awk >/dev/null 2>&1 || fail 'awk is required'
+command -v cmp >/dev/null 2>&1 || fail 'cmp is required'
+command -v mkfifo >/dev/null 2>&1 || fail 'mkfifo is required'
+command -v od >/dev/null 2>&1 || fail 'od is required'
 
 case "$(uname -s)" in
 Linux) target_os=linux ;;
@@ -106,9 +117,116 @@ case "$expected" in
 *[!0-9a-f]*) fail 'release checksum is not lowercase hexadecimal' ;;
 esac
 
+url_encode() {
+	printf '%s' "$1" | LC_ALL=C od -An -tx1 | awk '{ for (index = 1; index <= NF; index++) printf "%%%s", toupper($index) }'
+}
+
+render_release_url() {
+	template=$1
+	canonical_url=$2
+	case "$template" in
+	*'{url_query}'*)
+		prefix=${template%%\{url_query\}*}
+		suffix=${template#*\{url_query\}}
+		printf '%s%s%s' "$prefix" "$(url_encode "$canonical_url")" "$suffix"
+		;;
+	*'{url}'*)
+		prefix=${template%%\{url\}*}
+		suffix=${template#*\{url\}}
+		printf '%s%s%s' "$prefix" "$canonical_url" "$suffix"
+		;;
+	*) return 1 ;;
+	esac
+}
+
+select_asset_template() {
+	probe_fifo="$temporary/release-source-probes"
+	mkfifo "$probe_fifo" || fail 'cannot create release-source probe channel'
+	# 同时探测所有候选。每个候选必须逐字返回直连得到的 checksums.txt；最先完成者
+	# 成为本次下载首选，失败候选不会污染权威 checksum。
+	probe_count=0
+	probe_pids=
+	exec 3<>"$probe_fifo"
+	while IFS= read -r source_line; do
+		case "$source_line" in
+		'' | \#*) continue ;;
+		esac
+		source_id=${source_line%%|*}
+		source_rest=${source_line#*|}
+		[ "$source_rest" != "$source_line" ] || fail 'release source entry is malformed'
+		source_api=${source_rest%%|*}
+		source_template=${source_rest#*|}
+		[ "$source_template" != "$source_rest" ] || fail 'release source entry is malformed'
+		probe_url=$(render_release_url "$source_template" "$release_root/checksums.txt") || fail 'release source template is invalid'
+		(
+			probe_file="$temporary/probe-$probe_count.txt"
+			if curl -fsSL "$probe_url" -o "$probe_file" && cmp -s "$checksums" "$probe_file"; then
+				printf 'ok|%s|%s\n' "$source_id" "$source_template" >&3
+			else
+				printf 'failed|%s|%s\n' "$source_id" "$source_template" >&3
+			fi
+		) &
+		probe_pids="$probe_pids $!"
+		probe_count=$((probe_count + 1))
+	done <<EOF
+$release_sources
+EOF
+	[ "$probe_count" -gt 0 ] || fail 'release source list is empty'
+	selected_template=
+	selected_source=
+	probe_index=0
+	while [ "$probe_index" -lt "$probe_count" ]; do
+		IFS='|' read -r probe_result probe_source probe_template <&3 || fail 'release-source probe did not report a result'
+		if [ "$probe_result" = ok ] && [ -z "$selected_template" ]; then
+			selected_template=$probe_template
+			selected_source=$probe_source
+			break
+		fi
+		probe_index=$((probe_index + 1))
+	done
+	# 选出最快可用候选后立即取消尚在探测的 curl；未选中时等待所有 probe 的失败报告。
+	if [ -n "$selected_template" ]; then
+		kill $probe_pids 2>/dev/null || true
+	fi
+	for probe_pid in $probe_pids; do
+		wait "$probe_pid" 2>/dev/null || true
+	done
+	exec 3>&-
+	exec 3<&-
+	[ -n "$selected_template" ] || fail 'no release source returned the official checksums.txt'
+}
+
+select_asset_template
 archive="$temporary/$asset"
 printf 'Downloading %s...\n' "$asset"
-curl -fsSL "$release_root/$asset" -o "$archive" || fail 'cannot download the platform archive from the official release'
+download_archive_from_sources() {
+	archive_canonical_url="$release_root/$asset"
+	archive_url=$(render_release_url "$selected_template" "$archive_canonical_url") || fail 'release source template is invalid'
+	if curl -fsSL "$archive_url" -o "$archive"; then
+		return 0
+	fi
+	while IFS= read -r source_line; do
+		case "$source_line" in
+		'' | \#*) continue ;;
+		esac
+		source_id=${source_line%%|*}
+		source_rest=${source_line#*|}
+		[ "$source_rest" != "$source_line" ] || fail 'release source entry is malformed'
+		source_api=${source_rest%%|*}
+		source_template=${source_rest#*|}
+		[ "$source_template" != "$source_rest" ] || fail 'release source entry is malformed'
+		[ "$source_id" = "$selected_source" ] && continue
+		archive_url=$(render_release_url "$source_template" "$archive_canonical_url") || fail 'release source template is invalid'
+		if curl -fsSL "$archive_url" -o "$archive"; then
+			return 0
+		fi
+	done <<EOF
+$release_sources
+EOF
+	return 1
+}
+
+download_archive_from_sources || fail 'cannot download the platform archive from any release source'
 
 if command -v sha256sum >/dev/null 2>&1; then
 	actual=$(sha256sum "$archive" | awk '{ print $1 }')

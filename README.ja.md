@@ -22,6 +22,7 @@
 - **App API 優先** — refresh token が設定されている場合は常に認証済み App 経路を使用し、App の失敗を Web に暗黙フォールバックしません。
 - **認証済み R18 読み取り** — detail、pages、ugoira metadata と全 16 ranking mode は App API を使い、original が得られない場合は検証済み medium ugoira ZIP を正しく使用します。
 - **実用的な検索フィルター** — レーティング、作品種別、AI モード、縦横比、解像度、動的な制作ツール候補に対応します。
+- **Pixiv URL を直接指定** — 対応する作品 URL を detail/download に貼り付けられ、認証済みならユーザープロフィール/作品一覧 URL でそのユーザーの視覚作品をブラウザー Cookie 自動化なしにダウンロードできます。
 - **ローカル複数アカウント OAuth** — ブラウザーの Cookie や profile を読み取らず、ブラウザーログイン、アカウント選択、refresh token rotation を行います。
 - **安全な自動化** — typed SDK error、JSON 出力、クリーンな MCP stdio、署名付き更新を備え、結果を暗黙に切り捨てません。
 - **限定的な匿名アクセス** — token がなく fallback が有効な場合、対応する読み取り操作は Web API を利用できます。
@@ -33,7 +34,7 @@
 Linux/macOS（`sh`）：
 
 ```bash
-curl -fsSLo /tmp/pixiv-install.sh https://raw.githubusercontent.com/FlanChanXwO/pixiv-cli/main/scripts/install.sh && sh /tmp/pixiv-install.sh --add-to-path
+curl -fsSLo /tmp/pixiv-install.sh https://github.com/FlanChanXwO/pixiv-cli/releases/latest/download/install.sh && sh /tmp/pixiv-install.sh --add-to-path
 ```
 
 Windows Command Prompt（`cmd.exe`、PowerShell 不要）：
@@ -43,6 +44,8 @@ curl.exe -fsSLo "%TEMP%\pixiv-install.cmd" https://raw.githubusercontent.com/Fla
 ```
 
 どちらのスクリプトも AMD64/ARM64 を検出し、最新の安定版公式 Release archive を選択して公開 SHA-256 を検証します。staging した binary を事前確認してからユーザー単位でインストールし、その後にのみ PATH を変更します。PATH を変更しない場合は `--no-path`、別の保存先には `--install-dir DIR` を使用できます。実行前にダウンロードしたスクリプトを確認できます。
+
+正式版の installer は権威ある `checksums.txt` を常に GitHub HTTPS から直接取得します。内蔵の無料候補は platform archive の probe/download だけに使われ、返す checksum は直取得した内容と一致しなければなりません。download 後も SHA-256 を検証するため、これは転送到達性の改善であり、Release の identity や integrity 判定を変更しません。
 
 ### Coding Agent にインストールさせる
 
@@ -96,9 +99,9 @@ pixiv search "初音ミク" --type illust --ai-mode exclude --resolution high
 pixiv novel search "初音ミク" --rating sfw --min-text-length 1000
 
 # 詳細、おすすめ、ダウンロードを利用します。
-pixiv detail 123456
+pixiv detail https://www.pixiv.net/artworks/123456
 pixiv recommended all --limit 10
-pixiv download 123456 --pages 1,3-5 --quality regular
+pixiv download https://www.pixiv.net/artworks/123456 --pages 1,3-5 --quality regular
 ```
 
 すべての command、flag、設定キー、環境変数、fallback、更新動作は `pixiv --help` または[完全な CLI リファレンス](docs/ja/cli-reference.md)で確認できます。

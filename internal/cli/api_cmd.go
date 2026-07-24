@@ -7,9 +7,9 @@ import (
 	"io"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/application"
-	"github.com/FlanChanXwO/pixiv-cli/internal/utils/parse"
 	sdk "github.com/FlanChanXwO/pixiv-cli/pixiv"
 	"github.com/spf13/cobra"
 )
@@ -19,13 +19,17 @@ type searchOptions struct {
 	searchBy    string
 	sortMode    string
 	period      string
+	startDate   string
+	endDate     string
 	resolution  string
 	aspectRatio string
 	drawTool    string
 	aiMode      string
 	listOptions
-	rating string
-	typ    string
+	rating      string
+	typ         string
+	bookmarkMin int
+	bookmarkMax int
 }
 
 type rankingOptions struct {
@@ -41,9 +45,10 @@ type recommendedOptions struct {
 }
 
 const (
-	searchTargetTagPartial   = "tag-partial"
-	searchTargetTagExact     = "tag-exact"
-	searchTargetTitleCaption = "title-caption"
+	searchTargetTagPartial      = "tag-partial"
+	searchTargetTagExact        = "tag-exact"
+	searchTargetTitleCaption    = "title-caption"
+	searchTargetTagTitleCaption = "tag-title-caption"
 )
 
 func (a app) newSearchCommand() *cobra.Command {
@@ -67,15 +72,19 @@ func (a app) newSearchCommand() *cobra.Command {
 	}
 	a.bindCommonFlags(cmd, &opts.commandOptions)
 	flags := cmd.Flags()
-	flags.StringVar(&opts.searchBy, "search-by", opts.searchBy, "search field: tag-partial, tag-exact, title-caption")
+	flags.StringVar(&opts.searchBy, "search-by", opts.searchBy, "search field: tag-partial, tag-exact, title-caption, tag-title-caption")
 	flags.StringVar(&opts.sortMode, "sort", opts.sortMode, "sort mode: date_desc, date_asc")
-	flags.StringVar(&opts.period, "period", "", "time range: day, week, month")
+	flags.StringVar(&opts.period, "period", "", "time range: day, week, month, half-year, year")
+	flags.StringVar(&opts.startDate, "start-date", "", "inclusive start date: YYYY-MM-DD")
+	flags.StringVar(&opts.endDate, "end-date", "", "inclusive end date: YYYY-MM-DD")
 	flags.StringVar(&opts.rating, "rating", opts.rating, "rating filter: sfw, r18, r18g, mature, all")
 	flags.StringVar(&opts.typ, "type", opts.typ, "artwork type filter: all, illust-and-ugoira, illust, manga, ugoira")
 	flags.StringVar(&opts.resolution, "resolution", opts.resolution, "resolution filter: all, high, medium, low")
 	flags.StringVar(&opts.aspectRatio, "aspect-ratio", opts.aspectRatio, "aspect ratio filter: all, landscape, portrait, square")
 	flags.StringVar(&opts.drawTool, "draw-tool", "", "drawing tool name from search-options")
 	flags.StringVar(&opts.aiMode, "ai-mode", opts.aiMode, "AI artwork filter: all, exclude, only")
+	flags.IntVar(&opts.bookmarkMin, "bookmark-min", 0, "minimum public bookmark count (requires App OAuth)")
+	flags.IntVar(&opts.bookmarkMax, "bookmark-max", 0, "maximum public bookmark count (requires App OAuth)")
 	bindListFlags(cmd, &opts.listOptions)
 	return cmd
 }
@@ -90,6 +99,10 @@ func (a app) runSearch(cmd *cobra.Command, args []string, opts searchOptions) er
 		return err
 	}
 	period, err := resolveSearchPeriod(opts.period)
+	if err != nil {
+		return err
+	}
+	period, startDate, endDate, err := resolveSearchDateRange(opts, period)
 	if err != nil {
 		return err
 	}
@@ -117,7 +130,7 @@ func (a app) runSearch(cmd *cobra.Command, args []string, opts searchOptions) er
 	return a.runIllustList(cmd.Context(), plan, jsonOut, func(ctx context.Context, cursor sdk.Cursor) ([]sdk.Illust, sdk.Cursor, error) {
 		result, err := client.SearchIllust(ctx, sdk.SearchIllustRequest{
 			Word: word, Target: target, Sort: sdk.SortMode(opts.sortMode),
-			Duration: period, Cursor: cursor, Filters: filters,
+			Duration: period, StartDate: startDate, EndDate: endDate, Cursor: cursor, Filters: filters,
 		})
 		if err != nil {
 			return nil, "", err
@@ -134,8 +147,10 @@ func resolveSearchBy(value string) (sdk.SearchTarget, error) {
 		return sdk.SearchTargetExactMatchForTags, nil
 	case searchTargetTitleCaption:
 		return sdk.SearchTargetTitleAndCaption, nil
+	case searchTargetTagTitleCaption:
+		return sdk.SearchTargetKeyword, nil
 	default:
-		return "", fmt.Errorf("search-by must be one of %s, %s, %s", searchTargetTagPartial, searchTargetTagExact, searchTargetTitleCaption)
+		return "", fmt.Errorf("search-by must be one of %s, %s, %s, %s", searchTargetTagPartial, searchTargetTagExact, searchTargetTitleCaption, searchTargetTagTitleCaption)
 	}
 }
 
@@ -149,12 +164,39 @@ func resolveSearchPeriod(value string) (string, error) {
 		return "within_last_week", nil
 	case "month":
 		return "within_last_month", nil
+	case "half-year":
+		return "within_half_year", nil
+	case "year":
+		return "within_year", nil
 	default:
-		return "", errors.New("period must be one of day, week, month")
+		return "", errors.New("period must be one of day, week, month, half-year, year")
 	}
 }
 
-func resolveSearchFilters(_ *cobra.Command, opts searchOptions) (sdk.SearchIllustFilters, error) {
+func resolveSearchDateRange(opts searchOptions, period string) (string, string, string, error) {
+	startDate := strings.TrimSpace(opts.startDate)
+	endDate := strings.TrimSpace(opts.endDate)
+	if period != "" && (startDate != "" || endDate != "") {
+		return "", "", "", errors.New("period cannot be combined with start-date or end-date")
+	}
+	if startDate != "" && !validSearchDate(startDate) || endDate != "" && !validSearchDate(endDate) {
+		return "", "", "", errors.New("start-date and end-date must use YYYY-MM-DD")
+	}
+	if startDate != "" && endDate != "" && startDate > endDate {
+		return "", "", "", errors.New("start-date cannot be later than end-date")
+	}
+	if startDate, endDate, ok := application.SearchQuickDateRange(period, time.Now()); ok {
+		return "", startDate, endDate, nil
+	}
+	return period, startDate, endDate, nil
+}
+
+func validSearchDate(value string) bool {
+	parsed, err := time.Parse("2006-01-02", value)
+	return err == nil && parsed.Format("2006-01-02") == value
+}
+
+func resolveSearchFilters(cmd *cobra.Command, opts searchOptions) (sdk.SearchIllustFilters, error) {
 	filters := sdk.SearchIllustFilters{}
 	switch opts.rating {
 	case "sfw", "r18", "r18g", "mature", "all":
@@ -187,6 +229,23 @@ func resolveSearchFilters(_ *cobra.Command, opts searchOptions) (sdk.SearchIllus
 		return filters, fmt.Errorf("ai-mode must be one of all, exclude, only")
 	}
 	filters.Tool = opts.drawTool
+	if cmd.Flags().Changed("bookmark-min") {
+		if opts.bookmarkMin < 0 {
+			return filters, errors.New("bookmark-min must be greater than or equal to zero")
+		}
+		minimum := opts.bookmarkMin
+		filters.BookmarkMin = &minimum
+	}
+	if cmd.Flags().Changed("bookmark-max") {
+		if opts.bookmarkMax < 0 {
+			return filters, errors.New("bookmark-max must be greater than or equal to zero")
+		}
+		maximum := opts.bookmarkMax
+		filters.BookmarkMax = &maximum
+	}
+	if filters.BookmarkMin != nil && filters.BookmarkMax != nil && *filters.BookmarkMin > *filters.BookmarkMax {
+		return filters, errors.New("bookmark-min cannot be greater than bookmark-max")
+	}
 	return filters, nil
 }
 
@@ -248,9 +307,9 @@ func safeTextLine(value string) string {
 func (a app) newDetailCommand() *cobra.Command {
 	var opts commandOptions
 	cmd := &cobra.Command{
-		Use:   "detail ILLUST_ID",
+		Use:   "detail ILLUST_ID_OR_URL",
 		Short: "Show one illustration",
-		Args:  requireExactArgs(1, "pixiv detail [options] ILLUST_ID"),
+		Args:  requireExactArgs(1, "pixiv detail [options] ILLUST_ID_OR_URL"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return a.runDetail(cmd, args[0], opts)
 		},
@@ -260,7 +319,7 @@ func (a app) newDetailCommand() *cobra.Command {
 }
 
 func (a app) runDetail(cmd *cobra.Command, arg string, opts commandOptions) error {
-	id, err := parse.PositiveInt64(arg, "illust_id")
+	id, err := sdk.ParseArtworkReference(arg)
 	if err != nil {
 		return err
 	}
@@ -362,9 +421,9 @@ type downloadOptions struct {
 func (a app) newDownloadCommand() *cobra.Command {
 	opts := downloadOptions{quality: string(application.DownloadQualityOriginal)}
 	cmd := &cobra.Command{
-		Use:   "download ILLUST_ID...",
+		Use:   "download TARGET...",
 		Short: "Download illustrations",
-		Args:  requireMinArgs(1, "pixiv download [options] ILLUST_ID..."),
+		Args:  requireMinArgs(1, "pixiv download [options] TARGET..."),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return a.runDownload(cmd, args, opts)
 		},
@@ -385,13 +444,13 @@ func (a app) bindDownloadRuntimeFlags(cmd *cobra.Command, opts *downloadOptions)
 }
 
 func (a app) runDownload(cmd *cobra.Command, args []string, opts downloadOptions) error {
-	ids := make([]int64, 0, len(args))
+	targets := make([]sdk.Reference, 0, len(args))
 	for _, arg := range args {
-		id, err := parse.PositiveInt64(arg, fmt.Sprintf("illust_id %q", arg))
+		target, err := sdk.ParseReference(arg)
 		if err != nil {
 			return err
 		}
-		ids = append(ids, id)
+		targets = append(targets, target)
 	}
 	pages, err := application.ParsePageSpec(opts.pages)
 	if err != nil {
@@ -429,8 +488,7 @@ func (a app) runDownload(cmd *cobra.Command, args []string, opts downloadOptions
 	if err != nil {
 		return err
 	}
-	artworks, err := services.Download.Download(cmd.Context(), client, application.DownloadRequest{
-		IllustIDs:        ids,
+	report, err := services.Download.DownloadTargets(cmd.Context(), client, targets, application.DownloadRequest{
 		DownloadPath:     runtime.DownloadPath,
 		FilenameTemplate: runtime.FilenameTemplate,
 		Pages:            pages,
@@ -440,15 +498,79 @@ func (a app) runDownload(cmd *cobra.Command, args []string, opts downloadOptions
 		return err
 	}
 	if jsonOut {
-		return a.printJSON(artworks)
-	}
-	for _, artwork := range artworks {
-		fmt.Fprintf(a.out, "downloaded %d %q by %s\n", artwork.IllustID, artwork.Title, artwork.Author)
-		for _, file := range artwork.Files {
-			fmt.Fprintf(a.out, "  %s\n", file.Path)
+		if err := a.printJSON(downloadReportOutput(report)); err != nil {
+			return err
 		}
+	} else {
+		printDownloadReport(a.out, report)
+	}
+	if len(report.Failures) > 0 {
+		return fmt.Errorf("download completed with %d failures", len(report.Failures))
 	}
 	return nil
+}
+
+// downloadReportOut 是 CLI 的稳定 JSON 下载报告；作品 URL 始终按 ID 重建为规范地址。
+type downloadReportOut struct {
+	Items    []downloadArtworkOut `json:"items"`
+	Failures []downloadFailureOut `json:"failures"`
+}
+
+type downloadArtworkOut struct {
+	URL      string            `json:"url"`
+	IllustID int64             `json:"illust_id"`
+	Title    string            `json:"title"`
+	Author   string            `json:"author"`
+	Type     string            `json:"type"`
+	Files    []downloadFileOut `json:"files"`
+}
+
+type downloadFileOut struct {
+	Path string `json:"path"`
+	Page int    `json:"page"`
+}
+
+type downloadFailureOut struct {
+	URL      string `json:"url"`
+	IllustID int64  `json:"illust_id"`
+	Type     string `json:"type"`
+	Message  string `json:"message"`
+}
+
+func downloadReportOutput(report application.DownloadReport) downloadReportOut {
+	out := downloadReportOut{Items: []downloadArtworkOut{}, Failures: []downloadFailureOut{}}
+	for _, artwork := range report.Items {
+		item := downloadArtworkOut{
+			URL:      sdk.Reference{Kind: sdk.ReferenceKindArtwork, ID: artwork.IllustID}.URL(),
+			IllustID: artwork.IllustID,
+			Title:    artwork.Title,
+			Author:   artwork.Author,
+			Type:     artwork.Type,
+			Files:    []downloadFileOut{},
+		}
+		for _, file := range artwork.Files {
+			item.Files = append(item.Files, downloadFileOut{Path: file.Path, Page: file.Page})
+		}
+		out.Items = append(out.Items, item)
+	}
+	for _, failure := range report.Failures {
+		out.Failures = append(out.Failures, downloadFailureOut{
+			URL: failure.URL, IllustID: failure.IllustID, Type: failure.Type, Message: failure.Message,
+		})
+	}
+	return out
+}
+
+func printDownloadReport(w io.Writer, report application.DownloadReport) {
+	for _, artwork := range report.Items {
+		fmt.Fprintf(w, "downloaded %d %q by %s\n", artwork.IllustID, artwork.Title, artwork.Author)
+		for _, file := range artwork.Files {
+			fmt.Fprintf(w, "  %s\n", file.Path)
+		}
+	}
+	for _, failure := range report.Failures {
+		fmt.Fprintf(w, "failed %s: %s\n", failure.URL, failure.Message)
+	}
 }
 
 func printIllusts(w io.Writer, illusts []sdk.Illust, offset int, ranked bool) {

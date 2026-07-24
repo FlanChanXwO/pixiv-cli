@@ -4,6 +4,11 @@ setlocal EnableExtensions DisableDelayedExpansion
 rem 该脚本只使用 Windows 10/11 自带的命令行工具，不调用其他脚本宿主。
 set "REPOSITORY=FlanChanXwO/pixiv-cli"
 set "RELEASE_ROOT=https://github.com/%REPOSITORY%/releases/latest/download"
+rem 发布阶段会把 internal/update/release_sources.txt 注入此块；工作树模板只保留直连。
+rem PIXIV_RELEASE_SOURCES_BEGIN
+set "RELEASE_SOURCE_COUNT=1"
+set "RELEASE_SOURCE_1=github-direct|{url}|{url}"
+rem PIXIV_RELEASE_SOURCES_END
 set "INSTALL_DIR=%LOCALAPPDATA%\Programs\pixiv"
 set "PATH_MODE=report"
 set "WORK_DIR="
@@ -40,6 +45,7 @@ if not defined INSTALL_DIR (set "ERROR_MESSAGE=install directory cannot be empty
 
 where curl.exe >nul 2>&1 || (set "ERROR_MESSAGE=curl.exe is required" & goto fatal)
 where certutil.exe >nul 2>&1 || (set "ERROR_MESSAGE=certutil.exe is required" & goto fatal)
+where fc.exe >nul 2>&1 || (set "ERROR_MESSAGE=fc.exe is required" & goto fatal)
 set "SYSTEM_TAR=%SystemRoot%\System32\tar.exe"
 if not exist "%SYSTEM_TAR%" (set "ERROR_MESSAGE=Windows system tar.exe is required" & goto fatal)
 
@@ -72,7 +78,7 @@ for %%F in ("%ASSET%") do if /I not "%%~nxF"=="%ASSET%" (set "ERROR_MESSAGE=rele
 
 set "ARCHIVE=%WORK_DIR%\%ASSET%"
 echo Downloading %ASSET%...
-curl.exe -fsSL "%RELEASE_ROOT%/%ASSET%" -o "%ARCHIVE%" || (set "ERROR_MESSAGE=cannot download the platform archive from the official release" & goto fatal)
+call :download_archive_from_sources || goto fatal
 
 set "ACTUAL="
 for /f "skip=1 tokens=* delims=" %%H in ('certutil.exe -hashfile "%ARCHIVE%" SHA256') do if not defined ACTUAL set "ACTUAL=%%H"
@@ -154,4 +160,65 @@ exit /b 1
 :cleanup
 if defined STAGED del /f /q "%STAGED%" >nul 2>&1
 if defined WORK_DIR rmdir /s /q "%WORK_DIR%" >nul 2>&1
+exit /b 0
+
+:download_archive_from_sources
+set /a SOURCE_INDEX=1
+:download_archive_next_source
+if %SOURCE_INDEX% GTR %RELEASE_SOURCE_COUNT% (
+  set "ERROR_MESSAGE=cannot download the platform archive from any release source"
+  exit /b 1
+)
+call :load_release_source %SOURCE_INDEX% || exit /b 1
+call :render_release_url "%SOURCE_TEMPLATE%" "%RELEASE_ROOT%/%ASSET%" || exit /b 1
+set "PROBE=%WORK_DIR%\release-source-%SOURCE_INDEX%.txt"
+call :render_release_url "%SOURCE_TEMPLATE%" "%RELEASE_ROOT%/checksums.txt" || exit /b 1
+curl.exe -fsSL "%SOURCE_URL%" -o "%PROBE%" >nul 2>&1
+if errorlevel 1 goto download_archive_try_next
+fc.exe /b "%CHECKSUMS%" "%PROBE%" >nul 2>&1
+if errorlevel 1 goto download_archive_try_next
+call :render_release_url "%SOURCE_TEMPLATE%" "%RELEASE_ROOT%/%ASSET%" || exit /b 1
+curl.exe -fsSL "%SOURCE_URL%" -o "%ARCHIVE%" && exit /b 0
+:download_archive_try_next
+set /a SOURCE_INDEX+=1
+goto download_archive_next_source
+
+:load_release_source
+set "SOURCE_ENTRY="
+set "SOURCE_ID="
+set "SOURCE_TEMPLATE="
+call set "SOURCE_ENTRY=%%RELEASE_SOURCE_%~1%%"
+for /f "tokens=1-3 delims=|" %%A in ("%SOURCE_ENTRY%") do (
+  set "SOURCE_ID=%%A"
+  set "SOURCE_TEMPLATE=%%C"
+)
+if not defined SOURCE_ID (set "ERROR_MESSAGE=release source entry is malformed" & exit /b 1)
+if not defined SOURCE_TEMPLATE (set "ERROR_MESSAGE=release source entry is malformed" & exit /b 1)
+exit /b 0
+
+:render_release_url
+set "SOURCE_RENDER_TEMPLATE=%~1"
+set "SOURCE_RENDER_CANONICAL=%~2"
+call set "SOURCE_RENDERED=%%SOURCE_RENDER_TEMPLATE:{url}=%SOURCE_RENDER_CANONICAL%%%"
+if /I not "%SOURCE_RENDERED%"=="%SOURCE_RENDER_TEMPLATE%" (
+  set "SOURCE_URL=%SOURCE_RENDERED%"
+  exit /b 0
+)
+call :url_encode "%SOURCE_RENDER_CANONICAL%"
+call set "SOURCE_RENDERED=%%SOURCE_RENDER_TEMPLATE:{url_query}=%SOURCE_RENDER_ENCODED%%%"
+if /I not "%SOURCE_RENDERED%"=="%SOURCE_RENDER_TEMPLATE%" (
+  set "SOURCE_URL=%SOURCE_RENDERED%"
+  exit /b 0
+)
+set "ERROR_MESSAGE=release source template is invalid"
+exit /b 1
+
+:url_encode
+set "SOURCE_RENDER_ENCODED=%~1"
+call set "SOURCE_RENDER_ENCODED=%%SOURCE_RENDER_ENCODED:%%=%%%%25%%"
+call set "SOURCE_RENDER_ENCODED=%%SOURCE_RENDER_ENCODED::=%%%%3A%%"
+call set "SOURCE_RENDER_ENCODED=%%SOURCE_RENDER_ENCODED:/=%%%%2F%%"
+call set "SOURCE_RENDER_ENCODED=%%SOURCE_RENDER_ENCODED:?=%%%%3F%%"
+call set "SOURCE_RENDER_ENCODED=%%SOURCE_RENDER_ENCODED:==%%%%3D%%"
+call set "SOURCE_RENDER_ENCODED=%%SOURCE_RENDER_ENCODED:^&=%%%%26%%"
 exit /b 0

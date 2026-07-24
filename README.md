@@ -22,6 +22,7 @@ Maintainers: release tags are blocked by a protected authenticated E2E gate. Its
 - **App API first** — a configured refresh token always uses the authenticated App path; App failures never silently fall back to Web.
 - **Authenticated R18 reads** — details, pages, ugoira metadata, and all 16 ranking modes use the App API; a verified medium ugoira ZIP is reported honestly when original is unavailable.
 - **Useful search filters** — rating, content type, AI mode, aspect ratio, resolution, and dynamic drawing tools.
+- **Direct Pixiv references** — paste supported artwork URLs into detail or download, or an authenticated user profile/artworks URL to download that user's visual works without browser-cookie automation.
 - **Local multi-account OAuth** — browser login, account selection, and refresh-token rotation without reading browser cookies or profiles.
 - **Safe automation** — typed SDK errors, JSON output, clean MCP stdio, signed release updates, and no hidden result truncation.
 - **Limited anonymous access** — supported read operations can use the Web API when no token exists and fallback is enabled.
@@ -33,7 +34,7 @@ Maintainers: release tags are blocked by a protected authenticated E2E gate. Its
 Linux/macOS (`sh`):
 
 ```bash
-curl -fsSLo /tmp/pixiv-install.sh https://raw.githubusercontent.com/FlanChanXwO/pixiv-cli/main/scripts/install.sh && sh /tmp/pixiv-install.sh --add-to-path
+curl -fsSLo /tmp/pixiv-install.sh https://github.com/FlanChanXwO/pixiv-cli/releases/latest/download/install.sh && sh /tmp/pixiv-install.sh --add-to-path
 ```
 
 Windows Command Prompt (`cmd.exe`, no PowerShell):
@@ -45,6 +46,10 @@ curl.exe -fsSLo "%TEMP%\pixiv-install.cmd" https://raw.githubusercontent.com/Fla
 Both scripts detect AMD64/ARM64, select the latest stable official Release archive, verify its published SHA-256,
 preflight the staged binary, and install per-user before changing PATH. Use `--no-path` to leave PATH untouched or
 `--install-dir DIR` to choose another destination. You can inspect the downloaded script before running it.
+
+Versioned installers keep `checksums.txt` on the official GitHub HTTPS path. Embedded free source candidates are
+probed only for the platform archive, must return the same checksum content, and the downloaded archive still has to
+pass SHA-256 verification. This changes transport availability, never Release identity or integrity.
 
 ### Install with a coding agent
 
@@ -98,9 +103,9 @@ pixiv search "初音ミク" --type illust --ai-mode exclude --resolution high
 pixiv novel search "初音ミク" --rating sfw --min-text-length 1000
 
 # Inspect, discover recommendations, and download.
-pixiv detail 123456
+pixiv detail https://www.pixiv.net/artworks/123456
 pixiv recommended all --limit 10
-pixiv download 123456 --pages 1,3-5 --quality regular
+pixiv download https://www.pixiv.net/artworks/123456 --pages 1,3-5 --quality regular
 ```
 
 Run `pixiv --help` or open the [complete CLI reference](docs/en/cli-reference.md) for every command, flag, configuration key, environment variable, fallback rule, and update behavior.

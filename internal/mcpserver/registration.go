@@ -4,14 +4,14 @@ import "github.com/modelcontextprotocol/go-sdk/mcp"
 
 func (a *App) register(server *mcp.Server) {
 	addTool(a, server, &mcp.Tool{Name: "set_download_path", Description: "Set the default local save location for images and animations."}, a.setDownloadPath)
-	addTool(a, server, &mcp.Tool{Name: "download", Description: "Download one or more artworks by ID with intelligent storage rules."}, a.download)
+	addTool(a, server, &mcp.Tool{Name: "download", Description: "Download artwork IDs or supported Pixiv artwork/user URLs with intelligent storage rules."}, a.download)
 	addTool(a, server, &mcp.Tool{Name: "refresh_token", Description: "Manually refresh Pixiv API token when encountering authentication errors."}, a.refreshToken)
 	addTool(a, server, &mcp.Tool{Name: "set_refresh_token", Description: "Set or update the Pixiv refresh token for authentication."}, a.setRefreshToken)
 	addTool(a, server, &mcp.Tool{Name: "download_random_from_recommendation", Description: "Download random artworks from recommendations."}, a.downloadRandom)
 	addTool(a, server, &mcp.Tool{Name: "search_illust", Description: "Search for illustrations using keywords with filters.", InputSchema: searchIllustInputSchema()}, a.searchIllust)
 	addTool(a, server, &mcp.Tool{Name: "search_novel", Description: "Search for novels using keywords with supported filters.", InputSchema: searchNovelInputSchema()}, a.searchNovel)
 	addTool(a, server, &mcp.Tool{Name: "search_illust_options", Description: "List drawing tools available for an authenticated illustration search."}, a.searchIllustOptions)
-	addTool(a, server, &mcp.Tool{Name: "illust_detail", Description: "Get detailed information about a specific artwork."}, a.illustDetail)
+	addTool(a, server, &mcp.Tool{Name: "illust_detail", Description: "Get detailed information from exactly one artwork ID or supported Pixiv URL."}, a.illustDetail)
 	addTool(a, server, &mcp.Tool{Name: "illust_related", Description: "Find artworks related to a specific illustration."}, a.illustRelated)
 	addTool(a, server, &mcp.Tool{Name: "illust_ranking", Description: "Browse Pixiv rankings."}, a.illustRanking)
 	addTool(a, server, &mcp.Tool{Name: "search_user", Description: "Search for users/artists on Pixiv."}, a.searchUser)

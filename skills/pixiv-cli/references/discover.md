@@ -10,9 +10,17 @@ pixiv search "初音ミク" --limit 10 --json
 ```
 
 - Default search field is partial tag match (`--search-by tag-partial`); switch
-  to `--search-by tag-exact` or `--search-by title-caption` when the user asks for
-  exact tags or title/caption search. Use `--period day|week|month` to limit
-  the time range, or `--sort date_desc|date_asc` to choose the order.
+  to `--search-by tag-exact`, `--search-by title-caption`, or authenticated
+  `--search-by tag-title-caption` when the user asks for exact tags, title/caption,
+  or tags-plus-title/caption search. Use `--period day|week|month|half-year|year`
+  to limit the time range, or use inclusive `--start-date YYYY-MM-DD` and/or
+  `--end-date YYYY-MM-DD` (never together with `--period`).
+- For a reliable boolean tag query, use exact tags: `pixiv search "tagA tagB"
+  --search-by tag-exact` requires both tags, while `pixiv search "tagA OR tagB"
+  --search-by tag-exact` accepts either tag. `OR` is uppercase; literal `AND`
+  is not an operator. Partial tag search also accepts the verified uppercase
+  `OR`, but it can match partial, alias, or translated tags and is not a strict
+  exact-tag AND. `title-caption` and `tag-title-caption` have no boolean-tag contract.
 - `search` does not have a `--tag` flag. Supply tag text as the required `WORD`;
   reserve `--tag` for `user bookmarks` (filter) and `bookmark add` (repeatable
   bookmark tag).
@@ -20,12 +28,13 @@ pixiv search "初音ミク" --limit 10 --json
 - Stable filters include `--rating sfw|r18|r18g|mature|all`, `--type
   all|illust-and-ugoira|illust|manga|ugoira`, `--ai-mode all|exclude|only`,
   `--aspect-ratio all|landscape|portrait|square`, `--resolution
-  all|high|medium|low`, and exact `--draw-tool` names. Only pass restricted ratings
-  when the user explicitly asks.
+  all|high|medium|low`, exact `--draw-tool` names, and App-only `--bookmark-min N`
+  / `--bookmark-max N` public bookmark-count bounds. Only pass restricted ratings
+  or bookmark bounds when the user explicitly asks; never call bookmark count a like count.
 - Tool names are dynamic. Run authenticated `pixiv search-options "WORD"
   --json`, then pass the returned name exactly. Do not hard-code a list.
-- Anonymous Web search accepts only its reliable filters. R18/R18G/mature and
-  `search-options` require authentication; never add a Cookie workaround or
+- Anonymous Web search accepts only its reliable filters. R18/R18G/mature,
+  `tag-title-caption`, bookmark bounds, and `search-options` require authentication; never add a Cookie workaround or
   report an authentication failure as an empty result.
 - Need page 2+: `--page N` (1-based) with a positive `--limit`.
 - Local filters skip leading empty upstream batches until the first non-empty

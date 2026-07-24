@@ -16,7 +16,8 @@ repository secret，或复用同一 SSH key，会让任意 tag/workflow 或公�
 
 ## Decision
 
-- GitHub Releases API 是更新查询的唯一后端。draft 不可选；自动检查只选 stable，显式
+- GitHub Releases API 是更新查询的唯一规范后端。内置公共源只能改写传输 URL，不能改写 API
+  路径、分页、缓存 URL、Release 身份或版本选择；draft 不可选；自动检查只选 stable，显式
   `--prerelease` 才可选择预发布版本。
 - 当前受信发布入口只有 `.github/workflows/release.yml` 的 tag push 与必填 `release_tag` 的
   `workflow_dispatch`，两者共用 `RELEASE_TAG`；validate、test build 与 production build 均以该值执行
@@ -30,7 +31,9 @@ repository secret，或复用同一 SSH key，会让任意 tag/workflow 或公�
   更不能把网络、HTTP、cache、签名或安装失败解释成“无更新”。
 - 每个正式 Release 使用固定六目标 asset 名，发布 `checksums.txt` 以及对其原始 bytes 签名、含 key
   ID 的 Ed25519 `checksums.json`。Release installer 先验证签名和 SHA-256，再解包、版本预检并原子
-  替换。
+  替换。版本化公共源列表随 Release installer asset 生成并进入同一份 checksum/signature 集合；它只允许
+  在无显式 HTTP(S) proxy 时选择更快的传输路径。installer bootstrap 仍直连取得权威 `checksums.txt`，
+  公共源下载的平台 archive 必须匹配该值。
 - Release binary 只信任随受支持 binary 提交的 Ed25519 public key/key ID。私钥只允许存在于受保护
   `release` Environment secret；恢复副本只可存在于受控 macOS Keychain。私钥不能进入 CLI、源码、
   GitHub Release、formula、日志或测试 fixture。

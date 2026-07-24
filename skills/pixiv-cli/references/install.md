@@ -9,7 +9,7 @@ running anything.
 
 - Repository: `https://github.com/FlanChanXwO/pixiv-cli`
 - Unix installer:
-  `https://raw.githubusercontent.com/FlanChanXwO/pixiv-cli/main/scripts/install.sh`
+  `https://github.com/FlanChanXwO/pixiv-cli/releases/latest/download/install.sh`
 - Windows CMD installer:
   `https://raw.githubusercontent.com/FlanChanXwO/pixiv-cli/main/scripts/install.cmd`
 
@@ -27,8 +27,10 @@ The installer itself must select the latest stable official Release and report
    install directory to the current user's PATH; do not request administrator
    or root privileges.
 4. If `curl`, `tar`, the checksum tool, or another declared prerequisite is
-   missing, stop and ask before installing it. Never silently switch to another
-   download or extraction path.
+   missing, stop and ask before installing it. Do not manually substitute a
+   download or extraction path: the official versioned installer alone may
+   select its embedded public Release transport candidates after matching the
+   direct GitHub checksum.
 5. Never read authentication storage, import/export authentication, or request
    a Pixiv credential as part of installation.
 6. Require installer success, then run `pixiv version`. Report the installed
