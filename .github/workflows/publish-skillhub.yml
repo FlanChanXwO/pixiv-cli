@@ -60,20 +60,35 @@ jobs:
           test "$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" --jq '.draft')" = false
           test -n "$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" --jq '.published_at')"
           go run ./scripts/releaseassets validate --version "${RELEASE_TAG#v}"
-          previous_tag="$(
-            git tag --merged "$RELEASE_TAG" --list 'v[0-9]*' --sort=-v:refname |
-              while IFS= read -r tag; do
-                if [ "$tag" != "$RELEASE_TAG" ]; then
-                  printf '%s\n' "$tag"
-                  break
-                fi
-              done
-          )"
-          if [ -n "$previous_tag" ] && git diff --quiet "$previous_tag" "$RELEASE_TAG" -- skills/pixiv-cli; then
-            printf '%s\n' 'publish=false' >> "$GITHUB_OUTPUT"
-            printf 'Skill unchanged since %s; skipping SkillHub publication.\n' "$previous_tag"
-          else
+          previous_tag=
+          while IFS= read -r tag; do
+            if [ "$tag" != "$RELEASE_TAG" ] && go run ./scripts/releaseassets validate --version "${tag#v}" >/dev/null 2>&1; then
+              previous_tag=$tag
+              break
+            fi
+          done <<EOF
+          $(git tag --merged "$RELEASE_TAG" --list 'v[0-9]*' --sort=-v:refname)
+          EOF
+          if [ -z "$previous_tag" ]; then
             printf '%s\n' 'publish=true' >> "$GITHUB_OUTPUT"
+          else
+            set +e
+            git diff --quiet "$previous_tag" "$RELEASE_TAG" -- skills/pixiv-cli
+            diff_status=$?
+            set -e
+            case "$diff_status" in
+              0)
+                printf '%s\n' 'publish=false' >> "$GITHUB_OUTPUT"
+                printf 'Skill unchanged since %s; skipping SkillHub publication.\n' "$previous_tag"
+                ;;
+              1)
+                printf '%s\n' 'publish=true' >> "$GITHUB_OUTPUT"
+                ;;
+              *)
+                printf 'cannot compare Skill changes from %s to %s\n' "$previous_tag" "$RELEASE_TAG" >&2
+                exit "$diff_status"
+                ;;
+            esac
           fi
       # The vendor installer runs before this workflow makes SKILLHUB_TOKEN available.
       # Its CLI is only used after the immutable tag and local metadata have passed.

@@ -89,6 +89,11 @@ func TestInstallShSelectsFastestVerifiedSourceAndRetriesArchive(t *testing.T) {
 	fixtureDir, assetName := prepareUnixFixture(t, false)
 	fakeBin := prepareFakeCurl(t)
 	logPath := filepath.Join(t.TempDir(), "curl.log")
+	fastChecksumReady := filepath.Join(t.TempDir(), "fast-checksum-ready")
+	fastChecksumGateArmed := filepath.Join(t.TempDir(), "fast-checksum-gate-armed")
+	if output, err := exec.Command("mkfifo", fastChecksumReady).CombinedOutput(); err != nil {
+		t.Fatalf("create fast checksum fixture gate: %v\n%s", err, output)
+	}
 	installDir := t.TempDir()
 	command := exec.Command("sh", filepath.Join("..", "install.sh"), "--install-dir", installDir, "--no-path")
 	command.Env = append(os.Environ(),
@@ -97,9 +102,12 @@ func TestInstallShSelectsFastestVerifiedSourceAndRetriesArchive(t *testing.T) {
 		"PIXIV_INSTALLER_CURL_LOG="+logPath,
 		"PIXIV_INSTALLER_CURL_FAIL_ARCHIVE_HOST=fast.example",
 		"PIXIV_INSTALLER_CURL_FAIL_CHECKSUM_HOST=fallback.example",
-		// fixture 让直连 checksum 在 fast source 返回之后才完成，避免并发 probe 的
-		// scheduler 偶然顺序掩盖“最快已验证候选被优先选中”的用户可见契约。
-		"PIXIV_INSTALLER_CURL_DELAY_CHECKSUM_URL_PREFIX=https://github.com/",
+		// fast checksum 的成功写入会放行直连 checksum，避免并发 probe 的 scheduler
+		// 偶然顺序掩盖“最快已验证候选被优先选中”的用户可见契约。
+		"PIXIV_INSTALLER_CURL_WAIT_CHECKSUM_URL_PREFIX=https://github.com/",
+		"PIXIV_INSTALLER_CURL_SIGNAL_CHECKSUM_URL_PREFIX=https://fast.example/",
+		"PIXIV_INSTALLER_CURL_CHECKSUM_GATE="+fastChecksumReady,
+		"PIXIV_INSTALLER_CURL_CHECKSUM_GATE_STATE="+fastChecksumGateArmed,
 		"PIXIV_RELEASE_SOURCES=fast|-|https://fast.example/{url}\nfallback|-|https://fallback.example/{url}\ngithub-direct|{url}|{url}",
 	)
 	if output, err := command.CombinedOutput(); err != nil {
@@ -477,18 +485,32 @@ case "${PIXIV_INSTALLER_CURL_FAIL_CHECKSUM_HOST:-}" in
     esac
     ;;
 esac
-case "${PIXIV_INSTALLER_CURL_DELAY_CHECKSUM_URL_PREFIX:-}" in
+case "${PIXIV_INSTALLER_CURL_WAIT_CHECKSUM_URL_PREFIX:-}" in
   '') ;;
   *)
     case "$url" in
-      "$PIXIV_INSTALLER_CURL_DELAY_CHECKSUM_URL_PREFIX"*checksums.txt)
-        # 仅 fixture：让测试能确定地观察到 fast source 的优先选择。
-        sleep 1
+      "$PIXIV_INSTALLER_CURL_WAIT_CHECKSUM_URL_PREFIX"*checksums.txt)
+        # 首个直连请求是安装器的权威 checksum；随后才让并发的直连 probe
+        # 等待 fast checksum 成功，以免其抢占 FIFO 结果。
+        if [ -e "$PIXIV_INSTALLER_CURL_CHECKSUM_GATE_STATE" ]; then
+          IFS= read -r _ < "$PIXIV_INSTALLER_CURL_CHECKSUM_GATE"
+        fi
+        : > "$PIXIV_INSTALLER_CURL_CHECKSUM_GATE_STATE"
         ;;
     esac
     ;;
 esac
 cp "$PIXIV_INSTALLER_FIXTURES/${url##*/}" "$output"
+case "${PIXIV_INSTALLER_CURL_SIGNAL_CHECKSUM_URL_PREFIX:-}" in
+  '') ;;
+  *)
+    case "$url" in
+      "$PIXIV_INSTALLER_CURL_SIGNAL_CHECKSUM_URL_PREFIX"*checksums.txt)
+        printf '%s\n' ready > "$PIXIV_INSTALLER_CURL_CHECKSUM_GATE"
+        ;;
+    esac
+    ;;
+esac
 `
 	path := filepath.Join(directory, "curl")
 	if err := os.WriteFile(path, []byte(script), 0o755); err != nil {
