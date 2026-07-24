@@ -32,8 +32,23 @@ func TestSearchIllustPreservesCanceledContext(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	_, err := New(WithWebBase("https://example.invalid")).SearchIllust(ctx, "cat", "partial_match_for_tags", "date_desc", "", 0)
+	_, err := New(WithWebBase("https://example.invalid")).SearchIllust(ctx, "cat", "partial_match_for_tags", "date_desc", "", "", "", 0)
 	require.True(t, errors.Is(err, context.Canceled), "error = %v", err)
+}
+
+func TestSearchIllustMapsExplicitDateRangeToWebQuery(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+		query := request.URL.Query()
+		if query.Get("scd") != "2026-01-01" || query.Get("ecd") != "2026-01-31" {
+			t.Fatalf("query=%v", query)
+		}
+		_, _ = w.Write([]byte(`{"error":false,"body":{"illustManga":{"data":[]}}}`))
+	}))
+	defer server.Close()
+	_, err := New(WithHTTPClient(server.Client()), WithWebBase(server.URL)).SearchIllust(
+		context.Background(), "miku", "partial_match_for_tags", "date_desc", "", "2026-01-01", "2026-01-31", 0,
+	)
+	require.NoError(t, err)
 }
 
 func TestWebEndpointPageSizesDefineWirePageBoundaries(t *testing.T) {
@@ -74,7 +89,7 @@ func TestWebEndpointPageSizesDefineWirePageBoundaries(t *testing.T) {
 				_, err := client.IllustRanking(context.Background(), "day", "", test.offset)
 				require.NoError(t, err)
 			} else {
-				_, err := client.SearchIllust(context.Background(), "miku", "partial_match_for_tags", "date_desc", "", test.offset)
+				_, err := client.SearchIllust(context.Background(), "miku", "partial_match_for_tags", "date_desc", "", "", "", test.offset)
 				require.NoError(t, err)
 			}
 			assert.Equal(t, test.wantPage, gotPage)
@@ -122,7 +137,7 @@ func TestClientContinuationPreservesTotalsBeyondInt32(t *testing.T) {
 			name: "search illust",
 			body: `{"error":false,"body":{"illustManga":{"total":2147483648,"data":[{"id":"1","userId":"10"}]}}}`,
 			call: func(client *Client) (int, bool, error) {
-				result, err := client.SearchIllust(context.Background(), "miku", "partial_match_for_tags", "date_desc", "", 0)
+				result, err := client.SearchIllust(context.Background(), "miku", "partial_match_for_tags", "date_desc", "", "", "", 0)
 				if err != nil {
 					return 0, false, err
 				}
@@ -216,7 +231,7 @@ func TestWebContinuationUsesPageStartForInPageOffsets(t *testing.T) {
 				require.NoError(t, err)
 				gotNext = result.ContinuationExists
 			default:
-				result, err := client.SearchIllust(context.Background(), "miku", "partial_match_for_tags", "date_desc", "", test.offset)
+				result, err := client.SearchIllust(context.Background(), "miku", "partial_match_for_tags", "date_desc", "", "", "", test.offset)
 				require.NoError(t, err)
 				gotNext = result.ContinuationExists
 			}
@@ -237,7 +252,7 @@ func TestClientSearchIllustMapsWebArtworkResults(t *testing.T) {
 	defer server.Close()
 
 	client := New(WithHTTPClient(server.Client()), WithWebBase(server.URL))
-	result, err := client.SearchIllust(context.Background(), "初音ミク", "partial_match_for_tags", "date_desc", "", 0)
+	result, err := client.SearchIllust(context.Background(), "初音ミク", "partial_match_for_tags", "date_desc", "", "", "", 0)
 
 	require.NoError(t, err)
 	require.Len(t, result.Illusts, 1)
@@ -288,7 +303,7 @@ func TestClientSearchIllustMapsContentTypeAndFilterVariants(t *testing.T) {
 			}))
 			defer server.Close()
 			_, err := New(WithWebBase(server.URL), WithHTTPClient(server.Client())).SearchIllust(
-				context.Background(), "miku", "partial_match_for_tags", "date_desc", "", 0, test.filters,
+				context.Background(), "miku", "partial_match_for_tags", "date_desc", "", "", "", 0, test.filters,
 			)
 			if err != nil {
 				t.Fatal(err)
@@ -305,7 +320,7 @@ func TestClientSearchIllustAppliesInPageOffset(t *testing.T) {
 	defer server.Close()
 
 	client := New(WithHTTPClient(server.Client()), WithWebBase(server.URL))
-	result, err := client.SearchIllust(context.Background(), "初音ミク", "partial_match_for_tags", "date_desc", "", 1)
+	result, err := client.SearchIllust(context.Background(), "初音ミク", "partial_match_for_tags", "date_desc", "", "", "", 1)
 
 	require.NoError(t, err)
 	require.Len(t, result.Illusts, 1)

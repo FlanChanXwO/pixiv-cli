@@ -45,13 +45,14 @@ type ReleaseFileReplacer interface {
 // ReleaseInstallerOptions 允许生产组装与受控测试分别注入信任根和系统依赖。
 // TrustedKeys 只允许 Ed25519 公钥；私钥绝不能进入生产组装或此 API。
 type ReleaseInstallerOptions struct {
-	HTTPClient     *http.Client
-	TrustedKeys    map[string]ed25519.PublicKey
-	ExecutablePath func() (string, error)
-	GOOS           string
-	GOARCH         string
-	BinaryChecker  ReleaseBinaryChecker
-	Replacer       ReleaseFileReplacer
+	HTTPClient                 *http.Client
+	TrustedKeys                map[string]ed25519.PublicKey
+	ExecutablePath             func() (string, error)
+	GOOS                       string
+	GOARCH                     string
+	BinaryChecker              ReleaseBinaryChecker
+	Replacer                   ReleaseFileReplacer
+	EnablePublicReleaseSources bool
 }
 
 // NewReleaseInstaller 建立 Release 自更新器。未配置 trusted key 时仍返回实例，
@@ -85,7 +86,7 @@ func NewReleaseInstaller(options ReleaseInstallerOptions) ReleaseInstaller {
 	for keyID, publicKey := range options.TrustedKeys {
 		keys[keyID] = append(ed25519.PublicKey(nil), publicKey...)
 	}
-	return &releaseInstaller{
+	installer := &releaseInstaller{
 		httpClient:        httpClient,
 		trustedKeys:       keys,
 		executablePath:    executablePath,
@@ -95,6 +96,10 @@ func NewReleaseInstaller(options ReleaseInstallerOptions) ReleaseInstaller {
 		replacer:          replacer,
 		assetURLValidator: validateOfficialGitHubReleaseAssetURL,
 	}
+	if options.EnablePublicReleaseSources {
+		installer.sourceSelector = newDefaultReleaseSourceSelector(httpClient)
+	}
+	return installer
 }
 
 type releaseInstaller struct {
@@ -106,6 +111,7 @@ type releaseInstaller struct {
 	checker           ReleaseBinaryChecker
 	replacer          ReleaseFileReplacer
 	assetURLValidator func(Release, ReleaseAsset) error
+	sourceSelector    *releaseSourceSelector
 	// 下列 hook 仅供同包测试精确触发并观测取消边界；生产构造始终为 nil。
 	afterStagedCreate func()
 	afterStagedClose  func()
@@ -138,11 +144,15 @@ func (i *releaseInstaller) Install(ctx context.Context, release Release) (err er
 	if err := i.validateAssetURLs(release, assets); err != nil {
 		return err
 	}
-	checksums, err := i.download(ctx, assets.checksums)
+	assetSources, err := i.assetSources(ctx, assets.checksums)
+	if err != nil {
+		return err
+	}
+	checksums, err := i.download(ctx, assets.checksums, assetSources)
 	if err != nil {
 		return fmt.Errorf("download %s: %w", checksumsAssetName, err)
 	}
-	manifestBytes, err := i.download(ctx, assets.manifest)
+	manifestBytes, err := i.download(ctx, assets.manifest, assetSources)
 	if err != nil {
 		return fmt.Errorf("download %s: %w", manifestAssetName, err)
 	}
@@ -152,7 +162,7 @@ func (i *releaseInstaller) Install(ctx context.Context, release Release) (err er
 	if err := verifyArchiveChecksum(checksums, assets.archive.Name, nil); err != nil {
 		return err
 	}
-	archive, err := i.download(ctx, assets.archive)
+	archive, err := i.download(ctx, assets.archive, assetSources)
 	if err != nil {
 		return fmt.Errorf("download release archive %q: %w", assets.archive.Name, err)
 	}
@@ -354,8 +364,39 @@ func releaseBinaryName(goos string) string {
 	return "pixiv"
 }
 
-func (i *releaseInstaller) download(ctx context.Context, asset ReleaseAsset) ([]byte, error) {
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, asset.DownloadURL, nil)
+func (i *releaseInstaller) assetSources(ctx context.Context, probe ReleaseAsset) ([]releaseSource, error) {
+	if i.sourceSelector == nil {
+		return nil, nil
+	}
+	sources, err := i.sourceSelector.ordered(ctx, releaseSourceAsset, probe.DownloadURL)
+	if err != nil {
+		return nil, fmt.Errorf("select source for release assets: %w", err)
+	}
+	return sources, nil
+}
+
+func (i *releaseInstaller) download(ctx context.Context, asset ReleaseAsset, sources []releaseSource) ([]byte, error) {
+	if len(sources) == 0 {
+		return i.downloadURL(ctx, asset, asset.DownloadURL)
+	}
+	errorsBySource := make([]error, 0, len(sources))
+	for _, source := range sources {
+		requestURL, err := source.assetURL(asset.DownloadURL)
+		if err != nil {
+			errorsBySource = append(errorsBySource, fmt.Errorf("release source %q: %w", source.id, err))
+			continue
+		}
+		body, err := i.downloadURL(ctx, asset, requestURL)
+		if err == nil {
+			return body, nil
+		}
+		errorsBySource = append(errorsBySource, fmt.Errorf("release source %q: %w", source.id, err))
+	}
+	return nil, fmt.Errorf("download asset %q from every release source: %w", asset.Name, errors.Join(errorsBySource...))
+}
+
+func (i *releaseInstaller) downloadURL(ctx context.Context, asset ReleaseAsset, requestURL string) ([]byte, error) {
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, requestURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("create request for asset %q: %w", asset.Name, err)
 	}

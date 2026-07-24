@@ -26,7 +26,7 @@ The repository provides two per-user bootstrap scripts for the latest stable Rel
 
 ```bash
 # Linux/macOS
-curl -fsSLo /tmp/pixiv-install.sh https://raw.githubusercontent.com/FlanChanXwO/pixiv-cli/main/scripts/install.sh
+curl -fsSLo /tmp/pixiv-install.sh https://github.com/FlanChanXwO/pixiv-cli/releases/latest/download/install.sh
 sh /tmp/pixiv-install.sh --add-to-path
 ```
 
@@ -52,6 +52,11 @@ This is an initial-bootstrap boundary: before `pixiv` exists, the scripts have n
 SHA-256 check detects corruption or a mismatched archive, while authenticity still depends on HTTPS and the official
 GitHub repository/Release account. Inspect the installer before execution. Once installed, `pixiv update` uses the
 binary's embedded Ed25519 trust root for subsequent Release updates.
+
+The versioned installers embed a static Release-source list. They always download the authoritative `checksums.txt`
+directly from GitHub HTTPS, then probe free candidates only for the matching platform archive; a candidate is usable
+only when its checksum response is byte-for-byte identical to the direct file. The archive still requires the direct
+SHA-256 match before installation. The list is never fetched remotely and changes only with a signed Release.
 
 ### Build from source
 
@@ -333,7 +338,7 @@ The CLI uses Cobra/pflag, so options may appear before or after positional argum
 | `search` | `pixiv search [options] WORD` | Searches illustrations. |
 | `novel search` | `pixiv novel search [options] WORD` | Searches novels through the authenticated App API. |
 | `search-options` | `pixiv search-options [options] WORD` | Lists the App API drawing-tool choices for a word; requires authentication and supports the common account/token/proxy flags and `--json`. |
-| `detail` | `pixiv detail [options] ILLUST_ID` | Shows details for a single artwork. |
+| `detail` | `pixiv detail [options] ILLUST_ID_OR_URL` | Shows details for a single artwork ID or supported Pixiv artwork URL. |
 | `ranking` | `pixiv ranking [options]` | Shows Pixiv illustration rankings. |
 | `recommended` | `pixiv recommended all\|illust\|manga\|novel\|user [--page N --limit N --json]` | Shows personalized recommendations for the given kind; `all` returns illustrations, manga, novels, and users in full, in order, and requires authentication. |
 | `user search` | `pixiv user search WORD [--page N --limit N --json]` | Searches users. JSON and text label whether results came from official App user search or anonymous related-illustration-author fallback. |
@@ -345,7 +350,7 @@ The CLI uses Cobra/pflag, so options may appear before or after positional argum
 | `bookmark remove` | `pixiv bookmark remove ILLUST_ID` | Removes an artwork bookmark; it does not accept visibility or tag flags. |
 | `follow add` | `pixiv follow add USER_ID [--restrict public\|private]` | Follows a user with the selected visibility. |
 | `follow remove` | `pixiv follow remove USER_ID` | Unfollows a user; it does not accept a visibility flag. |
-| `download` | `pixiv download [options] ILLUST_ID...` | Downloads one or more artworks; without a token, uses the anonymous web fallback by default. |
+| `download` | `pixiv download [options] TARGET...` | Downloads artwork IDs/URLs, or all visual works from a supported user URL. |
 | `mcp` | `pixiv mcp [--proxy URL\|--no-proxy]` | Starts the MCP stdio server; the proxy override applies only to this launch. |
 
 Downloaded filenames normalize cross-platform-invalid characters in both the filename template and URL-derived
@@ -368,15 +373,19 @@ used.
 
 | Command | Flag | Default | Description |
 | --- | --- | --- | --- |
-| `search`, `novel search` | `--search-by` | `tag-partial` | Search field: `tag-partial`, `tag-exact`, or `title-caption`. |
+| `search` | `--search-by` | `tag-partial` | Search field: `tag-partial`, `tag-exact`, `title-caption`, or App-only `tag-title-caption` (tags, titles, and captions). |
+| `novel search` | `--search-by` | `tag-partial` | Search field: `tag-partial`, `tag-exact`, or `title-caption`. |
 | `search`, `novel search` | `--sort` | `date_desc` | Sort order: `date_desc` or `date_asc`. |
-| `search`, `novel search` | `--period` | empty | Time range: `day`, `week`, or `month`; omit for no range. |
+| `search` | `--period` | empty | Quick time range: `day`, `week`, `month`, `half-year`, or `year`; omit for no range. Cannot be combined with `--start-date` or `--end-date`. |
+| `novel search` | `--period` | empty | Time range: `day`, `week`, or `month`; omit for no range. |
+| `search` | `--start-date` / `--end-date` | empty | Inclusive `YYYY-MM-DD` date bounds. Either may be supplied; when both are present, start cannot be later than end. Mutually exclusive with `--period`. |
 | `search`, `novel search` | `--rating` | `all` | Rating filter: `sfw`, `r18`, `r18g`, `mature`, or `all`. |
 | `search` | `--type` | `all` | Content type: `all`, `illust-and-ugoira`, `illust`, `manga`, or `ugoira`. |
 | `search` | `--ai-mode` | `all` | AI filter: `all`, `exclude`, or `only`; Pixiv `AIType==2` is AI-generated. |
 | `search` | `--aspect-ratio` | `all` | Aspect ratio: `all`, `landscape`, `portrait`, or `square`. |
 | `search` | `--resolution` | `all` | Resolution: `all`, `high`, `medium`, or `low`; both dimensions are respectively `>=3000`, `1000..2999`, or `<=999`. |
 | `search` | `--draw-tool` | empty | Exact upstream drawing-tool name; obtain current values with authenticated `search-options`. |
+| `search` | `--bookmark-min` / `--bookmark-max` | empty | Inclusive non-negative public bookmark-count bounds. Require App OAuth; `min` cannot exceed `max`. |
 | `novel search` | `--min-text-length` | `0` | Minimum text length in characters; `0` disables the bound. |
 | `novel search` | `--max-text-length` | `0` | Maximum text length in characters; `0` disables the bound; it cannot be lower than a non-zero minimum. |
 | `novel search` | `--original-only` | `false` | Keeps only novels marked original by Pixiv. |
@@ -396,8 +405,8 @@ used.
 | `bookmark add` | `--restrict` | `public` | Visibility of the new bookmark: `public` or `private`. |
 | `bookmark add` | `--tag` | empty | Bookmark tag; may be repeated. |
 | `follow add` | `--restrict` | `public` | Visibility of the new follow: `public` or `private`. |
-| `detail` | `ILLUST_ID` | required | Pixiv artwork ID. |
-| `download` | `ILLUST_ID...` | required | One or more Pixiv artwork IDs. |
+| `detail` | `ILLUST_ID_OR_URL` | required | A positive artwork ID or a supported Pixiv artwork URL. |
+| `download` | `TARGET...` | required | Artwork IDs, artwork URLs, or supported user profile/artworks URLs. |
 
 With a refresh token, `search` always uses App API. App applies resolution, aspect-ratio, tool, content-type, and
 `ai-mode=exclude` filters, while rating and `ai-mode=only` are applied to each App result batch. App
@@ -406,8 +415,22 @@ different filter set. When local filters skip leading empty upstream batches, CL
 non-empty logical batch or the upstream ends. With a positive `--limit` or `--page`, the CLI fills logical
 results across batches until it collects enough matching works, the upstream has no next batch, or a repeated
 cursor is detected; `--limit 0` walks the entire filtered stream; omitting `--limit` reads one upstream batch while
-still skipping leading empty batches. Bookmark-count filtering and like-count fields are not provided.
+still skipping leading empty batches. App also applies explicit date and bookmark-count bounds. Bookmark count is not a
+like-count field and must not be labeled as likes.
 Artwork JSON/text include a stable page URL `https://www.pixiv.net/artworks/{id}` as the first field/line.
+
+### Illustration tag-query syntax
+
+The authenticated App API has been verified for illustration `search` when `--search-by` selects a tag mode. Use
+`tag-exact` for boolean tag filtering: `tagA tagB` means both complete tags are required (AND), and
+`tagA OR tagB` means either complete tag is accepted (OR). `OR` must be uppercase. The literal word `AND` is not a
+verified operator; write the two tags with a space instead.
+
+`tag-partial` (the default) also accepts the tested uppercase `OR` syntax, but each term is a fuzzy tag condition.
+Its results must not be described as a strict exact-tag AND: a result may match a partial, alias, or translated tag
+without visibly listing the supplied complete label. `title-caption` and App-only `tag-title-caption` have no documented boolean-tag contract. No
+escape syntax for a literal uppercase `OR` tag/keyword is verified, so use exact tags without that token when a
+strict query is required.
 
 `novel search` is App-only. Its App request supports keyword target, date order, and duration; rating, text-length,
 and original-only conditions are verified against stable fields in every returned batch. Missing those fields is a
@@ -422,6 +445,17 @@ idempotent App JSON reads, a first 429 with a valid `Retry-After` waits and retr
 invalid/missing headers, a second 429, writes, and resource downloads are never replayed.
 `detail --json` preserves Pixiv's raw HTML `caption`; ordinary `detail` output renders it as safe plain text and
 never includes captions in artwork list output.
+
+`detail` accepts a positive artwork ID or a canonical HTTPS `pixiv.net`/`www.pixiv.net` artwork URL in the form
+`/artworks/{id}` (an optional locale segment, query, and fragment are allowed). It does not accept user, novel,
+short-link, FANBOX, Pixivision, Sketch, legacy, or arbitrary URLs.
+
+`download` accepts the same artwork references plus `/users/{id}` and `/users/{id}/artworks` URLs. A user URL follows
+all pagination for `illust`, `manga`, and `ugoira`, but never novels, and requires App OAuth; it has no anonymous Web
+fallback. URL parsing is local only: it does not fetch HTML or follow redirects. Downloads continue after individual
+artwork failures and report every outcome; cancellation stops immediately. `download --json` emits
+`{"items":[...],"failures":[...]}`. Each successful item contains its canonical artwork `url`, ID, type, and local
+file paths/pages; any failure makes the command exit non-zero. No download history or cross-run deduplication is kept.
 
 ### Common flags
 
@@ -478,8 +512,8 @@ Differences in the anonymous fallback:
 
 - Anonymous `search` only applies filters that Web API can express reliably. Resolution, aspect ratio, drawing
   tool, and content type are translated to Web parameters; AI filtering uses returned artwork fields.
-- `rating=r18`, `r18g`, or `mature` fails before an anonymous request with an authentication requirement rather
-  than pretending the result is empty. `rating=all` means only content visible anonymously.
+- `rating=r18`, `r18g`, `mature`, `--search-by tag-title-caption`, or bookmark-count bounds fail before an anonymous
+  request with an authentication requirement rather than pretending the result is empty. `rating=all` means only content visible anonymously.
 - `search-options` is App-only and explicitly unsupported without a refresh token. Search does not read or store
   browser cookies such as `PHPSESSID`, and never converts a refresh token into a Web session.
 - `novel search` is App-only and returns an authentication requirement without a refresh token.
@@ -532,6 +566,14 @@ to `--prerelease`; if the switch install fails, it explicitly attempts to restor
 both the original error and the recovery result. `go install` uses the exact Release tag; Release binaries verify
 the Ed25519-signed checksum manifest and the archive SHA-256 before downloading, then preflight
 `pixiv version --json` and atomically replace the executable.
+
+Unless an explicit `--proxy`, configured `https_proxy`, or `HTTPS_PROXY` is in effect, Release-binary updates probe
+the embedded source list concurrently. API-capable candidates are used for the GitHub Releases API; archive-capable
+candidates are used for the signed manifest, checksum, and platform archive. The first valid response becomes the
+preferred route, and an asset download may silently try each remaining declared route once; if all fail, the reported
+error names every failed route. Candidates never alter canonical Release URLs, SemVer selection, Ed25519 verification,
+or SHA-256 verification. The automatic notification uses only API-capable candidates and retains its existing shared
+three-second limit and 24-hour cache.
 
 Update checks only select canonical SemVer tags. Stable checks first exclude GitHub Releases marked as prerelease;
 `--prerelease` includes them in the current channel. If any non-draft published Release in that channel uses a

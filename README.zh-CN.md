@@ -22,6 +22,7 @@
 - **App API 优先**——配置 refresh token 后始终走已认证 App 路径；App 失败不会静默回落 Web。
 - **认证 R18 读取**——详情、分页、ugoira metadata 和全部 16 种排行榜都走 App API；无法取得 original 时会诚实使用已验证的 medium ugoira ZIP。
 - **实用搜索筛选**——支持分级、作品类型、AI 模式、横纵比、分辨率和动态绘图工具。
+- **直达 Pixiv 引用**——可把受支持作品 URL 直接粘贴给详情或下载；已认证时也可使用作者主页/作品页 URL 下载该作者的视觉作品，无需浏览器 Cookie 自动化。
 - **本地多账号 OAuth**——支持浏览器登录、账号选择和 refresh token rotation，不读取浏览器 Cookie 或 profile。
 - **适合自动化**——typed SDK error、JSON 输出、纯净 MCP stdio、签名更新且不隐藏截断结果。
 - **有限匿名访问**——没有 token 且启用 fallback 时，受支持的只读操作可以使用 Web API。
@@ -33,7 +34,7 @@
 Linux/macOS（`sh`）：
 
 ```bash
-curl -fsSLo /tmp/pixiv-install.sh https://raw.githubusercontent.com/FlanChanXwO/pixiv-cli/main/scripts/install.sh && sh /tmp/pixiv-install.sh --add-to-path
+curl -fsSLo /tmp/pixiv-install.sh https://github.com/FlanChanXwO/pixiv-cli/releases/latest/download/install.sh && sh /tmp/pixiv-install.sh --add-to-path
 ```
 
 Windows 命令提示符（`cmd.exe`，不依赖 PowerShell）：
@@ -45,6 +46,8 @@ curl.exe -fsSLo "%TEMP%\pixiv-install.cmd" https://raw.githubusercontent.com/Fla
 两个脚本都会检测 AMD64/ARM64、选择最新 stable 官方 Release archive、校验发布的 SHA-256、预检暂存
 binary，并在修改 PATH 前完成用户级安装。可用 `--no-path` 保持 PATH 不变，或用 `--install-dir DIR`
 选择其他目录；执行前也可以先审阅下载的脚本。
+
+随正式版本发布的安装器始终从 GitHub HTTPS 直连取得权威 `checksums.txt`。内置免费候选源只用于探测和下载平台压缩包，候选返回的 checksum 必须与直连内容一致，下载结果仍必须通过 SHA-256 校验。它只改善传输可达性，不改变 Release 身份或完整性判断。
 
 ### 让 Coding Agent 安装
 
@@ -98,9 +101,9 @@ pixiv search "初音ミク" --type illust --ai-mode exclude --resolution high
 pixiv novel search "初音ミク" --rating sfw --min-text-length 1000
 
 # 查看详情、获取推荐并下载。
-pixiv detail 123456
+pixiv detail https://www.pixiv.net/artworks/123456
 pixiv recommended all --limit 10
-pixiv download 123456 --pages 1,3-5 --quality regular
+pixiv download https://www.pixiv.net/artworks/123456 --pages 1,3-5 --quality regular
 ```
 
 运行 `pixiv --help`，或打开[完整 CLI 参考手册](docs/zh-CN/cli-reference.md)，查看全部命令、flag、配置键、环境变量、fallback 规则和更新行为。

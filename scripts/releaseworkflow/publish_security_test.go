@@ -393,6 +393,14 @@ func TestCheckWorkflowRejectsSecurityAndQualityPolicyMutations(t *testing.T) {
 			},
 		},
 		{
+			name: "finalize release-source argument removed",
+			want: "signing-secret step must contain --release-sources internal/update/release_sources.txt",
+			mutate: func(t *testing.T, root *yaml.Node) {
+				t.Helper()
+				removeRunFragment(t, stepWithRun(t, jobNode(t, root, "publish"), "go run ./scripts/releaseassets finalize"), "--release-sources internal/update/release_sources.txt")
+			},
+		},
+		{
 			name: "finalize Simplified Chinese changelog argument removed",
 			want: "signing-secret step must contain --changelog-zh \"changelog/v${RELEASE_TAG#v}/zh-CN.md\"",
 			mutate: func(t *testing.T, root *yaml.Node) {

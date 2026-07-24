@@ -47,6 +47,14 @@ local, err := pixiv.OpenDefault(pixiv.Options{
 请求型方法使用命名 request，例如 `SearchIllustRequest`、`SearchNovelRequest`、`SearchIllustOptionsRequest`、`UserArtworksRequest`、`UserBookmarksRequest`、`UserFollowingRequest`、`AddBookmarkRequest`、`FollowUserRequest`。返回模型为 `IllustListResult`、`NovelListResult`、`SearchIllustOptionsResult`、`UserListResult`、`IllustDetail`、`UserDetailResult` 等，均来自顶层 `pixiv` package。
 每个 public `Illust` 都包含稳定作品页 URL `https://www.pixiv.net/artworks/{id}`，JSON 首字段为 `url`。SDK 不提供点赞数字段，不得把收藏数文案为点赞。`Download` 支持 `DownloadOptions`：`ParsePageSpec` 页选择与 `DownloadQuality`（`original|regular|small|thumb|mini`）；ugoira 对页选择或非 original 质量返回 unsupported。
 
+### 本地 Pixiv 引用解析
+
+`ParseReference(raw)` 不执行 I/O，接受正整数作品 ID 或严格的官方 Pixiv HTTPS URL，并返回
+`Reference{Kind, ID}`：ID 与 `/artworks/{id}` 的 `Kind` 是 `artwork`，`/users/{id}` 与
+`/users/{id}/artworks` 的 `Kind` 是 `user`。host 必须为 `pixiv.net` 或 `www.pixiv.net`，可带可选
+locale、query 与 fragment。`ParseArtworkReference(raw)` 是仅接受作品的变体，`Reference.URL()` 返回规范
+作品或用户页 URL。解析器不跟随跳转、不抓取 HTML，拒绝其他 Pixiv 属性或 URL 形式，校验错误也不会复现输入 URL。
+
 `UserArtworksRequest.UserID` 等 SDK 用户 ID 必填；“省略 UID 就是自己”是 CLI/MCP adapter 行为，外部 Go 调用方先调用 `CurrentUserID(ctx)` 后再组装 request。
 
 `UserDetail` 固定返回 `UserDetailResult{User, Profile, ProfilePublicity, Workspace}` 四个 envelope。上游任一 envelope 缺失、`null`、非 object 或 `user.id <= 0` 时，SDK 返回带 `OperationUserDetail`、`BackendAppAPI` 和请求 UID 的 `malformed_upstream_response`；不会暴露上游 body、URL 或凭据。`User.ProfileImageURLs.Medium`、`Profile` 中的网页/背景/社交 URL 以及 `Workspace.WorkspaceImageURL` 均是可选指针，缺失、`null` 与空字符串统一为 `nil`；未公开的文本、计数和字段保持 Go 零值。
@@ -85,10 +93,13 @@ auth store，不读取 `PIXIV_REFRESH_TOKEN` 或 runtime config，不刷新、�
 | `AspectRatio` | `all`、`landscape`、`portrait`、`square` |
 | `Resolution` | `all`、`high`、`medium`、`low`；三档分别要求宽高均 `>=3000`、均在 `1000..2999`、均 `<=999` |
 | `Tool` | 上游绘图工具原值；不做模糊匹配 |
+| `BookmarkMin` / `BookmarkMax` | 可选、包含边界的非负公开收藏数；`Min` 不得大于 `Max` |
 
 枚举零值规范化为 `all`，`Tool` 会去除首尾空白；未知枚举返回 `invalid_argument`，不会发起上游
-请求。认证路径把分辨率、横纵比、工具、作品类型和 `exclude` AI 翻译为 App 服务端参数；分级与
-`only` AI 再基于当前 App 批次的规范化字段筛选。`Illust.Tools []string` 保留 App 返回的工具顺序和
+请求。`SearchIllustRequest.Target` 还接受搜索标签、标题、说明文字的 `keyword`；`Duration` 接受
+`within_last_day|within_last_week|within_last_month`；`StartDate`、`EndDate` 是可选、包含边界的
+`YYYY-MM-DD`。日期区间不能与 `Duration` 同用，且起始不得晚于结束。认证路径把分辨率、横纵比、工具、作品类型、`exclude` AI、
+日期边界和收藏数边界翻译为 App 服务端参数；分级与 `only` AI 再基于当前 App 批次的规范化字段筛选。`Illust.Tools []string` 保留 App 返回的工具顺序和
 原值；该字段不是收藏数筛选。
 
 `SearchIllustOptions(ctx, SearchIllustOptionsRequest{Word: word})` 需要非空关键词和 App 认证，返回
@@ -132,8 +143,8 @@ next, err := client.UserArtworks(ctx, pixiv.UserArtworksRequest{
 _ = next
 ```
 
-cursor 是版本化、不透明、绑定操作和完整查询的 token；插画 `SearchIllust` cursor 同时绑定规范化后的
-`Rating`、`ContentType`、`AIMode`、`AspectRatio`、`Resolution` 与 `Tool`；小说搜索 cursor 绑定 target、sort、duration、
+cursor 是版本化、不透明、绑定操作和完整查询的 token；插画 `SearchIllust` cursor 同时绑定 target、duration、日期边界，以及规范化后的
+`Rating`、`ContentType`、`AIMode`、`AspectRatio`、`Resolution`、`Tool` 与收藏数边界；小说搜索 cursor 绑定 target、sort、duration、
 分级、正文长度边界与原创条件。改变任一筛选字段后复用旧 cursor 会返回 `invalid_argument`。cursor 不可解析、编辑、跨请求复用或替换为上游 offset/page。
 SDK 不以 `page` 为输入；CLI/MCP 在边缘层将逻辑 `page`/`limit` 转为 cursor 遍历。
 
@@ -142,7 +153,7 @@ SDK 不以 `page` 为输入；CLI/MCP 在边缘层将逻辑 `page`/`limit` 转�
 有 refresh token 时，插画搜索只走 App API；App 的认证、网络、服务端失败不自动 Web fallback。
 `NewClient` 无 refresh token 且 `WebFallbackEnabled=true` 时，匿名白名单读操作使用 Web API；
 `OpenDefault` 则每次 snapshot 读取本地 `web_fallback_enabled`。匿名 `SearchIllust` 只执行 Web 能可靠
-表达的筛选；`Rating` 为 `r18`、`r18g` 或 `mature` 时在联网前返回 `unauthorized`，不会伪装为空结果。
+表达的筛选；`Rating` 为 `r18`、`r18g`、`mature`、`Target=keyword` 或收藏数边界时在联网前返回 `unauthorized`，不会伪装为空结果。
 匿名 `SearchIllustOptions` 返回 `unsupported`，不会请求 Web。SDK 不读取或注入 Cookie，也不把 refresh
 token 转换为 Web session。
 

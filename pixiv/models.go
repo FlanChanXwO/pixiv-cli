@@ -65,6 +65,7 @@ const (
 	SearchTargetPartialMatchForTags SearchTarget = "partial_match_for_tags"
 	SearchTargetExactMatchForTags   SearchTarget = "exact_match_for_tags"
 	SearchTargetTitleAndCaption     SearchTarget = "title_and_caption"
+	SearchTargetKeyword             SearchTarget = "keyword"
 )
 
 type SortMode string
@@ -165,15 +166,19 @@ type SearchIllustFilters struct {
 	AspectRatio SearchAspectRatio `json:"aspect_ratio,omitempty"`
 	Resolution  SearchResolution  `json:"resolution,omitempty"`
 	Tool        string            `json:"tool,omitempty"`
+	BookmarkMin *int              `json:"bookmark_min,omitempty"`
+	BookmarkMax *int              `json:"bookmark_max,omitempty"`
 }
 
 type SearchIllustRequest struct {
-	Word     string              `json:"word"`
-	Target   SearchTarget        `json:"search_target,omitempty"`
-	Sort     SortMode            `json:"sort,omitempty"`
-	Duration string              `json:"duration,omitempty"`
-	Cursor   Cursor              `json:"cursor,omitempty"`
-	Filters  SearchIllustFilters `json:"filters,omitempty"`
+	Word      string              `json:"word"`
+	Target    SearchTarget        `json:"search_target,omitempty"`
+	Sort      SortMode            `json:"sort,omitempty"`
+	Duration  string              `json:"duration,omitempty"`
+	StartDate string              `json:"start_date,omitempty"`
+	EndDate   string              `json:"end_date,omitempty"`
+	Cursor    Cursor              `json:"cursor,omitempty"`
+	Filters   SearchIllustFilters `json:"filters,omitempty"`
 }
 
 type SearchIllustOptionsRequest struct {

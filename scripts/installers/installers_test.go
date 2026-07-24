@@ -81,6 +81,44 @@ func TestInstallShChecksumFailurePreservesExistingBinary(t *testing.T) {
 	}
 }
 
+func TestInstallShSelectsFastestVerifiedSourceAndRetriesArchive(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX installer is exercised by Unix platform jobs")
+	}
+
+	fixtureDir, assetName := prepareUnixFixture(t, false)
+	fakeBin := prepareFakeCurl(t)
+	logPath := filepath.Join(t.TempDir(), "curl.log")
+	installDir := t.TempDir()
+	command := exec.Command("sh", filepath.Join("..", "install.sh"), "--install-dir", installDir, "--no-path")
+	command.Env = append(os.Environ(),
+		"PATH="+fakeBin+string(os.PathListSeparator)+os.Getenv("PATH"),
+		"PIXIV_INSTALLER_FIXTURES="+fixtureDir,
+		"PIXIV_INSTALLER_CURL_LOG="+logPath,
+		"PIXIV_INSTALLER_CURL_FAIL_ARCHIVE_HOST=fast.example",
+		"PIXIV_INSTALLER_CURL_FAIL_CHECKSUM_HOST=fallback.example",
+		"PIXIV_RELEASE_SOURCES=fast|-|https://fast.example/{url}\nfallback|-|https://fallback.example/{url}\ngithub-direct|{url}|{url}",
+	)
+	if output, err := command.CombinedOutput(); err != nil {
+		t.Fatalf("install with source retry: %v\n%s", err, output)
+	}
+	logBody, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	log := string(logBody)
+	for _, required := range []string{
+		"https://github.com/FlanChanXwO/pixiv-cli/releases/latest/download/checksums.txt",
+		"https://fast.example/https://github.com/FlanChanXwO/pixiv-cli/releases/latest/download/checksums.txt",
+		"https://fast.example/https://github.com/FlanChanXwO/pixiv-cli/releases/latest/download/" + assetName,
+		"https://fallback.example/https://github.com/FlanChanXwO/pixiv-cli/releases/latest/download/" + assetName,
+	} {
+		if !strings.Contains(log, required) {
+			t.Fatalf("curl log missing %q:\n%s", required, log)
+		}
+	}
+}
+
 func TestInstallShAddsDefaultDirectoryToPathIdempotently(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("POSIX installer is exercised by Unix platform jobs")
@@ -417,6 +455,25 @@ while [ "$#" -gt 0 ]; do
   esac
 done
 [ -n "$output" ] && [ -n "$url" ]
+if [ -n "${PIXIV_INSTALLER_CURL_LOG:-}" ]; then
+  printf '%s\n' "$url" >> "$PIXIV_INSTALLER_CURL_LOG"
+fi
+case "${PIXIV_INSTALLER_CURL_FAIL_ARCHIVE_HOST:-}" in
+  '') ;;
+  *)
+    case "$url" in
+      *"$PIXIV_INSTALLER_CURL_FAIL_ARCHIVE_HOST"*pixiv-cli_*.tar.gz) exit 22 ;;
+    esac
+    ;;
+esac
+case "${PIXIV_INSTALLER_CURL_FAIL_CHECKSUM_HOST:-}" in
+  '') ;;
+  *)
+    case "$url" in
+      *"$PIXIV_INSTALLER_CURL_FAIL_CHECKSUM_HOST"*/checksums.txt) exit 22 ;;
+    esac
+    ;;
+esac
 cp "$PIXIV_INSTALLER_FIXTURES/${url##*/}" "$output"
 `
 	path := filepath.Join(directory, "curl")

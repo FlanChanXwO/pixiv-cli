@@ -80,7 +80,7 @@ func TestServerListsExpectedTools(t *testing.T) {
 	if err != nil {
 		t.Fatalf("marshal search_illust input schema: %v", err)
 	}
-	for _, field := range []string{"rating", "content_type", "ai_mode", "aspect_ratio", "resolution", "tool"} {
+	for _, field := range []string{"search_target", "duration", "start_date", "end_date", "rating", "content_type", "ai_mode", "aspect_ratio", "resolution", "tool", "bookmark_min", "bookmark_max"} {
 		if !strings.Contains(string(schema), `"`+field+`"`) {
 			t.Fatalf("search_illust input schema missing %q: %s", field, schema)
 		}
@@ -95,11 +95,13 @@ func TestServerListsExpectedTools(t *testing.T) {
 		t.Fatalf("decode search_illust input schema: %v", err)
 	}
 	wantEnums := map[string][]string{
-		"rating":       {"all", "sfw", "r18", "r18g", "mature"},
-		"content_type": {"all", "illust-and-ugoira", "illust", "manga", "ugoira"},
-		"ai_mode":      {"all", "exclude", "only"},
-		"aspect_ratio": {"all", "landscape", "portrait", "square"},
-		"resolution":   {"all", "high", "medium", "low"},
+		"search_target": {"partial_match_for_tags", "exact_match_for_tags", "title_and_caption", "keyword"},
+		"duration":      {"within_last_day", "within_last_week", "within_last_month", "within_half_year", "within_year"},
+		"rating":        {"all", "sfw", "r18", "r18g", "mature"},
+		"content_type":  {"all", "illust-and-ugoira", "illust", "manga", "ugoira"},
+		"ai_mode":       {"all", "exclude", "only"},
+		"aspect_ratio":  {"all", "landscape", "portrait", "square"},
+		"resolution":    {"all", "high", "medium", "low"},
 	}
 	for field, enum := range wantEnums {
 		property := schemaObject.Properties[field]
@@ -107,8 +109,10 @@ func TestServerListsExpectedTools(t *testing.T) {
 			t.Fatalf("search_illust schema %s = %+v, want enum %v with description", field, property, enum)
 		}
 	}
-	if schemaObject.Properties["tool"].Description == "" {
-		t.Fatal("search_illust schema tool is missing description")
+	for _, field := range []string{"start_date", "end_date", "tool", "bookmark_min", "bookmark_max"} {
+		if schemaObject.Properties[field].Description == "" {
+			t.Fatalf("search_illust schema %s is missing description", field)
+		}
 	}
 	novelSchema, err := json.Marshal(searchNovelTool.InputSchema)
 	if err != nil {
@@ -131,8 +135,10 @@ func TestSearchIllustMapsStableFiltersToPublicSDK(t *testing.T) {
 	defer closeSession()
 
 	result := callTool(t, session, "search_illust", map[string]any{
-		"word": "cat", "rating": "r18g", "content_type": "manga", "ai_mode": "only",
+		"word": "cat", "search_target": "keyword", "start_date": "2026-01-01", "end_date": "2026-01-31",
+		"rating": "r18g", "content_type": "manga", "ai_mode": "only",
 		"aspect_ratio": "landscape", "resolution": "high", "tool": "CLIP STUDIO PAINT",
+		"bookmark_min": 1000, "bookmark_max": 10000,
 	})
 	if result.IsError {
 		t.Fatalf("search_illust returned MCP error: %+v", result)
@@ -142,8 +148,47 @@ func TestSearchIllustMapsStableFiltersToPublicSDK(t *testing.T) {
 		AIMode: sdk.SearchAIModeOnly, AspectRatio: sdk.SearchAspectRatioLandscape,
 		Resolution: sdk.SearchResolutionHigh, Tool: "CLIP STUDIO PAINT",
 	}
-	if got.Word != "cat" || got.Filters != want {
+	if got.Word != "cat" || got.Target != sdk.SearchTargetKeyword || got.StartDate != "2026-01-01" || got.EndDate != "2026-01-31" ||
+		got.Filters.Rating != want.Rating || got.Filters.ContentType != want.ContentType || got.Filters.AIMode != want.AIMode ||
+		got.Filters.AspectRatio != want.AspectRatio || got.Filters.Resolution != want.Resolution || got.Filters.Tool != want.Tool ||
+		got.Filters.BookmarkMin == nil || *got.Filters.BookmarkMin != 1000 || got.Filters.BookmarkMax == nil || *got.Filters.BookmarkMax != 10000 {
 		t.Fatalf("SearchIllust request = %+v, want word=cat filters=%+v", got, want)
+	}
+}
+
+func TestSearchIllustExpandsLongQuickDurationToTokyoDateRange(t *testing.T) {
+	var got sdk.SearchIllustRequest
+	client := &fakeSDKClient{searchIllust: func(_ context.Context, request sdk.SearchIllustRequest) (*sdk.IllustListResult, error) {
+		got = request
+		return &sdk.IllustListResult{}, nil
+	}}
+	session, closeSession := newSDKTestSession(t, client)
+	defer closeSession()
+
+	result := callTool(t, session, "search_illust", map[string]any{"word": "cat", "duration": "within_half_year"})
+	if result.IsError {
+		t.Fatalf("search_illust returned MCP error: %+v", result)
+	}
+	if got.Duration != "" || got.StartDate == "" || got.EndDate == "" || got.StartDate > got.EndDate {
+		t.Fatalf("SearchIllust request = %+v, want date range without duration", got)
+	}
+}
+
+func TestSearchIllustReturnsTypedItemsAlongsideText(t *testing.T) {
+	client := &fakeSDKClient{searchIllust: func(_ context.Context, _ sdk.SearchIllustRequest) (*sdk.IllustListResult, error) {
+		return &sdk.IllustListResult{Illusts: []sdk.Illust{testSDKIllust(42, "work", 7)}}, nil
+	}}
+	session, closeSession := newSDKTestSession(t, client)
+	defer closeSession()
+
+	result := callTool(t, session, "search_illust", map[string]any{"word": "cat"})
+	if result.IsError {
+		t.Fatalf("search_illust returned MCP error: %+v", result)
+	}
+	var out illustQueryOut
+	decodeStructured(t, result, &out)
+	if len(out.Items) != 1 || out.Items[0].ID != 42 || out.Pagination.Returned != 1 || !strings.Contains(out.Text, "Found 1 illustrations") {
+		t.Fatalf("search_illust output = %+v", out)
 	}
 }
 
@@ -175,6 +220,45 @@ func TestSearchNovelMapsStableFiltersAndReturnsStructuredOutput(t *testing.T) {
 	}
 	if len(out.Novels) != 1 || out.Novels[0].ID != 12 || out.Pagination.Returned != 1 || !strings.Contains(out.Text, "Found 1 novels") {
 		t.Fatalf("search_novel output = %+v", out)
+	}
+}
+
+func TestIllustDetailAcceptsArtworkURLAndReturnsStructuredOutput(t *testing.T) {
+	var gotID int64
+	client := &fakeSDKClient{illustDetail: func(_ context.Context, id int64) (*sdk.IllustDetail, error) {
+		gotID = id
+		return &sdk.IllustDetail{Illust: testSDKIllust(id, "work", 7)}, nil
+	}}
+	session, closeSession := newSDKTestSession(t, client)
+	defer closeSession()
+
+	result := callTool(t, session, "illust_detail", map[string]any{"url": "https://www.pixiv.net/en/artworks/42?from=share"})
+	if result.IsError {
+		t.Fatalf("illust_detail returned MCP error: %+v", result)
+	}
+	var out struct {
+		Illust sdk.Illust `json:"illust"`
+		Text   string     `json:"text"`
+	}
+	decodeStructured(t, result, &out)
+	if gotID != 42 || out.Illust.ID != 42 || !strings.Contains(out.Text, "ID: 42") {
+		t.Fatalf("illust_detail id=%d output=%+v, want URL-resolved artwork", gotID, out)
+	}
+
+	invalid := callTool(t, session, "illust_detail", map[string]any{"illust_id": 42, "url": "https://www.pixiv.net/artworks/42"})
+	if !invalid.IsError {
+		t.Fatalf("illust_detail accepted both references: %+v", invalid)
+	}
+	text, ok := invalid.Content[0].(*mcp.TextContent)
+	if !ok || !strings.Contains(text.Text, "exactly one") || strings.Contains(text.Text, "https://") {
+		t.Fatalf("illust_detail invalid input = %#v", invalid.Content)
+	}
+}
+
+func TestNormalizeIllustsProvidesStructuredEmptyArrays(t *testing.T) {
+	got := normalizeIllusts([]sdk.Illust{{ID: 1}})[0]
+	if got.Tools == nil || got.Tags == nil || got.MetaPages == nil {
+		t.Fatalf("normalizeIllusts() = %#v, want non-nil structured arrays", got)
 	}
 }
 
@@ -389,6 +473,8 @@ func TestSearchIllustSchemaRejectsInvalidEnumsBeforeOpeningSDK(t *testing.T) {
 		{"ai_mode", "maybe"},
 		{"aspect_ratio", "wide"},
 		{"resolution", "ultra"},
+		{"search_target", "tags_and_caption"},
+		{"duration", "within_last_decade"},
 	} {
 		t.Run(test.field, func(t *testing.T) {
 			factoryCalls := 0
@@ -403,6 +489,27 @@ func TestSearchIllustSchemaRejectsInvalidEnumsBeforeOpeningSDK(t *testing.T) {
 				t.Fatalf("invalid %s=%q error=%v factoryCalls=%d", test.field, test.value, err, factoryCalls)
 			}
 		})
+	}
+}
+
+func TestSearchIllustRejectsInvalidCrossFieldFiltersBeforeOpeningSDK(t *testing.T) {
+	for _, arguments := range []map[string]any{
+		{"word": "cat", "duration": "within_last_week", "start_date": "2026-01-01"},
+		{"word": "cat", "start_date": "2026-02-30"},
+		{"word": "cat", "start_date": "2026-02-01", "end_date": "2026-01-31"},
+		{"word": "cat", "bookmark_min": 10000, "bookmark_max": 1000},
+	} {
+		factoryCalls := 0
+		service := application.SDKService{NewClient: func(application.SDKClientRequest) (application.SDKClient, error) {
+			factoryCalls++
+			return &fakeSDKClient{}, nil
+		}}
+		session, closeSession := newSDKTestSessionWithService(t, &fakeAPI{}, service)
+		result := callTool(t, session, "search_illust", arguments)
+		closeSession()
+		if !result.IsError || factoryCalls != 0 {
+			t.Fatalf("arguments=%v result=%+v factoryCalls=%d", arguments, result, factoryCalls)
+		}
 	}
 }
 
@@ -1031,6 +1138,58 @@ func TestDownloadDefaultsToLocalPathResult(t *testing.T) {
 	}
 	if !slices.Equal(downloads.downloadIDs, []int64{42, 42, -1}) {
 		t.Fatalf("download IDs = %v", downloads.downloadIDs)
+	}
+}
+
+func TestDownloadAcceptsArtworkURLsAndIncludesCanonicalURL(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "42.jpg")
+	if err := os.WriteFile(path, []byte("jpeg"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	downloads := &fakeDownloads{artworks: []download.DownloadedArtwork{{
+		IllustID: 42, Title: "work", Author: "artist", Type: "illust", Files: []download.DownloadedFile{{Path: path, Page: 1}},
+	}}}
+	session, closeSession := newSDKDownloadTestSession(t, &fakeSDKClient{}, downloads)
+	defer closeSession()
+
+	result := callTool(t, session, "download", map[string]any{"urls": []string{"https://www.pixiv.net/en/artworks/42?from=share"}})
+	if result.IsError {
+		t.Fatalf("download result=%+v", result)
+	}
+	out := decodeDownloadOut(t, result)
+	if len(out.Items) != 1 || out.Items[0].URL != "https://www.pixiv.net/artworks/42" || downloads.downloadIDs[0] != 42 {
+		t.Fatalf("download output=%+v ids=%v", out, downloads.downloadIDs)
+	}
+}
+
+func TestDownloadUserURLExpandsEveryVisualArtworkType(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "42.jpg")
+	if err := os.WriteFile(path, []byte("jpeg"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	downloads := &fakeDownloads{artworks: []download.DownloadedArtwork{{
+		IllustID: 42, Title: "work", Author: "artist", Type: "illust", Files: []download.DownloadedFile{{Path: path}},
+	}}}
+	client := &fakeSDKClient{artworks: []sdk.Illust{testSDKIllust(42, "work", 7)}}
+	session, closeSession := newSDKDownloadTestSession(t, client, downloads)
+	defer closeSession()
+
+	result := callTool(t, session, "download", map[string]any{"urls": []string{"https://www.pixiv.net/users/7/artworks"}})
+	if result.IsError {
+		t.Fatalf("download result=%+v", result)
+	}
+	out := decodeDownloadOut(t, result)
+	if len(out.Items) != 3 || downloads.downloadCalls != 3 {
+		t.Fatalf("download output=%+v calls=%d", out, downloads.downloadCalls)
+	}
+	gotTypes := make([]sdk.IllustType, 0, len(client.artworksRequests))
+	for _, request := range client.artworksRequests {
+		gotTypes = append(gotTypes, request.Type)
+	}
+	if !slices.Equal(gotTypes, []sdk.IllustType{sdk.IllustTypeIllust, sdk.IllustTypeManga, sdk.IllustTypeUgoira}) {
+		t.Fatalf("UserArtworks types = %v", gotTypes)
 	}
 }
 
@@ -2521,6 +2680,27 @@ func newTestSession(t *testing.T, downloads *fakeDownloads) (*mcp.ClientSession,
 
 func newSDKTestSession(t *testing.T, sdkClient application.SDKClient) (*mcp.ClientSession, func()) {
 	return newSDKTestSessionWithAPI(t, &fakeAPI{}, sdkClient)
+}
+
+func newSDKDownloadTestSession(t *testing.T, sdkClient application.SDKClient, downloads DownloadManager) (*mcp.ClientSession, func()) {
+	t.Helper()
+	service := application.SDKService{NewClient: func(application.SDKClientRequest) (application.SDKClient, error) {
+		return sdkClient, nil
+	}}
+	server := NewWithSDKDownloadFactory(downloads, func(application.SDKClient) DownloadManager { return downloads }, slog.New(slog.NewTextHandler(io.Discard, nil)), service, application.SDKClientRequest{})
+	clientTransport, serverTransport := mcp.NewInMemoryTransports()
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() { _ = server.Run(ctx, serverTransport) }()
+	client := mcp.NewClient(&mcp.Implementation{Name: "test", Version: "0.0.0"}, nil)
+	session, err := client.Connect(ctx, clientTransport, nil)
+	if err != nil {
+		cancel()
+		t.Fatalf("connect: %v", err)
+	}
+	return session, func() {
+		session.Close()
+		cancel()
+	}
 }
 
 func newSDKTestSessionWithAPI(t *testing.T, api any, sdkClient application.SDKClient) (*mcp.ClientSession, func()) {

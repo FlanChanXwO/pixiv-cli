@@ -549,6 +549,13 @@ workflow artifact 读取、生成或记录 deploy key。
 当前 Release 不会进行 Apple notarization 或 Windows Authenticode。直接下载仍可能被 Gatekeeper
 或 SmartScreen 拦截/提示；这是需要在用户文档中保留的系统信誉边界，不能通过文档或脚本绕过。
 
+已公开的 GitHub Release 还会触发 `.github/workflows/publish-skillhub.yml`。该工作流只 checkout
+不可变 release tag，并确认该 tag 属于默认分支、对应 GitHub Release 已公开且版本满足 SemVer 后，才对
+`skills/pixiv-cli/` 运行 SkillHub CLI 的 dry-run 和提交。`SKILLHUB_TOKEN` 仅进入最后的提交步骤，CLI
+必须返回 `skillId` 和审核状态；这证明 SkillHub 已接收提交，但平台审核完成前公开详情页可能仍不可见。
+若该独立发布失败，可通过同一 workflow 的 `workflow_dispatch` 输入既有发布 tag 恢复，不能用 main 的
+后续内容替代该 tag。
+
 ## Git 与本地产物
 
 `.gitignore` 已排除：

@@ -6,6 +6,7 @@ GitHub Release bodies present the two versions together, with English first and 
 | Version | Date | Release notes |
 | --- | --- | --- |
 | Unreleased | — | [English](unreleased/en.md) · [简体中文](unreleased/zh-CN.md) |
+| [v0.7.0](https://github.com/FlanChanXwO/pixiv-cli/compare/v0.6.0...v0.7.0) | 2026-07-25 | [English](v0.7.0/en.md) · [简体中文](v0.7.0/zh-CN.md) |
 | [v0.6.0](https://github.com/FlanChanXwO/pixiv-cli/compare/v0.5.0...v0.6.0) | 2026-07-24 | [English](v0.6.0/en.md) · [简体中文](v0.6.0/zh-CN.md) |
 | [v0.5.0](https://github.com/FlanChanXwO/pixiv-cli/compare/v0.4.5...v0.5.0) | 2026-07-22 | [English](v0.5.0/en.md) · [简体中文](v0.5.0/zh-CN.md) |
 | [v0.4.5](https://github.com/FlanChanXwO/pixiv-cli/compare/v0.4.4...v0.4.5) | 2026-07-20 | [English](v0.4.5/en.md) · [简体中文](v0.4.5/zh-CN.md) |

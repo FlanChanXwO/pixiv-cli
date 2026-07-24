@@ -14,7 +14,8 @@ func NewUpdateCoordinator(proxy string, out, errOut io.Writer) (*update.UpdateCo
 	if err != nil {
 		return nil, fmt.Errorf("create update HTTP client: %w", err)
 	}
-	releaseClient, err := update.NewGitHubReleaseClient(update.ReleaseClientOptions{HTTPClient: httpClient})
+	usePublicReleaseSources := proxy == ""
+	releaseClient, err := update.NewGitHubReleaseClient(update.ReleaseClientOptions{HTTPClient: httpClient, EnablePublicReleaseSources: usePublicReleaseSources})
 	if err != nil {
 		return nil, fmt.Errorf("create GitHub release client: %w", err)
 	}
@@ -22,7 +23,7 @@ func NewUpdateCoordinator(proxy string, out, errOut io.Writer) (*update.UpdateCo
 		SourceDetector:   update.SourceDetectorFunc(update.DetectInstallSource),
 		ReleaseChecker:   releaseClient,
 		CommandRunner:    update.NewCommandRunner(out, errOut),
-		ReleaseInstaller: update.NewReleaseInstaller(productionReleaseInstallerOptions(httpClient)),
+		ReleaseInstaller: update.NewReleaseInstaller(withPublicReleaseSources(productionReleaseInstallerOptions(httpClient), usePublicReleaseSources)),
 	})
 }
 
@@ -33,7 +34,8 @@ func NewAutomaticUpdateChecker(proxy string) (*update.AutomaticUpdateChecker, er
 	if err != nil {
 		return nil, fmt.Errorf("create update HTTP client: %w", err)
 	}
-	releaseClient, err := update.NewGitHubReleaseClient(update.ReleaseClientOptions{HTTPClient: httpClient})
+	usePublicReleaseSources := proxy == ""
+	releaseClient, err := update.NewGitHubReleaseClient(update.ReleaseClientOptions{HTTPClient: httpClient, EnablePublicReleaseSources: usePublicReleaseSources})
 	if err != nil {
 		return nil, fmt.Errorf("create GitHub release client: %w", err)
 	}
@@ -41,4 +43,9 @@ func NewAutomaticUpdateChecker(proxy string) (*update.AutomaticUpdateChecker, er
 		SourceDetector: update.SourceDetectorFunc(update.DetectInstallSource),
 		ReleaseChecker: releaseClient,
 	})
+}
+
+func withPublicReleaseSources(options update.ReleaseInstallerOptions, enabled bool) update.ReleaseInstallerOptions {
+	options.EnablePublicReleaseSources = enabled
+	return options
 }

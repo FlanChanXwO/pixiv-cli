@@ -1,4 +1,11 @@
 ---
+slug: pixiv-cli
+version: 0.7.0
+displayName: Pixiv CLI
+summary: Safely operate Pixiv with the pixiv-cli binary for discovery, account actions, and downloads.
+license: MIT
+homepage: https://github.com/FlanChanXwO/pixiv-cli
+tags: [pixiv, cli, mcp]
 name: pixiv-cli
 description: Operate Pixiv through the pixiv-cli binary — search illustrations, novels, and users; inspect Pixiv artwork or user IDs/URLs; view rankings and recommendations; manage bookmarks/follows; and download works. Load only when the user explicitly mentions Pixiv or pixiv-cli, provides a pixiv.net URL or ID in a clear Pixiv context, or requests a specific Pixiv operation or `pixiv` command. Do not trigger for generic illustration, artist, image-search, or download requests without Pixiv context. Verify current syntax with `pixiv <cmd> --help`.
 ---
@@ -63,7 +70,7 @@ the installed binary's `pixiv <cmd> --help` output.
 | Read | `search` `novel search` `search-options` `detail` `ranking` `recommended` `user *` `config get/path` `version` `update --check` | Execute when the user's task requires it |
 | Account diagnosis | `auth list/check` | List only for authentication/account/fallback decisions; check only when network validation is needed |
 | Write | `bookmark add/remove` `follow add/remove` | State the target (illust/user ID) in one line before executing |
-| Disk | `download` | Confirm target directory and exact ID list before each invocation; approval never carries over; see `references/download.md` |
+| Disk | `download` | Confirm target directory and exact targets (IDs or supported Pixiv URLs) before each invocation; a user URL expands every visual work, so state that scope explicitly; approval never carries over; see `references/download.md` |
 | Interactive credential | `auth login` | Run only on explicit request while the user is present for browser OAuth |
 | Account/config state | `auth use/remove` `config set/unset` `update` (actual install) | Ask for explicit confirmation each time; approval does not carry over |
 | MCP server | `mcp` | Run only when the user explicitly asks to start it; it is a long-lived stdio JSON-RPC server, not a data command—do not auto-probe, auto-wait, or include it in preflight |
@@ -113,7 +120,7 @@ pixiv search "WORD" --rating sfw --type illust --ai-mode exclude
 pixiv search "WORD" --resolution high --aspect-ratio landscape --draw-tool "CLIP STUDIO PAINT"
 pixiv novel search "WORD" --rating sfw --min-text-length 1000 --limit 10 --json
 pixiv search-options "WORD" --json         # authenticated dynamic tool choices
-pixiv detail ILLUST_ID --json             # single artwork detail
+pixiv detail ILLUST_ID_OR_URL --json      # single artwork detail
 pixiv ranking --mode day
 pixiv recommended illust --limit 10       # kind is REQUIRED; needs auth
 pixiv recommended all --limit 10          # request all supported kinds; needs auth
@@ -126,7 +133,7 @@ pixiv bookmark add ILLUST_ID --tag TAG    # --tag repeatable; write op
 pixiv bookmark remove ILLUST_ID           # write op
 pixiv follow add USER_ID                  # write op
 pixiv follow remove USER_ID               # write op
-pixiv download ILLUST_ID... [--pages 1,3-5] [--quality original|regular|small|thumb|mini] [--download-path DIR]
+pixiv download TARGET... [--pages 1,3-5] [--quality original|regular|small|thumb|mini] [--download-path DIR]
 pixiv update --check --json               # read-only update check
 ```
 
@@ -156,17 +163,18 @@ assuming its effective value.
    the maximum result count and `0` requests all results. `--page` requires a
    positive `--limit`.
 4. **Search flags are command-scoped.** Verify `--search-by`, `--period`,
-   `--sort`, `--rating`, `--type`, `--ai-mode`, `--aspect-ratio`,
-   `--resolution`, and `--draw-tool` against `pixiv search --help`; do not infer
+   `--start-date`, `--end-date`, `--sort`, `--rating`, `--type`, `--ai-mode`, `--aspect-ratio`,
+   `--resolution`, `--draw-tool`, `--bookmark-min`, and `--bookmark-max` against `pixiv search --help`; do not infer
    undocumented aliases or attach illustration-only filters to other commands.
    `novel search` supports `--search-by`, `--sort`, `--period`, `--rating`,
    `--min-text-length`, `--max-text-length`, and `--original-only`; it does not
    support illustration AI, drawing-tool, resolution, aspect-ratio, or type filters.
 5. **Anonymous restricted search fails explicitly.** Web fallback uses only
-   reliable illustration-search filters. `r18`, `r18g`, `mature`, and `search-options`
+   reliable illustration-search filters. `r18`, `r18g`, `mature`, `--search-by tag-title-caption`,
+   bookmark-count bounds, and `search-options`
    require App authentication; do not present the failure as an empty result
    or add a Cookie workaround. `novel search` is App-only and requires authentication.
-   Bookmark-count filtering is unavailable.
+   Bookmark count is a public bookmark total, never a like count.
 6. **Extended rankings need authentication.** Valid modes are `day`,
    `day_male`, `day_female`, `week`, `week_original`, `week_rookie`, `month`,
    `day_manga`, `week_manga`, `month_manga`, `week_rookie_manga`, `day_r18`,
@@ -184,10 +192,22 @@ assuming its effective value.
 11. **Long downloads may legitimately take time.** Do not impose an arbitrary
    timeout or kill the process merely because it is slow; wait for completion,
    user cancellation, or a real error.
-12. **`--tag` has two narrow meanings.** `user bookmarks --tag TAG` filters
+12. **Tag search has query grammar.** `user bookmarks --tag TAG` filters
    bookmark listings; `bookmark add --tag TAG` adds a repeatable bookmark tag.
-   `search` has no `--tag` flag — put the tag text in its required `WORD` and
-   choose `--search-by tag-exact` when exact matching is needed.
+   `search` has no `--tag` flag — put the tag expression in its required `WORD`.
+   For a reliable boolean tag query, use `--search-by tag-exact`: `tagA tagB`
+   requires both complete tags, and uppercase `tagA OR tagB` accepts either.
+   Literal `AND` is not an operator. The default `tag-partial` also accepts the
+   verified uppercase `OR` syntax, but its fuzzy/alias/translated matches are
+   not a strict exact-tag AND. `title-caption` and App-only `tag-title-caption` have no boolean-tag contract;
+   no literal-uppercase-`OR` escape syntax is verified.
+13. **Direct URLs are intentionally narrow.** `detail` accepts only an artwork
+    ID or a `pixiv.net`/`www.pixiv.net` HTTPS `/artworks/{id}` URL (an optional
+    locale, query, or fragment is harmless). `download` also accepts `/users/{id}`
+    and `/users/{id}/artworks`, which expand every illust, manga, and ugoira for
+    that user — no novels and no implicit limit. User URL downloads require App
+    OAuth and never use Cookie, WebView, or anonymous fallback. Do not suggest
+    short links, old URLs, FANBOX, Pixivision, Sketch, or HTML scraping.
 
 ## Routing
 

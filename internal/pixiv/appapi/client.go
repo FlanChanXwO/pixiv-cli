@@ -98,9 +98,11 @@ func New(opts ...Option) *Client {
 	return c
 }
 
-func (c *Client) SearchIllust(ctx context.Context, word, target, sort, duration string, offset int, filterOptions ...model.SearchIllustFilters) (*model.IllustList, error) {
+func (c *Client) SearchIllust(ctx context.Context, word, target, sort, duration, startDate, endDate string, offset int, filterOptions ...model.SearchIllustFilters) (*model.IllustList, error) {
 	q := url.Values{"word": {word}, "search_target": {target}, "sort": {sort}}
 	setOptional(q, "duration", duration)
+	setOptional(q, "start_date", startDate)
+	setOptional(q, "end_date", endDate)
 	if len(filterOptions) > 0 {
 		setSearchIllustFilters(q, filterOptions[0])
 	}
@@ -134,6 +136,12 @@ func setSearchIllustFilters(query url.Values, filters model.SearchIllustFilters)
 		query.Set("content_type", filters.ContentType)
 	}
 	setOptional(query, "tool", filters.Tool)
+	if filters.BookmarkMin != nil {
+		query.Set("bookmark_num_min", strconv.Itoa(*filters.BookmarkMin))
+	}
+	if filters.BookmarkMax != nil {
+		query.Set("bookmark_num_max", strconv.Itoa(*filters.BookmarkMax))
+	}
 	switch filters.Resolution {
 	case "high":
 		query.Set("width_min", "3000")

@@ -31,27 +31,37 @@ func (a *App) setDownloadPath(ctx context.Context, _ *mcp.CallToolRequest, in se
 }
 
 type downloadIn struct {
-	IllustID  int64   `json:"illust_id,omitempty" jsonschema:"single artwork ID to download"`
-	IllustIDs []int64 `json:"illust_ids,omitempty" jsonschema:"artwork IDs to download"`
-	Pages     string  `json:"pages,omitempty" jsonschema:"1-based page selection, e.g. 1,3-5; default all pages"`
-	Quality   string  `json:"quality,omitempty" jsonschema:"static image quality: original, regular, small, thumb, mini"`
+	IllustID  int64    `json:"illust_id,omitempty" jsonschema:"single artwork ID to download"`
+	IllustIDs []int64  `json:"illust_ids,omitempty" jsonschema:"artwork IDs to download"`
+	URLs      []string `json:"urls,omitempty" jsonschema:"Pixiv artwork or user artworks URLs to download"`
+	Pages     string   `json:"pages,omitempty" jsonschema:"1-based page selection, e.g. 1,3-5; default all pages"`
+	Quality   string   `json:"quality,omitempty" jsonschema:"static image quality: original, regular, small, thumb, mini"`
 	// Delivery 仅保留 local_path 兼容字段；image_content 已移除。
 	Delivery string `json:"delivery,omitempty" jsonschema:"delivery mode: local_path only"`
 }
 
 type downloadOut struct {
-	Delivery string            `json:"delivery"`
-	Items    []downloadItemOut `json:"items"`
-	Files    []downloadFileOut `json:"files"`
-	Text     string            `json:"text"`
+	Delivery string               `json:"delivery"`
+	Items    []downloadItemOut    `json:"items"`
+	Failures []downloadFailureOut `json:"failures"`
+	Files    []downloadFileOut    `json:"files"`
+	Text     string               `json:"text"`
 }
 
 type downloadItemOut struct {
+	URL      string            `json:"url"`
 	IllustID int64             `json:"illust_id"`
 	Title    string            `json:"title"`
 	Author   string            `json:"author"`
 	Type     string            `json:"type"`
 	Files    []downloadFileOut `json:"files"`
+}
+
+type downloadFailureOut struct {
+	URL      string `json:"url"`
+	IllustID int64  `json:"illust_id"`
+	Type     string `json:"type"`
+	Message  string `json:"message"`
 }
 
 type downloadFileOut struct {
@@ -70,12 +80,9 @@ const (
 )
 
 func (a *App) download(ctx context.Context, _ *mcp.CallToolRequest, in downloadIn) (*mcp.CallToolResult, downloadOut, error) {
-	ids := append([]int64(nil), in.IllustIDs...)
-	if in.IllustID > 0 {
-		ids = append(ids, in.IllustID)
-	}
-	if len(ids) == 0 {
-		return emptyDownloadError(ctx, errLegacyValidation, deliveryLocalPath, "Error: provide either illust_id (single ID) or illust_ids (list of IDs).")
+	targets, err := parseDownloadReferences(in)
+	if err != nil {
+		return emptyDownloadError(ctx, errLegacyValidation, deliveryLocalPath, "Error: "+err.Error())
 	}
 	delivery, errText := normalizeDelivery(in.Delivery)
 	if errText != "" {
@@ -85,16 +92,75 @@ func (a *App) download(ctx context.Context, _ *mcp.CallToolRequest, in downloadI
 	if err != nil {
 		return emptyDownloadError(ctx, err, delivery, "Error: "+err.Error())
 	}
-	artworks, err := a.downloadArtworks(ctx, ids, nil, pages, quality)
+	report, err := a.downloadTargets(ctx, targets, pages, quality)
 	if err != nil {
 		return emptyDownloadError(ctx, err, delivery, "Download failed: "+err.Error())
 	}
-	out, err := buildDownloadOut(delivery, artworks)
+	out, err := buildDownloadReportOut(delivery, report)
 	if err != nil {
 		return emptyDownloadError(ctx, err, delivery, "Could not build the download result: "+err.Error())
 	}
 	// MCP 下载只返回本地 path/file_uri/mime_type/页号/大小，不再内嵌 ImageContent。
-	return downloadResult(out), out, nil
+	result := downloadResult(out)
+	if len(out.Failures) > 0 {
+		result.IsError = true
+		recordToolError(ctx, errors.New("download completed with failures"))
+	}
+	return result, out, nil
+}
+
+// parseDownloadReferences 保持旧 ID 字段的顺序，并把 URL 按数组顺序追加；MCP 多字段
+// 本身没有跨字段顺序，调用方需要精确交错顺序时使用 CLI positional targets。
+func parseDownloadReferences(in downloadIn) ([]sdk.Reference, error) {
+	targets := make([]sdk.Reference, 0, len(in.IllustIDs)+len(in.URLs)+1)
+	for _, id := range in.IllustIDs {
+		targets = append(targets, sdk.Reference{Kind: sdk.ReferenceKindArtwork, ID: id})
+	}
+	if in.IllustID > 0 {
+		targets = append(targets, sdk.Reference{Kind: sdk.ReferenceKindArtwork, ID: in.IllustID})
+	}
+	for _, raw := range in.URLs {
+		target, err := sdk.ParseReference(raw)
+		if err != nil {
+			return nil, err
+		}
+		targets = append(targets, target)
+	}
+	if len(targets) == 0 {
+		return nil, errors.New("provide either illust_id (single ID) or illust_ids (list of IDs).")
+	}
+	return targets, nil
+}
+
+func (a *App) downloadTargets(ctx context.Context, targets []sdk.Reference, pages []int, quality application.DownloadQuality) (application.DownloadReport, error) {
+	// 旧嵌入构造器没有 SDK runtime，只保留纯 ID 的既有下载路径；URL/作者展开必须
+	// 经 public SDK operation 执行，不能伪造匿名或 Cookie 路径。
+	if a.newDownloads == nil && a.sdk.NewClient == nil {
+		ids := make([]int64, 0, len(targets))
+		for _, target := range targets {
+			if target.Kind != sdk.ReferenceKindArtwork {
+				return application.DownloadReport{}, errors.New("downloading a user URL requires an authenticated Pixiv SDK operation")
+			}
+			ids = append(ids, target.ID)
+		}
+		artworks, err := a.downloads.Download(ctx, application.DownloadRequest{IllustIDs: ids, Pages: pages, Quality: quality})
+		if err != nil {
+			return application.DownloadReport{}, err
+		}
+		return application.DownloadReport{Items: artworks, Failures: []application.DownloadFailure{}}, nil
+	}
+	client, release, err := a.openSDKOperation(ctx)
+	if err != nil {
+		return application.DownloadReport{}, err
+	}
+	defer release()
+	service := application.DownloadService{NewManager: func(_ application.DownloadClient, _, _ string) (application.DownloadManager, error) {
+		if a.newDownloads != nil {
+			return a.newDownloads(client), nil
+		}
+		return a.downloads, nil
+	}}
+	return service.DownloadTargets(ctx, client, targets, application.DownloadRequest{Pages: pages, Quality: quality})
 }
 
 func (a *App) downloadArtworks(ctx context.Context, ids []int64, client application.SDKClient, pages []int, quality application.DownloadQuality) ([]download.DownloadedArtwork, error) {
@@ -142,6 +208,7 @@ func emptyDownloadResult(delivery, text string) (*mcp.CallToolResult, downloadOu
 	out := downloadOut{
 		Delivery: delivery,
 		Items:    []downloadItemOut{},
+		Failures: []downloadFailureOut{},
 		Files:    []downloadFileOut{},
 		Text:     text,
 	}
@@ -163,10 +230,11 @@ func normalizeDelivery(value string) (string, string) {
 }
 
 func buildDownloadOut(delivery string, artworks []download.DownloadedArtwork) (downloadOut, error) {
-	out := downloadOut{Delivery: delivery, Items: []downloadItemOut{}, Files: []downloadFileOut{}}
+	out := downloadOut{Delivery: delivery, Items: []downloadItemOut{}, Failures: []downloadFailureOut{}, Files: []downloadFileOut{}}
 	lines := []string{fmt.Sprintf("Download completed; delivery: %s.", delivery)}
 	for _, artwork := range artworks {
 		item := downloadItemOut{
+			URL:      sdk.Reference{Kind: sdk.ReferenceKindArtwork, ID: artwork.IllustID}.URL(),
 			IllustID: artwork.IllustID,
 			Title:    artwork.Title,
 			Author:   artwork.Author,
@@ -197,6 +265,20 @@ func buildDownloadOut(delivery string, artworks []download.DownloadedArtwork) (d
 		out.Items = append(out.Items, item)
 	}
 	out.Text = strings.Join(lines, "\n")
+	return out, nil
+}
+
+func buildDownloadReportOut(delivery string, report application.DownloadReport) (downloadOut, error) {
+	out, err := buildDownloadOut(delivery, report.Items)
+	if err != nil {
+		return downloadOut{}, err
+	}
+	for _, failure := range report.Failures {
+		out.Failures = append(out.Failures, downloadFailureOut{
+			URL: failure.URL, IllustID: failure.IllustID, Type: failure.Type, Message: failure.Message,
+		})
+		out.Text += fmt.Sprintf("\nFailed %s: %s", failure.URL, failure.Message)
+	}
 	return out, nil
 }
 

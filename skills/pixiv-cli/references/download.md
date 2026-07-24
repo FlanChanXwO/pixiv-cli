@@ -7,8 +7,9 @@ Downloads write to disk — always run the checklist first.
 1. `pixiv config get download_path` — confirm the target directory with the
    user (default `./downloads`, resolved against the *current working
    directory*, so state your cwd when confirming).
-2. Confirm the exact ID list and item count immediately before each
-   `pixiv download` invocation. Approval is single-use and never carries over
+2. Confirm the exact targets and item scope immediately before each
+   `pixiv download` invocation. A user URL means every visual work by that
+   user, with no implicit limit; approval is single-use and never carries over
    to another download command.
 3. Only override with `--download-path DIR` / `--filename-template T` when the
    user asked for a specific location or naming; these flags never persist.
@@ -18,6 +19,7 @@ Downloads write to disk — always run the checklist first.
 ```
 pixiv download 129543211
 pixiv download 129543211 130000001 130000002
+pixiv download https://www.pixiv.net/artworks/129543211
 pixiv download 129543211 --pages 1,3-5 --quality regular
 ```
 
@@ -35,6 +37,30 @@ pixiv download 129543211 --pages 1,3-5 --quality regular
 - Filename template default: `{author} - {title}_{id}`. Placeholders: `{id}`,
   `{title}`, `{author}`, `{author_id}`. Persist a new default with
   `pixiv config set filename_template "..."` (confirm first — config write).
+
+## Direct Pixiv URLs and whole-user downloads
+
+`detail` accepts an artwork ID or only a current official artwork page URL:
+`https://pixiv.net/artworks/{id}` or `https://www.pixiv.net/artworks/{id}`.
+`download` accepts those plus `https://pixiv.net/users/{id}` and
+`https://pixiv.net/users/{id}/artworks` (the `www` host and an optional locale,
+query, or fragment are also valid).
+
+```
+pixiv download https://www.pixiv.net/users/12345678
+pixiv download https://www.pixiv.net/en/users/12345678/artworks
+```
+
+- A user URL walks every `illust`, `manga`, and `ugoira` in upstream page order;
+  it does not download novels and does not add an implicit count, page, retry, or
+  timeout limit. It requires App OAuth; never add a Cookie, WebView, anonymous
+  fallback, redirect, or HTML-scraping workaround.
+- Only the listed `pixiv.net` / `www.pixiv.net` HTTPS paths are accepted. Short
+  links, old URL shapes, novels, FANBOX, Pixivision, Sketch, other hosts, and
+  other paths fail locally before the SDK or downloader opens.
+- Downloads preserve CLI argument order. They do not create a cache, database,
+  history, or cross-run de-duplication; repeated inputs are intentionally
+  processed again.
 
 ## Animated works
 
@@ -63,7 +89,12 @@ Chain from JSON rather than scraping human output:
 
 ## Reporting results
 
-- Per-ID outcomes: report which IDs succeeded and which failed, with the real
-  error for each failure. Never summarize failures away as "done".
+- The JSON report is `{items, failures}`. Each successful item includes its
+  canonical artwork URL, ID, work type, and every downloaded file's page/path;
+  each failure includes a safe URL/ID/type/message summary. A partial failure
+  exits non-zero after reporting all completed outcomes; cancellation stops
+  immediately.
+- Per-target outcomes: report which references succeeded and which failed.
+  Never summarize failures away as "done".
 - Anonymous sessions can download public works via web fallback; restricted or
   R-18 works may fail — surface the real API error, don't retry blindly.

@@ -2,6 +2,7 @@
 package main
 
 import (
+	"bytes"
 	"crypto/ed25519"
 	"crypto/sha256"
 	"crypto/x509"
@@ -184,6 +185,7 @@ func runFinalize(arguments []string) (err error) {
 	changelogChinese := flags.String("changelog-zh", "", "version-specific Simplified Chinese changelog path")
 	installSh := flags.String("install-sh", "", "verified install.sh path")
 	installCmd := flags.String("install-cmd", "", "verified install.cmd path")
+	releaseSourcesPath := flags.String("release-sources", "", "versioned release-source list injected into install.sh")
 	privateKeyPath := flags.String("private-key", "", "PKCS#8 PEM Ed25519 private-key path")
 	keyID := flags.String("key-id", "", "public signing-key identifier")
 	if err := flags.Parse(arguments); err != nil {
@@ -229,6 +231,19 @@ func runFinalize(arguments []string) (err error) {
 	if err := requireSecureRegularFile(*installCmd, "install.cmd"); err != nil {
 		return err
 	}
+	var releaseSources []byte
+	if *releaseSourcesPath != "" {
+		if err := requireSecureRegularFile(*releaseSourcesPath, "release sources"); err != nil {
+			return err
+		}
+		releaseSources, err = os.ReadFile(*releaseSourcesPath)
+		if err != nil {
+			return fmt.Errorf("read release sources %q: %w", *releaseSourcesPath, err)
+		}
+		if len(bytes.TrimSpace(releaseSources)) == 0 {
+			return errors.New("release sources must not be empty")
+		}
+	}
 	parent := filepath.Dir(*outputDir)
 	if err := requireSecureDirectory(parent, "output parent directory"); err != nil {
 		return err
@@ -252,7 +267,7 @@ func runFinalize(arguments []string) (err error) {
 		}
 	}()
 
-	checksums, err := copyRequiredAssets(*inputDir, stage, *version, *installSh, *installCmd)
+	checksums, err := copyRequiredAssets(*inputDir, stage, *version, *installSh, *installCmd, releaseSources)
 	if err != nil {
 		return err
 	}
@@ -276,7 +291,7 @@ func runFinalize(arguments []string) (err error) {
 	return nil
 }
 
-func copyRequiredAssets(inputDir, outputDir, version, installSh, installCmd string) ([]byte, error) {
+func copyRequiredAssets(inputDir, outputDir, version, installSh, installCmd string, releaseSources []byte) ([]byte, error) {
 	sources := make(map[string]string, len(fixedTargets)+2)
 	for _, target := range fixedTargets {
 		name := archiveName(version, target)
@@ -295,9 +310,22 @@ func copyRequiredAssets(inputDir, outputDir, version, installSh, installCmd stri
 		if err := requireRegularFile(source, "input release asset"); err != nil {
 			return nil, fmt.Errorf("%s: %w", name, err)
 		}
-		sum, err := copyRegularFile(source, filepath.Join(outputDir, name))
+		destination := filepath.Join(outputDir, name)
+		sum, err := copyRegularFile(source, destination)
 		if err != nil {
 			return nil, fmt.Errorf("copy %s: %w", name, err)
+		}
+		if name == "install.sh" && len(releaseSources) != 0 {
+			sum, err = injectReleaseSources(destination, releaseSources)
+			if err != nil {
+				return nil, fmt.Errorf("inject release sources into install.sh: %w", err)
+			}
+		}
+		if name == "install.cmd" && len(releaseSources) != 0 {
+			sum, err = injectWindowsReleaseSources(destination, releaseSources)
+			if err != nil {
+				return nil, fmt.Errorf("inject release sources into install.cmd: %w", err)
+			}
 		}
 		checksums = append(checksums, hex.EncodeToString(sum[:])...)
 		checksums = append(checksums, "  "...)
@@ -305,6 +333,102 @@ func copyRequiredAssets(inputDir, outputDir, version, installSh, installCmd stri
 		checksums = append(checksums, '\n')
 	}
 	return checksums, nil
+}
+
+const (
+	releaseSourcesBeginMarker      = "# PIXIV_RELEASE_SOURCES_BEGIN\n"
+	releaseSourcesEndMarker        = "# PIXIV_RELEASE_SOURCES_END"
+	releaseSourcesHeredoc          = "PIXIV_RELEASE_SOURCES_EOF"
+	windowsReleaseSourcesBeginLine = "rem PIXIV_RELEASE_SOURCES_BEGIN"
+	windowsReleaseSourcesEndMarker = "rem PIXIV_RELEASE_SOURCES_END"
+)
+
+func injectReleaseSources(path string, sources []byte) ([sha256.Size]byte, error) {
+	var zero [sha256.Size]byte
+	payload, err := os.ReadFile(path)
+	if err != nil {
+		return zero, fmt.Errorf("read staged installer: %w", err)
+	}
+	content := string(payload)
+	start := strings.Index(content, releaseSourcesBeginMarker)
+	if start < 0 {
+		return zero, errors.New("release-source begin marker is missing")
+	}
+	endOffset := strings.Index(content[start+len(releaseSourcesBeginMarker):], releaseSourcesEndMarker)
+	if endOffset < 0 {
+		return zero, errors.New("release-source end marker is missing")
+	}
+	end := start + len(releaseSourcesBeginMarker) + endOffset
+	trimmed := strings.TrimSuffix(string(sources), "\n")
+	if strings.Contains(trimmed, "\n"+releaseSourcesHeredoc) || strings.HasPrefix(trimmed, releaseSourcesHeredoc+"\n") || trimmed == releaseSourcesHeredoc {
+		return zero, fmt.Errorf("release sources contain reserved heredoc delimiter %q", releaseSourcesHeredoc)
+	}
+	replacement := releaseSourcesBeginMarker + "release_sources=$(cat <<'" + releaseSourcesHeredoc + "'\n" + trimmed + "\n" + releaseSourcesHeredoc + "\n)\n"
+	rendered := content[:start] + replacement + content[end:]
+	if err := os.WriteFile(path, []byte(rendered), 0o644); err != nil {
+		return zero, fmt.Errorf("write rendered installer: %w", err)
+	}
+	return sha256.Sum256([]byte(rendered)), nil
+}
+
+func injectWindowsReleaseSources(path string, sources []byte) ([sha256.Size]byte, error) {
+	var zero [sha256.Size]byte
+	payload, err := os.ReadFile(path)
+	if err != nil {
+		return zero, fmt.Errorf("read staged installer: %w", err)
+	}
+	content := string(payload)
+	lineEnding := "\r\n"
+	beginMarker := windowsReleaseSourcesBeginLine + lineEnding
+	if !strings.Contains(content, beginMarker) {
+		lineEnding = "\n"
+		beginMarker = windowsReleaseSourcesBeginLine + lineEnding
+	}
+	start := strings.Index(content, beginMarker)
+	if start < 0 {
+		return zero, errors.New("release-source begin marker is missing")
+	}
+	endOffset := strings.Index(content[start+len(beginMarker):], windowsReleaseSourcesEndMarker)
+	if endOffset < 0 {
+		return zero, errors.New("release-source end marker is missing")
+	}
+	entries, err := windowsReleaseSourceEntries(sources)
+	if err != nil {
+		return zero, err
+	}
+	end := start + len(beginMarker) + endOffset
+	var replacement strings.Builder
+	replacement.WriteString(beginMarker)
+	fmt.Fprintf(&replacement, "set \"RELEASE_SOURCE_COUNT=%d\"%s", len(entries), lineEnding)
+	for index, entry := range entries {
+		fmt.Fprintf(&replacement, "set \"RELEASE_SOURCE_%d=%s\"%s", index+1, entry, lineEnding)
+	}
+	rendered := content[:start] + replacement.String() + content[end:]
+	if err := os.WriteFile(path, []byte(rendered), 0o644); err != nil {
+		return zero, fmt.Errorf("write rendered installer: %w", err)
+	}
+	return sha256.Sum256([]byte(rendered)), nil
+}
+
+func windowsReleaseSourceEntries(sources []byte) ([]string, error) {
+	var entries []string
+	for lineNumber, line := range strings.Split(strings.ReplaceAll(string(sources), "\r\n", "\n"), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		if len(strings.Split(line, "|")) != 3 {
+			return nil, fmt.Errorf("release source line %d must have three fields", lineNumber+1)
+		}
+		if strings.ContainsAny(line, "\r\n\"%") {
+			return nil, fmt.Errorf("release source line %d contains unsupported Windows batch characters", lineNumber+1)
+		}
+		entries = append(entries, line)
+	}
+	if len(entries) == 0 {
+		return nil, errors.New("release sources must contain at least one entry")
+	}
+	return entries, nil
 }
 
 func copyRegularFile(source, destination string) ([sha256.Size]byte, error) {

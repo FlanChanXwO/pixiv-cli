@@ -1,0 +1,101 @@
+name: Publish SkillHub skill
+
+on:
+  release:
+    types:
+      - published
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Existing published immutable SemVer tag to publish to SkillHub
+        required: true
+        type: string
+
+# Release events load this workflow from the default branch. The checkout below is
+# nevertheless pinned to the immutable release tag, so the submitted Skill always
+# matches the GitHub Release rather than a later main commit.
+env:
+  RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.event.release.tag_name }}
+  SKILLHUB_HOST: https://api.skillhub.cn
+
+permissions: {}
+
+jobs:
+  publish:
+    name: Publish pixiv-cli to SkillHub
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ env.RELEASE_TAG }}
+      - name: Verify the published release tag belongs to the default branch
+        shell: bash
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          case "$RELEASE_TAG" in
+            v[0-9]*) ;;
+            *) printf '%s\n' 'release tag must start with v and a digit' >&2; exit 1 ;;
+          esac
+          git show-ref --verify --quiet "refs/tags/$RELEASE_TAG"
+          tag_commit=$(git rev-parse "$RELEASE_TAG^{commit}")
+          git show-ref --verify --quiet "refs/remotes/origin/$DEFAULT_BRANCH"
+          git merge-base --is-ancestor "$tag_commit" "origin/$DEFAULT_BRANCH"
+          test "$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" --jq '.draft')" = false
+          test -n "$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" --jq '.published_at')"
+          go run ./scripts/releaseassets validate --version "${RELEASE_TAG#v}"
+      # The vendor installer runs before this workflow makes SKILLHUB_TOKEN available.
+      # Its CLI is only used after the immutable tag and local metadata have passed.
+      - name: Install the official SkillHub CLI without credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          installer="$RUNNER_TEMP/skillhub-install.sh"
+          curl --fail --location --silent --show-error https://skillhub.cn/install/install.sh --output "$installer"
+          bash "$installer" --cli-only
+          "$HOME/.local/bin/skillhub" --skip-self-upgrade --version
+      - name: Dry-run the exact tagged product skill
+        shell: bash
+        run: |
+          set -euo pipefail
+          "$HOME/.local/bin/skillhub" --skip-self-upgrade publish skills/pixiv-cli \
+            --host "$SKILLHUB_HOST" \
+            --version "${RELEASE_TAG#v}" \
+            --dry-run \
+            --json
+      - name: Publish and confirm the SkillHub submission
+        shell: bash
+        env:
+          SKILLHUB_TOKEN: ${{ secrets.SKILLHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$SKILLHUB_TOKEN"
+          response="$RUNNER_TEMP/skillhub-publish.json"
+          "$HOME/.local/bin/skillhub" --skip-self-upgrade publish skills/pixiv-cli \
+            --host "$SKILLHUB_HOST" \
+            --version "${RELEASE_TAG#v}" \
+            --changelog "Synchronized with Pixiv CLI $RELEASE_TAG" \
+            --json | tee "$response"
+          python3 - "$response" <<'PY'
+          import json
+          import sys
+
+          with open(sys.argv[1], encoding="utf-8") as source:
+              result = json.load(source)
+
+          skill_id = result.get("skillId")
+          status = result.get("status")
+          if not skill_id or not status:
+              raise SystemExit("SkillHub accepted the request without skillId or status")
+
+          print(f"SkillHub submission confirmed: skillId={skill_id} status={status}")
+          public_url = result.get("publicUrl")
+          if public_url:
+              print(f"SkillHub URL: {public_url}")
+          PY

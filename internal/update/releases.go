@@ -31,11 +31,12 @@ const (
 // ReleaseClientOptions 配置 GitHub Releases 客户端。
 // APIBaseURL、HTTPClient、CacheDir 和 Now 允许调用方为受控环境注入依赖。
 type ReleaseClientOptions struct {
-	APIBaseURL string
-	Repository string
-	HTTPClient *http.Client
-	CacheDir   string
-	Now        func() time.Time
+	APIBaseURL                 string
+	Repository                 string
+	HTTPClient                 *http.Client
+	CacheDir                   string
+	Now                        func() time.Time
+	EnablePublicReleaseSources bool
 }
 
 // ReleaseCheckOptions 表示一次 Releases 查询的渠道与触发方式。
@@ -72,6 +73,8 @@ type GitHubReleaseClient struct {
 	cacheDir   string
 	cachePath  string
 	now        func() time.Time
+	// sourceSelector 仅在调用方未显式配置 HTTP(S) proxy 时启用，避免改变用户指定代理的语义。
+	sourceSelector *releaseSourceSelector
 	// replaceFile 是每个 client 独立的替换 seam；生产构造固定使用 files.ReplaceFile。
 	replaceFile func(string, string) error
 }
@@ -116,14 +119,18 @@ func NewGitHubReleaseClient(options ReleaseClientOptions) (*GitHubReleaseClient,
 	if now == nil {
 		now = time.Now
 	}
-	return &GitHubReleaseClient{
+	client := &GitHubReleaseClient{
 		endpoint:    endpoint,
 		httpClient:  httpClient,
 		cacheDir:    cacheDir,
 		cachePath:   filepath.Join(cacheDir, releaseCacheFilename),
 		now:         now,
 		replaceFile: files.ReplaceFile,
-	}, nil
+	}
+	if options.EnablePublicReleaseSources {
+		client.sourceSelector = newDefaultReleaseSourceSelector(httpClient)
+	}
+	return client, nil
 }
 
 // Check 从 GitHub Releases API 选择符合渠道的最高 SemVer Release。
@@ -238,6 +245,14 @@ func (c *GitHubReleaseClient) fetchReleaseCache(ctx context.Context, previous re
 		}
 	}
 
+	var apiSources []releaseSource
+	if c.sourceSelector != nil {
+		var err error
+		apiSources, err = c.sourceSelector.ordered(ctx, releaseSourceAPI, c.endpoint.String())
+		if err != nil {
+			return releaseCache{}, err
+		}
+	}
 	current := *c.endpoint
 	visited := make(map[string]struct{})
 	refreshed := releaseCache{SchemaVersion: releaseCacheSchemaVersion}
@@ -252,7 +267,7 @@ func (c *GitHubReleaseClient) fetchReleaseCache(ctx context.Context, previous re
 		visited[pageID] = struct{}{}
 
 		cachedPage, hasCachedPage := cachedPages[pageID]
-		page, nextPage, err := c.fetchReleasePage(ctx, &current, cachedPage, hasCachedPage)
+		page, nextPage, err := c.fetchReleasePage(ctx, &current, cachedPage, hasCachedPage, firstReleaseSource(apiSources))
 		if err != nil {
 			return releaseCache{}, err
 		}
@@ -265,8 +280,16 @@ func (c *GitHubReleaseClient) fetchReleaseCache(ctx context.Context, previous re
 	}
 }
 
-func (c *GitHubReleaseClient) fetchReleasePage(ctx context.Context, pageURL *url.URL, cachedPage releaseCachePage, hasCachedPage bool) (releaseCachePage, *url.URL, error) {
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, pageURL.String(), nil)
+func (c *GitHubReleaseClient) fetchReleasePage(ctx context.Context, pageURL *url.URL, cachedPage releaseCachePage, hasCachedPage bool, source *releaseSource) (releaseCachePage, *url.URL, error) {
+	requestURL := pageURL.String()
+	if source != nil {
+		var err error
+		requestURL, err = source.apiURL(requestURL)
+		if err != nil {
+			return releaseCachePage{}, nil, fmt.Errorf("transform GitHub Releases page %q through source %q: %w", pageURL, source.id, err)
+		}
+	}
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, requestURL, nil)
 	if err != nil {
 		return releaseCachePage{}, nil, fmt.Errorf("create GitHub Releases request: %w", err)
 	}

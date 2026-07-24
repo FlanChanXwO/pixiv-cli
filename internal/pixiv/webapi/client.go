@@ -52,7 +52,7 @@ func New(opts ...Option) *Client {
 	return c
 }
 
-func (c *Client) SearchIllust(ctx context.Context, word, target, sort, duration string, offset int, filterOptions ...model.SearchIllustFilters) (*model.IllustList, error) {
+func (c *Client) SearchIllust(ctx context.Context, word, target, sort, duration, startDate, endDate string, offset int, filterOptions ...model.SearchIllustFilters) (*model.IllustList, error) {
 	pagination, err := checkedWebPagination(offset, artworkSearchPageSize)
 	if err != nil {
 		return nil, err
@@ -74,6 +74,8 @@ func (c *Client) SearchIllust(ctx context.Context, word, target, sort, duration 
 	if err := setDuration(q, duration); err != nil {
 		return nil, err
 	}
+	setOptionalSearchValue(q, "scd", startDate)
+	setOptionalSearchValue(q, "ecd", endDate)
 	var out ajaxEnvelope[webSearchBody]
 	if err := c.getJSON(ctx, webSearchIllustPath(word, filters.ContentType, q), q, &out); err != nil {
 		return nil, err
@@ -239,7 +241,7 @@ func (c *Client) IllustRanking(ctx context.Context, mode, date string, offset in
 }
 
 func (c *Client) SearchUser(ctx context.Context, word string, offset int) (*model.UserPreviewList, error) {
-	illusts, err := c.SearchIllust(ctx, word, string(model.SearchTargetPartialMatchForTags), string(model.SortModeDateDesc), "", offset)
+	illusts, err := c.SearchIllust(ctx, word, string(model.SearchTargetPartialMatchForTags), string(model.SortModeDateDesc), "", "", "", offset)
 	if err != nil {
 		return nil, err
 	}

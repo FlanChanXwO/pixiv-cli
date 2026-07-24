@@ -26,7 +26,7 @@ fallback、更新を扱います。SDK と MCP の詳細は重複させず、[�
 
 ```bash
 # Linux/macOS
-curl -fsSLo /tmp/pixiv-install.sh https://raw.githubusercontent.com/FlanChanXwO/pixiv-cli/main/scripts/install.sh
+curl -fsSLo /tmp/pixiv-install.sh https://github.com/FlanChanXwO/pixiv-cli/releases/latest/download/install.sh
 sh /tmp/pixiv-install.sh --add-to-path
 ```
 
@@ -52,6 +52,8 @@ Linux Release asset は glibc 2.35 以降を必要とします。release、nativ
 初回 bootstrap の script には Ed25519 verifier を埋め込めません。SHA-256 は破損・取り違えを検出しますが、
 真正性は HTTPS と公式 GitHub repository/Release account に依存します。実行前に script を確認してください。
 導入後の `pixiv update` は binary に埋め込まれた Ed25519 trust root を使用します。
+
+正式版の installer には静的な Release-source list が埋め込まれます。権威ある `checksums.txt` は常に GitHub HTTPS から直接取得し、無料候補は対応する platform archive の probe にだけ使用します。候補の checksum は直取得した内容と byte 単位で一致する必要があり、install 前にも archive の SHA-256 を検証します。list を remote から取得することはなく、署名済み Release とともにだけ更新されます。
 
 ### source から build
 
@@ -258,7 +260,7 @@ option は positional argument の前後どちらでも指定できます。
 | `search` | `pixiv search [options] WORD` | イラストを検索します。 |
 | `novel search` | `pixiv novel search [options] WORD` | 認証済み App API で小説を検索します。 |
 | `search-options` | `pixiv search-options [options] WORD` | keyword に対する App API 制作ツール候補を表示します。認証が必要です。 |
-| `detail` | `pixiv detail [options] ILLUST_ID` | 作品詳細を表示します。 |
+| `detail` | `pixiv detail [options] ILLUST_ID_OR_URL` | 作品 ID または対応 Pixiv 作品 URL の詳細を表示します。 |
 | `ranking` | `pixiv ranking [options]` | イラストランキングを表示します。 |
 | `recommended` | `pixiv recommended all\|illust\|manga\|novel\|user [--page N --limit N --json]` | 指定 kind の認証済みおすすめを表示します。`all` は 4 種類を順に返します。 |
 | `user search` | `pixiv user search WORD [--page N --limit N --json]` | ユーザーを検索します。JSON/text は公式 App 検索か匿名の関連作品作者 fallback かを示します。 |
@@ -270,7 +272,7 @@ option は positional argument の前後どちらでも指定できます。
 | `bookmark remove` | `pixiv bookmark remove ILLUST_ID` | bookmark を削除します。visibility/tag flag はありません。 |
 | `follow add` | `pixiv follow add USER_ID [--restrict public\|private]` | 指定 visibility で follow します。 |
 | `follow remove` | `pixiv follow remove USER_ID` | unfollow します。visibility flag はありません。 |
-| `download` | `pixiv download [options] ILLUST_ID...` | 1 件以上の作品を download します。token なしでは既定で匿名 Web fallback を使います。 |
+| `download` | `pixiv download [options] TARGET...` | 作品 ID/URL、または対応 user URL の全 visual works を download します。 |
 | `mcp` | `pixiv mcp [--proxy URL\|--no-proxy]` | MCP stdio server を起動します。 |
 
 download filename は template と URL 由来 extension の cross-platform 不正文字を正規化します。ASCII control
@@ -292,15 +294,19 @@ allowlist、MIME 推測、暗黙置換は行いません。
 
 | Command | Flag | Default | 説明 |
 | --- | --- | --- | --- |
-| `search`、`novel search` | `--search-by` | `tag-partial` | 検索フィールド: `tag-partial`、`tag-exact`、`title-caption`。 |
+| `search` | `--search-by` | `tag-partial` | 検索フィールド: `tag-partial`、`tag-exact`、`title-caption`、または App OAuth 専用の `tag-title-caption`（タグ、タイトル、キャプション）。 |
+| `novel search` | `--search-by` | `tag-partial` | 検索フィールド: `tag-partial`、`tag-exact`、`title-caption`。 |
 | `search`、`novel search` | `--sort` | `date_desc` | sort order: `date_desc` または `date_asc`。 |
-| `search`、`novel search` | `--period` | empty | time range: `day`、`week`、`month`。省略時は期間指定なし。 |
+| `search` | `--period` | empty | quick time range: `day`、`week`、`month`、`half-year`、`year`。省略時は期間指定なし。`--start-date` / `--end-date` と併用不可。 |
+| `novel search` | `--period` | empty | time range: `day`、`week`、`month`。省略時は期間指定なし。 |
+| `search` | `--start-date` / `--end-date` | empty | 包含境界の `YYYY-MM-DD` date。どちらか一方でも指定でき、両方ある場合 start は end より後にできません。`--period` と併用不可。 |
 | `search`、`novel search` | `--rating` | `all` | `sfw`, `r18`, `r18g`, `mature`, `all`。 |
 | `search` | `--type` | `all` | `all`, `illust-and-ugoira`, `illust`, `manga`, `ugoira`。 |
 | `search` | `--ai-mode` | `all` | `all`, `exclude`, `only`。Pixiv `AIType==2` が AI 生成です。 |
 | `search` | `--aspect-ratio` | `all` | `all`, `landscape`, `portrait`, `square`。 |
 | `search` | `--resolution` | `all` | `all`, `high`, `medium`, `low`。両辺がそれぞれ `>=3000`, `1000..2999`, `<=999`。 |
 | `search` | `--draw-tool` | empty | upstream の正確な制作ツール名。認証済み `search-options` で取得します。 |
+| `search` | `--bookmark-min` / `--bookmark-max` | empty | 包含境界の非負 public bookmark 数。App OAuth が必要で、`min` は `max` を超えられません。 |
 | `novel search` | `--min-text-length` | `0` | 本文の最小文字数。`0` は下限を無効にします。 |
 | `novel search` | `--max-text-length` | `0` | 本文の最大文字数。`0` は上限を無効にし、非ゼロの下限より小さくできません。 |
 | `novel search` | `--original-only` | `false` | Pixiv がオリジナルと表示した小説だけを残します。 |
@@ -320,16 +326,29 @@ allowlist、MIME 推測、暗黙置換は行いません。
 | `bookmark add` | `--restrict` | `public` | 新規 bookmark visibility。 |
 | `bookmark add` | `--tag` | empty | 反復可能な bookmark tag。 |
 | `follow add` | `--restrict` | `public` | 新規 follow visibility。 |
-| `detail` | `ILLUST_ID` | required | Pixiv artwork ID。 |
-| `download` | `ILLUST_ID...` | required | 1 件以上の artwork ID。 |
+| `detail` | `ILLUST_ID_OR_URL` | required | 正の artwork ID または対応 Pixiv artwork URL。 |
+| `download` | `TARGET...` | required | artwork ID、artwork URL、または対応 user profile/artworks URL。 |
 
 refresh token がある `search` は常に App API を使います。App は解像度、縦横比、tool、content type、
 `ai-mode=exclude` を処理し、rating と `ai-mode=only` は App result batch ごとに適用されます。App failure は
 Web に fallback しません。filter は opaque cursor に binding され、別条件へ再利用できません。ローカル filter が
 連続 empty upstream batch を飛ばす場合、CLI/MCP は最初の非 empty 論理 batch か upstream 終端まで続けます。
 正数 `--limit`/`--page` は filter 後の論理結果を跨 batch で埋め、`--limit 0` は全件走査、`--limit` なしでも
-先頭 empty batch は skip します。bookmark-count filter も like-count フィールドもありません。作品 JSON/text は
+先頭 empty batch は skip します。App は明示 date と bookmark-count の境界も処理します。bookmark count は like-count
+フィールドではなく、like と表記してはいけません。作品 JSON/text は
 `https://www.pixiv.net/artworks/{id}` を先頭フィールド/先頭行として含めます。
+
+### イラストタグ検索の構文
+
+認証済み App API で、イラスト `search` がタグ mode を選んだ場合に検証済みです。boolean tag filter には
+`tag-exact` を使用します。`tagA tagB` は両方の完全な tag が必要な AND、`tagA OR tagB` はどちらかの完全な
+tag でよい OR です。`OR` は大文字で指定します。文字列 `AND` は検証済みの演算子ではないため、二つの tag は
+空白で区切ります。
+
+既定の `tag-partial` も検証済みの大文字 `OR` 構文を受け付けますが、各語は曖昧な tag 条件です。結果を厳密な
+exact-tag AND と説明してはいけません。部分 tag、alias、翻訳 tag に一致し、入力した完全な label が表示されない
+場合があります。`title-caption` と App OAuth 専用の `tag-title-caption` には boolean tag の契約がありません。大文字の literal `OR` tag/keyword を
+escape する構文は未検証なので、厳密な query ではその token を避けて exact tag を使用してください。
 
 `novel search` は App 専用です。App request が表すのは keyword target、日付順、期間だけで、rating、本文長、
 original-only は各 batch の安定した response field で検証されます。必須 field がなければ無言の非一致ではなく
@@ -339,6 +358,10 @@ typed upstream-response failure になります。filter が batch を飛ばす�
 
 認証済みの `detail`、pages、ugoira metadata は App API のみを使います。App のページ数不一致またはページ資源不足は明示的に失敗し、匿名 Web request は行いません。認証済み ugoira は original ZIP が得られないとき、検証済み App medium ZIP を直接 download します。冪等 App JSON read だけは、最初の 429 に有効な `Retry-After` がある場合に command context 配下で一度だけ待機・再試行します。header 不正/欠落、二度目の 429、write、resource download は replay しません。
 `detail --json` は Pixiv の raw HTML `caption` を保持し、通常の `detail` 出力は安全な plain text に変換します。作品 list output には caption を含めません。
+
+`detail` は正の artwork ID、または HTTPS の `pixiv.net`/`www.pixiv.net` にある `/artworks/{id}` URL を受け付けます。locale、query、fragment は許可されます。user、novel、short-link、FANBOX、Pixivision、Sketch、legacy、そのほかの URL は受け付けません。
+
+`download` はこれに加えて `/users/{id}` と `/users/{id}/artworks` を受け付けます。user URL は `illust`、`manga`、`ugoira` を全 page にわたり download し、novel は対象外です。App OAuth が必須で、匿名 Web fallback は使いません。URL はローカルでのみ parse され、HTML 取得や redirect follow は行いません。1 件の失敗後も他の作品を続行し、cancel は直ちに停止します。`download --json` は `{"items":[...],"failures":[...]}` を出力し、成功 item は canonical artwork `url`、ID、type、local file path/page を含みます。失敗が 1 件でもあれば非ゼロ終了です。download history や cross-run deduplication はありません。
 
 ### 共通 flag
 
@@ -387,7 +410,7 @@ token source がなく `web_fallback_enabled=true` の場合、CLI の `search`�
 server error を自動 fallback しません。
 
 - 匿名 `search` は Web が確実に表現できる filter だけを使用します。AI は返却 field で判定します。
-- `rating=r18|r18g|mature` は request 前に認証要求として失敗し、空結果に見せません。`all` は匿名で見える範囲です。
+- `rating=r18|r18g|mature`、`--search-by tag-title-caption`、または bookmark-count filter は request 前に認証要求として失敗し、空結果に見せません。`all` は匿名で見える範囲です。
 - `search-options` は App 専用です。Cookie を読み取らず、refresh token を Web session に変換しません。
 - `novel search` は App 専用で、refresh token がなければ認証要求として失敗します。
 - 拡張 ranking mode（`day_manga`、`week_manga`、`month_manga`、`week_rookie_manga`、`day_r18`、
@@ -420,6 +443,8 @@ development build は `dev` と表示し self-update を拒否します。公式
 `go install`、Release binary を検出します。Homebrew channel 切替失敗時は元 formula の復元を明示的に試み、
 両方の結果を報告します。`go install` は正確な Release tag、Release binary は Ed25519 署名 checksum manifest
 と archive SHA-256 を検証し、`pixiv version --json` preflight 後に atomic replace します。
+
+明示的な `--proxy`、設定済み `https_proxy`、または `HTTPS_PROXY` がない場合、Release binary update は内蔵 source list を並行 probe します。API 対応候補は GitHub Releases API に、archive 対応候補は署名 manifest、checksum、platform archive に使用されます。最初の有効 response が優先 route となり、asset download が失敗すると残る宣言済み route を各一回だけ静かに試します。全て失敗した場合だけ error に各 route を表示します。候補は canonical Release URL、SemVer 選択、Ed25519 verification、SHA-256 verification を変更しません。自動 update notification は API 対応候補だけを使い、既存の 3 秒総制限と 24 時間 cache を維持します。
 
 update check は canonical SemVer tag だけを選びます。対象 channel に non-SemVer published Release があれば、
 古い version へ暗黙に戻らず fail closed します。private key は保護された `release` Environment と管理された
