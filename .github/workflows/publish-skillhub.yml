@@ -1,9 +1,14 @@
 name: Publish SkillHub skill
 
 on:
-  release:
+  # Release is created with github.token, which intentionally cannot trigger a
+  # second `release` workflow. workflow_run is the safe handoff after all
+  # release and Homebrew gates finish.
+  workflow_run:
+    workflows:
+      - Release
     types:
-      - published
+      - completed
   workflow_dispatch:
     inputs:
       release_tag:
@@ -11,11 +16,11 @@ on:
         required: true
         type: string
 
-# Release events load this workflow from the default branch. The checkout below is
-# nevertheless pinned to the immutable release tag, so the submitted Skill always
-# matches the GitHub Release rather than a later main commit.
+# workflow_run definitions are loaded from the default branch. The checkout below
+# is nevertheless pinned to the immutable release tag, so the submitted Skill
+# always matches the GitHub Release rather than a later main commit.
 env:
-  RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.event.release.tag_name }}
+  RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.event.workflow_run.head_branch }}
   SKILLHUB_HOST: https://api.skillhub.cn
 
 permissions: {}
@@ -23,6 +28,10 @@ permissions: {}
 jobs:
   publish:
     name: Publish pixiv-cli to SkillHub
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+      startsWith(github.event.workflow_run.head_branch, 'v'))
     runs-on: ubuntu-24.04
     permissions:
       contents: read
