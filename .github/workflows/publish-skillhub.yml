@@ -99,11 +99,11 @@ jobs:
               result = json.load(source)
 
           skill_id = result.get("skillId")
-          status = result.get("status")
-          if not skill_id or not status:
-              raise SystemExit("SkillHub accepted the request without skillId or status")
+          review_status = result.get("reviewStatus") or result.get("status")
+          if result.get("ok") is not True or not skill_id or not review_status:
+              raise SystemExit("SkillHub accepted the request without skillId or review status")
 
-          print(f"SkillHub submission confirmed: skillId={skill_id} status={status}")
+          print(f"SkillHub submission confirmed: skillId={skill_id} reviewStatus={review_status}")
           public_url = result.get("publicUrl")
           if public_url:
               print(f"SkillHub URL: {public_url}")
