@@ -42,6 +42,7 @@ jobs:
           persist-credentials: false
           ref: ${{ env.RELEASE_TAG }}
       - name: Verify the published release tag belongs to the default branch
+        id: skill_change
         shell: bash
         env:
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
@@ -59,9 +60,25 @@ jobs:
           test "$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" --jq '.draft')" = false
           test -n "$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" --jq '.published_at')"
           go run ./scripts/releaseassets validate --version "${RELEASE_TAG#v}"
+          previous_tag="$(
+            git tag --merged "$RELEASE_TAG" --list 'v[0-9]*' --sort=-v:refname |
+              while IFS= read -r tag; do
+                if [ "$tag" != "$RELEASE_TAG" ]; then
+                  printf '%s\n' "$tag"
+                  break
+                fi
+              done
+          )"
+          if [ -n "$previous_tag" ] && git diff --quiet "$previous_tag" "$RELEASE_TAG" -- skills/pixiv-cli; then
+            printf '%s\n' 'publish=false' >> "$GITHUB_OUTPUT"
+            printf 'Skill unchanged since %s; skipping SkillHub publication.\n' "$previous_tag"
+          else
+            printf '%s\n' 'publish=true' >> "$GITHUB_OUTPUT"
+          fi
       # The vendor installer runs before this workflow makes SKILLHUB_TOKEN available.
       # Its CLI is only used after the immutable tag and local metadata have passed.
       - name: Install the official SkillHub CLI without credentials
+        if: steps.skill_change.outputs.publish == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -70,15 +87,16 @@ jobs:
           bash "$installer" --cli-only
           "$HOME/.local/bin/skillhub" --skip-self-upgrade --version
       - name: Dry-run the exact tagged product skill
+        if: steps.skill_change.outputs.publish == 'true'
         shell: bash
         run: |
           set -euo pipefail
           "$HOME/.local/bin/skillhub" --skip-self-upgrade publish skills/pixiv-cli \
             --host "$SKILLHUB_HOST" \
-            --version "${RELEASE_TAG#v}" \
             --dry-run \
             --json
       - name: Publish and confirm the SkillHub submission
+        if: steps.skill_change.outputs.publish == 'true'
         shell: bash
         env:
           SKILLHUB_TOKEN: ${{ secrets.SKILLHUB_TOKEN }}
@@ -88,7 +106,6 @@ jobs:
           response="$RUNNER_TEMP/skillhub-publish.json"
           "$HOME/.local/bin/skillhub" --skip-self-upgrade publish skills/pixiv-cli \
             --host "$SKILLHUB_HOST" \
-            --version "${RELEASE_TAG#v}" \
             --changelog "Synchronized with Pixiv CLI $RELEASE_TAG" \
             --json | tee "$response"
           python3 - "$response" <<'PY'
