@@ -97,6 +97,9 @@ func TestInstallShSelectsFastestVerifiedSourceAndRetriesArchive(t *testing.T) {
 		"PIXIV_INSTALLER_CURL_LOG="+logPath,
 		"PIXIV_INSTALLER_CURL_FAIL_ARCHIVE_HOST=fast.example",
 		"PIXIV_INSTALLER_CURL_FAIL_CHECKSUM_HOST=fallback.example",
+		// fixture 让直连 checksum 在 fast source 返回之后才完成，避免并发 probe 的
+		// scheduler 偶然顺序掩盖“最快已验证候选被优先选中”的用户可见契约。
+		"PIXIV_INSTALLER_CURL_DELAY_CHECKSUM_URL_PREFIX=https://github.com/",
 		"PIXIV_RELEASE_SOURCES=fast|-|https://fast.example/{url}\nfallback|-|https://fallback.example/{url}\ngithub-direct|{url}|{url}",
 	)
 	if output, err := command.CombinedOutput(); err != nil {
@@ -471,6 +474,17 @@ case "${PIXIV_INSTALLER_CURL_FAIL_CHECKSUM_HOST:-}" in
   *)
     case "$url" in
       *"$PIXIV_INSTALLER_CURL_FAIL_CHECKSUM_HOST"*/checksums.txt) exit 22 ;;
+    esac
+    ;;
+esac
+case "${PIXIV_INSTALLER_CURL_DELAY_CHECKSUM_URL_PREFIX:-}" in
+  '') ;;
+  *)
+    case "$url" in
+      "$PIXIV_INSTALLER_CURL_DELAY_CHECKSUM_URL_PREFIX"*checksums.txt)
+        # 仅 fixture：让测试能确定地观察到 fast source 的优先选择。
+        sleep 1
+        ;;
     esac
     ;;
 esac
