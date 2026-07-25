@@ -12,7 +12,7 @@
 
 </div>
 
-`pixiv-cli` is an independent, unofficial third-party tool that gives humans, coding agents, and Go applications one consistent way to use Pixiv; it is not affiliated with or endorsed by Pixiv Inc. The CLI and MCP server both call the same public Go SDK, with the Pixiv App API as the authenticated source of truth. Use it in accordance with Pixiv's terms and applicable law.
+`pixiv-cli` brings the Pixiv ecosystem to the terminal: discover works and creators, manage accounts and collections, follow artists, bookmark artworks, and download visual works. It is an independent, unofficial third-party tool for humans, coding agents, and Go applications; it is not affiliated with or endorsed by Pixiv Inc. The CLI and MCP server both call the same public Go SDK, with the Pixiv App API as the authenticated source of truth. Use it in accordance with Pixiv's terms and applicable law.
 
 Maintainers: release tags are blocked by a protected authenticated E2E gate. Its refresh token belongs only in the GitHub `pixiv-e2e` Environment Secret; work IDs and search inputs are Environment Variables. Pull request and `main` CI remain offline and secret-free. See the [development guide](docs/maintainers/development.md#测试).
 
@@ -61,6 +61,10 @@ Install the latest stable pixiv-cli from https://github.com/FlanChanXwO/pixiv-cl
 Also install the product skill that matches the same stable release tag (not main): download the full skills/pixiv-cli/ directory from that tag into the agent skills directory the user confirms. Do not guess the skills path and do not follow the main branch for skill content.
 ```
 
+### Install the product Skill from SkillHub
+
+Agents with SkillHub support can install the published [`pixiv-cli` Skill](https://www.skillhub.cn/skills/pixiv-cli) directly from SkillHub. The Skill has its own version and teaches the installed CLI; always use `pixiv <cmd> --help` as the final source of command syntax.
+
 ### Homebrew (recommended on macOS and Linux)
 
 ```bash
@@ -102,10 +106,17 @@ pixiv auth login
 pixiv search "初音ミク" --type illust --ai-mode exclude --resolution high
 pixiv novel search "初音ミク" --rating sfw --min-text-length 1000
 
+# Follow creators and build your collection.
+pixiv follow add 12345678
+pixiv bookmark add 123456
+
 # Inspect, discover recommendations, and download.
 pixiv detail https://www.pixiv.net/artworks/123456
 pixiv recommended all --limit 10
 pixiv download https://www.pixiv.net/artworks/123456 --pages 1,3-5 --quality regular
+
+# Batch-download every visual work from a creator.
+pixiv download https://www.pixiv.net/users/12345678/artworks
 ```
 
 Run `pixiv --help` or open the [complete CLI reference](docs/en/cli-reference.md) for every command, flag, configuration key, environment variable, fallback rule, and update behavior.

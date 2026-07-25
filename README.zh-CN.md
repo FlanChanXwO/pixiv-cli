@@ -12,7 +12,7 @@
 
 </div>
 
-`pixiv-cli` 是独立开发的非官方第三方工具，为用户、Coding Agent 和 Go 应用提供一致的 Pixiv 能力，与 Pixiv Inc. 无隶属或背书关系。CLI 与 MCP server 共同调用 public Go SDK，并以 Pixiv App API 作为已认证能力的数据源；使用时请遵守 Pixiv 条款与适用法律。
+`pixiv-cli` 把 Pixiv 生态带到终端：发现作品与创作者、管理账号和作品收藏、关注创作者，并下载视觉作品。它是面向用户、Coding Agent 和 Go 应用的独立非官方第三方工具，与 Pixiv Inc. 无隶属或背书关系。CLI 与 MCP server 共同调用 public Go SDK，并以 Pixiv App API 作为已认证能力的数据源；使用时请遵守 Pixiv 条款与适用法律。
 
 维护者注意：发布 tag 受保护的认证 E2E 门禁阻断。refresh token 只能放入 GitHub `pixiv-e2e` Environment Secret；作品 ID 与搜索输入使用 Environment Variables。PR 与 `main` CI 保持离线且不使用 secret，详见[开发流程](docs/maintainers/development.md#测试)。
 
@@ -59,6 +59,10 @@ binary，并在修改 PATH 前完成用户级安装。可用 `--no-path` 保持 
 同时安装与该 stable 发布 tag 完全一致的产品 skill（不要跟随 main）：把该 tag 下的完整 skills/pixiv-cli/ 目录安装到用户确认的 Agent skills 目录。不要猜测 skills 路径，也不要用 main 上的 skill 内容。
 ```
 
+### 通过 SkillHub 安装产品 Skill
+
+支持 SkillHub 的 Agent 可直接从 [SkillHub 的 `pixiv-cli` Skill 页面](https://www.skillhub.cn/skills/pixiv-cli) 安装已发布的产品 Skill。Skill 有独立版本并用于指导已安装的 CLI；命令语法始终以 `pixiv <cmd> --help` 为最终依据。
+
 ### Homebrew（macOS 与 Linux 推荐）
 
 ```bash
@@ -100,10 +104,17 @@ pixiv auth login
 pixiv search "初音ミク" --type illust --ai-mode exclude --resolution high
 pixiv novel search "初音ミク" --rating sfw --min-text-length 1000
 
+# 关注创作者并收藏作品。
+pixiv follow add 12345678
+pixiv bookmark add 123456
+
 # 查看详情、获取推荐并下载。
 pixiv detail https://www.pixiv.net/artworks/123456
 pixiv recommended all --limit 10
 pixiv download https://www.pixiv.net/artworks/123456 --pages 1,3-5 --quality regular
+
+# 批量下载某位创作者的全部视觉作品。
+pixiv download https://www.pixiv.net/users/12345678/artworks
 ```
 
 运行 `pixiv --help`，或打开[完整 CLI 参考手册](docs/zh-CN/cli-reference.md)，查看全部命令、flag、配置键、环境变量、fallback 规则和更新行为。
