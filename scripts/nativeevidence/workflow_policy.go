@@ -12,6 +12,13 @@ import (
 
 var actionReferencePattern = regexp.MustCompile(`^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+@[0-9a-f]{40}$`)
 
+var documentationOnlyPathIgnores = []string{
+	"README*.md",
+	"docs/**",
+	"changelog/**",
+	"skills/**",
+}
+
 const canonicalCheckoutAction = "actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5"
 
 const canonicalSetupGoAction = "actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff"
@@ -307,9 +314,18 @@ func checkNativeEvidenceTrigger(root *yaml.Node) error {
 	if !hasPush || !hasDispatch || len(on.Content) != 4 || push.Kind != yaml.MappingNode || dispatch.Kind != yaml.MappingNode || len(dispatch.Content) != 0 {
 		return errors.New("native evidence workflow must use only main push and workflow_dispatch triggers")
 	}
-	branches, ok := workflowpolicy.MappingValue(push, "branches")
-	if !ok || len(push.Content) != 2 || branches.Kind != yaml.SequenceNode || len(branches.Content) != 1 || branches.Content[0].Value != "main" {
-		return errors.New("native evidence workflow push trigger must be limited to main")
+	branches, hasBranches := workflowpolicy.MappingValue(push, "branches")
+	pathIgnores, hasPathIgnores := workflowpolicy.MappingValue(push, "paths-ignore")
+	if !hasBranches || !hasPathIgnores || len(push.Content) != 4 || branches.Kind != yaml.SequenceNode || len(branches.Content) != 1 || branches.Content[0].Value != "main" {
+		return errors.New("native evidence workflow push trigger must be limited to main and its audited documentation ignores")
+	}
+	if pathIgnores.Kind != yaml.SequenceNode || len(pathIgnores.Content) != len(documentationOnlyPathIgnores) {
+		return errors.New("native evidence workflow must ignore exactly the audited documentation paths")
+	}
+	for index, want := range documentationOnlyPathIgnores {
+		if pathIgnores.Content[index].Kind != yaml.ScalarNode || pathIgnores.Content[index].Value != want {
+			return errors.New("native evidence workflow must ignore exactly the audited documentation paths")
+		}
 	}
 	return nil
 }

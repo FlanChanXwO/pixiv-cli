@@ -129,8 +129,9 @@ sh scripts/test-rust-vendor.sh
 
 ### Native runner evidence 与 Task 13 受控回填
 
-`.github/workflows/native-evidence.yml` 是独立的、非发布的 runner 入口：只允许审计后的 `main`
-push 或指向 `refs/heads/main` 的 `workflow_dispatch`，全局 `permissions: {}`、job 仅 `contents: read`。它没有 `environment`、
+`.github/workflows/native-evidence.yml` 是独立的、非发布的 runner 入口：只允许审计后的、包含非文档输入的 `main`
+push 或指向 `refs/heads/main` 的 `workflow_dispatch`。仅 `README*.md`、`docs/**`、`changelog/**` 或 `skills/**` 的 push
+不启动它；任一其他路径以及手动触发仍运行完整矩阵。全局 `permissions: {}`、job 仅 `contents: read`。它没有 `environment`、
 secret、tag/Release/tap/signing 命令；YAML AST policy 同时固定六个 runner、full-SHA action、无凭据
 checkout、vendored Rust 检查、单目标 staticlib、真实 cgo GIF/APNG smoke、版本化 binary 的
 `pixiv version --json`、release-style archive 以及 artifact upload。可离线检查声明本身：
@@ -343,7 +344,7 @@ git diff --check
 fixture 只证明格式、失败语义和本地策略，不替代六个 native runner 的真实静态链接、GIF/APNG
 smoke、版本化 archive 内容和 Homebrew 安装验收。
 
-`.github/workflows/ci.yml` 在 PR/main 运行 Linux quality gate（test、race、vet、build、package/release policy、pre-commit）。`.github/workflows/platform-smoke.yml` 在 PR/main 运行六平台离线已打包 binary smoke。两者都使用只读权限、固定 SHA action 与取消过期并发 run；真实 Pixiv E2E 不进入 PR/main 常规 CI。仅发布 tag 的 `release.yml` 会在 validate 后绑定受保护的 `pixiv-e2e` Environment，校验配置完整并执行完整 `go test ./e2e -count=1 -v`；production build 明确依赖该 job，因此真实 E2E 失败会阻止发布。
+`.github/workflows/ci.yml` 与 `.github/workflows/platform-smoke.yml` 会先对 PR/main 的 diff 执行严格路径分类。仅 `README*.md`、`docs/**`、`changelog/**` 或 `skills/**` 的改动保留名称稳定的 Quality gate，但只运行 `go test ./scripts/documentation -count=1`；六平台 packaged-binary smoke 会被标记为 skipped，始终执行的 `Platform smoke gate` 会核对这是预期结果。任一其他路径、空 diff、无法比较的初始 push 或手动触发都执行完整 Linux quality gate（test、race、vet、build、package/release policy、pre-commit）和六平台离线已打包 binary smoke；同一汇总 gate 只有在全部 matrix 成功后才通过。分类器无法读取 diff 时明确失败，绝不静默跳过。两者都使用只读权限、固定 SHA action 与取消过期并发 run；真实 Pixiv E2E 不进入 PR/main 常规 CI。仅发布 tag 的 `release.yml` 会在 validate 后绑定受保护的 `pixiv-e2e` Environment，校验配置完整并执行完整 `go test ./e2e -count=1 -v`；production build 明确依赖该 job，因此真实 E2E 失败会阻止发布。
 
 `scripts/installers` 使用本地伪 Release、伪 `curl` 与 checksum fixture 验证安装器，不访问 GitHub。Unix
 job 实际运行 `install.sh`，覆盖 SHA-256、带空格目录、版本预检和校验失败不覆盖旧 binary；Windows
