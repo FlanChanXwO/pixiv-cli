@@ -40,6 +40,21 @@ func TestNativeEvidenceLocksPortableLinuxABI(t *testing.T) {
 	}
 }
 
+func TestNativeEvidenceSkipsOnlyAuditedDocumentationPaths(t *testing.T) {
+	t.Parallel()
+
+	push := requireMappingValue(t, requireMappingValue(t, checkedInWorkflowRoot(t), "on"), "push")
+	pathIgnores := requireMappingValue(t, push, "paths-ignore")
+	if len(pathIgnores.Content) != len(documentationOnlyPathIgnores) {
+		t.Fatalf("paths-ignore has %d entries, want %d", len(pathIgnores.Content), len(documentationOnlyPathIgnores))
+	}
+	for index, want := range documentationOnlyPathIgnores {
+		if got := pathIgnores.Content[index].Value; got != want {
+			t.Fatalf("paths-ignore[%d] = %q, want %q", index, got, want)
+		}
+	}
+}
+
 func TestCheckWorkflowAcceptsPinnedRustToolchainProvenance(t *testing.T) {
 	t.Parallel()
 
@@ -110,6 +125,14 @@ func TestCheckWorkflowRejectsNativeEvidenceSecurityAndCompletenessMutations(t *t
 			mutate: func(t *testing.T, root *yaml.Node) {
 				push := requireMappingValue(t, requireMappingValue(t, root, "on"), "push")
 				appendMappingValue(t, push, "tags", sequenceNode("v*"))
+			},
+		},
+		{
+			name: "documentation ignore expansion",
+			mutate: func(t *testing.T, root *yaml.Node) {
+				push := requireMappingValue(t, requireMappingValue(t, root, "on"), "push")
+				pathIgnores := requireMappingValue(t, push, "paths-ignore")
+				pathIgnores.Content = append(pathIgnores.Content, scalarNode(".github/**"))
 			},
 		},
 		{

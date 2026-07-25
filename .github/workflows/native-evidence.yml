@@ -6,6 +6,13 @@ on:
   push:
     branches:
       - main
+    # 文档专用改动不改变受审计 staticlib 或打包输入，避免无意义地占用六个平台 runner。
+    # 未匹配的任一文件仍会触发完整 evidence；手动 dispatch 也始终运行完整矩阵。
+    paths-ignore:
+      - 'README*.md'
+      - 'docs/**'
+      - 'changelog/**'
+      - 'skills/**'
   workflow_dispatch: {}
 
 permissions: {}

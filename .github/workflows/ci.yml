@@ -16,7 +16,38 @@ concurrency:
 permissions: {}
 
 jobs:
+  # 仅允许明确的文档目录走轻量门禁；任何无法归类的变更都由 changescope 选择完整验证。
+  classify_changes:
+    name: Classify change scope
+    runs-on: ubuntu-24.04
+    outputs:
+      docs_only: ${{ steps.scope.outputs.docs_only }}
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+        with:
+          go-version: '1.26.3'
+      - name: Detect documentation-only changes
+        id: scope
+        shell: bash
+        env:
+          BASE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+          HEAD_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then
+            printf '%s\n' 'docs_only=false' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          go run ./scripts/changescope --base "$BASE_SHA" --head "$HEAD_SHA" --github-output "$GITHUB_OUTPUT"
+
   quality:
+    needs: classify_changes
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -27,19 +58,28 @@ jobs:
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
         with:
           go-version: '1.26.3'
+      - name: Test documentation contracts
+        if: ${{ needs.classify_changes.outputs.docs_only == 'true' }}
+        shell: bash
+        run: go test ./scripts/documentation -count=1
       - name: Test Go sources
+        if: ${{ needs.classify_changes.outputs.docs_only != 'true' }}
         shell: bash
         run: go test ./... -count=1
       - name: Test Go sources with the race detector
+        if: ${{ needs.classify_changes.outputs.docs_only != 'true' }}
         shell: bash
         run: go test -race ./... -count=1
       - name: Vet Go sources
+        if: ${{ needs.classify_changes.outputs.docs_only != 'true' }}
         shell: bash
         run: go vet ./...
       - name: Build the local binary
+        if: ${{ needs.classify_changes.outputs.docs_only != 'true' }}
         shell: bash
         run: sh scripts/build.sh
       - name: Test release package and workflow policy
+        if: ${{ needs.classify_changes.outputs.docs_only != 'true' }}
         shell: bash
         run: |
           sh scripts/test-package-release.sh
@@ -47,8 +87,10 @@ jobs:
           sh scripts/test-homebrew-prepublish-workflow.sh
           go test ./scripts/platformsmokeworkflow -count=1
       - name: Install pinned pre-commit
+        if: ${{ needs.classify_changes.outputs.docs_only != 'true' }}
         shell: bash
         run: python -m pip install --disable-pip-version-check pre-commit==4.6.0
       - name: Run pre-commit checks
+        if: ${{ needs.classify_changes.outputs.docs_only != 'true' }}
         shell: bash
         run: python -m pre_commit run --all-files
