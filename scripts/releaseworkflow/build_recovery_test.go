@@ -437,7 +437,14 @@ actual_overlay_paths="$(
 )"
 test -n "$actual_overlay_paths"
 while IFS= read -r path; do
-  if ! printf '%s\n' "${recovery_overlay_paths[@]}" | grep -Fqx -- "$path"; then
+  overlay_path_allowed=false
+  for allowed_path in "${recovery_overlay_paths[@]}"; do
+    if [ "$path" = "$allowed_path" ]; then
+      overlay_path_allowed=true
+      break
+    fi
+  done
+  if [ "$overlay_path_allowed" != true ]; then
     printf 'unexpected recovery overlay path: %s\n' "$path" >&2
     exit 1
   fi
