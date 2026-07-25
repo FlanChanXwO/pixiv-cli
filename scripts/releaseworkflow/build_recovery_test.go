@@ -409,67 +409,41 @@ func TestCheckRecoveryPolicyRequiresExactAuditedOverlay(t *testing.T) {
 	const commands = `set -euo pipefail
 test -z "$(git status --porcelain=v1 --untracked-files=all)"
 test -z "$(git diff --cached --name-only)"
-git archive --format=tar "$GITHUB_SHA" -- \
-  .github/workflows/release.yml \
-  scripts/installers/installers_test.go \
-  scripts/internal/workflowpolicy/policy.go \
-  scripts/releaseworkflow/build_policy.go \
-  scripts/releaseworkflow/build_recovery_test.go \
-  scripts/releaseworkflow/e2e_policy.go \
-  scripts/releaseworkflow/e2e_policy_test.go \
-  scripts/releaseworkflow/homebrew_policy.go \
-  scripts/releaseworkflow/homebrew_policy_test.go \
-  scripts/releaseworkflow/main.go \
-  scripts/releaseworkflow/main_test.go \
-  scripts/releaseworkflow/publish_policy.go \
-  scripts/releaseworkflow/publish_security_test.go \
-  scripts/releaseworkflow/recovery_policy.go \
-  scripts/releaseworkflow/test_helpers_test.go \
-  scripts/releaseworkflow/workflow_policy.go \
-  scripts/releaseworkflow/workflow_policy_test.go | tar -xf -
-test "$(
+recovery_overlay_paths=(
+  .github/workflows/release.yml
+  scripts/installers/installers_test.go
+  scripts/internal/workflowpolicy/policy.go
+  scripts/releaseworkflow/build_policy.go
+  scripts/releaseworkflow/build_recovery_test.go
+  scripts/releaseworkflow/e2e_policy.go
+  scripts/releaseworkflow/e2e_policy_test.go
+  scripts/releaseworkflow/homebrew_policy.go
+  scripts/releaseworkflow/homebrew_policy_test.go
+  scripts/releaseworkflow/main.go
+  scripts/releaseworkflow/main_test.go
+  scripts/releaseworkflow/publish_policy.go
+  scripts/releaseworkflow/publish_security_test.go
+  scripts/releaseworkflow/recovery_policy.go
+  scripts/releaseworkflow/test_helpers_test.go
+  scripts/releaseworkflow/workflow_policy.go
+  scripts/releaseworkflow/workflow_policy_test.go
+)
+git archive --format=tar "$GITHUB_SHA" -- "${recovery_overlay_paths[@]}" | tar -xf -
+actual_overlay_paths="$(
   {
     git diff --name-only
     git ls-files --others --exclude-standard
-  } | LC_ALL=C sort
-)" = "$(printf '%s\n' \
-  .github/workflows/release.yml \
-  scripts/installers/installers_test.go \
-  scripts/internal/workflowpolicy/policy.go \
-  scripts/releaseworkflow/build_policy.go \
-  scripts/releaseworkflow/build_recovery_test.go \
-  scripts/releaseworkflow/e2e_policy.go \
-  scripts/releaseworkflow/e2e_policy_test.go \
-  scripts/releaseworkflow/homebrew_policy.go \
-  scripts/releaseworkflow/homebrew_policy_test.go \
-  scripts/releaseworkflow/main.go \
-  scripts/releaseworkflow/main_test.go \
-  scripts/releaseworkflow/publish_policy.go \
-  scripts/releaseworkflow/publish_security_test.go \
-  scripts/releaseworkflow/recovery_policy.go \
-  scripts/releaseworkflow/test_helpers_test.go \
-  scripts/releaseworkflow/workflow_policy.go \
-  scripts/releaseworkflow/workflow_policy_test.go)"
+  } | LC_ALL=C sort -u
+)"
+test -n "$actual_overlay_paths"
+while IFS= read -r path; do
+  if ! printf '%s\n' "${recovery_overlay_paths[@]}" | grep -Fqx -- "$path"; then
+    printf 'unexpected recovery overlay path: %s\n' "$path" >&2
+    exit 1
+  fi
+done <<< "$actual_overlay_paths"
 test -z "$(git diff --cached --name-only)"`
-	paths := []string{
-		".github/workflows/release.yml",
-		"scripts/installers/installers_test.go",
-		"scripts/internal/workflowpolicy/policy.go",
-		"scripts/releaseworkflow/build_policy.go",
-		"scripts/releaseworkflow/build_recovery_test.go",
-		"scripts/releaseworkflow/e2e_policy.go",
-		"scripts/releaseworkflow/e2e_policy_test.go",
-		"scripts/releaseworkflow/homebrew_policy.go",
-		"scripts/releaseworkflow/homebrew_policy_test.go",
-		"scripts/releaseworkflow/main.go",
-		"scripts/releaseworkflow/main_test.go",
-		"scripts/releaseworkflow/publish_policy.go",
-		"scripts/releaseworkflow/publish_security_test.go",
-		"scripts/releaseworkflow/recovery_policy.go",
-		"scripts/releaseworkflow/test_helpers_test.go",
-		"scripts/releaseworkflow/workflow_policy.go",
-		"scripts/releaseworkflow/workflow_policy_test.go",
-	}
+	paths := recoveryOverlayPaths()
 	root := releaseWorkflowRoot(t)
 	step := stepWithRun(t, jobNode(t, root, "build"), `git archive --format=tar "$GITHUB_SHA"`)
 	run := requireMappingValue(t, step, "run")
@@ -495,7 +469,7 @@ test -z "$(git diff --cached --name-only)"`
 		root := releaseWorkflowRoot(t)
 		step := stepWithRun(t, jobNode(t, root, "build"), `git archive --format=tar "$GITHUB_SHA"`)
 		run := requireMappingValue(t, step, "run")
-		run.Value = strings.ReplaceAll(run.Value, "  scripts/releaseworkflow/main.go \\", "  pixiv/account_external_test.go \\\n  scripts/releaseworkflow/main.go \\")
+		run.Value = strings.ReplaceAll(run.Value, "  scripts/releaseworkflow/main.go\n", "  pixiv/account_external_test.go\n  scripts/releaseworkflow/main.go\n")
 		if err := checkRecoveryPolicy(root); err == nil {
 			t.Fatal("release recovery policy accepted the redundant account test overlay")
 		}
@@ -504,7 +478,7 @@ test -z "$(git diff --cached --name-only)"`
 		root := releaseWorkflowRoot(t)
 		step := stepWithRun(t, jobNode(t, root, "build"), `git archive --format=tar "$GITHUB_SHA"`)
 		run := requireMappingValue(t, step, "run")
-		run.Value = strings.ReplaceAll(run.Value, "  scripts/releaseworkflow/main.go \\", "  pkg/pixiv/other_test.go \\\n  scripts/releaseworkflow/main.go \\")
+		run.Value = strings.ReplaceAll(run.Value, "  scripts/releaseworkflow/main.go\n", "  pkg/pixiv/other_test.go\n  scripts/releaseworkflow/main.go\n")
 		if err := checkRecoveryPolicy(root); err == nil {
 			t.Fatal("release recovery policy accepted an extra overlay path")
 		}
@@ -512,20 +486,41 @@ test -z "$(git diff --cached --name-only)"`
 }
 
 // TestRecoveryOverlayExecutesAgainstV030TrackedBaseline 使用真实 shell 验证旧 tag
-// 只跟踪三个既有路径时，新增 verifier 文件仍参与精确 allowlist 核对。
+// 只跟踪三个既有路径时，新增 verifier 文件仍参与白名单子集核对。
 func TestRecoveryOverlayExecutesAgainstV030TrackedBaseline(t *testing.T) {
 	root := releaseWorkflowRoot(t)
 	step := stepWithRun(t, jobNode(t, root, "build"), `git archive --format=tar "$GITHUB_SHA"`)
 	run := requireMappingValue(t, step, "run").Value
 
-	t.Run("exact overlay succeeds", func(t *testing.T) {
+	t.Run("complete allowlist overlay succeeds", func(t *testing.T) {
 		repository, overlayCommit := newRecoveryOverlayRepository(t)
 		command := newRecoveryShellCommand(repository, run, overlayCommit)
 		output, err := command.CombinedOutput()
 		if err != nil {
 			tracked := runGitCommand(t, repository, "diff", "--name-only")
 			untracked := runGitCommand(t, repository, "ls-files", "--others", "--exclude-standard")
-			t.Fatalf("execute canonical recovery overlay: %v\n%s\ntracked diff:\n%s\nuntracked files omitted by old comparison:\n%s", err, output, tracked, untracked)
+			t.Fatalf("execute canonical recovery overlay: %v\n%s\ntracked diff:\n%s\nuntracked files:\n%s", err, output, tracked, untracked)
+		}
+	})
+
+	t.Run("newer tag subset overlay succeeds", func(t *testing.T) {
+		repository, overlayCommit := newRecoveryOverlayRepository(t)
+		paths := recoveryOverlayPaths()
+		runGitCommand(t, repository, append([]string{"checkout", overlayCommit, "--"}, paths...)...)
+		runGitCommand(t, repository, "commit", "--quiet", "-m", "newer tag baseline")
+		writeRecoveryFixtureFile(t, repository, "scripts/installers/installers_test.go", []byte("package installers\n\n// older fixture\n"))
+		runGitCommand(t, repository, "add", "--", "scripts/installers/installers_test.go")
+		runGitCommand(t, repository, "commit", "--quiet", "-m", "older installer fixture")
+
+		command := newRecoveryShellCommand(repository, run, overlayCommit)
+		output, err := command.CombinedOutput()
+		if err != nil {
+			tracked := runGitCommand(t, repository, "diff", "--name-only")
+			untracked := runGitCommand(t, repository, "ls-files", "--others", "--exclude-standard")
+			t.Fatalf("execute subset recovery overlay: %v\n%s\ntracked diff:\n%s\nuntracked files:\n%s", err, output, tracked, untracked)
+		}
+		if got := runGitCommand(t, repository, "diff", "--name-only"); got != "scripts/installers/installers_test.go" {
+			t.Fatalf("overlay tracked diff = %q, want only installer test", got)
 		}
 	})
 
@@ -681,7 +676,24 @@ func newRecoveryOverlayRepository(t *testing.T) (string, string) {
 	baselineCommit := runGitCommand(t, repository, "rev-parse", "HEAD")
 
 	repositoryRoot := findRepositoryRoot(t)
-	paths := []string{
+	paths := recoveryOverlayPaths()
+	for _, path := range paths {
+		body, err := os.ReadFile(filepath.Join(repositoryRoot, filepath.FromSlash(path)))
+		if err != nil {
+			t.Fatalf("read recovery overlay fixture %s: %v", path, err)
+		}
+		writeRecoveryFixtureFile(t, repository, path, body)
+	}
+	arguments := append([]string{"add", "--"}, paths...)
+	runGitCommand(t, repository, arguments...)
+	runGitCommand(t, repository, "commit", "--quiet", "-m", "overlay")
+	overlayCommit := runGitCommand(t, repository, "rev-parse", "HEAD")
+	runGitCommand(t, repository, "checkout", "--quiet", "--detach", baselineCommit)
+	return repository, overlayCommit
+}
+
+func recoveryOverlayPaths() []string {
+	return []string{
 		".github/workflows/release.yml",
 		"scripts/installers/installers_test.go",
 		"scripts/internal/workflowpolicy/policy.go",
@@ -700,19 +712,6 @@ func newRecoveryOverlayRepository(t *testing.T) (string, string) {
 		"scripts/releaseworkflow/workflow_policy.go",
 		"scripts/releaseworkflow/workflow_policy_test.go",
 	}
-	for _, path := range paths {
-		body, err := os.ReadFile(filepath.Join(repositoryRoot, filepath.FromSlash(path)))
-		if err != nil {
-			t.Fatalf("read recovery overlay fixture %s: %v", path, err)
-		}
-		writeRecoveryFixtureFile(t, repository, path, body)
-	}
-	arguments := append([]string{"add", "--"}, paths...)
-	runGitCommand(t, repository, arguments...)
-	runGitCommand(t, repository, "commit", "--quiet", "-m", "overlay")
-	overlayCommit := runGitCommand(t, repository, "rev-parse", "HEAD")
-	runGitCommand(t, repository, "checkout", "--quiet", "--detach", baselineCommit)
-	return repository, overlayCommit
 }
 
 func writeRecoveryFixtureFile(t *testing.T, repository, path string, body []byte) {
@@ -862,7 +861,7 @@ func TestCheckRecoveryPolicyRejectsRecoveryTrustMutations(t *testing.T) {
 		{name: "overlay writes production source", mutate: func(t *testing.T, root *yaml.Node) {
 			step := stepWithRun(t, jobNode(t, root, "build"), `git archive --format=tar "$GITHUB_SHA"`)
 			run := requireMappingValue(t, step, "run")
-			run.Value = strings.ReplaceAll(run.Value, "  scripts/releaseworkflow/main.go \\", "  pixiv/account.go \\\n  scripts/releaseworkflow/main.go \\")
+			run.Value = strings.ReplaceAll(run.Value, "  scripts/releaseworkflow/main.go\n", "  pixiv/account.go\n  scripts/releaseworkflow/main.go\n")
 		}},
 		{name: "production source switches to workflow sha", mutate: func(t *testing.T, root *yaml.Node) {
 			appendRunStep(t, jobNode(t, root, "build"), "Bypass immutable tag", `git checkout "$GITHUB_SHA"`)

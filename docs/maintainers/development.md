@@ -409,8 +409,9 @@ Rust toolchain 映射，也是从默认分支编译 release verifier 的必要�
 自己的 `policy_test.go` 仍不进入恢复 overlay。提取前必须用
 `git status --porcelain=v1 --untracked-files=all` 确认工作树为空，并显式确认 cached
 diff 为空；覆盖通过一次 `git archive` 提取后，将 tracked diff 与未忽略的 untracked files 合并、按 C locale
-排序，再与上述逐字 allowlist 比较，同时再次确认 cached diff 为空。这使旧 tag 中尚不存在的拆分文件也参与
-fail-closed 核对。重新加入 account test、任意额外路径或生产源码都必须失败，test job 也不生成 release
+排序去重，要求结果非空且每个路径都在上述逐字 allowlist 内，同时再次确认 cached diff 为空。这样同一份默认
+分支 verifier 既能覆盖旧 tag 中尚不存在的拆分文件，也能安全恢复已有部分 verifier 的较新 tag；重新加入
+account test、任意额外路径或生产源码都必须失败，test job 也不生成 release
 artifact。该 job 成功后，独立的新 runner
 才会以 `clean: true` checkout tag、重新构建 selected staticlib 并生成唯一可被 publish 下载的
 `verified-release-*` assets；测试进程对环境变量、PATH 或临时目录的副作用不会进入生产 job。因此它不能用于

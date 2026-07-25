@@ -140,47 +140,39 @@ func requireRecoveryOverlayStep(step *yaml.Node) error {
 set -euo pipefail
 test -z "$(git status --porcelain=v1 --untracked-files=all)"
 test -z "$(git diff --cached --name-only)"
-git archive --format=tar "$GITHUB_SHA" -- \
-  .github/workflows/release.yml \
-  scripts/installers/installers_test.go \
-  scripts/internal/workflowpolicy/policy.go \
-  scripts/releaseworkflow/build_policy.go \
-  scripts/releaseworkflow/build_recovery_test.go \
-  scripts/releaseworkflow/e2e_policy.go \
-  scripts/releaseworkflow/e2e_policy_test.go \
-  scripts/releaseworkflow/homebrew_policy.go \
-  scripts/releaseworkflow/homebrew_policy_test.go \
-  scripts/releaseworkflow/main.go \
-  scripts/releaseworkflow/main_test.go \
-  scripts/releaseworkflow/publish_policy.go \
-  scripts/releaseworkflow/publish_security_test.go \
-  scripts/releaseworkflow/recovery_policy.go \
-  scripts/releaseworkflow/test_helpers_test.go \
-  scripts/releaseworkflow/workflow_policy.go \
-  scripts/releaseworkflow/workflow_policy_test.go | tar -xf -
-test "$(
+recovery_overlay_paths=(
+  .github/workflows/release.yml
+  scripts/installers/installers_test.go
+  scripts/internal/workflowpolicy/policy.go
+  scripts/releaseworkflow/build_policy.go
+  scripts/releaseworkflow/build_recovery_test.go
+  scripts/releaseworkflow/e2e_policy.go
+  scripts/releaseworkflow/e2e_policy_test.go
+  scripts/releaseworkflow/homebrew_policy.go
+  scripts/releaseworkflow/homebrew_policy_test.go
+  scripts/releaseworkflow/main.go
+  scripts/releaseworkflow/main_test.go
+  scripts/releaseworkflow/publish_policy.go
+  scripts/releaseworkflow/publish_security_test.go
+  scripts/releaseworkflow/recovery_policy.go
+  scripts/releaseworkflow/test_helpers_test.go
+  scripts/releaseworkflow/workflow_policy.go
+  scripts/releaseworkflow/workflow_policy_test.go
+)
+git archive --format=tar "$GITHUB_SHA" -- "${recovery_overlay_paths[@]}" | tar -xf -
+actual_overlay_paths="$(
   {
     git diff --name-only
     git ls-files --others --exclude-standard
-  } | LC_ALL=C sort
-)" = "$(printf '%s\n' \
-  .github/workflows/release.yml \
-  scripts/installers/installers_test.go \
-  scripts/internal/workflowpolicy/policy.go \
-  scripts/releaseworkflow/build_policy.go \
-  scripts/releaseworkflow/build_recovery_test.go \
-  scripts/releaseworkflow/e2e_policy.go \
-  scripts/releaseworkflow/e2e_policy_test.go \
-  scripts/releaseworkflow/homebrew_policy.go \
-  scripts/releaseworkflow/homebrew_policy_test.go \
-  scripts/releaseworkflow/main.go \
-  scripts/releaseworkflow/main_test.go \
-  scripts/releaseworkflow/publish_policy.go \
-  scripts/releaseworkflow/publish_security_test.go \
-  scripts/releaseworkflow/recovery_policy.go \
-  scripts/releaseworkflow/test_helpers_test.go \
-  scripts/releaseworkflow/workflow_policy.go \
-  scripts/releaseworkflow/workflow_policy_test.go)"
+  } | LC_ALL=C sort -u
+)"
+test -n "$actual_overlay_paths"
+while IFS= read -r path; do
+  if ! printf '%s\n' "${recovery_overlay_paths[@]}" | grep -Fqx -- "$path"; then
+    printf 'unexpected recovery overlay path: %s\n' "$path" >&2
+    exit 1
+  fi
+done <<< "$actual_overlay_paths"
 test -z "$(git diff --cached --name-only)"`
 	if err := requireCanonicalConditionalRunStep(step, "recovery overlay", "github.event_name == 'workflow_dispatch'", commands); err != nil {
 		return errors.New("recovery overlay must use only the exact audited Windows-compatible test paths and verifier")

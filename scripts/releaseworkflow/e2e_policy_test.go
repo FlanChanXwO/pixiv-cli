@@ -138,10 +138,10 @@ func TestRecoveryOverlayIncludesE2EPolicyAndMutationTests(t *testing.T) {
 	root := releaseWorkflowRoot(t)
 	step := stepWithRun(t, jobNode(t, root, "build"), `git archive --format=tar "$GITHUB_SHA"`)
 	run := requireMappingValue(t, step, "run").Value
-	if strings.Count(run, "scripts/releaseworkflow/e2e_policy.go") != 2 {
-		t.Fatal("recovery overlay must copy and verify the E2E policy implementation")
+	if strings.Count(run, "scripts/releaseworkflow/e2e_policy.go") != 1 {
+		t.Fatal("recovery overlay must include the E2E policy implementation in its audited path list")
 	}
-	if strings.Count(run, "scripts/releaseworkflow/e2e_policy_test.go") != 2 {
-		t.Fatal("recovery overlay must copy and verify the E2E policy mutation tests")
+	if strings.Count(run, "scripts/releaseworkflow/e2e_policy_test.go") != 1 {
+		t.Fatal("recovery overlay must include the E2E policy mutation tests in its audited path list")
 	}
 }
