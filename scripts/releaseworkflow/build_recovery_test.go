@@ -411,6 +411,7 @@ test -z "$(git status --porcelain=v1 --untracked-files=all)"
 test -z "$(git diff --cached --name-only)"
 git archive --format=tar "$GITHUB_SHA" -- \
   .github/workflows/release.yml \
+  scripts/installers/installers_test.go \
   scripts/internal/workflowpolicy/policy.go \
   scripts/releaseworkflow/build_policy.go \
   scripts/releaseworkflow/build_recovery_test.go \
@@ -433,6 +434,7 @@ test "$(
   } | LC_ALL=C sort
 )" = "$(printf '%s\n' \
   .github/workflows/release.yml \
+  scripts/installers/installers_test.go \
   scripts/internal/workflowpolicy/policy.go \
   scripts/releaseworkflow/build_policy.go \
   scripts/releaseworkflow/build_recovery_test.go \
@@ -451,6 +453,7 @@ test "$(
 test -z "$(git diff --cached --name-only)"`
 	paths := []string{
 		".github/workflows/release.yml",
+		"scripts/installers/installers_test.go",
 		"scripts/internal/workflowpolicy/policy.go",
 		"scripts/releaseworkflow/build_policy.go",
 		"scripts/releaseworkflow/build_recovery_test.go",
@@ -680,6 +683,7 @@ func newRecoveryOverlayRepository(t *testing.T) (string, string) {
 	repositoryRoot := findRepositoryRoot(t)
 	paths := []string{
 		".github/workflows/release.yml",
+		"scripts/installers/installers_test.go",
 		"scripts/internal/workflowpolicy/policy.go",
 		"scripts/releaseworkflow/build_policy.go",
 		"scripts/releaseworkflow/build_recovery_test.go",
