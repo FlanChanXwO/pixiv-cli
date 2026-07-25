@@ -172,8 +172,8 @@ assuming its effective value.
 5. **Anonymous restricted search fails explicitly.** Web fallback uses only
    reliable illustration-search filters. `r18`, `r18g`, `mature`, `--search-by tag-title-caption`,
    bookmark-count bounds, and `search-options`
-   require App authentication; do not present the failure as an empty result
-   or add a Cookie workaround. `novel search` is App-only and requires authentication.
+   require App authentication; bookmark-count bounds additionally require Pixiv Premium. Do not
+   present the failure as an empty result or add a Cookie workaround. `novel search` is App-only and requires authentication.
    Bookmark count is a public bookmark total, never a like count.
 6. **Extended rankings need authentication.** Valid modes are `day`,
    `day_male`, `day_female`, `week`, `week_original`, `week_rookie`, `month`,

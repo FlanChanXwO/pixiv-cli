@@ -306,7 +306,7 @@ allowlist、MIME 推測、暗黙置換は行いません。
 | `search` | `--aspect-ratio` | `all` | `all`, `landscape`, `portrait`, `square`。 |
 | `search` | `--resolution` | `all` | `all`, `high`, `medium`, `low`。両辺がそれぞれ `>=3000`, `1000..2999`, `<=999`。 |
 | `search` | `--draw-tool` | empty | upstream の正確な制作ツール名。認証済み `search-options` で取得します。 |
-| `search` | `--bookmark-min` / `--bookmark-max` | empty | 包含境界の非負 public bookmark 数。App OAuth が必要で、`min` は `max` を超えられません。 |
+| `search` | `--bookmark-min` / `--bookmark-max` | empty | 包含境界の非負 public bookmark 数。App OAuth と有効な Pixiv Premium 会員資格が必要で、`min` は `max` を超えられません。 |
 | `novel search` | `--min-text-length` | `0` | 本文の最小文字数。`0` は下限を無効にします。 |
 | `novel search` | `--max-text-length` | `0` | 本文の最大文字数。`0` は上限を無効にし、非ゼロの下限より小さくできません。 |
 | `novel search` | `--original-only` | `false` | Pixiv がオリジナルと表示した小説だけを残します。 |
@@ -334,7 +334,7 @@ refresh token がある `search` は常に App API を使います。App は解�
 Web に fallback しません。filter は opaque cursor に binding され、別条件へ再利用できません。ローカル filter が
 連続 empty upstream batch を飛ばす場合、CLI/MCP は最初の非 empty 論理 batch か upstream 終端まで続けます。
 正数 `--limit`/`--page` は filter 後の論理結果を跨 batch で埋め、`--limit 0` は全件走査、`--limit` なしでも
-先頭 empty batch は skip します。App は明示 date と bookmark-count の境界も処理します。bookmark count は like-count
+先頭 empty batch は skip します。App は明示 date と Pixiv Premium 限定の bookmark-count の境界も処理します。bookmark count は like-count
 フィールドではなく、like と表記してはいけません。作品 JSON/text は
 `https://www.pixiv.net/artworks/{id}` を先頭フィールド/先頭行として含めます。
 
@@ -410,7 +410,7 @@ token source がなく `web_fallback_enabled=true` の場合、CLI の `search`�
 server error を自動 fallback しません。
 
 - 匿名 `search` は Web が確実に表現できる filter だけを使用します。AI は返却 field で判定します。
-- `rating=r18|r18g|mature`、`--search-by tag-title-caption`、または bookmark-count filter は request 前に認証要求として失敗し、空結果に見せません。`all` は匿名で見える範囲です。
+- `rating=r18|r18g|mature`、`--search-by tag-title-caption`、または bookmark-count filter は request 前に認証要求として失敗し、空結果に見せません。bookmark-count filter には Pixiv Premium も必要です。`all` は匿名で見える範囲です。
 - `search-options` は App 専用です。Cookie を読み取らず、refresh token を Web session に変換しません。
 - `novel search` は App 専用で、refresh token がなければ認証要求として失敗します。
 - 拡張 ranking mode（`day_manga`、`week_manga`、`month_manga`、`week_rookie_manga`、`day_r18`、

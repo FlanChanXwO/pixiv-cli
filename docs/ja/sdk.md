@@ -132,15 +132,16 @@ format は unencrypted な point-in-time backup であり、live sync ではあ�
 | `AspectRatio` | `all`、`landscape`、`portrait`、`square` |
 | `Resolution` | `all`、`high`、`medium`、`low`。両 dimension が順に `>=3000`、`1000..2999`、`<=999` です。 |
 | `Tool` | fuzzy matching をしない、上流の drawing-tool value。 |
+| `BookmarkMin` / `BookmarkMax` | 任意の包含境界の非負 public bookmark 数。App OAuth と有効な Pixiv Premium 会員資格が必要で、`Min` は `Max` を超えられません。 |
 
 zero enum value は `all` に正規化され、`Tool` は trim されます。unknown value は upstream request 前に
 `invalid_argument` を返します。認証済み adapter は resolution、aspect ratio、tool、content type、AI exclusion を App server
-parameter に変換します。rating と AI-only filter は current App batch の正規化 field を使用します。`Illust.Tools []string` は
+parameter と Pixiv Premium 限定の bookmark-count parameter に変換します。rating と AI-only filter は current App batch の正規化 field を使用します。`Illust.Tools []string` は
 upstream の order と value を保持し、bookmark-count filter とは関係ありません。
 
 `SearchIllustOptions(ctx, SearchIllustOptionsRequest{Word: word})` は non-empty word と App authentication が必要です。
 戻り値は upstream order の `SearchIllustOptionsResult{Tools []string}` であり、list がない場合は non-nil empty slice です。
-premium bookmark tier は公開しません。
+認証済み account が bookmark-count filter 用の Pixiv Premium 資格を持つかどうかは公開しません。
 
 ### Novel search と user-search source
 

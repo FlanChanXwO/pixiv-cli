@@ -310,7 +310,7 @@ CLI 使用 Cobra/pflag，选项可以写在位置参数前后，例如 `pixiv au
 | `search` | `--aspect-ratio` | `all` | 横纵比：`all`、`landscape`、`portrait` 或 `square`。 |
 | `search` | `--resolution` | `all` | 分辨率：`all`、`high`、`medium` 或 `low`；宽高两个维度分别都需满足 `>=3000`、`1000..2999` 或 `<=999`。 |
 | `search` | `--draw-tool` | 空 | 上游绘图工具的精确名称；用已认证的 `search-options` 查询当前值。 |
-| `search` | `--bookmark-min` / `--bookmark-max` | 空 | 包含边界的非负公开收藏数；需要 App OAuth，且最小值不能大于最大值。 |
+| `search` | `--bookmark-min` / `--bookmark-max` | 空 | 包含边界的非负公开收藏数；需要 App OAuth 和有效的 Pixiv 高级会员，且最小值不能大于最大值。 |
 | `novel search` | `--min-text-length` | `0` | 正文最少字符数；`0` 关闭下界。 |
 | `novel search` | `--max-text-length` | `0` | 正文最多字符数；`0` 关闭上界，且不能小于非零下界。 |
 | `novel search` | `--original-only` | `false` | 仅保留 Pixiv 标记为原创的小说。 |
@@ -333,7 +333,7 @@ CLI 使用 Cobra/pflag，选项可以写在位置参数前后，例如 `pixiv au
 | `detail` | `ILLUST_ID_OR_URL` | 必填 | 正整数作品 ID，或受支持的 Pixiv 作品 URL。 |
 | `download` | `TARGET...` | 必填 | 作品 ID、作品 URL，或受支持的用户主页/作品页 URL。 |
 
-有 refresh token 时，`search` 始终使用 App API。分辨率、横纵比、工具、作品类型和 `ai-mode=exclude` 由 App 筛选，分级和 `ai-mode=only` 对 App 返回批次筛选；App 失败不会回落 Web。全部筛选都会绑定 opaque cursor，cursor 不能用于不同筛选组合。本地筛选跳过连续空上游批次时，CLI/MCP 会补拉到首个非空逻辑批次或真正结束。指定正数 `--limit` 或 `--page` 时，按过滤后的逻辑结果跨批填满；`--limit 0` 遍历全部过滤结果；未指定 `--limit` 时读取一个上游批次，但会跳过前导空批。App 还会执行显式日期与收藏数边界；收藏数不是点赞字段，不得文案为点赞。作品 JSON/文本包含稳定作品页 URL `https://www.pixiv.net/artworks/{id}`，作为首字段/每件作品第一行。
+有 refresh token 时，`search` 始终使用 App API。分辨率、横纵比、工具、作品类型和 `ai-mode=exclude` 由 App 筛选，分级和 `ai-mode=only` 对 App 返回批次筛选；App 失败不会回落 Web。全部筛选都会绑定 opaque cursor，cursor 不能用于不同筛选组合。本地筛选跳过连续空上游批次时，CLI/MCP 会补拉到首个非空逻辑批次或真正结束。指定正数 `--limit` 或 `--page` 时，按过滤后的逻辑结果跨批填满；`--limit 0` 遍历全部过滤结果；未指定 `--limit` 时读取一个上游批次，但会跳过前导空批。App 还会执行显式日期与仅限 Pixiv 高级会员的收藏数边界；收藏数不是点赞字段，不得文案为点赞。作品 JSON/文本包含稳定作品页 URL `https://www.pixiv.net/artworks/{id}`，作为首字段/每件作品第一行。
 
 ### 插画标签查询语法
 
@@ -405,7 +405,7 @@ App JSON 读取在首次 429 且 `Retry-After` 有效时按命令 context 等待
 匿名 fallback 的差异：
 
 - 匿名 `search` 只执行 Web API 能可靠表达的筛选。分辨率、横纵比、绘图工具和作品类型会转译为 Web 参数；AI 筛选使用返回的作品字段。
-- `rating=r18`、`r18g`、`mature`、`--search-by tag-title-caption` 或收藏数边界会在匿名请求前明确返回需要认证，而不会伪装成空结果；`rating=all` 只表示匿名可见范围。
+- `rating=r18`、`r18g`、`mature`、`--search-by tag-title-caption` 或收藏数边界会在匿名请求前明确返回需要认证，而不会伪装成空结果；收藏数边界还需要 Pixiv 高级会员；`rating=all` 只表示匿名可见范围。
 - `search-options` 仅支持 App API，无 refresh token 时明确返回 unsupported。搜索不会读取或保存 `PHPSESSID` 等浏览器 Cookie，也不会把 refresh token 转换成 Web session。
 - `novel search` 仅支持 App API；无 refresh token 时明确返回需要认证。
 - 九个扩展排行榜 mode（`day_manga`、`week_manga`、`month_manga`、`week_rookie_manga`、`day_r18`、
