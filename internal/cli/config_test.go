@@ -30,7 +30,7 @@ func TestConfigPathGetSetUnset(t *testing.T) {
 	require.NoError(t, err)
 	assert.Contains(t, string(body), "[download]")
 	assert.Contains(t, string(body), `path = "/tmp/pixiv"`)
-	assert.NotContains(t, string(body), "filename_template")
+	assert.Contains(t, string(body), `filename_template = "{author} - {title}_{id}"`)
 
 	stdout.Reset()
 	stderr.Reset()
@@ -48,6 +48,56 @@ func TestConfigPathGetSetUnset(t *testing.T) {
 	code = Run([]string{"pixiv", "config", "get", "download_path"}, strings.NewReader(""), &stdout, &stderr)
 	require.Equal(t, 0, code, stderr.String())
 	assert.Equal(t, config.DefaultDownloadPath+"\n", stdout.String())
+}
+
+func TestConfigPathCreatesBaselineConfigWithoutAdvancedSettings(t *testing.T) {
+	clearConfigEnv(t)
+	_, configPath := useTempPaths(t)
+
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"pixiv", "config", "path"}, strings.NewReader(""), &stdout, &stderr)
+
+	require.Equal(t, 0, code, stderr.String())
+	body, err := os.ReadFile(configPath)
+	require.NoError(t, err)
+	assert.Contains(t, string(body), "[download]")
+	assert.Contains(t, string(body), `path = "./downloads"`)
+	assert.Contains(t, string(body), "[web]")
+	assert.Contains(t, string(body), "[output]")
+	assert.NotContains(t, string(body), "premium")
+	assert.NotContains(t, string(body), "logging")
+	assert.NotContains(t, string(body), "timeout")
+}
+
+func TestConfigInitializationNeverOverwritesExistingFile(t *testing.T) {
+	clearConfigEnv(t)
+	_, configPath := useTempPaths(t)
+	const original = "# keep me\n[custom]\nvalue = \"preserved\"\n"
+	require.NoError(t, config.WritePrivateFile(configPath, []byte(original)))
+
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"pixiv", "config", "path"}, strings.NewReader(""), &stdout, &stderr)
+
+	require.Equal(t, 0, code, stderr.String())
+	body, err := os.ReadFile(configPath)
+	require.NoError(t, err)
+	assert.Equal(t, original, string(body))
+}
+
+func TestCommandGroupHelpDoesNotInitializeConfig(t *testing.T) {
+	for _, args := range [][]string{{"pixiv", "auth"}, {"pixiv", "config"}} {
+		t.Run(strings.Join(args[1:], " "), func(t *testing.T) {
+			clearConfigEnv(t)
+			_, configPath := useTempPaths(t)
+
+			var stdout, stderr bytes.Buffer
+			code := Run(args, strings.NewReader(""), &stdout, &stderr)
+
+			require.Equal(t, 0, code, stderr.String())
+			_, err := os.Stat(configPath)
+			assert.ErrorIs(t, err, os.ErrNotExist)
+		})
+	}
 }
 
 func TestConfigMissingValueReturnsPlaceholder(t *testing.T) {
@@ -73,6 +123,8 @@ func TestConfigStrongTypesAndSparseWrite(t *testing.T) {
 	require.Equal(t, 0, code, stderr.String())
 	code = Run([]string{"pixiv", "config", "set", "web_fallback_enabled", "false"}, strings.NewReader(""), &stdout, &stderr)
 	require.Equal(t, 0, code, stderr.String())
+	code = Run([]string{"pixiv", "config", "set", "premium_status_cache_ttl", "3h"}, strings.NewReader(""), &stdout, &stderr)
+	require.Equal(t, 0, code, stderr.String())
 
 	info, err := os.Stat(configPath)
 	require.NoError(t, err)
@@ -90,7 +142,10 @@ func TestConfigStrongTypesAndSparseWrite(t *testing.T) {
 	assert.Contains(t, string(body), `timeout = "30s"`)
 	assert.Contains(t, string(body), "[web]")
 	assert.Contains(t, string(body), "fallback_enabled = false")
-	assert.NotContains(t, string(body), "download")
+	assert.Contains(t, string(body), "[premium]")
+	assert.Contains(t, string(body), `status_cache_ttl = "3h0m0s"`)
+	assert.Contains(t, string(body), "[download]")
+	assert.Contains(t, string(body), "[web]")
 }
 
 func TestConfigWebFallbackDefaultEnabled(t *testing.T) {

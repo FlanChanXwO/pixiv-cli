@@ -40,7 +40,7 @@ local, err := pixiv.OpenDefault(pixiv.Options{
 | 作品与推荐 | `SearchIllust`、`SearchNovel`、`SearchIllustOptions`、`IllustDetail`、`IllustPages`、`IllustRelated`、`IllustRanking`、`IllustRecommended`、`MangaRecommended`、`NovelRecommended`、`UserRecommended`、`FollowingIllusts`、`TrendingTagsIllust`、`UgoiraMetadata`。 |
 | 用户 | `SearchUser`、`UserDetail`、`UserArtworks`、`UserBookmarks`、`UserFollowing`、`CurrentUserID`。 |
 | 写操作 | `AddBookmark`、`RemoveBookmark`、`FollowUser`、`UnfollowUser`。 |
-| 账号/配置 | `ImportAccount`、`ListAccounts`、`SelectAccount`、`RemoveAccount`、`ExportAccountRefreshToken`、`ExportAuthBundle`、`RestoreAuthBundle`、`CheckAccount`、`CheckRefreshToken`、`Refresh`、`RefreshAccount`、`GetConfig`、`SetConfig`、`UnsetConfig`；bundle codec 是 package-level function。 |
+| 账号/配置 | `ImportAccount`、`ListAccounts`、`SelectAccount`、`RemoveAccount`、`ExportAccountRefreshToken`、`ExportAuthBundle`、`RestoreAuthBundle`、`CheckAccount`、`CheckRefreshToken`、`Refresh`、`RefreshAccount`、`PremiumStatus`、`RefreshPremiumStatus`、`GetConfig`、`SetConfig`、`UnsetConfig`；bundle codec 是 package-level function。 |
 | 登录 | `StartLogin`、`CompleteLogin`、`BuildLoginAuthorizationURL`。SDK 不启动浏览器、loopback server 或 TTY。 |
 | 资源 | `ParseResourceRef`、`OpenResource`、`Download`。 |
 
@@ -93,7 +93,7 @@ auth store，不读取 `PIXIV_REFRESH_TOKEN` 或 runtime config，不刷新、�
 | `AspectRatio` | `all`、`landscape`、`portrait`、`square` |
 | `Resolution` | `all`、`high`、`medium`、`low`；三档分别要求宽高均 `>=3000`、均在 `1000..2999`、均 `<=999` |
 | `Tool` | 上游绘图工具原值；不做模糊匹配 |
-| `BookmarkMin` / `BookmarkMax` | 可选、包含边界的非负公开收藏数；需要 App OAuth 和有效的 Pixiv 高级会员；`Min` 不得大于 `Max` |
+| `BookmarkMin` / `BookmarkMax` | 可选、包含边界的非负公开收藏数；需要 App OAuth 和有效的 Pixiv 高级会员；`Min` 不得大于 `Max`。保存账号的 `OpenDefault` 会在请求前检查缓存的自身 profile 状态；非会员会在本地得到 `forbidden`。 |
 
 枚举零值规范化为 `all`，`Tool` 会去除首尾空白；未知枚举返回 `invalid_argument`，不会发起上游
 请求。`SearchIllustRequest.Target` 还接受搜索标签、标题、说明文字的 `keyword`；`Duration` 接受
@@ -104,7 +104,9 @@ auth store，不读取 `PIXIV_REFRESH_TOKEN` 或 runtime config，不刷新、�
 
 `SearchIllustOptions(ctx, SearchIllustOptionsRequest{Word: word})` 需要非空关键词和 App 认证，返回
 `SearchIllustOptionsResult{Tools []string}`。工具列表保持上游顺序与原值；上游未提供列表时返回非
-`nil` 空切片。该操作不公开已认证账号是否具有 Pixiv 高级会员的收藏数筛选资格。
+`nil` 空切片。`PremiumStatus(ctx)` 返回已保存认证账号缓存或新读取的会员状态快照；
+`RefreshPremiumStatus(ctx)` 强制读取 profile 并持久化结果。`OpenDefault` 使用
+`[premium] status_cache_ttl`（默认 `24h`，`0s` 禁用复用）。直接 `NewClient` access token 没有可验证的账号 UID，不能执行这项已保存账号预检。
 
 ### 小说搜索与用户搜索来源
 

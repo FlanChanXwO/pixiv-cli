@@ -7,6 +7,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/application"
 	"github.com/FlanChanXwO/pixiv-cli/internal/utils/files"
@@ -14,11 +15,13 @@ import (
 )
 
 type accountOut struct {
-	UserID   int64  `json:"user_id,omitempty"`
-	Username string `json:"username,omitempty"`
-	Default  bool   `json:"default"`
-	HasToken bool   `json:"has_token"`
-	Warning  string `json:"warning,omitempty"`
+	UserID                 int64      `json:"user_id,omitempty"`
+	Username               string     `json:"username,omitempty"`
+	Default                bool       `json:"default"`
+	HasToken               bool       `json:"has_token"`
+	PremiumStatus          *bool      `json:"premium_status,omitempty"`
+	PremiumStatusCheckedAt *time.Time `json:"premium_status_checked_at,omitempty"`
+	Warning                string     `json:"warning,omitempty"`
 }
 
 type accountListOut struct {
@@ -48,6 +51,12 @@ type accountCheckOptions struct {
 	jsonOut bool
 }
 
+type accountRefreshOptions struct {
+	proxyOptions
+	all     bool
+	jsonOut bool
+}
+
 func (a app) newAccountCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "auth",
@@ -65,6 +74,7 @@ func (a app) newAccountCommand() *cobra.Command {
 		a.newAccountRemoveCommand(),
 		a.newAccountUseCommand(),
 		a.newAccountCheckCommand(),
+		a.newAccountRefreshCommand(),
 		a.newAccountExportCommand(),
 	)
 	return cmd
@@ -295,7 +305,11 @@ func (a app) accountList(jsonOut bool) error {
 		if acct.Default {
 			marker = "*"
 		}
-		fmt.Fprintf(a.out, "%s uid:%d token:%s", marker, acct.UserID, textBool(acct.HasToken))
+		credential := "-"
+		if acct.HasToken {
+			credential = "✓"
+		}
+		fmt.Fprintf(a.out, "%s %s uid:%d", marker, credential, acct.UserID)
 		if acct.Username != "" {
 			fmt.Fprintf(a.out, " username:%s", acct.Username)
 		}
@@ -442,6 +456,80 @@ func (a app) accountCheck(cmd *cobra.Command, userID int64, opts accountCheckOpt
 	return nil
 }
 
+func (a app) newAccountRefreshCommand() *cobra.Command {
+	opts := accountRefreshOptions{}
+	cmd := &cobra.Command{
+		Use:   "refresh [UID]",
+		Short: "Refresh account credentials and membership status",
+		Args:  requireMaxArgs(1, "pixiv auth refresh [UID] [--all]"),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if opts.all && len(args) != 0 {
+				return errors.New("--all cannot be combined with a UID")
+			}
+			userID := int64(0)
+			if len(args) == 1 {
+				var err error
+				userID, err = application.ParseUID(args[0])
+				if err != nil {
+					return err
+				}
+			}
+			return a.accountRefresh(cmd, userID, opts)
+		},
+	}
+	flags := cmd.Flags()
+	flags.BoolVar(&opts.all, "all", false, "refresh every stored account")
+	flags.BoolVar(&opts.jsonOut, "json", false, "print JSON")
+	a.bindProxyFlags(cmd, &opts.proxyOptions)
+	return cmd
+}
+
+func (a app) accountRefresh(cmd *cobra.Command, userID int64, opts accountRefreshOptions) error {
+	proxyOverride, err := proxyOverrideFromFlags(cmd, opts.proxyOptions)
+	if err != nil {
+		return err
+	}
+	services := a.services()
+	userIDs := []int64{userID}
+	if opts.all {
+		list, err := services.Account.List()
+		if err != nil {
+			return err
+		}
+		userIDs = make([]int64, 0, len(list.Accounts))
+		for _, account := range list.Accounts {
+			userIDs = append(userIDs, account.UserID)
+		}
+		if len(userIDs) == 0 {
+			return errors.New("no accounts")
+		}
+	}
+	results := make([]accountOut, 0, len(userIDs))
+	for _, selectedUserID := range userIDs {
+		result, err := services.Account.RefreshWithRequest(cmd.Context(), application.AccountRefreshRequest{
+			UserID:             selectedUserID,
+			HTTPSProxyOverride: proxyOverride,
+		})
+		if err != nil {
+			return err
+		}
+		results = append(results, accountOutFromResult(result))
+	}
+	if opts.jsonOut {
+		return a.printJSON(struct {
+			Accounts []accountOut `json:"accounts"`
+		}{Accounts: results})
+	}
+	for _, account := range results {
+		premium := "unknown"
+		if account.PremiumStatus != nil {
+			premium = textBool(*account.PremiumStatus)
+		}
+		fmt.Fprintf(a.out, "✓ refreshed uid:%d premium:%s\n", account.UserID, premium)
+	}
+	return nil
+}
+
 func (a app) resolveExistingUID(list application.AccountListResult, args []string, promptLabel string) (int64, error) {
 	if len(args) > 0 && strings.TrimSpace(args[0]) != "" {
 		return application.ParseUID(args[0])
@@ -506,11 +594,13 @@ func readRefreshTokenInput(r io.Reader) (string, error) {
 
 func accountOutFromResult(result application.AccountResult) accountOut {
 	return accountOut{
-		UserID:   result.UserID,
-		Username: result.Username,
-		Default:  result.Default,
-		HasToken: result.HasToken,
-		Warning:  result.Warning,
+		UserID:                 result.UserID,
+		Username:               result.Username,
+		Default:                result.Default,
+		HasToken:               result.HasToken,
+		PremiumStatus:          result.PremiumStatus,
+		PremiumStatusCheckedAt: result.PremiumStatusCheckedAt,
+		Warning:                result.Warning,
 	}
 }
 

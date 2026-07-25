@@ -303,6 +303,10 @@ func (c *Client) refreshStoredAccountFromState(ctx context.Context, operation Op
 	if updated.UserID != stored.UserID {
 		return nil, accountMismatchError(operation, userID)
 	}
+	// OAuth 凭据 rotation 不等同于会员资格变化；保留已验证 profile 缓存，避免
+	// 普通 auth check 无故让下一次收藏数搜索重复读取 profile。
+	updated.PremiumStatus = stored.PremiumStatus
+	updated.PremiumStatusCheckedAt = stored.PremiumStatusCheckedAt
 	state.store.Accounts[index] = updated
 	if err := auth.SaveAuthStore(state.authPath, state.store); err != nil {
 		return nil, localSnapshotError(operation, markLocalState(localStateStageAuth, err))
@@ -330,7 +334,21 @@ func (c *Client) oauthBase() string {
 }
 
 func publicAccount(account auth.Account, defaultUserID int64) Account {
-	return Account{UserID: account.UserID, Username: account.Username, Default: account.UserID == defaultUserID, HasToken: strings.TrimSpace(account.RefreshToken) != ""}
+	var premium *bool
+	var premiumCheckedAt *time.Time
+	if account.PremiumStatus != nil {
+		value := *account.PremiumStatus
+		premium = &value
+	}
+	if account.PremiumStatusCheckedAt != nil {
+		value := *account.PremiumStatusCheckedAt
+		premiumCheckedAt = &value
+	}
+	return Account{
+		UserID: account.UserID, Username: account.Username, Default: account.UserID == defaultUserID,
+		HasToken: strings.TrimSpace(account.RefreshToken) != "", PremiumStatus: premium,
+		PremiumStatusCheckedAt: premiumCheckedAt,
+	}
 }
 
 func unsupportedLocalStore(operation Operation, message string) error {

@@ -70,7 +70,7 @@ SDK cursor 不出现在 MCP 参数或输出。列表工具统一使用逻辑 `pa
 - `search_target`：`partial_match_for_tags|exact_match_for_tags|title_and_caption|keyword`；`keyword` 搜索标签、标题、说明文字，且需要 App OAuth。
 - `duration`：`within_last_day|within_last_week|within_last_month|within_half_year|within_year`；不能和日期边界同用。两个长周期会在本地展开为包含边界的东京日期区间。
 - `start_date` / `end_date`：包含边界的 `YYYY-MM-DD`；可只给一端，两端都有时起始不得晚于结束。
-- `bookmark_min` / `bookmark_max`：包含边界的非负公开收藏数；最小值不能大于最大值，且都需要 App OAuth 和有效的 Pixiv 高级会员。
+- `bookmark_min` / `bookmark_max`：包含边界的非负公开收藏数；最小值不能大于最大值，且都需要 App OAuth 和有效的 Pixiv 高级会员。已保存账号会在搜索前检查缓存的自身 profile 状态；确认非会员会在本地失败，不发起上游搜索请求。
 
 有 refresh token 时，分辨率、横纵比、工具、作品类型和 `ai_mode=exclude` 由 App 服务端筛选，
 `rating` 与 `ai_mode=only` 由 public SDK 基于 App 返回字段筛选；App 失败不回落 Web。无 token 的匿名

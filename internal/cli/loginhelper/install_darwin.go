@@ -15,7 +15,9 @@ import (
 )
 
 const pixivURLHandlerBundleID = "com.flanchan.pixiv-cli.url-handler"
-const pixivURLHandlerSourceVersion = "2"
+
+// pixivURLHandlerSourceVersion 变更时强制重编译已安装的 helper，确保修复能覆盖旧 bundle。
+const pixivURLHandlerSourceVersion = "3"
 
 // Install 为本次登录安装 pixiv:// 回调 helper，并返回清理函数。
 func Install(ctx context.Context, callbackRelayURL string) (func(), error) {
@@ -217,10 +219,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 	}
 
     private func endpointPath() -> String? {
-        guard let supportDir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
-            return nil
-        }
-        return supportDir.appendingPathComponent("pixiv/url-handler-endpoint").path
+        // 必须与 Go 端 callbackEndpointPath 一致：两端通过当前用户家目录下的私有文件通信。
+        return URL(fileURLWithPath: NSHomeDirectory())
+            .appendingPathComponent(".pixiv-cli/url-handler-endpoint").path
     }
 }
 

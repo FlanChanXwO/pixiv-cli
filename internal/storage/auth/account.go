@@ -7,6 +7,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/utils/files"
 )
@@ -29,6 +30,9 @@ type Account struct {
 	RefreshToken string `json:"refresh_token"`
 	UserID       int64  `json:"user_id,omitempty"`
 	Username     string `json:"username,omitempty"`
+	// PremiumStatus 仅缓存由 App profile 验证过的会员状态；nil 代表从未验证。
+	PremiumStatus          *bool      `json:"premium_status,omitempty"`
+	PremiumStatusCheckedAt *time.Time `json:"premium_status_checked_at,omitempty"`
 }
 
 type authStoreReadHook struct {

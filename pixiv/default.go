@@ -174,6 +174,19 @@ func (d *defaultOptions) snapshot(ctx context.Context, operation Operation) (*Cl
 	client.authState = d.authState
 	client.cursorSource = "app:user:" + formatUserID(sourceUserID)
 	client.authenticatedUserID = oauthClient.UserID()
+	client.premiumStatusCacheTTL = snapshot.runtime.PremiumStatusCacheTTL
+	if selectedStored {
+		client.premiumStatusAuthPath = snapshot.authPath
+		if _, stored, ok := snapshot.store.Get(selectedUserID); ok {
+			if stored.PremiumStatus != nil {
+				premium := *stored.PremiumStatus
+				client.cachedPremiumStatus = &premium
+			}
+			if stored.PremiumStatusCheckedAt != nil {
+				client.premiumStatusCheckedAt = *stored.PremiumStatusCheckedAt
+			}
+		}
+	}
 	return client, nil
 }
 

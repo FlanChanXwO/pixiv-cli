@@ -83,8 +83,8 @@ func (a app) newSearchCommand() *cobra.Command {
 	flags.StringVar(&opts.aspectRatio, "aspect-ratio", opts.aspectRatio, "aspect ratio filter: all, landscape, portrait, square")
 	flags.StringVar(&opts.drawTool, "draw-tool", "", "drawing tool name from search-options")
 	flags.StringVar(&opts.aiMode, "ai-mode", opts.aiMode, "AI artwork filter: all, exclude, only")
-	flags.IntVar(&opts.bookmarkMin, "bookmark-min", 0, "minimum public bookmark count (requires App OAuth)")
-	flags.IntVar(&opts.bookmarkMax, "bookmark-max", 0, "maximum public bookmark count (requires App OAuth)")
+	flags.IntVar(&opts.bookmarkMin, "bookmark-min", 0, "minimum public bookmark count (requires Pixiv Premium)")
+	flags.IntVar(&opts.bookmarkMax, "bookmark-max", 0, "maximum public bookmark count (requires Pixiv Premium)")
 	bindListFlags(cmd, &opts.listOptions)
 	return cmd
 }

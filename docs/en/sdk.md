@@ -55,7 +55,7 @@ redirects. See [ADR 0010](../maintainers/adr/0010-http-client-timeout-and-contex
 | Works and recommendations | `SearchIllust`, `SearchNovel`, `SearchIllustOptions`, `IllustDetail`, `IllustPages`, `IllustRelated`, `IllustRanking`, `IllustRecommended`, `MangaRecommended`, `NovelRecommended`, `UserRecommended`, `FollowingIllusts`, `TrendingTagsIllust`, `UgoiraMetadata`. |
 | Users | `SearchUser`, `UserDetail`, `UserArtworks`, `UserBookmarks`, `UserFollowing`, `CurrentUserID`. |
 | Writes | `AddBookmark`, `RemoveBookmark`, `FollowUser`, `UnfollowUser`. |
-| Accounts/configuration | `ImportAccount`, `ListAccounts`, `SelectAccount`, `RemoveAccount`, `ExportAccountRefreshToken`, `ExportAuthBundle`, `RestoreAuthBundle`, `CheckAccount`, `CheckRefreshToken`, `Refresh`, `RefreshAccount`, `GetConfig`, `SetConfig`, `UnsetConfig`; bundle codec functions are package-level. |
+| Accounts/configuration | `ImportAccount`, `ListAccounts`, `SelectAccount`, `RemoveAccount`, `ExportAccountRefreshToken`, `ExportAuthBundle`, `RestoreAuthBundle`, `CheckAccount`, `CheckRefreshToken`, `Refresh`, `RefreshAccount`, `PremiumStatus`, `RefreshPremiumStatus`, `GetConfig`, `SetConfig`, `UnsetConfig`; bundle codec functions are package-level. |
 | Login | `StartLogin`, `CompleteLogin`, `BuildLoginAuthorizationURL`; the SDK does not start a browser, loopback server, or TTY. |
 | Resources | `ParseResourceRef`, `OpenResource`, `Download`. |
 
@@ -145,7 +145,7 @@ manage their own PKCE and state. Use `StartLogin` when the SDK should manage the
 | `AspectRatio` | `all`, `landscape`, `portrait`, `square` |
 | `Resolution` | `all`, `high`, `medium`, `low`; both dimensions must respectively be `>=3000`, `1000..2999`, or `<=999` |
 | `Tool` | Exact upstream drawing-tool value; no fuzzy matching |
-| `BookmarkMin` / `BookmarkMax` | Optional inclusive non-negative public bookmark-count bounds; require App OAuth and an active Pixiv Premium membership; `Min` cannot exceed `Max` |
+| `BookmarkMin` / `BookmarkMax` | Optional inclusive non-negative public bookmark-count bounds; require App OAuth and an active Pixiv Premium membership; `Min` cannot exceed `Max`. `OpenDefault` with a saved account checks its cached self-profile status before the request and returns `forbidden` locally for a non-Premium account. |
 
 Zero enum values normalize to `all`; `Tool` is trimmed. Unknown values return `invalid_argument` before any
 upstream request. `SearchIllustRequest.Target` also accepts `keyword` for tags, titles, and captions; `Duration`
@@ -158,7 +158,10 @@ the current App batch.
 
 `SearchIllustOptions(ctx, SearchIllustOptionsRequest{Word: word})` requires a non-empty word and App
 authentication. It returns `SearchIllustOptionsResult{Tools []string}` in upstream order; a missing list becomes a
-non-nil empty slice. It does not expose whether the authenticated account has Pixiv Premium eligibility for bookmark-count bounds.
+non-nil empty slice. `PremiumStatus(ctx)` returns the saved authenticated account's cached-or-fresh membership
+snapshot; `RefreshPremiumStatus(ctx)` forces a profile read and persists the result. `OpenDefault` uses
+`[premium] status_cache_ttl` (default `24h`, `0s` disables reuse). A direct `NewClient` access token does not carry
+a verifiable account UID, so it cannot perform this saved-account precheck.
 
 ### Novel search and user-search source
 

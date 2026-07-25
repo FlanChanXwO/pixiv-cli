@@ -276,6 +276,12 @@ func (a app) newRootCommand() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return cmd.Help()
 		},
+		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+			if !shouldInitializeConfigForCommand(cmd) {
+				return nil
+			}
+			return config.EnsureDefaultConfigFile()
+		},
 		PersistentPostRun: func(cmd *cobra.Command, args []string) {
 			a.checkAutomaticUpdate(cmd)
 		},
@@ -300,6 +306,17 @@ func (a app) newRootCommand() *cobra.Command {
 		a.newUpdateCommand(),
 	)
 	return cmd
+}
+
+// shouldInitializeConfigForCommand 仅让真正执行的普通 CLI 命令生成配置。帮助、版本、
+// credential export 与操作系统回调不得因只读/敏感流程而产生本地配置文件。
+func shouldInitializeConfigForCommand(cmd *cobra.Command) bool {
+	switch cmd.CommandPath() {
+	case "pixiv", "pixiv auth", "pixiv config", "pixiv version", "pixiv auth export", "pixiv auth " + internalURLCallbackCommand:
+		return false
+	default:
+		return true
+	}
 }
 
 func (a app) newMCPCommand() *cobra.Command {

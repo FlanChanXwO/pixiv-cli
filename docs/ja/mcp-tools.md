@@ -79,7 +79,7 @@ structured output を返します。`delivery` は正規化済みの `local_path
 - `aspect_ratio`：`all|landscape|portrait|square`。
 - `resolution`：`all|high|medium|low`。両 dimension がそれぞれ `>=3000`、`1000..2999`、`<=999` です。
 - `tool`：fuzzy matching をしない、上流の drawing-tool value そのもの。
-- `bookmark_min` / `bookmark_max`：包含境界の非負 public bookmark 数。`min` は `max` を超えられず、App OAuth と有効な Pixiv Premium 会員資格が必要です。
+- `bookmark_min` / `bookmark_max`：包含境界の非負 public bookmark 数。`min` は `max` を超えられず、App OAuth と有効な Pixiv Premium 会員資格が必要です。保存済み account では search 前に cached self-profile status を確認し、非 Premium は upstream search request を出さず local failure になります。
 
 refresh token がある場合、resolution、aspect ratio、tool、content type、AI exclusion は App が実施します。rating と
 AI-only の filter は public SDK が正規化済み App field で実施します。App の失敗は Web に fallback しません。匿名 Web は

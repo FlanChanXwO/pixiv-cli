@@ -71,8 +71,13 @@ type Client struct {
 	cursorSource string
 	// authenticatedUserID 仅由 OpenDefault 的 OAuth 快照写入；显式 access token
 	// 不声称可从 token 本身推断用户身份。
-	authenticatedUserID int64
-	logger              *slog.Logger
+	authenticatedUserID    int64
+	premiumStatusMu        sync.Mutex
+	cachedPremiumStatus    *bool
+	premiumStatusCheckedAt time.Time
+	premiumStatusCacheTTL  time.Duration
+	premiumStatusAuthPath  string
+	logger                 *slog.Logger
 }
 
 // CurrentUserID 返回 OpenDefault 当前认证快照对应的 Pixiv UID。

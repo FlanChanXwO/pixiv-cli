@@ -56,7 +56,7 @@ cancel してください。
 | Works と recommendation | `SearchIllust`、`SearchNovel`、`SearchIllustOptions`、`IllustDetail`、`IllustPages`、`IllustRelated`、`IllustRanking`、`IllustRecommended`、`MangaRecommended`、`NovelRecommended`、`UserRecommended`、`FollowingIllusts`、`TrendingTagsIllust`、`UgoiraMetadata`。 |
 | Users | `SearchUser`、`UserDetail`、`UserArtworks`、`UserBookmarks`、`UserFollowing`、`CurrentUserID`。 |
 | Writes | `AddBookmark`、`RemoveBookmark`、`FollowUser`、`UnfollowUser`。 |
-| Accounts/configuration | `ImportAccount`、`ListAccounts`、`SelectAccount`、`RemoveAccount`、`ExportAccountRefreshToken`、`ExportAuthBundle`、`RestoreAuthBundle`、`CheckAccount`、`CheckRefreshToken`、`Refresh`、`RefreshAccount`、`GetConfig`、`SetConfig`、`UnsetConfig`。bundle codec function は package-level です。 |
+| Accounts/configuration | `ImportAccount`、`ListAccounts`、`SelectAccount`、`RemoveAccount`、`ExportAccountRefreshToken`、`ExportAuthBundle`、`RestoreAuthBundle`、`CheckAccount`、`CheckRefreshToken`、`Refresh`、`RefreshAccount`、`PremiumStatus`、`RefreshPremiumStatus`、`GetConfig`、`SetConfig`、`UnsetConfig`。bundle codec function は package-level です。 |
 | Login | `StartLogin`、`CompleteLogin`、`BuildLoginAuthorizationURL`。SDK は browser、loopback server、TTY を起動しません。 |
 | Resources | `ParseResourceRef`、`OpenResource`、`Download`。 |
 
@@ -132,7 +132,7 @@ format は unencrypted な point-in-time backup であり、live sync ではあ�
 | `AspectRatio` | `all`、`landscape`、`portrait`、`square` |
 | `Resolution` | `all`、`high`、`medium`、`low`。両 dimension が順に `>=3000`、`1000..2999`、`<=999` です。 |
 | `Tool` | fuzzy matching をしない、上流の drawing-tool value。 |
-| `BookmarkMin` / `BookmarkMax` | 任意の包含境界の非負 public bookmark 数。App OAuth と有効な Pixiv Premium 会員資格が必要で、`Min` は `Max` を超えられません。 |
+| `BookmarkMin` / `BookmarkMax` | 任意の包含境界の非負 public bookmark 数。App OAuth と有効な Pixiv Premium 会員資格が必要で、`Min` は `Max` を超えられません。保存済み account の `OpenDefault` は request 前に cached self-profile status を確認し、非 Premium には local `forbidden` を返します。 |
 
 zero enum value は `all` に正規化され、`Tool` は trim されます。unknown value は upstream request 前に
 `invalid_argument` を返します。認証済み adapter は resolution、aspect ratio、tool、content type、AI exclusion を App server
@@ -141,7 +141,7 @@ upstream の order と value を保持し、bookmark-count filter とは関係�
 
 `SearchIllustOptions(ctx, SearchIllustOptionsRequest{Word: word})` は non-empty word と App authentication が必要です。
 戻り値は upstream order の `SearchIllustOptionsResult{Tools []string}` であり、list がない場合は non-nil empty slice です。
-認証済み account が bookmark-count filter 用の Pixiv Premium 資格を持つかどうかは公開しません。
+`PremiumStatus(ctx)` は保存済み認証 account の cached-or-fresh membership snapshot を返し、`RefreshPremiumStatus(ctx)` は profile を強制取得して結果を保存します。`OpenDefault` は `[premium] status_cache_ttl`（既定 `24h`、`0s` は reuse 無効）を使います。直接 `NewClient` access token には検証可能な account UID がないため、この saved-account precheck はできません。
 
 ### Novel search と user-search source
 

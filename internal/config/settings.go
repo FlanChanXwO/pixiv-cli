@@ -63,6 +63,8 @@ type RuntimeConfig struct {
 	LoginOpenBrowser   bool
 	LoginTimeout       time.Duration
 	LoginUseAfterLogin bool
+	// PremiumStatusCacheTTL 控制收藏数筛选使用的已验证 Premium 状态缓存；用户要求的默认值为一天。
+	PremiumStatusCacheTTL time.Duration
 	// LogLevel 只描述应用根 logger，不会改变 slog 默认全局 logger。
 	LogLevel string
 }
@@ -77,6 +79,7 @@ var settingSpecs = []SettingSpec{
 	{Alias: "login_open_browser", KoanfKey: "login.open_browser", Table: []string{"login"}, Key: "open_browser", Kind: settingBool, HasDefault: true, Default: true},
 	{Alias: "login_timeout", KoanfKey: "login.timeout", Table: []string{"login"}, Key: "timeout", Kind: settingDuration, HasDefault: true, Default: time.Duration(0)},
 	{Alias: "login_use_after_login", KoanfKey: "login.use_after_login", Table: []string{"login"}, Key: "use_after_login", Kind: settingBool, HasDefault: true, Default: false},
+	{Alias: "premium_status_cache_ttl", KoanfKey: "premium.status_cache_ttl", Table: []string{"premium"}, Key: "status_cache_ttl", Kind: settingDuration, HasDefault: true, Default: 24 * time.Hour},
 	{Alias: "log_level", KoanfKey: "logging.level", Table: []string{"logging"}, Key: "level", Kind: settingString, HasDefault: true, Default: "warn"},
 }
 
@@ -216,6 +219,13 @@ func (s SettingsState) Runtime() (RuntimeConfig, error) {
 	if err != nil {
 		return RuntimeConfig{}, err
 	}
+	premiumStatusCacheTTL, err := s.Effective("premium_status_cache_ttl")
+	if err != nil {
+		return RuntimeConfig{}, err
+	}
+	if premiumStatusCacheTTL.Value.(time.Duration) < 0 {
+		return RuntimeConfig{}, errors.New("premium_status_cache_ttl must be greater than or equal to zero")
+	}
 	logLevel, err := s.Effective("log_level")
 	if err != nil {
 		return RuntimeConfig{}, err
@@ -225,16 +235,17 @@ func (s SettingsState) Runtime() (RuntimeConfig, error) {
 		return RuntimeConfig{}, err
 	}
 	cfg := RuntimeConfig{
-		DownloadPath:       downloadPath.Value.(string),
-		FilenameTemplate:   filenameTemplate.Value.(string),
-		HTTPSProxy:         "",
-		WebFallbackEnabled: webFallbackEnabled.Value.(bool),
-		UpdateCheckEnabled: updateCheckEnabled.Value.(bool),
-		OutputJSON:         outputJSON.Value.(bool),
-		LoginOpenBrowser:   loginOpenBrowser.Value.(bool),
-		LoginTimeout:       loginTimeout.Value.(time.Duration),
-		LoginUseAfterLogin: loginUseAfterLogin.Value.(bool),
-		LogLevel:           level,
+		DownloadPath:          downloadPath.Value.(string),
+		FilenameTemplate:      filenameTemplate.Value.(string),
+		HTTPSProxy:            "",
+		WebFallbackEnabled:    webFallbackEnabled.Value.(bool),
+		UpdateCheckEnabled:    updateCheckEnabled.Value.(bool),
+		OutputJSON:            outputJSON.Value.(bool),
+		LoginOpenBrowser:      loginOpenBrowser.Value.(bool),
+		LoginTimeout:          loginTimeout.Value.(time.Duration),
+		LoginUseAfterLogin:    loginUseAfterLogin.Value.(bool),
+		PremiumStatusCacheTTL: premiumStatusCacheTTL.Value.(time.Duration),
+		LogLevel:              level,
 	}
 	if httpsProxy.HasValue {
 		cfg.HTTPSProxy = httpsProxy.Value.(string)

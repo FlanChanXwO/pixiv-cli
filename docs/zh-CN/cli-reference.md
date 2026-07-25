@@ -126,7 +126,7 @@ pixiv auth login
 | 校验 | 本地 loopback 回调必须匹配本次 state；Pixiv 官方 callback URL 与 `pixiv://account/login` 可在 Pixiv 未返回 state 时作为显式 fallback。 |
 | 保存 | refresh/access token 不会打印；refresh token 按 Pixiv UID 保存到 `auth.json`。Unix-like 主动使用 `0700` 父目录与 `0600` 文件；Windows 首次创建继承父目录 ACL，替换既有目标保留其 ACL，不主动收紧或放宽 DACL。 |
 
-默认浏览器打开时，macOS 注册 `PixivCLIURLHandler.app`，桌面 Linux 创建临时 XDG desktop entry，Windows 创建临时当前用户协议关联。它们都只服务当前登录尝试，并会在完成、失败或取消后恢复原有 `pixiv://` handler。Pixiv 调用 `pixiv://account/login?...` 后，helper 会打开本地 loopback 浏览器桥接页：callback 仅存于 URL fragment，随即从地址栏和历史中清除，再 POST 至本轮 listener。浏览器只会在 OAuth exchange 完成后收到居中的最终成功或失败页；本地登录、回调、成功和失败页的浏览器标题均为 `pixiv-cli`。helper 不读取浏览器 Cookie、存储、历史、会话文件、标签页或网络流量。若 helper 不可用，CLI 仍打开正常浏览器并等待 loopback 或手动回填，不会启动受管 Chromium、DevTools/CDP 或浏览器状态扫描。提交的 Pixiv `post-redirect` URL 会先校验属于本轮 PKCE：终端输入仅在 CLI 所在主机打开一次；fallback 页面提交则由当前浏览器继续，因此也适用于 SSH 转发。若 Pixiv 未生成 callback，CLI 不会伪造成功。
+默认浏览器打开时，macOS 注册 `PixivCLIURLHandler.app`，桌面 Linux 创建临时 XDG desktop entry，Windows 创建临时当前用户协议关联。它们都只服务当前登录尝试，并会在完成、失败或取消后恢复原有 `pixiv://` handler。Pixiv 调用 `pixiv://account/login?...` 后，helper 会打开本地 loopback 浏览器桥接页：callback 仅存于 URL fragment，随即从地址栏和历史中清除，再 POST 至本轮 listener。浏览器只会在 OAuth exchange 完成后收到居中的最终成功或失败页；本地登录、回调、成功和失败页的浏览器标题均为 `pixiv-cli`。helper 不读取浏览器 Cookie、存储、历史、会话文件、标签页或网络流量。若 helper 不可用，CLI 仍打开正常浏览器并等待 loopback 或手动回填，不会启动受管 Chromium、DevTools/CDP 或浏览器状态扫描。提交的 Pixiv `post-redirect` URL 会先校验属于本轮 PKCE：终端输入仅在 CLI 所在主机打开一次；fallback 页面提交则由当前浏览器继续，因此也适用于 SSH 转发。macOS helper 只读取当前 CLI 写入的私有 `~/.pixiv-cli/url-handler-endpoint` bridge 文件，因此只会把 callback 交给仍在运行的本轮 loopback listener。若 Pixiv 未生成 callback，CLI 不会伪造成功。
 
 在无 GUI 的 SSH 服务器上，应继续把 listener 绑定到 loopback，并选择一个未占用的固定端口，方便从
 本地转发。先在服务器运行：
@@ -224,6 +224,7 @@ printf '%s\n' 'YOUR_REFRESH_TOKEN' | pixiv auth import
 pixiv auth list
 pixiv auth use 12345678
 pixiv auth check
+pixiv auth refresh
 pixiv config path
 pixiv config get download_path
 pixiv config set download_path ~/Downloads/pixiv
@@ -244,6 +245,7 @@ pixiv download 123456 789012
 ```
 
 所有持久的应用管理数据直接保存到当前用户主目录：macOS/Linux 为 `~/.pixiv-cli`，Windows 为 `%USERPROFILE%\.pixiv-cli`。其中包括 `auth.json`、`config.toml`、回调桥接状态、按日日志、Release 检查缓存和 macOS 回调 helper；账号认证以 Pixiv UID 为 key。Unix-like 主动使用 `0700` 父目录与 `0600` 文件；Windows 首次创建继承父目录 ACL，替换既有目标保留其 ACL，不主动收紧或放宽 DACL。输出默认给人读；只有 help 中提供 `--json` 的命令可输出机器可解析 JSON，`auth export` 明确不提供该 flag。
+首次执行普通命令时，若不存在 `config.toml`，CLI 会生成只含下载、Web fallback、输出、登录与更新常用设置的基础文件，且绝不覆盖已有文件。代理、日志、登录超时和 Premium 状态缓存等高级设置会保持省略，直到用户显式配置；help、version、secret export 和内部 OAuth callback 不会创建该文件。
 CLI 使用 Cobra/pflag，选项可以写在位置参数前后，例如 `pixiv auth check 12345678 --json` 和 `pixiv search "初音ミク" --json` 都是正式支持的写法。
 
 ### CLI 命令表
@@ -251,13 +253,14 @@ CLI 使用 Cobra/pflag，选项可以写在位置参数前后，例如 `pixiv au
 | 命令 | 用法 | 说明 |
 | --- | --- | --- |
 | `auth import` | `pixiv auth import [REFRESH_TOKEN] [--file PATH] [--json] [--proxy URL\|--no-proxy]` | direct input 校验并保存 rotation 后的 token；无参 TTY 隐藏输入，非 TTY 读取 raw stdin。`--file PATH|-` 改为离线原子恢复 bundle，并与 token/代理输入冲突。 |
-| `auth login` | `pixiv auth login [--json] [--no-open] [--addr 127.0.0.1:0] [--use] [--timeout DURATION] [--proxy URL\|--no-proxy]` | 通过本地 loopback server 和浏览器 OAuth 登录，按 Pixiv UID 保存账号；不会输出 refresh token。 |
-| `auth list` | `pixiv auth list [--json]` | 列出本地账号；不会输出 refresh token。 |
+| `auth login` | `pixiv auth login [--json] [--no-open] [--addr 127.0.0.1:0] [--use] [--timeout DURATION] [--proxy URL\|--no-proxy]` | 通过本地 loopback server 和浏览器 OAuth 登录，按 Pixiv UID 保存账号；文本输出紧凑安全摘要 `✓ uid:UID username:NAME`，`--json` 返回等价 JSON；不会输出 refresh token。 |
+| `auth list` | `pixiv auth list [--json]` | 列出本地账号；不会输出 refresh token。文本中 `*` 表示默认账号，`✓`/`-` 分别表示本地保存/缺少 refresh token；这些只是本地状态标记，不代表已在线验证有效。 |
 | `auth export` | `pixiv auth export [UID] [--all] [--output PATH] [--force]` | 本地导出默认/指定账号或全部账号；无 `--output` 时单账号输出 raw token、`--all` 输出 bundle；带 `--output` 时都写私有 bundle，stdout 仅安全摘要。`--force` 必须与 `--output` 同用。 |
 | `auth use` | `pixiv auth use [UID] [--json]` | 设置默认账号；TTY 下可交互选择。 |
 | `auth remove` | `pixiv auth remove [UID] [--yes] [--json]` | 删除账号；TTY 下默认确认，删除默认账号后会自动选第一个剩余账号。 |
 | `auth check` | `pixiv auth check [UID] [--json] [--proxy URL\|--no-proxy]` | 刷新 token 并验证账号；成功后会记录 `user_id` 和可获取到的 username。 |
-| `config path` | `pixiv config path` | 输出 `config.toml` 路径。 |
+| `auth refresh` | `pixiv auth refresh [UID] [--all] [--json] [--proxy URL\|--no-proxy]` | 刷新指定/默认已保存账号的 OAuth access token 与 rotation 后 refresh token，再强制读取 profile 更新 Pixiv 高级会员缓存。`--all` 刷新全部已保存账号；JSON 固定返回 `accounts`。 |
+| `config path` | `pixiv config path` | 输出 `config.toml` 路径；不存在时创建基础文件。 |
 | `config get` | `pixiv config get KEY` | 输出一个生效中的配置值。 |
 | `config set` | `pixiv config set KEY VALUE` | 写入一个已知配置键到 `config.toml`。 |
 | `config unset` | `pixiv config unset KEY` | 从 `config.toml` 删除一个已知配置键。 |
@@ -310,7 +313,7 @@ CLI 使用 Cobra/pflag，选项可以写在位置参数前后，例如 `pixiv au
 | `search` | `--aspect-ratio` | `all` | 横纵比：`all`、`landscape`、`portrait` 或 `square`。 |
 | `search` | `--resolution` | `all` | 分辨率：`all`、`high`、`medium` 或 `low`；宽高两个维度分别都需满足 `>=3000`、`1000..2999` 或 `<=999`。 |
 | `search` | `--draw-tool` | 空 | 上游绘图工具的精确名称；用已认证的 `search-options` 查询当前值。 |
-| `search` | `--bookmark-min` / `--bookmark-max` | 空 | 包含边界的非负公开收藏数；需要 App OAuth 和有效的 Pixiv 高级会员，且最小值不能大于最大值。 |
+| `search` | `--bookmark-min` / `--bookmark-max` | 空 | 包含边界的非负公开收藏数；需要 App OAuth 和有效的 Pixiv 高级会员，且最小值不能大于最大值。已保存账号会先检查缓存的自身 profile 状态，非会员在本地拦截。 |
 | `novel search` | `--min-text-length` | `0` | 正文最少字符数；`0` 关闭下界。 |
 | `novel search` | `--max-text-length` | `0` | 正文最多字符数；`0` 关闭上界，且不能小于非零下界。 |
 | `novel search` | `--original-only` | `false` | 仅保留 Pixiv 标记为原创的小说。 |
@@ -334,6 +337,8 @@ CLI 使用 Cobra/pflag，选项可以写在位置参数前后，例如 `pixiv au
 | `download` | `TARGET...` | 必填 | 作品 ID、作品 URL，或受支持的用户主页/作品页 URL。 |
 
 有 refresh token 时，`search` 始终使用 App API。分辨率、横纵比、工具、作品类型和 `ai-mode=exclude` 由 App 筛选，分级和 `ai-mode=only` 对 App 返回批次筛选；App 失败不会回落 Web。全部筛选都会绑定 opaque cursor，cursor 不能用于不同筛选组合。本地筛选跳过连续空上游批次时，CLI/MCP 会补拉到首个非空逻辑批次或真正结束。指定正数 `--limit` 或 `--page` 时，按过滤后的逻辑结果跨批填满；`--limit 0` 遍历全部过滤结果；未指定 `--limit` 时读取一个上游批次，但会跳过前导空批。App 还会执行显式日期与仅限 Pixiv 高级会员的收藏数边界；收藏数不是点赞字段，不得文案为点赞。作品 JSON/文本包含稳定作品页 URL `https://www.pixiv.net/artworks/{id}`，作为首字段/每件作品第一行。
+
+收藏数边界对已保存账号复用自身 profile 的 Premium 缓存，时效由 `premium_status_cache_ttl` 控制，默认 `24h`。缓存未命中或过期时，会先读取 profile；确认非会员即在本地失败，不向 Pixiv 搜索端点发请求。使用 `pixiv auth refresh [UID]`（或 `--all`）可强制刷新 OAuth token 与该状态。直接传入 SDK access token 时没有可验证的本地账号身份，无法使用这项已保存账号预检。
 
 ### 插画标签查询语法
 
@@ -375,12 +380,13 @@ App JSON 读取在首次 429 且 `Retry-After` 有效时按命令 context 等待
 | `filename_template` | string | `{author} - {title}_{id}` | 文件名模板。 |
 | `https_proxy` | string | 空 | HTTP(S) 代理，优先使用环境变量中的小写 `https_proxy`。 |
 | `web_fallback_enabled` | bool | `true` | 无 refresh token 时，允许匿名 Pixiv web/ajax API fallback；写入为 `[web] fallback_enabled = true/false`。 |
-| `log_level` | string | `warn` | 用户主目录 `~/.pixiv-cli/logs`（Windows：`%USERPROFILE%\.pixiv-cli\logs`）下按日纯文本 `YYYY-MM-DD.txt` 操作摘要级别；可由 `PIXIV_LOG_LEVEL` 覆盖。显式设为 `info` 可保留更多操作摘要。终端默认无日志痕迹。 |
+| `log_level` | string | `warn` | 用户主目录 `~/.pixiv-cli/logs`（Windows：`%USERPROFILE%\.pixiv-cli\logs`）下按日纯文本 `YYYY-MM-DD.txt` 操作摘要级别；可由 `PIXIV_LOG_LEVEL` 覆盖。显式设为 `info` 可保留更多操作摘要。每行采用紧凑的 Spring/SLF4J 风格：`timestamp  LEVEL PID --- [component] source : operation result details`；`source` 是发起操作的仓库相对 Go 文件与行号，`component` 标识所属子系统。空字段及仅表示本地的 backend/status 会省略。终端默认无日志痕迹。 |
 | `update_check_enabled` | bool | `true` | 普通 CLI 成功命令后是否检查稳定版更新；写入为 `[update] check_enabled = true/false`。 |
 | `output_json` | bool | `false` | 数据命令默认输出 JSON。 |
 | `login_open_browser` | bool | `true` | `auth login` 默认是否自动打开浏览器。 |
 | `login_timeout` | duration | `0s` | `auth login` 默认等待时长。 |
 | `login_use_after_login` | bool | `false` | `auth login` 默认是否设为当前默认账号。 |
+| `premium_status_cache_ttl` | duration | `24h` | 收藏数搜索前使用的已保存账号 Pixiv 高级会员状态缓存时效；写入为 `[premium] status_cache_ttl`。`0s` 禁用缓存复用；负值会被拒绝。 |
 
 ### 环境变量
 

@@ -92,7 +92,7 @@ the safe business-error text; `download` partial failures set `isError=true`.
 - `search_target`: `partial_match_for_tags|exact_match_for_tags|title_and_caption|keyword`; `keyword` searches tags, titles, and captions and requires App OAuth.
 - `duration`: `within_last_day|within_last_week|within_last_month|within_half_year|within_year`; it cannot be combined with date bounds. The two long values are expanded locally into an inclusive Tokyo date range.
 - `start_date` / `end_date`: inclusive `YYYY-MM-DD` bounds. Either is allowed, but a supplied start cannot be later than end.
-- `bookmark_min` / `bookmark_max`: inclusive non-negative public bookmark-count bounds; the minimum cannot exceed the maximum and both require App OAuth plus an active Pixiv Premium membership.
+- `bookmark_min` / `bookmark_max`: inclusive non-negative public bookmark-count bounds; the minimum cannot exceed the maximum and both require App OAuth plus an active Pixiv Premium membership. For a saved account, the cached self-profile status is checked before search, so a non-Premium account fails locally without an upstream search request.
 
 With a refresh token, App performs resolution, aspect ratio, tool, content type, and AI exclusion filtering;
 rating and AI-only filtering use public SDK normalized App fields. App failures never fall back to Web. Anonymous

@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -108,6 +109,29 @@ func TestPixivURLHandlerOpensLoopbackBrowserRelay(t *testing.T) {
 	require.Contains(t, pixivURLHandlerSwiftSource, "components.fragment = callbackURL")
 	require.Contains(t, pixivURLHandlerSwiftSource, "NSWorkspace.shared.open(relayURL)")
 	require.NotContains(t, pixivURLHandlerSwiftSource, "URLSession.shared.dataTask")
+}
+
+func TestPixivURLHandlerReadsCurrentCLICallbackEndpoint(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+
+	endpoint, err := callbackEndpointPath()
+	require.NoError(t, err)
+	require.Equal(t, filepath.Join(home, constants.AppDataDirName, callbackEndpointFilename), endpoint)
+	require.Contains(t, pixivURLHandlerSwiftSource, "NSHomeDirectory()")
+	require.Contains(t, pixivURLHandlerSwiftSource, constants.AppDataDirName+"/"+callbackEndpointFilename)
+	require.NotContains(t, pixivURLHandlerSwiftSource, "applicationSupportDirectory")
+}
+
+func TestPixivURLHandlerSwiftSourceCompiles(t *testing.T) {
+	tempDir := t.TempDir()
+	sourcePath := filepath.Join(tempDir, "url-handler.swift")
+	executablePath := filepath.Join(tempDir, "PixivCLIURLHandler")
+	require.NoError(t, os.WriteFile(sourcePath, []byte(pixivURLHandlerSwiftSource), constants.PrivateFileMode))
+
+	out, err := exec.Command("swiftc", sourcePath, "-o", executablePath).CombinedOutput()
+	require.NoErrorf(t, err, "compile embedded macOS URL helper: %s", strings.TrimSpace(string(out)))
 }
 
 func TestEnsurePixivURLHandlerAppPreservesCompilerOutputAndCleansSourceOnFailure(t *testing.T) {

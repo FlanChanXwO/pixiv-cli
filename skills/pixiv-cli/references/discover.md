@@ -31,7 +31,9 @@ pixiv search "初音ミク" --limit 10 --json
   all|high|medium|low`, exact `--draw-tool` names, and App-only, Pixiv Premium-only
   `--bookmark-min N` / `--bookmark-max N` public bookmark-count bounds. Only pass restricted
   ratings or bookmark bounds when the user explicitly asks; say that Pixiv Premium is required
-  for bookmark bounds, and never call bookmark count a like count.
+  for bookmark bounds, and never call bookmark count a like count. For a saved account, bookmark bounds use a cached
+  self-profile membership check (24h by default) and a non-Premium account is blocked before search; do not refresh
+  that cache unless the user explicitly asks for `pixiv auth refresh`.
 - Tool names are dynamic. Run authenticated `pixiv search-options "WORD"
   --json`, then pass the returned name exactly. Do not hard-code a list.
 - Anonymous Web search accepts only its reliable filters. R18/R18G/mature,

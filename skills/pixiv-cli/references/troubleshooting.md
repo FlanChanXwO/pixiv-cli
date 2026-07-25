@@ -8,8 +8,9 @@ usually the answer. Never mask an error with retries or silent fallbacks.
 - `pixiv: command not found` → report that the binary is unavailable as a
   blocker. If the user explicitly asks you to install it, follow
   `references/install.md`; otherwise do not install it or guess a method.
-- Config/auth file locations: `pixiv config path` prints the config file path;
-  `auth.json` lives in the same directory. Never read `auth.json` contents.
+- Config/auth file locations: `pixiv config path` prints the config file path
+  and creates a baseline config if missing; `auth.json` lives in the same
+  directory. Never read `auth.json` contents.
 
 ## Authentication
 
@@ -19,6 +20,7 @@ usually the answer. Never mask an error with retries or silent fallbacks.
 | "requires authentication" on `recommended`/`user`/`bookmark`/`follow` | Anonymous session | Expected — these are App-API-only. Ask whether to log in |
 | R18/R18G/mature search requires authentication | Anonymous Web session | Authenticate before retrying; never add a Cookie workaround |
 | `search-options` is unsupported | No App credential | Authenticate, then retry with the same word |
+| Bookmark-count search is forbidden | Cached self-profile says the saved account is not Pixiv Premium | Explain that the bound requires Premium; only run `pixiv auth refresh [UID]` if the user explicitly wants to refresh account status |
 | Wrong account acting | Multiple local accounts | `pixiv auth list --json`, then `--uid UID` per command, or `pixiv auth use UID` (confirm first) |
 | `auth import` waits for hidden input the user cannot enter | Agent PTY has no direct user-input channel | Cancel the waiting command; give it to the user for their private terminal, or use an authorized secret-manager-to-stdin pipeline as described in `auth.md` |
 | Cookie string rejected | By design | Only raw App API refresh tokens are accepted; for an explicit import request follow `auth.md` without asking the user to disclose an undisclosed token |
@@ -26,7 +28,7 @@ usually the answer. Never mask an error with retries or silent fallbacks.
 `pixiv auth list --json` only shows configured accounts. `pixiv auth check
 --json` performs the network validation and prints user_id / username (never
 the token) — use it when credential validity actually needs diagnosis. Do not
-list accounts as a routine session probe. Treat both `{"accounts": null}` and
+list accounts as a routine session probe. Text `auth list` markers describe only local token storage, not online validity. `pixiv auth refresh [UID] [--all]` rotates saved credentials and forces profile/Premium-cache refresh, so treat it as explicit account maintenance. Treat both `{"accounts": null}` and
 `{"accounts": []}` as zero accounts. Check the process exit code before
 parsing `--json`, because CLI failures can use plain stderr with empty stdout.
 For credential import/export, backup, or restore, follow `auth.md`; successful

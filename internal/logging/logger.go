@@ -5,6 +5,10 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"path/filepath"
+	"runtime"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/common/constants"
@@ -57,6 +61,9 @@ func LogOperation(logger *slog.Logger, event OperationEvent) {
 		slog.String(constants.LogFieldErrorCode, event.ErrorCode),
 		slog.Int(constants.LogFieldStatus, event.Status),
 	}
+	if source := operationCallsite(); source != "" {
+		attrs = append(attrs, slog.String(constants.LogFieldSource, source))
+	}
 	if transportKind := safeTransportKind(event.TransportKind); transportKind != "" {
 		attrs = append(attrs, slog.String(constants.LogFieldTransportKind, transportKind))
 	}
@@ -67,6 +74,23 @@ func LogOperation(logger *slog.Logger, event OperationEvent) {
 		attrs = append(attrs, slog.Int64(constants.LogFieldUserID, event.UserID))
 	}
 	OrDiscard(logger).LogAttrs(nil, level, constants.OperationLogMessage, attrs...)
+}
+
+// operationCallsite 记录调用 LogOperation/LogRateLimitRetry 的项目内文件与行号。
+// 它只保留仓库相对路径；未知路径退化为文件名，避免把用户 home 或构建机目录写入日志。
+func operationCallsite() string {
+	_, file, line, ok := runtime.Caller(2)
+	if !ok {
+		return ""
+	}
+	path := filepath.ToSlash(file)
+	const repositoryMarker = "/pixiv-cli/"
+	if index := strings.LastIndex(path, repositoryMarker); index >= 0 {
+		path = path[index+len(repositoryMarker):]
+	} else {
+		path = filepath.Base(path)
+	}
+	return path + ":" + strconv.Itoa(line)
 }
 
 func safeTransportKind(value string) string {
@@ -81,12 +105,16 @@ func safeTransportKind(value string) string {
 // LogRateLimitRetry 记录已解析的等待时长和唯一的重试序号；不记录 Retry-After 原文、
 // 请求 URL、鉴权 header 或响应 body。
 func LogRateLimitRetry(logger *slog.Logger, retryAfter time.Duration, attempt int) {
-	OrDiscard(logger).LogAttrs(nil, slog.LevelInfo, constants.RateLimitRetryLogMessage,
+	attrs := []slog.Attr{
 		slog.String(constants.LogFieldComponent, "pixiv_app_api"),
 		slog.String(constants.LogFieldOperation, "read"),
 		slog.String(constants.LogFieldResult, ResultRateLimitRetry),
 		slog.Int(constants.LogFieldStatus, http.StatusTooManyRequests),
 		slog.Duration(constants.LogFieldRetryAfter, retryAfter),
 		slog.Int(constants.LogFieldAttempt, attempt),
-	)
+	}
+	if source := operationCallsite(); source != "" {
+		attrs = append(attrs, slog.String(constants.LogFieldSource, source))
+	}
+	OrDiscard(logger).LogAttrs(nil, slog.LevelInfo, constants.RateLimitRetryLogMessage, attrs...)
 }

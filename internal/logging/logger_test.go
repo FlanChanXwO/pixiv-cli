@@ -51,6 +51,10 @@ func TestLogOperationWritesStableSafeFields(t *testing.T) {
 	if _, ok := event["duration"]; !ok {
 		t.Fatal("operation event is missing duration")
 	}
+	source, ok := event["source"].(string)
+	if !ok || !strings.HasPrefix(source, "internal/logging/logger_test.go:") {
+		t.Fatalf("operation event source = %#v, want repository-relative logger_test.go location", event["source"])
+	}
 }
 
 func TestLogOperationOmitsUnrecognizedTransportKind(t *testing.T) {

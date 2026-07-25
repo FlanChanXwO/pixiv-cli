@@ -131,8 +131,12 @@ func (a app) accountLogin(cmd *cobra.Command, opts accountLoginOptions) error {
 	if opts.jsonOut {
 		return a.printJSON(out)
 	}
-	// 成功提示前空一行，便于与前面的授权引导输出分隔。
-	fmt.Fprintf(a.out, "\nLogin successful (UID: %d)\n", out.UserID)
+	// 文本模式给出可直接识别账号的安全摘要，不显示 token 或冗余的成功文案。
+	fmt.Fprintf(a.out, "✓ uid:%d", out.UserID)
+	if out.Username != "" {
+		fmt.Fprintf(a.out, " username:%s", out.Username)
+	}
+	fmt.Fprintln(a.out)
 	return nil
 }
 

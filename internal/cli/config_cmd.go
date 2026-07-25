@@ -9,7 +9,7 @@ import (
 
 const configMissingPlaceholder = "<unset>"
 
-const configKeyHelp = "download_path, filename_template, https_proxy, log_level, login_open_browser, login_timeout, login_use_after_login, output_json, update_check_enabled, web_fallback_enabled"
+const configKeyHelp = "download_path, filename_template, https_proxy, log_level, login_open_browser, login_timeout, login_use_after_login, output_json, premium_status_cache_ttl, update_check_enabled, web_fallback_enabled"
 
 func (a app) newConfigCommand() *cobra.Command {
 	cmd := &cobra.Command{

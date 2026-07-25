@@ -29,6 +29,8 @@ the installed binary's `pixiv <cmd> --help` output.
    not prove a credential is currently valid; use the networked
    `pixiv auth check [UID] --json` only when validation is needed. Treat both
    `{"accounts": null}` and `{"accounts": []}` as an empty account list.
+   `pixiv auth refresh [UID] [--all]` rotates saved OAuth credentials and forces
+   a profile/Premium-cache refresh, so run it only for an explicit maintenance request.
 
 ## Hard rules
 
@@ -69,6 +71,7 @@ the installed binary's `pixiv <cmd> --help` output.
 | Credential transfer | `auth import` `auth export` | Execute only for the user's explicit import/export task; follow `references/auth.md` so secret input/output is not exposed accidentally |
 | Read | `search` `novel search` `search-options` `detail` `ranking` `recommended` `user *` `config get/path` `version` `update --check` | Execute when the user's task requires it |
 | Account diagnosis | `auth list/check` | List only for authentication/account/fallback decisions; check only when network validation is needed |
+| Account maintenance | `auth refresh` | Rotates saved OAuth credentials and refreshes the cached account profile/Premium status; run only on an explicit request |
 | Write | `bookmark add/remove` `follow add/remove` | State the target (illust/user ID) in one line before executing |
 | Disk | `download` | Confirm target directory and exact targets (IDs or supported Pixiv URLs) before each invocation; a user URL expands every visual work, so state that scope explicitly; approval never carries over; see `references/download.md` |
 | Interactive credential | `auth login` | Run only on explicit request while the user is present for browser OAuth |
@@ -107,12 +110,13 @@ Verify flags with `--help` before use; this list is orientation, not a contract.
 ```
 pixiv auth list --json                    # only when an account decision needs it
 pixiv auth check [UID] --json             # validate token, shows user_id/username
+pixiv auth refresh [UID] --json           # explicit maintenance: token + Premium cache
 pixiv auth import                         # hidden TTY prompt, or automatic non-TTY stdin
 pixiv auth import --file PATH             # restore a versioned bundle offline
 pixiv auth export UID --output PATH       # write one private versioned bundle
 pixiv auth export --all --output PATH     # write all accounts to a private bundle
 pixiv auth use [UID]                      # switch default account (confirm first)
-pixiv config path                         # print config.toml location
+pixiv config path                         # print location; creates baseline config if missing
 pixiv config get download_path            # read one effective setting
 pixiv config set download_path ./downloads # config write; confirm first
 pixiv search "WORD" --limit 10 --json     # illustration search
@@ -141,7 +145,7 @@ Common per-command flags on Pixiv data commands: `--uid UID` (pick local account
 `--json`, `--proxy URL` / `--no-proxy` (this command only, never persisted).
 
 Common config keys include `download_path`, `filename_template`, `https_proxy`,
-and `web_fallback_enabled`; inspect a key with `pixiv config get KEY` instead of
+`web_fallback_enabled`, and `premium_status_cache_ttl`; inspect a key with `pixiv config get KEY` instead of
 assuming its effective value.
 
 ## Critical semantics (traps — read before assuming a bug)
@@ -172,7 +176,9 @@ assuming its effective value.
 5. **Anonymous restricted search fails explicitly.** Web fallback uses only
    reliable illustration-search filters. `r18`, `r18g`, `mature`, `--search-by tag-title-caption`,
    bookmark-count bounds, and `search-options`
-   require App authentication; bookmark-count bounds additionally require Pixiv Premium. Do not
+   require App authentication; bookmark-count bounds additionally require Pixiv Premium. For a saved account the CLI
+   checks the cached self-profile status before search (24h by default); a non-Premium result fails locally rather than
+   making a misleading search request. Use explicit `auth refresh` to force that cache. Do not
    present the failure as an empty result or add a Cookie workaround. `novel search` is App-only and requires authentication.
    Bookmark count is a public bookmark total, never a like count.
 6. **Extended rankings need authentication.** Valid modes are `day`,

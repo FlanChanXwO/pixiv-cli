@@ -134,6 +134,17 @@ func (c *Client) SearchIllust(ctx context.Context, request SearchIllustRequest) 
 	if route != routeApp {
 		return nil, unexpectedRoute(OperationSearchIllust, 0, 0)
 	}
+	if (query.Filters.BookmarkMin != nil || query.Filters.BookmarkMax != nil) && c.authenticatedUserID > 0 {
+		// Pixiv 对非 Premium 账号会静默忽略收藏数范围；先由 profile 缓存验证，
+		// 避免向上游发出语义上无法兑现的搜索请求。
+		status, premiumErr := c.PremiumStatus(ctx)
+		if premiumErr != nil {
+			return nil, premiumErr
+		}
+		if !status.IsPremium {
+			return nil, localRouteError(CodeForbidden, OperationSearchIllust, 0, c.authenticatedUserID, errors.New("bookmark-count bounds require an active Pixiv Premium membership"))
+		}
+	}
 	list, err := c.app.SearchIllust(ctx, query.Word, string(query.Target), string(query.Sort), query.Duration, query.StartDate, query.EndDate, offset, internalSearchIllustFilters(query.Filters))
 	if err != nil {
 		return nil, mapAppOperationError(err, OperationSearchIllust, 0)

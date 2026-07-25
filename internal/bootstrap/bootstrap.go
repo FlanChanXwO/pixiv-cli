@@ -85,7 +85,7 @@ func NewApplicationLogger(errOut io.Writer) (*slog.Logger, io.Closer, error) {
 		// 根 logger 的初始化不得抢在 Cobra 前把帮助、config path 等本地协议变成
 		// 失败。配置文件不可读或语法损坏时静默 logger；只要文件可解析，下面对
 		// log_level 的显式校验仍会把非法日志配置返回给调用方。
-		return slog.New(slog.NewTextHandler(writer, &slog.HandlerOptions{Level: slog.LevelWarn})), writer, nil
+		return slog.New(logging.NewTextHandler(writer, &slog.HandlerOptions{Level: slog.LevelWarn})), writer, nil
 	}
 	// 根 logger 只依赖 logging 自己的两项设置。这样无关 runtime 配置（例如
 	// web.fallback_enabled）的错误不会破坏 help/config path 等离线协议；反之

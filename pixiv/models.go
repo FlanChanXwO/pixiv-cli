@@ -1,5 +1,7 @@
 package pixiv
 
+import "time"
+
 // IllustDetail 是作品详情响应；保留 Pixiv App API 的 illust envelope。
 type IllustDetail struct {
 	Illust Illust `json:"illust"`
@@ -430,10 +432,19 @@ type UgoiraFrame struct {
 
 // Account 是不含 refresh token 的本地账号摘要。
 type Account struct {
-	UserID   int64  `json:"user_id"`
-	Username string `json:"username,omitempty"`
-	Default  bool   `json:"default"`
-	HasToken bool   `json:"has_token"`
+	UserID                 int64      `json:"user_id"`
+	Username               string     `json:"username,omitempty"`
+	Default                bool       `json:"default"`
+	HasToken               bool       `json:"has_token"`
+	PremiumStatus          *bool      `json:"premium_status,omitempty"`
+	PremiumStatusCheckedAt *time.Time `json:"premium_status_checked_at,omitempty"`
+}
+
+// PremiumStatus 是当前已认证账号由 App profile 返回的会员资格快照。
+// CheckedAt 为零时表示状态尚未查询；缓存时效由 OpenDefault 的 runtime config 决定。
+type PremiumStatus struct {
+	IsPremium bool      `json:"is_premium"`
+	CheckedAt time.Time `json:"checked_at"`
 }
 
 // AccountsResult 包含当前默认 UID 与不含凭据的账号列表。

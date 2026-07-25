@@ -73,6 +73,7 @@ const (
 	OperationStartLogin          Operation = "start_login"
 	OperationCompleteLogin       Operation = "complete_login"
 	OperationCurrentUserID       Operation = "current_user_id"
+	OperationPremiumStatus       Operation = "premium_status"
 	OperationSnapshot            Operation = "snapshot"
 	OperationExportAuthBundle    Operation = "export_auth_bundle"
 	OperationEncodeAuthBundle    Operation = "encode_auth_bundle"

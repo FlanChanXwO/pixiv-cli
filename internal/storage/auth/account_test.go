@@ -6,10 +6,32 @@ import (
 	"path/filepath"
 	"runtime"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func TestAuthStoreRoundTripsNonPremiumStatusCache(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "auth.json")
+	premium := false
+	checkedAt := time.Date(2026, time.July, 25, 12, 0, 0, 0, time.UTC)
+	store := AuthStore{DefaultUserID: 123, Accounts: []Account{{
+		UserID:                 123,
+		RefreshToken:           "opaque-token",
+		PremiumStatus:          &premium,
+		PremiumStatusCheckedAt: &checkedAt,
+	}}}
+
+	require.NoError(t, SaveAuthStore(path, store))
+	loaded, err := LoadAuthStore(path)
+	require.NoError(t, err)
+	require.Len(t, loaded.Accounts, 1)
+	require.NotNil(t, loaded.Accounts[0].PremiumStatus)
+	require.False(t, *loaded.Accounts[0].PremiumStatus)
+	require.NotNil(t, loaded.Accounts[0].PremiumStatusCheckedAt)
+	require.Equal(t, checkedAt, *loaded.Accounts[0].PremiumStatusCheckedAt)
+}
 
 func TestAuthStoreReadHookIsScopedAndRestored(t *testing.T) {
 	interceptedPath := filepath.Join(t.TempDir(), "intercepted-auth.json")

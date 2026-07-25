@@ -13,6 +13,7 @@ const (
 	RateLimitRetryLogMessage = "pixiv app api rate limit retry"
 	LogFieldComponent        = "component"
 	LogFieldOperation        = "operation"
+	LogFieldSource           = "source"
 	LogFieldBackend          = "backend"
 	LogFieldDuration         = "duration"
 	LogFieldResult           = "result"

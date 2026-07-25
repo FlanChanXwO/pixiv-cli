@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/utils/credentials"
 	sdk "github.com/FlanChanXwO/pixiv-cli/pixiv"
@@ -46,6 +47,13 @@ type AccountCheckRequest struct {
 	HTTPSProxyOverride *string
 }
 
+// AccountRefreshRequest 指定要刷新凭据与账号状态的已保存账号；UID 为零时使用默认账号。
+// OpenOperation 负责刷新 OAuth access token 及可能轮换的 refresh token，随后强制更新 profile。
+type AccountRefreshRequest struct {
+	UserID             int64
+	HTTPSProxyOverride *string
+}
+
 type AccountExportRequest struct {
 	UserID int64
 	All    bool
@@ -58,11 +66,13 @@ type AccountExportResult struct {
 }
 
 type AccountResult struct {
-	UserID   int64  `json:"user_id,omitempty"`
-	Username string `json:"username,omitempty"`
-	Default  bool   `json:"default"`
-	HasToken bool   `json:"has_token"`
-	Warning  string `json:"warning,omitempty"`
+	UserID                 int64      `json:"user_id,omitempty"`
+	Username               string     `json:"username,omitempty"`
+	Default                bool       `json:"default"`
+	HasToken               bool       `json:"has_token"`
+	PremiumStatus          *bool      `json:"premium_status,omitempty"`
+	PremiumStatusCheckedAt *time.Time `json:"premium_status_checked_at,omitempty"`
+	Warning                string     `json:"warning,omitempty"`
 }
 
 type AccountListResult struct {
@@ -244,9 +254,61 @@ func (s AccountService) CheckWithRequest(ctx context.Context, request AccountChe
 	return sdkAccountResult(*account), nil
 }
 
-func sdkAccountResult(account sdk.Account) AccountResult {
-	return AccountResult{UserID: account.UserID, Username: account.Username, Default: account.Default, HasToken: account.HasToken}
+// RefreshWithRequest 先建立一次稳定的已认证 SDK 操作快照，以刷新 access token 和可能
+// 轮换的 refresh token；再强制读取个人 profile，将 Premium 资格与检查时间写回 auth store。
+func (s AccountService) RefreshWithRequest(ctx context.Context, request AccountRefreshRequest) (AccountResult, error) {
+	client, err := s.SDK.OpenOperation(ctx, SDKClientRequest{UserID: request.UserID, HTTPSProxyOverride: request.HTTPSProxyOverride})
+	if err != nil {
+		return AccountResult{}, err
+	}
+	userID, err := client.CurrentUserID(ctx)
+	if err != nil {
+		return AccountResult{}, err
+	}
+	refresher, ok := client.(interface {
+		RefreshPremiumStatus(context.Context) (*sdk.PremiumStatus, error)
+	})
+	if !ok {
+		return AccountResult{}, errors.New("pixiv sdk premium status refresher is not configured")
+	}
+	status, err := refresher.RefreshPremiumStatus(ctx)
+	if err != nil {
+		return AccountResult{}, err
+	}
+	list, err := s.List()
+	if err != nil {
+		return AccountResult{}, err
+	}
+	for _, account := range list.Accounts {
+		if account.UserID != userID {
+			continue
+		}
+		account.PremiumStatus = boolPointer(status.IsPremium)
+		checkedAt := status.CheckedAt
+		account.PremiumStatusCheckedAt = &checkedAt
+		return account, nil
+	}
+	return AccountResult{}, fmt.Errorf("refreshed account uid %d was not found in local account store", userID)
 }
+
+func sdkAccountResult(account sdk.Account) AccountResult {
+	var premium *bool
+	var premiumCheckedAt *time.Time
+	if account.PremiumStatus != nil {
+		value := *account.PremiumStatus
+		premium = &value
+	}
+	if account.PremiumStatusCheckedAt != nil {
+		value := *account.PremiumStatusCheckedAt
+		premiumCheckedAt = &value
+	}
+	return AccountResult{
+		UserID: account.UserID, Username: account.Username, Default: account.Default, HasToken: account.HasToken,
+		PremiumStatus: premium, PremiumStatusCheckedAt: premiumCheckedAt,
+	}
+}
+
+func boolPointer(value bool) *bool { return &value }
 
 func accountImportResult(account sdk.Account, status string) AccountImportResult {
 	return AccountImportResult{UserID: account.UserID, Username: account.Username, Status: status}

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/storage/auth"
 	sdk "github.com/FlanChanXwO/pixiv-cli/pixiv"
@@ -163,6 +164,35 @@ func TestAccountServiceCheckExplicitUIDDoesNotUseEnvironmentToken(t *testing.T) 
 	assert.Equal(t, AccountResult{UserID: 123, Username: "stored", Default: true, HasToken: true}, result)
 }
 
+func TestAccountServiceRefreshUpdatesTokenAndPremiumStatusThroughOperationSnapshot(t *testing.T) {
+	checkedAt := time.Date(2026, time.July, 25, 10, 0, 0, 0, time.UTC)
+	premium := false
+	client := &fakeAccountSDKClient{accounts: sdk.AccountsResult{DefaultUserID: 123, Accounts: []sdk.Account{{
+		UserID: 123, Username: "refreshed-name", Default: true, HasToken: true,
+		PremiumStatus: &premium, PremiumStatusCheckedAt: &checkedAt,
+	}}}}
+	client.currentUserID = func(context.Context) (int64, error) { return 123, nil }
+	client.refreshPremiumStatus = func(context.Context) (*sdk.PremiumStatus, error) {
+		return &sdk.PremiumStatus{IsPremium: false, CheckedAt: checkedAt}, nil
+	}
+	var requests []SDKClientRequest
+	service := AccountService{SDK: SDKService{NewClient: func(got SDKClientRequest) (SDKClient, error) {
+		requests = append(requests, got)
+		return client, nil
+	}}}
+	proxy := "http://127.0.0.1:7890"
+
+	result, err := service.RefreshWithRequest(context.Background(), AccountRefreshRequest{UserID: 123, HTTPSProxyOverride: &proxy})
+	require.NoError(t, err)
+	require.Len(t, requests, 2)
+	assert.Equal(t, SDKClientRequest{UserID: 123, HTTPSProxyOverride: &proxy}, requests[0])
+	assert.Equal(t, SDKClientRequest{}, requests[1])
+	assert.Equal(t, AccountResult{
+		UserID: 123, Username: "refreshed-name", Default: true, HasToken: true,
+		PremiumStatus: &premium, PremiumStatusCheckedAt: &checkedAt,
+	}, result)
+}
+
 func TestAccountServiceImportRejectsCookieBeforeOpeningSDK(t *testing.T) {
 	service := AccountService{SDK: SDKService{NewClient: func(SDKClientRequest) (SDKClient, error) {
 		t.Fatal("SDK client was opened for a cookie input")
@@ -311,15 +341,17 @@ func TestAccountServiceUsePropagatesDependencyErrors(t *testing.T) {
 // 测试从 application 到公开 SDK 边界观察行为，不再模拟 legacy Source。
 type fakeAccountSDKClient struct {
 	SDKClient
-	accounts          sdk.AccountsResult
-	importAccount     func(context.Context, string) (*sdk.Account, error)
-	listAccounts      func() (*sdk.AccountsResult, error)
-	selectAccount     func(int64) error
-	removeAccount     func(int64) error
-	checkAccount      func(context.Context, int64) (*sdk.Account, error)
-	checkRefreshToken func(context.Context, string) (*sdk.Account, error)
-	exportAuthBundle  func(sdk.AuthExportSelection) (*sdk.AuthExportBundle, error)
-	restoreAuthBundle func(*sdk.AuthExportBundle) (*sdk.AuthRestoreResult, error)
+	accounts             sdk.AccountsResult
+	importAccount        func(context.Context, string) (*sdk.Account, error)
+	listAccounts         func() (*sdk.AccountsResult, error)
+	selectAccount        func(int64) error
+	removeAccount        func(int64) error
+	checkAccount         func(context.Context, int64) (*sdk.Account, error)
+	checkRefreshToken    func(context.Context, string) (*sdk.Account, error)
+	currentUserID        func(context.Context) (int64, error)
+	refreshPremiumStatus func(context.Context) (*sdk.PremiumStatus, error)
+	exportAuthBundle     func(sdk.AuthExportSelection) (*sdk.AuthExportBundle, error)
+	restoreAuthBundle    func(*sdk.AuthExportBundle) (*sdk.AuthRestoreResult, error)
 }
 
 func (f *fakeAccountSDKClient) ExportAuthBundle(selection sdk.AuthExportSelection) (*sdk.AuthExportBundle, error) {
@@ -372,6 +404,20 @@ func (f *fakeAccountSDKClient) CheckRefreshToken(ctx context.Context, token stri
 		return f.checkRefreshToken(ctx, token)
 	}
 	return nil, errors.New("unexpected refresh token check")
+}
+
+func (f *fakeAccountSDKClient) CurrentUserID(ctx context.Context) (int64, error) {
+	if f.currentUserID != nil {
+		return f.currentUserID(ctx)
+	}
+	return 0, errors.New("unexpected current user id")
+}
+
+func (f *fakeAccountSDKClient) RefreshPremiumStatus(ctx context.Context) (*sdk.PremiumStatus, error) {
+	if f.refreshPremiumStatus != nil {
+		return f.refreshPremiumStatus(ctx)
+	}
+	return nil, errors.New("unexpected premium status refresh")
 }
 
 func newAccountServiceForTest(client SDKClient) AccountService {

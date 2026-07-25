@@ -56,7 +56,7 @@ func TestRuntimeLoggerUsesEnvironmentOverFileAndEmitsText(t *testing.T) {
 		t.Fatal(err)
 	}
 	logger.Debug("trace-visible", "component", "test")
-	if !strings.Contains(output.String(), "msg=trace-visible") || strings.Contains(output.String(), `{"msg"`) {
+	if !strings.Contains(output.String(), "--- [test] pixiv") || !strings.Contains(output.String(), ": trace-visible") || strings.Contains(output.String(), "component=test") || strings.Contains(output.String(), `{"msg"`) {
 		t.Fatalf("trace text log missing: %q", output.String())
 	}
 }

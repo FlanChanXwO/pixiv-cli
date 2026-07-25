@@ -148,7 +148,9 @@ browser cookies, storage, history, session files, tabs, or network traffic. If i
 a normal browser and waits for the loopback or a manual paste — it never launches managed Chromium, DevTools/CDP, or
 browser-state scanning. A submitted `post-redirect` URL is validated against this PKCE attempt. Terminal input opens
 that relay once on the CLI host; a fallback-page submission instead continues in that same browser, which also works
-through SSH forwarding. If Pixiv never produces a callback, the CLI will not fake success.
+through SSH forwarding. On macOS, the helper reads the current CLI's private `~/.pixiv-cli/url-handler-endpoint`
+bridge file, so it can hand the callback only to the active loopback listener. If Pixiv never produces a callback, the
+CLI will not fake success.
 
 On a headless SSH server, keep the listener on loopback and choose an unused fixed port so the local machine can
 forward it. Run on the server:
@@ -289,6 +291,7 @@ Common commands:
 pixiv auth list
 pixiv auth use 12345678
 pixiv auth check
+pixiv auth refresh
 pixiv config path
 pixiv config get download_path
 pixiv config set download_path ~/Downloads/pixiv
@@ -313,6 +316,10 @@ macOS/Linux and `%USERPROFILE%\.pixiv-cli` on Windows. It contains `auth.json`, 
 daily logs, the Release-check cache, and the macOS callback helper. Account credentials are keyed by Pixiv UID.
 Unix-like systems actively use `0700` parent directories and `0600` files. On Windows, first creation inherits the
 parent ACL and replacement preserves the existing target ACL; the CLI does not claim to tighten or loosen the DACL.
+On the first ordinary command, a missing `config.toml` is created with the common download, web fallback, output,
+login, and update settings. It never overwrites an existing file. Advanced settings such as proxy, logging, login
+timeout, and the Premium-status cache are intentionally omitted until explicitly configured; help, version, secret
+export, and the internal OAuth callback do not create it.
 Output is human-readable by default; commands that expose `--json` can produce machine-parseable JSON. `auth export`
 deliberately does not expose that flag.
 The CLI uses Cobra/pflag, so options may appear before or after positional arguments — both
@@ -323,13 +330,14 @@ The CLI uses Cobra/pflag, so options may appear before or after positional argum
 | Command | Usage | Description |
 | --- | --- | --- |
 | `auth import` | `pixiv auth import [REFRESH_TOKEN] [--file PATH] [--json] [--proxy URL\|--no-proxy]` | Direct input validates and stores the rotated token; no-argument TTY input is hidden and non-TTY input is raw stdin. `--file PATH|-` instead restores a bundle offline and atomically, and conflicts with token/proxy input. |
-| `auth login` | `pixiv auth login [--json] [--no-open] [--addr 127.0.0.1:0] [--use] [--timeout DURATION] [--proxy URL\|--no-proxy]` | Logs in via a local loopback server and browser OAuth, saving the account keyed by Pixiv UID; never prints the refresh token. |
-| `auth list` | `pixiv auth list [--json]` | Lists local accounts; never prints refresh tokens. |
+| `auth login` | `pixiv auth login [--json] [--no-open] [--addr 127.0.0.1:0] [--use] [--timeout DURATION] [--proxy URL\|--no-proxy]` | Logs in via a local loopback server and browser OAuth, saving the account keyed by Pixiv UID; text success output is the compact safe summary `✓ uid:UID username:NAME`, while `--json` returns its JSON equivalent. It never prints the refresh token. |
+| `auth list` | `pixiv auth list [--json]` | Lists local accounts; never prints refresh tokens. Text output uses `*` for the default and `✓`/`-` for whether a local refresh token is stored/missing. These are local-state markers, not an online validity claim. |
 | `auth export` | `pixiv auth export [UID] [--all] [--output PATH] [--force]` | Exports a default/exact account or all accounts locally. Without `--output`, one account is raw token stdout and `--all` is bundle stdout; with `--output`, both write a private bundle and only a safe summary goes to stdout. `--force` requires `--output`. |
 | `auth use` | `pixiv auth use [UID] [--json]` | Sets the default account; interactive selection on a TTY. |
 | `auth remove` | `pixiv auth remove [UID] [--yes] [--json]` | Removes an account; confirms by default on a TTY. After removing the default account, the first remaining account is selected automatically. |
 | `auth check` | `pixiv auth check [UID] [--json] [--proxy URL\|--no-proxy]` | Refreshes the token and validates the account; on success records `user_id` and the username when available. |
-| `config path` | `pixiv config path` | Prints the `config.toml` path. |
+| `auth refresh` | `pixiv auth refresh [UID] [--all] [--json] [--proxy URL\|--no-proxy]` | Refreshes the selected/default saved account's OAuth access token and rotated refresh token, then forces a profile read to update its cached Pixiv Premium status. `--all` refreshes every stored account. JSON always returns `accounts`. |
+| `config path` | `pixiv config path` | Prints the `config.toml` path, creating the baseline file if it is missing. |
 | `config get` | `pixiv config get KEY` | Prints one effective config value. |
 | `config set` | `pixiv config set KEY VALUE` | Writes one known config key to `config.toml`. |
 | `config unset` | `pixiv config unset KEY` | Deletes one known config key from `config.toml`. |
@@ -385,7 +393,7 @@ used.
 | `search` | `--aspect-ratio` | `all` | Aspect ratio: `all`, `landscape`, `portrait`, or `square`. |
 | `search` | `--resolution` | `all` | Resolution: `all`, `high`, `medium`, or `low`; both dimensions are respectively `>=3000`, `1000..2999`, or `<=999`. |
 | `search` | `--draw-tool` | empty | Exact upstream drawing-tool name; obtain current values with authenticated `search-options`. |
-| `search` | `--bookmark-min` / `--bookmark-max` | empty | Inclusive non-negative public bookmark-count bounds. Require App OAuth and an active Pixiv Premium membership; `min` cannot exceed `max`. |
+| `search` | `--bookmark-min` / `--bookmark-max` | empty | Inclusive non-negative public bookmark-count bounds. Require App OAuth and an active Pixiv Premium membership; `min` cannot exceed `max`. For a saved account, the client checks a cached self-profile status before search and blocks non-Premium accounts locally. |
 | `novel search` | `--min-text-length` | `0` | Minimum text length in characters; `0` disables the bound. |
 | `novel search` | `--max-text-length` | `0` | Maximum text length in characters; `0` disables the bound; it cannot be lower than a non-zero minimum. |
 | `novel search` | `--original-only` | `false` | Keeps only novels marked original by Pixiv. |
@@ -417,6 +425,12 @@ results across batches until it collects enough matching works, the upstream has
 cursor is detected; `--limit 0` walks the entire filtered stream; omitting `--limit` reads one upstream batch while
 still skipping leading empty batches. App also applies explicit date and Pixiv Premium-only bookmark-count bounds. Bookmark count is not a
 like-count field and must not be labeled as likes.
+
+For bookmark-count bounds, saved accounts reuse the cached self-profile Premium status for `premium_status_cache_ttl`
+(24 hours by default). On cache miss or expiry the client reads the profile before the search; a non-Premium result stops the
+search before it reaches Pixiv's search endpoint. Run `pixiv auth refresh [UID]` (or `--all`) to force both OAuth token refresh
+and this status refresh. A direct SDK access token has no verifiable local account identity, so this saved-account precheck is not
+available for that construction.
 Artwork JSON/text include a stable page URL `https://www.pixiv.net/artworks/{id}` as the first field/line.
 
 ### Illustration tag-query syntax
@@ -475,12 +489,13 @@ file paths/pages; any failure makes the command exit non-zero. No download histo
 | `filename_template` | string | `{author} - {title}_{id}` | Filename template. |
 | `https_proxy` | string | empty | HTTP(S) proxy; the lowercase `https_proxy` environment variable takes precedence. |
 | `web_fallback_enabled` | bool | `true` | Allows the anonymous Pixiv web/ajax API fallback when no refresh token exists; stored as `[web] fallback_enabled = true/false`. |
-| `log_level` | string | `warn` | Operation-log level for the daily plain-text `YYYY-MM-DD.txt` file under `~/.pixiv-cli/logs` (Windows: `%USERPROFILE%\.pixiv-cli\logs`); can be overridden by `PIXIV_LOG_LEVEL`. Set explicitly to `info` to keep more operational summaries. The terminal stays free of log traces by default. |
+| `log_level` | string | `warn` | Operation-log level for the daily plain-text `YYYY-MM-DD.txt` file under `~/.pixiv-cli/logs` (Windows: `%USERPROFILE%\.pixiv-cli\logs`); can be overridden by `PIXIV_LOG_LEVEL`. Set explicitly to `info` to keep more operational summaries. Rows use a compact Spring/SLF4J-style layout: `timestamp  LEVEL PID --- [component] source : operation result details`. `source` is the repository-relative Go file and line that initiated the operation; `component` identifies its subsystem. Empty fields and local-only backend/status values are omitted. The terminal stays free of log traces by default. |
 | `update_check_enabled` | bool | `true` | Whether successful regular CLI commands check for stable updates; stored as `[update] check_enabled = true/false`. |
 | `output_json` | bool | `false` | Makes data commands output JSON by default. |
 | `login_open_browser` | bool | `true` | Whether `auth login` auto-opens the browser by default. |
 | `login_timeout` | duration | `0s` | Default `auth login` wait duration. |
 | `login_use_after_login` | bool | `false` | Whether `auth login` sets the new account as the current default. |
+| `premium_status_cache_ttl` | duration | `24h` | Lifetime of the saved-account Pixiv Premium status cache used before bookmark-count searches; stored as `[premium] status_cache_ttl`. `0s` disables cache reuse; negative values are rejected. |
 
 ### Environment variables
 

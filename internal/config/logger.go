@@ -5,6 +5,8 @@ import (
 	"io"
 	"log/slog"
 	"strings"
+
+	"github.com/FlanChanXwO/pixiv-cli/internal/logging"
 )
 
 // NewLogger 按已解析的运行时配置创建本进程根 logger。调用方决定输出流，CLI/MCP
@@ -15,7 +17,7 @@ func NewLogger(writer io.Writer, cfg RuntimeConfig) (*slog.Logger, error) {
 		return nil, err
 	}
 	options := &slog.HandlerOptions{Level: level}
-	return slog.New(slog.NewTextHandler(writer, options)), nil
+	return slog.New(logging.NewTextHandler(writer, options)), nil
 }
 
 func normalizeLogLevel(value string) (string, error) {

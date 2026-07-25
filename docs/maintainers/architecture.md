@@ -262,7 +262,7 @@ SmartScreen 提示时，必须回到已验证的项目 GitHub Release、checksum
 
 ### `internal/logging`
 
-集中定义 CLI、MCP、SDK、下载器与 App API 共用的结构化 operation event。`internal/config/logger.go` 仍是 runtime logger 的构造入口；本包只规范 event schema、丢弃 logger 与安全写入方式，不配置全局 logger。事件只允许 component、operation、backend、耗时、结果、安全错误分类、HTTP status、作品/用户 ID 以及限流重试的已解析等待时长；绝不记录 token、URL、原始 header、请求输入或响应 body。
+集中定义 CLI、MCP、SDK、下载器与 App API 共用的结构化 operation event，以及本地按日文件的紧凑 Spring/SLF4J 风格文本 handler。`internal/config/logger.go` 仍是 runtime logger 的构造入口；本包不配置全局 logger。事件只允许 component、operation、受控的仓库相对调用点、backend、耗时、结果、安全错误分类、HTTP status、作品/用户 ID 以及限流重试的已解析等待时长；绝不记录 token、URL、原始 header、请求输入或响应 body。调用方注入 JSON handler 时仍取得完整稳定字段；本地文本渲染只省略空字段与冗余的本地 backend/status。
 
 ### `internal/utils`
 

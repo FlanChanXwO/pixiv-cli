@@ -23,25 +23,27 @@ import (
 )
 
 type sdkCommandFake struct {
-	currentUserID    func(context.Context) (int64, error)
-	search           func(context.Context, sdk.SearchIllustRequest) (*sdk.IllustListResult, error)
-	searchNovel      func(context.Context, sdk.SearchNovelRequest) (*sdk.NovelListResult, error)
-	searchOptions    func(context.Context, sdk.SearchIllustOptionsRequest) (*sdk.SearchIllustOptionsResult, error)
-	detail           func(context.Context, int64) (*sdk.IllustDetail, error)
-	ranking          func(context.Context, sdk.IllustRankingRequest) (*sdk.IllustListResult, error)
-	recommended      func(context.Context, sdk.IllustRecommendedRequest) (*sdk.IllustListResult, error)
-	mangaRecommended func(context.Context, sdk.IllustRecommendedRequest) (*sdk.IllustListResult, error)
-	novelRecommended func(context.Context, sdk.NovelRecommendedRequest) (*sdk.NovelListResult, error)
-	userRecommended  func(context.Context, sdk.UserRecommendedRequest) (*sdk.UserRecommendedResult, error)
-	userDetail       func(context.Context, sdk.UserDetailRequest) (*sdk.UserDetailResult, error)
-	artworks         func(context.Context, sdk.UserArtworksRequest) (*sdk.IllustListResult, error)
-	bookmarks        func(context.Context, sdk.UserBookmarksRequest) (*sdk.IllustListResult, error)
-	following        func(context.Context, sdk.UserFollowingRequest) (*sdk.UserListResult, error)
-	searchUser       func(context.Context, sdk.SearchUserRequest) (*sdk.UserListResult, error)
-	addBookmark      func(context.Context, sdk.AddBookmarkRequest) error
-	removeBookmark   func(context.Context, sdk.RemoveBookmarkRequest) error
-	follow           func(context.Context, sdk.FollowUserRequest) error
-	unfollow         func(context.Context, sdk.UnfollowUserRequest) error
+	currentUserID        func(context.Context) (int64, error)
+	listAccounts         func() (*sdk.AccountsResult, error)
+	refreshPremiumStatus func(context.Context) (*sdk.PremiumStatus, error)
+	search               func(context.Context, sdk.SearchIllustRequest) (*sdk.IllustListResult, error)
+	searchNovel          func(context.Context, sdk.SearchNovelRequest) (*sdk.NovelListResult, error)
+	searchOptions        func(context.Context, sdk.SearchIllustOptionsRequest) (*sdk.SearchIllustOptionsResult, error)
+	detail               func(context.Context, int64) (*sdk.IllustDetail, error)
+	ranking              func(context.Context, sdk.IllustRankingRequest) (*sdk.IllustListResult, error)
+	recommended          func(context.Context, sdk.IllustRecommendedRequest) (*sdk.IllustListResult, error)
+	mangaRecommended     func(context.Context, sdk.IllustRecommendedRequest) (*sdk.IllustListResult, error)
+	novelRecommended     func(context.Context, sdk.NovelRecommendedRequest) (*sdk.NovelListResult, error)
+	userRecommended      func(context.Context, sdk.UserRecommendedRequest) (*sdk.UserRecommendedResult, error)
+	userDetail           func(context.Context, sdk.UserDetailRequest) (*sdk.UserDetailResult, error)
+	artworks             func(context.Context, sdk.UserArtworksRequest) (*sdk.IllustListResult, error)
+	bookmarks            func(context.Context, sdk.UserBookmarksRequest) (*sdk.IllustListResult, error)
+	following            func(context.Context, sdk.UserFollowingRequest) (*sdk.UserListResult, error)
+	searchUser           func(context.Context, sdk.SearchUserRequest) (*sdk.UserListResult, error)
+	addBookmark          func(context.Context, sdk.AddBookmarkRequest) error
+	removeBookmark       func(context.Context, sdk.RemoveBookmarkRequest) error
+	follow               func(context.Context, sdk.FollowUserRequest) error
+	unfollow             func(context.Context, sdk.UnfollowUserRequest) error
 }
 
 func (sdkCommandFake) ExportAccountRefreshToken(int64) (string, error) {
@@ -52,7 +54,10 @@ func unimplementedSDKCommand() error { return errors.New("unexpected sdk command
 func (sdkCommandFake) ImportAccount(context.Context, string) (*sdk.Account, error) {
 	return nil, unimplementedSDKCommand()
 }
-func (sdkCommandFake) ListAccounts() (*sdk.AccountsResult, error) {
+func (f sdkCommandFake) ListAccounts() (*sdk.AccountsResult, error) {
+	if f.listAccounts != nil {
+		return f.listAccounts()
+	}
 	return nil, unimplementedSDKCommand()
 }
 func (sdkCommandFake) SelectAccount(int64) error { return unimplementedSDKCommand() }
@@ -64,6 +69,15 @@ func (sdkCommandFake) CheckRefreshToken(context.Context, string) (*sdk.Account, 
 	return nil, unimplementedSDKCommand()
 }
 func (sdkCommandFake) Refresh(context.Context) (*sdk.Account, error) {
+	return nil, unimplementedSDKCommand()
+}
+func (sdkCommandFake) PremiumStatus(context.Context) (*sdk.PremiumStatus, error) {
+	return nil, unimplementedSDKCommand()
+}
+func (f sdkCommandFake) RefreshPremiumStatus(ctx context.Context) (*sdk.PremiumStatus, error) {
+	if f.refreshPremiumStatus != nil {
+		return f.refreshPremiumStatus(ctx)
+	}
 	return nil, unimplementedSDKCommand()
 }
 func (sdkCommandFake) StartLogin() (*sdk.LoginSession, error) { return nil, unimplementedSDKCommand() }
@@ -374,6 +388,8 @@ func setTestSDKCommandFactory(t *testing.T, factory application.SDKClientFactory
 	newCLIServices = func(logger *slog.Logger) application.Services {
 		services := bootstrap.NewServices(logger)
 		services.SDK.NewClient = factory
+		services.Account.SDK.NewClient = factory
+		services.Login.SDK.NewClient = factory
 		return services
 	}
 	t.Cleanup(func() { newCLIServices = old })
