@@ -12,7 +12,7 @@
 
 </div>
 
-`pixiv-cli` は、人・Coding Agent・Go アプリケーションから Pixiv を一貫した方法で利用できる、独立開発の非公式サードパーティーツールです。Pixiv Inc. との提携・所属関係はなく、同社による承認も受けていません。CLI と MCP server は同じ public Go SDK を使用し、認証済み機能では Pixiv App API を信頼できるデータソースとします。利用時は Pixiv の規約および適用法令を遵守してください。
+`pixiv-cli` は Pixiv のエコシステムをターミナルにもたらします。作品とクリエイターを発見し、アカウントとブックマークを管理し、クリエイターをフォローして視覚作品をダウンロードできます。人・Coding Agent・Go アプリケーション向けの独立開発による非公式サードパーティーツールであり、Pixiv Inc. との提携・所属関係はなく、同社による承認も受けていません。CLI と MCP server は同じ public Go SDK を使用し、認証済み機能では Pixiv App API を信頼できるデータソースとします。利用時は Pixiv の規約および適用法令を遵守してください。
 
 メンテナー向け：release tag は保護された認証 E2E gate により停止できます。refresh token は GitHub `pixiv-e2e` Environment Secret にのみ保存し、作品 ID と検索入力は Environment Variables に設定します。PR と `main` の CI は offline かつ secret-free のままです。詳細は[開発フロー](docs/maintainers/development.md#テスト)を参照してください。
 
@@ -57,6 +57,10 @@ Install the latest stable pixiv-cli from https://github.com/FlanChanXwO/pixiv-cl
 Also install the product skill that matches the same stable release tag (not main): download the full skills/pixiv-cli/ directory from that tag into the agent skills directory the user confirms. Do not guess the skills path and do not follow the main branch for skill content.
 ```
 
+### SkillHub から product Skill をインストールする
+
+SkillHub に対応した Agent は、公開済みの [`pixiv-cli` Skill](https://www.skillhub.cn/skills/pixiv-cli) を SkillHub から直接インストールできます。Skill には独自の version があり、インストール済み CLI の使い方を案内します。command の syntax は常に `pixiv <cmd> --help` を最終的な根拠にしてください。
+
 ### Homebrew（macOS/Linux の推奨方法）
 
 ```bash
@@ -98,10 +102,17 @@ pixiv auth login
 pixiv search "初音ミク" --type illust --ai-mode exclude --resolution high
 pixiv novel search "初音ミク" --rating sfw --min-text-length 1000
 
+# クリエイターをフォローし、作品をブックマークします。
+pixiv follow add 12345678
+pixiv bookmark add 123456
+
 # 詳細、おすすめ、ダウンロードを利用します。
 pixiv detail https://www.pixiv.net/artworks/123456
 pixiv recommended all --limit 10
 pixiv download https://www.pixiv.net/artworks/123456 --pages 1,3-5 --quality regular
+
+# クリエイターの全視覚作品を一括でダウンロードします。
+pixiv download https://www.pixiv.net/users/12345678/artworks
 ```
 
 すべての command、flag、設定キー、環境変数、fallback、更新動作は `pixiv --help` または[完全な CLI リファレンス](docs/ja/cli-reference.md)で確認できます。
