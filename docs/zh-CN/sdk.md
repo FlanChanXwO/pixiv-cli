@@ -93,18 +93,18 @@ auth store，不读取 `PIXIV_REFRESH_TOKEN` 或 runtime config，不刷新、�
 | `AspectRatio` | `all`、`landscape`、`portrait`、`square` |
 | `Resolution` | `all`、`high`、`medium`、`low`；三档分别要求宽高均 `>=3000`、均在 `1000..2999`、均 `<=999` |
 | `Tool` | 上游绘图工具原值；不做模糊匹配 |
-| `BookmarkMin` / `BookmarkMax` | 可选、包含边界的非负公开收藏数；`Min` 不得大于 `Max` |
+| `BookmarkMin` / `BookmarkMax` | 可选、包含边界的非负公开收藏数；需要 App OAuth 和有效的 Pixiv 高级会员；`Min` 不得大于 `Max` |
 
 枚举零值规范化为 `all`，`Tool` 会去除首尾空白；未知枚举返回 `invalid_argument`，不会发起上游
 请求。`SearchIllustRequest.Target` 还接受搜索标签、标题、说明文字的 `keyword`；`Duration` 接受
 `within_last_day|within_last_week|within_last_month`；`StartDate`、`EndDate` 是可选、包含边界的
 `YYYY-MM-DD`。日期区间不能与 `Duration` 同用，且起始不得晚于结束。认证路径把分辨率、横纵比、工具、作品类型、`exclude` AI、
-日期边界和收藏数边界翻译为 App 服务端参数；分级与 `only` AI 再基于当前 App 批次的规范化字段筛选。`Illust.Tools []string` 保留 App 返回的工具顺序和
+日期边界和仅限 Pixiv 高级会员的收藏数边界翻译为 App 服务端参数；分级与 `only` AI 再基于当前 App 批次的规范化字段筛选。`Illust.Tools []string` 保留 App 返回的工具顺序和
 原值；该字段不是收藏数筛选。
 
 `SearchIllustOptions(ctx, SearchIllustOptionsRequest{Word: word})` 需要非空关键词和 App 认证，返回
 `SearchIllustOptionsResult{Tools []string}`。工具列表保持上游顺序与原值；上游未提供列表时返回非
-`nil` 空切片。该操作不公开 Premium 收藏数档位。
+`nil` 空切片。该操作不公开已认证账号是否具有 Pixiv 高级会员的收藏数筛选资格。
 
 ### 小说搜索与用户搜索来源
 

@@ -385,7 +385,7 @@ used.
 | `search` | `--aspect-ratio` | `all` | Aspect ratio: `all`, `landscape`, `portrait`, or `square`. |
 | `search` | `--resolution` | `all` | Resolution: `all`, `high`, `medium`, or `low`; both dimensions are respectively `>=3000`, `1000..2999`, or `<=999`. |
 | `search` | `--draw-tool` | empty | Exact upstream drawing-tool name; obtain current values with authenticated `search-options`. |
-| `search` | `--bookmark-min` / `--bookmark-max` | empty | Inclusive non-negative public bookmark-count bounds. Require App OAuth; `min` cannot exceed `max`. |
+| `search` | `--bookmark-min` / `--bookmark-max` | empty | Inclusive non-negative public bookmark-count bounds. Require App OAuth and an active Pixiv Premium membership; `min` cannot exceed `max`. |
 | `novel search` | `--min-text-length` | `0` | Minimum text length in characters; `0` disables the bound. |
 | `novel search` | `--max-text-length` | `0` | Maximum text length in characters; `0` disables the bound; it cannot be lower than a non-zero minimum. |
 | `novel search` | `--original-only` | `false` | Keeps only novels marked original by Pixiv. |
@@ -415,7 +415,7 @@ different filter set. When local filters skip leading empty upstream batches, CL
 non-empty logical batch or the upstream ends. With a positive `--limit` or `--page`, the CLI fills logical
 results across batches until it collects enough matching works, the upstream has no next batch, or a repeated
 cursor is detected; `--limit 0` walks the entire filtered stream; omitting `--limit` reads one upstream batch while
-still skipping leading empty batches. App also applies explicit date and bookmark-count bounds. Bookmark count is not a
+still skipping leading empty batches. App also applies explicit date and Pixiv Premium-only bookmark-count bounds. Bookmark count is not a
 like-count field and must not be labeled as likes.
 Artwork JSON/text include a stable page URL `https://www.pixiv.net/artworks/{id}` as the first field/line.
 
@@ -513,7 +513,7 @@ Differences in the anonymous fallback:
 - Anonymous `search` only applies filters that Web API can express reliably. Resolution, aspect ratio, drawing
   tool, and content type are translated to Web parameters; AI filtering uses returned artwork fields.
 - `rating=r18`, `r18g`, `mature`, `--search-by tag-title-caption`, or bookmark-count bounds fail before an anonymous
-  request with an authentication requirement rather than pretending the result is empty. `rating=all` means only content visible anonymously.
+  request with an authentication requirement rather than pretending the result is empty. Bookmark-count bounds additionally require Pixiv Premium. `rating=all` means only content visible anonymously.
 - `search-options` is App-only and explicitly unsupported without a refresh token. Search does not read or store
   browser cookies such as `PHPSESSID`, and never converts a refresh token into a Web session.
 - `novel search` is App-only and returns an authentication requirement without a refresh token.

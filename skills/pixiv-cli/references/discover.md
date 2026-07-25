@@ -28,14 +28,16 @@ pixiv search "初音ミク" --limit 10 --json
 - Stable filters include `--rating sfw|r18|r18g|mature|all`, `--type
   all|illust-and-ugoira|illust|manga|ugoira`, `--ai-mode all|exclude|only`,
   `--aspect-ratio all|landscape|portrait|square`, `--resolution
-  all|high|medium|low`, exact `--draw-tool` names, and App-only `--bookmark-min N`
-  / `--bookmark-max N` public bookmark-count bounds. Only pass restricted ratings
-  or bookmark bounds when the user explicitly asks; never call bookmark count a like count.
+  all|high|medium|low`, exact `--draw-tool` names, and App-only, Pixiv Premium-only
+  `--bookmark-min N` / `--bookmark-max N` public bookmark-count bounds. Only pass restricted
+  ratings or bookmark bounds when the user explicitly asks; say that Pixiv Premium is required
+  for bookmark bounds, and never call bookmark count a like count.
 - Tool names are dynamic. Run authenticated `pixiv search-options "WORD"
   --json`, then pass the returned name exactly. Do not hard-code a list.
 - Anonymous Web search accepts only its reliable filters. R18/R18G/mature,
-  `tag-title-caption`, bookmark bounds, and `search-options` require authentication; never add a Cookie workaround or
-  report an authentication failure as an empty result.
+  `tag-title-caption`, bookmark bounds, and `search-options` require authentication; bookmark
+  bounds also require Pixiv Premium. Never add a Cookie workaround or report an authentication
+  failure as an empty result.
 - Need page 2+: `--page N` (1-based) with a positive `--limit`.
 - Local filters skip leading empty upstream batches until the first non-empty
   logical batch or true end. `--limit N` fills filtered results across batches;

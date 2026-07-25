@@ -79,11 +79,12 @@ structured output を返します。`delivery` は正規化済みの `local_path
 - `aspect_ratio`：`all|landscape|portrait|square`。
 - `resolution`：`all|high|medium|low`。両 dimension がそれぞれ `>=3000`、`1000..2999`、`<=999` です。
 - `tool`：fuzzy matching をしない、上流の drawing-tool value そのもの。
+- `bookmark_min` / `bookmark_max`：包含境界の非負 public bookmark 数。`min` は `max` を超えられず、App OAuth と有効な Pixiv Premium 会員資格が必要です。
 
 refresh token がある場合、resolution、aspect ratio、tool、content type、AI exclusion は App が実施します。rating と
 AI-only の filter は public SDK が正規化済み App field で実施します。App の失敗は Web に fallback しません。匿名 Web は
-検証済みの filter のみを適用し、`r18|r18g|mature` は request 前に authentication requirement で失敗します。
-`search_illust_options` は App 専用です。いずれの search tool も cookie または bookmark-count filter を受け取りません。
+検証済みの filter のみを適用し、`r18|r18g|mature` と bookmark-count filter は request 前に authentication requirement で失敗します。
+`search_illust_options` は App 専用です。いずれの search tool も cookie を受け取りません。Pixiv は bookmark-count filter に Premium 会員資格も要求します。
 
 `search_novel.rating` は `all|sfw|r18|r18g|mature` を使用します。`min_text_length` と `max_text_length` は非負の
 character bound で、`0` は対応する bound を無効にします。非ゼロの maximum が minimum 未満なら validation error です。

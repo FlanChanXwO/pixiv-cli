@@ -145,20 +145,20 @@ manage their own PKCE and state. Use `StartLogin` when the SDK should manage the
 | `AspectRatio` | `all`, `landscape`, `portrait`, `square` |
 | `Resolution` | `all`, `high`, `medium`, `low`; both dimensions must respectively be `>=3000`, `1000..2999`, or `<=999` |
 | `Tool` | Exact upstream drawing-tool value; no fuzzy matching |
-| `BookmarkMin` / `BookmarkMax` | Optional inclusive non-negative public bookmark-count bounds; `Min` cannot exceed `Max` |
+| `BookmarkMin` / `BookmarkMax` | Optional inclusive non-negative public bookmark-count bounds; require App OAuth and an active Pixiv Premium membership; `Min` cannot exceed `Max` |
 
 Zero enum values normalize to `all`; `Tool` is trimmed. Unknown values return `invalid_argument` before any
 upstream request. `SearchIllustRequest.Target` also accepts `keyword` for tags, titles, and captions; `Duration`
 accepts `within_last_day|within_last_week|within_last_month`; `StartDate` and `EndDate`
 are optional inclusive `YYYY-MM-DD` bounds. A date range cannot be combined with `Duration`, and a supplied start
 cannot be later than end. The authenticated adapter maps resolution, aspect ratio, tool, content type, AI exclusion,
-date bounds, and bookmark bounds to App server parameters. Rating and AI-only filtering use normalized fields from
+date bounds, and Pixiv Premium-only bookmark bounds to App server parameters. Rating and AI-only filtering use normalized fields from
 the current App batch.
 `Illust.Tools []string` preserves upstream order and values and is unrelated to bookmark-count filtering.
 
 `SearchIllustOptions(ctx, SearchIllustOptionsRequest{Word: word})` requires a non-empty word and App
 authentication. It returns `SearchIllustOptionsResult{Tools []string}` in upstream order; a missing list becomes a
-non-nil empty slice. Premium bookmark tiers are not exposed.
+non-nil empty slice. It does not expose whether the authenticated account has Pixiv Premium eligibility for bookmark-count bounds.
 
 ### Novel search and user-search source
 

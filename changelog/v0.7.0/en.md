@@ -5,7 +5,7 @@
 - Release-binary updates and versioned installer assets now carry a static, tested free GitHub Release-source list. They probe viable routes locally, support path and query-parameter proxy templates, and never fetch a remote mirror list.
 - Existing `detail` and `download` inputs now accept strict official Pixiv artwork URLs; `download` also accepts authenticated user profile and artworks URLs to walk every illustration, manga, and ugoira without downloading novels.
 - MCP `illust_detail` accepts exactly one of an ID or URL, and `download` accepts URLs. Illustration query tools now return typed structured results alongside compact text summaries.
-- Illustration `search` and MCP `search_illust` now support official App `keyword` search (tags, titles, and captions), inclusive explicit date bounds, public bookmark-count bounds, and the `half-year` / `year` quick date ranges. App-only filters fail explicitly without App OAuth; no cookie fallback is introduced.
+- Illustration `search` and MCP `search_illust` now support official App `keyword` search (tags, titles, and captions), inclusive explicit date bounds, public bookmark-count bounds, and the `half-year` / `year` quick date ranges. Bookmark-count bounds require both App OAuth and an active Pixiv Premium membership. App-only filters fail explicitly without App OAuth; no cookie fallback is introduced.
 - Each published GitHub Release now submits the matching tagged `pixiv-cli` product skill to SkillHub. The submission is validated locally first and the workflow requires the returned SkillHub `skillId` and review status before succeeding.
 
 ## Changed
