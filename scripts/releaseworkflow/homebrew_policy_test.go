@@ -132,6 +132,23 @@ func TestCheckWorkflowRejectsHomebrewReleaseGateMutations(t *testing.T) {
 			},
 		},
 		{
+			name: "SkillHub handoff does not export the release tag",
+			want: "SkillHub handoff export step must use the required direct command sequence",
+			mutate: func(t *testing.T, root *yaml.Node) {
+				step := stepWithRun(t, jobNode(t, root, "deploy_homebrew_tap"), "skillhub-release-tag/release-tag")
+				replaceRunFragment(t, step, `printf '%s\n' "$RELEASE_TAG" > skillhub-release-tag/release-tag`, `printf '%s\n' "main" > skillhub-release-tag/release-tag`)
+			},
+		},
+		{
+			name: "SkillHub handoff artifact uses another path",
+			want: "SkillHub handoff artifact must be the exact pinned action step",
+			mutate: func(t *testing.T, root *yaml.Node) {
+				steps := requireMappingValue(t, jobNode(t, root, "deploy_homebrew_tap"), "steps")
+				upload := steps.Content[len(steps.Content)-1]
+				requireMappingValue(t, requireMappingValue(t, upload, "with"), "path").Value = "skillhub-release-tag/other"
+			},
+		},
+		{
 			name: "publish exports a different checksum file",
 			want: "publish job must upload the verified release/checksums.txt after publishing",
 			mutate: func(t *testing.T, root *yaml.Node) {
@@ -293,8 +310,8 @@ func TestCheckWorkflowRejectsHomebrewReleaseGateMutations(t *testing.T) {
 			name: "tap push adds an unrelated secret",
 			want: "tap final push step must declare only HOMEBREW_TAP_DEPLOY_KEY",
 			mutate: func(t *testing.T, root *yaml.Node) {
-				steps := requireMappingValue(t, jobNode(t, root, "deploy_homebrew_tap"), "steps")
-				env := requireMappingValue(t, steps.Content[len(steps.Content)-1], "env")
+				push := stepWithRun(t, jobNode(t, root, "deploy_homebrew_tap"), "HOMEBREW_TAP_DEPLOY_KEY")
+				env := requireMappingValue(t, push, "env")
 				appendMappingValue(t, env, "UNRELATED", scalarNode("${{ secrets.UNRELATED }}"))
 			},
 		},

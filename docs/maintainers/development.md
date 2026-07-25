@@ -553,8 +553,9 @@ workflow artifact 读取、生成或记录 deploy key。
 
 成功结束的 `Release` workflow 会触发 `.github/workflows/publish-skillhub.yml`。GitHub 以
 `github.token` 创建 Release 时不会递归触发 `release` event，因此不能将该 event 用作可靠的自动化
-交接。SkillHub workflow 只 checkout 不可变 release tag，并确认该 tag 属于默认分支、对应 GitHub Release
-已公开且版本满足 SemVer 后，才对
+交接。完成 Homebrew 部署的 Release 会交出只含精确 release tag 的短期 artifact；这避免恢复发布的
+`workflow_run.head_branch` 为 `main` 时把分支名误作版本。SkillHub workflow 只 checkout 该不可变 tag，
+并确认该 tag 属于默认分支、对应 GitHub Release 已公开且版本满足 SemVer 后，才对
 `skills/pixiv-cli/` 与前一个已合并的语义版本 tag 比较。目录未变化时工作流成功跳过；目录变化时才运行
 SkillHub CLI 的 dry-run 和提交，并使用 `SKILL.md` 内的独立 SemVer，而非 CLI Release tag。`SKILLHUB_TOKEN`
 仅进入最后的提交步骤，CLI 必须返回 `skillId` 和审核状态；这证明 SkillHub 已接收提交，但平台审核完成前

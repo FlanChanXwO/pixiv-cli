@@ -238,6 +238,10 @@ tap_dir="$RUNNER_TEMP/homebrew-tap"
 git -C "$tap_dir" remote set-url origin git@github.com:FlanChanXwO/homebrew-tap.git
 GIT_SSH_COMMAND="ssh -i $key_path -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=$GITHUB_WORKSPACE/templates/homebrew/github.com-known-hosts" \
 git -C "$tap_dir" push origin HEAD:main`
+	const exportHandoffCommands = `
+set -eu
+mkdir -p skillhub-release-tag
+printf '%s\n' "$RELEASE_TAG" > skillhub-release-tag/release-tag`
 
 	if err := requireRequiredJobExecution(job, "deploy_homebrew_tap job"); err != nil {
 		return err
@@ -258,8 +262,8 @@ git -C "$tap_dir" push origin HEAD:main`
 		return fmt.Errorf("deploy_homebrew_tap job: %w", err)
 	}
 	steps, err := jobSteps(job)
-	if err != nil || len(steps) != 4 {
-		return errors.New("deploy_homebrew_tap job must contain only the canonical checkout, formula download, commit, and final push steps")
+	if err != nil || len(steps) != 6 {
+		return errors.New("deploy_homebrew_tap job must contain only the canonical checkout, formula download, commit, protected push, and SkillHub handoff steps")
 	}
 	if err := requireCanonicalCheckout(steps[0], "deploy_homebrew_tap job", checkoutWithRequirement{"persist-credentials", "false"}, checkoutWithRequirement{"ref", "${{ env.RELEASE_TAG }}"}); err != nil {
 		return err
@@ -274,6 +278,17 @@ git -C "$tap_dir" push origin HEAD:main`
 		return err
 	}
 	if err := requireCanonicalRunStepWithEnvironment(steps[3], "tap final protected push step", pushCommands); err != nil {
+		return err
+	}
+	if err := requireCanonicalRunStep(steps[4], "SkillHub handoff export step", exportHandoffCommands); err != nil {
+		return err
+	}
+	if err := requireExactActionStep(steps[5], "SkillHub handoff artifact", uploadArtifactAction, map[string]string{
+		"name":              "skillhub-release-tag",
+		"path":              "skillhub-release-tag/release-tag",
+		"if-no-files-found": "error",
+		"retention-days":    "1",
+	}); err != nil {
 		return err
 	}
 	return nil
@@ -292,18 +307,19 @@ func checkHomebrewSecretReachability(render, verify, deploy *yaml.Node) error {
 	if err != nil {
 		return nil
 	}
+	const protectedPushIndex = 3
 	for index, step := range steps {
-		if index != len(steps)-1 && workflowpolicy.ContainsSecretReference(step) {
+		if index != protectedPushIndex && workflowpolicy.ContainsSecretReference(step) {
 			return errors.New("deploy_homebrew_tap job must not reference secrets outside its final push step")
 		}
-		if index == len(steps)-1 && containsSigningSecretReferenceOutsideEnvironment(step) {
+		if index == protectedPushIndex && containsSigningSecretReferenceOutsideEnvironment(step) {
 			return errors.New("tap final push step must reference its secret only through the expected environment")
 		}
 	}
-	if len(steps) == 0 {
+	if len(steps) <= protectedPushIndex {
 		return nil
 	}
-	env, ok := workflowpolicy.MappingValue(steps[len(steps)-1], "env")
+	env, ok := workflowpolicy.MappingValue(steps[protectedPushIndex], "env")
 	if !ok || requireOnlyMappingKeys(env, "HOMEBREW_TAP_DEPLOY_KEY") != nil {
 		return errors.New("tap final push step must declare only HOMEBREW_TAP_DEPLOY_KEY")
 	}

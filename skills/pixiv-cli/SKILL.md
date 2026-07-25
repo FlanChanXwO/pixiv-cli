@@ -1,6 +1,6 @@
 ---
 slug: pixiv-cli
-version: 0.7.0
+version: 0.7.1
 displayName: Pixiv CLI
 summary: Safely operate Pixiv with the pixiv-cli binary for discovery, account actions, and downloads.
 license: MIT

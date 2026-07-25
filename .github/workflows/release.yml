@@ -697,3 +697,17 @@ jobs:
           git -C "$tap_dir" remote set-url origin git@github.com:FlanChanXwO/homebrew-tap.git
           GIT_SSH_COMMAND="ssh -i $key_path -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=$GITHUB_WORKSPACE/templates/homebrew/github.com-known-hosts" \
             git -C "$tap_dir" push origin HEAD:main
+      # workflow_run 在恢复发布时的 head_branch 是 main，不能据此推断版本。仅在公开
+      # Release 与 Homebrew 都成功后交出精确 tag，供下游 SkillHub workflow 重新验证。
+      - name: Export the completed release tag for the SkillHub handoff
+        shell: bash
+        run: |
+          set -eu
+          mkdir -p skillhub-release-tag
+          printf '%s\n' "$RELEASE_TAG" > skillhub-release-tag/release-tag
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: skillhub-release-tag
+          path: skillhub-release-tag/release-tag
+          if-no-files-found: error
+          retention-days: 1
