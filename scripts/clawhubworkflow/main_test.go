@@ -77,12 +77,12 @@ func TestPublishWorkflowKeepsTheImmutableReleaseAndSecretBoundary(t *testing.T) 
 
 	dryRun := stepByName(t, steps, "Dry-run the exact tagged skill")
 	dryRunText := scalarValue(t, mappingValue(t, dryRun, "run"))
-	if strings.Contains(renderNode(t, dryRun), "CLAWHUB_TOKEN") || !strings.Contains(dryRunText, "clawhub skill publish skills/pixiv-cli --version \"$SKILL_VERSION\"") || !strings.Contains(dryRunText, "--dry-run --json") {
+	if scalarValue(t, mappingValue(t, dryRun, "id")) != "dry_run" || strings.Contains(renderNode(t, dryRun), "CLAWHUB_TOKEN") || !strings.Contains(dryRunText, "clawhub skill publish skills/pixiv-cli --version \"$SKILL_VERSION\"") || !strings.Contains(dryRunText, "--dry-run --json") || !strings.Contains(dryRunText, "fingerprint=${result.fingerprint}") {
 		fatalf(t, "dry-run must be credential-free and use the exact versioned product skill")
 	}
 	verifyOnlyStep := stepByName(t, steps, "Verify an already-published ClawHub skill")
 	verifyOnlyRun := scalarValue(t, mappingValue(t, verifyOnlyStep, "run"))
-	if !strings.Contains(renderNode(t, verifyOnlyStep), "CLAWHUB_TOKEN") || !strings.Contains(verifyOnlyRun, "clawhub --no-input login --token \"$CLAWHUB_TOKEN\"") || !strings.Contains(verifyOnlyRun, "if ! clawhub skill verify pixiv-cli --version \"$SKILL_VERSION\"") || !strings.Contains(verifyOnlyRun, "cat \"$RUNNER_TEMP/clawhub-verify.json\" >&2") || strings.Contains(verifyOnlyRun, "clawhub skill publish") {
+	if !strings.Contains(renderNode(t, verifyOnlyStep), "CLAWHUB_TOKEN") || !strings.Contains(verifyOnlyRun, "clawhub --no-input login --token \"$CLAWHUB_TOKEN\"") || !strings.Contains(verifyOnlyRun, "clawhub skill verify pixiv-cli --version \"$SKILL_VERSION\" > \"$RUNNER_TEMP/clawhub-verify.json\" || verify_exit=$?") || !strings.Contains(verifyOnlyRun, "cardPendingOnly") || !strings.Contains(verifyOnlyRun, "verify.artifact?.sourceFingerprint === fingerprint") || strings.Contains(verifyOnlyRun, "clawhub skill publish") {
 		fatalf(t, "verify-only recovery must authenticate only for verification and must not republish the immutable version")
 	}
 	install := stepByName(t, steps, "Install pinned ClawHub CLI without credentials")

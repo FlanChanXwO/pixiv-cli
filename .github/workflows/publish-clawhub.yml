@@ -112,7 +112,8 @@ jobs:
           npm install --global --ignore-scripts clawhub@0.23.1
           test "$(clawhub --cli-version)" = 0.23.1
       - name: Dry-run the exact tagged skill
-        if: steps.skill_change.outputs.publish == 'true'
+        id: dry_run
+        if: steps.skill_change.outputs.publish == 'true' || inputs.verify_only == true
         shell: bash
         env:
           CLAWHUB_CONFIG_PATH: ${{ runner.temp }}/clawhub/config.json
@@ -123,49 +124,50 @@ jobs:
           set -euo pipefail
           mkdir -p "$(dirname "$CLAWHUB_CONFIG_PATH")"
           clawhub skill publish skills/pixiv-cli --version "$SKILL_VERSION" --source-repo "$GITHUB_REPOSITORY" --source-ref "$RELEASE_TAG" --source-commit "$RELEASE_COMMIT" --source-path skills/pixiv-cli --dry-run --json > "$RUNNER_TEMP/clawhub-dry-run.json"
-          node - "$RUNNER_TEMP/clawhub-dry-run.json" "$SKILL_VERSION" <<'NODE'
+          node - "$RUNNER_TEMP/clawhub-dry-run.json" "$SKILL_VERSION" "$GITHUB_OUTPUT" <<'NODE'
           const fs = require("fs");
-          const [file, version] = process.argv.slice(2);
+          const [file, version, output] = process.argv.slice(2);
           const result = JSON.parse(fs.readFileSync(file, "utf8"));
-          if (result.slug !== "pixiv-cli" || result.version !== version || typeof result.fingerprint !== "string" || result.fingerprint === "") {
+          if (result.slug !== "pixiv-cli" || result.version !== version || !/^[a-f0-9]{64}$/i.test(result.fingerprint)) {
             throw new Error("ClawHub dry-run did not produce the expected skill identity, version, and fingerprint");
           }
+          fs.appendFileSync(output, `fingerprint=${result.fingerprint}\n`);
           NODE
-      # ClawHub 可在接受 publish 后短暂返回 moderation pending。人工恢复只验证
-      # 已有版本，避免对同一个不可变版本重复提交；verify CLI 仍需要登录来读取
-      # 审核中的版本，因此 token 只用于登录和读取，不能进入任何 publish 命令。
+      # ClawHub 的普通 publish 将公开文件与扫描结果写入服务端，而 skill-card.md
+      # 是服务端扫描稳定后异步生成的证据文件。人工恢复只验证已有版本，绝不重发。
       - name: Verify an already-published ClawHub skill
         if: inputs.verify_only == true
         shell: bash
         env:
           CLAWHUB_CONFIG_PATH: ${{ runner.temp }}/clawhub/config.json
           CLAWHUB_TOKEN: ${{ secrets.CLAWHUB_TOKEN }}
-          RELEASE_COMMIT: ${{ steps.skill_change.outputs.commit }}
           SKILL_VERSION: ${{ steps.skill_change.outputs.skill_version }}
+          EXPECTED_FINGERPRINT: ${{ steps.dry_run.outputs.fingerprint }}
         run: |
           set -euo pipefail
           test -n "$CLAWHUB_TOKEN"
           mkdir -p "$(dirname "$CLAWHUB_CONFIG_PATH")"
           clawhub --no-input login --token "$CLAWHUB_TOKEN"
-          if ! clawhub skill verify pixiv-cli --version "$SKILL_VERSION" > "$RUNNER_TEMP/clawhub-verify.json"; then
-            # verify 在审核未通过时仍输出 JSON 证据；回显它以便人工恢复判断，
-            # 其中不含登录 token 或本地配置。
-            cat "$RUNNER_TEMP/clawhub-verify.json" >&2
-            exit 1
-          fi
-          node - "$RUNNER_TEMP/clawhub-verify.json" "$GITHUB_REPOSITORY" "$RELEASE_COMMIT" "$SKILL_VERSION" <<'NODE'
+          verify_exit=0
+          clawhub skill verify pixiv-cli --version "$SKILL_VERSION" > "$RUNNER_TEMP/clawhub-verify.json" || verify_exit=$?
+          node - "$RUNNER_TEMP/clawhub-verify.json" "$SKILL_VERSION" "$EXPECTED_FINGERPRINT" "$verify_exit" <<'NODE'
           const fs = require("fs");
-          const [verifyFile, repo, commit, version] = process.argv.slice(2);
+          const [verifyFile, version, fingerprint, exitCode] = process.argv.slice(2);
           const verify = JSON.parse(fs.readFileSync(verifyFile, "utf8"));
-          if (verify.schema !== "clawhub.skill.verify.v1" || verify.ok !== true || verify.decision !== "pass" || verify.slug !== "pixiv-cli" || verify.version !== version || verify.resolvedFrom !== "version" || !Array.isArray(verify.reasons)) {
-            throw new Error("ClawHub verification did not pass for the immutable published version");
+          const identityMatches = verify.schema === "clawhub.skill.verify.v1" && verify.slug === "pixiv-cli" && verify.version === version && verify.resolvedFrom === "version";
+          const artifactMatches = verify.artifact?.sourceFingerprint === fingerprint;
+          const securityIsClean = verify.security?.passed === true && verify.security?.status === "clean";
+          const cardPendingOnly = verify.ok === false && verify.decision === "fail" && verify.reasons?.length === 1 && verify.reasons[0] === "card.missing";
+          const passed = verify.ok === true && verify.decision === "pass" && Array.isArray(verify.reasons) && verify.reasons.length === 0;
+          if (!identityMatches || !artifactMatches || !securityIsClean || (!passed && !cardPendingOnly) || (passed && exitCode !== "0") || (cardPendingOnly && exitCode !== "1")) {
+            console.error(JSON.stringify(verify, null, 2));
+            throw new Error("ClawHub verification did not establish the immutable published artifact");
           }
-          if (!Object.hasOwn(verify, "artifact") || !Object.hasOwn(verify, "provenance")) {
-            throw new Error("ClawHub verification omitted artifact or provenance evidence");
+          if (cardPendingOnly) {
+            console.warn("::warning title=ClawHub skill card pending::The published artifact and security scan are verified, but ClawHub has not generated its asynchronous skill-card.md yet.");
           }
-          const provenance = JSON.stringify(verify.provenance);
-          if (!provenance.includes(repo) || !provenance.includes(commit) || !provenance.includes("skills/pixiv-cli")) {
-            throw new Error("ClawHub provenance does not match the immutable release source");
+          if (verify.provenance?.source === "unavailable") {
+            console.warn("::warning title=ClawHub source provenance unavailable::ClawHub does not expose server-resolved GitHub import provenance for this CLI publish; the workflow verified the trusted tag and exact artifact fingerprint locally.");
           }
           NODE
       - name: Publish and inspect ClawHub skill
@@ -177,33 +179,36 @@ jobs:
           RELEASE_TAG: ${{ steps.release_tag.outputs.value }}
           RELEASE_COMMIT: ${{ steps.skill_change.outputs.commit }}
           SKILL_VERSION: ${{ steps.skill_change.outputs.skill_version }}
+          EXPECTED_FINGERPRINT: ${{ steps.dry_run.outputs.fingerprint }}
         run: |
           set -euo pipefail
           test -n "$CLAWHUB_TOKEN"
           mkdir -p "$(dirname "$CLAWHUB_CONFIG_PATH")"
           clawhub --no-input login --token "$CLAWHUB_TOKEN"
           clawhub skill publish skills/pixiv-cli --version "$SKILL_VERSION" --source-repo "$GITHUB_REPOSITORY" --source-ref "$RELEASE_TAG" --source-commit "$RELEASE_COMMIT" --source-path skills/pixiv-cli --json > "$RUNNER_TEMP/clawhub-publish.json"
-          if ! clawhub skill verify pixiv-cli --version "$SKILL_VERSION" > "$RUNNER_TEMP/clawhub-verify.json"; then
-            # 保留服务端给出的审核证据，避免只留下没有上下文的退出码。
-            cat "$RUNNER_TEMP/clawhub-verify.json" >&2
-            exit 1
-          fi
-          node - "$RUNNER_TEMP/clawhub-publish.json" "$RUNNER_TEMP/clawhub-verify.json" "$GITHUB_REPOSITORY" "$RELEASE_COMMIT" "$SKILL_VERSION" <<'NODE'
+          verify_exit=0
+          clawhub skill verify pixiv-cli --version "$SKILL_VERSION" > "$RUNNER_TEMP/clawhub-verify.json" || verify_exit=$?
+          node - "$RUNNER_TEMP/clawhub-publish.json" "$RUNNER_TEMP/clawhub-verify.json" "$SKILL_VERSION" "$EXPECTED_FINGERPRINT" "$verify_exit" <<'NODE'
           const fs = require("fs");
-          const [publishFile, verifyFile, repo, commit, version] = process.argv.slice(2);
+          const [publishFile, verifyFile, version, fingerprint, exitCode] = process.argv.slice(2);
           const publish = JSON.parse(fs.readFileSync(publishFile, "utf8"));
           const verify = JSON.parse(fs.readFileSync(verifyFile, "utf8"));
-          if (publish.slug !== "pixiv-cli" || publish.version !== version || typeof publish.fingerprint !== "string" || publish.fingerprint === "") {
+          if (publish.slug !== "pixiv-cli" || publish.version !== version || publish.fingerprint !== fingerprint) {
             throw new Error("ClawHub publish response omitted the expected identity, version, or fingerprint");
           }
-          if (verify.schema !== "clawhub.skill.verify.v1" || verify.ok !== true || verify.decision !== "pass" || verify.slug !== "pixiv-cli" || verify.version !== version || verify.resolvedFrom !== "version" || !Array.isArray(verify.reasons)) {
-            throw new Error("ClawHub verification did not pass for the immutable published version");
+          const identityMatches = verify.schema === "clawhub.skill.verify.v1" && verify.slug === "pixiv-cli" && verify.version === version && verify.resolvedFrom === "version";
+          const artifactMatches = verify.artifact?.sourceFingerprint === fingerprint;
+          const securityIsClean = verify.security?.passed === true && verify.security?.status === "clean";
+          const cardPendingOnly = verify.ok === false && verify.decision === "fail" && verify.reasons?.length === 1 && verify.reasons[0] === "card.missing";
+          const passed = verify.ok === true && verify.decision === "pass" && Array.isArray(verify.reasons) && verify.reasons.length === 0;
+          if (!identityMatches || !artifactMatches || !securityIsClean || (!passed && !cardPendingOnly) || (passed && exitCode !== "0") || (cardPendingOnly && exitCode !== "1")) {
+            console.error(JSON.stringify(verify, null, 2));
+            throw new Error("ClawHub verification did not establish the immutable published artifact");
           }
-          if (!Object.hasOwn(verify, "artifact") || !Object.hasOwn(verify, "provenance")) {
-            throw new Error("ClawHub verification omitted artifact or provenance evidence");
+          if (cardPendingOnly) {
+            console.warn("::warning title=ClawHub skill card pending::The published artifact and security scan are verified, but ClawHub has not generated its asynchronous skill-card.md yet.");
           }
-          const provenance = JSON.stringify(verify.provenance);
-          if (!provenance.includes(repo) || !provenance.includes(commit) || !provenance.includes("skills/pixiv-cli")) {
-            throw new Error("ClawHub provenance does not match the immutable release source");
+          if (verify.provenance?.source === "unavailable") {
+            console.warn("::warning title=ClawHub source provenance unavailable::ClawHub does not expose server-resolved GitHub import provenance for this CLI publish; the workflow verified the trusted tag and exact artifact fingerprint locally.");
           }
           NODE
