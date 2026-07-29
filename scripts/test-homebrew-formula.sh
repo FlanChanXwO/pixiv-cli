@@ -32,7 +32,12 @@ grep -F 'sha256 "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
 grep -F 'pixiv-cli_0.1.0_darwin_amd64.tar.gz' "$formula" >/dev/null
 grep -F 'pixiv-cli_0.1.0_linux_amd64.tar.gz' "$formula" >/dev/null
 grep -F 'pixiv-cli_0.1.0_linux_arm64.tar.gz' "$formula" >/dev/null
-grep -F 'conflicts_with "pixiv-cli-beta", because: "both install the pixiv command"' "$formula" >/dev/null
+# 当前公开 tap 只有 stable formula；引用尚未发布的 beta formula 会使 Homebrew
+# 每次安装都输出建议移除 conflicts_with 的警告。beta formula 保留反向冲突即可。
+if grep -F 'conflicts_with' "$formula" >/dev/null; then
+	printf '%s\n' 'stable formula unexpectedly declares a conflict with an unavailable beta formula' >&2
+	exit 1
+fi
 grep -F 'bin.install "pixiv"' "$formula" >/dev/null
 # Homebrew 的 post_install 是 Formula 实例方法；`post_install do` 虽是合法 Ruby，
 # 却会在当前 Homebrew DSL 中被解释成不存在的类方法，必须在渲染测试中明确防回归。
