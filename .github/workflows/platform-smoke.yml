@@ -49,7 +49,7 @@ jobs:
   packaged_binary_smoke:
     needs: classify_changes
     if: ${{ needs.classify_changes.outputs.docs_only != 'true' }}
-    name: Packaged binary smoke ${{ matrix.goos }}/${{ matrix.goarch }}
+    name: Packaged binary smoke
     runs-on: ${{ matrix.runner }}
     permissions:
       contents: read

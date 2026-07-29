@@ -21,6 +21,7 @@ func Validate(path string) error {
 		"go run ./scripts/changescope --base \"$BASE_SHA\" --head \"$HEAD_SHA\" --github-output \"$GITHUB_OUTPUT\"",
 		"needs: classify_changes",
 		"if: ${{ needs.classify_changes.outputs.docs_only != 'true' }}",
+		"    name: Packaged binary smoke\n",
 		"platform_smoke_gate:",
 		"name: Platform smoke gate",
 		"if: ${{ always() }}",
@@ -41,6 +42,9 @@ func Validate(path string) error {
 		if !strings.Contains(workflow, required) {
 			return fmt.Errorf("platform smoke workflow missing %q", required)
 		}
+	}
+	if strings.Contains(workflow, "name: Packaged binary smoke ${{") {
+		return fmt.Errorf("platform smoke matrix job name must not expose GitHub expression placeholders")
 	}
 	for _, forbidden := range []string{
 		"secrets.",
