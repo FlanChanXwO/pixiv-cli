@@ -562,7 +562,7 @@ SkillHub CLI 的 dry-run 和提交，并使用 `SKILL.md` 内的独立 SemVer，
 仅进入最后的提交步骤，CLI 必须返回 `skillId` 和审核状态；这证明 SkillHub 已接收提交，但平台审核完成前
 公开详情页可能仍不可见。
 若任一独立发布失败，可通过对应 workflow 的 `workflow_dispatch` 输入既有发布 tag 恢复，不能用 main 的
-后续内容替代该 tag。ClawHub workflow 与 SkillHub 使用同一不可变 tag handoff：它先验证公开非 draft Release、默认分支祖先关系、`SKILL.md` 版本与 tag 一致性以及产品 skill 的改动，再在不含凭据的环境运行固定版本的 ClawHub CLI dry-run。只有最终 publish/inspect 步骤收到 `CLAWHUB_TOKEN`；检查结果必须包含产品 skill、对应版本/commit 和发布指纹。
+后续内容替代该 tag。ClawHub workflow 与 SkillHub 使用同一不可变 tag handoff：它先验证公开非 draft Release、默认分支祖先关系、`SKILL.md` 版本与 tag 一致性以及产品 skill 的改动，再在不含凭据的环境运行固定版本的 ClawHub CLI dry-run。只有最终 publish/inspect 步骤，以及不重发版本的 `verify_only` 人工恢复步骤会收到 `CLAWHUB_TOKEN`；后者只登录并读取审核结果，绝不调用 publish。检查结果必须包含产品 skill、对应版本/commit 和发布指纹；审核未通过时会回显 CLI 的无凭据 JSON 证据，便于判断后续处理。
 
 ## Git 与本地产物
 

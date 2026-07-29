@@ -82,7 +82,7 @@ func TestPublishWorkflowKeepsTheImmutableReleaseAndSecretBoundary(t *testing.T) 
 	}
 	verifyOnlyStep := stepByName(t, steps, "Verify an already-published ClawHub skill")
 	verifyOnlyRun := scalarValue(t, mappingValue(t, verifyOnlyStep, "run"))
-	if !strings.Contains(renderNode(t, verifyOnlyStep), "CLAWHUB_TOKEN") || !strings.Contains(verifyOnlyRun, "clawhub --no-input login --token \"$CLAWHUB_TOKEN\"") || !strings.Contains(verifyOnlyRun, "clawhub skill verify pixiv-cli --version \"$SKILL_VERSION\"") || strings.Contains(verifyOnlyRun, "clawhub skill publish") {
+	if !strings.Contains(renderNode(t, verifyOnlyStep), "CLAWHUB_TOKEN") || !strings.Contains(verifyOnlyRun, "clawhub --no-input login --token \"$CLAWHUB_TOKEN\"") || !strings.Contains(verifyOnlyRun, "if ! clawhub skill verify pixiv-cli --version \"$SKILL_VERSION\"") || !strings.Contains(verifyOnlyRun, "cat \"$RUNNER_TEMP/clawhub-verify.json\" >&2") || strings.Contains(verifyOnlyRun, "clawhub skill publish") {
 		fatalf(t, "verify-only recovery must authenticate only for verification and must not republish the immutable version")
 	}
 	install := stepByName(t, steps, "Install pinned ClawHub CLI without credentials")

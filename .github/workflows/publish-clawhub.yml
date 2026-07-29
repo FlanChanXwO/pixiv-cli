@@ -147,7 +147,12 @@ jobs:
           test -n "$CLAWHUB_TOKEN"
           mkdir -p "$(dirname "$CLAWHUB_CONFIG_PATH")"
           clawhub --no-input login --token "$CLAWHUB_TOKEN"
-          clawhub skill verify pixiv-cli --version "$SKILL_VERSION" > "$RUNNER_TEMP/clawhub-verify.json"
+          if ! clawhub skill verify pixiv-cli --version "$SKILL_VERSION" > "$RUNNER_TEMP/clawhub-verify.json"; then
+            # verify 在审核未通过时仍输出 JSON 证据；回显它以便人工恢复判断，
+            # 其中不含登录 token 或本地配置。
+            cat "$RUNNER_TEMP/clawhub-verify.json" >&2
+            exit 1
+          fi
           node - "$RUNNER_TEMP/clawhub-verify.json" "$GITHUB_REPOSITORY" "$RELEASE_COMMIT" "$SKILL_VERSION" <<'NODE'
           const fs = require("fs");
           const [verifyFile, repo, commit, version] = process.argv.slice(2);
@@ -178,7 +183,11 @@ jobs:
           mkdir -p "$(dirname "$CLAWHUB_CONFIG_PATH")"
           clawhub --no-input login --token "$CLAWHUB_TOKEN"
           clawhub skill publish skills/pixiv-cli --version "$SKILL_VERSION" --source-repo "$GITHUB_REPOSITORY" --source-ref "$RELEASE_TAG" --source-commit "$RELEASE_COMMIT" --source-path skills/pixiv-cli --json > "$RUNNER_TEMP/clawhub-publish.json"
-          clawhub skill verify pixiv-cli --version "$SKILL_VERSION" > "$RUNNER_TEMP/clawhub-verify.json"
+          if ! clawhub skill verify pixiv-cli --version "$SKILL_VERSION" > "$RUNNER_TEMP/clawhub-verify.json"; then
+            # 保留服务端给出的审核证据，避免只留下没有上下文的退出码。
+            cat "$RUNNER_TEMP/clawhub-verify.json" >&2
+            exit 1
+          fi
           node - "$RUNNER_TEMP/clawhub-publish.json" "$RUNNER_TEMP/clawhub-verify.json" "$GITHUB_REPOSITORY" "$RELEASE_COMMIT" "$SKILL_VERSION" <<'NODE'
           const fs = require("fs");
           const [publishFile, verifyFile, repo, commit, version] = process.argv.slice(2);
