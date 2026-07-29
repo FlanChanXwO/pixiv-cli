@@ -51,8 +51,8 @@ deadline appropriate to the operation. `context.Canceled` and `context.DeadlineE
 context when the stream is no longer needed.
 
 When an options `HTTPClient` is provided, the constructor preserves the same pointer and its timeout, transport,
-cookie jar, and redirect policy. Resource requests still use per-request copies that disable cookies and validate
-redirects. See [ADR 0010](../maintainers/adr/0010-http-client-timeout-and-context.md).
+cookie jar, and redirect policy. Resource requests use per-request copies with validated redirects. See
+[ADR 0010](../maintainers/adr/0010-http-client-timeout-and-context.md).
 
 ## Read and write operations
 
@@ -62,7 +62,7 @@ redirects. See [ADR 0010](../maintainers/adr/0010-http-client-timeout-and-contex
 | Users | `SearchUser`, `UserDetail`, `UserArtworks`, `UserBookmarks`, `UserFollowing`, `CurrentUserID`. |
 | Writes | `AddBookmark`, `RemoveBookmark`, `FollowUser`, `UnfollowUser`. |
 | Accounts/configuration | `ImportAccount`, `ListAccounts`, `SelectAccount`, `RemoveAccount`, `ExportAccountRefreshToken`, `ExportAuthBundle`, `RestoreAuthBundle`, `CheckAccount`, `CheckRefreshToken`, `Refresh`, `RefreshAccount`, `PremiumStatus`, `RefreshPremiumStatus`, `GetConfig`, `SetConfig`, `UnsetConfig`; bundle codec functions are package-level. |
-| Login | `StartLogin`, `CompleteLogin`, `BuildLoginAuthorizationURL`; the SDK does not start a browser, loopback server, or TTY. |
+| Login | `StartLogin`, `CompleteLogin`, `BuildLoginAuthorizationURL`; integrations control their own browser, loopback server, or TTY. |
 | Resources | `Download`, `DownloadAll`, `DownloadWith`, `DownloadAllWith`, `ParseResourceRef`, `OpenResource`, `DownloadResource`. |
 
 Request methods use named request types such as `SearchIllustRequest`, `SearchNovelRequest`, `SearchIllustOptionsRequest`,
@@ -121,9 +121,8 @@ All four personalized recommendation streams are authenticated App API operation
 returns its own opaque cursor. CLI/MCP `all` combines the four calls in illustration, manga, novel, user order and
 does not change the SDK's one-stream cursor contract.
 
-Authentication accepts only a raw Pixiv App API refresh token. `ImportAccount`, `CheckRefreshToken`, `OpenDefault`,
-and locally loaded accounts reject cookie-shaped values such as `refresh_token=...` before any OAuth request and
-return a redacted `invalid_argument` error.
+Authentication accepts a raw Pixiv App API refresh token. Invalid credential input returns a redacted
+`invalid_argument` error before an OAuth request.
 
 `ExportAccountRefreshToken(userID int64)` is an explicit local secret-export operation for handing a stored
 credential to another trusted local integration. `userID == 0` selects `auth.json.default_user_id`; a positive ID
@@ -237,16 +236,14 @@ offset/page. The SDK does not accept `page`; CLI/MCP translate logical pages and
 
 ## Routing
 
-With a refresh token, illustration search uses only App API. Authentication, network, and server failures never
-fall back to Web automatically. Without a token, `NewClient` can use the anonymous Web allowlist when
-`WebFallbackEnabled=true`; `OpenDefault` reads local `web_fallback_enabled` for each snapshot. Anonymous search
-uses only filters Web can express reliably. `r18`, `r18g`, `mature`, `Target=keyword`, and bookmark bounds fail
-with `unauthorized` before networking; they are never disguised as empty results. Anonymous `SearchIllustOptions` returns `unsupported`. The SDK never
-reads/injects cookies or converts a refresh token into a Web session.
+With a refresh token, illustration search uses App API and authentication, network, or server failures return their
+typed error. Without a token, `NewClient` can use the anonymous Web allowlist when `WebFallbackEnabled=true`;
+`OpenDefault` reads local `web_fallback_enabled` for each snapshot. Anonymous search uses only filters Web can
+express reliably. `r18`, `r18g`, `mature`, `Target=keyword`, and bookmark bounds return `unauthorized` before
+networking. Anonymous `SearchIllustOptions` returns `unsupported`.
 
-`SearchNovel` requires App authentication and never falls back to Web. `SearchUser` uses App search when
-authenticated; its anonymous allowlist route is exposed only with `Source=related_illust_authors`, so callers cannot
-mistake it for the official operation.
+`SearchNovel` uses App authentication. `SearchUser` uses App search when authenticated; its anonymous allowlist
+route is exposed with `Source=related_illust_authors`.
 
 Authenticated `IllustDetail`, `IllustPages`, and `UgoiraMetadata` use App API only. `IllustPages` takes multi-page
 data from App `meta_pages`; for a single-page work it derives `meta_pages[0]` from the App single-page/image fields
@@ -278,8 +275,8 @@ defer response.Body.Close()
 
 `ResourceRef` is only a persistent reference; every `OpenResource` revalidates it. The default policy accepts only
 official Pixiv resources. Callers may add explicit host/path prefixes through `ResourcePolicy.Mirrors`. The SDK
-accepts only `Range`, `If-None-Match`, `If-Modified-Since`, and `If-Range`, filters response headers, disables
-cookies, and validates redirects to reduce SSRF risk. `DownloadResource` writes metadata and incomplete data in
+accepts `Range`, `If-None-Match`, `If-Modified-Since`, and `If-Range`, filters response headers, and validates
+redirects to reduce SSRF risk. `DownloadResource` writes metadata and incomplete data in
 `.pixiv-cache` (or `ResourceCachePath`), revalidates completed files with ETag/Last-Modified, resumes only verified
 partials with `Range` + `If-Range`, and atomically publishes a completed file. No validator means no unsafe resume.
 
@@ -308,8 +305,7 @@ if errors.Is(err, pixiv.ErrUnauthorized) { /* re-authenticate */ }
 
 Stable codes include `invalid_argument`, `artwork_unavailable`, `unauthorized`, `forbidden`, `unsupported`,
 `rate_limited`, `upstream_error`, `upstream_unavailable`, and `malformed_upstream_response`. Errors carry a stable
-operation, backend, retryable flag, status, and validated IDs; they never include tokens, cookies, full URLs,
-headers, or upstream response bodies.
+operation, backend, retryable flag, status, and validated IDs with redacted diagnostics.
 
 | Call and failure stage | Result | `Operation` | `Backend` |
 | --- | --- | --- | --- |

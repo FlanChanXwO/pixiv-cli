@@ -110,7 +110,7 @@ GitHub Release 页面取得资产，核对版本、checksum 和签名说明，�
 
 ## 获取 refresh token
 
-`PIXIV_REFRESH_TOKEN` 必须是原始的 Pixiv App API OAuth refresh token。网页 Cookie（包括 `refresh_token=...`、`PHPSESSID`、`device_token`）一律拒绝，不会从中提取或转换凭据。
+`PIXIV_REFRESH_TOKEN` 是原始的 Pixiv App API OAuth refresh token。
 
 推荐用 CLI 浏览器 OAuth 登录，并直接保存到本地账号：
 
@@ -128,7 +128,7 @@ pixiv auth login
 | 校验 | 本地 loopback 回调必须匹配本次 state；Pixiv 官方 callback URL 与 `pixiv://account/login` 可在 Pixiv 未返回 state 时作为显式 fallback。 |
 | 保存 | refresh/access token 不会打印；refresh token 按 Pixiv UID 保存到 `auth.json`。Unix-like 主动使用 `0700` 父目录与 `0600` 文件；Windows 首次创建继承父目录 ACL，替换既有目标保留其 ACL，不主动收紧或放宽 DACL。 |
 
-handler 会持久注册，但只在系统打开 `pixiv://` 时按需运行：macOS 使用 `PixivCLIURLHandler.app`，Windows 使用当前用户协议关联，桌面 Linux 使用 XDG desktop entry；旧 handler 会私有记录。本地活跃的 loopback bridge 永远优先。没有本地 bridge 时，只有精确白名单 `pixiv://account/login` 才会转发给已配置 remote relay，其他 `pixiv://` URL 会定向交给旧 handler。`removing `login_relay_target_url` from private `config.toml`` 只在 pixiv-cli 仍为默认 handler 时恢复旧关联，绝不覆盖用户之后的修改。若 binary 已删除，请先使用私有 `~/.pixiv-cli/url-handler/handler-manifest.json` 记录，通过系统关联 UI 恢复旧 handler，再删除 manifest。helper 不读取浏览器 Cookie、存储、历史、会话文件、标签页或网络流量，也不启动受管 Chromium、DevTools/CDP 或浏览器状态扫描。
+handler 会持久注册，但只在系统打开 `pixiv://` 时按需运行：macOS 使用 `PixivCLIURLHandler.app`，Windows 使用当前用户协议关联，桌面 Linux 使用 XDG desktop entry；旧 handler 会私有记录。本地活跃的 loopback bridge 永远优先。没有本地 bridge 时，只有精确白名单 `pixiv://account/login` 才会转发给已配置 remote relay，其他 `pixiv://` URL 会定向交给旧 handler。`removing `login_relay_target_url` from private `config.toml`` 只在 pixiv-cli 仍为默认 handler 时恢复旧关联，绝不覆盖用户之后的修改。若 binary 已删除，请先使用私有 `~/.pixiv-cli/url-handler/handler-manifest.json` 记录，通过系统关联 UI 恢复旧 handler，再删除 manifest。
 
 若 macOS 接管前没有旧的 `pixiv://` handler，`removing `login_relay_target_url` from private `config.toml`` 会报错，不会静默把 pixiv-cli 留作默认 handler。请先在 macOS 的关联 UI 中选择目标应用，再次执行 `unset`；它会清理 manifest，且不会覆盖该次用户选择。
 
@@ -195,7 +195,7 @@ pixiv auth import --file account.pxauth
 pixiv auth export --all | ssh trusted-host pixiv auth import --file -
 ```
 
-`--file PATH` 从文件读取，`--file -` 从 stdin 读取完整 bundle。该模式完全离线，不校验或 rotation token，并拒绝位置 token、`--proxy`、`--no-proxy`。restore 按 UID 原子 merge 全部账号：已有账号更新，新账号添加；本地已有 default 保持不变，仅本地无 default 时采用 bundle default。人类输出按输入 bundle 顺序逐项列出安全的 added/updated UID 和最终 default。`--json` 返回 `{"accounts":[{"user_id":12345678,"username":"display name","status":"added"}],"default_user_id":12345678}`；account item 只暴露 `user_id`、`username` 与 `status`。
+`--file PATH` 从文件读取，`--file -` 从 stdin 读取完整 bundle。该模式完全离线，不校验或 rotation token，并拒绝位置 token、`--proxy`、`--no-proxy`。restore 按 UID 原子 merge 全部账号：已有账号更新，新账号添加；本地已有 default 保持不变，仅本地无 default 时采用 bundle default。默认文本输出按输入 bundle 顺序逐项列出安全的 added/updated UID 和最终 default。`--json` 返回 `{"accounts":[{"user_id":12345678,"username":"display name","status":"added"}],"default_user_id":12345678}`；account item 只暴露 `user_id`、`username` 与 `status`。
 
 ### 导出与备份认证
 
@@ -368,7 +368,7 @@ Ugoira 下载支持 `--ugoira-format gif|apng`，默认仍为 `gif`；Ugoira 指
 | `detail` | `ILLUST_ID_OR_URL` | 必填 | 正整数作品 ID，或受支持的 Pixiv 作品 URL。 |
 | `download` | `SRC...` | 必填 | 作品 PID、作品 URL、允许的 CDN 资源 URL，或受支持的用户主页/作品页 URL。CDN 文件使用 URL 文件名，不支持页选择、派生质量和自定义作品模板。 |
 
-有 refresh token 时，`search` 始终使用 App API。分辨率、横纵比、工具、作品类型和 `ai-mode=exclude` 由 App 筛选，分级和 `ai-mode=only` 对 App 返回批次筛选；App 失败不会回落 Web。全部筛选都会绑定 opaque cursor，cursor 不能用于不同筛选组合。本地筛选跳过连续空上游批次时，CLI/MCP 会补拉到首个非空逻辑批次或真正结束。指定正数 `--limit` 或 `--page` 时，按过滤后的逻辑结果跨批填满；`--limit 0` 遍历全部过滤结果；未指定 `--limit` 时读取一个上游批次，但会跳过前导空批。App 还会执行显式日期与仅限 Pixiv 高级会员的收藏数边界；收藏数不是点赞字段，不得文案为点赞。作品 JSON/文本包含稳定作品页 URL `https://www.pixiv.net/artworks/{id}`，作为首字段/每件作品第一行。
+有 refresh token 时，`search` 由 App API 执行。分辨率、横纵比、工具、作品类型和 `ai-mode=exclude` 由 App 筛选，分级和 `ai-mode=only` 对 App 返回批次筛选；认证、网络或服务端失败会返回分类错误。全部筛选都会绑定 opaque cursor，cursor 不能用于不同筛选组合。本地筛选跳过连续空上游批次时，CLI/MCP 会补拉到首个非空逻辑批次或真正结束。指定正数 `--limit` 或 `--page` 时，按过滤后的逻辑结果跨批填满；`--limit 0` 遍历全部过滤结果；未指定 `--limit` 时读取一个上游批次，但会跳过前导空批。App 还会执行显式日期与仅限 Pixiv 高级会员的收藏数边界；收藏数不是点赞字段，不得文案为点赞。作品 JSON/文本包含稳定作品页 URL `https://www.pixiv.net/artworks/{id}`，作为首字段/每件作品第一行。
 
 收藏数边界对已保存账号复用固定 24 小时的自身 profile Premium 缓存。缓存未命中或过期时，会先读取 profile；确认非会员即在本地失败，不向 Pixiv 搜索端点发请求。使用 `pixiv auth refresh [UID]`（或 `--all`）可强制刷新 OAuth token 与该状态。直接传入 SDK access token 时没有可验证的本地账号身份，无法使用这项已保存账号预检。
 
@@ -392,7 +392,7 @@ App JSON 读取在首次 429 且 `Retry-After` 有效时按命令 context 等待
 
 `detail` 接受正整数作品 ID，或规范 HTTPS `pixiv.net`/`www.pixiv.net` 作品 URL：`/artworks/{id}`；可带 locale、query 和 fragment。不接受用户页、小说、短链、FANBOX、Pixivision、Sketch、旧式或任意其他 URL。
 
-`download` 还接受受策略允许的 CDN 直链、`/users/{id}` 与 `/users/{id}/artworks`。用户 URL 会完整遍历并下载 `illust`、`manga`、`ugoira`，不下载小说，且必须使用 App OAuth；不会走匿名 Web fallback。URL 只在本地解析，不抓取 HTML，也不跟随重定向。单个作品失败不会阻止其余作品，取消会立即停止。下载会在 `.pixiv-cache` 持久化 ETag/Last-Modified 元数据，只用 validator 匹配的 `If-Range` 安全续传残片，并原子发布更新。`download` 是动作：成功 stdout 为空；安全失败写入 stderr，无法完成时以非零码退出。不会保存下载历史，也不做跨次去重。
+`download` 还接受受策略允许的 CDN 直链、`/users/{id}` 与 `/users/{id}/artworks`。用户 URL 会通过 App OAuth 完整遍历并下载 `illust`、`manga`、`ugoira`，小说不在下载集合内。URL 在本地解析为受支持引用。单个作品失败不会阻止其余作品，取消会立即停止。下载会在 `.pixiv-cache` 持久化 ETag/Last-Modified 元数据，只用 validator 匹配的 `If-Range` 安全续传残片，并原子发布更新。`download` 是动作：成功 stdout 为空；安全失败写入 stderr，无法完成时以非零码退出。不会保存下载历史，也不做跨次去重。
 
 ### 通用参数
 
@@ -439,7 +439,7 @@ CLI 数据命令以 `pixiv auth use` 选择的 `auth.json.default_user_id` 为�
 
 - 匿名 `search` 只执行 Web API 能可靠表达的筛选。分辨率、横纵比、绘图工具和作品类型会转译为 Web 参数；AI 筛选使用返回的作品字段。
 - `rating=r18`、`r18g`、`mature`、`--search-by tag-title-caption` 或收藏数边界会在匿名请求前明确返回需要认证，而不会伪装成空结果；收藏数边界还需要 Pixiv 高级会员；`rating=all` 只表示匿名可见范围。
-- `search-options` 仅支持 App API，无 refresh token 时明确返回 unsupported。搜索不会读取或保存 `PHPSESSID` 等浏览器 Cookie，也不会把 refresh token 转换成 Web session。
+- `search-options` 仅支持 App API，无 refresh token 时明确返回 unsupported。
 - `novel search` 仅支持 App API；无 refresh token 时明确返回需要认证。
 - 九个扩展排行榜 mode（`day_manga`、`week_manga`、`month_manga`、`week_rookie_manga`、`day_r18`、
   `day_male_r18`、`day_female_r18`、`week_r18`、`week_r18g`）需要认证，不会回落或伪装成匿名日榜。

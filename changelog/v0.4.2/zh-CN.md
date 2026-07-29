@@ -2,12 +2,12 @@
 
 ## 新增
 
-- 新增 `scripts/install.sh` 与不依赖 PowerShell 的 `scripts/install.cmd`：自动选择最新 stable Release 的当前 OS/arch archive，先验证发布 SHA-256 和暂存 binary，再执行无管理员权限的用户级安装；Release 以固定名称发布两个脚本并把它们纳入签名 checksum 集合，现有 locale 的 README 同步提供可复制的人类命令与 Coding Agent 安装 prompt。
+- 新增 `scripts/install.sh` 与不依赖 PowerShell 的 `scripts/install.cmd`：自动选择最新 stable Release 的当前 OS/arch archive，先验证发布 SHA-256 和暂存 binary，再执行无管理员权限的用户级安装；Release 以固定名称发布两个脚本并把它们纳入签名 checksum 集合，现有 locale 的 README 同步提供可复制的安装命令与 AI Agent 安装 prompt。
 - 新增 `pixiv auth import [REFRESH_TOKEN]` 与 `pixiv auth export [UID] [--all] [--output PATH] [--force]`：支持隐藏 TTY/raw stdin direct token import、单账号 raw export、全部账号 versioned bundle export，以及 `--file PATH|-` 离线原子 restore。
 - 公开 Go SDK 新增 `AuthExportSelection`、versioned auth bundle model/strict codec、`ExportAuthBundle`、`RestoreAuthBundle`、`AuthRestoreResult` 与 `LocalWriteCommitOutcome`，供调用方实现 point-in-time secret backup 与可分类的离线恢复。
-- 插画搜索新增稳定的分级、作品类型、AI、横纵比、分辨率与绘图工具筛选；CLI 新增 `--ai-mode`、`--aspect-ratio`、`--resolution` 与 `--tool`，`--type` 支持 `illust-and-ugoira`/`manga` 并保留 `comics` alias。SDK 新增 `SearchIllustFilters`、`SearchIllustOptions` 与 `Illust.Tools`；需 App 认证的 `pixiv search-options WORD` 动态列出绘图工具，不引入收藏数或 Cookie 筛选。
+- 插画搜索新增稳定的分级、作品类型、AI、横纵比、分辨率与绘图工具筛选；CLI 新增 `--ai-mode`、`--aspect-ratio`、`--resolution` 与 `--tool`，`--type` 支持 `illust-and-ugoira`/`manga` 并保留 `comics` alias。SDK 新增 `SearchIllustFilters`、`SearchIllustOptions` 与 `Illust.Tools`；需 App 认证的 `pixiv search-options WORD` 动态列出绘图工具。
 - MCP `search_illust` 新增同样的六个筛选字段，并新增需认证、返回 `{tools,text}` 的 `search_illust_options`；公开 SDK 的 `upstream_unavailable` 与本地 snapshot 错误新增安全的 transport/local-state 分类，诊断不暴露 URL、主机、证书或凭据。
-- 新增面向 coding agent、全英文的 `pixiv-cli` skill；README 扩展为英文、简体中文与日语入口，公共文档按 `docs/<locale>/` 组织，架构、开发、ADR 与 Agent 规则集中到 `docs/maintainers/`。
+- 新增面向 AI Agent、全英文的 `pixiv-cli` skill；README 扩展为英文、简体中文与日语入口，公共文档按 `docs/<locale>/` 组织，架构、开发、ADR 与 Agent 规则集中到 `docs/maintainers/`。
 
 ## 变更
 

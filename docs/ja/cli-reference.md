@@ -113,8 +113,7 @@ Release は darwin、linux、windows の amd64/arm64 向けに
 
 ## refresh token の取得
 
-`PIXIV_REFRESH_TOKEN` は Pixiv App API OAuth の raw refresh token でなければなりません。
-`refresh_token=...`、`PHPSESSID`、`device_token` などの Web Cookie は常に拒否され、抽出・変換されません。
+`PIXIV_REFRESH_TOKEN` は Pixiv App API OAuth の raw refresh token です。
 
 推奨フローは browser OAuth login です：
 
@@ -130,7 +129,7 @@ pixiv auth login
 | 検証 | local callback はこの試行の state と一致する必要があります。Pixiv が state を返さない場合だけ、公式 callback URL と `pixiv://account/login` を明示 fallback として使えます。 |
 | 保存 | refresh/access token は表示せず、refresh token を UID ごとに `auth.json` へ保存します。Unix-like は parent `0700`・file `0600`、Windows は既存 ACL を維持します。 |
 
-handler は persistent ですが OS が `pixiv://` を開くときだけ動作します。macOS は `PixivCLIURLHandler.app`、Windows は current-user protocol association、desktop Linux は XDG desktop entry を使い、previous handler を private に記録します。active local loopback bridge が常に優先されます。ない場合は allowlist の正確な `pixiv://account/login` だけが remote relay に送られ、他の `pixiv://` URL は previous handler に定向します。`removing `login_relay_target_url` from private `config.toml`` は pixiv-cli がまだ default のときだけ previous association を復元し、後からの user 変更は上書きしません。binary を削除済みなら private `~/.pixiv-cli/url-handler/handler-manifest.json` の記録を使い、OS の association UI で復元してから manifest を削除します。cookie、storage、history、session、tab、traffic は読まず、managed Chromium、DevTools/CDP、browser-state scan も起動しません。
+handler は persistent ですが OS が `pixiv://` を開くときだけ動作します。macOS は `PixivCLIURLHandler.app`、Windows は current-user protocol association、desktop Linux は XDG desktop entry を使い、previous handler を private に記録します。active local loopback bridge が常に優先されます。ない場合は allowlist の正確な `pixiv://account/login` だけが remote relay に送られ、他の `pixiv://` URL は previous handler に定向します。`removing `login_relay_target_url` from private `config.toml`` は pixiv-cli がまだ default のときだけ previous association を復元し、後からの user 変更は上書きしません。binary を削除済みなら private `~/.pixiv-cli/url-handler/handler-manifest.json` の記録を使い、OS の association UI で復元してから manifest を削除します。
 
 macOS で接管前の `pixiv://` handler がなかった場合、`removing `login_relay_target_url` from private `config.toml`` は pixiv-cli を default のまま黙って残さず error を返します。先に macOS の association UI で希望する handler を選び、もう一度 `unset` を実行してください。manifest だけを削除し、その後の user 選択は上書きしません。
 
@@ -406,12 +405,12 @@ typed upstream-response failure になります。filter が batch を飛ばす�
 変わりません。小説 JSON には `https://www.pixiv.net/novel/show.php?id={id}`、`x_restrict`、`text_length`、
 `is_original` が含まれます。
 
-認証済みの `detail`、pages、ugoira metadata は App API のみを使います。App のページ数不一致またはページ資源不足は明示的に失敗し、匿名 Web request は行いません。認証済み ugoira は original ZIP が得られないとき、検証済み App medium ZIP を直接 download します。冪等 App JSON read だけは、最初の 429 に有効な `Retry-After` がある場合に command context 配下で一度だけ待機・再試行します。header 不正/欠落、二度目の 429、write、resource download は replay しません。
+認証済みの `detail`、pages、ugoira metadata は App API のみを使います。App のページ数不一致またはページ資源不足は明示的な typed failure を返します。認証済み ugoira は original ZIP が得られないとき、検証済み App medium ZIP を直接 download します。冪等 App JSON read だけは、最初の 429 に有効な `Retry-After` がある場合に command context 配下で一度だけ待機・再試行します。header 不正/欠落、二度目の 429、write、resource download は replay しません。
 `detail --json` は Pixiv の raw HTML `caption` を保持し、通常の `detail` 出力は安全な plain text に変換します。作品 list output には caption を含めません。
 
 `detail` は正の artwork ID、または HTTPS の `pixiv.net`/`www.pixiv.net` にある `/artworks/{id}` URL を受け付けます。locale、query、fragment は許可されます。user、novel、short-link、FANBOX、Pixivision、Sketch、legacy、そのほかの URL は受け付けません。
 
-`download` は許可された CDN URL に加えて `/users/{id}` と `/users/{id}/artworks` を受け付けます。user URL は `illust`、`manga`、`ugoira` を全 page にわたり download し、novel は対象外です。App OAuth が必須で、匿名 Web fallback は使いません。URL はローカルでのみ parse され、HTML 取得や redirect follow は行いません。1 件の失敗後も他の作品を続行し、cancel は直ちに停止します。download は ETag/Last-Modified metadata を `.pixiv-cache` に保存し、validator が一致する partial だけを `If-Range` で安全に再開して atomic に publish します。`download` は action です。成功時の stdout は空で、安全な failure は stderr に出し、完了できない場合は non-zero で終了します。download history や cross-run deduplication はありません。
+`download` は許可された CDN URL に加えて `/users/{id}` と `/users/{id}/artworks` を受け付けます。user URL は App OAuth を使って `illust`、`manga`、`ugoira` を全 page にわたり download し、novel は対象外です。URL はローカルで受け付ける reference に parse されます。1 件の失敗後も他の作品を続行し、cancel は直ちに停止します。download は ETag/Last-Modified metadata を `.pixiv-cache` に保存し、validator が一致する partial だけを `If-Range` で安全に再開して atomic に publish します。`download` は action です。成功時の stdout は空で、安全な failure は stderr に出し、完了できない場合は non-zero で終了します。download history や cross-run deduplication はありません。
 
 ### 共通 flag
 
@@ -451,12 +450,12 @@ CLI data command は `pixiv auth use` の local default account、または手�
 ### 匿名 Web fallback
 
 token source がなく `web_fallback_enabled=true` の場合、CLI の `search`、`detail`、`ranking`、`download`
-は Pixiv Web/ajax API を利用できます。refresh token がある場合は App API を優先し、invalid token、network、
-server error を自動 fallback しません。
+は Pixiv Web/ajax API を利用できます。refresh token がある場合は App API が request を処理し、invalid token、network、
+server error は分類済み failure を返します。
 
 - 匿名 `search` は Web が確実に表現できる filter だけを使用します。AI は返却 field で判定します。
 - `rating=r18|r18g|mature`、`--search-by tag-title-caption`、または bookmark-count filter は request 前に認証要求として失敗し、空結果に見せません。bookmark-count filter には Pixiv Premium も必要です。`all` は匿名で見える範囲です。
-- `search-options` は App 専用です。Cookie を読み取らず、refresh token を Web session に変換しません。
+- `search-options` は App 専用です。
 - `novel search` は App 専用で、refresh token がなければ認証要求として失敗します。
 - 拡張 ranking mode（`day_manga`、`week_manga`、`month_manga`、`week_rookie_manga`、`day_r18`、
   `day_male_r18`、`day_female_r18`、`week_r18`、`week_r18g`）は認証が必要で、匿名の日次ランキングに fallback しません。

@@ -54,7 +54,7 @@ pixiv search "初音ミク" --limit 10 --json
 pixiv novel search "初音ミク" --rating sfw --min-text-length 1000 --limit 10 --json
 ```
 
-- `novel search` requires App authentication and never falls back to anonymous Web search.
+- `novel search` uses App authentication.
 - It supports `--search-by tag-partial|tag-exact|title-caption`, `--sort
   date_desc|date_asc`, `--period day|week|month`, and `--rating
   sfw|r18|r18g|mature|all`.

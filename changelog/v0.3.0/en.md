@@ -3,7 +3,7 @@
 ## Changed
 
 - **Breaking:** the public Go SDK moved to `github.com/FlanChanXwO/pixiv-cli/pixiv`; no compatibility package remains at the former import path.
-- **Breaking:** authentication accepts only raw Pixiv App API refresh tokens. Web cookies, including `refresh_token=...`, are not parsed, extracted, or converted.
+- **Breaking:** authentication accepts raw Pixiv App API refresh tokens.
 - **Breaking:** `pixiv recommended` requires one of `all|illust|manga|novel|user`; `all` returns the four personalized streams atomically.
 
 ## Added
@@ -17,5 +17,5 @@
 
 ## Security
 
-- `auth login` no longer launches managed Chromium, connects to CDP, reads browser history/session/storage, or scans existing tabs. It uses only the current loopback, controlled `pixiv://` helper, and an explicitly manual paste path.
-- SDK, CLI, MCP, environment variables, and stored accounts reject cookie-shaped credentials before OAuth and never echo input content.
+- `auth login` uses the current loopback, controlled `pixiv://` helper, and an explicitly manual paste path.
+- SDK, CLI, MCP, environment variables, and stored accounts validate credential input before OAuth and redact it in diagnostics.

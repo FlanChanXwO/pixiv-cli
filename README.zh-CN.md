@@ -12,20 +12,20 @@
 
 </div>
 
-`pixiv-cli` 把 Pixiv 生态带到终端：发现作品与创作者、管理账号和作品收藏、关注创作者，并下载视觉作品。它是面向用户、AI Agent 和 Go 应用的独立非官方第三方工具，与 Pixiv Inc. 无隶属或背书关系。CLI 与 MCP server 共同调用 public Go SDK，并以 Pixiv App API 作为已认证能力的数据源；使用时请遵守 Pixiv 条款与适用法律。
-
-维护者注意：发布 tag 受保护的认证 E2E 门禁阻断。refresh token 只能放入 GitHub `pixiv-e2e` Environment Secret；作品 ID 与搜索输入使用 Environment Variables。PR 与 `main` CI 保持离线且不使用 secret，详见[开发流程](docs/maintainers/development.md#测试)。
+`pixiv-cli` 把 Pixiv 生态带到终端：发现作品与创作者、管理账号和作品收藏、关注创作者，并下载视觉作品。它提供独立的非官方 CLI、MCP server 和 public Go SDK，与 Pixiv Inc. 无隶属或背书关系。CLI 与 MCP server 共同调用 public Go SDK，并以 Pixiv App API 作为已认证能力的数据源；使用时请遵守 Pixiv 条款与适用法律。
 
 ## 为什么选择 pixiv-cli？
 
 - **一致的能力面**——CLI、MCP 与 SDK 均可完成搜索、详情、排行、推荐、用户、收藏、关注、下载和 ugoira 处理。
-- **App API 优先**——配置 refresh token 后始终走已认证 App 路径；App 失败不会静默回落 Web。
-- **认证 R18 读取**——详情、分页、ugoira metadata 和全部 16 种排行榜都走 App API；无法取得 original 时会诚实使用已验证的 medium ugoira ZIP。
+- **信息流与组合式 Record 管道**——以标准 NDJSON 获取信息流，在本地筛选 Record，并把结果传给后续 action。
+- **本地账号池**——为读取型任务选择符合条件的本地账号，并在分页和下载准备阶段遵循 Pixiv 的 `Retry-After` 响应。
+- **GIF 与 APNG ugoira 输出**——GIF 为默认格式，也可通过 CLI、MCP 或 SDK 显式请求 APNG。
+- **缓存感知下载**——持久重验证 `.pixiv-cache` 元数据，以 `Range` 和 `If-Range` 安全续传已验证的残片，并原子替换完成文件。
+- **认证 App API 发现能力**——通过 App API 读取 R18 详情、分页、ugoira metadata 和全部 16 种排行榜。
 - **实用搜索筛选**——支持分级、作品类型、AI 模式、横纵比、分辨率和动态绘图工具。
-- **直达 Pixiv 引用**——可把受支持作品 URL 直接粘贴给详情或下载；已认证时也可使用作者主页/作品页 URL 下载该作者的视觉作品，无需浏览器 Cookie 自动化。
-- **本地多账号 OAuth**——支持浏览器登录、账号选择和 refresh token rotation，不读取浏览器 Cookie 或 profile。
-- **适合自动化**——typed SDK error、JSON 输出、纯净 MCP stdio、签名更新且不隐藏截断结果。
-- **有限匿名访问**——没有 token 且启用 fallback 时，受支持的只读操作可以使用 Web API。
+- **直达 Pixiv 引用**——可把受支持作品 URL 直接粘贴给详情或下载；已认证的作者主页/作品页 URL 会展开为该作者的视觉作品。
+- **本地多账号 OAuth**——支持浏览器登录、账号选择、refresh token rotation 和可选的跨机器 callback relay。
+- **适合自动化**——typed SDK error、JSON 输出、纯净 MCP stdio、签名更新和完整结果报告。
 
 ## 安装
 
@@ -128,7 +128,7 @@ pixiv download https://www.pixiv.net/users/12345678/artworks
 
 ### CLI
 
-交互时使用人类可读输出；命令支持时可用 `--json` 获取机器可读输出：
+交互时默认输出可读文本；命令支持时可用 `--json` 获取机器可读输出：
 
 ```bash
 pixiv ranking --mode day --json
@@ -163,9 +163,9 @@ download, err := client.Download(ctx, "https://www.pixiv.net/artworks/123456")
 
 ## 认证与 token 安全
 
-推荐使用 `pixiv auth login` 完成配置。它把原始 Pixiv App OAuth refresh token 按 UID 保存在本地账号 store；`PHPSESSID` 等浏览器 Cookie 会被拒绝，也不会转换为 App 凭据。
+推荐使用 `pixiv auth login` 完成配置。它把原始 Pixiv App OAuth refresh token 按 UID 保存在本地账号 store。
 
-macOS、桌面 Linux 与 Windows 使用按需持久的 `pixiv://` callback handler，既支持本地登录，也支持显式配置的跨机器 relay；只有 `pixiv://account/login` 可以进入 relay，不读取 Cookie、不做浏览器自动化，也不走 Web fallback。无 GUI SSH 服务器仍可使用现有的 `--no-open --addr` 与本机 `ssh -L` tunnel，或配置文档中的 relay server/client 设置。详见 [CLI 参考手册](docs/zh-CN/cli-reference.md#获取-refresh-token)。
+macOS、桌面 Linux 与 Windows 使用按需持久的 `pixiv://` callback handler，既支持本地登录，也支持显式配置的跨机器 relay；relay 接收 `pixiv://account/login` callback。无 GUI SSH 服务器仍可使用现有的 `--no-open --addr` 与本机 `ssh -L` tunnel，或配置文档中的 relay server/client 设置。详见 [CLI 参考手册](docs/zh-CN/cli-reference.md#获取-refresh-token)。
 
 ```bash
 pixiv auth list

@@ -8,7 +8,7 @@
 
 认证会话只从 App API 读取 `IllustDetail`、`IllustPages` 和 `UgoiraMetadata`。多页直接采用 App
 `meta_pages`；单页从 App 的 single-page/image 字段派生一项公开 `meta_pages`。页面缺失或页数不符是明确的
-上游 malformed error，不会改发匿名 Web 请求。
+上游 malformed error；该请求返回其 typed failure。
 
 动图公开模型把“确实可下载的资源”与历史 URL 槽位分开：`download_url` 和 `download_quality` 必须成对、非空，
 只指向 SDK 已验证的最佳 ZIP。App 只获得 medium 时，公开质量就是 `medium`，`zip_urls.original` 保持省略；

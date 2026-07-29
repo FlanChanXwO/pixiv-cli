@@ -60,9 +60,8 @@ the installed binary's `pixiv <cmd> --help` output.
    is no `--stdin` flag. This is an environment constraint, not a command ban.
 5. Run interactive `pixiv auth login` only when the user explicitly asks and
    is present to complete browser OAuth.
-6. Do not accept or forward cookies (`PHPSESSID`, `refresh_token=...` cookie
-   strings) as credentials — the CLI rejects them by design; only raw Pixiv App
-   API refresh tokens work.
+6. Authenticate with a raw Pixiv App API refresh token through the documented
+   configuration or environment variables.
 
 ## Operation tiers
 
@@ -89,7 +88,7 @@ the installed binary's `pixiv <cmd> --help` output.
    asks for everything. A result that reaches `--limit N` is not proof that
    only N matches exist; follow the pagination and completeness contract in
    [`references/discover.md`](references/discover.md#pagination-and-completeness).
-2. **Small result, display only:** use the default human-readable output and
+2. **Small result, display only:** use the default text output and
    relay it. JSON carries field names and metadata — it is *larger* than the
    table for display purposes.
 3. **Programmatic processing** (extract IDs, filter, chain into a next
@@ -188,7 +187,7 @@ Other TOML settings are hand-maintained; inspect the installed help before sugge
    require App authentication; bookmark-count bounds additionally require Pixiv Premium. For a saved account the CLI
    checks the cached self-profile status before search (24h by default); a non-Premium result fails locally rather than
    making a misleading search request. Use explicit `auth refresh` to force that cache. Do not
-   present the failure as an empty result or add a Cookie workaround. `novel search` is App-only and requires authentication.
+   present the failure as an empty result. `novel search` is App-only and requires authentication.
    Bookmark count is a public bookmark total, never a like count.
 6. **Extended rankings need authentication.** Valid modes are `day`,
    `day_male`, `day_female`, `week`, `week_original`, `week_rookie`, `month`,
@@ -220,9 +219,9 @@ Other TOML settings are hand-maintained; inspect the installed help before sugge
     ID or a `pixiv.net`/`www.pixiv.net` HTTPS `/artworks/{id}` URL (an optional
     locale, query, or fragment is harmless). `download` also accepts `/users/{id}`
     and `/users/{id}/artworks`, which expand every illust, manga, and ugoira for
-    that user — no novels and no implicit limit. User URL downloads require App
-    OAuth and never use Cookie, WebView, or anonymous fallback. Do not suggest
-    short links, old URLs, FANBOX, Pixivision, Sketch, or HTML scraping.
+    that user — no novels and no implicit limit. User URL downloads use App
+    OAuth. Supported references are the documented current artwork and user
+    URL forms.
 
 ## Routing
 

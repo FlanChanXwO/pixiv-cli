@@ -13,7 +13,7 @@
 - 批量下载结果保持来源输入顺序，并逐项报告是否已启动、结果、缓存状态与错误。直链 CDN 下载保留 URL 文件名，并拒绝页码、质量或自定义模板等仅适用于作品的选项。
 - SDK、CLI 与 MCP 下载现在提供持久 `.pixiv-cache` 元数据重验证、原子替换、安全的 `Range` + `If-Range` 续传和 Ugoira ZIP 输入缓存；资源结果会暴露缓存状态。
 - 新增 `ParseUserReference`，与作品引用解析对称，同时不削弱 ID 型 API 的类型安全。
-- macOS、Windows 与桌面 Linux client 新增跨机器 `auth login` callback relay 配置。它使用按需持久化的 `pixiv://` handler、严格 callback 白名单、一次性 secret/state 校验、可选 TLS，并在配置或启动 HTTP 明文 relay 时明确提示风险；不使用浏览器自动化或 Web fallback。没有旧 handler 时，macOS 不会静默保留 pixiv-cli 作为默认 handler。
+- macOS、Windows 与桌面 Linux client 新增跨机器 `auth login` callback relay 配置。它使用按需持久化的 `pixiv://` handler、严格 callback 白名单、一次性 secret/state 校验、可选 TLS，并在配置或启动 HTTP 明文 relay 时明确提示风险；macOS 会恢复已有的旧 handler，并在没有旧 handler 时报告关联状态。
 
 ## 修复
 

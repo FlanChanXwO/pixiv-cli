@@ -12,20 +12,20 @@
 
 </div>
 
-`pixiv-cli` brings the Pixiv ecosystem to the terminal: discover works and creators, manage accounts and collections, follow artists, bookmark artworks, and download visual works. It is an independent, unofficial third-party tool for humans, AI agents, and Go applications; it is not affiliated with or endorsed by Pixiv Inc. The CLI and MCP server both call the same public Go SDK, with the Pixiv App API as the authenticated source of truth. Use it in accordance with Pixiv's terms and applicable law.
-
-Maintainers: release tags are blocked by a protected authenticated E2E gate. Its refresh token belongs only in the GitHub `pixiv-e2e` Environment Secret; work IDs and search inputs are Environment Variables. Pull request and `main` CI remain offline and secret-free. See the [development guide](docs/maintainers/development.md#测试).
+`pixiv-cli` brings the Pixiv ecosystem to the terminal: discover works and creators, manage accounts and collections, follow artists, bookmark artworks, and download visual works. It is an independent, unofficial third-party CLI, MCP server, and public Go SDK; it is not affiliated with or endorsed by Pixiv Inc. The CLI and MCP server both call the same public Go SDK, with the Pixiv App API as the authenticated source of truth. Use it in accordance with Pixiv's terms and applicable law.
 
 ## Why pixiv-cli?
 
 - **One capability surface** — search, details, rankings, recommendations, users, bookmarks, follows, downloads, and ugoira across CLI, MCP, and SDK.
-- **App API first** — a configured refresh token always uses the authenticated App path; App failures never silently fall back to Web.
-- **Authenticated R18 reads** — details, pages, ugoira metadata, and all 16 ranking modes use the App API; a verified medium ugoira ZIP is reported honestly when original is unavailable.
+- **Feeds and composable Record pipelines** — retrieve feeds as canonical NDJSON, filter them locally, and pass records into actions.
+- **Local account pools** — select eligible local accounts for read workloads and honor Pixiv `Retry-After` responses during pagination and download preparation.
+- **GIF and APNG ugoira output** — keep GIF as the default or explicitly request APNG through the CLI, MCP, or SDK.
+- **Cache-aware downloads** — revalidate persistent `.pixiv-cache` metadata, resume verified partial data with `Range` and `If-Range`, and atomically replace completed files.
+- **Authenticated App API discovery** — read R18 details, pages, ugoira metadata, and all 16 ranking modes through the App API.
 - **Useful search filters** — rating, content type, AI mode, aspect ratio, resolution, and dynamic drawing tools.
-- **Direct Pixiv references** — paste supported artwork URLs into detail or download, or an authenticated user profile/artworks URL to download that user's visual works without browser-cookie automation.
-- **Local multi-account OAuth** — browser login, account selection, and refresh-token rotation without reading browser cookies or profiles.
-- **Safe automation** — typed SDK errors, JSON output, clean MCP stdio, signed release updates, and no hidden result truncation.
-- **Limited anonymous access** — supported read operations can use the Web API when no token exists and fallback is enabled.
+- **Direct Pixiv references** — paste supported artwork URLs into detail or download; authenticated profile and artworks URLs expand to that creator's visual works.
+- **Local multi-account OAuth** — browser login, account selection, refresh-token rotation, and an optional cross-machine callback relay.
+- **Automation-ready integration** — typed SDK errors, JSON output, clean MCP stdio, signed release updates, and complete result reporting.
 
 ## Install
 
@@ -130,7 +130,7 @@ Run `pixiv --help` or open the [complete CLI reference](docs/en/cli-reference.md
 
 ### CLI
 
-Use human-readable output interactively and `--json` where the command supports machine output:
+Use the default text output interactively and `--json` where the command supports machine output:
 
 ```bash
 pixiv ranking --mode day --json
@@ -165,9 +165,9 @@ Import `github.com/FlanChanXwO/pixiv-cli/pixiv`. `Download`/`DownloadAll` use do
 
 ## Authentication and token safety
 
-`pixiv auth login` is the recommended setup. It saves raw Pixiv App OAuth refresh tokens by UID in the local account store; browser cookies such as `PHPSESSID` are rejected and are never converted into App credentials.
+`pixiv auth login` is the recommended setup. It saves raw Pixiv App OAuth refresh tokens by UID in the local account store.
 
-On macOS, desktop Linux, and Windows, an on-demand persistent `pixiv://` callback handler supports local login and an explicitly configured cross-machine relay. Only `pixiv://account/login` may reach that relay; no browser automation, Cookie reading, or Web fallback is used. For a headless SSH server, use the existing `--no-open --addr` flow with a local `ssh -L` tunnel, or configure the documented relay server/client settings. See the [CLI reference](docs/en/cli-reference.md#getting-a-refresh-token).
+On macOS, desktop Linux, and Windows, an on-demand persistent `pixiv://` callback handler supports local login and an explicitly configured cross-machine relay. The relay accepts the `pixiv://account/login` callback. For a headless SSH server, use the existing `--no-open --addr` flow with a local `ssh -L` tunnel, or configure the documented relay server/client settings. See the [CLI reference](docs/en/cli-reference.md#getting-a-refresh-token).
 
 ```bash
 pixiv auth list

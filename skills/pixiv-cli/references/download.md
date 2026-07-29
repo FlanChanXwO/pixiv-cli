@@ -33,9 +33,8 @@ pixiv download 129543211 --concurrency 8
 - `--ugoira-format` accepts `gif` (default) or `apng`; it controls only Ugoira
   conversion. Page selection or a non-original quality returns unsupported.
   With authentication, Pixiv may expose only a verified
-  medium ZIP; this is still the legitimate download resource and must never be
-  described as original. Do not add a Web/Cookie workaround to obtain another
-  variant.
+  medium ZIP; this is still the legitimate download resource and must be
+  described with its verified quality.
 - Filename template default: `{author} - {title}_{id}`. Placeholders: `{id}`,
   `{title}`, `{author}`, `{author_id}`. Persist a new default with
   `pixiv config set filename_template "..."` (confirm first — config write).
@@ -53,10 +52,9 @@ pixiv download https://www.pixiv.net/users/12345678
 pixiv download https://www.pixiv.net/en/users/12345678/artworks
 ```
 
-- A user URL walks every `illust`, `manga`, and `ugoira` in upstream page order;
-  it does not download novels and does not add an implicit count, page, retry, or
-  timeout limit. It requires App OAuth; never add a Cookie, WebView, anonymous
-  fallback, redirect, or HTML-scraping workaround.
+- A user URL uses App OAuth to walk every `illust`, `manga`, and `ugoira` in
+  upstream page order; novels are outside the download set, with no implicit
+  count, page, retry, or timeout limit.
 - Only the listed `pixiv.net` / `www.pixiv.net` HTTPS paths are accepted. Short
   links, old URL shapes, novels, FANBOX, Pixivision, Sketch, other hosts, and
   other paths fail locally before the SDK or downloader opens.
@@ -73,8 +71,8 @@ pixiv download https://www.pixiv.net/en/users/12345678/artworks
 
 ## Batch from a search/user listing
 
-Use the shared NDJSON record protocol; never scrape human output or add a
-temporary JSON collector merely to make a pipeline convenient:
+Use the shared NDJSON record protocol rather than text parsing or a temporary
+JSON collector merely to make a pipeline convenient:
 
 ```bash
 pixiv search "landscape" --ndjson --limit 20 \

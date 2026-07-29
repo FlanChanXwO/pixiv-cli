@@ -61,8 +61,7 @@ SHA-256 match before installation. The list is never fetched remotely and change
 After a verified install, the official scripts initialize the per-user, on-demand `pixiv://` handler. Homebrew does
 the same in `post_install`. A warning means the binary was installed successfully but desktop integration was not;
 the first normal browser `pixiv auth login` retries it. A manually extracted archive has no install hook and relies on
-that first normal login. Desktop Linux needs both `xdg-mime` and `gio`; headless Linux supports the relay server but
-does not register a browser handler.
+that first normal login. Desktop Linux needs both `xdg-mime` and `gio`; headless Linux supports the relay server.
 
 ### Build from source
 
@@ -124,8 +123,7 @@ assets of unknown origin.
 
 ## Getting a refresh token
 
-`PIXIV_REFRESH_TOKEN` must be a raw Pixiv App API OAuth refresh token. Web cookies (including `refresh_token=...`,
-`PHPSESSID`, `device_token`) are always rejected — credentials are never extracted or converted from them.
+`PIXIV_REFRESH_TOKEN` is a raw Pixiv App API OAuth refresh token.
 
 The recommended flow is the CLI browser OAuth login, which saves directly to a local account:
 
@@ -149,9 +147,7 @@ An active local loopback bridge always wins. Without one, only the exact allowli
 can be sent to a configured remote relay; all other `pixiv://` URLs are launched in the prior handler. Removing
 `login_relay_target_url` restores the prior association only if pixiv-cli is still default—later user changes are never
 overwritten. If the binary has already been removed, use the private `~/.pixiv-cli/url-handler/handler-manifest.json`
-to restore the recorded handler with the operating system's normal association UI before deleting it. The helper never
-reads browser cookies, storage, history, session files, tabs, or traffic, and never launches managed Chromium,
-DevTools/CDP, or browser-state scanning.
+to restore the recorded handler with the operating system's normal association UI before deleting it.
 
 If macOS had no prior `pixiv://` handler, `removing `login_relay_target_url` from private `config.toml`` returns an error instead of
 silently leaving pixiv-cli as default. Choose the desired handler in macOS's association UI first, then run `unset`
@@ -173,7 +169,7 @@ ssh -N -L 41871:127.0.0.1:41871 USER@SERVER
 Open `http://127.0.0.1:41871/` in the local browser. The tunnel reaches only the server's loopback listener and does
 not expose the callback port publicly. Use that forwarded page to open the login URL and submit a Pixiv relay or final
 callback: an accepted relay continues in the same local browser, and a submitted final callback is posted through the
-tunnel to the server listener. This does not require pixiv to be installed on the browser machine. Alternatively, use
+tunnel to the server listener. Alternatively, use
 an interactive SSH terminal and paste the final callback URL, `pixiv://` URL, relay URL, or raw authorization code
 into the original `auth login` prompt. Never bind the login listener to a public interface; `--addr` intentionally
 accepts loopback addresses only.
@@ -254,7 +250,7 @@ pixiv auth export --all | ssh trusted-host pixiv auth import --file -
 `--file PATH` reads a bundle from a file; `--file -` reads the complete bundle from stdin. This mode is offline,
 does not validate or rotate tokens, rejects a positional token/`--proxy`/`--no-proxy`, and atomically merges every
 account by UID. Existing accounts are replaced, new accounts are added, the current default is preserved, and the
-bundle default is adopted only when the local store has no default. Human output lists each safe added/updated UID
+bundle default is adopted only when the local store has no default. Default text output lists each safe added/updated UID
 in input-bundle order and the resulting default. `--json` returns
 `{"accounts":[{"user_id":12345678,"username":"display name","status":"added"}],"default_user_id":12345678}`;
 account items expose only `user_id`, `username`, and `status`.
@@ -346,7 +342,7 @@ On the first ordinary command, a missing `config.toml` is created with the commo
 login, and update settings. It never overwrites an existing file. Advanced settings such as proxy, logging, login
 timeout, and the Premium-status cache are intentionally omitted until explicitly configured; help, version, secret
 export, and the internal OAuth callback do not create it.
-Output is human-readable by default; commands that expose `--json` can produce machine-parseable JSON. `auth export`
+Output defaults to text; commands that expose `--json` can produce machine-parseable JSON. `auth export`
 deliberately does not expose that flag.
 The CLI uses Cobra/pflag, so options may appear before or after positional arguments — both
 `pixiv auth check 12345678 --json` and `pixiv search "初音ミク" --json` are officially supported forms.
@@ -410,7 +406,7 @@ used.
 | Flag | Default | Description |
 | --- | --- | --- |
 | `--json` | `false` | Prints the save result as JSON; never prints refresh/access tokens. |
-| `--no-open` | `false` | Does not auto-open the default browser and performs no browser observation; only prints the login URL and the local loopback page address. |
+| `--no-open` | `false` | Prints the login URL and local loopback page address for manual opening. |
 | `--addr` | `127.0.0.1:0` | Local loopback listen address; port `0` means auto-assign. |
 | `--use` | `false` | Sets the account as default after a successful login; also becomes default automatically when no default exists. |
 | `--timeout` | `0` | Maximum time to wait for login completion; `0` means the CLI imposes no deadline. |
@@ -557,9 +553,8 @@ When the selected local account has no refresh token, and
 `web_fallback_enabled=true`, the following capabilities automatically use the Pixiv web/ajax API: `search`,
 `detail`, `ranking`, and `download` CLI commands.
 
-With a refresh token, the App API is always preferred; an invalid token, App API network error, or server error
-never triggers an automatic fallback. The CLI surfaces a safe, classified failure instead of disguising it as a
-normal empty result.
+With a refresh token, the App API handles the request. Invalid tokens and App API network or server errors return a
+safe, classified failure.
 
 Differences in the anonymous fallback:
 
@@ -567,8 +562,7 @@ Differences in the anonymous fallback:
   tool, and content type are translated to Web parameters; AI filtering uses returned artwork fields.
 - `rating=r18`, `r18g`, `mature`, `--search-by tag-title-caption`, or bookmark-count bounds fail before an anonymous
   request with an authentication requirement rather than pretending the result is empty. Bookmark-count bounds additionally require Pixiv Premium. `rating=all` means only content visible anonymously.
-- `search-options` is App-only and explicitly unsupported without a refresh token. Search does not read or store
-  browser cookies such as `PHPSESSID`, and never converts a refresh token into a Web session.
+- `search-options` is App-only and explicitly unsupported without a refresh token.
 - `novel search` is App-only and returns an authentication requirement without a refresh token.
 - The nine extended ranking modes (`day_manga`, `week_manga`, `month_manga`, `week_rookie_manga`, `day_r18`,
   `day_male_r18`, `day_female_r18`, `week_r18`, `week_r18g`) require authentication; they do not fall back to
@@ -578,9 +572,9 @@ Differences in the anonymous fallback:
   labeled as related authors rather than a username search.
 - Static single/multi-page downloads use the `original` URLs from `/ajax/illust/{id}/pages`.
 - Ugoira downloads use the `originalSrc` zip and frames from `/ajax/illust/{id}/ugoira_meta`; supported release
-  builds encode GIF/APNG with the built-in Rust encoder, with no runtime `ffmpeg` dependency.
-- The web fallback adds no dedicated proxy environment variable; it keeps using `--proxy` / `--no-proxy`,
-  `https_proxy` / `HTTPS_PROXY`, or `pixiv config set https_proxy ...`.
+  builds encode GIF/APNG with the built-in Rust encoder.
+- The web fallback uses `--proxy` / `--no-proxy`, `https_proxy` / `HTTPS_PROXY`, or
+  `pixiv config set https_proxy ...`.
 
 An invalid proxy URL makes affected CLI data commands and update checks fail before any network request. Diagnostics
 retain only safe classification and static context; they never echo input userinfo, path, or query.
@@ -595,7 +589,7 @@ fallback_enabled = false
 
 ## Version and updates
 
-`pixiv version` prints a human-readable version, commit, and build date; `pixiv version --json` writes JSON
+`pixiv version` prints the version, commit, and build date as text; `pixiv version --json` writes JSON
 containing only `version`, `commit`, and `build_date` to stdout. The root `pixiv --version` is handy for a quick
 version check.
 

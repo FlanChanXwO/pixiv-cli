@@ -4,7 +4,7 @@
 
 - Added `scripts/install.sh` and PowerShell-free `scripts/install.cmd`. They select the current OS/architecture archive from the latest stable release, verify the published SHA-256 and staged binary, and perform a non-admin per-user installation. Both scripts are published and signed as fixed release assets.
 - Added `pixiv auth import` / `auth export` and public SDK auth-bundle APIs for hidden TTY/raw-stdin token import, single-token or versioned-bundle export, and atomic offline restore.
-- Illustration search gained rating, type, AI, aspect-ratio, resolution, and drawing-tool filters; the public SDK adds `SearchIllustFilters`, `SearchIllustOptions`, and `Illust.Tools`, while authenticated `pixiv search-options WORD` exposes available tools without cookie or bookmark-count filtering.
+- Illustration search gained rating, type, AI, aspect-ratio, resolution, and drawing-tool filters; the public SDK adds `SearchIllustFilters`, `SearchIllustOptions`, and `Illust.Tools`, while authenticated `pixiv search-options WORD` exposes available tools.
 - MCP `search_illust` gained the matching filters and `search_illust_options`; typed upstream and local-state error classification now reports safe transport/configuration causes without exposing URLs, hosts, certificates, or credentials.
 - Added the English `pixiv-cli` product skill and reorganized public documentation into English, Simplified Chinese, and Japanese entry points with maintainers' material under `docs/maintainers/`.
 

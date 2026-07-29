@@ -26,9 +26,8 @@
 - `ParseUserReference` complements artwork-reference parsing without weakening the type-safe ID APIs.
 - Cross-machine `auth login` callback relay configuration is available for macOS, Windows, and desktop Linux clients.
   It uses an on-demand persistent `pixiv://` handler, strict callback allowlisting, one-time secret/state validation,
-  optional TLS, and explicit warnings when HTTP plaintext is configured or started. It does not use browser
-  automation or Web fallback. macOS does not silently retain pixiv-cli as the default handler when no previous
-  handler exists.
+  optional TLS, and explicit warnings when HTTP plaintext is configured or started. macOS restores the prior handler
+  when one exists, and reports the association state when no prior handler exists.
 
 ## Fixed
 

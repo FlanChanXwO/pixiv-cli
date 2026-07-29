@@ -12,20 +12,20 @@
 
 </div>
 
-`pixiv-cli` は Pixiv のエコシステムをターミナルにもたらします。作品とクリエイターを発見し、アカウントとブックマークを管理し、クリエイターをフォローして視覚作品をダウンロードできます。人・AI エージェント・Go アプリケーション向けの独立開発による非公式サードパーティーツールであり、Pixiv Inc. との提携・所属関係はなく、同社による承認も受けていません。CLI と MCP server は同じ public Go SDK を使用し、認証済み機能では Pixiv App API を信頼できるデータソースとします。利用時は Pixiv の規約および適用法令を遵守してください。
-
-メンテナー向け：release tag は保護された認証 E2E gate により停止できます。refresh token は GitHub `pixiv-e2e` Environment Secret にのみ保存し、作品 ID と検索入力は Environment Variables に設定します。PR と `main` の CI は offline かつ secret-free のままです。詳細は[開発フロー](docs/maintainers/development.md#テスト)を参照してください。
+`pixiv-cli` は Pixiv のエコシステムをターミナルにもたらします。作品とクリエイターを発見し、アカウントとブックマークを管理し、クリエイターをフォローして視覚作品をダウンロードできます。独立開発による非公式の CLI、MCP server、public Go SDK であり、Pixiv Inc. との提携・所属関係はなく、同社による承認も受けていません。CLI と MCP server は同じ public Go SDK を使用し、認証済み機能では Pixiv App API を信頼できるデータソースとします。利用時は Pixiv の規約および適用法令を遵守してください。
 
 ## pixiv-cli を選ぶ理由
 
-- **統一された機能** — CLI・MCP・SDK から公式 Pixiv の検索、詳細、ランキング、おすすめ、ユーザー、ブックマーク、フォロー、ダウンロード、うごイラを利用できます。第三者の集約/ランダム画像 API を再現しません。
-- **App API 優先** — refresh token が設定されている場合は常に認証済み App 経路を使用し、App の失敗を Web に暗黙フォールバックしません。
-- **認証済み R18 読み取り** — detail、pages、ugoira metadata と全 16 ranking mode は App API を使い、original が得られない場合は検証済み medium ugoira ZIP を正しく使用します。
+- **統一された機能** — CLI・MCP・SDK から Pixiv の検索、詳細、ランキング、おすすめ、ユーザー、ブックマーク、フォロー、ダウンロード、うごイラを利用できます。
+- **フィードと合成可能な Record パイプライン** — canonical NDJSON でフィードを取得し、Record をローカルで filter して action へ渡せます。
+- **ローカル account pool** — 読み取り処理に適格なローカル account を選択し、pagination と download preparation で Pixiv の `Retry-After` に従います。
+- **GIF と APNG のうごイラ出力** — GIF を既定にしつつ、CLI・MCP・SDK から APNG を明示指定できます。
+- **キャッシュ対応 download** — `.pixiv-cache` metadata を永続的に再検証し、検証済み partial を `Range` と `If-Range` で再開し、完了 file を atomic に置き換えます。
+- **認証済み App API の探索** — R18 detail、pages、ugoira metadata、全 16 ranking mode を App API で取得します。
 - **実用的な検索フィルター** — レーティング、作品種別、AI モード、縦横比、解像度、動的な制作ツール候補に対応します。
-- **Pixiv URL を直接指定** — 対応する作品 URL を detail/download に貼り付けられ、認証済みならユーザープロフィール/作品一覧 URL でそのユーザーの視覚作品をブラウザー Cookie 自動化なしにダウンロードできます。
-- **ローカル複数アカウント OAuth** — ブラウザーの Cookie や profile を読み取らず、ブラウザーログイン、アカウント選択、refresh token rotation を行います。
-- **安全な自動化** — typed SDK error、JSON 出力、クリーンな MCP stdio、署名付き更新を備え、結果を暗黙に切り捨てません。
-- **限定的な匿名アクセス** — token がなく fallback が有効な場合、対応する読み取り操作は Web API を利用できます。
+- **Pixiv URL を直接指定** — 対応する作品 URL を detail/download に貼り付けられ、認証済みのユーザープロフィール/作品一覧 URL はそのユーザーの視覚作品へ展開されます。
+- **ローカル複数アカウント OAuth** — ブラウザーログイン、アカウント選択、refresh token rotation、オプションの cross-machine callback relay に対応します。
+- **自動化向け integration** — typed SDK error、JSON 出力、クリーンな MCP stdio、署名付き更新、完全な結果レポートを備えます。
 
 ## インストール
 
@@ -161,9 +161,9 @@ download, err := client.Download(ctx, "https://www.pixiv.net/artworks/123456")
 
 ## 認証と token の安全性
 
-推奨設定は `pixiv auth login` です。Pixiv App OAuth の raw refresh token を UID ごとにローカル account store へ保存します。`PHPSESSID` などのブラウザー Cookie は拒否され、App credential へ変換されません。
+推奨設定は `pixiv auth login` です。Pixiv App OAuth の raw refresh token を UID ごとにローカル account store へ保存します。
 
-macOS、desktop Linux、Windows は on-demand persistent `pixiv://` callback handler を使い、local login と明示設定した cross-machine relay をサポートします。relay に送れるのは `pixiv://account/login` だけで、Cookie 読み取り、browser automation、Web fallback は行いません。GUI のない SSH server は既存の `--no-open --addr` と local `ssh -L` tunnel を使うか、documented relay server/client setting を設定します。詳細は [CLI リファレンス](docs/ja/cli-reference.md#refresh-token-の取得) を参照してください。
+macOS、desktop Linux、Windows は on-demand persistent `pixiv://` callback handler を使い、local login と明示設定した cross-machine relay をサポートします。relay は `pixiv://account/login` callback を受け付けます。GUI のない SSH server は既存の `--no-open --addr` と local `ssh -L` tunnel を使うか、documented relay server/client setting を設定します。詳細は [CLI リファレンス](docs/ja/cli-reference.md#refresh-token-の取得) を参照してください。
 
 ```bash
 pixiv auth list

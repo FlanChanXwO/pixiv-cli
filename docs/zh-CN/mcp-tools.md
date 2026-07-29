@@ -11,7 +11,7 @@
 
 以 `pixiv mcp` 启动 stdio server。stdout 仅用于 JSON-RPC；操作日志写入用户主目录 `~/.pixiv-cli/logs`（Windows 为 `%USERPROFILE%\.pixiv-cli\logs`）下的按日纯文本文件 `YYYY-MM-DD.txt`（默认保留 7 天），终端默认无日志痕迹。MCP 不提供 HTTP endpoint。
 
-有 refresh token 时 App API 为主路径，失败不自动回落 Web；无 refresh token 且 `web_fallback_enabled=true` 时，仅匿名白名单读 tool 可用 Web API。查询型 tool（包括作品查询）同时返回紧凑文本摘要与对应的 typed structured output；其可分类失败会令 result `isError=true`，保留安全错误文本和对应 structured output。其他文本型 MCP tool 的失败保留既有 Content、structured output、文本和 `isError=false` wire 形式，但对应文件日志 operation event 会使用 error level 和 `result=error`；事件只保留 operation、稳定 SDK 分类、backend/status 及安全 ID，不记录原始错误文本、tool 输入、query、token、Cookie、URL、path 或 response body。公开可写的未知 SDK error code 不进入事件，未知 backend 归类为 `local`，不会回显原值。正常空结果仍记录为成功。
+有 refresh token 时请求由 App API 执行，失败返回分类结果；无 refresh token 且 `web_fallback_enabled=true` 时，仅匿名白名单读 tool 可用 Web API。查询型 tool（包括作品查询）同时返回紧凑文本摘要与对应的 typed structured output；其可分类失败会令 result `isError=true`，保留安全错误文本和对应 structured output。其他文本型 MCP tool 的失败保留既有 Content、structured output、文本和 `isError=false` wire 形式，但对应文件日志 operation event 会使用 error level 和 `result=error`；事件只保留 operation、稳定 SDK 分类、backend/status 及安全 ID 与脱敏诊断。公开可写的未知 SDK error code 不进入事件，未知 backend 归类为 `local`，不会回显原值。正常空结果仍记录为成功。
 
 ## 分页
 
@@ -29,7 +29,7 @@ SDK cursor 不出现在 MCP 参数或输出。列表工具统一使用逻辑 `pa
 | --- | --- | --- |
 | `set_download_path` | `path` | 文本状态。 |
 | `refresh_token` | 无 | 当前认证账号摘要。 |
-| `set_refresh_token` | 原始 App API `refresh_token` | 当前会话认证结果；不写 `auth.json`；Cookie 输入会被拒绝。 |
+| `set_refresh_token` | 原始 App API `refresh_token` | 当前会话认证结果；`auth.json` 保持不变。 |
 | `download` | `src` 与 `srcs` 二选一；每项为 PID、Pixiv 作品/用户 URL 或允许的 CDN URL；可选 `pages`、`quality`、`concurrency`、`ugoira_format`（`gif` 或 `apng`）；`delivery` 仅 `local_path` | `{items, failures}` 下载报告；含本地文件元数据；不内嵌图片内容。 |
 | `download_random_from_recommendation` | 可选 `count`（省略或 `null` 时默认 5；显式值须为 1..20），可选 `pages`/`quality`；`delivery` 仅 `local_path` | 下载结果文本与 structured 本地文件元数据；不内嵌图片内容。 |
 
@@ -39,7 +39,7 @@ SDK cursor 不出现在 MCP 参数或输出。列表工具统一使用逻辑 `pa
 
 以 HTTP(S) 代理启动 MCP server 时，其媒体资源下载会刻意使用 HTTP/1.1。App API、OAuth 与 Web 元数据请求仍保留常规协议协商；此行为规避部分代理特有的 HTTP/2 流重置，不改变认证或所选下载质量。
 
-`download.src` 为单个来源，`download.srcs` 为有序来源数组，二者同时提供会被拒绝。来源可以是 PID、官方 Pixiv HTTPS 作品/用户页面，或 SDK `ResourcePolicy` 允许的 CDN URL。解析不跟随跳转、不抓取 HTML；用户 URL 按输入位置展开其全部 `illust`、`manga`、`ugoira`，不下载小说，并且必须使用 App OAuth，不能走匿名 Web fallback。`concurrency=0` 使用 `2 × GOMAXPROCS`，正数精确采用。下载在 `.pixiv-cache` 保存 HTTP 缓存元数据，只有 validator 匹配的残片才会经 `If-Range` 续传。取消立即停止；单件或单页失败不会阻止之后的目标，`items` 与 `failures` 会一起返回，因此含失败的报告 result 为 `isError=true`。
+`download.src` 为单个来源，`download.srcs` 为有序来源数组，二者同时提供会被拒绝。来源可以是 PID、官方 Pixiv HTTPS 作品/用户页面，或 SDK `ResourcePolicy` 允许的 CDN URL。用户 URL 通过 App OAuth 按输入位置展开全部 `illust`、`manga`、`ugoira`，小说不在下载集合内。`concurrency=0` 使用 `2 × GOMAXPROCS`，正数精确采用。下载在 `.pixiv-cache` 保存 HTTP 缓存元数据，只有 validator 匹配的残片才会经 `If-Range` 续传。取消立即停止；单件或单页失败不会阻止之后的目标，`items` 与 `failures` 会一起返回，因此含失败的报告 result 为 `isError=true`。
 
 两个下载 tool 在参数校验、SDK、推荐获取、下载、结果整理失败时，都会保留原有业务错误文本，并返回有效 structured output：`delivery` 固定为 `local_path`（非法 `delivery` 时同样回落到该值），`items`、`failures` 与 `files` 是空数组而不是 `null`。这些全量失败结果返回 `isError=false`，不会被 typed output schema 的校验错误替代。成功与失败均不内嵌图片内容。
 
@@ -49,16 +49,16 @@ SDK cursor 不出现在 MCP 参数或输出。列表工具统一使用逻辑 `pa
 | --- | --- | --- |
 | `search_illust` | `word`、`search_target`、`sort`、`duration`、`start_date`、`end_date`、`page`、`limit`、`rating`、`content_type`、`ai_mode`、`aspect_ratio`、`resolution`、`tool`、`bookmark_min`、`bookmark_max` | `{records, pagination?}`；`records` 可直接作为后续下载的作品引用来源。 |
 | `search_novel` | `word`、`search_target`、`sort`、`duration`、`page`、`limit`、`rating`、`min_text_length`、`max_text_length`、`original_only` | 仅 App 的 `{records, pagination?}`；可分类失败会令 `isError=true`。 |
-| `search_illust_options` | 必填 `word` | 当前搜索词可用的 `{tools,text}`；需要认证，不支持 Web fallback。 |
+| `search_illust_options` | 必填 `word` | 当前搜索词可用的认证 App API `{tools,text}`。 |
 | `illust_detail` | `illust_id` 或 `url` 二选一 | `{records}`；作品详情；Pixiv 提供时包含原始 HTML `caption`。 |
 | `illust_related` | `illust_id`、`page`、`limit` | `{records, pagination?}` 相关作品。 |
 | `illust_ranking` | `mode`、`date`、`page`、`limit` | `{records, pagination?}` 排行榜作品。 |
 | `illust_recommended` | `page`、`limit` | `{records, pagination?}` 推荐作品；文本输出经公开 SDK 调用链执行。 |
-| `recommended` | 必填 `kind`（`all`、`illust`、`manga`、`novel`、`user`），可选 `page`、`limit` | `{records, pagination?}`；`all` 顺序读取四个认证 stream。每条 stream 独立应用分页，不暴露 SDK cursor，不支持 Web fallback。 |
+| `recommended` | 必填 `kind`（`all`、`illust`、`manga`、`novel`、`user`），可选 `page`、`limit` | `{records, pagination?}`；`all` 顺序读取四个认证 stream。每条 stream 独立应用分页，不暴露 SDK cursor。 |
 | `trending_tags_illust` | 无 | `{tags, text}` 热门标签。 |
 | `illust_follow` | `restrict`、`page`、`limit` | `{records, pagination?}` 关注新作；需要认证。 |
 | `search_user` | `word`、`page`、`limit` | `{records, pagination?}`；认证官方 App 搜索为 `app_search`，匿名 fallback 为 `related_illust_authors`，后者不是用户名搜索。 |
-| `user_detail` | 必填 `user_id` | `{records}`；含用户、profile、profile-publicity 与 workspace 字段；需要认证，不支持 Web fallback。 |
+| `user_detail` | 必填 `user_id` | `{records}`；含用户、profile、profile-publicity 与 workspace 字段；通过认证 App API 读取。 |
 | `user_artworks` | 可选 `user_id`、`type`、`page`、`limit` | `{records, pagination?}`；缺省 UID 为当前认证用户。 |
 | `user_bookmarks` | 可选 `user_id`、`restrict`、`tag`、`page`、`limit` | `{records, pagination?}`；缺省 UID 为当前认证用户。 |
 | `user_following` | 可选 `user_id`、`restrict`、`page`、`limit` | `{records, pagination?}`；缺省 UID 为当前认证用户。 |
@@ -78,9 +78,9 @@ SDK cursor 不出现在 MCP 参数或输出。列表工具统一使用逻辑 `pa
 - `bookmark_min` / `bookmark_max`：包含边界的非负公开收藏数；最小值不能大于最大值，且都需要 App OAuth 和有效的 Pixiv 高级会员。已保存账号会在搜索前检查缓存的自身 profile 状态；确认非会员会在本地失败，不发起上游搜索请求。
 
 有 refresh token 时，分辨率、横纵比、工具、作品类型和 `ai_mode=exclude` 由 App 服务端筛选，
-`rating` 与 `ai_mode=only` 由 public SDK 基于 App 返回字段筛选；App 失败不回落 Web。无 token 的匿名
+`rating` 与 `ai_mode=only` 由 public SDK 基于 App 返回字段筛选；失败返回对应分类结果。无 token 的匿名
 Web 路径只执行已验证可靠的筛选；`rating=r18|r18g|mature`、`search_target=keyword` 和收藏数边界在请求前返回需要登录，不伪装成空结果。Pixiv 对收藏数边界还要求高级会员。
-`search_illust_options` 只走 App API。所有搜索 tool 都不接受 Cookie。
+`search_illust_options` 只走 App API。
 
 对认证态 `search_illust`，标签 `search_target` 会在 `word` 中保留已验证的 Pixiv App 查询语法：
 `exact_match_for_tags` 下 `tagA tagB` 要求两个完整标签同时存在，大写 `tagA OR tagB` 接受任一标签；字面量

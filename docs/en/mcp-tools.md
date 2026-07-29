@@ -13,8 +13,8 @@ Run `pixiv mcp` to start the stdio server. stdout is reserved for JSON-RPC. Oper
 plain-text files named `YYYY-MM-DD.txt` under `~/.pixiv-cli/logs` (on Windows, `%USERPROFILE%\.pixiv-cli\logs`; default
 retention 7 days); the terminal stays free of log traces by default. MCP exposes no HTTP endpoint.
 
-With a refresh token, App API is the primary path and failures never fall back to Web automatically. Without a
-token and with `web_fallback_enabled=true`, only allowlisted anonymous read tools may use Web API. SDK-based user
+With a refresh token, App API handles the request and returns classified failures. Without a token and with
+`web_fallback_enabled=true`, only allowlisted anonymous read tools may use Web API. SDK-based user
 detail/list and bookmark/follow write tools return text plus structured output; classified failures set
 `isError=true`. Query tools likewise keep a compact text summary and return typed structured content; their failures
 set `isError=true`. Legacy session/auth tool failures retain their documented `isError=false` wire behavior, while the
@@ -39,7 +39,7 @@ SDK cursors never appear in MCP input or output. List tools use the logical `pag
 | --- | --- | --- |
 | `set_download_path` | `path` | Text status. |
 | `refresh_token` | none | Current authenticated-account summary. |
-| `set_refresh_token` | raw App API `refresh_token` | Current-session authentication result; does not write `auth.json`; rejects cookies. |
+| `set_refresh_token` | raw App API `refresh_token` | Current-session authentication result; `auth.json` remains unchanged. |
 | `download` | exactly one of `src` or `srcs`; each source is a PID, Pixiv artwork/user URL, or allowed CDN URL; optional `pages`, `quality`, `concurrency`, `ugoira_format` (`gif` or `apng`); `delivery` is `local_path` only | `{items, failures, files, text}` with local file metadata; never embeds image bytes. |
 | `download_random_from_recommendation` | optional `count` (omitted/`null` defaults to 5; explicit value must be 1..20), optional `pages`/`quality`; `delivery` is `local_path` only | Text plus structured local file metadata; never embeds image bytes. |
 
@@ -58,8 +58,8 @@ resets without changing authentication or selected download quality.
 
 `download.src` is a single source and `download.srcs` is an ordered source list; supplying both is invalid. A source
 can be a local-parsed HTTPS `pixiv.net`/`www.pixiv.net` artwork/user URL, a PID, or a CDN URL accepted by the SDK
-resource policy. A user URL follows all `illust`, `manga`, and `ugoira` pages, excludes novels, and requires App
-OAuth; it never falls back to anonymous Web access. It does not fetch HTML or follow redirects. `concurrency=0` uses
+resource policy. A user URL uses App OAuth to follow all `illust`, `manga`, and `ugoira` pages; novels are outside
+the download set. `concurrency=0` uses
 `2 × GOMAXPROCS`; a positive value is used exactly. HTTP cache metadata is retained in `.pixiv-cache`, and only a
 validator-matched partial is resumed with `If-Range`. Partial artwork failures remain in `failures` while other works
 continue; a partial report has `isError=true`.

@@ -34,7 +34,7 @@ local, err := pixiv.OpenDefaultWith(pixiv.OpenDefaultOptions{
 
 每次操作的总生命周期由传入的 `context.Context` 控制。调用方应按操作建立 cancel 或 deadline；`context.Canceled` 与 `context.DeadlineExceeded` 可继续通过 `errors.Is` 判断。`OpenResource` 返回后，context 也覆盖后续 body 读取，调用方须关闭 body，并在不再消费流时取消 context。
 
-显式提供 options 的 `HTTPClient` 时，SDK constructor 保留同一指针及其 `Timeout`、`Transport`、cookie jar 与 redirect policy，不修改调用方对象。需要 client-wide timeout 的集成方可在该 client 上自行设置；SDK 不另加默认 timeout。资源请求仍按下文安全契约在逐请求副本上禁用 cookie 并包装 redirect 校验。完整决策见 [ADR 0010](../maintainers/adr/0010-http-client-timeout-and-context.md)。
+显式提供 options 的 `HTTPClient` 时，SDK constructor 保留同一指针及其 `Timeout`、`Transport`、cookie jar 与 redirect policy，不修改调用方对象。需要 client-wide timeout 的集成方可在该 client 上自行设置；SDK 不另加默认 timeout。资源请求按下文安全契约使用逐请求副本和 redirect 校验。完整决策见 [ADR 0010](../maintainers/adr/0010-http-client-timeout-and-context.md)。
 
 ## 读取与写入
 
@@ -46,7 +46,7 @@ local, err := pixiv.OpenDefaultWith(pixiv.OpenDefaultOptions{
 | 用户 | `SearchUser`、`UserDetail`、`UserArtworks`、`UserBookmarks`、`UserFollowing`、`CurrentUserID`。 |
 | 写操作 | `AddBookmark`、`RemoveBookmark`、`FollowUser`、`UnfollowUser`。 |
 | 账号/配置 | `ImportAccount`、`ListAccounts`、`SelectAccount`、`RemoveAccount`、`ExportAccountRefreshToken`、`ExportAuthBundle`、`RestoreAuthBundle`、`CheckAccount`、`CheckRefreshToken`、`Refresh`、`RefreshAccount`、`PremiumStatus`、`RefreshPremiumStatus`、`GetConfig`、`SetConfig`、`UnsetConfig`；bundle codec 是 package-level function。 |
-| 登录 | `StartLogin`、`CompleteLogin`、`BuildLoginAuthorizationURL`。SDK 不启动浏览器、loopback server 或 TTY。 |
+| 登录 | `StartLogin`、`CompleteLogin`、`BuildLoginAuthorizationURL`。集成方负责浏览器、loopback server 或 TTY 的运行。 |
 | 资源 | `Download`、`DownloadAll`、`DownloadWith`、`DownloadAllWith`、`ParseResourceRef`、`OpenResource`、`DownloadResource`。 |
 
 请求型方法使用命名 request，例如 `SearchIllustRequest`、`SearchNovelRequest`、`SearchIllustOptionsRequest`、`UserArtworksRequest`、`UserBookmarksRequest`、`UserFollowingRequest`、`AddBookmarkRequest`、`FollowUserRequest`。返回模型为 `IllustListResult`、`NovelListResult`、`SearchIllustOptionsResult`、`UserListResult`、`IllustDetail`、`UserDetailResult` 等，均来自顶层 `pixiv` package。
@@ -76,7 +76,7 @@ locale、query 与 fragment。`ParseArtworkReference(raw)` 与 `ParseUserReferen
 
 四类个性化推荐均是 App API 认证操作：插画/漫画使用 `IllustRecommendedRequest`，小说使用 `NovelRecommendedRequest`，作者使用 `UserRecommendedRequest`；各自返回独立的 opaque `NextCursor`。CLI/MCP 的 `all` 仅是边缘层按插画、漫画、小说、作者顺序组合四次 SDK 调用，不改变 SDK 的单流 cursor 契约。
 
-认证输入只能是原始 Pixiv App API refresh token。`ImportAccount`、`CheckRefreshToken`、`OpenDefault` 和由本地账号读取到的 token 会拒绝 Cookie 形态（包括 `refresh_token=...`），返回不含原始输入的 `invalid_argument`，且不会发起 OAuth 请求。
+认证输入为原始 Pixiv App API refresh token。无效凭据输入会在 OAuth 请求前返回不含原始输入的 `invalid_argument`。
 
 `ExportAccountRefreshToken(userID int64)` 是显式的本地 secret 导出接口，只供需要把已存凭据交给另一个
 可信本地集成的调用方使用。`userID == 0` 选择 `auth.json.default_user_id`，正数选择精确账号；它只读取
@@ -167,19 +167,18 @@ SDK 不以 `page` 为输入；CLI/MCP 在边缘层将逻辑 `page`/`limit` 转�
 
 ## 路由
 
-有 refresh token 时，插画搜索只走 App API；App 的认证、网络、服务端失败不自动 Web fallback。
+有 refresh token 时，插画搜索由 App API 执行；认证、网络、服务端失败返回对应 typed error。
 `NewClient` 无 refresh token 且 `WebFallbackEnabled=true` 时，匿名白名单读操作使用 Web API；
 `OpenDefault` 则每次 snapshot 读取本地 `web_fallback_enabled`。匿名 `SearchIllust` 只执行 Web 能可靠
-表达的筛选；`Rating` 为 `r18`、`r18g`、`mature`、`Target=keyword` 或收藏数边界时在联网前返回 `unauthorized`，不会伪装为空结果。
-匿名 `SearchIllustOptions` 返回 `unsupported`，不会请求 Web。SDK 不读取或注入 Cookie，也不把 refresh
-token 转换为 Web session。
+表达的筛选；`Rating` 为 `r18`、`r18g`、`mature`、`Target=keyword` 或收藏数边界时在联网前返回 `unauthorized`。
+匿名 `SearchIllustOptions` 返回 `unsupported`。
 
-`SearchNovel` 需要 App 认证，绝不回落 Web。`SearchUser` 在认证态使用 App 搜索；其匿名 allowlist 路径始终以
-`Source=related_illust_authors` 输出，调用方不会将它误解为官方操作。
+`SearchNovel` 使用 App 认证。`SearchUser` 在认证态使用 App 搜索；其匿名 allowlist 路径以
+`Source=related_illust_authors` 输出。
 
 认证态的 `IllustDetail`、`IllustPages` 与 `UgoiraMetadata` 只使用 App API。多页 `IllustPages` 直接使用 App
 `meta_pages`；单页从 App 的单页/图片字段派生 `meta_pages[0]`，公开 JSON 结构保持不变。缺页或 page count
-不一致会明确返回 `malformed_upstream_response`，绝不返回无标记 partial result；App 失败也不会继续请求 Web。
+不一致会明确返回 `malformed_upstream_response`；App 失败返回该请求的 typed error。
 `Illust.Caption` 保留原始 App `caption` 或匿名 Web `description`；是否将 HTML 转为展示文本由 public SDK 之外的
 展示适配层决定。
 
@@ -202,7 +201,7 @@ defer response.Body.Close()
 // 使用 response.StatusCode、response.Header，流式 io.Copy 到下游。
 ```
 
-`ResourceRef` 只是可持久化引用；每次 `OpenResource` 都重新校验。默认仅官方 Pixiv 资源，调用方可在 `ResourcePolicy.Mirrors` 加入明确 host/path prefix。SDK 只接受 `Range`、`If-None-Match`、`If-Modified-Since`、`If-Range` 条件 header，过滤响应 header，禁用 cookie，并验证 redirect，避免 SSRF。`DownloadResource` 在 `.pixiv-cache`（或 `ResourceCachePath`）保存元数据和残片：已完成文件以 ETag/Last-Modified 重验证，只以 `Range` + `If-Range` 续接已验证残片，并原子发布完成文件；没有 validator 时绝不冒险续传。
+`ResourceRef` 只是可持久化引用；每次 `OpenResource` 都重新校验。默认仅官方 Pixiv 资源，调用方可在 `ResourcePolicy.Mirrors` 加入明确 host/path prefix。SDK 使用 `Range`、`If-None-Match`、`If-Modified-Since`、`If-Range` 条件 header，过滤响应 header，并验证 redirect，避免 SSRF。`DownloadResource` 在 `.pixiv-cache`（或 `ResourceCachePath`）保存元数据和残片：已完成文件以 ETag/Last-Modified 重验证，只以 `Range` + `If-Range` 续接已验证残片，并原子发布完成文件；没有 validator 时绝不冒险续传。
 
 仅对幂等 App API JSON 读取：首次 HTTP 429 且 `Retry-After` 是有效秒数或 HTTP-date 时，SDK 等待一次并重试一次；
 等待受调用方 context 取消控制。header 缺失/非法、第二次 429 和其他错误都保留真实 typed error；写操作和资源下载
@@ -225,7 +224,7 @@ if errors.As(err, &pixivErr) {
 if errors.Is(err, pixiv.ErrUnauthorized) { /* re-auth */ }
 ```
 
-稳定 code 包括 `invalid_argument`、`artwork_unavailable`、`unauthorized`、`forbidden`、`unsupported`、`rate_limited`、`upstream_error`、`upstream_unavailable`、`malformed_upstream_response`。错误带 operation/backend/retryable/status/已验证 ID；不含 token、cookie、完整 URL、header 或上游响应 body。
+稳定 code 包括 `invalid_argument`、`artwork_unavailable`、`unauthorized`、`forbidden`、`unsupported`、`rate_limited`、`upstream_error`、`upstream_unavailable`、`malformed_upstream_response`。错误带 operation/backend/retryable/status/已验证 ID 与脱敏诊断。
 
 补全失败的阶段可直接从 typed error 观察：
 
@@ -238,7 +237,7 @@ if errors.Is(err, pixiv.ErrUnauthorized) { /* re-auth */ }
 | 认证 `UgoiraMetadata` 的 App metadata 失败 | `nil` | `OperationUgoiraMetadata` | `BackendAppAPI` |
 | 匿名 `UgoiraMetadata` 的 Web metadata 失败 | `nil` | `OperationUgoiraMetadata` | `BackendWebAPI` |
 
-例如认证 pages 读取返回 HTTP 403 时，错误为 `CodeForbidden`、`BackendAppAPI`、`OperationIllustPages`，并保留 `UpstreamStatus=403`；不会继续请求 Web。调用方应按这些字段处理失败，不应从结果中猜测补全是否完成。
+例如认证 pages 读取返回 HTTP 403 时，错误为 `CodeForbidden`、`BackendAppAPI`、`OperationIllustPages`，并保留 `UpstreamStatus=403`。调用方应按这些字段处理失败。
 
 `upstream_unavailable` 的网络传输失败还可通过 `Error.TransportKind` 区分安全子类：`dns`、`tls`、`proxy`、`connection_refused`、`connection_reset`、`timeout`、`unknown`。分类只依据 Go 标准库的 typed/wrapped cause，不解析错误文本；例如没有 typed 信号的 HTTPS proxy CONNECT 非 200 文本错误会保持 `unknown`。`Error()` 只输出稳定枚举，不输出 DNS name、代理 userinfo、证书内容或原始 cause。`context.Canceled` 与 `context.DeadlineExceeded` 不设置 transport 子类，继续通过 `errors.Is` 判断。
 

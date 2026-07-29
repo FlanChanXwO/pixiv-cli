@@ -18,9 +18,8 @@ For a GUI-less SSH server, keep the existing public interface: run
 `ssh -N -L PORT:127.0.0.1:PORT HOST` on the browser machine. Open the forwarded
 fallback page locally. Submit a Pixiv relay or final callback there; an accepted
 relay continues in that same browser and the final submission returns through
-the tunnel to the server loopback listener. Do not bind the listener publicly,
-do not require pixiv on the browser machine, and do not read browser state or
-try to automate the authorization page.
+the tunnel to the server loopback listener. Bind the listener to loopback and
+complete authorization in the browser used for the login flow.
 
 For a cross-machine login, the user must explicitly configure the server's
 `login_relay_public_url`, `login_relay_listen_addr`, and hidden
@@ -29,9 +28,7 @@ same secret. The server prints the Pixiv authorization URL; the user opens it
 on the browser machine. After its authenticated callback, the browser machine
 opens a one-time result page under the configured relay URL and waits for the
 actual exchange before showing a fixed success or failure result; that URL has
-no callback or token. Do not attempt remote browser launch, cookie/history
-reading, CDP, persistent proxying, Web API fallback, or a local-subscription
-replacement. HTTPS is preferred; HTTP is permitted only with the CLI's clear
+no callback or token. HTTPS is preferred; HTTP is permitted only with the CLI's clear
 plaintext-risk warnings while configuring either relay URL and starting an HTTP
 server relay. Never request, display, or place the relay secret in a command
 argument. `pixiv config` deliberately manages only download path, filename

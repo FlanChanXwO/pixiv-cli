@@ -10,4 +10,4 @@
 ## Changed
 
 - List commands use `--limit` and logical `--page`; `--offset` was deprecated and SDK cursors are not exposed by CLI/MCP.
-- A configured refresh token never falls back from failed App API calls to Web. Web is reserved for anonymous allowlisted reads and explicit metadata enrichment.
+- A configured refresh token routes requests through the App API; failed calls return their classified error. Web serves anonymous allowlisted reads and explicit metadata enrichment.
