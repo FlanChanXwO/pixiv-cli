@@ -132,15 +132,21 @@ jobs:
           }
           NODE
       # ClawHub 可在接受 publish 后短暂返回 moderation pending。人工恢复只验证
-      # 已有版本，避免对同一个不可变版本重复提交，也不会读取发布 token。
+      # 已有版本，避免对同一个不可变版本重复提交；verify CLI 仍需要登录来读取
+      # 审核中的版本，因此 token 只用于登录和读取，不能进入任何 publish 命令。
       - name: Verify an already-published ClawHub skill
         if: inputs.verify_only == true
         shell: bash
         env:
+          CLAWHUB_CONFIG_PATH: ${{ runner.temp }}/clawhub/config.json
+          CLAWHUB_TOKEN: ${{ secrets.CLAWHUB_TOKEN }}
           RELEASE_COMMIT: ${{ steps.skill_change.outputs.commit }}
           SKILL_VERSION: ${{ steps.skill_change.outputs.skill_version }}
         run: |
           set -euo pipefail
+          test -n "$CLAWHUB_TOKEN"
+          mkdir -p "$(dirname "$CLAWHUB_CONFIG_PATH")"
+          clawhub --no-input login --token "$CLAWHUB_TOKEN"
           clawhub skill verify pixiv-cli --version "$SKILL_VERSION" > "$RUNNER_TEMP/clawhub-verify.json"
           node - "$RUNNER_TEMP/clawhub-verify.json" "$GITHUB_REPOSITORY" "$RELEASE_COMMIT" "$SKILL_VERSION" <<'NODE'
           const fs = require("fs");
