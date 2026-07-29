@@ -30,7 +30,7 @@ class {{FORMULA_CLASS}} < Formula
     bin.install "pixiv"
   end
 
-  post_install do
+  def post_install
     # The hidden command reports integration failures without invalidating the
     # verified Homebrew installation; a normal browser login retries it.
     system bin/"pixiv", "auth", "_install-handler"

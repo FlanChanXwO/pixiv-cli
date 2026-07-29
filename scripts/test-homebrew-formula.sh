@@ -34,6 +34,13 @@ grep -F 'pixiv-cli_0.1.0_linux_amd64.tar.gz' "$formula" >/dev/null
 grep -F 'pixiv-cli_0.1.0_linux_arm64.tar.gz' "$formula" >/dev/null
 grep -F 'conflicts_with "pixiv-cli-beta", because: "both install the pixiv command"' "$formula" >/dev/null
 grep -F 'bin.install "pixiv"' "$formula" >/dev/null
+# Homebrew 的 post_install 是 Formula 实例方法；`post_install do` 虽是合法 Ruby，
+# 却会在当前 Homebrew DSL 中被解释成不存在的类方法，必须在渲染测试中明确防回归。
+grep -F 'def post_install' "$formula" >/dev/null
+if grep -F 'post_install do' "$formula" >/dev/null; then
+	printf '%s\n' 'stable formula uses the unsupported post_install block DSL' >&2
+	exit 1
+fi
 grep -F 'assert_equal "v#{version}", version_info["version"]' "$formula" >/dev/null
 if rg -i 'windows|ffmpeg|depends_on' "$formula" >/dev/null; then
 	printf '%s\n' 'stable formula unexpectedly selects Windows or has a build/ffmpeg dependency' >&2

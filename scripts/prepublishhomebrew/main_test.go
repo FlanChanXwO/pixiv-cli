@@ -10,8 +10,9 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// 预发布验收必须是只读的：它只允许手动触发并验证一个已公开的 stable Release。
-func TestWorkflowEnforcesReadOnlyStableReleaseRehearsal(t *testing.T) {
+// 默认 dispatch 只读；显式 deploy 仍只能在四个平台真实安装通过后，经 release
+// Environment 批准后写入 tap。
+func TestWorkflowEnforcesVerifiedStableReleaseRecovery(t *testing.T) {
 	body, err := os.ReadFile(filepath.Join(findRepositoryRoot(t), ".github", "workflows", "homebrew-prepublish-verify.yml"))
 	if err != nil {
 		t.Fatalf("read prepublish Homebrew workflow: %v", err)
@@ -82,9 +83,9 @@ func TestWorkflowRejectsReadOnlyBoundaryMutations(t *testing.T) {
 			},
 		},
 		{
-			name: "adds a deploy job",
+			name: "deploy bypasses the install matrix",
 			mutate: func(t *testing.T, root *yaml.Node) {
-				appendMappingValue(t, mappingValue(t, root, "jobs"), "deploy", &yaml.Node{Kind: yaml.MappingNode, Tag: "!!map"})
+				mappingValue(t, job(t, root, "deploy_homebrew_tap"), "needs").Value = "render_stable_formula"
 			},
 		},
 		{
@@ -97,6 +98,12 @@ func TestWorkflowRejectsReadOnlyBoundaryMutations(t *testing.T) {
 			name: "references a secret",
 			mutate: func(t *testing.T, root *yaml.Node) {
 				appendMappingValue(t, job(t, root, "verify_homebrew_formula"), "env", mappingNode("LEAK", scalarNode("${{ secrets.TOKEN }}")))
+			},
+		},
+		{
+			name: "deploy runs without explicit operator choice",
+			mutate: func(t *testing.T, root *yaml.Node) {
+				mappingValue(t, job(t, root, "deploy_homebrew_tap"), "if").Value = "always()"
 			},
 		},
 		{

@@ -1,4 +1,4 @@
-// Command prepublishhomebrew 检查只读 Homebrew 发布前演练 workflow 的安全边界。
+// Command prepublishhomebrew 检查 Homebrew 发布前验证与受保护恢复 workflow 的安全边界。
 package main
 
 import (
@@ -99,6 +99,40 @@ else
 fi
 `
 
+// deploy 仅可消费已由四平台 install gate 验证的 artifact。它允许同一份公式已经
+// 存在，以便在网络抖动后安全重跑；除此之外不允许暂存任何 tap 文件。
+const stageVerifiedFormulaRun = `set -euo pipefail
+formula_name=$(cat staging-formula/formula-name)
+test "$formula_name" = pixiv-cli
+test "$(find staging-formula -maxdepth 1 -type f -print | LC_ALL=C sort)" = "$(printf '%s\n%s\n' staging-formula/formula-name staging-formula/pixiv-cli.rb | LC_ALL=C sort)"
+tap_dir="$RUNNER_TEMP/homebrew-tap"
+git clone https://github.com/FlanChanXwO/homebrew-tap.git "$tap_dir"
+git -C "$tap_dir" config user.name github-actions[bot]
+git -C "$tap_dir" config user.email 41898282+github-actions[bot]@users.noreply.github.com
+mkdir -p "$tap_dir/Formula"
+cp staging-formula/pixiv-cli.rb "$tap_dir/Formula/pixiv-cli.rb"
+git -C "$tap_dir" add -- Formula/pixiv-cli.rb
+staged=$(git -C "$tap_dir" diff --cached --name-only)
+test "$staged" = "" || test "$staged" = Formula/pixiv-cli.rb
+test -z "$(git -C "$tap_dir" status --porcelain | sed -n '\|^?? |p')"
+if [ -n "$staged" ]; then
+  git -C "$tap_dir" commit -m "${RELEASE_TAG}: update pixiv-cli formula"
+fi
+`
+
+const pushFormulaRun = `set -eu
+umask 077
+key_path="$RUNNER_TEMP/homebrew-tap-deploy-key"
+trap 'rm -f "$key_path"' EXIT HUP INT TERM
+test -n "$HOMEBREW_TAP_DEPLOY_KEY"
+printf '%s\n' "$HOMEBREW_TAP_DEPLOY_KEY" > "$key_path"
+chmod 600 "$key_path"
+tap_dir="$RUNNER_TEMP/homebrew-tap"
+git -C "$tap_dir" remote set-url origin git@github.com:FlanChanXwO/homebrew-tap.git
+GIT_SSH_COMMAND="ssh -i $key_path -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=$GITHUB_WORKSPACE/templates/homebrew/github.com-known-hosts" \
+  git -C "$tap_dir" push origin HEAD:main
+`
+
 func main() {
 	if len(os.Args) != 3 || os.Args[1] != "--workflow" {
 		fmt.Fprintln(os.Stderr, "prepublish Homebrew workflow policy: usage: prepublishhomebrew --workflow PATH")
@@ -127,8 +161,8 @@ func checkWorkflow(body []byte) error {
 		return errors.New("workflow must contain one document")
 	}
 	root := document.Content[0]
-	if !exactKeys(root, "name", "on", "env", "permissions", "jobs") || scalar(root, "name") != "Homebrew prepublish verification" {
-		return errors.New("workflow root is not the fixed read-only prepublish shape")
+	if !exactKeys(root, "name", "on", "env", "permissions", "jobs") || scalar(root, "name") != "Homebrew prepublish verification and recovery" {
+		return errors.New("workflow root is not the fixed Homebrew verification and recovery shape")
 	}
 	if err := checkDispatch(root); err != nil {
 		return err
@@ -136,15 +170,16 @@ func checkWorkflow(body []byte) error {
 	if !exactStringMap(value(root, "env"), map[string]string{"RELEASE_TAG": "${{ inputs.release_tag }}"}) || !contentsRead(root) {
 		return errors.New("workflow must bind only the required release_tag with contents read")
 	}
-	if workflowpolicy.ContainsSecretReference(root) {
-		return errors.New("prepublish workflow must not reference secrets")
+	// 唯一 secret 只能留给经过 Environment 审批的最终 SSH push step。
+	if strings.Count(string(body), "${{ secrets.") != 1 {
+		return errors.New("workflow must reference exactly one protected deploy secret")
 	}
 	if err := checkActions(root); err != nil {
 		return err
 	}
 	jobs := value(root, "jobs")
-	if !exactKeys(jobs, "validate_existing_release", "render_stable_formula", "verify_homebrew_formula") {
-		return errors.New("workflow must contain only validation, render, and native verify jobs")
+	if !exactKeys(jobs, "validate_existing_release", "render_stable_formula", "verify_homebrew_formula", "deploy_homebrew_tap") {
+		return errors.New("workflow must contain only validation, render, native verify, and protected deploy jobs")
 	}
 	if err := checkValidate(value(jobs, "validate_existing_release")); err != nil {
 		return err
@@ -152,16 +187,22 @@ func checkWorkflow(body []byte) error {
 	if err := checkRender(value(jobs, "render_stable_formula")); err != nil {
 		return err
 	}
-	return checkVerify(value(jobs, "verify_homebrew_formula"))
+	if err := checkVerify(value(jobs, "verify_homebrew_formula")); err != nil {
+		return err
+	}
+	return checkDeploy(value(jobs, "deploy_homebrew_tap"))
 }
 
 func checkDispatch(root *yaml.Node) error {
 	on := value(root, "on")
 	dispatch := value(on, "workflow_dispatch")
-	input := value(value(dispatch, "inputs"), "release_tag")
-	if !exactKeys(on, "workflow_dispatch") || !exactKeys(dispatch, "inputs") || !exactKeys(value(dispatch, "inputs"), "release_tag") ||
-		!exactKeys(input, "description", "required", "type") || scalar(input, "description") != "Existing public stable Release tag to verify" || scalar(input, "type") != "string" || !boolValue(input, "required", true) {
-		return errors.New("workflow_dispatch must require exactly one release_tag input")
+	inputs := value(dispatch, "inputs")
+	releaseTag := value(inputs, "release_tag")
+	deploy := value(inputs, "deploy")
+	if !exactKeys(on, "workflow_dispatch") || !exactKeys(dispatch, "inputs") || !exactKeys(inputs, "release_tag", "deploy") ||
+		!exactKeys(releaseTag, "description", "required", "type") || scalar(releaseTag, "description") != "Existing public stable Release tag to verify or recover" || scalar(releaseTag, "type") != "string" || !boolValue(releaseTag, "required", true) ||
+		!exactKeys(deploy, "description", "required", "default", "type") || scalar(deploy, "description") != "Deploy the formula only after the four native checks pass" || scalar(deploy, "type") != "boolean" || !boolValue(deploy, "required", false) || !boolValue(deploy, "default", false) {
+		return errors.New("workflow_dispatch must require release_tag and default deploy to false")
 	}
 	return nil
 }
@@ -216,6 +257,24 @@ func checkVerify(job *yaml.Node) error {
 	}
 	if !canonicalRunStep(steps[1], "Install the local staging formula and verify its version", verifyStagingFormulaRun, nil) {
 		return errors.New("verify job must use the canonical Linux and macOS Homebrew install paths")
+	}
+	return nil
+}
+
+func checkDeploy(job *yaml.Node) error {
+	if !exactKeys(job, "name", "needs", "if", "runs-on", "environment", "permissions", "steps") ||
+		scalar(job, "name") != "Deploy the verified Homebrew formula" || scalar(job, "needs") != "verify_homebrew_formula" ||
+		scalar(job, "if") != "inputs.deploy == true" || scalar(job, "runs-on") != "ubuntu-24.04" ||
+		scalar(job, "environment") != "release" || !contentsRead(job) {
+		return errors.New("deploy job must be the protected post-matrix recovery gate")
+	}
+	steps := stepsOf(job)
+	if len(steps) != 4 || !checkoutStep(steps[0]) || !exactKeys(steps[1], "uses", "with") ||
+		scalar(steps[1], "uses") != "actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093" ||
+		!exactStringMap(value(steps[1], "with"), map[string]string{"name": "staging-homebrew-formula", "path": "staging-formula"}) ||
+		!canonicalRunStep(steps[2], "Stage exactly one verified formula", stageVerifiedFormulaRun, nil) ||
+		!canonicalRunStep(steps[3], "Push with the release Environment deploy key", pushFormulaRun, map[string]string{"HOMEBREW_TAP_DEPLOY_KEY": "${{ secrets.HOMEBREW_TAP_DEPLOY_KEY }}"}) {
+		return errors.New("deploy job must use the canonical protected formula recovery steps")
 	}
 	return nil
 }

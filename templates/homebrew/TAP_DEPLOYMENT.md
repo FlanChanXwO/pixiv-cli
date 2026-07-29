@@ -26,8 +26,10 @@ credential material。远端 Environment 与 deploy key 已由 **Task20** 接入
    精确 commit push 为 `HEAD:main`。
 6. draft Release 的匿名 asset URL 不可供 Homebrew 安装，因此 Release 必须在四架构安装前
    公开。若后续安装失败，已公开 Release 不会自动回滚，但 tap 保持不变；维护者应修复原因并
-   按发布策略处置 Release，不能手工绕过 matrix 后单独 push formula。发现 secret 泄露或权限
-   漂移时，立即撤销 tap deploy key。
+   按发布策略处置 Release，不能手工绕过 matrix 后单独 push formula。对于已公开、但原 Release
+   workflow 的 formula 门禁失败的版本，可手动运行 `Homebrew prepublish verification and recovery`：
+   仅当显式设置 `deploy=true` 且同一 run 的四平台安装均通过后，才会请求 `release` Environment
+   并使用上述 deploy key 更新 tap。发现 secret 泄露或权限漂移时，立即撤销 tap deploy key。
 
 `sh scripts/test-release-workflow.sh` 与 `sh scripts/test-homebrew-formula.sh` 只验证本地策略和
 fixture；它们不能替代正式 tag workflow 的四个平台外部安装证据。

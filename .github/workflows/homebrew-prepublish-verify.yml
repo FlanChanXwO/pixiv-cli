@@ -1,14 +1,20 @@
-name: Homebrew prepublish verification
+name: Homebrew prepublish verification and recovery
 
 on:
   workflow_dispatch:
     inputs:
       release_tag:
-        description: Existing public stable Release tag to verify
+        description: Existing public stable Release tag to verify or recover
         required: true
         type: string
+      deploy:
+        description: Deploy the formula only after the four native checks pass
+        required: false
+        default: false
+        type: boolean
 
-# 手动演练只从执行所在的默认分支读取受审 workflow；输入 tag 仅绑定已公开的 Release 资产。
+# 手动恢复只从执行所在的默认分支读取受审 workflow；输入 tag 仅绑定已公开的 Release
+# 资产。deploy 默认关闭；即使显式开启，也必须先经过四个原生 Homebrew 安装门禁。
 env:
   RELEASE_TAG: ${{ inputs.release_tag }}
 
@@ -169,3 +175,57 @@ jobs:
             brew install --formula "$staging_tap/$formula_name"
             pixiv version --json | python3 -c 'import json, sys; actual = json.load(sys.stdin)["version"]; expected = sys.argv[1]; assert actual == expected, f"version {actual!r} != {expected!r}"' "$RELEASE_TAG"
           fi
+
+  deploy_homebrew_tap:
+    name: Deploy the verified Homebrew formula
+    needs: verify_homebrew_formula
+    if: inputs.deploy == true
+    runs-on: ubuntu-24.04
+    environment: release
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: staging-homebrew-formula
+          path: staging-formula
+      - name: Stage exactly one verified formula
+        shell: bash
+        run: |
+          set -euo pipefail
+          formula_name=$(cat staging-formula/formula-name)
+          test "$formula_name" = pixiv-cli
+          test "$(find staging-formula -maxdepth 1 -type f -print | LC_ALL=C sort)" = "$(printf '%s\n%s\n' staging-formula/formula-name staging-formula/pixiv-cli.rb | LC_ALL=C sort)"
+          tap_dir="$RUNNER_TEMP/homebrew-tap"
+          git clone https://github.com/FlanChanXwO/homebrew-tap.git "$tap_dir"
+          git -C "$tap_dir" config user.name github-actions[bot]
+          git -C "$tap_dir" config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          mkdir -p "$tap_dir/Formula"
+          cp staging-formula/pixiv-cli.rb "$tap_dir/Formula/pixiv-cli.rb"
+          git -C "$tap_dir" add -- Formula/pixiv-cli.rb
+          staged=$(git -C "$tap_dir" diff --cached --name-only)
+          test "$staged" = "" || test "$staged" = Formula/pixiv-cli.rb
+          test -z "$(git -C "$tap_dir" status --porcelain | sed -n '\|^?? |p')"
+          if [ -n "$staged" ]; then
+            git -C "$tap_dir" commit -m "${RELEASE_TAG}: update pixiv-cli formula"
+          fi
+      - name: Push with the release Environment deploy key
+        shell: bash
+        env:
+          HOMEBREW_TAP_DEPLOY_KEY: ${{ secrets.HOMEBREW_TAP_DEPLOY_KEY }}
+        run: |
+          set -eu
+          umask 077
+          key_path="$RUNNER_TEMP/homebrew-tap-deploy-key"
+          trap 'rm -f "$key_path"' EXIT HUP INT TERM
+          test -n "$HOMEBREW_TAP_DEPLOY_KEY"
+          printf '%s\n' "$HOMEBREW_TAP_DEPLOY_KEY" > "$key_path"
+          chmod 600 "$key_path"
+          tap_dir="$RUNNER_TEMP/homebrew-tap"
+          git -C "$tap_dir" remote set-url origin git@github.com:FlanChanXwO/homebrew-tap.git
+          GIT_SSH_COMMAND="ssh -i $key_path -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=$GITHUB_WORKSPACE/templates/homebrew/github.com-known-hosts" \
+            git -C "$tap_dir" push origin HEAD:main
