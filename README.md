@@ -65,7 +65,9 @@ Also install the product skill that matches the same stable release tag (not mai
 
 Agents with SkillHub support can install the published [`pixiv-cli` Skill](https://www.skillhub.cn/skills/pixiv-cli) directly from SkillHub. The Skill has its own version and teaches the installed CLI; always use `pixiv <cmd> --help` as the final source of command syntax.
 
-Agents using ClawHub can install the same released product skill with `clawhub install pixiv-cli`; pin the installed skill to the matching published release version rather than following an unversioned latest tag.
+### Install the product Skill from ClawHub
+
+Agents using ClawHub can install the published [`pixiv-cli` Skill](https://clawhub.ai/flanchanxwo/skills/pixiv-cli) with `clawhub install pixiv-cli`; pin the installed skill to the matching published release version rather than following an unversioned latest tag.
 
 ### Homebrew (recommended on macOS and Linux)
 

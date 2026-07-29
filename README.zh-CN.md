@@ -63,7 +63,9 @@ binary，并在修改 PATH 前完成用户级安装。可用 `--no-path` 保持 
 
 支持 SkillHub 的 Agent 可直接从 [SkillHub 的 `pixiv-cli` Skill 页面](https://www.skillhub.cn/skills/pixiv-cli) 安装已发布的产品 Skill。Skill 有独立版本并用于指导已安装的 CLI；命令语法始终以 `pixiv <cmd> --help` 为最终依据。
 
-使用 ClawHub 的 Agent 也可执行 `clawhub install pixiv-cli` 安装同一已发布产品 Skill；请固定到与 CLI 发布相同的 Skill 版本，不要跟随未固定的 latest。
+### 通过 ClawHub 安装产品 Skill
+
+使用 ClawHub 的 Agent 可从 [ClawHub 的 `pixiv-cli` Skill 页面](https://clawhub.ai/flanchanxwo/skills/pixiv-cli) 执行 `clawhub install pixiv-cli` 安装已发布的产品 Skill；请固定到与 CLI 发布相同的 Skill 版本，不要跟随未固定的 latest。
 
 ### Homebrew（macOS 与 Linux 推荐）
 

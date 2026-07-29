@@ -61,7 +61,9 @@ Also install the product skill that matches the same stable release tag (not mai
 
 SkillHub に対応した Agent は、公開済みの [`pixiv-cli` Skill](https://www.skillhub.cn/skills/pixiv-cli) を SkillHub から直接インストールできます。Skill には独自の version があり、インストール済み CLI の使い方を案内します。command の syntax は常に `pixiv <cmd> --help` を最終的な根拠にしてください。
 
-ClawHub を使う Agent は `clawhub install pixiv-cli` でも同じ公開 product Skill をインストールできます。unversioned latest を追わず、CLI release と同じ公開 Skill version に固定してください。
+### ClawHub から product Skill をインストールする
+
+ClawHub を使う Agent は、公開済みの [`pixiv-cli` Skill](https://clawhub.ai/flanchanxwo/skills/pixiv-cli) を `clawhub install pixiv-cli` でインストールできます。unversioned latest を追わず、CLI release と同じ公開 Skill version に固定してください。
 
 ### Homebrew（macOS/Linux の推奨方法）
 
