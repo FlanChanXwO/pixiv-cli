@@ -27,8 +27,9 @@ func policyFor(operation Operation) (operationPolicy, bool) {
 	case OperationSearchIllust, OperationIllustRanking, OperationSearchUser:
 		return operationPolicy{authenticated: routeApp, anonymousWeb: true}, true
 	case OperationIllustRelated, OperationTrendingTagsIllust,
-		OperationSearchNovel, OperationIllustRecommended, OperationMangaRecommended, OperationNovelRecommended, OperationUserRecommended, OperationFollowingIllusts,
-		OperationUserDetail, OperationUserArtworks, OperationUserBookmarks, OperationUserFollowing:
+		OperationSearchNovel, OperationIllustRecommended, OperationMangaRecommended, OperationNovelRecommended, OperationUserRecommended, OperationFollowingIllusts, OperationFollowingNovels,
+		OperationLatestIllusts, OperationLatestNovels, OperationMyPixivUsers, OperationMyPixivIllusts, OperationMyPixivNovels,
+		OperationUserDetail, OperationUserArtworks, OperationUserBookmarks, OperationUserFollowing, OperationUserNovels:
 		return operationPolicy{authenticated: routeApp}, true
 	case OperationSearchIllustOptions:
 		return operationPolicy{authenticated: routeApp}, true

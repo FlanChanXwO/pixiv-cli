@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/url"
@@ -15,16 +16,24 @@ import (
 
 type userListOptions struct {
 	commandOptions
+	ndjsonOutputOptions
 	listOptions
 	restrict   string
 	tag        string
 	illustType string
 }
 
+type userSearchOptions struct {
+	commandOptions
+	ndjsonOutputOptions
+	listOptions
+}
+
 type mutationOptions struct {
 	commandOptions
 	restrict string
 	tags     []string
+	onError  string
 }
 
 func (a app) newUserCommand() *cobra.Command {
@@ -34,71 +43,102 @@ func (a app) newUserCommand() *cobra.Command {
 }
 
 func (a app) newUserSearchCommand() *cobra.Command {
-	opts := struct {
-		commandOptions
-		listOptions
-	}{}
+	opts := userSearchOptions{}
 	cmd := &cobra.Command{Use: "search WORD", Short: "Search users", Example: "pixiv user search \"miku\" --json", Args: requireMinArgs(1, "pixiv user search [options] WORD"), RunE: func(cmd *cobra.Command, args []string) error {
-		return a.runUserSearch(cmd, args, opts.commandOptions, opts.listOptions)
+		return a.runUserSearch(cmd, args, opts)
 	}}
 	a.bindCommonFlags(cmd, &opts.commandOptions)
+	bindNDJSONFlag(cmd, &opts.ndjsonOutputOptions)
 	bindListFlags(cmd, &opts.listOptions)
 	return cmd
 }
 
-func (a app) runUserSearch(cmd *cobra.Command, args []string, options commandOptions, list listOptions) error {
-	plan, err := parseListPlan(cmd, list)
+func (a app) runUserSearch(cmd *cobra.Command, args []string, opts userSearchOptions) error {
+	plan, err := parseListPlan(cmd, opts.listOptions)
 	if err != nil {
 		return err
 	}
-	request, jsonOverride, err := a.sdkRequest(cmd, options)
+	request, jsonOverride, err := a.sdkRequest(cmd, opts.commandOptions)
 	if err != nil {
 		return err
 	}
 	services := a.services()
-	jsonOut, err := services.SDK.JSONOut(jsonOverride)
-	if err != nil {
-		return err
+	if opts.ndjson && cmd.Flags().Changed("json") {
+		return newUsageError(fmt.Errorf("--ndjson cannot be used with --json"))
 	}
-	client, err := services.SDK.OpenOperation(cmd.Context(), request)
-	if err != nil {
-		return err
-	}
-	word := strings.Join(args, " ")
-	var source sdk.UserSearchSource
-	printedHeading := false
-	fetch := func(ctx context.Context, cursor sdk.Cursor) ([]sdk.UserPreview, sdk.Cursor, error) {
-		result, searchErr := client.SearchUser(ctx, sdk.SearchUserRequest{Word: word, Cursor: cursor})
-		if searchErr != nil {
-			return nil, "", searchErr
-		}
-		if result == nil || !validUserSearchSource(result.Source) {
-			return nil, "", fmt.Errorf("pixiv sdk returned a user search result without a valid source")
-		}
-		if source != "" && source != result.Source {
-			return nil, "", fmt.Errorf("pixiv sdk changed user search source during pagination")
-		}
-		source = result.Source
-		if !jsonOut && !printedHeading {
-			fmt.Fprintln(a.out, userSearchHeading(word, source))
-			printedHeading = true
-		}
-		return result.UserPreviews, result.NextCursor, nil
-	}
-	if jsonOut {
-		spool, spoolErr := newJSONArraySpool("user_previews")
-		if spoolErr != nil {
-			return spoolErr
-		}
-		defer spool.Close()
-		if err := pageItems(cmd.Context(), plan, fetch, func(items []sdk.UserPreview) error { return appendJSONArray(spool, items) }); err != nil {
+	jsonOut := false
+	if !opts.ndjson {
+		jsonOut, err = services.SDK.JSONOut(jsonOverride)
+		if err != nil {
 			return err
 		}
-		return spool.CommitWithStringField(a.out, "source", string(source))
 	}
-	return pageItems(cmd.Context(), plan, fetch, func(items []sdk.UserPreview) error {
-		printUserSearchPreviews(a.out, items)
-		return nil
+	word := strings.Join(args, " ")
+	return services.SDK.RunPooledOperation(cmd.Context(), request, func(ctx context.Context, client application.SDKClient) (bool, error) {
+		var source sdk.UserSearchSource
+		fetch := func(ctx context.Context, cursor sdk.Cursor) ([]sdk.UserPreview, sdk.Cursor, error) {
+			result, searchErr := client.SearchUser(ctx, sdk.SearchUserRequest{Word: word, Cursor: cursor})
+			if searchErr != nil {
+				return nil, "", searchErr
+			}
+			if result == nil || !validUserSearchSource(result.Source) {
+				return nil, "", fmt.Errorf("pixiv sdk returned a user search result without a valid source")
+			}
+			if source != "" && source != result.Source {
+				return nil, "", fmt.Errorf("pixiv sdk changed user search source during pagination")
+			}
+			source = result.Source
+			return result.UserPreviews, result.NextCursor, nil
+		}
+		committed := false
+		if opts.ndjson {
+			encoder := json.NewEncoder(a.out)
+			err := pageItems(ctx, plan, fetch, func(items []sdk.UserPreview) error {
+				for _, item := range items {
+					record, err := application.RecordFromUserPreview(item)
+					if err != nil {
+						return err
+					}
+					committed = true
+					if err := encoder.Encode(record); err != nil {
+						return err
+					}
+				}
+				return nil
+			})
+			return committed, err
+		}
+		if jsonOut {
+			spool, err := newJSONArraySpool("user_previews")
+			if err != nil {
+				return false, err
+			}
+			defer spool.Close()
+			if err := pageItems(ctx, plan, fetch, func(items []sdk.UserPreview) error { return appendJSONArray(spool, items) }); err != nil {
+				return false, err
+			}
+			committed = true
+			err = spool.CommitWithStringField(a.out, "source", string(source))
+			return committed, err
+		}
+		headingWritten := false
+		err := pageItems(ctx, plan, fetch, func(items []sdk.UserPreview) error {
+			if !headingWritten {
+				committed = true
+				if _, err := fmt.Fprintln(a.out, userSearchHeading(word, source)); err != nil {
+					return err
+				}
+				headingWritten = true
+			}
+			if len(items) > 0 {
+				committed = true
+			}
+			if err := printUserSearchPreviews(a.out, items); err != nil {
+				return err
+			}
+			return nil
+		})
+		return committed, err
 	})
 }
 
@@ -113,7 +153,7 @@ func userSearchHeading(word string, source sdk.UserSearchSource) string {
 	return fmt.Sprintf("users for %q (source: %s)", word, source)
 }
 
-func printUserSearchPreviews(out io.Writer, items []sdk.UserPreview) {
+func printUserSearchPreviews(out io.Writer, items []sdk.UserPreview) error {
 	for _, item := range items {
 		line := fmt.Sprintf("%d %s", item.User.ID, safeTextLine(item.User.Name))
 		if item.User.Account != "" {
@@ -122,8 +162,11 @@ func printUserSearchPreviews(out io.Writer, items []sdk.UserPreview) {
 		if item.User.Comment != "" {
 			line += " — " + safeTextLine(item.User.Comment)
 		}
-		fmt.Fprintln(out, line)
+		if _, err := fmt.Fprintln(out, line); err != nil {
+			return err
+		}
 	}
+	return nil
 }
 
 func (a app) newUserDetailCommand() *cobra.Command {
@@ -149,55 +192,60 @@ func (a app) runUserDetail(cmd *cobra.Command, arg string, opts commandOptions) 
 	if err != nil {
 		return err
 	}
-	client, err := services.SDK.OpenOperation(cmd.Context(), request)
-	if err != nil {
-		return err
-	}
-	result, err := client.UserDetail(cmd.Context(), sdk.UserDetailRequest{UserID: userID})
-	if err != nil {
-		return err
-	}
-	if result == nil {
-		return fmt.Errorf("pixiv sdk returned an empty user detail result")
-	}
-	if jsonOut {
-		return a.printJSON(result)
-	}
-	printUserDetail(a.out, *result)
-	return nil
+	return services.SDK.RunPooledOperation(cmd.Context(), request, func(ctx context.Context, client application.SDKClient) (bool, error) {
+		result, err := client.UserDetail(ctx, sdk.UserDetailRequest{UserID: userID})
+		if err != nil {
+			return false, err
+		}
+		if result == nil {
+			return false, fmt.Errorf("pixiv sdk returned an empty user detail result")
+		}
+		if jsonOut {
+			// 下游写入开始即禁止因伪装成 429 的 writer error 重放请求。
+			committed := true
+			err = a.printJSON(result)
+			return committed, err
+		} else {
+			committed := true
+			err = printUserDetail(a.out, *result)
+			return committed, err
+		}
+	})
 }
 
 // printUserDetail 只展示人可读且有值的文本字段；固定计数保留零值，以免把公开的
 // “没有作品/关注”误报为字段缺失。完整机器可读字段由 --json 原样输出 SDK 模型。
-func printUserDetail(out io.Writer, result sdk.UserDetailResult) {
-	fmt.Fprintf(out, "user id: %d\n", result.User.ID)
+func printUserDetail(out io.Writer, result sdk.UserDetailResult) error {
+	lines := []string{fmt.Sprintf("user id: %d", result.User.ID)}
 	if result.User.Name != "" {
-		fmt.Fprintf(out, "name: %s\n", result.User.Name)
+		lines = append(lines, fmt.Sprintf("name: %s", result.User.Name))
 	}
 	if result.User.Account != "" {
-		fmt.Fprintf(out, "account: %s\n", result.User.Account)
+		lines = append(lines, fmt.Sprintf("account: %s", result.User.Account))
 	}
 	if result.User.Comment != "" {
-		fmt.Fprintf(out, "comment: %s\n", result.User.Comment)
+		lines = append(lines, fmt.Sprintf("comment: %s", result.User.Comment))
 	}
 	if result.Profile.Webpage != nil {
 		if webpage := publicWebpage(*result.Profile.Webpage); webpage != "" {
-			fmt.Fprintf(out, "webpage: %s\n", webpage)
+			lines = append(lines, fmt.Sprintf("webpage: %s", webpage))
 		}
 	}
 	if result.Profile.Region != "" {
-		fmt.Fprintf(out, "region: %s\n", result.Profile.Region)
+		lines = append(lines, fmt.Sprintf("region: %s", result.Profile.Region))
 	}
 	if result.Profile.CountryCode != "" {
-		fmt.Fprintf(out, "country: %s\n", result.Profile.CountryCode)
+		lines = append(lines, fmt.Sprintf("country: %s", result.Profile.CountryCode))
 	}
 	if result.Profile.Job != "" {
-		fmt.Fprintf(out, "job: %s\n", result.Profile.Job)
+		lines = append(lines, fmt.Sprintf("job: %s", result.Profile.Job))
 	}
-	fmt.Fprintf(out, "artworks: %d\n", result.Profile.TotalIllusts)
-	fmt.Fprintf(out, "manga: %d\n", result.Profile.TotalManga)
-	fmt.Fprintf(out, "novels: %d\n", result.Profile.TotalNovels)
-	fmt.Fprintf(out, "following: %d\n", result.Profile.TotalFollowUsers)
+	lines = append(lines,
+		fmt.Sprintf("artworks: %d", result.Profile.TotalIllusts),
+		fmt.Sprintf("manga: %d", result.Profile.TotalManga),
+		fmt.Sprintf("novels: %d", result.Profile.TotalNovels),
+		fmt.Sprintf("following: %d", result.Profile.TotalFollowUsers),
+	)
 	for _, field := range []struct {
 		name  string
 		value string
@@ -216,9 +264,15 @@ func printUserDetail(out io.Writer, result sdk.UserDetailResult) {
 		{"workspace comment", result.Workspace.Comment},
 	} {
 		if field.value != "" {
-			fmt.Fprintf(out, "%s: %s\n", field.name, field.value)
+			lines = append(lines, fmt.Sprintf("%s: %s", field.name, field.value))
 		}
 	}
+	for _, line := range lines {
+		if _, err := fmt.Fprintln(out, line); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // publicWebpage 将可显示的个人主页限定为有主机的 HTTP(S) 地址，并移除可能含有
@@ -241,6 +295,7 @@ func (a app) newUserArtworksCommand() *cobra.Command {
 		return a.runUserArtworks(cmd, args, opts)
 	}}
 	a.bindCommonFlags(cmd, &opts.commandOptions)
+	bindNDJSONFlag(cmd, &opts.ndjsonOutputOptions)
 	bindListFlags(cmd, &opts.listOptions)
 	cmd.Flags().StringVar(&opts.illustType, "type", opts.illustType, "illust type: illust, manga, ugoira")
 	return cmd
@@ -252,6 +307,7 @@ func (a app) newUserBookmarksCommand() *cobra.Command {
 		return a.runUserBookmarks(cmd, args, opts)
 	}}
 	a.bindCommonFlags(cmd, &opts.commandOptions)
+	bindNDJSONFlag(cmd, &opts.ndjsonOutputOptions)
 	bindListFlags(cmd, &opts.listOptions)
 	cmd.Flags().StringVar(&opts.restrict, "restrict", opts.restrict, "bookmark visibility (public or private)")
 	cmd.Flags().StringVar(&opts.tag, "tag", "", "filter by bookmark tag")
@@ -264,35 +320,10 @@ func (a app) newUserFollowingCommand() *cobra.Command {
 		return a.runUserFollowing(cmd, args, opts)
 	}}
 	a.bindCommonFlags(cmd, &opts.commandOptions)
+	bindNDJSONFlag(cmd, &opts.ndjsonOutputOptions)
 	bindListFlags(cmd, &opts.listOptions)
 	cmd.Flags().StringVar(&opts.restrict, "restrict", opts.restrict, "follow visibility (public or private)")
 	return cmd
-}
-
-func (a app) resolveUserID(cmd *cobra.Command, args []string, options commandOptions) (sdkUserID int64, client application.SDKClient, err error) {
-	if len(args) == 1 {
-		id, parseErr := parse.PositiveInt64(args[0], "user_id")
-		if parseErr != nil {
-			return 0, nil, parseErr
-		}
-		request, _, requestErr := a.sdkRequest(cmd, options)
-		if requestErr != nil {
-			return 0, nil, requestErr
-		}
-		services := a.services()
-		client, err = services.SDK.OpenOperation(cmd.Context(), request)
-		if err != nil {
-			return 0, nil, err
-		}
-		return id, client, nil
-	}
-	request, _, err := a.sdkRequest(cmd, options)
-	if err != nil {
-		return 0, nil, err
-	}
-	services := a.services()
-	client, sdkUserID, err = services.SDK.CurrentUserID(cmd.Context(), request)
-	return sdkUserID, client, err
 }
 
 func (a app) runUserArtworks(cmd *cobra.Command, args []string, options userListOptions) error {
@@ -300,29 +331,46 @@ func (a app) runUserArtworks(cmd *cobra.Command, args []string, options userList
 	if err != nil {
 		return err
 	}
-	userID, client, err := a.resolveUserID(cmd, args, options.commandOptions)
-	if err != nil {
-		return err
+	var requestedUserID int64
+	if len(args) == 1 {
+		requestedUserID, err = parse.PositiveInt64(args[0], "user_id")
+		if err != nil {
+			return err
+		}
 	}
 	services := a.services()
-	_, jsonOverride, err := a.sdkRequest(cmd, options.commandOptions)
+	request, jsonOverride, err := a.sdkRequest(cmd, options.commandOptions)
 	if err != nil {
 		return err
 	}
-	jsonOut, err := services.SDK.JSONOut(jsonOverride)
-	if err != nil {
-		return err
+	if options.ndjson && cmd.Flags().Changed("json") {
+		return newUsageError(fmt.Errorf("--ndjson cannot be used with --json"))
 	}
-	if !jsonOut {
-		fmt.Fprintf(a.out, "artworks by %d\n", userID)
+	jsonOut := false
+	if !options.ndjson {
+		jsonOut, err = services.SDK.JSONOut(jsonOverride)
+		if err != nil {
+			return err
+		}
 	}
-	return a.runIllustList(cmd.Context(), plan, jsonOut, func(ctx context.Context, cursor sdk.Cursor) ([]sdk.Illust, sdk.Cursor, error) {
+	userID := requestedUserID
+	fetch := func(client application.SDKClient, ctx context.Context, cursor sdk.Cursor) ([]sdk.Illust, sdk.Cursor, error) {
+		if userID == 0 {
+			var identityErr error
+			userID, identityErr = client.CurrentUserID(ctx)
+			if identityErr != nil {
+				return nil, "", identityErr
+			}
+		}
 		result, err := client.UserArtworks(ctx, sdk.UserArtworksRequest{UserID: userID, Type: sdk.IllustType(options.illustType), Cursor: cursor})
 		if err != nil {
 			return nil, "", err
 		}
 		return result.Illusts, result.NextCursor, nil
-	}, func(items []sdk.Illust, start int) { printIllusts(a.out, items, start, false) })
+	}
+	return a.runPooledIllustListWithHeading(cmd.Context(), request, plan, jsonOut, options.ndjson, func() string {
+		return fmt.Sprintf("artworks by %d", userID)
+	}, fetch, func(items []sdk.Illust, start int) error { return printIllusts(a.out, items, start, false) })
 }
 
 func (a app) runUserBookmarks(cmd *cobra.Command, args []string, options userListOptions) error {
@@ -330,29 +378,46 @@ func (a app) runUserBookmarks(cmd *cobra.Command, args []string, options userLis
 	if err != nil {
 		return err
 	}
-	userID, client, err := a.resolveUserID(cmd, args, options.commandOptions)
-	if err != nil {
-		return err
+	var requestedUserID int64
+	if len(args) == 1 {
+		requestedUserID, err = parse.PositiveInt64(args[0], "user_id")
+		if err != nil {
+			return err
+		}
 	}
 	services := a.services()
-	_, jsonOverride, err := a.sdkRequest(cmd, options.commandOptions)
+	request, jsonOverride, err := a.sdkRequest(cmd, options.commandOptions)
 	if err != nil {
 		return err
 	}
-	jsonOut, err := services.SDK.JSONOut(jsonOverride)
-	if err != nil {
-		return err
+	if options.ndjson && cmd.Flags().Changed("json") {
+		return newUsageError(fmt.Errorf("--ndjson cannot be used with --json"))
 	}
-	if !jsonOut {
-		fmt.Fprintf(a.out, "bookmarks by %d\n", userID)
+	jsonOut := false
+	if !options.ndjson {
+		jsonOut, err = services.SDK.JSONOut(jsonOverride)
+		if err != nil {
+			return err
+		}
 	}
-	return a.runIllustList(cmd.Context(), plan, jsonOut, func(ctx context.Context, cursor sdk.Cursor) ([]sdk.Illust, sdk.Cursor, error) {
+	userID := requestedUserID
+	fetch := func(client application.SDKClient, ctx context.Context, cursor sdk.Cursor) ([]sdk.Illust, sdk.Cursor, error) {
+		if userID == 0 {
+			var identityErr error
+			userID, identityErr = client.CurrentUserID(ctx)
+			if identityErr != nil {
+				return nil, "", identityErr
+			}
+		}
 		result, err := client.UserBookmarks(ctx, sdk.UserBookmarksRequest{UserID: userID, Restrict: sdk.Restrict(options.restrict), Tag: options.tag, Cursor: cursor})
 		if err != nil {
 			return nil, "", err
 		}
 		return result.Illusts, result.NextCursor, nil
-	}, func(items []sdk.Illust, start int) { printIllusts(a.out, items, start, false) })
+	}
+	return a.runPooledIllustListWithHeading(cmd.Context(), request, plan, jsonOut, options.ndjson, func() string {
+		return fmt.Sprintf("bookmarks by %d", userID)
+	}, fetch, func(items []sdk.Illust, start int) error { return printIllusts(a.out, items, start, false) })
 }
 
 func (a app) runUserFollowing(cmd *cobra.Command, args []string, options userListOptions) error {
@@ -360,33 +425,46 @@ func (a app) runUserFollowing(cmd *cobra.Command, args []string, options userLis
 	if err != nil {
 		return err
 	}
-	userID, client, err := a.resolveUserID(cmd, args, options.commandOptions)
-	if err != nil {
-		return err
+	var requestedUserID int64
+	if len(args) == 1 {
+		requestedUserID, err = parse.PositiveInt64(args[0], "user_id")
+		if err != nil {
+			return err
+		}
 	}
 	services := a.services()
-	_, jsonOverride, err := a.sdkRequest(cmd, options.commandOptions)
+	request, jsonOverride, err := a.sdkRequest(cmd, options.commandOptions)
 	if err != nil {
 		return err
 	}
-	jsonOut, err := services.SDK.JSONOut(jsonOverride)
-	if err != nil {
-		return err
+	if options.ndjson && cmd.Flags().Changed("json") {
+		return newUsageError(fmt.Errorf("--ndjson cannot be used with --json"))
 	}
-	if !jsonOut {
-		fmt.Fprintf(a.out, "users followed by %d\n", userID)
+	jsonOut := false
+	if !options.ndjson {
+		jsonOut, err = services.SDK.JSONOut(jsonOverride)
+		if err != nil {
+			return err
+		}
 	}
-	return a.runUserList(cmd.Context(), plan, jsonOut, func(ctx context.Context, cursor sdk.Cursor) ([]sdk.UserPreview, sdk.Cursor, error) {
+	userID := requestedUserID
+	fetch := func(client application.SDKClient, ctx context.Context, cursor sdk.Cursor) ([]sdk.UserPreview, sdk.Cursor, error) {
+		if userID == 0 {
+			var identityErr error
+			userID, identityErr = client.CurrentUserID(ctx)
+			if identityErr != nil {
+				return nil, "", identityErr
+			}
+		}
 		result, err := client.UserFollowing(ctx, sdk.UserFollowingRequest{UserID: userID, Restrict: sdk.Restrict(options.restrict), Cursor: cursor})
 		if err != nil {
 			return nil, "", err
 		}
 		return result.UserPreviews, result.NextCursor, nil
-	}, func(items []sdk.UserPreview) {
-		for _, item := range items {
-			fmt.Fprintf(a.out, "%d %s\n", item.User.ID, item.User.Name)
-		}
-	})
+	}
+	return a.runPooledUserList(cmd.Context(), request, plan, jsonOut, options.ndjson, func() string {
+		return fmt.Sprintf("users followed by %d", userID)
+	}, fetch, func(items []sdk.UserPreview) error { return printUserPreviews(a.out, items) })
 }
 
 func (a app) newBookmarkCommand() *cobra.Command {
@@ -397,59 +475,49 @@ func (a app) newBookmarkCommand() *cobra.Command {
 
 func (a app) newBookmarkAddCommand() *cobra.Command {
 	opts := mutationOptions{restrict: string(sdk.RestrictPublic)}
-	cmd := &cobra.Command{Use: "add ILLUST_ID", Short: "Bookmark an illustration", Args: requireExactArgs(1, "pixiv bookmark add [options] ILLUST_ID"), RunE: func(cmd *cobra.Command, args []string) error {
+	cmd := &cobra.Command{Use: "add [ILLUST_ID]", Short: "Bookmark an illustration", Args: actionInputArgs(a.in, "pixiv bookmark add [options] [ILLUST_ID]"), RunE: func(cmd *cobra.Command, args []string) error {
+		if _, err := recordFailureStrategy(opts.onError); err != nil {
+			return err
+		}
+		invoke := a.lazyActionInvoker(cmd, opts.commandOptions, func(client application.SDKClient, ctx context.Context, id int64) error {
+			return client.AddBookmark(ctx, sdk.AddBookmarkRequest{IllustID: id, Restrict: sdk.Restrict(opts.restrict), Tags: opts.tags})
+		})
+		if len(args) == 0 {
+			return a.consumeActionRecords(cmd, "bookmark_add", opts.onError, visualRecordTypes, invoke)
+		}
 		id, err := parse.PositiveInt64(args[0], "illust_id")
 		if err != nil {
-			return err
+			return newUsageError(err)
 		}
-		request, jsonOverride, err := a.sdkRequest(cmd, opts.commandOptions)
-		if err != nil {
-			return err
-		}
-		jsonOut, err := a.services().SDK.JSONOut(jsonOverride)
-		if err != nil {
-			return err
-		}
-		client, err := a.services().SDK.OpenOperation(cmd.Context(), request)
-		if err != nil {
-			return err
-		}
-		if err := client.AddBookmark(cmd.Context(), sdk.AddBookmarkRequest{IllustID: id, Restrict: sdk.Restrict(opts.restrict), Tags: opts.tags}); err != nil {
-			return err
-		}
-		return a.printMutation(jsonOut, "bookmarked", "illust_id", id)
+		return invoke(cmd.Context(), id)
 	}}
-	a.bindCommonFlags(cmd, &opts.commandOptions)
+	a.bindActionFlags(cmd, &opts.commandOptions)
 	cmd.Flags().StringVar(&opts.restrict, "restrict", opts.restrict, "bookmark visibility (public or private)")
 	cmd.Flags().StringArrayVar(&opts.tags, "tag", nil, "bookmark tag; may be repeated")
+	cmd.Flags().StringVar(&opts.onError, "on-error", "skip", "record failure strategy: skip or fail-fast")
 	return cmd
 }
 
 func (a app) newBookmarkRemoveCommand() *cobra.Command {
-	var opts commandOptions
-	cmd := &cobra.Command{Use: "remove ILLUST_ID", Short: "Remove an illustration bookmark", Args: requireExactArgs(1, "pixiv bookmark remove [options] ILLUST_ID"), RunE: func(cmd *cobra.Command, args []string) error {
+	opts := mutationOptions{}
+	cmd := &cobra.Command{Use: "remove [ILLUST_ID]", Short: "Remove an illustration bookmark", Args: actionInputArgs(a.in, "pixiv bookmark remove [options] [ILLUST_ID]"), RunE: func(cmd *cobra.Command, args []string) error {
+		if _, err := recordFailureStrategy(opts.onError); err != nil {
+			return err
+		}
+		invoke := a.lazyActionInvoker(cmd, opts.commandOptions, func(client application.SDKClient, ctx context.Context, id int64) error {
+			return client.RemoveBookmark(ctx, sdk.RemoveBookmarkRequest{IllustID: id})
+		})
+		if len(args) == 0 {
+			return a.consumeActionRecords(cmd, "bookmark_remove", opts.onError, visualRecordTypes, invoke)
+		}
 		id, err := parse.PositiveInt64(args[0], "illust_id")
 		if err != nil {
-			return err
+			return newUsageError(err)
 		}
-		request, jsonOverride, err := a.sdkRequest(cmd, opts)
-		if err != nil {
-			return err
-		}
-		jsonOut, err := a.services().SDK.JSONOut(jsonOverride)
-		if err != nil {
-			return err
-		}
-		client, err := a.services().SDK.OpenOperation(cmd.Context(), request)
-		if err != nil {
-			return err
-		}
-		if err := client.RemoveBookmark(cmd.Context(), sdk.RemoveBookmarkRequest{IllustID: id}); err != nil {
-			return err
-		}
-		return a.printMutation(jsonOut, "removed_bookmark", "illust_id", id)
+		return invoke(cmd.Context(), id)
 	}}
-	a.bindCommonFlags(cmd, &opts)
+	a.bindActionFlags(cmd, &opts.commandOptions)
+	cmd.Flags().StringVar(&opts.onError, "on-error", "skip", "record failure strategy: skip or fail-fast")
 	return cmd
 }
 
@@ -461,65 +529,67 @@ func (a app) newFollowCommand() *cobra.Command {
 
 func (a app) newFollowAddCommand() *cobra.Command {
 	opts := mutationOptions{restrict: string(sdk.RestrictPublic)}
-	cmd := &cobra.Command{Use: "add USER_ID", Short: "Follow a user", Args: requireExactArgs(1, "pixiv follow add [options] USER_ID"), RunE: func(cmd *cobra.Command, args []string) error {
+	cmd := &cobra.Command{Use: "add [USER_ID]", Short: "Follow a user", Args: actionInputArgs(a.in, "pixiv follow add [options] [USER_ID]"), RunE: func(cmd *cobra.Command, args []string) error {
+		if _, err := recordFailureStrategy(opts.onError); err != nil {
+			return err
+		}
+		invoke := a.lazyActionInvoker(cmd, opts.commandOptions, func(client application.SDKClient, ctx context.Context, id int64) error {
+			return client.FollowUser(ctx, sdk.FollowUserRequest{UserID: id, Restrict: sdk.Restrict(opts.restrict)})
+		})
+		if len(args) == 0 {
+			return a.consumeActionRecords(cmd, "follow_add", opts.onError, userRecordTypes, invoke)
+		}
 		id, err := parse.PositiveInt64(args[0], "user_id")
 		if err != nil {
-			return err
+			return newUsageError(err)
 		}
-		request, jsonOverride, err := a.sdkRequest(cmd, opts.commandOptions)
-		if err != nil {
-			return err
-		}
-		jsonOut, err := a.services().SDK.JSONOut(jsonOverride)
-		if err != nil {
-			return err
-		}
-		client, err := a.services().SDK.OpenOperation(cmd.Context(), request)
-		if err != nil {
-			return err
-		}
-		if err := client.FollowUser(cmd.Context(), sdk.FollowUserRequest{UserID: id, Restrict: sdk.Restrict(opts.restrict)}); err != nil {
-			return err
-		}
-		return a.printMutation(jsonOut, "followed", "user_id", id)
+		return invoke(cmd.Context(), id)
 	}}
-	a.bindCommonFlags(cmd, &opts.commandOptions)
+	a.bindActionFlags(cmd, &opts.commandOptions)
 	cmd.Flags().StringVar(&opts.restrict, "restrict", opts.restrict, "follow visibility (public or private)")
+	cmd.Flags().StringVar(&opts.onError, "on-error", "skip", "record failure strategy: skip or fail-fast")
 	return cmd
 }
 
 func (a app) newFollowRemoveCommand() *cobra.Command {
-	var opts commandOptions
-	cmd := &cobra.Command{Use: "remove USER_ID", Short: "Unfollow a user", Args: requireExactArgs(1, "pixiv follow remove [options] USER_ID"), RunE: func(cmd *cobra.Command, args []string) error {
+	opts := mutationOptions{}
+	cmd := &cobra.Command{Use: "remove [USER_ID]", Short: "Unfollow a user", Args: actionInputArgs(a.in, "pixiv follow remove [options] [USER_ID]"), RunE: func(cmd *cobra.Command, args []string) error {
+		if _, err := recordFailureStrategy(opts.onError); err != nil {
+			return err
+		}
+		invoke := a.lazyActionInvoker(cmd, opts.commandOptions, func(client application.SDKClient, ctx context.Context, id int64) error {
+			return client.UnfollowUser(ctx, sdk.UnfollowUserRequest{UserID: id})
+		})
+		if len(args) == 0 {
+			return a.consumeActionRecords(cmd, "follow_remove", opts.onError, userRecordTypes, invoke)
+		}
 		id, err := parse.PositiveInt64(args[0], "user_id")
 		if err != nil {
-			return err
+			return newUsageError(err)
 		}
-		request, jsonOverride, err := a.sdkRequest(cmd, opts)
-		if err != nil {
-			return err
-		}
-		jsonOut, err := a.services().SDK.JSONOut(jsonOverride)
-		if err != nil {
-			return err
-		}
-		client, err := a.services().SDK.OpenOperation(cmd.Context(), request)
-		if err != nil {
-			return err
-		}
-		if err := client.UnfollowUser(cmd.Context(), sdk.UnfollowUserRequest{UserID: id}); err != nil {
-			return err
-		}
-		return a.printMutation(jsonOut, "unfollowed", "user_id", id)
+		return invoke(cmd.Context(), id)
 	}}
-	a.bindCommonFlags(cmd, &opts)
+	a.bindActionFlags(cmd, &opts.commandOptions)
+	cmd.Flags().StringVar(&opts.onError, "on-error", "skip", "record failure strategy: skip or fail-fast")
 	return cmd
 }
 
-func (a app) printMutation(jsonOut bool, result, idKey string, id int64) error {
-	if jsonOut {
-		return a.printJSON(map[string]any{"result": result, idKey: id})
+// lazyActionInvoker 仅在拿到第一条可执行输入后再打开 SDK operation。空 stdin
+// 不读取认证配置也不访问网络；写操作始终固定在同一账号快照，绝不进入账号池重放。
+func (a app) lazyActionInvoker(cmd *cobra.Command, options commandOptions, invoke func(application.SDKClient, context.Context, int64) error) func(context.Context, int64) error {
+	var client application.SDKClient
+	return func(ctx context.Context, id int64) error {
+		if client == nil {
+			request, _, err := a.sdkRequest(cmd, options)
+			if err != nil {
+				return err
+			}
+			opened, err := a.services().SDK.OpenOperation(ctx, request)
+			if err != nil {
+				return err
+			}
+			client = opened
+		}
+		return invoke(client, ctx, id)
 	}
-	fmt.Fprintf(a.out, "%s %d\n", result, id)
-	return nil
 }

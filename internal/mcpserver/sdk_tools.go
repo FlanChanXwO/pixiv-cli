@@ -15,8 +15,13 @@ type userDetailIn struct {
 	UserID int64 `json:"user_id" jsonschema:"required positive Pixiv user ID"`
 }
 
-// userDetail 直接返回稳定的公开 SDK envelope；MCP 不重新映射或裁剪详情字段。
-func (a *App) userDetail(ctx context.Context, _ *mcp.CallToolRequest, in userDetailIn) (*mcp.CallToolResult, sdk.UserDetailResult, error) {
+type userDetailOut struct {
+	Records []application.Record `json:"records"`
+}
+
+// userDetail 将完整公开 SDK envelope 封装为单条 user record，避免详情 tool 成为
+// records 契约的例外。
+func (a *App) userDetail(ctx context.Context, _ *mcp.CallToolRequest, in userDetailIn) (*mcp.CallToolResult, userDetailOut, error) {
 	if in.UserID <= 0 {
 		return a.userDetailError(ctx, fmt.Errorf("user_id must be a positive integer"))
 	}
@@ -32,15 +37,18 @@ func (a *App) userDetail(ctx context.Context, _ *mcp.CallToolRequest, in userDet
 	if result == nil {
 		return a.userDetailError(ctx, errors.New("pixiv sdk returned an empty user detail result"))
 	}
-	return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("Retrieved details for user %d.", in.UserID)}}}, *result, nil
+	record, err := application.RecordFromUserDetail(*result)
+	if err != nil {
+		return a.userDetailError(ctx, err)
+	}
+	out := userDetailOut{Records: []application.Record{record}}
+	return recordResult(out.Records, false, ""), out, nil
 }
 
-func (a *App) userDetailError(ctx context.Context, err error) (*mcp.CallToolResult, sdk.UserDetailResult, error) {
+func (a *App) userDetailError(ctx context.Context, err error) (*mcp.CallToolResult, userDetailOut, error) {
 	recordToolError(ctx, err)
-	return &mcp.CallToolResult{
-		IsError: true,
-		Content: []mcp.Content{&mcp.TextContent{Text: "Error: " + err.Error()}},
-	}, sdk.UserDetailResult{}, nil
+	out := userDetailOut{Records: []application.Record{}}
+	return recordResult(out.Records, true, recordErrorMessage(err)), out, nil
 }
 
 type recommendedIn struct {
@@ -48,12 +56,8 @@ type recommendedIn struct {
 	pageLimitIn
 }
 type recommendedOut struct {
-	Kind         string                       `json:"kind"`
-	Illusts      []sdk.Illust                 `json:"illusts"`
-	Manga        []sdk.Illust                 `json:"manga"`
-	Novels       []sdk.Novel                  `json:"novels"`
-	UserPreviews []sdk.RecommendedUserPreview `json:"user_previews"`
-	Pagination   recommendedPaginationOut     `json:"pagination"`
+	Records    []application.Record     `json:"records"`
+	Pagination recommendedPaginationOut `json:"pagination"`
 }
 
 // recommendedPaginationOut 分别表达每条推荐流的逻辑分页；SDK opaque cursor 不离开适配层。
@@ -65,9 +69,9 @@ type recommendedPaginationOut struct {
 	User   *paginationOut `json:"user,omitempty"`
 }
 
-func newRecommendedOut(kind string) recommendedOut {
+func newRecommendedOut() recommendedOut {
 	return recommendedOut{
-		Kind: kind, Illusts: []sdk.Illust{}, Manga: []sdk.Illust{}, Novels: []sdk.Novel{}, UserPreviews: []sdk.RecommendedUserPreview{},
+		Records: []application.Record{},
 	}
 }
 
@@ -77,7 +81,7 @@ func recommendedPagination(plan mcpListPlan, limit *int, returned int, more bool
 }
 
 func (a *App) recommended(ctx context.Context, _ *mcp.CallToolRequest, in recommendedIn) (*mcp.CallToolResult, recommendedOut, error) {
-	out := newRecommendedOut(in.Kind)
+	out := newRecommendedOut()
 	plan, err := parseMCPListPlan(in.pageLimitIn)
 	if err == nil && in.Kind != "all" && in.Kind != "illust" && in.Kind != "manga" && in.Kind != "novel" && in.Kind != "user" {
 		err = errors.New("kind must be one of: all, illust, manga, novel, user")
@@ -101,7 +105,11 @@ func (a *App) recommended(ctx context.Context, _ *mcp.CallToolRequest, in recomm
 		if fetchErr != nil {
 			return a.recommendedError(ctx, fetchErr)
 		}
-		out.Illusts = normalizeIllusts(items)
+		records, mapErr := recordsFromIllusts(items)
+		if mapErr != nil {
+			return a.recommendedError(ctx, mapErr)
+		}
+		out.Records = append(out.Records, records...)
 		out.Pagination.Illust = recommendedPagination(plan, in.Limit, len(items), more)
 	}
 	if in.Kind == "all" || in.Kind == "manga" {
@@ -115,7 +123,11 @@ func (a *App) recommended(ctx context.Context, _ *mcp.CallToolRequest, in recomm
 		if fetchErr != nil {
 			return a.recommendedError(ctx, fetchErr)
 		}
-		out.Manga = normalizeIllusts(items)
+		records, mapErr := recordsFromIllusts(items)
+		if mapErr != nil {
+			return a.recommendedError(ctx, mapErr)
+		}
+		out.Records = append(out.Records, records...)
 		out.Pagination.Manga = recommendedPagination(plan, in.Limit, len(items), more)
 	}
 	if in.Kind == "all" || in.Kind == "novel" {
@@ -129,7 +141,11 @@ func (a *App) recommended(ctx context.Context, _ *mcp.CallToolRequest, in recomm
 		if fetchErr != nil {
 			return a.recommendedError(ctx, fetchErr)
 		}
-		out.Novels = normalizeNovels(items)
+		records, mapErr := recordsFromNovels(items)
+		if mapErr != nil {
+			return a.recommendedError(ctx, mapErr)
+		}
+		out.Records = append(out.Records, records...)
 		out.Pagination.Novel = recommendedPagination(plan, in.Limit, len(items), more)
 	}
 	if in.Kind == "all" || in.Kind == "user" {
@@ -143,64 +159,20 @@ func (a *App) recommended(ctx context.Context, _ *mcp.CallToolRequest, in recomm
 		if fetchErr != nil {
 			return a.recommendedError(ctx, fetchErr)
 		}
-		out.UserPreviews = normalizeRecommendedUserPreviews(items)
+		records, mapErr := recordsFromRecommendedUserPreviews(items)
+		if mapErr != nil {
+			return a.recommendedError(ctx, mapErr)
+		}
+		out.Records = append(out.Records, records...)
 		out.Pagination.User = recommendedPagination(plan, in.Limit, len(items), more)
 	}
-	return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("Retrieved %s recommendations.", in.Kind)}}}, out, nil
-}
-
-// normalizeRecommendedUserPreviews 只在 MCP 输出边界把可选作品预览归一为空数组，
-// 使其满足 tool schema；公共 SDK 仍保留 nil 与空切片的原始 Go 语义。
-func normalizeRecommendedUserPreviews(items []sdk.RecommendedUserPreview) []sdk.RecommendedUserPreview {
-	result := make([]sdk.RecommendedUserPreview, len(items))
-	copy(result, items)
-	for index := range result {
-		result[index].Illusts = normalizeIllusts(result[index].Illusts)
-		if result[index].Novels == nil {
-			result[index].Novels = []sdk.Novel{}
-		}
-		result[index].Novels = normalizeNovels(result[index].Novels)
-	}
-	return result
-}
-
-// normalizeNovels 保证 MCP schema 的 tags 字段始终编码为数组。
-func normalizeNovels(items []sdk.Novel) []sdk.Novel {
-	result := make([]sdk.Novel, len(items))
-	copy(result, items)
-	for index := range result {
-		if result[index].Tags == nil {
-			result[index].Tags = []sdk.Tag{}
-		}
-	}
-	return result
-}
-
-// normalizeIllusts 只在 MCP structured output 边界把缺失的工具列表编码为空数组。
-// 复制作品切片可避免适配层改写 public SDK 返回值；非空工具名保持原值和上游顺序。
-func normalizeIllusts(items []sdk.Illust) []sdk.Illust {
-	result := make([]sdk.Illust, len(items))
-	copy(result, items)
-	for index := range result {
-		if result[index].URL == "" && result[index].ID > 0 {
-			result[index].URL = fmt.Sprintf("https://www.pixiv.net/artworks/%d", result[index].ID)
-		}
-		if result[index].Tools == nil {
-			result[index].Tools = []string{}
-		}
-		if result[index].Tags == nil {
-			result[index].Tags = []sdk.Tag{}
-		}
-		if result[index].MetaPages == nil {
-			result[index].MetaPages = []sdk.MetaPage{}
-		}
-	}
-	return result
+	return recordResult(out.Records, false, ""), out, nil
 }
 
 func (a *App) recommendedError(ctx context.Context, err error) (*mcp.CallToolResult, recommendedOut, error) {
 	recordToolError(ctx, err)
-	return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: "Error: " + err.Error()}}}, newRecommendedOut(""), nil
+	out := newRecommendedOut()
+	return recordResult(out.Records, true, recordErrorMessage(err)), out, nil
 }
 
 type userArtworksIn struct {
@@ -210,24 +182,22 @@ type userArtworksIn struct {
 }
 
 type illustListOut struct {
-	UserID     int64         `json:"user_id"`
-	Items      []sdk.Illust  `json:"items"`
-	Pagination paginationOut `json:"pagination"`
-	Text       string        `json:"text"`
+	Records    []application.Record `json:"records"`
+	Pagination paginationOut        `json:"pagination"`
 }
 
 func illustListResult(out illustListOut) *mcp.CallToolResult {
-	return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: out.Text}}}
+	return recordResult(out.Records, false, "")
 }
 
 func (a *App) userArtworks(ctx context.Context, _ *mcp.CallToolRequest, in userArtworksIn) (*mcp.CallToolResult, illustListOut, error) {
 	plan, err := parseMCPListPlan(in.pageLimitIn)
 	if err != nil {
-		return a.illustListError(ctx, in.UserID, err)
+		return a.illustListError(ctx, err)
 	}
 	client, userID, release, err := resolveSDKUser(ctx, a, in.UserID)
 	if err != nil {
-		return a.illustListError(ctx, in.UserID, err)
+		return a.illustListError(ctx, err)
 	}
 	defer release()
 	items, more, err := collectPages(ctx, plan, func(ctx context.Context, cursor sdk.Cursor) ([]sdk.Illust, sdk.Cursor, error) {
@@ -238,22 +208,20 @@ func (a *App) userArtworks(ctx context.Context, _ *mcp.CallToolRequest, in userA
 		return result.Illusts, result.NextCursor, nil
 	})
 	if err != nil {
-		return a.illustListError(ctx, userID, err)
+		return a.illustListError(ctx, err)
 	}
-	text := fmt.Sprintf("Found %d artworks by user %d:\n\n%s", len(items), userID, formatSDKIllusts(items))
-	if len(items) == 0 {
-		text = fmt.Sprintf("No artworks found for user %d.", userID)
+	records, err := recordsFromIllusts(items)
+	if err != nil {
+		return a.illustListError(ctx, err)
 	}
-	out := illustListOut{UserID: userID, Items: normalizeIllusts(items), Pagination: listPagination(plan, in.Limit, len(items), more), Text: text}
+	out := illustListOut{Records: records, Pagination: listPagination(plan, in.Limit, len(items), more)}
 	return illustListResult(out), out, nil
 }
 
-func (a *App) illustListError(ctx context.Context, userID int64, err error) (*mcp.CallToolResult, illustListOut, error) {
+func (a *App) illustListError(ctx context.Context, err error) (*mcp.CallToolResult, illustListOut, error) {
 	recordToolError(ctx, err)
-	out := illustListOut{UserID: userID, Items: []sdk.Illust{}, Text: "Error: " + err.Error()}
-	result := illustListResult(out)
-	result.IsError = true
-	return result, out, nil
+	out := illustListOut{Records: []application.Record{}}
+	return recordResult(out.Records, true, recordErrorMessage(err)), out, nil
 }
 
 type bookmarksSDKIn struct {
@@ -267,11 +235,11 @@ func (a *App) userBookmarks(ctx context.Context, _ *mcp.CallToolRequest, in book
 	plan, err := parseMCPListPlan(in.pageLimitIn)
 	userID := in.UserID
 	if err != nil {
-		return a.illustListError(ctx, userID, err)
+		return a.illustListError(ctx, err)
 	}
 	client, userID, release, err := resolveSDKUser(ctx, a, userID)
 	if err != nil {
-		return a.illustListError(ctx, userID, err)
+		return a.illustListError(ctx, err)
 	}
 	defer release()
 	request := sdk.UserBookmarksRequest{UserID: userID, Restrict: sdk.Restrict(in.Restrict), Tag: in.Tag}
@@ -284,13 +252,13 @@ func (a *App) userBookmarks(ctx context.Context, _ *mcp.CallToolRequest, in book
 		return result.Illusts, result.NextCursor, nil
 	})
 	if err != nil {
-		return a.illustListError(ctx, userID, err)
+		return a.illustListError(ctx, err)
 	}
-	text := fmt.Sprintf("Found %d bookmarks for user %d:\n\n%s", len(items), userID, formatSDKIllusts(items))
-	if len(items) == 0 {
-		text = fmt.Sprintf("No bookmarks found for user %d.", userID)
+	records, err := recordsFromIllusts(items)
+	if err != nil {
+		return a.illustListError(ctx, err)
 	}
-	out := illustListOut{UserID: userID, Items: normalizeIllusts(items), Pagination: listPagination(plan, in.Limit, len(items), more), Text: text}
+	out := illustListOut{Records: records, Pagination: listPagination(plan, in.Limit, len(items), more)}
 	return illustListResult(out), out, nil
 }
 
@@ -301,25 +269,23 @@ type followingSDKIn struct {
 }
 
 type userListOut struct {
-	UserID     int64             `json:"user_id"`
-	Items      []sdk.UserPreview `json:"items"`
-	Pagination paginationOut     `json:"pagination"`
-	Text       string            `json:"text"`
+	Records    []application.Record `json:"records"`
+	Pagination paginationOut        `json:"pagination"`
 }
 
 func userListResult(out userListOut) *mcp.CallToolResult {
-	return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: out.Text}}}
+	return recordResult(out.Records, false, "")
 }
 
 func (a *App) userFollowing(ctx context.Context, _ *mcp.CallToolRequest, in followingSDKIn) (*mcp.CallToolResult, userListOut, error) {
 	plan, err := parseMCPListPlan(in.pageLimitIn)
 	userID := in.UserID
 	if err != nil {
-		return a.userListError(ctx, userID, err)
+		return a.userListError(ctx, err)
 	}
 	client, userID, release, err := resolveSDKUser(ctx, a, userID)
 	if err != nil {
-		return a.userListError(ctx, userID, err)
+		return a.userListError(ctx, err)
 	}
 	defer release()
 	items, more, err := collectPages(ctx, plan, func(ctx context.Context, cursor sdk.Cursor) ([]sdk.UserPreview, sdk.Cursor, error) {
@@ -330,22 +296,20 @@ func (a *App) userFollowing(ctx context.Context, _ *mcp.CallToolRequest, in foll
 		return result.UserPreviews, result.NextCursor, nil
 	})
 	if err != nil {
-		return a.userListError(ctx, userID, err)
+		return a.userListError(ctx, err)
 	}
-	text := fmt.Sprintf("User %d follows %d users:\n\n%s", userID, len(items), formatSDKUsers(items))
-	if len(items) == 0 {
-		text = fmt.Sprintf("User %d does not follow anyone.", userID)
+	records, err := recordsFromUserPreviews(items)
+	if err != nil {
+		return a.userListError(ctx, err)
 	}
-	out := userListOut{UserID: userID, Items: items, Pagination: listPagination(plan, in.Limit, len(items), more), Text: text}
+	out := userListOut{Records: records, Pagination: listPagination(plan, in.Limit, len(items), more)}
 	return userListResult(out), out, nil
 }
 
-func (a *App) userListError(ctx context.Context, userID int64, err error) (*mcp.CallToolResult, userListOut, error) {
+func (a *App) userListError(ctx context.Context, err error) (*mcp.CallToolResult, userListOut, error) {
 	recordToolError(ctx, err)
-	out := userListOut{UserID: userID, Items: []sdk.UserPreview{}, Text: "Error: " + err.Error()}
-	result := userListResult(out)
-	result.IsError = true
-	return result, out, nil
+	out := userListOut{Records: []application.Record{}}
+	return recordResult(out.Records, true, recordErrorMessage(err)), out, nil
 }
 
 type bookmarkMutationIn struct {

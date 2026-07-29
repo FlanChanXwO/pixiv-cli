@@ -13,17 +13,18 @@ import (
 	"time"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/logging"
-	internalpixiv "github.com/FlanChanXwO/pixiv-cli/internal/pixiv"
-	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/appapi"
-	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/model"
-	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/protocol"
-	internalresource "github.com/FlanChanXwO/pixiv-cli/internal/pixiv/resource"
-	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/webapi"
+	internalpixiv "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv"
+	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/appapi"
+	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/model"
+	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/protocol"
+	internalresource "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/resource"
+	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/webapi"
 	"github.com/FlanChanXwO/pixiv-cli/internal/utils/credentials"
 )
 
-// Options 配置 Client 当前所需的传输端点与 App API 身份。
-type Options struct {
+// clientOptions 是两个公开构造器的内部完整配置。它不直接暴露，避免调用方把
+// 某个构造器不会读取的字段混在一起。
+type clientOptions struct {
 	// Logger 接收调用方显式注入的诊断 logger；为空时 SDK 严格静默，绝不使用 slog.Default。
 	Logger *slog.Logger
 	// HTTPClient 同时承载 App、Web、OAuth 与资源请求；为空时 SDK 创建一个
@@ -49,6 +50,47 @@ type Options struct {
 	WebFallbackEnabled bool
 	// ResourcePolicy 追加调用方显式信任的资源镜像；Pixiv 官方资源规则始终启用。
 	ResourcePolicy ResourcePolicy
+	// ResourceCachePath 非空时将 HTTP 缓存保存在此目录；为空时使用下载目录中的 .pixiv-cache。
+	ResourceCachePath string
+	// IgnoreEnvironmentRefreshToken 使 OpenDefault 只从显式 token 或本地 auth store
+	// 选择凭据。零值保持 SDK 原有的环境变量优先级。
+	IgnoreEnvironmentRefreshToken bool
+	// DisableRetryAfterRetry 让调用方在首个有效 429 时接管调度。零值保持读取请求
+	// 基于 Retry-After 的一次自动重试。
+	DisableRetryAfterRetry bool
+}
+
+// NewClientOptions 配置显式 access-token 或匿名 Web API Client。它不读取本地
+// auth/config 状态；需要本地默认账号时使用 OpenDefault 或 OpenDefaultWith。
+type NewClientOptions struct {
+	Logger                 *slog.Logger
+	HTTPClient             *http.Client
+	AppAPIBaseURL          string
+	WebAPIBaseURL          string
+	AccessToken            string
+	WebFallbackEnabled     bool
+	ResourcePolicy         ResourcePolicy
+	ResourceCachePath      string
+	DisableRetryAfterRetry bool
+}
+
+// OpenDefaultOptions 配置从本地 auth/config 与环境变量取得身份的 Client。
+// AccessToken 和 WebFallbackEnabled 不属于这个类型：前者用于 NewClient，后者由
+// 本地配置快照决定。
+type OpenDefaultOptions struct {
+	Logger                        *slog.Logger
+	HTTPClient                    *http.Client
+	AppAPIBaseURL                 string
+	WebAPIBaseURL                 string
+	OAuthBaseURL                  string
+	AuthFilePath                  string
+	ConfigFilePath                string
+	ResourcePolicy                ResourcePolicy
+	ResourceCachePath             string
+	RefreshToken                  string
+	UserID                        int64
+	IgnoreEnvironmentRefreshToken bool
+	DisableRetryAfterRetry        bool
 }
 
 // Client 组合 App API 主数据与显式 Web 补全能力。
@@ -59,12 +101,16 @@ type Client struct {
 	webFallbackEnabled bool
 	resourcePolicy     resourcePolicy
 	resource           *internalresource.Client
-	httpClient         *http.Client
-	authFilePath       string
-	configFilePath     string
-	oauthBaseURL       string
-	appAPIBaseURL      string
-	authState          *authTransactionState
+	// resourceDownloads 串行化同一 Client 内写向相同本地目标的缓存事务，避免并发
+	// 下载把不同响应体或 validator sidecar 交叉提交。
+	resourceDownloads resourceDownloadLocks
+	resourceCachePath string
+	httpClient        *http.Client
+	authFilePath      string
+	configFilePath    string
+	oauthBaseURL      string
+	appAPIBaseURL     string
+	authState         *authTransactionState
 	// defaults 非 nil 表示每个公开操作都必须取得一个新的本地快照。
 	defaults *defaultOptions
 	// cursorSource 只存在于 OpenDefault 的 operation-scoped client；它从不含凭据。
@@ -126,8 +172,17 @@ func (c *Client) currentUserID() (int64, error) {
 	return c.authenticatedUserID, nil
 }
 
-// NewClient 构造具体客户端；它不会执行网络请求或隐式认证。
-func NewClient(options Options) (*Client, error) {
+// NewClient 构造显式 access-token 或匿名客户端；它不会执行网络请求或隐式认证。
+func NewClient(options NewClientOptions) (*Client, error) {
+	return newClient(clientOptions{
+		Logger: options.Logger, HTTPClient: options.HTTPClient, AppAPIBaseURL: options.AppAPIBaseURL,
+		WebAPIBaseURL: options.WebAPIBaseURL, AccessToken: options.AccessToken,
+		WebFallbackEnabled: options.WebFallbackEnabled, ResourcePolicy: options.ResourcePolicy, ResourceCachePath: options.ResourceCachePath,
+		DisableRetryAfterRetry: options.DisableRetryAfterRetry,
+	})
+}
+
+func newClient(options clientOptions) (*Client, error) {
 	resourcePolicy, err := compileResourcePolicy(options.ResourcePolicy)
 	if err != nil {
 		return nil, err
@@ -143,6 +198,9 @@ func NewClient(options Options) (*Client, error) {
 		appapi.WithHTTPClient(httpClient),
 		appapi.WithLogger(options.Logger),
 	}
+	if options.DisableRetryAfterRetry {
+		appOptions = append(appOptions, appapi.WithDisableRetryAfterRetry())
+	}
 	webOptions := []webapi.Option{
 		webapi.WithWebBase(options.WebAPIBaseURL),
 		webapi.WithHTTPClient(httpClient),
@@ -155,6 +213,7 @@ func NewClient(options Options) (*Client, error) {
 		webFallbackEnabled: options.WebFallbackEnabled,
 		resourcePolicy:     resourcePolicy,
 		resource:           internalresource.NewApp(resourceHTTPClient),
+		resourceCachePath:  strings.TrimSpace(options.ResourceCachePath),
 		httpClient:         httpClient,
 		authFilePath:       strings.TrimSpace(options.AuthFilePath),
 		configFilePath:     strings.TrimSpace(options.ConfigFilePath),
@@ -188,19 +247,26 @@ func resourceHTTPClientForExplicitProxy(httpClient *http.Client) *http.Client {
 	return &resourceClient
 }
 
-// OpenDefault 构造使用本地 auth.json、config.toml 与环境变量的客户端。
+// OpenDefault 构造使用默认本地 auth.json、config.toml 与环境变量的客户端。
+func OpenDefault() (*Client, error) { return OpenDefaultWith(OpenDefaultOptions{}) }
+
+// OpenDefaultWith 构造使用显式本地路径、身份选择或 transport 覆写的默认客户端。
 // 它不缓存这些状态：每次公开操作开始时都会取得一次新快照。
-func OpenDefault(options Options) (*Client, error) {
-	if strings.TrimSpace(options.AccessToken) != "" {
-		return nil, newError(CodeInvalidArgument, "", "", false, 0, 0, errors.New("AccessToken is only supported by NewClient"))
+func OpenDefaultWith(input OpenDefaultOptions) (*Client, error) {
+	options := clientOptions{
+		Logger: input.Logger, HTTPClient: input.HTTPClient, AppAPIBaseURL: input.AppAPIBaseURL,
+		WebAPIBaseURL: input.WebAPIBaseURL, OAuthBaseURL: input.OAuthBaseURL,
+		AuthFilePath: input.AuthFilePath, ConfigFilePath: input.ConfigFilePath,
+		ResourcePolicy: input.ResourcePolicy, ResourceCachePath: input.ResourceCachePath, RefreshToken: input.RefreshToken, UserID: input.UserID,
+		IgnoreEnvironmentRefreshToken: input.IgnoreEnvironmentRefreshToken, DisableRetryAfterRetry: input.DisableRetryAfterRetry,
 	}
 	if _, err := credentials.ValidateRefreshTokenInput(options.RefreshToken); err != nil {
 		return nil, newError(CodeInvalidArgument, "", "", false, 0, 0, err)
 	}
-	options = cloneOptions(options)
+	options = cloneClientOptions(options)
 	baseOptions := options
 	baseOptions.AccessToken = ""
-	base, err := NewClient(baseOptions)
+	base, err := newClient(baseOptions)
 	if err != nil {
 		return nil, err
 	}
@@ -210,7 +276,7 @@ func OpenDefault(options Options) (*Client, error) {
 
 type authTransactionState struct{ mu sync.Mutex }
 
-func cloneOptions(options Options) Options {
+func cloneClientOptions(options clientOptions) clientOptions {
 	policy := ResourcePolicy{Mirrors: make([]ResourceMirrorPolicy, len(options.ResourcePolicy.Mirrors))}
 	for index, mirror := range options.ResourcePolicy.Mirrors {
 		policy.Mirrors[index] = ResourceMirrorPolicy{Host: mirror.Host, PathPrefixes: append([]string(nil), mirror.PathPrefixes...)}
@@ -220,7 +286,7 @@ func cloneOptions(options Options) Options {
 }
 
 // newHTTPClientForSnapshot 保留显式 transport；否则把当前配置中的代理绑定到本次操作。
-func newHTTPClientForSnapshot(options Options, proxy string) (*http.Client, error) {
+func newHTTPClientForSnapshot(options clientOptions, proxy string) (*http.Client, error) {
 	if options.HTTPClient != nil {
 		return options.HTTPClient, nil
 	}
@@ -294,12 +360,17 @@ func mapAdapterFailure(err error, operation Operation, backend Backend, illustID
 	code, retryable, status := CodeUpstreamUnavailable, true, 0
 	cause := error(errors.New("upstream transport failed"))
 	transportKind := TransportKind("")
+	retryAfter := time.Duration(0)
+	hasRetryAfter := false
 	var failure protocol.Failure
 	if errors.As(err, &failure) {
 		switch failure.Kind {
 		case protocol.FailureHTTPStatus:
 			code, retryable = codeForHTTPStatus(failure.StatusCode, operation)
 			status = failure.StatusCode
+			if failure.StatusCode == http.StatusTooManyRequests && failure.HasRetryAfter {
+				retryAfter, hasRetryAfter = failure.RetryAfter, true
+			}
 			cause = fmt.Errorf("upstream returned HTTP status %d", failure.StatusCode)
 		case protocol.FailureMalformed:
 			code, retryable = CodeMalformedUpstreamResponse, false
@@ -333,10 +404,12 @@ func mapAdapterFailure(err error, operation Operation, backend Backend, illustID
 	if userID > 0 {
 		mapped := newUserError(code, operation, backend, retryable, status, userID, cause)
 		mapped.TransportKind = transportKind
+		mapped.RetryAfter, mapped.HasRetryAfter = retryAfter, hasRetryAfter
 		return mapped
 	}
 	mapped := newError(code, operation, backend, retryable, status, illustID, cause)
 	mapped.TransportKind = transportKind
+	mapped.RetryAfter, mapped.HasRetryAfter = retryAfter, hasRetryAfter
 	return mapped
 }
 

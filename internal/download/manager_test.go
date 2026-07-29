@@ -596,7 +596,7 @@ func TestDownloadMissingImageURLReturnsError(t *testing.T) {
 	}
 }
 
-func TestDownloadUgoiraWithoutFFmpegUsesRustEncoder(t *testing.T) {
+func TestDownloadUgoiraExplicitAPNGUsesRustEncoder(t *testing.T) {
 	dir := t.TempDir()
 	meta := pixiv.UgoiraMetadata{Frames: []pixiv.UgoiraFrame{{File: "000000.jpg", Delay: 80}}}
 	meta.ZipURLs.Medium = "https://i.example/ugoira.zip"
@@ -611,14 +611,17 @@ func TestDownloadUgoiraWithoutFFmpegUsesRustEncoder(t *testing.T) {
 	encoder := &recordingUgoiraEncoder{output: []byte("gif")}
 	m.SetUgoiraEncoder(encoder)
 
-	got, err := m.Download(context.Background(), application.DownloadRequest{IllustIDs: []int64{1}})
+	got, err := m.Download(context.Background(), application.DownloadRequest{
+		IllustIDs:    []int64{1},
+		UgoiraFormat: application.UgoiraFormatAPNG,
+	})
 	if err != nil {
 		t.Fatalf("Download returned error: %v", err)
 	}
-	if len(got) != 1 || len(got[0].Files) != 1 || filepath.Ext(got[0].Files[0].Path) != ".gif" {
+	if len(got) != 1 || len(got[0].Files) != 1 || filepath.Ext(got[0].Files[0].Path) != ".apng" {
 		t.Fatalf("Download returned unexpected files: %+v", got)
 	}
-	if encoder.input.ZipPath == "" || encoder.input.Format != AnimationFormatGIF {
+	if encoder.input.ZipPath == "" || encoder.input.Format != AnimationFormatAPNG {
 		t.Fatalf("encoder input = %+v", encoder.input)
 	}
 }
@@ -695,16 +698,19 @@ func (c *fakePixivClient) ParseResourceRef(rawURL string) (pixiv.ResourceRef, er
 	return pixiv.ResourceRef{URL: rawURL}, nil
 }
 
-func (c *fakePixivClient) Download(_ context.Context, ref pixiv.ResourceRef, destination string) error {
+func (c *fakePixivClient) DownloadResource(_ context.Context, ref pixiv.ResourceRef, destination string) (pixiv.ResourceDownloadResult, error) {
 	if c.downloadErr != nil {
-		return c.downloadErr
+		return pixiv.ResourceDownloadResult{}, c.downloadErr
 	}
 	body, ok := c.downloads[ref.URL]
 	if !ok {
-		return os.ErrNotExist
+		return pixiv.ResourceDownloadResult{}, os.ErrNotExist
 	}
 	c.destinations = append(c.destinations, destination)
-	return os.WriteFile(destination, body, 0o644)
+	if err := os.WriteFile(destination, body, 0o644); err != nil {
+		return pixiv.ResourceDownloadResult{}, err
+	}
+	return pixiv.ResourceDownloadResult{DestinationPath: destination}, nil
 }
 
 func assertFileBody(t *testing.T, path, want string) {

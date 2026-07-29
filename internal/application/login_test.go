@@ -12,7 +12,7 @@ import (
 )
 
 func TestLoginServiceStartPreservesPublicSessionBehavior(t *testing.T) {
-	publicClient, err := sdk.NewClient(sdk.Options{})
+	publicClient, err := sdk.NewClient(sdk.NewClientOptions{})
 	require.NoError(t, err)
 	session, err := publicClient.StartLogin()
 	require.NoError(t, err)
@@ -55,7 +55,7 @@ func TestLoginServiceStartPropagatesDependencyErrors(t *testing.T) {
 }
 
 func TestLoginServiceCompleteHandsOffSessionAndOptions(t *testing.T) {
-	publicClient, err := sdk.NewClient(sdk.Options{})
+	publicClient, err := sdk.NewClient(sdk.NewClientOptions{})
 	require.NoError(t, err)
 	session, err := publicClient.StartLogin()
 	require.NoError(t, err)
@@ -89,7 +89,7 @@ func TestLoginServiceCompletePropagatesErrorsAndRejectsMissingSession(t *testing
 	_, err := (LoginService{}).Complete(context.Background(), LoginStart{}, LoginCompleteRequest{})
 	require.EqualError(t, err, "login session is not initialized")
 
-	publicClient, err := sdk.NewClient(sdk.Options{})
+	publicClient, err := sdk.NewClient(sdk.NewClientOptions{})
 	require.NoError(t, err)
 	session, err := publicClient.StartLogin()
 	require.NoError(t, err)

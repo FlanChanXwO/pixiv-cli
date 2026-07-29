@@ -65,7 +65,7 @@ func TestImportAccountRejectsCookieBeforeNetwork(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client, err := pixiv.NewClient(pixiv.Options{HTTPClient: server.Client(), OAuthBaseURL: server.URL})
+	client, err := pixiv.OpenDefaultWith(pixiv.OpenDefaultOptions{HTTPClient: server.Client(), OAuthBaseURL: server.URL})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -83,7 +83,7 @@ func TestImportAccountRejectsCookieBeforeNetwork(t *testing.T) {
 }
 
 func TestOpenDefaultRejectsCookieRefreshToken(t *testing.T) {
-	_, err := pixiv.OpenDefault(pixiv.Options{RefreshToken: "refresh_token=secret"})
+	_, err := pixiv.OpenDefaultWith(pixiv.OpenDefaultOptions{RefreshToken: "refresh_token=secret"})
 	var sdkErr *pixiv.Error
 	if !errors.As(err, &sdkErr) || sdkErr.Code != pixiv.CodeInvalidArgument {
 		t.Fatalf("OpenDefault() error = %#v", err)
@@ -101,7 +101,7 @@ func TestOpenDefaultRejectsCookieEnvironmentTokenBeforeNetwork(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("PIXIV_REFRESH_TOKEN", "session=secret")
-	client, err := pixiv.OpenDefault(pixiv.Options{AuthFilePath: authPath, ConfigFilePath: configPath})
+	client, err := pixiv.OpenDefaultWith(pixiv.OpenDefaultOptions{AuthFilePath: authPath, ConfigFilePath: configPath})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -123,7 +123,7 @@ func TestStoredCookieRefreshTokenIsRejectedBeforeOAuthRequest(t *testing.T) {
 		requests.Add(1)
 	}))
 	defer server.Close()
-	client, err := pixiv.NewClient(pixiv.Options{AuthFilePath: authPath, OAuthBaseURL: server.URL, HTTPClient: server.Client()})
+	client, err := pixiv.OpenDefaultWith(pixiv.OpenDefaultOptions{AuthFilePath: authPath, OAuthBaseURL: server.URL, HTTPClient: server.Client()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -154,7 +154,7 @@ func TestExplicitAccountStoreRefreshesRotatedTokenWithoutExposingIt(t *testing.T
 		_, _ = w.Write([]byte(`{"access_token":"access-secret","refresh_token":"rotated-refresh-secret","user":{"id":7,"name":"new"}}`))
 	}))
 	defer server.Close()
-	client, err := pixiv.NewClient(pixiv.Options{AuthFilePath: authPath, OAuthBaseURL: server.URL, HTTPClient: server.Client()})
+	client, err := pixiv.OpenDefaultWith(pixiv.OpenDefaultOptions{AuthFilePath: authPath, OAuthBaseURL: server.URL, HTTPClient: server.Client()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -200,7 +200,7 @@ func TestCheckRefreshTokenVerifiesExternalTokenWithoutChangingStoredDefault(t *t
 	}))
 	defer server.Close()
 
-	client, err := pixiv.OpenDefault(pixiv.Options{
+	client, err := pixiv.OpenDefaultWith(pixiv.OpenDefaultOptions{
 		AuthFilePath: authPath, ConfigFilePath: configPath, HTTPClient: server.Client(), OAuthBaseURL: server.URL,
 	})
 	if err != nil {
@@ -224,7 +224,7 @@ func TestCheckRefreshTokenVerifiesExternalTokenWithoutChangingStoredDefault(t *t
 
 func TestAccountAndConfigRequireExplicitStoreOnNewClient(t *testing.T) {
 	t.Parallel()
-	client, err := pixiv.NewClient(pixiv.Options{})
+	client, err := pixiv.NewClient(pixiv.NewClientOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -244,7 +244,7 @@ func TestExportAccountRefreshTokenReturnsDefaultWithoutChangingAuthStore(t *test
 	if err := os.WriteFile(authPath, []byte(storedAuth), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	client, err := pixiv.NewClient(pixiv.Options{AuthFilePath: authPath})
+	client, err := pixiv.OpenDefaultWith(pixiv.OpenDefaultOptions{AuthFilePath: authPath})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -267,7 +267,7 @@ func TestExportAccountRefreshTokenReturnsDefaultWithoutChangingAuthStore(t *test
 
 func TestExportAccountRefreshTokenRejectsNonPositiveExplicitUID(t *testing.T) {
 	t.Parallel()
-	client, err := pixiv.NewClient(pixiv.Options{AuthFilePath: filepath.Join(t.TempDir(), "auth.json")})
+	client, err := pixiv.OpenDefaultWith(pixiv.OpenDefaultOptions{AuthFilePath: filepath.Join(t.TempDir(), "auth.json")})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -299,7 +299,7 @@ func TestExportAccountRefreshTokenUsesOnlyRequestedStoredAccount(t *testing.T) {
 		requests.Add(1)
 	}))
 	defer server.Close()
-	client, err := pixiv.OpenDefault(pixiv.Options{
+	client, err := pixiv.OpenDefaultWith(pixiv.OpenDefaultOptions{
 		AuthFilePath: authPath, ConfigFilePath: configPath, UserID: 7,
 		RefreshToken: "options-token", HTTPClient: server.Client(), OAuthBaseURL: server.URL,
 	})
@@ -325,7 +325,7 @@ func TestExportAccountRefreshTokenUsesOnlyRequestedStoredAccount(t *testing.T) {
 
 func TestExportAccountRefreshTokenReportsSafeTypedErrors(t *testing.T) {
 	t.Run("missing default", func(t *testing.T) {
-		client, err := pixiv.NewClient(pixiv.Options{AuthFilePath: filepath.Join(t.TempDir(), "auth.json")})
+		client, err := pixiv.OpenDefaultWith(pixiv.OpenDefaultOptions{AuthFilePath: filepath.Join(t.TempDir(), "auth.json")})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -337,7 +337,7 @@ func TestExportAccountRefreshTokenReportsSafeTypedErrors(t *testing.T) {
 	})
 
 	t.Run("missing explicit account", func(t *testing.T) {
-		client, err := pixiv.NewClient(pixiv.Options{AuthFilePath: filepath.Join(t.TempDir(), "auth.json")})
+		client, err := pixiv.OpenDefaultWith(pixiv.OpenDefaultOptions{AuthFilePath: filepath.Join(t.TempDir(), "auth.json")})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -349,7 +349,7 @@ func TestExportAccountRefreshTokenReportsSafeTypedErrors(t *testing.T) {
 	})
 
 	t.Run("store not configured", func(t *testing.T) {
-		client, err := pixiv.NewClient(pixiv.Options{})
+		client, err := pixiv.NewClient(pixiv.NewClientOptions{})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -368,7 +368,7 @@ func TestExportAccountRefreshTokenReportsSafeTypedErrors(t *testing.T) {
 				if err := os.WriteFile(authPath, []byte(body), 0o600); err != nil {
 					t.Fatal(err)
 				}
-				client, err := pixiv.NewClient(pixiv.Options{AuthFilePath: authPath})
+				client, err := pixiv.OpenDefaultWith(pixiv.OpenDefaultOptions{AuthFilePath: authPath})
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -397,7 +397,7 @@ func TestExportAccountRefreshTokenReportsPermissionDeniedWithoutLeakingState(t *
 		return nil, &fs.PathError{Op: "open", Path: pathCanary, Err: fs.ErrPermission}
 	})
 	t.Cleanup(restore)
-	client, err := pixiv.NewClient(pixiv.Options{AuthFilePath: pathCanary})
+	client, err := pixiv.OpenDefaultWith(pixiv.OpenDefaultOptions{AuthFilePath: pathCanary})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -422,7 +422,7 @@ func TestExportAccountRefreshTokenRejectsBlankSelectedTokenAsUnauthorized(t *tes
 			if err := os.WriteFile(authPath, []byte(body), 0o600); err != nil {
 				t.Fatal(err)
 			}
-			client, err := pixiv.NewClient(pixiv.Options{AuthFilePath: authPath})
+			client, err := pixiv.OpenDefaultWith(pixiv.OpenDefaultOptions{AuthFilePath: authPath})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -442,12 +442,12 @@ func TestExportAccountRefreshTokenRejectsBlankSelectedTokenAsUnauthorized(t *tes
 func TestConfigUsesExistingAliasesPrivateFileAndEnvPriority(t *testing.T) {
 	t.Parallel()
 	path := filepath.Join(t.TempDir(), "config.toml")
-	client, err := pixiv.NewClient(pixiv.Options{ConfigFilePath: path})
+	client, err := pixiv.OpenDefaultWith(pixiv.OpenDefaultOptions{ConfigFilePath: path})
 	if err != nil {
 		t.Fatal(err)
 	}
-	value, err := client.SetConfig("web_fallback_enabled", "false")
-	if err != nil || value.Source != "file" || value.Value != "false" {
+	value, err := client.SetConfig(pixiv.ConfigKeyWebFallbackEnabled, pixiv.BoolConfigInput(false))
+	if err != nil || value.Source != pixiv.ConfigSourceFile || value.Kind != pixiv.ConfigValueKindBool || value.Bool {
 		t.Fatalf("set=%+v err=%v", value, err)
 	}
 	info, err := os.Stat(path)
@@ -459,14 +459,14 @@ func TestConfigUsesExistingAliasesPrivateFileAndEnvPriority(t *testing.T) {
 	} else if info.Mode().Perm() != 0o600 {
 		t.Fatalf("mode=%v, want 0600", info.Mode())
 	}
-	got, err := client.GetConfig("web_fallback_enabled")
-	if err != nil || got.Value != "false" || got.Source != "file" {
+	got, err := client.GetConfig(pixiv.ConfigKeyWebFallbackEnabled)
+	if err != nil || got.Bool || got.Source != pixiv.ConfigSourceFile {
 		t.Fatalf("get=%+v err=%v", got, err)
 	}
-	if removed, err := client.UnsetConfig("web_fallback_enabled"); err != nil || !removed {
+	if removed, err := client.UnsetConfig(pixiv.ConfigKeyWebFallbackEnabled); err != nil || !removed {
 		t.Fatalf("unset removed=%v err=%v", removed, err)
 	}
-	if _, err := client.SetConfig("unknown", "x"); !errors.Is(err, pixiv.ErrInvalidArgument) {
+	if _, err := client.SetConfig(pixiv.ConfigKey("unknown"), pixiv.StringConfigInput("x")); !errors.Is(err, pixiv.ErrInvalidArgument) {
 		t.Fatalf("invalid key error=%v", err)
 	}
 }
@@ -477,13 +477,39 @@ func TestConfigGetPrefersExistingProxyEnvironment(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("https_proxy", "http://environment.invalid:7890")
-	client, err := pixiv.NewClient(pixiv.Options{ConfigFilePath: path})
+	client, err := pixiv.OpenDefaultWith(pixiv.OpenDefaultOptions{ConfigFilePath: path})
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := client.GetConfig("https_proxy")
-	if err != nil || got.Source != "env" || got.Value != "http://environment.invalid:7890" {
+	got, err := client.GetConfig(pixiv.ConfigKeyHTTPSProxy)
+	if err != nil || got.Source != pixiv.ConfigSourceEnvironment || got.String != "http://environment.invalid:7890" {
 		t.Fatalf("config=%+v err=%v", got, err)
+	}
+}
+
+func TestSensitiveConfigUsesDedicatedWriteAndRedactedRead(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.toml")
+	client, err := pixiv.OpenDefaultWith(pixiv.OpenDefaultOptions{ConfigFilePath: path})
+	if err != nil {
+		t.Fatal(err)
+	}
+	const secret = "relay-secret-must-not-return"
+	if err := client.SetLoginRelaySecret(secret); err != nil {
+		t.Fatal(err)
+	}
+	_, err = client.SetConfig(pixiv.ConfigKeyLoginRelaySecret, pixiv.StringConfigInput(secret))
+	if !errors.Is(err, pixiv.ErrInvalidArgument) {
+		t.Fatalf("SetConfig error=%v", err)
+	}
+	value, err := client.GetConfig(pixiv.ConfigKeyLoginRelaySecret)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !value.HasValue || !value.Redacted || value.String != "" {
+		t.Fatalf("redacted config=%+v", value)
+	}
+	if strings.Contains(fmt.Sprintf("%+v", value), secret) {
+		t.Fatalf("secret leaked in config value=%+v", value)
 	}
 }
 
@@ -499,7 +525,7 @@ func TestLoginSessionIsOpaqueOneTimeAndValidatesCallback(t *testing.T) {
 		_, _ = w.Write([]byte(`{"access_token":"access","refresh_token":"refresh-secret","user":{"id":9,"name":"alice"}}`))
 	}))
 	defer server.Close()
-	client, err := pixiv.NewClient(pixiv.Options{AuthFilePath: authPath, OAuthBaseURL: server.URL, AppAPIBaseURL: server.URL, HTTPClient: server.Client()})
+	client, err := pixiv.OpenDefaultWith(pixiv.OpenDefaultOptions{AuthFilePath: authPath, OAuthBaseURL: server.URL, AppAPIBaseURL: server.URL, HTTPClient: server.Client()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -532,7 +558,7 @@ func TestLoginSessionIsOpaqueOneTimeAndValidatesCallback(t *testing.T) {
 	if _, err := client.CompleteLogin(context.Background(), session, "code-secret", pixiv.LoginOptions{}); !errors.Is(err, pixiv.ErrInvalidArgument) || exchanges.Load() != 1 {
 		t.Fatalf("reuse err=%v exchanges=%d", err, exchanges.Load())
 	}
-	other, _ := pixiv.NewClient(pixiv.Options{AuthFilePath: authPath})
+	other, _ := pixiv.OpenDefaultWith(pixiv.OpenDefaultOptions{AuthFilePath: authPath})
 	if _, err := other.CompleteLogin(context.Background(), session, "code-secret", pixiv.LoginOptions{}); !errors.Is(err, pixiv.ErrInvalidArgument) || exchanges.Load() != 1 {
 		t.Fatalf("cross client err=%v exchanges=%d", err, exchanges.Load())
 	}
@@ -542,7 +568,7 @@ func TestLoginSessionIsOpaqueOneTimeAndValidatesCallback(t *testing.T) {
 // login session without reading the opaque PKCE verifier or state, and without
 // consuming the session before CompleteLogin performs the exchange.
 func TestLoginSessionAcceptsOnlyItsOwnCallbackWithoutConsumingIt(t *testing.T) {
-	client, err := pixiv.NewClient(pixiv.Options{})
+	client, err := pixiv.NewClient(pixiv.NewClientOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -575,7 +601,7 @@ func TestLoginSessionConcurrentCompletionExchangesOnce(t *testing.T) {
 		_, _ = w.Write([]byte(`{"access_token":"access","refresh_token":"refresh","user":{"id":10}}`))
 	}))
 	defer server.Close()
-	client, _ := pixiv.NewClient(pixiv.Options{AuthFilePath: authPath, OAuthBaseURL: server.URL, HTTPClient: server.Client()})
+	client, _ := pixiv.OpenDefaultWith(pixiv.OpenDefaultOptions{AuthFilePath: authPath, OAuthBaseURL: server.URL, HTTPClient: server.Client()})
 	session, _ := client.StartLogin()
 	copyValue := *session
 	var wg sync.WaitGroup
@@ -623,7 +649,7 @@ func TestOpenDefaultReadsOneCurrentSnapshotPerOperation(t *testing.T) {
 		}
 	}))
 	defer server.Close()
-	client, err := pixiv.OpenDefault(pixiv.Options{AuthFilePath: authPath, ConfigFilePath: configPath, HTTPClient: server.Client(), OAuthBaseURL: server.URL, AppAPIBaseURL: server.URL, WebAPIBaseURL: server.URL})
+	client, err := pixiv.OpenDefaultWith(pixiv.OpenDefaultOptions{AuthFilePath: authPath, ConfigFilePath: configPath, HTTPClient: server.Client(), OAuthBaseURL: server.URL, AppAPIBaseURL: server.URL, WebAPIBaseURL: server.URL})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -665,7 +691,7 @@ func TestOpenDefaultCurrentUserIDUsesOAuthSnapshotIdentity(t *testing.T) {
 		_, _ = w.Write([]byte(`{"access_token":"access","refresh_token":"rotated","user":{"id":7}}`))
 	}))
 	defer server.Close()
-	client, err := pixiv.OpenDefault(pixiv.Options{AuthFilePath: authPath, ConfigFilePath: configPath, HTTPClient: server.Client(), OAuthBaseURL: server.URL})
+	client, err := pixiv.OpenDefaultWith(pixiv.OpenDefaultOptions{AuthFilePath: authPath, ConfigFilePath: configPath, HTTPClient: server.Client(), OAuthBaseURL: server.URL})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -714,7 +740,7 @@ func TestOpenDefaultCurrentUserIDPrefersExplicitAndEnvironmentOAuthIdentity(t *t
 				_, _ = fmt.Fprintf(w, `{"access_token":"access","refresh_token":"rotated","user":{"id":%d}}`, test.oauthUserID)
 			}))
 			defer server.Close()
-			client, err := pixiv.OpenDefault(pixiv.Options{AuthFilePath: authPath, ConfigFilePath: configPath, HTTPClient: server.Client(), OAuthBaseURL: server.URL, RefreshToken: test.explicitToken})
+			client, err := pixiv.OpenDefaultWith(pixiv.OpenDefaultOptions{AuthFilePath: authPath, ConfigFilePath: configPath, HTTPClient: server.Client(), OAuthBaseURL: server.URL, RefreshToken: test.explicitToken})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -740,7 +766,7 @@ func TestSnapshotKeepsConfigUntilNextExplicitSnapshot(t *testing.T) {
 		_, _ = w.Write([]byte(`{"error":false,"body":[{"urls":{"original":"https://i.pximg.net/img-original/x.jpg"},"width":1,"height":1}]}`))
 	}))
 	defer server.Close()
-	client, err := pixiv.OpenDefault(pixiv.Options{AuthFilePath: authPath, ConfigFilePath: configPath, HTTPClient: server.Client(), WebAPIBaseURL: server.URL})
+	client, err := pixiv.OpenDefaultWith(pixiv.OpenDefaultOptions{AuthFilePath: authPath, ConfigFilePath: configPath, HTTPClient: server.Client(), WebAPIBaseURL: server.URL})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -800,8 +826,8 @@ func TestOpenDefaultCursorRejectsSourceChangeAndLegacyCursor(t *testing.T) {
 		}
 	}))
 	defer server.Close()
-	options := pixiv.Options{AuthFilePath: authPath, ConfigFilePath: configPath, HTTPClient: server.Client(), OAuthBaseURL: server.URL, AppAPIBaseURL: server.URL}
-	client, err := pixiv.OpenDefault(options)
+	options := pixiv.OpenDefaultOptions{AuthFilePath: authPath, ConfigFilePath: configPath, HTTPClient: server.Client(), OAuthBaseURL: server.URL, AppAPIBaseURL: server.URL}
+	client, err := pixiv.OpenDefaultWith(options)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -822,7 +848,7 @@ func TestOpenDefaultCursorRejectsSourceChangeAndLegacyCursor(t *testing.T) {
 	}
 	// Direct cursors remain compatible with their direct NewClient, but OpenDefault
 	// rejects them because they carry no snapshot source identity.
-	direct, _ := pixiv.NewClient(pixiv.Options{HTTPClient: server.Client(), AppAPIBaseURL: server.URL, AccessToken: "direct"})
+	direct, _ := pixiv.NewClient(pixiv.NewClientOptions{HTTPClient: server.Client(), AppAPIBaseURL: server.URL, AccessToken: "direct"})
 	legacy, err := direct.SearchIllust(context.Background(), pixiv.SearchIllustRequest{Word: "miku"})
 	if err != nil || legacy.NextCursor == "" {
 		t.Fatalf("legacy=%+v err=%v", legacy, err)
@@ -838,7 +864,7 @@ func TestAccountLegacyAndOAuthFailureStaySafe(t *testing.T) {
 	if err := os.WriteFile(authPath, []byte(`{"default_account":"old","accounts":[{"name":"old","refresh_token":"legacy-secret"}]}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	client, _ := pixiv.NewClient(pixiv.Options{AuthFilePath: authPath})
+	client, _ := pixiv.OpenDefaultWith(pixiv.OpenDefaultOptions{AuthFilePath: authPath})
 	if _, err := client.ListAccounts(); !errors.Is(err, pixiv.ErrInvalidArgument) {
 		t.Fatalf("legacy error=%v", err)
 	}
@@ -849,7 +875,7 @@ func TestAccountLegacyAndOAuthFailureStaySafe(t *testing.T) {
 	if err := os.WriteFile(authPath, []byte(`{"default_user_id":7,"accounts":[{"user_id":7,"refresh_token":"stored-secret"}]}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	client, _ = pixiv.NewClient(pixiv.Options{AuthFilePath: authPath, OAuthBaseURL: server.URL, HTTPClient: server.Client()})
+	client, _ = pixiv.OpenDefaultWith(pixiv.OpenDefaultOptions{AuthFilePath: authPath, OAuthBaseURL: server.URL, HTTPClient: server.Client()})
 	_, err := client.CheckAccount(context.Background(), 7)
 	var typed *pixiv.Error
 	if !errors.As(err, &typed) || typed.Backend != pixiv.BackendOAuth || typed.UpstreamStatus != http.StatusBadGateway {
@@ -891,11 +917,11 @@ func TestOpenDefaultRefreshTokenPriority(t *testing.T) {
 	}))
 	defer server.Close()
 	t.Setenv("PIXIV_REFRESH_TOKEN", "environment-token")
-	call := func(options pixiv.Options, want string) {
+	call := func(options pixiv.OpenDefaultOptions, want string) {
 		t.Helper()
 		options.AuthFilePath, options.ConfigFilePath = authPath, configPath
 		options.HTTPClient, options.OAuthBaseURL, options.AppAPIBaseURL = server.Client(), server.URL, server.URL
-		client, err := pixiv.OpenDefault(options)
+		client, err := pixiv.OpenDefaultWith(options)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -906,11 +932,11 @@ func TestOpenDefaultRefreshTokenPriority(t *testing.T) {
 			t.Fatalf("refresh token=%q want=%q", got, want)
 		}
 	}
-	call(pixiv.Options{RefreshToken: "explicit-token", UserID: 2}, "explicit-token")
-	call(pixiv.Options{UserID: 2}, "selected-token")
-	call(pixiv.Options{}, "environment-token")
+	call(pixiv.OpenDefaultOptions{RefreshToken: "explicit-token", UserID: 2}, "explicit-token")
+	call(pixiv.OpenDefaultOptions{UserID: 2}, "selected-token")
+	call(pixiv.OpenDefaultOptions{}, "environment-token")
 	t.Setenv("PIXIV_REFRESH_TOKEN", "")
-	call(pixiv.Options{}, "default-token")
+	call(pixiv.OpenDefaultOptions{}, "default-token")
 }
 
 func TestOpenDefaultMissingSelectedUIDAndStoredMismatchNeverReachContent(t *testing.T) {
@@ -934,12 +960,12 @@ func TestOpenDefaultMissingSelectedUIDAndStoredMismatchNeverReachContent(t *test
 		}
 	}))
 	defer server.Close()
-	options := pixiv.Options{AuthFilePath: authPath, ConfigFilePath: configPath, HTTPClient: server.Client(), OAuthBaseURL: server.URL, AppAPIBaseURL: server.URL}
-	missing, _ := pixiv.OpenDefault(pixiv.Options{AuthFilePath: authPath, ConfigFilePath: configPath, HTTPClient: server.Client(), OAuthBaseURL: server.URL, AppAPIBaseURL: server.URL, UserID: 99})
+	options := pixiv.OpenDefaultOptions{AuthFilePath: authPath, ConfigFilePath: configPath, HTTPClient: server.Client(), OAuthBaseURL: server.URL, AppAPIBaseURL: server.URL}
+	missing, _ := pixiv.OpenDefaultWith(pixiv.OpenDefaultOptions{AuthFilePath: authPath, ConfigFilePath: configPath, HTTPClient: server.Client(), OAuthBaseURL: server.URL, AppAPIBaseURL: server.URL, UserID: 99})
 	if _, err := missing.IllustRecommended(context.Background(), pixiv.IllustRecommendedRequest{}); !errors.Is(err, pixiv.ErrInvalidArgument) || oauthCalls.Load() != 0 || contentCalls.Load() != 0 {
 		t.Fatalf("missing selected uid err=%v oauth=%d content=%d", err, oauthCalls.Load(), contentCalls.Load())
 	}
-	client, _ := pixiv.OpenDefault(options)
+	client, _ := pixiv.OpenDefaultWith(options)
 	_, err := client.IllustRecommended(context.Background(), pixiv.IllustRecommendedRequest{})
 	var typed *pixiv.Error
 	if !errors.As(err, &typed) || typed.Code != pixiv.CodeInvalidArgument || typed.UserID != 7 || typed.Operation != pixiv.OperationIllustRecommended || typed.Backend != pixiv.BackendOAuth || typed.Retryable || typed.LocalStateKind != pixiv.LocalStateKindAccountMismatch || contentCalls.Load() != 0 {
@@ -968,7 +994,7 @@ func TestOpenDefaultParseResourceRefUsesLocalSnapshotWithoutOAuth(t *testing.T) 
 		t.Fatal(err)
 	}
 	var requests atomic.Int32
-	client, err := pixiv.OpenDefault(pixiv.Options{AuthFilePath: authPath, ConfigFilePath: configPath, HTTPClient: &http.Client{Transport: accountRoundTripperFunc(func(*http.Request) (*http.Response, error) {
+	client, err := pixiv.OpenDefaultWith(pixiv.OpenDefaultOptions{AuthFilePath: authPath, ConfigFilePath: configPath, HTTPClient: &http.Client{Transport: accountRoundTripperFunc(func(*http.Request) (*http.Response, error) {
 		requests.Add(1)
 		return nil, errors.New("network should not run")
 	})}})
@@ -989,7 +1015,7 @@ func TestOpenDefaultParseResourceRefUsesLocalSnapshotWithoutOAuth(t *testing.T) 
 func TestOpenDefaultFreezesResourcePolicy(t *testing.T) {
 	t.Parallel()
 	policy := pixiv.ResourcePolicy{Mirrors: []pixiv.ResourceMirrorPolicy{{Host: "mirror.invalid", PathPrefixes: []string{"/safe"}}}}
-	client, err := pixiv.OpenDefault(pixiv.Options{ResourcePolicy: policy, AuthFilePath: filepath.Join(t.TempDir(), "auth.json"), ConfigFilePath: filepath.Join(t.TempDir(), "config.toml")})
+	client, err := pixiv.OpenDefaultWith(pixiv.OpenDefaultOptions{ResourcePolicy: policy, AuthFilePath: filepath.Join(t.TempDir(), "auth.json"), ConfigFilePath: filepath.Join(t.TempDir(), "config.toml")})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1019,7 +1045,7 @@ func TestOpenDefaultResourcesDoNotRefreshOAuth(t *testing.T) {
 		}
 		return nil, errors.New("unexpected host")
 	})
-	client, err := pixiv.OpenDefault(pixiv.Options{AuthFilePath: authPath, ConfigFilePath: configPath, OAuthBaseURL: "https://oauth.invalid", HTTPClient: &http.Client{Transport: transport}})
+	client, err := pixiv.OpenDefaultWith(pixiv.OpenDefaultOptions{AuthFilePath: authPath, ConfigFilePath: configPath, OAuthBaseURL: "https://oauth.invalid", HTTPClient: &http.Client{Transport: transport}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1033,7 +1059,7 @@ func TestOpenDefaultResourcesDoNotRefreshOAuth(t *testing.T) {
 	}
 	_ = response.Body.Close()
 	destination := filepath.Join(dir, "image.jpg")
-	if err := client.Download(context.Background(), ref, destination); err != nil {
+	if _, err := client.DownloadResource(context.Background(), ref, destination); err != nil {
 		t.Fatal(err)
 	}
 	if oauthCalls.Load() != 0 || resourceCalls.Load() != 2 {
@@ -1055,7 +1081,7 @@ func TestAccountMutationsShareOneClientTransaction(t *testing.T) {
 		_, _ = w.Write([]byte(`{"access_token":"access","refresh_token":"rotated-` + strconv.Itoa(userID) + `","user":{"id":` + strconv.Itoa(userID) + `}}`))
 	}))
 	defer server.Close()
-	client, err := pixiv.NewClient(pixiv.Options{AuthFilePath: authPath, OAuthBaseURL: server.URL, HTTPClient: server.Client()})
+	client, err := pixiv.OpenDefaultWith(pixiv.OpenDefaultOptions{AuthFilePath: authPath, OAuthBaseURL: server.URL, HTTPClient: server.Client()})
 	if err != nil {
 		t.Fatal(err)
 	}

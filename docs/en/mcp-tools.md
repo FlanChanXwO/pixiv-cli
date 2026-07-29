@@ -1,5 +1,12 @@
 # MCP Tools
 
+
+## Entity record contract
+
+Every entity-reading tool—including search, detail, recommendations, user lists, feeds, and MyPixiv—returns structured `{records, pagination?}`. Each record has stable string `id`, `type`, and `url`; additional public-SDK fields are preserved without a record/schema/version field. MCP text Content is only a short summary and never duplicates entity JSON. On a classified entity-read error, `isError=true` and `records=[]`. The entity rows below all use this contract; their former per-tool `items`/`illusts`/`user_previews` shapes are not part of v0.8.0 output.
+
+The entity tools are `search_illust`, `search_novel`, `illust_detail`, `illust_related`, `illust_ranking`, `illust_recommended`, `recommended`, `illust_follow`, `novel_follow`, `illust_new`, `novel_new`, `mypixiv_users`, `mypixiv_illusts`, `mypixiv_novels`, `search_user`, `user_detail`, `user_artworks`, `user_novels`, `user_bookmarks`, and `user_following`.
+
 English | [简体中文](../zh-CN/mcp-tools.md) | [日本語](../ja/mcp-tools.md) | [Documentation index](../index.md)
 
 Run `pixiv mcp` to start the stdio server. stdout is reserved for JSON-RPC. Operation logs are written as daily
@@ -33,7 +40,7 @@ SDK cursors never appear in MCP input or output. List tools use the logical `pag
 | `set_download_path` | `path` | Text status. |
 | `refresh_token` | none | Current authenticated-account summary. |
 | `set_refresh_token` | raw App API `refresh_token` | Current-session authentication result; does not write `auth.json`; rejects cookies. |
-| `download` | `illust_id`, `illust_ids`, and/or `urls`; optional `pages`/`quality`; `delivery` is `local_path` only | `{items, failures, files, text}` with canonical artwork URLs and local file metadata; never embeds image bytes. |
+| `download` | exactly one of `src` or `srcs`; each source is a PID, Pixiv artwork/user URL, or allowed CDN URL; optional `pages`, `quality`, `concurrency`, `ugoira_format` (`gif` or `apng`); `delivery` is `local_path` only | `{items, failures, files, text}` with local file metadata; never embeds image bytes. |
 | `download_random_from_recommendation` | optional `count` (omitted/`null` defaults to 5; explicit value must be 1..20), optional `pages`/`quality`; `delivery` is `local_path` only | Text plus structured local file metadata; never embeds image bytes. |
 
 `refresh_token` does not misreport SDK/config/proxy initialization failures as a missing token. Context cancellation
@@ -49,12 +56,13 @@ When the MCP server is started with an HTTP(S) proxy, its media-resource downloa
 API, OAuth, and Web metadata requests retain normal protocol negotiation; this avoids proxy-specific HTTP/2 stream
 resets without changing authentication or selected download quality.
 
-`download.urls` accepts only local-parsed HTTPS `pixiv.net`/`www.pixiv.net` artwork URLs (`/artworks/{id}`, optional
-locale/query/fragment) and user URLs (`/users/{id}` or `/users/{id}/artworks`). Artwork URLs behave like IDs. A user
-URL follows all `illust`, `manga`, and `ugoira` pages, excludes novels, and requires App OAuth; it never falls back to
-anonymous Web access. It does not fetch HTML or follow redirects. Partial artwork failures remain in `failures` while
-other works continue; a partial report has `isError=true`. `illust_id`/`illust_ids` retain their legacy input order,
-then `urls` follow their array order; MCP cannot represent interleaving across these separate fields.
+`download.src` is a single source and `download.srcs` is an ordered source list; supplying both is invalid. A source
+can be a local-parsed HTTPS `pixiv.net`/`www.pixiv.net` artwork/user URL, a PID, or a CDN URL accepted by the SDK
+resource policy. A user URL follows all `illust`, `manga`, and `ugoira` pages, excludes novels, and requires App
+OAuth; it never falls back to anonymous Web access. It does not fetch HTML or follow redirects. `concurrency=0` uses
+`2 × GOMAXPROCS`; a positive value is used exactly. HTTP cache metadata is retained in `.pixiv-cache`, and only a
+validator-matched partial is resumed with `If-Range`. Partial artwork failures remain in `failures` while other works
+continue; a partial report has `isError=true`.
 
 Both download tools return valid structured output on validation, SDK, recommendation, download, result-building,
 or file-read failure: `delivery` retains the normalized mode (`local_path` when IDs/delivery are invalid), and
@@ -65,21 +73,21 @@ the safe business-error text; `download` partial failures set `isError=true`.
 
 | Tool | Input | Structured output |
 | --- | --- | --- |
-| `search_illust` | `word`, `search_target`, `sort`, `duration`, `start_date`, `end_date`, `page`, `limit`, `rating`, `content_type`, `ai_mode`, `aspect_ratio`, `resolution`, `tool`, `bookmark_min`, `bookmark_max` | `{items, pagination, text}`. |
-| `search_novel` | `word`, `search_target`, `sort`, `duration`, `page`, `limit`, `rating`, `min_text_length`, `max_text_length`, `original_only` | App-only `{novels, pagination, text}`. A classified failure has `isError=true`. |
+| `search_illust` | `word`, `search_target`, `sort`, `duration`, `start_date`, `end_date`, `page`, `limit`, `rating`, `content_type`, `ai_mode`, `aspect_ratio`, `resolution`, `tool`, `bookmark_min`, `bookmark_max` | `{records, pagination?}`. |
+| `search_novel` | `word`, `search_target`, `sort`, `duration`, `page`, `limit`, `rating`, `min_text_length`, `max_text_length`, `original_only` | App-only `{records, pagination?}`. A classified failure has `isError=true`. |
 | `search_illust_options` | required `word` | `{tools,text}` for the word; authenticated App only. |
-| `illust_detail` | exactly one of `illust_id` or `url` | `{illust, text}`; the complete work detail includes raw HTML `caption` when Pixiv provides it. |
-| `illust_related` | `illust_id`, `page`, `limit` | `{items, pagination, text}`. |
-| `illust_ranking` | `mode`, `date`, `page`, `limit` | `{items, pagination, text}`. |
-| `illust_recommended` | `page`, `limit` | `{items, pagination, text}` through the public SDK path. |
-| `recommended` | required `kind` (`all`, `illust`, `manga`, `novel`, `user`), optional `page`, `limit` | `{kind, illusts, manga, novels, user_previews, pagination}`; `all` reads four authenticated streams in order. |
+| `illust_detail` | exactly one of `illust_id` or `url` | `{records}`; the complete work detail includes raw HTML `caption` when Pixiv provides it. |
+| `illust_related` | `illust_id`, `page`, `limit` | `{records, pagination?}`. |
+| `illust_ranking` | `mode`, `date`, `page`, `limit` | `{records, pagination?}`. |
+| `illust_recommended` | `page`, `limit` | `{records, pagination?}` through the public SDK path. |
+| `recommended` | required `kind` (`all`, `illust`, `manga`, `novel`, `user`), optional `page`, `limit` | `{records, pagination?}`; `all` reads four authenticated streams in order. |
 | `trending_tags_illust` | none | `{tags, text}`. |
-| `illust_follow` | `restrict`, `page`, `limit` | `{items, pagination, text}`; authentication required. |
-| `search_user` | `word`, `page`, `limit` | `{source, user_previews, pagination, text}`. `source` is `app_search` for official authenticated App search or `related_illust_authors` for anonymous fallback; the latter is not a username search. |
-| `user_detail` | required `user_id` | Stable `{user, profile, profile_publicity, workspace}`; authenticated App only. |
-| `user_artworks` | optional `user_id`, `type`, `page`, `limit` | `{user_id, items, pagination}`; omitted UID uses the authenticated user. |
-| `user_bookmarks` | optional `user_id`, `restrict`, `tag`, `page`, `limit` | `{user_id, items, pagination}`. |
-| `user_following` | optional `user_id`, `restrict`, `page`, `limit` | `{user_id, items, pagination}`. |
+| `illust_follow` | `restrict`, `page`, `limit` | `{records, pagination?}`; authentication required. |
+| `search_user` | `word`, `page`, `limit` | `{records, pagination?}`. The source is `app_search` for official authenticated App search or `related_illust_authors` for anonymous fallback; the latter is not a username search. |
+| `user_detail` | required `user_id` | `{records}` with user, profile, profile-publicity, and workspace fields; authenticated App only. |
+| `user_artworks` | optional `user_id`, `type`, `page`, `limit` | `{records, pagination?}`; omitted UID uses the authenticated user. |
+| `user_bookmarks` | optional `user_id`, `restrict`, `tag`, `page`, `limit` | `{records, pagination?}`. |
+| `user_following` | optional `user_id`, `restrict`, `page`, `limit` | `{records, pagination?}`. |
 
 `search_illust` filter values are:
 

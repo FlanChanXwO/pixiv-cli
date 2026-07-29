@@ -24,9 +24,9 @@ import (
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/application"
 	"github.com/FlanChanXwO/pixiv-cli/internal/bootstrap"
-	"github.com/FlanChanXwO/pixiv-cli/internal/common/constants"
 	"github.com/FlanChanXwO/pixiv-cli/internal/config"
-	internalpixiv "github.com/FlanChanXwO/pixiv-cli/internal/pixiv"
+	constants "github.com/FlanChanXwO/pixiv-cli/internal/platform/localstate"
+	internalpixiv "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv"
 	"github.com/FlanChanXwO/pixiv-cli/internal/storage/auth"
 	publicpixiv "github.com/FlanChanXwO/pixiv-cli/pixiv"
 	"github.com/spf13/cobra"
@@ -523,16 +523,13 @@ func TestAccountImportRejectsCookieInput(t *testing.T) {
 	assert.Contains(t, stderr.String(), "cookie input is not supported; provide a Pixiv App API refresh token")
 }
 
-func TestRefreshTokenFlagsOnlyDescribeAppAPIInput(t *testing.T) {
+func TestDataCommandFlagsDoNotExposeCredentialSelection(t *testing.T) {
 	a := app{}
 	commonCommand := &cobra.Command{}
 	var commonOptions commandOptions
 	a.bindCommonFlags(commonCommand, &commonOptions)
-	common := commonCommand.Flags().Lookup("refresh-token")
-	if common == nil {
-		t.Fatal("missing --refresh-token flag")
-	}
-	assert.Equal(t, "Pixiv App API refresh token", common.Usage)
+	assert.Nil(t, commonCommand.Flags().Lookup("refresh-token"))
+	assert.Nil(t, commonCommand.Flags().Lookup("uid"))
 
 	importCommand := a.newAccountImportCommand()
 	assert.Nil(t, importCommand.Flags().Lookup("token"))
@@ -1140,7 +1137,7 @@ func TestAccountLoginProxyFlagOverridesEnvAndConfig(t *testing.T) {
 			if request.HTTPSProxyOverride != nil {
 				seenProxy = *request.HTTPSProxyOverride
 			}
-			return publicpixiv.OpenDefault(publicpixiv.Options{HTTPClient: oauth.Client(), OAuthBaseURL: oauth.URL})
+			return publicpixiv.OpenDefaultWith(publicpixiv.OpenDefaultOptions{HTTPClient: oauth.Client(), OAuthBaseURL: oauth.URL})
 		}
 		services.Login.SDK = services.SDK
 		return services
@@ -1177,7 +1174,7 @@ func TestAccountLoginNoProxyFlagClearsEnvAndConfig(t *testing.T) {
 			if request.HTTPSProxyOverride != nil {
 				seenProxy = *request.HTTPSProxyOverride
 			}
-			return publicpixiv.OpenDefault(publicpixiv.Options{HTTPClient: oauth.Client(), OAuthBaseURL: oauth.URL})
+			return publicpixiv.OpenDefaultWith(publicpixiv.OpenDefaultOptions{HTTPClient: oauth.Client(), OAuthBaseURL: oauth.URL})
 		}
 		services.Login.SDK = services.SDK
 		return services
@@ -1735,7 +1732,7 @@ func setTestOAuthBase(t *testing.T, baseURL string) func() {
 	newCLIServices = func(logger *slog.Logger) application.Services {
 		services := old(logger)
 		services.SDK.NewClient = func(request application.SDKClientRequest) (application.SDKClient, error) {
-			return publicpixiv.OpenDefault(publicpixiv.Options{
+			return publicpixiv.OpenDefaultWith(publicpixiv.OpenDefaultOptions{
 				UserID:       request.UserID,
 				RefreshToken: request.RefreshToken,
 				AuthFilePath: request.AuthFilePath,
@@ -1779,7 +1776,7 @@ func setTestPublicSDKFactoryWithHTTPClient(t *testing.T, oauthBaseURL, appAPIBas
 			if observe != nil {
 				observe(request)
 			}
-			options := publicpixiv.Options{
+			options := publicpixiv.OpenDefaultOptions{
 				UserID:         request.UserID,
 				RefreshToken:   request.RefreshToken,
 				AuthFilePath:   authPath,
@@ -1797,8 +1794,11 @@ func setTestPublicSDKFactoryWithHTTPClient(t *testing.T, oauthBaseURL, appAPIBas
 				}
 				options.HTTPClient = httpClient
 			}
-			return publicpixiv.OpenDefault(options)
+			return publicpixiv.OpenDefaultWith(options)
 		}
+		// 测试工厂必须走上面的本地 httptest transport；生产账号池 closure 会直接
+		// 构造真实 OpenDefault client，不能在此 helper 中沿用。
+		services.SDK.RunPooled = nil
 		// Account/Login 各自持有 SDKService 值；重新装配后必须同步替换它们。
 		services.Account.SDK = services.SDK
 		services.Login.SDK = services.SDK

@@ -24,7 +24,7 @@ func TestExportAuthBundleSnapshotsDefaultAccountAndRoundTripsExactCodec(t *testi
 	if err := os.WriteFile(authPath, []byte(storedAuth), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	client, err := pixiv.NewClient(pixiv.Options{AuthFilePath: authPath})
+	client, err := pixiv.OpenDefaultWith(pixiv.OpenDefaultOptions{AuthFilePath: authPath})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -77,7 +77,7 @@ func TestExportAuthBundleSnapshotsAllAccountsInStoreOrder(t *testing.T) {
 	if err := os.WriteFile(authPath, []byte(storedAuth), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	client, err := pixiv.NewClient(pixiv.Options{AuthFilePath: authPath})
+	client, err := pixiv.OpenDefaultWith(pixiv.OpenDefaultOptions{AuthFilePath: authPath})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -101,7 +101,7 @@ func TestExportAuthBundleSnapshotsOnlyExplicitAccount(t *testing.T) {
 	if err := os.WriteFile(authPath, []byte(storedAuth), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	client, err := pixiv.NewClient(pixiv.Options{AuthFilePath: authPath})
+	client, err := pixiv.OpenDefaultWith(pixiv.OpenDefaultOptions{AuthFilePath: authPath})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -124,7 +124,7 @@ func TestExportAuthBundleSnapshotsOnlyExplicitAccount(t *testing.T) {
 
 func TestExportAuthBundleRejectsConflictingAllAndExplicitSelection(t *testing.T) {
 	t.Parallel()
-	client, err := pixiv.NewClient(pixiv.Options{AuthFilePath: filepath.Join(t.TempDir(), "auth.json")})
+	client, err := pixiv.OpenDefaultWith(pixiv.OpenDefaultOptions{AuthFilePath: filepath.Join(t.TempDir(), "auth.json")})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -138,7 +138,7 @@ func TestExportAuthBundleRejectsConflictingAllAndExplicitSelection(t *testing.T)
 
 func TestExportAuthBundleReportsMissingExplicitAccount(t *testing.T) {
 	t.Parallel()
-	client, err := pixiv.NewClient(pixiv.Options{AuthFilePath: filepath.Join(t.TempDir(), "auth.json")})
+	client, err := pixiv.OpenDefaultWith(pixiv.OpenDefaultOptions{AuthFilePath: filepath.Join(t.TempDir(), "auth.json")})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -152,7 +152,7 @@ func TestExportAuthBundleReportsMissingExplicitAccount(t *testing.T) {
 
 func TestExportAuthBundleRejectsNonPositiveExplicitUIDBeforeStoreAccess(t *testing.T) {
 	t.Parallel()
-	client, err := pixiv.NewClient(pixiv.Options{})
+	client, err := pixiv.NewClient(pixiv.NewClientOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -174,7 +174,7 @@ func TestRestoreAuthBundleMergesAccountsAndPreservesExistingDefault(t *testing.T
 	if err := os.WriteFile(authPath, []byte(storedAuth), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	client, err := pixiv.NewClient(pixiv.Options{AuthFilePath: authPath})
+	client, err := pixiv.OpenDefaultWith(pixiv.OpenDefaultOptions{AuthFilePath: authPath})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -216,7 +216,7 @@ func TestRestoreAuthBundleUsesSourceDefaultAndReportsRepeatAsUpdates(t *testing.
 	if err := os.WriteFile(authPath, []byte(`{"accounts":[]}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	client, err := pixiv.NewClient(pixiv.Options{AuthFilePath: authPath})
+	client, err := pixiv.OpenDefaultWith(pixiv.OpenDefaultOptions{AuthFilePath: authPath})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -268,7 +268,7 @@ func TestAuthBundleOperationsAreOfflineAndIgnoreRuntimeCredentialOverrides(t *te
 	}
 	t.Setenv("PIXIV_REFRESH_TOKEN", "environment-secret")
 	var requests atomic.Int32
-	client, err := pixiv.OpenDefault(pixiv.Options{
+	client, err := pixiv.OpenDefaultWith(pixiv.OpenDefaultOptions{
 		AuthFilePath: authPath, ConfigFilePath: configPath, UserID: 99, RefreshToken: "option-secret",
 		HTTPClient: &http.Client{Transport: accountRoundTripperFunc(func(*http.Request) (*http.Response, error) {
 			requests.Add(1)
@@ -304,7 +304,7 @@ func TestRestoreAuthBundleSaveFailureLeavesDestinationBytesUnchanged(t *testing.
 		return &fs.PathError{Op: "write", Path: path, Err: fs.ErrPermission}
 	})
 	t.Cleanup(restoreHook)
-	client, err := pixiv.NewClient(pixiv.Options{AuthFilePath: authPath})
+	client, err := pixiv.OpenDefaultWith(pixiv.OpenDefaultOptions{AuthFilePath: authPath})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -337,7 +337,7 @@ func TestRestoreAuthBundleReportsCommittedAfterPostCommitSyncFailure(t *testing.
 		})
 	})
 	t.Cleanup(restoreHook)
-	client, err := pixiv.NewClient(pixiv.Options{AuthFilePath: authPath})
+	client, err := pixiv.OpenDefaultWith(pixiv.OpenDefaultOptions{AuthFilePath: authPath})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -377,7 +377,7 @@ func TestRestoreAuthBundleReportsUnknownForUnresolvedReplacementRecovery(t *test
 		)
 	})
 	t.Cleanup(restoreHook)
-	client, err := pixiv.NewClient(pixiv.Options{AuthFilePath: authPath})
+	client, err := pixiv.OpenDefaultWith(pixiv.OpenDefaultOptions{AuthFilePath: authPath})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -410,7 +410,7 @@ func TestRestoreAuthBundleRejectsUnknownSchemaWithoutChangingDestination(t *test
 	if err := os.WriteFile(authPath, []byte(storedAuth), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	client, err := pixiv.NewClient(pixiv.Options{AuthFilePath: authPath})
+	client, err := pixiv.OpenDefaultWith(pixiv.OpenDefaultOptions{AuthFilePath: authPath})
 	if err != nil {
 		t.Fatal(err)
 	}

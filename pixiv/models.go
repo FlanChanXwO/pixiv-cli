@@ -229,6 +229,45 @@ type FollowingIllustsRequest struct {
 	Restrict Restrict `json:"restrict,omitempty"`
 	Cursor   Cursor   `json:"cursor,omitempty"`
 }
+
+// FollowingNovelsRequest 指定当前账号关注用户的小说新作查询。
+type FollowingNovelsRequest struct {
+	Restrict Restrict `json:"restrict,omitempty"`
+	Cursor   Cursor   `json:"cursor,omitempty"`
+}
+
+// LatestIllustsRequest 指定全站最新插画或漫画查询；Type 必须是 illust 或 manga。
+type LatestIllustsRequest struct {
+	Type   IllustType `json:"type"`
+	Cursor Cursor     `json:"cursor,omitempty"`
+}
+
+// LatestNovelsRequest 指定全站最新小说查询。
+type LatestNovelsRequest struct {
+	Cursor Cursor `json:"cursor,omitempty"`
+}
+
+// MyPixivUsersRequest 指定要读取 MyPixiv 用户列表的账号。
+type MyPixivUsersRequest struct {
+	UserID int64  `json:"user_id"`
+	Cursor Cursor `json:"cursor,omitempty"`
+}
+
+// MyPixivIllustsRequest 指定当前认证账号的 MyPixiv 插画聚合查询。
+type MyPixivIllustsRequest struct {
+	Cursor Cursor `json:"cursor,omitempty"`
+}
+
+// MyPixivNovelsRequest 指定当前认证账号的 MyPixiv 小说聚合查询。
+type MyPixivNovelsRequest struct {
+	Cursor Cursor `json:"cursor,omitempty"`
+}
+
+// UserNovelsRequest 指定用户小说查询。
+type UserNovelsRequest struct {
+	UserID int64  `json:"user_id"`
+	Cursor Cursor `json:"cursor,omitempty"`
+}
 type SearchUserRequest struct {
 	Word   string `json:"word"`
 	Cursor Cursor `json:"cursor,omitempty"`
@@ -286,7 +325,7 @@ type IllustListResult struct {
 	NextCursor Cursor   `json:"next_cursor,omitempty"`
 }
 
-// Novel 是小说推荐结果中的稳定必要字段。
+// Novel 是小说列表结果中的稳定必要字段。
 type Novel struct {
 	URL            string    `json:"url"`
 	ID             int64     `json:"id"`
@@ -303,7 +342,7 @@ type Novel struct {
 	TotalView      int       `json:"total_view"`
 }
 
-// NovelListResult 包含小说推荐批次与仅能续用到该操作的 opaque cursor。
+// NovelListResult 包含小说批次与仅能续用到该操作的 opaque cursor。
 type NovelListResult struct {
 	Novels     []Novel `json:"novels"`
 	NextCursor Cursor  `json:"next_cursor,omitempty"`
@@ -451,14 +490,6 @@ type PremiumStatus struct {
 type AccountsResult struct {
 	DefaultUserID int64     `json:"default_user_id,omitempty"`
 	Accounts      []Account `json:"accounts"`
-}
-
-// ConfigValue 是一个配置项的安全、可序列化视图。
-type ConfigValue struct {
-	Key      string `json:"key"`
-	Value    string `json:"value,omitempty"`
-	Source   string `json:"source"`
-	HasValue bool   `json:"has_value"`
 }
 
 // LoginOptions 控制成功登录后是否选择该账号为默认账号。

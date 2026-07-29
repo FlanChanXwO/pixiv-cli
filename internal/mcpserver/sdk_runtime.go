@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/application"
-	"github.com/FlanChanXwO/pixiv-cli/internal/common/constants"
 	"github.com/FlanChanXwO/pixiv-cli/internal/logging"
 	sdk "github.com/FlanChanXwO/pixiv-cli/pixiv"
 )
@@ -145,7 +144,7 @@ func (a *App) operationLog(operation string, started time.Time, failed bool, err
 	if a == nil || a.logger == nil {
 		return
 	}
-	result, code, backend, status, transportKind := logging.ResultSuccess, "", constants.LogBackendLocal, 0, ""
+	result, code, backend, status, transportKind := logging.ResultSuccess, "", logging.BackendLocal, 0, ""
 	var typed *sdk.Error
 	if failed {
 		result = logging.ResultError
@@ -205,7 +204,7 @@ func safeMCPBackend(backend sdk.Backend) string {
 		sdk.BackendResource:
 		return string(backend)
 	default:
-		return constants.LogBackendLocal
+		return logging.BackendLocal
 	}
 }
 

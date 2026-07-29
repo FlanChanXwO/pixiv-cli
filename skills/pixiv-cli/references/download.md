@@ -11,7 +11,7 @@ Downloads write to disk — always run the checklist first.
    `pixiv download` invocation. A user URL means every visual work by that
    user, with no implicit limit; approval is single-use and never carries over
    to another download command.
-3. Only override with `--download-path DIR` / `--filename-template T` when the
+3. Only override with `--download-path DIR` / `--filename-template T` / `--concurrency N` when the
    user asked for a specific location or naming; these flags never persist.
 
 ## Single and multi-page artworks
@@ -21,6 +21,7 @@ pixiv download 129543211
 pixiv download 129543211 130000001 130000002
 pixiv download https://www.pixiv.net/artworks/129543211
 pixiv download 129543211 --pages 1,3-5 --quality regular
+pixiv download 129543211 --concurrency 8
 ```
 
 - Multi-page works: every page is downloaded by default (`_p0`, `_p1`, ...).
@@ -29,8 +30,9 @@ pixiv download 129543211 --pages 1,3-5 --quality regular
 - `--quality` for static images: `original` (default), `regular` (longest side
   1200), `small` (540), `thumb` (250×250 center crop), `mini` (48×48 center
   crop). Preserve the upstream JPEG/PNG format and alpha channel.
-- Ugoira keeps the GIF/APNG flow; page selection or a non-original quality
-  returns unsupported. With authentication, Pixiv may expose only a verified
+- `--ugoira-format` accepts `gif` (default) or `apng`; it controls only Ugoira
+  conversion. Page selection or a non-original quality returns unsupported.
+  With authentication, Pixiv may expose only a verified
   medium ZIP; this is still the legitimate download resource and must never be
   described as original. Do not add a Web/Cookie workaround to obtain another
   variant.
@@ -42,7 +44,7 @@ pixiv download 129543211 --pages 1,3-5 --quality regular
 
 `detail` accepts an artwork ID or only a current official artwork page URL:
 `https://pixiv.net/artworks/{id}` or `https://www.pixiv.net/artworks/{id}`.
-`download` accepts those plus `https://pixiv.net/users/{id}` and
+`download` accepts those plus resource-policy-allowed CDN URLs, `https://pixiv.net/users/{id}` and
 `https://pixiv.net/users/{id}/artworks` (the `www` host and an optional locale,
 query, or fragment are also valid).
 
@@ -58,9 +60,10 @@ pixiv download https://www.pixiv.net/en/users/12345678/artworks
 - Only the listed `pixiv.net` / `www.pixiv.net` HTTPS paths are accepted. Short
   links, old URL shapes, novels, FANBOX, Pixivision, Sketch, other hosts, and
   other paths fail locally before the SDK or downloader opens.
-- Downloads preserve CLI argument order. They do not create a cache, database,
-  history, or cross-run de-duplication; repeated inputs are intentionally
-  processed again.
+- Downloads preserve CLI argument order. They do not create a database, history,
+  or cross-run de-duplication; repeated inputs are intentionally processed again.
+  They do persist ETag/Last-Modified metadata and resumable partials in
+  `.pixiv-cache`; only an `If-Range` validator match may resume a partial file.
 
 ## Animated works
 
@@ -70,30 +73,28 @@ pixiv download https://www.pixiv.net/en/users/12345678/artworks
 
 ## Batch from a search/user listing
 
-Chain from JSON rather than scraping human output:
+Use the shared NDJSON record protocol; never scrape human output or add a
+temporary JSON collector merely to make a pipeline convenient:
 
-1. Create an environment-safe, uniquely named temporary file through the
-   agent runtime's temp-file facility or `mktemp`; do not construct a
-   predictable pathname or place it in a project/root directory.
-2. Redirect one bounded listing command's JSON stdout to that file, then check
-   its exit status before reading or parsing it. On failure, report stderr and
-   do not continue with partial or empty data.
-3. Inspect the successful response's actual JSON shape before choosing a
-   selector. Extract `id` only from the array/object that demonstrably contains
-   artwork records. Never recursively collect every field named `id`, because
-   author, user, and other nested records can also have IDs.
-4. Validate artwork IDs, deduplicate them while preserving order, then show the
-   exact list and count to the user. Run `pixiv download ...` only after a new,
-   explicit confirmation for that invocation.
-5. Remove the temporary file after parsing or on failure.
+```bash
+pixiv search "landscape" --ndjson --limit 20 \
+  | pixiv filter --min-bookmarks 1000 \
+  | pixiv download --ugoira-format apng
+```
+
+Before the final command, inspect the selected records and state the exact
+record type, IDs/count, and destination to the user. `download` consumes every
+visual `illust`/`manga`/`ugoira` record from stdin; it does not download novel
+or user records. An incompatible record is a visible stderr diagnostic. Use
+`--on-error fail-fast` to stop at the first bad record, or the default `skip`
+only when the user explicitly accepts continuing over invalid records.
 
 ## Reporting results
 
-- The JSON report is `{items, failures}`. Each successful item includes its
-  canonical artwork URL, ID, work type, and every downloaded file's page/path;
-  each failure includes a safe URL/ID/type/message summary. A partial failure
-  exits non-zero after reporting all completed outcomes; cancellation stops
-  immediately.
+- Downloads are actions: successful CLI stdout is empty. Never parse a
+  download report from stdout. Inspect the requested local directory to report
+  produced files; errors are safe stderr diagnostics and make the command
+  non-zero. Cancellation stops immediately.
 - Per-target outcomes: report which references succeeded and which failed.
   Never summarize failures away as "done".
 - Anonymous sessions can download public works via web fallback; restricted or

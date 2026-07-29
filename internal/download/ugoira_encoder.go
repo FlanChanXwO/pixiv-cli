@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
+	sharedugoira "github.com/FlanChanXwO/pixiv-cli/internal/ugoira"
 	"github.com/FlanChanXwO/pixiv-cli/internal/utils/files"
 	sdk "github.com/FlanChanXwO/pixiv-cli/pixiv"
 )
@@ -43,6 +44,26 @@ type UgoiraEncodeInput struct {
 	OutputPath string
 	Format     AnimationFormat
 	MaxEdge    uint32
+}
+
+// sharedUgoiraEncoder 把旧嵌入式 Manager 的兼容接口适配到唯一的通用 encoder。
+// CLI、public SDK 与 MCP random download 因此共用同一 Rust FFI、串行 gate 与原子
+// 发布实现；Manager 只保留旧嵌入构造器的调用兼容性。
+type sharedUgoiraEncoder struct{ encoder sharedugoira.Encoder }
+
+func newSharedUgoiraEncoder() UgoiraEncoder {
+	return sharedUgoiraEncoder{encoder: sharedugoira.NewRustEncoder()}
+}
+
+func (e sharedUgoiraEncoder) Encode(ctx context.Context, input UgoiraEncodeInput) error {
+	frames := make([]sharedugoira.Frame, len(input.Frames))
+	for index, frame := range input.Frames {
+		frames[index] = sharedugoira.Frame{File: frame.File, Delay: frame.Delay}
+	}
+	return e.encoder.Encode(ctx, sharedugoira.Input{
+		ZipPath: input.ZipPath, Frames: frames, WorkDir: input.WorkDir, OutputPath: input.OutputPath,
+		Format: sharedugoira.Format(input.Format), MaxEdge: input.MaxEdge,
+	})
 }
 
 func writeTempAnimation(ctx context.Context, outputPath string, encode func(tmpOutput string) error) error {

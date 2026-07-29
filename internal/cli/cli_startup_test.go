@@ -2,13 +2,18 @@ package cli
 
 import (
 	"bytes"
+	"context"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/common/constants"
+	"github.com/FlanChanXwO/pixiv-cli/internal/cli/loginhelper"
+	"github.com/FlanChanXwO/pixiv-cli/internal/config"
+	constants "github.com/FlanChanXwO/pixiv-cli/internal/platform/localstate"
 	"github.com/FlanChanXwO/pixiv-cli/internal/storage/auth"
 	"github.com/FlanChanXwO/pixiv-cli/internal/utils/files"
 )
@@ -49,12 +54,77 @@ func TestAuthURLCallbackIsHiddenAndRelaysWithoutStartupSideEffects(t *testing.T)
 	}
 }
 
+// remote callback 完成后必须由隐藏 handler 显式打开一次性结果页；否则浏览器在
+// pixiv:// 跳转后只会停在原授权页，用户看不到 OAuth exchange 的真实结果。
+func TestAuthURLCallbackOpensRemoteFinalPage(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("USERPROFILE", os.Getenv("HOME"))
+
+	const secret = "remote-final-page-secret"
+	const callback = "pixiv://account/login?code=one-time-code"
+	const resultID = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+	var relay *httptest.Server
+	relay = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/session":
+			w.WriteHeader(http.StatusNoContent)
+		case "/callback":
+			w.Header().Set(loginhelper.RelayResultURLHeader, relay.URL+"/result/"+resultID)
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"success":true}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(relay.Close)
+
+	configPath := filepath.Join(t.TempDir(), "config.toml")
+	restoreConfigPath := config.SetFilePathForTest(configPath)
+	t.Cleanup(restoreConfigPath)
+	requireNoError(t, config.WritePrivateFile(configPath, []byte("[login]\nrelay_target_url = \""+relay.URL+"\"\nrelay_secret = \""+secret+"\"\n")))
+
+	var opened string
+	restoreOpen := setTestOpenBrowser(t, func(rawURL string) error {
+		opened = rawURL
+		return nil
+	})
+	defer restoreOpen()
+
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"pixiv", "auth", internalURLCallbackCommand, callback}, strings.NewReader(""), &stdout, &stderr)
+	if code != 0 || opened != relay.URL+"/result/"+resultID || stdout.Len() != 0 || stderr.Len() != 0 {
+		t.Fatalf("remote URL callback final-page contract failed: code=%d opened=%q stdout_bytes=%d stderr=%q", code, opened, stdout.Len(), stderr.String())
+	}
+}
+
 func TestAuthURLCallbackRejectsInputWithoutEchoingIt(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	const callback = "https://example.invalid/callback?code=one-time-code"
 	code := Run([]string{"pixiv", "auth", internalURLCallbackCommand, callback}, strings.NewReader(""), &stdout, &stderr)
 	if code != 1 || !strings.Contains(stderr.String(), "invalid Pixiv callback URL") || strings.Contains(stderr.String(), callback) || stdout.Len() != 0 {
 		t.Fatalf("internal URL callback error contract failed: code=%d stdout_bytes=%d stderr=%q", code, stdout.Len(), stderr.String())
+	}
+}
+
+func TestAuthURLHandlerInstallSkipsStartupSideEffects(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("USERPROFILE", os.Getenv("HOME"))
+
+	originalCleanup := cleanupPendingWindowsUpdate
+	cleanupPendingWindowsUpdate = func() error {
+		t.Fatal("internal URL handler installer must not run startup cleanup")
+		return nil
+	}
+	t.Cleanup(func() { cleanupPendingWindowsUpdate = originalCleanup })
+
+	originalEnsure := ensureURLSchemeRelay
+	ensureURLSchemeRelay = func(_ context.Context) error { return nil }
+	t.Cleanup(func() { ensureURLSchemeRelay = originalEnsure })
+
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"pixiv", "auth", internalURLHandlerInstallCommand}, strings.NewReader(""), &stdout, &stderr)
+	if code != 0 || stdout.Len() != 0 || stderr.Len() != 0 {
+		t.Fatalf("internal URL handler installer contract failed: code=%d stdout_bytes=%d stderr=%q", code, stdout.Len(), stderr.String())
 	}
 }
 

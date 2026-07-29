@@ -52,3 +52,14 @@ func TestParseArtworkReferenceRejectsUnsupportedTargetsWithoutEchoingInput(t *te
 	require.Error(t, err)
 	require.False(t, strings.Contains(err.Error(), "artworks/0"))
 }
+
+func TestParseUserReferenceIsSymmetricWithArtworkReference(t *testing.T) {
+	for _, raw := range []string{"7", "https://www.pixiv.net/users/7", "https://www.pixiv.net/en/users/7/artworks"} {
+		got, err := pixiv.ParseUserReference(raw)
+		require.NoError(t, err)
+		require.EqualValues(t, 7, got)
+	}
+	_, err := pixiv.ParseUserReference("https://www.pixiv.net/artworks/7?secret=must-not-echo")
+	require.Error(t, err)
+	require.NotContains(t, err.Error(), "must-not-echo")
+}

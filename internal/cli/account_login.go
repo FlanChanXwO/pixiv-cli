@@ -29,6 +29,7 @@ var (
 	loginHooksMu          sync.RWMutex
 	openBrowser           = defaultOpenBrowser
 	installURLSchemeRelay = loginhelper.Install
+	ensureURLSchemeRelay  = loginhelper.EnsurePersistent
 )
 
 type loginServerResult struct {
@@ -44,14 +45,19 @@ type loginInputResult struct {
 
 type callbackURLAccepter = func(string) bool
 type urlSchemeRelayInstaller func(context.Context, string) (func(), error)
+type urlSchemeRelayEnsurer func(context.Context) error
 
 type accountLoginOptions struct {
 	proxyOptions
-	jsonOut       bool
-	noOpen        bool
-	useAfterLogin bool
-	addr          string
-	timeout       time.Duration
+	jsonOut          bool
+	noOpen           bool
+	useAfterLogin    bool
+	addr             string
+	timeout          time.Duration
+	relayPublicURL   string
+	relayListenAddr  string
+	relayTLSCertFile string
+	relayTLSKeyFile  string
 }
 
 func (a app) newAccountLoginCommand() *cobra.Command {
@@ -60,7 +66,7 @@ func (a app) newAccountLoginCommand() *cobra.Command {
 		Use:     "login",
 		Short:   "Login with the Pixiv browser OAuth flow",
 		Example: "pixiv auth login --use",
-		Args:    requireExactArgs(0, "pixiv auth login [--json] [--no-open] [--addr 127.0.0.1:0] [--use] [--timeout DURATION]"),
+		Args:    requireExactArgs(0, "pixiv auth login [--json] [--no-open] [--addr 127.0.0.1:0] [--use] [--timeout DURATION] [--relay-public-url URL] [--relay-listen-addr ADDR]"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return a.accountLogin(cmd, opts)
 		},
@@ -71,6 +77,10 @@ func (a app) newAccountLoginCommand() *cobra.Command {
 	flags.StringVar(&opts.addr, "addr", defaultLoginAddr, "local loopback callback address; use 127.0.0.1:0 for an available port")
 	flags.BoolVar(&opts.useAfterLogin, "use", false, "set as default account after login")
 	flags.DurationVar(&opts.timeout, "timeout", 0, "maximum time to wait for login flow; 0 adds no deadline")
+	flags.StringVar(&opts.relayPublicURL, "relay-public-url", "", "public URL for this remote login relay")
+	flags.StringVar(&opts.relayListenAddr, "relay-listen-addr", "", "listen address for this remote login relay")
+	flags.StringVar(&opts.relayTLSCertFile, "relay-tls-cert-file", "", "PEM certificate file for this remote login relay")
+	flags.StringVar(&opts.relayTLSKeyFile, "relay-tls-key-file", "", "PEM private key file for this remote login relay")
 	a.bindProxyFlags(cmd, &opts.proxyOptions)
 	return cmd
 }
@@ -91,11 +101,14 @@ func (a app) accountLogin(cmd *cobra.Command, opts accountLoginOptions) error {
 	if !cmd.Flags().Changed("use") {
 		opts.useAfterLogin = cfg.LoginUseAfterLogin
 	}
-	if !cmd.Flags().Changed("timeout") {
-		opts.timeout = cfg.LoginTimeout
-	}
-	if err := validateLoginAddr(opts.addr); err != nil {
+	relayOptions, useRelay, err := configuredRelayServerOptions(cmd.Flags(), opts, cfg)
+	if err != nil {
 		return err
+	}
+	if !useRelay {
+		if err := validateLoginAddr(opts.addr); err != nil {
+			return err
+		}
 	}
 
 	loginFlow, err := services.Login.Start(application.SDKClientRequest{HTTPSProxyOverride: proxyOverride})
@@ -111,9 +124,16 @@ func (a app) accountLogin(cmd *cobra.Command, opts accountLoginOptions) error {
 		defer cancel()
 	}
 
-	browserOpener, schemeRelayInstaller := currentLoginHooks()
 	loginURL := loginFlow.AuthorizationURL
-	callbackOrCode, notifyFinal, cleanupLoginServer, err := a.waitForLoginCode(ctx, opts.addr, loginFlow.AcceptsCallbackURL, loginURL, opts.noOpen, browserOpener, schemeRelayInstaller)
+	var callbackOrCode string
+	var notifyFinal func(bool)
+	var cleanupLoginServer func()
+	if useRelay {
+		callbackOrCode, notifyFinal, cleanupLoginServer, err = a.waitForRelayLoginCode(ctx, relayOptions, loginFlow.AcceptsCallbackURL, loginURL)
+	} else {
+		browserOpener, schemeRelayInstaller, schemeRelayEnsurer := currentLoginHooks()
+		callbackOrCode, notifyFinal, cleanupLoginServer, err = a.waitForLoginCode(ctx, opts.addr, loginFlow.AcceptsCallbackURL, loginURL, opts.noOpen, browserOpener, schemeRelayInstaller, schemeRelayEnsurer)
+	}
 	if err != nil {
 		return err
 	}
@@ -140,7 +160,7 @@ func (a app) accountLogin(cmd *cobra.Command, opts accountLoginOptions) error {
 	return nil
 }
 
-func (a app) waitForLoginCode(ctx context.Context, addr string, acceptsCallback callbackURLAccepter, loginURL string, noOpen bool, browserOpener func(string) error, schemeRelayInstaller urlSchemeRelayInstaller) (code string, notifyFinal func(bool), cleanup func(), err error) {
+func (a app) waitForLoginCode(ctx context.Context, addr string, acceptsCallback callbackURLAccepter, loginURL string, noOpen bool, browserOpener func(string) error, schemeRelayInstaller urlSchemeRelayInstaller, schemeRelayEnsurer urlSchemeRelayEnsurer) (code string, notifyFinal func(bool), cleanup func(), err error) {
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {
 		return "", func(bool) {}, func() {}, err
@@ -196,6 +216,11 @@ func (a app) waitForLoginCode(ctx context.Context, addr string, acceptsCallback 
 		return browserOpener(rawURL)
 	}
 	if !noOpen {
+		if schemeRelayEnsurer != nil {
+			if err := schemeRelayEnsurer(ctx); err != nil {
+				writeErr("warning: persistent pixiv:// callback handler is unavailable: %v\n", err)
+			}
+		}
 		cleanup, err := schemeRelayInstaller(ctx, "http://"+actualAddr+"/callback")
 		if err != nil {
 			writeErr("warning: pixiv:// callback handler is unavailable: %v\n", err)
@@ -526,10 +551,10 @@ func validateLoginAddr(addr string) error {
 	return nil
 }
 
-func currentLoginHooks() (func(string) error, urlSchemeRelayInstaller) {
+func currentLoginHooks() (func(string) error, urlSchemeRelayInstaller, urlSchemeRelayEnsurer) {
 	loginHooksMu.RLock()
 	defer loginHooksMu.RUnlock()
-	return openBrowser, installURLSchemeRelay
+	return openBrowser, installURLSchemeRelay, ensureURLSchemeRelay
 }
 
 func setOpenBrowserForTest(opener func(string) error) func() {
@@ -549,11 +574,16 @@ func setOpenBrowserForTest(opener func(string) error) func() {
 func setURLSchemeRelayInstallerForTest(installer urlSchemeRelayInstaller) func() {
 	loginHooksMu.Lock()
 	old := installURLSchemeRelay
+	oldEnsure := ensureURLSchemeRelay
 	installURLSchemeRelay = installer
+	// 安装器被测试替身替换时，不能触发真实 LaunchServices/registry/XDG 修改；
+	// 生产路径仍使用 default ensurer 建立持久按需 handler。
+	ensureURLSchemeRelay = func(context.Context) error { return nil }
 	loginHooksMu.Unlock()
 	return func() {
 		loginHooksMu.Lock()
 		installURLSchemeRelay = old
+		ensureURLSchemeRelay = oldEnsure
 		loginHooksMu.Unlock()
 	}
 }

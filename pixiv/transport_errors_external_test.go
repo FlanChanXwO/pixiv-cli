@@ -20,7 +20,7 @@ import (
 func TestTransportFailureDNSClassification(t *testing.T) {
 	t.Parallel()
 
-	client, err := pixiv.NewClient(pixiv.Options{
+	client, err := pixiv.NewClient(pixiv.NewClientOptions{
 		HTTPClient: &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
 			return nil, &net.DNSError{Name: "dns-canary.invalid", Err: "lookup canary"}
 		})},
@@ -51,7 +51,7 @@ func TestTransportFailureDNSClassification(t *testing.T) {
 func TestDownloadPreservesOpenResourceTransportKind(t *testing.T) {
 	t.Parallel()
 
-	client, err := pixiv.NewClient(pixiv.Options{
+	client, err := pixiv.NewClient(pixiv.NewClientOptions{
 		HTTPClient: &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
 			return nil, &net.DNSError{Name: "download-dns-canary.invalid", Err: "lookup canary"}
 		})},
@@ -60,7 +60,7 @@ func TestDownloadPreservesOpenResourceTransportKind(t *testing.T) {
 		t.Fatalf("NewClient() error = %v", err)
 	}
 
-	err = client.Download(
+	_, err = client.DownloadResource(
 		context.Background(),
 		pixiv.ResourceRef{URL: "https://i.pximg.net/img-original/a.jpg"},
 		filepath.Join(t.TempDir(), "a.jpg"),
@@ -80,7 +80,7 @@ func TestTransportFailureUnknownIsClassifiedWithoutLeakingCause(t *testing.T) {
 
 	const rawCanary = "transport-raw-canary"
 	unknown := errors.New(rawCanary + " https://user:password@unknown-host.invalid/path?token=query-secret Cookie: session-secret certificate-canary")
-	client, err := pixiv.NewClient(pixiv.Options{
+	client, err := pixiv.NewClient(pixiv.NewClientOptions{
 		HTTPClient: &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
 			return nil, fmt.Errorf("wrapped unknown: %w", unknown)
 		})},
@@ -124,7 +124,7 @@ func TestTransportFailureConnectionResetClassification(t *testing.T) {
 		URL: "https://reset-canary.invalid/path?token=query-secret",
 		Err: fmt.Errorf("reset wrapper: %w", &net.OpError{Op: "read", Net: "tcp", Err: syscall.ECONNRESET}),
 	}
-	client, err := pixiv.NewClient(pixiv.Options{
+	client, err := pixiv.NewClient(pixiv.NewClientOptions{
 		HTTPClient: &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
 			return nil, reset
 		})},
@@ -150,7 +150,7 @@ func TestTransportFailureConnectionRefusedClassification(t *testing.T) {
 	t.Parallel()
 
 	refused := fmt.Errorf("dial wrapper with canary: %w", &net.OpError{Op: "dial", Net: "tcp", Err: syscall.ECONNREFUSED})
-	client, err := pixiv.NewClient(pixiv.Options{
+	client, err := pixiv.NewClient(pixiv.NewClientOptions{
 		HTTPClient: &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
 			return nil, refused
 		})},
@@ -180,7 +180,7 @@ func TestTransportFailureProxyClassification(t *testing.T) {
 		URL: "https://proxy-user:proxy-pass@proxy.invalid/path?token=query-secret",
 		Err: &net.OpError{Op: "proxyconnect", Net: "tcp", Err: syscall.ECONNREFUSED},
 	}
-	client, err := pixiv.NewClient(pixiv.Options{
+	client, err := pixiv.NewClient(pixiv.NewClientOptions{
 		HTTPClient: &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
 			return nil, proxyFailure
 		})},
@@ -205,7 +205,7 @@ func TestTransportFailureProxyClassification(t *testing.T) {
 func TestTransportFailureTLSClassification(t *testing.T) {
 	t.Parallel()
 
-	client, err := pixiv.NewClient(pixiv.Options{
+	client, err := pixiv.NewClient(pixiv.NewClientOptions{
 		HTTPClient: &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
 			return nil, x509.UnknownAuthorityError{}
 		})},
@@ -233,7 +233,7 @@ func TestTransportFailureContextIdentityIsPreserved(t *testing.T) {
 	for _, cause := range []error{context.Canceled, context.DeadlineExceeded} {
 		cause := cause
 		t.Run(cause.Error(), func(t *testing.T) {
-			client, err := pixiv.NewClient(pixiv.Options{
+			client, err := pixiv.NewClient(pixiv.NewClientOptions{
 				HTTPClient: &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
 					return nil, fmt.Errorf("context wrapper: %w", cause)
 				})},

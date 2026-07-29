@@ -111,6 +111,9 @@ var authenticatedR18RegressionRankingModes = []pixiv.RankingMode{
 // TestPixivSDKAuthenticatedR18RegressionCanary 使用当前源码的 public SDK 验收：
 // 认证态不得触发匿名 Web 作品读取，且全部 App 排行榜模式均可访问。
 func TestPixivSDKAuthenticatedR18RegressionCanary(t *testing.T) {
+	if os.Getenv("PIXIV_E2E_SDK") != "1" {
+		t.Skip("set PIXIV_E2E_SDK=1 as well as PIXIV_E2E_REAL_API=1 to run the optional SDK canary")
+	}
 	auth, ids := requireAuthenticatedR18RegressionCanary(t)
 	if err := validateAuthenticatedSDKCanaryBinary(os.Getenv("PIXIV_E2E_BINARY")); err != nil {
 		t.Fatal(err)
@@ -178,6 +181,7 @@ func TestPixivBinaryAuthenticatedR18RegressionCanary(t *testing.T) {
 	}
 	proxy := firstNonEmpty(os.Getenv("PIXIV_E2E_PROXY"), os.Getenv("PIXIV_WEB_API_PROXY"))
 	env = authenticatedCanaryChildEnvFrom(env, auth, proxy)
+	provisionExplicitCanaryAuth(t, repoRoot, binaryPath, env, auth)
 
 	for _, test := range []struct {
 		name    string
@@ -209,10 +213,42 @@ func TestPixivBinaryAuthenticatedR18RegressionCanary(t *testing.T) {
 	downloadPath := filepath.Join(t.TempDir(), "download")
 	_ = runPixivCanary(t, repoRoot, binaryPath, env, auth,
 		"download", "--download-path", downloadPath, strconvFormatInt(ids.ugoira))
-	if countRegularFiles(t, downloadPath) == 0 {
-		t.Fatalf("CLI R18 ugoira download wrote no files under %s", downloadPath)
+	requireCanaryAnimation(t, downloadPath, ".gif", []byte("GIF8"))
+
+	apngPath := filepath.Join(t.TempDir(), "download-apng")
+	_ = runPixivCanary(t, repoRoot, binaryPath, env, auth,
+		"download", "--ugoira-format", "apng", "--download-path", apngPath, strconvFormatInt(ids.ugoira))
+	requireCanaryAnimation(t, apngPath, ".apng", []byte{0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n'})
+}
+
+// requireCanaryAnimation 同时证明 CLI 写出了要求的容器扩展名和文件签名，不把
+// 「存在某个普通文件」误当成 GIF/APNG 下载已经成功。
+func requireCanaryAnimation(t *testing.T, root, extension string, magic []byte) {
+	t.Helper()
+	var animation string
+	err := filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if !entry.Type().IsRegular() || filepath.Ext(path) != extension {
+			return nil
+		}
+		animation = path
+		return filepath.SkipAll
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
-	requireNonemptyCanaryDownloads(t, downloadPath)
+	if animation == "" {
+		t.Fatalf("CLI ugoira download wrote no %s file under %s", extension, root)
+	}
+	body, err := os.ReadFile(animation)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(body) < len(magic) || string(body[:len(magic)]) != string(magic) {
+		t.Fatalf("CLI ugoira output %s does not have the expected %s signature", animation, extension)
+	}
 }
 
 func requireNonemptyCanaryDownloads(t *testing.T, root string) {

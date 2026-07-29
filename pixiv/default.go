@@ -11,13 +11,13 @@ import (
 	"time"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/config"
-	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/oauth"
+	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/oauth"
 	"github.com/FlanChanXwO/pixiv-cli/internal/storage/auth"
 	"github.com/FlanChanXwO/pixiv-cli/internal/utils/credentials"
 )
 
 type defaultOptions struct {
-	options   Options
+	options   clientOptions
 	authState *authTransactionState
 }
 
@@ -31,10 +31,13 @@ type localSnapshot struct {
 type localStateStage string
 
 const (
-	localStateStagePath   localStateStage = "path"
-	localStateStageAuth   localStateStage = "auth"
-	localStateStageConfig localStateStage = "config"
-	localStateStageProxy  localStateStage = "proxy"
+	// defaultPremiumStatusCacheTTL 保持 v0.7 已公布的一天缓存窗口，但不再暴露为
+	// 可写配置；这样不会以无依据的短时限打断正常认证或搜索路径。
+	defaultPremiumStatusCacheTTL                 = 24 * time.Hour
+	localStateStagePath          localStateStage = "path"
+	localStateStageAuth          localStateStage = "auth"
+	localStateStageConfig        localStateStage = "config"
+	localStateStageProxy         localStateStage = "proxy"
 )
 
 type localStateFailure struct {
@@ -129,7 +132,7 @@ func (d *defaultOptions) snapshot(ctx context.Context, operation Operation) (*Cl
 	options.AccessToken = ""
 	options.WebFallbackEnabled = snapshot.runtime.WebFallbackEnabled
 	if refreshToken == "" {
-		client, err := NewClient(options)
+		client, err := newClient(options)
 		if err != nil {
 			return nil, localSnapshotError(operation, err)
 		}
@@ -163,7 +166,7 @@ func (d *defaultOptions) snapshot(ctx context.Context, operation Operation) (*Cl
 		}
 	}
 	options.AccessToken = oauthClient.AccessToken()
-	client, err := NewClient(options)
+	client, err := newClient(options)
 	if err != nil {
 		return nil, localSnapshotError(operation, err)
 	}
@@ -174,7 +177,7 @@ func (d *defaultOptions) snapshot(ctx context.Context, operation Operation) (*Cl
 	client.authState = d.authState
 	client.cursorSource = "app:user:" + formatUserID(sourceUserID)
 	client.authenticatedUserID = oauthClient.UserID()
-	client.premiumStatusCacheTTL = snapshot.runtime.PremiumStatusCacheTTL
+	client.premiumStatusCacheTTL = defaultPremiumStatusCacheTTL
 	if selectedStored {
 		client.premiumStatusAuthPath = snapshot.authPath
 		if _, stored, ok := snapshot.store.Get(selectedUserID); ok {
@@ -202,10 +205,12 @@ func (d *defaultOptions) selectRefreshToken(store auth.AuthStore) (string, int64
 		}
 		return "", 0, false, errors.New("selected account does not exist")
 	}
-	if token, err := config.RefreshTokenFromEnv(); err != nil {
-		return "", 0, false, err
-	} else if token != "" {
-		return token, 0, false, nil
+	if !d.options.IgnoreEnvironmentRefreshToken {
+		if token, err := config.RefreshTokenFromEnv(); err != nil {
+			return "", 0, false, err
+		} else if token != "" {
+			return token, 0, false, nil
+		}
 	}
 	if userID, account, ok := auth.SelectAuthAccount(store, 0); ok {
 		token, err := credentials.ValidateRefreshTokenInput(account.RefreshToken)
@@ -236,7 +241,7 @@ func (d *defaultOptions) resourceSnapshot(operation Operation) (*Client, error) 
 	options := d.options
 	options.AccessToken = ""
 	options.HTTPClient = httpClient
-	client, err := NewClient(options)
+	client, err := newClient(options)
 	if err != nil {
 		return nil, localSnapshotError(operation, err)
 	}

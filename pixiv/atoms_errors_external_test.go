@@ -52,7 +52,7 @@ func TestRelatedAndTrendingExposeTypedFailuresWithoutFallbackOrSecrets(t *testin
 					_, _ = w.Write([]byte(response.body))
 				}))
 				defer server.Close()
-				client, _ := pixiv.NewClient(pixiv.Options{HTTPClient: server.Client(), AppAPIBaseURL: server.URL, WebAPIBaseURL: server.URL, AccessToken: "access-secret"})
+				client, _ := pixiv.NewClient(pixiv.NewClientOptions{HTTPClient: server.Client(), AppAPIBaseURL: server.URL, WebAPIBaseURL: server.URL, AccessToken: "access-secret"})
 				result, err := operation.call(client)
 				if !nilAtomResult(result) {
 					t.Fatalf("partial=%+v", result)
@@ -93,7 +93,7 @@ func TestRelatedAndTrendingExposeTransportAndContextFailures(t *testing.T) {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			httpClient := &http.Client{Transport: atomErrorTransport{err: tt.transport}}
-			client, _ := pixiv.NewClient(pixiv.Options{HTTPClient: httpClient, AppAPIBaseURL: "https://app.invalid", AccessToken: "token"})
+			client, _ := pixiv.NewClient(pixiv.NewClientOptions{HTTPClient: httpClient, AppAPIBaseURL: "https://app.invalid", AccessToken: "token"})
 			result, err := tt.call(client)
 			if !nilAtomResult(result) {
 				t.Fatalf("partial=%+v", result)
@@ -140,7 +140,7 @@ func TestUgoiraWebFailuresAreTypedSecretSafeAndReturnNoPartial(t *testing.T) {
 				defer server.Close()
 				httpClient, base = server.Client(), server.URL
 			}
-			client, _ := pixiv.NewClient(pixiv.Options{HTTPClient: httpClient, WebAPIBaseURL: base, WebFallbackEnabled: true})
+			client, _ := pixiv.NewClient(pixiv.NewClientOptions{HTTPClient: httpClient, WebAPIBaseURL: base, WebFallbackEnabled: true})
 			result, err := client.UgoiraMetadata(context.Background(), 731)
 			if !nilAtomResult(result) {
 				t.Fatalf("partial=%+v", result)
@@ -163,7 +163,7 @@ func TestIllustPagesDistinguishesMissingNullAndExplicitEmptyBody(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte(tt.body)) }))
 			defer server.Close()
-			client, _ := pixiv.NewClient(pixiv.Options{HTTPClient: server.Client(), WebAPIBaseURL: server.URL, WebFallbackEnabled: true})
+			client, _ := pixiv.NewClient(pixiv.NewClientOptions{HTTPClient: server.Client(), WebAPIBaseURL: server.URL, WebFallbackEnabled: true})
 			pages, err := client.IllustPages(context.Background(), 731)
 			if tt.valid {
 				if err != nil || pages == nil || len(pages) != 0 {

@@ -26,7 +26,7 @@ func TestSearchIllustExcludeAISendsBackendParamAndLocalPostFilters(t *testing.T)
 	}))
 	defer server.Close()
 
-	client, err := pixiv.NewClient(pixiv.Options{
+	client, err := pixiv.NewClient(pixiv.NewClientOptions{
 		HTTPClient:    server.Client(),
 		AppAPIBaseURL: server.URL,
 		AccessToken:   "token",
@@ -77,7 +77,7 @@ func TestSearchIllustBackendOnlyFiltersDoNotLocallyRefilterBatch(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client, err := pixiv.NewClient(pixiv.Options{
+	client, err := pixiv.NewClient(pixiv.NewClientOptions{
 		HTTPClient:    server.Client(),
 		AppAPIBaseURL: server.URL,
 		AccessToken:   "token",
@@ -136,7 +136,7 @@ func TestSearchIllustRatingFiltersLocallyByXRestrictOnly(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client, err := pixiv.NewClient(pixiv.Options{
+	client, err := pixiv.NewClient(pixiv.NewClientOptions{
 		HTTPClient:    server.Client(),
 		AppAPIBaseURL: server.URL,
 		AccessToken:   "token",
@@ -170,7 +170,7 @@ func TestSearchIllustOptionsReturnsDynamicToolListFromApp(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client, err := pixiv.NewClient(pixiv.Options{
+	client, err := pixiv.NewClient(pixiv.NewClientOptions{
 		HTTPClient:    server.Client(),
 		AppAPIBaseURL: server.URL,
 		AccessToken:   "token",

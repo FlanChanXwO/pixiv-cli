@@ -17,17 +17,17 @@ Several small helpers were duplicated across config, auth storage, download, Pix
   - `media`: MIME type inference from file extension.
   - `parse`: generic positive integer parsing.
 - Keep `internal/utils` root for Pixiv/download utility APIs that carry project semantics, such as filename generation, ID deduplication, and Pixiv web refresh-token input parsing.
-- Allow `internal/common/constants` only for cross-package infrastructure constants with no protocol meaning. `AppDataDirName` is a narrow path-namespace exception shared by local application-data storage.
+- Do not keep a generic constants package. Local-state path/permission constants live in `internal/platform/localstate`; operation-log constants live in `internal/logging`.
 - Keep adapter-specific helpers in their adapter packages: CLI Cobra/prompt/OAuth loopback helpers stay in `internal/cli`; MCP delivery, formatting, and tool result helpers stay in `internal/mcpserver`.
 
 ## Consequences
 
 - Repeated low-level helpers are shared without creating a catch-all `common` package.
 - Pixiv protocol constants, MCP delivery constants, config keys/defaults, and search/ranking enums remain in their owning domain packages.
-- `common/constants` is a narrow exception to ADR 0001, not a place for product or protocol policy.
+- Package ownership is explicit: neither local-state nor logging constants becomes a place for product or protocol policy.
 
 ## Guardrails
 
 - A helper may enter `internal/utils/*` only if it has no CLI, MCP, OAuth, Pixiv protocol, or config schema semantics.
-- A constant may enter `internal/common/constants` only if it is cross-package, infrastructural, and stable without protocol context; `AppDataDirName` is the only product-named path exception.
+- A constant belongs to the narrow package that owns its behavior: local-state path/permission values in `internal/platform/localstate`, logging event values in `internal/logging`.
 - Do not move values merely because they are repeated once; prefer local helpers until a real dependency or duplication problem exists.

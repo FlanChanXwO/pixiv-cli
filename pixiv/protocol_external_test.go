@@ -34,7 +34,7 @@ func TestClientUsesCentralProfilesAndCatalogWithExplicitBases(t *testing.T) {
 	}))
 	defer web.Close()
 
-	client, err := pixiv.NewClient(pixiv.Options{HTTPClient: app.Client(), AppAPIBaseURL: app.URL, WebAPIBaseURL: web.URL, AccessToken: "app-token"})
+	client, err := pixiv.NewClient(pixiv.NewClientOptions{HTTPClient: app.Client(), AppAPIBaseURL: app.URL, WebAPIBaseURL: web.URL, AccessToken: "app-token"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -49,7 +49,7 @@ func TestAdapterFailuresStayTypedAndSecretFree(t *testing.T) {
 		http.Error(w, appSecret, http.StatusBadGateway)
 	}))
 	defer app.Close()
-	client, err := pixiv.NewClient(pixiv.Options{HTTPClient: app.Client(), AppAPIBaseURL: app.URL, AccessToken: "app-token"})
+	client, err := pixiv.NewClient(pixiv.NewClientOptions{HTTPClient: app.Client(), AppAPIBaseURL: app.URL, AccessToken: "app-token"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -61,7 +61,7 @@ func TestAdapterFailuresStayTypedAndSecretFree(t *testing.T) {
 		fmt.Fprintf(w, `{"error":true,"message":%q}`, webSecret)
 	}))
 	defer web.Close()
-	client, err = pixiv.NewClient(pixiv.Options{HTTPClient: web.Client(), WebAPIBaseURL: web.URL, WebFallbackEnabled: true})
+	client, err = pixiv.NewClient(pixiv.NewClientOptions{HTTPClient: web.Client(), WebAPIBaseURL: web.URL, WebFallbackEnabled: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -73,7 +73,7 @@ func TestAdapterFailuresStayTypedAndSecretFree(t *testing.T) {
 		http.Error(w, oauthSecret, http.StatusForbidden)
 	}))
 	defer oauth.Close()
-	client, err = pixiv.OpenDefault(pixiv.Options{HTTPClient: oauth.Client(), OAuthBaseURL: oauth.URL, RefreshToken: "refresh-secret"})
+	client, err = pixiv.OpenDefaultWith(pixiv.OpenDefaultOptions{HTTPClient: oauth.Client(), OAuthBaseURL: oauth.URL, RefreshToken: "refresh-secret"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -81,7 +81,7 @@ func TestAdapterFailuresStayTypedAndSecretFree(t *testing.T) {
 	assertProtocolFailure(t, err, pixiv.CodeForbidden, pixiv.OperationIllustRecommended, pixiv.BackendOAuth, http.StatusForbidden, oauthSecret, "refresh-secret")
 
 	const transportSecret = "transport-error-secret"
-	client, err = pixiv.NewClient(pixiv.Options{
+	client, err = pixiv.NewClient(pixiv.NewClientOptions{
 		HTTPClient: &http.Client{Transport: protocolRoundTripper(func(*http.Request) (*http.Response, error) {
 			return nil, errors.New("dial failed: " + transportSecret)
 		})},

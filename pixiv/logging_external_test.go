@@ -18,7 +18,7 @@ func TestClientLoggerEmitsSafeStructuredFailureAndNilIsNoop(t *testing.T) {
 	const querySecret = "query-secret-canary"
 	var output bytes.Buffer
 	logger := slog.New(slog.NewJSONHandler(&output, nil))
-	client, err := pixiv.NewClient(pixiv.Options{
+	client, err := pixiv.NewClient(pixiv.NewClientOptions{
 		AccessToken:   accessSecret,
 		AppAPIBaseURL: "https://api.example.invalid/?q=" + querySecret,
 		Logger:        logger,
@@ -45,7 +45,7 @@ func TestClientLoggerEmitsSafeStructuredFailureAndNilIsNoop(t *testing.T) {
 		}
 	}
 
-	quiet, err := pixiv.NewClient(pixiv.Options{})
+	quiet, err := pixiv.NewClient(pixiv.NewClientOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -56,7 +56,7 @@ func TestClientLoggerEmitsSafeStructuredFailureAndNilIsNoop(t *testing.T) {
 
 func TestOpenDefaultLogsOneEventForOnePublicOperation(t *testing.T) {
 	var output bytes.Buffer
-	client, err := pixiv.OpenDefault(pixiv.Options{Logger: slog.New(slog.NewJSONHandler(&output, nil))})
+	client, err := pixiv.OpenDefaultWith(pixiv.OpenDefaultOptions{Logger: slog.New(slog.NewJSONHandler(&output, nil))})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -74,7 +74,7 @@ func TestOpenDefaultCurrentUserSnapshotFailureLogsOnlyCurrentUserOperation(t *te
 		t.Fatal(err)
 	}
 	var output bytes.Buffer
-	client, err := pixiv.OpenDefault(pixiv.Options{ConfigFilePath: configPath, Logger: slog.New(slog.NewJSONHandler(&output, nil))})
+	client, err := pixiv.OpenDefaultWith(pixiv.OpenDefaultOptions{ConfigFilePath: configPath, Logger: slog.New(slog.NewJSONHandler(&output, nil))})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -95,7 +95,7 @@ func TestClientLoggerRedactsRealUpstreamFailureCanaries(t *testing.T) {
 	const oauthCode = "oauth-code-canary"
 	const verifier = "pkce-verifier-canary"
 	var output bytes.Buffer
-	client, err := pixiv.NewClient(pixiv.Options{
+	client, err := pixiv.NewClient(pixiv.NewClientOptions{
 		AccessToken:   token,
 		AppAPIBaseURL: "https://api.example.invalid/?secret=" + query,
 		Logger:        slog.New(slog.NewJSONHandler(&output, nil)),

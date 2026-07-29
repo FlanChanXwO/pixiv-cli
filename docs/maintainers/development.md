@@ -245,7 +245,7 @@ https_proxy=http://127.0.0.1:7890 ./build/pixiv mcp
 ./build/pixiv mcp --no-proxy
 ```
 
-CLI 的认证、配置、回调桥接、日志、Release 检查缓存与 macOS 回调 helper 都位于当前用户主目录下的 `.pixiv-cli`：macOS/Linux 为 `~/.pixiv-cli`，Windows 为 `%USERPROFILE%\.pixiv-cli`。多账号认证保存在 `auth.json`，账号 key 是 Pixiv UID；全局配置保存在 `config.toml`。Unix-like 主动使用 `0700` 父目录与 `0600` 文件；Windows 首次创建继承父目录 ACL，替换既有目标保留其 ACL，不主动收紧或放宽 DACL。推荐使用 `pixiv auth login` 通过本地 loopback server 和浏览器 OAuth 登录；已有 raw token 可用 `pixiv auth import` 输入，账号备份使用 `auth export` 与 `auth import --file`。可用 `pixiv config path/get/set/unset` 管理全局配置。无 refresh token 时默认启用匿名 Pixiv web/ajax API fallback，可用 `pixiv config set web_fallback_enabled false` 关闭。
+CLI 的认证、配置、回调桥接、日志、Release 检查缓存与 macOS 回调 helper 都位于当前用户主目录下的 `.pixiv-cli`：macOS/Linux 为 `~/.pixiv-cli`，Windows 为 `%USERPROFILE%\.pixiv-cli`。多账号认证保存在 `auth.json`，账号 key 是 Pixiv UID；全局配置保存在 `config.toml`。Unix-like 主动使用 `0700` 父目录与 `0600` 文件；Windows 首次创建继承父目录 ACL，替换既有目标保留其 ACL，不主动收紧或放宽 DACL。推荐使用 `pixiv auth login` 通过本地 loopback server 和浏览器 OAuth 登录；已有 raw token 可用 `pixiv auth import` 输入，账号备份使用 `auth export` 与 `auth import --file`。`pixiv config path/get/set/unset` 只管理 `download_path`、`filename_template`、`https_proxy` 三个别名；其余高级 TOML（包括 `[web] fallback_enabled`）由用户手工维护。无 refresh token 时默认启用匿名 Pixiv web/ajax API fallback。
 CLI 使用 Cobra/pflag，flag 可以写在位置参数前后；例如 `pixiv auth check 12345678 --json` 和 `pixiv search "初音ミク" --json` 都受支持。
 
 ## 获取 refresh token
@@ -552,7 +552,7 @@ workflow artifact 读取、生成或记录 deploy key。
 当前 Release 不会进行 Apple notarization 或 Windows Authenticode。直接下载仍可能被 Gatekeeper
 或 SmartScreen 拦截/提示；这是需要在用户文档中保留的系统信誉边界，不能通过文档或脚本绕过。
 
-成功结束的 `Release` workflow 会触发 `.github/workflows/publish-skillhub.yml`。GitHub 以
+成功结束的 `Release` workflow 会同时触发 `.github/workflows/publish-skillhub.yml` 与 `.github/workflows/publish-clawhub.yml`。GitHub 以
 `github.token` 创建 Release 时不会递归触发 `release` event，因此不能将该 event 用作可靠的自动化
 交接。完成 Homebrew 部署的 Release 会交出只含精确 release tag 的短期 artifact；这避免恢复发布的
 `workflow_run.head_branch` 为 `main` 时把分支名误作版本。SkillHub workflow 只 checkout 该不可变 tag，
@@ -561,8 +561,8 @@ workflow artifact 读取、生成或记录 deploy key。
 SkillHub CLI 的 dry-run 和提交，并使用 `SKILL.md` 内的独立 SemVer，而非 CLI Release tag。`SKILLHUB_TOKEN`
 仅进入最后的提交步骤，CLI 必须返回 `skillId` 和审核状态；这证明 SkillHub 已接收提交，但平台审核完成前
 公开详情页可能仍不可见。
-若该独立发布失败，可通过同一 workflow 的 `workflow_dispatch` 输入既有发布 tag 恢复，不能用 main 的
-后续内容替代该 tag。
+若任一独立发布失败，可通过对应 workflow 的 `workflow_dispatch` 输入既有发布 tag 恢复，不能用 main 的
+后续内容替代该 tag。ClawHub workflow 与 SkillHub 使用同一不可变 tag handoff：它先验证公开非 draft Release、默认分支祖先关系、`SKILL.md` 版本与 tag 一致性以及产品 skill 的改动，再在不含凭据的环境运行固定版本的 ClawHub CLI dry-run。只有最终 publish/inspect 步骤收到 `CLAWHUB_TOKEN`；检查结果必须包含产品 skill、对应版本/commit 和发布指纹。
 
 ## Git 与本地产物
 

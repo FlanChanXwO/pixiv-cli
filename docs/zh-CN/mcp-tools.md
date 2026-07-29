@@ -1,5 +1,12 @@
 # MCP 工具
 
+
+## 实体 Record 契约
+
+所有实体读取 tool——搜索、详情、推荐、用户列表、feed 与 MyPixiv——都返回 structured `{records, pagination?}`。每条 Record 具有稳定字符串 `id`、`type`、`url`；其余公开 SDK 字段会保留，不添加 record/schema/version 字段。MCP 的 text Content 只是简短摘要，绝不重复实体 JSON。可分类的实体读取失败会返回 `isError=true` 和 `records=[]`。以下实体表项一律采用此契约；旧的 `items`/`illusts`/`user_previews` 分别形状不再是 v0.8.0 输出。
+
+实体 tool 包括 `search_illust`、`search_novel`、`illust_detail`、`illust_related`、`illust_ranking`、`illust_recommended`、`recommended`、`illust_follow`、`novel_follow`、`illust_new`、`novel_new`、`mypixiv_users`、`mypixiv_illusts`、`mypixiv_novels`、`search_user`、`user_detail`、`user_artworks`、`user_novels`、`user_bookmarks` 与 `user_following`。
+
 [English](../en/mcp-tools.md) | 简体中文 | [日本語](../ja/mcp-tools.md) | [文档索引](../index.md)
 
 以 `pixiv mcp` 启动 stdio server。stdout 仅用于 JSON-RPC；操作日志写入用户主目录 `~/.pixiv-cli/logs`（Windows 为 `%USERPROFILE%\.pixiv-cli\logs`）下的按日纯文本文件 `YYYY-MM-DD.txt`（默认保留 7 天），终端默认无日志痕迹。MCP 不提供 HTTP endpoint。
@@ -23,7 +30,7 @@ SDK cursor 不出现在 MCP 参数或输出。列表工具统一使用逻辑 `pa
 | `set_download_path` | `path` | 文本状态。 |
 | `refresh_token` | 无 | 当前认证账号摘要。 |
 | `set_refresh_token` | 原始 App API `refresh_token` | 当前会话认证结果；不写 `auth.json`；Cookie 输入会被拒绝。 |
-| `download` | `illust_id`、`illust_ids` 和/或 `urls`，可选 `pages`/`quality`；`delivery` 仅 `local_path` | `{items, failures}` 下载报告；每个成功项含规范作品 URL、ID、类型和本地文件页号/路径；不内嵌图片内容。 |
+| `download` | `src` 与 `srcs` 二选一；每项为 PID、Pixiv 作品/用户 URL 或允许的 CDN URL；可选 `pages`、`quality`、`concurrency`、`ugoira_format`（`gif` 或 `apng`）；`delivery` 仅 `local_path` | `{items, failures}` 下载报告；含本地文件元数据；不内嵌图片内容。 |
 | `download_random_from_recommendation` | 可选 `count`（省略或 `null` 时默认 5；显式值须为 1..20），可选 `pages`/`quality`；`delivery` 仅 `local_path` | 下载结果文本与 structured 本地文件元数据；不内嵌图片内容。 |
 
 `refresh_token` 在 SDK/config/proxy 初始化失败时不会误报“未设置 refresh token”：context 取消与 deadline 保留明确文案，公开 `*pixiv.Error` 保留安全 code/operation/backend 分类，其他未知初始化错误不回显原始细节。真正执行 refresh 时，仅 `unauthorized` 保留缺少 token 提示；未知执行错误同样返回脱敏排查提示。该 tool 的 wire 返回 `isError=false`，真实失败通过前述文件日志 event 可观测。
@@ -32,9 +39,7 @@ SDK cursor 不出现在 MCP 参数或输出。列表工具统一使用逻辑 `pa
 
 以 HTTP(S) 代理启动 MCP server 时，其媒体资源下载会刻意使用 HTTP/1.1。App API、OAuth 与 Web 元数据请求仍保留常规协议协商；此行为规避部分代理特有的 HTTP/2 流重置，不改变认证或所选下载质量。
 
-`download.urls` 只在本地识别稳定的官方 Pixiv HTTPS 页面：`pixiv.net` 或 `www.pixiv.net` 的 `/artworks/{id}`、`/users/{id}`、`/users/{id}/artworks`，可带 locale、query 和 fragment。解析不跟随跳转、不抓取 HTML；短链、旧式 URL、小说、FANBOX、Pixivision、Sketch、其他 host 或路径都会在联网和打开下载器前被拒绝，安全错误文本不会回显原始 URL。作品 URL 下载一件作品；用户 URL 按输入位置展开其全部 `illust`、`manga`、`ugoira`，不下载小说，并且必须使用 App OAuth，不能走匿名 Web fallback。
-
-下载先按 `illust_ids` 的数组顺序、再按可选 `illust_id`、最后按 `urls` 的数组顺序处理；MCP 的独立字段不能表达它们之间的交错顺序。不会跨次持久化、去重、缓存或补齐历史记录，重复引用会再次处理。用户批量下载没有隐式数量、分页、重试或超时限制。取消立即停止；单件或单页失败不会阻止之后的目标，`items` 与 `failures` 会一起返回，因此含失败的报告 result 为 `isError=true`。成功项使用规范作品 URL，失败项给出安全的 URL/ID/类型/消息摘要。
+`download.src` 为单个来源，`download.srcs` 为有序来源数组，二者同时提供会被拒绝。来源可以是 PID、官方 Pixiv HTTPS 作品/用户页面，或 SDK `ResourcePolicy` 允许的 CDN URL。解析不跟随跳转、不抓取 HTML；用户 URL 按输入位置展开其全部 `illust`、`manga`、`ugoira`，不下载小说，并且必须使用 App OAuth，不能走匿名 Web fallback。`concurrency=0` 使用 `2 × GOMAXPROCS`，正数精确采用。下载在 `.pixiv-cache` 保存 HTTP 缓存元数据，只有 validator 匹配的残片才会经 `If-Range` 续传。取消立即停止；单件或单页失败不会阻止之后的目标，`items` 与 `failures` 会一起返回，因此含失败的报告 result 为 `isError=true`。
 
 两个下载 tool 在参数校验、SDK、推荐获取、下载、结果整理失败时，都会保留原有业务错误文本，并返回有效 structured output：`delivery` 固定为 `local_path`（非法 `delivery` 时同样回落到该值），`items`、`failures` 与 `files` 是空数组而不是 `null`。这些全量失败结果返回 `isError=false`，不会被 typed output schema 的校验错误替代。成功与失败均不内嵌图片内容。
 
@@ -42,21 +47,21 @@ SDK cursor 不出现在 MCP 参数或输出。列表工具统一使用逻辑 `pa
 
 | tool | 参数 | structured output |
 | --- | --- | --- |
-| `search_illust` | `word`、`search_target`、`sort`、`duration`、`start_date`、`end_date`、`page`、`limit`、`rating`、`content_type`、`ai_mode`、`aspect_ratio`、`resolution`、`tool`、`bookmark_min`、`bookmark_max` | `{items, pagination, text}`；`items` 可直接作为后续下载的作品引用来源。 |
-| `search_novel` | `word`、`search_target`、`sort`、`duration`、`page`、`limit`、`rating`、`min_text_length`、`max_text_length`、`original_only` | 仅 App 的 `{novels, pagination, text}`；可分类失败会令 `isError=true`。 |
+| `search_illust` | `word`、`search_target`、`sort`、`duration`、`start_date`、`end_date`、`page`、`limit`、`rating`、`content_type`、`ai_mode`、`aspect_ratio`、`resolution`、`tool`、`bookmark_min`、`bookmark_max` | `{records, pagination?}`；`records` 可直接作为后续下载的作品引用来源。 |
+| `search_novel` | `word`、`search_target`、`sort`、`duration`、`page`、`limit`、`rating`、`min_text_length`、`max_text_length`、`original_only` | 仅 App 的 `{records, pagination?}`；可分类失败会令 `isError=true`。 |
 | `search_illust_options` | 必填 `word` | 当前搜索词可用的 `{tools,text}`；需要认证，不支持 Web fallback。 |
-| `illust_detail` | `illust_id` 或 `url` 二选一 | `{illust, text}`；作品详情；Pixiv 提供时包含原始 HTML `caption`。 |
-| `illust_related` | `illust_id`、`page`、`limit` | `{items, pagination, text}` 相关作品。 |
-| `illust_ranking` | `mode`、`date`、`page`、`limit` | `{items, pagination, text}` 排行榜作品。 |
-| `illust_recommended` | `page`、`limit` | `{items, pagination, text}` 推荐作品；文本输出经公开 SDK 调用链执行。 |
-| `recommended` | 必填 `kind`（`all`、`illust`、`manga`、`novel`、`user`），可选 `page`、`limit` | 通过认证 App SDK 返回 `{kind, illusts, manga, novels, user_previews, pagination}`；单类只填对应流，`all` 顺序读取四流。每条流独立应用分页，`pagination` 按流给出逻辑页信息；不暴露 SDK cursor，不支持 Web fallback。 |
+| `illust_detail` | `illust_id` 或 `url` 二选一 | `{records}`；作品详情；Pixiv 提供时包含原始 HTML `caption`。 |
+| `illust_related` | `illust_id`、`page`、`limit` | `{records, pagination?}` 相关作品。 |
+| `illust_ranking` | `mode`、`date`、`page`、`limit` | `{records, pagination?}` 排行榜作品。 |
+| `illust_recommended` | `page`、`limit` | `{records, pagination?}` 推荐作品；文本输出经公开 SDK 调用链执行。 |
+| `recommended` | 必填 `kind`（`all`、`illust`、`manga`、`novel`、`user`），可选 `page`、`limit` | `{records, pagination?}`；`all` 顺序读取四个认证 stream。每条 stream 独立应用分页，不暴露 SDK cursor，不支持 Web fallback。 |
 | `trending_tags_illust` | 无 | `{tags, text}` 热门标签。 |
-| `illust_follow` | `restrict`、`page`、`limit` | `{items, pagination, text}` 关注新作；需要认证。 |
-| `search_user` | `word`、`page`、`limit` | `{source, user_previews, pagination, text}`；认证官方 App 搜索为 `app_search`，匿名 fallback 为 `related_illust_authors`，后者不是用户名搜索。 |
-| `user_detail` | 必填 `user_id` | 完整稳定的 `{user, profile, profile_publicity, workspace}`；需要认证，不支持 Web fallback。 |
-| `user_artworks` | 可选 `user_id`、`type`、`page`、`limit` | `{user_id, items, pagination}`；缺省 UID 为当前认证用户。 |
-| `user_bookmarks` | 可选 `user_id`、`restrict`、`tag`、`page`、`limit` | `{user_id, items, pagination}`；缺省 UID 为当前认证用户。 |
-| `user_following` | 可选 `user_id`、`restrict`、`page`、`limit` | `{user_id, items, pagination}`；缺省 UID 为当前认证用户。 |
+| `illust_follow` | `restrict`、`page`、`limit` | `{records, pagination?}` 关注新作；需要认证。 |
+| `search_user` | `word`、`page`、`limit` | `{records, pagination?}`；认证官方 App 搜索为 `app_search`，匿名 fallback 为 `related_illust_authors`，后者不是用户名搜索。 |
+| `user_detail` | 必填 `user_id` | `{records}`；含用户、profile、profile-publicity 与 workspace 字段；需要认证，不支持 Web fallback。 |
+| `user_artworks` | 可选 `user_id`、`type`、`page`、`limit` | `{records, pagination?}`；缺省 UID 为当前认证用户。 |
+| `user_bookmarks` | 可选 `user_id`、`restrict`、`tag`、`page`、`limit` | `{records, pagination?}`；缺省 UID 为当前认证用户。 |
+| `user_following` | 可选 `user_id`、`restrict`、`page`、`limit` | `{records, pagination?}`；缺省 UID 为当前认证用户。 |
 
 `search_illust` 的筛选枚举为：
 

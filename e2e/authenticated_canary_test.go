@@ -44,12 +44,12 @@ func TestAuthenticatedCanaryChildEnvReplacesHostProxyOverrides(t *testing.T) {
 	}, proxy)
 	assertCanaryEnvValue(t, explicit, "https_proxy", proxy, 1)
 	assertCanaryEnvValue(t, explicit, "HTTPS_PROXY", proxy, 1)
-	assertCanaryEnvValue(t, explicit, "PIXIV_REFRESH_TOKEN", "explicit-token", 1)
+	assertCanaryEnvValue(t, explicit, "PIXIV_REFRESH_TOKEN", "", 0)
 	assertCanaryProxyEnvCanonical(t, explicit)
 }
 
 func authenticatedCanaryChildEnvFrom(environ []string, auth authenticatedCanaryAuth, proxy string) []string {
-	filtered := make([]string, 0, len(environ)+3)
+	filtered := make([]string, 0, len(environ)+2)
 	for _, entry := range environ {
 		name, _, found := strings.Cut(entry, "=")
 		if !found {
@@ -60,9 +60,6 @@ func authenticatedCanaryChildEnvFrom(environ []string, auth authenticatedCanaryA
 			continue
 		}
 		filtered = append(filtered, entry)
-	}
-	if auth.kind == canaryAuthExplicitToken {
-		filtered = append(filtered, "PIXIV_REFRESH_TOKEN="+auth.refreshToken)
 	}
 	if proxy != "" {
 		filtered = append(filtered, "https_proxy="+proxy, "HTTPS_PROXY="+proxy)
@@ -233,7 +230,7 @@ func TestAuthenticatedCanarySearchSnapshotRefreshesOAuthOnce(t *testing.T) {
 	}))
 	defer server.Close()
 
-	options := pixiv.Options{
+	options := pixiv.OpenDefaultOptions{
 		RefreshToken:   "explicit-test-token",
 		AuthFilePath:   filepath.Join(t.TempDir(), "auth.json"),
 		ConfigFilePath: filepath.Join(t.TempDir(), "config.toml"),
@@ -312,28 +309,28 @@ func TestAuthenticatedCanaryHTTPClientIsolatesEnvironmentAndRedactsProxyErrors(t
 	}
 }
 
-func authenticatedCanarySDKOptions(t *testing.T, auth authenticatedCanaryAuth, proxy string) (pixiv.Options, error) {
+func authenticatedCanarySDKOptions(t *testing.T, auth authenticatedCanaryAuth, proxy string) (pixiv.OpenDefaultOptions, error) {
 	t.Helper()
 
 	dir := t.TempDir()
 	httpClient, err := authenticatedCanaryHTTPClient(proxy)
 	if err != nil {
-		return pixiv.Options{}, err
+		return pixiv.OpenDefaultOptions{}, err
 	}
-	options := pixiv.Options{ConfigFilePath: filepath.Join(dir, "config.toml"), HTTPClient: httpClient}
+	options := pixiv.OpenDefaultOptions{ConfigFilePath: filepath.Join(dir, "config.toml"), HTTPClient: httpClient}
 	switch auth.kind {
 	case canaryAuthExplicitToken:
 		options.AuthFilePath = filepath.Join(dir, "auth.json")
 		options.RefreshToken = auth.refreshToken
 		return options, nil
 	case canaryAuthLocalStore:
-		client, err := pixiv.OpenDefault(options)
+		client, err := pixiv.OpenDefaultWith(options)
 		if err != nil {
-			return pixiv.Options{}, err
+			return pixiv.OpenDefaultOptions{}, err
 		}
 		accounts, err := client.ListAccounts()
 		if err != nil {
-			return pixiv.Options{}, err
+			return pixiv.OpenDefaultOptions{}, err
 		}
 		for _, account := range accounts.Accounts {
 			if account.UserID == accounts.DefaultUserID && account.Default && account.HasToken {
@@ -341,14 +338,14 @@ func authenticatedCanarySDKOptions(t *testing.T, auth authenticatedCanaryAuth, p
 				return options, nil
 			}
 		}
-		return pixiv.Options{}, errors.New("local authenticated canary requires a default account with a refresh token")
+		return pixiv.OpenDefaultOptions{}, errors.New("local authenticated canary requires a default account with a refresh token")
 	default:
-		return pixiv.Options{}, errors.New("authenticated canary credential mode is required")
+		return pixiv.OpenDefaultOptions{}, errors.New("authenticated canary credential mode is required")
 	}
 }
 
-func openAuthenticatedCanarySnapshot(ctx context.Context, options pixiv.Options) (*pixiv.Client, error) {
-	client, err := pixiv.OpenDefault(options)
+func openAuthenticatedCanarySnapshot(ctx context.Context, options pixiv.OpenDefaultOptions) (*pixiv.Client, error) {
+	client, err := pixiv.OpenDefaultWith(options)
 	if err != nil {
 		return nil, err
 	}
@@ -358,6 +355,9 @@ func openAuthenticatedCanarySnapshot(ctx context.Context, options pixiv.Options)
 // TestPixivSDKAuthenticatedAppAPICanarySearchFilters 只验收当前源码的 public
 // SDK 搜索能力。整个测试固定一个认证 snapshot，因此 exact -run 只刷新一次 OAuth。
 func TestPixivSDKAuthenticatedAppAPICanarySearchFilters(t *testing.T) {
+	if os.Getenv("PIXIV_E2E_SDK") != "1" {
+		t.Skip("set PIXIV_E2E_SDK=1 as well as PIXIV_E2E_REAL_API=1 to run the optional SDK canary")
+	}
 	if os.Getenv("PIXIV_E2E_REAL_API") != "1" {
 		t.Skip("set PIXIV_E2E_REAL_API=1 to run authenticated App API search canary")
 	}

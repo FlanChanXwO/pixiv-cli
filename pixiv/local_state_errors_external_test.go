@@ -24,7 +24,7 @@ func TestOpenDefaultClassifiesMalformedConfigLocalState(t *testing.T) {
 	if err := os.WriteFile(configPath, []byte("config-body-secret = ["), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	client, err := pixiv.OpenDefault(pixiv.Options{
+	client, err := pixiv.OpenDefaultWith(pixiv.OpenDefaultOptions{
 		AuthFilePath:   filepath.Join(dir, "missing-auth.json"),
 		ConfigFilePath: configPath,
 	})
@@ -42,7 +42,7 @@ func TestOpenDefaultClassifiesMalformedAuthLocalState(t *testing.T) {
 	if err := os.WriteFile(authPath, []byte(`{"refresh_token":"auth-body-secret"`), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	client, err := pixiv.OpenDefault(pixiv.Options{
+	client, err := pixiv.OpenDefaultWith(pixiv.OpenDefaultOptions{
 		AuthFilePath:   authPath,
 		ConfigFilePath: filepath.Join(dir, "missing-config.toml"),
 	})
@@ -61,7 +61,7 @@ func TestOpenDefaultClassifiesLegacyAuthSchemaLocalStateMalformed(t *testing.T) 
 	if err := os.WriteFile(authPath, []byte(body), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	client, err := pixiv.OpenDefault(pixiv.Options{
+	client, err := pixiv.OpenDefaultWith(pixiv.OpenDefaultOptions{
 		AuthFilePath:   authPath,
 		ConfigFilePath: filepath.Join(dir, "missing-config.toml"),
 	})
@@ -91,7 +91,7 @@ func TestOpenDefaultClassifiesInvalidProxyLocalState(t *testing.T) {
 	}))
 	defer server.Close()
 	var logs bytes.Buffer
-	client, err := pixiv.OpenDefault(pixiv.Options{
+	client, err := pixiv.OpenDefaultWith(pixiv.OpenDefaultOptions{
 		AuthFilePath:   filepath.Join(dir, "missing-auth.json"),
 		ConfigFilePath: configPath,
 		OAuthBaseURL:   server.URL,
@@ -118,7 +118,7 @@ func TestOpenDefaultClassifiesInvalidProxyLocalState(t *testing.T) {
 func TestOpenDefaultMissingOptionalLocalStateRemainsEmptySuccess(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
-	client, err := pixiv.OpenDefault(pixiv.Options{
+	client, err := pixiv.OpenDefaultWith(pixiv.OpenDefaultOptions{
 		AuthFilePath:   filepath.Join(dir, "missing-auth.json"),
 		ConfigFilePath: filepath.Join(dir, "missing-config.toml"),
 	})
@@ -198,7 +198,7 @@ func TestErrorNormalizesLocalWriteCommitOutcome(t *testing.T) {
 
 func TestNonLocalErrorLeavesLocalStateKindEmpty(t *testing.T) {
 	t.Parallel()
-	client, err := pixiv.NewClient(pixiv.Options{})
+	client, err := pixiv.NewClient(pixiv.NewClientOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -229,7 +229,7 @@ func TestCheckAccountClassifiesOAuthIdentityLocalStateMismatch(t *testing.T) {
 		_, _ = w.Write([]byte(`{"access_token":"mismatch-access-token-secret","refresh_token":"mismatch-rotated-token-secret","user":{"id":8}}`))
 	}))
 	defer server.Close()
-	client, err := pixiv.NewClient(pixiv.Options{AuthFilePath: authPath, HTTPClient: server.Client(), OAuthBaseURL: server.URL})
+	client, err := pixiv.OpenDefaultWith(pixiv.OpenDefaultOptions{AuthFilePath: authPath, HTTPClient: server.Client(), OAuthBaseURL: server.URL})
 	if err != nil {
 		t.Fatal(err)
 	}

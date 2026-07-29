@@ -4,11 +4,12 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/config"
-	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/oauth"
+	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/oauth"
 	"github.com/FlanChanXwO/pixiv-cli/internal/storage/auth"
 	"github.com/FlanChanXwO/pixiv-cli/internal/utils/credentials"
 )
@@ -380,10 +381,13 @@ func (c *Client) accountState(operation Operation, needsHTTP bool) (localSnapsho
 	return localSnapshot{authPath: c.authFilePath, configPath: c.configFilePath, store: store}, c.httpClient, nil
 }
 
-// GetConfig 读取 alias 的有效值，包含现有环境变量覆盖规则。
-func (c *Client) GetConfig(alias string) (out ConfigValue, err error) {
+// GetConfig 读取一个强类型配置键的有效值，包含现有环境变量覆盖规则。
+func (c *Client) GetConfig(key ConfigKey) (out ConfigValue, err error) {
 	started := time.Now()
 	defer func() { c.operationLog(OperationConfigGet, started, err, 0, 0) }()
+	if err := validateConfigKey(key); err != nil {
+		return ConfigValue{}, newError(CodeInvalidArgument, OperationConfigGet, "", false, 0, 0, err)
+	}
 	path, err := c.configPathFor(OperationConfigGet)
 	if err != nil {
 		return ConfigValue{}, err
@@ -392,45 +396,75 @@ func (c *Client) GetConfig(alias string) (out ConfigValue, err error) {
 	if err != nil {
 		return ConfigValue{}, localSnapshotError(OperationConfigGet, markLocalState(localStateStageConfig, err))
 	}
-	value, err := state.Effective(alias)
+	value, err := state.Effective(string(key))
 	if err != nil {
 		return ConfigValue{}, newError(CodeInvalidArgument, OperationConfigGet, "", false, 0, 0, errors.New("config key is invalid"))
 	}
-	return ConfigValue{Key: alias, Value: value.Text, Source: value.Source, HasValue: value.HasValue}, nil
+	return publicConfigValue(key, value)
 }
 
-// SetConfig 校验并私有写入一个现有 alias。
-func (c *Client) SetConfig(alias, raw string) (out ConfigValue, err error) {
+// SetConfig 校验并私有写入一个非敏感强类型配置值。
+func (c *Client) SetConfig(key ConfigKey, input ConfigInput) (out ConfigValue, err error) {
 	started := time.Now()
 	defer func() { c.operationLog(OperationConfigSet, started, err, 0, 0) }()
+	if err := validateConfigKey(key); err != nil {
+		return ConfigValue{}, newError(CodeInvalidArgument, OperationConfigSet, "", false, 0, 0, err)
+	}
+	if key == ConfigKeyLoginRelaySecret {
+		return ConfigValue{}, newError(CodeInvalidArgument, OperationConfigSet, "", false, 0, 0, errors.New("sensitive config requires SetLoginRelaySecret"))
+	}
 	path, err := c.configPathFor(OperationConfigSet)
 	if err != nil {
 		return ConfigValue{}, err
 	}
-	value, parsed, err := config.ParseSettingInput(alias, raw)
+	raw, err := configInputText(key, input)
 	if err != nil {
-		return ConfigValue{}, newError(CodeInvalidArgument, OperationConfigSet, "", false, 0, 0, errors.New("config key or value is invalid"))
+		return ConfigValue{}, newError(CodeInvalidArgument, OperationConfigSet, "", false, 0, 0, err)
 	}
-	if err := config.SetConfigValue(path, alias, parsed); err != nil {
+	value, parsed, err := config.ParseSettingInput(string(key), raw)
+	if err != nil {
+		return ConfigValue{}, newError(CodeInvalidArgument, OperationConfigSet, "", false, 0, 0, errors.New("config value is invalid"))
+	}
+	if err := config.SetConfigValue(path, string(key), parsed); err != nil {
 		return ConfigValue{}, localSnapshotError(OperationConfigSet, markLocalState(localStateStageConfig, err))
 	}
-	return ConfigValue{Key: alias, Value: value.Text, Source: "file", HasValue: true}, nil
+	value.Source, value.HasValue = "file", true
+	return publicConfigValue(key, value)
 }
 
-// UnsetConfig 移除一个现有 alias 的文件值；环境覆盖仍会由 GetConfig 显示。
-func (c *Client) UnsetConfig(alias string) (out bool, err error) {
+// UnsetConfig 移除一个现有配置键的文件值；环境覆盖仍会由 GetConfig 显示。
+func (c *Client) UnsetConfig(key ConfigKey) (out bool, err error) {
 	started := time.Now()
 	defer func() { c.operationLog(OperationConfigUnset, started, err, 0, 0) }()
+	if err := validateConfigKey(key); err != nil {
+		return false, newError(CodeInvalidArgument, OperationConfigUnset, "", false, 0, 0, err)
+	}
 	path, err := c.configPathFor(OperationConfigUnset)
 	if err != nil {
 		return false, err
 	}
-	removed, err := config.UnsetConfigValue(path, alias)
+	removed, err := config.UnsetConfigValue(path, string(key))
 	if err != nil {
-		if _, ok := config.SettingSpecByAlias(alias); !ok {
-			return false, newError(CodeInvalidArgument, OperationConfigUnset, "", false, 0, 0, errors.New("config key is invalid"))
-		}
 		return false, localSnapshotError(OperationConfigUnset, markLocalState(localStateStageConfig, err))
 	}
 	return removed, nil
+}
+
+// SetLoginRelaySecret 写入跨机器登录中继密钥。该敏感值没有通用读取或 setter 路径，
+// 成功后不会被返回、记录或纳入 ConfigValue。
+func (c *Client) SetLoginRelaySecret(secret string) (err error) {
+	started := time.Now()
+	defer func() { c.operationLog(OperationConfigSet, started, err, 0, 0) }()
+	path, err := c.configPathFor(OperationConfigSet)
+	if err != nil {
+		return err
+	}
+	_, parsed, err := config.ParseSettingInput(string(ConfigKeyLoginRelaySecret), strconv.Quote(secret))
+	if err != nil {
+		return newError(CodeInvalidArgument, OperationConfigSet, "", false, 0, 0, errors.New("login relay secret is invalid"))
+	}
+	if err := config.SetConfigValue(path, string(ConfigKeyLoginRelaySecret), parsed); err != nil {
+		return localSnapshotError(OperationConfigSet, markLocalState(localStateStageConfig, err))
+	}
+	return nil
 }

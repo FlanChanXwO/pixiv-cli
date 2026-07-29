@@ -10,8 +10,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-
-	"github.com/FlanChanXwO/pixiv-cli/internal/common/constants"
 )
 
 // TextHandler 把安全的结构化事件渲染为适合直接阅读的单行日志。它只服务本地
@@ -126,16 +124,16 @@ func (h *TextHandler) format(record slog.Record, fields []textField) string {
 		values[field.key] = field.value
 	}
 
-	component := textValue(values[constants.LogFieldComponent])
+	component := textValue(values[LogFieldComponent])
 	if component == "" {
 		component = "main"
 	}
 
 	var message, details string
 	switch record.Message {
-	case constants.OperationLogMessage:
+	case OperationLogMessage:
 		message, details = h.formatOperation(values, fields)
-	case constants.RateLimitRetryLogMessage:
+	case RateLimitRetryLogMessage:
 		message, details = h.formatRateLimitRetry(values, fields)
 	default:
 		var extra strings.Builder
@@ -165,11 +163,11 @@ func renderTextTemplate(template string, variables map[string]string) string {
 // logSource 对应 Spring/SLF4J 行中的 logger 名。operation event 优先显示受控的
 // 调用点；手工构造的兼容事件仍可回退到 operation，普通日志使用 pixiv。
 func logSource(message string, values map[string]slog.Value) string {
-	if message == constants.OperationLogMessage || message == constants.RateLimitRetryLogMessage {
-		if source := textValue(values[constants.LogFieldSource]); source != "" {
+	if message == OperationLogMessage || message == RateLimitRetryLogMessage {
+		if source := textValue(values[LogFieldSource]); source != "" {
 			return source
 		}
-		if operation := textValue(values[constants.LogFieldOperation]); operation != "" {
+		if operation := textValue(values[LogFieldOperation]); operation != "" {
 			return operation
 		}
 	}
@@ -187,11 +185,11 @@ func paddedLogSource(source string) string {
 }
 
 func (h *TextHandler) formatOperation(values map[string]slog.Value, fields []textField) (string, string) {
-	operation := textValue(values[constants.LogFieldOperation])
+	operation := textValue(values[LogFieldOperation])
 	if operation == "" {
 		operation = "operation"
 	}
-	result := textValue(values[constants.LogFieldResult])
+	result := textValue(values[LogFieldResult])
 	resultMessage := result
 	if result == "" || result == ResultSuccess {
 		resultMessage = "completed"
@@ -199,26 +197,26 @@ func (h *TextHandler) formatOperation(values map[string]slog.Value, fields []tex
 	message := operation + " " + resultMessage
 
 	var details strings.Builder
-	if backend := textValue(values[constants.LogFieldBackend]); backend != "" && backend != constants.LogBackendLocal {
+	if backend := textValue(values[LogFieldBackend]); backend != "" && backend != BackendLocal {
 		appendTextField(&details, "backend", backend)
 	}
-	if code := textValue(values[constants.LogFieldErrorCode]); code != "" {
+	if code := textValue(values[LogFieldErrorCode]); code != "" {
 		appendTextField(&details, "error", code)
 	}
-	if status := textInt(values[constants.LogFieldStatus]); status != 0 {
+	if status := textInt(values[LogFieldStatus]); status != 0 {
 		appendTextField(&details, "status", strconv.FormatInt(status, 10))
 	}
-	if transport := textValue(values[constants.LogFieldTransportKind]); transport != "" {
+	if transport := textValue(values[LogFieldTransportKind]); transport != "" {
 		appendTextField(&details, "transport", transport)
 	}
-	if illustID := textInt(values[constants.LogFieldIllustID]); illustID != 0 {
-		appendTextField(&details, constants.LogFieldIllustID, strconv.FormatInt(illustID, 10))
+	if illustID := textInt(values[LogFieldIllustID]); illustID != 0 {
+		appendTextField(&details, LogFieldIllustID, strconv.FormatInt(illustID, 10))
 	}
-	if userID := textInt(values[constants.LogFieldUserID]); userID != 0 {
-		appendTextField(&details, constants.LogFieldUserID, strconv.FormatInt(userID, 10))
+	if userID := textInt(values[LogFieldUserID]); userID != 0 {
+		appendTextField(&details, LogFieldUserID, strconv.FormatInt(userID, 10))
 	}
-	if duration := textDuration(values[constants.LogFieldDuration]); duration != 0 {
-		appendTextField(&details, constants.LogFieldDuration, duration.String())
+	if duration := textDuration(values[LogFieldDuration]); duration != 0 {
+		appendTextField(&details, LogFieldDuration, duration.String())
 	}
 	h.appendExtraFields(&details, fields, operationFieldKeys)
 	return message, details.String()
@@ -226,13 +224,13 @@ func (h *TextHandler) formatOperation(values map[string]slog.Value, fields []tex
 
 func (h *TextHandler) formatRateLimitRetry(values map[string]slog.Value, fields []textField) (string, string) {
 	var details strings.Builder
-	if retryAfter := textDuration(values[constants.LogFieldRetryAfter]); retryAfter != 0 {
+	if retryAfter := textDuration(values[LogFieldRetryAfter]); retryAfter != 0 {
 		appendTextField(&details, "after", retryAfter.String())
 	}
-	if attempt := textInt(values[constants.LogFieldAttempt]); attempt != 0 {
-		appendTextField(&details, constants.LogFieldAttempt, strconv.FormatInt(attempt, 10))
+	if attempt := textInt(values[LogFieldAttempt]); attempt != 0 {
+		appendTextField(&details, LogFieldAttempt, strconv.FormatInt(attempt, 10))
 	}
-	if status := textInt(values[constants.LogFieldStatus]); status != 0 {
+	if status := textInt(values[LogFieldStatus]); status != 0 {
 		appendTextField(&details, "status", strconv.FormatInt(status, 10))
 	}
 	h.appendExtraFields(&details, fields, rateLimitFieldKeys)
@@ -240,32 +238,32 @@ func (h *TextHandler) formatRateLimitRetry(values map[string]slog.Value, fields 
 }
 
 var genericFieldKeys = map[string]struct{}{
-	constants.LogFieldComponent: {},
-	constants.LogFieldSource:    {},
+	LogFieldComponent: {},
+	LogFieldSource:    {},
 }
 
 var operationFieldKeys = map[string]struct{}{
-	constants.LogFieldComponent:     {},
-	constants.LogFieldOperation:     {},
-	constants.LogFieldSource:        {},
-	constants.LogFieldBackend:       {},
-	constants.LogFieldDuration:      {},
-	constants.LogFieldResult:        {},
-	constants.LogFieldErrorCode:     {},
-	constants.LogFieldStatus:        {},
-	constants.LogFieldTransportKind: {},
-	constants.LogFieldIllustID:      {},
-	constants.LogFieldUserID:        {},
+	LogFieldComponent:     {},
+	LogFieldOperation:     {},
+	LogFieldSource:        {},
+	LogFieldBackend:       {},
+	LogFieldDuration:      {},
+	LogFieldResult:        {},
+	LogFieldErrorCode:     {},
+	LogFieldStatus:        {},
+	LogFieldTransportKind: {},
+	LogFieldIllustID:      {},
+	LogFieldUserID:        {},
 }
 
 var rateLimitFieldKeys = map[string]struct{}{
-	constants.LogFieldComponent:  {},
-	constants.LogFieldOperation:  {},
-	constants.LogFieldSource:     {},
-	constants.LogFieldResult:     {},
-	constants.LogFieldStatus:     {},
-	constants.LogFieldRetryAfter: {},
-	constants.LogFieldAttempt:    {},
+	LogFieldComponent:  {},
+	LogFieldOperation:  {},
+	LogFieldSource:     {},
+	LogFieldResult:     {},
+	LogFieldStatus:     {},
+	LogFieldRetryAfter: {},
+	LogFieldAttempt:    {},
 }
 
 func (h *TextHandler) appendExtraFields(line *strings.Builder, fields []textField, known map[string]struct{}) {

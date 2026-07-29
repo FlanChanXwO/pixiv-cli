@@ -11,7 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/common/constants"
+	constants "github.com/FlanChanXwO/pixiv-cli/internal/platform/localstate"
 	"github.com/FlanChanXwO/pixiv-cli/internal/utils/files"
 )
 
@@ -19,9 +19,136 @@ const linuxURLHandlerDesktopFile = "pixiv-cli-url-handler.desktop"
 const linuxPixivURLScheme = "x-scheme-handler/pixiv"
 
 var (
-	linuxExecutablePath = os.Executable
-	runLinuxXDGMIme     = defaultRunLinuxXDGMIme
+	linuxExecutablePath      = os.Executable
+	runLinuxXDGMIme          = defaultRunLinuxXDGMIme
+	runLinuxGioLaunch        = defaultRunLinuxGioLaunch
+	findLinuxCommand         = exec.LookPath
+	queryLinuxDefaultHandler = linuxDefaultURLHandler
 )
+
+// EnsurePersistent 安装桌面 Linux 的按需 callback handler。headless Linux
+// 不会调用它；server relay 本身不依赖任何桌面集成。
+func EnsurePersistent(ctx context.Context) error {
+	if _, err := findLinuxCommand("xdg-mime"); err != nil {
+		return errors.New("xdg-mime is required for the desktop Pixiv callback handler")
+	}
+	if _, err := findLinuxCommand("gio"); err != nil {
+		return errors.New("gio is required for the desktop Pixiv callback handler")
+	}
+	executablePath, err := linuxExecutablePath()
+	if err != nil {
+		return err
+	}
+	applicationsDir, err := linuxApplicationsDir()
+	if err != nil {
+		return err
+	}
+	desktopPath := filepath.Join(applicationsDir, linuxURLHandlerDesktopFile)
+	manifest, exists, err := loadHandlerManifest()
+	if err != nil {
+		return err
+	}
+	var snapshots []linuxFileSnapshot
+	if !exists {
+		previous, err := queryLinuxDefaultHandler(ctx)
+		if err != nil {
+			return err
+		}
+		snapshots, err = snapshotLinuxMimeState(applicationsDir, desktopPath)
+		if err != nil {
+			return err
+		}
+		manifest = handlerManifest{Version: 1, ExecutablePath: executablePath, PreviousHandler: previous, LinuxMIMESnapshots: snapshots}
+	} else {
+		manifest.ExecutablePath = executablePath
+		snapshots = manifest.LinuxMIMESnapshots
+	}
+	if err := files.WritePrivateFile(desktopPath, []byte(linuxDesktopEntry(executablePath)), constants.PrivateFileMode); err != nil {
+		return err
+	}
+	if err := runLinuxXDGMIme(ctx, "default", linuxURLHandlerDesktopFile, linuxPixivURLScheme); err != nil {
+		if len(snapshots) > 0 {
+			_ = restoreLinuxMimeState(snapshots)
+		}
+		return err
+	}
+	if err := saveHandlerManifest(manifest); err != nil {
+		if len(snapshots) > 0 {
+			_ = restoreLinuxMimeState(snapshots)
+		}
+		return err
+	}
+	return nil
+}
+
+func DisablePersistent(ctx context.Context) error {
+	manifest, exists, err := loadHandlerManifest()
+	if err != nil || !exists {
+		return err
+	}
+	current, err := queryLinuxDefaultHandler(ctx)
+	if err != nil {
+		return err
+	}
+	if current == linuxURLHandlerDesktopFile {
+		if len(manifest.LinuxMIMESnapshots) > 0 {
+			if err := restoreLinuxMimeState(manifest.LinuxMIMESnapshots); err != nil {
+				return err
+			}
+		} else if manifest.PreviousHandler != "" && manifest.PreviousHandler != linuxURLHandlerDesktopFile {
+			// 兼容没有 snapshot 的旧 manifest：至少恢复已记录的 handler。
+			if err := runLinuxXDGMIme(ctx, "default", manifest.PreviousHandler, linuxPixivURLScheme); err != nil {
+				return err
+			}
+			applicationsDir, err := linuxApplicationsDir()
+			if err != nil {
+				return err
+			}
+			if err := os.Remove(filepath.Join(applicationsDir, linuxURLHandlerDesktopFile)); err != nil && !errors.Is(err, os.ErrNotExist) {
+				return err
+			}
+		} else if manifest.PreviousHandler == "" {
+			return errors.New("cannot safely restore a previous Linux Pixiv URL handler")
+		}
+	}
+	return removeHandlerManifest()
+}
+
+func DelegateToPrevious(ctx context.Context, rawURL string) error {
+	manifest, exists, err := loadHandlerManifest()
+	if err != nil {
+		return err
+	}
+	if !exists || manifest.PreviousHandler == "" || manifest.PreviousHandler == linuxURLHandlerDesktopFile {
+		return errors.New("no previous Pixiv URL handler is available")
+	}
+	if _, err := findLinuxCommand("gio"); err != nil {
+		return errors.New("gio is required to open the previous Pixiv URL handler")
+	}
+	desktopPath, err := linuxDesktopFilePath(manifest.PreviousHandler)
+	if err != nil {
+		return errors.New("could not locate previous Pixiv URL handler")
+	}
+	// gio launch 要求实际 desktop-file 路径而不是 XDG desktop ID；仍以参数
+	// 数组启动，callback URL 不会经过 shell 解释。
+	if err := runLinuxGioLaunch(ctx, desktopPath, rawURL); err != nil {
+		return errors.New("could not open previous Pixiv URL handler")
+	}
+	return nil
+}
+
+func defaultRunLinuxGioLaunch(ctx context.Context, desktopPath, rawURL string) error {
+	return exec.CommandContext(ctx, "gio", "launch", desktopPath, rawURL).Run()
+}
+
+func linuxDefaultURLHandler(ctx context.Context) (string, error) {
+	command := exec.CommandContext(ctx, "xdg-mime", "query", "default", linuxPixivURLScheme)
+	out, err := command.Output()
+	if err != nil {
+		return "", fmt.Errorf("query xdg-mime: %w", err)
+	}
+	return strings.TrimSpace(string(out)), nil
+}
 
 // Install 在桌面 Linux 上只为当前 auth login 尝试注册 pixiv:// handler。
 // xdg-mime 会写入用户 mimeapps 文件，因此在修改前保留所有可能的用户级位置并在
@@ -88,6 +215,47 @@ func linuxApplicationsDir() (string, error) {
 	return filepath.Join(dataHome, "applications"), nil
 }
 
+// linuxDesktopFilePath 从 xdg-mime 返回的 desktop ID 解析实际文件。gio launch
+// 不能接受 ID；同时拒绝路径成分，避免损坏的 mimeapps 状态被当作任意本地文件启动。
+func linuxDesktopFilePath(desktopID string) (string, error) {
+	desktopID = strings.TrimSpace(desktopID)
+	if desktopID == "" || filepath.Base(desktopID) != desktopID || !strings.HasSuffix(strings.ToLower(desktopID), ".desktop") {
+		return "", errors.New("invalid desktop handler ID")
+	}
+	applicationsDir, err := linuxApplicationsDir()
+	if err != nil {
+		return "", err
+	}
+	directories := []string{applicationsDir}
+	dataDirs := strings.TrimSpace(os.Getenv("XDG_DATA_DIRS"))
+	if dataDirs == "" {
+		dataDirs = "/usr/local/share:/usr/share"
+	}
+	for _, dataDir := range strings.Split(dataDirs, ":") {
+		dataDir = strings.TrimSpace(dataDir)
+		if dataDir != "" {
+			directories = append(directories, filepath.Join(dataDir, "applications"))
+		}
+	}
+	seen := make(map[string]struct{}, len(directories))
+	for _, directory := range directories {
+		directory = filepath.Clean(directory)
+		if _, exists := seen[directory]; exists {
+			continue
+		}
+		seen[directory] = struct{}{}
+		candidate := filepath.Join(directory, desktopID)
+		info, err := os.Stat(candidate)
+		if err == nil && info.Mode().IsRegular() {
+			return candidate, nil
+		}
+		if err != nil && !errors.Is(err, os.ErrNotExist) {
+			return "", err
+		}
+	}
+	return "", os.ErrNotExist
+}
+
 func linuxDesktopEntry(executablePath string) string {
 	return "[Desktop Entry]\n" +
 		"Type=Application\n" +
@@ -104,12 +272,7 @@ func linuxDesktopExecArgument(argument string) string {
 	return `"` + replacer.Replace(argument) + `"`
 }
 
-type linuxFileSnapshot struct {
-	path    string
-	exists  bool
-	mode    os.FileMode
-	content []byte
-}
+type linuxFileSnapshot = handlerFileSnapshot
 
 func snapshotLinuxMimeState(applicationsDir, desktopPath string) ([]linuxFileSnapshot, error) {
 	paths := append(linuxMimeAppsPaths(), desktopPath)
@@ -152,7 +315,7 @@ func linuxMimeAppsPaths() []string {
 func snapshotLinuxFile(path string) (linuxFileSnapshot, error) {
 	info, err := os.Stat(path)
 	if errors.Is(err, os.ErrNotExist) {
-		return linuxFileSnapshot{path: path}, nil
+		return linuxFileSnapshot{Path: path}, nil
 	}
 	if err != nil {
 		return linuxFileSnapshot{}, err
@@ -164,27 +327,27 @@ func snapshotLinuxFile(path string) (linuxFileSnapshot, error) {
 	if err != nil {
 		return linuxFileSnapshot{}, err
 	}
-	return linuxFileSnapshot{path: path, exists: true, mode: info.Mode().Perm(), content: content}, nil
+	return linuxFileSnapshot{Path: path, Exists: true, Mode: info.Mode().Perm(), Content: content}, nil
 }
 
 func restoreLinuxMimeState(snapshots []linuxFileSnapshot) error {
 	var errs []error
 	for _, snapshot := range snapshots {
-		if !snapshot.exists {
-			if err := os.Remove(snapshot.path); err != nil && !errors.Is(err, os.ErrNotExist) {
+		if !snapshot.Exists {
+			if err := os.Remove(snapshot.Path); err != nil && !errors.Is(err, os.ErrNotExist) {
 				errs = append(errs, err)
 			}
 			continue
 		}
-		if err := os.MkdirAll(filepath.Dir(snapshot.path), constants.PrivateDirMode); err != nil {
+		if err := os.MkdirAll(filepath.Dir(snapshot.Path), constants.PrivateDirMode); err != nil {
 			errs = append(errs, err)
 			continue
 		}
-		if err := os.WriteFile(snapshot.path, snapshot.content, snapshot.mode); err != nil {
+		if err := os.WriteFile(snapshot.Path, snapshot.Content, snapshot.Mode); err != nil {
 			errs = append(errs, err)
 			continue
 		}
-		if err := os.Chmod(snapshot.path, snapshot.mode); err != nil {
+		if err := os.Chmod(snapshot.Path, snapshot.Mode); err != nil {
 			errs = append(errs, err)
 		}
 	}

@@ -21,7 +21,7 @@ usually the answer. Never mask an error with retries or silent fallbacks.
 | R18/R18G/mature search requires authentication | Anonymous Web session | Authenticate before retrying; never add a Cookie workaround |
 | `search-options` is unsupported | No App credential | Authenticate, then retry with the same word |
 | Bookmark-count search is forbidden | Cached self-profile says the saved account is not Pixiv Premium | Explain that the bound requires Premium; only run `pixiv auth refresh [UID]` if the user explicitly wants to refresh account status |
-| Wrong account acting | Multiple local accounts | `pixiv auth list --json`, then `--uid UID` per command, or `pixiv auth use UID` (confirm first) |
+| Wrong account acting | Multiple local accounts | `pixiv auth list --json`, then `pixiv auth use UID` (confirm first); data commands do not accept per-command account overrides. |
 | `auth import` waits for hidden input the user cannot enter | Agent PTY has no direct user-input channel | Cancel the waiting command; give it to the user for their private terminal, or use an authorized secret-manager-to-stdin pipeline as described in `auth.md` |
 | Cookie string rejected | By design | Only raw App API refresh tokens are accepted; for an explicit import request follow `auth.md` without asking the user to disclose an undisclosed token |
 

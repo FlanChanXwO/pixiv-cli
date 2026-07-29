@@ -33,6 +33,9 @@ func requireAuthenticatedDiscoveryCanary(t *testing.T) authenticatedCanaryAuth {
 // TestPixivSDKAuthenticatedDiscoveryCanary 验证小说、官方作者搜索和指定全年龄
 // 插画作者的 public SDK 路径。搜索词与作品 ID 均由调用者提供，不固化真实目标。
 func TestPixivSDKAuthenticatedDiscoveryCanary(t *testing.T) {
+	if os.Getenv("PIXIV_E2E_SDK") != "1" {
+		t.Skip("set PIXIV_E2E_SDK=1 as well as PIXIV_E2E_REAL_API=1 to run the optional SDK canary")
+	}
 	auth := requireAuthenticatedDiscoveryCanary(t)
 	if err := validateAuthenticatedSDKCanaryBinary(os.Getenv("PIXIV_E2E_BINARY")); err != nil {
 		t.Fatal(err)
@@ -79,8 +82,8 @@ func TestPixivSDKAuthenticatedDiscoveryCanary(t *testing.T) {
 	requireAuthenticatedCanaryAuthorSDK(t, client, sfwIllustID)
 }
 
-// TestPixivBinaryAuthenticatedDiscoveryCanary 验证当前源码构建的 CLI 与 MCP
-// 入口。MCP 只读取公开搜索结果，任何测试输出均沿用本机凭据模式的脱敏策略。
+// TestPixivBinaryAuthenticatedDiscoveryCanary 只验证当前源码构建的 CLI 入口。
+// v0.8 的真实验收明确不执行 MCP/SDK E2E；它们由离线契约与构建门禁覆盖。
 func TestPixivBinaryAuthenticatedDiscoveryCanary(t *testing.T) {
 	auth := requireAuthenticatedDiscoveryCanary(t)
 	if err := validateLocalAuthCanaryBinary(auth.kind, os.Getenv("PIXIV_E2E_BINARY")); err != nil {
@@ -104,6 +107,7 @@ func TestPixivBinaryAuthenticatedDiscoveryCanary(t *testing.T) {
 	}
 	proxy := firstNonEmpty(os.Getenv("PIXIV_E2E_PROXY"), os.Getenv("PIXIV_WEB_API_PROXY"))
 	env = authenticatedCanaryChildEnvFrom(env, auth, proxy)
+	provisionExplicitCanaryAuth(t, repoRoot, binaryPath, env, auth)
 
 	novelOut := runPixivCanary(t, repoRoot, binaryPath, env, auth, "novel", "search", words.discovery, "--limit", "1", "--json")
 	var novelDocument struct {
@@ -124,29 +128,7 @@ func TestPixivBinaryAuthenticatedDiscoveryCanary(t *testing.T) {
 		t.Fatalf("CLI user search source=%q results=%d, want App source and a usable result", userDocument.Source, len(userDocument.UserPreviews))
 	}
 
-	mcpNovel := callAuthenticatedDiscoveryMCP(t, repoRoot, binaryPath, env, auth, "search_novel", map[string]any{"word": words.discovery, "limit": 1})
-	var mcpNovelOut struct {
-		Novels []pixiv.Novel `json:"novels"`
-	}
-	if err := json.Unmarshal(mcpNovel, &mcpNovelOut); err != nil {
-		t.Fatalf("decode MCP novel search output: %v", err)
-	}
-	if len(mcpNovelOut.Novels) == 0 || mcpNovelOut.Novels[0].ID <= 0 {
-		t.Fatalf("MCP novel search %q returned no usable results", words.discovery)
-	}
-
-	mcpUser := callAuthenticatedDiscoveryMCP(t, repoRoot, binaryPath, env, auth, "search_user", map[string]any{"word": words.discovery, "limit": 1})
-	var mcpUserOut struct {
-		Source       pixiv.UserSearchSource `json:"source"`
-		UserPreviews []pixiv.UserPreview    `json:"user_previews"`
-	}
-	if err := json.Unmarshal(mcpUser, &mcpUserOut); err != nil {
-		t.Fatalf("decode MCP user search output: %v", err)
-	}
-	if mcpUserOut.Source != pixiv.UserSearchSourceApp || len(mcpUserOut.UserPreviews) == 0 || mcpUserOut.UserPreviews[0].User.ID <= 0 {
-		t.Fatalf("MCP user search source=%q results=%d, want App source and a usable result", mcpUserOut.Source, len(mcpUserOut.UserPreviews))
-	}
-	requireAuthenticatedCanaryAuthorCLIAndMCP(t, repoRoot, binaryPath, env, auth, sfwIllustID)
+	requireAuthenticatedCanaryAuthorCLI(t, repoRoot, binaryPath, env, auth, sfwIllustID)
 }
 
 func requireAuthenticatedCanaryAuthorSDK(t *testing.T, client *pixiv.Client, sfwIllustID int64) {
@@ -183,7 +165,7 @@ func requireAuthenticatedCanaryAuthorSDK(t *testing.T, client *pixiv.Client, sfw
 	}
 }
 
-func requireAuthenticatedCanaryAuthorCLIAndMCP(t *testing.T, repoRoot, binaryPath string, env []string, auth authenticatedCanaryAuth, sfwIllustID int64) {
+func requireAuthenticatedCanaryAuthorCLI(t *testing.T, repoRoot, binaryPath string, env []string, auth authenticatedCanaryAuth, sfwIllustID int64) {
 	t.Helper()
 	sourceOut := runPixivCanary(t, repoRoot, binaryPath, env, auth, "detail", strconv.FormatInt(sfwIllustID, 10), "--json")
 	var source pixiv.IllustDetail
@@ -208,25 +190,6 @@ func requireAuthenticatedCanaryAuthorCLIAndMCP(t *testing.T, repoRoot, binaryPat
 		t.Fatalf("CLI author artworks %d returned no matching work", authorID)
 	}
 
-	mcpDetail := callAuthenticatedDiscoveryMCP(t, repoRoot, binaryPath, env, auth, "user_detail", map[string]any{"user_id": authorID})
-	var mcpAuthor pixiv.UserDetailResult
-	if err := json.Unmarshal(mcpDetail, &mcpAuthor); err != nil {
-		t.Fatalf("decode MCP author detail output: %v", err)
-	}
-	if mcpAuthor.User.ID != authorID {
-		t.Fatalf("MCP author detail ID=%d, want %d", mcpAuthor.User.ID, authorID)
-	}
-	mcpArtworks := callAuthenticatedDiscoveryMCP(t, repoRoot, binaryPath, env, auth, "user_artworks", map[string]any{"user_id": authorID, "limit": 1})
-	var mcpWorks struct {
-		UserID int64          `json:"user_id"`
-		Items  []pixiv.Illust `json:"items"`
-	}
-	if err := json.Unmarshal(mcpArtworks, &mcpWorks); err != nil {
-		t.Fatalf("decode MCP author artworks output: %v", err)
-	}
-	if mcpWorks.UserID != authorID || len(mcpWorks.Items) == 0 || mcpWorks.Items[0].User.ID != authorID {
-		t.Fatalf("MCP author artworks user=%d items=%d, want one matching work for %d", mcpWorks.UserID, len(mcpWorks.Items), authorID)
-	}
 }
 
 func callAuthenticatedDiscoveryMCP(t *testing.T, repoRoot, binaryPath string, env []string, auth authenticatedCanaryAuth, tool string, arguments map[string]any) json.RawMessage {

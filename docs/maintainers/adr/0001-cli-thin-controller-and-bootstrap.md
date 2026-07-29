@@ -43,4 +43,4 @@ The project needs a clearer internal structure without changing CLI/MCP behavior
 - Do not move durable config schema into CLI.
 - Do not add generic `ports` packages unless a real duplication or dependency problem appears.
 - Do not create an HTTP provider server or repository-owned generic Provider interface; external callers own their narrow adapters.
-- `internal/common/constants` is allowed only as the narrow infrastructure-constant exception defined by ADR 0002.
+- Generic constants packages are not allowed; use the narrow owner packages defined by ADR 0002.

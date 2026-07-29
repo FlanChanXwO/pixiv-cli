@@ -55,6 +55,8 @@ Linux Release asset は glibc 2.35 以降を必要とします。release、nativ
 
 正式版の installer には静的な Release-source list が埋め込まれます。権威ある `checksums.txt` は常に GitHub HTTPS から直接取得し、無料候補は対応する platform archive の probe にだけ使用します。候補の checksum は直取得した内容と byte 単位で一致する必要があり、install 前にも archive の SHA-256 を検証します。list を remote から取得することはなく、署名済み Release とともにだけ更新されます。
 
+公式 installer は user ごとの on-demand `pixiv://` handler を初期化し、Homebrew も `post_install` で同じ処理をします。warning は検証済み binary の install 成功と desktop integration の未完了を意味し、最初の通常 browser `pixiv auth login` が再試行します。手動展開 archive には hook がありません。desktop Linux は `xdg-mime` と `gio` が必要で、headless Linux は relay server のみ対応します。
+
 ### source から build
 
 ```bash
@@ -123,12 +125,14 @@ pixiv auth login
 | 段階 | 動作 |
 | --- | --- |
 | 初期化 | PKCE verifier/challenge と OAuth state を生成し、local loopback HTTP server を起動します。 |
-| Browser | macOS、desktop Linux、Windows では一時的な `pixiv://` callback helper を登録して default browser を開き、既存 Pixiv session を再利用できます。`--no-open` では login URL と local page だけを表示します。 |
+| Browser | macOS、desktop Linux、Windows では on-demand の current-user `pixiv://` callback helper を初期化して default browser を開き、既存 Pixiv session を再利用できます。`--no-open` では login URL と local page だけを表示します。 |
 | Callback | この試行の loopback callback、一時 helper からの hand-off、terminal paste、local page form だけを受理します。helper の hand-off 後は、OAuth exchange 完了時に default browser が local の最終 success/failure page を開きます。戻らない場合は callback URL、`pixiv://...` URL、Pixiv relay URL、raw authorization code を貼り付けられます。 |
 | 検証 | local callback はこの試行の state と一致する必要があります。Pixiv が state を返さない場合だけ、公式 callback URL と `pixiv://account/login` を明示 fallback として使えます。 |
 | 保存 | refresh/access token は表示せず、refresh token を UID ごとに `auth.json` へ保存します。Unix-like は parent `0700`・file `0600`、Windows は既存 ACL を維持します。 |
 
-macOS は `PixivCLIURLHandler.app`、desktop Linux は一時 XDG desktop entry、Windows は一時 current-user protocol association を使います。いずれも現在の login 試行だけを扱い、完了・失敗・cancel 後に元の `pixiv://` handler を復元します。Pixiv が `pixiv://account/login?...` を呼ぶと、helper は local loopback の browser bridge を開きます。callback は URL fragment だけに置かれ、address/history からすぐに消去された後、現在の listener へ POST されます。OAuth exchange の完了後、browser は中央配置の最終 success/failure page を受け取ります。local login、callback、success、failure page の browser title はすべて `pixiv-cli` です。helper は browser cookie、storage、history、session file、tab、network traffic を読みません。利用できなくても通常の browser と loopback/manual paste を使い、managed Chromium、DevTools/CDP、browser state scan は行いません。送信された relay URL はこの PKCE 試行に属すると確認します。terminal からは CLI host の browser で一度だけ開き、fallback page からはその browser 自身が続行します。macOS helper は、現在の CLI が書き込む private `~/.pixiv-cli/url-handler-endpoint` bridge file だけを読み、callback を実行中の今回の loopback listener にだけ渡します。callback がなければ成功を偽装しません。
+handler は persistent ですが OS が `pixiv://` を開くときだけ動作します。macOS は `PixivCLIURLHandler.app`、Windows は current-user protocol association、desktop Linux は XDG desktop entry を使い、previous handler を private に記録します。active local loopback bridge が常に優先されます。ない場合は allowlist の正確な `pixiv://account/login` だけが remote relay に送られ、他の `pixiv://` URL は previous handler に定向します。`removing `login_relay_target_url` from private `config.toml`` は pixiv-cli がまだ default のときだけ previous association を復元し、後からの user 変更は上書きしません。binary を削除済みなら private `~/.pixiv-cli/url-handler/handler-manifest.json` の記録を使い、OS の association UI で復元してから manifest を削除します。cookie、storage、history、session、tab、traffic は読まず、managed Chromium、DevTools/CDP、browser-state scan も起動しません。
+
+macOS で接管前の `pixiv://` handler がなかった場合、`removing `login_relay_target_url` from private `config.toml`` は pixiv-cli を default のまま黙って残さず error を返します。先に macOS の association UI で希望する handler を選び、もう一度 `unset` を実行してください。manifest だけを削除し、その後の user 選択は上書きしません。
 
 GUI のない SSH server では listener を loopback に保ち、local machine から転送できる未使用の固定 port を
 選びます。まず server で実行します：
@@ -145,6 +149,26 @@ ssh -N -L 41871:127.0.0.1:41871 USER@SERVER
 
 local browser で `http://127.0.0.1:41871/` を開きます。この tunnel は server の loopback listener
 だけに接続し、callback port を公開しません。この forwarded page で login URL を開き、Pixiv relay または最終 callback を送信します。検証済み relay は同じ local browser で続行し、最終 callback は tunnel 経由で server listener へ POST されます。browser machine に pixiv の install は不要です。別案として interactive SSH terminal を使い、最終 callback URL、`pixiv://` URL、relay URL、raw authorization code を元の `auth login` prompt に貼り付けられます。login listener を public interface に bind しないでください。`--addr` は意図的に loopback address だけを受理します。
+
+### Cross-machine callback relay
+
+server が account を保存し browser が macOS、Windows、desktop Linux にある場合、server には
+`login_relay_public_url`、`login_relay_listen_addr`、hidden input の `login_relay_secret` を、browser machine
+には同じ secret と `login_relay_target_url` を設定します。server の `pixiv auth login` は Pixiv URL を表示して
+1 回の認証済み callback を待つだけで、user が browser machine で URL を開きます。server は remote browser を
+起動しません。`--relay-public-url`、`--relay-listen-addr`、`--relay-tls-cert-file`、`--relay-tls-key-file` は
+1 回の server login だけを override します。role flag や常駐 relay process はありません。
+
+認証済み callback が server に届くと、browser machine は設定済み relay URL 配下の one-time result page を開きます。
+実際の OAuth exchange の完了を待ってから local login と同じ固定 success/failure page を表示し、その result URL に
+callback や token は含まれません。
+
+TLS PEM を直接指定するか、同一 host の reverse proxy で HTTPS を終端し listener を loopback に置きます。HTTP
+も許可しますが、HTTP relay URL の設定時と HTTP server login のたびに callback と bearer secret が network で
+観測・改変され得る warning を表示します。Web API、local subscription、通常 author work、empty success への
+fallback はありません。
+`pixiv config` が管理するのは download path、filename template、HTTPS proxy だけです。relay secret は private
+`config.toml` を手動で管理し、`config get`、JSON、log、error、handler manifest には表示されません。
 
 browser の system proxy は Go CLI に自動継承されません。必要なら先に設定します：
 
@@ -242,15 +266,22 @@ callback bridge state、daily log、Release-check cache、macOS callback helper 
 option は positional argument の前後どちらでも指定できます。
 
 通常 command を初めて実行したとき、`config.toml` がなければ download、Web fallback、output、login、update の
-common setting だけを含む baseline file を作成し、既存 file は決して上書きしません。proxy、logging、login timeout、
-Premium-status cache のような advanced setting は明示設定まで省略されます。help、version、secret export、internal OAuth callback はこの file を作成しません。
+common setting だけを含む baseline file を作成し、既存 file は決して上書きしません。proxy、logging のような advanced setting は明示設定まで省略されます。login timeout は `auth login --timeout` だけの明示 flag で、Premium-status cache は固定契約です。help、version、secret export、internal OAuth callback はこの file を作成しません。
+
+### v0.8.0 data operation contract
+
+非 mutating の data read、recommendation、feed、download はすべて `pixiv auth use` で選んだ local account を使います。手動の `[account_pool]` がある場合だけ、安全な operation は pool 内の local account を選べます。write、authentication、config は pool を使いません。data command は `--uid` と `--refresh-token` を拒否し、`PIXIV_REFRESH_TOKEN` を無視します。
+
+stream 処理には `--ndjson` を使います。各行は stable string の `id`、`type`、`url` を持つ canonical Record で、残りの SDK field も保持します。`pixiv filter` は stdin の Record を読み、`download`、`bookmark add/remove`、`follow add/remove` は positional ID なしで Record を消費できます。action 成功時の stdout は空で、安全な diagnostic は stderr に出ます。`--on-error=skip|fail-fast` は malformed/incompatible stdin Record を制御します。`--json` と `--ndjson` は併用できません。
+
+Ugoira download は `--ugoira-format gif|apng` を受け付け、既定は `gif` のままです。Ugoira の page selection または non-original quality と組み合わせることはできません。
 
 ### CLI command 一覧
 
 | Command | Usage | 説明 |
 | --- | --- | --- |
 | `auth import` | `pixiv auth import [REFRESH_TOKEN] [--file PATH] [--json] [--proxy URL\|--no-proxy]` | direct input は rotation 後の token を検証・保存します。引数なし TTY は非表示、非 TTY は raw stdin です。`--file PATH|-` は offline atomic bundle restore となり、token/proxy input と競合します。 |
-| `auth login` | `pixiv auth login [--json] [--no-open] [--addr 127.0.0.1:0] [--use] [--timeout DURATION] [--proxy URL\|--no-proxy]` | loopback server と browser OAuth で login し、token を表示せず UID ごとに保存します。text は compact な安全 summary `✓ uid:UID username:NAME`、`--json` は同等の JSON を返します。 |
+| `auth login` | `pixiv auth login [--json] [--no-open] [--addr 127.0.0.1:0] [--use] [--timeout DURATION] [--relay-public-url URL --relay-listen-addr ADDR] [--relay-tls-cert-file PATH --relay-tls-key-file PATH] [--proxy URL\|--no-proxy]` | 通常の loopback OAuth、または完全な server relay 設定時は 1 回の認証済み remote desktop callback を待ちます。UID ごとに保存し refresh token は表示しません。 |
 | `auth list` | `pixiv auth list [--json]` | local account を一覧表示し、refresh token は表示しません。text の `*` は default、`✓`/`-` は local refresh token の保存/欠落を示すだけで、online validity を示しません。 |
 | `auth export` | `pixiv auth export [UID] [--all] [--output PATH] [--force]` | default/指定/all account を local export します。`--output` なしは single raw token または `--all` bundle、指定時は private bundle と安全な stdout summary です。`--force` には `--output` が必要です。 |
 | `auth use` | `pixiv auth use [UID] [--json]` | default account を設定し、TTY では対話選択できます。 |
@@ -259,7 +290,7 @@ Premium-status cache のような advanced setting は明示設定まで省略�
 | `auth refresh` | `pixiv auth refresh [UID] [--all] [--json] [--proxy URL\|--no-proxy]` | 保存済み default/指定 account の OAuth access token と rotation 後 refresh token を更新し、profile を強制取得して Pixiv Premium status cache を更新します。`--all` は全 account を更新し、JSON は常に `accounts` を返します。 |
 | `config path` | `pixiv config path` | `config.toml` path を表示し、存在しなければ baseline file を作成します。 |
 | `config get` | `pixiv config get KEY` | 有効な設定値を 1 件表示します。 |
-| `config set` | `pixiv config set KEY VALUE` | 既知の設定キーを書き込みます。 |
+| `config set` | `pixiv config set KEY [VALUE]` | 既知 key を書き込みます。`download_path`、`filename_template`、`https_proxy` だけを受け付けます。 |
 | `config unset` | `pixiv config unset KEY` | 既知の設定キーを削除します。 |
 | `version` | `pixiv version [--json]` | `version`、`commit`、`build_date` を表示します。root `pixiv --version` は version だけです。 |
 | `update` | `pixiv update [--check] [--prerelease] [--proxy URL]` | 現在の install source に合わせて確認・更新します。`--json` は `--check` とだけ使用できます。 |
@@ -269,6 +300,11 @@ Premium-status cache のような advanced setting は明示設定まで省略�
 | `detail` | `pixiv detail [options] ILLUST_ID_OR_URL` | 作品 ID または対応 Pixiv 作品 URL の詳細を表示します。 |
 | `ranking` | `pixiv ranking [options]` | イラストランキングを表示します。 |
 | `recommended` | `pixiv recommended all\|illust\|manga\|novel\|user [--page N --limit N --json]` | 指定 kind の認証済みおすすめを表示します。`all` は 4 種類を順に返します。 |
+| `feed following` | `pixiv feed following --type illust\|novel [--restrict public\|private --page N --limit N --json\|--ndjson]` | follow 中 user の新作を読みます。 |
+| `feed latest` | `pixiv feed latest --type illust\|manga\|novel [--page N --limit N --json\|--ndjson]` | App の latest works feed を読みます。 |
+| `mypixiv users` | `pixiv mypixiv users [--page N --limit N --json\|--ndjson]` | 選択 account の MyPixiv user を一覧します。 |
+| `mypixiv works` | `pixiv mypixiv works [USER_ID] --type illust\|manga\|novel [--page N --limit N --json\|--ndjson]` | MyPixiv works を一覧します。USER_ID 省略時は `illust` または `novel` だけです。 |
+| `filter` | `pixiv filter [--id ID --type TYPE --tag TAG --min-views N --min-pages N --on-error skip\|fail-fast]` | stdin の canonical Record NDJSON を filter します。 |
 | `user search` | `pixiv user search WORD [--page N --limit N --json]` | ユーザーを検索します。JSON/text は公式 App 検索か匿名の関連作品作者 fallback かを示します。 |
 | `user detail` | `pixiv user detail USER_ID [--json]` | ユーザーの完全な公開 profile を表示します。 |
 | `user artworks` | `pixiv user artworks [USER_ID] [--type TYPE --page N --limit N]` | 作品一覧。UID 省略時は現在の認証ユーザーです。 |
@@ -278,7 +314,7 @@ Premium-status cache のような advanced setting は明示設定まで省略�
 | `bookmark remove` | `pixiv bookmark remove ILLUST_ID` | bookmark を削除します。visibility/tag flag はありません。 |
 | `follow add` | `pixiv follow add USER_ID [--restrict public\|private]` | 指定 visibility で follow します。 |
 | `follow remove` | `pixiv follow remove USER_ID` | unfollow します。visibility flag はありません。 |
-| `download` | `pixiv download [options] TARGET...` | 作品 ID/URL、または対応 user URL の全 visual works を download します。 |
+| `download` | `pixiv download [options] SRC...` | artwork PID/URL、許可された CDN URL、または対応 user URL の全 visual works を download します。 |
 | `mcp` | `pixiv mcp [--proxy URL\|--no-proxy]` | MCP stdio server を起動します。 |
 
 download filename は template と URL 由来 extension の cross-platform 不正文字を正規化します。ASCII control
@@ -294,6 +330,9 @@ allowlist、MIME 推測、暗黙置換は行いません。
 | `--addr` | `127.0.0.1:0` | loopback listen address。port `0` は自動割当です。 |
 | `--use` | `false` | 成功後に default account にします。default 不在時は自動で default になります。 |
 | `--timeout` | `0` | login 待機時間。`0` は CLI が deadline を追加しません。 |
+| `--relay-public-url` | config | この server relay の public HTTP(S) base URL。 |
+| `--relay-listen-addr` | config | この server relay の listen host:port。 |
+| `--relay-tls-cert-file` / `--relay-tls-key-file` | config | direct TLS の PEM pair。両方必要です。未指定で HTTPS public URL を使う場合は same-host reverse proxy と loopback listener が必要です。 |
 | `--proxy URL` / `--no-proxy` | empty | この token exchange だけの proxy override で、保存されません。 |
 
 ### Data command flag
@@ -325,6 +364,7 @@ allowlist、MIME 推測、暗黙置換は行いません。
 | `download` | `--quality` | `original` | 静止画品質: `original`、`regular`（長辺 1200）、`small`（長辺 540）、`thumb`（250×250 中央 crop）、`mini`（48×48 中央 crop）。Ugoira は original 以外の quality または pages 指定を unsupported として拒否します。 |
 | `download` | `--download-path` | env/config/`./downloads` | download directory。他の command では受け付けません。 |
 | `download` | `--filename-template` | env/config/`{author} - {title}_{id}` | filename template。placeholder は `{id}`、`{title}`、`{author}`。他の command では受け付けません。 |
+| `download` | `--concurrency` | `0`（automatic） | download worker 数。`0` は `2 × GOMAXPROCS`、正数はそのまま使います。 |
 | `user artworks` | `--type` | `illust` | Pixiv 作品種別: `illust`、`manga`、`ugoira`。 |
 | `user bookmarks` | `--restrict` | `public` | `public` または `private`。 |
 | `user bookmarks` | `--tag` | empty | 正確な bookmark tag filter。 |
@@ -333,7 +373,7 @@ allowlist、MIME 推測、暗黙置換は行いません。
 | `bookmark add` | `--tag` | empty | 反復可能な bookmark tag。 |
 | `follow add` | `--restrict` | `public` | 新規 follow visibility。 |
 | `detail` | `ILLUST_ID_OR_URL` | required | 正の artwork ID または対応 Pixiv artwork URL。 |
-| `download` | `TARGET...` | required | artwork ID、artwork URL、または対応 user profile/artworks URL。 |
+| `download` | `SRC...` | required | artwork PID、artwork URL、許可された CDN resource URL、または対応 user profile/artworks URL。CDN file は URL filename を使い、page/派生 quality/custom artwork template は使えません。 |
 
 refresh token がある `search` は常に App API を使います。App は解像度、縦横比、tool、content type、
 `ai-mode=exclude` を処理し、rating と `ai-mode=only` は App result batch ごとに適用されます。App failure は
@@ -344,8 +384,7 @@ Web に fallback しません。filter は opaque cursor に binding され、�
 フィールドではなく、like と表記してはいけません。作品 JSON/text は
 `https://www.pixiv.net/artworks/{id}` を先頭フィールド/先頭行として含めます。
 
-bookmark-count bound では、保存済み account の self-profile Premium cache を `premium_status_cache_ttl`（既定 `24h`）
-の間再利用します。cache miss/expiry 時は search 前に profile を取得し、非 Premium なら Pixiv search endpoint に届く前に失敗します。
+bookmark-count bound では、保存済み account の fixed 24-hour self-profile Premium cache を再利用します。cache miss/expiry 時は search 前に profile を取得し、非 Premium なら Pixiv search endpoint に届く前に失敗します。
 OAuth token とこの status を強制更新するには `pixiv auth refresh [UID]`（または `--all`）を使います。直接 SDK access token を渡す構築には
 検証可能な local account identity がないため、この saved-account precheck は利用できません。
 
@@ -372,46 +411,40 @@ typed upstream-response failure になります。filter が batch を飛ばす�
 
 `detail` は正の artwork ID、または HTTPS の `pixiv.net`/`www.pixiv.net` にある `/artworks/{id}` URL を受け付けます。locale、query、fragment は許可されます。user、novel、short-link、FANBOX、Pixivision、Sketch、legacy、そのほかの URL は受け付けません。
 
-`download` はこれに加えて `/users/{id}` と `/users/{id}/artworks` を受け付けます。user URL は `illust`、`manga`、`ugoira` を全 page にわたり download し、novel は対象外です。App OAuth が必須で、匿名 Web fallback は使いません。URL はローカルでのみ parse され、HTML 取得や redirect follow は行いません。1 件の失敗後も他の作品を続行し、cancel は直ちに停止します。`download --json` は `{"items":[...],"failures":[...]}` を出力し、成功 item は canonical artwork `url`、ID、type、local file path/page を含みます。失敗が 1 件でもあれば非ゼロ終了です。download history や cross-run deduplication はありません。
+`download` は許可された CDN URL に加えて `/users/{id}` と `/users/{id}/artworks` を受け付けます。user URL は `illust`、`manga`、`ugoira` を全 page にわたり download し、novel は対象外です。App OAuth が必須で、匿名 Web fallback は使いません。URL はローカルでのみ parse され、HTML 取得や redirect follow は行いません。1 件の失敗後も他の作品を続行し、cancel は直ちに停止します。download は ETag/Last-Modified metadata を `.pixiv-cache` に保存し、validator が一致する partial だけを `If-Range` で安全に再開して atomic に publish します。`download` は action です。成功時の stdout は空で、安全な failure は stderr に出し、完了できない場合は non-zero で終了します。download history や cross-run deduplication はありません。
 
 ### 共通 flag
 
 | Flag | 適用先 | Default | 説明 |
 | --- | --- | --- | --- |
-| `--uid UID` | `search/novel/search-options/detail/ranking/recommended/user/download` | `auth.json.default_user_id` | local account を選びます。 |
-| `--refresh-token TOKEN` | 同上 | empty | account/env token を一時上書きします。raw App token だけを受け付けます。 |
-| `--json` | `auth import/login/list/use/remove/check`、`version`、`update --check`、data commands | `false` | machine-readable JSON。`auth export` と実更新にはありません。 |
-| `--proxy URL` | direct-token `auth import`、`auth login/check`、data/`mcp` | env/config/empty | この command だけの HTTP(S) proxy。`auth import --file` では使用不可。 |
-| `--no-proxy` | 同上 | empty | この command の proxy を解除します。`--proxy` または bundle restore と併用不可。 |
+| `--ndjson` | data list/read command | `false` | streaming filter/action 用に canonical Record を 1 行ずつ出力します。`--json` とは併用不可です。 |
+| `--json` | safe data read、auth summary、`version`、`update --check` | `false` | command が対応する場合に complete result document を出力します。download/write action は success report を出しません。 |
+| `--proxy URL` | network command と `mcp` | `https_proxy`/`HTTPS_PROXY`、`config.toml`、または empty | この command だけ HTTP(S) proxy を使います。`auth import --file` では不可です。 |
+| `--no-proxy` | `--proxy` と同じ | empty | この command の HTTP(S) proxy を解除します。`--proxy` や bundle restore とは併用不可です。 |
 
-### 対応 `config` key
+### CLI が管理する `config` alias
+
+`pixiv config get/set/unset` が受け付ける alias は**この 3 つだけ**です。ほかの runtime setting は private `config.toml` を手動で管理します。CLI に generic setting editor はありません。
 
 | KEY | Type | Default | 説明 |
 | --- | --- | --- | --- |
 | `download_path` | string | `./downloads` | download directory。 |
 | `filename_template` | string | `{author} - {title}_{id}` | filename template。 |
-| `https_proxy` | string | empty | HTTP(S) proxy。lowercase env が優先。 |
-| `web_fallback_enabled` | bool | `true` | token がない場合に匿名 Web fallback を許可します。 |
-| `log_level` | string | `warn` | `~/.pixiv-cli/logs`（Windows は `%USERPROFILE%\.pixiv-cli\logs`）の日次 plain-text `YYYY-MM-DD.txt` operation summary level。`PIXIV_LOG_LEVEL` で上書き。明示的に `info` を設定すると operation summary を多く残せます。各行は compact な Spring/SLF4J style、`timestamp  LEVEL PID --- [component] source : operation result details` です。`source` は operation を開始した repository-relative Go file と line、`component` は subsystem を示します。empty field と local-only の backend/status は省略します。端末は既定で log 痕跡を出しません。 |
-| `update_check_enabled` | bool | `true` | 通常 command 成功後の stable update check。 |
-| `output_json` | bool | `false` | data command の既定を JSON にします。 |
-| `login_open_browser` | bool | `true` | `auth login` で browser を自動起動します。 |
-| `login_timeout` | duration | `0s` | login の既定待機時間。 |
-| `login_use_after_login` | bool | `false` | login 後に default account にします。 |
-| `premium_status_cache_ttl` | duration | `24h` | bookmark-count search 前に使う保存済み account の Pixiv Premium status cache lifetime。`[premium] status_cache_ttl` に保存します。`0s` は cache reuse を無効化し、negative value は拒否します。 |
+| `https_proxy` | string | empty | HTTP(S) proxy。lowercase `https_proxy` environment variable が優先。 |
+
+手動 TOML には `[account_pool]`、`[web]`、`[login]`、`[logging]`、`[update]` などを置けます。`config.toml` に refresh token を書かないでください。account-pool state は last UID/freeze information だけで、token は保存しません。
 
 ### 環境変数
 
 | Variable | Default | 説明 |
 | --- | --- | --- |
-| `PIXIV_REFRESH_TOKEN` | empty | App API OAuth refresh token。account/flag で上書き可能。 |
+| `PIXIV_REFRESH_TOKEN` | empty | 対応する public SDK/MCP runtime の credential input。CLI data command は意図的に無視します。 |
 | `PIXIV_LOG_LEVEL` | empty | `log_level` を上書き。 |
 | `DOWNLOAD_PATH` | `./downloads` | download directory。 |
 | `FILENAME_TEMPLATE` | `{author} - {title}_{id}` | filename template。 |
 | `https_proxy` / `HTTPS_PROXY` | empty | HTTP(S) proxy。lowercase が優先。 |
 
-認証優先順：`--refresh-token` > `--uid` > `PIXIV_REFRESH_TOKEN` >
-`auth.json.default_user_id`。
+CLI data command は `pixiv auth use` の local default account、または手動 `[account_pool]` を選びます。credential-selection flag と `PIXIV_REFRESH_TOKEN` は読みません。
 
 設定優先順：CLI flag > environment > `config.toml` > built-in default。proxy override は保存されません。
 
@@ -435,7 +468,9 @@ server error を自動 fallback しません。
 invalid proxy URL は network 前に失敗し、diagnostic に userinfo、path、query を出しません。無効化：
 
 ```bash
-pixiv config set web_fallback_enabled false
+# ~/.pixiv-cli/config.toml
+[web]
+fallback_enabled = false
 ```
 
 ## Version と更新
@@ -467,7 +502,9 @@ build を除外し、user cache ごとに 24 時間 1 回、3 秒上限です。
 出し、business exit code、JSON stdout、MCP stdout を汚しません。無効化：
 
 ```bash
-pixiv config set update_check_enabled false
+# ~/.pixiv-cli/config.toml
+[update]
+check_enabled = false
 ```
 
 ## 関連ドキュメント

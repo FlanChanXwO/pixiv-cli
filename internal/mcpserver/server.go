@@ -70,7 +70,7 @@ func newServer(app *App) *mcp.Server {
 	if app.sdkGate == nil {
 		app.sdkGate = make(chan struct{}, 1)
 	}
-	server := mcp.NewServer(&mcp.Implementation{Name: "pixiv-cli", Version: "2.0.0"}, &mcp.ServerOptions{
+	server := mcp.NewServer(&mcp.Implementation{Name: "pixiv-cli", Version: "3.0.0"}, &mcp.ServerOptions{
 		Instructions: "Pixiv MCP server for searching, browsing, and downloading Pixiv content.",
 	})
 	app.register(server)

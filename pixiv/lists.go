@@ -6,8 +6,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/model"
-	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/webapi"
+	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/model"
+	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/webapi"
 )
 
 type searchIllustQuery struct {
@@ -33,8 +33,14 @@ type rankingQuery struct {
 type restrictQuery struct {
 	Restrict Restrict `json:"restrict"`
 }
+type latestIllustsQuery struct {
+	Type IllustType `json:"type"`
+}
 type searchUserQuery struct {
 	Word string `json:"word"`
+}
+type myPixivUsersQuery struct {
+	UserID int64 `json:"user_id"`
 }
 type userArtworksQuery struct {
 	UserID int64      `json:"user_id"`
@@ -48,6 +54,9 @@ type userBookmarksQuery struct {
 type userFollowingQuery struct {
 	UserID   int64    `json:"user_id"`
 	Restrict Restrict `json:"restrict"`
+}
+type userNovelsQuery struct {
+	UserID int64 `json:"user_id"`
 }
 
 func (c *Client) SearchIllustOptions(ctx context.Context, request SearchIllustOptionsRequest) (result *SearchIllustOptionsResult, err error) {
@@ -509,6 +518,165 @@ func (c *Client) FollowingIllusts(ctx context.Context, request FollowingIllustsR
 	return publicIllustList(list, OperationFollowingIllusts, digest, "offset", c.cursorSource), nil
 }
 
+// FollowingNovels 返回当前认证账号所关注用户的小说新作批次。
+func (c *Client) FollowingNovels(ctx context.Context, request FollowingNovelsRequest) (result *NovelListResult, err error) {
+	started := time.Now()
+	defer func() { c.delegatedOperationLog(OperationFollowingNovels, started, err, 0, 0) }()
+	if scoped, err := c.operationClient(ctx, OperationFollowingNovels); err != nil {
+		return nil, err
+	} else if scoped != c {
+		return scoped.FollowingNovels(ctx, request)
+	}
+	query := restrictQuery{request.Restrict}
+	if query.Restrict == "" {
+		query.Restrict = RestrictPublic
+	}
+	if !validRestrict(query.Restrict) {
+		return nil, invalidArgument(OperationFollowingNovels, 0, errors.New("restrict is invalid"))
+	}
+	digest := queryDigest(OperationFollowingNovels, query)
+	offset, err := c.cursorOffset(request.Cursor, OperationFollowingNovels, digest, 0)
+	if err != nil {
+		return nil, err
+	}
+	if err := c.requireRoute(OperationFollowingNovels, routeApp, 0, 0); err != nil {
+		return nil, err
+	}
+	list, err := c.app.NovelFollow(ctx, string(query.Restrict), offset)
+	if err != nil {
+		return nil, mapAppOperationError(err, OperationFollowingNovels, 0)
+	}
+	return publicNovelList(list, OperationFollowingNovels, digest, c.cursorSource), nil
+}
+
+// LatestIllusts 返回全站最新插画或漫画批次。
+func (c *Client) LatestIllusts(ctx context.Context, request LatestIllustsRequest) (result *IllustListResult, err error) {
+	started := time.Now()
+	defer func() { c.delegatedOperationLog(OperationLatestIllusts, started, err, 0, 0) }()
+	if scoped, err := c.operationClient(ctx, OperationLatestIllusts); err != nil {
+		return nil, err
+	} else if scoped != c {
+		return scoped.LatestIllusts(ctx, request)
+	}
+	query := latestIllustsQuery{Type: request.Type}
+	if !validLatestIllustType(query.Type) {
+		return nil, invalidArgument(OperationLatestIllusts, 0, errors.New("latest illust type must be illust or manga"))
+	}
+	digest := queryDigest(OperationLatestIllusts, query)
+	offset, err := c.cursorOffset(request.Cursor, OperationLatestIllusts, digest, 0)
+	if err != nil {
+		return nil, err
+	}
+	if err := c.requireRoute(OperationLatestIllusts, routeApp, 0, 0); err != nil {
+		return nil, err
+	}
+	list, err := c.app.IllustNew(ctx, string(query.Type), offset)
+	if err != nil {
+		return nil, mapAppOperationError(err, OperationLatestIllusts, 0)
+	}
+	return publicIllustList(list, OperationLatestIllusts, digest, "offset", c.cursorSource), nil
+}
+
+// LatestNovels 返回全站最新小说批次。
+func (c *Client) LatestNovels(ctx context.Context, request LatestNovelsRequest) (result *NovelListResult, err error) {
+	started := time.Now()
+	defer func() { c.delegatedOperationLog(OperationLatestNovels, started, err, 0, 0) }()
+	if scoped, err := c.operationClient(ctx, OperationLatestNovels); err != nil {
+		return nil, err
+	} else if scoped != c {
+		return scoped.LatestNovels(ctx, request)
+	}
+	digest := queryDigest(OperationLatestNovels, struct{}{})
+	offset, err := c.cursorOffset(request.Cursor, OperationLatestNovels, digest, 0)
+	if err != nil {
+		return nil, err
+	}
+	if err := c.requireRoute(OperationLatestNovels, routeApp, 0, 0); err != nil {
+		return nil, err
+	}
+	list, err := c.app.NovelNew(ctx, offset)
+	if err != nil {
+		return nil, mapAppOperationError(err, OperationLatestNovels, 0)
+	}
+	return publicNovelList(list, OperationLatestNovels, digest, c.cursorSource), nil
+}
+
+// MyPixivUsers 返回指定用户的 MyPixiv 用户列表。
+func (c *Client) MyPixivUsers(ctx context.Context, request MyPixivUsersRequest) (result *UserListResult, err error) {
+	started := time.Now()
+	defer func() { c.delegatedOperationLog(OperationMyPixivUsers, started, err, 0, request.UserID) }()
+	if scoped, err := c.operationClient(ctx, OperationMyPixivUsers); err != nil {
+		return nil, err
+	} else if scoped != c {
+		return scoped.MyPixivUsers(ctx, request)
+	}
+	if request.UserID <= 0 {
+		return nil, invalidArgument(OperationMyPixivUsers, request.UserID, errors.New("user id must be positive"))
+	}
+	query := myPixivUsersQuery{UserID: request.UserID}
+	digest := queryDigest(OperationMyPixivUsers, query)
+	offset, err := c.cursorOffset(request.Cursor, OperationMyPixivUsers, digest, request.UserID)
+	if err != nil {
+		return nil, err
+	}
+	if err := c.requireRoute(OperationMyPixivUsers, routeApp, 0, request.UserID); err != nil {
+		return nil, err
+	}
+	list, err := c.app.UserMyPixiv(ctx, request.UserID, offset)
+	if err != nil {
+		return nil, mapAppOperationError(err, OperationMyPixivUsers, request.UserID)
+	}
+	return publicUserList(list, OperationMyPixivUsers, digest, c.cursorSource), nil
+}
+
+// MyPixivIllusts 返回当前认证账号 MyPixiv 的插画聚合批次。
+func (c *Client) MyPixivIllusts(ctx context.Context, request MyPixivIllustsRequest) (result *IllustListResult, err error) {
+	started := time.Now()
+	defer func() { c.delegatedOperationLog(OperationMyPixivIllusts, started, err, 0, 0) }()
+	if scoped, err := c.operationClient(ctx, OperationMyPixivIllusts); err != nil {
+		return nil, err
+	} else if scoped != c {
+		return scoped.MyPixivIllusts(ctx, request)
+	}
+	digest := queryDigest(OperationMyPixivIllusts, struct{}{})
+	offset, err := c.cursorOffset(request.Cursor, OperationMyPixivIllusts, digest, 0)
+	if err != nil {
+		return nil, err
+	}
+	if err := c.requireRoute(OperationMyPixivIllusts, routeApp, 0, 0); err != nil {
+		return nil, err
+	}
+	list, err := c.app.IllustMyPixiv(ctx, offset)
+	if err != nil {
+		return nil, mapAppOperationError(err, OperationMyPixivIllusts, 0)
+	}
+	return publicIllustList(list, OperationMyPixivIllusts, digest, "offset", c.cursorSource), nil
+}
+
+// MyPixivNovels 返回当前认证账号 MyPixiv 的小说聚合批次。
+func (c *Client) MyPixivNovels(ctx context.Context, request MyPixivNovelsRequest) (result *NovelListResult, err error) {
+	started := time.Now()
+	defer func() { c.delegatedOperationLog(OperationMyPixivNovels, started, err, 0, 0) }()
+	if scoped, err := c.operationClient(ctx, OperationMyPixivNovels); err != nil {
+		return nil, err
+	} else if scoped != c {
+		return scoped.MyPixivNovels(ctx, request)
+	}
+	digest := queryDigest(OperationMyPixivNovels, struct{}{})
+	offset, err := c.cursorOffset(request.Cursor, OperationMyPixivNovels, digest, 0)
+	if err != nil {
+		return nil, err
+	}
+	if err := c.requireRoute(OperationMyPixivNovels, routeApp, 0, 0); err != nil {
+		return nil, err
+	}
+	list, err := c.app.NovelMyPixiv(ctx, offset)
+	if err != nil {
+		return nil, mapAppOperationError(err, OperationMyPixivNovels, 0)
+	}
+	return publicNovelList(list, OperationMyPixivNovels, digest, c.cursorSource), nil
+}
+
 // SearchUser 返回一个用户搜索上游批次。
 func (c *Client) SearchUser(ctx context.Context, request SearchUserRequest) (result *UserListResult, err error) {
 	started := time.Now()
@@ -701,6 +869,34 @@ func (c *Client) UserFollowing(ctx context.Context, request UserFollowingRequest
 	return publicUserList(list, OperationUserFollowing, digest, c.cursorSource), nil
 }
 
+// UserNovels 返回指定用户的小说批次。
+func (c *Client) UserNovels(ctx context.Context, request UserNovelsRequest) (result *NovelListResult, err error) {
+	started := time.Now()
+	defer func() { c.delegatedOperationLog(OperationUserNovels, started, err, 0, request.UserID) }()
+	if scoped, err := c.operationClient(ctx, OperationUserNovels); err != nil {
+		return nil, err
+	} else if scoped != c {
+		return scoped.UserNovels(ctx, request)
+	}
+	if request.UserID <= 0 {
+		return nil, invalidArgument(OperationUserNovels, request.UserID, errors.New("user id must be positive"))
+	}
+	query := userNovelsQuery{UserID: request.UserID}
+	digest := queryDigest(OperationUserNovels, query)
+	offset, err := c.cursorOffset(request.Cursor, OperationUserNovels, digest, request.UserID)
+	if err != nil {
+		return nil, err
+	}
+	if err := c.requireRoute(OperationUserNovels, routeApp, 0, request.UserID); err != nil {
+		return nil, err
+	}
+	list, err := c.app.UserNovels(ctx, request.UserID, offset)
+	if err != nil {
+		return nil, mapAppOperationError(err, OperationUserNovels, request.UserID)
+	}
+	return publicNovelList(list, OperationUserNovels, digest, c.cursorSource), nil
+}
+
 func (c *Client) cursorOffset(cursor Cursor, operation Operation, digest string, userID int64) (int, error) {
 	value, err := c.cursorValue(cursor, operation, digest, "offset", userID)
 	if err != nil {
@@ -864,6 +1060,10 @@ func validRestrict(value Restrict) bool { return value == RestrictPublic || valu
 
 func validIllustType(value IllustType) bool {
 	return value == IllustTypeIllust || value == IllustTypeManga || value == IllustTypeUgoira
+}
+
+func validLatestIllustType(value IllustType) bool {
+	return value == IllustTypeIllust || value == IllustTypeManga
 }
 
 func validIllustSearchDuration(value string) bool {

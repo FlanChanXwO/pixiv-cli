@@ -16,6 +16,7 @@ import (
 
 type searchOptions struct {
 	commandOptions
+	ndjsonOutputOptions
 	searchBy    string
 	sortMode    string
 	period      string
@@ -34,6 +35,7 @@ type searchOptions struct {
 
 type rankingOptions struct {
 	commandOptions
+	ndjsonOutputOptions
 	mode string
 	date string
 	listOptions
@@ -41,6 +43,7 @@ type rankingOptions struct {
 
 type recommendedOptions struct {
 	commandOptions
+	ndjsonOutputOptions
 	listOptions
 }
 
@@ -71,6 +74,7 @@ func (a app) newSearchCommand() *cobra.Command {
 		},
 	}
 	a.bindCommonFlags(cmd, &opts.commandOptions)
+	bindNDJSONFlag(cmd, &opts.ndjsonOutputOptions)
 	flags := cmd.Flags()
 	flags.StringVar(&opts.searchBy, "search-by", opts.searchBy, "search field: tag-partial, tag-exact, title-caption, tag-title-caption")
 	flags.StringVar(&opts.sortMode, "sort", opts.sortMode, "sort mode: date_desc, date_asc")
@@ -116,18 +120,17 @@ func (a app) runSearch(cmd *cobra.Command, args []string, opts searchOptions) er
 	if err != nil {
 		return err
 	}
-	jsonOut, err := services.SDK.JSONOut(jsonOverride)
-	if err != nil {
-		return err
+	if opts.ndjson && cmd.Flags().Changed("json") {
+		return newUsageError(errors.New("--ndjson cannot be used with --json"))
 	}
-	client, err := services.SDK.OpenOperation(cmd.Context(), clientReq)
-	if err != nil {
-		return err
+	jsonOut := false
+	if !opts.ndjson {
+		jsonOut, err = services.SDK.JSONOut(jsonOverride)
+		if err != nil {
+			return err
+		}
 	}
-	if !jsonOut {
-		fmt.Fprintf(a.out, "illustrations for %q\n", word)
-	}
-	return a.runIllustList(cmd.Context(), plan, jsonOut, func(ctx context.Context, cursor sdk.Cursor) ([]sdk.Illust, sdk.Cursor, error) {
+	fetch := func(client application.SDKClient, ctx context.Context, cursor sdk.Cursor) ([]sdk.Illust, sdk.Cursor, error) {
 		result, err := client.SearchIllust(ctx, sdk.SearchIllustRequest{
 			Word: word, Target: target, Sort: sdk.SortMode(opts.sortMode),
 			Duration: period, StartDate: startDate, EndDate: endDate, Cursor: cursor, Filters: filters,
@@ -136,7 +139,8 @@ func (a app) runSearch(cmd *cobra.Command, args []string, opts searchOptions) er
 			return nil, "", err
 		}
 		return result.Illusts, result.NextCursor, nil
-	}, func(items []sdk.Illust, start int) { printIllusts(a.out, items, start, false) })
+	}
+	return a.runPooledIllustList(cmd.Context(), clientReq, plan, jsonOut, opts.ndjson, fmt.Sprintf("illustrations for %q", word), fetch, func(items []sdk.Illust, start int) error { return printIllusts(a.out, items, start, false) })
 }
 
 func resolveSearchBy(value string) (sdk.SearchTarget, error) {
@@ -274,27 +278,34 @@ func (a app) runSearchOptions(cmd *cobra.Command, word string, opts commandOptio
 	if err != nil {
 		return err
 	}
-	client, err := services.SDK.OpenOperation(cmd.Context(), clientReq)
-	if err != nil {
-		return err
-	}
-	result, err := client.SearchIllustOptions(cmd.Context(), sdk.SearchIllustOptionsRequest{Word: word})
-	if err != nil {
-		return err
-	}
-	if jsonOut {
-		return a.printJSON(result)
-	}
-	fmt.Fprintf(a.out, "search options for %q\n", word)
-	if len(result.Tools) == 0 {
-		fmt.Fprintln(a.out, "tools: none")
-		return nil
-	}
-	fmt.Fprintln(a.out, "tools:")
-	for _, tool := range result.Tools {
-		fmt.Fprintf(a.out, "- %s\n", safeTextLine(tool))
-	}
-	return nil
+	return services.SDK.RunPooledOperation(cmd.Context(), clientReq, func(ctx context.Context, client application.SDKClient) (bool, error) {
+		result, err := client.SearchIllustOptions(ctx, sdk.SearchIllustOptionsRequest{Word: word})
+		if err != nil {
+			return false, err
+		}
+		if jsonOut {
+			committed := true
+			err = a.printJSON(result)
+			return committed, err
+		}
+		committed := true
+		if _, err := fmt.Fprintf(a.out, "search options for %q\n", word); err != nil {
+			return committed, err
+		}
+		if len(result.Tools) == 0 {
+			_, err = fmt.Fprintln(a.out, "tools: none")
+			return committed, err
+		}
+		if _, err := fmt.Fprintln(a.out, "tools:"); err != nil {
+			return committed, err
+		}
+		for _, tool := range result.Tools {
+			if _, err := fmt.Fprintf(a.out, "- %s\n", safeTextLine(tool)); err != nil {
+				return committed, err
+			}
+		}
+		return committed, nil
+	})
 }
 
 // safeTextLine 保留可见 Unicode，同时转义换行、ANSI ESC 和其他控制字节，
@@ -332,19 +343,21 @@ func (a app) runDetail(cmd *cobra.Command, arg string, opts commandOptions) erro
 	if err != nil {
 		return err
 	}
-	client, err := services.SDK.OpenOperation(cmd.Context(), clientReq)
-	if err != nil {
-		return err
-	}
-	result, err := client.IllustDetail(cmd.Context(), id)
-	if err != nil {
-		return err
-	}
-	if jsonOut {
-		return a.printJSON(result)
-	}
-	printIllust(a.out, result.Illust, 0, false)
-	return nil
+	return services.SDK.RunPooledOperation(cmd.Context(), clientReq, func(ctx context.Context, client application.SDKClient) (bool, error) {
+		result, err := client.IllustDetail(ctx, id)
+		if err != nil {
+			return false, err
+		}
+		if jsonOut {
+			committed := true
+			err = a.printJSON(result)
+			return committed, err
+		} else {
+			committed := true
+			err = printIllust(a.out, result.Illust, 0, false)
+			return committed, err
+		}
+	})
 }
 
 func (a app) newRankingCommand() *cobra.Command {
@@ -358,6 +371,7 @@ func (a app) newRankingCommand() *cobra.Command {
 		},
 	}
 	a.bindCommonFlags(cmd, &opts.commandOptions)
+	bindNDJSONFlag(cmd, &opts.ndjsonOutputOptions)
 	flags := cmd.Flags()
 	flags.StringVar(&opts.mode, "mode", opts.mode, "ranking mode: day, day_male, day_female, week, week_original, week_rookie, month, day_manga, week_manga, month_manga, week_rookie_manga, day_r18, day_male_r18, day_female_r18, week_r18, week_r18g; the last nine require authentication")
 	flags.StringVar(&opts.date, "date", "", "YYYY-MM-DD")
@@ -375,24 +389,24 @@ func (a app) runRanking(cmd *cobra.Command, opts rankingOptions) error {
 	if err != nil {
 		return err
 	}
-	jsonOut, err := services.SDK.JSONOut(jsonOverride)
-	if err != nil {
-		return err
+	if opts.ndjson && cmd.Flags().Changed("json") {
+		return newUsageError(errors.New("--ndjson cannot be used with --json"))
 	}
-	client, err := services.SDK.OpenOperation(cmd.Context(), clientReq)
-	if err != nil {
-		return err
+	jsonOut := false
+	if !opts.ndjson {
+		jsonOut, err = services.SDK.JSONOut(jsonOverride)
+		if err != nil {
+			return err
+		}
 	}
-	if !jsonOut {
-		fmt.Fprintf(a.out, "%s ranking\n", opts.mode)
-	}
-	return a.runIllustList(cmd.Context(), plan, jsonOut, func(ctx context.Context, cursor sdk.Cursor) ([]sdk.Illust, sdk.Cursor, error) {
+	fetch := func(client application.SDKClient, ctx context.Context, cursor sdk.Cursor) ([]sdk.Illust, sdk.Cursor, error) {
 		result, err := client.IllustRanking(ctx, sdk.IllustRankingRequest{Mode: sdk.RankingMode(opts.mode), Date: opts.date, Cursor: cursor})
 		if err != nil {
 			return nil, "", err
 		}
 		return result.Illusts, result.NextCursor, nil
-	}, func(items []sdk.Illust, start int) { printIllusts(a.out, items, start, true) })
+	}
+	return a.runPooledIllustList(cmd.Context(), clientReq, plan, jsonOut, opts.ndjson, fmt.Sprintf("%s ranking", opts.mode), fetch, func(items []sdk.Illust, start int) error { return printIllusts(a.out, items, start, true) })
 }
 
 func (a app) newRecommendedCommand() *cobra.Command {
@@ -406,6 +420,7 @@ func (a app) newRecommendedCommand() *cobra.Command {
 		},
 	}
 	a.bindCommonFlags(cmd, &opts.commandOptions)
+	bindNDJSONFlag(cmd, &opts.ndjsonOutputOptions)
 	bindListFlags(cmd, &opts.listOptions)
 	return cmd
 }
@@ -416,23 +431,29 @@ type downloadOptions struct {
 	filenameTemplate string
 	pages            string
 	quality          string
+	ugoiraFormat     string
+	concurrency      int
+	onError          string
 }
 
 func (a app) newDownloadCommand() *cobra.Command {
 	opts := downloadOptions{quality: string(application.DownloadQualityOriginal)}
 	cmd := &cobra.Command{
-		Use:   "download TARGET...",
+		Use:   "download [SRC...]",
 		Short: "Download illustrations",
-		Args:  requireMinArgs(1, "pixiv download [options] TARGET..."),
+		Args:  actionOrTargetsArgs(a.in, "pixiv download [options] SRC..."),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return a.runDownload(cmd, args, opts)
 		},
 	}
-	a.bindCommonFlags(cmd, &opts.commandOptions)
+	a.bindActionFlags(cmd, &opts.commandOptions)
 	a.bindDownloadRuntimeFlags(cmd, &opts)
 	flags := cmd.Flags()
 	flags.StringVar(&opts.pages, "pages", "", "1-based page selection, e.g. 1,3-5; default all pages")
 	flags.StringVar(&opts.quality, "quality", opts.quality, "static image quality: original, regular, small, thumb, mini")
+	flags.StringVar(&opts.ugoiraFormat, "ugoira-format", string(sdk.UgoiraFormatGIF), "ugoira output format: gif or apng")
+	flags.IntVar(&opts.concurrency, "concurrency", 0, "download workers; 0 automatically uses 2 × GOMAXPROCS")
+	flags.StringVar(&opts.onError, "on-error", "skip", "record failure strategy: skip or fail-fast")
 	return cmd
 }
 
@@ -444,31 +465,26 @@ func (a app) bindDownloadRuntimeFlags(cmd *cobra.Command, opts *downloadOptions)
 }
 
 func (a app) runDownload(cmd *cobra.Command, args []string, opts downloadOptions) error {
-	targets := make([]sdk.Reference, 0, len(args))
-	for _, arg := range args {
-		target, err := sdk.ParseReference(arg)
-		if err != nil {
-			return err
-		}
-		targets = append(targets, target)
+	if _, err := recordFailureStrategy(opts.onError); err != nil {
+		return err
 	}
 	pages, err := application.ParsePageSpec(opts.pages)
 	if err != nil {
-		return err
+		return newUsageError(err)
 	}
 	quality := application.DownloadQuality(opts.quality)
 	if quality == "" {
 		quality = application.DownloadQualityOriginal
 	}
 	if err := application.ValidateDownloadQuality(quality); err != nil {
-		return err
+		return newUsageError(err)
+	}
+	ugoiraFormat := sdk.UgoiraFormat(opts.ugoiraFormat)
+	if err := sdk.ValidateUgoiraFormat(ugoiraFormat); err != nil {
+		return newUsageError(err)
 	}
 	services := a.services()
 	clientReq, err := a.clientRequest(cmd, opts.commandOptions, false)
-	if err != nil {
-		return err
-	}
-	jsonOut, err := services.SDK.JSONOut(clientReq.JSONOverride)
 	if err != nil {
 		return err
 	}
@@ -482,32 +498,87 @@ func (a app) runDownload(cmd *cobra.Command, args []string, opts downloadOptions
 	if cmd.Flags().Changed("filename-template") {
 		runtime.FilenameTemplate = opts.filenameTemplate
 	}
-	client, err := services.SDK.OpenOperation(cmd.Context(), application.SDKClientRequest{
-		UserID: clientReq.UserID, RefreshToken: clientReq.RefreshToken, HTTPSProxyOverride: clientReq.HTTPSProxyOverride,
-	})
-	if err != nil {
-		return err
-	}
-	report, err := services.Download.DownloadTargets(cmd.Context(), client, targets, application.DownloadRequest{
+	options := sdk.DownloadOptions{
 		DownloadPath:     runtime.DownloadPath,
 		FilenameTemplate: runtime.FilenameTemplate,
 		Pages:            pages,
-		Quality:          quality,
-	})
-	if err != nil {
-		return err
+		Quality:          sdk.DownloadQuality(quality),
+		UgoiraFormat:     ugoiraFormat,
+		Concurrency:      opts.concurrency,
 	}
-	if jsonOut {
-		if err := a.printJSON(downloadReportOutput(report)); err != nil {
-			return err
+	request := application.SDKClientRequest{HTTPSProxyOverride: clientReq.HTTPSProxyOverride}
+	downloadOne := func(ctx context.Context, id int64) error {
+		return runPooledSingleDownload(ctx, services, request, id, options)
+	}
+	if len(args) == 0 {
+		return a.consumeActionRecords(cmd, "download", opts.onError, visualRecordTypes, downloadOne)
+	}
+	allArtworkReferences := true
+	for _, source := range args {
+		reference, parseErr := sdk.ParseReference(source)
+		if parseErr != nil || reference.Kind != sdk.ReferenceKindArtwork {
+			allArtworkReferences = false
+			break
 		}
-	} else {
-		printDownloadReport(a.out, report)
 	}
-	if len(report.Failures) > 0 {
+	if allArtworkReferences {
+		for _, source := range args {
+			reference, _ := sdk.ParseReference(source)
+			if err := downloadOne(cmd.Context(), reference.ID); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	// 用户页与受资源策略允许的直链可能在一次调用里展开多个文件。只在结果中
+	// 尚无已发布文件时，账号池才可因有效 Retry-After 安全重放这次调用。
+	return services.SDK.RunPooledOperation(cmd.Context(), request, func(ctx context.Context, client application.SDKClient) (bool, error) {
+		report, err := services.Download.DownloadSources(ctx, client, args, options)
+		if err != nil {
+			return downloadReportCommitted(report), err
+		}
+		return downloadReportCommitted(report), downloadReportError(report)
+	})
+}
+
+// runPooledSingleDownload 将单个作品作为下载的提交单元。只要已经落盘任一文件，
+// 后续错误均不允许账号池用另一账号重放该作品。
+func runPooledSingleDownload(ctx context.Context, services application.Services, request application.SDKClientRequest, id int64, options sdk.DownloadOptions) error {
+	return services.SDK.RunPooledOperation(ctx, request, func(ctx context.Context, client application.SDKClient) (bool, error) {
+		report, err := services.Download.DownloadSources(ctx, client, []string{strconv.FormatInt(id, 10)}, options)
+		if err != nil {
+			return false, err
+		}
+		return downloadReportCommitted(report), downloadReportError(report)
+	})
+}
+
+// downloadReportCommitted 只以已经原子发布的常规文件判断提交边界。资源获取
+// 或解析在此之前失败时，账号池可识别有效 Retry-After 并切换未尝试账号。
+func downloadReportCommitted(report application.DownloadReport) bool {
+	if report.Committed {
+		return true
+	}
+	for _, item := range report.Items {
+		if len(item.Files) > 0 {
+			return true
+		}
+	}
+	return false
+}
+
+func downloadReportError(report application.DownloadReport) error {
+	if len(report.Failures) == 0 {
+		return nil
+	}
+	first := report.Failures[0]
+	if first.Cause != nil {
+		return fmt.Errorf("download completed with %d failures: %w", len(report.Failures), first.Cause)
+	}
+	if first.Message == "" {
 		return fmt.Errorf("download completed with %d failures", len(report.Failures))
 	}
-	return nil
+	return fmt.Errorf("download completed with %d failures: %s", len(report.Failures), first.Message)
 }
 
 // downloadReportOut 是 CLI 的稳定 JSON 下载报告；作品 URL 始终按 ID 重建为规范地址。
@@ -561,29 +632,39 @@ func downloadReportOutput(report application.DownloadReport) downloadReportOut {
 	return out
 }
 
-func printDownloadReport(w io.Writer, report application.DownloadReport) {
+func printDownloadReport(w io.Writer, report application.DownloadReport) error {
 	for _, artwork := range report.Items {
-		fmt.Fprintf(w, "downloaded %d %q by %s\n", artwork.IllustID, artwork.Title, artwork.Author)
+		if _, err := fmt.Fprintf(w, "downloaded %d %q by %s\n", artwork.IllustID, artwork.Title, artwork.Author); err != nil {
+			return err
+		}
 		for _, file := range artwork.Files {
-			fmt.Fprintf(w, "  %s\n", file.Path)
+			if _, err := fmt.Fprintf(w, "  %s\n", file.Path); err != nil {
+				return err
+			}
 		}
 	}
 	for _, failure := range report.Failures {
-		fmt.Fprintf(w, "failed %s: %s\n", failure.URL, failure.Message)
+		if _, err := fmt.Fprintf(w, "failed %s: %s\n", failure.URL, failure.Message); err != nil {
+			return err
+		}
 	}
+	return nil
 }
 
-func printIllusts(w io.Writer, illusts []sdk.Illust, offset int, ranked bool) {
+func printIllusts(w io.Writer, illusts []sdk.Illust, offset int, ranked bool) error {
 	for i, illust := range illusts {
 		rank := 0
 		if ranked {
 			rank = i + 1 + offset
 		}
-		printIllust(w, illust, rank, true)
+		if err := printIllust(w, illust, rank, true); err != nil {
+			return err
+		}
 	}
+	return nil
 }
 
-func printIllust(w io.Writer, illust sdk.Illust, rank int, compact bool) {
+func printIllust(w io.Writer, illust sdk.Illust, rank int, compact bool) error {
 	prefix := ""
 	if rank > 0 {
 		prefix = fmt.Sprintf("#%d ", rank)
@@ -597,21 +678,27 @@ func printIllust(w io.Writer, illust sdk.Illust, rank int, compact bool) {
 		url = fmt.Sprintf("https://www.pixiv.net/artworks/%d", illust.ID)
 	}
 	if compact {
-		fmt.Fprintf(w, "%s%s\n", prefix, url)
-		fmt.Fprintf(w, "%d %q by %s bookmarks:%d views:%d tags:%s\n",
+		if _, err := fmt.Fprintf(w, "%s%s\n", prefix, url); err != nil {
+			return err
+		}
+		_, err := fmt.Fprintf(w, "%d %q by %s bookmarks:%d views:%d tags:%s\n",
 			illust.ID, illust.Title, illust.User.Name, illust.TotalBookmarks, illust.TotalView, strings.Join(tags, ","))
-		return
+		return err
 	}
-	fmt.Fprintf(w, "url: %s\n", url)
-	fmt.Fprintf(w, "id: %d\n", illust.ID)
-	fmt.Fprintf(w, "title: %s\n", illust.Title)
-	fmt.Fprintf(w, "author: %s (%d)\n", illust.User.Name, illust.User.ID)
-	fmt.Fprintf(w, "type: %s\n", illust.Type)
-	fmt.Fprintf(w, "page_count: %d\n", illust.PageCount)
-	fmt.Fprintf(w, "bookmarks: %d\n", illust.TotalBookmarks)
-	fmt.Fprintf(w, "views: %d\n", illust.TotalView)
-	fmt.Fprintf(w, "tags: %s\n", strings.Join(tags, ","))
+	for _, line := range []string{
+		fmt.Sprintf("url: %s\n", url), fmt.Sprintf("id: %d\n", illust.ID), fmt.Sprintf("title: %s\n", illust.Title),
+		fmt.Sprintf("author: %s (%d)\n", illust.User.Name, illust.User.ID), fmt.Sprintf("type: %s\n", illust.Type),
+		fmt.Sprintf("page_count: %d\n", illust.PageCount), fmt.Sprintf("bookmarks: %d\n", illust.TotalBookmarks),
+		fmt.Sprintf("views: %d\n", illust.TotalView), fmt.Sprintf("tags: %s\n", strings.Join(tags, ",")),
+	} {
+		if _, err := io.WriteString(w, line); err != nil {
+			return err
+		}
+	}
 	if caption := captionPlainText(illust.Caption); caption != "" {
-		fmt.Fprintf(w, "caption:\n%s\n", caption)
+		if _, err := fmt.Fprintf(w, "caption:\n%s\n", caption); err != nil {
+			return err
+		}
 	}
+	return nil
 }

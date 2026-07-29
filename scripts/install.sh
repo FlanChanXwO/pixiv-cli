@@ -252,6 +252,12 @@ target="$install_dir/pixiv"
 mv -f "$staged" "$target" || fail 'cannot replace the installed binary'
 staged=
 
+# 官方 installer 主动初始化按需 pixiv:// handler。该 helper 的失败不会使已通过
+# 校验的 binary 安装失效；binary 会给出明确 warning，首次正常 browser login 也会重试。
+if ! "$target" auth _install-handler; then
+	printf 'warning: pixiv callback handler initialization could not be started; run pixiv auth login once after installation.\n' >&2
+fi
+
 path_contains_install_dir=false
 case ":${PATH:-}:" in
 *":$install_dir:"*) path_contains_install_dir=true ;;

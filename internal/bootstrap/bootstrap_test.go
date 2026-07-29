@@ -114,8 +114,8 @@ func (bootstrapDownloadClientStub) ParseResourceRef(string) (sdk.ResourceRef, er
 	return sdk.ResourceRef{}, nil
 }
 
-func (bootstrapDownloadClientStub) Download(context.Context, sdk.ResourceRef, string) error {
-	return nil
+func (bootstrapDownloadClientStub) DownloadResource(context.Context, sdk.ResourceRef, string) (sdk.ResourceDownloadResult, error) {
+	return sdk.ResourceDownloadResult{}, nil
 }
 
 func clearRuntimeEnvironment(t *testing.T) {

@@ -82,7 +82,7 @@ func TestClientIllustDetailClassifiesMalformedTransportAndContextFailures(t *tes
 					return testHTTPResponse(request, http.StatusOK, webSuccess), nil
 				}
 			})
-			client, err := pixiv.NewClient(pixiv.Options{
+			client, err := pixiv.NewClient(pixiv.NewClientOptions{
 				HTTPClient:    &http.Client{Transport: transport},
 				AppAPIBaseURL: "https://app.invalid",
 				WebAPIBaseURL: "https://web.invalid",
@@ -151,7 +151,7 @@ func TestClientIllustDetailRoutesAnonymousAccessExplicitly(t *testing.T) {
 				return testHTTPResponse(request, http.StatusNotFound, "unexpected path"), nil
 			}
 		})
-		client, err := pixiv.NewClient(pixiv.Options{
+		client, err := pixiv.NewClient(pixiv.NewClientOptions{
 			HTTPClient:         &http.Client{Transport: transport},
 			AppAPIBaseURL:      "https://app.invalid",
 			WebAPIBaseURL:      "https://web.invalid",
@@ -186,7 +186,7 @@ func TestClientIllustDetailRoutesAnonymousAccessExplicitly(t *testing.T) {
 		t.Parallel()
 
 		var requests atomic.Int32
-		client, err := pixiv.NewClient(pixiv.Options{
+		client, err := pixiv.NewClient(pixiv.NewClientOptions{
 			HTTPClient: &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
 				requests.Add(1)
 				return testHTTPResponse(request, http.StatusInternalServerError, "unexpected request"), nil
@@ -218,7 +218,7 @@ func TestClientIllustDetailRoutesAnonymousAccessExplicitly(t *testing.T) {
 		t.Parallel()
 
 		var appRequests atomic.Int32
-		client, err := pixiv.NewClient(pixiv.Options{
+		client, err := pixiv.NewClient(pixiv.NewClientOptions{
 			HTTPClient: &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
 				if request.URL.Host == "app.invalid" {
 					appRequests.Add(1)
@@ -267,7 +267,7 @@ func TestClientIllustDetailMapsWebEnrichmentFailureWithoutLeakingSecrets(t *test
 	}))
 	defer webServer.Close()
 
-	client, err := pixiv.NewClient(pixiv.Options{
+	client, err := pixiv.NewClient(pixiv.NewClientOptions{
 		HTTPClient:    appServer.Client(),
 		AppAPIBaseURL: appServer.URL,
 		WebAPIBaseURL: webServer.URL,
@@ -336,7 +336,7 @@ func TestClientIllustDetailUsesAppPagesForRestrictedWorkWithoutWebEnrichment(t *
 	}))
 	defer webServer.Close()
 
-	client, err := pixiv.NewClient(pixiv.Options{
+	client, err := pixiv.NewClient(pixiv.NewClientOptions{
 		HTTPClient:    appServer.Client(),
 		AppAPIBaseURL: appServer.URL,
 		WebAPIBaseURL: webServer.URL,
@@ -396,7 +396,7 @@ func TestClientIllustDetailMapsAppHTTPFailuresWithoutWebFallback(t *testing.T) {
 			}))
 			defer webServer.Close()
 
-			client, err := pixiv.NewClient(pixiv.Options{
+			client, err := pixiv.NewClient(pixiv.NewClientOptions{
 				HTTPClient:    appServer.Client(),
 				AppAPIBaseURL: appServer.URL,
 				WebAPIBaseURL: webServer.URL,
@@ -467,7 +467,7 @@ func TestClientIllustDetailMapsWebEnvelopeErrorsSafely(t *testing.T) {
 				}
 				return testHTTPResponse(request, http.StatusOK, `{"error":false,"message":"","body":{}}`), nil
 			})
-			client, err := pixiv.NewClient(pixiv.Options{
+			client, err := pixiv.NewClient(pixiv.NewClientOptions{
 				HTTPClient:         &http.Client{Transport: transport},
 				AppAPIBaseURL:      "https://app.invalid",
 				WebAPIBaseURL:      "https://web.invalid",
@@ -518,7 +518,7 @@ func TestClientIllustDetailPreservesAnonymousPagesFailureStage(t *testing.T) {
 			return testHTTPResponse(request, http.StatusNotFound, "unexpected path"), nil
 		}
 	})
-	client, err := pixiv.NewClient(pixiv.Options{
+	client, err := pixiv.NewClient(pixiv.NewClientOptions{
 		HTTPClient:         &http.Client{Transport: transport},
 		AppAPIBaseURL:      "https://app.invalid",
 		WebAPIBaseURL:      "https://web.invalid",
@@ -563,7 +563,7 @@ func TestClientIllustDetailRejectsAppResponseWithoutIllust(t *testing.T) {
 		webRequests.Add(1)
 		return testHTTPResponse(request, http.StatusOK, `{"error":false,"message":"","body":[]}`), nil
 	})
-	client, err := pixiv.NewClient(pixiv.Options{
+	client, err := pixiv.NewClient(pixiv.NewClientOptions{
 		HTTPClient:    &http.Client{Transport: transport},
 		AppAPIBaseURL: "https://app.invalid",
 		WebAPIBaseURL: "https://web.invalid",
@@ -594,7 +594,7 @@ func TestClientIllustDetailRejectsAppIllustWithoutRequiredID(t *testing.T) {
 		webRequests.Add(1)
 		return testHTTPResponse(request, http.StatusOK, `{"error":false,"message":"","body":[]}`), nil
 	})
-	client, err := pixiv.NewClient(pixiv.Options{
+	client, err := pixiv.NewClient(pixiv.NewClientOptions{
 		HTTPClient:    &http.Client{Transport: transport},
 		AppAPIBaseURL: "https://app.invalid",
 		WebAPIBaseURL: "https://web.invalid",
@@ -627,7 +627,7 @@ func TestClientIllustDetailRejectsWebEnvelopeWithoutBody(t *testing.T) {
 			return testHTTPResponse(request, http.StatusNotFound, "unexpected path"), nil
 		}
 	})
-	client, err := pixiv.NewClient(pixiv.Options{
+	client, err := pixiv.NewClient(pixiv.NewClientOptions{
 		HTTPClient:         &http.Client{Transport: transport},
 		WebAPIBaseURL:      "https://web.invalid",
 		WebFallbackEnabled: true,
@@ -656,7 +656,7 @@ func TestClientIllustDetailRejectsWebBodyWithoutRequiredID(t *testing.T) {
 			return testHTTPResponse(request, http.StatusNotFound, "unexpected path"), nil
 		}
 	})
-	client, err := pixiv.NewClient(pixiv.Options{
+	client, err := pixiv.NewClient(pixiv.NewClientOptions{
 		HTTPClient:         &http.Client{Transport: transport},
 		WebAPIBaseURL:      "https://web.invalid",
 		WebFallbackEnabled: true,
@@ -683,7 +683,7 @@ func TestClientIllustDetailAcceptsAppZeroPageCountWithoutWeb(t *testing.T) {
 		webRequests++
 		return testHTTPResponse(request, http.StatusBadGateway, "unexpected Web request"), nil
 	})
-	client, err := pixiv.NewClient(pixiv.Options{
+	client, err := pixiv.NewClient(pixiv.NewClientOptions{
 		HTTPClient:    &http.Client{Transport: transport},
 		AppAPIBaseURL: "https://app.invalid",
 		WebAPIBaseURL: "https://web.invalid",
@@ -717,7 +717,7 @@ func TestClientIllustDetailRejectsInvalidIDWithTypedError(t *testing.T) {
 	t.Parallel()
 
 	requests := 0
-	client, err := pixiv.NewClient(pixiv.Options{HTTPClient: &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+	client, err := pixiv.NewClient(pixiv.NewClientOptions{HTTPClient: &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
 		requests++
 		return nil, errors.New("network must not be reached")
 	})}})

@@ -14,7 +14,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"reflect"
 	"slices"
 	"strings"
 	"sync"
@@ -61,8 +60,9 @@ func TestServerListsExpectedTools(t *testing.T) {
 		"set_download_path", "download", "refresh_token", "set_refresh_token",
 		"download_random_from_recommendation", "search_illust", "search_novel", "search_illust_options", "illust_detail",
 		"illust_related", "illust_ranking", "search_user", "illust_recommended",
-		"recommended", "trending_tags_illust", "illust_follow", "user_detail",
-		"user_artworks", "user_bookmarks", "user_following", "add_bookmark",
+		"recommended", "trending_tags_illust", "illust_follow", "novel_follow",
+		"illust_new", "novel_new", "mypixiv_users", "mypixiv_illusts", "mypixiv_novels",
+		"user_detail", "user_artworks", "user_novels", "user_bookmarks", "user_following", "add_bookmark",
 		"remove_bookmark", "follow_user", "unfollow_user",
 	}
 	slices.Sort(names)
@@ -174,7 +174,7 @@ func TestSearchIllustExpandsLongQuickDurationToTokyoDateRange(t *testing.T) {
 	}
 }
 
-func TestSearchIllustReturnsTypedItemsAlongsideText(t *testing.T) {
+func TestSearchIllustReturnsRecords(t *testing.T) {
 	client := &fakeSDKClient{searchIllust: func(_ context.Context, _ sdk.SearchIllustRequest) (*sdk.IllustListResult, error) {
 		return &sdk.IllustListResult{Illusts: []sdk.Illust{testSDKIllust(42, "work", 7)}}, nil
 	}}
@@ -187,7 +187,7 @@ func TestSearchIllustReturnsTypedItemsAlongsideText(t *testing.T) {
 	}
 	var out illustQueryOut
 	decodeStructured(t, result, &out)
-	if len(out.Items) != 1 || out.Items[0].ID != 42 || out.Pagination.Returned != 1 || !strings.Contains(out.Text, "Found 1 illustrations") {
+	if len(out.Records) != 1 || out.Records[0].ID() != "42" || out.Pagination.Returned != 1 {
 		t.Fatalf("search_illust output = %+v", out)
 	}
 }
@@ -208,17 +208,13 @@ func TestSearchNovelMapsStableFiltersAndReturnsStructuredOutput(t *testing.T) {
 	if result.IsError {
 		t.Fatalf("search_novel returned MCP error: %+v", result)
 	}
-	var out struct {
-		Novels     []sdk.Novel   `json:"novels"`
-		Pagination paginationOut `json:"pagination"`
-		Text       string        `json:"text"`
-	}
+	var out novelSearchOut
 	decodeStructured(t, result, &out)
 	wantFilters := sdk.NovelSearchFilters{Rating: sdk.SearchRatingR18, MinTextLength: 100, MaxTextLength: 1000, OriginalOnly: true}
 	if got.Word != "miku" || got.Target != sdk.SearchTargetTitleAndCaption || got.Sort != sdk.SortModeDateAsc || got.Duration != "within_last_week" || got.Filters != wantFilters {
 		t.Fatalf("SearchNovel request = %+v, want stable parameters and filters=%+v", got, wantFilters)
 	}
-	if len(out.Novels) != 1 || out.Novels[0].ID != 12 || out.Pagination.Returned != 1 || !strings.Contains(out.Text, "Found 1 novels") {
+	if len(out.Records) != 1 || out.Records[0].ID() != "12" || out.Pagination.Returned != 1 {
 		t.Fatalf("search_novel output = %+v", out)
 	}
 }
@@ -236,12 +232,9 @@ func TestIllustDetailAcceptsArtworkURLAndReturnsStructuredOutput(t *testing.T) {
 	if result.IsError {
 		t.Fatalf("illust_detail returned MCP error: %+v", result)
 	}
-	var out struct {
-		Illust sdk.Illust `json:"illust"`
-		Text   string     `json:"text"`
-	}
+	var out illustDetailOut
 	decodeStructured(t, result, &out)
-	if gotID != 42 || out.Illust.ID != 42 || !strings.Contains(out.Text, "ID: 42") {
+	if gotID != 42 || len(out.Records) != 1 || out.Records[0].ID() != "42" {
 		t.Fatalf("illust_detail id=%d output=%+v, want URL-resolved artwork", gotID, out)
 	}
 
@@ -252,13 +245,6 @@ func TestIllustDetailAcceptsArtworkURLAndReturnsStructuredOutput(t *testing.T) {
 	text, ok := invalid.Content[0].(*mcp.TextContent)
 	if !ok || !strings.Contains(text.Text, "exactly one") || strings.Contains(text.Text, "https://") {
 		t.Fatalf("illust_detail invalid input = %#v", invalid.Content)
-	}
-}
-
-func TestNormalizeIllustsProvidesStructuredEmptyArrays(t *testing.T) {
-	got := normalizeIllusts([]sdk.Illust{{ID: 1}})[0]
-	if got.Tools == nil || got.Tags == nil || got.MetaPages == nil {
-		t.Fatalf("normalizeIllusts() = %#v, want non-nil structured arrays", got)
 	}
 }
 
@@ -277,7 +263,7 @@ func TestSearchNovelContinuesAfterLocallyFilteredEmptyBatch(t *testing.T) {
 	result := callTool(t, session, "search_novel", map[string]any{"word": "miku", "rating": "r18"})
 	var out novelSearchOut
 	decodeStructured(t, result, &out)
-	if len(requests) != 2 || requests[1].Cursor != "filtered-next" || len(out.Novels) != 1 || out.Novels[0].ID != 19 {
+	if len(requests) != 2 || requests[1].Cursor != "filtered-next" || len(out.Records) != 1 || out.Records[0].ID() != "19" {
 		t.Fatalf("requests=%+v output=%+v", requests, out)
 	}
 }
@@ -298,14 +284,9 @@ func TestSearchUserReturnsSourceAndStructuredPreviews(t *testing.T) {
 	if result.IsError {
 		t.Fatalf("search_user returned MCP error: %+v", result)
 	}
-	var out struct {
-		Source       sdk.UserSearchSource `json:"source"`
-		UserPreviews []sdk.UserPreview    `json:"user_previews"`
-		Pagination   paginationOut        `json:"pagination"`
-		Text         string               `json:"text"`
-	}
+	var out userSearchOut
 	decodeStructured(t, result, &out)
-	if got.Word != "author" || len(out.UserPreviews) != 1 || out.UserPreviews[0].User.ID != 7 || out.Source != sdk.UserSearchSourceRelatedIllustAuthors || out.Pagination.Returned != 1 || !strings.Contains(out.Text, "not a username search") {
+	if got.Word != "author" || len(out.Records) != 1 || out.Records[0].ID() != "7" || out.Pagination.Returned != 1 {
 		t.Fatalf("search_user request=%+v output=%+v", got, out)
 	}
 }
@@ -365,9 +346,9 @@ func TestSearchIllustKeepsFiltersAcrossLogicalPagePagination(t *testing.T) {
 	defer closeSession()
 
 	result := callTool(t, session, "search_illust", map[string]any{"word": "cat", "page": 2, "limit": 1, "ai_mode": "exclude"})
-	var out textOut
+	var out illustQueryOut
 	decodeStructured(t, result, &out)
-	if len(requests) != 2 || requests[1].Cursor != "next" || requests[0].Filters.AIMode != sdk.SearchAIModeExclude || requests[1].Filters.AIMode != sdk.SearchAIModeExclude || !strings.Contains(out.Text, `"second"`) {
+	if len(requests) != 2 || requests[1].Cursor != "next" || requests[0].Filters.AIMode != sdk.SearchAIModeExclude || requests[1].Filters.AIMode != sdk.SearchAIModeExclude || len(out.Records) != 1 || out.Records[0].ID() != "2" {
 		t.Fatalf("requests=%+v output=%+v", requests, out)
 	}
 }
@@ -391,12 +372,12 @@ func TestSearchIllustPageLimitFillsLogicalResultsAcrossEmptyBatches(t *testing.T
 	defer closeSession()
 
 	result := callTool(t, session, "search_illust", map[string]any{"word": "cat", "limit": 3})
-	var out textOut
+	var out illustQueryOut
 	decodeStructured(t, result, &out)
 	if len(requests) != 3 || requests[1].Cursor != "empty" || requests[2].Cursor != "more" {
 		t.Fatalf("requests=%+v", requests)
 	}
-	if !strings.Contains(out.Text, `"a"`) || !strings.Contains(out.Text, `"b"`) || !strings.Contains(out.Text, `"c"`) || strings.Contains(out.Text, `"d"`) {
+	if !slices.Equal([]string{out.Records[0].ID(), out.Records[1].ID(), out.Records[2].ID()}, []string{"1", "2", "3"}) {
 		t.Fatalf("output=%+v", out)
 	}
 }
@@ -418,12 +399,12 @@ func TestSearchIllustPageTwoUsesLogicalLimit(t *testing.T) {
 	defer closeSession()
 
 	result := callTool(t, session, "search_illust", map[string]any{"word": "cat", "page": 2, "limit": 2})
-	var out textOut
+	var out illustQueryOut
 	decodeStructured(t, result, &out)
 	if len(requests) != 2 || requests[1].Cursor != "next" {
 		t.Fatalf("requests=%+v", requests)
 	}
-	if !strings.Contains(out.Text, `"c"`) || !strings.Contains(out.Text, `"d"`) || strings.Contains(out.Text, `"a"`) {
+	if !slices.Equal([]string{out.Records[0].ID(), out.Records[1].ID()}, []string{"3", "4"}) {
 		t.Fatalf("output=%+v", out)
 	}
 }
@@ -436,9 +417,9 @@ func TestSearchIllustRejectsPageWithoutPositiveLimit(t *testing.T) {
 	session, closeSession := newSDKTestSession(t, client)
 	defer closeSession()
 	result := callTool(t, session, "search_illust", map[string]any{"word": "cat", "page": 1})
-	var out textOut
+	var out illustQueryOut
 	decodeStructured(t, result, &out)
-	if !strings.Contains(out.Text, "page") || !strings.Contains(out.Text, "limit") {
+	if len(out.Records) != 0 || !resultHasText(result, "page") || !resultHasText(result, "limit") {
 		t.Fatalf("output=%+v", out)
 	}
 }
@@ -456,9 +437,9 @@ func TestSearchIllustContinuesAfterFilteredEmptyBatch(t *testing.T) {
 	defer closeSession()
 
 	result := callTool(t, session, "search_illust", map[string]any{"word": "cat", "rating": "r18"})
-	var out textOut
+	var out illustQueryOut
 	decodeStructured(t, result, &out)
-	if len(requests) != 2 || requests[1].Cursor != "filtered-next" || !strings.Contains(out.Text, `"visible"`) {
+	if len(requests) != 2 || requests[1].Cursor != "filtered-next" || len(out.Records) != 1 || out.Records[0].ID() != "2" {
 		t.Fatalf("requests=%+v output=%+v", requests, out)
 	}
 }
@@ -840,7 +821,7 @@ func TestSDKListValidationReturnsMCPErrorWithStructuredOutput(t *testing.T) {
 	}
 	var out illustListOut
 	decodeStructured(t, result, &out)
-	if out.UserID != 9 || len(out.Items) != 0 || !strings.Contains(out.Text, "page must be a positive integer") {
+	if len(out.Records) != 0 || !resultHasText(result, "page must be a positive integer") {
 		t.Fatalf("structured validation error = %+v", out)
 	}
 }
@@ -857,7 +838,7 @@ func TestSDKUserBookmarksFailureReturnsMCPErrorWithStructuredOutput(t *testing.T
 	}
 	var out illustListOut
 	decodeStructured(t, result, &out)
-	if out.UserID != 9 || len(out.Items) != 0 || !strings.Contains(out.Text, "bookmarks upstream failed") {
+	if len(out.Records) != 0 || !resultHasText(result, "bookmarks upstream failed") {
 		t.Fatalf("structured SDK error = %+v", out)
 	}
 }
@@ -924,7 +905,7 @@ func TestDownloadWithoutIDsPreservesBusinessErrorShape(t *testing.T) {
 	if err != nil {
 		t.Fatalf("call tool: %v", err)
 	}
-	const wantText = "Error: provide either illust_id (single ID) or illust_ids (list of IDs)."
+	const wantText = "Error: provide src (one source) or srcs (a source list)"
 	assertEmptyDownloadResult(t, result, deliveryLocalPath, wantText)
 	if downloads.downloadCalls != 0 || len(downloads.downloadIDs) != 0 {
 		t.Fatalf("download calls=%d IDs=%v want no downstream call", downloads.downloadCalls, downloads.downloadIDs)
@@ -939,8 +920,8 @@ func TestDownloadInvalidDeliveryPreservesBusinessErrorShape(t *testing.T) {
 	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{
 		Name: "download",
 		Arguments: map[string]any{
-			"illust_id": 42,
-			"delivery":  "invalid-delivery",
+			"src":      "42",
+			"delivery": "invalid-delivery",
 		},
 	})
 	if err != nil {
@@ -961,8 +942,8 @@ func TestDownloadManagerErrorPreservesBusinessErrorShape(t *testing.T) {
 	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{
 		Name: "download",
 		Arguments: map[string]any{
-			"illust_id": 42,
-			"delivery":  deliveryLocalPath,
+			"src":      "42",
+			"delivery": deliveryLocalPath,
 		},
 	})
 	if err != nil {
@@ -991,8 +972,8 @@ func TestDownloadBuildErrorPreservesBusinessErrorShape(t *testing.T) {
 	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{
 		Name: "download",
 		Arguments: map[string]any{
-			"illust_id": 42,
-			"delivery":  deliveryLocalPath,
+			"src":      "42",
+			"delivery": deliveryLocalPath,
 		},
 	})
 	if err != nil {
@@ -1013,8 +994,8 @@ func TestDownloadRejectsImageContentDelivery(t *testing.T) {
 	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{
 		Name: "download",
 		Arguments: map[string]any{
-			"illust_id": 42,
-			"delivery":  "image_content",
+			"src":      "42",
+			"delivery": "image_content",
 		},
 	})
 	if err != nil {
@@ -1045,9 +1026,9 @@ func TestDownloadPassesPagesAndQualityToManager(t *testing.T) {
 	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{
 		Name: "download",
 		Arguments: map[string]any{
-			"illust_id": 9,
-			"pages":     "1,3-4",
-			"quality":   "small",
+			"src":     "9",
+			"pages":   "1,3-4",
+			"quality": "small",
 		},
 	})
 	if err != nil {
@@ -1083,8 +1064,8 @@ func TestDownloadRejectsInvalidPagesAndQualityBeforeManager(t *testing.T) {
 	session, closeSession := newTestSession(t, downloads)
 	defer closeSession()
 	for _, args := range []map[string]any{
-		{"illust_id": 1, "pages": "0"},
-		{"illust_id": 1, "quality": "huge"},
+		{"src": "1", "pages": "0"},
+		{"src": "1", "quality": "huge"},
 	} {
 		result, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: "download", Arguments: args})
 		if err != nil {
@@ -1118,7 +1099,7 @@ func TestDownloadDefaultsToLocalPathResult(t *testing.T) {
 
 	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{
 		Name:      "download",
-		Arguments: map[string]any{"illust_ids": []int64{42, 42, -1}},
+		Arguments: map[string]any{"srcs": []string{"42", "42"}},
 	})
 	if err != nil {
 		t.Fatalf("call tool: %v", err)
@@ -1136,7 +1117,7 @@ func TestDownloadDefaultsToLocalPathResult(t *testing.T) {
 	if out.Files[0].MIMEType != "image/jpeg" || out.Files[0].SizeBytes != 4 || !strings.HasPrefix(out.Files[0].FileURI, "file://") {
 		t.Fatalf("unexpected file output: %+v", out.Files[0])
 	}
-	if !slices.Equal(downloads.downloadIDs, []int64{42, 42, -1}) {
+	if !slices.Equal(downloads.downloadIDs, []int64{42, 42}) {
 		t.Fatalf("download IDs = %v", downloads.downloadIDs)
 	}
 }
@@ -1153,7 +1134,7 @@ func TestDownloadAcceptsArtworkURLsAndIncludesCanonicalURL(t *testing.T) {
 	session, closeSession := newSDKDownloadTestSession(t, &fakeSDKClient{}, downloads)
 	defer closeSession()
 
-	result := callTool(t, session, "download", map[string]any{"urls": []string{"https://www.pixiv.net/en/artworks/42?from=share"}})
+	result := callTool(t, session, "download", map[string]any{"src": "https://www.pixiv.net/en/artworks/42?from=share"})
 	if result.IsError {
 		t.Fatalf("download result=%+v", result)
 	}
@@ -1176,7 +1157,7 @@ func TestDownloadUserURLExpandsEveryVisualArtworkType(t *testing.T) {
 	session, closeSession := newSDKDownloadTestSession(t, client, downloads)
 	defer closeSession()
 
-	result := callTool(t, session, "download", map[string]any{"urls": []string{"https://www.pixiv.net/users/7/artworks"}})
+	result := callTool(t, session, "download", map[string]any{"src": "https://www.pixiv.net/users/7/artworks"})
 	if result.IsError {
 		t.Fatalf("download result=%+v", result)
 	}
@@ -1413,32 +1394,26 @@ func TestSDKUserToolsResolveIdentityAndReturnStructuredOutput(t *testing.T) {
 	artworks := callTool(t, session, "user_artworks", map[string]any{"limit": 1})
 	var artworksOut illustListOut
 	decodeStructured(t, artworks, &artworksOut)
-	if client.artworksRequest.UserID != 71 || artworksOut.UserID != 71 || len(artworksOut.Items) != 1 || artworksOut.Pagination.Returned != 1 {
+	if client.artworksRequest.UserID != 71 || len(artworksOut.Records) != 1 || artworksOut.Records[0].ID() != "11" || artworksOut.Pagination.Returned != 1 {
 		t.Fatalf("user artworks = request=%+v output=%+v", client.artworksRequest, artworksOut)
 	}
 
 	bookmarks := callTool(t, session, "user_bookmarks", map[string]any{"user_id": 99, "tag": "tag", "limit": 0})
 	var bookmarksOut illustListOut
 	decodeStructured(t, bookmarks, &bookmarksOut)
-	if client.bookmarksRequest.UserID != 99 || client.bookmarksRequest.Tag != "tag" || bookmarksOut.UserID != 99 || len(bookmarksOut.Items) != 1 || bookmarksOut.Pagination.HasMore {
+	if client.bookmarksRequest.UserID != 99 || client.bookmarksRequest.Tag != "tag" || len(bookmarksOut.Records) != 1 || bookmarksOut.Records[0].ID() != "12" || bookmarksOut.Pagination.HasMore {
 		t.Fatalf("bookmarks = request=%+v output=%+v", client.bookmarksRequest, bookmarksOut)
-	}
-	if !strings.Contains(bookmarksOut.Text, "Found 1 bookmarks for user 99") {
-		t.Fatalf("bookmark text missing: %q", bookmarksOut.Text)
 	}
 
 	following := callTool(t, session, "user_following", map[string]any{"user_id": 99, "limit": 1})
 	var followingOut userListOut
 	decodeStructured(t, following, &followingOut)
-	if client.followingRequest.UserID != 99 || followingOut.UserID != 99 || len(followingOut.Items) != 1 {
+	if client.followingRequest.UserID != 99 || len(followingOut.Records) != 1 || followingOut.Records[0].ID() != "33" {
 		t.Fatalf("following = request=%+v output=%+v", client.followingRequest, followingOut)
-	}
-	if !strings.Contains(followingOut.Text, "User 99 follows 1 users") {
-		t.Fatalf("following text missing: %q", followingOut.Text)
 	}
 }
 
-func TestUserArtworksNormalizesNilToolsAndPreservesNonNilToolsAtMCPBoundary(t *testing.T) {
+func TestUserArtworksPreservesArtworkRecordsAtMCPBoundary(t *testing.T) {
 	withNilTools := testSDKIllust(11, "without-tools", 71)
 	withTools := testSDKIllust(12, "with-tools", 71)
 	withTools.Tools = []string{"CLIP STUDIO PAINT", "Photoshop"}
@@ -1452,14 +1427,8 @@ func TestUserArtworksNormalizesNilToolsAndPreservesNonNilToolsAtMCPBoundary(t *t
 	}
 	var out illustListOut
 	decodeStructured(t, result, &out)
-	if out.Items[0].Tools == nil || len(out.Items[0].Tools) != 0 {
-		t.Fatalf("nil tools were not normalized to an empty array: %#v", out.Items[0].Tools)
-	}
-	if !slices.Equal(out.Items[1].Tools, withTools.Tools) {
-		t.Fatalf("non-nil tools changed: got %q want %q", out.Items[1].Tools, withTools.Tools)
-	}
-	if withNilTools.Tools != nil {
-		t.Fatalf("MCP normalization mutated the SDK value: %#v", withNilTools.Tools)
+	if len(out.Records) != 2 || out.Records[0].ID() != "11" || out.Records[1].ID() != "12" {
+		t.Fatalf("artwork records=%+v", out)
 	}
 }
 
@@ -1488,13 +1457,9 @@ func TestSDKUserDetailReturnsStructuredSDKResult(t *testing.T) {
 	if len(result.Content) != 1 {
 		t.Fatalf("user_detail text content = %+v", result.Content)
 	}
-	text, ok := result.Content[0].(*mcp.TextContent)
-	if !ok || !strings.Contains(text.Text, "Retrieved details for user 42") {
-		t.Fatalf("user_detail text content = %+v", result.Content)
-	}
-	var out sdk.UserDetailResult
+	var out userDetailOut
 	decodeStructured(t, result, &out)
-	if !reflect.DeepEqual(out, *want) || client.userDetailRequest != (sdk.UserDetailRequest{UserID: 42}) || openCalls != 1 {
+	if len(out.Records) != 1 || out.Records[0].ID() != "42" || client.userDetailRequest != (sdk.UserDetailRequest{UserID: 42}) || openCalls != 1 {
 		t.Fatalf("user_detail output=%+v request=%+v open calls=%d", out, client.userDetailRequest, openCalls)
 	}
 }
@@ -1538,9 +1503,9 @@ func TestSDKUserDetailRejectsInvalidInputAndReturnsSDKFailuresAsMCPError(t *test
 	if !ok || !strings.Contains(text.Text, typed.Error()) {
 		t.Fatalf("typed SDK failure content=%+v", result.Content)
 	}
-	var typedOut sdk.UserDetailResult
+	var typedOut userDetailOut
 	decodeStructured(t, result, &typedOut)
-	if typedOut != (sdk.UserDetailResult{}) {
+	if len(typedOut.Records) != 0 {
 		t.Fatalf("typed SDK failure structured output=%+v", typedOut)
 	}
 
@@ -1554,9 +1519,9 @@ func TestSDKUserDetailRejectsInvalidInputAndReturnsSDKFailuresAsMCPError(t *test
 	if !ok || !strings.Contains(text.Text, "pixiv sdk is not configured") {
 		t.Fatalf("unconfigured SDK content=%+v", result.Content)
 	}
-	var unconfiguredOut sdk.UserDetailResult
+	var unconfiguredOut userDetailOut
 	decodeStructured(t, result, &unconfiguredOut)
-	if unconfiguredOut != (sdk.UserDetailResult{}) {
+	if len(unconfiguredOut.Records) != 0 {
 		t.Fatalf("unconfigured SDK structured output=%+v", unconfiguredOut)
 	}
 }
@@ -1598,19 +1563,9 @@ func TestSDKRecommendedAllReturnsEveryStreamAndPagination(t *testing.T) {
 	if !ok || len(pagination) != 4 {
 		t.Fatalf("missing independent pagination: %#v", structured)
 	}
-	for _, key := range []string{"illusts", "manga", "novels", "user_previews"} {
-		items, ok := structured[key].([]any)
-		if !ok || len(items) != 1 {
-			t.Fatalf("%s = %#v", key, structured[key])
-		}
-	}
-	novels := structured["novels"].([]any)
-	if tags := novels[0].(map[string]any)["tags"]; tags == nil {
-		t.Fatalf("top-level novel tags must be an array")
-	}
-	previews := structured["user_previews"].([]any)
-	if tags := previews[0].(map[string]any)["novels"].([]any)[0].(map[string]any)["tags"]; tags == nil {
-		t.Fatalf("preview novel tags must be an array")
+	records, ok := structured["records"].([]any)
+	if !ok || len(records) != 4 {
+		t.Fatalf("records = %#v", structured["records"])
 	}
 	raw, err := json.Marshal(structured)
 	if err != nil || strings.Contains(string(raw), "cursor") || strings.Contains(string(raw), "next_url") {
@@ -1618,7 +1573,7 @@ func TestSDKRecommendedAllReturnsEveryStreamAndPagination(t *testing.T) {
 	}
 }
 
-func TestRecommendedNormalizesToolsAcrossTopLevelAndNestedIllusts(t *testing.T) {
+func TestRecommendedPreservesAllTopLevelAndUserPreviewRecords(t *testing.T) {
 	withoutTools := testSDKIllust(1, "without-tools", 10)
 	withTools := testSDKIllust(2, "with-tools", 10)
 	withTools.Tools = []string{"SAI", "Photoshop"}
@@ -1649,20 +1604,8 @@ func TestRecommendedNormalizesToolsAcrossTopLevelAndNestedIllusts(t *testing.T) 
 	}
 	var out recommendedOut
 	decodeStructured(t, result, &out)
-	for label, items := range map[string][]sdk.Illust{
-		"illusts": out.Illusts,
-		"manga":   out.Manga,
-		"nested":  out.UserPreviews[0].Illusts,
-	} {
-		if items[0].Tools == nil || len(items[0].Tools) != 0 {
-			t.Fatalf("%s nil tools were not normalized: %#v", label, items[0].Tools)
-		}
-	}
-	if !slices.Equal(out.Illusts[1].Tools, withTools.Tools) || !slices.Equal(out.UserPreviews[0].Illusts[1].Tools, withTools.Tools) {
-		t.Fatalf("non-nil tools changed: top=%q nested=%q want=%q", out.Illusts[1].Tools, out.UserPreviews[0].Illusts[1].Tools, withTools.Tools)
-	}
-	if withoutTools.Tools != nil {
-		t.Fatalf("MCP normalization mutated the SDK value: %#v", withoutTools.Tools)
+	if len(out.Records) != 4 || !slices.Equal([]string{out.Records[0].ID(), out.Records[1].ID(), out.Records[2].ID(), out.Records[3].ID()}, []string{"1", "2", "1", "10"}) {
+		t.Fatalf("recommended records=%+v", out)
 	}
 }
 
@@ -1748,7 +1691,7 @@ func TestSDKRecommendedAllFailureDoesNotExposePartialStructuredOutput(t *testing
 	}
 	var out recommendedOut
 	decodeStructured(t, result, &out)
-	if out.Kind != "" || len(out.Illusts) != 0 || len(out.Manga) != 0 || len(out.Novels) != 0 || len(out.UserPreviews) != 0 || out.Pagination != (recommendedPaginationOut{}) {
+	if len(out.Records) != 0 || out.Pagination != (recommendedPaginationOut{}) {
 		t.Fatalf("partial structured output=%+v", out)
 	}
 }
@@ -1793,19 +1736,9 @@ func TestSDKRecommendedAllAppliesPageTwoIndependently(t *testing.T) {
 	}
 	var structured map[string]any
 	decodeStructured(t, result, &structured)
-	previews, ok := structured["user_previews"].([]any)
-	if !ok || len(previews) != 1 {
-		t.Fatalf("user previews=%#v", structured["user_previews"])
-	}
-	preview, ok := previews[0].(map[string]any)
-	if !ok {
-		t.Fatalf("user preview=%#v", previews[0])
-	}
-	if illusts, ok := preview["illusts"].([]any); !ok || len(illusts) != 0 {
-		t.Fatalf("nested illusts=%#v", preview["illusts"])
-	}
-	if novels, ok := preview["novels"].([]any); !ok || len(novels) != 0 {
-		t.Fatalf("nested novels=%#v", preview["novels"])
+	records, ok := structured["records"].([]any)
+	if !ok || len(records) != 4 {
+		t.Fatalf("records=%#v", structured["records"])
 	}
 }
 
@@ -1823,14 +1756,14 @@ func TestIllustRecommendedUsesSDKAndLogicalPageSkip(t *testing.T) {
 	session, closeSession := newSDKTestSession(t, client)
 	defer closeSession()
 	result := callTool(t, session, "illust_recommended", map[string]any{"page": 2, "limit": 1})
-	var out textOut
+	var out illustQueryOut
 	decodeStructured(t, result, &out)
-	if result.IsError || len(requests) != 1 || requests[0].Cursor != "" || !strings.Contains(out.Text, "77") || strings.Contains(out.Text, "11") {
+	if result.IsError || len(requests) != 1 || requests[0].Cursor != "" || len(out.Records) != 1 || out.Records[0].ID() != "77" {
 		t.Fatalf("result=%+v requests=%+v", out, requests)
 	}
 }
 
-func TestIllustRecommendedTextIncludesAllTagsInUpstreamOrder(t *testing.T) {
+func TestIllustRecommendedReturnsTaggedRecord(t *testing.T) {
 	illust := testSDKIllust(77, "tagged", 9)
 	illust.Tags = []sdk.Tag{
 		{Name: "tag-1"}, {Name: "tag-2"}, {Name: "tag-3"}, {Name: "tag-4"},
@@ -1843,18 +1776,17 @@ func TestIllustRecommendedTextIncludesAllTagsInUpstreamOrder(t *testing.T) {
 	defer closeSession()
 
 	result := callTool(t, session, "illust_recommended", map[string]any{})
-	var out textOut
+	var out illustQueryOut
 	decodeStructured(t, result, &out)
 	if result.IsError {
 		t.Fatalf("illust_recommended returned MCP error: %+v", result)
 	}
-	want := "Tags: tag-1, tag-2, tag-3, tag-4, tag-5, tag-6, tag-7"
-	if !strings.Contains(out.Text, want) {
-		t.Fatalf("illust_recommended text = %q, want substring %q", out.Text, want)
+	if len(out.Records) != 1 || out.Records[0].ID() != "77" {
+		t.Fatalf("illust_recommended records = %+v", out)
 	}
 }
 
-func TestIllustRankingUsesStableLabelAndPreservesRequestAndRank(t *testing.T) {
+func TestIllustRankingPassesRequestAndReturnsRecord(t *testing.T) {
 	var requests []sdk.IllustRankingRequest
 	client := &fakeSDKClient{illustRanking: func(_ context.Context, request sdk.IllustRankingRequest) (*sdk.IllustListResult, error) {
 		requests = append(requests, request)
@@ -1870,7 +1802,7 @@ func TestIllustRankingUsesStableLabelAndPreservesRequestAndRank(t *testing.T) {
 	result := callTool(t, session, "illust_ranking", map[string]any{
 		"mode": "day_male", "date": "2025-02-03", "page": 3, "limit": 1,
 	})
-	var out textOut
+	var out illustQueryOut
 	decodeStructured(t, result, &out)
 	if result.IsError {
 		t.Fatalf("illust_ranking returned MCP error: %+v", result)
@@ -1878,33 +1810,32 @@ func TestIllustRankingUsesStableLabelAndPreservesRequestAndRank(t *testing.T) {
 	if len(requests) != 1 || requests[0].Mode != sdk.RankingModeDayMale || requests[0].Date != "2025-02-03" || requests[0].Cursor != "" {
 		t.Fatalf("ranking requests = %+v", requests)
 	}
-	if !strings.HasPrefix(out.Text, "Daily ranking (male):\n\n") || !strings.Contains(out.Text, "Rank 3: https://www.pixiv.net/artworks/13\nID: 13") {
-		t.Fatalf("illust_ranking text = %q", out.Text)
+	if len(out.Records) != 1 || out.Records[0].ID() != "13" {
+		t.Fatalf("illust_ranking records = %+v", out)
 	}
 }
 
-func TestIllustRankingUsesStableLabelsForAllModesAndFutureFallback(t *testing.T) {
+func TestIllustRankingSupportsAllModes(t *testing.T) {
 	tests := []struct {
 		mode string
-		want string
 	}{
-		{mode: "day", want: "Daily ranking"},
-		{mode: "day_male", want: "Daily ranking (male)"},
-		{mode: "day_female", want: "Daily ranking (female)"},
-		{mode: "week", want: "Weekly ranking"},
-		{mode: "week_original", want: "Weekly original ranking"},
-		{mode: "week_rookie", want: "Weekly rookie ranking"},
-		{mode: "month", want: "Monthly ranking"},
-		{mode: "day_manga", want: "Daily manga ranking"},
-		{mode: "week_manga", want: "Weekly manga ranking"},
-		{mode: "month_manga", want: "Monthly manga ranking"},
-		{mode: "week_rookie_manga", want: "Weekly rookie manga ranking"},
-		{mode: "day_r18", want: "Daily R-18 ranking"},
-		{mode: "day_male_r18", want: "Daily male R-18 ranking"},
-		{mode: "day_female_r18", want: "Daily female R-18 ranking"},
-		{mode: "week_r18", want: "Weekly R-18 ranking"},
-		{mode: "week_r18g", want: "Weekly R-18G ranking"},
-		{mode: "future_mode", want: "future_mode ranking"},
+		{mode: "day"},
+		{mode: "day_male"},
+		{mode: "day_female"},
+		{mode: "week"},
+		{mode: "week_original"},
+		{mode: "week_rookie"},
+		{mode: "month"},
+		{mode: "day_manga"},
+		{mode: "week_manga"},
+		{mode: "month_manga"},
+		{mode: "week_rookie_manga"},
+		{mode: "day_r18"},
+		{mode: "day_male_r18"},
+		{mode: "day_female_r18"},
+		{mode: "week_r18"},
+		{mode: "week_r18g"},
+		{mode: "future_mode"},
 	}
 	for _, test := range tests {
 		t.Run(test.mode, func(t *testing.T) {
@@ -1918,10 +1849,10 @@ func TestIllustRankingUsesStableLabelsForAllModesAndFutureFallback(t *testing.T)
 			defer closeSession()
 
 			result := callTool(t, session, "illust_ranking", map[string]any{"mode": test.mode})
-			var out textOut
+			var out illustQueryOut
 			decodeStructured(t, result, &out)
-			if result.IsError || !strings.HasPrefix(out.Text, test.want+":\n\n") {
-				t.Fatalf("illust_ranking(%q) text = %q", test.mode, out.Text)
+			if result.IsError || len(out.Records) != 1 || out.Records[0].ID() != "13" {
+				t.Fatalf("illust_ranking(%q) output = %+v", test.mode, out)
 			}
 		})
 	}
@@ -2365,7 +2296,7 @@ func TestSDKDownloadFactoryUsesSelectedAccountAfterTokenSwitch(t *testing.T) {
 	}
 	defer session.Close()
 	_ = callTool(t, session, "set_refresh_token", map[string]any{"refresh_token": "switch"})
-	_ = callTool(t, session, "download", map[string]any{"illust_id": 77})
+	_ = callTool(t, session, "download", map[string]any{"src": "77"})
 	_ = callTool(t, session, "download_random_from_recommendation", map[string]any{"count": 1})
 	if len(managers) != 2 || managers[0] != accountB || managers[1] != accountB {
 		t.Fatalf("download managers=%v want account B twice", managers)
@@ -2377,6 +2308,7 @@ func testSDKIllust(id int64, title string, userID int64) sdk.Illust {
 		URL:       fmt.Sprintf("https://www.pixiv.net/artworks/%d", id),
 		ID:        id,
 		Title:     title,
+		Type:      string(sdk.IllustTypeIllust),
 		User:      sdk.User{ID: userID, Name: "artist"},
 		Tags:      []sdk.Tag{},
 		MetaPages: []sdk.MetaPage{},
@@ -2416,7 +2348,7 @@ func TestSDKMutationToolsReturnStructuredSuccess(t *testing.T) {
 	}
 }
 
-func TestUserArtworksTextIncludesAllTagsInUpstreamOrder(t *testing.T) {
+func TestUserArtworksReturnsTaggedArtworkRecord(t *testing.T) {
 	illust := testSDKIllust(15, "tagged", 9)
 	illust.Tags = []sdk.Tag{
 		{Name: "tag-1"}, {Name: "tag-2"}, {Name: "tag-3"}, {Name: "tag-4"},
@@ -2432,9 +2364,8 @@ func TestUserArtworksTextIncludesAllTagsInUpstreamOrder(t *testing.T) {
 	if result.IsError {
 		t.Fatalf("user_artworks returned MCP error: %+v", result)
 	}
-	want := "Tags: tag-1, tag-2, tag-3, tag-4, tag-5, tag-6, tag-7"
-	if !strings.Contains(out.Text, want) {
-		t.Fatalf("user_artworks text = %q, want substring %q", out.Text, want)
+	if len(out.Records) != 1 || out.Records[0].ID() != "15" {
+		t.Fatalf("user_artworks records=%+v", out)
 	}
 }
 
@@ -2454,7 +2385,7 @@ func TestSDKUserListToolsUseCanonicalUserIDAndFilters(t *testing.T) {
 	})
 	var bookmarksOut illustListOut
 	decodeStructured(t, bookmarkResult, &bookmarksOut)
-	if client.bookmarksRequest.UserID != 9 || client.bookmarksRequest.Restrict != sdk.RestrictPrivate || client.bookmarksRequest.Tag != "tag-a" || client.bookmarksRequest.Cursor != "" || !strings.Contains(bookmarksOut.Text, "Found 1 bookmarks for user 9") {
+	if client.bookmarksRequest.UserID != 9 || client.bookmarksRequest.Restrict != sdk.RestrictPrivate || client.bookmarksRequest.Tag != "tag-a" || client.bookmarksRequest.Cursor != "" || len(bookmarksOut.Records) != 1 || bookmarksOut.Records[0].ID() != "15" {
 		t.Fatalf("bookmarks request=%+v output=%+v", client.bookmarksRequest, bookmarksOut)
 	}
 
@@ -2463,7 +2394,7 @@ func TestSDKUserListToolsUseCanonicalUserIDAndFilters(t *testing.T) {
 	})
 	var followingOut userListOut
 	decodeStructured(t, followingResult, &followingOut)
-	if client.followingRequest.UserID != 8 || client.followingRequest.Restrict != sdk.RestrictPrivate || len(followingOut.Items) != 1 || followingOut.Items[0].User.ID != 31 {
+	if client.followingRequest.UserID != 8 || client.followingRequest.Restrict != sdk.RestrictPrivate || len(followingOut.Records) != 1 || followingOut.Records[0].ID() != "31" {
 		t.Fatalf("following page request=%+v output=%+v", client.followingRequest, followingOut)
 	}
 
@@ -2473,8 +2404,8 @@ func TestSDKUserListToolsUseCanonicalUserIDAndFilters(t *testing.T) {
 	decodeStructured(t, bookmarkResult, &bookmarksOut)
 	followingResult = callTool(t, session, "user_following", map[string]any{"user_id": 8})
 	decodeStructured(t, followingResult, &followingOut)
-	if bookmarksOut.Text != "No bookmarks found for user 9." || followingOut.Text != "User 8 does not follow anyone." {
-		t.Fatalf("empty text bookmarks=%q following=%q", bookmarksOut.Text, followingOut.Text)
+	if len(bookmarksOut.Records) != 0 || len(followingOut.Records) != 0 {
+		t.Fatalf("empty records bookmarks=%+v following=%+v", bookmarksOut, followingOut)
 	}
 }
 
@@ -2507,7 +2438,7 @@ func TestSDKListPageRequiresPositiveLimitAndPositiveValue(t *testing.T) {
 		result := callTool(t, session, "user_artworks", arguments)
 		var out illustListOut
 		decodeStructured(t, result, &out)
-		if !strings.Contains(out.Text, "page") {
+		if !resultHasText(result, "page") {
 			t.Fatalf("arguments=%v output=%+v", arguments, out)
 		}
 	}
@@ -2525,7 +2456,7 @@ func TestSDKListsFollowOpaqueCursorForLimitAndRejectCycles(t *testing.T) {
 	result := callTool(t, defaultSession, "user_artworks", map[string]any{})
 	var out illustListOut
 	decodeStructured(t, result, &out)
-	if len(out.Items) != 1 || !out.Pagination.HasMore || out.Pagination.Limit != nil || out.Pagination.NextPage != nil || len(legacyDefault.artworksRequests) != 1 {
+	if len(out.Records) != 1 || !out.Pagination.HasMore || out.Pagination.Limit != nil || out.Pagination.NextPage != nil || len(legacyDefault.artworksRequests) != 1 {
 		t.Fatalf("default single-batch output=%+v requests=%+v", out, legacyDefault.artworksRequests)
 	}
 
@@ -2548,7 +2479,7 @@ func TestSDKListsFollowOpaqueCursorForLimitAndRejectCycles(t *testing.T) {
 	defer closeSession()
 	result = callTool(t, session, "user_artworks", map[string]any{"limit": 0})
 	decodeStructured(t, result, &out)
-	if len(out.Items) != 2 || out.Pagination.HasMore || len(client.artworksRequests) != 2 || client.artworksRequests[1].Cursor != "next" {
+	if len(out.Records) != 2 || out.Pagination.HasMore || len(client.artworksRequests) != 2 || client.artworksRequests[1].Cursor != "next" {
 		t.Fatalf("all-pages output=%+v requests=%+v", out, client.artworksRequests)
 	}
 
@@ -2560,7 +2491,7 @@ func TestSDKListsFollowOpaqueCursorForLimitAndRejectCycles(t *testing.T) {
 	defer closeCycleSession()
 	result = callTool(t, cycleSession, "user_artworks", map[string]any{"limit": 0})
 	decodeStructured(t, result, &out)
-	if !strings.Contains(out.Text, "cursor repeated") || len(cyclic.artworksRequests) != 2 {
+	if !resultHasText(result, "cursor repeated") || len(cyclic.artworksRequests) != 2 {
 		t.Fatalf("cycle output=%+v requests=%+v", out, cyclic.artworksRequests)
 	}
 }
@@ -2603,7 +2534,7 @@ func TestSDKToolsPersistRotationAfterSessionTokenAndSerializeConcurrentOperation
 	}))
 	defer server.Close()
 	service := application.SDKService{NewClient: func(request application.SDKClientRequest) (application.SDKClient, error) {
-		return sdk.OpenDefault(sdk.Options{
+		return sdk.OpenDefaultWith(sdk.OpenDefaultOptions{
 			AuthFilePath: authPath, ConfigFilePath: configPath, HTTPClient: server.Client(),
 			OAuthBaseURL: server.URL, AppAPIBaseURL: server.URL,
 			UserID: request.UserID, RefreshToken: request.RefreshToken,
@@ -2630,7 +2561,7 @@ func TestSDKToolsPersistRotationAfterSessionTokenAndSerializeConcurrentOperation
 	errCh := make(chan error, 2)
 	for _, call := range []*mcp.CallToolParams{
 		{Name: "add_bookmark", Arguments: map[string]any{"illust_id": 9}},
-		{Name: "download", Arguments: map[string]any{"illust_id": 9}},
+		{Name: "download", Arguments: map[string]any{"src": "9"}},
 	} {
 		go func(call *mcp.CallToolParams) {
 			result, err := session.CallTool(context.Background(), call)
@@ -2753,6 +2684,16 @@ func decodeStructured(t *testing.T, result *mcp.CallToolResult, out any) {
 	}
 }
 
+func resultHasText(result *mcp.CallToolResult, wanted string) bool {
+	for _, content := range result.Content {
+		text, ok := content.(*mcp.TextContent)
+		if ok && strings.Contains(text.Text, wanted) {
+			return true
+		}
+	}
+	return false
+}
+
 type fakeSDKClient struct {
 	userID                int64
 	searchIllust          func(context.Context, sdk.SearchIllustRequest) (*sdk.IllustListResult, error)
@@ -2763,6 +2704,14 @@ type fakeSDKClient struct {
 	artworks              []sdk.Illust
 	bookmarks             []sdk.Illust
 	following             []sdk.UserPreview
+	followingIllusts      func(context.Context, sdk.FollowingIllustsRequest) (*sdk.IllustListResult, error)
+	followingNovels       func(context.Context, sdk.FollowingNovelsRequest) (*sdk.NovelListResult, error)
+	latestIllusts         func(context.Context, sdk.LatestIllustsRequest) (*sdk.IllustListResult, error)
+	latestNovels          func(context.Context, sdk.LatestNovelsRequest) (*sdk.NovelListResult, error)
+	myPixivUsers          func(context.Context, sdk.MyPixivUsersRequest) (*sdk.UserListResult, error)
+	myPixivIllusts        func(context.Context, sdk.MyPixivIllustsRequest) (*sdk.IllustListResult, error)
+	myPixivNovels         func(context.Context, sdk.MyPixivNovelsRequest) (*sdk.NovelListResult, error)
+	userNovels            func(context.Context, sdk.UserNovelsRequest) (*sdk.NovelListResult, error)
 	illustRecommended     func(context.Context, sdk.IllustRecommendedRequest) (*sdk.IllustListResult, error)
 	illustRanking         func(context.Context, sdk.IllustRankingRequest) (*sdk.IllustListResult, error)
 	mangaRecommended      func(context.Context, sdk.IllustRecommendedRequest) (*sdk.IllustListResult, error)
@@ -2874,8 +2823,48 @@ func (f *fakeSDKClient) IllustRanking(ctx context.Context, request sdk.IllustRan
 	}
 	return &sdk.IllustListResult{}, nil
 }
-func (*fakeSDKClient) FollowingIllusts(context.Context, sdk.FollowingIllustsRequest) (*sdk.IllustListResult, error) {
+
+func (f *fakeSDKClient) FollowingIllusts(ctx context.Context, request sdk.FollowingIllustsRequest) (*sdk.IllustListResult, error) {
+	if f.followingIllusts != nil {
+		return f.followingIllusts(ctx, request)
+	}
 	return &sdk.IllustListResult{}, nil
+}
+func (f *fakeSDKClient) FollowingNovels(ctx context.Context, request sdk.FollowingNovelsRequest) (*sdk.NovelListResult, error) {
+	if f.followingNovels != nil {
+		return f.followingNovels(ctx, request)
+	}
+	return &sdk.NovelListResult{}, nil
+}
+func (f *fakeSDKClient) LatestIllusts(ctx context.Context, request sdk.LatestIllustsRequest) (*sdk.IllustListResult, error) {
+	if f.latestIllusts != nil {
+		return f.latestIllusts(ctx, request)
+	}
+	return &sdk.IllustListResult{}, nil
+}
+func (f *fakeSDKClient) LatestNovels(ctx context.Context, request sdk.LatestNovelsRequest) (*sdk.NovelListResult, error) {
+	if f.latestNovels != nil {
+		return f.latestNovels(ctx, request)
+	}
+	return &sdk.NovelListResult{}, nil
+}
+func (f *fakeSDKClient) MyPixivUsers(ctx context.Context, request sdk.MyPixivUsersRequest) (*sdk.UserListResult, error) {
+	if f.myPixivUsers != nil {
+		return f.myPixivUsers(ctx, request)
+	}
+	return &sdk.UserListResult{}, nil
+}
+func (f *fakeSDKClient) MyPixivIllusts(ctx context.Context, request sdk.MyPixivIllustsRequest) (*sdk.IllustListResult, error) {
+	if f.myPixivIllusts != nil {
+		return f.myPixivIllusts(ctx, request)
+	}
+	return &sdk.IllustListResult{}, nil
+}
+func (f *fakeSDKClient) MyPixivNovels(ctx context.Context, request sdk.MyPixivNovelsRequest) (*sdk.NovelListResult, error) {
+	if f.myPixivNovels != nil {
+		return f.myPixivNovels(ctx, request)
+	}
+	return &sdk.NovelListResult{}, nil
 }
 func (f *fakeSDKClient) SearchUser(ctx context.Context, request sdk.SearchUserRequest) (*sdk.UserListResult, error) {
 	if f.searchUser != nil {
@@ -2895,8 +2884,8 @@ func (*fakeSDKClient) ParseResourceRef(rawURL string) (sdk.ResourceRef, error) {
 func (*fakeSDKClient) OpenResource(context.Context, sdk.OpenResourceRequest) (*sdk.ResourceResponse, error) {
 	return nil, errors.New("resource is not configured")
 }
-func (*fakeSDKClient) Download(context.Context, sdk.ResourceRef, string) error {
-	return errors.New("resource is not configured")
+func (*fakeSDKClient) DownloadResource(context.Context, sdk.ResourceRef, string) (sdk.ResourceDownloadResult, error) {
+	return sdk.ResourceDownloadResult{}, errors.New("resource is not configured")
 }
 
 func (f *fakeSDKClient) IllustRecommended(ctx context.Context, request sdk.IllustRecommendedRequest) (*sdk.IllustListResult, error) {
@@ -2957,6 +2946,12 @@ func (*fakeSDKClient) UserBookmarksCursor(_ context.Context, _ sdk.UserBookmarks
 func (f *fakeSDKClient) UserFollowing(_ context.Context, request sdk.UserFollowingRequest) (*sdk.UserListResult, error) {
 	f.followingRequest = request
 	return &sdk.UserListResult{UserPreviews: f.following}, nil
+}
+func (f *fakeSDKClient) UserNovels(ctx context.Context, request sdk.UserNovelsRequest) (*sdk.NovelListResult, error) {
+	if f.userNovels != nil {
+		return f.userNovels(ctx, request)
+	}
+	return &sdk.NovelListResult{}, nil
 }
 func (f *fakeSDKClient) AddBookmark(_ context.Context, request sdk.AddBookmarkRequest) error {
 	f.addBookmarkRequest = request

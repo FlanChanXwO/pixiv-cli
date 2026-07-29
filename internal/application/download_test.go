@@ -258,8 +258,8 @@ func (*typedNilDownloadClient) ParseResourceRef(string) (sdk.ResourceRef, error)
 	return sdk.ResourceRef{}, nil
 }
 
-func (*typedNilDownloadClient) Download(context.Context, sdk.ResourceRef, string) error {
-	return nil
+func (*typedNilDownloadClient) DownloadResource(context.Context, sdk.ResourceRef, string) (sdk.ResourceDownloadResult, error) {
+	return sdk.ResourceDownloadResult{}, nil
 }
 
 func (downloadClientStub) IllustDetail(context.Context, int64) (*sdk.IllustDetail, error) {
@@ -274,8 +274,8 @@ func (downloadClientStub) ParseResourceRef(string) (sdk.ResourceRef, error) {
 	return sdk.ResourceRef{}, nil
 }
 
-func (downloadClientStub) Download(context.Context, sdk.ResourceRef, string) error {
-	return nil
+func (downloadClientStub) DownloadResource(context.Context, sdk.ResourceRef, string) (sdk.ResourceDownloadResult, error) {
+	return sdk.ResourceDownloadResult{}, nil
 }
 
 func (downloadTargetClientStub) UserArtworks(context.Context, sdk.UserArtworksRequest) (*sdk.IllustListResult, error) {

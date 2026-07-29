@@ -51,8 +51,8 @@ func TestLegacySearchFailurePreservesWireResultAndLogsTypedError(t *testing.T) {
 	wantText := "Error: " + typedErr.Error()
 	var gotOut illustQueryOut
 	decodeStructured(t, result, &gotOut)
-	if len(gotOut.Items) != 0 || gotOut.Text != wantText {
-		t.Fatalf("structured output=%+v, want empty items and %q", gotOut, wantText)
+	if len(gotOut.Records) != 0 {
+		t.Fatalf("structured output=%+v, want empty records", gotOut)
 	}
 	if len(result.Content) != 1 {
 		t.Fatalf("content len=%d, want 1", len(result.Content))
@@ -121,8 +121,8 @@ func TestLegacySearchFailureRejectsHostileTypedLogMetadataWithoutChangingWire(t 
 	wantText := "Error: " + typedErr.Error()
 	var gotOut illustQueryOut
 	decodeStructured(t, result, &gotOut)
-	if len(gotOut.Items) != 0 || gotOut.Text != wantText {
-		t.Fatalf("structured output=%+v, want empty items and %q", gotOut, wantText)
+	if len(gotOut.Records) != 0 {
+		t.Fatalf("structured output=%+v, want empty records", gotOut)
 	}
 	if len(result.Content) != 1 {
 		t.Fatalf("content len=%d, want 1", len(result.Content))
@@ -161,7 +161,7 @@ func TestLegacyDownloadValidationPreservesStructuredResultAndLogsError(t *testin
 	defer session.Close()
 
 	result := callTool(t, session, "download", map[string]any{})
-	wantText := "Error: provide either illust_id (single ID) or illust_ids (list of IDs)."
+	wantText := "Error: provide src (one source) or srcs (a source list)"
 	assertEmptyDownloadResult(t, result, deliveryLocalPath, wantText)
 	event := findOperationEvent(t, logs.String(), "download")
 	if event["level"] != "ERROR" || event["result"] != "error" || event["backend"] != "local" || event["error_code"] != "" || event["status"] != float64(0) {

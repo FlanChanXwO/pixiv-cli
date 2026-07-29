@@ -93,7 +93,7 @@ func TestClientIllustDetailUsesAppPagesWithoutWebEnrichment(t *testing.T) {
 	}))
 	defer webServer.Close()
 
-	client, err := pixiv.NewClient(pixiv.Options{
+	client, err := pixiv.NewClient(pixiv.NewClientOptions{
 		HTTPClient:    appServer.Client(),
 		AppAPIBaseURL: appServer.URL,
 		WebAPIBaseURL: webServer.URL,
@@ -244,7 +244,7 @@ func TestClientIllustDetailDerivesSingleAppPage(t *testing.T) {
 	}))
 	t.Cleanup(webServer.Close)
 
-	client, err := pixiv.NewClient(pixiv.Options{HTTPClient: appServer.Client(), AppAPIBaseURL: appServer.URL, WebAPIBaseURL: webServer.URL, AccessToken: "token"})
+	client, err := pixiv.NewClient(pixiv.NewClientOptions{HTTPClient: appServer.Client(), AppAPIBaseURL: appServer.URL, WebAPIBaseURL: webServer.URL, AccessToken: "token"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -275,7 +275,7 @@ func TestClientIllustDetailRejectsIncompleteAppPages(t *testing.T) {
 	}))
 	t.Cleanup(server.Close)
 
-	client, err := pixiv.NewClient(pixiv.Options{HTTPClient: server.Client(), AppAPIBaseURL: server.URL, WebAPIBaseURL: server.URL, AccessToken: "token"})
+	client, err := pixiv.NewClient(pixiv.NewClientOptions{HTTPClient: server.Client(), AppAPIBaseURL: server.URL, WebAPIBaseURL: server.URL, AccessToken: "token"})
 	if err != nil {
 		t.Fatal(err)
 	}

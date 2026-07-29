@@ -42,7 +42,7 @@ func TestNewClientUsesHTTP1ForResourcesWithExplicitProxy(t *testing.T) {
 		ForceAttemptHTTP2: true,
 	}
 
-	client, err := pixiv.NewClient(pixiv.Options{
+	client, err := pixiv.NewClient(pixiv.NewClientOptions{
 		HTTPClient: transportClient(transport),
 		ResourcePolicy: pixiv.ResourcePolicy{Mirrors: []pixiv.ResourceMirrorPolicy{{
 			Host:         resourceURL.Host,

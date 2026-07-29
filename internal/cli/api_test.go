@@ -16,6 +16,7 @@ import (
 	"testing"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/application"
+	"github.com/FlanChanXwO/pixiv-cli/internal/bootstrap"
 	"github.com/FlanChanXwO/pixiv-cli/internal/config"
 	"github.com/FlanChanXwO/pixiv-cli/internal/storage/auth"
 	sdk "github.com/FlanChanXwO/pixiv-cli/pixiv"
@@ -333,7 +334,7 @@ func TestCommandHelpListsRemainingParameterDomains(t *testing.T) {
 		{name: "login callback address", args: []string{"pixiv", "auth", "login", "--help"}, want: "127.0.0.1:0"},
 		{name: "login timeout", args: []string{"pixiv", "auth", "login", "--help"}, want: "0 adds no deadline"},
 		{name: "auth export force", args: []string{"pixiv", "auth", "export", "--help"}, want: "requires --output"},
-		{name: "config key", args: []string{"pixiv", "config", "set", "--help"}, want: "login_use_after_login"},
+		{name: "config key", args: []string{"pixiv", "config", "set", "--help"}, want: "filename_template"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			var stdout, stderr bytes.Buffer
@@ -662,30 +663,22 @@ func TestSDKDataCommandsEmptyProxyOverrideClearsRuntimeProxy(t *testing.T) {
 	}
 }
 
-func TestSearchPassesSelectedUIDWithoutResolvingCredentialInCLI(t *testing.T) {
-	authPath, _ := useTempPaths(t)
-	require.NoError(t, auth.SaveAuthStore(authPath, auth.AuthStore{
-		DefaultUserID: 111,
-		Accounts:      []auth.Account{{UserID: 111, RefreshToken: "main-token"}, {UserID: 222, RefreshToken: "other-token"}},
-	}))
-	var requests []application.SDKClientRequest
-	setTestSDKCommandFactory(t, func(request application.SDKClientRequest) (application.SDKClient, error) {
-		requests = append(requests, request)
+func TestDataCommandsRejectCredentialSelectionFlags(t *testing.T) {
+	useTempPaths(t)
+	opened := 0
+	setTestSDKCommandFactory(t, func(application.SDKClientRequest) (application.SDKClient, error) {
+		opened++
 		return proxySDKClient(), nil
 	})
-
 	for _, args := range [][]string{
 		{"pixiv", "search", "miku", "--uid", "222"},
-		{"pixiv", "search", "miku", "--uid", "111"},
+		{"pixiv", "search", "miku", "--refresh-token", "secret"},
 	} {
 		var stdout, stderr bytes.Buffer
-		require.Equal(t, 0, Run(args, strings.NewReader(""), &stdout, &stderr), stderr.String())
+		require.NotZero(t, Run(args, strings.NewReader(""), &stdout, &stderr), stderr.String())
+		assert.Contains(t, stderr.String(), "unknown flag")
 	}
-	require.Len(t, requests, 2)
-	assert.Equal(t, int64(222), requests[0].UserID)
-	assert.Equal(t, int64(111), requests[1].UserID)
-	assert.Empty(t, requests[0].RefreshToken)
-	assert.Empty(t, requests[1].RefreshToken)
+	assert.Zero(t, opened)
 }
 
 func TestNetworkDataCommandsNoProxyFlagClearsRuntimeProxy(t *testing.T) {
@@ -756,24 +749,23 @@ func TestDownloadDelegatesOperationSnapshotAndFlagOverrides(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	code := RunContext(ctx, []string{
 		"pixiv", "download", "42", "84",
-		"--uid", "9",
-		"--refresh-token", "refresh",
 		"--download-path", "/flag/path",
 		"--filename-template", "flag-template",
+		"--ugoira-format", "apng",
 		"--proxy", "http://flag-proxy",
 	}, strings.NewReader(""), &stdout, &stderr)
 
 	require.Equal(t, 0, code, stderr.String())
 	require.NotNil(t, gotClientRequest.HTTPSProxyOverride)
 	require.Equal(t, "http://flag-proxy", *gotClientRequest.HTTPSProxyOverride)
-	require.Equal(t, int64(9), gotClientRequest.UserID)
-	require.Equal(t, "refresh", gotClientRequest.RefreshToken)
+	assert.Zero(t, gotClientRequest.UserID)
+	assert.Empty(t, gotClientRequest.RefreshToken)
 	require.Equal(t, []int64{42, 84}, []int64{downloadRequests[0].IllustIDs[0], downloadRequests[1].IllustIDs[0]})
-	assert.Contains(t, stdout.String(), "downloaded 42 \"work\" by artist\n  /flag/path/42.jpg\n")
-	assert.Contains(t, stdout.String(), "downloaded 84 \"work\" by artist\n  /flag/path/42.jpg\n")
+	require.Equal(t, application.UgoiraFormatAPNG, downloadRequests[0].UgoiraFormat)
+	assert.Empty(t, stdout.String())
 }
 
-func TestDownloadAcceptsArtworkAndUserURLsAndPrintsReportJSON(t *testing.T) {
+func TestDownloadAcceptsArtworkAndUserURLsWithoutWritingAReport(t *testing.T) {
 	useTempPaths(t)
 	client := sdkCommandFake{artworks: func(_ context.Context, request sdk.UserArtworksRequest) (*sdk.IllustListResult, error) {
 		switch request.Type {
@@ -802,11 +794,11 @@ func TestDownloadAcceptsArtworkAndUserURLsAndPrintsReportJSON(t *testing.T) {
 	})
 
 	var stdout, stderr bytes.Buffer
-	code := Run([]string{"pixiv", "download", "https://www.pixiv.net/artworks/1", "https://www.pixiv.net/en/users/7/artworks", "--json"}, strings.NewReader(""), &stdout, &stderr)
+	code := Run([]string{"pixiv", "download", "https://www.pixiv.net/artworks/1", "https://www.pixiv.net/en/users/7/artworks"}, strings.NewReader(""), &stdout, &stderr)
 
 	require.Equal(t, 0, code, stderr.String())
 	require.Equal(t, []int64{1, 2, 3, 4}, []int64{requests[0].IllustIDs[0], requests[1].IllustIDs[0], requests[2].IllustIDs[0], requests[3].IllustIDs[0]})
-	assert.JSONEq(t, `{"items":[{"url":"https://www.pixiv.net/artworks/1","illust_id":1,"title":"work","author":"artist","type":"illust","files":[{"path":"/downloads/1.jpg","page":1}]},{"url":"https://www.pixiv.net/artworks/2","illust_id":2,"title":"work","author":"artist","type":"illust","files":[{"path":"/downloads/2.jpg","page":1}]},{"url":"https://www.pixiv.net/artworks/3","illust_id":3,"title":"work","author":"artist","type":"illust","files":[{"path":"/downloads/3.jpg","page":1}]},{"url":"https://www.pixiv.net/artworks/4","illust_id":4,"title":"work","author":"artist","type":"illust","files":[{"path":"/downloads/4.jpg","page":1}]}],"failures":[]}`, stdout.String())
+	assert.Empty(t, stdout.String())
 }
 
 func TestDownloadDelegatesRuntimePathAndTemplateWithoutFlags(t *testing.T) {
@@ -860,11 +852,11 @@ func TestDownloadReportsManagerFailure(t *testing.T) {
 	code := Run([]string{"pixiv", "download", "42"}, strings.NewReader(""), &stdout, &stderr)
 
 	require.NotZero(t, code)
-	require.Contains(t, stdout.String(), "failed https://www.pixiv.net/artworks/42: "+want.Error())
+	require.Empty(t, stdout.String())
 	require.Contains(t, stderr.String(), "download completed with 1 failures")
 }
 
-func TestDownloadJSONUsesReportShape(t *testing.T) {
+func TestDownloadDoesNotAcceptJSONReportOutput(t *testing.T) {
 	useTempPaths(t)
 	setTestDownloadCommandServices(t, func(application.SDKClientRequest) (application.SDKClient, error) {
 		return &sdkCommandFake{}, nil
@@ -881,10 +873,10 @@ func TestDownloadJSONUsesReportShape(t *testing.T) {
 	})
 
 	var stdout, stderr bytes.Buffer
-	code := Run([]string{"pixiv", "download", "42", "--json"}, strings.NewReader(""), &stdout, &stderr)
+	code := Run([]string{"pixiv", "download", "42"}, strings.NewReader(""), &stdout, &stderr)
 
 	require.Equal(t, 0, code, stderr.String())
-	require.JSONEq(t, `{"items":[{"url":"https://www.pixiv.net/artworks/42","illust_id":42,"title":"work","author":"artist","type":"illust","files":[{"path":"/downloads/42.jpg","page":2}]}],"failures":[]}`, stdout.String())
+	require.Empty(t, stdout.String())
 }
 
 func TestDownloadRejectsInvalidPagesAndQuality(t *testing.T) {
@@ -941,12 +933,12 @@ func setTestDownloadCommandServices(t *testing.T, newClient application.SDKClien
 func TestDownloadProxyFlagPassesRuntimeOverride(t *testing.T) {
 	for _, useProxy := range []bool{true, false} {
 		t.Run(fmt.Sprintf("use_proxy=%t", useProxy), func(t *testing.T) {
-			_, configPath := useTempPaths(t)
+			authPath, configPath := useTempPaths(t)
 			proxy := newTestForwardProxy(t)
 			downloadPath := t.TempDir()
 			require.NoError(t, auth.WritePrivateFile(configPath, []byte("[network]\nhttps_proxy = \""+proxy.URL+"\"\n[download]\npath = \""+strings.ReplaceAll(downloadPath, "\\", "\\\\")+"\"\n")))
 			t.Setenv("https_proxy", proxy.URL)
-			t.Setenv("PIXIV_REFRESH_TOKEN", "token")
+			require.NoError(t, auth.SaveAuthStore(authPath, auth.AuthStore{DefaultUserID: 123, Accounts: []auth.Account{{UserID: 123, RefreshToken: "token"}}}))
 
 			var upstream *httptest.Server
 			upstream = httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -970,7 +962,7 @@ func TestDownloadProxyFlagPassesRuntimeOverride(t *testing.T) {
 			upstreamURL, err := url.Parse(upstream.URL)
 			require.NoError(t, err)
 			resourcePolicy := sdk.ResourcePolicy{Mirrors: []sdk.ResourceMirrorPolicy{{Host: upstreamURL.Host, PathPrefixes: []string{"/resource/"}}}}
-			probe, err := sdk.NewClient(sdk.Options{ResourcePolicy: resourcePolicy})
+			probe, err := sdk.NewClient(sdk.NewClientOptions{ResourcePolicy: resourcePolicy})
 			require.NoError(t, err)
 			_, err = probe.ParseResourceRef(upstream.URL + "/resource/proxy.jpg")
 			require.NoError(t, err)
@@ -999,10 +991,17 @@ func TestDownloadProxyFlagPassesRuntimeOverride(t *testing.T) {
 				proxyValue = proxy.URL
 			}
 			require.Equal(t, 0, Run([]string{"pixiv", "download", "42", "--proxy", proxyValue}, strings.NewReader(""), &stdout, &stderr), stderr.String())
-			assert.Contains(t, stdout.String(), `downloaded 42 "proxy" by artist`)
+			assert.Empty(t, stdout.String())
 			files, err := os.ReadDir(downloadPath)
 			require.NoError(t, err)
-			require.Len(t, files, 1)
+			// HTTP 缓存 sidecar 与下载文件同目录；这里只断言用户产物数量。
+			var artifacts []os.DirEntry
+			for _, file := range files {
+				if file.Name() != ".pixiv-cache" {
+					artifacts = append(artifacts, file)
+				}
+			}
+			require.Len(t, artifacts, 1)
 			if useProxy {
 				assert.NotZero(t, proxy.Requests())
 			} else {
@@ -1030,4 +1029,127 @@ func proxySDKClient() sdkCommandFake {
 			return &sdk.IllustListResult{}, nil
 		},
 	}
+}
+
+func TestDownloadReportRetainsRateLimitCauseAndPartialCommitBoundary(t *testing.T) {
+	cause := &sdk.Error{Code: sdk.CodeRateLimited, HasRetryAfter: true}
+	report := application.DownloadReport{
+		Committed: true,
+		Failures:  []application.DownloadFailure{{Message: cause.Error(), Cause: cause}},
+	}
+
+	err := downloadReportError(report)
+	var typed *sdk.Error
+	require.ErrorAs(t, err, &typed)
+	assert.Same(t, cause, typed)
+	assert.True(t, downloadReportCommitted(report), "a partial multi-page download must prohibit account-pool replay")
+}
+
+type failingWriter struct{ err error }
+
+func (w failingWriter) Write([]byte) (int, error) { return 0, w.err }
+
+// rateLimitedOnceWriter 模拟一个下游 writer 失败时碰巧返回可分类的 Pixiv 429。
+// 它绝不是上游请求失败，账号池必须将这次 stdout 尝试视为不可重放。
+type rateLimitedOnceWriter struct {
+	err    error
+	failed bool
+	bytes.Buffer
+}
+
+func (w *rateLimitedOnceWriter) Write(data []byte) (int, error) {
+	if !w.failed {
+		w.failed = true
+		return 0, w.err
+	}
+	return w.Buffer.Write(data)
+}
+
+func TestPrintIllustsReturnsWriterFailure(t *testing.T) {
+	want := errors.New("stdout unavailable")
+	err := printIllusts(failingWriter{err: want}, []sdk.Illust{commandIllust(42)}, 0, false)
+	require.ErrorIs(t, err, want)
+}
+
+func TestPrintNovelsReturnsWriterFailure(t *testing.T) {
+	want := errors.New("stdout unavailable")
+	err := printNovels(failingWriter{err: want}, []sdk.Novel{{ID: 42, Title: "work", User: sdk.User{Name: "artist"}}})
+	require.ErrorIs(t, err, want)
+}
+
+func TestSearchReturnsFailureWhenTextStdoutFails(t *testing.T) {
+	useTempPaths(t)
+	want := errors.New("stdout unavailable")
+	setTestSDKCommandClient(t, sdkCommandFake{search: func(context.Context, sdk.SearchIllustRequest) (*sdk.IllustListResult, error) {
+		return &sdk.IllustListResult{Illusts: []sdk.Illust{commandIllust(42)}}, nil
+	}})
+
+	var stderr bytes.Buffer
+	code := Run([]string{"pixiv", "search", "miku"}, strings.NewReader(""), failingWriter{err: want}, &stderr)
+	require.NotZero(t, code)
+	assert.Contains(t, stderr.String(), want.Error())
+}
+
+func TestDetailReturnsFailureWhenTextStdoutFails(t *testing.T) {
+	useTempPaths(t)
+	want := errors.New("stdout unavailable")
+	setTestSDKCommandClient(t, sdkCommandFake{detail: func(context.Context, int64) (*sdk.IllustDetail, error) {
+		return &sdk.IllustDetail{Illust: commandIllust(42)}, nil
+	}})
+
+	var stderr bytes.Buffer
+	code := Run([]string{"pixiv", "detail", "42"}, strings.NewReader(""), failingWriter{err: want}, &stderr)
+	require.NotZero(t, code)
+	assert.Contains(t, stderr.String(), want.Error())
+}
+
+func TestSearchDoesNotReplayWhenWriterReturnsRateLimitedError(t *testing.T) {
+	useTempPaths(t)
+	rateLimited := &sdk.Error{Code: sdk.CodeRateLimited, HasRetryAfter: true}
+	client := sdkCommandFake{search: func(context.Context, sdk.SearchIllustRequest) (*sdk.IllustListResult, error) {
+		return &sdk.IllustListResult{Illusts: []sdk.Illust{commandIllust(42)}}, nil
+	}}
+	old := newCLIServices
+	poolCalls := 0
+	newCLIServices = func(logger *slog.Logger) application.Services {
+		services := bootstrap.NewServices(logger)
+		services.SDK.NewClient = func(application.SDKClientRequest) (application.SDKClient, error) { return client, nil }
+		services.SDK.RunPooled = func(ctx context.Context, _ application.SDKClientRequest, attempt func(context.Context, application.SDKClient) (bool, error)) error {
+			poolCalls++
+			committed, err := attempt(ctx, client)
+			var typed *sdk.Error
+			if err != nil && !committed && errors.As(err, &typed) && typed.Code == sdk.CodeRateLimited && typed.HasRetryAfter {
+				poolCalls++
+				_, err = attempt(ctx, client)
+			}
+			return err
+		}
+		return services
+	}
+	t.Cleanup(func() { newCLIServices = old })
+
+	writer := &rateLimitedOnceWriter{err: rateLimited}
+	var stderr bytes.Buffer
+	code := Run([]string{"pixiv", "search", "miku"}, strings.NewReader(""), writer, &stderr)
+
+	require.NotZero(t, code)
+	require.Equal(t, 1, poolCalls, "a writer failure must not trigger account-pool replay")
+	assert.Empty(t, writer.String(), "the simulated second successful write must never run")
+	assert.Contains(t, stderr.String(), rateLimited.Error())
+}
+
+func TestRecommendedAllNDJSONMarksWriterAttemptCommitted(t *testing.T) {
+	rateLimited := &sdk.Error{Code: sdk.CodeRateLimited, HasRetryAfter: true}
+	writer := &rateLimitedOnceWriter{err: rateLimited}
+	illust := commandIllust(42)
+	illust.Type = "illust"
+	client := sdkCommandFake{recommended: func(context.Context, sdk.IllustRecommendedRequest) (*sdk.IllustListResult, error) {
+		return &sdk.IllustListResult{Illusts: []sdk.Illust{illust}}, nil
+	}}
+
+	committed, err := (app{out: writer}).runRecommendedAllNDJSON(context.Background(), client, listPlan{oneBatch: true})
+
+	require.True(t, committed)
+	require.ErrorIs(t, err, rateLimited)
+	assert.Empty(t, writer.String())
 }

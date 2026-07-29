@@ -10,7 +10,7 @@ import (
 func TestTopLevelPackageConstructsClient(t *testing.T) {
 	t.Parallel()
 
-	client, err := pixiv.NewClient(pixiv.Options{})
+	client, err := pixiv.NewClient(pixiv.NewClientOptions{})
 	if err != nil {
 		t.Fatalf("NewClient() error = %v", err)
 	}

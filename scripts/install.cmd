@@ -103,6 +103,10 @@ copy /Y "%EXTRACT_DIR%\pixiv.exe" "%STAGED%" >nul || (set "ERROR_MESSAGE=cannot 
 move /Y "%STAGED%" "%INSTALL_DIR%\pixiv.exe" >nul || (set "ERROR_MESSAGE=cannot replace the installed binary" & goto fatal)
 set "STAGED="
 
+rem 初始化按需 pixiv:// handler；失败不能使已验证 binary 安装回滚，命令本身会给出明确 warning。
+"%INSTALL_DIR%\pixiv.exe" auth _install-handler
+if errorlevel 1 echo warning: pixiv callback handler initialization could not be started; run pixiv auth login once after installation. 1>&2
+
 if /I "%PATH_MODE%"=="add" call :add_user_path || goto fatal
 if /I "%PATH_MODE%"=="report" call :report_path
 

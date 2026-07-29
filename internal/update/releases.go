@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/common/constants"
+	constants "github.com/FlanChanXwO/pixiv-cli/internal/platform/localstate"
 	"github.com/FlanChanXwO/pixiv-cli/internal/utils/files"
 )
 

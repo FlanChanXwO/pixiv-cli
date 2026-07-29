@@ -63,6 +63,8 @@ binary，并在修改 PATH 前完成用户级安装。可用 `--no-path` 保持 
 
 支持 SkillHub 的 Agent 可直接从 [SkillHub 的 `pixiv-cli` Skill 页面](https://www.skillhub.cn/skills/pixiv-cli) 安装已发布的产品 Skill。Skill 有独立版本并用于指导已安装的 CLI；命令语法始终以 `pixiv <cmd> --help` 为最终依据。
 
+使用 ClawHub 的 Agent 也可执行 `clawhub install pixiv-cli` 安装同一已发布产品 Skill；请固定到与 CLI 发布相同的 Skill 版本，不要跟随未固定的 latest。
+
 ### Homebrew（macOS 与 Linux 推荐）
 
 ```bash
@@ -112,6 +114,7 @@ pixiv bookmark add 123456
 pixiv detail https://www.pixiv.net/artworks/123456
 pixiv recommended all --limit 10
 pixiv download https://www.pixiv.net/artworks/123456 --pages 1,3-5 --quality regular
+pixiv download 123456 https://i.pximg.net/img-original/example.jpg --concurrency 8
 
 # 批量下载某位创作者的全部视觉作品。
 pixiv download https://www.pixiv.net/users/12345678/artworks
@@ -146,20 +149,21 @@ MCP 固定状态、错误和展示文本使用英文；Pixiv 元数据及用户�
 ### Go SDK
 
 ```go
-client, err := pixiv.OpenDefault(pixiv.Options{})
+client, err := pixiv.OpenDefault()
 if err != nil {
     // 处理本地认证或配置失败。
 }
 result, err := client.SearchIllust(ctx, pixiv.SearchIllustRequest{Word: "初音ミク"})
+download, err := client.Download(ctx, "https://www.pixiv.net/artworks/123456")
 ```
 
-导入 `github.com/FlanChanXwO/pixiv-cli/pixiv`。[SDK 指南](docs/zh-CN/sdk.md)说明模型、cursor、资源、错误和调用方职责。
+导入 `github.com/FlanChanXwO/pixiv-cli/pixiv`。`Download`/`DownloadAll` 使用有文档依据的新手默认值；`DownloadWith`/`DownloadAllWith` 可控制路径、命名、页码、质量与并发。[SDK 指南](docs/zh-CN/sdk.md)说明模型、cursor、资源、错误和调用方职责。
 
 ## 认证与 token 安全
 
 推荐使用 `pixiv auth login` 完成配置。它把原始 Pixiv App OAuth refresh token 按 UID 保存在本地账号 store；`PHPSESSID` 等浏览器 Cookie 会被拒绝，也不会转换为 App 凭据。
 
-macOS、桌面 Linux 与 Windows 的 `pixiv://` callback handler 只在当前登录期间安装，随后恢复原有设置。无 GUI SSH 服务器继续使用现有的 `--no-open --addr` 与本机 `ssh -L` tunnel；转发 fallback 页面可在同一个浏览器中继续已校验的 Pixiv relay，无需在浏览器机器安装 pixiv。详见 [CLI 参考手册](docs/zh-CN/cli-reference.md#获取-refresh-token)。
+macOS、桌面 Linux 与 Windows 使用按需持久的 `pixiv://` callback handler，既支持本地登录，也支持显式配置的跨机器 relay；只有 `pixiv://account/login` 可以进入 relay，不读取 Cookie、不做浏览器自动化，也不走 Web fallback。无 GUI SSH 服务器仍可使用现有的 `--no-open --addr` 与本机 `ssh -L` tunnel，或配置文档中的 relay server/client 设置。详见 [CLI 参考手册](docs/zh-CN/cli-reference.md#获取-refresh-token)。
 
 ```bash
 pixiv auth list

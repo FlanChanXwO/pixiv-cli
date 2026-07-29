@@ -85,6 +85,7 @@ jobs:
           sh scripts/test-package-release.sh
           sh scripts/test-release-workflow.sh
           sh scripts/test-homebrew-prepublish-workflow.sh
+          go test ./scripts/clawhubworkflow -count=1
           go test ./scripts/platformsmokeworkflow -count=1
       - name: Install pinned pre-commit
         if: ${{ needs.classify_changes.outputs.docs_only != 'true' }}

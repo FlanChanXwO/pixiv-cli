@@ -3,6 +3,7 @@ package pixiv
 import (
 	"fmt"
 	"strings"
+	"time"
 )
 
 // ErrorCode 是供调用方稳定分支处理的机器可读错误码。
@@ -48,11 +49,18 @@ const (
 	OperationNovelRecommended    Operation = "novel_recommended"
 	OperationUserRecommended     Operation = "user_recommended"
 	OperationFollowingIllusts    Operation = "following_illusts"
+	OperationFollowingNovels     Operation = "following_novels"
+	OperationLatestIllusts       Operation = "latest_illusts"
+	OperationLatestNovels        Operation = "latest_novels"
+	OperationMyPixivUsers        Operation = "mypixiv_users"
+	OperationMyPixivIllusts      Operation = "mypixiv_illusts"
+	OperationMyPixivNovels       Operation = "mypixiv_novels"
 	OperationSearchUser          Operation = "search_user"
 	OperationUserDetail          Operation = "user_detail"
 	OperationUserArtworks        Operation = "user_artworks"
 	OperationUserBookmarks       Operation = "user_bookmarks"
 	OperationUserFollowing       Operation = "user_following"
+	OperationUserNovels          Operation = "user_novels"
 	OperationAddBookmark         Operation = "add_bookmark"
 	OperationRemoveBookmark      Operation = "remove_bookmark"
 	OperationFollowUser          Operation = "follow_user"
@@ -121,11 +129,15 @@ const (
 
 // Error 是公开 SDK 的安全、可分类错误。cause 只保存已脱敏原因。
 type Error struct {
-	Code                    ErrorCode
-	Operation               Operation
-	Backend                 Backend
-	Retryable               bool
-	UpstreamStatus          int
+	Code           ErrorCode
+	Operation      Operation
+	Backend        Backend
+	Retryable      bool
+	UpstreamStatus int
+	// RetryAfter 仅在 HasRetryAfter 为 true 时有效；它来自上游 429 的有效
+	// Retry-After，未保留 header 原文。
+	RetryAfter              time.Duration
+	HasRetryAfter           bool
 	IllustID                int64
 	UserID                  int64
 	TransportKind           TransportKind

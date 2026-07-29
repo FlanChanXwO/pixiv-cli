@@ -11,10 +11,10 @@ import (
 	"time"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/application"
-	"github.com/FlanChanXwO/pixiv-cli/internal/common/constants"
 	"github.com/FlanChanXwO/pixiv-cli/internal/logging"
 	"github.com/FlanChanXwO/pixiv-cli/internal/utils/filename"
 	"github.com/FlanChanXwO/pixiv-cli/internal/utils/ids"
+	"github.com/FlanChanXwO/pixiv-cli/internal/utils/parallel"
 	"github.com/FlanChanXwO/pixiv-cli/internal/utils/text"
 	uriutil "github.com/FlanChanXwO/pixiv-cli/internal/utils/uri"
 	sdk "github.com/FlanChanXwO/pixiv-cli/pixiv"
@@ -69,6 +69,13 @@ func (m *Manager) DownloadPath() string {
 	return m.downloadPath
 }
 
+// FilenameTemplate 返回当前由运行配置提供的作品命名模板。
+func (m *Manager) FilenameTemplate() string {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.filenameTemplate
+}
+
 func (m *Manager) Download(ctx context.Context, request application.DownloadRequest) ([]DownloadedArtwork, error) {
 	unique := ids.DeduplicatePositive(request.IllustIDs)
 	quality := request.Quality
@@ -78,18 +85,29 @@ func (m *Manager) Download(ctx context.Context, request application.DownloadRequ
 	if err := application.ValidateDownloadQuality(quality); err != nil {
 		return nil, err
 	}
-	artworks := make([]DownloadedArtwork, 0, len(unique))
-	for _, id := range unique {
-		artwork, err := m.downloadArtwork(ctx, id, request.Pages, quality)
+	ugoiraFormat := request.UgoiraFormat
+	if ugoiraFormat == "" {
+		ugoiraFormat = application.UgoiraFormatGIF
+	}
+	if err := application.ValidateUgoiraFormat(ugoiraFormat); err != nil {
+		return nil, err
+	}
+	artworks := make([]DownloadedArtwork, len(unique))
+	errs := make([]error, len(unique))
+	if err := parallel.ForEach(ctx, len(unique), func(ctx context.Context, index int) {
+		artworks[index], errs[index] = m.downloadArtwork(ctx, unique[index], request.Pages, quality, ugoiraFormat)
+	}); err != nil {
+		return nil, err
+	}
+	for index, err := range errs {
 		if err != nil {
-			return nil, fmt.Errorf("download illust %d: %w", id, err)
+			return nil, fmt.Errorf("download illust %d: %w", unique[index], err)
 		}
-		artworks = append(artworks, artwork)
 	}
 	return artworks, nil
 }
 
-func (m *Manager) downloadArtwork(ctx context.Context, id int64, pages []int, quality application.DownloadQuality) (out DownloadedArtwork, err error) {
+func (m *Manager) downloadArtwork(ctx context.Context, id int64, pages []int, quality application.DownloadQuality, ugoiraFormat application.UgoiraFormat) (out DownloadedArtwork, err error) {
 	started := time.Now()
 	defer func() { m.operationLog("download", started, err, id) }()
 	detail, err := m.client.IllustDetail(ctx, id)
@@ -124,7 +142,7 @@ func (m *Manager) downloadArtwork(ctx context.Context, id int64, pages []int, qu
 		if len(pages) > 0 {
 			return DownloadedArtwork{}, fmt.Errorf("ugoira page selection is unsupported")
 		}
-		path, err := m.downloadUgoira(ctx, illust, base)
+		path, err := m.downloadUgoira(ctx, illust, base, ugoiraFormat)
 		if err != nil {
 			return DownloadedArtwork{}, err
 		}
@@ -258,14 +276,14 @@ func (m *Manager) operationLog(operation string, started time.Time, err error, i
 	logging.LogOperation(m.logger, logging.OperationEvent{
 		Component: "download",
 		Operation: operation,
-		Backend:   constants.LogBackendLocal,
+		Backend:   logging.BackendLocal,
 		Duration:  time.Since(started),
 		Result:    result,
 		IllustID:  illustID,
 	})
 }
 
-func (m *Manager) downloadUgoira(ctx context.Context, illust sdk.Illust, base string) (string, error) {
+func (m *Manager) downloadUgoira(ctx context.Context, illust sdk.Illust, base string, format application.UgoiraFormat) (string, error) {
 	meta, err := m.client.UgoiraMetadata(ctx, illust.ID)
 	if err != nil {
 		return "", err
@@ -286,8 +304,8 @@ func (m *Manager) downloadUgoira(ctx context.Context, illust sdk.Illust, base st
 	if err := m.downloadURL(ctx, zipURL, zipPath); err != nil {
 		return "", err
 	}
-	outPath := filepath.Join(base, filename.Generate(filenameData(illust), 0, m.filenameTemplate)+".gif")
-	if err := m.ConvertUgoira(ctx, zipPath, meta.UgoiraMetadata.Frames, base, outPath); err != nil {
+	outPath := filepath.Join(base, filename.Generate(filenameData(illust), 0, m.filenameTemplate)+"."+string(format))
+	if err := m.convertUgoira(ctx, zipPath, meta.UgoiraMetadata.Frames, base, outPath, AnimationFormat(format)); err != nil {
 		return "", err
 	}
 	return outPath, nil
@@ -298,10 +316,16 @@ func (m *Manager) downloadURL(ctx context.Context, rawURL, path string) error {
 	if err != nil {
 		return err
 	}
-	return m.client.Download(ctx, ref, path)
+	_, err = m.client.DownloadResource(ctx, ref, path)
+	return err
 }
 
 func (m *Manager) ConvertUgoira(ctx context.Context, zipPath string, frames []sdk.UgoiraFrame, workDir, outputGIF string) error {
+	return m.convertUgoira(ctx, zipPath, frames, workDir, outputGIF, AnimationFormatGIF)
+}
+
+// convertUgoira 保留 ConvertUgoira 的 GIF 兼容入口，同时让 DownloadRequest 显式选择 APNG。
+func (m *Manager) convertUgoira(ctx context.Context, zipPath string, frames []sdk.UgoiraFrame, workDir, outputPath string, format AnimationFormat) error {
 	if m.ugoiraEncoder == nil {
 		return fmt.Errorf("ugoira encoder is not configured")
 	}
@@ -309,8 +333,8 @@ func (m *Manager) ConvertUgoira(ctx context.Context, zipPath string, frames []sd
 		ZipPath:    zipPath,
 		Frames:     frames,
 		WorkDir:    workDir,
-		OutputPath: outputGIF,
-		Format:     AnimationFormatGIF,
+		OutputPath: outputPath,
+		Format:     format,
 	})
 }
 

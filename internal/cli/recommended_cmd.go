@@ -25,22 +25,132 @@ func (a app) runRecommended(cmd *cobra.Command, kind string, opts recommendedOpt
 	if err != nil {
 		return err
 	}
-	jsonOut, err := services.SDK.JSONOut(jsonOverride)
-	if err != nil {
-		return err
+	if opts.ndjson && cmd.Flags().Changed("json") {
+		return newUsageError(fmt.Errorf("--ndjson cannot be used with --json"))
 	}
-	client, err := services.SDK.OpenOperation(cmd.Context(), request)
-	if err != nil {
-		return err
+	jsonOut := false
+	if !opts.ndjson {
+		jsonOut, err = services.SDK.JSONOut(jsonOverride)
+		if err != nil {
+			return err
+		}
 	}
 	if kind == "all" {
-		return a.runRecommendedAll(cmd.Context(), client, plan, jsonOut)
+		if opts.ndjson {
+			return services.SDK.RunPooledOperation(cmd.Context(), request, func(ctx context.Context, client application.SDKClient) (bool, error) {
+				return a.runRecommendedAllNDJSON(ctx, client, plan)
+			})
+		}
+		return services.SDK.RunPooledOperation(cmd.Context(), request, func(ctx context.Context, client application.SDKClient) (bool, error) {
+			return a.runRecommendedAll(ctx, client, plan, jsonOut)
+		})
 	}
-	return a.runRecommendedOne(cmd.Context(), client, plan, jsonOut, kind)
+	return a.runRecommendedOnePooled(cmd.Context(), request, plan, jsonOut, opts.ndjson, kind)
 }
 
 func validRecommendationKind(kind string) bool {
 	return kind == "all" || kind == "illust" || kind == "manga" || kind == "novel" || kind == "user"
+}
+
+func (a app) runRecommendedOnePooled(ctx context.Context, request application.SDKClientRequest, plan listPlan, jsonOut, ndjson bool, kind string) error {
+	if kind == "illust" || kind == "manga" {
+		jsonKey := "illusts"
+		if kind == "manga" {
+			jsonKey = "manga"
+		}
+		fetch := func(client application.SDKClient, ctx context.Context, cursor sdk.Cursor) ([]sdk.Illust, sdk.Cursor, error) {
+			var result *sdk.IllustListResult
+			var err error
+			if kind == "illust" {
+				result, err = client.IllustRecommended(ctx, sdk.IllustRecommendedRequest{Cursor: cursor})
+			} else {
+				result, err = client.MangaRecommended(ctx, sdk.IllustRecommendedRequest{Cursor: cursor})
+			}
+			if err != nil {
+				return nil, "", err
+			}
+			return result.Illusts, result.NextCursor, nil
+		}
+		return a.runPooledIllustListWithKey(ctx, request, plan, jsonOut, ndjson, jsonKey, func() string {
+			return fmt.Sprintf("recommended %s", kind)
+		}, fetch, func(items []sdk.Illust, start int) error { return printIllusts(a.out, items, start, false) })
+	}
+	if kind == "novel" {
+		fetch := func(client application.SDKClient, ctx context.Context, cursor sdk.Cursor) ([]sdk.Novel, sdk.Cursor, error) {
+			result, err := client.NovelRecommended(ctx, sdk.NovelRecommendedRequest{Cursor: cursor})
+			if err != nil {
+				return nil, "", err
+			}
+			return result.Novels, result.NextCursor, nil
+		}
+		return a.runPooledNovelList(ctx, request, plan, jsonOut, ndjson, "recommended novels", fetch, func(items []sdk.Novel) error { return printNovels(a.out, items) })
+	}
+	fetch := func(client application.SDKClient, ctx context.Context, cursor sdk.Cursor) ([]sdk.RecommendedUserPreview, sdk.Cursor, error) {
+		result, err := client.UserRecommended(ctx, sdk.UserRecommendedRequest{Cursor: cursor})
+		if err != nil {
+			return nil, "", err
+		}
+		return result.UserPreviews, result.NextCursor, nil
+	}
+	return a.runPooledRecommendedUserList(ctx, request, plan, jsonOut, ndjson, fetch)
+}
+
+func (a app) runPooledRecommendedUserList(ctx context.Context, request application.SDKClientRequest, plan listPlan, jsonOut, ndjson bool, fetch func(application.SDKClient, context.Context, sdk.Cursor) ([]sdk.RecommendedUserPreview, sdk.Cursor, error)) error {
+	services := a.services()
+	return services.SDK.RunPooledOperation(ctx, request, func(ctx context.Context, client application.SDKClient) (bool, error) {
+		boundFetch := func(ctx context.Context, cursor sdk.Cursor) ([]sdk.RecommendedUserPreview, sdk.Cursor, error) {
+			return fetch(client, ctx, cursor)
+		}
+		committed := false
+		if ndjson {
+			encoder := json.NewEncoder(a.out)
+			err := pageItems(ctx, plan, boundFetch, func(items []sdk.RecommendedUserPreview) error {
+				for _, item := range items {
+					record, err := application.RecordFromRecommendedUserPreview(item)
+					if err != nil {
+						return err
+					}
+					committed = true
+					if err := encoder.Encode(record); err != nil {
+						return err
+					}
+				}
+				return nil
+			})
+			return committed, err
+		}
+		if jsonOut {
+			spool, err := newJSONArraySpool("user_previews")
+			if err != nil {
+				return false, err
+			}
+			defer spool.Close()
+			if err := pageItems(ctx, plan, boundFetch, func(items []sdk.RecommendedUserPreview) error { return appendJSONArray(spool, items) }); err != nil {
+				return false, err
+			}
+			committed = true
+			err = spool.Commit(a.out)
+			return committed, err
+		}
+		headingWritten := false
+		err := pageItems(ctx, plan, boundFetch, func(items []sdk.RecommendedUserPreview) error {
+			if !headingWritten {
+				committed = true
+				if _, err := fmt.Fprintln(a.out, "recommended users"); err != nil {
+					return err
+				}
+				headingWritten = true
+			}
+			if len(items) > 0 {
+				committed = true
+			}
+			if err := printRecommendedUsers(a.out, items); err != nil {
+				return err
+			}
+			return nil
+		})
+		return committed, err
+	})
 }
 
 func (a app) runRecommendedOne(ctx context.Context, client application.SDKClient, plan listPlan, jsonOut bool, kind string) error {
@@ -70,9 +180,11 @@ func (a app) runRecommendedOne(ctx context.Context, client application.SDKClient
 			return spool.Commit(a.out)
 		}
 		if !jsonOut {
-			fmt.Fprintf(a.out, "recommended %s\n", kind)
+			if _, err := fmt.Fprintf(a.out, "recommended %s\n", kind); err != nil {
+				return err
+			}
 		}
-		return a.runIllustList(ctx, plan, jsonOut, fetch, func(items []sdk.Illust, start int) { printIllusts(a.out, items, start, false) })
+		return a.runIllustList(ctx, plan, jsonOut, fetch, func(items []sdk.Illust, start int) error { return printIllusts(a.out, items, start, false) })
 	}
 	if kind == "novel" {
 		return a.runRecommendedNovels(ctx, client, plan, jsonOut)
@@ -99,8 +211,10 @@ func (a app) runRecommendedNovels(ctx context.Context, client application.SDKCli
 		}
 		return s.Commit(a.out)
 	}
-	fmt.Fprintln(a.out, "recommended novels")
-	return pageItems(ctx, plan, fetch, func(items []sdk.Novel) error { printNovels(a.out, items); return nil })
+	if _, err := fmt.Fprintln(a.out, "recommended novels"); err != nil {
+		return err
+	}
+	return pageItems(ctx, plan, fetch, func(items []sdk.Novel) error { return printNovels(a.out, items) })
 }
 
 func (a app) runRecommendedUsers(ctx context.Context, client application.SDKClient, plan listPlan, jsonOut bool) error {
@@ -122,21 +236,25 @@ func (a app) runRecommendedUsers(ctx context.Context, client application.SDKClie
 		}
 		return s.Commit(a.out)
 	}
-	fmt.Fprintln(a.out, "recommended users")
-	return pageItems(ctx, plan, fetch, func(items []sdk.RecommendedUserPreview) error { printRecommendedUsers(a.out, items); return nil })
+	if _, err := fmt.Fprintln(a.out, "recommended users"); err != nil {
+		return err
+	}
+	return pageItems(ctx, plan, fetch, func(items []sdk.RecommendedUserPreview) error { return printRecommendedUsers(a.out, items) })
 }
 
-func (a app) runRecommendedAll(ctx context.Context, client application.SDKClient, plan listPlan, jsonOut bool) error {
+func (a app) runRecommendedAll(ctx context.Context, client application.SDKClient, plan listPlan, jsonOut bool) (bool, error) {
 	s, err := newRecommendationSpool(jsonOut)
 	if err != nil {
-		return err
+		return false, err
 	}
 	defer s.Close()
 	if err := s.section("illusts"); err != nil {
-		return err
+		return false, err
 	}
 	if !jsonOut {
-		fmt.Fprintln(s.file, "recommended illustrations")
+		if _, err := fmt.Fprintln(s.file, "recommended illustrations"); err != nil {
+			return false, err
+		}
 	}
 	if err := pageItems(ctx, plan, func(ctx context.Context, c sdk.Cursor) ([]sdk.Illust, sdk.Cursor, error) {
 		r, e := client.IllustRecommended(ctx, sdk.IllustRecommendedRequest{Cursor: c})
@@ -145,13 +263,15 @@ func (a app) runRecommendedAll(ctx context.Context, client application.SDKClient
 		}
 		return r.Illusts, r.NextCursor, nil
 	}, s.illusts); err != nil {
-		return err
+		return false, err
 	}
 	if err := s.section("manga"); err != nil {
-		return err
+		return false, err
 	}
 	if !jsonOut {
-		fmt.Fprintln(s.file, "recommended manga")
+		if _, err := fmt.Fprintln(s.file, "recommended manga"); err != nil {
+			return false, err
+		}
 	}
 	if err := pageItems(ctx, plan, func(ctx context.Context, c sdk.Cursor) ([]sdk.Illust, sdk.Cursor, error) {
 		r, e := client.MangaRecommended(ctx, sdk.IllustRecommendedRequest{Cursor: c})
@@ -160,13 +280,15 @@ func (a app) runRecommendedAll(ctx context.Context, client application.SDKClient
 		}
 		return r.Illusts, r.NextCursor, nil
 	}, s.illusts); err != nil {
-		return err
+		return false, err
 	}
 	if err := s.section("novels"); err != nil {
-		return err
+		return false, err
 	}
 	if !jsonOut {
-		fmt.Fprintln(s.file, "recommended novels")
+		if _, err := fmt.Fprintln(s.file, "recommended novels"); err != nil {
+			return false, err
+		}
 	}
 	if err := pageItems(ctx, plan, func(ctx context.Context, c sdk.Cursor) ([]sdk.Novel, sdk.Cursor, error) {
 		r, e := client.NovelRecommended(ctx, sdk.NovelRecommendedRequest{Cursor: c})
@@ -175,13 +297,15 @@ func (a app) runRecommendedAll(ctx context.Context, client application.SDKClient
 		}
 		return r.Novels, r.NextCursor, nil
 	}, s.novels); err != nil {
-		return err
+		return false, err
 	}
 	if err := s.section("user_previews"); err != nil {
-		return err
+		return false, err
 	}
 	if !jsonOut {
-		fmt.Fprintln(s.file, "recommended users")
+		if _, err := fmt.Fprintln(s.file, "recommended users"); err != nil {
+			return false, err
+		}
 	}
 	if err := pageItems(ctx, plan, func(ctx context.Context, c sdk.Cursor) ([]sdk.RecommendedUserPreview, sdk.Cursor, error) {
 		r, e := client.UserRecommended(ctx, sdk.UserRecommendedRequest{Cursor: c})
@@ -190,9 +314,89 @@ func (a app) runRecommendedAll(ctx context.Context, client application.SDKClient
 		}
 		return r.UserPreviews, r.NextCursor, nil
 	}, s.users); err != nil {
-		return err
+		return false, err
 	}
-	return s.Commit(a.out)
+	// 最终 io.Copy 可能已交付部分 stdout；在尝试前关闭账号池重放窗口。
+	return true, s.Commit(a.out)
+}
+
+// runRecommendedAllNDJSON 保留 all 的既有类别顺序。每写出一条记录即标记提交，
+// 因此账号池只会在任何下游可见输出之前重放 429。
+func (a app) runRecommendedAllNDJSON(ctx context.Context, client application.SDKClient, plan listPlan) (bool, error) {
+	encoder := json.NewEncoder(a.out)
+	committed := false
+	writeIllusts := func(items []sdk.Illust) error {
+		for _, item := range items {
+			record, err := application.RecordFromIllust(item)
+			if err != nil {
+				return err
+			}
+			committed = true
+			if err := encoder.Encode(record); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	if err := pageItems(ctx, plan, func(ctx context.Context, cursor sdk.Cursor) ([]sdk.Illust, sdk.Cursor, error) {
+		result, err := client.IllustRecommended(ctx, sdk.IllustRecommendedRequest{Cursor: cursor})
+		if err != nil {
+			return nil, "", err
+		}
+		return result.Illusts, result.NextCursor, nil
+	}, writeIllusts); err != nil {
+		return committed, err
+	}
+	if err := pageItems(ctx, plan, func(ctx context.Context, cursor sdk.Cursor) ([]sdk.Illust, sdk.Cursor, error) {
+		result, err := client.MangaRecommended(ctx, sdk.IllustRecommendedRequest{Cursor: cursor})
+		if err != nil {
+			return nil, "", err
+		}
+		return result.Illusts, result.NextCursor, nil
+	}, writeIllusts); err != nil {
+		return committed, err
+	}
+	if err := pageItems(ctx, plan, func(ctx context.Context, cursor sdk.Cursor) ([]sdk.Novel, sdk.Cursor, error) {
+		result, err := client.NovelRecommended(ctx, sdk.NovelRecommendedRequest{Cursor: cursor})
+		if err != nil {
+			return nil, "", err
+		}
+		return result.Novels, result.NextCursor, nil
+	}, func(items []sdk.Novel) error {
+		for _, item := range items {
+			record, err := application.RecordFromNovel(item)
+			if err != nil {
+				return err
+			}
+			committed = true
+			if err := encoder.Encode(record); err != nil {
+				return err
+			}
+		}
+		return nil
+	}); err != nil {
+		return committed, err
+	}
+	err := pageItems(ctx, plan, func(ctx context.Context, cursor sdk.Cursor) ([]sdk.RecommendedUserPreview, sdk.Cursor, error) {
+		result, err := client.UserRecommended(ctx, sdk.UserRecommendedRequest{Cursor: cursor})
+		if err != nil {
+			return nil, "", err
+		}
+		return result.UserPreviews, result.NextCursor, nil
+	}, func(items []sdk.RecommendedUserPreview) error {
+		for _, item := range items {
+			record, err := application.RecordFromRecommendedUserPreview(item)
+			if err != nil {
+				return err
+			}
+			committed = true
+			if err := encoder.Encode(record); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	return committed, err
 }
 
 type recommendationSpool struct {
@@ -237,11 +441,11 @@ func (s *recommendationSpool) write(value any) error {
 	if !s.jsonOut {
 		switch v := value.(type) {
 		case sdk.Illust:
-			printIllusts(s.file, []sdk.Illust{v}, 0, false)
+			return printIllusts(s.file, []sdk.Illust{v}, 0, false)
 		case sdk.Novel:
-			printNovels(s.file, []sdk.Novel{v})
+			return printNovels(s.file, []sdk.Novel{v})
 		case sdk.RecommendedUserPreview:
-			printRecommendedUsers(s.file, []sdk.RecommendedUserPreview{v})
+			return printRecommendedUsers(s.file, []sdk.RecommendedUserPreview{v})
 		}
 		return nil
 	}
@@ -302,13 +506,19 @@ func (s *recommendationSpool) Close() {
 	_ = s.file.Close()
 	_ = os.Remove(n)
 }
-func printNovels(w io.Writer, novels []sdk.Novel) {
+func printNovels(w io.Writer, novels []sdk.Novel) error {
 	for _, n := range novels {
-		fmt.Fprintf(w, "%d %s — %s\n", n.ID, n.Title, n.User.Name)
+		if _, err := fmt.Fprintf(w, "%d %s — %s\n", n.ID, n.Title, n.User.Name); err != nil {
+			return err
+		}
 	}
+	return nil
 }
-func printRecommendedUsers(w io.Writer, users []sdk.RecommendedUserPreview) {
+func printRecommendedUsers(w io.Writer, users []sdk.RecommendedUserPreview) error {
 	for _, u := range users {
-		fmt.Fprintf(w, "%d %s\n", u.User.ID, u.User.Name)
+		if _, err := fmt.Fprintf(w, "%d %s\n", u.User.ID, u.User.Name); err != nil {
+			return err
+		}
 	}
+	return nil
 }

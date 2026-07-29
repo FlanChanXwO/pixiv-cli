@@ -12,12 +12,17 @@ probe、capability negotiation、RSS、crawler behavior を提供しません。
 ## 構築
 
 ```go
-client, err := pixiv.NewClient(pixiv.Options{
+// 初心者/local entry point: option は不要です。
+local, err := pixiv.OpenDefault()
+
+// 明示 access token または匿名 client: local auth/config field は含みません。
+client, err := pixiv.NewClient(pixiv.NewClientOptions{
     AccessToken: accessToken,
     Logger:      logger, // optional; nil の場合 SDK は静かに動作します
 })
 
-local, err := pixiv.OpenDefault(pixiv.Options{
+// 高度な local/default client。
+local, err := pixiv.OpenDefaultWith(pixiv.OpenDefaultOptions{
     UserID: 12345678, // optional local account
 })
 ```
@@ -28,14 +33,13 @@ authentication を選びます。runtime configuration を要する public opera
 configuration/auth snapshot を取得します。複数の pagination call で同じ snapshot を共有する必要があるときは、
 `client.Snapshot(ctx)` を使用してください。明示的な token export だけは例外であり、auth store を直接読みます。
 
-`Options` は明示的な `HTTPClient`、`AppAPIBaseURL`、`WebAPIBaseURL`、`OAuthBaseURL`、
-`WebFallbackEnabled`、`ResourcePolicy`、`Logger` を受け取ります。`AccessToken` と `WebFallbackEnabled` は
-`NewClient` 専用です。各 `OpenDefault` snapshot は local の `web_fallback_enabled` を読みます。refresh token や
-logger を global mutable state にしないでください。
+`NewClientOptions` は direct client 用の `AccessToken`、`WebFallbackEnabled`、HTTP、App/Web endpoint、
+`ResourcePolicy`、任意の `ResourceCachePath`、`Logger` だけを持ちます。`OpenDefaultOptions` は local path、OAuth endpoint、
+account selection、HTTP/endpoint、resource policy/cache path、logger を持ちます。2 つの options に無効 field は混在しません。
 
 ### HTTP client と request lifetime
 
-`Options.HTTPClient` を指定しない場合、SDK はその `Client` 専用の `http.Client` を作り、whole-request
+options の `HTTPClient` を指定しない場合、SDK はその `Client` 専用の `http.Client` を作り、whole-request
 `Timeout` は zero です。App API、Web API、OAuth、resource request は `http.DefaultClient` を変更せず、この
 client を共有します。zero は SDK が response-body read 全体を覆う固定 deadline を追加しないことを意味します。
 connection、TLS handshake、idle connection に対する Go transport の policy は引き続き適用されます。
@@ -45,7 +49,7 @@ deadline を設定してください。`context.Canceled` と `context.DeadlineE
 `OpenResource` の返却後も context は body read を制御します。stream の利用を終えたら body を close し、context を
 cancel してください。
 
-`Options.HTTPClient` を指定した場合、constructor は同じ pointer とその timeout、transport、cookie jar、redirect policy
+options の `HTTPClient` を指定した場合、constructor は同じ pointer とその timeout、transport、cookie jar、redirect policy
 をそのまま保持します。resource request だけは per-request copy で cookie を無効化し、redirect を検証します。
 詳細は [ADR 0010](../maintainers/adr/0010-http-client-timeout-and-context.md) を参照してください。
 
@@ -58,7 +62,7 @@ cancel してください。
 | Writes | `AddBookmark`、`RemoveBookmark`、`FollowUser`、`UnfollowUser`。 |
 | Accounts/configuration | `ImportAccount`、`ListAccounts`、`SelectAccount`、`RemoveAccount`、`ExportAccountRefreshToken`、`ExportAuthBundle`、`RestoreAuthBundle`、`CheckAccount`、`CheckRefreshToken`、`Refresh`、`RefreshAccount`、`PremiumStatus`、`RefreshPremiumStatus`、`GetConfig`、`SetConfig`、`UnsetConfig`。bundle codec function は package-level です。 |
 | Login | `StartLogin`、`CompleteLogin`、`BuildLoginAuthorizationURL`。SDK は browser、loopback server、TTY を起動しません。 |
-| Resources | `ParseResourceRef`、`OpenResource`、`Download`。 |
+| Resources | `Download`、`DownloadAll`、`DownloadWith`、`DownloadAllWith`、`ParseResourceRef`、`OpenResource`、`DownloadResource`。 |
 
 request method は `SearchIllustRequest`、`SearchNovelRequest`、`SearchIllustOptionsRequest`、
 `UserArtworksRequest`、`UserBookmarksRequest`、`UserFollowingRequest`、`AddBookmarkRequest`、
@@ -68,9 +72,23 @@ top-level `pixiv` package にあります。
 
 すべての public `Illust` は安定した artwork page URL
 `https://www.pixiv.net/artworks/{id}` を JSON の先頭 field `url` として含みます。SDK は like-count field を公開しません。
-bookmark total を like と表示してはいけません。`Download` は page selection 用の `ParsePageSpec` と
-`DownloadQuality`（`original|regular|small|thumb|mini`）を含む `DownloadOptions` を受け取ります。ugoira は page
-selection または original 以外の quality を unsupported として拒否します。
+bookmark total を like と表示してはいけません。
+
+### Download: beginner と advanced
+
+`Download(ctx, src)` と `DownloadAll(ctx, srcs)` は初心者 API です。PID、official artwork URL、または
+`ResourcePolicy` が許可する CDN URL を受け取り、`./downloads`、`{author} - {title}_{id}`、original、全 page、
+`2 × runtime.GOMAXPROCS(0)` 自動並行を使います。
+
+`DownloadWith` / `DownloadAllWith` と `DownloadOptions` では `DownloadPath`、`FilenameTemplate`、1-based `Pages`、
+`Quality`、`UgoiraFormat`、`Concurrency` を指定できます。`UgoiraFormat` は既定で `gif`、`apng` も選べます。`Concurrency==0` は自動、正数は上限なしでそのまま使います。直リンクは URL
+filename を使い、page、派生 quality、custom artwork template は拒否します。`DownloadAllResult.Items` は入力順を保持し、
+`Attempted`、成功結果（file cache state を含む）、または error を返すため失敗項だけ再試行できます。Ugoira ZIP は cache 後 GIF または APNG に変換し、page/original 以外の quality は unsupported です。
+
+`DownloadResource(ctx, ref, destination)` は raw-resource 用の明示 API で、`miss`、`revalidated`、`resumed`、`refreshed`
+を持つ `ResourceDownloadResult` を返します。旧 raw `Download(ctx, ResourceRef, path)` を置換します。
+
+configuration も型付きです。`GetConfig`、`SetConfig`、`UnsetConfig` には `ConfigKey` constant を使い、write は `StringConfigInput`、`BoolConfigInput`、`DurationConfigInput` で構築します。CLI/MCP の text boundary は `ParseConfigKey` と `ParseConfigInput` を使います。sensitive relay secret は generic setter では書けず `SetLoginRelaySecret` だけを使い、read は redacted presence marker だけを返します。
 
 `UserArtworksRequest.UserID` のような SDK の user ID は必須です。UID の省略を「current user」の意味にできるのは
 CLI/MCP adapter だけです。Go caller は `CurrentUserID(ctx)` を呼び、その ID で request を組み立ててください。
@@ -219,7 +237,7 @@ stage が失敗すれば atomic に失敗します。詳細は [ADR 0006](../mai
 ref, err := client.ParseResourceRef(rawURL)
 if err != nil { /* reject */ }
 response, err := client.OpenResource(ctx, pixiv.OpenResourceRequest{
-    Ref: ref, Range: request.Header.Get("Range"),
+    Ref: ref, Range: request.Header.Get("Range"), IfRange: request.Header.Get("If-Range"),
 })
 if err != nil { /* map typed error */ }
 defer response.Body.Close()
@@ -228,8 +246,8 @@ defer response.Body.Close()
 
 `ResourceRef` は persistent reference にすぎず、`OpenResource` ごとに再検証します。default policy は official Pixiv
 resource だけを受け入れます。caller は `ResourcePolicy.Mirrors` に明示的な host/path prefix を追加できます。SDK は
-`Range`、`If-None-Match`、`If-Modified-Since` だけを受け取り、response header を filter し、cookie を無効化して redirect を
-検証することで SSRF を低減します。`Download` は temporary file に stream し、target を atomic replace します。
+`Range`、`If-None-Match`、`If-Modified-Since`、`If-Range` だけを受け取り、response header を filter し、cookie を無効化して redirect を
+検証することで SSRF を低減します。`DownloadResource` は `.pixiv-cache`（または `ResourceCachePath`）に metadata と partial を保存し、ETag/Last-Modified で complete file を再検証し、検証済み partial だけを `Range` + `If-Range` で再開して atomic に publish します。validator がなければ unsafe resume はしません。
 
 idempotent App API JSON read だけでは、最初の HTTP 429 に有効な seconds value または HTTP date の `Retry-After` があれば、
 1 回待機して retry します。wait は caller context を監視します。invalid/missing header、2 回目の 429、その他の error は

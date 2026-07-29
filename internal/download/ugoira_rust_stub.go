@@ -19,7 +19,7 @@ func defaultUgoiraEncoder() UgoiraEncoder {
 
 // NewRustUgoiraEncoder 在没有 cgo 或对应平台预构建 staticlib 的构建中返回可诊断的 encoder。
 func NewRustUgoiraEncoder() UgoiraEncoder {
-	return unavailableRustUgoiraEncoder{}
+	return newSharedUgoiraEncoder()
 }
 
 func (unavailableRustUgoiraEncoder) Encode(_ context.Context, input UgoiraEncodeInput) error {

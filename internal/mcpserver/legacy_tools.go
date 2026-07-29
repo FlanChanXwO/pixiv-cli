@@ -115,13 +115,12 @@ func searchNovelInputSchema() map[string]any {
 }
 
 type novelSearchOut struct {
-	Novels     []sdk.Novel   `json:"novels"`
-	Pagination paginationOut `json:"pagination"`
-	Text       string        `json:"text"`
+	Records    []application.Record `json:"records"`
+	Pagination paginationOut        `json:"pagination"`
 }
 
 func novelSearchResult(out novelSearchOut) *mcp.CallToolResult {
-	return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: out.Text}}}
+	return recordResult(out.Records, false, "")
 }
 
 func (a *App) searchNovel(ctx context.Context, _ *mcp.CallToolRequest, in searchNovelIn) (*mcp.CallToolResult, novelSearchOut, error) {
@@ -163,22 +162,18 @@ func (a *App) searchNovel(ctx context.Context, _ *mcp.CallToolRequest, in search
 	if err != nil {
 		return a.searchNovelError(ctx, err)
 	}
-	if items == nil {
-		items = []sdk.Novel{}
+	records, err := recordsFromNovels(items)
+	if err != nil {
+		return a.searchNovelError(ctx, err)
 	}
-	text := fmt.Sprintf("Found %d novels for %q:\n\n%s", len(items), in.Word, formatNovels(items))
-	if len(items) == 0 {
-		text = fmt.Sprintf("No novels found for %q.", in.Word)
-	}
-	out := novelSearchOut{Novels: normalizeNovels(items), Pagination: listPagination(plan, in.Limit, len(items), more), Text: text}
+	out := novelSearchOut{Records: records, Pagination: listPagination(plan, in.Limit, len(items), more)}
 	return novelSearchResult(out), out, nil
 }
 
 func (a *App) searchNovelError(ctx context.Context, err error) (*mcp.CallToolResult, novelSearchOut, error) {
 	recordToolError(ctx, err)
-	text := "Error: " + err.Error()
-	out := novelSearchOut{Novels: []sdk.Novel{}, Pagination: paginationOut{Page: 1}, Text: text}
-	return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: text}}}, out, nil
+	out := novelSearchOut{Records: []application.Record{}, Pagination: paginationOut{Page: 1}}
+	return recordResult(out.Records, true, recordErrorMessage(err)), out, nil
 }
 
 type searchIllustOptionsOut struct {
@@ -229,19 +224,18 @@ func (a *App) searchIllustOptionsError(ctx context.Context, err error) (*mcp.Cal
 
 // illustQueryOut 统一旧读取 tool 的 machine-readable 作品结果，并保留文本摘要兼容客户端。
 type illustQueryOut struct {
-	Items      []sdk.Illust  `json:"items"`
-	Pagination paginationOut `json:"pagination"`
-	Text       string        `json:"text"`
+	Records    []application.Record `json:"records"`
+	Pagination paginationOut        `json:"pagination"`
 }
 
 func illustQueryResult(out illustQueryOut, isError bool) *mcp.CallToolResult {
-	return &mcp.CallToolResult{IsError: isError, Content: []mcp.Content{&mcp.TextContent{Text: out.Text}}}
+	return recordResult(out.Records, isError, "")
 }
 
 func (a *App) illustQueryError(ctx context.Context, err error) (*mcp.CallToolResult, illustQueryOut, error) {
 	recordToolError(ctx, err)
-	out := illustQueryOut{Items: []sdk.Illust{}, Pagination: paginationOut{Page: 1}, Text: "Error: " + err.Error()}
-	return illustQueryResult(out, true), out, nil
+	out := illustQueryOut{Records: []application.Record{}, Pagination: paginationOut{Page: 1}}
+	return recordResult(out.Records, true, recordErrorMessage(err)), out, nil
 }
 
 func (a *App) searchIllust(ctx context.Context, _ *mcp.CallToolRequest, in searchIllustIn) (*mcp.CallToolResult, illustQueryOut, error) {
@@ -297,13 +291,11 @@ func (a *App) searchIllust(ctx context.Context, _ *mcp.CallToolRequest, in searc
 	if err != nil {
 		return a.illustQueryError(ctx, err)
 	}
-	out := illustQueryOut{Items: normalizeIllusts(items), Pagination: listPagination(plan, in.Limit, len(items), more)}
-	if len(items) == 0 {
-		out.Text = fmt.Sprintf("No illustrations found for %q.", word)
-		return illustQueryResult(out, false), out, nil
+	records, err := recordsFromIllusts(items)
+	if err != nil {
+		return a.illustQueryError(ctx, err)
 	}
-	displayOffset := plan.skip
-	out.Text = fmt.Sprintf("Found %d illustrations for %q:\n\n%s", len(items), word, formatIllusts(items, displayOffset, false))
+	out := illustQueryOut{Records: records, Pagination: listPagination(plan, in.Limit, len(items), more)}
 	return illustQueryResult(out, false), out, nil
 }
 
@@ -360,12 +352,11 @@ type illustReferenceIn struct {
 }
 
 type illustDetailOut struct {
-	Illust any    `json:"illust"`
-	Text   string `json:"text"`
+	Records []application.Record `json:"records"`
 }
 
 func illustDetailResult(out illustDetailOut, isError bool) *mcp.CallToolResult {
-	return &mcp.CallToolResult{IsError: isError, Content: []mcp.Content{&mcp.TextContent{Text: out.Text}}}
+	return recordResult(out.Records, isError, "")
 }
 
 func (a *App) illustDetail(ctx context.Context, _ *mcp.CallToolRequest, in illustReferenceIn) (*mcp.CallToolResult, illustDetailOut, error) {
@@ -385,28 +376,12 @@ func (a *App) illustDetail(ctx context.Context, _ *mcp.CallToolRequest, in illus
 	if result == nil {
 		return a.illustDetailError(ctx, errors.New("pixiv sdk returned an empty illustration detail result"))
 	}
-	illust := normalizeIllusts([]sdk.Illust{result.Illust})[0]
-	structured, err := illustStructuredContent(illust)
+	record, err := application.RecordFromIllust(result.Illust)
 	if err != nil {
 		return a.illustDetailError(ctx, err)
 	}
-	out := illustDetailOut{Illust: structured, Text: formatIllust(illust)}
+	out := illustDetailOut{Records: []application.Record{record}}
 	return illustDetailResult(out, false), out, nil
-}
-
-// illustStructuredContent 通过 JSON 边界生成与 public SDK 模型同形的 object。
-// 单个嵌套 SDK struct 的推导 schema 无法表达可选数组字段，因此仅在 MCP adapter
-// 以 object 发布；客户端仍得到完整、规范化的作品字段。
-func illustStructuredContent(illust sdk.Illust) (map[string]any, error) {
-	raw, err := json.Marshal(illust)
-	if err != nil {
-		return nil, err
-	}
-	var out map[string]any
-	if err := json.Unmarshal(raw, &out); err != nil {
-		return nil, err
-	}
-	return out, nil
 }
 
 func resolveMCPArtworkReference(in illustReferenceIn) (int64, error) {
@@ -426,8 +401,8 @@ func resolveMCPArtworkReference(in illustReferenceIn) (int64, error) {
 
 func (a *App) illustDetailError(ctx context.Context, err error) (*mcp.CallToolResult, illustDetailOut, error) {
 	recordToolError(ctx, err)
-	out := illustDetailOut{Text: "Error: " + err.Error()}
-	return illustDetailResult(out, true), out, nil
+	out := illustDetailOut{Records: []application.Record{}}
+	return recordResult(out.Records, true, recordErrorMessage(err)), out, nil
 }
 
 type relatedIn struct {
@@ -455,12 +430,11 @@ func (a *App) illustRelated(ctx context.Context, _ *mcp.CallToolRequest, in rela
 	if err != nil {
 		return a.illustQueryError(ctx, err)
 	}
-	out := illustQueryOut{Items: normalizeIllusts(items), Pagination: listPagination(plan, in.Limit, len(items), more)}
-	if len(items) == 0 {
-		out.Text = fmt.Sprintf("No related illustrations found for artwork %d.", in.IllustID)
-		return illustQueryResult(out, false), out, nil
+	records, err := recordsFromIllusts(items)
+	if err != nil {
+		return a.illustQueryError(ctx, err)
 	}
-	out.Text = fmt.Sprintf("Found %d related illustrations:\n\n%s", len(items), formatIllusts(items, plan.skip, false))
+	out := illustQueryOut{Records: records, Pagination: listPagination(plan, in.Limit, len(items), more)}
 	return illustQueryResult(out, false), out, nil
 }
 
@@ -468,32 +442,6 @@ type rankingIn struct {
 	Mode string `json:"mode,omitempty"`
 	Date string `json:"date,omitempty"`
 	pageLimitIn
-}
-
-var rankingLabels = map[sdk.RankingMode]string{
-	sdk.RankingModeDay:             "Daily ranking",
-	sdk.RankingModeDayMale:         "Daily ranking (male)",
-	sdk.RankingModeDayFemale:       "Daily ranking (female)",
-	sdk.RankingModeWeek:            "Weekly ranking",
-	sdk.RankingModeWeekOriginal:    "Weekly original ranking",
-	sdk.RankingModeWeekRookie:      "Weekly rookie ranking",
-	sdk.RankingModeMonth:           "Monthly ranking",
-	sdk.RankingModeDayManga:        "Daily manga ranking",
-	sdk.RankingModeWeekManga:       "Weekly manga ranking",
-	sdk.RankingModeMonthManga:      "Monthly manga ranking",
-	sdk.RankingModeWeekRookieManga: "Weekly rookie manga ranking",
-	sdk.RankingModeDayR18:          "Daily R-18 ranking",
-	sdk.RankingModeDayMaleR18:      "Daily male R-18 ranking",
-	sdk.RankingModeDayFemaleR18:    "Daily female R-18 ranking",
-	sdk.RankingModeWeekR18:         "Weekly R-18 ranking",
-	sdk.RankingModeWeekR18G:        "Weekly R-18G ranking",
-}
-
-func rankingLabel(mode string) string {
-	if label, ok := rankingLabels[sdk.RankingMode(mode)]; ok {
-		return label
-	}
-	return mode + " ranking"
 }
 
 func (a *App) illustRanking(ctx context.Context, _ *mcp.CallToolRequest, in rankingIn) (*mcp.CallToolResult, illustQueryOut, error) {
@@ -519,12 +467,11 @@ func (a *App) illustRanking(ctx context.Context, _ *mcp.CallToolRequest, in rank
 	if err != nil {
 		return a.illustQueryError(ctx, err)
 	}
-	out := illustQueryOut{Items: normalizeIllusts(items), Pagination: listPagination(plan, in.Limit, len(items), more)}
-	if len(items) == 0 {
-		out.Text = fmt.Sprintf("No ranking results found for mode %q.", in.Mode)
-		return illustQueryResult(out, false), out, nil
+	records, err := recordsFromIllusts(items)
+	if err != nil {
+		return a.illustQueryError(ctx, err)
 	}
-	out.Text = fmt.Sprintf("%s:\n\n%s", rankingLabel(in.Mode), formatIllusts(items, plan.skip, true))
+	out := illustQueryOut{Records: records, Pagination: listPagination(plan, in.Limit, len(items), more)}
 	return illustQueryResult(out, false), out, nil
 }
 
@@ -534,14 +481,12 @@ type searchUserIn struct {
 }
 
 type userSearchOut struct {
-	Source       sdk.UserSearchSource `json:"source"`
-	UserPreviews []sdk.UserPreview    `json:"user_previews"`
-	Pagination   paginationOut        `json:"pagination"`
-	Text         string               `json:"text"`
+	Records    []application.Record `json:"records"`
+	Pagination paginationOut        `json:"pagination"`
 }
 
 func userSearchResult(out userSearchOut) *mcp.CallToolResult {
-	return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: out.Text}}}
+	return recordResult(out.Records, false, "")
 }
 
 func (a *App) searchUser(ctx context.Context, _ *mcp.CallToolRequest, in searchUserIn) (*mcp.CallToolResult, userSearchOut, error) {
@@ -576,11 +521,11 @@ func (a *App) searchUser(ctx context.Context, _ *mcp.CallToolRequest, in searchU
 	if err != nil {
 		return a.searchUserError(ctx, err)
 	}
-	if items == nil {
-		items = []sdk.UserPreview{}
+	records, err := recordsFromUserPreviews(items)
+	if err != nil {
+		return a.searchUserError(ctx, err)
 	}
-	text := userSearchText(in.Word, source, items)
-	out := userSearchOut{Source: source, UserPreviews: items, Pagination: listPagination(plan, in.Limit, len(items), more), Text: text}
+	out := userSearchOut{Records: records, Pagination: listPagination(plan, in.Limit, len(items), more)}
 	return userSearchResult(out), out, nil
 }
 
@@ -588,26 +533,11 @@ func validUserSearchSource(source sdk.UserSearchSource) bool {
 	return source == sdk.UserSearchSourceApp || source == sdk.UserSearchSourceRelatedIllustAuthors
 }
 
-func userSearchText(word string, source sdk.UserSearchSource, items []sdk.UserPreview) string {
-	if len(items) == 0 {
-		if source == sdk.UserSearchSourceRelatedIllustAuthors {
-			return fmt.Sprintf("No related illustration authors found for %q (source: %s; not a username search).", word, source)
-		}
-		return fmt.Sprintf("No users found for %q (source: %s).", word, source)
-	}
-	if source == sdk.UserSearchSourceRelatedIllustAuthors {
-		return fmt.Sprintf("Found %d related illustration authors for %q (source: %s; not a username search):\n\n%s", len(items), word, source, formatUsers(items))
-	}
-	return fmt.Sprintf("Found %d users for %q (source: %s):\n\n%s", len(items), word, source, formatUsers(items))
-}
-
-// searchUserError 保留既有 search_user 的非 isError wire 语义，同时新增的 structured
-// output 给调用方空数组与明确文本，避免把执行失败伪装为空搜索结果。
+// searchUserError 为失败提供空 records 与 MCP error，避免把执行失败伪装为空搜索结果。
 func (a *App) searchUserError(ctx context.Context, err error) (*mcp.CallToolResult, userSearchOut, error) {
 	recordToolError(ctx, err)
-	text := err.Error()
-	out := userSearchOut{UserPreviews: []sdk.UserPreview{}, Pagination: paginationOut{Page: 1}, Text: text}
-	return userSearchResult(out), out, nil
+	out := userSearchOut{Records: []application.Record{}, Pagination: paginationOut{Page: 1}}
+	return recordResult(out.Records, true, recordErrorMessage(err)), out, nil
 }
 
 type recommendedLegacyIn struct {
@@ -634,12 +564,11 @@ func (a *App) illustRecommended(ctx context.Context, _ *mcp.CallToolRequest, in 
 	if err != nil {
 		return a.illustQueryError(ctx, err)
 	}
-	out := illustQueryOut{Items: normalizeIllusts(items), Pagination: listPagination(plan, in.Limit, len(items), more)}
-	if len(items) == 0 {
-		out.Text = "No recommendations are available."
-		return illustQueryResult(out, false), out, nil
+	records, err := recordsFromIllusts(items)
+	if err != nil {
+		return a.illustQueryError(ctx, err)
 	}
-	out.Text = fmt.Sprintf("Recommended %d illustrations:\n\n%s", len(items), formatIllusts(items, plan.skip, false))
+	out := illustQueryOut{Records: records, Pagination: listPagination(plan, in.Limit, len(items), more)}
 	return illustQueryResult(out, false), out, nil
 }
 
@@ -733,11 +662,10 @@ func (a *App) illustFollow(ctx context.Context, _ *mcp.CallToolRequest, in follo
 	if err != nil {
 		return a.illustQueryError(ctx, err)
 	}
-	out := illustQueryOut{Items: normalizeIllusts(items), Pagination: listPagination(plan, in.Limit, len(items), more)}
-	if len(items) == 0 {
-		out.Text = "No new artworks from followed users."
-		return illustQueryResult(out, false), out, nil
+	records, err := recordsFromIllusts(items)
+	if err != nil {
+		return a.illustQueryError(ctx, err)
 	}
-	out.Text = fmt.Sprintf("Found %d new artworks from followed users:\n\n%s", len(items), formatIllusts(items, plan.skip, false))
+	out := illustQueryOut{Records: records, Pagination: listPagination(plan, in.Limit, len(items), more)}
 	return illustQueryResult(out, false), out, nil
 }

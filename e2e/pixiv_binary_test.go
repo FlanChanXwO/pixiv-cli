@@ -102,15 +102,25 @@ func TestPixivBinaryOfflineConfigAndMCPHelp(t *testing.T) {
 	if strings.TrimSpace(string(out)) != "./downloads" {
 		t.Fatalf("download_path default changed:\n%s", string(out))
 	}
-	_, _ = runPixivStdout(t, repoRoot, binaryPath, env.values, "config", "set", "output_json", "true")
-	out, _ = runPixivStdout(t, repoRoot, binaryPath, env.values, "config", "get", "output_json")
-	if strings.TrimSpace(string(out)) != "true" {
-		t.Fatalf("config set did not persist output_json:\n%s", string(out))
+	// v0.8 的 `config` 边界只允许三项公开 alias；output_json 已变为私有
+	// 手工 TOML 设置，不可再由命令编辑。用允许的 filename_template 验证
+	// set/get/unset 的离线持久化契约。
+	_, _ = runPixivStdout(t, repoRoot, binaryPath, env.values, "config", "set", "filename_template", "{id}")
+	out, _ = runPixivStdout(t, repoRoot, binaryPath, env.values, "config", "get", "filename_template")
+	if strings.TrimSpace(string(out)) != "{id}" {
+		t.Fatalf("config set did not persist filename_template:\n%s", string(out))
 	}
-	_, _ = runPixivStdout(t, repoRoot, binaryPath, env.values, "config", "unset", "output_json")
-	out, _ = runPixivStdout(t, repoRoot, binaryPath, env.values, "config", "get", "output_json")
-	if strings.TrimSpace(string(out)) != "false" {
-		t.Fatalf("config unset did not restore output_json default:\n%s", string(out))
+	_, _ = runPixivStdout(t, repoRoot, binaryPath, env.values, "config", "unset", "filename_template")
+	out, _ = runPixivStdout(t, repoRoot, binaryPath, env.values, "config", "get", "filename_template")
+	if strings.TrimSpace(string(out)) != "{author} - {title}_{id}" {
+		t.Fatalf("config unset did not restore filename_template default:\n%s", string(out))
+	}
+	removedAlias := exec.Command(binaryPath, "config", "set", "output_json", "true")
+	removedAlias.Dir = repoRoot
+	removedAlias.Env = env.values
+	removedOut, removedErr := removedAlias.CombinedOutput()
+	if removedErr == nil || !strings.Contains(string(removedOut), "valid keys: download_path, filename_template, https_proxy") {
+		t.Fatalf("config set unexpectedly accepted removed output_json alias: err=%v\n%s", removedErr, string(removedOut))
 	}
 
 	mcpHelp := exec.Command(binaryPath, "mcp", "--help")
@@ -307,8 +317,8 @@ func TestPixivBinaryWebAPIFallbackReal(t *testing.T) {
 	}
 
 	downloadOut := runPixiv(t, repoRoot, binaryPath, env, "download", strconvFormatInt(downloadID))
-	if !strings.Contains(string(downloadOut), "downloaded ") {
-		t.Fatalf("web fallback download did not report success:\n%s", string(downloadOut))
+	if len(downloadOut) != 0 {
+		t.Fatalf("web fallback download wrote an unexpected action success report:\n%s", string(downloadOut))
 	}
 	if countRegularFiles(t, downloadPath) == 0 {
 		t.Fatalf("web fallback download reported success but wrote no files under %s", downloadPath)
@@ -327,11 +337,6 @@ func TestPixivBinaryRealAPISearchOptIn(t *testing.T) {
 		env = append(env, "https_proxy="+proxy, "HTTPS_PROXY="+proxy)
 	}
 	refreshToken := os.Getenv("PIXIV_E2E_REFRESH_TOKEN")
-	if refreshToken != "" {
-		env = append(env, "PIXIV_REFRESH_TOKEN="+refreshToken)
-	} else {
-		env = append(env, "PIXIV_REFRESH_TOKEN=")
-	}
 
 	if refreshToken == "" {
 		run := exec.CommandContext(testCommandContext(t), binaryPath, "search", "初音ミク")
@@ -347,9 +352,14 @@ func TestPixivBinaryRealAPISearchOptIn(t *testing.T) {
 		return
 	}
 
+	// 数据命令忽略 PIXIV_REFRESH_TOKEN。将短期测试 token 经 stdin 导入隔离的
+	// 本地 store，既覆盖真实 CLI 认证路径，也不会把凭据放进子进程环境。
+	auth := authenticatedCanaryAuth{kind: canaryAuthExplicitToken, refreshToken: refreshToken}
+	env = authenticatedCanaryChildEnvFrom(env, auth, firstNonEmpty(os.Getenv("PIXIV_E2E_PROXY"), os.Getenv("PIXIV_WEB_API_PROXY")))
+	provisionExplicitCanaryAuth(t, repoRoot, binaryPath, env, auth)
 	// App API 认证失败时，stdout/stderr 都可能带上服务端回显；统一交给
 	// canary helper 分流并在测试诊断前脱敏，避免显式注入的 token 泄露。
-	stdout := runPixivCanary(t, repoRoot, binaryPath, env, authenticatedCanaryAuth{kind: canaryAuthExplicitToken, refreshToken: refreshToken}, "search", "初音ミク")
+	stdout := runPixivCanary(t, repoRoot, binaryPath, env, auth, "search", "初音ミク")
 	if !strings.Contains(string(stdout), `illustrations for "初音ミク"`) {
 		t.Fatalf("real API search did not print the illustrations heading:\n%s", redactCanaryDiagnostic(refreshToken, string(stdout)))
 	}
@@ -594,6 +604,7 @@ func TestPixivBinaryAuthenticatedAppAPICanary(t *testing.T) {
 	}
 	proxy := firstNonEmpty(os.Getenv("PIXIV_E2E_PROXY"), os.Getenv("PIXIV_WEB_API_PROXY"))
 	env = authenticatedCanaryChildEnvFrom(env, auth, proxy)
+	provisionExplicitCanaryAuth(t, repoRoot, binaryPath, env, auth)
 
 	accountOut := runPixivCanary(t, repoRoot, binaryPath, env, auth, "auth", "check", "--json")
 	var account struct {
@@ -714,6 +725,26 @@ func runPixivCanary(t *testing.T, repoRoot, binaryPath string, env []string, aut
 		t.Fatalf("pixiv %s failed: %s", strings.Join(args, " "), canaryFailureDiagnostics(auth, failure, stdout.String(), stderr.String()))
 	}
 	return stdout.Bytes()
+}
+
+// provisionExplicitCanaryAuth 把受保护的短期 token 仅写入 auth import 的 stdin，
+// 在隔离 HOME 内创建可供数据命令使用的 local store。数据命令有意忽略
+// PIXIV_REFRESH_TOKEN，因此不得把 token 放入 child environment。
+func provisionExplicitCanaryAuth(t *testing.T, repoRoot, binaryPath string, env []string, auth authenticatedCanaryAuth) {
+	t.Helper()
+	if auth.kind != canaryAuthExplicitToken {
+		return
+	}
+	command := exec.CommandContext(testCommandContext(t), binaryPath, "auth", "import")
+	command.Dir = repoRoot
+	command.Env = env
+	command.Stdin = strings.NewReader(auth.refreshToken + "\n")
+	var stdout, stderr bytes.Buffer
+	command.Stdout = &stdout
+	command.Stderr = &stderr
+	if err := command.Run(); err != nil {
+		t.Fatalf("pixiv auth import failed: %s", canaryFailureDiagnostics(auth, err.Error(), stdout.String(), stderr.String()))
+	}
 }
 
 func canaryCommandFailureSummary(err error) string {

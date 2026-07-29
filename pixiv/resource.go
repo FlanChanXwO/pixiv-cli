@@ -14,8 +14,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/protocol"
-	internalresource "github.com/FlanChanXwO/pixiv-cli/internal/pixiv/resource"
+	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/protocol"
+	internalresource "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/resource"
 	"github.com/FlanChanXwO/pixiv-cli/internal/utils/files"
 )
 
@@ -41,6 +41,7 @@ type OpenResourceRequest struct {
 	Range           string
 	IfNoneMatch     string
 	IfModifiedSince string
+	IfRange         string
 }
 
 // ResourceResponse 暴露可代理的状态、白名单 header 与未预读响应流。
@@ -131,7 +132,7 @@ func (c *Client) OpenResource(ctx context.Context, request OpenResourceRequest) 
 		}
 		return scoped.OpenResource(ctx, request)
 	}
-	for _, value := range []string{request.Range, request.IfNoneMatch, request.IfModifiedSince} {
+	for _, value := range []string{request.Range, request.IfNoneMatch, request.IfModifiedSince, request.IfRange} {
 		if hasControl(value) {
 			return nil, invalidResourceError(OperationOpenResource, "resource request header is invalid")
 		}
@@ -143,6 +144,7 @@ func (c *Client) OpenResource(ctx context.Context, request OpenResourceRequest) 
 	setOptionalHeader(headers, "Range", request.Range)
 	setOptionalHeader(headers, "If-None-Match", request.IfNoneMatch)
 	setOptionalHeader(headers, "If-Modified-Since", request.IfModifiedSince)
+	setOptionalHeader(headers, "If-Range", request.IfRange)
 	headers.Set("Accept-Encoding", "identity")
 	response, err := c.resource.Open(ctx, internalresource.OpenRequest{
 		URL:            request.Ref.URL,
@@ -176,19 +178,25 @@ func (c *Client) OpenResource(ctx context.Context, request OpenResourceRequest) 
 	return &ResourceResponse{StatusCode: response.StatusCode, Header: filteredResourceHeaders(response.Header), Body: response.Body}, nil
 }
 
-// Download 将完整资源流式写入同目录临时文件，并在成功后原子替换目标。
-func (c *Client) Download(ctx context.Context, ref ResourceRef, destinationPath string) (err error) {
+// DownloadResource 将经验证的完整资源写入目标，并使用同目录缓存安全地重验证或续传。
+func (c *Client) DownloadResource(ctx context.Context, ref ResourceRef, destinationPath string) (out ResourceDownloadResult, err error) {
 	started := time.Now()
 	defer func() { c.delegatedOperationLog(OperationDownload, started, err, 0, 0) }()
+	release := c.resourceDownloads.lock(destinationPath)
+	defer release()
 	if c.defaults != nil {
 		scoped, err := c.defaults.resourceSnapshot(OperationDownload)
 		if err != nil {
 			c.operationLog(OperationDownload, started, err, 0, 0)
-			return err
+			return ResourceDownloadResult{}, err
 		}
-		return scoped.Download(ctx, ref, destinationPath)
+		return scoped.DownloadResource(ctx, ref, destinationPath)
 	}
-	return c.downloadWithReplacer(ctx, ref, destinationPath, files.ReplaceFile)
+	state, err := c.downloadWithCache(ctx, ref, destinationPath, files.ReplaceFile)
+	if err != nil {
+		return ResourceDownloadResult{}, err
+	}
+	return ResourceDownloadResult{DestinationPath: destinationPath, CacheState: state}, nil
 }
 
 // downloadWithReplacer 仅把不可稳定触发的替换故障作为每次调用的私有注入点；
@@ -277,6 +285,8 @@ func resourceErrorForOperation(err error, operation Operation) error {
 	mapped := newError(typed.Code, operation, typed.Backend, typed.Retryable, typed.UpstreamStatus, 0, errors.Unwrap(typed))
 	mapped.TransportKind = typed.TransportKind
 	mapped.LocalStateKind = typed.LocalStateKind
+	mapped.HasRetryAfter = typed.HasRetryAfter
+	mapped.RetryAfter = typed.RetryAfter
 	return mapped
 }
 

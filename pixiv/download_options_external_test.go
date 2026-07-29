@@ -1,6 +1,7 @@
 package pixiv_test
 
 import (
+	"reflect"
 	"testing"
 
 	"github.com/FlanChanXwO/pixiv-cli/pixiv"
@@ -20,5 +21,44 @@ func TestParsePageSpecAndQuality(t *testing.T) {
 	}
 	if err := pixiv.ValidateDownloadQuality("nope"); err == nil {
 		t.Fatal("expected invalid quality")
+	}
+}
+
+func TestValidateUgoiraFormat(t *testing.T) {
+	t.Parallel()
+	for _, format := range []pixiv.UgoiraFormat{
+		pixiv.UgoiraFormatGIF,
+		pixiv.UgoiraFormatAPNG,
+	} {
+		if err := pixiv.ValidateUgoiraFormat(format); err != nil {
+			t.Fatalf("format %q: %v", format, err)
+		}
+	}
+	if err := pixiv.ValidateUgoiraFormat("webp"); err == nil {
+		t.Fatal("expected invalid ugoira format")
+	}
+}
+
+func TestDownloadDefaultsAreDocumentedStableValues(t *testing.T) {
+	if pixiv.DefaultDownloadPath != "./downloads" {
+		t.Fatalf("download path = %q", pixiv.DefaultDownloadPath)
+	}
+	if pixiv.DefaultFilenameTemplate != "{author} - {title}_{id}" {
+		t.Fatalf("filename template = %q", pixiv.DefaultFilenameTemplate)
+	}
+}
+
+func TestClientOptionTypesKeepConstructorBoundaries(t *testing.T) {
+	direct := reflect.TypeOf(pixiv.NewClientOptions{})
+	for _, forbidden := range []string{"AuthFilePath", "ConfigFilePath", "OAuthBaseURL", "RefreshToken", "UserID"} {
+		if _, found := direct.FieldByName(forbidden); found {
+			t.Fatalf("NewClientOptions unexpectedly contains %s", forbidden)
+		}
+	}
+	defaults := reflect.TypeOf(pixiv.OpenDefaultOptions{})
+	for _, required := range []string{"AuthFilePath", "ConfigFilePath", "OAuthBaseURL", "RefreshToken", "UserID"} {
+		if _, found := defaults.FieldByName(required); !found {
+			t.Fatalf("OpenDefaultOptions is missing %s", required)
+		}
 	}
 }

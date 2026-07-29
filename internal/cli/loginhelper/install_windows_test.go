@@ -25,6 +25,25 @@ func TestWindowsURLHandlerCommandEscapesEmbeddedQuotes(t *testing.T) {
 	require.Contains(t, command, `auth _callback "%1"`)
 }
 
+func TestWindowsDelegateToPreviousUsesPrivateProgID(t *testing.T) {
+	useWindowsTemporaryConfig(t)
+	require.NoError(t, saveHandlerManifest(handlerManifest{Version: 1, ExecutablePath: `C:\pixiv.exe`, PreviousHandler: previousWindowsURLHandlerProgID}))
+
+	originalOpen := openWindowsPreviousClass
+	var className, callback string
+	openWindowsPreviousClass = func(_ context.Context, class, rawURL string) error {
+		className = class
+		callback = rawURL
+		return nil
+	}
+	t.Cleanup(func() { openWindowsPreviousClass = originalOpen })
+
+	const rawURL = "pixiv://unrelated/path?value=one-time-code"
+	require.NoError(t, DelegateToPrevious(context.Background(), rawURL))
+	require.Equal(t, previousWindowsURLHandlerProgID, className)
+	require.Equal(t, rawURL, callback)
+}
+
 func TestWindowsInstallRestoresExistingCurrentUserProtocolTree(t *testing.T) {
 	useWindowsTemporaryConfig(t)
 	keyPath := windowsTestRegistryKey(t)

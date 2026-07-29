@@ -60,7 +60,7 @@ func defaultUgoiraEncoder() UgoiraEncoder {
 }
 
 func NewRustUgoiraEncoder() UgoiraEncoder {
-	return rustUgoiraEncoder{ffi: cgoRustUgoiraFFI{}}
+	return newSharedUgoiraEncoder()
 }
 
 func (e rustUgoiraEncoder) Encode(ctx context.Context, input UgoiraEncodeInput) error {

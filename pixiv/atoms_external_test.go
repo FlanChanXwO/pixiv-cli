@@ -39,7 +39,7 @@ func TestClientExportsRemainingReadAtoms(t *testing.T) {
 	})
 	server := httptest.NewServer(mux)
 	t.Cleanup(server.Close)
-	client, err := pixiv.NewClient(pixiv.Options{HTTPClient: server.Client(), AppAPIBaseURL: server.URL, WebAPIBaseURL: server.URL, AccessToken: "token"})
+	client, err := pixiv.NewClient(pixiv.NewClientOptions{HTTPClient: server.Client(), AppAPIBaseURL: server.URL, WebAPIBaseURL: server.URL, AccessToken: "token"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -90,7 +90,7 @@ func TestIllustPagesUsesAppDetailWithoutWebEnrichment(t *testing.T) {
 	}))
 	t.Cleanup(webServer.Close)
 
-	client, err := pixiv.NewClient(pixiv.Options{HTTPClient: appServer.Client(), AppAPIBaseURL: appServer.URL, WebAPIBaseURL: webServer.URL, AccessToken: "token"})
+	client, err := pixiv.NewClient(pixiv.NewClientOptions{HTTPClient: appServer.Client(), AppAPIBaseURL: appServer.URL, WebAPIBaseURL: webServer.URL, AccessToken: "token"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -117,7 +117,7 @@ func TestIllustPagesDerivesSingleAppPage(t *testing.T) {
 	}))
 	t.Cleanup(server.Close)
 
-	client, err := pixiv.NewClient(pixiv.Options{HTTPClient: server.Client(), AppAPIBaseURL: server.URL, WebAPIBaseURL: server.URL, AccessToken: "token"})
+	client, err := pixiv.NewClient(pixiv.NewClientOptions{HTTPClient: server.Client(), AppAPIBaseURL: server.URL, WebAPIBaseURL: server.URL, AccessToken: "token"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -142,7 +142,7 @@ func TestRemainingReadAtomsRejectLocallyAndNeverFallbackFromApp(t *testing.T) {
 		t.Fatalf("unexpected fallback %s", r.URL.Path)
 	}))
 	defer server.Close()
-	client, _ := pixiv.NewClient(pixiv.Options{HTTPClient: server.Client(), AppAPIBaseURL: server.URL, WebAPIBaseURL: server.URL, AccessToken: "secret-access"})
+	client, _ := pixiv.NewClient(pixiv.NewClientOptions{HTTPClient: server.Client(), AppAPIBaseURL: server.URL, WebAPIBaseURL: server.URL, AccessToken: "secret-access"})
 	result, err := client.UgoiraMetadata(context.Background(), 731)
 	if result != nil {
 		t.Fatalf("partial=%+v", result)
@@ -161,7 +161,7 @@ func TestRemainingReadAtomsRejectLocallyAndNeverFallbackFromApp(t *testing.T) {
 	}
 
 	calls = 0
-	anon, _ := pixiv.NewClient(pixiv.Options{HTTPClient: server.Client(), AppAPIBaseURL: server.URL, WebAPIBaseURL: server.URL, WebFallbackEnabled: true})
+	anon, _ := pixiv.NewClient(pixiv.NewClientOptions{HTTPClient: server.Client(), AppAPIBaseURL: server.URL, WebAPIBaseURL: server.URL, WebFallbackEnabled: true})
 	_, err = anon.TrendingTagsIllust(context.Background())
 	if !errors.As(err, &typed) || typed.Code != pixiv.CodeUnauthorized || typed.Operation != pixiv.OperationTrendingTagsIllust || typed.Backend != "" {
 		t.Fatalf("err=%#v", err)
@@ -184,7 +184,7 @@ func TestAnonymousUgoiraUsesRealWebFields(t *testing.T) {
 		_, _ = w.Write([]byte(`{"error":false,"body":{"src":"medium","originalSrc":"original","frames":[{"file":"0.jpg","delay":10}]}}`))
 	}))
 	defer server.Close()
-	client, _ := pixiv.NewClient(pixiv.Options{HTTPClient: server.Client(), AppAPIBaseURL: server.URL, WebAPIBaseURL: server.URL, WebFallbackEnabled: true})
+	client, _ := pixiv.NewClient(pixiv.NewClientOptions{HTTPClient: server.Client(), AppAPIBaseURL: server.URL, WebAPIBaseURL: server.URL, WebFallbackEnabled: true})
 	got, err := client.UgoiraMetadata(context.Background(), 731)
 	if err != nil || got.UgoiraMetadata.ZipURLs.Medium != "medium" || got.UgoiraMetadata.ZipURLs.Original != "original" || got.UgoiraMetadata.DownloadURL != "original" || got.UgoiraMetadata.DownloadQuality != pixiv.UgoiraZipQualityOriginal {
 		t.Fatalf("got=%+v err=%v", got, err)
@@ -212,7 +212,7 @@ func TestIllustRelatedCursorIsBoundToIllustAndUsesOnlyOffset(t *testing.T) {
 		}
 	}))
 	defer server.Close()
-	client, _ := pixiv.NewClient(pixiv.Options{HTTPClient: server.Client(), AppAPIBaseURL: server.URL, AccessToken: "token"})
+	client, _ := pixiv.NewClient(pixiv.NewClientOptions{HTTPClient: server.Client(), AppAPIBaseURL: server.URL, AccessToken: "token"})
 	first, err := client.IllustRelated(context.Background(), pixiv.IllustRelatedRequest{IllustID: 731})
 	if err != nil || first.NextCursor == "" {
 		t.Fatalf("first=%+v err=%v", first, err)
@@ -239,7 +239,7 @@ func TestUgoiraAppMetadataProvidesMediumDownloadWithoutWeb(t *testing.T) {
 		}
 	}))
 	defer server.Close()
-	client, _ := pixiv.NewClient(pixiv.Options{HTTPClient: server.Client(), AppAPIBaseURL: server.URL, WebAPIBaseURL: server.URL, AccessToken: "token"})
+	client, _ := pixiv.NewClient(pixiv.NewClientOptions{HTTPClient: server.Client(), AppAPIBaseURL: server.URL, WebAPIBaseURL: server.URL, AccessToken: "token"})
 	result, err := client.UgoiraMetadata(context.Background(), 731)
 	if err != nil || result == nil || result.UgoiraMetadata.DownloadURL != "app-medium" || result.UgoiraMetadata.DownloadQuality != pixiv.UgoiraZipQualityMedium {
 		t.Fatalf("result=%+v err=%v", result, err)
@@ -251,7 +251,7 @@ func TestRemainingReadAtomsValidateIDsAndAuthorizationBeforeNetwork(t *testing.T
 	calls := 0
 	server := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { calls++ }))
 	defer server.Close()
-	auth, _ := pixiv.NewClient(pixiv.Options{HTTPClient: server.Client(), AppAPIBaseURL: server.URL, WebAPIBaseURL: server.URL, AccessToken: "token"})
+	auth, _ := pixiv.NewClient(pixiv.NewClientOptions{HTTPClient: server.Client(), AppAPIBaseURL: server.URL, WebAPIBaseURL: server.URL, AccessToken: "token"})
 	checks := []struct {
 		operation pixiv.Operation
 		call      func() error
@@ -270,7 +270,7 @@ func TestRemainingReadAtomsValidateIDsAndAuthorizationBeforeNetwork(t *testing.T
 			t.Fatalf("operation=%s err=%#v", check.operation, err)
 		}
 	}
-	anon, _ := pixiv.NewClient(pixiv.Options{HTTPClient: server.Client(), AppAPIBaseURL: server.URL, WebAPIBaseURL: server.URL})
+	anon, _ := pixiv.NewClient(pixiv.NewClientOptions{HTTPClient: server.Client(), AppAPIBaseURL: server.URL, WebAPIBaseURL: server.URL})
 	_, err := anon.IllustPages(context.Background(), 731)
 	var typed *pixiv.Error
 	if !errors.As(err, &typed) || typed.Code != pixiv.CodeUnauthorized || typed.Operation != pixiv.OperationIllustPages || typed.IllustID != 731 || typed.Backend != "" {

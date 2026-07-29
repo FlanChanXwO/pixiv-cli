@@ -2,15 +2,18 @@ package cli
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 
+	"github.com/FlanChanXwO/pixiv-cli/internal/application"
 	sdk "github.com/FlanChanXwO/pixiv-cli/pixiv"
 	"github.com/spf13/cobra"
 )
 
 type novelSearchOptions struct {
 	commandOptions
+	ndjsonOutputOptions
 	listOptions
 	searchBy      string
 	sortMode      string
@@ -43,6 +46,7 @@ func (a app) newNovelSearchCommand() *cobra.Command {
 		},
 	}
 	a.bindCommonFlags(cmd, &opts.commandOptions)
+	bindNDJSONFlag(cmd, &opts.ndjsonOutputOptions)
 	flags := cmd.Flags()
 	flags.StringVar(&opts.searchBy, "search-by", opts.searchBy, "search field: tag-partial, tag-exact, title-caption")
 	flags.StringVar(&opts.sortMode, "sort", opts.sortMode, "sort mode: date_desc, date_asc")
@@ -77,19 +81,18 @@ func (a app) runNovelSearch(cmd *cobra.Command, args []string, opts novelSearchO
 		return err
 	}
 	services := a.services()
-	jsonOut, err := services.SDK.JSONOut(jsonOverride)
-	if err != nil {
-		return err
+	if opts.ndjson && cmd.Flags().Changed("json") {
+		return newUsageError(fmt.Errorf("--ndjson cannot be used with --json"))
 	}
-	client, err := services.SDK.OpenOperation(cmd.Context(), request)
-	if err != nil {
-		return err
+	jsonOut := false
+	if !opts.ndjson {
+		jsonOut, err = services.SDK.JSONOut(jsonOverride)
+		if err != nil {
+			return err
+		}
 	}
 	word := strings.Join(args, " ")
-	if !jsonOut {
-		fmt.Fprintf(a.out, "novels for %q\n", word)
-	}
-	return a.runNovelList(cmd.Context(), plan, jsonOut, func(ctx context.Context, cursor sdk.Cursor) ([]sdk.Novel, sdk.Cursor, error) {
+	fetch := func(client application.SDKClient, ctx context.Context, cursor sdk.Cursor) ([]sdk.Novel, sdk.Cursor, error) {
 		result, searchErr := client.SearchNovel(ctx, sdk.SearchNovelRequest{
 			Word: word, Target: target, Sort: sdk.SortMode(opts.sortMode), Duration: period, Cursor: cursor, Filters: filters,
 		})
@@ -97,7 +100,15 @@ func (a app) runNovelSearch(cmd *cobra.Command, args []string, opts novelSearchO
 			return nil, "", searchErr
 		}
 		return result.Novels, result.NextCursor, nil
-	}, func(items []sdk.Novel) { printNovels(a.out, items) })
+	}
+	return a.runPooledNovelList(cmd.Context(), request, plan, jsonOut, opts.ndjson, fmt.Sprintf("novels for %q", word), fetch, func(items []sdk.Novel) error { return printNovels(a.out, items) })
+}
+
+func (a app) runNovelListNDJSON(ctx context.Context, plan listPlan, fetch func(context.Context, sdk.Cursor) ([]sdk.Novel, sdk.Cursor, error)) error {
+	encoder := json.NewEncoder(a.out)
+	return pageItems(ctx, plan, fetch, func(items []sdk.Novel) error {
+		return encodeNDJSONRecords(encoder, items, application.RecordFromNovel)
+	})
 }
 
 func resolveNovelSearchFilters(opts novelSearchOptions) (sdk.NovelSearchFilters, error) {
@@ -117,7 +128,7 @@ func resolveNovelSearchFilters(opts novelSearchOptions) (sdk.NovelSearchFilters,
 	return filters, nil
 }
 
-func (a app) runNovelList(ctx context.Context, plan listPlan, jsonOut bool, fetch func(context.Context, sdk.Cursor) ([]sdk.Novel, sdk.Cursor, error), print func([]sdk.Novel)) error {
+func (a app) runNovelList(ctx context.Context, plan listPlan, jsonOut bool, fetch func(context.Context, sdk.Cursor) ([]sdk.Novel, sdk.Cursor, error), print func([]sdk.Novel) error) error {
 	if jsonOut {
 		spool, err := newJSONArraySpool("novels")
 		if err != nil {
@@ -129,8 +140,5 @@ func (a app) runNovelList(ctx context.Context, plan listPlan, jsonOut bool, fetc
 		}
 		return spool.Commit(a.out)
 	}
-	return pageItems(ctx, plan, fetch, func(items []sdk.Novel) error {
-		print(items)
-		return nil
-	})
+	return pageItems(ctx, plan, fetch, print)
 }

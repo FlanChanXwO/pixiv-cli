@@ -1,6 +1,6 @@
 ---
 slug: pixiv-cli
-version: 0.7.1
+version: 0.8.0
 displayName: Pixiv CLI
 summary: Safely operate Pixiv with the pixiv-cli binary for discovery, account actions, and downloads.
 license: MIT
@@ -69,10 +69,10 @@ the installed binary's `pixiv <cmd> --help` output.
 | Tier | Commands | Behavior |
 | --- | --- | --- |
 | Credential transfer | `auth import` `auth export` | Execute only for the user's explicit import/export task; follow `references/auth.md` so secret input/output is not exposed accidentally |
-| Read | `search` `novel search` `search-options` `detail` `ranking` `recommended` `user *` `config get/path` `version` `update --check` | Execute when the user's task requires it |
+| Read | `search` `novel search` `search-options` `detail` `ranking` `recommended` `feed *` `mypixiv *` `user *` `config get/path` `version` `update --check` | Execute when the user's task requires it |
 | Account diagnosis | `auth list/check` | List only for authentication/account/fallback decisions; check only when network validation is needed |
 | Account maintenance | `auth refresh` | Rotates saved OAuth credentials and refreshes the cached account profile/Premium status; run only on an explicit request |
-| Write | `bookmark add/remove` `follow add/remove` | State the target (illust/user ID) in one line before executing |
+| Write | `bookmark add/remove` `follow add/remove` | State the target (illust/user ID) in one line before executing; for NDJSON stdin actions, state the record type and scope before starting |
 | Disk | `download` | Confirm target directory and exact targets (IDs or supported Pixiv URLs) before each invocation; a user URL expands every visual work, so state that scope explicitly; approval never carries over; see `references/download.md` |
 | Interactive credential | `auth login` | Run only on explicit request while the user is present for browser OAuth |
 | Account/config state | `auth use/remove` `config set/unset` `update` (actual install) | Ask for explicit confirmation each time; approval does not carry over |
@@ -93,8 +93,10 @@ the installed binary's `pixiv <cmd> --help` output.
    relay it. JSON carries field names and metadata — it is *larger* than the
    table for display purposes.
 3. **Programmatic processing** (extract IDs, filter, chain into a next
-   command): use `--json`. If the result is large, redirect to a temp file and
-   use built-in Grep/Read tools to search and read in segments.
+   command): use `--ndjson`, then use `pixiv filter` or pass the records to a
+   compatible action. NDJSON is streaming: do not add a collector merely to
+   make a pipeline convenient. `--json` remains for one complete result
+   document when a command exposes it, but cannot be combined with `--ndjson`.
 4. **Opportunistic tooling:** probe once for `jq`; if present, prefer
    `--json` + `jq` for field selection. If absent, fall back to tier 3
    silently — never ask the user to install anything.
@@ -128,25 +130,32 @@ pixiv detail ILLUST_ID_OR_URL --json      # single artwork detail
 pixiv ranking --mode day
 pixiv recommended illust --limit 10       # kind is REQUIRED; needs auth
 pixiv recommended all --limit 10          # request all supported kinds; needs auth
+pixiv feed following --type illust --limit 20
+pixiv feed latest --type novel --limit 20
+pixiv mypixiv works --type illust --limit 20
 pixiv user search "WORD" --limit 10 --json # source labels App search vs related-author fallback
 pixiv user detail USER_ID --json          # full public profile (USER_ID required)
 pixiv user artworks [USER_ID] --limit 20  # omit USER_ID = current account
 pixiv user bookmarks [USER_ID] --tag TAG --limit 20
 pixiv user following [USER_ID] --limit 20
+pixiv search "miku" --ndjson --limit 50 | pixiv filter --min-views 1000
+pixiv search "miku" --ndjson --limit 20 | pixiv download --ugoira-format apng
 pixiv bookmark add ILLUST_ID --tag TAG    # --tag repeatable; write op
 pixiv bookmark remove ILLUST_ID           # write op
 pixiv follow add USER_ID                  # write op
 pixiv follow remove USER_ID               # write op
-pixiv download TARGET... [--pages 1,3-5] [--quality original|regular|small|thumb|mini] [--download-path DIR]
+pixiv download [SRC...] [--pages 1,3-5] [--quality original|regular|small|thumb|mini] [--ugoira-format gif|apng] [--download-path DIR] [--concurrency N]
 pixiv update --check --json               # read-only update check
 ```
 
-Common per-command flags on Pixiv data commands: `--uid UID` (pick local account),
-`--json`, `--proxy URL` / `--no-proxy` (this command only, never persisted).
+Data commands use the account selected by `pixiv auth use`; they do not accept
+credential-selection flags and ignore `PIXIV_REFRESH_TOKEN`. A manually maintained
+`[account_pool]` can choose local accounts only for safe non-mutating reads and downloads.
+Common data flags are command-scoped `--json` or `--ndjson`, plus `--proxy URL` /
+`--no-proxy` (this command only, never persisted).
 
-Common config keys include `download_path`, `filename_template`, `https_proxy`,
-`web_fallback_enabled`, and `premium_status_cache_ttl`; inspect a key with `pixiv config get KEY` instead of
-assuming its effective value.
+`pixiv config` manages only `download_path`, `filename_template`, and `https_proxy`.
+Other TOML settings are hand-maintained; inspect the installed help before suggesting them.
 
 ## Critical semantics (traps — read before assuming a bug)
 

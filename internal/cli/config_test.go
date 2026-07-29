@@ -3,7 +3,6 @@ package cli
 import (
 	"bytes"
 	"os"
-	"runtime"
 	"strings"
 	"testing"
 
@@ -112,40 +111,23 @@ func TestConfigMissingValueReturnsPlaceholder(t *testing.T) {
 	assert.Contains(t, stderr.String(), "unset")
 }
 
-func TestConfigStrongTypesAndSparseWrite(t *testing.T) {
+func TestConfigOnlyManagesApprovedKeys(t *testing.T) {
 	clearConfigEnv(t)
-	_, configPath := useTempPaths(t)
+	useTempPaths(t)
 
-	var stdout, stderr bytes.Buffer
-	code := Run([]string{"pixiv", "config", "set", "output_json", "true"}, strings.NewReader(""), &stdout, &stderr)
-	require.Equal(t, 0, code, stderr.String())
-	code = Run([]string{"pixiv", "config", "set", "login_timeout", "30s"}, strings.NewReader(""), &stdout, &stderr)
-	require.Equal(t, 0, code, stderr.String())
-	code = Run([]string{"pixiv", "config", "set", "web_fallback_enabled", "false"}, strings.NewReader(""), &stdout, &stderr)
-	require.Equal(t, 0, code, stderr.String())
-	code = Run([]string{"pixiv", "config", "set", "premium_status_cache_ttl", "3h"}, strings.NewReader(""), &stdout, &stderr)
-	require.Equal(t, 0, code, stderr.String())
-
-	info, err := os.Stat(configPath)
-	require.NoError(t, err)
-	if runtime.GOOS == "windows" {
-		// Windows mode bits 不作为 ACL 证据；这里只继续验证配置功能语义。
-	} else {
-		assert.Equal(t, os.FileMode(config.DefaultConfigFileMode), info.Mode().Perm())
+	for _, args := range [][]string{
+		{"pixiv", "config", "get", "web_fallback_enabled"},
+		{"pixiv", "config", "set", "login_timeout", "30s"},
+		{"pixiv", "config", "set", "premium_status_cache_ttl", "3h"},
+		{"pixiv", "config", "set", "login_relay_secret", "secret"},
+		{"pixiv", "config", "unset", "update_check_enabled"},
+	} {
+		var stdout, stderr bytes.Buffer
+		code := Run(args, strings.NewReader(""), &stdout, &stderr)
+		assert.NotZero(t, code, strings.Join(args, " "))
+		assert.Empty(t, stdout.String())
+		assert.Contains(t, stderr.String(), "valid keys: download_path, filename_template, https_proxy")
 	}
-
-	body, err := os.ReadFile(configPath)
-	require.NoError(t, err)
-	assert.Contains(t, string(body), "[output]")
-	assert.Contains(t, string(body), "json = true")
-	assert.Contains(t, string(body), "[login]")
-	assert.Contains(t, string(body), `timeout = "30s"`)
-	assert.Contains(t, string(body), "[web]")
-	assert.Contains(t, string(body), "fallback_enabled = false")
-	assert.Contains(t, string(body), "[premium]")
-	assert.Contains(t, string(body), `status_cache_ttl = "3h0m0s"`)
-	assert.Contains(t, string(body), "[download]")
-	assert.Contains(t, string(body), "[web]")
 }
 
 func TestConfigWebFallbackDefaultEnabled(t *testing.T) {
@@ -169,10 +151,6 @@ func TestConfigUpdateCheckDefaultEnabled(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, runtimeConfig.UpdateCheckEnabled)
 
-	var stdout, stderr bytes.Buffer
-	code := Run([]string{"pixiv", "config", "get", "update_check_enabled"}, strings.NewReader(""), &stdout, &stderr)
-	require.Equal(t, 0, code, stderr.String())
-	assert.Equal(t, "true\n", stdout.String())
 }
 
 func TestConfigUpdateCheckCanBeExplicitlyDisabled(t *testing.T) {
@@ -188,19 +166,6 @@ func TestConfigUpdateCheckCanBeExplicitlyDisabled(t *testing.T) {
 		assert.False(t, runtimeConfig.UpdateCheckEnabled)
 	})
 
-	t.Run("config set", func(t *testing.T) {
-		clearConfigEnv(t)
-		_, configPath := useTempPaths(t)
-
-		var stdout, stderr bytes.Buffer
-		code := Run([]string{"pixiv", "config", "set", "update_check_enabled", "false"}, strings.NewReader(""), &stdout, &stderr)
-		require.Equal(t, 0, code, stderr.String())
-
-		body, err := os.ReadFile(configPath)
-		require.NoError(t, err)
-		assert.Contains(t, string(body), "[update]")
-		assert.Contains(t, string(body), "check_enabled = false")
-	})
 }
 
 func TestConfigGetUsesEnvironmentOverrideAndSetWarns(t *testing.T) {

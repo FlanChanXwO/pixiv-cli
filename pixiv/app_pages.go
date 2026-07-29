@@ -5,8 +5,8 @@ import (
 	"path"
 	"strings"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/model"
-	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/protocol"
+	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/model"
+	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/protocol"
 )
 
 // appDetailMetaPages 将 App detail 的单页字段规范化为现有的 pages 公开形状。

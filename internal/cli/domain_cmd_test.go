@@ -39,6 +39,14 @@ type sdkCommandFake struct {
 	artworks             func(context.Context, sdk.UserArtworksRequest) (*sdk.IllustListResult, error)
 	bookmarks            func(context.Context, sdk.UserBookmarksRequest) (*sdk.IllustListResult, error)
 	following            func(context.Context, sdk.UserFollowingRequest) (*sdk.UserListResult, error)
+	followingIllusts     func(context.Context, sdk.FollowingIllustsRequest) (*sdk.IllustListResult, error)
+	followingNovels      func(context.Context, sdk.FollowingNovelsRequest) (*sdk.NovelListResult, error)
+	latestIllusts        func(context.Context, sdk.LatestIllustsRequest) (*sdk.IllustListResult, error)
+	latestNovels         func(context.Context, sdk.LatestNovelsRequest) (*sdk.NovelListResult, error)
+	myPixivUsers         func(context.Context, sdk.MyPixivUsersRequest) (*sdk.UserListResult, error)
+	myPixivIllusts       func(context.Context, sdk.MyPixivIllustsRequest) (*sdk.IllustListResult, error)
+	myPixivNovels        func(context.Context, sdk.MyPixivNovelsRequest) (*sdk.NovelListResult, error)
+	userNovels           func(context.Context, sdk.UserNovelsRequest) (*sdk.NovelListResult, error)
 	searchUser           func(context.Context, sdk.SearchUserRequest) (*sdk.UserListResult, error)
 	addBookmark          func(context.Context, sdk.AddBookmarkRequest) error
 	removeBookmark       func(context.Context, sdk.RemoveBookmarkRequest) error
@@ -123,7 +131,60 @@ func (f sdkCommandFake) IllustRanking(ctx context.Context, r sdk.IllustRankingRe
 	}
 	return nil, unimplementedSDKCommand()
 }
-func (sdkCommandFake) FollowingIllusts(context.Context, sdk.FollowingIllustsRequest) (*sdk.IllustListResult, error) {
+
+func (f sdkCommandFake) FollowingIllusts(ctx context.Context, r sdk.FollowingIllustsRequest) (*sdk.IllustListResult, error) {
+	if f.followingIllusts != nil {
+		return f.followingIllusts(ctx, r)
+	}
+	return nil, unimplementedSDKCommand()
+}
+
+func (f sdkCommandFake) FollowingNovels(ctx context.Context, r sdk.FollowingNovelsRequest) (*sdk.NovelListResult, error) {
+	if f.followingNovels != nil {
+		return f.followingNovels(ctx, r)
+	}
+	return nil, unimplementedSDKCommand()
+}
+
+func (f sdkCommandFake) LatestIllusts(ctx context.Context, r sdk.LatestIllustsRequest) (*sdk.IllustListResult, error) {
+	if f.latestIllusts != nil {
+		return f.latestIllusts(ctx, r)
+	}
+	return nil, unimplementedSDKCommand()
+}
+
+func (f sdkCommandFake) LatestNovels(ctx context.Context, r sdk.LatestNovelsRequest) (*sdk.NovelListResult, error) {
+	if f.latestNovels != nil {
+		return f.latestNovels(ctx, r)
+	}
+	return nil, unimplementedSDKCommand()
+}
+
+func (f sdkCommandFake) MyPixivUsers(ctx context.Context, r sdk.MyPixivUsersRequest) (*sdk.UserListResult, error) {
+	if f.myPixivUsers != nil {
+		return f.myPixivUsers(ctx, r)
+	}
+	return nil, unimplementedSDKCommand()
+}
+
+func (f sdkCommandFake) MyPixivIllusts(ctx context.Context, r sdk.MyPixivIllustsRequest) (*sdk.IllustListResult, error) {
+	if f.myPixivIllusts != nil {
+		return f.myPixivIllusts(ctx, r)
+	}
+	return nil, unimplementedSDKCommand()
+}
+
+func (f sdkCommandFake) MyPixivNovels(ctx context.Context, r sdk.MyPixivNovelsRequest) (*sdk.NovelListResult, error) {
+	if f.myPixivNovels != nil {
+		return f.myPixivNovels(ctx, r)
+	}
+	return nil, unimplementedSDKCommand()
+}
+
+func (f sdkCommandFake) UserNovels(ctx context.Context, r sdk.UserNovelsRequest) (*sdk.NovelListResult, error) {
+	if f.userNovels != nil {
+		return f.userNovels(ctx, r)
+	}
 	return nil, unimplementedSDKCommand()
 }
 
@@ -145,8 +206,8 @@ func (sdkCommandFake) ParseResourceRef(string) (sdk.ResourceRef, error) {
 func (sdkCommandFake) OpenResource(context.Context, sdk.OpenResourceRequest) (*sdk.ResourceResponse, error) {
 	return nil, unimplementedSDKCommand()
 }
-func (sdkCommandFake) Download(context.Context, sdk.ResourceRef, string) error {
-	return unimplementedSDKCommand()
+func (sdkCommandFake) DownloadResource(context.Context, sdk.ResourceRef, string) (sdk.ResourceDownloadResult, error) {
+	return sdk.ResourceDownloadResult{}, unimplementedSDKCommand()
 }
 func (f sdkCommandFake) IllustRecommended(ctx context.Context, r sdk.IllustRecommendedRequest) (*sdk.IllustListResult, error) {
 	if f.recommended != nil {
@@ -388,8 +449,11 @@ func setTestSDKCommandFactory(t *testing.T, factory application.SDKClientFactory
 	newCLIServices = func(logger *slog.Logger) application.Services {
 		services := bootstrap.NewServices(logger)
 		services.SDK.NewClient = factory
+		services.SDK.RunPooled = nil
 		services.Account.SDK.NewClient = factory
+		services.Account.SDK.RunPooled = nil
 		services.Login.SDK.NewClient = factory
+		services.Login.SDK.RunPooled = nil
 		return services
 	}
 	t.Cleanup(func() { newCLIServices = old })
@@ -425,11 +489,11 @@ func TestUserDetailRoutesRequiredIDAndPrintsCompleteSDKJSON(t *testing.T) {
 	})
 
 	var stdout, stderr bytes.Buffer
-	require.Equal(t, 0, Run([]string{"pixiv", "user", "detail", "42", "--json", "--uid", "9", "--refresh-token", "refresh", "--proxy", "http://127.0.0.1:7890"}, strings.NewReader(""), &stdout, &stderr), stderr.String())
+	require.Equal(t, 0, Run([]string{"pixiv", "user", "detail", "42", "--json", "--proxy", "http://127.0.0.1:7890"}, strings.NewReader(""), &stdout, &stderr), stderr.String())
 	assert.Equal(t, sdk.UserDetailRequest{UserID: 42}, got)
 	assert.Equal(t, 1, factoryCalls)
-	assert.Equal(t, int64(9), gotClientRequest.UserID)
-	assert.Equal(t, "refresh", gotClientRequest.RefreshToken)
+	assert.Zero(t, gotClientRequest.UserID)
+	assert.Empty(t, gotClientRequest.RefreshToken)
 	require.NotNil(t, gotClientRequest.HTTPSProxyOverride)
 	assert.Equal(t, "http://127.0.0.1:7890", *gotClientRequest.HTTPSProxyOverride)
 	assert.Contains(t, stdout.String(), "\"profile_publicity\"")
@@ -488,6 +552,16 @@ func TestUserDetailBindsNoProxyFlag(t *testing.T) {
 
 	var stdout, stderr bytes.Buffer
 	require.Equal(t, 0, Run([]string{"pixiv", "user", "detail", "42", "--no-proxy"}, strings.NewReader(""), &stdout, &stderr), stderr.String())
+}
+
+func TestUserTextPrintersReturnWriterFailure(t *testing.T) {
+	want := errors.New("stdout unavailable")
+
+	err := printUserSearchPreviews(failingWriter{err: want}, []sdk.UserPreview{{User: sdk.User{ID: 42, Name: "artist"}}})
+	require.ErrorIs(t, err, want)
+
+	err = printUserDetail(failingWriter{err: want}, sdk.UserDetailResult{User: sdk.User{ID: 42, Name: "artist"}})
+	require.ErrorIs(t, err, want)
 }
 
 func TestUserDetailRejectsInvalidIDBeforeOpeningSDKAndPreservesTypedErrorOutput(t *testing.T) {
@@ -809,8 +883,10 @@ func TestSelfUserListsReuseOneConcreteOAuthSnapshotAcrossPages(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			authPath, configPath := useTempPaths(t)
-			require.NoError(t, auth.SaveAuthStore(authPath, auth.AuthStore{DefaultUserID: 7, Accounts: []auth.Account{{UserID: 7, RefreshToken: "stored-token"}}}))
-			t.Setenv("PIXIV_REFRESH_TOKEN", "environment-token")
+			require.NoError(t, auth.SaveAuthStore(authPath, auth.AuthStore{DefaultUserID: 202, Accounts: []auth.Account{{UserID: 202, RefreshToken: "stored-token"}}}))
+			// v0.8 的数据命令只使用本地 auth store；环境变量不得改变
+			// 这次分页操作选择的账号或 OAuth 快照。
+			t.Setenv("PIXIV_REFRESH_TOKEN", "environment-token-must-be-ignored")
 			var oauthCalls int
 			var requestedUserIDs []string
 			var server *httptest.Server
@@ -819,7 +895,7 @@ func TestSelfUserListsReuseOneConcreteOAuthSnapshotAcrossPages(t *testing.T) {
 				case "/auth/token":
 					oauthCalls++
 					require.NoError(t, request.ParseForm())
-					assert.Equal(t, "environment-token", request.Form.Get("refresh_token"))
+					assert.Equal(t, "stored-token", request.Form.Get("refresh_token"))
 					if oauthCalls > 1 {
 						http.Error(w, "old token already rotated", http.StatusBadRequest)
 						return
@@ -855,8 +931,11 @@ func TestSelfUserListsReuseOneConcreteOAuthSnapshotAcrossPages(t *testing.T) {
 			newCLIServices = func(logger *slog.Logger) application.Services {
 				services := bootstrap.NewServices(logger)
 				services.SDK.NewClient = func(request application.SDKClientRequest) (application.SDKClient, error) {
-					return sdk.OpenDefault(sdk.Options{AuthFilePath: authPath, ConfigFilePath: configPath, HTTPClient: server.Client(), OAuthBaseURL: server.URL, AppAPIBaseURL: server.URL, UserID: request.UserID, RefreshToken: request.RefreshToken})
+					return sdk.OpenDefaultWith(sdk.OpenDefaultOptions{AuthFilePath: authPath, ConfigFilePath: configPath, HTTPClient: server.Client(), OAuthBaseURL: server.URL, AppAPIBaseURL: server.URL, UserID: request.UserID, RefreshToken: request.RefreshToken, IgnoreEnvironmentRefreshToken: true})
 				}
+				// 此测试验证一条单账号分页操作共享同一个 OAuth 快照；账号池的
+				// 选择和持久状态另有专门测试，不能让生产池 wiring 绕过 mock transport。
+				services.SDK.RunPooled = nil
 				return services
 			}
 			t.Cleanup(func() { newCLIServices = old })

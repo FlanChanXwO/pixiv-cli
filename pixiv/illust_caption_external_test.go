@@ -20,7 +20,7 @@ func TestIllustDetailMapsAppCaption(t *testing.T) {
 		fmt.Fprint(w, `{"illust":{"id":73,"caption":"<p>Line one<br />Line two</p>","page_count":1,"width":10,"height":20,"user":{"id":8},"tags":[],"image_urls":{},"meta_single_page":{"original_image_url":"https://img.example/73.jpg"},"meta_pages":[]}}`)
 	}))
 	defer server.Close()
-	client, err := pixiv.NewClient(pixiv.Options{HTTPClient: server.Client(), AppAPIBaseURL: server.URL, AccessToken: "access"})
+	client, err := pixiv.NewClient(pixiv.NewClientOptions{HTTPClient: server.Client(), AppAPIBaseURL: server.URL, AccessToken: "access"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -48,7 +48,7 @@ func TestAnonymousIllustDetailMapsWebDescriptionAsCaption(t *testing.T) {
 		}
 	}))
 	defer server.Close()
-	client, err := pixiv.NewClient(pixiv.Options{HTTPClient: server.Client(), WebAPIBaseURL: server.URL, WebFallbackEnabled: true})
+	client, err := pixiv.NewClient(pixiv.NewClientOptions{HTTPClient: server.Client(), WebAPIBaseURL: server.URL, WebFallbackEnabled: true})
 	if err != nil {
 		t.Fatal(err)
 	}

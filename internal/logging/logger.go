@@ -10,14 +10,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-
-	"github.com/FlanChanXwO/pixiv-cli/internal/common/constants"
-)
-
-const (
-	ResultSuccess        = constants.LogResultSuccess
-	ResultError          = constants.LogResultError
-	ResultRateLimitRetry = constants.LogResultRateLimitRetry
 )
 
 // OperationEvent 是可跨边界关联的最小诊断记录。它只接受稳定元数据，避免调用方把
@@ -53,27 +45,27 @@ func LogOperation(logger *slog.Logger, event OperationEvent) {
 		level = slog.LevelError
 	}
 	attrs := []slog.Attr{
-		slog.String(constants.LogFieldComponent, event.Component),
-		slog.String(constants.LogFieldOperation, event.Operation),
-		slog.String(constants.LogFieldBackend, event.Backend),
-		slog.Duration(constants.LogFieldDuration, event.Duration),
-		slog.String(constants.LogFieldResult, event.Result),
-		slog.String(constants.LogFieldErrorCode, event.ErrorCode),
-		slog.Int(constants.LogFieldStatus, event.Status),
+		slog.String(LogFieldComponent, event.Component),
+		slog.String(LogFieldOperation, event.Operation),
+		slog.String(LogFieldBackend, event.Backend),
+		slog.Duration(LogFieldDuration, event.Duration),
+		slog.String(LogFieldResult, event.Result),
+		slog.String(LogFieldErrorCode, event.ErrorCode),
+		slog.Int(LogFieldStatus, event.Status),
 	}
 	if source := operationCallsite(); source != "" {
-		attrs = append(attrs, slog.String(constants.LogFieldSource, source))
+		attrs = append(attrs, slog.String(LogFieldSource, source))
 	}
 	if transportKind := safeTransportKind(event.TransportKind); transportKind != "" {
-		attrs = append(attrs, slog.String(constants.LogFieldTransportKind, transportKind))
+		attrs = append(attrs, slog.String(LogFieldTransportKind, transportKind))
 	}
 	if event.IllustID != 0 {
-		attrs = append(attrs, slog.Int64(constants.LogFieldIllustID, event.IllustID))
+		attrs = append(attrs, slog.Int64(LogFieldIllustID, event.IllustID))
 	}
 	if event.UserID != 0 {
-		attrs = append(attrs, slog.Int64(constants.LogFieldUserID, event.UserID))
+		attrs = append(attrs, slog.Int64(LogFieldUserID, event.UserID))
 	}
-	OrDiscard(logger).LogAttrs(nil, level, constants.OperationLogMessage, attrs...)
+	OrDiscard(logger).LogAttrs(nil, level, OperationLogMessage, attrs...)
 }
 
 // operationCallsite 记录调用 LogOperation/LogRateLimitRetry 的项目内文件与行号。
@@ -106,15 +98,15 @@ func safeTransportKind(value string) string {
 // 请求 URL、鉴权 header 或响应 body。
 func LogRateLimitRetry(logger *slog.Logger, retryAfter time.Duration, attempt int) {
 	attrs := []slog.Attr{
-		slog.String(constants.LogFieldComponent, "pixiv_app_api"),
-		slog.String(constants.LogFieldOperation, "read"),
-		slog.String(constants.LogFieldResult, ResultRateLimitRetry),
-		slog.Int(constants.LogFieldStatus, http.StatusTooManyRequests),
-		slog.Duration(constants.LogFieldRetryAfter, retryAfter),
-		slog.Int(constants.LogFieldAttempt, attempt),
+		slog.String(LogFieldComponent, "pixiv_app_api"),
+		slog.String(LogFieldOperation, "read"),
+		slog.String(LogFieldResult, ResultRateLimitRetry),
+		slog.Int(LogFieldStatus, http.StatusTooManyRequests),
+		slog.Duration(LogFieldRetryAfter, retryAfter),
+		slog.Int(LogFieldAttempt, attempt),
 	}
 	if source := operationCallsite(); source != "" {
-		attrs = append(attrs, slog.String(constants.LogFieldSource, source))
+		attrs = append(attrs, slog.String(LogFieldSource, source))
 	}
-	OrDiscard(logger).LogAttrs(nil, slog.LevelInfo, constants.RateLimitRetryLogMessage, attrs...)
+	OrDiscard(logger).LogAttrs(nil, slog.LevelInfo, RateLimitRetryLogMessage, attrs...)
 }

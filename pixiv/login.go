@@ -10,8 +10,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/oauth"
-	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/protocol"
+	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/oauth"
+	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/protocol"
 	"github.com/FlanChanXwO/pixiv-cli/internal/storage/auth"
 )
 

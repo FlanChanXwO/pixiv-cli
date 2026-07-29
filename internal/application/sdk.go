@@ -38,12 +38,19 @@ type SDKClient interface {
 	UserBookmarksCursor(context.Context, sdk.UserBookmarksRequest, int64) (sdk.Cursor, error)
 	UserFollowing(context.Context, sdk.UserFollowingRequest) (*sdk.UserListResult, error)
 	FollowingIllusts(context.Context, sdk.FollowingIllustsRequest) (*sdk.IllustListResult, error)
+	FollowingNovels(context.Context, sdk.FollowingNovelsRequest) (*sdk.NovelListResult, error)
+	LatestIllusts(context.Context, sdk.LatestIllustsRequest) (*sdk.IllustListResult, error)
+	LatestNovels(context.Context, sdk.LatestNovelsRequest) (*sdk.NovelListResult, error)
+	MyPixivUsers(context.Context, sdk.MyPixivUsersRequest) (*sdk.UserListResult, error)
+	MyPixivIllusts(context.Context, sdk.MyPixivIllustsRequest) (*sdk.IllustListResult, error)
+	MyPixivNovels(context.Context, sdk.MyPixivNovelsRequest) (*sdk.NovelListResult, error)
+	UserNovels(context.Context, sdk.UserNovelsRequest) (*sdk.NovelListResult, error)
 	SearchUser(context.Context, sdk.SearchUserRequest) (*sdk.UserListResult, error)
 	TrendingTagsIllust(context.Context) (*sdk.TrendingTagsIllustResult, error)
 	UgoiraMetadata(context.Context, int64) (*sdk.UgoiraMetadataResult, error)
 	ParseResourceRef(string) (sdk.ResourceRef, error)
 	OpenResource(context.Context, sdk.OpenResourceRequest) (*sdk.ResourceResponse, error)
-	Download(context.Context, sdk.ResourceRef, string) error
+	DownloadResource(context.Context, sdk.ResourceRef, string) (sdk.ResourceDownloadResult, error)
 	AddBookmark(context.Context, sdk.AddBookmarkRequest) error
 	RemoveBookmark(context.Context, sdk.RemoveBookmarkRequest) error
 	FollowUser(context.Context, sdk.FollowUserRequest) error
@@ -63,6 +70,8 @@ type SDKClientRequest struct {
 	UserID             int64
 	RefreshToken       string
 	HTTPSProxyOverride *string
+	// DisableRetryAfterRetry 只供账号池首个 429 的安全切换路径使用。
+	DisableRetryAfterRetry bool
 	// AuthFilePath 允许 MCP 等长驻调用方把 OAuth rotation 固定到同一个受保护 store。
 	// 为空时继续使用 OpenDefault 的标准路径。
 	AuthFilePath string
@@ -70,9 +79,31 @@ type SDKClientRequest struct {
 
 type SDKClientFactory func(SDKClientRequest) (SDKClient, error)
 
+// SDKPooledOperation 是生产组装提供的账号池执行边界。attempt 的 committed=true
+// 表示已有记录输出或文件落盘，此后不得因 429 重放该次操作。
+type SDKPooledOperation func(context.Context, SDKClientRequest, func(context.Context, SDKClient) (committed bool, err error)) error
+
 type SDKService struct {
 	NewClient   SDKClientFactory
 	LoadRuntime func() (config.RuntimeConfig, error)
+	RunPooled   SDKPooledOperation
+}
+
+// RunPooledOperation 在未启用账号池时保持单账号 operation 语义；生产组装提供
+// RunPooled 时由其负责本地账号校验、持久状态和有限的 Retry-After 切换。
+func (s SDKService) RunPooledOperation(ctx context.Context, req SDKClientRequest, attempt func(context.Context, SDKClient) (committed bool, err error)) error {
+	if attempt == nil {
+		return errors.New("pixiv sdk pooled operation attempt is not configured")
+	}
+	if s.RunPooled != nil {
+		return s.RunPooled(ctx, req, attempt)
+	}
+	client, err := s.OpenOperation(ctx, req)
+	if err != nil {
+		return err
+	}
+	_, err = attempt(ctx, client)
+	return err
 }
 
 func (s SDKService) Client(req SDKClientRequest) (SDKClient, error) {

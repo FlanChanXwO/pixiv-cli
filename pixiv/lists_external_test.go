@@ -39,7 +39,7 @@ func TestSearchIllustRejectsWebCursorWhoseNextPageBoundaryOverflowsBeforeNetwork
 	}))
 	defer app.Close()
 
-	authenticated, err := pixiv.NewClient(pixiv.Options{HTTPClient: app.Client(), AppAPIBaseURL: app.URL, AccessToken: "token"})
+	authenticated, err := pixiv.NewClient(pixiv.NewClientOptions{HTTPClient: app.Client(), AppAPIBaseURL: app.URL, AccessToken: "token"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -58,7 +58,7 @@ func TestSearchIllustRejectsWebCursorWhoseNextPageBoundaryOverflowsBeforeNetwork
 		fmt.Fprint(w, `{"error":false,"body":{"illustManga":{"data":[]}}}`)
 	}))
 	defer web.Close()
-	anonymous, err := pixiv.NewClient(pixiv.Options{HTTPClient: web.Client(), WebAPIBaseURL: web.URL, WebFallbackEnabled: true})
+	anonymous, err := pixiv.NewClient(pixiv.NewClientOptions{HTTPClient: web.Client(), WebAPIBaseURL: web.URL, WebFallbackEnabled: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -87,7 +87,7 @@ func TestIllustRankingRejectsWebCursorWhoseNextPageBoundaryOverflowsBeforeNetwor
 		fmt.Fprintf(w, `{"illusts":[],"next_url":"/v1/illust/ranking?offset=%s"}`, strconv.Itoa(maxInt))
 	}))
 	defer app.Close()
-	authenticated, err := pixiv.NewClient(pixiv.Options{HTTPClient: app.Client(), AppAPIBaseURL: app.URL, AccessToken: "token"})
+	authenticated, err := pixiv.NewClient(pixiv.NewClientOptions{HTTPClient: app.Client(), AppAPIBaseURL: app.URL, AccessToken: "token"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -102,7 +102,7 @@ func TestIllustRankingRejectsWebCursorWhoseNextPageBoundaryOverflowsBeforeNetwor
 		fmt.Fprint(w, `{"rank_total":0,"contents":[]}`)
 	}))
 	defer web.Close()
-	anonymous, err := pixiv.NewClient(pixiv.Options{HTTPClient: web.Client(), WebAPIBaseURL: web.URL, WebFallbackEnabled: true})
+	anonymous, err := pixiv.NewClient(pixiv.NewClientOptions{HTTPClient: web.Client(), WebAPIBaseURL: web.URL, WebFallbackEnabled: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -126,7 +126,7 @@ func TestSearchUserRejectsWebCursorWhoseNextPageBoundaryOverflowsWithSearchUserM
 		fmt.Fprintf(w, `{"user_previews":[],"next_url":"/v1/search/user?offset=%s"}`, strconv.Itoa(maxInt))
 	}))
 	defer app.Close()
-	authenticated, err := pixiv.NewClient(pixiv.Options{HTTPClient: app.Client(), AppAPIBaseURL: app.URL, AccessToken: "token"})
+	authenticated, err := pixiv.NewClient(pixiv.NewClientOptions{HTTPClient: app.Client(), AppAPIBaseURL: app.URL, AccessToken: "token"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -141,7 +141,7 @@ func TestSearchUserRejectsWebCursorWhoseNextPageBoundaryOverflowsWithSearchUserM
 		fmt.Fprint(w, `{"error":false,"body":{"illustManga":{"data":[]}}}`)
 	}))
 	defer web.Close()
-	anonymous, err := pixiv.NewClient(pixiv.Options{HTTPClient: web.Client(), WebAPIBaseURL: web.URL, WebFallbackEnabled: true})
+	anonymous, err := pixiv.NewClient(pixiv.NewClientOptions{HTTPClient: web.Client(), WebAPIBaseURL: web.URL, WebFallbackEnabled: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -166,7 +166,7 @@ func TestSearchIllustLargestSafeWebCursorComparesTotalWithoutOverflow(t *testing
 		fmt.Fprintf(w, `{"illusts":[],"next_url":"/v1/search/illust?offset=%d"}`, offset)
 	}))
 	defer app.Close()
-	authenticated, err := pixiv.NewClient(pixiv.Options{HTTPClient: app.Client(), AppAPIBaseURL: app.URL, AccessToken: "token"})
+	authenticated, err := pixiv.NewClient(pixiv.NewClientOptions{HTTPClient: app.Client(), AppAPIBaseURL: app.URL, AccessToken: "token"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -191,7 +191,7 @@ func TestSearchIllustLargestSafeWebCursorComparesTotalWithoutOverflow(t *testing
 		})
 	}))
 	defer web.Close()
-	anonymous, err := pixiv.NewClient(pixiv.Options{HTTPClient: web.Client(), WebAPIBaseURL: web.URL, WebFallbackEnabled: true})
+	anonymous, err := pixiv.NewClient(pixiv.NewClientOptions{HTTPClient: web.Client(), WebAPIBaseURL: web.URL, WebFallbackEnabled: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -289,7 +289,7 @@ func TestLargestSafeWebCursorRequestsOneEmptyBatchAcrossOperations(t *testing.T)
 				fmt.Fprint(w, test.appBody(offset))
 			}))
 			defer app.Close()
-			authenticated, err := pixiv.NewClient(pixiv.Options{HTTPClient: app.Client(), AppAPIBaseURL: app.URL, AccessToken: "token"})
+			authenticated, err := pixiv.NewClient(pixiv.NewClientOptions{HTTPClient: app.Client(), AppAPIBaseURL: app.URL, AccessToken: "token"})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -313,7 +313,7 @@ func TestLargestSafeWebCursorRequestsOneEmptyBatchAcrossOperations(t *testing.T)
 				fmt.Fprint(w, test.webBody)
 			}))
 			defer web.Close()
-			anonymous, err := pixiv.NewClient(pixiv.Options{HTTPClient: web.Client(), WebAPIBaseURL: web.URL, WebFallbackEnabled: true})
+			anonymous, err := pixiv.NewClient(pixiv.NewClientOptions{HTTPClient: web.Client(), WebAPIBaseURL: web.URL, WebFallbackEnabled: true})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -345,7 +345,7 @@ func TestSearchIllustAppCursorContinuesAndEndsWithoutSecrets(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client, err := pixiv.NewClient(pixiv.Options{HTTPClient: server.Client(), AppAPIBaseURL: server.URL, AccessToken: secret})
+	client, err := pixiv.NewClient(pixiv.NewClientOptions{HTTPClient: server.Client(), AppAPIBaseURL: server.URL, AccessToken: secret})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -383,7 +383,7 @@ func TestCursorMismatchAndMalformedFailBeforeNetwork(t *testing.T) {
 		fmt.Fprint(w, `{"illusts":[],"next_url":"/v1/search/illust?offset=30"}`)
 	}))
 	defer server.Close()
-	client, err := pixiv.NewClient(pixiv.Options{HTTPClient: server.Client(), AppAPIBaseURL: server.URL, AccessToken: "token"})
+	client, err := pixiv.NewClient(pixiv.NewClientOptions{HTTPClient: server.Client(), AppAPIBaseURL: server.URL, AccessToken: "token"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -511,7 +511,7 @@ func TestAuthenticatedListOperationsUseExpectedAppEndpointsAndContinuations(t *t
 		}
 	}))
 	defer server.Close()
-	client, err := pixiv.NewClient(pixiv.Options{HTTPClient: server.Client(), AppAPIBaseURL: server.URL, AccessToken: "token"})
+	client, err := pixiv.NewClient(pixiv.NewClientOptions{HTTPClient: server.Client(), AppAPIBaseURL: server.URL, AccessToken: "token"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -563,7 +563,7 @@ func TestUserDetailReturnsCompleteStableProfileFromOneAppRequest(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client, err := pixiv.NewClient(pixiv.Options{HTTPClient: server.Client(), AppAPIBaseURL: server.URL, AccessToken: "token"})
+	client, err := pixiv.NewClient(pixiv.NewClientOptions{HTTPClient: server.Client(), AppAPIBaseURL: server.URL, AccessToken: "token"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -615,7 +615,7 @@ func TestUserDetailRejectsMalformedRequiredEnvelopesWithTypedSafeError(t *testin
 		t.Run(test.name, func(t *testing.T) {
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { fmt.Fprint(w, test.body) }))
 			defer server.Close()
-			client, err := pixiv.NewClient(pixiv.Options{HTTPClient: server.Client(), AppAPIBaseURL: server.URL, AccessToken: "token"})
+			client, err := pixiv.NewClient(pixiv.NewClientOptions{HTTPClient: server.Client(), AppAPIBaseURL: server.URL, AccessToken: "token"})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -655,7 +655,7 @@ func TestUserDetailNormalizesOptionalURLsAndUnknownFieldsToStableZeroValues(t *t
 				fmt.Fprintf(w, `{"user":{"id":42,"profile_image_urls":%s,"private_text":"hidden"},"profile":%s,"profile_publicity":{},"workspace":%s,"unknown_count":999}`, test.profileImageURL, test.profileURLs, test.workspaceURL)
 			}))
 			defer server.Close()
-			client, err := pixiv.NewClient(pixiv.Options{HTTPClient: server.Client(), AppAPIBaseURL: server.URL, AccessToken: "token"})
+			client, err := pixiv.NewClient(pixiv.NewClientOptions{HTTPClient: server.Client(), AppAPIBaseURL: server.URL, AccessToken: "token"})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -691,7 +691,7 @@ func TestAppListRejectsMissingItemsIDsAndMalformedContinuationSafely(t *testing.
 		}
 	}))
 	defer server.Close()
-	client, err := pixiv.NewClient(pixiv.Options{HTTPClient: server.Client(), AppAPIBaseURL: server.URL, AccessToken: "token"})
+	client, err := pixiv.NewClient(pixiv.NewClientOptions{HTTPClient: server.Client(), AppAPIBaseURL: server.URL, AccessToken: "token"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -727,7 +727,7 @@ func TestSearchIllustHighResolutionUsesAppServerBounds(t *testing.T) {
 		fmt.Fprint(w, `{"illusts":[]}`)
 	}))
 	defer server.Close()
-	client, err := pixiv.NewClient(pixiv.Options{HTTPClient: server.Client(), AppAPIBaseURL: server.URL, AccessToken: "token"})
+	client, err := pixiv.NewClient(pixiv.NewClientOptions{HTTPClient: server.Client(), AppAPIBaseURL: server.URL, AccessToken: "token"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -770,7 +770,7 @@ func TestSearchIllustTranslatesStableFiltersToAppParameters(t *testing.T) {
 		fmt.Fprint(w, `{"illusts":[]}`)
 	}))
 	defer server.Close()
-	client, err := pixiv.NewClient(pixiv.Options{HTTPClient: server.Client(), AppAPIBaseURL: server.URL, AccessToken: "token"})
+	client, err := pixiv.NewClient(pixiv.NewClientOptions{HTTPClient: server.Client(), AppAPIBaseURL: server.URL, AccessToken: "token"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -813,7 +813,7 @@ func TestSearchIllustAppResolutionLowAndAllDefaults(t *testing.T) {
 		fmt.Fprint(w, `{"illusts":[]}`)
 	}))
 	defer server.Close()
-	client, err := pixiv.NewClient(pixiv.Options{HTTPClient: server.Client(), AppAPIBaseURL: server.URL, AccessToken: "token"})
+	client, err := pixiv.NewClient(pixiv.NewClientOptions{HTTPClient: server.Client(), AppAPIBaseURL: server.URL, AccessToken: "token"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -844,7 +844,7 @@ func TestSearchIllustFiltersRatingAndOnlyAIInPublicSDK(t *testing.T) {
 		],"next_url":"https://app-api.pixiv.net/v1/search/illust?offset=30"}`)
 	}))
 	defer server.Close()
-	client, err := pixiv.NewClient(pixiv.Options{HTTPClient: server.Client(), AppAPIBaseURL: server.URL, AccessToken: "token"})
+	client, err := pixiv.NewClient(pixiv.NewClientOptions{HTTPClient: server.Client(), AppAPIBaseURL: server.URL, AccessToken: "token"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -888,7 +888,7 @@ func TestSearchIllustCursorIsBoundToEveryFilter(t *testing.T) {
 		fmt.Fprint(w, `{"illusts":[],"next_url":"https://app-api.pixiv.net/v1/search/illust?offset=30"}`)
 	}))
 	defer server.Close()
-	client, err := pixiv.NewClient(pixiv.Options{HTTPClient: server.Client(), AppAPIBaseURL: server.URL, AccessToken: "token"})
+	client, err := pixiv.NewClient(pixiv.NewClientOptions{HTTPClient: server.Client(), AppAPIBaseURL: server.URL, AccessToken: "token"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -915,7 +915,7 @@ func TestSearchIllustCursorIsBoundToDateRange(t *testing.T) {
 		fmt.Fprint(w, `{"illusts":[],"next_url":"https://app-api.pixiv.net/v1/search/illust?offset=30"}`)
 	}))
 	defer server.Close()
-	client, err := pixiv.NewClient(pixiv.Options{HTTPClient: server.Client(), AppAPIBaseURL: server.URL, AccessToken: "token"})
+	client, err := pixiv.NewClient(pixiv.NewClientOptions{HTTPClient: server.Client(), AppAPIBaseURL: server.URL, AccessToken: "token"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -935,7 +935,7 @@ func TestSearchIllustPreservesAppDrawingTools(t *testing.T) {
 		fmt.Fprint(w, `{"illusts":[{"id":1,"tools":["CLIP STUDIO PAINT","Photoshop"]}]}`)
 	}))
 	defer server.Close()
-	client, err := pixiv.NewClient(pixiv.Options{HTTPClient: server.Client(), AppAPIBaseURL: server.URL, AccessToken: "token"})
+	client, err := pixiv.NewClient(pixiv.NewClientOptions{HTTPClient: server.Client(), AppAPIBaseURL: server.URL, AccessToken: "token"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -955,7 +955,7 @@ func TestSearchIllustNormalizesMissingAppDrawingToolsAtResultBoundary(t *testing
 		fmt.Fprint(w, `{"illusts":[{"id":1}]}`)
 	}))
 	defer server.Close()
-	client, err := pixiv.NewClient(pixiv.Options{HTTPClient: server.Client(), AppAPIBaseURL: server.URL, AccessToken: "token"})
+	client, err := pixiv.NewClient(pixiv.NewClientOptions{HTTPClient: server.Client(), AppAPIBaseURL: server.URL, AccessToken: "token"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1005,7 +1005,7 @@ func TestAnonymousSearchIllustTranslatesReliableWebFilters(t *testing.T) {
 		fmt.Fprint(w, `{"error":false,"body":{"illustManga":{"data":[]}}}`)
 	}))
 	defer server.Close()
-	client, err := pixiv.NewClient(pixiv.Options{HTTPClient: server.Client(), WebAPIBaseURL: server.URL, WebFallbackEnabled: true})
+	client, err := pixiv.NewClient(pixiv.NewClientOptions{HTTPClient: server.Client(), WebAPIBaseURL: server.URL, WebFallbackEnabled: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1031,7 +1031,7 @@ func TestAnonymousSearchIllustRejectsAppOnlySearchBeforeNetwork(t *testing.T) {
 		fmt.Fprint(w, `{"error":false,"body":{"illustManga":{"data":[]}}}`)
 	}))
 	defer server.Close()
-	client, err := pixiv.NewClient(pixiv.Options{HTTPClient: server.Client(), WebAPIBaseURL: server.URL, WebFallbackEnabled: true})
+	client, err := pixiv.NewClient(pixiv.NewClientOptions{HTTPClient: server.Client(), WebAPIBaseURL: server.URL, WebFallbackEnabled: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1064,7 +1064,7 @@ func TestAnonymousSearchIllustAppliesSFWAndAISemantics(t *testing.T) {
 		]}}}`)
 	}))
 	defer server.Close()
-	client, err := pixiv.NewClient(pixiv.Options{HTTPClient: server.Client(), WebAPIBaseURL: server.URL, WebFallbackEnabled: true})
+	client, err := pixiv.NewClient(pixiv.NewClientOptions{HTTPClient: server.Client(), WebAPIBaseURL: server.URL, WebFallbackEnabled: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1092,7 +1092,7 @@ func TestSearchIllustOptionsUsesAuthenticatedApp(t *testing.T) {
 		fmt.Fprint(w, `{"illust":{"tool":{"options":["CLIP STUDIO PAINT","Photoshop"]}}}`)
 	}))
 	defer server.Close()
-	client, err := pixiv.NewClient(pixiv.Options{HTTPClient: server.Client(), AppAPIBaseURL: server.URL, AccessToken: "token"})
+	client, err := pixiv.NewClient(pixiv.NewClientOptions{HTTPClient: server.Client(), AppAPIBaseURL: server.URL, AccessToken: "token"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1113,7 +1113,7 @@ func TestSearchIllustOptionsRejectsAnonymousWebFallbackWithoutNetwork(t *testing
 		fmt.Fprint(w, `{}`)
 	}))
 	defer server.Close()
-	client, err := pixiv.NewClient(pixiv.Options{HTTPClient: server.Client(), WebAPIBaseURL: server.URL, WebFallbackEnabled: true})
+	client, err := pixiv.NewClient(pixiv.NewClientOptions{HTTPClient: server.Client(), WebAPIBaseURL: server.URL, WebFallbackEnabled: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1133,7 +1133,7 @@ func TestSearchIllustOptionsNormalizesMissingToolOptionsToEmpty(t *testing.T) {
 		fmt.Fprint(w, `{"illust":{}}`)
 	}))
 	defer server.Close()
-	client, err := pixiv.NewClient(pixiv.Options{HTTPClient: server.Client(), AppAPIBaseURL: server.URL, AccessToken: "token"})
+	client, err := pixiv.NewClient(pixiv.NewClientOptions{HTTPClient: server.Client(), AppAPIBaseURL: server.URL, AccessToken: "token"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1155,7 +1155,7 @@ func TestSearchIllustOptionsMapsMissingOrNullIllustEnvelope(t *testing.T) {
 				fmt.Fprint(w, body)
 			}))
 			defer server.Close()
-			client, err := pixiv.NewClient(pixiv.Options{HTTPClient: server.Client(), AppAPIBaseURL: server.URL, AccessToken: "token"})
+			client, err := pixiv.NewClient(pixiv.NewClientOptions{HTTPClient: server.Client(), AppAPIBaseURL: server.URL, AccessToken: "token"})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -1175,7 +1175,7 @@ func TestSearchIllustOptionsMapsAppFailureWithoutLeakingBody(t *testing.T) {
 		http.Error(w, secret, http.StatusBadGateway)
 	}))
 	defer server.Close()
-	client, err := pixiv.NewClient(pixiv.Options{HTTPClient: server.Client(), AppAPIBaseURL: server.URL, AccessToken: "token"})
+	client, err := pixiv.NewClient(pixiv.NewClientOptions{HTTPClient: server.Client(), AppAPIBaseURL: server.URL, AccessToken: "token"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1204,7 +1204,7 @@ func TestAnonymousWebSearchRejectsMissingItemsAndIDsButAcceptsEmpty(t *testing.T
 		}
 	}))
 	defer server.Close()
-	client, err := pixiv.NewClient(pixiv.Options{HTTPClient: server.Client(), WebAPIBaseURL: server.URL, WebFallbackEnabled: true})
+	client, err := pixiv.NewClient(pixiv.NewClientOptions{HTTPClient: server.Client(), WebAPIBaseURL: server.URL, WebFallbackEnabled: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1237,9 +1237,9 @@ func TestListDecoderHonorsFinalDuplicateJSONValue(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { fmt.Fprint(w, test.body) }))
 			defer server.Close()
-			options := pixiv.Options{HTTPClient: server.Client(), AppAPIBaseURL: server.URL, AccessToken: "token"}
+			options := pixiv.NewClientOptions{HTTPClient: server.Client(), AppAPIBaseURL: server.URL, AccessToken: "token"}
 			if test.web {
-				options = pixiv.Options{HTTPClient: server.Client(), WebAPIBaseURL: server.URL, WebFallbackEnabled: true}
+				options = pixiv.NewClientOptions{HTTPClient: server.Client(), WebAPIBaseURL: server.URL, WebFallbackEnabled: true}
 			}
 			client, err := pixiv.NewClient(options)
 			if err != nil {
@@ -1270,7 +1270,7 @@ func TestAnonymousSearchUserCursorFollowsArtworkBatchNotDeduplicatedUsers(t *tes
 		}
 	}))
 	defer server.Close()
-	client, err := pixiv.NewClient(pixiv.Options{HTTPClient: server.Client(), WebAPIBaseURL: server.URL, WebFallbackEnabled: true})
+	client, err := pixiv.NewClient(pixiv.NewClientOptions{HTTPClient: server.Client(), WebAPIBaseURL: server.URL, WebFallbackEnabled: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1291,7 +1291,7 @@ func TestAnonymousSearchUserRejectsArtworkWithoutUserID(t *testing.T) {
 		fmt.Fprintf(w, `{"error":false,"body":{"illustManga":{"data":[{"id":"1","userName":"%s"}]}}}`, secret)
 	}))
 	defer server.Close()
-	client, err := pixiv.NewClient(pixiv.Options{HTTPClient: server.Client(), WebAPIBaseURL: server.URL, WebFallbackEnabled: true})
+	client, err := pixiv.NewClient(pixiv.NewClientOptions{HTTPClient: server.Client(), WebAPIBaseURL: server.URL, WebFallbackEnabled: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1325,7 +1325,7 @@ func TestAnonymousRankingUsesWebCursor(t *testing.T) {
 		}
 	}))
 	defer server.Close()
-	client, err := pixiv.NewClient(pixiv.Options{HTTPClient: server.Client(), WebAPIBaseURL: server.URL, WebFallbackEnabled: true})
+	client, err := pixiv.NewClient(pixiv.NewClientOptions{HTTPClient: server.Client(), WebAPIBaseURL: server.URL, WebFallbackEnabled: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1361,7 +1361,7 @@ func TestExtendedRankingModesUseAppAndWebWireValuesAndBindCursor(t *testing.T) {
 				fmt.Fprint(w, `{"illusts":[{"id":1}],"next_url":"/v1/illust/ranking?offset=30"}`)
 			}))
 			defer app.Close()
-			appClient, err := pixiv.NewClient(pixiv.Options{HTTPClient: app.Client(), AppAPIBaseURL: app.URL, AccessToken: "token"})
+			appClient, err := pixiv.NewClient(pixiv.NewClientOptions{HTTPClient: app.Client(), AppAPIBaseURL: app.URL, AccessToken: "token"})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -1386,7 +1386,7 @@ func TestExtendedRankingModesUseAppAndWebWireValuesAndBindCursor(t *testing.T) {
 				fmt.Fprint(w, `{"rank_total":2,"contents":[{"illust_id":1,"user_id":10}]}`)
 			}))
 			defer web.Close()
-			webClient, err := pixiv.NewClient(pixiv.Options{HTTPClient: web.Client(), WebAPIBaseURL: web.URL, WebFallbackEnabled: true})
+			webClient, err := pixiv.NewClient(pixiv.NewClientOptions{HTTPClient: web.Client(), WebAPIBaseURL: web.URL, WebFallbackEnabled: true})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -1428,7 +1428,7 @@ func TestAdditionalRankingModesUseAppAndRequireAuthentication(t *testing.T) {
 				fmt.Fprint(w, `{"illusts":[{"id":1}],"next_url":null}`)
 			}))
 			defer app.Close()
-			authenticated, err := pixiv.NewClient(pixiv.Options{HTTPClient: app.Client(), AppAPIBaseURL: app.URL, AccessToken: "token"})
+			authenticated, err := pixiv.NewClient(pixiv.NewClientOptions{HTTPClient: app.Client(), AppAPIBaseURL: app.URL, AccessToken: "token"})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -1442,7 +1442,7 @@ func TestAdditionalRankingModesUseAppAndRequireAuthentication(t *testing.T) {
 				t.Fatal("anonymous extended ranking must not call Web")
 			}))
 			defer web.Close()
-			anonymous, err := pixiv.NewClient(pixiv.Options{HTTPClient: web.Client(), WebAPIBaseURL: web.URL, WebFallbackEnabled: true})
+			anonymous, err := pixiv.NewClient(pixiv.NewClientOptions{HTTPClient: web.Client(), WebAPIBaseURL: web.URL, WebFallbackEnabled: true})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -1466,7 +1466,7 @@ func TestRankingDateRequiresCanonicalDateAndBindsCursor(t *testing.T) {
 		fmt.Fprint(w, `{"illusts":[{"id":1}],"next_url":"/v1/illust/ranking?offset=30"}`)
 	}))
 	defer server.Close()
-	client, err := pixiv.NewClient(pixiv.Options{HTTPClient: server.Client(), AppAPIBaseURL: server.URL, AccessToken: "token"})
+	client, err := pixiv.NewClient(pixiv.NewClientOptions{HTTPClient: server.Client(), AppAPIBaseURL: server.URL, AccessToken: "token"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1503,7 +1503,7 @@ func TestRankingDateRequiresCanonicalDateAndBindsCursor(t *testing.T) {
 		fmt.Fprint(w, `{"rank_total":2,"contents":[{"illust_id":1,"user_id":10}]}`)
 	}))
 	defer web.Close()
-	webClient, err := pixiv.NewClient(pixiv.Options{HTTPClient: web.Client(), WebAPIBaseURL: web.URL, WebFallbackEnabled: true})
+	webClient, err := pixiv.NewClient(pixiv.NewClientOptions{HTTPClient: web.Client(), WebAPIBaseURL: web.URL, WebFallbackEnabled: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1525,7 +1525,7 @@ func TestNonWhitelistedAnonymousOperationsAreUnauthorizedBeforeNetwork(t *testin
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { requests.Add(1); http.Error(w, "unexpected", 500) }))
 	defer server.Close()
 	for _, fallback := range []bool{false, true} {
-		client, err := pixiv.NewClient(pixiv.Options{HTTPClient: server.Client(), AppAPIBaseURL: server.URL, WebAPIBaseURL: server.URL, WebFallbackEnabled: fallback})
+		client, err := pixiv.NewClient(pixiv.NewClientOptions{HTTPClient: server.Client(), AppAPIBaseURL: server.URL, WebAPIBaseURL: server.URL, WebFallbackEnabled: fallback})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -1576,7 +1576,7 @@ func TestAuthenticatedAppFailureNeverFallsBackToWeb(t *testing.T) {
 		fmt.Fprint(w, `{"error":false,"body":{"illustManga":{"data":[]}}}`)
 	}))
 	defer web.Close()
-	client, err := pixiv.NewClient(pixiv.Options{HTTPClient: app.Client(), AppAPIBaseURL: app.URL, WebAPIBaseURL: web.URL, AccessToken: "token", WebFallbackEnabled: true})
+	client, err := pixiv.NewClient(pixiv.NewClientOptions{HTTPClient: app.Client(), AppAPIBaseURL: app.URL, WebAPIBaseURL: web.URL, AccessToken: "token", WebFallbackEnabled: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1599,7 +1599,7 @@ func TestInvalidListEnumsFailBeforeNetwork(t *testing.T) {
 	var requests atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { requests.Add(1); fmt.Fprint(w, `{"illusts":[]}`) }))
 	defer server.Close()
-	client, err := pixiv.NewClient(pixiv.Options{HTTPClient: server.Client(), AppAPIBaseURL: server.URL, AccessToken: "token"})
+	client, err := pixiv.NewClient(pixiv.NewClientOptions{HTTPClient: server.Client(), AppAPIBaseURL: server.URL, AccessToken: "token"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1711,7 +1711,7 @@ func TestUserBookmarksCursorCarriesOnlyBoundMaxBookmarkID(t *testing.T) {
 		fmt.Fprint(w, `{"illusts":[]}`)
 	}))
 	defer server.Close()
-	client, err := pixiv.NewClient(pixiv.Options{HTTPClient: server.Client(), AppAPIBaseURL: server.URL, AccessToken: "token"})
+	client, err := pixiv.NewClient(pixiv.NewClientOptions{HTTPClient: server.Client(), AppAPIBaseURL: server.URL, AccessToken: "token"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1747,7 +1747,7 @@ func TestUserBookmarksCursorCarriesOnlyBoundMaxBookmarkID(t *testing.T) {
 
 func TestListOperationErrorsExposeStableOperationAndUserMetadata(t *testing.T) {
 	t.Parallel()
-	client, err := pixiv.NewClient(pixiv.Options{
+	client, err := pixiv.NewClient(pixiv.NewClientOptions{
 		HTTPClient: &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
 			return testHTTPResponse(r, http.StatusInternalServerError, "metadata-secret"), nil
 		})},
@@ -1813,7 +1813,7 @@ func TestListOperationErrorsExposeStableOperationAndUserMetadata(t *testing.T) {
 
 func TestUserListContextCancellationPreservesCauseWithoutPartialResult(t *testing.T) {
 	t.Parallel()
-	client, err := pixiv.NewClient(pixiv.Options{
+	client, err := pixiv.NewClient(pixiv.NewClientOptions{
 		HTTPClient:    &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) { return nil, context.Canceled })},
 		AppAPIBaseURL: "https://app.invalid",
 		AccessToken:   "token",
@@ -1835,7 +1835,7 @@ func TestUserWireRequiresUserAndPreviewFields(t *testing.T) {
 	t.Parallel()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { fmt.Fprint(w, `{}`) }))
 	defer server.Close()
-	client, err := pixiv.NewClient(pixiv.Options{HTTPClient: server.Client(), AppAPIBaseURL: server.URL, AccessToken: "token"})
+	client, err := pixiv.NewClient(pixiv.NewClientOptions{HTTPClient: server.Client(), AppAPIBaseURL: server.URL, AccessToken: "token"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1865,7 +1865,7 @@ func TestSearchIllustAnonymousWebCursorUsesNextWebBatch(t *testing.T) {
 		}
 	}))
 	defer server.Close()
-	client, err := pixiv.NewClient(pixiv.Options{HTTPClient: server.Client(), WebAPIBaseURL: server.URL, WebFallbackEnabled: true})
+	client, err := pixiv.NewClient(pixiv.NewClientOptions{HTTPClient: server.Client(), WebAPIBaseURL: server.URL, WebFallbackEnabled: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1895,7 +1895,7 @@ func TestMangaRecommendedUsesIllustCatalogWithMangaContentType(t *testing.T) {
 		fmt.Fprint(w, `{"illusts":[{"id":101,"title":"manga","type":"manga"}],"next_url":null}`)
 	}))
 	defer server.Close()
-	client, err := pixiv.NewClient(pixiv.Options{HTTPClient: server.Client(), AppAPIBaseURL: server.URL, AccessToken: "token"})
+	client, err := pixiv.NewClient(pixiv.NewClientOptions{HTTPClient: server.Client(), AppAPIBaseURL: server.URL, AccessToken: "token"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1981,7 +1981,7 @@ func TestRecommendationsAcceptAndReuseZeroOffsetCursors(t *testing.T) {
 				}
 			}))
 			defer server.Close()
-			client, err := pixiv.NewClient(pixiv.Options{HTTPClient: server.Client(), AppAPIBaseURL: server.URL, AccessToken: "token"})
+			client, err := pixiv.NewClient(pixiv.NewClientOptions{HTTPClient: server.Client(), AppAPIBaseURL: server.URL, AccessToken: "token"})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -2009,7 +2009,7 @@ func TestNovelRecommendedMapsStableFieldsAndHidesUpstreamContinuation(t *testing
 		fmt.Fprintf(w, `{"novels":[{"id":201,"title":"novel","caption":"caption","user":{"id":8,"name":"author","account":"author_account"},"tags":[{"name":"tag","translated_name":"标签"}],"image_urls":{"medium":"https://img.example/novel.jpg"},"create_date":"2026-07-14T00:00:00+00:00","total_bookmarks":12,"total_view":34}],"next_url":"https://app-api.pixiv.net/v1/novel/recommended?offset=30&token=%s"}`, secret)
 	}))
 	defer server.Close()
-	client, err := pixiv.NewClient(pixiv.Options{HTTPClient: server.Client(), AppAPIBaseURL: server.URL, AccessToken: "token"})
+	client, err := pixiv.NewClient(pixiv.NewClientOptions{HTTPClient: server.Client(), AppAPIBaseURL: server.URL, AccessToken: "token"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2035,7 +2035,7 @@ func TestUserRecommendedMapsUserAndWorkPreviews(t *testing.T) {
 		fmt.Fprint(w, `{"user_previews":[{"user":{"id":301,"name":"artist","account":"artist_account"},"illusts":[{"id":302,"title":"preview","user":{"id":301}}],"novels":[{"id":303,"title":"novel preview","caption":"caption","user":{"id":301},"tags":[],"image_urls":{},"create_date":"2026-07-14","total_bookmarks":2,"total_view":3}]}],"next_url":null,"ranking":99,"privacy_policy":{"secret":true}}`)
 	}))
 	defer server.Close()
-	client, err := pixiv.NewClient(pixiv.Options{HTTPClient: server.Client(), AppAPIBaseURL: server.URL, AccessToken: "token"})
+	client, err := pixiv.NewClient(pixiv.NewClientOptions{HTTPClient: server.Client(), AppAPIBaseURL: server.URL, AccessToken: "token"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2057,7 +2057,7 @@ func TestZeroOffsetContinuationRemainsRecommendationOnly(t *testing.T) {
 		fmt.Fprint(w, `{"illusts":[],"next_url":"/v1/search/illust?offset=0"}`)
 	}))
 	defer server.Close()
-	client, err := pixiv.NewClient(pixiv.Options{HTTPClient: server.Client(), AppAPIBaseURL: server.URL, AccessToken: "token"})
+	client, err := pixiv.NewClient(pixiv.NewClientOptions{HTTPClient: server.Client(), AppAPIBaseURL: server.URL, AccessToken: "token"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2137,7 +2137,7 @@ func TestRecommendationsRejectInvalidOffsetContinuations(t *testing.T) {
 					fmt.Fprint(w, operation.envelope(malformed.next))
 				}))
 				defer server.Close()
-				client, err := pixiv.NewClient(pixiv.Options{HTTPClient: server.Client(), AppAPIBaseURL: server.URL, AccessToken: "token"})
+				client, err := pixiv.NewClient(pixiv.NewClientOptions{HTTPClient: server.Client(), AppAPIBaseURL: server.URL, AccessToken: "token"})
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -2176,7 +2176,7 @@ func TestRecommendationCursorsAreKindSpecificAndNeverExposeNextURL(t *testing.T)
 		}
 	}))
 	defer server.Close()
-	client, err := pixiv.NewClient(pixiv.Options{HTTPClient: server.Client(), AppAPIBaseURL: server.URL, AccessToken: "token"})
+	client, err := pixiv.NewClient(pixiv.NewClientOptions{HTTPClient: server.Client(), AppAPIBaseURL: server.URL, AccessToken: "token"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2267,7 +2267,7 @@ func TestNovelAndUserRecommendedRejectMalformedEnvelopesAndContinuation(t *testi
 				fmt.Fprint(w, test.body)
 			}))
 			defer server.Close()
-			client, err := pixiv.NewClient(pixiv.Options{HTTPClient: server.Client(), AppAPIBaseURL: server.URL, AccessToken: "token"})
+			client, err := pixiv.NewClient(pixiv.NewClientOptions{HTTPClient: server.Client(), AppAPIBaseURL: server.URL, AccessToken: "token"})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -2285,7 +2285,7 @@ func TestRecommendationsRequireAuthenticationBeforeNetwork(t *testing.T) {
 	var requests atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { requests.Add(1) }))
 	defer server.Close()
-	client, err := pixiv.NewClient(pixiv.Options{HTTPClient: server.Client(), AppAPIBaseURL: server.URL, WebAPIBaseURL: server.URL, WebFallbackEnabled: true})
+	client, err := pixiv.NewClient(pixiv.NewClientOptions{HTTPClient: server.Client(), AppAPIBaseURL: server.URL, WebAPIBaseURL: server.URL, WebFallbackEnabled: true})
 	if err != nil {
 		t.Fatal(err)
 	}

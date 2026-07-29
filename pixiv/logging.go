@@ -4,7 +4,6 @@ import (
 	"errors"
 	"time"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/common/constants"
 	"github.com/FlanChanXwO/pixiv-cli/internal/logging"
 )
 
@@ -14,7 +13,7 @@ func (c *Client) operationLog(operation Operation, started time.Time, err error,
 	if c == nil || c.logger == nil {
 		return
 	}
-	backend := constants.LogBackendLocal
+	backend := logging.BackendLocal
 	code := ""
 	status := 0
 	transportKind := ""
@@ -25,7 +24,7 @@ func (c *Client) operationLog(operation Operation, started time.Time, err error,
 		if errors.As(err, &pixivErr) {
 			backend = string(pixivErr.Backend)
 			if backend == "" {
-				backend = constants.LogBackendLocal
+				backend = logging.BackendLocal
 			}
 			code = string(pixivErr.Code)
 			status = pixivErr.UpstreamStatus

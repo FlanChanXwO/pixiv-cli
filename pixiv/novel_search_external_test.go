@@ -29,7 +29,7 @@ func TestAuthenticatedSearchNovelMapsSearchFields(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client, err := pixiv.NewClient(pixiv.Options{HTTPClient: server.Client(), AppAPIBaseURL: server.URL, AccessToken: "access"})
+	client, err := pixiv.NewClient(pixiv.NewClientOptions{HTTPClient: server.Client(), AppAPIBaseURL: server.URL, AccessToken: "access"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -74,7 +74,7 @@ func TestSearchNovelFiltersByStableResponseFields(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client, err := pixiv.NewClient(pixiv.Options{HTTPClient: server.Client(), AppAPIBaseURL: server.URL, AccessToken: "access"})
+	client, err := pixiv.NewClient(pixiv.NewClientOptions{HTTPClient: server.Client(), AppAPIBaseURL: server.URL, AccessToken: "access"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -113,7 +113,7 @@ func TestSearchNovelRejectsMissingFilterFields(t *testing.T) {
 		fmt.Fprint(w, `{"novels":[{"id":1,"user":{"id":1},"x_restrict":0,"is_original":true}],"next_url":null}`)
 	}))
 	defer server.Close()
-	client, err := pixiv.NewClient(pixiv.Options{HTTPClient: server.Client(), AppAPIBaseURL: server.URL, AccessToken: "access"})
+	client, err := pixiv.NewClient(pixiv.NewClientOptions{HTTPClient: server.Client(), AppAPIBaseURL: server.URL, AccessToken: "access"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -137,7 +137,7 @@ func TestSearchNovelRequiresAuthenticationBeforeNetwork(t *testing.T) {
 		http.Error(w, "unexpected network request", http.StatusInternalServerError)
 	}))
 	defer server.Close()
-	client, err := pixiv.NewClient(pixiv.Options{HTTPClient: server.Client(), WebAPIBaseURL: server.URL, WebFallbackEnabled: true})
+	client, err := pixiv.NewClient(pixiv.NewClientOptions{HTTPClient: server.Client(), WebAPIBaseURL: server.URL, WebFallbackEnabled: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -165,7 +165,7 @@ func TestSearchUserReportsOfficialAppSource(t *testing.T) {
 		fmt.Fprint(w, `{"user_previews":[{"user":{"id":8,"name":"author","account":"account","comment":"profile"}}],"next_url":null}`)
 	}))
 	defer server.Close()
-	client, err := pixiv.NewClient(pixiv.Options{HTTPClient: server.Client(), AppAPIBaseURL: server.URL, AccessToken: "access"})
+	client, err := pixiv.NewClient(pixiv.NewClientOptions{HTTPClient: server.Client(), AppAPIBaseURL: server.URL, AccessToken: "access"})
 	if err != nil {
 		t.Fatal(err)
 	}

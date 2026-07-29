@@ -27,7 +27,7 @@ func TestSearchIllustMapsIllustAITypeFromAppWire(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client, err := pixiv.NewClient(pixiv.Options{
+	client, err := pixiv.NewClient(pixiv.NewClientOptions{
 		HTTPClient:    server.Client(),
 		AppAPIBaseURL: server.URL,
 		AccessToken:   "token",

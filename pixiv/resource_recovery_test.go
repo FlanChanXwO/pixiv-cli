@@ -29,7 +29,7 @@ func TestDownloadPreservesNewSourceWhenReplacementRecoveryIsUnresolved(t *testin
 	t.Cleanup(server.Close)
 	parsed, err := url.Parse(server.URL)
 	require.NoError(t, err)
-	client, err := NewClient(Options{
+	client, err := NewClient(NewClientOptions{
 		HTTPClient:     server.Client(),
 		ResourcePolicy: ResourcePolicy{Mirrors: []ResourceMirrorPolicy{{Host: parsed.Host, PathPrefixes: []string{"/resource/"}}}},
 	})

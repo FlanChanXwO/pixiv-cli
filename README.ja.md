@@ -61,6 +61,8 @@ Also install the product skill that matches the same stable release tag (not mai
 
 SkillHub に対応した Agent は、公開済みの [`pixiv-cli` Skill](https://www.skillhub.cn/skills/pixiv-cli) を SkillHub から直接インストールできます。Skill には独自の version があり、インストール済み CLI の使い方を案内します。command の syntax は常に `pixiv <cmd> --help` を最終的な根拠にしてください。
 
+ClawHub を使う Agent は `clawhub install pixiv-cli` でも同じ公開 product Skill をインストールできます。unversioned latest を追わず、CLI release と同じ公開 Skill version に固定してください。
+
 ### Homebrew（macOS/Linux の推奨方法）
 
 ```bash
@@ -110,6 +112,7 @@ pixiv bookmark add 123456
 pixiv detail https://www.pixiv.net/artworks/123456
 pixiv recommended all --limit 10
 pixiv download https://www.pixiv.net/artworks/123456 --pages 1,3-5 --quality regular
+pixiv download 123456 https://i.pximg.net/img-original/example.jpg --concurrency 8
 
 # クリエイターの全視覚作品を一括でダウンロードします。
 pixiv download https://www.pixiv.net/users/12345678/artworks
@@ -144,20 +147,21 @@ MCP の固定 status、error、display text は英語です。Pixiv metadata と
 ### Go SDK
 
 ```go
-client, err := pixiv.OpenDefault(pixiv.Options{})
+client, err := pixiv.OpenDefault()
 if err != nil {
     // ローカルの認証・設定エラーを処理します。
 }
 result, err := client.SearchIllust(ctx, pixiv.SearchIllustRequest{Word: "初音ミク"})
+download, err := client.Download(ctx, "https://www.pixiv.net/artworks/123456")
 ```
 
-`github.com/FlanChanXwO/pixiv-cli/pixiv` を import します。モデル、cursor、resource、error、呼び出し側の責務は [SDK ガイド](docs/ja/sdk.md)を参照してください。
+`github.com/FlanChanXwO/pixiv-cli/pixiv` を import します。`Download`/`DownloadAll` は文書化された初心者 default を使い、`DownloadWith`/`DownloadAllWith` は path、naming、page、quality、concurrency を制御します。モデル、cursor、resource、error、呼び出し側の責務は [SDK ガイド](docs/ja/sdk.md)を参照してください。
 
 ## 認証と token の安全性
 
 推奨設定は `pixiv auth login` です。Pixiv App OAuth の raw refresh token を UID ごとにローカル account store へ保存します。`PHPSESSID` などのブラウザー Cookie は拒否され、App credential へ変換されません。
 
-macOS、desktop Linux、Windows の `pixiv://` callback handler は現在の login 中だけ install され、その後に元の設定へ戻ります。GUI のない SSH server では既存の `--no-open --addr` と local の `ssh -L` tunnel を使います。forwarded fallback page は同じ browser で検証済み Pixiv relay を続行でき、browser machine に pixiv の install は不要です。詳細は [CLI リファレンス](docs/ja/cli-reference.md#refresh-token-の取得) を参照してください。
+macOS、desktop Linux、Windows は on-demand persistent `pixiv://` callback handler を使い、local login と明示設定した cross-machine relay をサポートします。relay に送れるのは `pixiv://account/login` だけで、Cookie 読み取り、browser automation、Web fallback は行いません。GUI のない SSH server は既存の `--no-open --addr` と local `ssh -L` tunnel を使うか、documented relay server/client setting を設定します。詳細は [CLI リファレンス](docs/ja/cli-reference.md#refresh-token-の取得) を参照してください。
 
 ```bash
 pixiv auth list

@@ -46,7 +46,7 @@ func TestBookmarkSearchBlocksNonPremiumAccountAndPersistsMembershipCache(t *test
 	}))
 	defer server.Close()
 
-	client, err := pixiv.OpenDefault(pixiv.Options{
+	client, err := pixiv.OpenDefaultWith(pixiv.OpenDefaultOptions{
 		AuthFilePath: authPath, ConfigFilePath: configPath, HTTPClient: server.Client(),
 		OAuthBaseURL: server.URL, AppAPIBaseURL: server.URL,
 	})
@@ -90,7 +90,7 @@ func TestAccountCredentialRefreshPreservesPremiumStatusCache(t *testing.T) {
 		_, _ = w.Write([]byte(`{"access_token":"access","refresh_token":"rotated-refresh-token","user":{"id":7,"name":"refreshed-user"}}`))
 	}))
 	defer server.Close()
-	client, err := pixiv.NewClient(pixiv.Options{AuthFilePath: authPath, HTTPClient: server.Client(), OAuthBaseURL: server.URL})
+	client, err := pixiv.OpenDefaultWith(pixiv.OpenDefaultOptions{AuthFilePath: authPath, HTTPClient: server.Client(), OAuthBaseURL: server.URL})
 	requireNoError(t, err)
 
 	_, err = client.CheckAccount(context.Background(), 7)

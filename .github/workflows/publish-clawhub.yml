@@ -1,0 +1,163 @@
+name: Publish ClawHub skill
+
+on:
+  # The release workflow writes an immutable tag artifact only after its release
+  # and Homebrew gates succeed. GitHub's release token cannot trigger a second
+  # release event, so workflow_run is the trusted asynchronous handoff.
+  workflow_run:
+    workflows:
+      - Release
+    types:
+      - completed
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Existing published immutable SemVer tag to publish to ClawHub
+        required: true
+        type: string
+
+permissions: {}
+
+jobs:
+  publish:
+    name: Publish pixiv-cli to ClawHub
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-24.04
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - name: Download the trusted completed-release tag
+        if: github.event_name == 'workflow_run'
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: skillhub-release-tag
+          path: ${{ runner.temp }}/skill-release-tag
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ github.event.workflow_run.id }}
+      - name: Resolve the immutable release tag
+        id: release_tag
+        shell: bash
+        env:
+          WORKFLOW_DISPATCH_RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          set -euo pipefail
+          if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then
+            release_tag="$WORKFLOW_DISPATCH_RELEASE_TAG"
+          else
+            handoff_dir="$RUNNER_TEMP/skill-release-tag"
+            test "$(find "$handoff_dir" -maxdepth 1 -type f -print | LC_ALL=C sort)" = "$handoff_dir/release-tag"
+            release_tag=$(cat "$handoff_dir/release-tag")
+          fi
+          case "$release_tag" in
+            v[0-9]*) ;;
+            *) printf '%s\n' 'release tag must start with v and a digit' >&2; exit 1 ;;
+          esac
+          printf 'value=%s\n' "$release_tag" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ steps.release_tag.outputs.value }}
+      - name: Verify immutable release and exact skill source
+        id: skill_change
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ steps.release_tag.outputs.value }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          git show-ref --verify --quiet "refs/tags/$RELEASE_TAG"
+          tag_commit=$(git rev-parse "$RELEASE_TAG^{commit}")
+          git show-ref --verify --quiet "refs/remotes/origin/$DEFAULT_BRANCH"
+          git merge-base --is-ancestor "$tag_commit" "origin/$DEFAULT_BRANCH"
+          test "$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" --jq '.draft')" = false
+          test -n "$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" --jq '.published_at')"
+          skill_version=$(sed -n 's/^version: //p' skills/pixiv-cli/SKILL.md)
+          test "$skill_version" = "${RELEASE_TAG#v}"
+          git cat-file -e "$RELEASE_TAG:skills/pixiv-cli/SKILL.md"
+          previous_tag=
+          while IFS= read -r tag; do
+            if [ "$tag" != "$RELEASE_TAG" ] && go run ./scripts/releaseassets validate --version "${tag#v}" >/dev/null 2>&1; then
+              previous_tag=$tag
+              break
+            fi
+          done <<EOF
+          $(git tag --merged "$RELEASE_TAG" --list 'v[0-9]*' --sort=-v:refname)
+          EOF
+          if [ -z "$previous_tag" ]; then
+            printf 'publish=true\n' >> "$GITHUB_OUTPUT"
+          elif git diff --quiet "$previous_tag" "$RELEASE_TAG" -- skills/pixiv-cli; then
+            printf 'publish=false\n' >> "$GITHUB_OUTPUT"
+            printf 'Skill unchanged since %s; skipping ClawHub publication.\n' "$previous_tag"
+          else
+            printf 'publish=true\n' >> "$GITHUB_OUTPUT"
+          fi
+          printf 'commit=%s\n' "$tag_commit" >> "$GITHUB_OUTPUT"
+          printf 'skill_version=%s\n' "$skill_version" >> "$GITHUB_OUTPUT"
+      - name: Install pinned ClawHub CLI without credentials
+        if: steps.skill_change.outputs.publish == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --global --ignore-scripts clawhub@0.23.1
+          test "$(clawhub --cli-version)" = 0.23.1
+      - name: Dry-run the exact tagged skill
+        if: steps.skill_change.outputs.publish == 'true'
+        shell: bash
+        env:
+          CLAWHUB_CONFIG_PATH: ${{ runner.temp }}/clawhub/config.json
+          RELEASE_TAG: ${{ steps.release_tag.outputs.value }}
+          RELEASE_COMMIT: ${{ steps.skill_change.outputs.commit }}
+          SKILL_VERSION: ${{ steps.skill_change.outputs.skill_version }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$(dirname "$CLAWHUB_CONFIG_PATH")"
+          clawhub skill publish skills/pixiv-cli --version "$SKILL_VERSION" --source-repo "$GITHUB_REPOSITORY" --source-ref "$RELEASE_TAG" --source-commit "$RELEASE_COMMIT" --source-path skills/pixiv-cli --dry-run --json > "$RUNNER_TEMP/clawhub-dry-run.json"
+          node - "$RUNNER_TEMP/clawhub-dry-run.json" "$SKILL_VERSION" <<'NODE'
+          const fs = require("fs");
+          const [file, version] = process.argv.slice(2);
+          const result = JSON.parse(fs.readFileSync(file, "utf8"));
+          if (result.slug !== "pixiv-cli" || result.version !== version || typeof result.fingerprint !== "string" || result.fingerprint === "") {
+            throw new Error("ClawHub dry-run did not produce the expected skill identity, version, and fingerprint");
+          }
+          NODE
+      - name: Publish and inspect ClawHub skill
+        if: steps.skill_change.outputs.publish == 'true'
+        shell: bash
+        env:
+          CLAWHUB_CONFIG_PATH: ${{ runner.temp }}/clawhub/config.json
+          CLAWHUB_TOKEN: ${{ secrets.CLAWHUB_TOKEN }}
+          RELEASE_TAG: ${{ steps.release_tag.outputs.value }}
+          RELEASE_COMMIT: ${{ steps.skill_change.outputs.commit }}
+          SKILL_VERSION: ${{ steps.skill_change.outputs.skill_version }}
+        run: |
+          set -euo pipefail
+          test -n "$CLAWHUB_TOKEN"
+          mkdir -p "$(dirname "$CLAWHUB_CONFIG_PATH")"
+          clawhub --no-input login --token "$CLAWHUB_TOKEN"
+          clawhub skill publish skills/pixiv-cli --version "$SKILL_VERSION" --source-repo "$GITHUB_REPOSITORY" --source-ref "$RELEASE_TAG" --source-commit "$RELEASE_COMMIT" --source-path skills/pixiv-cli --json > "$RUNNER_TEMP/clawhub-publish.json"
+          clawhub skill verify pixiv-cli --version "$SKILL_VERSION" > "$RUNNER_TEMP/clawhub-verify.json"
+          node - "$RUNNER_TEMP/clawhub-publish.json" "$RUNNER_TEMP/clawhub-verify.json" "$GITHUB_REPOSITORY" "$RELEASE_COMMIT" "$SKILL_VERSION" <<'NODE'
+          const fs = require("fs");
+          const [publishFile, verifyFile, repo, commit, version] = process.argv.slice(2);
+          const publish = JSON.parse(fs.readFileSync(publishFile, "utf8"));
+          const verify = JSON.parse(fs.readFileSync(verifyFile, "utf8"));
+          if (publish.slug !== "pixiv-cli" || publish.version !== version || typeof publish.fingerprint !== "string" || publish.fingerprint === "") {
+            throw new Error("ClawHub publish response omitted the expected identity, version, or fingerprint");
+          }
+          if (verify.schema !== "clawhub.skill.verify.v1" || verify.ok !== true || verify.decision !== "pass" || verify.slug !== "pixiv-cli" || verify.version !== version || verify.resolvedFrom !== "version" || !Array.isArray(verify.reasons)) {
+            throw new Error("ClawHub verification did not pass for the immutable published version");
+          }
+          if (!Object.hasOwn(verify, "artifact") || !Object.hasOwn(verify, "provenance")) {
+            throw new Error("ClawHub verification omitted artifact or provenance evidence");
+          }
+          const provenance = JSON.stringify(verify.provenance);
+          if (!provenance.includes(repo) || !provenance.includes(commit) || !provenance.includes("skills/pixiv-cli")) {
+            throw new Error("ClawHub provenance does not match the immutable release source");
+          }
+          NODE

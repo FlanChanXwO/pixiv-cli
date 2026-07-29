@@ -11,7 +11,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/common/constants"
+	constants "github.com/FlanChanXwO/pixiv-cli/internal/platform/localstate"
 	"github.com/stretchr/testify/require"
 )
 
@@ -42,6 +42,31 @@ func TestPixivURLHandlerAppPathUsesApplicationDataDirectory(t *testing.T) {
 	path, err := pixivURLHandlerAppPath()
 	require.NoError(t, err)
 	require.Equal(t, filepath.Join(home, constants.AppDataDirName, "url-handler", "PixivCLIURLHandler.app"), path)
+}
+
+func TestDisablePersistentRetainsManifestWhenNoPreviousMacOSHandlerExists(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	require.NoError(t, saveHandlerManifest(handlerManifest{Version: 1, ExecutablePath: "/tmp/pixiv"}))
+
+	originalQuery := queryDarwinURLSchemeHandler
+	originalSet := setDarwinURLSchemeHandler
+	queryDarwinURLSchemeHandler = func(context.Context, string) (string, error) { return pixivURLHandlerBundleID, nil }
+	setDarwinURLSchemeHandler = func(context.Context, string, string) error {
+		t.Fatal("no prior handler must not be silently replaced")
+		return nil
+	}
+	t.Cleanup(func() {
+		queryDarwinURLSchemeHandler = originalQuery
+		setDarwinURLSchemeHandler = originalSet
+	})
+
+	err := DisablePersistent(context.Background())
+	require.EqualError(t, err, "cannot safely restore a previous macOS Pixiv URL handler")
+	_, exists, loadErr := loadHandlerManifest()
+	require.NoError(t, loadErr)
+	require.True(t, exists)
 }
 
 func TestEnsurePixivURLHandlerAppCompilesPrivateRandomSourceAndCleansIt(t *testing.T) {
@@ -105,22 +130,22 @@ func TestEnsurePixivURLHandlerAppRebuildsHelperWithoutCurrentSourceVersion(t *te
 	require.Equal(t, pixivURLHandlerSourceVersion+"\n", string(version))
 }
 
-func TestPixivURLHandlerOpensLoopbackBrowserRelay(t *testing.T) {
-	require.Contains(t, pixivURLHandlerSwiftSource, "components.fragment = callbackURL")
-	require.Contains(t, pixivURLHandlerSwiftSource, "NSWorkspace.shared.open(relayURL)")
+func TestPixivURLHandlerStartsHiddenCallbackProcess(t *testing.T) {
+	require.Contains(t, pixivURLHandlerSwiftSource, "process.arguments = [\"auth\", \"_callback\", callbackURL]")
+	require.Contains(t, pixivURLHandlerSwiftSource, "handler-manifest.json")
 	require.NotContains(t, pixivURLHandlerSwiftSource, "URLSession.shared.dataTask")
 }
 
-func TestPixivURLHandlerReadsCurrentCLICallbackEndpoint(t *testing.T) {
+func TestPixivURLHandlerReadsPrivateManifest(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("USERPROFILE", home)
 
-	endpoint, err := callbackEndpointPath()
+	manifest, err := handlerManifestPath()
 	require.NoError(t, err)
-	require.Equal(t, filepath.Join(home, constants.AppDataDirName, callbackEndpointFilename), endpoint)
+	require.Equal(t, filepath.Join(home, constants.AppDataDirName, "url-handler", handlerManifestFilename), manifest)
 	require.Contains(t, pixivURLHandlerSwiftSource, "NSHomeDirectory()")
-	require.Contains(t, pixivURLHandlerSwiftSource, constants.AppDataDirName+"/"+callbackEndpointFilename)
+	require.Contains(t, pixivURLHandlerSwiftSource, constants.AppDataDirName+"/url-handler/"+handlerManifestFilename)
 	require.NotContains(t, pixivURLHandlerSwiftSource, "applicationSupportDirectory")
 }
 

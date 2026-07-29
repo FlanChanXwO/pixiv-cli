@@ -30,6 +30,12 @@ class {{FORMULA_CLASS}} < Formula
     bin.install "pixiv"
   end
 
+  post_install do
+    # The hidden command reports integration failures without invalidating the
+    # verified Homebrew installation; a normal browser login retries it.
+    system bin/"pixiv", "auth", "_install-handler"
+  end
+
   test do
     version_info = JSON.parse(shell_output("#{bin}/pixiv version --json"))
     assert_equal "v#{version}", version_info["version"]

@@ -11,12 +11,17 @@ provide `Discover`, probes, capability negotiation, RSS, or crawler behavior.
 ## Construction
 
 ```go
-client, err := pixiv.NewClient(pixiv.Options{
+// Beginner/local entry point: no options required.
+local, err := pixiv.OpenDefault()
+
+// Explicit access-token or anonymous client: no local auth/config fields exist here.
+client, err := pixiv.NewClient(pixiv.NewClientOptions{
     AccessToken: accessToken,
     Logger:      logger, // optional; nil keeps the SDK quiet
 })
 
-local, err := pixiv.OpenDefault(pixiv.Options{
+// Advanced local/default client.
+local, err := pixiv.OpenDefaultWith(pixiv.OpenDefaultOptions{
     UserID: 12345678, // optional local account
 })
 ```
@@ -27,14 +32,15 @@ operations that require runtime configuration obtain a fresh configuration/auth 
 `client.Snapshot(ctx)` when several pagination calls must share one snapshot. Explicit token export is the only
 exception and reads the auth store directly.
 
-`Options` accepts an explicit `HTTPClient`, `AppAPIBaseURL`, `WebAPIBaseURL`, `OAuthBaseURL`,
-`WebFallbackEnabled`, `ResourcePolicy`, and `Logger`. `AccessToken` and `WebFallbackEnabled` apply only to
-`NewClient`; each `OpenDefault` snapshot reads local `web_fallback_enabled`. Do not make refresh tokens or loggers
-global mutable state.
+`NewClientOptions` intentionally contains only direct-client fields: `AccessToken`, `WebFallbackEnabled`, HTTP,
+App/Web endpoints, `ResourcePolicy`, optional `ResourceCachePath`, and `Logger`. `OpenDefaultOptions` instead owns
+local paths, OAuth endpoint, account selection, HTTP/endpoints, resource policy/cache path, and logging. Each
+`OpenDefault` snapshot reads local `web_fallback_enabled`. Do not make refresh tokens or loggers global mutable
+state.
 
 ### HTTP client and request lifetime
 
-Without `Options.HTTPClient`, the SDK creates a dedicated `http.Client` for that `Client` with a zero whole-request
+Without an options `HTTPClient`, the SDK creates a dedicated `http.Client` for that `Client` with a zero whole-request
 `Timeout`. App API, Web API, OAuth, and resource requests share it instead of mutating `http.DefaultClient`. Zero
 means the SDK adds no fixed deadline covering response-body reads; Go transport policies for connection, TLS
 handshake, and idle connections still apply.
@@ -44,7 +50,7 @@ deadline appropriate to the operation. `context.Canceled` and `context.DeadlineE
 `errors.Is`. After `OpenResource` returns, the context also governs body reads; close the body and cancel the
 context when the stream is no longer needed.
 
-When `Options.HTTPClient` is provided, the constructor preserves the same pointer and its timeout, transport,
+When an options `HTTPClient` is provided, the constructor preserves the same pointer and its timeout, transport,
 cookie jar, and redirect policy. Resource requests still use per-request copies that disable cookies and validate
 redirects. See [ADR 0010](../maintainers/adr/0010-http-client-timeout-and-context.md).
 
@@ -57,7 +63,7 @@ redirects. See [ADR 0010](../maintainers/adr/0010-http-client-timeout-and-contex
 | Writes | `AddBookmark`, `RemoveBookmark`, `FollowUser`, `UnfollowUser`. |
 | Accounts/configuration | `ImportAccount`, `ListAccounts`, `SelectAccount`, `RemoveAccount`, `ExportAccountRefreshToken`, `ExportAuthBundle`, `RestoreAuthBundle`, `CheckAccount`, `CheckRefreshToken`, `Refresh`, `RefreshAccount`, `PremiumStatus`, `RefreshPremiumStatus`, `GetConfig`, `SetConfig`, `UnsetConfig`; bundle codec functions are package-level. |
 | Login | `StartLogin`, `CompleteLogin`, `BuildLoginAuthorizationURL`; the SDK does not start a browser, loopback server, or TTY. |
-| Resources | `ParseResourceRef`, `OpenResource`, `Download`. |
+| Resources | `Download`, `DownloadAll`, `DownloadWith`, `DownloadAllWith`, `ParseResourceRef`, `OpenResource`, `DownloadResource`. |
 
 Request methods use named request types such as `SearchIllustRequest`, `SearchNovelRequest`, `SearchIllustOptionsRequest`,
 `UserArtworksRequest`, `UserBookmarksRequest`, `UserFollowingRequest`, `AddBookmarkRequest`, and
@@ -66,9 +72,29 @@ Request methods use named request types such as `SearchIllustRequest`, `SearchNo
 Every public `Illust` includes a stable artwork page URL
 `https://www.pixiv.net/artworks/{id}` as the first JSON field `url`. The SDK does not
 expose a like-count field; bookmark totals must not be labeled as likes.
-`Download` accepts `DownloadOptions` with `ParsePageSpec` page selection and
-`DownloadQuality` (`original|regular|small|thumb|mini`); ugoira rejects page selection
-or non-original quality as unsupported.
+### Downloads: beginner and advanced
+
+`Download(ctx, src)` and `DownloadAll(ctx, srcs)` are the beginner APIs. A source can be a positive artwork PID,
+an official artwork URL, or a CDN URL accepted by `ResourcePolicy`. They use `./downloads`,
+`{author} - {title}_{id}`, original quality, all artwork pages, and automatic concurrency
+`2 × runtime.GOMAXPROCS(0)`.
+
+Use `DownloadWith` / `DownloadAllWith` with `DownloadOptions` to choose `DownloadPath`, `FilenameTemplate`,
+1-based `Pages`, `Quality`, `UgoiraFormat`, and `Concurrency`. `UgoiraFormat` is `gif` by default and may be
+`apng`. `Concurrency == 0` retains the automatic value; any positive value
+is used exactly and is never artificially capped. Direct CDN resources keep their URL filename; page selection,
+derived quality, and a custom artwork template are rejected for them. `DownloadAllResult.Items` keeps input order and
+records `Attempted`, the successful result (including per-file cache state), or the item's error, so callers can retry
+only failed items. Ugoira ZIPs are cached and converted to GIF or APNG; ugoira rejects page selection or non-original quality.
+
+`DownloadResource(ctx, ref, destination)` is the explicit raw-resource API. It returns
+`ResourceDownloadResult` with `miss`, `revalidated`, `resumed`, or `refreshed` cache state. It replaces the former
+raw `Download(ctx, ResourceRef, path)` method.
+
+Configuration is likewise typed: use `ConfigKey` constants with `GetConfig`, `SetConfig`, and `UnsetConfig`, and
+construct writes with `StringConfigInput`, `BoolConfigInput`, or `DurationConfigInput`. CLI/MCP text boundaries use
+`ParseConfigKey` and `ParseConfigInput`. Sensitive relay credentials cannot use the generic setter; write them with
+`SetLoginRelaySecret`, and reads return only a redacted presence marker.
 
 ### Local Pixiv references
 
@@ -76,8 +102,8 @@ or non-original quality as unsupported.
 strict official Pixiv HTTPS URL. It returns `Reference{Kind, ID}`, where `Kind` is
 `artwork` for an ID or `/artworks/{id}`, and `user` for `/users/{id}` or
 `/users/{id}/artworks`. The URL host must be `pixiv.net` or `www.pixiv.net`; an
-optional locale, query, and fragment are allowed. `ParseArtworkReference(raw)` is the
-artwork-only variant, and `Reference.URL()` returns the canonical artwork or user page
+optional locale, query, and fragment are allowed. `ParseArtworkReference(raw)` and `ParseUserReference(raw)` are
+the typed variants (the latter accepts a user ID as well), and `Reference.URL()` returns the canonical artwork or user page
 URL. The parser neither follows redirects nor fetches HTML, rejects all other Pixiv
 properties and URL forms, and its validation errors do not reproduce the supplied URL.
 
@@ -243,7 +269,7 @@ detail/pages and fails atomically if either stage fails. See
 ref, err := client.ParseResourceRef(rawURL)
 if err != nil { /* reject */ }
 response, err := client.OpenResource(ctx, pixiv.OpenResourceRequest{
-    Ref: ref, Range: request.Header.Get("Range"),
+    Ref: ref, Range: request.Header.Get("Range"), IfRange: request.Header.Get("If-Range"),
 })
 if err != nil { /* map typed error */ }
 defer response.Body.Close()
@@ -252,8 +278,10 @@ defer response.Body.Close()
 
 `ResourceRef` is only a persistent reference; every `OpenResource` revalidates it. The default policy accepts only
 official Pixiv resources. Callers may add explicit host/path prefixes through `ResourcePolicy.Mirrors`. The SDK
-accepts only `Range`, `If-None-Match`, and `If-Modified-Since`, filters response headers, disables cookies, and
-validates redirects to reduce SSRF risk. `Download` streams to a temporary file and atomically replaces the target.
+accepts only `Range`, `If-None-Match`, `If-Modified-Since`, and `If-Range`, filters response headers, disables
+cookies, and validates redirects to reduce SSRF risk. `DownloadResource` writes metadata and incomplete data in
+`.pixiv-cache` (or `ResourceCachePath`), revalidates completed files with ETag/Last-Modified, resumes only verified
+partials with `Range` + `If-Range`, and atomically publishes a completed file. No validator means no unsafe resume.
 
 For idempotent App API JSON reads only, the first HTTP 429 is retried once when its `Retry-After` is a valid
 seconds value or HTTP date. The wait observes the caller context. Invalid or missing headers, a second 429, and all

@@ -9,12 +9,12 @@ import (
 	"time"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/application"
-	"github.com/FlanChanXwO/pixiv-cli/internal/common/constants"
 	"github.com/FlanChanXwO/pixiv-cli/internal/config"
 	"github.com/FlanChanXwO/pixiv-cli/internal/download"
 	"github.com/FlanChanXwO/pixiv-cli/internal/logging"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver"
-	internalpixiv "github.com/FlanChanXwO/pixiv-cli/internal/pixiv"
+	internalpixiv "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv"
+	"github.com/FlanChanXwO/pixiv-cli/internal/storage/accountpool"
 	"github.com/FlanChanXwO/pixiv-cli/internal/storage/auth"
 	publicpixiv "github.com/FlanChanXwO/pixiv-cli/pixiv"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -41,7 +41,7 @@ func (AuthFileRepository) Save(store auth.AuthStore) error {
 func NewServices(logger *slog.Logger) application.Services {
 	sdkService := application.SDKService{NewClient: func(request application.SDKClientRequest) (application.SDKClient, error) {
 		return newSDKClient(logger, request)
-	}, LoadRuntime: LoadRuntimeConfig}
+	}, LoadRuntime: LoadRuntimeConfig, RunPooled: newPooledSDKOperation(logger)}
 	return application.Services{
 		Account: application.AccountService{SDK: sdkService, RefreshTokenFromEnv: config.RefreshTokenFromEnv},
 		Config:  application.ConfigService{Store: ConfigFileStore{}},
@@ -53,6 +53,70 @@ func NewServices(logger *slog.Logger) application.Services {
 	}
 }
 
+func newPooledSDKOperation(logger *slog.Logger) application.SDKPooledOperation {
+	return func(ctx context.Context, request application.SDKClientRequest, attempt func(context.Context, application.SDKClient) (bool, error)) error {
+		runtime, err := LoadRuntimeConfig()
+		if err != nil {
+			return err
+		}
+		if !runtime.AccountPool.Enabled {
+			client, err := newSDKClient(logger, request)
+			if err != nil {
+				return err
+			}
+			operation, err := snapshotSDKClient(ctx, client)
+			if err != nil {
+				return err
+			}
+			_, err = attempt(ctx, operation)
+			return err
+		}
+		authPath := request.AuthFilePath
+		if authPath == "" {
+			authPath, err = auth.AuthFilePath()
+			if err != nil {
+				return err
+			}
+		}
+		executor := application.AccountPoolExecutor{
+			Config: runtime.AccountPool,
+			State:  accountpool.DefaultStore(),
+			AvailableAccounts: func(context.Context) ([]int64, error) {
+				store, err := auth.LoadAuthStore(authPath)
+				if err != nil {
+					return nil, err
+				}
+				return store.UserIDs(), nil
+			},
+		}
+		return executor.Run(ctx, func(ctx context.Context, userID int64) (bool, error) {
+			poolRequest := request
+			poolRequest.UserID = userID
+			poolRequest.RefreshToken = ""
+			poolRequest.AuthFilePath = authPath
+			poolRequest.DisableRetryAfterRetry = true
+			client, err := newSDKClient(logger, poolRequest)
+			if err != nil {
+				return false, err
+			}
+			operation, err := snapshotSDKClient(ctx, client)
+			if err != nil {
+				return false, err
+			}
+			return attempt(ctx, operation)
+		})
+	}
+}
+
+func snapshotSDKClient(ctx context.Context, client application.SDKClient) (application.SDKClient, error) {
+	if snapshotter, ok := client.(interface {
+		Snapshot(context.Context) (*publicpixiv.Client, error)
+	}); ok {
+		return snapshotter.Snapshot(ctx)
+	}
+	return client, nil
+}
+
 // newDownloadManager 是 CLI 与 MCP 唯一的生产下载器构造链，避免两处 wiring 漂移。
 func newDownloadManager(client application.DownloadClient, logger *slog.Logger, downloadPath, filenameTemplate string) *download.Manager {
 	return download.NewManager(client, logger, downloadPath, filenameTemplate)
@@ -61,7 +125,14 @@ func newDownloadManager(client application.DownloadClient, logger *slog.Logger, 
 // newSDKClient 将 CLI 的显式账号和代理覆写交给公共 SDK。没有 --proxy 时，
 // OpenDefault 自己在每个操作读取当前 config 快照；有覆写时才固定本次 transport。
 func newSDKClient(logger *slog.Logger, request application.SDKClientRequest) (application.SDKClient, error) {
-	options := publicpixiv.Options{UserID: request.UserID, RefreshToken: request.RefreshToken, AuthFilePath: request.AuthFilePath, Logger: logger}
+	options := publicpixiv.OpenDefaultOptions{
+		UserID:                        request.UserID,
+		RefreshToken:                  request.RefreshToken,
+		AuthFilePath:                  request.AuthFilePath,
+		Logger:                        logger,
+		IgnoreEnvironmentRefreshToken: true,
+		DisableRetryAfterRetry:        request.DisableRetryAfterRetry,
+	}
 	if request.HTTPSProxyOverride != nil {
 		httpClient, err := internalpixiv.HTTPClient(*request.HTTPSProxyOverride)
 		if err != nil {
@@ -69,7 +140,7 @@ func newSDKClient(logger *slog.Logger, request application.SDKClientRequest) (ap
 		}
 		options.HTTPClient = httpClient
 	}
-	return publicpixiv.OpenDefault(options)
+	return publicpixiv.OpenDefaultWith(options)
 }
 
 // NewApplicationLogger 从当前配置建立一次应用根 logger。它不触碰 slog 全局默认值；
@@ -174,7 +245,7 @@ type MCPRuntime struct {
 	AuthPath   string
 }
 
-func NewMCPRuntime(ctx context.Context, logger *slog.Logger, proxyOverride *string) (MCPRuntime, error) {
+func NewMCPRuntime(_ context.Context, logger *slog.Logger, proxyOverride *string) (MCPRuntime, error) {
 	cfg, err := LoadRuntimeConfig()
 	if err != nil {
 		return MCPRuntime{}, err
@@ -195,18 +266,6 @@ func NewMCPRuntime(ctx context.Context, logger *slog.Logger, proxyOverride *stri
 	client, err := newSDKClient(logger, request)
 	if err != nil {
 		return MCPRuntime{}, err
-	}
-	if token, err := config.RefreshTokenFromEnv(); err != nil {
-		return MCPRuntime{}, err
-	} else if token != "" {
-		account, err := client.ImportAccount(ctx, token)
-		if err != nil {
-			return MCPRuntime{}, err
-		}
-		if err := client.SelectAccount(account.UserID); err != nil {
-			return MCPRuntime{}, err
-		}
-		request.UserID = account.UserID
 	}
 	manager := newDownloadManager(client, logger, cfg.DownloadPath, cfg.FilenameTemplate)
 	return MCPRuntime{
@@ -229,7 +288,7 @@ func (r MCPRuntime) mcpLog(operation string, started time.Time, result string, u
 	logging.LogOperation(r.Logger, logging.OperationEvent{
 		Component: "mcp",
 		Operation: operation,
-		Backend:   constants.LogBackendLocal,
+		Backend:   logging.BackendLocal,
 		Duration:  time.Since(started),
 		Result:    result,
 		UserID:    userID,
@@ -246,9 +305,9 @@ func RunMCP(ctx context.Context, errOut io.Writer, proxyOverride *string) error 
 	if err != nil {
 		return err
 	}
-	server := mcpserver.NewWithSDKDownloadFactory(runtime.Manager, func(client application.SDKClient) mcpserver.DownloadManager {
-		return newDownloadManager(client, runtime.Logger, runtime.Manager.DownloadPath(), runtime.Config.FilenameTemplate)
-	}, runtime.Logger, runtime.SDK, runtime.SDKRequest)
+	// 普通 MCP download 使用 SDK 的 src 高层 API；Manager 仅保留给随机推荐下载和
+	// set_download_path 的本地状态。这样 CLI、MCP 与嵌入 SDK 共享同一缓存、续传与并发语义。
+	server := mcpserver.NewWithSDK(nil, runtime.Manager, runtime.Logger, runtime.SDK, runtime.SDKRequest)
 	started := time.Now()
 	err = server.Run(ctx, &mcp.StdioTransport{})
 	result := logging.ResultSuccess

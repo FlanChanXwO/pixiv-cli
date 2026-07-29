@@ -65,6 +65,8 @@ Also install the product skill that matches the same stable release tag (not mai
 
 Agents with SkillHub support can install the published [`pixiv-cli` Skill](https://www.skillhub.cn/skills/pixiv-cli) directly from SkillHub. The Skill has its own version and teaches the installed CLI; always use `pixiv <cmd> --help` as the final source of command syntax.
 
+Agents using ClawHub can install the same released product skill with `clawhub install pixiv-cli`; pin the installed skill to the matching published release version rather than following an unversioned latest tag.
+
 ### Homebrew (recommended on macOS and Linux)
 
 ```bash
@@ -114,6 +116,7 @@ pixiv bookmark add 123456
 pixiv detail https://www.pixiv.net/artworks/123456
 pixiv recommended all --limit 10
 pixiv download https://www.pixiv.net/artworks/123456 --pages 1,3-5 --quality regular
+pixiv download 123456 https://i.pximg.net/img-original/example.jpg --concurrency 8
 
 # Batch-download every visual work from a creator.
 pixiv download https://www.pixiv.net/users/12345678/artworks
@@ -148,20 +151,21 @@ Fixed MCP status, error, and display text is English; Pixiv metadata and user-su
 ### Go SDK
 
 ```go
-client, err := pixiv.OpenDefault(pixiv.Options{})
+client, err := pixiv.OpenDefault()
 if err != nil {
     // Handle local auth/configuration failure.
 }
 result, err := client.SearchIllust(ctx, pixiv.SearchIllustRequest{Word: "初音ミク"})
+download, err := client.Download(ctx, "https://www.pixiv.net/artworks/123456")
 ```
 
-Import `github.com/FlanChanXwO/pixiv-cli/pixiv`. The [SDK guide](docs/en/sdk.md) documents models, cursors, resources, errors, and caller responsibilities.
+Import `github.com/FlanChanXwO/pixiv-cli/pixiv`. `Download`/`DownloadAll` use documented beginner defaults; `DownloadWith`/`DownloadAllWith` expose paths, naming, pages, quality, and concurrency. The [SDK guide](docs/en/sdk.md) documents models, cursors, resources, errors, and caller responsibilities.
 
 ## Authentication and token safety
 
 `pixiv auth login` is the recommended setup. It saves raw Pixiv App OAuth refresh tokens by UID in the local account store; browser cookies such as `PHPSESSID` are rejected and are never converted into App credentials.
 
-On macOS, desktop Linux, and Windows, the `pixiv://` callback handler is installed only for the active login and then restored. For a headless SSH server, use the existing `--no-open --addr` flow with a local `ssh -L` tunnel; the forwarded fallback page can continue a validated Pixiv relay in that same browser without a local pixiv installation. See the [CLI reference](docs/en/cli-reference.md#getting-a-refresh-token).
+On macOS, desktop Linux, and Windows, an on-demand persistent `pixiv://` callback handler supports local login and an explicitly configured cross-machine relay. Only `pixiv://account/login` may reach that relay; no browser automation, Cookie reading, or Web fallback is used. For a headless SSH server, use the existing `--no-open --addr` flow with a local `ssh -L` tunnel, or configure the documented relay server/client settings. See the [CLI reference](docs/en/cli-reference.md#getting-a-refresh-token).
 
 ```bash
 pixiv auth list

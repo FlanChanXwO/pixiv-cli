@@ -33,11 +33,14 @@ const (
 )
 
 type SettingSpec struct {
-	Alias      string
-	KoanfKey   string
-	Table      []string
-	Key        string
-	Kind       settingKind
+	Alias    string
+	KoanfKey string
+	Table    []string
+	Key      string
+	Kind     settingKind
+	// Sensitive 表示该值可用于认证或中继授权。它可以被写入私有 config.toml，
+	// 但绝不能通过 config get、日志或错误消息回显。
+	Sensitive  bool
 	HasDefault bool
 	Default    any
 }
@@ -61,12 +64,35 @@ type RuntimeConfig struct {
 	UpdateCheckEnabled bool
 	OutputJSON         bool
 	LoginOpenBrowser   bool
-	LoginTimeout       time.Duration
 	LoginUseAfterLogin bool
-	// PremiumStatusCacheTTL 控制收藏数筛选使用的已验证 Premium 状态缓存；用户要求的默认值为一天。
-	PremiumStatusCacheTTL time.Duration
+	// LoginRelay* 描述跨机器浏览器回调中继。secret 只用于 handler 与 server
+	// 间的 bearer 认证，不能作为普通配置输出的一部分。
+	LoginRelayPublicURL   string
+	LoginRelayListenAddr  string
+	LoginRelaySecret      string
+	LoginRelayTargetURL   string
+	LoginRelayTLSCertFile string
+	LoginRelayTLSKeyFile  string
 	// LogLevel 只描述应用根 logger，不会改变 slog 默认全局 logger。
 	LogLevel string
+	// AccountPool 只能在 config.toml 的 [account_pool] 表中手工维护，避免普通
+	// config set 的扁平字符串接口误写账号白名单。
+	AccountPool AccountPoolConfig
+}
+
+type AccountPoolStrategy string
+
+const (
+	AccountPoolStrategyRoundRobin AccountPoolStrategy = "round_robin"
+	AccountPoolStrategyRandom     AccountPoolStrategy = "random"
+)
+
+// AccountPoolConfig 描述内容读取和作品下载可使用的本地受管账号白名单。
+// 账号 token 仍只存在 auth.json，配置与状态文件均不保存凭据。
+type AccountPoolConfig struct {
+	Enabled  bool
+	Accounts []int64
+	Strategy AccountPoolStrategy
 }
 
 var settingSpecs = []SettingSpec{
@@ -77,9 +103,13 @@ var settingSpecs = []SettingSpec{
 	{Alias: "update_check_enabled", KoanfKey: "update.check_enabled", Table: []string{"update"}, Key: "check_enabled", Kind: settingBool, HasDefault: true, Default: true},
 	{Alias: "output_json", KoanfKey: "output.json", Table: []string{"output"}, Key: "json", Kind: settingBool, HasDefault: true, Default: false},
 	{Alias: "login_open_browser", KoanfKey: "login.open_browser", Table: []string{"login"}, Key: "open_browser", Kind: settingBool, HasDefault: true, Default: true},
-	{Alias: "login_timeout", KoanfKey: "login.timeout", Table: []string{"login"}, Key: "timeout", Kind: settingDuration, HasDefault: true, Default: time.Duration(0)},
 	{Alias: "login_use_after_login", KoanfKey: "login.use_after_login", Table: []string{"login"}, Key: "use_after_login", Kind: settingBool, HasDefault: true, Default: false},
-	{Alias: "premium_status_cache_ttl", KoanfKey: "premium.status_cache_ttl", Table: []string{"premium"}, Key: "status_cache_ttl", Kind: settingDuration, HasDefault: true, Default: 24 * time.Hour},
+	{Alias: "login_relay_public_url", KoanfKey: "login.relay_public_url", Table: []string{"login"}, Key: "relay_public_url", Kind: settingString},
+	{Alias: "login_relay_listen_addr", KoanfKey: "login.relay_listen_addr", Table: []string{"login"}, Key: "relay_listen_addr", Kind: settingString},
+	{Alias: "login_relay_secret", KoanfKey: "login.relay_secret", Table: []string{"login"}, Key: "relay_secret", Kind: settingString, Sensitive: true},
+	{Alias: "login_relay_target_url", KoanfKey: "login.relay_target_url", Table: []string{"login"}, Key: "relay_target_url", Kind: settingString},
+	{Alias: "login_relay_tls_cert_file", KoanfKey: "login.relay_tls_cert_file", Table: []string{"login"}, Key: "relay_tls_cert_file", Kind: settingString},
+	{Alias: "login_relay_tls_key_file", KoanfKey: "login.relay_tls_key_file", Table: []string{"login"}, Key: "relay_tls_key_file", Kind: settingString},
 	{Alias: "log_level", KoanfKey: "logging.level", Table: []string{"logging"}, Key: "level", Kind: settingString, HasDefault: true, Default: "warn"},
 }
 
@@ -90,6 +120,20 @@ func SettingSpecByAlias(alias string) (SettingSpec, bool) {
 		}
 	}
 	return SettingSpec{}, false
+}
+
+// IsSensitiveSetting 标记禁止通过公开配置查询回显的凭据型值。
+func IsSensitiveSetting(alias string) bool {
+	spec, ok := SettingSpecByAlias(alias)
+	return ok && spec.Sensitive
+}
+
+// PublicSettingText 返回可安全进入 CLI、SDK JSON 与日志边界的配置值。
+func PublicSettingText(alias, text string) string {
+	if IsSensitiveSetting(alias) && text != "" {
+		return "<redacted>"
+	}
+	return text
 }
 
 func ValidSettingAliases() []string {
@@ -211,26 +255,43 @@ func (s SettingsState) Runtime() (RuntimeConfig, error) {
 	if err != nil {
 		return RuntimeConfig{}, err
 	}
-	loginTimeout, err := s.Effective("login_timeout")
-	if err != nil {
-		return RuntimeConfig{}, err
-	}
 	loginUseAfterLogin, err := s.Effective("login_use_after_login")
 	if err != nil {
 		return RuntimeConfig{}, err
 	}
-	premiumStatusCacheTTL, err := s.Effective("premium_status_cache_ttl")
+	loginRelayPublicURL, err := s.Effective("login_relay_public_url")
 	if err != nil {
 		return RuntimeConfig{}, err
 	}
-	if premiumStatusCacheTTL.Value.(time.Duration) < 0 {
-		return RuntimeConfig{}, errors.New("premium_status_cache_ttl must be greater than or equal to zero")
+	loginRelayListenAddr, err := s.Effective("login_relay_listen_addr")
+	if err != nil {
+		return RuntimeConfig{}, err
+	}
+	loginRelaySecret, err := s.Effective("login_relay_secret")
+	if err != nil {
+		return RuntimeConfig{}, err
+	}
+	loginRelayTargetURL, err := s.Effective("login_relay_target_url")
+	if err != nil {
+		return RuntimeConfig{}, err
+	}
+	loginRelayTLSCertFile, err := s.Effective("login_relay_tls_cert_file")
+	if err != nil {
+		return RuntimeConfig{}, err
+	}
+	loginRelayTLSKeyFile, err := s.Effective("login_relay_tls_key_file")
+	if err != nil {
+		return RuntimeConfig{}, err
 	}
 	logLevel, err := s.Effective("log_level")
 	if err != nil {
 		return RuntimeConfig{}, err
 	}
 	level, err := normalizeLogLevel(logLevel.Value.(string))
+	if err != nil {
+		return RuntimeConfig{}, err
+	}
+	accountPool, err := s.accountPool()
 	if err != nil {
 		return RuntimeConfig{}, err
 	}
@@ -242,15 +303,97 @@ func (s SettingsState) Runtime() (RuntimeConfig, error) {
 		UpdateCheckEnabled:    updateCheckEnabled.Value.(bool),
 		OutputJSON:            outputJSON.Value.(bool),
 		LoginOpenBrowser:      loginOpenBrowser.Value.(bool),
-		LoginTimeout:          loginTimeout.Value.(time.Duration),
 		LoginUseAfterLogin:    loginUseAfterLogin.Value.(bool),
-		PremiumStatusCacheTTL: premiumStatusCacheTTL.Value.(time.Duration),
+		LoginRelayPublicURL:   settingStringValue(loginRelayPublicURL),
+		LoginRelayListenAddr:  settingStringValue(loginRelayListenAddr),
+		LoginRelaySecret:      settingStringValue(loginRelaySecret),
+		LoginRelayTargetURL:   settingStringValue(loginRelayTargetURL),
+		LoginRelayTLSCertFile: settingStringValue(loginRelayTLSCertFile),
+		LoginRelayTLSKeyFile:  settingStringValue(loginRelayTLSKeyFile),
 		LogLevel:              level,
+		AccountPool:           accountPool,
 	}
 	if httpsProxy.HasValue {
 		cfg.HTTPSProxy = httpsProxy.Value.(string)
 	}
 	return cfg, nil
+}
+
+func (s SettingsState) accountPool() (AccountPoolConfig, error) {
+	pool := AccountPoolConfig{Strategy: AccountPoolStrategyRoundRobin}
+	if s.file == nil || !s.file.Exists("account_pool") {
+		return pool, nil
+	}
+	if raw := s.file.Get("account_pool.enabled"); raw != nil {
+		enabled, ok := raw.(bool)
+		if !ok {
+			return AccountPoolConfig{}, errors.New("account_pool.enabled must be a boolean")
+		}
+		pool.Enabled = enabled
+	}
+	if raw := s.file.Get("account_pool.strategy"); raw != nil {
+		value, ok := raw.(string)
+		if !ok {
+			return AccountPoolConfig{}, errors.New("account_pool.strategy must be one of: round_robin, random")
+		}
+		pool.Strategy = AccountPoolStrategy(strings.TrimSpace(value))
+	}
+	switch pool.Strategy {
+	case AccountPoolStrategyRoundRobin, AccountPoolStrategyRandom:
+	default:
+		return AccountPoolConfig{}, errors.New("account_pool.strategy must be one of: round_robin, random")
+	}
+	if raw := s.file.Get("account_pool.accounts"); raw != nil {
+		accounts, err := accountPoolUIDs(raw)
+		if err != nil {
+			return AccountPoolConfig{}, err
+		}
+		pool.Accounts = accounts
+	}
+	if !pool.Enabled {
+		return pool, nil
+	}
+	if len(pool.Accounts) == 0 {
+		return AccountPoolConfig{}, errors.New("account_pool.accounts must contain at least one UID")
+	}
+	seen := make(map[int64]struct{}, len(pool.Accounts))
+	for _, userID := range pool.Accounts {
+		if userID <= 0 {
+			return AccountPoolConfig{}, errors.New("account_pool.accounts must contain only positive UIDs")
+		}
+		if _, exists := seen[userID]; exists {
+			return AccountPoolConfig{}, errors.New("account_pool.accounts must not contain duplicate UIDs")
+		}
+		seen[userID] = struct{}{}
+	}
+	return pool, nil
+}
+
+func accountPoolUIDs(raw any) ([]int64, error) {
+	values, ok := raw.([]any)
+	if !ok {
+		return nil, errors.New("account_pool.accounts must be an array of UIDs")
+	}
+	accounts := make([]int64, 0, len(values))
+	for _, value := range values {
+		switch number := value.(type) {
+		case int64:
+			accounts = append(accounts, number)
+		case int:
+			accounts = append(accounts, int64(number))
+		default:
+			return nil, errors.New("account_pool.accounts must be an array of UIDs")
+		}
+	}
+	return accounts, nil
+}
+
+func settingStringValue(value SettingValue) string {
+	if !value.HasValue {
+		return ""
+	}
+	text, _ := value.Value.(string)
+	return text
 }
 
 func coerceSettingValue(spec SettingSpec, raw any, source string) (SettingValue, error) {

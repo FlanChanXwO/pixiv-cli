@@ -93,6 +93,19 @@ func ParseArtworkReference(raw string) (int64, error) {
 	return reference.ID, nil
 }
 
+// ParseUserReference 解析单个 Pixiv 用户 ID、用户主页或用户作品页 URL。纯数字在
+// ParseReference 中默认是作品 ID；此处作为用户领域专用入口按用户 ID 解释。
+func ParseUserReference(raw string) (int64, error) {
+	if id, ok := parsePositiveReferenceID(strings.TrimSpace(raw)); ok {
+		return id, nil
+	}
+	reference, err := ParseReference(raw)
+	if err != nil || reference.Kind != ReferenceKindUser {
+		return 0, errUnsupportedReference
+	}
+	return reference.ID, nil
+}
+
 func parsePositiveReferenceID(value string) (int64, bool) {
 	id, err := strconv.ParseInt(value, 10, 64)
 	return id, err == nil && id > 0

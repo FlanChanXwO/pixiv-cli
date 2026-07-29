@@ -6,7 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/common/constants"
+	constants "github.com/FlanChanXwO/pixiv-cli/internal/platform/localstate"
 )
 
 type privateFileOps struct {

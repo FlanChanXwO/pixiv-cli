@@ -45,9 +45,14 @@ cache 的 24 小时节流，并最多等待 3 秒。配置、网络、来源识�
 
 ### `internal/cli/loginhelper`
 
-负责 `auth login` 使用的系统 URL scheme helper 安装。`internal/cli` 只经 `Install` 入口请求本次登录的
-helper 并保留 OAuth、loopback HTTP、系统浏览器和 TTY 编排；Darwin 实现独立持有内嵌 Swift、
-`Info.plist`、LaunchServices 注册及默认 handler 恢复逻辑，其他平台显式报告不支持该 helper。
+负责 `auth login` 的系统 URL scheme helper、持久 handler manifest 和 remote callback client。`internal/cli`
+只经该包安装按需 handler，保留 OAuth、loopback HTTP、系统浏览器、TTY 和 relay server 编排。handler 只允许
+精确的 `pixiv://account/login` 进入 loopback/remote relay；活跃 loopback 优先，其他 `pixiv://` URL 定向交给
+manifest 保存的旧 handler。manifest 仅有 executable path 与旧关联，relay secret 始终从私有 `config.toml`
+在内存读取。remote callback 仅接受同一 relay base 返回的 one-time result URL；`internal/cli` 先打开该无敏感
+最终页，再等待 server 的 OAuth exchange 结果。Darwin 独立持有嵌入 Swift、`Info.plist`、LaunchServices；Windows
+使用当前用户 registry/class 启动；desktop Linux 使用 XDG desktop entry 与 `gio`。headless Linux 不注册 handler，
+但可运行 relay server。
 
 ### `internal/buildinfo`
 
@@ -153,7 +158,7 @@ Release 安装的失败语义仍是保护边界，而不是临时降级。
 
 调用方在自身 adapter 中定义 source mode、budget、filter、cursor 持久化和 HTTP presentation。本仓库不提供 HTTP Provider、Discover、Probe、Capabilities、RSS 或 crawler。
 
-### `internal/pixiv/protocol`、`appapi`、`webapi`、`oauth`、`resource`
+### `internal/services/pixiv/protocol`、`appapi`、`webapi`、`oauth`、`resource`
 
 内部协议包只由 facade 组合：
 
@@ -174,7 +179,7 @@ R18/R18G/mature 与动态搜索选项会返回认证需求，不伪造空结果�
 也不提供 refresh-token-to-session 转换。认证态 detail/pages/ugoira metadata 均由 App API 提供；App 的页数不完整
 或动图资源异常必须显式失败，不能转交 Web 补全。匿名 Web 的原图 ugoira 资源仍是其独立读路径。
 
-### `internal/pixiv/model`
+### `internal/services/pixiv/model`
 
 集中 Pixiv response/domain 类型以及 Pixiv 协议枚举 typed const，例如 search target、sort、ranking mode、restrict 和 illust type。MCP delivery 等传输层常量仍留在 `internal/mcpserver`。
 
@@ -256,9 +261,9 @@ Release 的匿名 URL 不可安装，Release 会先公开再执行四架构 gate
 SmartScreen 提示时，必须回到已验证的项目 GitHub Release、checksum 和签名记录，不能把系统提示视为
 可由 CLI 静默绕过的错误。
 
-### `internal/common/constants`
+### `internal/platform/localstate` 与 `internal/logging`
 
-只保存跨包复用、无协议语义的基础设施常量，例如私有文件权限、私有目录权限和安全 operation log 的稳定事件/字段名；`AppDataDirName` 是本地应用数据根目录的路径命名空间例外。Pixiv 协议值、MCP delivery 值、config key/default 等仍留在所属领域包。
+不保留通用 constants 包。本地私有目录/文件权限与 `AppDataDirName` 归 `internal/platform/localstate`；安全 operation log 的稳定事件/字段名归 `internal/logging`。Pixiv 协议值、MCP delivery 值、config key/default 等仍留在所属领域包。
 
 ### `internal/logging`
 

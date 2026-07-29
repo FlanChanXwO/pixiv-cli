@@ -14,7 +14,7 @@ type DownloadClient interface {
 	IllustDetail(context.Context, int64) (*sdk.IllustDetail, error)
 	UgoiraMetadata(context.Context, int64) (*sdk.UgoiraMetadataResult, error)
 	ParseResourceRef(string) (sdk.ResourceRef, error)
-	Download(context.Context, sdk.ResourceRef, string) error
+	DownloadResource(context.Context, sdk.ResourceRef, string) (sdk.ResourceDownloadResult, error)
 }
 
 // DownloadTargetClient 在下载资源能力之外提供作者作品列表，用于把用户 URL 展开为视觉作品。
@@ -26,6 +26,7 @@ type DownloadTargetClient interface {
 
 // 质量与页选择契约由 public SDK 拥有，application 仅 alias 以便 CLI/MCP 共用。
 type DownloadQuality = sdk.DownloadQuality
+type UgoiraFormat = sdk.UgoiraFormat
 
 const (
 	DownloadQualityOriginal = sdk.DownloadQualityOriginal
@@ -33,11 +34,14 @@ const (
 	DownloadQualitySmall    = sdk.DownloadQualitySmall
 	DownloadQualityThumb    = sdk.DownloadQualityThumb
 	DownloadQualityMini     = sdk.DownloadQualityMini
+	UgoiraFormatGIF         = sdk.UgoiraFormatGIF
+	UgoiraFormatAPNG        = sdk.UgoiraFormatAPNG
 )
 
 var (
 	ParsePageSpec           = sdk.ParsePageSpec
 	ValidateDownloadQuality = sdk.ValidateDownloadQuality
+	ValidateUgoiraFormat    = sdk.ValidateUgoiraFormat
 )
 
 type DownloadedArtwork struct {
@@ -60,12 +64,16 @@ type DownloadFailure struct {
 	IllustID int64
 	Type     string
 	Message  string
+	// Cause 只用于 application/CLI 判断账号池的安全重试边界，输出 adapter
+	// 只公开 Message，避免错误对象进入用户协议。
+	Cause error
 }
 
 // DownloadReport 同时保留成功产物和独立失败，使作者全量下载无需持久化 job 状态也能说明结果。
 type DownloadReport struct {
-	Items    []DownloadedArtwork
-	Failures []DownloadFailure
+	Items     []DownloadedArtwork
+	Failures  []DownloadFailure
+	Committed bool
 }
 
 // DownloadManager 接收完整 DownloadRequest，避免 CLI/MCP 与实现各自解析 pages/quality。
@@ -83,10 +91,90 @@ type DownloadRequest struct {
 	Pages []int
 	// Quality 默认 original。
 	Quality DownloadQuality
+	// UgoiraFormat 默认 GIF，仅影响 ugoira 的最终动画容器。
+	UgoiraFormat UgoiraFormat
 }
 
 type DownloadService struct {
 	NewManager DownloadManagerFactory
+}
+
+// DownloadSources 是 CLI/MCP 的新入口：作品 PID、作品 URL、受资源策略允许的直链
+// 都原样交给 public SDK 解析。用户主页 URL 是唯一的应用层展开规则，因为它代表
+// 一组作品而非单个 SDK 下载来源。
+func (s DownloadService) DownloadSources(ctx context.Context, client DownloadTargetClient, sources []string, options sdk.DownloadOptions) (DownloadReport, error) {
+	report := DownloadReport{Items: []DownloadedArtwork{}, Failures: []DownloadFailure{}}
+	if len(sources) == 0 {
+		return report, errors.New("at least one download source is required")
+	}
+	downloadSources := make([]string, 0, len(sources))
+	for _, source := range sources {
+		if err := ctx.Err(); err != nil {
+			return report, err
+		}
+		reference, err := sdk.ParseReference(source)
+		if err != nil || reference.Kind == sdk.ReferenceKindArtwork {
+			// 非 Pixiv 页面 URL 可能是经 ResourcePolicy 允许的 CDN 资源；SDK 会在
+			// ParseResourceRef 中统一验证，application 不复制该安全边界。
+			downloadSources = append(downloadSources, source)
+			continue
+		}
+		if reference.Kind != sdk.ReferenceKindUser {
+			return report, errors.New("download source is invalid")
+		}
+		jobs := make([]downloadTargetJob, 0)
+		if err := collectUserArtworkJobs(ctx, client, reference, &jobs, &report); err != nil {
+			return report, err
+		}
+		for _, job := range jobs {
+			downloadSources = append(downloadSources, job.target.URL())
+		}
+	}
+	if len(downloadSources) == 0 {
+		return report, nil
+	}
+	downloader, ok := client.(interface {
+		DownloadAllWith(context.Context, []string, sdk.DownloadOptions) (sdk.DownloadAllResult, error)
+	})
+	if !ok {
+		// 仅保留给旧嵌入方的兼容适配；生产 public SDK 必实现上述高层 API。
+		targets := make([]sdk.Reference, 0, len(downloadSources))
+		for _, source := range downloadSources {
+			reference, err := sdk.ParseReference(source)
+			if err != nil || reference.Kind != sdk.ReferenceKindArtwork {
+				return report, errors.New("download source requires a public SDK supporting DownloadAllWith")
+			}
+			targets = append(targets, reference)
+		}
+		return s.DownloadTargets(ctx, client, targets, DownloadRequest{
+			DownloadPath: options.DownloadPath, FilenameTemplate: options.FilenameTemplate,
+			Pages: options.Pages, Quality: options.Quality, UgoiraFormat: options.UgoiraFormat,
+		})
+	}
+	result, err := downloader.DownloadAllWith(ctx, downloadSources, options)
+	if err != nil {
+		return report, err
+	}
+	for index, item := range result.Items {
+		if item.Committed {
+			report.Committed = true
+		}
+		if item.Result != nil {
+			artwork := DownloadedArtwork{
+				IllustID: item.Result.IllustID, Title: item.Result.Title,
+				Author: item.Result.Author, Type: item.Result.Type,
+				Files: make([]DownloadedFile, 0, len(item.Result.Files)),
+			}
+			for _, file := range item.Result.Files {
+				artwork.Files = append(artwork.Files, DownloadedFile{Path: file.Path, Page: file.Page})
+			}
+			report.Items = append(report.Items, artwork)
+		}
+		if item.Err != nil {
+			report.Failures = append(report.Failures, DownloadFailure{URL: downloadSources[index], Message: item.Err.Error(), Cause: item.Err})
+		}
+	}
+	return report, nil
 }
 
 // Download 把 operation snapshot 与本次运行配置交给 composition root 注入的下载器。
@@ -98,8 +186,9 @@ func (s DownloadService) Download(ctx context.Context, client DownloadClient, re
 	return manager.Download(ctx, request)
 }
 
-// DownloadTargets 依输入顺序下载作品，或展开作者的全部 illust、manga、ugoira。
-// 单件失败会进入 report 并继续；用户取消则立即返回 context 错误，不伪装成普通部分失败。
+// DownloadTargets 是旧嵌入下载器的兼容路径。新 CLI/MCP 使用 DownloadSources 并由
+// public SDK 统一调度并发；这里保留输入顺序逐项调用，避免旧 DownloadManager 的
+// 路径和模板可变状态在并发下交叉。
 func (s DownloadService) DownloadTargets(ctx context.Context, client DownloadTargetClient, targets []sdk.Reference, request DownloadRequest) (DownloadReport, error) {
 	report := DownloadReport{Items: []DownloadedArtwork{}, Failures: []DownloadFailure{}}
 	if len(targets) == 0 {
@@ -112,6 +201,7 @@ func (s DownloadService) DownloadTargets(ctx context.Context, client DownloadTar
 	if err != nil {
 		return report, err
 	}
+	jobs := make([]downloadTargetJob, 0, len(targets))
 	for _, target := range targets {
 		if err := ctx.Err(); err != nil {
 			return report, err
@@ -121,16 +211,17 @@ func (s DownloadService) DownloadTargets(ctx context.Context, client DownloadTar
 		}
 		switch target.Kind {
 		case sdk.ReferenceKindArtwork:
-			if err := downloadOne(ctx, manager, request, target, "", &report); err != nil {
-				return report, err
-			}
+			jobs = append(jobs, downloadTargetJob{target: target})
 		case sdk.ReferenceKindUser:
-			if err := downloadUserArtworks(ctx, client, manager, request, target, &report); err != nil {
+			if err := collectUserArtworkJobs(ctx, client, target, &jobs, &report); err != nil {
 				return report, err
 			}
 		default:
 			return report, errors.New("download target is invalid")
 		}
+	}
+	if err := runDownloadTargetJobs(ctx, manager, request, jobs, &report); err != nil {
+		return report, err
 	}
 	return report, nil
 }
@@ -148,6 +239,12 @@ func (s DownloadService) newManager(client DownloadClient, request DownloadReque
 	if err := ValidateDownloadQuality(request.Quality); err != nil {
 		return nil, DownloadRequest{}, err
 	}
+	if request.UgoiraFormat == "" {
+		request.UgoiraFormat = UgoiraFormatGIF
+	}
+	if err := ValidateUgoiraFormat(request.UgoiraFormat); err != nil {
+		return nil, DownloadRequest{}, err
+	}
 	manager, err := s.NewManager(client, request.DownloadPath, request.FilenameTemplate)
 	if err != nil {
 		return nil, DownloadRequest{}, err
@@ -158,7 +255,17 @@ func (s DownloadService) newManager(client DownloadClient, request DownloadReque
 	return manager, request, nil
 }
 
-func downloadUserArtworks(ctx context.Context, client DownloadTargetClient, manager DownloadManager, request DownloadRequest, user sdk.Reference, report *DownloadReport) error {
+type downloadTargetJob struct {
+	target     sdk.Reference
+	illustType string
+}
+
+type downloadTargetJobResult struct {
+	items []DownloadedArtwork
+	err   error
+}
+
+func collectUserArtworkJobs(ctx context.Context, client DownloadTargetClient, user sdk.Reference, jobs *[]downloadTargetJob, report *DownloadReport) error {
 	for _, illustType := range []sdk.IllustType{sdk.IllustTypeIllust, sdk.IllustTypeManga, sdk.IllustTypeUgoira} {
 		if err := ctx.Err(); err != nil {
 			return err
@@ -175,9 +282,7 @@ func downloadUserArtworks(ctx context.Context, client DownloadTargetClient, mana
 		}, func(items []sdk.Illust) error {
 			for _, illust := range items {
 				target := sdk.Reference{Kind: sdk.ReferenceKindArtwork, ID: illust.ID}
-				if err := downloadOne(ctx, manager, request, target, illust.Type, report); err != nil {
-					return err
-				}
+				*jobs = append(*jobs, downloadTargetJob{target: target, illustType: illust.Type})
 			}
 			return nil
 		})
@@ -188,29 +293,31 @@ func downloadUserArtworks(ctx context.Context, client DownloadTargetClient, mana
 			return ctx.Err()
 		}
 		report.Failures = append(report.Failures, DownloadFailure{
-			URL: user.URL(), Type: string(illustType), Message: err.Error(),
+			URL: user.URL(), Type: string(illustType), Message: err.Error(), Cause: err,
 		})
 	}
 	return nil
 }
 
-func downloadOne(ctx context.Context, manager DownloadManager, request DownloadRequest, target sdk.Reference, illustType string, report *DownloadReport) error {
-	one := request
-	one.IllustIDs = []int64{target.ID}
-	items, err := manager.Download(ctx, one)
-	if err != nil {
-		if ctx.Err() != nil {
-			return ctx.Err()
+func runDownloadTargetJobs(ctx context.Context, manager DownloadManager, request DownloadRequest, jobs []downloadTargetJob, report *DownloadReport) error {
+	for _, job := range jobs {
+		if err := ctx.Err(); err != nil {
+			return err
 		}
-		report.Failures = append(report.Failures, DownloadFailure{
-			URL: target.URL(), IllustID: target.ID, Type: illustType, Message: err.Error(),
-		})
-		return nil
+		one := request
+		one.IllustIDs = []int64{job.target.ID}
+		items, err := manager.Download(ctx, one)
+		if err != nil {
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
+			report.Failures = append(report.Failures, DownloadFailure{
+				URL: job.target.URL(), IllustID: job.target.ID, Type: job.illustType, Message: err.Error(), Cause: err,
+			})
+			continue
+		}
+		report.Items = append(report.Items, items...)
 	}
-	if len(items) == 0 {
-		return nil
-	}
-	report.Items = append(report.Items, items...)
 	return nil
 }
 

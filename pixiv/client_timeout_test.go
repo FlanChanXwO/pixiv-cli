@@ -7,7 +7,7 @@ import (
 )
 
 func TestNewClientUsesDedicatedClientWithoutTotalTimeout(t *testing.T) {
-	client, err := NewClient(Options{})
+	client, err := NewClient(NewClientOptions{})
 	if err != nil {
 		t.Fatalf("NewClient returned error: %v", err)
 	}
@@ -24,7 +24,7 @@ func TestNewClientUsesDedicatedClientWithoutTotalTimeout(t *testing.T) {
 
 func TestNewClientPreservesExplicitHTTPClient(t *testing.T) {
 	want := &http.Client{Timeout: 37 * time.Second}
-	client, err := NewClient(Options{HTTPClient: want})
+	client, err := NewClient(NewClientOptions{HTTPClient: want})
 	if err != nil {
 		t.Fatalf("NewClient returned error: %v", err)
 	}

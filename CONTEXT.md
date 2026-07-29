@@ -10,7 +10,7 @@
 - **Application services**：`internal/application`；账号、配置、登录完成，以及为 CLI/MCP 打开 public SDK operation snapshot 的 use case。
 - **Composition root**：`internal/bootstrap`；组装 config、auth storage、Pixiv client、OAuth client、download manager、update dependency 与 application service。
 - **Auth storage**：`internal/storage/auth`；以 UID 为 key 的 `auth.json`、默认 UID、私有路径与 `0600` 写入。
-- **Pixiv SDK 与协议适配**：顶层 `pixiv` 提供唯一公开调用链；`internal/pixiv` 根包只保留共享 HTTP transport helper，`appapi`、`webapi`、`oauth`、`protocol` 与 `resource` 子包封装上游协议。
+- **Pixiv SDK 与协议适配**：顶层 `pixiv` 提供唯一公开调用链；`internal/services/pixiv` 根包只保留共享 HTTP transport helper，`appapi`、`webapi`、`oauth`、`protocol` 与 `resource` 子包封装上游协议。
 - **SDK client**：`pixiv` 的具体 `*pixiv.Client`；外部 Go 程序通过它访问规范化 Pixiv 原子能力。
 - **Caller adapter**：调用方自己的窄接口与业务层；它拥有 source mode、budget、filter、cursor 持久化、入库与调度。
 - **Operation snapshot**：`OpenDefault` 每个公开操作读取一次 auth/config/OAuth 快照；`Snapshot(ctx)` 可显式固定一个高层操作。
@@ -22,7 +22,7 @@
 - **Release asset**：固定名称的 `pixiv-cli_<version>_<os>_<arch>` archive，加上 `checksums.txt` 与签名 `checksums.json`。
 - **Rust staticlib**：ugoira encoder 的 target 专用 cgo 输入；完整 manifest 绑定 source digest、六 target、path 与 SHA-256。
 - **Utility packages**：`internal/utils/*`；files、text、uri、media、parse 等无业务语义的 helper。
-- **Infrastructure constants**：`internal/common/constants`；跨包、无领域/协议含义的基础设施常量。
+- **Infrastructure constants**：`internal/platform/localstate`（本地状态路径/权限）与 `internal/logging`（日志字段）；各自按责任归属，避免通用 constants 包。
 
 ## 安装来源与更新通道
 
@@ -49,20 +49,20 @@ Task 20 的审计流程配置或回填。v0.3.0 已发布为正式 Release，公
 - `internal/bootstrap` 是唯一了解 production service 组装的位置；它为 Release installer 注入已提交的
   production public key/key ID，私钥仍只应存在于受保护 `release` Environment secret 或受控 macOS
   Keychain 恢复副本。
-- `internal/config` 只处理 `config.toml` schema、default、effective value 与 sparse write；`update_check_enabled` 只控制自动检查。
+- `internal/config` 只处理 `config.toml` schema、default、effective value 与 sparse write；`[update].check_enabled` 只控制自动检查，且只可手工维护 TOML。
 - `internal/update` 负责来源与更新策略，但不得把权限、HTTP、asset、签名、checksum、archive 或替换错误伪装成无更新。
 - `internal/download` 的生产 ugoira 路径使用 Rust staticlib，不得在 runtime 回退 `ffmpeg`；完整六目标 manifest 是 source/release 可用的前置条件。
 - `pixiv` 是公开 facade；内部协议实现物理拆分为 `appapi`、`webapi`、`oauth`、`resource`，不得反向 import public package。
 - 有凭据时 App API 为主路径，失败不自动 Web fallback；Web pages/ugoira original 只能作为明确 enrichment。
 - 不新增 Discover、Probe、Capabilities、RSS、crawler、通用 Provider interface 或 HTTP server；这些属于调用方 adapter。
-- `internal/common/constants` 不含 Pixiv protocol、MCP delivery、config key 或 product default；`AppDataDirName` 是唯一 product-named path exception。
+- 不再保留通用 `internal/common/constants`；`AppDataDirName` 与文件权限归 `internal/platform/localstate`，日志事件字段归 `internal/logging`。
 - CLI/MCP/OAuth loopback adapter helper 留在 adapter package，除非它们是 protocol-free parsing helper。
 
 ## 行为约束
 
 - **Local account**：以 Pixiv UID 为 key 的已保存身份，含 refresh token 与可选 username。
-- CLI token priority：`--refresh-token` > `--uid` > `PIXIV_REFRESH_TOKEN` > default UID。
-- MCP token priority：`PIXIV_REFRESH_TOKEN` > default UID。
+- CLI data command 使用 `auth use` 的 local account 或手工 `[account_pool]`；不接受 `--uid`/`--refresh-token`，也不读取 `PIXIV_REFRESH_TOKEN`。public SDK 的 credential options 保持独立。
+- MCP credential selection 由其 runtime config 决定；不得把 CLI 的已移除 flag priority 套用于 MCP。
 - Runtime proxy priority：`--proxy URL` 或 `--no-proxy` > `https_proxy`/`HTTPS_PROXY` > `config.toml`；CLI proxy flag 只影响本次网络命令，绝不持久化。
 - JSON/text output shape 应保持稳定；refresh token、Ed25519 private key 与 tap deploy key 绝不打印。
 - OAuth URL callback 必须校验 `state`；Pixiv official callback/code input 与 authorization relay URL 是 browser flow 未到达 loopback 时的显式 fallback。

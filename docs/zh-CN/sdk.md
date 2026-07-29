@@ -9,27 +9,32 @@
 ## 构造
 
 ```go
-client, err := pixiv.NewClient(pixiv.Options{
+// 新手/本地入口：无需 options。
+local, err := pixiv.OpenDefault()
+
+// 显式 access token 或匿名客户端：此 options 没有本地 auth/config 字段。
+client, err := pixiv.NewClient(pixiv.NewClientOptions{
     AccessToken: accessToken,
     Logger:      logger, // 可选；nil 时 SDK 静默
 })
 
-local, err := pixiv.OpenDefault(pixiv.Options{
+// 高级本地默认客户端。
+local, err := pixiv.OpenDefaultWith(pixiv.OpenDefaultOptions{
     UserID: 12345678, // 可选本地账号
 })
 ```
 
 `NewClient` 不读本地文件，也不网络认证。`OpenDefault` 使用 `AuthFilePath`、`ConfigFilePath`、`RefreshToken`、`UserID` 或现有默认路径和环境选择认证；需要 runtime configuration 的公开操作重新取得一次 configuration/auth snapshot。多次续页若要求同一 snapshot，调用 `client.Snapshot(ctx)`。显式 token 导出是例外，只读取 auth store。
 
-`Options` 支持显式 `HTTPClient`、`AppAPIBaseURL`、`WebAPIBaseURL`、`OAuthBaseURL`、`WebFallbackEnabled`、`ResourcePolicy` 与 `Logger`。`AccessToken` 与 `WebFallbackEnabled` 只供 `NewClient`；`OpenDefault` 每次 snapshot 从本地 `web_fallback_enabled` 读取 Web fallback 设置。不要把 refresh token 或 logger 全局化。
+`NewClientOptions` 只保留直连客户端字段：`AccessToken`、`WebFallbackEnabled`、HTTP、App/Web endpoint、`ResourcePolicy`、可选 `ResourceCachePath` 与 `Logger`。`OpenDefaultOptions` 则拥有本地路径、OAuth endpoint、账号选择、HTTP/endpoint、资源策略/缓存路径与 logger。两种 options 不混入无效字段；`OpenDefault` 每次 snapshot 从本地 `web_fallback_enabled` 读取 Web fallback 设置。
 
 ### HTTP client 与请求生命周期
 
-未提供 `Options.HTTPClient` 时，SDK 为该 `Client` 创建专用的 `http.Client`，其整请求 `Timeout` 为零；App API、Web API、OAuth 与资源读取复用这一个 client，不依赖全局可变的 `http.DefaultClient`。零值只表示 SDK 不添加覆盖 response body 读取的固定总时限；Go 默认 transport 的连接、TLS handshake 与 idle connection 等阶段策略保持不变。
+未提供 options 的 `HTTPClient` 时，SDK 为该 `Client` 创建专用的 `http.Client`，其整请求 `Timeout` 为零；App API、Web API、OAuth 与资源读取复用这一个 client，不依赖全局可变的 `http.DefaultClient`。零值只表示 SDK 不添加覆盖 response body 读取的固定总时限；Go 默认 transport 的连接、TLS handshake 与 idle connection 等阶段策略保持不变。
 
 每次操作的总生命周期由传入的 `context.Context` 控制。调用方应按操作建立 cancel 或 deadline；`context.Canceled` 与 `context.DeadlineExceeded` 可继续通过 `errors.Is` 判断。`OpenResource` 返回后，context 也覆盖后续 body 读取，调用方须关闭 body，并在不再消费流时取消 context。
 
-显式提供 `Options.HTTPClient` 时，SDK constructor 保留同一指针及其 `Timeout`、`Transport`、cookie jar 与 redirect policy，不修改调用方对象。需要 client-wide timeout 的集成方可在该 client 上自行设置；SDK 不另加默认 timeout。资源请求仍按下文安全契约在逐请求副本上禁用 cookie 并包装 redirect 校验。完整决策见 [ADR 0010](../maintainers/adr/0010-http-client-timeout-and-context.md)。
+显式提供 options 的 `HTTPClient` 时，SDK constructor 保留同一指针及其 `Timeout`、`Transport`、cookie jar 与 redirect policy，不修改调用方对象。需要 client-wide timeout 的集成方可在该 client 上自行设置；SDK 不另加默认 timeout。资源请求仍按下文安全契约在逐请求副本上禁用 cookie 并包装 redirect 校验。完整决策见 [ADR 0010](../maintainers/adr/0010-http-client-timeout-and-context.md)。
 
 ## 读取与写入
 
@@ -42,17 +47,27 @@ local, err := pixiv.OpenDefault(pixiv.Options{
 | 写操作 | `AddBookmark`、`RemoveBookmark`、`FollowUser`、`UnfollowUser`。 |
 | 账号/配置 | `ImportAccount`、`ListAccounts`、`SelectAccount`、`RemoveAccount`、`ExportAccountRefreshToken`、`ExportAuthBundle`、`RestoreAuthBundle`、`CheckAccount`、`CheckRefreshToken`、`Refresh`、`RefreshAccount`、`PremiumStatus`、`RefreshPremiumStatus`、`GetConfig`、`SetConfig`、`UnsetConfig`；bundle codec 是 package-level function。 |
 | 登录 | `StartLogin`、`CompleteLogin`、`BuildLoginAuthorizationURL`。SDK 不启动浏览器、loopback server 或 TTY。 |
-| 资源 | `ParseResourceRef`、`OpenResource`、`Download`。 |
+| 资源 | `Download`、`DownloadAll`、`DownloadWith`、`DownloadAllWith`、`ParseResourceRef`、`OpenResource`、`DownloadResource`。 |
 
 请求型方法使用命名 request，例如 `SearchIllustRequest`、`SearchNovelRequest`、`SearchIllustOptionsRequest`、`UserArtworksRequest`、`UserBookmarksRequest`、`UserFollowingRequest`、`AddBookmarkRequest`、`FollowUserRequest`。返回模型为 `IllustListResult`、`NovelListResult`、`SearchIllustOptionsResult`、`UserListResult`、`IllustDetail`、`UserDetailResult` 等，均来自顶层 `pixiv` package。
-每个 public `Illust` 都包含稳定作品页 URL `https://www.pixiv.net/artworks/{id}`，JSON 首字段为 `url`。SDK 不提供点赞数字段，不得把收藏数文案为点赞。`Download` 支持 `DownloadOptions`：`ParsePageSpec` 页选择与 `DownloadQuality`（`original|regular|small|thumb|mini`）；ugoira 对页选择或非 original 质量返回 unsupported。
+每个 public `Illust` 都包含稳定作品页 URL `https://www.pixiv.net/artworks/{id}`，JSON 首字段为 `url`。SDK 不提供点赞数字段，不得把收藏数文案为点赞。
+
+### 下载：新手层与高级层
+
+`Download(ctx, src)`、`DownloadAll(ctx, srcs)` 是新手入口。`src` 可为正整数作品 PID、官方作品 URL 或 `ResourcePolicy` 允许的 CDN 直链；默认使用 `./downloads`、`{author} - {title}_{id}`、原图、全部页与 `2 × runtime.GOMAXPROCS(0)` 自动并发。
+
+`DownloadWith`、`DownloadAllWith` 接受 `DownloadOptions`，可控制 `DownloadPath`、`FilenameTemplate`、从 1 开始的 `Pages`、`Quality`、`UgoiraFormat` 与 `Concurrency`。`UgoiraFormat` 默认为 `gif`，也可为 `apng`。`Concurrency==0` 为自动；任意正数精确采用且不设人为上限。直链按 URL 文件名保存，不支持页选择、派生质量和自定义作品模板。`DownloadAllResult.Items` 保持输入顺序，每项给出 `Attempted`、成功结果（包括文件缓存状态）或错误，可只重试失败项。Ugoira ZIP 会缓存后转 GIF 或 APNG，ugoira 不支持页选择和非 original 质量。
+
+`DownloadResource(ctx, ref, destination)` 是显式 raw-resource 高级 API，返回带 `miss`、`revalidated`、`resumed` 或 `refreshed` 状态的 `ResourceDownloadResult`；它取代旧 `Download(ctx, ResourceRef, path)`。
+
+配置也采用强类型：`GetConfig`、`SetConfig`、`UnsetConfig` 使用 `ConfigKey` 常量；写入由 `StringConfigInput`、`BoolConfigInput`、`DurationConfigInput` 构造。CLI/MCP 的文本边界使用 `ParseConfigKey` 与 `ParseConfigInput`。敏感中继密钥不能走通用 setter，只能用 `SetLoginRelaySecret` 写入；读取只返回脱敏的“是否存在”标记。
 
 ### 本地 Pixiv 引用解析
 
 `ParseReference(raw)` 不执行 I/O，接受正整数作品 ID 或严格的官方 Pixiv HTTPS URL，并返回
 `Reference{Kind, ID}`：ID 与 `/artworks/{id}` 的 `Kind` 是 `artwork`，`/users/{id}` 与
 `/users/{id}/artworks` 的 `Kind` 是 `user`。host 必须为 `pixiv.net` 或 `www.pixiv.net`，可带可选
-locale、query 与 fragment。`ParseArtworkReference(raw)` 是仅接受作品的变体，`Reference.URL()` 返回规范
+locale、query 与 fragment。`ParseArtworkReference(raw)` 与 `ParseUserReference(raw)` 是领域类型安全变体（后者也接受用户 ID），`Reference.URL()` 返回规范
 作品或用户页 URL。解析器不跟随跳转、不抓取 HTML，拒绝其他 Pixiv 属性或 URL 形式，校验错误也不会复现输入 URL。
 
 `UserArtworksRequest.UserID` 等 SDK 用户 ID 必填；“省略 UID 就是自己”是 CLI/MCP adapter 行为，外部 Go 调用方先调用 `CurrentUserID(ctx)` 后再组装 request。
@@ -180,14 +195,14 @@ token 转换为 Web session。
 ref, err := client.ParseResourceRef(rawURL)
 if err != nil { /* reject */ }
 response, err := client.OpenResource(ctx, pixiv.OpenResourceRequest{
-    Ref: ref, Range: request.Header.Get("Range"),
+    Ref: ref, Range: request.Header.Get("Range"), IfRange: request.Header.Get("If-Range"),
 })
 if err != nil { /* map typed error */ }
 defer response.Body.Close()
 // 使用 response.StatusCode、response.Header，流式 io.Copy 到下游。
 ```
 
-`ResourceRef` 只是可持久化引用；每次 `OpenResource` 都重新校验。默认仅官方 Pixiv 资源，调用方可在 `ResourcePolicy.Mirrors` 加入明确 host/path prefix。SDK 只接受 `Range`、`If-None-Match`、`If-Modified-Since` 条件 header，过滤响应 header，禁用 cookie，并验证 redirect，避免 SSRF。`Download` 在本地以流式临时文件加原子替换落盘。
+`ResourceRef` 只是可持久化引用；每次 `OpenResource` 都重新校验。默认仅官方 Pixiv 资源，调用方可在 `ResourcePolicy.Mirrors` 加入明确 host/path prefix。SDK 只接受 `Range`、`If-None-Match`、`If-Modified-Since`、`If-Range` 条件 header，过滤响应 header，禁用 cookie，并验证 redirect，避免 SSRF。`DownloadResource` 在 `.pixiv-cache`（或 `ResourceCachePath`）保存元数据和残片：已完成文件以 ETag/Last-Modified 重验证，只以 `Range` + `If-Range` 续接已验证残片，并原子发布完成文件；没有 validator 时绝不冒险续传。
 
 仅对幂等 App API JSON 读取：首次 HTTP 429 且 `Retry-After` 是有效秒数或 HTTP-date 时，SDK 等待一次并重试一次；
 等待受调用方 context 取消控制。header 缺失/非法、第二次 429 和其他错误都保留真实 typed error；写操作和资源下载

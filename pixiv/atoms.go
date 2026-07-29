@@ -5,7 +5,7 @@ import (
 	"errors"
 	"time"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/model"
+	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/model"
 )
 
 type illustRelatedQuery struct {
