@@ -15,6 +15,11 @@ on:
         description: Existing published immutable SemVer tag to publish to ClawHub
         required: true
         type: string
+      verify_only:
+        description: Verify an existing ClawHub version without publishing again
+        required: false
+        default: false
+        type: boolean
 
 permissions: {}
 
@@ -100,7 +105,7 @@ jobs:
           printf 'commit=%s\n' "$tag_commit" >> "$GITHUB_OUTPUT"
           printf 'skill_version=%s\n' "$skill_version" >> "$GITHUB_OUTPUT"
       - name: Install pinned ClawHub CLI without credentials
-        if: steps.skill_change.outputs.publish == 'true'
+        if: steps.skill_change.outputs.publish == 'true' || inputs.verify_only == true
         shell: bash
         run: |
           set -euo pipefail
@@ -126,8 +131,34 @@ jobs:
             throw new Error("ClawHub dry-run did not produce the expected skill identity, version, and fingerprint");
           }
           NODE
+      # ClawHub 可在接受 publish 后短暂返回 moderation pending。人工恢复只验证
+      # 已有版本，避免对同一个不可变版本重复提交，也不会读取发布 token。
+      - name: Verify an already-published ClawHub skill
+        if: inputs.verify_only == true
+        shell: bash
+        env:
+          RELEASE_COMMIT: ${{ steps.skill_change.outputs.commit }}
+          SKILL_VERSION: ${{ steps.skill_change.outputs.skill_version }}
+        run: |
+          set -euo pipefail
+          clawhub skill verify pixiv-cli --version "$SKILL_VERSION" > "$RUNNER_TEMP/clawhub-verify.json"
+          node - "$RUNNER_TEMP/clawhub-verify.json" "$GITHUB_REPOSITORY" "$RELEASE_COMMIT" "$SKILL_VERSION" <<'NODE'
+          const fs = require("fs");
+          const [verifyFile, repo, commit, version] = process.argv.slice(2);
+          const verify = JSON.parse(fs.readFileSync(verifyFile, "utf8"));
+          if (verify.schema !== "clawhub.skill.verify.v1" || verify.ok !== true || verify.decision !== "pass" || verify.slug !== "pixiv-cli" || verify.version !== version || verify.resolvedFrom !== "version" || !Array.isArray(verify.reasons)) {
+            throw new Error("ClawHub verification did not pass for the immutable published version");
+          }
+          if (!Object.hasOwn(verify, "artifact") || !Object.hasOwn(verify, "provenance")) {
+            throw new Error("ClawHub verification omitted artifact or provenance evidence");
+          }
+          const provenance = JSON.stringify(verify.provenance);
+          if (!provenance.includes(repo) || !provenance.includes(commit) || !provenance.includes("skills/pixiv-cli")) {
+            throw new Error("ClawHub provenance does not match the immutable release source");
+          }
+          NODE
       - name: Publish and inspect ClawHub skill
-        if: steps.skill_change.outputs.publish == 'true'
+        if: steps.skill_change.outputs.publish == 'true' && inputs.verify_only != true
         shell: bash
         env:
           CLAWHUB_CONFIG_PATH: ${{ runner.temp }}/clawhub/config.json

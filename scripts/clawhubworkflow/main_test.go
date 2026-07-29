@@ -39,6 +39,11 @@ func TestPublishWorkflowKeepsTheImmutableReleaseAndSecretBoundary(t *testing.T) 
 	if mappingValue(t, on, "workflow_run") == nil || mappingValue(t, on, "workflow_dispatch") == nil {
 		fatalf(t, "workflow must support trusted workflow_run and manual recovery")
 	}
+	dispatchInputs := mappingValue(t, mappingValue(t, on, "workflow_dispatch"), "inputs")
+	verifyOnly := mappingValue(t, dispatchInputs, "verify_only")
+	if scalarValue(t, mappingValue(t, verifyOnly, "type")) != "boolean" || scalarValue(t, mappingValue(t, verifyOnly, "default")) != "false" {
+		fatalf(t, "manual recovery must retain the default-off verify_only input")
+	}
 
 	jobs := mappingValue(t, root, "jobs")
 	publish := mappingValue(t, jobs, "publish")
@@ -76,6 +81,11 @@ func TestPublishWorkflowKeepsTheImmutableReleaseAndSecretBoundary(t *testing.T) 
 	dryRunText := scalarValue(t, mappingValue(t, dryRun, "run"))
 	if strings.Contains(renderNode(t, dryRun), "CLAWHUB_TOKEN") || !strings.Contains(dryRunText, "clawhub skill publish skills/pixiv-cli --version \"$SKILL_VERSION\"") || !strings.Contains(dryRunText, "--dry-run --json") {
 		fatalf(t, "dry-run must be credential-free and use the exact versioned product skill")
+	}
+	verifyOnlyStep := stepByName(t, steps, "Verify an already-published ClawHub skill")
+	verifyOnlyRun := scalarValue(t, mappingValue(t, verifyOnlyStep, "run"))
+	if strings.Contains(renderNode(t, verifyOnlyStep), "CLAWHUB_TOKEN") || !strings.Contains(verifyOnlyRun, "clawhub skill verify pixiv-cli --version \"$SKILL_VERSION\"") || strings.Contains(verifyOnlyRun, "clawhub skill publish") {
+		fatalf(t, "verify-only recovery must be credential-free and must not republish the immutable version")
 	}
 	install := stepByName(t, steps, "Install pinned ClawHub CLI without credentials")
 	if !strings.Contains(scalarValue(t, mappingValue(t, install, "run")), "clawhub@0.23.1") {
