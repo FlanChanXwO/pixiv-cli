@@ -12,7 +12,7 @@
 
 </div>
 
-`pixiv-cli` は Pixiv のエコシステムをターミナルにもたらします。作品とクリエイターを発見し、アカウントとブックマークを管理し、クリエイターをフォローして視覚作品をダウンロードできます。人・Coding Agent・Go アプリケーション向けの独立開発による非公式サードパーティーツールであり、Pixiv Inc. との提携・所属関係はなく、同社による承認も受けていません。CLI と MCP server は同じ public Go SDK を使用し、認証済み機能では Pixiv App API を信頼できるデータソースとします。利用時は Pixiv の規約および適用法令を遵守してください。
+`pixiv-cli` は Pixiv のエコシステムをターミナルにもたらします。作品とクリエイターを発見し、アカウントとブックマークを管理し、クリエイターをフォローして視覚作品をダウンロードできます。人・AI エージェント・Go アプリケーション向けの独立開発による非公式サードパーティーツールであり、Pixiv Inc. との提携・所属関係はなく、同社による承認も受けていません。CLI と MCP server は同じ public Go SDK を使用し、認証済み機能では Pixiv App API を信頼できるデータソースとします。利用時は Pixiv の規約および適用法令を遵守してください。
 
 メンテナー向け：release tag は保護された認証 E2E gate により停止できます。refresh token は GitHub `pixiv-e2e` Environment Secret にのみ保存し、作品 ID と検索入力は Environment Variables に設定します。PR と `main` の CI は offline かつ secret-free のままです。詳細は[開発フロー](docs/maintainers/development.md#テスト)を参照してください。
 
@@ -47,9 +47,9 @@ curl.exe -fsSLo "%TEMP%\pixiv-install.cmd" https://raw.githubusercontent.com/Fla
 
 正式版の installer は権威ある `checksums.txt` を常に GitHub HTTPS から直接取得します。内蔵の無料候補は platform archive の probe/download だけに使われ、返す checksum は直取得した内容と一致しなければなりません。download 後も SHA-256 を検証するため、これは転送到達性の改善であり、Release の identity や integrity 判定を変更しません。
 
-### Coding Agent にインストールさせる
+### AI エージェントにインストールさせる
 
-端末を操作できる Codex、Claude Code、Cursor などのローカル Coding Agent に、次の prompt をコピーしてください：
+端末を操作できる Codex、Claude Code、Cursor などのローカル AI エージェントに、次の prompt をコピーしてください：
 
 ```text
 Install the latest stable pixiv-cli from https://github.com/FlanChanXwO/pixiv-cli for this machine: inspect the repository's scripts/install.sh or scripts/install.cmd first, choose the script matching the detected OS and architecture (the Windows path must use cmd.exe and must not invoke PowerShell), download only official GitHub Release assets, require the published SHA-256 check to pass before replacing anything, install per-user without administrator or root privileges, add only the chosen install directory to the user PATH, ask before installing any missing prerequisite, never read or output Pixiv credentials, verify with pixiv version, and report the installed version plus every file and PATH change.

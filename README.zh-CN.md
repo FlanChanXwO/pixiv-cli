@@ -12,7 +12,7 @@
 
 </div>
 
-`pixiv-cli` 把 Pixiv 生态带到终端：发现作品与创作者、管理账号和作品收藏、关注创作者，并下载视觉作品。它是面向用户、Coding Agent 和 Go 应用的独立非官方第三方工具，与 Pixiv Inc. 无隶属或背书关系。CLI 与 MCP server 共同调用 public Go SDK，并以 Pixiv App API 作为已认证能力的数据源；使用时请遵守 Pixiv 条款与适用法律。
+`pixiv-cli` 把 Pixiv 生态带到终端：发现作品与创作者、管理账号和作品收藏、关注创作者，并下载视觉作品。它是面向用户、AI Agent 和 Go 应用的独立非官方第三方工具，与 Pixiv Inc. 无隶属或背书关系。CLI 与 MCP server 共同调用 public Go SDK，并以 Pixiv App API 作为已认证能力的数据源；使用时请遵守 Pixiv 条款与适用法律。
 
 维护者注意：发布 tag 受保护的认证 E2E 门禁阻断。refresh token 只能放入 GitHub `pixiv-e2e` Environment Secret；作品 ID 与搜索输入使用 Environment Variables。PR 与 `main` CI 保持离线且不使用 secret，详见[开发流程](docs/maintainers/development.md#测试)。
 
@@ -49,9 +49,9 @@ binary，并在修改 PATH 前完成用户级安装。可用 `--no-path` 保持 
 
 随正式版本发布的安装器始终从 GitHub HTTPS 直连取得权威 `checksums.txt`。内置免费候选源只用于探测和下载平台压缩包，候选返回的 checksum 必须与直连内容一致，下载结果仍必须通过 SHA-256 校验。它只改善传输可达性，不改变 Release 身份或完整性判断。
 
-### 让 Coding Agent 安装
+### 让 AI Agent 安装
 
-把下面这一段 prompt 复制给能够操作本机终端的 Codex、Claude Code、Cursor 或其他 Coding Agent：
+把下面这一段 prompt 复制给能够操作本机终端的 Codex、Claude Code、Cursor 或其他 AI Agent：
 
 ```text
 请为这台机器安装 https://github.com/FlanChanXwO/pixiv-cli 的最新 stable 版本：先审阅仓库中的 scripts/install.sh 或 scripts/install.cmd，再根据检测到的操作系统与架构选择对应脚本（Windows 必须使用 cmd.exe，禁止调用 PowerShell），只下载官方 GitHub Release 资产，只有发布的 SHA-256 校验通过后才能替换文件，使用无需管理员或 root 权限的用户级目录，只把选定安装目录加入用户 PATH，缺少任何前置工具时先征求同意，绝不读取或输出 Pixiv 凭据，最后运行 pixiv version 验证，并报告安装版本及全部文件和 PATH 变更。

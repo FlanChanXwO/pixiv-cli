@@ -12,7 +12,7 @@
 
 </div>
 
-`pixiv-cli` brings the Pixiv ecosystem to the terminal: discover works and creators, manage accounts and collections, follow artists, bookmark artworks, and download visual works. It is an independent, unofficial third-party tool for humans, coding agents, and Go applications; it is not affiliated with or endorsed by Pixiv Inc. The CLI and MCP server both call the same public Go SDK, with the Pixiv App API as the authenticated source of truth. Use it in accordance with Pixiv's terms and applicable law.
+`pixiv-cli` brings the Pixiv ecosystem to the terminal: discover works and creators, manage accounts and collections, follow artists, bookmark artworks, and download visual works. It is an independent, unofficial third-party tool for humans, AI agents, and Go applications; it is not affiliated with or endorsed by Pixiv Inc. The CLI and MCP server both call the same public Go SDK, with the Pixiv App API as the authenticated source of truth. Use it in accordance with Pixiv's terms and applicable law.
 
 Maintainers: release tags are blocked by a protected authenticated E2E gate. Its refresh token belongs only in the GitHub `pixiv-e2e` Environment Secret; work IDs and search inputs are Environment Variables. Pull request and `main` CI remain offline and secret-free. See the [development guide](docs/maintainers/development.md#测试).
 
@@ -51,9 +51,9 @@ Versioned installers keep `checksums.txt` on the official GitHub HTTPS path. Emb
 probed only for the platform archive, must return the same checksum content, and the downloaded archive still has to
 pass SHA-256 verification. This changes transport availability, never Release identity or integrity.
 
-### Install with a coding agent
+### Install with an AI agent
 
-Copy this single prompt into Codex, Claude Code, Cursor, or another local coding agent with terminal access:
+Copy this single prompt into Codex, Claude Code, Cursor, or another local AI agent with terminal access:
 
 ```text
 Install the latest stable pixiv-cli from https://github.com/FlanChanXwO/pixiv-cli for this machine: inspect the repository's scripts/install.sh or scripts/install.cmd first, choose the script matching the detected OS and architecture (the Windows path must use cmd.exe and must not invoke PowerShell), download only official GitHub Release assets, require the published SHA-256 check to pass before replacing anything, install per-user without administrator or root privileges, add only the chosen install directory to the user PATH, ask before installing any missing prerequisite, never read or output Pixiv credentials, verify with pixiv version, and report the installed version plus every file and PATH change.
