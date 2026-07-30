@@ -58,6 +58,10 @@ jobs:
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
         with:
           go-version: '1.26.3'
+      - name: Validate pull request release-note declaration
+        if: ${{ github.event_name == 'pull_request' }}
+        shell: bash
+        run: go run ./scripts/releasenotes pr-validate --event "$GITHUB_EVENT_PATH"
       - name: Test documentation contracts
         if: ${{ needs.classify_changes.outputs.docs_only == 'true' }}
         shell: bash

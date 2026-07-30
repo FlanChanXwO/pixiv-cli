@@ -61,7 +61,7 @@ Native library 校验、opt-in 真实 API 测试、发布门禁和平台细节�
 - 保持 `README.md`、`README.zh-CN.md` 与 `README.ja.md` 的行为语义对应。
 - 保持 `docs/<locale>/` 下已有语言版本的行为语义对应；不得用未翻译占位内容冒充对应语言。
 - 按文件职责更新 localized SDK/MCP contract 或 `docs/maintainers/`。
-- 用户可感知的新增、修复、变更、废弃、移除或安全影响必须同时写入[英文未发布说明](changelog/unreleased/en.md)与[简体中文未发布说明](changelog/unreleased/zh-CN.md)。正式发布时，将这对文件移入对应版本目录，并更新[更新日志索引](changelog/README.zh-CN.md)。
+- 每个贡献都要完成 PR 模板中的 release-note 声明，分类为 `Added`、`Changed`、`Fixed`、`Security`、`Documentation`、`Maintenance` 或 `None`；选择 `None` 时说明具体理由。合并后由 release-prep PR 将已审核结果归并为英文与简体中文版本说明，并在每个条目内标注 PR 或历史 direct commit 来源及完整变更链接。具体流程见[发布说明与发布](docs/maintainers/development.md#release-notes-and-publication)。
 - CLI 命令、flag 或安全语义变化时检查 `skills/pixiv-cli/`。
 
 稳定规则只在一个权威文档中定义，其他位置应链接过去，避免复制大段内容。

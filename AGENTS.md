@@ -33,7 +33,7 @@ PIXIV_E2E_WEB_API=1 PIXIV_WEB_API_PROXY=http://127.0.0.1:7890 go test ./e2e -run
 - MCP 模式 stdout 保留给 JSON-RPC；操作日志写用户主目录 `~/.pixiv-cli/logs`（Windows 为 `%USERPROFILE%\.pixiv-cli\logs`）的按日纯文本 `YYYY-MM-DD.txt`，终端默认无日志痕迹。
 - 不新增无依据的固定超时、截断、条数限制、重试上限、静默 fallback 或隐藏降级。确需新增时，必须有证据、代码注释、测试或文档说明。
 - 修改 CLI/MCP tool、配置键、环境变量、输出语义、下载/认证/代理流程时，同步更新现有 locale 的 README、CLI reference 或对应 `docs/<locale>/`；涉及命令语义时同步检查 `skills/pixiv-cli/`。
-- 用户可感知的新增、修复、变更、废弃、移除或安全影响，同步更新 `changelog/unreleased/en.md` 与 `changelog/unreleased/zh-CN.md`；纯内部重构、测试和文档清理可不记。
+- 功能 PR 以 `.github/PULL_REQUEST_TEMPLATE.md` 的 release-note 声明记录用户可感知的新增、修复、变更、废弃、移除或安全影响；合并后的 release-prep PR 使用 `scripts/releasenotes` 生成 `changelog/vX.Y.Z/` 双语说明。`changelog/unreleased/` 保留为 release-prep 入口；纯内部重构、测试和文档清理可选择 `None` 并说明理由。
 - 代码改动必须补充或更新聚焦测试，并运行相关回归；不能测试时说明原因和风险。
 
 ## 文档路由

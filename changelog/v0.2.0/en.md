@@ -2,12 +2,10 @@
 
 ## Added
 
-- Added the public Go SDK: concrete `*pixiv.Client`, stable models, typed errors, opaque cursors, account/config handling, and policy-constrained resource streams.
-- Added `pixiv user artworks/bookmarks/following [USER_ID]`, bookmark add/remove, follow add/remove, matching MCP tools, paged user lists, and structured output.
-- Added injectable `slog` diagnostics with `log_level` / `log_format` and `PIXIV_LOG_LEVEL` / `PIXIV_LOG_FORMAT` overrides.
-- Added Linux quality gates and six-platform packaged-binary smoke tests that stay offline and use no Pixiv credentials or live upstream network.
+- Added the public Go SDK, account and configuration APIs, user/bookmark/follow workflows, matching MCP tools, structured diagnostics, offline six-platform quality coverage, and the page/limit App API contract. ([#1](https://github.com/FlanChanXwO/pixiv-cli/pull/1))
 
-## Changed
+## Security
 
-- List commands use `--limit` and logical `--page`; `--offset` was deprecated and SDK cursors are not exposed by CLI/MCP.
-- A configured refresh token routes requests through the App API; failed calls return their classified error. Web serves anonymous allowlisted reads and explicit metadata enrichment.
+- Kept release publication behind the protected workflow. ([#2](https://github.com/FlanChanXwO/pixiv-cli/pull/2))
+
+**Full Changelog**: [v0.1.1...v0.2.0](https://github.com/FlanChanXwO/pixiv-cli/compare/v0.1.1...v0.2.0)

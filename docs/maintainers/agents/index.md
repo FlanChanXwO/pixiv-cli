@@ -13,3 +13,4 @@
 - `CLAUDE.md` 只包含 `@AGENTS.md`，不维护第二份规则。
 - `.github/copilot-instructions.md` 是短提示，不复制主规则全文。
 - `.agents/skills/` 只放高频、可复用、能减少误操作的项目技能。
+- `.agents/skills/pixiv-cli-release-notes/` 记录 feature PR 到双语 release-prep、tag、GitHub Release、SkillHub 与 ClawHub 核验的授权和操作路径。

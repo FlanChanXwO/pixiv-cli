@@ -93,7 +93,7 @@ func checkWorkflow(body []byte) error {
 	if !ok || jobs.Kind != yaml.MappingNode {
 		return errors.New("workflow must have a jobs mapping")
 	}
-	if err := requireOnlyMappingKeys(jobs, "validate", "e2e", "build", "build_production", "verify_release_source", "publish", "render_homebrew_formula", "verify_homebrew_formula", "deploy_homebrew_tap"); err != nil {
+	if err := requireOnlyMappingKeys(jobs, "validate", "e2e", "build", "build_production", "release_notes_audit", "verify_release_source", "publish", "render_homebrew_formula", "verify_homebrew_formula", "deploy_homebrew_tap"); err != nil {
 		return fmt.Errorf("workflow jobs: %w", err)
 	}
 	validate, ok := workflowpolicy.MappingValue(jobs, "validate")
@@ -111,6 +111,10 @@ func checkWorkflow(body []byte) error {
 	productionBuild, ok := workflowpolicy.MappingValue(jobs, "build_production")
 	if !ok || productionBuild.Kind != yaml.MappingNode {
 		return errors.New("workflow must have a build_production job")
+	}
+	releaseNotesAudit, ok := workflowpolicy.MappingValue(jobs, "release_notes_audit")
+	if !ok || releaseNotesAudit.Kind != yaml.MappingNode {
+		return errors.New("workflow must have a release_notes_audit job")
 	}
 	verifyReleaseSource, ok := workflowpolicy.MappingValue(jobs, "verify_release_source")
 	if !ok || verifyReleaseSource.Kind != yaml.MappingNode {
@@ -135,7 +139,7 @@ func checkWorkflow(body []byte) error {
 	// 先报告任何越界 secret 引用，避免后续 checkout 形状校验掩盖真实的凭据泄露风险。
 	preflightPublishSteps, _ := jobSteps(publish)
 	preflightSigningIndex, _ := signingStepIndex(preflightPublishSteps)
-	if err := checkSigningSecretReachability(validate, build, productionBuild, verifyReleaseSource, publish, preflightPublishSteps, preflightSigningIndex); err != nil {
+	if err := checkSigningSecretReachability(validate, build, productionBuild, releaseNotesAudit, verifyReleaseSource, publish, preflightPublishSteps, preflightSigningIndex); err != nil {
 		return err
 	}
 	if err := checkE2ESecretReachability(e2e); err != nil {
@@ -159,6 +163,9 @@ func checkWorkflow(body []byte) error {
 	if err := checkRecoveryPolicy(root); err != nil {
 		return err
 	}
+	if err := checkReleaseNotesAuditJob(releaseNotesAudit); err != nil {
+		return err
+	}
 	if err := checkVerifyReleaseSourceJob(verifyReleaseSource); err != nil {
 		return err
 	}
@@ -166,7 +173,7 @@ func checkWorkflow(body []byte) error {
 	if err != nil {
 		return err
 	}
-	if err := checkSigningSecretReachability(validate, build, productionBuild, verifyReleaseSource, publish, publishSteps, signingIndex); err != nil {
+	if err := checkSigningSecretReachability(validate, build, productionBuild, releaseNotesAudit, verifyReleaseSource, publish, publishSteps, signingIndex); err != nil {
 		return err
 	}
 	if err := checkRenderHomebrewJob(renderHomebrew); err != nil {

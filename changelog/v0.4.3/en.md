@@ -2,4 +2,10 @@
 
 ## Fixed
 
-- Linux Homebrew release validation no longer uses `/var/tmp`, avoiding `EINVAL` that could prevent the staging formula from installing. Linux uses a runner-private temporary directory; macOS and the public formula path are unchanged.
+- Moved Linux Homebrew validation to a runner-private temporary directory so staging installation avoids EINVAL failures. ([#19](https://github.com/FlanChanXwO/pixiv-cli/pull/19))
+
+## Maintenance
+
+- Prepared the v0.4.3 release metadata. ([#20](https://github.com/FlanChanXwO/pixiv-cli/pull/20))
+
+**Full Changelog**: [v0.4.2...v0.4.3](https://github.com/FlanChanXwO/pixiv-cli/compare/v0.4.2...v0.4.3)

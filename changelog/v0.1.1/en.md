@@ -2,8 +2,11 @@
 
 ## Fixed
 
-- Correctly recognizes a directly downloaded Release binary when no expected `GOBIN`/`GOPATH/bin/pixiv` exists, allowing `pixiv update --check` to run.
-- Fixed Windows release linking between MinGW GCC and the MSVC Rust static library. Six-platform Go tests, race/vet/pre-commit checks, and final builds use audited cgo linkers; Windows uses LLD-backed Clang.
-- Made login-test callback fixtures race-safe and isolated tests that must not invoke real macOS URL handlers or AppleScript.
-- Added an audited recovery route for a failed first publication of an immutable tag. Recovery remains tied to the original tag, uses separate test/production runners, and rebuilds production assets from a clean checkout.
-- Corrected Windows recovery-gate assumptions around ACLs, `.exe`, CRLF, sharing, and paths while retaining static policy restrictions and immutable-tag-only production builds.
+- Recognized directly downloaded release binaries and stabilized Windows release linking and checkout handling. ([`8f7169a`](https://github.com/FlanChanXwO/pixiv-cli/commit/8f7169a), [`c5eef2c`](https://github.com/FlanChanXwO/pixiv-cli/commit/c5eef2c))
+- Added a Windows-safe immutable-tag publication recovery route with isolated test and production builds. ([`557beb0`](https://github.com/FlanChanXwO/pixiv-cli/commit/557beb0), [`86697e9`](https://github.com/FlanChanXwO/pixiv-cli/commit/86697e9), [`c295394`](https://github.com/FlanChanXwO/pixiv-cli/commit/c295394))
+
+## Maintenance
+
+- Hardened recovery workflow tests and their cross-platform fixture handling. ([`2490f03`](https://github.com/FlanChanXwO/pixiv-cli/commit/2490f03), [`f7926ae`](https://github.com/FlanChanXwO/pixiv-cli/commit/f7926ae))
+
+**Full Changelog**: [v0.1.0...v0.1.1](https://github.com/FlanChanXwO/pixiv-cli/compare/v0.1.0...v0.1.1)

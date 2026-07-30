@@ -20,7 +20,7 @@ func checkVerifyReleaseSourceJob(job *yaml.Node) error {
 	if err := requireOnlyMappingKeys(job, "name", "needs", "runs-on", "permissions", "steps"); err != nil {
 		return fmt.Errorf("verify_release_source job: %w", err)
 	}
-	if err := workflowpolicy.RequireScalar(job, "needs", "build_production"); err != nil {
+	if err := requireExactStringSequence(job, "needs", "build_production", "release_notes_audit"); err != nil {
 		return fmt.Errorf("verify_release_source job: %w", err)
 	}
 	if err := workflowpolicy.RequireScalar(job, "runs-on", "ubuntu-24.04"); err != nil {
@@ -330,11 +330,11 @@ func requireApprovedChannelCaseCommands(commands []string, channelCase string) e
 	return nil
 }
 
-func checkSigningSecretReachability(validate, build, productionBuild, verifyReleaseSource, publish *yaml.Node, publishSteps []*yaml.Node, signingIndex int) error {
+func checkSigningSecretReachability(validate, build, productionBuild, releaseNotesAudit, verifyReleaseSource, publish *yaml.Node, publishSteps []*yaml.Node, signingIndex int) error {
 	// release Environment 的 secret 只应在 verify_release_source 成功后才由 publish job 注入；
 	// 非发布 job、publish 的 job 级字段和非签名 step 都不允许引用 secrets，防止同一 job
 	// 启动即注入的 credential 在 shell gate 或其它步骤被提前访问。
-	for _, job := range []*yaml.Node{validate, build, productionBuild, verifyReleaseSource} {
+	for _, job := range []*yaml.Node{validate, build, productionBuild, releaseNotesAudit, verifyReleaseSource} {
 		if workflowpolicy.ContainsSecretReference(job) {
 			return errors.New("non-release job must not reference secrets")
 		}

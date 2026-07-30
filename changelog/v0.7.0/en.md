@@ -2,13 +2,10 @@
 
 ## Added
 
-- Release-binary updates and versioned installer assets now carry a static, tested free GitHub Release-source list. They probe viable routes locally, support path and query-parameter proxy templates, and never fetch a remote mirror list.
-- Existing `detail` and `download` inputs now accept strict official Pixiv artwork URLs; `download` also accepts authenticated user profile and artworks URLs to walk every illustration, manga, and ugoira without downloading novels.
-- MCP `illust_detail` accepts exactly one of an ID or URL, and `download` accepts URLs. Illustration query tools now return typed structured results alongside compact text summaries.
-- Illustration `search` and MCP `search_illust` now support official App `keyword` search (tags, titles, and captions), inclusive explicit date bounds, public bookmark-count bounds, and the `half-year` / `year` quick date ranges. Bookmark-count bounds require both App OAuth and an active Pixiv Premium membership. App-only filters return an authentication requirement when App OAuth is absent.
-- Each published GitHub Release now submits the matching tagged `pixiv-cli` product skill to SkillHub. The submission is validated locally first and the workflow requires the returned SkillHub `skillId` and review status before succeeding.
+- Added verified release-source alternatives, official Pixiv URL input support, typed illustration query results, richer App search filters, and tagged SkillHub publication. ([#30](https://github.com/FlanChanXwO/pixiv-cli/pull/30))
 
 ## Changed
 
-- A configured `--proxy`, `https_proxy`, or `HTTPS_PROXY` keeps precedence over public Release sources. The updater preserves canonical GitHub release identity and Ed25519/SHA-256 verification; installers retain a direct GitHub checksum before accepting a proxied archive.
-- Download JSON now reports `{items, failures}` with canonical artwork URLs, IDs, types, pages, and local paths. Partial downloads report every completed outcome and exit non-zero; no download history, cache, or cross-run de-duplication is created.
+- Standardized proxied updater precedence and download JSON outcome reporting. ([#30](https://github.com/FlanChanXwO/pixiv-cli/pull/30))
+
+**Full Changelog**: [v0.6.0...v0.7.0](https://github.com/FlanChanXwO/pixiv-cli/compare/v0.6.0...v0.7.0)

@@ -1,8 +1,10 @@
 package documentation_test
 
 import (
+	"fmt"
 	"io/fs"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -34,6 +36,7 @@ func TestLocalizedDocumentationLayout(t *testing.T) {
 		"docs/maintainers/development.md",
 		"docs/maintainers/agents/documentation-guidelines.md",
 		"docs/maintainers/adr/0011-localized-documentation-layout.md",
+		".agents/skills/pixiv-cli-release-notes/SKILL.md",
 	}
 	for _, relativePath := range required {
 		if info, err := os.Stat(filepath.Join(repositoryRoot, filepath.FromSlash(relativePath))); err != nil {
@@ -129,6 +132,31 @@ func TestMarkdownRelativeLinksResolve(t *testing.T) {
 func TestVersionedChangelogHasEnglishAndSimplifiedChinesePairs(t *testing.T) {
 	repositoryRoot := filepath.Clean(filepath.Join("..", ".."))
 	changelogRoot := filepath.Join(repositoryRoot, "changelog")
+	versions := []string{
+		"0.1.0", "0.1.1", "0.2.0", "0.3.0", "0.4.0", "0.4.1", "0.4.2", "0.4.3",
+		"0.4.4", "0.4.5", "0.5.0", "0.6.0", "0.7.0", "0.7.1", "0.7.2", "0.8.0",
+	}
+	previous := ""
+	for _, version := range versions {
+		directory := filepath.Join(changelogRoot, "v"+version)
+		for _, locale := range []string{"en.md", "zh-CN.md"} {
+			if info, err := os.Stat(filepath.Join(directory, locale)); err != nil {
+				t.Errorf("v%s %s: %v", version, locale, err)
+			} else if !info.Mode().IsRegular() {
+				t.Errorf("v%s %s is not a regular file", version, locale)
+			}
+		}
+		arguments := []string{"run", "./scripts/releasenotes", "validate", "--version", version, "--dir", filepath.ToSlash(filepath.Join("changelog", "v"+version))}
+		if previous != "" {
+			arguments = append(arguments, "--previous", previous)
+		}
+		command := exec.Command("go", arguments...)
+		command.Dir = repositoryRoot
+		if output, err := command.CombinedOutput(); err != nil {
+			t.Errorf("validate v%s: %v\n%s", version, err, output)
+		}
+		previous = "v" + version
+	}
 	err := filepath.WalkDir(changelogRoot, func(path string, entry fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
@@ -144,6 +172,25 @@ func TestVersionedChangelogHasEnglishAndSimplifiedChinesePairs(t *testing.T) {
 	})
 	if err != nil {
 		t.Fatal(err)
+	}
+	for _, indexName := range []string{"README.md", "README.zh-CN.md"} {
+		body, err := os.ReadFile(filepath.Join(changelogRoot, indexName))
+		if err != nil {
+			t.Fatal(err)
+		}
+		for index, version := range versions {
+			previous := ""
+			if index > 0 {
+				previous = "v" + versions[index-1]
+			}
+			link := "https://github.com/FlanChanXwO/pixiv-cli/commits/v" + version
+			if previous != "" {
+				link = fmt.Sprintf("https://github.com/FlanChanXwO/pixiv-cli/compare/%s...v%s", previous, version)
+			}
+			if !strings.Contains(string(body), "| [v"+version+"]("+link+")") {
+				t.Errorf("%s does not contain the expected v%s index link", indexName, version)
+			}
+		}
 	}
 }
 
@@ -165,6 +212,26 @@ func TestContributionTemplatesArePresentAndEnglish(t *testing.T) {
 				t.Errorf("contribution template %s contains non-ASCII character %q", relativePath, character)
 				break
 			}
+		}
+	}
+}
+
+func TestPullRequestTemplateDeclaresReleaseNoteMetadata(t *testing.T) {
+	repositoryRoot := filepath.Clean(filepath.Join("..", ".."))
+	payload, err := os.ReadFile(filepath.Join(repositoryRoot, ".github", "PULL_REQUEST_TEMPLATE.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, field := range []string{
+		"<!-- release-note",
+		"category:",
+		"breaking:",
+		"summary:",
+		"none_reason:",
+		"Added, Changed, Fixed, Security, Documentation, Maintenance, or None",
+	} {
+		if !strings.Contains(string(payload), field) {
+			t.Errorf("pull-request template is missing release-note field or category %q", field)
 		}
 	}
 }

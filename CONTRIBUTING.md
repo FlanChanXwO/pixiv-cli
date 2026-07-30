@@ -61,7 +61,7 @@ Update documentation in the same pull request when changing a command, flag, SDK
 - Keep `README.md`, `README.zh-CN.md`, and `README.ja.md` behaviorally aligned.
 - Keep all existing locale versions under `docs/<locale>/` behaviorally aligned; never use untranslated placeholder content.
 - Update localized SDK/MCP contracts or `docs/maintainers/` according to their documented responsibility.
-- Record user-visible additions, fixes, changes, deprecations, removals, and security effects in both the [English unreleased notes](changelog/unreleased/en.md) and the [Simplified Chinese unreleased notes](changelog/unreleased/zh-CN.md). At release time, move the paired notes into the matching version directory and update the [changelog index](changelog/README.md).
+- Complete the required release-note declaration in the pull-request template for every contribution. Choose `Added`, `Changed`, `Fixed`, `Security`, `Documentation`, `Maintenance`, or `None`; `None` includes a concrete reason. After merge, the release-prep PR groups reviewed outcomes into matching English and Simplified Chinese version notes, with inline PR or direct-commit sources and a Full Changelog link. See the [release-note workflow](docs/maintainers/development.md#release-notes-and-publication) for the exact process.
 - Check `skills/pixiv-cli/` when CLI commands, flags, or safety semantics change.
 
 Keep stable rules in one authoritative document and link to them elsewhere instead of copying large sections.

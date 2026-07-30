@@ -388,11 +388,51 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
+  # 在进入受保护的 publish job 前，以 tag 内不可变说明、GitHub PR 关联和实际提交范围交叉核对发布来源。
+  release_notes_audit:
+    name: Audit release notes provenance
+    needs: build_production
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ env.RELEASE_TAG }}
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+        with:
+          go-version: '1.26.3'
+      - name: Audit release-note sources and validate the bilingual tag notes
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          previous_tag=$(git tag --merged "$RELEASE_TAG^" --sort=-version:refname | head -n 1)
+          test -n "$previous_tag"
+          audit_report="$RUNNER_TEMP/release-notes-audit.json"
+          go run ./scripts/releasenotes audit \
+            --repo "$GITHUB_REPOSITORY" \
+            --from "$previous_tag" \
+            --to "$RELEASE_TAG" \
+            --require-classified \
+            --output "$audit_report"
+          go run ./scripts/releasenotes validate \
+            --version "${RELEASE_TAG#v}" \
+            --dir "changelog/$RELEASE_TAG" \
+            --previous "$previous_tag" \
+            --audit "$audit_report"
+
   # 在不声明 environment 的 job 中验证 tag 所指提交属于默认分支，避免 protected
   # release Environment 的 secret 在 ancestry shell gate 之前进入同一 job 生命周期。
   verify_release_source:
     name: Verify release source trust
-    needs: build_production
+    needs:
+      - build_production
+      - release_notes_audit
     runs-on: ubuntu-24.04
     permissions:
       contents: read

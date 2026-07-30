@@ -2,4 +2,10 @@
 
 ## 修复
 
-- 修复 Linux Homebrew Release validation 使用 `/var/tmp` 时可能触发 `EINVAL`、导致 staging formula 无法安装的问题；该验证步骤现仅在 Linux 使用 runner 私有临时目录，macOS 与公开 formula 路径保持不变。
+- 将 Linux Homebrew 验证移至 runner 私有临时目录，使 staging 安装避开 EINVAL 失败。 ([#19](https://github.com/FlanChanXwO/pixiv-cli/pull/19))
+
+## 维护
+
+- 准备 v0.4.3 发布元数据。 ([#20](https://github.com/FlanChanXwO/pixiv-cli/pull/20))
+
+**完整变更**：[v0.4.2...v0.4.3](https://github.com/FlanChanXwO/pixiv-cli/compare/v0.4.2...v0.4.3)
