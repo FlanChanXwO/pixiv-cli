@@ -1,4 +1,6 @@
-## Summary / 概述 / 概要
+<!-- Localized instructions: English / 中文 / 日本語 -->
+
+## Summary
 
 <!--
 English: Describe the user problem and the change that addresses it. Link related issues with "Fixes #123" when applicable.
@@ -6,7 +8,7 @@ English: Describe the user problem and the change that addresses it. Link relate
 日本語：user problem と、それを解決する変更を説明してください。該当する場合は "Fixes #123" で関連 issue をリンクします。
 -->
 
-## Scope and compatibility / 范围与兼容性 / 変更範囲と互換性
+## Scope and compatibility
 
 <!--
 English: List affected CLI commands or flags, MCP tools or schemas, SDK APIs, configuration, environment variables, output contracts, and release behavior. State "None" when there is no public impact.
@@ -14,7 +16,7 @@ English: List affected CLI commands or flags, MCP tools or schemas, SDK APIs, co
 日本語：影響を受ける CLI command または flag、MCP tool または schema、SDK API、configuration、environment variable、output contract、release behavior を列挙してください。public impact がない場合は "None" と記載します。
 -->
 
-## Verification / 验证 / 検証
+## Verification
 
 <!--
 English: List the exact commands you ran and their results. For real Pixiv API coverage, state whether it was run and use only redacted evidence.
@@ -26,7 +28,7 @@ English: List the exact commands you ran and their results. For real Pixiv API c
 go test ./...
 ```
 
-## Release note declaration / Release note 声明 / リリースノート宣言
+## Release note declaration
 
 <!--
 English: This required metadata is validated by the Quality gate. It is used only after merge to prepare the bilingual release notes; do not edit changelog/unreleased in a feature PR. Select exactly one category: Added, Changed, Fixed, Security, Documentation, Maintenance, or None. Set breaking to true only when the change requires a major-version release. None requires a concrete reason.
@@ -41,7 +43,7 @@ summary:
 none_reason:
 -->
 
-## Checklist / 检查清单 / チェックリスト
+## Checklist
 
 - [ ] The change is focused and linked to an issue when appropriate. / 改动目标明确，并在适用时关联 Issue。 / 変更は焦点が絞られ、該当する場合は issue にリンクされています。
 - [ ] I added or updated focused tests for changed behavior. / 我已为变更行为新增或更新聚焦测试。 / 変更された動作に対する focused test を追加または更新しました。
