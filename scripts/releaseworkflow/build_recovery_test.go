@@ -334,7 +334,11 @@ func TestCheckWorkflowRejectsProductionIsolationMutations(t *testing.T) {
 			requireMappingValue(t, requireMappingValue(t, upload, "with"), "name").Value = "test-gate-${{ matrix.artifact }}"
 		}},
 		{name: "verify bypasses production", mutate: func(t *testing.T, root *yaml.Node) {
-			requireMappingValue(t, jobNode(t, root, "verify_release_source"), "needs").Value = "build"
+			needs := requireMappingValue(t, jobNode(t, root, "verify_release_source"), "needs")
+			needs.Kind = yaml.ScalarNode
+			needs.Tag = "!!str"
+			needs.Value = "build"
+			needs.Content = nil
 		}},
 		{name: "publish downloads test artifacts", mutate: func(t *testing.T, root *yaml.Node) {
 			steps := requireMappingValue(t, jobNode(t, root, "publish"), "steps")

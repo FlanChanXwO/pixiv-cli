@@ -19,6 +19,7 @@
 - **One capability surface** — search, details, rankings, recommendations, users, bookmarks, follows, downloads, and ugoira across CLI, MCP, and SDK.
 - **Feeds and composable Record pipelines** — retrieve feeds as canonical NDJSON, filter them locally, and pass records into actions.
 - **Local account pools** — select eligible local accounts for read workloads and honor Pixiv `Retry-After` responses during pagination and download preparation.
+- **Guided account sign-in** — complete browser OAuth with `pixiv auth login`, then use `auth list`, `auth use`, and `auth check` to manage local multi-account access.
 - **GIF and APNG ugoira output** — keep GIF as the default or explicitly request APNG through the CLI, MCP, or SDK.
 - **Cache-aware downloads** — revalidate persistent `.pixiv-cache` metadata, resume verified partial data with `Range` and `If-Range`, and atomically replace completed files.
 - **Authenticated App API discovery** — read R18 details, pages, ugoira metadata, and all 16 ranking modes through the App API.
@@ -58,14 +59,14 @@ Copy this single prompt into Codex, Claude Code, Cursor, or another local AI age
 ```text
 Install the latest stable pixiv-cli from https://github.com/FlanChanXwO/pixiv-cli for this machine: inspect the repository's scripts/install.sh or scripts/install.cmd first, choose the script matching the detected OS and architecture (the Windows path must use cmd.exe and must not invoke PowerShell), download only official GitHub Release assets, require the published SHA-256 check to pass before replacing anything, install per-user without administrator or root privileges, add only the chosen install directory to the user PATH, ask before installing any missing prerequisite, never read or output Pixiv credentials, verify with pixiv version, and report the installed version plus every file and PATH change.
 
-Also install the product skill that matches the same stable release tag (not main): download the full skills/pixiv-cli/ directory from that tag into the agent skills directory the user confirms. Do not guess the skills path and do not follow the main branch for skill content.
+Also install the `pixiv-cli` Skill that matches the same stable release tag (not main): download the full skills/pixiv-cli/ directory from that tag into the agent skills directory the user confirms. Do not guess the skills path and do not follow the main branch for skill content.
 ```
 
-### Install the product Skill from SkillHub
+### Install the pixiv-cli Skill from SkillHub
 
 Agents with SkillHub support can install the published [`pixiv-cli` Skill](https://www.skillhub.cn/skills/pixiv-cli) directly from SkillHub. The Skill has its own version and teaches the installed CLI; always use `pixiv <cmd> --help` as the final source of command syntax.
 
-### Install the product Skill from ClawHub
+### Install the pixiv-cli Skill from ClawHub
 
 Agents using ClawHub can install the published [`pixiv-cli` Skill](https://clawhub.ai/flanchanxwo/skills/pixiv-cli) with `clawhub install pixiv-cli`; pin the installed skill to the matching published release version rather than following an unversioned latest tag.
 
@@ -166,6 +167,10 @@ Import `github.com/FlanChanXwO/pixiv-cli/pixiv`. `Download`/`DownloadAll` use do
 ## Authentication and token safety
 
 `pixiv auth login` is the recommended setup. It saves raw Pixiv App OAuth refresh tokens by UID in the local account store.
+
+### Account information disclaimer
+
+Account names, IDs, membership signals, and the active local-account selection are convenience information from the local store and Pixiv responses. Treat them as convenience data rather than proof of account ownership, entitlement, or current Pixiv status. Verify important account details in Pixiv and use only accounts you are authorized to manage.
 
 On macOS, desktop Linux, and Windows, an on-demand persistent `pixiv://` callback handler supports local login and an explicitly configured cross-machine relay. The relay accepts the `pixiv://account/login` callback. For a headless SSH server, use the existing `--no-open --addr` flow with a local `ssh -L` tunnel, or configure the documented relay server/client settings. See the [CLI reference](docs/en/cli-reference.md#getting-a-refresh-token).
 

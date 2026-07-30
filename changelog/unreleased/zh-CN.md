@@ -1,5 +1,7 @@
 # 未发布
 
+> 此处是 release-prep 暂存区。功能 PR 在模板中提供分类和摘要；经审核的 release-prep plan 会将这些来源归并到下一个版本说明。
+
 ## 变更
 
 - 仅文档的 Pull Request 与 `main` push 现只运行文档契约检查，不再运行完整 Linux 质量门禁和六平台已打包二进制 smoke；任何源码、依赖、脚本或 workflow 改动仍会执行完整验证集。

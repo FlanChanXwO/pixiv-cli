@@ -20,6 +20,8 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+
+	"github.com/FlanChanXwO/pixiv-cli/scripts/internal/releasenotesrender"
 )
 
 var semanticVersionPattern = regexp.MustCompile(`^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-(?:(?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*))*))?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$`)
@@ -504,30 +506,13 @@ func readEd25519PrivateKey(path string) (ed25519.PrivateKey, error) {
 }
 
 func releaseNotesFromChangelog(path, version string) ([]byte, error) {
-	body, err := os.ReadFile(path)
-	if err != nil {
-		return nil, fmt.Errorf("read changelog: %w", err)
-	}
-	header := regexp.MustCompile(`(?m)^# v` + regexp.QuoteMeta(version) + `(?:\s+[—-]\s+.+)?\s*$`)
-	location := header.FindIndex(body)
-	if location == nil {
-		return nil, fmt.Errorf("changelog has no release heading for v%s", version)
-	}
-	if second := header.FindIndex(body[location[1]:]); second != nil {
-		return nil, fmt.Errorf("changelog has more than one release heading for v%s", version)
-	}
-	remainder := body[location[1]:]
-	notes := strings.Trim(string(remainder), "\n")
-	if notes == "" {
-		return nil, fmt.Errorf("changelog release v%s has no release notes", version)
-	}
-	return []byte(notes + "\n"), nil
+	return releasenotesrender.NotesFromChangelog(path, version)
 }
 
 // bilingualReleaseNotes 为 GitHub Release body 增加稳定的语言标题。两个输入都已经
 // 由 releaseNotesFromChangelog 验证了对应版本标题，并且不会进入签名 checksum asset 集合。
 func bilingualReleaseNotes(english, chinese []byte) []byte {
-	return []byte("# English\n\n" + strings.TrimSpace(string(english)) + "\n\n---\n\n# 简体中文\n\n" + strings.TrimSpace(string(chinese)) + "\n")
+	return releasenotesrender.BilingualBody(english, chinese)
 }
 
 func signedChecksumsManifest(keyID string, privateKey ed25519.PrivateKey, checksums []byte) ([]byte, error) {

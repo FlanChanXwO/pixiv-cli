@@ -2,5 +2,6 @@
 
 ## Fixed
 
-- Make automatic SkillHub publication work for recovered Releases: after the GitHub Release and Homebrew deployment succeed, the downstream workflow receives and revalidates the exact immutable release tag instead of treating its `main` head branch as a version.
-- Publish the updated `pixiv-cli` product skill as independent SkillHub version 0.7.1. Its version changes because the Skill content changed, not merely because the CLI has a new release.
+- Made SkillHub publication work for recovered Releases by handing off and revalidating the exact immutable tag, and stabilized the recovery and installer test fixtures. ([`1a40630`](https://github.com/FlanChanXwO/pixiv-cli/commit/1a40630), [`c68f63f`](https://github.com/FlanChanXwO/pixiv-cli/commit/c68f63f), [`e1cf5c9`](https://github.com/FlanChanXwO/pixiv-cli/commit/e1cf5c9), [`fd0443c`](https://github.com/FlanChanXwO/pixiv-cli/commit/fd0443c))
+
+**Full Changelog**: [v0.7.1...v0.7.2](https://github.com/FlanChanXwO/pixiv-cli/compare/v0.7.1...v0.7.2)

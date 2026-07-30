@@ -1,5 +1,7 @@
 # Unreleased
 
+> Release-prep staging area. Feature PRs provide their category and summary in the PR template; the approved release-prep plan groups those sources into the next versioned notes.
+
 ## Changed
 
 - Documentation-only pull requests and `main` pushes now run the documentation contract check instead of the full Linux quality gate and six-platform packaged-binary smoke. Any source, dependency, script, or workflow change still runs the complete validation set.

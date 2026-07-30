@@ -19,6 +19,7 @@
 - **統一された機能** — CLI・MCP・SDK から Pixiv の検索、詳細、ランキング、おすすめ、ユーザー、ブックマーク、フォロー、ダウンロード、うごイラを利用できます。
 - **フィードと合成可能な Record パイプライン** — canonical NDJSON でフィードを取得し、Record をローカルで filter して action へ渡せます。
 - **ローカル account pool** — 読み取り処理に適格なローカル account を選択し、pagination と download preparation で Pixiv の `Retry-After` に従います。
+- **分かりやすいアカウントログイン** — `pixiv auth login` で browser OAuth を完了し、`auth list`、`auth use`、`auth check` でローカルの複数アカウントを管理・確認できます。
 - **GIF と APNG のうごイラ出力** — GIF を既定にしつつ、CLI・MCP・SDK から APNG を明示指定できます。
 - **キャッシュ対応 download** — `.pixiv-cache` metadata を永続的に再検証し、検証済み partial を `Range` と `If-Range` で再開し、完了 file を atomic に置き換えます。
 - **認証済み App API の探索** — R18 detail、pages、ugoira metadata、全 16 ranking mode を App API で取得します。
@@ -54,14 +55,14 @@ curl.exe -fsSLo "%TEMP%\pixiv-install.cmd" https://raw.githubusercontent.com/Fla
 ```text
 Install the latest stable pixiv-cli from https://github.com/FlanChanXwO/pixiv-cli for this machine: inspect the repository's scripts/install.sh or scripts/install.cmd first, choose the script matching the detected OS and architecture (the Windows path must use cmd.exe and must not invoke PowerShell), download only official GitHub Release assets, require the published SHA-256 check to pass before replacing anything, install per-user without administrator or root privileges, add only the chosen install directory to the user PATH, ask before installing any missing prerequisite, never read or output Pixiv credentials, verify with pixiv version, and report the installed version plus every file and PATH change.
 
-Also install the product skill that matches the same stable release tag (not main): download the full skills/pixiv-cli/ directory from that tag into the agent skills directory the user confirms. Do not guess the skills path and do not follow the main branch for skill content.
+Also install the pixiv-cli Skill that matches the same stable release tag (not main): download the full skills/pixiv-cli/ directory from that tag into the agent skills directory the user confirms. Do not guess the skills path and do not follow the main branch for skill content.
 ```
 
-### SkillHub から product Skill をインストールする
+### SkillHub から pixiv-cli Skill をインストールする
 
 SkillHub に対応した Agent は、公開済みの [`pixiv-cli` Skill](https://www.skillhub.cn/skills/pixiv-cli) を SkillHub から直接インストールできます。Skill には独自の version があり、インストール済み CLI の使い方を案内します。command の syntax は常に `pixiv <cmd> --help` を最終的な根拠にしてください。
 
-### ClawHub から product Skill をインストールする
+### ClawHub から pixiv-cli Skill をインストールする
 
 ClawHub を使う Agent は、公開済みの [`pixiv-cli` Skill](https://clawhub.ai/flanchanxwo/skills/pixiv-cli) を `clawhub install pixiv-cli` でインストールできます。unversioned latest を追わず、CLI release と同じ公開 Skill version に固定してください。
 
@@ -162,6 +163,10 @@ download, err := client.Download(ctx, "https://www.pixiv.net/artworks/123456")
 ## 認証と token の安全性
 
 推奨設定は `pixiv auth login` です。Pixiv App OAuth の raw refresh token を UID ごとにローカル account store へ保存します。
+
+### アカウント情報に関する注意
+
+アカウント名、UID、membership status の表示、現在選択されているローカル account は、ローカル store と Pixiv response に基づく操作補助情報です。account の所有権・利用権限・現在の Pixiv status を証明するものとしては扱わず、重要な情報は Pixiv で確認し、管理権限のある account だけを使用してください。
 
 macOS、desktop Linux、Windows は on-demand persistent `pixiv://` callback handler を使い、local login と明示設定した cross-machine relay をサポートします。relay は `pixiv://account/login` callback を受け付けます。GUI のない SSH server は既存の `--no-open --addr` と local `ssh -L` tunnel を使うか、documented relay server/client setting を設定します。詳細は [CLI リファレンス](docs/ja/cli-reference.md#refresh-token-の取得) を参照してください。
 

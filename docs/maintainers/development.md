@@ -577,19 +577,19 @@ SkillHub CLI 的 dry-run 和提交，并使用 `SKILL.md` 内的独立 SemVer，
 
 不要提交 Pixiv token、下载内容、本地数据库、机器相关配置、Ed25519 私钥或 tap deploy key。
 
-## Changelog
+## Release notes and publication
 
-`changelog/` 使用 Keep a Changelog 1.1.0 风格维护，并按版本目录保存双语记录。未发布改动必须同时写入
-`changelog/unreleased/en.md` 与 `changelog/unreleased/zh-CN.md`；正式发版时，将这两份记录移入
-`changelog/vX.Y.Z/`，并更新两种语言的目录索引。
+`changelog/` 按版本目录维护英文与简体中文发布说明。每个非空章节依次使用 `Breaking changes`、`Added`、`Changed`、`Fixed`、`Security`、`Documentation`、`Maintenance`；双语文件使用对应译名，并在末尾提供相同范围的 `Full Changelog` compare 链接。首个版本使用该 tag 的 commits 链接。
 
-需要记录的改动：
+每条面向结果的说明内联列出来源 PR；没有 PR 的历史变更使用真实短 SHA commit 链接。一个条目可以归并多个相关来源。每个版本还会列出首次合并且不属于仓库所有者或 bot 的外部贡献者。`changelog/unreleased/` 是 release-prep 入口和说明文件，不是功能 PR 的编辑目标。
 
-- 用户可见的新功能、行为变化或 bug 修复。
-- 配置、CLI、MCP tool、输出格式或兼容性变化。
-- 废弃、移除、安全影响和迁移说明。
+功能 PR 在 `.github/PULL_REQUEST_TEMPLATE.md` 中填写机器可读的 release-note 声明：`Added`、`Changed`、`Fixed`、`Security`、`Documentation`、`Maintenance` 或 `None`，以及一句摘要和 breaking 标记。`None` 需要具体理由。Quality gate 离线读取 PR event payload 校验此声明。
 
-不强制记录纯内部重构、测试补充、文档清理和不会影响用户/集成方的工程整理。
+完成 feature PR、测试和审查后，使用 `scripts/releasenotes audit` 检查 tag 范围内的提交、关联 PR、direct-commit 例外、新贡献者和 SemVer 建议。新贡献者以该作者在仓库中最早合并的 PR 判定，避免历史 PR 的当前关联状态变化而漏记。审核后的双语 JSON plan 由 `prepare` 先预览，再以 `--apply` 生成版本目录和双语索引；`validate` 离线核对章节顺序、来源、双语集合、compare footer 和可选 audit 覆盖。发布 workflow 的 `release_notes_audit` job 在受保护 publish job 之前使用只读 `contents` 与 `pull-requests` 权限重复验证不可变 tag 的来源和说明。
+
+版本推荐不等于发布授权。创建 release-prep PR、合并、创建或推送 tag、触发发布、同步历史 GitHub Release 前，维护者须在当前会话明确确认具体版本、commit/tag 范围和预期影响。完整操作路径见 `.agents/skills/pixiv-cli-release-notes/SKILL.md`：功能分支与 PR → 合并后审计 → 版本建议与授权 → release-prep PR → tag 与 GitHub Release → SkillHub / ClawHub 验证。
+
+`sync-history` 默认 dry-run。明确传入 `--apply` 后，既有 GitHub Release 只更新正文；缺失的历史 Release 以现有 tag 创建且不含资产。两种情况都会读取远端正文并与本地双语渲染结果核对。
 
 ## 文档同步
 
