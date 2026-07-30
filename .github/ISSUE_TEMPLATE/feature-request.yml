@@ -1,5 +1,6 @@
+# Localized content: English / 中文 / 日本語
 name: Feature request
-description: Propose a focused improvement to pixiv-cli.
+description: Propose a focused improvement to pixiv-cli. / 为 pixiv-cli 提出明确的改进建议。 / pixiv-cli の焦点を絞った改善を提案します。
 title: "[Feature]: "
 labels:
   - enhancement
@@ -7,13 +8,15 @@ body:
   - type: markdown
     attributes:
       value: |
-        Please describe the user problem first. Do not include refresh tokens, cookies, private URLs, downloaded works, or private API responses.
+        English: Please describe the user problem first. Do not include refresh tokens, cookies, private URLs, downloaded works, or private API responses.
+        中文：请先描述用户问题。不要包含 refresh token、cookie、私有 URL、下载作品或私有 API 响应。
+        日本語：まず user problem を説明してください。refresh token、cookie、private URL、downloaded work、private API response は含めないでください。
 
   - type: textarea
     id: problem
     attributes:
       label: Problem to solve
-      description: Explain the concrete workflow or limitation that motivates this request.
+      description: Explain the concrete workflow or limitation that motivates this request. / 请说明促使你提出此请求的具体流程或限制。 / このリクエストの動機となる具体的な workflow または制約を説明してください。
     validations:
       required: true
 
@@ -21,7 +24,7 @@ body:
     id: proposal
     attributes:
       label: Proposed behavior
-      description: Describe the desired CLI, MCP, SDK, or documentation behavior. Include examples when useful.
+      description: Describe the desired CLI, MCP, SDK, or documentation behavior. Include examples when useful. / 请描述期望的 CLI、MCP、SDK 或文档行为；适当时附上示例。 / 期待する CLI、MCP、SDK、または documentation の動作を説明してください。必要に応じて例を含めてください。
     validations:
       required: true
 
@@ -29,7 +32,7 @@ body:
     id: surface
     attributes:
       label: Affected interface
-      description: Select every interface that should expose the change.
+      description: Select every interface that should expose the change. / 请选择应提供此变更的所有接口。 / この変更を提供すべきすべてのインターフェースを選択してください。
       multiple: true
       options:
         - CLI
@@ -47,7 +50,7 @@ body:
     id: alternatives
     attributes:
       label: Alternatives considered
-      description: Describe existing commands, workarounds, or other designs you considered.
+      description: Describe existing commands, workarounds, or other designs you considered. / 请说明已考虑的现有命令、变通方案或其他设计。 / 検討した既存の command、workaround、または他の design を説明してください。
 
   - type: checkboxes
     id: compatibility

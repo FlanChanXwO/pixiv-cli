@@ -194,8 +194,9 @@ func TestVersionedChangelogHasEnglishAndSimplifiedChinesePairs(t *testing.T) {
 	}
 }
 
-func TestContributionTemplatesArePresentAndEnglish(t *testing.T) {
+func TestContributionTemplatesArePresentAndLocalized(t *testing.T) {
 	repositoryRoot := filepath.Clean(filepath.Join("..", ".."))
+	const languageMarker = "English / 中文 / 日本語"
 	for _, relativePath := range []string{
 		".github/ISSUE_TEMPLATE/config.yml",
 		".github/ISSUE_TEMPLATE/bug-report.yml",
@@ -207,11 +208,8 @@ func TestContributionTemplatesArePresentAndEnglish(t *testing.T) {
 			t.Errorf("read contribution template %s: %v", relativePath, err)
 			continue
 		}
-		for _, character := range string(payload) {
-			if character > 127 {
-				t.Errorf("contribution template %s contains non-ASCII character %q", relativePath, character)
-				break
-			}
+		if !strings.Contains(string(payload), languageMarker) {
+			t.Errorf("contribution template %s is missing language marker %q", relativePath, languageMarker)
 		}
 	}
 }
