@@ -1,7 +1,7 @@
 # Localized content: English / 中文 / 日本語
 name: Bug report
 description: Report a reproducible problem in the CLI, MCP server, or public Go SDK. / 报告 CLI、MCP server 或 public Go SDK 中可复现的问题。 / CLI、MCP server、または public Go SDK で再現できる問題を報告します。
-title: "[Bug]: "
+title: "[Bug / 问题 / バグ]: "
 labels:
   - bug
 body:

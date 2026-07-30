@@ -1,7 +1,7 @@
 # Localized content: English / 中文 / 日本語
 name: Feature request
 description: Propose a focused improvement to pixiv-cli. / 为 pixiv-cli 提出明确的改进建议。 / pixiv-cli の焦点を絞った改善を提案します。
-title: "[Feature]: "
+title: "[Feature / 功能 / 機能]: "
 labels:
   - enhancement
 body:

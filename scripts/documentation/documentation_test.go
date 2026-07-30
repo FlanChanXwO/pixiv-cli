@@ -214,6 +214,23 @@ func TestContributionTemplatesArePresentAndLocalized(t *testing.T) {
 	}
 }
 
+func TestIssueTemplateTitlesAreLocalized(t *testing.T) {
+	repositoryRoot := filepath.Clean(filepath.Join("..", ".."))
+	for relativePath, title := range map[string]string{
+		".github/ISSUE_TEMPLATE/bug-report.yml":      `title: "[Bug / 问题 / バグ]: "`,
+		".github/ISSUE_TEMPLATE/feature-request.yml": `title: "[Feature / 功能 / 機能]: "`,
+	} {
+		payload, err := os.ReadFile(filepath.Join(repositoryRoot, filepath.FromSlash(relativePath)))
+		if err != nil {
+			t.Errorf("read issue template %s: %v", relativePath, err)
+			continue
+		}
+		if !strings.Contains(string(payload), title) {
+			t.Errorf("issue template %s is missing localized title %q", relativePath, title)
+		}
+	}
+}
+
 func TestPullRequestTemplateDeclaresReleaseNoteMetadata(t *testing.T) {
 	repositoryRoot := filepath.Clean(filepath.Join("..", ".."))
 	payload, err := os.ReadFile(filepath.Join(repositoryRoot, ".github", "PULL_REQUEST_TEMPLATE.md"))
