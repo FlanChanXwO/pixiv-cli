@@ -163,7 +163,7 @@ func TestRecommendedVersionBump(t *testing.T) {
 	}
 }
 
-func TestGitHubClientReadsPullRequestAndFirstExternalContributor(t *testing.T) {
+func TestGitHubClientReadsPullRequestAndFindsFirstMergedPullRequest(t *testing.T) {
 	t.Parallel()
 
 	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
@@ -172,13 +172,23 @@ func TestGitHubClientReadsPullRequestAndFirstExternalContributor(t *testing.T) {
 			_ = json.NewEncoder(response).Encode([]githubPullRequest{{Number: 42}})
 		case "/repos/owner/project/pulls/42":
 			_ = json.NewEncoder(response).Encode(githubPullRequest{
-				Number:            42,
-				Title:             "feat: add APNG",
-				Body:              "<!-- release-note\ncategory: Added\nbreaking: false\nsummary: Add APNG output.\nnone_reason:\n-->",
-				HTMLURL:           "https://github.com/owner/project/pull/42",
-				AuthorAssociation: "FIRST_TIME_CONTRIBUTOR",
-				User:              githubUser{Login: "new-contributor", Type: "User"},
+				Number:  42,
+				Title:   "feat: add APNG",
+				Body:    "<!-- release-note\ncategory: Added\nbreaking: false\nsummary: Add APNG output.\nnone_reason:\n-->",
+				HTMLURL: "https://github.com/owner/project/pull/42",
+				User:    githubUser{Login: "new-contributor", Type: "User"},
 			})
+		case "/search/issues":
+			if got, want := request.URL.Query().Get("q"), "repo:owner/project type:pr author:new-contributor is:merged"; got != want {
+				t.Fatalf("search query = %q, want %q", got, want)
+			}
+			if got, want := request.URL.Query().Get("sort"), "created"; got != want {
+				t.Fatalf("search sort = %q, want %q", got, want)
+			}
+			if got, want := request.URL.Query().Get("order"), "asc"; got != want {
+				t.Fatalf("search order = %q, want %q", got, want)
+			}
+			_ = json.NewEncoder(response).Encode(githubPullRequestSearchResult{Items: []githubPullRequest{{Number: 42}}})
 		default:
 			t.Fatalf("unexpected GitHub API path %q", request.URL.Path)
 		}
@@ -197,8 +207,15 @@ func TestGitHubClientReadsPullRequestAndFirstExternalContributor(t *testing.T) {
 	if err != nil {
 		t.Fatalf("pull request: %v", err)
 	}
-	if !isNewExternalContributor(pull, "owner") {
-		t.Fatalf("pull %#v should be a new external contributor", pull)
+	if !isExternalContributor(pull, "owner") {
+		t.Fatalf("pull %#v should be an eligible external contributor", pull)
+	}
+	first, err := client.firstMergedPullRequest(context.Background(), "owner/project", pull.User.Login)
+	if err != nil {
+		t.Fatalf("first merged pull request: %v", err)
+	}
+	if first.Number != pull.Number {
+		t.Fatalf("first merged pull = %#v, want #%d", first, pull.Number)
 	}
 	if _, err := parseReleaseNoteDeclaration(pull.Body); err != nil {
 		t.Fatalf("parse pull release note: %v", err)
@@ -209,13 +226,15 @@ func TestNewContributorExcludesOwnerAndBots(t *testing.T) {
 	t.Parallel()
 
 	for _, pull := range []githubPullRequest{
-		{AuthorAssociation: "FIRST_TIME_CONTRIBUTOR", User: githubUser{Login: "owner", Type: "User"}},
-		{AuthorAssociation: "FIRST_TIME_CONTRIBUTOR", User: githubUser{Login: "dependabot[bot]", Type: "Bot"}},
-		{AuthorAssociation: "CONTRIBUTOR", User: githubUser{Login: "other", Type: "User"}},
+		{User: githubUser{Login: "owner", Type: "User"}},
+		{User: githubUser{Login: "dependabot[bot]", Type: "Bot"}},
 	} {
-		if isNewExternalContributor(pull, "owner") {
+		if isExternalContributor(pull, "owner") {
 			t.Fatalf("pull %#v must not be listed as a new external contributor", pull)
 		}
+	}
+	if !isExternalContributor(githubPullRequest{User: githubUser{Login: "other", Type: "User"}}, "owner") {
+		t.Fatal("an external user should be eligible before historical PR lookup")
 	}
 }
 

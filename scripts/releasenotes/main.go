@@ -56,12 +56,15 @@ type githubUser struct {
 }
 
 type githubPullRequest struct {
-	Number            int        `json:"number"`
-	Title             string     `json:"title"`
-	Body              string     `json:"body"`
-	HTMLURL           string     `json:"html_url"`
-	AuthorAssociation string     `json:"author_association"`
-	User              githubUser `json:"user"`
+	Number  int        `json:"number"`
+	Title   string     `json:"title"`
+	Body    string     `json:"body"`
+	HTMLURL string     `json:"html_url"`
+	User    githubUser `json:"user"`
+}
+
+type githubPullRequestSearchResult struct {
+	Items []githubPullRequest `json:"items"`
 }
 
 type auditSource struct {
@@ -661,6 +664,7 @@ func collectAudit(ctx context.Context, config auditConfig) (auditReport, error) 
 	}
 	seenPulls := make(map[int]struct{})
 	seenContributors := make(map[string]struct{})
+	firstMergedPulls := make(map[string]int)
 	for _, commit := range commits {
 		pulls, err := config.client.pullRequestsForCommit(ctx, config.repository, commit)
 		if err != nil {
@@ -706,7 +710,21 @@ func collectAudit(ctx context.Context, config auditConfig) (auditReport, error) 
 				source.Note = &note
 			}
 			report.Sources = append(report.Sources, source)
-			if isNewExternalContributor(pull, owner) {
+			if isExternalContributor(pull, owner) {
+				firstMergedPull, known := firstMergedPulls[pull.User.Login]
+				if !known {
+					// author_association 会随仓库历史变化，故以仓库中该作者
+					// 最早合并的 PR 为准，并缓存结果避免同一作者重复查询。
+					first, firstErr := config.client.firstMergedPullRequest(ctx, config.repository, pull.User.Login)
+					if firstErr != nil {
+						return auditReport{}, fmt.Errorf("lookup first merged PR for %q: %w", pull.User.Login, firstErr)
+					}
+					firstMergedPull = first.Number
+					firstMergedPulls[pull.User.Login] = firstMergedPull
+				}
+				if firstMergedPull != pull.Number {
+					continue
+				}
 				if _, exists := seenContributors[pull.User.Login]; !exists {
 					seenContributors[pull.User.Login] = struct{}{}
 					report.NewContributors = append(report.NewContributors, newContributor{
@@ -747,6 +765,24 @@ func (client githubClient) pullRequest(ctx context.Context, repository string, n
 		return githubPullRequest{}, err
 	}
 	return pull, nil
+}
+
+// firstMergedPullRequest 使用仓库的完整 PR 历史，而不是当前 author_association，
+// 判定某个作者最早合并的 PR。该查询只取排序后的首项，不依赖任意分页上限。
+func (client githubClient) firstMergedPullRequest(ctx context.Context, repository, login string) (githubPullRequest, error) {
+	query := url.Values{}
+	query.Set("q", "repo:"+repository+" type:pr author:"+login+" is:merged")
+	query.Set("sort", "created")
+	query.Set("order", "asc")
+	query.Set("per_page", "1")
+	var result githubPullRequestSearchResult
+	if err := client.getJSON(ctx, "/search/issues?"+query.Encode(), &result); err != nil {
+		return githubPullRequest{}, err
+	}
+	if len(result.Items) == 0 {
+		return githubPullRequest{}, fmt.Errorf("no merged pull request found")
+	}
+	return result.Items[0], nil
 }
 
 func (client githubClient) getJSON(ctx context.Context, path string, destination any) error {
@@ -904,8 +940,8 @@ func renderGitHubReleaseBody(directory, version string) (string, error) {
 	return string(releasenotesrender.BilingualBody(english, chinese)), nil
 }
 
-func isNewExternalContributor(pull githubPullRequest, owner string) bool {
-	if pull.AuthorAssociation != "FIRST_TIME_CONTRIBUTOR" || pull.User.Login == "" || pull.User.Login == owner {
+func isExternalContributor(pull githubPullRequest, owner string) bool {
+	if pull.User.Login == "" || pull.User.Login == owner {
 		return false
 	}
 	return pull.User.Type != "Bot" && !strings.HasSuffix(strings.ToLower(pull.User.Login), "[bot]")

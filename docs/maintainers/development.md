@@ -585,7 +585,7 @@ SkillHub CLI 的 dry-run 和提交，并使用 `SKILL.md` 内的独立 SemVer，
 
 功能 PR 在 `.github/PULL_REQUEST_TEMPLATE.md` 中填写机器可读的 release-note 声明：`Added`、`Changed`、`Fixed`、`Security`、`Documentation`、`Maintenance` 或 `None`，以及一句摘要和 breaking 标记。`None` 需要具体理由。Quality gate 离线读取 PR event payload 校验此声明。
 
-完成 feature PR、测试和审查后，使用 `scripts/releasenotes audit` 检查 tag 范围内的提交、关联 PR、direct-commit 例外、新贡献者和 SemVer 建议。审核后的双语 JSON plan 由 `prepare` 先预览，再以 `--apply` 生成版本目录和双语索引；`validate` 离线核对章节顺序、来源、双语集合、compare footer 和可选 audit 覆盖。发布 workflow 的 `release_notes_audit` job 在受保护 publish job 之前使用只读 `contents` 与 `pull-requests` 权限重复验证不可变 tag 的来源和说明。
+完成 feature PR、测试和审查后，使用 `scripts/releasenotes audit` 检查 tag 范围内的提交、关联 PR、direct-commit 例外、新贡献者和 SemVer 建议。新贡献者以该作者在仓库中最早合并的 PR 判定，避免历史 PR 的当前关联状态变化而漏记。审核后的双语 JSON plan 由 `prepare` 先预览，再以 `--apply` 生成版本目录和双语索引；`validate` 离线核对章节顺序、来源、双语集合、compare footer 和可选 audit 覆盖。发布 workflow 的 `release_notes_audit` job 在受保护 publish job 之前使用只读 `contents` 与 `pull-requests` 权限重复验证不可变 tag 的来源和说明。
 
 版本推荐不等于发布授权。创建 release-prep PR、合并、创建或推送 tag、触发发布、同步历史 GitHub Release 前，维护者须在当前会话明确确认具体版本、commit/tag 范围和预期影响。完整操作路径见 `.agents/skills/pixiv-cli-release-notes/SKILL.md`：功能分支与 PR → 合并后审计 → 版本建议与授权 → release-prep PR → tag 与 GitHub Release → SkillHub / ClawHub 验证。
 
