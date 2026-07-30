@@ -19,6 +19,7 @@
 - **一致的能力面**——CLI、MCP 与 SDK 均可完成搜索、详情、排行、推荐、用户、收藏、关注、下载和 ugoira 处理。
 - **信息流与组合式 Record 管道**——以标准 NDJSON 获取信息流，在本地筛选 Record，并把结果传给后续 action。
 - **本地账号池**——为读取型任务选择符合条件的本地账号，并在分页和下载准备阶段遵循 Pixiv 的 `Retry-After` 响应。
+- **易用的账号登录流程**——运行 `pixiv auth login` 即可在浏览器完成 OAuth，随后可使用 `auth list`、`auth use` 和 `auth check` 管理和确认本地多账号。
 - **GIF 与 APNG ugoira 输出**——GIF 为默认格式，也可通过 CLI、MCP 或 SDK 显式请求 APNG。
 - **缓存感知下载**——持久重验证 `.pixiv-cache` 元数据，以 `Range` 和 `If-Range` 安全续传已验证的残片，并原子替换完成文件。
 - **认证 App API 发现能力**——通过 App API 读取 R18 详情、分页、ugoira metadata 和全部 16 种排行榜。
@@ -56,16 +57,16 @@ binary，并在修改 PATH 前完成用户级安装。可用 `--no-path` 保持 
 ```text
 请为这台机器安装 https://github.com/FlanChanXwO/pixiv-cli 的最新 stable 版本：先审阅仓库中的 scripts/install.sh 或 scripts/install.cmd，再根据检测到的操作系统与架构选择对应脚本（Windows 必须使用 cmd.exe，禁止调用 PowerShell），只下载官方 GitHub Release 资产，只有发布的 SHA-256 校验通过后才能替换文件，使用无需管理员或 root 权限的用户级目录，只把选定安装目录加入用户 PATH，缺少任何前置工具时先征求同意，绝不读取或输出 Pixiv 凭据，最后运行 pixiv version 验证，并报告安装版本及全部文件和 PATH 变更。
 
-同时安装与该 stable 发布 tag 完全一致的产品 skill（不要跟随 main）：把该 tag 下的完整 skills/pixiv-cli/ 目录安装到用户确认的 Agent skills 目录。不要猜测 skills 路径，也不要用 main 上的 skill 内容。
+同时安装与该 stable 发布 tag 完全一致的 `pixiv-cli` Skill（不要跟随 main）：把该 tag 下的完整 skills/pixiv-cli/ 目录安装到用户确认的 Agent skills 目录。不要猜测 skills 路径，也不要用 main 上的 skill 内容。
 ```
 
-### 通过 SkillHub 安装产品 Skill
+### 通过 SkillHub 安装 pixiv-cli Skill
 
-支持 SkillHub 的 Agent 可直接从 [SkillHub 的 `pixiv-cli` Skill 页面](https://www.skillhub.cn/skills/pixiv-cli) 安装已发布的产品 Skill。Skill 有独立版本并用于指导已安装的 CLI；命令语法始终以 `pixiv <cmd> --help` 为最终依据。
+支持 SkillHub 的 Agent 可直接从 [SkillHub 的 `pixiv-cli` Skill 页面](https://www.skillhub.cn/skills/pixiv-cli) 安装已发布的 `pixiv-cli` Skill。Skill 有独立版本并用于指导已安装的 CLI；命令语法始终以 `pixiv <cmd> --help` 为最终依据。
 
-### 通过 ClawHub 安装产品 Skill
+### 通过 ClawHub 安装 pixiv-cli Skill
 
-使用 ClawHub 的 Agent 可从 [ClawHub 的 `pixiv-cli` Skill 页面](https://clawhub.ai/flanchanxwo/skills/pixiv-cli) 执行 `clawhub install pixiv-cli` 安装已发布的产品 Skill；请固定到与 CLI 发布相同的 Skill 版本，不要跟随未固定的 latest。
+使用 ClawHub 的 Agent 可从 [ClawHub 的 `pixiv-cli` Skill 页面](https://clawhub.ai/flanchanxwo/skills/pixiv-cli) 执行 `clawhub install pixiv-cli` 安装已发布的 `pixiv-cli` Skill；请固定到与 CLI 发布相同的 Skill 版本，不要跟随未固定的 latest。
 
 ### Homebrew（macOS 与 Linux 推荐）
 
@@ -164,6 +165,10 @@ download, err := client.Download(ctx, "https://www.pixiv.net/artworks/123456")
 ## 认证与 token 安全
 
 推荐使用 `pixiv auth login` 完成配置。它把原始 Pixiv App OAuth refresh token 按 UID 保存在本地账号 store。
+
+### 账号信息免责声明
+
+账号名称、UID、会员状态提示和当前本地账号选择来自本地存储与 Pixiv 响应，仅用于操作便利；它们不构成账号归属、权限或当前 Pixiv 状态的证明。请在 Pixiv 核对重要账号信息，并且只管理已获授权的账号。
 
 macOS、桌面 Linux 与 Windows 使用按需持久的 `pixiv://` callback handler，既支持本地登录，也支持显式配置的跨机器 relay；relay 接收 `pixiv://account/login` callback。无 GUI SSH 服务器仍可使用现有的 `--no-open --addr` 与本机 `ssh -L` tunnel，或配置文档中的 relay server/client 设置。详见 [CLI 参考手册](docs/zh-CN/cli-reference.md#获取-refresh-token)。
 
