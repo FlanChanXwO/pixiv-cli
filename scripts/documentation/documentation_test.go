@@ -194,23 +194,22 @@ func TestVersionedChangelogHasEnglishAndSimplifiedChinesePairs(t *testing.T) {
 	}
 }
 
-func TestContributionTemplatesArePresentAndEnglish(t *testing.T) {
+func TestContributionTemplatesArePresentAndLocalized(t *testing.T) {
 	repositoryRoot := filepath.Clean(filepath.Join("..", ".."))
-	for _, relativePath := range []string{
-		".github/ISSUE_TEMPLATE/config.yml",
-		".github/ISSUE_TEMPLATE/bug-report.yml",
-		".github/ISSUE_TEMPLATE/feature-request.yml",
-		".github/PULL_REQUEST_TEMPLATE.md",
+	for relativePath, markers := range map[string][]string{
+		".github/ISSUE_TEMPLATE/config.yml":          {"文档与使用问题", "ドキュメントと使い方の質問"},
+		".github/ISSUE_TEMPLATE/bug-report.yml":      {"发生了什么？", "何が起きましたか？"},
+		".github/ISSUE_TEMPLATE/feature-request.yml": {"要解决的问题", "解決したい問題"},
+		".github/PULL_REQUEST_TEMPLATE.md":           {"概述", "概要"},
 	} {
 		payload, err := os.ReadFile(filepath.Join(repositoryRoot, filepath.FromSlash(relativePath)))
 		if err != nil {
 			t.Errorf("read contribution template %s: %v", relativePath, err)
 			continue
 		}
-		for _, character := range string(payload) {
-			if character > 127 {
-				t.Errorf("contribution template %s contains non-ASCII character %q", relativePath, character)
-				break
+		for _, marker := range markers {
+			if !strings.Contains(string(payload), marker) {
+				t.Errorf("contribution template %s is missing localized marker %q", relativePath, marker)
 			}
 		}
 	}
