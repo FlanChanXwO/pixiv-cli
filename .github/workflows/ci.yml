@@ -105,6 +105,9 @@ jobs:
     needs: classify_changes
     if: ${{ needs.classify_changes.outputs.docs_only != 'true' }}
     runs-on: windows-2025
+    env:
+      # Rust ugoira staticlib 使用 MSVC ABI；MinGW 默认链接器无法解析其运行时符号。
+      CC: clang -fuse-ld=lld
     permissions:
       contents: read
     steps:

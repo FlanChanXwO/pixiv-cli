@@ -84,6 +84,10 @@ func ValidateQuality(path string) error {
 		"sh scripts/test-release-workflow.sh",
 		"go test ./scripts/platformsmokeworkflow -count=1",
 		"pre_commit run --all-files",
+		"windows_login_handler:",
+		"name: Windows login handler contracts",
+		"CC: clang -fuse-ld=lld",
+		"go test ./internal/cli ./internal/cli/loginhelper -count=1",
 	} {
 		if !strings.Contains(workflow, required) {
 			return fmt.Errorf("quality workflow missing %q", required)
