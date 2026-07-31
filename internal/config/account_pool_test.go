@@ -29,7 +29,7 @@ func TestRuntimeAccountPoolRequiresValidExplicitWhitelistWhenEnabled(t *testing.
 			body: "[account_pool]\nenabled = true\naccounts = [11, 22]\nstrategy = 'random'\n",
 			want: AccountPoolConfig{Enabled: true, Accounts: []int64{11, 22}, Strategy: AccountPoolStrategyRandom},
 		},
-		{name: "enabled without accounts", body: "[account_pool]\nenabled = true\n", wantErr: "account_pool.accounts must contain at least one UID"},
+		{name: "enabled without accounts uses all local accounts", body: "[account_pool]\nenabled = true\n", want: AccountPoolConfig{Enabled: true, Strategy: AccountPoolStrategyRoundRobin}},
 		{name: "duplicate UID", body: "[account_pool]\nenabled = true\naccounts = [11, 11]\n", wantErr: "account_pool.accounts must not contain duplicate UIDs"},
 		{name: "non positive UID", body: "[account_pool]\nenabled = true\naccounts = [0]\n", wantErr: "account_pool.accounts must contain only positive UIDs"},
 		{name: "unknown strategy", body: "[account_pool]\nstrategy = 'weighted'\n", wantErr: "account_pool.strategy must be one of: round_robin, random"},

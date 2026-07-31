@@ -9,10 +9,6 @@ type IllustList struct {
 	ContinuationExists bool     `json:"-"`
 }
 
-type SearchIllustOptions struct {
-	Tools []string `json:"tools"`
-}
-
 // MarshalJSON 将合法空列表稳定编码为 []，避免内部消费者产生 wire 上的 null。
 func (l IllustList) MarshalJSON() ([]byte, error) {
 	items := l.Illusts

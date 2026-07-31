@@ -3,7 +3,6 @@ package pixiv
 import (
 	"context"
 	"errors"
-	"time"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/model"
 )
@@ -14,8 +13,6 @@ type illustRelatedQuery struct {
 
 // IllustPages 返回作品的全部页面元数据；该接口不分页。
 func (c *Client) IllustPages(ctx context.Context, illustID int64) (result []MetaPage, err error) {
-	started := time.Now()
-	defer func() { c.delegatedOperationLog(OperationIllustPages, started, err, illustID, 0) }()
 	if scoped, err := c.operationClient(ctx, OperationIllustPages); err != nil {
 		return nil, err
 	} else if scoped != c {
@@ -51,8 +48,6 @@ func (c *Client) IllustPages(ctx context.Context, illustID int64) (result []Meta
 
 // IllustRelated 返回与指定作品相关的一个 App API 批次。
 func (c *Client) IllustRelated(ctx context.Context, request IllustRelatedRequest) (result *IllustListResult, err error) {
-	started := time.Now()
-	defer func() { c.delegatedOperationLog(OperationIllustRelated, started, err, request.IllustID, 0) }()
 	if scoped, err := c.operationClient(ctx, OperationIllustRelated); err != nil {
 		return nil, err
 	} else if scoped != c {
@@ -79,8 +74,6 @@ func (c *Client) IllustRelated(ctx context.Context, request IllustRelatedRequest
 
 // TrendingTagsIllust 返回 App API 当前的插画趋势标签。
 func (c *Client) TrendingTagsIllust(ctx context.Context) (result *TrendingTagsIllustResult, err error) {
-	started := time.Now()
-	defer func() { c.delegatedOperationLog(OperationTrendingTagsIllust, started, err, 0, 0) }()
 	if scoped, err := c.operationClient(ctx, OperationTrendingTagsIllust); err != nil {
 		return nil, err
 	} else if scoped != c {
@@ -102,8 +95,6 @@ func (c *Client) TrendingTagsIllust(ctx context.Context) (result *TrendingTagsIl
 
 // UgoiraMetadata 返回可下载 ZIP 的明确质量；认证态仅使用 App API 提供的资源。
 func (c *Client) UgoiraMetadata(ctx context.Context, illustID int64) (result *UgoiraMetadataResult, err error) {
-	started := time.Now()
-	defer func() { c.delegatedOperationLog(OperationUgoiraMetadata, started, err, illustID, 0) }()
 	if scoped, err := c.operationClient(ctx, OperationUgoiraMetadata); err != nil {
 		return nil, err
 	} else if scoped != c {

@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"net/http"
-	"strconv"
 	"strings"
 	"time"
 
@@ -52,8 +51,6 @@ func (c *Client) configPathFor(operation Operation) (string, error) {
 
 // ImportAccount 刷新给定 refresh token，随后安全保存其旋转后的 token。
 func (c *Client) ImportAccount(ctx context.Context, refreshToken string) (out *Account, err error) {
-	started := time.Now()
-	defer func() { c.operationLog(OperationImportAccount, started, err, 0, 0) }()
 	c.authState.mu.Lock()
 	defer c.authState.mu.Unlock()
 	refreshToken, inputErr := credentials.ValidateRefreshTokenInput(refreshToken)
@@ -84,8 +81,6 @@ func (c *Client) ImportAccount(ctx context.Context, refreshToken string) (out *A
 
 // ListAccounts 返回本地账号的安全摘要。
 func (c *Client) ListAccounts() (out *AccountsResult, err error) {
-	started := time.Now()
-	defer func() { c.operationLog(OperationListAccounts, started, err, 0, 0) }()
 	c.authState.mu.Lock()
 	defer c.authState.mu.Unlock()
 	state, _, err := c.accountState(OperationListAccounts, false)
@@ -153,8 +148,6 @@ func (c *Client) ExportAccountRefreshToken(userID int64) (token string, err erro
 
 // SelectAccount 将已有账号选为默认账号。
 func (c *Client) SelectAccount(userID int64) (err error) {
-	started := time.Now()
-	defer func() { c.operationLog(OperationSelectAccount, started, err, 0, userID) }()
 	c.authState.mu.Lock()
 	defer c.authState.mu.Unlock()
 	if userID <= 0 {
@@ -176,8 +169,6 @@ func (c *Client) SelectAccount(userID int64) (err error) {
 
 // RemoveAccount 删除本地账号；删除默认账号时沿用存储层的确定性提升规则。
 func (c *Client) RemoveAccount(userID int64) (err error) {
-	started := time.Now()
-	defer func() { c.operationLog(OperationRemoveAccount, started, err, 0, userID) }()
 	c.authState.mu.Lock()
 	defer c.authState.mu.Unlock()
 	if userID <= 0 {
@@ -198,8 +189,6 @@ func (c *Client) RemoveAccount(userID int64) (err error) {
 
 // CheckAccount 刷新指定本地账号，验证 UID 不变并保存旋转后的 token。
 func (c *Client) CheckAccount(ctx context.Context, userID int64) (out *Account, err error) {
-	started := time.Now()
-	defer func() { c.operationLog(OperationCheckAccount, started, err, 0, userID) }()
 	c.authState.mu.Lock()
 	defer c.authState.mu.Unlock()
 	state, httpClient, err := c.accountState(OperationCheckAccount, true)
@@ -215,20 +204,16 @@ func (c *Client) CheckAccount(ctx context.Context, userID int64) (out *Account, 
 // CheckRefreshToken 验证一次调用方提供的 refresh token 并返回其身份摘要。它不会读取、
 // 选择、旋转或写入本地 auth store，因此环境变量等临时凭据不能改变默认账号。
 func (c *Client) CheckRefreshToken(ctx context.Context, refreshToken string) (out *Account, err error) {
-	started := time.Now()
 	if c.defaults != nil {
 		// 临时 token 只需要当前配置决定的 transport；不得走会选择并刷新本地账号的
 		// operation snapshot，否则环境变量检查会意外改写 auth.json。
 		scoped, snapshotErr := c.defaults.resourceSnapshot(OperationCheckRefreshToken)
 		if snapshotErr != nil {
-			c.operationLog(OperationCheckRefreshToken, started, snapshotErr, 0, 0)
 			return nil, snapshotErr
 		}
 		out, err = scoped.checkRefreshToken(ctx, refreshToken)
-		c.operationLog(OperationCheckRefreshToken, started, err, 0, accountUserID(out))
 		return out, err
 	}
-	defer func() { c.operationLog(OperationCheckRefreshToken, started, err, 0, accountUserID(out)) }()
 	return c.checkRefreshToken(ctx, refreshToken)
 }
 
@@ -257,8 +242,6 @@ func accountUserID(account *Account) int64 {
 
 // Refresh 刷新当前默认账号并保存旋转后的 token。
 func (c *Client) Refresh(ctx context.Context) (out *Account, err error) {
-	started := time.Now()
-	defer func() { c.operationLog(OperationRefresh, started, err, 0, 0) }()
 	c.authState.mu.Lock()
 	defer c.authState.mu.Unlock()
 	state, httpClient, err := c.accountState(OperationRefresh, true)
@@ -270,8 +253,6 @@ func (c *Client) Refresh(ctx context.Context) (out *Account, err error) {
 
 // RefreshAccount 是 Refresh 的显式 UID 变体。
 func (c *Client) RefreshAccount(ctx context.Context, userID int64) (out *Account, err error) {
-	started := time.Now()
-	defer func() { c.operationLog(OperationRefresh, started, err, 0, userID) }()
 	c.authState.mu.Lock()
 	defer c.authState.mu.Unlock()
 	return c.refreshStoredAccount(ctx, OperationRefresh, userID)
@@ -383,8 +364,6 @@ func (c *Client) accountState(operation Operation, needsHTTP bool) (localSnapsho
 
 // GetConfig 读取一个强类型配置键的有效值，包含现有环境变量覆盖规则。
 func (c *Client) GetConfig(key ConfigKey) (out ConfigValue, err error) {
-	started := time.Now()
-	defer func() { c.operationLog(OperationConfigGet, started, err, 0, 0) }()
 	if err := validateConfigKey(key); err != nil {
 		return ConfigValue{}, newError(CodeInvalidArgument, OperationConfigGet, "", false, 0, 0, err)
 	}
@@ -405,13 +384,8 @@ func (c *Client) GetConfig(key ConfigKey) (out ConfigValue, err error) {
 
 // SetConfig 校验并私有写入一个非敏感强类型配置值。
 func (c *Client) SetConfig(key ConfigKey, input ConfigInput) (out ConfigValue, err error) {
-	started := time.Now()
-	defer func() { c.operationLog(OperationConfigSet, started, err, 0, 0) }()
 	if err := validateConfigKey(key); err != nil {
 		return ConfigValue{}, newError(CodeInvalidArgument, OperationConfigSet, "", false, 0, 0, err)
-	}
-	if key == ConfigKeyLoginRelaySecret {
-		return ConfigValue{}, newError(CodeInvalidArgument, OperationConfigSet, "", false, 0, 0, errors.New("sensitive config requires SetLoginRelaySecret"))
 	}
 	path, err := c.configPathFor(OperationConfigSet)
 	if err != nil {
@@ -434,8 +408,6 @@ func (c *Client) SetConfig(key ConfigKey, input ConfigInput) (out ConfigValue, e
 
 // UnsetConfig 移除一个现有配置键的文件值；环境覆盖仍会由 GetConfig 显示。
 func (c *Client) UnsetConfig(key ConfigKey) (out bool, err error) {
-	started := time.Now()
-	defer func() { c.operationLog(OperationConfigUnset, started, err, 0, 0) }()
 	if err := validateConfigKey(key); err != nil {
 		return false, newError(CodeInvalidArgument, OperationConfigUnset, "", false, 0, 0, err)
 	}
@@ -448,23 +420,4 @@ func (c *Client) UnsetConfig(key ConfigKey) (out bool, err error) {
 		return false, localSnapshotError(OperationConfigUnset, markLocalState(localStateStageConfig, err))
 	}
 	return removed, nil
-}
-
-// SetLoginRelaySecret 写入跨机器登录中继密钥。该敏感值没有通用读取或 setter 路径，
-// 成功后不会被返回、记录或纳入 ConfigValue。
-func (c *Client) SetLoginRelaySecret(secret string) (err error) {
-	started := time.Now()
-	defer func() { c.operationLog(OperationConfigSet, started, err, 0, 0) }()
-	path, err := c.configPathFor(OperationConfigSet)
-	if err != nil {
-		return err
-	}
-	_, parsed, err := config.ParseSettingInput(string(ConfigKeyLoginRelaySecret), strconv.Quote(secret))
-	if err != nil {
-		return newError(CodeInvalidArgument, OperationConfigSet, "", false, 0, 0, errors.New("login relay secret is invalid"))
-	}
-	if err := config.SetConfigValue(path, string(ConfigKeyLoginRelaySecret), parsed); err != nil {
-		return localSnapshotError(OperationConfigSet, markLocalState(localStateStageConfig, err))
-	}
-	return nil
 }

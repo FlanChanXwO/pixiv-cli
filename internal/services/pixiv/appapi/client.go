@@ -6,14 +6,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log/slog"
 	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
 	"time"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/logging"
 	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/model"
 	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/protocol"
 	"github.com/go-resty/resty/v2"
@@ -37,7 +35,6 @@ type Client struct {
 	restyClient *resty.Client
 	apiBase     string
 	session     Session
-	logger      *slog.Logger
 	// disableRetryAfterRetry 只由上层明确需要观察首个 429 的调度器启用。
 	// 默认仍遵守既有的有效 Retry-After 单次重试契约。
 	disableRetryAfterRetry bool
@@ -76,11 +73,6 @@ func WithBaseURL(apiBase string) Option {
 
 func WithSession(session Session) Option {
 	return func(c *Client) { c.session = session }
-}
-
-// WithLogger 注入调用方显式提供的安全诊断 logger；nil 保持静默。
-func WithLogger(logger *slog.Logger) Option {
-	return func(c *Client) { c.logger = logger }
 }
 
 // WithAccessToken 注入已取得的 access token，供无需刷新流程的 SDK 调用复用 App API。
@@ -169,38 +161,13 @@ func setSearchIllustFilters(query url.Values, filters model.SearchIllustFilters)
 	}
 }
 
-func (c *Client) SearchIllustOptions(ctx context.Context, word string) (*model.SearchIllustOptions, error) {
-	query := url.Values{
-		"word":                           {word},
-		"search_target":                  {"partial_match_for_tags"},
-		"merge_plain_keyword_results":    {"true"},
-		"include_translated_tag_results": {"true"},
-		"search_ai_type":                 {"0"},
-	}
-	var raw searchIllustOptionsDTO
-	if err := c.getJSONWithRetry(ctx, protocol.AppSearchIllustOptions, query, &raw); err != nil {
-		return nil, err
-	}
-	if raw.Illust == nil {
-		return nil, ErrMalformedResponse
-	}
-	var tools []string
-	if raw.Illust.Tool != nil {
-		tools = raw.Illust.Tool.Options
-	}
-	if tools == nil {
-		tools = []string{}
-	}
-	return &model.SearchIllustOptions{Tools: tools}, nil
-}
-
 func (c *Client) IllustDetail(ctx context.Context, id int64) (*model.IllustDetail, error) {
 	var raw illustDetailDTO
 	if err := c.getJSONWithRetry(ctx, protocol.AppIllustDetail, url.Values{"illust_id": {fmt.Sprint(id)}}, &raw); err != nil {
 		return nil, err
 	}
 	if raw.Illust == nil || raw.Illust.ID <= 0 {
-		return nil, ErrMalformedResponse
+		return nil, protocol.MalformedResponse()
 	}
 	out := mapIllustDetail(raw)
 	return &out, nil
@@ -234,7 +201,7 @@ func (c *Client) UserDetail(ctx context.Context, userID int64) (*model.UserDetai
 		!raw.Profile.Present || !raw.Profile.Valid ||
 		!raw.ProfilePublicity.Present || !raw.ProfilePublicity.Valid || !raw.ProfilePublicity.Value.valid() ||
 		!raw.Workspace.Present || !raw.Workspace.Valid {
-		return nil, ErrMalformedResponse
+		return nil, protocol.MalformedResponse()
 	}
 	out := mapUserDetail(raw)
 	return &out, nil
@@ -273,11 +240,11 @@ func (c *Client) TrendingTagsIllust(ctx context.Context) (*model.TrendTags, erro
 		return nil, err
 	}
 	if !raw.TrendTags.Present || !raw.TrendTags.Valid {
-		return nil, ErrMalformedResponse
+		return nil, protocol.MalformedResponse()
 	}
 	for _, item := range raw.TrendTags.Items {
 		if item.Tag == "" || !item.Illust.Present || !item.Illust.Valid || item.Illust.Value.ID <= 0 {
-			return nil, ErrMalformedResponse
+			return nil, protocol.MalformedResponse()
 		}
 	}
 	out := mapTrendTags(raw)
@@ -375,11 +342,11 @@ func (c *Client) getIllustListWithContinuationPolicy(ctx context.Context, path s
 		return nil, err
 	}
 	if !raw.Illusts.Present || !raw.Illusts.Valid {
-		return nil, ErrMalformedResponse
+		return nil, protocol.MalformedResponse()
 	}
 	for _, illust := range raw.Illusts.Items {
 		if illust.ID <= 0 {
-			return nil, ErrMalformedResponse
+			return nil, protocol.MalformedResponse()
 		}
 	}
 	out := mapIllustList(raw)
@@ -395,17 +362,17 @@ func (c *Client) getUserPreviewList(ctx context.Context, path string, query url.
 		return nil, err
 	}
 	if !raw.UserPreviews.Present || !raw.UserPreviews.Valid {
-		return nil, ErrMalformedResponse
+		return nil, protocol.MalformedResponse()
 	}
 	for _, preview := range raw.UserPreviews.Items {
 		if preview.User.ID <= 0 {
-			return nil, ErrMalformedResponse
+			return nil, protocol.MalformedResponse()
 		}
 	}
 	out := mapUserPreviewList(raw)
 	if raw.NextURL != nil {
 		if *raw.NextURL == "" {
-			return nil, ErrMalformedResponse
+			return nil, protocol.MalformedResponse()
 		}
 		value, err := continuationValue(*raw.NextURL, "offset")
 		if err != nil {
@@ -430,17 +397,17 @@ func (c *Client) getNovelListWithContinuationPolicy(ctx context.Context, path st
 		return nil, err
 	}
 	if !raw.Novels.Present || !raw.Novels.Valid {
-		return nil, ErrMalformedResponse
+		return nil, protocol.MalformedResponse()
 	}
 	for _, novel := range raw.Novels.Items {
 		if novel.ID <= 0 || novel.User.ID <= 0 || requireSearchFields && (novel.XRestrict == nil || novel.TextLength == nil || novel.IsOriginal == nil) {
-			return nil, ErrMalformedResponse
+			return nil, protocol.MalformedResponse()
 		}
 	}
 	out := mapNovelList(raw)
 	if raw.NextURL != nil {
 		if *raw.NextURL == "" {
-			return nil, ErrMalformedResponse
+			return nil, protocol.MalformedResponse()
 		}
 		value, err := continuationValueWithPolicy(*raw.NextURL, "offset", policy)
 		if err != nil {
@@ -457,27 +424,27 @@ func (c *Client) getRecommendedUserList(ctx context.Context, path string, query 
 		return nil, err
 	}
 	if !raw.UserPreviews.Present || !raw.UserPreviews.Valid {
-		return nil, ErrMalformedResponse
+		return nil, protocol.MalformedResponse()
 	}
 	for _, preview := range raw.UserPreviews.Items {
 		if preview.User.ID <= 0 {
-			return nil, ErrMalformedResponse
+			return nil, protocol.MalformedResponse()
 		}
 		for _, illust := range preview.Illusts {
 			if illust.ID <= 0 {
-				return nil, ErrMalformedResponse
+				return nil, protocol.MalformedResponse()
 			}
 		}
 		for _, novel := range preview.Novels {
 			if novel.ID <= 0 || novel.User.ID <= 0 {
-				return nil, ErrMalformedResponse
+				return nil, protocol.MalformedResponse()
 			}
 		}
 	}
 	out := mapRecommendedUserList(raw)
 	if raw.NextURL != nil {
 		if *raw.NextURL == "" {
-			return nil, ErrMalformedResponse
+			return nil, protocol.MalformedResponse()
 		}
 		value, err := continuationValueWithPolicy(*raw.NextURL, "offset", recommendationOffsetContinuation)
 		if err != nil {
@@ -493,7 +460,7 @@ func applyListContinuation(rawURL *string, key string, policy continuationPolicy
 		return nil
 	}
 	if *rawURL == "" {
-		return ErrMalformedResponse
+		return protocol.MalformedResponse()
 	}
 	value, err := continuationValueWithPolicy(*rawURL, key, policy)
 	if err != nil {
@@ -523,18 +490,18 @@ const (
 func continuationValueWithPolicy(rawURL, key string, policy continuationPolicy) (int64, error) {
 	parsed, err := url.Parse(rawURL)
 	if err != nil {
-		return 0, ErrMalformedResponse
+		return 0, protocol.MalformedResponse()
 	}
 	values, err := url.ParseQuery(parsed.RawQuery)
 	if err != nil || len(values[key]) != 1 {
-		return 0, ErrMalformedResponse
+		return 0, protocol.MalformedResponse()
 	}
 	value, err := strconv.ParseInt(values.Get(key), 10, 64)
 	if err != nil || value < 0 || value == 0 && !(policy == recommendationOffsetContinuation && key == "offset") {
-		return 0, ErrMalformedResponse
+		return 0, protocol.MalformedResponse()
 	}
 	if key == "offset" && int64(int(value)) != value {
-		return 0, ErrMalformedResponse
+		return 0, protocol.MalformedResponse()
 	}
 	return value, nil
 }
@@ -547,11 +514,11 @@ func (c *Client) UgoiraMetadata(ctx context.Context, id int64) (*model.UgoiraMet
 	metadata := raw.UgoiraMetadata.Value
 	if !raw.UgoiraMetadata.Present || !raw.UgoiraMetadata.Valid || !metadata.ZipURLs.Present || !metadata.ZipURLs.Valid || metadata.ZipURLs.Value.Medium == "" ||
 		!metadata.Frames.Present || !metadata.Frames.Valid || len(metadata.Frames.Items) == 0 {
-		return nil, ErrMalformedResponse
+		return nil, protocol.MalformedResponse()
 	}
 	for _, frame := range metadata.Frames.Items {
 		if frame.File == "" {
-			return nil, ErrMalformedResponse
+			return nil, protocol.MalformedResponse()
 		}
 	}
 	out := mapUgoiraMetadata(raw)
@@ -573,15 +540,10 @@ func (c *Client) getJSONWithRetry(ctx context.Context, path string, query url.Va
 		return err
 	}
 	// 产品契约只允许依据服务端有效 Retry-After 重试一次，避免对读取端点进行猜测性重放。
-	c.logRateLimitRetry(retryAfter)
 	if err := waitForRetryAfter(ctx, retryAfter); err != nil {
 		return protocol.Transport(err)
 	}
 	return c.getJSONWithAuthRetry(ctx, path, query, out)
-}
-
-func (c *Client) logRateLimitRetry(retryAfter time.Duration) {
-	logging.LogRateLimitRetry(c.logger, retryAfter, 2)
 }
 
 func (c *Client) getJSONWithAuthRetry(ctx context.Context, path string, query url.Values, out any) error {

@@ -116,6 +116,8 @@ func TestConfigOnlyManagesApprovedKeys(t *testing.T) {
 	useTempPaths(t)
 
 	for _, args := range [][]string{
+		{"pixiv", "config", "get", "log_level"},
+		{"pixiv", "config", "set", "log_level", "debug"},
 		{"pixiv", "config", "get", "web_fallback_enabled"},
 		{"pixiv", "config", "set", "login_timeout", "30s"},
 		{"pixiv", "config", "set", "premium_status_cache_ttl", "3h"},
@@ -281,7 +283,7 @@ func TestConfigLowercaseProxyBeatsUppercase(t *testing.T) {
 func clearConfigEnv(t *testing.T) {
 	t.Helper()
 
-	for _, name := range []string{"DOWNLOAD_PATH", "FILENAME_TEMPLATE", "https_proxy", "HTTPS_PROXY"} {
+	for _, name := range []string{"DOWNLOAD_PATH", "FILENAME_TEMPLATE", "PIXIV_LOG_LEVEL", "https_proxy", "HTTPS_PROXY"} {
 		oldValue, hadValue := os.LookupEnv(name)
 		require.NoError(t, os.Unsetenv(name))
 		t.Cleanup(func() {

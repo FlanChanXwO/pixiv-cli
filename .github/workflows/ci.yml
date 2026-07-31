@@ -99,3 +99,21 @@ jobs:
         if: ${{ needs.classify_changes.outputs.docs_only != 'true' }}
         shell: bash
         run: python -m pre_commit run --all-files
+
+  windows_login_handler:
+    name: Windows login handler contracts
+    needs: classify_changes
+    if: ${{ needs.classify_changes.outputs.docs_only != 'true' }}
+    runs-on: windows-2025
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+        with:
+          go-version: '1.26.3'
+      - name: Test native login handler contracts
+        shell: bash
+        run: go test ./internal/cli ./internal/cli/loginhelper -count=1

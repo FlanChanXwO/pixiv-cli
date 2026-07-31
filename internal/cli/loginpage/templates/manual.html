@@ -1,0 +1,12 @@
+{{define "content"}}
+<main class="pv-card">
+  <h1>Finish signing in</h1>
+  <p class="pv-lead">
+    Open <a class="pv-link" id="pixiv-login-link" href="{{.LoginURL}}">Pixiv login</a>, then paste the returned sign-in address or value.
+  </p>
+  <form class="pv-form" method="post" action="/manual">
+    <span class="pv-field"><input name="login_result" autofocus autocomplete="off" spellcheck="false" placeholder="Paste the returned sign-in address or value"></span>
+    <button class="pv-submit" type="submit">Submit</button>
+  </form>
+</main>
+{{end}}

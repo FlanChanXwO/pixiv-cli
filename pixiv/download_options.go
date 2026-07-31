@@ -48,6 +48,30 @@ type DownloadOptions struct {
 	// UgoiraFormat 只影响 ugoira；零值与 GIF 都生成 .gif，APNG 生成 .apng。
 	UgoiraFormat UgoiraFormat
 	Concurrency  int
+	// Progress 是纯观察回调。每个下载 worker 会直接、并发地调用它；回调必须自行
+	// 保证并发安全，并且不得阻塞。通过取消传入 DownloadAllWith 的 context 停止下载。
+	Progress func(DownloadProgress)
+}
+
+// DownloadProgress 同时报告单个资源和整个批次的已传输字节。TotalBytesKnown 为
+// true 仅表示全部资源在下载前都由安全 HEAD 确定了大小；未知总量时仍持续报告
+// ResourceBytesTransferred 与 TotalBytesTransferred。SourceIndex 对应 srcs 的输入序号。
+type DownloadProgress struct {
+	SourceIndex     int    `json:"source_index"`
+	Page            int    `json:"page,omitempty"`
+	DestinationPath string `json:"destination_path"`
+	IllustID        int64  `json:"illust_id,omitempty"`
+	Title           string `json:"title,omitempty"`
+	Author          string `json:"author,omitempty"`
+
+	ResourceBytesTransferred int64 `json:"resource_bytes_transferred"`
+	ResourceTotalBytes       int64 `json:"resource_total_bytes,omitempty"`
+	ResourceTotalKnown       bool  `json:"resource_total_known"`
+	TotalBytesTransferred    int64 `json:"total_bytes_transferred"`
+	TotalBytes               int64 `json:"total_bytes,omitempty"`
+	TotalBytesKnown          bool  `json:"total_bytes_known"`
+	CompletedResources       int   `json:"completed_resources"`
+	TotalResources           int   `json:"total_resources"`
 }
 
 // ParsePageSpec 解析 "1,3-5" 形式的 1-based 闭区间页码；去重并按自然页序排序。

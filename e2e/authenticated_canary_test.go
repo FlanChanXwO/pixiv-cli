@@ -175,8 +175,6 @@ func TestAuthenticatedCanaryLocalSnapshotIgnoresEnvironmentTokenAndPersistsRotat
 				return
 			}
 			_, _ = w.Write([]byte(`{"access_token":"access","refresh_token":"rotated-token","user":{"id":7}}`))
-		case "/v1/search/options":
-			_, _ = w.Write([]byte(`{"illust":{"tool":{"options":[]}}}`))
 		default:
 			failures.add("unexpected request path %q", r.URL.Path)
 			http.Error(w, "unexpected path", http.StatusNotFound)
@@ -191,11 +189,8 @@ func TestAuthenticatedCanaryLocalSnapshotIgnoresEnvironmentTokenAndPersistsRotat
 	options.HTTPClient = server.Client()
 	options.OAuthBaseURL = server.URL
 	options.AppAPIBaseURL = server.URL
-	snapshot, err := openAuthenticatedCanarySnapshot(context.Background(), options)
+	_, err = openAuthenticatedCanarySnapshot(context.Background(), options)
 	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := snapshot.SearchIllustOptions(context.Background(), pixiv.SearchIllustOptionsRequest{Word: "miku"}); err != nil {
 		t.Fatal(err)
 	}
 	if got := oauthCalls.Load(); got != 1 {
@@ -219,8 +214,6 @@ func TestAuthenticatedCanarySearchSnapshotRefreshesOAuthOnce(t *testing.T) {
 		case "/auth/token":
 			oauthCalls.Add(1)
 			_, _ = w.Write([]byte(`{"access_token":"access","refresh_token":"rotated","user":{"id":7}}`))
-		case "/v1/search/options":
-			_, _ = w.Write([]byte(`{"illust":{"tool":{"options":[]}}}`))
 		case "/v1/search/illust":
 			_, _ = w.Write([]byte(`{"illusts":[],"next_url":null}`))
 		default:
@@ -242,16 +235,13 @@ func TestAuthenticatedCanarySearchSnapshotRefreshesOAuthOnce(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := snapshot.SearchIllustOptions(context.Background(), pixiv.SearchIllustOptionsRequest{Word: "miku"}); err != nil {
-		t.Fatal(err)
-	}
 	for _, filters := range []pixiv.SearchIllustFilters{
 		{},
 		{Resolution: pixiv.SearchResolutionHigh},
 		{AspectRatio: pixiv.SearchAspectRatioLandscape},
 		{ContentType: pixiv.SearchContentTypeIllust},
 		{AIMode: pixiv.SearchAIModeExclude},
-		{Tool: "tool"},
+		{Tool: "Photoshop"},
 	} {
 		if _, err := snapshot.SearchIllust(context.Background(), pixiv.SearchIllustRequest{Word: "miku", Filters: filters}); err != nil {
 			t.Fatal(err)
@@ -397,14 +387,6 @@ func runAuthenticatedSearchCanary(t *testing.T, client *pixiv.Client, searchWord
 	if len(baseline.Illusts) == 0 {
 		t.Fatal("authenticated App search baseline returned no illustrations")
 	}
-	searchOptions, err := client.SearchIllustOptions(testCommandContext(t), pixiv.SearchIllustOptionsRequest{Word: searchWord})
-	if err != nil {
-		t.Fatalf("authenticated App search options failed: %v", err)
-	}
-	if searchOptions.Tools == nil {
-		t.Fatal("search options returned a null or missing tools array")
-	}
-
 	resolution := canaryFilterCandidateValue(baseline.Illusts, canaryResolution)
 	if resolution == "" {
 		t.Fatal("authenticated App baseline returned no illustration in an official resolution bucket")
@@ -483,9 +465,9 @@ func runAuthenticatedSearchCanary(t *testing.T, client *pixiv.Client, searchWord
 		}
 	})
 
-	selectedTool, ok := canaryToolCandidate(searchOptions.Tools, baseline.Illusts)
+	selectedTool, ok := canaryToolCandidate(pixiv.SupportedDrawingTools(), baseline.Illusts)
 	if !ok {
-		t.Fatal("search options and authenticated baseline returned no shared tool candidate")
+		t.Fatal("drawing-tool catalog and authenticated baseline returned no shared tool candidate")
 	}
 	t.Run("tool", func(t *testing.T) {
 		result, err := searchCanaryNonempty(testCommandContext(t), client, pixiv.SearchIllustRequest{

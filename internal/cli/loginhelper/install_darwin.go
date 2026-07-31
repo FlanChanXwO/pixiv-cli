@@ -4,6 +4,7 @@ package loginhelper
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -18,7 +19,7 @@ import (
 const pixivURLHandlerBundleID = "com.flanchan.pixiv-cli.url-handler"
 
 // pixivURLHandlerSourceVersion 变更时强制重编译已安装的 helper，确保修复能覆盖旧 bundle。
-const pixivURLHandlerSourceVersion = "4"
+const pixivURLHandlerSourceVersion = "6"
 
 var (
 	queryDarwinURLSchemeHandler = defaultURLSchemeHandler
@@ -29,6 +30,10 @@ var (
 // bundle identifier 与当前二进制路径，绝不保存 remote relay secret。
 func EnsurePersistent(ctx context.Context) error {
 	executablePath, err := os.Executable()
+	if err != nil {
+		return err
+	}
+	homeDirectory, err := os.UserHomeDir()
 	if err != nil {
 		return err
 	}
@@ -52,6 +57,13 @@ func EnsurePersistent(ctx context.Context) error {
 	} else {
 		// upgrade 或二进制路径变化时只刷新启动目标，保留初次接管时的旧 handler。
 		manifest.ExecutablePath = executablePath
+	}
+	manifest.HomeDirectory = homeDirectory
+	// LaunchServices 启动的 app 不会继承调用 CLI 的 HOME。将非敏感启动
+	// manifest 写入已注册的 bundle，确保隔离 HOME 仍可把 callback 交给对应
+	// 的 CLI；用户目录中的副本仍保留作旧 helper 的兼容回退。
+	if err := saveHandlerBundleManifest(appPath, manifest); err != nil {
+		return err
 	}
 	if err := registerURLHandlerApp(ctx, appPath); err != nil {
 		return err
@@ -161,6 +173,20 @@ func pixivURLHandlerAppPath() (string, error) {
 		return "", err
 	}
 	return filepath.Join(appDataDir, "url-handler", "PixivCLIURLHandler.app"), nil
+}
+
+func handlerBundleManifestPath(appPath string) string {
+	return filepath.Join(appPath, "Contents", "Resources", handlerManifestFilename)
+}
+
+// saveHandlerBundleManifest 保存 helper 唯一需要的启动目标。manifest 不含
+// callback、token 或配对私钥，且 bundle 位于当前用户的私有应用数据目录。
+func saveHandlerBundleManifest(appPath string, manifest handlerManifest) error {
+	body, err := json.Marshal(manifest)
+	if err != nil {
+		return err
+	}
+	return files.WritePrivateFile(handlerBundleManifestPath(appPath), body, constants.PrivateFileMode)
 }
 
 func ensurePixivURLHandlerApp(ctx context.Context, appPath string) error {
@@ -306,15 +332,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 		let process = Process()
 		process.executableURL = URL(fileURLWithPath: executable)
 		process.arguments = ["auth", "_callback", callbackURL]
+		if let homeDirectory = object["home_directory"] as? String, !homeDirectory.isEmpty {
+			var environment = ProcessInfo.processInfo.environment
+			environment["HOME"] = homeDirectory
+			environment["USERPROFILE"] = homeDirectory
+			process.environment = environment
+		}
 		try? process.run()
 	}
 
-    private func manifestURL() -> URL? {
-        // manifest 与 Go 端 handlerManifestPath 一致；它没有 bearer secret，只有
-        // 需被按需启动的当前 pixiv-cli binary 路径。
-        return URL(fileURLWithPath: NSHomeDirectory())
-            .appendingPathComponent(".pixiv-cli/url-handler/handler-manifest.json")
-    }
+	private func manifestURL() -> URL? {
+		// LaunchServices 不会继承 CLI 进程的 HOME。先读随已注册 app 一同写入
+		// 的私有 manifest，使隔离 HOME 仍能回调正确 binary；旧版本只保存的
+		// 用户目录副本仍作为兼容回退。二者都不含 bearer secret。
+		if let resourceURL = Bundle.main.resourceURL {
+			let bundleManifest = resourceURL.appendingPathComponent("handler-manifest.json")
+			if FileManager.default.isReadableFile(atPath: bundleManifest.path) {
+				return bundleManifest
+			}
+		}
+		return URL(fileURLWithPath: NSHomeDirectory())
+			.appendingPathComponent(".pixiv-cli/url-handler/handler-manifest.json")
+	}
 }
 
 let app = NSApplication.shared

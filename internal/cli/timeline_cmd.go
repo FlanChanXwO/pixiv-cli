@@ -10,9 +10,9 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// feedOptions 是关注新作与全站最新命令的共同选项。内容类型由边缘层显式选择，
+// timelineOptions 是关注新作与全站最新命令的共同选项。内容类型由边缘层显式选择，
 // 这样不会把插画、漫画和小说的独立 App 分页流错误合并。
-type feedOptions struct {
+type timelineOptions struct {
 	commandOptions
 	ndjsonOutputOptions
 	listOptions
@@ -29,20 +29,20 @@ type myPixivOptions struct {
 	contentType string
 }
 
-func (a app) newFeedCommand() *cobra.Command {
-	cmd := &cobra.Command{Use: "feed", Short: "Browse authenticated Pixiv feeds"}
-	cmd.AddCommand(a.newFeedFollowingCommand(), a.newFeedLatestCommand())
+func (a app) newTimelineCommand() *cobra.Command {
+	cmd := &cobra.Command{Use: "timeline", Short: "Browse authenticated Pixiv timelines"}
+	cmd.AddCommand(a.newTimelineFollowingCommand(), a.newTimelineLatestCommand())
 	return cmd
 }
 
-func (a app) newFeedFollowingCommand() *cobra.Command {
-	opts := feedOptions{restrict: string(sdk.RestrictPublic)}
+func (a app) newTimelineFollowingCommand() *cobra.Command {
+	opts := timelineOptions{restrict: string(sdk.RestrictPublic)}
 	cmd := &cobra.Command{
 		Use:   "following",
 		Short: "Browse new works from followed users",
-		Args:  requireExactArgs(0, "pixiv feed following --type illust|novel"),
+		Args:  requireExactArgs(0, "pixiv timeline following --type illust|novel"),
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			return a.runFeedFollowing(cmd, opts)
+			return a.runTimelineFollowing(cmd, opts)
 		},
 	}
 	a.bindCommonFlags(cmd, &opts.commandOptions)
@@ -53,14 +53,14 @@ func (a app) newFeedFollowingCommand() *cobra.Command {
 	return cmd
 }
 
-func (a app) newFeedLatestCommand() *cobra.Command {
-	opts := feedOptions{}
+func (a app) newTimelineLatestCommand() *cobra.Command {
+	opts := timelineOptions{}
 	cmd := &cobra.Command{
 		Use:   "latest",
 		Short: "Browse Pixiv's latest works",
-		Args:  requireExactArgs(0, "pixiv feed latest --type illust|manga|novel"),
+		Args:  requireExactArgs(0, "pixiv timeline latest --type illust|manga|novel"),
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			return a.runFeedLatest(cmd, opts)
+			return a.runTimelineLatest(cmd, opts)
 		},
 	}
 	a.bindCommonFlags(cmd, &opts.commandOptions)
@@ -70,7 +70,7 @@ func (a app) newFeedLatestCommand() *cobra.Command {
 	return cmd
 }
 
-func (a app) runFeedFollowing(cmd *cobra.Command, opts feedOptions) error {
+func (a app) runTimelineFollowing(cmd *cobra.Command, opts timelineOptions) error {
 	if opts.contentType != "illust" && opts.contentType != "novel" {
 		return fmt.Errorf("type must be one of: illust, novel")
 	}
@@ -113,7 +113,7 @@ func (a app) runFeedFollowing(cmd *cobra.Command, opts feedOptions) error {
 	return a.runPooledNovelList(cmd.Context(), request, plan, jsonOut, opts.ndjson, "new novels from followed users", fetch, func(items []sdk.Novel) error { return printNovels(a.out, items) })
 }
 
-func (a app) runFeedLatest(cmd *cobra.Command, opts feedOptions) error {
+func (a app) runTimelineLatest(cmd *cobra.Command, opts timelineOptions) error {
 	if opts.contentType != "illust" && opts.contentType != "manga" && opts.contentType != "novel" {
 		return fmt.Errorf("type must be one of: illust, manga, novel")
 	}

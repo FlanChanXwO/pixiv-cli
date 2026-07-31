@@ -8,15 +8,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log/slog"
 	"net/http"
-	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
-	"sync"
 	"sync/atomic"
 	"testing"
 
@@ -27,7 +24,7 @@ import (
 )
 
 func TestServerListsExpectedTools(t *testing.T) {
-	server := New(&fakeAPI{}, &fakeDownloads{}, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	server := New(&fakeAPI{}, &fakeDownloads{})
 	clientTransport, serverTransport := mcp.NewInMemoryTransports()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -57,11 +54,10 @@ func TestServerListsExpectedTools(t *testing.T) {
 		}
 	}
 	want := []string{
-		"set_download_path", "download", "refresh_token", "set_refresh_token",
-		"download_random_from_recommendation", "search_illust", "search_novel", "search_illust_options", "illust_detail",
+		"download", "download_random_from_recommendation", "search_illust", "search_novel", "illust_detail",
 		"illust_related", "illust_ranking", "search_user", "illust_recommended",
-		"recommended", "trending_tags_illust", "illust_follow", "novel_follow",
-		"illust_new", "novel_new", "mypixiv_users", "mypixiv_illusts", "mypixiv_novels",
+		"recommended", "trending_tags_illust", "timeline_illust_following", "timeline_novel_following",
+		"timeline_illust_latest", "timeline_novel_latest", "mypixiv_users", "mypixiv_illusts", "mypixiv_novels",
 		"user_detail", "user_artworks", "user_novels", "user_bookmarks", "user_following", "add_bookmark",
 		"remove_bookmark", "follow_user", "unfollow_user",
 	}
@@ -80,7 +76,7 @@ func TestServerListsExpectedTools(t *testing.T) {
 	if err != nil {
 		t.Fatalf("marshal search_illust input schema: %v", err)
 	}
-	for _, field := range []string{"search_target", "duration", "start_date", "end_date", "rating", "content_type", "ai_mode", "aspect_ratio", "resolution", "tool", "bookmark_min", "bookmark_max"} {
+	for _, field := range []string{"search_target", "duration", "start_date", "end_date", "rating", "content_type", "ai_mode", "aspect_ratio", "resolution", "tool", "bookmark_min", "bookmark_max", "illust_filter"} {
 		if !strings.Contains(string(schema), `"`+field+`"`) {
 			t.Fatalf("search_illust input schema missing %q: %s", field, schema)
 		}
@@ -118,7 +114,7 @@ func TestServerListsExpectedTools(t *testing.T) {
 	if err != nil {
 		t.Fatalf("marshal search_novel input schema: %v", err)
 	}
-	for _, field := range []string{"rating", "min_text_length", "max_text_length", "original_only", "page", "limit"} {
+	for _, field := range []string{"rating", "min_text_length", "max_text_length", "original_only", "page", "limit", "novel_filter"} {
 		if !strings.Contains(string(novelSchema), `"`+field+`"`) {
 			t.Fatalf("search_novel input schema missing %q: %s", field, novelSchema)
 		}
@@ -494,155 +490,7 @@ func TestSearchIllustRejectsInvalidCrossFieldFiltersBeforeOpeningSDK(t *testing.
 	}
 }
 
-func TestSearchIllustOptionsReturnsStructuredToolsFromPublicSDK(t *testing.T) {
-	var got sdk.SearchIllustOptionsRequest
-	client := &fakeSDKClient{searchIllustOptions: func(_ context.Context, request sdk.SearchIllustOptionsRequest) (*sdk.SearchIllustOptionsResult, error) {
-		got = request
-		return &sdk.SearchIllustOptionsResult{Tools: []string{"CLIP STUDIO PAINT", "Photoshop"}}, nil
-	}}
-	session, closeSession := newSDKTestSession(t, client)
-	defer closeSession()
-
-	result := callTool(t, session, "search_illust_options", map[string]any{"word": "cat"})
-	if result.IsError {
-		t.Fatalf("search_illust_options returned MCP error: %+v", result)
-	}
-	var out searchIllustOptionsOut
-	decodeStructured(t, result, &out)
-	first := strings.Index(out.Text, "CLIP STUDIO PAINT")
-	second := strings.Index(out.Text, "Photoshop")
-	if got.Word != "cat" || !slices.Equal(out.Tools, []string{"CLIP STUDIO PAINT", "Photoshop"}) || first < 0 || second <= first {
-		t.Fatalf("request=%+v output=%+v", got, out)
-	}
-}
-
-func TestSearchIllustOptionsExplainsEmptyToolList(t *testing.T) {
-	client := &fakeSDKClient{searchIllustOptions: func(_ context.Context, _ sdk.SearchIllustOptionsRequest) (*sdk.SearchIllustOptionsResult, error) {
-		return &sdk.SearchIllustOptionsResult{Tools: nil}, nil
-	}}
-	session, closeSession := newSDKTestSession(t, client)
-	defer closeSession()
-
-	result := callTool(t, session, "search_illust_options", map[string]any{"word": "cat"})
-	var out searchIllustOptionsOut
-	decodeStructured(t, result, &out)
-	if result.IsError || out.Tools == nil || len(out.Tools) != 0 || out.Text != "No drawing tools are available." {
-		t.Fatalf("empty options output=%+v result=%+v", out, result)
-	}
-}
-
-func TestSearchIllustOptionsEscapesControlCharactersOnlyInCompatibilityText(t *testing.T) {
-	rawTools := []string{"safe\nforged\rline\x1b[31m\x01", "second"}
-	client := &fakeSDKClient{searchIllustOptions: func(_ context.Context, _ sdk.SearchIllustOptionsRequest) (*sdk.SearchIllustOptionsResult, error) {
-		return &sdk.SearchIllustOptionsResult{Tools: rawTools}, nil
-	}}
-	session, closeSession := newSDKTestSession(t, client)
-	defer closeSession()
-
-	result := callTool(t, session, "search_illust_options", map[string]any{"word": "cat"})
-	var out searchIllustOptionsOut
-	decodeStructured(t, result, &out)
-	if !slices.Equal(out.Tools, rawTools) {
-		t.Fatalf("structured tools changed: got %q want %q", out.Tools, rawTools)
-	}
-	for _, control := range []string{"safe\nforged", "\r", "\x1b", "\x01"} {
-		if strings.Contains(out.Text, control) {
-			t.Fatalf("compatibility text contains raw control %q: %q", control, out.Text)
-		}
-	}
-	for _, escaped := range []string{`\n`, `\r`, `\x1b`, `\x01`} {
-		if !strings.Contains(out.Text, escaped) {
-			t.Fatalf("compatibility text missing escape %q: %q", escaped, out.Text)
-		}
-	}
-}
-
-func TestSearchIllustOptionsSchemaRequiresWord(t *testing.T) {
-	session, closeSession := newSDKTestSession(t, &fakeSDKClient{})
-	defer closeSession()
-
-	_, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: "search_illust_options", Arguments: map[string]any{}})
-	if err == nil || !strings.Contains(err.Error(), "word") {
-		t.Fatalf("missing word error = %v", err)
-	}
-}
-
-func TestSearchIllustOptionsExposesSDKErrorAndKeepsArgumentsOutOfLogs(t *testing.T) {
-	const wordCanary = "query-secret-canary"
-	typed := &sdk.Error{Code: sdk.CodeUnsupported, Operation: sdk.OperationSearchIllustOptions, Backend: sdk.BackendAppAPI}
-	client := &fakeSDKClient{searchIllustOptions: func(_ context.Context, _ sdk.SearchIllustOptionsRequest) (*sdk.SearchIllustOptionsResult, error) {
-		return nil, typed
-	}}
-	var logs bytes.Buffer
-	service := application.SDKService{NewClient: func(application.SDKClientRequest) (application.SDKClient, error) { return client, nil }}
-	server := NewWithSDK(&fakeAPI{}, &fakeDownloads{}, slog.New(slog.NewJSONHandler(&logs, nil)), service, application.SDKClientRequest{})
-	clientTransport, serverTransport := mcp.NewInMemoryTransports()
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	go func() { _ = server.Run(ctx, serverTransport) }()
-	mcpClient := mcp.NewClient(&mcp.Implementation{Name: "test", Version: "1"}, nil)
-	session, err := mcpClient.Connect(ctx, clientTransport, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer session.Close()
-
-	result := callTool(t, session, "search_illust_options", map[string]any{"word": wordCanary})
-	var out searchIllustOptionsOut
-	decodeStructured(t, result, &out)
-	if !result.IsError || !strings.Contains(out.Text, string(sdk.CodeUnsupported)) || out.Tools == nil {
-		t.Fatalf("error output=%+v result=%+v", out, result)
-	}
-	logText := logs.String()
-	for _, secret := range []string{wordCanary, typed.Error()} {
-		if strings.Contains(logText, secret) {
-			t.Fatalf("MCP log leaked %q: %s", secret, logText)
-		}
-	}
-	for _, want := range []string{`"operation":"search_illust_options"`, `"result":"error"`, `"error_code":"unsupported"`} {
-		if !strings.Contains(logText, want) {
-			t.Fatalf("MCP log missing %q: %s", want, logText)
-		}
-	}
-}
-
-func TestLegacyToolLogsSafelyOutsideMCPProtocol(t *testing.T) {
-	var logs bytes.Buffer
-	service := application.SDKService{NewClient: func(application.SDKClientRequest) (application.SDKClient, error) {
-		return &fakeSDKClient{}, nil
-	}}
-	server := NewWithSDK(&fakeAPI{}, &fakeDownloads{}, slog.New(slog.NewJSONHandler(&logs, nil)), service, application.SDKClientRequest{})
-	clientTransport, serverTransport := mcp.NewInMemoryTransports()
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	go func() { _ = server.Run(ctx, serverTransport) }()
-	client := mcp.NewClient(&mcp.Implementation{Name: "test", Version: "0.0.0"}, nil)
-	session, err := client.Connect(ctx, clientTransport, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer session.Close()
-	result := callTool(t, session, "search_illust", map[string]any{"word": "query-secret-canary", "tool": "tool-secret-canary"})
-	if result.IsError {
-		t.Fatalf("unexpected MCP result: %+v", result)
-	}
-	if strings.Contains(fmt.Sprint(result.Content), "pixiv operation") {
-		t.Fatalf("protocol content contains diagnostic log: %+v", result.Content)
-	}
-	got := logs.String()
-	for _, want := range []string{`"component":"mcp"`, `"operation":"search_illust"`, `"result":"success"`} {
-		if !strings.Contains(got, want) {
-			t.Fatalf("missing %s in %s", want, got)
-		}
-	}
-	for _, secret := range []string{"query-secret-canary", "tool-secret-canary"} {
-		if strings.Contains(got, secret) {
-			t.Fatalf("MCP log leaked tool argument %q: %s", secret, got)
-		}
-	}
-}
-
-func TestMCPStdioKeepsJSONRPCOnStdoutAndLogsOnStderr(t *testing.T) {
+func TestMCPStdioKeepsJSONRPCOnStdout(t *testing.T) {
 	command := exec.Command(os.Args[0], "-test.run=^TestMCPStdioHelper$")
 	command.Env = append(os.Environ(), "PIXIV_MCP_STDIO_HELPER=1")
 	stdin, err := command.StdinPipe()
@@ -665,15 +513,14 @@ func TestMCPStdioKeepsJSONRPCOnStdoutAndLogsOnStderr(t *testing.T) {
 		`{"jsonrpc":"2.0","method":"notifications/initialized","params":{}}`,
 		`{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"search_illust","arguments":{"word":"stdio-secret-canary"}}}`,
 		`{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"add_bookmark","arguments":{"illust_id":41}}}`,
-		`{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"search_illust_options","arguments":{"word":"options-stdio-secret-canary"}}}`,
 	} {
 		if _, err := io.WriteString(stdin, message+"\n"); err != nil {
 			t.Fatal(err)
 		}
 	}
 	scanner := bufio.NewScanner(stdout)
-	lines := make([]string, 0, 4)
-	for range 4 {
+	lines := make([]string, 0, 3)
+	for range 3 {
 		if !scanner.Scan() {
 			t.Fatalf("stdio server ended before responses: %v; stderr=%s", scanner.Err(), stderr.String())
 		}
@@ -686,16 +533,11 @@ func TestMCPStdioKeepsJSONRPCOnStdoutAndLogsOnStderr(t *testing.T) {
 		t.Fatalf("stdio helper: %v\nstdout=%s\nstderr=%s", err, strings.Join(lines, "\n"), stderr.String())
 	}
 	protocol := strings.Join(lines, "\n")
-	if !strings.Contains(protocol, `"jsonrpc":"2.0"`) || !strings.Contains(protocol, `"isError":true`) || strings.Contains(protocol, `"component":"mcp"`) {
+	if !strings.Contains(protocol, `"jsonrpc":"2.0"`) || !strings.Contains(protocol, `"isError":true`) {
 		t.Fatalf("stdout is not protocol-only: %s; stderr=%s", protocol, stderr.String())
 	}
-	if !strings.Contains(stderr.String(), `"component":"mcp"`) || !strings.Contains(stderr.String(), `"operation":"search_illust"`) || !strings.Contains(stderr.String(), `"operation":"search_illust_options"`) || !strings.Contains(stderr.String(), `"operation":"add_bookmark"`) || !strings.Contains(stderr.String(), `"result":"error"`) {
-		t.Fatalf("stderr lacks MCP event: %s", stderr.String())
-	}
-	for _, secret := range []string{"stdio-secret-canary", "options-stdio-secret-canary"} {
-		if strings.Contains(stderr.String(), secret) {
-			t.Fatalf("stderr leaked tool input %q: %s", secret, stderr.String())
-		}
+	if stderr.Len() != 0 {
+		t.Fatalf("stderr must remain empty without project logging: %s", stderr.String())
 	}
 }
 
@@ -706,16 +548,15 @@ func TestMCPStdioHelper(t *testing.T) {
 	service := application.SDKService{NewClient: func(application.SDKClientRequest) (application.SDKClient, error) {
 		return &failingMutationSDKClient{err: &sdk.Error{Code: sdk.CodeUpstreamError, Backend: sdk.BackendAppAPI, IllustID: 41}}, nil
 	}}
-	server := NewWithSDK(&fakeAPI{}, &fakeDownloads{}, slog.New(slog.NewJSONHandler(os.Stderr, nil)), service, application.SDKClientRequest{})
+	server := NewWithSDK(&fakeAPI{}, &fakeDownloads{}, service, application.SDKClientRequest{})
 	if err := server.Run(context.Background(), &mcp.StdioTransport{}); err != nil {
 		os.Exit(1)
 	}
 	os.Exit(0)
 }
 
-func TestToolLoggingWrapperPreservesStructuredErrorResult(t *testing.T) {
-	var logs bytes.Buffer
-	app := &App{logger: slog.New(slog.NewJSONHandler(&logs, nil))}
+func TestToolErrorResultPreservesStructuredContent(t *testing.T) {
+	app := &App{}
 	server := mcp.NewServer(&mcp.Implementation{Name: "test", Version: "1"}, nil)
 	addTool(app, server, &mcp.Tool{Name: "structured_error"}, func(context.Context, *mcp.CallToolRequest, struct{}) (*mcp.CallToolResult, map[string]string, error) {
 		return &mcp.CallToolResult{
@@ -742,15 +583,18 @@ func TestToolLoggingWrapperPreservesStructuredErrorResult(t *testing.T) {
 	if !ok || structured["reason"] != "preserved" {
 		t.Fatalf("structured content lost: %#v", result.StructuredContent)
 	}
-	if !strings.Contains(logs.String(), `"result":"error"`) || !strings.Contains(logs.String(), `"level":"ERROR"`) {
-		t.Fatalf("error event missing: %s", logs.String())
+}
+
+func TestOpenSDKOperationReturnsConfigurationError(t *testing.T) {
+	app := &App{}
+	if _, _, err := app.openSDKOperation(context.Background()); err == nil || err.Error() != "pixiv sdk is not configured" {
+		t.Fatalf("open SDK error = %v", err)
 	}
 }
 
 func TestSDKOperationGateRespectsCanceledContext(t *testing.T) {
 	var calls atomic.Int32
 	app := &App{
-		logger:  slog.New(slog.NewTextHandler(io.Discard, nil)),
 		sdkGate: make(chan struct{}, 1),
 		sdk: application.SDKService{NewClient: func(application.SDKClientRequest) (application.SDKClient, error) {
 			calls.Add(1)
@@ -769,28 +613,6 @@ func TestSDKOperationGateRespectsCanceledContext(t *testing.T) {
 	}
 	if calls.Load() != 1 {
 		t.Fatalf("SDK factory calls=%d, want 1", calls.Load())
-	}
-}
-
-func TestSetDownloadPathValidation(t *testing.T) {
-	server := New(&fakeAPI{}, &fakeDownloads{}, slog.New(slog.NewTextHandler(io.Discard, nil)))
-	clientTransport, serverTransport := mcp.NewInMemoryTransports()
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	go func() { _ = server.Run(ctx, serverTransport) }()
-	client := mcp.NewClient(&mcp.Implementation{Name: "test", Version: "0.0.0"}, nil)
-	session, err := client.Connect(ctx, clientTransport, nil)
-	if err != nil {
-		t.Fatalf("connect: %v", err)
-	}
-	defer session.Close()
-
-	result, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "set_download_path", Arguments: map[string]any{"path": ""}})
-	if err != nil {
-		t.Fatalf("call tool: %v", err)
-	}
-	if len(result.Content) == 0 {
-		t.Fatalf("expected content")
 	}
 }
 
@@ -843,8 +665,7 @@ func TestSDKUserBookmarksFailureReturnsMCPErrorWithStructuredOutput(t *testing.T
 	}
 }
 
-func TestSDKMutationTypedErrorIsMCPErrorAndWrapperLogsMetadata(t *testing.T) {
-	var logs bytes.Buffer
+func TestSDKMutationTypedErrorIsMCPError(t *testing.T) {
 	client := &failingMutationSDKClient{err: &sdk.Error{
 		Code:           sdk.CodeUpstreamError,
 		Backend:        sdk.BackendAppAPI,
@@ -854,7 +675,7 @@ func TestSDKMutationTypedErrorIsMCPErrorAndWrapperLogsMetadata(t *testing.T) {
 	service := application.SDKService{NewClient: func(application.SDKClientRequest) (application.SDKClient, error) {
 		return client, nil
 	}}
-	server := NewWithSDK(&fakeAPI{}, &fakeDownloads{}, slog.New(slog.NewJSONHandler(&logs, nil)), service, application.SDKClientRequest{})
+	server := NewWithSDK(&fakeAPI{}, &fakeDownloads{}, service, application.SDKClientRequest{})
 	clientTransport, serverTransport := mcp.NewInMemoryTransports()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -874,22 +695,6 @@ func TestSDKMutationTypedErrorIsMCPErrorAndWrapperLogsMetadata(t *testing.T) {
 	decodeStructured(t, result, &out)
 	if out.Success || !strings.Contains(out.Text, "upstream_error") {
 		t.Fatalf("structured mutation error = %+v", out)
-	}
-	found := false
-	for _, line := range strings.Split(strings.TrimSpace(logs.String()), "\n") {
-		var event map[string]any
-		if err := json.Unmarshal([]byte(line), &event); err != nil {
-			t.Fatal(err)
-		}
-		if event["operation"] == "add_bookmark" && event["result"] == "error" {
-			found = true
-			if event["error_code"] != string(sdk.CodeUpstreamError) || event["backend"] != string(sdk.BackendAppAPI) || event["status"] != float64(http.StatusBadGateway) || event["illust_id"] != float64(41) {
-				t.Fatalf("wrapper dropped typed SDK metadata: %v", event)
-			}
-		}
-	}
-	if !found {
-		t.Fatalf("missing add_bookmark typed error event: %s", logs.String())
 	}
 }
 
@@ -1171,213 +976,6 @@ func TestDownloadUserURLExpandsEveryVisualArtworkType(t *testing.T) {
 	}
 	if !slices.Equal(gotTypes, []sdk.IllustType{sdk.IllustTypeIllust, sdk.IllustTypeManga, sdk.IllustTypeUgoira}) {
 		t.Fatalf("UserArtworks types = %v", gotTypes)
-	}
-}
-
-func TestSetRefreshTokenRejectsCookieInput(t *testing.T) {
-	session, closeSession := newTestSession(t, &fakeDownloads{})
-	defer closeSession()
-
-	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{
-		Name:      "set_refresh_token",
-		Arguments: map[string]any{"refresh_token": "PHPSESSID=web; device_token=device; yuid_b=user"},
-	})
-	if err != nil {
-		t.Fatalf("call tool: %v", err)
-	}
-	if len(result.Content) != 1 {
-		t.Fatalf("content len = %d", len(result.Content))
-	}
-	text, ok := result.Content[0].(*mcp.TextContent)
-	if !ok {
-		t.Fatalf("content[0] = %T", result.Content[0])
-	}
-	if !strings.Contains(text.Text, "cookie input is not supported; provide a Pixiv App API refresh token") {
-		t.Fatalf("unexpected text: %s", text.Text)
-	}
-}
-
-func TestRefreshTokenOpenFailuresAreSafeAndDiagnostic(t *testing.T) {
-	const sensitiveFactoryError = "proxy http://proxy-user:proxy-password@127.0.0.1:7890 token=secret-token config=/secret/config.json"
-	tests := []struct {
-		name string
-		err  error
-		want string
-	}{
-		{
-			name: "unknown factory or config error",
-			err:  errors.New(sensitiveFactoryError),
-			want: "Refresh failed: could not initialize the Pixiv SDK. Check the local configuration or proxy settings.",
-		},
-		{name: "canceled", err: context.Canceled, want: "Refresh canceled."},
-		{name: "deadline", err: context.DeadlineExceeded, want: "Refresh failed: operation timed out."},
-		{
-			name: "public SDK unauthorized is not treated as missing token",
-			err:  &sdk.Error{Code: sdk.CodeUnauthorized, Operation: sdk.OperationSnapshot},
-			want: "Refresh failed: could not initialize the Pixiv SDK: pixiv unauthorized operation=snapshot",
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			service := application.SDKService{NewClient: func(application.SDKClientRequest) (application.SDKClient, error) {
-				return nil, tt.err
-			}}
-			session, cleanup := newSDKTestSessionWithService(t, &fakeAPI{}, service)
-			defer cleanup()
-
-			result := callTool(t, session, "refresh_token", map[string]any{})
-			var out textOut
-			decodeStructured(t, result, &out)
-			if out.Text != tt.want {
-				t.Fatalf("refresh_token output=%q, want %q", out.Text, tt.want)
-			}
-			for _, secret := range []string{"proxy-user", "proxy-password", "127.0.0.1:7890", "secret-token", "/secret/config.json"} {
-				if strings.Contains(out.Text, secret) {
-					t.Fatalf("refresh_token output leaked %q: %q", secret, out.Text)
-				}
-			}
-		})
-	}
-}
-
-func TestRefreshTokenFailureClassification(t *testing.T) {
-	tests := []struct {
-		name string
-		err  error
-		want string
-	}{
-		{
-			name: "unauthorized keeps missing token hint",
-			err:  &sdk.Error{Code: sdk.CodeUnauthorized, Operation: sdk.OperationRefresh},
-			want: "Error: no refresh token is configured. Use set_refresh_token to set one first.",
-		},
-		{name: "canceled", err: context.Canceled, want: "Refresh canceled."},
-		{name: "deadline", err: context.DeadlineExceeded, want: "Refresh failed: operation timed out."},
-		{
-			name: "public SDK error keeps safe cause",
-			err: &sdk.Error{
-				Code:      sdk.CodeUpstreamUnavailable,
-				Operation: sdk.OperationRefresh,
-				Backend:   sdk.BackendOAuth,
-			},
-			want: "Refresh failed: pixiv upstream_unavailable operation=refresh backend=oauth",
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			session, cleanup := newSDKTestSession(t, &failingRefreshSDKClient{err: tt.err})
-			defer cleanup()
-
-			result := callTool(t, session, "refresh_token", map[string]any{})
-			var out textOut
-			decodeStructured(t, result, &out)
-			if out.Text != tt.want {
-				t.Fatalf("refresh_token output=%q, want %q", out.Text, tt.want)
-			}
-		})
-	}
-}
-
-func TestRefreshTokenUnknownFailureIsRedacted(t *testing.T) {
-	const rawFailure = "refresh failed: proxy=http://proxy-user:proxy-password@127.0.0.1:7890/oauth?query_token=query-secret Cookie=PHPSESSID=cookie-secret refresh_token=refresh-secret config=/Users/private/.config/pixiv/config.yaml"
-	const want = "Refresh failed. Check whether the refresh token is valid and verify the network or proxy settings."
-
-	var logs bytes.Buffer
-	service := application.SDKService{NewClient: func(application.SDKClientRequest) (application.SDKClient, error) {
-		return &failingRefreshSDKClient{err: errors.New(rawFailure)}, nil
-	}}
-	server := NewWithSDK(&fakeAPI{}, &fakeDownloads{}, slog.New(slog.NewJSONHandler(&logs, nil)), service, application.SDKClientRequest{})
-	clientTransport, serverTransport := mcp.NewInMemoryTransports()
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	go func() { _ = server.Run(ctx, serverTransport) }()
-	client := mcp.NewClient(&mcp.Implementation{Name: "test", Version: "1"}, nil)
-	session, err := client.Connect(ctx, clientTransport, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer session.Close()
-
-	result := callTool(t, session, "refresh_token", map[string]any{})
-	if result.IsError {
-		t.Fatalf("legacy refresh_token error shape changed: %+v", result)
-	}
-	var out textOut
-	decodeStructured(t, result, &out)
-	if out.Text != want {
-		t.Fatalf("structured output=%q, want %q", out.Text, want)
-	}
-	if len(result.Content) != 1 {
-		t.Fatalf("content len=%d, want 1", len(result.Content))
-	}
-	text, ok := result.Content[0].(*mcp.TextContent)
-	if !ok {
-		t.Fatalf("content[0]=%T, want *mcp.TextContent", result.Content[0])
-	}
-	var contentOut textOut
-	if err := json.Unmarshal([]byte(text.Text), &contentOut); err != nil {
-		t.Fatalf("decode text content %q: %v", text.Text, err)
-	}
-	if contentOut != out {
-		t.Fatalf("text content=%+v, structured output=%+v", contentOut, out)
-	}
-	if logs.Len() == 0 {
-		t.Fatal("injected MCP logger produced no refresh_token event")
-	}
-	for _, secret := range []string{
-		"proxy-user", "proxy-password", "127.0.0.1:7890", "query-secret",
-		"PHPSESSID", "cookie-secret", "refresh-secret", "/Users/private/.config/pixiv/config.yaml",
-	} {
-		if strings.Contains(text.Text, secret) || strings.Contains(out.Text, secret) {
-			t.Fatalf("MCP output leaked %q: content=%q structured=%q", secret, text.Text, out.Text)
-		}
-		if strings.Contains(logs.String(), secret) {
-			t.Fatalf("MCP log leaked %q: %s", secret, logs.String())
-		}
-	}
-}
-
-func TestSetRefreshTokenSuccessIncludesUserName(t *testing.T) {
-	session, closeSession := newSDKTestSession(t, &fakeSDKClient{userID: 1})
-	defer closeSession()
-
-	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{
-		Name:      "set_refresh_token",
-		Arguments: map[string]any{"refresh_token": "good-token"},
-	})
-	if err != nil {
-		t.Fatalf("call tool: %v", err)
-	}
-	text, ok := result.Content[0].(*mcp.TextContent)
-	if !ok {
-		t.Fatalf("content[0] = %T", result.Content[0])
-	}
-	if !strings.Contains(text.Text, "The refresh token was set for this session and authenticated.") ||
-		!strings.Contains(text.Text, "User ID: 1") || !strings.Contains(text.Text, "Username: alice") {
-		t.Fatalf("unexpected success text: %s", text.Text)
-	}
-}
-
-func TestSetRefreshTokenFailureSaysSessionOnly(t *testing.T) {
-	session, closeSession := newSDKTestSession(t, &fakeSDKClient{importAccountErr: errors.New("invalid token")})
-	defer closeSession()
-
-	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{
-		Name:      "set_refresh_token",
-		Arguments: map[string]any{"refresh_token": "bad-token"},
-	})
-	if err != nil {
-		t.Fatalf("call tool: %v", err)
-	}
-	text, ok := result.Content[0].(*mcp.TextContent)
-	if !ok {
-		t.Fatalf("content[0] = %T", result.Content[0])
-	}
-	if strings.Contains(strings.ToLower(text.Text), "saved") {
-		t.Fatalf("failure text claims token was saved: %s", text.Text)
-	}
-	if !strings.Contains(text.Text, "set for this session") {
-		t.Fatalf("failure text should clarify session-only scope: %s", text.Text)
 	}
 }
 
@@ -1871,7 +1469,7 @@ func TestDownloadRandomFromRecommendationUsesSDKAndPreservesCount(t *testing.T) 
 			return &sdk.IllustListResult{Illusts: []sdk.Illust{testSDKIllust(77, "recommended", 1)}}, nil
 		}}, nil
 	}}
-	server := NewWithSDK(&fakeAPI{}, downloads, slog.New(slog.NewTextHandler(io.Discard, nil)), service, application.SDKClientRequest{})
+	server := NewWithSDK(&fakeAPI{}, downloads, service, application.SDKClientRequest{})
 	clientTransport, serverTransport := mcp.NewInMemoryTransports()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -1898,7 +1496,7 @@ func TestDownloadRandomSDKOpenErrorPreservesBusinessErrorShape(t *testing.T) {
 	server := NewWithSDKDownloadFactory(downloads, func(application.SDKClient) DownloadManager {
 		managerFactoryCalls++
 		return downloads
-	}, slog.New(slog.NewTextHandler(io.Discard, nil)), service, application.SDKClientRequest{})
+	}, service, application.SDKClientRequest{})
 	clientTransport, serverTransport := mcp.NewInMemoryTransports()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -1940,7 +1538,7 @@ func TestDownloadRandomRecommendationErrorPreservesBusinessErrorShape(t *testing
 	server := NewWithSDKDownloadFactory(downloads, func(application.SDKClient) DownloadManager {
 		managerFactoryCalls++
 		return downloads
-	}, slog.New(slog.NewTextHandler(io.Discard, nil)), service, application.SDKClientRequest{})
+	}, service, application.SDKClientRequest{})
 	clientTransport, serverTransport := mcp.NewInMemoryTransports()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -2247,7 +1845,7 @@ func newDownloadRandomProbeSession(t *testing.T, recommendationIDs []int64) (*mc
 	server := NewWithSDKDownloadFactory(probe.downloads, func(application.SDKClient) DownloadManager {
 		probe.managerFactoryCalls++
 		return probe.downloads
-	}, slog.New(slog.NewTextHandler(io.Discard, nil)), service, application.SDKClientRequest{})
+	}, service, application.SDKClientRequest{})
 	clientTransport, serverTransport := mcp.NewInMemoryTransports()
 	ctx, cancel := context.WithCancel(context.Background())
 	go func() { _ = server.Run(ctx, serverTransport) }()
@@ -2261,46 +1859,6 @@ func newDownloadRandomProbeSession(t *testing.T, recommendationIDs []int64) (*mc
 		session.Close()
 		cancel()
 	}, probe
-}
-
-func TestSDKDownloadFactoryUsesSelectedAccountAfterTokenSwitch(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "work.jpg")
-	if err := os.WriteFile(path, []byte("image"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	accountB := &fakeSDKClient{userID: 2, illustRecommended: func(context.Context, sdk.IllustRecommendedRequest) (*sdk.IllustListResult, error) {
-		return &sdk.IllustListResult{Illusts: []sdk.Illust{{ID: 77}}}, nil
-	}}
-	accountA := &fakeSDKClient{userID: 1, importAccount: func(context.Context, string) (*sdk.Account, error) {
-		return &sdk.Account{UserID: 2, Username: "b"}, nil
-	}}
-	service := application.SDKService{NewClient: func(request application.SDKClientRequest) (application.SDKClient, error) {
-		if request.UserID == 2 {
-			return accountB, nil
-		}
-		return accountA, nil
-	}}
-	var managers []application.SDKClient
-	server := NewWithSDKDownloadFactory(&fakeDownloads{}, func(client application.SDKClient) DownloadManager {
-		managers = append(managers, client)
-		return &fakeDownloads{artworks: []download.DownloadedArtwork{{IllustID: 77, Files: []download.DownloadedFile{{Path: path}}}}}
-	}, slog.New(slog.NewTextHandler(io.Discard, nil)), service, application.SDKClientRequest{UserID: 1})
-	clientTransport, serverTransport := mcp.NewInMemoryTransports()
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	go func() { _ = server.Run(ctx, serverTransport) }()
-	client := mcp.NewClient(&mcp.Implementation{Name: "test", Version: "1"}, nil)
-	session, err := client.Connect(ctx, clientTransport, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer session.Close()
-	_ = callTool(t, session, "set_refresh_token", map[string]any{"refresh_token": "switch"})
-	_ = callTool(t, session, "download", map[string]any{"src": "77"})
-	_ = callTool(t, session, "download_random_from_recommendation", map[string]any{"count": 1})
-	if len(managers) != 2 || managers[0] != accountB || managers[1] != accountB {
-		t.Fatalf("download managers=%v want account B twice", managers)
-	}
 }
 
 func testSDKIllust(id int64, title string, userID int64) sdk.Illust {
@@ -2496,104 +2054,12 @@ func TestSDKListsFollowOpaqueCursorForLimitAndRejectCycles(t *testing.T) {
 	}
 }
 
-func TestSDKToolsPersistRotationAfterSessionTokenAndSerializeConcurrentOperations(t *testing.T) {
-	t.Setenv("PIXIV_REFRESH_TOKEN", "")
-	dir := t.TempDir()
-	authPath := filepath.Join(dir, "auth.json")
-	configPath := filepath.Join(dir, "config.toml")
-	if err := os.WriteFile(authPath, []byte(`{"default_user_id":1,"accounts":[{"user_id":1,"username":"old","refresh_token":"old-a"}]}`), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	// set_refresh_token 先由 public SDK 的 ImportAccount 消耗 r0；mock 按下标
-	// 返回 r2。其后四个 SDK operation 必须被 gate 串行化，依次消费 r2..r5。
-	expected := []string{"r0", "r2", "r3", "r4", "r5"}
-	var oauthMu sync.Mutex
-	oauthCalls := 0
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch r.URL.Path {
-		case "/auth/token":
-			if err := r.ParseForm(); err != nil {
-				t.Errorf("parse oauth form: %v", err)
-				return
-			}
-			oauthMu.Lock()
-			defer oauthMu.Unlock()
-			if oauthCalls >= len(expected) || r.Form.Get("refresh_token") != expected[oauthCalls] {
-				http.Error(w, "unexpected rotated token", http.StatusUnauthorized)
-				return
-			}
-			oauthCalls++
-			_, _ = fmt.Fprintf(w, `{"access_token":"access-%d","refresh_token":"r%d","user":{"id":7,"name":"alice"}}`, oauthCalls, oauthCalls+1)
-		case "/v1/user/illusts":
-			_, _ = w.Write([]byte(`{"illusts":[],"next_url":null}`))
-		case "/v2/illust/bookmark/add":
-			_, _ = w.Write([]byte(`{}`))
-		default:
-			http.NotFound(w, r)
-		}
-	}))
-	defer server.Close()
-	service := application.SDKService{NewClient: func(request application.SDKClientRequest) (application.SDKClient, error) {
-		return sdk.OpenDefaultWith(sdk.OpenDefaultOptions{
-			AuthFilePath: authPath, ConfigFilePath: configPath, HTTPClient: server.Client(),
-			OAuthBaseURL: server.URL, AppAPIBaseURL: server.URL,
-			UserID: request.UserID, RefreshToken: request.RefreshToken,
-		})
-	}}
-	// 构造器保留的首参只是兼容占位；会话认证与所有 operation 都来自 public SDK。
-	session, closeSession := newSDKTestSessionWithServiceRequest(t, &fakeAPI{}, service, application.SDKClientRequest{AuthFilePath: authPath, UserID: 1})
-	defer closeSession()
-	set := callTool(t, session, "set_refresh_token", map[string]any{"refresh_token": "r0"})
-	var setOut textOut
-	decodeStructured(t, set, &setOut)
-	if !strings.Contains(setOut.Text, "and authenticated.") {
-		t.Fatalf("set_refresh_token=%q", setOut.Text)
-	}
-	for _, result := range []*mcp.CallToolResult{
-		callTool(t, session, "user_artworks", map[string]any{"user_id": 7}),
-		callTool(t, session, "user_artworks", map[string]any{"user_id": 7}),
-	} {
-		if result.IsError {
-			t.Fatalf("SDK artwork operation failed: %+v", result)
-		}
-	}
-
-	errCh := make(chan error, 2)
-	for _, call := range []*mcp.CallToolParams{
-		{Name: "add_bookmark", Arguments: map[string]any{"illust_id": 9}},
-		{Name: "download", Arguments: map[string]any{"src": "9"}},
-	} {
-		go func(call *mcp.CallToolParams) {
-			result, err := session.CallTool(context.Background(), call)
-			if err == nil && result.IsError {
-				err = fmt.Errorf("SDK mutation failed: %+v", result)
-			}
-			errCh <- err
-		}(call)
-	}
-	for range 2 {
-		if err := <-errCh; err != nil {
-			t.Fatalf("concurrent SDK tool: %v", err)
-		}
-	}
-	oauthMu.Lock()
-	calls := oauthCalls
-	oauthMu.Unlock()
-	if calls != len(expected) {
-		t.Fatalf("oauth calls=%d want=%d", calls, len(expected))
-	}
-	stored, err := os.ReadFile(authPath)
-	if err != nil || !strings.Contains(string(stored), `"refresh_token": "r6"`) || strings.Contains(string(stored), `"refresh_token": "r2"`) {
-		t.Fatalf("auth store did not retain latest rotation: %q err=%v", stored, err)
-	}
-}
-
 // fakeAPI 只占据 New/NewWithSDK 保留的已废弃兼容参数；MCP 不得调用它。
 type fakeAPI struct{}
 
 func newTestSession(t *testing.T, downloads *fakeDownloads) (*mcp.ClientSession, func()) {
 	t.Helper()
-	server := New(&fakeAPI{}, downloads, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	server := New(&fakeAPI{}, downloads)
 	clientTransport, serverTransport := mcp.NewInMemoryTransports()
 	ctx, cancel := context.WithCancel(context.Background())
 	go func() { _ = server.Run(ctx, serverTransport) }()
@@ -2618,7 +2084,7 @@ func newSDKDownloadTestSession(t *testing.T, sdkClient application.SDKClient, do
 	service := application.SDKService{NewClient: func(application.SDKClientRequest) (application.SDKClient, error) {
 		return sdkClient, nil
 	}}
-	server := NewWithSDKDownloadFactory(downloads, func(application.SDKClient) DownloadManager { return downloads }, slog.New(slog.NewTextHandler(io.Discard, nil)), service, application.SDKClientRequest{})
+	server := NewWithSDKDownloadFactory(downloads, func(application.SDKClient) DownloadManager { return downloads }, service, application.SDKClientRequest{})
 	clientTransport, serverTransport := mcp.NewInMemoryTransports()
 	ctx, cancel := context.WithCancel(context.Background())
 	go func() { _ = server.Run(ctx, serverTransport) }()
@@ -2648,7 +2114,7 @@ func newSDKTestSessionWithService(t *testing.T, api any, service application.SDK
 
 func newSDKTestSessionWithServiceRequest(t *testing.T, api any, service application.SDKService, request application.SDKClientRequest) (*mcp.ClientSession, func()) {
 	t.Helper()
-	server := NewWithSDKDownloadFactory(&fakeDownloads{}, func(application.SDKClient) DownloadManager { return &fakeDownloads{} }, slog.New(slog.NewTextHandler(io.Discard, nil)), service, request)
+	server := NewWithSDKDownloadFactory(&fakeDownloads{}, func(application.SDKClient) DownloadManager { return &fakeDownloads{} }, service, request)
 	clientTransport, serverTransport := mcp.NewInMemoryTransports()
 	ctx, cancel := context.WithCancel(context.Background())
 	go func() { _ = server.Run(ctx, serverTransport) }()
@@ -2699,7 +2165,6 @@ type fakeSDKClient struct {
 	searchIllust          func(context.Context, sdk.SearchIllustRequest) (*sdk.IllustListResult, error)
 	searchNovel           func(context.Context, sdk.SearchNovelRequest) (*sdk.NovelListResult, error)
 	searchUser            func(context.Context, sdk.SearchUserRequest) (*sdk.UserListResult, error)
-	searchIllustOptions   func(context.Context, sdk.SearchIllustOptionsRequest) (*sdk.SearchIllustOptionsResult, error)
 	illustDetail          func(context.Context, int64) (*sdk.IllustDetail, error)
 	artworks              []sdk.Illust
 	bookmarks             []sdk.Illust
@@ -2798,13 +2263,6 @@ func (f *fakeSDKClient) SearchNovel(ctx context.Context, request sdk.SearchNovel
 		return f.searchNovel(ctx, request)
 	}
 	return &sdk.NovelListResult{Novels: []sdk.Novel{}}, nil
-}
-
-func (f *fakeSDKClient) SearchIllustOptions(ctx context.Context, request sdk.SearchIllustOptionsRequest) (*sdk.SearchIllustOptionsResult, error) {
-	if f.searchIllustOptions != nil {
-		return f.searchIllustOptions(ctx, request)
-	}
-	return &sdk.SearchIllustOptionsResult{Tools: []string{}}, nil
 }
 
 func (f *fakeSDKClient) IllustDetail(ctx context.Context, illustID int64) (*sdk.IllustDetail, error) {
@@ -2986,7 +2444,7 @@ func decodeDownloadOut(t *testing.T, result *mcp.CallToolResult) downloadOut {
 func assertEmptyDownloadResult(t *testing.T, result *mcp.CallToolResult, wantDelivery, wantText string) {
 	t.Helper()
 	out := decodeDownloadOut(t, result)
-	if result.IsError || out.Delivery != wantDelivery || out.Text != wantText || out.Items == nil || len(out.Items) != 0 || out.Files == nil || len(out.Files) != 0 {
+	if !result.IsError || out.Delivery != wantDelivery || out.Text != wantText || out.Items == nil || len(out.Items) != 0 || out.Files == nil || len(out.Files) != 0 {
 		t.Fatalf("result=%+v output=%+v", result, out)
 	}
 	if len(result.Content) != 1 {

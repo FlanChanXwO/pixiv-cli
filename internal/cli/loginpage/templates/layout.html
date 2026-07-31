@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>{{.Title}}</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <style>{{.Stylesheet}}</style>
+</head>
+<body class="{{.BodyClass}}">
+  <div class="pv-ambient" aria-hidden="true">
+    <span class="pv-blob pv-blob-a"></span>
+    <span class="pv-blob pv-blob-b"></span>
+    <span class="pv-blob pv-blob-c"></span>
+  </div>
+  {{template "content" .}}
+</body>
+</html>

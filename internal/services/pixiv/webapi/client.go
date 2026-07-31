@@ -90,7 +90,7 @@ func (c *Client) SearchIllust(ctx context.Context, word, target, sort, duration,
 		group = out.Body.Illust
 	}
 	if !group.Data.Present || !group.Data.Valid {
-		return nil, ErrMalformedResponse
+		return nil, protocol.MalformedResponse()
 	}
 	items := group.Data.Items
 	rawCount := len(items)
@@ -98,7 +98,7 @@ func (c *Client) SearchIllust(ctx context.Context, word, target, sort, duration,
 	illusts := make([]model.Illust, 0, len(items))
 	for _, item := range items {
 		if item.ID <= 0 {
-			return nil, ErrMalformedResponse
+			return nil, protocol.MalformedResponse()
 		}
 		illusts = append(illusts, mapSearchIllust(item))
 	}
@@ -167,7 +167,7 @@ func (c *Client) IllustDetail(ctx context.Context, id int64) (*model.IllustDetai
 		return nil, webEnvelopeError(detail.Message)
 	}
 	if !detail.bodyPresent || int64(firstFlexInt64(detail.Body.ID, detail.Body.IllustID)) <= 0 {
-		return nil, ErrMalformedResponse
+		return nil, protocol.MalformedResponse()
 	}
 	pages, err := c.IllustPages(ctx, id)
 	if err != nil {
@@ -186,7 +186,7 @@ func (c *Client) IllustPages(ctx context.Context, id int64) ([]model.MetaPage, e
 		return nil, webEnvelopeError(out.Message)
 	}
 	if !out.bodyPresent {
-		return nil, ErrMalformedResponse
+		return nil, protocol.MalformedResponse()
 	}
 	pages := make([]model.MetaPage, 0, len(out.Body))
 	for index, page := range out.Body {
@@ -219,11 +219,11 @@ func (c *Client) IllustRanking(ctx context.Context, mode, date string, offset in
 		return nil, err
 	}
 	if !out.Contents.Present || !out.Contents.Valid {
-		return nil, ErrMalformedResponse
+		return nil, protocol.MalformedResponse()
 	}
 	for _, item := range out.Contents.Items {
 		if item.IllustID <= 0 {
-			return nil, ErrMalformedResponse
+			return nil, protocol.MalformedResponse()
 		}
 	}
 	rawCount := len(out.Contents.Items)
@@ -249,7 +249,7 @@ func (c *Client) SearchUser(ctx context.Context, word string, offset int) (*mode
 	users := make([]model.UserPreview, 0, len(illusts.Illusts))
 	for _, illust := range illusts.Illusts {
 		if illust.User.ID == 0 {
-			return nil, ErrMalformedResponse
+			return nil, protocol.MalformedResponse()
 		}
 		if _, ok := seen[illust.User.ID]; ok {
 			continue
@@ -273,7 +273,7 @@ func (c *Client) UgoiraMetadata(ctx context.Context, id int64) (*model.UgoiraMet
 		return nil, webEnvelopeError(out.Message)
 	}
 	if !out.bodyPresent || out.Body.OriginalSrc == "" || len(out.Body.Frames) == 0 {
-		return nil, ErrMalformedResponse
+		return nil, protocol.MalformedResponse()
 	}
 	var result model.UgoiraMetadataResult
 	result.UgoiraMetadata.ZipURLs.Medium = out.Body.Src
@@ -281,7 +281,7 @@ func (c *Client) UgoiraMetadata(ctx context.Context, id int64) (*model.UgoiraMet
 	result.UgoiraMetadata.Frames = make([]model.UgoiraFrame, 0, len(out.Body.Frames))
 	for _, frame := range out.Body.Frames {
 		if frame.File == "" {
-			return nil, ErrMalformedResponse
+			return nil, protocol.MalformedResponse()
 		}
 		result.UgoiraMetadata.Frames = append(result.UgoiraMetadata.Frames, model.UgoiraFrame{
 			File:  frame.File,

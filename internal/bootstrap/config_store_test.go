@@ -14,7 +14,7 @@ func TestProductionConfigPathSetAndGetPersistParsedValue(t *testing.T) {
 	clearRuntimeEnvironment(t)
 	configPath := filepath.Join(t.TempDir(), "nested", "config.toml")
 	t.Cleanup(config.SetFilePathForTest(configPath))
-	service := NewServices(nil).Config
+	service := NewServices().Config
 
 	path, err := service.Path()
 	require.NoError(t, err)
@@ -36,7 +36,7 @@ func TestProductionConfigReportsEnvironmentOverrideAcrossSetAndUnset(t *testing.
 	clearRuntimeEnvironment(t)
 	configPath := filepath.Join(t.TempDir(), "config.toml")
 	t.Cleanup(config.SetFilePathForTest(configPath))
-	service := NewServices(nil).Config
+	service := NewServices().Config
 	t.Setenv("DOWNLOAD_PATH", "/environment/path")
 
 	setResult, err := service.Set("download_path", "/file/path")
@@ -72,7 +72,7 @@ func TestProductionConfigRejectsInvalidInputWithoutChangingEffectiveValue(t *tes
 	clearRuntimeEnvironment(t)
 	configPath := filepath.Join(t.TempDir(), "config.toml")
 	t.Cleanup(config.SetFilePathForTest(configPath))
-	service := NewServices(nil).Config
+	service := NewServices().Config
 
 	mutation, err := service.Set("output_json", "sometimes")
 
@@ -108,7 +108,7 @@ func TestProductionConfigPropagatesMalformedFileErrors(t *testing.T) {
 			t.Cleanup(config.SetFilePathForTest(configPath))
 			require.NoError(t, config.WritePrivateFile(configPath, []byte("[output\njson = broken")))
 
-			err := test.call(NewServices(nil).Config)
+			err := test.call(NewServices().Config)
 
 			require.Error(t, err)
 		})

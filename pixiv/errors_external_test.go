@@ -583,6 +583,24 @@ func TestClientIllustDetailRejectsAppResponseWithoutIllust(t *testing.T) {
 	}
 }
 
+func TestClientIllustDetailPreservesAnonymousMalformedAdapterLocation(t *testing.T) {
+	t.Parallel()
+
+	transport := roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		return testHTTPResponse(request, http.StatusOK, `{"error":false,"body":{}}`), nil
+	})
+	client, err := pixiv.NewClient(pixiv.NewClientOptions{
+		HTTPClient:         &http.Client{Transport: transport},
+		WebAPIBaseURL:      "https://web.invalid",
+		WebFallbackEnabled: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = client.IllustDetail(context.Background(), 731)
+	assertMalformedDetailError(t, err, pixiv.BackendWebAPI)
+}
+
 func TestClientIllustDetailRejectsAppIllustWithoutRequiredID(t *testing.T) {
 	t.Parallel()
 

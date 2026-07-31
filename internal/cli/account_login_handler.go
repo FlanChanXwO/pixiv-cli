@@ -11,9 +11,13 @@ import (
 const internalURLCallbackCommand = loginhelper.CallbackCommand
 const internalURLHandlerInstallCommand = "_install-handler"
 
+// clearRemoteLoginHandoffForHandler 是狭窄的测试注入点，覆盖 browser 启动失败
+// 后本地一次性状态也无法清理的错误边界。
+var clearRemoteLoginHandoffForHandler = loginhelper.ClearRemoteLoginHandoff
+
 // newAccountURLCallbackCommand 仅供各桌面系统协议关联调用。它不属于公开 CLI
-// 契约：活跃 loopback bridge 优先，随后才转发精确白名单 callback 到已配置的
-// remote relay；其他 pixiv:// URL 会定向交回此前 handler。
+// 契约：活跃 loopback bridge 优先，随后才转发精确白名单 callback 到本次
+// remote handoff；其他 pixiv:// URL 会定向交回此前 handler。
 func (a app) newAccountURLCallbackCommand() *cobra.Command {
 	return &cobra.Command{
 		Use:    internalURLCallbackCommand + " URL",
@@ -25,6 +29,19 @@ func (a app) newAccountURLCallbackCommand() *cobra.Command {
 				return err
 			}
 			browserOpener, _, _ := currentLoginHooks()
+			if result.RemoteLoginStart != nil {
+				loginURL, err := loginhelper.StartRemoteLogin(cmd.Context(), *result.RemoteLoginStart)
+				if err != nil {
+					return err
+				}
+				if err := browserOpener(loginURL); err != nil {
+					if clearErr := clearRemoteLoginHandoffForHandler(*result.RemoteLoginStart); clearErr != nil {
+						return errors.New("could not clear remote Pixiv login handoff after browser launch failed")
+					}
+					return errors.New("could not open Pixiv authorization page")
+				}
+				return nil
+			}
 			if result.LocalRelayURL != "" {
 				if err := browserOpener(result.LocalRelayURL); err != nil {
 					// browser.OpenURL 的错误可能含本地路径或完整 URL；内部 handler 的

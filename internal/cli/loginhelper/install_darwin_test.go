@@ -4,6 +4,7 @@ package loginhelper
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"os/exec"
@@ -147,6 +148,34 @@ func TestPixivURLHandlerReadsPrivateManifest(t *testing.T) {
 	require.Contains(t, pixivURLHandlerSwiftSource, "NSHomeDirectory()")
 	require.Contains(t, pixivURLHandlerSwiftSource, constants.AppDataDirName+"/url-handler/"+handlerManifestFilename)
 	require.NotContains(t, pixivURLHandlerSwiftSource, "applicationSupportDirectory")
+}
+
+func TestPixivURLHandlerStoresLaunchManifestInItsOwnBundle(t *testing.T) {
+	appPath := filepath.Join(t.TempDir(), "PixivCLIURLHandler.app")
+	manifest := handlerManifest{Version: 1, ExecutablePath: "/tmp/pixiv"}
+
+	require.NoError(t, saveHandlerBundleManifest(appPath, manifest))
+
+	body, err := os.ReadFile(filepath.Join(appPath, "Contents", "Resources", handlerManifestFilename))
+	require.NoError(t, err)
+	var got handlerManifest
+	require.NoError(t, json.Unmarshal(body, &got))
+	require.Equal(t, manifest, got)
+	info, err := os.Stat(filepath.Join(appPath, "Contents", "Resources", handlerManifestFilename))
+	require.NoError(t, err)
+	require.Equal(t, os.FileMode(constants.PrivateFileMode), info.Mode().Perm())
+
+	// LaunchServices 启动 helper 时不会继承调用 CLI 的 HOME；它必须优先
+	// 从自己被注册的 bundle 获取本次启动目标，才可支持隔离环境。
+	require.Contains(t, pixivURLHandlerSwiftSource, "Bundle.main.resourceURL")
+}
+
+func TestPixivURLHandlerStartsCallbackWithManifestHome(t *testing.T) {
+	// LaunchServices 从图形会话启动 helper，不能假定它继承启动 pixiv
+	// 命令时覆写的 HOME；callback 子进程必须使用 manifest 记录的目录。
+	require.Contains(t, pixivURLHandlerSwiftSource, `object["home_directory"]`)
+	require.Contains(t, pixivURLHandlerSwiftSource, `environment["HOME"] = homeDirectory`)
+	require.Contains(t, pixivURLHandlerSwiftSource, `environment["USERPROFILE"] = homeDirectory`)
 }
 
 func TestPixivURLHandlerSwiftSourceCompiles(t *testing.T) {

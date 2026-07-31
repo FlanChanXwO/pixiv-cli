@@ -91,7 +91,7 @@ func TestApplyRuntimeProxyOverrideReplacesValueForNonemptyOverride(t *testing.T)
 }
 
 func TestNewServicesConfiguresDownloadFactory(t *testing.T) {
-	services := NewServices(nil)
+	services := NewServices()
 
 	require.NotNil(t, services.Download.NewManager)
 	manager, err := services.Download.NewManager(bootstrapDownloadClientStub{}, t.TempDir(), "{id}")
@@ -125,7 +125,6 @@ func clearRuntimeEnvironment(t *testing.T) {
 		"FILENAME_TEMPLATE",
 		"https_proxy",
 		"HTTPS_PROXY",
-		"PIXIV_LOG_LEVEL",
 	} {
 		value, ok := os.LookupEnv(name)
 		require.NoError(t, os.Unsetenv(name))

@@ -32,7 +32,7 @@ The project needs a clearer internal structure without changing CLI/MCP behavior
 - Production wiring is centralized in `internal/bootstrap`, making future client/storage replacement less invasive.
 - `auth login` intentionally keeps loopback HTTP and browser/prompt adapters in CLI; the application layer handles PKCE/state generation, authorization-code exchange, and account persistence.
 - `internal/mcpserver` owns MCP tool registration; `internal/bootstrap` owns stdio runtime startup.
-- Public SDK construction and logger injection remain in bootstrap/application. CLI and MCP remain presentation/protocol adapters, not Pixiv protocol owners.
+- Public SDK construction remains in bootstrap/application. CLI and MCP remain presentation/protocol adapters, not Pixiv protocol owners.
 
 ## Guardrails
 

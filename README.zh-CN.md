@@ -17,13 +17,13 @@
 ## 为什么选择 pixiv-cli？
 
 - **一致的能力面**——CLI、MCP 与 SDK 均可完成搜索、详情、排行、推荐、用户、收藏、关注、下载和 ugoira 处理。
-- **信息流与组合式 Record 管道**——以标准 NDJSON 获取信息流，在本地筛选 Record，并把结果传给后续 action。
+- **时间线与组合式 Record 管道**——以标准 NDJSON 获取最新或关注作品，在本地筛选 Record，并把结果传给后续 action。
 - **本地账号池**——为读取型任务选择符合条件的本地账号，并在分页和下载准备阶段遵循 Pixiv 的 `Retry-After` 响应。
 - **易用的账号登录流程**——运行 `pixiv auth login` 即可在浏览器完成 OAuth，随后可使用 `auth list`、`auth use` 和 `auth check` 管理和确认本地多账号。
 - **GIF 与 APNG ugoira 输出**——GIF 为默认格式，也可通过 CLI、MCP 或 SDK 显式请求 APNG。
-- **缓存感知下载**——持久重验证 `.pixiv-cache` 元数据，以 `Range` 和 `If-Range` 安全续传已验证的残片，并原子替换完成文件。
+- **带进度的缓存感知下载**——持久重验证 `.pixiv-cache` 元数据，以 `Range` 和 `If-Range` 安全续传已验证的残片；总字节可确定时在终端显示整体进度。
 - **认证 App API 发现能力**——通过 App API 读取 R18 详情、分页、ugoira metadata 和全部 16 种排行榜。
-- **实用搜索筛选**——支持分级、作品类型、AI 模式、横纵比、分辨率和动态绘图工具。
+- **实用搜索筛选**——支持分级、作品类型、AI 模式、横纵比、分辨率和版本内置的绘图工具目录。
 - **直达 Pixiv 引用**——可把受支持作品 URL 直接粘贴给详情或下载；已认证的作者主页/作品页 URL 会展开为该作者的视觉作品。
 - **本地多账号 OAuth**——支持浏览器登录、账号选择、refresh token rotation 和可选的跨机器 callback relay。
 - **适合自动化**——typed SDK error、JSON 输出、纯净 MCP stdio、签名更新和完整结果报告。
@@ -116,6 +116,7 @@ pixiv bookmark add 123456
 # 查看详情、获取推荐并下载。
 pixiv detail https://www.pixiv.net/artworks/123456
 pixiv recommended all --limit 10
+pixiv timeline latest --type illust --limit 20
 pixiv download https://www.pixiv.net/artworks/123456 --pages 1,3-5 --quality regular
 pixiv download 123456 https://i.pximg.net/img-original/example.jpg --concurrency 8
 
@@ -135,12 +136,12 @@ pixiv download https://www.pixiv.net/users/12345678/artworks
 pixiv ranking --mode day --json
 pixiv user search "miku" --limit 10 --json
 pixiv user detail 12345678
-pixiv search-options "初音ミク"
+pixiv timeline latest --type illust --limit 10 --json
 ```
 
 ### MCP
 
-显式启动 stdio server。stdout 只用于 JSON-RPC。操作摘要写入用户主目录下 `~/.pixiv-cli/logs` 的按日纯文本文件 `YYYY-MM-DD.txt`（Windows 为 `%USERPROFILE%\.pixiv-cli\logs`；默认保留 7 天），终端默认无日志痕迹。
+显式启动 stdio server。stdout 只用于 JSON-RPC；tool 运行失败会以 `isError=true` 的 structured result 返回。
 
 ```bash
 pixiv mcp
@@ -151,16 +152,37 @@ MCP 固定状态、错误和展示文本使用英文；Pixiv 元数据及用户�
 
 ### Go SDK
 
+首次在本地使用时，先运行一次 `pixiv auth login`，再从该本地账号创建 client 并进行搜索：
+
 ```go
-client, err := pixiv.OpenDefault()
-if err != nil {
-    // 处理本地认证或配置失败。
+package main
+
+import (
+	"context"
+	"fmt"
+	"log"
+
+	pixiv "github.com/FlanChanXwO/pixiv-cli/pixiv"
+)
+
+func main() {
+	ctx := context.Background()
+	client, err := pixiv.OpenDefault()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	result, err := client.SearchIllust(ctx, pixiv.SearchIllustRequest{Word: "初音ミク"})
+	if err != nil {
+		log.Fatal(err)
+	}
+	for _, illust := range result.Illusts {
+		fmt.Printf("%d %s\\n", illust.ID, illust.URL)
+	}
 }
-result, err := client.SearchIllust(ctx, pixiv.SearchIllustRequest{Word: "初音ミク"})
-download, err := client.Download(ctx, "https://www.pixiv.net/artworks/123456")
 ```
 
-导入 `github.com/FlanChanXwO/pixiv-cli/pixiv`。`Download`/`DownloadAll` 使用有文档依据的新手默认值；`DownloadWith`/`DownloadAllWith` 可控制路径、命名、页码、质量与并发。[SDK 指南](docs/zh-CN/sdk.md)说明模型、cursor、资源、错误和调用方职责。
+SDK import path 为 `github.com/FlanChanXwO/pixiv-cli/pixiv`。`Download`/`DownloadAll` 使用有文档依据的新手默认值；`DownloadWith`/`DownloadAllWith` 可控制路径、命名、页码、质量与并发。[SDK 指南](docs/zh-CN/sdk.md)说明模型、cursor、资源、错误和调用方职责。
 
 ## 认证与 token 安全
 
@@ -170,7 +192,7 @@ download, err := client.Download(ctx, "https://www.pixiv.net/artworks/123456")
 
 账号名称、UID、会员状态提示和当前本地账号选择来自本地存储与 Pixiv 响应，仅用于操作便利；它们不构成账号归属、权限或当前 Pixiv 状态的证明。请在 Pixiv 核对重要账号信息，并且只管理已获授权的账号。
 
-macOS、桌面 Linux 与 Windows 使用按需持久的 `pixiv://` callback handler，既支持本地登录，也支持显式配置的跨机器 relay；relay 接收 `pixiv://account/login` callback。无 GUI SSH 服务器仍可使用现有的 `--no-open --addr` 与本机 `ssh -L` tunnel，或配置文档中的 relay server/client 设置。详见 [CLI 参考手册](docs/zh-CN/cli-reference.md#获取-refresh-token)。
+macOS、Windows 与桌面 Linux 上执行 `pixiv` 命令会为已安装的 binary 准备当前用户的 `pixiv://` callback handler。服务器同时配置 `login_relay_public_url` 和 `login_relay_listen_addr` 后，`pixiv auth login` 会输出一次性远程 handoff URL。打开该 URL 会直接转交给已安装的桌面 handler，由它启动 OAuth 并将 callback 回传服务器。因此远程登录需要安装 pixiv-cli 的桌面端；项目不再提供确认页或复制 callback 的表单。详见 [CLI 参考手册](docs/zh-CN/cli-reference.md#获取-refresh-token)。
 
 ```bash
 pixiv auth list

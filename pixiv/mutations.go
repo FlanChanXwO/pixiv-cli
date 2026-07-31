@@ -4,17 +4,11 @@ import (
 	"context"
 	"errors"
 	"strings"
-	"time"
 )
 
 // AddBookmark 收藏作品。restrict 省略时使用 public；标签按调用方顺序原样提交。
 func (c *Client) AddBookmark(ctx context.Context, request AddBookmarkRequest) (err error) {
-	started := time.Now()
-	defer func() { c.delegatedOperationLog(OperationAddBookmark, started, err, request.IllustID, 0) }()
 	if err = validateBookmarkRequest(request); err != nil {
-		if c.defaults != nil {
-			c.operationLog(OperationAddBookmark, started, err, request.IllustID, 0)
-		}
 		return err
 	}
 	if scoped, err := c.operationClient(ctx, OperationAddBookmark); err != nil {
@@ -34,13 +28,8 @@ func (c *Client) AddBookmark(ctx context.Context, request AddBookmarkRequest) (e
 
 // RemoveBookmark 取消收藏作品；它不读取当前收藏状态。
 func (c *Client) RemoveBookmark(ctx context.Context, request RemoveBookmarkRequest) (err error) {
-	started := time.Now()
-	defer func() { c.delegatedOperationLog(OperationRemoveBookmark, started, err, request.IllustID, 0) }()
 	if request.IllustID <= 0 {
 		err = newError(CodeInvalidArgument, OperationRemoveBookmark, "", false, 0, request.IllustID, errors.New("illust id must be positive"))
-		if c.defaults != nil {
-			c.operationLog(OperationRemoveBookmark, started, err, request.IllustID, 0)
-		}
 		return err
 	}
 	if scoped, err := c.operationClient(ctx, OperationRemoveBookmark); err != nil {
@@ -59,12 +48,7 @@ func (c *Client) RemoveBookmark(ctx context.Context, request RemoveBookmarkReque
 
 // FollowUser 关注用户。restrict 省略时使用 public；它不读取当前关注状态。
 func (c *Client) FollowUser(ctx context.Context, request FollowUserRequest) (err error) {
-	started := time.Now()
-	defer func() { c.delegatedOperationLog(OperationFollowUser, started, err, 0, request.UserID) }()
 	if err = validateFollowRequest(request); err != nil {
-		if c.defaults != nil {
-			c.operationLog(OperationFollowUser, started, err, 0, request.UserID)
-		}
 		return err
 	}
 	if scoped, err := c.operationClient(ctx, OperationFollowUser); err != nil {
@@ -84,13 +68,8 @@ func (c *Client) FollowUser(ctx context.Context, request FollowUserRequest) (err
 
 // UnfollowUser 取消关注用户；它不读取当前关注状态。
 func (c *Client) UnfollowUser(ctx context.Context, request UnfollowUserRequest) (err error) {
-	started := time.Now()
-	defer func() { c.delegatedOperationLog(OperationUnfollowUser, started, err, 0, request.UserID) }()
 	if request.UserID <= 0 {
 		err = invalidArgument(OperationUnfollowUser, request.UserID, errors.New("user id must be positive"))
-		if c.defaults != nil {
-			c.operationLog(OperationUnfollowUser, started, err, 0, request.UserID)
-		}
 		return err
 	}
 	if scoped, err := c.operationClient(ctx, OperationUnfollowUser); err != nil {

@@ -53,21 +53,25 @@ func (e AccountPoolExecutor) Run(ctx context.Context, attempt func(context.Conte
 	if err != nil {
 		return err
 	}
-	if err := validatePoolAccounts(e.Config.Accounts, available); err != nil {
+	configured := append([]int64(nil), e.Config.Accounts...)
+	if len(configured) == 0 {
+		configured = append(configured, available...)
+	}
+	if err := validatePoolAccounts(configured, available); err != nil {
 		return err
 	}
 	now := time.Now
 	if e.Now != nil {
 		now = e.Now
 	}
-	tried := make(map[int64]struct{}, len(e.Config.Accounts))
+	tried := make(map[int64]struct{}, len(configured))
 	var lastRateLimit error
 	for {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		candidates := make([]int64, 0, len(e.Config.Accounts)-len(tried))
-		for _, userID := range e.Config.Accounts {
+		candidates := make([]int64, 0, len(configured)-len(tried))
+		for _, userID := range configured {
 			if _, wasTried := tried[userID]; !wasTried {
 				candidates = append(candidates, userID)
 			}
@@ -75,7 +79,7 @@ func (e AccountPoolExecutor) Run(ctx context.Context, attempt func(context.Conte
 		if len(candidates) == 0 {
 			return poolExhaustedError(lastRateLimit)
 		}
-		userID, err := e.State.Lease(ctx, e.Config.Accounts, candidates, e.Config.Strategy, now())
+		userID, err := e.State.Lease(ctx, configured, candidates, e.Config.Strategy, now())
 		if err != nil {
 			if errors.Is(err, ErrAccountPoolExhausted) {
 				return poolExhaustedError(lastRateLimit)

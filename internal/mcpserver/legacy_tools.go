@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"strconv"
 	"strings"
 	"time"
 
@@ -17,22 +16,23 @@ import (
 var errLegacyThumbnailUnavailable = errors.New("legacy thumbnail is unavailable")
 
 type searchIllustIn struct {
-	Word         string `json:"word"`
-	SearchTarget string `json:"search_target,omitempty"`
-	Sort         string `json:"sort,omitempty"`
-	Duration     string `json:"duration,omitempty"`
-	StartDate    string `json:"start_date,omitempty"`
-	EndDate      string `json:"end_date,omitempty"`
-	Page         *int   `json:"page,omitempty"`
-	Limit        *int   `json:"limit,omitempty"`
-	Rating       string `json:"rating,omitempty"`
-	ContentType  string `json:"content_type,omitempty"`
-	AIMode       string `json:"ai_mode,omitempty"`
-	AspectRatio  string `json:"aspect_ratio,omitempty"`
-	Resolution   string `json:"resolution,omitempty"`
-	Tool         string `json:"tool,omitempty"`
-	BookmarkMin  *int   `json:"bookmark_min,omitempty"`
-	BookmarkMax  *int   `json:"bookmark_max,omitempty"`
+	Word         string          `json:"word"`
+	SearchTarget string          `json:"search_target,omitempty"`
+	Sort         string          `json:"sort,omitempty"`
+	Duration     string          `json:"duration,omitempty"`
+	StartDate    string          `json:"start_date,omitempty"`
+	EndDate      string          `json:"end_date,omitempty"`
+	Page         *int            `json:"page,omitempty"`
+	Limit        *int            `json:"limit,omitempty"`
+	Rating       string          `json:"rating,omitempty"`
+	ContentType  string          `json:"content_type,omitempty"`
+	AIMode       string          `json:"ai_mode,omitempty"`
+	AspectRatio  string          `json:"aspect_ratio,omitempty"`
+	Resolution   string          `json:"resolution,omitempty"`
+	Tool         string          `json:"tool,omitempty"`
+	BookmarkMin  *int            `json:"bookmark_min,omitempty"`
+	BookmarkMax  *int            `json:"bookmark_max,omitempty"`
+	IllustFilter *illustFilterIn `json:"illust_filter,omitempty"`
 }
 
 // searchIllustInputSchema 显式发布稳定筛选枚举。go-sdk 会在解码 handler 输入前
@@ -64,26 +64,24 @@ func searchIllustInputSchema() map[string]any {
 			"ai_mode":       enumProperty("AI-generated artwork filter.", "all", "exclude", "only"),
 			"aspect_ratio":  enumProperty("Artwork aspect ratio filter.", "all", "landscape", "portrait", "square"),
 			"resolution":    enumProperty("Artwork resolution tier filter.", "all", "high", "medium", "low"),
-			"tool":          stringProperty("Exact Pixiv drawing tool name from search_illust_options."),
+			"tool":          stringProperty("Exact drawing tool name from the versioned pixiv-cli drawing-tool catalog."),
 			"bookmark_min":  map[string]any{"type": "integer", "minimum": 0, "description": "Inclusive minimum public bookmark count; requires App OAuth."},
 			"bookmark_max":  map[string]any{"type": "integer", "minimum": 0, "description": "Inclusive maximum public bookmark count; requires App OAuth."},
+			"illust_filter": illustFilterSchema(),
 		},
 	}
 }
 
-type searchIllustOptionsIn struct {
-	Word string `json:"word" jsonschema:"required illustration search keyword"`
-}
-
 type searchNovelIn struct {
-	Word          string `json:"word"`
-	SearchTarget  string `json:"search_target,omitempty"`
-	Sort          string `json:"sort,omitempty"`
-	Duration      string `json:"duration,omitempty"`
-	Rating        string `json:"rating,omitempty"`
-	MinTextLength int    `json:"min_text_length,omitempty"`
-	MaxTextLength int    `json:"max_text_length,omitempty"`
-	OriginalOnly  bool   `json:"original_only,omitempty"`
+	Word          string         `json:"word"`
+	SearchTarget  string         `json:"search_target,omitempty"`
+	Sort          string         `json:"sort,omitempty"`
+	Duration      string         `json:"duration,omitempty"`
+	Rating        string         `json:"rating,omitempty"`
+	MinTextLength int            `json:"min_text_length,omitempty"`
+	MaxTextLength int            `json:"max_text_length,omitempty"`
+	OriginalOnly  bool           `json:"original_only,omitempty"`
+	NovelFilter   *novelFilterIn `json:"novel_filter,omitempty"`
 	pageLimitIn
 }
 
@@ -110,6 +108,7 @@ func searchNovelInputSchema() map[string]any {
 			"original_only":   map[string]any{"type": "boolean", "description": "Return only original novels."},
 			"page":            map[string]any{"type": "integer", "description": "1-based logical page; requires a positive limit."},
 			"limit":           map[string]any{"type": "integer", "description": "Maximum logical results; 0 returns all; omit for one logical batch."},
+			"novel_filter":    novelFilterSchema(),
 		},
 	}
 }
@@ -131,6 +130,10 @@ func (a *App) searchNovel(ctx context.Context, _ *mcp.CallToolRequest, in search
 		in.Sort = string(sdk.SortModeDateDesc)
 	}
 	plan, err := parseMCPListPlan(in.pageLimitIn)
+	if err != nil {
+		return a.searchNovelError(ctx, err)
+	}
+	ctx, err = withNovelFilter(ctx, in.NovelFilter)
 	if err != nil {
 		return a.searchNovelError(ctx, err)
 	}
@@ -171,55 +174,8 @@ func (a *App) searchNovel(ctx context.Context, _ *mcp.CallToolRequest, in search
 }
 
 func (a *App) searchNovelError(ctx context.Context, err error) (*mcp.CallToolResult, novelSearchOut, error) {
-	recordToolError(ctx, err)
 	out := novelSearchOut{Records: []application.Record{}, Pagination: paginationOut{Page: 1}}
 	return recordResult(out.Records, true, recordErrorMessage(err)), out, nil
-}
-
-type searchIllustOptionsOut struct {
-	Tools []string `json:"tools"`
-	Text  string   `json:"text"`
-}
-
-// searchIllustOptions 只把 MCP 输入转交给公开 SDK；工具名保持上游顺序和原值，
-// 使调用方不需要跟随 MCP 发版才能识别 Pixiv 新增的绘图工具。
-func (a *App) searchIllustOptions(ctx context.Context, _ *mcp.CallToolRequest, in searchIllustOptionsIn) (*mcp.CallToolResult, searchIllustOptionsOut, error) {
-	client, release, err := a.openSDKOperation(ctx)
-	if err != nil {
-		return a.searchIllustOptionsError(ctx, err)
-	}
-	defer release()
-	result, err := client.SearchIllustOptions(ctx, sdk.SearchIllustOptionsRequest{Word: in.Word})
-	if err != nil {
-		return a.searchIllustOptionsError(ctx, err)
-	}
-	if result == nil {
-		return a.searchIllustOptionsError(ctx, errors.New("pixiv sdk returned an empty search options result"))
-	}
-	tools := append([]string(nil), result.Tools...)
-	if tools == nil {
-		tools = []string{}
-	}
-	text := searchIllustOptionsText(tools)
-	return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: text}}}, searchIllustOptionsOut{Tools: tools, Text: text}, nil
-}
-
-// searchIllustOptionsText 保留全部工具名和上游顺序，兼容只读取 Content 文本、
-// 不读取 StructuredContent 的旧 MCP 客户端。
-func searchIllustOptionsText(tools []string) string {
-	if len(tools) == 0 {
-		return "No drawing tools are available."
-	}
-	quoted := make([]string, len(tools))
-	for index, tool := range tools {
-		quoted[index] = strconv.Quote(tool)
-	}
-	return fmt.Sprintf("Available drawing tools (%d):\n- %s", len(tools), strings.Join(quoted, "\n- "))
-}
-
-func (a *App) searchIllustOptionsError(ctx context.Context, err error) (*mcp.CallToolResult, searchIllustOptionsOut, error) {
-	recordToolError(ctx, err)
-	return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: "Error: " + err.Error()}}}, searchIllustOptionsOut{Tools: []string{}, Text: "Error: " + err.Error()}, nil
 }
 
 // illustQueryOut 统一旧读取 tool 的 machine-readable 作品结果，并保留文本摘要兼容客户端。
@@ -233,7 +189,6 @@ func illustQueryResult(out illustQueryOut, isError bool) *mcp.CallToolResult {
 }
 
 func (a *App) illustQueryError(ctx context.Context, err error) (*mcp.CallToolResult, illustQueryOut, error) {
-	recordToolError(ctx, err)
 	out := illustQueryOut{Records: []application.Record{}, Pagination: paginationOut{Page: 1}}
 	return recordResult(out.Records, true, recordErrorMessage(err)), out, nil
 }
@@ -269,6 +224,10 @@ func (a *App) searchIllust(ctx context.Context, _ *mcp.CallToolRequest, in searc
 		return a.illustQueryError(ctx, err)
 	}
 	plan, err := searchIllustListPlan(in)
+	if err != nil {
+		return a.illustQueryError(ctx, err)
+	}
+	ctx, err = withIllustFilter(ctx, in.IllustFilter)
 	if err != nil {
 		return a.illustQueryError(ctx, err)
 	}
@@ -400,18 +359,22 @@ func resolveMCPArtworkReference(in illustReferenceIn) (int64, error) {
 }
 
 func (a *App) illustDetailError(ctx context.Context, err error) (*mcp.CallToolResult, illustDetailOut, error) {
-	recordToolError(ctx, err)
 	out := illustDetailOut{Records: []application.Record{}}
 	return recordResult(out.Records, true, recordErrorMessage(err)), out, nil
 }
 
 type relatedIn struct {
-	IllustID int64 `json:"illust_id"`
+	IllustID     int64           `json:"illust_id"`
+	IllustFilter *illustFilterIn `json:"illust_filter,omitempty"`
 	pageLimitIn
 }
 
 func (a *App) illustRelated(ctx context.Context, _ *mcp.CallToolRequest, in relatedIn) (*mcp.CallToolResult, illustQueryOut, error) {
 	plan, err := parseMCPListPlan(in.pageLimitIn)
+	if err != nil {
+		return a.illustQueryError(ctx, err)
+	}
+	ctx, err = withIllustFilter(ctx, in.IllustFilter)
 	if err != nil {
 		return a.illustQueryError(ctx, err)
 	}
@@ -439,8 +402,9 @@ func (a *App) illustRelated(ctx context.Context, _ *mcp.CallToolRequest, in rela
 }
 
 type rankingIn struct {
-	Mode string `json:"mode,omitempty"`
-	Date string `json:"date,omitempty"`
+	Mode         string          `json:"mode,omitempty"`
+	Date         string          `json:"date,omitempty"`
+	IllustFilter *illustFilterIn `json:"illust_filter,omitempty"`
 	pageLimitIn
 }
 
@@ -449,6 +413,10 @@ func (a *App) illustRanking(ctx context.Context, _ *mcp.CallToolRequest, in rank
 		in.Mode = string(sdk.RankingModeDay)
 	}
 	plan, err := parseMCPListPlan(in.pageLimitIn)
+	if err != nil {
+		return a.illustQueryError(ctx, err)
+	}
+	ctx, err = withIllustFilter(ctx, in.IllustFilter)
 	if err != nil {
 		return a.illustQueryError(ctx, err)
 	}
@@ -476,7 +444,8 @@ func (a *App) illustRanking(ctx context.Context, _ *mcp.CallToolRequest, in rank
 }
 
 type searchUserIn struct {
-	Word string `json:"word"`
+	Word       string        `json:"word"`
+	UserFilter *userFilterIn `json:"user_filter,omitempty"`
 	pageLimitIn
 }
 
@@ -491,6 +460,10 @@ func userSearchResult(out userSearchOut) *mcp.CallToolResult {
 
 func (a *App) searchUser(ctx context.Context, _ *mcp.CallToolRequest, in searchUserIn) (*mcp.CallToolResult, userSearchOut, error) {
 	plan, err := parseMCPListPlan(in.pageLimitIn)
+	if err != nil {
+		return a.searchUserError(ctx, err)
+	}
+	ctx, err = withUserFilter(ctx, in.UserFilter)
 	if err != nil {
 		return a.searchUserError(ctx, err)
 	}
@@ -535,17 +508,21 @@ func validUserSearchSource(source sdk.UserSearchSource) bool {
 
 // searchUserError 为失败提供空 records 与 MCP error，避免把执行失败伪装为空搜索结果。
 func (a *App) searchUserError(ctx context.Context, err error) (*mcp.CallToolResult, userSearchOut, error) {
-	recordToolError(ctx, err)
 	out := userSearchOut{Records: []application.Record{}, Pagination: paginationOut{Page: 1}}
 	return recordResult(out.Records, true, recordErrorMessage(err)), out, nil
 }
 
 type recommendedLegacyIn struct {
+	IllustFilter *illustFilterIn `json:"illust_filter,omitempty"`
 	pageLimitIn
 }
 
 func (a *App) illustRecommended(ctx context.Context, _ *mcp.CallToolRequest, in recommendedLegacyIn) (*mcp.CallToolResult, illustQueryOut, error) {
 	plan, err := parseMCPListPlan(in.pageLimitIn)
+	if err != nil {
+		return a.illustQueryError(ctx, err)
+	}
+	ctx, err = withIllustFilter(ctx, in.IllustFilter)
 	if err != nil {
 		return a.illustQueryError(ctx, err)
 	}
@@ -629,13 +606,13 @@ func trendTagStructured(tag sdk.TrendTag) (map[string]any, error) {
 }
 
 func (a *App) trendingTagsError(ctx context.Context, err error) (*mcp.CallToolResult, trendingTagsOut, error) {
-	recordToolError(ctx, err)
 	out := trendingTagsOut{Tags: []any{}, Text: "Error: " + err.Error()}
 	return trendingTagsResult(out, true), out, nil
 }
 
 type followIn struct {
-	Restrict string `json:"restrict,omitempty"`
+	Restrict     string          `json:"restrict,omitempty"`
+	IllustFilter *illustFilterIn `json:"illust_filter,omitempty"`
 	pageLimitIn
 }
 
@@ -644,6 +621,10 @@ func (a *App) illustFollow(ctx context.Context, _ *mcp.CallToolRequest, in follo
 		in.Restrict = string(sdk.RestrictPublic)
 	}
 	plan, err := parseMCPListPlan(in.pageLimitIn)
+	if err != nil {
+		return a.illustQueryError(ctx, err)
+	}
+	ctx, err = withIllustFilter(ctx, in.IllustFilter)
 	if err != nil {
 		return a.illustQueryError(ctx, err)
 	}

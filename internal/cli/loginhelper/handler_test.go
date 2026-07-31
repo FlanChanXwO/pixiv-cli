@@ -16,95 +16,95 @@ func TestHandleCallbackPrefersActiveLocalBridge(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = os.Remove(path) })
 
-	originalForward := forwardConfiguredCallbackForHandler
-	forwardConfiguredCallbackForHandler = func(context.Context, string) (*RemoteCallbackSession, error) {
-		t.Fatal("active local bridge must win over the remote relay")
+	originalForward := forwardActiveRemoteCallbackForHandler
+	forwardActiveRemoteCallbackForHandler = func(context.Context, string) (*RemoteCallbackSession, error) {
+		t.Fatal("active local bridge must win over the remote handoff")
 		return nil, nil
 	}
-	t.Cleanup(func() { forwardConfiguredCallbackForHandler = originalForward })
+	t.Cleanup(func() { forwardActiveRemoteCallbackForHandler = originalForward })
 
 	result, err := HandleCallback(context.Background(), "pixiv://account/login?code=local-code")
 	require.NoError(t, err)
 	assert.Equal(t, "http://127.0.0.1:41871/callback#pixiv://account/login?code=local-code", result.LocalRelayURL)
 }
 
-func TestHandleCallbackForwardsOnlyAllowlistedRemoteCallback(t *testing.T) {
-	originalRelay := callbackRelayURLForHandler
-	originalForward := forwardConfiguredCallbackForHandler
-	callbackRelayURLForHandler = func(string) (string, error) { return "", ErrNoActiveLocalCallback }
-	var forwarded string
-	forwardConfiguredCallbackForHandler = func(_ context.Context, rawURL string) (*RemoteCallbackSession, error) {
-		forwarded = rawURL
-		return &RemoteCallbackSession{ResultURL: "https://relay.example/result/test"}, nil
-	}
-	t.Cleanup(func() {
-		callbackRelayURLForHandler = originalRelay
-		forwardConfiguredCallbackForHandler = originalForward
-	})
-
-	result, err := HandleCallback(context.Background(), "pixiv://account/login?code=remote-code")
+func TestHandleCallbackParsesExactRemoteLoginStart(t *testing.T) {
+	raw := "pixiv://account/remote-login?origin=https%3A%2F%2Frelay.example%2Fpixiv&session=session-id&access=proof-id"
+	result, err := HandleCallback(context.Background(), raw)
 	require.NoError(t, err)
-	assert.Empty(t, result.LocalRelayURL)
-	require.NotNil(t, result.RemoteCallback)
-	assert.Equal(t, "https://relay.example/result/test", result.RemoteCallback.ResultURL)
-	assert.Equal(t, "pixiv://account/login?code=remote-code", forwarded)
+	require.Equal(t, &RemoteLoginStart{Origin: "https://relay.example/pixiv", SessionID: "session-id", Proof: "proof-id"}, result.RemoteLoginStart)
 }
 
-func TestHandleCallbackDelegatesNonAllowlistedURL(t *testing.T) {
-	originalDelegate := delegateToPreviousForHandler
-	originalForward := forwardConfiguredCallbackForHandler
-	var delegated string
-	delegateToPreviousForHandler = func(_ context.Context, rawURL string) error {
-		delegated = rawURL
-		return nil
+func TestHandleCallbackRejectsUnsafeRemoteLoginStart(t *testing.T) {
+	for _, raw := range []string{
+		"pixiv://account/remote-login?origin=https%3A%2F%2Frelay.example&session=session-id",
+		"pixiv://account/remote-login?origin=https%3A%2F%2Frelay.example&session=session-id&access=proof-id&next=https%3A%2F%2Fexample.test",
+		"pixiv://account/remote-login?origin=https%3A%2F%2Fuser%3Asecret%40relay.example&session=session-id&access=proof-id",
+	} {
+		_, err := HandleCallback(context.Background(), raw)
+		require.EqualError(t, err, "invalid remote login start link")
 	}
-	forwardConfiguredCallbackForHandler = func(context.Context, string) (*RemoteCallbackSession, error) {
-		t.Fatal("non-allowlisted URL must never be sent to the remote relay")
-		return nil, nil
-	}
-	t.Cleanup(func() {
-		delegateToPreviousForHandler = originalDelegate
-		forwardConfiguredCallbackForHandler = originalForward
-	})
-
-	const rawURL = "pixiv://account/other?code=must-not-forward"
-	result, err := HandleCallback(context.Background(), rawURL)
-	require.NoError(t, err)
-	assert.Empty(t, result.LocalRelayURL)
-	assert.Equal(t, rawURL, delegated)
 }
 
-func TestHandleCallbackDelegatesAllowlistedURLWhenRemoteRelayIsDisabled(t *testing.T) {
+func TestHandleCallbackDelegatesWithoutActiveHandoff(t *testing.T) {
 	originalRelay := callbackRelayURLForHandler
-	originalForward := forwardConfiguredCallbackForHandler
+	originalForward := forwardActiveRemoteCallbackForHandler
 	originalDelegate := delegateToPreviousForHandler
 	callbackRelayURLForHandler = func(string) (string, error) { return "", ErrNoActiveLocalCallback }
-	forwardConfiguredCallbackForHandler = func(context.Context, string) (*RemoteCallbackSession, error) { return nil, ErrNoConfiguredRelay }
-	delegated := false
-	delegateToPreviousForHandler = func(context.Context, string) error {
-		delegated = true
+	forwardActiveRemoteCallbackForHandler = func(context.Context, string) (*RemoteCallbackSession, error) { return nil, ErrNoActiveRemoteLogin }
+	delegated := ""
+	delegateToPreviousForHandler = func(_ context.Context, raw string) error {
+		delegated = raw
 		return nil
 	}
 	t.Cleanup(func() {
 		callbackRelayURLForHandler = originalRelay
-		forwardConfiguredCallbackForHandler = originalForward
+		forwardActiveRemoteCallbackForHandler = originalForward
 		delegateToPreviousForHandler = originalDelegate
 	})
 
-	_, err := HandleCallback(context.Background(), "pixiv://account/login?code=delegate-code")
+	const callback = "pixiv://account/login?code=delegate-code"
+	result, err := HandleCallback(context.Background(), callback)
 	require.NoError(t, err)
-	assert.True(t, delegated)
+	assert.Empty(t, result.LocalRelayURL)
+	assert.Nil(t, result.RemoteCallback)
+	assert.Equal(t, callback, delegated)
 }
 
-func TestHandleCallbackPropagatesConfiguredRelayFailure(t *testing.T) {
+func TestHandleCallbackDelegatesAfterRemoteHandoffIsCleared(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	start := RemoteLoginStart{Origin: "https://relay.example", SessionID: "failed-session", Proof: "failed-proof"}
+	require.NoError(t, saveActiveRemoteLogin(activeRemoteLogin{Version: 1, Origin: start.Origin, SessionID: start.SessionID, Proof: start.Proof}))
+	require.NoError(t, ClearRemoteLoginHandoff(start))
+
 	originalRelay := callbackRelayURLForHandler
-	originalForward := forwardConfiguredCallbackForHandler
+	originalDelegate := delegateToPreviousForHandler
+	callbackRelayURLForHandler = func(string) (string, error) { return "", ErrNoActiveLocalCallback }
+	delegated := ""
+	delegateToPreviousForHandler = func(_ context.Context, raw string) error {
+		delegated = raw
+		return nil
+	}
+	t.Cleanup(func() {
+		callbackRelayURLForHandler = originalRelay
+		delegateToPreviousForHandler = originalDelegate
+	})
+
+	const callback = "pixiv://account/login?code=delegate-after-failure"
+	_, err := HandleCallback(context.Background(), callback)
+	require.NoError(t, err)
+	assert.Equal(t, callback, delegated)
+}
+
+func TestHandleCallbackPropagatesActiveHandoffFailure(t *testing.T) {
+	originalRelay := callbackRelayURLForHandler
+	originalForward := forwardActiveRemoteCallbackForHandler
 	callbackRelayURLForHandler = func(string) (string, error) { return "", ErrNoActiveLocalCallback }
 	want := errors.New("relay rejected callback")
-	forwardConfiguredCallbackForHandler = func(context.Context, string) (*RemoteCallbackSession, error) { return nil, want }
+	forwardActiveRemoteCallbackForHandler = func(context.Context, string) (*RemoteCallbackSession, error) { return nil, want }
 	t.Cleanup(func() {
 		callbackRelayURLForHandler = originalRelay
-		forwardConfiguredCallbackForHandler = originalForward
+		forwardActiveRemoteCallbackForHandler = originalForward
 	})
 
 	_, err := HandleCallback(context.Background(), "pixiv://account/login?code=failed-code")

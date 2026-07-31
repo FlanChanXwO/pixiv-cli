@@ -85,7 +85,7 @@ func (a app) newSearchCommand() *cobra.Command {
 	flags.StringVar(&opts.typ, "type", opts.typ, "artwork type filter: all, illust-and-ugoira, illust, manga, ugoira")
 	flags.StringVar(&opts.resolution, "resolution", opts.resolution, "resolution filter: all, high, medium, low")
 	flags.StringVar(&opts.aspectRatio, "aspect-ratio", opts.aspectRatio, "aspect ratio filter: all, landscape, portrait, square")
-	flags.StringVar(&opts.drawTool, "draw-tool", "", "drawing tool name from search-options")
+	flags.StringVar(&opts.drawTool, "draw-tool", "", "exact drawing tool name from the versioned drawing-tool catalog")
 	flags.StringVar(&opts.aiMode, "ai-mode", opts.aiMode, "AI artwork filter: all, exclude, only")
 	flags.IntVar(&opts.bookmarkMin, "bookmark-min", 0, "minimum public bookmark count (requires Pixiv Premium)")
 	flags.IntVar(&opts.bookmarkMax, "bookmark-max", 0, "maximum public bookmark count (requires Pixiv Premium)")
@@ -251,61 +251,6 @@ func resolveSearchFilters(cmd *cobra.Command, opts searchOptions) (sdk.SearchIll
 		return filters, errors.New("bookmark-min cannot be greater than bookmark-max")
 	}
 	return filters, nil
-}
-
-func (a app) newSearchOptionsCommand() *cobra.Command {
-	var opts commandOptions
-	cmd := &cobra.Command{
-		Use:     "search-options WORD",
-		Short:   "Show available illustration search options",
-		Example: "pixiv search-options \"miku\" --json",
-		Args:    requireMinArgs(1, "pixiv search-options [options] WORD"),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			return a.runSearchOptions(cmd, strings.Join(args, " "), opts)
-		},
-	}
-	a.bindCommonFlags(cmd, &opts)
-	return cmd
-}
-
-func (a app) runSearchOptions(cmd *cobra.Command, word string, opts commandOptions) error {
-	services := a.services()
-	clientReq, jsonOverride, err := a.sdkRequest(cmd, opts)
-	if err != nil {
-		return err
-	}
-	jsonOut, err := services.SDK.JSONOut(jsonOverride)
-	if err != nil {
-		return err
-	}
-	return services.SDK.RunPooledOperation(cmd.Context(), clientReq, func(ctx context.Context, client application.SDKClient) (bool, error) {
-		result, err := client.SearchIllustOptions(ctx, sdk.SearchIllustOptionsRequest{Word: word})
-		if err != nil {
-			return false, err
-		}
-		if jsonOut {
-			committed := true
-			err = a.printJSON(result)
-			return committed, err
-		}
-		committed := true
-		if _, err := fmt.Fprintf(a.out, "search options for %q\n", word); err != nil {
-			return committed, err
-		}
-		if len(result.Tools) == 0 {
-			_, err = fmt.Fprintln(a.out, "tools: none")
-			return committed, err
-		}
-		if _, err := fmt.Fprintln(a.out, "tools:"); err != nil {
-			return committed, err
-		}
-		for _, tool := range result.Tools {
-			if _, err := fmt.Fprintf(a.out, "- %s\n", safeTextLine(tool)); err != nil {
-				return committed, err
-			}
-		}
-		return committed, nil
-	})
 }
 
 // safeTextLine 保留可见 Unicode，同时转义换行、ANSI ESC 和其他控制字节，
@@ -506,29 +451,21 @@ func (a app) runDownload(cmd *cobra.Command, args []string, opts downloadOptions
 		UgoiraFormat:     ugoiraFormat,
 		Concurrency:      opts.concurrency,
 	}
+	if progress, ok := newDownloadProgressRenderer(a.errOut); ok {
+		options.Progress = progress.Report
+	}
 	request := application.SDKClientRequest{HTTPSProxyOverride: clientReq.HTTPSProxyOverride}
 	downloadOne := func(ctx context.Context, id int64) error {
-		return runPooledSingleDownload(ctx, services, request, id, options)
+		return services.SDK.RunPooledOperation(ctx, request, func(ctx context.Context, client application.SDKClient) (bool, error) {
+			report, err := services.Download.DownloadSources(ctx, client, []string{strconv.FormatInt(id, 10)}, options)
+			if err != nil {
+				return false, err
+			}
+			return downloadReportCommitted(report), downloadReportError(report)
+		})
 	}
 	if len(args) == 0 {
 		return a.consumeActionRecords(cmd, "download", opts.onError, visualRecordTypes, downloadOne)
-	}
-	allArtworkReferences := true
-	for _, source := range args {
-		reference, parseErr := sdk.ParseReference(source)
-		if parseErr != nil || reference.Kind != sdk.ReferenceKindArtwork {
-			allArtworkReferences = false
-			break
-		}
-	}
-	if allArtworkReferences {
-		for _, source := range args {
-			reference, _ := sdk.ParseReference(source)
-			if err := downloadOne(cmd.Context(), reference.ID); err != nil {
-				return err
-			}
-		}
-		return nil
 	}
 	// 用户页与受资源策略允许的直链可能在一次调用里展开多个文件。只在结果中
 	// 尚无已发布文件时，账号池才可因有效 Retry-After 安全重放这次调用。
@@ -536,18 +473,6 @@ func (a app) runDownload(cmd *cobra.Command, args []string, opts downloadOptions
 		report, err := services.Download.DownloadSources(ctx, client, args, options)
 		if err != nil {
 			return downloadReportCommitted(report), err
-		}
-		return downloadReportCommitted(report), downloadReportError(report)
-	})
-}
-
-// runPooledSingleDownload 将单个作品作为下载的提交单元。只要已经落盘任一文件，
-// 后续错误均不允许账号池用另一账号重放该作品。
-func runPooledSingleDownload(ctx context.Context, services application.Services, request application.SDKClientRequest, id int64, options sdk.DownloadOptions) error {
-	return services.SDK.RunPooledOperation(ctx, request, func(ctx context.Context, client application.SDKClient) (bool, error) {
-		report, err := services.Download.DownloadSources(ctx, client, []string{strconv.FormatInt(id, 10)}, options)
-		if err != nil {
-			return false, err
 		}
 		return downloadReportCommitted(report), downloadReportError(report)
 	})

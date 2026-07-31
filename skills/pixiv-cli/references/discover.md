@@ -34,10 +34,11 @@ pixiv search "初音ミク" --limit 10 --json
   for bookmark bounds, and never call bookmark count a like count. For a saved account, bookmark bounds use a cached
   self-profile membership check (24h by default) and a non-Premium account is blocked before search; do not refresh
   that cache unless the user explicitly asks for `pixiv auth refresh`.
-- Tool names are dynamic. Run authenticated `pixiv search-options "WORD"
-  --json`, then pass the returned name exactly. Do not hard-code a list.
+- Drawing-tool names use the fixed catalog for this CLI version. Choose an exact
+  value from the [CLI reference](../../../docs/en/cli-reference.md#drawing-tool-catalog);
+  a unique one-edit spelling correction is shown in the validation error.
 - Anonymous Web search accepts only its reliable filters. R18/R18G/mature,
-  `tag-title-caption`, bookmark bounds, and `search-options` require authentication; bookmark
+  `tag-title-caption` and bookmark bounds require authentication; bookmark
   bounds also require Pixiv Premium. Never add a Cookie workaround or report an authentication
   failure as an empty result.
 - Need page 2+: `--page N` (1-based) with a positive `--limit`.

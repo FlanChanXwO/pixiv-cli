@@ -7,12 +7,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/application"
 	"github.com/FlanChanXwO/pixiv-cli/internal/bootstrap"
@@ -28,7 +26,6 @@ type sdkCommandFake struct {
 	refreshPremiumStatus func(context.Context) (*sdk.PremiumStatus, error)
 	search               func(context.Context, sdk.SearchIllustRequest) (*sdk.IllustListResult, error)
 	searchNovel          func(context.Context, sdk.SearchNovelRequest) (*sdk.NovelListResult, error)
-	searchOptions        func(context.Context, sdk.SearchIllustOptionsRequest) (*sdk.SearchIllustOptionsResult, error)
 	detail               func(context.Context, int64) (*sdk.IllustDetail, error)
 	ranking              func(context.Context, sdk.IllustRankingRequest) (*sdk.IllustListResult, error)
 	recommended          func(context.Context, sdk.IllustRecommendedRequest) (*sdk.IllustListResult, error)
@@ -107,12 +104,6 @@ func (f sdkCommandFake) SearchIllust(ctx context.Context, r sdk.SearchIllustRequ
 func (f sdkCommandFake) SearchNovel(ctx context.Context, r sdk.SearchNovelRequest) (*sdk.NovelListResult, error) {
 	if f.searchNovel != nil {
 		return f.searchNovel(ctx, r)
-	}
-	return nil, unimplementedSDKCommand()
-}
-func (f sdkCommandFake) SearchIllustOptions(ctx context.Context, r sdk.SearchIllustOptionsRequest) (*sdk.SearchIllustOptionsResult, error) {
-	if f.searchOptions != nil {
-		return f.searchOptions(ctx, r)
 	}
 	return nil, unimplementedSDKCommand()
 }
@@ -446,8 +437,8 @@ func setTestSDKCommandClient(t *testing.T, client application.SDKClient) {
 func setTestSDKCommandFactory(t *testing.T, factory application.SDKClientFactory) {
 	t.Helper()
 	old := newCLIServices
-	newCLIServices = func(logger *slog.Logger) application.Services {
-		services := bootstrap.NewServices(logger)
+	newCLIServices = func() application.Services {
+		services := bootstrap.NewServices()
 		services.SDK.NewClient = factory
 		services.SDK.RunPooled = nil
 		services.Account.SDK.NewClient = factory
@@ -735,8 +726,8 @@ func TestInvalidListOrExplicitUserIDDoesNotOpenSDKOperation(t *testing.T) {
 	useTempPaths(t)
 	calls := 0
 	old := newCLIServices
-	newCLIServices = func(logger *slog.Logger) application.Services {
-		services := bootstrap.NewServices(logger)
+	newCLIServices = func() application.Services {
+		services := bootstrap.NewServices()
 		services.SDK.NewClient = func(application.SDKClientRequest) (application.SDKClient, error) {
 			calls++
 			return sdkCommandFake{}, nil
@@ -761,26 +752,6 @@ func TestInvalidListOrExplicitUserIDDoesNotOpenSDKOperation(t *testing.T) {
 	if calls != 0 {
 		t.Fatalf("invalid list/user ID opened SDK operation %d times", calls)
 	}
-}
-
-func TestCommandLogPreservesTypedSDKErrorMetadata(t *testing.T) {
-	var logs bytes.Buffer
-	a := app{logger: slog.New(slog.NewJSONHandler(&logs, nil))}
-	a.commandLog("pixiv user artworks", time.Now(), &sdk.Error{
-		Code:           sdk.CodeUpstreamError,
-		Backend:        sdk.BackendAppAPI,
-		UpstreamStatus: http.StatusBadGateway,
-		TransportKind:  sdk.TransportKindTimeout,
-		UserID:         88,
-	}, false)
-	var event map[string]any
-	require.NoError(t, json.Unmarshal(logs.Bytes(), &event))
-	assert.Equal(t, "error", event["result"])
-	assert.Equal(t, string(sdk.CodeUpstreamError), event["error_code"])
-	assert.Equal(t, string(sdk.BackendAppAPI), event["backend"])
-	assert.Equal(t, float64(http.StatusBadGateway), event["status"])
-	assert.Equal(t, string(sdk.TransportKindTimeout), event["transport_kind"])
-	assert.Equal(t, float64(88), event["user_id"])
 }
 
 func TestListJSONSpoolsUntilFullSuccessAndDetailKeepsPages(t *testing.T) {
@@ -928,8 +899,8 @@ func TestSelfUserListsReuseOneConcreteOAuthSnapshotAcrossPages(t *testing.T) {
 			defer server.Close()
 
 			old := newCLIServices
-			newCLIServices = func(logger *slog.Logger) application.Services {
-				services := bootstrap.NewServices(logger)
+			newCLIServices = func() application.Services {
+				services := bootstrap.NewServices()
 				services.SDK.NewClient = func(request application.SDKClientRequest) (application.SDKClient, error) {
 					return sdk.OpenDefaultWith(sdk.OpenDefaultOptions{AuthFilePath: authPath, ConfigFilePath: configPath, HTTPClient: server.Client(), OAuthBaseURL: server.URL, AppAPIBaseURL: server.URL, UserID: request.UserID, RefreshToken: request.RefreshToken, IgnoreEnvironmentRefreshToken: true})
 				}

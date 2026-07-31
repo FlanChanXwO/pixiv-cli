@@ -59,39 +59,8 @@ type userNovelsQuery struct {
 	UserID int64 `json:"user_id"`
 }
 
-func (c *Client) SearchIllustOptions(ctx context.Context, request SearchIllustOptionsRequest) (result *SearchIllustOptionsResult, err error) {
-	started := time.Now()
-	defer func() { c.delegatedOperationLog(OperationSearchIllustOptions, started, err, 0, 0) }()
-	if scoped, snapshotErr := c.operationClient(ctx, OperationSearchIllustOptions); snapshotErr != nil {
-		return nil, snapshotErr
-	} else if scoped != c {
-		return scoped.SearchIllustOptions(ctx, request)
-	}
-	word := strings.TrimSpace(request.Word)
-	if word == "" {
-		return nil, invalidArgument(OperationSearchIllustOptions, 0, errors.New("word is required"))
-	}
-	if !c.authenticated {
-		return nil, localRouteError(CodeUnsupported, OperationSearchIllustOptions, 0, 0, errors.New("search options require authenticated App API access"))
-	}
-	if err := c.requireRoute(OperationSearchIllustOptions, routeApp, 0, 0); err != nil {
-		return nil, err
-	}
-	options, err := c.app.SearchIllustOptions(ctx, word)
-	if err != nil {
-		return nil, mapAppOperationError(err, OperationSearchIllustOptions, 0)
-	}
-	tools := append([]string(nil), options.Tools...)
-	if tools == nil {
-		tools = []string{}
-	}
-	return &SearchIllustOptionsResult{Tools: tools}, nil
-}
-
 // SearchIllust 返回一个作品搜索上游批次。
 func (c *Client) SearchIllust(ctx context.Context, request SearchIllustRequest) (result *IllustListResult, err error) {
-	started := time.Now()
-	defer func() { c.delegatedOperationLog(OperationSearchIllust, started, err, 0, 0) }()
 	if scoped, err := c.operationClient(ctx, OperationSearchIllust); err != nil {
 		return nil, err
 	} else if scoped != c {
@@ -113,6 +82,9 @@ func (c *Client) SearchIllust(ctx context.Context, request SearchIllustRequest) 
 	}
 	if !validSearchTarget(query.Target) || !validSortMode(query.Sort) || !validIllustSearchDuration(query.Duration) || !validSearchIllustFilters(query.Filters) {
 		return nil, invalidArgument(OperationSearchIllust, 0, errors.New("search enum is invalid"))
+	}
+	if !validDrawingTool(query.Filters.Tool) {
+		return nil, invalidDrawingToolError(query.Filters.Tool)
 	}
 	if query.Duration != "" && (query.StartDate != "" || query.EndDate != "") {
 		return nil, invalidArgument(OperationSearchIllust, 0, errors.New("duration cannot be combined with start_date or end_date"))
@@ -136,6 +108,9 @@ func (c *Client) SearchIllust(ctx context.Context, request SearchIllustRequest) 
 		list, err := c.web.SearchIllust(ctx, query.Word, string(query.Target), string(query.Sort), query.Duration, query.StartDate, query.EndDate, offset, internalSearchIllustFilters(query.Filters))
 		if err != nil {
 			return nil, mapWebListError(err, OperationSearchIllust, 0)
+		}
+		if err := c.enrichWebIllustList(ctx, list, OperationSearchIllust); err != nil {
+			return nil, err
 		}
 		filterSearchIllustBatch(list, query.Filters)
 		return publicIllustList(list, OperationSearchIllust, digest, "offset", c.cursorSource), nil
@@ -164,8 +139,6 @@ func (c *Client) SearchIllust(ctx context.Context, request SearchIllustRequest) 
 
 // SearchNovel 返回一个认证 App API 小说搜索批次。筛选语义由公开小说字段在后续批次内统一验证。
 func (c *Client) SearchNovel(ctx context.Context, request SearchNovelRequest) (result *NovelListResult, err error) {
-	started := time.Now()
-	defer func() { c.delegatedOperationLog(OperationSearchNovel, started, err, 0, 0) }()
 	if scoped, snapshotErr := c.operationClient(ctx, OperationSearchNovel); snapshotErr != nil {
 		return nil, snapshotErr
 	} else if scoped != c {
@@ -345,8 +318,6 @@ func oneOf(value string, allowed ...string) bool {
 
 // IllustRanking 返回一个排行榜上游批次。
 func (c *Client) IllustRanking(ctx context.Context, request IllustRankingRequest) (result *IllustListResult, err error) {
-	started := time.Now()
-	defer func() { c.delegatedOperationLog(OperationIllustRanking, started, err, 0, 0) }()
 	if scoped, err := c.operationClient(ctx, OperationIllustRanking); err != nil {
 		return nil, err
 	} else if scoped != c {
@@ -379,6 +350,9 @@ func (c *Client) IllustRanking(ctx context.Context, request IllustRankingRequest
 		if err != nil {
 			return nil, mapWebListError(err, OperationIllustRanking, 0)
 		}
+		if err := c.enrichWebIllustList(ctx, list, OperationIllustRanking); err != nil {
+			return nil, err
+		}
 		return publicIllustList(list, OperationIllustRanking, digest, "offset", c.cursorSource), nil
 	}
 	if route != routeApp {
@@ -393,8 +367,6 @@ func (c *Client) IllustRanking(ctx context.Context, request IllustRankingRequest
 
 // IllustRecommended 返回一个认证推荐作品批次。
 func (c *Client) IllustRecommended(ctx context.Context, request IllustRecommendedRequest) (result *IllustListResult, err error) {
-	started := time.Now()
-	defer func() { c.delegatedOperationLog(OperationIllustRecommended, started, err, 0, 0) }()
 	if scoped, err := c.operationClient(ctx, OperationIllustRecommended); err != nil {
 		return nil, err
 	} else if scoped != c {
@@ -417,8 +389,6 @@ func (c *Client) IllustRecommended(ctx context.Context, request IllustRecommende
 
 // MangaRecommended 返回一个认证漫画推荐批次；它与插画推荐使用相同 catalog，但游标互不兼容。
 func (c *Client) MangaRecommended(ctx context.Context, request IllustRecommendedRequest) (result *IllustListResult, err error) {
-	started := time.Now()
-	defer func() { c.delegatedOperationLog(OperationMangaRecommended, started, err, 0, 0) }()
 	if scoped, err := c.operationClient(ctx, OperationMangaRecommended); err != nil {
 		return nil, err
 	} else if scoped != c {
@@ -441,8 +411,6 @@ func (c *Client) MangaRecommended(ctx context.Context, request IllustRecommended
 
 // NovelRecommended 返回一个认证小说推荐批次；其 opaque cursor 不能用于其他推荐种类。
 func (c *Client) NovelRecommended(ctx context.Context, request NovelRecommendedRequest) (result *NovelListResult, err error) {
-	started := time.Now()
-	defer func() { c.delegatedOperationLog(OperationNovelRecommended, started, err, 0, 0) }()
 	if scoped, err := c.operationClient(ctx, OperationNovelRecommended); err != nil {
 		return nil, err
 	} else if scoped != c {
@@ -465,8 +433,6 @@ func (c *Client) NovelRecommended(ctx context.Context, request NovelRecommendedR
 
 // UserRecommended 返回一个认证作者推荐批次及对应作品预览。
 func (c *Client) UserRecommended(ctx context.Context, request UserRecommendedRequest) (result *UserRecommendedResult, err error) {
-	started := time.Now()
-	defer func() { c.delegatedOperationLog(OperationUserRecommended, started, err, 0, 0) }()
 	if scoped, err := c.operationClient(ctx, OperationUserRecommended); err != nil {
 		return nil, err
 	} else if scoped != c {
@@ -489,8 +455,6 @@ func (c *Client) UserRecommended(ctx context.Context, request UserRecommendedReq
 
 // FollowingIllusts 返回当前认证账号所关注用户的一个作品批次。
 func (c *Client) FollowingIllusts(ctx context.Context, request FollowingIllustsRequest) (result *IllustListResult, err error) {
-	started := time.Now()
-	defer func() { c.delegatedOperationLog(OperationFollowingIllusts, started, err, 0, 0) }()
 	if scoped, err := c.operationClient(ctx, OperationFollowingIllusts); err != nil {
 		return nil, err
 	} else if scoped != c {
@@ -520,8 +484,6 @@ func (c *Client) FollowingIllusts(ctx context.Context, request FollowingIllustsR
 
 // FollowingNovels 返回当前认证账号所关注用户的小说新作批次。
 func (c *Client) FollowingNovels(ctx context.Context, request FollowingNovelsRequest) (result *NovelListResult, err error) {
-	started := time.Now()
-	defer func() { c.delegatedOperationLog(OperationFollowingNovels, started, err, 0, 0) }()
 	if scoped, err := c.operationClient(ctx, OperationFollowingNovels); err != nil {
 		return nil, err
 	} else if scoped != c {
@@ -551,8 +513,6 @@ func (c *Client) FollowingNovels(ctx context.Context, request FollowingNovelsReq
 
 // LatestIllusts 返回全站最新插画或漫画批次。
 func (c *Client) LatestIllusts(ctx context.Context, request LatestIllustsRequest) (result *IllustListResult, err error) {
-	started := time.Now()
-	defer func() { c.delegatedOperationLog(OperationLatestIllusts, started, err, 0, 0) }()
 	if scoped, err := c.operationClient(ctx, OperationLatestIllusts); err != nil {
 		return nil, err
 	} else if scoped != c {
@@ -579,8 +539,6 @@ func (c *Client) LatestIllusts(ctx context.Context, request LatestIllustsRequest
 
 // LatestNovels 返回全站最新小说批次。
 func (c *Client) LatestNovels(ctx context.Context, request LatestNovelsRequest) (result *NovelListResult, err error) {
-	started := time.Now()
-	defer func() { c.delegatedOperationLog(OperationLatestNovels, started, err, 0, 0) }()
 	if scoped, err := c.operationClient(ctx, OperationLatestNovels); err != nil {
 		return nil, err
 	} else if scoped != c {
@@ -603,8 +561,6 @@ func (c *Client) LatestNovels(ctx context.Context, request LatestNovelsRequest) 
 
 // MyPixivUsers 返回指定用户的 MyPixiv 用户列表。
 func (c *Client) MyPixivUsers(ctx context.Context, request MyPixivUsersRequest) (result *UserListResult, err error) {
-	started := time.Now()
-	defer func() { c.delegatedOperationLog(OperationMyPixivUsers, started, err, 0, request.UserID) }()
 	if scoped, err := c.operationClient(ctx, OperationMyPixivUsers); err != nil {
 		return nil, err
 	} else if scoped != c {
@@ -631,8 +587,6 @@ func (c *Client) MyPixivUsers(ctx context.Context, request MyPixivUsersRequest) 
 
 // MyPixivIllusts 返回当前认证账号 MyPixiv 的插画聚合批次。
 func (c *Client) MyPixivIllusts(ctx context.Context, request MyPixivIllustsRequest) (result *IllustListResult, err error) {
-	started := time.Now()
-	defer func() { c.delegatedOperationLog(OperationMyPixivIllusts, started, err, 0, 0) }()
 	if scoped, err := c.operationClient(ctx, OperationMyPixivIllusts); err != nil {
 		return nil, err
 	} else if scoped != c {
@@ -655,8 +609,6 @@ func (c *Client) MyPixivIllusts(ctx context.Context, request MyPixivIllustsReque
 
 // MyPixivNovels 返回当前认证账号 MyPixiv 的小说聚合批次。
 func (c *Client) MyPixivNovels(ctx context.Context, request MyPixivNovelsRequest) (result *NovelListResult, err error) {
-	started := time.Now()
-	defer func() { c.delegatedOperationLog(OperationMyPixivNovels, started, err, 0, 0) }()
 	if scoped, err := c.operationClient(ctx, OperationMyPixivNovels); err != nil {
 		return nil, err
 	} else if scoped != c {
@@ -679,8 +631,6 @@ func (c *Client) MyPixivNovels(ctx context.Context, request MyPixivNovelsRequest
 
 // SearchUser 返回一个用户搜索上游批次。
 func (c *Client) SearchUser(ctx context.Context, request SearchUserRequest) (result *UserListResult, err error) {
-	started := time.Now()
-	defer func() { c.delegatedOperationLog(OperationSearchUser, started, err, 0, 0) }()
 	if scoped, err := c.operationClient(ctx, OperationSearchUser); err != nil {
 		return nil, err
 	} else if scoped != c {
@@ -722,8 +672,6 @@ func (c *Client) SearchUser(ctx context.Context, request SearchUserRequest) (res
 
 // UserDetail 返回指定用户的稳定完整详情。
 func (c *Client) UserDetail(ctx context.Context, request UserDetailRequest) (result *UserDetailResult, err error) {
-	started := time.Now()
-	defer func() { c.delegatedOperationLog(OperationUserDetail, started, err, 0, request.UserID) }()
 	if scoped, err := c.operationClient(ctx, OperationUserDetail); err != nil {
 		return nil, err
 	} else if scoped != c {
@@ -744,8 +692,6 @@ func (c *Client) UserDetail(ctx context.Context, request UserDetailRequest) (res
 
 // UserArtworks 返回指定用户的一个作品批次。
 func (c *Client) UserArtworks(ctx context.Context, request UserArtworksRequest) (result *IllustListResult, err error) {
-	started := time.Now()
-	defer func() { c.delegatedOperationLog(OperationUserArtworks, started, err, 0, request.UserID) }()
 	if scoped, err := c.operationClient(ctx, OperationUserArtworks); err != nil {
 		return nil, err
 	} else if scoped != c {
@@ -778,8 +724,6 @@ func (c *Client) UserArtworks(ctx context.Context, request UserArtworksRequest) 
 
 // UserBookmarks 返回指定用户的一个收藏作品批次。
 func (c *Client) UserBookmarks(ctx context.Context, request UserBookmarksRequest) (result *IllustListResult, err error) {
-	started := time.Now()
-	defer func() { c.delegatedOperationLog(OperationUserBookmarks, started, err, 0, request.UserID) }()
 	if scoped, err := c.operationClient(ctx, OperationUserBookmarks); err != nil {
 		return nil, err
 	} else if scoped != c {
@@ -837,8 +781,6 @@ func (c *Client) UserBookmarksCursor(ctx context.Context, request UserBookmarksR
 
 // UserFollowing 返回指定用户关注的一个用户批次。
 func (c *Client) UserFollowing(ctx context.Context, request UserFollowingRequest) (result *UserListResult, err error) {
-	started := time.Now()
-	defer func() { c.delegatedOperationLog(OperationUserFollowing, started, err, 0, request.UserID) }()
 	if scoped, err := c.operationClient(ctx, OperationUserFollowing); err != nil {
 		return nil, err
 	} else if scoped != c {
@@ -871,8 +813,6 @@ func (c *Client) UserFollowing(ctx context.Context, request UserFollowingRequest
 
 // UserNovels 返回指定用户的小说批次。
 func (c *Client) UserNovels(ctx context.Context, request UserNovelsRequest) (result *NovelListResult, err error) {
-	started := time.Now()
-	defer func() { c.delegatedOperationLog(OperationUserNovels, started, err, 0, request.UserID) }()
 	if scoped, err := c.operationClient(ctx, OperationUserNovels); err != nil {
 		return nil, err
 	} else if scoped != c {
@@ -929,6 +869,28 @@ func publicIllustList(list *model.IllustList, operation Operation, digest, kind,
 		result.NextCursor = encodeCursorForSource(operation, digest, kind, value, source)
 	}
 	return result
+}
+
+// enrichWebIllustList 将匿名 Web 列表的轻量条目逐个替换为详情。列表 API 的字段
+// 覆盖不足以保证 Record/SDK 契约，任一详情失败即返回整个列表失败，绝不发布部分结果。
+func (c *Client) enrichWebIllustList(ctx context.Context, list *model.IllustList, operation Operation) error {
+	if list == nil {
+		return newError(CodeMalformedUpstreamResponse, operation, BackendWebAPI, false, 0, 0, errors.New("web illustration list is empty"))
+	}
+	for index, item := range list.Illusts {
+		if item.ID <= 0 {
+			return newError(CodeMalformedUpstreamResponse, operation, BackendWebAPI, false, 0, 0, errors.New("web illustration list contains an invalid ID"))
+		}
+		detail, err := c.web.IllustDetail(ctx, item.ID)
+		if err != nil {
+			return mapAdapterFailure(err, operation, BackendWebAPI, item.ID, 0)
+		}
+		if detail == nil || detail.Illust.ID != item.ID {
+			return newError(CodeMalformedUpstreamResponse, operation, BackendWebAPI, false, 0, item.ID, errors.New("web illustration detail is invalid"))
+		}
+		list.Illusts[index] = detail.Illust
+	}
+	return nil
 }
 
 func publicUserList(list *model.UserPreviewList, operation Operation, digest, source string) *UserListResult {

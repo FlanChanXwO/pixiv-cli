@@ -32,9 +32,6 @@ func TestWriteLoginFinalPageCentersAndHidesSensitiveFailure(t *testing.T) {
 	if !strings.Contains(body, "Login successful") || !strings.Contains(body, "<h1>Login successful</h1>") || !strings.Contains(body, `<html lang="en">`) || !strings.Contains(body, "<title>pixiv-cli</title>") {
 		t.Fatalf("success title missing: %s", body)
 	}
-	if strings.Contains(body, "登录") {
-		t.Fatalf("success page contains non-English fixed text: %s", body)
-	}
 
 	rec = httptest.NewRecorder()
 	writeLoginFinalPage(rec, false)
@@ -48,8 +45,10 @@ func TestWriteLoginFinalPageCentersAndHidesSensitiveFailure(t *testing.T) {
 	if !strings.Contains(body, "Login failed") || !strings.Contains(body, "<title>pixiv-cli</title>") {
 		t.Fatalf("failure title missing: %s", body)
 	}
-	if strings.Contains(body, "登录") {
-		t.Fatalf("failure page contains non-English fixed text: %s", body)
+	for _, page := range []string{form.Body.String(), callback.Body.String(), body} {
+		if strings.Contains(strings.ToLower(page), `rel="icon"`) {
+			t.Fatalf("login page must not override the browser favicon: %s", page)
+		}
 	}
 	// 失败页不得回显敏感片段
 	for _, secret := range []string{"token", "refresh", "Bearer", "code=", "password", "secret"} {

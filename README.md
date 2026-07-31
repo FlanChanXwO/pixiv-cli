@@ -17,13 +17,13 @@
 ## Why pixiv-cli?
 
 - **One capability surface** — search, details, rankings, recommendations, users, bookmarks, follows, downloads, and ugoira across CLI, MCP, and SDK.
-- **Feeds and composable Record pipelines** — retrieve feeds as canonical NDJSON, filter them locally, and pass records into actions.
+- **Timelines and composable Record pipelines** — retrieve latest or following works as canonical NDJSON, filter them locally, and pass records into actions.
 - **Local account pools** — select eligible local accounts for read workloads and honor Pixiv `Retry-After` responses during pagination and download preparation.
 - **Guided account sign-in** — complete browser OAuth with `pixiv auth login`, then use `auth list`, `auth use`, and `auth check` to manage local multi-account access.
 - **GIF and APNG ugoira output** — keep GIF as the default or explicitly request APNG through the CLI, MCP, or SDK.
-- **Cache-aware downloads** — revalidate persistent `.pixiv-cache` metadata, resume verified partial data with `Range` and `If-Range`, and atomically replace completed files.
+- **Cache-aware downloads with terminal progress** — revalidate persistent `.pixiv-cache` metadata, resume verified partial data with `Range` and `If-Range`, and show exact aggregate byte progress when available.
 - **Authenticated App API discovery** — read R18 details, pages, ugoira metadata, and all 16 ranking modes through the App API.
-- **Useful search filters** — rating, content type, AI mode, aspect ratio, resolution, and dynamic drawing tools.
+- **Useful search filters** — rating, content type, AI mode, aspect ratio, resolution, and a versioned drawing-tool catalog.
 - **Direct Pixiv references** — paste supported artwork URLs into detail or download; authenticated profile and artworks URLs expand to that creator's visual works.
 - **Local multi-account OAuth** — browser login, account selection, refresh-token rotation, and an optional cross-machine callback relay.
 - **Automation-ready integration** — typed SDK errors, JSON output, clean MCP stdio, signed release updates, and complete result reporting.
@@ -118,6 +118,7 @@ pixiv bookmark add 123456
 # Inspect, discover recommendations, and download.
 pixiv detail https://www.pixiv.net/artworks/123456
 pixiv recommended all --limit 10
+pixiv timeline latest --type illust --limit 20
 pixiv download https://www.pixiv.net/artworks/123456 --pages 1,3-5 --quality regular
 pixiv download 123456 https://i.pximg.net/img-original/example.jpg --concurrency 8
 
@@ -137,7 +138,7 @@ Use the default text output interactively and `--json` where the command support
 pixiv ranking --mode day --json
 pixiv user search "miku" --limit 10 --json
 pixiv user detail 12345678
-pixiv search-options "初音ミク"
+pixiv timeline latest --type illust --limit 10 --json
 ```
 
 ### MCP
@@ -153,16 +154,37 @@ Fixed MCP status, error, and display text is English; Pixiv metadata and user-su
 
 ### Go SDK
 
+For a local first use, run `pixiv auth login` once, then create a client from that local account and make a search:
+
 ```go
-client, err := pixiv.OpenDefault()
-if err != nil {
-    // Handle local auth/configuration failure.
+package main
+
+import (
+	"context"
+	"fmt"
+	"log"
+
+	pixiv "github.com/FlanChanXwO/pixiv-cli/pixiv"
+)
+
+func main() {
+	ctx := context.Background()
+	client, err := pixiv.OpenDefault()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	result, err := client.SearchIllust(ctx, pixiv.SearchIllustRequest{Word: "初音ミク"})
+	if err != nil {
+		log.Fatal(err)
+	}
+	for _, illust := range result.Illusts {
+		fmt.Printf("%d %s\\n", illust.ID, illust.URL)
+	}
 }
-result, err := client.SearchIllust(ctx, pixiv.SearchIllustRequest{Word: "初音ミク"})
-download, err := client.Download(ctx, "https://www.pixiv.net/artworks/123456")
 ```
 
-Import `github.com/FlanChanXwO/pixiv-cli/pixiv`. `Download`/`DownloadAll` use documented beginner defaults; `DownloadWith`/`DownloadAllWith` expose paths, naming, pages, quality, and concurrency. The [SDK guide](docs/en/sdk.md) documents models, cursors, resources, errors, and caller responsibilities.
+The import path is `github.com/FlanChanXwO/pixiv-cli/pixiv`. `Download`/`DownloadAll` use documented beginner defaults; `DownloadWith`/`DownloadAllWith` expose paths, naming, pages, quality, and concurrency. The [SDK guide](docs/en/sdk.md) documents models, cursors, resources, errors, and caller responsibilities.
 
 ## Authentication and token safety
 
@@ -172,7 +194,7 @@ Import `github.com/FlanChanXwO/pixiv-cli/pixiv`. `Download`/`DownloadAll` use do
 
 Account names, IDs, membership signals, and the active local-account selection are convenience information from the local store and Pixiv responses. Treat them as convenience data rather than proof of account ownership, entitlement, or current Pixiv status. Verify important account details in Pixiv and use only accounts you are authorized to manage.
 
-On macOS, desktop Linux, and Windows, an on-demand persistent `pixiv://` callback handler supports local login and an explicitly configured cross-machine relay. The relay accepts the `pixiv://account/login` callback. For a headless SSH server, use the existing `--no-open --addr` flow with a local `ssh -L` tunnel, or configure the documented relay server/client settings. See the [CLI reference](docs/en/cli-reference.md#getting-a-refresh-token).
+On macOS, Windows, and desktop Linux, `pixiv` prepares the current-user `pixiv://` callback handler for the installed binary. When a server has `login_relay_public_url` and `login_relay_listen_addr`, `pixiv auth login` prints a one-time remote hand-off URL. Opening it transfers the session directly to the installed desktop handler, which starts OAuth and returns its callback to the server. Remote login therefore uses a desktop with pixiv-cli installed; it has no project confirmation page or callback-copy form. See the [CLI reference](docs/en/cli-reference.md#getting-a-refresh-token).
 
 ```bash
 pixiv auth list

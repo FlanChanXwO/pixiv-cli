@@ -183,14 +183,6 @@ type SearchIllustRequest struct {
 	Filters   SearchIllustFilters `json:"filters,omitempty"`
 }
 
-type SearchIllustOptionsRequest struct {
-	Word string `json:"word"`
-}
-
-type SearchIllustOptionsResult struct {
-	Tools []string `json:"tools"`
-}
-
 // NovelSearchFilters 是小说搜索可由稳定结果字段验证的本地筛选条件。
 type NovelSearchFilters struct {
 	Rating        SearchRating `json:"rating,omitempty"`

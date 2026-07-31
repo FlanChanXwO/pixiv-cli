@@ -20,8 +20,6 @@ func (c *Client) RefreshPremiumStatus(ctx context.Context) (*PremiumStatus, erro
 }
 
 func (c *Client) premiumStatus(ctx context.Context, force bool) (result *PremiumStatus, err error) {
-	started := time.Now()
-	defer func() { c.delegatedOperationLog(OperationPremiumStatus, started, err, 0, c.authenticatedUserID) }()
 	if scoped, snapshotErr := c.operationClient(ctx, OperationPremiumStatus); snapshotErr != nil {
 		return nil, snapshotErr
 	} else if scoped != c {

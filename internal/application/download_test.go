@@ -128,6 +128,42 @@ func TestDownloadServiceExpandsEveryVisualArtworkTypeForUserTargets(t *testing.T
 	}, requests)
 }
 
+func TestDownloadSourcesDeduplicatesCanonicalArtworkAndReportsOriginalSourceIndex(t *testing.T) {
+	client := &downloadAllClientStub{}
+	service := application.DownloadService{}
+	var progress []sdk.DownloadProgress
+	_, err := service.DownloadSources(context.Background(), client, []string{"1", "https://www.pixiv.net/artworks/1", "2"}, sdk.DownloadOptions{
+		Progress: func(event sdk.DownloadProgress) { progress = append(progress, event) },
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, []string{
+		"https://www.pixiv.net/artworks/1",
+		"https://www.pixiv.net/artworks/2",
+	}, client.sources)
+	require.Len(t, progress, 1)
+	require.Equal(t, 2, progress[0].SourceIndex)
+}
+
+func TestDownloadSourcesDeduplicatesArtworkAndExpandedUserWorksByFirstOccurrence(t *testing.T) {
+	client := &downloadAllUserClientStub{userArtworksDownloadClient: userArtworksDownloadClient{
+		userArtworks: func(_ context.Context, request sdk.UserArtworksRequest) (*sdk.IllustListResult, error) {
+			if request.Type == sdk.IllustTypeIllust {
+				return &sdk.IllustListResult{Illusts: []sdk.Illust{{ID: 1, Type: "illust"}, {ID: 2, Type: "illust"}}}, nil
+			}
+			return &sdk.IllustListResult{}, nil
+		},
+	}}
+
+	_, err := (application.DownloadService{}).DownloadSources(context.Background(), client, []string{"1", "https://www.pixiv.net/users/7/artworks"}, sdk.DownloadOptions{})
+
+	require.NoError(t, err)
+	require.Equal(t, []string{
+		"https://www.pixiv.net/artworks/1",
+		"https://www.pixiv.net/artworks/2",
+	}, client.sources)
+}
+
 func TestDownloadServiceStopsImmediatelyWhenContextIsCanceled(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -242,6 +278,29 @@ type downloadTargetClientStub struct{ downloadClientStub }
 type userArtworksDownloadClient struct {
 	downloadClientStub
 	userArtworks func(context.Context, sdk.UserArtworksRequest) (*sdk.IllustListResult, error)
+}
+
+type downloadAllClientStub struct {
+	downloadTargetClientStub
+	sources []string
+}
+
+func (c *downloadAllClientStub) DownloadAllWith(_ context.Context, sources []string, options sdk.DownloadOptions) (sdk.DownloadAllResult, error) {
+	c.sources = append([]string(nil), sources...)
+	if options.Progress != nil {
+		options.Progress(sdk.DownloadProgress{SourceIndex: 1})
+	}
+	return sdk.DownloadAllResult{Items: make([]sdk.DownloadItemResult, len(sources))}, nil
+}
+
+type downloadAllUserClientStub struct {
+	userArtworksDownloadClient
+	sources []string
+}
+
+func (c *downloadAllUserClientStub) DownloadAllWith(_ context.Context, sources []string, _ sdk.DownloadOptions) (sdk.DownloadAllResult, error) {
+	c.sources = append([]string(nil), sources...)
+	return sdk.DownloadAllResult{Items: make([]sdk.DownloadItemResult, len(sources))}, nil
 }
 
 type typedNilDownloadClient struct{}

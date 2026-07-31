@@ -1,0 +1,41 @@
+{{define "content"}}
+<main class="pv-card">
+  <div class="pv-bridge-work">
+    <svg class="pv-spinner" viewBox="0 0 50 50" aria-hidden="true" focusable="false">
+      <circle class="pv-spinner-track" cx="25" cy="25" r="22"/>
+      <circle class="pv-spinner-arc" cx="25" cy="25" r="22"/>
+    </svg>
+    <h1>Completing login<span class="pv-dots" aria-hidden="true"><span>.</span><span>.</span><span>.</span></span></h1>
+    <p>Please keep this page open.</p>
+  </div>
+  <div class="pv-bridge-fail">
+    <svg class="pv-icon" viewBox="0 0 52 52" aria-hidden="true" focusable="false">
+      <circle class="pv-icon-ring" cx="26" cy="26" r="24"/>
+      <path class="pv-icon-mark" d="M18.5 18.5 L33.5 33.5"/>
+      <path class="pv-icon-mark pv-icon-mark-late" d="M33.5 18.5 L18.5 33.5"/>
+    </svg>
+    <h1>Login failed</h1>
+    <p>Login could not be completed. Return to the terminal to view details or try again.</p>
+  </div>
+</main>
+  <script>
+    (() => {
+      const completionURL = window.location.hash.slice(1);
+      window.history.replaceState(null, "", window.location.pathname);
+      if (!completionURL) {
+        document.body.classList.add("pv-bad", "pv-bridge-failed");
+        return;
+      }
+      const form = document.createElement("form");
+      form.method = "post";
+      form.action = "/manual";
+      const input = document.createElement("input");
+      input.type = "hidden";
+      input.name = "login_result";
+      input.value = completionURL;
+      form.appendChild(input);
+      document.body.appendChild(form);
+      form.submit();
+    })();
+  </script>
+{{end}}

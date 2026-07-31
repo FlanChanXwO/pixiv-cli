@@ -108,15 +108,33 @@ func (s DownloadService) DownloadSources(ctx context.Context, client DownloadTar
 		return report, errors.New("at least one download source is required")
 	}
 	downloadSources := make([]string, 0, len(sources))
-	for _, source := range sources {
+	sourceInputIndices := make([]int, 0, len(sources))
+	seenArtworkIDs := make(map[int64]struct{})
+	appendArtwork := func(id int64, inputIndex int) {
+		if id <= 0 {
+			return
+		}
+		if _, seen := seenArtworkIDs[id]; seen {
+			return
+		}
+		seenArtworkIDs[id] = struct{}{}
+		downloadSources = append(downloadSources, sdk.Reference{Kind: sdk.ReferenceKindArtwork, ID: id}.URL())
+		sourceInputIndices = append(sourceInputIndices, inputIndex)
+	}
+	for inputIndex, source := range sources {
 		if err := ctx.Err(); err != nil {
 			return report, err
 		}
 		reference, err := sdk.ParseReference(source)
-		if err != nil || reference.Kind == sdk.ReferenceKindArtwork {
+		if err != nil {
 			// 非 Pixiv 页面 URL 可能是经 ResourcePolicy 允许的 CDN 资源；SDK 会在
 			// ParseResourceRef 中统一验证，application 不复制该安全边界。
 			downloadSources = append(downloadSources, source)
+			sourceInputIndices = append(sourceInputIndices, inputIndex)
+			continue
+		}
+		if reference.Kind == sdk.ReferenceKindArtwork {
+			appendArtwork(reference.ID, inputIndex)
 			continue
 		}
 		if reference.Kind != sdk.ReferenceKindUser {
@@ -127,7 +145,7 @@ func (s DownloadService) DownloadSources(ctx context.Context, client DownloadTar
 			return report, err
 		}
 		for _, job := range jobs {
-			downloadSources = append(downloadSources, job.target.URL())
+			appendArtwork(job.target.ID, inputIndex)
 		}
 	}
 	if len(downloadSources) == 0 {
@@ -150,6 +168,17 @@ func (s DownloadService) DownloadSources(ctx context.Context, client DownloadTar
 			DownloadPath: options.DownloadPath, FilenameTemplate: options.FilenameTemplate,
 			Pages: options.Pages, Quality: options.Quality, UgoiraFormat: options.UgoiraFormat,
 		})
+	}
+	if progress := options.Progress; progress != nil {
+		// application 在展开用户页、并按 canonical artwork ID 去重后才调用 SDK。
+		// SDK 的 SourceIndex 指向展开后的输入；这里映射回调用方原始 sources 下标，
+		// 使进度事件始终能定位到用户提供的来源位置。
+		options.Progress = func(event sdk.DownloadProgress) {
+			if event.SourceIndex >= 0 && event.SourceIndex < len(sourceInputIndices) {
+				event.SourceIndex = sourceInputIndices[event.SourceIndex]
+			}
+			progress(event)
+		}
 	}
 	result, err := downloader.DownloadAllWith(ctx, downloadSources, options)
 	if err != nil {

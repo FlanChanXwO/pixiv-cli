@@ -22,7 +22,7 @@
 - **Release asset**：固定名称的 `pixiv-cli_<version>_<os>_<arch>` archive，加上 `checksums.txt` 与签名 `checksums.json`。
 - **Rust staticlib**：ugoira encoder 的 target 专用 cgo 输入；完整 manifest 绑定 source digest、六 target、path 与 SHA-256。
 - **Utility packages**：`internal/utils/*`；files、text、uri、media、parse 等无业务语义的 helper。
-- **Infrastructure constants**：`internal/platform/localstate`（本地状态路径/权限）与 `internal/logging`（日志字段）；各自按责任归属，避免通用 constants 包。
+- **Infrastructure constants**：`internal/platform/localstate`（本地状态路径/权限）；按责任归属，避免通用 constants 包。
 
 ## 安装来源与更新通道
 
@@ -55,7 +55,7 @@ Task 20 的审计流程配置或回填。v0.3.0 已发布为正式 Release，公
 - `pixiv` 是公开 facade；内部协议实现物理拆分为 `appapi`、`webapi`、`oauth`、`resource`，不得反向 import public package。
 - 有凭据时 App API 为主路径，失败不自动 Web fallback；Web pages/ugoira original 只能作为明确 enrichment。
 - 不新增 Discover、Probe、Capabilities、RSS、crawler、通用 Provider interface 或 HTTP server；这些属于调用方 adapter。
-- 不再保留通用 `internal/common/constants`；`AppDataDirName` 与文件权限归 `internal/platform/localstate`，日志事件字段归 `internal/logging`。
+- 不再保留通用 `internal/common/constants`；`AppDataDirName` 与文件权限归 `internal/platform/localstate`。
 - CLI/MCP/OAuth loopback adapter helper 留在 adapter package，除非它们是 protocol-free parsing helper。
 
 ## 行为约束

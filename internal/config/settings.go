@@ -65,16 +65,12 @@ type RuntimeConfig struct {
 	OutputJSON         bool
 	LoginOpenBrowser   bool
 	LoginUseAfterLogin bool
-	// LoginRelay* 描述跨机器浏览器回调中继。secret 只用于 handler 与 server
-	// 间的 bearer 认证，不能作为普通配置输出的一部分。
+	// LoginRelay* 描述本次运行时创建的跨机器浏览器中继。历史 secret/target
+	// 配置项仍可留在私有配置文件中，但不会载入 runtime，避免恢复旧 client relay。
 	LoginRelayPublicURL   string
 	LoginRelayListenAddr  string
-	LoginRelaySecret      string
-	LoginRelayTargetURL   string
 	LoginRelayTLSCertFile string
 	LoginRelayTLSKeyFile  string
-	// LogLevel 只描述应用根 logger，不会改变 slog 默认全局 logger。
-	LogLevel string
 	// AccountPool 只能在 config.toml 的 [account_pool] 表中手工维护，避免普通
 	// config set 的扁平字符串接口误写账号白名单。
 	AccountPool AccountPoolConfig
@@ -87,7 +83,8 @@ const (
 	AccountPoolStrategyRandom     AccountPoolStrategy = "random"
 )
 
-// AccountPoolConfig 描述内容读取和作品下载可使用的本地受管账号白名单。
+// AccountPoolConfig 描述内容读取和作品下载可使用的本地受管账号白名单。Accounts
+// 为空时使用 auth.json 中全部账号的存储顺序；非空时才是显式白名单。
 // 账号 token 仍只存在 auth.json，配置与状态文件均不保存凭据。
 type AccountPoolConfig struct {
 	Enabled  bool
@@ -106,11 +103,8 @@ var settingSpecs = []SettingSpec{
 	{Alias: "login_use_after_login", KoanfKey: "login.use_after_login", Table: []string{"login"}, Key: "use_after_login", Kind: settingBool, HasDefault: true, Default: false},
 	{Alias: "login_relay_public_url", KoanfKey: "login.relay_public_url", Table: []string{"login"}, Key: "relay_public_url", Kind: settingString},
 	{Alias: "login_relay_listen_addr", KoanfKey: "login.relay_listen_addr", Table: []string{"login"}, Key: "relay_listen_addr", Kind: settingString},
-	{Alias: "login_relay_secret", KoanfKey: "login.relay_secret", Table: []string{"login"}, Key: "relay_secret", Kind: settingString, Sensitive: true},
-	{Alias: "login_relay_target_url", KoanfKey: "login.relay_target_url", Table: []string{"login"}, Key: "relay_target_url", Kind: settingString},
 	{Alias: "login_relay_tls_cert_file", KoanfKey: "login.relay_tls_cert_file", Table: []string{"login"}, Key: "relay_tls_cert_file", Kind: settingString},
 	{Alias: "login_relay_tls_key_file", KoanfKey: "login.relay_tls_key_file", Table: []string{"login"}, Key: "relay_tls_key_file", Kind: settingString},
-	{Alias: "log_level", KoanfKey: "logging.level", Table: []string{"logging"}, Key: "level", Kind: settingString, HasDefault: true, Default: "warn"},
 }
 
 func SettingSpecByAlias(alias string) (SettingSpec, bool) {
@@ -162,8 +156,6 @@ func EnvValue(spec SettingSpec) (string, bool) {
 			return value, true
 		}
 		return envLookup("HTTPS_PROXY")
-	case "log_level":
-		return envLookup("PIXIV_LOG_LEVEL")
 	default:
 		return "", false
 	}
@@ -267,27 +259,11 @@ func (s SettingsState) Runtime() (RuntimeConfig, error) {
 	if err != nil {
 		return RuntimeConfig{}, err
 	}
-	loginRelaySecret, err := s.Effective("login_relay_secret")
-	if err != nil {
-		return RuntimeConfig{}, err
-	}
-	loginRelayTargetURL, err := s.Effective("login_relay_target_url")
-	if err != nil {
-		return RuntimeConfig{}, err
-	}
 	loginRelayTLSCertFile, err := s.Effective("login_relay_tls_cert_file")
 	if err != nil {
 		return RuntimeConfig{}, err
 	}
 	loginRelayTLSKeyFile, err := s.Effective("login_relay_tls_key_file")
-	if err != nil {
-		return RuntimeConfig{}, err
-	}
-	logLevel, err := s.Effective("log_level")
-	if err != nil {
-		return RuntimeConfig{}, err
-	}
-	level, err := normalizeLogLevel(logLevel.Value.(string))
 	if err != nil {
 		return RuntimeConfig{}, err
 	}
@@ -306,11 +282,8 @@ func (s SettingsState) Runtime() (RuntimeConfig, error) {
 		LoginUseAfterLogin:    loginUseAfterLogin.Value.(bool),
 		LoginRelayPublicURL:   settingStringValue(loginRelayPublicURL),
 		LoginRelayListenAddr:  settingStringValue(loginRelayListenAddr),
-		LoginRelaySecret:      settingStringValue(loginRelaySecret),
-		LoginRelayTargetURL:   settingStringValue(loginRelayTargetURL),
 		LoginRelayTLSCertFile: settingStringValue(loginRelayTLSCertFile),
 		LoginRelayTLSKeyFile:  settingStringValue(loginRelayTLSKeyFile),
-		LogLevel:              level,
 		AccountPool:           accountPool,
 	}
 	if httpsProxy.HasValue {
@@ -352,9 +325,6 @@ func (s SettingsState) accountPool() (AccountPoolConfig, error) {
 	}
 	if !pool.Enabled {
 		return pool, nil
-	}
-	if len(pool.Accounts) == 0 {
-		return AccountPoolConfig{}, errors.New("account_pool.accounts must contain at least one UID")
 	}
 	seen := make(map[int64]struct{}, len(pool.Accounts))
 	for _, userID := range pool.Accounts {

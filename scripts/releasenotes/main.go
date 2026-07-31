@@ -743,7 +743,7 @@ func collectAudit(ctx context.Context, config auditConfig) (auditReport, error) 
 			notes = append(notes, *source.Note)
 		}
 	}
-	report.RecommendedVersionBump = recommendedVersionBump(notes)
+	report.RecommendedVersionBump = recommendedVersionBump(config.from, notes)
 	sort.Slice(report.Sources, func(left, right int) bool { return report.Sources[left].URL < report.Sources[right].URL })
 	sort.Slice(report.NewContributors, func(left, right int) bool {
 		return report.NewContributors[left].Login < report.NewContributors[right].Login
@@ -1300,13 +1300,18 @@ var releaseNoteCategories = map[string]struct{}{
 	"None":          {},
 }
 
-func recommendedVersionBump(notes []releaseNote) string {
+// recommendedVersionBump 将破坏性变更映射到当前发布线。v0 的 minor 版本可
+// 包含破坏性变更；稳定 v1+ 则建议 major。无法从起始 ref 判断版本时保持保守建议。
+func recommendedVersionBump(previous string, notes []releaseNote) string {
 	bump := "none"
 	for _, note := range notes {
 		if note.Category == "None" {
 			continue
 		}
 		if note.Breaking {
+			if versionHasZeroMajor(previous) {
+				return "minor"
+			}
 			return "major"
 		}
 		if note.Category == "Added" {
@@ -1318,4 +1323,10 @@ func recommendedVersionBump(notes []releaseNote) string {
 		}
 	}
 	return bump
+}
+
+func versionHasZeroMajor(ref string) bool {
+	version := strings.TrimPrefix(strings.TrimSpace(ref), "v")
+	major, _, found := strings.Cut(version, ".")
+	return found && major == "0"
 }

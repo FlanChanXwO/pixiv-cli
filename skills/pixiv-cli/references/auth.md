@@ -10,37 +10,25 @@ Run `pixiv auth login` only on the user's explicit request while they are
 present to approve the Pixiv page. On macOS, desktop Linux, and Windows, the
 CLI uses a persistent, on-demand current-user `pixiv://` handler. Its active
 loopback bridge has priority; otherwise only `pixiv://account/login` can reach
-a configured remote relay, while other `pixiv://` URLs are delegated to the
-previous handler. Do not invoke hidden protocol-handler helpers directly.
+a current one-time remote hand-off, while other `pixiv://` URLs are delegated to
+the previous handler. Do not invoke hidden protocol-handler helpers directly.
 
-For a GUI-less SSH server, keep the existing public interface: run
-`pixiv auth login --no-open --addr 127.0.0.1:PORT` on the server and
-`ssh -N -L PORT:127.0.0.1:PORT HOST` on the browser machine. Open the forwarded
-fallback page locally. Submit a Pixiv relay or final callback there; an accepted
-relay continues in that same browser and the final submission returns through
-the tunnel to the server loopback listener. Bind the listener to loopback and
-complete authorization in the browser used for the login flow.
+For a cross-machine login, configure `login_relay_public_url` and
+`login_relay_listen_addr` on the account-hosting server. `pixiv auth login`
+prints a one-login hand-off URL rather than an authorization URL. Opening it
+redirects directly to `pixiv://account/remote-login`; the local installed CLI
+claims that one session, starts OAuth, and returns the callback to the
+account-hosting server. The local handoff state is valid for that session only,
+and a new handoff replaces the previous local handoff.
 
-For a cross-machine login, the user must explicitly configure the server's
-`login_relay_public_url`, `login_relay_listen_addr`, and hidden
-`login_relay_secret`, plus the browser machine's `login_relay_target_url` and
-same secret. The server prints the Pixiv authorization URL; the user opens it
-on the browser machine. After its authenticated callback, the browser machine
-opens a one-time result page under the configured relay URL and waits for the
-actual exchange before showing a fixed success or failure result; that URL has
-no callback or token. HTTPS is preferred; HTTP is permitted only with the CLI's clear
-plaintext-risk warnings while configuring either relay URL and starting an HTTP
-server relay. Never request, display, or place the relay secret in a command
-argument. `pixiv config` deliberately manages only download path, filename
-template, and HTTPS proxy; relay settings, including the secret, must be
-maintained directly in the user's private `config.toml` and never displayed.
+A remote login requires that installed desktop handler. pixiv-cli does not
+render a project confirmation page or accept a manually copied callback for this
+flow.
 
-Removing `login_relay_target_url` from the private `config.toml` restores a
-recorded previous handler only while pixiv-cli remains default, and never
-overwrites a later user association. On macOS, when no previous handler was
-recorded, it deliberately returns an error instead of silently retaining
-pixiv-cli; ask the user to choose a handler in the operating-system association
-UI before retrying the next login.
+The relay can use HTTP or HTTPS. `login_relay_secret` and
+`login_relay_target_url` are silently ignored. `pixiv auth devices` has been removed.
+`pixiv config` manages only download path, filename template, and HTTPS proxy;
+advanced relay settings belong in the private `config.toml`.
 
 ## Import one refresh token
 

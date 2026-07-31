@@ -9,6 +9,8 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+
+	"github.com/FlanChanXwO/pixiv-cli/pixiv"
 )
 
 var markdownLinkPattern = regexp.MustCompile(`!?\[[^\]]*\]\(([^)]+)\)`)
@@ -197,11 +199,11 @@ func TestVersionedChangelogHasEnglishAndSimplifiedChinesePairs(t *testing.T) {
 func TestContributionTemplatesArePresentAndLocalized(t *testing.T) {
 	repositoryRoot := filepath.Clean(filepath.Join("..", ".."))
 	const languageMarker = "English / 中文 / 日本語"
-	for _, relativePath := range []string{
-		".github/ISSUE_TEMPLATE/config.yml",
-		".github/ISSUE_TEMPLATE/bug-report.yml",
-		".github/ISSUE_TEMPLATE/feature-request.yml",
-		".github/PULL_REQUEST_TEMPLATE.md",
+	for relativePath, markers := range map[string][]string{
+		".github/ISSUE_TEMPLATE/config.yml":          {"文档与使用问题", "ドキュメントと使い方の質問"},
+		".github/ISSUE_TEMPLATE/bug-report.yml":      {"发生了什么？", "何が起きましたか？"},
+		".github/ISSUE_TEMPLATE/feature-request.yml": {"要解决的问题", "解決したい問題"},
+		".github/PULL_REQUEST_TEMPLATE.md":           {"概述", "概要"},
 	} {
 		payload, err := os.ReadFile(filepath.Join(repositoryRoot, filepath.FromSlash(relativePath)))
 		if err != nil {
@@ -210,6 +212,11 @@ func TestContributionTemplatesArePresentAndLocalized(t *testing.T) {
 		}
 		if !strings.Contains(string(payload), languageMarker) {
 			t.Errorf("contribution template %s is missing language marker %q", relativePath, languageMarker)
+		}
+		for _, marker := range markers {
+			if !strings.Contains(string(payload), marker) {
+				t.Errorf("contribution template %s is missing localized marker %q", relativePath, marker)
+			}
 		}
 	}
 }
@@ -248,7 +255,7 @@ func TestCLIReferenceLocalesExposeStableCommands(t *testing.T) {
 		for _, contract := range []string{
 			"pixiv auth import [REFRESH_TOKEN]",
 			"pixiv auth export [UID]",
-			"pixiv search-options",
+			"pixiv timeline latest",
 			"pixiv recommended",
 			"pixiv mcp",
 			"--ai-mode",
@@ -258,6 +265,65 @@ func TestCLIReferenceLocalesExposeStableCommands(t *testing.T) {
 		} {
 			if !strings.Contains(string(payload), contract) {
 				t.Errorf("%s is missing CLI contract %q", relativePath, contract)
+			}
+		}
+		for _, obsolete := range []string{"pixiv feed", "search-options"} {
+			if strings.Contains(string(payload), obsolete) {
+				t.Errorf("%s still documents removed CLI command %q", relativePath, obsolete)
+			}
+		}
+	}
+}
+
+func TestCLIReferenceLocalesHaveExactDrawingToolCatalog(t *testing.T) {
+	repositoryRoot := filepath.Clean(filepath.Join("..", ".."))
+	for _, relativePath := range []string{
+		"docs/en/cli-reference.md",
+		"docs/zh-CN/cli-reference.md",
+		"docs/ja/cli-reference.md",
+	} {
+		payload, err := os.ReadFile(filepath.Join(repositoryRoot, filepath.FromSlash(relativePath)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		content := string(payload)
+		position := 0
+		for _, tool := range pixiv.SupportedDrawingTools() {
+			next := strings.Index(content[position:], tool)
+			if next < 0 {
+				t.Errorf("%s is missing drawing-tool catalog value %q", relativePath, tool)
+				break
+			}
+			position += next + len(tool)
+		}
+	}
+}
+
+func TestMCPToolDocumentsMatchTheRegisteredPublicSurface(t *testing.T) {
+	repositoryRoot := filepath.Clean(filepath.Join("..", ".."))
+	for _, relativePath := range []string{
+		"docs/en/mcp-tools.md",
+		"docs/zh-CN/mcp-tools.md",
+		"docs/ja/mcp-tools.md",
+	} {
+		payload, err := os.ReadFile(filepath.Join(repositoryRoot, filepath.FromSlash(relativePath)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		content := string(payload)
+		for _, tool := range []string{
+			"timeline_illust_latest", "timeline_novel_latest", "timeline_illust_following", "timeline_novel_following",
+			"illust_filter", "novel_filter", "user_filter", "isError=true",
+		} {
+			if !strings.Contains(content, tool) {
+				t.Errorf("%s is missing MCP contract %q", relativePath, tool)
+			}
+		}
+		for _, removed := range []string{
+			"set_download_path", "set_refresh_token", "search_illust_options", "illust_new", "novel_new",
+		} {
+			if strings.Contains(content, removed) {
+				t.Errorf("%s still documents removed MCP tool %q", relativePath, removed)
 			}
 		}
 	}
@@ -325,6 +391,142 @@ func TestSDKAndMCPDocumentationExposeJapaneseLocale(t *testing.T) {
 			if !strings.Contains(string(payload), "../"+contract.localizedTarget) {
 				t.Errorf("%s does not link %s", canonicalPath, contract.localizedTarget)
 			}
+		}
+	}
+}
+
+func TestProductSkillRoutesInteractiveLoginToAuthReference(t *testing.T) {
+	repositoryRoot := filepath.Clean(filepath.Join("..", ".."))
+	payload, err := os.ReadFile(filepath.Join(repositoryRoot, "skills", "pixiv-cli", "SKILL.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	content := string(payload)
+	for _, requirement := range []string{
+		"Before running `pixiv auth login`, read [`references/auth.md`]",
+		"one-login hand-off URL",
+		"transfers directly",
+		"manual callback form.",
+		"invent relay URLs or callback values.",
+	} {
+		if !strings.Contains(content, requirement) {
+			t.Errorf("skills/pixiv-cli/SKILL.md is missing one-time hand-off contract %q", requirement)
+		}
+	}
+	for _, removed := range []string{"**Login on this device**", "session page's manual form"} {
+		if strings.Contains(content, removed) {
+			t.Errorf("skills/pixiv-cli/SKILL.md still documents removed remote-login UI %q", removed)
+		}
+	}
+}
+
+func TestOneTimeRemoteLoginDocumentationContract(t *testing.T) {
+	repositoryRoot := filepath.Clean(filepath.Join("..", ".."))
+	for _, relativePath := range []string{
+		"README.md",
+		"README.zh-CN.md",
+		"README.ja.md",
+		"docs/en/cli-reference.md",
+		"docs/zh-CN/cli-reference.md",
+		"docs/ja/cli-reference.md",
+	} {
+		payload, err := os.ReadFile(filepath.Join(repositoryRoot, filepath.FromSlash(relativePath)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		content := string(payload)
+		for _, requirement := range []string{
+			"login_relay_public_url",
+			"login_relay_listen_addr",
+		} {
+			if !strings.Contains(content, requirement) {
+				t.Errorf("%s is missing one-time hand-off contract %q", relativePath, requirement)
+			}
+		}
+		for _, removedCommand := range []string{
+			"pixiv auth devices list",
+			"pixiv auth devices revoke",
+		} {
+			if strings.Contains(content, removedCommand) {
+				t.Errorf("%s still documents removed command %q", relativePath, removedCommand)
+			}
+		}
+	}
+
+	for _, relativePath := range []string{
+		"docs/en/cli-reference.md",
+		"docs/zh-CN/cli-reference.md",
+		"docs/ja/cli-reference.md",
+	} {
+		payload, err := os.ReadFile(filepath.Join(repositoryRoot, filepath.FromSlash(relativePath)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		content := string(payload)
+		if !strings.Contains(content, "pixiv://account/login") {
+			t.Errorf("%s is missing the callback-handler protocol contract", relativePath)
+		}
+		if !strings.Contains(content, "pixiv://account/remote-login") {
+			t.Errorf("%s is missing the desktop hand-off protocol contract", relativePath)
+		}
+		for _, removedTerm := range []string{
+			"pixiv://account/pair",
+			"pixiv auth devices list",
+			"pixiv auth devices revoke",
+		} {
+			if strings.Contains(content, removedTerm) {
+				t.Errorf("%s still documents removed remote-login surface %q", relativePath, removedTerm)
+			}
+		}
+	}
+
+	for _, contract := range []struct {
+		relativePath string
+		ignoredText  string
+		removedText  string
+	}{
+		{relativePath: "docs/maintainers/adr/0009-cross-machine-login-relay.md", ignoredText: "完全忽略", removedText: "删除 `pixiv auth devices`"},
+		{relativePath: "docs/maintainers/development.md", ignoredText: "会被忽略", removedText: "`pixiv auth devices` 已移除"},
+	} {
+		payload, err := os.ReadFile(filepath.Join(repositoryRoot, filepath.FromSlash(contract.relativePath)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		content := string(payload)
+		for _, requirement := range []string{
+			"remote-devices.json",
+			"login_relay_secret",
+			"login_relay_target_url",
+		} {
+			if !strings.Contains(content, requirement) {
+				t.Errorf("%s is missing the ignored legacy relay state contract %q", contract.relativePath, requirement)
+			}
+		}
+		if !strings.Contains(content, contract.ignoredText) {
+			t.Errorf("%s no longer states that legacy relay state is ignored", contract.relativePath)
+		}
+		if !strings.Contains(content, contract.removedText) {
+			t.Errorf("%s no longer states that auth devices was removed", contract.relativePath)
+		}
+	}
+
+	skillPayload, err := os.ReadFile(filepath.Join(repositoryRoot, "skills", "pixiv-cli", "references", "auth.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, requirement := range []string{
+		"one-time remote hand-off",
+		"one-login hand-off URL",
+		"redirects directly",
+		"manually copied callback for this",
+		"login_relay_secret",
+		"login_relay_target_url",
+		"pixiv auth devices",
+		"silently ignored",
+		"has been removed",
+	} {
+		if !strings.Contains(string(skillPayload), requirement) {
+			t.Errorf("skills/pixiv-cli/references/auth.md is missing remote-login contract %q", requirement)
 		}
 	}
 }

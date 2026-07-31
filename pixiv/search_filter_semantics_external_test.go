@@ -158,31 +158,3 @@ func TestSearchIllustRatingFiltersLocallyByXRestrictOnly(t *testing.T) {
 		t.Fatalf("r18 local filter = %#v", result.Illusts)
 	}
 }
-
-// search-options 动态读取上游 tool options，不硬编码工具表。
-func TestSearchIllustOptionsReturnsDynamicToolListFromApp(t *testing.T) {
-	t.Parallel()
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/v1/search/illust-options" && r.URL.Path != "/v1/search/options" {
-			// 兼容当前 appapi 实际 path
-		}
-		fmt.Fprint(w, `{"illust":{"tool":{"options":["Dynamic Tool A","Dynamic Tool B"]}}}`)
-	}))
-	defer server.Close()
-
-	client, err := pixiv.NewClient(pixiv.NewClientOptions{
-		HTTPClient:    server.Client(),
-		AppAPIBaseURL: server.URL,
-		AccessToken:   "token",
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	result, err := client.SearchIllustOptions(context.Background(), pixiv.SearchIllustOptionsRequest{Word: "miku"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(result.Tools) != 2 || result.Tools[0] != "Dynamic Tool A" || result.Tools[1] != "Dynamic Tool B" {
-		t.Fatalf("tools = %#v", result.Tools)
-	}
-}

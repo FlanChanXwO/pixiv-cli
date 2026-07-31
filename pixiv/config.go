@@ -24,12 +24,9 @@ const (
 	ConfigKeyLoginUseAfterLogin    ConfigKey = "login_use_after_login"
 	ConfigKeyLoginRelayPublicURL   ConfigKey = "login_relay_public_url"
 	ConfigKeyLoginRelayListenAddr  ConfigKey = "login_relay_listen_addr"
-	ConfigKeyLoginRelaySecret      ConfigKey = "login_relay_secret"
-	ConfigKeyLoginRelayTargetURL   ConfigKey = "login_relay_target_url"
 	ConfigKeyLoginRelayTLSCertFile ConfigKey = "login_relay_tls_cert_file"
 	ConfigKeyLoginRelayTLSKeyFile  ConfigKey = "login_relay_tls_key_file"
 	ConfigKeyPremiumStatusCacheTTL ConfigKey = "premium_status_cache_ttl"
-	ConfigKeyLogLevel              ConfigKey = "log_level"
 )
 
 // ConfigValueKind 描述 ConfigValue 或 ConfigInput 保存的 Go 值类型。
@@ -101,9 +98,6 @@ func ParseConfigKey(alias string) (ConfigKey, error) {
 func ParseConfigInput(key ConfigKey, raw string) (ConfigInput, error) {
 	if err := validateConfigKey(key); err != nil {
 		return ConfigInput{}, err
-	}
-	if key == ConfigKeyLoginRelaySecret {
-		return ConfigInput{}, errors.New("sensitive config requires SetLoginRelaySecret")
 	}
 	value, _, err := config.ParseSettingInput(string(key), raw)
 	if err != nil {
