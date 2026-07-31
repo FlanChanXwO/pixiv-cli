@@ -4,10 +4,8 @@ import (
 	"context"
 	"errors"
 	"math"
-	"time"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/application"
-	"github.com/FlanChanXwO/pixiv-cli/internal/logging"
 	sdk "github.com/FlanChanXwO/pixiv-cli/pixiv"
 )
 
@@ -71,11 +69,18 @@ func collectPages[T any](ctx context.Context, plan mcpListPlan, fetch func(conte
 	if limit < 0 {
 		limit = 0
 	}
+	seen := make(map[string]struct{})
 	items, result, err := application.CollectPages(ctx, application.PagePlan{
 		Skip:     plan.skip,
 		Limit:    limit,
 		OneBatch: plan.oneBatch,
-	}, fetch)
+	}, func(ctx context.Context, cursor sdk.Cursor) ([]T, sdk.Cursor, error) {
+		items, next, err := fetch(ctx, cursor)
+		if err != nil {
+			return nil, "", err
+		}
+		return filterRecordPage(ctx, items, seen), next, nil
+	})
 	if err != nil {
 		return nil, false, err
 	}
@@ -83,8 +88,6 @@ func collectPages[T any](ctx context.Context, plan mcpListPlan, fetch func(conte
 }
 
 func (a *App) openSDKOperation(ctx context.Context) (client application.SDKClient, release func(), err error) {
-	started := time.Now()
-	defer func() { a.operationLog("open_sdk_operation", started, err != nil, err, 0, 0) }()
 	if a.sdk.NewClient == nil {
 		return nil, nil, errors.New("pixiv sdk is not configured")
 	}
@@ -99,26 +102,7 @@ func (a *App) openSDKOperation(ctx context.Context) (client application.SDKClien
 	return client, a.releaseSDKOperation, nil
 }
 
-// openSDKMutable 用于账号导入、选择和刷新。它持有与普通 operation 相同的 gate，
-// 但不能先 Snapshot：ImportAccount 的输入 refresh token 尚未进入本地 store。
-func (a *App) openSDKMutable(ctx context.Context) (client application.SDKClient, release func(), err error) {
-	if a.sdk.NewClient == nil {
-		return nil, nil, errors.New("pixiv sdk is not configured")
-	}
-	if err = a.acquireSDKGate(ctx); err != nil {
-		return nil, nil, err
-	}
-	client, err = a.sdk.Client(a.sdkRequest)
-	if err != nil {
-		a.releaseSDKGate()
-		return nil, nil, err
-	}
-	return client, a.releaseSDKGate, nil
-}
-
 func (a *App) currentSDKUser(ctx context.Context) (client application.SDKClient, userID int64, release func(), err error) {
-	started := time.Now()
-	defer func() { a.operationLog("current_sdk_user", started, err != nil, err, 0, userID) }()
 	if a.sdk.NewClient == nil {
 		return nil, 0, nil, errors.New("pixiv sdk is not configured")
 	}
@@ -136,76 +120,6 @@ func (a *App) currentSDKUser(ctx context.Context) (client application.SDKClient,
 		return nil, 0, nil, err
 	}
 	return client, userID, a.releaseSDKOperation, nil
-}
-
-// operationLog 保持 MCP stdio 的 stdout 只属于 JSON-RPC。它不记录 tool 参数、
-// 原始错误、认证材料或 URL；详细上游元数据由注入后的 public SDK 单独安全记录。
-func (a *App) operationLog(operation string, started time.Time, failed bool, err error, illustID, userID int64) {
-	if a == nil || a.logger == nil {
-		return
-	}
-	result, code, backend, status, transportKind := logging.ResultSuccess, "", logging.BackendLocal, 0, ""
-	var typed *sdk.Error
-	if failed {
-		result = logging.ResultError
-	}
-	if err != nil {
-		if errors.As(err, &typed) {
-			code, backend, status = safeMCPErrorCode(typed.Code), safeMCPBackend(typed.Backend), typed.UpstreamStatus
-			transportKind = string(typed.TransportKind)
-			if typed.IllustID != 0 {
-				illustID = typed.IllustID
-			}
-			if typed.UserID != 0 {
-				userID = typed.UserID
-			}
-		}
-	}
-	logging.LogOperation(a.logger, logging.OperationEvent{
-		Component:     "mcp",
-		Operation:     operation,
-		Backend:       backend,
-		Duration:      time.Since(started),
-		Result:        result,
-		ErrorCode:     code,
-		Status:        status,
-		TransportKind: transportKind,
-		IllustID:      illustID,
-		UserID:        userID,
-	})
-}
-
-// safeMCPErrorCode 只允许公开 SDK 定义的稳定枚举进入 stderr；Error 的字段
-// 对外可写，未知字符串不能被当作任意日志载荷。
-func safeMCPErrorCode(code sdk.ErrorCode) string {
-	switch code {
-	case sdk.CodeInvalidArgument,
-		sdk.CodeArtworkUnavailable,
-		sdk.CodeUnauthorized,
-		sdk.CodeForbidden,
-		sdk.CodeUnsupported,
-		sdk.CodeRateLimited,
-		sdk.CodeUpstreamError,
-		sdk.CodeUpstreamUnavailable,
-		sdk.CodeMalformedUpstreamResponse:
-		return string(code)
-	default:
-		return ""
-	}
-}
-
-// safeMCPBackend 与无 backend 的既有日志语义一致，把未知值归为 local；它不
-// 解析或清洗任意字符串，避免 URL、token 或其他调用方载荷进入事件。
-func safeMCPBackend(backend sdk.Backend) string {
-	switch backend {
-	case sdk.BackendAppAPI,
-		sdk.BackendWebAPI,
-		sdk.BackendOAuth,
-		sdk.BackendResource:
-		return string(backend)
-	default:
-		return logging.BackendLocal
-	}
 }
 
 func (a *App) releaseSDKOperation() {

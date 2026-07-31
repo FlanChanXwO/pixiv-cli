@@ -5,7 +5,7 @@
 `cmd/pixiv/main.go` 是唯一官方二进制入口，它只负责调用 `internal/cli`：
 
 1. `pixiv` 无参数显示 CLI 帮助。
-2. `pixiv auth/config/version/update/search/search-options/detail/ranking/recommended/user/bookmark/follow/download` 进入 CLI 模式；`auth import` 负责 direct token import 或 bundle restore，`auth export` 负责本地 secret snapshot。
+2. `pixiv auth/config/version/update/search/timeline/detail/ranking/recommended/user/bookmark/follow/download` 进入 CLI 模式；`auth import` 负责 direct token import 或 bundle restore，`auth export` 负责本地 secret snapshot。
 3. `pixiv mcp` 委托 `internal/bootstrap` 组装并运行 MCP stdio server。
 4. CLI 与 MCP 通过 `internal/bootstrap` 共享生产 wiring：
    - 账号认证来自 `~/.pixiv-cli/auth.json`（Windows：`%USERPROFILE%\.pixiv-cli\auth.json`）
@@ -45,14 +45,14 @@ cache 的 24 小时节流，并最多等待 3 秒。配置、网络、来源识�
 
 ### `internal/cli/loginhelper`
 
-负责 `auth login` 的系统 URL scheme helper、持久 handler manifest 和 remote callback client。`internal/cli`
-只经该包安装按需 handler，保留 OAuth、loopback HTTP、系统浏览器、TTY 和 relay server 编排。handler 只允许
-精确的 `pixiv://account/login` 进入 loopback/remote relay；活跃 loopback 优先，其他 `pixiv://` URL 定向交给
-manifest 保存的旧 handler。manifest 仅有 executable path 与旧关联，relay secret 始终从私有 `config.toml`
-在内存读取。remote callback 仅接受同一 relay base 返回的 one-time result URL；`internal/cli` 先打开该无敏感
-最终页，再等待 server 的 OAuth exchange 结果。Darwin 独立持有嵌入 Swift、`Info.plist`、LaunchServices；Windows
-使用当前用户 registry/class 启动；desktop Linux 使用 XDG desktop entry 与 `gio`。headless Linux 不注册 handler，
-但可运行 relay server。
+负责 `auth login` 的系统 URL scheme helper、持久 handler manifest、一次性 remote handoff 私有状态与 remote callback client。
+`internal/cli` 只经该包安装按需 handler，保留 OAuth、loopback HTTP、系统浏览器、TTY 和 relay server 编排。handler
+只允许精确的 `pixiv://account/login` 与 `pixiv://account/remote-login` 进入本轮操作；活跃 loopback 优先，远程 callback
+只投递给活跃的一次性 handoff，其他 `pixiv://` URL 定向给 manifest 保存的旧 handler。desktop private state 只保存当前
+handoff 的 relay origin、会话 ID 与 capability；server 不保存 desktop 设备记录，public SDK 不暴露这些状态。remote callback
+只接受同一 relay base 的一次性 result URL，`internal/cli` 打开无敏感的最终页后等待 OAuth exchange。
+Darwin 独立持有嵌入 Swift、`Info.plist`、LaunchServices；Windows 使用当前用户 registry/class 启动；desktop Linux 使用
+XDG desktop entry 与 `gio`。headless Linux 不注册 handler，但可运行 relay server。
 
 ### `internal/buildinfo`
 
@@ -187,9 +187,7 @@ R18/R18G/mature 与动态搜索选项会返回认证需求，不伪造空结果�
 
 负责将 Pixiv 与下载能力注册为 MCP tools。所有 Pixiv 内容、认证、资源和写操作都通过 `SDKService` 使用 public SDK；旧构造器保留的首个 API 参数只是废弃占位，生产路径不会读取。下载由 operation snapshot 对应的 `DownloadManager` 执行。MCP 的 nullable `page`/`limit` 只在本 adapter 解析，逻辑分页遍历由 application 共享引擎执行；旧 offset wire 字段已移除。stdio runtime 由 `internal/bootstrap` 组装和启动。
 
-包内按职责拆分：`server.go` 负责构造与统一 observability wrapper，`registration.go` 只维护 tool 注册，`auth_tools.go` 和 `download_tools.go` 分别承载认证与下载，`legacy_tools.go` 承载文本型读取适配，`formatting.go` 集中文本/output helper，`sdk_runtime.go` 负责分页、operation snapshot、gate 与安全日志，`sdk_tools.go` 承载 SDK typed tools。文本型 handler 的失败结果可使用 `isError=false`，但必须把真实 cause 交给 wrapper；wrapper 把安全分类 metadata 写入 `~/.pixiv-cli/logs`（Windows：`%USERPROFILE%\.pixiv-cli\logs`）的按日纯文本 `YYYY-MM-DD.txt`，不读取参数或原始错误文本，也不把操作日志写到终端。正常空结果不会伪装成失败。
-
-输出目前以中文文本为主，适合直接返回给 LLM/MCP 客户端。其中 `refresh_token` tool 会区分缺少 token、context 取消/deadline、安全 typed SDK 失败与未知失败；其未知底层错误只返回脱敏排查提示，不回显原始原因。完整 wire 语义见 [MCP 工具](../zh-CN/mcp-tools.md#配置认证与下载)。
+包内按职责拆分：`server.go` 负责 App 构造与 tool handler 适配，`registration.go` 只维护 tool 注册，`download_tools.go` 承载下载适配，`legacy_tools.go` 承载文本型读取适配，`formatting.go` 集中文本/output helper，`sdk_runtime.go` 负责分页、operation snapshot 与 gate，`sdk_tools.go` 承载 SDK typed tools。运行期 handler 的失败结果保留其 structured output 并使用 `isError=true`；正常空结果不会伪装成失败。完整 wire 语义见 [MCP 工具](../zh-CN/mcp-tools.md#错误与分页)。
 
 ### `internal/download`
 
@@ -261,13 +259,9 @@ Release 的匿名 URL 不可安装，Release 会先公开再执行四架构 gate
 SmartScreen 提示时，必须回到已验证的项目 GitHub Release、checksum 和签名记录，不能把系统提示视为
 可由 CLI 静默绕过的错误。
 
-### `internal/platform/localstate` 与 `internal/logging`
+### `internal/platform/localstate`
 
-不保留通用 constants 包。本地私有目录/文件权限与 `AppDataDirName` 归 `internal/platform/localstate`；安全 operation log 的稳定事件/字段名归 `internal/logging`。Pixiv 协议值、MCP delivery 值、config key/default 等仍留在所属领域包。
-
-### `internal/logging`
-
-集中定义 CLI、MCP、SDK、下载器与 App API 共用的结构化 operation event，以及本地按日文件的紧凑 Spring/SLF4J 风格文本 handler。`internal/config/logger.go` 仍是 runtime logger 的构造入口；本包不配置全局 logger。事件只允许 component、operation、受控的仓库相对调用点、backend、耗时、结果、安全错误分类、HTTP status、作品/用户 ID 以及限流重试的已解析等待时长；绝不记录 token、URL、原始 header、请求输入或响应 body。调用方注入 JSON handler 时仍取得完整稳定字段；本地文本渲染只省略空字段与冗余的本地 backend/status。
+不保留通用 constants 包。本地私有目录/文件权限与 `AppDataDirName` 归 `internal/platform/localstate`。Pixiv 协议值、MCP delivery 值、config key/default 等仍留在所属领域包。项目不维护 operation 日志或诊断元数据包；错误直接由 CLI、MCP 或 public SDK 的既有接口传递。
 
 ### `internal/utils`
 

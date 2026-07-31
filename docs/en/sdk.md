@@ -17,7 +17,6 @@ local, err := pixiv.OpenDefault()
 // Explicit access-token or anonymous client: no local auth/config fields exist here.
 client, err := pixiv.NewClient(pixiv.NewClientOptions{
     AccessToken: accessToken,
-    Logger:      logger, // optional; nil keeps the SDK quiet
 })
 
 // Advanced local/default client.
@@ -33,10 +32,9 @@ operations that require runtime configuration obtain a fresh configuration/auth 
 exception and reads the auth store directly.
 
 `NewClientOptions` intentionally contains only direct-client fields: `AccessToken`, `WebFallbackEnabled`, HTTP,
-App/Web endpoints, `ResourcePolicy`, optional `ResourceCachePath`, and `Logger`. `OpenDefaultOptions` instead owns
-local paths, OAuth endpoint, account selection, HTTP/endpoints, resource policy/cache path, and logging. Each
-`OpenDefault` snapshot reads local `web_fallback_enabled`. Do not make refresh tokens or loggers global mutable
-state.
+App/Web endpoints, `ResourcePolicy`, and optional `ResourceCachePath`. `OpenDefaultOptions` instead owns local paths,
+OAuth endpoint, account selection, HTTP/endpoints, and resource policy/cache path. Each `OpenDefault` snapshot reads
+local `web_fallback_enabled`. Do not make refresh tokens global mutable state.
 
 ### HTTP client and request lifetime
 
@@ -58,17 +56,17 @@ cookie jar, and redirect policy. Resource requests use per-request copies with v
 
 | Category | Methods |
 | --- | --- |
-| Works and recommendations | `SearchIllust`, `SearchNovel`, `SearchIllustOptions`, `IllustDetail`, `IllustPages`, `IllustRelated`, `IllustRanking`, `IllustRecommended`, `MangaRecommended`, `NovelRecommended`, `UserRecommended`, `FollowingIllusts`, `TrendingTagsIllust`, `UgoiraMetadata`. |
+| Works and recommendations | `SearchIllust`, `SearchNovel`, `SupportedDrawingTools`, `IllustDetail`, `IllustPages`, `IllustRelated`, `IllustRanking`, `IllustRecommended`, `MangaRecommended`, `NovelRecommended`, `UserRecommended`, `FollowingIllusts`, `TrendingTagsIllust`, `UgoiraMetadata`. |
 | Users | `SearchUser`, `UserDetail`, `UserArtworks`, `UserBookmarks`, `UserFollowing`, `CurrentUserID`. |
 | Writes | `AddBookmark`, `RemoveBookmark`, `FollowUser`, `UnfollowUser`. |
 | Accounts/configuration | `ImportAccount`, `ListAccounts`, `SelectAccount`, `RemoveAccount`, `ExportAccountRefreshToken`, `ExportAuthBundle`, `RestoreAuthBundle`, `CheckAccount`, `CheckRefreshToken`, `Refresh`, `RefreshAccount`, `PremiumStatus`, `RefreshPremiumStatus`, `GetConfig`, `SetConfig`, `UnsetConfig`; bundle codec functions are package-level. |
 | Login | `StartLogin`, `CompleteLogin`, `BuildLoginAuthorizationURL`; integrations control their own browser, loopback server, or TTY. |
 | Resources | `Download`, `DownloadAll`, `DownloadWith`, `DownloadAllWith`, `ParseResourceRef`, `OpenResource`, `DownloadResource`. |
 
-Request methods use named request types such as `SearchIllustRequest`, `SearchNovelRequest`, `SearchIllustOptionsRequest`,
+Request methods use named request types such as `SearchIllustRequest`, `SearchNovelRequest`,
 `UserArtworksRequest`, `UserBookmarksRequest`, `UserFollowingRequest`, `AddBookmarkRequest`, and
-`FollowUserRequest`. Result models such as `IllustListResult`, `SearchIllustOptionsResult`, `UserListResult`,
-`IllustDetail`, and `UserDetailResult` all live in the top-level `pixiv` package.
+`FollowUserRequest`. Result models such as `IllustListResult`, `UserListResult`, `IllustDetail`, and
+`UserDetailResult` all live in the top-level `pixiv` package.
 Every public `Illust` includes a stable artwork page URL
 `https://www.pixiv.net/artworks/{id}` as the first JSON field `url`. The SDK does not
 expose a like-count field; bookmark totals must not be labeled as likes.
@@ -80,12 +78,19 @@ an official artwork URL, or a CDN URL accepted by `ResourcePolicy`. They use `./
 `2 × runtime.GOMAXPROCS(0)`.
 
 Use `DownloadWith` / `DownloadAllWith` with `DownloadOptions` to choose `DownloadPath`, `FilenameTemplate`,
-1-based `Pages`, `Quality`, `UgoiraFormat`, and `Concurrency`. `UgoiraFormat` is `gif` by default and may be
+1-based `Pages`, `Quality`, `UgoiraFormat`, `Concurrency`, and the observation-only `Progress` callback. `UgoiraFormat` is `gif` by default and may be
 `apng`. `Concurrency == 0` retains the automatic value; any positive value
 is used exactly and is never artificially capped. Direct CDN resources keep their URL filename; page selection,
 derived quality, and a custom artwork template are rejected for them. `DownloadAllResult.Items` keeps input order and
 records `Attempted`, the successful result (including per-file cache state), or the item's error, so callers can retry
 only failed items. Ugoira ZIPs are cached and converted to GIF or APNG; ugoira rejects page selection or non-original quality.
+
+`Progress func(DownloadProgress)` is invoked directly and concurrently by download workers. Each event carries the
+input `SourceIndex`, 1-based `Page`, destination path, available artwork metadata, per-resource byte counters, and
+batch counters. The SDK performs a safe HEAD probe for each resource when this callback is present. When every size
+is known, `TotalBytesKnown` and `TotalBytes` describe the batch; otherwise events still report transferred bytes for
+the resource and batch. Validated partial bytes are included from the first event. Keep callbacks non-blocking and
+cancel the supplied context to stop the transfer.
 
 `DownloadResource(ctx, ref, destination)` is the explicit raw-resource API. It returns
 `ResourceDownloadResult` with `miss`, `revalidated`, `resumed`, or `refreshed` cache state. It replaces the former
@@ -169,7 +174,7 @@ manage their own PKCE and state. Use `StartLogin` when the SDK should manage the
 | `AIMode` | `all`, `exclude`, `only`; Pixiv `AIType==2` means AI-generated |
 | `AspectRatio` | `all`, `landscape`, `portrait`, `square` |
 | `Resolution` | `all`, `high`, `medium`, `low`; both dimensions must respectively be `>=3000`, `1000..2999`, or `<=999` |
-| `Tool` | Exact upstream drawing-tool value; no fuzzy matching |
+| `Tool` | Exact entry from the versioned drawing-tool catalog; unique one-edit spelling mistakes receive a suggestion, while ambiguous prefixes return `invalid_argument`. |
 | `BookmarkMin` / `BookmarkMax` | Optional inclusive non-negative public bookmark-count bounds; require App OAuth and an active Pixiv Premium membership; `Min` cannot exceed `Max`. `OpenDefault` with a saved account checks its cached self-profile status before the request and returns `forbidden` locally for a non-Premium account. |
 
 Zero enum values normalize to `all`; `Tool` is trimmed. Unknown values return `invalid_argument` before any
@@ -181,9 +186,8 @@ date bounds, and Pixiv Premium-only bookmark bounds to App server parameters. Ra
 the current App batch.
 `Illust.Tools []string` preserves upstream order and values and is unrelated to bookmark-count filtering.
 
-`SearchIllustOptions(ctx, SearchIllustOptionsRequest{Word: word})` requires a non-empty word and App
-authentication. It returns `SearchIllustOptionsResult{Tools []string}` in upstream order; a missing list becomes a
-non-nil empty slice. `PremiumStatus(ctx)` returns the saved authenticated account's cached-or-fresh membership
+`SupportedDrawingTools() []string` returns the versioned drawing-tool catalog in its documented order. It makes no
+network request and returns a defensive copy that callers may modify. `PremiumStatus(ctx)` returns the saved authenticated account's cached-or-fresh membership
 snapshot; `RefreshPremiumStatus(ctx)` forces a profile read and persists the result. `OpenDefault` uses
 `[premium] status_cache_ttl` (default `24h`, `0s` disables reuse). A direct `NewClient` access token does not carry
 a verifiable account UID, so it cannot perform this saved-account precheck.
@@ -240,7 +244,7 @@ With a refresh token, illustration search uses App API and authentication, netwo
 typed error. Without a token, `NewClient` can use the anonymous Web allowlist when `WebFallbackEnabled=true`;
 `OpenDefault` reads local `web_fallback_enabled` for each snapshot. Anonymous search uses only filters Web can
 express reliably. `r18`, `r18g`, `mature`, `Target=keyword`, and bookmark bounds return `unauthorized` before
-networking. Anonymous `SearchIllustOptions` returns `unsupported`.
+networking.
 
 `SearchNovel` uses App authentication. `SearchUser` uses App search when authenticated; its anonymous allowlist
 route is exposed with `Source=related_illust_authors`.
@@ -282,9 +286,7 @@ partials with `Range` + `If-Range`, and atomically publishes a completed file. N
 
 For idempotent App API JSON reads only, the first HTTP 429 is retried once when its `Retry-After` is a valid
 seconds value or HTTP date. The wait observes the caller context. Invalid or missing headers, a second 429, and all
-other errors remain the original typed error; mutations and resource downloads are never replayed. The optional
-`info` logger records only the retry attempt and parsed wait duration, never a URL, header value, credential, or
-response body.
+other errors remain the original typed error; mutations and resource downloads are never replayed.
 
 ## Errors
 

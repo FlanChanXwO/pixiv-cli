@@ -59,13 +59,7 @@ func (c *Client) operationClient(ctx context.Context, operation Operation) (*Cli
 	if c.defaults == nil {
 		return c, nil
 	}
-	started := time.Now()
 	scoped, err := c.defaults.snapshot(ctx, operation)
-	if err != nil {
-		// operationClient 是 OpenDefault 建立一次真实 operation snapshot 的唯一入口；
-		// 在此记录失败，避免外层 delegated public method 与 scoped method 双写。
-		c.operationLog(operation, started, err, 0, 0)
-	}
 	return scoped, err
 }
 

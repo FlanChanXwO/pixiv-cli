@@ -58,8 +58,14 @@ the installed binary's `pixiv <cmd> --help` output.
    give the command to the user for their private terminal, or use an authorized
    secret-manager-to-stdin pipeline. Non-TTY input is read automatically; there
    is no `--stdin` flag. This is an environment constraint, not a command ban.
-5. Run interactive `pixiv auth login` only when the user explicitly asks and
-   is present to complete browser OAuth.
+5. Before running `pixiv auth login`, read [`references/auth.md`](references/auth.md)
+   and select the route from the machine that stores the account. Run interactive
+   login only when the user explicitly asks and is present to complete browser OAuth.
+   A server with both relay settings prints a one-login hand-off URL. Opening
+   it transfers directly to an installed desktop CLI, which claims that session,
+   opens its OAuth page, and returns its callback. A remote login requires that
+   desktop handler; it has no project confirmation page or manual callback form.
+   Do not invent relay URLs or callback values.
 6. Authenticate with a raw Pixiv App API refresh token through the documented
    configuration or environment variables.
 
@@ -68,12 +74,12 @@ the installed binary's `pixiv <cmd> --help` output.
 | Tier | Commands | Behavior |
 | --- | --- | --- |
 | Credential transfer | `auth import` `auth export` | Execute only for the user's explicit import/export task; follow `references/auth.md` so secret input/output is not exposed accidentally |
-| Read | `search` `novel search` `search-options` `detail` `ranking` `recommended` `feed *` `mypixiv *` `user *` `config get/path` `version` `update --check` | Execute when the user's task requires it |
+| Read | `search` `novel search` `detail` `ranking` `recommended` `timeline *` `mypixiv *` `user *` `config get/path` `version` `update --check` | Execute when the user's task requires it |
 | Account diagnosis | `auth list/check` | List only for authentication/account/fallback decisions; check only when network validation is needed |
 | Account maintenance | `auth refresh` | Rotates saved OAuth credentials and refreshes the cached account profile/Premium status; run only on an explicit request |
 | Write | `bookmark add/remove` `follow add/remove` | State the target (illust/user ID) in one line before executing; for NDJSON stdin actions, state the record type and scope before starting |
 | Disk | `download` | Confirm target directory and exact targets (IDs or supported Pixiv URLs) before each invocation; a user URL expands every visual work, so state that scope explicitly; approval never carries over; see `references/download.md` |
-| Interactive credential | `auth login` | Run only on explicit request while the user is present for browser OAuth |
+| Interactive credential | `auth login` | Read `references/auth.md`, then run only on an explicit request while the user is present for browser OAuth; use the one-time desktop hand-off URL when the account host is remote |
 | Account/config state | `auth use/remove` `config set/unset` `update` (actual install) | Ask for explicit confirmation each time; approval does not carry over |
 | MCP server | `mcp` | Run only when the user explicitly asks to start it; it is a long-lived stdio JSON-RPC server, not a data command—do not auto-probe, auto-wait, or include it in preflight |
 
@@ -124,13 +130,12 @@ pixiv search "WORD" --limit 10 --json     # illustration search
 pixiv search "WORD" --rating sfw --type illust --ai-mode exclude
 pixiv search "WORD" --resolution high --aspect-ratio landscape --draw-tool "CLIP STUDIO PAINT"
 pixiv novel search "WORD" --rating sfw --min-text-length 1000 --limit 10 --json
-pixiv search-options "WORD" --json         # authenticated dynamic tool choices
 pixiv detail ILLUST_ID_OR_URL --json      # single artwork detail
 pixiv ranking --mode day
 pixiv recommended illust --limit 10       # kind is REQUIRED; needs auth
 pixiv recommended all --limit 10          # request all supported kinds; needs auth
-pixiv feed following --type illust --limit 20
-pixiv feed latest --type novel --limit 20
+pixiv timeline following --type illust --limit 20
+pixiv timeline latest --type novel --limit 20
 pixiv mypixiv works --type illust --limit 20
 pixiv user search "WORD" --limit 10 --json # source labels App search vs related-author fallback
 pixiv user detail USER_ID --json          # full public profile (USER_ID required)
@@ -170,7 +175,7 @@ Other TOML settings are hand-maintained; inspect the installed help before sugge
    anonymously.
 3. **`--limit` is command-specific.** It is available on `search`, `ranking`,
    `recommended`, `user search`, `user artworks`, `user bookmarks`, and `user following`;
-   do not attach it to `detail`, `search-options`, auth/config commands, or
+   do not attach it to `detail`, auth/config commands, or
    other commands whose help omits it. Where supported, a positive value sets
    the maximum result count and `0` requests all results. `--page` requires a
    positive `--limit`.
@@ -183,7 +188,7 @@ Other TOML settings are hand-maintained; inspect the installed help before sugge
    support illustration AI, drawing-tool, resolution, aspect-ratio, or type filters.
 5. **Anonymous restricted search fails explicitly.** Web fallback uses only
    reliable illustration-search filters. `r18`, `r18g`, `mature`, `--search-by tag-title-caption`,
-   bookmark-count bounds, and `search-options`
+   bookmark-count bounds
    require App authentication; bookmark-count bounds additionally require Pixiv Premium. For a saved account the CLI
    checks the cached self-profile status before search (24h by default); a non-Premium result fails locally rather than
    making a misleading search request. Use explicit `auth refresh` to force that cache. Do not

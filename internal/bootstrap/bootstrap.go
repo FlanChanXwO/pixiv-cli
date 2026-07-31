@@ -3,15 +3,11 @@ package bootstrap
 import (
 	"context"
 	"fmt"
-	"io"
-	"log/slog"
 	"strings"
-	"time"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/application"
 	"github.com/FlanChanXwO/pixiv-cli/internal/config"
 	"github.com/FlanChanXwO/pixiv-cli/internal/download"
-	"github.com/FlanChanXwO/pixiv-cli/internal/logging"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver"
 	internalpixiv "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv"
 	"github.com/FlanChanXwO/pixiv-cli/internal/storage/accountpool"
@@ -38,29 +34,29 @@ func (AuthFileRepository) Save(store auth.AuthStore) error {
 	return auth.SaveAuthStore(path, store)
 }
 
-func NewServices(logger *slog.Logger) application.Services {
+func NewServices() application.Services {
 	sdkService := application.SDKService{NewClient: func(request application.SDKClientRequest) (application.SDKClient, error) {
-		return newSDKClient(logger, request)
-	}, LoadRuntime: LoadRuntimeConfig, RunPooled: newPooledSDKOperation(logger)}
+		return newSDKClient(request)
+	}, LoadRuntime: LoadRuntimeConfig, RunPooled: newPooledSDKOperation()}
 	return application.Services{
 		Account: application.AccountService{SDK: sdkService, RefreshTokenFromEnv: config.RefreshTokenFromEnv},
 		Config:  application.ConfigService{Store: ConfigFileStore{}},
 		Login:   application.LoginService{SDK: sdkService, LoadRuntime: LoadRuntimeConfig},
 		SDK:     sdkService,
 		Download: application.DownloadService{NewManager: func(client application.DownloadClient, downloadPath, filenameTemplate string) (application.DownloadManager, error) {
-			return newDownloadManager(client, logger, downloadPath, filenameTemplate), nil
+			return newDownloadManager(client, downloadPath, filenameTemplate), nil
 		}},
 	}
 }
 
-func newPooledSDKOperation(logger *slog.Logger) application.SDKPooledOperation {
+func newPooledSDKOperation() application.SDKPooledOperation {
 	return func(ctx context.Context, request application.SDKClientRequest, attempt func(context.Context, application.SDKClient) (bool, error)) error {
 		runtime, err := LoadRuntimeConfig()
 		if err != nil {
 			return err
 		}
 		if !runtime.AccountPool.Enabled {
-			client, err := newSDKClient(logger, request)
+			client, err := newSDKClient(request)
 			if err != nil {
 				return err
 			}
@@ -95,7 +91,7 @@ func newPooledSDKOperation(logger *slog.Logger) application.SDKPooledOperation {
 			poolRequest.RefreshToken = ""
 			poolRequest.AuthFilePath = authPath
 			poolRequest.DisableRetryAfterRetry = true
-			client, err := newSDKClient(logger, poolRequest)
+			client, err := newSDKClient(poolRequest)
 			if err != nil {
 				return false, err
 			}
@@ -118,18 +114,17 @@ func snapshotSDKClient(ctx context.Context, client application.SDKClient) (appli
 }
 
 // newDownloadManager 是 CLI 与 MCP 唯一的生产下载器构造链，避免两处 wiring 漂移。
-func newDownloadManager(client application.DownloadClient, logger *slog.Logger, downloadPath, filenameTemplate string) *download.Manager {
-	return download.NewManager(client, logger, downloadPath, filenameTemplate)
+func newDownloadManager(client application.DownloadClient, downloadPath, filenameTemplate string) *download.Manager {
+	return download.NewManager(client, downloadPath, filenameTemplate)
 }
 
 // newSDKClient 将 CLI 的显式账号和代理覆写交给公共 SDK。没有 --proxy 时，
 // OpenDefault 自己在每个操作读取当前 config 快照；有覆写时才固定本次 transport。
-func newSDKClient(logger *slog.Logger, request application.SDKClientRequest) (application.SDKClient, error) {
+func newSDKClient(request application.SDKClientRequest) (application.SDKClient, error) {
 	options := publicpixiv.OpenDefaultOptions{
 		UserID:                        request.UserID,
 		RefreshToken:                  request.RefreshToken,
 		AuthFilePath:                  request.AuthFilePath,
-		Logger:                        logger,
 		IgnoreEnvironmentRefreshToken: true,
 		DisableRetryAfterRetry:        request.DisableRetryAfterRetry,
 	}
@@ -141,37 +136,6 @@ func newSDKClient(logger *slog.Logger, request application.SDKClientRequest) (ap
 		options.HTTPClient = httpClient
 	}
 	return publicpixiv.OpenDefaultWith(options)
-}
-
-// NewApplicationLogger 从当前配置建立一次应用根 logger。它不触碰 slog 全局默认值；
-// CLI 与 MCP 将其显式传入所有下游组件。返回的 closer 必须在命令或 MCP 会话结束时关闭，
-// 以释放 Windows 上不能由临时目录删除的文本日志文件句柄。
-// 终端（errOut）默认不输出日志痕迹；操作摘要写入 UserStateDir/pixiv/logs 按日 txt。
-// 日志目录创建/轮转/清理失败时静默继续。errOut 参数保留以兼容调用签名。
-func NewApplicationLogger(errOut io.Writer) (*slog.Logger, io.Closer, error) {
-	_ = errOut
-	writer := openFileLogWriter()
-	settings, err := config.LoadSettingsState()
-	if err != nil {
-		// 根 logger 的初始化不得抢在 Cobra 前把帮助、config path 等本地协议变成
-		// 失败。配置文件不可读或语法损坏时静默 logger；只要文件可解析，下面对
-		// log_level 的显式校验仍会把非法日志配置返回给调用方。
-		return slog.New(logging.NewTextHandler(writer, &slog.HandlerOptions{Level: slog.LevelWarn})), writer, nil
-	}
-	// 根 logger 只依赖 logging 自己的两项设置。这样无关 runtime 配置（例如
-	// web.fallback_enabled）的错误不会破坏 help/config path 等离线协议；反之
-	// 无效 log_level 仍明确失败，绝不静默回退。
-	level, err := settings.Effective("log_level")
-	if err != nil {
-		_ = writer.Close()
-		return nil, nil, err
-	}
-	logger, err := config.NewLogger(writer, config.RuntimeConfig{LogLevel: level.Value.(string)})
-	if err != nil {
-		_ = writer.Close()
-		return nil, nil, err
-	}
-	return logger, writer, nil
 }
 
 func LoadRuntimeConfig() (config.RuntimeConfig, error) {
@@ -239,13 +203,12 @@ func (ConfigFileStore) Unset(alias string) (application.ConfigMutationResult, er
 type MCPRuntime struct {
 	Config     config.RuntimeConfig
 	Manager    *download.Manager
-	Logger     *slog.Logger
 	SDK        application.SDKService
 	SDKRequest application.SDKClientRequest
 	AuthPath   string
 }
 
-func NewMCPRuntime(_ context.Context, logger *slog.Logger, proxyOverride *string) (MCPRuntime, error) {
+func NewMCPRuntime(_ context.Context, proxyOverride *string) (MCPRuntime, error) {
 	cfg, err := LoadRuntimeConfig()
 	if err != nil {
 		return MCPRuntime{}, err
@@ -263,16 +226,15 @@ func NewMCPRuntime(_ context.Context, logger *slog.Logger, proxyOverride *string
 	if _, account, ok := auth.SelectAuthAccount(store, 0); ok {
 		request.UserID = account.UserID
 	}
-	client, err := newSDKClient(logger, request)
+	client, err := newSDKClient(request)
 	if err != nil {
 		return MCPRuntime{}, err
 	}
-	manager := newDownloadManager(client, logger, cfg.DownloadPath, cfg.FilenameTemplate)
+	manager := newDownloadManager(client, cfg.DownloadPath, cfg.FilenameTemplate)
 	return MCPRuntime{
 		Config:     cfg,
 		Manager:    manager,
-		Logger:     logger,
-		SDK:        NewServices(logger).SDK,
+		SDK:        NewServices().SDK,
 		SDKRequest: request,
 		AuthPath:   authPath,
 	}, nil
@@ -284,36 +246,13 @@ func applyRuntimeProxyOverride(cfg *config.RuntimeConfig, override *string) {
 	}
 }
 
-func (r MCPRuntime) mcpLog(operation string, started time.Time, result string, userID int64) {
-	logging.LogOperation(r.Logger, logging.OperationEvent{
-		Component: "mcp",
-		Operation: operation,
-		Backend:   logging.BackendLocal,
-		Duration:  time.Since(started),
-		Result:    result,
-		UserID:    userID,
-	})
-}
-
-func RunMCP(ctx context.Context, errOut io.Writer, proxyOverride *string) error {
-	logger, closer, err := NewApplicationLogger(errOut)
+func RunMCP(ctx context.Context, proxyOverride *string) error {
+	runtime, err := NewMCPRuntime(ctx, proxyOverride)
 	if err != nil {
 		return err
 	}
-	defer func() { _ = closer.Close() }()
-	runtime, err := NewMCPRuntime(ctx, logger, proxyOverride)
-	if err != nil {
-		return err
-	}
-	// 普通 MCP download 使用 SDK 的 src 高层 API；Manager 仅保留给随机推荐下载和
-	// set_download_path 的本地状态。这样 CLI、MCP 与嵌入 SDK 共享同一缓存、续传与并发语义。
-	server := mcpserver.NewWithSDK(nil, runtime.Manager, runtime.Logger, runtime.SDK, runtime.SDKRequest)
-	started := time.Now()
-	err = server.Run(ctx, &mcp.StdioTransport{})
-	result := logging.ResultSuccess
-	if err != nil {
-		result = logging.ResultError
-	}
-	runtime.mcpLog("run", started, result, runtime.SDKRequest.UserID)
-	return err
+	// 普通 MCP download 使用 SDK 的 src 高层 API；Manager 仅保留给随机推荐下载。
+	// 这样 CLI、MCP 与嵌入 SDK 共享同一缓存、续传与并发语义。
+	server := mcpserver.NewWithSDK(nil, runtime.Manager, runtime.SDK, runtime.SDKRequest)
+	return server.Run(ctx, &mcp.StdioTransport{})
 }

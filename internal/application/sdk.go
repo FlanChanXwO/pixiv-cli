@@ -24,7 +24,6 @@ type SDKClient interface {
 	CurrentUserID(context.Context) (int64, error)
 	SearchIllust(context.Context, sdk.SearchIllustRequest) (*sdk.IllustListResult, error)
 	SearchNovel(context.Context, sdk.SearchNovelRequest) (*sdk.NovelListResult, error)
-	SearchIllustOptions(context.Context, sdk.SearchIllustOptionsRequest) (*sdk.SearchIllustOptionsResult, error)
 	IllustDetail(context.Context, int64) (*sdk.IllustDetail, error)
 	IllustRelated(context.Context, sdk.IllustRelatedRequest) (*sdk.IllustListResult, error)
 	IllustRanking(context.Context, sdk.IllustRankingRequest) (*sdk.IllustListResult, error)

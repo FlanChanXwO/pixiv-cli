@@ -146,17 +146,19 @@ func TestRecommendedVersionBump(t *testing.T) {
 	t.Parallel()
 
 	for _, test := range []struct {
-		name  string
-		notes []releaseNote
-		want  string
+		name     string
+		previous string
+		notes    []releaseNote
+		want     string
 	}{
-		{name: "maintenance", notes: []releaseNote{{Category: "Maintenance", Summary: "Refresh CI."}}, want: "patch"},
-		{name: "feature", notes: []releaseNote{{Category: "Added", Summary: "Add APNG."}}, want: "minor"},
-		{name: "breaking", notes: []releaseNote{{Category: "Changed", Breaking: true, Summary: "Change output."}}, want: "major"},
+		{name: "maintenance", previous: "v1.0.0", notes: []releaseNote{{Category: "Maintenance", Summary: "Refresh CI."}}, want: "patch"},
+		{name: "feature", previous: "v1.0.0", notes: []releaseNote{{Category: "Added", Summary: "Add APNG."}}, want: "minor"},
+		{name: "stable breaking", previous: "v1.0.0", notes: []releaseNote{{Category: "Changed", Breaking: true, Summary: "Change output."}}, want: "major"},
+		{name: "pre-one breaking", previous: "v0.8.0", notes: []releaseNote{{Category: "Changed", Breaking: true, Summary: "Change output."}}, want: "minor"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
-			if got := recommendedVersionBump(test.notes); got != test.want {
+			if got := recommendedVersionBump(test.previous, test.notes); got != test.want {
 				t.Fatalf("recommended bump = %q, want %q", got, test.want)
 			}
 		})

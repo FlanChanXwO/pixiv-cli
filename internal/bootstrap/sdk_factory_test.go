@@ -22,7 +22,7 @@ func TestNewServicesSDKKeepsConfiguredProxyDynamicUntilOperation(t *testing.T) {
 	t.Cleanup(config.SetFilePathForTest(configPath))
 	require.NoError(t, config.WritePrivateFile(configPath, []byte("[network]\nhttps_proxy = \"\"\n")))
 
-	client, err := NewServices(nil).SDK.Client(application.SDKClientRequest{})
+	client, err := NewServices().SDK.Client(application.SDKClientRequest{})
 	require.NoError(t, err)
 
 	invalidProxy := "http://bootstrap-proxy.invalid/path-%zz"
@@ -49,7 +49,7 @@ func TestNewServicesSDKExplicitEmptyProxyOverridesConfiguredProxy(t *testing.T) 
 	require.NoError(t, config.WritePrivateFile(configPath, []byte("[network]\nhttps_proxy = "+fmt.Sprintf("%q", invalidProxy)+"\n")))
 	emptyProxy := ""
 
-	client, err := NewServices(nil).SDK.Client(application.SDKClientRequest{HTTPSProxyOverride: &emptyProxy})
+	client, err := NewServices().SDK.Client(application.SDKClientRequest{HTTPSProxyOverride: &emptyProxy})
 	require.NoError(t, err)
 	ref, err := client.ParseResourceRef("https://i.pximg.net/img-original/a.jpg")
 
@@ -60,7 +60,7 @@ func TestNewServicesSDKExplicitEmptyProxyOverridesConfiguredProxy(t *testing.T) 
 func TestNewServicesSDKRejectsMalformedExplicitProxyAtConstruction(t *testing.T) {
 	invalidProxy := "http://proxy-user-secret:proxy-pass-secret@proxy-host-secret.invalid/proxy-path-secret-%zz?proxy-query-secret=value"
 
-	client, err := NewServices(nil).SDK.Client(application.SDKClientRequest{HTTPSProxyOverride: &invalidProxy})
+	client, err := NewServices().SDK.Client(application.SDKClientRequest{HTTPSProxyOverride: &invalidProxy})
 
 	require.Nil(t, client)
 	require.Error(t, err)
@@ -85,7 +85,7 @@ func TestNewServicesSDKOpenOperationRejectsMissingRequestedAccountBeforeOAuth(t 
 		Accounts:      []auth.Account{{UserID: 7, Username: "available", RefreshToken: "unused-token"}},
 	}))
 
-	client, err := NewServices(nil).SDK.OpenOperation(context.Background(), application.SDKClientRequest{
+	client, err := NewServices().SDK.OpenOperation(context.Background(), application.SDKClientRequest{
 		UserID:       99,
 		AuthFilePath: authPath,
 	})
@@ -102,7 +102,7 @@ func TestNewServicesSDKOpenOperationRejectsMissingRequestedAccountBeforeOAuth(t 
 func TestNewServicesSDKRejectsCookieRefreshTokenAtConstructionWithoutEcho(t *testing.T) {
 	cookie := "refresh_token=bootstrap-cookie-value"
 
-	client, err := NewServices(nil).SDK.Client(application.SDKClientRequest{RefreshToken: cookie})
+	client, err := NewServices().SDK.Client(application.SDKClientRequest{RefreshToken: cookie})
 
 	require.Nil(t, client)
 	var typed *sdk.Error
@@ -131,7 +131,7 @@ func TestNewServicesSDKExplicitAuthPathOverridesGlobalPath(t *testing.T) {
 		Accounts:      []auth.Account{{UserID: 8, Username: "explicit", RefreshToken: "explicit-token"}},
 	}))
 
-	client, err := NewServices(nil).SDK.Client(application.SDKClientRequest{AuthFilePath: explicitAuthPath})
+	client, err := NewServices().SDK.Client(application.SDKClientRequest{AuthFilePath: explicitAuthPath})
 	require.NoError(t, err)
 	accounts, err := client.ListAccounts()
 

@@ -53,7 +53,7 @@ func TestEntityToolsExposeOnlyRecordsContract(t *testing.T) {
 		{"illust_related", map[string]any{"illust_id": 4}},
 		{"illust_ranking", map[string]any{}},
 		{"illust_recommended", map[string]any{}},
-		{"illust_follow", map[string]any{}},
+		{"timeline_illust_following", map[string]any{}},
 		{"search_user", map[string]any{"word": "record"}},
 		{"user_detail", map[string]any{"user_id": 7}},
 		{"user_artworks", map[string]any{"user_id": 90}},
@@ -149,7 +149,7 @@ func TestEntityRecordPreservesUserDetailEnvelopeAndErrorHasEmptyRecords(t *testi
 }
 
 func TestServerImplementationVersionIsProtocolOnlyException(t *testing.T) {
-	server := New(&fakeAPI{}, &fakeDownloads{}, nil)
+	server := New(&fakeAPI{}, &fakeDownloads{})
 	clientTransport, serverTransport := mcp.NewInMemoryTransports()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

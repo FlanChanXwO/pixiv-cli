@@ -1084,7 +1084,6 @@ func isIsolatedEnvKey(name string) bool {
 	for _, key := range []string{
 		"HOME", "XDG_CONFIG_HOME", "APPDATA", "LOCALAPPDATA", "USERPROFILE", "HOMEDRIVE", "HOMEPATH",
 		"DOWNLOAD_PATH", "FILENAME_TEMPLATE", "https_proxy", "HTTPS_PROXY", "PIXIV_REFRESH_TOKEN",
-		"PIXIV_LOG_LEVEL",
 	} {
 		if strings.EqualFold(name, key) {
 			return true

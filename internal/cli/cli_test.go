@@ -4,13 +4,12 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"io"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/config"
-	sdk "github.com/FlanChanXwO/pixiv-cli/pixiv"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -28,7 +27,7 @@ func TestRunNoArgsPrintsHelp(t *testing.T) {
 	assert.NotContains(t, stdout.String(), "completion")
 }
 
-func TestRunKeepsTerminalFreeOfOperationLogs(t *testing.T) {
+func TestRunIgnoresLegacyLoggingConfiguration(t *testing.T) {
 	_, configPath := useTempPaths(t)
 	if err := config.WritePrivateFile(configPath, []byte("[logging]\nlevel = 'info'\n")); err != nil {
 		t.Fatal(err)
@@ -38,12 +37,8 @@ func TestRunKeepsTerminalFreeOfOperationLogs(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("Run code=%d stderr=%s", code, stderr.String())
 	}
-	if !strings.Contains(stdout.String(), "Usage:") || strings.Contains(stdout.String(), `"component":"cli"`) {
-		t.Fatalf("stdout mixed with log: %q", stdout.String())
-	}
-	if strings.Contains(stderr.String(), `"component":"cli"`) || strings.Contains(stderr.String(), "pixiv operation") {
-		t.Fatalf("stderr unexpectedly contains operation logs: %q", stderr.String())
-	}
+	assert.Contains(t, stdout.String(), "Usage:")
+	assert.Empty(t, stderr.String())
 }
 
 func TestHelpAndConfigPathSurviveBrokenNonLoggingRuntimeConfig(t *testing.T) {
@@ -64,16 +59,16 @@ func TestHelpAndConfigPathSurviveBrokenNonLoggingRuntimeConfig(t *testing.T) {
 	}
 }
 
-func TestInvalidLoggingConfigurationStillBlocksOtherCommands(t *testing.T) {
+func TestInvalidLegacyLoggingConfigurationDoesNotBlockOtherCommands(t *testing.T) {
 	_, configPath := useTempPaths(t)
 	require.NoError(t, config.WritePrivateFile(configPath, []byte("[logging]\nlevel = 'loud'\n")))
 
 	var stdout, stderr bytes.Buffer
-	code := Run([]string{"pixiv", "auth", "list"}, strings.NewReader(""), &stdout, &stderr)
+	code := Run([]string{"pixiv", "config", "path"}, strings.NewReader(""), &stdout, &stderr)
 
-	assert.Equal(t, 1, code)
-	assert.Empty(t, stdout.String())
-	assert.Equal(t, "error: log_level must be one of trace, debug, info, warn, error\n", stderr.String())
+	assert.Equal(t, 0, code, stderr.String())
+	assert.NotEmpty(t, stdout.String())
+	assert.Empty(t, stderr.String())
 }
 
 func TestRunUnknownCommandReturnsError(t *testing.T) {
@@ -89,62 +84,8 @@ func TestRunUnknownCommandReturnsError(t *testing.T) {
 	assert.Contains(t, stderr.String(), `unknown command "wat"`)
 	assert.NotContains(t, stderr.String(), `"level":"ERROR"`)
 	assert.NotContains(t, stderr.String(), "pixiv operation")
-}
-
-func TestRunClosesApplicationLogWriter(t *testing.T) {
-	home, configPath := useTempPaths(t)
-	require.NoError(t, config.WritePrivateFile(configPath, []byte("[logging]\nlevel = 'error'\n")))
-
-	var stdout, stderr bytes.Buffer
-	code := Run([]string{"pixiv", "wat"}, strings.NewReader(""), &stdout, &stderr)
-
-	require.NotZero(t, code)
-	// Windows 不允许临时目录清理删除仍被打开的文本日志。该断言确保 CLI 在返回前
-	// 已释放根 logger 的文件 writer，而不是依赖进程退出回收句柄。
-	require.NoError(t, os.RemoveAll(home))
-}
-
-func TestShouldSuggestLogDirOnlyForSpecialNonAuthFailures(t *testing.T) {
-	cases := []struct {
-		name string
-		err  error
-		want bool
-	}{
-		{name: "nil", err: nil, want: false},
-		{name: "plain", err: errors.New("boom"), want: false},
-		{name: "unauthorized", err: &sdk.Error{Code: sdk.CodeUnauthorized}, want: false},
-		{name: "forbidden", err: &sdk.Error{Code: sdk.CodeForbidden}, want: false},
-		{name: "upstream_unavailable", err: &sdk.Error{Code: sdk.CodeUpstreamUnavailable}, want: true},
-		{name: "upstream_error", err: &sdk.Error{Code: sdk.CodeUpstreamError}, want: true},
-		{name: "malformed", err: &sdk.Error{Code: sdk.CodeMalformedUpstreamResponse}, want: true},
-		{name: "rate_limited", err: &sdk.Error{Code: sdk.CodeRateLimited}, want: true},
-		{name: "invalid_argument", err: &sdk.Error{Code: sdk.CodeInvalidArgument}, want: false},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			if got := shouldSuggestLogDir(tc.err); got != tc.want {
-				t.Fatalf("shouldSuggestLogDir(%v)=%v want %v", tc.err, got, tc.want)
-			}
-		})
-	}
-}
-
-func TestExitSuggestsLogDirForUpstreamErrorOnly(t *testing.T) {
-	useTempPaths(t)
-	var errOut bytes.Buffer
-	a := app{errOut: &errOut}
-	code := a.exit(&sdk.Error{Code: sdk.CodeUpstreamError, Operation: sdk.OperationSearchIllust})
-	require.Equal(t, 1, code)
-	assert.Contains(t, errOut.String(), "error:")
-	assert.Contains(t, errOut.String(), "See log directory:")
-	assert.NotContains(t, errOut.String(), "refresh_token")
-	assert.NotContains(t, errOut.String(), "pixiv operation")
-
-	errOut.Reset()
-	code = a.exit(&sdk.Error{Code: sdk.CodeUnauthorized, Operation: sdk.OperationStartLogin})
-	require.Equal(t, 1, code)
-	assert.Contains(t, errOut.String(), "error:")
-	assert.NotContains(t, errOut.String(), "See log directory:")
+	_, err := os.Stat(filepath.Join(filepath.Dir(configPath), "logs"))
+	assert.ErrorIs(t, err, os.ErrNotExist)
 }
 
 func TestRunAccountCommandIsRemoved(t *testing.T) {
@@ -165,7 +106,7 @@ func TestRunMCPDispatch(t *testing.T) {
 
 	called := false
 	var seenProxy *string
-	runMCPServer = func(_ context.Context, _ io.Writer, proxyOverride *string) error {
+	runMCPServer = func(_ context.Context, proxyOverride *string) error {
 		called = true
 		seenProxy = proxyOverride
 		return nil
@@ -187,7 +128,7 @@ func TestRunMCPNoProxyDispatch(t *testing.T) {
 	t.Cleanup(func() { runMCPServer = old })
 
 	var seenProxy *string
-	runMCPServer = func(_ context.Context, _ io.Writer, proxyOverride *string) error {
+	runMCPServer = func(_ context.Context, proxyOverride *string) error {
 		seenProxy = proxyOverride
 		return nil
 	}
@@ -207,7 +148,7 @@ func TestRunMCPEmptyProxyDispatch(t *testing.T) {
 	t.Cleanup(func() { runMCPServer = old })
 
 	var seenProxy *string
-	runMCPServer = func(_ context.Context, _ io.Writer, proxyOverride *string) error {
+	runMCPServer = func(_ context.Context, proxyOverride *string) error {
 		seenProxy = proxyOverride
 		return nil
 	}
@@ -225,7 +166,7 @@ func TestRunMCPDispatchError(t *testing.T) {
 
 	old := runMCPServer
 	t.Cleanup(func() { runMCPServer = old })
-	runMCPServer = func(context.Context, io.Writer, *string) error {
+	runMCPServer = func(context.Context, *string) error {
 		return errors.New("boom")
 	}
 

@@ -1,0 +1,48 @@
+# 变更可同时命中多个区域标签，保留人工添加的标签不受此文件影响。
+"area: docs":
+  - changed-files:
+      - any-glob-to-any-file:
+          - AGENTS.md
+          - CONTEXT.md
+          - CONTRIBUTING*.md
+          - README*.md
+          - .agents/skills/**
+          - docs/**
+          - skills/**
+
+"area: frontend":
+  - changed-files:
+      - any-glob-to-any-file:
+          - assets/**
+          - frontend/**
+          - web/**
+
+"area: backend":
+  - changed-files:
+      - any-glob-to-any-file:
+          - cmd/**
+          - internal/**
+          - pixiv/**
+          - go.mod
+          - go.sum
+
+"area: github-actions":
+  - changed-files:
+      - any-glob-to-any-file: .github/**
+
+"area: tests":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "**/*_test.go"
+          - e2e/**
+
+release:
+  - changed-files:
+      - any-glob-to-any-file:
+          - changelog/**
+          - scripts/homebrewformula/**
+          - scripts/prepublishhomebrew/**
+          - scripts/releaseassets/**
+          - scripts/releasenotes/**
+          - scripts/releaseworkflow/**
+          - templates/homebrew/**

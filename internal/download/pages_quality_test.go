@@ -30,7 +30,7 @@ func TestDownloadPagesSelectionIsOneBasedAndErrorsOnMissing(t *testing.T) {
 			"https://i.example/7_p2.png": []byte("p2"),
 		},
 	}
-	m := NewManager(client, nil, dir, "{id}")
+	m := NewManager(client, dir, "{id}")
 	got, err := m.Download(context.Background(), application.DownloadRequest{
 		IllustIDs: []int64{7},
 		Pages:     []int{1, 3},
@@ -81,7 +81,7 @@ func TestDownloadQualitySelectsMappedURLs(t *testing.T) {
 			"https://i.example/original.png": []byte("original"),
 		},
 	}
-	m := NewManager(client, nil, dir, "{id}")
+	m := NewManager(client, dir, "{id}")
 	cases := []struct {
 		quality application.DownloadQuality
 		want    string
@@ -117,7 +117,7 @@ func TestDownloadUgoiraRejectsQualityAndPages(t *testing.T) {
 			9: {ID: 9, Title: "u", Type: string(pixiv.IllustTypeUgoira), PageCount: 1, User: pixiv.User{Name: "a"}},
 		},
 	}
-	m := NewManager(client, nil, dir, "{id}")
+	m := NewManager(client, dir, "{id}")
 	_, err := m.Download(context.Background(), application.DownloadRequest{
 		IllustIDs: []int64{9},
 		Quality:   application.DownloadQualityRegular,

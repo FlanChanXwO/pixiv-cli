@@ -487,29 +487,24 @@ func TestConfigGetPrefersExistingProxyEnvironment(t *testing.T) {
 	}
 }
 
-func TestSensitiveConfigUsesDedicatedWriteAndRedactedRead(t *testing.T) {
+func TestLegacySharedSecretRelayConfigIsNotPartOfSDK(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.toml")
 	client, err := pixiv.OpenDefaultWith(pixiv.OpenDefaultOptions{ConfigFilePath: path})
 	if err != nil {
 		t.Fatal(err)
 	}
-	const secret = "relay-secret-must-not-return"
-	if err := client.SetLoginRelaySecret(secret); err != nil {
-		t.Fatal(err)
-	}
-	_, err = client.SetConfig(pixiv.ConfigKeyLoginRelaySecret, pixiv.StringConfigInput(secret))
-	if !errors.Is(err, pixiv.ErrInvalidArgument) {
-		t.Fatalf("SetConfig error=%v", err)
-	}
-	value, err := client.GetConfig(pixiv.ConfigKeyLoginRelaySecret)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !value.HasValue || !value.Redacted || value.String != "" {
-		t.Fatalf("redacted config=%+v", value)
-	}
-	if strings.Contains(fmt.Sprintf("%+v", value), secret) {
-		t.Fatalf("secret leaked in config value=%+v", value)
+	for _, key := range []string{"login_relay_secret", "login_relay_target_url"} {
+		if _, err := pixiv.ParseConfigKey(key); err == nil {
+			t.Fatalf("legacy relay setting %q remained in public SDK", key)
+		}
+		_, err := client.GetConfig(pixiv.ConfigKey(key))
+		if !errors.Is(err, pixiv.ErrInvalidArgument) {
+			t.Fatalf("GetConfig(%q) error=%v", key, err)
+		}
+		_, err = client.SetConfig(pixiv.ConfigKey(key), pixiv.StringConfigInput("obsolete"))
+		if !errors.Is(err, pixiv.ErrInvalidArgument) {
+			t.Fatalf("SetConfig(%q) error=%v", key, err)
+		}
 	}
 }
 

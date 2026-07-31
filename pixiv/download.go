@@ -75,6 +75,12 @@ type preparedDownload struct {
 	animation *preparedUgoira
 }
 
+type downloadTask struct {
+	itemIndex int
+	resource  preparedResource
+	result    DownloadResult
+}
+
 // preparedUgoira 将 ZIP 缓存资源与最终用户可见动图分开：ZIP 只留在 .pixiv-cache，
 // GIF 才是 DownloadResult 中的产物。
 type preparedUgoira struct {
@@ -164,18 +170,22 @@ func (c *Client) DownloadAllWith(ctx context.Context, srcs []string, options Dow
 		prepared[index] = plan
 	}
 
-	type task struct {
-		itemIndex int
-		resource  preparedResource
-	}
-	tasks := make([]task, 0)
+	tasks := make([]downloadTask, 0)
 	for itemIndex, plan := range prepared {
 		if plan == nil {
 			continue
 		}
 		for _, resource := range plan.resources {
-			tasks = append(tasks, task{itemIndex: itemIndex, resource: resource})
+			tasks = append(tasks, downloadTask{itemIndex: itemIndex, resource: resource, result: plan.result})
 		}
+	}
+	var tracker *downloadProgressTracker
+	if options.Progress != nil {
+		progressResources, totalKnown, probeErr := c.prepareDownloadProgress(ctx, tasks)
+		if probeErr != nil {
+			return out, probeErr
+		}
+		tracker = newDownloadProgressTracker(options.Progress, progressResources, totalKnown)
 	}
 	resourceErrors := make([]error, len(tasks))
 	resourceResults := make([]ResourceDownloadResult, len(tasks))
@@ -183,7 +193,17 @@ func (c *Client) DownloadAllWith(ctx context.Context, srcs []string, options Dow
 	if err := runDownloadTasks(ctx, workers, len(tasks), func(index int) {
 		item := tasks[index]
 		attempted[item.itemIndex].Store(true)
-		resourceResults[index], resourceErrors[index] = c.DownloadResource(ctx, item.resource.ref, item.resource.destination)
+		if tracker != nil {
+			tracker.start(index)
+		}
+		resourceResults[index], resourceErrors[index] = c.downloadResourceWithProgress(ctx, item.resource.ref, item.resource.destination, func(bytes int64) {
+			if tracker != nil {
+				tracker.add(index, bytes)
+			}
+		})
+		if resourceErrors[index] == nil && tracker != nil {
+			tracker.complete(index)
+		}
 	}); err != nil {
 		for index := range out.Items {
 			out.Items[index].Attempted = attempted[index].Load()
@@ -229,6 +249,38 @@ func (c *Client) DownloadAllWith(ctx context.Context, srcs []string, options Dow
 	return out, nil
 }
 
+// prepareDownloadProgress 逐个安全探测资源大小。任何一次 HEAD 无法确定大小时，
+// 批次总量保持 unknown；实际下载仍会继续，单资源传输事件不受影响。
+func (c *Client) prepareDownloadProgress(ctx context.Context, tasks []downloadTask) ([]downloadProgressResource, bool, error) {
+	resources := make([]downloadProgressResource, len(tasks))
+	totalKnown := true
+	for index, task := range tasks {
+		if err := ctx.Err(); err != nil {
+			return nil, false, err
+		}
+		file := task.result.Files[task.resource.fileIndex]
+		total, known, err := c.probeResource(ctx, task.resource.ref)
+		if err != nil {
+			known = false
+		}
+		initial := c.verifiedPartialBytes(task.resource.ref, task.resource.destination)
+		if known && initial > total {
+			// validator 相同却出现超出 HEAD 总长的缓存不应制造错误进度条；下载缓存
+			// 路径随后会按真实响应验证或失败，不在预检阶段隐瞒该状态。
+			known = false
+		}
+		if !known {
+			totalKnown = false
+		}
+		resources[index] = downloadProgressResource{base: DownloadProgress{
+			SourceIndex: task.itemIndex, Page: file.Page, DestinationPath: task.resource.destination,
+			IllustID: task.result.IllustID, Title: task.result.Title, Author: task.result.Author,
+			ResourceTotalBytes: total, ResourceTotalKnown: known,
+		}, initial: initial}
+	}
+	return resources, totalKnown, nil
+}
+
 func normalizeDownloadOptions(options DownloadOptions) (DownloadOptions, int, error) {
 	options.DownloadPath = strings.TrimSpace(options.DownloadPath)
 	if options.DownloadPath == "" {
@@ -237,6 +289,9 @@ func normalizeDownloadOptions(options DownloadOptions) (DownloadOptions, int, er
 	options.FilenameTemplate = strings.TrimSpace(options.FilenameTemplate)
 	if options.FilenameTemplate == "" {
 		options.FilenameTemplate = DefaultFilenameTemplate
+	}
+	if err := filename.ValidateTemplate(options.FilenameTemplate); err != nil {
+		return DownloadOptions{}, 0, invalidResourceError(OperationDownload, err.Error())
 	}
 	if options.Quality == "" {
 		options.Quality = DownloadQualityOriginal

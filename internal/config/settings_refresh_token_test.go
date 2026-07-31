@@ -49,3 +49,35 @@ func TestRefreshTokenFromEnvAcceptsOpaqueToken(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "opaque=value", token)
 }
+
+func TestRuntimeIgnoresLegacyLoggingConfiguration(t *testing.T) {
+	path := t.TempDir() + "/config.toml"
+	require.NoError(t, os.WriteFile(path, []byte("[logging]\nlevel = \"loud\"\n"), 0o600))
+	t.Setenv("PIXIV_LOG_LEVEL", "debug")
+
+	state, err := LoadSettingsStateAt(path)
+	require.NoError(t, err)
+	runtimeConfig, err := state.Runtime()
+	require.NoError(t, err)
+	require.Equal(t, DefaultDownloadPath, runtimeConfig.DownloadPath)
+	_, ok := SettingSpecByAlias("log_level")
+	require.False(t, ok)
+}
+
+// 历史 relay 的 shared-secret 字段曾属于私有配置。升级后保留文件内容不报错，
+// 但运行时不得读取它们或恢复任何旧转发行为。
+func TestRuntimeSilentlyIgnoresLegacySharedSecretRelayConfiguration(t *testing.T) {
+	path := t.TempDir() + "/config.toml"
+	require.NoError(t, os.WriteFile(path, []byte("[login]\nrelay_public_url = \"http://relay.example\"\nrelay_listen_addr = \"127.0.0.1:8080\"\nrelay_secret = \"obsolete-secret\"\nrelay_target_url = \"http://old-client.example\"\n"), 0o600))
+
+	state, err := LoadSettingsStateAt(path)
+	require.NoError(t, err)
+	runtimeConfig, err := state.Runtime()
+	require.NoError(t, err)
+	require.Equal(t, "http://relay.example", runtimeConfig.LoginRelayPublicURL)
+	require.Equal(t, "127.0.0.1:8080", runtimeConfig.LoginRelayListenAddr)
+	_, hasSecret := SettingSpecByAlias("login_relay_secret")
+	_, hasTarget := SettingSpecByAlias("login_relay_target_url")
+	require.False(t, hasSecret)
+	require.False(t, hasTarget)
+}

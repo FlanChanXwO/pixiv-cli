@@ -12,7 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestFeedCommandsRouteTypedAppSDKRequestsAndOutputLists(t *testing.T) {
+func TestTimelineCommandsRouteTypedAppSDKRequestsAndOutputLists(t *testing.T) {
 	useTempPaths(t)
 	var followingIllust sdk.FollowingIllustsRequest
 	var followingNovel sdk.FollowingNovelsRequest
@@ -38,7 +38,7 @@ func TestFeedCommandsRouteTypedAppSDKRequestsAndOutputLists(t *testing.T) {
 	})
 
 	var stdout, stderr bytes.Buffer
-	require.Equal(t, 0, Run([]string{"pixiv", "feed", "following", "--type", "illust", "--restrict", "private", "--limit", "1", "--json"}, strings.NewReader(""), &stdout, &stderr), stderr.String())
+	require.Equal(t, 0, Run([]string{"pixiv", "timeline", "following", "--type", "illust", "--restrict", "private", "--limit", "1", "--json"}, strings.NewReader(""), &stdout, &stderr), stderr.String())
 	assert.Equal(t, sdk.RestrictPrivate, followingIllust.Restrict)
 	var illustOut struct {
 		Illusts []sdk.Illust `json:"illusts"`
@@ -48,23 +48,32 @@ func TestFeedCommandsRouteTypedAppSDKRequestsAndOutputLists(t *testing.T) {
 
 	stdout.Reset()
 	stderr.Reset()
-	require.Equal(t, 0, Run([]string{"pixiv", "feed", "following", "--type", "novel"}, strings.NewReader(""), &stdout, &stderr), stderr.String())
+	require.Equal(t, 0, Run([]string{"pixiv", "timeline", "following", "--type", "novel"}, strings.NewReader(""), &stdout, &stderr), stderr.String())
 	assert.Equal(t, sdk.RestrictPublic, followingNovel.Restrict)
 	assert.Contains(t, stdout.String(), "new novels from followed users")
 	assert.Contains(t, stdout.String(), "follow novel")
 
 	stdout.Reset()
 	stderr.Reset()
-	require.Equal(t, 0, Run([]string{"pixiv", "feed", "latest", "--type", "manga", "--json"}, strings.NewReader(""), &stdout, &stderr), stderr.String())
+	require.Equal(t, 0, Run([]string{"pixiv", "timeline", "latest", "--type", "manga", "--json"}, strings.NewReader(""), &stdout, &stderr), stderr.String())
 	assert.Equal(t, sdk.IllustTypeManga, latestIllust.Type)
 	require.NoError(t, json.Unmarshal(stdout.Bytes(), &illustOut))
 	assert.Len(t, illustOut.Illusts, 1)
 
 	stdout.Reset()
 	stderr.Reset()
-	require.Equal(t, 0, Run([]string{"pixiv", "feed", "latest", "--type", "novel"}, strings.NewReader(""), &stdout, &stderr), stderr.String())
+	require.Equal(t, 0, Run([]string{"pixiv", "timeline", "latest", "--type", "novel"}, strings.NewReader(""), &stdout, &stderr), stderr.String())
 	assert.Equal(t, sdk.Cursor(""), latestNovel.Cursor)
 	assert.Contains(t, stdout.String(), "latest novels")
+}
+
+func TestTimelineDoesNotRetainFeedCompatibilityAlias(t *testing.T) {
+	useTempPaths(t)
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"pixiv", "feed", "latest", "--type", "illust"}, strings.NewReader(""), &stdout, &stderr)
+	if code == 0 || !strings.Contains(stderr.String(), "unknown command") {
+		t.Fatalf("removed command result=%d stderr=%q", code, stderr.String())
+	}
 }
 
 func TestMyPixivCommandsRouteAggregateAndSpecificUserRequests(t *testing.T) {
@@ -131,7 +140,7 @@ func TestMyPixivCommandsRouteAggregateAndSpecificUserRequests(t *testing.T) {
 	assert.Contains(t, stdout.String(), "friend novel")
 }
 
-func TestFeedAndMyPixivRejectUnsupportedTypeCombinationsBeforeSDKCalls(t *testing.T) {
+func TestTimelineAndMyPixivRejectUnsupportedTypeCombinationsBeforeSDKCalls(t *testing.T) {
 	useTempPaths(t)
 	opened := 0
 	setTestSDKCommandClient(t, sdkCommandFake{latestIllusts: func(context.Context, sdk.LatestIllustsRequest) (*sdk.IllustListResult, error) {
@@ -140,8 +149,8 @@ func TestFeedAndMyPixivRejectUnsupportedTypeCombinationsBeforeSDKCalls(t *testin
 	}})
 
 	for _, args := range [][]string{
-		{"pixiv", "feed", "following", "--type", "manga"},
-		{"pixiv", "feed", "latest", "--type", "ugoira"},
+		{"pixiv", "timeline", "following", "--type", "manga"},
+		{"pixiv", "timeline", "latest", "--type", "ugoira"},
 		{"pixiv", "mypixiv", "works", "--type", "manga"},
 		{"pixiv", "mypixiv", "works", "12", "--type", "ugoira"},
 	} {

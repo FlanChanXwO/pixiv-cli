@@ -12,7 +12,6 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/protocol"
 	internalresource "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/resource"
@@ -103,12 +102,9 @@ func validPathPrefix(prefix string) bool {
 
 // ParseResourceRef 根据 Client 的资源策略解析并验证 URL。
 func (c *Client) ParseResourceRef(rawURL string) (out ResourceRef, err error) {
-	started := time.Now()
-	defer func() { c.delegatedOperationLog(OperationParseResourceRef, started, err, 0, 0) }()
 	if c.defaults != nil {
 		scoped, err := c.defaults.resourceSnapshot(OperationParseResourceRef)
 		if err != nil {
-			c.operationLog(OperationParseResourceRef, started, err, 0, 0)
 			return ResourceRef{}, err
 		}
 		return scoped.ParseResourceRef(rawURL)
@@ -122,22 +118,25 @@ func (c *Client) ParseResourceRef(rawURL string) (out ResourceRef, err error) {
 
 // OpenResource 打开经 policy 验证的 Pixiv 资源；成功响应的 Body 由调用方关闭。
 func (c *Client) OpenResource(ctx context.Context, request OpenResourceRequest) (out *ResourceResponse, err error) {
-	started := time.Now()
-	defer func() { c.delegatedOperationLog(OperationOpenResource, started, err, 0, 0) }()
+	return c.openResource(ctx, request, http.MethodGet, OperationOpenResource)
+}
+
+// openResource 统一 GET 与下载预检 HEAD 的 policy、redirect、referer 与 cookie
+// 边界。method 只由本包传入，避免将任意 HTTP method 暴露给 public SDK 调用方。
+func (c *Client) openResource(ctx context.Context, request OpenResourceRequest, method string, operation Operation) (out *ResourceResponse, err error) {
 	if c.defaults != nil {
-		scoped, err := c.defaults.resourceSnapshot(OperationOpenResource)
+		scoped, err := c.defaults.resourceSnapshot(operation)
 		if err != nil {
-			c.operationLog(OperationOpenResource, started, err, 0, 0)
 			return nil, err
 		}
-		return scoped.OpenResource(ctx, request)
+		return scoped.openResource(ctx, request, method, operation)
 	}
 	for _, value := range []string{request.Range, request.IfNoneMatch, request.IfModifiedSince, request.IfRange} {
 		if hasControl(value) {
-			return nil, invalidResourceError(OperationOpenResource, "resource request header is invalid")
+			return nil, invalidResourceError(operation, "resource request header is invalid")
 		}
 	}
-	if _, err := c.resourcePolicy.validate(request.Ref.URL, OperationOpenResource); err != nil {
+	if _, err := c.resourcePolicy.validate(request.Ref.URL, operation); err != nil {
 		return nil, err
 	}
 	headers := make(http.Header)
@@ -148,10 +147,11 @@ func (c *Client) OpenResource(ctx context.Context, request OpenResourceRequest) 
 	headers.Set("Accept-Encoding", "identity")
 	response, err := c.resource.Open(ctx, internalresource.OpenRequest{
 		URL:            request.Ref.URL,
+		Method:         method,
 		Header:         headers,
 		DisableCookies: true,
 		Validate: func(rawURL string) error {
-			_, err := c.resourcePolicy.validate(rawURL, OperationOpenResource)
+			_, err := c.resourcePolicy.validate(rawURL, operation)
 			if err == nil {
 				return nil
 			}
@@ -166,33 +166,63 @@ func (c *Client) OpenResource(ctx context.Context, request OpenResourceRequest) 
 	if err != nil {
 		var failure protocol.Failure
 		if errors.As(err, &failure) && failure.Kind == protocol.FailureForbidden {
-			return nil, forbiddenResourceError(OperationOpenResource)
+			return nil, forbiddenResourceError(operation)
 		}
-		return nil, mapResourceTransportError(err, OperationOpenResource)
+		return nil, mapResourceTransportError(err, operation)
 	}
-	if response.StatusCode != http.StatusOK && response.StatusCode != http.StatusPartialContent && response.StatusCode != http.StatusNotModified {
+	if method == http.MethodHead && (response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices) {
 		_ = response.Body.Close()
-		code, retryable := codeForHTTPStatus(response.StatusCode, OperationOpenResource)
-		return nil, newError(code, OperationOpenResource, BackendResource, retryable, response.StatusCode, 0, errors.New("resource upstream rejected the request"))
+		code, retryable := codeForHTTPStatus(response.StatusCode, operation)
+		return nil, newError(code, operation, BackendResource, retryable, response.StatusCode, 0, errors.New("resource upstream rejected the request"))
+	}
+	if method != http.MethodHead && response.StatusCode != http.StatusOK && response.StatusCode != http.StatusPartialContent && response.StatusCode != http.StatusNotModified {
+		_ = response.Body.Close()
+		code, retryable := codeForHTTPStatus(response.StatusCode, operation)
+		return nil, newError(code, operation, BackendResource, retryable, response.StatusCode, 0, errors.New("resource upstream rejected the request"))
 	}
 	return &ResourceResponse{StatusCode: response.StatusCode, Header: filteredResourceHeaders(response.Header), Body: response.Body}, nil
 }
 
+// probeResource 在下载前执行无副作用的 HEAD，以确定精确总字节。预检失败只会令
+// 调用方放弃 aggregate byte progress；实际 GET 仍由下载路径报告其真实结果。
+func (c *Client) probeResource(ctx context.Context, ref ResourceRef) (int64, bool, error) {
+	response, err := c.openResource(ctx, OpenResourceRequest{Ref: ref}, http.MethodHead, OperationDownload)
+	if err != nil {
+		return 0, false, err
+	}
+	if closeErr := response.Body.Close(); closeErr != nil {
+		return 0, false, newError(CodeUpstreamUnavailable, OperationDownload, BackendResource, true, 0, 0, errors.New("resource probe stream failed"))
+	}
+	value := strings.TrimSpace(response.Header.Get("Content-Length"))
+	if value == "" {
+		return 0, false, nil
+	}
+	size, err := strconv.ParseInt(value, 10, 64)
+	if err != nil || size < 0 {
+		return 0, false, nil
+	}
+	return size, true, nil
+}
+
 // DownloadResource 将经验证的完整资源写入目标，并使用同目录缓存安全地重验证或续传。
 func (c *Client) DownloadResource(ctx context.Context, ref ResourceRef, destinationPath string) (out ResourceDownloadResult, err error) {
-	started := time.Now()
-	defer func() { c.delegatedOperationLog(OperationDownload, started, err, 0, 0) }()
+	return c.downloadResourceWithProgress(ctx, ref, destinationPath, nil)
+}
+
+// downloadResourceWithProgress 保持 DownloadResource 的资源锁和缓存语义，并在
+// worker 实际写入字节时同步通知上层聚合器。该回调是私有桥接，公开观察接口由
+// DownloadOptions.Progress 提供。
+func (c *Client) downloadResourceWithProgress(ctx context.Context, ref ResourceRef, destinationPath string, progress func(int64)) (out ResourceDownloadResult, err error) {
 	release := c.resourceDownloads.lock(destinationPath)
 	defer release()
 	if c.defaults != nil {
 		scoped, err := c.defaults.resourceSnapshot(OperationDownload)
 		if err != nil {
-			c.operationLog(OperationDownload, started, err, 0, 0)
 			return ResourceDownloadResult{}, err
 		}
-		return scoped.DownloadResource(ctx, ref, destinationPath)
+		return scoped.downloadResourceWithProgress(ctx, ref, destinationPath, progress)
 	}
-	state, err := c.downloadWithCache(ctx, ref, destinationPath, files.ReplaceFile)
+	state, err := c.downloadWithCache(ctx, ref, destinationPath, files.ReplaceFile, progress)
 	if err != nil {
 		return ResourceDownloadResult{}, err
 	}
@@ -256,12 +286,16 @@ func (c *Client) downloadWithReplacer(ctx context.Context, ref ResourceRef, dest
 }
 
 type resourceDestinationWriter struct {
-	writer io.Writer
-	err    error
+	writer  io.Writer
+	err     error
+	onWrite func(int64)
 }
 
 func (w *resourceDestinationWriter) Write(payload []byte) (int, error) {
 	written, err := w.writer.Write(payload)
+	if written > 0 && w.onWrite != nil {
+		w.onWrite(int64(written))
+	}
 	if err != nil {
 		w.err = err
 	} else if written != len(payload) {

@@ -46,7 +46,7 @@ func TestDeduplicate(t *testing.T) {
 
 func TestSetDownloadPathCreatesDirectory(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "nested")
-	m := NewManager(nil, nil, t.TempDir(), "{id}")
+	m := NewManager(nil, t.TempDir(), "{id}")
 	if err := m.SetDownloadPath(dir); err != nil {
 		t.Fatalf("SetDownloadPath returned error: %v", err)
 	}
@@ -72,7 +72,7 @@ func TestDownloadSingleArtworkReturnsPath(t *testing.T) {
 		},
 		downloads: map[string][]byte{"https://i.example/42.jpg": []byte("jpg")},
 	}
-	m := NewManager(client, nil, dir, "{id}")
+	m := NewManager(client, dir, "{id}")
 
 	got, err := m.Download(context.Background(), application.DownloadRequest{IllustIDs: []int64{42}})
 	if err != nil {
@@ -101,7 +101,7 @@ func TestDownloadSingleArtworkSanitizesExtensionFromURL(t *testing.T) {
 		}},
 		downloads: map[string][]byte{rawURL: []byte("image")},
 	}
-	m := NewManager(client, nil, dir, "{id}")
+	m := NewManager(client, dir, "{id}")
 
 	got, err := m.Download(context.Background(), application.DownloadRequest{IllustIDs: []int64{42}})
 	if err != nil {
@@ -149,7 +149,7 @@ func TestDownloadSingleArtworkNormalizesPlatformInvalidExtensionEndings(t *testi
 				}},
 				downloads: map[string][]byte{test.rawURL: []byte("image")},
 			}
-			m := NewManager(client, nil, dir, "{id}")
+			m := NewManager(client, dir, "{id}")
 
 			got, err := m.Download(context.Background(), application.DownloadRequest{IllustIDs: []int64{42}})
 			if err != nil {
@@ -194,7 +194,7 @@ func TestDownloadSingleArtworkWithoutURLExtensionDoesNotInventOne(t *testing.T) 
 		}},
 		downloads: map[string][]byte{rawURL: []byte("image")},
 	}
-	m := NewManager(client, nil, dir, "{id}")
+	m := NewManager(client, dir, "{id}")
 
 	got, err := m.Download(context.Background(), application.DownloadRequest{IllustIDs: []int64{42}})
 	if err != nil {
@@ -222,7 +222,7 @@ func TestDownloadUsesSDKResourceReferenceAndDestination(t *testing.T) {
 		}},
 		downloads: map[string][]byte{"https://i.example/42.jpg": []byte("jpg")},
 	}
-	m := NewManager(client, nil, dir, "{id}")
+	m := NewManager(client, dir, "{id}")
 
 	if _, err := m.Download(context.Background(), application.DownloadRequest{IllustIDs: []int64{42}}); err != nil {
 		t.Fatalf("Download returned error: %v", err)
@@ -252,7 +252,7 @@ func TestDownloadKeepsArtworkInsideDownloadRoot(t *testing.T) {
 		},
 		downloads: map[string][]byte{"https://i.example/42.jpg": []byte("jpg")},
 	}
-	m := NewManager(client, nil, dir, "../escape/{id}")
+	m := NewManager(client, dir, "../escape/{id}")
 
 	got, err := m.Download(context.Background(), application.DownloadRequest{IllustIDs: []int64{42}})
 	if err != nil {
@@ -292,7 +292,7 @@ func TestDownloadFailureDoesNotReplaceExistingFile(t *testing.T) {
 		},
 		downloadErr: errors.New("network broke"),
 	}
-	m := NewManager(client, nil, dir, "{id}")
+	m := NewManager(client, dir, "{id}")
 
 	_, err := m.Download(context.Background(), application.DownloadRequest{IllustIDs: []int64{42}})
 	if err == nil {
@@ -322,7 +322,7 @@ func TestDownloadSuccessReplacesExistingFile(t *testing.T) {
 		},
 		downloads: map[string][]byte{"https://i.example/42.jpg": []byte("new")},
 	}
-	m := NewManager(client, nil, dir, "{id}")
+	m := NewManager(client, dir, "{id}")
 
 	if _, err := m.Download(context.Background(), application.DownloadRequest{IllustIDs: []int64{42}}); err != nil {
 		t.Fatalf("Download returned error: %v", err)
@@ -351,7 +351,7 @@ func TestDownloadMultiPageArtworkReturnsAllPaths(t *testing.T) {
 			"https://i.example/7_p1.png": []byte("p1"),
 		},
 	}
-	m := NewManager(client, nil, dir, "{id}")
+	m := NewManager(client, dir, "{id}")
 
 	got, err := m.Download(context.Background(), application.DownloadRequest{IllustIDs: []int64{7}})
 	if err != nil {
@@ -390,7 +390,7 @@ func TestDownloadMultiPageArtworkSanitizesExtensionsFromURLs(t *testing.T) {
 			urls[1]: []byte("p1"),
 		},
 	}
-	m := NewManager(client, nil, dir, "{id}")
+	m := NewManager(client, dir, "{id}")
 
 	got, err := m.Download(context.Background(), application.DownloadRequest{IllustIDs: []int64{7}})
 	if err != nil {
@@ -425,7 +425,7 @@ func TestConvertUgoiraUsesInjectedEncoder(t *testing.T) {
 	createZip(t, zipPath, "000000.jpg", []byte("frame"))
 
 	encoder := &recordingUgoiraEncoder{output: []byte("gif")}
-	m := NewManager(nil, nil, dir, "{id}")
+	m := NewManager(nil, dir, "{id}")
 	m.SetUgoiraEncoder(encoder)
 	outPath := filepath.Join(dir, "out.gif")
 	err := m.ConvertUgoira(context.Background(), zipPath, []pixiv.UgoiraFrame{{File: "000000.jpg", Delay: 80}}, dir, outPath)
@@ -448,7 +448,7 @@ func TestConvertUgoiraFailureDoesNotReplaceExistingGIF(t *testing.T) {
 	}
 
 	encoder := &recordingUgoiraEncoder{err: errors.New("encoder failed"), output: []byte("partial")}
-	m := NewManager(nil, nil, dir, "{id}")
+	m := NewManager(nil, dir, "{id}")
 	m.SetUgoiraEncoder(encoder)
 
 	err := m.ConvertUgoira(context.Background(), zipPath, []pixiv.UgoiraFrame{{File: "000000.jpg", Delay: 80}}, dir, outPath)
@@ -468,7 +468,7 @@ func TestConvertUgoiraSuccessReplacesExistingGIF(t *testing.T) {
 	}
 
 	encoder := &recordingUgoiraEncoder{output: []byte("new-gif")}
-	m := NewManager(nil, nil, dir, "{id}")
+	m := NewManager(nil, dir, "{id}")
 	m.SetUgoiraEncoder(encoder)
 
 	if err := m.ConvertUgoira(context.Background(), zipPath, []pixiv.UgoiraFrame{{File: "000000.jpg", Delay: 80}}, dir, outPath); err != nil {
@@ -499,7 +499,7 @@ func TestDownloadUgoiraZipFailureCleansTemporaryZip(t *testing.T) {
 		},
 		downloadErr: errors.New("zip download failed"),
 	}
-	m := NewManager(client, nil, dir, "{id}")
+	m := NewManager(client, dir, "{id}")
 	m.SetUgoiraEncoder(&recordingUgoiraEncoder{output: []byte("gif")})
 
 	_, err := m.Download(context.Background(), application.DownloadRequest{IllustIDs: []int64{9}})
@@ -538,7 +538,7 @@ func TestDownloadUgoiraReturnsFinalGIFOnly(t *testing.T) {
 		downloads: map[string][]byte{"https://i.example/ugoira.zip": makeZip(t, "000000.jpg", []byte("frame"))},
 	}
 	encoder := &recordingUgoiraEncoder{output: []byte("gif")}
-	m := NewManager(client, nil, dir, "{id}")
+	m := NewManager(client, dir, "{id}")
 	m.SetUgoiraEncoder(encoder)
 
 	got, err := m.Download(context.Background(), application.DownloadRequest{IllustIDs: []int64{9}})
@@ -572,7 +572,7 @@ func TestDownloadUgoiraUsesSDKDownloadURL(t *testing.T) {
 		ugoira:    map[int64]pixiv.UgoiraMetadata{9: meta},
 		downloads: map[string][]byte{"https://i.example/selected.zip": makeZip(t, "000000.jpg", []byte("frame"))},
 	}
-	m := NewManager(client, nil, dir, "{id}")
+	m := NewManager(client, dir, "{id}")
 	m.SetUgoiraEncoder(&recordingUgoiraEncoder{output: []byte("gif")})
 
 	if _, err := m.Download(context.Background(), application.DownloadRequest{IllustIDs: []int64{9}}); err != nil {
@@ -588,7 +588,7 @@ func TestDownloadMissingImageURLReturnsError(t *testing.T) {
 		details: map[int64]pixiv.Illust{
 			1: {ID: 1, Title: "empty", PageCount: 1, Type: "illust"},
 		},
-	}, nil, t.TempDir(), "{id}")
+	}, t.TempDir(), "{id}")
 
 	_, err := m.Download(context.Background(), application.DownloadRequest{IllustIDs: []int64{1}})
 	if err == nil || !strings.Contains(err.Error(), "no original image url") {
@@ -607,7 +607,7 @@ func TestDownloadUgoiraExplicitAPNGUsesRustEncoder(t *testing.T) {
 		},
 		ugoira:    map[int64]pixiv.UgoiraMetadata{1: meta},
 		downloads: map[string][]byte{"https://i.example/ugoira.zip": makeZip(t, "000000.jpg", []byte("frame"))},
-	}, nil, dir, "{id}")
+	}, dir, "{id}")
 	encoder := &recordingUgoiraEncoder{output: []byte("gif")}
 	m.SetUgoiraEncoder(encoder)
 

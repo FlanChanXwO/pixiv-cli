@@ -8,9 +8,9 @@ import (
 	sdk "github.com/FlanChanXwO/pixiv-cli/pixiv"
 )
 
-// TestFeedAndMyPixivToolsRouteAppSDKRequestsWithRecords 保留各 feed 的专属
+// TestTimelineAndMyPixivToolsRouteAppSDKRequestsWithRecords 保留各时间线的专属
 // App API 请求断言，并固定所有实体结果使用共享 records 契约。
-func TestFeedAndMyPixivToolsRouteAppSDKRequestsWithRecords(t *testing.T) {
+func TestTimelineAndMyPixivToolsRouteAppSDKRequestsWithRecords(t *testing.T) {
 	var followingNovel sdk.FollowingNovelsRequest
 	var latestIllust sdk.LatestIllustsRequest
 	var latestNovel sdk.LatestNovelsRequest
@@ -70,19 +70,19 @@ func TestFeedAndMyPixivToolsRouteAppSDKRequestsWithRecords(t *testing.T) {
 		return structured
 	}
 
-	following := assertRecords("novel_follow", map[string]any{"restrict": "private", "limit": 1}, "1", "novel")
+	following := assertRecords("timeline_novel_following", map[string]any{"restrict": "private", "limit": 1}, "1", "novel")
 	if followingNovel.Restrict != sdk.RestrictPrivate || !paginationHasMore(t, following) {
-		t.Fatalf("novel_follow request=%+v structured=%#v", followingNovel, following)
+		t.Fatalf("timeline_novel_following request=%+v structured=%#v", followingNovel, following)
 	}
 
-	illustNew := assertRecords("illust_new", map[string]any{"content_type": "manga", "limit": 1}, "2", "illust")
+	illustNew := assertRecords("timeline_illust_latest", map[string]any{"content_type": "manga", "limit": 1}, "2", "illust")
 	if latestIllust.Type != sdk.IllustTypeManga || !paginationHasMore(t, illustNew) {
-		t.Fatalf("illust_new request=%+v structured=%#v", latestIllust, illustNew)
+		t.Fatalf("timeline_illust_latest request=%+v structured=%#v", latestIllust, illustNew)
 	}
 
-	assertRecords("novel_new", map[string]any{}, "3", "novel")
+	assertRecords("timeline_novel_latest", map[string]any{}, "3", "novel")
 	if latestNovel.Cursor != "" {
-		t.Fatalf("novel_new request=%+v", latestNovel)
+		t.Fatalf("timeline_novel_latest request=%+v", latestNovel)
 	}
 
 	assertRecords("mypixiv_users", map[string]any{}, "4", "user")
@@ -106,7 +106,7 @@ func TestFeedAndMyPixivToolsRouteAppSDKRequestsWithRecords(t *testing.T) {
 	}
 }
 
-func TestFeedToolsValidateInputAndExposeSDKErrors(t *testing.T) {
+func TestTimelineToolsValidateInputAndExposeSDKErrors(t *testing.T) {
 	upstream := errors.New("latest upstream failed")
 	client := &fakeSDKClient{latestIllusts: func(context.Context, sdk.LatestIllustsRequest) (*sdk.IllustListResult, error) {
 		return nil, upstream
@@ -118,9 +118,9 @@ func TestFeedToolsValidateInputAndExposeSDKErrors(t *testing.T) {
 		name string
 		args map[string]any
 	}{
-		{"illust_new", map[string]any{"content_type": "ugoira"}},
+		{"timeline_illust_latest", map[string]any{"content_type": "ugoira"}},
 		{"mypixiv_novels", map[string]any{"page": 0, "limit": 1}},
-		{"illust_new", map[string]any{"content_type": "illust"}},
+		{"timeline_illust_latest", map[string]any{"content_type": "illust"}},
 	} {
 		result := callTool(t, session, tool.name, tool.args)
 		if !result.IsError {

@@ -6,19 +6,16 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log/slog"
 	"strconv"
 	"strings"
 	"syscall"
-	"time"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/application"
 	"github.com/FlanChanXwO/pixiv-cli/internal/bootstrap"
 	"github.com/FlanChanXwO/pixiv-cli/internal/buildinfo"
+	"github.com/FlanChanXwO/pixiv-cli/internal/cli/loginhelper"
 	"github.com/FlanChanXwO/pixiv-cli/internal/config"
-	"github.com/FlanChanXwO/pixiv-cli/internal/logging"
 	"github.com/FlanChanXwO/pixiv-cli/internal/update"
-	sdk "github.com/FlanChanXwO/pixiv-cli/pixiv"
 	"github.com/spf13/cobra"
 )
 
@@ -26,7 +23,6 @@ type app struct {
 	in                  io.Reader
 	out                 io.Writer
 	errOut              io.Writer
-	logger              *slog.Logger
 	pipelineSignal      *brokenPipeSignalState
 	mcpBrokenPipeSignal *brokenPipeSignalState
 }
@@ -53,9 +49,10 @@ type clientConfig struct {
 }
 
 var (
-	runMCPServer                = runMCP
-	newCLIServices              = bootstrap.NewServices
-	cleanupPendingWindowsUpdate = update.CleanupPendingWindowsUpdate
+	runMCPServer                        = runMCP
+	newCLIServices                      = bootstrap.NewServices
+	cleanupPendingWindowsUpdate         = update.CleanupPendingWindowsUpdate
+	automaticPersistentHandlerSupported = loginhelper.AutomaticPersistentHandlerSupported
 )
 
 func Run(args []string, in io.Reader, out io.Writer, errOut io.Writer) int {
@@ -97,15 +94,13 @@ func runContext(ctx context.Context, args []string, in io.Reader, out io.Writer,
 			return 1
 		}
 	}
-	logger, logCloser, err := applicationLoggerForArgs(args, errOut)
-	if err != nil {
-		fmt.Fprintln(errOut, "error:", err)
-		return 1
+	if shouldAutomaticallyEnsurePersistentHandler(args) {
+		if err := ensureURLSchemeRelay(ctx); err != nil {
+			// 这项桌面集成不能阻断原命令，也不能把系统/本机路径写入 stderr。
+			fmt.Fprintln(errOut, "warning: persistent pixiv:// callback handler was not initialized")
+		}
 	}
-	if logCloser != nil {
-		defer func() { _ = logCloser.Close() }()
-	}
-	a := app{in: in, out: out, errOut: errOut, logger: logger, pipelineSignal: pipelineSignal, mcpBrokenPipeSignal: mcpBrokenPipeSignal}
+	a := app{in: in, out: out, errOut: errOut, pipelineSignal: pipelineSignal, mcpBrokenPipeSignal: mcpBrokenPipeSignal}
 	if pipelineSignal != nil {
 		defer func() {
 			if pipelineSignal.stop != nil {
@@ -126,27 +121,16 @@ func runContext(ctx context.Context, args []string, in io.Reader, out io.Writer,
 	cmd.SetErr(errOut)
 	cmd.SetArgs(args[1:])
 	cmd.SetContext(ctx)
-	operation := cmd.CommandPath()
 	target := cmd
 	if found, _, findErr := cmd.Find(args[1:]); findErr == nil && found != nil {
 		target = found
-		operation = target.CommandPath()
 	}
-	started := time.Now()
-	err = cmd.Execute()
-	// Cobra 将根帮助和 `pixiv --version` 都报告为 `pixiv`；后者是稳定的单行
-	// machine-readable 输出，不能混入日志，前者则仍应留下命令诊断。
-	a.commandLog(operation, started, err, len(args) == 2 && args[1] == "--version")
+	err := cmd.Execute()
 	return a.exitWithNDJSONScope(err, commandWritesNDJSON(target))
 }
 
-// applicationLoggerForArgs 在 Cobra 解析前识别凭据导出前缀，使成功、help 与参数
-// 错误路径都不依赖 config/logging 环境。其他命令仍沿用完整配置型 logger。
-func applicationLoggerForArgs(args []string, errOut io.Writer) (*slog.Logger, io.Closer, error) {
-	if isAuthExportInvocation(args) || isInternalLoginCallbackInvocation(args) || isFilterInvocation(args) {
-		return logging.OrDiscard(nil), nil, nil
-	}
-	return bootstrap.NewApplicationLogger(errOut)
+func shouldAutomaticallyEnsurePersistentHandler(args []string) bool {
+	return automaticPersistentHandlerSupported() && !isAuthExportInvocation(args) && !isInternalLoginCallbackInvocation(args) && !isFilterInvocation(args)
 }
 
 func isAuthExportInvocation(args []string) bool {
@@ -165,8 +149,7 @@ func isAuthExportInvocation(args []string) bool {
 	return !state.help && !state.version
 }
 
-// isFilterInvocation 让 filter 保持纯本地 stdin→stdout 变换：它不应因日志配置或
-// 默认配置文件初始化而在消费上游数据前失败。
+// isFilterInvocation 让 filter 保持纯本地 stdin→stdout 变换，不初始化默认配置文件。
 func isFilterInvocation(args []string) bool {
 	if len(args) < 2 {
 		return false
@@ -177,8 +160,7 @@ func isFilterInvocation(args []string) bool {
 }
 
 // isInternalLoginCallbackInvocation 识别由操作系统协议关联或安装器启动的隐藏 helper。
-// callback 可能携带一次性 authorization code；两者都不能触发更新清理、配置型
-// logger 或业务日志。
+// callback 可能携带一次性 authorization code；两者都不能触发更新清理或配置加载。
 func isInternalLoginCallbackInvocation(args []string) bool {
 	// `_callback` 可由未来不经 argv 传递 callback 的桌面 helper 调用，
 	// `_install-handler` 本身也没有位置参数；两者最短都是三个 argv 元素。
@@ -247,45 +229,6 @@ func rootBooleanFlagValue(argument string) (flag rootBooleanFlag, value bool, re
 	return flag, value, true, err
 }
 
-// commandLog 仅记录命令名和稳定结果，不能记录 args：其中可能含 refresh token、
-// OAuth code 或本地路径。stdout 始终只保留命令业务输出。
-func (a app) commandLog(operation string, started time.Time, err error, suppress bool) {
-	if a.logger == nil {
-		return
-	}
-	// 纯本地 metadata/config 命令的 stdout/stderr 是稳定机器接口；它们不触发业务
-	// 网络流程，因此不额外产生日志。根命令覆盖 `pixiv --version` 的 Cobra 路径。
-	if suppress || operation == "pixiv auth export" || operation == "pixiv auth "+internalURLCallbackCommand || operation == "pixiv auth "+internalURLHandlerInstallCommand || strings.HasPrefix(operation, "pixiv config") || strings.HasPrefix(operation, "pixiv version") || strings.HasPrefix(operation, "pixiv update") {
-		return
-	}
-	result, code, backend, status, transportKind := logging.ResultSuccess, "", logging.BackendLocal, 0, ""
-	var illustID, userID int64
-	if err != nil {
-		result = logging.ResultError
-		var typed *sdk.Error
-		if errors.As(err, &typed) {
-			code, backend, status = string(typed.Code), string(typed.Backend), typed.UpstreamStatus
-			transportKind = string(typed.TransportKind)
-			if backend == "" {
-				backend = logging.BackendLocal
-			}
-			illustID, userID = typed.IllustID, typed.UserID
-		}
-	}
-	logging.LogOperation(a.logger, logging.OperationEvent{
-		Component:     "cli",
-		Operation:     operation,
-		Backend:       backend,
-		Duration:      time.Since(started),
-		Result:        result,
-		ErrorCode:     code,
-		Status:        status,
-		TransportKind: transportKind,
-		IllustID:      illustID,
-		UserID:        userID,
-	})
-}
-
 func (a app) exit(err error) int {
 	return a.exitWithNDJSONScope(err, false)
 }
@@ -307,12 +250,6 @@ func (a app) exitWithNDJSONScope(err error, ndjsonOutput bool) int {
 		return 1
 	}
 	fmt.Fprintln(a.errOut, "error:", err)
-	// 仅对特殊非认证故障提示查看日志；登录失败与 token 过期不提示。
-	if shouldSuggestLogDir(err) {
-		if hint := bootstrap.SuggestLogDirHint(); hint != "" {
-			fmt.Fprintln(a.errOut, hint)
-		}
-	}
 	return 1
 }
 
@@ -345,31 +282,12 @@ func newUsageError(err error) error {
 	return &usageError{err: err}
 }
 
-func shouldSuggestLogDir(err error) bool {
-	var typed *sdk.Error
-	if !errors.As(err, &typed) {
-		return false
-	}
-	switch typed.Code {
-	case sdk.CodeUnauthorized, sdk.CodeForbidden:
-		return false
-	case sdk.CodeUpstreamUnavailable, sdk.CodeUpstreamError, sdk.CodeMalformedUpstreamResponse, sdk.CodeRateLimited:
-		return true
-	default:
-		return false
-	}
-}
-
-func runMCP(ctx context.Context, errOut io.Writer, proxyOverride *string) error {
-	return bootstrap.RunMCP(ctx, errOut, proxyOverride)
+func runMCP(ctx context.Context, proxyOverride *string) error {
+	return bootstrap.RunMCP(ctx, proxyOverride)
 }
 
 func (a app) services() application.Services {
-	if a.logger != nil {
-		return newCLIServices(a.logger)
-	}
-	// 仅供包内直接构造 app 的测试；生产入口始终显式创建根 logger。
-	return newCLIServices(logging.OrDiscard(nil))
+	return newCLIServices()
 }
 
 func (a app) newRootCommand() *cobra.Command {
@@ -403,13 +321,12 @@ func (a app) newRootCommand() *cobra.Command {
 		a.newAccountCommand(),
 		a.newConfigCommand(),
 		a.newSearchCommand(),
-		a.newSearchOptionsCommand(),
 		a.newFilterCommand(),
 		a.newNovelCommand(),
 		a.newDetailCommand(),
 		a.newRankingCommand(),
 		a.newRecommendedCommand(),
-		a.newFeedCommand(),
+		a.newTimelineCommand(),
 		a.newMyPixivCommand(),
 		a.newUserCommand(),
 		a.newBookmarkCommand(),
@@ -459,7 +376,7 @@ func (a app) newMCPCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return runMCPServer(cmd.Context(), a.errOut, proxyOverride)
+			return runMCPServer(cmd.Context(), proxyOverride)
 		},
 	}
 	a.bindProxyFlags(cmd, &opts)

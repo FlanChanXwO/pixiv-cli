@@ -6,13 +6,11 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
-	"log/slog"
 	"net/http"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/logging"
 	internalpixiv "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv"
 	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/appapi"
 	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/model"
@@ -25,8 +23,6 @@ import (
 // clientOptions 是两个公开构造器的内部完整配置。它不直接暴露，避免调用方把
 // 某个构造器不会读取的字段混在一起。
 type clientOptions struct {
-	// Logger 接收调用方显式注入的诊断 logger；为空时 SDK 严格静默，绝不使用 slog.Default。
-	Logger *slog.Logger
 	// HTTPClient 同时承载 App、Web、OAuth 与资源请求；为空时 SDK 创建一个
 	// 无整请求固定超时的专用 client，请求生命周期由 context 控制。
 	HTTPClient *http.Client
@@ -63,7 +59,6 @@ type clientOptions struct {
 // NewClientOptions 配置显式 access-token 或匿名 Web API Client。它不读取本地
 // auth/config 状态；需要本地默认账号时使用 OpenDefault 或 OpenDefaultWith。
 type NewClientOptions struct {
-	Logger                 *slog.Logger
 	HTTPClient             *http.Client
 	AppAPIBaseURL          string
 	WebAPIBaseURL          string
@@ -78,7 +73,6 @@ type NewClientOptions struct {
 // AccessToken 和 WebFallbackEnabled 不属于这个类型：前者用于 NewClient，后者由
 // 本地配置快照决定。
 type OpenDefaultOptions struct {
-	Logger                        *slog.Logger
 	HTTPClient                    *http.Client
 	AppAPIBaseURL                 string
 	WebAPIBaseURL                 string
@@ -123,7 +117,6 @@ type Client struct {
 	premiumStatusCheckedAt time.Time
 	premiumStatusCacheTTL  time.Duration
 	premiumStatusAuthPath  string
-	logger                 *slog.Logger
 }
 
 // CurrentUserID 返回 OpenDefault 当前认证快照对应的 Pixiv UID。
@@ -132,18 +125,14 @@ type Client struct {
 // 本地默认账号错误地当作显式 refresh token 或环境变量 token 的身份。显式 NewClient
 // 的 access token 不携带可验证 UID，因此返回 unsupported。
 func (c *Client) CurrentUserID(ctx context.Context) (userID int64, err error) {
-	started := time.Now()
 	if c.defaults != nil {
 		scoped, snapshotErr := c.operationClient(ctx, OperationCurrentUserID)
 		if snapshotErr != nil {
 			return 0, snapshotErr
 		}
 		userID, err = scoped.currentUserID()
-		// operationClient 已记录快照失败；成功后的身份解析只有这里一条事件。
-		scoped.operationLog(OperationCurrentUserID, started, err, 0, userID)
 		return userID, err
 	}
-	defer func() { c.operationLog(OperationCurrentUserID, started, err, 0, userID) }()
 	if scoped, err := c.operationClient(ctx, OperationCurrentUserID); err != nil {
 		return 0, err
 	} else if scoped != c {
@@ -175,7 +164,7 @@ func (c *Client) currentUserID() (int64, error) {
 // NewClient 构造显式 access-token 或匿名客户端；它不会执行网络请求或隐式认证。
 func NewClient(options NewClientOptions) (*Client, error) {
 	return newClient(clientOptions{
-		Logger: options.Logger, HTTPClient: options.HTTPClient, AppAPIBaseURL: options.AppAPIBaseURL,
+		HTTPClient: options.HTTPClient, AppAPIBaseURL: options.AppAPIBaseURL,
 		WebAPIBaseURL: options.WebAPIBaseURL, AccessToken: options.AccessToken,
 		WebFallbackEnabled: options.WebFallbackEnabled, ResourcePolicy: options.ResourcePolicy, ResourceCachePath: options.ResourceCachePath,
 		DisableRetryAfterRetry: options.DisableRetryAfterRetry,
@@ -196,7 +185,6 @@ func newClient(options clientOptions) (*Client, error) {
 		appapi.WithBaseURL(options.AppAPIBaseURL),
 		appapi.WithAccessToken(accessToken),
 		appapi.WithHTTPClient(httpClient),
-		appapi.WithLogger(options.Logger),
 	}
 	if options.DisableRetryAfterRetry {
 		appOptions = append(appOptions, appapi.WithDisableRetryAfterRetry())
@@ -220,7 +208,6 @@ func newClient(options clientOptions) (*Client, error) {
 		oauthBaseURL:       strings.TrimSpace(options.OAuthBaseURL),
 		appAPIBaseURL:      strings.TrimSpace(options.AppAPIBaseURL),
 		authState:          &authTransactionState{},
-		logger:             logging.OrDiscard(options.Logger),
 	}, nil
 }
 
@@ -254,7 +241,7 @@ func OpenDefault() (*Client, error) { return OpenDefaultWith(OpenDefaultOptions{
 // 它不缓存这些状态：每次公开操作开始时都会取得一次新快照。
 func OpenDefaultWith(input OpenDefaultOptions) (*Client, error) {
 	options := clientOptions{
-		Logger: input.Logger, HTTPClient: input.HTTPClient, AppAPIBaseURL: input.AppAPIBaseURL,
+		HTTPClient: input.HTTPClient, AppAPIBaseURL: input.AppAPIBaseURL,
 		WebAPIBaseURL: input.WebAPIBaseURL, OAuthBaseURL: input.OAuthBaseURL,
 		AuthFilePath: input.AuthFilePath, ConfigFilePath: input.ConfigFilePath,
 		ResourcePolicy: input.ResourcePolicy, ResourceCachePath: input.ResourceCachePath, RefreshToken: input.RefreshToken, UserID: input.UserID,
@@ -295,8 +282,6 @@ func newHTTPClientForSnapshot(options clientOptions, proxy string) (*http.Client
 
 // IllustDetail 在认证态使用 App API 返回的详情和页面元数据；App 失败时不会请求 Web。
 func (c *Client) IllustDetail(ctx context.Context, id int64) (result *IllustDetail, err error) {
-	started := time.Now()
-	defer func() { c.delegatedOperationLog(OperationIllustDetail, started, err, id, 0) }()
 	if scoped, err := c.operationClient(ctx, OperationIllustDetail); err != nil {
 		return nil, err
 	} else if scoped != c {

@@ -1,13 +1,9 @@
 package cli
 
 import (
-	"context"
 	"errors"
 	"fmt"
-	"net/url"
-	"strings"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/cli/loginhelper"
 	"github.com/FlanChanXwO/pixiv-cli/internal/config"
 	"github.com/spf13/cobra"
 )
@@ -30,13 +26,6 @@ func isCLIConfigAlias(alias string) bool {
 func invalidCLIConfigKey(alias string) error {
 	return fmt.Errorf("unknown config key %q. valid keys: %s", alias, configKeyHelp)
 }
-
-// ensurePersistentURLHandler 为 config 命令保留窄注入点：测试不能为了验证
-// 配置错误路径而修改真实桌面系统的 pixiv:// association。
-var (
-	ensurePersistentURLHandler  = loginhelper.EnsurePersistent
-	disablePersistentURLHandler = loginhelper.DisablePersistent
-)
 
 func (a app) newConfigCommand() *cobra.Command {
 	cmd := &cobra.Command{
@@ -142,34 +131,8 @@ func (a app) configSet(alias, raw string) error {
 	if result.HasOverride {
 		a.writeConfigOverrideNote(alias, result.EnvOverride)
 	}
-	if relayConfigUsesHTTP(alias, raw) {
-		// HTTP relay 会在 client 与 server 之间传输 callback 和 bearer secret；
-		// 写配置时即告知风险，不能只等到某次 server login 才暴露。即使后续
-		// handler 初始化失败，刚刚写入的 HTTP 配置也仍需被用户明确看见。
-		fmt.Fprintln(a.errOut, "warning: remote Pixiv login relay uses HTTP; the callback and relay secret can be observed or modified by the network.")
-	}
-	if alias == "login_relay_target_url" || alias == "login_relay_secret" {
-		// 两项齐全才接管系统 handler；允许用户先后设置它们，避免半配置在
-		// Windows/Linux/macOS 留下错误的默认 URL association。
-		_, relayErr := loginhelper.ConfiguredRelayTarget()
-		if relayErr == nil {
-			if err := ensurePersistentURLHandler(context.Background()); err != nil {
-				return fmt.Errorf("enable persistent Pixiv callback handler: %w", err)
-			}
-		} else if !errors.Is(relayErr, loginhelper.ErrNoConfiguredRelay) && !errors.Is(relayErr, loginhelper.ErrIncompleteRelayConfig) {
-			return relayErr
-		}
-	}
 	fmt.Fprintf(a.out, "%s updated\n", alias)
 	return nil
-}
-
-func relayConfigUsesHTTP(alias, raw string) bool {
-	if alias != "login_relay_public_url" && alias != "login_relay_target_url" {
-		return false
-	}
-	parsed, err := url.Parse(strings.TrimSpace(raw))
-	return err == nil && strings.EqualFold(parsed.Scheme, "http")
 }
 
 func (a app) writeConfigOverrideNote(alias, envOverride string) {
@@ -196,12 +159,6 @@ func (a app) newConfigUnsetCommand() *cobra.Command {
 func (a app) configUnset(alias string) error {
 	if !isCLIConfigAlias(alias) {
 		return invalidCLIConfigKey(alias)
-	}
-	if alias == "login_relay_target_url" {
-		// 先恢复系统关联；若恢复失败，保留配置让用户可重试，不能假装已经清理。
-		if err := disablePersistentURLHandler(context.Background()); err != nil {
-			return fmt.Errorf("disable persistent Pixiv callback handler: %w", err)
-		}
 	}
 	services := a.services()
 	result, err := services.Config.Unset(alias)

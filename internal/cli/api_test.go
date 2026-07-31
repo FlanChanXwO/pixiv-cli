@@ -7,11 +7,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -137,16 +137,12 @@ func TestDetailRejectsUnsupportedURLBeforeOpeningSDK(t *testing.T) {
 }
 
 func TestSearchHelpUsesEnglishExamples(t *testing.T) {
-	for _, command := range []string{"search", "search-options"} {
-		t.Run(command, func(t *testing.T) {
-			var stdout, stderr bytes.Buffer
-			code := Run([]string{"pixiv", command, "--help"}, strings.NewReader(""), &stdout, &stderr)
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"pixiv", "search", "--help"}, strings.NewReader(""), &stdout, &stderr)
 
-			require.Equal(t, 0, code, stderr.String())
-			assert.Contains(t, stdout.String(), `pixiv `+command+` "miku" --json`)
-			assert.NotContains(t, stdout.String(), "初音ミク")
-		})
-	}
+	require.Equal(t, 0, code, stderr.String())
+	assert.Contains(t, stdout.String(), `pixiv search "miku" --json`)
+	assert.NotContains(t, stdout.String(), "初音ミク")
 }
 
 func TestNovelAndUserSearchHelpUsesEnglishExamples(t *testing.T) {
@@ -348,7 +344,6 @@ func TestCommandHelpListsRemainingParameterDomains(t *testing.T) {
 
 func TestEveryOtherDataCommandRejectsDownloadOnlyFlags(t *testing.T) {
 	commands := [][]string{
-		{"pixiv", "search-options", "miku"},
 		{"pixiv", "detail", "1"},
 		{"pixiv", "ranking"},
 		{"pixiv", "recommended", "illust"},
@@ -532,52 +527,6 @@ func TestSearchRejectsRemovedCompatibilityFlags(t *testing.T) {
 	}
 }
 
-func TestSearchOptionsRoutesWordAndPrintsJSON(t *testing.T) {
-	useTempPaths(t)
-	var got sdk.SearchIllustOptionsRequest
-	setTestSDKCommandClient(t, sdkCommandFake{searchOptions: func(_ context.Context, request sdk.SearchIllustOptionsRequest) (*sdk.SearchIllustOptionsResult, error) {
-		got = request
-		return &sdk.SearchIllustOptionsResult{Tools: []string{"CLIP STUDIO PAINT", "Photoshop"}}, nil
-	}})
-	var stdout, stderr bytes.Buffer
-	code := Run([]string{"pixiv", "search-options", "初音", "ミク", "--json"}, strings.NewReader(""), &stdout, &stderr)
-	require.Equal(t, 0, code, stderr.String())
-	assert.Equal(t, sdk.SearchIllustOptionsRequest{Word: "初音 ミク"}, got)
-	assert.JSONEq(t, `{"tools":["CLIP STUDIO PAINT","Photoshop"]}`, stdout.String())
-}
-
-func TestSearchOptionsTextClearlyPrintsEmptyTools(t *testing.T) {
-	useTempPaths(t)
-	setTestSDKCommandClient(t, sdkCommandFake{searchOptions: func(context.Context, sdk.SearchIllustOptionsRequest) (*sdk.SearchIllustOptionsResult, error) {
-		return &sdk.SearchIllustOptionsResult{Tools: []string{}}, nil
-	}})
-	var stdout, stderr bytes.Buffer
-	code := Run([]string{"pixiv", "search-options", "miku"}, strings.NewReader(""), &stdout, &stderr)
-	require.Equal(t, 0, code, stderr.String())
-	assert.Equal(t, "search options for \"miku\"\ntools: none\n", stdout.String())
-}
-
-func TestSearchOptionsTextEscapesControlCharactersInToolNames(t *testing.T) {
-	useTempPaths(t)
-	tool := "safe\nline\r\x1b[31mred"
-	setTestSDKCommandClient(t, sdkCommandFake{searchOptions: func(context.Context, sdk.SearchIllustOptionsRequest) (*sdk.SearchIllustOptionsResult, error) {
-		return &sdk.SearchIllustOptionsResult{Tools: []string{tool}}, nil
-	}})
-	var stdout, stderr bytes.Buffer
-	code := Run([]string{"pixiv", "search-options", "miku"}, strings.NewReader(""), &stdout, &stderr)
-	require.Equal(t, 0, code, stderr.String())
-	assert.Equal(t, "search options for \"miku\"\ntools:\n- safe\\nline\\r\\x1b[31mred\n", stdout.String())
-	assert.NotContains(t, stdout.String(), "\x1b")
-
-	stdout.Reset()
-	stderr.Reset()
-	code = Run([]string{"pixiv", "search-options", "miku", "--json"}, strings.NewReader(""), &stdout, &stderr)
-	require.Equal(t, 0, code, stderr.String())
-	var result sdk.SearchIllustOptionsResult
-	require.NoError(t, json.Unmarshal(stdout.Bytes(), &result))
-	assert.Equal(t, []string{tool}, result.Tools)
-}
-
 func TestRunSearchRejectsMalformedExplicitProxyWithoutLeakingSensitiveComponents(t *testing.T) {
 	useTempPaths(t)
 	proxy := "http://proxy-user-secret:proxy-pass-secret@proxy-host-secret.invalid/proxy-path-secret-%zz?proxy-query-secret=value"
@@ -613,7 +562,6 @@ func TestSDKDataCommandsPassProxyOverride(t *testing.T) {
 		args []string
 	}{
 		{name: "search", args: []string{"pixiv", "search", "miku", "--proxy", "http://flag-proxy"}},
-		{name: "search options", args: []string{"pixiv", "search-options", "miku", "--proxy", "http://flag-proxy"}},
 		{name: "detail", args: []string{"pixiv", "detail", "42", "--proxy", "http://flag-proxy"}},
 		{name: "ranking", args: []string{"pixiv", "ranking", "--proxy", "http://flag-proxy"}},
 		{name: "recommended", args: []string{"pixiv", "recommended", "illust", "--proxy", "http://flag-proxy"}},
@@ -641,7 +589,6 @@ func TestSDKDataCommandsEmptyProxyOverrideClearsRuntimeProxy(t *testing.T) {
 		args []string
 	}{
 		{name: "search", args: []string{"pixiv", "search", "miku", "--proxy", ""}},
-		{name: "search options", args: []string{"pixiv", "search-options", "miku", "--proxy", ""}},
 		{name: "detail", args: []string{"pixiv", "detail", "42", "--proxy", ""}},
 		{name: "ranking", args: []string{"pixiv", "ranking", "--proxy", ""}},
 		{name: "recommended", args: []string{"pixiv", "recommended", "illust", "--proxy", ""}},
@@ -684,7 +631,6 @@ func TestDataCommandsRejectCredentialSelectionFlags(t *testing.T) {
 func TestNetworkDataCommandsNoProxyFlagClearsRuntimeProxy(t *testing.T) {
 	for _, args := range [][]string{
 		{"pixiv", "search", "miku", "--no-proxy"},
-		{"pixiv", "search-options", "miku", "--no-proxy"},
 		{"pixiv", "detail", "42", "--no-proxy"},
 		{"pixiv", "ranking", "--no-proxy"},
 		{"pixiv", "recommended", "illust", "--no-proxy"},
@@ -838,7 +784,7 @@ func TestDownloadReportsFactoryFailure(t *testing.T) {
 }
 
 func TestDownloadReportsManagerFailure(t *testing.T) {
-	useTempPaths(t)
+	_, configPath := useTempPaths(t)
 	want := errors.New("download manager failed")
 	setTestDownloadCommandServices(t, func(application.SDKClientRequest) (application.SDKClient, error) {
 		return &sdkCommandFake{}, nil
@@ -854,6 +800,8 @@ func TestDownloadReportsManagerFailure(t *testing.T) {
 	require.NotZero(t, code)
 	require.Empty(t, stdout.String())
 	require.Contains(t, stderr.String(), "download completed with 1 failures")
+	_, err := os.Stat(filepath.Join(filepath.Dir(configPath), "logs"))
+	assert.ErrorIs(t, err, os.ErrNotExist)
 }
 
 func TestDownloadDoesNotAcceptJSONReportOutput(t *testing.T) {
@@ -918,7 +866,7 @@ func (m downloadManagerFake) Download(ctx context.Context, request application.D
 func setTestDownloadCommandServices(t *testing.T, newClient application.SDKClientFactory, runtime config.RuntimeConfig, newManager application.DownloadManagerFactory) {
 	t.Helper()
 	old := newCLIServices
-	newCLIServices = func(*slog.Logger) application.Services {
+	newCLIServices = func() application.Services {
 		return application.Services{
 			SDK: application.SDKService{
 				NewClient:   newClient,
@@ -1016,9 +964,6 @@ func proxySDKClient() sdkCommandFake {
 		search: func(context.Context, sdk.SearchIllustRequest) (*sdk.IllustListResult, error) {
 			return &sdk.IllustListResult{}, nil
 		},
-		searchOptions: func(context.Context, sdk.SearchIllustOptionsRequest) (*sdk.SearchIllustOptionsResult, error) {
-			return &sdk.SearchIllustOptionsResult{Tools: []string{}}, nil
-		},
 		detail: func(context.Context, int64) (*sdk.IllustDetail, error) {
 			return &sdk.IllustDetail{Illust: commandIllust(42)}, nil
 		},
@@ -1111,8 +1056,8 @@ func TestSearchDoesNotReplayWhenWriterReturnsRateLimitedError(t *testing.T) {
 	}}
 	old := newCLIServices
 	poolCalls := 0
-	newCLIServices = func(logger *slog.Logger) application.Services {
-		services := bootstrap.NewServices(logger)
+	newCLIServices = func() application.Services {
+		services := bootstrap.NewServices()
 		services.SDK.NewClient = func(application.SDKClientRequest) (application.SDKClient, error) { return client, nil }
 		services.SDK.RunPooled = func(ctx context.Context, _ application.SDKClientRequest, attempt func(context.Context, application.SDKClient) (bool, error)) error {
 			poolCalls++

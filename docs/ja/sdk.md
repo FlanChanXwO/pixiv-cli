@@ -18,7 +18,6 @@ local, err := pixiv.OpenDefault()
 // 明示 access token または匿名 client: local auth/config field は含みません。
 client, err := pixiv.NewClient(pixiv.NewClientOptions{
     AccessToken: accessToken,
-    Logger:      logger, // optional; nil の場合 SDK は静かに動作します
 })
 
 // 高度な local/default client。
@@ -34,8 +33,8 @@ configuration/auth snapshot を取得します。複数の pagination call で�
 `client.Snapshot(ctx)` を使用してください。明示的な token export だけは例外であり、auth store を直接読みます。
 
 `NewClientOptions` は direct client 用の `AccessToken`、`WebFallbackEnabled`、HTTP、App/Web endpoint、
-`ResourcePolicy`、任意の `ResourceCachePath`、`Logger` だけを持ちます。`OpenDefaultOptions` は local path、OAuth endpoint、
-account selection、HTTP/endpoint、resource policy/cache path、logger を持ちます。2 つの options に無効 field は混在しません。
+`ResourcePolicy`、任意の `ResourceCachePath` だけを持ちます。`OpenDefaultOptions` は local path、OAuth endpoint、
+account selection、HTTP/endpoint、resource policy/cache path を持ちます。2 つの options に無効 field は混在しません。
 
 ### HTTP client と request lifetime
 
@@ -57,17 +56,17 @@ options の `HTTPClient` を指定した場合、constructor は同じ pointer �
 
 | Category | Method |
 | --- | --- |
-| Works と recommendation | `SearchIllust`、`SearchNovel`、`SearchIllustOptions`、`IllustDetail`、`IllustPages`、`IllustRelated`、`IllustRanking`、`IllustRecommended`、`MangaRecommended`、`NovelRecommended`、`UserRecommended`、`FollowingIllusts`、`TrendingTagsIllust`、`UgoiraMetadata`。 |
+| Works と recommendation | `SearchIllust`、`SearchNovel`、`SupportedDrawingTools`、`IllustDetail`、`IllustPages`、`IllustRelated`、`IllustRanking`、`IllustRecommended`、`MangaRecommended`、`NovelRecommended`、`UserRecommended`、`FollowingIllusts`、`TrendingTagsIllust`、`UgoiraMetadata`。 |
 | Users | `SearchUser`、`UserDetail`、`UserArtworks`、`UserBookmarks`、`UserFollowing`、`CurrentUserID`。 |
 | Writes | `AddBookmark`、`RemoveBookmark`、`FollowUser`、`UnfollowUser`。 |
 | Accounts/configuration | `ImportAccount`、`ListAccounts`、`SelectAccount`、`RemoveAccount`、`ExportAccountRefreshToken`、`ExportAuthBundle`、`RestoreAuthBundle`、`CheckAccount`、`CheckRefreshToken`、`Refresh`、`RefreshAccount`、`PremiumStatus`、`RefreshPremiumStatus`、`GetConfig`、`SetConfig`、`UnsetConfig`。bundle codec function は package-level です。 |
 | Login | `StartLogin`、`CompleteLogin`、`BuildLoginAuthorizationURL`。SDK は browser、loopback server、TTY を起動しません。 |
 | Resources | `Download`、`DownloadAll`、`DownloadWith`、`DownloadAllWith`、`ParseResourceRef`、`OpenResource`、`DownloadResource`。 |
 
-request method は `SearchIllustRequest`、`SearchNovelRequest`、`SearchIllustOptionsRequest`、
+request method は `SearchIllustRequest`、`SearchNovelRequest`、
 `UserArtworksRequest`、`UserBookmarksRequest`、`UserFollowingRequest`、`AddBookmarkRequest`、
 `FollowUserRequest` などの名前付き request type を使用します。`IllustListResult`、`NovelListResult`、
-`SearchIllustOptionsResult`、`UserListResult`、`IllustDetail`、`UserDetailResult` などの result model はすべて
+`UserListResult`、`IllustDetail`、`UserDetailResult` などの result model はすべて
 top-level `pixiv` package にあります。
 
 すべての public `Illust` は安定した artwork page URL
@@ -81,9 +80,15 @@ bookmark total を like と表示してはいけません。
 `2 × runtime.GOMAXPROCS(0)` 自動並行を使います。
 
 `DownloadWith` / `DownloadAllWith` と `DownloadOptions` では `DownloadPath`、`FilenameTemplate`、1-based `Pages`、
-`Quality`、`UgoiraFormat`、`Concurrency` を指定できます。`UgoiraFormat` は既定で `gif`、`apng` も選べます。`Concurrency==0` は自動、正数は上限なしでそのまま使います。直リンクは URL
+`Quality`、`UgoiraFormat`、`Concurrency`、observation-only `Progress` callback を指定できます。`UgoiraFormat` は既定で `gif`、`apng` も選べます。`Concurrency==0` は自動、正数は上限なしでそのまま使います。直リンクは URL
 filename を使い、page、派生 quality、custom artwork template は拒否します。`DownloadAllResult.Items` は入力順を保持し、
 `Attempted`、成功結果（file cache state を含む）、または error を返すため失敗項だけ再試行できます。Ugoira ZIP は cache 後 GIF または APNG に変換し、page/original 以外の quality は unsupported です。
+
+`Progress func(DownloadProgress)` は download worker から直接かつ concurrently に呼ばれます。event は input の
+`SourceIndex`、1-based `Page`、destination path、利用できる artwork metadata、resource/batch byte counter を持ちます。
+callback を設定すると SDK は各 resource を safe HEAD probe します。全 size が分かる場合は `TotalBytesKnown` と
+`TotalBytes` が batch を表し、unknown size の場合も resource/batch の transferred byte を報告します。validated partial
+byte は最初の event から含まれます。callback は non-blocking にし、transfer は supplied context を cancel して停止します。
 
 `DownloadResource(ctx, ref, destination)` は raw-resource 用の明示 API で、`miss`、`revalidated`、`resumed`、`refreshed`
 を持つ `ResourceDownloadResult` を返します。旧 raw `Download(ctx, ResourceRef, path)` を置換します。
@@ -149,7 +154,7 @@ format は unencrypted な point-in-time backup であり、live sync ではあ�
 | `AIMode` | `all`、`exclude`、`only`。Pixiv `AIType==2` は AI-generated を意味します。 |
 | `AspectRatio` | `all`、`landscape`、`portrait`、`square` |
 | `Resolution` | `all`、`high`、`medium`、`low`。両 dimension が順に `>=3000`、`1000..2999`、`<=999` です。 |
-| `Tool` | fuzzy matching をしない、上流の drawing-tool value。 |
+| `Tool` | versioned drawing-tool catalog の exact value。unique な 1-edit spelling mistake には suggestion を返し、ambiguous prefix は `invalid_argument`。 |
 | `BookmarkMin` / `BookmarkMax` | 任意の包含境界の非負 public bookmark 数。App OAuth と有効な Pixiv Premium 会員資格が必要で、`Min` は `Max` を超えられません。保存済み account の `OpenDefault` は request 前に cached self-profile status を確認し、非 Premium には local `forbidden` を返します。 |
 
 zero enum value は `all` に正規化され、`Tool` は trim されます。unknown value は upstream request 前に
@@ -157,9 +162,7 @@ zero enum value は `all` に正規化され、`Tool` は trim されます。un
 parameter と Pixiv Premium 限定の bookmark-count parameter に変換します。rating と AI-only filter は current App batch の正規化 field を使用します。`Illust.Tools []string` は
 upstream の order と value を保持し、bookmark-count filter とは関係ありません。
 
-`SearchIllustOptions(ctx, SearchIllustOptionsRequest{Word: word})` は non-empty word と App authentication が必要です。
-戻り値は upstream order の `SearchIllustOptionsResult{Tools []string}` であり、list がない場合は non-nil empty slice です。
-`PremiumStatus(ctx)` は保存済み認証 account の cached-or-fresh membership snapshot を返し、`RefreshPremiumStatus(ctx)` は profile を強制取得して結果を保存します。`OpenDefault` は `[premium] status_cache_ttl`（既定 `24h`、`0s` は reuse 無効）を使います。直接 `NewClient` access token には検証可能な account UID がないため、この saved-account precheck はできません。
+`SupportedDrawingTools() []string` は versioned drawing-tool catalog を documented order で返します。network request は行わず、caller が変更できる defensive copy を返します。`PremiumStatus(ctx)` は保存済み認証 account の cached-or-fresh membership snapshot を返し、`RefreshPremiumStatus(ctx)` は profile を強制取得して結果を保存します。`OpenDefault` は `[premium] status_cache_ttl`（既定 `24h`、`0s` は reuse 無効）を使います。直接 `NewClient` access token には検証可能な account UID がないため、この saved-account precheck はできません。
 
 ### Novel search と user-search source
 
@@ -211,8 +214,7 @@ duration、rating、text-length bound、original-only condition に bound され
 refresh token がある場合、illustration search は App API だけを使います。authentication、network、server failure があっても
 Web へ自動 fallback しません。token がなく `WebFallbackEnabled=true` の `NewClient` は匿名 Web allowlist を利用できます。
 `OpenDefault` は snapshot ごとに local `web_fallback_enabled` を読みます。匿名 search は Web が確実に表現できる filter だけを
-使用します。`r18`、`r18g`、`mature` は network 前に `unauthorized` になり、empty result に偽装されません。匿名の
-`SearchIllustOptions` は `unsupported` を返します。SDK は cookie を read/inject せず、refresh token を Web session に
+使用します。`r18`、`r18g`、`mature` は network 前に `unauthorized` になり、empty result に偽装されません。SDK は cookie を read/inject せず、refresh token を Web session に
 変換しません。
 
 `SearchNovel` は App authentication が必要で、Web に fallback しません。`SearchUser` は認証済みなら App search を使い、
@@ -251,8 +253,7 @@ resource だけを受け入れます。caller は `ResourcePolicy.Mirrors` に�
 
 idempotent App API JSON read だけでは、最初の HTTP 429 に有効な seconds value または HTTP date の `Retry-After` があれば、
 1 回待機して retry します。wait は caller context を監視します。invalid/missing header、2 回目の 429、その他の error は
-元の typed error のままです。mutation と resource download は replay しません。任意の `info` logger は retry attempt と
-parse 済み wait duration だけを記録し、URL、header value、credential、response body は記録しません。
+元の typed error のままです。mutation と resource download は replay しません。
 
 ## エラー
 

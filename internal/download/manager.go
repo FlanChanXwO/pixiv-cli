@@ -3,15 +3,12 @@ package download
 import (
 	"context"
 	"fmt"
-	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/application"
-	"github.com/FlanChanXwO/pixiv-cli/internal/logging"
 	"github.com/FlanChanXwO/pixiv-cli/internal/utils/filename"
 	"github.com/FlanChanXwO/pixiv-cli/internal/utils/ids"
 	"github.com/FlanChanXwO/pixiv-cli/internal/utils/parallel"
@@ -29,17 +26,15 @@ type DownloadedFile = application.DownloadedFile
 
 type Manager struct {
 	client           PixivClient
-	logger           *slog.Logger
 	ugoiraEncoder    UgoiraEncoder
 	downloadPath     string
 	filenameTemplate string
 	mu               sync.RWMutex
 }
 
-func NewManager(client PixivClient, logger *slog.Logger, downloadPath, filenameTemplate string) *Manager {
+func NewManager(client PixivClient, downloadPath, filenameTemplate string) *Manager {
 	return &Manager{
 		client:           client,
-		logger:           logging.OrDiscard(logger),
 		ugoiraEncoder:    defaultUgoiraEncoder(),
 		downloadPath:     downloadPath,
 		filenameTemplate: filenameTemplate,
@@ -108,8 +103,6 @@ func (m *Manager) Download(ctx context.Context, request application.DownloadRequ
 }
 
 func (m *Manager) downloadArtwork(ctx context.Context, id int64, pages []int, quality application.DownloadQuality, ugoiraFormat application.UgoiraFormat) (out DownloadedArtwork, err error) {
-	started := time.Now()
-	defer func() { m.operationLog("download", started, err, id) }()
 	detail, err := m.client.IllustDetail(ctx, id)
 	if err != nil {
 		return DownloadedArtwork{}, err
@@ -264,23 +257,6 @@ func selectImageURL(urls sdk.ImageURLs, singleOriginal string, quality applicati
 	default:
 		return "", fmt.Errorf("quality must be one of original, regular, small, thumb, mini")
 	}
-}
-
-// operationLog 只写稳定诊断字段；下载错误可能携带上游 URL 或文件系统路径，
-// 因而不能直接作为 slog 的 error 属性输出。
-func (m *Manager) operationLog(operation string, started time.Time, err error, illustID int64) {
-	result := logging.ResultSuccess
-	if err != nil {
-		result = logging.ResultError
-	}
-	logging.LogOperation(m.logger, logging.OperationEvent{
-		Component: "download",
-		Operation: operation,
-		Backend:   logging.BackendLocal,
-		Duration:  time.Since(started),
-		Result:    result,
-		IllustID:  illustID,
-	})
 }
 
 func (m *Manager) downloadUgoira(ctx context.Context, illust sdk.Illust, base string, format application.UgoiraFormat) (string, error) {

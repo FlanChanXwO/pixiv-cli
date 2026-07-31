@@ -245,7 +245,7 @@ https_proxy=http://127.0.0.1:7890 ./build/pixiv mcp
 ./build/pixiv mcp --no-proxy
 ```
 
-CLI 的认证、配置、回调桥接、日志、Release 检查缓存与 macOS 回调 helper 都位于当前用户主目录下的 `.pixiv-cli`：macOS/Linux 为 `~/.pixiv-cli`，Windows 为 `%USERPROFILE%\.pixiv-cli`。多账号认证保存在 `auth.json`，账号 key 是 Pixiv UID；全局配置保存在 `config.toml`。Unix-like 主动使用 `0700` 父目录与 `0600` 文件；Windows 首次创建继承父目录 ACL，替换既有目标保留其 ACL，不主动收紧或放宽 DACL。推荐使用 `pixiv auth login` 通过本地 loopback server 和浏览器 OAuth 登录；已有 raw token 可用 `pixiv auth import` 输入，账号备份使用 `auth export` 与 `auth import --file`。`pixiv config path/get/set/unset` 只管理 `download_path`、`filename_template`、`https_proxy` 三个别名；其余高级 TOML（包括 `[web] fallback_enabled`）由用户手工维护。无 refresh token 时默认启用匿名 Pixiv web/ajax API fallback。
+CLI 的认证、配置、回调桥接、Release 检查缓存与 callback helper 都位于当前用户主目录下的 `.pixiv-cli`：macOS/Linux 为 `~/.pixiv-cli`，Windows 为 `%USERPROFILE%\.pixiv-cli`。多账号认证保存在 `auth.json`，账号 key 是 Pixiv UID；全局配置保存在 `config.toml`。Unix-like 主动使用 `0700` 父目录与 `0600` 文件；Windows 首次创建继承父目录 ACL，替换既有目标保留其 ACL，不主动收紧或放宽 DACL。推荐使用 `pixiv auth login` 通过本地 loopback server 和浏览器 OAuth 登录；服务器同时配置 `login_relay_public_url` 与 `login_relay_listen_addr` 时，会输出一次性远程 handoff URL，并直接转交已安装 pixiv-cli 的 desktop handler 完成登录，不渲染项目中间页或手动 callback 表单。已有 raw token 可用 `pixiv auth import` 输入，账号备份使用 `auth export` 与 `auth import --file`。`pixiv config path/get/set/unset` 只管理 `download_path`、`filename_template`、`https_proxy` 三个别名；其余高级 TOML（包括 `[web] fallback_enabled`）由用户手工维护。旧 `[logging]` 表和 `PIXIV_LOG_LEVEL` 为兼容性被忽略。无 refresh token 时默认启用匿名 Pixiv web/ajax API fallback。
 CLI 使用 Cobra/pflag，flag 可以写在位置参数前后；例如 `pixiv auth check 12345678 --json` 和 `pixiv search "初音ミク" --json` 都受支持。
 
 ## 获取 refresh token
@@ -259,22 +259,22 @@ pixiv auth login
 | 项 | 说明 |
 | --- | --- |
 | 本地服务 | CLI 生成 PKCE/state，并启动本地 loopback HTTP server。 |
-| 浏览器 | macOS 默认优先注册本地 `pixiv://` callback helper 并打开默认浏览器，因此可复用已有 Pixiv 登录态；需要用户在 Pixiv 页面确认账号；`--no-open` 可改为只打印登录 URL。 |
-| 自动/手动回填 | CLI 接收本轮 loopback callback、当前登录尝试注册的 `pixiv://` helper 转交、终端粘贴和本地页面表单；若浏览器没有返回，也可手动粘贴 callback URL、`pixiv://...` URL、Pixiv relay URL 或原始 code。 |
+| 浏览器 | macOS 与 Windows 的普通 CLI 启动会准备当前用户的 persistent `pixiv://` callback helper；本地登录打开默认浏览器，因此可复用已有 Pixiv 登录态；`--no-open` 可改为只打印登录 URL。 |
+| 回调接收 | CLI 接收本轮 loopback callback、一次性 desktop handoff 和本地页面表单。远程 handoff 不提供手动 callback 回填。 |
 | state 校验 | 本地 loopback 回调必须匹配本次 state；Pixiv 官方 callback URL 与 `pixiv://account/login` 可在 Pixiv 未返回 state 时作为显式 fallback。 |
 | token 保存 | refresh/access token 不打印；refresh token 按 Pixiv UID 写入 `auth.json`。Unix-like 主动使用 `0700` 父目录与 `0600` 文件；Windows 首次创建继承父目录 ACL，替换既有目标保留其 ACL，不主动收紧或放宽 DACL。 |
 
-默认浏览器打开时，macOS 注册仅服务本轮的 `PixivCLIURLHandler.app`，桌面 Linux 创建临时 XDG desktop entry，Windows 创建临时 HKCU 协议关联；三者都会在完成、失败或取消后恢复先前的 `pixiv://` handler。Pixiv 返回 `pixiv://account/login?...` 后，helper 会打开 loopback bridge：callback 放在 URL fragment，bridge 将其 POST 给本轮 CLI listener。OAuth exchange 真正完成后，该浏览器页会收到最终成功或失败 HTML。helper 路径不可用时，登录继续使用系统浏览器、loopback 与手动回填。`post-redirect` relay 仍必须校验属于本轮 OAuth；终端提交只在 CLI 所在机打开一次，而 fallback 页面提交会由请求该页面的浏览器继续。因此无 GUI SSH server 可用 `pixiv auth login --no-open --addr 127.0.0.1:PORT` 配合本机 `ssh -N -L PORT:127.0.0.1:PORT HOST`：在转发页面提交 relay 或最终 callback 时，POST 经 tunnel 回到 server loopback。未生成 callback 时，CLI 返回登录失败。
+本地登录的 active loopback bridge 优先接收 Pixiv 返回的 `pixiv://account/login?...`，并把 callback 交给本轮 CLI listener；OAuth exchange 完成后，浏览器显示固定的结果页。跨机器登录时，server 启动后只显示一次性 handoff URL；浏览器打开后直接转交 `pixiv://account/remote-login`，本机领取本次 OAuth URL，并把 callback 回传同一会话；本地只保存本次 handoff state，新的 handoff 会替换旧状态。远程 flow 需要已安装 CLI 的 desktop handler，不提供移动端手动回填。server 会核验提交内容属于本次会话且为官方 callback；Pixiv 带有 state 时必须匹配，再由本次 PKCE verifier 完成 exchange。`pixiv auth devices` 已移除；已有 `remote-devices.json` 会被忽略。HTTP 与 HTTPS 都可用于 relay；direct TLS 和同机 TLS reverse proxy 都受支持。旧 `login_relay_secret` 与 `login_relay_target_url` 配置会被静默忽略。
 
 浏览器使用的系统代理不会自动传给 Go CLI。若 Pixiv token exchange 需要代理，请配置 `pixiv config set https_proxy http://127.0.0.1:7890`，在单次命令前设置 `https_proxy=...`，或对网络命令使用运行期覆盖 `--proxy http://127.0.0.1:7890`。`--no-proxy` 会清空本次命令的代理，即使环境变量或 `config.toml` 设置了 `https_proxy`；`--proxy` 和 `--no-proxy` 不能同用，也不会写入 `config.toml`。
 
-当前支持代理覆盖的网络入口是 direct-token `auth import`、`auth login`、`auth check`、`search`、`search-options`、`detail`、`ranking`、`recommended`、`download` 和 `mcp` 启动。`auth import --file` 明确拒绝代理 flag；`auth export/list/use/remove` 与 `config path/get/set/unset` 不接受这些 flag。
+当前支持代理覆盖的网络入口是 direct-token `auth import`、`auth login`、`auth check`、`search`、`timeline`、`detail`、`ranking`、`recommended`、`download` 和 `mcp` 启动。`auth import --file` 明确拒绝代理 flag；`auth export/list/use/remove` 与 `config path/get/set/unset` 不接受这些 flag。
 
 ### 认证 import/export
 
 `pixiv auth import [REFRESH_TOKEN]` 会经 App OAuth 校验输入并保存 rotation 后的 token。位置参数会进入 argv/shell history；无参 TTY 使用隐藏输入，无参非 TTY 从 raw stdin 读取一行。`--file PATH` 或 `--file -` 则 strict decode versioned bundle，完全离线地 merge 并原子写回；它与位置 token、`--proxy`、`--no-proxy` 冲突。restore 保留已有 default，仅当本地尚无 default 时采用 bundle default。
 
-`pixiv auth export [UID]` 省略 UID 时选择默认账号；不带 `--output` 时只向 stdout 写 raw token 与换行。`pixiv auth export --all` 不带 `--output` 时只向 stdout 写 versioned secret bundle。两者是唯一 secret stdout 例外，且都只读本地 store，不读 `PIXIV_REFRESH_TOKEN`、不刷新、不联网、不修改状态，并跳过 startup pending-update cleanup、automatic update 与 operation logging。`--output PATH` 总是写 bundle，默认拒绝覆盖，只有 `--force` 可 replacement；stdout 仅为 path/account count 摘要。其他 stdout、stderr、JSON、MCP result、日志与错误仍不得暴露 secret。
+`pixiv auth export [UID]` 省略 UID 时选择默认账号；不带 `--output` 时只向 stdout 写 raw token 与换行。`pixiv auth export --all` 不带 `--output` 时只向 stdout 写 versioned secret bundle。两者是唯一 secret stdout 例外，且都只读本地 store，不读 `PIXIV_REFRESH_TOKEN`、不刷新、不联网、不修改状态，并跳过 startup pending-update cleanup 与 automatic update。`--output PATH` 总是写 bundle，默认拒绝覆盖，只有 `--force` 可 replacement；stdout 仅为 path/account count 摘要。其他 stdout、stderr、JSON、MCP result 与错误仍不得暴露 secret。
 
 bundle 是未加密、含 secret 的 point-in-time backup，不是 live sync；token rotation 后旧 bundle及其他机器副本可能 stale。任意目标 export writer 在 Unix-like 使用 `0600` 文件且不改变既有 parent；Windows 明确设置 owner 与 protected DACL，只授权当前用户、LocalSystem、builtin Administrators。Windows 行为有 CI tests，后续验收可本地交叉编译；这里不声称已在真实 Windows 主机执行。
 
@@ -311,7 +311,7 @@ scripts/test-e2e.sh --non-interactive
 
 `TestPixivBinaryAuthenticatedAppAPICanary` 单独验收 binary 的 `auth check`、完整用户详情和插画/漫画/小说/作者四类推荐。local-store 模式拒绝 `PIXIV_E2E_BINARY`，只运行当前源码构建产物；显式 token 模式保留外部 release binary 验收能力。binary 子进程会先移除宿主的 `https_proxy`、`HTTPS_PROXY` 和 `PIXIV_REFRESH_TOKEN`，再仅注入本次明确选择的 token 与 `PIXIV_E2E_PROXY`（其次 `PIXIV_WEB_API_PROXY`），避免重复环境键或宿主代理劫持。
 
-`TestPixivSDKAuthenticatedAppAPICanarySearchFilters` 独立验收当前源码 public SDK 的 `search-options`、认证 baseline、分辨率、横纵比、作品类型、排除 AI 与绘图工具筛选，因此拒绝 `PIXIV_E2E_BINARY`。它使用 `PIXIV_E2E_ILLUST_SEARCH_WORD`，并要求同时提供 `PIXIV_E2E_DISCOVERY_WORD`，避免完整发布 E2E 在不同搜索输入下产生未覆盖的分支。排除 AI 仅在 baseline 含 `AIType==2` 样本时判定；否则该子项标记 inconclusive 并 skip，不得当作成功。显式 token 模式使用不会创建的临时 auth/config 路径，不读取或写入默认 store；local-store 模式先经 public SDK 账号列表锁定有 token 的默认 UID，使宿主 `PIXIV_REFRESH_TOKEN` 不能抢占且 OAuth rotation 仍写回授权 store。该 exact test 只创建一次 `OpenDefault + Snapshot`，搜索 options、baseline 和五类筛选共享该 snapshot，整个搜索测试阶段只做一次 OAuth refresh；筛选后的空批次沿相同 filters/cursor 自然续页，不设置任意请求上限，重复 cursor 明确失败。SDK 使用 `Proxy=nil` 的隔离 transport，仅在显式配置 canary proxy 时安全注入，且没有固定 client timeout。以上说明描述测试覆盖，不表示真实 canary 已经运行；请勿把 token 写入 shell history、日志或仓库文件。
+`TestPixivSDKAuthenticatedAppAPICanarySearchFilters` 独立验收当前源码 public SDK 的静态绘图工具目录、认证 baseline、分辨率、横纵比、作品类型、排除 AI 与绘图工具筛选，因此拒绝 `PIXIV_E2E_BINARY`。它使用 `PIXIV_E2E_ILLUST_SEARCH_WORD`，并要求同时提供 `PIXIV_E2E_DISCOVERY_WORD`，避免完整发布 E2E 在不同搜索输入下产生未覆盖的分支。排除 AI 仅在 baseline 含 `AIType==2` 样本时判定；否则该子项标记 inconclusive 并 skip，不得当作成功。显式 token 模式使用不会创建的临时 auth/config 路径，不读取或写入默认 store；local-store 模式先经 public SDK 账号列表锁定有 token 的默认 UID，使宿主 `PIXIV_REFRESH_TOKEN` 不能抢占且 OAuth rotation 仍写回授权 store。该 exact test 只创建一次 `OpenDefault + Snapshot`，baseline 和五类筛选共享该 snapshot，整个搜索测试阶段只做一次 OAuth refresh；筛选后的空批次沿相同 filters/cursor 自然续页，不设置任意请求上限，重复 cursor 明确失败。SDK 使用 `Proxy=nil` 的隔离 transport，仅在显式配置 canary proxy 时安全注入，且没有固定 client timeout。以上说明描述测试覆盖，不表示真实 canary 已经运行；请勿把 token 写入 shell history、日志或仓库文件。
 
 `TestPixiv(SDK|Binary)AuthenticatedR18RegressionCanary` 只在三个作品 ID 环境变量全部显式给出时运行，源码不写死
 作品 ID。SDK canary 串行验证 SFW/R18 detail 和 pages、16 个 App ranking mode，以及 R18 ugoira 的 medium
@@ -344,7 +344,9 @@ git diff --check
 fixture 只证明格式、失败语义和本地策略，不替代六个 native runner 的真实静态链接、GIF/APNG
 smoke、版本化 archive 内容和 Homebrew 安装验收。
 
-`.github/workflows/ci.yml` 与 `.github/workflows/platform-smoke.yml` 会先对 PR/main 的 diff 执行严格路径分类。仅 `README*.md`、`docs/**`、`changelog/**` 或 `skills/**` 的改动保留名称稳定的 Quality gate，但只运行 `go test ./scripts/documentation -count=1`；六平台 packaged-binary smoke 会被标记为 skipped，始终执行的 `Platform smoke gate` 会核对这是预期结果。任一其他路径、空 diff、无法比较的初始 push 或手动触发都执行完整 Linux quality gate（test、race、vet、build、package/release policy、pre-commit）和六平台离线已打包 binary smoke；同一汇总 gate 只有在全部 matrix 成功后才通过。分类器无法读取 diff 时明确失败，绝不静默跳过。两者都使用只读权限、固定 SHA action 与取消过期并发 run；真实 Pixiv E2E 不进入 PR/main 常规 CI。仅发布 tag 的 `release.yml` 会在 validate 后绑定受保护的 `pixiv-e2e` Environment，校验配置完整并执行完整 `go test ./e2e -count=1 -v`；production build 明确依赖该 job，因此真实 E2E 失败会阻止发布。
+`.github/workflows/ci.yml` 与 `.github/workflows/platform-smoke.yml` 会先对 PR/main 的 diff 执行严格路径分类。仅 `README*.md`、`docs/**`、`changelog/**` 或 `skills/**` 的改动保留名称稳定的 Quality gate，但只运行 `go test ./scripts/documentation -count=1`；六平台 packaged-binary smoke 会被标记为 skipped，始终执行的 `Platform smoke gate` 会核对这是预期结果。任一其他路径、空 diff、无法比较的初始 push 或手动触发都执行完整 Linux quality gate（test、race、vet、build、package/release policy、pre-commit）和六平台离线已打包 binary smoke；同一汇总 gate 只有在全部 matrix 成功后才通过。CI 还在 Windows runner 运行 `internal/cli` 与 `internal/cli/loginhelper` 的原生 callback-handler 契约测试。分类器无法读取 diff 时明确失败，绝不静默跳过。两者都使用只读权限、固定 SHA action 与取消过期并发 run；真实 Pixiv E2E 不进入 PR/main 常规 CI。仅发布 tag 的 `release.yml` 会在 validate 后绑定受保护的 `pixiv-e2e` Environment，校验配置完整并执行完整 `go test ./e2e -count=1 -v`；production build 明确依赖该 job，因此真实 E2E 失败会阻止发布。
+
+`.github/workflows/pr-metadata.yml` 在 PR `opened`、`reopened` 与 `synchronize` 时使用 `pull_request_target` 更新元数据：`actions/labeler` 从 base branch 的 `.github/labeler.yml` 按路径叠加已有的 `area: docs`、`area: frontend`、`area: backend`、`area: github-actions`、`area: tests` 和 `release` 标签；随后只将 PR 作者追加为 assignee，绝不移除人工指派或标签。该 job 仅有 `contents: read` 与 `pull-requests: write`，不 checkout、不运行 PR 分支代码，因此 fork PR 也不会获得写权限或执行不受信任输入。工作流与配置首次合并到默认分支后才会对后续 PR 生效；引入该配置本身的 PR 需要在 GitHub 手动补标签。
 
 `scripts/installers` 使用本地伪 Release、伪 `curl` 与 checksum fixture 验证安装器，不访问 GitHub。Unix
 job 实际运行 `install.sh`，覆盖 SHA-256、带空格目录、版本预检和校验失败不覆盖旧 binary；Windows
@@ -572,7 +574,7 @@ SkillHub CLI 的 dry-run 和提交，并使用 `SKILL.md` 内的独立 SemVer，
 - 构建产物 `build/`、`pixiv`、`pixiv-cli`
 - 本地下载目录 `downloads/`
 - 本地数据库 `*.db`
-- 常见缓存、日志、临时文件
+- 常见缓存和临时文件
 - Rust `internal/download/ugoira_rs/target/`
 
 不要提交 Pixiv token、下载内容、本地数据库、机器相关配置、Ed25519 私钥或 tap deploy key。
@@ -583,7 +585,7 @@ SkillHub CLI 的 dry-run 和提交，并使用 `SKILL.md` 内的独立 SemVer，
 
 每条面向结果的说明内联列出来源 PR；没有 PR 的历史变更使用真实短 SHA commit 链接。一个条目可以归并多个相关来源。每个版本还会列出首次合并且不属于仓库所有者或 bot 的外部贡献者。`changelog/unreleased/` 是 release-prep 入口和说明文件，不是功能 PR 的编辑目标。
 
-功能 PR 在 `.github/PULL_REQUEST_TEMPLATE.md` 中填写机器可读的 release-note 声明：`Added`、`Changed`、`Fixed`、`Security`、`Documentation`、`Maintenance` 或 `None`，以及一句摘要和 breaking 标记。`None` 需要具体理由。Quality gate 离线读取 PR event payload 校验此声明。
+功能 PR 在 `.github/PULL_REQUEST_TEMPLATE.md` 中填写机器可读的 release-note 声明：`Added`、`Changed`、`Fixed`、`Security`、`Documentation`、`Maintenance` 或 `None`，以及一句摘要和 breaking 标记。每项面向用户的兼容性破坏都必须标为 breaking；审计会将 `v0.x` 的此类变更建议为 minor、将稳定 `v1+` 的此类变更建议为 major。`None` 需要具体理由。Quality gate 离线读取 PR event payload 校验此声明。
 
 完成 feature PR、测试和审查后，使用 `scripts/releasenotes audit` 检查 tag 范围内的提交、关联 PR、direct-commit 例外、新贡献者和 SemVer 建议。新贡献者以该作者在仓库中最早合并的 PR 判定，避免历史 PR 的当前关联状态变化而漏记。审核后的双语 JSON plan 由 `prepare` 先预览，再以 `--apply` 生成版本目录和双语索引；`validate` 离线核对章节顺序、来源、双语集合、compare footer 和可选 audit 覆盖。发布 workflow 的 `release_notes_audit` job 在受保护 publish job 之前使用只读 `contents` 与 `pull-requests` 权限重复验证不可变 tag 的来源和说明。
 

@@ -1,0 +1,31 @@
+name: Pull request metadata
+
+on:
+  pull_request_target:
+    types: [opened, reopened, synchronize]
+
+# 默认不授予权限；此工作流只需读取标签配置并更新 PR 元数据。
+permissions: {}
+
+jobs:
+  label_and_assign:
+    name: Label and assign pull request
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      # labeler 通过 API 读取 base branch 的配置；不 checkout 或执行 PR 分支代码。
+      - name: Apply path labels
+        uses: actions/labeler@bf12e9b00b37c5c0ca2b87b79b2daf7891dbda13
+      # 仅追加 PR 作者，不覆盖维护者已有的人工指派。
+      - name: Assign pull request author
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3
+        with:
+          script: |
+            await github.rest.issues.addAssignees({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.payload.pull_request.number,
+              assignees: [context.payload.pull_request.user.login],
+            });

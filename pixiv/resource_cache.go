@@ -229,7 +229,7 @@ func clearResourcePartial(paths resourceCachePaths) error {
 
 // downloadWithCache 对已完成目标使用条件 GET；对已验证残片使用 Range + If-Range。
 // 没有安全 validator 的残片从不续接，以免将不同 Pixiv 资源版本拼为一个文件。
-func (c *Client) downloadWithCache(ctx context.Context, ref ResourceRef, destinationPath string, replaceFile func(string, string) error) (ResourceDownloadCacheState, error) {
+func (c *Client) downloadWithCache(ctx context.Context, ref ResourceRef, destinationPath string, replaceFile func(string, string) error, progress func(int64)) (ResourceDownloadCacheState, error) {
 	if strings.TrimSpace(destinationPath) == "" {
 		return "", invalidResourceError(OperationDownload, "destination path is invalid")
 	}
@@ -264,7 +264,7 @@ func (c *Client) downloadWithCache(ctx context.Context, ref ResourceRef, destina
 				}
 				return ResourceDownloadCacheRevalidated, nil
 			case http.StatusOK:
-				return ResourceDownloadCacheRefreshed, c.replaceWithCompleteResource(ctx, response, ref, destinationPath, paths, replaceFile)
+				return ResourceDownloadCacheRefreshed, c.replaceWithCompleteResource(ctx, response, ref, destinationPath, paths, replaceFile, progress)
 			default:
 				_ = response.Body.Close()
 				return "", incompleteResourceResponseError(response.StatusCode)
@@ -300,10 +300,10 @@ func (c *Client) downloadWithCache(ctx context.Context, ref ResourceRef, destina
 					_ = response.Body.Close()
 					return "", newError(CodeMalformedUpstreamResponse, OperationDownload, BackendResource, false, response.StatusCode, 0, errors.New("resource partial response has an invalid content range"))
 				}
-				return ResourceDownloadCacheResumed, c.appendPartialResource(ctx, response, ref, destinationPath, paths, metadata, replaceFile)
+				return ResourceDownloadCacheResumed, c.appendPartialResource(ctx, response, ref, destinationPath, paths, metadata, replaceFile, progress)
 			case http.StatusOK:
 				// If-Range 不匹配或上游忽略 range 时，200 的完整实体可以安全替换残片。
-				return ResourceDownloadCacheRefreshed, c.replaceWithCompleteResource(ctx, response, ref, destinationPath, paths, replaceFile)
+				return ResourceDownloadCacheRefreshed, c.replaceWithCompleteResource(ctx, response, ref, destinationPath, paths, replaceFile, progress)
 			default:
 				_ = response.Body.Close()
 				return "", incompleteResourceResponseError(response.StatusCode)
@@ -319,7 +319,7 @@ func (c *Client) downloadWithCache(ctx context.Context, ref ResourceRef, destina
 		_ = response.Body.Close()
 		return "", incompleteResourceResponseError(response.StatusCode)
 	}
-	return ResourceDownloadCacheMiss, c.replaceWithCompleteResource(ctx, response, ref, destinationPath, paths, replaceFile)
+	return ResourceDownloadCacheMiss, c.replaceWithCompleteResource(ctx, response, ref, destinationPath, paths, replaceFile, progress)
 }
 
 func resourceDestinationExists(destinationPath string) (bool, error) {
@@ -355,7 +355,22 @@ func resourcePartialSize(path string) (int64, bool, error) {
 	return info.Size(), true, nil
 }
 
-func (c *Client) replaceWithCompleteResource(ctx context.Context, response *ResourceResponse, ref ResourceRef, destinationPath string, paths resourceCachePaths, replaceFile func(string, string) error) error {
+// verifiedPartialBytes 仅报告与同一资源、且有 If-Range validator 的残片；这样进度
+// 初值不会把不安全或过期缓存误算为已完成字节。真实下载路径仍会重新验证并负责报错。
+func (c *Client) verifiedPartialBytes(ref ResourceRef, destinationPath string) int64 {
+	paths := c.resourceCachePathsFor(destinationPath)
+	metadata, found, err := readResourceCacheMetadata(paths.partialMetadata)
+	if err != nil || !found || !metadata.matches(ref) || metadata.ifRangeValidator() == "" {
+		return 0
+	}
+	size, exists, err := resourcePartialSize(paths.partial)
+	if err != nil || !exists {
+		return 0
+	}
+	return size
+}
+
+func (c *Client) replaceWithCompleteResource(ctx context.Context, response *ResourceResponse, ref ResourceRef, destinationPath string, paths resourceCachePaths, replaceFile func(string, string) error, progress func(int64)) error {
 	if err := ensureResourceCacheDirectory(paths.partial); err != nil {
 		_ = response.Body.Close()
 		return err
@@ -371,7 +386,7 @@ func (c *Client) replaceWithCompleteResource(ctx context.Context, response *Reso
 		_ = response.Body.Close()
 		return err
 	}
-	if err := copyResourceResponse(ctx, response, file); err != nil {
+	if err := copyResourceResponse(ctx, response, file, progress); err != nil {
 		if !metadata.hasValidator() {
 			_ = clearResourcePartial(paths)
 		}
@@ -389,13 +404,13 @@ func (c *Client) replaceWithCompleteResource(ctx context.Context, response *Reso
 	return clearResourcePartial(paths)
 }
 
-func (c *Client) appendPartialResource(ctx context.Context, response *ResourceResponse, ref ResourceRef, destinationPath string, paths resourceCachePaths, metadata resourceCacheMetadata, replaceFile func(string, string) error) error {
+func (c *Client) appendPartialResource(ctx context.Context, response *ResourceResponse, ref ResourceRef, destinationPath string, paths resourceCachePaths, metadata resourceCacheMetadata, replaceFile func(string, string) error, progress func(int64)) error {
 	file, err := os.OpenFile(paths.partial, os.O_WRONLY|os.O_APPEND, 0o600)
 	if err != nil {
 		_ = response.Body.Close()
 		return invalidResourceError(OperationDownload, "cannot append incomplete download cache")
 	}
-	if err := copyResourceResponse(ctx, response, file); err != nil {
+	if err := copyResourceResponse(ctx, response, file, progress); err != nil {
 		return err
 	}
 	updated := resourceCacheMetadataFromHeader(ref, response.Header)
@@ -414,8 +429,8 @@ func (c *Client) appendPartialResource(ctx context.Context, response *ResourceRe
 	return clearResourcePartial(paths)
 }
 
-func copyResourceResponse(ctx context.Context, response *ResourceResponse, destination *os.File) error {
-	writer := &resourceDestinationWriter{writer: destination}
+func copyResourceResponse(ctx context.Context, response *ResourceResponse, destination *os.File, progress func(int64)) error {
+	writer := &resourceDestinationWriter{writer: destination, onWrite: progress}
 	_, copyErr := io.Copy(writer, response.Body)
 	bodyCloseErr := response.Body.Close()
 	contextErr := ctx.Err()

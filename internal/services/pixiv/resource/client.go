@@ -30,7 +30,9 @@ type Client struct {
 
 // OpenRequest 描述一次已由上层 policy 限定的资源读取。
 type OpenRequest struct {
-	URL            string
+	URL string
+	// Method 由上层受控地限定为 GET 或 HEAD；零值保持既有 GET 语义。
+	Method         string
 	Header         http.Header
 	Validate       func(string) error
 	DisableCookies bool
@@ -96,7 +98,14 @@ func (c *Client) Open(ctx context.Context, request OpenRequest) (*Response, erro
 			return nil, err
 		}
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, request.URL, nil)
+	method := request.Method
+	if method == "" {
+		method = http.MethodGet
+	}
+	if method != http.MethodGet && method != http.MethodHead {
+		return nil, protocol.Transport(errors.New("unsupported resource request method"))
+	}
+	req, err := http.NewRequestWithContext(ctx, method, request.URL, nil)
 	if err != nil {
 		return nil, protocol.Transport(err)
 	}

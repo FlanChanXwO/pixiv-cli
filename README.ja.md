@@ -17,13 +17,13 @@
 ## pixiv-cli を選ぶ理由
 
 - **統一された機能** — CLI・MCP・SDK から Pixiv の検索、詳細、ランキング、おすすめ、ユーザー、ブックマーク、フォロー、ダウンロード、うごイラを利用できます。
-- **フィードと合成可能な Record パイプライン** — canonical NDJSON でフィードを取得し、Record をローカルで filter して action へ渡せます。
+- **timeline と合成可能な Record パイプライン** — latest または following の作品を canonical NDJSON で取得し、Record をローカルで filter して action へ渡せます。
 - **ローカル account pool** — 読み取り処理に適格なローカル account を選択し、pagination と download preparation で Pixiv の `Retry-After` に従います。
 - **分かりやすいアカウントログイン** — `pixiv auth login` で browser OAuth を完了し、`auth list`、`auth use`、`auth check` でローカルの複数アカウントを管理・確認できます。
 - **GIF と APNG のうごイラ出力** — GIF を既定にしつつ、CLI・MCP・SDK から APNG を明示指定できます。
-- **キャッシュ対応 download** — `.pixiv-cache` metadata を永続的に再検証し、検証済み partial を `Range` と `If-Range` で再開し、完了 file を atomic に置き換えます。
+- **進捗表示に対応したキャッシュ download** — `.pixiv-cache` metadata を永続的に再検証し、検証済み partial を `Range` と `If-Range` で再開し、総 byte 数が分かる場合は terminal に進捗を表示します。
 - **認証済み App API の探索** — R18 detail、pages、ugoira metadata、全 16 ranking mode を App API で取得します。
-- **実用的な検索フィルター** — レーティング、作品種別、AI モード、縦横比、解像度、動的な制作ツール候補に対応します。
+- **実用的な検索フィルター** — レーティング、作品種別、AI モード、縦横比、解像度、versioned な制作ツール catalog に対応します。
 - **Pixiv URL を直接指定** — 対応する作品 URL を detail/download に貼り付けられ、認証済みのユーザープロフィール/作品一覧 URL はそのユーザーの視覚作品へ展開されます。
 - **ローカル複数アカウント OAuth** — ブラウザーログイン、アカウント選択、refresh token rotation、オプションの cross-machine callback relay に対応します。
 - **自動化向け integration** — typed SDK error、JSON 出力、クリーンな MCP stdio、署名付き更新、完全な結果レポートを備えます。
@@ -114,6 +114,7 @@ pixiv bookmark add 123456
 # 詳細、おすすめ、ダウンロードを利用します。
 pixiv detail https://www.pixiv.net/artworks/123456
 pixiv recommended all --limit 10
+pixiv timeline latest --type illust --limit 20
 pixiv download https://www.pixiv.net/artworks/123456 --pages 1,3-5 --quality regular
 pixiv download 123456 https://i.pximg.net/img-original/example.jpg --concurrency 8
 
@@ -133,7 +134,7 @@ pixiv download https://www.pixiv.net/users/12345678/artworks
 pixiv ranking --mode day --json
 pixiv user search "miku" --limit 10 --json
 pixiv user detail 12345678
-pixiv search-options "初音ミク"
+pixiv timeline latest --type illust --limit 10 --json
 ```
 
 ### MCP
@@ -149,16 +150,37 @@ MCP の固定 status、error、display text は英語です。Pixiv metadata と
 
 ### Go SDK
 
+ローカルで初めて使う場合は、まず一度 `pixiv auth login` を実行し、その local account から client を作成して検索します。
+
 ```go
-client, err := pixiv.OpenDefault()
-if err != nil {
-    // ローカルの認証・設定エラーを処理します。
+package main
+
+import (
+	"context"
+	"fmt"
+	"log"
+
+	pixiv "github.com/FlanChanXwO/pixiv-cli/pixiv"
+)
+
+func main() {
+	ctx := context.Background()
+	client, err := pixiv.OpenDefault()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	result, err := client.SearchIllust(ctx, pixiv.SearchIllustRequest{Word: "初音ミク"})
+	if err != nil {
+		log.Fatal(err)
+	}
+	for _, illust := range result.Illusts {
+		fmt.Printf("%d %s\\n", illust.ID, illust.URL)
+	}
 }
-result, err := client.SearchIllust(ctx, pixiv.SearchIllustRequest{Word: "初音ミク"})
-download, err := client.Download(ctx, "https://www.pixiv.net/artworks/123456")
 ```
 
-`github.com/FlanChanXwO/pixiv-cli/pixiv` を import します。`Download`/`DownloadAll` は文書化された初心者 default を使い、`DownloadWith`/`DownloadAllWith` は path、naming、page、quality、concurrency を制御します。モデル、cursor、resource、error、呼び出し側の責務は [SDK ガイド](docs/ja/sdk.md)を参照してください。
+SDK の import path は `github.com/FlanChanXwO/pixiv-cli/pixiv` です。`Download`/`DownloadAll` は文書化された初心者 default を使い、`DownloadWith`/`DownloadAllWith` は path、naming、page、quality、concurrency を制御します。モデル、cursor、resource、error、呼び出し側の責務は [SDK ガイド](docs/ja/sdk.md)を参照してください。
 
 ## 認証と token の安全性
 
@@ -168,7 +190,7 @@ download, err := client.Download(ctx, "https://www.pixiv.net/artworks/123456")
 
 アカウント名、UID、membership status の表示、現在選択されているローカル account は、ローカル store と Pixiv response に基づく操作補助情報です。account の所有権・利用権限・現在の Pixiv status を証明するものとしては扱わず、重要な情報は Pixiv で確認し、管理権限のある account だけを使用してください。
 
-macOS、desktop Linux、Windows は on-demand persistent `pixiv://` callback handler を使い、local login と明示設定した cross-machine relay をサポートします。relay は `pixiv://account/login` callback を受け付けます。GUI のない SSH server は既存の `--no-open --addr` と local `ssh -L` tunnel を使うか、documented relay server/client setting を設定します。詳細は [CLI リファレンス](docs/ja/cli-reference.md#refresh-token-の取得) を参照してください。
+macOS、Windows、desktop Linux では `pixiv` command が、install 済み binary 用の current-user `pixiv://` callback handler を準備します。server に `login_relay_public_url` と `login_relay_listen_addr` がある場合、`pixiv auth login` は一回限りの remote hand-off URL を表示します。この URL を開くと install 済み desktop handler に直接渡され、OAuth を開始して callback を server へ返します。remote login には pixiv-cli を install 済みの desktop が必要で、project 独自の確認 page や callback を copy する form はありません。詳細は [CLI リファレンス](docs/ja/cli-reference.md#refresh-token-の取得) を参照してください。
 
 ```bash
 pixiv auth list

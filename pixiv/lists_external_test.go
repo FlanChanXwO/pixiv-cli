@@ -54,6 +54,9 @@ func TestSearchIllustRejectsWebCursorWhoseNextPageBoundaryOverflowsBeforeNetwork
 
 	var webRequests atomic.Int32
 	web := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if serveWebIllustDetailForListTest(w, r) {
+			return
+		}
 		webRequests.Add(1)
 		fmt.Fprint(w, `{"error":false,"body":{"illustManga":{"data":[]}}}`)
 	}))
@@ -177,6 +180,9 @@ func TestSearchIllustLargestSafeWebCursorComparesTotalWithoutOverflow(t *testing
 
 	var webRequests atomic.Int32
 	web := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if serveWebIllustDetailForListTest(w, r) {
+			return
+		}
 		webRequests.Add(1)
 		items := make([]map[string]any, 68)
 		for index := range items {
@@ -879,7 +885,7 @@ func TestSearchIllustCursorIsBoundToEveryFilter(t *testing.T) {
 		{name: "AI mode", first: pixiv.SearchIllustFilters{AIMode: pixiv.SearchAIModeAll}, changed: pixiv.SearchIllustFilters{AIMode: pixiv.SearchAIModeExclude}},
 		{name: "aspect ratio", first: pixiv.SearchIllustFilters{AspectRatio: pixiv.SearchAspectRatioAll}, changed: pixiv.SearchIllustFilters{AspectRatio: pixiv.SearchAspectRatioPortrait}},
 		{name: "resolution", first: pixiv.SearchIllustFilters{Resolution: pixiv.SearchResolutionHigh}, changed: pixiv.SearchIllustFilters{Resolution: pixiv.SearchResolutionLow}},
-		{name: "tool", first: pixiv.SearchIllustFilters{Tool: "tool-a"}, changed: pixiv.SearchIllustFilters{Tool: "tool-b"}},
+		{name: "tool", first: pixiv.SearchIllustFilters{Tool: "Photoshop"}, changed: pixiv.SearchIllustFilters{Tool: "Clip Studio Paint"}},
 		{name: "bookmark range", first: pixiv.SearchIllustFilters{BookmarkMin: &bookmarkMinimum}, changed: pixiv.SearchIllustFilters{BookmarkMin: &changedBookmarkMinimum}},
 	}
 	var requests atomic.Int32
@@ -1056,7 +1062,10 @@ func TestAnonymousSearchIllustRejectsAppOnlySearchBeforeNetwork(t *testing.T) {
 
 func TestAnonymousSearchIllustAppliesSFWAndAISemantics(t *testing.T) {
 	t.Parallel()
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if serveWebIllustDetailForListTest(w, r) {
+			return
+		}
 		fmt.Fprint(w, `{"error":false,"body":{"illustManga":{"data":[
 			{"id":"1","xRestrict":0,"aiType":1},
 			{"id":"2","xRestrict":0,"aiType":2},
@@ -1076,116 +1085,6 @@ func TestAnonymousSearchIllustAppliesSFWAndAISemantics(t *testing.T) {
 	}
 	if len(result.Illusts) != 1 || result.Illusts[0].ID != 1 {
 		t.Fatalf("illusts = %#v", result.Illusts)
-	}
-}
-
-func TestSearchIllustOptionsUsesAuthenticatedApp(t *testing.T) {
-	t.Parallel()
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/v1/search/options" || r.URL.Query().Get("word") != "miku" {
-			t.Fatalf("request = %s?%s", r.URL.Path, r.URL.RawQuery)
-		}
-		query := r.URL.Query()
-		if query.Get("search_target") != "partial_match_for_tags" || query.Get("merge_plain_keyword_results") != "true" || query.Get("include_translated_tag_results") != "true" || query.Get("search_ai_type") != "0" {
-			t.Fatalf("query = %v", query)
-		}
-		fmt.Fprint(w, `{"illust":{"tool":{"options":["CLIP STUDIO PAINT","Photoshop"]}}}`)
-	}))
-	defer server.Close()
-	client, err := pixiv.NewClient(pixiv.NewClientOptions{HTTPClient: server.Client(), AppAPIBaseURL: server.URL, AccessToken: "token"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	result, err := client.SearchIllustOptions(context.Background(), pixiv.SearchIllustOptionsRequest{Word: " miku "})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(result.Tools) != 2 || result.Tools[0] != "CLIP STUDIO PAINT" || result.Tools[1] != "Photoshop" {
-		t.Fatalf("tools = %#v", result.Tools)
-	}
-}
-
-func TestSearchIllustOptionsRejectsAnonymousWebFallbackWithoutNetwork(t *testing.T) {
-	t.Parallel()
-	var requests atomic.Int32
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		requests.Add(1)
-		fmt.Fprint(w, `{}`)
-	}))
-	defer server.Close()
-	client, err := pixiv.NewClient(pixiv.NewClientOptions{HTTPClient: server.Client(), WebAPIBaseURL: server.URL, WebFallbackEnabled: true})
-	if err != nil {
-		t.Fatal(err)
-	}
-	result, err := client.SearchIllustOptions(context.Background(), pixiv.SearchIllustOptionsRequest{Word: "miku"})
-	var typed *pixiv.Error
-	if result != nil || !errors.As(err, &typed) || typed.Code != pixiv.CodeUnsupported || typed.Operation != pixiv.OperationSearchIllustOptions || typed.Backend != "" {
-		t.Fatalf("result=%#v error=%#v", result, typed)
-	}
-	if requests.Load() != 0 {
-		t.Fatalf("network requests = %d", requests.Load())
-	}
-}
-
-func TestSearchIllustOptionsNormalizesMissingToolOptionsToEmpty(t *testing.T) {
-	t.Parallel()
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		fmt.Fprint(w, `{"illust":{}}`)
-	}))
-	defer server.Close()
-	client, err := pixiv.NewClient(pixiv.NewClientOptions{HTTPClient: server.Client(), AppAPIBaseURL: server.URL, AccessToken: "token"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	result, err := client.SearchIllustOptions(context.Background(), pixiv.SearchIllustOptionsRequest{Word: "miku"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if result.Tools == nil || len(result.Tools) != 0 {
-		t.Fatalf("tools = %#v", result.Tools)
-	}
-}
-
-func TestSearchIllustOptionsMapsMissingOrNullIllustEnvelope(t *testing.T) {
-	t.Parallel()
-	for _, body := range []string{`{}`, `{"illust":null}`} {
-		body := body
-		t.Run(body, func(t *testing.T) {
-			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-				fmt.Fprint(w, body)
-			}))
-			defer server.Close()
-			client, err := pixiv.NewClient(pixiv.NewClientOptions{HTTPClient: server.Client(), AppAPIBaseURL: server.URL, AccessToken: "token"})
-			if err != nil {
-				t.Fatal(err)
-			}
-			result, err := client.SearchIllustOptions(context.Background(), pixiv.SearchIllustOptionsRequest{Word: "miku"})
-			var typed *pixiv.Error
-			if result != nil || !errors.As(err, &typed) || typed.Code != pixiv.CodeMalformedUpstreamResponse || typed.Operation != pixiv.OperationSearchIllustOptions || typed.Backend != pixiv.BackendAppAPI {
-				t.Fatalf("result=%#v error=%#v", result, typed)
-			}
-		})
-	}
-}
-
-func TestSearchIllustOptionsMapsAppFailureWithoutLeakingBody(t *testing.T) {
-	t.Parallel()
-	const secret = "search-options-secret-body"
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		http.Error(w, secret, http.StatusBadGateway)
-	}))
-	defer server.Close()
-	client, err := pixiv.NewClient(pixiv.NewClientOptions{HTTPClient: server.Client(), AppAPIBaseURL: server.URL, AccessToken: "token"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	result, err := client.SearchIllustOptions(context.Background(), pixiv.SearchIllustOptionsRequest{Word: "miku"})
-	var typed *pixiv.Error
-	if result != nil || !errors.As(err, &typed) || typed.Operation != pixiv.OperationSearchIllustOptions || typed.Backend != pixiv.BackendAppAPI || typed.UpstreamStatus != http.StatusBadGateway {
-		t.Fatalf("result=%#v error=%#v", result, typed)
-	}
-	if strings.Contains(fmt.Sprint(err), secret) || strings.Contains(fmt.Sprint(errors.Unwrap(err)), secret) {
-		t.Fatalf("error leaked response body: %v", err)
 	}
 }
 
@@ -1311,6 +1210,9 @@ func TestAnonymousSearchUserRejectsArtworkWithoutUserID(t *testing.T) {
 func TestAnonymousRankingUsesWebCursor(t *testing.T) {
 	t.Parallel()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if serveWebIllustDetailForListTest(w, r) {
+			return
+		}
 		if r.URL.Path != "/ranking.php" {
 			http.NotFound(w, r)
 			return
@@ -1379,6 +1281,9 @@ func TestExtendedRankingModesUseAppAndWebWireValuesAndBindCursor(t *testing.T) {
 
 			var webRequests atomic.Int32
 			web := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if serveWebIllustDetailForListTest(w, r) {
+					return
+				}
 				webRequests.Add(1)
 				if got := r.URL.Query().Get("mode"); got != test.web {
 					t.Errorf("Web mode=%q want=%q", got, test.web)
@@ -1496,6 +1401,9 @@ func TestRankingDateRequiresCanonicalDateAndBindsCursor(t *testing.T) {
 
 	var webRequests atomic.Int32
 	web := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if serveWebIllustDetailForListTest(w, r) {
+			return
+		}
 		webRequests.Add(1)
 		if got := r.URL.Query().Get("date"); got != "20250102" {
 			t.Errorf("Web date=%q", got)
@@ -1604,10 +1512,6 @@ func TestInvalidListEnumsFailBeforeNetwork(t *testing.T) {
 		t.Fatal(err)
 	}
 	calls := []func() error{
-		func() error {
-			_, err := client.SearchIllustOptions(context.Background(), pixiv.SearchIllustOptionsRequest{})
-			return err
-		},
 		func() error {
 			_, err := client.SearchIllust(context.Background(), pixiv.SearchIllustRequest{Word: "x", Target: "bad"})
 			return err
@@ -1851,6 +1755,9 @@ func TestSearchIllustAnonymousWebCursorUsesNextWebBatch(t *testing.T) {
 	t.Parallel()
 	var requests atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if serveWebIllustDetailForListTest(w, r) {
+			return
+		}
 		requests.Add(1)
 		if got := r.Header.Get("Authorization"); got != "" {
 			t.Errorf("Web Authorization = %q, want empty", got)
@@ -1884,6 +1791,31 @@ func TestSearchIllustAnonymousWebCursorUsesNextWebBatch(t *testing.T) {
 	if len(second.Illusts) != 1 || second.Illusts[0].ID != 2 || second.NextCursor != "" || requests.Load() != 2 {
 		t.Fatalf("second = %#v; requests=%d", second, requests.Load())
 	}
+}
+
+func serveWebIllustDetailForListTest(w http.ResponseWriter, r *http.Request) bool {
+	const prefix = "/ajax/illust/"
+	if !strings.HasPrefix(r.URL.Path, prefix) {
+		return false
+	}
+	identifier := strings.TrimPrefix(r.URL.Path, prefix)
+	if strings.HasSuffix(identifier, "/pages") {
+		fmt.Fprint(w, `{"error":false,"body":[]}`)
+		return true
+	}
+	if _, err := strconv.ParseInt(identifier, 10, 64); err != nil {
+		http.NotFound(w, r)
+		return true
+	}
+	xRestrict, aiType := 0, 1
+	if identifier == "2" {
+		aiType = 2
+	}
+	if identifier == "3" {
+		xRestrict = 1
+	}
+	fmt.Fprintf(w, `{"error":false,"body":{"id":%q,"title":"detail","illustType":0,"pageCount":1,"xRestrict":%d,"aiType":%d,"userId":"1","userName":"artist","tags":{"tags":[]},"urls":{}}}`, identifier, xRestrict, aiType)
+	return true
 }
 
 func TestMangaRecommendedUsesIllustCatalogWithMangaContentType(t *testing.T) {

@@ -46,13 +46,15 @@ func (a *App) userDetail(ctx context.Context, _ *mcp.CallToolRequest, in userDet
 }
 
 func (a *App) userDetailError(ctx context.Context, err error) (*mcp.CallToolResult, userDetailOut, error) {
-	recordToolError(ctx, err)
 	out := userDetailOut{Records: []application.Record{}}
 	return recordResult(out.Records, true, recordErrorMessage(err)), out, nil
 }
 
 type recommendedIn struct {
-	Kind string `json:"kind" jsonschema:"required: all, illust, manga, novel, or user"`
+	Kind         string          `json:"kind" jsonschema:"required: all, illust, manga, novel, or user"`
+	IllustFilter *illustFilterIn `json:"illust_filter,omitempty"`
+	NovelFilter  *novelFilterIn  `json:"novel_filter,omitempty"`
+	UserFilter   *userFilterIn   `json:"user_filter,omitempty"`
 	pageLimitIn
 }
 type recommendedOut struct {
@@ -86,6 +88,10 @@ func (a *App) recommended(ctx context.Context, _ *mcp.CallToolRequest, in recomm
 	if err == nil && in.Kind != "all" && in.Kind != "illust" && in.Kind != "manga" && in.Kind != "novel" && in.Kind != "user" {
 		err = errors.New("kind must be one of: all, illust, manga, novel, user")
 	}
+	if err != nil {
+		return a.recommendedError(ctx, err)
+	}
+	ctx, err = withMixedRecordFilters(ctx, in.IllustFilter, in.NovelFilter, in.UserFilter)
 	if err != nil {
 		return a.recommendedError(ctx, err)
 	}
@@ -170,14 +176,14 @@ func (a *App) recommended(ctx context.Context, _ *mcp.CallToolRequest, in recomm
 }
 
 func (a *App) recommendedError(ctx context.Context, err error) (*mcp.CallToolResult, recommendedOut, error) {
-	recordToolError(ctx, err)
 	out := newRecommendedOut()
 	return recordResult(out.Records, true, recordErrorMessage(err)), out, nil
 }
 
 type userArtworksIn struct {
-	UserID int64          `json:"user_id,omitempty" jsonschema:"optional user ID; defaults to the authenticated user"`
-	Type   sdk.IllustType `json:"type,omitempty" jsonschema:"illust, manga, or ugoira"`
+	UserID       int64           `json:"user_id,omitempty" jsonschema:"optional user ID; defaults to the authenticated user"`
+	Type         sdk.IllustType  `json:"type,omitempty" jsonschema:"illust, manga, or ugoira"`
+	IllustFilter *illustFilterIn `json:"illust_filter,omitempty"`
 	pageLimitIn
 }
 
@@ -192,6 +198,10 @@ func illustListResult(out illustListOut) *mcp.CallToolResult {
 
 func (a *App) userArtworks(ctx context.Context, _ *mcp.CallToolRequest, in userArtworksIn) (*mcp.CallToolResult, illustListOut, error) {
 	plan, err := parseMCPListPlan(in.pageLimitIn)
+	if err != nil {
+		return a.illustListError(ctx, err)
+	}
+	ctx, err = withIllustFilter(ctx, in.IllustFilter)
 	if err != nil {
 		return a.illustListError(ctx, err)
 	}
@@ -219,21 +229,25 @@ func (a *App) userArtworks(ctx context.Context, _ *mcp.CallToolRequest, in userA
 }
 
 func (a *App) illustListError(ctx context.Context, err error) (*mcp.CallToolResult, illustListOut, error) {
-	recordToolError(ctx, err)
 	out := illustListOut{Records: []application.Record{}}
 	return recordResult(out.Records, true, recordErrorMessage(err)), out, nil
 }
 
 type bookmarksSDKIn struct {
-	UserID   int64  `json:"user_id,omitempty" jsonschema:"optional user ID; defaults to the authenticated user"`
-	Restrict string `json:"restrict,omitempty" jsonschema:"public or private"`
-	Tag      string `json:"tag,omitempty"`
+	UserID       int64           `json:"user_id,omitempty" jsonschema:"optional user ID; defaults to the authenticated user"`
+	Restrict     string          `json:"restrict,omitempty" jsonschema:"public or private"`
+	Tag          string          `json:"tag,omitempty"`
+	IllustFilter *illustFilterIn `json:"illust_filter,omitempty"`
 	pageLimitIn
 }
 
 func (a *App) userBookmarks(ctx context.Context, _ *mcp.CallToolRequest, in bookmarksSDKIn) (*mcp.CallToolResult, illustListOut, error) {
 	plan, err := parseMCPListPlan(in.pageLimitIn)
 	userID := in.UserID
+	if err != nil {
+		return a.illustListError(ctx, err)
+	}
+	ctx, err = withIllustFilter(ctx, in.IllustFilter)
 	if err != nil {
 		return a.illustListError(ctx, err)
 	}
@@ -263,8 +277,9 @@ func (a *App) userBookmarks(ctx context.Context, _ *mcp.CallToolRequest, in book
 }
 
 type followingSDKIn struct {
-	UserID   int64  `json:"user_id,omitempty" jsonschema:"optional user ID; defaults to the authenticated user"`
-	Restrict string `json:"restrict,omitempty" jsonschema:"public or private"`
+	UserID     int64         `json:"user_id,omitempty" jsonschema:"optional user ID; defaults to the authenticated user"`
+	Restrict   string        `json:"restrict,omitempty" jsonschema:"public or private"`
+	UserFilter *userFilterIn `json:"user_filter,omitempty"`
 	pageLimitIn
 }
 
@@ -280,6 +295,10 @@ func userListResult(out userListOut) *mcp.CallToolResult {
 func (a *App) userFollowing(ctx context.Context, _ *mcp.CallToolRequest, in followingSDKIn) (*mcp.CallToolResult, userListOut, error) {
 	plan, err := parseMCPListPlan(in.pageLimitIn)
 	userID := in.UserID
+	if err != nil {
+		return a.userListError(ctx, err)
+	}
+	ctx, err = withUserFilter(ctx, in.UserFilter)
 	if err != nil {
 		return a.userListError(ctx, err)
 	}
@@ -307,7 +326,6 @@ func (a *App) userFollowing(ctx context.Context, _ *mcp.CallToolRequest, in foll
 }
 
 func (a *App) userListError(ctx context.Context, err error) (*mcp.CallToolResult, userListOut, error) {
-	recordToolError(ctx, err)
 	out := userListOut{Records: []application.Record{}}
 	return recordResult(out.Records, true, recordErrorMessage(err)), out, nil
 }
@@ -350,7 +368,6 @@ func (a *App) runMutation(ctx context.Context, out mutationOut, run func(applica
 		err = run(client)
 	}
 	if err != nil {
-		recordToolError(ctx, err)
 		out.Text = "Error: " + err.Error()
 		return mutationResult(out), out, nil
 	}

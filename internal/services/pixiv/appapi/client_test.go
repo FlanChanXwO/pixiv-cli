@@ -1,14 +1,11 @@
 package appapi
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
-	"log/slog"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
 	"time"
 
@@ -125,22 +122,6 @@ func TestSearchIllustMapsDateAndBookmarkBoundsToAppQuery(t *testing.T) {
 	}
 }
 
-func TestSearchIllustOptionsRejectsMissingOrNullIllustEnvelope(t *testing.T) {
-	for _, body := range []string{`{}`, `{"illust":null}`} {
-		body := body
-		t.Run(body, func(t *testing.T) {
-			api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-				_, _ = w.Write([]byte(body))
-			}))
-			defer api.Close()
-			result, err := New(WithBaseURL(api.URL), WithHTTPClient(api.Client()), WithAccessToken("access")).SearchIllustOptions(context.Background(), "miku")
-			if result != nil || !errors.Is(err, ErrMalformedResponse) {
-				t.Fatalf("result=%#v error=%v", result, err)
-			}
-		})
-	}
-}
-
 func TestRefreshAndRetryOnceOnTypedAuthStatus(t *testing.T) {
 	for _, status := range []int{http.StatusUnauthorized, http.StatusForbidden} {
 		t.Run(http.StatusText(status), func(t *testing.T) {
@@ -212,41 +193,6 @@ func TestGETRetriesOnceAfterValidRateLimitResponse(t *testing.T) {
 	result, err := New(WithBaseURL(api.URL), WithHTTPClient(api.Client()), WithAccessToken("access")).IllustDetail(context.Background(), 42)
 	if err != nil || result.Illust.ID != 42 || requests != 2 {
 		t.Fatalf("result=%#v err=%v requests=%d", result, err, requests)
-	}
-}
-
-func TestGETLogsSafeRateLimitRetry(t *testing.T) {
-	var output bytes.Buffer
-	requests := 0
-	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		requests++
-		if requests == 1 {
-			w.Header().Set("Retry-After", "0")
-			w.Header().Set("X-Secret-Header", "header-secret")
-			w.WriteHeader(http.StatusTooManyRequests)
-			return
-		}
-		_ = json.NewEncoder(w).Encode(model.IllustDetail{Illust: model.Illust{ID: 42}})
-	}))
-	defer api.Close()
-
-	client := New(
-		WithBaseURL(api.URL),
-		WithHTTPClient(api.Client()),
-		WithAccessToken("access-secret"),
-		WithLogger(slog.New(slog.NewJSONHandler(&output, nil))),
-	)
-	if _, err := client.IllustDetail(context.Background(), 42); err != nil {
-		t.Fatal(err)
-	}
-	logs := output.String()
-	if !strings.Contains(logs, `"result":"rate_limit_retry"`) || !strings.Contains(logs, `"status":429`) || !strings.Contains(logs, `"retry_after":0`) {
-		t.Fatalf("logs = %s", logs)
-	}
-	for _, secret := range []string{"header-secret", "access-secret", api.URL, "Retry-After"} {
-		if strings.Contains(logs, secret) {
-			t.Fatalf("logs leaked %q: %s", secret, logs)
-		}
 	}
 }
 

@@ -15,7 +15,6 @@ local, err := pixiv.OpenDefault()
 // 显式 access token 或匿名客户端：此 options 没有本地 auth/config 字段。
 client, err := pixiv.NewClient(pixiv.NewClientOptions{
     AccessToken: accessToken,
-    Logger:      logger, // 可选；nil 时 SDK 静默
 })
 
 // 高级本地默认客户端。
@@ -26,7 +25,7 @@ local, err := pixiv.OpenDefaultWith(pixiv.OpenDefaultOptions{
 
 `NewClient` 不读本地文件，也不网络认证。`OpenDefault` 使用 `AuthFilePath`、`ConfigFilePath`、`RefreshToken`、`UserID` 或现有默认路径和环境选择认证；需要 runtime configuration 的公开操作重新取得一次 configuration/auth snapshot。多次续页若要求同一 snapshot，调用 `client.Snapshot(ctx)`。显式 token 导出是例外，只读取 auth store。
 
-`NewClientOptions` 只保留直连客户端字段：`AccessToken`、`WebFallbackEnabled`、HTTP、App/Web endpoint、`ResourcePolicy`、可选 `ResourceCachePath` 与 `Logger`。`OpenDefaultOptions` 则拥有本地路径、OAuth endpoint、账号选择、HTTP/endpoint、资源策略/缓存路径与 logger。两种 options 不混入无效字段；`OpenDefault` 每次 snapshot 从本地 `web_fallback_enabled` 读取 Web fallback 设置。
+`NewClientOptions` 只保留直连客户端字段：`AccessToken`、`WebFallbackEnabled`、HTTP、App/Web endpoint、`ResourcePolicy` 与可选 `ResourceCachePath`。`OpenDefaultOptions` 则拥有本地路径、OAuth endpoint、账号选择、HTTP/endpoint 与资源策略/缓存路径。两种 options 不混入无效字段；`OpenDefault` 每次 snapshot 从本地 `web_fallback_enabled` 读取 Web fallback 设置。
 
 ### HTTP client 与请求生命周期
 
@@ -42,21 +41,23 @@ local, err := pixiv.OpenDefaultWith(pixiv.OpenDefaultOptions{
 
 | 类别 | 方法 |
 | --- | --- |
-| 作品与推荐 | `SearchIllust`、`SearchNovel`、`SearchIllustOptions`、`IllustDetail`、`IllustPages`、`IllustRelated`、`IllustRanking`、`IllustRecommended`、`MangaRecommended`、`NovelRecommended`、`UserRecommended`、`FollowingIllusts`、`TrendingTagsIllust`、`UgoiraMetadata`。 |
+| 作品与推荐 | `SearchIllust`、`SearchNovel`、`SupportedDrawingTools`、`IllustDetail`、`IllustPages`、`IllustRelated`、`IllustRanking`、`IllustRecommended`、`MangaRecommended`、`NovelRecommended`、`UserRecommended`、`FollowingIllusts`、`TrendingTagsIllust`、`UgoiraMetadata`。 |
 | 用户 | `SearchUser`、`UserDetail`、`UserArtworks`、`UserBookmarks`、`UserFollowing`、`CurrentUserID`。 |
 | 写操作 | `AddBookmark`、`RemoveBookmark`、`FollowUser`、`UnfollowUser`。 |
 | 账号/配置 | `ImportAccount`、`ListAccounts`、`SelectAccount`、`RemoveAccount`、`ExportAccountRefreshToken`、`ExportAuthBundle`、`RestoreAuthBundle`、`CheckAccount`、`CheckRefreshToken`、`Refresh`、`RefreshAccount`、`PremiumStatus`、`RefreshPremiumStatus`、`GetConfig`、`SetConfig`、`UnsetConfig`；bundle codec 是 package-level function。 |
 | 登录 | `StartLogin`、`CompleteLogin`、`BuildLoginAuthorizationURL`。集成方负责浏览器、loopback server 或 TTY 的运行。 |
 | 资源 | `Download`、`DownloadAll`、`DownloadWith`、`DownloadAllWith`、`ParseResourceRef`、`OpenResource`、`DownloadResource`。 |
 
-请求型方法使用命名 request，例如 `SearchIllustRequest`、`SearchNovelRequest`、`SearchIllustOptionsRequest`、`UserArtworksRequest`、`UserBookmarksRequest`、`UserFollowingRequest`、`AddBookmarkRequest`、`FollowUserRequest`。返回模型为 `IllustListResult`、`NovelListResult`、`SearchIllustOptionsResult`、`UserListResult`、`IllustDetail`、`UserDetailResult` 等，均来自顶层 `pixiv` package。
+请求型方法使用命名 request，例如 `SearchIllustRequest`、`SearchNovelRequest`、`UserArtworksRequest`、`UserBookmarksRequest`、`UserFollowingRequest`、`AddBookmarkRequest`、`FollowUserRequest`。返回模型为 `IllustListResult`、`NovelListResult`、`UserListResult`、`IllustDetail`、`UserDetailResult` 等，均来自顶层 `pixiv` package。
 每个 public `Illust` 都包含稳定作品页 URL `https://www.pixiv.net/artworks/{id}`，JSON 首字段为 `url`。SDK 不提供点赞数字段，不得把收藏数文案为点赞。
 
 ### 下载：新手层与高级层
 
 `Download(ctx, src)`、`DownloadAll(ctx, srcs)` 是新手入口。`src` 可为正整数作品 PID、官方作品 URL 或 `ResourcePolicy` 允许的 CDN 直链；默认使用 `./downloads`、`{author} - {title}_{id}`、原图、全部页与 `2 × runtime.GOMAXPROCS(0)` 自动并发。
 
-`DownloadWith`、`DownloadAllWith` 接受 `DownloadOptions`，可控制 `DownloadPath`、`FilenameTemplate`、从 1 开始的 `Pages`、`Quality`、`UgoiraFormat` 与 `Concurrency`。`UgoiraFormat` 默认为 `gif`，也可为 `apng`。`Concurrency==0` 为自动；任意正数精确采用且不设人为上限。直链按 URL 文件名保存，不支持页选择、派生质量和自定义作品模板。`DownloadAllResult.Items` 保持输入顺序，每项给出 `Attempted`、成功结果（包括文件缓存状态）或错误，可只重试失败项。Ugoira ZIP 会缓存后转 GIF 或 APNG，ugoira 不支持页选择和非 original 质量。
+`DownloadWith`、`DownloadAllWith` 接受 `DownloadOptions`，可控制 `DownloadPath`、`FilenameTemplate`、从 1 开始的 `Pages`、`Quality`、`UgoiraFormat`、`Concurrency` 与只观察的 `Progress` 回调。`UgoiraFormat` 默认为 `gif`，也可为 `apng`。`Concurrency==0` 为自动；任意正数精确采用且不设人为上限。直链按 URL 文件名保存，不支持页选择、派生质量和自定义作品模板。`DownloadAllResult.Items` 保持输入顺序，每项给出 `Attempted`、成功结果（包括文件缓存状态）或错误，可只重试失败项。Ugoira ZIP 会缓存后转 GIF 或 APNG，ugoira 不支持页选择和非 original 质量。
+
+`Progress func(DownloadProgress)` 由下载 worker 直接并发调用。每个事件提供输入 `SourceIndex`、从 1 开始的 `Page`、目标路径、可用作品元数据、单资源字节数与批次字节数。设置该回调后，SDK 会对每项资源安全执行 HEAD 探测；全部资源大小确定时，`TotalBytesKnown` 与 `TotalBytes` 描述整个批次，否则仍持续提供资源与批次的已传输字节。已验证残片的字节从首个事件开始计入。回调应保持非阻塞，取消传入的 context 即可停止传输。
 
 `DownloadResource(ctx, ref, destination)` 是显式 raw-resource 高级 API，返回带 `miss`、`revalidated`、`resumed` 或 `refreshed` 状态的 `ResourceDownloadResult`；它取代旧 `Download(ctx, ResourceRef, path)`。
 
@@ -107,7 +108,7 @@ auth store，不读取 `PIXIV_REFRESH_TOKEN` 或 runtime config，不刷新、�
 | `AIMode` | `all`、`exclude`、`only`；Pixiv `AIType==2` 表示 AI 生成 |
 | `AspectRatio` | `all`、`landscape`、`portrait`、`square` |
 | `Resolution` | `all`、`high`、`medium`、`low`；三档分别要求宽高均 `>=3000`、均在 `1000..2999`、均 `<=999` |
-| `Tool` | 上游绘图工具原值；不做模糊匹配 |
+| `Tool` | 版本化绘图工具目录中的精确值；唯一的单编辑拼写错误会给出建议，含混前缀返回 `invalid_argument`。 |
 | `BookmarkMin` / `BookmarkMax` | 可选、包含边界的非负公开收藏数；需要 App OAuth 和有效的 Pixiv 高级会员；`Min` 不得大于 `Max`。保存账号的 `OpenDefault` 会在请求前检查缓存的自身 profile 状态；非会员会在本地得到 `forbidden`。 |
 
 枚举零值规范化为 `all`，`Tool` 会去除首尾空白；未知枚举返回 `invalid_argument`，不会发起上游
@@ -117,9 +118,7 @@ auth store，不读取 `PIXIV_REFRESH_TOKEN` 或 runtime config，不刷新、�
 日期边界和仅限 Pixiv 高级会员的收藏数边界翻译为 App 服务端参数；分级与 `only` AI 再基于当前 App 批次的规范化字段筛选。`Illust.Tools []string` 保留 App 返回的工具顺序和
 原值；该字段不是收藏数筛选。
 
-`SearchIllustOptions(ctx, SearchIllustOptionsRequest{Word: word})` 需要非空关键词和 App 认证，返回
-`SearchIllustOptionsResult{Tools []string}`。工具列表保持上游顺序与原值；上游未提供列表时返回非
-`nil` 空切片。`PremiumStatus(ctx)` 返回已保存认证账号缓存或新读取的会员状态快照；
+`SupportedDrawingTools() []string` 返回版本化绘图工具目录及其文档顺序，不发起网络请求，并返回可由调用方修改的防御性副本。`PremiumStatus(ctx)` 返回已保存认证账号缓存或新读取的会员状态快照；
 `RefreshPremiumStatus(ctx)` 强制读取 profile 并持久化结果。`OpenDefault` 使用
 `[premium] status_cache_ttl`（默认 `24h`，`0s` 禁用复用）。直接 `NewClient` access token 没有可验证的账号 UID，不能执行这项已保存账号预检。
 
@@ -171,7 +170,6 @@ SDK 不以 `page` 为输入；CLI/MCP 在边缘层将逻辑 `page`/`limit` 转�
 `NewClient` 无 refresh token 且 `WebFallbackEnabled=true` 时，匿名白名单读操作使用 Web API；
 `OpenDefault` 则每次 snapshot 读取本地 `web_fallback_enabled`。匿名 `SearchIllust` 只执行 Web 能可靠
 表达的筛选；`Rating` 为 `r18`、`r18g`、`mature`、`Target=keyword` 或收藏数边界时在联网前返回 `unauthorized`。
-匿名 `SearchIllustOptions` 返回 `unsupported`。
 
 `SearchNovel` 使用 App 认证。`SearchUser` 在认证态使用 App 搜索；其匿名 allowlist 路径以
 `Source=related_illust_authors` 输出。
@@ -205,7 +203,7 @@ defer response.Body.Close()
 
 仅对幂等 App API JSON 读取：首次 HTTP 429 且 `Retry-After` 是有效秒数或 HTTP-date 时，SDK 等待一次并重试一次；
 等待受调用方 context 取消控制。header 缺失/非法、第二次 429 和其他错误都保留真实 typed error；写操作和资源下载
-绝不重放。可选 `info` 日志仅记录重试次数与解析出的等待时长，不记录 URL、header 原文、凭据或响应 body。
+绝不重放。
 
 ## 错误
 

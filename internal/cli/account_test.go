@@ -9,7 +9,6 @@ import (
 	"html"
 	"io"
 	"io/fs"
-	"log/slog"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -72,7 +71,6 @@ func TestAccountImportAcceptsPositionalRefreshToken(t *testing.T) {
 
 func TestAccountImportJSONDoesNotEchoInputOrRotatedToken(t *testing.T) {
 	useTempPaths(t)
-	t.Setenv("PIXIV_LOG_LEVEL", "info")
 	const inputToken = "input-token-canary"
 	const rotatedToken = "rotated-token-canary"
 	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -537,7 +535,6 @@ func TestDataCommandFlagsDoNotExposeCredentialSelection(t *testing.T) {
 
 func TestAuthExportPrintsOnlyDefaultStoredRefreshToken(t *testing.T) {
 	authPath, _ := useTempPaths(t)
-	t.Setenv("PIXIV_LOG_LEVEL", "info")
 	t.Setenv("PIXIV_REFRESH_TOKEN", "environment-token-must-be-ignored")
 	require.NoError(t, auth.SaveAuthStore(authPath, auth.AuthStore{
 		DefaultUserID: 444,
@@ -800,7 +797,7 @@ func TestAuthExportOutputRequiresForceAndPrintsOnlySafeSummary(t *testing.T) {
 	}
 }
 
-func TestAuthExportIgnoresInvalidLoggingConfiguration(t *testing.T) {
+func TestAuthExportIgnoresLegacyLoggingConfiguration(t *testing.T) {
 	authPath, configPath := useTempPaths(t)
 	t.Setenv("PIXIV_LOG_LEVEL", "loud")
 	require.NoError(t, auth.SaveAuthStore(authPath, auth.AuthStore{
@@ -819,7 +816,6 @@ func TestAuthExportIgnoresInvalidLoggingConfiguration(t *testing.T) {
 
 func TestAuthExportSelectsExplicitUIDAndRejectsNonContractInput(t *testing.T) {
 	authPath, _ := useTempPaths(t)
-	t.Setenv("PIXIV_LOG_LEVEL", "info")
 	require.NoError(t, auth.SaveAuthStore(authPath, auth.AuthStore{
 		DefaultUserID: 444,
 		Accounts: []auth.Account{
@@ -1131,8 +1127,8 @@ func TestAccountLoginProxyFlagOverridesEnvAndConfig(t *testing.T) {
 
 	oldServices := newCLIServices
 	var seenProxy string
-	newCLIServices = func(logger *slog.Logger) application.Services {
-		services := bootstrap.NewServices(logger)
+	newCLIServices = func() application.Services {
+		services := bootstrap.NewServices()
 		services.SDK.NewClient = func(request application.SDKClientRequest) (application.SDKClient, error) {
 			if request.HTTPSProxyOverride != nil {
 				seenProxy = *request.HTTPSProxyOverride
@@ -1168,8 +1164,8 @@ func TestAccountLoginNoProxyFlagClearsEnvAndConfig(t *testing.T) {
 
 	oldServices := newCLIServices
 	seenProxy := "unset"
-	newCLIServices = func(logger *slog.Logger) application.Services {
-		services := bootstrap.NewServices(logger)
+	newCLIServices = func() application.Services {
+		services := bootstrap.NewServices()
 		services.SDK.NewClient = func(request application.SDKClientRequest) (application.SDKClient, error) {
 			if request.HTTPSProxyOverride != nil {
 				seenProxy = *request.HTTPSProxyOverride
@@ -1259,7 +1255,8 @@ func TestAccountLoginBrowserSuccessStillAcceptsTerminalPrompt(t *testing.T) {
 	})
 	defer restoreOpen()
 	setPromptStub(t, promptStub{
-		inputs: []string{"pasted-code"},
+		inputs:      []string{"pasted-code"},
+		inputOutput: "? Paste callback URL, Pixiv relay URL, or authorization code ✓ ",
 	})
 
 	var stdout, stderr bytes.Buffer
@@ -1276,6 +1273,7 @@ func TestAccountLoginBrowserSuccessStillAcceptsTerminalPrompt(t *testing.T) {
 	assert.Equal(t, int64(13579), store.Accounts[0].UserID)
 	assert.Equal(t, "pasted-user", store.Accounts[0].Username)
 	assert.Equal(t, "pasted-refresh-secret", store.Accounts[0].RefreshToken)
+	assert.Equal(t, "? Paste callback URL, Pixiv relay URL, or authorization code ✓ \n✓ uid:13579 username:pasted-user\n", stdout.String())
 	assert.NotContains(t, stdout.String(), "pasted-refresh-secret")
 	assert.NotContains(t, stderr.String(), "pasted-refresh-secret")
 }
@@ -1585,6 +1583,19 @@ func TestAccountLoginManualPageAcceptsCallbackThroughLoopbackForwarder(t *testin
 	assert.NotContains(t, stdout.String(), "forwarded-refresh-secret")
 	assert.NotContains(t, stderr.String(), "forwarded-refresh-secret")
 	assert.Contains(t, stderr.String(), "Browser opening is disabled; use the manual fallback page or terminal prompt.")
+	assert.Contains(t, stderr.String(), "An SSH tunnel alone cannot receive Pixiv's final app link; remote browser login requires a desktop handoff.")
+	_, remotePort, err := net.SplitHostPort(remoteAddr)
+	require.NoError(t, err)
+	assert.Contains(t, stderr.String(), "ssh -N -L "+remotePort+":127.0.0.1:"+remotePort+" USER@SERVER")
+}
+
+func TestLoginSSHTunnelCommandUsesOnlyBoundListenerAddress(t *testing.T) {
+	command, err := loginSSHTunnelCommand("127.0.0.1:41871")
+	require.NoError(t, err)
+	assert.Equal(t, "ssh -N -L 41871:127.0.0.1:41871 USER@SERVER", command)
+
+	_, err = loginSSHTunnelCommand("not-a-listener")
+	assert.Error(t, err)
 }
 
 func TestAccountLoginManualPageRejectsStaleRelayWithoutOpeningIt(t *testing.T) {
@@ -1729,15 +1740,14 @@ func pixivAuthStartURLForTest(challenge string) string {
 func setTestOAuthBase(t *testing.T, baseURL string) func() {
 	t.Helper()
 	old := newCLIServices
-	newCLIServices = func(logger *slog.Logger) application.Services {
-		services := old(logger)
+	newCLIServices = func() application.Services {
+		services := old()
 		services.SDK.NewClient = func(request application.SDKClientRequest) (application.SDKClient, error) {
 			return publicpixiv.OpenDefaultWith(publicpixiv.OpenDefaultOptions{
 				UserID:       request.UserID,
 				RefreshToken: request.RefreshToken,
 				AuthFilePath: request.AuthFilePath,
 				OAuthBaseURL: baseURL,
-				Logger:       logger,
 			})
 		}
 		services.Login.SDK = services.SDK
@@ -1770,8 +1780,8 @@ func setTestPublicSDKFactoryWithHTTPClient(t *testing.T, oauthBaseURL, appAPIBas
 	configPath, err := config.ConfigFilePath()
 	require.NoError(t, err)
 	old := newCLIServices
-	newCLIServices = func(logger *slog.Logger) application.Services {
-		services := bootstrap.NewServices(logger)
+	newCLIServices = func() application.Services {
+		services := bootstrap.NewServices()
 		services.SDK.NewClient = func(request application.SDKClientRequest) (application.SDKClient, error) {
 			if observe != nil {
 				observe(request)
@@ -1785,7 +1795,6 @@ func setTestPublicSDKFactoryWithHTTPClient(t *testing.T, oauthBaseURL, appAPIBas
 				AppAPIBaseURL:  appAPIBaseURL,
 				WebAPIBaseURL:  webAPIBaseURL,
 				ResourcePolicy: resourcePolicy,
-				Logger:         logger,
 			}
 			if request.HTTPSProxyOverride != nil {
 				httpClient, err := newHTTPClient(*request.HTTPSProxyOverride)
@@ -1924,10 +1933,11 @@ func setTestAuthClientFactory(t *testing.T, identities map[string]authIdentity) 
 }
 
 type promptStub struct {
-	inputs   []string
-	secrets  []string
-	selects  []string
-	confirms []bool
+	inputs      []string
+	inputOutput string
+	secrets     []string
+	selects     []string
+	confirms    []bool
 }
 
 func setPromptStub(t *testing.T, stub promptStub) {
@@ -1940,6 +1950,9 @@ func setPromptStub(t *testing.T, stub promptStub) {
 	canPrompt = func(app) bool { return true }
 	promptInput = func(a app, message, defaultValue string) (string, error) {
 		require.NotEmpty(t, stub.inputs, "missing prompt input for %s", message)
+		if stub.inputOutput != "" {
+			_, _ = fmt.Fprint(a.out, stub.inputOutput)
+		}
 		value := stub.inputs[0]
 		stub.inputs = stub.inputs[1:]
 		return value, nil

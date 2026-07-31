@@ -1,0 +1,10 @@
+{{define "content"}}
+<main class="pv-card">
+  <svg class="pv-icon" viewBox="0 0 52 52" aria-hidden="true" focusable="false">
+    <circle class="pv-icon-ring" cx="26" cy="26" r="24"/>
+    {{if .Success}}<path class="pv-icon-mark" d="M15 27 L23 34.5 L37.5 19"/>{{else}}<path class="pv-icon-mark" d="M18.5 18.5 L33.5 33.5"/><path class="pv-icon-mark pv-icon-mark-late" d="M33.5 18.5 L18.5 33.5"/>{{end}}
+  </svg>
+  <h1>{{.Heading}}</h1>
+  <p>{{.Message}}</p>
+</main>
+{{end}}

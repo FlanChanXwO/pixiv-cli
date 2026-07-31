@@ -51,7 +51,7 @@ binary 预检会在替换现有安装前显露 loader 失败。
 
 随正式版本发布的安装器内嵌静态 Release-source 列表。它始终从 GitHub HTTPS 直连获取权威 `checksums.txt`，再仅对匹配的平台 archive 探测免费候选；候选返回的 checksum 必须与直连文件逐字一致。安装前 archive 仍必须匹配该直连 SHA-256。列表不会从远端拉取，只会随签名 Release 更新。
 
-官方安装脚本会初始化当前用户的按需 `pixiv://` handler，Homebrew 在 `post_install` 中做同样操作。若提示 warning，已验证的 binary 仍安装成功，只是桌面集成未完成；首次正常浏览器 `pixiv auth login` 会再次尝试。手工解压 archive 没有安装 hook，依赖这次首次登录。桌面 Linux 需要 `xdg-mime` 与 `gio`；headless Linux 可运行 relay server，但不会注册浏览器 handler。
+官方安装脚本会初始化当前用户的按需 `pixiv://` handler，Homebrew 在 `post_install` 中做同样操作。若提示 warning，已验证的 binary 仍安装成功，只是桌面集成未完成。macOS 与 Windows 上，下一次普通 `pixiv` 命令会再次尝试；手工解压 archive 因而会在首次使用时修复桌面集成。桌面 Linux 需要 `xdg-mime` 与 `gio`；headless Linux 可运行 relay server，但不会注册浏览器 handler。
 
 ### 从源码构建
 
@@ -123,14 +123,12 @@ pixiv auth login
 | 阶段 | 行为 |
 | --- | --- |
 | 初始化 | CLI 生成 PKCE verifier/challenge 和 OAuth state，并启动本地 loopback HTTP server。 |
-| 浏览器 | macOS、桌面 Linux 和 Windows 会初始化按需的当前用户 `pixiv://` callback helper 并打开默认浏览器，因此可复用已有 Pixiv 登录态；需要用户在 Pixiv 页面确认账号；使用 `--no-open` 时只打印登录 URL 和本地页面地址。 |
-| 回调 | CLI 仅接收本轮 loopback callback、当前登录尝试注册的 `pixiv://` helper 转交、终端粘贴或本地页面表单。helper 转交后，默认浏览器会在 OAuth exchange 完成时打开本地最终成功或失败页；浏览器若没有返回，可手动粘贴 callback URL、`pixiv://...` URL、Pixiv relay URL 或原始 authorization code。 |
+| 浏览器 | macOS 与 Windows 的普通 CLI 启动会准备当前用户 `pixiv://` callback helper；桌面 Linux 会在交互式登录时初始化 XDG handler。CLI 打开默认浏览器，可复用已有 Pixiv 登录态；使用 `--no-open` 时只打印登录 URL 和本地页面地址。 |
+| 回调 | CLI 接收本轮 loopback callback、一次性桌面 handoff、终端粘贴或本地页面表单。helper 转交后，默认浏览器会在 OAuth exchange 完成时打开本地最终成功或失败页。 |
 | 校验 | 本地 loopback 回调必须匹配本次 state；Pixiv 官方 callback URL 与 `pixiv://account/login` 可在 Pixiv 未返回 state 时作为显式 fallback。 |
 | 保存 | refresh/access token 不会打印；refresh token 按 Pixiv UID 保存到 `auth.json`。Unix-like 主动使用 `0700` 父目录与 `0600` 文件；Windows 首次创建继承父目录 ACL，替换既有目标保留其 ACL，不主动收紧或放宽 DACL。 |
 
-handler 会持久注册，但只在系统打开 `pixiv://` 时按需运行：macOS 使用 `PixivCLIURLHandler.app`，Windows 使用当前用户协议关联，桌面 Linux 使用 XDG desktop entry；旧 handler 会私有记录。本地活跃的 loopback bridge 永远优先。没有本地 bridge 时，只有精确白名单 `pixiv://account/login` 才会转发给已配置 remote relay，其他 `pixiv://` URL 会定向交给旧 handler。`removing `login_relay_target_url` from private `config.toml`` 只在 pixiv-cli 仍为默认 handler 时恢复旧关联，绝不覆盖用户之后的修改。若 binary 已删除，请先使用私有 `~/.pixiv-cli/url-handler/handler-manifest.json` 记录，通过系统关联 UI 恢复旧 handler，再删除 manifest。
-
-若 macOS 接管前没有旧的 `pixiv://` handler，`removing `login_relay_target_url` from private `config.toml`` 会报错，不会静默把 pixiv-cli 留作默认 handler。请先在 macOS 的关联 UI 中选择目标应用，再次执行 `unset`；它会清理 manifest，且不会覆盖该次用户选择。
+handler 会持久注册，但只在系统打开 `pixiv://` 时按需运行：macOS 使用 `PixivCLIURLHandler.app`，Windows 使用当前用户协议关联，桌面 Linux 使用 XDG desktop entry；旧 handler 会私有记录。本地活跃的 loopback bridge 永远优先。没有本地 bridge 时，`pixiv://account/login` 只会由活跃的一次性桌面 handoff 接收，`pixiv://account/remote-login` 用于启动该 handoff。其他 `pixiv://` URL 会定向交给旧 handler。需要更换 handler 时，请使用系统提供的关联 UI。
 
 在无 GUI 的 SSH 服务器上，应继续把 listener 绑定到 loopback，并选择一个未占用的固定端口，方便从
 本地转发。先在服务器运行：
@@ -146,15 +144,16 @@ ssh -N -L 41871:127.0.0.1:41871 USER@SERVER
 ```
 
 随后用本地浏览器打开 `http://127.0.0.1:41871/`。该 tunnel 只连接服务器 loopback，不会把 callback
-端口暴露到公网。请在这个转发页面打开登录 URL 并提交 Pixiv relay 或最终 callback：已校验的 relay 会由同一个本地浏览器继续，最终 callback 的提交会经 tunnel POST 回服务器 listener；浏览器所在机器不需要安装 pixiv。也可以使用交互式 SSH terminal，把最终 callback URL、`pixiv://` URL、relay URL 或原始 authorization code 粘贴回原 `auth login` prompt。不要把登录 listener 绑定到公网接口；`--addr` 会刻意只接受 loopback 地址。
+端口暴露到公网。它只能让手工页面可达，不能代替浏览器所在机器接收 Pixiv 最终的 `pixiv://` callback。浏览器机器已安装 pixiv-cli 时，请使用下方的一次性桌面 handoff。也可以把完整的最终 callback URL 粘贴回原 `auth login` prompt。不要把登录 listener 绑定到公网接口；`--addr` 会刻意只接受 loopback 地址。
 
-### 跨机器 callback relay
+### 跨机器一次性 handoff relay
 
-当服务器保存账号、而浏览器位于 macOS、Windows 或桌面 Linux 时，服务器配置 `login_relay_public_url`、`login_relay_listen_addr` 和隐藏输入的 `login_relay_secret`；浏览器机器配置同一个 secret 与 `login_relay_target_url`。服务器执行 `pixiv auth login` 后只显示 Pixiv URL 并等待一次经认证 callback，用户自行在浏览器机器打开 URL；服务器不会尝试远程唤起浏览器。`--relay-public-url`、`--relay-listen-addr`、`--relay-tls-cert-file`、`--relay-tls-key-file` 仅覆盖这一次 server 登录；没有 role flag，也没有常驻 relay 进程。
+当服务器保存账号而授权浏览器位于另一台设备时，在服务器配置 `login_relay_public_url` 与
+`login_relay_listen_addr`。执行 `pixiv auth login` 会输出一个仅用于本次登录的远程 handoff URL。打开该 URL 会直接重定向到 `pixiv://account/remote-login`；不会渲染 pixiv-cli 的会话页、确认页或复制 callback 的表单。
 
-认证 callback 到达服务器后，浏览器机器会在已配置 relay URL 下打开一次性结果页。它等待真实 OAuth exchange 完成，再显示与本地登录相同的固定成功或失败页面；该结果 URL 不含 callback 或 token。
+已安装 pixiv-cli 的桌面端会由本机 CLI 领取该次会话、启动 OAuth URL，并把结果 callback 回传服务器。handoff 仅在本次会话有效，新的 handoff 会替换此前本机的 handoff。没有桌面 handler 的客户端无法完成该 relay 流程，应使用已安装 pixiv-cli 的桌面端。
 
-可直接提供 TLS PEM，或以同机反向代理终止 HTTPS 并让 listener 只监听 loopback。允许 HTTP；设置任一 HTTP relay URL 时以及每次 HTTP server 登录时，都会警告 callback 和 bearer secret 可被网络观察或篡改。relay 绝不静默 fallback 为 Web API、本地订阅、普通作者作品或空成功。`pixiv config` 只管理下载路径、文件名模板和 HTTPS 代理；relay secret 必须手工写入私有 `config.toml`，且不得显示在 `config get`、JSON、日志、错误或 handler manifest 中。
+relay 可使用 HTTP 或 HTTPS。可直接提供 TLS PEM，或以同机反向代理终止 HTTPS 并让 listener 只监听 loopback。旧 `login_relay_secret` 与 `login_relay_target_url` 设置会被静默忽略；`pixiv auth devices` 已移除。`pixiv config` 只管理下载路径、文件名模板和 HTTPS 代理；高级 relay 设置仍保存在私有 `config.toml`。
 
 浏览器使用的系统代理不会自动传给 Go CLI。若 Pixiv token 端点在当前网络下需要代理，请先配置：
 
@@ -208,7 +207,7 @@ pixiv auth export --all --output accounts.pxauth
 pixiv auth export --all --output accounts.pxauth --force
 ```
 
-不带 `--output` 时，只有两种形式可向 stdout 写 secret：默认/UID export 精确输出已存 raw token 与一个换行；`--all` 只输出 versioned JSON bundle。成功时 stderr 为空。export 严格 local-only：只读 `auth.json`，不读取 `PIXIV_REFRESH_TOKEN`，不刷新、不访问 Pixiv、不修改 auth/config，并跳过 startup pending-update cleanup、automatic update 与 operation log。`--all` 不能和 UID 同用，`--force` 必须配合 `--output`，export 不接受 JSON/代理 flag。
+不带 `--output` 时，只有两种形式可向 stdout 写 secret：默认/UID export 精确输出已存 raw token 与一个换行；`--all` 只输出 versioned JSON bundle。成功时 stderr 为空。export 严格 local-only：只读 `auth.json`，不读取 `PIXIV_REFRESH_TOKEN`，不刷新、不访问 Pixiv、不修改 auth/config，并跳过 startup pending-update cleanup 与 automatic update。`--all` 不能和 UID 同用，`--force` 必须配合 `--output`，export 不接受 JSON/代理 flag。
 
 带 `--output PATH` 时，单账号和 `--all` 都写 bundle，不写 raw token。默认拒绝覆盖既有文件，只有显式 `--force` 才 replacement；成功 stdout 只有 output path 与 account count。Unix-like 目标文件为 `0600`，既有 parent 权限与 ownership 不变。Windows 明确设置文件 owner 与 protected DACL，只允许当前用户、LocalSystem、builtin Administrators 完全控制。CI tests 覆盖该 Windows policy；本文不声称本次 release 验收已在真实 Windows filesystem 运行。
 
@@ -256,13 +255,13 @@ pixiv recommended all
 pixiv download 123456 789012
 ```
 
-所有持久的应用管理数据直接保存到当前用户主目录：macOS/Linux 为 `~/.pixiv-cli`，Windows 为 `%USERPROFILE%\.pixiv-cli`。其中包括 `auth.json`、`config.toml`、回调桥接状态、按日日志、Release 检查缓存和 macOS 回调 helper；账号认证以 Pixiv UID 为 key。Unix-like 主动使用 `0700` 父目录与 `0600` 文件；Windows 首次创建继承父目录 ACL，替换既有目标保留其 ACL，不主动收紧或放宽 DACL。输出默认给人读；只有 help 中提供 `--json` 的命令可输出机器可解析 JSON，`auth export` 明确不提供该 flag。
-首次执行普通命令时，若不存在 `config.toml`，CLI 会生成只含下载、Web fallback、输出、登录与更新常用设置的基础文件，且绝不覆盖已有文件。代理、日志、登录超时和 Premium 状态缓存等高级设置会保持省略，直到用户显式配置；help、version、secret export 和内部 OAuth callback 不会创建该文件。
+所有持久的应用管理数据直接保存到当前用户主目录：macOS/Linux 为 `~/.pixiv-cli`，Windows 为 `%USERPROFILE%\.pixiv-cli`。其中包括 `auth.json`、`config.toml`、回调桥接状态、Release 检查缓存和 macOS 回调 helper；账号认证以 Pixiv UID 为 key。Unix-like 主动使用 `0700` 父目录与 `0600` 文件；Windows 首次创建继承父目录 ACL，替换既有目标保留其 ACL，不主动收紧或放宽 DACL。输出默认给人读；只有 help 中提供 `--json` 的命令可输出机器可解析 JSON，`auth export` 明确不提供该 flag。
+首次执行普通命令时，若不存在 `config.toml`，CLI 会生成只含下载、Web fallback、输出、登录与更新常用设置的基础文件，且绝不覆盖已有文件。代理、登录超时和 Premium 状态缓存等高级设置会保持省略，直到用户显式配置；help、version、secret export 和内部 OAuth callback 不会创建该文件。
 CLI 使用 Cobra/pflag，选项可以写在位置参数前后，例如 `pixiv auth check 12345678 --json` 和 `pixiv search "初音ミク" --json` 都是正式支持的写法。
 
 ### v0.8.0 数据命令契约
 
-所有非写入的数据读取、推荐、feed 与下载都使用 `pixiv auth use` 选定的本地账号。若手工维护了 `[account_pool]`，这些安全操作可以从池中选择本地账号；写操作、认证和配置不使用账号池。数据命令拒绝 `--uid`、`--refresh-token`，并忽略 `PIXIV_REFRESH_TOKEN`。
+所有非写入的数据读取、推荐、时间线与下载都使用 `pixiv auth use` 选定的本地账号。只有 `[account_pool]` 显式设置 `enabled = true` 时才启用账号池；省略 `accounts` 会按 `auth.json` 的存储顺序使用全部账号，写入 `accounts` 时它是白名单。`strategy` 默认 `round_robin`，也支持 `random`。写操作、认证和配置不使用账号池。数据命令拒绝 `--uid`、`--refresh-token`，并忽略 `PIXIV_REFRESH_TOKEN`。
 
 需要流式处理时使用 `--ndjson`：每行都是带稳定字符串 `id`、`type`、`url` 的规范 Record，其余 SDK 字段会保留。 `pixiv filter` 从 stdin 读 Record；`download`、`bookmark add/remove`、`follow add/remove` 也可不带位置 ID 直接消费它们。动作成功时 stdout 保持为空，安全诊断写入 stderr。 `--on-error=skip|fail-fast` 控制 stdin 中格式错误或不兼容 Record 的处理；`--json` 与 `--ndjson` 不能同时使用。
 
@@ -273,7 +272,7 @@ Ugoira 下载支持 `--ugoira-format gif|apng`，默认仍为 `gif`；Ugoira 指
 | 命令 | 用法 | 说明 |
 | --- | --- | --- |
 | `auth import` | `pixiv auth import [REFRESH_TOKEN] [--file PATH] [--json] [--proxy URL\|--no-proxy]` | direct input 校验并保存 rotation 后的 token；无参 TTY 隐藏输入，非 TTY 读取 raw stdin。`--file PATH|-` 改为离线原子恢复 bundle，并与 token/代理输入冲突。 |
-| `auth login` | `pixiv auth login [--json] [--no-open] [--addr 127.0.0.1:0] [--use] [--timeout DURATION] [--relay-public-url URL --relay-listen-addr ADDR] [--relay-tls-cert-file PATH --relay-tls-key-file PATH] [--proxy URL\|--no-proxy]` | 使用普通 loopback OAuth；完整 server relay 配置存在时等待一次经认证的远程桌面 callback。按 Pixiv UID 保存账号，绝不输出 refresh token。 |
+| `auth login` | `pixiv auth login [--json] [--no-open] [--addr 127.0.0.1:0] [--use] [--timeout DURATION] [--relay-public-url URL --relay-listen-addr ADDR] [--relay-tls-cert-file PATH --relay-tls-key-file PATH] [--proxy URL\|--no-proxy]` | 使用普通 loopback OAuth；完整 server relay 配置存在时输出一次性 handoff URL，直接启动已安装的 desktop CLI handler。按 Pixiv UID 保存账号，绝不输出 refresh token。 |
 | `auth list` | `pixiv auth list [--json]` | 列出本地账号；不会输出 refresh token。文本中 `*` 表示默认账号，`✓`/`-` 分别表示本地保存/缺少 refresh token；这些只是本地状态标记，不代表已在线验证有效。 |
 | `auth export` | `pixiv auth export [UID] [--all] [--output PATH] [--force]` | 本地导出默认/指定账号或全部账号；无 `--output` 时单账号输出 raw token、`--all` 输出 bundle；带 `--output` 时都写私有 bundle，stdout 仅安全摘要。`--force` 必须与 `--output` 同用。 |
 | `auth use` | `pixiv auth use [UID] [--json]` | 设置默认账号；TTY 下可交互选择。 |
@@ -288,12 +287,11 @@ Ugoira 下载支持 `--ugoira-format gif|apng`，默认仍为 `gif`；Ugoira 指
 | `update` | `pixiv update [--check] [--prerelease] [--proxy URL]` | 检查或执行与当前安装来源匹配的更新；`--json` 仅可与 `--check` 同用。 |
 | `search` | `pixiv search [options] WORD` | 搜索插画。 |
 | `novel search` | `pixiv novel search [options] WORD` | 通过认证 App API 搜索小说。 |
-| `search-options` | `pixiv search-options [--json] [--proxy URL\|--no-proxy] WORD` | 查询该关键词在 App API 中可用的绘图工具；需要所选本地账号认证。 |
 | `detail` | `pixiv detail [options] ILLUST_ID_OR_URL` | 查看单个作品 ID 或受支持 Pixiv 作品 URL 的详情。 |
 | `ranking` | `pixiv ranking [options]` | 查看 Pixiv 插画排行榜。 |
 | `recommended` | `pixiv recommended all\|illust\|manga\|novel\|user [--page N --limit N --json]` | 查看指定类个性化推荐；`all` 按插画、漫画、小说、作者顺序完整返回，需要认证。 |
-| `feed following` | `pixiv feed following --type illust\|novel [--restrict public\|private --page N --limit N --json\|--ndjson]` | 读取关注作者的新作。 |
-| `feed latest` | `pixiv feed latest --type illust\|manga\|novel [--page N --limit N --json\|--ndjson]` | 读取 App 最新作品 feed。 |
+| `timeline following` | `pixiv timeline following --type illust\|novel [--restrict public\|private --page N --limit N --json\|--ndjson]` | 读取关注作者的新作。 |
+| `timeline latest` | `pixiv timeline latest --type illust\|manga\|novel [--page N --limit N --json\|--ndjson]` | 读取 App 最新作品。 |
 | `mypixiv users` | `pixiv mypixiv users [--page N --limit N --json\|--ndjson]` | 列出所选账号的 MyPixiv 用户。 |
 | `mypixiv works` | `pixiv mypixiv works [USER_ID] --type illust\|manga\|novel [--page N --limit N --json\|--ndjson]` | 列出 MyPixiv 作品；省略 USER_ID 时只允许 `illust` 或 `novel`。 |
 | `filter` | `pixiv filter [--id ID --type TYPE --tag TAG --min-views N --min-pages N --on-error skip\|fail-fast]` | 筛选 stdin 的规范 Record NDJSON。 |
@@ -340,7 +338,7 @@ Ugoira 下载支持 `--ugoira-format gif|apng`，默认仍为 `gif`；Ugoira 指
 | `search` | `--ai-mode` | `all` | AI 筛选：`all`、`exclude` 或 `only`；Pixiv `AIType==2` 表示 AI 生成。 |
 | `search` | `--aspect-ratio` | `all` | 横纵比：`all`、`landscape`、`portrait` 或 `square`。 |
 | `search` | `--resolution` | `all` | 分辨率：`all`、`high`、`medium` 或 `low`；宽高两个维度分别都需满足 `>=3000`、`1000..2999` 或 `<=999`。 |
-| `search` | `--draw-tool` | 空 | 上游绘图工具的精确名称；用已认证的 `search-options` 查询当前值。 |
+| `search` | `--draw-tool` | 空 | 本版本绘图工具目录中的精确名称。唯一的一次编辑拼写错误会给出建议；含混前缀会直接报错。 |
 | `search` | `--bookmark-min` / `--bookmark-max` | 空 | 包含边界的非负公开收藏数；需要 App OAuth 和有效的 Pixiv 高级会员，且最小值不能大于最大值。已保存账号会先检查缓存的自身 profile 状态，非会员在本地拦截。 |
 | `novel search` | `--min-text-length` | `0` | 正文最少字符数；`0` 关闭下界。 |
 | `novel search` | `--max-text-length` | `0` | 正文最多字符数；`0` 关闭上界，且不能小于非零下界。 |
@@ -350,13 +348,13 @@ Ugoira 下载支持 `--ugoira-format gif|apng`，默认仍为 `gif`；Ugoira 指
 | `ranking` | `--mode` | `day` | 可用 `day`、`day_male`、`day_female`、`week`、`week_original`、`week_rookie`、`month`、`day_manga`、`week_manga`、`month_manga`、`week_rookie_manga`、`day_r18`、`day_male_r18`、`day_female_r18`、`week_r18`、`week_r18g`；最后九种需要认证。 |
 | `ranking` | `--date` | 空 | 排行榜日期，格式通常为 `YYYY-MM-DD`。 |
 | `recommended KIND` | `--page`、`--limit` | 各流独立分页 | 每条流独立分页；`all` 会对插画、漫画、小说、作者分别应用相同分页语义。 |
-| `feed following` | `--type`、`--restrict` | 必填、`public` | 类型为 `illust` 或 `novel`；可见性为 `public` 或 `private`。 |
-| `feed latest`、`mypixiv works` | `--type` | 必填 | feed 支持 `illust`、`manga`、`novel`；省略 USER_ID 的 MyPixiv 只支持 `illust`、`novel`。 |
+| `timeline following` | `--type`、`--restrict` | 必填、`public` | 类型为 `illust` 或 `novel`；可见性为 `public` 或 `private`。 |
+| `timeline latest`、`mypixiv works` | `--type` | 必填 | 时间线支持 `illust`、`manga`、`novel`；省略 USER_ID 的 MyPixiv 只支持 `illust`、`novel`。 |
 | `filter` 与 Record 动作 | `--on-error` | `skip` | 对格式错误/不兼容记录选择写 stderr 后跳过，或 `fail-fast`。 |
 | `download` | `--pages` | 空 | 1-based 页选择，如 `1,3-5`（闭区间、去重、自然序）；默认下载全部页。页不存在会明确失败。 |
 | `download` | `--quality` | `original` | 静态图质量：`original`、`regular`（最长边 1200）、`small`（最长边 540）、`thumb`（250×250 居中裁剪）、`mini`（48×48 居中裁剪）。Ugoira 对非 original 质量或页选择返回 unsupported。 |
 | `download` | `--download-path` | `DOWNLOAD_PATH`、`config.toml` 或 `./downloads` | 下载目录；其他命令不接受此参数。 |
-| `download` | `--filename-template` | `FILENAME_TEMPLATE`、`config.toml` 或 `{author} - {title}_{id}` | 文件名模板；占位符为 `{id}`、`{title}`、`{author}`；其他命令不接受此参数。 |
+| `download` | `--filename-template` | `FILENAME_TEMPLATE`、`config.toml` 或 `{author} - {title}_{id}` | 文件名模板；只允许 `{id}`、`{title}`、`{author}`。未知占位符或不配对花括号会报错；其他命令不接受此参数。 |
 | `download` | `--concurrency` | `0`（自动） | 下载 worker 数；`0` 使用 `2 × GOMAXPROCS`，正数精确采用。 |
 | `user artworks` | `--type` | `illust` | Pixiv 作品类型：`illust`、`manga` 或 `ugoira`。 |
 | `user bookmarks` | `--restrict` | `public` | 收藏可见性：`public` 或 `private`。 |
@@ -369,6 +367,25 @@ Ugoira 下载支持 `--ugoira-format gif|apng`，默认仍为 `gif`；Ugoira 指
 | `download` | `SRC...` | 必填 | 作品 PID、作品 URL、允许的 CDN 资源 URL，或受支持的用户主页/作品页 URL。CDN 文件使用 URL 文件名，不支持页选择、派生质量和自定义作品模板。 |
 
 有 refresh token 时，`search` 由 App API 执行。分辨率、横纵比、工具、作品类型和 `ai-mode=exclude` 由 App 筛选，分级和 `ai-mode=only` 对 App 返回批次筛选；认证、网络或服务端失败会返回分类错误。全部筛选都会绑定 opaque cursor，cursor 不能用于不同筛选组合。本地筛选跳过连续空上游批次时，CLI/MCP 会补拉到首个非空逻辑批次或真正结束。指定正数 `--limit` 或 `--page` 时，按过滤后的逻辑结果跨批填满；`--limit 0` 遍历全部过滤结果；未指定 `--limit` 时读取一个上游批次，但会跳过前导空批。App 还会执行显式日期与仅限 Pixiv 高级会员的收藏数边界；收藏数不是点赞字段，不得文案为点赞。作品 JSON/文本包含稳定作品页 URL `https://www.pixiv.net/artworks/{id}`，作为首字段/每件作品第一行。
+
+交互式终端运行 `download` 时，命令会在传输前对全部选中资源执行安全 HEAD 探测；全部资源大小可确定时，stderr 显示批次总字节进度。重定向、JSON 与 NDJSON 输出保持不变。公开 SDK 即使无法得知总大小也会提供单资源进度；取消会保留可安全续传的、带 validator 的残片。
+
+### 绘图工具目录
+
+`--draw-tool` 与 MCP `tool` 只接受此版本目录中的精确值；普通帮助和错误信息不展开目录。
+
+```text
+SAI · Photoshop · CLIP STUDIO PAINT · IllustStudio · ComicStudio · Pixia · AzPainter4 · Painter · Illustrator · GIMP
+FireAlpaca · 網上描繪 · AzPainter · CGillust · 描繪聊天室 · 手畫博克 · MS_Paint · PictBear · openCanvas · PaintShopPro
+EDGE · drawr · COMICWORKS · AzDrawing · SketchBookPro · PhotoStudio · Paintgraphic · MediBang Paint · NekoPaint · Inkscape
+ArtRage · AzDrawing4 · Fireworks · ibisPaint · AfterEffects · mdiapp · GraphicsGale · Krita · kokuban.in · RETAS STUDIO
+emote · 4thPaint · ComiLabo · pixiv Sketch · Pixelmator · Procreate · Expression · PicturePublisher · Processing · Live2D
+dotpict · Aseprite · Pastela · Poser · Metasequoia · Blender · Shade · 3dsMax · DAZ Studio · ZBrush
+Comi Po! · Maya · Lightwave3D · 六角大王 · Vue · SketchUp · CINEMA4D · XSI · CARRARA · Bryce
+STRATA · Sculptris · modo · AnimationMaster · VistaPro · Sunny3D · 3D-Coat · Paint 3D · VRoid Studio · 筆芯筆
+鉛筆 · 原子筆 · 毫筆 · 顏色鉛筆 · Copic麥克筆 · 沾水筆 · 透明水彩 · 毛筆 · 記號筆 · 麥克筆
+水溶性彩色铅笔 · 涂料 · 丙烯顏料 · 鋼筆 · 粉彩 · 噴筆 · 顏色墨水 · 蠟筆 · 油彩 · COUPY-PENCIL · 顏彩
+```
 
 收藏数边界对已保存账号复用固定 24 小时的自身 profile Premium 缓存。缓存未命中或过期时，会先读取 profile；确认非会员即在本地失败，不向 Pixiv 搜索端点发请求。使用 `pixiv auth refresh [UID]`（或 `--all`）可强制刷新 OAuth token 与该状态。直接传入 SDK access token 时没有可验证的本地账号身份，无法使用这项已保存账号预检。
 
@@ -413,14 +430,13 @@ App JSON 读取在首次 429 且 `Retry-After` 有效时按命令 context 等待
 | `filename_template` | string | `{author} - {title}_{id}` | 文件名模板。 |
 | `https_proxy` | string | 空 | HTTP(S) 代理；小写 `https_proxy` 环境变量优先。 |
 
-手工 TOML 可以包含 `[account_pool]`、`[web]`、`[login]`、`[logging]`、`[update]` 等高级运行时段。不要把 refresh token 写入 `config.toml`。账号池状态只记录上次 UID/冻结信息，绝不保存 token。
+手工 TOML 可以包含 `[account_pool]`、`[web]`、`[login]`、`[update]` 等高级运行时段。不要把 refresh token 写入 `config.toml`。账号池状态只记录上次 UID/冻结信息，绝不保存 token。旧 `[logging]` 表会为兼容性被忽略；`log_level` 不是受支持的 `pixiv config` 键。
 
 ### 环境变量
 
 | 环境变量 | 默认值 | 说明 |
 | --- | --- | --- |
 | `PIXIV_REFRESH_TOKEN` | 空 | Pixiv App API OAuth refresh token；可被账号选择或 `--refresh-token` 覆盖。 |
-| `PIXIV_LOG_LEVEL` | 空 | 覆盖 `log_level`。 |
 | `DOWNLOAD_PATH` | `./downloads` | 下载目录。 |
 | `FILENAME_TEMPLATE` | `{author} - {title}_{id}` | 文件名模板。 |
 | `https_proxy` / `HTTPS_PROXY` | 空 | HTTP(S) 代理；优先使用小写 `https_proxy`。 |
@@ -439,7 +455,6 @@ CLI 数据命令以 `pixiv auth use` 选择的 `auth.json.default_user_id` 为�
 
 - 匿名 `search` 只执行 Web API 能可靠表达的筛选。分辨率、横纵比、绘图工具和作品类型会转译为 Web 参数；AI 筛选使用返回的作品字段。
 - `rating=r18`、`r18g`、`mature`、`--search-by tag-title-caption` 或收藏数边界会在匿名请求前明确返回需要认证，而不会伪装成空结果；收藏数边界还需要 Pixiv 高级会员；`rating=all` 只表示匿名可见范围。
-- `search-options` 仅支持 App API，无 refresh token 时明确返回 unsupported。
 - `novel search` 仅支持 App API；无 refresh token 时明确返回需要认证。
 - 九个扩展排行榜 mode（`day_manga`、`week_manga`、`month_manga`、`week_rookie_manga`、`day_r18`、
   `day_male_r18`、`day_female_r18`、`week_r18`、`week_r18g`）需要认证，不会回落或伪装成匿名日榜。

@@ -48,13 +48,23 @@ const (
 
 var ErrMalformedResponse = errors.New("pixiv upstream returned a malformed response")
 
-func HTTPStatus(status int) Failure { return Failure{Kind: FailureHTTPStatus, StatusCode: status} }
-func HTTPStatusWithRetryAfter(status int, retryAfter time.Duration, present bool) Failure {
-	return Failure{Kind: FailureHTTPStatus, StatusCode: status, RetryAfter: retryAfter, HasRetryAfter: present}
+func HTTPStatus(status int) Failure {
+	return Failure{Kind: FailureHTTPStatus, StatusCode: status}
 }
-func MalformedResponse() Failure { return Failure{Kind: FailureMalformed} }
-func UpstreamRejected() Failure  { return Failure{Kind: FailureRejected} }
-func Forbidden() Failure         { return Failure{Kind: FailureForbidden} }
+func HTTPStatusWithRetryAfter(status int, retryAfter time.Duration, present bool) Failure {
+	return Failure{
+		Kind: FailureHTTPStatus, StatusCode: status, RetryAfter: retryAfter, HasRetryAfter: present,
+	}
+}
+func MalformedResponse() Failure {
+	return Failure{Kind: FailureMalformed}
+}
+func UpstreamRejected() Failure {
+	return Failure{Kind: FailureRejected}
+}
+func Forbidden() Failure {
+	return Failure{Kind: FailureForbidden}
+}
 func Transport(err error) Failure {
 	var failure Failure
 	if errors.As(err, &failure) {

@@ -21,13 +21,13 @@ func novelListResult(out novelListOut, isError bool) *mcp.CallToolResult {
 }
 
 func (a *App) novelListError(ctx context.Context, err error) (*mcp.CallToolResult, novelListOut, error) {
-	recordToolError(ctx, err)
 	out := novelListOut{Records: []application.Record{}, Pagination: paginationOut{Page: 1}}
 	return recordResult(out.Records, true, recordErrorMessage(err)), out, nil
 }
 
 type novelFollowIn struct {
-	Restrict string `json:"restrict,omitempty" jsonschema:"public or private"`
+	Restrict    string         `json:"restrict,omitempty" jsonschema:"public or private"`
+	NovelFilter *novelFilterIn `json:"novel_filter,omitempty"`
 	pageLimitIn
 }
 
@@ -38,6 +38,10 @@ func (a *App) novelFollow(ctx context.Context, _ *mcp.CallToolRequest, in novelF
 		in.Restrict = string(sdk.RestrictPublic)
 	}
 	plan, err := parseMCPListPlan(in.pageLimitIn)
+	if err != nil {
+		return a.novelListError(ctx, err)
+	}
+	ctx, err = withNovelFilter(ctx, in.NovelFilter)
 	if err != nil {
 		return a.novelListError(ctx, err)
 	}
@@ -65,7 +69,8 @@ func (a *App) novelFollow(ctx context.Context, _ *mcp.CallToolRequest, in novelF
 }
 
 type latestIllustIn struct {
-	ContentType sdk.IllustType `json:"content_type" jsonschema:"required: illust or manga"`
+	ContentType  sdk.IllustType  `json:"content_type" jsonschema:"required: illust or manga"`
+	IllustFilter *illustFilterIn `json:"illust_filter,omitempty"`
 	pageLimitIn
 }
 
@@ -74,6 +79,10 @@ func (a *App) illustNew(ctx context.Context, _ *mcp.CallToolRequest, in latestIl
 		return a.illustQueryError(ctx, errors.New("content_type must be one of: illust, manga"))
 	}
 	plan, err := parseMCPListPlan(in.pageLimitIn)
+	if err != nil {
+		return a.illustQueryError(ctx, err)
+	}
+	ctx, err = withIllustFilter(ctx, in.IllustFilter)
 	if err != nil {
 		return a.illustQueryError(ctx, err)
 	}
@@ -100,10 +109,17 @@ func (a *App) illustNew(ctx context.Context, _ *mcp.CallToolRequest, in latestIl
 	return illustQueryResult(out, false), out, nil
 }
 
-type latestNovelsIn struct{ pageLimitIn }
+type latestNovelsIn struct {
+	NovelFilter *novelFilterIn `json:"novel_filter,omitempty"`
+	pageLimitIn
+}
 
 func (a *App) novelNew(ctx context.Context, _ *mcp.CallToolRequest, in latestNovelsIn) (*mcp.CallToolResult, novelListOut, error) {
 	plan, err := parseMCPListPlan(in.pageLimitIn)
+	if err != nil {
+		return a.novelListError(ctx, err)
+	}
+	ctx, err = withNovelFilter(ctx, in.NovelFilter)
 	if err != nil {
 		return a.novelListError(ctx, err)
 	}
@@ -130,12 +146,19 @@ func (a *App) novelNew(ctx context.Context, _ *mcp.CallToolRequest, in latestNov
 	return novelListResult(out, false), out, nil
 }
 
-type myPixivUsersIn struct{ pageLimitIn }
+type myPixivUsersIn struct {
+	UserFilter *userFilterIn `json:"user_filter,omitempty"`
+	pageLimitIn
+}
 
 // myPixivUsers 使用同一认证 snapshot 先解析当前 UID，再读取该账号的 MyPixiv
 // 用户列表；不接受外部 UID 以免误表达为可浏览任意用户的私有关系。
 func (a *App) myPixivUsers(ctx context.Context, _ *mcp.CallToolRequest, in myPixivUsersIn) (*mcp.CallToolResult, userListOut, error) {
 	plan, err := parseMCPListPlan(in.pageLimitIn)
+	if err != nil {
+		return a.userListError(ctx, err)
+	}
+	ctx, err = withUserFilter(ctx, in.UserFilter)
 	if err != nil {
 		return a.userListError(ctx, err)
 	}
@@ -162,10 +185,22 @@ func (a *App) myPixivUsers(ctx context.Context, _ *mcp.CallToolRequest, in myPix
 	return userListResult(out), out, nil
 }
 
-type myPixivWorksIn struct{ pageLimitIn }
+type myPixivIllustsIn struct {
+	IllustFilter *illustFilterIn `json:"illust_filter,omitempty"`
+	pageLimitIn
+}
 
-func (a *App) myPixivIllusts(ctx context.Context, _ *mcp.CallToolRequest, in myPixivWorksIn) (*mcp.CallToolResult, illustQueryOut, error) {
+type myPixivNovelsIn struct {
+	NovelFilter *novelFilterIn `json:"novel_filter,omitempty"`
+	pageLimitIn
+}
+
+func (a *App) myPixivIllusts(ctx context.Context, _ *mcp.CallToolRequest, in myPixivIllustsIn) (*mcp.CallToolResult, illustQueryOut, error) {
 	plan, err := parseMCPListPlan(in.pageLimitIn)
+	if err != nil {
+		return a.illustQueryError(ctx, err)
+	}
+	ctx, err = withIllustFilter(ctx, in.IllustFilter)
 	if err != nil {
 		return a.illustQueryError(ctx, err)
 	}
@@ -192,8 +227,12 @@ func (a *App) myPixivIllusts(ctx context.Context, _ *mcp.CallToolRequest, in myP
 	return illustQueryResult(out, false), out, nil
 }
 
-func (a *App) myPixivNovels(ctx context.Context, _ *mcp.CallToolRequest, in myPixivWorksIn) (*mcp.CallToolResult, novelListOut, error) {
+func (a *App) myPixivNovels(ctx context.Context, _ *mcp.CallToolRequest, in myPixivNovelsIn) (*mcp.CallToolResult, novelListOut, error) {
 	plan, err := parseMCPListPlan(in.pageLimitIn)
+	if err != nil {
+		return a.novelListError(ctx, err)
+	}
+	ctx, err = withNovelFilter(ctx, in.NovelFilter)
 	if err != nil {
 		return a.novelListError(ctx, err)
 	}
@@ -221,7 +260,8 @@ func (a *App) myPixivNovels(ctx context.Context, _ *mcp.CallToolRequest, in myPi
 }
 
 type userNovelsIn struct {
-	UserID int64 `json:"user_id,omitempty" jsonschema:"optional user ID; defaults to the authenticated user"`
+	UserID      int64          `json:"user_id,omitempty" jsonschema:"optional user ID; defaults to the authenticated user"`
+	NovelFilter *novelFilterIn `json:"novel_filter,omitempty"`
 	pageLimitIn
 }
 
@@ -235,13 +275,16 @@ func userNovelListResult(out userNovelListOut, isError bool) *mcp.CallToolResult
 }
 
 func (a *App) userNovelListError(ctx context.Context, err error) (*mcp.CallToolResult, userNovelListOut, error) {
-	recordToolError(ctx, err)
 	out := userNovelListOut{Records: []application.Record{}, Pagination: paginationOut{Page: 1}}
 	return recordResult(out.Records, true, recordErrorMessage(err)), out, nil
 }
 
 func (a *App) userNovels(ctx context.Context, _ *mcp.CallToolRequest, in userNovelsIn) (*mcp.CallToolResult, userNovelListOut, error) {
 	plan, err := parseMCPListPlan(in.pageLimitIn)
+	if err != nil {
+		return a.userNovelListError(ctx, err)
+	}
+	ctx, err = withNovelFilter(ctx, in.NovelFilter)
 	if err != nil {
 		return a.userNovelListError(ctx, err)
 	}

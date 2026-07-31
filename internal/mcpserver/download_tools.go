@@ -16,20 +16,6 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-type setDownloadPathIn struct {
-	Path string `json:"path" jsonschema:"directory path where files should be downloaded"`
-}
-
-func (a *App) setDownloadPath(ctx context.Context, _ *mcp.CallToolRequest, in setDownloadPathIn) (*mcp.CallToolResult, textOut, error) {
-	if strings.TrimSpace(in.Path) == "" {
-		return toolTextError(ctx, errLegacyValidation, "Error: path must not be empty.")
-	}
-	if err := a.downloads.SetDownloadPath(in.Path); err != nil {
-		return toolTextError(ctx, err, fmt.Sprintf("Error: could not set the download path. Ensure %q is valid and writable. Details: %v", in.Path, err))
-	}
-	return toolText(fmt.Sprintf("Download path updated: %s. Future downloads will be saved there.", in.Path))
-}
-
 type downloadIn struct {
 	Src          string   `json:"src,omitempty" jsonschema:"PID, Pixiv artwork/user URL, or allowed CDN resource URL"`
 	Srcs         []string `json:"srcs,omitempty" jsonschema:"multiple PID, Pixiv artwork/user URL, or allowed CDN resource URLs"`
@@ -105,7 +91,6 @@ func (a *App) download(ctx context.Context, _ *mcp.CallToolRequest, in downloadI
 	result := downloadResult(out)
 	if len(out.Failures) > 0 {
 		result.IsError = true
-		recordToolError(ctx, errors.New("download completed with failures"))
 	}
 	return result, out, nil
 }
@@ -254,8 +239,9 @@ func emptyDownloadResult(delivery, text string) (*mcp.CallToolResult, downloadOu
 }
 
 func emptyDownloadError(ctx context.Context, err error, delivery, text string) (*mcp.CallToolResult, downloadOut, error) {
-	recordToolError(ctx, err)
-	return emptyDownloadResult(delivery, text)
+	result, out, resultErr := emptyDownloadResult(delivery, text)
+	result.IsError = true
+	return result, out, resultErr
 }
 
 func normalizeDelivery(value string) (string, string) {
@@ -370,7 +356,7 @@ func (a *App) downloadRandom(ctx context.Context, req *mcp.CallToolRequest, in d
 		return emptyDownloadError(ctx, err, delivery, "Could not retrieve recommendations: "+err.Error())
 	}
 	if len(result.Illusts) == 0 {
-		return emptyDownloadResult(delivery, "Could not retrieve recommendations: the list is empty.")
+		return emptyDownloadError(ctx, errors.New("recommended illustration list is empty"), delivery, "Could not retrieve recommendations: the list is empty.")
 	}
 	if count > len(result.Illusts) {
 		count = len(result.Illusts)

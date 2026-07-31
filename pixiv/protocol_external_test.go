@@ -93,6 +93,23 @@ func TestAdapterFailuresStayTypedAndSecretFree(t *testing.T) {
 	}
 	_, err = client.IllustRelated(context.Background(), pixiv.IllustRelatedRequest{IllustID: 51})
 	assertProtocolFailure(t, err, pixiv.CodeUpstreamUnavailable, pixiv.OperationIllustRelated, pixiv.BackendAppAPI, 0, transportSecret)
+
+	const resourceSecret = "resource-transport-secret"
+	client, err = pixiv.NewClient(pixiv.NewClientOptions{
+		HTTPClient: &http.Client{Transport: protocolRoundTripper(func(*http.Request) (*http.Response, error) {
+			return nil, errors.New(resourceSecret)
+		})},
+		ResourcePolicy: pixiv.ResourcePolicy{Mirrors: []pixiv.ResourceMirrorPolicy{{Host: "resource.example.invalid", PathPrefixes: []string{"/image/"}}}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ref, err := client.ParseResourceRef("https://resource.example.invalid/image/safe.jpg")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = client.OpenResource(context.Background(), pixiv.OpenResourceRequest{Ref: ref})
+	assertProtocolFailure(t, err, pixiv.CodeUpstreamUnavailable, pixiv.OperationOpenResource, pixiv.BackendResource, 0, resourceSecret)
 }
 
 func assertProtocolFailure(t *testing.T, err error, code pixiv.ErrorCode, operation pixiv.Operation, backend pixiv.Backend, status int, secrets ...string) {

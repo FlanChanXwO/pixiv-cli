@@ -1,10 +1,13 @@
 package loginhelper
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
+	"strings"
 
 	constants "github.com/FlanChanXwO/pixiv-cli/internal/platform/localstate"
 	"github.com/FlanChanXwO/pixiv-cli/internal/utils/files"
@@ -17,6 +20,7 @@ const handlerManifestFilename = "handler-manifest.json"
 type handlerManifest struct {
 	Version            int                   `json:"version"`
 	ExecutablePath     string                `json:"executable_path"`
+	HomeDirectory      string                `json:"home_directory,omitempty"`
 	PreviousHandler    string                `json:"previous_handler,omitempty"`
 	LinuxMIMESnapshots []handlerFileSnapshot `json:"linux_mime_snapshots,omitempty"`
 }
@@ -82,4 +86,38 @@ func removeHandlerManifest() error {
 		return err
 	}
 	return nil
+}
+
+// AutomaticPersistentHandlerSupported 仅对计划中的 desktop client 平台启用启动期
+// 注册。desktop Linux 仍由官方 installer/正常 browser login 处理，headless Linux
+// server 不会因任意命令尝试建立 XDG 关联。
+func AutomaticPersistentHandlerSupported() bool {
+	// `go test` 会在同一进程内调用 CLI controller；让测试 binary 注册系统协议
+	// 会把真实 desktop association 指向临时测试 executable，既不代表产品行为也
+	// 会污染开发环境。测试可通过 CLI 窄注入点覆盖支持条件验证启动逻辑。
+	if strings.HasSuffix(filepath.Base(os.Args[0]), ".test") {
+		return false
+	}
+	return runtime.GOOS == "darwin" || runtime.GOOS == "windows"
+}
+
+// EnsurePersistentIfNeeded 先以私有 manifest 判断当前 binary 是否已注册；相同
+// binary 不重复写系统关联。外部修改 association 时，官方 installer 或 browser
+// login 仍会显式重新注册，避免在无关命令中覆盖用户后来选择的默认应用。
+func EnsurePersistentIfNeeded(ctx context.Context) error {
+	if !AutomaticPersistentHandlerSupported() {
+		return nil
+	}
+	executable, err := os.Executable()
+	if err != nil {
+		return err
+	}
+	manifest, exists, err := loadHandlerManifest()
+	if err != nil {
+		return err
+	}
+	if exists && filepath.Clean(manifest.ExecutablePath) == filepath.Clean(executable) {
+		return nil
+	}
+	return EnsurePersistent(ctx)
 }
