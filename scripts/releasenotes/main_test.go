@@ -245,7 +245,7 @@ func TestPrepareRendersBilingualNotesAndIndex(t *testing.T) {
 
 	root := t.TempDir()
 	writeReleaseNote(t, root, "README.md", "# Changelog\n\n| Version | Date | Release notes |\n| --- | --- | --- |\n| Unreleased | — | [English](unreleased/en.md) · [简体中文](unreleased/zh-CN.md) |\n| [v1.0.0](https://github.com/FlanChanXwO/pixiv-cli/commits/v1.0.0) | 2026-01-01 | [English](v1.0.0/en.md) · [简体中文](v1.0.0/zh-CN.md) |\n")
-	writeReleaseNote(t, root, "README.zh-CN.md", "# 更新日志\n\n| 版本 | 日期 | 发布说明 |\n| --- | --- | --- |\n| Unreleased | — | [English](unreleased/en.md) · [简体中文](unreleased/zh-CN.md) |\n| [v1.0.0](https://github.com/FlanChanXwO/pixiv-cli/commits/v1.0.0) | 2026-01-01 | [English](v1.0.0/en.md) · [简体中文](v1.0.0/zh-CN.md) |\n")
+	writeReleaseNote(t, root, "README.zh-CN.md", "# 更新日志\n\n| 版本 | 日期 | 发布说明 |\n| --- | --- | --- |\n| 未发布 | — | [English](unreleased/en.md) · [简体中文](unreleased/zh-CN.md) |\n| [v1.0.0](https://github.com/FlanChanXwO/pixiv-cli/commits/v1.0.0) | 2026-01-01 | [English](v1.0.0/en.md) · [简体中文](v1.0.0/zh-CN.md) |\n")
 	planPath := filepath.Join(root, "plan.json")
 	plan := preparePlan{Entries: []preparedEntry{{
 		Category: "Added",
@@ -276,6 +276,14 @@ func TestPrepareRendersBilingualNotesAndIndex(t *testing.T) {
 	}
 	if !strings.Contains(string(index), "| [v1.1.0](https://github.com/FlanChanXwO/pixiv-cli/compare/v1.0.0...v1.1.0) | 2026-07-30") {
 		t.Fatalf("index missing new release row: %s", index)
+	}
+	chineseIndex, err := os.ReadFile(filepath.Join(root, "README.zh-CN.md"))
+	if err != nil {
+		t.Fatalf("read Simplified Chinese index: %v", err)
+	}
+	const chineseRows = "| 未发布 | — | [English](unreleased/en.md) · [简体中文](unreleased/zh-CN.md) |\n| [v1.1.0](https://github.com/FlanChanXwO/pixiv-cli/compare/v1.0.0...v1.1.0) | 2026-07-30"
+	if !strings.Contains(string(chineseIndex), chineseRows) {
+		t.Fatalf("Simplified Chinese index does not place the new release row after the localized unreleased row: %s", chineseIndex)
 	}
 }
 
