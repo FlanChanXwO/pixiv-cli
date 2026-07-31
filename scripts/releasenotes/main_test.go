@@ -281,8 +281,9 @@ func TestPrepareRendersBilingualNotesAndIndex(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read Simplified Chinese index: %v", err)
 	}
-	if !strings.Contains(string(chineseIndex), "| [v1.1.0](https://github.com/FlanChanXwO/pixiv-cli/compare/v1.0.0...v1.1.0) | 2026-07-30") {
-		t.Fatalf("Simplified Chinese index missing new release row: %s", chineseIndex)
+	const chineseRows = "| 未发布 | — | [English](unreleased/en.md) · [简体中文](unreleased/zh-CN.md) |\n| [v1.1.0](https://github.com/FlanChanXwO/pixiv-cli/compare/v1.0.0...v1.1.0) | 2026-07-30"
+	if !strings.Contains(string(chineseIndex), chineseRows) {
+		t.Fatalf("Simplified Chinese index does not place the new release row after the localized unreleased row: %s", chineseIndex)
 	}
 }
 

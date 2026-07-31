@@ -566,21 +566,18 @@ func updateChangelogIndex(path, version, previous, date string, replace bool) ([
 		}
 		return nil, fmt.Errorf("changelog index already contains v%s", version)
 	}
-	anchors := []string{
-		"| Unreleased | — | [English](unreleased/en.md) · [简体中文](unreleased/zh-CN.md) |\n",
-		"| 未发布 | — | [English](unreleased/en.md) · [简体中文](unreleased/zh-CN.md) |\n",
-	}
-	position := -1
+	const unreleasedNotesLinks = "[English](unreleased/en.md) · [简体中文](unreleased/zh-CN.md)"
+	position := 0
 	anchor := ""
-	for _, candidate := range anchors {
-		if index := strings.Index(content, candidate); index >= 0 {
-			position = index
+	for _, candidate := range strings.SplitAfter(content, "\n") {
+		if strings.HasPrefix(candidate, "| ") && strings.Contains(candidate, unreleasedNotesLinks) {
 			anchor = candidate
 			break
 		}
+		position += len(candidate)
 	}
-	if position < 0 {
-		return nil, fmt.Errorf("changelog index %s has no Unreleased row", path)
+	if anchor == "" {
+		return nil, fmt.Errorf("changelog index %s has no unreleased release-notes row", path)
 	}
 	row := fmt.Sprintf("| [v%s](%s) | %s | [English](v%s/en.md) · [简体中文](v%s/zh-CN.md) |\n", version, changelogCompareLink(version, previous), date, version, version)
 	position += len(anchor)
