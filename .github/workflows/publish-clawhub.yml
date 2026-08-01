@@ -133,8 +133,8 @@ jobs:
           }
           fs.appendFileSync(output, `fingerprint=${result.fingerprint}\n`);
           NODE
-      # ClawHub 的普通 publish 将公开文件与扫描结果写入服务端，而 skill-card.md
-      # 是服务端扫描稳定后异步生成的证据文件。人工恢复只验证已有版本，绝不重发。
+      # ClawHub 的普通 publish 将公开文件与扫描结果写入服务端。skill-card.md 与汇总
+      # 安全结论都可能异步生成；人工恢复只验证已有版本，绝不重发。
       - name: Verify an already-published ClawHub skill
         if: inputs.verify_only == true
         shell: bash
@@ -199,14 +199,41 @@ jobs:
           const identityMatches = verify.schema === "clawhub.skill.verify.v1" && verify.slug === "pixiv-cli" && verify.version === version && verify.resolvedFrom === "version";
           const artifactMatches = verify.artifact?.sourceFingerprint === fingerprint;
           const securityIsClean = verify.security?.passed === true && verify.security?.status === "clean";
+          const staticScanClean = verify.security?.signals?.staticScan?.status === "clean";
+          const aggregateSecurityPending = verify.security?.passed === false && verify.security?.status === "pending";
           const cardPendingOnly = verify.ok === false && verify.decision === "fail" && verify.reasons?.length === 1 && verify.reasons[0] === "card.missing";
+          // ClawHub 0.23.1 在 aggregate security 尚未完成时实际返回这三条 reason；
+          // 允许集合必须保持封闭，新增或未知 reason 一律拒绝发布结果。
+          const pendingReasonCodes = new Set(["card.missing", "security.status_not_clean", "security.pending"]);
+          const pendingAggregationOnly = verify.ok === false && verify.decision === "fail" && Array.isArray(verify.reasons) && verify.reasons.length > 0 && verify.reasons.every((reason) => pendingReasonCodes.has(reason)) && staticScanClean && aggregateSecurityPending;
           const passed = verify.ok === true && verify.decision === "pass" && Array.isArray(verify.reasons) && verify.reasons.length === 0;
-          if (!identityMatches || !artifactMatches || !securityIsClean || (!passed && !cardPendingOnly) || (passed && exitCode !== "0") || (cardPendingOnly && exitCode !== "1")) {
+          const rejectVerification = () => {
             console.error(JSON.stringify(verify, null, 2));
             throw new Error("ClawHub verification did not establish the immutable published artifact");
+          };
+          if (!identityMatches || !artifactMatches) {
+            rejectVerification();
+          }
+          if (passed) {
+            if (!securityIsClean || exitCode !== "0") {
+              rejectVerification();
+            }
+          } else if (cardPendingOnly) {
+            if (!securityIsClean || exitCode !== "1") {
+              rejectVerification();
+            }
+          } else if (pendingAggregationOnly) {
+            if (exitCode !== "1") {
+              rejectVerification();
+            }
+          } else {
+            rejectVerification();
           }
           if (cardPendingOnly) {
             console.warn("::warning title=ClawHub skill card pending::The published artifact and security scan are verified, but ClawHub has not generated its asynchronous skill-card.md yet.");
+          }
+          if (pendingAggregationOnly) {
+            console.warn("::warning title=ClawHub aggregate security scan pending::The published artifact and ClawHub static scan are verified, but the platform has not completed its aggregate security decision. Run verify_only later; it requires a clean completed scan.");
           }
           if (verify.provenance?.source === "unavailable") {
             console.warn("::warning title=ClawHub source provenance unavailable::ClawHub does not expose server-resolved GitHub import provenance for this CLI publish; the workflow verified the trusted tag and exact artifact fingerprint locally.");

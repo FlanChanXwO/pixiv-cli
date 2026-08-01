@@ -74,6 +74,9 @@ func TestPublishWorkflowKeepsTheImmutableReleaseAndSecretBoundary(t *testing.T) 
 	if !strings.Contains(finalRun, "clawhub skill publish skills/pixiv-cli --version \"$SKILL_VERSION\"") || !strings.Contains(finalRun, "clawhub skill verify pixiv-cli --version \"$SKILL_VERSION\"") {
 		fatalf(t, "final step must publish and verify the exact versioned product skill")
 	}
+	if !strings.Contains(finalRun, "staticScanClean") || !strings.Contains(finalRun, "aggregateSecurityPending") || !strings.Contains(finalRun, "else if (pendingAggregationOnly)") || !strings.Contains(finalRun, "ClawHub aggregate security scan pending") {
+		fatalf(t, "publish step must make clean static scanning and pending aggregation an explicit verification branch")
+	}
 
 	dryRun := stepByName(t, steps, "Dry-run the exact tagged skill")
 	dryRunText := scalarValue(t, mappingValue(t, dryRun, "run"))
@@ -82,8 +85,8 @@ func TestPublishWorkflowKeepsTheImmutableReleaseAndSecretBoundary(t *testing.T) 
 	}
 	verifyOnlyStep := stepByName(t, steps, "Verify an already-published ClawHub skill")
 	verifyOnlyRun := scalarValue(t, mappingValue(t, verifyOnlyStep, "run"))
-	if !strings.Contains(renderNode(t, verifyOnlyStep), "CLAWHUB_TOKEN") || !strings.Contains(verifyOnlyRun, "clawhub --no-input login --token \"$CLAWHUB_TOKEN\"") || !strings.Contains(verifyOnlyRun, "clawhub skill verify pixiv-cli --version \"$SKILL_VERSION\" > \"$RUNNER_TEMP/clawhub-verify.json\" || verify_exit=$?") || !strings.Contains(verifyOnlyRun, "cardPendingOnly") || !strings.Contains(verifyOnlyRun, "verify.artifact?.sourceFingerprint === fingerprint") || strings.Contains(verifyOnlyRun, "clawhub skill publish") {
-		fatalf(t, "verify-only recovery must authenticate only for verification and must not republish the immutable version")
+	if !strings.Contains(renderNode(t, verifyOnlyStep), "CLAWHUB_TOKEN") || !strings.Contains(verifyOnlyRun, "clawhub --no-input login --token \"$CLAWHUB_TOKEN\"") || !strings.Contains(verifyOnlyRun, "clawhub skill verify pixiv-cli --version \"$SKILL_VERSION\" > \"$RUNNER_TEMP/clawhub-verify.json\" || verify_exit=$?") || !strings.Contains(verifyOnlyRun, "securityIsClean") || !strings.Contains(verifyOnlyRun, "cardPendingOnly") || !strings.Contains(verifyOnlyRun, "verify.artifact?.sourceFingerprint === fingerprint") || strings.Contains(verifyOnlyRun, "aggregateSecurityPending") || strings.Contains(verifyOnlyRun, "clawhub skill publish") {
+		fatalf(t, "verify-only recovery must require a completed clean scan and must not republish the immutable version")
 	}
 	install := stepByName(t, steps, "Install pinned ClawHub CLI without credentials")
 	if !strings.Contains(scalarValue(t, mappingValue(t, install, "run")), "clawhub@0.23.1") {
