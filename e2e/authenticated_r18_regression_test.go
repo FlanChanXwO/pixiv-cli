@@ -217,7 +217,7 @@ func TestPixivBinaryAuthenticatedR18RegressionCanary(t *testing.T) {
 
 	apngPath := filepath.Join(t.TempDir(), "download-apng")
 	_ = runPixivCanary(t, repoRoot, binaryPath, env, auth,
-		"download", "--ugoira-format", "apng", "--download-path", apngPath, strconvFormatInt(ids.ugoira))
+		"download", "--ugoira-mode", "apng", "--download-path", apngPath, strconvFormatInt(ids.ugoira))
 	requireCanaryAnimation(t, apngPath, ".apng", []byte{0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n'})
 }
 

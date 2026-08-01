@@ -379,8 +379,8 @@ policy 锁定 finalize 参数及完整八资产上传集合；Homebrew renderer 
 
 若不可变 tag 的首次 run 在创建 GitHub Release 前失败，维护者只能从默认分支通过
 `workflow_dispatch` 提交同一个 `release_tag` 进行恢复。validate 会校验该 tag 为 SemVer、存在、
-已包含于默认分支且尚未有 Release；构建与发布始终 checkout 该 tag。恢复 run 可以只在无 Environment
-的六平台 test job 中应用固定白名单的默认分支测试覆盖。v0.2.0 已完成的历史恢复使用四条路径：当时的
+已包含于默认分支且尚未有 Release；构建与发布始终 checkout 该 tag。恢复 run 只能在受审计的 test
+gate 中应用固定白名单的默认分支测试覆盖；生产构建与发布不会读取覆盖内容。v0.2.0 已完成的历史恢复使用四条路径：当时的
 release workflow、位于 `pixiv/account_external_test.go` 的 Windows ACL 测试，以及 canonical
 verifier 与其测试；这是不可改写的历史证据，不定义后续 tag 的 allowlist。
 
@@ -421,6 +421,17 @@ artifact。该 job 成功后，独立的新 runner
 才会以 `clean: true` checkout tag、重新构建 selected staticlib 并生成唯一可被 publish 下载的
 `verified-release-*` assets；测试进程对环境变量、PATH 或临时目录的副作用不会进入生产 job。因此它不能用于
 替换生产资产源码、移动 tag，或重发已经存在的 Release。
+
+受保护 E2E gate 另有独立、逐字固定的恢复 allowlist，仅用于修补已发布 tag 的测试契约：
+
+- `e2e/authenticated_r18_regression_test.go`
+- `e2e/pixiv_binary_test.go`
+
+该覆盖只在 `workflow_dispatch` 的 tag checkout 后发生，必须使用与六平台 gate 相同的 clean-worktree、
+cached diff、一次 `git archive`、非空 diff 与逐路径比对；它在受保护测试凭据注入前运行，不能包含产品源码、
+workflow、配置或任意额外文件。随后的真实 E2E 仍链接和执行 tag 中的产品源码；production job 则在新的
+worktree 只从 tag 重建资产。此例外用于恢复 v0.10.0 发现的旧 ugoira flag 与非交互 NDJSON 断言，不能扩展为
+通用的 tag 代码修补机制。
 
 恢复 workflow 的定义可以来自受审计的默认分支，但 production worktree 仍只含 tag bytes。为重现
 v0.3.0 tag 已提交 staticlib，test 与 production job 从相同六目标 matrix 读取上述 per-target Rust

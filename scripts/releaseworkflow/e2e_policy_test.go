@@ -27,14 +27,34 @@ func TestReleaseWorkflowHasProtectedAuthenticatedE2EGate(t *testing.T) {
 	}
 
 	steps := requireMappingValue(t, e2e, "steps").Content
-	if len(steps) != 3 {
-		t.Fatalf("e2e step count = %d, want 3", len(steps))
+	if len(steps) != 4 {
+		t.Fatalf("e2e step count = %d, want 4", len(steps))
 	}
-	run := requireMappingValue(t, steps[2], "run").Value
+	overlay := steps[2]
+	if got := requireMappingValue(t, overlay, "name").Value; got != "Apply the audited E2E test recovery overlay" {
+		t.Fatalf("e2e recovery overlay name = %q", got)
+	}
+	if got := requireMappingValue(t, overlay, "if").Value; got != "github.event_name == 'workflow_dispatch'" {
+		t.Fatalf("e2e recovery overlay condition = %q", got)
+	}
+	overlayRun := requireMappingValue(t, overlay, "run").Value
+	for _, path := range []string{
+		"e2e/authenticated_r18_regression_test.go",
+		"e2e/pixiv_binary_test.go",
+	} {
+		if strings.Count(overlayRun, path) != 1 {
+			t.Fatalf("e2e recovery overlay must include only one %s entry", path)
+		}
+	}
+	if strings.Contains(overlayRun, "pixiv/") || strings.Contains(overlayRun, "internal/") {
+		t.Fatal("e2e recovery overlay must not include product source paths")
+	}
+
+	run := requireMappingValue(t, steps[3], "run").Value
 	if !strings.Contains(run, "go test ./e2e -count=1 -v") {
 		t.Fatal("e2e gate must run the complete e2e suite")
 	}
-	env := requireMappingValue(t, steps[2], "env")
+	env := requireMappingValue(t, steps[3], "env")
 	if got := requireMappingValue(t, env, "PIXIV_E2E_REFRESH_TOKEN").Value; got != "${{ secrets.PIXIV_E2E_REFRESH_TOKEN }}" {
 		t.Fatal("e2e refresh token must come from the protected environment secret")
 	}
@@ -49,8 +69,8 @@ func TestReleaseWorkflowHasProtectedAuthenticatedE2EGate(t *testing.T) {
 			t.Fatalf("e2e %s must come from the protected environment variable", name)
 		}
 	}
-	if workflowpolicy.ContainsSecretReference(steps[0]) || workflowpolicy.ContainsSecretReference(steps[1]) {
-		t.Fatal("e2e checkout and setup steps must not reference secrets")
+	if workflowpolicy.ContainsSecretReference(steps[0]) || workflowpolicy.ContainsSecretReference(steps[1]) || workflowpolicy.ContainsSecretReference(steps[2]) {
+		t.Fatal("e2e checkout, setup, and recovery overlay steps must not reference secrets")
 	}
 
 	buildNeeds := requireMappingValue(t, jobNode(t, root, "build"), "needs").Content
@@ -92,7 +112,7 @@ func TestCheckWorkflowRejectsAuthenticatedE2EGateMutations(t *testing.T) {
 			name: "refresh token secret changes",
 			want: "PIXIV_E2E_REFRESH_TOKEN",
 			mutate: func(t *testing.T, root *yaml.Node) {
-				env := requireMappingValue(t, requireMappingValue(t, jobNode(t, root, "e2e"), "steps").Content[2], "env")
+				env := requireMappingValue(t, requireMappingValue(t, jobNode(t, root, "e2e"), "steps").Content[3], "env")
 				requireMappingValue(t, env, "PIXIV_E2E_REFRESH_TOKEN").Value = "${{ secrets.OTHER }}"
 			},
 		},
@@ -100,7 +120,7 @@ func TestCheckWorkflowRejectsAuthenticatedE2EGateMutations(t *testing.T) {
 			name: "required input changes source",
 			want: "PIXIV_E2E_DISCOVERY_WORD",
 			mutate: func(t *testing.T, root *yaml.Node) {
-				env := requireMappingValue(t, requireMappingValue(t, jobNode(t, root, "e2e"), "steps").Content[2], "env")
+				env := requireMappingValue(t, requireMappingValue(t, jobNode(t, root, "e2e"), "steps").Content[3], "env")
 				requireMappingValue(t, env, "PIXIV_E2E_DISCOVERY_WORD").Value = "hard-coded"
 			},
 		},
@@ -108,8 +128,20 @@ func TestCheckWorkflowRejectsAuthenticatedE2EGateMutations(t *testing.T) {
 			name: "direct test command is softened",
 			want: "authenticated e2e step must run the complete direct E2E command sequence",
 			mutate: func(t *testing.T, root *yaml.Node) {
-				step := requireMappingValue(t, jobNode(t, root, "e2e"), "steps").Content[2]
+				step := requireMappingValue(t, jobNode(t, root, "e2e"), "steps").Content[3]
 				requireMappingValue(t, step, "run").Value += " || true"
+			},
+		},
+		{
+			name: "e2e recovery overlay writes product source",
+			want: "E2E recovery overlay must use only the exact audited test paths and verifier",
+			mutate: func(t *testing.T, root *yaml.Node) {
+				step := requireMappingValue(t, jobNode(t, root, "e2e"), "steps").Content[2]
+				requireMappingValue(t, step, "run").Value = strings.ReplaceAll(
+					requireMappingValue(t, step, "run").Value,
+					"e2e/pixiv_binary_test.go",
+					"pixiv/client.go",
+				)
 			},
 		},
 		{

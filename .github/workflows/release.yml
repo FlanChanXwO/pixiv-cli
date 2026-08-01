@@ -90,6 +90,41 @@ jobs:
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
         with:
           go-version: '1.26.3'
+      # 已发布 tag 的 E2E 测试协议可能在发布前已修正；恢复只允许从默认分支覆盖这两份
+      # 测试，随后仍在 tag 的产品源码上运行，且本 step 不接触受保护的 E2E secret。
+      - name: Apply the audited E2E test recovery overlay
+        if: github.event_name == 'workflow_dispatch'
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -z "$(git status --porcelain=v1 --untracked-files=all)"
+          test -z "$(git diff --cached --name-only)"
+          e2e_recovery_overlay_paths=(
+            e2e/authenticated_r18_regression_test.go
+            e2e/pixiv_binary_test.go
+          )
+          git archive --format=tar "$GITHUB_SHA" -- "${e2e_recovery_overlay_paths[@]}" | tar -xf -
+          actual_overlay_paths="$(
+            {
+              git diff --name-only
+              git ls-files --others --exclude-standard
+            } | LC_ALL=C sort -u
+          )"
+          test -n "$actual_overlay_paths"
+          while IFS= read -r path; do
+            overlay_path_allowed=false
+            for allowed_path in "${e2e_recovery_overlay_paths[@]}"; do
+              if [ "$path" = "$allowed_path" ]; then
+                overlay_path_allowed=true
+                break
+              fi
+            done
+            if [ "$overlay_path_allowed" != true ]; then
+              printf 'unexpected E2E recovery overlay path: %s\n' "$path" >&2
+              exit 1
+            fi
+          done <<< "$actual_overlay_paths"
+          test -z "$(git diff --cached --name-only)"
       - name: Run authenticated Pixiv E2E
         shell: bash
         env:
