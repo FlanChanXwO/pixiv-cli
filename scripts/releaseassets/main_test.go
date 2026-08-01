@@ -28,6 +28,50 @@ func TestValidateRejectsNonSemanticVersion(t *testing.T) {
 	}
 }
 
+func TestValidateSourceRequiresMatchingProductSkillVersion(t *testing.T) {
+	t.Parallel()
+
+	err := run([]string{"validate-source", "--version", "0.1.0"})
+	if err == nil || !strings.Contains(err.Error(), "--product-skill is required") {
+		t.Fatalf("validate-source without product skill = %v, want required-flag error", err)
+	}
+
+	workDir := newTestWorkDir(t)
+	skill := filepath.Join(workDir, "SKILL.md")
+	if err := os.WriteFile(skill, []byte("---\n# Product metadata\nversion: \"0.1.0\"\nslug: pixiv-cli\n---\n"), 0o644); err != nil {
+		t.Fatalf("write product skill fixture: %v", err)
+	}
+	if err := run([]string{"validate-source", "--version", "0.1.0", "--product-skill", skill}); err != nil {
+		t.Fatalf("validate matching product skill source: %v", err)
+	}
+
+	err = run([]string{"validate-source", "--version", "0.1.1", "--product-skill", skill})
+	if err == nil || !strings.Contains(err.Error(), "product skill version") {
+		t.Fatalf("validate mismatched product skill = %v, want version rejection", err)
+	}
+}
+
+func TestValidateSourceRejectsInvalidProductSkillMetadata(t *testing.T) {
+	t.Parallel()
+
+	for name, contents := range map[string]string{
+		"missing version":   "---\nslug: pixiv-cli\n---\n",
+		"duplicate version": "---\nversion: 0.1.0\nversion: 0.1.0\n---\n",
+		"missing delimiter": "---\nversion: 0.1.0\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			workDir := newTestWorkDir(t)
+			skill := filepath.Join(workDir, "SKILL.md")
+			if err := os.WriteFile(skill, []byte(contents), 0o644); err != nil {
+				t.Fatalf("write product skill fixture: %v", err)
+			}
+			if err := run([]string{"validate-source", "--version", "0.1.0", "--product-skill", skill}); err == nil {
+				t.Fatal("validate-source accepted invalid product skill metadata")
+			}
+		})
+	}
+}
+
 func TestChannelClassifiesSemanticPrereleaseInsteadOfBuildMetadata(t *testing.T) {
 	t.Parallel()
 

@@ -53,6 +53,9 @@ jobs:
           fi
           git show-ref --verify --quiet "refs/tags/$RELEASE_TAG"
           tag_commit=$(git rev-parse "$RELEASE_TAG^{commit}")
+          tag_skill="$RUNNER_TEMP/pixiv-cli-SKILL.md"
+          git show "$RELEASE_TAG:skills/pixiv-cli/SKILL.md" > "$tag_skill"
+          go run ./scripts/releaseassets validate-source --version "${RELEASE_TAG#v}" --product-skill "$tag_skill"
           git show-ref --verify --quiet "refs/remotes/origin/$DEFAULT_BRANCH"
           git merge-base --is-ancestor "$tag_commit" "origin/$DEFAULT_BRANCH"
           set +e
@@ -181,7 +184,7 @@ jobs:
       # 恢复 run 的 workflow 定义来自默认分支，但版本、CHANGELOG 与 Release notes 必须来自不可变 tag。
       - name: Validate the exact immutable release source
         shell: bash
-        run: go run ./scripts/releaseassets validate --version "${RELEASE_TAG#v}"
+        run: go run ./scripts/releaseassets validate-source --version "${RELEASE_TAG#v}" --product-skill skills/pixiv-cli/SKILL.md
       - name: Install the pinned native Rust toolchain
         shell: bash
         run: rustup toolchain install '${{ matrix.rust_toolchain }}' --profile minimal --component 'clippy,rustfmt' --target '${{ matrix.rust_target }}' --no-self-update
@@ -340,7 +343,7 @@ jobs:
           cache: false
       - name: Validate the exact immutable production source
         shell: bash
-        run: go run ./scripts/releaseassets validate --version "${RELEASE_TAG#v}"
+        run: go run ./scripts/releaseassets validate-source --version "${RELEASE_TAG#v}" --product-skill skills/pixiv-cli/SKILL.md
       - name: Install the pinned native Rust toolchain
         shell: bash
         run: rustup toolchain install '${{ matrix.rust_toolchain }}' --profile minimal --target '${{ matrix.rust_target }}' --no-self-update

@@ -22,6 +22,7 @@ import (
 	"strings"
 
 	"github.com/FlanChanXwO/pixiv-cli/scripts/internal/releasenotesrender"
+	"gopkg.in/yaml.v3"
 )
 
 var semanticVersionPattern = regexp.MustCompile(`^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-(?:(?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*))*))?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$`)
@@ -49,11 +50,13 @@ func main() {
 
 func run(arguments []string) error {
 	if len(arguments) == 0 {
-		return errors.New("a subcommand is required: validate, channel, package, or finalize")
+		return errors.New("a subcommand is required: validate, validate-source, channel, package, or finalize")
 	}
 	switch arguments[0] {
 	case "validate":
 		return runValidate(arguments[1:])
+	case "validate-source":
+		return runValidateSource(arguments[1:])
 	case "channel":
 		return runChannel(arguments[1:])
 	case "package":
@@ -61,7 +64,7 @@ func run(arguments []string) error {
 	case "finalize":
 		return runFinalize(arguments[1:])
 	case "-h", "--help", "help":
-		return errors.New("usage: releaseassets validate|channel|package|finalize")
+		return errors.New("usage: releaseassets validate|validate-source|channel|package|finalize")
 	default:
 		return fmt.Errorf("unknown subcommand %q", arguments[0])
 	}
@@ -117,6 +120,74 @@ func runValidate(arguments []string) error {
 		return fmt.Errorf("validate accepts no positional arguments: %q", flags.Arg(0))
 	}
 	return validateVersion(*version)
+}
+
+// runValidateSource 在 SemVer 之外校验待发布 source 的产品 Skill metadata。
+// SkillHub 和 ClawHub 都以该 metadata 的版本发布，因此必须与不可变 release tag 一致。
+func runValidateSource(arguments []string) error {
+	flags := flag.NewFlagSet("validate-source", flag.ContinueOnError)
+	flags.SetOutput(os.Stderr)
+	version := flags.String("version", "", "semantic version without v")
+	productSkill := flags.String("product-skill", "", "path to the released product SKILL.md")
+	if err := flags.Parse(arguments); err != nil {
+		return err
+	}
+	if *productSkill == "" {
+		return errors.New("--product-skill is required")
+	}
+	if flags.NArg() != 0 {
+		return fmt.Errorf("validate-source accepts no positional arguments: %q", flags.Arg(0))
+	}
+	if err := validateVersion(*version); err != nil {
+		return err
+	}
+	skillVersion, err := productSkillVersion(*productSkill)
+	if err != nil {
+		return err
+	}
+	if skillVersion != *version {
+		return fmt.Errorf("product skill version %q does not match release version %q", skillVersion, *version)
+	}
+	return nil
+}
+
+// productSkillVersion 只读取 SKILL.md 的 YAML front matter 中唯一的 version 字段。
+// YAML decoder 兼容有效的字段顺序、注释和引号；正文不参与解析，避免示例或说明改变发布身份。
+func productSkillVersion(path string) (string, error) {
+	if err := requireRegularFile(path, "product skill"); err != nil {
+		return "", err
+	}
+	contents, err := os.ReadFile(path)
+	if err != nil {
+		return "", fmt.Errorf("read product skill %q: %w", path, err)
+	}
+	lines := strings.Split(string(contents), "\n")
+	if len(lines) < 3 || strings.TrimSpace(lines[0]) != "---" {
+		return "", fmt.Errorf("product skill %q must start with YAML front matter", path)
+	}
+	frontMatterEnd := -1
+	for index, line := range lines[1:] {
+		if strings.TrimSpace(line) == "---" {
+			frontMatterEnd = index + 1
+			break
+		}
+	}
+	if frontMatterEnd == -1 {
+		return "", fmt.Errorf("product skill %q has unterminated YAML front matter", path)
+	}
+	var metadata struct {
+		Version string `yaml:"version"`
+	}
+	if err := yaml.Unmarshal([]byte(strings.Join(lines[1:frontMatterEnd], "\n")), &metadata); err != nil {
+		return "", fmt.Errorf("parse product skill %q YAML front matter: %w", path, err)
+	}
+	if metadata.Version == "" {
+		return "", fmt.Errorf("product skill %q has no version", path)
+	}
+	if err := validateVersion(metadata.Version); err != nil {
+		return "", fmt.Errorf("product skill %q has invalid version: %w", path, err)
+	}
+	return metadata.Version, nil
 }
 
 func runPackage(arguments []string) error {

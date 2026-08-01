@@ -851,6 +851,52 @@ func TestCheckWorkflowRequiresValidateSemVerCommandBoundToReleaseTag(t *testing.
 	}
 }
 
+func TestCheckWorkflowRequiresProductSkillVersionValidationFromReleaseTag(t *testing.T) {
+	t.Parallel()
+
+	for _, test := range []struct {
+		name   string
+		mutate func(step *yaml.Node)
+	}{
+		{
+			name: "product skill temp path removed",
+			mutate: func(step *yaml.Node) {
+				replaceRunFragment(t, step,
+					`tag_skill="$RUNNER_TEMP/pixiv-cli-SKILL.md"`,
+					`product_skill_path="$RUNNER_TEMP/pixiv-cli-SKILL.md"`,
+				)
+			},
+		},
+		{
+			name: "product skill blob replaced",
+			mutate: func(step *yaml.Node) {
+				replaceRunFragment(t, step,
+					`git show "$RELEASE_TAG:skills/pixiv-cli/SKILL.md" > "$tag_skill"`,
+					`git show "$RELEASE_TAG:README.md" > "$tag_skill"`,
+				)
+			},
+		},
+		{
+			name: "product skill version binding removed",
+			mutate: func(step *yaml.Node) {
+				replaceRunFragment(t, step,
+					`go run ./scripts/releaseassets validate-source --version "${RELEASE_TAG#v}" --product-skill "$tag_skill"`,
+					`go run ./scripts/releaseassets validate-source --version "1.2.3" --product-skill "$tag_skill"`,
+				)
+			},
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			root := releaseWorkflowRoot(t)
+			step := stepWithRun(t, jobNode(t, root, "validate"), `git show "$RELEASE_TAG:skills/pixiv-cli/SKILL.md" > "$tag_skill"`)
+			test.mutate(step)
+			if err := checkWorkflow(mustMarshalYAML(t, root)); err == nil || !strings.Contains(err.Error(), "validate release tag step") {
+				t.Fatalf("policy error = %v, want product skill version validation rejection", err)
+			}
+		})
+	}
+}
+
 func TestCheckRecoveryPolicyRejectsRecoveryTrustMutations(t *testing.T) {
 	t.Parallel()
 

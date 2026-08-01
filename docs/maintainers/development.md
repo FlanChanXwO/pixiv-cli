@@ -562,7 +562,8 @@ workflow artifact 读取、生成或记录 deploy key。
 `workflow_run.head_branch` 为 `main` 时把分支名误作版本。SkillHub workflow 只 checkout 该不可变 tag，
 并确认该 tag 属于默认分支、对应 GitHub Release 已公开且版本满足 SemVer 后，才对
 `skills/pixiv-cli/` 与前一个已合并的语义版本 tag 比较。目录未变化时工作流成功跳过；目录变化时才运行
-SkillHub CLI 的 dry-run 和提交，并使用 `SKILL.md` 内的独立 SemVer，而非 CLI Release tag。`SKILLHUB_TOKEN`
+SkillHub CLI 的 dry-run 和提交。产品 `SKILL.md` 的 SemVer 必须与 CLI Release tag 相同；release 的 tag-source
+validation 会在受保护 E2E 和任何发布凭据之前拒绝不匹配的版本。`SKILLHUB_TOKEN`
 仅进入最后的提交步骤，CLI 必须返回 `skillId` 和审核状态；这证明 SkillHub 已接收提交，但平台审核完成前
 公开详情页可能仍不可见。
 若任一独立发布失败，可通过对应 workflow 的 `workflow_dispatch` 输入既有发布 tag 恢复，不能用 main 的

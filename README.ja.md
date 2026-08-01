@@ -60,7 +60,7 @@ Also install the pixiv-cli Skill that matches the same stable release tag (not m
 
 ### SkillHub から pixiv-cli Skill をインストールする
 
-SkillHub に対応した Agent は、公開済みの [`pixiv-cli` Skill](https://www.skillhub.cn/skills/pixiv-cli) を SkillHub から直接インストールできます。Skill には独自の version があり、インストール済み CLI の使い方を案内します。command の syntax は常に `pixiv <cmd> --help` を最終的な根拠にしてください。
+SkillHub に対応した Agent は、公開済みの [`pixiv-cli` Skill](https://www.skillhub.cn/skills/pixiv-cli) を SkillHub から直接インストールできます。各 Skill version は案内対象の CLI release と対応しています。command の syntax は常に `pixiv <cmd> --help` を最終的な根拠にしてください。
 
 ### ClawHub から pixiv-cli Skill をインストールする
 
