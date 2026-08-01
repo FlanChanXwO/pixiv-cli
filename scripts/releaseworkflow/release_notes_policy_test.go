@@ -41,6 +41,21 @@ func TestCheckWorkflowRejectsReleaseNotesAuditPrivilegeOrDependencyChanges(t *te
 				needs.Content = needs.Content[:1]
 			},
 		},
+		{
+			name: "direct commits incorrectly require PR declarations",
+			want: "canonical direct audit commands",
+			mutate: func(t *testing.T, root *yaml.Node) {
+				t.Helper()
+				step := requireMappingValue(t, jobNode(t, root, "release_notes_audit"), "steps").Content[2]
+				run := requireMappingValue(t, step, "run")
+				run.Value = strings.Replace(
+					run.Value,
+					"go run ./scripts/releasenotes audit \\\n",
+					"go run ./scripts/releasenotes audit --require-classified \\\n",
+					1,
+				)
+			},
+		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()

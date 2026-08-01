@@ -20,7 +20,6 @@ go run ./scripts/releasenotes audit \
 --repo "$GITHUB_REPOSITORY" \
 --from "$previous_tag" \
 --to "$RELEASE_TAG" \
---require-classified \
 --output "$audit_report"
 go run ./scripts/releasenotes validate \
 --version "${RELEASE_TAG#v}" \
