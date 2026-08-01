@@ -201,7 +201,9 @@ jobs:
           const securityIsClean = verify.security?.passed === true && verify.security?.status === "clean";
           const staticScanClean = verify.security?.signals?.staticScan?.status === "clean";
           const aggregateSecurityPending = verify.security?.passed === false && verify.security?.status === "pending";
-          const cardPendingOnly = verify.ok === false && verify.decision === "fail" && verify.reasons?.length === 1 && verify.reasons[0] === "card.missing";
+          // aggregate security pending 时 card.missing 也是平台返回的原因之一；该状态
+          // 必须交给下方的 aggregate 分支检查静态扫描与封闭 reason 集合。
+          const cardPendingOnly = !aggregateSecurityPending && verify.ok === false && verify.decision === "fail" && verify.reasons?.length === 1 && verify.reasons[0] === "card.missing";
           // ClawHub 0.23.1 在 aggregate security 尚未完成时实际返回这三条 reason；
           // 允许集合必须保持封闭，新增或未知 reason 一律拒绝发布结果。
           const pendingReasonCodes = new Set(["card.missing", "security.status_not_clean", "security.pending"]);
