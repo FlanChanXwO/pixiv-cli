@@ -578,7 +578,7 @@ validation 会在受保护 E2E 和任何发布凭据之前拒绝不匹配的版�
 仅进入最后的提交步骤，CLI 必须返回 `skillId` 和审核状态；这证明 SkillHub 已接收提交，但平台审核完成前
 公开详情页可能仍不可见。
 若任一独立发布失败，可通过对应 workflow 的 `workflow_dispatch` 输入既有发布 tag 恢复，不能用 main 的
-后续内容替代该 tag。ClawHub workflow 与 SkillHub 使用同一不可变 tag handoff：它先验证公开非 draft Release、默认分支祖先关系、`SKILL.md` 版本与 tag 一致性以及产品 skill 的改动，再在不含凭据的环境运行固定版本的 ClawHub CLI dry-run，并以其 SHA-256 产物指纹校验实际发布物。只有最终 publish/inspect 步骤，以及不重发版本的 `verify_only` 人工恢复步骤会收到 `CLAWHUB_TOKEN`；后者只登录并读取审核结果，绝不调用 publish。验证必须确认产品 skill、对应版本、精确产物指纹与 clean 安全扫描。ClawHub 的普通 CLI publish 后，`skill-card.md` 由服务端异步生成；如果唯一原因是 `card.missing`，工作流会明确发 warning 而不把已完成的发布误报为失败。其他任何原因仍会失败。当前平台也不会为普通 CLI publish 暴露 server-resolved GitHub provenance，因此该项以受信 tag checkout 和指纹匹配替代，并同样保留 warning。
+后续内容替代该 tag。ClawHub workflow 与 SkillHub 使用同一不可变 tag handoff：它先验证公开非 draft Release、默认分支祖先关系、`SKILL.md` 版本与 tag 一致性以及产品 skill 的改动，再在不含凭据的环境运行固定版本的 ClawHub CLI dry-run，并以其 SHA-256 产物指纹校验实际发布物。只有最终 publish/inspect 步骤，以及不重发版本的 `verify_only` 人工恢复步骤会收到 `CLAWHUB_TOKEN`；后者只登录并读取审核结果，绝不调用 publish。正常 publish 必须确认产品 skill、对应版本和精确产物指纹；当 ClawHub static scan 已 clean、但聚合安全结论仍为 `pending` 时，会明确 warning 而不把已接收的发布物误报为失败。`skill-card.md` 也可能异步生成并产生 warning。两类 warning 都不等同于最终安全结论：`verify_only` 只在 aggregate security 为 clean 时通过，便于在平台扫描完成后作不重发的最终核验。任何其他原因仍会失败。当前平台也不会为普通 CLI publish 暴露 server-resolved GitHub provenance，因此该项以受信 tag checkout 和指纹匹配替代，并同样保留 warning。
 
 ## Git 与本地产物
 
