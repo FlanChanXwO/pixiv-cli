@@ -62,7 +62,7 @@ binary，并在修改 PATH 前完成用户级安装。可用 `--no-path` 保持 
 
 ### 通过 SkillHub 安装 pixiv-cli Skill
 
-支持 SkillHub 的 Agent 可直接从 [SkillHub 的 `pixiv-cli` Skill 页面](https://www.skillhub.cn/skills/pixiv-cli) 安装已发布的 `pixiv-cli` Skill。Skill 有独立版本并用于指导已安装的 CLI；命令语法始终以 `pixiv <cmd> --help` 为最终依据。
+支持 SkillHub 的 Agent 可直接从 [SkillHub 的 `pixiv-cli` Skill 页面](https://www.skillhub.cn/skills/pixiv-cli) 安装已发布的 `pixiv-cli` Skill。每个 Skill 版本均与其指导的 CLI release 对应；命令语法始终以 `pixiv <cmd> --help` 为最终依据。
 
 ### 通过 ClawHub 安装 pixiv-cli Skill
 

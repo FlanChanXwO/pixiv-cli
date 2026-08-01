@@ -106,7 +106,7 @@ func requireCanonicalBuildSteps(steps []*yaml.Node) error {
 		command   string
 		directory string
 	}{
-		{name: "Validate the exact immutable release source", command: `go run ./scripts/releaseassets validate --version "${RELEASE_TAG#v}"`},
+		{name: "Validate the exact immutable release source", command: `go run ./scripts/releaseassets validate-source --version "${RELEASE_TAG#v}" --product-skill skills/pixiv-cli/SKILL.md`},
 		{name: "Install the pinned native Rust toolchain", command: testRustInstallCommand},
 		{name: "Check vendored Rust sources", command: "sh scripts/test-rust-vendor.sh"},
 		{name: "Check Rust formatting from vendored sources", command: "cargo fmt --check", directory: "internal/download/ugoira_rs"},

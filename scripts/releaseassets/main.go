@@ -49,11 +49,13 @@ func main() {
 
 func run(arguments []string) error {
 	if len(arguments) == 0 {
-		return errors.New("a subcommand is required: validate, channel, package, or finalize")
+		return errors.New("a subcommand is required: validate, validate-source, channel, package, or finalize")
 	}
 	switch arguments[0] {
 	case "validate":
 		return runValidate(arguments[1:])
+	case "validate-source":
+		return runValidateSource(arguments[1:])
 	case "channel":
 		return runChannel(arguments[1:])
 	case "package":
@@ -61,7 +63,7 @@ func run(arguments []string) error {
 	case "finalize":
 		return runFinalize(arguments[1:])
 	case "-h", "--help", "help":
-		return errors.New("usage: releaseassets validate|channel|package|finalize")
+		return errors.New("usage: releaseassets validate|validate-source|channel|package|finalize")
 	default:
 		return fmt.Errorf("unknown subcommand %q", arguments[0])
 	}
@@ -117,6 +119,76 @@ func runValidate(arguments []string) error {
 		return fmt.Errorf("validate accepts no positional arguments: %q", flags.Arg(0))
 	}
 	return validateVersion(*version)
+}
+
+// runValidateSource 在 SemVer 之外校验待发布 source 的产品 Skill metadata。
+// SkillHub 和 ClawHub 都以该 metadata 的版本发布，因此必须与不可变 release tag 一致。
+func runValidateSource(arguments []string) error {
+	flags := flag.NewFlagSet("validate-source", flag.ContinueOnError)
+	flags.SetOutput(os.Stderr)
+	version := flags.String("version", "", "semantic version without v")
+	productSkill := flags.String("product-skill", "", "path to the released product SKILL.md")
+	if err := flags.Parse(arguments); err != nil {
+		return err
+	}
+	if flags.NArg() != 0 {
+		return fmt.Errorf("validate-source accepts no positional arguments: %q", flags.Arg(0))
+	}
+	if err := validateVersion(*version); err != nil {
+		return err
+	}
+	skillVersion, err := productSkillVersion(*productSkill)
+	if err != nil {
+		return err
+	}
+	if skillVersion != *version {
+		return fmt.Errorf("product skill version %q does not match release version %q", skillVersion, *version)
+	}
+	return nil
+}
+
+// productSkillVersion 只读取 SKILL.md YAML front matter 中唯一的 version 字段。
+// 这里不解析正文，以免文档内的示例或说明意外改变发布身份。
+func productSkillVersion(path string) (string, error) {
+	if err := requireRegularFile(path, "product skill"); err != nil {
+		return "", err
+	}
+	contents, err := os.ReadFile(path)
+	if err != nil {
+		return "", fmt.Errorf("read product skill %q: %w", path, err)
+	}
+	lines := strings.Split(string(contents), "\n")
+	if len(lines) < 3 || strings.TrimSpace(lines[0]) != "---" {
+		return "", fmt.Errorf("product skill %q must start with YAML front matter", path)
+	}
+	version := ""
+	foundVersion := false
+	frontMatterClosed := false
+	for _, line := range lines[1:] {
+		if strings.TrimSpace(line) == "---" {
+			frontMatterClosed = true
+			break
+		}
+		key, value, found := strings.Cut(line, ":")
+		if !found || strings.TrimSpace(key) != "version" {
+			continue
+		}
+		if foundVersion {
+			return "", fmt.Errorf("product skill %q defines version more than once", path)
+		}
+		foundVersion = true
+		version = strings.TrimSpace(value)
+	}
+	if !frontMatterClosed {
+		return "", fmt.Errorf("product skill %q has unterminated YAML front matter", path)
+	}
+	if !foundVersion || version == "" {
+		return "", fmt.Errorf("product skill %q has no version", path)
+	}
+	if err := validateVersion(version); err != nil {
+		return "", fmt.Errorf("product skill %q has invalid version: %w", path, err)
+	}
+	return version, nil
 }
 
 func runPackage(arguments []string) error {

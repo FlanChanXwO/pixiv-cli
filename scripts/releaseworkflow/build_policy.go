@@ -50,7 +50,7 @@ func checkValidateJob(job *yaml.Node) error {
 		return err
 	}
 	validateStep := steps[3]
-	if err := requireRunFragments(validateStep, "validate release tag step", "test \"$GITHUB_REF\" = \"refs/heads/$DEFAULT_BRANCH\"", "git show-ref --verify --quiet \"refs/tags/$RELEASE_TAG\"", "git merge-base --is-ancestor \"$tag_commit\" \"origin/$DEFAULT_BRANCH\"", "gh api --include \"repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG\"", "HTTP/[0-9.]+ 404"); err != nil {
+	if err := requireRunFragments(validateStep, "validate release tag step", "test \"$GITHUB_REF\" = \"refs/heads/$DEFAULT_BRANCH\"", "git show-ref --verify --quiet \"refs/tags/$RELEASE_TAG\"", "git show \"$RELEASE_TAG:skills/pixiv-cli/SKILL.md\" > \"$tag_skill\"", "go run ./scripts/releaseassets validate-source --version \"${RELEASE_TAG#v}\" --product-skill \"$tag_skill\"", "git merge-base --is-ancestor \"$tag_commit\" \"origin/$DEFAULT_BRANCH\"", "gh api --include \"repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG\"", "HTTP/[0-9.]+ 404"); err != nil {
 		return err
 	}
 	if !hasCommand(job, "", "sh scripts/test-release-workflow.sh") {
@@ -104,7 +104,7 @@ func checkBuildJob(job *yaml.Node) error {
 		workingDirectory string
 		command          string
 	}{
-		{command: "go run ./scripts/releaseassets validate --version \"${RELEASE_TAG#v}\""},
+		{command: "go run ./scripts/releaseassets validate-source --version \"${RELEASE_TAG#v}\" --product-skill skills/pixiv-cli/SKILL.md"},
 		{command: "sh scripts/test-rust-vendor.sh"},
 		{workingDirectory: "internal/download/ugoira_rs", command: "cargo fmt --check"},
 		{workingDirectory: "internal/download/ugoira_rs", command: "cargo clippy --locked --offline --all-targets -- -D warnings"},
@@ -188,7 +188,7 @@ func checkProductionBuildJob(job *yaml.Node) error {
 	if err := requireExactActionStep(steps[1], "build_production Go setup", setupGoAction, map[string]string{"go-version": "1.26.3", "cache": "false"}); err != nil {
 		return err
 	}
-	if err := requireCanonicalNamedRunStep(steps[2], "Validate the exact immutable production source", `go run ./scripts/releaseassets validate --version "${RELEASE_TAG#v}"`); err != nil {
+	if err := requireCanonicalNamedRunStep(steps[2], "Validate the exact immutable production source", `go run ./scripts/releaseassets validate-source --version "${RELEASE_TAG#v}" --product-skill skills/pixiv-cli/SKILL.md`); err != nil {
 		return err
 	}
 	if err := requireCanonicalNamedRunStep(steps[3], "Install the pinned native Rust toolchain", prodRustInstallCommand); err != nil {

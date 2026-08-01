@@ -64,7 +64,7 @@ Also install the `pixiv-cli` Skill that matches the same stable release tag (not
 
 ### Install the pixiv-cli Skill from SkillHub
 
-Agents with SkillHub support can install the published [`pixiv-cli` Skill](https://www.skillhub.cn/skills/pixiv-cli) directly from SkillHub. The Skill has its own version and teaches the installed CLI; always use `pixiv <cmd> --help` as the final source of command syntax.
+Agents with SkillHub support can install the published [`pixiv-cli` Skill](https://www.skillhub.cn/skills/pixiv-cli) directly from SkillHub. Each Skill version matches the CLI release it teaches; always use `pixiv <cmd> --help` as the final source of command syntax.
 
 ### Install the pixiv-cli Skill from ClawHub
 

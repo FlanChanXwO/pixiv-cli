@@ -239,7 +239,7 @@ func mappingNode(entries ...any) *yaml.Node {
 
 func requiredQualityGateCommands() []string {
 	return []string{
-		"go run ./scripts/releaseassets validate --version \"${RELEASE_TAG#v}\"",
+		"go run ./scripts/releaseassets validate-source --version \"${RELEASE_TAG#v}\" --product-skill skills/pixiv-cli/SKILL.md",
 		"sh scripts/test-rust-vendor.sh",
 		"cargo fmt --check",
 		"cargo clippy --locked --offline --all-targets -- -D warnings",
