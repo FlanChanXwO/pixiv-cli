@@ -5,6 +5,7 @@
 | 版本 | 日期 | 发布说明 |
 | --- | --- | --- |
 | 未发布 | — | [English](unreleased/en.md) · [简体中文](unreleased/zh-CN.md) |
+| [v0.9.1](https://github.com/FlanChanXwO/pixiv-cli/compare/v0.9.0...v0.9.1) | 2026-08-01 | [English](v0.9.1/en.md) · [简体中文](v0.9.1/zh-CN.md) |
 | [v0.9.0](https://github.com/FlanChanXwO/pixiv-cli/compare/v0.8.0...v0.9.0) | 2026-07-31 | [English](v0.9.0/en.md) · [简体中文](v0.9.0/zh-CN.md) |
 | [v0.8.0](https://github.com/FlanChanXwO/pixiv-cli/compare/v0.7.2...v0.8.0) | 2026-07-28 | [English](v0.8.0/en.md) · [简体中文](v0.8.0/zh-CN.md) |
 | [v0.7.2](https://github.com/FlanChanXwO/pixiv-cli/compare/v0.7.1...v0.7.2) | 2026-07-25 | [English](v0.7.2/en.md) · [简体中文](v0.7.2/zh-CN.md) |
