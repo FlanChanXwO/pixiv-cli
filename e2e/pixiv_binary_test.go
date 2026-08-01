@@ -339,16 +339,8 @@ func TestPixivBinaryRealAPISearchOptIn(t *testing.T) {
 	refreshToken := os.Getenv("PIXIV_E2E_REFRESH_TOKEN")
 
 	if refreshToken == "" {
-		run := exec.CommandContext(testCommandContext(t), binaryPath, "search", "初音ミク")
-		run.Dir = repoRoot
-		run.Env = env
-		out, err := run.CombinedOutput()
-		if err != nil {
-			t.Fatalf("unauthenticated real web fallback search failed: %v\n%s", err, string(out))
-		}
-		if !strings.Contains(string(out), `illustrations for "初音ミク"`) {
-			t.Fatalf("unauthenticated real web fallback search did not print the illustrations heading:\n%s", string(out))
-		}
+		out := runPixiv(t, repoRoot, binaryPath, env, "search", "初音ミク")
+		requireIllustRecordNDJSON(t, out, "unauthenticated real web fallback search")
 		return
 	}
 
@@ -360,8 +352,48 @@ func TestPixivBinaryRealAPISearchOptIn(t *testing.T) {
 	// App API 认证失败时，stdout/stderr 都可能带上服务端回显；统一交给
 	// canary helper 分流并在测试诊断前脱敏，避免显式注入的 token 泄露。
 	stdout := runPixivCanary(t, repoRoot, binaryPath, env, auth, "search", "初音ミク")
-	if !strings.Contains(string(stdout), `illustrations for "初音ミク"`) {
-		t.Fatalf("real API search did not print the illustrations heading:\n%s", redactCanaryDiagnostic(refreshToken, string(stdout)))
+	requireIllustRecordNDJSON(t, []byte(redactCanaryDiagnostic(refreshToken, string(stdout))), "real API search")
+}
+
+func TestValidateIllustRecordNDJSON(t *testing.T) {
+	t.Parallel()
+
+	for _, test := range []struct {
+		name    string
+		body    string
+		wantErr string
+	}{
+		{
+			name: "accepts visual records",
+			body: `{"id":123,"type":"illust"}
+{"id":"456","type":"manga"}
+{"id":789,"type":"ugoira"}`,
+		},
+		{
+			name:    "rejects null id",
+			body:    `{"id":null,"type":"illust"}`,
+			wantErr: "has no id",
+		},
+		{
+			name:    "rejects unsupported type",
+			body:    `{"id":123,"type":"novel"}`,
+			wantErr: "unsupported type",
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			err := validateIllustRecordNDJSON([]byte(test.body), test.name)
+			if test.wantErr == "" {
+				if err != nil {
+					t.Fatalf("validateIllustRecordNDJSON() error = %v", err)
+				}
+				return
+			}
+			if err == nil || !strings.Contains(err.Error(), test.wantErr) {
+				t.Fatalf("validateIllustRecordNDJSON() error = %v, want %q", err, test.wantErr)
+			}
+		})
 	}
 }
 
@@ -877,6 +909,47 @@ func requireJSON(t *testing.T, body []byte, out any) {
 	if err := json.Unmarshal(body, out); err != nil {
 		t.Fatalf("decode JSON failed: %v\n%s", err, string(body))
 	}
+}
+
+// requireIllustRecordNDJSON 验证非交互 stdout 的视觉列表协议：每条记录都是可
+// 独立消费的 canonical Record，而不是只适合终端展示的标题和表格文本。
+func requireIllustRecordNDJSON(t *testing.T, body []byte, operation string) {
+	t.Helper()
+
+	if err := validateIllustRecordNDJSON(body, operation); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// validateIllustRecordNDJSON 把 stdout 记录协议保持为可直接单测的纯校验：每行必须是
+// 可独立消费的视觉 Record，且须带有非空 id。
+func validateIllustRecordNDJSON(body []byte, operation string) error {
+	seen := false
+	for _, line := range bytes.Split(body, []byte("\n")) {
+		if len(line) == 0 {
+			continue
+		}
+		var record struct {
+			ID   json.RawMessage `json:"id"`
+			Type string          `json:"type"`
+		}
+		if err := json.Unmarshal(line, &record); err != nil {
+			return fmt.Errorf("%s emitted invalid NDJSON: %w\n%s", operation, err, string(line))
+		}
+		if id := bytes.TrimSpace(record.ID); len(id) == 0 || bytes.Equal(id, []byte("null")) {
+			return fmt.Errorf("%s NDJSON record has no id: %s", operation, string(line))
+		}
+		switch record.Type {
+		case "illust", "manga", "ugoira":
+			seen = true
+		default:
+			return fmt.Errorf("%s NDJSON record has unsupported type %q: %s", operation, record.Type, string(line))
+		}
+	}
+	if !seen {
+		return fmt.Errorf("%s emitted no visual NDJSON records", operation)
+	}
+	return nil
 }
 
 func requireIllustListJSONShape(t *testing.T, body []byte, operation string) []pixiv.Illust {

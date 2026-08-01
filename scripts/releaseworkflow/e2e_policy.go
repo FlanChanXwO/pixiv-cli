@@ -18,6 +18,38 @@ var authenticatedE2EVariableNames = []string{
 	"PIXIV_E2E_PROXY",
 }
 
+const e2eRecoveryOverlayCommands = `
+set -euo pipefail
+test -z "$(git status --porcelain=v1 --untracked-files=all)"
+test -z "$(git diff --cached --name-only)"
+e2e_recovery_overlay_paths=(
+  e2e/authenticated_r18_regression_test.go
+  e2e/pixiv_binary_test.go
+)
+git archive --format=tar "$GITHUB_SHA" -- "${e2e_recovery_overlay_paths[@]}" | tar -xf -
+actual_overlay_paths="$(
+  {
+    git diff --name-only
+    git ls-files --others --exclude-standard
+  } | LC_ALL=C sort -u
+)"
+test -n "$actual_overlay_paths"
+while IFS= read -r path; do
+  overlay_path_allowed=false
+  for allowed_path in "${e2e_recovery_overlay_paths[@]}"; do
+    if [ "$path" = "$allowed_path" ]; then
+      overlay_path_allowed=true
+      break
+    fi
+  done
+  if [ "$overlay_path_allowed" != true ]; then
+    printf 'unexpected E2E recovery overlay path: %s\n' "$path" >&2
+    exit 1
+  fi
+done <<< "$actual_overlay_paths"
+test -z "$(git diff --cached --name-only)"
+`
+
 func checkE2EJob(job *yaml.Node) error {
 	if err := requireRequiredJobExecution(job, "e2e job"); err != nil {
 		return err
@@ -41,8 +73,8 @@ func checkE2EJob(job *yaml.Node) error {
 		return fmt.Errorf("e2e job: %w", err)
 	}
 	steps, err := jobSteps(job)
-	if err != nil || len(steps) != 3 {
-		return errors.New("e2e job must contain only checkout, Go setup, and the authenticated test gate")
+	if err != nil || len(steps) != 4 {
+		return errors.New("e2e job must contain only checkout, Go setup, the audited recovery overlay, and the authenticated test gate")
 	}
 	if err := requireCanonicalCheckout(steps[0], "e2e job", checkoutWithRequirement{"fetch-depth", "0"}, checkoutWithRequirement{"persist-credentials", "false"}, checkoutWithRequirement{"ref", "${{ env.RELEASE_TAG }}"}); err != nil {
 		return err
@@ -50,7 +82,22 @@ func checkE2EJob(job *yaml.Node) error {
 	if err := requireExactActionStep(steps[1], "e2e Go setup", setupGoAction, map[string]string{"go-version": "1.26.3"}); err != nil {
 		return err
 	}
-	return checkAuthenticatedE2EStep(steps[2])
+	if err := requireE2ERecoveryOverlayStep(steps[2]); err != nil {
+		return err
+	}
+	return checkAuthenticatedE2EStep(steps[3])
+}
+
+// requireE2ERecoveryOverlayStep 限定恢复只能修补两个已验证失败的 E2E 契约测试；
+// 不可变 tag 的生产源码、发布资产及受保护凭据均不参与该覆盖。
+func requireE2ERecoveryOverlayStep(step *yaml.Node) error {
+	if err := requireCanonicalConditionalRunStep(step, "E2E recovery overlay", "github.event_name == 'workflow_dispatch'", e2eRecoveryOverlayCommands); err != nil {
+		return errors.New("E2E recovery overlay must use only the exact audited test paths and verifier")
+	}
+	if err := workflowpolicy.RequireScalar(step, "name", "Apply the audited E2E test recovery overlay"); err != nil {
+		return errors.New("E2E recovery overlay must keep its canonical name")
+	}
+	return nil
 }
 
 func checkAuthenticatedE2EStep(step *yaml.Node) error {

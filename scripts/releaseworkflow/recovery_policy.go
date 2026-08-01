@@ -78,8 +78,8 @@ func checkRecoveryPolicy(root *yaml.Node) error {
 	if containsScalarFragment(root, "GITHUB_REF_NAME") {
 		return errors.New("release workflow must not derive production identity from GITHUB_REF_NAME")
 	}
-	if countScalarFragment(root, "GITHUB_SHA") != 1 {
-		return errors.New("only the test overlay may read the audited workflow GITHUB_SHA")
+	if countScalarFragment(root, "GITHUB_SHA") != 2 {
+		return errors.New("only the audited E2E and build test overlays may read the workflow GITHUB_SHA")
 	}
 	steps, err := jobSteps(build)
 	if err != nil {
