@@ -401,12 +401,14 @@ allowlist 必须逐字列出以下路径，不能改成目录或 glob：
 - `scripts/releaseworkflow/main_test.go`
 - `scripts/releaseworkflow/publish_policy.go`
 - `scripts/releaseworkflow/publish_security_test.go`
+- `scripts/releaseworkflow/release_notes_policy.go`
+- `scripts/releaseworkflow/release_notes_policy_test.go`
 - `scripts/releaseworkflow/recovery_policy.go`
 - `scripts/releaseworkflow/test_helpers_test.go`
 - `scripts/releaseworkflow/workflow_policy.go`
 - `scripts/releaseworkflow/workflow_policy_test.go`
 
-全部拆出的 release test files 与 `scripts/installers/installers_test.go` 都必须 overlay，才能保留当前 mutation suite，并修复已失败 tag 的受控 installer fixture；共享 production helper
+全部拆出的 release test files 与 `scripts/installers/installers_test.go` 都必须 overlay，才能保留当前 mutation suite，并修复已失败 tag 的受控 installer fixture。`release_notes_policy.go` 及其测试同样属于该范围：它只验证来自默认分支的恢复 workflow 定义与 tag 内 release notes 的来源映射，并不改写 tag 的发布输入。共享 production helper
 `scripts/internal/workflowpolicy/policy.go` 是两个 verifier 共用的 YAML policy 实现及唯一的 per-target
 Rust toolchain 映射，也是从默认分支编译 release verifier 的必要依赖；它不参与生产资产构建，且共享包
 自己的 `policy_test.go` 仍不进入恢复 overlay。提取前必须用

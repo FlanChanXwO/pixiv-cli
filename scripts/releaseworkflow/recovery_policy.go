@@ -154,6 +154,8 @@ recovery_overlay_paths=(
   scripts/releaseworkflow/main_test.go
   scripts/releaseworkflow/publish_policy.go
   scripts/releaseworkflow/publish_security_test.go
+  scripts/releaseworkflow/release_notes_policy.go
+  scripts/releaseworkflow/release_notes_policy_test.go
   scripts/releaseworkflow/recovery_policy.go
   scripts/releaseworkflow/test_helpers_test.go
   scripts/releaseworkflow/workflow_policy.go
