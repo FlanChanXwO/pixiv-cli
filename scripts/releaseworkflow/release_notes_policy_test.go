@@ -48,7 +48,12 @@ func TestCheckWorkflowRejectsReleaseNotesAuditPrivilegeOrDependencyChanges(t *te
 				t.Helper()
 				step := requireMappingValue(t, jobNode(t, root, "release_notes_audit"), "steps").Content[2]
 				run := requireMappingValue(t, step, "run")
-				run.Value += "\n--require-classified"
+				run.Value = strings.Replace(
+					run.Value,
+					"go run ./scripts/releasenotes audit \\\n",
+					"go run ./scripts/releasenotes audit --require-classified \\\n",
+					1,
+				)
 			},
 		},
 	} {
