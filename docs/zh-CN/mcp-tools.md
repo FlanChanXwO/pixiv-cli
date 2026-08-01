@@ -28,36 +28,36 @@ SDK cursor 保持在服务端内部。列表结果提供 `pagination.page`、`li
 | `novel_filter` | `id`（正数）、`tags`（全部精确匹配）、`min_views`（非负） |
 | `user_filter` | `id`（正数） |
 
-插画列表接收 `illust_filter`，小说列表接收 `novel_filter`，用户列表接收 `user_filter`；混合推荐可分别为每种实体提供对应 filter。
+插画列表接收 `illust_filter`，小说列表接收 `novel_filter`，用户列表接收 `user_filter`；混合推荐可分别为每种实体提供对应 filter。所有插画列表 tool 和 `download` 还接收顶层 `filter` 字符串：它是基于公开插画字段的安全本地表达式，并与 `illust_filter` 按 AND 组合。表达式只支持比较、`and`/`or`/`not`、`in`/`not in`、数组以及 `any`/`all`；例如 `bookmarkCount >= 5000 and xRestrict == 0`、`any(tags, # in ["miku"])`。混合结果使用 `filter` 时会丢弃小说与用户记录。
 
 ## 下载
 
 | tool | 参数 | structured output |
 | --- | --- | --- |
-| `download` | `src` 与有序 `srcs` 二选一；每项为 PID、支持的 Pixiv 作品/用户 URL 或允许的 CDN URL。可选 `pages`、`quality`、`concurrency`、`ugoira_format`（`gif` 或 `apng`）与 `delivery: "local_path"`。 | `{items, failures, files, text}` 本地文件报告。 |
-| `download_random_from_recommendation` | 可选 `count`（省略或 `null` 为 5；显式值为 1..20）、可选 `pages`、`quality` 与 `delivery: "local_path"`。 | 使用同一错误语义的本地文件报告。 |
+| `download` | `src` 与有序 `srcs` 二选一；每项为 PID、支持的 Pixiv 作品/用户/公开收藏/插画系列 URL 或允许的 CDN URL。可选 `pages`（包括 `3-`）、`quality`、`concurrency`、`ugoira_mode`（`gif`、`apng`、`zip`、`frames`）、`filter`、`archive`、`directory_template`、`write_metadata`、`retries`、`retry_delay` 与 `delivery: "local_path"`。 | `{items, failures, files, text}` 本地文件报告。 |
+| `download_random_from_recommendation` | 可选 `count`（省略或 `null` 为 5；显式值为 1..20）、可选 `pages`、`quality`、`ugoira_mode` 与 `delivery: "local_path"`。 | 使用同一错误语义的本地文件报告。 |
 
-用户 URL 会按来源顺序展开认证态的插画、漫画和 ugoira，重复作品只下载一次。`concurrency: 0` 使用 `2 × GOMAXPROCS`。资源缓存会安全续传 validator 匹配的残片。某一项失败会保留在 `failures` 中，其他独立项继续；任一失败都会设置 `isError=true`。
+用户、公开收藏和插画系列 URL 会按来源顺序展开认证态的插画、漫画和 ugoira，重复 artwork ID 只下载一次。`filter` 在取得作品详情后、写文件前执行；CDN URL 没有作品元数据，因此会拒绝 `filter`。`archive` 是 SQLite 文件，只有全部选中产物与要求的 metadata sidecar 都成功后才记录 artwork。目录模板和文件名模板都支持 `{id}`、`{title}`、`{author}`、`{author_id}`、`{date}`、`{tags}`、`{num}`。`concurrency: 0` 使用 `2 × GOMAXPROCS`。资源请求默认重试三次（1/2/4 秒；有效 `Retry-After` 优先），资源缓存会安全续传 validator 匹配的残片。某一项失败会保留在 `failures` 中，其他独立项继续；任一失败都会设置 `isError=true`。
 
 ## 读取
 
 | tool | 参数 |
 | --- | --- |
-| `search_illust` | `word`、搜索筛选、`page`、`limit`、可选 `illust_filter` |
+| `search_illust` | `word`、搜索筛选、`page`、`limit`、可选 `filter` 与 `illust_filter` |
 | `search_novel` | `word`、小说搜索筛选、`page`、`limit`、可选 `novel_filter` |
 | `illust_detail` | `illust_id` 或支持的 `url` 二选一 |
-| `illust_related`、`illust_ranking`、`illust_recommended` | 对应操作参数、`page`、`limit`、可选 `illust_filter` |
-| `recommended` | 必填 `kind`（`all`、`illust`、`manga`、`novel`、`user`）、`page`、`limit` 与适用的实体 filter |
+| `illust_related`、`illust_ranking`、`illust_recommended` | 对应操作参数、`page`、`limit`、可选 `filter` 与 `illust_filter` |
+| `recommended` | 必填 `kind`（`all`、`illust`、`manga`、`novel`、`user`）、`page`、`limit`、可选 `filter` 与适用的实体 filter |
 | `trending_tags_illust` | 无参数，返回 `{tags, text}` |
-| `timeline_illust_following` | `restrict`、`page`、`limit`、可选 `illust_filter` |
+| `timeline_illust_following` | `restrict`、`page`、`limit`、可选 `filter` 与 `illust_filter` |
 | `timeline_novel_following` | `restrict`、`page`、`limit`、可选 `novel_filter` |
-| `timeline_illust_latest` | 必填 `content_type`（`illust` 或 `manga`）、`page`、`limit`、可选 `illust_filter` |
+| `timeline_illust_latest` | 必填 `content_type`（`illust` 或 `manga`）、`page`、`limit`、可选 `filter` 与 `illust_filter` |
 | `timeline_novel_latest` | `page`、`limit`、可选 `novel_filter` |
 | `mypixiv_users` | `page`、`limit`、可选 `user_filter` |
-| `mypixiv_illusts` / `mypixiv_novels` | `page`、`limit` 与对应的插画或小说 filter |
+| `mypixiv_illusts` / `mypixiv_novels` | `page`、`limit`、插画可选顶层 `filter`，以及对应的插画或小说 filter |
 | `search_user` | `word`、`page`、`limit`、可选 `user_filter` |
 | `user_detail` | 必填 `user_id` |
-| `user_artworks`、`user_novels`、`user_bookmarks`、`user_following` | 可选 `user_id`、操作专有参数、`page`、`limit` 与对应实体 filter |
+| `user_artworks`、`user_novels`、`user_bookmarks`、`user_following` | 可选 `user_id`、操作专有参数、`page`、`limit`、插画列表可选顶层 `filter`，以及对应实体 filter |
 
 `search_illust.tool` 使用 [CLI 参考](cli-reference.md#drawing-tool-catalog)中的版本化绘图工具目录，必须精确匹配。唯一的单编辑拼写修正会在参数错误中给出建议；含混前缀会直接报错。
 

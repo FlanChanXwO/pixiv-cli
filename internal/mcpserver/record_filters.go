@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	sdk "github.com/FlanChanXwO/pixiv-cli/pixiv"
 )
@@ -69,16 +70,27 @@ func userFilterSchema() map[string]any {
 type recordFilterContextKey struct{}
 
 type recordFilters struct {
-	illust *illustFilterIn
-	novel  *novelFilterIn
-	user   *userFilterIn
+	illust     *illustFilterIn
+	expression *sdk.IllustFilter
+	novel      *novelFilterIn
+	user       *userFilterIn
 }
 
 func withIllustFilter(ctx context.Context, filter *illustFilterIn) (context.Context, error) {
+	return withIllustFilterExpression(ctx, filter, "")
+}
+
+// withIllustFilterExpression 将 MCP 顶层 filter 与结构化 illust_filter 组合为
+// 同一份逻辑筛选。表达式在打开 SDK client 前编译，非法输入不会产生网络请求。
+func withIllustFilterExpression(ctx context.Context, filter *illustFilterIn, expression string) (context.Context, error) {
 	if err := validateIllustFilter(filter); err != nil {
 		return nil, err
 	}
-	return withRecordFilters(ctx, recordFilters{illust: filter}), nil
+	compiled, err := compileMCPIllustFilter(expression)
+	if err != nil {
+		return nil, err
+	}
+	return withRecordFilters(ctx, recordFilters{illust: filter, expression: compiled}), nil
 }
 
 func withNovelFilter(ctx context.Context, filter *novelFilterIn) (context.Context, error) {
@@ -96,6 +108,12 @@ func withUserFilter(ctx context.Context, filter *userFilterIn) (context.Context,
 }
 
 func withMixedRecordFilters(ctx context.Context, illust *illustFilterIn, novel *novelFilterIn, user *userFilterIn) (context.Context, error) {
+	return withMixedRecordFiltersExpression(ctx, illust, "", novel, user)
+}
+
+// withMixedRecordFiltersExpression 使 recommended 的视觉记录使用同一条顶层
+// filter；小说和用户记录会在表达式存在时按约定丢弃。
+func withMixedRecordFiltersExpression(ctx context.Context, illust *illustFilterIn, expression string, novel *novelFilterIn, user *userFilterIn) (context.Context, error) {
 	if err := validateIllustFilter(illust); err != nil {
 		return nil, err
 	}
@@ -105,7 +123,23 @@ func withMixedRecordFilters(ctx context.Context, illust *illustFilterIn, novel *
 	if err := validateUserFilter(user); err != nil {
 		return nil, err
 	}
-	return withRecordFilters(ctx, recordFilters{illust: illust, novel: novel, user: user}), nil
+	compiled, err := compileMCPIllustFilter(expression)
+	if err != nil {
+		return nil, err
+	}
+	return withRecordFilters(ctx, recordFilters{illust: illust, expression: compiled, novel: novel, user: user}), nil
+}
+
+func compileMCPIllustFilter(expression string) (*sdk.IllustFilter, error) {
+	expression = strings.TrimSpace(expression)
+	if expression == "" {
+		return nil, nil
+	}
+	compiled, err := sdk.CompileIllustFilter(expression)
+	if err != nil {
+		return nil, err
+	}
+	return compiled, nil
 }
 
 func withRecordFilters(ctx context.Context, filters recordFilters) context.Context {
@@ -176,7 +210,7 @@ func filterRecordPage[T any](ctx context.Context, items []T, seen map[string]str
 func matchRecordFilter(item any, filters recordFilters) (string, bool) {
 	switch value := item.(type) {
 	case sdk.Illust:
-		if !matchesIllustFilter(value, filters.illust) {
+		if !matchesIllustFilter(value, filters.illust, filters.expression) {
 			return "", false
 		}
 		kind := value.Type
@@ -185,16 +219,25 @@ func matchRecordFilter(item any, filters recordFilters) (string, bool) {
 		}
 		return fmt.Sprintf("%s:%d", kind, value.ID), true
 	case sdk.Novel:
+		if filters.expression != nil {
+			return "", false
+		}
 		if !matchesNovelFilter(value, filters.novel) {
 			return "", false
 		}
 		return fmt.Sprintf("novel:%d", value.ID), true
 	case sdk.UserPreview:
+		if filters.expression != nil {
+			return "", false
+		}
 		if !matchesUserFilter(value.User, filters.user) {
 			return "", false
 		}
 		return fmt.Sprintf("user:%d", value.User.ID), true
 	case sdk.RecommendedUserPreview:
+		if filters.expression != nil {
+			return "", false
+		}
 		if !matchesUserFilter(value.User, filters.user) {
 			return "", false
 		}
@@ -204,9 +247,13 @@ func matchRecordFilter(item any, filters recordFilters) (string, bool) {
 	}
 }
 
-func matchesIllustFilter(item sdk.Illust, filter *illustFilterIn) bool {
+func matchesIllustFilter(item sdk.Illust, filter *illustFilterIn, expression *sdk.IllustFilter) bool {
 	if filter == nil {
-		return true
+		if expression == nil {
+			return true
+		}
+		matched, err := expression.Match(item)
+		return err == nil && matched
 	}
 	if filter.ID != nil && item.ID != *filter.ID {
 		return false
@@ -220,7 +267,14 @@ func matchesIllustFilter(item sdk.Illust, filter *illustFilterIn) bool {
 	if filter.MinPages != nil && item.PageCount < *filter.MinPages {
 		return false
 	}
-	return hasAllTags(item.Tags, filter.Tags)
+	if !hasAllTags(item.Tags, filter.Tags) {
+		return false
+	}
+	if expression == nil {
+		return true
+	}
+	matched, err := expression.Match(item)
+	return err == nil && matched
 }
 
 func matchesNovelFilter(item sdk.Novel, filter *novelFilterIn) bool {

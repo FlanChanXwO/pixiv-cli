@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"os"
 	"strings"
 	"testing"
 
@@ -11,6 +12,28 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func TestVisualListAutoNDJSONWritesToNonTerminal(t *testing.T) {
+	useTempPaths(t)
+	setTestSDKCommandClient(t, sdkCommandFake{search: func(_ context.Context, _ sdk.SearchIllustRequest) (*sdk.IllustListResult, error) {
+		item := commandIllust(71)
+		item.Type = string(sdk.IllustTypeIllust)
+		return &sdk.IllustListResult{Illusts: []sdk.Illust{item}}, nil
+	}})
+	output, err := os.CreateTemp(t.TempDir(), "records-*.ndjson")
+	require.NoError(t, err)
+	defer output.Close()
+	var stderr bytes.Buffer
+	code := Run([]string{"pixiv", "search", "miku"}, strings.NewReader(""), output, &stderr)
+	require.Equal(t, 0, code, stderr.String())
+	require.NoError(t, output.Close())
+	body, err := os.ReadFile(output.Name())
+	require.NoError(t, err)
+	var record map[string]any
+	require.NoError(t, json.Unmarshal(body, &record))
+	assert.Equal(t, "71", record["id"])
+	assert.Equal(t, "illust", record["type"])
+}
 
 func TestSearchNDJSONWritesRecordsBeforeFetchingNextPage(t *testing.T) {
 	useTempPaths(t)

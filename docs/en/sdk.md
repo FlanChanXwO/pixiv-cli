@@ -32,7 +32,7 @@ operations that require runtime configuration obtain a fresh configuration/auth 
 exception and reads the auth store directly.
 
 `NewClientOptions` intentionally contains only direct-client fields: `AccessToken`, `WebFallbackEnabled`, HTTP,
-App/Web endpoints, `ResourcePolicy`, and optional `ResourceCachePath`. `OpenDefaultOptions` instead owns local paths,
+App/Web endpoints, `ResourcePolicy`, optional `ResourceCachePath`, and `RequestInterval`. `OpenDefaultOptions` instead owns local paths,
 OAuth endpoint, account selection, HTTP/endpoints, and resource policy/cache path. Each `OpenDefault` snapshot reads
 local `web_fallback_enabled`. Do not make refresh tokens global mutable state.
 
@@ -56,7 +56,7 @@ cookie jar, and redirect policy. Resource requests use per-request copies with v
 
 | Category | Methods |
 | --- | --- |
-| Works and recommendations | `SearchIllust`, `SearchNovel`, `SupportedDrawingTools`, `IllustDetail`, `IllustPages`, `IllustRelated`, `IllustRanking`, `IllustRecommended`, `MangaRecommended`, `NovelRecommended`, `UserRecommended`, `FollowingIllusts`, `TrendingTagsIllust`, `UgoiraMetadata`. |
+| Works and recommendations | `SearchIllust`, `SearchNovel`, `SupportedDrawingTools`, `IllustDetail`, `IllustPages`, `IllustRelated`, `IllustRanking`, `IllustRecommended`, `MangaRecommended`, `NovelRecommended`, `UserRecommended`, `FollowingIllusts`, `TrendingTagsIllust`, `IllustSeries`, `UgoiraMetadata`. |
 | Users | `SearchUser`, `UserDetail`, `UserArtworks`, `UserBookmarks`, `UserFollowing`, `CurrentUserID`. |
 | Writes | `AddBookmark`, `RemoveBookmark`, `FollowUser`, `UnfollowUser`. |
 | Accounts/configuration | `ImportAccount`, `ListAccounts`, `SelectAccount`, `RemoveAccount`, `ExportAccountRefreshToken`, `ExportAuthBundle`, `RestoreAuthBundle`, `CheckAccount`, `CheckRefreshToken`, `Refresh`, `RefreshAccount`, `PremiumStatus`, `RefreshPremiumStatus`, `GetConfig`, `SetConfig`, `UnsetConfig`; bundle codec functions are package-level. |
@@ -78,12 +78,19 @@ an official artwork URL, or a CDN URL accepted by `ResourcePolicy`. They use `./
 `2 × runtime.GOMAXPROCS(0)`.
 
 Use `DownloadWith` / `DownloadAllWith` with `DownloadOptions` to choose `DownloadPath`, `FilenameTemplate`,
-1-based `Pages`, `Quality`, `UgoiraFormat`, `Concurrency`, and the observation-only `Progress` callback. `UgoiraFormat` is `gif` by default and may be
-`apng`. `Concurrency == 0` retains the automatic value; any positive value
-is used exactly and is never artificially capped. Direct CDN resources keep their URL filename; page selection,
-derived quality, and a custom artwork template are rejected for them. `DownloadAllResult.Items` keeps input order and
-records `Attempted`, the successful result (including per-file cache state), or the item's error, so callers can retry
-only failed items. Ugoira ZIPs are cached and converted to GIF or APNG; ugoira rejects page selection or non-original quality.
+`DirectoryTemplate`, closed `Pages` or open-capable `PageSelection`, `Quality`, `UgoiraMode`, `Concurrency`,
+compiled `Filter`, `ArchivePath`, `WriteMetadata`, `RetryPolicy`, and the observation-only `Progress` callback.
+`UgoiraMode` defaults to `gif` and supports `apng`, lossless `zip`, and `frames` (frame files plus a timing manifest).
+Artwork templates support `{id}`, `{title}`, `{author}`, `{author_id}`, `{date}`, `{tags}`, and `{num}`; directory
+templates are safe relative paths and `{num}` is zero-based. A SQLite archive records an artwork only after every
+selected artifact and requested sidecar succeeds. Sidecars are atomic `{artifact}.json` files containing public
+`Illust` JSON, artifact-relative path, page, mode, and ugoira frame timing when available. Direct CDN resources keep
+their URL filename and reject metadata-dependent options such as filters, page selection, derived quality, templates,
+and sidecars. `DownloadAllResult.Items` keeps input order and records `Attempted`, the successful result (including
+per-file cache state), or the item's error, so callers can retry only failed items. Ugoira rejects page selection and
+non-original quality. With `DownloadOptions`, resource reads retry eligible 429 (with valid `Retry-After`), 5xx, and
+transport failures three times by default with 1/2/4-second backoff; cancellation and permanent local/4xx failures
+are not replayed.
 
 `Progress func(DownloadProgress)` is invoked directly and concurrently by download workers. Each event carries the
 input `SourceIndex`, 1-based `Page`, destination path, available artwork metadata, per-resource byte counters, and
@@ -105,8 +112,9 @@ construct writes with `StringConfigInput`, `BoolConfigInput`, or `DurationConfig
 
 `ParseReference(raw)` performs no I/O and accepts either a positive artwork ID or a
 strict official Pixiv HTTPS URL. It returns `Reference{Kind, ID}`, where `Kind` is
-`artwork` for an ID or `/artworks/{id}`, and `user` for `/users/{id}` or
-`/users/{id}/artworks`. The URL host must be `pixiv.net` or `www.pixiv.net`; an
+`artwork` for an ID or `/artworks/{id}`, `user` for `/users/{id}` or
+`/users/{id}/artworks`, `user_bookmarks` for `/users/{id}/bookmarks/artworks`, and
+`illust_series` for `/user/{id}/series/{series_id}`. The URL host must be `pixiv.net` or `www.pixiv.net`; an
 optional locale, query, and fragment are allowed. `ParseArtworkReference(raw)` and `ParseUserReference(raw)` are
 the typed variants (the latter accepts a user ID as well), and `Reference.URL()` returns the canonical artwork or user page
 URL. The parser neither follows redirects nor fetches HTML, rejects all other Pixiv
@@ -191,6 +199,18 @@ network request and returns a defensive copy that callers may modify. `PremiumSt
 snapshot; `RefreshPremiumStatus(ctx)` forces a profile read and persists the result. `OpenDefault` uses
 `[premium] status_cache_ttl` (default `24h`, `0s` disables reuse). A direct `NewClient` access token does not carry
 a verifiable account UID, so it cannot perform this saved-account precheck.
+
+### Local illustration expression filters
+
+`CompileIllustFilter(expression)` compiles an opaque, side-effect-free `*IllustFilter`; call `Match(Illust)` to test
+one public illustration. The only fields are `id`, `userId`, `userName`, `type`, `title`, `createDate`, `pageCount`,
+`bookmarkCount`, `viewCount`, `xRestrict`, `aiType`, `width`, `height`, `tags`, `tools`, `rating`, `aiMode`,
+`aspectRatio`, `resolution`, and `drawTool`. The language permits boolean comparisons, `and`/`or`/`not`, `in`/`not in`,
+array literals, and Expr's native `any`/`all`, for example
+`any(tags, # in ["miku", "vocaloid"]) and bookmarkCount >= 5000`. Arithmetic, regular expressions, object/map or
+member access, variables, conditionals, pipelines, reflection, and other functions are rejected before a request is
+made. Compilation errors identify the invalid field, type, or source column; a failed compile never represents an
+empty result.
 
 ### Novel search and user-search source
 

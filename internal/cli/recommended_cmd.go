@@ -20,6 +20,12 @@ func (a app) runRecommended(cmd *cobra.Command, kind string, opts recommendedOpt
 	if err != nil {
 		return err
 	}
+	if err := applyIllustFilter(&plan, opts.filter); err != nil {
+		return err
+	}
+	if plan.filter != nil && (kind == "novel" || kind == "user") {
+		return newUsageError(fmt.Errorf("--filter is only available for illustration recommendations"))
+	}
 	services := a.services()
 	request, jsonOverride, err := a.sdkRequest(cmd, opts.commandOptions)
 	if err != nil {
@@ -35,6 +41,7 @@ func (a app) runRecommended(cmd *cobra.Command, kind string, opts recommendedOpt
 			return err
 		}
 	}
+	opts.ndjson = a.shouldAutoNDJSON(cmd, opts.ndjson, jsonOut)
 	if kind == "all" {
 		if opts.ndjson {
 			return services.SDK.RunPooledOperation(cmd.Context(), request, func(ctx context.Context, client application.SDKClient) (bool, error) {
@@ -261,7 +268,8 @@ func (a app) runRecommendedAll(ctx context.Context, client application.SDKClient
 		if e != nil {
 			return nil, "", e
 		}
-		return r.Illusts, r.NextCursor, nil
+		items, filterErr := filterIllustBatch(plan.filter, r.Illusts)
+		return items, r.NextCursor, filterErr
 	}, s.illusts); err != nil {
 		return false, err
 	}
@@ -278,9 +286,15 @@ func (a app) runRecommendedAll(ctx context.Context, client application.SDKClient
 		if e != nil {
 			return nil, "", e
 		}
-		return r.Illusts, r.NextCursor, nil
+		items, filterErr := filterIllustBatch(plan.filter, r.Illusts)
+		return items, r.NextCursor, filterErr
 	}, s.illusts); err != nil {
 		return false, err
+	}
+	if plan.filter != nil {
+		// 表达式的输入域是 Illust；mixed recommendations 里其余实体没有这些字段，
+		// 因此明确不输出它们，而不是伪造零值再尝试匹配。
+		return true, s.Commit(a.out)
 	}
 	if err := s.section("novels"); err != nil {
 		return false, err
@@ -343,7 +357,8 @@ func (a app) runRecommendedAllNDJSON(ctx context.Context, client application.SDK
 		if err != nil {
 			return nil, "", err
 		}
-		return result.Illusts, result.NextCursor, nil
+		items, filterErr := filterIllustBatch(plan.filter, result.Illusts)
+		return items, result.NextCursor, filterErr
 	}, writeIllusts); err != nil {
 		return committed, err
 	}
@@ -352,9 +367,13 @@ func (a app) runRecommendedAllNDJSON(ctx context.Context, client application.SDK
 		if err != nil {
 			return nil, "", err
 		}
-		return result.Illusts, result.NextCursor, nil
+		items, filterErr := filterIllustBatch(plan.filter, result.Illusts)
+		return items, result.NextCursor, filterErr
 	}, writeIllusts); err != nil {
 		return committed, err
+	}
+	if plan.filter != nil {
+		return committed, nil
 	}
 	if err := pageItems(ctx, plan, func(ctx context.Context, cursor sdk.Cursor) ([]sdk.Novel, sdk.Cursor, error) {
 		result, err := client.NovelRecommended(ctx, sdk.NovelRecommendedRequest{Cursor: cursor})

@@ -1,6 +1,7 @@
 package pixiv_test
 
 import (
+	"fmt"
 	"reflect"
 	"testing"
 
@@ -21,6 +22,51 @@ func TestParsePageSpecAndQuality(t *testing.T) {
 	}
 	if err := pixiv.ValidateDownloadQuality("nope"); err == nil {
 		t.Fatal("expected invalid quality")
+	}
+}
+
+func TestParsePageSelectionAcceptsOpenEndedRange(t *testing.T) {
+	selection, err := pixiv.ParsePageSelection("3-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	pages, err := selection.Resolve(5)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := fmt.Sprint(pages), "[3 4 5]"; got != want {
+		t.Fatalf("Resolve() = %s, want %s", got, want)
+	}
+}
+
+func TestPageSelectionClosedPagesDoesNotExposeOpenRange(t *testing.T) {
+	closed, err := pixiv.ParsePageSelection("1,3-4")
+	if err != nil {
+		t.Fatal(err)
+	}
+	pages, ok := closed.ClosedPages()
+	if !ok || fmt.Sprint(pages) != "[1 3 4]" {
+		t.Fatalf("ClosedPages() = %v, %v", pages, ok)
+	}
+	pages[0] = 99
+	again, _ := closed.ClosedPages()
+	if again[0] != 1 {
+		t.Fatalf("ClosedPages() leaked its backing array: %v", again)
+	}
+	open, err := pixiv.ParsePageSelection("3-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if pages, ok := open.ClosedPages(); ok || pages != nil {
+		t.Fatalf("open ClosedPages() = %v, %v", pages, ok)
+	}
+}
+
+func TestDownloadOptionsExposeArchiveAndUgoiraModes(t *testing.T) {
+	for _, mode := range []pixiv.UgoiraMode{pixiv.UgoiraModeGIF, pixiv.UgoiraModeAPNG, pixiv.UgoiraModeZIP, pixiv.UgoiraModeFrames} {
+		if err := pixiv.ValidateUgoiraMode(mode); err != nil {
+			t.Fatalf("ValidateUgoiraMode(%q): %v", mode, err)
+		}
 	}
 }
 

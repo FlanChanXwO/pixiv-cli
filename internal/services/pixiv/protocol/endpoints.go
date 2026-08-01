@@ -10,6 +10,7 @@ const (
 	AppSearchNovel        = "/v1/search/novel"
 	AppIllustDetail       = "/v1/illust/detail"
 	AppIllustRelated      = "/v2/illust/related"
+	AppIllustSeries       = "/v1/illust/series"
 	AppIllustRanking      = "/v1/illust/ranking"
 	AppSearchUser         = "/v1/search/user"
 	AppUserDetail         = "/v1/user/detail"

@@ -83,6 +83,48 @@ func TestMCPRecordFilterSchemasAreEntitySpecific(t *testing.T) {
 	}
 }
 
+func TestExpressionFilterDropsNonVisualMixedRecords(t *testing.T) {
+	expression, err := sdk.CompileIllustFilter("bookmarkCount >= 1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	filters := recordFilters{expression: expression}
+	if _, matched := matchRecordFilter(sdk.Novel{ID: 1}, filters); matched {
+		t.Fatal("novel matched an illustration expression filter")
+	}
+	if _, matched := matchRecordFilter(sdk.UserPreview{User: sdk.User{ID: 1}}, filters); matched {
+		t.Fatal("user matched an illustration expression filter")
+	}
+	illust := filteredTestIllust(1, 1, 1, "tag")
+	illust.TotalBookmarks = 1
+	if _, matched := matchRecordFilter(illust, filters); !matched {
+		t.Fatal("illustration did not match its expression filter")
+	}
+}
+
+func TestMCPTopLevelExpressionFilterCombinesWithStructuredFilter(t *testing.T) {
+	client := &fakeSDKClient{searchIllust: func(_ context.Context, _ sdk.SearchIllustRequest) (*sdk.IllustListResult, error) {
+		first := filteredTestIllust(1, 100, 1, "keep")
+		first.TotalBookmarks = 1
+		second := filteredTestIllust(2, 100, 1, "other")
+		second.TotalBookmarks = 2
+		return &sdk.IllustListResult{Illusts: []sdk.Illust{first, second}}, nil
+	}}
+	session, closeSession := newSDKTestSession(t, client)
+	defer closeSession()
+	result := callTool(t, session, "search_illust", map[string]any{
+		"word": "cat", "filter": "bookmarkCount >= 2", "illust_filter": map[string]any{"tags": []string{"keep"}},
+	})
+	if result.IsError {
+		t.Fatalf("search_illust result=%+v", result)
+	}
+	var out illustQueryOut
+	decodeStructured(t, result, &out)
+	if len(out.Records) != 0 {
+		t.Fatalf("top-level and structured filters were not combined: %+v", out.Records)
+	}
+}
+
 func filteredTestIllust(id int64, views, pages int, tag string) sdk.Illust {
 	illust := testSDKIllust(id, "work", 7)
 	illust.TotalView = views

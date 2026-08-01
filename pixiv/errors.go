@@ -38,6 +38,7 @@ const (
 	OperationIllustDetail       Operation = "illust_detail"
 	OperationIllustPages        Operation = "illust_pages"
 	OperationIllustRelated      Operation = "illust_related"
+	OperationIllustSeries       Operation = "illust_series"
 	OperationTrendingTagsIllust Operation = "trending_tags_illust"
 	OperationUgoiraMetadata     Operation = "ugoira_metadata"
 	OperationSearchIllust       Operation = "search_illust"

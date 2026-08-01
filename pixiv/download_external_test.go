@@ -2,15 +2,18 @@ package pixiv_test
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
 	"path/filepath"
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/FlanChanXwO/pixiv-cli/pixiv"
 	"github.com/stretchr/testify/assert"
@@ -119,6 +122,101 @@ func TestDownloadWithAcceptsPIDAndArtworkURL(t *testing.T) {
 		require.Len(t, result.Files, 1)
 	}
 	assert.EqualValues(t, 2, resourceHits.Load())
+}
+
+func TestArtworkArchiveRecordsOnlyCompletedArtworkAndWritesSidecars(t *testing.T) {
+	var resourceHits atomic.Int32
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v1/illust/detail":
+			_, _ = fmt.Fprintf(w, `{"illust":{"id":42,"title":"work","type":"illust","page_count":1,"create_date":"2026-08-01T00:00:00Z","user":{"id":7,"name":"artist"},"tags":[{"name":"tag"}],"image_urls":{},"meta_single_page":{"original_image_url":%q},"meta_pages":[]}}`, "https://"+r.Host+"/resource/42.jpg")
+		case "/resource/42.jpg":
+			resourceHits.Add(1)
+			_, _ = io.WriteString(w, "image")
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(server.Close)
+	parsed, err := url.Parse(server.URL)
+	require.NoError(t, err)
+	client, err := pixiv.NewClient(pixiv.NewClientOptions{HTTPClient: server.Client(), AppAPIBaseURL: server.URL, AccessToken: "access", ResourcePolicy: pixiv.ResourcePolicy{Mirrors: []pixiv.ResourceMirrorPolicy{{Host: parsed.Host, PathPrefixes: []string{"/resource/"}}}}})
+	require.NoError(t, err)
+	directory := t.TempDir()
+	archive := filepath.Join(t.TempDir(), "state", "archive.sqlite")
+	options := pixiv.DownloadOptions{DownloadPath: directory, ArchivePath: archive, WriteMetadata: true}
+	first, err := client.DownloadWith(context.Background(), "42", options)
+	require.NoError(t, err)
+	require.False(t, first.Skipped)
+	require.Len(t, first.Files, 1)
+	sidecarBody, err := os.ReadFile(first.Files[0].Path + ".json")
+	require.NoError(t, err)
+	var sidecar struct {
+		Artifact string `json:"artifact"`
+		Illust   struct {
+			ID int64 `json:"id"`
+		} `json:"illust"`
+	}
+	require.NoError(t, json.Unmarshal(sidecarBody, &sidecar))
+	assert.Equal(t, filepath.Base(first.Files[0].Path), sidecar.Artifact)
+	assert.EqualValues(t, 42, sidecar.Illust.ID)
+	assert.NotContains(t, string(sidecarBody), "access")
+	second, err := client.DownloadWith(context.Background(), "42", options)
+	require.NoError(t, err)
+	assert.True(t, second.Skipped)
+	assert.EqualValues(t, 1, resourceHits.Load(), "archive must skip before resource retrieval")
+}
+
+func TestDirectResourceFilterIsRejectedBeforeNetwork(t *testing.T) {
+	var calls atomic.Int32
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		calls.Add(1)
+		http.Error(w, "unexpected", http.StatusInternalServerError)
+	}))
+	t.Cleanup(server.Close)
+	client := newResourceDownloadClient(t, server)
+	filter, err := pixiv.CompileIllustFilter("bookmarkCount >= 1")
+	require.NoError(t, err)
+	_, err = client.DownloadWith(context.Background(), server.URL+"/resource/file.jpg", pixiv.DownloadOptions{DownloadPath: t.TempDir(), Filter: filter})
+	require.Error(t, err)
+	assert.Zero(t, calls.Load())
+}
+
+func TestResourceDownloadRetriesRetryableFailuresOnly(t *testing.T) {
+	var attempts atomic.Int32
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		if attempts.Add(1) < 3 {
+			http.Error(w, "temporary", http.StatusBadGateway)
+			return
+		}
+		_, _ = io.WriteString(w, "image")
+	}))
+	t.Cleanup(server.Close)
+	client := newResourceDownloadClient(t, server)
+	result, err := client.DownloadWith(context.Background(), server.URL+"/resource/file.jpg", pixiv.DownloadOptions{DownloadPath: t.TempDir(), RetryPolicy: &pixiv.RetryPolicy{Retries: 3, InitialDelay: time.Millisecond}})
+	require.NoError(t, err)
+	require.Len(t, result.Files, 1)
+	assert.EqualValues(t, 3, attempts.Load())
+}
+
+func TestResourceDownloadUsesValidRetryAfterForRateLimit(t *testing.T) {
+	var attempts atomic.Int32
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		if attempts.Add(1) == 1 {
+			w.Header().Set("Retry-After", "0")
+			http.Error(w, "slow down", http.StatusTooManyRequests)
+			return
+		}
+		_, _ = io.WriteString(w, "image")
+	}))
+	t.Cleanup(server.Close)
+	client := newResourceDownloadClient(t, server)
+	result, err := client.DownloadWith(context.Background(), server.URL+"/resource/file.jpg", pixiv.DownloadOptions{
+		DownloadPath: t.TempDir(), RetryPolicy: &pixiv.RetryPolicy{Retries: 1, InitialDelay: time.Hour},
+	})
+	require.NoError(t, err)
+	require.Len(t, result.Files, 1)
+	assert.EqualValues(t, 2, attempts.Load())
 }
 
 func newResourceDownloadClient(t *testing.T, server *httptest.Server) *pixiv.Client {

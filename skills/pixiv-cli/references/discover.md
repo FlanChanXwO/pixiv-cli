@@ -34,6 +34,11 @@ pixiv search "初音ミク" --limit 10 --json
   for bookmark bounds, and never call bookmark count a like count. For a saved account, bookmark bounds use a cached
   self-profile membership check (24h by default) and a non-Premium account is blocked before search; do not refresh
   that cache unless the user explicitly asks for `pixiv auth refresh`.
+- `--filter EXPR` adds a local typed artwork rule and combines with every other
+  illustration flag using AND. It permits comparisons, `and`/`or`/`not`,
+  `in`/`not in`, array literals, and `any`/`all`; use fields such as
+  `bookmarkCount`, `viewCount`, `xRestrict`, `tags`, `tools`, `rating`, and
+  `aiMode`. For example: `--filter 'bookmarkCount >= 5000 and xRestrict == 0'`.
 - Drawing-tool names use the fixed catalog for this CLI version. Choose an exact
   value from the [CLI reference](../../../docs/en/cli-reference.md#drawing-tool-catalog);
   a unique one-edit spelling correction is shown in the validation error.

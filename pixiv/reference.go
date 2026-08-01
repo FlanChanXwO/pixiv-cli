@@ -12,14 +12,17 @@ import (
 type ReferenceKind string
 
 const (
-	ReferenceKindArtwork ReferenceKind = "artwork"
-	ReferenceKindUser    ReferenceKind = "user"
+	ReferenceKindArtwork       ReferenceKind = "artwork"
+	ReferenceKindUser          ReferenceKind = "user"
+	ReferenceKindUserBookmarks ReferenceKind = "user_bookmarks"
+	ReferenceKindIllustSeries  ReferenceKind = "illust_series"
 )
 
 // Reference 是本地解析后的 Pixiv 稳定资源标识，不包含原始 URL 或查询参数。
 type Reference struct {
-	Kind ReferenceKind
-	ID   int64
+	Kind     ReferenceKind
+	ID       int64
+	SeriesID int64
 }
 
 // URL 返回资源的稳定规范 Pixiv 页面地址；非法零值不生成虚假的 URL。
@@ -32,9 +35,16 @@ func (r Reference) URL() string {
 		return "https://www.pixiv.net/artworks/" + strconv.FormatInt(r.ID, 10)
 	case ReferenceKindUser:
 		return "https://www.pixiv.net/users/" + strconv.FormatInt(r.ID, 10)
+	case ReferenceKindUserBookmarks:
+		return "https://www.pixiv.net/users/" + strconv.FormatInt(r.ID, 10) + "/bookmarks/artworks"
+	case ReferenceKindIllustSeries:
+		if r.SeriesID > 0 {
+			return "https://www.pixiv.net/user/" + strconv.FormatInt(r.ID, 10) + "/series/" + strconv.FormatInt(r.SeriesID, 10)
+		}
 	default:
 		return ""
 	}
+	return ""
 }
 
 var errUnsupportedReference = errors.New("reference must be a positive artwork ID or a supported Pixiv URL")
@@ -79,6 +89,18 @@ func parseReferencePath(parts []string) (Reference, bool) {
 	if len(parts) == 3 && parts[0] == "users" && parts[2] == "artworks" {
 		if id, ok := parsePositiveReferenceID(parts[1]); ok {
 			return Reference{Kind: ReferenceKindUser, ID: id}, true
+		}
+	}
+	if len(parts) == 4 && parts[0] == "users" && parts[2] == "bookmarks" && parts[3] == "artworks" {
+		if id, ok := parsePositiveReferenceID(parts[1]); ok {
+			return Reference{Kind: ReferenceKindUserBookmarks, ID: id}, true
+		}
+	}
+	if len(parts) == 4 && parts[0] == "user" && parts[2] == "series" {
+		if userID, ok := parsePositiveReferenceID(parts[1]); ok {
+			if seriesID, ok := parsePositiveReferenceID(parts[3]); ok {
+				return Reference{Kind: ReferenceKindIllustSeries, ID: userID, SeriesID: seriesID}, true
+			}
 		}
 	}
 	return Reference{}, false

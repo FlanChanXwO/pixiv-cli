@@ -5,6 +5,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 )
 
 const (
@@ -27,13 +28,30 @@ const (
 	DownloadQualityMini     DownloadQuality = "mini"
 )
 
-// UgoiraFormat 是 ugoira 最终动画的输出容器。零值按 GIF 处理，以保持既有下载语义。
-type UgoiraFormat string
+// UgoiraMode 是 ugoira 最终产物的模式。零值按 GIF 处理。
+type UgoiraMode string
 
 const (
-	UgoiraFormatGIF  UgoiraFormat = "gif"
-	UgoiraFormatAPNG UgoiraFormat = "apng"
+	UgoiraModeGIF    UgoiraMode = "gif"
+	UgoiraModeAPNG   UgoiraMode = "apng"
+	UgoiraModeZIP    UgoiraMode = "zip"
+	UgoiraModeFrames UgoiraMode = "frames"
 )
+
+// UgoiraFormat 是兼容旧 SDK 调用方的别名；CLI 不再提供 --ugoira-format。
+type UgoiraFormat = UgoiraMode
+
+const (
+	UgoiraFormatGIF  = UgoiraModeGIF
+	UgoiraFormatAPNG = UgoiraModeAPNG
+)
+
+// RetryPolicy 控制单个资源请求的显式重试。nil 策略使用默认 3 次重试与 1 秒初始
+// 间隔；Retries=0 可明确关闭重试，避免把零值误解为两种不同的用户意图。
+type RetryPolicy struct {
+	Retries      int
+	InitialDelay time.Duration
+}
 
 // DownloadOptions 控制高级下载 API 的输出与作品选择。
 // DownloadPath 为空时使用 DefaultDownloadPath；FilenameTemplate 为空时使用
@@ -41,16 +59,115 @@ const (
 // 零时由 SDK 根据当前 GOMAXPROCS 自动决定。CDN 直链只有 DownloadPath 和自动/显式
 // Concurrency 有意义；页选择、派生质量和自定义作品模板会明确失败。
 type DownloadOptions struct {
-	DownloadPath     string
-	FilenameTemplate string
-	Pages            []int
-	Quality          DownloadQuality
-	// UgoiraFormat 只影响 ugoira；零值与 GIF 都生成 .gif，APNG 生成 .apng。
-	UgoiraFormat UgoiraFormat
-	Concurrency  int
+	DownloadPath      string
+	FilenameTemplate  string
+	DirectoryTemplate string
+	// Pages 保留闭区间 SDK 兼容接口；不能与 PageSelection 同时使用。
+	Pages         []int
+	PageSelection *PageSelection
+	Quality       DownloadQuality
+	UgoiraMode    UgoiraMode
+	// UgoiraFormat 是旧 SDK 字段别名；UgoiraMode 非空时优先。
+	UgoiraFormat  UgoiraFormat
+	Concurrency   int
+	Filter        *IllustFilter
+	ArchivePath   string
+	WriteMetadata bool
+	RetryPolicy   *RetryPolicy
 	// Progress 是纯观察回调。每个下载 worker 会直接、并发地调用它；回调必须自行
 	// 保证并发安全，并且不得阻塞。通过取消传入 DownloadAllWith 的 context 停止下载。
 	Progress func(DownloadProgress)
+}
+
+// PageSelection 保留用户给出的页选择，支持 "3-" 这种必须在取得作品页数后才能
+// 展开的开区间。闭区间仍可通过 ParsePageSpec 获得兼容的 []int。
+type PageSelection struct {
+	pages    []int
+	openFrom int
+}
+
+// ParsePageSelection 解析 1-based 页选择，支持逗号、闭区间和一个开区间，例如
+// "1,3-5,8-"。空串表示全部页；页码排序并去重。
+func ParsePageSelection(spec string) (*PageSelection, error) {
+	spec = strings.TrimSpace(spec)
+	if spec == "" {
+		return nil, nil
+	}
+	selection := &PageSelection{}
+	seen := make(map[int]struct{})
+	for _, part := range strings.Split(spec, ",") {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			return nil, fmt.Errorf("page selection contains an empty item")
+		}
+		if strings.HasSuffix(part, "-") {
+			if selection.openFrom != 0 || strings.Count(part, "-") != 1 {
+				return nil, fmt.Errorf("invalid open page range %q", part)
+			}
+			start, err := strconv.Atoi(strings.TrimSuffix(part, "-"))
+			if err != nil || start <= 0 {
+				return nil, fmt.Errorf("invalid page range start %q", strings.TrimSuffix(part, "-"))
+			}
+			selection.openFrom = start
+			continue
+		}
+		pages, err := ParsePageSpec(part)
+		if err != nil {
+			return nil, err
+		}
+		for _, page := range pages {
+			if _, ok := seen[page]; ok {
+				continue
+			}
+			seen[page] = struct{}{}
+			selection.pages = append(selection.pages, page)
+		}
+	}
+	sort.Ints(selection.pages)
+	return selection, nil
+}
+
+// Resolve 按实际总页数展开 PageSelection。total 必须是作品实际页数。
+func (s *PageSelection) Resolve(total int) ([]int, error) {
+	if s == nil {
+		return nil, nil
+	}
+	if total <= 0 {
+		return nil, fmt.Errorf("page count must be positive")
+	}
+	seen := make(map[int]struct{}, len(s.pages)+total)
+	for _, page := range s.pages {
+		if page < 1 || page > total {
+			return nil, fmt.Errorf("page %d does not exist (page_count=%d)", page, total)
+		}
+		seen[page] = struct{}{}
+	}
+	if s.openFrom != 0 {
+		if s.openFrom > total {
+			return nil, fmt.Errorf("page %d does not exist (page_count=%d)", s.openFrom, total)
+		}
+		for page := s.openFrom; page <= total; page++ {
+			seen[page] = struct{}{}
+		}
+	}
+	pages := make([]int, 0, len(seen))
+	for page := range seen {
+		pages = append(pages, page)
+	}
+	sort.Ints(pages)
+	return pages, nil
+}
+
+// ClosedPages 返回闭区间选择的防御性副本。第二个返回值仅在选择包含开区间（如
+// 3-）时为 false；这类范围必须等待已知的作品实际页数后再调用 Resolve。
+func (s *PageSelection) ClosedPages() ([]int, bool) {
+	if s == nil {
+		return nil, true
+	}
+	if s.openFrom != 0 {
+		return nil, false
+	}
+	return append([]int(nil), s.pages...), true
 }
 
 // DownloadProgress 同时报告单个资源和整个批次的已传输字节。TotalBytesKnown 为
@@ -145,10 +262,15 @@ func ValidateDownloadQuality(quality DownloadQuality) error {
 
 // ValidateUgoiraFormat 校验 ugoira 输出容器。空值是兼容默认 GIF，调用方不必显式填写。
 func ValidateUgoiraFormat(format UgoiraFormat) error {
-	switch format {
-	case "", UgoiraFormatGIF, UgoiraFormatAPNG:
+	return ValidateUgoiraMode(UgoiraMode(format))
+}
+
+// ValidateUgoiraMode 校验 ugoira 最终产物模式。
+func ValidateUgoiraMode(mode UgoiraMode) error {
+	switch mode {
+	case "", UgoiraModeGIF, UgoiraModeAPNG, UgoiraModeZIP, UgoiraModeFrames:
 		return nil
 	default:
-		return fmt.Errorf("ugoira format must be one of gif, apng")
+		return fmt.Errorf("ugoira mode must be one of gif, apng, zip, frames")
 	}
 }

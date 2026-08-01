@@ -3,6 +3,7 @@ package application
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/config"
 	sdk "github.com/FlanChanXwO/pixiv-cli/pixiv"
@@ -69,6 +70,9 @@ type SDKClientRequest struct {
 	UserID             int64
 	RefreshToken       string
 	HTTPSProxyOverride *string
+	// RequestIntervalOverride 是本次 CLI --sleep-request 的临时覆盖；nil 时
+	// OpenDefault 从环境与 config.toml 读取 request_interval。
+	RequestIntervalOverride *time.Duration
 	// DisableRetryAfterRetry 只供账号池首个 429 的安全切换路径使用。
 	DisableRetryAfterRetry bool
 	// AuthFilePath 允许 MCP 等长驻调用方把 OAuth rotation 固定到同一个受保护 store。

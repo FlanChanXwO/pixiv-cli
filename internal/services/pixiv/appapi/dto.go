@@ -10,6 +10,13 @@ type illustListDTO struct {
 	Illusts requiredList[illustDTO] `json:"illusts"`
 	NextURL *string                 `json:"next_url"`
 }
+type illustSeriesDTO struct {
+	IllustSeriesDetail *struct {
+		User userDTO `json:"user"`
+	} `json:"illust_series_detail"`
+	Illusts requiredList[illustDTO] `json:"illusts"`
+	NextURL *string                 `json:"next_url"`
+}
 type illustDetailDTO struct {
 	Illust *illustDTO `json:"illust"`
 }

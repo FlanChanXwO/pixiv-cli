@@ -17,6 +17,7 @@ import (
 type userListOptions struct {
 	commandOptions
 	ndjsonOutputOptions
+	illustFilterOptions
 	listOptions
 	restrict   string
 	tag        string
@@ -296,6 +297,7 @@ func (a app) newUserArtworksCommand() *cobra.Command {
 	}}
 	a.bindCommonFlags(cmd, &opts.commandOptions)
 	bindNDJSONFlag(cmd, &opts.ndjsonOutputOptions)
+	bindIllustFilterFlag(cmd, &opts.illustFilterOptions)
 	bindListFlags(cmd, &opts.listOptions)
 	cmd.Flags().StringVar(&opts.illustType, "type", opts.illustType, "illust type: illust, manga, ugoira")
 	return cmd
@@ -308,6 +310,7 @@ func (a app) newUserBookmarksCommand() *cobra.Command {
 	}}
 	a.bindCommonFlags(cmd, &opts.commandOptions)
 	bindNDJSONFlag(cmd, &opts.ndjsonOutputOptions)
+	bindIllustFilterFlag(cmd, &opts.illustFilterOptions)
 	bindListFlags(cmd, &opts.listOptions)
 	cmd.Flags().StringVar(&opts.restrict, "restrict", opts.restrict, "bookmark visibility (public or private)")
 	cmd.Flags().StringVar(&opts.tag, "tag", "", "filter by bookmark tag")
@@ -329,6 +332,9 @@ func (a app) newUserFollowingCommand() *cobra.Command {
 func (a app) runUserArtworks(cmd *cobra.Command, args []string, options userListOptions) error {
 	plan, err := parseListPlan(cmd, options.listOptions)
 	if err != nil {
+		return err
+	}
+	if err := applyIllustFilter(&plan, options.filter); err != nil {
 		return err
 	}
 	var requestedUserID int64
@@ -353,6 +359,7 @@ func (a app) runUserArtworks(cmd *cobra.Command, args []string, options userList
 			return err
 		}
 	}
+	options.ndjson = a.shouldAutoNDJSON(cmd, options.ndjson, jsonOut)
 	userID := requestedUserID
 	fetch := func(client application.SDKClient, ctx context.Context, cursor sdk.Cursor) ([]sdk.Illust, sdk.Cursor, error) {
 		if userID == 0 {
@@ -378,6 +385,9 @@ func (a app) runUserBookmarks(cmd *cobra.Command, args []string, options userLis
 	if err != nil {
 		return err
 	}
+	if err := applyIllustFilter(&plan, options.filter); err != nil {
+		return err
+	}
 	var requestedUserID int64
 	if len(args) == 1 {
 		requestedUserID, err = parse.PositiveInt64(args[0], "user_id")
@@ -400,6 +410,7 @@ func (a app) runUserBookmarks(cmd *cobra.Command, args []string, options userLis
 			return err
 		}
 	}
+	options.ndjson = a.shouldAutoNDJSON(cmd, options.ndjson, jsonOut)
 	userID := requestedUserID
 	fetch := func(client application.SDKClient, ctx context.Context, cursor sdk.Cursor) ([]sdk.Illust, sdk.Cursor, error) {
 		if userID == 0 {

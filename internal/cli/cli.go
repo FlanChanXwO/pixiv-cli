@@ -6,9 +6,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"slices"
 	"strconv"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/application"
 	"github.com/FlanChanXwO/pixiv-cli/internal/bootstrap"
@@ -17,6 +19,7 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/config"
 	"github.com/FlanChanXwO/pixiv-cli/internal/update"
 	"github.com/spf13/cobra"
+	"golang.org/x/term"
 )
 
 type app struct {
@@ -88,7 +91,7 @@ func runContext(ctx context.Context, args []string, in io.Reader, out io.Writer,
 	if len(args) == 0 {
 		args = []string{"pixiv"}
 	}
-	if !isAuthExportInvocation(args) && !isInternalLoginCallbackInvocation(args) && !isFilterInvocation(args) {
+	if !isAuthExportInvocation(args) && !isInternalLoginCallbackInvocation(args) {
 		if err := cleanupPendingWindowsUpdate(); err != nil {
 			fmt.Fprintf(errOut, "clean pending update: %v\n", err)
 			return 1
@@ -126,11 +129,11 @@ func runContext(ctx context.Context, args []string, in io.Reader, out io.Writer,
 		target = found
 	}
 	err := cmd.Execute()
-	return a.exitWithNDJSONScope(err, commandWritesNDJSON(target))
+	return a.exitWithNDJSONScope(err, commandWritesNDJSON(target) || commandAutoWritesNDJSON(target, out))
 }
 
 func shouldAutomaticallyEnsurePersistentHandler(args []string) bool {
-	return automaticPersistentHandlerSupported() && !isAuthExportInvocation(args) && !isInternalLoginCallbackInvocation(args) && !isFilterInvocation(args)
+	return automaticPersistentHandlerSupported() && !isAuthExportInvocation(args) && !isInternalLoginCallbackInvocation(args)
 }
 
 func isAuthExportInvocation(args []string) bool {
@@ -147,16 +150,6 @@ func isAuthExportInvocation(args []string) bool {
 		return false
 	}
 	return !state.help && !state.version
-}
-
-// isFilterInvocation 让 filter 保持纯本地 stdin→stdout 变换，不初始化默认配置文件。
-func isFilterInvocation(args []string) bool {
-	if len(args) < 2 {
-		return false
-	}
-	state := rootBooleanFlagState{}
-	index := scanRootBooleanFlags(args, 1, &state)
-	return !state.invalid && !state.help && !state.version && index < len(args) && args[index] == "filter"
 }
 
 // isInternalLoginCallbackInvocation 识别由操作系统协议关联或安装器启动的隐藏 helper。
@@ -257,11 +250,25 @@ func commandWritesNDJSON(cmd *cobra.Command) bool {
 	if cmd == nil {
 		return false
 	}
-	if cmd.CommandPath() == "pixiv filter" {
-		return true
-	}
 	flag := cmd.Flags().Lookup("ndjson")
 	return flag != nil && flag.Changed && flag.Value.String() == "true"
+}
+
+// commandAutoWritesNDJSON 与各视觉列表实际的 stdout 判定保持一致，让下游主动
+// 关闭管道时可按 Unix 习惯结束而不把 EPIPE 误报为命令失败。
+func commandAutoWritesNDJSON(cmd *cobra.Command, out io.Writer) bool {
+	if cmd == nil || cmd.Flags().Changed("json") {
+		return false
+	}
+	file, ok := out.(interface{ Fd() uintptr })
+	if !ok || term.IsTerminal(int(file.Fd())) {
+		return false
+	}
+	return slices.Contains([]string{
+		"pixiv search", "pixiv ranking", "pixiv recommended",
+		"pixiv timeline following", "pixiv timeline latest",
+		"pixiv mypixiv works", "pixiv user artworks", "pixiv user bookmarks",
+	}, cmd.CommandPath())
 }
 
 // usageError 标记由 CLI 参数、flag 或显式输入契约验证导致的错误；上游 SDK、
@@ -282,8 +289,8 @@ func newUsageError(err error) error {
 	return &usageError{err: err}
 }
 
-func runMCP(ctx context.Context, proxyOverride *string) error {
-	return bootstrap.RunMCP(ctx, proxyOverride)
+func runMCP(ctx context.Context, proxyOverride *string, requestIntervalOverride *time.Duration) error {
+	return bootstrap.RunMCP(ctx, proxyOverride, requestIntervalOverride)
 }
 
 func (a app) services() application.Services {
@@ -291,6 +298,7 @@ func (a app) services() application.Services {
 }
 
 func (a app) newRootCommand() *cobra.Command {
+	var sleepRequest time.Duration
 	cmd := &cobra.Command{
 		Use:           "pixiv",
 		Short:         "Pixiv CLI and MCP server",
@@ -308,20 +316,15 @@ func (a app) newRootCommand() *cobra.Command {
 			}
 			return config.EnsureDefaultConfigFile()
 		},
-		PersistentPostRun: func(cmd *cobra.Command, args []string) {
-			if cmd.CommandPath() == "pixiv filter" {
-				return
-			}
-			a.checkAutomaticUpdate(cmd)
-		},
+		PersistentPostRun: func(cmd *cobra.Command, args []string) { a.checkAutomaticUpdate(cmd) },
 	}
 	cmd.SetVersionTemplate("pixiv {{.Version}}\n")
+	cmd.PersistentFlags().DurationVar(&sleepRequest, "sleep-request", 0, "minimum interval between network request starts for this command")
 	cmd.CompletionOptions.DisableDefaultCmd = true
 	cmd.AddCommand(
 		a.newAccountCommand(),
 		a.newConfigCommand(),
 		a.newSearchCommand(),
-		a.newFilterCommand(),
 		a.newNovelCommand(),
 		a.newDetailCommand(),
 		a.newRankingCommand(),
@@ -357,7 +360,7 @@ func (a app) enableMCPBrokenPipeSignal(cmd *cobra.Command) {
 // credential export 与操作系统回调不得因只读/敏感流程而产生本地配置文件。
 func shouldInitializeConfigForCommand(cmd *cobra.Command) bool {
 	switch cmd.CommandPath() {
-	case "pixiv", "pixiv auth", "pixiv config", "pixiv version", "pixiv filter", "pixiv auth export", "pixiv auth " + internalURLCallbackCommand, "pixiv auth " + internalURLHandlerInstallCommand:
+	case "pixiv", "pixiv auth", "pixiv config", "pixiv version", "pixiv auth export", "pixiv auth " + internalURLCallbackCommand, "pixiv auth " + internalURLHandlerInstallCommand:
 		return false
 	default:
 		return true
@@ -372,11 +375,11 @@ func (a app) newMCPCommand() *cobra.Command {
 		Example: "pixiv mcp",
 		Args:    requireExactArgs(0, "pixiv mcp"),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			proxyOverride, err := proxyOverrideFromFlags(cmd, opts)
+			request, err := a.clientRequest(cmd, commandOptions{proxyOptions: opts}, false)
 			if err != nil {
 				return err
 			}
-			return runMCPServer(cmd.Context(), proxyOverride)
+			return runMCPServer(cmd.Context(), request.HTTPSProxyOverride, request.RequestIntervalOverride)
 		},
 	}
 	a.bindProxyFlags(cmd, &opts)
@@ -397,8 +400,8 @@ func (a app) bindActionFlags(cmd *cobra.Command, opts *commandOptions) {
 
 func (a app) bindProxyFlags(cmd *cobra.Command, opts *proxyOptions) {
 	flags := cmd.Flags()
-	flags.StringVar(&opts.proxy, "proxy", "", "HTTP(S) proxy URL for this command")
-	flags.BoolVar(&opts.noProxy, "no-proxy", false, "clear HTTP(S) proxy for this command")
+	flags.StringVar(&opts.proxy, "proxy", "", "proxy URL (http, https, socks5, or socks5h) for this command")
+	flags.BoolVar(&opts.noProxy, "no-proxy", false, "clear the configured proxy for this command")
 }
 
 func (a app) clientRequest(cmd *cobra.Command, opts commandOptions, needsAuth bool) (application.ClientRequest, error) {
@@ -410,6 +413,16 @@ func (a app) clientRequest(cmd *cobra.Command, opts commandOptions, needsAuth bo
 		return application.ClientRequest{}, err
 	}
 	req.HTTPSProxyOverride = proxyOverride
+	if flag := cmd.Flags().Lookup("sleep-request"); flag != nil && flag.Changed {
+		value, err := time.ParseDuration(flag.Value.String())
+		if err != nil {
+			return application.ClientRequest{}, fmt.Errorf("invalid --sleep-request: %w", err)
+		}
+		if value < 0 {
+			return application.ClientRequest{}, errors.New("--sleep-request must not be negative")
+		}
+		req.RequestIntervalOverride = &value
+	}
 	if cmd.Flags().Changed("json") {
 		req.JSONOverride = &opts.jsonOut
 	}

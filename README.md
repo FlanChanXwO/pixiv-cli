@@ -17,11 +17,11 @@
 ## Why pixiv-cli?
 
 - **One capability surface** — search, details, rankings, recommendations, users, bookmarks, follows, downloads, and ugoira across CLI, MCP, and SDK.
-- **Timelines and composable Record pipelines** — retrieve latest or following works as canonical NDJSON, filter them locally, and pass records into actions.
+- **Composable visual pipelines** — visual lists automatically emit canonical NDJSON when piped; use `--filter` for typed local artwork rules and pass matching records straight to `download`.
 - **Local account pools** — select eligible local accounts for read workloads and honor Pixiv `Retry-After` responses during pagination and download preparation.
 - **Guided account sign-in** — complete browser OAuth with `pixiv auth login`, then use `auth list`, `auth use`, and `auth check` to manage local multi-account access.
-- **GIF and APNG ugoira output** — keep GIF as the default or explicitly request APNG through the CLI, MCP, or SDK.
-- **Cache-aware downloads with terminal progress** — revalidate persistent `.pixiv-cache` metadata, resume verified partial data with `Range` and `If-Range`, and show exact aggregate byte progress when available.
+- **Four ugoira output modes** — choose GIF, APNG, lossless ZIP, or extracted frames.
+- **Reliable, organized downloads** — revalidate `.pixiv-cache` metadata, resume verified partials, retry eligible resource failures, optionally archive completed artwork IDs, write sidecars, and show exact terminal progress when available.
 - **Authenticated App API discovery** — read R18 details, pages, ugoira metadata, and all 16 ranking modes through the App API.
 - **Useful search filters** — rating, content type, AI mode, aspect ratio, resolution, and a versioned drawing-tool catalog.
 - **Direct Pixiv references** — paste supported artwork URLs into detail or download; authenticated profile and artworks URLs expand to that creator's visual works.

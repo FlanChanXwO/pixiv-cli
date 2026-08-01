@@ -187,17 +187,19 @@ R18/R18G/mature 与动态搜索选项会返回认证需求，不伪造空结果�
 
 负责将 Pixiv 与下载能力注册为 MCP tools。所有 Pixiv 内容、认证、资源和写操作都通过 `SDKService` 使用 public SDK；旧构造器保留的首个 API 参数只是废弃占位，生产路径不会读取。下载由 operation snapshot 对应的 `DownloadManager` 执行。MCP 的 nullable `page`/`limit` 只在本 adapter 解析，逻辑分页遍历由 application 共享引擎执行；旧 offset wire 字段已移除。stdio runtime 由 `internal/bootstrap` 组装和启动。
 
-包内按职责拆分：`server.go` 负责 App 构造与 tool handler 适配，`registration.go` 只维护 tool 注册，`download_tools.go` 承载下载适配，`legacy_tools.go` 承载文本型读取适配，`formatting.go` 集中文本/output helper，`sdk_runtime.go` 负责分页、operation snapshot 与 gate，`sdk_tools.go` 承载 SDK typed tools。运行期 handler 的失败结果保留其 structured output 并使用 `isError=true`；正常空结果不会伪装成失败。完整 wire 语义见 [MCP 工具](../zh-CN/mcp-tools.md#错误与分页)。
+包内按职责拆分：`server.go` 负责 App 构造与 tool handler 适配，`registration.go` 只维护 tool 注册，`download_tools.go` 承载下载适配，`legacy_tools.go` 承载文本型读取适配，`record_filters.go` 负责结构化 Record 筛选与顶层插画表达式的组合，`formatting.go` 集中文本/output helper，`sdk_runtime.go` 负责分页、operation snapshot 与 gate，`sdk_tools.go` 承载 SDK typed tools。MCP 不自行实现表达式、重试、归档或文件模板：它在打开 SDK operation 前编译输入，再将同一 public `pixiv.DownloadOptions` 交给 SDK。运行期 handler 的失败结果保留其 structured output 并使用 `isError=true`；正常空结果不会伪装成失败。完整 wire 语义见 [MCP 工具](../zh-CN/mcp-tools.md#错误与分页)。
 
 ### `internal/download`
 
 负责下载和本地文件落盘：
 
+面向 CLI/MCP/SDK 的新下载语义由顶层 `pixiv.DownloadAllWith` 统一持有：来源展开、作品筛选、SQLite archive、目录/文件模板、sidecar、开放页选择、资源重试、进度事件和 ugoira 模式均不能在 adapter 中复制。此包的 `Manager` 仅保留旧嵌入适配与 Rust ugoira 编码桥；生产新路径通过 public SDK 使用同一资源缓存与续传事务。
+
 - `Download` 会同步下载 ID 列表，并返回每个作品的实际产物路径。
 - 单页作品保存到下载目录。
 - 多页作品和 ugoira 会建立作品子目录。
 - 单页与多页作品从上游 URL path 推导扩展名，并与模板生成的文件名一样规范化跨平台非法字符；扩展名还会替换 ASCII 控制字符并移除 Windows 非法尾随点/空格，但不猜测或静默替换扩展名。
-- ugoira 先下载 SDK 验证的 `download_url` zip，再由 Rust FFI encoder 合成为 GIF/APNG；认证态可合法选择 App medium，绝不把它标记成 original。
+- ugoira 先下载 SDK 验证的 `download_url` zip，再由 Rust FFI encoder 合成为 GIF/APNG，或由 public SDK 原样发布 ZIP/提取 frames；认证态可合法选择 App medium，绝不把它标记成 original。
 
 Rust crate 以 target 专用 staticlib 接入 cgo：darwin/linux/windows 各有 amd64/arm64 selector；Linux
 selector 还显式链接系统 `libm`，承接 Rust/image staticlib 的 `sinf`/`expf` 符号；Windows selector 以

@@ -52,6 +52,7 @@ func (a *App) userDetailError(ctx context.Context, err error) (*mcp.CallToolResu
 
 type recommendedIn struct {
 	Kind         string          `json:"kind" jsonschema:"required: all, illust, manga, novel, or user"`
+	Filter       string          `json:"filter,omitempty" jsonschema:"safe local illustration filter expression"`
 	IllustFilter *illustFilterIn `json:"illust_filter,omitempty"`
 	NovelFilter  *novelFilterIn  `json:"novel_filter,omitempty"`
 	UserFilter   *userFilterIn   `json:"user_filter,omitempty"`
@@ -91,7 +92,7 @@ func (a *App) recommended(ctx context.Context, _ *mcp.CallToolRequest, in recomm
 	if err != nil {
 		return a.recommendedError(ctx, err)
 	}
-	ctx, err = withMixedRecordFilters(ctx, in.IllustFilter, in.NovelFilter, in.UserFilter)
+	ctx, err = withMixedRecordFiltersExpression(ctx, in.IllustFilter, in.Filter, in.NovelFilter, in.UserFilter)
 	if err != nil {
 		return a.recommendedError(ctx, err)
 	}
@@ -183,6 +184,7 @@ func (a *App) recommendedError(ctx context.Context, err error) (*mcp.CallToolRes
 type userArtworksIn struct {
 	UserID       int64           `json:"user_id,omitempty" jsonschema:"optional user ID; defaults to the authenticated user"`
 	Type         sdk.IllustType  `json:"type,omitempty" jsonschema:"illust, manga, or ugoira"`
+	Filter       string          `json:"filter,omitempty" jsonschema:"safe local illustration filter expression"`
 	IllustFilter *illustFilterIn `json:"illust_filter,omitempty"`
 	pageLimitIn
 }
@@ -201,7 +203,7 @@ func (a *App) userArtworks(ctx context.Context, _ *mcp.CallToolRequest, in userA
 	if err != nil {
 		return a.illustListError(ctx, err)
 	}
-	ctx, err = withIllustFilter(ctx, in.IllustFilter)
+	ctx, err = withIllustFilterExpression(ctx, in.IllustFilter, in.Filter)
 	if err != nil {
 		return a.illustListError(ctx, err)
 	}
@@ -237,6 +239,7 @@ type bookmarksSDKIn struct {
 	UserID       int64           `json:"user_id,omitempty" jsonschema:"optional user ID; defaults to the authenticated user"`
 	Restrict     string          `json:"restrict,omitempty" jsonschema:"public or private"`
 	Tag          string          `json:"tag,omitempty"`
+	Filter       string          `json:"filter,omitempty" jsonschema:"safe local illustration filter expression"`
 	IllustFilter *illustFilterIn `json:"illust_filter,omitempty"`
 	pageLimitIn
 }
@@ -247,7 +250,7 @@ func (a *App) userBookmarks(ctx context.Context, _ *mcp.CallToolRequest, in book
 	if err != nil {
 		return a.illustListError(ctx, err)
 	}
-	ctx, err = withIllustFilter(ctx, in.IllustFilter)
+	ctx, err = withIllustFilterExpression(ctx, in.IllustFilter, in.Filter)
 	if err != nil {
 		return a.illustListError(ctx, err)
 	}

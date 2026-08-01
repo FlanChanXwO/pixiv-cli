@@ -25,7 +25,7 @@ local, err := pixiv.OpenDefaultWith(pixiv.OpenDefaultOptions{
 
 `NewClient` 不读本地文件，也不网络认证。`OpenDefault` 使用 `AuthFilePath`、`ConfigFilePath`、`RefreshToken`、`UserID` 或现有默认路径和环境选择认证；需要 runtime configuration 的公开操作重新取得一次 configuration/auth snapshot。多次续页若要求同一 snapshot，调用 `client.Snapshot(ctx)`。显式 token 导出是例外，只读取 auth store。
 
-`NewClientOptions` 只保留直连客户端字段：`AccessToken`、`WebFallbackEnabled`、HTTP、App/Web endpoint、`ResourcePolicy` 与可选 `ResourceCachePath`。`OpenDefaultOptions` 则拥有本地路径、OAuth endpoint、账号选择、HTTP/endpoint 与资源策略/缓存路径。两种 options 不混入无效字段；`OpenDefault` 每次 snapshot 从本地 `web_fallback_enabled` 读取 Web fallback 设置。
+`NewClientOptions` 只保留直连客户端字段：`AccessToken`、`WebFallbackEnabled`、HTTP、App/Web endpoint、`ResourcePolicy`、可选 `ResourceCachePath` 与 `RequestInterval`。`OpenDefaultOptions` 则拥有本地路径、OAuth endpoint、账号选择、HTTP/endpoint、资源策略/缓存路径与请求间隔。两种 options 不混入无效字段；`OpenDefault` 每次 snapshot 从本地 `web_fallback_enabled` 读取 Web fallback 设置。
 
 ### HTTP client 与请求生命周期
 
@@ -41,7 +41,7 @@ local, err := pixiv.OpenDefaultWith(pixiv.OpenDefaultOptions{
 
 | 类别 | 方法 |
 | --- | --- |
-| 作品与推荐 | `SearchIllust`、`SearchNovel`、`SupportedDrawingTools`、`IllustDetail`、`IllustPages`、`IllustRelated`、`IllustRanking`、`IllustRecommended`、`MangaRecommended`、`NovelRecommended`、`UserRecommended`、`FollowingIllusts`、`TrendingTagsIllust`、`UgoiraMetadata`。 |
+| 作品与推荐 | `SearchIllust`、`SearchNovel`、`SupportedDrawingTools`、`IllustDetail`、`IllustPages`、`IllustRelated`、`IllustRanking`、`IllustRecommended`、`MangaRecommended`、`NovelRecommended`、`UserRecommended`、`FollowingIllusts`、`TrendingTagsIllust`、`IllustSeries`、`UgoiraMetadata`。 |
 | 用户 | `SearchUser`、`UserDetail`、`UserArtworks`、`UserBookmarks`、`UserFollowing`、`CurrentUserID`。 |
 | 写操作 | `AddBookmark`、`RemoveBookmark`、`FollowUser`、`UnfollowUser`。 |
 | 账号/配置 | `ImportAccount`、`ListAccounts`、`SelectAccount`、`RemoveAccount`、`ExportAccountRefreshToken`、`ExportAuthBundle`、`RestoreAuthBundle`、`CheckAccount`、`CheckRefreshToken`、`Refresh`、`RefreshAccount`、`PremiumStatus`、`RefreshPremiumStatus`、`GetConfig`、`SetConfig`、`UnsetConfig`；bundle codec 是 package-level function。 |
@@ -55,7 +55,7 @@ local, err := pixiv.OpenDefaultWith(pixiv.OpenDefaultOptions{
 
 `Download(ctx, src)`、`DownloadAll(ctx, srcs)` 是新手入口。`src` 可为正整数作品 PID、官方作品 URL 或 `ResourcePolicy` 允许的 CDN 直链；默认使用 `./downloads`、`{author} - {title}_{id}`、原图、全部页与 `2 × runtime.GOMAXPROCS(0)` 自动并发。
 
-`DownloadWith`、`DownloadAllWith` 接受 `DownloadOptions`，可控制 `DownloadPath`、`FilenameTemplate`、从 1 开始的 `Pages`、`Quality`、`UgoiraFormat`、`Concurrency` 与只观察的 `Progress` 回调。`UgoiraFormat` 默认为 `gif`，也可为 `apng`。`Concurrency==0` 为自动；任意正数精确采用且不设人为上限。直链按 URL 文件名保存，不支持页选择、派生质量和自定义作品模板。`DownloadAllResult.Items` 保持输入顺序，每项给出 `Attempted`、成功结果（包括文件缓存状态）或错误，可只重试失败项。Ugoira ZIP 会缓存后转 GIF 或 APNG，ugoira 不支持页选择和非 original 质量。
+`DownloadWith`、`DownloadAllWith` 接受 `DownloadOptions`，可控制 `DownloadPath`、`FilenameTemplate`、`DirectoryTemplate`、闭区间 `Pages` 或支持开区间的 `PageSelection`、`Quality`、`UgoiraMode`、`Concurrency`、已编译的 `Filter`、`ArchivePath`、`WriteMetadata`、`RetryPolicy` 与只观察的 `Progress` 回调。`UgoiraMode` 默认为 `gif`，还支持 `apng`、无损 `zip` 与 `frames`（帧文件及时间描述）。作品模板支持 `{id}`、`{title}`、`{author}`、`{author_id}`、`{date}`、`{tags}`、`{num}`；目录模板只能是安全相对路径，`{num}` 从 0 开始。SQLite archive 只在一个作品的全部选中产物与要求 sidecar 都成功后记录该作品；sidecar 是原子 `{artifact}.json`，包含 public `Illust`、相对产物路径、页码、模式和可用的 ugoira 帧时序。CDN 直链使用 URL 文件名，并拒绝筛选、页选择、派生质量、作品模板及 sidecar 等依赖作品元数据的选项。`Concurrency==0` 为自动；任意正数精确采用且不设人为上限。ugoira 不支持页选择和非 original 质量。使用 `DownloadOptions` 时，具有效 `Retry-After` 的 429、5xx 与可重试传输错误默认额外重试三次（1/2/4 秒）；取消、永久本地错误和 4xx 不重试。
 
 `Progress func(DownloadProgress)` 由下载 worker 直接并发调用。每个事件提供输入 `SourceIndex`、从 1 开始的 `Page`、目标路径、可用作品元数据、单资源字节数与批次字节数。设置该回调后，SDK 会对每项资源安全执行 HEAD 探测；全部资源大小确定时，`TotalBytesKnown` 与 `TotalBytes` 描述整个批次，否则仍持续提供资源与批次的已传输字节。已验证残片的字节从首个事件开始计入。回调应保持非阻塞，取消传入的 context 即可停止传输。
 
@@ -67,7 +67,8 @@ local, err := pixiv.OpenDefaultWith(pixiv.OpenDefaultOptions{
 
 `ParseReference(raw)` 不执行 I/O，接受正整数作品 ID 或严格的官方 Pixiv HTTPS URL，并返回
 `Reference{Kind, ID}`：ID 与 `/artworks/{id}` 的 `Kind` 是 `artwork`，`/users/{id}` 与
-`/users/{id}/artworks` 的 `Kind` 是 `user`。host 必须为 `pixiv.net` 或 `www.pixiv.net`，可带可选
+`/users/{id}/artworks` 的 `Kind` 是 `user`，`/users/{id}/bookmarks/artworks` 是 `user_bookmarks`，
+`/user/{id}/series/{series_id}` 是 `illust_series`。host 必须为 `pixiv.net` 或 `www.pixiv.net`，可带可选
 locale、query 与 fragment。`ParseArtworkReference(raw)` 与 `ParseUserReference(raw)` 是领域类型安全变体（后者也接受用户 ID），`Reference.URL()` 返回规范
 作品或用户页 URL。解析器不跟随跳转、不抓取 HTML，拒绝其他 Pixiv 属性或 URL 形式，校验错误也不会复现输入 URL。
 
@@ -121,6 +122,10 @@ auth store，不读取 `PIXIV_REFRESH_TOKEN` 或 runtime config，不刷新、�
 `SupportedDrawingTools() []string` 返回版本化绘图工具目录及其文档顺序，不发起网络请求，并返回可由调用方修改的防御性副本。`PremiumStatus(ctx)` 返回已保存认证账号缓存或新读取的会员状态快照；
 `RefreshPremiumStatus(ctx)` 强制读取 profile 并持久化结果。`OpenDefault` 使用
 `[premium] status_cache_ttl`（默认 `24h`，`0s` 禁用复用）。直接 `NewClient` access token 没有可验证的账号 UID，不能执行这项已保存账号预检。
+
+### 本地插画表达式筛选
+
+`CompileIllustFilter(expression)` 会编译不透明、无副作用的 `*IllustFilter`；对一个 public `Illust` 调用 `Match` 即可判断。字段仅限 `id`、`userId`、`userName`、`type`、`title`、`createDate`、`pageCount`、`bookmarkCount`、`viewCount`、`xRestrict`、`aiType`、`width`、`height`、`tags`、`tools`、`rating`、`aiMode`、`aspectRatio`、`resolution`、`drawTool`。表达式只允许布尔比较、`and`/`or`/`not`、`in`/`not in`、数组字面量和 Expr 原生 `any`/`all`，例如 `any(tags, # in ["miku", "vocaloid"]) and bookmarkCount >= 5000`。算术、正则、对象/map/成员访问、变量、条件表达式、管道、反射和其他函数都会在联网前被拒绝。编译错误会指出无效字段、类型或源码列，失败不会伪装为空结果。
 
 ### 小说搜索与用户搜索来源
 

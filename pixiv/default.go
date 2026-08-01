@@ -125,6 +125,7 @@ func (d *defaultOptions) snapshot(ctx context.Context, operation Operation) (*Cl
 	options.HTTPClient = httpClient
 	options.AccessToken = ""
 	options.WebFallbackEnabled = snapshot.runtime.WebFallbackEnabled
+	options.RequestInterval = snapshot.runtime.RequestInterval
 	if refreshToken == "" {
 		client, err := newClient(options)
 		if err != nil {
@@ -235,6 +236,7 @@ func (d *defaultOptions) resourceSnapshot(operation Operation) (*Client, error) 
 	options := d.options
 	options.AccessToken = ""
 	options.HTTPClient = httpClient
+	options.RequestInterval = runtime.RequestInterval
 	client, err := newClient(options)
 	if err != nil {
 		return nil, localSnapshotError(operation, err)

@@ -26,8 +26,8 @@ func NewReleaseHTTPClient(proxyURL string) (*http.Client, error) {
 		if err != nil {
 			return nil, fmt.Errorf("parse update proxy URL: %w", uri.ErrInvalidProxy)
 		}
-		if (parsedProxy.Scheme != "http" && parsedProxy.Scheme != "https") || parsedProxy.Host == "" {
-			return nil, fmt.Errorf("update proxy URL must be an absolute HTTP(S) URL: %w", uri.ErrInvalidProxy)
+		if (parsedProxy.Scheme != "http" && parsedProxy.Scheme != "https" && parsedProxy.Scheme != "socks5" && parsedProxy.Scheme != "socks5h") || parsedProxy.Host == "" {
+			return nil, fmt.Errorf("update proxy URL must use http, https, socks5, or socks5h: %w", uri.ErrInvalidProxy)
 		}
 		clonedTransport.Proxy = http.ProxyURL(parsedProxy)
 	}

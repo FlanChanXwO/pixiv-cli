@@ -15,7 +15,9 @@ type ConfigKey string
 const (
 	ConfigKeyDownloadPath          ConfigKey = "download_path"
 	ConfigKeyFilenameTemplate      ConfigKey = "filename_template"
+	ConfigKeyDirectoryTemplate     ConfigKey = "directory_template"
 	ConfigKeyHTTPSProxy            ConfigKey = "https_proxy"
+	ConfigKeyRequestInterval       ConfigKey = "request_interval"
 	ConfigKeyWebFallbackEnabled    ConfigKey = "web_fallback_enabled"
 	ConfigKeyUpdateCheckEnabled    ConfigKey = "update_check_enabled"
 	ConfigKeyOutputJSON            ConfigKey = "output_json"

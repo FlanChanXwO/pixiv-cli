@@ -28,36 +28,36 @@ Record-list tools use an optional filter named for the entity they return:
 | `novel_filter` | `id` (positive), `tags` (all exact tags), `min_views` (non-negative) |
 | `user_filter` | `id` (positive) |
 
-An illustration list accepts `illust_filter`, a novel list accepts `novel_filter`, and a user list accepts `user_filter`. Mixed recommendations accept the matching filter for each record kind.
+An illustration list accepts `illust_filter`, a novel list accepts `novel_filter`, and a user list accepts `user_filter`. Mixed recommendations accept the matching filter for each record kind. Every illustration-list tool and `download` also accept a top-level `filter` string: a safe local expression over public illustration fields. It is combined with `illust_filter` using AND. Expressions support comparisons, `and`/`or`/`not`, `in`/`not in`, arrays, and `any`/`all`; for example, `bookmarkCount >= 5000 and xRestrict == 0` or `any(tags, # in ["miku"])`. When a mixed result uses `filter`, novels and users are omitted.
 
 ## Downloads
 
 | Tool | Input | Structured output |
 | --- | --- | --- |
-| `download` | Exactly one of `src` or ordered `srcs`; each source is a PID, supported Pixiv artwork/user URL, or allowed CDN URL. Optional `pages`, `quality`, `concurrency`, `ugoira_format` (`gif` or `apng`), and `delivery: "local_path"`. | `{items, failures, files, text}` with local-file metadata. |
-| `download_random_from_recommendation` | Optional `count` (omitted or `null` is 5; explicit values are 1..20), optional `pages` and `quality`, and `delivery: "local_path"`. | Local-file report using the same error semantics. |
+| `download` | Exactly one of `src` or ordered `srcs`; each source is a PID, supported Pixiv artwork/user/bookmarks/series URL, or allowed CDN URL. Optional `pages` (including `3-`), `quality`, `concurrency`, `ugoira_mode` (`gif`, `apng`, `zip`, `frames`), `filter`, `archive`, `directory_template`, `write_metadata`, `retries`, `retry_delay`, and `delivery: "local_path"`. | `{items, failures, files, text}` with local-file metadata. |
+| `download_random_from_recommendation` | Optional `count` (omitted or `null` is 5; explicit values are 1..20), optional `pages`, `quality`, `ugoira_mode`, and `delivery: "local_path"`. | Local-file report using the same error semantics. |
 
-User URLs expand authenticated illustration, manga, and ugoira works in source order; duplicate artworks are fetched once. `concurrency: 0` uses `2 × GOMAXPROCS`. The resource cache safely resumes a validator-matched partial file. A failed item remains in `failures` while independent items continue, and any failure sets `isError=true`.
+User, public-bookmarks, and illustration-series URLs expand authenticated illustration, manga, and ugoira works in source order; duplicate artwork IDs are fetched once. A filter runs after artwork detail is available and before files are written; a CDN URL has no artwork metadata and therefore rejects `filter`. `archive` is a SQLite file that records an artwork only after every selected output and requested metadata sidecar has succeeded. `directory_template` and filename templates support `{id}`, `{title}`, `{author}`, `{author_id}`, `{date}`, `{tags}`, and `{num}`. `concurrency: 0` uses `2 × GOMAXPROCS`. Resource requests retry retryable failures three times by default (1/2/4 seconds; a valid `Retry-After` takes precedence) and the resource cache safely resumes a validator-matched partial file. A failed item remains in `failures` while independent items continue, and any failure sets `isError=true`.
 
 ## Reads
 
 | Tool | Input |
 | --- | --- |
-| `search_illust` | `word`, search filters, `page`, `limit`, optional `illust_filter` |
+| `search_illust` | `word`, search filters, `page`, `limit`, optional `filter` and `illust_filter` |
 | `search_novel` | `word`, novel-search filters, `page`, `limit`, optional `novel_filter` |
 | `illust_detail` | Exactly one of `illust_id` or supported `url` |
-| `illust_related`, `illust_ranking`, `illust_recommended` | Their operation inputs, `page`, `limit`, optional `illust_filter` |
-| `recommended` | Required `kind` (`all`, `illust`, `manga`, `novel`, `user`), `page`, `limit`, and applicable entity filters |
+| `illust_related`, `illust_ranking`, `illust_recommended` | Their operation inputs, `page`, `limit`, optional `filter` and `illust_filter` |
+| `recommended` | Required `kind` (`all`, `illust`, `manga`, `novel`, `user`), `page`, `limit`, optional `filter`, and applicable entity filters |
 | `trending_tags_illust` | No input; returns `{tags, text}` |
-| `timeline_illust_following` | `restrict`, `page`, `limit`, optional `illust_filter` |
+| `timeline_illust_following` | `restrict`, `page`, `limit`, optional `filter` and `illust_filter` |
 | `timeline_novel_following` | `restrict`, `page`, `limit`, optional `novel_filter` |
-| `timeline_illust_latest` | Required `content_type` (`illust` or `manga`), `page`, `limit`, optional `illust_filter` |
+| `timeline_illust_latest` | Required `content_type` (`illust` or `manga`), `page`, `limit`, optional `filter` and `illust_filter` |
 | `timeline_novel_latest` | `page`, `limit`, optional `novel_filter` |
 | `mypixiv_users` | `page`, `limit`, optional `user_filter` |
-| `mypixiv_illusts` / `mypixiv_novels` | `page`, `limit`, and the matching illustration or novel filter |
+| `mypixiv_illusts` / `mypixiv_novels` | `page`, `limit`, optional top-level `filter` for illustrations, and the matching illustration or novel filter |
 | `search_user` | `word`, `page`, `limit`, optional `user_filter` |
 | `user_detail` | Required `user_id` |
-| `user_artworks`, `user_novels`, `user_bookmarks`, `user_following` | Optional `user_id`, operation-specific inputs, `page`, `limit`, and the matching entity filter |
+| `user_artworks`, `user_novels`, `user_bookmarks`, `user_following` | Optional `user_id`, operation-specific inputs, `page`, `limit`, optional top-level `filter` for illustration lists, and the matching entity filter |
 
 `search_illust.tool` uses the versioned drawing-tool catalog from the [CLI reference](cli-reference.md#drawing-tool-catalog). It requires an exact value; a unique one-edit spelling correction is offered in the validation error, while ambiguous prefixes are rejected.
 
