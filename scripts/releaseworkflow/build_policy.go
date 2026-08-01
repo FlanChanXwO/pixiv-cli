@@ -50,7 +50,7 @@ func checkValidateJob(job *yaml.Node) error {
 		return err
 	}
 	validateStep := steps[3]
-	if err := requireRunFragments(validateStep, "validate release tag step", "test \"$GITHUB_REF\" = \"refs/heads/$DEFAULT_BRANCH\"", "git show-ref --verify --quiet \"refs/tags/$RELEASE_TAG\"", "git show \"$RELEASE_TAG:skills/pixiv-cli/SKILL.md\" > \"$tag_skill\"", "go run ./scripts/releaseassets validate-source --version \"${RELEASE_TAG#v}\" --product-skill \"$tag_skill\"", "git merge-base --is-ancestor \"$tag_commit\" \"origin/$DEFAULT_BRANCH\"", "gh api --include \"repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG\"", "HTTP/[0-9.]+ 404"); err != nil {
+	if err := requireRunFragments(validateStep, "validate release tag step", "test \"$GITHUB_REF\" = \"refs/heads/$DEFAULT_BRANCH\"", "git show-ref --verify --quiet \"refs/tags/$RELEASE_TAG\"", "tag_skill=\"$RUNNER_TEMP/pixiv-cli-SKILL.md\"", "git show \"$RELEASE_TAG:skills/pixiv-cli/SKILL.md\" > \"$tag_skill\"", "go run ./scripts/releaseassets validate-source --version \"${RELEASE_TAG#v}\" --product-skill \"$tag_skill\"", "git merge-base --is-ancestor \"$tag_commit\" \"origin/$DEFAULT_BRANCH\"", "gh api --include \"repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG\"", "HTTP/[0-9.]+ 404"); err != nil {
 		return err
 	}
 	if !hasCommand(job, "", "sh scripts/test-release-workflow.sh") {

@@ -22,6 +22,7 @@ import (
 	"strings"
 
 	"github.com/FlanChanXwO/pixiv-cli/scripts/internal/releasenotesrender"
+	"gopkg.in/yaml.v3"
 )
 
 var semanticVersionPattern = regexp.MustCompile(`^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-(?:(?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*))*))?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$`)
@@ -131,6 +132,9 @@ func runValidateSource(arguments []string) error {
 	if err := flags.Parse(arguments); err != nil {
 		return err
 	}
+	if *productSkill == "" {
+		return errors.New("--product-skill is required")
+	}
 	if flags.NArg() != 0 {
 		return fmt.Errorf("validate-source accepts no positional arguments: %q", flags.Arg(0))
 	}
@@ -147,8 +151,8 @@ func runValidateSource(arguments []string) error {
 	return nil
 }
 
-// productSkillVersion 只读取 SKILL.md YAML front matter 中唯一的 version 字段。
-// 这里不解析正文，以免文档内的示例或说明意外改变发布身份。
+// productSkillVersion 只读取 SKILL.md 的 YAML front matter 中唯一的 version 字段。
+// YAML decoder 兼容有效的字段顺序、注释和引号；正文不参与解析，避免示例或说明改变发布身份。
 func productSkillVersion(path string) (string, error) {
 	if err := requireRegularFile(path, "product skill"); err != nil {
 		return "", err
@@ -161,34 +165,29 @@ func productSkillVersion(path string) (string, error) {
 	if len(lines) < 3 || strings.TrimSpace(lines[0]) != "---" {
 		return "", fmt.Errorf("product skill %q must start with YAML front matter", path)
 	}
-	version := ""
-	foundVersion := false
-	frontMatterClosed := false
-	for _, line := range lines[1:] {
+	frontMatterEnd := -1
+	for index, line := range lines[1:] {
 		if strings.TrimSpace(line) == "---" {
-			frontMatterClosed = true
+			frontMatterEnd = index + 1
 			break
 		}
-		key, value, found := strings.Cut(line, ":")
-		if !found || strings.TrimSpace(key) != "version" {
-			continue
-		}
-		if foundVersion {
-			return "", fmt.Errorf("product skill %q defines version more than once", path)
-		}
-		foundVersion = true
-		version = strings.TrimSpace(value)
 	}
-	if !frontMatterClosed {
+	if frontMatterEnd == -1 {
 		return "", fmt.Errorf("product skill %q has unterminated YAML front matter", path)
 	}
-	if !foundVersion || version == "" {
+	var metadata struct {
+		Version string `yaml:"version"`
+	}
+	if err := yaml.Unmarshal([]byte(strings.Join(lines[1:frontMatterEnd], "\n")), &metadata); err != nil {
+		return "", fmt.Errorf("parse product skill %q YAML front matter: %w", path, err)
+	}
+	if metadata.Version == "" {
 		return "", fmt.Errorf("product skill %q has no version", path)
 	}
-	if err := validateVersion(version); err != nil {
+	if err := validateVersion(metadata.Version); err != nil {
 		return "", fmt.Errorf("product skill %q has invalid version: %w", path, err)
 	}
-	return version, nil
+	return metadata.Version, nil
 }
 
 func runPackage(arguments []string) error {

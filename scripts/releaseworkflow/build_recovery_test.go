@@ -859,6 +859,15 @@ func TestCheckWorkflowRequiresProductSkillVersionValidationFromReleaseTag(t *tes
 		mutate func(step *yaml.Node)
 	}{
 		{
+			name: "product skill temp path removed",
+			mutate: func(step *yaml.Node) {
+				replaceRunFragment(t, step,
+					`tag_skill="$RUNNER_TEMP/pixiv-cli-SKILL.md"`,
+					`product_skill_path="$RUNNER_TEMP/pixiv-cli-SKILL.md"`,
+				)
+			},
+		},
+		{
 			name: "product skill blob replaced",
 			mutate: func(step *yaml.Node) {
 				replaceRunFragment(t, step,
