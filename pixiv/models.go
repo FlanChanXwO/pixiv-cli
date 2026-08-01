@@ -312,6 +312,14 @@ type IllustRelatedRequest struct {
 	Cursor   Cursor `json:"cursor,omitempty"`
 }
 
+// IllustSeriesRequest 指定插画系列及其不透明续页游标。UserID 是页面 URL 中的
+// 作者归属断言，防止把格式正确但作者不匹配的 series URL 静默展开为别人的作品。
+type IllustSeriesRequest struct {
+	SeriesID int64  `json:"series_id"`
+	UserID   int64  `json:"user_id"`
+	Cursor   Cursor `json:"cursor,omitempty"`
+}
+
 type IllustListResult struct {
 	Illusts    []Illust `json:"illusts"`
 	NextCursor Cursor   `json:"next_cursor,omitempty"`

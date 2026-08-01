@@ -245,7 +245,7 @@ https_proxy=http://127.0.0.1:7890 ./build/pixiv mcp
 ./build/pixiv mcp --no-proxy
 ```
 
-CLI 的认证、配置、回调桥接、Release 检查缓存与 callback helper 都位于当前用户主目录下的 `.pixiv-cli`：macOS/Linux 为 `~/.pixiv-cli`，Windows 为 `%USERPROFILE%\.pixiv-cli`。多账号认证保存在 `auth.json`，账号 key 是 Pixiv UID；全局配置保存在 `config.toml`。Unix-like 主动使用 `0700` 父目录与 `0600` 文件；Windows 首次创建继承父目录 ACL，替换既有目标保留其 ACL，不主动收紧或放宽 DACL。推荐使用 `pixiv auth login` 通过本地 loopback server 和浏览器 OAuth 登录；服务器同时配置 `login_relay_public_url` 与 `login_relay_listen_addr` 时，会输出一次性远程 handoff URL，并直接转交已安装 pixiv-cli 的 desktop handler 完成登录，不渲染项目中间页或手动 callback 表单。已有 raw token 可用 `pixiv auth import` 输入，账号备份使用 `auth export` 与 `auth import --file`。`pixiv config path/get/set/unset` 只管理 `download_path`、`filename_template`、`https_proxy` 三个别名；其余高级 TOML（包括 `[web] fallback_enabled`）由用户手工维护。旧 `[logging]` 表和 `PIXIV_LOG_LEVEL` 为兼容性被忽略。无 refresh token 时默认启用匿名 Pixiv web/ajax API fallback。
+CLI 的认证、配置、回调桥接、Release 检查缓存与 callback helper 都位于当前用户主目录下的 `.pixiv-cli`：macOS/Linux 为 `~/.pixiv-cli`，Windows 为 `%USERPROFILE%\.pixiv-cli`。多账号认证保存在 `auth.json`，账号 key 是 Pixiv UID；全局配置保存在 `config.toml`。Unix-like 主动使用 `0700` 父目录与 `0600` 文件；Windows 首次创建继承父目录 ACL，替换既有目标保留其 ACL，不主动收紧或放宽 DACL。推荐使用 `pixiv auth login` 通过本地 loopback server 和浏览器 OAuth 登录；服务器同时配置 `login_relay_public_url` 与 `login_relay_listen_addr` 时，会输出一次性远程 handoff URL，并直接转交已安装 pixiv-cli 的 desktop handler 完成登录，不渲染项目中间页或手动 callback 表单。已有 raw token 可用 `pixiv auth import` 输入，账号备份使用 `auth export` 与 `auth import --file`。`pixiv config path/get/set/unset` 管理 `download_path`、`filename_template`、`directory_template`、`request_interval` 与 `https_proxy`；其余高级 TOML（包括 `[web] fallback_enabled`）由用户手工维护。旧 `[logging]` 表和 `PIXIV_LOG_LEVEL` 为兼容性被忽略。无 refresh token 时默认启用匿名 Pixiv web/ajax API fallback。
 CLI 使用 Cobra/pflag，flag 可以写在位置参数前后；例如 `pixiv auth check 12345678 --json` 和 `pixiv search "初音ミク" --json` 都受支持。
 
 ## 获取 refresh token
@@ -266,7 +266,7 @@ pixiv auth login
 
 本地登录的 active loopback bridge 优先接收 Pixiv 返回的 `pixiv://account/login?...`，并把 callback 交给本轮 CLI listener；OAuth exchange 完成后，浏览器显示固定的结果页。跨机器登录时，server 启动后只显示一次性 handoff URL；浏览器打开后直接转交 `pixiv://account/remote-login`，本机领取本次 OAuth URL，并把 callback 回传同一会话；本地只保存本次 handoff state，新的 handoff 会替换旧状态。远程 flow 需要已安装 CLI 的 desktop handler，不提供移动端手动回填。server 会核验提交内容属于本次会话且为官方 callback；Pixiv 带有 state 时必须匹配，再由本次 PKCE verifier 完成 exchange。`pixiv auth devices` 已移除；已有 `remote-devices.json` 会被忽略。HTTP 与 HTTPS 都可用于 relay；direct TLS 和同机 TLS reverse proxy 都受支持。旧 `login_relay_secret` 与 `login_relay_target_url` 配置会被静默忽略。
 
-浏览器使用的系统代理不会自动传给 Go CLI。若 Pixiv token exchange 需要代理，请配置 `pixiv config set https_proxy http://127.0.0.1:7890`，在单次命令前设置 `https_proxy=...`，或对网络命令使用运行期覆盖 `--proxy http://127.0.0.1:7890`。`--no-proxy` 会清空本次命令的代理，即使环境变量或 `config.toml` 设置了 `https_proxy`；`--proxy` 和 `--no-proxy` 不能同用，也不会写入 `config.toml`。
+浏览器使用的系统代理不会自动传给 Go CLI。`https_proxy`、`--proxy` 与更新路径都接受 `http`、`https`、`socks5`、`socks5h` URI。若 Pixiv token exchange 需要代理，请配置 `pixiv config set https_proxy socks5h://127.0.0.1:7890`，在单次命令前设置 `https_proxy=...`，或对网络命令使用运行期覆盖 `--proxy socks5h://127.0.0.1:7890`。`--no-proxy` 会清空本次命令的代理，即使环境变量或 `config.toml` 设置了 `https_proxy`；`--proxy` 和 `--no-proxy` 不能同用，也不会写入 `config.toml`。`--sleep-request DURATION` 只覆盖本次 CLI/MCP 运行的请求起始间隔；它优先于 `PIXIV_REQUEST_INTERVAL` 与 `[network].request_interval`。
 
 当前支持代理覆盖的网络入口是 direct-token `auth import`、`auth login`、`auth check`、`search`、`timeline`、`detail`、`ranking`、`recommended`、`download` 和 `mcp` 启动。`auth import --file` 明确拒绝代理 flag；`auth export/list/use/remove` 与 `config path/get/set/unset` 不接受这些 flag。
 
@@ -319,7 +319,7 @@ scripts/test-e2e.sh --non-interactive
 `t.TempDir()`，要求至少一个非空文件。若 Pixiv 返回不带有效 `Retry-After` 的 429，该真实 canary 保留诊断并明确失败，
 不会猜测等待或无限重试。
 
-显式 HTTP(S) proxy 下，资源传输固定协商 HTTP/1.1，而 App API、OAuth 与 Web metadata 保持原有协议协商。该 canary 的 ugoira 下载用于回归这一资源传输边界；它不为慢速正常下载增加固定超时。
+显式代理下，资源传输固定协商 HTTP/1.1，而 App API、OAuth 与 Web metadata 保持原有协议协商。该 canary 的 ugoira 下载用于回归这一资源传输边界；它不为慢速正常下载增加固定超时。
 
 `TestPixiv(SDK|Binary)AuthenticatedDiscoveryCanary` 使用 `PIXIV_E2E_DISCOVERY_WORD`，不将任何作品或作者 ID 写入源码。SDK
 canary 从 SFW 作品详情提取作者 ID，再验证作者详情和作品列表，并验证认证小说搜索和官方 App 用户搜索；binary canary 从当前源码构建 CLI，并通过同一认证环境验证 CLI 与 MCP 的作者详情、作者作品、`search_novel`/`search_user` 结构化输出、小说结果及 `app_search` 来源。整个 canary 只读取搜索数据，不执行收藏、关注或其他 Pixiv 写操作；本机 store 模式仍不回显子进程输出，避免泄露长期凭据。

@@ -3,10 +3,13 @@ package update
 import (
 	"context"
 	"errors"
+	"io"
 	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/buildinfo"
+	"github.com/FlanChanXwO/pixiv-cli/internal/testutil/socks5test"
 	"github.com/FlanChanXwO/pixiv-cli/internal/utils/uri"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -40,19 +43,32 @@ func TestNewReleaseHTTPClientEmptyProxyDisablesEnvironmentFallback(t *testing.T)
 	assert.Nil(t, transport.Proxy)
 }
 
-func TestNewReleaseHTTPClientRejectsNonHTTPProxy(t *testing.T) {
+func TestNewReleaseHTTPClientAcceptsSOCKSProxy(t *testing.T) {
 	proxy := "socks5://proxy-user-secret:proxy-pass-secret@proxy-host-secret.example:1080/proxy-path-secret?proxy-query-secret=value"
 
 	client, err := NewReleaseHTTPClient(proxy)
 
-	require.Nil(t, client)
-	require.ErrorIs(t, err, uri.ErrInvalidProxy)
-	require.ErrorContains(t, err, "absolute HTTP(S) URL")
-	for current := err; current != nil; current = errors.Unwrap(current) {
-		for _, secret := range []string{"proxy-user-secret", "proxy-pass-secret", "proxy-host-secret", "proxy-path-secret", "proxy-query-secret"} {
-			require.NotContains(t, current.Error(), secret)
-		}
-	}
+	require.NoError(t, err)
+	require.NotNil(t, client)
+}
+
+func TestNewReleaseHTTPClientRoutesRequestsThroughSOCKS5(t *testing.T) {
+	target := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(writer, "release through socks")
+	}))
+	t.Cleanup(target.Close)
+	proxy, err := socks5test.New()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = proxy.Close() })
+
+	client, err := NewReleaseHTTPClient(proxy.URL("socks5h"))
+	require.NoError(t, err)
+	response, err := client.Get(target.URL)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = response.Body.Close() })
+	body, err := io.ReadAll(response.Body)
+	require.NoError(t, err)
+	assert.Equal(t, "release through socks", string(body))
 }
 
 func TestNewReleaseHTTPClientRejectsMalformedProxyWithoutLeakingSensitiveComponents(t *testing.T) {

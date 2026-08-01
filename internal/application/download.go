@@ -137,12 +137,22 @@ func (s DownloadService) DownloadSources(ctx context.Context, client DownloadTar
 			appendArtwork(reference.ID, inputIndex)
 			continue
 		}
-		if reference.Kind != sdk.ReferenceKindUser {
-			return report, errors.New("download source is invalid")
-		}
 		jobs := make([]downloadTargetJob, 0)
-		if err := collectUserArtworkJobs(ctx, client, reference, &jobs, &report); err != nil {
-			return report, err
+		switch reference.Kind {
+		case sdk.ReferenceKindUser:
+			if err := collectUserArtworkJobs(ctx, client, reference, &jobs, &report); err != nil {
+				return report, err
+			}
+		case sdk.ReferenceKindUserBookmarks:
+			if err := collectUserBookmarkJobs(ctx, client, reference, &jobs); err != nil {
+				return report, err
+			}
+		case sdk.ReferenceKindIllustSeries:
+			if err := collectIllustSeriesJobs(ctx, client, reference, &jobs); err != nil {
+				return report, err
+			}
+		default:
+			return report, errors.New("download source is invalid")
 		}
 		for _, job := range jobs {
 			appendArtwork(job.target.ID, inputIndex)
@@ -204,6 +214,56 @@ func (s DownloadService) DownloadSources(ctx context.Context, client DownloadTar
 		}
 	}
 	return report, nil
+}
+
+func collectUserBookmarkJobs(ctx context.Context, client DownloadTargetClient, user sdk.Reference, jobs *[]downloadTargetJob) error {
+	bookmarks, ok := client.(interface {
+		UserBookmarks(context.Context, sdk.UserBookmarksRequest) (*sdk.IllustListResult, error)
+	})
+	if !ok {
+		return errors.New("download source requires a public SDK supporting user bookmarks")
+	}
+	_, err := TraversePages(ctx, PagePlan{}, func(ctx context.Context, cursor sdk.Cursor) ([]sdk.Illust, sdk.Cursor, error) {
+		result, err := bookmarks.UserBookmarks(ctx, sdk.UserBookmarksRequest{UserID: user.ID, Restrict: sdk.RestrictPublic, Cursor: cursor})
+		if err != nil {
+			return nil, "", err
+		}
+		if result == nil {
+			return nil, "", errors.New("pixiv sdk returned an empty user bookmarks result")
+		}
+		return result.Illusts, result.NextCursor, nil
+	}, func(items []sdk.Illust) error {
+		for _, illust := range items {
+			*jobs = append(*jobs, downloadTargetJob{target: sdk.Reference{Kind: sdk.ReferenceKindArtwork, ID: illust.ID}, illustType: illust.Type})
+		}
+		return nil
+	})
+	return err
+}
+
+func collectIllustSeriesJobs(ctx context.Context, client DownloadTargetClient, reference sdk.Reference, jobs *[]downloadTargetJob) error {
+	series, ok := client.(interface {
+		IllustSeries(context.Context, sdk.IllustSeriesRequest) (*sdk.IllustListResult, error)
+	})
+	if !ok {
+		return errors.New("download source requires a public SDK supporting illustration series")
+	}
+	_, err := TraversePages(ctx, PagePlan{}, func(ctx context.Context, cursor sdk.Cursor) ([]sdk.Illust, sdk.Cursor, error) {
+		result, err := series.IllustSeries(ctx, sdk.IllustSeriesRequest{SeriesID: reference.SeriesID, UserID: reference.ID, Cursor: cursor})
+		if err != nil {
+			return nil, "", err
+		}
+		if result == nil {
+			return nil, "", errors.New("pixiv sdk returned an empty illustration series result")
+		}
+		return result.Illusts, result.NextCursor, nil
+	}, func(items []sdk.Illust) error {
+		for _, illust := range items {
+			*jobs = append(*jobs, downloadTargetJob{target: sdk.Reference{Kind: sdk.ReferenceKindArtwork, ID: illust.ID}, illustType: illust.Type})
+		}
+		return nil
+	})
+	return err
 }
 
 // Download 把 operation snapshot 与本次运行配置交给 composition root 注入的下载器。

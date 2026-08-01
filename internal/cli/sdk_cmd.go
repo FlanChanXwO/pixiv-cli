@@ -8,10 +8,12 @@ import (
 	"io"
 	"math"
 	"os"
+	"strings"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/application"
 	sdk "github.com/FlanChanXwO/pixiv-cli/pixiv"
 	"github.com/spf13/cobra"
+	"golang.org/x/term"
 )
 
 // listOptions 是所有 CLI 列表命令共享的逻辑分页语义。
@@ -24,6 +26,54 @@ type listPlan struct {
 	limit    int
 	skip     int
 	oneBatch bool
+	filter   *sdk.IllustFilter
+}
+
+// illustFilterOptions 只嵌入会返回视觉作品的命令。表达式在取得网络客户端前编译，
+// 使拼写、字段类型与不允许的 Expr 语法都以标准 usage error 结束。
+type illustFilterOptions struct {
+	filter string
+}
+
+func bindIllustFilterFlag(cmd *cobra.Command, options *illustFilterOptions) {
+	cmd.Flags().StringVar(&options.filter, "filter", "", "local illustration filter expression")
+}
+
+func applyIllustFilter(plan *listPlan, expression string) error {
+	if strings.TrimSpace(expression) == "" {
+		return nil
+	}
+	compiled, err := sdk.CompileIllustFilter(expression)
+	if err != nil {
+		return newUsageError(err)
+	}
+	plan.filter = compiled
+	return nil
+}
+
+func filterIllustBatch(filter *sdk.IllustFilter, items []sdk.Illust) ([]sdk.Illust, error) {
+	if filter == nil {
+		return items, nil
+	}
+	filtered := items[:0]
+	for _, item := range items {
+		matched, err := filter.Match(item)
+		if err != nil {
+			return nil, err
+		}
+		if matched {
+			filtered = append(filtered, item)
+		}
+	}
+	return filtered, nil
+}
+
+func (a app) shouldAutoNDJSON(cmd *cobra.Command, ndjson, jsonOut bool) bool {
+	if ndjson || jsonOut || cmd.Flags().Changed("json") {
+		return ndjson
+	}
+	file, ok := a.out.(interface{ Fd() uintptr })
+	return ok && !term.IsTerminal(int(file.Fd()))
 }
 
 // ndjsonOutputOptions 仅供实体集合命令启用逐行记录输出，避免其他命令误接受该参数。
@@ -67,7 +117,8 @@ func (a app) sdkRequest(cmd *cobra.Command, options commandOptions) (application
 		return application.SDKClientRequest{}, nil, err
 	}
 	return application.SDKClientRequest{
-		HTTPSProxyOverride: client.HTTPSProxyOverride,
+		HTTPSProxyOverride:      client.HTTPSProxyOverride,
+		RequestIntervalOverride: client.RequestIntervalOverride,
 	}, client.JSONOverride, nil
 }
 
@@ -123,7 +174,12 @@ func (a app) runPooledIllustListWithKey(ctx context.Context, request application
 	return services.SDK.RunPooledOperation(ctx, request, func(ctx context.Context, client application.SDKClient) (bool, error) {
 		committed := false
 		boundFetch := func(ctx context.Context, cursor sdk.Cursor) ([]sdk.Illust, sdk.Cursor, error) {
-			return fetch(client, ctx, cursor)
+			items, next, err := fetch(client, ctx, cursor)
+			if err != nil || plan.filter == nil {
+				return items, next, err
+			}
+			filtered, filterErr := filterIllustBatch(plan.filter, items)
+			return filtered, next, filterErr
 		}
 		if ndjson {
 			encoder := json.NewEncoder(a.out)

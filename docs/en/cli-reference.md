@@ -180,7 +180,7 @@ one. A client without the desktop handler cannot complete this relay flow; use a
 
 The relay can use HTTP or HTTPS. Supply a certificate/key pair for direct TLS, or use a same-host reverse proxy with
 the relay listener on loopback. Legacy `login_relay_secret` and `login_relay_target_url` settings are silently ignored.
-`pixiv auth devices` has been removed. `pixiv config` manages only download path, filename template, and HTTPS proxy;
+`pixiv auth devices` has been removed. `pixiv config` manages download path, filename and directory templates, request interval, and proxy settings;
 advanced relay settings stay in private `config.toml`.
 
 The system proxy used by the browser is not automatically passed to the Go CLI. If the Pixiv token endpoint needs a
@@ -200,7 +200,7 @@ pixiv auth login --proxy http://127.0.0.1:7890
 be used together. `--no-proxy` clears the proxy for this command even if `https_proxy` exists in the environment or
 config.
 
-When an HTTP(S) proxy is configured, media-resource transfers such as `download` (including Ugoira) deliberately use
+When an HTTP or HTTPS proxy is configured, media-resource transfers such as `download` (including Ugoira) deliberately use
 HTTP/1.1. App API, OAuth, and Web metadata requests retain their normal protocol negotiation. This avoids
 proxy-specific HTTP/2 stream resets and does not change authentication or the selected download quality.
 
@@ -335,13 +335,13 @@ deliberately does not expose that flag.
 The CLI uses Cobra/pflag, so options may appear before or after positional arguments — both
 `pixiv auth check 12345678 --json` and `pixiv search "初音ミク" --json` are officially supported forms.
 
-### v0.8.0 data-operation contract
+### Data-operation contract
 
 All non-mutating data reads, recommendations, timelines, and downloads use the local account selected by `pixiv auth use`. Account pooling is active only when `[account_pool]` explicitly sets `enabled = true`; omitting `accounts` uses every account in `auth.json` storage order, while a present `accounts` array is a whitelist. `strategy` defaults to `round_robin` and also supports `random`. Writes, authentication, and configuration do not use the pool. Data commands reject `--uid` and `--refresh-token` and ignore `PIXIV_REFRESH_TOKEN`.
 
-Use `--ndjson` for a streaming canonical record protocol. Each line has stable string `id`, `type`, and `url`; the remaining SDK fields are preserved. `pixiv filter` reads those records on stdin, and `download`, `bookmark add/remove`, and `follow add/remove` can consume them without positional IDs. Actions keep successful stdout empty and write safe diagnostics to stderr. `--on-error=skip|fail-fast` controls malformed/incompatible stdin records. `--json` and `--ndjson` cannot be combined.
+Visual lists write canonical Record NDJSON automatically when stdout is a non-terminal and no explicit output format was selected. Each line has stable string `id`, `type`, and `url`; `download`, `bookmark add/remove`, and `follow add/remove` consume compatible records without positional IDs. Use `--filter EXPR` for local typed illustration rules, for example `bookmarkCount >= 5000 and xRestrict == 0`; `--json` and explicit `--ndjson` retain precedence.
 
-Ugoira downloads accept `--ugoira-format gif|apng`; `gif` remains the default. The option is unsupported with Ugoira page selection or non-original quality.
+Ugoira downloads use `--ugoira-mode gif|apng|zip|frames` (`gif` by default). Page selection and non-original quality remain unsupported for Ugoira.
 
 ### CLI command table
 
@@ -357,7 +357,7 @@ Ugoira downloads accept `--ugoira-format gif|apng`; `gif` remains the default. T
 | `auth refresh` | `pixiv auth refresh [UID] [--all] [--json] [--proxy URL\|--no-proxy]` | Refreshes the selected/default saved account's OAuth access token and rotated refresh token, then forces a profile read to update its cached Pixiv Premium status. `--all` refreshes every stored account. JSON always returns `accounts`. |
 | `config path` | `pixiv config path` | Prints the `config.toml` path, creating the baseline file if it is missing. |
 | `config get` | `pixiv config get KEY` | Prints one effective config value. |
-| `config set` | `pixiv config set KEY [VALUE]` | Writes one known config key. Only `download_path`, `filename_template`, and `https_proxy` are accepted. |
+| `config set` | `pixiv config set KEY [VALUE]` | Writes one known config key, including `download_path`, `filename_template`, `directory_template`, `request_interval`, and `https_proxy`. |
 | `config unset` | `pixiv config unset KEY` | Deletes one known config key from `config.toml`. |
 | `version` | `pixiv version [--json]` | Prints the binary's `version`, `commit`, and `build_date`; the root `pixiv --version` prints only the version. |
 | `update` | `pixiv update [--check] [--prerelease] [--proxy URL]` | Checks for or performs an update matching the current install source; `--json` is only valid together with `--check`. |
@@ -365,22 +365,21 @@ Ugoira downloads accept `--ugoira-format gif|apng`; `gif` remains the default. T
 | `novel search` | `pixiv novel search [options] WORD` | Searches novels through the authenticated App API. |
 | `detail` | `pixiv detail [options] ILLUST_ID_OR_URL` | Shows details for a single artwork ID or supported Pixiv artwork URL. |
 | `ranking` | `pixiv ranking [options]` | Shows Pixiv illustration rankings. |
-| `recommended` | `pixiv recommended all\|illust\|manga\|novel\|user [--page N --limit N --json]` | Shows personalized recommendations for the given kind; `all` returns illustrations, manga, novels, and users in full, in order, and requires authentication. |
+| `recommended` | `pixiv recommended all\|illust\|manga\|novel\|user [--page N --limit N --json]` | Shows personalized recommendations for the given kind; visual kinds accept `--filter EXPR`. `all` returns illustrations, manga, novels, and users in order; with an illustration expression, only matching visual records are emitted. |
 | `timeline following` | `pixiv timeline following --type illust\|novel [--restrict public\|private --page N --limit N --json\|--ndjson]` | Reads new works from followed users. |
 | `timeline latest` | `pixiv timeline latest --type illust\|manga\|novel [--page N --limit N --json\|--ndjson]` | Reads latest works. |
 | `mypixiv users` | `pixiv mypixiv users [--page N --limit N --json\|--ndjson]` | Lists MyPixiv users for the selected account. |
 | `mypixiv works` | `pixiv mypixiv works [USER_ID] --type illust\|manga\|novel [--page N --limit N --json\|--ndjson]` | Lists MyPixiv works; without USER_ID only `illust` or `novel` is valid. |
-| `filter` | `pixiv filter [--id ID --type TYPE --tag TAG --min-views N --min-pages N --on-error skip\|fail-fast]` | Filters canonical Record NDJSON from stdin. |
 | `user search` | `pixiv user search WORD [--page N --limit N --json]` | Searches users. JSON and text label whether results came from official App user search or anonymous related-illustration-author fallback. |
 | `user detail` | `pixiv user detail USER_ID [--json]` | Shows a user's full public profile; `USER_ID` is required. |
-| `user artworks` | `pixiv user artworks [USER_ID] [--type TYPE --page N --limit N]` | Shows a user's artworks; uses the current authenticated user when `USER_ID` is omitted. |
-| `user bookmarks` | `pixiv user bookmarks [USER_ID] [--restrict public\|private --tag TAG --page N --limit N]` | Shows a user's bookmarks, optionally filtered by visibility and tag; uses the current authenticated user when `USER_ID` is omitted. |
+| `user artworks` | `pixiv user artworks [USER_ID] [--type TYPE --filter EXPR --page N --limit N]` | Shows a user's artworks; uses the current authenticated user when `USER_ID` is omitted. |
+| `user bookmarks` | `pixiv user bookmarks [USER_ID] [--restrict public\|private --tag TAG --filter EXPR --page N --limit N]` | Shows a user's bookmarks, optionally filtered by visibility and tag; uses the current authenticated user when `USER_ID` is omitted. |
 | `user following` | `pixiv user following [USER_ID] [--restrict public\|private --page N --limit N]` | Shows who a user follows, optionally filtered by visibility; uses the current authenticated user when `USER_ID` is omitted. |
 | `bookmark add` | `pixiv bookmark add ILLUST_ID [--restrict public\|private --tag TAG...]` | Bookmarks an artwork; `--tag` may be repeated. |
 | `bookmark remove` | `pixiv bookmark remove ILLUST_ID` | Removes an artwork bookmark; it does not accept visibility or tag flags. |
 | `follow add` | `pixiv follow add USER_ID [--restrict public\|private]` | Follows a user with the selected visibility. |
 | `follow remove` | `pixiv follow remove USER_ID` | Unfollows a user; it does not accept a visibility flag. |
-| `download` | `pixiv download [options] SRC...` | Downloads an artwork PID/URL, an allowed CDN URL, or all visual works from a supported user URL. |
+| `download` | `pixiv download [options] SRC...` | Downloads an artwork PID/URL, an allowed CDN URL, or all visual works from a supported user, public-bookmarks, or illustration-series URL. |
 | `mcp` | `pixiv mcp [--proxy URL\|--no-proxy]` | Starts the MCP stdio server; the proxy override applies only to this launch. |
 
 Downloaded filenames normalize cross-platform-invalid characters in both the filename template and URL-derived
@@ -429,12 +428,16 @@ used.
 | `recommended KIND` | `--page`, `--limit` | per-stream pagination | Each stream paginates independently; `all` applies the same pagination semantics to illustrations, manga, novels, and users separately. |
 | `timeline following` | `--type`, `--restrict` | required, `public` | Type is `illust` or `novel`; restrict is `public` or `private`. |
 | `timeline latest`, `mypixiv works` | `--type` | required | Timeline supports `illust`, `manga`, or `novel`; MyPixiv without USER_ID supports `illust` or `novel`. |
-| `filter` and record actions | `--on-error` | `skip` | Skip malformed/incompatible records with a stderr diagnostic, or use `fail-fast`. |
-| `download` | `--pages` | empty | 1-based page selection such as `1,3-5` (closed ranges, de-duplicated, natural order); default downloads every page. Missing pages fail explicitly. |
+| record actions | `--on-error` | `skip` | Skip malformed/incompatible records with a stderr diagnostic, or use `fail-fast`. |
+| `download` | `--pages` | empty | 1-based page selection such as `1,3-5` or `3-` (open range resolved from artwork page count); default downloads every page. Missing pages fail explicitly. |
 | `download` | `--quality` | `original` | Static image quality: `original`, `regular` (longest side 1200), `small` (longest side 540), `thumb` (250×250 center crop), or `mini` (48×48 center crop). Ugoira rejects non-original quality or page selection as unsupported.
-| `download` | `--ugoira-format` | `gif` | Ugoira output: `gif` or `apng`. |
+| `download` | `--ugoira-mode` | `gif` | Ugoira output: `gif`, `apng`, `zip`, or `frames`. |
 | `download` | `--download-path` | `DOWNLOAD_PATH`, `config.toml`, or `./downloads` | Download directory. This flag is not accepted by other commands. |
-| `download` | `--filename-template` | `FILENAME_TEMPLATE`, `config.toml`, or `{author} - {title}_{id}` | Filename template; only `{id}`, `{title}`, and `{author}` are valid. Unknown placeholders and unmatched braces are errors. This flag is not accepted by other commands. |
+| `download` | `--filename-template` | `FILENAME_TEMPLATE`, `config.toml`, or `{author} - {title}_{id}` | Supports `{id}`, `{title}`, `{author}`, `{author_id}`, `{date}`, `{tags}`, and `{num}`. Unknown placeholders and unmatched braces are errors. |
+| `download` | `--directory-template` | `DIRECTORY_TEMPLATE`, `config.toml`, or empty | Safe relative directory template using the same placeholders; absolute, empty, `.` and `..` segments are rejected. |
+| visual lists and `download` | `--filter EXPR` | empty | Typed local artwork expression. It combines with ordinary flags using AND. Supported fields are `id`, `userId`, `userName`, `type`, `title`, `createDate`, `pageCount`, `bookmarkCount`, `viewCount`, `xRestrict`, `aiType`, `width`, `height`, `tags`, `tools`, `rating`, `aiMode`, `aspectRatio`, `resolution`, and `drawTool`; use `any(tags, # in ["A"])` or `all(tools, # in ["Photoshop"])` for collections. |
+| `download` | `--archive`, `--write-metadata` | empty / false | Record only fully successful artwork IDs in SQLite and write per-artifact JSON sidecars. |
+| `download` | `--retries`, `--retry-delay` | `3`, `1s` | Retry eligible incomplete resource reads; a valid upstream `Retry-After` overrides the delay. |
 | `download` | `--concurrency` | `0` (automatic) | Download workers. `0` uses `2 × GOMAXPROCS`; a positive value is used exactly. |
 | `user artworks` | `--type` | `illust` | Pixiv illustration type: `illust`, `manga`, or `ugoira`. |
 | `user bookmarks` | `--restrict` | `public` | Bookmark visibility: `public` or `private`. |
@@ -444,7 +447,7 @@ used.
 | `bookmark add` | `--tag` | empty | Bookmark tag; may be repeated. |
 | `follow add` | `--restrict` | `public` | Visibility of the new follow: `public` or `private`. |
 | `detail` | `ILLUST_ID_OR_URL` | required | A positive artwork ID or a supported Pixiv artwork URL. |
-| `download` | `SRC...` | required | Artwork PID, artwork URL, allowed CDN resource URL, or supported user profile/artworks URL. CDN files use the URL filename; page selection, derived quality, and custom artwork templates do not apply. |
+| `download` | `SRC...` | required | Artwork PID, artwork URL, allowed CDN resource URL, user profile/artworks URL, public bookmarks URL, or an illustration series URL. CDN files use the URL filename; metadata-dependent options such as page selection, quality, templates, filters, and sidecars do not apply. |
 
 With a refresh token, `search` always uses App API. App applies resolution, aspect-ratio, tool, content-type, and
 `ai-mode=exclude` filters, while rating and `ai-mode=only` are applied to each App result batch. App
@@ -516,10 +519,20 @@ never includes captions in artwork list output.
 `/artworks/{id}` (an optional locale segment, query, and fragment are allowed). It does not accept user, novel,
 short-link, FANBOX, Pixivision, Sketch, legacy, or arbitrary URLs.
 
-`download` accepts the same artwork references, allowed CDN URLs, plus `/users/{id}` and `/users/{id}/artworks` URLs. A user URL follows
-all pagination for `illust`, `manga`, and `ugoira`, but never novels, and requires App OAuth; it has no anonymous Web
-fallback. URL parsing is local only: it does not fetch HTML or follow redirects. Downloads continue after individual
-artwork failures and report every outcome; cancellation stops immediately. Downloads persist ETag/Last-Modified metadata in `.pixiv-cache`, safely resume only validator-matched partial files with `If-Range`, and atomically publish updates. `download` is an action: successful stdout is empty. It reports safe failures on stderr and returns non-zero when an operation cannot complete. No download history or cross-run deduplication is kept.
+`download` accepts the same artwork references, allowed CDN URLs, plus `/users/{id}`, `/users/{id}/artworks`,
+`/users/{id}/bookmarks/artworks`, and `/user/{id}/series/{series_id}` URLs. User, public-bookmarks, and
+illustration-series sources follow pagination for `illust`, `manga`, and `ugoira`, deduplicating artwork IDs by first
+appearance; the series URL must name its real owner. All need App OAuth and have no anonymous Web fallback. URL
+parsing is local only: it does not fetch HTML or follow redirects. `--filter EXPR` runs after artwork detail and before
+writing files; a CDN URL rejects it because it has no artwork metadata. `--archive FILE` is a SQLite archive that records
+an artwork only after every selected artifact and requested sidecar succeeds. `--write-metadata` writes atomic
+`{artifact}.json` sidecars containing public artwork data and artifact-relative paths. Filename and directory templates
+support `{id}`, `{title}`, `{author}`, `{author_id}`, `{date}`, `{tags}`, and `{num}`; directory templates must be safe
+relative paths and `{num}` is zero-based. Downloads continue after independent artwork failures and report every
+outcome; cancellation stops immediately. Resource downloads retry 429 (with valid `Retry-After`), 5xx, and retryable
+transport failures three times by default with 1/2/4-second backoff, safely resume only validator-matched partials
+with `If-Range`, and atomically publish updates. `download` is an action: successful stdout is empty. It reports safe
+failures on stderr and returns non-zero when an operation cannot complete.
 
 ### Common flags
 
@@ -527,18 +540,21 @@ artwork failures and report every outcome; cancellation stops immediately. Downl
 | --- | --- | --- | --- |
 | `--ndjson` | data list/read commands | `false` | Emits one canonical Record per line for streaming filters and actions; cannot be combined with `--json`. |
 | `--json` | safe data reads, auth summaries, `version`, `update --check` | `false` | Emits one complete result document where the command exposes it. Download and mutation actions do not emit a success report. |
-| `--proxy URL` | network commands and `mcp` | `https_proxy`/`HTTPS_PROXY`, `config.toml`, or empty | Uses an HTTP(S) proxy for this command only; forbidden with `auth import --file`. |
-| `--no-proxy` | same as `--proxy` | empty | Clears the HTTP(S) proxy for this command; cannot be combined with `--proxy` or bundle restore. |
+| `--sleep-request DURATION` | network commands and `mcp` | configuration/default | Minimum interval between network request starts for this invocation; overrides `PIXIV_REQUEST_INTERVAL` and `[network].request_interval`. |
+| `--proxy URL` | network commands and `mcp` | `https_proxy`/`HTTPS_PROXY`, `config.toml`, or empty | Uses an `http`, `https`, `socks5`, or `socks5h` proxy URI for this command only; forbidden with `auth import --file`. |
+| `--no-proxy` | same as `--proxy` | empty | Clears the proxy for this command; cannot be combined with `--proxy` or bundle restore. |
 
 ### CLI-managed `config` aliases
 
-`pixiv config get/set/unset` accepts **only** these three aliases. All other runtime settings are hand-maintained in the private `config.toml`; the CLI does not expose a generic setting editor.
+`pixiv config get/set/unset` accepts only the aliases in this table. All other runtime settings are hand-maintained in the private `config.toml`; the CLI does not expose a generic setting editor.
 
 | KEY | Type | Default | Description |
 | --- | --- | --- | --- |
 | `download_path` | string | `./downloads` | Download directory. |
 | `filename_template` | string | `{author} - {title}_{id}` | Filename template. |
-| `https_proxy` | string | empty | HTTP(S) proxy; the lowercase `https_proxy` environment variable takes precedence. |
+| `directory_template` | string | empty | Relative download directory template. |
+| `request_interval` | duration | `0` | Minimum interval between network request starts; `PIXIV_REQUEST_INTERVAL` and `--sleep-request` can override it. |
+| `https_proxy` | string | empty | Proxy URI (`http`, `https`, `socks5`, or `socks5h`); the lowercase `https_proxy` environment variable takes precedence. |
 
 Manual TOML may contain advanced runtime sections such as `[account_pool]`, `[web]`, `[login]`, and `[update]`. Never put a refresh token in `config.toml`. Account-pool state records only the last UID/freeze information and never stores a token. Legacy `[logging]` tables are ignored; `log_level` is not a supported `pixiv config` key.
 
@@ -549,7 +565,9 @@ Manual TOML may contain advanced runtime sections such as `[account_pool]`, `[we
 | `PIXIV_REFRESH_TOKEN` | empty | Public SDK/MCP runtime credential input where supported; CLI data commands deliberately ignore it. |
 | `DOWNLOAD_PATH` | `./downloads` | Download directory. |
 | `FILENAME_TEMPLATE` | `{author} - {title}_{id}` | Filename template. |
-| `https_proxy` / `HTTPS_PROXY` | empty | HTTP(S) proxy; the lowercase `https_proxy` takes precedence. |
+| `DIRECTORY_TEMPLATE` | empty | Relative download directory template. |
+| `PIXIV_REQUEST_INTERVAL` | empty | Minimum interval between network request starts. |
+| `https_proxy` / `HTTPS_PROXY` | empty | Proxy URI (`http`, `https`, `socks5`, or `socks5h`); the lowercase `https_proxy` takes precedence. |
 
 CLI data commands select `auth.json.default_user_id` through `pixiv auth use`, or an eligible manual `[account_pool]`; they do not accept credential-selection flags or read `PIXIV_REFRESH_TOKEN`.
 

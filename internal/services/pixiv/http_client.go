@@ -21,6 +21,9 @@ func HTTPClient(proxyValue string) (*http.Client, error) {
 	if err != nil {
 		return nil, fmt.Errorf("parse proxy URL: %w", uri.ErrInvalidProxy)
 	}
+	if proxyURL.Host == "" || (proxyURL.Scheme != "http" && proxyURL.Scheme != "https" && proxyURL.Scheme != "socks5" && proxyURL.Scheme != "socks5h") {
+		return nil, fmt.Errorf("proxy URL must use http, https, socks5, or socks5h: %w", uri.ErrInvalidProxy)
+	}
 	transport.Proxy = http.ProxyURL(proxyURL)
 	return client, nil
 }

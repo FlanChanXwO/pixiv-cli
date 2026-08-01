@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/application"
 	"github.com/FlanChanXwO/pixiv-cli/internal/config"
@@ -128,6 +129,9 @@ func newSDKClient(request application.SDKClientRequest) (application.SDKClient, 
 		IgnoreEnvironmentRefreshToken: true,
 		DisableRetryAfterRetry:        request.DisableRetryAfterRetry,
 	}
+	if request.RequestIntervalOverride != nil {
+		options.RequestInterval = *request.RequestIntervalOverride
+	}
 	if request.HTTPSProxyOverride != nil {
 		httpClient, err := internalpixiv.HTTPClient(*request.HTTPSProxyOverride)
 		if err != nil {
@@ -208,7 +212,7 @@ type MCPRuntime struct {
 	AuthPath   string
 }
 
-func NewMCPRuntime(_ context.Context, proxyOverride *string) (MCPRuntime, error) {
+func NewMCPRuntime(_ context.Context, proxyOverride *string, requestIntervalOverride *time.Duration) (MCPRuntime, error) {
 	cfg, err := LoadRuntimeConfig()
 	if err != nil {
 		return MCPRuntime{}, err
@@ -222,7 +226,9 @@ func NewMCPRuntime(_ context.Context, proxyOverride *string) (MCPRuntime, error)
 	if err != nil {
 		return MCPRuntime{}, err
 	}
-	request := application.SDKClientRequest{HTTPSProxyOverride: proxyOverride, AuthFilePath: authPath}
+	request := application.SDKClientRequest{
+		HTTPSProxyOverride: proxyOverride, RequestIntervalOverride: requestIntervalOverride, AuthFilePath: authPath,
+	}
 	if _, account, ok := auth.SelectAuthAccount(store, 0); ok {
 		request.UserID = account.UserID
 	}
@@ -246,8 +252,8 @@ func applyRuntimeProxyOverride(cfg *config.RuntimeConfig, override *string) {
 	}
 }
 
-func RunMCP(ctx context.Context, proxyOverride *string) error {
-	runtime, err := NewMCPRuntime(ctx, proxyOverride)
+func RunMCP(ctx context.Context, proxyOverride *string, requestIntervalOverride *time.Duration) error {
+	runtime, err := NewMCPRuntime(ctx, proxyOverride, requestIntervalOverride)
 	if err != nil {
 		return err
 	}

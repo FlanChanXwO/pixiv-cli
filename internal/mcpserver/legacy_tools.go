@@ -32,6 +32,7 @@ type searchIllustIn struct {
 	Tool         string          `json:"tool,omitempty"`
 	BookmarkMin  *int            `json:"bookmark_min,omitempty"`
 	BookmarkMax  *int            `json:"bookmark_max,omitempty"`
+	Filter       string          `json:"filter,omitempty" jsonschema:"safe local illustration filter expression"`
 	IllustFilter *illustFilterIn `json:"illust_filter,omitempty"`
 }
 
@@ -67,6 +68,7 @@ func searchIllustInputSchema() map[string]any {
 			"tool":          stringProperty("Exact drawing tool name from the versioned pixiv-cli drawing-tool catalog."),
 			"bookmark_min":  map[string]any{"type": "integer", "minimum": 0, "description": "Inclusive minimum public bookmark count; requires App OAuth."},
 			"bookmark_max":  map[string]any{"type": "integer", "minimum": 0, "description": "Inclusive maximum public bookmark count; requires App OAuth."},
+			"filter":        stringProperty("Safe local illustration filter expression."),
 			"illust_filter": illustFilterSchema(),
 		},
 	}
@@ -227,7 +229,7 @@ func (a *App) searchIllust(ctx context.Context, _ *mcp.CallToolRequest, in searc
 	if err != nil {
 		return a.illustQueryError(ctx, err)
 	}
-	ctx, err = withIllustFilter(ctx, in.IllustFilter)
+	ctx, err = withIllustFilterExpression(ctx, in.IllustFilter, in.Filter)
 	if err != nil {
 		return a.illustQueryError(ctx, err)
 	}
@@ -365,6 +367,7 @@ func (a *App) illustDetailError(ctx context.Context, err error) (*mcp.CallToolRe
 
 type relatedIn struct {
 	IllustID     int64           `json:"illust_id"`
+	Filter       string          `json:"filter,omitempty" jsonschema:"safe local illustration filter expression"`
 	IllustFilter *illustFilterIn `json:"illust_filter,omitempty"`
 	pageLimitIn
 }
@@ -374,7 +377,7 @@ func (a *App) illustRelated(ctx context.Context, _ *mcp.CallToolRequest, in rela
 	if err != nil {
 		return a.illustQueryError(ctx, err)
 	}
-	ctx, err = withIllustFilter(ctx, in.IllustFilter)
+	ctx, err = withIllustFilterExpression(ctx, in.IllustFilter, in.Filter)
 	if err != nil {
 		return a.illustQueryError(ctx, err)
 	}
@@ -404,6 +407,7 @@ func (a *App) illustRelated(ctx context.Context, _ *mcp.CallToolRequest, in rela
 type rankingIn struct {
 	Mode         string          `json:"mode,omitempty"`
 	Date         string          `json:"date,omitempty"`
+	Filter       string          `json:"filter,omitempty" jsonschema:"safe local illustration filter expression"`
 	IllustFilter *illustFilterIn `json:"illust_filter,omitempty"`
 	pageLimitIn
 }
@@ -416,7 +420,7 @@ func (a *App) illustRanking(ctx context.Context, _ *mcp.CallToolRequest, in rank
 	if err != nil {
 		return a.illustQueryError(ctx, err)
 	}
-	ctx, err = withIllustFilter(ctx, in.IllustFilter)
+	ctx, err = withIllustFilterExpression(ctx, in.IllustFilter, in.Filter)
 	if err != nil {
 		return a.illustQueryError(ctx, err)
 	}
@@ -513,6 +517,7 @@ func (a *App) searchUserError(ctx context.Context, err error) (*mcp.CallToolResu
 }
 
 type recommendedLegacyIn struct {
+	Filter       string          `json:"filter,omitempty" jsonschema:"safe local illustration filter expression"`
 	IllustFilter *illustFilterIn `json:"illust_filter,omitempty"`
 	pageLimitIn
 }
@@ -522,7 +527,7 @@ func (a *App) illustRecommended(ctx context.Context, _ *mcp.CallToolRequest, in 
 	if err != nil {
 		return a.illustQueryError(ctx, err)
 	}
-	ctx, err = withIllustFilter(ctx, in.IllustFilter)
+	ctx, err = withIllustFilterExpression(ctx, in.IllustFilter, in.Filter)
 	if err != nil {
 		return a.illustQueryError(ctx, err)
 	}
@@ -612,6 +617,7 @@ func (a *App) trendingTagsError(ctx context.Context, err error) (*mcp.CallToolRe
 
 type followIn struct {
 	Restrict     string          `json:"restrict,omitempty"`
+	Filter       string          `json:"filter,omitempty" jsonschema:"safe local illustration filter expression"`
 	IllustFilter *illustFilterIn `json:"illust_filter,omitempty"`
 	pageLimitIn
 }
@@ -624,7 +630,7 @@ func (a *App) illustFollow(ctx context.Context, _ *mcp.CallToolRequest, in follo
 	if err != nil {
 		return a.illustQueryError(ctx, err)
 	}
-	ctx, err = withIllustFilter(ctx, in.IllustFilter)
+	ctx, err = withIllustFilterExpression(ctx, in.IllustFilter, in.Filter)
 	if err != nil {
 		return a.illustQueryError(ctx, err)
 	}

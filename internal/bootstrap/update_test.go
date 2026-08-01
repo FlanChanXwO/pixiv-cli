@@ -35,13 +35,13 @@ func TestNewAutomaticUpdateCheckerBuildsDedicatedChecker(t *testing.T) {
 }
 
 func TestNewAutomaticUpdateCheckerRejectsInvalidProxy(t *testing.T) {
-	proxy := "socks5://proxy-user-secret:proxy-pass-secret@proxy-host-secret.invalid/proxy-path-secret?proxy-query-secret=value"
+	proxy := "socks5://proxy-user-secret:proxy-pass-secret@proxy-host-secret.invalid/proxy-path-secret-%zz?proxy-query-secret=value"
 
 	checker, err := NewAutomaticUpdateChecker(proxy)
 
 	require.Nil(t, checker)
 	require.ErrorIs(t, err, uri.ErrInvalidProxy)
-	require.ErrorContains(t, err, "absolute HTTP(S) URL")
+	require.ErrorContains(t, err, "parse update proxy URL")
 	assertInvalidProxyChainIsSafe(t, err)
 }
 

@@ -179,6 +179,34 @@ func (c *Client) IllustRelated(ctx context.Context, id int64, offset int) (*mode
 	return c.getIllustList(ctx, protocol.AppIllustRelated, q, "offset")
 }
 
+// IllustSeries 读取插画系列的一个批次。next_url 只抽取 last_order 数值，绝不将
+// 上游 URL 作为下一跳请求目标。
+func (c *Client) IllustSeries(ctx context.Context, seriesID int64, lastOrder int64) (*model.IllustList, error) {
+	q := url.Values{"illust_series_id": {fmt.Sprint(seriesID)}}
+	if lastOrder > 0 {
+		q.Set("last_order", fmt.Sprint(lastOrder))
+	}
+	var raw illustSeriesDTO
+	if err := c.getJSONWithRetry(ctx, protocol.AppIllustSeries, q, &raw); err != nil {
+		return nil, err
+	}
+	if raw.IllustSeriesDetail == nil || raw.IllustSeriesDetail.User.ID <= 0 || !raw.Illusts.Present || !raw.Illusts.Valid {
+		return nil, protocol.MalformedResponse()
+	}
+	for _, illust := range raw.Illusts.Items {
+		if illust.ID <= 0 || illust.User.ID <= 0 {
+			return nil, protocol.MalformedResponse()
+		}
+	}
+	listDTO := illustListDTO{Illusts: raw.Illusts, NextURL: raw.NextURL}
+	out := mapIllustList(listDTO)
+	out.SeriesUserID = raw.IllustSeriesDetail.User.ID
+	if err := applyListContinuation(raw.NextURL, "last_order", positiveContinuation, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
 func (c *Client) IllustRanking(ctx context.Context, mode, date string, offset int) (*model.IllustList, error) {
 	q := url.Values{"mode": {mode}}
 	setOptional(q, "date", date)
@@ -469,6 +497,8 @@ func applyListContinuation(rawURL *string, key string, policy continuationPolicy
 	out.ContinuationExists = true
 	if key == "max_bookmark_id" {
 		out.NextMaxBookmarkID = value
+	} else if key == "last_order" {
+		out.NextValue = value
 	} else {
 		out.NextOffset = int(value)
 	}

@@ -59,7 +59,9 @@ type SettingsState struct {
 type RuntimeConfig struct {
 	DownloadPath       string
 	FilenameTemplate   string
+	DirectoryTemplate  string
 	HTTPSProxy         string
+	RequestInterval    time.Duration
 	WebFallbackEnabled bool
 	UpdateCheckEnabled bool
 	OutputJSON         bool
@@ -95,7 +97,9 @@ type AccountPoolConfig struct {
 var settingSpecs = []SettingSpec{
 	{Alias: "download_path", KoanfKey: "download.path", Table: []string{"download"}, Key: "path", Kind: settingString, HasDefault: true, Default: DefaultDownloadPath},
 	{Alias: "filename_template", KoanfKey: "download.filename_template", Table: []string{"download"}, Key: "filename_template", Kind: settingString, HasDefault: true, Default: DefaultFilenameTemplate},
+	{Alias: "directory_template", KoanfKey: "download.directory_template", Table: []string{"download"}, Key: "directory_template", Kind: settingString},
 	{Alias: "https_proxy", KoanfKey: "network.https_proxy", Table: []string{"network"}, Key: "https_proxy", Kind: settingString},
+	{Alias: "request_interval", KoanfKey: "network.request_interval", Table: []string{"network"}, Key: "request_interval", Kind: settingDuration, HasDefault: true, Default: time.Duration(0)},
 	{Alias: "web_fallback_enabled", KoanfKey: "web.fallback_enabled", Table: []string{"web"}, Key: "fallback_enabled", Kind: settingBool, HasDefault: true, Default: true},
 	{Alias: "update_check_enabled", KoanfKey: "update.check_enabled", Table: []string{"update"}, Key: "check_enabled", Kind: settingBool, HasDefault: true, Default: true},
 	{Alias: "output_json", KoanfKey: "output.json", Table: []string{"output"}, Key: "json", Kind: settingBool, HasDefault: true, Default: false},
@@ -151,6 +155,10 @@ func EnvValue(spec SettingSpec) (string, bool) {
 		return envLookup("DOWNLOAD_PATH")
 	case "filename_template":
 		return envLookup("FILENAME_TEMPLATE")
+	case "directory_template":
+		return envLookup("DIRECTORY_TEMPLATE")
+	case "request_interval":
+		return envLookup("PIXIV_REQUEST_INTERVAL")
 	case "https_proxy":
 		if value, ok := envLookup("https_proxy"); ok {
 			return value, true
@@ -227,7 +235,15 @@ func (s SettingsState) Runtime() (RuntimeConfig, error) {
 	if err != nil {
 		return RuntimeConfig{}, err
 	}
+	directoryTemplate, err := s.Effective("directory_template")
+	if err != nil {
+		return RuntimeConfig{}, err
+	}
 	httpsProxy, err := s.Effective("https_proxy")
+	if err != nil {
+		return RuntimeConfig{}, err
+	}
+	requestInterval, err := s.Effective("request_interval")
 	if err != nil {
 		return RuntimeConfig{}, err
 	}
@@ -274,6 +290,7 @@ func (s SettingsState) Runtime() (RuntimeConfig, error) {
 	cfg := RuntimeConfig{
 		DownloadPath:          downloadPath.Value.(string),
 		FilenameTemplate:      filenameTemplate.Value.(string),
+		DirectoryTemplate:     settingStringValue(directoryTemplate),
 		HTTPSProxy:            "",
 		WebFallbackEnabled:    webFallbackEnabled.Value.(bool),
 		UpdateCheckEnabled:    updateCheckEnabled.Value.(bool),
@@ -285,6 +302,9 @@ func (s SettingsState) Runtime() (RuntimeConfig, error) {
 		LoginRelayTLSCertFile: settingStringValue(loginRelayTLSCertFile),
 		LoginRelayTLSKeyFile:  settingStringValue(loginRelayTLSKeyFile),
 		AccountPool:           accountPool,
+	}
+	if requestInterval.HasValue {
+		cfg.RequestInterval = requestInterval.Value.(time.Duration)
 	}
 	if httpsProxy.HasValue {
 		cfg.HTTPSProxy = httpsProxy.Value.(string)
@@ -388,6 +408,9 @@ func coerceSettingValue(spec SettingSpec, raw any, source string) (SettingValue,
 		if err != nil {
 			return SettingValue{}, fmt.Errorf("%s: %w", spec.Alias, err)
 		}
+		if spec.Alias == "request_interval" && value < 0 {
+			return SettingValue{}, errors.New("request_interval must not be negative")
+		}
 		return SettingValue{Value: value, Text: value.String(), Source: source, HasValue: true}, nil
 	default:
 		return SettingValue{}, fmt.Errorf("unsupported setting kind %q", spec.Kind)
@@ -456,6 +479,9 @@ func ParseSettingInput(alias, raw string) (SettingValue, parser.Value, error) {
 		parsed, err := time.ParseDuration(raw)
 		if err != nil {
 			return SettingValue{}, parser.Value{}, fmt.Errorf("expects duration value: %w", err)
+		}
+		if spec.Alias == "request_interval" && parsed < 0 {
+			return SettingValue{}, parser.Value{}, errors.New("request_interval must not be negative")
 		}
 		normalized := parsed.String()
 		value, err := parser.ParseValue(strconv.Quote(normalized))

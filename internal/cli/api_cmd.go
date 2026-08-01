@@ -31,11 +31,13 @@ type searchOptions struct {
 	typ         string
 	bookmarkMin int
 	bookmarkMax int
+	filter      string
 }
 
 type rankingOptions struct {
 	commandOptions
 	ndjsonOutputOptions
+	illustFilterOptions
 	mode string
 	date string
 	listOptions
@@ -44,6 +46,7 @@ type rankingOptions struct {
 type recommendedOptions struct {
 	commandOptions
 	ndjsonOutputOptions
+	illustFilterOptions
 	listOptions
 }
 
@@ -89,6 +92,7 @@ func (a app) newSearchCommand() *cobra.Command {
 	flags.StringVar(&opts.aiMode, "ai-mode", opts.aiMode, "AI artwork filter: all, exclude, only")
 	flags.IntVar(&opts.bookmarkMin, "bookmark-min", 0, "minimum public bookmark count (requires Pixiv Premium)")
 	flags.IntVar(&opts.bookmarkMax, "bookmark-max", 0, "maximum public bookmark count (requires Pixiv Premium)")
+	flags.StringVar(&opts.filter, "filter", "", "local illustration filter expression")
 	bindListFlags(cmd, &opts.listOptions)
 	return cmd
 }
@@ -115,6 +119,12 @@ func (a app) runSearch(cmd *cobra.Command, args []string, opts searchOptions) er
 	if err != nil {
 		return err
 	}
+	if strings.TrimSpace(opts.filter) != "" {
+		plan.filter, err = sdk.CompileIllustFilter(opts.filter)
+		if err != nil {
+			return newUsageError(err)
+		}
+	}
 	services := a.services()
 	clientReq, jsonOverride, err := a.sdkRequest(cmd, opts.commandOptions)
 	if err != nil {
@@ -130,6 +140,7 @@ func (a app) runSearch(cmd *cobra.Command, args []string, opts searchOptions) er
 			return err
 		}
 	}
+	opts.ndjson = a.shouldAutoNDJSON(cmd, opts.ndjson, jsonOut)
 	fetch := func(client application.SDKClient, ctx context.Context, cursor sdk.Cursor) ([]sdk.Illust, sdk.Cursor, error) {
 		result, err := client.SearchIllust(ctx, sdk.SearchIllustRequest{
 			Word: word, Target: target, Sort: sdk.SortMode(opts.sortMode),
@@ -320,6 +331,7 @@ func (a app) newRankingCommand() *cobra.Command {
 	flags := cmd.Flags()
 	flags.StringVar(&opts.mode, "mode", opts.mode, "ranking mode: day, day_male, day_female, week, week_original, week_rookie, month, day_manga, week_manga, month_manga, week_rookie_manga, day_r18, day_male_r18, day_female_r18, week_r18, week_r18g; the last nine require authentication")
 	flags.StringVar(&opts.date, "date", "", "YYYY-MM-DD")
+	bindIllustFilterFlag(cmd, &opts.illustFilterOptions)
 	bindListFlags(cmd, &opts.listOptions)
 	return cmd
 }
@@ -327,6 +339,9 @@ func (a app) newRankingCommand() *cobra.Command {
 func (a app) runRanking(cmd *cobra.Command, opts rankingOptions) error {
 	plan, err := parseListPlan(cmd, opts.listOptions)
 	if err != nil {
+		return err
+	}
+	if err := applyIllustFilter(&plan, opts.filter); err != nil {
 		return err
 	}
 	services := a.services()
@@ -344,6 +359,7 @@ func (a app) runRanking(cmd *cobra.Command, opts rankingOptions) error {
 			return err
 		}
 	}
+	opts.ndjson = a.shouldAutoNDJSON(cmd, opts.ndjson, jsonOut)
 	fetch := func(client application.SDKClient, ctx context.Context, cursor sdk.Cursor) ([]sdk.Illust, sdk.Cursor, error) {
 		result, err := client.IllustRanking(ctx, sdk.IllustRankingRequest{Mode: sdk.RankingMode(opts.mode), Date: opts.date, Cursor: cursor})
 		if err != nil {
@@ -366,19 +382,26 @@ func (a app) newRecommendedCommand() *cobra.Command {
 	}
 	a.bindCommonFlags(cmd, &opts.commandOptions)
 	bindNDJSONFlag(cmd, &opts.ndjsonOutputOptions)
+	bindIllustFilterFlag(cmd, &opts.illustFilterOptions)
 	bindListFlags(cmd, &opts.listOptions)
 	return cmd
 }
 
 type downloadOptions struct {
 	commandOptions
-	downloadPath     string
-	filenameTemplate string
-	pages            string
-	quality          string
-	ugoiraFormat     string
-	concurrency      int
-	onError          string
+	downloadPath      string
+	filenameTemplate  string
+	directoryTemplate string
+	pages             string
+	quality           string
+	ugoiraMode        string
+	concurrency       int
+	onError           string
+	filter            string
+	archive           string
+	writeMetadata     bool
+	retries           int
+	retryDelay        time.Duration
 }
 
 func (a app) newDownloadCommand() *cobra.Command {
@@ -396,9 +419,14 @@ func (a app) newDownloadCommand() *cobra.Command {
 	flags := cmd.Flags()
 	flags.StringVar(&opts.pages, "pages", "", "1-based page selection, e.g. 1,3-5; default all pages")
 	flags.StringVar(&opts.quality, "quality", opts.quality, "static image quality: original, regular, small, thumb, mini")
-	flags.StringVar(&opts.ugoiraFormat, "ugoira-format", string(sdk.UgoiraFormatGIF), "ugoira output format: gif or apng")
+	flags.StringVar(&opts.ugoiraMode, "ugoira-mode", string(sdk.UgoiraModeGIF), "ugoira output mode: gif, apng, zip, frames")
 	flags.IntVar(&opts.concurrency, "concurrency", 0, "download workers; 0 automatically uses 2 × GOMAXPROCS")
 	flags.StringVar(&opts.onError, "on-error", "skip", "record failure strategy: skip or fail-fast")
+	flags.StringVar(&opts.filter, "filter", "", "local illustration filter expression")
+	flags.StringVar(&opts.archive, "archive", "", "SQLite file recording completed artwork IDs")
+	flags.BoolVar(&opts.writeMetadata, "write-metadata", false, "write a JSON sidecar for each downloaded artifact")
+	flags.IntVar(&opts.retries, "retries", 3, "resource retries after the initial request")
+	flags.DurationVar(&opts.retryDelay, "retry-delay", time.Second, "initial resource retry delay")
 	return cmd
 }
 
@@ -406,14 +434,15 @@ func (a app) newDownloadCommand() *cobra.Command {
 func (a app) bindDownloadRuntimeFlags(cmd *cobra.Command, opts *downloadOptions) {
 	flags := cmd.Flags()
 	flags.StringVar(&opts.downloadPath, "download-path", "", "download directory")
-	flags.StringVar(&opts.filenameTemplate, "filename-template", "", "filename template placeholders: {id}, {title}, {author}")
+	flags.StringVar(&opts.filenameTemplate, "filename-template", "", "filename template placeholders: {id}, {title}, {author}, {author_id}, {date}, {tags}, {num}")
+	flags.StringVar(&opts.directoryTemplate, "directory-template", "", "relative directory template")
 }
 
 func (a app) runDownload(cmd *cobra.Command, args []string, opts downloadOptions) error {
 	if _, err := recordFailureStrategy(opts.onError); err != nil {
 		return err
 	}
-	pages, err := application.ParsePageSpec(opts.pages)
+	pages, err := sdk.ParsePageSelection(opts.pages)
 	if err != nil {
 		return newUsageError(err)
 	}
@@ -424,8 +453,8 @@ func (a app) runDownload(cmd *cobra.Command, args []string, opts downloadOptions
 	if err := application.ValidateDownloadQuality(quality); err != nil {
 		return newUsageError(err)
 	}
-	ugoiraFormat := sdk.UgoiraFormat(opts.ugoiraFormat)
-	if err := sdk.ValidateUgoiraFormat(ugoiraFormat); err != nil {
+	ugoiraMode := sdk.UgoiraMode(opts.ugoiraMode)
+	if err := sdk.ValidateUgoiraMode(ugoiraMode); err != nil {
 		return newUsageError(err)
 	}
 	services := a.services()
@@ -443,18 +472,34 @@ func (a app) runDownload(cmd *cobra.Command, args []string, opts downloadOptions
 	if cmd.Flags().Changed("filename-template") {
 		runtime.FilenameTemplate = opts.filenameTemplate
 	}
+	if cmd.Flags().Changed("directory-template") {
+		runtime.DirectoryTemplate = opts.directoryTemplate
+	}
+	var filter *sdk.IllustFilter
+	if strings.TrimSpace(opts.filter) != "" {
+		filter, err = sdk.CompileIllustFilter(opts.filter)
+		if err != nil {
+			return newUsageError(err)
+		}
+	}
 	options := sdk.DownloadOptions{
-		DownloadPath:     runtime.DownloadPath,
-		FilenameTemplate: runtime.FilenameTemplate,
-		Pages:            pages,
-		Quality:          sdk.DownloadQuality(quality),
-		UgoiraFormat:     ugoiraFormat,
-		Concurrency:      opts.concurrency,
+		DownloadPath:      runtime.DownloadPath,
+		FilenameTemplate:  runtime.FilenameTemplate,
+		DirectoryTemplate: runtime.DirectoryTemplate,
+		PageSelection:     pages,
+		Quality:           sdk.DownloadQuality(quality),
+		UgoiraMode:        ugoiraMode,
+		UgoiraFormat:      sdk.UgoiraFormat(ugoiraMode), // 旧嵌入 DownloadTargetClient 适配路径。
+		Concurrency:       opts.concurrency,
+		Filter:            filter,
+		ArchivePath:       opts.archive,
+		WriteMetadata:     opts.writeMetadata,
+		RetryPolicy:       &sdk.RetryPolicy{Retries: opts.retries, InitialDelay: opts.retryDelay},
 	}
 	if progress, ok := newDownloadProgressRenderer(a.errOut); ok {
 		options.Progress = progress.Report
 	}
-	request := application.SDKClientRequest{HTTPSProxyOverride: clientReq.HTTPSProxyOverride}
+	request := application.SDKClientRequest{HTTPSProxyOverride: clientReq.HTTPSProxyOverride, RequestIntervalOverride: clientReq.RequestIntervalOverride}
 	downloadOne := func(ctx context.Context, id int64) error {
 		return services.SDK.RunPooledOperation(ctx, request, func(ctx context.Context, client application.SDKClient) (bool, error) {
 			report, err := services.Download.DownloadSources(ctx, client, []string{strconv.FormatInt(id, 10)}, options)

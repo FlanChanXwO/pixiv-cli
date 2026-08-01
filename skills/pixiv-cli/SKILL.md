@@ -98,10 +98,12 @@ the installed binary's `pixiv <cmd> --help` output.
    relay it. JSON carries field names and metadata — it is *larger* than the
    table for display purposes.
 3. **Programmatic processing** (extract IDs, filter, chain into a next
-   command): use `--ndjson`, then use `pixiv filter` or pass the records to a
-   compatible action. NDJSON is streaming: do not add a collector merely to
-   make a pipeline convenient. `--json` remains for one complete result
-   document when a command exposes it, but cannot be combined with `--ndjson`.
+   command): visual lists automatically emit canonical NDJSON when stdout is a
+   pipe. Use `--ndjson` when explicit output is clearer, and apply typed local
+   rules with `--filter EXPR` before passing records to a compatible action.
+   NDJSON is streaming: do not add a collector merely to make a pipeline
+   convenient. `--json` remains for one complete result document when a command
+   exposes it, but cannot be combined with `--ndjson`.
 4. **Opportunistic tooling:** probe once for `jq`; if present, prefer
    `--json` + `jq` for field selection. If absent, fall back to tier 3
    silently — never ask the user to install anything.
@@ -142,13 +144,13 @@ pixiv user detail USER_ID --json          # full public profile (USER_ID require
 pixiv user artworks [USER_ID] --limit 20  # omit USER_ID = current account
 pixiv user bookmarks [USER_ID] --tag TAG --limit 20
 pixiv user following [USER_ID] --limit 20
-pixiv search "miku" --ndjson --limit 50 | pixiv filter --min-views 1000
-pixiv search "miku" --ndjson --limit 20 | pixiv download --ugoira-format apng
+pixiv search "miku" --limit 50 --filter 'bookmarkCount >= 1000'
+pixiv search "miku" --limit 20 --filter 'xRestrict == 0' | pixiv download --ugoira-mode apng
 pixiv bookmark add ILLUST_ID --tag TAG    # --tag repeatable; write op
 pixiv bookmark remove ILLUST_ID           # write op
 pixiv follow add USER_ID                  # write op
 pixiv follow remove USER_ID               # write op
-pixiv download [SRC...] [--pages 1,3-5] [--quality original|regular|small|thumb|mini] [--ugoira-format gif|apng] [--download-path DIR] [--concurrency N]
+pixiv download [SRC...] [--filter EXPR] [--pages 1,3-5,8-] [--quality original|regular|small|thumb|mini] [--ugoira-mode gif|apng|zip|frames] [--archive FILE] [--write-metadata] [--download-path DIR] [--directory-template T] [--concurrency N]
 pixiv update --check --json               # read-only update check
 ```
 
@@ -156,9 +158,12 @@ Data commands use the account selected by `pixiv auth use`; they do not accept
 credential-selection flags and ignore `PIXIV_REFRESH_TOKEN`. A manually maintained
 `[account_pool]` can choose local accounts only for safe non-mutating reads and downloads.
 Common data flags are command-scoped `--json` or `--ndjson`, plus `--proxy URL` /
-`--no-proxy` (this command only, never persisted).
+`--no-proxy` (this command only, never persisted). Proxy URIs may use `http`,
+`https`, `socks5`, or `socks5h`; `--sleep-request D` sets a one-command minimum
+interval between network request starts.
 
-`pixiv config` manages only `download_path`, `filename_template`, and `https_proxy`.
+`pixiv config` manages `download_path`, `filename_template`, `directory_template`,
+`request_interval`, and `https_proxy`.
 Other TOML settings are hand-maintained; inspect the installed help before suggesting them.
 
 ## Critical semantics (traps — read before assuming a bug)
@@ -205,7 +210,8 @@ Other TOML settings are hand-maintained; inspect the installed help before sugge
    emits JSON.
 10. **Proxy is per-command.** The browser's system proxy is NOT inherited.
    Persist with `pixiv config set https_proxy URL`; override per command with
-   `--proxy` / `--no-proxy` (mutually exclusive). With an HTTP(S) proxy,
+   `--proxy` / `--no-proxy` (mutually exclusive). HTTP, HTTPS, SOCKS5, and
+   SOCKS5H proxy URIs are supported. With an explicit proxy,
    resource downloads deliberately use HTTP/1.1; App API, OAuth, and Web
    metadata requests retain normal protocol negotiation.
 11. **Long downloads may legitimately take time.** Do not impose an arbitrary
@@ -223,10 +229,9 @@ Other TOML settings are hand-maintained; inspect the installed help before sugge
 13. **Direct URLs are intentionally narrow.** `detail` accepts only an artwork
     ID or a `pixiv.net`/`www.pixiv.net` HTTPS `/artworks/{id}` URL (an optional
     locale, query, or fragment is harmless). `download` also accepts `/users/{id}`
-    and `/users/{id}/artworks`, which expand every illust, manga, and ugoira for
-    that user — no novels and no implicit limit. User URL downloads use App
-    OAuth. Supported references are the documented current artwork and user
-    URL forms.
+    and `/users/{id}/artworks`, `/users/{id}/bookmarks/artworks`, and
+    `/user/{id}/series/{series_id}`. These expand visual works in first-seen
+    artwork-ID order; user, bookmarks, and series downloads use App OAuth.
 
 ## Routing
 

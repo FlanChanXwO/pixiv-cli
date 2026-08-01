@@ -10,6 +10,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/bootstrap"
 	"github.com/FlanChanXwO/pixiv-cli/internal/buildinfo"
@@ -150,7 +151,7 @@ func TestRunSkipsAutomaticUpdateForExcludedCommands(t *testing.T) {
 	})
 	t.Run("MCP", func(t *testing.T) {
 		oldMCP := runMCPServer
-		runMCPServer = func(context.Context, *string) error { return nil }
+		runMCPServer = func(context.Context, *string, *time.Duration) error { return nil }
 		t.Cleanup(func() { runMCPServer = oldMCP })
 
 		var stdout, stderr bytes.Buffer

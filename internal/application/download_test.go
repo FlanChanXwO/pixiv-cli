@@ -164,6 +164,25 @@ func TestDownloadSourcesDeduplicatesArtworkAndExpandedUserWorksByFirstOccurrence
 	}, client.sources)
 }
 
+func TestDownloadSourcesExpandsPublicIllustrationSeriesAndDeduplicates(t *testing.T) {
+	var requests []sdk.IllustSeriesRequest
+	client := &downloadAllSeriesClientStub{series: func(_ context.Context, request sdk.IllustSeriesRequest) (*sdk.IllustListResult, error) {
+		requests = append(requests, request)
+		if request.Cursor == "" {
+			return &sdk.IllustListResult{Illusts: []sdk.Illust{{ID: 1}, {ID: 2}}, NextCursor: "next"}, nil
+		}
+		return &sdk.IllustListResult{Illusts: []sdk.Illust{{ID: 2}, {ID: 3}}}, nil
+	}}
+	_, err := (application.DownloadService{}).DownloadSources(context.Background(), client, []string{"1", "https://www.pixiv.net/user/7/series/9"}, sdk.DownloadOptions{})
+	require.NoError(t, err)
+	require.Equal(t, []string{
+		"https://www.pixiv.net/artworks/1",
+		"https://www.pixiv.net/artworks/2",
+		"https://www.pixiv.net/artworks/3",
+	}, client.sources)
+	require.Equal(t, []sdk.IllustSeriesRequest{{SeriesID: 9, UserID: 7}, {SeriesID: 9, UserID: 7, Cursor: "next"}}, requests)
+}
+
 func TestDownloadServiceStopsImmediatelyWhenContextIsCanceled(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -296,6 +315,21 @@ func (c *downloadAllClientStub) DownloadAllWith(_ context.Context, sources []str
 type downloadAllUserClientStub struct {
 	userArtworksDownloadClient
 	sources []string
+}
+
+type downloadAllSeriesClientStub struct {
+	downloadTargetClientStub
+	series  func(context.Context, sdk.IllustSeriesRequest) (*sdk.IllustListResult, error)
+	sources []string
+}
+
+func (c *downloadAllSeriesClientStub) IllustSeries(ctx context.Context, request sdk.IllustSeriesRequest) (*sdk.IllustListResult, error) {
+	return c.series(ctx, request)
+}
+
+func (c *downloadAllSeriesClientStub) DownloadAllWith(_ context.Context, sources []string, _ sdk.DownloadOptions) (sdk.DownloadAllResult, error) {
+	c.sources = append([]string(nil), sources...)
+	return sdk.DownloadAllResult{Items: make([]sdk.DownloadItemResult, len(sources))}, nil
 }
 
 func (c *downloadAllUserClientStub) DownloadAllWith(_ context.Context, sources []string, _ sdk.DownloadOptions) (sdk.DownloadAllResult, error) {

@@ -15,6 +15,7 @@ import (
 type timelineOptions struct {
 	commandOptions
 	ndjsonOutputOptions
+	illustFilterOptions
 	listOptions
 	contentType string
 	restrict    string
@@ -25,6 +26,7 @@ type timelineOptions struct {
 type myPixivOptions struct {
 	commandOptions
 	ndjsonOutputOptions
+	illustFilterOptions
 	listOptions
 	contentType string
 }
@@ -47,6 +49,7 @@ func (a app) newTimelineFollowingCommand() *cobra.Command {
 	}
 	a.bindCommonFlags(cmd, &opts.commandOptions)
 	bindNDJSONFlag(cmd, &opts.ndjsonOutputOptions)
+	bindIllustFilterFlag(cmd, &opts.illustFilterOptions)
 	bindListFlags(cmd, &opts.listOptions)
 	cmd.Flags().StringVar(&opts.contentType, "type", "", "required content type: illust or novel")
 	cmd.Flags().StringVar(&opts.restrict, "restrict", opts.restrict, "follow visibility: public or private")
@@ -65,6 +68,7 @@ func (a app) newTimelineLatestCommand() *cobra.Command {
 	}
 	a.bindCommonFlags(cmd, &opts.commandOptions)
 	bindNDJSONFlag(cmd, &opts.ndjsonOutputOptions)
+	bindIllustFilterFlag(cmd, &opts.illustFilterOptions)
 	bindListFlags(cmd, &opts.listOptions)
 	cmd.Flags().StringVar(&opts.contentType, "type", "", "required content type: illust, manga, or novel")
 	return cmd
@@ -77,6 +81,12 @@ func (a app) runTimelineFollowing(cmd *cobra.Command, opts timelineOptions) erro
 	plan, err := parseListPlan(cmd, opts.listOptions)
 	if err != nil {
 		return err
+	}
+	if err := applyIllustFilter(&plan, opts.filter); err != nil {
+		return err
+	}
+	if plan.filter != nil && opts.contentType == "novel" {
+		return newUsageError(fmt.Errorf("--filter is only available for illustration timelines"))
 	}
 	services := a.services()
 	request, jsonOverride, err := a.sdkRequest(cmd, opts.commandOptions)
@@ -93,6 +103,7 @@ func (a app) runTimelineFollowing(cmd *cobra.Command, opts timelineOptions) erro
 			return err
 		}
 	}
+	opts.ndjson = a.shouldAutoNDJSON(cmd, opts.ndjson, jsonOut)
 	if opts.contentType == "illust" {
 		fetch := func(client application.SDKClient, ctx context.Context, cursor sdk.Cursor) ([]sdk.Illust, sdk.Cursor, error) {
 			result, err := client.FollowingIllusts(ctx, sdk.FollowingIllustsRequest{Restrict: sdk.Restrict(opts.restrict), Cursor: cursor})
@@ -121,6 +132,12 @@ func (a app) runTimelineLatest(cmd *cobra.Command, opts timelineOptions) error {
 	if err != nil {
 		return err
 	}
+	if err := applyIllustFilter(&plan, opts.filter); err != nil {
+		return err
+	}
+	if plan.filter != nil && opts.contentType == "novel" {
+		return newUsageError(fmt.Errorf("--filter is only available for illustration timelines"))
+	}
 	services := a.services()
 	request, jsonOverride, err := a.sdkRequest(cmd, opts.commandOptions)
 	if err != nil {
@@ -136,6 +153,7 @@ func (a app) runTimelineLatest(cmd *cobra.Command, opts timelineOptions) error {
 			return err
 		}
 	}
+	opts.ndjson = a.shouldAutoNDJSON(cmd, opts.ndjson, jsonOut)
 	if opts.contentType == "novel" {
 		fetch := func(client application.SDKClient, ctx context.Context, cursor sdk.Cursor) ([]sdk.Novel, sdk.Cursor, error) {
 			result, err := client.LatestNovels(ctx, sdk.LatestNovelsRequest{Cursor: cursor})
@@ -190,6 +208,7 @@ func (a app) newMyPixivWorksCommand() *cobra.Command {
 	}
 	a.bindCommonFlags(cmd, &opts.commandOptions)
 	bindNDJSONFlag(cmd, &opts.ndjsonOutputOptions)
+	bindIllustFilterFlag(cmd, &opts.illustFilterOptions)
 	bindListFlags(cmd, &opts.listOptions)
 	cmd.Flags().StringVar(&opts.contentType, "type", "", "required content type: illust, manga, or novel")
 	return cmd
@@ -255,6 +274,12 @@ func (a app) runMyPixivWorks(cmd *cobra.Command, args []string, opts myPixivOpti
 	if err != nil {
 		return err
 	}
+	if err := applyIllustFilter(&plan, opts.filter); err != nil {
+		return err
+	}
+	if plan.filter != nil && opts.contentType == "novel" {
+		return newUsageError(fmt.Errorf("--filter is only available for illustration lists"))
+	}
 	services := a.services()
 	request, jsonOverride, err := a.sdkRequest(cmd, opts.commandOptions)
 	if err != nil {
@@ -270,6 +295,7 @@ func (a app) runMyPixivWorks(cmd *cobra.Command, args []string, opts myPixivOpti
 			return err
 		}
 	}
+	opts.ndjson = a.shouldAutoNDJSON(cmd, opts.ndjson, jsonOut)
 	if len(args) == 0 {
 		if opts.contentType == "illust" {
 			fetch := func(client application.SDKClient, ctx context.Context, cursor sdk.Cursor) ([]sdk.Illust, sdk.Cursor, error) {

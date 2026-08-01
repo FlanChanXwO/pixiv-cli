@@ -334,7 +334,8 @@ func resourceDestinationExists(destinationPath string) (bool, error) {
 }
 
 func validateResourceDestinationDirectory(destinationPath string) error {
-	info, err := os.Stat(filepath.Dir(destinationPath))
+	directory := filepath.Dir(destinationPath)
+	info, err := os.Stat(directory)
 	if err != nil || !info.IsDir() {
 		return invalidResourceError(OperationDownload, "destination path is invalid")
 	}

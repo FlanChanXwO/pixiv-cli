@@ -17,11 +17,11 @@
 ## pixiv-cli を選ぶ理由
 
 - **統一された機能** — CLI・MCP・SDK から Pixiv の検索、詳細、ランキング、おすすめ、ユーザー、ブックマーク、フォロー、ダウンロード、うごイラを利用できます。
-- **timeline と合成可能な Record パイプライン** — latest または following の作品を canonical NDJSON で取得し、Record をローカルで filter して action へ渡せます。
+- **合成可能な visual pipeline** — visual list は pipe 時に canonical NDJSON を自動出力します。型付きの local artwork rule は `--filter` で指定し、そのまま `download` に渡せます。
 - **ローカル account pool** — 読み取り処理に適格なローカル account を選択し、pagination と download preparation で Pixiv の `Retry-After` に従います。
 - **分かりやすいアカウントログイン** — `pixiv auth login` で browser OAuth を完了し、`auth list`、`auth use`、`auth check` でローカルの複数アカウントを管理・確認できます。
-- **GIF と APNG のうごイラ出力** — GIF を既定にしつつ、CLI・MCP・SDK から APNG を明示指定できます。
-- **進捗表示に対応したキャッシュ download** — `.pixiv-cache` metadata を永続的に再検証し、検証済み partial を `Range` と `If-Range` で再開し、総 byte 数が分かる場合は terminal に進捗を表示します。
+- **4 種類のうごイラ出力 mode** — GIF、APNG、lossless ZIP、展開 frame を選べます。
+- **信頼できる整理可能な download** — `.pixiv-cache` metadata の再検証、検証済み partial の再開、回復可能な resource failure の retry、完了 artwork の任意 archive、sidecar を提供し、総 byte 数が分かると terminal progress を表示します。
 - **認証済み App API の探索** — R18 detail、pages、ugoira metadata、全 16 ranking mode を App API で取得します。
 - **実用的な検索フィルター** — レーティング、作品種別、AI モード、縦横比、解像度、versioned な制作ツール catalog に対応します。
 - **Pixiv URL を直接指定** — 対応する作品 URL を detail/download に貼り付けられ、認証済みのユーザープロフィール/作品一覧 URL はそのユーザーの視覚作品へ展開されます。

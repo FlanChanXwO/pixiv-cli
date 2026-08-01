@@ -5,6 +5,8 @@
 本文是 `pixiv` 命令的完整契约：安装、认证、命令、flag、配置、环境变量、匿名 fallback 和更新。
 SDK 与 MCP 细节不在此重复，入口见[相关文档](#相关文档)。
 
+> 独立 `pixiv filter` 与 `--ugoira-format` 已移除。视觉列表在管道中会自动输出 canonical NDJSON；用 `--filter EXPR` 筛选作品，例如 `bookmarkCount >= 5000 and xRestrict == 0`。下载使用 `--ugoira-mode gif|apng|zip|frames`，支持 `3-` 页选择、`--archive`、`--write-metadata`、`--directory-template`、`--retries` 和 `--retry-delay`。模板可用 `{id}`、`{title}`、`{author}`、`{author_id}`、`{date}`、`{tags}`、`{num}`；代理接受 `http`、`https`、`socks5` 与 `socks5h`。配置包含 `directory_template`、`request_interval`（也可用 `PIXIV_REQUEST_INTERVAL` 或本次 `--sleep-request` 覆盖）。
+
 用户可感知变化记录在[按版本归档的更新日志](../../changelog/README.zh-CN.md)。
 
 [GitHub Releases 页面]: https://github.com/FlanChanXwO/pixiv-cli/releases
@@ -263,9 +265,9 @@ CLI 使用 Cobra/pflag，选项可以写在位置参数前后，例如 `pixiv au
 
 所有非写入的数据读取、推荐、时间线与下载都使用 `pixiv auth use` 选定的本地账号。只有 `[account_pool]` 显式设置 `enabled = true` 时才启用账号池；省略 `accounts` 会按 `auth.json` 的存储顺序使用全部账号，写入 `accounts` 时它是白名单。`strategy` 默认 `round_robin`，也支持 `random`。写操作、认证和配置不使用账号池。数据命令拒绝 `--uid`、`--refresh-token`，并忽略 `PIXIV_REFRESH_TOKEN`。
 
-需要流式处理时使用 `--ndjson`：每行都是带稳定字符串 `id`、`type`、`url` 的规范 Record，其余 SDK 字段会保留。 `pixiv filter` 从 stdin 读 Record；`download`、`bookmark add/remove`、`follow add/remove` 也可不带位置 ID 直接消费它们。动作成功时 stdout 保持为空，安全诊断写入 stderr。 `--on-error=skip|fail-fast` 控制 stdin 中格式错误或不兼容 Record 的处理；`--json` 与 `--ndjson` 不能同时使用。
+视觉列表接入管道时会自动输出 NDJSON；也可显式使用 `--ndjson`。每行都是带稳定字符串 `id`、`type`、`url` 的规范 Record，其余 SDK 字段会保留。`download`、`bookmark add/remove`、`follow add/remove` 可不带位置 ID 直接消费它们。视觉列表与 `download` 使用 `--filter EXPR` 在本地按作品字段筛选；动作成功时 stdout 保持为空，安全诊断写入 stderr。`--on-error=skip|fail-fast` 控制 stdin 中格式错误或不兼容 Record 的处理；`--json` 与 `--ndjson` 不能同时使用。
 
-Ugoira 下载支持 `--ugoira-format gif|apng`，默认仍为 `gif`；Ugoira 指定页码或非 original 质量时该选项不可用。
+Ugoira 下载使用 `--ugoira-mode gif|apng|zip|frames`，默认 `gif`；指定页码或非 original 质量时会明确报错。
 
 ### CLI 命令表
 
@@ -281,7 +283,7 @@ Ugoira 下载支持 `--ugoira-format gif|apng`，默认仍为 `gif`；Ugoira 指
 | `auth refresh` | `pixiv auth refresh [UID] [--all] [--json] [--proxy URL\|--no-proxy]` | 刷新指定/默认已保存账号的 OAuth access token 与 rotation 后 refresh token，再强制读取 profile 更新 Pixiv 高级会员缓存。`--all` 刷新全部已保存账号；JSON 固定返回 `accounts`。 |
 | `config path` | `pixiv config path` | 输出 `config.toml` 路径；不存在时创建基础文件。 |
 | `config get` | `pixiv config get KEY` | 输出一个生效中的配置值。 |
-| `config set` | `pixiv config set KEY [VALUE]` | 写入已知配置键；只接受 `download_path`、`filename_template` 与 `https_proxy`。 |
+| `config set` | `pixiv config set KEY [VALUE]` | 写入已知配置键，包括 `download_path`、`filename_template`、`directory_template`、`request_interval` 与 `https_proxy`。 |
 | `config unset` | `pixiv config unset KEY` | 从 `config.toml` 删除一个已知配置键。 |
 | `version` | `pixiv version [--json]` | 输出当前二进制的 `version`、`commit`、`build_date`；根 `pixiv --version` 只输出版本。 |
 | `update` | `pixiv update [--check] [--prerelease] [--proxy URL]` | 检查或执行与当前安装来源匹配的更新；`--json` 仅可与 `--check` 同用。 |
@@ -294,11 +296,10 @@ Ugoira 下载支持 `--ugoira-format gif|apng`，默认仍为 `gif`；Ugoira 指
 | `timeline latest` | `pixiv timeline latest --type illust\|manga\|novel [--page N --limit N --json\|--ndjson]` | 读取 App 最新作品。 |
 | `mypixiv users` | `pixiv mypixiv users [--page N --limit N --json\|--ndjson]` | 列出所选账号的 MyPixiv 用户。 |
 | `mypixiv works` | `pixiv mypixiv works [USER_ID] --type illust\|manga\|novel [--page N --limit N --json\|--ndjson]` | 列出 MyPixiv 作品；省略 USER_ID 时只允许 `illust` 或 `novel`。 |
-| `filter` | `pixiv filter [--id ID --type TYPE --tag TAG --min-views N --min-pages N --on-error skip\|fail-fast]` | 筛选 stdin 的规范 Record NDJSON。 |
 | `user search` | `pixiv user search WORD [--page N --limit N --json]` | 搜索用户；JSON 和文本会标明结果来自官方 App 用户搜索，还是匿名“相关插画作者”fallback。 |
 | `user detail` | `pixiv user detail USER_ID [--json]` | 查看指定用户的完整公开资料；`USER_ID` 必填。 |
-| `user artworks` | `pixiv user artworks [USER_ID] [--type TYPE --page N --limit N]` | 查看用户作品；省略 `USER_ID` 时使用当前认证用户。 |
-| `user bookmarks` | `pixiv user bookmarks [USER_ID] [--restrict public\|private --tag TAG --page N --limit N]` | 查看用户收藏，可按可见性和 tag 筛选；省略 `USER_ID` 时使用当前认证用户。 |
+| `user artworks` | `pixiv user artworks [USER_ID] [--type TYPE --filter EXPR --page N --limit N]` | 查看用户作品；省略 `USER_ID` 时使用当前认证用户。 |
+| `user bookmarks` | `pixiv user bookmarks [USER_ID] [--restrict public\|private --tag TAG --filter EXPR --page N --limit N]` | 查看用户收藏，可按可见性和 tag 筛选；省略 `USER_ID` 时使用当前认证用户。 |
 | `user following` | `pixiv user following [USER_ID] [--restrict public\|private --page N --limit N]` | 查看用户关注，可按可见性筛选；省略 `USER_ID` 时使用当前认证用户。 |
 | `bookmark add` | `pixiv bookmark add ILLUST_ID [--restrict public\|private --tag TAG...]` | 收藏作品；`--tag` 可重复使用。 |
 | `bookmark remove` | `pixiv bookmark remove ILLUST_ID` | 取消收藏作品；不接受可见性或 tag 参数。 |
@@ -350,11 +351,16 @@ Ugoira 下载支持 `--ugoira-format gif|apng`，默认仍为 `gif`；Ugoira 指
 | `recommended KIND` | `--page`、`--limit` | 各流独立分页 | 每条流独立分页；`all` 会对插画、漫画、小说、作者分别应用相同分页语义。 |
 | `timeline following` | `--type`、`--restrict` | 必填、`public` | 类型为 `illust` 或 `novel`；可见性为 `public` 或 `private`。 |
 | `timeline latest`、`mypixiv works` | `--type` | 必填 | 时间线支持 `illust`、`manga`、`novel`；省略 USER_ID 的 MyPixiv 只支持 `illust`、`novel`。 |
-| `filter` 与 Record 动作 | `--on-error` | `skip` | 对格式错误/不兼容记录选择写 stderr 后跳过，或 `fail-fast`。 |
-| `download` | `--pages` | 空 | 1-based 页选择，如 `1,3-5`（闭区间、去重、自然序）；默认下载全部页。页不存在会明确失败。 |
+| Record 动作 | `--on-error` | `skip` | 对格式错误/不兼容记录选择写 stderr 后跳过，或 `fail-fast`。 |
+| `download` | `--pages` | 空 | 1-based 页选择，如 `1,3-5` 或 `3-`；默认下载全部页。页不存在会明确失败。 |
 | `download` | `--quality` | `original` | 静态图质量：`original`、`regular`（最长边 1200）、`small`（最长边 540）、`thumb`（250×250 居中裁剪）、`mini`（48×48 居中裁剪）。Ugoira 对非 original 质量或页选择返回 unsupported。 |
 | `download` | `--download-path` | `DOWNLOAD_PATH`、`config.toml` 或 `./downloads` | 下载目录；其他命令不接受此参数。 |
-| `download` | `--filename-template` | `FILENAME_TEMPLATE`、`config.toml` 或 `{author} - {title}_{id}` | 文件名模板；只允许 `{id}`、`{title}`、`{author}`。未知占位符或不配对花括号会报错；其他命令不接受此参数。 |
+| `download` | `--ugoira-mode` | `gif` | Ugoira 输出：`gif`、`apng`、`zip` 或 `frames`。 |
+| `download` | `--filename-template` | `FILENAME_TEMPLATE`、`config.toml` 或 `{author} - {title}_{id}` | 支持 `{id}`、`{title}`、`{author}`、`{author_id}`、`{date}`、`{tags}`、`{num}`。未知占位符或不配对花括号会报错。 |
+| `download` | `--directory-template` | 空 | 使用同一占位符的安全相对目录模板。 |
+| 视觉列表、`download` | `--filter EXPR` | 空 | 类型化本地插画表达式；与常规筛选参数按 AND 组合。 |
+| `download` | `--archive` / `--write-metadata` | 空 / `false` | SQLite 完整作品归档与每件产物 JSON sidecar。 |
+| `download` | `--retries` / `--retry-delay` | `3` / `1s` | 符合条件的资源读取重试；有效 `Retry-After` 覆盖等待。 |
 | `download` | `--concurrency` | `0`（自动） | 下载 worker 数；`0` 使用 `2 × GOMAXPROCS`，正数精确采用。 |
 | `user artworks` | `--type` | `illust` | Pixiv 作品类型：`illust`、`manga` 或 `ugoira`。 |
 | `user bookmarks` | `--restrict` | `public` | 收藏可见性：`public` 或 `private`。 |
@@ -364,7 +370,7 @@ Ugoira 下载支持 `--ugoira-format gif|apng`，默认仍为 `gif`；Ugoira 指
 | `bookmark add` | `--tag` | 空 | 收藏 tag；可重复使用。 |
 | `follow add` | `--restrict` | `public` | 新关注的可见性：`public` 或 `private`。 |
 | `detail` | `ILLUST_ID_OR_URL` | 必填 | 正整数作品 ID，或受支持的 Pixiv 作品 URL。 |
-| `download` | `SRC...` | 必填 | 作品 PID、作品 URL、允许的 CDN 资源 URL，或受支持的用户主页/作品页 URL。CDN 文件使用 URL 文件名，不支持页选择、派生质量和自定义作品模板。 |
+| `download` | `SRC...` | 必填 | 作品 PID/URL、允许的 CDN URL、用户主页/作品页、公开书签页或插画系列页。CDN 文件仅使用 URL 文件名，不支持依赖作品元数据的选项。 |
 
 有 refresh token 时，`search` 由 App API 执行。分辨率、横纵比、工具、作品类型和 `ai-mode=exclude` 由 App 筛选，分级和 `ai-mode=only` 对 App 返回批次筛选；认证、网络或服务端失败会返回分类错误。全部筛选都会绑定 opaque cursor，cursor 不能用于不同筛选组合。本地筛选跳过连续空上游批次时，CLI/MCP 会补拉到首个非空逻辑批次或真正结束。指定正数 `--limit` 或 `--page` 时，按过滤后的逻辑结果跨批填满；`--limit 0` 遍历全部过滤结果；未指定 `--limit` 时读取一个上游批次，但会跳过前导空批。App 还会执行显式日期与仅限 Pixiv 高级会员的收藏数边界；收藏数不是点赞字段，不得文案为点赞。作品 JSON/文本包含稳定作品页 URL `https://www.pixiv.net/artworks/{id}`，作为首字段/每件作品第一行。
 
@@ -417,18 +423,21 @@ App JSON 读取在首次 429 且 `Retry-After` 有效时按命令 context 等待
 | --- | --- | --- | --- |
 | `--ndjson` | 数据列表/读取命令 | `false` | 每行输出一个规范 Record，用于流式 filter 与 action；不能与 `--json` 同用。 |
 | `--json` | 安全数据读取、认证摘要、`version`、`update --check` | `false` | 在命令提供时输出一个完整结果文档。下载和写动作不输出成功报告。 |
-| `--proxy URL` | 联网命令和 `mcp` | `https_proxy`/`HTTPS_PROXY`、`config.toml` 或空 | 仅本次使用 HTTP(S) 代理；`auth import --file` 禁用。 |
-| `--no-proxy` | 同 `--proxy` | 空 | 仅本次清空 HTTP(S) 代理；不能与 `--proxy` 或 bundle restore 同用。 |
+| `--sleep-request DURATION` | 联网命令和 `mcp` | 配置/默认值 | 本次请求起始间隔，覆盖 `PIXIV_REQUEST_INTERVAL` 与 `[network].request_interval`。 |
+| `--proxy URL` | 联网命令和 `mcp` | `https_proxy`/`HTTPS_PROXY`、`config.toml` 或空 | 仅本次使用 `http`、`https`、`socks5` 或 `socks5h` 代理 URI；`auth import --file` 禁用。 |
+| `--no-proxy` | 同 `--proxy` | 空 | 仅本次清空代理；不能与 `--proxy` 或 bundle restore 同用。 |
 
 ### CLI 可管理的 `config` 别名
 
-`pixiv config get/set/unset` **只接受**下列三个别名。其他运行时设置只能手工维护在私有 `config.toml` 中；CLI 不提供通用配置编辑器。
+`pixiv config get/set/unset` **只接受**下列别名。其他运行时设置只能手工维护在私有 `config.toml` 中；CLI 不提供通用配置编辑器。
 
 | KEY | 类型 | 默认值 | 说明 |
 | --- | --- | --- | --- |
 | `download_path` | string | `./downloads` | 下载目录。 |
 | `filename_template` | string | `{author} - {title}_{id}` | 文件名模板。 |
-| `https_proxy` | string | 空 | HTTP(S) 代理；小写 `https_proxy` 环境变量优先。 |
+| `directory_template` | string | 空 | 相对下载目录模板。 |
+| `request_interval` | duration | `0` | 请求起始间隔；`PIXIV_REQUEST_INTERVAL` 与一次性的 `--sleep-request` 可覆盖。 |
+| `https_proxy` | string | 空 | `http`、`https`、`socks5` 或 `socks5h` 代理 URI；小写 `https_proxy` 环境变量优先。 |
 
 手工 TOML 可以包含 `[account_pool]`、`[web]`、`[login]`、`[update]` 等高级运行时段。不要把 refresh token 写入 `config.toml`。账号池状态只记录上次 UID/冻结信息，绝不保存 token。旧 `[logging]` 表会为兼容性被忽略；`log_level` 不是受支持的 `pixiv config` 键。
 
@@ -436,10 +445,12 @@ App JSON 读取在首次 429 且 `Retry-After` 有效时按命令 context 等待
 
 | 环境变量 | 默认值 | 说明 |
 | --- | --- | --- |
-| `PIXIV_REFRESH_TOKEN` | 空 | Pixiv App API OAuth refresh token；可被账号选择或 `--refresh-token` 覆盖。 |
+| `PIXIV_REFRESH_TOKEN` | 空 | 受支持的 public SDK/MCP runtime 凭据输入；CLI 数据命令会忽略它。 |
 | `DOWNLOAD_PATH` | `./downloads` | 下载目录。 |
 | `FILENAME_TEMPLATE` | `{author} - {title}_{id}` | 文件名模板。 |
-| `https_proxy` / `HTTPS_PROXY` | 空 | HTTP(S) 代理；优先使用小写 `https_proxy`。 |
+| `DIRECTORY_TEMPLATE` | 空 | 相对下载目录模板。 |
+| `PIXIV_REQUEST_INTERVAL` | 空 | 请求起始间隔。 |
+| `https_proxy` / `HTTPS_PROXY` | 空 | `http`、`https`、`socks5` 或 `socks5h` 代理 URI；优先使用小写 `https_proxy`。 |
 
 CLI 数据命令以 `pixiv auth use` 选择的 `auth.json.default_user_id` 为准，或从手工 `[account_pool]` 选择；不接受身份选择参数，也不读取 `PIXIV_REFRESH_TOKEN`。
 

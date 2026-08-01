@@ -33,7 +33,7 @@ configuration/auth snapshot を取得します。複数の pagination call で�
 `client.Snapshot(ctx)` を使用してください。明示的な token export だけは例外であり、auth store を直接読みます。
 
 `NewClientOptions` は direct client 用の `AccessToken`、`WebFallbackEnabled`、HTTP、App/Web endpoint、
-`ResourcePolicy`、任意の `ResourceCachePath` だけを持ちます。`OpenDefaultOptions` は local path、OAuth endpoint、
+`ResourcePolicy`、任意の `ResourceCachePath`、`RequestInterval` を持ちます。`OpenDefaultOptions` は local path、OAuth endpoint、
 account selection、HTTP/endpoint、resource policy/cache path を持ちます。2 つの options に無効 field は混在しません。
 
 ### HTTP client と request lifetime
@@ -56,7 +56,7 @@ options の `HTTPClient` を指定した場合、constructor は同じ pointer �
 
 | Category | Method |
 | --- | --- |
-| Works と recommendation | `SearchIllust`、`SearchNovel`、`SupportedDrawingTools`、`IllustDetail`、`IllustPages`、`IllustRelated`、`IllustRanking`、`IllustRecommended`、`MangaRecommended`、`NovelRecommended`、`UserRecommended`、`FollowingIllusts`、`TrendingTagsIllust`、`UgoiraMetadata`。 |
+| Works と recommendation | `SearchIllust`、`SearchNovel`、`SupportedDrawingTools`、`IllustDetail`、`IllustPages`、`IllustRelated`、`IllustRanking`、`IllustRecommended`、`MangaRecommended`、`NovelRecommended`、`UserRecommended`、`FollowingIllusts`、`TrendingTagsIllust`、`IllustSeries`、`UgoiraMetadata`。 |
 | Users | `SearchUser`、`UserDetail`、`UserArtworks`、`UserBookmarks`、`UserFollowing`、`CurrentUserID`。 |
 | Writes | `AddBookmark`、`RemoveBookmark`、`FollowUser`、`UnfollowUser`。 |
 | Accounts/configuration | `ImportAccount`、`ListAccounts`、`SelectAccount`、`RemoveAccount`、`ExportAccountRefreshToken`、`ExportAuthBundle`、`RestoreAuthBundle`、`CheckAccount`、`CheckRefreshToken`、`Refresh`、`RefreshAccount`、`PremiumStatus`、`RefreshPremiumStatus`、`GetConfig`、`SetConfig`、`UnsetConfig`。bundle codec function は package-level です。 |
@@ -79,10 +79,7 @@ bookmark total を like と表示してはいけません。
 `ResourcePolicy` が許可する CDN URL を受け取り、`./downloads`、`{author} - {title}_{id}`、original、全 page、
 `2 × runtime.GOMAXPROCS(0)` 自動並行を使います。
 
-`DownloadWith` / `DownloadAllWith` と `DownloadOptions` では `DownloadPath`、`FilenameTemplate`、1-based `Pages`、
-`Quality`、`UgoiraFormat`、`Concurrency`、observation-only `Progress` callback を指定できます。`UgoiraFormat` は既定で `gif`、`apng` も選べます。`Concurrency==0` は自動、正数は上限なしでそのまま使います。直リンクは URL
-filename を使い、page、派生 quality、custom artwork template は拒否します。`DownloadAllResult.Items` は入力順を保持し、
-`Attempted`、成功結果（file cache state を含む）、または error を返すため失敗項だけ再試行できます。Ugoira ZIP は cache 後 GIF または APNG に変換し、page/original 以外の quality は unsupported です。
+`DownloadWith` / `DownloadAllWith` と `DownloadOptions` では `DownloadPath`、`FilenameTemplate`、`DirectoryTemplate`、closed `Pages` または open range 対応 `PageSelection`、`Quality`、`UgoiraMode`、`Concurrency`、compiled `Filter`、`ArchivePath`、`WriteMetadata`、`RetryPolicy`、observation-only `Progress` callback を指定できます。`UgoiraMode` は既定 `gif` で、`apng`、lossless `zip`、`frames`（frame file と timing manifest）も選べます。template は `{id}`、`{title}`、`{author}`、`{author_id}`、`{date}`、`{tags}`、`{num}` をサポートし、directory template は safe relative path、`{num}` は zero-based です。SQLite archive は選択 output と requested sidecar がすべて成功した artwork だけを記録します。sidecar は public `Illust`、relative artifact path、page、mode、ugoira timing を含む atomic `{artifact}.json` です。CDN 直リンクは metadata-dependent option を拒否します。resource read は valid `Retry-After` を持つ 429、5xx、retryable transport failure を既定で 3 回（1/2/4 秒）retry します。cancel、permanent local error、4xx は replay しません。
 
 `Progress func(DownloadProgress)` は download worker から直接かつ concurrently に呼ばれます。event は input の
 `SourceIndex`、1-based `Page`、destination path、利用できる artwork metadata、resource/batch byte counter を持ちます。
@@ -163,6 +160,10 @@ parameter と Pixiv Premium 限定の bookmark-count parameter に変換しま�
 upstream の order と value を保持し、bookmark-count filter とは関係ありません。
 
 `SupportedDrawingTools() []string` は versioned drawing-tool catalog を documented order で返します。network request は行わず、caller が変更できる defensive copy を返します。`PremiumStatus(ctx)` は保存済み認証 account の cached-or-fresh membership snapshot を返し、`RefreshPremiumStatus(ctx)` は profile を強制取得して結果を保存します。`OpenDefault` は `[premium] status_cache_ttl`（既定 `24h`、`0s` は reuse 無効）を使います。直接 `NewClient` access token には検証可能な account UID がないため、この saved-account precheck はできません。
+
+### Local illustration expression filter
+
+`CompileIllustFilter(expression)` は opaque で side-effect-free な `*IllustFilter` を compile し、`Match(Illust)` で public illustration を判定します。field は `id`、`userId`、`userName`、`type`、`title`、`createDate`、`pageCount`、`bookmarkCount`、`viewCount`、`xRestrict`、`aiType`、`width`、`height`、`tags`、`tools`、`rating`、`aiMode`、`aspectRatio`、`resolution`、`drawTool` だけです。boolean comparison、`and`/`or`/`not`、`in`/`not in`、array literal、Expr native `any`/`all` だけを許可します。例は `any(tags, # in ["miku", "vocaloid"]) and bookmarkCount >= 5000` です。arithmetic、regex、object/map/member access、variable、conditional、pipeline、reflection、その他 function は request 前に拒否されます。compile error は field/type/source column を示し、empty result に偽装しません。
 
 ### Novel search と user-search source
 

@@ -556,6 +556,21 @@ func TestSearchUsesOutputJSONFromConfig(t *testing.T) {
 	assert.Contains(t, stdout.String(), `"id": 321`)
 }
 
+func TestSearchAppliesExpressionFilterBeforeNDJSONOutput(t *testing.T) {
+	useTempPaths(t)
+	setTestSDKCommandClient(t, sdkCommandFake{search: func(context.Context, sdk.SearchIllustRequest) (*sdk.IllustListResult, error) {
+		return &sdk.IllustListResult{Illusts: []sdk.Illust{
+			{ID: 1, Type: "ugoira", TotalBookmarks: 999, XRestrict: 0},
+			{ID: 2, Type: "ugoira", TotalBookmarks: 1000, XRestrict: 0},
+		}}, nil
+	}})
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"pixiv", "search", "miku", "--filter", "bookmarkCount >= 1000 and xRestrict == 0", "--ndjson"}, strings.NewReader(""), &stdout, &stderr)
+	require.Equal(t, 0, code, stderr.String())
+	assert.NotContains(t, stdout.String(), `"id":"1"`)
+	assert.Contains(t, stdout.String(), `"id":"2"`)
+}
+
 func TestSDKDataCommandsPassProxyOverride(t *testing.T) {
 	tests := []struct {
 		name string
@@ -697,7 +712,7 @@ func TestDownloadDelegatesOperationSnapshotAndFlagOverrides(t *testing.T) {
 		"pixiv", "download", "42", "84",
 		"--download-path", "/flag/path",
 		"--filename-template", "flag-template",
-		"--ugoira-format", "apng",
+		"--ugoira-mode", "apng",
 		"--proxy", "http://flag-proxy",
 	}, strings.NewReader(""), &stdout, &stderr)
 

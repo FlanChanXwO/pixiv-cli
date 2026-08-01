@@ -70,6 +70,7 @@ func (a *App) novelFollow(ctx context.Context, _ *mcp.CallToolRequest, in novelF
 
 type latestIllustIn struct {
 	ContentType  sdk.IllustType  `json:"content_type" jsonschema:"required: illust or manga"`
+	Filter       string          `json:"filter,omitempty" jsonschema:"safe local illustration filter expression"`
 	IllustFilter *illustFilterIn `json:"illust_filter,omitempty"`
 	pageLimitIn
 }
@@ -82,7 +83,7 @@ func (a *App) illustNew(ctx context.Context, _ *mcp.CallToolRequest, in latestIl
 	if err != nil {
 		return a.illustQueryError(ctx, err)
 	}
-	ctx, err = withIllustFilter(ctx, in.IllustFilter)
+	ctx, err = withIllustFilterExpression(ctx, in.IllustFilter, in.Filter)
 	if err != nil {
 		return a.illustQueryError(ctx, err)
 	}
@@ -186,6 +187,7 @@ func (a *App) myPixivUsers(ctx context.Context, _ *mcp.CallToolRequest, in myPix
 }
 
 type myPixivIllustsIn struct {
+	Filter       string          `json:"filter,omitempty" jsonschema:"safe local illustration filter expression"`
 	IllustFilter *illustFilterIn `json:"illust_filter,omitempty"`
 	pageLimitIn
 }
@@ -200,7 +202,7 @@ func (a *App) myPixivIllusts(ctx context.Context, _ *mcp.CallToolRequest, in myP
 	if err != nil {
 		return a.illustQueryError(ctx, err)
 	}
-	ctx, err = withIllustFilter(ctx, in.IllustFilter)
+	ctx, err = withIllustFilterExpression(ctx, in.IllustFilter, in.Filter)
 	if err != nil {
 		return a.illustQueryError(ctx, err)
 	}

@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/config"
 	"github.com/stretchr/testify/assert"
@@ -106,7 +107,7 @@ func TestRunMCPDispatch(t *testing.T) {
 
 	called := false
 	var seenProxy *string
-	runMCPServer = func(_ context.Context, proxyOverride *string) error {
+	runMCPServer = func(_ context.Context, proxyOverride *string, _ *time.Duration) error {
 		called = true
 		seenProxy = proxyOverride
 		return nil
@@ -128,7 +129,7 @@ func TestRunMCPNoProxyDispatch(t *testing.T) {
 	t.Cleanup(func() { runMCPServer = old })
 
 	var seenProxy *string
-	runMCPServer = func(_ context.Context, proxyOverride *string) error {
+	runMCPServer = func(_ context.Context, proxyOverride *string, _ *time.Duration) error {
 		seenProxy = proxyOverride
 		return nil
 	}
@@ -148,7 +149,7 @@ func TestRunMCPEmptyProxyDispatch(t *testing.T) {
 	t.Cleanup(func() { runMCPServer = old })
 
 	var seenProxy *string
-	runMCPServer = func(_ context.Context, proxyOverride *string) error {
+	runMCPServer = func(_ context.Context, proxyOverride *string, _ *time.Duration) error {
 		seenProxy = proxyOverride
 		return nil
 	}
@@ -166,7 +167,7 @@ func TestRunMCPDispatchError(t *testing.T) {
 
 	old := runMCPServer
 	t.Cleanup(func() { runMCPServer = old })
-	runMCPServer = func(context.Context, *string) error {
+	runMCPServer = func(context.Context, *string, *time.Duration) error {
 		return errors.New("boom")
 	}
 
@@ -175,6 +176,23 @@ func TestRunMCPDispatchError(t *testing.T) {
 
 	require.NotZero(t, code)
 	assert.Contains(t, stderr.String(), "boom")
+}
+
+func TestRunMCPDispatchesSleepRequestOverride(t *testing.T) {
+	useTempPaths(t)
+	old := runMCPServer
+	t.Cleanup(func() { runMCPServer = old })
+	var seen *time.Duration
+	runMCPServer = func(_ context.Context, _ *string, requestInterval *time.Duration) error {
+		seen = requestInterval
+		return nil
+	}
+
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"pixiv", "mcp", "--sleep-request", "250ms"}, strings.NewReader(""), &stdout, &stderr)
+	require.Equal(t, 0, code, stderr.String())
+	require.NotNil(t, seen)
+	assert.Equal(t, 250*time.Millisecond, *seen)
 }
 
 func TestRunMCPRejectsMalformedExplicitProxyWithoutLeakingSensitiveComponents(t *testing.T) {

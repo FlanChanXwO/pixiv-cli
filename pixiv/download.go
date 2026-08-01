@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/ugoira"
 	"github.com/FlanChanXwO/pixiv-cli/internal/utils/filename"
@@ -35,6 +36,7 @@ type DownloadedFile struct {
 // DownloadResult 是单个 src 成功完成后的结果。直链资源不包含作品元数据。
 type DownloadResult struct {
 	SourceKind DownloadSourceKind `json:"source_kind"`
+	Skipped    bool               `json:"skipped,omitempty"`
 	IllustID   int64              `json:"illust_id,omitempty"`
 	Title      string             `json:"title,omitempty"`
 	Author     string             `json:"author,omitempty"`
@@ -73,6 +75,7 @@ type preparedDownload struct {
 	result    DownloadResult
 	resources []preparedResource
 	animation *preparedUgoira
+	illust    *Illust
 }
 
 type downloadTask struct {
@@ -82,13 +85,13 @@ type downloadTask struct {
 }
 
 // preparedUgoira 将 ZIP 缓存资源与最终用户可见动图分开：ZIP 只留在 .pixiv-cache，
-// GIF 才是 DownloadResult 中的产物。
+// GIF/APNG 才是 DownloadResult 中的产物。
 type preparedUgoira struct {
 	zipPath    string
 	frames     []ugoira.Frame
 	workDir    string
 	outputPath string
-	format     UgoiraFormat
+	mode       UgoiraMode
 	fileIndex  int
 }
 
@@ -141,6 +144,15 @@ func (c *Client) DownloadAllWith(ctx context.Context, srcs []string, options Dow
 		return DownloadAllResult{}, invalidResourceError(OperationDownload, "download path is invalid")
 	}
 	options.DownloadPath = base
+	archive, err := openArtworkArchive(options.ArchivePath)
+	if err != nil {
+		return DownloadAllResult{}, err
+	}
+	defer func() {
+		if closeErr := archive.Close(); err == nil && closeErr != nil {
+			err = closeErr
+		}
+	}()
 
 	out.Items = make([]DownloadItemResult, len(srcs))
 	prepared := make([]*preparedDownload, len(srcs))
@@ -149,7 +161,24 @@ func (c *Client) DownloadAllWith(ctx context.Context, srcs []string, options Dow
 		if err := ctx.Err(); err != nil {
 			return out, err
 		}
-		plan, planErr := c.prepareDownload(ctx, src, options)
+		source, sourceErr := c.parseDownloadSource(src)
+		if sourceErr != nil {
+			out.Items[index].Err = sourceErr
+			continue
+		}
+		if source.kind == DownloadSourceArtwork {
+			archived, archiveErr := archive.Contains(source.id)
+			if archiveErr != nil {
+				out.Items[index].Err = archiveErr
+				continue
+			}
+			if archived {
+				out.Items[index].Attempted = true
+				out.Items[index].Result = &DownloadResult{SourceKind: DownloadSourceArtwork, IllustID: source.id, Skipped: true}
+				continue
+			}
+		}
+		plan, planErr := c.prepareParsedDownload(ctx, source, options)
 		if planErr != nil {
 			out.Items[index].Err = planErr
 			continue
@@ -196,7 +225,7 @@ func (c *Client) DownloadAllWith(ctx context.Context, srcs []string, options Dow
 		if tracker != nil {
 			tracker.start(index)
 		}
-		resourceResults[index], resourceErrors[index] = c.downloadResourceWithProgress(ctx, item.resource.ref, item.resource.destination, func(bytes int64) {
+		resourceResults[index], resourceErrors[index] = c.downloadResourceWithRetry(ctx, item.resource.ref, item.resource.destination, options.RetryPolicy, func(bytes int64) {
 			if tracker != nil {
 				tracker.add(index, bytes)
 			}
@@ -231,19 +260,48 @@ func (c *Client) DownloadAllWith(ctx context.Context, srcs []string, options Dow
 			continue
 		}
 		if plan.animation != nil {
-			if err := ugoira.NewRustEncoder().Encode(ctx, ugoira.Input{
-				ZipPath:    plan.animation.zipPath,
-				Frames:     plan.animation.frames,
-				WorkDir:    plan.animation.workDir,
-				OutputPath: plan.animation.outputPath,
-				Format:     ugoira.Format(plan.animation.format),
-			}); err != nil {
-				out.Items[index].Err = err
+			var animationErr error
+			if plan.animation.mode == UgoiraModeFrames {
+				animationErr = extractUgoiraFrames(ctx, plan.animation.zipPath, plan.animation.outputPath, plan.animation.frames)
+			} else {
+				if err := os.MkdirAll(filepath.Dir(plan.animation.outputPath), 0o755); err != nil {
+					animationErr = invalidResourceError(OperationDownload, "cannot create ugoira output directory")
+				} else {
+					animationErr = ugoira.NewRustEncoder().Encode(ctx, ugoira.Input{
+						ZipPath:    plan.animation.zipPath,
+						Frames:     plan.animation.frames,
+						WorkDir:    plan.animation.workDir,
+						OutputPath: plan.animation.outputPath,
+						Format:     ugoira.Format(plan.animation.mode),
+					})
+				}
+			}
+			if animationErr != nil {
+				out.Items[index].Err = animationErr
 				continue
 			}
 			out.Items[index].Committed = true
 		}
 		result := plan.result
+		if options.WriteMetadata && !result.Skipped && plan.illust != nil {
+			frames := make([]ugoiraFrameSidecar, 0)
+			if plan.animation != nil {
+				frames = make([]ugoiraFrameSidecar, len(plan.animation.frames))
+				for frameIndex, frame := range plan.animation.frames {
+					frames[frameIndex] = ugoiraFrameSidecar{File: frame.File, Delay: frame.Delay}
+				}
+			}
+			if err := writeDownloadSidecars(options.DownloadPath, result, *plan.illust, options.UgoiraMode, frames); err != nil {
+				out.Items[index].Err = err
+				continue
+			}
+		}
+		if !result.Skipped && result.IllustID > 0 {
+			if err := archive.Record(result.IllustID); err != nil {
+				out.Items[index].Err = err
+				continue
+			}
+		}
 		out.Items[index].Result = &result
 	}
 	return out, nil
@@ -293,17 +351,34 @@ func normalizeDownloadOptions(options DownloadOptions) (DownloadOptions, int, er
 	if err := filename.ValidateTemplate(options.FilenameTemplate); err != nil {
 		return DownloadOptions{}, 0, invalidResourceError(OperationDownload, err.Error())
 	}
+	options.DirectoryTemplate = strings.TrimSpace(options.DirectoryTemplate)
+	if options.DirectoryTemplate != "" {
+		if err := filename.ValidateDirectoryTemplate(options.DirectoryTemplate); err != nil {
+			return DownloadOptions{}, 0, invalidResourceError(OperationDownload, err.Error())
+		}
+	}
+	if len(options.Pages) > 0 && options.PageSelection != nil {
+		return DownloadOptions{}, 0, invalidResourceError(OperationDownload, "pages and page selection cannot be used together")
+	}
 	if options.Quality == "" {
 		options.Quality = DownloadQualityOriginal
 	}
 	if err := ValidateDownloadQuality(options.Quality); err != nil {
 		return DownloadOptions{}, 0, err
 	}
-	if options.UgoiraFormat == "" {
-		options.UgoiraFormat = UgoiraFormatGIF
+	if options.UgoiraMode == "" {
+		options.UgoiraMode = UgoiraMode(options.UgoiraFormat)
 	}
-	if err := ValidateUgoiraFormat(options.UgoiraFormat); err != nil {
+	if options.UgoiraMode == "" {
+		options.UgoiraMode = UgoiraModeGIF
+	}
+	if err := ValidateUgoiraMode(options.UgoiraMode); err != nil {
 		return DownloadOptions{}, 0, invalidResourceError(OperationDownload, err.Error())
+	}
+	if options.RetryPolicy == nil {
+		options.RetryPolicy = &RetryPolicy{Retries: 3, InitialDelay: time.Second}
+	} else if options.RetryPolicy.Retries < 0 || (options.RetryPolicy.Retries > 0 && options.RetryPolicy.InitialDelay <= 0) {
+		return DownloadOptions{}, 0, invalidResourceError(OperationDownload, "download retry policy is invalid")
 	}
 	if options.Concurrency < 0 {
 		return DownloadOptions{}, 0, invalidResourceError(OperationDownload, "download concurrency must not be negative")
@@ -323,6 +398,10 @@ func (c *Client) prepareDownload(ctx context.Context, src string, options Downlo
 	if err != nil {
 		return nil, err
 	}
+	return c.prepareParsedDownload(ctx, source, options)
+}
+
+func (c *Client) prepareParsedDownload(ctx context.Context, source downloadSource, options DownloadOptions) (*preparedDownload, error) {
 	switch source.kind {
 	case DownloadSourceResource:
 		if err := validateDirectDownloadOptions(options); err != nil {
@@ -361,10 +440,19 @@ func (c *Client) prepareArtworkDownload(ctx context.Context, id int64, options D
 		return nil, err
 	}
 	illust := detail.Illust
+	if options.Filter != nil {
+		matched, err := options.Filter.Match(illust)
+		if err != nil {
+			return nil, invalidResourceError(OperationDownload, "cannot evaluate download filter")
+		}
+		if !matched {
+			return &preparedDownload{result: DownloadResult{SourceKind: DownloadSourceArtwork, IllustID: illust.ID, Title: illust.Title, Author: illust.User.Name, Type: illust.Type, Skipped: true}, illust: &illust}, nil
+		}
+	}
 	if illust.Type == string(IllustTypeUgoira) {
 		return c.prepareUgoiraDownload(ctx, illust, options)
 	}
-	pages, err := selectDownloadPages(illust, options.Pages)
+	pages, err := selectDownloadPages(illust, options.Pages, options.PageSelection)
 	if err != nil {
 		return nil, err
 	}
@@ -372,7 +460,7 @@ func (c *Client) prepareArtworkDownload(ctx context.Context, id int64, options D
 	if err != nil {
 		return nil, invalidResourceError(OperationDownload, "download path is invalid")
 	}
-	plan := &preparedDownload{result: DownloadResult{
+	plan := &preparedDownload{illust: &illust, result: DownloadResult{
 		SourceKind: DownloadSourceArtwork,
 		IllustID:   illust.ID,
 		Title:      illust.Title,
@@ -389,8 +477,15 @@ func (c *Client) prepareArtworkDownload(ctx context.Context, id int64, options D
 		if err != nil {
 			return nil, err
 		}
-		name := filename.Generate(downloadFilenameData(illust), page.page1-1, options.FilenameTemplate) + downloadExtension(rawURL)
-		path := filepath.Join(base, name)
+		name, err := filename.GenerateChecked(downloadFilenameData(illust), page.page1-1, options.FilenameTemplate)
+		if err != nil {
+			return nil, invalidResourceError(OperationDownload, err.Error())
+		}
+		directory, err := filename.BuildRelativeDirectory(options.DirectoryTemplate, downloadFilenameData(illust), page.page1-1)
+		if err != nil {
+			return nil, invalidResourceError(OperationDownload, err.Error())
+		}
+		path := filepath.Join(base, filepath.FromSlash(directory), name+downloadExtension(rawURL))
 		plan.result.Files[index] = DownloadedFile{Path: path, Page: page.page1}
 		plan.resources = append(plan.resources, preparedResource{ref: ref, destination: path, fileIndex: index})
 	}
@@ -402,10 +497,17 @@ type downloadPage struct {
 	urls  ImageURLs
 }
 
-func selectDownloadPages(illust Illust, pages []int) ([]downloadPage, error) {
+func selectDownloadPages(illust Illust, pages []int, selection *PageSelection) ([]downloadPage, error) {
 	total := illust.PageCount
 	if total <= 0 {
 		total = 1
+	}
+	if selection != nil {
+		var err error
+		pages, err = selection.Resolve(total)
+		if err != nil {
+			return nil, err
+		}
 	}
 	if total == 1 && len(illust.MetaPages) == 0 {
 		if len(pages) > 0 {
@@ -444,7 +546,7 @@ func selectDownloadPages(illust Illust, pages []int) ([]downloadPage, error) {
 }
 
 func validateDirectDownloadOptions(options DownloadOptions) error {
-	if len(options.Pages) > 0 {
+	if len(options.Pages) > 0 || options.PageSelection != nil {
 		return invalidResourceError(OperationDownload, "page selection is only supported for Pixiv artworks")
 	}
 	if options.Quality != DownloadQualityOriginal {
@@ -453,11 +555,20 @@ func validateDirectDownloadOptions(options DownloadOptions) error {
 	if options.FilenameTemplate != DefaultFilenameTemplate {
 		return invalidResourceError(OperationDownload, "filename template is only supported for Pixiv artworks")
 	}
+	if options.DirectoryTemplate != "" {
+		return invalidResourceError(OperationDownload, "directory template is only supported for Pixiv artworks")
+	}
+	if options.Filter != nil {
+		return invalidResourceError(OperationDownload, "filter requires Pixiv artwork metadata and cannot be used with a CDN resource")
+	}
+	if options.WriteMetadata {
+		return invalidResourceError(OperationDownload, "metadata sidecars require Pixiv artwork metadata")
+	}
 	return nil
 }
 
 func (c *Client) prepareUgoiraDownload(ctx context.Context, illust Illust, options DownloadOptions) (*preparedDownload, error) {
-	if len(options.Pages) > 0 {
+	if len(options.Pages) > 0 || options.PageSelection != nil {
 		return nil, invalidResourceError(OperationDownload, "page selection is unsupported for ugoira")
 	}
 	if options.Quality != DownloadQualityOriginal {
@@ -476,8 +587,16 @@ func (c *Client) prepareUgoiraDownload(ctx context.Context, illust Illust, optio
 		return nil, err
 	}
 	base := options.DownloadPath
-	name := filename.Generate(downloadFilenameData(illust), 0, options.FilenameTemplate)
-	outputPath := filepath.Join(base, name+"."+string(options.UgoiraFormat))
+	name, err := filename.GenerateChecked(downloadFilenameData(illust), 0, options.FilenameTemplate)
+	if err != nil {
+		return nil, invalidResourceError(OperationDownload, err.Error())
+	}
+	directory, err := filename.BuildRelativeDirectory(options.DirectoryTemplate, downloadFilenameData(illust), 0)
+	if err != nil {
+		return nil, invalidResourceError(OperationDownload, err.Error())
+	}
+	base = filepath.Join(base, filepath.FromSlash(directory))
+	outputPath := filepath.Join(base, name+"."+string(options.UgoiraMode))
 	zipPath := filepath.Join(c.resourceCacheDirectory(base), "ugoira", fmt.Sprintf("%d.zip", illust.ID))
 	if err := os.MkdirAll(filepath.Dir(zipPath), 0o700); err != nil {
 		return nil, invalidResourceError(OperationDownload, "cannot create ugoira download cache")
@@ -486,20 +605,38 @@ func (c *Client) prepareUgoiraDownload(ctx context.Context, illust Illust, optio
 	for index, frame := range metadata.UgoiraMetadata.Frames {
 		frames[index] = ugoira.Frame{File: frame.File, Delay: frame.Delay}
 	}
-	return &preparedDownload{
+	files := []DownloadedFile{{Path: outputPath, Page: 1}}
+	if options.UgoiraMode == UgoiraModeFrames {
+		files = make([]DownloadedFile, 0, len(frames))
+		for _, frame := range frames {
+			frameName := filepath.Base(frame.File)
+			if frameName == "." || frameName == string(filepath.Separator) || frameName != frame.File || strings.Contains(frameName, `\`) {
+				return nil, invalidResourceError(OperationDownload, "ugoira metadata contains an unsafe frame filename")
+			}
+			files = append(files, DownloadedFile{Path: filepath.Join(outputPath, frameName), Page: 1})
+		}
+	}
+	plan := &preparedDownload{
+		illust: &illust,
 		result: DownloadResult{
 			SourceKind: DownloadSourceArtwork,
 			IllustID:   illust.ID,
 			Title:      illust.Title,
 			Author:     illust.User.Name,
 			Type:       illust.Type,
-			Files:      []DownloadedFile{{Path: outputPath, Page: 1}},
+			Files:      files,
 		},
 		resources: []preparedResource{{ref: ref, destination: zipPath, fileIndex: 0}},
 		animation: &preparedUgoira{
-			zipPath: zipPath, frames: frames, workDir: base, outputPath: outputPath, format: options.UgoiraFormat, fileIndex: 0,
+			zipPath: zipPath, frames: frames, workDir: base, outputPath: outputPath, mode: options.UgoiraMode, fileIndex: 0,
 		},
-	}, nil
+	}
+	if options.UgoiraMode == UgoiraModeZIP {
+		plan.result.Files[0].Path = outputPath
+		plan.resources[0].destination = outputPath
+		plan.animation = nil
+	}
+	return plan, nil
 }
 
 func selectDownloadImageURL(urls ImageURLs, singleOriginal string, quality DownloadQuality) (string, error) {
@@ -525,7 +662,11 @@ func selectDownloadImageURL(urls ImageURLs, singleOriginal string, quality Downl
 }
 
 func downloadFilenameData(illust Illust) filename.FilenameData {
-	return filename.FilenameData{ID: illust.ID, Author: illust.User.Name, Title: illust.Title, PageCount: illust.PageCount}
+	tags := make([]string, 0, len(illust.Tags))
+	for _, tag := range illust.Tags {
+		tags = append(tags, tag.Name)
+	}
+	return filename.FilenameData{ID: illust.ID, Author: illust.User.Name, AuthorID: illust.User.ID, Title: illust.Title, CreateDate: illust.CreateDate, Tags: tags, PageCount: illust.PageCount}
 }
 
 func downloadExtension(rawURL string) string {

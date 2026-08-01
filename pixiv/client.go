@@ -54,6 +54,7 @@ type clientOptions struct {
 	// DisableRetryAfterRetry 让调用方在首个有效 429 时接管调度。零值保持读取请求
 	// 基于 Retry-After 的一次自动重试。
 	DisableRetryAfterRetry bool
+	RequestInterval        time.Duration
 }
 
 // NewClientOptions 配置显式 access-token 或匿名 Web API Client。它不读取本地
@@ -67,6 +68,7 @@ type NewClientOptions struct {
 	ResourcePolicy         ResourcePolicy
 	ResourceCachePath      string
 	DisableRetryAfterRetry bool
+	RequestInterval        time.Duration
 }
 
 // OpenDefaultOptions 配置从本地 auth/config 与环境变量取得身份的 Client。
@@ -85,6 +87,7 @@ type OpenDefaultOptions struct {
 	UserID                        int64
 	IgnoreEnvironmentRefreshToken bool
 	DisableRetryAfterRetry        bool
+	RequestInterval               time.Duration
 }
 
 // Client 组合 App API 主数据与显式 Web 补全能力。
@@ -117,6 +120,7 @@ type Client struct {
 	premiumStatusCheckedAt time.Time
 	premiumStatusCacheTTL  time.Duration
 	premiumStatusAuthPath  string
+	requestPacer           *requestPacer
 }
 
 // CurrentUserID 返回 OpenDefault 当前认证快照对应的 Pixiv UID。
@@ -168,6 +172,7 @@ func NewClient(options NewClientOptions) (*Client, error) {
 		WebAPIBaseURL: options.WebAPIBaseURL, AccessToken: options.AccessToken,
 		WebFallbackEnabled: options.WebFallbackEnabled, ResourcePolicy: options.ResourcePolicy, ResourceCachePath: options.ResourceCachePath,
 		DisableRetryAfterRetry: options.DisableRetryAfterRetry,
+		RequestInterval:        options.RequestInterval,
 	})
 }
 
@@ -181,6 +186,10 @@ func newClient(options clientOptions) (*Client, error) {
 	if httpClient == nil {
 		httpClient = &http.Client{}
 	}
+	pacer := newRequestPacer(options.RequestInterval)
+	resourceHTTPClient := resourceHTTPClientForExplicitProxy(httpClient)
+	httpClient = withRequestPacer(httpClient, pacer)
+	resourceHTTPClient = withRequestPacer(resourceHTTPClient, pacer)
 	appOptions := []appapi.Option{
 		appapi.WithBaseURL(options.AppAPIBaseURL),
 		appapi.WithAccessToken(accessToken),
@@ -193,7 +202,6 @@ func newClient(options clientOptions) (*Client, error) {
 		webapi.WithWebBase(options.WebAPIBaseURL),
 		webapi.WithHTTPClient(httpClient),
 	}
-	resourceHTTPClient := resourceHTTPClientForExplicitProxy(httpClient)
 	return &Client{
 		app:                appapi.New(appOptions...),
 		web:                webapi.New(webOptions...),
@@ -207,6 +215,7 @@ func newClient(options clientOptions) (*Client, error) {
 		configFilePath:     strings.TrimSpace(options.ConfigFilePath),
 		oauthBaseURL:       strings.TrimSpace(options.OAuthBaseURL),
 		appAPIBaseURL:      strings.TrimSpace(options.AppAPIBaseURL),
+		requestPacer:       pacer,
 		authState:          &authTransactionState{},
 	}, nil
 }
@@ -246,6 +255,7 @@ func OpenDefaultWith(input OpenDefaultOptions) (*Client, error) {
 		AuthFilePath: input.AuthFilePath, ConfigFilePath: input.ConfigFilePath,
 		ResourcePolicy: input.ResourcePolicy, ResourceCachePath: input.ResourceCachePath, RefreshToken: input.RefreshToken, UserID: input.UserID,
 		IgnoreEnvironmentRefreshToken: input.IgnoreEnvironmentRefreshToken, DisableRetryAfterRetry: input.DisableRetryAfterRetry,
+		RequestInterval: input.RequestInterval,
 	}
 	if _, err := credentials.ValidateRefreshTokenInput(options.RefreshToken); err != nil {
 		return nil, newError(CodeInvalidArgument, "", "", false, 0, 0, err)

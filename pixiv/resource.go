@@ -3,6 +3,7 @@ package pixiv
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -12,6 +13,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/protocol"
 	internalresource "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/resource"
@@ -172,15 +174,49 @@ func (c *Client) openResource(ctx context.Context, request OpenResourceRequest, 
 	}
 	if method == http.MethodHead && (response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices) {
 		_ = response.Body.Close()
-		code, retryable := codeForHTTPStatus(response.StatusCode, operation)
-		return nil, newError(code, operation, BackendResource, retryable, response.StatusCode, 0, errors.New("resource upstream rejected the request"))
+		return nil, resourceHTTPStatusError(response.StatusCode, response.Header, operation)
 	}
 	if method != http.MethodHead && response.StatusCode != http.StatusOK && response.StatusCode != http.StatusPartialContent && response.StatusCode != http.StatusNotModified {
 		_ = response.Body.Close()
-		code, retryable := codeForHTTPStatus(response.StatusCode, operation)
-		return nil, newError(code, operation, BackendResource, retryable, response.StatusCode, 0, errors.New("resource upstream rejected the request"))
+		return nil, resourceHTTPStatusError(response.StatusCode, response.Header, operation)
 	}
 	return &ResourceResponse{StatusCode: response.StatusCode, Header: filteredResourceHeaders(response.Header), Body: response.Body}, nil
+}
+
+// resourceHTTPStatusError 只从受控的 Retry-After 语义提取等待时长，不保留 header
+// 原文。资源重试层需要该值来区分可遵从的 429 与禁止猜测等待的限流响应。
+func resourceHTTPStatusError(status int, header http.Header, operation Operation) error {
+	code, retryable := codeForHTTPStatus(status, operation)
+	err := newError(code, operation, BackendResource, retryable, status, 0, errors.New("resource upstream rejected the request"))
+	if status == http.StatusTooManyRequests {
+		if retryAfter, ok := parseResourceRetryAfter(header.Get("Retry-After"), time.Now()); ok {
+			err.RetryAfter = retryAfter
+			err.HasRetryAfter = true
+		}
+	}
+	return err
+}
+
+func parseResourceRetryAfter(value string, now time.Time) (time.Duration, bool) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return 0, false
+	}
+	if seconds, err := strconv.ParseInt(value, 10, 64); err == nil {
+		const maxDurationSeconds = int64(1<<63-1) / int64(time.Second)
+		if seconds < 0 || seconds > maxDurationSeconds {
+			return 0, false
+		}
+		return time.Duration(seconds) * time.Second, true
+	}
+	when, err := http.ParseTime(value)
+	if err != nil {
+		return 0, false
+	}
+	if duration := when.Sub(now); duration > 0 {
+		return duration, true
+	}
+	return 0, true
 }
 
 // probeResource 在下载前执行无副作用的 HEAD，以确定精确总字节。预检失败只会令
@@ -206,7 +242,58 @@ func (c *Client) probeResource(ctx context.Context, ref ResourceRef) (int64, boo
 
 // DownloadResource 将经验证的完整资源写入目标，并使用同目录缓存安全地重验证或续传。
 func (c *Client) DownloadResource(ctx context.Context, ref ResourceRef, destinationPath string) (out ResourceDownloadResult, err error) {
-	return c.downloadResourceWithProgress(ctx, ref, destinationPath, nil)
+	// DownloadResource 是底层单资源 API，沿用其一次请求的既有语义。面向作品的
+	// DownloadOptions 下载会显式传入默认重试策略；这样不会把低层调用方原本可见的
+	// 不完整响应隐藏成同一调用内的成功。
+	return c.downloadResourceWithRetry(ctx, ref, destinationPath, &RetryPolicy{Retries: 0}, nil)
+}
+
+// downloadResourceWithRetry 只重放未完成的资源读取。默认策略来自产品下载契约：
+// 初始请求外再试 3 次，间隔 1/2/4 秒；429 仅在上游给出有效 Retry-After 时重试，
+// 以免对限流服务猜测等待时间。context 取消始终立即停止等待和后续尝试。
+func (c *Client) downloadResourceWithRetry(ctx context.Context, ref ResourceRef, destinationPath string, policy *RetryPolicy, progress func(int64)) (ResourceDownloadResult, error) {
+	if policy == nil {
+		policy = &RetryPolicy{Retries: 3, InitialDelay: time.Second}
+	}
+	for attempt := 0; ; attempt++ {
+		result, err := c.downloadResourceWithProgress(ctx, ref, destinationPath, progress)
+		if err == nil || ctx.Err() != nil || attempt >= policy.Retries || !retryDownloadResource(err) {
+			return result, err
+		}
+		delay := policy.InitialDelay << attempt
+		var typed *Error
+		if errors.As(err, &typed) && typed.Code == CodeRateLimited && typed.HasRetryAfter {
+			delay = typed.RetryAfter
+		}
+		if err := waitDownloadRetry(ctx, delay); err != nil {
+			return ResourceDownloadResult{}, err
+		}
+	}
+}
+
+func retryDownloadResource(err error) bool {
+	var typed *Error
+	if !errors.As(err, &typed) || !typed.Retryable {
+		return false
+	}
+	if typed.Code == CodeRateLimited {
+		return typed.HasRetryAfter
+	}
+	return typed.UpstreamStatus == 0 || typed.UpstreamStatus >= http.StatusInternalServerError
+}
+
+func waitDownloadRetry(ctx context.Context, delay time.Duration) error {
+	if delay < 0 {
+		return fmt.Errorf("invalid download retry delay")
+	}
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
 }
 
 // downloadResourceWithProgress 保持 DownloadResource 的资源锁和缓存语义，并在

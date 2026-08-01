@@ -6,6 +6,8 @@
 fallback、更新を扱います。SDK と MCP の詳細は重複させず、[関連ドキュメント](#関連ドキュメント)へ
 案内します。
 
+> 独立した `pixiv filter` と `--ugoira-format` は削除されました。visual list は pipe 時に canonical NDJSON を自動出力します。作品は `--filter EXPR`（例: `bookmarkCount >= 5000 and xRestrict == 0`）で絞り込みます。download は `--ugoira-mode gif|apng|zip|frames`、`3-` page selection、`--archive`、`--write-metadata`、`--directory-template`、`--retries`、`--retry-delay` をサポートします。template は `{id}`、`{title}`、`{author}`、`{author_id}`、`{date}`、`{tags}`、`{num}` を使えます。proxy は `http`、`https`、`socks5`、`socks5h` を受け付けます。config は `directory_template` と `request_interval` を含み、`PIXIV_REQUEST_INTERVAL` または今回限りの `--sleep-request` で上書きできます。
+
 ユーザーに影響する変更は[バージョン別 changelog](../../changelog/README.md)に記録されます。
 
 [GitHub Releases ページ]: https://github.com/FlanChanXwO/pixiv-cli/releases
@@ -258,13 +260,13 @@ option は positional argument の前後どちらでも指定できます。
 通常 command を初めて実行したとき、`config.toml` がなければ download、Web fallback、output、login、update の
 common setting だけを含む baseline file を作成し、既存 file は決して上書きしません。proxy のような advanced setting は明示設定まで省略されます。login timeout は `auth login --timeout` だけの明示 flag で、Premium-status cache は固定契約です。help、version、secret export、internal OAuth callback はこの file を作成しません。
 
-### v0.8.0 data operation contract
+### Data operation contract
 
 非 mutating の data read、recommendation、timeline、download はすべて `pixiv auth use` で選んだ local account を使います。account pool は `[account_pool]` に `enabled = true` を明示した場合だけ有効です。`accounts` を省略すると `auth.json` の保存順で全 account を使い、指定した場合は whitelist になります。`strategy` の既定は `round_robin` で、`random` も使えます。write、authentication、config は pool を使いません。data command は `--uid` と `--refresh-token` を拒否し、`PIXIV_REFRESH_TOKEN` を無視します。
 
-stream 処理には `--ndjson` を使います。各行は stable string の `id`、`type`、`url` を持つ canonical Record で、残りの SDK field も保持します。`pixiv filter` は stdin の Record を読み、`download`、`bookmark add/remove`、`follow add/remove` は positional ID なしで Record を消費できます。action 成功時の stdout は空で、安全な diagnostic は stderr に出ます。`--on-error=skip|fail-fast` は malformed/incompatible stdin Record を制御します。`--json` と `--ndjson` は併用できません。
+visual list は pipe 時に canonical NDJSON を自動出力し、明示的な `--ndjson` も使えます。各行は stable string の `id`、`type`、`url` を持つ canonical Record です。`download`、`bookmark add/remove`、`follow add/remove` は positional ID なしで Record を消費できます。visual list と `download` は `--filter EXPR` で local artwork rule を適用します。`--on-error=skip|fail-fast` は malformed/incompatible stdin Record を制御し、`--json` と `--ndjson` は併用できません。
 
-Ugoira download は `--ugoira-format gif|apng` を受け付け、既定は `gif` のままです。Ugoira の page selection または non-original quality と組み合わせることはできません。
+Ugoira download は `--ugoira-mode gif|apng|zip|frames` を受け付け、既定は `gif` です。Ugoira の page selection または non-original quality は明示的に失敗します。
 
 ### CLI command 一覧
 
@@ -293,7 +295,6 @@ Ugoira download は `--ugoira-format gif|apng` を受け付け、既定は `gif`
 | `timeline latest` | `pixiv timeline latest --type illust\|manga\|novel [--page N --limit N --json\|--ndjson]` | App の最新作品を読みます。 |
 | `mypixiv users` | `pixiv mypixiv users [--page N --limit N --json\|--ndjson]` | 選択 account の MyPixiv user を一覧します。 |
 | `mypixiv works` | `pixiv mypixiv works [USER_ID] --type illust\|manga\|novel [--page N --limit N --json\|--ndjson]` | MyPixiv works を一覧します。USER_ID 省略時は `illust` または `novel` だけです。 |
-| `filter` | `pixiv filter [--id ID --type TYPE --tag TAG --min-views N --min-pages N --on-error skip\|fail-fast]` | stdin の canonical Record NDJSON を filter します。 |
 | `user search` | `pixiv user search WORD [--page N --limit N --json]` | ユーザーを検索します。JSON/text は公式 App 検索か匿名の関連作品作者 fallback かを示します。 |
 | `user detail` | `pixiv user detail USER_ID [--json]` | ユーザーの完全な公開 profile を表示します。 |
 | `user artworks` | `pixiv user artworks [USER_ID] [--type TYPE --page N --limit N]` | 作品一覧。UID 省略時は現在の認証ユーザーです。 |
@@ -510,7 +511,7 @@ typed upstream-response failure になります。filter が batch を飛ばす�
 
 `detail` は正の artwork ID、または HTTPS の `pixiv.net`/`www.pixiv.net` にある `/artworks/{id}` URL を受け付けます。locale、query、fragment は許可されます。user、novel、short-link、FANBOX、Pixivision、Sketch、legacy、そのほかの URL は受け付けません。
 
-`download` は許可された CDN URL に加えて `/users/{id}` と `/users/{id}/artworks` を受け付けます。user URL は App OAuth を使って `illust`、`manga`、`ugoira` を全 page にわたり download し、novel は対象外です。URL はローカルで受け付ける reference に parse されます。1 件の失敗後も他の作品を続行し、cancel は直ちに停止します。download は ETag/Last-Modified metadata を `.pixiv-cache` に保存し、validator が一致する partial だけを `If-Range` で安全に再開して atomic に publish します。`download` は action です。成功時の stdout は空で、安全な failure は stderr に出し、完了できない場合は non-zero で終了します。download history や cross-run deduplication はありません。
+`download` は許可された CDN URL に加えて `/users/{id}`、`/users/{id}/artworks`、`/users/{id}/bookmarks/artworks`、`/user/{id}/series/{series_id}` を受け付けます。user/public-bookmarks/illustration-series source は `illust`、`manga`、`ugoira` を pagination で展開し、first-seen artwork ID で deduplicate します。series URL の owner は検証されます。`--filter EXPR` は artwork detail 後、file write 前に実行され、metadata を持たない CDN URL は拒否します。`--archive FILE` は SQLite archive で、選択 output と requested sidecar がすべて成功した artwork だけを記録します。`--write-metadata` は public artwork data と artifact-relative path を含む atomic `{artifact}.json` を書きます。template は `{id}`、`{title}`、`{author}`、`{author_id}`、`{date}`、`{tags}`、`{num}` をサポートし、directory template は safe relative path、`{num}` は zero-based です。resource download は valid `Retry-After` を持つ 429、5xx、retryable transport failure を既定で 3 回 retry（1/2/4 秒）し、validator が一致する partial だけを `If-Range` で安全に resume して atomic に publish します。`download` は action です。成功時 stdout は空で、安全な failure は stderr に出し、完了できない場合は non-zero で終了します。
 
 ### 共通 flag
 
@@ -518,18 +519,21 @@ typed upstream-response failure になります。filter が batch を飛ばす�
 | --- | --- | --- | --- |
 | `--ndjson` | data list/read command | `false` | streaming filter/action 用に canonical Record を 1 行ずつ出力します。`--json` とは併用不可です。 |
 | `--json` | safe data read、auth summary、`version`、`update --check` | `false` | command が対応する場合に complete result document を出力します。download/write action は success report を出しません。 |
-| `--proxy URL` | network command と `mcp` | `https_proxy`/`HTTPS_PROXY`、`config.toml`、または empty | この command だけ HTTP(S) proxy を使います。`auth import --file` では不可です。 |
-| `--no-proxy` | `--proxy` と同じ | empty | この command の HTTP(S) proxy を解除します。`--proxy` や bundle restore とは併用不可です。 |
+| `--sleep-request DURATION` | network command と `mcp` | config/default | この invocation の request start 間隔。`PIXIV_REQUEST_INTERVAL` と `[network].request_interval` を上書きします。 |
+| `--proxy URL` | network command と `mcp` | `https_proxy`/`HTTPS_PROXY`、`config.toml`、または empty | この command だけ `http`、`https`、`socks5`、`socks5h` proxy URI を使います。`auth import --file` では不可です。 |
+| `--no-proxy` | `--proxy` と同じ | empty | この command の proxy を解除します。`--proxy` や bundle restore とは併用不可です。 |
 
 ### CLI が管理する `config` alias
 
-`pixiv config get/set/unset` が受け付ける alias は**この 3 つだけ**です。ほかの runtime setting は private `config.toml` を手動で管理します。CLI に generic setting editor はありません。
+`pixiv config get/set/unset` が受け付ける alias はこの table のものだけです。ほかの runtime setting は private `config.toml` を手動で管理します。CLI に generic setting editor はありません。
 
 | KEY | Type | Default | 説明 |
 | --- | --- | --- | --- |
 | `download_path` | string | `./downloads` | download directory。 |
 | `filename_template` | string | `{author} - {title}_{id}` | filename template。 |
-| `https_proxy` | string | empty | HTTP(S) proxy。lowercase `https_proxy` environment variable が優先。 |
+| `directory_template` | string | empty | relative download directory template。 |
+| `request_interval` | duration | `0` | network request start の minimum interval。`PIXIV_REQUEST_INTERVAL` と `--sleep-request` で上書きできます。 |
+| `https_proxy` | string | empty | `http`、`https`、`socks5`、`socks5h` proxy URI。lowercase `https_proxy` environment variable が優先。 |
 
 手動 TOML には `[account_pool]`、`[web]`、`[login]`、`[update]` などを置けます。`config.toml` に refresh token を書かないでください。account-pool state は last UID/freeze information だけで、token は保存しません。legacy の `[logging]` table は互換性のため無視され、`log_level` は `pixiv config` の対応 key ではありません。
 
@@ -540,7 +544,9 @@ typed upstream-response failure になります。filter が batch を飛ばす�
 | `PIXIV_REFRESH_TOKEN` | empty | 対応する public SDK/MCP runtime の credential input。CLI data command は意図的に無視します。 |
 | `DOWNLOAD_PATH` | `./downloads` | download directory。 |
 | `FILENAME_TEMPLATE` | `{author} - {title}_{id}` | filename template。 |
-| `https_proxy` / `HTTPS_PROXY` | empty | HTTP(S) proxy。lowercase が優先。 |
+| `DIRECTORY_TEMPLATE` | empty | relative download directory template。 |
+| `PIXIV_REQUEST_INTERVAL` | empty | network request start の minimum interval。 |
+| `https_proxy` / `HTTPS_PROXY` | empty | `http`、`https`、`socks5`、`socks5h` proxy URI。lowercase が優先。 |
 
 CLI data command は `pixiv auth use` の local default account、または手動 `[account_pool]` を選びます。credential-selection flag と `PIXIV_REFRESH_TOKEN` は読みません。
 

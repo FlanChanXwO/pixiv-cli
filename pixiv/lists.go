@@ -754,6 +754,35 @@ func (c *Client) UserBookmarks(ctx context.Context, request UserBookmarksRequest
 	return publicIllustList(list, OperationUserBookmarks, digest, "max_bookmark_id", c.cursorSource), nil
 }
 
+// IllustSeries 返回一个插画系列批次。系列只在认证 App 路径可用；调用方必须同时
+// 提供 series URL 携带的作者 ID，以便 SDK 验证上游归属。
+func (c *Client) IllustSeries(ctx context.Context, request IllustSeriesRequest) (result *IllustListResult, err error) {
+	if scoped, err := c.operationClient(ctx, OperationIllustSeries); err != nil {
+		return nil, err
+	} else if scoped != c {
+		return scoped.IllustSeries(ctx, request)
+	}
+	if request.SeriesID <= 0 || request.UserID <= 0 {
+		return nil, invalidArgument(OperationIllustSeries, request.SeriesID, errors.New("series id and user id must be positive"))
+	}
+	digest := queryDigest(OperationIllustSeries, struct{ SeriesID, UserID int64 }{request.SeriesID, request.UserID})
+	lastOrder, err := c.cursorValue(request.Cursor, OperationIllustSeries, digest, "last_order", request.UserID)
+	if err != nil {
+		return nil, err
+	}
+	if err := c.requireRoute(OperationIllustSeries, routeApp, 0, request.UserID); err != nil {
+		return nil, err
+	}
+	list, err := c.app.IllustSeries(ctx, request.SeriesID, lastOrder)
+	if err != nil {
+		return nil, mapAppOperationError(err, OperationIllustSeries, request.SeriesID)
+	}
+	if list.SeriesUserID != request.UserID {
+		return nil, newError(CodeMalformedUpstreamResponse, OperationIllustSeries, BackendAppAPI, false, 0, request.SeriesID, errors.New("illustration series owner does not match requested user"))
+	}
+	return publicIllustList(list, OperationIllustSeries, digest, "last_order", c.cursorSource), nil
+}
+
 // UserBookmarksCursor 将旧调用方持有的 max_bookmark_id 适配为绑定用户、可见性和
 // tag 查询的公开 opaque cursor。它不请求上游，也不暴露 cursor 的编码细节；调用方
 // 仍只能把返回值交回 UserBookmarks。
@@ -865,6 +894,8 @@ func publicIllustList(list *model.IllustList, operation Operation, digest, kind,
 		value := int64(list.NextOffset)
 		if kind == "max_bookmark_id" {
 			value = list.NextMaxBookmarkID
+		} else if kind == "last_order" {
+			value = list.NextValue
 		}
 		result.NextCursor = encodeCursorForSource(operation, digest, kind, value, source)
 	}

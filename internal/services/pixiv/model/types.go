@@ -6,6 +6,8 @@ type IllustList struct {
 	Illusts            []Illust `json:"illusts"`
 	NextOffset         int      `json:"-"`
 	NextMaxBookmarkID  int64    `json:"-"`
+	NextValue          int64    `json:"-"`
+	SeriesUserID       int64    `json:"-"`
 	ContinuationExists bool     `json:"-"`
 }
 
