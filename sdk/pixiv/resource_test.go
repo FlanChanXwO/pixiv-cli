@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/resource"
+	"github.com/FlanChanXwO/pixiv-cli/internal/utils/atomicfile"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 )
 
@@ -154,7 +155,7 @@ func resourceTestClient(t *testing.T, server *httptest.Server) *Client {
 func TestAtomicWriteFailureRemovesTemp(t *testing.T) {
 	dir := t.TempDir()
 	dest := filepath.Join(dir, "out.txt")
-	_, err := atomicWrite(context.Background(), dest, errorReader{err: errors.New("boom")}, nil)
+	_, err := atomicfile.Write(context.Background(), dest, errorReader{err: errors.New("boom")})
 	if err == nil {
 		t.Fatal("expected error")
 	}

@@ -7,12 +7,11 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/protocol"
 	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/resource"
+	"github.com/FlanChanXwO/pixiv-cli/internal/utils/atomicfile"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 )
 
@@ -155,11 +154,28 @@ func (c *Client) SaveResource(ctx context.Context, ref sdk.ResourceRef, options 
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		return sdk.SavedResource{}, newError("SaveResource", sdk.CodeUpstreamError, "resource returned a non-success status")
 	}
-	size, err := atomicWrite(ctx, options.Path, response.Body, options.Progress)
+	size, err := atomicfile.Write(ctx, options.Path, &progressReader{src: response.Body, progress: options.Progress})
 	if err != nil {
 		return sdk.SavedResource{}, newError("SaveResource", sdk.CodeLocalStateError, "cannot write resource")
 	}
 	return sdk.SavedResource{Path: options.Path, Size: size}, nil
+}
+
+type progressReader struct {
+	src      io.Reader
+	progress func(sdk.SaveProgress)
+	done     int64
+}
+
+func (r *progressReader) Read(p []byte) (int, error) {
+	n, err := r.src.Read(p)
+	if n > 0 {
+		r.done += int64(n)
+		if r.progress != nil {
+			r.progress(sdk.SaveProgress{Done: r.done})
+		}
+	}
+	return n, err
 }
 
 func (c *Client) decodeResourceRef(ref sdk.ResourceRef) (resourceRefPayload, error) {
@@ -175,62 +191,4 @@ func (c *Client) decodeResourceRef(ref sdk.ResourceRef) (resourceRefPayload, err
 		return resourceRefPayload{}, errors.New("malformed resource reference")
 	}
 	return rp, nil
-}
-
-// atomicWrite streams src to an atomic destination: it writes to a private
-// temporary file in the destination directory, then renames it into place after
-// a successful fsync. The temp file is removed on any failure.
-func atomicWrite(ctx context.Context, path string, src io.Reader, progress func(sdk.SaveProgress)) (int64, error) {
-	dir := filepath.Dir(path)
-	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return 0, err
-	}
-	temp, err := os.CreateTemp(dir, ".pixiv-resource-*")
-	if err != nil {
-		return 0, err
-	}
-	tempPath := temp.Name()
-	defer func() {
-		_ = os.Remove(tempPath)
-	}()
-	var written int64
-	buffer := make([]byte, 64*1024)
-	for {
-		if err := ctx.Err(); err != nil {
-			_ = temp.Close()
-			return written, err
-		}
-		n, readErr := src.Read(buffer)
-		if n > 0 {
-			if _, err := temp.Write(buffer[:n]); err != nil {
-				_ = temp.Close()
-				return written, err
-			}
-			written += int64(n)
-			if progress != nil {
-				progress(sdk.SaveProgress{Total: 0, Done: written})
-			}
-		}
-		if readErr != nil {
-			if readErr != io.EOF {
-				_ = temp.Close()
-				return written, readErr
-			}
-			break
-		}
-	}
-	if err := temp.Sync(); err != nil {
-		_ = temp.Close()
-		return written, err
-	}
-	if err := temp.Close(); err != nil {
-		return written, err
-	}
-	if err := os.Chmod(tempPath, 0o600); err != nil {
-		return written, err
-	}
-	if err := os.Rename(tempPath, path); err != nil {
-		return written, err
-	}
-	return written, nil
 }
