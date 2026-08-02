@@ -10,6 +10,7 @@ import (
 // recommendation sources.
 type Restrict string
 
+// Restrict values select the bookmark or following visibility scope.
 const (
 	RestrictPublic  Restrict = "public"
 	RestrictPrivate Restrict = "private"
@@ -18,6 +19,7 @@ const (
 // ArtworkKind distinguishes the artwork types unified in Artwork.
 type ArtworkKind string
 
+// ArtworkKind values distinguish the artwork types unified in Artwork.
 const (
 	ArtworkKindIllustration ArtworkKind = "illustration"
 	ArtworkKindManga        ArtworkKind = "manga"

@@ -18,6 +18,13 @@ import (
 type Service struct {
 	db         *authdb.DB
 	appDataDir string
+
+	// OpenClientFunc 覆盖 OpenClient 的客户端打开逻辑；nil 时按默认账号的已保存
+	// session 打开。测试用它注入不拨号的 httptest transport。
+	OpenClientFunc func(ctx context.Context) (*fanbox.Client, error)
+	// OpenSessionFunc 覆盖 ImportSession 的客户端打开逻辑；nil 时使用
+	// fanbox.Open（生产 transport）。测试用它注入验证用 httptest transport。
+	OpenSessionFunc func(sessionValue string) (*fanbox.Client, error)
 }
 
 // New 构造 FANBOX 应用服务。
@@ -47,7 +54,13 @@ func (s *Service) ImportSession(ctx context.Context, sessionValue string, setDef
 	if sessionValue == "" {
 		return Account{}, errors.New("FANBOX session value is required")
 	}
-	client, err := fanbox.Open(fanbox.SessionCredentials{FANBOXSESSID: sessionValue})
+	open := s.OpenSessionFunc
+	if open == nil {
+		open = func(value string) (*fanbox.Client, error) {
+			return fanbox.Open(fanbox.SessionCredentials{FANBOXSESSID: value})
+		}
+	}
+	client, err := open(sessionValue)
 	if err != nil {
 		return Account{}, err
 	}
@@ -136,6 +149,9 @@ func (s *Service) Status(ctx context.Context) (*AccountSummary, error) {
 
 // OpenClient 打开默认账号对应的 sdk/fanbox Client。
 func (s *Service) OpenClient(ctx context.Context) (*fanbox.Client, error) {
+	if s.OpenClientFunc != nil {
+		return s.OpenClientFunc(ctx)
+	}
 	userID, err := s.selectedUserID(ctx)
 	if err != nil {
 		return nil, err

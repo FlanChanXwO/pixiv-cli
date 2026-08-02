@@ -5,6 +5,7 @@ import "github.com/FlanChanXwO/pixiv-cli/sdk"
 // CreatorListKind selects the kind of creator list.
 type CreatorListKind string
 
+// CreatorListKind values define the supported CreatorListKind constants.
 const (
 	CreatorListSupporting CreatorListKind = "supporting"
 	CreatorListFollowing  CreatorListKind = "following"

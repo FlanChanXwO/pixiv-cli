@@ -12,6 +12,7 @@ import (
 // ReferenceKind identifies the FANBOX resource a resolved URL points to.
 type ReferenceKind string
 
+// ReferenceKind values define the supported ReferenceKind constants.
 const (
 	ReferenceKindCreator      ReferenceKind = "creator"
 	ReferenceKindCreatorPosts ReferenceKind = "creator_posts"

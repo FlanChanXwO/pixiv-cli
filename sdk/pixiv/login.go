@@ -129,8 +129,12 @@ func loginHTTPClient(injected *http.Client) (*http.Client, bool) {
 
 // String, GoString, and Format never expose the verifier, state, code, or
 // callback; the authorization URL is reachable only through AuthorizationURL.
-func (LoginSession) String() string   { return "pixiv.LoginSession{}" }
+func (LoginSession) String() string { return "pixiv.LoginSession{}" }
+
+// GoString returns the same redacted summary as String.
 func (LoginSession) GoString() string { return "pixiv.LoginSession{}" }
+
+// Format renders the redacted summary for any formatting verb.
 func (LoginSession) Format(state fmt.State, _ rune) {
 	_, _ = io.WriteString(state, "pixiv.LoginSession{}")
 }

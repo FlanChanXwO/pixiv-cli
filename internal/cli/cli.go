@@ -336,6 +336,7 @@ func (a app) newRootCommand() *cobra.Command {
 		a.newFollowCommand(),
 		a.newDownloadCommand(),
 		a.newMCPCommand(),
+		a.newFanboxCommand(),
 		a.newVersionCommand(),
 		a.newUpdateCommand(),
 	)
@@ -350,20 +351,24 @@ func (a app) enablePipelineSignal(cmd *cobra.Command) {
 }
 
 func (a app) enableMCPBrokenPipeSignal(cmd *cobra.Command) {
-	if a.mcpBrokenPipeSignal == nil || a.mcpBrokenPipeSignal.enable == nil || a.mcpBrokenPipeSignal.stop != nil || cmd == nil || cmd.CommandPath() != "pixiv mcp" {
+	if a.mcpBrokenPipeSignal == nil || a.mcpBrokenPipeSignal.enable == nil || a.mcpBrokenPipeSignal.stop != nil || cmd == nil {
+		return
+	}
+	path := cmd.CommandPath()
+	if path != "pixiv mcp" && path != "pixiv fanbox mcp" {
 		return
 	}
 	a.mcpBrokenPipeSignal.stop = a.mcpBrokenPipeSignal.enable()
 }
 
 // shouldInitializeConfigForCommand 仅让真正执行的普通 CLI 命令生成配置。帮助、版本、
-// credential export 与操作系统回调不得因只读/敏感流程而产生本地配置文件。
+// credential export、操作系统回调与 FANBOX 认证流程不得因只读/敏感流程而产生本地配置文件。
 func shouldInitializeConfigForCommand(cmd *cobra.Command) bool {
 	switch cmd.CommandPath() {
 	case "pixiv", "pixiv auth", "pixiv config", "pixiv version", "pixiv auth export", "pixiv auth " + internalURLCallbackCommand, "pixiv auth " + internalURLHandlerInstallCommand:
 		return false
 	default:
-		return true
+		return !strings.HasPrefix(cmd.CommandPath(), "pixiv fanbox auth")
 	}
 }
 

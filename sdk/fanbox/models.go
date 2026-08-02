@@ -9,6 +9,7 @@ import (
 // AssetKind distinguishes first-party image and file assets.
 type AssetKind string
 
+// AssetKind values define the supported AssetKind constants.
 const (
 	AssetKindImage AssetKind = "image"
 	AssetKindFile  AssetKind = "file"
@@ -51,6 +52,7 @@ type Creator struct {
 // PostBlockKind is the structured kind of a post body block.
 type PostBlockKind string
 
+// PostBlockKind values define the supported PostBlockKind constants.
 const (
 	PostBlockImage   PostBlockKind = "image"
 	PostBlockFile    PostBlockKind = "file"

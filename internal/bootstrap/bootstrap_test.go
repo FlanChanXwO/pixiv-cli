@@ -91,7 +91,12 @@ func TestApplyRuntimeProxyOverrideReplacesValueForNonemptyOverride(t *testing.T)
 }
 
 func TestNewServicesConfiguresDownloadFactory(t *testing.T) {
+	// NewServices 现在会打开 FANBOX 鉴权数据库；隔离 home 防止测试写宿主目录。
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
 	services := NewServices()
+	defer CloseServices()
 
 	require.NotNil(t, services.Download.NewManager)
 	manager, err := services.Download.NewManager(bootstrapDownloadClientStub{}, t.TempDir(), "{id}")

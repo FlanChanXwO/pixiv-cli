@@ -5,6 +5,7 @@ import "github.com/FlanChanXwO/pixiv-cli/sdk"
 // SearchTarget selects which novel or artwork fields a search query matches.
 type SearchTarget string
 
+// SearchTarget values select which fields a search query matches.
 const (
 	SearchTargetPartialMatchForTags SearchTarget = "partial_match_for_tags"
 	SearchTargetExactMatchForTags   SearchTarget = "exact_match_for_tags"
@@ -15,6 +16,7 @@ const (
 // SortMode orders search results.
 type SortMode string
 
+// SortMode values define the supported SortMode constants.
 const (
 	SortModeDateDesc    SortMode = "date_desc"
 	SortModeDateAsc     SortMode = "date_asc"
@@ -24,6 +26,7 @@ const (
 // DurationFilter narrows search results to a recent publication window.
 type DurationFilter string
 
+// DurationFilter values define the supported DurationFilter constants.
 const (
 	DurationLastDay   DurationFilter = "within_last_day"
 	DurationLastWeek  DurationFilter = "within_last_week"
@@ -33,6 +36,7 @@ const (
 // RankingMode selects an artwork ranking category.
 type RankingMode string
 
+// RankingMode values define the supported RankingMode constants.
 const (
 	RankingModeDay             RankingMode = "day"
 	RankingModeDayMale         RankingMode = "day_male"
@@ -55,6 +59,7 @@ const (
 // SearchContentType filters artwork search results by kind.
 type SearchContentType string
 
+// SearchContentType values define the supported SearchContentType constants.
 const (
 	SearchContentTypeAll             SearchContentType = "all"
 	SearchContentTypeIllustAndUgoira SearchContentType = "illust-and-ugoira"
@@ -66,6 +71,7 @@ const (
 // SearchAIMode filters artwork search results by AI-generated content.
 type SearchAIMode string
 
+// SearchAIMode values define the supported SearchAIMode constants.
 const (
 	SearchAIModeAll     SearchAIMode = "all"
 	SearchAIModeExclude SearchAIMode = "exclude"
@@ -75,6 +81,7 @@ const (
 // SearchAspectRatio filters artwork search results by aspect ratio.
 type SearchAspectRatio string
 
+// SearchAspectRatio values define the supported SearchAspectRatio constants.
 const (
 	SearchAspectRatioAll       SearchAspectRatio = "all"
 	SearchAspectRatioLandscape SearchAspectRatio = "landscape"
@@ -85,6 +92,7 @@ const (
 // SearchResolution filters artwork search results by resolution band.
 type SearchResolution string
 
+// SearchResolution values define the supported SearchResolution constants.
 const (
 	SearchResolutionAll    SearchResolution = "all"
 	SearchResolutionHigh   SearchResolution = "high"

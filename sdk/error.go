@@ -11,6 +11,8 @@ import (
 // only be added, never removed, renamed, or reused for a different meaning.
 type Code string
 
+// The v1 error codes are the stable, machine-readable classifications shared by
+// both product SDKs.
 const (
 	CodeInvalidArgument           Code = "invalid_argument"
 	CodeInvalidCursor             Code = "invalid_cursor"
@@ -33,6 +35,7 @@ const (
 // callers distinguish network-level failures from classified upstream errors.
 type Transport string
 
+// Transport kinds classify the transport layer a failure originated in.
 const (
 	TransportHTTP  Transport = "http"
 	TransportTLS   Transport = "tls"

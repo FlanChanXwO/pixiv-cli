@@ -47,6 +47,7 @@ func NewServices() application.Services {
 		Download: application.DownloadService{NewManager: func(client application.DownloadClient, downloadPath, filenameTemplate string) (application.DownloadManager, error) {
 			return newDownloadManager(client, downloadPath, filenameTemplate), nil
 		}},
+		Fanbox: newFanboxService(),
 	}
 }
 

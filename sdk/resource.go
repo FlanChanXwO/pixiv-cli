@@ -11,6 +11,7 @@ import (
 // ResourceMethod is the HTTP method accepted by OpenResource.
 type ResourceMethod string
 
+// ResourceMethod values are the HTTP methods OpenResource accepts.
 const (
 	ResourceMethodGet  ResourceMethod = "GET"
 	ResourceMethodHead ResourceMethod = "HEAD"

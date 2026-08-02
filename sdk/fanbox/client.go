@@ -17,8 +17,12 @@ type SessionCredentials struct {
 }
 
 // String returns a redacted summary that never contains the session value.
-func (SessionCredentials) String() string   { return "fanbox.SessionCredentials{}" }
+func (SessionCredentials) String() string { return "fanbox.SessionCredentials{}" }
+
+// GoString returns the same redacted summary as String.
 func (SessionCredentials) GoString() string { return "fanbox.SessionCredentials{}" }
+
+// Format renders the redacted summary for any formatting verb.
 func (SessionCredentials) Format(state fmt.State, _ rune) {
 	_, _ = io.WriteString(state, "fanbox.SessionCredentials{}")
 }
