@@ -45,6 +45,7 @@ type Novel struct {
 type NovelList struct {
 	Novels             []Novel `json:"novels"`
 	NextOffset         int     `json:"-"`
+	NextMaxBookmarkID  int64   `json:"-"`
 	ContinuationExists bool    `json:"-"`
 }
 

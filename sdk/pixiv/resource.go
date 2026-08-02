@@ -1,0 +1,236 @@
+package pixiv
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"io"
+	"net/http"
+	"net/url"
+	"os"
+	"path/filepath"
+	"strings"
+
+	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/protocol"
+	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/resource"
+	"github.com/FlanChanXwO/pixiv-cli/sdk"
+)
+
+// resourceRefPayload is the opaque identity payload embedded in a Pixiv
+// ResourceRef. It carries the stable identity plus the current valid URL so
+// OpenResource and SaveResource can revalidate and safely open the resource
+// without an extra API round trip.
+type resourceRefPayload struct {
+	Kind string `json:"k"`
+	ID   int64  `json:"id"`
+	Page int    `json:"p,omitempty"`
+	URL  string `json:"u"`
+}
+
+// defaultResourceHosts are the official Pixiv media hosts whose HTTPS URLs are
+// accepted for resource reads.
+var defaultResourceHosts = []string{"i.pximg.net", "s.pximg.net", "i-f.pximg.net"}
+
+// newResource builds a validated sdk.Resource from an upstream media URL. It
+// returns CodeResourceForbidden when the URL does not satisfy the resource
+// policy and CodeInvalidArgument when the identity payload is invalid.
+func (c *Client) newResource(kind string, id int64, page int, rawURL string) (sdk.Resource, error) {
+	if rawURL == "" {
+		return sdk.Resource{}, nil
+	}
+	if err := c.validateResourceURL(rawURL); err != nil {
+		return sdk.Resource{}, err
+	}
+	payload, err := json.Marshal(resourceRefPayload{Kind: kind, ID: id, Page: page, URL: rawURL})
+	if err != nil {
+		return sdk.Resource{}, newError("resource", sdk.CodeUpstreamError, "cannot encode resource reference")
+	}
+	ref, err := sdk.NewResourceRef(product, payload)
+	if err != nil {
+		return sdk.Resource{}, newError("resource", sdk.CodeUpstreamError, "cannot encode resource reference")
+	}
+	return sdk.Resource{
+		Ref:            ref,
+		URL:            rawURL,
+		RequestHeaders: map[string]string{"Referer": protocol.AppReferer},
+	}, nil
+}
+
+func (c *Client) validateResourceURL(rawURL string) error {
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		return newError("resource", sdk.CodeResourceForbidden, "invalid resource URL")
+	}
+	if parsed.Scheme != "https" || parsed.User != nil {
+		return newError("resource", sdk.CodeResourceForbidden, "resource URL must be https without userinfo")
+	}
+	if parsed.Path == "" || parsed.Path == "/" {
+		return newError("resource", sdk.CodeResourceForbidden, "resource URL has no path")
+	}
+	host := strings.ToLower(parsed.Hostname())
+	if !allowedResourceHost(host, c.opts.ResourcePolicy.AllowedHosts) {
+		return newError("resource", sdk.CodeResourceForbidden, "resource host is not allowed")
+	}
+	return nil
+}
+
+func allowedResourceHost(host string, extra []string) bool {
+	for _, allowed := range defaultResourceHosts {
+		if host == allowed {
+			return true
+		}
+	}
+	for _, allowed := range extra {
+		if host == strings.ToLower(strings.TrimSpace(allowed)) {
+			return true
+		}
+	}
+	return false
+}
+
+// OpenResource opens a resource by its opaque reference and returns an
+// allowlisted response. The caller owns and must close response.Body. The
+// resource URL, redirects, headers, and identity are revalidated before any
+// bytes are streamed; cookies are never sent for resource requests.
+func (c *Client) OpenResource(ctx context.Context, request sdk.OpenResourceRequest) (*sdk.ResourceResponse, error) {
+	if err := request.Validate(); err != nil {
+		return nil, err
+	}
+	rp, err := c.decodeResourceRef(request.Ref)
+	if err != nil {
+		return nil, newError("OpenResource", sdk.CodeInvalidArgument, "invalid resource reference")
+	}
+	if err := c.validateResourceURL(rp.URL); err != nil {
+		return nil, newError("OpenResource", sdk.CodeResourceForbidden, "resource URL is not allowed")
+	}
+	header := http.Header{}
+	header.Set("Referer", protocol.AppReferer)
+	for _, field := range []struct{ name, value string }{
+		{"Range", request.Range},
+		{"If-None-Match", request.IfNoneMatch},
+		{"If-Modified-Since", request.IfModifiedSince},
+		{"If-Range", request.IfRange},
+	} {
+		if field.value != "" {
+			header.Set(field.name, field.value)
+		}
+	}
+	method := string(request.Method)
+	if method == "" {
+		method = http.MethodGet
+	}
+	response, err := c.resClient.Open(ctx, resource.OpenRequest{
+		URL:            rp.URL,
+		Method:         method,
+		Header:         header,
+		Validate:       c.validateResourceURL,
+		DisableCookies: true,
+	})
+	if err != nil {
+		return nil, classifyAppError(err, "OpenResource")
+	}
+	return sdk.NewResourceResponse(response.StatusCode, response.Header, response.Body), nil
+}
+
+// SaveResource conditionally reads a single resource by its opaque reference
+// and writes it to Path through an atomic destination, so a partially
+// transferred file never appears at the final path. It does not expand creators,
+// archives, sidecars, or ugoira batches; use the downloader for those.
+func (c *Client) SaveResource(ctx context.Context, ref sdk.ResourceRef, options sdk.SaveOptions) (sdk.SavedResource, error) {
+	if strings.TrimSpace(options.Path) == "" {
+		return sdk.SavedResource{}, newError("SaveResource", sdk.CodeInvalidArgument, "destination path is required")
+	}
+	rp, err := c.decodeResourceRef(ref)
+	if err != nil {
+		return sdk.SavedResource{}, newError("SaveResource", sdk.CodeInvalidArgument, "invalid resource reference")
+	}
+	if err := c.validateResourceURL(rp.URL); err != nil {
+		return sdk.SavedResource{}, newError("SaveResource", sdk.CodeResourceForbidden, "resource URL is not allowed")
+	}
+	response, err := c.OpenResource(ctx, sdk.OpenResourceRequest{Ref: ref, Method: sdk.ResourceMethodGet})
+	if err != nil {
+		return sdk.SavedResource{}, err
+	}
+	defer response.Body.Close()
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		return sdk.SavedResource{}, newError("SaveResource", sdk.CodeUpstreamError, "resource returned a non-success status")
+	}
+	size, err := atomicWrite(ctx, options.Path, response.Body, options.Progress)
+	if err != nil {
+		return sdk.SavedResource{}, newError("SaveResource", sdk.CodeLocalStateError, "cannot write resource")
+	}
+	return sdk.SavedResource{Path: options.Path, Size: size}, nil
+}
+
+func (c *Client) decodeResourceRef(ref sdk.ResourceRef) (resourceRefPayload, error) {
+	if ref.IsZero() {
+		return resourceRefPayload{}, errors.New("zero resource reference")
+	}
+	payload, err := sdk.ResourceRefPayload(ref)
+	if err != nil {
+		return resourceRefPayload{}, err
+	}
+	var rp resourceRefPayload
+	if err := json.Unmarshal(payload, &rp); err != nil || rp.URL == "" {
+		return resourceRefPayload{}, errors.New("malformed resource reference")
+	}
+	return rp, nil
+}
+
+// atomicWrite streams src to an atomic destination: it writes to a private
+// temporary file in the destination directory, then renames it into place after
+// a successful fsync. The temp file is removed on any failure.
+func atomicWrite(ctx context.Context, path string, src io.Reader, progress func(sdk.SaveProgress)) (int64, error) {
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return 0, err
+	}
+	temp, err := os.CreateTemp(dir, ".pixiv-resource-*")
+	if err != nil {
+		return 0, err
+	}
+	tempPath := temp.Name()
+	defer func() {
+		_ = os.Remove(tempPath)
+	}()
+	var written int64
+	buffer := make([]byte, 64*1024)
+	for {
+		if err := ctx.Err(); err != nil {
+			_ = temp.Close()
+			return written, err
+		}
+		n, readErr := src.Read(buffer)
+		if n > 0 {
+			if _, err := temp.Write(buffer[:n]); err != nil {
+				_ = temp.Close()
+				return written, err
+			}
+			written += int64(n)
+			if progress != nil {
+				progress(sdk.SaveProgress{Total: 0, Done: written})
+			}
+		}
+		if readErr != nil {
+			if readErr != io.EOF {
+				_ = temp.Close()
+				return written, readErr
+			}
+			break
+		}
+	}
+	if err := temp.Sync(); err != nil {
+		_ = temp.Close()
+		return written, err
+	}
+	if err := temp.Close(); err != nil {
+		return written, err
+	}
+	if err := os.Chmod(tempPath, 0o600); err != nil {
+		return written, err
+	}
+	if err := os.Rename(tempPath, path); err != nil {
+		return written, err
+	}
+	return written, nil
+}

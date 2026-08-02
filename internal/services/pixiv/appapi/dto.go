@@ -147,7 +147,8 @@ type ugoiraMetadataDTO struct {
 	Frames  requiredList[ugoiraFrameDTO]     `json:"frames"`
 }
 type ugoiraZipURLsDTO struct {
-	Medium string `json:"medium"`
+	Medium   string `json:"medium"`
+	Original string `json:"original"`
 }
 type ugoiraFrameDTO struct {
 	File  string `json:"file"`

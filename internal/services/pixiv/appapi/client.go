@@ -32,9 +32,11 @@ const (
 var ErrMalformedResponse = protocol.ErrMalformedResponse
 
 type Client struct {
-	restyClient *resty.Client
-	apiBase     string
-	session     Session
+	restyClient    *resty.Client
+	apiBase        string
+	session        Session
+	acceptLanguage string
+	userID         int64
 	// disableRetryAfterRetry 只由上层明确需要观察首个 429 的调度器启用。
 	// 默认仍遵守既有的有效 Retry-After 单次重试契约。
 	disableRetryAfterRetry bool
@@ -80,6 +82,18 @@ func WithAccessToken(token string) Option {
 	return func(c *Client) {
 		c.session = staticSession{token: strings.TrimSpace(token)}
 	}
+}
+
+// WithAcceptLanguage 注入语言协商头；空值不设置。
+func WithAcceptLanguage(language string) Option {
+	return func(c *Client) {
+		c.acceptLanguage = strings.TrimSpace(language)
+	}
+}
+
+// WithUserID 注入经过验证的当前账号 ID，供需要 X-User-Id 的 App endpoint（如小说内容）使用。
+func WithUserID(userID int64) Option {
+	return func(c *Client) { c.userID = userID }
 }
 
 // WithDisableRetryAfterRetry 使读取请求把首个有效 Retry-After 限流直接交给调用方。
@@ -542,7 +556,8 @@ func (c *Client) UgoiraMetadata(ctx context.Context, id int64) (*model.UgoiraMet
 		return nil, err
 	}
 	metadata := raw.UgoiraMetadata.Value
-	if !raw.UgoiraMetadata.Present || !raw.UgoiraMetadata.Valid || !metadata.ZipURLs.Present || !metadata.ZipURLs.Valid || metadata.ZipURLs.Value.Medium == "" ||
+	if !raw.UgoiraMetadata.Present || !raw.UgoiraMetadata.Valid || !metadata.ZipURLs.Present || !metadata.ZipURLs.Valid ||
+		(metadata.ZipURLs.Value.Medium == "" && metadata.ZipURLs.Value.Original == "") ||
 		!metadata.Frames.Present || !metadata.Frames.Valid || len(metadata.Frames.Items) == 0 {
 		return nil, protocol.MalformedResponse()
 	}
@@ -670,7 +685,14 @@ func (c *Client) apiHeaders() map[string]string {
 	if c.session != nil {
 		token = c.session.AccessToken()
 	}
-	return protocol.AppHeaders(token)
+	headers := protocol.AppHeaders(token)
+	if c.acceptLanguage != "" {
+		headers["Accept-Language"] = c.acceptLanguage
+	}
+	if c.userID > 0 {
+		headers["X-User-Id"] = strconv.FormatInt(c.userID, 10)
+	}
+	return headers
 }
 
 func (c *Client) doJSON(ctx context.Context, method, rawURL string, opts requestOptions, out any) error {

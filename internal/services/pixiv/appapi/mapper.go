@@ -191,6 +191,7 @@ func mapUgoiraMetadata(dto ugoiraMetadataResultDTO) model.UgoiraMetadataResult {
 	var result model.UgoiraMetadataResult
 	metadata := dto.UgoiraMetadata.Value
 	result.UgoiraMetadata.ZipURLs.Medium = metadata.ZipURLs.Value.Medium
+	result.UgoiraMetadata.ZipURLs.Original = metadata.ZipURLs.Value.Original
 	if metadata.Frames.Items != nil {
 		result.UgoiraMetadata.Frames = make([]model.UgoiraFrame, len(metadata.Frames.Items))
 	}

@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/protocol"
 	"github.com/FlanChanXwO/pixiv-cli/internal/utils/credentials"
@@ -41,6 +42,7 @@ type Client struct {
 	accessToken     string
 	userID          int64
 	userName        string
+	expiresAt       time.Time
 	mu              sync.RWMutex
 }
 
@@ -100,6 +102,9 @@ func (c *Client) UserID() int64         { c.mu.RLock(); defer c.mu.RUnlock(); re
 func (c *Client) UserName() string      { c.mu.RLock(); defer c.mu.RUnlock(); return c.userName }
 func (c *Client) IsAuthenticated() bool { return c.AccessToken() != "" }
 
+// Expiry 返回 access token 的过期时间；上游未提供或已过期时为零值。
+func (c *Client) Expiry() time.Time { c.mu.RLock(); defer c.mu.RUnlock(); return c.expiresAt }
+
 func (c *Client) Refresh(ctx context.Context) error {
 	c.mu.RLock()
 	refreshToken := c.refreshToken
@@ -131,6 +136,7 @@ type AuthCodeToken struct {
 	RefreshToken string
 	UserID       int64
 	Username     string
+	ExpiresAt    time.Time
 }
 
 // GeneratePKCEPair 使用 OAuth S256 所需的随机 verifier/challenge 对。
@@ -201,6 +207,7 @@ func (c *Client) store(token AuthCodeToken) {
 		c.refreshToken = token.RefreshToken
 	}
 	c.userID, c.userName = token.UserID, token.Username
+	c.expiresAt = token.ExpiresAt
 	c.mu.Unlock()
 }
 
@@ -211,10 +218,12 @@ func oauthHeaders() map[string]string {
 type authResponse struct {
 	AccessToken  string   `json:"access_token"`
 	RefreshToken string   `json:"refresh_token"`
+	ExpiresIn    int64    `json:"expires_in"`
 	User         authUser `json:"user"`
 	Response     struct {
 		AccessToken  string   `json:"access_token"`
 		RefreshToken string   `json:"refresh_token"`
+		ExpiresIn    int64    `json:"expires_in"`
 		User         authUser `json:"user"`
 	} `json:"response"`
 }
@@ -242,8 +251,14 @@ func (i *jsonInt64) UnmarshalJSON(body []byte) error {
 	return nil
 }
 func tokenFromResponse(r authResponse) AuthCodeToken {
-	if r.Response.AccessToken != "" || r.Response.RefreshToken != "" || r.Response.User.ID != 0 {
-		return AuthCodeToken{r.Response.AccessToken, r.Response.RefreshToken, int64(r.Response.User.ID), r.Response.User.Name}
+	expiry := func(expiresIn int64) time.Time {
+		if expiresIn <= 0 {
+			return time.Time{}
+		}
+		return time.Now().Add(time.Duration(expiresIn) * time.Second)
 	}
-	return AuthCodeToken{r.AccessToken, r.RefreshToken, int64(r.User.ID), r.User.Name}
+	if r.Response.AccessToken != "" || r.Response.RefreshToken != "" || r.Response.User.ID != 0 {
+		return AuthCodeToken{r.Response.AccessToken, r.Response.RefreshToken, int64(r.Response.User.ID), r.Response.User.Name, expiry(r.Response.ExpiresIn)}
+	}
+	return AuthCodeToken{r.AccessToken, r.RefreshToken, int64(r.User.ID), r.User.Name, expiry(r.ExpiresIn)}
 }
