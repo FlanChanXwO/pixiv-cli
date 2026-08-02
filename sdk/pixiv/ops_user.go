@@ -146,13 +146,14 @@ func (c *Client) MyPixivUsers(ctx context.Context, request MyPixivUsersRequest) 
 	return c.userPreviewPage("MyPixivUsers", query, list)
 }
 
-// CurrentUser returns the current authenticated user's detail.
+// CurrentUser returns the current authenticated user's detail. It requires a
+// verified identity, so it fails with CodeUnauthorized on a New client whose
+// user ID is unknown.
 func (c *Client) CurrentUser(ctx context.Context, request CurrentUserRequest) (UserDetail, error) {
-	detail, err := c.app.CurrentUser(ctx)
-	if err != nil {
-		return UserDetail{}, classifyAppError(err, "CurrentUser")
+	if c.userID <= 0 {
+		return UserDetail{}, newError("CurrentUser", sdk.CodeUnauthorized, "current user identity is unknown")
 	}
-	return c.mapUserDetail(*detail)
+	return c.User(ctx, UserRequest{UserID: c.userID})
 }
 
 func (c *Client) userPreviewPage(op string, query url.Values, list *model.UserPreviewList) (sdk.Page[UserPreview], error) {

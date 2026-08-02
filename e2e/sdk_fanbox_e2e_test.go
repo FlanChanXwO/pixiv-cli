@@ -30,7 +30,11 @@ func TestRealFanboxSDKRead(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
-	client, err := fanboxsdk.Open(fanboxsdk.SessionCredentials{FANBOXSESSID: session})
+	options := fanboxsdk.Options{}
+	if proxy := os.Getenv("PIXIV_WEB_API_PROXY"); proxy != "" {
+		options.ProxyURL = proxy
+	}
+	client, err := fanboxsdk.OpenWith(fanboxsdk.SessionCredentials{FANBOXSESSID: session}, options)
 	if err != nil {
 		t.Fatalf("fanbox.Open: %v", err)
 	}

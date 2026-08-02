@@ -2,11 +2,14 @@ package e2e
 
 import (
 	"context"
+	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
 
+	"github.com/FlanChanXwO/pixiv-cli/internal/config"
 	"github.com/FlanChanXwO/pixiv-cli/internal/platform/localstate"
 	"github.com/FlanChanXwO/pixiv-cli/internal/storage/authdb"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
@@ -37,11 +40,29 @@ func TestRealPixivSDKRead(t *testing.T) {
 		t.Skip("no local pixiv account; cannot run real e2e")
 	}
 	account := accounts[0]
+	if defaultID, ok, err := config.ReadPixivDefaultUserID(); err == nil && ok {
+		for _, candidate := range accounts {
+			if candidate.UserID == defaultID {
+				account = candidate
+				break
+			}
+		}
+	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
-	client, credentials, err := pixivsdk.Open(ctx, string(account.RefreshToken))
+	options := pixivsdk.Options{}
+	if proxy := os.Getenv("PIXIV_WEB_API_PROXY"); proxy != "" {
+		proxyURL, err := url.Parse(proxy)
+		if err != nil {
+			t.Fatalf("parse proxy: %v", err)
+		}
+		transport := http.DefaultTransport.(*http.Transport).Clone()
+		transport.Proxy = http.ProxyURL(proxyURL)
+		options.HTTPClient = &http.Client{Transport: transport}
+	}
+	client, credentials, err := pixivsdk.OpenWith(ctx, string(account.RefreshToken), options)
 	if err != nil {
 		t.Fatalf("pixiv.Open: %v", err)
 	}
@@ -63,14 +84,14 @@ func TestRealPixivSDKRead(t *testing.T) {
 		t.Fatal("current user has no id")
 	}
 
-	page, err := client.UserArtworks(ctx, pixivsdk.UserArtworksRequest{UserID: user.User.ID, Kind: pixivsdk.ArtworkKindIllustration})
+	searchPage, err := client.SearchArtworks(ctx, pixivsdk.SearchArtworksRequest{Word: "初音ミク"})
 	if err != nil {
-		t.Fatalf("UserArtworks: %v", err)
+		t.Fatalf("SearchArtworks: %v", err)
 	}
-	if len(page.Items) == 0 {
-		t.Fatal("no artworks for current user")
+	if len(searchPage.Items) == 0 {
+		t.Fatal("search returned no artworks")
 	}
-	artwork, err := client.Artwork(ctx, pixivsdk.ArtworkRequest{ArtworkID: page.Items[0].ID})
+	artwork, err := client.Artwork(ctx, pixivsdk.ArtworkRequest{ArtworkID: searchPage.Items[0].ID})
 	if err != nil {
 		t.Fatalf("Artwork: %v", err)
 	}

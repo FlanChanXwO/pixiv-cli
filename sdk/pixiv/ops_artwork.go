@@ -11,6 +11,15 @@ import (
 // SearchArtworks searches artworks. Repeat the original request fields when
 // continuing with a non-zero Cursor.
 func (c *Client) SearchArtworks(ctx context.Context, request SearchArtworksRequest) (sdk.Page[Artwork], error) {
+	if request.Word == "" {
+		return sdk.Page[Artwork]{}, newError("SearchArtworks", sdk.CodeInvalidArgument, "search word is required")
+	}
+	if request.Target == "" {
+		request.Target = SearchTargetPartialMatchForTags
+	}
+	if request.Sort == "" {
+		request.Sort = SortModeDateDesc
+	}
 	query := url.Values{}
 	if request.Word != "" {
 		query.Set("word", request.Word)

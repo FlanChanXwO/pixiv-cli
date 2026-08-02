@@ -11,6 +11,15 @@ import (
 // SearchNovels searches novels. Repeat the original request fields when
 // continuing with a non-zero Cursor.
 func (c *Client) SearchNovels(ctx context.Context, request SearchNovelsRequest) (sdk.Page[Novel], error) {
+	if request.Word == "" {
+		return sdk.Page[Novel]{}, newError("SearchNovels", sdk.CodeInvalidArgument, "search word is required")
+	}
+	if request.Target == "" {
+		request.Target = SearchTargetPartialMatchForTags
+	}
+	if request.Sort == "" {
+		request.Sort = SortModeDateDesc
+	}
 	query := url.Values{}
 	if request.Word != "" {
 		query.Set("word", request.Word)
