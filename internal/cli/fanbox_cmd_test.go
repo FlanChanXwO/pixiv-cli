@@ -54,7 +54,7 @@ func fanboxSessionOKRoundTripper(userID int64, name string) http.RoundTripper {
 func fanboxPostInfoRoundTripper(postID, title, creatorID string) http.RoundTripper {
 	return roundTripFunc(func(req *http.Request) (*http.Response, error) {
 		switch req.URL.Path {
-		case "/post.info":
+		case "/api/v1/post.info":
 			body := `{"body":{"post":{"id":"` + postID + `","title":"` + title + `","publishedDatetime":"2024-06-01T10:00:00Z","creatorId":"` + creatorID + `","feeRequired":0,"isRestricted":false,"isPinned":false,"body":{"text":"caption","images":[],"files":[]}}}}`
 			return jsonResponse(body), nil
 		default:

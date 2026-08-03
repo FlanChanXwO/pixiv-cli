@@ -81,7 +81,7 @@ func TestCurrentUser(t *testing.T) {
 func TestPost(t *testing.T) {
 	body := `{"body":{"post":{"id":"p1","title":"hello","publishedDatetime":"2024-06-01T10:00:00Z","creatorId":"pixiv","feeRequired":0,"isRestricted":false,"isPinned":false,"body":{"text":"caption","images":[{"id":"img1","extension":"png","originalUrl":"https://i.pximg.net/img/1.png","thumbnailUrl":"https://i.pximg.net/img/1_th.png"}],"files":[]}}}}`
 	rt := roundTripFunc(func(req *http.Request) (*http.Response, error) {
-		if req.URL.Host != "api.fanbox.cc" || req.URL.Path != "/post.info" {
+		if req.URL.Host != "api.fanbox.cc" || req.URL.Path != "/api/v1/post.info" {
 			t.Errorf("request = %s %s", req.Method, req.URL.String())
 		}
 		return jsonResponse(body), nil
@@ -106,11 +106,11 @@ func TestCreatorPostsPagination(t *testing.T) {
 	calls := 0
 	rt := roundTripFunc(func(req *http.Request) (*http.Response, error) {
 		calls++
-		if req.URL.Host != "api.fanbox.cc" || req.URL.Path != "/post.listCreator" {
+		if req.URL.Host != "api.fanbox.cc" || req.URL.Path != "/api/v1/post.listCreator" {
 			t.Errorf("request = %s", req.URL.String())
 		}
 		if calls == 1 {
-			return jsonResponse(`{"body":{"posts":[{"id":"p1","title":"a","publishedDatetime":"2024-01-01T00:00:00Z","creatorId":"c","isRestricted":false,"isPinned":false}],"nextUrl":"https://api.fanbox.cc/post.listCreator?creatorId=c&maxPublishedDatetime=2024-01-02"}}`), nil
+			return jsonResponse(`{"body":{"posts":[{"id":"p1","title":"a","publishedDatetime":"2024-01-01T00:00:00Z","creatorId":"c","isRestricted":false,"isPinned":false}],"nextUrl":"https://api.fanbox.cc/api/v1/post.listCreator?creatorId=c&maxPublishedDatetime=2024-01-02"}}`), nil
 		}
 		return jsonResponse(`{"body":{"posts":[{"id":"p2","title":"b","publishedDatetime":"2024-01-03T00:00:00Z","creatorId":"c","isRestricted":false,"isPinned":false}]}}`), nil
 	})

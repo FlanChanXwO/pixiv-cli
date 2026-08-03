@@ -118,7 +118,7 @@ func TestAPIRedirectDropsCookie(t *testing.T) {
 	session := newTestSession(t, http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
 		seen = append(seen, request.Host+request.URL.Path+":"+request.Header.Get("Cookie"))
 		switch request.Host + request.URL.Path {
-		case "api.fanbox.cc/post.info":
+		case "api.fanbox.cc/api/v1/post.info":
 			w.Header().Set("Location", "https://www.fanbox.cc/post-info")
 			w.WriteHeader(http.StatusFound)
 		case "www.fanbox.cc/post-info":
@@ -132,7 +132,7 @@ func TestAPIRedirectDropsCookie(t *testing.T) {
 	if _, err := session.Post(context.Background(), "post-1"); err != nil {
 		t.Fatalf("Post() error = %v", err)
 	}
-	want := "api.fanbox.cc/post.info:FANBOXSESSID=redirect-canary,www.fanbox.cc/post-info:"
+	want := "api.fanbox.cc/api/v1/post.info:FANBOXSESSID=redirect-canary,www.fanbox.cc/post-info:"
 	if got := strings.Join(seen, ","); got != want {
 		t.Fatalf("requests = %q, want %q", got, want)
 	}
