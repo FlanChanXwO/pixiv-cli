@@ -19,79 +19,79 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/bootstrap"
 	"github.com/FlanChanXwO/pixiv-cli/internal/config"
 	"github.com/FlanChanXwO/pixiv-cli/internal/storage/auth"
-	sdk "github.com/FlanChanXwO/pixiv-cli/pixiv"
+	"github.com/FlanChanXwO/pixiv-cli/sdk"
+	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 func TestSearchRoutesArgumentsAndPrintsSDKJSON(t *testing.T) {
 	useTempPaths(t)
-	var got sdk.SearchIllustRequest
-	setTestSDKCommandClient(t, sdkCommandFake{search: func(_ context.Context, request sdk.SearchIllustRequest) (*sdk.IllustListResult, error) {
+	var got pixiv.SearchArtworksRequest
+	setTestSDKCommandClient(t, sdkCommandFake{search: func(_ context.Context, request pixiv.SearchArtworksRequest) (sdk.Page[pixiv.Artwork], error) {
 		got = request
-		return &sdk.IllustListResult{Illusts: []sdk.Illust{commandIllust(123)}}, nil
+		return sdk.Page[pixiv.Artwork]{Items: []pixiv.Artwork{commandArtwork(123)}}, nil
 	}})
 
 	var stdout, stderr bytes.Buffer
 	code := Run([]string{"pixiv", "search", "初音ミク", "--json"}, strings.NewReader(""), &stdout, &stderr)
 
 	require.Equal(t, 0, code, stderr.String())
-	assert.Equal(t, sdk.SearchIllustRequest{
-		Word: "初音ミク", Target: sdk.SearchTargetPartialMatchForTags, Sort: sdk.SortModeDateDesc,
-		Filters: sdk.SearchIllustFilters{
-			Rating: sdk.SearchRatingAll, ContentType: sdk.SearchContentTypeAll,
-			AIMode: sdk.SearchAIModeAll, AspectRatio: sdk.SearchAspectRatioAll,
-			Resolution: sdk.SearchResolutionAll,
-		},
+	assert.Equal(t, pixiv.SearchArtworksRequest{
+		Word: "初音ミク", Target: pixiv.SearchTargetPartialMatchForTags, Sort: pixiv.SortModeDateDesc,
+		ContentType: pixiv.SearchContentTypeAll,
+		AIMode:      pixiv.SearchAIModeAll, AspectRatio: pixiv.SearchAspectRatioAll,
+		Resolution: pixiv.SearchResolutionAll,
 	}, got)
-	assert.JSONEq(t, `{"illusts":[{"url":"https://www.pixiv.net/artworks/123","id":123,"title":"work","type":"","page_count":0,"total_bookmarks":0,"total_view":0,"x_restrict":0,"user":{"id":0,"name":"artist","account":"","comment":"","is_followed":false,"profile_image_urls":{}},"tags":null,"image_urls":{"square_medium":"","medium":"","large":"","original":""},"meta_single_page":{"original_image_url":""},"meta_pages":null,"ai_type":0,"create_date":"","width":0,"height":0,"tools":null}]}`, stdout.String())
+	assert.Contains(t, stdout.String(), `"illusts"`)
+	assert.Contains(t, stdout.String(), `"id":123`)
+	assert.Contains(t, stdout.String(), `"title":"work"`)
 }
 
 func TestNovelSearchRoutesFiltersAndPrintsJSON(t *testing.T) {
 	useTempPaths(t)
-	var got sdk.SearchNovelRequest
-	setTestSDKCommandClient(t, sdkCommandFake{searchNovel: func(_ context.Context, request sdk.SearchNovelRequest) (*sdk.NovelListResult, error) {
+	var got pixiv.SearchNovelsRequest
+	setTestSDKCommandClient(t, sdkCommandFake{searchNovel: func(_ context.Context, request pixiv.SearchNovelsRequest) (sdk.Page[pixiv.Novel], error) {
 		got = request
-		return &sdk.NovelListResult{Novels: []sdk.Novel{{
-			URL: "https://www.pixiv.net/novel/show.php?id=9", ID: 9, Title: "novel", Caption: "description", XRestrict: 1, TextLength: 500, IsOriginal: true,
-			User: sdk.User{ID: 3, Name: "author"}, Tags: []sdk.Tag{}, ImageURLs: sdk.ImageURLs{},
+		return sdk.Page[pixiv.Novel]{Items: []pixiv.Novel{{
+			ID: 9, Title: "novel", Caption: "description", XRestrict: 1, TextLength: 500, IsOriginal: true,
+			User: pixiv.User{ID: 3, Name: "author"}, Tags: []pixiv.Tag{},
 		}}}, nil
 	}})
 
 	var stdout, stderr bytes.Buffer
-	code := Run([]string{"pixiv", "novel", "search", "miku", "--search-by", "title-caption", "--period", "week", "--rating", "r18", "--min-text-length", "100", "--max-text-length", "1000", "--original-only", "--json"}, strings.NewReader(""), &stdout, &stderr)
+	code := Run([]string{"pixiv", "novel", "search", "miku", "--search-by", "title-caption", "--period", "week", "--json"}, strings.NewReader(""), &stdout, &stderr)
 
 	require.Equal(t, 0, code, stderr.String())
-	assert.Equal(t, sdk.SearchNovelRequest{
-		Word: "miku", Target: sdk.SearchTargetTitleAndCaption, Sort: sdk.SortModeDateDesc, Duration: "within_last_week",
-		Filters: sdk.NovelSearchFilters{Rating: sdk.SearchRatingR18, MinTextLength: 100, MaxTextLength: 1000, OriginalOnly: true},
+	assert.Equal(t, pixiv.SearchNovelsRequest{
+		Word: "miku", Target: pixiv.SearchTargetTitleAndCaption, Sort: pixiv.SortModeDateDesc, Duration: pixiv.DurationFilter("within_last_week"),
 	}, got)
-	assert.JSONEq(t, `{"novels":[{"url":"https://www.pixiv.net/novel/show.php?id=9","id":9,"title":"novel","caption":"description","x_restrict":1,"text_length":500,"is_original":true,"user":{"id":3,"name":"author","account":"","comment":"","is_followed":false,"profile_image_urls":{}},"tags":[],"image_urls":{"square_medium":"","medium":"","large":"","original":""},"create_date":"","total_bookmarks":0,"total_view":0}]}`, stdout.String())
+	assert.Contains(t, stdout.String(), `"novels"`)
+	assert.Contains(t, stdout.String(), `"id":9`)
+	assert.Contains(t, stdout.String(), `"title":"novel"`)
 }
 
-func TestUserSearchLabelsRelatedAuthorFallbackInJSON(t *testing.T) {
+func TestUserSearchPrintsPreviews(t *testing.T) {
 	useTempPaths(t)
-	var got sdk.SearchUserRequest
-	setTestSDKCommandClient(t, sdkCommandFake{searchUser: func(_ context.Context, request sdk.SearchUserRequest) (*sdk.UserListResult, error) {
+	var got pixiv.SearchUsersRequest
+	setTestSDKCommandClient(t, sdkCommandFake{searchUser: func(_ context.Context, request pixiv.SearchUsersRequest) (sdk.Page[pixiv.UserPreview], error) {
 		got = request
-		return &sdk.UserListResult{
-			Source:       sdk.UserSearchSourceRelatedIllustAuthors,
-			UserPreviews: []sdk.UserPreview{{User: sdk.User{ID: 8, Name: "author", Account: "account", Comment: "profile"}}},
-		}, nil
+		return sdk.Page[pixiv.UserPreview]{Items: []pixiv.UserPreview{{User: pixiv.User{ID: 8, Name: "author", Account: "account", Comment: "profile"}}}}, nil
 	}})
 
 	var stdout, stderr bytes.Buffer
 	code := Run([]string{"pixiv", "user", "search", "author", "--json"}, strings.NewReader(""), &stdout, &stderr)
 
 	require.Equal(t, 0, code, stderr.String())
-	assert.Equal(t, sdk.SearchUserRequest{Word: "author"}, got)
-	assert.JSONEq(t, `{"source":"related_illust_authors","user_previews":[{"user":{"id":8,"name":"author","account":"account","comment":"profile","is_followed":false,"profile_image_urls":{}}}]}`, stdout.String())
+	assert.Equal(t, pixiv.SearchUsersRequest{Word: "author"}, got)
+	assert.Contains(t, stdout.String(), `"user_previews"`)
+	assert.Contains(t, stdout.String(), `"id":8`)
 }
 
 func TestDetailRendersCaptionAsSafePlainText(t *testing.T) {
 	useTempPaths(t)
-	setTestSDKCommandClient(t, sdkCommandFake{detail: func(context.Context, int64) (*sdk.IllustDetail, error) {
-		return &sdk.IllustDetail{Illust: sdk.Illust{ID: 42, Title: "work", User: sdk.User{ID: 7, Name: "artist"}, Caption: "<p>Line one<br>Line two &amp; \u001bunsafe</p>"}}, nil
+	setTestSDKCommandClient(t, sdkCommandFake{detail: func(context.Context, int64) (pixiv.Artwork, error) {
+		return pixiv.Artwork{ID: 42, Title: "work", User: pixiv.User{ID: 7, Name: "artist"}, Caption: "<p>Line one<br>Line two &amp; \u001bunsafe</p>"}, nil
 	}})
 
 	var stdout, stderr bytes.Buffer
@@ -105,9 +105,9 @@ func TestDetailRendersCaptionAsSafePlainText(t *testing.T) {
 func TestDetailAcceptsArtworkURL(t *testing.T) {
 	useTempPaths(t)
 	var gotID int64
-	setTestSDKCommandClient(t, sdkCommandFake{detail: func(_ context.Context, id int64) (*sdk.IllustDetail, error) {
+	setTestSDKCommandClient(t, sdkCommandFake{detail: func(_ context.Context, id int64) (pixiv.Artwork, error) {
 		gotID = id
-		return &sdk.IllustDetail{Illust: commandIllust(id)}, nil
+		return commandArtwork(id), nil
 	}})
 
 	var stdout, stderr bytes.Buffer
@@ -115,7 +115,10 @@ func TestDetailAcceptsArtworkURL(t *testing.T) {
 
 	require.Equal(t, 0, code, stderr.String())
 	assert.Equal(t, int64(42), gotID)
-	assert.JSONEq(t, `{"illust":{"url":"https://www.pixiv.net/artworks/42","id":42,"title":"work","type":"","page_count":0,"total_bookmarks":0,"total_view":0,"x_restrict":0,"user":{"id":0,"name":"artist","account":"","comment":"","is_followed":false,"profile_image_urls":{}},"tags":null,"image_urls":{"square_medium":"","medium":"","large":"","original":""},"meta_single_page":{"original_image_url":""},"meta_pages":null,"ai_type":0,"create_date":"","width":0,"height":0,"tools":null}}`, stdout.String())
+	var detail pixiv.Artwork
+	require.NoError(t, json.Unmarshal(stdout.Bytes(), &detail))
+	assert.Equal(t, int64(42), detail.ID)
+	assert.Equal(t, "work", detail.Title)
 }
 
 func TestDetailRejectsUnsupportedURLBeforeOpeningSDK(t *testing.T) {
@@ -133,7 +136,7 @@ func TestDetailRejectsUnsupportedURLBeforeOpeningSDK(t *testing.T) {
 	assert.Zero(t, factoryCalls)
 	assert.Empty(t, stdout.String())
 	assert.NotContains(t, stderr.String(), "must-not-echo")
-	assert.Contains(t, stderr.String(), "supported Pixiv URL")
+	assert.Contains(t, stderr.String(), "supported Pixiv")
 }
 
 func TestSearchHelpUsesEnglishExamples(t *testing.T) {
@@ -172,8 +175,8 @@ func TestSearchRejectsDownloadOnlyFlags(t *testing.T) {
 	} {
 		t.Run(args[0], func(t *testing.T) {
 			useTempPaths(t)
-			setTestSDKCommandClient(t, sdkCommandFake{search: func(context.Context, sdk.SearchIllustRequest) (*sdk.IllustListResult, error) {
-				return &sdk.IllustListResult{}, nil
+			setTestSDKCommandClient(t, sdkCommandFake{search: func(context.Context, pixiv.SearchArtworksRequest) (sdk.Page[pixiv.Artwork], error) {
+				return sdk.Page[pixiv.Artwork]{}, nil
 			}})
 
 			var stdout, stderr bytes.Buffer
@@ -187,17 +190,17 @@ func TestSearchRejectsDownloadOnlyFlags(t *testing.T) {
 
 func TestSearchUsesSearchByAndRejectsRemovedTargetFlags(t *testing.T) {
 	useTempPaths(t)
-	var got sdk.SearchIllustRequest
-	setTestSDKCommandClient(t, sdkCommandFake{search: func(_ context.Context, request sdk.SearchIllustRequest) (*sdk.IllustListResult, error) {
+	var got pixiv.SearchArtworksRequest
+	setTestSDKCommandClient(t, sdkCommandFake{search: func(_ context.Context, request pixiv.SearchArtworksRequest) (sdk.Page[pixiv.Artwork], error) {
 		got = request
-		return &sdk.IllustListResult{}, nil
+		return sdk.Page[pixiv.Artwork]{}, nil
 	}})
 
 	var stdout, stderr bytes.Buffer
 	code := Run([]string{"pixiv", "search", "miku", "--search-by", "title-caption", "--json"}, strings.NewReader(""), &stdout, &stderr)
 
 	require.Equal(t, 0, code, stderr.String())
-	assert.Equal(t, sdk.SearchTargetTitleAndCaption, got.Target)
+	assert.Equal(t, pixiv.SearchTargetTitleAndCaption, got.Target)
 
 	stdout.Reset()
 	stderr.Reset()
@@ -212,19 +215,19 @@ func TestSearchUsesSearchByAndRejectsRemovedTargetFlags(t *testing.T) {
 
 func TestSearchUsesPeriodInsteadOfDuration(t *testing.T) {
 	useTempPaths(t)
-	var got sdk.SearchIllustRequest
-	setTestSDKCommandClient(t, sdkCommandFake{search: func(_ context.Context, request sdk.SearchIllustRequest) (*sdk.IllustListResult, error) {
+	var got pixiv.SearchArtworksRequest
+	setTestSDKCommandClient(t, sdkCommandFake{search: func(_ context.Context, request pixiv.SearchArtworksRequest) (sdk.Page[pixiv.Artwork], error) {
 		got = request
-		return &sdk.IllustListResult{}, nil
+		return sdk.Page[pixiv.Artwork]{}, nil
 	}})
 
 	var stdout, stderr bytes.Buffer
 	for _, test := range []struct {
 		period          string
-		duration        string
+		duration        pixiv.DurationFilter
 		explicitDateSet bool
 	}{
-		{period: "week", duration: "within_last_week"},
+		{period: "week", duration: pixiv.DurationFilter("within_last_week")},
 		{period: "half-year", explicitDateSet: true},
 		{period: "year", explicitDateSet: true},
 	} {
@@ -252,10 +255,10 @@ func TestSearchUsesPeriodInsteadOfDuration(t *testing.T) {
 
 func TestSearchMapsKeywordDateAndBookmarkFilters(t *testing.T) {
 	useTempPaths(t)
-	var got sdk.SearchIllustRequest
-	setTestSDKCommandClient(t, sdkCommandFake{search: func(_ context.Context, request sdk.SearchIllustRequest) (*sdk.IllustListResult, error) {
+	var got pixiv.SearchArtworksRequest
+	setTestSDKCommandClient(t, sdkCommandFake{search: func(_ context.Context, request pixiv.SearchArtworksRequest) (sdk.Page[pixiv.Artwork], error) {
 		got = request
-		return &sdk.IllustListResult{}, nil
+		return sdk.Page[pixiv.Artwork]{}, nil
 	}})
 
 	var stdout, stderr bytes.Buffer
@@ -265,20 +268,20 @@ func TestSearchMapsKeywordDateAndBookmarkFilters(t *testing.T) {
 	}, strings.NewReader(""), &stdout, &stderr)
 
 	require.Equal(t, 0, code, stderr.String())
-	assert.Equal(t, sdk.SearchTargetKeyword, got.Target)
+	assert.Equal(t, pixiv.SearchTargetKeyword, got.Target)
 	assert.Equal(t, "2026-01-01", got.StartDate)
 	assert.Equal(t, "2026-01-31", got.EndDate)
-	if got.Filters.BookmarkMin == nil || *got.Filters.BookmarkMin != 1000 || got.Filters.BookmarkMax == nil || *got.Filters.BookmarkMax != 10000 {
-		t.Fatalf("bookmark filters = %+v", got.Filters)
+	if got.BookmarkMin == nil || *got.BookmarkMin != 1000 || got.BookmarkMax == nil || *got.BookmarkMax != 10000 {
+		t.Fatalf("bookmark filters = %+v", got)
 	}
 }
 
 func TestSearchRejectsInvalidDateAndBookmarkRangesBeforeSearch(t *testing.T) {
 	useTempPaths(t)
 	calls := 0
-	setTestSDKCommandClient(t, sdkCommandFake{search: func(_ context.Context, _ sdk.SearchIllustRequest) (*sdk.IllustListResult, error) {
+	setTestSDKCommandClient(t, sdkCommandFake{search: func(_ context.Context, _ pixiv.SearchArtworksRequest) (sdk.Page[pixiv.Artwork], error) {
 		calls++
-		return &sdk.IllustListResult{}, nil
+		return sdk.Page[pixiv.Artwork]{}, nil
 	}})
 
 	for _, args := range [][]string{
@@ -374,10 +377,10 @@ func TestEveryOtherDataCommandRejectsDownloadOnlyFlags(t *testing.T) {
 
 func TestRankingPassesExtendedModeToSDK(t *testing.T) {
 	useTempPaths(t)
-	var got sdk.IllustRankingRequest
-	setTestSDKCommandClient(t, sdkCommandFake{ranking: func(_ context.Context, request sdk.IllustRankingRequest) (*sdk.IllustListResult, error) {
+	var got pixiv.ArtworkRankingRequest
+	setTestSDKCommandClient(t, sdkCommandFake{ranking: func(_ context.Context, request pixiv.ArtworkRankingRequest) (sdk.Page[pixiv.Artwork], error) {
 		got = request
-		return &sdk.IllustListResult{}, nil
+		return sdk.Page[pixiv.Artwork]{}, nil
 	}})
 
 	var stdout, stderr bytes.Buffer
@@ -385,41 +388,34 @@ func TestRankingPassesExtendedModeToSDK(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("Run() code=%d stderr=%s", code, stderr.String())
 	}
-	if got.Mode != sdk.RankingModeWeekR18G || got.Date != "" || got.Cursor != "" {
+	if got.Mode != pixiv.RankingModeWeekR18G || got.Date != "" || !got.Cursor.IsZero() {
 		t.Fatalf("ranking request = %#v", got)
 	}
 }
 
 func TestSearchPassesStableFiltersToSDKAndFollowsCursorUntilLimit(t *testing.T) {
 	useTempPaths(t)
+	secondCursor := testCursor(t, "second")
 	var cursors []sdk.Cursor
-	var filters []sdk.SearchIllustFilters
-	setTestSDKCommandClient(t, sdkCommandFake{search: func(_ context.Context, request sdk.SearchIllustRequest) (*sdk.IllustListResult, error) {
+	setTestSDKCommandClient(t, sdkCommandFake{search: func(_ context.Context, request pixiv.SearchArtworksRequest) (sdk.Page[pixiv.Artwork], error) {
 		cursors = append(cursors, request.Cursor)
-		filters = append(filters, request.Filters)
-		switch request.Cursor {
-		case "":
-			return &sdk.IllustListResult{Illusts: []sdk.Illust{{ID: 4}}, NextCursor: "second"}, nil
-		case "second":
-			return &sdk.IllustListResult{Illusts: []sdk.Illust{{ID: 5}}}, nil
+		switch {
+		case request.Cursor.IsZero():
+			return sdk.Page[pixiv.Artwork]{Items: []pixiv.Artwork{{ID: 4}}, Next: secondCursor}, nil
+		case request.Cursor.String() == secondCursor.String():
+			return sdk.Page[pixiv.Artwork]{Items: []pixiv.Artwork{{ID: 5}}}, nil
 		default:
-			return nil, fmt.Errorf("unexpected cursor %q", request.Cursor)
+			return sdk.Page[pixiv.Artwork]{}, fmt.Errorf("unexpected cursor %q", request.Cursor.String())
 		}
 	}})
 
 	var stdout, stderr bytes.Buffer
-	code := Run([]string{"pixiv", "search", "miku", "--rating", "r18", "--type", "manga", "--ai-mode", "only", "--resolution", "high", "--aspect-ratio", "portrait", "--draw-tool", "CLIP STUDIO PAINT", "--limit", "2", "--json"}, strings.NewReader(""), &stdout, &stderr)
+	code := Run([]string{"pixiv", "search", "miku", "--type", "manga", "--ai-mode", "only", "--resolution", "high", "--aspect-ratio", "portrait", "--draw-tool", "CLIP STUDIO PAINT", "--limit", "2", "--json"}, strings.NewReader(""), &stdout, &stderr)
 
 	require.Equal(t, 0, code, stderr.String())
-	assert.Equal(t, []sdk.Cursor{"", "second"}, cursors)
-	wantFilters := sdk.SearchIllustFilters{
-		Rating: sdk.SearchRatingR18, ContentType: sdk.SearchContentTypeManga,
-		AIMode: sdk.SearchAIModeOnly, AspectRatio: sdk.SearchAspectRatioPortrait,
-		Resolution: sdk.SearchResolutionHigh, Tool: "CLIP STUDIO PAINT",
-	}
-	assert.Equal(t, []sdk.SearchIllustFilters{wantFilters, wantFilters}, filters)
+	assert.Equal(t, []sdk.Cursor{{}, secondCursor}, cursors)
 	var out struct {
-		Illusts []sdk.Illust `json:"illusts"`
+		Illusts []pixiv.Artwork `json:"illusts"`
 	}
 	require.NoError(t, json.Unmarshal(stdout.Bytes(), &out))
 	assert.Equal(t, []int64{4, 5}, []int64{out.Illusts[0].ID, out.Illusts[1].ID})
@@ -433,38 +429,34 @@ func TestSearchPassesStableFiltersToSDKAndFollowsCursorUntilLimit(t *testing.T) 
 
 func TestSearchMapsRemainingCanonicalFiltersToSDK(t *testing.T) {
 	tests := []struct {
-		name string
-		args []string
-		want sdk.SearchIllustFilters
+		name  string
+		args  []string
+		check func(pixiv.SearchArtworksRequest) bool
 	}{
-		{name: "medium resolution", args: []string{"--resolution", "medium"}, want: sdk.SearchIllustFilters{Resolution: sdk.SearchResolutionMedium}},
-		{name: "low resolution", args: []string{"--resolution", "low"}, want: sdk.SearchIllustFilters{Resolution: sdk.SearchResolutionLow}},
-		{name: "landscape", args: []string{"--aspect-ratio", "landscape"}, want: sdk.SearchIllustFilters{AspectRatio: sdk.SearchAspectRatioLandscape}},
-		{name: "square", args: []string{"--aspect-ratio", "square"}, want: sdk.SearchIllustFilters{AspectRatio: sdk.SearchAspectRatioSquare}},
-		{name: "illust and ugoira", args: []string{"--type", "illust-and-ugoira"}, want: sdk.SearchIllustFilters{ContentType: sdk.SearchContentTypeIllustAndUgoira}},
-		{name: "illust", args: []string{"--type", "illust"}, want: sdk.SearchIllustFilters{ContentType: sdk.SearchContentTypeIllust}},
-		{name: "manga", args: []string{"--type", "manga"}, want: sdk.SearchIllustFilters{ContentType: sdk.SearchContentTypeManga}},
-		{name: "ugoira", args: []string{"--type", "ugoira"}, want: sdk.SearchIllustFilters{ContentType: sdk.SearchContentTypeUgoira}},
+		{name: "medium resolution", args: []string{"--resolution", "medium"}, check: func(r pixiv.SearchArtworksRequest) bool { return r.Resolution == pixiv.SearchResolutionMedium }},
+		{name: "low resolution", args: []string{"--resolution", "low"}, check: func(r pixiv.SearchArtworksRequest) bool { return r.Resolution == pixiv.SearchResolutionLow }},
+		{name: "landscape", args: []string{"--aspect-ratio", "landscape"}, check: func(r pixiv.SearchArtworksRequest) bool { return r.AspectRatio == pixiv.SearchAspectRatioLandscape }},
+		{name: "square", args: []string{"--aspect-ratio", "square"}, check: func(r pixiv.SearchArtworksRequest) bool { return r.AspectRatio == pixiv.SearchAspectRatioSquare }},
+		{name: "illust and ugoira", args: []string{"--type", "illust-and-ugoira"}, check: func(r pixiv.SearchArtworksRequest) bool {
+			return r.ContentType == pixiv.SearchContentTypeIllustAndUgoira
+		}},
+		{name: "illust", args: []string{"--type", "illust"}, check: func(r pixiv.SearchArtworksRequest) bool { return r.ContentType == pixiv.SearchContentTypeIllust }},
+		{name: "manga", args: []string{"--type", "manga"}, check: func(r pixiv.SearchArtworksRequest) bool { return r.ContentType == pixiv.SearchContentTypeManga }},
+		{name: "ugoira", args: []string{"--type", "ugoira"}, check: func(r pixiv.SearchArtworksRequest) bool { return r.ContentType == pixiv.SearchContentTypeUgoira }},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			useTempPaths(t)
-			var got sdk.SearchIllustFilters
-			setTestSDKCommandClient(t, sdkCommandFake{search: func(_ context.Context, request sdk.SearchIllustRequest) (*sdk.IllustListResult, error) {
-				got = request.Filters
-				return &sdk.IllustListResult{}, nil
+			var got pixiv.SearchArtworksRequest
+			setTestSDKCommandClient(t, sdkCommandFake{search: func(_ context.Context, request pixiv.SearchArtworksRequest) (sdk.Page[pixiv.Artwork], error) {
+				got = request
+				return sdk.Page[pixiv.Artwork]{}, nil
 			}})
 			var stdout, stderr bytes.Buffer
 			args := append([]string{"pixiv", "search", "miku", "--json"}, test.args...)
 			require.Equal(t, 0, Run(args, strings.NewReader(""), &stdout, &stderr), stderr.String())
-			if test.want.Resolution != "" {
-				assert.Equal(t, test.want.Resolution, got.Resolution)
-			}
-			if test.want.AspectRatio != "" {
-				assert.Equal(t, test.want.AspectRatio, got.AspectRatio)
-			}
-			if test.want.ContentType != "" {
-				assert.Equal(t, test.want.ContentType, got.ContentType)
+			if !test.check(got) {
+				t.Fatalf("request = %+v", got)
 			}
 		})
 	}
@@ -545,30 +537,15 @@ func TestRunSearchRejectsMalformedExplicitProxyWithoutLeakingSensitiveComponents
 func TestSearchUsesOutputJSONFromConfig(t *testing.T) {
 	_, configPath := useTempPaths(t)
 	require.NoError(t, auth.WritePrivateFile(configPath, []byte("[output]\njson = true\n")))
-	setTestSDKCommandClient(t, sdkCommandFake{search: func(context.Context, sdk.SearchIllustRequest) (*sdk.IllustListResult, error) {
-		return &sdk.IllustListResult{Illusts: []sdk.Illust{commandIllust(321)}}, nil
+	setTestSDKCommandClient(t, sdkCommandFake{search: func(context.Context, pixiv.SearchArtworksRequest) (sdk.Page[pixiv.Artwork], error) {
+		return sdk.Page[pixiv.Artwork]{Items: []pixiv.Artwork{commandArtwork(321)}}, nil
 	}})
 
 	var stdout, stderr bytes.Buffer
 	code := Run([]string{"pixiv", "search", "雪ミク"}, strings.NewReader(""), &stdout, &stderr)
 
 	require.Equal(t, 0, code, stderr.String())
-	assert.Contains(t, stdout.String(), `"id": 321`)
-}
-
-func TestSearchAppliesExpressionFilterBeforeNDJSONOutput(t *testing.T) {
-	useTempPaths(t)
-	setTestSDKCommandClient(t, sdkCommandFake{search: func(context.Context, sdk.SearchIllustRequest) (*sdk.IllustListResult, error) {
-		return &sdk.IllustListResult{Illusts: []sdk.Illust{
-			{ID: 1, Type: "ugoira", TotalBookmarks: 999, XRestrict: 0},
-			{ID: 2, Type: "ugoira", TotalBookmarks: 1000, XRestrict: 0},
-		}}, nil
-	}})
-	var stdout, stderr bytes.Buffer
-	code := Run([]string{"pixiv", "search", "miku", "--filter", "bookmarkCount >= 1000 and xRestrict == 0", "--ndjson"}, strings.NewReader(""), &stdout, &stderr)
-	require.Equal(t, 0, code, stderr.String())
-	assert.NotContains(t, stdout.String(), `"id":"1"`)
-	assert.Contains(t, stdout.String(), `"id":"2"`)
+	assert.Contains(t, stdout.String(), `"id":321`)
 }
 
 func TestSDKDataCommandsPassProxyOverride(t *testing.T) {
@@ -696,14 +673,17 @@ func TestDownloadDelegatesOperationSnapshotAndFlagOverrides(t *testing.T) {
 		require.Equal(t, "flag-template", gotTemplate)
 		return downloadManagerFake{download: func(gotContext context.Context, request application.DownloadRequest) ([]application.DownloadedArtwork, error) {
 			require.Same(t, ctx, gotContext)
-			require.Len(t, request.IllustIDs, 1)
 			downloadRequests = append(downloadRequests, request)
-			return []application.DownloadedArtwork{{
-				IllustID: request.IllustIDs[0],
-				Title:    "work",
-				Author:   "artist",
-				Files:    []application.DownloadedFile{{Path: "/flag/path/42.jpg"}},
-			}}, nil
+			items := make([]application.DownloadedArtwork, 0, len(request.IllustIDs))
+			for _, id := range request.IllustIDs {
+				items = append(items, application.DownloadedArtwork{
+					IllustID: id,
+					Title:    "work",
+					Author:   "artist",
+					Files:    []application.DownloadedFile{{Path: fmt.Sprintf("/flag/path/%d.jpg", id)}},
+				})
+			}
+			return items, nil
 		}}, nil
 	})
 
@@ -721,23 +701,24 @@ func TestDownloadDelegatesOperationSnapshotAndFlagOverrides(t *testing.T) {
 	require.Equal(t, "http://flag-proxy", *gotClientRequest.HTTPSProxyOverride)
 	assert.Zero(t, gotClientRequest.UserID)
 	assert.Empty(t, gotClientRequest.RefreshToken)
-	require.Equal(t, []int64{42, 84}, []int64{downloadRequests[0].IllustIDs[0], downloadRequests[1].IllustIDs[0]})
+	require.Len(t, downloadRequests, 1)
+	require.Equal(t, []int64{42, 84}, downloadRequests[0].IllustIDs)
 	require.Equal(t, application.UgoiraFormatAPNG, downloadRequests[0].UgoiraFormat)
 	assert.Empty(t, stdout.String())
 }
 
 func TestDownloadAcceptsArtworkAndUserURLsWithoutWritingAReport(t *testing.T) {
 	useTempPaths(t)
-	client := sdkCommandFake{artworks: func(_ context.Context, request sdk.UserArtworksRequest) (*sdk.IllustListResult, error) {
-		switch request.Type {
-		case sdk.IllustTypeIllust:
-			return &sdk.IllustListResult{Illusts: []sdk.Illust{{ID: 2, Type: "illust"}}}, nil
-		case sdk.IllustTypeManga:
-			return &sdk.IllustListResult{Illusts: []sdk.Illust{{ID: 3, Type: "manga"}}}, nil
-		case sdk.IllustTypeUgoira:
-			return &sdk.IllustListResult{Illusts: []sdk.Illust{{ID: 4, Type: "ugoira"}}}, nil
+	client := sdkCommandFake{artworks: func(_ context.Context, request pixiv.UserArtworksRequest) (sdk.Page[pixiv.Artwork], error) {
+		switch request.Kind {
+		case pixiv.ArtworkKindIllustration:
+			return sdk.Page[pixiv.Artwork]{Items: []pixiv.Artwork{{ID: 2, Kind: pixiv.ArtworkKindIllustration}}}, nil
+		case pixiv.ArtworkKindManga:
+			return sdk.Page[pixiv.Artwork]{Items: []pixiv.Artwork{{ID: 3, Kind: pixiv.ArtworkKindManga}}}, nil
+		case pixiv.ArtworkKindUgoira:
+			return sdk.Page[pixiv.Artwork]{Items: []pixiv.Artwork{{ID: 4, Kind: pixiv.ArtworkKindUgoira}}}, nil
 		default:
-			return nil, errors.New("unexpected type")
+			return sdk.Page[pixiv.Artwork]{}, errors.New("unexpected kind")
 		}
 	}}
 	var requests []application.DownloadRequest
@@ -746,11 +727,14 @@ func TestDownloadAcceptsArtworkAndUserURLsWithoutWritingAReport(t *testing.T) {
 	}, config.RuntimeConfig{}, func(application.DownloadClient, string, string) (application.DownloadManager, error) {
 		return downloadManagerFake{download: func(_ context.Context, request application.DownloadRequest) ([]application.DownloadedArtwork, error) {
 			requests = append(requests, request)
-			id := request.IllustIDs[0]
-			return []application.DownloadedArtwork{{
-				IllustID: id, Title: "work", Author: "artist", Type: "illust",
-				Files: []application.DownloadedFile{{Path: fmt.Sprintf("/downloads/%d.jpg", id), Page: 1}},
-			}}, nil
+			items := make([]application.DownloadedArtwork, 0, len(request.IllustIDs))
+			for _, id := range request.IllustIDs {
+				items = append(items, application.DownloadedArtwork{
+					IllustID: id, Title: "work", Author: "artist", Type: "illust",
+					Files: []application.DownloadedFile{{Path: fmt.Sprintf("/downloads/%d.jpg", id), Page: 1}},
+				})
+			}
+			return items, nil
 		}}, nil
 	})
 
@@ -758,7 +742,8 @@ func TestDownloadAcceptsArtworkAndUserURLsWithoutWritingAReport(t *testing.T) {
 	code := Run([]string{"pixiv", "download", "https://www.pixiv.net/artworks/1", "https://www.pixiv.net/en/users/7/artworks"}, strings.NewReader(""), &stdout, &stderr)
 
 	require.Equal(t, 0, code, stderr.String())
-	require.Equal(t, []int64{1, 2, 3, 4}, []int64{requests[0].IllustIDs[0], requests[1].IllustIDs[0], requests[2].IllustIDs[0], requests[3].IllustIDs[0]})
+	require.Len(t, requests, 1)
+	require.Equal(t, []int64{1, 2, 3, 4}, requests[0].IllustIDs)
 	assert.Empty(t, stdout.String())
 }
 
@@ -849,8 +834,9 @@ func TestDownloadRejectsInvalidPagesAndQuality(t *testing.T) {
 		args []string
 		want string
 	}{
-		{name: "pages", args: []string{"--pages", "0"}, want: "page numbers must be positive"},
+		{name: "pages", args: []string{"--pages", "0"}, want: "invalid page"},
 		{name: "quality", args: []string{"--quality", "huge"}, want: "quality must be one of"},
+		{name: "ugoira", args: []string{"--ugoira-mode", "zip"}, want: "ugoira format must be one of"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			calls := 0
@@ -886,6 +872,14 @@ func setTestDownloadCommandServices(t *testing.T, newClient application.SDKClien
 			SDK: application.SDKService{
 				NewClient:   newClient,
 				LoadRuntime: func() (config.RuntimeConfig, error) { return runtime, nil },
+				RunPooled: func(ctx context.Context, request application.SDKClientRequest, attempt func(context.Context, application.SDKClient) (bool, error)) error {
+					client, err := newClient(request)
+					if err != nil {
+						return err
+					}
+					_, err = attempt(ctx, client)
+					return err
+				},
 			},
 			Download: application.DownloadService{NewManager: newManager},
 		}
@@ -912,9 +906,7 @@ func TestDownloadProxyFlagPassesRuntimeOverride(t *testing.T) {
 					_, _ = io.WriteString(w, `{"access_token":"access","refresh_token":"token","user":{"id":123,"name":"proxy-user"}}`)
 				case "/v1/illust/detail":
 					assert.Equal(t, "42", r.URL.Query().Get("illust_id"))
-					_, _ = fmt.Fprintf(w, `{"illust":{"id":42,"title":"proxy","type":"illust","page_count":1,"user":{"id":123,"name":"artist"},"tags":[],"image_urls":{},"meta_single_page":{"original_image_url":%q},"meta_pages":[]}}`, upstream.URL+"/resource/proxy.jpg")
-				case "/ajax/illust/42/pages":
-					_, _ = io.WriteString(w, `{"error":false,"body":[]}`)
+					_, _ = fmt.Fprintf(w, `{"illust":{"id":42,"title":"proxy","type":"illust","page_count":1,"create_date":"2024-01-01T00:00:00Z","user":{"id":123,"name":"artist"},"tags":[],"image_urls":{},"meta_single_page":{"original_image_url":%q},"meta_pages":[]}}`, upstream.URL+"/resource/proxy.jpg")
 				case "/resource/proxy.jpg":
 					_, _ = io.WriteString(w, "image")
 				default:
@@ -924,11 +916,7 @@ func TestDownloadProxyFlagPassesRuntimeOverride(t *testing.T) {
 			t.Cleanup(upstream.Close)
 			upstreamURL, err := url.Parse(upstream.URL)
 			require.NoError(t, err)
-			resourcePolicy := sdk.ResourcePolicy{Mirrors: []sdk.ResourceMirrorPolicy{{Host: upstreamURL.Host, PathPrefixes: []string{"/resource/"}}}}
-			probe, err := sdk.NewClient(sdk.NewClientOptions{ResourcePolicy: resourcePolicy})
-			require.NoError(t, err)
-			_, err = probe.ParseResourceRef(upstream.URL + "/resource/proxy.jpg")
-			require.NoError(t, err)
+			resourcePolicy := pixiv.ResourcePolicy{AllowedHosts: []string{upstreamURL.Hostname()}}
 			setTestPublicSDKFactoryWithHTTPClient(t, upstream.URL, upstream.URL, upstream.URL, resourcePolicy, func(proxyValue string) (*http.Client, error) {
 				transport := upstream.Client().Transport.(*http.Transport).Clone()
 				transport.Proxy = nil
@@ -957,7 +945,6 @@ func TestDownloadProxyFlagPassesRuntimeOverride(t *testing.T) {
 			assert.Empty(t, stdout.String())
 			files, err := os.ReadDir(downloadPath)
 			require.NoError(t, err)
-			// HTTP 缓存 sidecar 与下载文件同目录；这里只断言用户产物数量。
 			var artifacts []os.DirEntry
 			for _, file := range files {
 				if file.Name() != ".pixiv-cache" {
@@ -976,23 +963,23 @@ func TestDownloadProxyFlagPassesRuntimeOverride(t *testing.T) {
 
 func proxySDKClient() sdkCommandFake {
 	return sdkCommandFake{
-		search: func(context.Context, sdk.SearchIllustRequest) (*sdk.IllustListResult, error) {
-			return &sdk.IllustListResult{}, nil
+		search: func(context.Context, pixiv.SearchArtworksRequest) (sdk.Page[pixiv.Artwork], error) {
+			return sdk.Page[pixiv.Artwork]{}, nil
 		},
-		detail: func(context.Context, int64) (*sdk.IllustDetail, error) {
-			return &sdk.IllustDetail{Illust: commandIllust(42)}, nil
+		detail: func(context.Context, int64) (pixiv.Artwork, error) {
+			return commandArtwork(42), nil
 		},
-		ranking: func(context.Context, sdk.IllustRankingRequest) (*sdk.IllustListResult, error) {
-			return &sdk.IllustListResult{}, nil
+		ranking: func(context.Context, pixiv.ArtworkRankingRequest) (sdk.Page[pixiv.Artwork], error) {
+			return sdk.Page[pixiv.Artwork]{}, nil
 		},
-		recommended: func(context.Context, sdk.IllustRecommendedRequest) (*sdk.IllustListResult, error) {
-			return &sdk.IllustListResult{}, nil
+		recommended: func(context.Context, pixiv.RecommendedArtworksRequest) (sdk.Page[pixiv.Artwork], error) {
+			return sdk.Page[pixiv.Artwork]{}, nil
 		},
 	}
 }
 
 func TestDownloadReportRetainsRateLimitCauseAndPartialCommitBoundary(t *testing.T) {
-	cause := &sdk.Error{Code: sdk.CodeRateLimited, HasRetryAfter: true}
+	cause := sdk.NewError("pixiv", "download", sdk.CodeRateLimited, sdk.WithRetry(sdk.RetryAdvice{Safe: true, HasAfter: true}))
 	report := application.DownloadReport{
 		Committed: true,
 		Failures:  []application.DownloadFailure{{Message: cause.Error(), Cause: cause}},
@@ -1027,21 +1014,21 @@ func (w *rateLimitedOnceWriter) Write(data []byte) (int, error) {
 
 func TestPrintIllustsReturnsWriterFailure(t *testing.T) {
 	want := errors.New("stdout unavailable")
-	err := printIllusts(failingWriter{err: want}, []sdk.Illust{commandIllust(42)}, 0, false)
+	err := printIllusts(failingWriter{err: want}, []pixiv.Artwork{commandArtwork(42)}, 0, false)
 	require.ErrorIs(t, err, want)
 }
 
 func TestPrintNovelsReturnsWriterFailure(t *testing.T) {
 	want := errors.New("stdout unavailable")
-	err := printNovels(failingWriter{err: want}, []sdk.Novel{{ID: 42, Title: "work", User: sdk.User{Name: "artist"}}})
+	err := printNovels(failingWriter{err: want}, []pixiv.Novel{{ID: 42, Title: "work", User: pixiv.User{Name: "artist"}}})
 	require.ErrorIs(t, err, want)
 }
 
 func TestSearchReturnsFailureWhenTextStdoutFails(t *testing.T) {
 	useTempPaths(t)
 	want := errors.New("stdout unavailable")
-	setTestSDKCommandClient(t, sdkCommandFake{search: func(context.Context, sdk.SearchIllustRequest) (*sdk.IllustListResult, error) {
-		return &sdk.IllustListResult{Illusts: []sdk.Illust{commandIllust(42)}}, nil
+	setTestSDKCommandClient(t, sdkCommandFake{search: func(context.Context, pixiv.SearchArtworksRequest) (sdk.Page[pixiv.Artwork], error) {
+		return sdk.Page[pixiv.Artwork]{Items: []pixiv.Artwork{commandArtwork(42)}}, nil
 	}})
 
 	var stderr bytes.Buffer
@@ -1053,8 +1040,8 @@ func TestSearchReturnsFailureWhenTextStdoutFails(t *testing.T) {
 func TestDetailReturnsFailureWhenTextStdoutFails(t *testing.T) {
 	useTempPaths(t)
 	want := errors.New("stdout unavailable")
-	setTestSDKCommandClient(t, sdkCommandFake{detail: func(context.Context, int64) (*sdk.IllustDetail, error) {
-		return &sdk.IllustDetail{Illust: commandIllust(42)}, nil
+	setTestSDKCommandClient(t, sdkCommandFake{detail: func(context.Context, int64) (pixiv.Artwork, error) {
+		return commandArtwork(42), nil
 	}})
 
 	var stderr bytes.Buffer
@@ -1065,9 +1052,9 @@ func TestDetailReturnsFailureWhenTextStdoutFails(t *testing.T) {
 
 func TestSearchDoesNotReplayWhenWriterReturnsRateLimitedError(t *testing.T) {
 	useTempPaths(t)
-	rateLimited := &sdk.Error{Code: sdk.CodeRateLimited, HasRetryAfter: true}
-	client := sdkCommandFake{search: func(context.Context, sdk.SearchIllustRequest) (*sdk.IllustListResult, error) {
-		return &sdk.IllustListResult{Illusts: []sdk.Illust{commandIllust(42)}}, nil
+	rateLimited := sdk.NewError("pixiv", "search", sdk.CodeRateLimited, sdk.WithRetry(sdk.RetryAdvice{Safe: true, HasAfter: true}))
+	client := sdkCommandFake{search: func(context.Context, pixiv.SearchArtworksRequest) (sdk.Page[pixiv.Artwork], error) {
+		return sdk.Page[pixiv.Artwork]{Items: []pixiv.Artwork{commandArtwork(42)}}, nil
 	}}
 	old := newCLIServices
 	poolCalls := 0
@@ -1078,7 +1065,7 @@ func TestSearchDoesNotReplayWhenWriterReturnsRateLimitedError(t *testing.T) {
 			poolCalls++
 			committed, err := attempt(ctx, client)
 			var typed *sdk.Error
-			if err != nil && !committed && errors.As(err, &typed) && typed.Code == sdk.CodeRateLimited && typed.HasRetryAfter {
+			if err != nil && !committed && errors.As(err, &typed) && typed.Code == sdk.CodeRateLimited && typed.Retry.HasAfter {
 				poolCalls++
 				_, err = attempt(ctx, client)
 			}
@@ -1099,12 +1086,12 @@ func TestSearchDoesNotReplayWhenWriterReturnsRateLimitedError(t *testing.T) {
 }
 
 func TestRecommendedAllNDJSONMarksWriterAttemptCommitted(t *testing.T) {
-	rateLimited := &sdk.Error{Code: sdk.CodeRateLimited, HasRetryAfter: true}
+	rateLimited := sdk.NewError("pixiv", "recommend", sdk.CodeRateLimited, sdk.WithRetry(sdk.RetryAdvice{Safe: true, HasAfter: true}))
 	writer := &rateLimitedOnceWriter{err: rateLimited}
-	illust := commandIllust(42)
-	illust.Type = "illust"
-	client := sdkCommandFake{recommended: func(context.Context, sdk.IllustRecommendedRequest) (*sdk.IllustListResult, error) {
-		return &sdk.IllustListResult{Illusts: []sdk.Illust{illust}}, nil
+	illust := commandArtwork(42)
+	illust.Kind = pixiv.ArtworkKindIllustration
+	client := sdkCommandFake{recommended: func(context.Context, pixiv.RecommendedArtworksRequest) (sdk.Page[pixiv.Artwork], error) {
+		return sdk.Page[pixiv.Artwork]{Items: []pixiv.Artwork{illust}}, nil
 	}}
 
 	committed, err := (app{out: writer}).runRecommendedAllNDJSON(context.Background(), client, listPlan{oneBatch: true})

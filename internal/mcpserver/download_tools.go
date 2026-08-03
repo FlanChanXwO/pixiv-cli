@@ -6,14 +6,14 @@ import (
 	"fmt"
 	"math/rand"
 	"os"
+	"strconv"
 	"strings"
-	"time"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/application"
 	"github.com/FlanChanXwO/pixiv-cli/internal/download"
 	"github.com/FlanChanXwO/pixiv-cli/internal/utils/media"
 	uriutil "github.com/FlanChanXwO/pixiv-cli/internal/utils/uri"
-	sdk "github.com/FlanChanXwO/pixiv-cli/pixiv"
+	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -22,8 +22,8 @@ type downloadIn struct {
 	Srcs              []string `json:"srcs,omitempty" jsonschema:"multiple PID, Pixiv artwork/user URL, or allowed CDN resource URLs"`
 	Pages             string   `json:"pages,omitempty" jsonschema:"1-based page selection, e.g. 1,3-5; default all pages"`
 	Quality           string   `json:"quality,omitempty" jsonschema:"static image quality: original, regular, small, thumb, mini"`
-	UgoiraMode        string   `json:"ugoira_mode,omitempty" jsonschema:"ugoira output mode: gif, apng, zip, or frames; default gif"`
-	Concurrency       int      `json:"concurrency,omitempty" jsonschema:"download workers; 0 automatically uses 2 × GOMAXPROCS"`
+	UgoiraMode        string   `json:"ugoira_mode,omitempty" jsonschema:"ugoira output mode: gif or apng; default gif"`
+	Concurrency       int      `json:"concurrency,omitempty" jsonschema:"download workers; 0 automatically uses 2 x GOMAXPROCS"`
 	Filter            string   `json:"filter,omitempty" jsonschema:"local illustration filter expression"`
 	Archive           string   `json:"archive,omitempty" jsonschema:"SQLite archive path for fully completed artwork IDs"`
 	DirectoryTemplate string   `json:"directory_template,omitempty" jsonschema:"relative output directory template"`
@@ -82,33 +82,11 @@ func (a *App) download(ctx context.Context, _ *mcp.CallToolRequest, in downloadI
 	if errText != "" {
 		return emptyDownloadError(ctx, errLegacyValidation, deliveryLocalPath, errText)
 	}
-	selection, quality, ugoiraMode, err := parseDownloadOptions(in.Pages, in.Quality, in.UgoiraMode)
+	pages, quality, ugoiraFormat, err := parseDownloadOptions(in.Pages, in.Quality, in.UgoiraMode)
 	if err != nil {
 		return emptyDownloadError(ctx, err, delivery, "Error: "+err.Error())
 	}
-	options := sdk.DownloadOptions{PageSelection: selection, Quality: sdk.DownloadQuality(quality), UgoiraMode: ugoiraMode, UgoiraFormat: sdk.UgoiraFormat(ugoiraMode), Concurrency: in.Concurrency, ArchivePath: in.Archive, DirectoryTemplate: in.DirectoryTemplate, WriteMetadata: in.WriteMetadata}
-	if strings.TrimSpace(in.Filter) != "" {
-		filter, filterErr := sdk.CompileIllustFilter(in.Filter)
-		if filterErr != nil {
-			return emptyDownloadError(ctx, filterErr, delivery, "Error: "+filterErr.Error())
-		}
-		options.Filter = filter
-	}
-	if in.Retries != nil || strings.TrimSpace(in.RetryDelay) != "" {
-		policy := &sdk.RetryPolicy{Retries: 3, InitialDelay: time.Second}
-		if in.Retries != nil {
-			policy.Retries = *in.Retries
-		}
-		if strings.TrimSpace(in.RetryDelay) != "" {
-			value, parseErr := time.ParseDuration(in.RetryDelay)
-			if parseErr != nil {
-				return emptyDownloadError(ctx, parseErr, delivery, "Error: retry_delay is invalid")
-			}
-			policy.InitialDelay = value
-		}
-		options.RetryPolicy = policy
-	}
-	report, err := a.downloadSourcesWithOptions(ctx, sources, options)
+	report, err := a.downloadSources(ctx, sources, pages, quality, ugoiraFormat)
 	if err != nil {
 		return emptyDownloadError(ctx, err, delivery, "Download failed: "+err.Error())
 	}
@@ -137,76 +115,9 @@ func parseDownloadSources(in downloadIn) ([]string, error) {
 	return append([]string(nil), in.Srcs...), nil
 }
 
-func (a *App) downloadSources(ctx context.Context, sources []string, pages []int, quality application.DownloadQuality, ugoiraFormat application.UgoiraFormat, concurrency int) (application.DownloadReport, error) {
-	return a.downloadSourcesWithOptions(ctx, sources, sdk.DownloadOptions{Pages: pages, Quality: sdk.DownloadQuality(quality), UgoiraFormat: sdk.UgoiraFormat(ugoiraFormat), UgoiraMode: sdk.UgoiraMode(ugoiraFormat), Concurrency: concurrency})
-}
-
-func (a *App) downloadSourcesWithOptions(ctx context.Context, sources []string, options sdk.DownloadOptions) (application.DownloadReport, error) {
-	if a.sdk.NewClient == nil || a.newDownloads != nil {
-		if options.PageSelection != nil {
-			pages, closed := options.PageSelection.ClosedPages()
-			if !closed {
-				return application.DownloadReport{}, errors.New("open page ranges require the public SDK download runtime")
-			}
-			// 仅测试/嵌入兼容下载器仍接收旧的闭区间 []int；生产路径保留
-			// PageSelection，待 public SDK 取得实际页数后才展开。
-			options.Pages, options.PageSelection = pages, nil
-		}
-		targets := make([]sdk.Reference, 0, len(sources))
-		for _, source := range sources {
-			target, err := sdk.ParseReference(source)
-			if err != nil {
-				return application.DownloadReport{}, errors.New("this embedded server supports Pixiv artwork sources only")
-			}
-			if a.sdk.NewClient == nil && target.Kind != sdk.ReferenceKindArtwork {
-				return application.DownloadReport{}, errors.New("this embedded server supports Pixiv artwork sources only")
-			}
-			targets = append(targets, target)
-		}
-		if options.Filter != nil || options.ArchivePath != "" || options.DirectoryTemplate != "" || options.WriteMetadata || options.UgoiraMode == sdk.UgoiraModeZIP || options.UgoiraMode == sdk.UgoiraModeFrames {
-			return application.DownloadReport{}, errors.New("this embedded server requires the public SDK download runtime for the selected download options")
-		}
-		return a.downloadTargets(ctx, targets, options.Pages, application.DownloadQuality(options.Quality), application.UgoiraFormat(options.UgoiraFormat))
-	}
-	client, release, err := a.openSDKOperation(ctx)
-	if err != nil {
-		return application.DownloadReport{}, err
-	}
-	defer release()
-	service := application.DownloadService{}
-	path, template := a.downloadDefaults()
-	options.DownloadPath, options.FilenameTemplate = path, template
-	return service.DownloadSources(ctx, client, sources, options)
-}
-
-func (a *App) downloadDefaults() (string, string) {
-	path, template := sdk.DefaultDownloadPath, sdk.DefaultFilenameTemplate
-	if configured, ok := a.downloads.(interface{ DownloadPath() string }); ok && strings.TrimSpace(configured.DownloadPath()) != "" {
-		path = configured.DownloadPath()
-	}
-	if configured, ok := a.downloads.(interface{ FilenameTemplate() string }); ok && strings.TrimSpace(configured.FilenameTemplate()) != "" {
-		template = configured.FilenameTemplate()
-	}
-	return path, template
-}
-
-func (a *App) downloadTargets(ctx context.Context, targets []sdk.Reference, pages []int, quality application.DownloadQuality, ugoiraFormat application.UgoiraFormat) (application.DownloadReport, error) {
-	// 旧嵌入构造器没有 SDK runtime，只保留纯 ID 的既有下载路径；URL/作者展开必须
-	// 经 public SDK operation 执行，不能伪造匿名或 Cookie 路径。
-	if a.newDownloads == nil && a.sdk.NewClient == nil {
-		ids := make([]int64, 0, len(targets))
-		for _, target := range targets {
-			if target.Kind != sdk.ReferenceKindArtwork {
-				return application.DownloadReport{}, errors.New("downloading a user URL requires an authenticated Pixiv SDK operation")
-			}
-			ids = append(ids, target.ID)
-		}
-		artworks, err := a.downloads.Download(ctx, application.DownloadRequest{IllustIDs: ids, Pages: pages, Quality: quality, UgoiraFormat: ugoiraFormat})
-		if err != nil {
-			return application.DownloadReport{}, err
-		}
-		return application.DownloadReport{Items: artworks, Failures: []application.DownloadFailure{}}, nil
-	}
+// downloadSources 把 MCP 下载请求交给 application.DownloadService：PID、作品/用户
+// URL 与受资源策略允许的直链都经 public SDK 解析，统一走 DownloadSources 编排。
+func (a *App) downloadSources(ctx context.Context, sources []string, pages []int, quality application.DownloadQuality, ugoiraFormat application.UgoiraFormat) (application.DownloadReport, error) {
 	client, release, err := a.openSDKOperation(ctx)
 	if err != nil {
 		return application.DownloadReport{}, err
@@ -218,7 +129,26 @@ func (a *App) downloadTargets(ctx context.Context, targets []sdk.Reference, page
 		}
 		return a.downloads, nil
 	}}
-	return service.DownloadTargets(ctx, client, targets, application.DownloadRequest{Pages: pages, Quality: quality, UgoiraFormat: ugoiraFormat})
+	path, template := a.downloadDefaults()
+	request := application.DownloadRequest{
+		Pages:            pages,
+		Quality:          quality,
+		UgoiraFormat:     ugoiraFormat,
+		DownloadPath:     path,
+		FilenameTemplate: template,
+	}
+	return service.DownloadSources(ctx, client, sources, request)
+}
+
+func (a *App) downloadDefaults() (string, string) {
+	path, template := "", ""
+	if configured, ok := a.downloads.(interface{ DownloadPath() string }); ok && strings.TrimSpace(configured.DownloadPath()) != "" {
+		path = configured.DownloadPath()
+	}
+	if configured, ok := a.downloads.(interface{ FilenameTemplate() string }); ok && strings.TrimSpace(configured.FilenameTemplate()) != "" {
+		template = configured.FilenameTemplate()
+	}
+	return path, template
 }
 
 func (a *App) downloadArtworks(ctx context.Context, ids []int64, client application.SDKClient, pages []int, quality application.DownloadQuality, ugoiraFormat application.UgoiraFormat) ([]download.DownloadedArtwork, error) {
@@ -264,28 +194,28 @@ func parseDownloadSelection(pagesSpec, qualitySpec, ugoiraFormatSpec string) ([]
 	return pages, quality, ugoiraFormat, nil
 }
 
-// parseDownloadOptions 是主 MCP download tool 的当前契约，保留开区间页选择直到
-// public SDK 取得实际页数后展开。旧的 random tool 仍走其既有闭区间 helper。
-func parseDownloadOptions(pagesSpec, qualitySpec, ugoiraModeSpec string) (*sdk.PageSelection, sdk.DownloadQuality, sdk.UgoiraMode, error) {
-	selection, err := sdk.ParsePageSelection(pagesSpec)
+// parseDownloadOptions 是主 MCP download tool 的当前契约：页码选择、静态质量与
+// ugoira 容器格式统一由 application 解析与校验。
+func parseDownloadOptions(pagesSpec, qualitySpec, ugoiraModeSpec string) ([]int, application.DownloadQuality, application.UgoiraFormat, error) {
+	pages, err := application.ParsePageSpec(pagesSpec)
 	if err != nil {
 		return nil, "", "", err
 	}
-	quality := sdk.DownloadQuality(strings.TrimSpace(qualitySpec))
+	quality := application.DownloadQuality(strings.TrimSpace(qualitySpec))
 	if quality == "" {
-		quality = sdk.DownloadQualityOriginal
+		quality = application.DownloadQualityOriginal
 	}
-	if err := sdk.ValidateDownloadQuality(quality); err != nil {
+	if err := application.ValidateDownloadQuality(quality); err != nil {
 		return nil, "", "", err
 	}
-	mode := sdk.UgoiraMode(strings.TrimSpace(ugoiraModeSpec))
-	if mode == "" {
-		mode = sdk.UgoiraModeGIF
+	ugoiraFormat := application.UgoiraFormat(strings.TrimSpace(ugoiraModeSpec))
+	if ugoiraFormat == "" {
+		ugoiraFormat = application.UgoiraFormatGIF
 	}
-	if err := sdk.ValidateUgoiraMode(mode); err != nil {
+	if err := application.ValidateUgoiraFormat(ugoiraFormat); err != nil {
 		return nil, "", "", err
 	}
-	return selection, quality, mode, nil
+	return pages, quality, ugoiraFormat, nil
 }
 
 func downloadResult(out downloadOut) *mcp.CallToolResult {
@@ -325,7 +255,7 @@ func buildDownloadOut(delivery string, artworks []download.DownloadedArtwork) (d
 	lines := []string{fmt.Sprintf("Download completed; delivery: %s.", delivery)}
 	for _, artwork := range artworks {
 		item := downloadItemOut{
-			URL:      sdk.Reference{Kind: sdk.ReferenceKindArtwork, ID: artwork.IllustID}.URL(),
+			URL:      "https://www.pixiv.net/artworks/" + strconv.FormatInt(artwork.IllustID, 10),
 			IllustID: artwork.IllustID,
 			Title:    artwork.Title,
 			Author:   artwork.Author,
@@ -418,19 +348,19 @@ func (a *App) downloadRandom(ctx context.Context, req *mcp.CallToolRequest, in d
 		return emptyDownloadError(ctx, err, delivery, "Could not retrieve recommendations: "+err.Error())
 	}
 	defer release()
-	result, err := client.IllustRecommended(ctx, sdk.IllustRecommendedRequest{})
+	result, err := client.RecommendedArtworks(ctx, pixiv.RecommendedArtworksRequest{})
 	if err != nil {
 		return emptyDownloadError(ctx, err, delivery, "Could not retrieve recommendations: "+err.Error())
 	}
-	if len(result.Illusts) == 0 {
+	if len(result.Items) == 0 {
 		return emptyDownloadError(ctx, errors.New("recommended illustration list is empty"), delivery, "Could not retrieve recommendations: the list is empty.")
 	}
-	if count > len(result.Illusts) {
-		count = len(result.Illusts)
+	if count > len(result.Items) {
+		count = len(result.Items)
 	}
-	rand.Shuffle(len(result.Illusts), func(i, j int) { result.Illusts[i], result.Illusts[j] = result.Illusts[j], result.Illusts[i] })
+	rand.Shuffle(len(result.Items), func(i, j int) { result.Items[i], result.Items[j] = result.Items[j], result.Items[i] })
 	ids := make([]int64, 0, count)
-	for _, illust := range result.Illusts[:count] {
+	for _, illust := range result.Items[:count] {
 		ids = append(ids, illust.ID)
 	}
 	artworks, err := a.downloadArtworks(ctx, ids, client, pages, quality, ugoiraFormat)

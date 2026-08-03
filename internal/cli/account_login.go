@@ -14,7 +14,7 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/application"
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/loginhelper"
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/loginpage"
-	publicpixiv "github.com/FlanChanXwO/pixiv-cli/pixiv"
+	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/protocol"
 	"github.com/pkg/browser"
 	"github.com/spf13/cobra"
 )
@@ -496,7 +496,32 @@ func isBrowserCallbackURL(parsed *url.URL) bool {
 	if strings.EqualFold(parsed.Scheme, "pixiv") && strings.EqualFold(parsed.Host, "account") && parsed.Path == "/login" {
 		return true
 	}
-	return publicpixiv.IsOfficialOAuthCallbackURL(parsed.String())
+	return isOfficialOAuthCallbackURL(parsed.String())
+}
+
+// isOfficialAppOAuthURL 校验 rawURL 与官方 App OAuth 端点同源同路径。
+func isOfficialAppOAuthURL(rawURL, expectedPath string) bool {
+	parsed, err := url.Parse(strings.TrimSpace(rawURL))
+	if err != nil {
+		return false
+	}
+	callback, err := url.Parse(protocol.OAuthRedirectURI)
+	if err != nil {
+		return false
+	}
+	return strings.EqualFold(parsed.Scheme, callback.Scheme) && strings.EqualFold(parsed.Host, callback.Host) && parsed.Path == expectedPath
+}
+
+func isOfficialOAuthCallbackURL(rawURL string) bool {
+	callback, err := url.Parse(protocol.OAuthRedirectURI)
+	if err != nil {
+		return false
+	}
+	return isOfficialAppOAuthURL(rawURL, callback.Path)
+}
+
+func isOfficialOAuthStartURL(rawURL string) bool {
+	return isOfficialAppOAuthURL(rawURL, protocol.AppOAuthStart)
 }
 
 func pixivLoginChallenge(loginURL string) string {
@@ -585,7 +610,7 @@ func pixivPostRedirectReturnTo(rawURL string) (string, bool) {
 	if err != nil {
 		return "", false
 	}
-	if !publicpixiv.IsOfficialOAuthStartURL(target.String()) {
+	if !isOfficialOAuthStartURL(target.String()) {
 		return "", false
 	}
 	return returnTo, true

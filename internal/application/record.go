@@ -6,11 +6,13 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"reflect"
 	"regexp"
 	"strconv"
 	"strings"
 
-	sdk "github.com/FlanChanXwO/pixiv-cli/pixiv"
+	"github.com/FlanChanXwO/pixiv-cli/sdk"
+	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 )
 
 // Record 是可在 CLI 管道和 MCP 之间共享的 Pixiv 实体 JSON 记录。
@@ -39,39 +41,26 @@ type RecordFilter struct {
 	MinPageCount *int64
 }
 
-// RecordFromIllust 将公开 SDK 的插画模型映射为管道记录。
-func RecordFromIllust(illust sdk.Illust) (Record, error) {
-	url := illust.URL
-	if url == "" && illust.ID > 0 {
-		url = "https://www.pixiv.net/artworks/" + strconv.FormatInt(illust.ID, 10)
-	}
-	return recordFromValue(illust, illust.ID, illust.Type, url)
+// RecordFromArtwork 将公开 SDK 的作品模型映射为管道记录。
+func RecordFromArtwork(artwork pixiv.Artwork) (Record, error) {
+	url := "https://www.pixiv.net/artworks/" + strconv.FormatInt(artwork.ID, 10)
+	return recordFromValue(artwork, artwork.ID, string(artwork.Kind), url)
 }
 
 // RecordFromNovel 将公开 SDK 的小说模型映射为管道记录。
-func RecordFromNovel(novel sdk.Novel) (Record, error) {
-	url := novel.URL
-	if url == "" && novel.ID > 0 {
-		url = "https://www.pixiv.net/novel/show.php?id=" + strconv.FormatInt(novel.ID, 10)
-	}
+func RecordFromNovel(novel pixiv.Novel) (Record, error) {
+	url := "https://www.pixiv.net/novel/show.php?id=" + strconv.FormatInt(novel.ID, 10)
 	return recordFromValue(novel, novel.ID, "novel", url)
 }
 
 // RecordFromUserPreview 将公开 SDK 的用户列表 envelope 映射为管道记录。
-func RecordFromUserPreview(preview sdk.UserPreview) (Record, error) {
+func RecordFromUserPreview(preview pixiv.UserPreview) (Record, error) {
 	id := strconv.FormatInt(preview.User.ID, 10)
 	return recordFromValue(preview, preview.User.ID, "user", "https://www.pixiv.net/users/"+id)
 }
 
-// RecordFromRecommendedUserPreview 将推荐用户的完整预览 envelope 映射为管道记录。
-func RecordFromRecommendedUserPreview(preview sdk.RecommendedUserPreview) (Record, error) {
-	id := strconv.FormatInt(preview.User.ID, 10)
-	return recordFromValue(preview, preview.User.ID, "user", "https://www.pixiv.net/users/"+id)
-}
-
-// RecordFromUserDetail 将用户详情的完整 SDK envelope 映射为管道记录。Profile、
-// ProfilePublicity 和 Workspace 均保留在记录中，避免 MCP 统一结构丢失详情字段。
-func RecordFromUserDetail(detail sdk.UserDetailResult) (Record, error) {
+// RecordFromUserDetail 将用户详情的完整 SDK envelope 映射为管道记录。
+func RecordFromUserDetail(detail pixiv.UserDetail) (Record, error) {
 	id := strconv.FormatInt(detail.User.ID, 10)
 	return recordFromValue(detail, detail.User.ID, "user", "https://www.pixiv.net/users/"+id)
 }
@@ -104,6 +93,9 @@ func (r Record) Matches(filter RecordFilter) bool {
 	}
 	if filter.MinViews != nil {
 		views, ok := recordInt(r.fields["total_view"])
+		if !ok {
+			views, ok = recordInt(r.fields["total_views"])
+		}
 		if !ok {
 			views, ok = recordInt(r.fields["views"])
 		}
@@ -158,7 +150,7 @@ func recordFromValue(value any, sourceID int64, recordType, url string) (Record,
 	if sourceID <= 0 {
 		return Record{}, errors.New("record id must be positive")
 	}
-	body, err := json.Marshal(value)
+	body, err := MarshalRecordValue(value)
 	if err != nil {
 		return Record{}, err
 	}
@@ -170,6 +162,94 @@ func recordFromValue(value any, sourceID int64, recordType, url string) (Record,
 	fields["type"] = recordType
 	fields["url"] = url
 	return newRecord(fields)
+}
+
+// MarshalRecordValue 序列化 SDK 模型用于记录协议。它把 Ref 为空的 sdk.Resource
+// 序列化为 null，避免零值 ResourceRef 的 MarshalJSON 错误；其余类型仍走默认
+// JSON 编码（保留 time.Time、sdk.Cursor、sdk.ResourceRef 的自定义编码）。
+func MarshalRecordValue(value any) ([]byte, error) {
+	mapped, err := recordToMap(reflect.ValueOf(value))
+	if err != nil {
+		return nil, err
+	}
+	return json.Marshal(mapped)
+}
+
+var sdkResourceType = reflect.TypeOf(sdk.Resource{})
+
+func recordToMap(v reflect.Value) (any, error) {
+	for v.Kind() == reflect.Pointer || v.Kind() == reflect.Interface {
+		if v.IsNil() {
+			return nil, nil
+		}
+		v = v.Elem()
+	}
+	if v.Type() == sdkResourceType {
+		if v.FieldByName("Ref").IsZero() {
+			return nil, nil
+		}
+		return recordMarshalViaJSON(v)
+	}
+	if v.CanInterface() {
+		if _, ok := v.Interface().(json.Marshaler); ok {
+			return recordMarshalViaJSON(v)
+		}
+	}
+	switch v.Kind() {
+	case reflect.Struct:
+		result := make(map[string]any, v.NumField())
+		t := v.Type()
+		for i := 0; i < v.NumField(); i++ {
+			field := t.Field(i)
+			if field.PkgPath != "" {
+				continue
+			}
+			child, err := recordToMap(v.Field(i))
+			if err != nil {
+				return nil, err
+			}
+			result[toSnakeCase(field.Name)] = child
+		}
+		return result, nil
+	case reflect.Slice, reflect.Array:
+		result := make([]any, v.Len())
+		for i := 0; i < v.Len(); i++ {
+			child, err := recordToMap(v.Index(i))
+			if err != nil {
+				return nil, err
+			}
+			result[i] = child
+		}
+		return result, nil
+	case reflect.Map:
+		result := make(map[string]any, v.Len())
+		iter := v.MapRange()
+		for iter.Next() {
+			child, err := recordToMap(iter.Value())
+			if err != nil {
+				return nil, err
+			}
+			result[fmt.Sprint(iter.Key().Interface())] = child
+		}
+		return result, nil
+	default:
+		if v.CanInterface() {
+			return v.Interface(), nil
+		}
+		return nil, errors.New("cannot serialize record field")
+	}
+}
+
+func recordMarshalViaJSON(v reflect.Value) (any, error) {
+	body, err := json.Marshal(v.Interface())
+	if err != nil {
+		return nil, err
+	}
+	var out any
+	if err := json.Unmarshal(body, &out); err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 // decodeRecordObject 对每条记录只解码一次；UseNumber 避免未知字段经过 float64 丢失精度。
@@ -315,4 +395,26 @@ func recordInt(raw any) (int64, bool) {
 func stringField(raw any) string {
 	value, _ := raw.(string)
 	return value
+}
+
+// toSnakeCase 把 PascalCase 字段名转为 snake_case，并正确保留 ID、URL、AI 等
+// 连续大写缩写，保持记录协议的稳定键名。
+func toSnakeCase(name string) string {
+	var builder strings.Builder
+	for i := 0; i < len(name); i++ {
+		ch := name[i]
+		isUpper := ch >= 'A' && ch <= 'Z'
+		if !isUpper {
+			builder.WriteByte(ch)
+			continue
+		}
+		prevIsLower := i > 0 && name[i-1] >= 'a' && name[i-1] <= 'z'
+		prevIsUpper := i > 0 && name[i-1] >= 'A' && name[i-1] <= 'Z'
+		nextIsLower := i+1 < len(name) && name[i+1] >= 'a' && name[i+1] <= 'z'
+		if i > 0 && (prevIsLower || (prevIsUpper && nextIsLower)) {
+			builder.WriteByte('_')
+		}
+		builder.WriteByte(ch + ('a' - 'A'))
+	}
+	return builder.String()
 }

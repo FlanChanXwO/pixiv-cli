@@ -11,7 +11,7 @@ import (
 	"sync/atomic"
 	"testing"
 
-	publicpixiv "github.com/FlanChanXwO/pixiv-cli/pixiv"
+	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/stretchr/testify/require"
 )
 
@@ -94,14 +94,9 @@ func TestRemoteLoginCallbackDoesNotFollowCrossOriginRedirects(t *testing.T) {
 }
 
 func TestValidateAuthorizationURLAcceptsOnlyOfficialAppOAuthStart(t *testing.T) {
-	client, err := publicpixiv.OpenDefaultWith(publicpixiv.OpenDefaultOptions{
-		AuthFilePath:   t.TempDir() + "/auth.json",
-		ConfigFilePath: t.TempDir() + "/config.toml",
-	})
+	session, err := pixiv.BeginLogin(pixiv.LoginOptions{})
 	require.NoError(t, err)
-	session, err := client.StartLogin()
-	require.NoError(t, err)
-	require.NoError(t, validateAuthorizationURL(session.AuthorizationURL()), "a URL produced by StartLogin must remain valid")
+	require.NoError(t, validateAuthorizationURL(session.AuthorizationURL()), "a URL produced by BeginLogin must remain valid")
 
 	const valid = "https://app-api.pixiv.net/web/v1/login?client=pixiv-android&code_challenge_method=S256&code_challenge=challenge-value&state=state-value"
 	for _, raw := range []string{

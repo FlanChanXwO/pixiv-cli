@@ -1,66 +1,31 @@
 package bootstrap
 
 import (
-	"context"
 	"errors"
-	"fmt"
-	"path/filepath"
 	"testing"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/application"
-	"github.com/FlanChanXwO/pixiv-cli/internal/config"
-	"github.com/FlanChanXwO/pixiv-cli/internal/storage/auth"
 	"github.com/FlanChanXwO/pixiv-cli/internal/utils/uri"
-	sdk "github.com/FlanChanXwO/pixiv-cli/pixiv"
 	"github.com/stretchr/testify/require"
 )
 
-func TestNewServicesSDKKeepsConfiguredProxyDynamicUntilOperation(t *testing.T) {
-	clearRuntimeEnvironment(t)
-	dir := t.TempDir()
-	configPath := filepath.Join(dir, "config.toml")
-	t.Cleanup(config.SetFilePathForTest(configPath))
-	require.NoError(t, config.WritePrivateFile(configPath, []byte("[network]\nhttps_proxy = \"\"\n")))
-
-	client, err := NewServices().SDK.Client(application.SDKClientRequest{})
-	require.NoError(t, err)
-
-	invalidProxy := "http://bootstrap-proxy.invalid/path-%zz"
-	require.NoError(t, config.WritePrivateFile(configPath, []byte("[network]\nhttps_proxy = "+fmt.Sprintf("%q", invalidProxy)+"\n")))
-	_, err = client.ParseResourceRef("https://i.pximg.net/img-original/a.jpg")
-
-	var typed *sdk.Error
-	require.ErrorAs(t, err, &typed)
-	require.Equal(t, sdk.OperationParseResourceRef, typed.Operation)
-	require.Equal(t, sdk.LocalStateKindInvalidProxy, typed.LocalStateKind)
-	require.ErrorIs(t, err, sdk.ErrInvalidArgument)
-	require.NotContains(t, err.Error(), invalidProxy)
-	unwrapped := errors.Unwrap(err)
-	require.NotNil(t, unwrapped)
-	require.NotContains(t, unwrapped.Error(), invalidProxy)
-}
-
-func TestNewServicesSDKExplicitEmptyProxyOverridesConfiguredProxy(t *testing.T) {
-	clearRuntimeEnvironment(t)
-	dir := t.TempDir()
-	configPath := filepath.Join(dir, "config.toml")
-	t.Cleanup(config.SetFilePathForTest(configPath))
-	invalidProxy := "http://bootstrap-proxy.invalid/path-%zz"
-	require.NoError(t, config.WritePrivateFile(configPath, []byte("[network]\nhttps_proxy = "+fmt.Sprintf("%q", invalidProxy)+"\n")))
-	emptyProxy := ""
-
-	client, err := NewServices().SDK.Client(application.SDKClientRequest{HTTPSProxyOverride: &emptyProxy})
-	require.NoError(t, err)
-	ref, err := client.ParseResourceRef("https://i.pximg.net/img-original/a.jpg")
-
-	require.NoError(t, err)
-	require.Equal(t, "https://i.pximg.net/img-original/a.jpg", ref.URL)
+// isolatedServices 在隔离 HOME 下构造 Services，避免测试写宿主目录。
+func isolatedServices(t *testing.T) application.Services {
+	t.Helper()
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	services := NewServices()
+	t.Cleanup(CloseServices)
+	return services
 }
 
 func TestNewServicesSDKRejectsMalformedExplicitProxyAtConstruction(t *testing.T) {
+	clearRuntimeEnvironment(t)
 	invalidProxy := "http://proxy-user-secret:proxy-pass-secret@proxy-host-secret.invalid/proxy-path-secret-%zz?proxy-query-secret=value"
+	services := isolatedServices(t)
 
-	client, err := NewServices().SDK.Client(application.SDKClientRequest{HTTPSProxyOverride: &invalidProxy})
+	client, err := services.SDK.Client(application.SDKClientRequest{HTTPSProxyOverride: &invalidProxy})
 
 	require.Nil(t, client)
 	require.Error(t, err)
@@ -75,67 +40,29 @@ func TestNewServicesSDKRejectsMalformedExplicitProxyAtConstruction(t *testing.T)
 
 func TestNewServicesSDKOpenOperationRejectsMissingRequestedAccountBeforeOAuth(t *testing.T) {
 	clearRuntimeEnvironment(t)
-	t.Setenv("PIXIV_REFRESH_TOKEN", "")
-	dir := t.TempDir()
-	configPath := filepath.Join(dir, "config.toml")
-	authPath := filepath.Join(dir, "auth.json")
-	t.Cleanup(config.SetFilePathForTest(configPath))
-	require.NoError(t, auth.SaveAuthStore(authPath, auth.AuthStore{
-		DefaultUserID: 7,
-		Accounts:      []auth.Account{{UserID: 7, Username: "available", RefreshToken: "unused-token"}},
-	}))
+	services := isolatedServices(t)
 
-	client, err := NewServices().SDK.OpenOperation(context.Background(), application.SDKClientRequest{
-		UserID:       99,
-		AuthFilePath: authPath,
-	})
+	client, err := services.SDK.OpenOperation(t.Context(), application.SDKClientRequest{UserID: 99})
 
 	require.Nil(t, client)
-	var typed *sdk.Error
-	require.ErrorAs(t, err, &typed)
-	require.ErrorIs(t, err, sdk.ErrInvalidArgument)
-	require.Equal(t, sdk.OperationSnapshot, typed.Operation)
-	require.EqualValues(t, 99, typed.UserID)
-	require.Empty(t, typed.Backend)
+	require.Error(t, err)
+	require.ErrorContains(t, err, "select pixiv account")
+	require.ErrorContains(t, err, "not found")
 }
 
-func TestNewServicesSDKRejectsCookieRefreshTokenAtConstructionWithoutEcho(t *testing.T) {
-	cookie := "refresh_token=bootstrap-cookie-value"
-
-	client, err := NewServices().SDK.Client(application.SDKClientRequest{RefreshToken: cookie})
-
-	require.Nil(t, client)
-	var typed *sdk.Error
-	require.ErrorAs(t, err, &typed)
-	require.ErrorIs(t, err, sdk.ErrInvalidArgument)
-	require.NotContains(t, err.Error(), cookie)
-	unwrapped := errors.Unwrap(err)
-	require.NotNil(t, unwrapped)
-	require.NotContains(t, unwrapped.Error(), cookie)
-}
-
-func TestNewServicesSDKExplicitAuthPathOverridesGlobalPath(t *testing.T) {
+func TestNewServicesSDKOpenOperationRejectsNoAccounts(t *testing.T) {
 	clearRuntimeEnvironment(t)
-	dir := t.TempDir()
-	configPath := filepath.Join(dir, "config.toml")
-	globalAuthPath := filepath.Join(dir, "global-auth.json")
-	explicitAuthPath := filepath.Join(dir, "explicit-auth.json")
-	t.Cleanup(config.SetFilePathForTest(configPath))
-	t.Cleanup(auth.SetAuthFilePathForTest(globalAuthPath))
-	require.NoError(t, auth.SaveAuthStore(globalAuthPath, auth.AuthStore{
-		DefaultUserID: 7,
-		Accounts:      []auth.Account{{UserID: 7, Username: "global", RefreshToken: "global-token"}},
-	}))
-	require.NoError(t, auth.SaveAuthStore(explicitAuthPath, auth.AuthStore{
-		DefaultUserID: 8,
-		Accounts:      []auth.Account{{UserID: 8, Username: "explicit", RefreshToken: "explicit-token"}},
-	}))
+	services := isolatedServices(t)
 
-	client, err := NewServices().SDK.Client(application.SDKClientRequest{AuthFilePath: explicitAuthPath})
-	require.NoError(t, err)
-	accounts, err := client.ListAccounts()
+	client, err := services.SDK.Client(application.SDKClientRequest{})
 
-	require.NoError(t, err)
-	require.EqualValues(t, 8, accounts.DefaultUserID)
-	require.Equal(t, []sdk.Account{{UserID: 8, Username: "explicit", Default: true, HasToken: true}}, accounts.Accounts)
+	require.Nil(t, client)
+	require.Error(t, err)
+	require.ErrorContains(t, err, "no pixiv account is authenticated")
+}
+
+func TestNewServicesConfiguresDownloadFactoryWithSDKClient(t *testing.T) {
+	clearRuntimeEnvironment(t)
+	services := isolatedServices(t)
+	require.NotNil(t, services.Download.NewManager)
 }

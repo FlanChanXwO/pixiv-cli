@@ -8,10 +8,10 @@ import (
 	"io"
 	"math"
 	"os"
-	"strings"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/application"
-	sdk "github.com/FlanChanXwO/pixiv-cli/pixiv"
+	"github.com/FlanChanXwO/pixiv-cli/sdk"
+	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 )
@@ -26,46 +26,6 @@ type listPlan struct {
 	limit    int
 	skip     int
 	oneBatch bool
-	filter   *sdk.IllustFilter
-}
-
-// illustFilterOptions 只嵌入会返回视觉作品的命令。表达式在取得网络客户端前编译，
-// 使拼写、字段类型与不允许的 Expr 语法都以标准 usage error 结束。
-type illustFilterOptions struct {
-	filter string
-}
-
-func bindIllustFilterFlag(cmd *cobra.Command, options *illustFilterOptions) {
-	cmd.Flags().StringVar(&options.filter, "filter", "", "local illustration filter expression")
-}
-
-func applyIllustFilter(plan *listPlan, expression string) error {
-	if strings.TrimSpace(expression) == "" {
-		return nil
-	}
-	compiled, err := sdk.CompileIllustFilter(expression)
-	if err != nil {
-		return newUsageError(err)
-	}
-	plan.filter = compiled
-	return nil
-}
-
-func filterIllustBatch(filter *sdk.IllustFilter, items []sdk.Illust) ([]sdk.Illust, error) {
-	if filter == nil {
-		return items, nil
-	}
-	filtered := items[:0]
-	for _, item := range items {
-		matched, err := filter.Match(item)
-		if err != nil {
-			return nil, err
-		}
-		if matched {
-			filtered = append(filtered, item)
-		}
-	}
-	return filtered, nil
 }
 
 func (a app) shouldAutoNDJSON(cmd *cobra.Command, ndjson, jsonOut bool) bool {
@@ -148,44 +108,39 @@ func encodeNDJSONRecords[T any](encoder *json.Encoder, items []T, mapRecord func
 
 // runIllustListNDJSON 按上游分页立即写出记录；它不能复用 JSON spool，否则下游
 // 无法在第二页请求前消费第一页。
-func (a app) runIllustListNDJSON(ctx context.Context, plan listPlan, fetch func(context.Context, sdk.Cursor) ([]sdk.Illust, sdk.Cursor, error)) error {
+func (a app) runIllustListNDJSON(ctx context.Context, plan listPlan, fetch func(context.Context, sdk.Cursor) ([]pixiv.Artwork, sdk.Cursor, error)) error {
 	encoder := json.NewEncoder(a.out)
-	return pageItems(ctx, plan, fetch, func(items []sdk.Illust) error {
-		return encodeNDJSONRecords(encoder, items, application.RecordFromIllust)
+	return pageItems(ctx, plan, fetch, func(items []pixiv.Artwork) error {
+		return encodeNDJSONRecords(encoder, items, application.RecordFromArtwork)
 	})
 }
 
 // runPooledIllustList 将一个内容读取收敛在账号池的安全重放边界。NDJSON 在每条
 // record 成功写出后提交；JSON 在完整临时文档成功交给 stdout 后提交；文本在首批
 // 可见作品写出后提交。因而 429 只会在未向用户暴露任何结果时切换本地账号。
-func (a app) runPooledIllustList(ctx context.Context, request application.SDKClientRequest, plan listPlan, jsonOut, ndjson bool, heading string, fetch func(application.SDKClient, context.Context, sdk.Cursor) ([]sdk.Illust, sdk.Cursor, error), print func([]sdk.Illust, int) error) error {
+func (a app) runPooledIllustList(ctx context.Context, request application.SDKClientRequest, plan listPlan, jsonOut, ndjson bool, heading string, fetch func(application.SDKClient, context.Context, sdk.Cursor) ([]pixiv.Artwork, sdk.Cursor, error), print func([]pixiv.Artwork, int) error) error {
 	return a.runPooledIllustListWithHeading(ctx, request, plan, jsonOut, ndjson, func() string { return heading }, fetch, print)
 }
 
 // runPooledIllustListWithHeading 允许身份由当前池内账号决定的读取在真正输出前再生成标题。
-func (a app) runPooledIllustListWithHeading(ctx context.Context, request application.SDKClientRequest, plan listPlan, jsonOut, ndjson bool, heading func() string, fetch func(application.SDKClient, context.Context, sdk.Cursor) ([]sdk.Illust, sdk.Cursor, error), print func([]sdk.Illust, int) error) error {
+func (a app) runPooledIllustListWithHeading(ctx context.Context, request application.SDKClientRequest, plan listPlan, jsonOut, ndjson bool, heading func() string, fetch func(application.SDKClient, context.Context, sdk.Cursor) ([]pixiv.Artwork, sdk.Cursor, error), print func([]pixiv.Artwork, int) error) error {
 	return a.runPooledIllustListWithKey(ctx, request, plan, jsonOut, ndjson, "illusts", heading, fetch, print)
 }
 
 // runPooledIllustListWithKey 保留少数已有 JSON 兼容键（例如 manga），同时复用完整的
 // 账号池提交边界。
-func (a app) runPooledIllustListWithKey(ctx context.Context, request application.SDKClientRequest, plan listPlan, jsonOut, ndjson bool, jsonKey string, heading func() string, fetch func(application.SDKClient, context.Context, sdk.Cursor) ([]sdk.Illust, sdk.Cursor, error), print func([]sdk.Illust, int) error) error {
+func (a app) runPooledIllustListWithKey(ctx context.Context, request application.SDKClientRequest, plan listPlan, jsonOut, ndjson bool, jsonKey string, heading func() string, fetch func(application.SDKClient, context.Context, sdk.Cursor) ([]pixiv.Artwork, sdk.Cursor, error), print func([]pixiv.Artwork, int) error) error {
 	services := a.services()
 	return services.SDK.RunPooledOperation(ctx, request, func(ctx context.Context, client application.SDKClient) (bool, error) {
 		committed := false
-		boundFetch := func(ctx context.Context, cursor sdk.Cursor) ([]sdk.Illust, sdk.Cursor, error) {
-			items, next, err := fetch(client, ctx, cursor)
-			if err != nil || plan.filter == nil {
-				return items, next, err
-			}
-			filtered, filterErr := filterIllustBatch(plan.filter, items)
-			return filtered, next, filterErr
+		boundFetch := func(ctx context.Context, cursor sdk.Cursor) ([]pixiv.Artwork, sdk.Cursor, error) {
+			return fetch(client, ctx, cursor)
 		}
 		if ndjson {
 			encoder := json.NewEncoder(a.out)
-			err := pageItems(ctx, plan, boundFetch, func(items []sdk.Illust) error {
+			err := pageItems(ctx, plan, boundFetch, func(items []pixiv.Artwork) error {
 				for _, item := range items {
-					record, err := application.RecordFromIllust(item)
+					record, err := application.RecordFromArtwork(item)
 					if err != nil {
 						return err
 					}
@@ -206,7 +161,7 @@ func (a app) runPooledIllustListWithKey(ctx context.Context, request application
 				return false, err
 			}
 			defer spool.Close()
-			if err := pageItems(ctx, plan, boundFetch, func(items []sdk.Illust) error { return appendJSONArray(spool, items) }); err != nil {
+			if err := pageItems(ctx, plan, boundFetch, func(items []pixiv.Artwork) error { return appendJSONArray(spool, items) }); err != nil {
 				return false, err
 			}
 			committed = true
@@ -215,7 +170,7 @@ func (a app) runPooledIllustListWithKey(ctx context.Context, request application
 		}
 		position := plan.skip
 		headingWritten := false
-		err := pageItems(ctx, plan, boundFetch, func(items []sdk.Illust) error {
+		err := pageItems(ctx, plan, boundFetch, func(items []pixiv.Artwork) error {
 			if !headingWritten && heading != nil {
 				if text := heading(); text != "" {
 					committed = true
@@ -239,16 +194,16 @@ func (a app) runPooledIllustListWithKey(ctx context.Context, request application
 	})
 }
 
-func (a app) runPooledNovelList(ctx context.Context, request application.SDKClientRequest, plan listPlan, jsonOut, ndjson bool, heading string, fetch func(application.SDKClient, context.Context, sdk.Cursor) ([]sdk.Novel, sdk.Cursor, error), print func([]sdk.Novel) error) error {
+func (a app) runPooledNovelList(ctx context.Context, request application.SDKClientRequest, plan listPlan, jsonOut, ndjson bool, heading string, fetch func(application.SDKClient, context.Context, sdk.Cursor) ([]pixiv.Novel, sdk.Cursor, error), print func([]pixiv.Novel) error) error {
 	services := a.services()
 	return services.SDK.RunPooledOperation(ctx, request, func(ctx context.Context, client application.SDKClient) (bool, error) {
 		committed := false
-		boundFetch := func(ctx context.Context, cursor sdk.Cursor) ([]sdk.Novel, sdk.Cursor, error) {
+		boundFetch := func(ctx context.Context, cursor sdk.Cursor) ([]pixiv.Novel, sdk.Cursor, error) {
 			return fetch(client, ctx, cursor)
 		}
 		if ndjson {
 			encoder := json.NewEncoder(a.out)
-			err := pageItems(ctx, plan, boundFetch, func(items []sdk.Novel) error {
+			err := pageItems(ctx, plan, boundFetch, func(items []pixiv.Novel) error {
 				for _, item := range items {
 					record, err := application.RecordFromNovel(item)
 					if err != nil {
@@ -269,7 +224,7 @@ func (a app) runPooledNovelList(ctx context.Context, request application.SDKClie
 				return false, err
 			}
 			defer spool.Close()
-			if err := pageItems(ctx, plan, boundFetch, func(items []sdk.Novel) error { return appendJSONArray(spool, items) }); err != nil {
+			if err := pageItems(ctx, plan, boundFetch, func(items []pixiv.Novel) error { return appendJSONArray(spool, items) }); err != nil {
 				return false, err
 			}
 			committed = true
@@ -277,7 +232,7 @@ func (a app) runPooledNovelList(ctx context.Context, request application.SDKClie
 			return committed, err
 		}
 		headingWritten := false
-		err := pageItems(ctx, plan, boundFetch, func(items []sdk.Novel) error {
+		err := pageItems(ctx, plan, boundFetch, func(items []pixiv.Novel) error {
 			if !headingWritten && heading != "" {
 				committed = true
 				if _, err := fmt.Fprintln(a.out, heading); err != nil {
@@ -299,16 +254,16 @@ func (a app) runPooledNovelList(ctx context.Context, request application.SDKClie
 }
 
 // heading 在首批实际输出前才求值，使取当前账号身份等前置读取也位于可安全重放的边界内。
-func (a app) runPooledUserList(ctx context.Context, request application.SDKClientRequest, plan listPlan, jsonOut, ndjson bool, heading func() string, fetch func(application.SDKClient, context.Context, sdk.Cursor) ([]sdk.UserPreview, sdk.Cursor, error), print func([]sdk.UserPreview) error) error {
+func (a app) runPooledUserList(ctx context.Context, request application.SDKClientRequest, plan listPlan, jsonOut, ndjson bool, heading func() string, fetch func(application.SDKClient, context.Context, sdk.Cursor) ([]pixiv.UserPreview, sdk.Cursor, error), print func([]pixiv.UserPreview) error) error {
 	services := a.services()
 	return services.SDK.RunPooledOperation(ctx, request, func(ctx context.Context, client application.SDKClient) (bool, error) {
 		committed := false
-		boundFetch := func(ctx context.Context, cursor sdk.Cursor) ([]sdk.UserPreview, sdk.Cursor, error) {
+		boundFetch := func(ctx context.Context, cursor sdk.Cursor) ([]pixiv.UserPreview, sdk.Cursor, error) {
 			return fetch(client, ctx, cursor)
 		}
 		if ndjson {
 			encoder := json.NewEncoder(a.out)
-			err := pageItems(ctx, plan, boundFetch, func(items []sdk.UserPreview) error {
+			err := pageItems(ctx, plan, boundFetch, func(items []pixiv.UserPreview) error {
 				for _, item := range items {
 					record, err := application.RecordFromUserPreview(item)
 					if err != nil {
@@ -329,7 +284,7 @@ func (a app) runPooledUserList(ctx context.Context, request application.SDKClien
 				return false, err
 			}
 			defer spool.Close()
-			if err := pageItems(ctx, plan, boundFetch, func(items []sdk.UserPreview) error { return appendJSONArray(spool, items) }); err != nil {
+			if err := pageItems(ctx, plan, boundFetch, func(items []pixiv.UserPreview) error { return appendJSONArray(spool, items) }); err != nil {
 				return false, err
 			}
 			committed = true
@@ -337,7 +292,7 @@ func (a app) runPooledUserList(ctx context.Context, request application.SDKClien
 			return committed, err
 		}
 		headingWritten := false
-		err := pageItems(ctx, plan, boundFetch, func(items []sdk.UserPreview) error {
+		err := pageItems(ctx, plan, boundFetch, func(items []pixiv.UserPreview) error {
 			if !headingWritten && heading != nil {
 				if text := heading(); text != "" {
 					committed = true
@@ -360,20 +315,20 @@ func (a app) runPooledUserList(ctx context.Context, request application.SDKClien
 	})
 }
 
-func (a app) runIllustList(ctx context.Context, plan listPlan, jsonOut bool, fetch func(context.Context, sdk.Cursor) ([]sdk.Illust, sdk.Cursor, error), print func([]sdk.Illust, int) error) error {
+func (a app) runIllustList(ctx context.Context, plan listPlan, jsonOut bool, fetch func(context.Context, sdk.Cursor) ([]pixiv.Artwork, sdk.Cursor, error), print func([]pixiv.Artwork, int) error) error {
 	if jsonOut {
 		spool, err := newJSONArraySpool("illusts")
 		if err != nil {
 			return err
 		}
 		defer spool.Close()
-		if err := pageItems(ctx, plan, fetch, func(items []sdk.Illust) error { return appendJSONArray(spool, items) }); err != nil {
+		if err := pageItems(ctx, plan, fetch, func(items []pixiv.Artwork) error { return appendJSONArray(spool, items) }); err != nil {
 			return err
 		}
 		return spool.Commit(a.out)
 	}
 	position := plan.skip
-	return pageItems(ctx, plan, fetch, func(items []sdk.Illust) error {
+	return pageItems(ctx, plan, fetch, func(items []pixiv.Artwork) error {
 		if err := print(items, position); err != nil {
 			return err
 		}
@@ -382,14 +337,14 @@ func (a app) runIllustList(ctx context.Context, plan listPlan, jsonOut bool, fet
 	})
 }
 
-func (a app) runUserList(ctx context.Context, plan listPlan, jsonOut bool, fetch func(context.Context, sdk.Cursor) ([]sdk.UserPreview, sdk.Cursor, error), print func([]sdk.UserPreview) error) error {
+func (a app) runUserList(ctx context.Context, plan listPlan, jsonOut bool, fetch func(context.Context, sdk.Cursor) ([]pixiv.UserPreview, sdk.Cursor, error), print func([]pixiv.UserPreview) error) error {
 	if jsonOut {
 		spool, err := newJSONArraySpool("user_previews")
 		if err != nil {
 			return err
 		}
 		defer spool.Close()
-		if err := pageItems(ctx, plan, fetch, func(items []sdk.UserPreview) error { return appendJSONArray(spool, items) }); err != nil {
+		if err := pageItems(ctx, plan, fetch, func(items []pixiv.UserPreview) error { return appendJSONArray(spool, items) }); err != nil {
 			return err
 		}
 		return spool.Commit(a.out)
@@ -398,7 +353,7 @@ func (a app) runUserList(ctx context.Context, plan listPlan, jsonOut bool, fetch
 }
 
 // printUserPreviews 保留文本列表的一行一个用户格式，并将 stdout 失败交给调用方。
-func printUserPreviews(w io.Writer, users []sdk.UserPreview) error {
+func printUserPreviews(w io.Writer, users []pixiv.UserPreview) error {
 	for _, item := range users {
 		if _, err := fmt.Fprintf(w, "%d %s\n", item.User.ID, item.User.Name); err != nil {
 			return err
@@ -407,9 +362,9 @@ func printUserPreviews(w io.Writer, users []sdk.UserPreview) error {
 	return nil
 }
 
-func (a app) runUserListNDJSON(ctx context.Context, plan listPlan, fetch func(context.Context, sdk.Cursor) ([]sdk.UserPreview, sdk.Cursor, error)) error {
+func (a app) runUserListNDJSON(ctx context.Context, plan listPlan, fetch func(context.Context, sdk.Cursor) ([]pixiv.UserPreview, sdk.Cursor, error)) error {
 	encoder := json.NewEncoder(a.out)
-	return pageItems(ctx, plan, fetch, func(items []sdk.UserPreview) error {
+	return pageItems(ctx, plan, fetch, func(items []pixiv.UserPreview) error {
 		return encodeNDJSONRecords(encoder, items, application.RecordFromUserPreview)
 	})
 }
@@ -436,6 +391,25 @@ func newJSONArraySpool(key string) (*jsonArraySpool, error) {
 	return spool, nil
 }
 
+// marshalJSONValue 序列化 CLI 输出值。SDK 模型的零值 sdk.Resource 会让默认
+// MarshalJSON 报错；遇到这种错误时回退到记录协议序列化（把零资源视为 null），
+// 从而保持含 json tag 的 DTO 输出不变，同时允许无 tag 的 SDK 模型安全输出。
+func marshalJSONValue(value any, indent bool) ([]byte, error) {
+	var (
+		body []byte
+		err  error
+	)
+	if indent {
+		body, err = json.MarshalIndent(value, "    ", "  ")
+	} else {
+		body, err = json.Marshal(value)
+	}
+	if err == nil {
+		return body, nil
+	}
+	return application.MarshalRecordValue(value)
+}
+
 func appendJSONArray[T any](s *jsonArraySpool, items []T) error {
 	for _, item := range items {
 		if s.first {
@@ -443,7 +417,7 @@ func appendJSONArray[T any](s *jsonArraySpool, items []T) error {
 		} else if _, err := io.WriteString(s.file, ","); err != nil {
 			return err
 		}
-		encoded, err := json.MarshalIndent(item, "    ", "  ")
+		encoded, err := marshalJSONValue(item, true)
 		if err != nil {
 			return err
 		}
@@ -456,12 +430,6 @@ func appendJSONArray[T any](s *jsonArraySpool, items []T) error {
 
 func (s *jsonArraySpool) Commit(out io.Writer) error {
 	return s.commit(out, "", "")
-}
-
-// CommitWithStringField 在数组完成后追加稳定的顶层字符串字段，仍保持 stdout 的
-// 原子提交语义，供 source 这类列表元数据使用。
-func (s *jsonArraySpool) CommitWithStringField(out io.Writer, name, value string) error {
-	return s.commit(out, name, value)
 }
 
 func (s *jsonArraySpool) commit(out io.Writer, extraName, extraValue string) error {

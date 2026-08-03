@@ -5,16 +5,17 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"github.com/FlanChanXwO/pixiv-cli/internal/application"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
 
+	"github.com/FlanChanXwO/pixiv-cli/internal/application"
 	"github.com/FlanChanXwO/pixiv-cli/internal/utils/filename"
 	"github.com/FlanChanXwO/pixiv-cli/internal/utils/ids"
-	pixiv "github.com/FlanChanXwO/pixiv-cli/pixiv"
+	"github.com/FlanChanXwO/pixiv-cli/sdk"
+	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 )
 
 func TestSanitizeAndGenerateFilename(t *testing.T) {
@@ -57,20 +58,16 @@ func TestSetDownloadPathCreatesDirectory(t *testing.T) {
 
 func TestDownloadSingleArtworkReturnsPath(t *testing.T) {
 	dir := t.TempDir()
+	rawURL := "https://i.example/42.jpg"
 	client := &fakePixivClient{
-		details: map[int64]pixiv.Illust{
+		details: map[int64]pixiv.Artwork{
 			42: {
-				ID:        42,
-				Title:     "single",
-				PageCount: 1,
-				Type:      "illust",
-				User:      pixiv.User{Name: "author"},
-				MetaSinglePage: pixiv.SinglePage{
-					OriginalImageURL: "https://i.example/42.jpg",
-				},
+				ID: 42, Title: "single", PageCount: 1, Kind: pixiv.ArtworkKindIllustration,
+				User:  pixiv.User{Name: "author"},
+				Pages: []pixiv.ArtworkPage{artworkPage(rawURL, 0)},
 			},
 		},
-		downloads: map[string][]byte{"https://i.example/42.jpg": []byte("jpg")},
+		downloads: map[string][]byte{rawURL: []byte("jpg")},
 	}
 	m := NewManager(client, dir, "{id}")
 
@@ -94,10 +91,10 @@ func TestDownloadSingleArtworkSanitizesExtensionFromURL(t *testing.T) {
 	dir := t.TempDir()
 	rawURL := "https://i.example/42.jp%2Ag%3A%7C"
 	client := &fakePixivClient{
-		details: map[int64]pixiv.Illust{42: {
-			ID: 42, Title: "single", PageCount: 1, Type: "illust",
-			User:           pixiv.User{Name: "author"},
-			MetaSinglePage: pixiv.SinglePage{OriginalImageURL: rawURL},
+		details: map[int64]pixiv.Artwork{42: {
+			ID: 42, Title: "single", PageCount: 1, Kind: pixiv.ArtworkKindIllustration,
+			User:  pixiv.User{Name: "author"},
+			Pages: []pixiv.ArtworkPage{artworkPage(rawURL, 0)},
 		}},
 		downloads: map[string][]byte{rawURL: []byte("image")},
 	}
@@ -142,10 +139,10 @@ func TestDownloadSingleArtworkNormalizesPlatformInvalidExtensionEndings(t *testi
 		t.Run(test.name, func(t *testing.T) {
 			dir := t.TempDir()
 			client := &fakePixivClient{
-				details: map[int64]pixiv.Illust{42: {
-					ID: 42, Title: "single", PageCount: 1, Type: "illust",
-					User:           pixiv.User{Name: "author"},
-					MetaSinglePage: pixiv.SinglePage{OriginalImageURL: test.rawURL},
+				details: map[int64]pixiv.Artwork{42: {
+					ID: 42, Title: "single", PageCount: 1, Kind: pixiv.ArtworkKindIllustration,
+					User:  pixiv.User{Name: "author"},
+					Pages: []pixiv.ArtworkPage{artworkPage(test.rawURL, 0)},
 				}},
 				downloads: map[string][]byte{test.rawURL: []byte("image")},
 			}
@@ -187,10 +184,10 @@ func TestDownloadSingleArtworkWithoutURLExtensionDoesNotInventOne(t *testing.T) 
 	dir := t.TempDir()
 	rawURL := "https://i.example/42"
 	client := &fakePixivClient{
-		details: map[int64]pixiv.Illust{42: {
-			ID: 42, Title: "single", PageCount: 1, Type: "illust",
-			User:           pixiv.User{Name: "author"},
-			MetaSinglePage: pixiv.SinglePage{OriginalImageURL: rawURL},
+		details: map[int64]pixiv.Artwork{42: {
+			ID: 42, Title: "single", PageCount: 1, Kind: pixiv.ArtworkKindIllustration,
+			User:  pixiv.User{Name: "author"},
+			Pages: []pixiv.ArtworkPage{artworkPage(rawURL, 0)},
 		}},
 		downloads: map[string][]byte{rawURL: []byte("image")},
 	}
@@ -210,25 +207,24 @@ func TestDownloadSingleArtworkWithoutURLExtensionDoesNotInventOne(t *testing.T) 
 	assertFileBody(t, path, "image")
 }
 
-// 下载管理器只能把作品中取得的资源地址交给公开 SDK 解析和下载；它不再保留
-// legacy Source 的原始 URL 写入接口，也不自行实现 SDK 已提供的原子替换。
 func TestDownloadUsesSDKResourceReferenceAndDestination(t *testing.T) {
 	dir := t.TempDir()
+	rawURL := "https://i.example/42.jpg"
 	client := &fakePixivClient{
-		details: map[int64]pixiv.Illust{42: {
-			ID: 42, Title: "single", PageCount: 1, Type: "illust",
-			User:           pixiv.User{Name: "author"},
-			MetaSinglePage: pixiv.SinglePage{OriginalImageURL: "https://i.example/42.jpg"},
+		details: map[int64]pixiv.Artwork{42: {
+			ID: 42, Title: "single", PageCount: 1, Kind: pixiv.ArtworkKindIllustration,
+			User:  pixiv.User{Name: "author"},
+			Pages: []pixiv.ArtworkPage{artworkPage(rawURL, 0)},
 		}},
-		downloads: map[string][]byte{"https://i.example/42.jpg": []byte("jpg")},
+		downloads: map[string][]byte{rawURL: []byte("jpg")},
 	}
 	m := NewManager(client, dir, "{id}")
 
 	if _, err := m.Download(context.Background(), application.DownloadRequest{IllustIDs: []int64{42}}); err != nil {
 		t.Fatalf("Download returned error: %v", err)
 	}
-	if got := client.parsedURLs; !slices.Equal(got, []string{"https://i.example/42.jpg"}) {
-		t.Fatalf("ParseResourceRef URLs = %v", got)
+	if got := client.savedURLs; !slices.Equal(got, []string{rawURL}) {
+		t.Fatalf("saved resource URLs = %v", got)
 	}
 	if got := client.destinations; len(got) != 1 || filepath.Base(got[0]) != "42.jpg" {
 		t.Fatalf("SDK destinations = %v", got)
@@ -237,20 +233,16 @@ func TestDownloadUsesSDKResourceReferenceAndDestination(t *testing.T) {
 
 func TestDownloadKeepsArtworkInsideDownloadRoot(t *testing.T) {
 	dir := t.TempDir()
+	rawURL := "https://i.example/42.jpg"
 	client := &fakePixivClient{
-		details: map[int64]pixiv.Illust{
+		details: map[int64]pixiv.Artwork{
 			42: {
-				ID:        42,
-				Title:     "single",
-				PageCount: 1,
-				Type:      "illust",
-				User:      pixiv.User{Name: "author"},
-				MetaSinglePage: pixiv.SinglePage{
-					OriginalImageURL: "https://i.example/42.jpg",
-				},
+				ID: 42, Title: "single", PageCount: 1, Kind: pixiv.ArtworkKindIllustration,
+				User:  pixiv.User{Name: "author"},
+				Pages: []pixiv.ArtworkPage{artworkPage(rawURL, 0)},
 			},
 		},
-		downloads: map[string][]byte{"https://i.example/42.jpg": []byte("jpg")},
+		downloads: map[string][]byte{rawURL: []byte("jpg")},
 	}
 	m := NewManager(client, dir, "../escape/{id}")
 
@@ -277,17 +269,13 @@ func TestDownloadFailureDoesNotReplaceExistingFile(t *testing.T) {
 	if err := os.WriteFile(target, []byte("old"), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	rawURL := "https://i.example/42.jpg"
 	client := &fakePixivClient{
-		details: map[int64]pixiv.Illust{
+		details: map[int64]pixiv.Artwork{
 			42: {
-				ID:        42,
-				Title:     "single",
-				PageCount: 1,
-				Type:      "illust",
-				User:      pixiv.User{Name: "author"},
-				MetaSinglePage: pixiv.SinglePage{
-					OriginalImageURL: "https://i.example/42.jpg",
-				},
+				ID: 42, Title: "single", PageCount: 1, Kind: pixiv.ArtworkKindIllustration,
+				User:  pixiv.User{Name: "author"},
+				Pages: []pixiv.ArtworkPage{artworkPage(rawURL, 0)},
 			},
 		},
 		downloadErr: errors.New("network broke"),
@@ -307,20 +295,16 @@ func TestDownloadSuccessReplacesExistingFile(t *testing.T) {
 	if err := os.WriteFile(target, []byte("old"), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	rawURL := "https://i.example/42.jpg"
 	client := &fakePixivClient{
-		details: map[int64]pixiv.Illust{
+		details: map[int64]pixiv.Artwork{
 			42: {
-				ID:        42,
-				Title:     "single",
-				PageCount: 1,
-				Type:      "illust",
-				User:      pixiv.User{Name: "author"},
-				MetaSinglePage: pixiv.SinglePage{
-					OriginalImageURL: "https://i.example/42.jpg",
-				},
+				ID: 42, Title: "single", PageCount: 1, Kind: pixiv.ArtworkKindIllustration,
+				User:  pixiv.User{Name: "author"},
+				Pages: []pixiv.ArtworkPage{artworkPage(rawURL, 0)},
 			},
 		},
-		downloads: map[string][]byte{"https://i.example/42.jpg": []byte("new")},
+		downloads: map[string][]byte{rawURL: []byte("new")},
 	}
 	m := NewManager(client, dir, "{id}")
 
@@ -333,16 +317,13 @@ func TestDownloadSuccessReplacesExistingFile(t *testing.T) {
 func TestDownloadMultiPageArtworkReturnsAllPaths(t *testing.T) {
 	dir := t.TempDir()
 	client := &fakePixivClient{
-		details: map[int64]pixiv.Illust{
+		details: map[int64]pixiv.Artwork{
 			7: {
-				ID:        7,
-				Title:     "multi",
-				PageCount: 2,
-				Type:      "illust",
-				User:      pixiv.User{Name: "author"},
-				MetaPages: []pixiv.MetaPage{
-					{ImageURLs: pixiv.ImageURLs{Original: "https://i.example/7_p0.png"}},
-					{ImageURLs: pixiv.ImageURLs{Original: "https://i.example/7_p1.png"}},
+				ID: 7, Title: "multi", PageCount: 2, Kind: pixiv.ArtworkKindIllustration,
+				User: pixiv.User{Name: "author"},
+				Pages: []pixiv.ArtworkPage{
+					artworkPage("https://i.example/7_p0.png", 0),
+					artworkPage("https://i.example/7_p1.png", 1),
 				},
 			},
 		},
@@ -377,12 +358,12 @@ func TestDownloadMultiPageArtworkSanitizesExtensionsFromURLs(t *testing.T) {
 		"https://i.example/7_p1.pn%2Ag%3A%7C",
 	}
 	client := &fakePixivClient{
-		details: map[int64]pixiv.Illust{7: {
-			ID: 7, Title: "multi", PageCount: 2, Type: "illust",
+		details: map[int64]pixiv.Artwork{7: {
+			ID: 7, Title: "multi", PageCount: 2, Kind: pixiv.ArtworkKindIllustration,
 			User: pixiv.User{Name: "author"},
-			MetaPages: []pixiv.MetaPage{
-				{ImageURLs: pixiv.ImageURLs{Original: urls[0]}},
-				{ImageURLs: pixiv.ImageURLs{Original: urls[1]}},
+			Pages: []pixiv.ArtworkPage{
+				artworkPage(urls[0], 0),
+				artworkPage(urls[1], 1),
 			},
 		}},
 		downloads: map[string][]byte{
@@ -428,7 +409,7 @@ func TestConvertUgoiraUsesInjectedEncoder(t *testing.T) {
 	m := NewManager(nil, dir, "{id}")
 	m.SetUgoiraEncoder(encoder)
 	outPath := filepath.Join(dir, "out.gif")
-	err := m.ConvertUgoira(context.Background(), zipPath, []pixiv.UgoiraFrame{{File: "000000.jpg", Delay: 80}}, dir, outPath)
+	err := m.ConvertUgoira(context.Background(), zipPath, []pixiv.UgoiraFrame{{Filename: "000000.jpg", DelayMilliseconds: 80}}, dir, outPath)
 	if err != nil {
 		t.Fatalf("ConvertUgoira returned error: %v", err)
 	}
@@ -451,7 +432,7 @@ func TestConvertUgoiraFailureDoesNotReplaceExistingGIF(t *testing.T) {
 	m := NewManager(nil, dir, "{id}")
 	m.SetUgoiraEncoder(encoder)
 
-	err := m.ConvertUgoira(context.Background(), zipPath, []pixiv.UgoiraFrame{{File: "000000.jpg", Delay: 80}}, dir, outPath)
+	err := m.ConvertUgoira(context.Background(), zipPath, []pixiv.UgoiraFrame{{Filename: "000000.jpg", DelayMilliseconds: 80}}, dir, outPath)
 	if err == nil {
 		t.Fatal("ConvertUgoira returned nil error")
 	}
@@ -471,7 +452,7 @@ func TestConvertUgoiraSuccessReplacesExistingGIF(t *testing.T) {
 	m := NewManager(nil, dir, "{id}")
 	m.SetUgoiraEncoder(encoder)
 
-	if err := m.ConvertUgoira(context.Background(), zipPath, []pixiv.UgoiraFrame{{File: "000000.jpg", Delay: 80}}, dir, outPath); err != nil {
+	if err := m.ConvertUgoira(context.Background(), zipPath, []pixiv.UgoiraFrame{{Filename: "000000.jpg", DelayMilliseconds: 80}}, dir, outPath); err != nil {
 		t.Fatalf("ConvertUgoira returned error: %v", err)
 	}
 	assertFileBody(t, outPath, "new-gif")
@@ -479,23 +460,16 @@ func TestConvertUgoiraSuccessReplacesExistingGIF(t *testing.T) {
 
 func TestDownloadUgoiraZipFailureCleansTemporaryZip(t *testing.T) {
 	dir := t.TempDir()
-	meta := pixiv.UgoiraMetadata{
-		Frames: []pixiv.UgoiraFrame{{File: "000000.jpg", Delay: 80}},
-	}
-	meta.ZipURLs.Medium = "https://i.example/ugoira.zip"
-	meta.DownloadURL = "https://i.example/ugoira.zip"
+	zipURL := "https://i.example/ugoira.zip"
 	client := &fakePixivClient{
-		details: map[int64]pixiv.Illust{
+		details: map[int64]pixiv.Artwork{
 			9: {
-				ID:        9,
-				Title:     "ugo",
-				PageCount: 1,
-				Type:      "ugoira",
-				User:      pixiv.User{Name: "author"},
+				ID: 9, Title: "ugo", PageCount: 1, Kind: pixiv.ArtworkKindUgoira,
+				User: pixiv.User{Name: "author"},
 			},
 		},
 		ugoira: map[int64]pixiv.UgoiraMetadata{
-			9: meta,
+			9: ugoiraMetadata(zipURL),
 		},
 		downloadErr: errors.New("zip download failed"),
 	}
@@ -517,25 +491,18 @@ func TestDownloadUgoiraZipFailureCleansTemporaryZip(t *testing.T) {
 
 func TestDownloadUgoiraReturnsFinalGIFOnly(t *testing.T) {
 	dir := t.TempDir()
-	meta := pixiv.UgoiraMetadata{
-		Frames: []pixiv.UgoiraFrame{{File: "000000.jpg", Delay: 80}},
-	}
-	meta.ZipURLs.Medium = "https://i.example/ugoira.zip"
-	meta.DownloadURL = "https://i.example/ugoira.zip"
+	zipURL := "https://i.example/ugoira.zip"
 	client := &fakePixivClient{
-		details: map[int64]pixiv.Illust{
+		details: map[int64]pixiv.Artwork{
 			9: {
-				ID:        9,
-				Title:     "ugo",
-				PageCount: 1,
-				Type:      "ugoira",
-				User:      pixiv.User{Name: "author"},
+				ID: 9, Title: "ugo", PageCount: 1, Kind: pixiv.ArtworkKindUgoira,
+				User: pixiv.User{Name: "author"},
 			},
 		},
 		ugoira: map[int64]pixiv.UgoiraMetadata{
-			9: meta,
+			9: ugoiraMetadata(zipURL),
 		},
-		downloads: map[string][]byte{"https://i.example/ugoira.zip": makeZip(t, "000000.jpg", []byte("frame"))},
+		downloads: map[string][]byte{zipURL: makeZip(t, "000000.jpg", []byte("frame"))},
 	}
 	encoder := &recordingUgoiraEncoder{output: []byte("gif")}
 	m := NewManager(client, dir, "{id}")
@@ -557,20 +524,24 @@ func TestDownloadUgoiraReturnsFinalGIFOnly(t *testing.T) {
 	assertFileBody(t, got[0].Files[0].Path, "gif")
 }
 
-func TestDownloadUgoiraUsesSDKDownloadURL(t *testing.T) {
+func TestDownloadUgoiraUsesOriginalArchive(t *testing.T) {
 	dir := t.TempDir()
-	meta := pixiv.UgoiraMetadata{
-		ZipURLs:         pixiv.UgoiraZipURLs{Medium: "https://i.example/medium.zip", Original: "https://i.example/original.zip"},
-		Frames:          []pixiv.UgoiraFrame{{File: "000000.jpg", Delay: 80}},
-		DownloadURL:     "https://i.example/selected.zip",
-		DownloadQuality: pixiv.UgoiraZipQualityOriginal,
-	}
+	originalURL := "https://i.example/original.zip"
+	mediumURL := "https://i.example/medium.zip"
 	client := &fakePixivClient{
-		details: map[int64]pixiv.Illust{
-			9: {ID: 9, Title: "ugo", PageCount: 1, Type: "ugoira", User: pixiv.User{Name: "author"}},
+		details: map[int64]pixiv.Artwork{
+			9: {ID: 9, Title: "ugo", PageCount: 1, Kind: pixiv.ArtworkKindUgoira, User: pixiv.User{Name: "author"}},
 		},
-		ugoira:    map[int64]pixiv.UgoiraMetadata{9: meta},
-		downloads: map[string][]byte{"https://i.example/selected.zip": makeZip(t, "000000.jpg", []byte("frame"))},
+		ugoira: map[int64]pixiv.UgoiraMetadata{
+			9: {
+				Frames: []pixiv.UgoiraFrame{{Filename: "000000.jpg", DelayMilliseconds: 80}},
+				Archives: []pixiv.UgoiraArchive{
+					{Quality: pixiv.UgoiraQualityMedium, Resource: testResource(mediumURL)},
+					{Quality: pixiv.UgoiraQualityOriginal, Resource: testResource(originalURL)},
+				},
+			},
+		},
+		downloads: map[string][]byte{originalURL: makeZip(t, "000000.jpg", []byte("frame"))},
 	}
 	m := NewManager(client, dir, "{id}")
 	m.SetUgoiraEncoder(&recordingUgoiraEncoder{output: []byte("gif")})
@@ -578,35 +549,33 @@ func TestDownloadUgoiraUsesSDKDownloadURL(t *testing.T) {
 	if _, err := m.Download(context.Background(), application.DownloadRequest{IllustIDs: []int64{9}}); err != nil {
 		t.Fatalf("Download() error = %v", err)
 	}
-	if len(client.parsedURLs) != 1 || client.parsedURLs[0] != "https://i.example/selected.zip" {
-		t.Fatalf("parsed URLs = %v", client.parsedURLs)
+	if len(client.savedURLs) != 1 || client.savedURLs[0] != originalURL {
+		t.Fatalf("saved URLs = %v", client.savedURLs)
 	}
 }
 
-func TestDownloadMissingImageURLReturnsError(t *testing.T) {
+func TestDownloadMissingPageMetadataReturnsError(t *testing.T) {
 	m := NewManager(&fakePixivClient{
-		details: map[int64]pixiv.Illust{
-			1: {ID: 1, Title: "empty", PageCount: 1, Type: "illust"},
+		details: map[int64]pixiv.Artwork{
+			1: {ID: 1, Title: "empty", PageCount: 1, Kind: pixiv.ArtworkKindIllustration},
 		},
 	}, t.TempDir(), "{id}")
 
 	_, err := m.Download(context.Background(), application.DownloadRequest{IllustIDs: []int64{1}})
-	if err == nil || !strings.Contains(err.Error(), "no original image url") {
+	if err == nil || !strings.Contains(err.Error(), "no page metadata") {
 		t.Fatalf("Download error = %v", err)
 	}
 }
 
 func TestDownloadUgoiraExplicitAPNGUsesRustEncoder(t *testing.T) {
 	dir := t.TempDir()
-	meta := pixiv.UgoiraMetadata{Frames: []pixiv.UgoiraFrame{{File: "000000.jpg", Delay: 80}}}
-	meta.ZipURLs.Medium = "https://i.example/ugoira.zip"
-	meta.DownloadURL = "https://i.example/ugoira.zip"
+	zipURL := "https://i.example/ugoira.zip"
 	m := NewManager(&fakePixivClient{
-		details: map[int64]pixiv.Illust{
-			1: {ID: 1, Title: "ugo", PageCount: 1, Type: "ugoira"},
+		details: map[int64]pixiv.Artwork{
+			1: {ID: 1, Title: "ugo", PageCount: 1, Kind: pixiv.ArtworkKindUgoira},
 		},
-		ugoira:    map[int64]pixiv.UgoiraMetadata{1: meta},
-		downloads: map[string][]byte{"https://i.example/ugoira.zip": makeZip(t, "000000.jpg", []byte("frame"))},
+		ugoira:    map[int64]pixiv.UgoiraMetadata{1: ugoiraMetadata(zipURL)},
+		downloads: map[string][]byte{zipURL: makeZip(t, "000000.jpg", []byte("frame"))},
 	}, dir, "{id}")
 	encoder := &recordingUgoiraEncoder{output: []byte("gif")}
 	m.SetUgoiraEncoder(encoder)
@@ -623,6 +592,13 @@ func TestDownloadUgoiraExplicitAPNGUsesRustEncoder(t *testing.T) {
 	}
 	if encoder.input.ZipPath == "" || encoder.input.Format != AnimationFormatAPNG {
 		t.Fatalf("encoder input = %+v", encoder.input)
+	}
+}
+
+func ugoiraMetadata(zipURL string) pixiv.UgoiraMetadata {
+	return pixiv.UgoiraMetadata{
+		Archives: []pixiv.UgoiraArchive{{Quality: pixiv.UgoiraQualityOriginal, Resource: testResource(zipURL)}},
+		Frames:   []pixiv.UgoiraFrame{{Filename: "000000.jpg", DelayMilliseconds: 80}},
 	}
 }
 
@@ -668,49 +644,67 @@ func makeZip(t *testing.T, name string, body []byte) []byte {
 	return buf.Bytes()
 }
 
+// testResource 构造一个 Ref 编码了 URL 的资源，使 fake SaveResource 能还原 URL。
+func testResource(rawURL string) sdk.Resource {
+	ref, err := sdk.NewResourceRef("test", []byte(rawURL))
+	if err != nil {
+		panic(err)
+	}
+	return sdk.Resource{URL: rawURL, Ref: ref}
+}
+
+func artworkPage(rawURL string, index int) pixiv.ArtworkPage {
+	return pixiv.ArtworkPage{PageIndex: index, Image: pixiv.ImageResource{Resource: testResource(rawURL)}}
+}
+
 type fakePixivClient struct {
-	details      map[int64]pixiv.Illust
+	details      map[int64]pixiv.Artwork
 	ugoira       map[int64]pixiv.UgoiraMetadata
 	downloads    map[string][]byte
 	downloadErr  error
-	parsedURLs   []string
+	savedURLs    []string
 	destinations []string
 }
 
-func (c *fakePixivClient) IllustDetail(_ context.Context, id int64) (*pixiv.IllustDetail, error) {
-	illust, ok := c.details[id]
+func (c *fakePixivClient) Artwork(_ context.Context, request pixiv.ArtworkRequest) (pixiv.Artwork, error) {
+	artwork, ok := c.details[request.ArtworkID]
 	if !ok {
-		return nil, os.ErrNotExist
+		return pixiv.Artwork{}, os.ErrNotExist
 	}
-	return &pixiv.IllustDetail{Illust: illust}, nil
+	return artwork, nil
 }
 
-func (c *fakePixivClient) UgoiraMetadata(_ context.Context, id int64) (*pixiv.UgoiraMetadataResult, error) {
-	meta, ok := c.ugoira[id]
+func (c *fakePixivClient) UgoiraMetadata(_ context.Context, request pixiv.UgoiraMetadataRequest) (pixiv.UgoiraMetadata, error) {
+	meta, ok := c.ugoira[request.ArtworkID]
 	if !ok {
-		return nil, os.ErrNotExist
+		return pixiv.UgoiraMetadata{}, os.ErrNotExist
 	}
-	return &pixiv.UgoiraMetadataResult{UgoiraMetadata: meta}, nil
+	return meta, nil
 }
 
-func (c *fakePixivClient) ParseResourceRef(rawURL string) (pixiv.ResourceRef, error) {
-	c.parsedURLs = append(c.parsedURLs, rawURL)
-	return pixiv.ResourceRef{URL: rawURL}, nil
+func (c *fakePixivClient) ParseResourceRef(string) (sdk.ResourceRef, error) {
+	return sdk.ResourceRef{}, nil
 }
 
-func (c *fakePixivClient) DownloadResource(_ context.Context, ref pixiv.ResourceRef, destination string) (pixiv.ResourceDownloadResult, error) {
+func (c *fakePixivClient) SaveResource(_ context.Context, ref sdk.ResourceRef, options sdk.SaveOptions) (sdk.SavedResource, error) {
 	if c.downloadErr != nil {
-		return pixiv.ResourceDownloadResult{}, c.downloadErr
+		return sdk.SavedResource{}, c.downloadErr
 	}
-	body, ok := c.downloads[ref.URL]
+	payload, err := sdk.ResourceRefPayload(ref)
+	if err != nil {
+		return sdk.SavedResource{}, err
+	}
+	rawURL := string(payload)
+	body, ok := c.downloads[rawURL]
 	if !ok {
-		return pixiv.ResourceDownloadResult{}, os.ErrNotExist
+		return sdk.SavedResource{}, os.ErrNotExist
 	}
-	c.destinations = append(c.destinations, destination)
-	if err := os.WriteFile(destination, body, 0o644); err != nil {
-		return pixiv.ResourceDownloadResult{}, err
+	c.savedURLs = append(c.savedURLs, rawURL)
+	c.destinations = append(c.destinations, options.Path)
+	if err := os.WriteFile(options.Path, body, 0o644); err != nil {
+		return sdk.SavedResource{}, err
 	}
-	return pixiv.ResourceDownloadResult{DestinationPath: destination}, nil
+	return sdk.SavedResource{Path: options.Path, Size: int64(len(body))}, nil
 }
 
 func assertFileBody(t *testing.T, path, want string) {

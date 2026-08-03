@@ -74,7 +74,7 @@ func (c *Client) SearchArtworks(ctx context.Context, request SearchArtworksReque
 	if err != nil {
 		return sdk.Page[Artwork]{}, classifyAppError(err, "SearchArtworks")
 	}
-	return c.illustPage("SearchArtworks", query, list)
+	return c.illustPage("SearchArtworks", query, "offset", list)
 }
 
 // Artwork returns one artwork by its stable ID, including every image page.
@@ -115,7 +115,7 @@ func (c *Client) RelatedArtworks(ctx context.Context, request RelatedArtworksReq
 	if err != nil {
 		return sdk.Page[Artwork]{}, classifyAppError(err, "RelatedArtworks")
 	}
-	return c.illustPage("RelatedArtworks", query, list)
+	return c.illustPage("RelatedArtworks", query, "offset", list)
 }
 
 // ArtworkSeries lists artworks within one illustration series.
@@ -132,7 +132,7 @@ func (c *Client) ArtworkSeries(ctx context.Context, request ArtworkSeriesRequest
 	if err != nil {
 		return sdk.Page[Artwork]{}, classifyAppError(err, "ArtworkSeries")
 	}
-	return c.illustPage("ArtworkSeries", query, list)
+	return c.illustPage("ArtworkSeries", query, "last_order", list)
 }
 
 // ArtworkRanking lists the current artwork ranking.
@@ -149,7 +149,7 @@ func (c *Client) ArtworkRanking(ctx context.Context, request ArtworkRankingReque
 	if err != nil {
 		return sdk.Page[Artwork]{}, classifyAppError(err, "ArtworkRanking")
 	}
-	return c.illustPage("ArtworkRanking", query, list)
+	return c.illustPage("ArtworkRanking", query, "offset", list)
 }
 
 // RecommendedArtworks lists recommended artworks.
@@ -163,7 +163,7 @@ func (c *Client) RecommendedArtworks(ctx context.Context, request RecommendedArt
 	if err != nil {
 		return sdk.Page[Artwork]{}, classifyAppError(err, "RecommendedArtworks")
 	}
-	return c.illustPage("RecommendedArtworks", query, list)
+	return c.illustPage("RecommendedArtworks", query, "offset", list)
 }
 
 // FollowingArtworks lists artworks by followed users.
@@ -177,7 +177,7 @@ func (c *Client) FollowingArtworks(ctx context.Context, request FollowingArtwork
 	if err != nil {
 		return sdk.Page[Artwork]{}, classifyAppError(err, "FollowingArtworks")
 	}
-	return c.illustPage("FollowingArtworks", query, list)
+	return c.illustPage("FollowingArtworks", query, "offset", list)
 }
 
 // LatestArtworks lists the newest artworks.
@@ -195,7 +195,7 @@ func (c *Client) LatestArtworks(ctx context.Context, request LatestArtworksReque
 	if err != nil {
 		return sdk.Page[Artwork]{}, classifyAppError(err, "LatestArtworks")
 	}
-	return c.illustPage("LatestArtworks", query, list)
+	return c.illustPage("LatestArtworks", query, "offset", list)
 }
 
 // UserArtworks lists one user's artworks.
@@ -213,7 +213,7 @@ func (c *Client) UserArtworks(ctx context.Context, request UserArtworksRequest) 
 	if err != nil {
 		return sdk.Page[Artwork]{}, classifyAppError(err, "UserArtworks")
 	}
-	return c.illustPage("UserArtworks", query, list)
+	return c.illustPage("UserArtworks", query, "offset", list)
 }
 
 // UserArtworkBookmarks lists one user's bookmarked artworks.
@@ -233,7 +233,7 @@ func (c *Client) UserArtworkBookmarks(ctx context.Context, request UserArtworkBo
 	if err != nil {
 		return sdk.Page[Artwork]{}, classifyAppError(err, "UserArtworkBookmarks")
 	}
-	return c.illustPage("UserArtworkBookmarks", query, list)
+	return c.illustPage("UserArtworkBookmarks", query, "max_bookmark_id", list)
 }
 
 // UserArtworkBookmarkTags lists the bookmark tags of one user's bookmarked
@@ -273,7 +273,7 @@ func (c *Client) MyPixivArtworks(ctx context.Context, request MyPixivArtworksReq
 	if err != nil {
 		return sdk.Page[Artwork]{}, classifyAppError(err, "MyPixivArtworks")
 	}
-	return c.illustPage("MyPixivArtworks", query, list)
+	return c.illustPage("MyPixivArtworks", query, "offset", list)
 }
 
 // TrendingArtworkTags lists currently trending artwork tags.
@@ -336,8 +336,8 @@ func (c *Client) ArtworkBookmark(ctx context.Context, request ArtworkBookmarkReq
 }
 
 // illustPage maps an adapter illust list into a public artwork page, encoding
-// the offset continuation into an opaque cursor.
-func (c *Client) illustPage(op string, query url.Values, list *model.IllustList) (sdk.Page[Artwork], error) {
+// the given continuation kind into an opaque cursor.
+func (c *Client) illustPage(op string, query url.Values, key string, list *model.IllustList) (sdk.Page[Artwork], error) {
 	items := make([]Artwork, 0, len(list.Illusts))
 	for _, m := range list.Illusts {
 		artwork, err := c.mapArtwork(m)
@@ -346,7 +346,13 @@ func (c *Client) illustPage(op string, query url.Values, list *model.IllustList)
 		}
 		items = append(items, artwork)
 	}
-	next, err := c.buildCursor(op, query, "offset", int64(list.NextOffset), list.ContinuationExists)
+	value := int64(list.NextOffset)
+	if key == "max_bookmark_id" {
+		value = list.NextMaxBookmarkID
+	} else if key == "last_order" {
+		value = list.NextValue
+	}
+	next, err := c.buildCursor(op, query, key, value, list.ContinuationExists)
 	if err != nil {
 		return sdk.Page[Artwork]{}, err
 	}

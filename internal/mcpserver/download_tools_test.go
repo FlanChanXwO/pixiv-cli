@@ -4,7 +4,6 @@ import (
 	"testing"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/application"
-	sdk "github.com/FlanChanXwO/pixiv-cli/pixiv"
 	"github.com/stretchr/testify/require"
 )
 
@@ -22,12 +21,19 @@ func TestParseDownloadSelectionDefaultsUgoiraModeToGIF(t *testing.T) {
 	require.Equal(t, application.UgoiraFormatGIF, format)
 }
 
-func TestParseDownloadOptionsSupportsOpenPageRange(t *testing.T) {
-	selection, quality, mode, err := parseDownloadOptions("3-", "regular", "frames")
+func TestParseDownloadOptionsUsesClosedPageRangesAndValidatesQuality(t *testing.T) {
+	pages, quality, format, err := parseDownloadOptions("1,3-5", "regular", "apng")
 	require.NoError(t, err)
-	pages, err := selection.Resolve(5)
-	require.NoError(t, err)
-	require.Equal(t, []int{3, 4, 5}, pages)
-	require.Equal(t, sdk.DownloadQualityRegular, quality)
-	require.Equal(t, sdk.UgoiraModeFrames, mode)
+	require.Equal(t, []int{1, 3, 4, 5}, pages)
+	require.Equal(t, application.DownloadQualityRegular, quality)
+	require.Equal(t, application.UgoiraFormatAPNG, format)
+}
+
+func TestParseDownloadOptionsRejectsOpenRangeAndUnknownUgoiraMode(t *testing.T) {
+	if _, _, _, err := parseDownloadOptions("3-", "regular", "gif"); err == nil {
+		t.Fatal("open page range must be rejected")
+	}
+	if _, _, _, err := parseDownloadOptions("1", "regular", "frames"); err == nil {
+		t.Fatal("frames ugoira mode must be rejected")
+	}
 }

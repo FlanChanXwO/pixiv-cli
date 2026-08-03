@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/FlanChanXwO/pixiv-cli/pixiv"
+	internalpixiv "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv"
 )
 
 var markdownLinkPattern = regexp.MustCompile(`!?\[[^\]]*\]\(([^)]+)\)`)
@@ -288,7 +288,7 @@ func TestCLIReferenceLocalesHaveExactDrawingToolCatalog(t *testing.T) {
 		}
 		content := string(payload)
 		position := 0
-		for _, tool := range pixiv.SupportedDrawingTools() {
+		for _, tool := range internalpixiv.SupportedDrawingTools() {
 			next := strings.Index(content[position:], tool)
 			if next < 0 {
 				t.Errorf("%s is missing drawing-tool catalog value %q", relativePath, tool)

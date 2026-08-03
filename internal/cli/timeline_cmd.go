@@ -6,7 +6,8 @@ import (
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/application"
 	"github.com/FlanChanXwO/pixiv-cli/internal/utils/parse"
-	sdk "github.com/FlanChanXwO/pixiv-cli/pixiv"
+	"github.com/FlanChanXwO/pixiv-cli/sdk"
+	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/spf13/cobra"
 )
 
@@ -15,7 +16,6 @@ import (
 type timelineOptions struct {
 	commandOptions
 	ndjsonOutputOptions
-	illustFilterOptions
 	listOptions
 	contentType string
 	restrict    string
@@ -26,7 +26,6 @@ type timelineOptions struct {
 type myPixivOptions struct {
 	commandOptions
 	ndjsonOutputOptions
-	illustFilterOptions
 	listOptions
 	contentType string
 }
@@ -38,7 +37,7 @@ func (a app) newTimelineCommand() *cobra.Command {
 }
 
 func (a app) newTimelineFollowingCommand() *cobra.Command {
-	opts := timelineOptions{restrict: string(sdk.RestrictPublic)}
+	opts := timelineOptions{restrict: string(pixiv.RestrictPublic)}
 	cmd := &cobra.Command{
 		Use:   "following",
 		Short: "Browse new works from followed users",
@@ -49,7 +48,6 @@ func (a app) newTimelineFollowingCommand() *cobra.Command {
 	}
 	a.bindCommonFlags(cmd, &opts.commandOptions)
 	bindNDJSONFlag(cmd, &opts.ndjsonOutputOptions)
-	bindIllustFilterFlag(cmd, &opts.illustFilterOptions)
 	bindListFlags(cmd, &opts.listOptions)
 	cmd.Flags().StringVar(&opts.contentType, "type", "", "required content type: illust or novel")
 	cmd.Flags().StringVar(&opts.restrict, "restrict", opts.restrict, "follow visibility: public or private")
@@ -68,7 +66,6 @@ func (a app) newTimelineLatestCommand() *cobra.Command {
 	}
 	a.bindCommonFlags(cmd, &opts.commandOptions)
 	bindNDJSONFlag(cmd, &opts.ndjsonOutputOptions)
-	bindIllustFilterFlag(cmd, &opts.illustFilterOptions)
 	bindListFlags(cmd, &opts.listOptions)
 	cmd.Flags().StringVar(&opts.contentType, "type", "", "required content type: illust, manga, or novel")
 	return cmd
@@ -81,12 +78,6 @@ func (a app) runTimelineFollowing(cmd *cobra.Command, opts timelineOptions) erro
 	plan, err := parseListPlan(cmd, opts.listOptions)
 	if err != nil {
 		return err
-	}
-	if err := applyIllustFilter(&plan, opts.filter); err != nil {
-		return err
-	}
-	if plan.filter != nil && opts.contentType == "novel" {
-		return newUsageError(fmt.Errorf("--filter is only available for illustration timelines"))
 	}
 	services := a.services()
 	request, jsonOverride, err := a.sdkRequest(cmd, opts.commandOptions)
@@ -105,23 +96,23 @@ func (a app) runTimelineFollowing(cmd *cobra.Command, opts timelineOptions) erro
 	}
 	opts.ndjson = a.shouldAutoNDJSON(cmd, opts.ndjson, jsonOut)
 	if opts.contentType == "illust" {
-		fetch := func(client application.SDKClient, ctx context.Context, cursor sdk.Cursor) ([]sdk.Illust, sdk.Cursor, error) {
-			result, err := client.FollowingIllusts(ctx, sdk.FollowingIllustsRequest{Restrict: sdk.Restrict(opts.restrict), Cursor: cursor})
+		fetch := func(client application.SDKClient, ctx context.Context, cursor sdk.Cursor) ([]pixiv.Artwork, sdk.Cursor, error) {
+			result, err := client.FollowingArtworks(ctx, pixiv.FollowingArtworksRequest{Restrict: pixiv.Restrict(opts.restrict), Cursor: cursor})
 			if err != nil {
-				return nil, "", err
+				return nil, sdk.Cursor{}, err
 			}
-			return result.Illusts, result.NextCursor, nil
+			return result.Items, result.Next, nil
 		}
-		return a.runPooledIllustList(cmd.Context(), request, plan, jsonOut, opts.ndjson, "new artworks from followed users", fetch, func(items []sdk.Illust, start int) error { return printIllusts(a.out, items, start, false) })
+		return a.runPooledIllustList(cmd.Context(), request, plan, jsonOut, opts.ndjson, "new artworks from followed users", fetch, func(items []pixiv.Artwork, start int) error { return printIllusts(a.out, items, start, false) })
 	}
-	fetch := func(client application.SDKClient, ctx context.Context, cursor sdk.Cursor) ([]sdk.Novel, sdk.Cursor, error) {
-		result, err := client.FollowingNovels(ctx, sdk.FollowingNovelsRequest{Restrict: sdk.Restrict(opts.restrict), Cursor: cursor})
+	fetch := func(client application.SDKClient, ctx context.Context, cursor sdk.Cursor) ([]pixiv.Novel, sdk.Cursor, error) {
+		result, err := client.FollowingNovels(ctx, pixiv.FollowingNovelsRequest{Restrict: pixiv.Restrict(opts.restrict), Cursor: cursor})
 		if err != nil {
-			return nil, "", err
+			return nil, sdk.Cursor{}, err
 		}
-		return result.Novels, result.NextCursor, nil
+		return result.Items, result.Next, nil
 	}
-	return a.runPooledNovelList(cmd.Context(), request, plan, jsonOut, opts.ndjson, "new novels from followed users", fetch, func(items []sdk.Novel) error { return printNovels(a.out, items) })
+	return a.runPooledNovelList(cmd.Context(), request, plan, jsonOut, opts.ndjson, "new novels from followed users", fetch, func(items []pixiv.Novel) error { return printNovels(a.out, items) })
 }
 
 func (a app) runTimelineLatest(cmd *cobra.Command, opts timelineOptions) error {
@@ -131,12 +122,6 @@ func (a app) runTimelineLatest(cmd *cobra.Command, opts timelineOptions) error {
 	plan, err := parseListPlan(cmd, opts.listOptions)
 	if err != nil {
 		return err
-	}
-	if err := applyIllustFilter(&plan, opts.filter); err != nil {
-		return err
-	}
-	if plan.filter != nil && opts.contentType == "novel" {
-		return newUsageError(fmt.Errorf("--filter is only available for illustration timelines"))
 	}
 	services := a.services()
 	request, jsonOverride, err := a.sdkRequest(cmd, opts.commandOptions)
@@ -155,23 +140,23 @@ func (a app) runTimelineLatest(cmd *cobra.Command, opts timelineOptions) error {
 	}
 	opts.ndjson = a.shouldAutoNDJSON(cmd, opts.ndjson, jsonOut)
 	if opts.contentType == "novel" {
-		fetch := func(client application.SDKClient, ctx context.Context, cursor sdk.Cursor) ([]sdk.Novel, sdk.Cursor, error) {
-			result, err := client.LatestNovels(ctx, sdk.LatestNovelsRequest{Cursor: cursor})
+		fetch := func(client application.SDKClient, ctx context.Context, cursor sdk.Cursor) ([]pixiv.Novel, sdk.Cursor, error) {
+			result, err := client.LatestNovels(ctx, pixiv.LatestNovelsRequest{Cursor: cursor})
 			if err != nil {
-				return nil, "", err
+				return nil, sdk.Cursor{}, err
 			}
-			return result.Novels, result.NextCursor, nil
+			return result.Items, result.Next, nil
 		}
-		return a.runPooledNovelList(cmd.Context(), request, plan, jsonOut, opts.ndjson, "latest novels", fetch, func(items []sdk.Novel) error { return printNovels(a.out, items) })
+		return a.runPooledNovelList(cmd.Context(), request, plan, jsonOut, opts.ndjson, "latest novels", fetch, func(items []pixiv.Novel) error { return printNovels(a.out, items) })
 	}
-	fetch := func(client application.SDKClient, ctx context.Context, cursor sdk.Cursor) ([]sdk.Illust, sdk.Cursor, error) {
-		result, err := client.LatestIllusts(ctx, sdk.LatestIllustsRequest{Type: sdk.IllustType(opts.contentType), Cursor: cursor})
+	fetch := func(client application.SDKClient, ctx context.Context, cursor sdk.Cursor) ([]pixiv.Artwork, sdk.Cursor, error) {
+		result, err := client.LatestArtworks(ctx, pixiv.LatestArtworksRequest{ContentType: pixiv.SearchContentType(opts.contentType), Cursor: cursor})
 		if err != nil {
-			return nil, "", err
+			return nil, sdk.Cursor{}, err
 		}
-		return result.Illusts, result.NextCursor, nil
+		return result.Items, result.Next, nil
 	}
-	return a.runPooledIllustList(cmd.Context(), request, plan, jsonOut, opts.ndjson, fmt.Sprintf("latest %s", opts.contentType), fetch, func(items []sdk.Illust, start int) error { return printIllusts(a.out, items, start, false) })
+	return a.runPooledIllustList(cmd.Context(), request, plan, jsonOut, opts.ndjson, fmt.Sprintf("latest %s", opts.contentType), fetch, func(items []pixiv.Artwork, start int) error { return printIllusts(a.out, items, start, false) })
 }
 
 func (a app) newMyPixivCommand() *cobra.Command {
@@ -208,7 +193,6 @@ func (a app) newMyPixivWorksCommand() *cobra.Command {
 	}
 	a.bindCommonFlags(cmd, &opts.commandOptions)
 	bindNDJSONFlag(cmd, &opts.ndjsonOutputOptions)
-	bindIllustFilterFlag(cmd, &opts.illustFilterOptions)
 	bindListFlags(cmd, &opts.listOptions)
 	cmd.Flags().StringVar(&opts.contentType, "type", "", "required content type: illust, manga, or novel")
 	return cmd
@@ -235,23 +219,23 @@ func (a app) runMyPixivUsers(cmd *cobra.Command, opts myPixivOptions) error {
 		}
 	}
 	var userID int64
-	fetch := func(client application.SDKClient, ctx context.Context, cursor sdk.Cursor) ([]sdk.UserPreview, sdk.Cursor, error) {
+	fetch := func(client application.SDKClient, ctx context.Context, cursor sdk.Cursor) ([]pixiv.UserPreview, sdk.Cursor, error) {
 		if userID == 0 {
 			var err error
 			userID, err = client.CurrentUserID(ctx)
 			if err != nil {
-				return nil, "", err
+				return nil, sdk.Cursor{}, err
 			}
 		}
-		result, err := client.MyPixivUsers(ctx, sdk.MyPixivUsersRequest{UserID: userID, Cursor: cursor})
+		result, err := client.MyPixivUsers(ctx, pixiv.MyPixivUsersRequest{Cursor: cursor})
 		if err != nil {
-			return nil, "", err
+			return nil, sdk.Cursor{}, err
 		}
-		return result.UserPreviews, result.NextCursor, nil
+		return result.Items, result.Next, nil
 	}
 	return a.runPooledUserList(cmd.Context(), request, plan, jsonOut, opts.ndjson, func() string {
 		return fmt.Sprintf("MyPixiv users for %d", userID)
-	}, fetch, func(items []sdk.UserPreview) error { return printUserPreviews(a.out, items) })
+	}, fetch, func(items []pixiv.UserPreview) error { return printUserPreviews(a.out, items) })
 }
 
 func (a app) runMyPixivWorks(cmd *cobra.Command, args []string, opts myPixivOptions) error {
@@ -274,12 +258,6 @@ func (a app) runMyPixivWorks(cmd *cobra.Command, args []string, opts myPixivOpti
 	if err != nil {
 		return err
 	}
-	if err := applyIllustFilter(&plan, opts.filter); err != nil {
-		return err
-	}
-	if plan.filter != nil && opts.contentType == "novel" {
-		return newUsageError(fmt.Errorf("--filter is only available for illustration lists"))
-	}
 	services := a.services()
 	request, jsonOverride, err := a.sdkRequest(cmd, opts.commandOptions)
 	if err != nil {
@@ -298,40 +276,40 @@ func (a app) runMyPixivWorks(cmd *cobra.Command, args []string, opts myPixivOpti
 	opts.ndjson = a.shouldAutoNDJSON(cmd, opts.ndjson, jsonOut)
 	if len(args) == 0 {
 		if opts.contentType == "illust" {
-			fetch := func(client application.SDKClient, ctx context.Context, cursor sdk.Cursor) ([]sdk.Illust, sdk.Cursor, error) {
-				result, err := client.MyPixivIllusts(ctx, sdk.MyPixivIllustsRequest{Cursor: cursor})
+			fetch := func(client application.SDKClient, ctx context.Context, cursor sdk.Cursor) ([]pixiv.Artwork, sdk.Cursor, error) {
+				result, err := client.MyPixivArtworks(ctx, pixiv.MyPixivArtworksRequest{Cursor: cursor})
 				if err != nil {
-					return nil, "", err
+					return nil, sdk.Cursor{}, err
 				}
-				return result.Illusts, result.NextCursor, nil
+				return result.Items, result.Next, nil
 			}
-			return a.runPooledIllustList(cmd.Context(), request, plan, jsonOut, opts.ndjson, "MyPixiv artworks", fetch, func(items []sdk.Illust, start int) error { return printIllusts(a.out, items, start, false) })
+			return a.runPooledIllustList(cmd.Context(), request, plan, jsonOut, opts.ndjson, "MyPixiv artworks", fetch, func(items []pixiv.Artwork, start int) error { return printIllusts(a.out, items, start, false) })
 		}
-		fetch := func(client application.SDKClient, ctx context.Context, cursor sdk.Cursor) ([]sdk.Novel, sdk.Cursor, error) {
-			result, err := client.MyPixivNovels(ctx, sdk.MyPixivNovelsRequest{Cursor: cursor})
+		fetch := func(client application.SDKClient, ctx context.Context, cursor sdk.Cursor) ([]pixiv.Novel, sdk.Cursor, error) {
+			result, err := client.MyPixivNovels(ctx, pixiv.MyPixivNovelsRequest{Cursor: cursor})
 			if err != nil {
-				return nil, "", err
+				return nil, sdk.Cursor{}, err
 			}
-			return result.Novels, result.NextCursor, nil
+			return result.Items, result.Next, nil
 		}
-		return a.runPooledNovelList(cmd.Context(), request, plan, jsonOut, opts.ndjson, "MyPixiv novels", fetch, func(items []sdk.Novel) error { return printNovels(a.out, items) })
+		return a.runPooledNovelList(cmd.Context(), request, plan, jsonOut, opts.ndjson, "MyPixiv novels", fetch, func(items []pixiv.Novel) error { return printNovels(a.out, items) })
 	}
 	if opts.contentType == "novel" {
-		fetch := func(client application.SDKClient, ctx context.Context, cursor sdk.Cursor) ([]sdk.Novel, sdk.Cursor, error) {
-			result, err := client.UserNovels(ctx, sdk.UserNovelsRequest{UserID: userID, Cursor: cursor})
+		fetch := func(client application.SDKClient, ctx context.Context, cursor sdk.Cursor) ([]pixiv.Novel, sdk.Cursor, error) {
+			result, err := client.UserNovels(ctx, pixiv.UserNovelsRequest{UserID: userID, Cursor: cursor})
 			if err != nil {
-				return nil, "", err
+				return nil, sdk.Cursor{}, err
 			}
-			return result.Novels, result.NextCursor, nil
+			return result.Items, result.Next, nil
 		}
-		return a.runPooledNovelList(cmd.Context(), request, plan, jsonOut, opts.ndjson, fmt.Sprintf("novels by %d", userID), fetch, func(items []sdk.Novel) error { return printNovels(a.out, items) })
+		return a.runPooledNovelList(cmd.Context(), request, plan, jsonOut, opts.ndjson, fmt.Sprintf("novels by %d", userID), fetch, func(items []pixiv.Novel) error { return printNovels(a.out, items) })
 	}
-	fetch := func(client application.SDKClient, ctx context.Context, cursor sdk.Cursor) ([]sdk.Illust, sdk.Cursor, error) {
-		result, err := client.UserArtworks(ctx, sdk.UserArtworksRequest{UserID: userID, Type: sdk.IllustType(opts.contentType), Cursor: cursor})
+	fetch := func(client application.SDKClient, ctx context.Context, cursor sdk.Cursor) ([]pixiv.Artwork, sdk.Cursor, error) {
+		result, err := client.UserArtworks(ctx, pixiv.UserArtworksRequest{UserID: userID, Kind: pixiv.ArtworkKind(opts.contentType), Cursor: cursor})
 		if err != nil {
-			return nil, "", err
+			return nil, sdk.Cursor{}, err
 		}
-		return result.Illusts, result.NextCursor, nil
+		return result.Items, result.Next, nil
 	}
-	return a.runPooledIllustList(cmd.Context(), request, plan, jsonOut, opts.ndjson, fmt.Sprintf("artworks by %d", userID), fetch, func(items []sdk.Illust, start int) error { return printIllusts(a.out, items, start, false) })
+	return a.runPooledIllustList(cmd.Context(), request, plan, jsonOut, opts.ndjson, fmt.Sprintf("artworks by %d", userID), fetch, func(items []pixiv.Artwork, start int) error { return printIllusts(a.out, items, start, false) })
 }

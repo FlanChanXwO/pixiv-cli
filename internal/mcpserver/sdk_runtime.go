@@ -6,7 +6,7 @@ import (
 	"math"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/application"
-	sdk "github.com/FlanChanXwO/pixiv-cli/pixiv"
+	"github.com/FlanChanXwO/pixiv-cli/sdk"
 )
 
 // pageLimitIn 以指针区分未传 limit（兼容旧的“单上游批次”）和显式 limit=0（读取全部）。
@@ -77,7 +77,7 @@ func collectPages[T any](ctx context.Context, plan mcpListPlan, fetch func(conte
 	}, func(ctx context.Context, cursor sdk.Cursor) ([]T, sdk.Cursor, error) {
 		items, next, err := fetch(ctx, cursor)
 		if err != nil {
-			return nil, "", err
+			return nil, sdk.Cursor{}, err
 		}
 		return filterRecordPage(ctx, items, seen), next, nil
 	})

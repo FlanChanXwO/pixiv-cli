@@ -8,17 +8,18 @@ import (
 	"strings"
 	"testing"
 
-	sdk "github.com/FlanChanXwO/pixiv-cli/pixiv"
+	"github.com/FlanChanXwO/pixiv-cli/sdk"
+	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 func TestVisualListAutoNDJSONWritesToNonTerminal(t *testing.T) {
 	useTempPaths(t)
-	setTestSDKCommandClient(t, sdkCommandFake{search: func(_ context.Context, _ sdk.SearchIllustRequest) (*sdk.IllustListResult, error) {
-		item := commandIllust(71)
-		item.Type = string(sdk.IllustTypeIllust)
-		return &sdk.IllustListResult{Illusts: []sdk.Illust{item}}, nil
+	setTestSDKCommandClient(t, sdkCommandFake{search: func(_ context.Context, _ pixiv.SearchArtworksRequest) (sdk.Page[pixiv.Artwork], error) {
+		item := commandArtwork(71)
+		item.Kind = pixiv.ArtworkKindIllustration
+		return sdk.Page[pixiv.Artwork]{Items: []pixiv.Artwork{item}}, nil
 	}})
 	output, err := os.CreateTemp(t.TempDir(), "records-*.ndjson")
 	require.NoError(t, err)
@@ -32,25 +33,26 @@ func TestVisualListAutoNDJSONWritesToNonTerminal(t *testing.T) {
 	var record map[string]any
 	require.NoError(t, json.Unmarshal(body, &record))
 	assert.Equal(t, "71", record["id"])
-	assert.Equal(t, "illust", record["type"])
+	assert.Equal(t, "illustration", record["type"])
 }
 
 func TestSearchNDJSONWritesRecordsBeforeFetchingNextPage(t *testing.T) {
 	useTempPaths(t)
+	nextCursor := testCursor(t, "next")
 	var stdout, stderr bytes.Buffer
-	setTestSDKCommandClient(t, sdkCommandFake{search: func(_ context.Context, request sdk.SearchIllustRequest) (*sdk.IllustListResult, error) {
-		switch request.Cursor {
-		case "":
-			item := commandIllust(11)
-			item.Type = string(sdk.IllustTypeIllust)
-			return &sdk.IllustListResult{Illusts: []sdk.Illust{item}, NextCursor: "next"}, nil
-		case "next":
+	setTestSDKCommandClient(t, sdkCommandFake{search: func(_ context.Context, request pixiv.SearchArtworksRequest) (sdk.Page[pixiv.Artwork], error) {
+		switch {
+		case request.Cursor.IsZero():
+			item := commandArtwork(11)
+			item.Kind = pixiv.ArtworkKindIllustration
+			return sdk.Page[pixiv.Artwork]{Items: []pixiv.Artwork{item}, Next: nextCursor}, nil
+		case request.Cursor.String() == nextCursor.String():
 			require.Contains(t, stdout.String(), `"id":"11"`)
-			item := commandIllust(12)
-			item.Type = string(sdk.IllustTypeIllust)
-			return &sdk.IllustListResult{Illusts: []sdk.Illust{item}}, nil
+			item := commandArtwork(12)
+			item.Kind = pixiv.ArtworkKindIllustration
+			return sdk.Page[pixiv.Artwork]{Items: []pixiv.Artwork{item}}, nil
 		default:
-			return nil, assert.AnError
+			return sdk.Page[pixiv.Artwork]{}, assert.AnError
 		}
 	}})
 
@@ -63,7 +65,7 @@ func TestSearchNDJSONWritesRecordsBeforeFetchingNextPage(t *testing.T) {
 		var record map[string]any
 		require.NoError(t, json.Unmarshal([]byte(line), &record))
 		assert.Equal(t, []string{"11", "12"}[index], record["id"])
-		assert.Equal(t, "illust", record["type"])
+		assert.Equal(t, "illustration", record["type"])
 		assert.Equal(t, "https://www.pixiv.net/artworks/"+[]string{"11", "12"}[index], record["url"])
 	}
 	assert.Empty(t, stderr.String())
@@ -71,9 +73,9 @@ func TestSearchNDJSONWritesRecordsBeforeFetchingNextPage(t *testing.T) {
 
 func TestNovelSearchNDJSONWritesNovelRecord(t *testing.T) {
 	useTempPaths(t)
-	novel := sdk.Novel{ID: 31, URL: "https://www.pixiv.net/novel/show.php?id=31", Title: "novel", User: sdk.User{ID: 8, Name: "writer"}}
-	setTestSDKCommandClient(t, sdkCommandFake{searchNovel: func(_ context.Context, _ sdk.SearchNovelRequest) (*sdk.NovelListResult, error) {
-		return &sdk.NovelListResult{Novels: []sdk.Novel{novel}}, nil
+	novel := pixiv.Novel{ID: 31, Title: "novel", User: pixiv.User{ID: 8, Name: "writer"}}
+	setTestSDKCommandClient(t, sdkCommandFake{searchNovel: func(_ context.Context, _ pixiv.SearchNovelsRequest) (sdk.Page[pixiv.Novel], error) {
+		return sdk.Page[pixiv.Novel]{Items: []pixiv.Novel{novel}}, nil
 	}})
 
 	var stdout, stderr bytes.Buffer
@@ -83,6 +85,6 @@ func TestNovelSearchNDJSONWritesNovelRecord(t *testing.T) {
 	require.NoError(t, json.Unmarshal(stdout.Bytes(), &record))
 	assert.Equal(t, "31", record["id"])
 	assert.Equal(t, "novel", record["type"])
-	assert.Equal(t, novel.URL, record["url"])
+	assert.Equal(t, "https://www.pixiv.net/novel/show.php?id=31", record["url"])
 	assert.Equal(t, novel.Title, record["title"])
 }

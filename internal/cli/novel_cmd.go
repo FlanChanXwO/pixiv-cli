@@ -7,7 +7,8 @@ import (
 	"strings"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/application"
-	sdk "github.com/FlanChanXwO/pixiv-cli/pixiv"
+	"github.com/FlanChanXwO/pixiv-cli/sdk"
+	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/spf13/cobra"
 )
 
@@ -15,13 +16,9 @@ type novelSearchOptions struct {
 	commandOptions
 	ndjsonOutputOptions
 	listOptions
-	searchBy      string
-	sortMode      string
-	period        string
-	rating        string
-	minTextLength int
-	maxTextLength int
-	originalOnly  bool
+	searchBy string
+	sortMode string
+	period   string
 }
 
 func (a app) newNovelCommand() *cobra.Command {
@@ -33,8 +30,7 @@ func (a app) newNovelCommand() *cobra.Command {
 func (a app) newNovelSearchCommand() *cobra.Command {
 	opts := novelSearchOptions{
 		searchBy: searchTargetTagPartial,
-		sortMode: string(sdk.SortModeDateDesc),
-		rating:   string(sdk.SearchRatingAll),
+		sortMode: string(pixiv.SortModeDateDesc),
 	}
 	cmd := &cobra.Command{
 		Use:     "search WORD",
@@ -51,10 +47,6 @@ func (a app) newNovelSearchCommand() *cobra.Command {
 	flags.StringVar(&opts.searchBy, "search-by", opts.searchBy, "search field: tag-partial, tag-exact, title-caption")
 	flags.StringVar(&opts.sortMode, "sort", opts.sortMode, "sort mode: date_desc, date_asc")
 	flags.StringVar(&opts.period, "period", "", "time range: day, week, month")
-	flags.StringVar(&opts.rating, "rating", opts.rating, "rating filter: sfw, r18, r18g, mature, all")
-	flags.IntVar(&opts.minTextLength, "min-text-length", 0, "minimum text length in characters; 0 disables the bound")
-	flags.IntVar(&opts.maxTextLength, "max-text-length", 0, "maximum text length in characters; 0 disables the bound")
-	flags.BoolVar(&opts.originalOnly, "original-only", false, "only original novels")
 	bindListFlags(cmd, &opts.listOptions)
 	return cmd
 }
@@ -65,10 +57,6 @@ func (a app) runNovelSearch(cmd *cobra.Command, args []string, opts novelSearchO
 		return err
 	}
 	period, err := resolveSearchPeriod(opts.period)
-	if err != nil {
-		return err
-	}
-	filters, err := resolveNovelSearchFilters(opts)
 	if err != nil {
 		return err
 	}
@@ -92,50 +80,33 @@ func (a app) runNovelSearch(cmd *cobra.Command, args []string, opts novelSearchO
 		}
 	}
 	word := strings.Join(args, " ")
-	fetch := func(client application.SDKClient, ctx context.Context, cursor sdk.Cursor) ([]sdk.Novel, sdk.Cursor, error) {
-		result, searchErr := client.SearchNovel(ctx, sdk.SearchNovelRequest{
-			Word: word, Target: target, Sort: sdk.SortMode(opts.sortMode), Duration: period, Cursor: cursor, Filters: filters,
+	fetch := func(client application.SDKClient, ctx context.Context, cursor sdk.Cursor) ([]pixiv.Novel, sdk.Cursor, error) {
+		result, searchErr := client.SearchNovels(ctx, pixiv.SearchNovelsRequest{
+			Word: word, Target: target, Sort: pixiv.SortMode(opts.sortMode), Duration: period, Cursor: cursor,
 		})
 		if searchErr != nil {
-			return nil, "", searchErr
+			return nil, sdk.Cursor{}, searchErr
 		}
-		return result.Novels, result.NextCursor, nil
+		return result.Items, result.Next, nil
 	}
-	return a.runPooledNovelList(cmd.Context(), request, plan, jsonOut, opts.ndjson, fmt.Sprintf("novels for %q", word), fetch, func(items []sdk.Novel) error { return printNovels(a.out, items) })
+	return a.runPooledNovelList(cmd.Context(), request, plan, jsonOut, opts.ndjson, fmt.Sprintf("novels for %q", word), fetch, func(items []pixiv.Novel) error { return printNovels(a.out, items) })
 }
 
-func (a app) runNovelListNDJSON(ctx context.Context, plan listPlan, fetch func(context.Context, sdk.Cursor) ([]sdk.Novel, sdk.Cursor, error)) error {
+func (a app) runNovelListNDJSON(ctx context.Context, plan listPlan, fetch func(context.Context, sdk.Cursor) ([]pixiv.Novel, sdk.Cursor, error)) error {
 	encoder := json.NewEncoder(a.out)
-	return pageItems(ctx, plan, fetch, func(items []sdk.Novel) error {
+	return pageItems(ctx, plan, fetch, func(items []pixiv.Novel) error {
 		return encodeNDJSONRecords(encoder, items, application.RecordFromNovel)
 	})
 }
 
-func resolveNovelSearchFilters(opts novelSearchOptions) (sdk.NovelSearchFilters, error) {
-	filters := sdk.NovelSearchFilters{MinTextLength: opts.minTextLength, MaxTextLength: opts.maxTextLength, OriginalOnly: opts.originalOnly}
-	switch opts.rating {
-	case "sfw", "r18", "r18g", "mature", "all":
-		filters.Rating = sdk.SearchRating(opts.rating)
-	default:
-		return filters, fmt.Errorf("rating must be one of sfw, r18, r18g, mature, all")
-	}
-	if filters.MinTextLength < 0 || filters.MaxTextLength < 0 {
-		return filters, fmt.Errorf("text length bounds must be zero or positive integers")
-	}
-	if filters.MaxTextLength > 0 && filters.MinTextLength > filters.MaxTextLength {
-		return filters, fmt.Errorf("min-text-length cannot exceed max-text-length")
-	}
-	return filters, nil
-}
-
-func (a app) runNovelList(ctx context.Context, plan listPlan, jsonOut bool, fetch func(context.Context, sdk.Cursor) ([]sdk.Novel, sdk.Cursor, error), print func([]sdk.Novel) error) error {
+func (a app) runNovelList(ctx context.Context, plan listPlan, jsonOut bool, fetch func(context.Context, sdk.Cursor) ([]pixiv.Novel, sdk.Cursor, error), print func([]pixiv.Novel) error) error {
 	if jsonOut {
 		spool, err := newJSONArraySpool("novels")
 		if err != nil {
 			return err
 		}
 		defer spool.Close()
-		if err := pageItems(ctx, plan, fetch, func(items []sdk.Novel) error { return appendJSONArray(spool, items) }); err != nil {
+		if err := pageItems(ctx, plan, fetch, func(items []pixiv.Novel) error { return appendJSONArray(spool, items) }); err != nil {
 			return err
 		}
 		return spool.Commit(a.out)

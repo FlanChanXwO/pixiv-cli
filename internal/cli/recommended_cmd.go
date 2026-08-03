@@ -8,7 +8,8 @@ import (
 	"os"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/application"
-	sdk "github.com/FlanChanXwO/pixiv-cli/pixiv"
+	"github.com/FlanChanXwO/pixiv-cli/sdk"
+	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/spf13/cobra"
 )
 
@@ -19,12 +20,6 @@ func (a app) runRecommended(cmd *cobra.Command, kind string, opts recommendedOpt
 	plan, err := parseListPlan(cmd, opts.listOptions)
 	if err != nil {
 		return err
-	}
-	if err := applyIllustFilter(&plan, opts.filter); err != nil {
-		return err
-	}
-	if plan.filter != nil && (kind == "novel" || kind == "user") {
-		return newUsageError(fmt.Errorf("--filter is only available for illustration recommendations"))
 	}
 	services := a.services()
 	request, jsonOverride, err := a.sdkRequest(cmd, opts.commandOptions)
@@ -65,55 +60,49 @@ func (a app) runRecommendedOnePooled(ctx context.Context, request application.SD
 		if kind == "manga" {
 			jsonKey = "manga"
 		}
-		fetch := func(client application.SDKClient, ctx context.Context, cursor sdk.Cursor) ([]sdk.Illust, sdk.Cursor, error) {
-			var result *sdk.IllustListResult
-			var err error
-			if kind == "illust" {
-				result, err = client.IllustRecommended(ctx, sdk.IllustRecommendedRequest{Cursor: cursor})
-			} else {
-				result, err = client.MangaRecommended(ctx, sdk.IllustRecommendedRequest{Cursor: cursor})
-			}
+		fetch := func(client application.SDKClient, ctx context.Context, cursor sdk.Cursor) ([]pixiv.Artwork, sdk.Cursor, error) {
+			result, err := client.RecommendedArtworks(ctx, pixiv.RecommendedArtworksRequest{Cursor: cursor})
 			if err != nil {
-				return nil, "", err
+				return nil, sdk.Cursor{}, err
 			}
-			return result.Illusts, result.NextCursor, nil
+			return result.Items, result.Next, nil
 		}
 		return a.runPooledIllustListWithKey(ctx, request, plan, jsonOut, ndjson, jsonKey, func() string {
 			return fmt.Sprintf("recommended %s", kind)
-		}, fetch, func(items []sdk.Illust, start int) error { return printIllusts(a.out, items, start, false) })
+		}, fetch, func(items []pixiv.Artwork, start int) error { return printIllusts(a.out, items, start, false) })
 	}
 	if kind == "novel" {
-		fetch := func(client application.SDKClient, ctx context.Context, cursor sdk.Cursor) ([]sdk.Novel, sdk.Cursor, error) {
-			result, err := client.NovelRecommended(ctx, sdk.NovelRecommendedRequest{Cursor: cursor})
+		fetch := func(client application.SDKClient, ctx context.Context, cursor sdk.Cursor) ([]pixiv.Novel, sdk.Cursor, error) {
+			result, err := client.RecommendedNovels(ctx, pixiv.RecommendedNovelsRequest{Cursor: cursor})
 			if err != nil {
-				return nil, "", err
+				return nil, sdk.Cursor{}, err
 			}
-			return result.Novels, result.NextCursor, nil
+			return result.Items, result.Next, nil
 		}
-		return a.runPooledNovelList(ctx, request, plan, jsonOut, ndjson, "recommended novels", fetch, func(items []sdk.Novel) error { return printNovels(a.out, items) })
+		return a.runPooledNovelList(ctx, request, plan, jsonOut, ndjson, "recommended novels", fetch, func(items []pixiv.Novel) error { return printNovels(a.out, items) })
 	}
-	fetch := func(client application.SDKClient, ctx context.Context, cursor sdk.Cursor) ([]sdk.RecommendedUserPreview, sdk.Cursor, error) {
-		result, err := client.UserRecommended(ctx, sdk.UserRecommendedRequest{Cursor: cursor})
+	fetch := func(client application.SDKClient, ctx context.Context, cursor sdk.Cursor) ([]pixiv.UserPreview, sdk.Cursor, error) {
+		result, err := client.RecommendedUsers(ctx, pixiv.RecommendedUsersRequest{Cursor: cursor})
 		if err != nil {
-			return nil, "", err
+			return nil, sdk.Cursor{}, err
 		}
-		return result.UserPreviews, result.NextCursor, nil
+		return result.Items, result.Next, nil
 	}
 	return a.runPooledRecommendedUserList(ctx, request, plan, jsonOut, ndjson, fetch)
 }
 
-func (a app) runPooledRecommendedUserList(ctx context.Context, request application.SDKClientRequest, plan listPlan, jsonOut, ndjson bool, fetch func(application.SDKClient, context.Context, sdk.Cursor) ([]sdk.RecommendedUserPreview, sdk.Cursor, error)) error {
+func (a app) runPooledRecommendedUserList(ctx context.Context, request application.SDKClientRequest, plan listPlan, jsonOut, ndjson bool, fetch func(application.SDKClient, context.Context, sdk.Cursor) ([]pixiv.UserPreview, sdk.Cursor, error)) error {
 	services := a.services()
 	return services.SDK.RunPooledOperation(ctx, request, func(ctx context.Context, client application.SDKClient) (bool, error) {
-		boundFetch := func(ctx context.Context, cursor sdk.Cursor) ([]sdk.RecommendedUserPreview, sdk.Cursor, error) {
+		boundFetch := func(ctx context.Context, cursor sdk.Cursor) ([]pixiv.UserPreview, sdk.Cursor, error) {
 			return fetch(client, ctx, cursor)
 		}
 		committed := false
 		if ndjson {
 			encoder := json.NewEncoder(a.out)
-			err := pageItems(ctx, plan, boundFetch, func(items []sdk.RecommendedUserPreview) error {
+			err := pageItems(ctx, plan, boundFetch, func(items []pixiv.UserPreview) error {
 				for _, item := range items {
-					record, err := application.RecordFromRecommendedUserPreview(item)
+					record, err := application.RecordFromUserPreview(item)
 					if err != nil {
 						return err
 					}
@@ -132,7 +121,7 @@ func (a app) runPooledRecommendedUserList(ctx context.Context, request applicati
 				return false, err
 			}
 			defer spool.Close()
-			if err := pageItems(ctx, plan, boundFetch, func(items []sdk.RecommendedUserPreview) error { return appendJSONArray(spool, items) }); err != nil {
+			if err := pageItems(ctx, plan, boundFetch, func(items []pixiv.UserPreview) error { return appendJSONArray(spool, items) }); err != nil {
 				return false, err
 			}
 			committed = true
@@ -140,7 +129,7 @@ func (a app) runPooledRecommendedUserList(ctx context.Context, request applicati
 			return committed, err
 		}
 		headingWritten := false
-		err := pageItems(ctx, plan, boundFetch, func(items []sdk.RecommendedUserPreview) error {
+		err := pageItems(ctx, plan, boundFetch, func(items []pixiv.UserPreview) error {
 			if !headingWritten {
 				committed = true
 				if _, err := fmt.Fprintln(a.out, "recommended users"); err != nil {
@@ -162,18 +151,12 @@ func (a app) runPooledRecommendedUserList(ctx context.Context, request applicati
 
 func (a app) runRecommendedOne(ctx context.Context, client application.SDKClient, plan listPlan, jsonOut bool, kind string) error {
 	if kind == "illust" || kind == "manga" {
-		fetch := func(ctx context.Context, cursor sdk.Cursor) ([]sdk.Illust, sdk.Cursor, error) {
-			var r *sdk.IllustListResult
-			var err error
-			if kind == "illust" {
-				r, err = client.IllustRecommended(ctx, sdk.IllustRecommendedRequest{Cursor: cursor})
-			} else {
-				r, err = client.MangaRecommended(ctx, sdk.IllustRecommendedRequest{Cursor: cursor})
-			}
+		fetch := func(ctx context.Context, cursor sdk.Cursor) ([]pixiv.Artwork, sdk.Cursor, error) {
+			r, err := client.RecommendedArtworks(ctx, pixiv.RecommendedArtworksRequest{Cursor: cursor})
 			if err != nil {
-				return nil, "", err
+				return nil, sdk.Cursor{}, err
 			}
-			return r.Illusts, r.NextCursor, nil
+			return r.Items, r.Next, nil
 		}
 		if kind == "manga" && jsonOut {
 			spool, err := newJSONArraySpool("manga")
@@ -181,7 +164,7 @@ func (a app) runRecommendedOne(ctx context.Context, client application.SDKClient
 				return err
 			}
 			defer spool.Close()
-			if err := pageItems(ctx, plan, fetch, func(items []sdk.Illust) error { return appendJSONArray(spool, items) }); err != nil {
+			if err := pageItems(ctx, plan, fetch, func(items []pixiv.Artwork) error { return appendJSONArray(spool, items) }); err != nil {
 				return err
 			}
 			return spool.Commit(a.out)
@@ -191,7 +174,7 @@ func (a app) runRecommendedOne(ctx context.Context, client application.SDKClient
 				return err
 			}
 		}
-		return a.runIllustList(ctx, plan, jsonOut, fetch, func(items []sdk.Illust, start int) error { return printIllusts(a.out, items, start, false) })
+		return a.runIllustList(ctx, plan, jsonOut, fetch, func(items []pixiv.Artwork, start int) error { return printIllusts(a.out, items, start, false) })
 	}
 	if kind == "novel" {
 		return a.runRecommendedNovels(ctx, client, plan, jsonOut)
@@ -200,12 +183,12 @@ func (a app) runRecommendedOne(ctx context.Context, client application.SDKClient
 }
 
 func (a app) runRecommendedNovels(ctx context.Context, client application.SDKClient, plan listPlan, jsonOut bool) error {
-	fetch := func(ctx context.Context, cursor sdk.Cursor) ([]sdk.Novel, sdk.Cursor, error) {
-		r, err := client.NovelRecommended(ctx, sdk.NovelRecommendedRequest{Cursor: cursor})
+	fetch := func(ctx context.Context, cursor sdk.Cursor) ([]pixiv.Novel, sdk.Cursor, error) {
+		r, err := client.RecommendedNovels(ctx, pixiv.RecommendedNovelsRequest{Cursor: cursor})
 		if err != nil {
-			return nil, "", err
+			return nil, sdk.Cursor{}, err
 		}
-		return r.Novels, r.NextCursor, nil
+		return r.Items, r.Next, nil
 	}
 	if jsonOut {
 		s, err := newJSONArraySpool("novels")
@@ -213,7 +196,7 @@ func (a app) runRecommendedNovels(ctx context.Context, client application.SDKCli
 			return err
 		}
 		defer s.Close()
-		if err := pageItems(ctx, plan, fetch, func(items []sdk.Novel) error { return appendJSONArray(s, items) }); err != nil {
+		if err := pageItems(ctx, plan, fetch, func(items []pixiv.Novel) error { return appendJSONArray(s, items) }); err != nil {
 			return err
 		}
 		return s.Commit(a.out)
@@ -221,16 +204,16 @@ func (a app) runRecommendedNovels(ctx context.Context, client application.SDKCli
 	if _, err := fmt.Fprintln(a.out, "recommended novels"); err != nil {
 		return err
 	}
-	return pageItems(ctx, plan, fetch, func(items []sdk.Novel) error { return printNovels(a.out, items) })
+	return pageItems(ctx, plan, fetch, func(items []pixiv.Novel) error { return printNovels(a.out, items) })
 }
 
 func (a app) runRecommendedUsers(ctx context.Context, client application.SDKClient, plan listPlan, jsonOut bool) error {
-	fetch := func(ctx context.Context, cursor sdk.Cursor) ([]sdk.RecommendedUserPreview, sdk.Cursor, error) {
-		r, err := client.UserRecommended(ctx, sdk.UserRecommendedRequest{Cursor: cursor})
+	fetch := func(ctx context.Context, cursor sdk.Cursor) ([]pixiv.UserPreview, sdk.Cursor, error) {
+		r, err := client.RecommendedUsers(ctx, pixiv.RecommendedUsersRequest{Cursor: cursor})
 		if err != nil {
-			return nil, "", err
+			return nil, sdk.Cursor{}, err
 		}
-		return r.UserPreviews, r.NextCursor, nil
+		return r.Items, r.Next, nil
 	}
 	if jsonOut {
 		s, err := newJSONArraySpool("user_previews")
@@ -238,7 +221,7 @@ func (a app) runRecommendedUsers(ctx context.Context, client application.SDKClie
 			return err
 		}
 		defer s.Close()
-		if err := pageItems(ctx, plan, fetch, func(items []sdk.RecommendedUserPreview) error { return appendJSONArray(s, items) }); err != nil {
+		if err := pageItems(ctx, plan, fetch, func(items []pixiv.UserPreview) error { return appendJSONArray(s, items) }); err != nil {
 			return err
 		}
 		return s.Commit(a.out)
@@ -246,7 +229,7 @@ func (a app) runRecommendedUsers(ctx context.Context, client application.SDKClie
 	if _, err := fmt.Fprintln(a.out, "recommended users"); err != nil {
 		return err
 	}
-	return pageItems(ctx, plan, fetch, func(items []sdk.RecommendedUserPreview) error { return printRecommendedUsers(a.out, items) })
+	return pageItems(ctx, plan, fetch, func(items []pixiv.UserPreview) error { return printRecommendedUsers(a.out, items) })
 }
 
 func (a app) runRecommendedAll(ctx context.Context, client application.SDKClient, plan listPlan, jsonOut bool) (bool, error) {
@@ -263,13 +246,12 @@ func (a app) runRecommendedAll(ctx context.Context, client application.SDKClient
 			return false, err
 		}
 	}
-	if err := pageItems(ctx, plan, func(ctx context.Context, c sdk.Cursor) ([]sdk.Illust, sdk.Cursor, error) {
-		r, e := client.IllustRecommended(ctx, sdk.IllustRecommendedRequest{Cursor: c})
+	if err := pageItems(ctx, plan, func(ctx context.Context, c sdk.Cursor) ([]pixiv.Artwork, sdk.Cursor, error) {
+		r, e := client.RecommendedArtworks(ctx, pixiv.RecommendedArtworksRequest{Cursor: c})
 		if e != nil {
-			return nil, "", e
+			return nil, sdk.Cursor{}, e
 		}
-		items, filterErr := filterIllustBatch(plan.filter, r.Illusts)
-		return items, r.NextCursor, filterErr
+		return r.Items, r.Next, nil
 	}, s.illusts); err != nil {
 		return false, err
 	}
@@ -281,20 +263,14 @@ func (a app) runRecommendedAll(ctx context.Context, client application.SDKClient
 			return false, err
 		}
 	}
-	if err := pageItems(ctx, plan, func(ctx context.Context, c sdk.Cursor) ([]sdk.Illust, sdk.Cursor, error) {
-		r, e := client.MangaRecommended(ctx, sdk.IllustRecommendedRequest{Cursor: c})
+	if err := pageItems(ctx, plan, func(ctx context.Context, c sdk.Cursor) ([]pixiv.Artwork, sdk.Cursor, error) {
+		r, e := client.RecommendedArtworks(ctx, pixiv.RecommendedArtworksRequest{Cursor: c})
 		if e != nil {
-			return nil, "", e
+			return nil, sdk.Cursor{}, e
 		}
-		items, filterErr := filterIllustBatch(plan.filter, r.Illusts)
-		return items, r.NextCursor, filterErr
+		return r.Items, r.Next, nil
 	}, s.illusts); err != nil {
 		return false, err
-	}
-	if plan.filter != nil {
-		// 表达式的输入域是 Illust；mixed recommendations 里其余实体没有这些字段，
-		// 因此明确不输出它们，而不是伪造零值再尝试匹配。
-		return true, s.Commit(a.out)
 	}
 	if err := s.section("novels"); err != nil {
 		return false, err
@@ -304,12 +280,12 @@ func (a app) runRecommendedAll(ctx context.Context, client application.SDKClient
 			return false, err
 		}
 	}
-	if err := pageItems(ctx, plan, func(ctx context.Context, c sdk.Cursor) ([]sdk.Novel, sdk.Cursor, error) {
-		r, e := client.NovelRecommended(ctx, sdk.NovelRecommendedRequest{Cursor: c})
+	if err := pageItems(ctx, plan, func(ctx context.Context, c sdk.Cursor) ([]pixiv.Novel, sdk.Cursor, error) {
+		r, e := client.RecommendedNovels(ctx, pixiv.RecommendedNovelsRequest{Cursor: c})
 		if e != nil {
-			return nil, "", e
+			return nil, sdk.Cursor{}, e
 		}
-		return r.Novels, r.NextCursor, nil
+		return r.Items, r.Next, nil
 	}, s.novels); err != nil {
 		return false, err
 	}
@@ -321,12 +297,12 @@ func (a app) runRecommendedAll(ctx context.Context, client application.SDKClient
 			return false, err
 		}
 	}
-	if err := pageItems(ctx, plan, func(ctx context.Context, c sdk.Cursor) ([]sdk.RecommendedUserPreview, sdk.Cursor, error) {
-		r, e := client.UserRecommended(ctx, sdk.UserRecommendedRequest{Cursor: c})
+	if err := pageItems(ctx, plan, func(ctx context.Context, c sdk.Cursor) ([]pixiv.UserPreview, sdk.Cursor, error) {
+		r, e := client.RecommendedUsers(ctx, pixiv.RecommendedUsersRequest{Cursor: c})
 		if e != nil {
-			return nil, "", e
+			return nil, sdk.Cursor{}, e
 		}
-		return r.UserPreviews, r.NextCursor, nil
+		return r.Items, r.Next, nil
 	}, s.users); err != nil {
 		return false, err
 	}
@@ -339,9 +315,9 @@ func (a app) runRecommendedAll(ctx context.Context, client application.SDKClient
 func (a app) runRecommendedAllNDJSON(ctx context.Context, client application.SDKClient, plan listPlan) (bool, error) {
 	encoder := json.NewEncoder(a.out)
 	committed := false
-	writeIllusts := func(items []sdk.Illust) error {
+	writeIllusts := func(items []pixiv.Artwork) error {
 		for _, item := range items {
-			record, err := application.RecordFromIllust(item)
+			record, err := application.RecordFromArtwork(item)
 			if err != nil {
 				return err
 			}
@@ -352,36 +328,31 @@ func (a app) runRecommendedAllNDJSON(ctx context.Context, client application.SDK
 		}
 		return nil
 	}
-	if err := pageItems(ctx, plan, func(ctx context.Context, cursor sdk.Cursor) ([]sdk.Illust, sdk.Cursor, error) {
-		result, err := client.IllustRecommended(ctx, sdk.IllustRecommendedRequest{Cursor: cursor})
+	if err := pageItems(ctx, plan, func(ctx context.Context, cursor sdk.Cursor) ([]pixiv.Artwork, sdk.Cursor, error) {
+		result, err := client.RecommendedArtworks(ctx, pixiv.RecommendedArtworksRequest{Cursor: cursor})
 		if err != nil {
-			return nil, "", err
+			return nil, sdk.Cursor{}, err
 		}
-		items, filterErr := filterIllustBatch(plan.filter, result.Illusts)
-		return items, result.NextCursor, filterErr
+		return result.Items, result.Next, nil
 	}, writeIllusts); err != nil {
 		return committed, err
 	}
-	if err := pageItems(ctx, plan, func(ctx context.Context, cursor sdk.Cursor) ([]sdk.Illust, sdk.Cursor, error) {
-		result, err := client.MangaRecommended(ctx, sdk.IllustRecommendedRequest{Cursor: cursor})
+	if err := pageItems(ctx, plan, func(ctx context.Context, cursor sdk.Cursor) ([]pixiv.Artwork, sdk.Cursor, error) {
+		result, err := client.RecommendedArtworks(ctx, pixiv.RecommendedArtworksRequest{Cursor: cursor})
 		if err != nil {
-			return nil, "", err
+			return nil, sdk.Cursor{}, err
 		}
-		items, filterErr := filterIllustBatch(plan.filter, result.Illusts)
-		return items, result.NextCursor, filterErr
+		return result.Items, result.Next, nil
 	}, writeIllusts); err != nil {
 		return committed, err
 	}
-	if plan.filter != nil {
-		return committed, nil
-	}
-	if err := pageItems(ctx, plan, func(ctx context.Context, cursor sdk.Cursor) ([]sdk.Novel, sdk.Cursor, error) {
-		result, err := client.NovelRecommended(ctx, sdk.NovelRecommendedRequest{Cursor: cursor})
+	if err := pageItems(ctx, plan, func(ctx context.Context, cursor sdk.Cursor) ([]pixiv.Novel, sdk.Cursor, error) {
+		result, err := client.RecommendedNovels(ctx, pixiv.RecommendedNovelsRequest{Cursor: cursor})
 		if err != nil {
-			return nil, "", err
+			return nil, sdk.Cursor{}, err
 		}
-		return result.Novels, result.NextCursor, nil
-	}, func(items []sdk.Novel) error {
+		return result.Items, result.Next, nil
+	}, func(items []pixiv.Novel) error {
 		for _, item := range items {
 			record, err := application.RecordFromNovel(item)
 			if err != nil {
@@ -396,15 +367,15 @@ func (a app) runRecommendedAllNDJSON(ctx context.Context, client application.SDK
 	}); err != nil {
 		return committed, err
 	}
-	err := pageItems(ctx, plan, func(ctx context.Context, cursor sdk.Cursor) ([]sdk.RecommendedUserPreview, sdk.Cursor, error) {
-		result, err := client.UserRecommended(ctx, sdk.UserRecommendedRequest{Cursor: cursor})
+	err := pageItems(ctx, plan, func(ctx context.Context, cursor sdk.Cursor) ([]pixiv.UserPreview, sdk.Cursor, error) {
+		result, err := client.RecommendedUsers(ctx, pixiv.RecommendedUsersRequest{Cursor: cursor})
 		if err != nil {
-			return nil, "", err
+			return nil, sdk.Cursor{}, err
 		}
-		return result.UserPreviews, result.NextCursor, nil
-	}, func(items []sdk.RecommendedUserPreview) error {
+		return result.Items, result.Next, nil
+	}, func(items []pixiv.UserPreview) error {
 		for _, item := range items {
-			record, err := application.RecordFromRecommendedUserPreview(item)
+			record, err := application.RecordFromUserPreview(item)
 			if err != nil {
 				return err
 			}
@@ -459,12 +430,12 @@ func (s *recommendationSpool) section(key string) error {
 func (s *recommendationSpool) write(value any) error {
 	if !s.jsonOut {
 		switch v := value.(type) {
-		case sdk.Illust:
-			return printIllusts(s.file, []sdk.Illust{v}, 0, false)
-		case sdk.Novel:
-			return printNovels(s.file, []sdk.Novel{v})
-		case sdk.RecommendedUserPreview:
-			return printRecommendedUsers(s.file, []sdk.RecommendedUserPreview{v})
+		case pixiv.Artwork:
+			return printIllusts(s.file, []pixiv.Artwork{v}, 0, false)
+		case pixiv.Novel:
+			return printNovels(s.file, []pixiv.Novel{v})
+		case pixiv.UserPreview:
+			return printRecommendedUsers(s.file, []pixiv.UserPreview{v})
 		}
 		return nil
 	}
@@ -474,14 +445,14 @@ func (s *recommendationSpool) write(value any) error {
 		}
 	}
 	s.firstItem = false
-	b, e := json.Marshal(value)
+	b, e := marshalJSONValue(value, false)
 	if e != nil {
 		return e
 	}
 	_, e = fmt.Fprintf(s.file, "\n    %s", b)
 	return e
 }
-func (s *recommendationSpool) illusts(items []sdk.Illust) error {
+func (s *recommendationSpool) illusts(items []pixiv.Artwork) error {
 	for _, v := range items {
 		if e := s.write(v); e != nil {
 			return e
@@ -489,7 +460,7 @@ func (s *recommendationSpool) illusts(items []sdk.Illust) error {
 	}
 	return nil
 }
-func (s *recommendationSpool) novels(items []sdk.Novel) error {
+func (s *recommendationSpool) novels(items []pixiv.Novel) error {
 	for _, v := range items {
 		if e := s.write(v); e != nil {
 			return e
@@ -497,7 +468,7 @@ func (s *recommendationSpool) novels(items []sdk.Novel) error {
 	}
 	return nil
 }
-func (s *recommendationSpool) users(items []sdk.RecommendedUserPreview) error {
+func (s *recommendationSpool) users(items []pixiv.UserPreview) error {
 	for _, v := range items {
 		if e := s.write(v); e != nil {
 			return e
@@ -525,7 +496,7 @@ func (s *recommendationSpool) Close() {
 	_ = s.file.Close()
 	_ = os.Remove(n)
 }
-func printNovels(w io.Writer, novels []sdk.Novel) error {
+func printNovels(w io.Writer, novels []pixiv.Novel) error {
 	for _, n := range novels {
 		if _, err := fmt.Fprintf(w, "%d %s — %s\n", n.ID, n.Title, n.User.Name); err != nil {
 			return err
@@ -533,7 +504,7 @@ func printNovels(w io.Writer, novels []sdk.Novel) error {
 	}
 	return nil
 }
-func printRecommendedUsers(w io.Writer, users []sdk.RecommendedUserPreview) error {
+func printRecommendedUsers(w io.Writer, users []pixiv.UserPreview) error {
 	for _, u := range users {
 		if _, err := fmt.Fprintf(w, "%d %s\n", u.User.ID, u.User.Name); err != nil {
 			return err

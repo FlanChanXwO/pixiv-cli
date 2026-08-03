@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/config"
-	sdk "github.com/FlanChanXwO/pixiv-cli/pixiv"
+	"github.com/FlanChanXwO/pixiv-cli/sdk"
 )
 
 // ErrAccountPoolExhausted 表示配置的账号均已冻结或均已在本次安全重放中尝试。
@@ -93,7 +93,7 @@ func (e AccountPoolExecutor) Run(ctx context.Context, attempt func(context.Conte
 		if committed || ctx.Err() != nil {
 			return attemptErr
 		}
-		retryAfter, ok := poolRetryAfter(attemptErr)
+		retryAfter, ok := poolRetryAfter(attemptErr, now())
 		if !ok {
 			return attemptErr
 		}
@@ -114,12 +114,21 @@ func validatePoolAccounts(configured, available []int64) error {
 	return nil
 }
 
-func poolRetryAfter(err error) (time.Duration, bool) {
+func poolRetryAfter(err error, now time.Time) (time.Duration, bool) {
 	var typed *sdk.Error
-	if !errors.As(err, &typed) || typed.Code != sdk.CodeRateLimited || !typed.HasRetryAfter {
+	if !errors.As(err, &typed) || typed.Code != sdk.CodeRateLimited || !typed.Retry.HasAfter {
 		return 0, false
 	}
-	return typed.RetryAfter, true
+	retryAfter := typed.Retry.After.Sub(now)
+	if retryAfter < 0 {
+		retryAfter = 0
+	}
+	return retryAfter, true
+}
+
+// PoolRetryAfter 从错误中提取有效的 Retry-After 建议，供账号池安全重放使用。
+func PoolRetryAfter(err error) (time.Duration, bool) {
+	return poolRetryAfter(err, time.Now())
 }
 
 func poolExhaustedError(lastRateLimit error) error {

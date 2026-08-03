@@ -5,7 +5,8 @@ import (
 	"errors"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/application"
-	sdk "github.com/FlanChanXwO/pixiv-cli/pixiv"
+	"github.com/FlanChanXwO/pixiv-cli/sdk"
+	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -35,7 +36,7 @@ type novelFollowIn struct {
 // 不用匿名 Web 搜索结果替代。
 func (a *App) novelFollow(ctx context.Context, _ *mcp.CallToolRequest, in novelFollowIn) (*mcp.CallToolResult, novelListOut, error) {
 	if in.Restrict == "" {
-		in.Restrict = string(sdk.RestrictPublic)
+		in.Restrict = string(pixiv.RestrictPublic)
 	}
 	plan, err := parseMCPListPlan(in.pageLimitIn)
 	if err != nil {
@@ -50,12 +51,12 @@ func (a *App) novelFollow(ctx context.Context, _ *mcp.CallToolRequest, in novelF
 		return a.novelListError(ctx, err)
 	}
 	defer release()
-	items, more, err := collectPages(ctx, plan, func(ctx context.Context, cursor sdk.Cursor) ([]sdk.Novel, sdk.Cursor, error) {
-		result, err := client.FollowingNovels(ctx, sdk.FollowingNovelsRequest{Restrict: sdk.Restrict(in.Restrict), Cursor: cursor})
+	items, more, err := collectPages(ctx, plan, func(ctx context.Context, cursor sdk.Cursor) ([]pixiv.Novel, sdk.Cursor, error) {
+		result, err := client.FollowingNovels(ctx, pixiv.FollowingNovelsRequest{Restrict: pixiv.Restrict(in.Restrict), Cursor: cursor})
 		if err != nil {
-			return nil, "", err
+			return nil, sdk.Cursor{}, err
 		}
-		return result.Novels, result.NextCursor, nil
+		return result.Items, result.Next, nil
 	})
 	if err != nil {
 		return a.novelListError(ctx, err)
@@ -69,14 +70,14 @@ func (a *App) novelFollow(ctx context.Context, _ *mcp.CallToolRequest, in novelF
 }
 
 type latestIllustIn struct {
-	ContentType  sdk.IllustType  `json:"content_type" jsonschema:"required: illust or manga"`
-	Filter       string          `json:"filter,omitempty" jsonschema:"safe local illustration filter expression"`
-	IllustFilter *illustFilterIn `json:"illust_filter,omitempty"`
+	ContentType  pixiv.SearchContentType `json:"content_type" jsonschema:"required: illust or manga"`
+	Filter       string                  `json:"filter,omitempty" jsonschema:"safe local illustration filter expression"`
+	IllustFilter *illustFilterIn         `json:"illust_filter,omitempty"`
 	pageLimitIn
 }
 
 func (a *App) illustNew(ctx context.Context, _ *mcp.CallToolRequest, in latestIllustIn) (*mcp.CallToolResult, illustQueryOut, error) {
-	if in.ContentType != sdk.IllustTypeIllust && in.ContentType != sdk.IllustTypeManga {
+	if in.ContentType != pixiv.SearchContentTypeIllust && in.ContentType != pixiv.SearchContentTypeManga {
 		return a.illustQueryError(ctx, errors.New("content_type must be one of: illust, manga"))
 	}
 	plan, err := parseMCPListPlan(in.pageLimitIn)
@@ -92,17 +93,17 @@ func (a *App) illustNew(ctx context.Context, _ *mcp.CallToolRequest, in latestIl
 		return a.illustQueryError(ctx, err)
 	}
 	defer release()
-	items, more, err := collectPages(ctx, plan, func(ctx context.Context, cursor sdk.Cursor) ([]sdk.Illust, sdk.Cursor, error) {
-		result, err := client.LatestIllusts(ctx, sdk.LatestIllustsRequest{Type: in.ContentType, Cursor: cursor})
+	items, more, err := collectPages(ctx, plan, func(ctx context.Context, cursor sdk.Cursor) ([]pixiv.Artwork, sdk.Cursor, error) {
+		result, err := client.LatestArtworks(ctx, pixiv.LatestArtworksRequest{ContentType: in.ContentType, Cursor: cursor})
 		if err != nil {
-			return nil, "", err
+			return nil, sdk.Cursor{}, err
 		}
-		return result.Illusts, result.NextCursor, nil
+		return result.Items, result.Next, nil
 	})
 	if err != nil {
 		return a.illustQueryError(ctx, err)
 	}
-	records, err := recordsFromIllusts(items)
+	records, err := recordsFromArtworks(items)
 	if err != nil {
 		return a.illustQueryError(ctx, err)
 	}
@@ -129,12 +130,12 @@ func (a *App) novelNew(ctx context.Context, _ *mcp.CallToolRequest, in latestNov
 		return a.novelListError(ctx, err)
 	}
 	defer release()
-	items, more, err := collectPages(ctx, plan, func(ctx context.Context, cursor sdk.Cursor) ([]sdk.Novel, sdk.Cursor, error) {
-		result, err := client.LatestNovels(ctx, sdk.LatestNovelsRequest{Cursor: cursor})
+	items, more, err := collectPages(ctx, plan, func(ctx context.Context, cursor sdk.Cursor) ([]pixiv.Novel, sdk.Cursor, error) {
+		result, err := client.LatestNovels(ctx, pixiv.LatestNovelsRequest{Cursor: cursor})
 		if err != nil {
-			return nil, "", err
+			return nil, sdk.Cursor{}, err
 		}
-		return result.Novels, result.NextCursor, nil
+		return result.Items, result.Next, nil
 	})
 	if err != nil {
 		return a.novelListError(ctx, err)
@@ -163,17 +164,17 @@ func (a *App) myPixivUsers(ctx context.Context, _ *mcp.CallToolRequest, in myPix
 	if err != nil {
 		return a.userListError(ctx, err)
 	}
-	client, userID, release, err := a.currentSDKUser(ctx)
+	client, _, release, err := a.currentSDKUser(ctx)
 	if err != nil {
 		return a.userListError(ctx, err)
 	}
 	defer release()
-	items, more, err := collectPages(ctx, plan, func(ctx context.Context, cursor sdk.Cursor) ([]sdk.UserPreview, sdk.Cursor, error) {
-		result, err := client.MyPixivUsers(ctx, sdk.MyPixivUsersRequest{UserID: userID, Cursor: cursor})
+	items, more, err := collectPages(ctx, plan, func(ctx context.Context, cursor sdk.Cursor) ([]pixiv.UserPreview, sdk.Cursor, error) {
+		result, err := client.MyPixivUsers(ctx, pixiv.MyPixivUsersRequest{Cursor: cursor})
 		if err != nil {
-			return nil, "", err
+			return nil, sdk.Cursor{}, err
 		}
-		return result.UserPreviews, result.NextCursor, nil
+		return result.Items, result.Next, nil
 	})
 	if err != nil {
 		return a.userListError(ctx, err)
@@ -211,17 +212,17 @@ func (a *App) myPixivIllusts(ctx context.Context, _ *mcp.CallToolRequest, in myP
 		return a.illustQueryError(ctx, err)
 	}
 	defer release()
-	items, more, err := collectPages(ctx, plan, func(ctx context.Context, cursor sdk.Cursor) ([]sdk.Illust, sdk.Cursor, error) {
-		result, err := client.MyPixivIllusts(ctx, sdk.MyPixivIllustsRequest{Cursor: cursor})
+	items, more, err := collectPages(ctx, plan, func(ctx context.Context, cursor sdk.Cursor) ([]pixiv.Artwork, sdk.Cursor, error) {
+		result, err := client.MyPixivArtworks(ctx, pixiv.MyPixivArtworksRequest{Cursor: cursor})
 		if err != nil {
-			return nil, "", err
+			return nil, sdk.Cursor{}, err
 		}
-		return result.Illusts, result.NextCursor, nil
+		return result.Items, result.Next, nil
 	})
 	if err != nil {
 		return a.illustQueryError(ctx, err)
 	}
-	records, err := recordsFromIllusts(items)
+	records, err := recordsFromArtworks(items)
 	if err != nil {
 		return a.illustQueryError(ctx, err)
 	}
@@ -243,12 +244,12 @@ func (a *App) myPixivNovels(ctx context.Context, _ *mcp.CallToolRequest, in myPi
 		return a.novelListError(ctx, err)
 	}
 	defer release()
-	items, more, err := collectPages(ctx, plan, func(ctx context.Context, cursor sdk.Cursor) ([]sdk.Novel, sdk.Cursor, error) {
-		result, err := client.MyPixivNovels(ctx, sdk.MyPixivNovelsRequest{Cursor: cursor})
+	items, more, err := collectPages(ctx, plan, func(ctx context.Context, cursor sdk.Cursor) ([]pixiv.Novel, sdk.Cursor, error) {
+		result, err := client.MyPixivNovels(ctx, pixiv.MyPixivNovelsRequest{Cursor: cursor})
 		if err != nil {
-			return nil, "", err
+			return nil, sdk.Cursor{}, err
 		}
-		return result.Novels, result.NextCursor, nil
+		return result.Items, result.Next, nil
 	})
 	if err != nil {
 		return a.novelListError(ctx, err)
@@ -295,12 +296,12 @@ func (a *App) userNovels(ctx context.Context, _ *mcp.CallToolRequest, in userNov
 		return a.userNovelListError(ctx, err)
 	}
 	defer release()
-	items, more, err := collectPages(ctx, plan, func(ctx context.Context, cursor sdk.Cursor) ([]sdk.Novel, sdk.Cursor, error) {
-		result, err := client.UserNovels(ctx, sdk.UserNovelsRequest{UserID: userID, Cursor: cursor})
+	items, more, err := collectPages(ctx, plan, func(ctx context.Context, cursor sdk.Cursor) ([]pixiv.Novel, sdk.Cursor, error) {
+		result, err := client.UserNovels(ctx, pixiv.UserNovelsRequest{UserID: userID, Cursor: cursor})
 		if err != nil {
-			return nil, "", err
+			return nil, sdk.Cursor{}, err
 		}
-		return result.Novels, result.NextCursor, nil
+		return result.Items, result.Next, nil
 	})
 	if err != nil {
 		return a.userNovelListError(ctx, err)

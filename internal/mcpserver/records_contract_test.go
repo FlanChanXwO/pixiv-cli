@@ -8,7 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	sdk "github.com/FlanChanXwO/pixiv-cli/pixiv"
+	"github.com/FlanChanXwO/pixiv-cli/sdk"
+	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -17,28 +18,28 @@ import (
 func TestEntityToolsExposeOnlyRecordsContract(t *testing.T) {
 	client := &fakeSDKClient{
 		userID:    90,
-		artworks:  []sdk.Illust{testSDKIllust(21, "artwork", 90)},
-		bookmarks: []sdk.Illust{testSDKIllust(22, "bookmark", 90)},
-		following: []sdk.UserPreview{{User: sdk.User{ID: 23, Name: "following"}}},
-		searchIllust: func(context.Context, sdk.SearchIllustRequest) (*sdk.IllustListResult, error) {
-			return &sdk.IllustListResult{Illusts: []sdk.Illust{testSDKIllust(1, "search-illust", 1)}}, nil
+		artworks:  []pixiv.Artwork{testSDKIllust(21, "artwork", 90)},
+		bookmarks: []pixiv.Artwork{testSDKIllust(22, "bookmark", 90)},
+		following: []pixiv.UserPreview{{User: pixiv.User{ID: 23, Name: "following"}}},
+		searchIllust: func(context.Context, pixiv.SearchArtworksRequest) (sdk.Page[pixiv.Artwork], error) {
+			return sdk.Page[pixiv.Artwork]{Items: []pixiv.Artwork{testSDKIllust(1, "search-illust", 1)}}, nil
 		},
-		searchNovel: func(context.Context, sdk.SearchNovelRequest) (*sdk.NovelListResult, error) {
-			return &sdk.NovelListResult{Novels: []sdk.Novel{{ID: 2, URL: "https://www.pixiv.net/novel/show.php?id=2", Title: "search-novel", User: sdk.User{ID: 2}}}}, nil
+		searchNovel: func(context.Context, pixiv.SearchNovelsRequest) (sdk.Page[pixiv.Novel], error) {
+			return sdk.Page[pixiv.Novel]{Items: []pixiv.Novel{{ID: 2, Title: "search-novel", User: pixiv.User{ID: 2}}}}, nil
 		},
-		searchUser: func(context.Context, sdk.SearchUserRequest) (*sdk.UserListResult, error) {
-			return &sdk.UserListResult{Source: sdk.UserSearchSourceApp, UserPreviews: []sdk.UserPreview{{User: sdk.User{ID: 3, Name: "search-user"}}}}, nil
+		searchUser: func(context.Context, pixiv.SearchUsersRequest) (sdk.Page[pixiv.UserPreview], error) {
+			return sdk.Page[pixiv.UserPreview]{Items: []pixiv.UserPreview{{User: pixiv.User{ID: 3, Name: "search-user"}}}}, nil
 		},
-		illustDetail: func(context.Context, int64) (*sdk.IllustDetail, error) {
-			return &sdk.IllustDetail{Illust: testSDKIllust(4, "detail", 4)}, nil
+		illustDetail: func(context.Context, int64) (pixiv.Artwork, error) {
+			return testSDKIllust(4, "detail", 4), nil
 		},
-		illustRanking: func(context.Context, sdk.IllustRankingRequest) (*sdk.IllustListResult, error) {
-			return &sdk.IllustListResult{Illusts: []sdk.Illust{testSDKIllust(5, "ranking", 5)}}, nil
+		illustRanking: func(context.Context, pixiv.ArtworkRankingRequest) (sdk.Page[pixiv.Artwork], error) {
+			return sdk.Page[pixiv.Artwork]{Items: []pixiv.Artwork{testSDKIllust(5, "ranking", 5)}}, nil
 		},
-		illustRecommended: func(context.Context, sdk.IllustRecommendedRequest) (*sdk.IllustListResult, error) {
-			return &sdk.IllustListResult{Illusts: []sdk.Illust{testSDKIllust(6, "recommended", 6)}}, nil
+		recommendedArtworks: func(context.Context, pixiv.RecommendedArtworksRequest, int) (sdk.Page[pixiv.Artwork], error) {
+			return sdk.Page[pixiv.Artwork]{Items: []pixiv.Artwork{testSDKIllust(6, "recommended", 6)}}, nil
 		},
-		userDetailResult: &sdk.UserDetailResult{User: sdk.User{ID: 7, Name: "detail-user"}, Profile: sdk.Profile{Region: "Tokyo"}},
+		userDetailResult: pixiv.UserDetail{User: pixiv.User{ID: 7, Name: "detail-user"}, Profile: pixiv.UserProfile{Region: "Tokyo"}},
 	}
 	session, closeSession := newSDKTestSession(t, client)
 	defer closeSession()
@@ -72,19 +73,19 @@ func TestEntityToolsExposeOnlyRecordsContract(t *testing.T) {
 
 func TestRecommendedAllFlattensRecordsInStableKindOrder(t *testing.T) {
 	client := &fakeSDKClient{
-		illustRecommended: func(context.Context, sdk.IllustRecommendedRequest) (*sdk.IllustListResult, error) {
-			return &sdk.IllustListResult{Illusts: []sdk.Illust{testSDKIllust(11, "illust", 1)}}, nil
-		},
-		mangaRecommended: func(context.Context, sdk.IllustRecommendedRequest) (*sdk.IllustListResult, error) {
+		recommendedArtworks: func(_ context.Context, _ pixiv.RecommendedArtworksRequest, call int) (sdk.Page[pixiv.Artwork], error) {
+			if call == 1 {
+				return sdk.Page[pixiv.Artwork]{Items: []pixiv.Artwork{testSDKIllust(11, "illust", 1)}}, nil
+			}
 			manga := testSDKIllust(12, "manga", 2)
-			manga.Type = string(sdk.IllustTypeManga)
-			return &sdk.IllustListResult{Illusts: []sdk.Illust{manga}}, nil
+			manga.Kind = pixiv.ArtworkKindManga
+			return sdk.Page[pixiv.Artwork]{Items: []pixiv.Artwork{manga}}, nil
 		},
-		novelRecommended: func(context.Context, sdk.NovelRecommendedRequest) (*sdk.NovelListResult, error) {
-			return &sdk.NovelListResult{Novels: []sdk.Novel{{ID: 13, URL: "https://www.pixiv.net/novel/show.php?id=13", Title: "novel", User: sdk.User{ID: 3}}}}, nil
+		novelRecommended: func(context.Context, pixiv.RecommendedNovelsRequest) (sdk.Page[pixiv.Novel], error) {
+			return sdk.Page[pixiv.Novel]{Items: []pixiv.Novel{{ID: 13, Title: "novel", User: pixiv.User{ID: 3}}}}, nil
 		},
-		userRecommended: func(context.Context, sdk.UserRecommendedRequest) (*sdk.UserRecommendedResult, error) {
-			return &sdk.UserRecommendedResult{UserPreviews: []sdk.RecommendedUserPreview{{User: sdk.User{ID: 14, Name: "user"}}}}, nil
+		userRecommended: func(context.Context, pixiv.RecommendedUsersRequest) (sdk.Page[pixiv.UserPreview], error) {
+			return sdk.Page[pixiv.UserPreview]{Items: []pixiv.UserPreview{{User: pixiv.User{ID: 14, Name: "user"}}}}, nil
 		},
 	}
 	session, closeSession := newSDKTestSession(t, client)
@@ -102,7 +103,7 @@ func TestRecommendedAllFlattensRecordsInStableKindOrder(t *testing.T) {
 		gotIDs = append(gotIDs, record["id"].(string))
 		gotTypes = append(gotTypes, record["type"].(string))
 	}
-	if !slices.Equal(gotIDs, []string{"11", "12", "13", "14"}) || !slices.Equal(gotTypes, []string{"illust", "manga", "novel", "user"}) {
+	if !slices.Equal(gotIDs, []string{"11", "12", "13", "14"}) || !slices.Equal(gotTypes, []string{"illustration", "manga", "novel", "user"}) {
 		t.Fatalf("flattened records = ids %v types %v", gotIDs, gotTypes)
 	}
 }
@@ -110,11 +111,11 @@ func TestRecommendedAllFlattensRecordsInStableKindOrder(t *testing.T) {
 func TestEntityRecordPreservesUserDetailEnvelopeAndErrorHasEmptyRecords(t *testing.T) {
 	profileURL := "https://example.test/profile"
 	client := &fakeSDKClient{
-		userDetailResult: &sdk.UserDetailResult{
-			User:             sdk.User{ID: 55, Name: "artist", Account: "artist-account"},
-			Profile:          sdk.Profile{Region: "Tokyo", Webpage: &profileURL, TotalIllusts: 9},
-			ProfilePublicity: sdk.ProfilePublicity{Region: true},
-			Workspace:        sdk.Workspace{PC: "desktop", Tool: "pen"},
+		userDetailResult: pixiv.UserDetail{
+			User:             pixiv.User{ID: 55, Name: "artist", Account: "artist-account"},
+			Profile:          pixiv.UserProfile{Region: "Tokyo", Webpage: profileURL, TotalIllusts: 9},
+			ProfilePublicity: pixiv.UserProfilePublicity{Region: true},
+			Workspace:        pixiv.UserWorkspace{PC: "desktop", Tool: "pen"},
 		},
 	}
 	session, closeSession := newSDKTestSession(t, client)
@@ -134,8 +135,8 @@ func TestEntityRecordPreservesUserDetailEnvelopeAndErrorHasEmptyRecords(t *testi
 		t.Fatalf("user detail envelope was lost: %#v", record)
 	}
 
-	failed, closeFailed := newSDKTestSession(t, &fakeSDKClient{searchIllust: func(context.Context, sdk.SearchIllustRequest) (*sdk.IllustListResult, error) {
-		return nil, errors.New("upstream failed")
+	failed, closeFailed := newSDKTestSession(t, &fakeSDKClient{searchIllust: func(context.Context, pixiv.SearchArtworksRequest) (sdk.Page[pixiv.Artwork], error) {
+		return sdk.Page[pixiv.Artwork]{}, errors.New("upstream failed")
 	}})
 	defer closeFailed()
 	errorResult := callTool(t, failed, "search_illust", map[string]any{"word": "record"})

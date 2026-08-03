@@ -5,10 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"testing"
-	"time"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/storage/auth"
-	sdk "github.com/FlanChanXwO/pixiv-cli/pixiv"
+	pixivapp "github.com/FlanChanXwO/pixiv-cli/internal/application/pixiv"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -18,25 +16,24 @@ func TestApplicationServicesReportMissingDependencies(t *testing.T) {
 	require.ErrorContains(t, err, "config store is not configured")
 
 	_, err = AccountService{}.Check(context.Background(), 123)
-	require.ErrorContains(t, err, "pixiv sdk client factory is not configured")
-
+	require.ErrorContains(t, err, "pixiv account service is not configured")
 }
 
-func TestAccountServiceUsesPublicSDKAccountStore(t *testing.T) {
+func TestAccountServiceUsesAuthDBAccountStore(t *testing.T) {
 	callOrder := make([]string, 0, 2)
-	client := &fakeAccountSDKClient{accounts: sdk.AccountsResult{DefaultUserID: 123, Accounts: []sdk.Account{{UserID: 123, Username: "alice", Default: true, HasToken: true}}}}
-	client.listAccounts = func() (*sdk.AccountsResult, error) {
+	store := &fakeAccountStore{}
+	store.listAccounts = func(context.Context) ([]pixivapp.Account, error) {
 		callOrder = append(callOrder, "list")
-		return &client.accounts, nil
+		return []pixivapp.Account{{UserID: 123, Username: "alice", Default: true}}, nil
 	}
-	client.importAccount = func(_ context.Context, token string) (*sdk.Account, error) {
+	store.importAccount = func(_ context.Context, token string, setDefault bool) (pixivapp.Account, error) {
 		callOrder = append(callOrder, "import")
-		if token != "  main/token  " {
+		if token != "main/token" {
 			t.Fatalf("ImportAccount token=%q", token)
 		}
-		return &sdk.Account{UserID: 456, Username: "bob", HasToken: true}, nil
+		return pixivapp.Account{UserID: 456, Username: "bob"}, nil
 	}
-	service := newAccountServiceForTest(client)
+	service := newAccountServiceForTest(store)
 
 	result, err := service.Import(context.Background(), AccountImportRequest{TokenInput: "  main/token  "})
 	require.NoError(t, err)
@@ -52,93 +49,91 @@ func TestAccountServiceUsesPublicSDKAccountStore(t *testing.T) {
 }
 
 func TestAccountServiceImportReportsUpdatedByAuthoritativeReturnedUID(t *testing.T) {
-	client := &fakeAccountSDKClient{accounts: sdk.AccountsResult{Accounts: []sdk.Account{{UserID: 456, Username: "before", HasToken: true}}}}
-	client.importAccount = func(context.Context, string) (*sdk.Account, error) {
-		return &sdk.Account{UserID: 456, Username: "after", Default: true, HasToken: true}, nil
+	store := &fakeAccountStore{}
+	store.listAccounts = func(context.Context) ([]pixivapp.Account, error) {
+		return []pixivapp.Account{{UserID: 456, Username: "before"}}, nil
+	}
+	store.importAccount = func(context.Context, string, bool) (pixivapp.Account, error) {
+		return pixivapp.Account{UserID: 456, Username: "after", Default: true}, nil
 	}
 
-	result, err := newAccountServiceForTest(client).Import(context.Background(), AccountImportRequest{TokenInput: "opaque-token"})
+	result, err := newAccountServiceForTest(store).Import(context.Background(), AccountImportRequest{TokenInput: "opaque-token"})
 	require.NoError(t, err)
 	body, err := json.Marshal(result)
 	require.NoError(t, err)
 	assert.JSONEq(t, `{"user_id":456,"username":"after","status":"updated"}`, string(body))
 }
 
-func TestAccountServiceExportUsesPublicSDKLocalBundle(t *testing.T) {
-	client := &fakeAccountSDKClient{}
-	client.exportAuthBundle = func(selection sdk.AuthExportSelection) (*sdk.AuthExportBundle, error) {
-		assert.Equal(t, sdk.AuthExportSelection{UserID: 456}, selection)
-		return &sdk.AuthExportBundle{
-			Schema:        sdk.AuthExportBundleSchema,
-			Version:       sdk.AuthExportBundleVersion,
-			DefaultUserID: 456,
-			Accounts:      []sdk.AuthExportSecretAccount{{UserID: 456, RefreshToken: "opaque-exported-token"}},
-		}, nil
+func TestAccountServiceExportUsesLocalTokens(t *testing.T) {
+	store := &fakeAccountStore{}
+	store.accountsWithTokens = func(context.Context) ([]pixivapp.AccountWithToken, error) {
+		return []pixivapp.AccountWithToken{{UserID: 456, Username: "alice", Default: true, RefreshToken: "opaque-exported-token"}}, nil
 	}
-	var gotRequest SDKClientRequest
-	service := AccountService{SDK: SDKService{NewClient: func(request SDKClientRequest) (SDKClient, error) {
-		gotRequest = request
-		return client, nil
-	}}}
 
-	result, err := service.Export(AccountExportRequest{UserID: 456})
+	result, err := AccountService{Pixiv: store}.Export(AccountExportRequest{UserID: 456})
 	require.NoError(t, err)
 	assert.Equal(t, "opaque-exported-token", result.RefreshToken)
 	assert.Equal(t, 1, result.AccountCount)
-	assert.JSONEq(t, `{"schema":"pixiv-cli.auth-export","version":1,"default_user_id":456,"accounts":[{"user_id":456,"username":"","refresh_token":"opaque-exported-token"}]}`, string(result.Bundle))
-	assert.Equal(t, SDKClientRequest{}, gotRequest)
 }
 
-func TestAccountServiceImportBundleUsesPublicSDKOfflineRestore(t *testing.T) {
-	client := &fakeAccountSDKClient{}
-	client.restoreAuthBundle = func(bundle *sdk.AuthExportBundle) (*sdk.AuthRestoreResult, error) {
-		require.Len(t, bundle.Accounts, 2)
-		assert.Equal(t, "new-secret", bundle.Accounts[0].RefreshToken)
-		assert.Equal(t, "updated-secret", bundle.Accounts[1].RefreshToken)
-		return &sdk.AuthRestoreResult{
-			DefaultUserID: 321,
-			Added:         []sdk.Account{{UserID: 654, Username: "new", HasToken: true}},
-			Updated:       []sdk.Account{{UserID: 321, Username: "updated", Default: true, HasToken: true}},
+func TestAccountServiceExportAllEncodesBundle(t *testing.T) {
+	store := &fakeAccountStore{}
+	store.accountsWithTokens = func(context.Context) ([]pixivapp.AccountWithToken, error) {
+		return []pixivapp.AccountWithToken{
+			{UserID: 456, Username: "alice", Default: true, RefreshToken: "token-a"},
+			{UserID: 789, Username: "bob", RefreshToken: "token-b"},
 		}, nil
 	}
-	var gotRequest SDKClientRequest
-	service := AccountService{SDK: SDKService{NewClient: func(request SDKClientRequest) (SDKClient, error) {
-		gotRequest = request
-		return client, nil
-	}}}
-	const body = `{"schema":"pixiv-cli.auth-export","version":1,"default_user_id":321,"accounts":[{"user_id":654,"username":"new","refresh_token":"new-secret"},{"user_id":321,"username":"updated","refresh_token":"updated-secret"}]}`
 
-	result, err := service.ImportBundle([]byte(body))
+	result, err := AccountService{Pixiv: store}.Export(AccountExportRequest{All: true})
 	require.NoError(t, err)
-	assert.Equal(t, SDKClientRequest{}, gotRequest)
-	assert.Equal(t, int64(321), result.DefaultUserID)
-	resultBody, err := json.Marshal(result)
-	require.NoError(t, err)
-	assert.JSONEq(t, `{"accounts":[{"user_id":654,"username":"new","status":"added"},{"user_id":321,"username":"updated","status":"updated"}],"default_user_id":321}`, string(resultBody))
+	assert.Equal(t, 2, result.AccountCount)
+	assert.JSONEq(t, `{"schema":"pixiv-cli.auth-export","version":1,"default_user_id":456,"accounts":[{"user_id":456,"username":"alice","refresh_token":"token-a"},{"user_id":789,"username":"bob","refresh_token":"token-b"}]}`, string(result.Bundle))
 }
 
-func TestAccountServiceCheckUsesPublicSDKRequest(t *testing.T) {
-	client := &fakeAccountSDKClient{}
-	client.checkAccount = func(_ context.Context, userID int64) (*sdk.Account, error) {
-		assert.Equal(t, int64(123), userID)
-		return &sdk.Account{UserID: 123, Username: "alice", Default: true, HasToken: true}, nil
+func TestAccountServiceImportBundleRestoresOffline(t *testing.T) {
+	var restored []pixivapp.Account
+	var tokens []string
+	store := &fakeAccountStore{}
+	store.restoreAccount = func(_ context.Context, account pixivapp.Account, token string, setDefault bool) error {
+		restored = append(restored, account)
+		tokens = append(tokens, token)
+		return nil
 	}
-	result, err := newAccountServiceForTest(client).CheckWithRequest(context.Background(), AccountCheckRequest{UserID: 123})
+	const body = `{"schema":"pixiv-cli.auth-export","version":1,"default_user_id":321,"accounts":[{"user_id":654,"username":"new","refresh_token":"new-secret"},{"user_id":321,"username":"updated","refresh_token":"updated-secret"}]}`
+
+	result, err := AccountService{Pixiv: store}.ImportBundle([]byte(body))
+	require.NoError(t, err)
+	assert.Equal(t, int64(321), result.DefaultUserID)
+	require.Len(t, restored, 2)
+	assert.Equal(t, []string{"new-secret", "updated-secret"}, tokens)
+	resultBody, err := json.Marshal(result)
+	require.NoError(t, err)
+	assert.JSONEq(t, `{"accounts":[{"user_id":654,"username":"new","status":"added"},{"user_id":321,"username":"updated","status":"added"}],"default_user_id":321}`, string(resultBody))
+}
+
+func TestAccountServiceCheckUsesAccountStore(t *testing.T) {
+	store := &fakeAccountStore{}
+	store.checkAccount = func(_ context.Context, userID int64) (pixivapp.Account, error) {
+		assert.Equal(t, int64(123), userID)
+		return pixivapp.Account{UserID: 123, Username: "alice", Default: true}, nil
+	}
+	result, err := newAccountServiceForTest(store).CheckWithRequest(context.Background(), AccountCheckRequest{UserID: 123})
 	require.NoError(t, err)
 	assert.Equal(t, AccountResult{UserID: 123, Username: "alice", Default: true, HasToken: true}, result)
 }
 
 func TestAccountServiceCheckPrefersEnvironmentTokenWithoutSelectingStoredAccount(t *testing.T) {
-	client := &fakeAccountSDKClient{}
-	client.checkAccount = func(_ context.Context, userID int64) (*sdk.Account, error) {
+	store := &fakeAccountStore{}
+	store.checkAccount = func(_ context.Context, userID int64) (pixivapp.Account, error) {
 		t.Fatalf("stored CheckAccount(%d) was called while an environment token exists", userID)
-		return nil, nil
+		return pixivapp.Account{}, nil
 	}
-	client.checkRefreshToken = func(_ context.Context, token string) (*sdk.Account, error) {
+	store.checkRefreshToken = func(_ context.Context, token string) (pixivapp.Account, error) {
 		assert.Equal(t, "environment-token", token)
-		return &sdk.Account{UserID: 456, Username: "environment", HasToken: true}, nil
+		return pixivapp.Account{UserID: 456, Username: "environment"}, nil
 	}
-	service := newAccountServiceForTest(client)
+	service := newAccountServiceForTest(store)
 	service.RefreshTokenFromEnv = func() (string, error) { return "environment-token", nil }
 
 	result, err := service.CheckWithRequest(context.Background(), AccountCheckRequest{})
@@ -147,16 +142,16 @@ func TestAccountServiceCheckPrefersEnvironmentTokenWithoutSelectingStoredAccount
 }
 
 func TestAccountServiceCheckExplicitUIDDoesNotUseEnvironmentToken(t *testing.T) {
-	client := &fakeAccountSDKClient{}
-	client.checkAccount = func(_ context.Context, userID int64) (*sdk.Account, error) {
+	store := &fakeAccountStore{}
+	store.checkAccount = func(_ context.Context, userID int64) (pixivapp.Account, error) {
 		assert.Equal(t, int64(123), userID)
-		return &sdk.Account{UserID: 123, Username: "stored", Default: true, HasToken: true}, nil
+		return pixivapp.Account{UserID: 123, Username: "stored", Default: true}, nil
 	}
-	client.checkRefreshToken = func(_ context.Context, token string) (*sdk.Account, error) {
+	store.checkRefreshToken = func(_ context.Context, token string) (pixivapp.Account, error) {
 		t.Fatalf("CheckRefreshToken(%q) was called for an explicit UID", token)
-		return nil, nil
+		return pixivapp.Account{}, nil
 	}
-	service := newAccountServiceForTest(client)
+	service := newAccountServiceForTest(store)
 	service.RefreshTokenFromEnv = func() (string, error) { return "environment-token", nil }
 
 	result, err := service.CheckWithRequest(context.Background(), AccountCheckRequest{UserID: 123})
@@ -164,40 +159,21 @@ func TestAccountServiceCheckExplicitUIDDoesNotUseEnvironmentToken(t *testing.T) 
 	assert.Equal(t, AccountResult{UserID: 123, Username: "stored", Default: true, HasToken: true}, result)
 }
 
-func TestAccountServiceRefreshUpdatesTokenAndPremiumStatusThroughOperationSnapshot(t *testing.T) {
-	checkedAt := time.Date(2026, time.July, 25, 10, 0, 0, 0, time.UTC)
+func TestAccountServiceRefreshUpdatesPremiumStatus(t *testing.T) {
 	premium := false
-	client := &fakeAccountSDKClient{accounts: sdk.AccountsResult{DefaultUserID: 123, Accounts: []sdk.Account{{
-		UserID: 123, Username: "refreshed-name", Default: true, HasToken: true,
-		PremiumStatus: &premium, PremiumStatusCheckedAt: &checkedAt,
-	}}}}
-	client.currentUserID = func(context.Context) (int64, error) { return 123, nil }
-	client.refreshPremiumStatus = func(context.Context) (*sdk.PremiumStatus, error) {
-		return &sdk.PremiumStatus{IsPremium: false, CheckedAt: checkedAt}, nil
+	store := &fakeAccountStore{}
+	store.refreshAccount = func(_ context.Context, userID int64) (pixivapp.Account, error) {
+		assert.Equal(t, int64(123), userID)
+		return pixivapp.Account{UserID: 123, Username: "refreshed-name", Default: true, Premium: &premium}, nil
 	}
-	var requests []SDKClientRequest
-	service := AccountService{SDK: SDKService{NewClient: func(got SDKClientRequest) (SDKClient, error) {
-		requests = append(requests, got)
-		return client, nil
-	}}}
-	proxy := "http://127.0.0.1:7890"
 
-	result, err := service.RefreshWithRequest(context.Background(), AccountRefreshRequest{UserID: 123, HTTPSProxyOverride: &proxy})
+	result, err := AccountService{Pixiv: store}.RefreshWithRequest(context.Background(), AccountRefreshRequest{UserID: 123})
 	require.NoError(t, err)
-	require.Len(t, requests, 2)
-	assert.Equal(t, SDKClientRequest{UserID: 123, HTTPSProxyOverride: &proxy}, requests[0])
-	assert.Equal(t, SDKClientRequest{}, requests[1])
-	assert.Equal(t, AccountResult{
-		UserID: 123, Username: "refreshed-name", Default: true, HasToken: true,
-		PremiumStatus: &premium, PremiumStatusCheckedAt: &checkedAt,
-	}, result)
+	assert.Equal(t, AccountResult{UserID: 123, Username: "refreshed-name", Default: true, HasToken: true, PremiumStatus: &premium}, result)
 }
 
-func TestAccountServiceImportRejectsCookieBeforeOpeningSDK(t *testing.T) {
-	service := AccountService{SDK: SDKService{NewClient: func(SDKClientRequest) (SDKClient, error) {
-		t.Fatal("SDK client was opened for a cookie input")
-		return nil, nil
-	}}}
+func TestAccountServiceImportRejectsCookieBeforeOpeningStore(t *testing.T) {
+	service := AccountService{Pixiv: &fakeAccountStore{}}
 
 	_, err := service.Import(context.Background(), AccountImportRequest{TokenInput: "refresh_token=secret"})
 	require.ErrorContains(t, err, "cookie input is not supported")
@@ -205,25 +181,25 @@ func TestAccountServiceImportRejectsCookieBeforeOpeningSDK(t *testing.T) {
 
 func TestAccountServiceRemoveReturnsRemovedAccountAndUpdatedDefault(t *testing.T) {
 	listCalls := 0
-	client := &fakeAccountSDKClient{}
-	client.listAccounts = func() (*sdk.AccountsResult, error) {
+	store := &fakeAccountStore{}
+	store.listAccounts = func(context.Context) ([]pixivapp.Account, error) {
 		listCalls++
 		if listCalls == 1 {
-			return &sdk.AccountsResult{DefaultUserID: 123, Accounts: []sdk.Account{
-				{UserID: 123, Username: "alice", Default: true, HasToken: true},
-				{UserID: 456, Username: "bob", HasToken: true},
-			}}, nil
+			return []pixivapp.Account{
+				{UserID: 123, Username: "alice", Default: true},
+				{UserID: 456, Username: "bob"},
+			}, nil
 		}
-		return &sdk.AccountsResult{DefaultUserID: 456, Accounts: []sdk.Account{
-			{UserID: 456, Username: "bob", Default: true, HasToken: true},
-		}}, nil
+		return []pixivapp.Account{
+			{UserID: 456, Username: "bob", Default: true},
+		}, nil
 	}
-	client.removeAccount = func(userID int64) error {
+	store.removeAccount = func(_ context.Context, userID int64) error {
 		assert.Equal(t, int64(123), userID)
 		return nil
 	}
 
-	removed, defaultUserID, err := newAccountServiceForTest(client).Remove(123)
+	removed, defaultUserID, err := newAccountServiceForTest(store).Remove(123)
 	require.NoError(t, err)
 	assert.Equal(t, AccountResult{UserID: 123, Username: "alice", HasToken: true}, removed)
 	assert.Equal(t, int64(456), defaultUserID)
@@ -231,229 +207,128 @@ func TestAccountServiceRemoveReturnsRemovedAccountAndUpdatedDefault(t *testing.T
 }
 
 func TestAccountServiceRemoveReportsNotFoundWithoutMutation(t *testing.T) {
-	client := &fakeAccountSDKClient{accounts: sdk.AccountsResult{
-		DefaultUserID: 123,
-		Accounts:      []sdk.Account{{UserID: 123, Username: "alice", Default: true, HasToken: true}},
-	}}
-	client.removeAccount = func(int64) error {
+	store := &fakeAccountStore{}
+	store.listAccounts = func(context.Context) ([]pixivapp.Account, error) {
+		return []pixivapp.Account{{UserID: 123, Username: "alice", Default: true}}, nil
+	}
+	store.removeAccount = func(context.Context, int64) error {
 		t.Fatal("RemoveAccount was called for an unknown uid")
 		return nil
 	}
 
-	_, _, err := newAccountServiceForTest(client).Remove(999)
+	_, _, err := newAccountServiceForTest(store).Remove(999)
 	require.EqualError(t, err, "account uid 999 not found")
 }
 
-func TestAccountServiceRemovePropagatesDependencyErrors(t *testing.T) {
-	t.Run("initial client", func(t *testing.T) {
-		wantErr := errors.New("open list client")
-		service := AccountService{SDK: SDKService{NewClient: func(SDKClientRequest) (SDKClient, error) {
-			return nil, wantErr
-		}}}
-
-		_, _, err := service.Remove(123)
-		require.ErrorIs(t, err, wantErr)
-	})
-
-	t.Run("initial list", func(t *testing.T) {
-		wantErr := errors.New("list accounts")
-		client := &fakeAccountSDKClient{listAccounts: func() (*sdk.AccountsResult, error) {
-			return nil, wantErr
-		}}
-
-		_, _, err := newAccountServiceForTest(client).Remove(123)
-		require.ErrorIs(t, err, wantErr)
-	})
-
-	t.Run("remove client", func(t *testing.T) {
-		wantErr := errors.New("open remove client")
-		client := &fakeAccountSDKClient{accounts: sdk.AccountsResult{
-			Accounts: []sdk.Account{{UserID: 123, HasToken: true}},
-		}}
-		calls := 0
-		service := AccountService{SDK: SDKService{NewClient: func(SDKClientRequest) (SDKClient, error) {
-			calls++
-			if calls == 2 {
-				return nil, wantErr
-			}
-			return client, nil
-		}}}
-
-		_, _, err := service.Remove(123)
-		require.ErrorIs(t, err, wantErr)
-	})
-
-	t.Run("remove account", func(t *testing.T) {
-		wantErr := errors.New("remove account")
-		client := &fakeAccountSDKClient{
-			accounts: sdk.AccountsResult{Accounts: []sdk.Account{{UserID: 123, HasToken: true}}},
-			removeAccount: func(int64) error {
-				return wantErr
-			},
-		}
-
-		_, _, err := newAccountServiceForTest(client).Remove(123)
-		require.ErrorIs(t, err, wantErr)
-	})
-
-	t.Run("updated list", func(t *testing.T) {
-		wantErr := errors.New("updated list accounts")
-		listCalls := 0
-		client := &fakeAccountSDKClient{listAccounts: func() (*sdk.AccountsResult, error) {
-			listCalls++
-			if listCalls == 2 {
-				return nil, wantErr
-			}
-			return &sdk.AccountsResult{Accounts: []sdk.Account{{UserID: 123, HasToken: true}}}, nil
-		}}
-
-		_, _, err := newAccountServiceForTest(client).Remove(123)
-		require.ErrorIs(t, err, wantErr)
-	})
-}
-
 func TestAccountServiceUseSelectsRequestedAccount(t *testing.T) {
-	client := &fakeAccountSDKClient{selectAccount: func(userID int64) error {
+	store := &fakeAccountStore{}
+	store.useAccount = func(_ context.Context, userID int64) error {
 		assert.Equal(t, int64(456), userID)
 		return nil
-	}}
+	}
 
-	userID, err := newAccountServiceForTest(client).Use(456)
+	userID, err := newAccountServiceForTest(store).Use(456)
 	require.NoError(t, err)
 	assert.Equal(t, int64(456), userID)
 }
 
-func TestAccountServiceUsePropagatesDependencyErrors(t *testing.T) {
-	clientErr := errors.New("open select client")
-	service := AccountService{SDK: SDKService{NewClient: func(SDKClientRequest) (SDKClient, error) {
-		return nil, clientErr
-	}}}
-	_, err := service.Use(123)
-	require.ErrorIs(t, err, clientErr)
-
-	selectErr := errors.New("select account")
-	client := &fakeAccountSDKClient{selectAccount: func(int64) error { return selectErr }}
-	_, err = newAccountServiceForTest(client).Use(123)
-	require.ErrorIs(t, err, selectErr)
+func TestAccountServicePropagatesMissingStoreError(t *testing.T) {
+	_, err := (AccountService{Pixiv: nil}).Use(123)
+	require.ErrorContains(t, err, "pixiv account service is not configured")
 }
 
-// fakeAccountSDKClient 嵌入完整公开 facade，只覆写本组测试经过的账号方法；这样
-// 测试从 application 到公开 SDK 边界观察行为，不再模拟 legacy Source。
-type fakeAccountSDKClient struct {
-	SDKClient
-	accounts             sdk.AccountsResult
-	importAccount        func(context.Context, string) (*sdk.Account, error)
-	listAccounts         func() (*sdk.AccountsResult, error)
-	selectAccount        func(int64) error
-	removeAccount        func(int64) error
-	checkAccount         func(context.Context, int64) (*sdk.Account, error)
-	checkRefreshToken    func(context.Context, string) (*sdk.Account, error)
-	currentUserID        func(context.Context) (int64, error)
-	refreshPremiumStatus func(context.Context) (*sdk.PremiumStatus, error)
-	exportAuthBundle     func(sdk.AuthExportSelection) (*sdk.AuthExportBundle, error)
-	restoreAuthBundle    func(*sdk.AuthExportBundle) (*sdk.AuthRestoreResult, error)
+// fakeAccountStore 实现 AccountStore；只覆写本组测试经过的方法。
+type fakeAccountStore struct {
+	importAccount      func(context.Context, string, bool) (pixivapp.Account, error)
+	listAccounts       func(context.Context) ([]pixivapp.Account, error)
+	useAccount         func(context.Context, int64) error
+	removeAccount      func(context.Context, int64) error
+	checkAccount       func(context.Context, int64) (pixivapp.Account, error)
+	checkRefreshToken  func(context.Context, string) (pixivapp.Account, error)
+	exportRefreshToken func(context.Context, int64) (string, error)
+	refreshAccount     func(context.Context, int64) (pixivapp.Account, error)
+	currentUser        func(context.Context) (*pixivapp.Account, error)
+	restoreAccount     func(context.Context, pixivapp.Account, string, bool) error
+	accountsWithTokens func(context.Context) ([]pixivapp.AccountWithToken, error)
 }
 
-func (f *fakeAccountSDKClient) ExportAuthBundle(selection sdk.AuthExportSelection) (*sdk.AuthExportBundle, error) {
-	if f.exportAuthBundle != nil {
-		return f.exportAuthBundle(selection)
-	}
-	return nil, errors.New("unexpected auth bundle export")
-}
-
-func (f *fakeAccountSDKClient) RestoreAuthBundle(bundle *sdk.AuthExportBundle) (*sdk.AuthRestoreResult, error) {
-	if f.restoreAuthBundle != nil {
-		return f.restoreAuthBundle(bundle)
-	}
-	return nil, errors.New("unexpected auth bundle restore")
-}
-
-func (f *fakeAccountSDKClient) ImportAccount(ctx context.Context, token string) (*sdk.Account, error) {
+func (f *fakeAccountStore) ImportAccount(ctx context.Context, token string, setDefault bool) (pixivapp.Account, error) {
 	if f.importAccount != nil {
-		return f.importAccount(ctx, token)
+		return f.importAccount(ctx, token, setDefault)
 	}
-	return nil, errors.New("unexpected import")
+	return pixivapp.Account{}, errors.New("unexpected import")
 }
-func (f *fakeAccountSDKClient) ListAccounts() (*sdk.AccountsResult, error) {
+
+func (f *fakeAccountStore) ListAccounts(ctx context.Context) ([]pixivapp.Account, error) {
 	if f.listAccounts != nil {
-		return f.listAccounts()
+		return f.listAccounts(ctx)
 	}
-	return &f.accounts, nil
+	return []pixivapp.Account{}, nil
 }
-func (f *fakeAccountSDKClient) SelectAccount(userID int64) error {
-	if f.selectAccount != nil {
-		return f.selectAccount(userID)
+
+func (f *fakeAccountStore) UseAccount(ctx context.Context, userID int64) error {
+	if f.useAccount != nil {
+		return f.useAccount(ctx, userID)
 	}
 	return nil
 }
-func (f *fakeAccountSDKClient) RemoveAccount(userID int64) error {
+
+func (f *fakeAccountStore) RemoveAccount(ctx context.Context, userID int64) error {
 	if f.removeAccount != nil {
-		return f.removeAccount(userID)
+		return f.removeAccount(ctx, userID)
 	}
 	return nil
 }
-func (f *fakeAccountSDKClient) CheckAccount(ctx context.Context, userID int64) (*sdk.Account, error) {
+
+func (f *fakeAccountStore) CheckAccount(ctx context.Context, userID int64) (pixivapp.Account, error) {
 	if f.checkAccount != nil {
 		return f.checkAccount(ctx, userID)
 	}
-	return nil, errors.New("unexpected check")
+	return pixivapp.Account{}, errors.New("unexpected check")
 }
 
-func (f *fakeAccountSDKClient) CheckRefreshToken(ctx context.Context, token string) (*sdk.Account, error) {
+func (f *fakeAccountStore) CheckRefreshToken(ctx context.Context, token string) (pixivapp.Account, error) {
 	if f.checkRefreshToken != nil {
 		return f.checkRefreshToken(ctx, token)
 	}
-	return nil, errors.New("unexpected refresh token check")
+	return pixivapp.Account{}, errors.New("unexpected refresh token check")
 }
 
-func (f *fakeAccountSDKClient) CurrentUserID(ctx context.Context) (int64, error) {
-	if f.currentUserID != nil {
-		return f.currentUserID(ctx)
+func (f *fakeAccountStore) ExportRefreshToken(ctx context.Context, userID int64) (string, error) {
+	if f.exportRefreshToken != nil {
+		return f.exportRefreshToken(ctx, userID)
 	}
-	return 0, errors.New("unexpected current user id")
+	return "", errors.New("unexpected export")
 }
 
-func (f *fakeAccountSDKClient) RefreshPremiumStatus(ctx context.Context) (*sdk.PremiumStatus, error) {
-	if f.refreshPremiumStatus != nil {
-		return f.refreshPremiumStatus(ctx)
+func (f *fakeAccountStore) RefreshAccount(ctx context.Context, userID int64) (pixivapp.Account, error) {
+	if f.refreshAccount != nil {
+		return f.refreshAccount(ctx, userID)
 	}
-	return nil, errors.New("unexpected premium status refresh")
+	return pixivapp.Account{}, errors.New("unexpected refresh")
 }
 
-func newAccountServiceForTest(client SDKClient) AccountService {
-	return AccountService{SDK: SDKService{NewClient: func(SDKClientRequest) (SDKClient, error) { return client, nil }}}
-}
-
-type memoryAuthRepository struct {
-	store auth.AuthStore
-}
-
-func (r *memoryAuthRepository) Load() (auth.AuthStore, error) {
-	if r.store.Accounts == nil {
-		r.store.Accounts = []auth.Account{}
+func (f *fakeAccountStore) CurrentUser(ctx context.Context) (*pixivapp.Account, error) {
+	if f.currentUser != nil {
+		return f.currentUser(ctx)
 	}
-	return r.store, nil
+	return &pixivapp.Account{}, nil
 }
 
-func (r *memoryAuthRepository) Save(store auth.AuthStore) error {
-	r.store = store
+func (f *fakeAccountStore) RestoreAccount(ctx context.Context, account pixivapp.Account, token string, setDefault bool) error {
+	if f.restoreAccount != nil {
+		return f.restoreAccount(ctx, account, token, setDefault)
+	}
 	return nil
 }
 
-type legacyThenMemoryAuthRepository struct {
-	store auth.AuthStore
-	saved bool
-}
-
-func (r *legacyThenMemoryAuthRepository) Load() (auth.AuthStore, error) {
-	if !r.saved {
-		return auth.AuthStore{}, auth.LegacySchemaError{Field: "default_account"}
+func (f *fakeAccountStore) AccountsWithTokens(ctx context.Context) ([]pixivapp.AccountWithToken, error) {
+	if f.accountsWithTokens != nil {
+		return f.accountsWithTokens(ctx)
 	}
-	return r.store, nil
+	return []pixivapp.AccountWithToken{}, nil
 }
 
-func (r *legacyThenMemoryAuthRepository) Save(store auth.AuthStore) error {
-	r.store = store
-	r.saved = true
-	return nil
+func newAccountServiceForTest(store AccountStore) AccountService {
+	return AccountService{Pixiv: store}
 }

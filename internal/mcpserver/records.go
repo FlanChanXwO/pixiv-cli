@@ -4,7 +4,7 @@ import (
 	"fmt"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/application"
-	sdk "github.com/FlanChanXwO/pixiv-cli/pixiv"
+	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -24,10 +24,10 @@ func recordErrorMessage(err error) string {
 	return "Error: " + err.Error()
 }
 
-func recordsFromIllusts(items []sdk.Illust) ([]application.Record, error) {
+func recordsFromArtworks(items []pixiv.Artwork) ([]application.Record, error) {
 	records := make([]application.Record, 0, len(items))
 	for _, item := range items {
-		record, err := application.RecordFromIllust(item)
+		record, err := application.RecordFromArtwork(item)
 		if err != nil {
 			return nil, err
 		}
@@ -36,7 +36,7 @@ func recordsFromIllusts(items []sdk.Illust) ([]application.Record, error) {
 	return records, nil
 }
 
-func recordsFromNovels(items []sdk.Novel) ([]application.Record, error) {
+func recordsFromNovels(items []pixiv.Novel) ([]application.Record, error) {
 	records := make([]application.Record, 0, len(items))
 	for _, item := range items {
 		record, err := application.RecordFromNovel(item)
@@ -48,22 +48,10 @@ func recordsFromNovels(items []sdk.Novel) ([]application.Record, error) {
 	return records, nil
 }
 
-func recordsFromUserPreviews(items []sdk.UserPreview) ([]application.Record, error) {
+func recordsFromUserPreviews(items []pixiv.UserPreview) ([]application.Record, error) {
 	records := make([]application.Record, 0, len(items))
 	for _, item := range items {
 		record, err := application.RecordFromUserPreview(item)
-		if err != nil {
-			return nil, err
-		}
-		records = append(records, record)
-	}
-	return records, nil
-}
-
-func recordsFromRecommendedUserPreviews(items []sdk.RecommendedUserPreview) ([]application.Record, error) {
-	records := make([]application.Record, 0, len(items))
-	for _, item := range items {
-		record, err := application.RecordFromRecommendedUserPreview(item)
 		if err != nil {
 			return nil, err
 		}

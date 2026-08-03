@@ -6,7 +6,8 @@ import (
 	"fmt"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/application"
-	sdk "github.com/FlanChanXwO/pixiv-cli/pixiv"
+	"github.com/FlanChanXwO/pixiv-cli/sdk"
+	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -30,14 +31,11 @@ func (a *App) userDetail(ctx context.Context, _ *mcp.CallToolRequest, in userDet
 		return a.userDetailError(ctx, err)
 	}
 	defer release()
-	result, err := client.UserDetail(ctx, sdk.UserDetailRequest{UserID: in.UserID})
+	result, err := client.User(ctx, pixiv.UserRequest{UserID: in.UserID})
 	if err != nil {
 		return a.userDetailError(ctx, err)
 	}
-	if result == nil {
-		return a.userDetailError(ctx, errors.New("pixiv sdk returned an empty user detail result"))
-	}
-	record, err := application.RecordFromUserDetail(*result)
+	record, err := application.RecordFromUserDetail(result)
 	if err != nil {
 		return a.userDetailError(ctx, err)
 	}
@@ -102,17 +100,17 @@ func (a *App) recommended(ctx context.Context, _ *mcp.CallToolRequest, in recomm
 	}
 	defer release()
 	if in.Kind == "all" || in.Kind == "illust" {
-		items, more, fetchErr := collectPages(ctx, plan, func(ctx context.Context, c sdk.Cursor) ([]sdk.Illust, sdk.Cursor, error) {
-			r, e := client.IllustRecommended(ctx, sdk.IllustRecommendedRequest{Cursor: c})
+		items, more, fetchErr := collectPages(ctx, plan, func(ctx context.Context, c sdk.Cursor) ([]pixiv.Artwork, sdk.Cursor, error) {
+			r, e := client.RecommendedArtworks(ctx, pixiv.RecommendedArtworksRequest{Cursor: c})
 			if e != nil {
-				return nil, "", e
+				return nil, sdk.Cursor{}, e
 			}
-			return r.Illusts, r.NextCursor, nil
+			return r.Items, r.Next, nil
 		})
 		if fetchErr != nil {
 			return a.recommendedError(ctx, fetchErr)
 		}
-		records, mapErr := recordsFromIllusts(items)
+		records, mapErr := recordsFromArtworks(items)
 		if mapErr != nil {
 			return a.recommendedError(ctx, mapErr)
 		}
@@ -120,17 +118,17 @@ func (a *App) recommended(ctx context.Context, _ *mcp.CallToolRequest, in recomm
 		out.Pagination.Illust = recommendedPagination(plan, in.Limit, len(items), more)
 	}
 	if in.Kind == "all" || in.Kind == "manga" {
-		items, more, fetchErr := collectPages(ctx, plan, func(ctx context.Context, c sdk.Cursor) ([]sdk.Illust, sdk.Cursor, error) {
-			r, e := client.MangaRecommended(ctx, sdk.IllustRecommendedRequest{Cursor: c})
+		items, more, fetchErr := collectPages(ctx, plan, func(ctx context.Context, c sdk.Cursor) ([]pixiv.Artwork, sdk.Cursor, error) {
+			r, e := client.RecommendedArtworks(ctx, pixiv.RecommendedArtworksRequest{Cursor: c})
 			if e != nil {
-				return nil, "", e
+				return nil, sdk.Cursor{}, e
 			}
-			return r.Illusts, r.NextCursor, nil
+			return r.Items, r.Next, nil
 		})
 		if fetchErr != nil {
 			return a.recommendedError(ctx, fetchErr)
 		}
-		records, mapErr := recordsFromIllusts(items)
+		records, mapErr := recordsFromArtworks(items)
 		if mapErr != nil {
 			return a.recommendedError(ctx, mapErr)
 		}
@@ -138,12 +136,12 @@ func (a *App) recommended(ctx context.Context, _ *mcp.CallToolRequest, in recomm
 		out.Pagination.Manga = recommendedPagination(plan, in.Limit, len(items), more)
 	}
 	if in.Kind == "all" || in.Kind == "novel" {
-		items, more, fetchErr := collectPages(ctx, plan, func(ctx context.Context, c sdk.Cursor) ([]sdk.Novel, sdk.Cursor, error) {
-			r, e := client.NovelRecommended(ctx, sdk.NovelRecommendedRequest{Cursor: c})
+		items, more, fetchErr := collectPages(ctx, plan, func(ctx context.Context, c sdk.Cursor) ([]pixiv.Novel, sdk.Cursor, error) {
+			r, e := client.RecommendedNovels(ctx, pixiv.RecommendedNovelsRequest{Cursor: c})
 			if e != nil {
-				return nil, "", e
+				return nil, sdk.Cursor{}, e
 			}
-			return r.Novels, r.NextCursor, nil
+			return r.Items, r.Next, nil
 		})
 		if fetchErr != nil {
 			return a.recommendedError(ctx, fetchErr)
@@ -156,17 +154,17 @@ func (a *App) recommended(ctx context.Context, _ *mcp.CallToolRequest, in recomm
 		out.Pagination.Novel = recommendedPagination(plan, in.Limit, len(items), more)
 	}
 	if in.Kind == "all" || in.Kind == "user" {
-		items, more, fetchErr := collectPages(ctx, plan, func(ctx context.Context, c sdk.Cursor) ([]sdk.RecommendedUserPreview, sdk.Cursor, error) {
-			r, e := client.UserRecommended(ctx, sdk.UserRecommendedRequest{Cursor: c})
+		items, more, fetchErr := collectPages(ctx, plan, func(ctx context.Context, c sdk.Cursor) ([]pixiv.UserPreview, sdk.Cursor, error) {
+			r, e := client.RecommendedUsers(ctx, pixiv.RecommendedUsersRequest{Cursor: c})
 			if e != nil {
-				return nil, "", e
+				return nil, sdk.Cursor{}, e
 			}
-			return r.UserPreviews, r.NextCursor, nil
+			return r.Items, r.Next, nil
 		})
 		if fetchErr != nil {
 			return a.recommendedError(ctx, fetchErr)
 		}
-		records, mapErr := recordsFromRecommendedUserPreviews(items)
+		records, mapErr := recordsFromUserPreviews(items)
 		if mapErr != nil {
 			return a.recommendedError(ctx, mapErr)
 		}
@@ -183,7 +181,7 @@ func (a *App) recommendedError(ctx context.Context, err error) (*mcp.CallToolRes
 
 type userArtworksIn struct {
 	UserID       int64           `json:"user_id,omitempty" jsonschema:"optional user ID; defaults to the authenticated user"`
-	Type         sdk.IllustType  `json:"type,omitempty" jsonschema:"illust, manga, or ugoira"`
+	Type         string          `json:"type,omitempty" jsonschema:"illust, manga, or ugoira"`
 	Filter       string          `json:"filter,omitempty" jsonschema:"safe local illustration filter expression"`
 	IllustFilter *illustFilterIn `json:"illust_filter,omitempty"`
 	pageLimitIn
@@ -212,17 +210,17 @@ func (a *App) userArtworks(ctx context.Context, _ *mcp.CallToolRequest, in userA
 		return a.illustListError(ctx, err)
 	}
 	defer release()
-	items, more, err := collectPages(ctx, plan, func(ctx context.Context, cursor sdk.Cursor) ([]sdk.Illust, sdk.Cursor, error) {
-		result, err := client.UserArtworks(ctx, sdk.UserArtworksRequest{UserID: userID, Type: in.Type, Cursor: cursor})
+	items, more, err := collectPages(ctx, plan, func(ctx context.Context, cursor sdk.Cursor) ([]pixiv.Artwork, sdk.Cursor, error) {
+		result, err := client.UserArtworks(ctx, pixiv.UserArtworksRequest{UserID: userID, Kind: pixiv.ArtworkKind(in.Type), Cursor: cursor})
 		if err != nil {
-			return nil, "", err
+			return nil, sdk.Cursor{}, err
 		}
-		return result.Illusts, result.NextCursor, nil
+		return result.Items, result.Next, nil
 	})
 	if err != nil {
 		return a.illustListError(ctx, err)
 	}
-	records, err := recordsFromIllusts(items)
+	records, err := recordsFromArtworks(items)
 	if err != nil {
 		return a.illustListError(ctx, err)
 	}
@@ -259,19 +257,19 @@ func (a *App) userBookmarks(ctx context.Context, _ *mcp.CallToolRequest, in book
 		return a.illustListError(ctx, err)
 	}
 	defer release()
-	request := sdk.UserBookmarksRequest{UserID: userID, Restrict: sdk.Restrict(in.Restrict), Tag: in.Tag}
-	items, more, err := collectPages(ctx, plan, func(ctx context.Context, cursor sdk.Cursor) ([]sdk.Illust, sdk.Cursor, error) {
+	request := pixiv.UserArtworkBookmarksRequest{UserID: userID, Restrict: pixiv.Restrict(in.Restrict), Tag: in.Tag}
+	items, more, err := collectPages(ctx, plan, func(ctx context.Context, cursor sdk.Cursor) ([]pixiv.Artwork, sdk.Cursor, error) {
 		request.Cursor = cursor
-		result, err := client.UserBookmarks(ctx, request)
+		result, err := client.UserArtworkBookmarks(ctx, request)
 		if err != nil {
-			return nil, "", err
+			return nil, sdk.Cursor{}, err
 		}
-		return result.Illusts, result.NextCursor, nil
+		return result.Items, result.Next, nil
 	})
 	if err != nil {
 		return a.illustListError(ctx, err)
 	}
-	records, err := recordsFromIllusts(items)
+	records, err := recordsFromArtworks(items)
 	if err != nil {
 		return a.illustListError(ctx, err)
 	}
@@ -310,12 +308,12 @@ func (a *App) userFollowing(ctx context.Context, _ *mcp.CallToolRequest, in foll
 		return a.userListError(ctx, err)
 	}
 	defer release()
-	items, more, err := collectPages(ctx, plan, func(ctx context.Context, cursor sdk.Cursor) ([]sdk.UserPreview, sdk.Cursor, error) {
-		result, err := client.UserFollowing(ctx, sdk.UserFollowingRequest{UserID: userID, Restrict: sdk.Restrict(in.Restrict), Cursor: cursor})
+	items, more, err := collectPages(ctx, plan, func(ctx context.Context, cursor sdk.Cursor) ([]pixiv.UserPreview, sdk.Cursor, error) {
+		result, err := client.UserFollowing(ctx, pixiv.UserFollowingRequest{UserID: userID, Restrict: pixiv.Restrict(in.Restrict), Cursor: cursor})
 		if err != nil {
-			return nil, "", err
+			return nil, sdk.Cursor{}, err
 		}
-		return result.UserPreviews, result.NextCursor, nil
+		return result.Items, result.Next, nil
 	})
 	if err != nil {
 		return a.userListError(ctx, err)
@@ -381,27 +379,27 @@ func (a *App) runMutation(ctx context.Context, out mutationOut, run func(applica
 func (a *App) addBookmark(ctx context.Context, _ *mcp.CallToolRequest, in bookmarkMutationIn) (*mcp.CallToolResult, mutationOut, error) {
 	out := mutationOut{Action: "add_bookmark", IllustID: in.IllustID, Text: fmt.Sprintf("Bookmarked artwork %d.", in.IllustID)}
 	return a.runMutation(ctx, out, func(client application.SDKClient) error {
-		return client.AddBookmark(ctx, sdk.AddBookmarkRequest{IllustID: in.IllustID, Restrict: sdk.Restrict(in.Restrict), Tags: in.Tags})
+		return client.AddBookmark(ctx, pixiv.AddBookmarkRequest{ArtworkID: in.IllustID, Restrict: pixiv.Restrict(in.Restrict), Tags: in.Tags})
 	})
 }
 
 func (a *App) removeBookmark(ctx context.Context, _ *mcp.CallToolRequest, in illustIDSDKIn) (*mcp.CallToolResult, mutationOut, error) {
 	out := mutationOut{Action: "remove_bookmark", IllustID: in.IllustID, Text: fmt.Sprintf("Removed bookmark from artwork %d.", in.IllustID)}
 	return a.runMutation(ctx, out, func(client application.SDKClient) error {
-		return client.RemoveBookmark(ctx, sdk.RemoveBookmarkRequest{IllustID: in.IllustID})
+		return client.RemoveBookmark(ctx, pixiv.RemoveBookmarkRequest{ArtworkID: in.IllustID})
 	})
 }
 
 func (a *App) followUser(ctx context.Context, _ *mcp.CallToolRequest, in userMutationIn) (*mcp.CallToolResult, mutationOut, error) {
 	out := mutationOut{Action: "follow_user", UserID: in.UserID, Text: fmt.Sprintf("Followed user %d.", in.UserID)}
 	return a.runMutation(ctx, out, func(client application.SDKClient) error {
-		return client.FollowUser(ctx, sdk.FollowUserRequest{UserID: in.UserID, Restrict: sdk.Restrict(in.Restrict)})
+		return client.FollowUser(ctx, pixiv.FollowUserRequest{UserID: in.UserID, Restrict: pixiv.Restrict(in.Restrict)})
 	})
 }
 
 func (a *App) unfollowUser(ctx context.Context, _ *mcp.CallToolRequest, in userIDSDKIn) (*mcp.CallToolResult, mutationOut, error) {
 	out := mutationOut{Action: "unfollow_user", UserID: in.UserID, Text: fmt.Sprintf("Unfollowed user %d.", in.UserID)}
 	return a.runMutation(ctx, out, func(client application.SDKClient) error {
-		return client.UnfollowUser(ctx, sdk.UnfollowUserRequest{UserID: in.UserID})
+		return client.UnfollowUser(ctx, pixiv.UnfollowUserRequest{UserID: in.UserID})
 	})
 }

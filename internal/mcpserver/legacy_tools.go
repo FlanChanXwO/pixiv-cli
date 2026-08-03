@@ -9,7 +9,8 @@ import (
 	"time"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/application"
-	sdk "github.com/FlanChanXwO/pixiv-cli/pixiv"
+	"github.com/FlanChanXwO/pixiv-cli/sdk"
+	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -126,10 +127,10 @@ func novelSearchResult(out novelSearchOut) *mcp.CallToolResult {
 
 func (a *App) searchNovel(ctx context.Context, _ *mcp.CallToolRequest, in searchNovelIn) (*mcp.CallToolResult, novelSearchOut, error) {
 	if in.SearchTarget == "" {
-		in.SearchTarget = string(sdk.SearchTargetPartialMatchForTags)
+		in.SearchTarget = string(pixiv.SearchTargetPartialMatchForTags)
 	}
 	if in.Sort == "" {
-		in.Sort = string(sdk.SortModeDateDesc)
+		in.Sort = string(pixiv.SortModeDateDesc)
 	}
 	plan, err := parseMCPListPlan(in.pageLimitIn)
 	if err != nil {
@@ -139,29 +140,20 @@ func (a *App) searchNovel(ctx context.Context, _ *mcp.CallToolRequest, in search
 	if err != nil {
 		return a.searchNovelError(ctx, err)
 	}
-	filters := sdk.NovelSearchFilters{
-		Rating:        sdk.SearchRating(in.Rating),
-		MinTextLength: in.MinTextLength,
-		MaxTextLength: in.MaxTextLength,
-		OriginalOnly:  in.OriginalOnly,
-	}
 	client, release, err := a.openSDKOperation(ctx)
 	if err != nil {
 		return a.searchNovelError(ctx, err)
 	}
 	defer release()
-	items, more, err := collectPages(ctx, plan, func(ctx context.Context, cursor sdk.Cursor) ([]sdk.Novel, sdk.Cursor, error) {
-		return nextNonEmptySearchBatch(ctx, cursor, func(ctx context.Context, cursor sdk.Cursor) ([]sdk.Novel, sdk.Cursor, error) {
-			result, err := client.SearchNovel(ctx, sdk.SearchNovelRequest{
-				Word: in.Word, Target: sdk.SearchTarget(in.SearchTarget), Sort: sdk.SortMode(in.Sort), Duration: in.Duration, Cursor: cursor, Filters: filters,
+	items, more, err := collectPages(ctx, plan, func(ctx context.Context, cursor sdk.Cursor) ([]pixiv.Novel, sdk.Cursor, error) {
+		return nextNonEmptySearchBatch(ctx, cursor, func(ctx context.Context, cursor sdk.Cursor) ([]pixiv.Novel, sdk.Cursor, error) {
+			result, err := client.SearchNovels(ctx, pixiv.SearchNovelsRequest{
+				Word: in.Word, Target: pixiv.SearchTarget(in.SearchTarget), Sort: pixiv.SortMode(in.Sort), Duration: pixiv.DurationFilter(in.Duration), Cursor: cursor,
 			})
 			if err != nil {
-				return nil, "", err
+				return nil, sdk.Cursor{}, err
 			}
-			if result == nil {
-				return nil, "", errors.New("pixiv sdk returned an empty novel search result")
-			}
-			return result.Novels, result.NextCursor, nil
+			return result.Items, result.Next, nil
 		})
 	})
 	if err != nil {
@@ -197,10 +189,10 @@ func (a *App) illustQueryError(ctx context.Context, err error) (*mcp.CallToolRes
 
 func (a *App) searchIllust(ctx context.Context, _ *mcp.CallToolRequest, in searchIllustIn) (*mcp.CallToolResult, illustQueryOut, error) {
 	if in.SearchTarget == "" {
-		in.SearchTarget = string(sdk.SearchTargetPartialMatchForTags)
+		in.SearchTarget = string(pixiv.SearchTargetPartialMatchForTags)
 	}
 	if in.Sort == "" {
-		in.Sort = string(sdk.SortModeDateDesc)
+		in.Sort = string(pixiv.SortModeDateDesc)
 	}
 	// 官方 App 以日期边界而非 duration 表达半年和一年，先在本地展开，
 	// 使 MCP 与 CLI 的快捷日期语义保持一致。
@@ -212,16 +204,6 @@ func (a *App) searchIllust(ctx context.Context, _ *mcp.CallToolRequest, in searc
 		}
 	}
 	word := in.Word
-	filters := sdk.SearchIllustFilters{
-		Rating:      sdk.SearchRating(in.Rating),
-		ContentType: sdk.SearchContentType(in.ContentType),
-		AIMode:      sdk.SearchAIMode(in.AIMode),
-		AspectRatio: sdk.SearchAspectRatio(in.AspectRatio),
-		Resolution:  sdk.SearchResolution(in.Resolution),
-		Tool:        in.Tool,
-		BookmarkMin: in.BookmarkMin,
-		BookmarkMax: in.BookmarkMax,
-	}
 	if err := validateSearchIllustInput(in); err != nil {
 		return a.illustQueryError(ctx, err)
 	}
@@ -238,21 +220,27 @@ func (a *App) searchIllust(ctx context.Context, _ *mcp.CallToolRequest, in searc
 		return a.illustQueryError(ctx, err)
 	}
 	defer release()
-	// 本地筛选（rating/AI）可能产生空上游批次；nextNonEmpty + CollectPages 共同保证
+	// 本地筛选可能产生空上游批次；nextNonEmpty + CollectPages 共同保证
 	// 默认逻辑批、limit 填满与 page 逻辑分页都跳过连续空批。
-	items, more, err := collectPages(ctx, plan, func(ctx context.Context, cursor sdk.Cursor) ([]sdk.Illust, sdk.Cursor, error) {
-		return nextNonEmptySearchBatch(ctx, cursor, func(ctx context.Context, cursor sdk.Cursor) ([]sdk.Illust, sdk.Cursor, error) {
-			result, err := client.SearchIllust(ctx, sdk.SearchIllustRequest{Word: word, Target: sdk.SearchTarget(in.SearchTarget), Sort: sdk.SortMode(in.Sort), Duration: in.Duration, StartDate: in.StartDate, EndDate: in.EndDate, Cursor: cursor, Filters: filters})
+	items, more, err := collectPages(ctx, plan, func(ctx context.Context, cursor sdk.Cursor) ([]pixiv.Artwork, sdk.Cursor, error) {
+		return nextNonEmptySearchBatch(ctx, cursor, func(ctx context.Context, cursor sdk.Cursor) ([]pixiv.Artwork, sdk.Cursor, error) {
+			result, err := client.SearchArtworks(ctx, pixiv.SearchArtworksRequest{
+				Word: word, Target: pixiv.SearchTarget(in.SearchTarget), Sort: pixiv.SortMode(in.Sort), Duration: pixiv.DurationFilter(in.Duration),
+				StartDate: in.StartDate, EndDate: in.EndDate, Cursor: cursor,
+				ContentType: pixiv.SearchContentType(in.ContentType), AIMode: pixiv.SearchAIMode(in.AIMode),
+				AspectRatio: pixiv.SearchAspectRatio(in.AspectRatio), Resolution: pixiv.SearchResolution(in.Resolution),
+				Tool: in.Tool, BookmarkMin: in.BookmarkMin, BookmarkMax: in.BookmarkMax,
+			})
 			if err != nil {
-				return nil, "", err
+				return nil, sdk.Cursor{}, err
 			}
-			return result.Illusts, result.NextCursor, nil
+			return result.Items, result.Next, nil
 		})
 	})
 	if err != nil {
 		return a.illustQueryError(ctx, err)
 	}
-	records, err := recordsFromIllusts(items)
+	records, err := recordsFromArtworks(items)
 	if err != nil {
 		return a.illustQueryError(ctx, err)
 	}
@@ -293,14 +281,14 @@ func nextNonEmptySearchBatch[T any](ctx context.Context, cursor sdk.Cursor, fetc
 	seen := make(map[sdk.Cursor]struct{})
 	for {
 		if _, exists := seen[cursor]; exists {
-			return nil, "", fmt.Errorf("pagination cursor repeated: %q", cursor)
+			return nil, sdk.Cursor{}, fmt.Errorf("pagination cursor repeated: %s", cursor.String())
 		}
 		seen[cursor] = struct{}{}
 		items, next, err := fetch(ctx, cursor)
 		if err != nil {
-			return nil, "", err
+			return nil, sdk.Cursor{}, err
 		}
-		if len(items) > 0 || next == "" {
+		if len(items) > 0 || next.IsZero() {
 			return items, next, nil
 		}
 		cursor = next
@@ -330,14 +318,11 @@ func (a *App) illustDetail(ctx context.Context, _ *mcp.CallToolRequest, in illus
 		return a.illustDetailError(ctx, err)
 	}
 	defer release()
-	result, err := client.IllustDetail(ctx, id)
+	result, err := client.Artwork(ctx, pixiv.ArtworkRequest{ArtworkID: id})
 	if err != nil {
 		return a.illustDetailError(ctx, err)
 	}
-	if result == nil {
-		return a.illustDetailError(ctx, errors.New("pixiv sdk returned an empty illustration detail result"))
-	}
-	record, err := application.RecordFromIllust(result.Illust)
+	record, err := application.RecordFromArtwork(result)
 	if err != nil {
 		return a.illustDetailError(ctx, err)
 	}
@@ -357,7 +342,14 @@ func resolveMCPArtworkReference(in illustReferenceIn) (int64, error) {
 		}
 		return in.IllustID, nil
 	}
-	return sdk.ParseArtworkReference(in.URL)
+	reference, err := pixiv.ParseURL(in.URL)
+	if err != nil {
+		return 0, err
+	}
+	if reference.Kind != pixiv.ReferenceKindArtwork {
+		return 0, errors.New("URL does not name a Pixiv artwork")
+	}
+	return reference.ID, nil
 }
 
 func (a *App) illustDetailError(ctx context.Context, err error) (*mcp.CallToolResult, illustDetailOut, error) {
@@ -386,17 +378,17 @@ func (a *App) illustRelated(ctx context.Context, _ *mcp.CallToolRequest, in rela
 		return a.illustQueryError(ctx, err)
 	}
 	defer release()
-	items, more, err := collectPages(ctx, plan, func(ctx context.Context, cursor sdk.Cursor) ([]sdk.Illust, sdk.Cursor, error) {
-		result, err := client.IllustRelated(ctx, sdk.IllustRelatedRequest{IllustID: in.IllustID, Cursor: cursor})
+	items, more, err := collectPages(ctx, plan, func(ctx context.Context, cursor sdk.Cursor) ([]pixiv.Artwork, sdk.Cursor, error) {
+		result, err := client.RelatedArtworks(ctx, pixiv.RelatedArtworksRequest{ArtworkID: in.IllustID, Cursor: cursor})
 		if err != nil {
-			return nil, "", err
+			return nil, sdk.Cursor{}, err
 		}
-		return result.Illusts, result.NextCursor, nil
+		return result.Items, result.Next, nil
 	})
 	if err != nil {
 		return a.illustQueryError(ctx, err)
 	}
-	records, err := recordsFromIllusts(items)
+	records, err := recordsFromArtworks(items)
 	if err != nil {
 		return a.illustQueryError(ctx, err)
 	}
@@ -414,7 +406,7 @@ type rankingIn struct {
 
 func (a *App) illustRanking(ctx context.Context, _ *mcp.CallToolRequest, in rankingIn) (*mcp.CallToolResult, illustQueryOut, error) {
 	if in.Mode == "" {
-		in.Mode = string(sdk.RankingModeDay)
+		in.Mode = string(pixiv.RankingModeDay)
 	}
 	plan, err := parseMCPListPlan(in.pageLimitIn)
 	if err != nil {
@@ -429,17 +421,17 @@ func (a *App) illustRanking(ctx context.Context, _ *mcp.CallToolRequest, in rank
 		return a.illustQueryError(ctx, err)
 	}
 	defer release()
-	items, more, err := collectPages(ctx, plan, func(ctx context.Context, cursor sdk.Cursor) ([]sdk.Illust, sdk.Cursor, error) {
-		result, err := client.IllustRanking(ctx, sdk.IllustRankingRequest{Mode: sdk.RankingMode(in.Mode), Date: in.Date, Cursor: cursor})
+	items, more, err := collectPages(ctx, plan, func(ctx context.Context, cursor sdk.Cursor) ([]pixiv.Artwork, sdk.Cursor, error) {
+		result, err := client.ArtworkRanking(ctx, pixiv.ArtworkRankingRequest{Mode: pixiv.RankingMode(in.Mode), Date: in.Date, Cursor: cursor})
 		if err != nil {
-			return nil, "", err
+			return nil, sdk.Cursor{}, err
 		}
-		return result.Illusts, result.NextCursor, nil
+		return result.Items, result.Next, nil
 	})
 	if err != nil {
 		return a.illustQueryError(ctx, err)
 	}
-	records, err := recordsFromIllusts(items)
+	records, err := recordsFromArtworks(items)
 	if err != nil {
 		return a.illustQueryError(ctx, err)
 	}
@@ -476,24 +468,12 @@ func (a *App) searchUser(ctx context.Context, _ *mcp.CallToolRequest, in searchU
 		return a.searchUserError(ctx, err)
 	}
 	defer release()
-	var source sdk.UserSearchSource
-	items, more, err := collectPages(ctx, plan, func(ctx context.Context, cursor sdk.Cursor) ([]sdk.UserPreview, sdk.Cursor, error) {
-		result, err := client.SearchUser(ctx, sdk.SearchUserRequest{Word: in.Word, Cursor: cursor})
+	items, more, err := collectPages(ctx, plan, func(ctx context.Context, cursor sdk.Cursor) ([]pixiv.UserPreview, sdk.Cursor, error) {
+		result, err := client.SearchUsers(ctx, pixiv.SearchUsersRequest{Word: in.Word, Cursor: cursor})
 		if err != nil {
-			return nil, "", err
+			return nil, sdk.Cursor{}, err
 		}
-		if result == nil {
-			return nil, "", errors.New("pixiv sdk returned an empty user search result")
-		}
-		if !validUserSearchSource(result.Source) {
-			return nil, "", fmt.Errorf("pixiv sdk returned an unknown user search source %q", result.Source)
-		}
-		if source == "" {
-			source = result.Source
-		} else if source != result.Source {
-			return nil, "", fmt.Errorf("pixiv sdk changed user search source from %q to %q across pages", source, result.Source)
-		}
-		return result.UserPreviews, result.NextCursor, nil
+		return result.Items, result.Next, nil
 	})
 	if err != nil {
 		return a.searchUserError(ctx, err)
@@ -504,10 +484,6 @@ func (a *App) searchUser(ctx context.Context, _ *mcp.CallToolRequest, in searchU
 	}
 	out := userSearchOut{Records: records, Pagination: listPagination(plan, in.Limit, len(items), more)}
 	return userSearchResult(out), out, nil
-}
-
-func validUserSearchSource(source sdk.UserSearchSource) bool {
-	return source == sdk.UserSearchSourceApp || source == sdk.UserSearchSourceRelatedIllustAuthors
 }
 
 // searchUserError 为失败提供空 records 与 MCP error，避免把执行失败伪装为空搜索结果。
@@ -536,17 +512,17 @@ func (a *App) illustRecommended(ctx context.Context, _ *mcp.CallToolRequest, in 
 		return a.illustQueryError(ctx, err)
 	}
 	defer release()
-	items, more, err := collectPages(ctx, plan, func(ctx context.Context, cursor sdk.Cursor) ([]sdk.Illust, sdk.Cursor, error) {
-		result, err := client.IllustRecommended(ctx, sdk.IllustRecommendedRequest{Cursor: cursor})
+	items, more, err := collectPages(ctx, plan, func(ctx context.Context, cursor sdk.Cursor) ([]pixiv.Artwork, sdk.Cursor, error) {
+		result, err := client.RecommendedArtworks(ctx, pixiv.RecommendedArtworksRequest{Cursor: cursor})
 		if err != nil {
-			return nil, "", err
+			return nil, sdk.Cursor{}, err
 		}
-		return result.Illusts, result.NextCursor, nil
+		return result.Items, result.Next, nil
 	})
 	if err != nil {
 		return a.illustQueryError(ctx, err)
 	}
-	records, err := recordsFromIllusts(items)
+	records, err := recordsFromArtworks(items)
 	if err != nil {
 		return a.illustQueryError(ctx, err)
 	}
@@ -569,20 +545,17 @@ func (a *App) trendingTags(ctx context.Context, _ *mcp.CallToolRequest, _ emptyI
 		return a.trendingTagsError(ctx, err)
 	}
 	defer release()
-	result, err := client.TrendingTagsIllust(ctx)
+	result, err := client.TrendingArtworkTags(ctx, pixiv.TrendingArtworkTagsRequest{})
 	if err != nil {
 		return a.trendingTagsError(ctx, err)
 	}
-	if result == nil {
-		return a.trendingTagsError(ctx, errors.New("pixiv sdk returned an empty trending tags result"))
-	}
 	out := trendingTagsOut{Tags: []any{}}
-	if len(result.TrendTags) == 0 {
+	if len(result) == 0 {
 		out.Text = "Could not retrieve trending tags."
 		return trendingTagsResult(out, false), out, nil
 	}
-	lines := make([]string, 0, len(result.TrendTags))
-	for _, tag := range result.TrendTags {
+	lines := make([]string, 0, len(result))
+	for _, tag := range result {
 		structured, err := trendTagStructured(tag)
 		if err != nil {
 			return a.trendingTagsError(ctx, err)
@@ -598,7 +571,7 @@ func (a *App) trendingTags(ctx context.Context, _ *mcp.CallToolRequest, _ emptyI
 	return trendingTagsResult(out, false), out, nil
 }
 
-func trendTagStructured(tag sdk.TrendTag) (map[string]any, error) {
+func trendTagStructured(tag pixiv.TrendingTag) (map[string]any, error) {
 	raw, err := json.Marshal(tag)
 	if err != nil {
 		return nil, err
@@ -624,7 +597,7 @@ type followIn struct {
 
 func (a *App) illustFollow(ctx context.Context, _ *mcp.CallToolRequest, in followIn) (*mcp.CallToolResult, illustQueryOut, error) {
 	if in.Restrict == "" {
-		in.Restrict = string(sdk.RestrictPublic)
+		in.Restrict = string(pixiv.RestrictPublic)
 	}
 	plan, err := parseMCPListPlan(in.pageLimitIn)
 	if err != nil {
@@ -639,17 +612,17 @@ func (a *App) illustFollow(ctx context.Context, _ *mcp.CallToolRequest, in follo
 		return a.illustQueryError(ctx, err)
 	}
 	defer release()
-	items, more, err := collectPages(ctx, plan, func(ctx context.Context, cursor sdk.Cursor) ([]sdk.Illust, sdk.Cursor, error) {
-		result, err := client.FollowingIllusts(ctx, sdk.FollowingIllustsRequest{Restrict: sdk.Restrict(in.Restrict), Cursor: cursor})
+	items, more, err := collectPages(ctx, plan, func(ctx context.Context, cursor sdk.Cursor) ([]pixiv.Artwork, sdk.Cursor, error) {
+		result, err := client.FollowingArtworks(ctx, pixiv.FollowingArtworksRequest{Restrict: pixiv.Restrict(in.Restrict), Cursor: cursor})
 		if err != nil {
-			return nil, "", err
+			return nil, sdk.Cursor{}, err
 		}
-		return result.Illusts, result.NextCursor, nil
+		return result.Items, result.Next, nil
 	})
 	if err != nil {
 		return a.illustQueryError(ctx, err)
 	}
-	records, err := recordsFromIllusts(items)
+	records, err := recordsFromArtworks(items)
 	if err != nil {
 		return a.illustQueryError(ctx, err)
 	}

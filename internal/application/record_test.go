@@ -7,95 +7,90 @@ import (
 	"testing"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/application"
-	sdk "github.com/FlanChanXwO/pixiv-cli/pixiv"
+	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-func TestRecordFromIllustPreservesSDKFieldsAndNormalizesID(t *testing.T) {
-	illust := sdk.Illust{
-		URL:            "https://www.pixiv.net/artworks/9007199254740993",
+func TestRecordFromArtworkPreservesSDKFieldsAndNormalizesID(t *testing.T) {
+	artwork := pixiv.Artwork{
 		ID:             9_007_199_254_740_993,
 		Title:          "作品标题",
 		Caption:        "说明",
-		Type:           string(sdk.IllustTypeUgoira),
+		Kind:           pixiv.ArtworkKindUgoira,
 		PageCount:      2,
 		TotalBookmarks: 8,
-		TotalView:      42,
-		User:           sdk.User{ID: 99, Name: "作者"},
-		Tags:           []sdk.Tag{{Name: "tag-a", TranslatedName: "标签 A"}},
-		ImageURLs:      sdk.ImageURLs{Medium: "https://i.pximg.net/img-medium.jpg"},
-		MetaPages:      []sdk.MetaPage{{PageIndex: 0, Extension: "jpg"}},
+		TotalViews:     42,
+		User:           pixiv.User{ID: 99, Name: "作者"},
+		Tags:           []pixiv.Tag{{Name: "tag-a", TranslatedName: "标签 A"}},
 	}
 
-	record, err := application.RecordFromIllust(illust)
+	record, err := application.RecordFromArtwork(artwork)
 	require.NoError(t, err)
 
 	got, err := json.Marshal(record)
 	require.NoError(t, err)
-	want, err := json.Marshal(illust)
+	want, err := application.MarshalRecordValue(artwork)
 	require.NoError(t, err)
 
 	var wantObject map[string]json.RawMessage
 	require.NoError(t, json.Unmarshal(want, &wantObject))
 	wantObject["id"] = json.RawMessage(`"9007199254740993"`)
 	wantObject["type"] = json.RawMessage(`"ugoira"`)
+	wantObject["url"] = json.RawMessage(`"https://www.pixiv.net/artworks/9007199254740993"`)
 	want, err = json.Marshal(wantObject)
 	require.NoError(t, err)
 
 	assert.JSONEq(t, string(want), string(got))
 	assert.Equal(t, "9007199254740993", record.ID())
 	assert.Equal(t, "ugoira", record.Type())
-	assert.Equal(t, illust.URL, record.URL())
+	assert.Equal(t, "https://www.pixiv.net/artworks/9007199254740993", record.URL())
 	assert.NotContains(t, string(got), `"schema"`)
 	assert.NotContains(t, string(got), `"version"`)
 }
 
 func TestRecordFromNovelAndUserPreview(t *testing.T) {
-	novel := sdk.Novel{
-		URL:        "https://www.pixiv.net/novel/show.php?id=88",
-		ID:         88,
-		Title:      "小说标题",
-		Caption:    "小说说明",
-		TextLength: 1234,
-		IsOriginal: true,
-		TotalView:  55,
-		Tags:       []sdk.Tag{{Name: "novel-tag"}},
-		ImageURLs:  sdk.ImageURLs{Medium: "https://i.pximg.net/novel.jpg"},
-		CreateDate: "2026-07-27T00:00:00+00:00",
-		XRestrict:  0,
-		User:       sdk.User{ID: 77, Name: "小说作者"},
+	novel := pixiv.Novel{
+		ID:             88,
+		Title:          "小说标题",
+		Caption:        "小说说明",
+		TextLength:     1234,
+		IsOriginal:     true,
+		TotalViews:     55,
+		Tags:           []pixiv.Tag{{Name: "novel-tag"}},
+		XRestrict:      0,
+		User:           pixiv.User{ID: 77, Name: "小说作者"},
+		TotalBookmarks: 3,
 	}
-	userPreview := sdk.UserPreview{User: sdk.User{
-		ID:               9_007_199_254_740_993,
-		Name:             "用户",
-		Account:          "user-account",
-		Comment:          "用户简介",
-		IsFollowed:       true,
-		ProfileImageURLs: sdk.ProfileImageURLs{Medium: ptr("https://i.pximg.net/user.jpg")},
+	userPreview := pixiv.UserPreview{User: pixiv.User{
+		ID:         9_007_199_254_740_993,
+		Name:       "用户",
+		Account:    "user-account",
+		Comment:    "用户简介",
+		IsFollowed: true,
 	}}
 
 	novelRecord, err := application.RecordFromNovel(novel)
 	require.NoError(t, err)
-	assertRecordMatchesSource(t, novel, novelRecord, "88", "novel", novel.URL)
+	assertRecordMatchesSource(t, novel, novelRecord, "88", "novel", "https://www.pixiv.net/novel/show.php?id=88")
 
 	userRecord, err := application.RecordFromUserPreview(userPreview)
 	require.NoError(t, err)
 	assertRecordMatchesSource(t, userPreview, userRecord, "9007199254740993", "user", "https://www.pixiv.net/users/9007199254740993")
 }
 
-func TestRecordFromRecommendedUserPreviewPreservesCompleteEnvelope(t *testing.T) {
-	preview := sdk.RecommendedUserPreview{
-		User: sdk.User{ID: 9_007_199_254_740_993, Name: "推荐作者", Account: "recommended-author"},
-		Illusts: []sdk.Illust{{
-			ID: 101, Title: "预览插画", Type: string(sdk.IllustTypeIllust), URL: "https://www.pixiv.net/artworks/101",
+func TestRecordFromUserPreviewPreservesCompleteEnvelope(t *testing.T) {
+	preview := pixiv.UserPreview{
+		User: pixiv.User{ID: 9_007_199_254_740_993, Name: "推荐作者", Account: "recommended-author"},
+		Illusts: []pixiv.Artwork{{
+			ID: 101, Title: "预览插画", Kind: pixiv.ArtworkKindIllustration,
 		}},
-		Novels: []sdk.Novel{{
-			ID: 202, Title: "预览小说", URL: "https://www.pixiv.net/novel/show.php?id=202",
+		Novels: []pixiv.Novel{{
+			ID: 202, Title: "预览小说",
 		}},
 	}
 
-	record, err := application.RecordFromRecommendedUserPreview(preview)
+	record, err := application.RecordFromUserPreview(preview)
 	require.NoError(t, err)
 	assertRecordMatchesSource(t, preview, record, "9007199254740993", "user", "https://www.pixiv.net/users/9007199254740993")
 
@@ -121,13 +116,11 @@ func TestRecordFromRecommendedUserPreviewPreservesCompleteEnvelope(t *testing.T)
 }
 
 func TestRecordFromUserDetailPreservesCompleteEnvelope(t *testing.T) {
-	webpage := "https://example.test/artist"
-	workspaceImage := "https://example.test/workspace.png"
-	detail := sdk.UserDetailResult{
-		User:             sdk.User{ID: 321, Name: "画师", Account: "artist"},
-		Profile:          sdk.Profile{Webpage: &webpage, Region: "Tokyo", TotalIllusts: 9},
-		ProfilePublicity: sdk.ProfilePublicity{Region: true},
-		Workspace:        sdk.Workspace{PC: "desktop", Tool: "pen", WorkspaceImageURL: &workspaceImage},
+	detail := pixiv.UserDetail{
+		User:             pixiv.User{ID: 321, Name: "画师", Account: "artist"},
+		Profile:          pixiv.UserProfile{Webpage: "https://example.test/artist", Region: "Tokyo", TotalIllusts: 9},
+		ProfilePublicity: pixiv.UserProfilePublicity{Region: true},
+		Workspace:        pixiv.UserWorkspace{PC: "desktop", Tool: "pen", WorkspaceImageURL: "https://example.test/workspace.png"},
 	}
 
 	record, err := application.RecordFromUserDetail(detail)
@@ -140,20 +133,17 @@ func TestRecordMappersRejectNonPositiveSDKID(t *testing.T) {
 		name string
 		make func() (application.Record, error)
 	}{
-		{name: "illust", make: func() (application.Record, error) {
-			return application.RecordFromIllust(sdk.Illust{ID: 0, Type: "illust", URL: "https://www.pixiv.net/artworks/0"})
+		{name: "artwork", make: func() (application.Record, error) {
+			return application.RecordFromArtwork(pixiv.Artwork{ID: 0, Kind: pixiv.ArtworkKindIllustration})
 		}},
 		{name: "novel", make: func() (application.Record, error) {
-			return application.RecordFromNovel(sdk.Novel{ID: -1, URL: "https://www.pixiv.net/novel/show.php?id=-1"})
+			return application.RecordFromNovel(pixiv.Novel{ID: -1})
 		}},
 		{name: "user", make: func() (application.Record, error) {
-			return application.RecordFromUserPreview(sdk.UserPreview{User: sdk.User{ID: 0}})
-		}},
-		{name: "recommended user", make: func() (application.Record, error) {
-			return application.RecordFromRecommendedUserPreview(sdk.RecommendedUserPreview{User: sdk.User{ID: -1}})
+			return application.RecordFromUserPreview(pixiv.UserPreview{User: pixiv.User{ID: 0}})
 		}},
 		{name: "user detail", make: func() (application.Record, error) {
-			return application.RecordFromUserDetail(sdk.UserDetailResult{User: sdk.User{ID: 0}})
+			return application.RecordFromUserDetail(pixiv.UserDetail{User: pixiv.User{ID: 0}})
 		}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -401,7 +391,7 @@ func assertRecordMatchesSource(t *testing.T, source any, record application.Reco
 	t.Helper()
 	got, err := json.Marshal(record)
 	require.NoError(t, err)
-	want, err := json.Marshal(source)
+	want, err := application.MarshalRecordValue(source)
 	require.NoError(t, err)
 
 	var wantObject map[string]json.RawMessage

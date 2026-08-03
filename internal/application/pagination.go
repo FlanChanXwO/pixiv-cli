@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 
-	sdk "github.com/FlanChanXwO/pixiv-cli/pixiv"
+	"github.com/FlanChanXwO/pixiv-cli/sdk"
 )
 
 // PagePlan 描述与传输协议无关的逻辑分页请求。Limit 为 0 时遍历全部结果。
@@ -30,15 +30,16 @@ func TraversePages[T any](ctx context.Context, plan PagePlan, fetch func(context
 	if plan.Limit < 0 {
 		return result, errors.New("page limit must be zero or positive")
 	}
-	cursor := sdk.Cursor("")
-	seen := make(map[sdk.Cursor]struct{})
+	var cursor sdk.Cursor
+	seen := make(map[string]struct{})
 	skip := plan.Skip
 	seekingOffset := skip > 0
 	for {
-		if _, exists := seen[cursor]; exists {
-			return result, fmt.Errorf("pagination cursor repeated: %q", cursor)
+		// 按 cursor 的文本编码判断重复，避免不透明 Cursor 的指针身份差异漏判。
+		if _, exists := seen[cursor.String()]; exists {
+			return result, fmt.Errorf("pagination cursor repeated: %s", cursor.String())
 		}
-		seen[cursor] = struct{}{}
+		seen[cursor.String()] = struct{}{}
 		items, next, err := fetch(ctx, cursor)
 		if err != nil {
 			return result, err
@@ -68,20 +69,20 @@ func TraversePages[T any](ctx context.Context, plan PagePlan, fetch func(context
 		}
 		if plan.Limit > 0 && result.Returned >= plan.Limit {
 			if !result.HasMore {
-				result.HasMore = next != ""
+				result.HasMore = !next.IsZero()
 			}
 			return result, nil
 		}
 		// OneBatch 表示“一个逻辑批次”：本地筛选后的连续空上游批次要跳过，
 		// 直到拿到首个非空逻辑结果或真正结束；不得在空批上提前停。
 		if plan.OneBatch && !seekingOffset {
-			if result.Returned > 0 || next == "" {
-				result.HasMore = next != ""
+			if result.Returned > 0 || next.IsZero() {
+				result.HasMore = !next.IsZero()
 				return result, nil
 			}
 			// 空批且仍有上游：继续补拉。
 		}
-		if next == "" {
+		if next.IsZero() {
 			return result, nil
 		}
 		cursor = next

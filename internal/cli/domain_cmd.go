@@ -10,14 +10,14 @@ import (
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/application"
 	"github.com/FlanChanXwO/pixiv-cli/internal/utils/parse"
-	sdk "github.com/FlanChanXwO/pixiv-cli/pixiv"
+	"github.com/FlanChanXwO/pixiv-cli/sdk"
+	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/spf13/cobra"
 )
 
 type userListOptions struct {
 	commandOptions
 	ndjsonOutputOptions
-	illustFilterOptions
 	listOptions
 	restrict   string
 	tag        string
@@ -76,25 +76,17 @@ func (a app) runUserSearch(cmd *cobra.Command, args []string, opts userSearchOpt
 	}
 	word := strings.Join(args, " ")
 	return services.SDK.RunPooledOperation(cmd.Context(), request, func(ctx context.Context, client application.SDKClient) (bool, error) {
-		var source sdk.UserSearchSource
-		fetch := func(ctx context.Context, cursor sdk.Cursor) ([]sdk.UserPreview, sdk.Cursor, error) {
-			result, searchErr := client.SearchUser(ctx, sdk.SearchUserRequest{Word: word, Cursor: cursor})
+		fetch := func(ctx context.Context, cursor sdk.Cursor) ([]pixiv.UserPreview, sdk.Cursor, error) {
+			result, searchErr := client.SearchUsers(ctx, pixiv.SearchUsersRequest{Word: word, Cursor: cursor})
 			if searchErr != nil {
-				return nil, "", searchErr
+				return nil, sdk.Cursor{}, searchErr
 			}
-			if result == nil || !validUserSearchSource(result.Source) {
-				return nil, "", fmt.Errorf("pixiv sdk returned a user search result without a valid source")
-			}
-			if source != "" && source != result.Source {
-				return nil, "", fmt.Errorf("pixiv sdk changed user search source during pagination")
-			}
-			source = result.Source
-			return result.UserPreviews, result.NextCursor, nil
+			return result.Items, result.Next, nil
 		}
 		committed := false
 		if opts.ndjson {
 			encoder := json.NewEncoder(a.out)
-			err := pageItems(ctx, plan, fetch, func(items []sdk.UserPreview) error {
+			err := pageItems(ctx, plan, fetch, func(items []pixiv.UserPreview) error {
 				for _, item := range items {
 					record, err := application.RecordFromUserPreview(item)
 					if err != nil {
@@ -115,18 +107,18 @@ func (a app) runUserSearch(cmd *cobra.Command, args []string, opts userSearchOpt
 				return false, err
 			}
 			defer spool.Close()
-			if err := pageItems(ctx, plan, fetch, func(items []sdk.UserPreview) error { return appendJSONArray(spool, items) }); err != nil {
+			if err := pageItems(ctx, plan, fetch, func(items []pixiv.UserPreview) error { return appendJSONArray(spool, items) }); err != nil {
 				return false, err
 			}
 			committed = true
-			err = spool.CommitWithStringField(a.out, "source", string(source))
+			err = spool.Commit(a.out)
 			return committed, err
 		}
 		headingWritten := false
-		err := pageItems(ctx, plan, fetch, func(items []sdk.UserPreview) error {
+		err := pageItems(ctx, plan, fetch, func(items []pixiv.UserPreview) error {
 			if !headingWritten {
 				committed = true
-				if _, err := fmt.Fprintln(a.out, userSearchHeading(word, source)); err != nil {
+				if _, err := fmt.Fprintln(a.out, fmt.Sprintf("users for %q", word)); err != nil {
 					return err
 				}
 				headingWritten = true
@@ -143,18 +135,7 @@ func (a app) runUserSearch(cmd *cobra.Command, args []string, opts userSearchOpt
 	})
 }
 
-func validUserSearchSource(source sdk.UserSearchSource) bool {
-	return source == sdk.UserSearchSourceApp || source == sdk.UserSearchSourceRelatedIllustAuthors
-}
-
-func userSearchHeading(word string, source sdk.UserSearchSource) string {
-	if source == sdk.UserSearchSourceRelatedIllustAuthors {
-		return fmt.Sprintf("related illustration authors for %q (source: %s; not a username search)", word, source)
-	}
-	return fmt.Sprintf("users for %q (source: %s)", word, source)
-}
-
-func printUserSearchPreviews(out io.Writer, items []sdk.UserPreview) error {
+func printUserSearchPreviews(out io.Writer, items []pixiv.UserPreview) error {
 	for _, item := range items {
 		line := fmt.Sprintf("%d %s", item.User.ID, safeTextLine(item.User.Name))
 		if item.User.Account != "" {
@@ -194,12 +175,9 @@ func (a app) runUserDetail(cmd *cobra.Command, arg string, opts commandOptions) 
 		return err
 	}
 	return services.SDK.RunPooledOperation(cmd.Context(), request, func(ctx context.Context, client application.SDKClient) (bool, error) {
-		result, err := client.UserDetail(ctx, sdk.UserDetailRequest{UserID: userID})
+		result, err := client.User(ctx, pixiv.UserRequest{UserID: userID})
 		if err != nil {
 			return false, err
-		}
-		if result == nil {
-			return false, fmt.Errorf("pixiv sdk returned an empty user detail result")
 		}
 		if jsonOut {
 			// 下游写入开始即禁止因伪装成 429 的 writer error 重放请求。
@@ -208,7 +186,7 @@ func (a app) runUserDetail(cmd *cobra.Command, arg string, opts commandOptions) 
 			return committed, err
 		} else {
 			committed := true
-			err = printUserDetail(a.out, *result)
+			err = printUserDetail(a.out, result)
 			return committed, err
 		}
 	})
@@ -216,7 +194,7 @@ func (a app) runUserDetail(cmd *cobra.Command, arg string, opts commandOptions) 
 
 // printUserDetail 只展示人可读且有值的文本字段；固定计数保留零值，以免把公开的
 // “没有作品/关注”误报为字段缺失。完整机器可读字段由 --json 原样输出 SDK 模型。
-func printUserDetail(out io.Writer, result sdk.UserDetailResult) error {
+func printUserDetail(out io.Writer, result pixiv.UserDetail) error {
 	lines := []string{fmt.Sprintf("user id: %d", result.User.ID)}
 	if result.User.Name != "" {
 		lines = append(lines, fmt.Sprintf("name: %s", result.User.Name))
@@ -227,10 +205,8 @@ func printUserDetail(out io.Writer, result sdk.UserDetailResult) error {
 	if result.User.Comment != "" {
 		lines = append(lines, fmt.Sprintf("comment: %s", result.User.Comment))
 	}
-	if result.Profile.Webpage != nil {
-		if webpage := publicWebpage(*result.Profile.Webpage); webpage != "" {
-			lines = append(lines, fmt.Sprintf("webpage: %s", webpage))
-		}
+	if webpage := publicWebpage(result.Profile.Webpage); webpage != "" {
+		lines = append(lines, fmt.Sprintf("webpage: %s", webpage))
 	}
 	if result.Profile.Region != "" {
 		lines = append(lines, fmt.Sprintf("region: %s", result.Profile.Region))
@@ -291,26 +267,24 @@ func publicWebpage(raw string) string {
 }
 
 func (a app) newUserArtworksCommand() *cobra.Command {
-	opts := userListOptions{illustType: string(sdk.IllustTypeIllust)}
+	opts := userListOptions{illustType: string(pixiv.ArtworkKindIllustration)}
 	cmd := &cobra.Command{Use: "artworks [USER_ID]", Short: "List a user's artworks", Args: requireMaxArgs(1, "pixiv user artworks [options] [USER_ID]"), RunE: func(cmd *cobra.Command, args []string) error {
 		return a.runUserArtworks(cmd, args, opts)
 	}}
 	a.bindCommonFlags(cmd, &opts.commandOptions)
 	bindNDJSONFlag(cmd, &opts.ndjsonOutputOptions)
-	bindIllustFilterFlag(cmd, &opts.illustFilterOptions)
 	bindListFlags(cmd, &opts.listOptions)
 	cmd.Flags().StringVar(&opts.illustType, "type", opts.illustType, "illust type: illust, manga, ugoira")
 	return cmd
 }
 
 func (a app) newUserBookmarksCommand() *cobra.Command {
-	opts := userListOptions{restrict: string(sdk.RestrictPublic)}
+	opts := userListOptions{restrict: string(pixiv.RestrictPublic)}
 	cmd := &cobra.Command{Use: "bookmarks [USER_ID]", Short: "List a user's bookmarks", Args: requireMaxArgs(1, "pixiv user bookmarks [options] [USER_ID]"), RunE: func(cmd *cobra.Command, args []string) error {
 		return a.runUserBookmarks(cmd, args, opts)
 	}}
 	a.bindCommonFlags(cmd, &opts.commandOptions)
 	bindNDJSONFlag(cmd, &opts.ndjsonOutputOptions)
-	bindIllustFilterFlag(cmd, &opts.illustFilterOptions)
 	bindListFlags(cmd, &opts.listOptions)
 	cmd.Flags().StringVar(&opts.restrict, "restrict", opts.restrict, "bookmark visibility (public or private)")
 	cmd.Flags().StringVar(&opts.tag, "tag", "", "filter by bookmark tag")
@@ -318,7 +292,7 @@ func (a app) newUserBookmarksCommand() *cobra.Command {
 }
 
 func (a app) newUserFollowingCommand() *cobra.Command {
-	opts := userListOptions{restrict: string(sdk.RestrictPublic)}
+	opts := userListOptions{restrict: string(pixiv.RestrictPublic)}
 	cmd := &cobra.Command{Use: "following [USER_ID]", Short: "List users followed by a user", Args: requireMaxArgs(1, "pixiv user following [options] [USER_ID]"), RunE: func(cmd *cobra.Command, args []string) error {
 		return a.runUserFollowing(cmd, args, opts)
 	}}
@@ -334,9 +308,6 @@ func (a app) runUserArtworks(cmd *cobra.Command, args []string, options userList
 	if err != nil {
 		return err
 	}
-	if err := applyIllustFilter(&plan, options.filter); err != nil {
-		return err
-	}
 	var requestedUserID int64
 	if len(args) == 1 {
 		requestedUserID, err = parse.PositiveInt64(args[0], "user_id")
@@ -361,23 +332,23 @@ func (a app) runUserArtworks(cmd *cobra.Command, args []string, options userList
 	}
 	options.ndjson = a.shouldAutoNDJSON(cmd, options.ndjson, jsonOut)
 	userID := requestedUserID
-	fetch := func(client application.SDKClient, ctx context.Context, cursor sdk.Cursor) ([]sdk.Illust, sdk.Cursor, error) {
+	fetch := func(client application.SDKClient, ctx context.Context, cursor sdk.Cursor) ([]pixiv.Artwork, sdk.Cursor, error) {
 		if userID == 0 {
 			var identityErr error
 			userID, identityErr = client.CurrentUserID(ctx)
 			if identityErr != nil {
-				return nil, "", identityErr
+				return nil, sdk.Cursor{}, identityErr
 			}
 		}
-		result, err := client.UserArtworks(ctx, sdk.UserArtworksRequest{UserID: userID, Type: sdk.IllustType(options.illustType), Cursor: cursor})
+		result, err := client.UserArtworks(ctx, pixiv.UserArtworksRequest{UserID: userID, Kind: pixiv.ArtworkKind(options.illustType), Cursor: cursor})
 		if err != nil {
-			return nil, "", err
+			return nil, sdk.Cursor{}, err
 		}
-		return result.Illusts, result.NextCursor, nil
+		return result.Items, result.Next, nil
 	}
 	return a.runPooledIllustListWithHeading(cmd.Context(), request, plan, jsonOut, options.ndjson, func() string {
 		return fmt.Sprintf("artworks by %d", userID)
-	}, fetch, func(items []sdk.Illust, start int) error { return printIllusts(a.out, items, start, false) })
+	}, fetch, func(items []pixiv.Artwork, start int) error { return printIllusts(a.out, items, start, false) })
 }
 
 func (a app) runUserBookmarks(cmd *cobra.Command, args []string, options userListOptions) error {
@@ -385,9 +356,6 @@ func (a app) runUserBookmarks(cmd *cobra.Command, args []string, options userLis
 	if err != nil {
 		return err
 	}
-	if err := applyIllustFilter(&plan, options.filter); err != nil {
-		return err
-	}
 	var requestedUserID int64
 	if len(args) == 1 {
 		requestedUserID, err = parse.PositiveInt64(args[0], "user_id")
@@ -412,23 +380,23 @@ func (a app) runUserBookmarks(cmd *cobra.Command, args []string, options userLis
 	}
 	options.ndjson = a.shouldAutoNDJSON(cmd, options.ndjson, jsonOut)
 	userID := requestedUserID
-	fetch := func(client application.SDKClient, ctx context.Context, cursor sdk.Cursor) ([]sdk.Illust, sdk.Cursor, error) {
+	fetch := func(client application.SDKClient, ctx context.Context, cursor sdk.Cursor) ([]pixiv.Artwork, sdk.Cursor, error) {
 		if userID == 0 {
 			var identityErr error
 			userID, identityErr = client.CurrentUserID(ctx)
 			if identityErr != nil {
-				return nil, "", identityErr
+				return nil, sdk.Cursor{}, identityErr
 			}
 		}
-		result, err := client.UserBookmarks(ctx, sdk.UserBookmarksRequest{UserID: userID, Restrict: sdk.Restrict(options.restrict), Tag: options.tag, Cursor: cursor})
+		result, err := client.UserArtworkBookmarks(ctx, pixiv.UserArtworkBookmarksRequest{UserID: userID, Restrict: pixiv.Restrict(options.restrict), Tag: options.tag, Cursor: cursor})
 		if err != nil {
-			return nil, "", err
+			return nil, sdk.Cursor{}, err
 		}
-		return result.Illusts, result.NextCursor, nil
+		return result.Items, result.Next, nil
 	}
 	return a.runPooledIllustListWithHeading(cmd.Context(), request, plan, jsonOut, options.ndjson, func() string {
 		return fmt.Sprintf("bookmarks by %d", userID)
-	}, fetch, func(items []sdk.Illust, start int) error { return printIllusts(a.out, items, start, false) })
+	}, fetch, func(items []pixiv.Artwork, start int) error { return printIllusts(a.out, items, start, false) })
 }
 
 func (a app) runUserFollowing(cmd *cobra.Command, args []string, options userListOptions) error {
@@ -459,23 +427,23 @@ func (a app) runUserFollowing(cmd *cobra.Command, args []string, options userLis
 		}
 	}
 	userID := requestedUserID
-	fetch := func(client application.SDKClient, ctx context.Context, cursor sdk.Cursor) ([]sdk.UserPreview, sdk.Cursor, error) {
+	fetch := func(client application.SDKClient, ctx context.Context, cursor sdk.Cursor) ([]pixiv.UserPreview, sdk.Cursor, error) {
 		if userID == 0 {
 			var identityErr error
 			userID, identityErr = client.CurrentUserID(ctx)
 			if identityErr != nil {
-				return nil, "", identityErr
+				return nil, sdk.Cursor{}, identityErr
 			}
 		}
-		result, err := client.UserFollowing(ctx, sdk.UserFollowingRequest{UserID: userID, Restrict: sdk.Restrict(options.restrict), Cursor: cursor})
+		result, err := client.UserFollowing(ctx, pixiv.UserFollowingRequest{UserID: userID, Restrict: pixiv.Restrict(options.restrict), Cursor: cursor})
 		if err != nil {
-			return nil, "", err
+			return nil, sdk.Cursor{}, err
 		}
-		return result.UserPreviews, result.NextCursor, nil
+		return result.Items, result.Next, nil
 	}
 	return a.runPooledUserList(cmd.Context(), request, plan, jsonOut, options.ndjson, func() string {
 		return fmt.Sprintf("users followed by %d", userID)
-	}, fetch, func(items []sdk.UserPreview) error { return printUserPreviews(a.out, items) })
+	}, fetch, func(items []pixiv.UserPreview) error { return printUserPreviews(a.out, items) })
 }
 
 func (a app) newBookmarkCommand() *cobra.Command {
@@ -485,13 +453,13 @@ func (a app) newBookmarkCommand() *cobra.Command {
 }
 
 func (a app) newBookmarkAddCommand() *cobra.Command {
-	opts := mutationOptions{restrict: string(sdk.RestrictPublic)}
+	opts := mutationOptions{restrict: string(pixiv.RestrictPublic)}
 	cmd := &cobra.Command{Use: "add [ILLUST_ID]", Short: "Bookmark an illustration", Args: actionInputArgs(a.in, "pixiv bookmark add [options] [ILLUST_ID]"), RunE: func(cmd *cobra.Command, args []string) error {
 		if _, err := recordFailureStrategy(opts.onError); err != nil {
 			return err
 		}
 		invoke := a.lazyActionInvoker(cmd, opts.commandOptions, func(client application.SDKClient, ctx context.Context, id int64) error {
-			return client.AddBookmark(ctx, sdk.AddBookmarkRequest{IllustID: id, Restrict: sdk.Restrict(opts.restrict), Tags: opts.tags})
+			return client.AddBookmark(ctx, pixiv.AddBookmarkRequest{ArtworkID: id, Restrict: pixiv.Restrict(opts.restrict), Tags: opts.tags})
 		})
 		if len(args) == 0 {
 			return a.consumeActionRecords(cmd, "bookmark_add", opts.onError, visualRecordTypes, invoke)
@@ -516,7 +484,7 @@ func (a app) newBookmarkRemoveCommand() *cobra.Command {
 			return err
 		}
 		invoke := a.lazyActionInvoker(cmd, opts.commandOptions, func(client application.SDKClient, ctx context.Context, id int64) error {
-			return client.RemoveBookmark(ctx, sdk.RemoveBookmarkRequest{IllustID: id})
+			return client.RemoveBookmark(ctx, pixiv.RemoveBookmarkRequest{ArtworkID: id})
 		})
 		if len(args) == 0 {
 			return a.consumeActionRecords(cmd, "bookmark_remove", opts.onError, visualRecordTypes, invoke)
@@ -539,13 +507,13 @@ func (a app) newFollowCommand() *cobra.Command {
 }
 
 func (a app) newFollowAddCommand() *cobra.Command {
-	opts := mutationOptions{restrict: string(sdk.RestrictPublic)}
+	opts := mutationOptions{restrict: string(pixiv.RestrictPublic)}
 	cmd := &cobra.Command{Use: "add [USER_ID]", Short: "Follow a user", Args: actionInputArgs(a.in, "pixiv follow add [options] [USER_ID]"), RunE: func(cmd *cobra.Command, args []string) error {
 		if _, err := recordFailureStrategy(opts.onError); err != nil {
 			return err
 		}
 		invoke := a.lazyActionInvoker(cmd, opts.commandOptions, func(client application.SDKClient, ctx context.Context, id int64) error {
-			return client.FollowUser(ctx, sdk.FollowUserRequest{UserID: id, Restrict: sdk.Restrict(opts.restrict)})
+			return client.FollowUser(ctx, pixiv.FollowUserRequest{UserID: id, Restrict: pixiv.Restrict(opts.restrict)})
 		})
 		if len(args) == 0 {
 			return a.consumeActionRecords(cmd, "follow_add", opts.onError, userRecordTypes, invoke)
@@ -569,7 +537,7 @@ func (a app) newFollowRemoveCommand() *cobra.Command {
 			return err
 		}
 		invoke := a.lazyActionInvoker(cmd, opts.commandOptions, func(client application.SDKClient, ctx context.Context, id int64) error {
-			return client.UnfollowUser(ctx, sdk.UnfollowUserRequest{UserID: id})
+			return client.UnfollowUser(ctx, pixiv.UnfollowUserRequest{UserID: id})
 		})
 		if len(args) == 0 {
 			return a.consumeActionRecords(cmd, "follow_remove", opts.onError, userRecordTypes, invoke)

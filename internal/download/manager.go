@@ -14,7 +14,8 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/utils/parallel"
 	"github.com/FlanChanXwO/pixiv-cli/internal/utils/text"
 	uriutil "github.com/FlanChanXwO/pixiv-cli/internal/utils/uri"
-	sdk "github.com/FlanChanXwO/pixiv-cli/pixiv"
+	"github.com/FlanChanXwO/pixiv-cli/sdk"
+	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 )
 
 // PixivClient 保留原有名称供内部调用方源码兼容；能力边界由 application 统一拥有。
@@ -103,170 +104,111 @@ func (m *Manager) Download(ctx context.Context, request application.DownloadRequ
 }
 
 func (m *Manager) downloadArtwork(ctx context.Context, id int64, pages []int, quality application.DownloadQuality, ugoiraFormat application.UgoiraFormat) (out DownloadedArtwork, err error) {
-	detail, err := m.client.IllustDetail(ctx, id)
+	artwork, err := m.client.Artwork(ctx, pixiv.ArtworkRequest{ArtworkID: id})
 	if err != nil {
 		return DownloadedArtwork{}, err
 	}
-	illust := detail.Illust
 	base := m.DownloadPath()
 	base, err = filepath.Abs(base)
 	if err != nil {
 		return DownloadedArtwork{}, err
 	}
-	if illust.PageCount > 1 || illust.Type == string(sdk.IllustTypeUgoira) {
-		base = filepath.Join(base, filename.Sanitize(fmt.Sprintf("%d - %s", illust.ID, text.DefaultString(illust.Title, "Untitled"))))
+	kind := string(artwork.Kind)
+	if artwork.PageCount > 1 || kind == string(pixiv.ArtworkKindUgoira) {
+		base = filepath.Join(base, filename.Sanitize(fmt.Sprintf("%d - %s", artwork.ID, text.DefaultString(artwork.Title, "Untitled"))))
 	}
 	if err := os.MkdirAll(base, 0o755); err != nil {
 		return DownloadedArtwork{}, err
 	}
 
-	artwork := DownloadedArtwork{
-		IllustID: illust.ID,
-		Title:    illust.Title,
-		Author:   illust.User.Name,
-		Type:     illust.Type,
+	artworkOut := DownloadedArtwork{
+		IllustID: artwork.ID,
+		Title:    artwork.Title,
+		Author:   artwork.User.Name,
+		Type:     kind,
 	}
 
-	if illust.Type == string(sdk.IllustTypeUgoira) {
-		// Ugoira 只支持现有原始 GIF/APNG 流程；派生质量或页选择显式 unsupported。
+	if kind == string(pixiv.ArtworkKindUgoira) {
+		// Ugoira 只支持原始 GIF/APNG 流程；派生质量或页选择显式 unsupported。
 		if quality != application.DownloadQualityOriginal {
 			return DownloadedArtwork{}, fmt.Errorf("ugoira quality %q is unsupported; only original is supported", quality)
 		}
 		if len(pages) > 0 {
 			return DownloadedArtwork{}, fmt.Errorf("ugoira page selection is unsupported")
 		}
-		path, err := m.downloadUgoira(ctx, illust, base, ugoiraFormat)
+		path, err := m.downloadUgoira(ctx, artwork, base, ugoiraFormat)
 		if err != nil {
 			return DownloadedArtwork{}, err
 		}
-		artwork.Files = append(artwork.Files, DownloadedFile{Path: path, Page: 1})
-		return artwork, nil
+		artworkOut.Files = append(artworkOut.Files, DownloadedFile{Path: path, Page: 1})
+		return artworkOut, nil
 	}
 
-	selected, err := selectStaticPages(illust, pages)
+	selected, err := selectStaticPages(artwork, pages)
 	if err != nil {
 		return DownloadedArtwork{}, err
 	}
 	for _, item := range selected {
-		rawURL, err := selectImageURL(item.urls, item.singleOriginal, quality)
-		if err != nil {
-			return DownloadedArtwork{}, fmt.Errorf("illust %d page %d: %w", illust.ID, item.page1, err)
+		rawURL := item.image.Image.Resource.URL
+		if rawURL == "" {
+			return DownloadedArtwork{}, fmt.Errorf("illust %d page %d has no image URL", artwork.ID, item.page1)
 		}
 		// 文件名页索引仍用 0-based，保持既有模板语义；DownloadedFile.Page 改为 1-based 用户页号。
-		path := filepath.Join(base, filename.Generate(filenameData(illust), item.page1-1, m.filenameTemplate)+downloadExtension(rawURL))
-		if err := m.downloadURL(ctx, rawURL, path); err != nil {
+		path := filepath.Join(base, filename.Generate(filenameData(artwork), item.page1-1, m.filenameTemplate)+downloadExtension(rawURL))
+		if err := m.saveResource(ctx, item.image.Image.Resource.Ref, path); err != nil {
 			return DownloadedArtwork{}, err
 		}
-		artwork.Files = append(artwork.Files, DownloadedFile{Path: path, Page: item.page1})
+		artworkOut.Files = append(artworkOut.Files, DownloadedFile{Path: path, Page: item.page1})
 	}
-	return artwork, nil
+	return artworkOut, nil
 }
 
 type staticPage struct {
-	page1          int
-	urls           sdk.ImageURLs
-	singleOriginal string
+	page1 int
+	image pixiv.ArtworkPage
 }
 
 // selectStaticPages 返回按自然页序排列的 1-based 页。pages 为空表示全部。
-func selectStaticPages(illust sdk.Illust, pages []int) ([]staticPage, error) {
-	total := illust.PageCount
+func selectStaticPages(artwork pixiv.Artwork, pages []int) ([]staticPage, error) {
+	total := artwork.PageCount
 	if total <= 0 {
-		total = 1
+		total = len(artwork.Pages)
 	}
-	if total == 1 && len(illust.MetaPages) == 0 {
-		if len(pages) > 0 {
-			for _, page := range pages {
-				if page != 1 {
-					return nil, fmt.Errorf("page %d does not exist (page_count=1)", page)
-				}
-			}
-		}
-		return []staticPage{{
-			page1:          1,
-			urls:           illust.ImageURLs,
-			singleOriginal: illust.MetaSinglePage.OriginalImageURL,
-		}}, nil
-	}
-	if len(illust.MetaPages) == 0 {
-		return nil, fmt.Errorf("illust %d has no page metadata", illust.ID)
-	}
-	if total < len(illust.MetaPages) {
-		total = len(illust.MetaPages)
+	if total <= 0 || len(artwork.Pages) == 0 {
+		return nil, fmt.Errorf("illust %d has no page metadata", artwork.ID)
 	}
 	want := map[int]struct{}{}
 	if len(pages) == 0 {
-		for i := 1; i <= len(illust.MetaPages); i++ {
+		for i := 1; i <= len(artwork.Pages); i++ {
 			want[i] = struct{}{}
 		}
 	} else {
 		for _, page := range pages {
-			if page < 1 || page > total || page > len(illust.MetaPages) {
+			if page < 1 || page > total || page > len(artwork.Pages) {
 				return nil, fmt.Errorf("page %d does not exist (page_count=%d)", page, total)
 			}
 			want[page] = struct{}{}
 		}
 	}
 	var selected []staticPage
-	for i, page := range illust.MetaPages {
+	for i, page := range artwork.Pages {
 		page1 := i + 1
 		if _, ok := want[page1]; !ok {
 			continue
 		}
-		selected = append(selected, staticPage{page1: page1, urls: page.ImageURLs})
+		selected = append(selected, staticPage{page1: page1, image: page})
 	}
 	return selected, nil
 }
 
-// selectImageURL 按固定质量语义选 URL：original/regular/small/thumb/mini。
-// mini 优先 SquareMedium（web thumb_mini/mini）；thumb 在 SquareMedium 更像 48 时回退 Medium。
-func selectImageURL(urls sdk.ImageURLs, singleOriginal string, quality application.DownloadQuality) (string, error) {
-	switch quality {
-	case application.DownloadQualityOriginal:
-		raw := text.FirstNonEmpty(singleOriginal, urls.Original, urls.Large)
-		if raw == "" {
-			return "", fmt.Errorf("no original image url")
-		}
-		return raw, nil
-	case application.DownloadQualityRegular:
-		raw := text.FirstNonEmpty(urls.Large, urls.Medium, urls.Original, singleOriginal)
-		if raw == "" {
-			return "", fmt.Errorf("no regular image url")
-		}
-		return raw, nil
-	case application.DownloadQualitySmall:
-		raw := text.FirstNonEmpty(urls.Medium, urls.Large, urls.Original, singleOriginal)
-		if raw == "" {
-			return "", fmt.Errorf("no small image url")
-		}
-		return raw, nil
-	case application.DownloadQualityThumb:
-		// 250x250 居中裁剪：优先 SquareMedium，缺失时 Medium。
-		raw := text.FirstNonEmpty(urls.SquareMedium, urls.Medium, urls.Large, urls.Original, singleOriginal)
-		if raw == "" {
-			return "", fmt.Errorf("no thumb image url")
-		}
-		return raw, nil
-	case application.DownloadQualityMini:
-		// 48x48 居中裁剪：优先 SquareMedium（web mini/thumb_mini）。
-		raw := text.FirstNonEmpty(urls.SquareMedium, urls.Medium, urls.Large, urls.Original, singleOriginal)
-		if raw == "" {
-			return "", fmt.Errorf("no mini image url")
-		}
-		return raw, nil
-	default:
-		return "", fmt.Errorf("quality must be one of original, regular, small, thumb, mini")
-	}
-}
-
-func (m *Manager) downloadUgoira(ctx context.Context, illust sdk.Illust, base string, format application.UgoiraFormat) (string, error) {
-	meta, err := m.client.UgoiraMetadata(ctx, illust.ID)
+func (m *Manager) downloadUgoira(ctx context.Context, artwork pixiv.Artwork, base string, format application.UgoiraFormat) (string, error) {
+	meta, err := m.client.UgoiraMetadata(ctx, pixiv.UgoiraMetadataRequest{ArtworkID: artwork.ID})
 	if err != nil {
 		return "", err
 	}
-	zipURL := meta.UgoiraMetadata.DownloadURL
-	if zipURL == "" {
-		return "", fmt.Errorf("ugoira %d has no zip url", illust.ID)
+	archive := selectUgoiraArchive(meta)
+	if archive == nil || archive.Resource.URL == "" {
+		return "", fmt.Errorf("ugoira %d has no downloadable archive", artwork.ID)
 	}
 	zipFile, err := os.CreateTemp(base, "ugoira-*.zip")
 	if err != nil {
@@ -277,31 +219,42 @@ func (m *Manager) downloadUgoira(ctx context.Context, illust sdk.Illust, base st
 		return "", err
 	}
 	defer os.Remove(zipPath)
-	if err := m.downloadURL(ctx, zipURL, zipPath); err != nil {
+	if err := m.saveResource(ctx, archive.Resource.Ref, zipPath); err != nil {
 		return "", err
 	}
-	outPath := filepath.Join(base, filename.Generate(filenameData(illust), 0, m.filenameTemplate)+"."+string(format))
-	if err := m.convertUgoira(ctx, zipPath, meta.UgoiraMetadata.Frames, base, outPath, AnimationFormat(format)); err != nil {
+	outPath := filepath.Join(base, filename.Generate(filenameData(artwork), 0, m.filenameTemplate)+"."+string(format))
+	if err := m.convertUgoira(ctx, zipPath, meta.Frames, base, outPath, AnimationFormat(format)); err != nil {
 		return "", err
 	}
 	return outPath, nil
 }
 
-func (m *Manager) downloadURL(ctx context.Context, rawURL, path string) error {
-	ref, err := m.client.ParseResourceRef(rawURL)
-	if err != nil {
-		return err
+// selectUgoiraArchive 优先 original，缺失时退回 medium。
+func selectUgoiraArchive(meta pixiv.UgoiraMetadata) *pixiv.UgoiraArchive {
+	var fallback *pixiv.UgoiraArchive
+	for index := range meta.Archives {
+		archive := &meta.Archives[index]
+		if archive.Quality == pixiv.UgoiraQualityOriginal {
+			return archive
+		}
+		if fallback == nil {
+			fallback = archive
+		}
 	}
-	_, err = m.client.DownloadResource(ctx, ref, path)
+	return fallback
+}
+
+func (m *Manager) saveResource(ctx context.Context, ref sdk.ResourceRef, path string) error {
+	_, err := m.client.SaveResource(ctx, ref, sdk.SaveOptions{Path: path})
 	return err
 }
 
-func (m *Manager) ConvertUgoira(ctx context.Context, zipPath string, frames []sdk.UgoiraFrame, workDir, outputGIF string) error {
+func (m *Manager) ConvertUgoira(ctx context.Context, zipPath string, frames []pixiv.UgoiraFrame, workDir, outputGIF string) error {
 	return m.convertUgoira(ctx, zipPath, frames, workDir, outputGIF, AnimationFormatGIF)
 }
 
 // convertUgoira 保留 ConvertUgoira 的 GIF 兼容入口，同时让 DownloadRequest 显式选择 APNG。
-func (m *Manager) convertUgoira(ctx context.Context, zipPath string, frames []sdk.UgoiraFrame, workDir, outputPath string, format AnimationFormat) error {
+func (m *Manager) convertUgoira(ctx context.Context, zipPath string, frames []pixiv.UgoiraFrame, workDir, outputPath string, format AnimationFormat) error {
 	if m.ugoiraEncoder == nil {
 		return fmt.Errorf("ugoira encoder is not configured")
 	}
@@ -328,11 +281,11 @@ func downloadExtension(rawURL string) string {
 	return strings.TrimRight(extension, ". ")
 }
 
-func filenameData(illust sdk.Illust) filename.FilenameData {
+func filenameData(artwork pixiv.Artwork) filename.FilenameData {
 	return filename.FilenameData{
-		ID:        illust.ID,
-		Author:    illust.User.Name,
-		Title:     illust.Title,
-		PageCount: illust.PageCount,
+		ID:        artwork.ID,
+		Author:    artwork.User.Name,
+		Title:     artwork.Title,
+		PageCount: artwork.PageCount,
 	}
 }

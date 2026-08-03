@@ -9,15 +9,15 @@ import (
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/application"
 	"github.com/FlanChanXwO/pixiv-cli/internal/config"
-	sdk "github.com/FlanChanXwO/pixiv-cli/pixiv"
+	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 func TestBookmarkAddConsumesNDJSONAndSkipsFailedRecord(t *testing.T) {
 	useTempPaths(t)
-	var requests []sdk.AddBookmarkRequest
-	setTestSDKCommandClient(t, sdkCommandFake{addBookmark: func(_ context.Context, request sdk.AddBookmarkRequest) error {
+	var requests []pixiv.AddBookmarkRequest
+	setTestSDKCommandClient(t, sdkCommandFake{addBookmark: func(_ context.Context, request pixiv.AddBookmarkRequest) error {
 		requests = append(requests, request)
 		return nil
 	}})
@@ -29,7 +29,7 @@ func TestBookmarkAddConsumesNDJSONAndSkipsFailedRecord(t *testing.T) {
 	code := Run([]string{"pixiv", "bookmark", "add", "--on-error", "skip"}, strings.NewReader(input), &stdout, &stderr)
 
 	assert.Equal(t, 1, code)
-	assert.Equal(t, []sdk.AddBookmarkRequest{{IllustID: 81, Restrict: sdk.RestrictPublic}}, requests)
+	assert.Equal(t, []pixiv.AddBookmarkRequest{{ArtworkID: 81, Restrict: pixiv.RestrictPublic}}, requests)
 	assert.Empty(t, stdout.String())
 	var diagnostic map[string]any
 	require.NoError(t, json.Unmarshal(stderr.Bytes(), &diagnostic))
@@ -70,7 +70,7 @@ func TestDownloadConsumesNDJSONWithoutWritingAReport(t *testing.T) {
 func TestBookmarkAddFailFastDoesNotReadTheNextActionRecord(t *testing.T) {
 	useTempPaths(t)
 	called := false
-	setTestSDKCommandClient(t, sdkCommandFake{addBookmark: func(context.Context, sdk.AddBookmarkRequest) error {
+	setTestSDKCommandClient(t, sdkCommandFake{addBookmark: func(context.Context, pixiv.AddBookmarkRequest) error {
 		called = true
 		return nil
 	}})

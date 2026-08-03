@@ -3,46 +3,125 @@ package application
 import (
 	"context"
 	"errors"
+	"fmt"
+	"path/filepath"
 	"reflect"
+	"slices"
+	"strconv"
+	"strings"
 
-	sdk "github.com/FlanChanXwO/pixiv-cli/pixiv"
+	"github.com/FlanChanXwO/pixiv-cli/sdk"
+	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 )
 
 // DownloadClient 是下载实现从 public SDK operation snapshot 使用的最小能力集。
 // application 只编排用例，不依赖具体下载器或 Pixiv 协议实现。
 type DownloadClient interface {
-	IllustDetail(context.Context, int64) (*sdk.IllustDetail, error)
-	UgoiraMetadata(context.Context, int64) (*sdk.UgoiraMetadataResult, error)
+	Artwork(context.Context, pixiv.ArtworkRequest) (pixiv.Artwork, error)
+	UgoiraMetadata(context.Context, pixiv.UgoiraMetadataRequest) (pixiv.UgoiraMetadata, error)
 	ParseResourceRef(string) (sdk.ResourceRef, error)
-	DownloadResource(context.Context, sdk.ResourceRef, string) (sdk.ResourceDownloadResult, error)
+	SaveResource(context.Context, sdk.ResourceRef, sdk.SaveOptions) (sdk.SavedResource, error)
 }
 
 // DownloadTargetClient 在下载资源能力之外提供作者作品列表，用于把用户 URL 展开为视觉作品。
-// 该接口仍只依赖顶层 public SDK 的规范化能力。
 type DownloadTargetClient interface {
 	DownloadClient
-	UserArtworks(context.Context, sdk.UserArtworksRequest) (*sdk.IllustListResult, error)
+	UserArtworks(context.Context, pixiv.UserArtworksRequest) (sdk.Page[pixiv.Artwork], error)
+	UserArtworkBookmarks(context.Context, pixiv.UserArtworkBookmarksRequest) (sdk.Page[pixiv.Artwork], error)
 }
 
-// 质量与页选择契约由 public SDK 拥有，application 仅 alias 以便 CLI/MCP 共用。
-type DownloadQuality = sdk.DownloadQuality
-type UgoiraFormat = sdk.UgoiraFormat
+// DownloadQuality 选择静态图片的下载分辨率。
+type DownloadQuality string
 
+// DownloadQuality 值定义静态图片的可选分辨率。
 const (
-	DownloadQualityOriginal = sdk.DownloadQualityOriginal
-	DownloadQualityRegular  = sdk.DownloadQualityRegular
-	DownloadQualitySmall    = sdk.DownloadQualitySmall
-	DownloadQualityThumb    = sdk.DownloadQualityThumb
-	DownloadQualityMini     = sdk.DownloadQualityMini
-	UgoiraFormatGIF         = sdk.UgoiraFormatGIF
-	UgoiraFormatAPNG        = sdk.UgoiraFormatAPNG
+	DownloadQualityOriginal DownloadQuality = "original"
+	DownloadQualityRegular  DownloadQuality = "regular"
+	DownloadQualitySmall    DownloadQuality = "small"
+	DownloadQualityThumb    DownloadQuality = "thumb"
+	DownloadQualityMini     DownloadQuality = "mini"
 )
 
-var (
-	ParsePageSpec           = sdk.ParsePageSpec
-	ValidateDownloadQuality = sdk.ValidateDownloadQuality
-	ValidateUgoiraFormat    = sdk.ValidateUgoiraFormat
+// UgoiraFormat 选择 ugoira 的最终动画容器。
+type UgoiraFormat string
+
+// UgoiraFormat 值定义 ugoira 的可选动画容器。
+const (
+	UgoiraFormatGIF  UgoiraFormat = "gif"
+	UgoiraFormatAPNG UgoiraFormat = "apng"
 )
+
+// ParsePageSpec 解析逗号/连字符分隔的 1-based 页码选择，返回闭区间页号列表。
+func ParsePageSpec(raw string) ([]int, error) {
+	return parsePageSpec(raw)
+}
+
+// ValidateDownloadQuality 校验静态图片质量。
+func ValidateDownloadQuality(quality DownloadQuality) error {
+	switch quality {
+	case "", DownloadQualityOriginal, DownloadQualityRegular, DownloadQualitySmall, DownloadQualityThumb, DownloadQualityMini:
+		return nil
+	default:
+		return fmt.Errorf("quality must be one of original, regular, small, thumb, mini")
+	}
+}
+
+// ValidateUgoiraFormat 校验 ugoira 容器格式。
+func ValidateUgoiraFormat(format UgoiraFormat) error {
+	switch format {
+	case "", UgoiraFormatGIF, UgoiraFormatAPNG:
+		return nil
+	default:
+		return fmt.Errorf("ugoira format must be one of gif, apng")
+	}
+}
+
+// parsePageSpec 将 "1,3-5" 形式的页选择展开为去重、升序的闭区间页号。
+func parsePageSpec(raw string) ([]int, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil, nil
+	}
+	var pages []int
+	seen := make(map[int]struct{})
+	for _, part := range strings.Split(raw, ",") {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			return nil, errors.New("page selection contains an empty entry")
+		}
+		var start, end int
+		if strings.Contains(part, "-") {
+			bounds := strings.SplitN(part, "-", 2)
+			if len(bounds) != 2 {
+				return nil, fmt.Errorf("invalid page range %q", part)
+			}
+			parsedStart, err := strconv.Atoi(strings.TrimSpace(bounds[0]))
+			if err != nil || parsedStart <= 0 {
+				return nil, fmt.Errorf("invalid page range %q", part)
+			}
+			parsedEnd, err := strconv.Atoi(strings.TrimSpace(bounds[1]))
+			if err != nil || parsedEnd < parsedStart {
+				return nil, fmt.Errorf("invalid page range %q", part)
+			}
+			start, end = parsedStart, parsedEnd
+		} else {
+			page, err := strconv.Atoi(part)
+			if err != nil || page <= 0 {
+				return nil, fmt.Errorf("invalid page number %q", part)
+			}
+			start, end = page, page
+		}
+		for page := start; page <= end; page++ {
+			if _, exists := seen[page]; exists {
+				continue
+			}
+			seen[page] = struct{}{}
+			pages = append(pages, page)
+		}
+	}
+	slices.Sort(pages)
+	return pages, nil
+}
 
 type DownloadedArtwork struct {
 	IllustID int64
@@ -102,15 +181,14 @@ type DownloadService struct {
 // DownloadSources 是 CLI/MCP 的新入口：作品 PID、作品 URL、受资源策略允许的直链
 // 都原样交给 public SDK 解析。用户主页 URL 是唯一的应用层展开规则，因为它代表
 // 一组作品而非单个 SDK 下载来源。
-func (s DownloadService) DownloadSources(ctx context.Context, client DownloadTargetClient, sources []string, options sdk.DownloadOptions) (DownloadReport, error) {
+func (s DownloadService) DownloadSources(ctx context.Context, client DownloadTargetClient, sources []string, request DownloadRequest) (DownloadReport, error) {
 	report := DownloadReport{Items: []DownloadedArtwork{}, Failures: []DownloadFailure{}}
 	if len(sources) == 0 {
 		return report, errors.New("at least one download source is required")
 	}
-	downloadSources := make([]string, 0, len(sources))
-	sourceInputIndices := make([]int, 0, len(sources))
+	artworkIDs := make([]int64, 0)
 	seenArtworkIDs := make(map[int64]struct{})
-	appendArtwork := func(id int64, inputIndex int) {
+	appendArtwork := func(id int64) {
 		if id <= 0 {
 			return
 		}
@@ -118,148 +196,108 @@ func (s DownloadService) DownloadSources(ctx context.Context, client DownloadTar
 			return
 		}
 		seenArtworkIDs[id] = struct{}{}
-		downloadSources = append(downloadSources, sdk.Reference{Kind: sdk.ReferenceKindArtwork, ID: id}.URL())
-		sourceInputIndices = append(sourceInputIndices, inputIndex)
+		artworkIDs = append(artworkIDs, id)
 	}
-	for inputIndex, source := range sources {
+	var directRefs []sdk.ResourceRef
+	for _, source := range sources {
 		if err := ctx.Err(); err != nil {
 			return report, err
 		}
-		reference, err := sdk.ParseReference(source)
+		reference, err := pixiv.ParseURL(source)
+		if err == nil {
+			switch reference.Kind {
+			case pixiv.ReferenceKindArtwork:
+				appendArtwork(reference.ID)
+				continue
+			case pixiv.ReferenceKindUser:
+				if err := collectUserArtworkJobs(ctx, client, reference, appendArtwork, &report); err != nil {
+					return report, err
+				}
+				continue
+			case pixiv.ReferenceKindUserBookmarks:
+				if err := collectUserBookmarkJobs(ctx, client, reference, appendArtwork); err != nil {
+					return report, err
+				}
+				continue
+			default:
+				return report, errors.New("download source is invalid")
+			}
+		}
+		// 非 Pixiv 页面 URL 可能是裸 PID 或经 ResourcePolicy 允许的 CDN 资源。
+		if id, parseErr := strconv.ParseInt(strings.TrimSpace(source), 10, 64); parseErr == nil && id > 0 {
+			appendArtwork(id)
+			continue
+		}
+		ref, refErr := client.ParseResourceRef(source)
+		if refErr != nil {
+			report.Failures = append(report.Failures, DownloadFailure{
+				URL: source, Message: "download source is invalid", Cause: refErr,
+			})
+			continue
+		}
+		directRefs = append(directRefs, ref)
+	}
+	if len(artworkIDs) > 0 {
+		manager, downloadRequest, err := s.newManager(client, request)
 		if err != nil {
-			// 非 Pixiv 页面 URL 可能是经 ResourcePolicy 允许的 CDN 资源；SDK 会在
-			// ParseResourceRef 中统一验证，application 不复制该安全边界。
-			downloadSources = append(downloadSources, source)
-			sourceInputIndices = append(sourceInputIndices, inputIndex)
+			return report, err
+		}
+		downloadRequest.IllustIDs = artworkIDs
+		items, err := manager.Download(ctx, downloadRequest)
+		if err != nil {
+			if ctx.Err() != nil {
+				return report, ctx.Err()
+			}
+			report.Failures = append(report.Failures, DownloadFailure{Message: err.Error(), Cause: err})
+			return report, nil
+		}
+		report.Items = append(report.Items, items...)
+		report.Committed = report.Committed || len(items) > 0
+	}
+	for _, ref := range directRefs {
+		if err := ctx.Err(); err != nil {
+			return report, err
+		}
+		path, err := directResourcePath(request.DownloadPath, ref)
+		if err != nil {
+			report.Failures = append(report.Failures, DownloadFailure{URL: ref.String(), Message: err.Error(), Cause: err})
 			continue
 		}
-		if reference.Kind == sdk.ReferenceKindArtwork {
-			appendArtwork(reference.ID, inputIndex)
+		saved, err := client.SaveResource(ctx, ref, sdk.SaveOptions{Path: path})
+		if err != nil {
+			report.Failures = append(report.Failures, DownloadFailure{URL: ref.String(), Message: err.Error(), Cause: err})
 			continue
 		}
-		jobs := make([]downloadTargetJob, 0)
-		switch reference.Kind {
-		case sdk.ReferenceKindUser:
-			if err := collectUserArtworkJobs(ctx, client, reference, &jobs, &report); err != nil {
-				return report, err
-			}
-		case sdk.ReferenceKindUserBookmarks:
-			if err := collectUserBookmarkJobs(ctx, client, reference, &jobs); err != nil {
-				return report, err
-			}
-		case sdk.ReferenceKindIllustSeries:
-			if err := collectIllustSeriesJobs(ctx, client, reference, &jobs); err != nil {
-				return report, err
-			}
-		default:
-			return report, errors.New("download source is invalid")
-		}
-		for _, job := range jobs {
-			appendArtwork(job.target.ID, inputIndex)
-		}
-	}
-	if len(downloadSources) == 0 {
-		return report, nil
-	}
-	downloader, ok := client.(interface {
-		DownloadAllWith(context.Context, []string, sdk.DownloadOptions) (sdk.DownloadAllResult, error)
-	})
-	if !ok {
-		// 仅保留给旧嵌入方的兼容适配；生产 public SDK 必实现上述高层 API。
-		targets := make([]sdk.Reference, 0, len(downloadSources))
-		for _, source := range downloadSources {
-			reference, err := sdk.ParseReference(source)
-			if err != nil || reference.Kind != sdk.ReferenceKindArtwork {
-				return report, errors.New("download source requires a public SDK supporting DownloadAllWith")
-			}
-			targets = append(targets, reference)
-		}
-		return s.DownloadTargets(ctx, client, targets, DownloadRequest{
-			DownloadPath: options.DownloadPath, FilenameTemplate: options.FilenameTemplate,
-			Pages: options.Pages, Quality: options.Quality, UgoiraFormat: options.UgoiraFormat,
-		})
-	}
-	if progress := options.Progress; progress != nil {
-		// application 在展开用户页、并按 canonical artwork ID 去重后才调用 SDK。
-		// SDK 的 SourceIndex 指向展开后的输入；这里映射回调用方原始 sources 下标，
-		// 使进度事件始终能定位到用户提供的来源位置。
-		options.Progress = func(event sdk.DownloadProgress) {
-			if event.SourceIndex >= 0 && event.SourceIndex < len(sourceInputIndices) {
-				event.SourceIndex = sourceInputIndices[event.SourceIndex]
-			}
-			progress(event)
-		}
-	}
-	result, err := downloader.DownloadAllWith(ctx, downloadSources, options)
-	if err != nil {
-		return report, err
-	}
-	for index, item := range result.Items {
-		if item.Committed {
-			report.Committed = true
-		}
-		if item.Result != nil {
-			artwork := DownloadedArtwork{
-				IllustID: item.Result.IllustID, Title: item.Result.Title,
-				Author: item.Result.Author, Type: item.Result.Type,
-				Files: make([]DownloadedFile, 0, len(item.Result.Files)),
-			}
-			for _, file := range item.Result.Files {
-				artwork.Files = append(artwork.Files, DownloadedFile{Path: file.Path, Page: file.Page})
-			}
-			report.Items = append(report.Items, artwork)
-		}
-		if item.Err != nil {
-			report.Failures = append(report.Failures, DownloadFailure{URL: downloadSources[index], Message: item.Err.Error(), Cause: item.Err})
-		}
+		_ = saved
+		report.Items = append(report.Items, DownloadedArtwork{Files: []DownloadedFile{{Path: path, Page: 1}}})
+		report.Committed = true
 	}
 	return report, nil
 }
 
-func collectUserBookmarkJobs(ctx context.Context, client DownloadTargetClient, user sdk.Reference, jobs *[]downloadTargetJob) error {
-	bookmarks, ok := client.(interface {
-		UserBookmarks(context.Context, sdk.UserBookmarksRequest) (*sdk.IllustListResult, error)
-	})
-	if !ok {
-		return errors.New("download source requires a public SDK supporting user bookmarks")
+// directResourcePath 为资源直链生成一个安全的目标路径；无法推导时返回错误。
+func directResourcePath(downloadPath string, ref sdk.ResourceRef) (string, error) {
+	if strings.TrimSpace(downloadPath) == "" {
+		return "", errors.New("download path is required for direct resource sources")
 	}
-	_, err := TraversePages(ctx, PagePlan{}, func(ctx context.Context, cursor sdk.Cursor) ([]sdk.Illust, sdk.Cursor, error) {
-		result, err := bookmarks.UserBookmarks(ctx, sdk.UserBookmarksRequest{UserID: user.ID, Restrict: sdk.RestrictPublic, Cursor: cursor})
-		if err != nil {
-			return nil, "", err
-		}
-		if result == nil {
-			return nil, "", errors.New("pixiv sdk returned an empty user bookmarks result")
-		}
-		return result.Illusts, result.NextCursor, nil
-	}, func(items []sdk.Illust) error {
-		for _, illust := range items {
-			*jobs = append(*jobs, downloadTargetJob{target: sdk.Reference{Kind: sdk.ReferenceKindArtwork, ID: illust.ID}, illustType: illust.Type})
-		}
-		return nil
-	})
-	return err
+	// 资源直链没有稳定的作品元数据；以 opaque ref 的文本摘要命名，扩展名保持未知。
+	name := ref.String()
+	if len(name) > 64 {
+		name = name[:64]
+	}
+	return filepath.Join(downloadPath, "resource-"+name), nil
 }
 
-func collectIllustSeriesJobs(ctx context.Context, client DownloadTargetClient, reference sdk.Reference, jobs *[]downloadTargetJob) error {
-	series, ok := client.(interface {
-		IllustSeries(context.Context, sdk.IllustSeriesRequest) (*sdk.IllustListResult, error)
-	})
-	if !ok {
-		return errors.New("download source requires a public SDK supporting illustration series")
-	}
-	_, err := TraversePages(ctx, PagePlan{}, func(ctx context.Context, cursor sdk.Cursor) ([]sdk.Illust, sdk.Cursor, error) {
-		result, err := series.IllustSeries(ctx, sdk.IllustSeriesRequest{SeriesID: reference.SeriesID, UserID: reference.ID, Cursor: cursor})
+func collectUserBookmarkJobs(ctx context.Context, client DownloadTargetClient, user pixiv.Reference, appendArtwork func(int64)) error {
+	_, err := TraversePages(ctx, PagePlan{}, func(ctx context.Context, cursor sdk.Cursor) ([]pixiv.Artwork, sdk.Cursor, error) {
+		result, err := client.UserArtworkBookmarks(ctx, pixiv.UserArtworkBookmarksRequest{UserID: user.ID, Restrict: pixiv.RestrictPublic, Cursor: cursor})
 		if err != nil {
-			return nil, "", err
+			return nil, sdk.Cursor{}, err
 		}
-		if result == nil {
-			return nil, "", errors.New("pixiv sdk returned an empty illustration series result")
-		}
-		return result.Illusts, result.NextCursor, nil
-	}, func(items []sdk.Illust) error {
-		for _, illust := range items {
-			*jobs = append(*jobs, downloadTargetJob{target: sdk.Reference{Kind: sdk.ReferenceKindArtwork, ID: illust.ID}, illustType: illust.Type})
+		return result.Items, result.Next, nil
+	}, func(items []pixiv.Artwork) error {
+		for _, artwork := range items {
+			appendArtwork(artwork.ID)
 		}
 		return nil
 	})
@@ -273,46 +311,6 @@ func (s DownloadService) Download(ctx context.Context, client DownloadClient, re
 		return nil, err
 	}
 	return manager.Download(ctx, request)
-}
-
-// DownloadTargets 是旧嵌入下载器的兼容路径。新 CLI/MCP 使用 DownloadSources 并由
-// public SDK 统一调度并发；这里保留输入顺序逐项调用，避免旧 DownloadManager 的
-// 路径和模板可变状态在并发下交叉。
-func (s DownloadService) DownloadTargets(ctx context.Context, client DownloadTargetClient, targets []sdk.Reference, request DownloadRequest) (DownloadReport, error) {
-	report := DownloadReport{Items: []DownloadedArtwork{}, Failures: []DownloadFailure{}}
-	if len(targets) == 0 {
-		return report, errors.New("at least one download target is required")
-	}
-	if err := ctx.Err(); err != nil {
-		return report, err
-	}
-	manager, request, err := s.newManager(client, request)
-	if err != nil {
-		return report, err
-	}
-	jobs := make([]downloadTargetJob, 0, len(targets))
-	for _, target := range targets {
-		if err := ctx.Err(); err != nil {
-			return report, err
-		}
-		if target.ID <= 0 || target.URL() == "" {
-			return report, errors.New("download target is invalid")
-		}
-		switch target.Kind {
-		case sdk.ReferenceKindArtwork:
-			jobs = append(jobs, downloadTargetJob{target: target})
-		case sdk.ReferenceKindUser:
-			if err := collectUserArtworkJobs(ctx, client, target, &jobs, &report); err != nil {
-				return report, err
-			}
-		default:
-			return report, errors.New("download target is invalid")
-		}
-	}
-	if err := runDownloadTargetJobs(ctx, manager, request, jobs, &report); err != nil {
-		return report, err
-	}
-	return report, nil
 }
 
 func (s DownloadService) newManager(client DownloadClient, request DownloadRequest) (DownloadManager, DownloadRequest, error) {
@@ -344,34 +342,20 @@ func (s DownloadService) newManager(client DownloadClient, request DownloadReque
 	return manager, request, nil
 }
 
-type downloadTargetJob struct {
-	target     sdk.Reference
-	illustType string
-}
-
-type downloadTargetJobResult struct {
-	items []DownloadedArtwork
-	err   error
-}
-
-func collectUserArtworkJobs(ctx context.Context, client DownloadTargetClient, user sdk.Reference, jobs *[]downloadTargetJob, report *DownloadReport) error {
-	for _, illustType := range []sdk.IllustType{sdk.IllustTypeIllust, sdk.IllustTypeManga, sdk.IllustTypeUgoira} {
+func collectUserArtworkJobs(ctx context.Context, client DownloadTargetClient, user pixiv.Reference, appendArtwork func(int64), report *DownloadReport) error {
+	for _, kind := range []pixiv.ArtworkKind{pixiv.ArtworkKindIllustration, pixiv.ArtworkKindManga, pixiv.ArtworkKindUgoira} {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		_, err := TraversePages(ctx, PagePlan{}, func(ctx context.Context, cursor sdk.Cursor) ([]sdk.Illust, sdk.Cursor, error) {
-			result, err := client.UserArtworks(ctx, sdk.UserArtworksRequest{UserID: user.ID, Type: illustType, Cursor: cursor})
+		_, err := TraversePages(ctx, PagePlan{}, func(ctx context.Context, cursor sdk.Cursor) ([]pixiv.Artwork, sdk.Cursor, error) {
+			result, err := client.UserArtworks(ctx, pixiv.UserArtworksRequest{UserID: user.ID, Kind: kind, Cursor: cursor})
 			if err != nil {
-				return nil, "", err
+				return nil, sdk.Cursor{}, err
 			}
-			if result == nil {
-				return nil, "", errors.New("pixiv sdk returned an empty user artworks result")
-			}
-			return result.Illusts, result.NextCursor, nil
-		}, func(items []sdk.Illust) error {
-			for _, illust := range items {
-				target := sdk.Reference{Kind: sdk.ReferenceKindArtwork, ID: illust.ID}
-				*jobs = append(*jobs, downloadTargetJob{target: target, illustType: illust.Type})
+			return result.Items, result.Next, nil
+		}, func(items []pixiv.Artwork) error {
+			for _, artwork := range items {
+				appendArtwork(artwork.ID)
 			}
 			return nil
 		})
@@ -382,32 +366,19 @@ func collectUserArtworkJobs(ctx context.Context, client DownloadTargetClient, us
 			return ctx.Err()
 		}
 		report.Failures = append(report.Failures, DownloadFailure{
-			URL: user.URL(), Type: string(illustType), Message: err.Error(), Cause: err,
+			URL: referenceURL(user), Type: string(kind), Message: err.Error(), Cause: err,
 		})
 	}
 	return nil
 }
 
-func runDownloadTargetJobs(ctx context.Context, manager DownloadManager, request DownloadRequest, jobs []downloadTargetJob, report *DownloadReport) error {
-	for _, job := range jobs {
-		if err := ctx.Err(); err != nil {
-			return err
-		}
-		one := request
-		one.IllustIDs = []int64{job.target.ID}
-		items, err := manager.Download(ctx, one)
-		if err != nil {
-			if ctx.Err() != nil {
-				return ctx.Err()
-			}
-			report.Failures = append(report.Failures, DownloadFailure{
-				URL: job.target.URL(), IllustID: job.target.ID, Type: job.illustType, Message: err.Error(), Cause: err,
-			})
-			continue
-		}
-		report.Items = append(report.Items, items...)
+// referenceURL 生成 pixiv.Reference 的规范 URL；解析失败时退化为空串。
+func referenceURL(reference pixiv.Reference) string {
+	raw, err := reference.CanonicalURL()
+	if err != nil {
+		return ""
 	}
-	return nil
+	return raw
 }
 
 // isNilLike 处理 Go interface 携带 typed nil 的情况；仅对允许 IsNil 的 kind

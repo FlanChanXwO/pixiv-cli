@@ -6,20 +6,21 @@ import (
 	"testing"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/application"
-	sdk "github.com/FlanChanXwO/pixiv-cli/pixiv"
+	"github.com/FlanChanXwO/pixiv-cli/sdk"
+	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 func TestLegacySearchFailurePreservesStructuredErrorResult(t *testing.T) {
 	typedErr := &sdk.Error{
-		Code:           sdk.CodeUpstreamError,
-		Operation:      sdk.OperationSearchIllust,
-		Backend:        sdk.BackendAppAPI,
-		UpstreamStatus: http.StatusBadGateway,
+		Product:    "pixiv",
+		Operation:  "SearchArtworks",
+		Code:       sdk.CodeUpstreamError,
+		HTTPStatus: http.StatusBadGateway,
 	}
 	service := application.SDKService{NewClient: func(application.SDKClientRequest) (application.SDKClient, error) {
-		return &fakeSDKClient{searchIllust: func(context.Context, sdk.SearchIllustRequest) (*sdk.IllustListResult, error) {
-			return nil, typedErr
+		return &fakeSDKClient{searchIllust: func(context.Context, pixiv.SearchArtworksRequest) (sdk.Page[pixiv.Artwork], error) {
+			return sdk.Page[pixiv.Artwork]{}, typedErr
 		}}, nil
 	}}
 	server := NewWithSDK(&fakeAPI{}, &fakeDownloads{}, service, application.SDKClientRequest{})

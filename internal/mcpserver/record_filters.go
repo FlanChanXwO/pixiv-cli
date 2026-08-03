@@ -4,9 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
 
-	sdk "github.com/FlanChanXwO/pixiv-cli/pixiv"
+	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 )
 
 // illustFilterIn、novelFilterIn 与 userFilterIn 仅出现在相应实体 list tool 的
@@ -70,10 +69,9 @@ func userFilterSchema() map[string]any {
 type recordFilterContextKey struct{}
 
 type recordFilters struct {
-	illust     *illustFilterIn
-	expression *sdk.IllustFilter
-	novel      *novelFilterIn
-	user       *userFilterIn
+	illust *illustFilterIn
+	novel  *novelFilterIn
+	user   *userFilterIn
 }
 
 func withIllustFilter(ctx context.Context, filter *illustFilterIn) (context.Context, error) {
@@ -81,16 +79,13 @@ func withIllustFilter(ctx context.Context, filter *illustFilterIn) (context.Cont
 }
 
 // withIllustFilterExpression 将 MCP 顶层 filter 与结构化 illust_filter 组合为
-// 同一份逻辑筛选。表达式在打开 SDK client 前编译，非法输入不会产生网络请求。
+// 同一份逻辑筛选。顶层表达式不再被编译；结构化筛选仍在打开 SDK client 前校验，
+// 非法输入不会产生网络请求。
 func withIllustFilterExpression(ctx context.Context, filter *illustFilterIn, expression string) (context.Context, error) {
 	if err := validateIllustFilter(filter); err != nil {
 		return nil, err
 	}
-	compiled, err := compileMCPIllustFilter(expression)
-	if err != nil {
-		return nil, err
-	}
-	return withRecordFilters(ctx, recordFilters{illust: filter, expression: compiled}), nil
+	return withRecordFilters(ctx, recordFilters{illust: filter}), nil
 }
 
 func withNovelFilter(ctx context.Context, filter *novelFilterIn) (context.Context, error) {
@@ -112,7 +107,7 @@ func withMixedRecordFilters(ctx context.Context, illust *illustFilterIn, novel *
 }
 
 // withMixedRecordFiltersExpression 使 recommended 的视觉记录使用同一条顶层
-// filter；小说和用户记录会在表达式存在时按约定丢弃。
+// filter；顶层表达式不再被编译，结构化筛选仍逐实体校验。
 func withMixedRecordFiltersExpression(ctx context.Context, illust *illustFilterIn, expression string, novel *novelFilterIn, user *userFilterIn) (context.Context, error) {
 	if err := validateIllustFilter(illust); err != nil {
 		return nil, err
@@ -123,23 +118,7 @@ func withMixedRecordFiltersExpression(ctx context.Context, illust *illustFilterI
 	if err := validateUserFilter(user); err != nil {
 		return nil, err
 	}
-	compiled, err := compileMCPIllustFilter(expression)
-	if err != nil {
-		return nil, err
-	}
-	return withRecordFilters(ctx, recordFilters{illust: illust, expression: compiled, novel: novel, user: user}), nil
-}
-
-func compileMCPIllustFilter(expression string) (*sdk.IllustFilter, error) {
-	expression = strings.TrimSpace(expression)
-	if expression == "" {
-		return nil, nil
-	}
-	compiled, err := sdk.CompileIllustFilter(expression)
-	if err != nil {
-		return nil, err
-	}
-	return compiled, nil
+	return withRecordFilters(ctx, recordFilters{illust: illust, novel: novel, user: user}), nil
 }
 
 func withRecordFilters(ctx context.Context, filters recordFilters) context.Context {
@@ -158,7 +137,7 @@ func validateIllustFilter(filter *illustFilterIn) error {
 	if filter.ID != nil && *filter.ID <= 0 {
 		return errors.New("illust_filter.id must be positive")
 	}
-	if filter.Type != "" && filter.Type != string(sdk.IllustTypeIllust) && filter.Type != string(sdk.IllustTypeManga) && filter.Type != string(sdk.IllustTypeUgoira) {
+	if filter.Type != "" && filter.Type != "illust" && filter.Type != "manga" && filter.Type != "ugoira" {
 		return errors.New("illust_filter.type must be one of: illust, manga, ugoira")
 	}
 	if filter.MinViews != nil && *filter.MinViews < 0 {
@@ -209,35 +188,21 @@ func filterRecordPage[T any](ctx context.Context, items []T, seen map[string]str
 
 func matchRecordFilter(item any, filters recordFilters) (string, bool) {
 	switch value := item.(type) {
-	case sdk.Illust:
-		if !matchesIllustFilter(value, filters.illust, filters.expression) {
+	case pixiv.Artwork:
+		if !matchesIllustFilter(value, filters.illust) {
 			return "", false
 		}
-		kind := value.Type
+		kind := string(value.Kind)
 		if kind == "" {
-			kind = string(sdk.IllustTypeIllust)
+			kind = string(pixiv.ArtworkKindIllustration)
 		}
 		return fmt.Sprintf("%s:%d", kind, value.ID), true
-	case sdk.Novel:
-		if filters.expression != nil {
-			return "", false
-		}
+	case pixiv.Novel:
 		if !matchesNovelFilter(value, filters.novel) {
 			return "", false
 		}
 		return fmt.Sprintf("novel:%d", value.ID), true
-	case sdk.UserPreview:
-		if filters.expression != nil {
-			return "", false
-		}
-		if !matchesUserFilter(value.User, filters.user) {
-			return "", false
-		}
-		return fmt.Sprintf("user:%d", value.User.ID), true
-	case sdk.RecommendedUserPreview:
-		if filters.expression != nil {
-			return "", false
-		}
+	case pixiv.UserPreview:
 		if !matchesUserFilter(value.User, filters.user) {
 			return "", false
 		}
@@ -247,54 +212,50 @@ func matchRecordFilter(item any, filters recordFilters) (string, bool) {
 	}
 }
 
-func matchesIllustFilter(item sdk.Illust, filter *illustFilterIn, expression *sdk.IllustFilter) bool {
+func matchesIllustFilter(item pixiv.Artwork, filter *illustFilterIn) bool {
 	if filter == nil {
-		if expression == nil {
-			return true
-		}
-		matched, err := expression.Match(item)
-		return err == nil && matched
+		return true
 	}
 	if filter.ID != nil && item.ID != *filter.ID {
 		return false
 	}
-	if filter.Type != "" && item.Type != filter.Type {
-		return false
+	if filter.Type != "" {
+		kind := string(item.Kind)
+		if kind == "" {
+			kind = string(pixiv.ArtworkKindIllustration)
+		}
+		// 上游 kind 渲染为 "illustration"，而 MCP 枚举使用 "illust"；两者等价。
+		if kind != filter.Type && !(kind == string(pixiv.ArtworkKindIllustration) && filter.Type == "illust") {
+			return false
+		}
 	}
-	if filter.MinViews != nil && item.TotalView < *filter.MinViews {
+	if filter.MinViews != nil && item.TotalViews < *filter.MinViews {
 		return false
 	}
 	if filter.MinPages != nil && item.PageCount < *filter.MinPages {
 		return false
 	}
-	if !hasAllTags(item.Tags, filter.Tags) {
-		return false
-	}
-	if expression == nil {
-		return true
-	}
-	matched, err := expression.Match(item)
-	return err == nil && matched
+	return hasAllTags(item.Tags, filter.Tags)
 }
 
-func matchesNovelFilter(item sdk.Novel, filter *novelFilterIn) bool {
+func matchesNovelFilter(item pixiv.Novel, filter *novelFilterIn) bool {
 	if filter == nil {
 		return true
 	}
 	if filter.ID != nil && item.ID != *filter.ID {
 		return false
 	}
-	if filter.MinViews != nil && item.TotalView < *filter.MinViews {
+	if filter.MinViews != nil && item.TotalViews < *filter.MinViews {
 		return false
 	}
 	return hasAllTags(item.Tags, filter.Tags)
 }
 
-func matchesUserFilter(item sdk.User, filter *userFilterIn) bool {
+func matchesUserFilter(item pixiv.User, filter *userFilterIn) bool {
 	return filter == nil || filter.ID == nil || item.ID == *filter.ID
 }
 
-func hasAllTags(tags []sdk.Tag, wanted []string) bool {
+func hasAllTags(tags []pixiv.Tag, wanted []string) bool {
 	for _, want := range wanted {
 		found := false
 		for _, tag := range tags {

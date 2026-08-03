@@ -16,14 +16,14 @@ import (
 	"strings"
 	"testing"
 
-	pixiv "github.com/FlanChanXwO/pixiv-cli/pixiv"
+	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 )
 
 func TestRustUgoiraEncoderNativeGIFAndAPNG(t *testing.T) {
 	dir := t.TempDir()
 	zipPath := filepath.Join(dir, "ugoira.zip")
 	createZip(t, zipPath, "000000.jpg", rustUgoiraJPEG(t))
-	frames := []pixiv.UgoiraFrame{{File: "000000.jpg", Delay: 80}}
+	frames := []pixiv.UgoiraFrame{{Filename: "000000.jpg", DelayMilliseconds: 80}}
 
 	gifPath := filepath.Join(dir, "out.gif")
 	if err := NewRustUgoiraEncoder().Encode(context.Background(), UgoiraEncodeInput{

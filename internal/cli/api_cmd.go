@@ -10,7 +10,8 @@ import (
 	"time"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/application"
-	sdk "github.com/FlanChanXwO/pixiv-cli/pixiv"
+	"github.com/FlanChanXwO/pixiv-cli/sdk"
+	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/spf13/cobra"
 )
 
@@ -31,13 +32,11 @@ type searchOptions struct {
 	typ         string
 	bookmarkMin int
 	bookmarkMax int
-	filter      string
 }
 
 type rankingOptions struct {
 	commandOptions
 	ndjsonOutputOptions
-	illustFilterOptions
 	mode string
 	date string
 	listOptions
@@ -46,7 +45,6 @@ type rankingOptions struct {
 type recommendedOptions struct {
 	commandOptions
 	ndjsonOutputOptions
-	illustFilterOptions
 	listOptions
 }
 
@@ -60,12 +58,12 @@ const (
 func (a app) newSearchCommand() *cobra.Command {
 	opts := searchOptions{
 		searchBy:    searchTargetTagPartial,
-		sortMode:    string(sdk.SortModeDateDesc),
+		sortMode:    string(pixiv.SortModeDateDesc),
 		rating:      "all",
 		typ:         "all",
-		resolution:  string(sdk.SearchResolutionAll),
-		aspectRatio: string(sdk.SearchAspectRatioAll),
-		aiMode:      string(sdk.SearchAIModeAll),
+		resolution:  string(pixiv.SearchResolutionAll),
+		aspectRatio: string(pixiv.SearchAspectRatioAll),
+		aiMode:      string(pixiv.SearchAIModeAll),
 	}
 	cmd := &cobra.Command{
 		Use:     "search WORD",
@@ -84,7 +82,7 @@ func (a app) newSearchCommand() *cobra.Command {
 	flags.StringVar(&opts.period, "period", "", "time range: day, week, month, half-year, year")
 	flags.StringVar(&opts.startDate, "start-date", "", "inclusive start date: YYYY-MM-DD")
 	flags.StringVar(&opts.endDate, "end-date", "", "inclusive end date: YYYY-MM-DD")
-	flags.StringVar(&opts.rating, "rating", opts.rating, "rating filter: sfw, r18, r18g, mature, all")
+	flags.StringVar(&opts.rating, "rating", opts.rating, "rating filter: sfw, r18, r18g, mature, all (accepted for compatibility; upstream App API search no longer filters by rating)")
 	flags.StringVar(&opts.typ, "type", opts.typ, "artwork type filter: all, illust-and-ugoira, illust, manga, ugoira")
 	flags.StringVar(&opts.resolution, "resolution", opts.resolution, "resolution filter: all, high, medium, low")
 	flags.StringVar(&opts.aspectRatio, "aspect-ratio", opts.aspectRatio, "aspect ratio filter: all, landscape, portrait, square")
@@ -92,17 +90,31 @@ func (a app) newSearchCommand() *cobra.Command {
 	flags.StringVar(&opts.aiMode, "ai-mode", opts.aiMode, "AI artwork filter: all, exclude, only")
 	flags.IntVar(&opts.bookmarkMin, "bookmark-min", 0, "minimum public bookmark count (requires Pixiv Premium)")
 	flags.IntVar(&opts.bookmarkMax, "bookmark-max", 0, "maximum public bookmark count (requires Pixiv Premium)")
-	flags.StringVar(&opts.filter, "filter", "", "local illustration filter expression")
 	bindListFlags(cmd, &opts.listOptions)
 	return cmd
 }
 
 func (a app) runSearch(cmd *cobra.Command, args []string, opts searchOptions) error {
-	filters, err := resolveSearchFilters(cmd, opts)
-	if err != nil {
+	if err := resolveSearchRating(opts.rating); err != nil {
 		return err
 	}
 	target, err := resolveSearchBy(opts.searchBy)
+	if err != nil {
+		return err
+	}
+	contentType, err := resolveSearchContentType(opts.typ)
+	if err != nil {
+		return err
+	}
+	aiMode, err := resolveSearchAIMode(opts.aiMode)
+	if err != nil {
+		return err
+	}
+	aspectRatio, err := resolveSearchAspectRatio(opts.aspectRatio)
+	if err != nil {
+		return err
+	}
+	resolution, err := resolveSearchResolution(opts.resolution)
 	if err != nil {
 		return err
 	}
@@ -114,16 +126,14 @@ func (a app) runSearch(cmd *cobra.Command, args []string, opts searchOptions) er
 	if err != nil {
 		return err
 	}
+	bookmarkMin, bookmarkMax, err := resolveSearchBookmarkRange(cmd, opts)
+	if err != nil {
+		return err
+	}
 	word := strings.Join(args, " ")
 	plan, err := parseListPlan(cmd, opts.listOptions)
 	if err != nil {
 		return err
-	}
-	if strings.TrimSpace(opts.filter) != "" {
-		plan.filter, err = sdk.CompileIllustFilter(opts.filter)
-		if err != nil {
-			return newUsageError(err)
-		}
 	}
 	services := a.services()
 	clientReq, jsonOverride, err := a.sdkRequest(cmd, opts.commandOptions)
@@ -141,54 +151,125 @@ func (a app) runSearch(cmd *cobra.Command, args []string, opts searchOptions) er
 		}
 	}
 	opts.ndjson = a.shouldAutoNDJSON(cmd, opts.ndjson, jsonOut)
-	fetch := func(client application.SDKClient, ctx context.Context, cursor sdk.Cursor) ([]sdk.Illust, sdk.Cursor, error) {
-		result, err := client.SearchIllust(ctx, sdk.SearchIllustRequest{
-			Word: word, Target: target, Sort: sdk.SortMode(opts.sortMode),
-			Duration: period, StartDate: startDate, EndDate: endDate, Cursor: cursor, Filters: filters,
+	fetch := func(client application.SDKClient, ctx context.Context, cursor sdk.Cursor) ([]pixiv.Artwork, sdk.Cursor, error) {
+		result, err := client.SearchArtworks(ctx, pixiv.SearchArtworksRequest{
+			Word: word, Target: target, Sort: pixiv.SortMode(opts.sortMode),
+			Duration: period, StartDate: startDate, EndDate: endDate,
+			ContentType: contentType, AIMode: aiMode, AspectRatio: aspectRatio, Resolution: resolution,
+			Tool: opts.drawTool, BookmarkMin: bookmarkMin, BookmarkMax: bookmarkMax, Cursor: cursor,
 		})
 		if err != nil {
-			return nil, "", err
+			return nil, sdk.Cursor{}, err
 		}
-		return result.Illusts, result.NextCursor, nil
+		return result.Items, result.Next, nil
 	}
-	return a.runPooledIllustList(cmd.Context(), clientReq, plan, jsonOut, opts.ndjson, fmt.Sprintf("illustrations for %q", word), fetch, func(items []sdk.Illust, start int) error { return printIllusts(a.out, items, start, false) })
+	return a.runPooledIllustList(cmd.Context(), clientReq, plan, jsonOut, opts.ndjson, fmt.Sprintf("illustrations for %q", word), fetch, func(items []pixiv.Artwork, start int) error { return printIllusts(a.out, items, start, false) })
 }
 
-func resolveSearchBy(value string) (sdk.SearchTarget, error) {
+func resolveSearchBy(value string) (pixiv.SearchTarget, error) {
 	switch value {
 	case searchTargetTagPartial:
-		return sdk.SearchTargetPartialMatchForTags, nil
+		return pixiv.SearchTargetPartialMatchForTags, nil
 	case searchTargetTagExact:
-		return sdk.SearchTargetExactMatchForTags, nil
+		return pixiv.SearchTargetExactMatchForTags, nil
 	case searchTargetTitleCaption:
-		return sdk.SearchTargetTitleAndCaption, nil
+		return pixiv.SearchTargetTitleAndCaption, nil
 	case searchTargetTagTitleCaption:
-		return sdk.SearchTargetKeyword, nil
+		return pixiv.SearchTargetKeyword, nil
 	default:
 		return "", fmt.Errorf("search-by must be one of %s, %s, %s, %s", searchTargetTagPartial, searchTargetTagExact, searchTargetTitleCaption, searchTargetTagTitleCaption)
 	}
 }
 
-func resolveSearchPeriod(value string) (string, error) {
+// resolveSearchRating 只校验兼容保留的 --rating 取值；新版 App API 搜索不再支持
+// rating 过滤，因此校验通过后不映射到请求。
+func resolveSearchRating(value string) error {
+	switch value {
+	case "sfw", "r18", "r18g", "mature", "all":
+		return nil
+	default:
+		return fmt.Errorf("rating must be one of sfw, r18, r18g, mature, all")
+	}
+}
+
+func resolveSearchContentType(value string) (pixiv.SearchContentType, error) {
+	switch value {
+	case "all", "illust-and-ugoira", "illust", "manga", "ugoira":
+		return pixiv.SearchContentType(value), nil
+	default:
+		return "", fmt.Errorf("type must be one of all, illust-and-ugoira, illust, manga, ugoira")
+	}
+}
+
+func resolveSearchAIMode(value string) (pixiv.SearchAIMode, error) {
+	switch value {
+	case "all", "exclude", "only":
+		return pixiv.SearchAIMode(value), nil
+	default:
+		return "", fmt.Errorf("ai-mode must be one of all, exclude, only")
+	}
+}
+
+func resolveSearchAspectRatio(value string) (pixiv.SearchAspectRatio, error) {
+	switch value {
+	case "all", "landscape", "portrait", "square":
+		return pixiv.SearchAspectRatio(value), nil
+	default:
+		return "", fmt.Errorf("aspect-ratio must be one of all, landscape, portrait, square")
+	}
+}
+
+func resolveSearchResolution(value string) (pixiv.SearchResolution, error) {
+	switch value {
+	case "all", "high", "medium", "low":
+		return pixiv.SearchResolution(value), nil
+	default:
+		return "", fmt.Errorf("resolution must be one of all, high, medium, low")
+	}
+}
+
+func resolveSearchBookmarkRange(cmd *cobra.Command, opts searchOptions) (*int, *int, error) {
+	var bookmarkMin, bookmarkMax *int
+	if cmd.Flags().Changed("bookmark-min") {
+		if opts.bookmarkMin < 0 {
+			return nil, nil, errors.New("bookmark-min must be greater than or equal to zero")
+		}
+		minimum := opts.bookmarkMin
+		bookmarkMin = &minimum
+	}
+	if cmd.Flags().Changed("bookmark-max") {
+		if opts.bookmarkMax < 0 {
+			return nil, nil, errors.New("bookmark-max must be greater than or equal to zero")
+		}
+		maximum := opts.bookmarkMax
+		bookmarkMax = &maximum
+	}
+	if bookmarkMin != nil && bookmarkMax != nil && *bookmarkMin > *bookmarkMax {
+		return nil, nil, errors.New("bookmark-min cannot be greater than bookmark-max")
+	}
+	return bookmarkMin, bookmarkMax, nil
+}
+
+func resolveSearchPeriod(value string) (pixiv.DurationFilter, error) {
 	switch value {
 	case "":
 		return "", nil
 	case "day":
-		return "within_last_day", nil
+		return pixiv.DurationFilter("within_last_day"), nil
 	case "week":
-		return "within_last_week", nil
+		return pixiv.DurationFilter("within_last_week"), nil
 	case "month":
-		return "within_last_month", nil
+		return pixiv.DurationFilter("within_last_month"), nil
 	case "half-year":
-		return "within_half_year", nil
+		return pixiv.DurationFilter("within_half_year"), nil
 	case "year":
-		return "within_year", nil
+		return pixiv.DurationFilter("within_year"), nil
 	default:
 		return "", errors.New("period must be one of day, week, month, half-year, year")
 	}
 }
 
-func resolveSearchDateRange(opts searchOptions, period string) (string, string, string, error) {
+func resolveSearchDateRange(opts searchOptions, period pixiv.DurationFilter) (pixiv.DurationFilter, string, string, error) {
 	startDate := strings.TrimSpace(opts.startDate)
 	endDate := strings.TrimSpace(opts.endDate)
 	if period != "" && (startDate != "" || endDate != "") {
@@ -200,7 +281,7 @@ func resolveSearchDateRange(opts searchOptions, period string) (string, string, 
 	if startDate != "" && endDate != "" && startDate > endDate {
 		return "", "", "", errors.New("start-date cannot be later than end-date")
 	}
-	if startDate, endDate, ok := application.SearchQuickDateRange(period, time.Now()); ok {
+	if startDate, endDate, ok := application.SearchQuickDateRange(string(period), time.Now()); ok {
 		return "", startDate, endDate, nil
 	}
 	return period, startDate, endDate, nil
@@ -211,57 +292,21 @@ func validSearchDate(value string) bool {
 	return err == nil && parsed.Format("2006-01-02") == value
 }
 
-func resolveSearchFilters(cmd *cobra.Command, opts searchOptions) (sdk.SearchIllustFilters, error) {
-	filters := sdk.SearchIllustFilters{}
-	switch opts.rating {
-	case "sfw", "r18", "r18g", "mature", "all":
-		filters.Rating = sdk.SearchRating(opts.rating)
-	default:
-		return filters, fmt.Errorf("rating must be one of sfw, r18, r18g, mature, all")
+// parseArtworkIDOrURL 解析 detail 命令的位置参数：裸正整型视为作品 ID，
+// 其余必须是可解析到作品的 Pixiv URL。
+func parseArtworkIDOrURL(arg string) (int64, error) {
+	value := strings.TrimSpace(arg)
+	if id, err := strconv.ParseInt(value, 10, 64); err == nil && id > 0 {
+		return id, nil
 	}
-	switch opts.typ {
-	case "all", "illust-and-ugoira", "illust", "manga", "ugoira":
-		filters.ContentType = sdk.SearchContentType(opts.typ)
-	default:
-		return filters, fmt.Errorf("type must be one of all, illust-and-ugoira, illust, manga, ugoira")
+	ref, err := pixiv.ParseURL(value)
+	if err != nil {
+		return 0, errors.New("argument must be an illustration ID or a supported Pixiv URL")
 	}
-	switch opts.resolution {
-	case "all", "high", "medium", "low":
-		filters.Resolution = sdk.SearchResolution(opts.resolution)
-	default:
-		return filters, fmt.Errorf("resolution must be one of all, high, medium, low")
+	if ref.Kind != pixiv.ReferenceKindArtwork {
+		return 0, errors.New("URL does not name a supported Pixiv artwork")
 	}
-	switch opts.aspectRatio {
-	case "all", "landscape", "portrait", "square":
-		filters.AspectRatio = sdk.SearchAspectRatio(opts.aspectRatio)
-	default:
-		return filters, fmt.Errorf("aspect-ratio must be one of all, landscape, portrait, square")
-	}
-	switch opts.aiMode {
-	case "all", "exclude", "only":
-		filters.AIMode = sdk.SearchAIMode(opts.aiMode)
-	default:
-		return filters, fmt.Errorf("ai-mode must be one of all, exclude, only")
-	}
-	filters.Tool = opts.drawTool
-	if cmd.Flags().Changed("bookmark-min") {
-		if opts.bookmarkMin < 0 {
-			return filters, errors.New("bookmark-min must be greater than or equal to zero")
-		}
-		minimum := opts.bookmarkMin
-		filters.BookmarkMin = &minimum
-	}
-	if cmd.Flags().Changed("bookmark-max") {
-		if opts.bookmarkMax < 0 {
-			return filters, errors.New("bookmark-max must be greater than or equal to zero")
-		}
-		maximum := opts.bookmarkMax
-		filters.BookmarkMax = &maximum
-	}
-	if filters.BookmarkMin != nil && filters.BookmarkMax != nil && *filters.BookmarkMin > *filters.BookmarkMax {
-		return filters, errors.New("bookmark-min cannot be greater than bookmark-max")
-	}
-	return filters, nil
+	return ref.ID, nil
 }
 
 // safeTextLine 保留可见 Unicode，同时转义换行、ANSI ESC 和其他控制字节，
@@ -286,7 +331,7 @@ func (a app) newDetailCommand() *cobra.Command {
 }
 
 func (a app) runDetail(cmd *cobra.Command, arg string, opts commandOptions) error {
-	id, err := sdk.ParseArtworkReference(arg)
+	id, err := parseArtworkIDOrURL(arg)
 	if err != nil {
 		return err
 	}
@@ -300,7 +345,7 @@ func (a app) runDetail(cmd *cobra.Command, arg string, opts commandOptions) erro
 		return err
 	}
 	return services.SDK.RunPooledOperation(cmd.Context(), clientReq, func(ctx context.Context, client application.SDKClient) (bool, error) {
-		result, err := client.IllustDetail(ctx, id)
+		result, err := client.Artwork(ctx, pixiv.ArtworkRequest{ArtworkID: id})
 		if err != nil {
 			return false, err
 		}
@@ -310,14 +355,14 @@ func (a app) runDetail(cmd *cobra.Command, arg string, opts commandOptions) erro
 			return committed, err
 		} else {
 			committed := true
-			err = printIllust(a.out, result.Illust, 0, false)
+			err = printIllust(a.out, result, 0, false)
 			return committed, err
 		}
 	})
 }
 
 func (a app) newRankingCommand() *cobra.Command {
-	opts := rankingOptions{mode: string(sdk.RankingModeDay)}
+	opts := rankingOptions{mode: string(pixiv.RankingModeDay)}
 	cmd := &cobra.Command{
 		Use:   "ranking",
 		Short: "Show illustration ranking",
@@ -331,7 +376,6 @@ func (a app) newRankingCommand() *cobra.Command {
 	flags := cmd.Flags()
 	flags.StringVar(&opts.mode, "mode", opts.mode, "ranking mode: day, day_male, day_female, week, week_original, week_rookie, month, day_manga, week_manga, month_manga, week_rookie_manga, day_r18, day_male_r18, day_female_r18, week_r18, week_r18g; the last nine require authentication")
 	flags.StringVar(&opts.date, "date", "", "YYYY-MM-DD")
-	bindIllustFilterFlag(cmd, &opts.illustFilterOptions)
 	bindListFlags(cmd, &opts.listOptions)
 	return cmd
 }
@@ -339,9 +383,6 @@ func (a app) newRankingCommand() *cobra.Command {
 func (a app) runRanking(cmd *cobra.Command, opts rankingOptions) error {
 	plan, err := parseListPlan(cmd, opts.listOptions)
 	if err != nil {
-		return err
-	}
-	if err := applyIllustFilter(&plan, opts.filter); err != nil {
 		return err
 	}
 	services := a.services()
@@ -360,14 +401,14 @@ func (a app) runRanking(cmd *cobra.Command, opts rankingOptions) error {
 		}
 	}
 	opts.ndjson = a.shouldAutoNDJSON(cmd, opts.ndjson, jsonOut)
-	fetch := func(client application.SDKClient, ctx context.Context, cursor sdk.Cursor) ([]sdk.Illust, sdk.Cursor, error) {
-		result, err := client.IllustRanking(ctx, sdk.IllustRankingRequest{Mode: sdk.RankingMode(opts.mode), Date: opts.date, Cursor: cursor})
+	fetch := func(client application.SDKClient, ctx context.Context, cursor sdk.Cursor) ([]pixiv.Artwork, sdk.Cursor, error) {
+		result, err := client.ArtworkRanking(ctx, pixiv.ArtworkRankingRequest{Mode: pixiv.RankingMode(opts.mode), Date: opts.date, Cursor: cursor})
 		if err != nil {
-			return nil, "", err
+			return nil, sdk.Cursor{}, err
 		}
-		return result.Illusts, result.NextCursor, nil
+		return result.Items, result.Next, nil
 	}
-	return a.runPooledIllustList(cmd.Context(), clientReq, plan, jsonOut, opts.ndjson, fmt.Sprintf("%s ranking", opts.mode), fetch, func(items []sdk.Illust, start int) error { return printIllusts(a.out, items, start, true) })
+	return a.runPooledIllustList(cmd.Context(), clientReq, plan, jsonOut, opts.ndjson, fmt.Sprintf("%s ranking", opts.mode), fetch, func(items []pixiv.Artwork, start int) error { return printIllusts(a.out, items, start, true) })
 }
 
 func (a app) newRecommendedCommand() *cobra.Command {
@@ -382,30 +423,22 @@ func (a app) newRecommendedCommand() *cobra.Command {
 	}
 	a.bindCommonFlags(cmd, &opts.commandOptions)
 	bindNDJSONFlag(cmd, &opts.ndjsonOutputOptions)
-	bindIllustFilterFlag(cmd, &opts.illustFilterOptions)
 	bindListFlags(cmd, &opts.listOptions)
 	return cmd
 }
 
 type downloadOptions struct {
 	commandOptions
-	downloadPath      string
-	filenameTemplate  string
-	directoryTemplate string
-	pages             string
-	quality           string
-	ugoiraMode        string
-	concurrency       int
-	onError           string
-	filter            string
-	archive           string
-	writeMetadata     bool
-	retries           int
-	retryDelay        time.Duration
+	downloadPath     string
+	filenameTemplate string
+	pages            string
+	quality          string
+	ugoiraMode       string
+	onError          string
 }
 
 func (a app) newDownloadCommand() *cobra.Command {
-	opts := downloadOptions{quality: string(application.DownloadQualityOriginal)}
+	opts := downloadOptions{quality: string(application.DownloadQualityOriginal), ugoiraMode: string(application.UgoiraFormatGIF)}
 	cmd := &cobra.Command{
 		Use:   "download [SRC...]",
 		Short: "Download illustrations",
@@ -419,14 +452,8 @@ func (a app) newDownloadCommand() *cobra.Command {
 	flags := cmd.Flags()
 	flags.StringVar(&opts.pages, "pages", "", "1-based page selection, e.g. 1,3-5; default all pages")
 	flags.StringVar(&opts.quality, "quality", opts.quality, "static image quality: original, regular, small, thumb, mini")
-	flags.StringVar(&opts.ugoiraMode, "ugoira-mode", string(sdk.UgoiraModeGIF), "ugoira output mode: gif, apng, zip, frames")
-	flags.IntVar(&opts.concurrency, "concurrency", 0, "download workers; 0 automatically uses 2 × GOMAXPROCS")
+	flags.StringVar(&opts.ugoiraMode, "ugoira-mode", opts.ugoiraMode, "ugoira output mode: gif, apng")
 	flags.StringVar(&opts.onError, "on-error", "skip", "record failure strategy: skip or fail-fast")
-	flags.StringVar(&opts.filter, "filter", "", "local illustration filter expression")
-	flags.StringVar(&opts.archive, "archive", "", "SQLite file recording completed artwork IDs")
-	flags.BoolVar(&opts.writeMetadata, "write-metadata", false, "write a JSON sidecar for each downloaded artifact")
-	flags.IntVar(&opts.retries, "retries", 3, "resource retries after the initial request")
-	flags.DurationVar(&opts.retryDelay, "retry-delay", time.Second, "initial resource retry delay")
 	return cmd
 }
 
@@ -435,14 +462,13 @@ func (a app) bindDownloadRuntimeFlags(cmd *cobra.Command, opts *downloadOptions)
 	flags := cmd.Flags()
 	flags.StringVar(&opts.downloadPath, "download-path", "", "download directory")
 	flags.StringVar(&opts.filenameTemplate, "filename-template", "", "filename template placeholders: {id}, {title}, {author}, {author_id}, {date}, {tags}, {num}")
-	flags.StringVar(&opts.directoryTemplate, "directory-template", "", "relative directory template")
 }
 
 func (a app) runDownload(cmd *cobra.Command, args []string, opts downloadOptions) error {
 	if _, err := recordFailureStrategy(opts.onError); err != nil {
 		return err
 	}
-	pages, err := sdk.ParsePageSelection(opts.pages)
+	pages, err := application.ParsePageSpec(opts.pages)
 	if err != nil {
 		return newUsageError(err)
 	}
@@ -453,8 +479,11 @@ func (a app) runDownload(cmd *cobra.Command, args []string, opts downloadOptions
 	if err := application.ValidateDownloadQuality(quality); err != nil {
 		return newUsageError(err)
 	}
-	ugoiraMode := sdk.UgoiraMode(opts.ugoiraMode)
-	if err := sdk.ValidateUgoiraMode(ugoiraMode); err != nil {
+	ugoiraFormat := application.UgoiraFormat(opts.ugoiraMode)
+	if ugoiraFormat == "" {
+		ugoiraFormat = application.UgoiraFormatGIF
+	}
+	if err := application.ValidateUgoiraFormat(ugoiraFormat); err != nil {
 		return newUsageError(err)
 	}
 	services := a.services()
@@ -472,37 +501,17 @@ func (a app) runDownload(cmd *cobra.Command, args []string, opts downloadOptions
 	if cmd.Flags().Changed("filename-template") {
 		runtime.FilenameTemplate = opts.filenameTemplate
 	}
-	if cmd.Flags().Changed("directory-template") {
-		runtime.DirectoryTemplate = opts.directoryTemplate
+	request := application.DownloadRequest{
+		DownloadPath:     runtime.DownloadPath,
+		FilenameTemplate: runtime.FilenameTemplate,
+		Pages:            pages,
+		Quality:          quality,
+		UgoiraFormat:     ugoiraFormat,
 	}
-	var filter *sdk.IllustFilter
-	if strings.TrimSpace(opts.filter) != "" {
-		filter, err = sdk.CompileIllustFilter(opts.filter)
-		if err != nil {
-			return newUsageError(err)
-		}
-	}
-	options := sdk.DownloadOptions{
-		DownloadPath:      runtime.DownloadPath,
-		FilenameTemplate:  runtime.FilenameTemplate,
-		DirectoryTemplate: runtime.DirectoryTemplate,
-		PageSelection:     pages,
-		Quality:           sdk.DownloadQuality(quality),
-		UgoiraMode:        ugoiraMode,
-		UgoiraFormat:      sdk.UgoiraFormat(ugoiraMode), // 旧嵌入 DownloadTargetClient 适配路径。
-		Concurrency:       opts.concurrency,
-		Filter:            filter,
-		ArchivePath:       opts.archive,
-		WriteMetadata:     opts.writeMetadata,
-		RetryPolicy:       &sdk.RetryPolicy{Retries: opts.retries, InitialDelay: opts.retryDelay},
-	}
-	if progress, ok := newDownloadProgressRenderer(a.errOut); ok {
-		options.Progress = progress.Report
-	}
-	request := application.SDKClientRequest{HTTPSProxyOverride: clientReq.HTTPSProxyOverride, RequestIntervalOverride: clientReq.RequestIntervalOverride}
+	sdkRequest := application.SDKClientRequest{HTTPSProxyOverride: clientReq.HTTPSProxyOverride, RequestIntervalOverride: clientReq.RequestIntervalOverride}
 	downloadOne := func(ctx context.Context, id int64) error {
-		return services.SDK.RunPooledOperation(ctx, request, func(ctx context.Context, client application.SDKClient) (bool, error) {
-			report, err := services.Download.DownloadSources(ctx, client, []string{strconv.FormatInt(id, 10)}, options)
+		return services.SDK.RunPooledOperation(ctx, sdkRequest, func(ctx context.Context, client application.SDKClient) (bool, error) {
+			report, err := services.Download.DownloadSources(ctx, client, []string{strconv.FormatInt(id, 10)}, request)
 			if err != nil {
 				return false, err
 			}
@@ -514,8 +523,8 @@ func (a app) runDownload(cmd *cobra.Command, args []string, opts downloadOptions
 	}
 	// 用户页与受资源策略允许的直链可能在一次调用里展开多个文件。只在结果中
 	// 尚无已发布文件时，账号池才可因有效 Retry-After 安全重放这次调用。
-	return services.SDK.RunPooledOperation(cmd.Context(), request, func(ctx context.Context, client application.SDKClient) (bool, error) {
-		report, err := services.Download.DownloadSources(ctx, client, args, options)
+	return services.SDK.RunPooledOperation(cmd.Context(), sdkRequest, func(ctx context.Context, client application.SDKClient) (bool, error) {
+		report, err := services.Download.DownloadSources(ctx, client, args, request)
 		if err != nil {
 			return downloadReportCommitted(report), err
 		}
@@ -582,7 +591,7 @@ func downloadReportOutput(report application.DownloadReport) downloadReportOut {
 	out := downloadReportOut{Items: []downloadArtworkOut{}, Failures: []downloadFailureOut{}}
 	for _, artwork := range report.Items {
 		item := downloadArtworkOut{
-			URL:      sdk.Reference{Kind: sdk.ReferenceKindArtwork, ID: artwork.IllustID}.URL(),
+			URL:      "https://www.pixiv.net/artworks/" + strconv.FormatInt(artwork.IllustID, 10),
 			IllustID: artwork.IllustID,
 			Title:    artwork.Title,
 			Author:   artwork.Author,
@@ -621,7 +630,7 @@ func printDownloadReport(w io.Writer, report application.DownloadReport) error {
 	return nil
 }
 
-func printIllusts(w io.Writer, illusts []sdk.Illust, offset int, ranked bool) error {
+func printIllusts(w io.Writer, illusts []pixiv.Artwork, offset int, ranked bool) error {
 	for i, illust := range illusts {
 		rank := 0
 		if ranked {
@@ -634,7 +643,7 @@ func printIllusts(w io.Writer, illusts []sdk.Illust, offset int, ranked bool) er
 	return nil
 }
 
-func printIllust(w io.Writer, illust sdk.Illust, rank int, compact bool) error {
+func printIllust(w io.Writer, illust pixiv.Artwork, rank int, compact bool) error {
 	prefix := ""
 	if rank > 0 {
 		prefix = fmt.Sprintf("#%d ", rank)
@@ -643,8 +652,8 @@ func printIllust(w io.Writer, illust sdk.Illust, rank int, compact bool) error {
 	for _, tag := range illust.Tags {
 		tags = append(tags, tag.Name)
 	}
-	url := illust.URL
-	if url == "" && illust.ID > 0 {
+	url := ""
+	if illust.ID > 0 {
 		url = fmt.Sprintf("https://www.pixiv.net/artworks/%d", illust.ID)
 	}
 	if compact {
@@ -652,14 +661,14 @@ func printIllust(w io.Writer, illust sdk.Illust, rank int, compact bool) error {
 			return err
 		}
 		_, err := fmt.Fprintf(w, "%d %q by %s bookmarks:%d views:%d tags:%s\n",
-			illust.ID, illust.Title, illust.User.Name, illust.TotalBookmarks, illust.TotalView, strings.Join(tags, ","))
+			illust.ID, illust.Title, illust.User.Name, illust.TotalBookmarks, illust.TotalViews, strings.Join(tags, ","))
 		return err
 	}
 	for _, line := range []string{
 		fmt.Sprintf("url: %s\n", url), fmt.Sprintf("id: %d\n", illust.ID), fmt.Sprintf("title: %s\n", illust.Title),
-		fmt.Sprintf("author: %s (%d)\n", illust.User.Name, illust.User.ID), fmt.Sprintf("type: %s\n", illust.Type),
+		fmt.Sprintf("author: %s (%d)\n", illust.User.Name, illust.User.ID), fmt.Sprintf("type: %s\n", string(illust.Kind)),
 		fmt.Sprintf("page_count: %d\n", illust.PageCount), fmt.Sprintf("bookmarks: %d\n", illust.TotalBookmarks),
-		fmt.Sprintf("views: %d\n", illust.TotalView), fmt.Sprintf("tags: %s\n", strings.Join(tags, ",")),
+		fmt.Sprintf("views: %d\n", illust.TotalViews), fmt.Sprintf("tags: %s\n", strings.Join(tags, ",")),
 	} {
 		if _, err := io.WriteString(w, line); err != nil {
 			return err

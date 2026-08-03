@@ -7,7 +7,8 @@ import (
 	"testing"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/config"
-	sdk "github.com/FlanChanXwO/pixiv-cli/pixiv"
+	"github.com/FlanChanXwO/pixiv-cli/sdk"
+	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/stretchr/testify/require"
 )
 
@@ -107,20 +108,20 @@ func TestNewServicesConfiguresDownloadFactory(t *testing.T) {
 
 type bootstrapDownloadClientStub struct{}
 
-func (bootstrapDownloadClientStub) IllustDetail(context.Context, int64) (*sdk.IllustDetail, error) {
-	return nil, nil
+func (bootstrapDownloadClientStub) Artwork(context.Context, pixiv.ArtworkRequest) (pixiv.Artwork, error) {
+	return pixiv.Artwork{}, nil
 }
 
-func (bootstrapDownloadClientStub) UgoiraMetadata(context.Context, int64) (*sdk.UgoiraMetadataResult, error) {
-	return nil, nil
+func (bootstrapDownloadClientStub) UgoiraMetadata(context.Context, pixiv.UgoiraMetadataRequest) (pixiv.UgoiraMetadata, error) {
+	return pixiv.UgoiraMetadata{}, nil
 }
 
 func (bootstrapDownloadClientStub) ParseResourceRef(string) (sdk.ResourceRef, error) {
 	return sdk.ResourceRef{}, nil
 }
 
-func (bootstrapDownloadClientStub) DownloadResource(context.Context, sdk.ResourceRef, string) (sdk.ResourceDownloadResult, error) {
-	return sdk.ResourceDownloadResult{}, nil
+func (bootstrapDownloadClientStub) SaveResource(context.Context, sdk.ResourceRef, sdk.SaveOptions) (sdk.SavedResource, error) {
+	return sdk.SavedResource{}, nil
 }
 
 func clearRuntimeEnvironment(t *testing.T) {

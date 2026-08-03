@@ -35,7 +35,7 @@ type cursorEnvelope struct {
 // return CodeInvalidCursor on mismatch; a cursor never silently restarts from
 // the first page across product, operation, or query changes.
 type Cursor struct {
-	env *cursorEnvelope
+	text string
 }
 
 // CursorOption adjusts the binding metadata of a cursor during construction.
@@ -90,26 +90,25 @@ func NewCursor(product, operation string, bindingVersion int, queryHash string, 
 			opt(env)
 		}
 	}
-	return Cursor{env: env}, nil
+	raw, err := json.Marshal(env)
+	if err != nil {
+		return Cursor{}, NewError("", "NewCursor", CodeInvalidArgument, WithCause(err))
+	}
+	return Cursor{text: base64.RawURLEncoding.EncodeToString(raw)}, nil
 }
 
 // IsZero reports whether the cursor is the zero value, which means there is no
 // further page.
-func (c Cursor) IsZero() bool { return c.env == nil }
+func (c Cursor) IsZero() bool { return c.text == "" }
 
-// MarshalText encodes the cursor as route-safe unpadded base64url text. The
-// encoding is versioned and remains decodable across later versions of the same
-// major. Marshaling a zero cursor returns CodeInvalidArgument.
+// MarshalText returns the route-safe unpadded base64url text encoding of the
+// cursor. The encoding is versioned and remains decodable across later versions
+// of the same major. Marshaling a zero cursor returns CodeInvalidArgument.
 func (c Cursor) MarshalText() ([]byte, error) {
 	if c.IsZero() {
 		return nil, NewError("", "Cursor.MarshalText", CodeInvalidArgument, WithDetail("zero cursor has no encoding"))
 	}
-	raw, err := json.Marshal(c.env)
-	if err != nil {
-		return nil, NewError("", "Cursor.MarshalText", CodeInvalidArgument, WithCause(err))
-	}
-	enc := base64.RawURLEncoding.EncodeToString(raw)
-	return []byte(enc), nil
+	return []byte(c.text), nil
 }
 
 // UnmarshalText decodes a cursor from its route-safe unpadded base64url text
@@ -118,28 +117,19 @@ func (c *Cursor) UnmarshalText(text []byte) error {
 	if len(text) == 0 {
 		return NewError("", "Cursor.UnmarshalText", CodeInvalidCursor, WithDetail("empty cursor text"))
 	}
-	raw, err := base64.RawURLEncoding.DecodeString(string(text))
-	if err != nil {
+	if _, err := decodeCursor(string(text)); err != nil {
 		return NewError("", "Cursor.UnmarshalText", CodeInvalidCursor, WithCause(err))
 	}
-	var env cursorEnvelope
-	if err := json.Unmarshal(raw, &env); err != nil {
-		return NewError("", "Cursor.UnmarshalText", CodeInvalidCursor, WithCause(err))
-	}
-	if env.Version != cursorFormatVersion {
-		return NewError("", "Cursor.UnmarshalText", CodeInvalidCursor, WithCause(fmt.Errorf("unsupported cursor format version %d", env.Version)))
-	}
-	c.env = &env
+	c.text = string(text)
 	return nil
 }
 
 // MarshalJSON encodes the cursor as a JSON string containing its Text form.
 func (c Cursor) MarshalJSON() ([]byte, error) {
-	text, err := c.MarshalText()
-	if err != nil {
-		return nil, err
+	if c.IsZero() {
+		return nil, NewError("", "Cursor.MarshalJSON", CodeInvalidArgument, WithDetail("zero cursor has no encoding"))
 	}
-	return json.Marshal(string(text))
+	return json.Marshal(c.text)
 }
 
 // UnmarshalJSON decodes a cursor from a JSON string containing its Text form.
@@ -153,13 +143,7 @@ func (c *Cursor) UnmarshalJSON(data []byte) error {
 
 // String returns the route-safe text encoding of the cursor. It is safe to log
 // and to persist across processes.
-func (c Cursor) String() string {
-	text, err := c.MarshalText()
-	if err != nil {
-		return ""
-	}
-	return string(text)
-}
+func (c Cursor) String() string { return c.text }
 
 // ParseCursor decodes a cursor from its route-safe unpadded base64url text
 // encoding, returning CodeInvalidCursor for malformed input.
@@ -178,8 +162,12 @@ func ValidateCursor(c Cursor, product, operation string, bindingVersion int, que
 	if c.IsZero() {
 		return NewError("", "ValidateCursor", CodeInvalidCursor, WithDetail("zero cursor"))
 	}
-	if c.env.Product != product || c.env.Operation != operation ||
-		c.env.Binding != bindingVersion || c.env.QueryHash != queryHash {
+	env, err := decodeCursor(c.text)
+	if err != nil {
+		return NewError("", "ValidateCursor", CodeInvalidCursor, WithCause(err))
+	}
+	if env.Product != product || env.Operation != operation ||
+		env.Binding != bindingVersion || env.QueryHash != queryHash {
 		return NewError("", "ValidateCursor", CodeInvalidCursor, WithDetail("cursor binding mismatch"))
 	}
 	return nil
@@ -192,23 +180,50 @@ func CursorPayload(c Cursor) ([]byte, error) {
 	if c.IsZero() {
 		return nil, NewError("", "CursorPayload", CodeInvalidCursor, WithDetail("zero cursor"))
 	}
-	return c.env.Payload, nil
+	env, err := decodeCursor(c.text)
+	if err != nil {
+		return nil, NewError("", "CursorPayload", CodeInvalidCursor, WithCause(err))
+	}
+	return env.Payload, nil
 }
 
 // CursorIdentity returns the verified non-secret identity bound to the cursor,
-// if any. An empty identity with ok=true is never returned.
+// if any.
 func CursorIdentity(c Cursor) (identity string, ok bool) {
 	if c.IsZero() {
 		return "", false
 	}
-	if c.env.Identity == "" {
+	env, err := decodeCursor(c.text)
+	if err != nil || env.Identity == "" {
 		return "", false
 	}
-	return c.env.Identity, true
+	return env.Identity, true
 }
 
 // CursorEphemeral reports whether the cursor is only valid for the client
 // instance that produced it because no identity could be verified at creation.
 func CursorEphemeral(c Cursor) bool {
-	return !c.IsZero() && c.env.Ephemeral
+	if c.IsZero() {
+		return false
+	}
+	env, err := decodeCursor(c.text)
+	if err != nil {
+		return false
+	}
+	return env.Ephemeral
+}
+
+func decodeCursor(text string) (cursorEnvelope, error) {
+	raw, err := base64.RawURLEncoding.DecodeString(text)
+	if err != nil {
+		return cursorEnvelope{}, err
+	}
+	var env cursorEnvelope
+	if err := json.Unmarshal(raw, &env); err != nil {
+		return cursorEnvelope{}, err
+	}
+	if env.Version != cursorFormatVersion {
+		return cursorEnvelope{}, fmt.Errorf("unsupported cursor format version %d", env.Version)
+	}
+	return env, nil
 }

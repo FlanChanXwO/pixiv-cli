@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/config"
-	sdk "github.com/FlanChanXwO/pixiv-cli/pixiv"
+	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	"github.com/stretchr/testify/require"
 )
 
@@ -49,7 +49,7 @@ func TestAccountPoolExecutorFailsOverOnlyBeforeCommit(t *testing.T) {
 	err := executor.Run(context.Background(), func(_ context.Context, userID int64) (bool, error) {
 		attempts = append(attempts, userID)
 		if userID == 11 {
-			return false, &sdk.Error{Code: sdk.CodeRateLimited, HasRetryAfter: true, RetryAfter: 3 * time.Second}
+			return false, &sdk.Error{Code: sdk.CodeRateLimited, Retry: sdk.RetryAdvice{After: now.Add(3 * time.Second), HasAfter: true}}
 		}
 		return false, nil
 	})
@@ -70,7 +70,7 @@ func TestAccountPoolExecutorFailsOverOnlyBeforeCommit(t *testing.T) {
 
 	state = &fakeAccountPoolStateStore{leases: []int64{11, 22}}
 	executor.State = state
-	rateLimitedAfterStdoutAttempt := &sdk.Error{Code: sdk.CodeRateLimited, HasRetryAfter: true}
+	rateLimitedAfterStdoutAttempt := &sdk.Error{Code: sdk.CodeRateLimited, Retry: sdk.RetryAdvice{After: now.Add(time.Second), HasAfter: true}}
 	err = executor.Run(context.Background(), func(context.Context, int64) (bool, error) {
 		return true, rateLimitedAfterStdoutAttempt
 	})
@@ -108,7 +108,7 @@ func TestAccountPoolExecutorUsesLocalStorageOrderWithoutWhitelistAndLogsRotation
 	err := executor.Run(context.Background(), func(_ context.Context, userID int64) (bool, error) {
 		attempts = append(attempts, userID)
 		if userID == 22 {
-			return false, &sdk.Error{Code: sdk.CodeRateLimited, HasRetryAfter: true, RetryAfter: time.Second}
+			return false, &sdk.Error{Code: sdk.CodeRateLimited, Retry: sdk.RetryAdvice{After: now.Add(time.Second), HasAfter: true}}
 		}
 		return false, nil
 	})

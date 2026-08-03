@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -451,9 +452,18 @@ func proxyOverrideFromFlags(cmd *cobra.Command, opts proxyOptions) (*string, err
 }
 
 func (a app) printJSON(v any) error {
-	encoder := json.NewEncoder(a.out)
-	encoder.SetIndent("", "  ")
-	return encoder.Encode(v)
+	body, err := marshalJSONValue(v, false)
+	if err != nil {
+		return err
+	}
+	var out bytes.Buffer
+	if err := json.Indent(&out, body, "", "  "); err != nil {
+		return err
+	}
+	if _, err := io.WriteString(a.out, out.String()+"\n"); err != nil {
+		return err
+	}
+	return nil
 }
 
 func textBool(value bool) string {

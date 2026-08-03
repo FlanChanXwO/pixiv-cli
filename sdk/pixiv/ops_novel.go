@@ -41,7 +41,7 @@ func (c *Client) SearchNovels(ctx context.Context, request SearchNovelsRequest) 
 	if err != nil {
 		return sdk.Page[Novel]{}, classifyAppError(err, "SearchNovels")
 	}
-	return c.novelPage("SearchNovels", query, list)
+	return c.novelPage("SearchNovels", query, "offset", list)
 }
 
 // Novel returns one novel by its stable ID.
@@ -134,7 +134,7 @@ func (c *Client) RecommendedNovels(ctx context.Context, request RecommendedNovel
 	if err != nil {
 		return sdk.Page[Novel]{}, classifyAppError(err, "RecommendedNovels")
 	}
-	return c.novelPage("RecommendedNovels", query, list)
+	return c.novelPage("RecommendedNovels", query, "offset", list)
 }
 
 // FollowingNovels lists novels by followed users.
@@ -148,7 +148,7 @@ func (c *Client) FollowingNovels(ctx context.Context, request FollowingNovelsReq
 	if err != nil {
 		return sdk.Page[Novel]{}, classifyAppError(err, "FollowingNovels")
 	}
-	return c.novelPage("FollowingNovels", query, list)
+	return c.novelPage("FollowingNovels", query, "offset", list)
 }
 
 // LatestNovels lists the newest novels.
@@ -162,7 +162,7 @@ func (c *Client) LatestNovels(ctx context.Context, request LatestNovelsRequest) 
 	if err != nil {
 		return sdk.Page[Novel]{}, classifyAppError(err, "LatestNovels")
 	}
-	return c.novelPage("LatestNovels", query, list)
+	return c.novelPage("LatestNovels", query, "offset", list)
 }
 
 // UserNovels lists one user's novels.
@@ -179,7 +179,7 @@ func (c *Client) UserNovels(ctx context.Context, request UserNovelsRequest) (sdk
 	if err != nil {
 		return sdk.Page[Novel]{}, classifyAppError(err, "UserNovels")
 	}
-	return c.novelPage("UserNovels", query, list)
+	return c.novelPage("UserNovels", query, "offset", list)
 }
 
 // UserNovelBookmarks lists one user's bookmarked novels.
@@ -199,7 +199,7 @@ func (c *Client) UserNovelBookmarks(ctx context.Context, request UserNovelBookma
 	if err != nil {
 		return sdk.Page[Novel]{}, classifyAppError(err, "UserNovelBookmarks")
 	}
-	return c.novelPage("UserNovelBookmarks", query, list)
+	return c.novelPage("UserNovelBookmarks", query, "max_bookmark_id", list)
 }
 
 // MyPixivNovels lists novels from the current user's MyPixiv feed.
@@ -213,10 +213,10 @@ func (c *Client) MyPixivNovels(ctx context.Context, request MyPixivNovelsRequest
 	if err != nil {
 		return sdk.Page[Novel]{}, classifyAppError(err, "MyPixivNovels")
 	}
-	return c.novelPage("MyPixivNovels", query, list)
+	return c.novelPage("MyPixivNovels", query, "offset", list)
 }
 
-func (c *Client) novelPage(op string, query url.Values, list *model.NovelList) (sdk.Page[Novel], error) {
+func (c *Client) novelPage(op string, query url.Values, key string, list *model.NovelList) (sdk.Page[Novel], error) {
 	items := make([]Novel, 0, len(list.Novels))
 	for _, m := range list.Novels {
 		novel, err := c.mapNovel(m)
@@ -225,7 +225,11 @@ func (c *Client) novelPage(op string, query url.Values, list *model.NovelList) (
 		}
 		items = append(items, novel)
 	}
-	next, err := c.buildCursor(op, query, "offset", int64(list.NextOffset), list.ContinuationExists)
+	value := int64(list.NextOffset)
+	if key == "max_bookmark_id" {
+		value = list.NextMaxBookmarkID
+	}
+	next, err := c.buildCursor(op, query, key, value, list.ContinuationExists)
 	if err != nil {
 		return sdk.Page[Novel]{}, err
 	}

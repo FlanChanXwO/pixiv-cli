@@ -15,78 +15,60 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/application"
 	"github.com/FlanChanXwO/pixiv-cli/internal/bootstrap"
 	"github.com/FlanChanXwO/pixiv-cli/internal/storage/auth"
-	sdk "github.com/FlanChanXwO/pixiv-cli/pixiv"
+	"github.com/FlanChanXwO/pixiv-cli/sdk"
+	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 type sdkCommandFake struct {
-	currentUserID        func(context.Context) (int64, error)
-	listAccounts         func() (*sdk.AccountsResult, error)
-	refreshPremiumStatus func(context.Context) (*sdk.PremiumStatus, error)
-	search               func(context.Context, sdk.SearchIllustRequest) (*sdk.IllustListResult, error)
-	searchNovel          func(context.Context, sdk.SearchNovelRequest) (*sdk.NovelListResult, error)
-	detail               func(context.Context, int64) (*sdk.IllustDetail, error)
-	ranking              func(context.Context, sdk.IllustRankingRequest) (*sdk.IllustListResult, error)
-	recommended          func(context.Context, sdk.IllustRecommendedRequest) (*sdk.IllustListResult, error)
-	mangaRecommended     func(context.Context, sdk.IllustRecommendedRequest) (*sdk.IllustListResult, error)
-	novelRecommended     func(context.Context, sdk.NovelRecommendedRequest) (*sdk.NovelListResult, error)
-	userRecommended      func(context.Context, sdk.UserRecommendedRequest) (*sdk.UserRecommendedResult, error)
-	userDetail           func(context.Context, sdk.UserDetailRequest) (*sdk.UserDetailResult, error)
-	artworks             func(context.Context, sdk.UserArtworksRequest) (*sdk.IllustListResult, error)
-	bookmarks            func(context.Context, sdk.UserBookmarksRequest) (*sdk.IllustListResult, error)
-	following            func(context.Context, sdk.UserFollowingRequest) (*sdk.UserListResult, error)
-	followingIllusts     func(context.Context, sdk.FollowingIllustsRequest) (*sdk.IllustListResult, error)
-	followingNovels      func(context.Context, sdk.FollowingNovelsRequest) (*sdk.NovelListResult, error)
-	latestIllusts        func(context.Context, sdk.LatestIllustsRequest) (*sdk.IllustListResult, error)
-	latestNovels         func(context.Context, sdk.LatestNovelsRequest) (*sdk.NovelListResult, error)
-	myPixivUsers         func(context.Context, sdk.MyPixivUsersRequest) (*sdk.UserListResult, error)
-	myPixivIllusts       func(context.Context, sdk.MyPixivIllustsRequest) (*sdk.IllustListResult, error)
-	myPixivNovels        func(context.Context, sdk.MyPixivNovelsRequest) (*sdk.NovelListResult, error)
-	userNovels           func(context.Context, sdk.UserNovelsRequest) (*sdk.NovelListResult, error)
-	searchUser           func(context.Context, sdk.SearchUserRequest) (*sdk.UserListResult, error)
-	addBookmark          func(context.Context, sdk.AddBookmarkRequest) error
-	removeBookmark       func(context.Context, sdk.RemoveBookmarkRequest) error
-	follow               func(context.Context, sdk.FollowUserRequest) error
-	unfollow             func(context.Context, sdk.UnfollowUserRequest) error
-}
-
-func (sdkCommandFake) ExportAccountRefreshToken(int64) (string, error) {
-	return "", errors.New("unexpected account token export")
+	currentUserID     func(context.Context) (int64, error)
+	search            func(context.Context, pixiv.SearchArtworksRequest) (sdk.Page[pixiv.Artwork], error)
+	searchNovel       func(context.Context, pixiv.SearchNovelsRequest) (sdk.Page[pixiv.Novel], error)
+	detail            func(context.Context, int64) (pixiv.Artwork, error)
+	ranking           func(context.Context, pixiv.ArtworkRankingRequest) (sdk.Page[pixiv.Artwork], error)
+	recommended       func(context.Context, pixiv.RecommendedArtworksRequest) (sdk.Page[pixiv.Artwork], error)
+	novelRecommended  func(context.Context, pixiv.RecommendedNovelsRequest) (sdk.Page[pixiv.Novel], error)
+	userRecommended   func(context.Context, pixiv.RecommendedUsersRequest) (sdk.Page[pixiv.UserPreview], error)
+	userDetail        func(context.Context, pixiv.UserRequest) (pixiv.UserDetail, error)
+	artworks          func(context.Context, pixiv.UserArtworksRequest) (sdk.Page[pixiv.Artwork], error)
+	bookmarks         func(context.Context, pixiv.UserArtworkBookmarksRequest) (sdk.Page[pixiv.Artwork], error)
+	following         func(context.Context, pixiv.UserFollowingRequest) (sdk.Page[pixiv.UserPreview], error)
+	followingArtworks func(context.Context, pixiv.FollowingArtworksRequest) (sdk.Page[pixiv.Artwork], error)
+	followingNovels   func(context.Context, pixiv.FollowingNovelsRequest) (sdk.Page[pixiv.Novel], error)
+	latestArtworks    func(context.Context, pixiv.LatestArtworksRequest) (sdk.Page[pixiv.Artwork], error)
+	latestNovels      func(context.Context, pixiv.LatestNovelsRequest) (sdk.Page[pixiv.Novel], error)
+	myPixivUsers      func(context.Context, pixiv.MyPixivUsersRequest) (sdk.Page[pixiv.UserPreview], error)
+	myPixivArtworks   func(context.Context, pixiv.MyPixivArtworksRequest) (sdk.Page[pixiv.Artwork], error)
+	myPixivNovels     func(context.Context, pixiv.MyPixivNovelsRequest) (sdk.Page[pixiv.Novel], error)
+	userNovels        func(context.Context, pixiv.UserNovelsRequest) (sdk.Page[pixiv.Novel], error)
+	searchUser        func(context.Context, pixiv.SearchUsersRequest) (sdk.Page[pixiv.UserPreview], error)
+	addBookmark       func(context.Context, pixiv.AddBookmarkRequest) error
+	removeBookmark    func(context.Context, pixiv.RemoveBookmarkRequest) error
+	follow            func(context.Context, pixiv.FollowUserRequest) error
+	unfollow          func(context.Context, pixiv.UnfollowUserRequest) error
 }
 
 func unimplementedSDKCommand() error { return errors.New("unexpected sdk command") }
-func (sdkCommandFake) ImportAccount(context.Context, string) (*sdk.Account, error) {
+
+func (sdkCommandFake) ImportAccount(context.Context, string) (*application.Account, error) {
 	return nil, unimplementedSDKCommand()
 }
-func (f sdkCommandFake) ListAccounts() (*sdk.AccountsResult, error) {
-	if f.listAccounts != nil {
-		return f.listAccounts()
-	}
+func (sdkCommandFake) ListAccounts() (*application.AccountsResult, error) {
 	return nil, unimplementedSDKCommand()
 }
 func (sdkCommandFake) SelectAccount(int64) error { return unimplementedSDKCommand() }
 func (sdkCommandFake) RemoveAccount(int64) error { return unimplementedSDKCommand() }
-func (sdkCommandFake) CheckAccount(context.Context, int64) (*sdk.Account, error) {
+func (sdkCommandFake) CheckAccount(context.Context, int64) (*application.Account, error) {
 	return nil, unimplementedSDKCommand()
 }
-func (sdkCommandFake) CheckRefreshToken(context.Context, string) (*sdk.Account, error) {
+func (sdkCommandFake) CheckRefreshToken(context.Context, string) (*application.Account, error) {
 	return nil, unimplementedSDKCommand()
 }
-func (sdkCommandFake) Refresh(context.Context) (*sdk.Account, error) {
-	return nil, unimplementedSDKCommand()
+func (sdkCommandFake) ExportAccountRefreshToken(int64) (string, error) {
+	return "", unimplementedSDKCommand()
 }
-func (sdkCommandFake) PremiumStatus(context.Context) (*sdk.PremiumStatus, error) {
-	return nil, unimplementedSDKCommand()
-}
-func (f sdkCommandFake) RefreshPremiumStatus(ctx context.Context) (*sdk.PremiumStatus, error) {
-	if f.refreshPremiumStatus != nil {
-		return f.refreshPremiumStatus(ctx)
-	}
-	return nil, unimplementedSDKCommand()
-}
-func (sdkCommandFake) StartLogin() (*sdk.LoginSession, error) { return nil, unimplementedSDKCommand() }
-func (sdkCommandFake) CompleteLogin(context.Context, *sdk.LoginSession, string, sdk.LoginOptions) (*sdk.Account, error) {
+func (sdkCommandFake) Refresh(context.Context) (*application.Account, error) {
 	return nil, unimplementedSDKCommand()
 }
 func (f sdkCommandFake) CurrentUserID(ctx context.Context) (int64, error) {
@@ -95,101 +77,177 @@ func (f sdkCommandFake) CurrentUserID(ctx context.Context) (int64, error) {
 	}
 	return 0, unimplementedSDKCommand()
 }
-func (f sdkCommandFake) SearchIllust(ctx context.Context, r sdk.SearchIllustRequest) (*sdk.IllustListResult, error) {
+func (sdkCommandFake) StartLogin() (*pixiv.LoginSession, error) {
+	return nil, unimplementedSDKCommand()
+}
+func (sdkCommandFake) CompleteLogin(context.Context, *pixiv.LoginSession, string, pixiv.LoginOptions) (*application.Account, error) {
+	return nil, unimplementedSDKCommand()
+}
+
+func (f sdkCommandFake) SearchArtworks(ctx context.Context, r pixiv.SearchArtworksRequest) (sdk.Page[pixiv.Artwork], error) {
 	if f.search != nil {
 		return f.search(ctx, r)
 	}
-	return nil, unimplementedSDKCommand()
+	return sdk.Page[pixiv.Artwork]{}, unimplementedSDKCommand()
 }
-func (f sdkCommandFake) SearchNovel(ctx context.Context, r sdk.SearchNovelRequest) (*sdk.NovelListResult, error) {
+func (f sdkCommandFake) SearchNovels(ctx context.Context, r pixiv.SearchNovelsRequest) (sdk.Page[pixiv.Novel], error) {
 	if f.searchNovel != nil {
 		return f.searchNovel(ctx, r)
 	}
-	return nil, unimplementedSDKCommand()
+	return sdk.Page[pixiv.Novel]{}, unimplementedSDKCommand()
 }
-func (f sdkCommandFake) IllustDetail(ctx context.Context, id int64) (*sdk.IllustDetail, error) {
+func (f sdkCommandFake) Artwork(ctx context.Context, r pixiv.ArtworkRequest) (pixiv.Artwork, error) {
 	if f.detail != nil {
-		return f.detail(ctx, id)
+		return f.detail(ctx, r.ArtworkID)
 	}
-	return nil, unimplementedSDKCommand()
+	return pixiv.Artwork{}, unimplementedSDKCommand()
 }
-func (sdkCommandFake) IllustRelated(context.Context, sdk.IllustRelatedRequest) (*sdk.IllustListResult, error) {
-	return nil, unimplementedSDKCommand()
+func (sdkCommandFake) RelatedArtworks(context.Context, pixiv.RelatedArtworksRequest) (sdk.Page[pixiv.Artwork], error) {
+	return sdk.Page[pixiv.Artwork]{}, unimplementedSDKCommand()
 }
-func (f sdkCommandFake) IllustRanking(ctx context.Context, r sdk.IllustRankingRequest) (*sdk.IllustListResult, error) {
+func (f sdkCommandFake) ArtworkRanking(ctx context.Context, r pixiv.ArtworkRankingRequest) (sdk.Page[pixiv.Artwork], error) {
 	if f.ranking != nil {
 		return f.ranking(ctx, r)
 	}
-	return nil, unimplementedSDKCommand()
+	return sdk.Page[pixiv.Artwork]{}, unimplementedSDKCommand()
 }
-
-func (f sdkCommandFake) FollowingIllusts(ctx context.Context, r sdk.FollowingIllustsRequest) (*sdk.IllustListResult, error) {
-	if f.followingIllusts != nil {
-		return f.followingIllusts(ctx, r)
+func (f sdkCommandFake) RecommendedArtworks(ctx context.Context, r pixiv.RecommendedArtworksRequest) (sdk.Page[pixiv.Artwork], error) {
+	if f.recommended != nil {
+		return f.recommended(ctx, r)
 	}
+	return sdk.Page[pixiv.Artwork]{}, unimplementedSDKCommand()
+}
+func (f sdkCommandFake) FollowingArtworks(ctx context.Context, r pixiv.FollowingArtworksRequest) (sdk.Page[pixiv.Artwork], error) {
+	if f.followingArtworks != nil {
+		return f.followingArtworks(ctx, r)
+	}
+	return sdk.Page[pixiv.Artwork]{}, unimplementedSDKCommand()
+}
+func (f sdkCommandFake) LatestArtworks(ctx context.Context, r pixiv.LatestArtworksRequest) (sdk.Page[pixiv.Artwork], error) {
+	if f.latestArtworks != nil {
+		return f.latestArtworks(ctx, r)
+	}
+	return sdk.Page[pixiv.Artwork]{}, unimplementedSDKCommand()
+}
+func (f sdkCommandFake) UserArtworks(ctx context.Context, r pixiv.UserArtworksRequest) (sdk.Page[pixiv.Artwork], error) {
+	if f.artworks != nil {
+		return f.artworks(ctx, r)
+	}
+	return sdk.Page[pixiv.Artwork]{}, unimplementedSDKCommand()
+}
+func (f sdkCommandFake) UserArtworkBookmarks(ctx context.Context, r pixiv.UserArtworkBookmarksRequest) (sdk.Page[pixiv.Artwork], error) {
+	if f.bookmarks != nil {
+		return f.bookmarks(ctx, r)
+	}
+	return sdk.Page[pixiv.Artwork]{}, unimplementedSDKCommand()
+}
+func (f sdkCommandFake) MyPixivArtworks(ctx context.Context, r pixiv.MyPixivArtworksRequest) (sdk.Page[pixiv.Artwork], error) {
+	if f.myPixivArtworks != nil {
+		return f.myPixivArtworks(ctx, r)
+	}
+	return sdk.Page[pixiv.Artwork]{}, unimplementedSDKCommand()
+}
+func (sdkCommandFake) ArtworkComments(context.Context, pixiv.ArtworkCommentsRequest) (pixiv.CommentPage, error) {
+	return pixiv.CommentPage{}, unimplementedSDKCommand()
+}
+func (sdkCommandFake) TrendingArtworkTags(context.Context, pixiv.TrendingArtworkTagsRequest) ([]pixiv.TrendingTag, error) {
 	return nil, unimplementedSDKCommand()
 }
-
-func (f sdkCommandFake) FollowingNovels(ctx context.Context, r sdk.FollowingNovelsRequest) (*sdk.NovelListResult, error) {
+func (sdkCommandFake) UgoiraMetadata(context.Context, pixiv.UgoiraMetadataRequest) (pixiv.UgoiraMetadata, error) {
+	return pixiv.UgoiraMetadata{}, unimplementedSDKCommand()
+}
+func (f sdkCommandFake) RecommendedNovels(ctx context.Context, r pixiv.RecommendedNovelsRequest) (sdk.Page[pixiv.Novel], error) {
+	if f.novelRecommended != nil {
+		return f.novelRecommended(ctx, r)
+	}
+	return sdk.Page[pixiv.Novel]{}, unimplementedSDKCommand()
+}
+func (f sdkCommandFake) FollowingNovels(ctx context.Context, r pixiv.FollowingNovelsRequest) (sdk.Page[pixiv.Novel], error) {
 	if f.followingNovels != nil {
 		return f.followingNovels(ctx, r)
 	}
-	return nil, unimplementedSDKCommand()
+	return sdk.Page[pixiv.Novel]{}, unimplementedSDKCommand()
 }
-
-func (f sdkCommandFake) LatestIllusts(ctx context.Context, r sdk.LatestIllustsRequest) (*sdk.IllustListResult, error) {
-	if f.latestIllusts != nil {
-		return f.latestIllusts(ctx, r)
-	}
-	return nil, unimplementedSDKCommand()
-}
-
-func (f sdkCommandFake) LatestNovels(ctx context.Context, r sdk.LatestNovelsRequest) (*sdk.NovelListResult, error) {
+func (f sdkCommandFake) LatestNovels(ctx context.Context, r pixiv.LatestNovelsRequest) (sdk.Page[pixiv.Novel], error) {
 	if f.latestNovels != nil {
 		return f.latestNovels(ctx, r)
 	}
-	return nil, unimplementedSDKCommand()
+	return sdk.Page[pixiv.Novel]{}, unimplementedSDKCommand()
 }
-
-func (f sdkCommandFake) MyPixivUsers(ctx context.Context, r sdk.MyPixivUsersRequest) (*sdk.UserListResult, error) {
-	if f.myPixivUsers != nil {
-		return f.myPixivUsers(ctx, r)
-	}
-	return nil, unimplementedSDKCommand()
-}
-
-func (f sdkCommandFake) MyPixivIllusts(ctx context.Context, r sdk.MyPixivIllustsRequest) (*sdk.IllustListResult, error) {
-	if f.myPixivIllusts != nil {
-		return f.myPixivIllusts(ctx, r)
-	}
-	return nil, unimplementedSDKCommand()
-}
-
-func (f sdkCommandFake) MyPixivNovels(ctx context.Context, r sdk.MyPixivNovelsRequest) (*sdk.NovelListResult, error) {
-	if f.myPixivNovels != nil {
-		return f.myPixivNovels(ctx, r)
-	}
-	return nil, unimplementedSDKCommand()
-}
-
-func (f sdkCommandFake) UserNovels(ctx context.Context, r sdk.UserNovelsRequest) (*sdk.NovelListResult, error) {
+func (f sdkCommandFake) UserNovels(ctx context.Context, r pixiv.UserNovelsRequest) (sdk.Page[pixiv.Novel], error) {
 	if f.userNovels != nil {
 		return f.userNovels(ctx, r)
 	}
-	return nil, unimplementedSDKCommand()
+	return sdk.Page[pixiv.Novel]{}, unimplementedSDKCommand()
 }
-
-func (f sdkCommandFake) SearchUser(ctx context.Context, request sdk.SearchUserRequest) (*sdk.UserListResult, error) {
-	if f.searchUser != nil {
-		return f.searchUser(ctx, request)
+func (f sdkCommandFake) MyPixivNovels(ctx context.Context, r pixiv.MyPixivNovelsRequest) (sdk.Page[pixiv.Novel], error) {
+	if f.myPixivNovels != nil {
+		return f.myPixivNovels(ctx, r)
 	}
-	return nil, unimplementedSDKCommand()
+	return sdk.Page[pixiv.Novel]{}, unimplementedSDKCommand()
 }
-func (sdkCommandFake) TrendingTagsIllust(context.Context) (*sdk.TrendingTagsIllustResult, error) {
-	return nil, unimplementedSDKCommand()
+func (sdkCommandFake) Novel(context.Context, pixiv.NovelRequest) (pixiv.Novel, error) {
+	return pixiv.Novel{}, unimplementedSDKCommand()
 }
-func (sdkCommandFake) UgoiraMetadata(context.Context, int64) (*sdk.UgoiraMetadataResult, error) {
-	return nil, unimplementedSDKCommand()
+func (f sdkCommandFake) SearchUsers(ctx context.Context, r pixiv.SearchUsersRequest) (sdk.Page[pixiv.UserPreview], error) {
+	if f.searchUser != nil {
+		return f.searchUser(ctx, r)
+	}
+	return sdk.Page[pixiv.UserPreview]{}, unimplementedSDKCommand()
+}
+func (f sdkCommandFake) User(ctx context.Context, r pixiv.UserRequest) (pixiv.UserDetail, error) {
+	if f.userDetail != nil {
+		return f.userDetail(ctx, r)
+	}
+	return pixiv.UserDetail{}, unimplementedSDKCommand()
+}
+func (f sdkCommandFake) RecommendedUsers(ctx context.Context, r pixiv.RecommendedUsersRequest) (sdk.Page[pixiv.UserPreview], error) {
+	if f.userRecommended != nil {
+		return f.userRecommended(ctx, r)
+	}
+	return sdk.Page[pixiv.UserPreview]{}, unimplementedSDKCommand()
+}
+func (sdkCommandFake) RelatedUsers(context.Context, pixiv.RelatedUsersRequest) (sdk.Page[pixiv.UserPreview], error) {
+	return sdk.Page[pixiv.UserPreview]{}, unimplementedSDKCommand()
+}
+func (f sdkCommandFake) UserFollowing(ctx context.Context, r pixiv.UserFollowingRequest) (sdk.Page[pixiv.UserPreview], error) {
+	if f.following != nil {
+		return f.following(ctx, r)
+	}
+	return sdk.Page[pixiv.UserPreview]{}, unimplementedSDKCommand()
+}
+func (sdkCommandFake) UserFollowers(context.Context, pixiv.UserFollowersRequest) (sdk.Page[pixiv.UserPreview], error) {
+	return sdk.Page[pixiv.UserPreview]{}, unimplementedSDKCommand()
+}
+func (f sdkCommandFake) MyPixivUsers(ctx context.Context, r pixiv.MyPixivUsersRequest) (sdk.Page[pixiv.UserPreview], error) {
+	if f.myPixivUsers != nil {
+		return f.myPixivUsers(ctx, r)
+	}
+	return sdk.Page[pixiv.UserPreview]{}, unimplementedSDKCommand()
+}
+func (f sdkCommandFake) AddBookmark(ctx context.Context, r pixiv.AddBookmarkRequest) error {
+	if f.addBookmark != nil {
+		return f.addBookmark(ctx, r)
+	}
+	return unimplementedSDKCommand()
+}
+func (f sdkCommandFake) RemoveBookmark(ctx context.Context, r pixiv.RemoveBookmarkRequest) error {
+	if f.removeBookmark != nil {
+		return f.removeBookmark(ctx, r)
+	}
+	return unimplementedSDKCommand()
+}
+func (f sdkCommandFake) FollowUser(ctx context.Context, r pixiv.FollowUserRequest) error {
+	if f.follow != nil {
+		return f.follow(ctx, r)
+	}
+	return unimplementedSDKCommand()
+}
+func (f sdkCommandFake) UnfollowUser(ctx context.Context, r pixiv.UnfollowUserRequest) error {
+	if f.unfollow != nil {
+		return f.unfollow(ctx, r)
+	}
+	return unimplementedSDKCommand()
 }
 func (sdkCommandFake) ParseResourceRef(string) (sdk.ResourceRef, error) {
 	return sdk.ResourceRef{}, unimplementedSDKCommand()
@@ -197,32 +255,48 @@ func (sdkCommandFake) ParseResourceRef(string) (sdk.ResourceRef, error) {
 func (sdkCommandFake) OpenResource(context.Context, sdk.OpenResourceRequest) (*sdk.ResourceResponse, error) {
 	return nil, unimplementedSDKCommand()
 }
-func (sdkCommandFake) DownloadResource(context.Context, sdk.ResourceRef, string) (sdk.ResourceDownloadResult, error) {
-	return sdk.ResourceDownloadResult{}, unimplementedSDKCommand()
+func (sdkCommandFake) SaveResource(context.Context, sdk.ResourceRef, sdk.SaveOptions) (sdk.SavedResource, error) {
+	return sdk.SavedResource{}, unimplementedSDKCommand()
 }
-func (f sdkCommandFake) IllustRecommended(ctx context.Context, r sdk.IllustRecommendedRequest) (*sdk.IllustListResult, error) {
-	if f.recommended != nil {
-		return f.recommended(ctx, r)
-	}
-	return nil, unimplementedSDKCommand()
+
+func setTestSDKCommandClient(t *testing.T, client application.SDKClient) {
+	t.Helper()
+	setTestSDKCommandFactory(t, func(application.SDKClientRequest) (application.SDKClient, error) { return client, nil })
 }
-func (f sdkCommandFake) MangaRecommended(ctx context.Context, r sdk.IllustRecommendedRequest) (*sdk.IllustListResult, error) {
-	if f.mangaRecommended != nil {
-		return f.mangaRecommended(ctx, r)
+
+// setTestSDKCommandFactory 让 CLI 测试从命令边界观察 SDK 请求，而不触发真实 OAuth。
+func setTestSDKCommandFactory(t *testing.T, factory application.SDKClientFactory) {
+	t.Helper()
+	old := newCLIServices
+	nonPooled := func(ctx context.Context, request application.SDKClientRequest, attempt func(context.Context, application.SDKClient) (bool, error)) error {
+		client, err := factory(request)
+		if err != nil {
+			return err
+		}
+		_, err = attempt(ctx, client)
+		return err
 	}
-	return nil, unimplementedSDKCommand()
+	newCLIServices = func() application.Services {
+		services := bootstrap.NewServices()
+		services.SDK.NewClient = factory
+		services.SDK.RunPooled = nonPooled
+		services.Login.SDK.NewClient = factory
+		services.Login.SDK.RunPooled = nonPooled
+		return services
+	}
+	t.Cleanup(func() { newCLIServices = old })
 }
-func (f sdkCommandFake) NovelRecommended(ctx context.Context, r sdk.NovelRecommendedRequest) (*sdk.NovelListResult, error) {
-	if f.novelRecommended != nil {
-		return f.novelRecommended(ctx, r)
-	}
-	return nil, unimplementedSDKCommand()
+
+func commandArtwork(id int64) pixiv.Artwork {
+	return pixiv.Artwork{ID: id, Title: "work", User: pixiv.User{Name: "artist"}}
 }
-func (f sdkCommandFake) UserRecommended(ctx context.Context, r sdk.UserRecommendedRequest) (*sdk.UserRecommendedResult, error) {
-	if f.userRecommended != nil {
-		return f.userRecommended(ctx, r)
-	}
-	return nil, unimplementedSDKCommand()
+
+// testCursor 构造一个共享 sdk.Cursor 的不透明测试值；token 只用于区分不同游标。
+func testCursor(t *testing.T, token string) sdk.Cursor {
+	t.Helper()
+	cursor, err := sdk.NewCursor("test", "pagination", 1, "query", []byte(token))
+	require.NoError(t, err)
+	return cursor
 }
 
 func TestRecommendedAllJSONRoutesEverySDKKindThroughOneOperation(t *testing.T) {
@@ -232,21 +306,21 @@ func TestRecommendedAllJSONRoutesEverySDKKindThroughOneOperation(t *testing.T) {
 	setTestSDKCommandFactory(t, func(application.SDKClientRequest) (application.SDKClient, error) {
 		opens++
 		return sdkCommandFake{
-			recommended: func(context.Context, sdk.IllustRecommendedRequest) (*sdk.IllustListResult, error) {
-				order = append(order, "illust")
-				return &sdk.IllustListResult{Illusts: []sdk.Illust{commandIllust(1)}}, nil
-			},
-			mangaRecommended: func(context.Context, sdk.IllustRecommendedRequest) (*sdk.IllustListResult, error) {
+			recommended: func(context.Context, pixiv.RecommendedArtworksRequest) (sdk.Page[pixiv.Artwork], error) {
+				if len(order) == 0 {
+					order = append(order, "illust")
+					return sdk.Page[pixiv.Artwork]{Items: []pixiv.Artwork{commandArtwork(1)}}, nil
+				}
 				order = append(order, "manga")
-				return &sdk.IllustListResult{Illusts: []sdk.Illust{commandIllust(2)}}, nil
+				return sdk.Page[pixiv.Artwork]{Items: []pixiv.Artwork{commandArtwork(2)}}, nil
 			},
-			novelRecommended: func(context.Context, sdk.NovelRecommendedRequest) (*sdk.NovelListResult, error) {
+			novelRecommended: func(context.Context, pixiv.RecommendedNovelsRequest) (sdk.Page[pixiv.Novel], error) {
 				order = append(order, "novel")
-				return &sdk.NovelListResult{Novels: []sdk.Novel{{ID: 3}}}, nil
+				return sdk.Page[pixiv.Novel]{Items: []pixiv.Novel{{ID: 3}}}, nil
 			},
-			userRecommended: func(context.Context, sdk.UserRecommendedRequest) (*sdk.UserRecommendedResult, error) {
+			userRecommended: func(context.Context, pixiv.RecommendedUsersRequest) (sdk.Page[pixiv.UserPreview], error) {
 				order = append(order, "user")
-				return &sdk.UserRecommendedResult{UserPreviews: []sdk.RecommendedUserPreview{{User: sdk.User{ID: 4}}}}, nil
+				return sdk.Page[pixiv.UserPreview]{Items: []pixiv.UserPreview{{User: pixiv.User{ID: 4}}}}, nil
 			},
 		}, nil
 	})
@@ -264,17 +338,14 @@ func TestRecommendedAllDefersTextOutputAndRejectsKindsBeforeOpeningSDK(t *testin
 	setTestSDKCommandFactory(t, func(application.SDKClientRequest) (application.SDKClient, error) {
 		opened++
 		return sdkCommandFake{
-			recommended: func(context.Context, sdk.IllustRecommendedRequest) (*sdk.IllustListResult, error) {
-				return &sdk.IllustListResult{Illusts: []sdk.Illust{commandIllust(1)}}, nil
+			recommended: func(context.Context, pixiv.RecommendedArtworksRequest) (sdk.Page[pixiv.Artwork], error) {
+				return sdk.Page[pixiv.Artwork]{Items: []pixiv.Artwork{commandArtwork(1)}}, nil
 			},
-			mangaRecommended: func(context.Context, sdk.IllustRecommendedRequest) (*sdk.IllustListResult, error) {
-				return &sdk.IllustListResult{Illusts: []sdk.Illust{commandIllust(2)}}, nil
+			novelRecommended: func(context.Context, pixiv.RecommendedNovelsRequest) (sdk.Page[pixiv.Novel], error) {
+				return sdk.Page[pixiv.Novel]{Items: []pixiv.Novel{{ID: 3}}}, nil
 			},
-			novelRecommended: func(context.Context, sdk.NovelRecommendedRequest) (*sdk.NovelListResult, error) {
-				return &sdk.NovelListResult{Novels: []sdk.Novel{{ID: 3}}}, nil
-			},
-			userRecommended: func(context.Context, sdk.UserRecommendedRequest) (*sdk.UserRecommendedResult, error) {
-				return nil, sdk.ErrMalformedUpstreamResponse
+			userRecommended: func(context.Context, pixiv.RecommendedUsersRequest) (sdk.Page[pixiv.UserPreview], error) {
+				return sdk.Page[pixiv.UserPreview]{}, sdk.NewError("pixiv", "recommend", sdk.CodeMalformedUpstreamResponse)
 			},
 		}, nil
 	})
@@ -292,43 +363,38 @@ func TestRecommendedAllDefersTextOutputAndRejectsKindsBeforeOpeningSDK(t *testin
 
 func TestRecommendedAllAppliesPagePlanIndependentlyToEveryStream(t *testing.T) {
 	useTempPaths(t)
-	var illust, manga, novel, users []sdk.Cursor
+	nextIllust := testCursor(t, "i")
+	nextNovel := testCursor(t, "n")
+	nextUser := testCursor(t, "u")
+	var illust, novel, users []sdk.Cursor
 	setTestSDKCommandClient(t, sdkCommandFake{
-		recommended: func(_ context.Context, r sdk.IllustRecommendedRequest) (*sdk.IllustListResult, error) {
+		recommended: func(_ context.Context, r pixiv.RecommendedArtworksRequest) (sdk.Page[pixiv.Artwork], error) {
 			illust = append(illust, r.Cursor)
-			if r.Cursor == "" {
-				return &sdk.IllustListResult{Illusts: []sdk.Illust{commandIllust(1)}, NextCursor: "i"}, nil
+			if r.Cursor.IsZero() {
+				return sdk.Page[pixiv.Artwork]{Items: []pixiv.Artwork{commandArtwork(1)}, Next: nextIllust}, nil
 			}
-			return &sdk.IllustListResult{Illusts: []sdk.Illust{commandIllust(11)}}, nil
+			return sdk.Page[pixiv.Artwork]{Items: []pixiv.Artwork{commandArtwork(11)}}, nil
 		},
-		mangaRecommended: func(_ context.Context, r sdk.IllustRecommendedRequest) (*sdk.IllustListResult, error) {
-			manga = append(manga, r.Cursor)
-			if r.Cursor == "" {
-				return &sdk.IllustListResult{Illusts: []sdk.Illust{commandIllust(2)}, NextCursor: "m"}, nil
-			}
-			return &sdk.IllustListResult{Illusts: []sdk.Illust{commandIllust(12)}}, nil
-		},
-		novelRecommended: func(_ context.Context, r sdk.NovelRecommendedRequest) (*sdk.NovelListResult, error) {
+		novelRecommended: func(_ context.Context, r pixiv.RecommendedNovelsRequest) (sdk.Page[pixiv.Novel], error) {
 			novel = append(novel, r.Cursor)
-			if r.Cursor == "" {
-				return &sdk.NovelListResult{Novels: []sdk.Novel{{ID: 3}}, NextCursor: "n"}, nil
+			if r.Cursor.IsZero() {
+				return sdk.Page[pixiv.Novel]{Items: []pixiv.Novel{{ID: 3}}, Next: nextNovel}, nil
 			}
-			return &sdk.NovelListResult{Novels: []sdk.Novel{{ID: 13}}}, nil
+			return sdk.Page[pixiv.Novel]{Items: []pixiv.Novel{{ID: 13}}}, nil
 		},
-		userRecommended: func(_ context.Context, r sdk.UserRecommendedRequest) (*sdk.UserRecommendedResult, error) {
+		userRecommended: func(_ context.Context, r pixiv.RecommendedUsersRequest) (sdk.Page[pixiv.UserPreview], error) {
 			users = append(users, r.Cursor)
-			if r.Cursor == "" {
-				return &sdk.UserRecommendedResult{UserPreviews: []sdk.RecommendedUserPreview{{User: sdk.User{ID: 4}}}, NextCursor: "u"}, nil
+			if r.Cursor.IsZero() {
+				return sdk.Page[pixiv.UserPreview]{Items: []pixiv.UserPreview{{User: pixiv.User{ID: 4}}}, Next: nextUser}, nil
 			}
-			return &sdk.UserRecommendedResult{UserPreviews: []sdk.RecommendedUserPreview{{User: sdk.User{ID: 14}}}}, nil
+			return sdk.Page[pixiv.UserPreview]{Items: []pixiv.UserPreview{{User: pixiv.User{ID: 14}}}}, nil
 		},
 	})
 	var stdout, stderr bytes.Buffer
 	require.Equal(t, 0, Run([]string{"pixiv", "recommended", "all", "--page", "2", "--limit", "1", "--json"}, strings.NewReader(""), &stdout, &stderr), stderr.String())
-	assert.Equal(t, []sdk.Cursor{"", "i"}, illust)
-	assert.Equal(t, []sdk.Cursor{"", "m"}, manga)
-	assert.Equal(t, []sdk.Cursor{"", "n"}, novel)
-	assert.Equal(t, []sdk.Cursor{"", "u"}, users)
+	assert.Equal(t, []sdk.Cursor{{}, nextIllust, {}, nextIllust}, illust)
+	assert.Equal(t, []sdk.Cursor{{}, nextNovel}, novel)
+	assert.Equal(t, []sdk.Cursor{{}, nextUser}, users)
 	for _, args := range [][]string{{"pixiv", "recommended"}, {"pixiv", "recommended", "unknown"}} {
 		var out, errOut bytes.Buffer
 		assert.Equal(t, 1, Run(args, strings.NewReader(""), &out, &errOut))
@@ -339,17 +405,14 @@ func TestRecommendedAllAppliesPagePlanIndependentlyToEveryStream(t *testing.T) {
 func TestRecommendedMangaJSONUsesTheSameMangaEnvelopeAsAll(t *testing.T) {
 	useTempPaths(t)
 	setTestSDKCommandClient(t, sdkCommandFake{
-		recommended: func(context.Context, sdk.IllustRecommendedRequest) (*sdk.IllustListResult, error) {
-			return &sdk.IllustListResult{}, nil
+		recommended: func(context.Context, pixiv.RecommendedArtworksRequest) (sdk.Page[pixiv.Artwork], error) {
+			return sdk.Page[pixiv.Artwork]{Items: []pixiv.Artwork{commandArtwork(2)}}, nil
 		},
-		mangaRecommended: func(context.Context, sdk.IllustRecommendedRequest) (*sdk.IllustListResult, error) {
-			return &sdk.IllustListResult{Illusts: []sdk.Illust{commandIllust(2)}}, nil
+		novelRecommended: func(context.Context, pixiv.RecommendedNovelsRequest) (sdk.Page[pixiv.Novel], error) {
+			return sdk.Page[pixiv.Novel]{}, nil
 		},
-		novelRecommended: func(context.Context, sdk.NovelRecommendedRequest) (*sdk.NovelListResult, error) {
-			return &sdk.NovelListResult{}, nil
-		},
-		userRecommended: func(context.Context, sdk.UserRecommendedRequest) (*sdk.UserRecommendedResult, error) {
-			return &sdk.UserRecommendedResult{}, nil
+		userRecommended: func(context.Context, pixiv.RecommendedUsersRequest) (sdk.Page[pixiv.UserPreview], error) {
+			return sdk.Page[pixiv.UserPreview]{}, nil
 		},
 	})
 	var single, all, stderr bytes.Buffer
@@ -357,10 +420,10 @@ func TestRecommendedMangaJSONUsesTheSameMangaEnvelopeAsAll(t *testing.T) {
 	stderr.Reset()
 	require.Equal(t, 0, Run([]string{"pixiv", "recommended", "all", "--json"}, strings.NewReader(""), &all, &stderr), stderr.String())
 	var one struct {
-		Manga []sdk.Illust `json:"manga"`
+		Manga []pixiv.Artwork `json:"manga"`
 	}
 	var every struct {
-		Manga []sdk.Illust `json:"manga"`
+		Manga []pixiv.Artwork `json:"manga"`
 	}
 	require.NoError(t, json.Unmarshal(single.Bytes(), &one))
 	require.NoError(t, json.Unmarshal(all.Bytes(), &every))
@@ -376,133 +439,61 @@ func TestRecommendationJSONSpoolCleansUpWhenHeaderWriteFails(t *testing.T) {
 	assert.Nil(t, spool)
 	assert.EqualError(t, err, "header write failed")
 }
-func (f sdkCommandFake) UserDetail(ctx context.Context, r sdk.UserDetailRequest) (*sdk.UserDetailResult, error) {
-	if f.userDetail != nil {
-		return f.userDetail(ctx, r)
-	}
-	return nil, unimplementedSDKCommand()
-}
-func (f sdkCommandFake) UserArtworks(ctx context.Context, r sdk.UserArtworksRequest) (*sdk.IllustListResult, error) {
-	if f.artworks != nil {
-		return f.artworks(ctx, r)
-	}
-	return nil, unimplementedSDKCommand()
-}
-func (f sdkCommandFake) UserBookmarks(ctx context.Context, r sdk.UserBookmarksRequest) (*sdk.IllustListResult, error) {
-	if f.bookmarks != nil {
-		return f.bookmarks(ctx, r)
-	}
-	return nil, unimplementedSDKCommand()
-}
-func (sdkCommandFake) UserBookmarksCursor(context.Context, sdk.UserBookmarksRequest, int64) (sdk.Cursor, error) {
-	return "", unimplementedSDKCommand()
-}
-func (f sdkCommandFake) UserFollowing(ctx context.Context, r sdk.UserFollowingRequest) (*sdk.UserListResult, error) {
-	if f.following != nil {
-		return f.following(ctx, r)
-	}
-	return nil, unimplementedSDKCommand()
-}
-func (f sdkCommandFake) AddBookmark(ctx context.Context, r sdk.AddBookmarkRequest) error {
-	if f.addBookmark != nil {
-		return f.addBookmark(ctx, r)
-	}
-	return unimplementedSDKCommand()
-}
-func (f sdkCommandFake) RemoveBookmark(ctx context.Context, r sdk.RemoveBookmarkRequest) error {
-	if f.removeBookmark != nil {
-		return f.removeBookmark(ctx, r)
-	}
-	return unimplementedSDKCommand()
-}
-func (f sdkCommandFake) FollowUser(ctx context.Context, r sdk.FollowUserRequest) error {
-	if f.follow != nil {
-		return f.follow(ctx, r)
-	}
-	return unimplementedSDKCommand()
-}
-func (f sdkCommandFake) UnfollowUser(ctx context.Context, r sdk.UnfollowUserRequest) error {
-	if f.unfollow != nil {
-		return f.unfollow(ctx, r)
-	}
-	return unimplementedSDKCommand()
-}
-
-func setTestSDKCommandClient(t *testing.T, client application.SDKClient) {
-	t.Helper()
-	setTestSDKCommandFactory(t, func(application.SDKClientRequest) (application.SDKClient, error) { return client, nil })
-}
-
-// setTestSDKCommandFactory 让 CLI 测试从命令边界观察 SDK 请求，而不触发真实 OAuth。
-func setTestSDKCommandFactory(t *testing.T, factory application.SDKClientFactory) {
-	t.Helper()
-	old := newCLIServices
-	newCLIServices = func() application.Services {
-		services := bootstrap.NewServices()
-		services.SDK.NewClient = factory
-		services.SDK.RunPooled = nil
-		services.Account.SDK.NewClient = factory
-		services.Account.SDK.RunPooled = nil
-		services.Login.SDK.NewClient = factory
-		services.Login.SDK.RunPooled = nil
-		return services
-	}
-	t.Cleanup(func() { newCLIServices = old })
-}
-
-func commandIllust(id int64) sdk.Illust {
-	return sdk.Illust{URL: fmt.Sprintf("https://www.pixiv.net/artworks/%d", id), ID: id, Title: "work", User: sdk.User{Name: "artist"}}
-}
 
 func TestUserDetailRoutesRequiredIDAndPrintsCompleteSDKJSON(t *testing.T) {
 	useTempPaths(t)
 	webpage := "https://example.test/artist"
-	workspaceImage := "https://example.test/workspace.png"
-	want := sdk.UserDetailResult{
-		User: sdk.User{ID: 42, Name: "artist", Account: "artist_account", Comment: "hello"},
-		Profile: sdk.Profile{
-			Webpage: &webpage, Region: "Tokyo", CountryCode: "JP", Job: "illustrator",
+	want := pixiv.UserDetail{
+		User: pixiv.User{ID: 42, Name: "artist", Account: "artist_account", Comment: "hello"},
+		Profile: pixiv.UserProfile{
+			Webpage: webpage, Region: "Tokyo", CountryCode: "JP", Job: "illustrator",
 			TotalIllusts: 10, TotalManga: 2, TotalNovels: 3, TotalFollowUsers: 4,
 		},
-		ProfilePublicity: sdk.ProfilePublicity{Gender: true, Region: true, BirthDay: true, BirthYear: true, Job: true, Pawoo: true},
-		Workspace:        sdk.Workspace{PC: "desktop", Tool: "pen", WorkspaceImageURL: &workspaceImage},
+		ProfilePublicity: pixiv.UserProfilePublicity{Gender: true, Region: true, BirthDay: true, BirthYear: true, Job: true, Pawoo: true},
+		Workspace:        pixiv.UserWorkspace{PC: "desktop", Tool: "pen"},
 	}
-	var got sdk.UserDetailRequest
+	var got pixiv.UserRequest
 	var gotClientRequest application.SDKClientRequest
 	factoryCalls := 0
 	setTestSDKCommandFactory(t, func(request application.SDKClientRequest) (application.SDKClient, error) {
 		factoryCalls++
 		gotClientRequest = request
-		return sdkCommandFake{userDetail: func(_ context.Context, request sdk.UserDetailRequest) (*sdk.UserDetailResult, error) {
+		return sdkCommandFake{userDetail: func(_ context.Context, request pixiv.UserRequest) (pixiv.UserDetail, error) {
 			got = request
-			return &want, nil
+			return want, nil
 		}}, nil
 	})
 
 	var stdout, stderr bytes.Buffer
 	require.Equal(t, 0, Run([]string{"pixiv", "user", "detail", "42", "--json", "--proxy", "http://127.0.0.1:7890"}, strings.NewReader(""), &stdout, &stderr), stderr.String())
-	assert.Equal(t, sdk.UserDetailRequest{UserID: 42}, got)
+	assert.Equal(t, pixiv.UserRequest{UserID: 42}, got)
 	assert.Equal(t, 1, factoryCalls)
 	assert.Zero(t, gotClientRequest.UserID)
 	assert.Empty(t, gotClientRequest.RefreshToken)
 	require.NotNil(t, gotClientRequest.HTTPSProxyOverride)
 	assert.Equal(t, "http://127.0.0.1:7890", *gotClientRequest.HTTPSProxyOverride)
-	assert.Contains(t, stdout.String(), "\"profile_publicity\"")
-	assert.Contains(t, stdout.String(), "\"workspace\"")
-	var actual sdk.UserDetailResult
+	assert.Contains(t, stdout.String(), `"profile_publicity"`)
+	assert.Contains(t, stdout.String(), `"workspace"`)
+	var actual map[string]any
 	require.NoError(t, json.Unmarshal(stdout.Bytes(), &actual))
-	assert.Equal(t, want, actual)
+	user, ok := actual["user"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, float64(42), user["id"])
+	profile, ok := actual["profile"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "https://example.test/artist", profile["webpage"])
+	assert.Equal(t, float64(10), profile["total_illusts"])
 }
 
 func TestUserDetailTextOmitsEmptyFieldsAndSanitizesWebpage(t *testing.T) {
 	useTempPaths(t)
 	webpage := "https://alice:secret@example.test/artist?token=secret#private"
-	setTestSDKCommandClient(t, sdkCommandFake{userDetail: func(_ context.Context, request sdk.UserDetailRequest) (*sdk.UserDetailResult, error) {
-		assert.Equal(t, sdk.UserDetailRequest{UserID: 42}, request)
-		return &sdk.UserDetailResult{
-			User:    sdk.User{ID: 42, Name: "artist", Account: "artist_account", Comment: "hello"},
-			Profile: sdk.Profile{Webpage: &webpage, Region: "Tokyo", CountryCode: "JP", Job: "illustrator", TotalIllusts: 10, TotalManga: 2, TotalNovels: 3, TotalFollowUsers: 4},
-			Workspace: sdk.Workspace{
+	setTestSDKCommandClient(t, sdkCommandFake{userDetail: func(_ context.Context, request pixiv.UserRequest) (pixiv.UserDetail, error) {
+		assert.Equal(t, pixiv.UserRequest{UserID: 42}, request)
+		return pixiv.UserDetail{
+			User:    pixiv.User{ID: 42, Name: "artist", Account: "artist_account", Comment: "hello"},
+			Profile: pixiv.UserProfile{Webpage: webpage, Region: "Tokyo", CountryCode: "JP", Job: "illustrator", TotalIllusts: 10, TotalManga: 2, TotalNovels: 3, TotalFollowUsers: 4},
+			Workspace: pixiv.UserWorkspace{
 				PC: "desktop",
 			},
 		}, nil
@@ -536,8 +527,8 @@ func TestUserDetailBindsNoProxyFlag(t *testing.T) {
 	setTestSDKCommandFactory(t, func(request application.SDKClientRequest) (application.SDKClient, error) {
 		require.NotNil(t, request.HTTPSProxyOverride)
 		assert.Equal(t, "", *request.HTTPSProxyOverride)
-		return sdkCommandFake{userDetail: func(context.Context, sdk.UserDetailRequest) (*sdk.UserDetailResult, error) {
-			return &sdk.UserDetailResult{User: sdk.User{ID: 42}}, nil
+		return sdkCommandFake{userDetail: func(context.Context, pixiv.UserRequest) (pixiv.UserDetail, error) {
+			return pixiv.UserDetail{User: pixiv.User{ID: 42}}, nil
 		}}, nil
 	})
 
@@ -548,10 +539,10 @@ func TestUserDetailBindsNoProxyFlag(t *testing.T) {
 func TestUserTextPrintersReturnWriterFailure(t *testing.T) {
 	want := errors.New("stdout unavailable")
 
-	err := printUserSearchPreviews(failingWriter{err: want}, []sdk.UserPreview{{User: sdk.User{ID: 42, Name: "artist"}}})
+	err := printUserSearchPreviews(failingWriter{err: want}, []pixiv.UserPreview{{User: pixiv.User{ID: 42, Name: "artist"}}})
 	require.ErrorIs(t, err, want)
 
-	err = printUserDetail(failingWriter{err: want}, sdk.UserDetailResult{User: sdk.User{ID: 42, Name: "artist"}})
+	err = printUserDetail(failingWriter{err: want}, pixiv.UserDetail{User: pixiv.User{ID: 42, Name: "artist"}})
 	require.ErrorIs(t, err, want)
 }
 
@@ -575,46 +566,46 @@ func TestUserDetailRejectsInvalidIDBeforeOpeningSDKAndPreservesTypedErrorOutput(
 		})
 	}
 
-	setTestSDKCommandClient(t, sdkCommandFake{userDetail: func(context.Context, sdk.UserDetailRequest) (*sdk.UserDetailResult, error) {
-		return nil, sdk.ErrMalformedUpstreamResponse
+	setTestSDKCommandClient(t, sdkCommandFake{userDetail: func(context.Context, pixiv.UserRequest) (pixiv.UserDetail, error) {
+		return pixiv.UserDetail{}, sdk.NewError("pixiv", "user", sdk.CodeMalformedUpstreamResponse)
 	}})
 	var stdout, stderr bytes.Buffer
 	assert.Equal(t, 1, Run([]string{"pixiv", "user", "detail", "42", "--json"}, strings.NewReader(""), &stdout, &stderr))
 	assert.Empty(t, stdout.String())
-	assert.Contains(t, stderr.String(), sdk.ErrMalformedUpstreamResponse.Error())
+	assert.Contains(t, stderr.String(), "malformed_upstream_response")
 }
 
 func TestUserCommandsRouteOptionalIDAndMutationsThroughSDK(t *testing.T) {
 	useTempPaths(t)
-	var gotArtwork sdk.UserArtworksRequest
-	var gotBookmarks sdk.UserBookmarksRequest
-	var gotFollowing sdk.UserFollowingRequest
-	var gotBookmark sdk.AddBookmarkRequest
-	var gotFollow sdk.FollowUserRequest
-	var removedBookmark sdk.RemoveBookmarkRequest
-	var unfollowed sdk.UnfollowUserRequest
+	var gotArtwork pixiv.UserArtworksRequest
+	var gotBookmarks pixiv.UserArtworkBookmarksRequest
+	var gotFollowing pixiv.UserFollowingRequest
+	var gotBookmark pixiv.AddBookmarkRequest
+	var gotFollow pixiv.FollowUserRequest
+	var removedBookmark pixiv.RemoveBookmarkRequest
+	var unfollowed pixiv.UnfollowUserRequest
 	currentCalls := 0
 	setTestSDKCommandClient(t, sdkCommandFake{
 		currentUserID: func(context.Context) (int64, error) { currentCalls++; return 77, nil },
-		artworks: func(_ context.Context, request sdk.UserArtworksRequest) (*sdk.IllustListResult, error) {
+		artworks: func(_ context.Context, request pixiv.UserArtworksRequest) (sdk.Page[pixiv.Artwork], error) {
 			gotArtwork = request
-			return &sdk.IllustListResult{Illusts: []sdk.Illust{commandIllust(1)}}, nil
+			return sdk.Page[pixiv.Artwork]{Items: []pixiv.Artwork{commandArtwork(1)}}, nil
 		},
-		bookmarks: func(_ context.Context, request sdk.UserBookmarksRequest) (*sdk.IllustListResult, error) {
+		bookmarks: func(_ context.Context, request pixiv.UserArtworkBookmarksRequest) (sdk.Page[pixiv.Artwork], error) {
 			gotBookmarks = request
-			return &sdk.IllustListResult{}, nil
+			return sdk.Page[pixiv.Artwork]{}, nil
 		},
-		following: func(_ context.Context, request sdk.UserFollowingRequest) (*sdk.UserListResult, error) {
+		following: func(_ context.Context, request pixiv.UserFollowingRequest) (sdk.Page[pixiv.UserPreview], error) {
 			gotFollowing = request
-			return &sdk.UserListResult{}, nil
+			return sdk.Page[pixiv.UserPreview]{}, nil
 		},
-		addBookmark: func(_ context.Context, request sdk.AddBookmarkRequest) error { gotBookmark = request; return nil },
-		follow:      func(_ context.Context, request sdk.FollowUserRequest) error { gotFollow = request; return nil },
-		removeBookmark: func(_ context.Context, request sdk.RemoveBookmarkRequest) error {
+		addBookmark: func(_ context.Context, request pixiv.AddBookmarkRequest) error { gotBookmark = request; return nil },
+		follow:      func(_ context.Context, request pixiv.FollowUserRequest) error { gotFollow = request; return nil },
+		removeBookmark: func(_ context.Context, request pixiv.RemoveBookmarkRequest) error {
 			removedBookmark = request
 			return nil
 		},
-		unfollow: func(_ context.Context, request sdk.UnfollowUserRequest) error { unfollowed = request; return nil },
+		unfollow: func(_ context.Context, request pixiv.UnfollowUserRequest) error { unfollowed = request; return nil },
 	})
 
 	var stdout, stderr bytes.Buffer
@@ -625,55 +616,57 @@ func TestUserCommandsRouteOptionalIDAndMutationsThroughSDK(t *testing.T) {
 	stdout.Reset()
 	stderr.Reset()
 	require.Equal(t, 0, Run([]string{"pixiv", "user", "bookmarks", "88", "--restrict", "private", "--tag", "favourite", "--json"}, strings.NewReader(""), &stdout, &stderr), stderr.String())
-	assert.Equal(t, sdk.UserBookmarksRequest{UserID: 88, Restrict: sdk.RestrictPrivate, Tag: "favourite"}, gotBookmarks)
+	assert.Equal(t, pixiv.UserArtworkBookmarksRequest{UserID: 88, Restrict: pixiv.RestrictPrivate, Tag: "favourite"}, gotBookmarks)
 
 	stdout.Reset()
 	stderr.Reset()
 	require.Equal(t, 0, Run([]string{"pixiv", "user", "following", "99", "--json"}, strings.NewReader(""), &stdout, &stderr), stderr.String())
-	assert.Equal(t, sdk.UserFollowingRequest{UserID: 99, Restrict: sdk.RestrictPublic}, gotFollowing)
+	assert.Equal(t, pixiv.UserFollowingRequest{UserID: 99, Restrict: pixiv.RestrictPublic}, gotFollowing)
 
 	stdout.Reset()
 	stderr.Reset()
 	require.Equal(t, 0, Run([]string{"pixiv", "bookmark", "add", "42", "--restrict", "private", "--tag", "first", "--tag", "second"}, strings.NewReader(""), &stdout, &stderr), stderr.String())
-	assert.Equal(t, sdk.AddBookmarkRequest{IllustID: 42, Restrict: sdk.RestrictPrivate, Tags: []string{"first", "second"}}, gotBookmark)
+	assert.Equal(t, pixiv.AddBookmarkRequest{ArtworkID: 42, Restrict: pixiv.RestrictPrivate, Tags: []string{"first", "second"}}, gotBookmark)
 
 	stdout.Reset()
 	stderr.Reset()
 	require.Equal(t, 0, Run([]string{"pixiv", "follow", "add", "88", "--restrict", "private"}, strings.NewReader(""), &stdout, &stderr), stderr.String())
-	assert.Equal(t, sdk.FollowUserRequest{UserID: 88, Restrict: sdk.RestrictPrivate}, gotFollow)
+	assert.Equal(t, pixiv.FollowUserRequest{UserID: 88, Restrict: pixiv.RestrictPrivate}, gotFollow)
 
 	stdout.Reset()
 	stderr.Reset()
 	require.Equal(t, 0, Run([]string{"pixiv", "bookmark", "remove", "42"}, strings.NewReader(""), &stdout, &stderr), stderr.String())
-	assert.Equal(t, sdk.RemoveBookmarkRequest{IllustID: 42}, removedBookmark)
+	assert.Equal(t, pixiv.RemoveBookmarkRequest{ArtworkID: 42}, removedBookmark)
 
 	stdout.Reset()
 	stderr.Reset()
 	require.Equal(t, 0, Run([]string{"pixiv", "follow", "remove", "88"}, strings.NewReader(""), &stdout, &stderr), stderr.String())
-	assert.Equal(t, sdk.UnfollowUserRequest{UserID: 88}, unfollowed)
+	assert.Equal(t, pixiv.UnfollowUserRequest{UserID: 88}, unfollowed)
 }
 
 func TestSearchDefaultOneBatchSkipsLeadingEmptyUpstreamBatches(t *testing.T) {
 	useTempPaths(t)
+	nextCursor := testCursor(t, "next")
+	laterCursor := testCursor(t, "later")
 	var cursors []sdk.Cursor
-	setTestSDKCommandClient(t, sdkCommandFake{search: func(_ context.Context, request sdk.SearchIllustRequest) (*sdk.IllustListResult, error) {
+	setTestSDKCommandClient(t, sdkCommandFake{search: func(_ context.Context, request pixiv.SearchArtworksRequest) (sdk.Page[pixiv.Artwork], error) {
 		cursors = append(cursors, request.Cursor)
-		switch request.Cursor {
-		case "":
+		switch {
+		case request.Cursor.IsZero():
 			// 模拟本地筛选后的空上游批次，但仍有 continuation。
-			return &sdk.IllustListResult{Illusts: nil, NextCursor: "next"}, nil
-		case "next":
-			return &sdk.IllustListResult{Illusts: []sdk.Illust{commandIllust(9)}, NextCursor: "later"}, nil
+			return sdk.Page[pixiv.Artwork]{Items: nil, Next: nextCursor}, nil
+		case request.Cursor.String() == nextCursor.String():
+			return sdk.Page[pixiv.Artwork]{Items: []pixiv.Artwork{commandArtwork(9)}, Next: laterCursor}, nil
 		default:
-			return nil, errors.New("unexpected cursor " + string(request.Cursor))
+			return sdk.Page[pixiv.Artwork]{}, errors.New("unexpected cursor " + request.Cursor.String())
 		}
 	}})
 
 	var stdout, stderr bytes.Buffer
 	require.Equal(t, 0, Run([]string{"pixiv", "search", "miku", "--json"}, strings.NewReader(""), &stdout, &stderr), stderr.String())
-	assert.Equal(t, []sdk.Cursor{"", "next"}, cursors, "default one logical batch must skip leading empty batches")
+	assert.Equal(t, []sdk.Cursor{{}, nextCursor}, cursors, "default one logical batch must skip leading empty batches")
 	var out struct {
-		Illusts []sdk.Illust `json:"illusts"`
+		Illusts []pixiv.Artwork `json:"illusts"`
 	}
 	require.NoError(t, json.Unmarshal(stdout.Bytes(), &out))
 	require.Len(t, out.Illusts, 1)
@@ -682,30 +675,31 @@ func TestSearchDefaultOneBatchSkipsLeadingEmptyUpstreamBatches(t *testing.T) {
 
 func TestListPaginationAndValidationUseOpaqueCursorWithoutCursorFlag(t *testing.T) {
 	useTempPaths(t)
+	nextCursor := testCursor(t, "next")
 	var cursors []sdk.Cursor
-	setTestSDKCommandClient(t, sdkCommandFake{search: func(_ context.Context, request sdk.SearchIllustRequest) (*sdk.IllustListResult, error) {
+	setTestSDKCommandClient(t, sdkCommandFake{search: func(_ context.Context, request pixiv.SearchArtworksRequest) (sdk.Page[pixiv.Artwork], error) {
 		cursors = append(cursors, request.Cursor)
-		switch request.Cursor {
-		case "":
-			return &sdk.IllustListResult{Illusts: []sdk.Illust{commandIllust(1), commandIllust(2)}, NextCursor: "next"}, nil
-		case "next":
-			return &sdk.IllustListResult{Illusts: []sdk.Illust{commandIllust(3), commandIllust(4)}}, nil
+		switch {
+		case request.Cursor.IsZero():
+			return sdk.Page[pixiv.Artwork]{Items: []pixiv.Artwork{commandArtwork(1), commandArtwork(2)}, Next: nextCursor}, nil
+		case request.Cursor.String() == nextCursor.String():
+			return sdk.Page[pixiv.Artwork]{Items: []pixiv.Artwork{commandArtwork(3), commandArtwork(4)}}, nil
 		default:
-			return nil, errors.New("unexpected cursor")
+			return sdk.Page[pixiv.Artwork]{}, errors.New("unexpected cursor")
 		}
 	}})
 
 	var stdout, stderr bytes.Buffer
 	require.Equal(t, 0, Run([]string{"pixiv", "search", "miku", "--json"}, strings.NewReader(""), &stdout, &stderr), stderr.String())
-	assert.Equal(t, []sdk.Cursor{""}, cursors, "default consumes exactly one upstream batch")
+	assert.Equal(t, []sdk.Cursor{{}}, cursors, "default consumes exactly one upstream batch")
 
 	cursors = nil
 	stdout.Reset()
 	stderr.Reset()
 	require.Equal(t, 0, Run([]string{"pixiv", "search", "miku", "--json", "--page", "2", "--limit", "2"}, strings.NewReader(""), &stdout, &stderr), stderr.String())
-	assert.Equal(t, []sdk.Cursor{"", "next"}, cursors)
+	assert.Equal(t, []sdk.Cursor{{}, nextCursor}, cursors)
 	var out struct {
-		Illusts []sdk.Illust `json:"illusts"`
+		Illusts []pixiv.Artwork `json:"illusts"`
 	}
 	require.NoError(t, json.Unmarshal(stdout.Bytes(), &out))
 	require.Equal(t, []int64{3, 4}, []int64{out.Illusts[0].ID, out.Illusts[1].ID})
@@ -758,15 +752,15 @@ func TestListJSONSpoolsUntilFullSuccessAndDetailKeepsPages(t *testing.T) {
 	useTempPaths(t)
 	searchCalls := 0
 	setTestSDKCommandClient(t, sdkCommandFake{
-		search: func(_ context.Context, request sdk.SearchIllustRequest) (*sdk.IllustListResult, error) {
+		search: func(_ context.Context, request pixiv.SearchArtworksRequest) (sdk.Page[pixiv.Artwork], error) {
 			searchCalls++
-			if request.Cursor == "" {
-				return &sdk.IllustListResult{Illusts: []sdk.Illust{commandIllust(1)}, NextCursor: "next"}, nil
+			if request.Cursor.IsZero() {
+				return sdk.Page[pixiv.Artwork]{Items: []pixiv.Artwork{commandArtwork(1)}, Next: testCursor(t, "next")}, nil
 			}
-			return nil, errors.New("upstream failed")
+			return sdk.Page[pixiv.Artwork]{}, errors.New("upstream failed")
 		},
-		detail: func(_ context.Context, id int64) (*sdk.IllustDetail, error) {
-			return &sdk.IllustDetail{Illust: sdk.Illust{ID: id, MetaPages: []sdk.MetaPage{{PageIndex: 0, Width: 100, Height: 200}, {PageIndex: 1, Width: 300, Height: 400}}}}, nil
+		detail: func(_ context.Context, id int64) (pixiv.Artwork, error) {
+			return pixiv.Artwork{ID: id, Pages: []pixiv.ArtworkPage{{PageIndex: 0, Width: 100, Height: 200}, {PageIndex: 1, Width: 300, Height: 400}}}, nil
 		},
 	})
 
@@ -778,18 +772,18 @@ func TestListJSONSpoolsUntilFullSuccessAndDetailKeepsPages(t *testing.T) {
 	stdout.Reset()
 	stderr.Reset()
 	require.Equal(t, 0, Run([]string{"pixiv", "detail", "9", "--json"}, strings.NewReader(""), &stdout, &stderr), stderr.String())
-	var detail sdk.IllustDetail
+	var detail pixiv.Artwork
 	require.NoError(t, json.Unmarshal(stdout.Bytes(), &detail))
-	assert.Len(t, detail.Illust.MetaPages, 2)
+	assert.Len(t, detail.Pages, 2)
 }
 
 func TestRunContextCancelsSDKNetworkCommand(t *testing.T) {
 	useTempPaths(t)
 	started := make(chan struct{})
-	setTestSDKCommandClient(t, sdkCommandFake{search: func(ctx context.Context, _ sdk.SearchIllustRequest) (*sdk.IllustListResult, error) {
+	setTestSDKCommandClient(t, sdkCommandFake{search: func(ctx context.Context, _ pixiv.SearchArtworksRequest) (sdk.Page[pixiv.Artwork], error) {
 		close(started)
 		<-ctx.Done()
-		return nil, ctx.Err()
+		return sdk.Page[pixiv.Artwork]{}, ctx.Err()
 	}})
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -808,18 +802,18 @@ func TestPageItemsRejectsRepeatedOpaqueCursor(t *testing.T) {
 	for _, test := range []struct {
 		name  string
 		next  map[sdk.Cursor]sdk.Cursor
-		items map[sdk.Cursor][]sdk.Illust
+		items map[sdk.Cursor][]pixiv.Artwork
 	}{
-		{name: "direct repeat", next: map[sdk.Cursor]sdk.Cursor{"": "A", "A": "A"}},
-		{name: "cycle", next: map[sdk.Cursor]sdk.Cursor{"": "A", "A": "B", "B": "A"}},
-		{name: "empty batch repeat", next: map[sdk.Cursor]sdk.Cursor{"": "A", "A": "A"}, items: map[sdk.Cursor][]sdk.Illust{"": nil, "A": nil}},
+		{name: "direct repeat", next: map[sdk.Cursor]sdk.Cursor{{}: testCursor(t, "A"), testCursor(t, "A"): testCursor(t, "A")}},
+		{name: "cycle", next: map[sdk.Cursor]sdk.Cursor{{}: testCursor(t, "A"), testCursor(t, "A"): testCursor(t, "B"), testCursor(t, "B"): testCursor(t, "A")}},
+		{name: "empty batch repeat", next: map[sdk.Cursor]sdk.Cursor{{}: testCursor(t, "A"), testCursor(t, "A"): testCursor(t, "A")}, items: map[sdk.Cursor][]pixiv.Artwork{{}: nil, testCursor(t, "A"): nil}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			var calls []sdk.Cursor
-			err := pageItems(context.Background(), listPlan{limit: 0}, func(_ context.Context, cursor sdk.Cursor) ([]sdk.Illust, sdk.Cursor, error) {
+			err := pageItems(context.Background(), listPlan{limit: 0}, func(_ context.Context, cursor sdk.Cursor) ([]pixiv.Artwork, sdk.Cursor, error) {
 				calls = append(calls, cursor)
 				return test.items[cursor], test.next[cursor], nil
-			}, func([]sdk.Illust) error { return nil })
+			}, func([]pixiv.Artwork) error { return nil })
 			require.ErrorContains(t, err, "pagination cursor repeated")
 			assert.NotEmpty(t, calls)
 		})
@@ -829,12 +823,13 @@ func TestPageItemsRejectsRepeatedOpaqueCursor(t *testing.T) {
 func TestListJSONCursorCycleDoesNotWritePartialStdout(t *testing.T) {
 	useTempPaths(t)
 	calls := 0
-	setTestSDKCommandClient(t, sdkCommandFake{search: func(_ context.Context, request sdk.SearchIllustRequest) (*sdk.IllustListResult, error) {
+	repeatCursor := testCursor(t, "repeat")
+	setTestSDKCommandClient(t, sdkCommandFake{search: func(_ context.Context, request pixiv.SearchArtworksRequest) (sdk.Page[pixiv.Artwork], error) {
 		calls++
-		if request.Cursor == "" {
-			return &sdk.IllustListResult{Illusts: []sdk.Illust{commandIllust(1)}, NextCursor: "repeat"}, nil
+		if request.Cursor.IsZero() {
+			return sdk.Page[pixiv.Artwork]{Items: []pixiv.Artwork{commandArtwork(1)}, Next: repeatCursor}, nil
 		}
-		return &sdk.IllustListResult{Illusts: []sdk.Illust{commandIllust(2)}, NextCursor: "repeat"}, nil
+		return sdk.Page[pixiv.Artwork]{Items: []pixiv.Artwork{commandArtwork(2)}, Next: repeatCursor}, nil
 	}})
 	var stdout, stderr bytes.Buffer
 	assert.NotZero(t, Run([]string{"pixiv", "search", "miku", "--json", "--limit", "0"}, strings.NewReader(""), &stdout, &stderr))
@@ -853,7 +848,7 @@ func TestSelfUserListsReuseOneConcreteOAuthSnapshotAcrossPages(t *testing.T) {
 		{name: "following", path: "/v1/user/following"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			authPath, configPath := useTempPaths(t)
+			authPath, _ := useTempPaths(t)
 			require.NoError(t, auth.SaveAuthStore(authPath, auth.AuthStore{DefaultUserID: 202, Accounts: []auth.Account{{UserID: 202, RefreshToken: "stored-token"}}}))
 			// v0.8 的数据命令只使用本地 auth store；环境变量不得改变
 			// 这次分页操作选择的账号或 OAuth 快照。
@@ -878,7 +873,7 @@ func TestSelfUserListsReuseOneConcreteOAuthSnapshotAcrossPages(t *testing.T) {
 						if test.name == "following" {
 							_, _ = io.WriteString(w, `{"user_previews":[{"user":{"id":2}}]}`)
 						} else {
-							_, _ = io.WriteString(w, `{"illusts":[{"id":2,"type":"illust","page_count":1,"user":{},"tags":[],"image_urls":{},"meta_single_page":{},"meta_pages":[]}]}`)
+							_, _ = io.WriteString(w, `{"illusts":[{"id":2,"type":"illust","page_count":1,"create_date":"2024-01-01T00:00:00Z","user":{},"tags":[],"image_urls":{},"meta_single_page":{},"meta_pages":[]}]}`)
 						}
 						return
 					}
@@ -890,7 +885,7 @@ func TestSelfUserListsReuseOneConcreteOAuthSnapshotAcrossPages(t *testing.T) {
 					if test.name == "following" {
 						_, _ = fmt.Fprintf(w, `{"user_previews":[{"user":{"id":1}}],"next_url":%q}`, nextURL)
 					} else {
-						_, _ = fmt.Fprintf(w, `{"illusts":[{"id":1,"type":"illust","page_count":1,"user":{},"tags":[],"image_urls":{},"meta_single_page":{},"meta_pages":[]}],"next_url":%q}`, nextURL)
+						_, _ = fmt.Fprintf(w, `{"illusts":[{"id":1,"type":"illust","page_count":1,"create_date":"2024-01-01T00:00:00Z","user":{},"tags":[],"image_urls":{},"meta_single_page":{},"meta_pages":[]}],"next_url":%q}`, nextURL)
 					}
 				default:
 					t.Fatalf("unexpected path=%s", request.URL.Path)
@@ -902,11 +897,23 @@ func TestSelfUserListsReuseOneConcreteOAuthSnapshotAcrossPages(t *testing.T) {
 			newCLIServices = func() application.Services {
 				services := bootstrap.NewServices()
 				services.SDK.NewClient = func(request application.SDKClientRequest) (application.SDKClient, error) {
-					return sdk.OpenDefaultWith(sdk.OpenDefaultOptions{AuthFilePath: authPath, ConfigFilePath: configPath, HTTPClient: server.Client(), OAuthBaseURL: server.URL, AppAPIBaseURL: server.URL, UserID: request.UserID, RefreshToken: request.RefreshToken, IgnoreEnvironmentRefreshToken: true})
+					client, _, err := pixiv.OpenWith(context.Background(), "stored-token", pixiv.Options{HTTPClient: rewriteHTTPClient(t, server, server.URL, server.URL)})
+					if err != nil {
+						return nil, err
+					}
+					_ = request
+					return application.NewPixivSDKClient(client, nil), nil
 				}
 				// 此测试验证一条单账号分页操作共享同一个 OAuth 快照；账号池的
 				// 选择和持久状态另有专门测试，不能让生产池 wiring 绕过 mock transport。
-				services.SDK.RunPooled = nil
+				services.SDK.RunPooled = func(ctx context.Context, request application.SDKClientRequest, attempt func(context.Context, application.SDKClient) (bool, error)) error {
+					client, err := services.SDK.NewClient(request)
+					if err != nil {
+						return err
+					}
+					_, err = attempt(ctx, client)
+					return err
+				}
 				return services
 			}
 			t.Cleanup(func() { newCLIServices = old })

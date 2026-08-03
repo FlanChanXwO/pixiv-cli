@@ -5,48 +5,49 @@ import (
 	"errors"
 	"testing"
 
-	sdk "github.com/FlanChanXwO/pixiv-cli/pixiv"
+	"github.com/FlanChanXwO/pixiv-cli/sdk"
+	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 )
 
 // TestTimelineAndMyPixivToolsRouteAppSDKRequestsWithRecords 保留各时间线的专属
 // App API 请求断言，并固定所有实体结果使用共享 records 契约。
 func TestTimelineAndMyPixivToolsRouteAppSDKRequestsWithRecords(t *testing.T) {
-	var followingNovel sdk.FollowingNovelsRequest
-	var latestIllust sdk.LatestIllustsRequest
-	var latestNovel sdk.LatestNovelsRequest
-	var myPixivUsers sdk.MyPixivUsersRequest
-	var myPixivIllusts sdk.MyPixivIllustsRequest
-	var myPixivNovels sdk.MyPixivNovelsRequest
-	var userNovels sdk.UserNovelsRequest
+	var followingNovel pixiv.FollowingNovelsRequest
+	var latestIllust pixiv.LatestArtworksRequest
+	var latestNovel pixiv.LatestNovelsRequest
+	var myPixivUsers pixiv.MyPixivUsersRequest
+	var myPixivIllusts pixiv.MyPixivArtworksRequest
+	var myPixivNovels pixiv.MyPixivNovelsRequest
+	var userNovels pixiv.UserNovelsRequest
 	client := &fakeSDKClient{
 		userID: 71,
-		followingNovels: func(_ context.Context, request sdk.FollowingNovelsRequest) (*sdk.NovelListResult, error) {
+		followingNovels: func(_ context.Context, request pixiv.FollowingNovelsRequest) (sdk.Page[pixiv.Novel], error) {
 			followingNovel = request
-			return &sdk.NovelListResult{Novels: []sdk.Novel{{ID: 1, Title: "follow", User: sdk.User{Name: "writer"}}}, NextCursor: "follow-next"}, nil
+			return sdk.Page[pixiv.Novel]{Items: []pixiv.Novel{{ID: 1, Title: "follow", User: pixiv.User{Name: "writer"}}}, Next: testPageCursor(2)}, nil
 		},
-		latestIllusts: func(_ context.Context, request sdk.LatestIllustsRequest) (*sdk.IllustListResult, error) {
+		latestIllusts: func(_ context.Context, request pixiv.LatestArtworksRequest) (sdk.Page[pixiv.Artwork], error) {
 			latestIllust = request
-			return &sdk.IllustListResult{Illusts: []sdk.Illust{testSDKIllust(2, "latest", 8)}, NextCursor: "illust-next"}, nil
+			return sdk.Page[pixiv.Artwork]{Items: []pixiv.Artwork{testSDKIllust(2, "latest", 8)}, Next: testPageCursor(3)}, nil
 		},
-		latestNovels: func(_ context.Context, request sdk.LatestNovelsRequest) (*sdk.NovelListResult, error) {
+		latestNovels: func(_ context.Context, request pixiv.LatestNovelsRequest) (sdk.Page[pixiv.Novel], error) {
 			latestNovel = request
-			return &sdk.NovelListResult{Novels: []sdk.Novel{{ID: 3, Title: "latest novel", User: sdk.User{Name: "writer"}}}}, nil
+			return sdk.Page[pixiv.Novel]{Items: []pixiv.Novel{{ID: 3, Title: "latest novel", User: pixiv.User{Name: "writer"}}}}, nil
 		},
-		myPixivUsers: func(_ context.Context, request sdk.MyPixivUsersRequest) (*sdk.UserListResult, error) {
+		myPixivUsers: func(_ context.Context, request pixiv.MyPixivUsersRequest) (sdk.Page[pixiv.UserPreview], error) {
 			myPixivUsers = request
-			return &sdk.UserListResult{UserPreviews: []sdk.UserPreview{{User: sdk.User{ID: 4, Name: "friend"}}}}, nil
+			return sdk.Page[pixiv.UserPreview]{Items: []pixiv.UserPreview{{User: pixiv.User{ID: 4, Name: "friend"}}}}, nil
 		},
-		myPixivIllusts: func(_ context.Context, request sdk.MyPixivIllustsRequest) (*sdk.IllustListResult, error) {
+		myPixivIllusts: func(_ context.Context, request pixiv.MyPixivArtworksRequest) (sdk.Page[pixiv.Artwork], error) {
 			myPixivIllusts = request
-			return &sdk.IllustListResult{Illusts: []sdk.Illust{testSDKIllust(5, "mypixiv", 4)}}, nil
+			return sdk.Page[pixiv.Artwork]{Items: []pixiv.Artwork{testSDKIllust(5, "mypixiv", 4)}}, nil
 		},
-		myPixivNovels: func(_ context.Context, request sdk.MyPixivNovelsRequest) (*sdk.NovelListResult, error) {
+		myPixivNovels: func(_ context.Context, request pixiv.MyPixivNovelsRequest) (sdk.Page[pixiv.Novel], error) {
 			myPixivNovels = request
-			return &sdk.NovelListResult{Novels: []sdk.Novel{{ID: 6, Title: "mypixiv novel", User: sdk.User{Name: "writer"}}}}, nil
+			return sdk.Page[pixiv.Novel]{Items: []pixiv.Novel{{ID: 6, Title: "mypixiv novel", User: pixiv.User{Name: "writer"}}}}, nil
 		},
-		userNovels: func(_ context.Context, request sdk.UserNovelsRequest) (*sdk.NovelListResult, error) {
+		userNovels: func(_ context.Context, request pixiv.UserNovelsRequest) (sdk.Page[pixiv.Novel], error) {
 			userNovels = request
-			return &sdk.NovelListResult{Novels: []sdk.Novel{{ID: 7, Title: "user novel", User: sdk.User{Name: "writer"}}}}, nil
+			return sdk.Page[pixiv.Novel]{Items: []pixiv.Novel{{ID: 7, Title: "user novel", User: pixiv.User{Name: "writer"}}}}, nil
 		},
 	}
 	session, closeSession := newSDKTestSession(t, client)
@@ -71,32 +72,32 @@ func TestTimelineAndMyPixivToolsRouteAppSDKRequestsWithRecords(t *testing.T) {
 	}
 
 	following := assertRecords("timeline_novel_following", map[string]any{"restrict": "private", "limit": 1}, "1", "novel")
-	if followingNovel.Restrict != sdk.RestrictPrivate || !paginationHasMore(t, following) {
+	if followingNovel.Restrict != pixiv.RestrictPrivate || !paginationHasMore(t, following) {
 		t.Fatalf("timeline_novel_following request=%+v structured=%#v", followingNovel, following)
 	}
 
-	illustNew := assertRecords("timeline_illust_latest", map[string]any{"content_type": "manga", "limit": 1}, "2", "illust")
-	if latestIllust.Type != sdk.IllustTypeManga || !paginationHasMore(t, illustNew) {
+	illustNew := assertRecords("timeline_illust_latest", map[string]any{"content_type": "manga", "limit": 1}, "2", "illustration")
+	if latestIllust.ContentType != pixiv.SearchContentTypeManga || !paginationHasMore(t, illustNew) {
 		t.Fatalf("timeline_illust_latest request=%+v structured=%#v", latestIllust, illustNew)
 	}
 
 	assertRecords("timeline_novel_latest", map[string]any{}, "3", "novel")
-	if latestNovel.Cursor != "" {
+	if !latestNovel.Cursor.IsZero() {
 		t.Fatalf("timeline_novel_latest request=%+v", latestNovel)
 	}
 
 	assertRecords("mypixiv_users", map[string]any{}, "4", "user")
-	if myPixivUsers.UserID != 71 {
+	if !myPixivUsers.Cursor.IsZero() {
 		t.Fatalf("mypixiv_users request=%+v", myPixivUsers)
 	}
 
-	assertRecords("mypixiv_illusts", map[string]any{}, "5", "illust")
-	if myPixivIllusts.Cursor != "" {
+	assertRecords("mypixiv_illusts", map[string]any{}, "5", "illustration")
+	if !myPixivIllusts.Cursor.IsZero() {
 		t.Fatalf("mypixiv_illusts request=%+v", myPixivIllusts)
 	}
 
 	assertRecords("mypixiv_novels", map[string]any{}, "6", "novel")
-	if myPixivNovels.Cursor != "" {
+	if !myPixivNovels.Cursor.IsZero() {
 		t.Fatalf("mypixiv_novels request=%+v", myPixivNovels)
 	}
 
@@ -108,8 +109,8 @@ func TestTimelineAndMyPixivToolsRouteAppSDKRequestsWithRecords(t *testing.T) {
 
 func TestTimelineToolsValidateInputAndExposeSDKErrors(t *testing.T) {
 	upstream := errors.New("latest upstream failed")
-	client := &fakeSDKClient{latestIllusts: func(context.Context, sdk.LatestIllustsRequest) (*sdk.IllustListResult, error) {
-		return nil, upstream
+	client := &fakeSDKClient{latestIllusts: func(context.Context, pixiv.LatestArtworksRequest) (sdk.Page[pixiv.Artwork], error) {
+		return sdk.Page[pixiv.Artwork]{}, upstream
 	}}
 	session, closeSession := newSDKTestSession(t, client)
 	defer closeSession()
