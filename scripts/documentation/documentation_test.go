@@ -344,12 +344,13 @@ func TestSDKAndMCPDocumentationExposeJapaneseLocale(t *testing.T) {
 			localizedTarget: "ja/sdk.md",
 			canonicalPaths:  []string{"docs/en/sdk.md", "docs/zh-CN/sdk.md"},
 			requiredTerms: []string{
-				"SearchNovel",
-				"IllustRankingRequest.Mode",
-				"week_r18g",
-				"download_url",
+				"pixiv.Open",
+				"sdk.Page",
+				"CodeCredentialsExpired",
 				"malformed_upstream_response",
-				"LocalWriteCommitOutcome",
+				"OpenResource",
+				"fanbox.Open",
+				"Resource",
 			},
 		},
 		{

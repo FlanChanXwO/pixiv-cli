@@ -1,366 +1,107 @@
-# Pixiv Go SDK
+# Pixiv SDK (v1)
 
 English | [简体中文](../zh-CN/sdk.md) | [日本語](../ja/sdk.md) | [Documentation index](../index.md)
 
-This guide replaces the former HTTP Provider interface. The public entry point is the concrete `*pixiv.Client`
-from `github.com/FlanChanXwO/pixiv-cli/pixiv`, not an HTTP endpoint, Provider server, or discoverable service.
+The v1 SDK exposes three public packages:
 
-Consumers that need an interface should define the smallest method set in their own adapter. The SDK does not
-provide `Discover`, probes, capability negotiation, RSS, or crawler behavior.
+- `github.com/FlanChanXwO/pixiv-cli/sdk` — protocol-agnostic primitives shared by
+  both products: paginated pages, opaque cursors, classified errors, and the
+  resource contract.
+- `github.com/FlanChanXwO/pixiv-cli/sdk/pixiv` — the Pixiv App API client,
+  models, URL references, and mutations.
+- `github.com/FlanChanXwO/pixiv-cli/sdk/fanbox` — the Pixiv FANBOX client,
+  models, and URL resolution.
 
-## Construction
+All exported declarations carry English GoDoc; the package source is the
+canonical API summary.
+
+## Authentication
+
+Pixiv is App-only. Every content operation requires a valid access token.
 
 ```go
-// Beginner/local entry point: no options required.
-local, err := pixiv.OpenDefault()
+client, creds, err := pixiv.Open(ctx, refreshToken) // OAuth rotation
+// persist creds.RefreshToken() before issuing content requests
 
-// Explicit access-token or anonymous client: no local auth/config fields exist here.
-client, err := pixiv.NewClient(pixiv.NewClientOptions{
-    AccessToken: accessToken,
-})
-
-// Advanced local/default client.
-local, err := pixiv.OpenDefaultWith(pixiv.OpenDefaultOptions{
-    UserID: 12345678, // optional local account
-})
+client, err := pixiv.New(accessToken) // static token, no network I/O
 ```
 
-`NewClient` never reads local files or performs network authentication. `OpenDefault` selects authentication from
-`AuthFilePath`, `ConfigFilePath`, `RefreshToken`, `UserID`, or the default local paths and environment. Public
-operations that require runtime configuration obtain a fresh configuration/auth snapshot. Use
-`client.Snapshot(ctx)` when several pagination calls must share one snapshot. Explicit token export is the only
-exception and reads the auth store directly.
+`Open` returns a `Client` holding only the access token; it never refreshes on
+its own. When the token expires, operations return `CodeCredentialsExpired`.
+There is no anonymous or Web fallback.
 
-`NewClientOptions` intentionally contains only direct-client fields: `AccessToken`, `WebFallbackEnabled`, HTTP,
-App/Web endpoints, `ResourcePolicy`, optional `ResourceCachePath`, and `RequestInterval`. `OpenDefaultOptions` instead owns local paths,
-OAuth endpoint, account selection, HTTP/endpoints, and resource policy/cache path. Each `OpenDefault` snapshot reads
-local `web_fallback_enabled`. Do not make refresh tokens global mutable state.
+FANBOX is authenticated with an explicit `FANBOXSESSID` value:
 
-### HTTP client and request lifetime
+```go
+client, err := fanbox.Open(fanbox.SessionCredentials{FANBOXSESSID: session})
+```
 
-Without an options `HTTPClient`, the SDK creates a dedicated `http.Client` for that `Client` with a zero whole-request
-`Timeout`. App API, Web API, OAuth, and resource requests share it instead of mutating `http.DefaultClient`. Zero
-means the SDK adds no fixed deadline covering response-body reads; Go transport policies for connection, TLS
-handshake, and idle connections still apply.
-
-The supplied `context.Context` controls the total operation lifetime. Callers should add cancellation or a
-deadline appropriate to the operation. `context.Canceled` and `context.DeadlineExceeded` remain detectable with
-`errors.Is`. After `OpenResource` returns, the context also governs body reads; close the body and cancel the
-context when the stream is no longer needed.
-
-When an options `HTTPClient` is provided, the constructor preserves the same pointer and its timeout, transport,
-cookie jar, and redirect policy. Resource requests use per-request copies with validated redirects. See
-[ADR 0010](../maintainers/adr/0010-http-client-timeout-and-context.md).
-
-## Read and write operations
-
-| Category | Methods |
-| --- | --- |
-| Works and recommendations | `SearchIllust`, `SearchNovel`, `SupportedDrawingTools`, `IllustDetail`, `IllustPages`, `IllustRelated`, `IllustRanking`, `IllustRecommended`, `MangaRecommended`, `NovelRecommended`, `UserRecommended`, `FollowingIllusts`, `TrendingTagsIllust`, `IllustSeries`, `UgoiraMetadata`. |
-| Users | `SearchUser`, `UserDetail`, `UserArtworks`, `UserBookmarks`, `UserFollowing`, `CurrentUserID`. |
-| Writes | `AddBookmark`, `RemoveBookmark`, `FollowUser`, `UnfollowUser`. |
-| Accounts/configuration | `ImportAccount`, `ListAccounts`, `SelectAccount`, `RemoveAccount`, `ExportAccountRefreshToken`, `ExportAuthBundle`, `RestoreAuthBundle`, `CheckAccount`, `CheckRefreshToken`, `Refresh`, `RefreshAccount`, `PremiumStatus`, `RefreshPremiumStatus`, `GetConfig`, `SetConfig`, `UnsetConfig`; bundle codec functions are package-level. |
-| Login | `StartLogin`, `CompleteLogin`, `BuildLoginAuthorizationURL`; integrations control their own browser, loopback server, or TTY. |
-| Resources | `Download`, `DownloadAll`, `DownloadWith`, `DownloadAllWith`, `ParseResourceRef`, `OpenResource`, `DownloadResource`. |
-
-Request methods use named request types such as `SearchIllustRequest`, `SearchNovelRequest`,
-`UserArtworksRequest`, `UserBookmarksRequest`, `UserFollowingRequest`, `AddBookmarkRequest`, and
-`FollowUserRequest`. Result models such as `IllustListResult`, `UserListResult`, `IllustDetail`, and
-`UserDetailResult` all live in the top-level `pixiv` package.
-Every public `Illust` includes a stable artwork page URL
-`https://www.pixiv.net/artworks/{id}` as the first JSON field `url`. The SDK does not
-expose a like-count field; bookmark totals must not be labeled as likes.
-### Downloads: beginner and advanced
-
-`Download(ctx, src)` and `DownloadAll(ctx, srcs)` are the beginner APIs. A source can be a positive artwork PID,
-an official artwork URL, or a CDN URL accepted by `ResourcePolicy`. They use `./downloads`,
-`{author} - {title}_{id}`, original quality, all artwork pages, and automatic concurrency
-`2 × runtime.GOMAXPROCS(0)`.
-
-Use `DownloadWith` / `DownloadAllWith` with `DownloadOptions` to choose `DownloadPath`, `FilenameTemplate`,
-`DirectoryTemplate`, closed `Pages` or open-capable `PageSelection`, `Quality`, `UgoiraMode`, `Concurrency`,
-compiled `Filter`, `ArchivePath`, `WriteMetadata`, `RetryPolicy`, and the observation-only `Progress` callback.
-`UgoiraMode` defaults to `gif` and supports `apng`, lossless `zip`, and `frames` (frame files plus a timing manifest).
-Artwork templates support `{id}`, `{title}`, `{author}`, `{author_id}`, `{date}`, `{tags}`, and `{num}`; directory
-templates are safe relative paths and `{num}` is zero-based. A SQLite archive records an artwork only after every
-selected artifact and requested sidecar succeeds. Sidecars are atomic `{artifact}.json` files containing public
-`Illust` JSON, artifact-relative path, page, mode, and ugoira frame timing when available. Direct CDN resources keep
-their URL filename and reject metadata-dependent options such as filters, page selection, derived quality, templates,
-and sidecars. `DownloadAllResult.Items` keeps input order and records `Attempted`, the successful result (including
-per-file cache state), or the item's error, so callers can retry only failed items. Ugoira rejects page selection and
-non-original quality. With `DownloadOptions`, resource reads retry eligible 429 (with valid `Retry-After`), 5xx, and
-transport failures three times by default with 1/2/4-second backoff; cancellation and permanent local/4xx failures
-are not replayed.
-
-`Progress func(DownloadProgress)` is invoked directly and concurrently by download workers. Each event carries the
-input `SourceIndex`, 1-based `Page`, destination path, available artwork metadata, per-resource byte counters, and
-batch counters. The SDK performs a safe HEAD probe for each resource when this callback is present. When every size
-is known, `TotalBytesKnown` and `TotalBytes` describe the batch; otherwise events still report transferred bytes for
-the resource and batch. Validated partial bytes are included from the first event. Keep callbacks non-blocking and
-cancel the supplied context to stop the transfer.
-
-`DownloadResource(ctx, ref, destination)` is the explicit raw-resource API. It returns
-`ResourceDownloadResult` with `miss`, `revalidated`, `resumed`, or `refreshed` cache state. It replaces the former
-raw `Download(ctx, ResourceRef, path)` method.
-
-Configuration is likewise typed: use `ConfigKey` constants with `GetConfig`, `SetConfig`, and `UnsetConfig`, and
-construct writes with `StringConfigInput`, `BoolConfigInput`, or `DurationConfigInput`. CLI/MCP text boundaries use
-`ParseConfigKey` and `ParseConfigInput`. Sensitive relay credentials cannot use the generic setter; write them with
-`SetLoginRelaySecret`, and reads return only a redacted presence marker.
-
-### Local Pixiv references
-
-`ParseReference(raw)` performs no I/O and accepts either a positive artwork ID or a
-strict official Pixiv HTTPS URL. It returns `Reference{Kind, ID}`, where `Kind` is
-`artwork` for an ID or `/artworks/{id}`, `user` for `/users/{id}` or
-`/users/{id}/artworks`, `user_bookmarks` for `/users/{id}/bookmarks/artworks`, and
-`illust_series` for `/user/{id}/series/{series_id}`. The URL host must be `pixiv.net` or `www.pixiv.net`; an
-optional locale, query, and fragment are allowed. `ParseArtworkReference(raw)` and `ParseUserReference(raw)` are
-the typed variants (the latter accepts a user ID as well), and `Reference.URL()` returns the canonical artwork or user page
-URL. The parser neither follows redirects nor fetches HTML, rejects all other Pixiv
-properties and URL forms, and its validation errors do not reproduce the supplied URL.
-
-SDK user IDs such as `UserArtworksRequest.UserID` are required. Omitting a UID to mean “the current user” is a
-CLI/MCP adapter feature; Go callers should call `CurrentUserID(ctx)` and then build the request.
-
-`UserDetail` always returns `UserDetailResult{User, Profile, ProfilePublicity, Workspace}`. If an upstream envelope
-is missing, `null`, not an object, or has `user.id <= 0`, the SDK returns `malformed_upstream_response` with
-`OperationUserDetail`, `BackendAppAPI`, and the requested UID, without exposing upstream bodies, URLs, or
-credentials. Optional URL fields normalize missing, `null`, and empty strings to `nil`; undisclosed values retain
-their Go zero values.
-
-All four personalized recommendation streams are authenticated App API operations. Illustrations and manga use
-`IllustRecommendedRequest`, novels use `NovelRecommendedRequest`, and users use `UserRecommendedRequest`; each
-returns its own opaque cursor. CLI/MCP `all` combines the four calls in illustration, manga, novel, user order and
-does not change the SDK's one-stream cursor contract.
-
-Authentication accepts a raw Pixiv App API refresh token. Invalid credential input returns a redacted
-`invalid_argument` error before an OAuth request.
-
-`ExportAccountRefreshToken(userID int64)` is an explicit local secret-export operation for handing a stored
-credential to another trusted local integration. `userID == 0` selects `auth.json.default_user_id`; a positive ID
-selects that exact account. It reads only the auth store, ignores `PIXIV_REFRESH_TOKEN` and runtime configuration,
-performs no refresh or network request, and does not modify files. `NewClient` without a local auth path returns
-`unsupported`. Treat the returned string as an opaque secret: never log it, format it into an error, send it to
-telemetry, or expose it through MCP/JSON.
-
-### Authentication bundles and offline restore
-
-`AuthExportSelection{}` selects the local default account, `AuthExportSelection{UserID: id}` selects one exact
-account, and `AuthExportSelection{All: true}` selects every stored account. `UserID` must not be negative and cannot
-be combined with `All`. `Client.ExportAuthBundle` is a locked, read-only local snapshot: it ignores environment
-tokens and runtime account overrides, performs no network/refresh, and does not mutate state. It returns
-`AuthExportBundle{Schema, Version, DefaultUserID, Accounts}`; each `AuthExportSecretAccount` contains UID, optional
-username, and an opaque refresh-token secret.
-
-`EncodeAuthExportBundle` emits the stable indented JSON form with a final newline. `DecodeAuthExportBundle` is
-strict: it rejects unsupported schema/version, unknown or duplicate fields, trailing JSON, empty account lists,
-duplicate or non-positive UIDs, empty refresh tokens, and a default UID that is absent from the account list.
-Top-level and account-object keys must exactly match the documented canonical spelling and case; case aliases and
-canonical-plus-alias conflicts are rejected. Both functions return redacted typed errors and never include bundle
-contents.
-
-`Client.RestoreAuthBundle` validates an already decoded bundle, locks the local auth state, merges accounts by UID,
-and performs one atomic store write without OAuth or any transport. Existing accounts are updated, new accounts are
-added, and the local default is preserved unless it was empty, in which case the bundle default is adopted.
-`AuthRestoreResult` reports only `DefaultUserID`, secret-free `Added`, and secret-free `Updated` account summaries.
-
-The format is an unencrypted point-in-time backup, not live sync. Callers must protect the encoded bytes like the
-original tokens, and account for an old bundle or another machine's copy becoming stale after token rotation.
-
-`BuildLoginAuthorizationURL(challenge, state)` only constructs the official authorization URL for adapters that
-manage their own PKCE and state. Use `StartLogin` when the SDK should manage the PKCE session.
-
-### Illustration search filters
-
-`SearchIllustRequest.Filters` uses stable domain values independent of App/Web wire parameters:
-
-| Field | Stable values |
-| --- | --- |
-| `Rating` | `all`, `sfw`, `r18`, `r18g`, `mature` |
-| `ContentType` | `all`, `illust-and-ugoira`, `illust`, `manga`, `ugoira` |
-| `AIMode` | `all`, `exclude`, `only`; Pixiv `AIType==2` means AI-generated |
-| `AspectRatio` | `all`, `landscape`, `portrait`, `square` |
-| `Resolution` | `all`, `high`, `medium`, `low`; both dimensions must respectively be `>=3000`, `1000..2999`, or `<=999` |
-| `Tool` | Exact entry from the versioned drawing-tool catalog; unique one-edit spelling mistakes receive a suggestion, while ambiguous prefixes return `invalid_argument`. |
-| `BookmarkMin` / `BookmarkMax` | Optional inclusive non-negative public bookmark-count bounds; require App OAuth and an active Pixiv Premium membership; `Min` cannot exceed `Max`. `OpenDefault` with a saved account checks its cached self-profile status before the request and returns `forbidden` locally for a non-Premium account. |
-
-Zero enum values normalize to `all`; `Tool` is trimmed. Unknown values return `invalid_argument` before any
-upstream request. `SearchIllustRequest.Target` also accepts `keyword` for tags, titles, and captions; `Duration`
-accepts `within_last_day|within_last_week|within_last_month`; `StartDate` and `EndDate`
-are optional inclusive `YYYY-MM-DD` bounds. A date range cannot be combined with `Duration`, and a supplied start
-cannot be later than end. The authenticated adapter maps resolution, aspect ratio, tool, content type, AI exclusion,
-date bounds, and Pixiv Premium-only bookmark bounds to App server parameters. Rating and AI-only filtering use normalized fields from
-the current App batch.
-`Illust.Tools []string` preserves upstream order and values and is unrelated to bookmark-count filtering.
-
-`SupportedDrawingTools() []string` returns the versioned drawing-tool catalog in its documented order. It makes no
-network request and returns a defensive copy that callers may modify. `PremiumStatus(ctx)` returns the saved authenticated account's cached-or-fresh membership
-snapshot; `RefreshPremiumStatus(ctx)` forces a profile read and persists the result. `OpenDefault` uses
-`[premium] status_cache_ttl` (default `24h`, `0s` disables reuse). A direct `NewClient` access token does not carry
-a verifiable account UID, so it cannot perform this saved-account precheck.
-
-### Local illustration expression filters
-
-`CompileIllustFilter(expression)` compiles an opaque, side-effect-free `*IllustFilter`; call `Match(Illust)` to test
-one public illustration. The only fields are `id`, `userId`, `userName`, `type`, `title`, `createDate`, `pageCount`,
-`bookmarkCount`, `viewCount`, `xRestrict`, `aiType`, `width`, `height`, `tags`, `tools`, `rating`, `aiMode`,
-`aspectRatio`, `resolution`, and `drawTool`. The language permits boolean comparisons, `and`/`or`/`not`, `in`/`not in`,
-array literals, and Expr's native `any`/`all`, for example
-`any(tags, # in ["miku", "vocaloid"]) and bookmarkCount >= 5000`. Arithmetic, regular expressions, object/map or
-member access, variables, conditionals, pipelines, reflection, and other functions are rejected before a request is
-made. Compilation errors identify the invalid field, type, or source column; a failed compile never represents an
-empty result.
-
-### Novel search and user-search source
-
-`SearchNovel(ctx, SearchNovelRequest{...})` is authenticated App API only. `Target` accepts the same stable
-`partial_match_for_tags`, `exact_match_for_tags`, and `title_and_caption` values as illustration search; `Sort`
-accepts `date_desc|date_asc`; `Duration` is empty or `within_last_day|within_last_week|within_last_month`.
-`NovelSearchFilters` contains `Rating`, `MinTextLength`, `MaxTextLength`, and `OriginalOnly`. Zero text-length
-bounds are disabled; a non-zero maximum below the minimum is `invalid_argument`.
-
-The App endpoint has no verified wire parameters for rating, text length, or original-only. The SDK applies those
-filters to stable result fields instead: `Novel.XRestrict`, `Novel.TextLength`, and `Novel.IsOriginal`. Each search
-response must contain all three fields; missing data is a typed `malformed_upstream_response`, never a guessed match
-or an unlabeled partial result. Returned `Novel` values also expose the stable `URL` form
-`https://www.pixiv.net/novel/show.php?id={id}`.
-
-`SearchUser` always labels the result semantics in `UserListResult.Source`. Authenticated App search returns
-`app_search`; anonymous Web fallback returns `related_illust_authors`, which is a de-duplicated author list from
-illustration search rather than an official username search. The source is stable across a cursor sequence.
-
-### Illustration rankings
-
-`IllustRankingRequest.Mode` accepts all 16 App API modes: `day`, `day_male`, `day_female`, `week`,
-`week_original`, `week_rookie`, `month`, `day_manga`, `week_manga`, `month_manga`, `week_rookie_manga`,
-`day_r18`, `day_male_r18`, `day_female_r18`, `week_r18`, and `week_r18g`. The first seven remain available to the
-anonymous Web allowlist. The other nine require authentication and return `unauthorized` before a Web request when
-no refresh token is available; they never silently become the daily ranking.
+Pixiv refresh tokens and FANBOX sessions are independent and never convert.
 
 ## Pagination
 
-List results expose an opaque `pixiv.Cursor`. Pass it back to the same operation and query:
+List operations return `sdk.Page[T]` with an opaque `Cursor`:
 
 ```go
-result, err := client.UserArtworks(ctx, pixiv.UserArtworksRequest{UserID: uid})
-if err != nil { /* handle */ }
-next, err := client.UserArtworks(ctx, pixiv.UserArtworksRequest{
-    UserID: uid,
-    Cursor: result.NextCursor,
-})
-_ = next
+page, err := client.SearchArtworks(ctx, pixiv.SearchArtworksRequest{Word: "miku"})
+for {
+    for _, artwork := range page.Items { /* ... */ }
+    if page.Next.IsZero() { break }
+    request.Cursor = page.Next
+    page, err = client.SearchArtworks(ctx, request)
+}
 ```
 
-Cursors are versioned and bound to the operation and complete normalized query. An illustration-search cursor also
-binds target, duration, date bounds, `Rating`, `ContentType`, `AIMode`, `AspectRatio`, `Resolution`, `Tool`, and bookmark bounds; a novel-search cursor binds its
-target, sort, duration, rating, text-length bounds, and original-only condition. Changing a filter and reusing the
-old cursor returns `invalid_argument`. Never parse, edit, reuse across requests, or replace a cursor with an upstream
-offset/page. The SDK does not accept `page`; CLI/MCP translate logical pages and limits at their boundaries.
-
-## Routing
-
-With a refresh token, illustration search uses App API and authentication, network, or server failures return their
-typed error. Without a token, `NewClient` can use the anonymous Web allowlist when `WebFallbackEnabled=true`;
-`OpenDefault` reads local `web_fallback_enabled` for each snapshot. Anonymous search uses only filters Web can
-express reliably. `r18`, `r18g`, `mature`, `Target=keyword`, and bookmark bounds return `unauthorized` before
-networking.
-
-`SearchNovel` uses App authentication. `SearchUser` uses App search when authenticated; its anonymous allowlist
-route is exposed with `Source=related_illust_authors`.
-
-Authenticated `IllustDetail`, `IllustPages`, and `UgoiraMetadata` use App API only. `IllustPages` takes multi-page
-data from App `meta_pages`; for a single-page work it derives `meta_pages[0]` from the App single-page/image fields
-without changing the public JSON shape. Missing page data or a page-count mismatch is a typed
-`malformed_upstream_response`, never an unlabeled partial result. An App failure never makes a Web request.
-`Illust.Caption` preserves the raw App `caption` or anonymous Web `description`; presentation adapters, rather than
-the public SDK, decide whether to render its HTML.
-
-`UgoiraMetadata.UgoiraMetadata` exposes a verified resource pair: non-empty `download_url` and
-`download_quality` (`medium` or `original`). `zip_urls.original` is omitted unless that original ZIP was actually
-obtained. An authenticated App response selects its medium ZIP (`download_quality=medium`) and does not ask Web to
-fill it in; an anonymous Web response that provides an original ZIP selects `original`. `Download` uses
-`download_url`, so consumers must not assume `zip_urls.original` exists. Anonymous `IllustDetail` still reads Web
-detail/pages and fails atomically if either stage fails. See
-[ADR 0006](../maintainers/adr/0006-original-ugoira-resource-resolution.md).
-
-## Resources and image proxying
-
-```go
-ref, err := client.ParseResourceRef(rawURL)
-if err != nil { /* reject */ }
-response, err := client.OpenResource(ctx, pixiv.OpenResourceRequest{
-    Ref: ref, Range: request.Header.Get("Range"), IfRange: request.Header.Get("If-Range"),
-})
-if err != nil { /* map typed error */ }
-defer response.Body.Close()
-// Stream response.StatusCode and filtered response.Header with io.Copy.
-```
-
-`ResourceRef` is only a persistent reference; every `OpenResource` revalidates it. The default policy accepts only
-official Pixiv resources. Callers may add explicit host/path prefixes through `ResourcePolicy.Mirrors`. The SDK
-accepts `Range`, `If-None-Match`, `If-Modified-Since`, and `If-Range`, filters response headers, and validates
-redirects to reduce SSRF risk. `DownloadResource` writes metadata and incomplete data in
-`.pixiv-cache` (or `ResourceCachePath`), revalidates completed files with ETag/Last-Modified, resumes only verified
-partials with `Range` + `If-Range`, and atomically publishes a completed file. No validator means no unsafe resume.
-
-For idempotent App API JSON reads only, the first HTTP 429 is retried once when its `Retry-After` is a valid
-seconds value or HTTP date. The wait observes the caller context. Invalid or missing headers, a second 429, and all
-other errors remain the original typed error; mutations and resource downloads are never replayed.
+Cursors are bound to the product, operation, binding version, and query digest;
+reusing one with a different query returns `CodeInvalidCursor`.
 
 ## Errors
 
-Public failures may be `*pixiv.Error`:
+All failures are `*sdk.Error` with a stable `Code`:
 
-```go
-var pixivErr *pixiv.Error
-if errors.As(err, &pixivErr) {
-    switch pixivErr.Code {
-    case pixiv.CodeArtworkUnavailable:
-        // A deleted/private/region- or permission-limited item may be skipped.
-    case pixiv.CodeRateLimited:
-        // Schedule according to the caller's policy.
-    }
-}
-if errors.Is(err, pixiv.ErrUnauthorized) { /* re-authenticate */ }
+```text
+invalid_argument, invalid_cursor, unauthorized, credentials_expired, forbidden,
+not_found, content_unavailable, challenge_required, rate_limited, upstream_error,
+upstream_unavailable, malformed_upstream_response, resource_forbidden,
+local_state_error, removed_setting
 ```
 
-Stable codes include `invalid_argument`, `artwork_unavailable`, `unauthorized`, `forbidden`, `unsupported`,
-`rate_limited`, `upstream_error`, `upstream_unavailable`, and `malformed_upstream_response`. Errors carry a stable
-operation, backend, retryable flag, status, and validated IDs with redacted diagnostics.
+`errors.Is`/`errors.As` work, and `context.Canceled`/`DeadlineExceeded` are
+preserved. The error chain never contains URLs, headers, tokens, cookies, or
+config content.
 
-| Call and failure stage | Result | `Operation` | `Backend` |
-| --- | --- | --- | --- |
-| Authenticated `IllustDetail` App detail/pages | `nil` | `OperationIllustDetail` | `BackendAppAPI` |
-| Authenticated `IllustPages` App detail/pages | `nil` | `OperationIllustPages` | `BackendAppAPI` |
-| Anonymous `IllustDetail` Web pages | `nil` | `OperationIllustPages` | `BackendWebAPI` |
-| Anonymous `IllustDetail` Web detail | `nil` | `OperationIllustDetail` | `BackendWebAPI` |
-| Authenticated `UgoiraMetadata` App metadata | `nil` | `OperationUgoiraMetadata` | `BackendAppAPI` |
-| Anonymous `UgoiraMetadata` Web metadata | `nil` | `OperationUgoiraMetadata` | `BackendWebAPI` |
+## Resources
 
-For example, an App 403 during authenticated page retrieval becomes `CodeForbidden`, `BackendAppAPI`,
-`OperationIllustPages`, and `UpstreamStatus=403`; it does not continue to Web.
+First-party media is exposed through `sdk.Resource` with two parallel paths:
 
-Transport failures with `upstream_unavailable` additionally expose a safe `Error.TransportKind`: `dns`, `tls`,
-`proxy`, `connection_refused`, `connection_reset`, `timeout`, or `unknown`. Classification uses typed/wrapped Go causes, not
-error text. `context.Canceled` and `context.DeadlineExceeded` remain `errors.Is` signals and have no transport kind.
+- `Resource.URL` + `Resource.RequestHeaders` — stream directly or proxy without
+  buffering to disk.
+- `Resource.Ref` — hand back to `OpenResource`/`SaveResource` for SDK-validated
+  reads (scheme/host/path revalidation, cookie-free, redirect-safe).
 
-Local account/configuration `invalid_argument` failures may expose `Error.LocalStateKind`: `auth_malformed`,
-`config_malformed`, `permission_denied`, `not_found`, `invalid_proxy`, `account_mismatch`, `unavailable`, or
-`unknown`. `errors.Unwrap` and `Error()` remain redacted and never expose filesystem/parser errors, paths, local
-contents, or proxy userinfo. Missing optional `auth.json` or `config.toml` remains a valid empty state.
+```go
+page, _ := client.ArtworkPages(ctx, pixiv.ArtworkPagesRequest{ArtworkID: id})
+image := page[0].Image.Resource
+resp, err := client.OpenResource(ctx, sdk.OpenResourceRequest{Ref: image.Ref})
+```
 
-When `RestoreAuthBundle` fails while saving the merged auth store, its error additionally exposes
-`Error.LocalWriteCommitOutcome`. `not_committed` means the replacement did not happen; `committed` means replacement
-happened but a subsequent durability or cleanup step failed, so callers must reload the target; `unknown` means
-recovery could not establish the target state and manual inspection is required. Callers must not report
-`committed` or `unknown` as a successful rollback.
+`Resource` never carries tokens or cookies; `RequiresCredentials` reports when a
+resource still needs product credentials invisible to the caller.
 
-## Caller responsibilities
+## URL references
 
-The caller adapter owns collection mode, budgets, filters, cursor storage, database transactions, scheduling,
-retries, and its external HTTP API. `atri-setu-api` random selection, moderation, gallery storage, and image proxy
-policy are not SDK features; an integration may build them from normalized models and resource streams.
+`pixiv.ParseURL` and `fanbox.ResolveURL` turn page URLs into typed references
+without network I/O, and `Reference.CanonicalURL` returns the tracking-free
+canonical form.
 
-See [ADR 0009](../maintainers/adr/0009-public-pixiv-sdk-and-caller-adapter.md) and
-[ADR 0010](../maintainers/adr/0010-http-client-timeout-and-context.md) for the complete boundary decisions.
+## FANBOX
+
+`sdk/fanbox` provides creator profiles, posts, tags, home and supporting feeds,
+URL resolution, and the shared resource contract. Post bodies are structured
+blocks; third-party embeds keep only their canonical link. Restricted posts
+carry a summary with a nil body.
+
+## Migrating from v0
+
+See the [migration guide](v1.0.0-migration.md) for the v0 `pixiv` to v1
+`sdk/pixiv` transition.
