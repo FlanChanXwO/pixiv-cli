@@ -46,11 +46,11 @@ type loginSessionState struct {
 func BeginLogin(options LoginOptions) (*LoginSession, error) {
 	verifier, challenge, err := oauth.GeneratePKCEPair()
 	if err != nil {
-		return nil, newError("BeginLogin", sdk.CodeUpstreamUnavailable, "cannot create oauth login session")
+		return nil, newError("BeginLogin", sdk.UpstreamUnavailable, "cannot create oauth login session")
 	}
 	state, err := oauth.RandomURLToken(32)
 	if err != nil {
-		return nil, newError("BeginLogin", sdk.CodeUpstreamUnavailable, "cannot create oauth login session")
+		return nil, newError("BeginLogin", sdk.UpstreamUnavailable, "cannot create oauth login session")
 	}
 	httpClient, selfHTTP := loginHTTPClient(options.HTTPClient)
 	values := url.Values{}
@@ -76,20 +76,39 @@ func (s *LoginSession) AuthorizationURL() string {
 	return s.state.authorizationURL
 }
 
+// AcceptsCallbackURL reports whether rawURL is a callback for this session
+// without consuming the session or performing network I/O. Official HTTPS
+// callbacks require this session's state; the pixiv://account/login callback
+// may omit state but a supplied state must still match.
+func (s *LoginSession) AcceptsCallbackURL(rawURL string) bool {
+	if s == nil || s.state == nil {
+		return false
+	}
+	parsed, err := url.Parse(strings.TrimSpace(rawURL))
+	if err != nil || parsed.Scheme == "" || strings.TrimSpace(parsed.Query().Get("code")) == "" {
+		return false
+	}
+	state := strings.TrimSpace(parsed.Query().Get("state"))
+	if loginCallbackRequiresState(parsed) {
+		return state != "" && state == s.state.state
+	}
+	return state == "" || state == s.state.state
+}
+
 // Complete exchanges the authorization code carried by callbackURL (a full
 // callback URL or a bare code) for credentials. The session is one-shot; a
-// second completion returns CodeInvalidArgument. The callback state is checked
+// second completion returns InvalidArgument. The callback state is checked
 // against this session's state for official callback URLs.
 func (s *LoginSession) Complete(ctx context.Context, callbackURL string) (Credentials, error) {
 	if s == nil || s.state == nil {
-		return Credentials{}, newError("Complete", sdk.CodeInvalidArgument, "login session is nil")
+		return Credentials{}, newError("Complete", sdk.InvalidArgument, "login session is nil")
 	}
 	code, err := loginCode(callbackURL, s.state.state)
 	if err != nil {
-		return Credentials{}, newError("Complete", sdk.CodeInvalidArgument, "login callback is invalid")
+		return Credentials{}, newError("Complete", sdk.InvalidArgument, "login callback is invalid")
 	}
 	if !s.state.used.CompareAndSwap(false, true) {
-		return Credentials{}, newError("Complete", sdk.CodeInvalidArgument, "login session was already used")
+		return Credentials{}, newError("Complete", sdk.InvalidArgument, "login session was already used")
 	}
 	oauthClient := oauth.New("", oauth.WithHTTPClient(s.state.httpClient))
 	token, err := oauthClient.ExchangeAuthorizationCode(ctx, code, s.state.verifier)
@@ -97,7 +116,7 @@ func (s *LoginSession) Complete(ctx context.Context, callbackURL string) (Creden
 		return Credentials{}, classifyOAuthError(err, "Complete")
 	}
 	if token.UserID <= 0 || strings.TrimSpace(token.RefreshToken) == "" {
-		return Credentials{}, newError("Complete", sdk.CodeMalformedUpstreamResponse, "oauth response did not include account identity")
+		return Credentials{}, newError("Complete", sdk.MalformedUpstreamResponse, "oauth response did not include account identity")
 	}
 	return Credentials{
 		UserID:       token.UserID,

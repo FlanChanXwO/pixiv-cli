@@ -8,7 +8,8 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/utils/atomicfile"
+	"github.com/FlanChanXwO/pixiv-cli/internal/filesystem"
+	fanboxservice "github.com/FlanChanXwO/pixiv-cli/internal/services/fanbox"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 )
 
@@ -41,13 +42,13 @@ func allowedMediaHost(host string) bool {
 func (c *Client) validateResourceURL(rawURL string) error {
 	parsed, err := url.Parse(rawURL)
 	if err != nil {
-		return newError("resource", sdk.CodeResourceForbidden, errors.New("invalid resource URL"))
+		return newError("resource", sdk.ResourceForbidden, errors.New("invalid resource URL"))
 	}
 	if parsed.Scheme != "https" || parsed.User != nil || parsed.Path == "" || parsed.Path == "/" {
-		return newError("resource", sdk.CodeResourceForbidden, errors.New("resource URL must be https without userinfo and with a path"))
+		return newError("resource", sdk.ResourceForbidden, errors.New("resource URL must be https without userinfo and with a path"))
 	}
 	if !allowedMediaHost(parsed.Hostname()) {
-		return newError("resource", sdk.CodeResourceForbidden, errors.New("resource host is not allowed"))
+		return newError("resource", sdk.ResourceForbidden, errors.New("resource host is not allowed"))
 	}
 	return nil
 }
@@ -61,11 +62,11 @@ func (c *Client) newResource(kind, id, rawURL string) (sdk.Resource, error) {
 	}
 	payload, err := json.Marshal(resourceRefPayload{Kind: kind, ID: id, URL: rawURL})
 	if err != nil {
-		return sdk.Resource{}, newError("resource", sdk.CodeUpstreamError, err)
+		return sdk.Resource{}, newError("resource", sdk.UpstreamError, err)
 	}
 	ref, err := sdk.NewResourceRef(product, payload)
 	if err != nil {
-		return sdk.Resource{}, newError("resource", sdk.CodeUpstreamError, err)
+		return sdk.Resource{}, newError("resource", sdk.UpstreamError, err)
 	}
 	return sdk.Resource{
 		Ref:            ref,
@@ -83,12 +84,18 @@ func (c *Client) OpenResource(ctx context.Context, request sdk.OpenResourceReque
 	}
 	rp, err := c.decodeResourceRef(request.Ref)
 	if err != nil {
-		return nil, newError("OpenResource", sdk.CodeInvalidArgument, err)
+		return nil, newError("OpenResource", sdk.InvalidArgument, err)
 	}
 	if err := c.validateResourceURL(rp.URL); err != nil {
-		return nil, newError("OpenResource", sdk.CodeResourceForbidden, errors.New("resource URL is not allowed"))
+		return nil, newError("OpenResource", sdk.ResourceForbidden, errors.New("resource URL is not allowed"))
 	}
-	response, err := c.session.OpenMedia(ctx, rp.URL)
+	response, err := c.session.OpenMediaWithRequest(ctx, rp.URL, fanboxservice.MediaRequest{
+		Method:          string(request.Method),
+		Range:           request.Range,
+		IfNoneMatch:     request.IfNoneMatch,
+		IfModifiedSince: request.IfModifiedSince,
+		IfRange:         request.IfRange,
+	})
 	if err != nil {
 		return nil, classifyError("OpenResource", err)
 	}
@@ -100,7 +107,7 @@ func (c *Client) OpenResource(ctx context.Context, request sdk.OpenResourceReque
 // sidecars; use the downloader for those.
 func (c *Client) SaveResource(ctx context.Context, ref sdk.ResourceRef, options sdk.SaveOptions) (sdk.SavedResource, error) {
 	if strings.TrimSpace(options.Path) == "" {
-		return sdk.SavedResource{}, newError("SaveResource", sdk.CodeInvalidArgument, errors.New("destination path is required"))
+		return sdk.SavedResource{}, newError("SaveResource", sdk.InvalidArgument, errors.New("destination path is required"))
 	}
 	response, err := c.OpenResource(ctx, sdk.OpenResourceRequest{Ref: ref, Method: sdk.ResourceMethodGet})
 	if err != nil {
@@ -108,11 +115,11 @@ func (c *Client) SaveResource(ctx context.Context, ref sdk.ResourceRef, options 
 	}
 	defer response.Body.Close()
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		return sdk.SavedResource{}, newError("SaveResource", sdk.CodeUpstreamError, errors.New("resource returned a non-success status"))
+		return sdk.SavedResource{}, newError("SaveResource", sdk.UpstreamError, errors.New("resource returned a non-success status"))
 	}
-	size, err := atomicfile.Write(ctx, options.Path, &progressReader{src: response.Body, progress: options.Progress})
+	size, err := filesystem.Write(ctx, options.Path, &progressReader{src: response.Body, progress: options.Progress})
 	if err != nil {
-		return sdk.SavedResource{}, newError("SaveResource", sdk.CodeLocalStateError, errors.New("cannot write resource"))
+		return sdk.SavedResource{}, newError("SaveResource", sdk.LocalStateError, errors.New("cannot write resource"))
 	}
 	return sdk.SavedResource{Path: options.Path, Size: size}, nil
 }

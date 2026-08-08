@@ -119,5 +119,5 @@ it rejects `--filter` rather than guessing.
   non-zero. Cancellation stops immediately.
 - Per-target outcomes: report which references succeeded and which failed.
   Never summarize failures away as "done".
-- Anonymous sessions can download public works via web fallback; restricted or
-  R-18 works may fail — surface the real API error, don't retry blindly.
+- Downloads require an authenticated local account; restricted or R-18 works
+  may fail — surface the real API error, don't retry blindly.

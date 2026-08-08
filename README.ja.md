@@ -17,6 +17,7 @@
 ## pixiv-cli を選ぶ理由
 
 - **統一された機能** — CLI・MCP・SDK から Pixiv の検索、詳細、ランキング、おすすめ、ユーザー、ブックマーク、フォロー、ダウンロード、うごイラを利用できます。
+- **読み取り専用 FANBOX** — `FANBOXSESSID` で認証し、CLI・MCP・`sdk/fanbox` からクリエイター、投稿、home/supporting feed、タグ、第一者 file resource を取得できます。
 - **合成可能な visual pipeline** — visual list は pipe 時に canonical NDJSON を自動出力します。型付きの local artwork rule は `--filter` で指定し、そのまま `download` に渡せます。
 - **ローカル account pool** — 読み取り処理に適格なローカル account を選択し、pagination と download preparation で Pixiv の `Retry-After` に従います。
 - **分かりやすいアカウントログイン** — `pixiv auth login` で browser OAuth を完了し、`auth list`、`auth use`、`auth check` でローカルの複数アカウントを管理・確認できます。
@@ -27,6 +28,7 @@
 - **Pixiv URL を直接指定** — 対応する作品 URL を detail/download に貼り付けられ、認証済みのユーザープロフィール/作品一覧 URL はそのユーザーの視覚作品へ展開されます。
 - **ローカル複数アカウント OAuth** — ブラウザーログイン、アカウント選択、refresh token rotation、オプションの cross-machine callback relay に対応します。
 - **自動化向け integration** — typed SDK error、JSON 出力、クリーンな MCP stdio、署名付き更新、完全な結果レポートを備えます。
+- **明示的な diagnostics** — `--debug` を指定すると、routing、challenge recovery、account pool、download の安全な live event を stderr に出力します。log file は作成しません。
 
 ## インストール
 
@@ -103,6 +105,10 @@ sh scripts/build.sh
 # ブラウザー OAuth で Pixiv アカウントを保存します。
 pixiv auth login
 
+# hidden input で FANBOX session を保存し、FANBOX の内容を確認します。
+pixiv fanbox auth import
+pixiv fanbox post 123456
+
 # App 側フィルターを使って検索します。
 pixiv search "初音ミク" --type illust --ai-mode exclude --resolution high
 pixiv novel search "初音ミク" --rating sfw --min-text-length 1000
@@ -139,10 +145,16 @@ pixiv timeline latest --type illust --limit 10 --json
 
 ### MCP
 
-stdio server は明示的に起動します。stdout は JSON-RPC 専用です。操作要約は `~/.pixiv-cli/logs`（Windows では `%USERPROFILE%\.pixiv-cli\logs`）の日次 plain-text file `YYYY-MM-DD.txt`（既定保持 7 日）に書き、端末は既定で log 痕跡を出しません。
+diagnostics は既定で無効です。明示的に有効にした場合も安全な event だけを stderr に出力し、MCP stdout は JSON-RPC のままです。
+
+stdio server は明示的に起動します。stdout は JSON-RPC 専用で、tool の失敗は `isError=true` の structured result として返します。project-level または日次 log file は既定では作成しません。
 
 ```bash
 pixiv mcp
+# 任意の安全な diagnostics は stderr に出力し、MCP stdout を変更しません。
+pixiv --debug mcp
+# FANBOX tool は独立した runtime credential 選択を使います。
+pixiv --debug fanbox mcp
 ```
 
 tool、parameter、structured output、認証動作は [MCP tool contract](docs/ja/mcp-tools.md)を参照してください。
@@ -150,7 +162,7 @@ MCP の固定 status、error、display text は英語です。Pixiv metadata と
 
 ### Go SDK
 
-ローカルで初めて使う場合は、まず一度 `pixiv auth login` を実行し、その local account から client を作成して検索します。
+Public SDK は credential を明示的に受け取り、CLI の local account store は読みません。以下の例では secret を source code に書かないためだけに process environment から refresh token を読み取ります。アプリケーション側で `Open` が返す rotation 済み credential を保存してください。
 
 ```go
 package main
@@ -159,28 +171,29 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"os"
 
-	pixiv "github.com/FlanChanXwO/pixiv-cli/pixiv"
+	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 )
 
 func main() {
 	ctx := context.Background()
-	client, err := pixiv.OpenDefault()
+	client, _, err := pixiv.Open(ctx, os.Getenv("PIXIV_REFRESH_TOKEN"))
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	result, err := client.SearchIllust(ctx, pixiv.SearchIllustRequest{Word: "初音ミク"})
+	result, err := client.SearchArtworks(ctx, pixiv.SearchArtworksRequest{Word: "初音ミク"})
 	if err != nil {
 		log.Fatal(err)
 	}
-	for _, illust := range result.Illusts {
-		fmt.Printf("%d %s\\n", illust.ID, illust.URL)
+	for _, artwork := range result.Items {
+		fmt.Printf("%d %s\\n", artwork.ID, artwork.URL)
 	}
 }
 ```
 
-SDK の import path は `github.com/FlanChanXwO/pixiv-cli/pixiv` です。`Download`/`DownloadAll` は文書化された初心者 default を使い、`DownloadWith`/`DownloadAllWith` は path、naming、page、quality、concurrency を制御します。モデル、cursor、resource、error、呼び出し側の責務は [SDK ガイド](docs/ja/sdk.md)を参照してください。
+SDK の import path は `github.com/FlanChanXwO/pixiv-cli/sdk/pixiv` です。`sdk/fanbox` は `FANBOXSESSID` を明示的に受け取り、Firefox 148 native routing、任意の service-scoped proxy/user-agent、challenge 専用 FlareSolverr をサポートします。`Download`/`DownloadAll` は文書化された初心者 default を使い、`DownloadWith`/`DownloadAllWith` は path、naming、page、quality、concurrency を制御します。モデル、cursor、resource、error、呼び出し側の責務は [SDK ガイド](docs/ja/sdk.md)を参照してください。
 
 ## 認証と token の安全性
 

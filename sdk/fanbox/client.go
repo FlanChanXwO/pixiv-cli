@@ -1,6 +1,7 @@
 package fanbox
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -37,6 +38,20 @@ type Options struct {
 	// ProxyURL optionally routes production requests through an HTTP(S) proxy.
 	// It must not carry userinfo.
 	ProxyURL string
+	// UserAgent overrides only the native FANBOX HTTP User-Agent header. It does
+	// not change the TLS profile or provide a Cloudflare bypass guarantee.
+	UserAgent string
+	// FlareSolverr enables challenge-only recovery when explicitly configured.
+	// A nil value keeps the client entirely independent of FlareSolverr.
+	FlareSolverr *FlareSolverrOptions
+}
+
+// FlareSolverrOptions configures the direct solver service and its independent
+// browser upstream proxy. The service URL is normalized to its root and the
+// solver is never given the FANBOX session or a business request URL.
+type FlareSolverrOptions struct {
+	URL      string
+	ProxyURL string
 }
 
 // Client is a FANBOX client bound to one FANBOXSESSID session. It does not
@@ -56,20 +71,25 @@ func Open(credentials SessionCredentials) (*Client, error) {
 // OpenWith is Open with explicit connection-level Options.
 func OpenWith(credentials SessionCredentials, options Options) (*Client, error) {
 	cookieHeader := "FANBOXSESSID=" + credentials.FANBOXSESSID
-	if options.HTTPClient != nil {
-		session, err := fanbox.NewSessionWithHTTPClient(cookieHeader, options.HTTPClient)
-		if err != nil {
-			return nil, newError("Open", sdk.CodeCredentialsExpired, err)
+	var solver *fanbox.FlareSolverrOptions
+	if options.FlareSolverr != nil {
+		solver = &fanbox.FlareSolverrOptions{
+			URL:      options.FlareSolverr.URL,
+			ProxyURL: options.FlareSolverr.ProxyURL,
 		}
-		return &Client{session: session, opts: options}, nil
 	}
-	var opts []fanbox.Option
-	if options.ProxyURL != "" {
-		opts = append(opts, fanbox.WithProxyURL(options.ProxyURL))
-	}
-	session, err := fanbox.NewSession(cookieHeader, opts...)
+	session, err := fanbox.NewSessionWithOptions(cookieHeader, fanbox.SessionOptions{
+		HTTPClient:   options.HTTPClient,
+		ProxyURL:     options.ProxyURL,
+		UserAgent:    options.UserAgent,
+		FlareSolverr: solver,
+	})
 	if err != nil {
-		return nil, newError("Open", sdk.CodeCredentialsExpired, err)
+		reason := sdk.CredentialsExpired
+		if errors.Is(err, fanbox.ErrInvalidOption) {
+			reason = sdk.InvalidArgument
+		}
+		return nil, newError("Open", reason, err)
 	}
 	return &Client{session: session, opts: options}, nil
 }

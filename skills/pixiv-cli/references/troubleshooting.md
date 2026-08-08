@@ -9,8 +9,11 @@ usually the answer. Never mask an error with retries or silent fallbacks.
   blocker. If the user explicitly asks you to install it, follow
   `references/install.md`; otherwise do not install it or guess a method.
 - Config/auth file locations: `pixiv config path` prints the config file path
-  and creates a baseline config if missing; `auth.json` lives in the same
-  directory. Never read `auth.json` contents.
+  and creates a baseline config if missing; the authoritative credential store
+  is the sibling `pixiv-cli.db`. The new runtime never reads or migrates a
+  legacy `auth.json`; use the old CLI to run `pixiv auth export --all --output
+  <private bundle>`, then use the new CLI to run `pixiv auth import --file
+  <bundle>`. Never read credential-store contents directly.
 
 ## Authentication
 
@@ -18,7 +21,7 @@ usually the answer. Never mask an error with retries or silent fallbacks.
 | --- | --- | --- |
 | `invalid_grant` / token refresh failure | Refresh token expired or revoked | Use `pixiv auth login` only when the user explicitly asks and is present for the interactive OAuth flow |
 | "requires authentication" on `recommended`/`user`/`bookmark`/`follow` | Anonymous session | Expected — these are App-API-only. Ask whether to log in |
-| R18/R18G/mature search requires authentication | Anonymous Web session | Authenticate before retrying; never add a Cookie workaround |
+| R18/R18G/mature search requires authentication | No authenticated local account selected | Select an account with `pixiv auth use UID` (or import credentials) before retrying; never add a Cookie workaround |
 | `--draw-tool` is rejected | Value is absent from this version's catalog | Choose an exact catalog value; a unique one-edit spelling mistake includes a suggestion |
 | Bookmark-count search is forbidden | Cached self-profile says the saved account is not Pixiv Premium | Explain that the bound requires Premium; only run `pixiv auth refresh [UID]` if the user explicitly wants to refresh account status |
 | Wrong account acting | Multiple local accounts | `pixiv auth list --json`, then `pixiv auth use UID` (confirm first); data commands do not accept per-command account overrides. |
@@ -42,17 +45,22 @@ safe metadata output does not make raw token or bundle stdout safe to display.
   explicit request via `pixiv config set https_proxy ...`.
 - `--proxy` and `--no-proxy` are mutually exclusive and never persisted.
 - Env fallback: lowercase `https_proxy` is preferred over `HTTPS_PROXY`.
+- Pixiv service configuration can be scoped with `[pixiv.network].proxy_url`;
+  FANBOX uses independent `[fanbox.network].proxy_url` and `user_agent` values.
+  `[fanbox.flaresolverr]` is challenge-only and is not a general FANBOX proxy.
+- `--debug` is opt-in and writes safe routing/status/challenge/solver details to
+  stderr. It does not create log files or change MCP stdout; it never prints
+  tokens, cookies, signed queries, or response bodies.
 
-## Fallback semantics (not a bug)
+## Authentication semantics (not a bug)
 
+- No authenticated local account → content commands return an authentication
+  requirement. Select one with `pixiv auth use UID` (confirm first) or import
+  credentials; never fall back to an anonymous Web path.
 - Token present + App API error → error is final. The CLI never auto-falls
-  back to the anonymous web API. Report the real cause.
-- No token anywhere + `web_fallback_enabled=true` → `search` / `detail` /
-  `ranking` / `download` silently use the anonymous web API. Anonymous results
-  can differ: restricted search fails with an authentication requirement and
-  some fields may be absent.
-- Anonymous path failing entirely → check `pixiv config get
-  web_fallback_enabled`; if `false`, that is the configured behavior.
+  back to a Web path. Report the real cause.
+- Removed `web_fallback_enabled` in `config.toml` → returns
+  `removed_setting`; clear it with `pixiv config unset web_fallback_enabled`.
 
 ## Empty or "missing" results
 

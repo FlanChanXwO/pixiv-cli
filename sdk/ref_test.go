@@ -77,15 +77,15 @@ func TestResourceRefJSONRoundTrip(t *testing.T) {
 }
 
 func TestResourceRefRejectsInvalid(t *testing.T) {
-	if _, err := sdk.NewResourceRef("", []byte("p")); sdk.CodeOf(err) != sdk.CodeInvalidArgument {
-		t.Fatalf("empty product: expected CodeInvalidArgument, got %v", err)
+	if _, err := sdk.NewResourceRef("", []byte("p")); sdk.ReasonOf(err) != sdk.InvalidArgument {
+		t.Fatalf("empty product: expected InvalidArgument, got %v", err)
 	}
-	if _, err := sdk.NewResourceRef("pixiv", nil); sdk.CodeOf(err) != sdk.CodeInvalidArgument {
-		t.Fatalf("empty payload: expected CodeInvalidArgument, got %v", err)
+	if _, err := sdk.NewResourceRef("pixiv", nil); sdk.ReasonOf(err) != sdk.InvalidArgument {
+		t.Fatalf("empty payload: expected InvalidArgument, got %v", err)
 	}
 	for _, in := range []string{"", "!!!", "YWJjZA", "%%%%"} {
-		if _, err := sdk.ParseResourceRef(in); sdk.CodeOf(err) != sdk.CodeInvalidArgument {
-			t.Fatalf("ParseResourceRef(%q): expected CodeInvalidArgument, got %v", in, err)
+		if _, err := sdk.ParseResourceRef(in); sdk.ReasonOf(err) != sdk.InvalidArgument {
+			t.Fatalf("ParseResourceRef(%q): expected InvalidArgument, got %v", in, err)
 		}
 	}
 }
@@ -95,8 +95,8 @@ func TestResourceRefZero(t *testing.T) {
 	if !ref.IsZero() {
 		t.Fatal("zero ref IsZero should be true")
 	}
-	if _, err := ref.MarshalText(); sdk.CodeOf(err) != sdk.CodeInvalidArgument {
-		t.Fatalf("zero ref marshal: expected CodeInvalidArgument, got %v", err)
+	if _, err := ref.MarshalText(); sdk.ReasonOf(err) != sdk.InvalidArgument {
+		t.Fatalf("zero ref marshal: expected InvalidArgument, got %v", err)
 	}
 	if _, err := json.Marshal(ref); err == nil {
 		t.Fatal("zero ref JSON marshal should error")

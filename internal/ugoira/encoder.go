@@ -7,7 +7,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/utils/files"
+	"github.com/FlanChanXwO/pixiv-cli/internal/filesystem"
 )
 
 type Format string
@@ -73,8 +73,8 @@ func writeTempAnimation(ctx context.Context, outputPath string, encode func(stri
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	if err := files.ReplaceFile(temporaryPath, outputPath); err != nil {
-		if files.MustPreserveReplacementSource(err) {
+	if err := filesystem.ReplaceFile(temporaryPath, outputPath); err != nil {
+		if filesystem.MustPreserveReplacementSource(err) {
 			cleanup = false
 		}
 		return err

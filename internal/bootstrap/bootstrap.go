@@ -6,161 +6,136 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/application"
+	configapp "github.com/FlanChanXwO/pixiv-cli/internal/application/config"
+	downloadapp "github.com/FlanChanXwO/pixiv-cli/internal/application/download"
 	pixivapp "github.com/FlanChanXwO/pixiv-cli/internal/application/pixiv"
-	"github.com/FlanChanXwO/pixiv-cli/internal/config"
-	"github.com/FlanChanXwO/pixiv-cli/internal/download"
+	downloader "github.com/FlanChanXwO/pixiv-cli/internal/downloader"
+	"github.com/FlanChanXwO/pixiv-cli/internal/filesystem"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver"
-	"github.com/FlanChanXwO/pixiv-cli/internal/platform/localstate"
-	internalpixiv "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv"
-	"github.com/FlanChanXwO/pixiv-cli/internal/storage/authdb"
+	"github.com/FlanChanXwO/pixiv-cli/internal/network"
+	"github.com/FlanChanXwO/pixiv-cli/internal/persistence/authdb"
 	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-func NewServices() application.Services {
-	db, appDataDir := openAuthDB()
-	pixivService := newPixivService(db, appDataDir)
-	sdkService := application.SDKService{
-		NewClient: func(request application.SDKClientRequest) (application.SDKClient, error) {
-			return newSDKClient(request, pixivService)
-		},
-		LoadRuntime: LoadRuntimeConfig,
-		RunPooled:   newPooledSDKOperation(db, pixivService),
+var (
+	removeLegacyAccountPoolConfig = func(path string) error {
+		return configapp.RemoveLegacyAccountPoolAccountsWithFileStore(path, filesystemConfigFiles{})
 	}
-	return application.Services{
-		Account: application.AccountService{Pixiv: pixivService, RefreshTokenFromEnv: config.RefreshTokenFromEnv},
-		Config:  application.ConfigService{Store: ConfigFileStore{}},
-		Login:   application.LoginService{SDK: sdkService, Pixiv: pixivService, LoadRuntime: LoadRuntimeConfig},
-		SDK:     sdkService,
-		Download: application.DownloadService{NewManager: func(client application.DownloadClient, downloadPath, filenameTemplate string) (application.DownloadManager, error) {
-			return newDownloadManager(client, downloadPath, filenameTemplate), nil
-		}},
-		Fanbox: newFanboxService(db, appDataDir),
-	}
-}
+)
 
-func openAuthDB() (*authdb.DB, string) {
+func openAuthDB() (*authdb.DB, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
-		return nil, ""
+		return nil, fmt.Errorf("bootstrap: determine home directory: %w", err)
 	}
-	appDataDir := filepath.Join(home, localstate.AppDataDirName)
+	appDataDir := filepath.Join(home, filesystem.AppDataDirName)
 	db, err := authdb.Open(appDataDir)
 	if err != nil {
-		return nil, appDataDir
+		return nil, err
 	}
-	registerFanboxDB(db)
-	return db, appDataDir
+	if err := migrateLegacyAccountPoolConfig(context.Background(), db); err != nil {
+		return nil, errors.Join(err, db.Close())
+	}
+	return db, nil
 }
 
-// newPixivService 构造 authdb-backed 的 Pixiv 应用服务，并把 legacy auth.json
-// 一次性迁移到 SQLite。本地状态失败时返回 nil：pixiv 命令会给出明确错误。
-func newPixivService(db *authdb.DB, appDataDir string) *pixivapp.Service {
+// migrateLegacyAccountPoolConfig 将旧 UID allowlist 迁移为 authdb 的
+// schedulable 状态，再删除旧配置键。DB 与 config 不是跨文件原子操作；任一
+// config 写失败都返回错误，下一次启动会重复同一 DB 映射并重试删除。
+func migrateLegacyAccountPoolConfig(ctx context.Context, db *authdb.DB) error {
+	files := filesystemConfigFiles{}
+	path, err := files.Path()
+	if err != nil {
+		return fmt.Errorf("account pool migration: resolve config path: %w", err)
+	}
+	state, err := configapp.LoadSettingsStateAtWithFileStore(path, files)
+	if err != nil {
+		return fmt.Errorf("account pool migration: read config: %w", err)
+	}
+	userIDs, present, err := state.LegacyAccountPoolUIDs()
+	if err != nil {
+		return fmt.Errorf("account pool migration: validate legacy accounts: %w", err)
+	}
+	if !present {
+		return nil
+	}
+	if err := db.MigratePixivSchedulable(ctx, userIDs); err != nil {
+		return fmt.Errorf("account pool migration: update authdb: %w", err)
+	}
+	if err := removeLegacyAccountPoolConfig(path); err != nil {
+		return fmt.Errorf("account pool migration: remove legacy accounts: %w", err)
+	}
+	return nil
+}
+
+// newPixivService 构造 authdb-backed 的 Pixiv 应用服务。本地状态失败时返回 nil：
+// pixiv 命令会给出明确错误。
+func newPixivService(db *authdb.DB, store configapp.ConfigFileStore) *pixivapp.Service {
 	if db == nil {
 		return nil
 	}
-	_, _ = authdb.MigrateLegacyAuthJSON(context.Background(), appDataDir, filepath.Join(appDataDir, "auth.json"))
-	return pixivapp.New(db, appDataDir)
+	return pixivapp.New(pixivPersistenceAdapter{db: db}, configDefaultStore{store: store})
 }
 
-func newPooledSDKOperation(db *authdb.DB, auth *pixivapp.Service) application.SDKPooledOperation {
-	return func(ctx context.Context, request application.SDKClientRequest, attempt func(context.Context, application.SDKClient) (bool, error)) error {
-		runtime, err := LoadRuntimeConfig()
-		if err != nil {
-			return err
-		}
-		if !runtime.AccountPool.Enabled {
-			client, err := newSDKClient(request, auth)
-			if err != nil {
-				return err
-			}
-			_, err = attempt(ctx, client)
-			return err
-		}
-		if db == nil {
-			return errors.New("pixiv auth database is not available")
-		}
-		configured := append([]int64(nil), runtime.AccountPool.Accounts...)
-		if len(configured) == 0 {
-			accounts, err := db.ListPixiv(ctx)
-			if err != nil {
-				return err
-			}
-			for _, account := range accounts {
-				configured = append(configured, account.UserID)
-			}
-		}
-		if len(configured) == 0 {
-			return application.ErrAccountPoolExhausted
-		}
-		var lastRateLimit error
-		for {
-			if err := ctx.Err(); err != nil {
-				return err
-			}
-			account, err := db.SelectPooledPixiv(ctx, time.Now().Unix(), configured)
-			if err != nil {
-				if errors.Is(err, authdb.ErrNotFound) {
-					return poolExhaustedError(lastRateLimit)
-				}
-				return err
-			}
-			poolRequest := request
-			poolRequest.UserID = account.UserID
-			poolRequest.RefreshToken = ""
-			client, err := newSDKClient(poolRequest, auth)
-			if err != nil {
-				return err
-			}
-			committed, attemptErr := attempt(ctx, client)
-			if attemptErr == nil {
-				return nil
-			}
-			if committed || ctx.Err() != nil {
-				return attemptErr
-			}
-			retryAfter, ok := application.PoolRetryAfter(attemptErr)
-			if !ok {
-				return attemptErr
-			}
-			lastRateLimit = attemptErr
-			if err := db.FreezePooledPixiv(ctx, account.UserID, time.Now().Add(retryAfter).Unix()); err != nil {
-				return err
-			}
-		}
-	}
+// authDBPoolStateStore 将账号池事务委托给 authdb。数据库保存 schedulable、
+// freeze 和 round-robin marker；application 不再读取或写入第二份 scheduler 状态。
+type authDBPoolStateStore struct {
+	db *authdb.DB
 }
 
-func poolExhaustedError(lastRateLimit error) error {
-	if lastRateLimit == nil {
-		return application.ErrAccountPoolExhausted
+func (s authDBPoolStateStore) Select(ctx context.Context, now time.Time, strategy configapp.AccountPoolStrategy, attempted []int64) (int64, error) {
+	account, err := s.db.SelectPooledPixiv(ctx, now.UTC().Unix(), authdb.PoolStrategy(strategy), attempted)
+	if err != nil {
+		var selectionErr *authdb.PoolSelectionError
+		if errors.As(err, &selectionErr) {
+			return 0, &pixivapp.PoolSelectionError{Kind: string(selectionErr.Kind), EarliestFrozenUntil: cloneInt64(selectionErr.EarliestFrozenUntil)}
+		}
+		return 0, err
 	}
-	return fmt.Errorf("%w: %w", application.ErrAccountPoolExhausted, lastRateLimit)
+	return account.UserID, nil
+}
+
+func (s authDBPoolStateStore) Freeze(ctx context.Context, userID int64, until, now time.Time) error {
+	_ = now
+	return s.db.FreezePooledPixiv(ctx, userID, until.UTC().Unix())
 }
 
 // newDownloadManager 是 CLI 与 MCP 唯一的生产下载器构造链，避免两处 wiring 漂移。
-func newDownloadManager(client application.DownloadClient, downloadPath, filenameTemplate string) *download.Manager {
-	return download.NewManager(client, downloadPath, filenameTemplate)
+func newDownloadManager(client downloadapp.DownloadClient, downloadPath, filenameTemplate string) *downloader.Manager {
+	return downloader.NewManager(client, downloadPath, filenameTemplate)
 }
 
 // newSDKClient 将 CLI 的显式账号、代理和请求间隔覆写交给 public SDK。账号选择与
 // refresh token rotation 由 pixivapp.Service（authdb-backed）负责。
-func newSDKClient(request application.SDKClientRequest, auth *pixivapp.Service) (application.SDKClient, error) {
+func newSDKClient(request pixivapp.SDKClientRequest, auth *pixivapp.Service) (pixivapp.ClientSet, error) {
 	if auth == nil {
-		return nil, errors.New("pixiv auth database is not available")
+		return pixivapp.ClientSet{}, errors.New("pixiv auth database is not available")
 	}
 	options := pixiv.Options{}
 	if request.RequestIntervalOverride != nil {
 		options.Pacing.MinInterval = *request.RequestIntervalOverride
 	}
-	if request.HTTPSProxyOverride != nil {
-		httpClient, err := internalpixiv.HTTPClient(*request.HTTPSProxyOverride)
+	proxyValue := request.HTTPSProxyOverride
+	if proxyValue == nil {
+		runtime, err := LoadRuntimeConfig()
 		if err != nil {
-			return nil, err
+			return pixivapp.ClientSet{}, err
+		}
+		if runtime.PixivNetwork.ProxyURL.Present {
+			value := runtime.PixivNetwork.ProxyURL.Value
+			proxyValue = &value
+		} else {
+			value := runtime.HTTPSProxy
+			proxyValue = &value
+		}
+	}
+	if proxyValue != nil {
+		httpClient, err := network.HTTPClient(*proxyValue)
+		if err != nil {
+			return pixivapp.ClientSet{}, err
 		}
 		options.HTTPClient = httpClient
 	}
@@ -177,125 +152,56 @@ func newSDKClient(request application.SDKClientRequest, auth *pixivapp.Service) 
 		client, err = auth.OpenClientWith(ctx, options)
 	}
 	if err != nil {
-		return nil, err
+		return pixivapp.ClientSet{}, err
 	}
-	return application.NewPixivSDKClient(client, auth), nil
+	return pixivapp.NewPixivSDKClients(client, auth), nil
 }
 
-func LoadRuntimeConfig() (config.RuntimeConfig, error) {
-	settings, err := config.LoadSettingsState()
+func LoadRuntimeConfig() (configapp.RuntimeConfig, error) {
+	store := runtimeConfigFileStore()
+	path, err := store.Path()
 	if err != nil {
-		return config.RuntimeConfig{}, err
+		return configapp.RuntimeConfig{}, err
+	}
+	settings, err := configapp.LoadSettingsStateAtWithFileStore(path, store.Files)
+	if err != nil {
+		return configapp.RuntimeConfig{}, err
 	}
 	return settings.Runtime()
 }
 
-type ConfigFileStore struct{}
-
-func (ConfigFileStore) Path() (string, error) {
-	return config.ConfigFilePath()
+// EnsureDefaultConfigFile 将首次配置文件创建绑定到 bootstrap 注入的
+// filesystem 端口，CLI 不需要直接持有文件系统实现。
+func EnsureDefaultConfigFile() error {
+	return runtimeConfigFileStore().EnsureDefaultConfigFile()
 }
 
-func (ConfigFileStore) Get(alias string) (config.SettingValue, error) {
-	settings, err := config.LoadSettingsState()
-	if err != nil {
-		return config.SettingValue{}, err
-	}
-	value, err := settings.Effective(alias)
-	if err != nil {
-		return config.SettingValue{}, fmt.Errorf("%w. valid keys: %s", err, strings.Join(config.ValidSettingAliases(), ", "))
-	}
-	return value, nil
-}
-
-func (ConfigFileStore) Set(alias, raw string) (application.ConfigMutationResult, error) {
-	spec, ok := config.SettingSpecByAlias(alias)
-	if !ok {
-		return application.ConfigMutationResult{}, fmt.Errorf("unknown config key %q. valid keys: %s", alias, strings.Join(config.ValidSettingAliases(), ", "))
-	}
-	_, value, err := config.ParseSettingInput(alias, raw)
-	if err != nil {
-		return application.ConfigMutationResult{}, err
-	}
-	path, err := config.ConfigFilePath()
-	if err != nil {
-		return application.ConfigMutationResult{}, err
-	}
-	if err := config.SetConfigValue(path, alias, value); err != nil {
-		return application.ConfigMutationResult{}, err
-	}
-	envRaw, hasOverride := config.EnvValue(spec)
-	return application.ConfigMutationResult{Alias: alias, EnvOverride: envRaw, HasOverride: hasOverride}, nil
-}
-
-func (ConfigFileStore) Unset(alias string) (application.ConfigMutationResult, error) {
-	spec, ok := config.SettingSpecByAlias(alias)
-	if !ok {
-		return application.ConfigMutationResult{}, fmt.Errorf("unknown config key %q. valid keys: %s", alias, strings.Join(config.ValidSettingAliases(), ", "))
-	}
-	path, err := config.ConfigFilePath()
-	if err != nil {
-		return application.ConfigMutationResult{}, err
-	}
-	if _, err := config.UnsetConfigValue(path, alias); err != nil {
-		return application.ConfigMutationResult{}, err
-	}
-	envRaw, hasOverride := config.EnvValue(spec)
-	return application.ConfigMutationResult{Alias: alias, EnvOverride: envRaw, HasOverride: hasOverride}, nil
-}
-
-type MCPRuntime struct {
-	Config     config.RuntimeConfig
-	Manager    *download.Manager
-	SDK        application.SDKService
-	SDKRequest application.SDKClientRequest
-	AuthPath   string
-}
-
-func NewMCPRuntime(_ context.Context, proxyOverride *string, requestIntervalOverride *time.Duration) (MCPRuntime, error) {
-	cfg, err := LoadRuntimeConfig()
-	if err != nil {
-		return MCPRuntime{}, err
-	}
-	applyRuntimeProxyOverride(&cfg, proxyOverride)
-	db, appDataDir := openAuthDB()
-	pixivService := newPixivService(db, appDataDir)
-	request := application.SDKClientRequest{
-		HTTPSProxyOverride: proxyOverride, RequestIntervalOverride: requestIntervalOverride,
-	}
-	client, err := newSDKClient(request, pixivService)
-	if err != nil {
-		return MCPRuntime{}, err
-	}
-	manager := newDownloadManager(client, cfg.DownloadPath, cfg.FilenameTemplate)
-	sdkService := application.SDKService{
-		NewClient: func(req application.SDKClientRequest) (application.SDKClient, error) {
-			return newSDKClient(req, pixivService)
-		},
-		LoadRuntime: LoadRuntimeConfig,
-		RunPooled:   newPooledSDKOperation(db, pixivService),
-	}
-	return MCPRuntime{
-		Config:     cfg,
-		Manager:    manager,
-		SDK:        sdkService,
-		SDKRequest: request,
-		AuthPath:   "",
-	}, nil
-}
-
-func applyRuntimeProxyOverride(cfg *config.RuntimeConfig, override *string) {
-	if override != nil {
-		cfg.HTTPSProxy = *override
-	}
-}
-
-func RunMCP(ctx context.Context, proxyOverride *string, requestIntervalOverride *time.Duration) error {
-	runtime, err := NewMCPRuntime(ctx, proxyOverride, requestIntervalOverride)
+// RunMCP 创建单一 runtime，并在 stdio server 返回后显式关闭其资源。
+func RunMCP(ctx context.Context, proxyOverride *string, requestIntervalOverride *time.Duration) (returnErr error) {
+	runtime, err := NewRuntime(RuntimeOptions{
+		ProxyOverride: proxyOverride, RequestIntervalOverride: requestIntervalOverride,
+	})
 	if err != nil {
 		return err
 	}
+	defer func() {
+		if closeErr := runtime.Close(); closeErr != nil {
+			returnErr = errors.Join(returnErr, closeErr)
+		}
+	}()
+	cfg, err := LoadRuntimeConfig()
+	if err != nil {
+		return err
+	}
+	request := pixivapp.SDKClientRequest{
+		HTTPSProxyOverride: proxyOverride, RequestIntervalOverride: requestIntervalOverride,
+	}
+	client, err := runtime.SDK.Client(request)
+	if err != nil {
+		return err
+	}
+	manager := newDownloadManager(client, cfg.DownloadPath, cfg.FilenameTemplate)
 	// 普通 MCP download 使用 SDK 的 src 高层 API；Manager 仅保留给随机推荐下载。
-	server := mcpserver.NewWithSDK(nil, runtime.Manager, runtime.SDK, runtime.SDKRequest)
+	server := mcpserver.NewWithSDK(nil, manager, runtime.SDK, request)
 	return server.Run(ctx, &mcp.StdioTransport{})
 }

@@ -61,7 +61,7 @@ User, public-bookmarks, and illustration-series URLs expand authenticated illust
 
 `search_illust.tool` uses the versioned drawing-tool catalog from the [CLI reference](cli-reference.md#drawing-tool-catalog). It requires an exact value; a unique one-edit spelling correction is offered in the validation error, while ambiguous prefixes are rejected.
 
-Authenticated requests use the App API. With `web_fallback_enabled=true` and no refresh token, supported read operations use the Web API. Anonymous illustration and ranking lists enrich every record through its detail endpoint before returning; any enrichment error fails the complete list call.
+Every read requires a valid access token against the Pixiv App API. There is no anonymous or Web fallback; the removed `web_fallback_enabled` setting returns `removed_setting` if still present.
 
 ## Writes
 
@@ -73,3 +73,32 @@ Authenticated requests use the App API. With `web_fallback_enabled=true` and no 
 | `unfollow_user` | `user_id` | `{success, action, user_id}` |
 
 Write failures set `success=false` and `isError=true`.
+
+## FANBOX MCP server
+
+Start the independent read-only server with `pixiv fanbox mcp`. It uses the
+selected local FANBOX account and never exposes session values as tool input or
+output. The registered tools are:
+
+| Tool | Purpose |
+| --- | --- |
+| `fanbox_current_user` | Validate the current FANBOX session and return a safe identity summary. |
+| `fanbox_creator`, `fanbox_creators` | Read one creator profile or supporting/following creators. |
+| `fanbox_creator_tags` | Read creator tags. |
+| `fanbox_creator_posts`, `fanbox_tagged_posts` | Read creator or tagged posts with SDK cursors. |
+| `fanbox_post`, `fanbox_home`, `fanbox_supporting` | Read one post or a feed. |
+| `fanbox_resolve_url` | Resolve a supported FANBOX page URL into a typed reference. |
+| `fanbox_open_resource` | Validate and open a FANBOX media reference, returning status and headers without bytes. |
+
+Pixiv tools and FANBOX tools are registered by separate servers and do not
+cross product credentials, proxy settings, or routes. A FANBOX native
+`--proxy`/`--no-proxy` override affects only native FANBOX requests; the
+optional FlareSolverr service and its upstream proxy remain independent.
+
+## Debug and stdout
+
+`pixiv --debug mcp` and `pixiv --debug fanbox mcp` write typed, safe lifecycle,
+network, challenge, solver, download, and failure diagnostics to stderr. The
+MCP stdout stream remains pure JSON-RPC, tool schemas and structured failures
+are unchanged, and each server uses its own local request number. No raw URL
+query, Cookie, token, proxy userinfo, or FlareSolverr clearance is emitted.

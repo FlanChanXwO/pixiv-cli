@@ -88,7 +88,7 @@ func TestParseNovelContentUnknownBlockPreserved(t *testing.T) {
 
 func TestParseNovelContentEmptyFails(t *testing.T) {
 	client, _ := New("token")
-	if _, err := client.parseNovelContent(1, []byte("<html></html>")); sdk.CodeOf(err) != sdk.CodeMalformedUpstreamResponse {
-		t.Fatalf("expected CodeMalformedUpstreamResponse, got %v", err)
+	if _, err := client.parseNovelContent(1, []byte("<html></html>")); sdk.ReasonOf(err) != sdk.MalformedUpstreamResponse {
+		t.Fatalf("expected MalformedUpstreamResponse, got %v", err)
 	}
 }

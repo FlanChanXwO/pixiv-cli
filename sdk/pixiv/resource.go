@@ -9,9 +9,9 @@ import (
 	"net/url"
 	"strings"
 
+	"github.com/FlanChanXwO/pixiv-cli/internal/filesystem"
 	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/protocol"
 	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/resource"
-	"github.com/FlanChanXwO/pixiv-cli/internal/utils/atomicfile"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 )
 
@@ -31,8 +31,8 @@ type resourceRefPayload struct {
 var defaultResourceHosts = []string{"i.pximg.net", "s.pximg.net", "i-f.pximg.net"}
 
 // newResource builds a validated sdk.Resource from an upstream media URL. It
-// returns CodeResourceForbidden when the URL does not satisfy the resource
-// policy and CodeInvalidArgument when the identity payload is invalid.
+// returns ResourceForbidden when the URL does not satisfy the resource
+// policy and InvalidArgument when the identity payload is invalid.
 func (c *Client) newResource(kind string, id int64, page int, rawURL string) (sdk.Resource, error) {
 	if rawURL == "" {
 		return sdk.Resource{}, nil
@@ -42,11 +42,11 @@ func (c *Client) newResource(kind string, id int64, page int, rawURL string) (sd
 	}
 	payload, err := json.Marshal(resourceRefPayload{Kind: kind, ID: id, Page: page, URL: rawURL})
 	if err != nil {
-		return sdk.Resource{}, newError("resource", sdk.CodeUpstreamError, "cannot encode resource reference")
+		return sdk.Resource{}, newError("resource", sdk.UpstreamError, "cannot encode resource reference")
 	}
 	ref, err := sdk.NewResourceRef(product, payload)
 	if err != nil {
-		return sdk.Resource{}, newError("resource", sdk.CodeUpstreamError, "cannot encode resource reference")
+		return sdk.Resource{}, newError("resource", sdk.UpstreamError, "cannot encode resource reference")
 	}
 	return sdk.Resource{
 		Ref:            ref,
@@ -58,17 +58,17 @@ func (c *Client) newResource(kind string, id int64, page int, rawURL string) (sd
 func (c *Client) validateResourceURL(rawURL string) error {
 	parsed, err := url.Parse(rawURL)
 	if err != nil {
-		return newError("resource", sdk.CodeResourceForbidden, "invalid resource URL")
+		return newError("resource", sdk.ResourceForbidden, "invalid resource URL")
 	}
 	if parsed.Scheme != "https" || parsed.User != nil {
-		return newError("resource", sdk.CodeResourceForbidden, "resource URL must be https without userinfo")
+		return newError("resource", sdk.ResourceForbidden, "resource URL must be https without userinfo")
 	}
 	if parsed.Path == "" || parsed.Path == "/" {
-		return newError("resource", sdk.CodeResourceForbidden, "resource URL has no path")
+		return newError("resource", sdk.ResourceForbidden, "resource URL has no path")
 	}
 	host := strings.ToLower(parsed.Hostname())
 	if !allowedResourceHost(host, c.opts.ResourcePolicy.AllowedHosts) {
-		return newError("resource", sdk.CodeResourceForbidden, "resource host is not allowed")
+		return newError("resource", sdk.ResourceForbidden, "resource host is not allowed")
 	}
 	return nil
 }
@@ -97,10 +97,10 @@ func (c *Client) OpenResource(ctx context.Context, request sdk.OpenResourceReque
 	}
 	rp, err := c.decodeResourceRef(request.Ref)
 	if err != nil {
-		return nil, newError("OpenResource", sdk.CodeInvalidArgument, "invalid resource reference")
+		return nil, newError("OpenResource", sdk.InvalidArgument, "invalid resource reference")
 	}
 	if err := c.validateResourceURL(rp.URL); err != nil {
-		return nil, newError("OpenResource", sdk.CodeResourceForbidden, "resource URL is not allowed")
+		return nil, newError("OpenResource", sdk.ResourceForbidden, "resource URL is not allowed")
 	}
 	header := http.Header{}
 	header.Set("Referer", protocol.AppReferer)
@@ -137,14 +137,14 @@ func (c *Client) OpenResource(ctx context.Context, request sdk.OpenResourceReque
 // archives, sidecars, or ugoira batches; use the downloader for those.
 func (c *Client) SaveResource(ctx context.Context, ref sdk.ResourceRef, options sdk.SaveOptions) (sdk.SavedResource, error) {
 	if strings.TrimSpace(options.Path) == "" {
-		return sdk.SavedResource{}, newError("SaveResource", sdk.CodeInvalidArgument, "destination path is required")
+		return sdk.SavedResource{}, newError("SaveResource", sdk.InvalidArgument, "destination path is required")
 	}
 	rp, err := c.decodeResourceRef(ref)
 	if err != nil {
-		return sdk.SavedResource{}, newError("SaveResource", sdk.CodeInvalidArgument, "invalid resource reference")
+		return sdk.SavedResource{}, newError("SaveResource", sdk.InvalidArgument, "invalid resource reference")
 	}
 	if err := c.validateResourceURL(rp.URL); err != nil {
-		return sdk.SavedResource{}, newError("SaveResource", sdk.CodeResourceForbidden, "resource URL is not allowed")
+		return sdk.SavedResource{}, newError("SaveResource", sdk.ResourceForbidden, "resource URL is not allowed")
 	}
 	response, err := c.OpenResource(ctx, sdk.OpenResourceRequest{Ref: ref, Method: sdk.ResourceMethodGet})
 	if err != nil {
@@ -152,11 +152,11 @@ func (c *Client) SaveResource(ctx context.Context, ref sdk.ResourceRef, options 
 	}
 	defer response.Body.Close()
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		return sdk.SavedResource{}, newError("SaveResource", sdk.CodeUpstreamError, "resource returned a non-success status")
+		return sdk.SavedResource{}, newError("SaveResource", sdk.UpstreamError, "resource returned a non-success status")
 	}
-	size, err := atomicfile.Write(ctx, options.Path, &progressReader{src: response.Body, progress: options.Progress})
+	size, err := filesystem.Write(ctx, options.Path, &progressReader{src: response.Body, progress: options.Progress})
 	if err != nil {
-		return sdk.SavedResource{}, newError("SaveResource", sdk.CodeLocalStateError, "cannot write resource")
+		return sdk.SavedResource{}, newError("SaveResource", sdk.LocalStateError, "cannot write resource")
 	}
 	return sdk.SavedResource{Path: options.Path, Size: size}, nil
 }

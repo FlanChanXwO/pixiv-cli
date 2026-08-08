@@ -10,7 +10,7 @@ import (
 	"strings"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/buildinfo"
-	"github.com/FlanChanXwO/pixiv-cli/internal/download/staticlib"
+	"github.com/FlanChanXwO/pixiv-cli/internal/downloader/staticlib"
 )
 
 func recordEvidence(options recordOptions) (evidenceRecord, error) {
@@ -44,7 +44,7 @@ func recordEvidence(options recordOptions) (evidenceRecord, error) {
 		return evidenceRecord{}, err
 	}
 	sourceDigest, err := staticlib.CalculateRustSourceDigest(
-		filepath.Join(root, "internal", "download", "ugoira_rs"),
+		filepath.Join(root, "internal", "downloader", "ugoira_rs"),
 		filepath.Join(root, "third_party", "rust", "quantette-0.6.0"),
 	)
 	if err != nil {

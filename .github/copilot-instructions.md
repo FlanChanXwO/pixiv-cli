@@ -9,10 +9,10 @@
 - CLI controller: `internal/cli`
 - Application use cases: `internal/application`
 - Production wiring: `internal/bootstrap`
-- Pixiv protocol adapters: `internal/services/pixiv`
+- Pixiv protocol adapters: `internal/services/pixiv/{appapi,model,oauth,protocol,resource}`
 - MCP tool adapter: `internal/mcpserver`
-- Download manager: `internal/download`
-- Config/auth storage: `internal/config`, `internal/storage/auth`
+- Download manager: `internal/downloader`; download use case/port: `internal/application/download`
+- Config/auth storage: `internal/application/config`, `internal/persistence/authdb`; legacy `auth.json` is never auto-read
 
 ## Commands
 

@@ -1,6 +1,8 @@
 # v1.0.0 Pixiv / Pixiv FANBOX 重写设计
 
-状态：设计已确认，尚未实施。
+状态：初始整体重写已实施；2026-08-04 以后的增量设计见
+[RC 后续改动索引](rc-follow-up-index.md)，实施顺序见
+[RC follow-up 实施计划](rc-follow-up-implementation-plan.md)。
 
 ## 目标
 
@@ -34,6 +36,8 @@ v1.0.0 是公开 Pixiv Go SDK 的最后一次整体破坏性重写，同时首�
 - 所有鉴权状态进入 `~/.pixiv-cli/pixiv-cli.db`；普通配置继续使用 `config.toml`。
 - SQLite 使用单数表名：`pixiv_account`、`fanbox_account`、`schema_migration`。
 - 默认账号由 `config.toml` 管理；未设置时使用 `sort_order` 最小的已保存账号。
+- Pixiv 账号池的 `config.toml` 只保存 `enabled` 与 `strategy`；账号是否参加调度由
+  `pixiv_account.schedulable` 表达，不建立 blacklist/whitelist 或独立 membership 表。
 - Sketch 不创建空实现、占位 package、表或公开 API。
 - `codex/fanbox` 只作为协议知识和 fixture 来源，不直接 merge。
 - Pixiv 公开能力以固定版本的 PixivPy `AppPixivAPI` 做产品能力基线，但采用 Go 风格模型、分页、错误和
@@ -41,6 +45,20 @@ v1.0.0 是公开 Pixiv Go SDK 的最后一次整体破坏性重写，同时首�
 - `sdk`、`sdk/pixiv` 与 `sdk/fanbox` 公开 package 的 Go documentation 使用英文；至少覆盖 package
   comment 以及所有导出 type、function、method、const、var 和需要独立解释的导出 field。内部实现
   注释仍可按项目默认使用中文，不能把中文说明留在公开 GoDoc 中。
+- 跨产品错误分类的公开名称使用 `Reason`、`Error.Reason`、`ReasonOf` 与 `IsReason`；常量直接命名为
+  `InvalidArgument`、`ChallengeRequired` 等，不保留与错误含义无关的 `Code` 前缀。稳定 wire value
+  仍是 `invalid_argument`、`challenge_required` 等既有字符串。
+- FANBOX 当前以 native `tls-client` Firefox 148 作为 baseline，但不承诺该 profile 永久通过
+  Cloudflare。FANBOX-only UA 可显式覆盖 native header；它不改变 TLS profile，solver state 存续时由
+  solver user agent 优先。FlareSolverr 是显式配置、默认关闭的可选 challenge recovery：只有严格
+  识别的 Cloudflare challenge 才匿名求解首页并把单个 `cf_clearance`/solver user agent 交回 native
+  transport 重放；API、帖子与文件内容不经过 solver。
+- CLI network 保留全局 proxy fallback，并允许 Pixiv/FANBOX native 分别覆盖；FlareSolverr service
+  URL 与 browser upstream proxy 独立、显式且不继承。没有代理池、账号绑定或自动换出口。
+- CLI、Pixiv MCP 与 FANBOX MCP 使用单一显式 `--debug` 输出实时叙述式 stderr 诊断；默认不输出、
+  不创建日志文件、不恢复旧 logging config，也不改变 MCP stdout、SDK public API 或业务路由。
+- CLI 对所有未注册 option 使用统一的严格解析：stdout 为空、usage exit code 为 `2`，stderr 只输出
+  `error: unknown option '--name'`；不透传、忽略、猜测或自动纠正未知 option。
 - Web API 并非被判定为不可用；它仍适合浏览器同源或显式 Cookie 的局部能力。v1 删除的是不稳定、
   难以认证且会模糊错误来源的服务端 Web 后端与自动 fallback。未来只有在 App API 明确缺少必要能力时，
   才能把 Web 能力作为独立、显式鉴权、无 fallback 的 additive package 重新提案。
@@ -48,21 +66,31 @@ v1.0.0 是公开 Pixiv Go SDK 的最后一次整体破坏性重写，同时首�
 ## 分卷
 
 - [公开 SDK 契约](public-sdk.md)
+- [网络配置与服务路由](network-routing.md)
+- [FANBOX challenge 与 FlareSolverr 路由](fanbox-challenge-routing.md)
 - [PixivPy App API 能力兼容矩阵](pixivpy-parity.md)
 - [SDK 使用伪代码](sdk-usage-pseudocode.md)
 - [鉴权、浏览器导入与 SQLite](auth-browser-storage.md)
+- [Pixiv 账号调度](account-pool-scheduling.md)
+- [authdb 设计审查（2026-08-04）](authdb-design-review-2026-08-04.md)
 - [CLI、MCP、下载与内部边界](cli-mcp-download.md)
+- [显式 debug 诊断](debug-diagnostics.md)
+- [严格 unknown-option 解析](strict-cli-argument-parsing.md)
+- [RC 后续改动索引](rc-follow-up-index.md)
+- [RC follow-up 实施计划（已批准并实施，RC-11 自动门禁已完成，Pixiv/solver evidence 已通过）](rc-follow-up-implementation-plan.md)
 - [测试、迁移与发布门禁](verification-release.md)
 - [最终验证操作手册](release-prep-runbook.md)
-- [实施顺序与检查点](implementation-plan.md)
+- [初始实施顺序与检查点（历史、已执行）](implementation-plan.md)
 - [环境就绪审计](environment-readiness.md)
 - [Pixiv App API only 与 Web API 删除](web-api-removal.md)
 - [公开 SDK package 布局与版本管理](sdk-package-layout-versioning.md)
 
 ## 非目标
 
-- SDK、CLI 与 MCP 不集成或依赖 FlareSolverr，也不自动绕过 challenge。release-prep 的显式真实
-  E2E 可以使用本机 Docker 启动隔离的 FlareSolverr 作为测试辅助，但其结果不得冒充 SDK 直连成功。
+- 不把 FlareSolverr 变成全量代理、默认依赖、自动启动的 sidecar 或 Cookie pool；未配置时不调用，
+  配置后也只有 challenge recovery 会访问它。生产 recovery 实现必须在 v1.0.0 前取得一次本机 protocol
+  acceptance，但 solver 服务可用性和 genuine challenge 成功不是普通 CI 或后续 RC 的重复条件。
+- 不增加代理池、代理文件导入、账号代理绑定、自动换 IP、Pixiv UA override 或 UA 随机轮换。
 - 不把第三方 embed 递归交给其他下载器。
 - 不提供 FANBOX Cookie export、MCP 认证 tool 或任意 Cookie header 输入。
 - FANBOX comments 与 plan detail 不属于 v1 公共能力。

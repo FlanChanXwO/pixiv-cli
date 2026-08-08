@@ -2,11 +2,13 @@ package pixiv
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/FlanChanXwO/pixiv-cli/internal/diagnostics"
 	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/appapi"
 	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/oauth"
 	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/resource"
@@ -47,7 +49,7 @@ type Options struct {
 // Client is a Pixiv App API client holding a single access token. It never
 // refreshes on its own: construct with Open after rotating credentials, or with
 // New for an explicitly provided token. Content operations fail with
-// CodeUnauthorized when no token is present and never fall back to an anonymous
+// Unauthorized when no token is present and never fall back to an anonymous
 // or Web path.
 type Client struct {
 	app       *appapi.Client
@@ -65,7 +67,7 @@ type Client struct {
 // Open rotates refreshToken once through OAuth and returns a Client holding
 // only the resulting access token, together with the rotated Credentials that
 // the caller must persist before issuing content requests. When the access
-// token later expires, operations return CodeCredentialsExpired and the caller
+// token later expires, operations return CredentialsExpired and the caller
 // must Open again.
 func Open(ctx context.Context, refreshToken string) (*Client, Credentials, error) {
 	return OpenWith(ctx, refreshToken, Options{})
@@ -75,7 +77,7 @@ func Open(ctx context.Context, refreshToken string) (*Client, Credentials, error
 func OpenWith(ctx context.Context, refreshToken string, options Options) (*Client, Credentials, error) {
 	refreshToken = strings.TrimSpace(refreshToken)
 	if refreshToken == "" {
-		return nil, Credentials{}, newError("Open", sdk.CodeCredentialsExpired, "refresh token is required")
+		return nil, Credentials{}, newError("Open", sdk.CredentialsExpired, "refresh token is required")
 	}
 	httpClient, selfHTTP := buildHTTPClient(options)
 	oauthClient := oauth.New(refreshToken, oauth.WithHTTPClient(httpClient))
@@ -84,7 +86,10 @@ func OpenWith(ctx context.Context, refreshToken string, options Options) (*Clien
 	}
 	token := oauthClient.AccessToken()
 	if token == "" {
-		return nil, Credentials{}, newError("Open", sdk.CodeUpstreamError, "oauth response did not include an access token")
+		return nil, Credentials{}, newError("Open", sdk.UpstreamError, "oauth response did not include an access token")
+	}
+	if oauthClient.UserID() <= 0 {
+		return nil, Credentials{}, newError("Open", sdk.MalformedUpstreamResponse, "oauth response did not include account identity")
 	}
 	credentials := Credentials{
 		UserID:       oauthClient.UserID(),
@@ -109,7 +114,7 @@ func New(accessToken string) (*Client, error) {
 func NewWith(accessToken string, options Options) (*Client, error) {
 	accessToken = strings.TrimSpace(accessToken)
 	if accessToken == "" {
-		return nil, newError("New", sdk.CodeInvalidArgument, "access token is required")
+		return nil, newError("New", sdk.InvalidArgument, "access token is required")
 	}
 	httpClient, selfHTTP := buildHTTPClient(options)
 	return newClient(httpClient, selfHTTP, accessToken, options, 0), nil
@@ -165,7 +170,7 @@ func buildHTTPClient(options Options) (*http.Client, bool) {
 		if options.Pacing.MinInterval > 0 {
 			c.Transport = &pacingRoundTripper{inner: c.Transport, interval: options.Pacing.MinInterval}
 		}
-		return c, true
+		return withDiagnosticTransport(c), true
 	}
 	base := options.HTTPClient
 	if options.Pacing.MinInterval <= 0 {
@@ -181,7 +186,85 @@ func buildHTTPClient(options Options) (*http.Client, bool) {
 		Timeout:       base.Timeout,
 		CheckRedirect: base.CheckRedirect,
 	}
-	return derived, false
+	return withDiagnosticTransport(derived), false
+}
+
+func withDiagnosticTransport(client *http.Client) *http.Client {
+	if client == nil {
+		return nil
+	}
+	derived := *client
+	transport := client.Transport
+	if transport == nil {
+		transport = http.DefaultTransport
+	}
+	derived.Transport = &diagnosticRoundTripper{inner: transport}
+	return &derived
+}
+
+// diagnosticRoundTripper observes only a CLI/MCP diagnostic scope carried by
+// request.Context. Public SDK callers have no scope and therefore remain
+// completely silent; query strings, headers other than the safe User-Agent,
+// and transport errors are never placed in an event.
+type diagnosticRoundTripper struct {
+	inner http.RoundTripper
+}
+
+func (r *diagnosticRoundTripper) RoundTrip(request *http.Request) (*http.Response, error) {
+	if r == nil || r.inner == nil {
+		return nil, errors.New("Pixiv HTTP transport is not configured")
+	}
+	operation := "retrieving"
+	if request.Method != http.MethodGet && request.Method != http.MethodHead {
+		operation = "sending"
+	}
+	route := "App API"
+	if request.URL != nil && (request.URL.Hostname() == "oauth.secure.pixiv.net" || strings.Contains(request.URL.Path, "/auth/")) {
+		route = "OAuth transport"
+	} else if request.URL != nil && strings.HasSuffix(request.URL.Hostname(), "pximg.net") {
+		route = "media transport"
+	}
+	resourcePath := "/"
+	if request.URL != nil && request.URL.EscapedPath() != "" {
+		resourcePath = request.URL.EscapedPath()
+	}
+	var agent string
+	if request.Header != nil {
+		agent = request.Header.Get("User-Agent")
+	}
+	response, err := r.inner.RoundTrip(request)
+	if err != nil {
+		diagnostics.Emit(request.Context(), diagnostics.Event{
+			Module:    diagnostics.ModulePixivNetwork,
+			Kind:      diagnostics.EventFailed,
+			Operation: "network request",
+			Route:     route,
+		})
+		return nil, err
+	}
+	status := 0
+	if response != nil {
+		status = response.StatusCode
+	}
+	diagnostics.Emit(request.Context(), diagnostics.Event{
+		Module:    diagnostics.ModulePixivNetwork,
+		Kind:      diagnostics.EventNetworkRequest,
+		Operation: operation,
+		Resource:  resourcePath,
+		Route:     route,
+		UserAgent: agent,
+		Status:    status,
+	})
+	return response, nil
+}
+
+func (r *diagnosticRoundTripper) CloseIdleConnections() {
+	if r == nil {
+		return
+	}
+	if closer, ok := r.inner.(interface{ CloseIdleConnections() }); ok {
+		closer.CloseIdleConnections()
+	}
 }
 
 type pacingRoundTripper struct {

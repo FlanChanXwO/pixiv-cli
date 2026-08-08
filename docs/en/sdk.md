@@ -27,8 +27,32 @@ client, err := pixiv.New(accessToken) // static token, no network I/O
 ```
 
 `Open` returns a `Client` holding only the access token; it never refreshes on
-its own. When the token expires, operations return `CodeCredentialsExpired`.
-There is no anonymous or Web fallback.
+its own. When the token expires, operations return `CredentialsExpired`.
+The OAuth response must contain a positive account user ID; otherwise `Open`
+returns `MalformedUpstreamResponse` without a client or credentials. There is
+no anonymous or Web fallback.
+
+### Programmatic browser login
+
+`BeginLogin` creates a self-contained, one-shot PKCE session. It does not open a
+browser or start a loopback listener; the caller opens `AuthorizationURL()` and
+delivers the resulting callback or bare code to `Complete`.
+
+```go
+session, err := pixiv.BeginLogin(pixiv.LoginOptions{HTTPClient: httpClient})
+if err != nil { /* handle error */ }
+if !session.AcceptsCallbackURL(callbackURL) {
+    // Reject callbacks before consuming the one-shot session.
+}
+credentials, err := session.Complete(ctx, callbackURL)
+```
+
+`AcceptsCallbackURL` is non-consuming and performs no network I/O. Official
+HTTPS callbacks require the session `state`; the supported `pixiv://account/login`
+callback may omit `state`, but a supplied value must match. The exact-origin
+helpers `IsOfficialOAuthCallbackURL` and `IsOfficialOAuthStartURL` validate
+browser input without contacting Pixiv. The session never exposes its verifier,
+state, authorization code, or callback URL through formatting.
 
 FANBOX is authenticated with an explicit `FANBOXSESSID` value:
 
@@ -37,6 +61,25 @@ client, err := fanbox.Open(fanbox.SessionCredentials{FANBOXSESSID: session})
 ```
 
 Pixiv refresh tokens and FANBOX sessions are independent and never convert.
+
+FANBOX connection options are explicit and optional:
+
+```go
+client, err := fanbox.OpenWith(credentials, fanbox.Options{
+    ProxyURL:  "https://proxy.example:8443", // native HTTP(S) CONNECT only
+    UserAgent: "my-native-agent/1.0",          // native header only
+    FlareSolverr: &fanbox.FlareSolverrOptions{
+        URL:      "http://127.0.0.1:8191",
+        ProxyURL: "socks5://solver-upstream.example:1080",
+    },
+})
+```
+
+The default `UserAgent` is the built-in Firefox 148 baseline; a custom value
+does not change the TLS profile or guarantee Cloudflare access. FlareSolverr
+is disabled when the option is nil and is consulted only after a strict native
+Cloudflare challenge. Its service URL and upstream proxy are independent from
+the native proxy. The public constructor performs no network I/O.
 
 ## Pagination
 
@@ -53,11 +96,11 @@ for {
 ```
 
 Cursors are bound to the product, operation, binding version, and query digest;
-reusing one with a different query returns `CodeInvalidCursor`.
+reusing one with a different query returns `InvalidCursor`.
 
 ## Errors
 
-All failures are `*sdk.Error` with a stable `Code`:
+All failures are `*sdk.Error` with a stable `Reason`:
 
 ```text
 invalid_argument, invalid_cursor, unauthorized, credentials_expired, forbidden,
@@ -77,7 +120,10 @@ First-party media is exposed through `sdk.Resource` with two parallel paths:
 - `Resource.URL` + `Resource.RequestHeaders` — stream directly or proxy without
   buffering to disk.
 - `Resource.Ref` — hand back to `OpenResource`/`SaveResource` for SDK-validated
-  reads (scheme/host/path revalidation, cookie-free, redirect-safe).
+  reads (scheme/host/path revalidation and redirect-safe handling). A
+  `Resource` never stores a cookie; a bound FANBOX client may use its session
+  only for the authenticated FANBOX API and `downloads.fanbox.cc` request
+  policy, never for Pixiv/CDN or third-party hosts.
 
 ```go
 page, _ := client.ArtworkPages(ctx, pixiv.ArtworkPagesRequest{ArtworkID: id})
@@ -97,7 +143,10 @@ canonical form.
 ## FANBOX
 
 `sdk/fanbox` provides creator profiles, posts, tags, home and supporting feeds,
-URL resolution, and the shared resource contract. Post bodies are structured
+URL resolution, and the shared resource contract. The verified native routes
+use the `api.fanbox.cc` root (`post.info`, `post.listHome`,
+`post.listSupporting`, `post.listTagged`, and `tag.getFeatured`); creator
+pagination follows the server-provided `pageUrls`. Post bodies are structured
 blocks; third-party embeds keep only their canonical link. Restricted posts
 carry a summary with a nil body.
 

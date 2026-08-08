@@ -61,7 +61,7 @@ SDK cursor 保持在服务端内部。列表结果提供 `pagination.page`、`li
 
 `search_illust.tool` 使用 [CLI 参考](cli-reference.md#drawing-tool-catalog)中的版本化绘图工具目录，必须精确匹配。唯一的单编辑拼写修正会在参数错误中给出建议；含混前缀会直接报错。
 
-认证态请求走 App API。没有 refresh token 且 `web_fallback_enabled=true` 时，受支持读取操作走 Web API。匿名插画和排行榜列表会在返回前逐项通过详情接口补全；任一补全失败都会使整个列表调用失败。
+所有读取都要求有效的 access token，并走 Pixiv App API。不存在匿名或 Web fallback；已删除的 `web_fallback_enabled` 配置若仍存在会返回 `removed_setting`。
 
 ## 写操作
 
@@ -73,3 +73,27 @@ SDK cursor 保持在服务端内部。列表结果提供 `pagination.page`、`li
 | `unfollow_user` | `user_id` | `{success, action, user_id}` |
 
 写操作失败时 `success=false` 且 MCP result 为 `isError=true`。
+
+## FANBOX MCP server
+
+使用 `pixiv fanbox mcp` 启动独立的只读 server。它使用选定的本地 FANBOX 账号，session 值不会进入 tool
+输入或输出。注册的 tool 为：
+
+| Tool | 作用 |
+| --- | --- |
+| `fanbox_current_user` | 验证当前 FANBOX session 并返回安全 identity 摘要。 |
+| `fanbox_creator`、`fanbox_creators` | 读取一个 creator profile 或 supporting/following creator。 |
+| `fanbox_creator_tags` | 读取 creator tag。 |
+| `fanbox_creator_posts`、`fanbox_tagged_posts` | 使用 SDK cursor 读取 creator/tag 帖子。 |
+| `fanbox_post`、`fanbox_home`、`fanbox_supporting` | 读取单个帖子或 feed。 |
+| `fanbox_resolve_url` | 将支持的 FANBOX 页面 URL 解析为 typed reference。 |
+| `fanbox_open_resource` | 校验并打开 FANBOX media reference，只返回 status/header，不返回 bytes。 |
+
+Pixiv 与 FANBOX 使用分离的 server，不交叉 credential、proxy 或 route。FANBOX native `--proxy`/`--no-proxy`
+只影响 native FANBOX 请求；可选的 FlareSolverr service 与其 upstream proxy 保持独立。
+
+## Debug 与 stdout
+
+`pixiv --debug mcp` 与 `pixiv --debug fanbox mcp` 只向 stderr 写 typed、安全的生命周期、网络、challenge、
+solver、下载与失败诊断。MCP stdout 始终是纯 JSON-RPC，tool schema 和 structured failure 不变；两个 server
+分别维护本地 request number。不会输出 raw URL query、Cookie、token、proxy userinfo 或 FlareSolverr clearance。

@@ -7,7 +7,7 @@ import (
 	"os"
 	"path/filepath"
 
-	fileutil "github.com/FlanChanXwO/pixiv-cli/internal/utils/files"
+	fileutil "github.com/FlanChanXwO/pixiv-cli/internal/filesystem"
 )
 
 type jsonObjectFile struct {

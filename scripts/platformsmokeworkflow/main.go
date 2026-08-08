@@ -37,7 +37,7 @@ func Validate(path string) error {
 		"go test ./scripts/installers -count=1",
 		"PIXIV_E2E_BINARY=",
 		"PIXIV_E2E_EXPECTED_VERSION=",
-		"go test ./e2e -run '^TestPixivBinary' -count=1",
+		"go test ./e2e -run '^TestPixivBinaryPackagedSmoke$' -count=1",
 	} {
 		if !strings.Contains(workflow, required) {
 			return fmt.Errorf("platform smoke workflow missing %q", required)
@@ -46,12 +46,7 @@ func Validate(path string) error {
 	if strings.Contains(workflow, "name: Packaged binary smoke ${{") {
 		return fmt.Errorf("platform smoke matrix job name must not expose GitHub expression placeholders")
 	}
-	for _, forbidden := range []string{
-		"secrets.",
-		"environment:",
-		"PIXIV_E2E_REAL_API=1",
-		"PIXIV_E2E_WEB_API=1",
-	} {
+	for _, forbidden := range []string{"secrets.", "environment:", "PIXIV_SDK_E2E=1", "FANBOX_SDK_E2E=1"} {
 		if strings.Contains(workflow, forbidden) {
 			return fmt.Errorf("platform smoke workflow must not contain %q", forbidden)
 		}
@@ -87,13 +82,13 @@ func ValidateQuality(path string) error {
 		"windows_login_handler:",
 		"name: Windows login handler contracts",
 		"CC: clang -fuse-ld=lld",
-		"go test ./internal/cli ./internal/cli/loginhelper -count=1",
+		"go test ./internal/cli ./internal/cli/auth/loginhelper -count=1",
 	} {
 		if !strings.Contains(workflow, required) {
 			return fmt.Errorf("quality workflow missing %q", required)
 		}
 	}
-	for _, forbidden := range []string{"secrets.", "environment:", "PIXIV_E2E_REAL_API=1", "PIXIV_E2E_WEB_API=1"} {
+	for _, forbidden := range []string{"secrets.", "environment:", "PIXIV_SDK_E2E=1", "FANBOX_SDK_E2E=1"} {
 		if strings.Contains(workflow, forbidden) {
 			return fmt.Errorf("quality workflow must not contain %q", forbidden)
 		}
@@ -110,7 +105,7 @@ func readWorkflow(path string) (string, error) {
 }
 
 func validatePinnedActions(workflow string) error {
-	for _, line := range strings.Split(workflow, "\n") {
+	for line := range strings.SplitSeq(workflow, "\n") {
 		trimmed := strings.TrimSpace(line)
 		if !strings.HasPrefix(trimmed, "uses: actions/") {
 			continue

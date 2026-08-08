@@ -12,7 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/download/staticlib"
+	"github.com/FlanChanXwO/pixiv-cli/internal/downloader/staticlib"
 )
 
 // consolidateEvidence 只接受六个完整且同源的 runner artifact 目录；它先在全新 sibling

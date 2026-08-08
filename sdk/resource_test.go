@@ -25,11 +25,11 @@ func TestOpenResourceRequestValidate(t *testing.T) {
 	if err := (sdk.OpenResourceRequest{Ref: ref, Method: sdk.ResourceMethodHead}).Validate(); err != nil {
 		t.Fatalf("HEAD validate: %v", err)
 	}
-	if err := (sdk.OpenResourceRequest{Ref: ref, Method: "POST"}).Validate(); sdk.CodeOf(err) != sdk.CodeInvalidArgument {
-		t.Fatalf("POST: expected CodeInvalidArgument, got %v", err)
+	if err := (sdk.OpenResourceRequest{Ref: ref, Method: "POST"}).Validate(); sdk.ReasonOf(err) != sdk.InvalidArgument {
+		t.Fatalf("POST: expected InvalidArgument, got %v", err)
 	}
-	if err := (sdk.OpenResourceRequest{Ref: ref, Range: "bytes=0-\x01"}).Validate(); sdk.CodeOf(err) != sdk.CodeInvalidArgument {
-		t.Fatalf("control char in range: expected CodeInvalidArgument, got %v", err)
+	if err := (sdk.OpenResourceRequest{Ref: ref, Range: "bytes=0-\x01"}).Validate(); sdk.ReasonOf(err) != sdk.InvalidArgument {
+		t.Fatalf("control char in range: expected InvalidArgument, got %v", err)
 	}
 	if err := (sdk.OpenResourceRequest{Ref: ref, IfNoneMatch: "good-etag"}).Validate(); err != nil {
 		t.Fatalf("valid etag validate: %v", err)

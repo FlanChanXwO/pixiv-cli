@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/download/staticlib"
+	"github.com/FlanChanXwO/pixiv-cli/internal/downloader/staticlib"
 )
 
 func TestConsolidateEvidencePublishesOnlyCompleteSameSourceStaticlibs(t *testing.T) {

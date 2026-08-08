@@ -13,17 +13,17 @@ The project needs local account selection to stay scriptable while matching Pixi
 ## Decision
 
 - Store local auth accounts by Pixiv `user_id`.
-- Use `default_user_id` as the default account pointer in `auth.json`.
+- Use `default_user_id` as the default account pointer in `[pixiv.auth]` within `config.toml`; durable credentials live in `pixiv-cli.db`.
 - Keep optional `username` only as display metadata.
 - Remove name prompts from account import and `pixiv auth login`; direct token import is now `pixiv auth import [REFRESH_TOKEN]`.
 - Use UID selectors for `pixiv auth use/remove/check`.
 - Add canonical `--uid`; keep `--profile` only as a deprecated alias.
-- Treat old `default_account/accounts[].name` auth files as incompatible and require users to recreate auth state with `pixiv auth import` or `pixiv auth login`.
+- Treat old `auth.json` files as outside the new CLI's automatic startup path. Users must explicitly export a bundle with the old CLI and import it with `pixiv auth import --file`, or recreate auth state with `pixiv auth login`.
 
 ## Consequences
 
 - CLI auth commands require fewer manual inputs and cannot drift from Pixiv identity.
 - Existing scripts that pass custom auth names must switch to UID.
-- Existing `auth.json` files using custom names must be recreated.
+- Existing `auth.json` files are not read automatically; users must explicitly transfer a bundle or recreate auth state.
 - Username changes do not affect account selection because username is not the key.
 - Application and storage layers no longer depend on CLI-specific profile terminology.

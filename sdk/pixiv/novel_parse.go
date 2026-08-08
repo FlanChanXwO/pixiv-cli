@@ -9,18 +9,18 @@ import (
 
 // parseNovelContent converts the official novel webview HTML into the
 // structured block model. It never exposes raw HTML: unparseable content fails
-// with CodeMalformedUpstreamResponse rather than returning a partial body.
+// with MalformedUpstreamResponse rather than returning a partial body.
 func (c *Client) parseNovelContent(novelID int64, raw []byte) (NovelContent, error) {
 	doc, err := html.Parse(strings.NewReader(string(raw)))
 	if err != nil {
-		return NovelContent{}, newError("NovelContent", sdk.CodeMalformedUpstreamResponse, "novel webview HTML is unparseable")
+		return NovelContent{}, newError("NovelContent", sdk.MalformedUpstreamResponse, "novel webview HTML is unparseable")
 	}
 	title, caption, blocks, err := c.collectNovelBody(doc, novelID)
 	if err != nil {
 		return NovelContent{}, err
 	}
 	if len(blocks) == 0 {
-		return NovelContent{}, newError("NovelContent", sdk.CodeMalformedUpstreamResponse, "novel webview contains no body blocks")
+		return NovelContent{}, newError("NovelContent", sdk.MalformedUpstreamResponse, "novel webview contains no body blocks")
 	}
 	return NovelContent{NovelID: novelID, Title: title, Caption: caption, Blocks: blocks}, nil
 }
@@ -100,7 +100,7 @@ func (c *Client) imageBlock(n *html.Node, novelID int64) (NovelBlock, error) {
 		}
 	}
 	if url == "" {
-		return NovelBlock{}, newError("NovelContent", sdk.CodeMalformedUpstreamResponse, "novel image block has no source")
+		return NovelBlock{}, newError("NovelContent", sdk.MalformedUpstreamResponse, "novel image block has no source")
 	}
 	res, err := c.newResource("novel_image", novelID, -1, url)
 	if err != nil {
@@ -122,7 +122,7 @@ func (c *Client) fileBlock(n *html.Node, novelID int64) (NovelBlock, error) {
 		}
 	}
 	if href == "" {
-		return NovelBlock{}, newError("NovelContent", sdk.CodeMalformedUpstreamResponse, "novel file block has no link")
+		return NovelBlock{}, newError("NovelContent", sdk.MalformedUpstreamResponse, "novel file block has no link")
 	}
 	res, err := c.newResource("novel_file", novelID, -1, href)
 	if err != nil {

@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	internalpixiv "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv"
+	internalpixiv "github.com/FlanChanXwO/pixiv-cli/internal/application/pixiv"
 )
 
 var markdownLinkPattern = regexp.MustCompile(`!?\[[^\]]*\]\(([^)]+)\)`)
@@ -36,6 +36,7 @@ func TestLocalizedDocumentationLayout(t *testing.T) {
 		"docs/ja/mcp-tools.md",
 		"docs/maintainers/architecture.md",
 		"docs/maintainers/development.md",
+		"docs/maintainers/plans/v1.0.0/index.md",
 		"docs/maintainers/agents/documentation-guidelines.md",
 		"docs/maintainers/adr/0011-localized-documentation-layout.md",
 		".agents/skills/pixiv-cli-release-notes/SKILL.md",
@@ -275,6 +276,39 @@ func TestCLIReferenceLocalesExposeStableCommands(t *testing.T) {
 	}
 }
 
+func TestAuthMigrationDocumentationRequiresExplicitBundleTransfer(t *testing.T) {
+	repositoryRoot := filepath.Clean(filepath.Join("..", ".."))
+	migration, err := os.ReadFile(filepath.Join(repositoryRoot, "docs", "en", "v1.0.0-migration.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	migrationText := string(migration)
+	for _, contract := range []string{
+		"never reads or migrates the old `auth.json` automatically",
+		"pixiv auth export --all --output <private bundle>",
+		"pixiv auth import --file <bundle>",
+	} {
+		if !strings.Contains(migrationText, contract) {
+			t.Errorf("v1 migration guide is missing explicit auth transfer contract %q", contract)
+		}
+	}
+	for _, relativePath := range []string{
+		"skills/pixiv-cli/references/troubleshooting.md",
+		"docs/en/cli-reference.md",
+		"docs/zh-CN/cli-reference.md",
+		"docs/ja/cli-reference.md",
+	} {
+		payload, err := os.ReadFile(filepath.Join(repositoryRoot, filepath.FromSlash(relativePath)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		content := string(payload)
+		if strings.Contains(content, "migrated during startup") || strings.Contains(content, "migrates `auth.json` automatically") {
+			t.Errorf("%s still promises automatic auth.json migration", relativePath)
+		}
+	}
+}
+
 func TestCLIReferenceLocalesHaveExactDrawingToolCatalog(t *testing.T) {
 	repositoryRoot := filepath.Clean(filepath.Join("..", ".."))
 	for _, relativePath := range []string{
@@ -346,7 +380,7 @@ func TestSDKAndMCPDocumentationExposeJapaneseLocale(t *testing.T) {
 			requiredTerms: []string{
 				"pixiv.Open",
 				"sdk.Page",
-				"CodeCredentialsExpired",
+				"CredentialsExpired",
 				"malformed_upstream_response",
 				"OpenResource",
 				"fanbox.Open",

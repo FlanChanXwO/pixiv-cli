@@ -1,6 +1,6 @@
 # AGENTS.md
 
-这是一个 Go 版 Pixiv CLI 与 MCP stdio server。它通过 `pixiv` CLI 和 `pixiv mcp` 暴露 Pixiv 搜索、详情、排行、推荐、用户、收藏、下载、token refresh 和缩略图能力。
+这是一个 Go 版 Pixiv CLI 与 MCP stdio server。它通过 `pixiv` CLI 和 `pixiv mcp` 暴露 Pixiv 搜索、详情、排行、推荐、用户、收藏、下载、token refresh 和缩略图能力，通过 `pixiv fanbox` CLI 与 `pixiv fanbox mcp` 暴露 FANBOX 能力。公开能力只来自 `sdk`、`sdk/pixiv`、`sdk/fanbox`。
 
 ## 核心命令
 
@@ -9,26 +9,31 @@ go test ./...
 sh scripts/build.sh
 ```
 
-真实 Pixiv web fallback e2e 默认跳过；需要联网时显式运行：
+真实 SDK e2e 默认跳过；需要本机凭据时显式运行（Pixiv 读本地 `pixiv-cli.db` 选中账号，FANBOX 读 macOS Keychain 授权 session）：
 
 ```bash
-PIXIV_E2E_WEB_API=1 PIXIV_WEB_API_PROXY=http://127.0.0.1:7890 go test ./e2e -run WebAPIFallbackReal -count=1 -v
+PIXIV_SDK_E2E=1 go test ./e2e -run TestRealPixivSDKRead -count=1 -v
+FANBOX_E2E_CREATOR_ID=<non-secret-creator-id> FANBOX_E2E_TAG=<non-secret-tag> \
+FANBOX_E2E_POST_ID=<non-secret-post-id> FANBOX_E2E_POST_URL=<non-secret-post-url> \
+FANBOX_SDK_E2E=1 go test ./e2e -run TestRealFanboxSDKRead -count=1 -v
 ```
+
+FANBOX E2E target variables are explicit non-secret test targets; the session remains in the macOS Keychain.
 
 ## 边界规则
 
 各包职责描述见 `docs/maintainers/architecture.md`；以下是不可违反的规则：
 
 - `cmd/pixiv` 只委托 `internal/cli`；`internal/cli` 是 thin controller，业务用例在 `internal/application`，生产组装只在 `internal/bootstrap`。
-- CLI/MCP 的 Pixiv 能力只经 `internal/application.SDKService` 调用顶层 `pixiv` public SDK；不得直连 `internal/services/pixiv/appapi`、`webapi`、`oauth` 或 `resource` 协议适配包。
-- MCP tool 注册和输入/输出适配在 `internal/mcpserver`；stdio runtime 由 `internal/bootstrap` 启动。
-- `internal/utils/*` 保持协议无关；本地状态路径与权限常量位于 `internal/platform/localstate`。
+- CLI/MCP 的 Pixiv/FANBOX 能力只经 `internal/application.SDKService` 调用 `sdk/pixiv` 与 `sdk/fanbox` public SDK；不得直连 `internal/services/pixiv/appapi`、`oauth`、`resource` 或 `internal/services/fanbox` 协议适配包。
+- MCP tool 注册和输入/输出适配在 `internal/mcpserver/{pixiv,fanbox}`；stdio runtime 由 `internal/bootstrap` 启动。
+- `internal/utils/{parse,text,uri}` 保持协议无关；文件、权限与本地状态路径位于 `internal/filesystem`。
 
 ## 注意事项
 
 - 不提交 token、下载内容、本地数据库、缓存或机器相关配置。
 - refresh token 只允许用户显式执行不带 `--output` 的 `pixiv auth export [UID]` 或 `pixiv auth export --all` 时写 stdout；前者输出 raw token，后者输出含 secret 的 bundle。除此之外不得写入 stdout、stderr、JSON、MCP 或错误；完整契约见三语 CLI reference。
-- web fallback 只有一条规则：refresh token 为空且 `web_fallback_enabled=true` 时走匿名 web/ajax API；有 refresh token 一律优先 App API，App API 出错不自动 fallback。
+- 没有匿名 Web fallback：内容命令要求认证态本地账号（`pixiv auth use` 或手工 `[account_pool]`），否则返回认证要求；已删除的 `web_fallback_enabled` 若仍显式存在则返回 `removed_setting`，用 `pixiv config unset web_fallback_enabled` 清理。
 - CLI 数据命令只使用本地 `auth use` 账号或手工 `[account_pool]`，拒绝 `--uid`/`--refresh-token` 并忽略 `PIXIV_REFRESH_TOKEN`；公开 SDK 仍可显式提供凭据。MCP 凭据选择遵循其独立 runtime 配置。
 - MCP 模式 stdout 保留给 JSON-RPC；运行期失败保留 structured result 并设置 `isError=true`，不创建项目级日志。
 - 不新增无依据的固定超时、截断、条数限制、重试上限、静默 fallback 或隐藏降级。确需新增时，必须有证据、代码注释、测试或文档说明。

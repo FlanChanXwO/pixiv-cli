@@ -5,8 +5,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/application"
-	"github.com/FlanChanXwO/pixiv-cli/internal/config"
+	"github.com/FlanChanXwO/pixiv-cli/internal/application/config"
+	configapp "github.com/FlanChanXwO/pixiv-cli/internal/application/config"
 	"github.com/stretchr/testify/require"
 )
 
@@ -14,7 +14,7 @@ func TestProductionConfigPathSetAndGetPersistParsedValue(t *testing.T) {
 	clearRuntimeEnvironment(t)
 	configPath := filepath.Join(t.TempDir(), "nested", "config.toml")
 	t.Cleanup(config.SetFilePathForTest(configPath))
-	service := NewServices().Config
+	service := configapp.ConfigService{Store: configapp.ConfigFileStore{Files: filesystemConfigFiles{}}}
 
 	path, err := service.Path()
 	require.NoError(t, err)
@@ -36,7 +36,7 @@ func TestProductionConfigReportsEnvironmentOverrideAcrossSetAndUnset(t *testing.
 	clearRuntimeEnvironment(t)
 	configPath := filepath.Join(t.TempDir(), "config.toml")
 	t.Cleanup(config.SetFilePathForTest(configPath))
-	service := NewServices().Config
+	service := configapp.ConfigService{Store: configapp.ConfigFileStore{Files: filesystemConfigFiles{}}}
 	t.Setenv("DOWNLOAD_PATH", "/environment/path")
 
 	setResult, err := service.Set("download_path", "/file/path")
@@ -72,7 +72,7 @@ func TestProductionConfigRejectsInvalidInputWithoutChangingEffectiveValue(t *tes
 	clearRuntimeEnvironment(t)
 	configPath := filepath.Join(t.TempDir(), "config.toml")
 	t.Cleanup(config.SetFilePathForTest(configPath))
-	service := NewServices().Config
+	service := configapp.ConfigService{Store: configapp.ConfigFileStore{Files: filesystemConfigFiles{}}}
 
 	mutation, err := service.Set("output_json", "sometimes")
 
@@ -87,17 +87,17 @@ func TestProductionConfigRejectsInvalidInputWithoutChangingEffectiveValue(t *tes
 func TestProductionConfigPropagatesMalformedFileErrors(t *testing.T) {
 	for _, test := range []struct {
 		name string
-		call func(service application.ConfigService) error
+		call func(service configapp.ConfigService) error
 	}{
-		{name: "get", call: func(service application.ConfigService) error {
+		{name: "get", call: func(service configapp.ConfigService) error {
 			_, err := service.Get("output_json")
 			return err
 		}},
-		{name: "set", call: func(service application.ConfigService) error {
+		{name: "set", call: func(service configapp.ConfigService) error {
 			_, err := service.Set("output_json", "true")
 			return err
 		}},
-		{name: "unset", call: func(service application.ConfigService) error {
+		{name: "unset", call: func(service configapp.ConfigService) error {
 			_, err := service.Unset("output_json")
 			return err
 		}},
@@ -108,7 +108,7 @@ func TestProductionConfigPropagatesMalformedFileErrors(t *testing.T) {
 			t.Cleanup(config.SetFilePathForTest(configPath))
 			require.NoError(t, config.WritePrivateFile(configPath, []byte("[output\njson = broken")))
 
-			err := test.call(NewServices().Config)
+			err := test.call(configapp.ConfigService{Store: configapp.ConfigFileStore{Files: filesystemConfigFiles{}}})
 
 			require.Error(t, err)
 		})

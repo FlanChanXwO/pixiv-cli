@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/config"
+	"github.com/FlanChanXwO/pixiv-cli/internal/application/config"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -61,8 +61,9 @@ func TestConfigPathCreatesBaselineConfigWithoutAdvancedSettings(t *testing.T) {
 	require.NoError(t, err)
 	assert.Contains(t, string(body), "[download]")
 	assert.Contains(t, string(body), `path = "./downloads"`)
-	assert.Contains(t, string(body), "[web]")
 	assert.Contains(t, string(body), "[output]")
+	assert.NotContains(t, string(body), "[web]")
+	assert.NotContains(t, string(body), "fallback_enabled")
 	assert.NotContains(t, string(body), "premium")
 	assert.NotContains(t, string(body), "logging")
 	assert.NotContains(t, string(body), "timeout")
@@ -118,7 +119,6 @@ func TestConfigOnlyManagesApprovedKeys(t *testing.T) {
 	for _, args := range [][]string{
 		{"pixiv", "config", "get", "log_level"},
 		{"pixiv", "config", "set", "log_level", "debug"},
-		{"pixiv", "config", "get", "web_fallback_enabled"},
 		{"pixiv", "config", "set", "login_timeout", "30s"},
 		{"pixiv", "config", "set", "premium_status_cache_ttl", "3h"},
 		{"pixiv", "config", "set", "login_relay_secret", "secret"},
@@ -128,19 +128,82 @@ func TestConfigOnlyManagesApprovedKeys(t *testing.T) {
 		code := Run(args, strings.NewReader(""), &stdout, &stderr)
 		assert.NotZero(t, code, strings.Join(args, " "))
 		assert.Empty(t, stdout.String())
-		assert.Contains(t, stderr.String(), "valid keys: download_path, filename_template, https_proxy")
+		assert.Contains(t, stderr.String(), "valid keys: account_pool_enabled, account_pool_strategy, download_path, filename_template, https_proxy")
 	}
 }
 
-func TestConfigWebFallbackDefaultEnabled(t *testing.T) {
+func TestConfigWebFallbackRemovedAbsentSucceeds(t *testing.T) {
 	clearConfigEnv(t)
 	useTempPaths(t)
 
 	settings, err := config.LoadSettingsState()
 	require.NoError(t, err)
-	cfg, err := settings.Runtime()
+	value, err := settings.Effective("web_fallback_enabled")
 	require.NoError(t, err)
-	assert.True(t, cfg.WebFallbackEnabled)
+	assert.False(t, value.HasValue)
+	_, err = settings.Runtime()
+	require.NoError(t, err)
+}
+
+func TestConfigWebFallbackPresentReturnsRemovedSetting(t *testing.T) {
+	clearConfigEnv(t)
+	_, configPath := useTempPaths(t)
+	require.NoError(t, config.WritePrivateFile(configPath, []byte("[web]\nfallback_enabled = true\n")))
+
+	settings, err := config.LoadSettingsState()
+	require.NoError(t, err)
+	_, err = settings.Effective("web_fallback_enabled")
+	require.ErrorIs(t, err, config.ErrRemovedSetting)
+	_, err = settings.Runtime()
+	require.ErrorIs(t, err, config.ErrRemovedSetting)
+}
+
+func TestConfigWebFallbackUnsetClearsTombstone(t *testing.T) {
+	clearConfigEnv(t)
+	_, configPath := useTempPaths(t)
+	require.NoError(t, config.WritePrivateFile(configPath, []byte("[web]\nfallback_enabled = true\n")))
+
+	removed, err := config.UnsetConfigValue(configPath, "web_fallback_enabled")
+	require.NoError(t, err)
+	assert.True(t, removed)
+
+	settings, err := config.LoadSettingsState()
+	require.NoError(t, err)
+	_, err = settings.Effective("web_fallback_enabled")
+	require.NoError(t, err)
+	_, err = settings.Runtime()
+	require.NoError(t, err)
+}
+
+func TestConfigGetSetUnsetWebFallbackCLISurface(t *testing.T) {
+	clearConfigEnv(t)
+	_, configPath := useTempPaths(t)
+
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"pixiv", "config", "get", "web_fallback_enabled"}, strings.NewReader(""), &stdout, &stderr)
+	assert.NotZero(t, code)
+	assert.Empty(t, stdout.String())
+	assert.Contains(t, stderr.String(), "removed_setting")
+
+	stdout.Reset()
+	stderr.Reset()
+	code = Run([]string{"pixiv", "config", "set", "web_fallback_enabled", "true"}, strings.NewReader(""), &stdout, &stderr)
+	assert.NotZero(t, code)
+	assert.Empty(t, stdout.String())
+	assert.Contains(t, stderr.String(), "removed_setting")
+
+	// unset 允许清理旧值；写入后再 unset 验证真实清除了墓碑。
+	require.NoError(t, config.WritePrivateFile(configPath, []byte("[web]\nfallback_enabled = true\n")))
+	stdout.Reset()
+	stderr.Reset()
+	code = Run([]string{"pixiv", "config", "unset", "web_fallback_enabled"}, strings.NewReader(""), &stdout, &stderr)
+	assert.Equal(t, 0, code, stderr.String())
+	assert.Contains(t, stdout.String(), "removed")
+
+	settings, err := config.LoadSettingsState()
+	require.NoError(t, err)
+	_, err = settings.Runtime()
+	require.NoError(t, err)
 }
 
 func TestConfigUpdateCheckDefaultEnabled(t *testing.T) {

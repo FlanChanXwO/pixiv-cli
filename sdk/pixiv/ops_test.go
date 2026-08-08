@@ -67,8 +67,8 @@ func TestSearchArtworksRejectsChangedQuery(t *testing.T) {
 		t.Fatal("expected cursor")
 	}
 	// Reusing the cursor with a different query must fail closed.
-	if _, err := client.SearchArtworks(context.Background(), SearchArtworksRequest{Word: "different", Cursor: page.Next}); sdk.CodeOf(err) != sdk.CodeInvalidCursor {
-		t.Fatalf("expected CodeInvalidCursor for changed query, got %v", err)
+	if _, err := client.SearchArtworks(context.Background(), SearchArtworksRequest{Word: "different", Cursor: page.Next}); sdk.ReasonOf(err) != sdk.InvalidCursor {
+		t.Fatalf("expected InvalidCursor for changed query, got %v", err)
 	}
 }
 
@@ -120,8 +120,8 @@ func TestNoWebFallbackOnUnauthorized(t *testing.T) {
 	})
 	client, _ := NewWith("token", Options{HTTPClient: &http.Client{Transport: rt}})
 	_, err := client.SearchArtworks(context.Background(), SearchArtworksRequest{Word: "test"})
-	if sdk.CodeOf(err) != sdk.CodeCredentialsExpired {
-		t.Fatalf("expected CodeCredentialsExpired, got %v", err)
+	if sdk.ReasonOf(err) != sdk.CredentialsExpired {
+		t.Fatalf("expected CredentialsExpired, got %v", err)
 	}
 }
 

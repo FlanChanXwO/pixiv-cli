@@ -27,12 +27,21 @@ func oauthResponse() *http.Response {
 	}
 }
 
-func TestNewRejectsEmptyToken(t *testing.T) {
-	if _, err := New(""); sdk.CodeOf(err) != sdk.CodeInvalidArgument {
-		t.Fatalf("expected CodeInvalidArgument, got %v", err)
+func oauthResponseWithoutIdentity() *http.Response {
+	body := `{"access_token":"new-access-token","refresh_token":"new-refresh-token","expires_in":3600,"user":{"name":"tester"}}`
+	return &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": {"application/json"}},
+		Body:       io.NopCloser(strings.NewReader(body)),
 	}
-	if _, err := NewWith("  ", Options{}); sdk.CodeOf(err) != sdk.CodeInvalidArgument {
-		t.Fatalf("expected CodeInvalidArgument, got %v", err)
+}
+
+func TestNewRejectsEmptyToken(t *testing.T) {
+	if _, err := New(""); sdk.ReasonOf(err) != sdk.InvalidArgument {
+		t.Fatalf("expected InvalidArgument, got %v", err)
+	}
+	if _, err := NewWith("  ", Options{}); sdk.ReasonOf(err) != sdk.InvalidArgument {
+		t.Fatalf("expected InvalidArgument, got %v", err)
 	}
 }
 
@@ -78,9 +87,28 @@ func TestOpenRotatesCredentials(t *testing.T) {
 	}
 }
 
+func TestOpenRejectsMissingAccountIdentity(t *testing.T) {
+	rt := roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		if req.URL.Host == "oauth.secure.pixiv.net" {
+			return oauthResponseWithoutIdentity(), nil
+		}
+		return nil, errors.New("unexpected host " + req.URL.Host)
+	})
+	client, credentials, err := OpenWith(context.Background(), "old-refresh-token", Options{HTTPClient: &http.Client{Transport: rt}})
+	if sdk.ReasonOf(err) != sdk.MalformedUpstreamResponse {
+		t.Fatalf("expected MalformedUpstreamResponse, got %v", err)
+	}
+	if client != nil {
+		t.Fatal("client must not be returned without verified account identity")
+	}
+	if credentials.UserID != 0 || credentials.AccessToken() != "" || credentials.RefreshToken() != "" {
+		t.Fatalf("credentials must be empty on malformed response: %#v", credentials)
+	}
+}
+
 func TestOpenRejectsEmptyRefreshToken(t *testing.T) {
-	if _, _, err := Open(context.Background(), ""); sdk.CodeOf(err) != sdk.CodeCredentialsExpired {
-		t.Fatalf("expected CodeCredentialsExpired, got %v", err)
+	if _, _, err := Open(context.Background(), ""); sdk.ReasonOf(err) != sdk.CredentialsExpired {
+		t.Fatalf("expected CredentialsExpired, got %v", err)
 	}
 }
 
@@ -144,11 +172,11 @@ func TestCursorRejectsQueryMismatch(t *testing.T) {
 	client, _ := New("token")
 	base := url.Values{"word": {"test"}}
 	cur, _ := client.buildCursor("SearchArtworks", base, "offset", 30, true)
-	if _, err := client.continuationOffset("SearchArtworks", url.Values{"word": {"other"}}, cur); sdk.CodeOf(err) != sdk.CodeInvalidCursor {
-		t.Fatalf("expected CodeInvalidCursor for query mismatch, got %v", err)
+	if _, err := client.continuationOffset("SearchArtworks", url.Values{"word": {"other"}}, cur); sdk.ReasonOf(err) != sdk.InvalidCursor {
+		t.Fatalf("expected InvalidCursor for query mismatch, got %v", err)
 	}
-	if _, err := client.continuationOffset("Artwork", base, cur); sdk.CodeOf(err) != sdk.CodeInvalidCursor {
-		t.Fatalf("expected CodeInvalidCursor for operation mismatch, got %v", err)
+	if _, err := client.continuationOffset("Artwork", base, cur); sdk.ReasonOf(err) != sdk.InvalidCursor {
+		t.Fatalf("expected InvalidCursor for operation mismatch, got %v", err)
 	}
 }
 

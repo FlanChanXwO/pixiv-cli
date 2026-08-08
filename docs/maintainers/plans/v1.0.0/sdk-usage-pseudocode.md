@@ -111,7 +111,7 @@ func ServePixivImage(
 	// route 参数是 ResourceRef codec；禁止接受 https://... 形式的原始上游 URL。
 	ref, err := sdk.ParseResourceRef(r.PathValue("resource_ref"))
 	if err != nil {
-		writeProxyError(w, http.StatusBadRequest, sdk.CodeInvalidArgument)
+		writeProxyError(w, http.StatusBadRequest, sdk.InvalidArgument)
 		return
 	}
 
@@ -129,7 +129,7 @@ func ServePixivImage(
 		IfRange:         r.Header.Get("If-Range"),
 	})
 	if err != nil {
-		// 只根据稳定 sdk.Code 映射状态；不要把 Error() 或 cause 直接写给下游。
+		// 只根据稳定 sdk.Reason 映射状态；不要把 Error() 或 cause 直接写给下游。
 		writeProxySDKError(w, err)
 		return
 	}

@@ -70,12 +70,12 @@ type OpenResourceRequest struct {
 }
 
 // Validate checks that the method is allowed and that request header fields
-// contain no control characters, returning CodeInvalidArgument otherwise.
+// contain no control characters, returning InvalidArgument otherwise.
 func (r OpenResourceRequest) Validate() error {
 	switch r.Method {
 	case "", ResourceMethodGet, ResourceMethodHead:
 	default:
-		return NewError("", "OpenResourceRequest.Validate", CodeInvalidArgument, WithDetail("unsupported resource method"))
+		return NewError("", "OpenResourceRequest.Validate", InvalidArgument, WithDetail("unsupported resource method"))
 	}
 	for _, field := range []struct {
 		name  string
@@ -87,7 +87,7 @@ func (r OpenResourceRequest) Validate() error {
 		{"if-range", r.IfRange},
 	} {
 		if hasControlChars(field.value) {
-			return NewError("", "OpenResourceRequest.Validate", CodeInvalidArgument, WithDetail(field.name+" header contains control characters"))
+			return NewError("", "OpenResourceRequest.Validate", InvalidArgument, WithDetail(field.name+" header contains control characters"))
 		}
 	}
 	return nil

@@ -8,13 +8,19 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-func TestReleaseWorkflowHasProtectedAuthenticatedE2EGate(t *testing.T) {
+func TestReleaseWorkflowHasOfflineSDKContractGate(t *testing.T) {
 	t.Parallel()
 
 	root := releaseWorkflowRoot(t)
 	e2e := jobNode(t, root, "e2e")
-	if got := requireMappingValue(t, e2e, "environment").Value; got != "pixiv-e2e" {
-		t.Fatalf("e2e environment = %q, want pixiv-e2e", got)
+	if got := requireMappingValue(t, e2e, "name").Value; got != "SDK E2E contract gate" {
+		t.Fatalf("e2e job name = %q", got)
+	}
+	if _, ok := workflowpolicy.MappingValue(e2e, "environment"); ok {
+		t.Fatal("offline e2e contract gate must not require a credential environment")
+	}
+	if workflowpolicy.ContainsSecretReference(e2e) {
+		t.Fatal("offline e2e contract gate must not reference secrets")
 	}
 	if got := requireMappingValue(t, e2e, "runs-on").Value; got != "ubuntu-24.04" {
 		t.Fatalf("e2e runner = %q, want ubuntu-24.04", got)
@@ -27,59 +33,26 @@ func TestReleaseWorkflowHasProtectedAuthenticatedE2EGate(t *testing.T) {
 	}
 
 	steps := requireMappingValue(t, e2e, "steps").Content
-	if len(steps) != 4 {
-		t.Fatalf("e2e step count = %d, want 4", len(steps))
+	if len(steps) != 3 {
+		t.Fatalf("e2e step count = %d, want 3", len(steps))
 	}
-	overlay := steps[2]
-	if got := requireMappingValue(t, overlay, "name").Value; got != "Apply the audited E2E test recovery overlay" {
-		t.Fatalf("e2e recovery overlay name = %q", got)
+	if got := requireMappingValue(t, steps[2], "name").Value; got != "Run offline SDK E2E contract tests" {
+		t.Fatalf("e2e contract step name = %q", got)
 	}
-	if got := requireMappingValue(t, overlay, "if").Value; got != "github.event_name == 'workflow_dispatch'" {
-		t.Fatalf("e2e recovery overlay condition = %q", got)
+	if got := requireMappingValue(t, steps[2], "run").Value; !equalCommands(splitCommands(got), splitCommands(offlineE2ECommands)) {
+		t.Fatalf("e2e contract command = %q", got)
 	}
-	overlayRun := requireMappingValue(t, overlay, "run").Value
-	for _, path := range []string{
-		"e2e/authenticated_r18_regression_test.go",
-		"e2e/pixiv_binary_test.go",
-	} {
-		if strings.Count(overlayRun, path) != 1 {
-			t.Fatalf("e2e recovery overlay must include only one %s entry", path)
-		}
-	}
-	if strings.Contains(overlayRun, "pixiv/") || strings.Contains(overlayRun, "internal/") {
-		t.Fatal("e2e recovery overlay must not include product source paths")
-	}
-
-	run := requireMappingValue(t, steps[3], "run").Value
-	if !strings.Contains(run, "go test ./e2e -count=1 -v") {
-		t.Fatal("e2e gate must run the complete e2e suite")
-	}
-	env := requireMappingValue(t, steps[3], "env")
-	if got := requireMappingValue(t, env, "PIXIV_E2E_REFRESH_TOKEN").Value; got != "${{ secrets.PIXIV_E2E_REFRESH_TOKEN }}" {
-		t.Fatal("e2e refresh token must come from the protected environment secret")
-	}
-	for _, name := range []string{
-		"PIXIV_E2E_SFW_ILLUST_ID",
-		"PIXIV_E2E_R18_ILLUST_ID",
-		"PIXIV_E2E_R18_UGOIRA_ID",
-		"PIXIV_E2E_ILLUST_SEARCH_WORD",
-		"PIXIV_E2E_DISCOVERY_WORD",
-	} {
-		if got := requireMappingValue(t, env, name).Value; got != "${{ vars."+name+" }}" {
-			t.Fatalf("e2e %s must come from the protected environment variable", name)
-		}
-	}
-	if workflowpolicy.ContainsSecretReference(steps[0]) || workflowpolicy.ContainsSecretReference(steps[1]) || workflowpolicy.ContainsSecretReference(steps[2]) {
-		t.Fatal("e2e checkout, setup, and recovery overlay steps must not reference secrets")
+	if workflowpolicy.ContainsSecretReference(steps[0]) || workflowpolicy.ContainsSecretReference(steps[1]) {
+		t.Fatal("e2e checkout and setup steps must not reference secrets")
 	}
 
 	buildNeeds := requireMappingValue(t, jobNode(t, root, "build"), "needs").Content
 	if len(buildNeeds) != 2 || buildNeeds[0].Value != "validate" || buildNeeds[1].Value != "e2e" {
-		t.Fatal("build must wait for both validate and e2e")
+		t.Fatal("build must wait for validation and offline SDK contract gate")
 	}
 }
 
-func TestCheckWorkflowRejectsAuthenticatedE2EGateMutations(t *testing.T) {
+func TestCheckWorkflowRejectsOfflineE2EContractMutations(t *testing.T) {
 	t.Parallel()
 
 	for _, test := range []struct {
@@ -95,53 +68,18 @@ func TestCheckWorkflowRejectsAuthenticatedE2EGateMutations(t *testing.T) {
 			},
 		},
 		{
-			name: "e2e environment changes",
-			want: "e2e environment must be pixiv-e2e",
+			name: "e2e obtains credentials",
+			want: "e2e job: must contain exactly the required keys",
 			mutate: func(t *testing.T, root *yaml.Node) {
-				requireMappingValue(t, jobNode(t, root, "e2e"), "environment").Value = "release"
-			},
-		},
-		{
-			name: "checkout receives e2e secret",
-			want: "e2e job must not reference secrets before its authenticated test step",
-			mutate: func(t *testing.T, root *yaml.Node) {
-				appendMappingValue(t, checkoutStep(t, jobNode(t, root, "e2e")), "env", mappingNode("LEAK", scalarNode("${{ secrets.PIXIV_E2E_REFRESH_TOKEN }}")))
-			},
-		},
-		{
-			name: "refresh token secret changes",
-			want: "PIXIV_E2E_REFRESH_TOKEN",
-			mutate: func(t *testing.T, root *yaml.Node) {
-				env := requireMappingValue(t, requireMappingValue(t, jobNode(t, root, "e2e"), "steps").Content[3], "env")
-				requireMappingValue(t, env, "PIXIV_E2E_REFRESH_TOKEN").Value = "${{ secrets.OTHER }}"
-			},
-		},
-		{
-			name: "required input changes source",
-			want: "PIXIV_E2E_DISCOVERY_WORD",
-			mutate: func(t *testing.T, root *yaml.Node) {
-				env := requireMappingValue(t, requireMappingValue(t, jobNode(t, root, "e2e"), "steps").Content[3], "env")
-				requireMappingValue(t, env, "PIXIV_E2E_DISCOVERY_WORD").Value = "hard-coded"
+				appendMappingValue(t, jobNode(t, root, "e2e"), "env", mappingNode("TOKEN", scalarNode("${{ secrets.TOKEN }}")))
 			},
 		},
 		{
 			name: "direct test command is softened",
-			want: "authenticated e2e step must run the complete direct E2E command sequence",
-			mutate: func(t *testing.T, root *yaml.Node) {
-				step := requireMappingValue(t, jobNode(t, root, "e2e"), "steps").Content[3]
-				requireMappingValue(t, step, "run").Value += " || true"
-			},
-		},
-		{
-			name: "e2e recovery overlay writes product source",
-			want: "E2E recovery overlay must use only the exact audited test paths and verifier",
+			want: "offline SDK contract step must run the exact no-credential E2E command",
 			mutate: func(t *testing.T, root *yaml.Node) {
 				step := requireMappingValue(t, jobNode(t, root, "e2e"), "steps").Content[2]
-				requireMappingValue(t, step, "run").Value = strings.ReplaceAll(
-					requireMappingValue(t, step, "run").Value,
-					"e2e/pixiv_binary_test.go",
-					"pixiv/client.go",
-				)
+				requireMappingValue(t, step, "run").Value += " || true"
 			},
 		},
 		{

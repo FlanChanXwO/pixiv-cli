@@ -32,7 +32,7 @@ type cursorEnvelope struct {
 //
 // A cursor is bound to a product, operation, binding version, and query digest.
 // Product SDKs revalidate those bindings when a caller continues pagination and
-// return CodeInvalidCursor on mismatch; a cursor never silently restarts from
+// return InvalidCursor on mismatch; a cursor never silently restarts from
 // the first page across product, operation, or query changes.
 type Cursor struct {
 	text string
@@ -60,22 +60,22 @@ func WithCursorEphemeral() CursorOption {
 // from page results. product and operation must be non-empty, bindingVersion
 // must be positive, queryHash must be the digest of the request's query
 // parameters, and payload must be the opaque, secret-free upstream continuation
-// state. Violations return an error with CodeInvalidArgument.
+// state. Violations return an error with InvalidArgument.
 func NewCursor(product, operation string, bindingVersion int, queryHash string, payload []byte, opts ...CursorOption) (Cursor, error) {
 	if product == "" {
-		return Cursor{}, NewError("", "NewCursor", CodeInvalidArgument, WithDetail("product is required"))
+		return Cursor{}, NewError("", "NewCursor", InvalidArgument, WithDetail("product is required"))
 	}
 	if operation == "" {
-		return Cursor{}, NewError("", "NewCursor", CodeInvalidArgument, WithDetail("operation is required"))
+		return Cursor{}, NewError("", "NewCursor", InvalidArgument, WithDetail("operation is required"))
 	}
 	if bindingVersion <= 0 {
-		return Cursor{}, NewError("", "NewCursor", CodeInvalidArgument, WithDetail("binding version must be positive"))
+		return Cursor{}, NewError("", "NewCursor", InvalidArgument, WithDetail("binding version must be positive"))
 	}
 	if queryHash == "" {
-		return Cursor{}, NewError("", "NewCursor", CodeInvalidArgument, WithDetail("query hash is required"))
+		return Cursor{}, NewError("", "NewCursor", InvalidArgument, WithDetail("query hash is required"))
 	}
 	if len(payload) == 0 {
-		return Cursor{}, NewError("", "NewCursor", CodeInvalidArgument, WithDetail("cursor payload is required"))
+		return Cursor{}, NewError("", "NewCursor", InvalidArgument, WithDetail("cursor payload is required"))
 	}
 	env := &cursorEnvelope{
 		Version:   cursorFormatVersion,
@@ -92,7 +92,7 @@ func NewCursor(product, operation string, bindingVersion int, queryHash string, 
 	}
 	raw, err := json.Marshal(env)
 	if err != nil {
-		return Cursor{}, NewError("", "NewCursor", CodeInvalidArgument, WithCause(err))
+		return Cursor{}, NewError("", "NewCursor", InvalidArgument, WithCause(err))
 	}
 	return Cursor{text: base64.RawURLEncoding.EncodeToString(raw)}, nil
 }
@@ -103,22 +103,22 @@ func (c Cursor) IsZero() bool { return c.text == "" }
 
 // MarshalText returns the route-safe unpadded base64url text encoding of the
 // cursor. The encoding is versioned and remains decodable across later versions
-// of the same major. Marshaling a zero cursor returns CodeInvalidArgument.
+// of the same major. Marshaling a zero cursor returns InvalidArgument.
 func (c Cursor) MarshalText() ([]byte, error) {
 	if c.IsZero() {
-		return nil, NewError("", "Cursor.MarshalText", CodeInvalidArgument, WithDetail("zero cursor has no encoding"))
+		return nil, NewError("", "Cursor.MarshalText", InvalidArgument, WithDetail("zero cursor has no encoding"))
 	}
 	return []byte(c.text), nil
 }
 
 // UnmarshalText decodes a cursor from its route-safe unpadded base64url text
-// encoding. Unrecognized or malformed encodings return CodeInvalidCursor.
+// encoding. Unrecognized or malformed encodings return InvalidCursor.
 func (c *Cursor) UnmarshalText(text []byte) error {
 	if len(text) == 0 {
-		return NewError("", "Cursor.UnmarshalText", CodeInvalidCursor, WithDetail("empty cursor text"))
+		return NewError("", "Cursor.UnmarshalText", InvalidCursor, WithDetail("empty cursor text"))
 	}
 	if _, err := decodeCursor(string(text)); err != nil {
-		return NewError("", "Cursor.UnmarshalText", CodeInvalidCursor, WithCause(err))
+		return NewError("", "Cursor.UnmarshalText", InvalidCursor, WithCause(err))
 	}
 	c.text = string(text)
 	return nil
@@ -127,7 +127,7 @@ func (c *Cursor) UnmarshalText(text []byte) error {
 // MarshalJSON encodes the cursor as a JSON string containing its Text form.
 func (c Cursor) MarshalJSON() ([]byte, error) {
 	if c.IsZero() {
-		return nil, NewError("", "Cursor.MarshalJSON", CodeInvalidArgument, WithDetail("zero cursor has no encoding"))
+		return nil, NewError("", "Cursor.MarshalJSON", InvalidArgument, WithDetail("zero cursor has no encoding"))
 	}
 	return json.Marshal(c.text)
 }
@@ -136,7 +136,7 @@ func (c Cursor) MarshalJSON() ([]byte, error) {
 func (c *Cursor) UnmarshalJSON(data []byte) error {
 	var text string
 	if err := json.Unmarshal(data, &text); err != nil {
-		return NewError("", "Cursor.UnmarshalJSON", CodeInvalidCursor, WithCause(err))
+		return NewError("", "Cursor.UnmarshalJSON", InvalidCursor, WithCause(err))
 	}
 	return c.UnmarshalText([]byte(text))
 }
@@ -146,7 +146,7 @@ func (c *Cursor) UnmarshalJSON(data []byte) error {
 func (c Cursor) String() string { return c.text }
 
 // ParseCursor decodes a cursor from its route-safe unpadded base64url text
-// encoding, returning CodeInvalidCursor for malformed input.
+// encoding, returning InvalidCursor for malformed input.
 func ParseCursor(text string) (Cursor, error) {
 	var c Cursor
 	if err := c.UnmarshalText([]byte(text)); err != nil {
@@ -157,18 +157,18 @@ func ParseCursor(text string) (Cursor, error) {
 
 // ValidateCursor revalidates the bindings a caller must repeat when continuing
 // pagination: product, operation, binding version, and query digest. A zero
-// cursor or any mismatch returns CodeInvalidCursor.
+// cursor or any mismatch returns InvalidCursor.
 func ValidateCursor(c Cursor, product, operation string, bindingVersion int, queryHash string) error {
 	if c.IsZero() {
-		return NewError("", "ValidateCursor", CodeInvalidCursor, WithDetail("zero cursor"))
+		return NewError("", "ValidateCursor", InvalidCursor, WithDetail("zero cursor"))
 	}
 	env, err := decodeCursor(c.text)
 	if err != nil {
-		return NewError("", "ValidateCursor", CodeInvalidCursor, WithCause(err))
+		return NewError("", "ValidateCursor", InvalidCursor, WithCause(err))
 	}
 	if env.Product != product || env.Operation != operation ||
 		env.Binding != bindingVersion || env.QueryHash != queryHash {
-		return NewError("", "ValidateCursor", CodeInvalidCursor, WithDetail("cursor binding mismatch"))
+		return NewError("", "ValidateCursor", InvalidCursor, WithDetail("cursor binding mismatch"))
 	}
 	return nil
 }
@@ -178,11 +178,11 @@ func ValidateCursor(c Cursor, product, operation string, bindingVersion int, que
 // per-request secrets when continuing an operation.
 func CursorPayload(c Cursor) ([]byte, error) {
 	if c.IsZero() {
-		return nil, NewError("", "CursorPayload", CodeInvalidCursor, WithDetail("zero cursor"))
+		return nil, NewError("", "CursorPayload", InvalidCursor, WithDetail("zero cursor"))
 	}
 	env, err := decodeCursor(c.text)
 	if err != nil {
-		return nil, NewError("", "CursorPayload", CodeInvalidCursor, WithCause(err))
+		return nil, NewError("", "CursorPayload", InvalidCursor, WithCause(err))
 	}
 	return env.Payload, nil
 }

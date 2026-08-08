@@ -23,15 +23,15 @@ The project needs a clearer internal structure without changing CLI/MCP behavior
   - `SDKService`（取代早期独立的 `ArtworkService` / `DownloadService` seam）
 - Add `internal/bootstrap` as the production composition root.
 - Publish Pixiv access through concrete `pixiv.Client`; CLI/MCP reach it through application-owned narrow seams rather than importing internal App/Web transports.
-- Move `internal/cli/state` to `internal/storage/auth`.
+- Keep durable credentials in `internal/persistence/authdb`; do not auto-read legacy `auth.json`. Cross-version migration is an explicit `auth export --all --output` followed by `auth import --file` bundle workflow.
 - Merge `internal/cli/mcpapp` into `internal/bootstrap` as MCP runtime wiring.
 
 ## Consequences
 
-- CLI tests continue to validate user-visible behavior, while `internal/application` and `internal/storage/auth` gain focused package tests.
+- CLI tests continue to validate user-visible behavior, while `internal/application` and `internal/persistence/authdb` gain focused package tests.
 - Production wiring is centralized in `internal/bootstrap`, making future client/storage replacement less invasive.
 - `auth login` intentionally keeps loopback HTTP and browser/prompt adapters in CLI; the application layer handles PKCE/state generation, authorization-code exchange, and account persistence.
-- `internal/mcpserver` owns MCP tool registration; `internal/bootstrap` owns stdio runtime startup.
+- `internal/mcpserver/pixiv` and `internal/mcpserver/fanbox` own product-specific MCP tool registration; the root package is a thin constructor facade and `internal/bootstrap` owns stdio runtime startup.
 - Public SDK construction remains in bootstrap/application. CLI and MCP remain presentation/protocol adapters, not Pixiv protocol owners.
 
 ## Guardrails

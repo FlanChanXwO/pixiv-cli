@@ -36,18 +36,18 @@ type ResourceRef struct {
 // NewResourceRef constructs an opaque reference for product carrying the given
 // opaque identity payload. It is intended for product SDK implementations.
 // product must be non-empty and payload must be non-empty; violations return
-// CodeInvalidArgument.
+// InvalidArgument.
 func NewResourceRef(product string, payload []byte) (ResourceRef, error) {
 	if product == "" {
-		return ResourceRef{}, NewError("", "NewResourceRef", CodeInvalidArgument, WithDetail("product is required"))
+		return ResourceRef{}, NewError("", "NewResourceRef", InvalidArgument, WithDetail("product is required"))
 	}
 	if len(payload) == 0 {
-		return ResourceRef{}, NewError("", "NewResourceRef", CodeInvalidArgument, WithDetail("reference payload is required"))
+		return ResourceRef{}, NewError("", "NewResourceRef", InvalidArgument, WithDetail("reference payload is required"))
 	}
 	env := resourceRefEnvelope{Version: resourceRefFormatVersion, Product: product, Payload: payload}
 	raw, err := json.Marshal(env)
 	if err != nil {
-		return ResourceRef{}, NewError("", "NewResourceRef", CodeInvalidArgument, WithCause(err))
+		return ResourceRef{}, NewError("", "NewResourceRef", InvalidArgument, WithCause(err))
 	}
 	return ResourceRef{text: base64.RawURLEncoding.EncodeToString(raw)}, nil
 }
@@ -62,16 +62,16 @@ func (r ResourceRef) String() string { return r.text }
 // reference.
 func (r ResourceRef) MarshalText() ([]byte, error) {
 	if r.IsZero() {
-		return nil, NewError("", "ResourceRef.MarshalText", CodeInvalidArgument, WithDetail("zero reference"))
+		return nil, NewError("", "ResourceRef.MarshalText", InvalidArgument, WithDetail("zero reference"))
 	}
 	return []byte(r.text), nil
 }
 
 // UnmarshalText decodes a reference from its route-safe unpadded base64url text
-// encoding, returning CodeInvalidArgument for malformed input.
+// encoding, returning InvalidArgument for malformed input.
 func (r *ResourceRef) UnmarshalText(text []byte) error {
 	if len(text) == 0 {
-		return NewError("", "ResourceRef.UnmarshalText", CodeInvalidArgument, WithDetail("empty reference text"))
+		return NewError("", "ResourceRef.UnmarshalText", InvalidArgument, WithDetail("empty reference text"))
 	}
 	if _, err := decodeResourceRef(string(text)); err != nil {
 		return err
@@ -81,7 +81,7 @@ func (r *ResourceRef) UnmarshalText(text []byte) error {
 }
 
 // MarshalJSON encodes the reference as a JSON string containing its Text form.
-// Marshaling a zero reference returns CodeInvalidArgument.
+// Marshaling a zero reference returns InvalidArgument.
 func (r ResourceRef) MarshalJSON() ([]byte, error) {
 	text, err := r.MarshalText()
 	if err != nil {
@@ -94,13 +94,13 @@ func (r ResourceRef) MarshalJSON() ([]byte, error) {
 func (r *ResourceRef) UnmarshalJSON(data []byte) error {
 	var text string
 	if err := json.Unmarshal(data, &text); err != nil {
-		return NewError("", "ResourceRef.UnmarshalJSON", CodeInvalidArgument, WithCause(err))
+		return NewError("", "ResourceRef.UnmarshalJSON", InvalidArgument, WithCause(err))
 	}
 	return r.UnmarshalText([]byte(text))
 }
 
 // ParseResourceRef decodes a reference from its route-safe unpadded base64url
-// text encoding, returning CodeInvalidArgument for malformed input.
+// text encoding, returning InvalidArgument for malformed input.
 func ParseResourceRef(text string) (ResourceRef, error) {
 	var r ResourceRef
 	if err := r.UnmarshalText([]byte(text)); err != nil {
@@ -131,17 +131,17 @@ func ResourceRefPayload(r ResourceRef) ([]byte, error) {
 func decodeResourceRef(text string) (resourceRefEnvelope, error) {
 	raw, err := base64.RawURLEncoding.DecodeString(text)
 	if err != nil {
-		return resourceRefEnvelope{}, NewError("", "decodeResourceRef", CodeInvalidArgument, WithCause(err))
+		return resourceRefEnvelope{}, NewError("", "decodeResourceRef", InvalidArgument, WithCause(err))
 	}
 	var env resourceRefEnvelope
 	if err := json.Unmarshal(raw, &env); err != nil {
-		return resourceRefEnvelope{}, NewError("", "decodeResourceRef", CodeInvalidArgument, WithCause(err))
+		return resourceRefEnvelope{}, NewError("", "decodeResourceRef", InvalidArgument, WithCause(err))
 	}
 	if env.Version != resourceRefFormatVersion {
-		return resourceRefEnvelope{}, NewError("", "decodeResourceRef", CodeInvalidArgument, WithCause(fmt.Errorf("unsupported reference format version %d", env.Version)))
+		return resourceRefEnvelope{}, NewError("", "decodeResourceRef", InvalidArgument, WithCause(fmt.Errorf("unsupported reference format version %d", env.Version)))
 	}
 	if env.Product == "" || len(env.Payload) == 0 {
-		return resourceRefEnvelope{}, NewError("", "decodeResourceRef", CodeInvalidArgument, WithDetail("reference missing product or payload"))
+		return resourceRefEnvelope{}, NewError("", "decodeResourceRef", InvalidArgument, WithDetail("reference missing product or payload"))
 	}
 	return env, nil
 }

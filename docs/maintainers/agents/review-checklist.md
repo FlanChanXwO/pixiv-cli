@@ -7,7 +7,7 @@
 - `internal/cli` 是否只做 Cobra、TTY、OAuth loopback 和 presenter；业务用例是否留在 `internal/application`。
 - `internal/bootstrap` 是否仍是生产 wiring 的唯一入口；MCP runtime 是否仍由 bootstrap 启动。
 - CLI/MCP 是否经 `internal/application.SDKService` 调用顶层 `pixiv` public SDK；不得绕到 `internal/services/pixiv/appapi`、`webapi`、`oauth` 或 `resource` 协议适配包。
-- `internal/config` 是否只维护 `config.toml` schema、defaults、effective runtime config 和 sparse writes。
+- `internal/application/config` 是否只维护 `config.toml` schema、defaults、effective runtime config 和 sparse writes。
 - `internal/utils/*` 是否保持协议无关；Pixiv/MCP/config 协议值不要搬进 generic utils/common。
 
 ## 行为风险

@@ -8,7 +8,7 @@
 - 两个产品 package 都只依赖 `sdk` 和允许的 internal adapter；彼此不 import，不共享 credential，
   不自动 fallback。
 
-公开 package 不 import `internal/storage`、`internal/config`、浏览器 provider、Cobra 或 MCP。
+公开 package 不 import `internal/persistence`、`internal/application/config`、浏览器 provider、Cobra 或 MCP。
 协议 adapter 继续留在 `internal/services/<product>`，不得公开。
 
 `sdk` 保持小型、协议无关，不承载产品 operation 或内容模型。源码按职责拆成多个文件；文件名不是
@@ -53,32 +53,53 @@ type Page[T any] struct {
 
 ## `sdk.Error`
 
-`*sdk.Error` 提供稳定的 `Product`、`Operation`、`Code`、安全 upstream status、
+`*sdk.Error` 提供稳定的 `Product`、`Operation`、`Reason`、安全 upstream status、
 transport kind 与 retry advice。它实现 `errors.Is/As`，并保留 `context.Canceled` 和
 `context.DeadlineExceeded` 链。
 
-v1 基础 code 固定为：
+公开分类 API 固定为：
 
-```text
-invalid_argument
-invalid_cursor
-unauthorized
-credentials_expired
-forbidden
-not_found
-content_unavailable
-challenge_required
-rate_limited
-upstream_error
-upstream_unavailable
-malformed_upstream_response
-resource_forbidden
-local_state_error
-removed_setting
+```go
+type Reason string
+
+type Error struct {
+	Product   string
+	Operation string
+	Reason    Reason
+	// 其余安全 status、transport、retry 与 detail 字段保持既有设计。
+}
+
+func ReasonOf(err error) Reason
+func IsReason(err error, reason Reason) bool
+func NewError(product, operation string, reason Reason, opts ...ErrorOption) *Error
 ```
 
-产品差异通过 `Product`、`Operation` 和受控 detail kind 表达，不临时创造同义 code。后续新增
-code 只能是 additive change，并必须同步 SDK、CLI/MCP 映射和三语文档。
+v1 基础常量及稳定 wire value 固定为：
+
+```go
+const (
+	InvalidArgument           Reason = "invalid_argument"
+	InvalidCursor             Reason = "invalid_cursor"
+	Unauthorized              Reason = "unauthorized"
+	CredentialsExpired        Reason = "credentials_expired"
+	Forbidden                 Reason = "forbidden"
+	NotFound                  Reason = "not_found"
+	ContentUnavailable        Reason = "content_unavailable"
+	ChallengeRequired         Reason = "challenge_required"
+	RateLimited               Reason = "rate_limited"
+	UpstreamError             Reason = "upstream_error"
+	UpstreamUnavailable       Reason = "upstream_unavailable"
+	MalformedUpstreamResponse Reason = "malformed_upstream_response"
+	ResourceForbidden         Reason = "resource_forbidden"
+	LocalStateError           Reason = "local_state_error"
+	RemovedSetting            Reason = "removed_setting"
+)
+```
+
+不再公开 `Code`、`Error.Code`、`CodeOf`、`IsCode` 或 `Code*` 常量。该改名必须在 v1.0.0 API freeze
+前一次完成，并同步源码、inventory、CLI/MCP 映射和三语文档；稳定字符串值不变。产品差异通过
+`Product`、`Operation` 和受控 detail kind 表达，不临时创造同义 reason。v1 freeze 后新增 reason
+只能是 additive change。`Error.Is` 继续按相同非空 `Reason` 匹配，context cause 的 unwrap 语义不变。
 
 重试信息使用 `RetryAdvice{Safe, After, HasAfter}`。`Safe` 只表达从操作提交语义看可安全
 重试，不代表 SDK 会自动重试；`After` 只来自已验证的上游信息。错误链不得包含原始 URL、
@@ -105,6 +126,8 @@ func NewWith(accessToken string, options Options) (*Client, error)
 
 - `Open` 执行一次 OAuth refresh，返回只持有 access token 的 Client 以及 rotation 后的
   `Credentials`；Client 不自动 refresh。
+- OAuth 成功响应必须包含正数 account user ID；缺失身份时返回
+  `malformed_upstream_response`，不返回 Client 或 credentials。
 - 调用方必须在使用 Client 前持久化返回的 rotated credentials。CLI/MCP 保存失败时不得
   发起内容请求。
 - access token 过期后返回 `credentials_expired`；调用方重新 `Open`。
@@ -124,6 +147,12 @@ func BeginLogin(options LoginOptions) (*LoginSession, error)
 
 func (s *LoginSession) AuthorizationURL() string
 
+func (s *LoginSession) AcceptsCallbackURL(rawURL string) bool
+
+func IsOfficialOAuthCallbackURL(rawURL string) bool
+
+func IsOfficialOAuthStartURL(rawURL string) bool
+
 func (s *LoginSession) Complete(
 	ctx context.Context,
 	callbackURL string,
@@ -131,6 +160,9 @@ func (s *LoginSession) Complete(
 ```
 
 `LoginSession` 是 self-contained、one-shot 的 PKCE/state 会话，不绑定 Client 或本地账号库。
+`AcceptsCallbackURL` 只做非消耗性 callback 校验，不联网；官方 HTTPS callback 必须匹配 session
+state，`pixiv://account/login` 可省略 state 但若提供必须匹配。两个 `IsOfficialOAuth*` helper
+只校验精确 origin/path，不联网。
 复制、并发完成或二次完成都返回稳定错误；格式化永不暴露 verifier、state、code 或 callback。
 
 ## Pixiv 模型与方法规则
@@ -305,15 +337,41 @@ func OpenWith(
 	credentials SessionCredentials,
 	options Options,
 ) (*Client, error)
+
+type Options struct {
+	HTTPClient   *http.Client
+	ProxyURL     string
+	UserAgent    string
+	FlareSolverr *FlareSolverrOptions
+}
+
+type FlareSolverrOptions struct {
+	URL      string
+	ProxyURL string
+}
 ```
 
 - 构造器不联网、不读取浏览器或本地文件。
 - SDK 只接受明确的 `FANBOXSESSID`，不接受完整 Cookie header。
 - `SessionCredentials` 的所有格式化路径脱敏。
 - `ValidateSession(ctx)` 显式验证当前身份；session 失效返回 `credentials_expired`。
-- Cookie 只发送给精确允许的 FANBOX host；资源请求和 redirect 后续跳转不携带 Cookie。
-- 只有精确识别的 challenge 响应返回 `challenge_required`；普通 403 保持 `forbidden` 或
-  upstream 分类。
+- `Options.UserAgent` 为空时使用内置 FANBOX native UA；非空时只覆盖 native HTTP header，不改变
+  `tls-client` profile。solver state 存续时 solver 返回的 UA 优先。
+- `Options.ProxyURL` 与 FlareSolverr service/upstream proxy 相互独立，不自动继承。nil
+  `FlareSolverr` 完全禁用外部 solver；SDK 不读取环境变量或 `config.toml`。
+- `FlareSolverrOptions.URL` 只接受含 host 的 absolute `http`/`https` service root，不接受 userinfo、
+  query、fragment 或非根 path；空 path 与 `/` 规范化后追加 `/v1`。格式错误在构造阶段返回
+  `InvalidArgument`，且不回显原始 URL。
+- `FlareSolverrOptions.ProxyURL` 服从 `request.get` 的无认证 upstream proxy 能力；v1.0.0 不创建
+  FlareSolverr session 来承载用户名/密码代理。
+- `FANBOXSESSID` 只发送给精确允许的 FANBOX API/第一方资源 host；redirect 后重新校验，不向任意
+  URL 传播。FlareSolverr 只匿名求解 FANBOX 首页，永远不接收 session、API/帖子/文件 URL 或 body。
+- 精确识别的 challenge 先进入可选 recovery；未配置 solver、求解失败或 native replay 仍为
+  challenge 时才最终返回 `challenge_required`。普通 403 保持 `forbidden` 或 upstream 分类。
+- challenge recovery、cache、并发合并、一次重放与 proxy 拓扑的完整契约见
+  [FANBOX challenge 与 FlareSolverr 路由](fanbox-challenge-routing.md)。
+- CLI 的全局/服务级 proxy、FANBOX UA 与 Docker/外部 service 配置见
+  [网络配置与服务路由](network-routing.md)；公开 SDK 自身不读取这些 TOML key。
 
 ## FANBOX 模型与入口
 

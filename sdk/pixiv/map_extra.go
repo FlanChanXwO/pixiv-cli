@@ -11,11 +11,11 @@ import (
 
 // mapUgoiraMetadata converts the adapter ugoira result into the public model,
 // validating frame filenames and archive quality. It returns
-// CodeMalformedUpstreamResponse when the result is incomplete or unsafe.
+// MalformedUpstreamResponse when the result is incomplete or unsafe.
 func (c *Client) mapUgoiraMetadata(artworkID int64, result *model.UgoiraMetadataResult) (UgoiraMetadata, error) {
 	meta := result.UgoiraMetadata
 	if artworkID <= 0 || len(meta.Frames) == 0 {
-		return UgoiraMetadata{}, newError("UgoiraMetadata", sdk.CodeMalformedUpstreamResponse, "incomplete ugoira metadata")
+		return UgoiraMetadata{}, newError("UgoiraMetadata", sdk.MalformedUpstreamResponse, "incomplete ugoira metadata")
 	}
 	archives := make([]UgoiraArchive, 0, 2)
 	seenQuality := map[string]bool{}
@@ -37,19 +37,19 @@ func (c *Client) mapUgoiraMetadata(artworkID int64, result *model.UgoiraMetadata
 		seenQuality[string(candidate.quality)] = true
 	}
 	if len(archives) == 0 {
-		return UgoiraMetadata{}, newError("UgoiraMetadata", sdk.CodeMalformedUpstreamResponse, "ugoira metadata has no archive")
+		return UgoiraMetadata{}, newError("UgoiraMetadata", sdk.MalformedUpstreamResponse, "ugoira metadata has no archive")
 	}
 	frames := make([]UgoiraFrame, 0, len(meta.Frames))
 	seenFile := map[string]bool{}
 	for _, frame := range meta.Frames {
 		if !safeArchiveFilename(frame.File) || seenFile[frame.File] {
-			return UgoiraMetadata{}, newError("UgoiraMetadata", sdk.CodeMalformedUpstreamResponse, "ugoira frame filename is unsafe or duplicated")
+			return UgoiraMetadata{}, newError("UgoiraMetadata", sdk.MalformedUpstreamResponse, "ugoira frame filename is unsafe or duplicated")
 		}
 		seenFile[frame.File] = true
 		frames = append(frames, UgoiraFrame{Filename: frame.File, DelayMilliseconds: frame.Delay})
 	}
 	if len(frames) == 0 {
-		return UgoiraMetadata{}, newError("UgoiraMetadata", sdk.CodeMalformedUpstreamResponse, "ugoira metadata has no frames")
+		return UgoiraMetadata{}, newError("UgoiraMetadata", sdk.MalformedUpstreamResponse, "ugoira metadata has no frames")
 	}
 	return UgoiraMetadata{ArtworkID: artworkID, Archives: archives, Frames: frames}, nil
 }
@@ -97,7 +97,7 @@ func (c *Client) commentPage(op string, query url.Values, list *model.CommentLis
 func (c *Client) mapComment(m model.Comment) (Comment, error) {
 	created, err := parseUTCTime(m.CreateDate)
 	if err != nil {
-		return Comment{}, newError("Comment", sdk.CodeMalformedUpstreamResponse, "invalid comment time")
+		return Comment{}, newError("Comment", sdk.MalformedUpstreamResponse, "invalid comment time")
 	}
 	out := Comment{ID: m.ID, User: c.mapUser(m.User), Comment: m.Comment, CreatedAt: created}
 	if m.ParentComment != nil {

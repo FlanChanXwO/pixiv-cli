@@ -11,7 +11,7 @@ import (
 // ReferenceKind identifies the stable Pixiv page type a parsed URL points to.
 type ReferenceKind string
 
-// ReferenceKind values define the supported ReferenceKind constants.
+// ReferenceKind values define the supported ReferenceKind filesystem.
 const (
 	ReferenceKindArtwork       ReferenceKind = "artwork"
 	ReferenceKindNovel         ReferenceKind = "novel"
@@ -36,22 +36,22 @@ type Reference struct {
 // or www.pixiv.net without userinfo or an explicit port. Unknown paths, missing
 // or duplicate IDs, non-decimal or non-positive IDs, host confusion, and bare
 // integers (which cannot be disambiguated between artwork, novel, user, or
-// series) return CodeInvalidArgument. Supported official forms and their locale
+// series) return InvalidArgument. Supported official forms and their locale
 // path prefixes are covered by the v1 contract.
 func ParseURL(rawURL string) (Reference, error) {
 	value := strings.TrimSpace(rawURL)
 	if value == "" {
-		return Reference{}, newError("ParseURL", sdk.CodeInvalidArgument, "empty URL")
+		return Reference{}, newError("ParseURL", sdk.InvalidArgument, "empty URL")
 	}
 	if isBareInteger(value) {
-		return Reference{}, newError("ParseURL", sdk.CodeInvalidArgument, "bare integer cannot be resolved to a resource type")
+		return Reference{}, newError("ParseURL", sdk.InvalidArgument, "bare integer cannot be resolved to a resource type")
 	}
 	parsed, err := url.Parse(value)
 	if err != nil {
-		return Reference{}, newError("ParseURL", sdk.CodeInvalidArgument, "URL is not parseable")
+		return Reference{}, newError("ParseURL", sdk.InvalidArgument, "URL is not parseable")
 	}
 	if parsed.Scheme != "https" || parsed.User != nil || parsed.Port() != "" || !isPixivHost(parsed.Hostname()) {
-		return Reference{}, newError("ParseURL", sdk.CodeInvalidArgument, "URL must be https on pixiv.net without userinfo or port")
+		return Reference{}, newError("ParseURL", sdk.InvalidArgument, "URL must be https on pixiv.net without userinfo or port")
 	}
 	parts := splitPath(parsed.Path)
 	ref, ok := parseReferencePath(parts, parsed)
@@ -63,14 +63,14 @@ func ParseURL(rawURL string) (Reference, error) {
 			return ref, nil
 		}
 	}
-	return Reference{}, newError("ParseURL", sdk.CodeInvalidArgument, "URL does not name a supported Pixiv resource")
+	return Reference{}, newError("ParseURL", sdk.InvalidArgument, "URL does not name a supported Pixiv resource")
 }
 
 // CanonicalURL returns the canonical, tracking-free Pixiv page URL for the
-// reference. Invalid or zero references return CodeInvalidArgument.
+// reference. Invalid or zero references return InvalidArgument.
 func (r Reference) CanonicalURL() (string, error) {
 	if r.ID <= 0 {
-		return "", newError("ParseURL", sdk.CodeInvalidArgument, "reference has no positive ID")
+		return "", newError("ParseURL", sdk.InvalidArgument, "reference has no positive ID")
 	}
 	switch r.Kind {
 	case ReferenceKindArtwork:
@@ -83,13 +83,13 @@ func (r Reference) CanonicalURL() (string, error) {
 		return "https://www.pixiv.net/users/" + strconv.FormatInt(r.ID, 10) + "/bookmarks/artworks", nil
 	case ReferenceKindArtworkSeries:
 		if r.OwnerUserID <= 0 {
-			return "", newError("ParseURL", sdk.CodeInvalidArgument, "artwork series reference requires an owner user ID")
+			return "", newError("ParseURL", sdk.InvalidArgument, "artwork series reference requires an owner user ID")
 		}
 		return "https://www.pixiv.net/user/" + strconv.FormatInt(r.OwnerUserID, 10) + "/series/" + strconv.FormatInt(r.ID, 10), nil
 	case ReferenceKindNovelSeries:
 		return "https://www.pixiv.net/novel/series/" + strconv.FormatInt(r.ID, 10), nil
 	default:
-		return "", newError("ParseURL", sdk.CodeInvalidArgument, "unknown reference kind")
+		return "", newError("ParseURL", sdk.InvalidArgument, "unknown reference kind")
 	}
 }
 

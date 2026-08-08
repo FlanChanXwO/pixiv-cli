@@ -624,8 +624,8 @@ func isolatedGitEnvironment(base []string, extra map[string]string) []string {
 	result := make([]string, 0, len(base)+len(overrides))
 	for _, entry := range base {
 		name := entry
-		if index := strings.IndexByte(entry, '='); index >= 0 {
-			name = entry[:index]
+		if before, _, found := strings.Cut(entry, "="); found {
+			name = before
 		}
 		normalized := strings.ToUpper(name)
 		if isGitRepositoryLocalEnvironmentName(normalized) {

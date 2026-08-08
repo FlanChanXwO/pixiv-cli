@@ -46,7 +46,7 @@ if [ -e "$temporary/staticlib/manifest.json" ]; then
 	exit 1
 fi
 
-tracked_manifest="$repo_root/internal/download/ugoira_rs/staticlib/manifest.json"
+tracked_manifest="$repo_root/internal/downloader/ugoira_rs/staticlib/manifest.json"
 [ -f "$tracked_manifest" ]
 tracked_manifest_hash_before=$(shasum -a 256 "$tracked_manifest" | awk '{print $1}')
 

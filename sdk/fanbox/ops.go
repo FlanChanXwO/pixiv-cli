@@ -11,7 +11,7 @@ import (
 )
 
 // ValidateSession verifies the current session identity. An expired session
-// returns CodeCredentialsExpired.
+// returns CredentialsExpired.
 func (c *Client) ValidateSession(ctx context.Context) error {
 	_, err := c.session.CurrentUser(ctx)
 	if err != nil {
@@ -32,7 +32,7 @@ func (c *Client) CurrentUser(ctx context.Context, request CurrentUserRequest) (U
 // Creator returns one creator's profile.
 func (c *Client) Creator(ctx context.Context, request CreatorRequest) (Creator, error) {
 	if request.CreatorID == "" {
-		return Creator{}, newError("Creator", sdk.CodeInvalidArgument, errors.New("creator id is required"))
+		return Creator{}, newError("Creator", sdk.InvalidArgument, errors.New("creator id is required"))
 	}
 	profile, err := c.session.Creator(ctx, request.CreatorID)
 	if err != nil {
@@ -52,22 +52,25 @@ func (c *Client) Creators(ctx context.Context, request CreatorsRequest) (sdk.Pag
 	if err != nil {
 		return sdk.Page[CreatorSummary]{}, err
 	}
-	_ = nextURL
-	creators, err := c.session.Creators(ctx, fanbox.CreatorListKind(kind))
+	page, err := c.session.Creators(ctx, fanbox.CreatorListKind(kind), nextURL)
 	if err != nil {
 		return sdk.Page[CreatorSummary]{}, classifyError("Creators", err)
 	}
-	items := make([]CreatorSummary, 0, len(creators))
-	for _, creator := range creators {
+	items := make([]CreatorSummary, 0, len(page.Creators))
+	for _, creator := range page.Creators {
 		items = append(items, c.mapCreatorSummary(creator))
 	}
-	return sdk.Page[CreatorSummary]{Items: items}, nil
+	next, err := c.buildCursor("Creators", query, page.NextURL)
+	if err != nil {
+		return sdk.Page[CreatorSummary]{}, err
+	}
+	return sdk.Page[CreatorSummary]{Items: items, Next: next}, nil
 }
 
 // CreatorTags lists the tags used by one creator.
 func (c *Client) CreatorTags(ctx context.Context, request CreatorTagsRequest) ([]CreatorTag, error) {
 	if request.CreatorID == "" {
-		return nil, newError("CreatorTags", sdk.CodeInvalidArgument, errors.New("creator id is required"))
+		return nil, newError("CreatorTags", sdk.InvalidArgument, errors.New("creator id is required"))
 	}
 	tags, err := c.session.CreatorTags(ctx, request.CreatorID)
 	if err != nil {
@@ -83,7 +86,7 @@ func (c *Client) CreatorTags(ctx context.Context, request CreatorTagsRequest) ([
 // CreatorPosts lists one creator's posts.
 func (c *Client) CreatorPosts(ctx context.Context, request CreatorPostsRequest) (sdk.Page[Post], error) {
 	if request.CreatorID == "" {
-		return sdk.Page[Post]{}, newError("CreatorPosts", sdk.CodeInvalidArgument, errors.New("creator id is required"))
+		return sdk.Page[Post]{}, newError("CreatorPosts", sdk.InvalidArgument, errors.New("creator id is required"))
 	}
 	query := url.Values{"creatorId": {request.CreatorID}}
 	nextURL, err := c.continuationURL("CreatorPosts", query, request.Cursor)
@@ -100,7 +103,7 @@ func (c *Client) CreatorPosts(ctx context.Context, request CreatorPostsRequest) 
 // TaggedPosts lists one creator's posts for a single tag.
 func (c *Client) TaggedPosts(ctx context.Context, request TaggedPostsRequest) (sdk.Page[Post], error) {
 	if request.CreatorID == "" || request.Tag == "" {
-		return sdk.Page[Post]{}, newError("TaggedPosts", sdk.CodeInvalidArgument, errors.New("creator id and tag are required"))
+		return sdk.Page[Post]{}, newError("TaggedPosts", sdk.InvalidArgument, errors.New("creator id and tag are required"))
 	}
 	query := url.Values{"creatorId": {request.CreatorID}, "tag": {request.Tag}}
 	nextURL, err := c.continuationURL("TaggedPosts", query, request.Cursor)
@@ -117,7 +120,7 @@ func (c *Client) TaggedPosts(ctx context.Context, request TaggedPostsRequest) (s
 // Post returns one post by its stable ID.
 func (c *Client) Post(ctx context.Context, request PostRequest) (Post, error) {
 	if request.PostID == "" {
-		return Post{}, newError("Post", sdk.CodeInvalidArgument, errors.New("post id is required"))
+		return Post{}, newError("Post", sdk.InvalidArgument, errors.New("post id is required"))
 	}
 	post, err := c.session.Post(ctx, request.PostID)
 	if err != nil {
@@ -213,7 +216,7 @@ func (c *Client) mapCreator(profile fanbox.CreatorProfile) (Creator, error) {
 func (c *Client) mapPost(source fanbox.Post) (Post, error) {
 	published, err := parseUTCTime(source.PublishedDateTime)
 	if err != nil {
-		return Post{}, newError("Post", sdk.CodeMalformedUpstreamResponse, err)
+		return Post{}, newError("Post", sdk.MalformedUpstreamResponse, err)
 	}
 	out := Post{
 		ID:            source.ID,

@@ -17,8 +17,9 @@
 ## Why pixiv-cli?
 
 - **One capability surface** — search, details, rankings, recommendations, users, bookmarks, follows, downloads, and ugoira across CLI, MCP, and SDK.
+- **Read-only FANBOX access** — authenticate with `FANBOXSESSID`, inspect creators, posts, home/supporting feeds, tags, and first-party file resources through the CLI, MCP, or `sdk/fanbox`.
 - **Composable visual pipelines** — visual lists automatically emit canonical NDJSON when piped; use `--filter` for typed local artwork rules and pass matching records straight to `download`.
-- **Local account pools** — select eligible local accounts for read workloads and honor Pixiv `Retry-After` responses during pagination and download preparation.
+- **Local account pools** — enable database-backed scheduling for read workloads with `pixiv auth pool status|enable|disable`; selection honors Pixiv `Retry-After` responses without exposing credentials.
 - **Guided account sign-in** — complete browser OAuth with `pixiv auth login`, then use `auth list`, `auth use`, and `auth check` to manage local multi-account access.
 - **Four ugoira output modes** — choose GIF, APNG, lossless ZIP, or extracted frames.
 - **Reliable, organized downloads** — revalidate `.pixiv-cache` metadata, resume verified partials, retry eligible resource failures, optionally archive completed artwork IDs, write sidecars, and show exact terminal progress when available.
@@ -27,6 +28,7 @@
 - **Direct Pixiv references** — paste supported artwork URLs into detail or download; authenticated profile and artworks URLs expand to that creator's visual works.
 - **Local multi-account OAuth** — browser login, account selection, refresh-token rotation, and an optional cross-machine callback relay.
 - **Automation-ready integration** — typed SDK errors, JSON output, clean MCP stdio, signed release updates, and complete result reporting.
+- **Explicit diagnostics** — opt in with `--debug` for safe live stderr events covering routing, challenge recovery, account-pool decisions, and downloads; no log file is created.
 
 ## Install
 
@@ -107,6 +109,10 @@ Direct downloads include checksums and a signed manifest. See the [CLI reference
 # Save a Pixiv account through browser OAuth.
 pixiv auth login
 
+# Save a FANBOX session through hidden input, then inspect FANBOX content.
+pixiv fanbox auth import
+pixiv fanbox post 123456
+
 # Search with App-side filters.
 pixiv search "初音ミク" --type illust --ai-mode exclude --resolution high
 pixiv novel search "初音ミク" --rating sfw --min-text-length 1000
@@ -143,10 +149,16 @@ pixiv timeline latest --type illust --limit 10 --json
 
 ### MCP
 
-Start the stdio server explicitly. stdout remains reserved for JSON-RPC. Operation summaries are written as daily plain-text files named `YYYY-MM-DD.txt` under `~/.pixiv-cli/logs` (on Windows, `%USERPROFILE%\.pixiv-cli\logs`; default retention 7 days); the terminal stays free of log traces by default.
+Diagnostics are opt-in and write only safe event fields to stderr; MCP stdout remains JSON-RPC only.
+
+Start the stdio server explicitly. stdout remains reserved for JSON-RPC; tool failures are returned as structured results with `isError=true`. No project-level or daily log files are created by default.
 
 ```bash
 pixiv mcp
+# Optional safe diagnostics go to stderr and never change MCP stdout.
+pixiv --debug mcp
+# FANBOX tools use their own runtime credential selection.
+pixiv --debug fanbox mcp
 ```
 
 See the [MCP tool contract](docs/en/mcp-tools.md) for tools, parameters, structured output, and authentication behavior.
@@ -154,7 +166,7 @@ Fixed MCP status, error, and display text is English; Pixiv metadata and user-su
 
 ### Go SDK
 
-For a local first use, run `pixiv auth login` once, then create a client from that local account and make a search:
+The public SDK receives credentials explicitly and does not read the CLI's local account store. This example reads a refresh token from the process environment only to keep the secret out of source code; persist the rotated credentials returned by `Open` in your own application:
 
 ```go
 package main
@@ -163,28 +175,29 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"os"
 
-	pixiv "github.com/FlanChanXwO/pixiv-cli/pixiv"
+	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 )
 
 func main() {
 	ctx := context.Background()
-	client, err := pixiv.OpenDefault()
+	client, _, err := pixiv.Open(ctx, os.Getenv("PIXIV_REFRESH_TOKEN"))
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	result, err := client.SearchIllust(ctx, pixiv.SearchIllustRequest{Word: "初音ミク"})
+	result, err := client.SearchArtworks(ctx, pixiv.SearchArtworksRequest{Word: "初音ミク"})
 	if err != nil {
 		log.Fatal(err)
 	}
-	for _, illust := range result.Illusts {
-		fmt.Printf("%d %s\\n", illust.ID, illust.URL)
+	for _, artwork := range result.Items {
+		fmt.Printf("%d %s\\n", artwork.ID, artwork.URL)
 	}
 }
 ```
 
-The import path is `github.com/FlanChanXwO/pixiv-cli/pixiv`. `Download`/`DownloadAll` use documented beginner defaults; `DownloadWith`/`DownloadAllWith` expose paths, naming, pages, quality, and concurrency. The [SDK guide](docs/en/sdk.md) documents models, cursors, resources, errors, and caller responsibilities.
+The import path is `github.com/FlanChanXwO/pixiv-cli/sdk/pixiv`. `sdk/fanbox` accepts a `FANBOXSESSID` explicitly and supports native Firefox 148 routing with optional service-scoped proxy, user-agent, and challenge-only FlareSolverr options. `Download`/`DownloadAll` use documented beginner defaults; `DownloadWith`/`DownloadAllWith` expose paths, naming, pages, quality, and concurrency. The [SDK guide](docs/en/sdk.md) documents models, cursors, resources, errors, and caller responsibilities.
 
 ## Authentication and token safety
 
@@ -198,6 +211,7 @@ On macOS, Windows, and desktop Linux, `pixiv` prepares the current-user `pixiv:/
 
 ```bash
 pixiv auth list
+pixiv auth pool status
 pixiv auth use 12345678
 pixiv auth check
 ```

@@ -7,14 +7,44 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
-	"time"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/config"
-	"github.com/FlanChanXwO/pixiv-cli/internal/platform/localstate"
-	"github.com/FlanChanXwO/pixiv-cli/internal/storage/authdb"
+	"github.com/FlanChanXwO/pixiv-cli/internal/application/config"
+	"github.com/FlanChanXwO/pixiv-cli/internal/filesystem"
+	"github.com/FlanChanXwO/pixiv-cli/internal/persistence/authdb"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	pixivsdk "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 )
+
+func TestPixivE2ERotationUsesStoredRevision(t *testing.T) {
+	account := authdb.PixivAccount{UserID: 42, CredentialRevision: 7}
+	var gotUserID, gotRevision int64
+	var gotToken []byte
+	rotate := func(_ context.Context, userID, revision int64, token []byte) error {
+		gotUserID = userID
+		gotRevision = revision
+		gotToken = append([]byte(nil), token...)
+		return nil
+	}
+
+	if err := persistPixivE2ERotation(context.Background(), rotate, account, "rotated-refresh"); err != nil {
+		t.Fatalf("persistPixivE2ERotation: %v", err)
+	}
+	if gotUserID != account.UserID || gotRevision != account.CredentialRevision || string(gotToken) != "rotated-refresh" {
+		t.Fatalf("rotation arguments = user=%d revision=%d token=%q", gotUserID, gotRevision, gotToken)
+	}
+}
+
+// persistPixivE2ERotation keeps the release-prep path on the same CAS contract
+// as the application service: the expected revision comes from the account
+// read that supplied the refresh token, never from a fixed initial value.
+func persistPixivE2ERotation(
+	ctx context.Context,
+	rotate func(context.Context, int64, int64, []byte) error,
+	account authdb.PixivAccount,
+	refreshToken string,
+) error {
+	return rotate(ctx, account.UserID, account.CredentialRevision, []byte(refreshToken))
+}
 
 // TestRealPixivSDKRead is the v1 release-prep real Pixiv SDK e2e. It runs only
 // when PIXIV_SDK_E2E=1 and a local pixiv-cli.db account exists. The refresh
@@ -29,31 +59,42 @@ func TestRealPixivSDKRead(t *testing.T) {
 	if err != nil {
 		t.Fatalf("home: %v", err)
 	}
-	appDataDir := filepath.Join(home, localstate.AppDataDirName)
+	appDataDir := filepath.Join(home, filesystem.AppDataDirName)
 	db, err := authdb.Open(appDataDir)
 	if err != nil {
 		t.Fatalf("open authdb: %v", err)
 	}
 	defer db.Close()
 	accounts, err := db.ListPixiv(context.Background())
-	if err != nil || len(accounts) == 0 {
-		t.Skip("no local pixiv account; cannot run real e2e")
+	if err != nil {
+		t.Fatalf("list local pixiv accounts: %v", err)
+	}
+	if len(accounts) == 0 {
+		t.Fatal("no local pixiv account; explicit real e2e has no credential source")
 	}
 	account := accounts[0]
-	if defaultID, ok, err := config.ReadPixivDefaultUserID(); err == nil && ok {
+	defaultID, hasDefault, err := config.ReadPixivDefaultUserID()
+	if err != nil {
+		t.Fatalf("read pixiv default account: %v", err)
+	}
+	if hasDefault {
+		found := false
 		for _, candidate := range accounts {
 			if candidate.UserID == defaultID {
 				account = candidate
+				found = true
 				break
 			}
 		}
+		if !found {
+			t.Fatalf("configured pixiv account %d is not present in authdb", defaultID)
+		}
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-	defer cancel()
+	ctx := t.Context()
 
 	options := pixivsdk.Options{}
-	if proxy := os.Getenv("PIXIV_WEB_API_PROXY"); proxy != "" {
+	if proxy := os.Getenv("PIXIV_E2E_PROXY"); proxy != "" {
 		proxyURL, err := url.Parse(proxy)
 		if err != nil {
 			t.Fatalf("parse proxy: %v", err)
@@ -70,8 +111,11 @@ func TestRealPixivSDKRead(t *testing.T) {
 	if credentials.UserID <= 0 || credentials.AccessToken() == "" || credentials.RefreshToken() == "" {
 		t.Fatal("open did not return verified credentials")
 	}
+	if credentials.UserID != account.UserID {
+		t.Fatalf("open returned a different account identity: stored user %d, verified user %d", account.UserID, credentials.UserID)
+	}
 	// rotation 持久化失败时不得发起内容请求。
-	if err := db.RotatePixivCredentials(ctx, credentials.UserID, []byte(credentials.RefreshToken())); err != nil {
+	if err := persistPixivE2ERotation(ctx, db.RotatePixivCredentials, account, credentials.RefreshToken()); err != nil {
 		t.Fatalf("persist rotation: %v", err)
 	}
 
@@ -82,6 +126,9 @@ func TestRealPixivSDKRead(t *testing.T) {
 	}
 	if user.User.ID <= 0 {
 		t.Fatal("current user has no id")
+	}
+	if user.User.ID != account.UserID {
+		t.Fatalf("current user identity differs from selected account: stored user %d, current user %d", account.UserID, user.User.ID)
 	}
 
 	searchPage, err := client.SearchArtworks(ctx, pixivsdk.SearchArtworksRequest{Word: "初音ミク"})

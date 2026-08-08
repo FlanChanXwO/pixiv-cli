@@ -1,0 +1,235 @@
+name: Browser provider native contracts
+
+# 该 workflow 只运行无凭据的 provider contract；真实浏览器 session 只允许在受保护
+# release-prep host 运行，不把 Keychain/DPAPI/Secret Service value 带入 CI。
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/browser-evidence.yml'
+      - 'e2e/native_browser_evidence_test.go'
+      - 'go.mod'
+      - 'go.sum'
+      - 'internal/browsercookies/**'
+      - 'scripts/browsernativeevidence/**'
+  workflow_dispatch: {}
+
+permissions: {}
+
+jobs:
+  browser_provider:
+    name: Browser provider ${{ matrix.goos }}/${{ matrix.goarch }}
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15-intel
+            goos: darwin
+            goarch: amd64
+          - runner: macos-15
+            goos: darwin
+            goarch: arm64
+          - runner: ubuntu-22.04
+            goos: linux
+            goarch: amd64
+          - runner: ubuntu-22.04-arm
+            goos: linux
+            goarch: arm64
+          - runner: windows-2025
+            goos: windows
+            goarch: amd64
+          - runner: windows-11-arm
+            goos: windows
+            goarch: arm64
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+        with:
+          go-version: '1.26.3'
+      - name: Check browser evidence workflow policy
+        shell: bash
+        run: go run ./scripts/browsernativeevidence policy --workflow .github/workflows/browser-evidence.yml
+      - name: Require SQLite CLI for browser database contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          command -v sqlite3
+          sqlite3 --version
+      - name: Run native browser provider contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          go test ./internal/browsercookies/... -count=1 -v
+          go test ./e2e -run '^TestNativeBrowserNamesRejectInvalidInput$' -count=1
+
+  firefox_native:
+    name: Firefox temporary profile ${{ matrix.goos }}/${{ matrix.goarch }}
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15-intel
+            goos: darwin
+            goarch: amd64
+            firefox_url: https://ftp.mozilla.org/pub/firefox/releases/153.0.3/mac/en-US/Firefox%20153.0.3.dmg
+            firefox_sha256: a0523b6f2f10f13c6071d8b53ed7678193d693febd8a5d4fd8d7417b3c661045
+          - runner: macos-15
+            goos: darwin
+            goarch: arm64
+            firefox_url: https://ftp.mozilla.org/pub/firefox/releases/153.0.3/mac/en-US/Firefox%20153.0.3.dmg
+            firefox_sha256: a0523b6f2f10f13c6071d8b53ed7678193d693febd8a5d4fd8d7417b3c661045
+          - runner: ubuntu-22.04
+            goos: linux
+            goarch: amd64
+            firefox_url: https://ftp.mozilla.org/pub/firefox/releases/153.0.3/linux-x86_64/en-US/firefox-153.0.3.tar.xz
+            firefox_sha256: 22b312280900bfb174b685ece32c7b3c6d72e7f8e53d6d30f21ac41a8dc500a2
+          - runner: ubuntu-22.04-arm
+            goos: linux
+            goarch: arm64
+            firefox_url: https://ftp.mozilla.org/pub/firefox/releases/153.0.3/linux-aarch64/en-US/firefox-153.0.3.tar.xz
+            firefox_sha256: c19b325accedebbc3a1235e3c7104d80c5a4412b368f7d0935b4718114416870
+          - runner: windows-2025
+            goos: windows
+            goarch: amd64
+            firefox_url: https://ftp.mozilla.org/pub/firefox/releases/153.0.3/win64/en-US/Firefox%20Setup%20153.0.3.exe
+            firefox_sha256: 8de41917930c35937a46eac6d0e16c633ed7456c771b32b89dc6fd65d55e512e
+          - runner: windows-11-arm
+            goos: windows
+            goarch: arm64
+            firefox_url: https://ftp.mozilla.org/pub/firefox/releases/153.0.3/win64-aarch64/en-US/Firefox%20Setup%20153.0.3.exe
+            firefox_sha256: 1a79277ac3595d226f40b96c22bc9e9b7d709f614ae77530a58b363644ef4aa9
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+        with:
+          go-version: '1.26.3'
+      - name: Check browser evidence workflow policy
+        shell: bash
+        run: go run ./scripts/browsernativeevidence policy --workflow .github/workflows/browser-evidence.yml
+      - name: Require SQLite CLI for Firefox database contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          command -v sqlite3
+          sqlite3 --version
+      - name: Record fixed Firefox package identity
+        shell: bash
+        env:
+          FIREFOX_SHA256: ${{ matrix.firefox_sha256 }}
+        run: |
+          printf 'Firefox version: 153.0.3\n'
+          printf 'Firefox package SHA-256: %s\n' "$FIREFOX_SHA256"
+          printf 'Firefox runner target: %s/%s\n' '${{ matrix.goos }}' '${{ matrix.goarch }}'
+      - name: Download and verify the pinned Firefox package on Unix
+        if: runner.os != 'Windows'
+        shell: bash
+        env:
+          FIREFOX_URL: ${{ matrix.firefox_url }}
+          FIREFOX_SHA256: ${{ matrix.firefox_sha256 }}
+        run: |
+          set -euo pipefail
+          package="$RUNNER_TEMP/firefox-package"
+          curl --fail --location --retry 2 --retry-all-errors "$FIREFOX_URL" --output "$package"
+          if [ "$RUNNER_OS" = macOS ]; then
+            printf '%s  %s\n' "$FIREFOX_SHA256" "$package" | shasum -a 256 -c -
+          else
+            printf '%s  %s\n' "$FIREFOX_SHA256" "$package" | sha256sum -c -
+          fi
+      - name: Download and verify the pinned Firefox package on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          FIREFOX_URL: ${{ matrix.firefox_url }}
+          FIREFOX_SHA256: ${{ matrix.firefox_sha256 }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $package = Join-Path $env:RUNNER_TEMP 'firefox-package'
+          curl.exe --fail --location --retry 2 --retry-all-errors $env:FIREFOX_URL --output $package
+          $actual = (Get-FileHash -Algorithm SHA256 -LiteralPath $package).Hash.ToLowerInvariant()
+          if ($actual -cne $env:FIREFOX_SHA256) {
+            throw 'Firefox package SHA-256 mismatch'
+          }
+      - name: Extract Firefox package on Linux
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          install="$RUNNER_TEMP/firefox"
+          rm -rf "$install"
+          mkdir -p "$install"
+          tar -xJf "$RUNNER_TEMP/firefox-package" -C "$install" --strip-components=1
+          test -x "$install/firefox"
+          printf 'FIREFOX_BINARY=%s\n' "$install/firefox" >> "$GITHUB_ENV"
+      - name: Extract Firefox package on macOS
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          set -euo pipefail
+          install="$RUNNER_TEMP/firefox"
+          mount="$RUNNER_TEMP/firefox-mount"
+          rm -rf "$install" "$mount"
+          mkdir -p "$install" "$mount"
+          hdiutil attach "$RUNNER_TEMP/firefox-package" -nobrowse -readonly -mountpoint "$mount" >/dev/null
+          cp -R "$mount/Firefox.app" "$install/"
+          hdiutil detach "$mount" >/dev/null
+          test -x "$install/Firefox.app/Contents/MacOS/firefox"
+          printf 'FIREFOX_BINARY=%s\n' "$install/Firefox.app/Contents/MacOS/firefox" >> "$GITHUB_ENV"
+      - name: Extract Firefox package on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $install = Join-Path $env:RUNNER_TEMP 'firefox'
+          if (Test-Path -LiteralPath $install) {
+            Remove-Item -LiteralPath $install -Recurse -Force
+          }
+          New-Item -ItemType Directory -Path $install | Out-Null
+          & 7z.exe x (Join-Path $env:RUNNER_TEMP 'firefox-package') "-o$install" -y | Out-Null
+          $binary = Get-ChildItem -LiteralPath $install -Filter 'firefox.exe' -Recurse -File | Select-Object -First 1
+          if ($null -eq $binary) {
+            throw 'Firefox executable was not found after package extraction'
+          }
+          "FIREFOX_BINARY=$($binary.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+      - name: Run the temporary Firefox provider contract on Unix
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          set -euo pipefail
+          go run ./scripts/browsernativeevidence firefox-contract --firefox "$FIREFOX_BINARY"
+      - name: Run the temporary Firefox provider contract on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: go run ./scripts/browsernativeevidence firefox-contract --firefox "$env:FIREFOX_BINARY"
+      - name: Remove Firefox package and installation on Unix
+        if: always() && runner.os != 'Windows'
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "$RUNNER_OS" = macOS ] && mount | rg -F -- "$RUNNER_TEMP/firefox-mount" >/dev/null; then
+            hdiutil detach "$RUNNER_TEMP/firefox-mount"
+          fi
+          rm -rf "$RUNNER_TEMP/firefox-package" "$RUNNER_TEMP/firefox" "$RUNNER_TEMP/firefox-mount"
+      - name: Remove Firefox package and installation on Windows
+        if: always() && runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $package = Join-Path $env:RUNNER_TEMP 'firefox-package'
+          $install = Join-Path $env:RUNNER_TEMP 'firefox'
+          if (Test-Path -LiteralPath $package) {
+            Remove-Item -LiteralPath $package -Recurse -Force -ErrorAction Stop
+          }
+          if (Test-Path -LiteralPath $install) {
+            Remove-Item -LiteralPath $install -Recurse -Force -ErrorAction Stop
+          }

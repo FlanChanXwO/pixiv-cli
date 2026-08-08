@@ -8,29 +8,32 @@ import (
 	"strings"
 	"time"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/config"
-	"github.com/FlanChanXwO/pixiv-cli/internal/storage/authdb"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 )
 
 // Service 是 Pixiv 新应用层服务：账号选择 + rotation 持久化 + 公开 SDK。
 type Service struct {
-	db         *authdb.DB
-	appDataDir string
+	repo     PixivRepository
+	defaults DefaultStore
 }
 
-// New 构造 Pixiv 应用服务。
-func New(db *authdb.DB, appDataDir string) *Service {
-	return &Service{db: db, appDataDir: appDataDir}
+// New 构造 Pixiv 应用服务；repository/defaults 均由 composition root 注入。
+func New(repo PixivRepository, defaults DefaultStore) *Service {
+	return &Service{repo: repo, defaults: defaults}
 }
 
 // Account 是 Pixiv 账号的公开摘要。
 type Account struct {
-	UserID   int64
-	Username string
-	Default  bool
-	Premium  *bool
+	UserID           int64  `json:"user_id"`
+	Username         string `json:"username"`
+	Default          bool   `json:"default"`
+	Premium          *bool  `json:"premium,omitempty"`
+	Schedulable      bool
+	PoolFrozenUntil  *int64
+	PoolLastSelected bool
+	Eligible         bool
+	PoolStatusKnown  bool
 }
 
 // OpenClient 选择默认账号，执行一次 refresh rotation，持久化 rotated
@@ -61,7 +64,7 @@ func (s *Service) OpenAccountClientWith(ctx context.Context, userID int64, optio
 }
 
 func (s *Service) openAccount(ctx context.Context, userID int64, options pixiv.Options) (*pixiv.Client, error) {
-	account, err := s.db.GetPixiv(ctx, userID)
+	account, err := s.repo.GetPixiv(ctx, userID)
 	if err != nil {
 		return nil, fmt.Errorf("select pixiv account: %w", err)
 	}
@@ -69,11 +72,26 @@ func (s *Service) openAccount(ctx context.Context, userID int64, options pixiv.O
 	if err != nil {
 		return nil, err
 	}
-	if err := s.db.RotatePixivCredentials(ctx, userID, []byte(credentials.RefreshToken())); err != nil {
+	if err := verifyPixivAccountIdentity(userID, credentials.UserID); err != nil {
+		client.CloseIdleConnections()
+		return nil, err
+	}
+	if err := s.repo.RotatePixivCredentials(ctx, userID, account.CredentialRevision, []byte(credentials.RefreshToken())); err != nil {
 		client.CloseIdleConnections()
 		return nil, fmt.Errorf("persist rotated pixiv credentials: %w", err)
 	}
 	return client, nil
+}
+
+// verifyPixivAccountIdentity 保证 OAuth rotation 返回的身份仍属于所选本地账号。
+// authdb 以 Pixiv UID 为 credential key；身份不一致时必须在 rotation 和内容请求
+// 之前失败，避免把一个账号的 rotated token 写入另一个账号。
+func verifyPixivAccountIdentity(selectedUserID, authenticatedUserID int64) error {
+	if selectedUserID <= 0 || authenticatedUserID <= 0 || selectedUserID != authenticatedUserID {
+		return sdk.NewError("pixiv", "OpenAccountClient", sdk.LocalStateError,
+			sdk.WithDetail("credential identity does not match selected account"))
+	}
+	return nil
 }
 
 // ImportAccount 导入一个 refresh token 并在线验证；验证失败不产生记录。
@@ -87,67 +105,119 @@ func (s *Service) ImportAccount(ctx context.Context, refreshToken string, setDef
 		return Account{}, err
 	}
 	defer client.CloseIdleConnections()
-	account := authdb.PixivAccount{
+	account := PixivAccountRecord{
 		UserID:             credentials.UserID,
 		Username:           credentials.Username,
 		RefreshToken:       []byte(credentials.RefreshToken()),
 		CredentialRevision: 1,
 	}
-	if err := s.db.UpsertPixiv(ctx, account); err != nil {
+	if err := s.repo.SavePixivCredential(ctx, account); err != nil {
 		return Account{}, fmt.Errorf("save pixiv account: %w", err)
 	}
-	if setDefault || !s.hasDefault() {
-		_ = config.SetPixivDefaultUserID(credentials.UserID)
+	hasDefault, err := s.hasDefault()
+	if err != nil {
+		return Account{}, fmt.Errorf("read pixiv default account: %w", err)
 	}
-	return Account{UserID: credentials.UserID, Username: credentials.Username, Default: s.isDefault(credentials.UserID)}, nil
+	if setDefault || !hasDefault {
+		if err := s.setDefaultUserID(credentials.UserID); err != nil {
+			return Account{}, fmt.Errorf("set pixiv default account: %w", err)
+		}
+	}
+	isDefault, err := s.isDefault(credentials.UserID)
+	if err != nil {
+		return Account{}, err
+	}
+	return Account{UserID: credentials.UserID, Username: credentials.Username, Default: isDefault, Schedulable: true, Eligible: true, PoolStatusKnown: true}, nil
 }
 
 // ListAccounts 返回按 sort_order 排列的 Pixiv 账号。
 func (s *Service) ListAccounts(ctx context.Context) ([]Account, error) {
-	accounts, err := s.db.ListPixiv(ctx)
+	poolStatus, err := s.repo.ListPixivPoolStatus(ctx, time.Now().UTC().Unix())
+	if err != nil {
+		return nil, err
+	}
+	accounts, err := s.repo.ListPixiv(ctx)
 	if err != nil {
 		return nil, err
 	}
 	out := make([]Account, 0, len(accounts))
 	for _, account := range accounts {
+		isDefault, err := s.isDefault(account.UserID)
+		if err != nil {
+			return nil, err
+		}
+		poolAccount := poolStatusByUserID(poolStatus, account.UserID)
 		out = append(out, Account{
-			UserID:   account.UserID,
-			Username: account.Username,
-			Default:  s.isDefault(account.UserID),
-			Premium:  account.PremiumStatus,
+			UserID:           account.UserID,
+			Username:         account.Username,
+			Default:          isDefault,
+			Premium:          account.PremiumStatus,
+			Schedulable:      poolAccount.Schedulable,
+			PoolFrozenUntil:  poolAccount.PoolFrozenUntil,
+			PoolLastSelected: poolAccount.PoolLastSelected,
+			Eligible:         poolAccount.Eligible,
+			PoolStatusKnown:  true,
 		})
 	}
 	return out, nil
 }
 
+func poolStatusByUserID(status PixivPoolStatusRecord, userID int64) PixivPoolAccountRecord {
+	for _, account := range status.Accounts {
+		if account.UserID == userID {
+			return account
+		}
+	}
+	return PixivPoolAccountRecord{UserID: userID}
+}
+
+// SetPoolSchedulable 原子更新一组已存在的本地账号；未知 UID 会使整批失败。
+func (s *Service) SetPoolSchedulable(ctx context.Context, userIDs []int64, schedulable bool) error {
+	return s.repo.SetPixivSchedulable(ctx, userIDs, schedulable)
+}
+
+// SetAllPoolSchedulable 原子更新当前全部本地账号。
+func (s *Service) SetAllPoolSchedulable(ctx context.Context, schedulable bool) error {
+	return s.repo.SetAllPixivSchedulable(ctx, schedulable)
+}
+
+// PoolStatus 返回一个不含 credential 的账号池快照。
+func (s *Service) PoolStatus(ctx context.Context) (PixivPoolStatusRecord, error) {
+	return s.repo.ListPixivPoolStatus(ctx, time.Now().UTC().Unix())
+}
+
 // RemoveAccount 删除一个 Pixiv 账号。
 func (s *Service) RemoveAccount(ctx context.Context, userID int64) error {
-	if err := s.db.RemovePixiv(ctx, userID); err != nil {
-		return err
+	defaultID, explicit, err := s.readDefaultUserID()
+	if err != nil {
+		return fmt.Errorf("read pixiv default account: %w", err)
 	}
-	if s.isDefault(userID) {
-		_ = config.ClearPixivDefaultUserID()
+	if explicit && defaultID == userID {
+		return fmt.Errorf("cannot remove pixiv account %d while it is the explicit default; use `pixiv auth use --auto` or select another account first", userID)
+	}
+	if err := s.repo.RemovePixiv(ctx, userID); err != nil {
+		return err
 	}
 	return nil
 }
 
 // UseAccount 设置显式默认账号。
 func (s *Service) UseAccount(ctx context.Context, userID int64) error {
-	if _, err := s.db.GetPixiv(ctx, userID); err != nil {
+	if _, err := s.repo.GetPixiv(ctx, userID); err != nil {
 		return err
 	}
-	return config.SetPixivDefaultUserID(userID)
+	return s.setDefaultUserID(userID)
 }
 
 // UseAuto 清除显式默认，恢复首个入库账号。
 func (s *Service) UseAuto() error {
-	return config.ClearPixivDefaultUserID()
+	return s.clearDefaultUserID()
 }
 
 // ExportRefreshToken 返回选中账号的 raw refresh token，只允许显式 auth export
 // 写入 stdout。
 func (s *Service) ExportRefreshToken(ctx context.Context, userID int64) (string, error) {
-	account, err := s.db.GetPixiv(ctx, userID)
+	account, err := s.repo.GetPixiv(ctx, userID)
 	if err != nil {
 		return "", err
 	}
@@ -160,16 +230,26 @@ func (s *Service) CurrentUser(ctx context.Context) (*Account, error) {
 	if err != nil {
 		return nil, err
 	}
-	account, err := s.db.GetPixiv(ctx, userID)
+	account, err := s.repo.GetPixiv(ctx, userID)
 	if err != nil {
 		return nil, err
 	}
-	return &Account{UserID: account.UserID, Username: account.Username, Default: true, Premium: account.PremiumStatus}, nil
+	return &Account{
+		UserID:           account.UserID,
+		Username:         account.Username,
+		Default:          true,
+		Premium:          account.PremiumStatus,
+		Schedulable:      account.Schedulable,
+		PoolFrozenUntil:  account.PoolFrozenUntil,
+		PoolLastSelected: account.PoolLastSelected,
+		Eligible:         account.Schedulable && (account.PoolFrozenUntil == nil || *account.PoolFrozenUntil <= time.Now().UTC().Unix()),
+		PoolStatusKnown:  true,
+	}, nil
 }
 
 // CheckAccount 在线校验指定账号的 refresh token，不写库。
 func (s *Service) CheckAccount(ctx context.Context, userID int64) (Account, error) {
-	account, err := s.db.GetPixiv(ctx, userID)
+	account, err := s.repo.GetPixiv(ctx, userID)
 	if err != nil {
 		return Account{}, err
 	}
@@ -215,19 +295,29 @@ func (s *Service) CompleteLogin(ctx context.Context, credentials pixiv.Credentia
 	if credentials.UserID <= 0 || credentials.RefreshToken() == "" {
 		return Account{}, errors.New("login credentials are incomplete")
 	}
-	account := authdb.PixivAccount{
+	account := PixivAccountRecord{
 		UserID:             credentials.UserID,
 		Username:           credentials.Username,
 		RefreshToken:       []byte(credentials.RefreshToken()),
 		CredentialRevision: 1,
 	}
-	if err := s.db.UpsertPixiv(ctx, account); err != nil {
+	if err := s.repo.SavePixivCredential(ctx, account); err != nil {
 		return Account{}, fmt.Errorf("save pixiv account: %w", err)
 	}
-	if setDefault || !s.hasDefault() {
-		_ = config.SetPixivDefaultUserID(credentials.UserID)
+	hasDefault, err := s.hasDefault()
+	if err != nil {
+		return Account{}, fmt.Errorf("read pixiv default account: %w", err)
 	}
-	return Account{UserID: credentials.UserID, Username: credentials.Username, Default: s.isDefault(credentials.UserID)}, nil
+	if setDefault || !hasDefault {
+		if err := s.setDefaultUserID(credentials.UserID); err != nil {
+			return Account{}, fmt.Errorf("set pixiv default account: %w", err)
+		}
+	}
+	isDefault, err := s.isDefault(credentials.UserID)
+	if err != nil {
+		return Account{}, err
+	}
+	return Account{UserID: credentials.UserID, Username: credentials.Username, Default: isDefault, Schedulable: true, Eligible: true, PoolStatusKnown: true}, nil
 }
 
 // AccountWithToken 是仅用于显式 auth export 的账号+token 摘要。
@@ -240,16 +330,20 @@ type AccountWithToken struct {
 
 // AccountsWithTokens 返回全部账号及其 refresh token，仅用于显式 auth export。
 func (s *Service) AccountsWithTokens(ctx context.Context) ([]AccountWithToken, error) {
-	accounts, err := s.db.ListPixiv(ctx)
+	accounts, err := s.repo.ListPixiv(ctx)
 	if err != nil {
 		return nil, err
 	}
 	out := make([]AccountWithToken, 0, len(accounts))
 	for _, account := range accounts {
+		isDefault, err := s.isDefault(account.UserID)
+		if err != nil {
+			return nil, err
+		}
 		out = append(out, AccountWithToken{
 			UserID:       account.UserID,
 			Username:     account.Username,
-			Default:      s.isDefault(account.UserID),
+			Default:      isDefault,
 			RefreshToken: string(account.RefreshToken),
 		})
 	}
@@ -262,62 +356,91 @@ func (s *Service) RestoreAccount(ctx context.Context, account Account, refreshTo
 	if account.UserID <= 0 || refreshToken == "" {
 		return errors.New("pixiv refresh token is required")
 	}
-	stored := authdb.PixivAccount{
+	stored := PixivAccountRecord{
 		UserID:             account.UserID,
 		Username:           account.Username,
 		RefreshToken:       []byte(refreshToken),
 		CredentialRevision: 1,
 		PremiumStatus:      account.Premium,
 	}
-	if err := s.db.UpsertPixiv(ctx, stored); err != nil {
+	if err := s.repo.SavePixivCredential(ctx, stored); err != nil {
 		return fmt.Errorf("restore pixiv account: %w", err)
 	}
-	if setDefault || !s.hasDefault() {
-		_ = config.SetPixivDefaultUserID(account.UserID)
+	hasDefault, err := s.hasDefault()
+	if err != nil {
+		return fmt.Errorf("read pixiv default account: %w", err)
+	}
+	if setDefault || !hasDefault {
+		if err := s.setDefaultUserID(account.UserID); err != nil {
+			return fmt.Errorf("set pixiv default account: %w", err)
+		}
 	}
 	return nil
 }
 
 func (s *Service) setPremiumStatus(ctx context.Context, userID int64, premium *bool) error {
-	account, err := s.db.GetPixiv(ctx, userID)
+	account, err := s.repo.GetPixiv(ctx, userID)
 	if err != nil {
 		return err
 	}
 	checkedAt := time.Now().UTC().Unix()
 	account.PremiumStatus = premium
 	account.PremiumCheckedAt = &checkedAt
-	return s.db.UpsertPixiv(ctx, account)
+	return s.repo.UpdatePixivMetadata(ctx, account.UserID, account.Username, account.PremiumStatus, account.PremiumCheckedAt)
 }
 
 func (s *Service) summary(ctx context.Context, userID int64) (Account, error) {
-	account, err := s.db.GetPixiv(ctx, userID)
+	account, err := s.repo.GetPixiv(ctx, userID)
 	if err != nil {
 		return Account{}, err
 	}
-	return Account{UserID: account.UserID, Username: account.Username, Default: s.isDefault(account.UserID), Premium: account.PremiumStatus}, nil
+	isDefault, err := s.isDefault(account.UserID)
+	if err != nil {
+		return Account{}, err
+	}
+	return accountSummary(account, isDefault), nil
+}
+
+func accountSummary(account PixivAccountRecord, isDefault bool) Account {
+	now := time.Now().UTC().Unix()
+	frozenUntil := account.PoolFrozenUntil
+	if frozenUntil != nil && *frozenUntil <= now {
+		frozenUntil = nil
+	}
+	return Account{
+		UserID:           account.UserID,
+		Username:         account.Username,
+		Default:          isDefault,
+		Premium:          account.PremiumStatus,
+		Schedulable:      account.Schedulable,
+		PoolFrozenUntil:  frozenUntil,
+		PoolLastSelected: account.PoolLastSelected,
+		Eligible:         account.Schedulable && frozenUntil == nil,
+		PoolStatusKnown:  true,
+	}
 }
 
 func (s *Service) selectedUserID(ctx context.Context) (int64, error) {
 	if userID, ok, err := s.defaultUserID(ctx); err != nil {
 		return 0, err
 	} else if ok {
-		if _, err := s.db.GetPixiv(ctx, userID); err != nil {
+		if _, err := s.repo.GetPixiv(ctx, userID); err != nil {
 			return 0, fmt.Errorf("configured default pixiv account %d is missing", userID)
 		}
 		return userID, nil
 	}
-	return 0, sdk.NewError("pixiv", "auth", sdk.CodeUnauthorized, sdk.WithDetail("no pixiv account is authenticated"))
+	return 0, sdk.NewError("pixiv", "auth", sdk.Unauthorized, sdk.WithDetail("no pixiv account is authenticated"))
 }
 
 // defaultUserID 返回当前默认账号：优先显式配置，否则回退到 sort_order 最小的
 // 首个入库账号。
 func (s *Service) defaultUserID(ctx context.Context) (int64, bool, error) {
-	if userID, ok, err := config.ReadPixivDefaultUserID(); err != nil {
+	if userID, ok, err := s.readDefaultUserID(); err != nil {
 		return 0, false, err
 	} else if ok {
 		return userID, true, nil
 	}
-	accounts, err := s.db.ListPixiv(ctx)
+	accounts, err := s.repo.ListPixiv(ctx)
 	if err != nil {
 		return 0, false, err
 	}
@@ -327,15 +450,39 @@ func (s *Service) defaultUserID(ctx context.Context) (int64, bool, error) {
 	return accounts[0].UserID, true, nil
 }
 
-func (s *Service) hasDefault() bool {
-	_, ok, _ := config.ReadPixivDefaultUserID()
-	return ok
+func (s *Service) hasDefault() (bool, error) {
+	_, ok, err := s.readDefaultUserID()
+	return ok, err
 }
 
-func (s *Service) isDefault(userID int64) bool {
-	defaultID, ok, _ := s.defaultUserID(context.Background())
-	if !ok {
-		return false
+func (s *Service) isDefault(userID int64) (bool, error) {
+	defaultID, ok, err := s.defaultUserID(context.Background())
+	if err != nil {
+		return false, err
 	}
-	return defaultID == userID
+	if !ok {
+		return false, nil
+	}
+	return defaultID == userID, nil
+}
+
+func (s *Service) readDefaultUserID() (int64, bool, error) {
+	if s.defaults == nil {
+		return 0, false, errors.New("pixiv default account store is not configured")
+	}
+	return s.defaults.ReadPixivDefaultUserID()
+}
+
+func (s *Service) setDefaultUserID(userID int64) error {
+	if s.defaults == nil {
+		return errors.New("pixiv default account store is not configured")
+	}
+	return s.defaults.SetPixivDefaultUserID(userID)
+}
+
+func (s *Service) clearDefaultUserID() error {
+	if s.defaults == nil {
+		return errors.New("pixiv default account store is not configured")
+	}
+	return s.defaults.ClearPixivDefaultUserID()
 }

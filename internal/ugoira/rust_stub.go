@@ -7,6 +7,10 @@ import (
 	"fmt"
 )
 
+// 这是刻意的编译期门禁：源码构建和 go install 不能绕过 cgo/staticlib 产物，
+// 从而生成运行时才降级的 pixiv binary。
+const _ = uint8("Go 1.26.3 + CGO_ENABLED=1/cgo + Rust staticlib + target C linker required")
+
 type unavailableRustEncoder struct{}
 
 func NewRustEncoder() Encoder { return unavailableRustEncoder{} }

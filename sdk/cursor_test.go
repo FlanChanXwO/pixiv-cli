@@ -93,8 +93,8 @@ func TestNewCursorRejectsInvalidBindings(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			_, err := sdk.NewCursor(tc.product, tc.op, tc.binding, tc.queryHash, tc.payload)
-			if sdk.CodeOf(err) != sdk.CodeInvalidArgument {
-				t.Fatalf("expected CodeInvalidArgument, got %v", err)
+			if sdk.ReasonOf(err) != sdk.InvalidArgument {
+				t.Fatalf("expected InvalidArgument, got %v", err)
 			}
 		})
 	}
@@ -119,13 +119,13 @@ func TestCursorValidationRejectsMismatch(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			if err := sdk.ValidateCursor(c, tc.product, tc.op, tc.binding, tc.queryHash); sdk.CodeOf(err) != sdk.CodeInvalidCursor {
-				t.Fatalf("expected CodeInvalidCursor, got %v", err)
+			if err := sdk.ValidateCursor(c, tc.product, tc.op, tc.binding, tc.queryHash); sdk.ReasonOf(err) != sdk.InvalidCursor {
+				t.Fatalf("expected InvalidCursor, got %v", err)
 			}
 		})
 	}
-	if err := sdk.ValidateCursor(sdk.Cursor{}, "pixiv", "SearchArtworks", 1, "digest"); sdk.CodeOf(err) != sdk.CodeInvalidCursor {
-		t.Fatalf("zero cursor validation: expected CodeInvalidCursor, got %v", err)
+	if err := sdk.ValidateCursor(sdk.Cursor{}, "pixiv", "SearchArtworks", 1, "digest"); sdk.ReasonOf(err) != sdk.InvalidCursor {
+		t.Fatalf("zero cursor validation: expected InvalidCursor, got %v", err)
 	}
 }
 
@@ -137,8 +137,8 @@ func TestParseCursorRejectsGarbage(t *testing.T) {
 		"aGVsbG8",
 	}
 	for _, in := range cases {
-		if _, err := sdk.ParseCursor(in); sdk.CodeOf(err) != sdk.CodeInvalidCursor {
-			t.Fatalf("ParseCursor(%q): expected CodeInvalidCursor, got %v", in, err)
+		if _, err := sdk.ParseCursor(in); sdk.ReasonOf(err) != sdk.InvalidCursor {
+			t.Fatalf("ParseCursor(%q): expected InvalidCursor, got %v", in, err)
 		}
 	}
 }
@@ -166,8 +166,8 @@ func TestCursorZeroValue(t *testing.T) {
 	if !c.IsZero() {
 		t.Fatal("zero cursor IsZero should be true")
 	}
-	if _, err := c.MarshalText(); sdk.CodeOf(err) != sdk.CodeInvalidArgument {
-		t.Fatalf("zero cursor marshal: expected CodeInvalidArgument, got %v", err)
+	if _, err := c.MarshalText(); sdk.ReasonOf(err) != sdk.InvalidArgument {
+		t.Fatalf("zero cursor marshal: expected InvalidArgument, got %v", err)
 	}
 	if _, err := json.Marshal(c); err == nil {
 		t.Fatal("zero cursor JSON marshal should error")

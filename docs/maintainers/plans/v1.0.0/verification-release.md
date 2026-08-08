@@ -1,9 +1,16 @@
 # v1.0.0 测试、迁移与发布门禁
 
+截至 2026-08-08，RC-1 至 RC-10 的实现与自动门禁已完成；自动验证结果见
+[最终验证记录](final-verification-2026-08-08.md)。真实 Pixiv public SDK 与一次性 real-solver
+evidence 已在授权环境取得；真实 FANBOX target 已运行到详情阶段，但默认 native 触发 challenge，
+显式 solver replay 取得的目标帖子没有 file attachment，内容/资源 evidence 与 native browser evidence
+仍必须按 RC-11 完成，不能用离线 fixture 代替。
+
 ## Public SDK
 
 - 为 `sdk.Page[T]`、Cursor Text/JSON codec、query/product/operation/identity binding 编写契约测试。
-- 为 `sdk.Error` 的 sentinel、`errors.Is/As`、context chain、retry advice 与全部脱敏字段编写测试。
+- 为 `sdk.Error` 的 `Reason`、`ReasonOf`/`IsReason`、`errors.Is/As`、context chain、retry advice 与全部
+  脱敏字段编写测试；inventory 必须拒绝旧 `Code`/`CodeOf`/`IsCode`/`Code*` 名称。
 - 为 Pixiv `Open/OpenWith/New/NewWith`、rotation、access-token expiry、LoginSession one-shot 与
   App-only routing 编写离线 HTTP contract tests。
 - 为 `Artwork` variant、Novel、User、`CommentPage`、`NovelSeriesResult`、结构化 `NovelContent`、
@@ -50,11 +57,30 @@
 - 验证 version gap、重复版本、checksum drift、未知更新 schema 和 downgrade 全部 fail closed。
 - 验证 `application_id`、`user_version`、foreign key、partial unique index 与所有 CHECK constraint。
 - 验证 `sort_order` 保留 JSON 顺序、default config 迁移、rotation revision 与 premium cache。
-- 验证 pool selection、freeze、过期清理、删除账号和多进程竞争的事务语义；不引入独立 lease/status 表。
+- 验证至少 3 个账号多轮 pool selection 不饥饿，并覆盖 `schedulable`、freeze、过期清理、删除 marker
+  账号和多进程竞争的事务语义；不引入独立 lease/status/membership 表。
+- 从只含 `0001` 的数据库依次应用 `0002_fanbox_creator_id_not_null.sql` 与
+  `0003_pixiv_account_schedulable.sql`，直接断言既有及新建 Pixiv 账号均为 `schedulable=1`，非法布尔
+  值被 CHECK 拒绝，既有 migration checksum 不变。
+- 验证旧 `account_pool.accounts` 到 `pixiv_account.schedulable` 的可重入迁移、config rewrite failure、
+  新账号默认可调度及批量 enable/disable 原子性；迁移后配置只保留 `enabled`/`strategy`。
+- 分别验证 pool 无本地账号、无可调度账号、全部冻结和本次 429 轮换耗尽的稳定
+  reason/detail/retry；CLI 非零退出且无部分 JSON/NDJSON，MCP 保留 tool failure shape 并设置
+  `isError=true`。
+- 验证 credential initial revision、re-import 单调递增、expected revision compare-and-swap 与 stale
+  writer conflict；existing-account upsert 不得接受调用方把 revision 写小。
 - 验证 JSON migration 的 crash/re-entry、DB/JSON 一致与冲突、config write failure、legacy 删除
-  failure 和 commit outcome。
-- 在 Unix-like 验证目录、DB、journal/temp 权限；Windows 验证私有 ACL，不声称 POSIX mode。
+  failure 和 commit outcome；任一账号导入失败时不得部分提交，bootstrap 必须传播错误。
+- 覆盖 nullable `creator_id` 的 schema migration、特殊字符/Unicode/Windows-like DB path 与真实
+  `application_id` 断言，避免 scan、SQLite URI 和测试 shadow 回归。
+- 在 Unix-like 验证目录、DB、journal/temp 权限；Windows 验证文件位于用户 profile 并继承/保留
+  既有 ACL，不声称主动收紧 DACL 或提供 POSIX mode。
 - auth export/restore 只经逻辑 repository，禁止复制数据库文件或输出额外 secret。
+
+2026-08-04 的基线现状证据与 P0 清单见
+[authdb 设计审查](authdb-design-review-2026-08-04.md)。P0-1 至 P0-5 已在 RC-3 至 RC-5 修复并由
+本地自动回归验证；本节保留原契约清单，不能把历史审查文字理解为当前实现仍未通过。Windows inherited
+ACL 与三平台 native provider evidence 仍按本文件的独立发布门禁执行。
 
 ## Browser providers
 
@@ -68,8 +94,8 @@
   DPAPI、Linux secret service unavailable、malformed/decryption failure。
 - 验证查询在解密前已收敛到 FANBOX domain 与 `FANBOXSESSID`。
 - 验证临时 snapshot 清理及所有错误、JSON、stderr、MCP 与格式化路径不泄露 secret/path。
-- browser provider 与普通 contract test 精确区分 challenge 与普通 403，且不运行挑战绕过；唯一例外是
-  下文显式隔离的本机 FlareSolverr release-prep 辅助验证。
+- browser provider 与普通 contract test 精确区分 challenge 与普通 403。FlareSolverr recovery 只在
+  FANBOX SDK 的 fake service/transport contract 中测试；普通 CI 不启动真实 solver。
 - 真实浏览器导入只在用户授权的本机或受保护 release environment 运行，不把 session 带入 CI
   artifact、日志或 shell history。
 
@@ -82,36 +108,72 @@
 - 验证 MCP 无认证/config tool，两个 registry 不交叉，FANBOX 不读取 Pixiv RFT。
 - 覆盖 creator/tag/post/URL 输入矩阵以及无法唯一解析时的明确失败。
 - 覆盖高级 Pixiv/FANBOX downloader 的完整成功边界、archive、sidecar、原子落盘和提交后不重放。
+- 覆盖根 `--debug` 默认关闭、只写 stderr、明确产品/子系统模块名、MCP 本地请求关联、secret isolation
+  与 failing writer；debug on/off 不得改变路由、调度、solver 调用次数或最终业务错误。完整矩阵见
+  [显式 debug 诊断](debug-diagnostics.md)。
+- 覆盖 `auth export --debug` 仍不创建 diagnostic scope，成功 stderr 为空且 stdout byte-for-byte 保留
+  raw-token/bundle 契约。
+- 覆盖 unknown long/short/`--name=value` option 在 root、Pixiv、FANBOX 与两个 MCP command 上统一返回
+  `error: unknown option '--name'`、空 stdout 与 usage exit code `2`；验证 interspersed flag、`--`
+  literal，以及解析失败不触发 config、SDK、network、MCP runtime 或 debug presenter。canonical 行为见
+  [严格 unknown-option 解析](strict-cli-argument-parsing.md)。
 
 ## 真实 SDK E2E 与本机凭据
 
-v1.0.0 release evidence 必须至少包含一次真实 Pixiv SDK 读取和一次真实 FANBOX SDK 读取；offline
-fixture、CLI 间接成功或 FlareSolverr 返回的页面不能替代 SDK Client 的真实结果。E2E 默认关闭，
-只在用户显式授权且本机凭据存在时运行。开工前不要求联网探测；入口存在性与联网成功是两项独立
-evidence，后者只在最终 release-prep 判定。
+v1.0.0 release evidence 必须至少包含一次真实 Pixiv SDK 读取，并通过 public `sdk/fanbox` 逐一调用
+每个公开 FANBOX operation。offline fixture、CLI 间接成功、SDK 外部手工 HTTP 探针或 FlareSolverr
+页面不能替代 SDK Client 的真实结果。E2E 默认关闭，只在用户显式授权且本机凭据存在时运行。开工
+前不要求联网探测；入口存在性与联网成功是两项独立 evidence，后者只在最终 release-prep 判定。
 
 - Pixiv E2E 通过本机 `pixiv-cli` 的显式 auth export/repository 边界取得当前选中账号的 refresh
   token，只在测试进程内存中传给 `pixiv.Open`；不得进入 shell argv、环境 dump、日志、test name、
   artifact 或失败 diff。rotation 后的新 credentials 必须按正常契约持久化，不能继续复用旧 RFT。
 - FANBOX E2E 当前授权 session 保存于 macOS Keychain，service 为 `pixiv-cli-e2e-fanbox`、account 为
   `fanbox-e2e`。测试只读取 `FANBOXSESSID`，不保存或恢复 GA、广告标识、行为数据及短期 Cloudflare
-  Cookie。session 失效时明确报 `credentials_expired` 并要求重新导入，不 fallback。
-- E2E 首先验证当前身份，再读取一个稳定、低副作用的 detail/list 与至少一个 `Resource`；mutation、
-  支持关系变更和批量下载不作为默认真实 E2E。所有返回和失败路径执行 secret/signed-query 扫描。
-- Keychain item、refresh token、测试响应和下载内容都属于本机私有状态，不提交 Git，也不进入 CI
-  secret-less job。跨平台 CI 继续只使用 synthetic fixtures。
+  Cookie。启用 FlareSolverr 时取得的 `cf_clearance` 只在该 Client 内存中存在。session 失效时明确报
+  `credentials_expired` 并要求重新导入，不 fallback 到其他账号或 Cookie。
+- FANBOX E2E 首先验证当前身份，再覆盖 creator/tag/post/home/supporting/following、两类 pagination
+  及 public resource operation。账号相关列表合法为空时，HTTP 状态、error envelope 和 schema 正确
+  即可计为该 operation 通过；不得用空结果替代详情或资源语义覆盖。
+- creator/tag/post/resource 的非空目标通过显式、非 secret 的 E2E 环境配置提供；不得硬编码账号或
+  内容 ID，也不得在运行时自动发现目标。mutation、支持关系变更和批量下载不作为默认真实 E2E。
+- 当前 FANBOX 入口的 target key 固定为 `FANBOX_E2E_CREATOR_ID`、`FANBOX_E2E_TAG`、
+  `FANBOX_E2E_POST_ID` 与 `FANBOX_E2E_POST_URL`；启用真实 E2E 后缺少任一 key 或 Keychain item
+  必须显式失败，未启用时才允许默认 skip。
+- 资源门禁必须从合法 `post.info` 详情发现真实帖子 file attachment URL，并读取非零字节且验证响应；
+  cover、thumbnail、preview 或预先提供的任意 CDN URL 都不能替代此 evidence。
+- resource client 只向严格校验后的 FANBOX API/下载 host 传播同一个 `FANBOXSESSID`，redirect 后重新
+  校验 host；不要求额外 Cookie，也不得向任意详情返回 URL 泄露 session。
+- release-prep 操作者对所有返回和失败路径执行 secret/signed-query 扫描。Keychain item、refresh token、
+  测试响应和下载内容都属于本机私有状态，不提交 Git，也不进入 CI secret-less job。跨平台 CI 继续只
+  使用 synthetic fixtures。
 
-## FlareSolverr 测试边界
+## FlareSolverr 可选 recovery 边界
 
-v1.0.0 release-prep 必须在本机 Docker 中安装并启动一次经过核对、固定 tag/digest 的 FlareSolverr，
-完成 health check 与一条 FANBOX 测试辅助请求，用于确认 challenge 诊断路径。执行时不得使用浮动
-`latest`，容器只绑定 loopback，不挂载仓库、浏览器 profile、Docker socket 或 `pixiv-cli.db`，凭据
-只通过测试进程临时传递。该容器运行不是每次 CI 或普通开发测试的前置条件。
+FlareSolverr 是 v1.0.0 显式配置、默认关闭的可选 challenge recovery，不是默认 runtime、全量代理或
+普通测试依赖。实现完成后必须在 v1.0.0 发布前取得一次本机 protocol acceptance evidence，但不进入
+普通 CI，也不要求每个 RC 重复。native Firefox 148 transport 是当前 baseline 而非永久兼容性保证；
+它始终先请求。只有严格识别的 Cloudflare challenge 才允许匿名求解 `https://www.fanbox.cc/`，再由
+native transport 使用 solver user agent、单个 `cf_clearance` 与用户原有 `FANBOXSESSID` 重放一次。
+API JSON、帖子 URL、文件 URL、session 和下载字节不得交给 solver。
 
-FlareSolverr 不进入 `go.mod`、生产 image、CLI/MCP 配置、公开 SDK option 或默认测试依赖。E2E 报告
-必须分别记录直连 SDK 结果与 FlareSolverr 辅助结果；辅助成功不得把 SDK 的 `challenge_required`
-改写成直连成功，也不得触发生产代码自动 fallback。容器不可用时，普通 SDK/CLI/MCP 与 offline
-test 必须完全不受影响。
+普通 CI 使用 fake FlareSolverr service 与 fake native transport 覆盖零调用成功路径、config/native/
+solver UA 优先级、challenge solve/replay、错误映射、一次重放、并发合并及三类 proxy 不继承；还要
+覆盖 service root URL 的结构/脱敏/`/v1` 构造、重复或非法 clearance、非法 solver UA，以及 leader
+取消而 follower 继续、全员取消会终止 shared solve。FANBOX command `--proxy`/`--no-proxy` 只改变
+native transport，绝不覆盖 solver service/upstream。普通 CI 不运行 Docker、真实网络或真实
+session。实现完成后维护者只在本机用固定 tag/digest 做一次 real-solver protocol 验证：synthetic
+native challenge + 真实匿名首页求解 + synthetic native replay。Client 使用非 secret dummy session，
+该值只进入 injected native transport，绝不发给 solver；全程不使用真实 session。真实网络自然出现
+challenge 时可另留 genuine recovery evidence，但没有自然 challenge 不算失败。两种结果都不是每次
+CI/RC 的前置条件，也不能替代 public SDK 的真实 operation/file E2E。
+
+2026-08-04 的验证补充了关键边界：FlareSolverr 自己转发正确 API 未稳定返回目标 JSON；匿名首页
+求解却能返回 user agent 与 `cf_clearance`，二者交给 Firefox 148 `tls-client` 后可由 native 请求取得
+合法详情。只使用 clearance 成功，混入额外 Cloudflare Cookie 曾失败；把 session 交给 solver 还会
+进入其 INFO 日志。因此 production route 必须采用匿名、clearance-only、native replay，而不是全量
+转发。完整设计与脱敏 evidence 见
+[FANBOX challenge 与 FlareSolverr 路由](fanbox-challenge-routing.md)。
 
 ## 文档与迁移材料
 
@@ -126,7 +188,7 @@ test 必须完全不受影响。
 - v1.0 migration guide；
 - bilingual release notes。
 
-迁移指南必须提供旧 SDK symbol 到新 symbol/removed 的完整矩阵、`auth.json` 自动迁移行为、默认
+迁移指南必须提供旧 SDK symbol 到新 symbol/removed 的完整矩阵、`auth.json` 的显式 bundle 迁移行为、默认
 账号 config、removed Web fallback setting、两个 MCP 启动命令和 FANBOX 浏览器导入权限说明。
 
 ## 发布阶段
@@ -151,13 +213,46 @@ sh scripts/build.sh
 git diff --check
 ```
 
-同时运行 documentation tests、workflow policy、public API compatibility 与全部 native browser
-provider jobs。普通 CI 不要求真实凭据或 FlareSolverr；但 v1.0.0 最终发布前必须在授权的本机
+同时运行 documentation tests、workflow policy、public API compatibility 与 browser provider native contract
+provider jobs。普通 CI 不要求真实凭据或真实 FlareSolverr；但 v1.0.0 最终发布前必须在授权的本机
 release-prep 中取得上述 Pixiv/FANBOX 真实 SDK evidence。凭据失效或网络 challenge 导致无法完成时，
 必须记录为 release blocker/risk 并更新凭据或环境，不能把 offline fixture 当作真实 E2E 成功。
 
 完整执行顺序、凭据读取边界、Firefox 临时验证、FlareSolverr 隔离方式、evidence 字段与清理步骤见
 [最终验证操作手册](release-prep-runbook.md)。
+
+### 历史 release blocker 与当前状态（基线记录：2026-08-03）
+
+当时的 FANBOX 实现使用错误的 `/api/v1/` base path、旧 operation 名称与 Chrome profile，自动化 E2E
+的 HTTP 404 因而不能作为 CDN 指纹证据。使用有效 `FANBOXSESSID` 请求正确 `post.listHome` 已取得
+HTTP 200 和非空
+帖子摘要，证明 session 与部分直连 API 可用。普通非浏览器 UA、Python requests 的 Firefox
+header/cipher 近似和通用 headless Edge 对 `post.info` 仍返回 403；但项目现有 `tls-client` 的完整
+Firefox 135/148 profile 对正确详情取得 HTTP 200，Firefox 148 + 同一 session 对首页 10 条详情达到
+**10/10 HTTP 200 合法 JSON**。
+
+随后对用户显式提供的非 secret 目标使用 Firefox 148 profile：`post.info` 返回 HTTP 200 合法 JSON，
+详情中发现 1 个真实 file attachment；同一单一 `FANBOXSESSID` 传播到 `downloads.fanbox.cc` 后，附件
+返回 HTTP 200，完整读取 28,544,885 字节且与详情声明大小一致。未携带 session 的附件对照请求为
+HTTP 403。全过程未使用 FlareSolverr/浏览器进程，未落盘正文、密码信息、signed URL 或下载内容。
+
+该次 native 成功说明 Firefox 路径应作为默认首选，但不能推出所有网络状态永远不需要 recovery。
+2026-08-04 又验证了“匿名 FlareSolverr 首页求解 + clearance-only + native Firefox replay”可取得合法
+详情，因此已锁定为显式可选路线。
+
+该历史 blocker 中的 route/profile、资源 host session 传播和 challenge-only FlareSolverr 代码项已在
+RC-6 至 RC-8 实施，并由离线/合成 focused tests 覆盖；public SDK 完整自动化真实 E2E 仍是当前 RC-11
+release blocker。不得把手工探针、cover 下载、offline fixture 或 solver 自己返回的页面记为完整 FANBOX
+E2E。完整历史诊断与当前决策分别见 [会话状态记录](session-status-2026-08-03.md)、
+[challenge 路由设计](fanbox-challenge-routing.md) 和
+[最终验证记录](final-verification-2026-08-08.md)。
+
+### 历史 authdb blocker 与当前状态（基线记录：2026-08-04）
+
+authdb 的总体 SQLite 设计可保留；当时识别的 legacy migration 部分提交/错误吞没、三账号 pool 饥饿、
+revision 非 CAS、nullable `creator_id` scan 与 SQLite file URI 路径问题已在 RC-3 至 RC-5 修复，并由
+authdb/application/bootstrap focused tests 与全量 race 回归覆盖。真实发布前仍需按 RC-11 补回授权环境
+evidence；修复范围和测试契约见 [authdb 设计审查](authdb-design-review-2026-08-04.md)。
 
 ## v1.0.0 发布条件
 
@@ -165,11 +260,19 @@ release-prep 中取得上述 Pixiv/FANBOX 真实 SDK evidence。凭据失效或�
 - v0 `/pixiv` 到 v1 `/sdk/pixiv` 的迁移矩阵、不可变 tag 和 v1 package compatibility gate 已验证。
 - Pixiv/FANBOX credential、rotation、cursor、URL reference、identity/time、native resource、ugoira
   与 stdout isolation review 通过。
-- 三个平台的浏览器 provider 都有 native evidence；Safari 仅要求 macOS。
+- 三个平台的浏览器 provider 实现与离线/交叉编译门禁通过；固定 Firefox 153.0.3 temporary
+  profile contract 已在本机 macOS arm64 通过，但真实用户 profile 与 Windows/Linux native
+  host/runner evidence 仍按 RC-11 单独取得，Safari 仅要求 macOS。
 - SQLite migration、权限、并发与 crash recovery evidence 完整。
 - 两个 MCP server 的 tool inventory 与文档一致。
-- 真实 Pixiv/FANBOX SDK E2E evidence 已完成；报告不包含 credential、Cookie、signed query 或内容。
-- 本机 FlareSolverr 测试辅助容器已按固定 digest 运行一次并留下脱敏 evidence；SDK 直连 evidence
-  与该结果分开记录。
+- 真实 Pixiv SDK E2E 与一次性 real-solver protocol acceptance 已完成；用户提供的
+  `ro7274/12373249` FANBOX target 已覆盖到详情请求，但默认 native 触发 challenge，solver recovery
+  确认该帖子没有 file attachment，尚未取得 file attachment 非零字节读取 evidence。报告不包含
+  credential、Cookie、signed query 或内容。
+- FANBOX native Firefox 主路径与可选 FlareSolverr recovery 的 focused tests 通过；实现后的 real
+  solver protocol 只需以 synthetic challenge 在本地验证一次，genuine challenge evidence 是
+  best-effort，不是重复 CI/RC gate。
 - 三语文档、migration guide、Skill、ADR 和 release notes 已完成。
+- `--debug` 的 CLI/MCP stdout isolation、明确模块名、secret 扫描通过，并在上述同一次本机 solver
+  protocol acceptance 中确认诊断链；默认运行不创建项目级日志或 `logs/`。
 - full test、race、vet、build、docs、workflow、diff 与 API compatibility gates 全部通过。

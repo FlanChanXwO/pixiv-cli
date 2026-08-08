@@ -50,7 +50,7 @@ instead of the obsolete text summary.
 ## Evidence run after fixes
 
 - `go test ./e2e ./internal/cli ./internal/application ./pixiv -count=1`
-- `go test ./internal/download ./pixiv ./e2e ./internal/cli -count=1`
+- `go test ./internal/downloader ./pixiv ./e2e ./internal/cli -count=1`
 - `go test ./scripts/clawhubworkflow ./scripts/documentation -count=1`
 - `go test ./scripts/clawhubworkflow ./scripts/releaseworkflow ./scripts/documentation -count=1`
 - `go test ./e2e -count=1`

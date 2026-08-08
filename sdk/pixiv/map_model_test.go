@@ -51,8 +51,8 @@ func TestMapArtwork(t *testing.T) {
 func TestMapArtworkMissingPublishTimeFails(t *testing.T) {
 	client, _ := New("token")
 	m := model.Illust{ID: 1, Type: "illust", ImageURLs: model.ImageURLs{Original: "https://i.pximg.net/img/1.png"}}
-	if _, err := client.mapArtwork(m); sdk.CodeOf(err) != sdk.CodeMalformedUpstreamResponse {
-		t.Fatalf("expected CodeMalformedUpstreamResponse, got %v", err)
+	if _, err := client.mapArtwork(m); sdk.ReasonOf(err) != sdk.MalformedUpstreamResponse {
+		t.Fatalf("expected MalformedUpstreamResponse, got %v", err)
 	}
 }
 
@@ -88,8 +88,8 @@ func TestMapUgoiraMetadataUnsafeFilename(t *testing.T) {
 			{File: "../evil.jpg", Delay: 100},
 		},
 	}}
-	if _, err := client.mapUgoiraMetadata(1, result); sdk.CodeOf(err) != sdk.CodeMalformedUpstreamResponse {
-		t.Fatalf("expected CodeMalformedUpstreamResponse for traversal filename, got %v", err)
+	if _, err := client.mapUgoiraMetadata(1, result); sdk.ReasonOf(err) != sdk.MalformedUpstreamResponse {
+		t.Fatalf("expected MalformedUpstreamResponse for traversal filename, got %v", err)
 	}
 }
 
@@ -98,8 +98,8 @@ func TestMapUgoiraRejectsMissingArchive(t *testing.T) {
 	result := &model.UgoiraMetadataResult{UgoiraMetadata: model.UgoiraMetadata{
 		Frames: []model.UgoiraFrame{{File: "0.jpg", Delay: 100}},
 	}}
-	if _, err := client.mapUgoiraMetadata(1, result); sdk.CodeOf(err) != sdk.CodeMalformedUpstreamResponse {
-		t.Fatalf("expected CodeMalformedUpstreamResponse for missing archive, got %v", err)
+	if _, err := client.mapUgoiraMetadata(1, result); sdk.ReasonOf(err) != sdk.MalformedUpstreamResponse {
+		t.Fatalf("expected MalformedUpstreamResponse for missing archive, got %v", err)
 	}
 }
 

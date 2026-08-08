@@ -25,7 +25,7 @@ func TestCLIProductionFilesDoNotImportDownloadImplementation(t *testing.T) {
 		for _, spec := range file.Imports {
 			path, err := strconv.Unquote(spec.Path.Value)
 			require.NoError(t, err, name)
-			require.NotEqual(t, "github.com/FlanChanXwO/pixiv-cli/internal/download", path, "%s must delegate download construction through application/bootstrap", name)
+			require.NotEqual(t, "github.com/FlanChanXwO/pixiv-cli/internal/downloader", path, "%s must delegate download construction through application/bootstrap", name)
 		}
 	}
 }

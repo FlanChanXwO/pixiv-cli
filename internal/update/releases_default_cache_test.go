@@ -4,7 +4,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	constants "github.com/FlanChanXwO/pixiv-cli/internal/platform/localstate"
+	"github.com/FlanChanXwO/pixiv-cli/internal/filesystem"
 	"github.com/stretchr/testify/require"
 )
 
@@ -15,6 +15,6 @@ func TestGitHubReleaseClientDefaultCacheUsesApplicationDataDirectory(t *testing.
 
 	client, err := NewGitHubReleaseClient(ReleaseClientOptions{})
 	require.NoError(t, err)
-	require.Equal(t, filepath.Join(home, constants.AppDataDirName, "cache"), client.cacheDir)
-	require.Equal(t, filepath.Join(home, constants.AppDataDirName, "cache", releaseCacheFilename), client.cachePath)
+	require.Equal(t, filepath.Join(home, filesystem.AppDataDirName, "cache"), client.cacheDir)
+	require.Equal(t, filepath.Join(home, filesystem.AppDataDirName, "cache", releaseCacheFilename), client.cachePath)
 }

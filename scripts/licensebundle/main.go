@@ -81,7 +81,7 @@ func run(args []string) error {
 	flags := flag.NewFlagSet("licensebundle", flag.ContinueOnError)
 	flags.SetOutput(os.Stderr)
 	opts := options{}
-	flags.StringVar(&opts.Manifest, "manifest", "internal/download/ugoira_rs/Cargo.toml", "Rust crate manifest")
+	flags.StringVar(&opts.Manifest, "manifest", "internal/downloader/ugoira_rs/Cargo.toml", "Rust crate manifest")
 	flags.StringVar(&opts.Index, "index", "THIRD_PARTY_LICENSES.md", "generated bundle index")
 	flags.StringVar(&opts.Licenses, "licenses-dir", "third_party/licenses", "generated license text directory")
 	flags.BoolVar(&opts.Check, "check", false, "verify generated files without modifying them")

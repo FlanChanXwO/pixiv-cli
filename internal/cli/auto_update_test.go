@@ -12,10 +12,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/FlanChanXwO/pixiv-cli/internal/application/config"
 	"github.com/FlanChanXwO/pixiv-cli/internal/bootstrap"
 	"github.com/FlanChanXwO/pixiv-cli/internal/buildinfo"
-	"github.com/FlanChanXwO/pixiv-cli/internal/config"
-	"github.com/FlanChanXwO/pixiv-cli/internal/storage/auth"
 	"github.com/FlanChanXwO/pixiv-cli/internal/update"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -192,9 +191,9 @@ func TestRunReleaseBuildSkipsAutomaticUpdateForAuthExport(t *testing.T) {
 	useReleaseBuildInfo(t, "v0.1.0")
 	restoreAutomatic := automaticUpdateMustNotRun(t)
 	t.Cleanup(restoreAutomatic)
-	require.NoError(t, auth.SaveAuthStore(authPath, auth.AuthStore{
+	require.NoError(t, saveTestAuthStore(t, authPath, testAuthStore{
 		DefaultUserID: 7,
-		Accounts:      []auth.Account{{UserID: 7, RefreshToken: "release-token"}},
+		Accounts:      []testAuthAccount{{UserID: 7, RefreshToken: "release-token"}},
 	}))
 
 	var stdout, stderr bytes.Buffer

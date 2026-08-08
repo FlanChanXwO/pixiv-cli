@@ -11,10 +11,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/application"
+	"github.com/FlanChanXwO/pixiv-cli/internal/application/config"
 	fanboxapp "github.com/FlanChanXwO/pixiv-cli/internal/application/fanbox"
-	constants "github.com/FlanChanXwO/pixiv-cli/internal/platform/localstate"
-	"github.com/FlanChanXwO/pixiv-cli/internal/storage/authdb"
+	"github.com/FlanChanXwO/pixiv-cli/internal/bootstrap"
+	"github.com/FlanChanXwO/pixiv-cli/internal/browsercookies"
+	"github.com/FlanChanXwO/pixiv-cli/internal/filesystem"
+	"github.com/FlanChanXwO/pixiv-cli/internal/persistence/authdb"
 	"github.com/FlanChanXwO/pixiv-cli/sdk/fanbox"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -54,7 +56,7 @@ func fanboxSessionOKRoundTripper(userID int64, name string) http.RoundTripper {
 func fanboxPostInfoRoundTripper(postID, title, creatorID string) http.RoundTripper {
 	return roundTripFunc(func(req *http.Request) (*http.Response, error) {
 		switch req.URL.Path {
-		case "/api/v1/post.info":
+		case "/post.info":
 			body := `{"body":{"post":{"id":"` + postID + `","title":"` + title + `","publishedDatetime":"2024-06-01T10:00:00Z","creatorId":"` + creatorID + `","feeRequired":0,"isRestricted":false,"isPinned":false,"body":{"text":"caption","images":[],"files":[]}}}}`
 			return jsonResponse(body), nil
 		default:
@@ -79,11 +81,11 @@ type fanboxTestHarness struct {
 func newFanboxTestHarness(t *testing.T, rt http.RoundTripper) *fanboxTestHarness {
 	t.Helper()
 	useTempPaths(t)
-	appDataDir := filepath.Join(os.Getenv("HOME"), constants.AppDataDirName)
+	appDataDir := filepath.Join(os.Getenv("HOME"), filesystem.AppDataDirName)
 	db, err := authdb.Open(appDataDir)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = db.Close() })
-	service := fanboxapp.New(db, appDataDir)
+	service := fanboxapp.New(cliFanboxRepository{db: db}, cliFanboxDefaults{})
 	service.OpenSessionFunc = func(value string) (*fanbox.Client, error) {
 		return fanbox.OpenWith(fanbox.SessionCredentials{FANBOXSESSID: value}, fanbox.Options{HTTPClient: &http.Client{Transport: rt}})
 	}
@@ -93,11 +95,55 @@ func newFanboxTestHarness(t *testing.T, rt http.RoundTripper) *fanboxTestHarness
 	return &fanboxTestHarness{db: db, service: service}
 }
 
+type cliFanboxRepository struct{ db *authdb.DB }
+
+func (r cliFanboxRepository) SaveFanboxCredential(ctx context.Context, account fanboxapp.FanboxAccountRecord) error {
+	return r.db.SaveFanboxCredential(ctx, authdb.FanboxAccount{UserID: account.UserID, SortOrder: account.SortOrder, DisplayName: account.DisplayName, CreatorID: account.CreatorID, SessionID: account.SessionID, CredentialRevision: account.CredentialRevision, ValidatedAt: account.ValidatedAt})
+}
+func (r cliFanboxRepository) RotateFanboxSession(ctx context.Context, userID, revision int64, session []byte, validatedAt int64) error {
+	return r.db.RotateFanboxSession(ctx, userID, revision, session, validatedAt)
+}
+func (r cliFanboxRepository) ListFanbox(ctx context.Context) ([]fanboxapp.FanboxAccountRecord, error) {
+	accounts, err := r.db.ListFanbox(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]fanboxapp.FanboxAccountRecord, 0, len(accounts))
+	for _, account := range accounts {
+		out = append(out, cliFanboxRecord(account))
+	}
+	return out, nil
+}
+func (r cliFanboxRepository) GetFanbox(ctx context.Context, userID int64) (fanboxapp.FanboxAccountRecord, error) {
+	account, err := r.db.GetFanbox(ctx, userID)
+	if err != nil {
+		return fanboxapp.FanboxAccountRecord{}, err
+	}
+	return cliFanboxRecord(account), nil
+}
+func (r cliFanboxRepository) RemoveFanbox(ctx context.Context, userID int64) error {
+	return r.db.RemoveFanbox(ctx, userID)
+}
+
+type cliFanboxDefaults struct{}
+
+func (cliFanboxDefaults) ReadFanboxDefaultUserID() (int64, bool, error) {
+	return config.ReadFanboxDefaultUserID()
+}
+func (cliFanboxDefaults) SetFanboxDefaultUserID(userID int64) error {
+	return config.SetFanboxDefaultUserID(userID)
+}
+func (cliFanboxDefaults) ClearFanboxDefaultUserID() error { return config.ClearFanboxDefaultUserID() }
+
+func cliFanboxRecord(account authdb.FanboxAccount) fanboxapp.FanboxAccountRecord {
+	return fanboxapp.FanboxAccountRecord{UserID: account.UserID, SortOrder: account.SortOrder, DisplayName: account.DisplayName, CreatorID: account.CreatorID, SessionID: account.SessionID, CredentialRevision: account.CredentialRevision, ValidatedAt: account.ValidatedAt}
+}
+
 func (h *fanboxTestHarness) install(t *testing.T) {
 	t.Helper()
 	old := newCLIServices
-	newCLIServices = func() application.Services {
-		return application.Services{Fanbox: h.service}
+	newCLIServices = func() (*bootstrap.Runtime, error) {
+		return &bootstrap.Runtime{Fanbox: h.service}, nil
 	}
 	t.Cleanup(func() { newCLIServices = old })
 }
@@ -144,14 +190,12 @@ func TestFanboxAuthImportRejectsStdinWithFromBrowser(t *testing.T) {
 	assert.Empty(t, stdout.String())
 }
 
-func TestFanboxAuthImportFromBrowserUnavailable(t *testing.T) {
-	h := newFanboxTestHarness(t, fanboxSessionOKRoundTripper(42, "tester"))
-	h.install(t)
-	var stdout, stderr bytes.Buffer
-	code := Run([]string{"pixiv", "fanbox", "auth", "import", "--from-browser", "chrome"}, strings.NewReader(""), &stdout, &stderr)
-	require.NotEqual(t, 0, code)
-	assert.Contains(t, stderr.String(), "browser session import is not available")
-	assert.Empty(t, stdout.String())
+func TestDefaultFanboxBrowserReaderUsesBrowsercookiesProvider(t *testing.T) {
+	old := fanboxBrowserSessionReader
+	t.Cleanup(func() { fanboxBrowserSessionReader = old })
+
+	_, err := systemFanboxBrowserSessionReader{}.ReadSession(context.Background(), "unknown-browser", "")
+	require.ErrorIs(t, err, browsercookies.ErrUnknownBrowser)
 }
 
 type fakeFanboxBrowserProvider struct{ value string }
@@ -213,6 +257,11 @@ func TestFanboxAuthListUseRemoveStatus(t *testing.T) {
 	code = Run([]string{"pixiv", "fanbox", "auth", "status", "42"}, strings.NewReader(""), &stdout, &stderr)
 	require.Equal(t, 0, code, stderr.String())
 	assert.Contains(t, stdout.String(), "uid:42")
+
+	stdout.Reset()
+	stderr.Reset()
+	code = Run([]string{"pixiv", "fanbox", "auth", "use", "--auto"}, strings.NewReader(""), &stdout, &stderr)
+	require.Equal(t, 0, code, stderr.String())
 
 	stdout.Reset()
 	stderr.Reset()

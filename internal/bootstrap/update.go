@@ -4,15 +4,16 @@ import (
 	"fmt"
 	"io"
 
+	"github.com/FlanChanXwO/pixiv-cli/internal/network"
 	"github.com/FlanChanXwO/pixiv-cli/internal/update"
 )
 
 // NewUpdateCoordinator 组装显式更新命令使用的生产依赖。
 // CLI 仅提供 flags、输出和配置覆盖，更新网络与进程依赖统一由 bootstrap 持有。
 func NewUpdateCoordinator(proxy string, out, errOut io.Writer) (*update.UpdateCoordinator, error) {
-	httpClient, err := update.NewReleaseHTTPClient(proxy)
+	httpClient, err := network.HTTPClient(proxy)
 	if err != nil {
-		return nil, fmt.Errorf("create update HTTP client: %w", err)
+		return nil, fmt.Errorf("parse update proxy URL: %w", err)
 	}
 	usePublicReleaseSources := proxy == ""
 	releaseClient, err := update.NewGitHubReleaseClient(update.ReleaseClientOptions{HTTPClient: httpClient, EnablePublicReleaseSources: usePublicReleaseSources})
@@ -30,9 +31,9 @@ func NewUpdateCoordinator(proxy string, out, errOut io.Writer) (*update.UpdateCo
 // NewAutomaticUpdateChecker 组装普通 CLI 命令后的只读更新检查依赖。
 // 自动检查不复用显式更新编排器，避免意外执行安装策略或继承其输出语义。
 func NewAutomaticUpdateChecker(proxy string) (*update.AutomaticUpdateChecker, error) {
-	httpClient, err := update.NewReleaseHTTPClient(proxy)
+	httpClient, err := network.HTTPClient(proxy)
 	if err != nil {
-		return nil, fmt.Errorf("create update HTTP client: %w", err)
+		return nil, fmt.Errorf("parse update proxy URL: %w", err)
 	}
 	usePublicReleaseSources := proxy == ""
 	releaseClient, err := update.NewGitHubReleaseClient(update.ReleaseClientOptions{HTTPClient: httpClient, EnablePublicReleaseSources: usePublicReleaseSources})

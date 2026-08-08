@@ -75,7 +75,7 @@ func (c *Client) buildCursor(op string, baseQuery url.Values, key string, value 
 	}
 	payload, err := json.Marshal(continuationEnvelope{Key: key, Value: value})
 	if err != nil {
-		return sdk.Cursor{}, newError(op, sdk.CodeUpstreamError, "cannot encode cursor")
+		return sdk.Cursor{}, newError(op, sdk.UpstreamError, "cannot encode cursor")
 	}
 	var opts []sdk.CursorOption
 	if identityScopedOps[op] {
@@ -93,22 +93,22 @@ func (c *Client) buildCursor(op string, baseQuery url.Values, key string, value 
 // to the next request.
 func (c *Client) continuationFromCursor(op string, baseQuery url.Values, cur sdk.Cursor) (key string, value int64, err error) {
 	if err := sdk.ValidateCursor(cur, product, op, cursorBindingVersion, queryDigest(baseQuery)); err != nil {
-		return "", 0, newError(op, sdk.CodeInvalidCursor, "cursor does not match this operation and query")
+		return "", 0, newError(op, sdk.InvalidCursor, "cursor does not match this operation and query")
 	}
 	if identityScopedOps[op] {
 		if identity, ok := sdk.CursorIdentity(cur); ok {
 			if strconv.FormatInt(c.userID, 10) != identity {
-				return "", 0, newError(op, sdk.CodeInvalidCursor, "cursor belongs to a different account")
+				return "", 0, newError(op, sdk.InvalidCursor, "cursor belongs to a different account")
 			}
 		}
 	}
 	payload, err := sdk.CursorPayload(cur)
 	if err != nil {
-		return "", 0, newError(op, sdk.CodeInvalidCursor, "cursor payload is unavailable")
+		return "", 0, newError(op, sdk.InvalidCursor, "cursor payload is unavailable")
 	}
 	var envelope continuationEnvelope
 	if err := json.Unmarshal(payload, &envelope); err != nil || envelope.Key == "" || envelope.Value < 0 {
-		return "", 0, newError(op, sdk.CodeInvalidCursor, "cursor payload is malformed")
+		return "", 0, newError(op, sdk.InvalidCursor, "cursor payload is malformed")
 	}
 	return envelope.Key, envelope.Value, nil
 }
@@ -124,7 +124,7 @@ func (c *Client) continuationOffset(op string, baseQuery url.Values, cur sdk.Cur
 		return 0, err
 	}
 	if key != "offset" {
-		return 0, newError(op, sdk.CodeInvalidCursor, "cursor continuation kind mismatch")
+		return 0, newError(op, sdk.InvalidCursor, "cursor continuation kind mismatch")
 	}
 	return int(value), nil
 }
@@ -141,7 +141,7 @@ func (c *Client) continuationValue(op string, baseQuery url.Values, cur sdk.Curs
 		return 0, err
 	}
 	if key != expectedKey {
-		return 0, newError(op, sdk.CodeInvalidCursor, "cursor continuation kind mismatch")
+		return 0, newError(op, sdk.InvalidCursor, "cursor continuation kind mismatch")
 	}
 	return value, nil
 }

@@ -8,7 +8,7 @@ package sdk
 // non-zero Next must be passed back through the matching request struct to
 // continue the iteration. Callers repeat the original query parameters when
 // continuing; product SDKs reject a cursor whose product, operation, binding
-// version, or query digest does not match with CodeInvalidCursor.
+// version, or query digest does not match with InvalidCursor.
 type Page[T any] struct {
 	Items []T
 	Next  Cursor

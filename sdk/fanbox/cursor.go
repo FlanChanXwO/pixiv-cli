@@ -50,7 +50,7 @@ func (c *Client) buildCursor(op string, baseQuery url.Values, nextURL string) (s
 	}
 	payload, err := json.Marshal(continuationEnvelope{NextURL: nextURL})
 	if err != nil {
-		return sdk.Cursor{}, newError(op, sdk.CodeUpstreamError, err)
+		return sdk.Cursor{}, newError(op, sdk.UpstreamError, err)
 	}
 	return sdk.NewCursor(product, op, cursorBindingVersion, queryDigest(baseQuery), payload)
 }
@@ -60,15 +60,15 @@ func (c *Client) continuationURL(op string, baseQuery url.Values, cur sdk.Cursor
 		return "", nil
 	}
 	if err := sdk.ValidateCursor(cur, product, op, cursorBindingVersion, queryDigest(baseQuery)); err != nil {
-		return "", newError(op, sdk.CodeInvalidCursor, err)
+		return "", newError(op, sdk.InvalidCursor, err)
 	}
 	payload, err := sdk.CursorPayload(cur)
 	if err != nil {
-		return "", newError(op, sdk.CodeInvalidCursor, err)
+		return "", newError(op, sdk.InvalidCursor, err)
 	}
 	var envelope continuationEnvelope
 	if err := json.Unmarshal(payload, &envelope); err != nil || envelope.NextURL == "" {
-		return "", newError(op, sdk.CodeInvalidCursor, errors.New("cursor payload is malformed"))
+		return "", newError(op, sdk.InvalidCursor, errors.New("cursor payload is malformed"))
 	}
 	return envelope.NextURL, nil
 }

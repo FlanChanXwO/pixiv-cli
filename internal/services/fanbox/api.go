@@ -4,9 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 )
 
@@ -38,6 +40,12 @@ type Identity struct {
 // Creator 是 FANBOX creator id 的安全摘要。
 type Creator struct {
 	ID string `json:"id"`
+}
+
+// CreatorPage is one creator list page and the server-provided continuation.
+type CreatorPage struct {
+	Creators []Creator
+	NextURL  string
 }
 
 // CreatorProfile 是创作者公开摘要；它不含订阅、Cookie 或任何需要导出的私人账户字段。
@@ -185,10 +193,24 @@ type postInfoDTO struct {
 
 // pageDTO 兼容 home.* 的 body.items 与 post.list* 的 body.posts，均带 nextUrl。
 type pageDTO struct {
-	Posts   []postDTO `json:"posts"`
-	Items   []postDTO `json:"items"`
-	NextURL string    `json:"nextUrl"`
+	Posts    []postDTO `json:"posts"`
+	Items    []postDTO `json:"items"`
+	NextURL  string    `json:"nextUrl"`
+	PageURLs []string  `json:"pageUrls"`
 }
+
+type creatorPageDTO struct {
+	Plans    *[]creatorDTO `json:"plans"`
+	Creators *[]creatorDTO `json:"creators"`
+	NextURL  string        `json:"nextUrl"`
+	PageURLs []string      `json:"pageUrls"`
+}
+
+// fanboxPostListPageLimit is the explicit upstream request parameter captured
+// in the repository's FANBOX route evidence for post list operations. It is
+// not a local pagination or result cap; continuation remains controlled by
+// the server-provided URL.
+const fanboxPostListPageLimit = 10
 
 // CurrentUser 使用首页 metadata 验证 Cookie，并返回自动识别出的安全身份摘要。
 func (s *Session) CurrentUser(ctx context.Context) (Identity, error) {
@@ -245,28 +267,27 @@ func (s *Session) Creator(ctx context.Context, creatorID string) (CreatorProfile
 	}, nil
 }
 
-// Creators 读取 supporting 或 following creator，不执行写操作。
-func (s *Session) Creators(ctx context.Context, kind CreatorListKind) ([]Creator, error) {
-	switch kind {
-	case CreatorListSupporting:
-		var response struct {
-			Body json.RawMessage `json:"body"`
+// Creators 读取 supporting 或 following creator，不执行写操作。nextURL 非空时直接
+// 读取上游返回的绝对 continuation URL，不重新拼接或猜测分页参数。
+func (s *Session) Creators(ctx context.Context, kind CreatorListKind, nextURL string) (CreatorPage, error) {
+	endpoint := strings.TrimSpace(nextURL)
+	if endpoint == "" {
+		switch kind {
+		case CreatorListSupporting:
+			endpoint = apiBaseURL + "plan.listSupporting"
+		case CreatorListFollowing:
+			endpoint = apiBaseURL + "creator.listFollowing"
+		default:
+			return CreatorPage{}, errors.New("FANBOX creator list kind is invalid")
 		}
-		if err := s.getJSON(ctx, apiBaseURL+"plan.listSupporting", &response); err != nil {
-			return nil, err
-		}
-		return decodeSupportingCreators(response.Body)
-	case CreatorListFollowing:
-		var response struct {
-			Body json.RawMessage `json:"body"`
-		}
-		if err := s.getJSON(ctx, apiBaseURL+"creator.listFollowing", &response); err != nil {
-			return nil, err
-		}
-		return decodeFollowingCreators(response.Body)
-	default:
-		return nil, errors.New("FANBOX creator list kind is invalid")
 	}
+	var response struct {
+		Body json.RawMessage `json:"body"`
+	}
+	if err := s.getJSON(ctx, endpoint, &response); err != nil {
+		return CreatorPage{}, err
+	}
+	return decodeCreatorPage(response.Body, kind)
 }
 
 // CreatorPosts 读取 creator 的 post.listCreator 分页。nextURL 非空时直接取该
@@ -275,11 +296,14 @@ func (s *Session) CreatorPosts(ctx context.Context, creatorID, nextURL string) (
 	if strings.TrimSpace(creatorID) == "" {
 		return PostPage{}, errors.New("FANBOX creator id is required")
 	}
-	endpoint := apiBaseURL + "post.listCreator?" + url.Values{"creatorId": {creatorID}}.Encode()
+	endpoint := apiBaseURL + "post.listCreator?" + url.Values{
+		"creatorId": {creatorID},
+		"limit":     {strconv.Itoa(fanboxPostListPageLimit)},
+	}.Encode()
 	return s.fetchPostPage(ctx, endpoint, nextURL)
 }
 
-// TaggedPosts 读取 creator 的 post.listTaggedPosts 分页，语义同 CreatorPosts。
+// TaggedPosts 读取 creator 的 post.listTagged 分页，语义同 CreatorPosts。
 func (s *Session) TaggedPosts(ctx context.Context, creatorID, tag, nextURL string) (PostPage, error) {
 	if strings.TrimSpace(creatorID) == "" {
 		return PostPage{}, errors.New("FANBOX creator id is required")
@@ -287,18 +311,24 @@ func (s *Session) TaggedPosts(ctx context.Context, creatorID, tag, nextURL strin
 	if strings.TrimSpace(tag) == "" {
 		return PostPage{}, errors.New("FANBOX tag is required")
 	}
-	endpoint := apiBaseURL + "post.listTaggedPosts?" + url.Values{"creatorId": {creatorID}, "tag": {tag}}.Encode()
+	endpoint := apiBaseURL + "post.listTagged?" + url.Values{"creatorId": {creatorID}, "tag": {tag}}.Encode()
 	return s.fetchPostPage(ctx, endpoint, nextURL)
 }
 
-// Home 读取首页动态流 home.posts 分页，语义同 CreatorPosts。
+// Home 读取首页动态流 post.listHome 分页，语义同 CreatorPosts。
 func (s *Session) Home(ctx context.Context, nextURL string) (PostPage, error) {
-	return s.fetchHomePage(ctx, apiBaseURL+"home.posts", nextURL)
+	endpoint := apiBaseURL + "post.listHome?" + url.Values{
+		"limit": {strconv.Itoa(fanboxPostListPageLimit)},
+	}.Encode()
+	return s.fetchHomePage(ctx, endpoint, nextURL)
 }
 
-// Supporting 读取支持中的创作者动态 home.supporting 分页，语义同 CreatorPosts。
+// Supporting 读取支持中的创作者动态 post.listSupporting 分页，语义同 CreatorPosts。
 func (s *Session) Supporting(ctx context.Context, nextURL string) (PostPage, error) {
-	return s.fetchHomePage(ctx, apiBaseURL+"home.supporting", nextURL)
+	endpoint := apiBaseURL + "post.listSupporting?" + url.Values{
+		"limit": {strconv.Itoa(fanboxPostListPageLimit)},
+	}.Encode()
+	return s.fetchHomePage(ctx, endpoint, nextURL)
 }
 
 func (s *Session) fetchPostPage(ctx context.Context, endpoint, nextURL string) (PostPage, error) {
@@ -336,7 +366,14 @@ func (s *Session) fetchPage(ctx context.Context, endpoint, nextURL string, accep
 		}
 		posts = append(posts, post)
 	}
-	return PostPage{Posts: posts, NextURL: response.Body.NextURL}, nil
+	return PostPage{Posts: posts, NextURL: firstPageURL(response.Body)}, nil
+}
+
+func firstPageURL(page pageDTO) string {
+	if len(page.PageURLs) > 0 {
+		return page.PageURLs[0]
+	}
+	return page.NextURL
 }
 
 // Post 读取 post.info 的单个 post 详情。
@@ -352,9 +389,38 @@ func (s *Session) Post(ctx context.Context, postID string) (Post, error) {
 	return convertPost(response.Body.Post)
 }
 
-// OpenMedia 打开经 allowlist 验证的媒体；媒体和其 redirect 永不携带 FANBOX Cookie。
+// OpenMedia 打开经 allowlist 验证的媒体；只有 downloads.fanbox.cc 首跳可携带
+// FANBOX Cookie，Pixiv/CDN 与所有 redirect host 都不携带认证信息。
 func (s *Session) OpenMedia(ctx context.Context, mediaURL string) (*http.Response, error) {
-	response, err := s.do(ctx, mediaURL, requestKindMedia, false, "*/*")
+	return s.OpenMediaWithRequest(ctx, mediaURL, MediaRequest{Method: http.MethodGet})
+}
+
+// MediaRequest is the controlled request surface used by the public SDK
+// resource adapter. It deliberately has no arbitrary header or Cookie field.
+type MediaRequest struct {
+	Method          string
+	Range           string
+	IfNoneMatch     string
+	IfModifiedSince string
+	IfRange         string
+}
+
+// OpenMediaWithRequest opens one media URL with the public resource method and
+// the small conditional-request header allowlist. It never accepts a caller
+// supplied Cookie or arbitrary header map.
+func (s *Session) OpenMediaWithRequest(ctx context.Context, mediaURL string, request MediaRequest) (*http.Response, error) {
+	header := make(http.Header)
+	for _, field := range []struct{ name, value string }{
+		{"Range", request.Range},
+		{"If-None-Match", request.IfNoneMatch},
+		{"If-Modified-Since", request.IfModifiedSince},
+		{"If-Range", request.IfRange},
+	} {
+		if field.value != "" {
+			header.Set(field.name, field.value)
+		}
+	}
+	response, err := s.doWithRequest(ctx, mediaURL, requestKindMedia, true, "*/*", request.Method, header)
 	if err != nil {
 		return nil, err
 	}
@@ -410,40 +476,43 @@ func (r *safeMediaReadCloser) Close() error {
 	return nil
 }
 
-// decodeSupportingCreators 兼容 plan.listSupporting 的实际 body.plans 包装。每个
-// plan 还可能带 fee、perks 等支付字段；creator reader 只需要稳定的 creatorId。
-// 保留直接数组分支以兼容先前已记录的上游形状，但未知 object 不得被静默当作空列表。
-func decodeSupportingCreators(raw json.RawMessage) ([]Creator, error) {
+// decodeCreatorPage 兼容两种真实 creator-list envelope：supporting 使用
+// body.plans，following 使用 body.creators；直接数组仍被接受。未知 object 不得
+// 被静默当作空列表，pageUrls/nextUrl 只作为上游 continuation 原样交给游标层。
+func decodeCreatorPage(raw json.RawMessage, kind CreatorListKind) (CreatorPage, error) {
 	var direct []creatorDTO
 	if err := json.Unmarshal(raw, &direct); err == nil {
-		return creatorListFromDTO(direct)
+		creators, err := creatorListFromDTO(direct)
+		return CreatorPage{Creators: creators}, err
 	}
-
-	var wrapped struct {
-		Plans *json.RawMessage `json:"plans"`
+	var wrapped creatorPageDTO
+	if err := json.Unmarshal(raw, &wrapped); err != nil {
+		return CreatorPage{}, fmt.Errorf("decode FANBOX %s creators", kind)
 	}
-	if err := json.Unmarshal(raw, &wrapped); err != nil || wrapped.Plans == nil {
-		return nil, errors.New("decode FANBOX supporting creators")
+	var items *[]creatorDTO
+	switch kind {
+	case CreatorListSupporting:
+		items = wrapped.Plans
+	case CreatorListFollowing:
+		items = wrapped.Creators
+	default:
+		return CreatorPage{}, errors.New("FANBOX creator list kind is invalid")
 	}
-	var plans []creatorDTO
-	if err := json.Unmarshal(*wrapped.Plans, &plans); err != nil {
-		return nil, errors.New("decode FANBOX supporting creators")
+	if items == nil {
+		return CreatorPage{}, fmt.Errorf("decode FANBOX %s creators", kind)
 	}
-	return creatorListFromDTO(plans)
+	creators, err := creatorListFromDTO(*items)
+	if err != nil {
+		return CreatorPage{}, err
+	}
+	return CreatorPage{Creators: creators, NextURL: firstCreatorPageURL(wrapped)}, nil
 }
 
-func decodeFollowingCreators(raw json.RawMessage) ([]Creator, error) {
-	var direct []creatorDTO
-	if err := json.Unmarshal(raw, &direct); err == nil {
-		return creatorListFromDTO(direct)
+func firstCreatorPageURL(page creatorPageDTO) string {
+	if len(page.PageURLs) > 0 {
+		return page.PageURLs[0]
 	}
-	var wrapped struct {
-		Creators []creatorDTO `json:"creators"`
-	}
-	if err := json.Unmarshal(raw, &wrapped); err != nil {
-		return nil, errors.New("decode FANBOX following creators")
-	}
-	return creatorListFromDTO(wrapped.Creators)
+	return page.NextURL
 }
 
 func creatorListFromDTO(items []creatorDTO) ([]Creator, error) {

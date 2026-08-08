@@ -17,6 +17,7 @@
 ## 为什么选择 pixiv-cli？
 
 - **一致的能力面**——CLI、MCP 与 SDK 均可完成搜索、详情、排行、推荐、用户、收藏、关注、下载和 ugoira 处理。
+- **只读 FANBOX 能力**——通过 `FANBOXSESSID` 登录后，可从 CLI、MCP 或 `sdk/fanbox` 查看创作者、帖子、主页/支持中 feed、标签和第一方文件资源。
 - **组合式视觉作品管道**——视觉列表接入管道时自动输出 canonical NDJSON；用 `--filter` 编写有类型的本地作品筛选，并可直接传给 `download`。
 - **本地账号池**——为读取型任务选择符合条件的本地账号，并在分页和下载准备阶段遵循 Pixiv 的 `Retry-After` 响应。
 - **易用的账号登录流程**——运行 `pixiv auth login` 即可在浏览器完成 OAuth，随后可使用 `auth list`、`auth use` 和 `auth check` 管理和确认本地多账号。
@@ -27,6 +28,7 @@
 - **直达 Pixiv 引用**——可把受支持作品 URL 直接粘贴给详情或下载；已认证的作者主页/作品页 URL 会展开为该作者的视觉作品。
 - **本地多账号 OAuth**——支持浏览器登录、账号选择、refresh token rotation 和可选的跨机器 callback relay。
 - **适合自动化**——typed SDK error、JSON 输出、纯净 MCP stdio、签名更新和完整结果报告。
+- **显式诊断**——使用 `--debug` 可将路由、challenge 恢复、账号池和下载事件安全地实时写入 stderr；不创建日志文件。
 
 ## 安装
 
@@ -105,6 +107,10 @@ sh scripts/build.sh
 # 通过浏览器 OAuth 保存 Pixiv 账号。
 pixiv auth login
 
+# 通过隐藏输入保存 FANBOX session，然后查看 FANBOX 内容。
+pixiv fanbox auth import
+pixiv fanbox post 123456
+
 # 使用 App 服务端筛选搜索。
 pixiv search "初音ミク" --type illust --ai-mode exclude --resolution high
 pixiv novel search "初音ミク" --rating sfw --min-text-length 1000
@@ -141,10 +147,16 @@ pixiv timeline latest --type illust --limit 10 --json
 
 ### MCP
 
-显式启动 stdio server。stdout 只用于 JSON-RPC；tool 运行失败会以 `isError=true` 的 structured result 返回。
+诊断默认关闭；显式启用后只将安全事件写入 stderr，MCP stdout 仍为 JSON-RPC。
+
+显式启动 stdio server。stdout 只用于 JSON-RPC；tool 运行失败会以 `isError=true` 的 structured result 返回。默认不创建项目级或每日日志文件。
 
 ```bash
 pixiv mcp
+# 可选的安全诊断写入 stderr，不改变 MCP stdout。
+pixiv --debug mcp
+# FANBOX tools 使用独立的 runtime credential 选择。
+pixiv --debug fanbox mcp
 ```
 
 [MCP tool 契约](docs/zh-CN/mcp-tools.md)记录了 tools、参数、structured output 和认证行为。
@@ -152,7 +164,7 @@ MCP 固定状态、错误和展示文本使用英文；Pixiv 元数据及用户�
 
 ### Go SDK
 
-首次在本地使用时，先运行一次 `pixiv auth login`，再从该本地账号创建 client 并进行搜索：
+Public SDK 显式接收 credential，不读取 CLI 的本地账号库。下面示例只为避免把 secret 写入源码而从进程环境读取 refresh token；应用应自行保存 `Open` 返回的 rotation 后 credential：
 
 ```go
 package main
@@ -161,28 +173,29 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"os"
 
-	pixiv "github.com/FlanChanXwO/pixiv-cli/pixiv"
+	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 )
 
 func main() {
 	ctx := context.Background()
-	client, err := pixiv.OpenDefault()
+	client, _, err := pixiv.Open(ctx, os.Getenv("PIXIV_REFRESH_TOKEN"))
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	result, err := client.SearchIllust(ctx, pixiv.SearchIllustRequest{Word: "初音ミク"})
+	result, err := client.SearchArtworks(ctx, pixiv.SearchArtworksRequest{Word: "初音ミク"})
 	if err != nil {
 		log.Fatal(err)
 	}
-	for _, illust := range result.Illusts {
-		fmt.Printf("%d %s\\n", illust.ID, illust.URL)
+	for _, artwork := range result.Items {
+		fmt.Printf("%d %s\\n", artwork.ID, artwork.URL)
 	}
 }
 ```
 
-SDK import path 为 `github.com/FlanChanXwO/pixiv-cli/pixiv`。`Download`/`DownloadAll` 使用有文档依据的新手默认值；`DownloadWith`/`DownloadAllWith` 可控制路径、命名、页码、质量与并发。[SDK 指南](docs/zh-CN/sdk.md)说明模型、cursor、资源、错误和调用方职责。
+SDK import path 为 `github.com/FlanChanXwO/pixiv-cli/sdk/pixiv`。`sdk/fanbox` 显式接收 `FANBOXSESSID`，支持 Firefox 148 native 路由，以及可选的服务级 proxy、user-agent 和仅 challenge 使用的 FlareSolverr。`Download`/`DownloadAll` 使用有文档依据的新手默认值；`DownloadWith`/`DownloadAllWith` 可控制路径、命名、页码、质量与并发。[SDK 指南](docs/zh-CN/sdk.md)说明模型、cursor、资源、错误和调用方职责。
 
 ## 认证与 token 安全
 

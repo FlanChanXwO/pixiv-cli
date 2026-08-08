@@ -12,10 +12,10 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/FlanChanXwO/pixiv-cli/internal/application/config"
 	fanboxapp "github.com/FlanChanXwO/pixiv-cli/internal/application/fanbox"
-	"github.com/FlanChanXwO/pixiv-cli/internal/config"
-	constants "github.com/FlanChanXwO/pixiv-cli/internal/platform/localstate"
-	"github.com/FlanChanXwO/pixiv-cli/internal/storage/authdb"
+	"github.com/FlanChanXwO/pixiv-cli/internal/filesystem"
+	"github.com/FlanChanXwO/pixiv-cli/internal/persistence/authdb"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	fanboxsdk "github.com/FlanChanXwO/pixiv-cli/sdk/fanbox"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -43,18 +43,60 @@ func fanboxTestService(t *testing.T, rt http.RoundTripper) (*fanboxapp.Service, 
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("USERPROFILE", home)
-	t.Cleanup(config.SetFilePathForTest(filepath.Join(home, constants.AppDataDirName, "config.toml")))
-	appDataDir := filepath.Join(home, constants.AppDataDirName)
+	t.Cleanup(config.SetFilePathForTest(filepath.Join(home, filesystem.AppDataDirName, "config.toml")))
+	appDataDir := filepath.Join(home, filesystem.AppDataDirName)
 	db, err := authdb.Open(appDataDir)
 	if err != nil {
 		t.Fatalf("open auth db: %v", err)
 	}
 	t.Cleanup(func() { _ = db.Close() })
-	service := fanboxapp.New(db, appDataDir)
+	service := fanboxapp.New(fanboxMCPRepository{db: db}, fanboxMCPDefaults{})
 	service.OpenClientFunc = func(context.Context) (*fanboxsdk.Client, error) {
 		return fanboxsdk.OpenWith(fanboxsdk.SessionCredentials{FANBOXSESSID: "stored-session"}, fanboxsdk.Options{HTTPClient: &http.Client{Transport: rt}})
 	}
 	return service, db
+}
+
+type fanboxMCPRepository struct{ db *authdb.DB }
+
+func (r fanboxMCPRepository) SaveFanboxCredential(ctx context.Context, account fanboxapp.FanboxAccountRecord) error {
+	return r.db.SaveFanboxCredential(ctx, authdb.FanboxAccount{UserID: account.UserID, SortOrder: account.SortOrder, DisplayName: account.DisplayName, CreatorID: account.CreatorID, SessionID: account.SessionID, CredentialRevision: account.CredentialRevision, ValidatedAt: account.ValidatedAt})
+}
+func (r fanboxMCPRepository) RotateFanboxSession(ctx context.Context, userID, revision int64, session []byte, validatedAt int64) error {
+	return r.db.RotateFanboxSession(ctx, userID, revision, session, validatedAt)
+}
+func (r fanboxMCPRepository) ListFanbox(ctx context.Context) ([]fanboxapp.FanboxAccountRecord, error) {
+	accounts, err := r.db.ListFanbox(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]fanboxapp.FanboxAccountRecord, 0, len(accounts))
+	for _, account := range accounts {
+		out = append(out, fanboxapp.FanboxAccountRecord{UserID: account.UserID, SortOrder: account.SortOrder, DisplayName: account.DisplayName, CreatorID: account.CreatorID, SessionID: account.SessionID, CredentialRevision: account.CredentialRevision, ValidatedAt: account.ValidatedAt})
+	}
+	return out, nil
+}
+func (r fanboxMCPRepository) GetFanbox(ctx context.Context, userID int64) (fanboxapp.FanboxAccountRecord, error) {
+	account, err := r.db.GetFanbox(ctx, userID)
+	if err != nil {
+		return fanboxapp.FanboxAccountRecord{}, err
+	}
+	return fanboxapp.FanboxAccountRecord{UserID: account.UserID, SortOrder: account.SortOrder, DisplayName: account.DisplayName, CreatorID: account.CreatorID, SessionID: account.SessionID, CredentialRevision: account.CredentialRevision, ValidatedAt: account.ValidatedAt}, nil
+}
+func (r fanboxMCPRepository) RemoveFanbox(ctx context.Context, userID int64) error {
+	return r.db.RemoveFanbox(ctx, userID)
+}
+
+type fanboxMCPDefaults struct{}
+
+func (fanboxMCPDefaults) ReadFanboxDefaultUserID() (int64, bool, error) {
+	return config.ReadFanboxDefaultUserID()
+}
+func (fanboxMCPDefaults) SetFanboxDefaultUserID(userID int64) error {
+	return config.SetFanboxDefaultUserID(userID)
+}
+func (fanboxMCPDefaults) ClearFanboxDefaultUserID() error {
+	return config.ClearFanboxDefaultUserID()
 }
 
 func newFanboxMCPSession(t *testing.T, service *fanboxapp.Service) (*mcp.ClientSession, func()) {

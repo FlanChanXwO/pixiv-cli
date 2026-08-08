@@ -56,8 +56,8 @@ func TestResolveURLRejectsInvalid(t *testing.T) {
 	for _, raw := range cases {
 		t.Run(raw, func(t *testing.T) {
 			_, err := client.ResolveURL(context.Background(), fanbox.ResolveURLRequest{RawURL: raw})
-			if sdk.CodeOf(err) != sdk.CodeInvalidArgument {
-				t.Fatalf("ResolveURL(%q): expected CodeInvalidArgument, got %v", raw, err)
+			if sdk.ReasonOf(err) != sdk.InvalidArgument {
+				t.Fatalf("ResolveURL(%q): expected InvalidArgument, got %v", raw, err)
 			}
 		})
 	}

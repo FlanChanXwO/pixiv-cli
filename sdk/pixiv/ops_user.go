@@ -11,7 +11,7 @@ import (
 // SearchUsers searches users.
 func (c *Client) SearchUsers(ctx context.Context, request SearchUsersRequest) (sdk.Page[UserPreview], error) {
 	if request.Word == "" {
-		return sdk.Page[UserPreview]{}, newError("SearchUsers", sdk.CodeInvalidArgument, "search word is required")
+		return sdk.Page[UserPreview]{}, newError("SearchUsers", sdk.InvalidArgument, "search word is required")
 	}
 	query := url.Values{"word": {request.Word}}
 	offset, err := c.continuationOffset("SearchUsers", query, request.Cursor)
@@ -28,7 +28,7 @@ func (c *Client) SearchUsers(ctx context.Context, request SearchUsersRequest) (s
 // User returns one user's detail by their stable ID.
 func (c *Client) User(ctx context.Context, request UserRequest) (UserDetail, error) {
 	if request.UserID <= 0 {
-		return UserDetail{}, newError("User", sdk.CodeInvalidArgument, "user ID must be positive")
+		return UserDetail{}, newError("User", sdk.InvalidArgument, "user ID must be positive")
 	}
 	detail, err := c.app.UserDetail(ctx, request.UserID)
 	if err != nil {
@@ -62,7 +62,7 @@ func (c *Client) RecommendedUsers(ctx context.Context, request RecommendedUsersR
 // RelatedUsers lists users related to one user.
 func (c *Client) RelatedUsers(ctx context.Context, request RelatedUsersRequest) (sdk.Page[UserPreview], error) {
 	if request.UserID <= 0 {
-		return sdk.Page[UserPreview]{}, newError("RelatedUsers", sdk.CodeInvalidArgument, "user ID must be positive")
+		return sdk.Page[UserPreview]{}, newError("RelatedUsers", sdk.InvalidArgument, "user ID must be positive")
 	}
 	query := url.Values{"seed_user_id": {itoa(request.UserID)}}
 	offset, err := c.continuationOffset("RelatedUsers", query, request.Cursor)
@@ -79,7 +79,7 @@ func (c *Client) RelatedUsers(ctx context.Context, request RelatedUsersRequest) 
 // UserFollowing lists the users one user follows.
 func (c *Client) UserFollowing(ctx context.Context, request UserFollowingRequest) (sdk.Page[UserPreview], error) {
 	if request.UserID <= 0 {
-		return sdk.Page[UserPreview]{}, newError("UserFollowing", sdk.CodeInvalidArgument, "user ID must be positive")
+		return sdk.Page[UserPreview]{}, newError("UserFollowing", sdk.InvalidArgument, "user ID must be positive")
 	}
 	query := url.Values{"user_id": {itoa(request.UserID)}, "restrict": {string(request.Restrict)}}
 	offset, err := c.continuationOffset("UserFollowing", query, request.Cursor)
@@ -96,7 +96,7 @@ func (c *Client) UserFollowing(ctx context.Context, request UserFollowingRequest
 // UserFollowers lists the users following one user.
 func (c *Client) UserFollowers(ctx context.Context, request UserFollowersRequest) (sdk.Page[UserPreview], error) {
 	if request.UserID <= 0 {
-		return sdk.Page[UserPreview]{}, newError("UserFollowers", sdk.CodeInvalidArgument, "user ID must be positive")
+		return sdk.Page[UserPreview]{}, newError("UserFollowers", sdk.InvalidArgument, "user ID must be positive")
 	}
 	query := url.Values{"user_id": {itoa(request.UserID)}, "restrict": {string(request.Restrict)}}
 	offset, err := c.continuationOffset("UserFollowers", query, request.Cursor)
@@ -113,7 +113,7 @@ func (c *Client) UserFollowers(ctx context.Context, request UserFollowersRequest
 // UserBlockedUsers lists the users one user has blocked.
 func (c *Client) UserBlockedUsers(ctx context.Context, request UserBlockedUsersRequest) (sdk.Page[UserPreview], error) {
 	if request.UserID <= 0 {
-		return sdk.Page[UserPreview]{}, newError("UserBlockedUsers", sdk.CodeInvalidArgument, "user ID must be positive")
+		return sdk.Page[UserPreview]{}, newError("UserBlockedUsers", sdk.InvalidArgument, "user ID must be positive")
 	}
 	query := url.Values{"user_id": {itoa(request.UserID)}}
 	offset, err := c.continuationOffset("UserBlockedUsers", query, request.Cursor)
@@ -128,11 +128,11 @@ func (c *Client) UserBlockedUsers(ctx context.Context, request UserBlockedUsersR
 }
 
 // MyPixivUsers lists the current user's MyPixiv feed users. It requires a
-// verified identity, so it fails with CodeUnauthorized on a New client whose
+// verified identity, so it fails with Unauthorized on a New client whose
 // user ID is unknown.
 func (c *Client) MyPixivUsers(ctx context.Context, request MyPixivUsersRequest) (sdk.Page[UserPreview], error) {
 	if c.userID <= 0 {
-		return sdk.Page[UserPreview]{}, newError("MyPixivUsers", sdk.CodeUnauthorized, "current user identity is unknown")
+		return sdk.Page[UserPreview]{}, newError("MyPixivUsers", sdk.Unauthorized, "current user identity is unknown")
 	}
 	query := url.Values{}
 	offset, err := c.continuationOffset("MyPixivUsers", query, request.Cursor)
@@ -147,11 +147,11 @@ func (c *Client) MyPixivUsers(ctx context.Context, request MyPixivUsersRequest) 
 }
 
 // CurrentUser returns the current authenticated user's detail. It requires a
-// verified identity, so it fails with CodeUnauthorized on a New client whose
+// verified identity, so it fails with Unauthorized on a New client whose
 // user ID is unknown.
 func (c *Client) CurrentUser(ctx context.Context, request CurrentUserRequest) (UserDetail, error) {
 	if c.userID <= 0 {
-		return UserDetail{}, newError("CurrentUser", sdk.CodeUnauthorized, "current user identity is unknown")
+		return UserDetail{}, newError("CurrentUser", sdk.Unauthorized, "current user identity is unknown")
 	}
 	return c.User(ctx, UserRequest{UserID: c.userID})
 }

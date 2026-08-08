@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/config"
+	"github.com/FlanChanXwO/pixiv-cli/internal/application/config"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -228,7 +228,7 @@ func TestNonNetworkCommandsRejectProxyFlags(t *testing.T) {
 			code := Run(args, strings.NewReader(""), &stdout, &stderr)
 
 			require.NotZero(t, code)
-			assert.Contains(t, stderr.String(), "unknown flag:")
+			assert.Contains(t, stderr.String(), "unknown option")
 		})
 	}
 }

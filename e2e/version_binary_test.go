@@ -3,6 +3,8 @@ package e2e
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
@@ -27,11 +29,46 @@ func TestPixivBinaryReportsBuildMetadata(t *testing.T) {
 	})
 }
 
+// TestPixivBinaryPackagedSmoke 验证平台 workflow 解包后的实际二进制，而不是重新构建一个开发二进制。
+// 该测试只在 workflow 注入路径与期望版本时运行；不读取凭据，也不启用真实 SDK E2E。
+func TestPixivBinaryPackagedSmoke(t *testing.T) {
+	binaryPath := strings.TrimSpace(os.Getenv("PIXIV_E2E_BINARY"))
+	if binaryPath == "" {
+		t.Skip("PIXIV_E2E_BINARY is not set")
+	}
+	if !filepath.IsAbs(binaryPath) {
+		t.Fatal("PIXIV_E2E_BINARY must be an absolute path")
+	}
+	if _, err := os.Stat(binaryPath); err != nil {
+		t.Fatalf("stat packaged binary: %v", err)
+	}
+	expectedVersion := strings.TrimSpace(os.Getenv("PIXIV_E2E_EXPECTED_VERSION"))
+	if expectedVersion == "" {
+		t.Fatal("PIXIV_E2E_EXPECTED_VERSION is required with PIXIV_E2E_BINARY")
+	}
+
+	assertPixivBuildMetadata(t, "..", binaryPath, expectedVersion, "", "")
+	for _, args := range [][]string{{"config", "path"}, {"mcp", "--help"}, {"fanbox", "mcp", "--help"}} {
+		t.Run(fmt.Sprintf("%s %s", args[0], strings.Join(args[1:], " ")), func(t *testing.T) {
+			stdout := runPixivVersionCommand(t, "..", binaryPath, args...)
+			if strings.TrimSpace(stdout) == "" {
+				t.Fatalf("pixiv %s returned empty stdout", strings.Join(args, " "))
+			}
+		})
+	}
+}
+
 func assertPixivBuildMetadata(t *testing.T, repoRoot, binaryPath, version, commit, buildDate string) {
 	t.Helper()
 
 	t.Run("version text", func(t *testing.T) {
 		stdout := runPixivVersionCommand(t, repoRoot, binaryPath, "version")
+		if commit == "" || buildDate == "" {
+			if !strings.HasPrefix(stdout, "pixiv "+version+"\ncommit: ") || !strings.Contains(stdout, "\nbuild date: ") {
+				t.Fatalf("pixiv version stdout = %q, want version %q with build metadata", stdout, version)
+			}
+			return
+		}
 		want := "pixiv " + version + "\ncommit: " + commit + "\nbuild date: " + buildDate + "\n"
 		if stdout != want {
 			t.Fatalf("pixiv version stdout = %q, want %q", stdout, want)
@@ -52,13 +89,17 @@ func assertPixivBuildMetadata(t *testing.T, repoRoot, binaryPath, version, commi
 		if err := json.Unmarshal([]byte(stdout), &metadata); err != nil {
 			t.Fatalf("pixiv version --json stdout is not a standalone JSON object: %v\n%s", err, stdout)
 		}
-		want := map[string]string{
-			"version":    version,
-			"commit":     commit,
-			"build_date": buildDate,
+		want := map[string]string{"version": version}
+		if commit != "" || buildDate != "" {
+			want["commit"] = commit
+			want["build_date"] = buildDate
 		}
-		if len(metadata) != len(want) {
-			t.Fatalf("pixiv version --json fields = %#v, want exactly %#v", metadata, want)
+		if commit != "" || buildDate != "" {
+			if len(metadata) != len(want) {
+				t.Fatalf("pixiv version --json fields = %#v, want exactly %#v", metadata, want)
+			}
+		} else if len(metadata) < len(want) {
+			t.Fatalf("pixiv version --json fields = %#v, want at least %#v", metadata, want)
 		}
 		for field, wantValue := range want {
 			gotValue, ok := metadata[field].(string)

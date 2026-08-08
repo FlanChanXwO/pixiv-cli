@@ -81,12 +81,16 @@ func TestCurrentUserRejectsMissingMetadata(t *testing.T) {
 	}
 }
 
-func TestMediaOpenNeverSendsCookieAcrossRedirect(t *testing.T) {
+func TestMediaOpenSendsCookieOnlyToDownloadsHost(t *testing.T) {
 	var seen []string
 	session := newTestSession(t, http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
 		seen = append(seen, request.Host+":"+request.Header.Get("Cookie"))
-		if got := request.Header.Get("Cookie"); got != "" {
-			t.Errorf("media Cookie = %q", got)
+		got := request.Header.Get("Cookie")
+		if request.Host == "downloads.fanbox.cc" && got != "FANBOXSESSID=media-canary" {
+			t.Errorf("downloads Cookie = %q", got)
+		}
+		if request.Host != "downloads.fanbox.cc" && got != "" {
+			t.Errorf("redirected media Cookie = %q", got)
 		}
 		if request.Host == "downloads.fanbox.cc" {
 			w.Header().Set("Location", "https://i.pximg.net/media/asset.jpg")
@@ -108,7 +112,7 @@ func TestMediaOpenNeverSendsCookieAcrossRedirect(t *testing.T) {
 	if string(body) != "media" {
 		t.Fatalf("media body = %q", body)
 	}
-	if got, want := strings.Join(seen, ","), "downloads.fanbox.cc:,i.pximg.net:"; got != want {
+	if got, want := strings.Join(seen, ","), "downloads.fanbox.cc:FANBOXSESSID=media-canary,i.pximg.net:"; got != want {
 		t.Fatalf("requests = %q, want %q", got, want)
 	}
 }
@@ -118,7 +122,7 @@ func TestAPIRedirectDropsCookie(t *testing.T) {
 	session := newTestSession(t, http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
 		seen = append(seen, request.Host+request.URL.Path+":"+request.Header.Get("Cookie"))
 		switch request.Host + request.URL.Path {
-		case "api.fanbox.cc/api/v1/post.info":
+		case "api.fanbox.cc/post.info":
 			w.Header().Set("Location", "https://www.fanbox.cc/post-info")
 			w.WriteHeader(http.StatusFound)
 		case "www.fanbox.cc/post-info":
@@ -132,7 +136,7 @@ func TestAPIRedirectDropsCookie(t *testing.T) {
 	if _, err := session.Post(context.Background(), "post-1"); err != nil {
 		t.Fatalf("Post() error = %v", err)
 	}
-	want := "api.fanbox.cc/api/v1/post.info:FANBOXSESSID=redirect-canary,www.fanbox.cc/post-info:"
+	want := "api.fanbox.cc/post.info:FANBOXSESSID=redirect-canary,www.fanbox.cc/post-info:"
 	if got := strings.Join(seen, ","); got != want {
 		t.Fatalf("requests = %q, want %q", got, want)
 	}
@@ -147,8 +151,11 @@ func TestStatusClassification(t *testing.T) {
 			writeStatus(w, http.StatusForbidden, `{"error":"access denied"}`)
 		case "/challenge-body":
 			writeStatus(w, http.StatusForbidden, `cf-chl: please enable javascript`)
-		case "/challenge-word":
-			writeStatus(w, http.StatusForbidden, `Just a moment... enable challenges`)
+		case "/challenge-html":
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			w.Header().Set("Server", "cloudflare")
+			w.WriteHeader(http.StatusForbidden)
+			_, _ = io.WriteString(w, `Just a moment...`)
 		case "/challenge-header":
 			w.Header().Set("Cf-Mitigated", "challenge")
 			writeStatus(w, http.StatusForbidden, `{"error":"denied"}`)
@@ -167,7 +174,7 @@ func TestStatusClassification(t *testing.T) {
 		{"/unauthorized", ErrNotAuthenticated},
 		{"/forbidden", ErrForbidden},
 		{"/challenge-body", ErrChallenge},
-		{"/challenge-word", ErrChallenge},
+		{"/challenge-html", ErrChallenge},
 		{"/challenge-header", ErrChallenge},
 		{"/notfound", nil},
 	}
@@ -190,20 +197,39 @@ func TestStatusClassification(t *testing.T) {
 	}
 }
 
-func TestNewSessionUsesChromeTransportAndRejectsImplicitTransport(t *testing.T) {
+func TestNewSessionUsesFirefoxTransportAndRejectsImplicitTransport(t *testing.T) {
 	session, err := NewSession("FANBOXSESSID=tls-canary")
 	if err != nil {
 		t.Fatalf("NewSession() error = %v", err)
 	}
 	defer session.CloseIdleConnections()
-	if _, ok := session.httpClient.Transport.(*chromeTransport); !ok {
-		t.Fatalf("production transport = %T, want *chromeTransport", session.httpClient.Transport)
+	if _, ok := session.httpClient.Transport.(*firefoxTransport); !ok {
+		t.Fatalf("production transport = %T, want *firefoxTransport", session.httpClient.Transport)
 	}
 	if _, err := NewSessionWithHTTPClient("FANBOXSESSID=tls-canary", &http.Client{}); err == nil {
 		t.Fatal("NewSessionWithHTTPClient() accepted implicit standard transport")
 	}
 	if _, err := NewSession("FANBOXSESSID=tls-canary", WithHTTPClient(&http.Client{})); err == nil {
 		t.Fatal("NewSession() with implicit client accepted implicit standard transport")
+	}
+}
+
+func TestSessionUsesCustomUserAgent(t *testing.T) {
+	session, err := NewSessionWithOptions("FANBOXSESSID=ua-canary", SessionOptions{
+		HTTPClient: &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+			if got := request.Header.Get("User-Agent"); got != "custom-agent" {
+				t.Errorf("User-Agent = %q", got)
+			}
+			return &http.Response{StatusCode: http.StatusOK, Header: http.Header{}, Body: io.NopCloser(strings.NewReader("ok"))}, nil
+		})},
+		UserAgent: "custom-agent",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	response, err := session.Home(context.Background(), "https://api.fanbox.cc/post.info?postId=1")
+	if err == nil || response.Posts != nil {
+		t.Fatalf("Home() = %+v, err=%v; expected decode failure after header assertion", response, err)
 	}
 }
 

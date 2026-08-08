@@ -63,7 +63,7 @@ User/public-bookmarks/illustration-series URL は authentication 済みの illus
 
 `illust_ranking.mode` は `day`、`day_male`、`day_female`、`week`、`week_original`、`week_rookie`、`month`、`day_manga`、`week_manga`、`month_manga`、`week_rookie_manga`、`day_r18`、`day_male_r18`、`day_female_r18`、`week_r18`、`week_r18g` を受け取ります。後半の九つは authentication が必要です。
 
-Authentication 済み request は App API を使います。refresh token がなく `web_fallback_enabled=true` の場合、supported read operation は Web API を使います。anonymous illustration/ranking list は各 record を detail endpoint で補完してから返し、補完 failure は list call 全体の failure になります。
+すべての読み取りは有効なアクセストークンを必要とし、Pixiv App API を使います。匿名または Web フォールバックは存在しません。削除された `web_fallback_enabled` 設定が残っている場合は `removed_setting` を返します。
 
 ## Write
 
@@ -75,3 +75,28 @@ Authentication 済み request は App API を使います。refresh token がな
 | `unfollow_user` | `user_id` | `{success, action, user_id}` |
 
 Write failure は `success=false` と `isError=true` を返します。
+
+## FANBOX MCP server
+
+`pixiv fanbox mcp` で独立した read-only server を起動します。選択済み local FANBOX account を使い、session
+value は tool input/output に入りません。登録される tool は次のとおりです：
+
+| Tool | Purpose |
+| --- | --- |
+| `fanbox_current_user` | 現在の FANBOX session を検証し、安全な identity summary を返します。 |
+| `fanbox_creator`、`fanbox_creators` | creator profile または supporting/following creator を読みます。 |
+| `fanbox_creator_tags` | creator tag を読みます。 |
+| `fanbox_creator_posts`、`fanbox_tagged_posts` | SDK cursor で creator/tag post を読みます。 |
+| `fanbox_post`、`fanbox_home`、`fanbox_supporting` | 1 件の post または feed を読みます。 |
+| `fanbox_resolve_url` | 対応 FANBOX page URL を typed reference に解決します。 |
+| `fanbox_open_resource` | FANBOX media reference を検証して開き、bytes なしで status/header を返します。 |
+
+Pixiv と FANBOX は別 server で、credential、proxy、route を混用しません。FANBOX native の `--proxy`/`--no-proxy`
+は native FANBOX request だけに適用され、optional FlareSolverr service と upstream proxy は独立します。
+
+## Debug と stdout
+
+`pixiv --debug mcp` と `pixiv --debug fanbox mcp` は stderr にだけ typed な lifecycle、network、challenge、
+solver、download、failure diagnostics を出します。MCP stdout は純粋な JSON-RPC のままで、tool schema と
+structured failure は変わりません。2 つの server はそれぞれ local request number を持ち、raw URL query、Cookie、
+token、proxy userinfo、FlareSolverr clearance は出力しません。

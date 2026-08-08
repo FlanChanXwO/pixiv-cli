@@ -29,13 +29,13 @@ case "$goos/$goarch" in
 	exit 1
 	;;
 esac
-[ -f internal/download/ugoira_rs/staticlib/manifest.json ] || {
+[ -f internal/downloader/ugoira_rs/staticlib/manifest.json ] || {
 	printf 'committed six-target Rust staticlib manifest is missing; source/release builds require all native artifacts before Go 1.26.3+cgo can link them\n' >&2
 	exit 1
 }
 
-printf 'go test ./internal/download -run ^TestCommittedUgoiraStaticlibManifestWhenPresent$ -count=1\n'
-go test ./internal/download -run '^TestCommittedUgoiraStaticlibManifestWhenPresent$' -count=1
+printf 'go test ./internal/downloader -run ^TestCommittedUgoiraStaticlibManifestWhenPresent$ -count=1\n'
+go test ./internal/downloader -run '^TestCommittedUgoiraStaticlibManifestWhenPresent$' -count=1
 
 mkdir -p build
 

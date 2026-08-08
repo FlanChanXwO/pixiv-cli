@@ -27,8 +27,27 @@ flow.
 
 The relay can use HTTP or HTTPS. `login_relay_secret` and
 `login_relay_target_url` are silently ignored. `pixiv auth devices` has been removed.
-`pixiv config` manages only download path, filename template, and HTTPS proxy;
+`pixiv config` manages account-pool enabled/strategy, download path, filename
+template, and HTTPS proxy;
 advanced relay settings belong in the private `config.toml`.
+
+## Account-pool scheduling
+
+The account pool applies only to safe, non-mutating Pixiv reads and downloads.
+Set `account_pool_enabled=true` and optionally `account_pool_strategy=random`
+through `pixiv config`, then use the database-backed commands below to manage
+which local Pixiv accounts participate:
+
+```text
+pixiv auth pool status --json
+pixiv auth pool enable UID... [--all]
+pixiv auth pool disable UID... [--all]
+```
+
+`auth pool status` and `auth list` expose only non-secret scheduling summaries.
+The legacy `account_pool.accounts` config key is migrated once into per-account
+database flags. The historical `data/account-pool.json` scheduler is not read,
+migrated, or deleted by the current runtime.
 
 ## Import one refresh token
 
@@ -61,6 +80,11 @@ check the exit status before reading either output.
 pixiv auth import --file /private/path/pixiv-auth.json
 pixiv auth import --file - < /private/path/pixiv-auth.json
 ```
+
+The v1 CLI never reads or migrates the old `~/.pixiv-cli/auth.json`. When
+moving from an older CLI, run `pixiv auth export --all --output <private
+bundle>` with the old version, then restore that private bundle with
+`pixiv auth import --file <bundle>` on v1.
 
 `--file PATH` and `--file -` restore a versioned bundle entirely offline. A
 file import cannot be combined with a positional token, `--proxy`, or

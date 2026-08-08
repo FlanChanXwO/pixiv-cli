@@ -28,7 +28,7 @@ func TestPolicyCommandHasNoCGODownloadDependency(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list native evidence command dependencies: %v\n%s", err, output)
 	}
-	if strings.Contains(string(output), "github.com/FlanChanXwO/pixiv-cli/internal/download\n") {
+	if strings.Contains(string(output), "github.com/FlanChanXwO/pixiv-cli/internal/downloader\n") {
 		t.Fatalf("native evidence policy command depends on cgo download package before staticlib generation:\n%s", output)
 	}
 }

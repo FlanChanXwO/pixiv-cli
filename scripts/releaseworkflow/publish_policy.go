@@ -418,28 +418,6 @@ func containsSigningSecretReferenceOutsideEnvironment(step *yaml.Node) bool {
 	return false
 }
 
-func requireCredentialFreeCheckout(job *yaml.Node, jobName string) error {
-	steps, err := jobSteps(job)
-	if err != nil {
-		return fmt.Errorf("%s must have exactly one canonical checkout", jobName)
-	}
-	checkoutCount := 0
-	for _, step := range steps {
-		uses, hasUses := workflowpolicy.MappingValue(step, "uses")
-		if !hasUses || uses.Kind != yaml.ScalarNode || !strings.HasPrefix(uses.Value, "actions/checkout@") {
-			continue
-		}
-		checkoutCount++
-		if err := requireCanonicalCheckout(step, jobName, checkoutWithRequirement{"persist-credentials", "false"}); err != nil {
-			return err
-		}
-	}
-	if checkoutCount != 1 {
-		return fmt.Errorf("%s must have exactly one canonical checkout", jobName)
-	}
-	return nil
-}
-
 func signingStepIndex(steps []*yaml.Node) (int, *yaml.Node) {
 	for index, step := range steps {
 		env, ok := workflowpolicy.MappingValue(step, "env")

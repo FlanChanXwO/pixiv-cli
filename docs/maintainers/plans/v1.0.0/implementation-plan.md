@@ -1,8 +1,11 @@
 # v1.0.0 实施顺序与检查点
 
-本文件把设计分卷转换为可执行顺序；契约细节仍以 [总设计](design.md) 及其分卷为准。每个阶段保持
-仓库可构建、补齐聚焦测试并完成 LSP diagnostics 后才能进入下一阶段。正式实施不得直接在 `main`
-工作树进行。
+> **状态：历史计划，已执行。** 本文件保留 v1.0.0 初始整体重写的 Phase 0–9 与原检查点，不继续追加
+> 2026-08-04 以后发现的 RC follow-up。新专题与下一份独立实施计划从
+> [RC 后续改动索引](rc-follow-up-index.md)进入。
+
+本文件曾把初始设计分卷转换为可执行顺序；以下命令和检查点按历史原貌保留，用于解释已有实现的
+来源，不代表当前 RC 仍需从 Phase 0 重新执行。
 
 ## 0. 隔离工作区与冻结基线
 
@@ -35,8 +38,9 @@
 
 ## 3. SQLite 鉴权与配置迁移
 
-- 新增 `internal/storage/authdb` 与 embedded `migrations/*.sql`，实现 schema、权限、repository 和
-  `auth.json` 一次性迁移。
+- 新增 `internal/persistence/authdb` 与 embedded `migrations/*.sql`，实现 schema、权限和 repository。
+  早期设计中的 `auth.json` 启动迁移已由 RC 后续计划废止；跨版本迁移改为旧 CLI export bundle、
+  新 CLI `auth import --file` 的显式流程。
 - 将 Pixiv rotation、默认账号与 account-pool selection 切换到 DB/config 契约。
 - 完成 crash/re-entry、checksum、并发、权限、config 跨文件失败和 secret-output tests。
 
@@ -53,7 +57,7 @@
 
 ## 5. 浏览器 Cookie provider
 
-- 实现 `internal/platform/browsercookies` core、Chromium、Firefox、Safari 与各 OS secret backend。
+- 实现 `internal/browsercookies` core、Chromium、Firefox、Safari 与各 OS secret backend。
 - FANBOX adapter 只查询 `fanbox.cc` 所需 session，保存前使用 `sdk/fanbox.Client` 验证身份。
 - 先完成 synthetic fixtures，再在可用的 native host 验证浏览器运行锁、snapshot 与系统凭据边界。
 - Firefox 不要求预装到开发机。维护脱敏的真实 schema fixture，并在最终 native job 中临时解包固定

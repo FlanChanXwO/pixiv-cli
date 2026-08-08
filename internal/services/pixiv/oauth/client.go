@@ -15,8 +15,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/FlanChanXwO/pixiv-cli/internal/credentials"
 	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/protocol"
-	"github.com/FlanChanXwO/pixiv-cli/internal/utils/credentials"
 	"github.com/go-resty/resty/v2"
 )
 

@@ -217,7 +217,7 @@ const canonicalNativeSmokeRun = `set -eu
 if [ '${{ matrix.goos }}' = windows ]; then
   export CC='clang -fuse-ld=lld'
 fi
-go test ./internal/download -run '^TestRustUgoiraEncoderNativeGIFAndAPNG$' -count=1
+go test ./internal/ugoira -run '^TestRustUgoiraEncoderNativeGIFAndAPNG$' -count=1
 `
 
 const canonicalBuildBinaryRun = `set -eu
@@ -260,7 +260,7 @@ staticlib='libugoira_rs.a'
 if [ '${{ matrix.goos }}' = windows ]; then
   staticlib='ugoira_rs.lib'
 fi
-cp "internal/download/ugoira_rs/staticlib/${{ matrix.rust_target }}/$staticlib" "evidence/$staticlib"
+cp "internal/downloader/ugoira_rs/staticlib/${{ matrix.rust_target }}/$staticlib" "evidence/$staticlib"
 archive="evidence/pixiv-cli_${version}_${{ matrix.goos }}_${{ matrix.goarch }}"
 if [ '${{ matrix.goos }}' = windows ]; then
   archive="$archive.zip"

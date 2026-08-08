@@ -3,7 +3,7 @@
 // URL references, ugoira metadata, mutations, and the shared resource contract.
 //
 // Authentication is App-only: content operations require a valid access token
-// and fail with CodeUnauthorized when one is absent; there is no anonymous or
+// and fail with Unauthorized when one is absent; there is no anonymous or
 // Web fallback. Open performs a refresh-token rotation and returns a Client that
 // holds only the rotated access token; the Client never refreshes on its own.
 // Callers persist the rotated Credentials before issuing content requests.

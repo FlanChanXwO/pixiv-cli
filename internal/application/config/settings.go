@@ -1,0 +1,768 @@
+package config
+
+import (
+	"bytes"
+	"errors"
+	"fmt"
+	"os"
+	"slices"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/FlanChanXwO/pixiv-cli/internal/credentials"
+	"github.com/creachadair/tomledit"
+	"github.com/creachadair/tomledit/parser"
+	"github.com/creachadair/tomledit/transform"
+	"github.com/knadh/koanf/parsers/toml/v2"
+	"github.com/knadh/koanf/v2"
+)
+
+const (
+	DefaultDownloadPath     = "./downloads"
+	DefaultFilenameTemplate = "{author} - {title}_{id}"
+)
+
+type settingKind string
+
+const (
+	settingString   settingKind = "string"
+	settingBool     settingKind = "bool"
+	settingDuration settingKind = "duration"
+)
+
+type SettingSpec struct {
+	Alias    string
+	KoanfKey string
+	Table    []string
+	Key      string
+	Kind     settingKind
+	// Sensitive 表示该值可用于认证或中继授权。它可以被写入私有 config.toml，
+	// 但绝不能通过 config get、日志或错误消息回显。
+	Sensitive  bool
+	HasDefault bool
+	Default    any
+	// Removed 表示该键已随版本删除，只保留迁移墓碑。旧配置仍显式包含它时返回
+	// removed_setting；pixiv config unset 允许用户清理。墓碑不得驱动运行时分支。
+	Removed bool
+}
+
+type SettingValue struct {
+	Value    any
+	Text     string
+	Source   string
+	HasValue bool
+}
+
+type SettingsState struct {
+	file *koanf.Koanf
+}
+
+type RuntimeConfig struct {
+	DownloadPath       string
+	FilenameTemplate   string
+	DirectoryTemplate  string
+	HTTPSProxy         string
+	PixivNetwork       ServiceNetworkConfig
+	FanboxNetwork      ServiceNetworkConfig
+	FanboxFlareSolverr *FlareSolverrConfig
+	RequestInterval    time.Duration
+	UpdateCheckEnabled bool
+	OutputJSON         bool
+	LoginOpenBrowser   bool
+	LoginUseAfterLogin bool
+	// LoginRelay* 描述本次运行时创建的跨机器浏览器中继。历史 secret/target
+	// 配置项仍可留在私有配置文件中，但不会载入 runtime，避免恢复旧 client relay。
+	LoginRelayPublicURL   string
+	LoginRelayListenAddr  string
+	LoginRelayTLSCertFile string
+	LoginRelayTLSKeyFile  string
+	// AccountPool 只能在 config.toml 的 [account_pool] 表中手工维护，避免普通
+	// config set 的扁平字符串接口误写账号白名单。
+	AccountPool AccountPoolConfig
+}
+
+// OptionalString preserves the difference between an absent advanced TOML
+// key and an explicitly configured empty string. That distinction is required
+// for service-scoped proxy routing: an empty service value means direct access
+// instead of inheriting the global fallback.
+type OptionalString struct {
+	Present bool   `json:"present"`
+	Value   string `json:"value,omitempty"`
+}
+
+// ServiceNetworkConfig contains only service-local network settings. These
+// values are not aliases and are intentionally absent from the generated
+// baseline config until a user writes the advanced TOML table.
+type ServiceNetworkConfig struct {
+	ProxyURL  OptionalString `json:"proxy_url"`
+	UserAgent OptionalString `json:"user_agent"`
+}
+
+// FlareSolverrConfig describes the optional external challenge-recovery
+// service. It is nil when the whole table is absent, which keeps the default
+// runtime free of any solver dependency.
+type FlareSolverrConfig struct {
+	URL      string `json:"url"`
+	ProxyURL string `json:"proxy_url,omitempty"`
+}
+
+type AccountPoolStrategy string
+
+const (
+	AccountPoolStrategyRoundRobin AccountPoolStrategy = "round_robin"
+	AccountPoolStrategyRandom     AccountPoolStrategy = "random"
+)
+
+// AccountPoolConfig 描述内容读取和作品下载是否启用数据库账号调度及其策略。
+// UID、冻结时间和 marker 不进入 config.toml。
+type AccountPoolConfig struct {
+	Enabled  bool
+	Strategy AccountPoolStrategy
+}
+
+var settingSpecs = []SettingSpec{
+	{Alias: "download_path", KoanfKey: "download.path", Table: []string{"download"}, Key: "path", Kind: settingString, HasDefault: true, Default: DefaultDownloadPath},
+	{Alias: "filename_template", KoanfKey: "download.filename_template", Table: []string{"download"}, Key: "filename_template", Kind: settingString, HasDefault: true, Default: DefaultFilenameTemplate},
+	{Alias: "directory_template", KoanfKey: "download.directory_template", Table: []string{"download"}, Key: "directory_template", Kind: settingString},
+	{Alias: "https_proxy", KoanfKey: "network.https_proxy", Table: []string{"network"}, Key: "https_proxy", Kind: settingString},
+	{Alias: "request_interval", KoanfKey: "network.request_interval", Table: []string{"network"}, Key: "request_interval", Kind: settingDuration, HasDefault: true, Default: time.Duration(0)},
+	{Alias: "web_fallback_enabled", KoanfKey: "web.fallback_enabled", Table: []string{"web"}, Key: "fallback_enabled", Kind: settingBool, Removed: true},
+	{Alias: "update_check_enabled", KoanfKey: "update.check_enabled", Table: []string{"update"}, Key: "check_enabled", Kind: settingBool, HasDefault: true, Default: true},
+	{Alias: "output_json", KoanfKey: "output.json", Table: []string{"output"}, Key: "json", Kind: settingBool, HasDefault: true, Default: false},
+	{Alias: "login_open_browser", KoanfKey: "login.open_browser", Table: []string{"login"}, Key: "open_browser", Kind: settingBool, HasDefault: true, Default: true},
+	{Alias: "login_use_after_login", KoanfKey: "login.use_after_login", Table: []string{"login"}, Key: "use_after_login", Kind: settingBool, HasDefault: true, Default: false},
+	{Alias: "login_relay_public_url", KoanfKey: "login.relay_public_url", Table: []string{"login"}, Key: "relay_public_url", Kind: settingString},
+	{Alias: "login_relay_listen_addr", KoanfKey: "login.relay_listen_addr", Table: []string{"login"}, Key: "relay_listen_addr", Kind: settingString},
+	{Alias: "login_relay_tls_cert_file", KoanfKey: "login.relay_tls_cert_file", Table: []string{"login"}, Key: "relay_tls_cert_file", Kind: settingString},
+	{Alias: "login_relay_tls_key_file", KoanfKey: "login.relay_tls_key_file", Table: []string{"login"}, Key: "relay_tls_key_file", Kind: settingString},
+	{Alias: "account_pool_enabled", KoanfKey: "account_pool.enabled", Table: []string{"account_pool"}, Key: "enabled", Kind: settingBool, HasDefault: true, Default: false},
+	{Alias: "account_pool_strategy", KoanfKey: "account_pool.strategy", Table: []string{"account_pool"}, Key: "strategy", Kind: settingString, HasDefault: true, Default: string(AccountPoolStrategyRoundRobin)},
+}
+
+// SettingSpecByAlias 返回 alias 对应的 spec。已移除键仍可被查询，以便 config unset
+// 执行清理、config get/set 返回 removed_setting。
+func SettingSpecByAlias(alias string) (SettingSpec, bool) {
+	for _, spec := range settingSpecs {
+		if spec.Alias == alias {
+			return spec, true
+		}
+	}
+	return SettingSpec{}, false
+}
+
+// ErrRemovedSetting 表示该配置键已随版本删除。旧配置仍显式包含它时返回；用户
+// 通过 `pixiv config unset` 清理后不再出现。
+var ErrRemovedSetting = errors.New("removed_setting")
+
+// RemovedSettingError 构造一个同时能被 errors.Is 匹配 ErrRemovedSetting 的错误，
+// 明确指导用户如何清理旧配置。已移除键在显式写入配置时对 runtime 生效，不设置
+// 默认值，也不进入可写别名集合。
+func RemovedSettingError(alias string) error {
+	return fmt.Errorf("%w: config key %q was removed; clear it with `pixiv config unset %s`", ErrRemovedSetting, alias, alias)
+}
+
+// IsSensitiveSetting 标记禁止通过公开配置查询回显的凭据型值。
+func IsSensitiveSetting(alias string) bool {
+	spec, ok := SettingSpecByAlias(alias)
+	return ok && spec.Sensitive
+}
+
+// PublicSettingText 返回可安全进入 CLI、SDK JSON 与日志边界的配置值。
+func PublicSettingText(alias, text string) string {
+	if IsSensitiveSetting(alias) && text != "" {
+		return "<redacted>"
+	}
+	return text
+}
+
+func ValidSettingAliases() []string {
+	keys := make([]string, 0, len(settingSpecs))
+	for _, spec := range settingSpecs {
+		if spec.Removed {
+			continue
+		}
+		keys = append(keys, spec.Alias)
+	}
+	slices.Sort(keys)
+	return keys
+}
+
+// RefreshTokenFromEnv 读取 App API refresh token。Cookie 形态在此处即被拒绝，
+// 不能继续流入默认 SDK 的 OAuth 请求。
+func RefreshTokenFromEnv() (string, error) {
+	return credentials.ValidateRefreshTokenInput(os.Getenv("PIXIV_REFRESH_TOKEN"))
+}
+
+func EnvValue(spec SettingSpec) (string, bool) {
+	switch spec.Alias {
+	case "download_path":
+		return envLookup("DOWNLOAD_PATH")
+	case "filename_template":
+		return envLookup("FILENAME_TEMPLATE")
+	case "directory_template":
+		return envLookup("DIRECTORY_TEMPLATE")
+	case "request_interval":
+		return envLookup("PIXIV_REQUEST_INTERVAL")
+	case "https_proxy":
+		if value, ok := envLookup("https_proxy"); ok {
+			return value, true
+		}
+		return envLookup("HTTPS_PROXY")
+	default:
+		return "", false
+	}
+}
+
+func envLookup(name string) (string, bool) {
+	value, ok := os.LookupEnv(name)
+	if !ok {
+		return "", false
+	}
+	return value, true
+}
+
+func LoadSettingsState() (SettingsState, error) {
+	store := defaultFileStore{}
+	path, err := store.Path()
+	if err != nil {
+		return SettingsState{}, err
+	}
+	return LoadSettingsStateAtWithFileStore(path, store)
+}
+
+// LoadSettingsStateAt 从明确给定的路径加载配置。SDK 需要它避免改动
+// 包级测试路径或依赖调用进程的隐式当前配置位置。
+func LoadSettingsStateAt(path string) (SettingsState, error) {
+	return LoadSettingsStateAtWithFileStore(path, defaultFileStore{})
+}
+
+// LoadSettingsStateAtWithFileStore 从明确路径和注入的文件端口加载配置。它
+// 让 bootstrap 可以把 filesystem 的权限/路径实现传入 application。
+func LoadSettingsStateAtWithFileStore(path string, store FileStore) (SettingsState, error) {
+	store, err := requireFileStore(store)
+	if err != nil {
+		return SettingsState{}, err
+	}
+	fileState := koanf.New(".")
+	if err := loadConfigFileInto(fileState, path, store.ReadFile); err != nil {
+		return SettingsState{}, err
+	}
+	return SettingsState{file: fileState}, nil
+}
+
+type rawFileProvider struct{ body []byte }
+
+func (p rawFileProvider) ReadBytes() ([]byte, error) { return p.body, nil }
+
+func (rawFileProvider) Read() (map[string]any, error) {
+	return nil, errors.New("raw configuration provider does not support parsed reads")
+}
+
+func loadConfigFileInto(target *koanf.Koanf, path string, readFile func(string) ([]byte, error)) error {
+	body, err := readFile(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if len(strings.TrimSpace(string(body))) == 0 {
+		return nil
+	}
+	return target.Load(rawFileProvider{body: body}, toml.Parser())
+}
+
+func (s SettingsState) Effective(alias string) (SettingValue, error) {
+	spec, ok := SettingSpecByAlias(alias)
+	if !ok {
+		return SettingValue{}, fmt.Errorf("unknown config key %q", alias)
+	}
+	if spec.Removed {
+		if s.file.Exists(spec.KoanfKey) {
+			return SettingValue{}, RemovedSettingError(alias)
+		}
+		return SettingValue{Source: "unset"}, nil
+	}
+	if raw, ok := EnvValue(spec); ok {
+		return coerceSettingValue(spec, raw, "env")
+	}
+	if s.file.Exists(spec.KoanfKey) {
+		return coerceSettingValue(spec, s.file.Get(spec.KoanfKey), "file")
+	}
+	if spec.HasDefault {
+		return coerceSettingValue(spec, spec.Default, "default")
+	}
+	return SettingValue{Source: "unset"}, nil
+}
+
+func (s SettingsState) Runtime() (RuntimeConfig, error) {
+	downloadPath, err := s.Effective("download_path")
+	if err != nil {
+		return RuntimeConfig{}, err
+	}
+	filenameTemplate, err := s.Effective("filename_template")
+	if err != nil {
+		return RuntimeConfig{}, err
+	}
+	directoryTemplate, err := s.Effective("directory_template")
+	if err != nil {
+		return RuntimeConfig{}, err
+	}
+	httpsProxy, err := s.Effective("https_proxy")
+	if err != nil {
+		return RuntimeConfig{}, err
+	}
+	requestInterval, err := s.Effective("request_interval")
+	if err != nil {
+		return RuntimeConfig{}, err
+	}
+	outputJSON, err := s.Effective("output_json")
+	if err != nil {
+		return RuntimeConfig{}, err
+	}
+	// web_fallback_enabled 是 v1 迁移墓碑：旧配置仍显式包含它时在此失败并要求清理，
+	// 但不再驱动任何运行时分支。
+	if _, err := s.Effective("web_fallback_enabled"); err != nil {
+		return RuntimeConfig{}, err
+	}
+	updateCheckEnabled, err := s.Effective("update_check_enabled")
+	if err != nil {
+		return RuntimeConfig{}, err
+	}
+	loginOpenBrowser, err := s.Effective("login_open_browser")
+	if err != nil {
+		return RuntimeConfig{}, err
+	}
+	loginUseAfterLogin, err := s.Effective("login_use_after_login")
+	if err != nil {
+		return RuntimeConfig{}, err
+	}
+	loginRelayPublicURL, err := s.Effective("login_relay_public_url")
+	if err != nil {
+		return RuntimeConfig{}, err
+	}
+	loginRelayListenAddr, err := s.Effective("login_relay_listen_addr")
+	if err != nil {
+		return RuntimeConfig{}, err
+	}
+	loginRelayTLSCertFile, err := s.Effective("login_relay_tls_cert_file")
+	if err != nil {
+		return RuntimeConfig{}, err
+	}
+	loginRelayTLSKeyFile, err := s.Effective("login_relay_tls_key_file")
+	if err != nil {
+		return RuntimeConfig{}, err
+	}
+	accountPool, err := s.accountPool()
+	if err != nil {
+		return RuntimeConfig{}, err
+	}
+	pixivNetwork, err := s.serviceNetwork("pixiv.network", false)
+	if err != nil {
+		return RuntimeConfig{}, err
+	}
+	fanboxNetwork, err := s.serviceNetwork("fanbox.network", true)
+	if err != nil {
+		return RuntimeConfig{}, err
+	}
+	flareSolverr, err := s.flareSolverr()
+	if err != nil {
+		return RuntimeConfig{}, err
+	}
+	cfg := RuntimeConfig{
+		DownloadPath:          downloadPath.Value.(string),
+		FilenameTemplate:      filenameTemplate.Value.(string),
+		DirectoryTemplate:     settingStringValue(directoryTemplate),
+		HTTPSProxy:            "",
+		PixivNetwork:          pixivNetwork,
+		FanboxNetwork:         fanboxNetwork,
+		FanboxFlareSolverr:    flareSolverr,
+		UpdateCheckEnabled:    updateCheckEnabled.Value.(bool),
+		OutputJSON:            outputJSON.Value.(bool),
+		LoginOpenBrowser:      loginOpenBrowser.Value.(bool),
+		LoginUseAfterLogin:    loginUseAfterLogin.Value.(bool),
+		LoginRelayPublicURL:   settingStringValue(loginRelayPublicURL),
+		LoginRelayListenAddr:  settingStringValue(loginRelayListenAddr),
+		LoginRelayTLSCertFile: settingStringValue(loginRelayTLSCertFile),
+		LoginRelayTLSKeyFile:  settingStringValue(loginRelayTLSKeyFile),
+		AccountPool:           accountPool,
+	}
+	if requestInterval.HasValue {
+		cfg.RequestInterval = requestInterval.Value.(time.Duration)
+	}
+	if httpsProxy.HasValue {
+		cfg.HTTPSProxy = httpsProxy.Value.(string)
+	}
+	return cfg, nil
+}
+
+func (s SettingsState) serviceNetwork(prefix string, includeUserAgent bool) (ServiceNetworkConfig, error) {
+	proxyURL, err := s.optionalString(prefix + ".proxy_url")
+	if err != nil {
+		return ServiceNetworkConfig{}, err
+	}
+	network := ServiceNetworkConfig{ProxyURL: proxyURL}
+	if includeUserAgent {
+		userAgent, err := s.optionalString(prefix + ".user_agent")
+		if err != nil {
+			return ServiceNetworkConfig{}, err
+		}
+		network.UserAgent = userAgent
+	}
+	return network, nil
+}
+
+func (s SettingsState) optionalString(path string) (OptionalString, error) {
+	if s.file == nil || !s.file.Exists(path) {
+		return OptionalString{}, nil
+	}
+	raw := s.file.Get(path)
+	value, ok := raw.(string)
+	if !ok {
+		return OptionalString{}, fmt.Errorf("%s must be a string", path)
+	}
+	return OptionalString{Present: true, Value: value}, nil
+}
+
+func (s SettingsState) flareSolverr() (*FlareSolverrConfig, error) {
+	urlValue, err := s.optionalString("fanbox.flaresolverr.url")
+	if err != nil {
+		return nil, err
+	}
+	proxyValue, err := s.optionalString("fanbox.flaresolverr.proxy_url")
+	if err != nil {
+		return nil, err
+	}
+	if !urlValue.Present && !proxyValue.Present {
+		return nil, nil
+	}
+	if !urlValue.Present || strings.TrimSpace(urlValue.Value) == "" {
+		return nil, errors.New("fanbox.flaresolverr.url must be set when fanbox.flaresolverr is configured")
+	}
+	return &FlareSolverrConfig{URL: urlValue.Value, ProxyURL: proxyValue.Value}, nil
+}
+
+func (s SettingsState) accountPool() (AccountPoolConfig, error) {
+	pool := AccountPoolConfig{Strategy: AccountPoolStrategyRoundRobin}
+	if s.file == nil || !s.file.Exists("account_pool") {
+		return pool, nil
+	}
+	if raw := s.file.Get("account_pool.enabled"); raw != nil {
+		enabled, ok := raw.(bool)
+		if !ok {
+			return AccountPoolConfig{}, errors.New("account_pool.enabled must be a boolean")
+		}
+		pool.Enabled = enabled
+	}
+	if raw := s.file.Get("account_pool.strategy"); raw != nil {
+		value, ok := raw.(string)
+		if !ok {
+			return AccountPoolConfig{}, errors.New("account_pool.strategy must be one of: round_robin, random")
+		}
+		pool.Strategy = AccountPoolStrategy(strings.TrimSpace(value))
+	}
+	switch pool.Strategy {
+	case AccountPoolStrategyRoundRobin, AccountPoolStrategyRandom:
+	default:
+		return AccountPoolConfig{}, errors.New("account_pool.strategy must be one of: round_robin, random")
+	}
+	if _, present, err := s.LegacyAccountPoolUIDs(); err != nil {
+		return AccountPoolConfig{}, err
+	} else if present {
+		// Legacy UID lists are parsed and migrated by bootstrap, but never enter
+		// the runtime configuration or alter the database selector directly.
+	}
+	return pool, nil
+}
+
+// LegacyAccountPoolUIDs 读取旧 account_pool.accounts 列表，供 bootstrap 执行
+// 一次性 DB/config data migration。它只返回完整校验后的 UID，不是 runtime authority。
+func (s SettingsState) LegacyAccountPoolUIDs() ([]int64, bool, error) {
+	if s.file == nil || !s.file.Exists("account_pool.accounts") {
+		return nil, false, nil
+	}
+	accounts, err := accountPoolUIDs(s.file.Get("account_pool.accounts"))
+	if err != nil {
+		return nil, true, err
+	}
+	seen := make(map[int64]struct{}, len(accounts))
+	for _, userID := range accounts {
+		if userID <= 0 {
+			return nil, true, errors.New("account_pool.accounts must contain only positive UIDs")
+		}
+		if _, exists := seen[userID]; exists {
+			return nil, true, errors.New("account_pool.accounts must not contain duplicate UIDs")
+		}
+		seen[userID] = struct{}{}
+	}
+	return accounts, true, nil
+}
+
+func accountPoolUIDs(raw any) ([]int64, error) {
+	values, ok := raw.([]any)
+	if !ok {
+		return nil, errors.New("account_pool.accounts must be an array of UIDs")
+	}
+	accounts := make([]int64, 0, len(values))
+	for _, value := range values {
+		switch number := value.(type) {
+		case int64:
+			accounts = append(accounts, number)
+		case int:
+			accounts = append(accounts, int64(number))
+		default:
+			return nil, errors.New("account_pool.accounts must be an array of UIDs")
+		}
+	}
+	return accounts, nil
+}
+
+func settingStringValue(value SettingValue) string {
+	if !value.HasValue {
+		return ""
+	}
+	text, _ := value.Value.(string)
+	return text
+}
+
+func coerceSettingValue(spec SettingSpec, raw any, source string) (SettingValue, error) {
+	switch spec.Kind {
+	case settingString:
+		text, ok := normalizeStringValue(raw)
+		if !ok {
+			return SettingValue{}, fmt.Errorf("%s expects string, got %T", spec.Alias, raw)
+		}
+		if text == "" && !spec.HasDefault && source != "default" {
+			return SettingValue{Source: source}, nil
+		}
+		return SettingValue{Value: text, Text: text, Source: source, HasValue: true}, nil
+	case settingBool:
+		value, err := normalizeBoolValue(raw)
+		if err != nil {
+			return SettingValue{}, fmt.Errorf("%s: %w", spec.Alias, err)
+		}
+		return SettingValue{Value: value, Text: strconv.FormatBool(value), Source: source, HasValue: true}, nil
+	case settingDuration:
+		value, err := normalizeDurationValue(raw)
+		if err != nil {
+			return SettingValue{}, fmt.Errorf("%s: %w", spec.Alias, err)
+		}
+		if spec.Alias == "request_interval" && value < 0 {
+			return SettingValue{}, errors.New("request_interval must not be negative")
+		}
+		return SettingValue{Value: value, Text: value.String(), Source: source, HasValue: true}, nil
+	default:
+		return SettingValue{}, fmt.Errorf("unsupported setting kind %q", spec.Kind)
+	}
+}
+
+func normalizeStringValue(raw any) (string, bool) {
+	switch value := raw.(type) {
+	case string:
+		return value, true
+	case fmt.Stringer:
+		return value.String(), true
+	case nil:
+		return "", false
+	default:
+		return fmt.Sprint(value), true
+	}
+}
+
+func normalizeBoolValue(raw any) (bool, error) {
+	switch value := raw.(type) {
+	case bool:
+		return value, nil
+	case string:
+		return strconv.ParseBool(strings.TrimSpace(value))
+	default:
+		return false, fmt.Errorf("expects bool, got %T", raw)
+	}
+}
+
+func normalizeDurationValue(raw any) (time.Duration, error) {
+	switch value := raw.(type) {
+	case time.Duration:
+		return value, nil
+	case string:
+		return time.ParseDuration(strings.TrimSpace(value))
+	default:
+		return 0, fmt.Errorf("expects duration string, got %T", raw)
+	}
+}
+
+func ParseSettingInput(alias, raw string) (SettingValue, parser.Value, error) {
+	spec, ok := SettingSpecByAlias(alias)
+	if !ok {
+		return SettingValue{}, parser.Value{}, fmt.Errorf("unknown config key %q", alias)
+	}
+	if spec.Removed {
+		return SettingValue{}, parser.Value{}, RemovedSettingError(alias)
+	}
+	raw = strings.TrimSpace(raw)
+	switch spec.Kind {
+	case settingString:
+		value, err := parser.ParseValue(strconv.Quote(raw))
+		if err != nil {
+			return SettingValue{}, parser.Value{}, err
+		}
+		return SettingValue{Value: raw, Text: raw, Source: "cli", HasValue: true}, value, nil
+	case settingBool:
+		parsed, err := strconv.ParseBool(raw)
+		if err != nil {
+			return SettingValue{}, parser.Value{}, fmt.Errorf("expects bool value: %w", err)
+		}
+		value, err := parser.ParseValue(strconv.FormatBool(parsed))
+		if err != nil {
+			return SettingValue{}, parser.Value{}, err
+		}
+		return SettingValue{Value: parsed, Text: strconv.FormatBool(parsed), Source: "cli", HasValue: true}, value, nil
+	case settingDuration:
+		parsed, err := time.ParseDuration(raw)
+		if err != nil {
+			return SettingValue{}, parser.Value{}, fmt.Errorf("expects duration value: %w", err)
+		}
+		if spec.Alias == "request_interval" && parsed < 0 {
+			return SettingValue{}, parser.Value{}, errors.New("request_interval must not be negative")
+		}
+		normalized := parsed.String()
+		value, err := parser.ParseValue(strconv.Quote(normalized))
+		if err != nil {
+			return SettingValue{}, parser.Value{}, err
+		}
+		return SettingValue{Value: parsed, Text: normalized, Source: "cli", HasValue: true}, value, nil
+	default:
+		return SettingValue{}, parser.Value{}, fmt.Errorf("unsupported setting kind %q", spec.Kind)
+	}
+}
+
+func loadConfigDocumentWithFileStore(path string, store FileStore) (*tomledit.Document, error) {
+	store, err := requireFileStore(store)
+	if err != nil {
+		return nil, err
+	}
+	body, err := store.ReadFile(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return &tomledit.Document{}, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if len(strings.TrimSpace(string(body))) == 0 {
+		return &tomledit.Document{}, nil
+	}
+	return tomledit.Parse(bytes.NewReader(body))
+}
+
+func saveConfigDocumentWithFileStore(path string, doc *tomledit.Document, store FileStore) error {
+	store, err := requireFileStore(store)
+	if err != nil {
+		return err
+	}
+	var buf bytes.Buffer
+	if err := tomledit.Format(&buf, doc); err != nil {
+		return err
+	}
+	return store.WritePrivateFile(path, buf.Bytes())
+}
+
+func SetConfigValue(path, alias string, value parser.Value) error {
+	return SetConfigValueWithFileStore(path, alias, value, defaultFileStore{})
+}
+
+// SetConfigValueWithFileStore 在注入的文件端口上执行稀疏配置写回。
+func SetConfigValueWithFileStore(path, alias string, value parser.Value, store FileStore) error {
+	store, err := requireFileStore(store)
+	if err != nil {
+		return err
+	}
+	spec, ok := SettingSpecByAlias(alias)
+	if !ok {
+		return fmt.Errorf("unknown config key %q", alias)
+	}
+	if spec.Removed {
+		return RemovedSettingError(alias)
+	}
+	doc, err := loadConfigDocumentWithFileStore(path, store)
+	if err != nil {
+		return err
+	}
+	section := ensureConfigSection(doc, spec.Table)
+	inserted := transform.InsertMapping(section, &parser.KeyValue{
+		Name:  parser.Key{spec.Key},
+		Value: value,
+	}, true)
+	if !inserted {
+		return fmt.Errorf("failed to update config key %q", alias)
+	}
+	return saveConfigDocumentWithFileStore(path, doc, store)
+}
+
+func UnsetConfigValue(path, alias string) (bool, error) {
+	return UnsetConfigValueWithFileStore(path, alias, defaultFileStore{})
+}
+
+// UnsetConfigValueWithFileStore 在注入的文件端口上删除一个配置键。
+func UnsetConfigValueWithFileStore(path, alias string, store FileStore) (bool, error) {
+	store, err := requireFileStore(store)
+	if err != nil {
+		return false, err
+	}
+	spec, ok := SettingSpecByAlias(alias)
+	if !ok {
+		return false, fmt.Errorf("unknown config key %q", alias)
+	}
+	doc, err := loadConfigDocumentWithFileStore(path, store)
+	if err != nil {
+		return false, err
+	}
+	entry := doc.First(append(spec.Table, spec.Key)...)
+	if entry == nil {
+		return false, saveConfigDocumentWithFileStore(path, doc, store)
+	}
+	removed := entry.Remove()
+	if sectionEntry := transform.FindTable(doc, spec.Table...); sectionEntry != nil && len(sectionEntry.Section.Items) == 0 {
+		sectionEntry.Remove()
+	}
+	return removed, saveConfigDocumentWithFileStore(path, doc, store)
+}
+
+// RemoveLegacyAccountPoolAccounts 原子重写 config.toml，只移除旧的
+// account_pool.accounts；enabled、strategy 与其他配置保持原样。
+func RemoveLegacyAccountPoolAccounts(path string) error {
+	return RemoveLegacyAccountPoolAccountsWithFileStore(path, defaultFileStore{})
+}
+
+// RemoveLegacyAccountPoolAccountsWithFileStore 完成旧 account_pool.accounts
+// 配置键的显式清理，数据库迁移结果由调用方负责提交。
+func RemoveLegacyAccountPoolAccountsWithFileStore(path string, store FileStore) error {
+	store, err := requireFileStore(store)
+	if err != nil {
+		return err
+	}
+	doc, err := loadConfigDocumentWithFileStore(path, store)
+	if err != nil {
+		return err
+	}
+	entry := doc.First("account_pool", "accounts")
+	if entry == nil {
+		return nil
+	}
+	entry.Remove()
+	if section := transform.FindTable(doc, "account_pool"); section != nil && len(section.Section.Items) == 0 {
+		section.Remove()
+	}
+	return saveConfigDocumentWithFileStore(path, doc, store)
+}
+
+func ensureConfigSection(doc *tomledit.Document, name []string) *tomledit.Section {
+	if entry := transform.FindTable(doc, name...); entry != nil {
+		return entry.Section
+	}
+	section := &tomledit.Section{
+		Heading: &parser.Heading{Name: parser.Key(name)},
+	}
+	doc.Sections = append(doc.Sections, section)
+	return section
+}

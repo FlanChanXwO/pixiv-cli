@@ -4,30 +4,31 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/application"
+	pixivapp "github.com/FlanChanXwO/pixiv-cli/internal/application/pixiv"
 	"github.com/FlanChanXwO/pixiv-cli/internal/utils/uri"
 	"github.com/stretchr/testify/require"
 )
 
-// isolatedServices 在隔离 HOME 下构造 Services，避免测试写宿主目录。
-func isolatedServices(t *testing.T) application.Services {
+// isolatedRuntime 在隔离 HOME 下构造 Runtime，避免测试写宿主目录。
+func isolatedRuntime(t *testing.T) *Runtime {
 	t.Helper()
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("USERPROFILE", home)
-	services := NewServices()
-	t.Cleanup(CloseServices)
-	return services
+	runtime, err := NewRuntime(RuntimeOptions{})
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, runtime.Close()) })
+	return runtime
 }
 
-func TestNewServicesSDKRejectsMalformedExplicitProxyAtConstruction(t *testing.T) {
+func TestRuntimeSDKRejectsMalformedExplicitProxyAtConstruction(t *testing.T) {
 	clearRuntimeEnvironment(t)
 	invalidProxy := "http://proxy-user-secret:proxy-pass-secret@proxy-host-secret.invalid/proxy-path-secret-%zz?proxy-query-secret=value"
-	services := isolatedServices(t)
+	runtime := isolatedRuntime(t)
 
-	client, err := services.SDK.Client(application.SDKClientRequest{HTTPSProxyOverride: &invalidProxy})
+	client, err := runtime.SDK.Client(pixivapp.SDKClientRequest{HTTPSProxyOverride: &invalidProxy})
 
-	require.Nil(t, client)
+	require.Equal(t, pixivapp.ClientSet{}, client)
 	require.Error(t, err)
 	require.ErrorIs(t, err, uri.ErrInvalidProxy)
 	require.Contains(t, err.Error(), "invalid proxy")
@@ -38,31 +39,31 @@ func TestNewServicesSDKRejectsMalformedExplicitProxyAtConstruction(t *testing.T)
 	}
 }
 
-func TestNewServicesSDKOpenOperationRejectsMissingRequestedAccountBeforeOAuth(t *testing.T) {
+func TestRuntimeSDKOpenOperationRejectsMissingRequestedAccountBeforeOAuth(t *testing.T) {
 	clearRuntimeEnvironment(t)
-	services := isolatedServices(t)
+	runtime := isolatedRuntime(t)
 
-	client, err := services.SDK.OpenOperation(t.Context(), application.SDKClientRequest{UserID: 99})
+	client, err := runtime.SDK.OpenOperation(t.Context(), pixivapp.SDKClientRequest{UserID: 99})
 
-	require.Nil(t, client)
+	require.Equal(t, pixivapp.ClientSet{}, client)
 	require.Error(t, err)
 	require.ErrorContains(t, err, "select pixiv account")
 	require.ErrorContains(t, err, "not found")
 }
 
-func TestNewServicesSDKOpenOperationRejectsNoAccounts(t *testing.T) {
+func TestRuntimeSDKOpenOperationRejectsNoAccounts(t *testing.T) {
 	clearRuntimeEnvironment(t)
-	services := isolatedServices(t)
+	runtime := isolatedRuntime(t)
 
-	client, err := services.SDK.Client(application.SDKClientRequest{})
+	client, err := runtime.SDK.Client(pixivapp.SDKClientRequest{})
 
-	require.Nil(t, client)
+	require.Equal(t, pixivapp.ClientSet{}, client)
 	require.Error(t, err)
 	require.ErrorContains(t, err, "no pixiv account is authenticated")
 }
 
-func TestNewServicesConfiguresDownloadFactoryWithSDKClient(t *testing.T) {
+func TestRuntimeConfiguresDownloadFactoryWithSDKClient(t *testing.T) {
 	clearRuntimeEnvironment(t)
-	services := isolatedServices(t)
-	require.NotNil(t, services.Download.NewManager)
+	runtime := isolatedRuntime(t)
+	require.NotNil(t, runtime.Download.NewManager)
 }

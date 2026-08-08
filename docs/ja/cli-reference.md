@@ -129,7 +129,7 @@ pixiv auth login
 | Browser | macOS と Windows の通常 CLI 起動は current-user `pixiv://` callback helper を準備します。desktop Linux は interactive login 時に XDG handler を初期化します。CLI は default browser を開くため、既存の Pixiv session を再利用できます。`--no-open` では login URL と local page だけを表示します。 |
 | Callback | この試行の loopback callback、一回限りの desktop hand-off、terminal paste、local page form を受理します。helper の hand-off 後は、OAuth exchange 完了時に default browser が local の最終 success/failure page を開きます。 |
 | 検証 | local callback はこの試行の state と一致する必要があります。Pixiv が state を返さない場合だけ、公式 callback URL と `pixiv://account/login` を明示 fallback として使えます。 |
-| 保存 | refresh/access token は表示せず、refresh token を UID ごとに `auth.json` へ保存します。Unix-like は parent `0700`・file `0600`、Windows は既存 ACL を維持します。 |
+| 保存 | refresh/access token は表示せず、refresh token を UID ごとに local SQLite database へ保存します。Unix-like は parent `0700`・file `0600`、Windows は既存 ACL を維持します。 |
 
 handler は persistent ですが OS が `pixiv://` を開くときだけ動作します。macOS は `PixivCLIURLHandler.app`、Windows は current-user protocol association、desktop Linux は XDG desktop entry を使い、previous handler を private に記録します。active local loopback bridge が常に優先されます。ない場合、`pixiv://account/login` は active な一回限りの desktop hand-off だけが受理します。`pixiv://account/remote-login` はその hand-off を開始します。その他の `pixiv://` URL は previous handler に委譲します。別の handler を選ぶ必要がある場合は、OS の association UI を使用してください。
 
@@ -208,7 +208,7 @@ pixiv auth export --all --output accounts.pxauth
 pixiv auth export --all --output accounts.pxauth --force
 ```
 
-`--output` なしで secret を stdout に書けるのは 2 形式だけです。default/UID export は保存済み raw token と改行 1 つ、`--all` は versioned JSON bundle だけを出力し、成功時の stderr は空です。export は local-only で、`auth.json` だけを読み、`PIXIV_REFRESH_TOKEN`、refresh、Pixiv network、auth/config mutation を使用せず、startup pending-update cleanup と automatic update も skip します。`--all` と UID は併用できず、`--force` には `--output` が必要です。JSON/proxy flag はありません。
+`--output` なしで secret を stdout に書けるのは 2 形式だけです。default/UID export は保存済み raw token と改行 1 つ、`--all` は versioned JSON bundle だけを出力し、成功時の stderr は空です。export は local-only で、local SQLite database だけを読み、`PIXIV_REFRESH_TOKEN`、refresh、Pixiv network、auth/config mutation を使用せず、startup pending-update cleanup と automatic update も skip します。`--all` と UID は併用できず、`--force` には `--output` が必要です。JSON/proxy flag はありません。
 
 `--output PATH` を指定すると single-account でも `--all` でも raw token ではなく bundle を書きます。既存 destination は既定で拒否し、明示的な `--force` だけが replacement を許可します。成功 stdout は output path と account count だけで secret を含みません。Unix-like の file は `0600` で、既存 parent の permission/ownership は変更しません。Windows は owner と protected DACL を明示し、current user、LocalSystem、builtin Administrators だけに full control を許可します。この Windows policy は CI tests で検証しますが、本 release の検証を実 Windows filesystem で実行したとは主張しません。
 
@@ -252,17 +252,17 @@ pixiv download 123456 789012
 ```
 
 永続的な application-managed data は current user の home directory 直下に保存されます。macOS/Linux は
-`~/.pixiv-cli`、Windows は `%USERPROFILE%\.pixiv-cli` です。Pixiv UID ごとの `auth.json`、`config.toml`、
+`~/.pixiv-cli`、Windows は `%USERPROFILE%\.pixiv-cli` です。Pixiv UID ごとの `pixiv-cli.db`、`config.toml`、
 callback bridge state、Release-check cache、macOS callback helper がここに含まれます。既定は読みやすい
 出力で、対応 command は `--json` を利用できます。`auth export` は意図的に JSON flag を持ちません。Cobra/pflag の
 option は positional argument の前後どちらでも指定できます。
 
-通常 command を初めて実行したとき、`config.toml` がなければ download、Web fallback、output、login、update の
+通常 command を初めて実行したとき、`config.toml` がなければ download、output、login、update の
 common setting だけを含む baseline file を作成し、既存 file は決して上書きしません。proxy のような advanced setting は明示設定まで省略されます。login timeout は `auth login --timeout` だけの明示 flag で、Premium-status cache は固定契約です。help、version、secret export、internal OAuth callback はこの file を作成しません。
 
 ### Data operation contract
 
-非 mutating の data read、recommendation、timeline、download はすべて `pixiv auth use` で選んだ local account を使います。account pool は `[account_pool]` に `enabled = true` を明示した場合だけ有効です。`accounts` を省略すると `auth.json` の保存順で全 account を使い、指定した場合は whitelist になります。`strategy` の既定は `round_robin` で、`random` も使えます。write、authentication、config は pool を使いません。data command は `--uid` と `--refresh-token` を拒否し、`PIXIV_REFRESH_TOKEN` を無視します。
+account pool を無効にしている場合、非 mutating の data read、recommendation、timeline、download は `pixiv auth use` で選んだ local account を使います。`[account_pool]` に `enabled = true` を明示した場合だけ database-backed pool が有効になり、account 行の `schedulable` が参加可否を決めます。`strategy` の既定は `round_robin` で、`random` も使えます。`pixiv auth pool status|enable|disable` で状態を確認・変更できます。write、authentication、config は pool を使いません。data command は `--uid` と `--refresh-token` を拒否し、`PIXIV_REFRESH_TOKEN` を無視します。
 
 visual list は pipe 時に canonical NDJSON を自動出力し、明示的な `--ndjson` も使えます。各行は stable string の `id`、`type`、`url` を持つ canonical Record です。`download`、`bookmark add/remove`、`follow add/remove` は positional ID なしで Record を消費できます。visual list と `download` は `--filter EXPR` で local artwork rule を適用します。`--on-error=skip|fail-fast` は malformed/incompatible stdin Record を制御し、`--json` と `--ndjson` は併用できません。
 
@@ -275,6 +275,7 @@ Ugoira download は `--ugoira-mode gif|apng|zip|frames` を受け付け、既定
 | `auth import` | `pixiv auth import [REFRESH_TOKEN] [--file PATH] [--json] [--proxy URL\|--no-proxy]` | direct input は rotation 後の token を検証・保存します。引数なし TTY は非表示、非 TTY は raw stdin です。`--file PATH|-` は offline atomic bundle restore となり、token/proxy input と競合します。 |
 | `auth login` | `pixiv auth login [--json] [--no-open] [--addr 127.0.0.1:0] [--use] [--timeout DURATION] [--relay-public-url URL --relay-listen-addr ADDR] [--relay-tls-cert-file PATH --relay-tls-key-file PATH] [--proxy URL\|--no-proxy]` | 通常の loopback OAuth を使います。完全な server relay 設定がある場合は、install 済み desktop CLI handler を直接起動する一回限りの hand-off URL を表示します。UID ごとに保存し refresh token は表示しません。 |
 | `auth list` | `pixiv auth list [--json]` | local account を一覧表示し、refresh token は表示しません。text の `*` は default、`✓`/`-` は local refresh token の保存/欠落を示すだけで、online validity を示しません。 |
+| `auth pool` | `pixiv auth pool status [--json]`；`pixiv auth pool enable UID... [--all]`；`pixiv auth pool disable UID... [--all]` | secret を含まない database scheduling state を表示・変更します。`status` は `enabled`、`strategy`、`schedulable`、`frozen_until`、現在の `eligible` を表示し、enable/disable は全 UID を検証してから一括 commit します。 |
 | `auth export` | `pixiv auth export [UID] [--all] [--output PATH] [--force]` | default/指定/all account を local export します。`--output` なしは single raw token または `--all` bundle、指定時は private bundle と安全な stdout summary です。`--force` には `--output` が必要です。 |
 | `auth use` | `pixiv auth use [UID] [--json]` | default account を設定し、TTY では対話選択できます。 |
 | `auth remove` | `pixiv auth remove [UID] [--yes] [--json]` | account を削除します。default 削除後は残りの先頭を選択します。 |
@@ -282,7 +283,7 @@ Ugoira download は `--ugoira-mode gif|apng|zip|frames` を受け付け、既定
 | `auth refresh` | `pixiv auth refresh [UID] [--all] [--json] [--proxy URL\|--no-proxy]` | 保存済み default/指定 account の OAuth access token と rotation 後 refresh token を更新し、profile を強制取得して Pixiv Premium status cache を更新します。`--all` は全 account を更新し、JSON は常に `accounts` を返します。 |
 | `config path` | `pixiv config path` | `config.toml` path を表示し、存在しなければ baseline file を作成します。 |
 | `config get` | `pixiv config get KEY` | 有効な設定値を 1 件表示します。 |
-| `config set` | `pixiv config set KEY [VALUE]` | 既知 key を書き込みます。`download_path`、`filename_template`、`https_proxy` だけを受け付けます。 |
+| `config set` | `pixiv config set KEY [VALUE]` | 既知 key を書き込みます。`account_pool_enabled`、`account_pool_strategy`、`download_path`、`filename_template`、`https_proxy` を受け付けます。 |
 | `config unset` | `pixiv config unset KEY` | 既知の設定キーを削除します。 |
 | `version` | `pixiv version [--json]` | `version`、`commit`、`build_date` を表示します。root `pixiv --version` は version だけです。 |
 | `update` | `pixiv update [--check] [--prerelease] [--proxy URL]` | 現在の install source に合わせて確認・更新します。`--json` は `--check` とだけ使用できます。 |
@@ -306,6 +307,14 @@ Ugoira download は `--ugoira-mode gif|apng|zip|frames` を受け付け、既定
 | `follow remove` | `pixiv follow remove USER_ID` | unfollow します。visibility flag はありません。 |
 | `download` | `pixiv download [options] SRC...` | artwork PID/URL、許可された CDN URL、または対応 user URL の全 visual works を download します。 |
 | `mcp` | `pixiv mcp [--proxy URL\|--no-proxy]` | MCP stdio server を起動します。 |
+| `fanbox auth` | `pixiv fanbox auth import|list|use|remove|status` | local FANBOX session を import・管理します。session value は表示しません。native `--proxy`/`--no-proxy` は今回の FANBOX command だけに適用されます。 |
+| `fanbox creators` | `pixiv fanbox creators [--kind supporting\|following] [--page N --limit N]` | supporting または following FANBOX creator を一覧します。 |
+| `fanbox posts` | `pixiv fanbox posts SOURCE [--page N --limit N]` | creator、tag、post ID、対応 FANBOX URL の post を一覧します。 |
+| `fanbox tags` | `pixiv fanbox tags CREATOR` | creator の featured tag を一覧します。 |
+| `fanbox home` / `supporting` | `pixiv fanbox home|supporting [--page N --limit N]` | 認証済み FANBOX home または supporting feed を読みます。 |
+| `fanbox post` | `pixiv fanbox post POST_ID` | 1 件の post と安全な asset summary を読みます。 |
+| `fanbox download` | `pixiv fanbox download SOURCE...` | FANBOX post asset を設定済み download directory の下に保存します。 |
+| `fanbox mcp` | `pixiv fanbox mcp [--proxy URL\|--no-proxy]` | read-only FANBOX MCP stdio server を起動します。native proxy override は FlareSolverr 設定を変更しません。 |
 
 download filename は template と URL 由来 extension の cross-platform 不正文字を正規化します。ASCII control
 character と Windows が拒否する末尾 dot/space も除去します。extension は upstream URL 由来のままで、
@@ -522,6 +531,7 @@ typed upstream-response failure になります。filter が batch を飛ばす�
 | `--sleep-request DURATION` | network command と `mcp` | config/default | この invocation の request start 間隔。`PIXIV_REQUEST_INTERVAL` と `[network].request_interval` を上書きします。 |
 | `--proxy URL` | network command と `mcp` | `https_proxy`/`HTTPS_PROXY`、`config.toml`、または empty | この command だけ `http`、`https`、`socks5`、`socks5h` proxy URI を使います。`auth import --file` では不可です。 |
 | `--no-proxy` | `--proxy` と同じ | empty | この command の proxy を解除します。`--proxy` や bundle restore とは併用不可です。 |
+| `--debug` | すべての CLI command、`mcp`、`fanbox mcp` | `false` | safe な real-time English diagnostics を stderr だけに書きます。log file を作らず、stdout、route、retry、result shape を変更しません。`auth export` と hidden OAuth callback は stderr を空のままにします。 |
 
 ### CLI が管理する `config` alias
 
@@ -529,13 +539,39 @@ typed upstream-response failure になります。filter が batch を飛ばす�
 
 | KEY | Type | Default | 説明 |
 | --- | --- | --- | --- |
+| `account_pool_enabled` | boolean | `false` | safe な read/download 用の database account pool を有効化します。 |
+| `account_pool_strategy` | string | `round_robin` | account pool の方式。`round_robin` または `random`。 |
 | `download_path` | string | `./downloads` | download directory。 |
 | `filename_template` | string | `{author} - {title}_{id}` | filename template。 |
 | `directory_template` | string | empty | relative download directory template。 |
 | `request_interval` | duration | `0` | network request start の minimum interval。`PIXIV_REQUEST_INTERVAL` と `--sleep-request` で上書きできます。 |
-| `https_proxy` | string | empty | `http`、`https`、`socks5`、`socks5h` proxy URI。lowercase `https_proxy` environment variable が優先。 |
+| `https_proxy` | string | empty | global `http`、`https`、`socks5`、`socks5h` proxy URI。lowercase `https_proxy` が優先。 |
 
-手動 TOML には `[account_pool]`、`[web]`、`[login]`、`[update]` などを置けます。`config.toml` に refresh token を書かないでください。account-pool state は last UID/freeze information だけで、token は保存しません。legacy の `[logging]` table は互換性のため無視され、`log_level` は `pixiv config` の対応 key ではありません。
+手動 TOML には `[account_pool]`、`[network]`、`[pixiv.network]`、`[fanbox.network]`、`[fanbox.flaresolverr]`、`[login]`、`[update]` などを置けます：
+
+```toml
+[network]
+https_proxy = "http://global-proxy.example:7890"
+
+[pixiv.network]
+proxy_url = "socks5h://pixiv-proxy.example:1080"
+
+[fanbox.network]
+proxy_url = ""                    # FANBOX native direct を明示
+user_agent = "my-native-agent/1.0"
+
+[fanbox.flaresolverr]
+url = "http://127.0.0.1:8191"
+proxy_url = "socks5://solver-upstream.example:1080"
+```
+
+`[pixiv.network].proxy_url` と `[fanbox.network].proxy_url` は absent と explicit empty を区別します。command `--proxy`/`--no-proxy` > 対応 service key（explicit empty を含む） > `https_proxy`/`HTTPS_PROXY` > `[network].https_proxy` > direct の順です。FANBOX native は userinfo のない HTTP(S) CONNECT のみ、Pixiv は HTTP(S)、SOCKS5、SOCKS5H を受け付けます。`user_agent` は FANBOX native header だけを変更し、Firefox 148 TLS profile を変更せず、Cloudflare 回避も保証しません。FlareSolverr は optional な challenge-only route で、service URL と upstream proxy は native FANBOX proxy と独立します。default config generator はこれらの optional table を作りません。
+
+`[account_pool]` は `enabled` と `strategy` だけを保存し、各 account の `schedulable`、freeze、marker は `pixiv-cli.db` に保存します。legacy `account_pool.accounts` は database flag に一度だけ移行してから削除されます。`config.toml` に refresh token を書かないでください。歴史的な `data/account-pool.json` scheduler は自動的に読み取り・移行・削除されません。legacy の `[logging]` table は互換性のため無視され、`log_level` は `pixiv config` の対応 key ではありません。
+
+v1 CLI は古い `~/.pixiv-cli/auth.json` を読み取らず、自動移行もしません。旧 version から切り替える前に、旧 CLI で
+`pixiv auth export --all --output <private bundle>` を実行し、v1 で `pixiv auth import --file <bundle>` を実行してください。
+移行は明示的に行い、古い file を暗黙の credential source にしません。
 
 ### 環境変数
 
@@ -548,33 +584,32 @@ typed upstream-response failure になります。filter が batch を飛ばす�
 | `PIXIV_REQUEST_INTERVAL` | empty | network request start の minimum interval。 |
 | `https_proxy` / `HTTPS_PROXY` | empty | `http`、`https`、`socks5`、`socks5h` proxy URI。lowercase が優先。 |
 
-CLI data command は `pixiv auth use` の local default account、または手動 `[account_pool]` を選びます。credential-selection flag と `PIXIV_REFRESH_TOKEN` は読みません。
+CLI data command は pool 無効時は `pixiv auth use` の local default account、pool 有効時は database の eligible account を選びます。credential-selection flag と `PIXIV_REFRESH_TOKEN` は読みません。
 
-設定優先順：CLI flag > environment > `config.toml` > built-in default。proxy override は保存されません。
+設定優先順は service ごとです：command `--proxy`/`--no-proxy` > 対応 service proxy（explicit empty を含む） > `https_proxy`/`HTTPS_PROXY` > `[network].https_proxy` > direct。proxy override は保存されません。update は一般 network fallback だけを使い、FANBOX/solver 設定を消費しません。
 
-### 匿名 Web fallback
+### Debug diagnostics
 
-token source がなく `web_fallback_enabled=true` の場合、CLI の `search`、`detail`、`ranking`、`download`
-は Pixiv Web/ajax API を利用できます。refresh token がある場合は App API が request を処理し、invalid token、network、
-server error は分類済み failure を返します。
-
-- 匿名 `search` は Web が確実に表現できる filter だけを使用します。AI は返却 field で判定します。
-- `rating=r18|r18g|mature`、`--search-by tag-title-caption`、または bookmark-count filter は request 前に認証要求として失敗し、空結果に見せません。bookmark-count filter には Pixiv Premium も必要です。`all` は匿名で見える範囲です。
-- `novel search` は App 専用で、refresh token がなければ認証要求として失敗します。
-- 拡張 ranking mode（`day_manga`、`week_manga`、`month_manga`、`week_rookie_manga`、`day_r18`、
-  `day_male_r18`、`day_female_r18`、`week_r18`、`week_r18g`）は認証が必要で、匿名の日次ランキングに fallback しません。
-- 認証済み `user search` は公式 App user search を使用し、`source: "app_search"` を返します。匿名 fallback は work search の author を `userId` で dedupe し、`source: "related_illust_authors"` を返して username search ではないことを明示します。
-- 静止画は `/ajax/illust/{id}/pages` の `original`、ugoira は `/ajax/illust/{id}/ugoira_meta` の
-  `originalSrc` と frame を使い、対応 build は内蔵 Rust encoder で GIF/APNG を生成します。
-- 専用 proxy env はなく、共通 `--proxy`、environment、config を使います。
-
-invalid proxy URL は network 前に失敗し、diagnostic に userinfo、path、query を出しません。無効化：
+`--debug` を command の前後に付けると、safe な lifecycle、account pool、network、challenge、solver、download、error event を確認できます：
 
 ```bash
-# ~/.pixiv-cli/config.toml
-[web]
-fallback_enabled = false
+pixiv --debug detail 123456
+pixiv fanbox --debug post 12221352
+pixiv --debug mcp 2>debug.log
 ```
+
+各行は stderr にだけ書かれ、明確な product+subsystem module と完全な English sentence を持ちます。`logs/`、daily file、JSON event stream、raw URL、Cookie、token、signed query、proxy userinfo、clearance は出力しません。stdout と MCP JSON-RPC は変わりません。`pixiv auth export` は `--debug` があっても scope を作らず、raw-token/bundle stdout と空 stderr 契約を byte-for-byte 維持します。unknown option は scope 作成前に exit code `2` で報告されます。
+
+### 削除された匿名 Web fallback
+
+v1 は匿名 Web API fallback を削除しました。コンテンツコマンドは `pixiv auth use`
+または手動 `[account_pool]` / `pixiv auth use` で選択した認証済みローカルアカウントを必要とし、
+それがない場合は認証要求を返します。削除された `web_fallback_enabled` 設定が
+`config.toml` に残っている場合は `removed_setting` を返し、
+`pixiv config unset web_fallback_enabled` で消去できます。
+
+無効なトークンと App API のネットワークまたはサーバーエラーは、安全で分類済みの
+失敗を返します。
 
 ## Version と更新
 

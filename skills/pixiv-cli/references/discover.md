@@ -42,7 +42,7 @@ pixiv search "初音ミク" --limit 10 --json
 - Drawing-tool names use the fixed catalog for this CLI version. Choose an exact
   value from the [CLI reference](../../../docs/en/cli-reference.md#drawing-tool-catalog);
   a unique one-edit spelling correction is shown in the validation error.
-- Anonymous Web search accepts only its reliable filters. R18/R18G/mature,
+- Search requires an authenticated local account. R18/R18G/mature,
   `tag-title-caption` and bookmark bounds require authentication; bookmark
   bounds also require Pixiv Premium. Never add a Cookie workaround or report an authentication
   failure as an empty result.
@@ -144,9 +144,8 @@ pixiv recommended all --limit 5
 - `ranking` supports `day`, `day_male`, `day_female`, `week`, `week_original`,
   `week_rookie`, `month`, `day_manga`, `week_manga`, `month_manga`,
   `week_rookie_manga`, `day_r18`, `day_male_r18`, `day_female_r18`,
-  `week_r18`, and `week_r18g`. The first seven work anonymously through the
-  Web fallback; the final nine require authentication. Never substitute a
-  failed extended mode with `day`.
+  `week_r18`, and `week_r18g`. The final nine require authentication; never
+  substitute a failed extended mode with `day`.
 - `recommended` always needs authentication and a kind. For `all`, inspect the
   actual output shape and keep the returned categories separate rather than
   assuming one flat list.

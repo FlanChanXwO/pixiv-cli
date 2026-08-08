@@ -106,8 +106,8 @@ func checkBuildJob(job *yaml.Node) error {
 	}{
 		{command: "go run ./scripts/releaseassets validate-source --version \"${RELEASE_TAG#v}\" --product-skill skills/pixiv-cli/SKILL.md"},
 		{command: "sh scripts/test-rust-vendor.sh"},
-		{workingDirectory: "internal/download/ugoira_rs", command: "cargo fmt --check"},
-		{workingDirectory: "internal/download/ugoira_rs", command: "cargo clippy --locked --offline --all-targets -- -D warnings"},
+		{workingDirectory: "internal/downloader/ugoira_rs", command: "cargo fmt --check"},
+		{workingDirectory: "internal/downloader/ugoira_rs", command: "cargo clippy --locked --offline --all-targets -- -D warnings"},
 		{command: "go test ./..."},
 		{command: "go vet ./..."},
 		{command: "go run ./scripts/licensebundle --check"},

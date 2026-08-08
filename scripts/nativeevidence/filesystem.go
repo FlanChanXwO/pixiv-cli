@@ -10,7 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/download/staticlib"
+	"github.com/FlanChanXwO/pixiv-cli/internal/downloader/staticlib"
 )
 
 func writeFreshFile(path string, body []byte) error {
@@ -75,7 +75,7 @@ func requireSecureDirectory(path, label string) (string, error) {
 
 func calculateSourceDigest(repoRoot string) (string, error) {
 	digest, err := staticlib.CalculateRustSourceDigest(
-		filepath.Join(repoRoot, "internal", "download", "ugoira_rs"),
+		filepath.Join(repoRoot, "internal", "downloader", "ugoira_rs"),
 		filepath.Join(repoRoot, "third_party", "rust", "quantette-0.6.0"),
 	)
 	if err != nil {

@@ -15,10 +15,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/application"
+	"github.com/FlanChanXwO/pixiv-cli/internal/application/config"
+	downloadapp "github.com/FlanChanXwO/pixiv-cli/internal/application/download"
+	pixivapp "github.com/FlanChanXwO/pixiv-cli/internal/application/pixiv"
 	"github.com/FlanChanXwO/pixiv-cli/internal/bootstrap"
-	"github.com/FlanChanXwO/pixiv-cli/internal/config"
-	"github.com/FlanChanXwO/pixiv-cli/internal/storage/auth"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/stretchr/testify/assert"
@@ -46,6 +46,23 @@ func TestSearchRoutesArgumentsAndPrintsSDKJSON(t *testing.T) {
 	assert.Contains(t, stdout.String(), `"illusts"`)
 	assert.Contains(t, stdout.String(), `"id":123`)
 	assert.Contains(t, stdout.String(), `"title":"work"`)
+}
+
+func TestSearchTreatsDashPrefixedKeywordAfterEndOfOptionsAsLiteral(t *testing.T) {
+	useTempPaths(t)
+	var got pixiv.SearchArtworksRequest
+	setTestSDKCommandClient(t, sdkCommandFake{search: func(_ context.Context, request pixiv.SearchArtworksRequest) (sdk.Page[pixiv.Artwork], error) {
+		got = request
+		return sdk.Page[pixiv.Artwork]{}, nil
+	}})
+
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"pixiv", "search", "--", "--starts-with-dash"}, strings.NewReader(""), &stdout, &stderr)
+
+	require.Equal(t, 0, code, stderr.String())
+	assert.Equal(t, "--starts-with-dash", got.Word)
+	assert.Empty(t, stdout.String())
+	assert.Empty(t, stderr.String())
 }
 
 func TestNovelSearchRoutesFiltersAndPrintsJSON(t *testing.T) {
@@ -124,9 +141,9 @@ func TestDetailAcceptsArtworkURL(t *testing.T) {
 func TestDetailRejectsUnsupportedURLBeforeOpeningSDK(t *testing.T) {
 	useTempPaths(t)
 	factoryCalls := 0
-	setTestSDKCommandFactory(t, func(application.SDKClientRequest) (application.SDKClient, error) {
+	setTestSDKCommandFactory(t, func(pixivapp.SDKClientRequest) (pixivapp.ClientSet, error) {
 		factoryCalls++
-		return sdkCommandFake{}, nil
+		return testClientSet(t, sdkCommandFake{}), nil
 	})
 
 	var stdout, stderr bytes.Buffer
@@ -183,7 +200,7 @@ func TestSearchRejectsDownloadOnlyFlags(t *testing.T) {
 			code := Run(append([]string{"pixiv", "search", "miku"}, args...), strings.NewReader(""), &stdout, &stderr)
 
 			require.NotZero(t, code)
-			assert.Contains(t, stderr.String(), "unknown flag: "+args[0])
+			assert.Contains(t, stderr.String(), "unknown option '"+args[0]+"'")
 		})
 	}
 }
@@ -209,7 +226,7 @@ func TestSearchUsesSearchByAndRejectsRemovedTargetFlags(t *testing.T) {
 		stderr.Reset()
 		code = Run([]string{"pixiv", "search", "miku", removed, "title-caption"}, strings.NewReader(""), &stdout, &stderr)
 		require.NotZero(t, code)
-		assert.Contains(t, stderr.String(), "unknown flag: "+removed)
+		assert.Contains(t, stderr.String(), "unknown option '"+removed+"'")
 	}
 }
 
@@ -250,7 +267,7 @@ func TestSearchUsesPeriodInsteadOfDuration(t *testing.T) {
 	stderr.Reset()
 	code := Run([]string{"pixiv", "search", "miku", "--duration", "within_last_week"}, strings.NewReader(""), &stdout, &stderr)
 	require.NotZero(t, code)
-	assert.Contains(t, stderr.String(), "unknown flag: --duration")
+	assert.Contains(t, stderr.String(), "unknown option '--duration'")
 }
 
 func TestSearchMapsKeywordDateAndBookmarkFilters(t *testing.T) {
@@ -369,7 +386,7 @@ func TestEveryOtherDataCommandRejectsDownloadOnlyFlags(t *testing.T) {
 				code := Run(args, strings.NewReader(""), &stdout, &stderr)
 
 				require.NotZero(t, code)
-				assert.Contains(t, stderr.String(), "unknown flag: "+flag)
+				assert.Contains(t, stderr.String(), "unknown option '"+flag+"'")
 			})
 		}
 	}
@@ -424,7 +441,7 @@ func TestSearchPassesStableFiltersToSDKAndFollowsCursorUntilLimit(t *testing.T) 
 	stderr.Reset()
 	code = Run([]string{"pixiv", "search", "miku", "--tool", "CLIP STUDIO PAINT"}, strings.NewReader(""), &stdout, &stderr)
 	require.NotZero(t, code)
-	assert.Contains(t, stderr.String(), "unknown flag: --tool")
+	assert.Contains(t, stderr.String(), "unknown option '--tool'")
 }
 
 func TestSearchMapsRemainingCanonicalFiltersToSDK(t *testing.T) {
@@ -477,9 +494,9 @@ func TestSearchRejectsInvalidFilterValuesBeforeOpeningSDK(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			useTempPaths(t)
 			calls := 0
-			setTestSDKCommandFactory(t, func(application.SDKClientRequest) (application.SDKClient, error) {
+			setTestSDKCommandFactory(t, func(pixivapp.SDKClientRequest) (pixivapp.ClientSet, error) {
 				calls++
-				return sdkCommandFake{}, nil
+				return testClientSet(t, sdkCommandFake{}), nil
 			})
 			var stdout, stderr bytes.Buffer
 			code := Run(append([]string{"pixiv", "search", "miku"}, test.args...), strings.NewReader(""), &stdout, &stderr)
@@ -497,18 +514,18 @@ func TestSearchRejectsRemovedCompatibilityFlags(t *testing.T) {
 		args []string
 		want string
 	}{
-		{name: "ai-type", args: []string{"--ai-type", "1"}, want: "unknown flag: --ai-type"},
-		{name: "r18", args: []string{"--r18"}, want: "unknown flag: --r18"},
-		{name: "profile", args: []string{"--profile", "111"}, want: "unknown flag: --profile"},
-		{name: "offset", args: []string{"--offset", "1"}, want: "unknown flag: --offset"},
+		{name: "ai-type", args: []string{"--ai-type", "1"}, want: "unknown option '--ai-type'"},
+		{name: "r18", args: []string{"--r18"}, want: "unknown option '--r18'"},
+		{name: "profile", args: []string{"--profile", "111"}, want: "unknown option '--profile'"},
+		{name: "offset", args: []string{"--offset", "1"}, want: "unknown option '--offset'"},
 		{name: "comics type", args: []string{"--type", "comics"}, want: "type must be one of"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			useTempPaths(t)
 			calls := 0
-			setTestSDKCommandFactory(t, func(application.SDKClientRequest) (application.SDKClient, error) {
+			setTestSDKCommandFactory(t, func(pixivapp.SDKClientRequest) (pixivapp.ClientSet, error) {
 				calls++
-				return sdkCommandFake{}, nil
+				return testClientSet(t, sdkCommandFake{}), nil
 			})
 			var stdout, stderr bytes.Buffer
 			code := Run(append([]string{"pixiv", "search", "miku"}, test.args...), strings.NewReader(""), &stdout, &stderr)
@@ -536,7 +553,7 @@ func TestRunSearchRejectsMalformedExplicitProxyWithoutLeakingSensitiveComponents
 
 func TestSearchUsesOutputJSONFromConfig(t *testing.T) {
 	_, configPath := useTempPaths(t)
-	require.NoError(t, auth.WritePrivateFile(configPath, []byte("[output]\njson = true\n")))
+	require.NoError(t, config.WritePrivateFile(configPath, []byte("[output]\njson = true\n")))
 	setTestSDKCommandClient(t, sdkCommandFake{search: func(context.Context, pixiv.SearchArtworksRequest) (sdk.Page[pixiv.Artwork], error) {
 		return sdk.Page[pixiv.Artwork]{Items: []pixiv.Artwork{commandArtwork(321)}}, nil
 	}})
@@ -561,10 +578,10 @@ func TestSDKDataCommandsPassProxyOverride(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			useTempPaths(t)
-			var got application.SDKClientRequest
-			setTestSDKCommandFactory(t, func(request application.SDKClientRequest) (application.SDKClient, error) {
+			var got pixivapp.SDKClientRequest
+			setTestSDKCommandFactory(t, func(request pixivapp.SDKClientRequest) (pixivapp.ClientSet, error) {
 				got = request
-				return proxySDKClient(), nil
+				return testClientSet(t, proxySDKClient()), nil
 			})
 
 			var stdout, stderr bytes.Buffer
@@ -588,10 +605,10 @@ func TestSDKDataCommandsEmptyProxyOverrideClearsRuntimeProxy(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			useTempPaths(t)
-			var got application.SDKClientRequest
-			setTestSDKCommandFactory(t, func(request application.SDKClientRequest) (application.SDKClient, error) {
+			var got pixivapp.SDKClientRequest
+			setTestSDKCommandFactory(t, func(request pixivapp.SDKClientRequest) (pixivapp.ClientSet, error) {
 				got = request
-				return proxySDKClient(), nil
+				return testClientSet(t, proxySDKClient()), nil
 			})
 
 			var stdout, stderr bytes.Buffer
@@ -605,9 +622,9 @@ func TestSDKDataCommandsEmptyProxyOverrideClearsRuntimeProxy(t *testing.T) {
 func TestDataCommandsRejectCredentialSelectionFlags(t *testing.T) {
 	useTempPaths(t)
 	opened := 0
-	setTestSDKCommandFactory(t, func(application.SDKClientRequest) (application.SDKClient, error) {
+	setTestSDKCommandFactory(t, func(pixivapp.SDKClientRequest) (pixivapp.ClientSet, error) {
 		opened++
-		return proxySDKClient(), nil
+		return testClientSet(t, proxySDKClient()), nil
 	})
 	for _, args := range [][]string{
 		{"pixiv", "search", "miku", "--uid", "222"},
@@ -615,7 +632,7 @@ func TestDataCommandsRejectCredentialSelectionFlags(t *testing.T) {
 	} {
 		var stdout, stderr bytes.Buffer
 		require.NotZero(t, Run(args, strings.NewReader(""), &stdout, &stderr), stderr.String())
-		assert.Contains(t, stderr.String(), "unknown flag")
+		assert.Contains(t, stderr.String(), "unknown option")
 	}
 	assert.Zero(t, opened)
 }
@@ -629,10 +646,10 @@ func TestNetworkDataCommandsNoProxyFlagClearsRuntimeProxy(t *testing.T) {
 	} {
 		t.Run(strings.Join(args[1:], " "), func(t *testing.T) {
 			useTempPaths(t)
-			var got application.SDKClientRequest
-			setTestSDKCommandFactory(t, func(request application.SDKClientRequest) (application.SDKClient, error) {
+			var got pixivapp.SDKClientRequest
+			setTestSDKCommandFactory(t, func(request pixivapp.SDKClientRequest) (pixivapp.ClientSet, error) {
 				got = request
-				return proxySDKClient(), nil
+				return testClientSet(t, proxySDKClient()), nil
 			})
 			var stdout, stderr bytes.Buffer
 			require.Equal(t, 0, Run(args, strings.NewReader(""), &stdout, &stderr), stderr.String())
@@ -662,25 +679,28 @@ func TestDownloadDelegatesOperationSnapshotAndFlagOverrides(t *testing.T) {
 	type contextKey string
 	ctx := context.WithValue(context.Background(), contextKey("download"), "same-context")
 	client := &sdkCommandFake{}
-	var gotClientRequest application.SDKClientRequest
-	var downloadRequests []application.DownloadRequest
-	setTestDownloadCommandServices(t, func(request application.SDKClientRequest) (application.SDKClient, error) {
+	clientSet := testClientSet(t, client)
+	var gotClientRequest pixivapp.SDKClientRequest
+	var downloadRequests []downloadapp.DownloadRequest
+	setTestDownloadCommandServices(t, func(request pixivapp.SDKClientRequest) (pixivapp.ClientSet, error) {
 		gotClientRequest = request
-		return client, nil
-	}, config.RuntimeConfig{DownloadPath: "/runtime/path", FilenameTemplate: "runtime-template"}, func(gotClient application.DownloadClient, gotPath, gotTemplate string) (application.DownloadManager, error) {
-		require.Same(t, client, gotClient)
+		return clientSet, nil
+	}, config.RuntimeConfig{DownloadPath: "/runtime/path", FilenameTemplate: "runtime-template"}, func(gotClient downloadapp.DownloadClient, gotPath, gotTemplate string) (downloadapp.DownloadManager, error) {
+		gotSet, ok := gotClient.(pixivapp.ClientSet)
+		require.True(t, ok)
+		require.Same(t, client, gotSet.ArtworkClient)
 		require.Equal(t, "/flag/path", gotPath)
 		require.Equal(t, "flag-template", gotTemplate)
-		return downloadManagerFake{download: func(gotContext context.Context, request application.DownloadRequest) ([]application.DownloadedArtwork, error) {
+		return downloadManagerFake{download: func(gotContext context.Context, request downloadapp.DownloadRequest) ([]downloadapp.DownloadedArtwork, error) {
 			require.Same(t, ctx, gotContext)
 			downloadRequests = append(downloadRequests, request)
-			items := make([]application.DownloadedArtwork, 0, len(request.IllustIDs))
+			items := make([]downloadapp.DownloadedArtwork, 0, len(request.IllustIDs))
 			for _, id := range request.IllustIDs {
-				items = append(items, application.DownloadedArtwork{
+				items = append(items, downloadapp.DownloadedArtwork{
 					IllustID: id,
 					Title:    "work",
 					Author:   "artist",
-					Files:    []application.DownloadedFile{{Path: fmt.Sprintf("/flag/path/%d.jpg", id)}},
+					Files:    []downloadapp.DownloadedFile{{Path: fmt.Sprintf("/flag/path/%d.jpg", id)}},
 				})
 			}
 			return items, nil
@@ -703,7 +723,7 @@ func TestDownloadDelegatesOperationSnapshotAndFlagOverrides(t *testing.T) {
 	assert.Empty(t, gotClientRequest.RefreshToken)
 	require.Len(t, downloadRequests, 1)
 	require.Equal(t, []int64{42, 84}, downloadRequests[0].IllustIDs)
-	require.Equal(t, application.UgoiraFormatAPNG, downloadRequests[0].UgoiraFormat)
+	require.Equal(t, downloadapp.UgoiraFormatAPNG, downloadRequests[0].UgoiraFormat)
 	assert.Empty(t, stdout.String())
 }
 
@@ -721,17 +741,17 @@ func TestDownloadAcceptsArtworkAndUserURLsWithoutWritingAReport(t *testing.T) {
 			return sdk.Page[pixiv.Artwork]{}, errors.New("unexpected kind")
 		}
 	}}
-	var requests []application.DownloadRequest
-	setTestDownloadCommandServices(t, func(application.SDKClientRequest) (application.SDKClient, error) {
-		return client, nil
-	}, config.RuntimeConfig{}, func(application.DownloadClient, string, string) (application.DownloadManager, error) {
-		return downloadManagerFake{download: func(_ context.Context, request application.DownloadRequest) ([]application.DownloadedArtwork, error) {
+	var requests []downloadapp.DownloadRequest
+	setTestDownloadCommandServices(t, func(pixivapp.SDKClientRequest) (pixivapp.ClientSet, error) {
+		return testClientSet(t, client), nil
+	}, config.RuntimeConfig{}, func(downloadapp.DownloadClient, string, string) (downloadapp.DownloadManager, error) {
+		return downloadManagerFake{download: func(_ context.Context, request downloadapp.DownloadRequest) ([]downloadapp.DownloadedArtwork, error) {
 			requests = append(requests, request)
-			items := make([]application.DownloadedArtwork, 0, len(request.IllustIDs))
+			items := make([]downloadapp.DownloadedArtwork, 0, len(request.IllustIDs))
 			for _, id := range request.IllustIDs {
-				items = append(items, application.DownloadedArtwork{
+				items = append(items, downloadapp.DownloadedArtwork{
 					IllustID: id, Title: "work", Author: "artist", Type: "illust",
-					Files: []application.DownloadedFile{{Path: fmt.Sprintf("/downloads/%d.jpg", id), Page: 1}},
+					Files: []downloadapp.DownloadedFile{{Path: fmt.Sprintf("/downloads/%d.jpg", id), Page: 1}},
 				})
 			}
 			return items, nil
@@ -749,12 +769,12 @@ func TestDownloadAcceptsArtworkAndUserURLsWithoutWritingAReport(t *testing.T) {
 
 func TestDownloadDelegatesRuntimePathAndTemplateWithoutFlags(t *testing.T) {
 	useTempPaths(t)
-	setTestDownloadCommandServices(t, func(application.SDKClientRequest) (application.SDKClient, error) {
-		return &sdkCommandFake{}, nil
-	}, config.RuntimeConfig{DownloadPath: "/runtime/path", FilenameTemplate: "runtime-template"}, func(_ application.DownloadClient, path, template string) (application.DownloadManager, error) {
+	setTestDownloadCommandServices(t, func(pixivapp.SDKClientRequest) (pixivapp.ClientSet, error) {
+		return testClientSet(t, &sdkCommandFake{}), nil
+	}, config.RuntimeConfig{DownloadPath: "/runtime/path", FilenameTemplate: "runtime-template"}, func(_ downloadapp.DownloadClient, path, template string) (downloadapp.DownloadManager, error) {
 		require.Equal(t, "/runtime/path", path)
 		require.Equal(t, "runtime-template", template)
-		return downloadManagerFake{download: func(context.Context, application.DownloadRequest) ([]application.DownloadedArtwork, error) {
+		return downloadManagerFake{download: func(context.Context, downloadapp.DownloadRequest) ([]downloadapp.DownloadedArtwork, error) {
 			return nil, nil
 		}}, nil
 	})
@@ -769,9 +789,9 @@ func TestDownloadDelegatesRuntimePathAndTemplateWithoutFlags(t *testing.T) {
 func TestDownloadReportsFactoryFailure(t *testing.T) {
 	useTempPaths(t)
 	want := errors.New("download factory failed")
-	setTestDownloadCommandServices(t, func(application.SDKClientRequest) (application.SDKClient, error) {
-		return &sdkCommandFake{}, nil
-	}, config.RuntimeConfig{}, func(application.DownloadClient, string, string) (application.DownloadManager, error) {
+	setTestDownloadCommandServices(t, func(pixivapp.SDKClientRequest) (pixivapp.ClientSet, error) {
+		return testClientSet(t, &sdkCommandFake{}), nil
+	}, config.RuntimeConfig{}, func(downloadapp.DownloadClient, string, string) (downloadapp.DownloadManager, error) {
 		return nil, want
 	})
 
@@ -786,10 +806,10 @@ func TestDownloadReportsFactoryFailure(t *testing.T) {
 func TestDownloadReportsManagerFailure(t *testing.T) {
 	_, configPath := useTempPaths(t)
 	want := errors.New("download manager failed")
-	setTestDownloadCommandServices(t, func(application.SDKClientRequest) (application.SDKClient, error) {
-		return &sdkCommandFake{}, nil
-	}, config.RuntimeConfig{}, func(application.DownloadClient, string, string) (application.DownloadManager, error) {
-		return downloadManagerFake{download: func(context.Context, application.DownloadRequest) ([]application.DownloadedArtwork, error) {
+	setTestDownloadCommandServices(t, func(pixivapp.SDKClientRequest) (pixivapp.ClientSet, error) {
+		return testClientSet(t, &sdkCommandFake{}), nil
+	}, config.RuntimeConfig{}, func(downloadapp.DownloadClient, string, string) (downloadapp.DownloadManager, error) {
+		return downloadManagerFake{download: func(context.Context, downloadapp.DownloadRequest) ([]downloadapp.DownloadedArtwork, error) {
 			return nil, want
 		}}, nil
 	})
@@ -806,16 +826,16 @@ func TestDownloadReportsManagerFailure(t *testing.T) {
 
 func TestDownloadDoesNotAcceptJSONReportOutput(t *testing.T) {
 	useTempPaths(t)
-	setTestDownloadCommandServices(t, func(application.SDKClientRequest) (application.SDKClient, error) {
-		return &sdkCommandFake{}, nil
-	}, config.RuntimeConfig{}, func(application.DownloadClient, string, string) (application.DownloadManager, error) {
-		return downloadManagerFake{download: func(context.Context, application.DownloadRequest) ([]application.DownloadedArtwork, error) {
-			return []application.DownloadedArtwork{{
+	setTestDownloadCommandServices(t, func(pixivapp.SDKClientRequest) (pixivapp.ClientSet, error) {
+		return testClientSet(t, &sdkCommandFake{}), nil
+	}, config.RuntimeConfig{}, func(downloadapp.DownloadClient, string, string) (downloadapp.DownloadManager, error) {
+		return downloadManagerFake{download: func(context.Context, downloadapp.DownloadRequest) ([]downloadapp.DownloadedArtwork, error) {
+			return []downloadapp.DownloadedArtwork{{
 				IllustID: 42,
 				Title:    "work",
 				Author:   "artist",
 				Type:     "illust",
-				Files:    []application.DownloadedFile{{Path: "/downloads/42.jpg", Page: 2}},
+				Files:    []downloadapp.DownloadedFile{{Path: "/downloads/42.jpg", Page: 2}},
 			}}, nil
 		}}, nil
 	})
@@ -840,10 +860,10 @@ func TestDownloadRejectsInvalidPagesAndQuality(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			calls := 0
-			setTestDownloadCommandServices(t, func(application.SDKClientRequest) (application.SDKClient, error) {
+			setTestDownloadCommandServices(t, func(pixivapp.SDKClientRequest) (pixivapp.ClientSet, error) {
 				calls++
-				return sdkCommandFake{}, nil
-			}, config.RuntimeConfig{}, func(application.DownloadClient, string, string) (application.DownloadManager, error) {
+				return testClientSet(t, sdkCommandFake{}), nil
+			}, config.RuntimeConfig{}, func(downloadapp.DownloadClient, string, string) (downloadapp.DownloadManager, error) {
 				calls++
 				return downloadManagerFake{}, nil
 			})
@@ -857,22 +877,22 @@ func TestDownloadRejectsInvalidPagesAndQuality(t *testing.T) {
 }
 
 type downloadManagerFake struct {
-	download func(context.Context, application.DownloadRequest) ([]application.DownloadedArtwork, error)
+	download func(context.Context, downloadapp.DownloadRequest) ([]downloadapp.DownloadedArtwork, error)
 }
 
-func (m downloadManagerFake) Download(ctx context.Context, request application.DownloadRequest) ([]application.DownloadedArtwork, error) {
+func (m downloadManagerFake) Download(ctx context.Context, request downloadapp.DownloadRequest) ([]downloadapp.DownloadedArtwork, error) {
 	return m.download(ctx, request)
 }
 
-func setTestDownloadCommandServices(t *testing.T, newClient application.SDKClientFactory, runtime config.RuntimeConfig, newManager application.DownloadManagerFactory) {
+func setTestDownloadCommandServices(t *testing.T, newClient pixivapp.ClientFactory, runtime config.RuntimeConfig, newManager downloadapp.DownloadManagerFactory) {
 	t.Helper()
 	old := newCLIServices
-	newCLIServices = func() application.Services {
-		return application.Services{
-			SDK: application.SDKService{
+	newCLIServices = func() (*bootstrap.Runtime, error) {
+		return &bootstrap.Runtime{
+			SDK: pixivapp.SDKService{
 				NewClient:   newClient,
 				LoadRuntime: func() (config.RuntimeConfig, error) { return runtime, nil },
-				RunPooled: func(ctx context.Context, request application.SDKClientRequest, attempt func(context.Context, application.SDKClient) (bool, error)) error {
+				RunPooled: func(ctx context.Context, request pixivapp.SDKClientRequest, attempt func(context.Context, pixivapp.ClientSet) (bool, error)) error {
 					client, err := newClient(request)
 					if err != nil {
 						return err
@@ -881,8 +901,8 @@ func setTestDownloadCommandServices(t *testing.T, newClient application.SDKClien
 					return err
 				},
 			},
-			Download: application.DownloadService{NewManager: newManager},
-		}
+			Download: downloadapp.DownloadService{NewManager: newManager},
+		}, nil
 	}
 	t.Cleanup(func() { newCLIServices = old })
 }
@@ -893,9 +913,9 @@ func TestDownloadProxyFlagPassesRuntimeOverride(t *testing.T) {
 			authPath, configPath := useTempPaths(t)
 			proxy := newTestForwardProxy(t)
 			downloadPath := t.TempDir()
-			require.NoError(t, auth.WritePrivateFile(configPath, []byte("[network]\nhttps_proxy = \""+proxy.URL+"\"\n[download]\npath = \""+strings.ReplaceAll(downloadPath, "\\", "\\\\")+"\"\n")))
+			require.NoError(t, config.WritePrivateFile(configPath, []byte("[network]\nhttps_proxy = \""+proxy.URL+"\"\n[download]\npath = \""+strings.ReplaceAll(downloadPath, "\\", "\\\\")+"\"\n")))
 			t.Setenv("https_proxy", proxy.URL)
-			require.NoError(t, auth.SaveAuthStore(authPath, auth.AuthStore{DefaultUserID: 123, Accounts: []auth.Account{{UserID: 123, RefreshToken: "token"}}}))
+			require.NoError(t, saveTestAuthStore(t, authPath, testAuthStore{DefaultUserID: 123, Accounts: []testAuthAccount{{UserID: 123, RefreshToken: "token"}}}))
 
 			var upstream *httptest.Server
 			upstream = httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -928,7 +948,7 @@ func TestDownloadProxyFlagPassesRuntimeOverride(t *testing.T) {
 					transport.Proxy = http.ProxyURL(proxyURL)
 				}
 				return &http.Client{Transport: transport}, nil
-			}, func(request application.SDKClientRequest) {
+			}, func(request pixivapp.SDKClientRequest) {
 				require.NotNil(t, request.HTTPSProxyOverride)
 				if useProxy {
 					assert.Equal(t, proxy.URL, *request.HTTPSProxyOverride)
@@ -979,10 +999,10 @@ func proxySDKClient() sdkCommandFake {
 }
 
 func TestDownloadReportRetainsRateLimitCauseAndPartialCommitBoundary(t *testing.T) {
-	cause := sdk.NewError("pixiv", "download", sdk.CodeRateLimited, sdk.WithRetry(sdk.RetryAdvice{Safe: true, HasAfter: true}))
-	report := application.DownloadReport{
+	cause := sdk.NewError("pixiv", "download", sdk.RateLimited, sdk.WithRetry(sdk.RetryAdvice{Safe: true, HasAfter: true}))
+	report := downloadapp.DownloadReport{
 		Committed: true,
-		Failures:  []application.DownloadFailure{{Message: cause.Error(), Cause: cause}},
+		Failures:  []downloadapp.DownloadFailure{{Message: cause.Error(), Cause: cause}},
 	}
 
 	err := downloadReportError(report)
@@ -1052,26 +1072,27 @@ func TestDetailReturnsFailureWhenTextStdoutFails(t *testing.T) {
 
 func TestSearchDoesNotReplayWhenWriterReturnsRateLimitedError(t *testing.T) {
 	useTempPaths(t)
-	rateLimited := sdk.NewError("pixiv", "search", sdk.CodeRateLimited, sdk.WithRetry(sdk.RetryAdvice{Safe: true, HasAfter: true}))
+	rateLimited := sdk.NewError("pixiv", "search", sdk.RateLimited, sdk.WithRetry(sdk.RetryAdvice{Safe: true, HasAfter: true}))
 	client := sdkCommandFake{search: func(context.Context, pixiv.SearchArtworksRequest) (sdk.Page[pixiv.Artwork], error) {
 		return sdk.Page[pixiv.Artwork]{Items: []pixiv.Artwork{commandArtwork(42)}}, nil
 	}}
+	clientSet := testClientSet(t, client)
 	old := newCLIServices
 	poolCalls := 0
-	newCLIServices = func() application.Services {
-		services := bootstrap.NewServices()
-		services.SDK.NewClient = func(application.SDKClientRequest) (application.SDKClient, error) { return client, nil }
-		services.SDK.RunPooled = func(ctx context.Context, _ application.SDKClientRequest, attempt func(context.Context, application.SDKClient) (bool, error)) error {
+	newCLIServices = func() (*bootstrap.Runtime, error) {
+		services := newTestRuntime(t)
+		services.SDK.NewClient = func(pixivapp.SDKClientRequest) (pixivapp.ClientSet, error) { return testClientSet(t, client), nil }
+		services.SDK.RunPooled = func(ctx context.Context, _ pixivapp.SDKClientRequest, attempt func(context.Context, pixivapp.ClientSet) (bool, error)) error {
 			poolCalls++
-			committed, err := attempt(ctx, client)
+			committed, err := attempt(ctx, clientSet)
 			var typed *sdk.Error
-			if err != nil && !committed && errors.As(err, &typed) && typed.Code == sdk.CodeRateLimited && typed.Retry.HasAfter {
+			if err != nil && !committed && errors.As(err, &typed) && typed.Reason == sdk.RateLimited && typed.Retry.HasAfter {
 				poolCalls++
-				_, err = attempt(ctx, client)
+				_, err = attempt(ctx, clientSet)
 			}
 			return err
 		}
-		return services
+		return services, nil
 	}
 	t.Cleanup(func() { newCLIServices = old })
 
@@ -1086,7 +1107,7 @@ func TestSearchDoesNotReplayWhenWriterReturnsRateLimitedError(t *testing.T) {
 }
 
 func TestRecommendedAllNDJSONMarksWriterAttemptCommitted(t *testing.T) {
-	rateLimited := sdk.NewError("pixiv", "recommend", sdk.CodeRateLimited, sdk.WithRetry(sdk.RetryAdvice{Safe: true, HasAfter: true}))
+	rateLimited := sdk.NewError("pixiv", "recommend", sdk.RateLimited, sdk.WithRetry(sdk.RetryAdvice{Safe: true, HasAfter: true}))
 	writer := &rateLimitedOnceWriter{err: rateLimited}
 	illust := commandArtwork(42)
 	illust.Kind = pixiv.ArtworkKindIllustration
@@ -1094,7 +1115,7 @@ func TestRecommendedAllNDJSONMarksWriterAttemptCommitted(t *testing.T) {
 		return sdk.Page[pixiv.Artwork]{Items: []pixiv.Artwork{illust}}, nil
 	}}
 
-	committed, err := (app{out: writer}).runRecommendedAllNDJSON(context.Background(), client, listPlan{oneBatch: true})
+	committed, err := (app{out: writer}).runRecommendedAllNDJSON(context.Background(), testClientSet(t, client), listPlan{oneBatch: true})
 
 	require.True(t, committed)
 	require.ErrorIs(t, err, rateLimited)

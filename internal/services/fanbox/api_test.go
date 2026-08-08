@@ -9,7 +9,7 @@ import (
 
 func TestCreatorDecodesProfileFields(t *testing.T) {
 	session := newTestSession(t, http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
-		if request.Method != http.MethodGet || request.Host != "api.fanbox.cc" || request.URL.Path != "/api/v1/creator.get" {
+		if request.Method != http.MethodGet || request.Host != "api.fanbox.cc" || request.URL.Path != "/creator.get" {
 			t.Errorf("unexpected creator profile request %s host=%q", request.URL, request.Host)
 		}
 		if got := request.URL.Query().Get("creatorId"); got != "creator value" {
@@ -51,18 +51,21 @@ func TestCreatorRejectsMissingDisplayName(t *testing.T) {
 }
 
 func TestCreatorPostsPaginationFetchesNextURLDirectly(t *testing.T) {
-	nextURL := "https://api.fanbox.cc/api/v1/post.listCreator?creatorId=writer&maxPublishedDatetime=abc"
+	nextURL := "https://api.fanbox.cc/post.paginateCreator?creatorId=writer&page=2"
 	var seen []string
 	session := newTestSession(t, http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
 		seen = append(seen, "https://"+request.Host+request.URL.RequestURI())
-		if request.URL.Path != "/api/v1/post.listCreator" {
+		if request.URL.Path != "/post.listCreator" && request.URL.Path != "/post.paginateCreator" {
 			t.Errorf("unexpected path %q", request.URL.Path)
 		}
-		if request.URL.Query().Get("maxPublishedDatetime") == "" {
-			writeJSON(w, fmt.Sprintf(`{"body":{"posts":[{"id":"first","title":"first"}],"nextUrl":%q}}`, nextURL))
+		if request.URL.Path == "/post.listCreator" {
+			if request.URL.Query().Get("limit") != "10" {
+				t.Errorf("creator limit = %q", request.URL.Query().Get("limit"))
+			}
+			writeJSON(w, fmt.Sprintf(`{"body":{"posts":[{"id":"first","title":"first"}],"pageUrls":[%q]}}`, nextURL))
 			return
 		}
-		writeJSON(w, `{"body":{"posts":[{"id":"second","title":"second"}],"nextUrl":""}}`)
+		writeJSON(w, `{"body":{"posts":[{"id":"second","title":"second"}]}}`)
 	}), "FANBOXSESSID=posts-canary")
 
 	page1, err := session.CreatorPosts(context.Background(), "writer", "")
@@ -90,7 +93,7 @@ func TestCreatorPostsPaginationFetchesNextURLDirectly(t *testing.T) {
 
 func TestTaggedPostsUsesCreatorAndTag(t *testing.T) {
 	session := newTestSession(t, http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
-		if request.URL.Path != "/api/v1/post.listTaggedPosts" {
+		if request.URL.Path != "/post.listTagged" {
 			t.Errorf("unexpected path %q", request.URL.Path)
 		}
 		if got := request.URL.Query().Get("creatorId"); got != "writer" {
@@ -113,7 +116,7 @@ func TestTaggedPostsUsesCreatorAndTag(t *testing.T) {
 
 func TestPostInfoBlocksToAssets(t *testing.T) {
 	session := newTestSession(t, http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
-		if request.URL.Path != "/api/v1/post.info" || request.URL.Query().Get("postId") != "post-1" {
+		if request.URL.Path != "/post.info" || request.URL.Query().Get("postId") != "post-1" {
 			t.Errorf("unexpected request %q", request.URL)
 		}
 		writeJSON(w, `{"body":{"post":{"id":"post-1","title":"title","restrictedFor":2,"commentCount":3,"body":{"blocks":[{"type":"image","imageId":"image-2"},{"type":"file","fileId":"file-1"},{"type":"image","imageId":"image-1"}],"imageMap":{"image-1":{"id":"image-1","extension":"jpg","originalUrl":"https://downloads.fanbox.cc/image-1.jpg"},"image-2":{"id":"image-2","extension":"png","originalUrl":"https://downloads.fanbox.cc/image-2.png"}},"fileMap":{"file-1":{"id":"file-1","name":"file","extension":"zip","url":"https://downloads.fanbox.cc/file-1.zip"}}}}}}`)
@@ -153,9 +156,9 @@ func TestCreatorsSupportingAndFollowing(t *testing.T) {
 			t.Errorf("unexpected creator request host=%q cookie=%q", request.Host, request.Header.Get("Cookie"))
 		}
 		switch request.URL.Path {
-		case "/api/v1/plan.listSupporting":
+		case "/plan.listSupporting":
 			writeJSON(w, `{"body":{"plans":[{"creatorId":"supported","fee":500,"perks":[]}]}}`)
-		case "/api/v1/creator.listFollowing":
+		case "/creator.listFollowing":
 			writeJSON(w, `{"body":{"creators":[{"creatorId":"followed"}]}}`)
 		default:
 			t.Errorf("unexpected endpoint %q", request.URL.Path)
@@ -170,12 +173,12 @@ func TestCreatorsSupportingAndFollowing(t *testing.T) {
 		{CreatorListSupporting, "supported"},
 		{CreatorListFollowing, "followed"},
 	} {
-		creators, err := session.Creators(context.Background(), test.kind)
+		page, err := session.Creators(context.Background(), test.kind, "")
 		if err != nil {
 			t.Fatalf("Creators(%s) error = %v", test.kind, err)
 		}
-		if len(creators) != 1 || creators[0].ID != test.want {
-			t.Fatalf("Creators(%s) = %+v", test.kind, creators)
+		if len(page.Creators) != 1 || page.Creators[0].ID != test.want {
+			t.Fatalf("Creators(%s) = %+v", test.kind, page.Creators)
 		}
 	}
 }
@@ -183,9 +186,15 @@ func TestCreatorsSupportingAndFollowing(t *testing.T) {
 func TestHomeAndSupportingDecodeItemsEnvelope(t *testing.T) {
 	session := newTestSession(t, http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
 		switch request.URL.Path {
-		case "/api/v1/home.posts":
-			writeJSON(w, `{"body":{"items":[{"id":"home-1","title":"home"}],"nextUrl":"https://api.fanbox.cc/api/v1/home.posts?cursor=2"}}`)
-		case "/api/v1/home.supporting":
+		case "/post.listHome":
+			if got := request.URL.Query().Get("limit"); got != "10" {
+				t.Errorf("post.listHome limit = %q, want 10", got)
+			}
+			writeJSON(w, `{"body":{"items":[{"id":"home-1","title":"home"}],"nextUrl":"https://api.fanbox.cc/post.listHome?cursor=2"}}`)
+		case "/post.listSupporting":
+			if got := request.URL.Query().Get("limit"); got != "10" {
+				t.Errorf("post.listSupporting limit = %q, want 10", got)
+			}
 			writeJSON(w, `{"body":{"items":[{"id":"support-1","title":"support"}]}}`)
 		default:
 			t.Errorf("unexpected endpoint %q", request.URL.Path)
@@ -200,7 +209,7 @@ func TestHomeAndSupportingDecodeItemsEnvelope(t *testing.T) {
 	if got, want := postIDs(home.Posts), []string{"home-1"}; fmt.Sprint(got) != fmt.Sprint(want) {
 		t.Fatalf("Home() ids = %v, want %v", got, want)
 	}
-	if home.NextURL != "https://api.fanbox.cc/api/v1/home.posts?cursor=2" {
+	if home.NextURL != "https://api.fanbox.cc/post.listHome?cursor=2" {
 		t.Fatalf("Home() NextURL = %q", home.NextURL)
 	}
 

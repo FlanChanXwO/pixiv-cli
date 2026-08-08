@@ -142,9 +142,6 @@ func checkWorkflow(body []byte) error {
 	if err := checkSigningSecretReachability(validate, build, productionBuild, releaseNotesAudit, verifyReleaseSource, publish, preflightPublishSteps, preflightSigningIndex); err != nil {
 		return err
 	}
-	if err := checkE2ESecretReachability(e2e); err != nil {
-		return err
-	}
 	if err := checkHomebrewSecretReachability(renderHomebrew, verifyHomebrew, deployHomebrew); err != nil {
 		return err
 	}

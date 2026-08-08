@@ -107,13 +107,13 @@ jobs:
         run: go test ./scripts/installers -count=1
       - name: Test platform OAuth callback integration
         shell: bash
-        run: go test ./internal/cli/loginhelper -count=1
+        run: go test ./internal/cli/auth/loginhelper -count=1
       - name: Build the native Rust static library
         shell: bash
         run: bash scripts/build-staticlibs.sh --target '${{ matrix.rust_target }}'
       - name: Run native GIF/APNG smoke
         shell: bash
-        run: go test ./internal/download -run '^TestRustUgoiraEncoderNativeGIFAndAPNG$' -count=1
+        run: go test ./internal/ugoira -run '^TestRustUgoiraEncoderNativeGIFAndAPNG$' -count=1
       - name: Build and package a versioned binary
         shell: bash
         run: |
@@ -153,9 +153,7 @@ jobs:
           test -f "$binary"
           PIXIV_E2E_BINARY="$(pwd)/$binary" \
           PIXIV_E2E_EXPECTED_VERSION="v${version}" \
-          PIXIV_E2E_REAL_API= \
-          PIXIV_E2E_WEB_API= \
-          go test ./e2e -run '^TestPixivBinary' -count=1
+          go test ./e2e -run '^TestPixivBinaryPackagedSmoke$' -count=1
 
   # 分支保护只要求此汇总 job：完整变更必须等全部六个 matrix job 成功，文档改动
   # 则确认 matrix 被有意跳过，避免缺失 matrix check 导致 PR 永远处于 pending。

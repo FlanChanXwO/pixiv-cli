@@ -118,6 +118,9 @@ Verify flags with `--help` before use; this list is orientation, not a contract.
 
 ```
 pixiv auth list --json                    # only when an account decision needs it
+pixiv auth pool status --json              # inspect non-secret database scheduling state
+pixiv auth pool enable UID...              # enable selected local accounts for pooling
+pixiv auth pool disable UID...             # disable selected local accounts for pooling
 pixiv auth check [UID] --json             # validate token, shows user_id/username
 pixiv auth refresh [UID] --json           # explicit maintenance: token + Premium cache
 pixiv auth import                         # hidden TTY prompt, or automatic non-TTY stdin
@@ -154,27 +157,53 @@ pixiv download [SRC...] [--filter EXPR] [--pages 1,3-5,8-] [--quality original|r
 pixiv update --check --json               # read-only update check
 ```
 
-Data commands use the account selected by `pixiv auth use`; they do not accept
-credential-selection flags and ignore `PIXIV_REFRESH_TOKEN`. A manually maintained
-`[account_pool]` can choose local accounts only for safe non-mutating reads and downloads.
+Data commands use the account selected by `pixiv auth use` when the pool is disabled;
+when `[account_pool].enabled = true`, the database selects eligible local accounts
+for safe non-mutating reads and downloads. The pool's `schedulable` flags are managed
+with `pixiv auth pool status|enable|disable`; the config stores only `enabled` and
+`strategy`. Data commands do not accept credential-selection flags and ignore
+`PIXIV_REFRESH_TOKEN`.
 Common data flags are command-scoped `--json` or `--ndjson`, plus `--proxy URL` /
 `--no-proxy` (this command only, never persisted). Proxy URIs may use `http`,
 `https`, `socks5`, or `socks5h`; `--sleep-request D` sets a one-command minimum
 interval between network request starts.
 
-`pixiv config` manages `download_path`, `filename_template`, `directory_template`,
-`request_interval`, and `https_proxy`.
+`pixiv config` manages `account_pool_enabled`, `account_pool_strategy`,
+`download_path`, `filename_template`, `directory_template`, `request_interval`,
+and `https_proxy`.
 Other TOML settings are hand-maintained; inspect the installed help before suggesting them.
+
+FANBOX is a separate read-only service surface. Import its `FANBOXSESSID` with
+`pixiv fanbox auth import`, select it with `pixiv fanbox auth use --auto` or an
+explicit UID, and inspect creators, posts, tags, home/supporting feeds, or
+resources using the installed `pixiv fanbox --help` output. `pixiv fanbox mcp`
+uses its own runtime credential selection and does not reuse the Pixiv account
+pool.
+
+The root `--debug` flag is opt-in and writes safe routing/status/challenge,
+solver, account-pool, download, and configuration events to stderr only:
+
+```text
+pixiv --debug search "初音ミク"
+pixiv --debug mcp
+pixiv --debug fanbox mcp
+```
+
+MCP stdout remains JSON-RPC, and `auth export` plus hidden callback/installer
+paths retain their quiet/secret-output contracts. Debug output never includes
+tokens, session cookies, signed query strings, response bodies, or proxy
+userinfo. There is no default log file. FANBOX's optional
+`[fanbox.flaresolverr]` table is a challenge-only recovery route; it does not
+proxy ordinary API/resource requests or receive the FANBOX session.
 
 ## Critical semantics (traps — read before assuming a bug)
 
-1. **No silent fallback, by design.** With a refresh token present, App API
-   errors are surfaced as-is and NEVER auto-fall back to the anonymous web API.
-   Anonymous fallback happens only when *no* token exists anywhere AND
-   `web_fallback_enabled=true`, and only for `search` / `detail` / `ranking` /
-   `download`. Authenticated `detail`, pages, and ugoira metadata therefore
-   come from App API; a missing App page resource is a real error, not a reason
-   to scrape or retry Web.
+1. **No anonymous Web fallback.** v1 removed the anonymous Web API. Every
+   content command requires an authenticated local account selected through
+   `pixiv auth use`, or an eligible database account when the account pool is
+   enabled; without one it returns an authentication requirement. App API
+   errors are surfaced as-is and NEVER auto-fall back to a Web path. A missing
+   App page resource is a real error, not a reason to scrape or retry Web.
 2. **`recommended` requires a kind.** Choose one of the kinds shown by
    `pixiv recommended --help`; it requires authentication and does not work
    anonymously.
@@ -191,10 +220,10 @@ Other TOML settings are hand-maintained; inspect the installed help before sugge
    `novel search` supports `--search-by`, `--sort`, `--period`, `--rating`,
    `--min-text-length`, `--max-text-length`, and `--original-only`; it does not
    support illustration AI, drawing-tool, resolution, aspect-ratio, or type filters.
-5. **Anonymous restricted search fails explicitly.** Web fallback uses only
-   reliable illustration-search filters. `r18`, `r18g`, `mature`, `--search-by tag-title-caption`,
-   bookmark-count bounds
-   require App authentication; bookmark-count bounds additionally require Pixiv Premium. For a saved account the CLI
+5. **Restricted search fails explicitly.** There is no anonymous search path.
+   `r18`, `r18g`, `mature`, `--search-by tag-title-caption`, and bookmark-count
+   bounds require an authenticated account; bookmark-count bounds additionally
+   require Pixiv Premium. For a saved account the CLI
    checks the cached self-profile status before search (24h by default); a non-Premium result fails locally rather than
    making a misleading search request. Use explicit `auth refresh` to force that cache. Do not
    present the failure as an empty result. `novel search` is App-only and requires authentication.
@@ -208,12 +237,16 @@ Other TOML settings are hand-maintained; inspect the installed help before sugge
 8. **No like-count field.** Do not invent or label bookmark totals as likes.
 9. **`update --json` is only valid with `--check`.** The actual install never
    emits JSON.
-10. **Proxy is per-command.** The browser's system proxy is NOT inherited.
-   Persist with `pixiv config set https_proxy URL`; override per command with
-   `--proxy` / `--no-proxy` (mutually exclusive). HTTP, HTTPS, SOCKS5, and
-   SOCKS5H proxy URIs are supported. With an explicit proxy,
-   resource downloads deliberately use HTTP/1.1; App API, OAuth, and Web
-   metadata requests retain normal protocol negotiation.
+10. **Proxy is per-command or service-scoped.** The browser's system proxy is
+   NOT inherited. Pixiv command overrides take precedence over
+   `[pixiv.network].proxy_url`, environment, and the global `[network]` value;
+   persist the global value with `pixiv config set https_proxy URL` when that is
+   the intended scope. `--proxy` / `--no-proxy` are mutually exclusive. HTTP,
+   HTTPS, SOCKS5, and SOCKS5H proxy URIs are supported. FANBOX has independent
+   `[fanbox.network].proxy_url` and `user_agent` settings, plus an optional
+   `[fanbox.flaresolverr]` challenge-only route. With an explicit Pixiv proxy,
+   resource downloads deliberately use HTTP/1.1; App API and OAuth retain
+   normal protocol negotiation.
 11. **Long downloads may legitimately take time.** Do not impose an arbitrary
    timeout or kill the process merely because it is slow; wait for completion,
    user cancellation, or a real error.

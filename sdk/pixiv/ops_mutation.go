@@ -10,7 +10,7 @@ import (
 // bookmark tags.
 func (c *Client) AddBookmark(ctx context.Context, request AddBookmarkRequest) error {
 	if request.ArtworkID <= 0 {
-		return newError("AddBookmark", sdk.CodeInvalidArgument, "artwork ID must be positive")
+		return newError("AddBookmark", sdk.InvalidArgument, "artwork ID must be positive")
 	}
 	if request.Restrict == "" {
 		request.Restrict = RestrictPublic
@@ -24,7 +24,7 @@ func (c *Client) AddBookmark(ctx context.Context, request AddBookmarkRequest) er
 // RemoveBookmark removes the current user's bookmark from one artwork.
 func (c *Client) RemoveBookmark(ctx context.Context, request RemoveBookmarkRequest) error {
 	if request.ArtworkID <= 0 {
-		return newError("RemoveBookmark", sdk.CodeInvalidArgument, "artwork ID must be positive")
+		return newError("RemoveBookmark", sdk.InvalidArgument, "artwork ID must be positive")
 	}
 	if err := c.app.RemoveBookmark(ctx, request.ArtworkID); err != nil {
 		return classifyAppError(err, "RemoveBookmark")
@@ -35,7 +35,7 @@ func (c *Client) RemoveBookmark(ctx context.Context, request RemoveBookmarkReque
 // FollowUser follows one user.
 func (c *Client) FollowUser(ctx context.Context, request FollowUserRequest) error {
 	if request.UserID <= 0 {
-		return newError("FollowUser", sdk.CodeInvalidArgument, "user ID must be positive")
+		return newError("FollowUser", sdk.InvalidArgument, "user ID must be positive")
 	}
 	if request.Restrict == "" {
 		request.Restrict = RestrictPublic
@@ -49,7 +49,7 @@ func (c *Client) FollowUser(ctx context.Context, request FollowUserRequest) erro
 // UnfollowUser unfollows one user.
 func (c *Client) UnfollowUser(ctx context.Context, request UnfollowUserRequest) error {
 	if request.UserID <= 0 {
-		return newError("UnfollowUser", sdk.CodeInvalidArgument, "user ID must be positive")
+		return newError("UnfollowUser", sdk.InvalidArgument, "user ID must be positive")
 	}
 	if err := c.app.UnfollowUser(ctx, request.UserID); err != nil {
 		return classifyAppError(err, "UnfollowUser")

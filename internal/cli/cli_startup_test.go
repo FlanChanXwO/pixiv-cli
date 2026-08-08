@@ -11,20 +11,20 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/cli/loginhelper"
-	constants "github.com/FlanChanXwO/pixiv-cli/internal/platform/localstate"
-	"github.com/FlanChanXwO/pixiv-cli/internal/storage/auth"
-	"github.com/FlanChanXwO/pixiv-cli/internal/utils/files"
+	"github.com/FlanChanXwO/pixiv-cli/internal/bootstrap"
+	"github.com/FlanChanXwO/pixiv-cli/internal/cli/auth/loginhelper"
+	"github.com/FlanChanXwO/pixiv-cli/internal/filesystem"
 )
 
 func TestAuthURLCallbackIsHiddenAndRelaysWithoutStartupSideEffects(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	t.Setenv("USERPROFILE", os.Getenv("HOME"))
-	dir, err := files.UserDataSubdir(constants.AppDataDirName)
+	dir, err := filesystem.UserDataSubdir(filesystem.AppDataDirName)
 	requireNoError(t, err)
-	requireNoError(t, os.MkdirAll(dir, constants.PrivateDirMode))
-	requireNoError(t, os.WriteFile(filepath.Join(dir, "url-handler-endpoint"), []byte("http://127.0.0.1:41871/callback\n"), constants.PrivateFileMode))
+	requireNoError(t, os.MkdirAll(dir, filesystem.PrivateDirMode))
+	requireNoError(t, os.WriteFile(filepath.Join(dir, "url-handler-endpoint"), []byte("http://127.0.0.1:41871/callback\n"), filesystem.PrivateFileMode))
 
 	command := app{}.newAccountCommand()
 	callback, _, findErr := command.Find([]string{internalURLCallbackCommand})
@@ -170,7 +170,7 @@ func TestNormalCLIInvocationEnsuresPersistentHandlerWithoutBlockingCommand(t *te
 
 func TestSecretExportAndInternalCallbackSkipAutomaticHandlerSetup(t *testing.T) {
 	authPath, _ := useTempPaths(t)
-	requireNoError(t, auth.SaveAuthStore(authPath, auth.AuthStore{DefaultUserID: 9, Accounts: []auth.Account{{UserID: 9, RefreshToken: "auto-handler-must-not-touch-export"}}}))
+	requireNoError(t, saveTestAuthStore(t, authPath, testAuthStore{DefaultUserID: 9, Accounts: []testAuthAccount{{UserID: 9, RefreshToken: "auto-handler-must-not-touch-export"}}}))
 	originalSupported := automaticPersistentHandlerSupported
 	originalEnsure := ensureURLSchemeRelay
 	automaticPersistentHandlerSupported = func() bool { return true }
@@ -192,9 +192,9 @@ func TestSecretExportAndInternalCallbackSkipAutomaticHandlerSetup(t *testing.T) 
 
 func TestRunAuthExportSkipsPendingUpdateCleanupBeforeAnyMutation(t *testing.T) {
 	authPath, _ := useTempPaths(t)
-	requireNoError(t, auth.SaveAuthStore(authPath, auth.AuthStore{
+	requireNoError(t, saveTestAuthStore(t, authPath, testAuthStore{
 		DefaultUserID: 7,
-		Accounts:      []auth.Account{{UserID: 7, RefreshToken: "startup-export-secret"}},
+		Accounts:      []testAuthAccount{{UserID: 7, RefreshToken: "startup-export-secret"}},
 	}))
 	original := cleanupPendingWindowsUpdate
 	t.Cleanup(func() { cleanupPendingWindowsUpdate = original })
@@ -214,9 +214,9 @@ func TestRunAuthExportSkipsPendingUpdateCleanupBeforeAnyMutation(t *testing.T) {
 
 func TestRunAuthExportSkipsPendingUpdateCleanupWithLeadingRootFlags(t *testing.T) {
 	authPath, _ := useTempPaths(t)
-	requireNoError(t, auth.SaveAuthStore(authPath, auth.AuthStore{
+	requireNoError(t, saveTestAuthStore(t, authPath, testAuthStore{
 		DefaultUserID: 7,
-		Accounts:      []auth.Account{{UserID: 7, RefreshToken: "root-flag-export-secret"}},
+		Accounts:      []testAuthAccount{{UserID: 7, RefreshToken: "root-flag-export-secret"}},
 	}))
 	original := cleanupPendingWindowsUpdate
 	t.Cleanup(func() { cleanupPendingWindowsUpdate = original })
@@ -253,38 +253,24 @@ func TestRunAuthExportSkipsPendingUpdateCleanupWithLeadingRootFlags(t *testing.T
 	}
 }
 
-func TestRunRootTrueFlagsAndNonExportCommandsStillRunPendingUpdateCleanup(t *testing.T) {
+func TestRunParsedCommandRunsPendingUpdateCleanup(t *testing.T) {
 	original := cleanupPendingWindowsUpdate
 	t.Cleanup(func() { cleanupPendingWindowsUpdate = original })
 
-	for _, test := range []struct {
-		name string
-		args []string
-	}{
-		{name: "help true", args: []string{"pixiv", "--help=true", "auth", "export"}},
-		{name: "help false then true", args: []string{"pixiv", "--help=false", "--help=true", "auth", "export"}},
-		{name: "mixed help false then true", args: []string{"pixiv", "--help=false", "-h=true", "auth", "export"}},
-		{name: "version one", args: []string{"pixiv", "--version=1", "auth", "export"}},
-		{name: "version false then true", args: []string{"pixiv", "--version=false", "--version=true", "auth", "export"}},
-		{name: "version command", args: []string{"pixiv", "version", "--json"}},
-	} {
-		t.Run(test.name, func(t *testing.T) {
-			called := false
-			cleanupPendingWindowsUpdate = func() error {
-				called = true
-				return errors.New("expected cleanup failure")
-			}
-			var stdout, stderr bytes.Buffer
-			code := Run(test.args, strings.NewReader(""), &stdout, &stderr)
+	called := false
+	cleanupPendingWindowsUpdate = func() error {
+		called = true
+		return errors.New("expected cleanup failure")
+	}
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"pixiv", "version", "--json"}, strings.NewReader(""), &stdout, &stderr)
 
-			if code != 1 || !called || !strings.Contains(stderr.String(), "clean pending update: expected cleanup failure") {
-				t.Fatalf("normal startup cleanup contract failed: code=%d cleanup_called=%t stdout_bytes=%d stderr_bytes=%d", code, called, stdout.Len(), stderr.Len())
-			}
-		})
+	if code != 1 || !called || !strings.Contains(stderr.String(), "clean pending update: expected cleanup failure") {
+		t.Fatalf("normal startup cleanup contract failed: code=%d cleanup_called=%t stdout_bytes=%d stderr_bytes=%d", code, called, stdout.Len(), stderr.Len())
 	}
 }
 
-func TestRunInvalidRootBoolKeepsCobraParseError(t *testing.T) {
+func TestRunKnownFlagValueErrorSkipsStartupSideEffects(t *testing.T) {
 	original := cleanupPendingWindowsUpdate
 	t.Cleanup(func() { cleanupPendingWindowsUpdate = original })
 	called := false
@@ -296,7 +282,7 @@ func TestRunInvalidRootBoolKeepsCobraParseError(t *testing.T) {
 
 	code := Run([]string{"pixiv", "--help=not-bool", "--help=false", "auth", "export"}, strings.NewReader(""), &stdout, &stderr)
 
-	if code != 1 || !called || !strings.Contains(stderr.String(), "invalid argument") {
+	if code != 1 || called || !strings.Contains(stderr.String(), "invalid argument") {
 		t.Fatalf("invalid root bool did not preserve Cobra error: code=%d cleanup_called=%t stdout_bytes=%d stderr_bytes=%d", code, called, stdout.Len(), stderr.Len())
 	}
 }
@@ -344,5 +330,106 @@ func TestRunContinuesAfterPendingUpdateCleanup(t *testing.T) {
 	}
 	if !called {
 		t.Fatal("pending update cleanup was not called")
+	}
+}
+
+func TestRunUnknownOptionsAreNormalizedBeforeStartupSideEffects(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("USERPROFILE", os.Getenv("HOME"))
+
+	originalCleanup := cleanupPendingWindowsUpdate
+	originalSupported := automaticPersistentHandlerSupported
+	originalEnsure := ensureURLSchemeRelay
+	t.Cleanup(func() {
+		cleanupPendingWindowsUpdate = originalCleanup
+		automaticPersistentHandlerSupported = originalSupported
+		ensureURLSchemeRelay = originalEnsure
+	})
+
+	cleanupCalls := 0
+	ensureCalls := 0
+	mcpCalls := 0
+	serviceCalls := 0
+	cleanupPendingWindowsUpdate = func() error {
+		cleanupCalls++
+		return nil
+	}
+	automaticPersistentHandlerSupported = func() bool { return true }
+	ensureURLSchemeRelay = func(context.Context) error {
+		ensureCalls++
+		return nil
+	}
+	oldMCP := runMCPServer
+	runMCPServer = func(context.Context, *string, *time.Duration) error {
+		mcpCalls++
+		return nil
+	}
+	oldServices := newCLIServices
+	newCLIServices = func() (*bootstrap.Runtime, error) {
+		serviceCalls++
+		return &bootstrap.Runtime{}, nil
+	}
+	t.Cleanup(func() {
+		runMCPServer = oldMCP
+		newCLIServices = oldServices
+	})
+
+	for _, test := range []struct {
+		name string
+		args []string
+		want string
+	}{
+		{name: "root long", args: []string{"pixiv", "--unknown"}, want: "error: unknown option '--unknown'\n"},
+		{name: "long", args: []string{"pixiv", "version", "--unknown"}, want: "error: unknown option '--unknown'\n"},
+		{name: "long equals", args: []string{"pixiv", "version", "--unknown=value"}, want: "error: unknown option '--unknown'\n"},
+		{name: "pixiv before positional", args: []string{"pixiv", "search", "--unknown", "miku"}, want: "error: unknown option '--unknown'\n"},
+		{name: "pixiv after positional", args: []string{"pixiv", "search", "miku", "--unknown"}, want: "error: unknown option '--unknown'\n"},
+		{name: "fanbox before positional", args: []string{"pixiv", "fanbox", "posts", "--unknown", "source"}, want: "error: unknown option '--unknown'\n"},
+		{name: "pixiv mcp", args: []string{"pixiv", "mcp", "--unknown"}, want: "error: unknown option '--unknown'\n"},
+		{name: "fanbox mcp", args: []string{"pixiv", "fanbox", "mcp", "--unknown"}, want: "error: unknown option '--unknown'\n"},
+		{name: "combined short", args: []string{"pixiv", "version", "-xz"}, want: "error: unknown option '-x'\n"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			_, configPath := useTempPaths(t)
+			cleanupCalls = 0
+			ensureCalls = 0
+			mcpCalls = 0
+			serviceCalls = 0
+			var stdout, stderr bytes.Buffer
+			code := Run(test.args, strings.NewReader(""), &stdout, &stderr)
+			if code != 2 {
+				t.Fatalf("exit code = %d, want 2; stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+			}
+			if stdout.Len() != 0 || stderr.String() != test.want {
+				t.Fatalf("output mismatch: stdout=%q stderr=%q", stdout.String(), stderr.String())
+			}
+			if cleanupCalls != 0 || ensureCalls != 0 || mcpCalls != 0 || serviceCalls != 0 {
+				t.Fatalf("startup side effects ran after parse failure: cleanup=%d ensure=%d mcp=%d services=%d", cleanupCalls, ensureCalls, mcpCalls, serviceCalls)
+			}
+			if _, err := os.Stat(configPath); !errors.Is(err, os.ErrNotExist) {
+				t.Fatalf("config initialization ran after parse failure: stat error=%v", err)
+			}
+		})
+	}
+}
+
+func TestRunReportsNilRuntimeFactoryResult(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("USERPROFILE", os.Getenv("HOME"))
+
+	oldServices := newCLIServices
+	newCLIServices = func() (*bootstrap.Runtime, error) { return nil, nil }
+	t.Cleanup(func() { newCLIServices = oldServices })
+
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"pixiv", "search", "miku"}, strings.NewReader(""), &stdout, &stderr)
+	if code != 1 {
+		t.Fatalf("Run exit code = %d, want 1; stderr=%q", code, stderr.String())
+	}
+	if got := stderr.String(); got != "initialize local state: runtime factory returned nil\n" {
+		t.Fatalf("stderr = %q, want explicit runtime initialization error", got)
+	}
+	if stdout.Len() != 0 {
+		t.Fatalf("runtime initialization failure wrote stdout: %q", stdout.String())
 	}
 }

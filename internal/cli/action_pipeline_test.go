@@ -7,8 +7,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/application"
-	"github.com/FlanChanXwO/pixiv-cli/internal/config"
+	"github.com/FlanChanXwO/pixiv-cli/internal/application/config"
+	downloadapp "github.com/FlanChanXwO/pixiv-cli/internal/application/download"
+	pixivapp "github.com/FlanChanXwO/pixiv-cli/internal/application/pixiv"
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -40,13 +41,13 @@ func TestBookmarkAddConsumesNDJSONAndSkipsFailedRecord(t *testing.T) {
 
 func TestDownloadConsumesNDJSONWithoutWritingAReport(t *testing.T) {
 	useTempPaths(t)
-	var requests []application.DownloadRequest
-	setTestDownloadCommandServices(t, func(application.SDKClientRequest) (application.SDKClient, error) {
-		return &sdkCommandFake{}, nil
-	}, config.RuntimeConfig{}, func(application.DownloadClient, string, string) (application.DownloadManager, error) {
-		return downloadManagerFake{download: func(_ context.Context, request application.DownloadRequest) ([]application.DownloadedArtwork, error) {
+	var requests []downloadapp.DownloadRequest
+	setTestDownloadCommandServices(t, func(pixivapp.SDKClientRequest) (pixivapp.ClientSet, error) {
+		return testClientSet(t, &sdkCommandFake{}), nil
+	}, config.RuntimeConfig{}, func(downloadapp.DownloadClient, string, string) (downloadapp.DownloadManager, error) {
+		return downloadManagerFake{download: func(_ context.Context, request downloadapp.DownloadRequest) ([]downloadapp.DownloadedArtwork, error) {
 			requests = append(requests, request)
-			return []application.DownloadedArtwork{{IllustID: request.IllustIDs[0], Files: []application.DownloadedFile{{Path: "/downloads/work.jpg"}}}}, nil
+			return []downloadapp.DownloadedArtwork{{IllustID: request.IllustIDs[0], Files: []downloadapp.DownloadedFile{{Path: "/downloads/work.jpg"}}}}, nil
 		}}, nil
 	})
 	input := strings.Join([]string{
@@ -59,7 +60,7 @@ func TestDownloadConsumesNDJSONWithoutWritingAReport(t *testing.T) {
 	assert.Equal(t, 1, code)
 	require.Len(t, requests, 1)
 	assert.Equal(t, []int64{91}, requests[0].IllustIDs)
-	assert.Equal(t, application.DownloadQualityMini, requests[0].Quality)
+	assert.Equal(t, downloadapp.DownloadQualityMini, requests[0].Quality)
 	assert.Empty(t, stdout.String())
 	var diagnostic map[string]any
 	require.NoError(t, json.Unmarshal(stderr.Bytes(), &diagnostic))

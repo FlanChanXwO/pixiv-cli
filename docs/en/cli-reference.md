@@ -3,7 +3,7 @@
 English | [简体中文](../zh-CN/cli-reference.md) | [日本語](../ja/cli-reference.md) | [Project home](../../README.md)
 
 This is the complete contract for the `pixiv` command: installation, authentication, commands, flags,
-configuration, environment variables, anonymous fallback, and updates. It does not duplicate SDK or MCP details;
+configuration, environment variables, authentication, and updates. It does not duplicate SDK or MCP details;
 those interfaces are linked under [Related documentation](#related-documentation).
 
 User-visible changes are recorded in the [versioned changelog](../../changelog/README.md).
@@ -140,7 +140,7 @@ The `auth login` flow:
 | Browser | On macOS and Windows, normal CLI startup prepares the current-user `pixiv://` handler; desktop Linux initializes its XDG handler for interactive login. The CLI opens the default browser so an existing Pixiv login session can be reused. With `--no-open`, it prints the login URL and local page address. |
 | Callback | The CLI accepts this round's loopback callback, a one-time desktop hand-off, a terminal paste, or the local page form. After a helper hand-off, the default browser opens the final local success or failure page once OAuth exchange completes. |
 | Validation | The local loopback callback must match this round's state; Pixiv's official callback URL and `pixiv://account/login` can be used as an explicit fallback when Pixiv doesn't return a state. |
-| Save | Refresh/access tokens are never printed; the refresh token is saved to `auth.json` keyed by Pixiv UID. Unix-like systems actively use `0700` parent directories and `0600` files. On Windows, first creation inherits the parent ACL and replacement preserves the existing target ACL; the CLI does not claim to tighten or loosen the DACL. |
+| Save | Refresh/access tokens are never printed; the refresh token is saved to the local SQLite database keyed by Pixiv UID. Unix-like systems actively use `0700` parent directories and `0600` files. On Windows, first creation inherits the parent ACL and replacement preserves the existing target ACL; the CLI does not claim to tighten or loosen the DACL. |
 
 The handler is persistent but runs only when the OS opens `pixiv://`: macOS uses `PixivCLIURLHandler.app`, Windows a
 current-user protocol association, and desktop Linux an XDG desktop entry. It records the prior handler privately.
@@ -256,7 +256,7 @@ pixiv auth export --all --output accounts.pxauth --force
 
 Without `--output`, exactly two forms may write secrets to stdout: default/UID export writes the raw stored token
 plus one newline; `--all` writes only the versioned JSON bundle. They write no stderr on success. Export is strictly
-local-only: it reads `auth.json`, never consults `PIXIV_REFRESH_TOKEN`, never refreshes or contacts Pixiv, never
+local-only: it reads the local SQLite database, never consults `PIXIV_REFRESH_TOKEN`, never refreshes or contacts Pixiv, never
 mutates auth/config, and skips startup pending-update cleanup and automatic update checks.
 `--all` cannot be combined with a UID, `--force` requires `--output`, and export accepts no JSON/proxy flags.
 
@@ -322,12 +322,12 @@ pixiv download 123456 789012
 ```
 
 All persistent application-managed data is stored directly under the current user's home directory: `~/.pixiv-cli` on
-macOS/Linux and `%USERPROFILE%\.pixiv-cli` on Windows. It contains `auth.json`, `config.toml`, callback-bridge state,
+macOS/Linux and `%USERPROFILE%\.pixiv-cli` on Windows. It contains `pixiv-cli.db`, `config.toml`, callback-bridge state,
 the Release-check cache, and the macOS callback helper. Account credentials are keyed by Pixiv UID.
 Unix-like systems actively use `0700` parent directories and `0600` files. On Windows, first creation inherits the
 parent ACL and replacement preserves the existing target ACL; the CLI does not claim to tighten or loosen the DACL.
-On the first ordinary command, a missing `config.toml` is created with the common download, web fallback, output,
-login, and update settings. It never overwrites an existing file. Advanced settings such as proxy, login
+On the first ordinary command, a missing `config.toml` is created with the common download, output, login, and
+update settings. It never overwrites an existing file. Advanced settings such as proxy, login
 timeout, and the Premium-status cache are intentionally omitted until explicitly configured; help, version, secret
 export, and the internal OAuth callback do not create it.
 Output defaults to text; commands that expose `--json` can produce machine-parseable JSON. `auth export`
@@ -337,7 +337,7 @@ The CLI uses Cobra/pflag, so options may appear before or after positional argum
 
 ### Data-operation contract
 
-All non-mutating data reads, recommendations, timelines, and downloads use the local account selected by `pixiv auth use`. Account pooling is active only when `[account_pool]` explicitly sets `enabled = true`; omitting `accounts` uses every account in `auth.json` storage order, while a present `accounts` array is a whitelist. `strategy` defaults to `round_robin` and also supports `random`. Writes, authentication, and configuration do not use the pool. Data commands reject `--uid` and `--refresh-token` and ignore `PIXIV_REFRESH_TOKEN`.
+All non-mutating data reads, recommendations, timelines, and downloads use the local account selected by `pixiv auth use` when the account pool is disabled. Account pooling is active only when `[account_pool]` explicitly sets `enabled = true`; the database `schedulable` flag controls membership and `strategy` defaults to `round_robin` with `random` also supported. Use `pixiv auth pool status|enable|disable` to inspect or change membership. Writes, authentication, and configuration do not use the pool. Data commands reject `--uid` and `--refresh-token` and ignore `PIXIV_REFRESH_TOKEN`.
 
 Visual lists write canonical Record NDJSON automatically when stdout is a non-terminal and no explicit output format was selected. Each line has stable string `id`, `type`, and `url`; `download`, `bookmark add/remove`, and `follow add/remove` consume compatible records without positional IDs. Use `--filter EXPR` for local typed illustration rules, for example `bookmarkCount >= 5000 and xRestrict == 0`; `--json` and explicit `--ndjson` retain precedence.
 
@@ -350,6 +350,7 @@ Ugoira downloads use `--ugoira-mode gif|apng|zip|frames` (`gif` by default). Pag
 | `auth import` | `pixiv auth import [REFRESH_TOKEN] [--file PATH] [--json] [--proxy URL\|--no-proxy]` | Direct input validates and stores the rotated token; no-argument TTY input is hidden and non-TTY input is raw stdin. `--file PATH|-` instead restores a bundle offline and atomically, and conflicts with token/proxy input. |
 | `auth login` | `pixiv auth login [--json] [--no-open] [--addr 127.0.0.1:0] [--use] [--timeout DURATION] [--relay-public-url URL --relay-listen-addr ADDR] [--relay-tls-cert-file PATH --relay-tls-key-file PATH] [--proxy URL\|--no-proxy]` | Uses ordinary loopback OAuth. With a complete relay server configuration, it prints a one-time hand-off URL that directly starts an installed desktop CLI handler. It saves by Pixiv UID and never prints the refresh token. |
 | `auth list` | `pixiv auth list [--json]` | Lists local accounts; never prints refresh tokens. Text output uses `*` for the default and `✓`/`-` for whether a local refresh token is stored/missing. These are local-state markers, not an online validity claim. |
+| `auth pool` | `pixiv auth pool status [--json]`; `pixiv auth pool enable UID... [--all]`; `pixiv auth pool disable UID... [--all]` | Shows or changes non-secret database scheduling state. `status` reports `enabled`, `strategy`, `schedulable`, `frozen_until`, and current `eligible`; enable/disable validates every UID before committing the batch. |
 | `auth export` | `pixiv auth export [UID] [--all] [--output PATH] [--force]` | Exports a default/exact account or all accounts locally. Without `--output`, one account is raw token stdout and `--all` is bundle stdout; with `--output`, both write a private bundle and only a safe summary goes to stdout. `--force` requires `--output`. |
 | `auth use` | `pixiv auth use [UID] [--json]` | Sets the default account; interactive selection on a TTY. |
 | `auth remove` | `pixiv auth remove [UID] [--yes] [--json]` | Removes an account; confirms by default on a TTY. After removing the default account, the first remaining account is selected automatically. |
@@ -357,7 +358,7 @@ Ugoira downloads use `--ugoira-mode gif|apng|zip|frames` (`gif` by default). Pag
 | `auth refresh` | `pixiv auth refresh [UID] [--all] [--json] [--proxy URL\|--no-proxy]` | Refreshes the selected/default saved account's OAuth access token and rotated refresh token, then forces a profile read to update its cached Pixiv Premium status. `--all` refreshes every stored account. JSON always returns `accounts`. |
 | `config path` | `pixiv config path` | Prints the `config.toml` path, creating the baseline file if it is missing. |
 | `config get` | `pixiv config get KEY` | Prints one effective config value. |
-| `config set` | `pixiv config set KEY [VALUE]` | Writes one known config key, including `download_path`, `filename_template`, `directory_template`, `request_interval`, and `https_proxy`. |
+| `config set` | `pixiv config set KEY [VALUE]` | Writes one known config key, including `account_pool_enabled`, `account_pool_strategy`, `download_path`, `filename_template`, `directory_template`, `request_interval`, and `https_proxy`. |
 | `config unset` | `pixiv config unset KEY` | Deletes one known config key from `config.toml`. |
 | `version` | `pixiv version [--json]` | Prints the binary's `version`, `commit`, and `build_date`; the root `pixiv --version` prints only the version. |
 | `update` | `pixiv update [--check] [--prerelease] [--proxy URL]` | Checks for or performs an update matching the current install source; `--json` is only valid together with `--check`. |
@@ -370,7 +371,7 @@ Ugoira downloads use `--ugoira-mode gif|apng|zip|frames` (`gif` by default). Pag
 | `timeline latest` | `pixiv timeline latest --type illust\|manga\|novel [--page N --limit N --json\|--ndjson]` | Reads latest works. |
 | `mypixiv users` | `pixiv mypixiv users [--page N --limit N --json\|--ndjson]` | Lists MyPixiv users for the selected account. |
 | `mypixiv works` | `pixiv mypixiv works [USER_ID] --type illust\|manga\|novel [--page N --limit N --json\|--ndjson]` | Lists MyPixiv works; without USER_ID only `illust` or `novel` is valid. |
-| `user search` | `pixiv user search WORD [--page N --limit N --json]` | Searches users. JSON and text label whether results came from official App user search or anonymous related-illustration-author fallback. |
+| `user search` | `pixiv user search WORD [--page N --limit N --json]` | Searches users. JSON and text always report the official App user search source. |
 | `user detail` | `pixiv user detail USER_ID [--json]` | Shows a user's full public profile; `USER_ID` is required. |
 | `user artworks` | `pixiv user artworks [USER_ID] [--type TYPE --filter EXPR --page N --limit N]` | Shows a user's artworks; uses the current authenticated user when `USER_ID` is omitted. |
 | `user bookmarks` | `pixiv user bookmarks [USER_ID] [--restrict public\|private --tag TAG --filter EXPR --page N --limit N]` | Shows a user's bookmarks, optionally filtered by visibility and tag; uses the current authenticated user when `USER_ID` is omitted. |
@@ -381,6 +382,14 @@ Ugoira downloads use `--ugoira-mode gif|apng|zip|frames` (`gif` by default). Pag
 | `follow remove` | `pixiv follow remove USER_ID` | Unfollows a user; it does not accept a visibility flag. |
 | `download` | `pixiv download [options] SRC...` | Downloads an artwork PID/URL, an allowed CDN URL, or all visual works from a supported user, public-bookmarks, or illustration-series URL. |
 | `mcp` | `pixiv mcp [--proxy URL\|--no-proxy]` | Starts the MCP stdio server; the proxy override applies only to this launch. |
+| `fanbox auth` | `pixiv fanbox auth import|list|use|remove|status` | Imports and manages local FANBOX sessions. Session values are never printed. Native `--proxy`/`--no-proxy` applies only to the FANBOX command. |
+| `fanbox creators` | `pixiv fanbox creators [--kind supporting\|following] [--page N --limit N]` | Lists supporting or following FANBOX creators. |
+| `fanbox posts` | `pixiv fanbox posts SOURCE [--page N --limit N]` | Lists posts from a creator, tag, post ID, or supported FANBOX URL. |
+| `fanbox tags` | `pixiv fanbox tags CREATOR` | Lists featured tags used by a creator. |
+| `fanbox home` / `supporting` | `pixiv fanbox home|supporting [--page N --limit N]` | Reads the authenticated FANBOX home or supporting feed. |
+| `fanbox post` | `pixiv fanbox post POST_ID` | Reads one post and its safe asset summary. |
+| `fanbox download` | `pixiv fanbox download SOURCE...` | Saves FANBOX post assets below the configured download path. |
+| `fanbox mcp` | `pixiv fanbox mcp [--proxy URL\|--no-proxy]` | Starts the read-only FANBOX MCP stdio server; the native proxy override does not alter FlareSolverr settings. |
 
 Downloaded filenames normalize cross-platform-invalid characters in both the filename template and URL-derived
 extension. Extensions also replace ASCII control characters and remove trailing dots or spaces rejected by
@@ -543,6 +552,7 @@ failures on stderr and returns non-zero when an operation cannot complete.
 | `--sleep-request DURATION` | network commands and `mcp` | configuration/default | Minimum interval between network request starts for this invocation; overrides `PIXIV_REQUEST_INTERVAL` and `[network].request_interval`. |
 | `--proxy URL` | network commands and `mcp` | `https_proxy`/`HTTPS_PROXY`, `config.toml`, or empty | Uses an `http`, `https`, `socks5`, or `socks5h` proxy URI for this command only; forbidden with `auth import --file`. |
 | `--no-proxy` | same as `--proxy` | empty | Clears the proxy for this command; cannot be combined with `--proxy` or bundle restore. |
+| `--debug` | every CLI command, `mcp`, and `fanbox mcp` | `false` | Writes safe, real-time English diagnostics to stderr only. It creates no log file and does not change stdout, routing, retries, or result shape. `auth export` and hidden OAuth callback commands keep stderr empty. |
 
 ### CLI-managed `config` aliases
 
@@ -550,13 +560,50 @@ failures on stderr and returns non-zero when an operation cannot complete.
 
 | KEY | Type | Default | Description |
 | --- | --- | --- | --- |
+| `account_pool_enabled` | boolean | `false` | Enables database-backed account-pool selection for safe read/download operations. |
+| `account_pool_strategy` | string | `round_robin` | Account-pool strategy: `round_robin` or `random`. |
 | `download_path` | string | `./downloads` | Download directory. |
 | `filename_template` | string | `{author} - {title}_{id}` | Filename template. |
 | `directory_template` | string | empty | Relative download directory template. |
 | `request_interval` | duration | `0` | Minimum interval between network request starts; `PIXIV_REQUEST_INTERVAL` and `--sleep-request` can override it. |
-| `https_proxy` | string | empty | Proxy URI (`http`, `https`, `socks5`, or `socks5h`); the lowercase `https_proxy` environment variable takes precedence. |
+| `https_proxy` | string | empty | Global proxy URI (`http`, `https`, `socks5`, or `socks5h`); the lowercase `https_proxy` environment variable takes precedence. |
 
-Manual TOML may contain advanced runtime sections such as `[account_pool]`, `[web]`, `[login]`, and `[update]`. Never put a refresh token in `config.toml`. Account-pool state records only the last UID/freeze information and never stores a token. Legacy `[logging]` tables are ignored; `log_level` is not a supported `pixiv config` key.
+Manual TOML may contain advanced runtime sections such as `[account_pool]`, `[network]`, `[pixiv.network]`,
+`[fanbox.network]`, `[fanbox.flaresolverr]`, `[login]`, and `[update]`:
+
+```toml
+[network]
+https_proxy = "http://global-proxy.example:7890"
+
+[pixiv.network]
+proxy_url = "socks5h://pixiv-proxy.example:1080"
+
+[fanbox.network]
+proxy_url = ""                    # explicit direct native FANBOX access
+user_agent = "my-native-agent/1.0"
+
+[fanbox.flaresolverr]
+url = "http://127.0.0.1:8191"
+proxy_url = "socks5://solver-upstream.example:1080"
+```
+
+`[pixiv.network].proxy_url` and `[fanbox.network].proxy_url` preserve absent versus explicit empty:
+the command override (`--proxy`/`--no-proxy`) wins, then the corresponding service value, then the global
+environment/config proxy, then direct access. FANBOX native accepts only userinfo-free HTTP(S) CONNECT;
+Pixiv accepts HTTP(S), SOCKS5, and SOCKS5H. `user_agent` changes only the FANBOX native header and does not
+change its Firefox 148 TLS profile or guarantee Cloudflare access. FlareSolverr is optional and challenge-only;
+its service URL and upstream proxy are independent from the native FANBOX proxy. The default config generator
+does not create any of these optional tables.
+
+`[account_pool]` stores only `enabled` and `strategy`; per-account `schedulable`, freeze, and marker state lives
+in `pixiv-cli.db`. A legacy `account_pool.accounts` array is migrated once into those database flags and then
+removed while preserving the rest of the table. Never put a refresh token in `config.toml`. The historical
+`data/account-pool.json` scheduler is not read, migrated, or deleted automatically. Legacy `[logging]` tables
+are ignored; `log_level` is not a supported `pixiv config` key.
+
+The v1 CLI does not read or migrate a legacy `~/.pixiv-cli/auth.json`. Before switching from an older CLI, run
+`pixiv auth export --all --output <private bundle>` with the old version, then run `pixiv auth import --file <bundle>`
+with v1. The transfer is explicit so a stale or unexpected local file cannot become an implicit credential source.
 
 ### Environment variables
 
@@ -569,49 +616,41 @@ Manual TOML may contain advanced runtime sections such as `[account_pool]`, `[we
 | `PIXIV_REQUEST_INTERVAL` | empty | Minimum interval between network request starts. |
 | `https_proxy` / `HTTPS_PROXY` | empty | Proxy URI (`http`, `https`, `socks5`, or `socks5h`); the lowercase `https_proxy` takes precedence. |
 
-CLI data commands select `auth.json.default_user_id` through `pixiv auth use`, or an eligible manual `[account_pool]`; they do not accept credential-selection flags or read `PIXIV_REFRESH_TOKEN`.
+CLI data commands select the explicit/default account through `pixiv auth use` when pooling is disabled, or an eligible database account when pooling is enabled; they do not accept credential-selection flags or read `PIXIV_REFRESH_TOKEN`.
 
-Settings precedence: CLI flag > environment variable > `config.toml` > built-in default. The only CLI proxy
-overrides are `--proxy URL` / `--no-proxy`, and they are never persisted.
+Settings precedence is service-scoped: command `--proxy URL` / `--no-proxy` > the corresponding service
+proxy key (including an explicit empty value) > `https_proxy`/`HTTPS_PROXY` > `[network].https_proxy` > direct.
+CLI proxy overrides are never persisted. Update checks use only their general network fallback and never consume
+FANBOX service or solver settings.
 
-### Anonymous web fallback
+### Debug diagnostics
 
-When the selected local account has no refresh token, and
-`web_fallback_enabled=true`, the following capabilities automatically use the Pixiv web/ajax API: `search`,
-`detail`, `ranking`, and `download` CLI commands.
-
-With a refresh token, the App API handles the request. Invalid tokens and App API network or server errors return a
-safe, classified failure.
-
-Differences in the anonymous fallback:
-
-- Anonymous `search` only applies filters that Web API can express reliably. Resolution, aspect ratio, drawing
-  tool, and content type are translated to Web parameters; AI filtering uses returned artwork fields.
-- `rating=r18`, `r18g`, `mature`, `--search-by tag-title-caption`, or bookmark-count bounds fail before an anonymous
-  request with an authentication requirement rather than pretending the result is empty. Bookmark-count bounds additionally require Pixiv Premium. `rating=all` means only content visible anonymously.
-- `novel search` is App-only and returns an authentication requirement without a refresh token.
-- The nine extended ranking modes (`day_manga`, `week_manga`, `month_manga`, `week_rookie_manga`, `day_r18`,
-  `day_male_r18`, `day_female_r18`, `week_r18`, `week_r18g`) require authentication; they do not fall back to
-  anonymous daily ranking.
-- Authenticated `user search` uses Pixiv's official App user search and returns `source: "app_search"`. Anonymous
-  fallback dedupes web work-search results by `userId`, returns `source: "related_illust_authors"`, and is explicitly
-  labeled as related authors rather than a username search.
-- Static single/multi-page downloads use the `original` URLs from `/ajax/illust/{id}/pages`.
-- Ugoira downloads use the `originalSrc` zip and frames from `/ajax/illust/{id}/ugoira_meta`; supported release
-  builds encode GIF/APNG with the built-in Rust encoder.
-- The web fallback uses `--proxy` / `--no-proxy`, `https_proxy` / `HTTPS_PROXY`, or
-  `pixiv config set https_proxy ...`.
-
-An invalid proxy URL makes affected CLI data commands and update checks fail before any network request. Diagnostics
-retain only safe classification and static context; they never echo input userinfo, path, or query.
-
-To disable it:
+Pass `--debug` before or after a command to observe safe lifecycle, account-pool, network, challenge, solver,
+download, and error events:
 
 ```bash
-# ~/.pixiv-cli/config.toml
-[web]
-fallback_enabled = false
+pixiv --debug detail 123456
+pixiv fanbox --debug post 12221352
+pixiv --debug mcp 2>debug.log
 ```
+
+Every line is written to stderr with a product-plus-subsystem module and a complete English sentence. No `logs/`
+directory, daily file, JSON event stream, raw URL, Cookie, token, signed query, proxy userinfo, or solver
+clearance is written. stdout and MCP JSON-RPC remain unchanged. `pixiv auth export` deliberately creates no
+diagnostic scope, even when `--debug` is supplied, so its raw-token/bundle stdout and empty stderr contract stays
+byte-for-byte intact. An unknown option is reported before a scope is created and exits with code `2`.
+
+### Removed anonymous web fallback
+
+v1 removed the anonymous Web API fallback. Content commands require an
+authenticated local account selected through `pixiv auth use` or a manual
+`[account_pool]` or `pixiv auth use`; without one they return an authentication requirement. The
+removed `web_fallback_enabled` setting returns `removed_setting` if still
+present in `config.toml`, and `pixiv config unset web_fallback_enabled` clears
+it.
+
+Invalid tokens and App API network or server errors return a safe, classified
+failure.
 
 ## Version and updates
 

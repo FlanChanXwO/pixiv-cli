@@ -78,8 +78,8 @@ func checkRecoveryPolicy(root *yaml.Node) error {
 	if containsScalarFragment(root, "GITHUB_REF_NAME") {
 		return errors.New("release workflow must not derive production identity from GITHUB_REF_NAME")
 	}
-	if countScalarFragment(root, "GITHUB_SHA") != 2 {
-		return errors.New("only the audited E2E and build test overlays may read the workflow GITHUB_SHA")
+	if countScalarFragment(root, "GITHUB_SHA") != 1 {
+		return errors.New("only the audited build verifier overlay may read the workflow GITHUB_SHA")
 	}
 	steps, err := jobSteps(build)
 	if err != nil {
@@ -109,8 +109,8 @@ func requireCanonicalBuildSteps(steps []*yaml.Node) error {
 		{name: "Validate the exact immutable release source", command: `go run ./scripts/releaseassets validate-source --version "${RELEASE_TAG#v}" --product-skill skills/pixiv-cli/SKILL.md`},
 		{name: "Install the pinned native Rust toolchain", command: testRustInstallCommand},
 		{name: "Check vendored Rust sources", command: "sh scripts/test-rust-vendor.sh"},
-		{name: "Check Rust formatting from vendored sources", command: "cargo fmt --check", directory: "internal/download/ugoira_rs"},
-		{name: "Lint vendored Rust sources", command: "cargo clippy --locked --offline --all-targets -- -D warnings", directory: "internal/download/ugoira_rs"},
+		{name: "Check Rust formatting from vendored sources", command: "cargo fmt --check", directory: "internal/downloader/ugoira_rs"},
+		{name: "Lint vendored Rust sources", command: "cargo clippy --locked --offline --all-targets -- -D warnings", directory: "internal/downloader/ugoira_rs"},
 	} {
 		step := steps[index+2]
 		var err error
@@ -233,7 +233,7 @@ test "$(git rev-parse HEAD)" = "$(git rev-parse "$RELEASE_TAG^{commit}")"
 test -z "$(git status --porcelain --untracked-files=all)"
 test -z "$(git clean -ndx)"
 bash scripts/build-staticlibs.sh --target '${{ matrix.rust_target }}'
-git restore --source="$RELEASE_TAG^{commit}" -- internal/download/ugoira_rs/staticlib/manifest.json
+git restore --source="$RELEASE_TAG^{commit}" -- internal/downloader/ugoira_rs/staticlib/manifest.json
 git diff --exit-code
 test -z "$(git status --porcelain --untracked-files=all)"
 test -z "$(git clean -ndx)"`

@@ -15,7 +15,7 @@ var errNoPublishTime = errors.New("no publish time")
 func (c *Client) mapArtwork(m model.Illust) (Artwork, error) {
 	published, err := parseUTCTime(m.CreateDate)
 	if err != nil {
-		return Artwork{}, newError("Artwork", sdk.CodeMalformedUpstreamResponse, "invalid publish time")
+		return Artwork{}, newError("Artwork", sdk.MalformedUpstreamResponse, "invalid publish time")
 	}
 	kind, raw := artworkKind(m.Type)
 	out := Artwork{
@@ -84,7 +84,7 @@ func (c *Client) mapArtworkPages(m model.Illust) ([]ArtworkPage, error) {
 		for _, page := range m.MetaPages {
 			url := firstAvailable(page.ImageURLs)
 			if url == "" {
-				return nil, newError("ArtworkPages", sdk.CodeMalformedUpstreamResponse, "page has no image URL")
+				return nil, newError("ArtworkPages", sdk.MalformedUpstreamResponse, "page has no image URL")
 			}
 			res, err := c.newResource("artwork", m.ID, page.PageIndex, url)
 			if err != nil {
@@ -112,7 +112,7 @@ func (c *Client) mapArtworkPages(m model.Illust) ([]ArtworkPage, error) {
 func (c *Client) mapNovel(m model.Novel) (Novel, error) {
 	published, err := parseUTCTime(m.CreateDate)
 	if err != nil {
-		return Novel{}, newError("Novel", sdk.CodeMalformedUpstreamResponse, "invalid publish time")
+		return Novel{}, newError("Novel", sdk.MalformedUpstreamResponse, "invalid publish time")
 	}
 	out := Novel{
 		ID:             m.ID,

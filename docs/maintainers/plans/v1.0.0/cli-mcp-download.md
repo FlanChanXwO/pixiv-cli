@@ -3,8 +3,9 @@
 ## CLI
 
 Pixiv 根命令保持现有领域组织。内容命令没有有效本地账号时返回明确认证错误，不再匿名读取。
-数据命令继续只使用 `pixiv auth use` 选择的账号或手工 `[account_pool]`，拒绝 `--uid`、
-`--refresh-token` 并忽略 `PIXIV_REFRESH_TOKEN`。
+数据命令继续只使用 `pixiv auth use` 选择的账号，或在 `[account_pool].enabled=true` 时从数据库中
+`schedulable=1` 的账号调度；拒绝 `--uid`、`--refresh-token` 并忽略 `PIXIV_REFRESH_TOKEN`。配置、
+CLI 管理、公平选择与 429 安全重放见 [Pixiv 账号调度](account-pool-scheduling.md)。
 
 新增 FANBOX 命令：
 
@@ -28,15 +29,30 @@ pixiv fanbox mcp
 
 Pixiv auth 同样提供 `auth use --auto`，用于删除显式 default key。
 
+Pixiv auth 增加 `auth pool status|enable|disable` 管理数据库调度字段；不再通过
+`config.toml` 的 UID 数组维护 membership。完整命令契约由账号调度分卷冻结。
+
 `--stdin` 与 `--from-browser` 互斥；Cookie 不允许作为位置参数或普通 flag。TTY 输入隐藏，
 非 TTY 才读取 raw stdin。浏览器导入在保存前立即验证身份；失败不产生账号记录。
 
 `SOURCE` 接受的 creator ID、tag、post ID、FANBOX URL 与旧 Pixiv FANBOX redirect 形成每个
 命令的显式输入矩阵。无法唯一判断的字符串返回 `invalid_argument`，不猜测式 fallback。
 
+Pixiv 与 FANBOX network command 的全局 fallback、服务级 proxy override、FANBOX-only UA 与
+FlareSolverr 独立拓扑见 [网络配置与服务路由](network-routing.md)。没有代理池或账号代理绑定。
+
+根命令增加单一显式 `--debug`，让普通 CLI、`pixiv mcp` 与 `pixiv fanbox mcp` 把安全执行链实时写入
+stderr。默认不创建项目级日志或 `logs/`，也不增加 config/env/log level；完整格式、模块命名、
+并发关联、secret 与 writer failure 契约见 [显式 debug 诊断](debug-diagnostics.md)。
+`auth export` 为保留成功 stderr 为空的既有机器接口而不创建 diagnostic scope；它不拒绝根 flag，也
+不改变 raw token/bundle stdout。
+
 CLI 文本、JSON、NDJSON、stderr 与 progress 都不得出现 refresh/access token、Cookie、签名
 URL、browser path 或 profile 内容。FANBOX 不提供 session export；Pixiv auth export/bundle 的
 现有 local-only secret stdout 契约保持不变。
+
+后续 RC 的统一 unknown-option message、usage exit code、`--` 与解析前副作用边界不追加到本初始
+CLI 计划；canonical 规格见 [严格 unknown-option 解析](strict-cli-argument-parsing.md)。
 
 ## Credential data flow
 
@@ -46,6 +62,7 @@ Pixiv operation：
 config/default or account-pool selection
 → read refresh token from pixiv-cli.db
 → pixiv.Open
+→ verify returned user ID matches selected authdb UID
 → transactionally persist rotated Credentials
 → execute content operation with returned Client
 ```
@@ -74,7 +91,7 @@ config/default selection
   server 启动时使用非 secret UID 显式选择。
 - Pixiv MCP 凭据选择遵循其独立 runtime 配置，不与 FANBOX 共享。
 - stdout 只允许 JSON-RPC；runtime failure 保留 structured result 并设置 `isError=true`。
-- 不创建项目级日志；错误和 structured output 使用相同脱敏边界。
+- 默认不创建项目级日志；显式 `--debug` 只写 stderr，错误和 structured output 使用相同脱敏边界。
 - 两个 server 不共享 Client、credential、cursor、tool registry 或 fallback。
 
 ## 下载边界
@@ -117,9 +134,9 @@ internal/services/pixiv/appapi
 internal/services/pixiv/oauth
 internal/services/pixiv/resource
 internal/services/fanbox
-internal/platform/browsercookies
-internal/storage/authdb
-internal/download
+internal/browsercookies
+internal/persistence/authdb
+internal/downloader
 sdk
 sdk/pixiv
 sdk/fanbox

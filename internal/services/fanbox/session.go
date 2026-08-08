@@ -14,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/FlanChanXwO/pixiv-cli/internal/diagnostics"
 	fhttp "github.com/bogdanfinn/fhttp"
 	tlsclient "github.com/bogdanfinn/tls-client"
 	"github.com/bogdanfinn/tls-client/profiles"
@@ -22,8 +23,10 @@ import (
 
 const (
 	webBaseURL = "https://www.fanbox.cc/"
-	apiBaseURL = "https://api.fanbox.cc/api/v1/"
-	userAgent  = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36"
+	apiBaseURL = "https://api.fanbox.cc/"
+	// Firefox 148 is the profile selected by the recorded FANBOX native
+	// evidence. The UA is only a header baseline; it is not a bypass guarantee.
+	userAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:148.0) Gecko/20100101 Firefox/148.0"
 )
 
 // 分类 sentinel 错误；公开 SDK 层依据它们做进一步分类。
@@ -34,20 +37,46 @@ var (
 	ErrChallenge = errors.New("fanbox: challenge required")
 	// ErrNotAuthenticated 表示会话缺失或过期（401）。
 	ErrNotAuthenticated = errors.New("fanbox: not authenticated")
+	// ErrInvalidOption identifies a malformed explicit FANBOX connection option.
+	// The public SDK maps it to InvalidArgument without echoing the value.
+	ErrInvalidOption = errors.New("fanbox: invalid option")
 )
 
 // Session 是带 FANBOX Cookie 的只读会话。Cookie 不会作为导出字段或日志数据暴露。
 type Session struct {
-	httpClient *http.Client
-	proxyURL   string
-	cookie     string
+	httpClient   *http.Client
+	proxyURL     string
+	userAgent    string
+	cookie       string
+	flareSolverr *FlareSolverrOptions
+
+	solverMu         sync.Mutex
+	solverState      *solverState
+	solverActive     *solverCall
+	solverHTTPClient *http.Client // deterministic test seam; production remains direct.
+}
+
+// FlareSolverrOptions carries the two independent addresses used by the
+// optional challenge recovery path. Solver state is kept on one Session only.
+type FlareSolverrOptions struct {
+	URL      string
+	ProxyURL string
+}
+
+// SessionOptions contains explicit FANBOX native and solver configuration.
+// The solver is inactive when FlareSolverr is nil.
+type SessionOptions struct {
+	HTTPClient   *http.Client
+	ProxyURL     string
+	UserAgent    string
+	FlareSolverr *FlareSolverrOptions
 }
 
 // String 只返回会话类型，避免诊断格式化泄露认证 Cookie。
-func (Session) String() string { return "FANBOX Session" }
+func (*Session) String() string { return "FANBOX Session" }
 
 // GoString 保护 %#v 格式化路径，避免它展开 Session 私有字段。
-func (Session) GoString() string { return "fanbox.Session{}" }
+func (*Session) GoString() string { return "fanbox.Session{}" }
 
 // Option 调整 Session 构造的非敏感选项。
 type Option func(*Session)
@@ -58,49 +87,78 @@ func WithHTTPClient(client *http.Client) Option {
 	return func(s *Session) { s.httpClient = client }
 }
 
-// WithProxyURL 使用 HTTP(S) CONNECT 代理构造 tls-client Chrome 指纹 transport。
+// WithProxyURL 使用 HTTP(S) CONNECT 代理构造 tls-client Firefox 指纹 transport。
 // 校验失败不回显原始 URL，避免 userinfo 出现在错误或日志中。
 func WithProxyURL(raw string) Option {
 	return func(s *Session) { s.proxyURL = raw }
 }
 
-// NewSession 创建 FANBOX 只读会话。默认使用 tls-client Chrome_146 指纹的生产
+// WithUserAgent overrides only the native FANBOX HTTP User-Agent header.
+func WithUserAgent(value string) Option {
+	return func(s *Session) { s.userAgent = value }
+}
+
+// WithFlareSolverr enables the explicit challenge recovery service.
+func WithFlareSolverr(options FlareSolverrOptions) Option {
+	return func(s *Session) { s.flareSolverr = &options }
+}
+
+// NewSession 创建 FANBOX 只读会话。默认使用 tls-client Firefox_148 指纹的生产
 // transport；注入 WithHTTPClient 时使用调用方提供的标准 transport。
 func NewSession(cookieValue string, opts ...Option) (*Session, error) {
-	options := &Session{}
+	configured := &Session{}
 	for _, opt := range opts {
 		if opt != nil {
-			opt(options)
+			opt(configured)
 		}
 	}
-	if options.httpClient != nil {
-		return NewSessionWithHTTPClient(cookieValue, options.httpClient)
-	}
-	proxyURL, err := validateProxyURL(options.proxyURL)
+	return NewSessionWithOptions(cookieValue, SessionOptions{
+		HTTPClient:   configured.httpClient,
+		ProxyURL:     configured.proxyURL,
+		UserAgent:    configured.userAgent,
+		FlareSolverr: configured.flareSolverr,
+	})
+}
+
+// NewSessionWithOptions creates a session with explicit native and solver
+// options. It performs no network I/O.
+func NewSessionWithOptions(cookieHeader string, options SessionOptions) (*Session, error) {
+	validatedAgent, err := validateUserAgent(options.UserAgent)
 	if err != nil {
 		return nil, err
 	}
-	transport, err := newChromeTransport(proxyURL)
+	proxyURL, err := validateProxyURL(options.ProxyURL)
+	if err != nil {
+		return nil, err
+	}
+	flareSolverr, err := normalizeFlareSolverrOptions(options.FlareSolverr)
+	if err != nil {
+		return nil, err
+	}
+	if options.HTTPClient != nil {
+		if options.HTTPClient.Transport == nil {
+			return nil, errors.New("FANBOX injected HTTP client requires an explicit transport")
+		}
+		return newSession(cookieHeader, options.HTTPClient, proxyURL, validatedAgent, flareSolverr)
+	}
+	transport, err := newFirefoxTransport(proxyURL)
 	if err != nil {
 		return nil, fmt.Errorf("create FANBOX TLS transport: %w", err)
 	}
-	return newSession(cookieValue, &http.Client{Transport: transport})
+	return newSession(cookieHeader, &http.Client{Transport: transport}, proxyURL, validatedAgent, flareSolverr)
 }
 
 // NewSessionWithHTTPClient 仅供受控测试或上层显式注入 transport；client 必须有 transport。
 func NewSessionWithHTTPClient(cookieHeader string, client *http.Client) (*Session, error) {
-	if client == nil || client.Transport == nil {
-		return nil, errors.New("FANBOX injected HTTP client requires an explicit transport")
-	}
-	return newSession(cookieHeader, client)
+	return NewSessionWithOptions(cookieHeader, SessionOptions{HTTPClient: client})
 }
 
-func newSession(cookieHeader string, client *http.Client) (*Session, error) {
+func newSession(cookieHeader string, client *http.Client, proxyURL, agent string, flareSolverr *FlareSolverrOptions) (*Session, error) {
 	cookie, err := NormalizeCookieHeader(cookieHeader)
 	if err != nil {
 		return nil, err
 	}
-	return &Session{httpClient: client, cookie: cookie}, nil
+	return &Session{httpClient: client, proxyURL: proxyURL, userAgent: agent, cookie: cookie, flareSolverr: flareSolverr}, nil
 }
 
 // CloseIdleConnections 释放会话 transport 持有的空闲连接。它不设置请求 deadline；
@@ -120,6 +178,49 @@ const (
 )
 
 func (s *Session) do(ctx context.Context, rawURL string, kind requestKind, includeCookie bool, accept string) (*http.Response, error) {
+	return s.doWithRequest(ctx, rawURL, kind, includeCookie, accept, http.MethodGet, nil)
+}
+
+// doWithRequest adds the small, product-controlled resource request surface to
+// the shared FANBOX transport. Callers cannot pass arbitrary headers; the
+// public SDK constructs the allowlisted Range/conditional headers before this
+// function is reached.
+func (s *Session) doWithRequest(ctx context.Context, rawURL string, kind requestKind, includeCookie bool, accept, method string, headers http.Header) (*http.Response, error) {
+	if s == nil {
+		return nil, errors.New("FANBOX session has no HTTP transport")
+	}
+	method = strings.ToUpper(strings.TrimSpace(method))
+	if method == "" {
+		method = http.MethodGet
+	}
+	if method != http.MethodGet && method != http.MethodHead {
+		return nil, errors.New("FANBOX resource request method is invalid")
+	}
+	response, err := s.doNativeWithRequest(ctx, rawURL, kind, includeCookie, accept, method, headers)
+	if !errors.Is(err, ErrChallenge) || s.flareSolverr == nil {
+		return response, err
+	}
+	// A challenge after cached clearance invalidates only this Client's in-memory
+	// state. The original request is allowed one fresh solve and one native
+	// replay; a second challenge is returned to the caller.
+	s.invalidateSolverState()
+	if _, solveErr := s.waitForSolver(ctx); solveErr != nil {
+		return nil, solveErr
+	}
+	diagnostics.Emit(ctx, diagnostics.Event{
+		Module:    diagnostics.ModuleFanboxNetwork,
+		Kind:      diagnostics.EventReplay,
+		Operation: "request",
+		Route:     "native transport",
+	})
+	response, err = s.doNativeWithRequest(ctx, rawURL, kind, includeCookie, accept, method, headers)
+	if errors.Is(err, ErrChallenge) {
+		s.invalidateSolverState()
+	}
+	return response, err
+}
+
+func (s *Session) doNativeWithRequest(ctx context.Context, rawURL string, kind requestKind, includeCookie bool, accept, method string, headers http.Header) (*http.Response, error) {
 	if s == nil || s.httpClient == nil || s.httpClient.Transport == nil {
 		return nil, errors.New("FANBOX session has no HTTP transport")
 	}
@@ -136,18 +237,24 @@ func (s *Session) do(ctx context.Context, rawURL string, kind requestKind, inclu
 		}
 		visited[canonical] = struct{}{}
 
-		request, err := http.NewRequestWithContext(ctx, http.MethodGet, canonical, nil)
+		request, err := http.NewRequestWithContext(ctx, method, canonical, nil)
 		if err != nil {
 			return nil, errors.New("build FANBOX request")
 		}
 		request.Header.Set("Origin", "https://www.fanbox.cc")
 		request.Header.Set("Referer", webBaseURL)
-		request.Header.Set("User-Agent", userAgent)
+		agent, clearance := s.nativeState()
+		request.Header.Set("User-Agent", agent)
 		request.Header.Set("Accept", accept)
+		for key, values := range headers {
+			for _, value := range values {
+				request.Header.Add(key, value)
+			}
+		}
 		// Cookie 只用于首个认证请求。一旦服务端发出 redirect，之后的手动跟随请求
 		// 即使仍指向 www/api FANBOX 也绝不带 Cookie。
-		if includeCookie && !redirected && fanboxCookieHost(target.Hostname()) {
-			request.Header.Set("Cookie", s.cookie)
+		if includeCookie && !redirected && credentialCookieAllowed(kind, target.Hostname()) {
+			request.Header.Set("Cookie", nativeCookieHeader(s.cookie, clearance))
 		}
 
 		// 禁用 Client 的默认十跳 redirect 行为；redirect 由此循环逐跳验证而无猜测上限。
@@ -156,11 +263,27 @@ func (s *Session) do(ctx context.Context, rawURL string, kind requestKind, inclu
 		client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
 		response, err := client.Do(request)
 		if err != nil {
+			diagnostics.Emit(ctx, diagnostics.Event{
+				Module:    diagnostics.ModuleFanboxNetwork,
+				Kind:      diagnostics.EventFailed,
+				Operation: "network request",
+				Route:     fanboxDiagnosticRoute(kind),
+			})
 			return nil, safeExternalError(ctx, "FANBOX request failed", err)
 		}
 		if response == nil {
 			return nil, errors.New("FANBOX request returned no response")
 		}
+		diagnostics.Emit(ctx, diagnostics.Event{
+			Module:    diagnostics.ModuleFanboxNetwork,
+			Kind:      diagnostics.EventNetworkRequest,
+			Operation: fanboxDiagnosticOperation(kind),
+			Resource:  target.EscapedPath(),
+			Route:     fanboxDiagnosticRoute(kind),
+			Proxy:     s.proxyURL,
+			UserAgent: agent,
+			Status:    response.StatusCode,
+		})
 		if response.StatusCode >= http.StatusMultipleChoices && response.StatusCode < http.StatusBadRequest {
 			location := response.Header.Get("Location")
 			if err := closeResponseBody(ctx, response); err != nil {
@@ -187,22 +310,29 @@ func (s *Session) do(ctx context.Context, rawURL string, kind requestKind, inclu
 // classifyError 把非 2xx 响应映射为分类 sentinel；403 依 body/header 区分 challenge。
 func (s *Session) classifyError(ctx context.Context, response *http.Response) error {
 	status := response.StatusCode
-	var challengeMarkers string
+	challengeMarkers := false
+	var readErr error
 	if status == http.StatusForbidden && response.Body != nil {
-		// 只读取有限字节判定 challenge marker；内容永不进入返回的错误。
-		data, readErr := io.ReadAll(io.LimitReader(response.Body, 4096))
-		if readErr == nil {
-			challengeMarkers = string(data)
-		}
+		// 流式扫描并丢弃整个响应体；没有任意字节截断，也不把 body 保留到错误或日志。
+		challengeMarkers, readErr = scanChallengeBody(response.Body)
 	}
 	if err := closeResponseBody(ctx, response); err != nil {
 		return err
+	}
+	if readErr != nil {
+		return safeExternalError(ctx, "read FANBOX error response failed", readErr)
 	}
 	switch status {
 	case http.StatusUnauthorized:
 		return ErrNotAuthenticated
 	case http.StatusForbidden:
-		if challengeDetected(challengeMarkers, response.Header) {
+		if challengeMarkers || challengeHeaderDetected(response.Header) || challengeHTMLResponse(response.Header) {
+			diagnostics.Emit(ctx, diagnostics.Event{
+				Module:    diagnostics.ModuleFanboxNetwork,
+				Kind:      diagnostics.EventChallenge,
+				Operation: "request",
+				Status:    status,
+			})
 			return ErrChallenge
 		}
 		return ErrForbidden
@@ -211,20 +341,75 @@ func (s *Session) classifyError(ctx context.Context, response *http.Response) er
 	}
 }
 
-// challengeDetected 依据 Cloudflare 的 cf-chl/cf_chl/challenge body marker 或
-// Cf-Mitigated: challenge header 判定 challenge；FANBOX 本身在 Cloudflare 之后，
-// 因此不把普通的 Server: cloudflare 当作 challenge 证据。
-func challengeDetected(body string, header http.Header) bool {
-	lower := strings.ToLower(body)
-	if strings.Contains(lower, "cf-chl") || strings.Contains(lower, "cf_chl") || strings.Contains(lower, "challenge") {
-		return true
+func fanboxDiagnosticOperation(kind requestKind) string {
+	if kind == requestKindMedia {
+		return "retrieving media"
 	}
+	return "retrieving"
+}
+
+func fanboxDiagnosticRoute(kind requestKind) string {
+	if kind == requestKindMedia {
+		return "media transport"
+	}
+	return "native transport"
+}
+
+func scanChallengeBody(body io.Reader) (bool, error) {
+	// 只识别 Cloudflare 明确使用的 body marker；普通 JSON 403 即使业务字段
+	// 恰好包含 challenge 一词，也必须继续按普通 Forbidden 分类。
+	markers := []string{"cf-chl", "cf_chl"}
+	maxMarkerLength := 0
+	for _, marker := range markers {
+		if len(marker) > maxMarkerLength {
+			maxMarkerLength = len(marker)
+		}
+	}
+	buffer := make([]byte, 32*1024)
+	tail := ""
+	found := false
+	for {
+		count, err := body.Read(buffer)
+		if count > 0 {
+			combined := tail + strings.ToLower(string(buffer[:count]))
+			for _, marker := range markers {
+				if strings.Contains(combined, marker) {
+					found = true
+				}
+			}
+			if len(combined) >= maxMarkerLength-1 {
+				tail = combined[len(combined)-(maxMarkerLength-1):]
+			} else {
+				tail = combined
+			}
+		}
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				return found, nil
+			}
+			return false, err
+		}
+	}
+}
+
+func challengeHeaderDetected(header http.Header) bool {
 	for _, value := range header.Values("Cf-Mitigated") {
 		if strings.Contains(strings.ToLower(value), "challenge") {
 			return true
 		}
 	}
 	return false
+}
+
+func challengeHTMLResponse(header http.Header) bool {
+	contentType := strings.ToLower(strings.TrimSpace(header.Get("Content-Type")))
+	if !strings.HasPrefix(contentType, "text/html") {
+		return false
+	}
+	if strings.Contains(strings.ToLower(header.Get("Server")), "cloudflare") {
+		return true
+	}
+	return header.Get("Cf-Ray") != ""
 }
 
 func closeResponseBody(ctx context.Context, response *http.Response) error {
@@ -282,6 +467,20 @@ func fanboxCookieHost(host string) bool {
 	return host == "www.fanbox.cc" || host == "api.fanbox.cc"
 }
 
+func credentialCookieAllowed(kind requestKind, host string) bool {
+	host = strings.ToLower(host)
+	switch kind {
+	case requestKindFanbox:
+		return fanboxCookieHost(host)
+	case requestKindMedia:
+		// The recorded attachment contract requires the same session on
+		// downloads.fanbox.cc, but never on Pixiv/CDN or third-party hosts.
+		return host == "downloads.fanbox.cc"
+	default:
+		return false
+	}
+}
+
 func mediaHost(host string) bool {
 	if fanboxHost(host) {
 		return true
@@ -290,10 +489,20 @@ func mediaHost(host string) bool {
 		host == "fanbox.pixiv.net" || strings.HasSuffix(host, ".fanbox.pixiv.net")
 }
 
-// chromeTransport 将标准 RoundTripper 调用桥接到 tls-client，生产路径固定 Chrome_146。
-type chromeTransport struct{ client tlsclient.HttpClient }
+// firefoxTransport 将标准 RoundTripper 调用桥接到 tls-client，生产路径固定 Firefox_148。
+type firefoxTransport struct{ client tlsclient.HttpClient }
 
-var _ http.RoundTripper = (*chromeTransport)(nil)
+var _ http.RoundTripper = (*firefoxTransport)(nil)
+
+func validateUserAgent(raw string) (string, error) {
+	if raw == "" {
+		return userAgent, nil
+	}
+	if strings.ContainsAny(raw, "\r\n\x00") {
+		return "", fmt.Errorf("%w: FANBOX User-Agent contains an invalid header character", ErrInvalidOption)
+	}
+	return raw, nil
+}
 
 func validateProxyURL(raw string) (string, error) {
 	if strings.TrimSpace(raw) == "" {
@@ -302,15 +511,41 @@ func validateProxyURL(raw string) (string, error) {
 	proxyURL, err := url.Parse(raw)
 	if err != nil || proxyURL == nil || proxyURL.Hostname() == "" ||
 		(proxyURL.Scheme != "http" && proxyURL.Scheme != "https") || proxyURL.User != nil {
-		return "", errors.New("FANBOX proxy URL is invalid")
+		return "", fmt.Errorf("%w: FANBOX proxy URL is invalid", ErrInvalidOption)
 	}
 	return proxyURL.String(), nil
 }
 
-func newChromeTransport(proxyURL string) (*chromeTransport, error) {
+func normalizeFlareSolverrOptions(options *FlareSolverrOptions) (*FlareSolverrOptions, error) {
+	if options == nil {
+		return nil, nil
+	}
+	serviceURL, err := url.Parse(options.URL)
+	if err != nil || serviceURL == nil || serviceURL.Hostname() == "" ||
+		(serviceURL.Scheme != "http" && serviceURL.Scheme != "https") || serviceURL.User != nil ||
+		serviceURL.Path != "" && serviceURL.Path != "/" || serviceURL.RawQuery != "" || serviceURL.Fragment != "" || serviceURL.ForceQuery {
+		return nil, fmt.Errorf("%w: FlareSolverr service URL is invalid", ErrInvalidOption)
+	}
+	serviceURL.Path = ""
+	serviceURL.RawPath = ""
+	serviceURL.RawQuery = ""
+	serviceURL.Fragment = ""
+	serviceURL.ForceQuery = false
+	if options.ProxyURL != "" {
+		proxy, err := url.Parse(options.ProxyURL)
+		if err != nil || proxy == nil || proxy.Hostname() == "" || proxy.User != nil ||
+			(proxy.Scheme != "http" && proxy.Scheme != "socks4" && proxy.Scheme != "socks5") ||
+			(proxy.Path != "" && proxy.Path != "/") || proxy.RawQuery != "" || proxy.Fragment != "" || proxy.ForceQuery {
+			return nil, fmt.Errorf("%w: FlareSolverr upstream proxy URL is invalid", ErrInvalidOption)
+		}
+	}
+	return &FlareSolverrOptions{URL: serviceURL.String(), ProxyURL: options.ProxyURL}, nil
+}
+
+func newFirefoxTransport(proxyURL string) (*firefoxTransport, error) {
 	noIdleTimeout := time.Duration(0)
 	options := []tlsclient.HttpClientOption{
-		tlsclient.WithClientProfile(profiles.Chrome_146),
+		tlsclient.WithClientProfile(profiles.Firefox_148),
 		tlsclient.WithNotFollowRedirects(),
 		// 上下文取消负责中断请求；这里显式关闭依赖库默认的 30 秒总 deadline。
 		tlsclient.WithTimeoutSeconds(0),
@@ -328,7 +563,7 @@ func newChromeTransport(proxyURL string) (*chromeTransport, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &chromeTransport{client: client}, nil
+	return &firefoxTransport{client: client}, nil
 }
 
 // newFanboxProxyDialerFactory 为 tls-client 提供仅支持 HTTP(S) CONNECT 的代理拨号器。
@@ -444,7 +679,7 @@ func closeFanboxProxyConnOnCancel(ctx context.Context, conn net.Conn) func() {
 	return func() { once.Do(func() { close(done) }) }
 }
 
-func (t *chromeTransport) RoundTrip(request *http.Request) (*http.Response, error) {
+func (t *firefoxTransport) RoundTrip(request *http.Request) (*http.Response, error) {
 	if request == nil || request.URL == nil {
 		return nil, errors.New("FANBOX request is invalid")
 	}
@@ -487,7 +722,7 @@ func (t *chromeTransport) RoundTrip(request *http.Request) (*http.Response, erro
 	return result, nil
 }
 
-func (t *chromeTransport) CloseIdleConnections() {
+func (t *firefoxTransport) CloseIdleConnections() {
 	if t != nil && t.client != nil {
 		t.client.CloseIdleConnections()
 	}

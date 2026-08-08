@@ -3,6 +3,6 @@
 package ugoira
 
 /*
-#cgo LDFLAGS: ${SRCDIR}/../download/ugoira_rs/staticlib/x86_64-apple-darwin/libugoira_rs.a
+#cgo LDFLAGS: ${SRCDIR}/../downloader/ugoira_rs/staticlib/x86_64-apple-darwin/libugoira_rs.a
 */
 import "C"

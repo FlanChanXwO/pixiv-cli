@@ -12,9 +12,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/application"
+	pixivapp "github.com/FlanChanXwO/pixiv-cli/internal/application/pixiv"
 	"github.com/FlanChanXwO/pixiv-cli/internal/bootstrap"
-	"github.com/FlanChanXwO/pixiv-cli/internal/storage/auth"
+	pixivcommands "github.com/FlanChanXwO/pixiv-cli/internal/cli/pixiv"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/stretchr/testify/assert"
@@ -51,24 +51,24 @@ type sdkCommandFake struct {
 
 func unimplementedSDKCommand() error { return errors.New("unexpected sdk command") }
 
-func (sdkCommandFake) ImportAccount(context.Context, string) (*application.Account, error) {
+func (sdkCommandFake) ImportAccount(context.Context, string) (*pixivapp.Account, error) {
 	return nil, unimplementedSDKCommand()
 }
-func (sdkCommandFake) ListAccounts() (*application.AccountsResult, error) {
+func (sdkCommandFake) ListAccounts() (*pixivapp.AccountsResult, error) {
 	return nil, unimplementedSDKCommand()
 }
 func (sdkCommandFake) SelectAccount(int64) error { return unimplementedSDKCommand() }
 func (sdkCommandFake) RemoveAccount(int64) error { return unimplementedSDKCommand() }
-func (sdkCommandFake) CheckAccount(context.Context, int64) (*application.Account, error) {
+func (sdkCommandFake) CheckAccount(context.Context, int64) (*pixivapp.Account, error) {
 	return nil, unimplementedSDKCommand()
 }
-func (sdkCommandFake) CheckRefreshToken(context.Context, string) (*application.Account, error) {
+func (sdkCommandFake) CheckRefreshToken(context.Context, string) (*pixivapp.Account, error) {
 	return nil, unimplementedSDKCommand()
 }
 func (sdkCommandFake) ExportAccountRefreshToken(int64) (string, error) {
 	return "", unimplementedSDKCommand()
 }
-func (sdkCommandFake) Refresh(context.Context) (*application.Account, error) {
+func (sdkCommandFake) Refresh(context.Context) (*pixivapp.Account, error) {
 	return nil, unimplementedSDKCommand()
 }
 func (f sdkCommandFake) CurrentUserID(ctx context.Context) (int64, error) {
@@ -80,7 +80,7 @@ func (f sdkCommandFake) CurrentUserID(ctx context.Context) (int64, error) {
 func (sdkCommandFake) StartLogin() (*pixiv.LoginSession, error) {
 	return nil, unimplementedSDKCommand()
 }
-func (sdkCommandFake) CompleteLogin(context.Context, *pixiv.LoginSession, string, pixiv.LoginOptions) (*application.Account, error) {
+func (sdkCommandFake) CompleteLogin(context.Context, *pixiv.LoginSession, string, pixiv.LoginOptions) (*pixivapp.Account, error) {
 	return nil, unimplementedSDKCommand()
 }
 
@@ -259,16 +259,46 @@ func (sdkCommandFake) SaveResource(context.Context, sdk.ResourceRef, sdk.SaveOpt
 	return sdk.SavedResource{}, unimplementedSDKCommand()
 }
 
-func setTestSDKCommandClient(t *testing.T, client application.SDKClient) {
+func setTestSDKCommandClient(t *testing.T, client any) {
 	t.Helper()
-	setTestSDKCommandFactory(t, func(application.SDKClientRequest) (application.SDKClient, error) { return client, nil })
+	set := testClientSet(t, client)
+	setTestSDKCommandFactory(t, func(pixivapp.SDKClientRequest) (pixivapp.ClientSet, error) { return set, nil })
+}
+
+func testClientSet(t *testing.T, value any) pixivapp.ClientSet {
+	t.Helper()
+	auth, ok := value.(pixivapp.AuthClient)
+	if !ok {
+		t.Fatalf("test SDK does not implement AuthClient: %T", value)
+	}
+	artwork, ok := value.(pixivapp.ArtworkClient)
+	if !ok {
+		t.Fatalf("test SDK does not implement ArtworkClient: %T", value)
+	}
+	novel, ok := value.(pixivapp.NovelClient)
+	if !ok {
+		t.Fatalf("test SDK does not implement NovelClient: %T", value)
+	}
+	user, ok := value.(pixivapp.UserClient)
+	if !ok {
+		t.Fatalf("test SDK does not implement UserClient: %T", value)
+	}
+	mutation, ok := value.(pixivapp.MutationClient)
+	if !ok {
+		t.Fatalf("test SDK does not implement MutationClient: %T", value)
+	}
+	resource, ok := value.(pixivapp.ResourceClient)
+	if !ok {
+		t.Fatalf("test SDK does not implement ResourceClient: %T", value)
+	}
+	return pixivapp.NewClientSet(auth, artwork, novel, user, mutation, resource)
 }
 
 // setTestSDKCommandFactory 让 CLI 测试从命令边界观察 SDK 请求，而不触发真实 OAuth。
-func setTestSDKCommandFactory(t *testing.T, factory application.SDKClientFactory) {
+func setTestSDKCommandFactory(t *testing.T, factory pixivapp.ClientFactory) {
 	t.Helper()
 	old := newCLIServices
-	nonPooled := func(ctx context.Context, request application.SDKClientRequest, attempt func(context.Context, application.SDKClient) (bool, error)) error {
+	nonPooled := func(ctx context.Context, request pixivapp.SDKClientRequest, attempt func(context.Context, pixivapp.ClientSet) (bool, error)) error {
 		client, err := factory(request)
 		if err != nil {
 			return err
@@ -276,13 +306,13 @@ func setTestSDKCommandFactory(t *testing.T, factory application.SDKClientFactory
 		_, err = attempt(ctx, client)
 		return err
 	}
-	newCLIServices = func() application.Services {
-		services := bootstrap.NewServices()
+	newCLIServices = func() (*bootstrap.Runtime, error) {
+		services := newTestRuntime(t)
 		services.SDK.NewClient = factory
 		services.SDK.RunPooled = nonPooled
 		services.Login.SDK.NewClient = factory
 		services.Login.SDK.RunPooled = nonPooled
-		return services
+		return services, nil
 	}
 	t.Cleanup(func() { newCLIServices = old })
 }
@@ -303,9 +333,9 @@ func TestRecommendedAllJSONRoutesEverySDKKindThroughOneOperation(t *testing.T) {
 	useTempPaths(t)
 	var order []string
 	opens := 0
-	setTestSDKCommandFactory(t, func(application.SDKClientRequest) (application.SDKClient, error) {
+	setTestSDKCommandFactory(t, func(pixivapp.SDKClientRequest) (pixivapp.ClientSet, error) {
 		opens++
-		return sdkCommandFake{
+		return testClientSet(t, sdkCommandFake{
 			recommended: func(context.Context, pixiv.RecommendedArtworksRequest) (sdk.Page[pixiv.Artwork], error) {
 				if len(order) == 0 {
 					order = append(order, "illust")
@@ -322,7 +352,7 @@ func TestRecommendedAllJSONRoutesEverySDKKindThroughOneOperation(t *testing.T) {
 				order = append(order, "user")
 				return sdk.Page[pixiv.UserPreview]{Items: []pixiv.UserPreview{{User: pixiv.User{ID: 4}}}}, nil
 			},
-		}, nil
+		}), nil
 	})
 	var stdout, stderr bytes.Buffer
 	require.Equal(t, 0, Run([]string{"pixiv", "recommended", "all", "--json"}, strings.NewReader(""), &stdout, &stderr), stderr.String())
@@ -335,9 +365,9 @@ func TestRecommendedAllJSONRoutesEverySDKKindThroughOneOperation(t *testing.T) {
 func TestRecommendedAllDefersTextOutputAndRejectsKindsBeforeOpeningSDK(t *testing.T) {
 	useTempPaths(t)
 	opened := 0
-	setTestSDKCommandFactory(t, func(application.SDKClientRequest) (application.SDKClient, error) {
+	setTestSDKCommandFactory(t, func(pixivapp.SDKClientRequest) (pixivapp.ClientSet, error) {
 		opened++
-		return sdkCommandFake{
+		return testClientSet(t, sdkCommandFake{
 			recommended: func(context.Context, pixiv.RecommendedArtworksRequest) (sdk.Page[pixiv.Artwork], error) {
 				return sdk.Page[pixiv.Artwork]{Items: []pixiv.Artwork{commandArtwork(1)}}, nil
 			},
@@ -345,9 +375,9 @@ func TestRecommendedAllDefersTextOutputAndRejectsKindsBeforeOpeningSDK(t *testin
 				return sdk.Page[pixiv.Novel]{Items: []pixiv.Novel{{ID: 3}}}, nil
 			},
 			userRecommended: func(context.Context, pixiv.RecommendedUsersRequest) (sdk.Page[pixiv.UserPreview], error) {
-				return sdk.Page[pixiv.UserPreview]{}, sdk.NewError("pixiv", "recommend", sdk.CodeMalformedUpstreamResponse)
+				return sdk.Page[pixiv.UserPreview]{}, sdk.NewError("pixiv", "recommend", sdk.MalformedUpstreamResponse)
 			},
-		}, nil
+		}), nil
 	})
 	var stdout, stderr bytes.Buffer
 	assert.Equal(t, 1, Run([]string{"pixiv", "recommended", "all"}, strings.NewReader(""), &stdout, &stderr))
@@ -432,10 +462,10 @@ func TestRecommendedMangaJSONUsesTheSameMangaEnvelopeAsAll(t *testing.T) {
 }
 
 func TestRecommendationJSONSpoolCleansUpWhenHeaderWriteFails(t *testing.T) {
-	original := writeRecommendationSpoolHeader
-	writeRecommendationSpoolHeader = func(io.Writer, string) (int, error) { return 0, errors.New("header write failed") }
-	t.Cleanup(func() { writeRecommendationSpoolHeader = original })
-	spool, err := newRecommendationSpool(true)
+	original := pixivcommands.WriteRecommendationSpoolHeader
+	pixivcommands.WriteRecommendationSpoolHeader = func(io.Writer, string) (int, error) { return 0, errors.New("header write failed") }
+	t.Cleanup(func() { pixivcommands.WriteRecommendationSpoolHeader = original })
+	spool, err := pixivcommands.NewRecommendationSpool(true)
 	assert.Nil(t, spool)
 	assert.EqualError(t, err, "header write failed")
 }
@@ -453,15 +483,15 @@ func TestUserDetailRoutesRequiredIDAndPrintsCompleteSDKJSON(t *testing.T) {
 		Workspace:        pixiv.UserWorkspace{PC: "desktop", Tool: "pen"},
 	}
 	var got pixiv.UserRequest
-	var gotClientRequest application.SDKClientRequest
+	var gotClientRequest pixivapp.SDKClientRequest
 	factoryCalls := 0
-	setTestSDKCommandFactory(t, func(request application.SDKClientRequest) (application.SDKClient, error) {
+	setTestSDKCommandFactory(t, func(request pixivapp.SDKClientRequest) (pixivapp.ClientSet, error) {
 		factoryCalls++
 		gotClientRequest = request
-		return sdkCommandFake{userDetail: func(_ context.Context, request pixiv.UserRequest) (pixiv.UserDetail, error) {
+		return testClientSet(t, sdkCommandFake{userDetail: func(_ context.Context, request pixiv.UserRequest) (pixiv.UserDetail, error) {
 			got = request
 			return want, nil
-		}}, nil
+		}}), nil
 	})
 
 	var stdout, stderr bytes.Buffer
@@ -524,12 +554,12 @@ func TestUserDetailTextOmitsEmptyFieldsAndSanitizesWebpage(t *testing.T) {
 
 func TestUserDetailBindsNoProxyFlag(t *testing.T) {
 	useTempPaths(t)
-	setTestSDKCommandFactory(t, func(request application.SDKClientRequest) (application.SDKClient, error) {
+	setTestSDKCommandFactory(t, func(request pixivapp.SDKClientRequest) (pixivapp.ClientSet, error) {
 		require.NotNil(t, request.HTTPSProxyOverride)
 		assert.Equal(t, "", *request.HTTPSProxyOverride)
-		return sdkCommandFake{userDetail: func(context.Context, pixiv.UserRequest) (pixiv.UserDetail, error) {
+		return testClientSet(t, sdkCommandFake{userDetail: func(context.Context, pixiv.UserRequest) (pixiv.UserDetail, error) {
 			return pixiv.UserDetail{User: pixiv.User{ID: 42}}, nil
-		}}, nil
+		}}), nil
 	})
 
 	var stdout, stderr bytes.Buffer
@@ -555,9 +585,9 @@ func TestUserDetailRejectsInvalidIDBeforeOpeningSDKAndPreservesTypedErrorOutput(
 	} {
 		t.Run(strings.Join(args[3:], "/"), func(t *testing.T) {
 			factoryCalls := 0
-			setTestSDKCommandFactory(t, func(application.SDKClientRequest) (application.SDKClient, error) {
+			setTestSDKCommandFactory(t, func(pixivapp.SDKClientRequest) (pixivapp.ClientSet, error) {
 				factoryCalls++
-				return sdkCommandFake{}, nil
+				return testClientSet(t, sdkCommandFake{}), nil
 			})
 			var stdout, stderr bytes.Buffer
 			assert.Equal(t, 1, Run(args, strings.NewReader(""), &stdout, &stderr))
@@ -567,7 +597,7 @@ func TestUserDetailRejectsInvalidIDBeforeOpeningSDKAndPreservesTypedErrorOutput(
 	}
 
 	setTestSDKCommandClient(t, sdkCommandFake{userDetail: func(context.Context, pixiv.UserRequest) (pixiv.UserDetail, error) {
-		return pixiv.UserDetail{}, sdk.NewError("pixiv", "user", sdk.CodeMalformedUpstreamResponse)
+		return pixiv.UserDetail{}, sdk.NewError("pixiv", "user", sdk.MalformedUpstreamResponse)
 	}})
 	var stdout, stderr bytes.Buffer
 	assert.Equal(t, 1, Run([]string{"pixiv", "user", "detail", "42", "--json"}, strings.NewReader(""), &stdout, &stderr))
@@ -720,13 +750,13 @@ func TestInvalidListOrExplicitUserIDDoesNotOpenSDKOperation(t *testing.T) {
 	useTempPaths(t)
 	calls := 0
 	old := newCLIServices
-	newCLIServices = func() application.Services {
-		services := bootstrap.NewServices()
-		services.SDK.NewClient = func(application.SDKClientRequest) (application.SDKClient, error) {
+	newCLIServices = func() (*bootstrap.Runtime, error) {
+		services := newTestRuntime(t)
+		services.SDK.NewClient = func(pixivapp.SDKClientRequest) (pixivapp.ClientSet, error) {
 			calls++
-			return sdkCommandFake{}, nil
+			return testClientSet(t, sdkCommandFake{}), nil
 		}
-		return services
+		return services, nil
 	}
 	t.Cleanup(func() { newCLIServices = old })
 
@@ -849,7 +879,7 @@ func TestSelfUserListsReuseOneConcreteOAuthSnapshotAcrossPages(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			authPath, _ := useTempPaths(t)
-			require.NoError(t, auth.SaveAuthStore(authPath, auth.AuthStore{DefaultUserID: 202, Accounts: []auth.Account{{UserID: 202, RefreshToken: "stored-token"}}}))
+			require.NoError(t, saveTestAuthStore(t, authPath, testAuthStore{DefaultUserID: 202, Accounts: []testAuthAccount{{UserID: 202, RefreshToken: "stored-token"}}}))
 			// v0.8 的数据命令只使用本地 auth store；环境变量不得改变
 			// 这次分页操作选择的账号或 OAuth 快照。
 			t.Setenv("PIXIV_REFRESH_TOKEN", "environment-token-must-be-ignored")
@@ -894,19 +924,19 @@ func TestSelfUserListsReuseOneConcreteOAuthSnapshotAcrossPages(t *testing.T) {
 			defer server.Close()
 
 			old := newCLIServices
-			newCLIServices = func() application.Services {
-				services := bootstrap.NewServices()
-				services.SDK.NewClient = func(request application.SDKClientRequest) (application.SDKClient, error) {
+			newCLIServices = func() (*bootstrap.Runtime, error) {
+				services := newTestRuntime(t)
+				services.SDK.NewClient = func(request pixivapp.SDKClientRequest) (pixivapp.ClientSet, error) {
 					client, _, err := pixiv.OpenWith(context.Background(), "stored-token", pixiv.Options{HTTPClient: rewriteHTTPClient(t, server, server.URL, server.URL)})
 					if err != nil {
-						return nil, err
+						return pixivapp.ClientSet{}, err
 					}
 					_ = request
-					return application.NewPixivSDKClient(client, nil), nil
+					return pixivapp.NewPixivSDKClients(client, nil), nil
 				}
 				// 此测试验证一条单账号分页操作共享同一个 OAuth 快照；账号池的
 				// 选择和持久状态另有专门测试，不能让生产池 wiring 绕过 mock transport。
-				services.SDK.RunPooled = func(ctx context.Context, request application.SDKClientRequest, attempt func(context.Context, application.SDKClient) (bool, error)) error {
+				services.SDK.RunPooled = func(ctx context.Context, request pixivapp.SDKClientRequest, attempt func(context.Context, pixivapp.ClientSet) (bool, error)) error {
 					client, err := services.SDK.NewClient(request)
 					if err != nil {
 						return err
@@ -914,7 +944,7 @@ func TestSelfUserListsReuseOneConcreteOAuthSnapshotAcrossPages(t *testing.T) {
 					_, err = attempt(ctx, client)
 					return err
 				}
-				return services
+				return services, nil
 			}
 			t.Cleanup(func() { newCLIServices = old })
 

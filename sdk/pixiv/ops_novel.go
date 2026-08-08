@@ -12,7 +12,7 @@ import (
 // continuing with a non-zero Cursor.
 func (c *Client) SearchNovels(ctx context.Context, request SearchNovelsRequest) (sdk.Page[Novel], error) {
 	if request.Word == "" {
-		return sdk.Page[Novel]{}, newError("SearchNovels", sdk.CodeInvalidArgument, "search word is required")
+		return sdk.Page[Novel]{}, newError("SearchNovels", sdk.InvalidArgument, "search word is required")
 	}
 	if request.Target == "" {
 		request.Target = SearchTargetPartialMatchForTags
@@ -47,7 +47,7 @@ func (c *Client) SearchNovels(ctx context.Context, request SearchNovelsRequest) 
 // Novel returns one novel by its stable ID.
 func (c *Client) Novel(ctx context.Context, request NovelRequest) (Novel, error) {
 	if request.NovelID <= 0 {
-		return Novel{}, newError("Novel", sdk.CodeInvalidArgument, "novel ID must be positive")
+		return Novel{}, newError("Novel", sdk.InvalidArgument, "novel ID must be positive")
 	}
 	detail, err := c.app.NovelDetail(ctx, request.NovelID)
 	if err != nil {
@@ -59,7 +59,7 @@ func (c *Client) Novel(ctx context.Context, request NovelRequest) (Novel, error)
 // NovelSeries returns a novel series with its paged novels.
 func (c *Client) NovelSeries(ctx context.Context, request NovelSeriesRequest) (NovelSeriesResult, error) {
 	if request.SeriesID <= 0 {
-		return NovelSeriesResult{}, newError("NovelSeries", sdk.CodeInvalidArgument, "series ID must be positive")
+		return NovelSeriesResult{}, newError("NovelSeries", sdk.InvalidArgument, "series ID must be positive")
 	}
 	query := url.Values{"series_id": {itoa(request.SeriesID)}}
 	lastOrder, err := c.continuationValue("NovelSeries", query, request.Cursor, "last_order")
@@ -97,7 +97,7 @@ func (c *Client) NovelSeries(ctx context.Context, request NovelSeriesRequest) (N
 // NovelContent reads the structured body of one novel.
 func (c *Client) NovelContent(ctx context.Context, request NovelContentRequest) (NovelContent, error) {
 	if request.NovelID <= 0 {
-		return NovelContent{}, newError("NovelContent", sdk.CodeInvalidArgument, "novel ID must be positive")
+		return NovelContent{}, newError("NovelContent", sdk.InvalidArgument, "novel ID must be positive")
 	}
 	html, err := c.app.NovelContent(ctx, request.NovelID)
 	if err != nil {
@@ -109,7 +109,7 @@ func (c *Client) NovelContent(ctx context.Context, request NovelContentRequest) 
 // NovelComments lists comments on one novel.
 func (c *Client) NovelComments(ctx context.Context, request NovelCommentsRequest) (CommentPage, error) {
 	if request.NovelID <= 0 {
-		return CommentPage{}, newError("NovelComments", sdk.CodeInvalidArgument, "novel ID must be positive")
+		return CommentPage{}, newError("NovelComments", sdk.InvalidArgument, "novel ID must be positive")
 	}
 	query := url.Values{"novel_id": {itoa(request.NovelID)}}
 	offset, err := c.continuationOffset("NovelComments", query, request.Cursor)
@@ -168,7 +168,7 @@ func (c *Client) LatestNovels(ctx context.Context, request LatestNovelsRequest) 
 // UserNovels lists one user's novels.
 func (c *Client) UserNovels(ctx context.Context, request UserNovelsRequest) (sdk.Page[Novel], error) {
 	if request.UserID <= 0 {
-		return sdk.Page[Novel]{}, newError("UserNovels", sdk.CodeInvalidArgument, "user ID must be positive")
+		return sdk.Page[Novel]{}, newError("UserNovels", sdk.InvalidArgument, "user ID must be positive")
 	}
 	query := url.Values{"user_id": {itoa(request.UserID)}}
 	offset, err := c.continuationOffset("UserNovels", query, request.Cursor)
@@ -185,7 +185,7 @@ func (c *Client) UserNovels(ctx context.Context, request UserNovelsRequest) (sdk
 // UserNovelBookmarks lists one user's bookmarked novels.
 func (c *Client) UserNovelBookmarks(ctx context.Context, request UserNovelBookmarksRequest) (sdk.Page[Novel], error) {
 	if request.UserID <= 0 {
-		return sdk.Page[Novel]{}, newError("UserNovelBookmarks", sdk.CodeInvalidArgument, "user ID must be positive")
+		return sdk.Page[Novel]{}, newError("UserNovelBookmarks", sdk.InvalidArgument, "user ID must be positive")
 	}
 	query := url.Values{"user_id": {itoa(request.UserID)}, "restrict": {string(request.Restrict)}}
 	if request.Tag != "" {

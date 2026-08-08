@@ -8,16 +8,20 @@ import (
 	"strings"
 	"time"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/config"
-	"github.com/FlanChanXwO/pixiv-cli/internal/storage/authdb"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	"github.com/FlanChanXwO/pixiv-cli/sdk/fanbox"
 )
 
 // Service 是 CLI/MCP 的 FANBOX 应用层服务。
 type Service struct {
-	db         *authdb.DB
-	appDataDir string
+	repo     FanboxRepository
+	defaults DefaultStore
+
+	// LoadOptionsFunc supplies explicit runtime network settings at the point a
+	// native SDK client is opened. Keeping it lazy lets config errors surface at
+	// the operation boundary without making the auth database constructor read
+	// network configuration.
+	LoadOptionsFunc func() (fanbox.Options, error)
 
 	// OpenClientFunc 覆盖 OpenClient 的客户端打开逻辑；nil 时按默认账号的已保存
 	// session 打开。测试用它注入不拨号的 httptest transport。
@@ -27,9 +31,9 @@ type Service struct {
 	OpenSessionFunc func(sessionValue string) (*fanbox.Client, error)
 }
 
-// New 构造 FANBOX 应用服务。
-func New(db *authdb.DB, appDataDir string) *Service {
-	return &Service{db: db, appDataDir: appDataDir}
+// New 构造 FANBOX 应用服务；repository/defaults 由 composition root 注入。
+func New(repo FanboxRepository, defaults DefaultStore) *Service {
+	return &Service{repo: repo, defaults: defaults}
 }
 
 // Account 是 FANBOX 账号的公开摘要。
@@ -50,6 +54,12 @@ type AccountSummary struct {
 
 // ImportSession 使用显式 FANBOXSESSID 在线验证并保存账号；验证失败不产生记录。
 func (s *Service) ImportSession(ctx context.Context, sessionValue string, setDefault bool) (Account, error) {
+	return s.ImportSessionWithProxy(ctx, sessionValue, setDefault, nil)
+}
+
+// ImportSessionWithProxy validates and stores a session using an optional
+// command-scoped native proxy override. The solver addresses remain unchanged.
+func (s *Service) ImportSessionWithProxy(ctx context.Context, sessionValue string, setDefault bool, proxyOverride *string) (Account, error) {
 	sessionValue = strings.TrimSpace(sessionValue)
 	if sessionValue == "" {
 		return Account{}, errors.New("FANBOX session value is required")
@@ -57,7 +67,11 @@ func (s *Service) ImportSession(ctx context.Context, sessionValue string, setDef
 	open := s.OpenSessionFunc
 	if open == nil {
 		open = func(value string) (*fanbox.Client, error) {
-			return fanbox.Open(fanbox.SessionCredentials{FANBOXSESSID: value})
+			options, err := s.connectionOptions(proxyOverride)
+			if err != nil {
+				return nil, err
+			}
+			return fanbox.OpenWith(fanbox.SessionCredentials{FANBOXSESSID: value}, options)
 		}
 	}
 	client, err := open(sessionValue)
@@ -70,7 +84,7 @@ func (s *Service) ImportSession(ctx context.Context, sessionValue string, setDef
 		return Account{}, err
 	}
 	now := time.Now().UTC().Unix()
-	account := authdb.FanboxAccount{
+	account := FanboxAccountRecord{
 		UserID:             user.UserID,
 		DisplayName:        user.DisplayName,
 		CreatorID:          user.CreatorID,
@@ -78,28 +92,42 @@ func (s *Service) ImportSession(ctx context.Context, sessionValue string, setDef
 		CredentialRevision: 1,
 		ValidatedAt:        now,
 	}
-	if err := s.db.UpsertFanbox(ctx, account); err != nil {
+	if err := s.repo.SaveFanboxCredential(ctx, account); err != nil {
 		return Account{}, fmt.Errorf("save fanbox account: %w", err)
 	}
-	if setDefault || !s.hasDefault() {
-		_ = config.SetFanboxDefaultUserID(user.UserID)
+	hasDefault, err := s.hasDefault()
+	if err != nil {
+		return Account{}, fmt.Errorf("read fanbox default account: %w", err)
 	}
-	return Account{UserID: user.UserID, DisplayName: user.DisplayName, CreatorID: user.CreatorID, Default: s.isDefault(user.UserID)}, nil
+	if setDefault || !hasDefault {
+		if err := s.setDefaultUserID(user.UserID); err != nil {
+			return Account{}, fmt.Errorf("set fanbox default account: %w", err)
+		}
+	}
+	isDefault, err := s.isDefault(user.UserID)
+	if err != nil {
+		return Account{}, err
+	}
+	return Account{UserID: user.UserID, DisplayName: user.DisplayName, CreatorID: user.CreatorID, Default: isDefault}, nil
 }
 
 // ListAccounts 返回按 sort_order 排列的 FANBOX 账号。
 func (s *Service) ListAccounts(ctx context.Context) ([]AccountSummary, error) {
-	accounts, err := s.db.ListFanbox(ctx)
+	accounts, err := s.repo.ListFanbox(ctx)
 	if err != nil {
 		return nil, err
 	}
 	out := make([]AccountSummary, 0, len(accounts))
 	for _, account := range accounts {
+		isDefault, err := s.isDefault(account.UserID)
+		if err != nil {
+			return nil, err
+		}
 		out = append(out, AccountSummary{
 			UserID:      account.UserID,
 			DisplayName: account.DisplayName,
 			CreatorID:   account.CreatorID,
-			Default:     s.isDefault(account.UserID),
+			Default:     isDefault,
 		})
 	}
 	return out, nil
@@ -107,26 +135,30 @@ func (s *Service) ListAccounts(ctx context.Context) ([]AccountSummary, error) {
 
 // RemoveAccount 删除一个 FANBOX 账号。
 func (s *Service) RemoveAccount(ctx context.Context, userID int64) error {
-	if err := s.db.RemoveFanbox(ctx, userID); err != nil {
-		return err
+	defaultID, explicit, err := s.readDefaultUserID()
+	if err != nil {
+		return fmt.Errorf("read fanbox default account: %w", err)
 	}
-	if s.isDefault(userID) {
-		_ = config.ClearFanboxDefaultUserID()
+	if explicit && defaultID == userID {
+		return fmt.Errorf("cannot remove fanbox account %d while it is the explicit default; use `pixiv fanbox auth use --auto` or select another account first", userID)
+	}
+	if err := s.repo.RemoveFanbox(ctx, userID); err != nil {
+		return err
 	}
 	return nil
 }
 
 // UseAccount 设置显式默认账号。
 func (s *Service) UseAccount(ctx context.Context, userID int64) error {
-	if _, err := s.db.GetFanbox(ctx, userID); err != nil {
+	if _, err := s.repo.GetFanbox(ctx, userID); err != nil {
 		return err
 	}
-	return config.SetFanboxDefaultUserID(userID)
+	return s.setDefaultUserID(userID)
 }
 
 // UseAuto 清除显式默认，恢复首个入库账号。
 func (s *Service) UseAuto() error {
-	return config.ClearFanboxDefaultUserID()
+	return s.clearDefaultUserID()
 }
 
 // Status 返回当前默认账号身份。
@@ -135,7 +167,7 @@ func (s *Service) Status(ctx context.Context) (*AccountSummary, error) {
 	if err != nil {
 		return nil, err
 	}
-	account, err := s.db.GetFanbox(ctx, userID)
+	account, err := s.repo.GetFanbox(ctx, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -149,6 +181,13 @@ func (s *Service) Status(ctx context.Context) (*AccountSummary, error) {
 
 // OpenClient 打开默认账号对应的 sdk/fanbox Client。
 func (s *Service) OpenClient(ctx context.Context) (*fanbox.Client, error) {
+	return s.OpenClientWithProxy(ctx, nil)
+}
+
+// OpenClientWithProxy opens the selected account with a command-scoped native
+// proxy override. A nil override preserves the configured service/global
+// precedence; the FlareSolverr service and upstream proxy are never changed.
+func (s *Service) OpenClientWithProxy(ctx context.Context, proxyOverride *string) (*fanbox.Client, error) {
 	if s.OpenClientFunc != nil {
 		return s.OpenClientFunc(ctx)
 	}
@@ -156,42 +195,89 @@ func (s *Service) OpenClient(ctx context.Context) (*fanbox.Client, error) {
 	if err != nil {
 		return nil, err
 	}
-	account, err := s.db.GetFanbox(ctx, userID)
+	account, err := s.repo.GetFanbox(ctx, userID)
 	if err != nil {
 		return nil, fmt.Errorf("select fanbox account: %w", err)
 	}
-	return fanbox.Open(fanbox.SessionCredentials{FANBOXSESSID: string(account.SessionID)})
+	options, err := s.connectionOptions(proxyOverride)
+	if err != nil {
+		return nil, err
+	}
+	return fanbox.OpenWith(fanbox.SessionCredentials{FANBOXSESSID: string(account.SessionID)}, options)
+}
+
+func (s *Service) connectionOptions(proxyOverride *string) (fanbox.Options, error) {
+	var options fanbox.Options
+	if s.LoadOptionsFunc != nil {
+		loaded, err := s.LoadOptionsFunc()
+		if err != nil {
+			return fanbox.Options{}, err
+		}
+		options = loaded
+	}
+	if proxyOverride != nil {
+		options.ProxyURL = *proxyOverride
+	}
+	return options, nil
 }
 
 func (s *Service) selectedUserID(ctx context.Context) (int64, error) {
-	if userID, ok, err := config.ReadFanboxDefaultUserID(); err != nil {
+	if userID, ok, err := s.readDefaultUserID(); err != nil {
 		return 0, err
 	} else if ok {
-		if _, err := s.db.GetFanbox(ctx, userID); err != nil {
+		if _, err := s.repo.GetFanbox(ctx, userID); err != nil {
 			return 0, fmt.Errorf("configured default fanbox account %d is missing", userID)
 		}
 		return userID, nil
 	}
-	accounts, err := s.db.ListFanbox(ctx)
+	accounts, err := s.repo.ListFanbox(ctx)
 	if err != nil {
 		return 0, err
 	}
 	if len(accounts) == 0 {
-		return 0, sdk.NewError("fanbox", "", sdk.CodeUnauthorized, sdk.WithDetail("no fanbox account is authenticated"))
+		return 0, sdk.NewError("fanbox", "", sdk.Unauthorized, sdk.WithDetail("no fanbox account is authenticated"))
 	}
 	return accounts[0].UserID, nil
 }
 
-func (s *Service) hasDefault() bool {
-	_, ok, _ := config.ReadFanboxDefaultUserID()
-	return ok
+func (s *Service) hasDefault() (bool, error) {
+	_, ok, err := s.readDefaultUserID()
+	return ok, err
 }
 
-func (s *Service) isDefault(userID int64) bool {
-	configured, ok, _ := config.ReadFanboxDefaultUserID()
+func (s *Service) isDefault(userID int64) (bool, error) {
+	configured, ok, err := s.readDefaultUserID()
+	if err != nil {
+		return false, err
+	}
 	if ok {
-		return configured == userID
+		return configured == userID, nil
 	}
 	// 未配置时默认是首个入库账号。
-	return false
+	accounts, err := s.repo.ListFanbox(context.Background())
+	if err != nil {
+		return false, err
+	}
+	return len(accounts) > 0 && accounts[0].UserID == userID, nil
+}
+
+func (s *Service) readDefaultUserID() (int64, bool, error) {
+	if s.defaults == nil {
+		return 0, false, errors.New("fanbox default account store is not configured")
+	}
+	return s.defaults.ReadFanboxDefaultUserID()
+}
+
+func (s *Service) setDefaultUserID(userID int64) error {
+	if s.defaults == nil {
+		return errors.New("fanbox default account store is not configured")
+	}
+	return s.defaults.SetFanboxDefaultUserID(userID)
+}
+
+func (s *Service) clearDefaultUserID() error {
+	if s.defaults == nil {
+		return errors.New("fanbox default account store is not configured")
+	}
+	return s.defaults.ClearFanboxDefaultUserID()
 }

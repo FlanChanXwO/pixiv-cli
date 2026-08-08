@@ -19,7 +19,7 @@ func (s *Session) CreatorTags(ctx context.Context, creatorID string) ([]CreatorT
 	if strings.TrimSpace(creatorID) == "" {
 		return nil, errors.New("FANBOX creator id is required")
 	}
-	endpoint := apiBaseURL + "creator.getTags?" + url.Values{"creatorId": {creatorID}}.Encode()
+	endpoint := apiBaseURL + "tag.getFeatured?" + url.Values{"creatorId": {creatorID}}.Encode()
 	var response struct {
 		Body json.RawMessage `json:"body"`
 	}

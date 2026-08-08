@@ -21,28 +21,16 @@ import (
 	"testing"
 	"time"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/application"
+	"github.com/FlanChanXwO/pixiv-cli/internal/application/config"
 	pixivapp "github.com/FlanChanXwO/pixiv-cli/internal/application/pixiv"
 	"github.com/FlanChanXwO/pixiv-cli/internal/bootstrap"
-	"github.com/FlanChanXwO/pixiv-cli/internal/config"
-	constants "github.com/FlanChanXwO/pixiv-cli/internal/platform/localstate"
-	internalpixiv "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv"
-	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/protocol"
-	"github.com/FlanChanXwO/pixiv-cli/internal/storage/auth"
+	"github.com/FlanChanXwO/pixiv-cli/internal/filesystem"
+	"github.com/FlanChanXwO/pixiv-cli/internal/persistence/authdb"
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
-
-func loginOAuthSuccessHandler(w http.ResponseWriter, r *http.Request) {
-	if r.URL.Path != "/auth/token" {
-		http.NotFound(w, r)
-		return
-	}
-	_ = r.ParseForm()
-	_ = json.NewEncoder(w).Encode(map[string]any{"access_token": "access", "refresh_token": "rotated", "user": map[string]any{"id": 456, "name": "login-user"}})
-}
 
 func TestAccountImportAcceptsPositionalRefreshToken(t *testing.T) {
 	useTempPaths(t)
@@ -420,30 +408,26 @@ func TestDataCommandFlagsDoNotExposeCredentialSelection(t *testing.T) {
 func TestAuthExportPrintsOnlyDefaultStoredRefreshToken(t *testing.T) {
 	authPath, _ := useTempPaths(t)
 	t.Setenv("PIXIV_REFRESH_TOKEN", "environment-token-must-be-ignored")
-	require.NoError(t, auth.SaveAuthStore(authPath, auth.AuthStore{
+	require.NoError(t, saveTestAuthStore(t, authPath, testAuthStore{
 		DefaultUserID: 444,
-		Accounts:      []auth.Account{{UserID: 444, Username: "stored", RefreshToken: "opaque/default-token"}},
+		Accounts:      []testAuthAccount{{UserID: 444, Username: "stored", RefreshToken: "opaque/default-token"}},
 	}))
-	before, err := os.ReadFile(authPath)
-	require.NoError(t, err)
-
 	var stdout, stderr bytes.Buffer
 	code := Run([]string{"pixiv", "auth", "export"}, strings.NewReader(""), &stdout, &stderr)
 
 	require.Equal(t, 0, code, stderr.String())
 	assert.Equal(t, "opaque/default-token\n", stdout.String())
 	assert.Empty(t, stderr.String())
-	after, err := os.ReadFile(authPath)
-	require.NoError(t, err)
-	assert.Equal(t, before, after)
+	_, err := os.Stat(filepath.Join(filepath.Dir(authPath), "auth.json"))
+	assert.ErrorIs(t, err, os.ErrNotExist, "the runtime must not create a legacy secret store")
 }
 
 func TestAuthExportRawTokenPropagatesStdoutWriterErrorSafely(t *testing.T) {
 	authPath, _ := useTempPaths(t)
 	const token = "raw-writer-error-secret"
-	require.NoError(t, auth.SaveAuthStore(authPath, auth.AuthStore{
+	require.NoError(t, saveTestAuthStore(t, authPath, testAuthStore{
 		DefaultUserID: 444,
-		Accounts:      []auth.Account{{UserID: 444, RefreshToken: token}},
+		Accounts:      []testAuthAccount{{UserID: 444, RefreshToken: token}},
 	}))
 	stdout := &syntheticFailingWriter{err: errors.New(token)}
 	directErr := writeAuthExportStdout(stdout, []byte(token))
@@ -465,9 +449,9 @@ func (w *syntheticFailingWriter) Write([]byte) (int, error) { return 0, w.err }
 func TestAuthExportBundleAndSummaryPropagateShortStdoutWritesSafely(t *testing.T) {
 	authPath, _ := useTempPaths(t)
 	const token = "short-writer-secret"
-	require.NoError(t, auth.SaveAuthStore(authPath, auth.AuthStore{
+	require.NoError(t, saveTestAuthStore(t, authPath, testAuthStore{
 		DefaultUserID: 444,
-		Accounts:      []auth.Account{{UserID: 444, RefreshToken: token}},
+		Accounts:      []testAuthAccount{{UserID: 444, RefreshToken: token}},
 	}))
 
 	for name, args := range map[string][]string{
@@ -494,9 +478,9 @@ func (syntheticShortWriter) Write(body []byte) (int, error) { return len(body) -
 
 func TestAuthExportAllBundleCanBeRestoredFromFile(t *testing.T) {
 	authPath, _ := useTempPaths(t)
-	require.NoError(t, auth.SaveAuthStore(authPath, auth.AuthStore{
+	require.NoError(t, saveTestAuthStore(t, authPath, testAuthStore{
 		DefaultUserID: 444,
-		Accounts: []auth.Account{
+		Accounts: []testAuthAccount{
 			{UserID: 444, Username: "first", RefreshToken: "first-export-secret"},
 			{UserID: 555, Username: "second", RefreshToken: "second-export-secret"},
 		},
@@ -508,7 +492,8 @@ func TestAuthExportAllBundleCanBeRestoredFromFile(t *testing.T) {
 	assert.Empty(t, stderr.String())
 	bundlePath := filepath.Join(t.TempDir(), "auth-export.json")
 	require.NoError(t, os.WriteFile(bundlePath, stdout.Bytes(), 0o600))
-	require.NoError(t, os.Remove(authPath))
+	// Export reads the authoritative DB. Start the bundle restore from a fresh DB.
+	require.NoError(t, os.Remove(authdb.DatabasePath(filepath.Dir(authPath))))
 
 	stdout.Reset()
 	stderr.Reset()
@@ -530,9 +515,9 @@ func TestAuthExportAllBundleCanBeRestoredFromFile(t *testing.T) {
 
 func TestAuthImportBundleFromStdinPrintsSafeJSONReport(t *testing.T) {
 	authPath, _ := useTempPaths(t)
-	require.NoError(t, auth.SaveAuthStore(authPath, auth.AuthStore{
+	require.NoError(t, saveTestAuthStore(t, authPath, testAuthStore{
 		DefaultUserID: 888,
-		Accounts:      []auth.Account{{UserID: 888, Username: "before", RefreshToken: "old-local-secret"}},
+		Accounts:      []testAuthAccount{{UserID: 888, Username: "before", RefreshToken: "old-local-secret"}},
 	}))
 	const bundle = `{"schema":"pixiv-cli.auth-export","version":1,"default_user_id":777,"accounts":[{"user_id":777,"username":"new","refresh_token":"stdin-bundle-secret"},{"user_id":888,"username":"updated","refresh_token":"updated-bundle-secret"}]}`
 
@@ -642,9 +627,9 @@ func TestAuthBundleFileReadErrorsExposeTypedSafeCategories(t *testing.T) {
 
 func TestAuthExportOutputRequiresForceAndPrintsOnlySafeSummary(t *testing.T) {
 	authPath, _ := useTempPaths(t)
-	require.NoError(t, auth.SaveAuthStore(authPath, auth.AuthStore{
+	require.NoError(t, saveTestAuthStore(t, authPath, testAuthStore{
 		DefaultUserID: 888,
-		Accounts:      []auth.Account{{UserID: 888, Username: "exported", RefreshToken: "output-secret-canary"}},
+		Accounts:      []testAuthAccount{{UserID: 888, Username: "exported", RefreshToken: "output-secret-canary"}},
 	}))
 	directory := filepath.Join(t.TempDir(), "destination")
 	require.NoError(t, os.Mkdir(directory, 0o751))
@@ -669,7 +654,7 @@ func TestAuthExportOutputRequiresForceAndPrintsOnlySafeSummary(t *testing.T) {
 	assert.Empty(t, stderr.String())
 	exportedBody, err := os.ReadFile(outputPath)
 	require.NoError(t, err)
-	var bundle application.AuthExportBundle
+	var bundle pixivapp.AuthExportBundle
 	require.NoError(t, json.Unmarshal(exportedBody, &bundle))
 	require.Len(t, bundle.Accounts, 1)
 	assert.Equal(t, "output-secret-canary", bundle.Accounts[0].RefreshToken)
@@ -686,9 +671,9 @@ func TestAuthExportOutputRequiresForceAndPrintsOnlySafeSummary(t *testing.T) {
 func TestAuthExportIgnoresLegacyLoggingConfiguration(t *testing.T) {
 	authPath, configPath := useTempPaths(t)
 	t.Setenv("PIXIV_LOG_LEVEL", "loud")
-	require.NoError(t, auth.SaveAuthStore(authPath, auth.AuthStore{
+	require.NoError(t, saveTestAuthStore(t, authPath, testAuthStore{
 		DefaultUserID: 444,
-		Accounts:      []auth.Account{{UserID: 444, RefreshToken: "synthetic-invalid-refresh-token"}},
+		Accounts:      []testAuthAccount{{UserID: 444, RefreshToken: "synthetic-invalid-refresh-token"}},
 	}))
 	require.NoError(t, config.WritePrivateFile(configPath, []byte("[logging]\nlevel = 'loud'\n")))
 
@@ -702,9 +687,9 @@ func TestAuthExportIgnoresLegacyLoggingConfiguration(t *testing.T) {
 
 func TestAuthExportSelectsExplicitUIDAndRejectsNonContractInput(t *testing.T) {
 	authPath, _ := useTempPaths(t)
-	require.NoError(t, auth.SaveAuthStore(authPath, auth.AuthStore{
+	require.NoError(t, saveTestAuthStore(t, authPath, testAuthStore{
 		DefaultUserID: 444,
-		Accounts: []auth.Account{
+		Accounts: []testAuthAccount{
 			{UserID: 444, RefreshToken: "default-secret"},
 			{UserID: 555, RefreshToken: "selected-secret"},
 		},
@@ -730,7 +715,11 @@ func TestAuthExportSelectsExplicitUIDAndRejectsNonContractInput(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			var stdout, stderr bytes.Buffer
 			code := Run(args, strings.NewReader(""), &stdout, &stderr)
-			assert.Equal(t, 1, code)
+			wantCode := 1
+			if name == "json flag" || name == "proxy flag" || name == "no proxy flag" {
+				wantCode = 2
+			}
+			assert.Equal(t, wantCode, code)
 			assert.Empty(t, stdout.String())
 			assert.NotEmpty(t, stderr.String())
 			assert.NotContains(t, stderr.String(), "default-secret")
@@ -802,19 +791,20 @@ func TestAuthExportLocalStateErrorsAreSafe(t *testing.T) {
 			name: "explicit account missing",
 			args: []string{"pixiv", "auth", "export", "999"},
 			prepare: func(t *testing.T, authPath string) {
-				require.NoError(t, auth.SaveAuthStore(authPath, auth.AuthStore{
+				require.NoError(t, saveTestAuthStore(t, authPath, testAuthStore{
 					DefaultUserID: 444,
-					Accounts:      []auth.Account{{UserID: 444, RefreshToken: storedTokenCanary}},
+					Accounts:      []testAuthAccount{{UserID: 444, RefreshToken: storedTokenCanary}},
 				}))
 			},
 			wantError: "account uid 999 not found",
 			forbidden: storedTokenCanary,
 		},
 		{
-			name: "malformed auth store",
+			name: "legacy auth json is ignored",
 			args: []string{"pixiv", "auth", "export"},
 			prepare: func(t *testing.T, authPath string) {
-				require.NoError(t, auth.WritePrivateFile(authPath, []byte(`{"accounts":[`+malformedCanary+`]}`)))
+				legacyPath := filepath.Join(filepath.Dir(authPath), "auth.json")
+				require.NoError(t, config.WritePrivateFile(legacyPath, []byte(`{"accounts":[`+malformedCanary+`]}`)))
 			},
 			wantError: "pixiv:auth: unauthorized: no pixiv account is authenticated",
 			forbidden: malformedCanary,
@@ -833,32 +823,6 @@ func TestAuthExportLocalStateErrorsAreSafe(t *testing.T) {
 				assert.NotContains(t, stderr.String(), test.forbidden)
 			}
 			assert.NotContains(t, stderr.String(), authPath)
-		})
-	}
-}
-
-func TestAuthExportRejectsBlankSelectedTokenSafely(t *testing.T) {
-	for name, token := range map[string]string{"empty": "", "whitespace": "   "} {
-		t.Run(name, func(t *testing.T) {
-			authPath, _ := useTempPaths(t)
-			body := fmt.Sprintf(`{"default_user_id":7,"accounts":[{"user_id":7,"refresh_token":%q}]}`, token)
-			require.NoError(t, auth.WritePrivateFile(authPath, []byte(body)))
-
-			var stdout, stderr bytes.Buffer
-			code := Run([]string{"pixiv", "auth", "export", "7"}, strings.NewReader(""), &stdout, &stderr)
-
-			assert.NotContains(t, stderr.String(), authPath)
-			if token == "" {
-				// 空 token 不会被迁移进 authdb，导出必须安全失败。
-				assert.Equal(t, 1, code)
-				assert.Empty(t, stdout.String())
-				assert.Contains(t, stderr.String(), "account uid 7 not found")
-			} else {
-				// 空白 token 原样存储并导出；空白不是 secret，但仍不得泄露其他输入。
-				assert.Equal(t, 0, code, stderr.String())
-				assert.Equal(t, token+"\n", stdout.String())
-				assert.NotContains(t, stderr.String(), token)
-			}
 		})
 	}
 }
@@ -909,9 +873,9 @@ func TestAccountPromptFlows(t *testing.T) {
 
 func TestAccountRemovePromptCancelKeepsData(t *testing.T) {
 	authPath, _ := useTempPaths(t)
-	require.NoError(t, auth.SaveAuthStore(authPath, auth.AuthStore{
+	require.NoError(t, saveTestAuthStore(t, authPath, testAuthStore{
 		DefaultUserID: 555,
-		Accounts:      []auth.Account{{UserID: 555, Username: "kept-user", RefreshToken: "main-token"}},
+		Accounts:      []testAuthAccount{{UserID: 555, Username: "kept-user", RefreshToken: "main-token"}},
 	}))
 	setPromptStub(t, promptStub{
 		selects:  []string{"555 kept-user"},
@@ -922,10 +886,13 @@ func TestAccountRemovePromptCancelKeepsData(t *testing.T) {
 	code := Run([]string{"pixiv", "auth", "remove"}, strings.NewReader(""), &stdout, &stderr)
 
 	require.NotZero(t, code)
-	store, err := auth.LoadAuthStore(authPath)
+	db, err := authdb.Open(filepath.Dir(authPath))
 	require.NoError(t, err)
-	require.Len(t, store.Accounts, 1)
-	assert.Equal(t, int64(555), store.Accounts[0].UserID)
+	defer db.Close()
+	accounts, err := db.ListPixiv(context.Background())
+	require.NoError(t, err)
+	require.Len(t, accounts, 1)
+	assert.Equal(t, int64(555), accounts[0].UserID)
 }
 
 func TestLoginSSHTunnelCommandUsesOnlyBoundListenerAddress(t *testing.T) {
@@ -1058,15 +1025,6 @@ func TestPixivAuthStartMatchesChallenge(t *testing.T) {
 	assert.True(t, pixivAuthStartMatchesChallenge(pixivAuthStartURLForTest("any-challenge"), ""))
 }
 
-func assertPrivateFileMode(t *testing.T, actual os.FileMode, want os.FileMode) {
-	t.Helper()
-	if runtime.GOOS == "windows" {
-		// Windows mode bits 不作为 ACL 证据；DACL 边界由平台持久化契约说明。
-		return
-	}
-	assert.Equal(t, want, actual)
-}
-
 func pixivAuthStartURLForTest(challenge string) string {
 	values := url.Values{}
 	values.Set("code_challenge", challenge)
@@ -1076,40 +1034,18 @@ func pixivAuthStartURLForTest(challenge string) string {
 	return "https://app-api.pixiv.net/web/v1/users/auth/pixiv/start?" + values.Encode()
 }
 
-// buildLoginAuthorizationURLForTest 与 pixiv.BeginLogin 生成的授权 URL 保持同构。
-func buildLoginAuthorizationURLForTest(codeChallenge, state string) string {
-	values := url.Values{}
-	values.Set("code_challenge", codeChallenge)
-	values.Set("code_challenge_method", "S256")
-	values.Set("client", "pixiv-android")
-	values.Set("state", state)
-	return protocol.AppAPIBase + protocol.AppLogin + "?" + values.Encode()
-}
-
 func setTestOpenBrowser(t *testing.T, opener func(string) error) func() {
 	t.Helper()
 	return setOpenBrowserForTest(opener)
 }
 
-func setTestURLSchemeRelayInstaller(t *testing.T, installer urlSchemeRelayInstaller) func() {
-	t.Helper()
-	return setURLSchemeRelayInstallerForTest(installer)
-}
-
-// setTestPublicSDKFactory 保持 CLI 测试走与生产相同的 public OpenWith 路径。
-// 测试仅替换上游地址；传入的 proxy 覆写仍由生产 HTTPClient 构造并经真实 transport
-// 发出请求，避免以接口 fake 掩盖 --proxy/--no-proxy 的装配错误。
-func setTestPublicSDKFactory(t *testing.T, oauthBaseURL, appAPIBaseURL, webAPIBaseURL string, resourcePolicy pixiv.ResourcePolicy, observe func(application.SDKClientRequest)) {
-	setTestPublicSDKFactoryWithHTTPClient(t, oauthBaseURL, appAPIBaseURL, webAPIBaseURL, resourcePolicy, internalpixiv.HTTPClient, observe)
-}
-
-func setTestPublicSDKFactoryWithHTTPClient(t *testing.T, oauthBaseURL, appAPIBaseURL, webAPIBaseURL string, resourcePolicy pixiv.ResourcePolicy, newHTTPClient func(string) (*http.Client, error), observe func(application.SDKClientRequest)) {
+func setTestPublicSDKFactoryWithHTTPClient(t *testing.T, oauthBaseURL, appAPIBaseURL, webAPIBaseURL string, resourcePolicy pixiv.ResourcePolicy, newHTTPClient func(string) (*http.Client, error), observe func(pixivapp.SDKClientRequest)) {
 	t.Helper()
 	old := newCLIServices
-	newCLIServices = func() application.Services {
-		services := bootstrap.NewServices()
+	newCLIServices = func() (*bootstrap.Runtime, error) {
+		services := newTestRuntime(t)
 		pixivService, _ := services.Account.Pixiv.(*pixivapp.Service)
-		services.SDK.NewClient = func(request application.SDKClientRequest) (application.SDKClient, error) {
+		services.SDK.NewClient = func(request pixivapp.SDKClientRequest) (pixivapp.ClientSet, error) {
 			if observe != nil {
 				observe(request)
 			}
@@ -1122,7 +1058,7 @@ func setTestPublicSDKFactoryWithHTTPClient(t *testing.T, oauthBaseURL, appAPIBas
 			if request.HTTPSProxyOverride != nil {
 				httpClient, err := newHTTPClient(*request.HTTPSProxyOverride)
 				if err != nil {
-					return nil, err
+					return pixivapp.ClientSet{}, err
 				}
 				options.HTTPClient = rewriteAndProxyHTTPClient(rewrites, httpClient.Transport)
 			} else {
@@ -1131,29 +1067,33 @@ func setTestPublicSDKFactoryWithHTTPClient(t *testing.T, oauthBaseURL, appAPIBas
 			ctx := context.Background()
 			refreshToken := request.RefreshToken
 			if refreshToken == "" {
-				authPath, err := auth.AuthFilePath()
+				appDataDir := filepath.Join(os.Getenv("HOME"), filesystem.AppDataDirName)
+				db, err := authdb.Open(appDataDir)
 				if err != nil {
-					return nil, err
+					return pixivapp.ClientSet{}, err
 				}
-				store, err := auth.LoadAuthStore(authPath)
+				defer db.Close()
+				accounts, err := db.ListPixiv(ctx)
 				if err != nil {
-					return nil, err
+					return pixivapp.ClientSet{}, err
 				}
-				refreshToken = storeDefaultRefreshToken(store)
+				if len(accounts) > 0 {
+					refreshToken = string(accounts[0].RefreshToken)
+				}
 			}
 			if refreshToken == "" {
-				return nil, errors.New("no refresh token available for test SDK client")
+				return pixivapp.ClientSet{}, errors.New("no refresh token available for test SDK client")
 			}
 			client, _, err := pixiv.OpenWith(ctx, refreshToken, options)
 			if err != nil {
-				return nil, err
+				return pixivapp.ClientSet{}, err
 			}
-			return application.NewPixivSDKClient(client, pixivService), nil
+			return pixivapp.NewPixivSDKClients(client, pixivService), nil
 		}
 		// 测试工厂必须走上面的本地 httptest transport；生产账号池 closure 会直接
 		// 构造真实 OpenWith client，不能在此 helper 中沿用。这里用同一 factory 的
 		// 非池化重放，保证 list/download 命令不会因 nil RunPooled 而 panic。
-		services.SDK.RunPooled = func(ctx context.Context, request application.SDKClientRequest, attempt func(context.Context, application.SDKClient) (bool, error)) error {
+		services.SDK.RunPooled = func(ctx context.Context, request pixivapp.SDKClientRequest, attempt func(context.Context, pixivapp.ClientSet) (bool, error)) error {
 			client, err := services.SDK.NewClient(request)
 			if err != nil {
 				return err
@@ -1163,21 +1103,9 @@ func setTestPublicSDKFactoryWithHTTPClient(t *testing.T, oauthBaseURL, appAPIBas
 		}
 		// Login 持有 SDKService 值；重新装配后必须同步替换它。
 		services.Login.SDK = services.SDK
-		return services
+		return services, nil
 	}
 	t.Cleanup(func() { newCLIServices = old })
-}
-
-func storeDefaultRefreshToken(store auth.AuthStore) string {
-	for _, account := range store.Accounts {
-		if account.UserID == store.DefaultUserID {
-			return account.RefreshToken
-		}
-	}
-	if len(store.Accounts) > 0 {
-		return store.Accounts[0].RefreshToken
-	}
-	return ""
 }
 
 type testForwardProxy struct {
@@ -1260,7 +1188,7 @@ type authIdentity struct {
 	username string
 }
 
-// fakeAccountStore 实现 application.AccountStore；只覆写本组测试经过的方法。
+// fakeAccountStore 实现 pixivapp.AccountStore；只覆写本组测试经过的方法。
 type fakeAccountStore struct {
 	accounts          []pixivapp.Account
 	refreshResults    map[int64]pixivapp.Account
@@ -1370,13 +1298,13 @@ func (f *fakeAccountStore) AccountsWithTokens(context.Context) ([]pixivapp.Accou
 }
 
 // setTestAccountStore 让 CLI 账号命令直接观察 AccountStore，而不触发 OAuth 网络调用。
-func setTestAccountStore(t *testing.T, store application.AccountStore) {
+func setTestAccountStore(t *testing.T, store pixivapp.AccountStore) {
 	t.Helper()
 	old := newCLIServices
-	newCLIServices = func() application.Services {
-		services := bootstrap.NewServices()
+	newCLIServices = func() (*bootstrap.Runtime, error) {
+		services := newTestRuntime(t)
 		services.Account.Pixiv = store
-		return services
+		return services, nil
 	}
 	t.Cleanup(func() { newCLIServices = old })
 }
@@ -1469,12 +1397,11 @@ func useTempPaths(t *testing.T) (string, string) {
 	t.Setenv("HOME", home)
 	t.Setenv("USERPROFILE", home)
 	// 应用数据直接位于 home/.pixiv-cli；测试隔离 home 即可隔离认证、配置与日志。
-	base := filepath.Join(home, constants.AppDataDirName)
-	authPath := filepath.Join(base, "auth.json")
+	base := filepath.Join(home, filesystem.AppDataDirName)
+	databasePath := authdb.DatabasePath(base)
 	configPath := filepath.Join(base, "config.toml")
-	t.Cleanup(auth.SetAuthFilePathForTest(authPath))
 	t.Cleanup(config.SetFilePathForTest(configPath))
-	return authPath, configPath
+	return databasePath, configPath
 }
 
 type asyncCLIRun struct {
@@ -1545,49 +1472,6 @@ func freeLoopbackAddr(t *testing.T) string {
 	addr := ln.Addr().String()
 	require.NoError(t, ln.Close())
 	return addr
-}
-
-// startLoopbackForwarder 模拟 ssh -N -L LOCAL:127.0.0.1:REMOTE。测试只接受
-// loopback 端点，证明浏览器侧 POST 可以经转发回到运行 CLI 的另一端 listener。
-func startLoopbackForwarder(t *testing.T, remoteAddr string) string {
-	t.Helper()
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
-	require.NoError(t, err)
-	var connections sync.WaitGroup
-	stopped := make(chan struct{})
-	go func() {
-		defer close(stopped)
-		for {
-			incoming, acceptErr := listener.Accept()
-			if acceptErr != nil {
-				return
-			}
-			connections.Add(1)
-			go func() {
-				defer connections.Done()
-				defer incoming.Close()
-				upstream, dialErr := net.Dial("tcp", remoteAddr)
-				if dialErr != nil {
-					return
-				}
-				defer upstream.Close()
-				copied := make(chan struct{})
-				go func() {
-					_, _ = io.Copy(upstream, incoming)
-					_ = upstream.Close()
-					close(copied)
-				}()
-				_, _ = io.Copy(incoming, upstream)
-				<-copied
-			}()
-		}
-	}()
-	t.Cleanup(func() {
-		_ = listener.Close()
-		<-stopped
-		connections.Wait()
-	})
-	return listener.Addr().String()
 }
 
 func waitForLoginServer(t *testing.T, addr string) string {

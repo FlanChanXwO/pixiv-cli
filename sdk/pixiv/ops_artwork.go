@@ -12,7 +12,7 @@ import (
 // continuing with a non-zero Cursor.
 func (c *Client) SearchArtworks(ctx context.Context, request SearchArtworksRequest) (sdk.Page[Artwork], error) {
 	if request.Word == "" {
-		return sdk.Page[Artwork]{}, newError("SearchArtworks", sdk.CodeInvalidArgument, "search word is required")
+		return sdk.Page[Artwork]{}, newError("SearchArtworks", sdk.InvalidArgument, "search word is required")
 	}
 	if request.Target == "" {
 		request.Target = SearchTargetPartialMatchForTags
@@ -80,7 +80,7 @@ func (c *Client) SearchArtworks(ctx context.Context, request SearchArtworksReque
 // Artwork returns one artwork by its stable ID, including every image page.
 func (c *Client) Artwork(ctx context.Context, request ArtworkRequest) (Artwork, error) {
 	if request.ArtworkID <= 0 {
-		return Artwork{}, newError("Artwork", sdk.CodeInvalidArgument, "artwork ID must be positive")
+		return Artwork{}, newError("Artwork", sdk.InvalidArgument, "artwork ID must be positive")
 	}
 	detail, err := c.app.IllustDetail(ctx, request.ArtworkID)
 	if err != nil {
@@ -92,7 +92,7 @@ func (c *Client) Artwork(ctx context.Context, request ArtworkRequest) (Artwork, 
 // ArtworkPages returns every image page of one artwork as usable resources.
 func (c *Client) ArtworkPages(ctx context.Context, request ArtworkPagesRequest) ([]ArtworkPage, error) {
 	if request.ArtworkID <= 0 {
-		return nil, newError("ArtworkPages", sdk.CodeInvalidArgument, "artwork ID must be positive")
+		return nil, newError("ArtworkPages", sdk.InvalidArgument, "artwork ID must be positive")
 	}
 	detail, err := c.app.IllustDetail(ctx, request.ArtworkID)
 	if err != nil {
@@ -104,7 +104,7 @@ func (c *Client) ArtworkPages(ctx context.Context, request ArtworkPagesRequest) 
 // RelatedArtworks lists artworks related to one artwork.
 func (c *Client) RelatedArtworks(ctx context.Context, request RelatedArtworksRequest) (sdk.Page[Artwork], error) {
 	if request.ArtworkID <= 0 {
-		return sdk.Page[Artwork]{}, newError("RelatedArtworks", sdk.CodeInvalidArgument, "artwork ID must be positive")
+		return sdk.Page[Artwork]{}, newError("RelatedArtworks", sdk.InvalidArgument, "artwork ID must be positive")
 	}
 	query := url.Values{"illust_id": {itoa(request.ArtworkID)}}
 	offset, err := c.continuationOffset("RelatedArtworks", query, request.Cursor)
@@ -121,7 +121,7 @@ func (c *Client) RelatedArtworks(ctx context.Context, request RelatedArtworksReq
 // ArtworkSeries lists artworks within one illustration series.
 func (c *Client) ArtworkSeries(ctx context.Context, request ArtworkSeriesRequest) (sdk.Page[Artwork], error) {
 	if request.SeriesID <= 0 {
-		return sdk.Page[Artwork]{}, newError("ArtworkSeries", sdk.CodeInvalidArgument, "series ID must be positive")
+		return sdk.Page[Artwork]{}, newError("ArtworkSeries", sdk.InvalidArgument, "series ID must be positive")
 	}
 	query := url.Values{"illust_series_id": {itoa(request.SeriesID)}}
 	lastOrder, err := c.continuationValue("ArtworkSeries", query, request.Cursor, "last_order")
@@ -201,7 +201,7 @@ func (c *Client) LatestArtworks(ctx context.Context, request LatestArtworksReque
 // UserArtworks lists one user's artworks.
 func (c *Client) UserArtworks(ctx context.Context, request UserArtworksRequest) (sdk.Page[Artwork], error) {
 	if request.UserID <= 0 {
-		return sdk.Page[Artwork]{}, newError("UserArtworks", sdk.CodeInvalidArgument, "user ID must be positive")
+		return sdk.Page[Artwork]{}, newError("UserArtworks", sdk.InvalidArgument, "user ID must be positive")
 	}
 	kind := string(request.Kind)
 	query := url.Values{"user_id": {itoa(request.UserID)}, "type": {kind}}
@@ -219,7 +219,7 @@ func (c *Client) UserArtworks(ctx context.Context, request UserArtworksRequest) 
 // UserArtworkBookmarks lists one user's bookmarked artworks.
 func (c *Client) UserArtworkBookmarks(ctx context.Context, request UserArtworkBookmarksRequest) (sdk.Page[Artwork], error) {
 	if request.UserID <= 0 {
-		return sdk.Page[Artwork]{}, newError("UserArtworkBookmarks", sdk.CodeInvalidArgument, "user ID must be positive")
+		return sdk.Page[Artwork]{}, newError("UserArtworkBookmarks", sdk.InvalidArgument, "user ID must be positive")
 	}
 	query := url.Values{"user_id": {itoa(request.UserID)}, "restrict": {string(request.Restrict)}}
 	if request.Tag != "" {
@@ -240,7 +240,7 @@ func (c *Client) UserArtworkBookmarks(ctx context.Context, request UserArtworkBo
 // artworks.
 func (c *Client) UserArtworkBookmarkTags(ctx context.Context, request UserArtworkBookmarkTagsRequest) (sdk.Page[BookmarkTag], error) {
 	if request.UserID <= 0 {
-		return sdk.Page[BookmarkTag]{}, newError("UserArtworkBookmarkTags", sdk.CodeInvalidArgument, "user ID must be positive")
+		return sdk.Page[BookmarkTag]{}, newError("UserArtworkBookmarkTags", sdk.InvalidArgument, "user ID must be positive")
 	}
 	query := url.Values{"user_id": {itoa(request.UserID)}, "restrict": {string(request.Restrict)}}
 	offset, err := c.continuationOffset("UserArtworkBookmarkTags", query, request.Cursor)
@@ -294,10 +294,10 @@ func (c *Client) TrendingArtworkTags(ctx context.Context, request TrendingArtwor
 }
 
 // UgoiraMetadata returns the playable metadata of a ugoira artwork. The artwork
-// must be a ugoira; other kinds return CodeInvalidArgument.
+// must be a ugoira; other kinds return InvalidArgument.
 func (c *Client) UgoiraMetadata(ctx context.Context, request UgoiraMetadataRequest) (UgoiraMetadata, error) {
 	if request.ArtworkID <= 0 {
-		return UgoiraMetadata{}, newError("UgoiraMetadata", sdk.CodeInvalidArgument, "artwork ID must be positive")
+		return UgoiraMetadata{}, newError("UgoiraMetadata", sdk.InvalidArgument, "artwork ID must be positive")
 	}
 	result, err := c.app.UgoiraMetadata(ctx, request.ArtworkID)
 	if err != nil {
@@ -309,7 +309,7 @@ func (c *Client) UgoiraMetadata(ctx context.Context, request UgoiraMetadataReque
 // ArtworkComments lists comments on one artwork.
 func (c *Client) ArtworkComments(ctx context.Context, request ArtworkCommentsRequest) (CommentPage, error) {
 	if request.ArtworkID <= 0 {
-		return CommentPage{}, newError("ArtworkComments", sdk.CodeInvalidArgument, "artwork ID must be positive")
+		return CommentPage{}, newError("ArtworkComments", sdk.InvalidArgument, "artwork ID must be positive")
 	}
 	query := url.Values{"illust_id": {itoa(request.ArtworkID)}}
 	offset, err := c.continuationOffset("ArtworkComments", query, request.Cursor)
@@ -326,7 +326,7 @@ func (c *Client) ArtworkComments(ctx context.Context, request ArtworkCommentsReq
 // ArtworkBookmark reads the current user's bookmark detail for one artwork.
 func (c *Client) ArtworkBookmark(ctx context.Context, request ArtworkBookmarkRequest) (ArtworkBookmarkDetail, error) {
 	if request.ArtworkID <= 0 {
-		return ArtworkBookmarkDetail{}, newError("ArtworkBookmark", sdk.CodeInvalidArgument, "artwork ID must be positive")
+		return ArtworkBookmarkDetail{}, newError("ArtworkBookmark", sdk.InvalidArgument, "artwork ID must be positive")
 	}
 	detail, err := c.app.ArtworkBookmarkDetail(ctx, request.ArtworkID)
 	if err != nil {

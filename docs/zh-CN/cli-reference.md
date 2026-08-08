@@ -128,7 +128,7 @@ pixiv auth login
 | 浏览器 | macOS 与 Windows 的普通 CLI 启动会准备当前用户 `pixiv://` callback helper；桌面 Linux 会在交互式登录时初始化 XDG handler。CLI 打开默认浏览器，可复用已有 Pixiv 登录态；使用 `--no-open` 时只打印登录 URL 和本地页面地址。 |
 | 回调 | CLI 接收本轮 loopback callback、一次性桌面 handoff、终端粘贴或本地页面表单。helper 转交后，默认浏览器会在 OAuth exchange 完成时打开本地最终成功或失败页。 |
 | 校验 | 本地 loopback 回调必须匹配本次 state；Pixiv 官方 callback URL 与 `pixiv://account/login` 可在 Pixiv 未返回 state 时作为显式 fallback。 |
-| 保存 | refresh/access token 不会打印；refresh token 按 Pixiv UID 保存到 `auth.json`。Unix-like 主动使用 `0700` 父目录与 `0600` 文件；Windows 首次创建继承父目录 ACL，替换既有目标保留其 ACL，不主动收紧或放宽 DACL。 |
+| 保存 | refresh/access token 不会打印；refresh token 按 Pixiv UID 保存到本地 SQLite 数据库。Unix-like 主动使用 `0700` 父目录与 `0600` 文件；Windows 首次创建继承父目录 ACL，替换既有目标保留其 ACL，不主动收紧或放宽 DACL。 |
 
 handler 会持久注册，但只在系统打开 `pixiv://` 时按需运行：macOS 使用 `PixivCLIURLHandler.app`，Windows 使用当前用户协议关联，桌面 Linux 使用 XDG desktop entry；旧 handler 会私有记录。本地活跃的 loopback bridge 永远优先。没有本地 bridge 时，`pixiv://account/login` 只会由活跃的一次性桌面 handoff 接收，`pixiv://account/remote-login` 用于启动该 handoff。其他 `pixiv://` URL 会定向交给旧 handler。需要更换 handler 时，请使用系统提供的关联 UI。
 
@@ -209,7 +209,7 @@ pixiv auth export --all --output accounts.pxauth
 pixiv auth export --all --output accounts.pxauth --force
 ```
 
-不带 `--output` 时，只有两种形式可向 stdout 写 secret：默认/UID export 精确输出已存 raw token 与一个换行；`--all` 只输出 versioned JSON bundle。成功时 stderr 为空。export 严格 local-only：只读 `auth.json`，不读取 `PIXIV_REFRESH_TOKEN`，不刷新、不访问 Pixiv、不修改 auth/config，并跳过 startup pending-update cleanup 与 automatic update。`--all` 不能和 UID 同用，`--force` 必须配合 `--output`，export 不接受 JSON/代理 flag。
+不带 `--output` 时，只有两种形式可向 stdout 写 secret：默认/UID export 精确输出已存 raw token 与一个换行；`--all` 只输出 versioned JSON bundle。成功时 stderr 为空。export 严格 local-only：只读本地 SQLite 数据库，不读取 `PIXIV_REFRESH_TOKEN`，不刷新、不访问 Pixiv、不修改 auth/config，并跳过 startup pending-update cleanup 与 automatic update。`--all` 不能和 UID 同用，`--force` 必须配合 `--output`，export 不接受 JSON/代理 flag。
 
 带 `--output PATH` 时，单账号和 `--all` 都写 bundle，不写 raw token。默认拒绝覆盖既有文件，只有显式 `--force` 才 replacement；成功 stdout 只有 output path 与 account count。Unix-like 目标文件为 `0600`，既有 parent 权限与 ownership 不变。Windows 明确设置文件 owner 与 protected DACL，只允许当前用户、LocalSystem、builtin Administrators 完全控制。CI tests 覆盖该 Windows policy；本文不声称本次 release 验收已在真实 Windows filesystem 运行。
 
@@ -257,13 +257,13 @@ pixiv recommended all
 pixiv download 123456 789012
 ```
 
-所有持久的应用管理数据直接保存到当前用户主目录：macOS/Linux 为 `~/.pixiv-cli`，Windows 为 `%USERPROFILE%\.pixiv-cli`。其中包括 `auth.json`、`config.toml`、回调桥接状态、Release 检查缓存和 macOS 回调 helper；账号认证以 Pixiv UID 为 key。Unix-like 主动使用 `0700` 父目录与 `0600` 文件；Windows 首次创建继承父目录 ACL，替换既有目标保留其 ACL，不主动收紧或放宽 DACL。输出默认给人读；只有 help 中提供 `--json` 的命令可输出机器可解析 JSON，`auth export` 明确不提供该 flag。
-首次执行普通命令时，若不存在 `config.toml`，CLI 会生成只含下载、Web fallback、输出、登录与更新常用设置的基础文件，且绝不覆盖已有文件。代理、登录超时和 Premium 状态缓存等高级设置会保持省略，直到用户显式配置；help、version、secret export 和内部 OAuth callback 不会创建该文件。
+所有持久的应用管理数据直接保存到当前用户主目录：macOS/Linux 为 `~/.pixiv-cli`，Windows 为 `%USERPROFILE%\.pixiv-cli`。其中包括 `pixiv-cli.db`、`config.toml`、回调桥接状态、Release 检查缓存和 macOS 回调 helper；账号认证以 Pixiv UID 为 key。Unix-like 主动使用 `0700` 父目录与 `0600` 文件；Windows 首次创建继承父目录 ACL，替换既有目标保留其 ACL，不主动收紧或放宽 DACL。输出默认给人读；只有 help 中提供 `--json` 的命令可输出机器可解析 JSON，`auth export` 明确不提供该 flag。
+首次执行普通命令时，若不存在 `config.toml`，CLI 会生成只含下载、输出、登录与更新常用设置的基础文件，且绝不覆盖已有文件。代理、登录超时和 Premium 状态缓存等高级设置会保持省略，直到用户显式配置；help、version、secret export 和内部 OAuth callback 不会创建该文件。
 CLI 使用 Cobra/pflag，选项可以写在位置参数前后，例如 `pixiv auth check 12345678 --json` 和 `pixiv search "初音ミク" --json` 都是正式支持的写法。
 
 ### v0.8.0 数据命令契约
 
-所有非写入的数据读取、推荐、时间线与下载都使用 `pixiv auth use` 选定的本地账号。只有 `[account_pool]` 显式设置 `enabled = true` 时才启用账号池；省略 `accounts` 会按 `auth.json` 的存储顺序使用全部账号，写入 `accounts` 时它是白名单。`strategy` 默认 `round_robin`，也支持 `random`。写操作、认证和配置不使用账号池。数据命令拒绝 `--uid`、`--refresh-token`，并忽略 `PIXIV_REFRESH_TOKEN`。
+账号池关闭时，所有非写入的数据读取、推荐、时间线与下载使用 `pixiv auth use` 选定的本地账号。只有 `[account_pool]` 显式设置 `enabled = true` 时才启用数据库账号池；账号行的 `schedulable` 控制是否参加调度，`strategy` 默认 `round_robin`，也支持 `random`。使用 `pixiv auth pool status|enable|disable` 查看或修改调度状态。写操作、认证和配置不使用账号池。数据命令拒绝 `--uid`、`--refresh-token`，并忽略 `PIXIV_REFRESH_TOKEN`。
 
 视觉列表接入管道时会自动输出 NDJSON；也可显式使用 `--ndjson`。每行都是带稳定字符串 `id`、`type`、`url` 的规范 Record，其余 SDK 字段会保留。`download`、`bookmark add/remove`、`follow add/remove` 可不带位置 ID 直接消费它们。视觉列表与 `download` 使用 `--filter EXPR` 在本地按作品字段筛选；动作成功时 stdout 保持为空，安全诊断写入 stderr。`--on-error=skip|fail-fast` 控制 stdin 中格式错误或不兼容 Record 的处理；`--json` 与 `--ndjson` 不能同时使用。
 
@@ -276,6 +276,7 @@ Ugoira 下载使用 `--ugoira-mode gif|apng|zip|frames`，默认 `gif`；指定�
 | `auth import` | `pixiv auth import [REFRESH_TOKEN] [--file PATH] [--json] [--proxy URL\|--no-proxy]` | direct input 校验并保存 rotation 后的 token；无参 TTY 隐藏输入，非 TTY 读取 raw stdin。`--file PATH|-` 改为离线原子恢复 bundle，并与 token/代理输入冲突。 |
 | `auth login` | `pixiv auth login [--json] [--no-open] [--addr 127.0.0.1:0] [--use] [--timeout DURATION] [--relay-public-url URL --relay-listen-addr ADDR] [--relay-tls-cert-file PATH --relay-tls-key-file PATH] [--proxy URL\|--no-proxy]` | 使用普通 loopback OAuth；完整 server relay 配置存在时输出一次性 handoff URL，直接启动已安装的 desktop CLI handler。按 Pixiv UID 保存账号，绝不输出 refresh token。 |
 | `auth list` | `pixiv auth list [--json]` | 列出本地账号；不会输出 refresh token。文本中 `*` 表示默认账号，`✓`/`-` 分别表示本地保存/缺少 refresh token；这些只是本地状态标记，不代表已在线验证有效。 |
+| `auth pool` | `pixiv auth pool status [--json]`；`pixiv auth pool enable UID... [--all]`；`pixiv auth pool disable UID... [--all]` | 查看或修改非 secret 的数据库调度状态。`status` 显示 `enabled`、`strategy`、`schedulable`、`frozen_until` 与当前 `eligible`；enable/disable 会先校验全部 UID，再提交整批。 |
 | `auth export` | `pixiv auth export [UID] [--all] [--output PATH] [--force]` | 本地导出默认/指定账号或全部账号；无 `--output` 时单账号输出 raw token、`--all` 输出 bundle；带 `--output` 时都写私有 bundle，stdout 仅安全摘要。`--force` 必须与 `--output` 同用。 |
 | `auth use` | `pixiv auth use [UID] [--json]` | 设置默认账号；TTY 下可交互选择。 |
 | `auth remove` | `pixiv auth remove [UID] [--yes] [--json]` | 删除账号；TTY 下默认确认，删除默认账号后会自动选第一个剩余账号。 |
@@ -283,7 +284,7 @@ Ugoira 下载使用 `--ugoira-mode gif|apng|zip|frames`，默认 `gif`；指定�
 | `auth refresh` | `pixiv auth refresh [UID] [--all] [--json] [--proxy URL\|--no-proxy]` | 刷新指定/默认已保存账号的 OAuth access token 与 rotation 后 refresh token，再强制读取 profile 更新 Pixiv 高级会员缓存。`--all` 刷新全部已保存账号；JSON 固定返回 `accounts`。 |
 | `config path` | `pixiv config path` | 输出 `config.toml` 路径；不存在时创建基础文件。 |
 | `config get` | `pixiv config get KEY` | 输出一个生效中的配置值。 |
-| `config set` | `pixiv config set KEY [VALUE]` | 写入已知配置键，包括 `download_path`、`filename_template`、`directory_template`、`request_interval` 与 `https_proxy`。 |
+| `config set` | `pixiv config set KEY [VALUE]` | 写入已知配置键，包括 `account_pool_enabled`、`account_pool_strategy`、`download_path`、`filename_template`、`directory_template`、`request_interval` 与 `https_proxy`。 |
 | `config unset` | `pixiv config unset KEY` | 从 `config.toml` 删除一个已知配置键。 |
 | `version` | `pixiv version [--json]` | 输出当前二进制的 `version`、`commit`、`build_date`；根 `pixiv --version` 只输出版本。 |
 | `update` | `pixiv update [--check] [--prerelease] [--proxy URL]` | 检查或执行与当前安装来源匹配的更新；`--json` 仅可与 `--check` 同用。 |
@@ -307,6 +308,14 @@ Ugoira 下载使用 `--ugoira-mode gif|apng|zip|frames`，默认 `gif`；指定�
 | `follow remove` | `pixiv follow remove USER_ID` | 取消关注用户；不接受可见性参数。 |
 | `download` | `pixiv download [options] SRC...` | 下载作品 PID/URL、允许的 CDN 直链，或从受支持的用户 URL 下载全部视觉作品。 |
 | `mcp` | `pixiv mcp [--proxy URL\|--no-proxy]` | 启动 MCP stdio server；代理覆盖只在本次启动时生效。 |
+| `fanbox auth` | `pixiv fanbox auth import|list|use|remove|status` | 导入并管理本地 FANBOX session；session 值永不输出。native `--proxy`/`--no-proxy` 只影响本次 FANBOX 命令。 |
+| `fanbox creators` | `pixiv fanbox creators [--kind supporting\|following] [--page N --limit N]` | 列出 supporting 或 following FANBOX creator。 |
+| `fanbox posts` | `pixiv fanbox posts SOURCE [--page N --limit N]` | 按 creator、tag、post ID 或支持的 FANBOX URL 列出帖子。 |
+| `fanbox tags` | `pixiv fanbox tags CREATOR` | 列出 creator 使用的 featured tag。 |
+| `fanbox home` / `supporting` | `pixiv fanbox home|supporting [--page N --limit N]` | 读取认证 FANBOX home 或 supporting feed。 |
+| `fanbox post` | `pixiv fanbox post POST_ID` | 读取一个帖子及其安全 asset 摘要。 |
+| `fanbox download` | `pixiv fanbox download SOURCE...` | 将 FANBOX 帖子 asset 保存到配置的下载目录下。 |
+| `fanbox mcp` | `pixiv fanbox mcp [--proxy URL\|--no-proxy]` | 启动只读 FANBOX MCP stdio server；native 代理不会修改 FlareSolverr 配置。 |
 
 下载文件名会规范化文件名模板以及 URL 推导扩展名中的跨平台非法字符；扩展名还会替换 ASCII 控制字符并移除 Windows 不接受的尾随点或空格。扩展名仍来自上游 URL，不使用 allowlist、MIME 猜测或静默替代。
 
@@ -426,6 +435,7 @@ App JSON 读取在首次 429 且 `Retry-After` 有效时按命令 context 等待
 | `--sleep-request DURATION` | 联网命令和 `mcp` | 配置/默认值 | 本次请求起始间隔，覆盖 `PIXIV_REQUEST_INTERVAL` 与 `[network].request_interval`。 |
 | `--proxy URL` | 联网命令和 `mcp` | `https_proxy`/`HTTPS_PROXY`、`config.toml` 或空 | 仅本次使用 `http`、`https`、`socks5` 或 `socks5h` 代理 URI；`auth import --file` 禁用。 |
 | `--no-proxy` | 同 `--proxy` | 空 | 仅本次清空代理；不能与 `--proxy` 或 bundle restore 同用。 |
+| `--debug` | 所有 CLI 命令、`mcp` 与 `fanbox mcp` | `false` | 只向 stderr 写安全的实时英文诊断；不创建日志文件，也不改变 stdout、路由、重试或结果 shape。`auth export` 与隐藏 OAuth callback 仍保持 stderr 为空。 |
 
 ### CLI 可管理的 `config` 别名
 
@@ -433,13 +443,39 @@ App JSON 读取在首次 429 且 `Retry-After` 有效时按命令 context 等待
 
 | KEY | 类型 | 默认值 | 说明 |
 | --- | --- | --- | --- |
+| `account_pool_enabled` | boolean | `false` | 为安全读取/下载启用数据库账号池。 |
+| `account_pool_strategy` | string | `round_robin` | 账号池策略，只能是 `round_robin` 或 `random`。 |
 | `download_path` | string | `./downloads` | 下载目录。 |
 | `filename_template` | string | `{author} - {title}_{id}` | 文件名模板。 |
 | `directory_template` | string | 空 | 相对下载目录模板。 |
 | `request_interval` | duration | `0` | 请求起始间隔；`PIXIV_REQUEST_INTERVAL` 与一次性的 `--sleep-request` 可覆盖。 |
-| `https_proxy` | string | 空 | `http`、`https`、`socks5` 或 `socks5h` 代理 URI；小写 `https_proxy` 环境变量优先。 |
+| `https_proxy` | string | 空 | 全局 `http`、`https`、`socks5` 或 `socks5h` 代理 URI；小写 `https_proxy` 环境变量优先。 |
 
-手工 TOML 可以包含 `[account_pool]`、`[web]`、`[login]`、`[update]` 等高级运行时段。不要把 refresh token 写入 `config.toml`。账号池状态只记录上次 UID/冻结信息，绝不保存 token。旧 `[logging]` 表会为兼容性被忽略；`log_level` 不是受支持的 `pixiv config` 键。
+手工 TOML 可以包含 `[account_pool]`、`[network]`、`[pixiv.network]`、`[fanbox.network]`、`[fanbox.flaresolverr]`、`[login]`、`[update]` 等高级运行时段：
+
+```toml
+[network]
+https_proxy = "http://global-proxy.example:7890"
+
+[pixiv.network]
+proxy_url = "socks5h://pixiv-proxy.example:1080"
+
+[fanbox.network]
+proxy_url = ""                    # 显式选择 FANBOX native direct
+user_agent = "my-native-agent/1.0"
+
+[fanbox.flaresolverr]
+url = "http://127.0.0.1:8191"
+proxy_url = "socks5://solver-upstream.example:1080"
+```
+
+`[pixiv.network].proxy_url` 与 `[fanbox.network].proxy_url` 区分缺失和显式空值：命令 `--proxy`/`--no-proxy` > 对应 service key（含显式空值） > `https_proxy`/`HTTPS_PROXY` > `[network].https_proxy` > direct。FANBOX native 只接受不带 userinfo 的 HTTP(S) CONNECT；Pixiv 接受 HTTP(S)、SOCKS5 与 SOCKS5H。`user_agent` 只修改 FANBOX native header，不改变 Firefox 148 TLS profile，也不保证绕过 Cloudflare。FlareSolverr 可选且仅 challenge-only；service URL 与 upstream proxy 独立于 native FANBOX proxy。默认 config generator 不创建这些可选 table。
+
+`[account_pool]` 只保存 `enabled` 与 `strategy`；每个账号的 `schedulable`、冻结和 marker 状态位于 `pixiv-cli.db`。旧 `account_pool.accounts` 会一次性迁移为数据库标记后删除，并保留该表其他内容。不要把 refresh token 写入 `config.toml`。历史 `data/account-pool.json` scheduler 不会被自动读取、迁移或删除。旧 `[logging]` 表会为兼容性被忽略；`log_level` 不是受支持的 `pixiv config` 键。
+
+v1 CLI 不会读取或迁移旧的 `~/.pixiv-cli/auth.json`。从旧版本切换前，请在旧 CLI 执行
+`pixiv auth export --all --output <private bundle>`，再在 v1 执行 `pixiv auth import --file <bundle>`。
+迁移必须显式完成，旧文件不会成为隐式 credential 来源。
 
 ### 环境变量
 
@@ -452,37 +488,30 @@ App JSON 读取在首次 429 且 `Retry-After` 有效时按命令 context 等待
 | `PIXIV_REQUEST_INTERVAL` | 空 | 请求起始间隔。 |
 | `https_proxy` / `HTTPS_PROXY` | 空 | `http`、`https`、`socks5` 或 `socks5h` 代理 URI；优先使用小写 `https_proxy`。 |
 
-CLI 数据命令以 `pixiv auth use` 选择的 `auth.json.default_user_id` 为准，或从手工 `[account_pool]` 选择；不接受身份选择参数，也不读取 `PIXIV_REFRESH_TOKEN`。
+CLI 数据命令在账号池关闭时使用 `pixiv auth use` 的显式/默认账号，启用时从数据库选择 eligible 账号；不接受身份选择参数，也不读取 `PIXIV_REFRESH_TOKEN`。
 
-设置类字段优先级：命令行 flag > 环境变量 > `config.toml` > 默认值。代理的命令行覆盖只支持 `--proxy URL` / `--no-proxy`，且不会持久化。
+设置类字段按 service 分域：命令 `--proxy URL`/`--no-proxy` > 对应 service proxy（含显式空值） > `https_proxy`/`HTTPS_PROXY` > `[network].https_proxy` > direct。代理覆盖不会持久化；update 只使用通用 network fallback，不消费 FANBOX 或 solver 配置。
 
-### 匿名 web fallback
+### Debug 诊断
 
-当 `--refresh-token`、`PIXIV_REFRESH_TOKEN` 和默认账号都没有提供 refresh token，且 `web_fallback_enabled=true` 时，CLI 的 `search`、`detail`、`ranking` 和 `download` 自动走 Pixiv web/ajax API。
-
-有 refresh token 时仍优先使用 App API；token 无效、App API 网络错误或服务端错误不会自动 fallback，会直接返回安全、可分类的失败，不会将错误伪装成正常空结果。
-
-匿名 fallback 的差异：
-
-- 匿名 `search` 只执行 Web API 能可靠表达的筛选。分辨率、横纵比、绘图工具和作品类型会转译为 Web 参数；AI 筛选使用返回的作品字段。
-- `rating=r18`、`r18g`、`mature`、`--search-by tag-title-caption` 或收藏数边界会在匿名请求前明确返回需要认证，而不会伪装成空结果；收藏数边界还需要 Pixiv 高级会员；`rating=all` 只表示匿名可见范围。
-- `novel search` 仅支持 App API；无 refresh token 时明确返回需要认证。
-- 九个扩展排行榜 mode（`day_manga`、`week_manga`、`month_manga`、`week_rookie_manga`、`day_r18`、
-  `day_male_r18`、`day_female_r18`、`week_r18`、`week_r18g`）需要认证，不会回落或伪装成匿名日榜。
-- 认证态 `user search` 使用官方 App 用户搜索，返回 `source: "app_search"`。匿名 fallback 通过 web 作品搜索结果按 `userId` 去重，返回 `source: "related_illust_authors"`，并明确标注为“相关插画作者”而非用户名搜索。
-- 静态单页/多页下载使用 `/ajax/illust/{id}/pages` 的 `original` URL。
-- ugoira 下载使用 `/ajax/illust/{id}/ugoira_meta` 的 `originalSrc` zip 和 frames；受支持的发行构建通过内置 Rust encoder 生成 GIF/APNG，运行时不依赖 `ffmpeg`。
-- web fallback 不新增专用代理环境变量，继续使用 `--proxy` / `--no-proxy`、`https_proxy` / `HTTPS_PROXY` 或 `pixiv config set https_proxy ...`。
-
-代理 URL 格式错误时，受影响的 CLI 数据命令与更新检查会在联网前失败；诊断仅保留安全分类与静态上下文，不回显输入中的 userinfo、path 或 query。
-
-关闭方式：
+可在命令前后传入 `--debug`，观察安全的生命周期、账号池、网络、challenge、solver、下载与错误事件：
 
 ```bash
-# ~/.pixiv-cli/config.toml
-[web]
-fallback_enabled = false
+pixiv --debug detail 123456
+pixiv fanbox --debug post 12221352
+pixiv --debug mcp 2>debug.log
 ```
+
+每行都写入 stderr，带明确的产品+子系统模块和完整英文句子；不会创建 `logs/`、daily file、JSON event stream，也不会写 raw URL、Cookie、token、signed query、proxy userinfo 或 clearance。stdout 与 MCP JSON-RPC 不变。`pixiv auth export` 即使带 `--debug` 也不创建诊断 scope，因此 raw-token/bundle stdout 与空 stderr 契约保持原样。unknown option 会在 scope 创建前以 exit code `2` 报告。
+
+### 移除的匿名 web fallback
+
+v1 已删除匿名 Web API fallback。内容命令要求先通过 `pixiv auth use` 或启用数据库
+`[account_pool]` 选择已认证的本地账号；否则返回认证要求。已删除的
+`web_fallback_enabled` 配置若仍存在于 `config.toml` 会返回 `removed_setting`，
+可用 `pixiv config unset web_fallback_enabled` 清除。
+
+无效 token 与 App API 网络或服务器错误会返回安全的、已分类的失败。
 
 ## 版本与更新
 
