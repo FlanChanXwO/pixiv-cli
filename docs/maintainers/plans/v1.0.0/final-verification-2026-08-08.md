@@ -93,6 +93,7 @@ signed URL 或下载内容。
 | browser evidence workflow dispatch | UNAVAILABLE | 默认分支尚未注册该 feature-branch workflow，直接 dispatch 返回 HTTP 404；没有通过 main/release 绕过。 |
 | 用户提供的 FANBOX session（`ro7274`） | PARTIAL / PENDING | session validation 通过；当前 session 对作者索引中的十个显式 post target 逐一运行 native SDK，均为 `challenge_required`。修正后的三-cookie web probe 返回 HTTP 403 非 JSON；没有取得新的 post body 或 file attachment。session 只在进程内使用，未写入仓库、日志或 artifact。 |
 | 隔离 headed Chromium 的 FANBOX 页面验证（2026-08-09） | PARTIAL / PENDING | 通过 Keychain 的 `FANBOXSESSID` 注入隔离浏览器后，作者列表明确显示 `12373249` 为公开帖，并确认当前账号是“正在关注”而非“正在赞助”。公开帖子 `12120175`、`12108370`、`12032687`、`12246608` 与 `12246623` 能渲染文章；页面只发现 `downloads.fanbox.cc/images/post/...` 图片链接，没有 file attachment。目标 `12373249` 在该会话下仍未挂载文章内容；付费帖子显示需要月费高于 500 日元，未在未授权情况下访问。浏览器 session、临时 profile 与输出 artifact 均已清理。 |
+| 补充复核历史公开 file target（`aak/12221352`） | NOT REPRODUCED / PENDING | 使用当前 public SDK、同一 Keychain session 与显式 loopback proxy 重跑；身份与前置 operation 未作为 ro7274 目标的替代，单帖 `Post` 在当前出口返回 `challenge_required`，因此没有发起资源请求。历史手工 Firefox 记录仍仅作为历史背景，不升级为本轮 SDK file-resource evidence。 |
 
 上述 Quality 与 Platform workflow 只用于 CI 质量和 packaged smoke 验证，没有触发任何发版操作。第一轮
 runner 失败及其修复原因也已保留在实现提交历史：packaged smoke 的自动 update 提示已在隔离 profile
