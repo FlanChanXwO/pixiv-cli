@@ -12,6 +12,8 @@ import (
 	"testing"
 )
 
+const versionSmokeConfig = "[update]\ncheck_enabled = false\n"
+
 func TestPixivBinaryReportsBuildMetadata(t *testing.T) {
 	repoRoot := ".."
 
@@ -27,6 +29,28 @@ func TestPixivBinaryReportsBuildMetadata(t *testing.T) {
 		)
 		assertPixivBuildMetadata(t, repoRoot, binaryPath, "v0.1.0", "0123456789abcdef", "2026-07-11T00:00:00Z")
 	})
+}
+
+func TestIsolatedVersionProcessEnvDisablesAutomaticUpdate(t *testing.T) {
+	values := isolatedVersionProcessEnv(t)
+	environment := make(map[string]string, len(values))
+	for _, entry := range values {
+		name, value, found := strings.Cut(entry, "=")
+		if found {
+			environment[name] = value
+		}
+	}
+	home := environment["HOME"]
+	if home == "" {
+		t.Fatal("isolated version environment must define HOME")
+	}
+	body, err := os.ReadFile(filepath.Join(home, ".pixiv-cli", "config.toml"))
+	if err != nil {
+		t.Fatalf("read isolated version config: %v", err)
+	}
+	if string(body) != versionSmokeConfig {
+		t.Fatalf("isolated version config = %q, want automatic update disabled", body)
+	}
 }
 
 // TestPixivBinaryPackagedSmoke 验证平台 workflow 解包后的实际二进制，而不是重新构建一个开发二进制。
@@ -160,12 +184,22 @@ func isolatedVersionProcessEnv(t *testing.T) []string {
 	values := make([]string, 0, len(base)+3)
 	for _, entry := range base {
 		name, _, found := strings.Cut(entry, "=")
-		if found && isWindowsProfileEnvironmentVariable(name) {
+		if found && (strings.EqualFold(name, "HOME") || isWindowsProfileEnvironmentVariable(name)) {
 			continue
 		}
 		values = append(values, entry)
 	}
+	// 打包 smoke 使用带发布版本号的 CI 构建；自动更新检查不属于该二进制/归档
+	// 契约，且其网络提示会污染命令 stderr。仅在临时用户目录关闭它，不改默认配置。
+	configDirectory := filepath.Join(profileRoot, ".pixiv-cli")
+	if err := os.MkdirAll(configDirectory, 0o700); err != nil {
+		t.Fatalf("create isolated version config directory: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(configDirectory, "config.toml"), []byte(versionSmokeConfig), 0o600); err != nil {
+		t.Fatalf("write isolated version config: %v", err)
+	}
 	return append(values,
+		"HOME="+profileRoot,
 		"APPDATA="+profileRoot,
 		"LOCALAPPDATA="+profileRoot,
 		"USERPROFILE="+profileRoot,

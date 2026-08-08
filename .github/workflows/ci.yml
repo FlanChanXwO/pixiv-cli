@@ -119,4 +119,8 @@ jobs:
           go-version: '1.26.3'
       - name: Test native login handler contracts
         shell: bash
-        run: go test ./internal/cli ./internal/cli/auth/loginhelper -count=1
+        run: |
+          # Quality gate 已运行完整 internal/cli；Windows job 聚焦 root callback
+          # wiring，并由 loginhelper 包承担真实 Windows registry contract。
+          go test ./internal/cli -run '^(TestAuthURLCallback|TestAuthURLHandlerInstall|TestNormalCLIInvocationEnsuresPersistentHandlerWithoutBlockingCommand)$' -count=1
+          go test ./internal/cli/auth/loginhelper -count=1

@@ -82,13 +82,20 @@ func ValidateQuality(path string) error {
 		"windows_login_handler:",
 		"name: Windows login handler contracts",
 		"CC: clang -fuse-ld=lld",
-		"go test ./internal/cli ./internal/cli/auth/loginhelper -count=1",
+		"go test ./internal/cli -run '^(TestAuthURLCallback|TestAuthURLHandlerInstall|TestNormalCLIInvocationEnsuresPersistentHandlerWithoutBlockingCommand)$' -count=1",
+		"go test ./internal/cli/auth/loginhelper -count=1",
 	} {
 		if !strings.Contains(workflow, required) {
 			return fmt.Errorf("quality workflow missing %q", required)
 		}
 	}
-	for _, forbidden := range []string{"secrets.", "environment:", "PIXIV_SDK_E2E=1", "FANBOX_SDK_E2E=1"} {
+	for _, forbidden := range []string{
+		"secrets.",
+		"environment:",
+		"PIXIV_SDK_E2E=1",
+		"FANBOX_SDK_E2E=1",
+		"go test ./internal/cli ./internal/cli/auth/loginhelper -count=1",
+	} {
 		if strings.Contains(workflow, forbidden) {
 			return fmt.Errorf("quality workflow must not contain %q", forbidden)
 		}
