@@ -162,7 +162,7 @@ func TestNormalCLIInvocationEnsuresPersistentHandlerWithoutBlockingCommand(t *te
 	})
 
 	var stdout, stderr bytes.Buffer
-	code := Run([]string{"pixiv", "auth", "list"}, strings.NewReader(""), &stdout, &stderr)
+	code := Run([]string{"pixiv", "version"}, strings.NewReader(""), &stdout, &stderr)
 	if code != 0 || calls != 1 || !strings.Contains(stderr.String(), "persistent pixiv:// callback handler was not initialized") {
 		t.Fatalf("normal command did not retain handler setup as non-blocking side effect: code=%d calls=%d stdout=%q stderr=%q", code, calls, stdout.String(), stderr.String())
 	}
