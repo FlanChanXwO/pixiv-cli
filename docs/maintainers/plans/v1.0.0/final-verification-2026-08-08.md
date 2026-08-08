@@ -80,6 +80,23 @@ Go 1.26.3、CGO、Rust staticlib 与 target C linker 要求；这是保留的 de
 自动改变 `FANBOX_E2E_*` 的固定 target，也没有输出 credential、正文或 signed URL，因此当前没有证据
 表明该 creator 的公开可读帖子能完成 file-resource 闭环。
 
+## RC-11 follow-up runner / session evidence（2026-08-09）
+
+本节补记最后一轮 runner 修复、外部门禁和用户提供 session 的脱敏结果；不记录 cookie、响应正文、
+signed URL 或下载内容。
+
+| 场景 | 结果 | 脱敏 evidence |
+| --- | --- | --- |
+| 最终 Quality workflow（`7426549`） | PASS | [run 31269321296](https://github.com/FlanChanXwO/pixiv-cli/actions/runs/31269321296)；Classify、Windows login handler contracts 与 Linux quality 均成功。 |
+| Platform smoke workflow | PASS | [run 31269025337](https://github.com/FlanChanXwO/pixiv-cli/actions/runs/31269025337)；macOS/Linux/Windows 的 amd64/arm64 六个 packaged smoke 与 gate 均成功。该 run 使用的 `0d29c05` 已包含平台修复，后续 `7426549` 仅收紧 Windows 测试隔离。 |
+| 受保护的 native evidence workflow | BLOCKED BY POLICY | feature branch 的六目标 job 被 `Require audited main ref` 保护条件拒绝；没有通过推送 main、tag 或 release 绕过。 |
+| browser evidence workflow dispatch | UNAVAILABLE | 默认分支尚未注册该 feature-branch workflow，直接 dispatch 返回 HTTP 404；没有通过 main/release 绕过。 |
+| 用户提供的 FANBOX session（`ro7274`） | PARTIAL / PENDING | session validation 通过；当前 session 对作者索引中的十个显式 post target 逐一运行 native SDK，均为 `challenge_required`。修正后的三-cookie web probe 返回 HTTP 403 非 JSON；没有取得新的 post body 或 file attachment。session 只在进程内使用，未写入仓库、日志或 artifact。 |
+
+上述 Quality 与 Platform workflow 只用于 CI 质量和 packaged smoke 验证，没有触发任何发版操作。第一轮
+runner 失败及其修复原因也已保留在实现提交历史：packaged smoke 的自动 update 提示已在隔离 profile
+中关闭，Windows handler contract 已缩小为不初始化 authdb 的 root wiring 测试与完整 `loginhelper` 测试。
+
 ## 仍待取得的 release evidence
 
 真实 FANBOX target 已由用户补齐，但 `ro7274/12373249` 尚未形成完整的 post/file-resource 闭环：
