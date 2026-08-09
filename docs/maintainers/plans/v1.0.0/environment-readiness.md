@@ -45,5 +45,6 @@
   recovery 已按 [最终验证操作手册](release-prep-runbook.md) 以 synthetic challenge + real solver 完成
   一次可复现的本机 protocol 验证，但不成为普通 CI/RC gate。固定 Firefox 153.0.3 temporary
   profile contract 已在本机 macOS arm64 通过；Windows/Linux、六目标 runner evidence、以及
-  `ro7274/12373249` 因 native challenge 且无 file attachment 未完成的真实 FANBOX content/resource E2E
-  仍在发布前完成。
+  `nakkemos/3625356` 与 `aak/11870583` 已在本轮完成真实 FANBOX SDK `post.info`/资源复核；旧
+  `ro7274/12373249` 因 native challenge 且无 file attachment 未完成的 content/resource E2E、Keychain
+  新鲜凭据与六目标 browser runner evidence 仍在发布前完成。

@@ -1,10 +1,11 @@
 # v1.0.0 测试、迁移与发布门禁
 
-截至 2026-08-08，RC-1 至 RC-10 的实现与自动门禁已完成；自动验证结果见
+截至 2026-08-09，RC-1 至 RC-10 的实现与自动门禁已完成；自动验证结果见
 [最终验证记录](final-verification-2026-08-08.md)。真实 Pixiv public SDK 与一次性 real-solver
-evidence 已在授权环境取得；真实 FANBOX target 已运行到详情阶段，但默认 native 触发 challenge，
-显式 solver replay 取得的目标帖子没有 file attachment，内容/资源 evidence 与 native browser evidence
-仍必须按 RC-11 完成，不能用离线 fixture 代替。
+evidence 已在授权环境取得；用户指定的 `nakkemos/3625356` 与 `aak/11870583` 已在 SDK 默认
+Chrome_146 transport 下完成真实 `post.info`/资源复核，前者两个 file resource 完整 GET 通过，后者
+没有第一方 file asset。旧 `ro7274/12373249`、release-prep Keychain 新鲜凭据与 native browser
+evidence 仍按 RC-11 保留为独立发布门禁，不能用离线 fixture 代替。
 
 ## Public SDK
 
@@ -265,11 +266,11 @@ evidence；修复范围和测试契约见 [authdb 设计审查](authdb-design-re
   host/runner evidence 仍按 RC-11 单独取得，Safari 仅要求 macOS。
 - SQLite migration、权限、并发与 crash recovery evidence 完整。
 - 两个 MCP server 的 tool inventory 与文档一致。
-- 真实 Pixiv SDK E2E 与一次性 real-solver protocol acceptance 已完成；用户提供的
-  `ro7274/12373249` FANBOX target 已覆盖到详情请求，但默认 native 触发 challenge，solver recovery
-  确认该帖子没有 file attachment，尚未取得 file attachment 非零字节读取 evidence。报告不包含
-  credential、Cookie、signed query 或内容。
-- FANBOX native Firefox 主路径与可选 FlareSolverr recovery 的 focused tests 通过；实现后的 real
+- 真实 Pixiv SDK E2E、一次性 real-solver protocol acceptance，以及用户指定的两个 FANBOX target
+  production SDK/resource evidence 已完成；`nakkemos/3625356` 的两个 file resource 完整 GET 计数
+  `6,816,050` bytes，`aak/11870583` 的 `post.info` 成功且没有第一方 file asset。报告不包含
+  credential、Cookie、signed query 或内容。旧 `ro7274/12373249` 仍没有可验证的 file-resource 闭环。
+- FANBOX native Chrome 146 主路径与可选 FlareSolverr recovery 的 focused tests 通过；实现后的 real
   solver protocol 只需以 synthetic challenge 在本地验证一次，genuine challenge evidence 是
   best-effort，不是重复 CI/RC gate。
 - 三语文档、migration guide、Skill、ADR 和 release notes 已完成。

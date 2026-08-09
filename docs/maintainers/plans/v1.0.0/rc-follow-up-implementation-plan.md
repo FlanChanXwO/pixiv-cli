@@ -1,8 +1,10 @@
 # v1.0.0 RC follow-up 实施计划
 
 状态：专题规格与实施顺序已确认；RC-1 至 RC-10 已实施并完成对应聚焦回归，RC-11 自动门禁已
-完成；截至 2026-08-08，真实 Pixiv SDK 与一次性 solver release evidence 已取得，真实 FANBOX SDK
-与 native browser evidence 仍待完成。计划创建日期：2026-08-04；当前实施记录：2026-08-08。
+完成；截至 2026-08-09，真实 Pixiv SDK、一次性 solver release evidence，以及用户指定的两个 FANBOX
+target 的 production SDK/resource evidence 已取得。release-prep 约定 Keychain 的新鲜凭据、旧
+`ro7274/12373249` target 的 file-resource 闭环与 native browser runner evidence 仍按发布门禁保留。
+计划创建日期：2026-08-04；当前实施记录：2026-08-09。
 
 ## 1. 边界
 
@@ -706,9 +708,11 @@ FlareSolverr production recovery 实现完成后，在 v1.0.0 发布前只执行
 
 - authdb、账号调度、native FANBOX、solver recovery、strict parsing 与 debug 的自动门禁全部通过。
 - 一次性 synthetic real-solver protocol acceptance 已有脱敏 evidence（固定 image digest，2026-08-08）。
-- 真实 public Pixiv SDK E2E 与一次性 real-solver acceptance 已满足对应 evidence gate；用户已提供
-  `ro7274/12373249` 及作者索引，真实 FANBOX SDK 已覆盖到详情阶段，但当前授权 session 下没有可验证
-  的 file attachment，因此 file-resource evidence 仍待新的可读 target 或受控网络/权限状态。
+- 真实 public Pixiv SDK E2E 与一次性 real-solver acceptance 已满足对应 evidence gate；用户指定的
+  `nakkemos/3625356` 与 `aak/11870583` 已在 SDK 默认 Chrome_146 transport 下完成 production
+  复核，前者两个 file resource 完整 GET 通过，后者 `post.info` 成功且无第一方 file asset。
+- `ro7274/12373249` 仍没有可验证的 file-resource 闭环；release-prep 约定 Keychain item 当前返回
+  `credentials_expired`，以及未完成的 browser native profile/API-freeze evidence 继续作为发布 blocker。
 - 仍未完成的 browser native profile evidence 或 API freeze 项继续按
   [测试、迁移与发布门禁](verification-release.md)列为 blocker，不因本计划结束而自动通过。
 

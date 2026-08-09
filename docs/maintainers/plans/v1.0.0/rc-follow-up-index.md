@@ -2,8 +2,9 @@
 
 状态：专题设计与历史/后续文档拆分已通过独立规格审查；新的
 [RC follow-up 实施计划](rc-follow-up-implementation-plan.md)已获用户批准并写入。RC-1 至 RC-10
-以及独立的内部架构重组已在隔离 worktree 实施并完成对应自动/聚焦回归；截至 2026-08-08，RC-11
-已取得真实 Pixiv SDK 与一次性 solver acceptance，真实 FANBOX SDK 与 native browser provider evidence
+以及独立的内部架构重组已在隔离 worktree 实施并完成对应自动/聚焦回归；截至 2026-08-09，RC-11
+已取得真实 Pixiv SDK、一次性 solver acceptance，以及两个用户指定 FANBOX target 的 production
+SDK/resource evidence；Keychain、旧 ro7274 target 与 native browser provider release evidence
 仍需按发布条件逐项记录。
 
 ## 文档边界
@@ -45,7 +46,8 @@ canonical rule，不复制整段验证或 secret 边界。
 4. error `Reason` public naming 收口（RC-1 已完成）；
 5. 单一显式 `--debug` 与严格 unknown-option parsing（RC-2、RC-9 已完成）；
 6. 聚焦测试、三语 public contract、产品 Skill、一次性 solver implementation acceptance 与最终 RC
-   回归（RC-10 已完成；RC-11 自动门禁已完成，Pixiv/solver evidence 已通过，FANBOX/native browser
+   回归（RC-10 已完成；RC-11 自动门禁已完成，Pixiv/solver evidence 已通过，两个指定 FANBOX
+   target 的 production SDK/resource evidence 已通过，Keychain/旧 ro7274/native browser release
    evidence 仍待完成）。
 
 不在新计划中重做已经完成的 SDK package migration、初始 CLI/MCP 重写、历史 worktree 建立或旧
