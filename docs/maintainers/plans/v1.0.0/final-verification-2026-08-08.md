@@ -103,6 +103,8 @@ signed URL 或下载内容。
 | FlareSolverr anonymous API-host root probe | INSUFFICIENT / PENDING | 固定 digest 临时容器请求匿名 `https://api.fanbox.cc/` 根页返回 solver HTTP 200、页面 HTTP 200，但只返回 `__cf_bm`，没有 `cf_clearance`；没有把 `post.info`、帖子或文件 URL 交给 solver，容器已停止并清理。该 probe 不改变生产 solver 的 homepage-only contract。 |
 | headed Edge browser re-probe（当前 session 状态） | NOT REPRODUCED / PENDING | 新的隔离 Edge profile 可加载 FANBOX 公共页面，但访问 API host 与两个目标的 `post.info` 又返回 Cloudflare HTML/403；即使加入与 Playwright automation profile 一致的反检测 flag 仍未恢复。此前 PASS evidence 保留为当时有效的历史结果，当前 session 状态不升级为新的 PASS。 |
 | 已连接 Edge extension 的现有用户标签与资源下载（2026-08-09） | PASS（仅 browser 路径） | 不读取 Cookie 值，直接接管精确匹配的现有 `aak/11870583` 用户标签；文章 body 完整可见，实际 DOM 没有 FANBOX 一方视频/下载节点，只有外部嵌入，因此不把外部内容冒充 `fileMap`。同一浏览器会话此前观察到 `nakkemos/3625356` 的两个第一方 MP4，并用页面资源 bundle 下载成功；两项均为合法 MP4，大小为 `3,440,013` 与 `3,376,037` bytes，临时 artifact 已在本轮验证后清理。该路径证明了现有浏览器权限可直接读取页面/资源，但不升级 Go SDK direct transport 的 challenge 门禁。 |
+| 页面内浏览器授权 `post.info` re-probe（2026-08-09 resumed） | PASS（仅 browser 路径） | 不导出 Cookie，使用现有 Edge 会话的页面执行上下文发起授权 GET：`aak/11870583` 取得 HTTP 200 JSON（2059 bytes，`fileMap` 计数 0）；同一会话随后取得 `nakkemos/3625356` HTTP 200 JSON（1820 bytes），页面渲染 1 个 article、2 个第一方下载链接和 2 个已加载 video。Nakk 的页面资源 bundle 首次下载 1 个，第二个通过页面原生 media download 完成；前一轮独立 bundle 已对两项校验为合法 MP4，大小分别为 `3,440,013` 与 `3,376,037` bytes。紧接重复 API 请求又返回 403，证明 challenge 状态短时变化；该 evidence 仍只属于 browser 路径。 |
+| public SDK topology comparison（2026-08-09 resumed） | FAIL / PENDING | 固定 digest FlareSolverr 容器已启动并只收到匿名 `https://www.fanbox.cc/` 首页请求；native 与 solver 均使用显式 loopback proxy 时，Nakk public SDK `Post` 仍为 `challenge_required`。去掉 native 与 solver proxy 的直连对照在 `ValidateSession` 阶段为 `upstream_error`。两种结果均未进入资源读取，容器和临时日志已清理；没有以 browser `post.info` 结果替代 SDK direct gate。 |
 
 上述 Quality 与 Platform workflow 只用于 CI 质量和 packaged smoke 验证，没有触发任何发版操作。第一轮
 runner 失败及其修复原因也已保留在实现提交历史：packaged smoke 的自动 update 提示已在隔离 profile
@@ -116,9 +118,10 @@ browser 路径形成完整的 `post.info` evidence，其中前者的两个 file 
 闭环，以及两个新增 target 在 Go SDK native/solver transport 上的稳定 `Post` 结果；它们当前仍在
 `challenge_required` 阶段。资源门禁仍必须从合法 `post.info` 详情发现 file attachment 并完整读取，
 不能用 cover/preview 或 solver 页面替代；本轮 headed browser evidence 不替代 SDK direct transport
-门禁。最新 native profile、匿名 solver root 与隔离 profile headed browser re-probe 仍未形成新的 direct SDK
-成功证据；连接现有 Edge 用户标签的 browser-only 路径可以读取第二个帖子并下载第一个帖子的两个已
-观察资源，但同样不能替代 SDK direct transport，且没有理由放宽 solver 不接收业务 URL/Cookie 的边界。
+门禁。最新 native profile、匿名 solver root、隔离 profile headed browser re-probe 与本轮两种 SDK
+topology 对照仍未形成新的 direct SDK 成功证据；页面内 browser-only 路径已经重新取得两个目标的
+`post.info` 元数据，并读取/下载 Nakk 的两个已观察资源，但同样不能替代 SDK direct transport，且没有
+理由放宽 solver 不接收业务 URL/Cookie 的边界。
 
 此外，三平台 Chrome/Edge/Firefox provider contract（Safari 仅 macOS）的实际六目标 native runner
 evidence 仍尚未取得；当前新增的 DPAPI、Secret Service、跨平台 profile path 和 Chromium crypto
