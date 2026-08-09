@@ -99,6 +99,9 @@ signed URL 或下载内容。
 | 用户新增目标 `nakkemos/3625356` 的 headed browser evidence | PASS（浏览器路径） | 修正 Chromium modern host-digest 解密后，Edge `Default` profile provider 返回恰好一个非空 allowlisted session；headed Edge 先访问 `api.fanbox.cc` 再打开帖子，`post.info` 返回 HTTP 200 JSON（1820 bytes），`fileMap` 有 2 个 MP4。浏览器 fetch 两个附件均 HTTP 200，实际大小 `3,440,013` 与 `3,376,037` bytes，分别等于 `post.info` 声明大小；完整内容只写入临时 `/tmp` evidence，未进入仓库。 |
 | 用户新增目标 `aak/11870583` 的 headed browser evidence | PASS（浏览器路径） | 同一 headed Edge/API-host warm-up 路径取得 HTTP 200 `post.info` JSON（2059 bytes）；文章 body 完整可读（9 blocks），`fileMap` 为空，因此没有可下载附件，未伪造资源成功。完整 JSON 只写入临时 `/tmp` evidence，未进入仓库。 |
 | 用户新增目标的 Go SDK native/solver replay | PARTIAL / PENDING | 两个显式 `FANBOX_SDK_E2E=1` 目标的身份、creator、列表与 tag 前置 operation 均通过；native `Post` 与显式固定 digest FlareSolverr replay 仍为 `challenge_required`。这是 SDK direct transport 的独立发布门禁，不否定上面已完成的 headed browser `post.info`/resource evidence；没有把 browser session、正文或 signed URL 写入仓库。 |
+| `tls-client` profile matrix re-probe（2026-08-09 resumed） | FAIL / PENDING | 同一 Keychain session 在 `Chrome_146`、`Chrome_144`、`Chrome_133`、`Chrome_131` 与 `Firefox_148` 五种 native profile 下，对两个新增 post 都分类为 `challenge_required`；探针只输出 profile、post id 与 error class，不输出 Cookie、响应正文或 URL 参数。 |
+| FlareSolverr anonymous API-host root probe | INSUFFICIENT / PENDING | 固定 digest 临时容器请求匿名 `https://api.fanbox.cc/` 根页返回 solver HTTP 200、页面 HTTP 200，但只返回 `__cf_bm`，没有 `cf_clearance`；没有把 `post.info`、帖子或文件 URL 交给 solver，容器已停止并清理。该 probe 不改变生产 solver 的 homepage-only contract。 |
+| headed Edge browser re-probe（当前 session 状态） | NOT REPRODUCED / PENDING | 新的隔离 Edge profile 可加载 FANBOX 公共页面，但访问 API host 与两个目标的 `post.info` 又返回 Cloudflare HTML/403；即使加入与 Playwright automation profile 一致的反检测 flag 仍未恢复。此前 PASS evidence 保留为当时有效的历史结果，当前 session 状态不升级为新的 PASS。 |
 
 上述 Quality 与 Platform workflow 只用于 CI 质量和 packaged smoke 验证，没有触发任何发版操作。第一轮
 runner 失败及其修复原因也已保留在实现提交历史：packaged smoke 的自动 update 提示已在隔离 profile
@@ -112,7 +115,8 @@ browser 路径形成完整的 `post.info` evidence，其中前者的两个 file 
 闭环，以及两个新增 target 在 Go SDK native/solver transport 上的稳定 `Post` 结果；它们当前仍在
 `challenge_required` 阶段。资源门禁仍必须从合法 `post.info` 详情发现 file attachment 并完整读取，
 不能用 cover/preview 或 solver 页面替代；本轮 headed browser evidence 不替代 SDK direct transport
-门禁。
+门禁。最新 native profile、匿名 solver root 与 headed browser re-probe 仍未形成新的 direct SDK
+成功证据，且没有理由放宽 solver 不接收业务 URL/Cookie 的边界。
 
 此外，三平台 Chrome/Edge/Firefox provider contract（Safari 仅 macOS）的实际六目标 native runner
 evidence 仍尚未取得；当前新增的 DPAPI、Secret Service、跨平台 profile path 和 Chromium crypto
