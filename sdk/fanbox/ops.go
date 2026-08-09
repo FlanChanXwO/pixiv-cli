@@ -235,7 +235,7 @@ func (c *Client) mapPost(source fanbox.Post) (Post, error) {
 	body := &PostBody{Text: source.Body.Text}
 	imageByID := map[string]fanbox.Image{}
 	fileByID := map[string]fanbox.File{}
-	for _, image := range source.Body.Images {
+	for _, image := range mergePostImages(*source.Body) {
 		imageByID[image.ID] = image
 		if image.OriginalURL != "" {
 			res, err := c.newResource("post_image", image.ID, image.OriginalURL)
@@ -245,7 +245,7 @@ func (c *Client) mapPost(source fanbox.Post) (Post, error) {
 			body.Assets = append(body.Assets, Asset{ID: image.ID, Kind: AssetKindImage, Resource: res})
 		}
 	}
-	for _, file := range source.Body.Files {
+	for _, file := range mergePostFiles(*source.Body) {
 		fileByID[file.ID] = file
 		if file.URL != "" {
 			res, err := c.newResource("post_file", file.ID, file.URL)
@@ -283,6 +283,60 @@ func (c *Client) mapPost(source fanbox.Post) (Post, error) {
 	}
 	out.Body = body
 	return out, nil
+}
+
+// mergePostImages 补上 FANBOX 在 block 的 imageMap 中提供、但未填充 Images 列表的资源。
+func mergePostImages(body fanbox.PostBody) []fanbox.Image {
+	images := append([]fanbox.Image(nil), body.Images...)
+	seen := make(map[string]struct{}, len(images))
+	for _, image := range images {
+		if image.ID != "" {
+			seen[image.ID] = struct{}{}
+		}
+	}
+	for _, asset := range body.Assets {
+		if asset.Kind != fanbox.AssetKindImage || asset.ID == "" {
+			continue
+		}
+		if _, ok := seen[asset.ID]; ok {
+			continue
+		}
+		images = append(images, fanbox.Image{
+			ID:           asset.ID,
+			Extension:    asset.Extension,
+			OriginalURL:  asset.URL,
+			ThumbnailURL: asset.ThumbnailURL,
+		})
+		seen[asset.ID] = struct{}{}
+	}
+	return images
+}
+
+// mergePostFiles 补上 FANBOX 在 block 的 fileMap 中提供、但未填充 Files 列表的资源。
+func mergePostFiles(body fanbox.PostBody) []fanbox.File {
+	files := append([]fanbox.File(nil), body.Files...)
+	seen := make(map[string]struct{}, len(files))
+	for _, file := range files {
+		if file.ID != "" {
+			seen[file.ID] = struct{}{}
+		}
+	}
+	for _, asset := range body.Assets {
+		if asset.Kind != fanbox.AssetKindFile || asset.ID == "" {
+			continue
+		}
+		if _, ok := seen[asset.ID]; ok {
+			continue
+		}
+		files = append(files, fanbox.File{
+			ID:        asset.ID,
+			Name:      asset.Name,
+			Extension: asset.Extension,
+			URL:       asset.URL,
+		})
+		seen[asset.ID] = struct{}{}
+	}
+	return files
 }
 
 func parseUTCTime(value string) (time.Time, error) {

@@ -116,8 +116,9 @@ local_state_error, removed_setting
 `sdk/fanbox` 提供 creator 资料、帖子、标签、home 与 supporting 流、URL 解析与
 共享资源契约。已验证的 native route 使用 `api.fanbox.cc` root 下的 `post.info`、
 `post.listHome`、`post.listSupporting`、`post.listTagged` 与 `tag.getFeatured`；creator
-分页跟随服务端返回的 `pageUrls`。帖子正文是结构化 block；第三方 embed 只保留 canonical
-link。受限帖只带摘要、Body 为 nil。
+分页跟随服务端返回的 `pageUrls`。帖子正文是结构化 block；图片和文件 block 会与资源索引
+关联，即使上游只通过 `imageMap` 或 `fileMap` 提供附件也会暴露可用资源。第三方 embed 只保留
+canonical link。受限帖只带摘要、Body 为 nil。
 
 ## 从 v0 迁移
 

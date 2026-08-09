@@ -147,8 +147,10 @@ URL resolution, and the shared resource contract. The verified native routes
 use the `api.fanbox.cc` root (`post.info`, `post.listHome`,
 `post.listSupporting`, `post.listTagged`, and `tag.getFeatured`); creator
 pagination follows the server-provided `pageUrls`. Post bodies are structured
-blocks; third-party embeds keep only their canonical link. Restricted posts
-carry a summary with a nil body.
+blocks; image and file blocks are joined with their resource indexes, including
+responses that provide attachments only through `imageMap` or `fileMap`.
+Third-party embeds keep only their canonical link. Restricted posts carry a
+summary with a nil body.
 
 ## Migrating from v0
 

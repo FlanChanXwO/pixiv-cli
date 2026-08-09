@@ -194,6 +194,26 @@ func TestPost(t *testing.T) {
 	}
 }
 
+func TestPostMapsFileMapWhenFilesListIsOmitted(t *testing.T) {
+	body := `{"body":{"post":{"id":"p-file-map","title":"file map","publishedDatetime":"2024-06-01T10:00:00Z","creatorId":"pixiv","feeRequired":0,"isRestricted":false,"isPinned":false,"body":{"blocks":[{"type":"file","fileId":"file-1"}],"fileMap":{"file-1":{"id":"file-1","name":"clip.mp4","extension":"mp4","url":"https://downloads.fanbox.cc/file-1.mp4"}}}}}}`
+	rt := roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		return jsonResponse(body), nil
+	})
+	client := testClient(t, rt)
+
+	post, err := client.Post(context.Background(), fanbox.PostRequest{PostID: "p-file-map"})
+	require.NoError(t, err)
+	require.NotNil(t, post.Body)
+	require.Len(t, post.Body.Assets, 1)
+	require.Equal(t, fanbox.AssetKindFile, post.Body.Assets[0].Kind)
+	require.Equal(t, "clip.mp4", post.Body.Assets[0].Name)
+	require.Equal(t, "https://downloads.fanbox.cc/file-1.mp4", post.Body.Assets[0].Resource.URL)
+	require.Len(t, post.Body.Blocks, 1)
+	require.Equal(t, fanbox.PostBlockFile, post.Body.Blocks[0].Kind)
+	require.NotNil(t, post.Body.Blocks[0].File)
+	require.Equal(t, "clip.mp4", post.Body.Blocks[0].File.Name)
+}
+
 func TestOpenResourceUsesSessionOnlyForDownloadsHost(t *testing.T) {
 	var mediaCookie string
 	rt := roundTripFunc(func(req *http.Request) (*http.Response, error) {

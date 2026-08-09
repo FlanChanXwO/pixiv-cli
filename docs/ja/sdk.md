@@ -124,8 +124,9 @@ local_state_error, removed_setting
 フィード、URL 解決、共有リソース契約を提供します。検証済み native route は
 `api.fanbox.cc` root の `post.info`、`post.listHome`、`post.listSupporting`、
 `post.listTagged`、`tag.getFeatured` を使い、creator pagination は server の `pageUrls`
-に従います。投稿本文は構造化ブロックで、第三者の埋め込みは canonical リンクのみを保持します。
-制限投稿はサマリーのみで Body は nil です。
+に従います。投稿本文は構造化ブロックで、画像・ファイルブロックはリソース index と結び付けます。
+上流が `imageMap` または `fileMap` だけで添付を提供する場合も、利用可能なリソースを公開します。
+第三者の埋め込みは canonical リンクのみを保持します。制限投稿はサマリーのみで Body は nil です。
 
 ## v0 からの移行
 
