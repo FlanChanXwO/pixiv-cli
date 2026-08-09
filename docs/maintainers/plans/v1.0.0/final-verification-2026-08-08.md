@@ -94,6 +94,7 @@ signed URL 或下载内容。
 | 用户提供的 FANBOX session（`ro7274`） | PARTIAL / PENDING | session validation 通过；当前 session 对作者索引中的十个显式 post target 逐一运行 native SDK，均为 `challenge_required`。修正后的三-cookie web probe 返回 HTTP 403 非 JSON；没有取得新的 post body 或 file attachment。session 只在进程内使用，未写入仓库、日志或 artifact。 |
 | 隔离 headed Chromium 的 FANBOX 页面验证（2026-08-09） | PARTIAL / PENDING | 通过 Keychain 的 `FANBOXSESSID` 注入隔离浏览器后，作者列表明确显示 `12373249` 为公开帖，并确认当前账号是“正在关注”而非“正在赞助”。公开帖子 `12120175`、`12108370`、`12032687`、`12246608` 与 `12246623` 能渲染文章；页面只发现 `downloads.fanbox.cc/images/post/...` 图片链接，没有 file attachment。目标 `12373249` 在该会话下仍未挂载文章内容；付费帖子显示需要月费高于 500 日元，未在未授权情况下访问。浏览器 session、临时 profile 与输出 artifact 均已清理。 |
 | 补充复核历史公开 file target（`aak/12221352`） | NOT REPRODUCED / PENDING | 使用当前 public SDK、同一 Keychain session 与显式 loopback proxy 重跑；身份与前置 operation 未作为 ro7274 目标的替代，单帖 `Post` 在当前出口返回 `challenge_required`，因此没有发起资源请求。历史手工 Firefox 记录仍仅作为历史背景，不升级为本轮 SDK file-resource evidence。 |
+| 用户新增目标（`nakkemos/3625356`、`aak/11870583`） | BLOCKED / PENDING | 两个显式 `FANBOX_SDK_E2E=1` 目标的身份、creator、列表与 tag 前置 operation 均通过；native `Post` 均返回 `challenge_required`。显式配置固定 digest 的 FlareSolverr 后，仍只完成匿名首页求解，两个目标的 `Post` 重放仍为 `challenge_required`，没有 `post.info` body、file attachment 或下载。项目 `--from-browser edge` provider 发现 `Default` profile 但读到的单一 `FANBOXSESSID` 值含控制字符与分隔符（仅记录长度/格式，不记录值），因此按 Cookie header 安全契约拒绝；Chrome 无目标 cookie，Firefox 未安装，Safari 返回 storage permission denied。隔离 headed Edge 注入 Keychain session 后两个页面均只返回公共壳层，没有 `post.info` 响应或文件链接。 |
 
 上述 Quality 与 Platform workflow 只用于 CI 质量和 packaged smoke 验证，没有触发任何发版操作。第一轮
 runner 失败及其修复原因也已保留在实现提交历史：packaged smoke 的自动 update 提示已在隔离 profile
@@ -101,12 +102,13 @@ runner 失败及其修复原因也已保留在实现提交历史：packaged smok
 
 ## 仍待取得的 release evidence
 
-真实 FANBOX target 已由用户补齐，但 `ro7274/12373249` 尚未形成完整的 post/file-resource 闭环：
-默认 native 结果为 `challenge_required`，显式 solver replay 虽能取得详情，却确认该帖子没有 file
-attachment。对同一作者的免费公开候选也没有找到可替代的 file attachment（其中一篇仍为
-`challenge_required`），因此仍需用户明确提供一个包含 file attachment 的非 secret post target，或在
-能让 native 详情稳定通过的受控浏览器/网络出口上重跑；不能自动发现并替换。资源门禁仍必须从合法
-`post.info` 详情发现 file attachment 并完整读取，不能用 cover/preview 或 solver 页面替代。
+真实 FANBOX target 已由用户补齐，但 `ro7274/12373249` 以及新增的
+`nakkemos/3625356`、`aak/11870583` 均尚未形成完整的 post/file-resource 闭环：新增目标的 native 与
+显式 solver replay 都在 `Post` 阶段返回 `challenge_required`，浏览器 provider 也发现当前 Edge
+profile 的单 cookie 数据不符合安全格式，隔离 headed 页面没有形成有效详情或文件链接。因此仍需
+在能让 native 详情稳定通过的受控浏览器/网络出口上重跑，并使用用户明确选定的可读 file attachment
+target；不能自动发现并替换。资源门禁仍必须从合法 `post.info` 详情发现 file attachment 并完整读取，
+不能用 cover/preview 或 solver 页面替代。
 
 此外，三平台 Chrome/Edge/Firefox provider contract（Safari 仅 macOS）的实际六目标 native runner
 evidence 仍尚未取得；当前新增的 DPAPI、Secret Service、跨平台 profile path 和 Chromium crypto
