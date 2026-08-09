@@ -65,6 +65,13 @@ GOPROXY=off go test ./e2e -run '^TestRealNativeBrowserProvider$' -count=1 -v
 session、完整 Cookie、signed query 或私密正文。测试启用后缺少任一 target 或 Keychain item 必须失败，
 不能自动发现其他帖子或以 skip 代替 evidence。
 
+若验收对象只需要验证单个 `post.info` 详情，可运行
+`scripts/test-e2e.sh --fanbox-post-only`。该模式只要求 `FANBOX_E2E_POST_ID` 与
+`FANBOX_E2E_POST_URL`，通过公共 SDK 验证帖子 ID、非空 body、URL reference 和安全的资源清单；
+合法的零 file-asset 帖子（例如 `aak/11870583`）不会被错误判为失败。它不替代下面的严格
+`TestRealFanboxSDKRead`：后者仍必须从同一目标的 `post.info` 发现每一个 file attachment，并对每项
+完成 HEAD、完整 GET/保存与字节数校验（例如 `nakkemos/3625356`）。
+
 1. 测试进程直接通过 Keychain API 读取已授权的 `FANBOXSESSID` item；不得把 value 放入 shell argv、
    环境变量、日志、临时文件或完整 Cookie header。
 2. 使用 `sdk/fanbox.Client.ValidateSession` 验证身份，再逐项覆盖公开 creator/tag/post/home/

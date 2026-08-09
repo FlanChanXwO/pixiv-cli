@@ -44,8 +44,46 @@ func TestE2EScriptRunsCurrentSDKSuite(t *testing.T) {
 		"FANBOX_E2E_TAG":          "tag-1",
 		"FANBOX_E2E_POST_ID":      "post-1",
 		"FANBOX_E2E_POST_URL":     "https://www.fanbox.cc/@creator-1/posts/post-1",
+		"FANBOX_E2E_POST_ONLY":    "",
 		"FANBOX_E2E_SOLVER_URL":   "http://127.0.0.1:8191",
 		"FANBOX_E2E_SOLVER_PROXY": "http://host.docker.internal:7890",
+	} {
+		if env[name] != want {
+			t.Fatalf("captured %s = %q, want %q", name, env[name], want)
+		}
+	}
+}
+
+func TestE2EScriptSelectsFanboxPostOnly(t *testing.T) {
+	repoRoot := e2EScriptRepositoryRoot(t)
+	goArgs := filepath.Join(t.TempDir(), "go-args")
+	goEnv := filepath.Join(t.TempDir(), "go-env")
+	fakeBin := writeE2EFakeGo(t)
+
+	command := exec.Command("bash", filepath.Join(repoRoot, "scripts", "test-e2e.sh"), "--fanbox-post-only")
+	command.Dir = repoRoot
+	command.Env = append(e2EScriptBaseEnvironment(),
+		"PATH="+fakeBin+string(os.PathListSeparator)+os.Getenv("PATH"),
+		"PIXIV_E2E_TEST_GO_ARGS="+goArgs,
+		"PIXIV_E2E_TEST_GO_ENV="+goEnv,
+		"FANBOX_E2E_POST_ID=post-1",
+		"FANBOX_E2E_POST_URL=https://www.fanbox.cc/@creator-1/posts/post-1",
+	)
+	if output, err := command.CombinedOutput(); err != nil {
+		t.Fatalf("test-e2e.sh --fanbox-post-only failed: %v\n%s", err, output)
+	}
+	if got, err := os.ReadFile(goArgs); err != nil || string(got) != "test\n./e2e\n-run\n^TestRealFanboxSDKPostInfo$\n-count=1\n-v\n" {
+		t.Fatalf("go test arguments did not select only FANBOX post-only E2E")
+	}
+	env := readE2EScriptCapturedEnvironment(t, goEnv)
+	for name, want := range map[string]string{
+		"PIXIV_SDK_E2E":         "",
+		"FANBOX_SDK_E2E":        "1",
+		"FANBOX_E2E_POST_ONLY":  "1",
+		"FANBOX_E2E_POST_ID":    "post-1",
+		"FANBOX_E2E_POST_URL":   "https://www.fanbox.cc/@creator-1/posts/post-1",
+		"FANBOX_E2E_CREATOR_ID": "",
+		"FANBOX_E2E_TAG":        "",
 	} {
 		if env[name] != want {
 			t.Fatalf("captured %s = %q, want %q", name, env[name], want)
@@ -125,7 +163,7 @@ func writeE2EFakeGo(t *testing.T) string {
 	const program = `#!/bin/sh
 printf '%s\n' "$@" > "$PIXIV_E2E_TEST_GO_ARGS"
 {
-	for name in PIXIV_SDK_E2E FANBOX_SDK_E2E PIXIV_E2E_PROXY FANBOX_E2E_CREATOR_ID FANBOX_E2E_TAG FANBOX_E2E_POST_ID FANBOX_E2E_POST_URL FANBOX_E2E_SOLVER_URL FANBOX_E2E_SOLVER_PROXY; do
+	for name in PIXIV_SDK_E2E FANBOX_SDK_E2E PIXIV_E2E_PROXY FANBOX_E2E_CREATOR_ID FANBOX_E2E_TAG FANBOX_E2E_POST_ID FANBOX_E2E_POST_URL FANBOX_E2E_POST_ONLY FANBOX_E2E_SOLVER_URL FANBOX_E2E_SOLVER_PROXY; do
     eval "value=\${$name-}"
     printf '%s=%s\n' "$name" "$value"
   done
