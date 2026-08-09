@@ -89,6 +89,8 @@ signed URL 或下载内容。
 | --- | --- | --- |
 | 最终 Quality workflow（`7426549`） | PASS | [run 31269321296](https://github.com/FlanChanXwO/pixiv-cli/actions/runs/31269321296)；Classify、Windows login handler contracts 与 Linux quality 均成功。 |
 | Platform smoke workflow | PASS | [run 31269025337](https://github.com/FlanChanXwO/pixiv-cli/actions/runs/31269025337)；macOS/Linux/Windows 的 amd64/arm64 六个 packaged smoke 与 gate 均成功。该 run 使用的 `0d29c05` 已包含平台修复，后续 `7426549` 仅收紧 Windows 测试隔离。 |
+| 当前提交 `e310732` 的 Quality workflow | PASS | [run 31289026912](https://github.com/FlanChanXwO/pixiv-cli/actions/runs/31289026912)；在 feature ref 手动 dispatch，Classify、Windows login handler contracts 与 quality gate 均成功。 |
+| 当前提交 `e310732` 的 Platform smoke workflow | PASS | [run 31289027915](https://github.com/FlanChanXwO/pixiv-cli/actions/runs/31289027915)；在 feature ref 手动 dispatch，六个 macOS/Linux/Windows amd64/arm64 packaged smoke 与总 gate 均成功。 |
 | 受保护的 native evidence workflow | BLOCKED BY POLICY | feature branch 的六目标 job 被 `Require audited main ref` 保护条件拒绝；没有通过推送 main、tag 或 release 绕过。 |
 | browser evidence workflow dispatch | UNAVAILABLE | 默认分支尚未注册该 feature-branch workflow，直接 dispatch 返回 HTTP 404；没有通过 main/release 绕过。 |
 | 用户提供的 FANBOX session（`ro7274`） | PARTIAL / PENDING | session validation 通过；当前 session 对作者索引中的十个显式 post target 逐一运行 native SDK，均为 `challenge_required`。修正后的三-cookie web probe 返回 HTTP 403 非 JSON；没有取得新的 post body 或 file attachment。session 只在进程内使用，未写入仓库、日志或 artifact。 |
