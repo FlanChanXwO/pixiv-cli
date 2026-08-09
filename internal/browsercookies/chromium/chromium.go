@@ -20,8 +20,9 @@ import (
 const cookiesFile = "Cookies"
 
 // selectCookiesSQL 是唯一允许执行的查询：按受约束的 host/name 精确匹配，
-// 只取目标 cookie 的明文 value 与加密值（hex）。
-const selectCookiesSQL = `SELECT value, hex(encrypted_value) FROM cookies WHERE (host_key = @h1 OR host_key = @h2) AND name = @n;`
+// 取 host_key、目标 cookie 的明文 value 与加密值（hex）；host_key 用于验证
+// 现代 Chromium 数据库在加密明文前加入的域摘要。
+const selectCookiesSQL = `SELECT host_key, value, hex(encrypted_value) FROM cookies WHERE (host_key = @h1 OR host_key = @h2) AND name = @n;`
 
 func init() {
 	core.Register("chrome", func() (core.Provider, error) { return newProvider("chrome", "") })
@@ -169,11 +170,12 @@ func (p *provider) Read(ctx context.Context, query core.CookieQuery, profileID s
 func (p *provider) rowsToSnapshot(ctx context.Context, query core.CookieQuery, profileID string, rows [][]string) (core.Snapshot, error) {
 	snap := core.Snapshot{ProfileID: profileID, Cookies: []core.Cookie{}}
 	for _, row := range rows {
-		if len(row) < 2 {
+		if len(row) < 3 {
 			return snap, core.ErrQueryFailed
 		}
-		plain := row[0]
-		encHex := strings.TrimSpace(row[1])
+		host := row[0]
+		plain := row[1]
+		encHex := strings.TrimSpace(row[2])
 		if encHex != "" {
 			enc, err := hex.DecodeString(encHex)
 			if err != nil {
@@ -183,6 +185,7 @@ func (p *provider) rowsToSnapshot(ctx context.Context, query core.CookieQuery, p
 			if err != nil {
 				return snap, err
 			}
+			value = stripChromiumHostDigest(value, host)
 			snap.Cookies = append(snap.Cookies, core.Cookie{
 				Name:  query.Name,
 				Value: core.NewSecret(string(value)),

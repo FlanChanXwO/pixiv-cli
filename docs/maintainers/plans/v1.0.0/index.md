@@ -17,7 +17,7 @@
 
 - SDK、认证契约、账号池、网络路由、FANBOX challenge、诊断、记录、下载器/native 路径和文档同步已在本 worktree 完成回归。
 - `architecture-reorganization-plan.md` 的内部重组已完成本地代码、LSP、测试、构建、release-path 与文档审计；其验证记录见该计划第 8 节及 [最终验证记录](final-verification-2026-08-08.md)。
-- RC-11 的真实 Pixiv public SDK 与一次性 real-solver evidence 已在 2026-08-08 的授权环境通过；credential-free 的 `browser-evidence.yml` runner workflow 已补齐，但真实 FANBOX 内容/资源与真实浏览器 profile evidence 仍作为独立发布门禁，不以离线测试冒充通过。
+- RC-11 的真实 Pixiv public SDK 与一次性 real-solver evidence 已在 2026-08-08 的授权环境通过；本轮又取得两个指定 FANBOX target 的 headed browser `post.info`/资源 evidence，并修正 Edge modern Chromium cookie 解密；Go SDK direct transport 的真实 FANBOX 闭环与 credential-free `browser-evidence.yml` 六目标 runner 仍作为独立发布门禁，不以单一 host evidence 或离线测试冒充全平台通过。
 - 旧 `auth.json` 不再自动读取或迁移。跨版本迁移必须由旧 CLI 执行
   `pixiv auth export --all --output <private bundle>`，再由新 CLI 执行
   `pixiv auth import --file <bundle>`。

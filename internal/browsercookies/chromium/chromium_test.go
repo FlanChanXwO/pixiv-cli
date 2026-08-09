@@ -3,6 +3,7 @@ package chromium
 import (
 	"context"
 	"database/sql"
+	"encoding/hex"
 	"errors"
 	"os"
 	"os/exec"
@@ -157,6 +158,30 @@ func TestReadPlaintextHostVariant(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(secrets) != 1 || secrets[0].Value() != "no-dot-session" {
+		t.Fatalf("secrets = %+v", secrets)
+	}
+}
+
+func TestReadModernEncryptedCookieHostDigest(t *testing.T) {
+	skipIfNoSQLite3(t)
+	root := t.TempDir()
+	mustWriteFile(t, filepath.Join(root, "Default", cookiesFile))
+	key := []byte("0123456789abcdef")
+	host := ".fanbox.cc"
+	blob := buildModernV10CBCBlob(t, key, host, []byte("modern-session"))
+	fixture := buildFixtureDB(t, cookiesSchema,
+		`INSERT INTO cookies (host_key, name, value, encrypted_value) VALUES ('`+host+`', 'FANBOXSESSID', '', X'`+hex.EncodeToString(blob)+`');`,
+	)
+	restore := core.SetProviderFixtureForTest("chrome", func(string) ([]byte, error) { return fixture, nil })
+	defer restore()
+
+	p, _ := newProvider("chrome", root)
+	p.encryptionKeyOverride = func(context.Context) ([][]byte, error) { return [][]byte{key}, nil }
+	secrets, err := p.Read(context.Background(), core.DefaultQuery, "Default")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(secrets) != 1 || secrets[0].Value() != "modern-session" {
 		t.Fatalf("secrets = %+v", secrets)
 	}
 }

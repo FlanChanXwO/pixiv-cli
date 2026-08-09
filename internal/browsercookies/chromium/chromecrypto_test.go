@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/aes"
 	"crypto/cipher"
+	"crypto/sha256"
 	"encoding/hex"
 	"errors"
 	"testing"
@@ -44,6 +45,21 @@ func buildV10Blob(t *testing.T, key, value []byte) []byte {
 	blob := make([]byte, len(plain))
 	cipher.NewCBCEncrypter(block, make([]byte, aes.BlockSize)).CryptBlocks(blob, plain)
 	return blob
+}
+
+func buildModernV10CBCBlob(t *testing.T, key []byte, host string, value []byte) []byte {
+	t.Helper()
+	hostDigest := sha256.Sum256([]byte(host))
+	plain := append(append([]byte(nil), hostDigest[:]...), value...)
+	padding := aes.BlockSize - len(plain)%aes.BlockSize
+	plain = append(plain, bytes.Repeat([]byte{byte(padding)}, padding)...)
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ciphertext := make([]byte, len(plain))
+	cipher.NewCBCEncrypter(block, bytes.Repeat([]byte{' '}, aes.BlockSize)).CryptBlocks(ciphertext, plain)
+	return append([]byte("v10"), ciphertext...)
 }
 
 func TestDecryptCookieValueRoundtrip(t *testing.T) {
@@ -110,6 +126,19 @@ func TestDecryptChromiumCBCRoundtrip(t *testing.T) {
 	}
 	if string(got) != string(value) {
 		t.Fatalf("decrypted value = %q, want %q", got, value)
+	}
+}
+
+func TestUnpadCBCRejectsInvalidPadding(t *testing.T) {
+	cases := [][]byte{
+		{1, 2, 3},
+		{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 0},
+		{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 2},
+	}
+	for _, plain := range cases {
+		if _, err := unpadCBC(plain); !errors.Is(err, core.ErrEncryptedMalformed) {
+			t.Fatalf("unpadCBC(len=%d) err = %v, want ErrEncryptedMalformed", len(plain), err)
+		}
 	}
 }
 

@@ -1,6 +1,7 @@
 package chromium
 
 import (
+	"bytes"
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/sha256"
@@ -115,19 +116,32 @@ func bytesRepeat(value byte, count int) []byte {
 }
 
 func unpadCBC(plain []byte) ([]byte, error) {
-	if len(plain) == 0 {
+	if len(plain) == 0 || len(plain)%aes.BlockSize != 0 {
 		return nil, core.ErrEncryptedMalformed
 	}
 	padding := int(plain[len(plain)-1])
 	if padding < 1 || padding > aes.BlockSize || padding > len(plain) {
-		return plain, nil
+		return nil, core.ErrEncryptedMalformed
 	}
 	for _, value := range plain[len(plain)-padding:] {
 		if int(value) != padding {
-			return plain, nil
+			return nil, core.ErrEncryptedMalformed
 		}
 	}
 	return plain[:len(plain)-padding], nil
+}
+
+// stripChromiumHostDigest 去除现代 Chromium Cookies 数据库在加密 cookie
+// 明文前加入的 SHA-256(host_key) 摘要。旧数据库没有该摘要，保持原值。
+func stripChromiumHostDigest(plain []byte, host string) []byte {
+	if len(plain) < sha256.Size {
+		return plain
+	}
+	expected := sha256.Sum256([]byte(host))
+	if !bytes.Equal(plain[:sha256.Size], expected[:]) {
+		return plain
+	}
+	return plain[sha256.Size:]
 }
 
 // decryptChromiumValue 尝试同一 profile 支持的真实 Chromium formats。GCM

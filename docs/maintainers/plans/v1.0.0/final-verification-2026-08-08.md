@@ -94,7 +94,9 @@ signed URL 或下载内容。
 | 用户提供的 FANBOX session（`ro7274`） | PARTIAL / PENDING | session validation 通过；当前 session 对作者索引中的十个显式 post target 逐一运行 native SDK，均为 `challenge_required`。修正后的三-cookie web probe 返回 HTTP 403 非 JSON；没有取得新的 post body 或 file attachment。session 只在进程内使用，未写入仓库、日志或 artifact。 |
 | 隔离 headed Chromium 的 FANBOX 页面验证（2026-08-09） | PARTIAL / PENDING | 通过 Keychain 的 `FANBOXSESSID` 注入隔离浏览器后，作者列表明确显示 `12373249` 为公开帖，并确认当前账号是“正在关注”而非“正在赞助”。公开帖子 `12120175`、`12108370`、`12032687`、`12246608` 与 `12246623` 能渲染文章；页面只发现 `downloads.fanbox.cc/images/post/...` 图片链接，没有 file attachment。目标 `12373249` 在该会话下仍未挂载文章内容；付费帖子显示需要月费高于 500 日元，未在未授权情况下访问。浏览器 session、临时 profile 与输出 artifact 均已清理。 |
 | 补充复核历史公开 file target（`aak/12221352`） | NOT REPRODUCED / PENDING | 使用当前 public SDK、同一 Keychain session 与显式 loopback proxy 重跑；身份与前置 operation 未作为 ro7274 目标的替代，单帖 `Post` 在当前出口返回 `challenge_required`，因此没有发起资源请求。历史手工 Firefox 记录仍仅作为历史背景，不升级为本轮 SDK file-resource evidence。 |
-| 用户新增目标（`nakkemos/3625356`、`aak/11870583`） | BLOCKED / PENDING | 两个显式 `FANBOX_SDK_E2E=1` 目标的身份、creator、列表与 tag 前置 operation 均通过；native `Post` 均返回 `challenge_required`。显式配置固定 digest 的 FlareSolverr 后，仍只完成匿名首页求解，两个目标的 `Post` 重放仍为 `challenge_required`，没有 `post.info` body、file attachment 或下载。项目 `--from-browser edge` provider 发现 `Default` profile 但读到的单一 `FANBOXSESSID` 值含控制字符与分隔符（仅记录长度/格式，不记录值），因此按 Cookie header 安全契约拒绝；Chrome 无目标 cookie，Firefox 未安装，Safari 返回 storage permission denied。隔离 headed Edge 注入 Keychain session 后两个页面均只返回公共壳层，没有 `post.info` 响应或文件链接。 |
+| 用户新增目标 `nakkemos/3625356` 的 headed browser evidence | PASS（浏览器路径） | 修正 Chromium modern host-digest 解密后，Edge `Default` profile provider 返回恰好一个非空 allowlisted session；headed Edge 先访问 `api.fanbox.cc` 再打开帖子，`post.info` 返回 HTTP 200 JSON（1820 bytes），`fileMap` 有 2 个 MP4。浏览器 fetch 两个附件均 HTTP 200，实际大小 `3,440,013` 与 `3,376,037` bytes，分别等于 `post.info` 声明大小；完整内容只写入临时 `/tmp` evidence，未进入仓库。 |
+| 用户新增目标 `aak/11870583` 的 headed browser evidence | PASS（浏览器路径） | 同一 headed Edge/API-host warm-up 路径取得 HTTP 200 `post.info` JSON（2059 bytes）；文章 body 完整可读（9 blocks），`fileMap` 为空，因此没有可下载附件，未伪造资源成功。完整 JSON 只写入临时 `/tmp` evidence，未进入仓库。 |
+| 用户新增目标的 Go SDK native/solver replay | PARTIAL / PENDING | 两个显式 `FANBOX_SDK_E2E=1` 目标的身份、creator、列表与 tag 前置 operation 均通过；native `Post` 与显式固定 digest FlareSolverr replay 仍为 `challenge_required`。这是 SDK direct transport 的独立发布门禁，不否定上面已完成的 headed browser `post.info`/resource evidence；没有把 browser session、正文或 signed URL 写入仓库。 |
 
 上述 Quality 与 Platform workflow 只用于 CI 质量和 packaged smoke 验证，没有触发任何发版操作。第一轮
 runner 失败及其修复原因也已保留在实现提交历史：packaged smoke 的自动 update 提示已在隔离 profile
@@ -102,13 +104,13 @@ runner 失败及其修复原因也已保留在实现提交历史：packaged smok
 
 ## 仍待取得的 release evidence
 
-真实 FANBOX target 已由用户补齐，但 `ro7274/12373249` 以及新增的
-`nakkemos/3625356`、`aak/11870583` 均尚未形成完整的 post/file-resource 闭环：新增目标的 native 与
-显式 solver replay 都在 `Post` 阶段返回 `challenge_required`，浏览器 provider 也发现当前 Edge
-profile 的单 cookie 数据不符合安全格式，隔离 headed 页面没有形成有效详情或文件链接。因此仍需
-在能让 native 详情稳定通过的受控浏览器/网络出口上重跑，并使用用户明确选定的可读 file attachment
-target；不能自动发现并替换。资源门禁仍必须从合法 `post.info` 详情发现 file attachment 并完整读取，
-不能用 cover/preview 或 solver 页面替代。
+真实 FANBOX target 已由用户补齐；新增的 `nakkemos/3625356` 与 `aak/11870583` 已通过 headed
+browser 路径形成完整的 `post.info` evidence，其中前者的两个 file attachment 也已完整读取并通过
+声明大小校验，后者的 `fileMap` 为空。仍待取得的是 `ro7274/12373249` 的可验证 file-resource
+闭环，以及两个新增 target 在 Go SDK native/solver transport 上的稳定 `Post` 结果；它们当前仍在
+`challenge_required` 阶段。资源门禁仍必须从合法 `post.info` 详情发现 file attachment 并完整读取，
+不能用 cover/preview 或 solver 页面替代；本轮 headed browser evidence 不替代 SDK direct transport
+门禁。
 
 此外，三平台 Chrome/Edge/Firefox provider contract（Safari 仅 macOS）的实际六目标 native runner
 evidence 仍尚未取得；当前新增的 DPAPI、Secret Service、跨平台 profile path 和 Chromium crypto
@@ -120,10 +122,11 @@ macOS/Linux/Windows × amd64/arm64 的 credential-free contract matrix，并包�
 profile/系统凭据 evidence。按计划，native host/CI 仍须记录 lock/WAL、权限、schema drift、真实
 系统凭据边界与清理结果，不能将离线门禁标为 native PASS。
 
-本机 macOS host probe 也未形成 PASS：Chrome `Default` profile 未返回目标 cookie；Edge 在读取
-macOS Safe Storage 时需要当前交互式 Keychain 授权，非交互测试被取消；Safari 返回稳定的 storage
-permission denied。上述结果只记录环境/授权缺口，不把 provider 实现标成成功，也不把失败换成 fixture
-或另一个浏览器的结果。
+本机 macOS host probe 的当前结果为：Edge `Default` profile provider 已通过真实读取，原因是补上
+现代 Chromium Cookies 的 `SHA-256(host_key)` 明文前缀剥离；显式
+`BROWSER_NATIVE_E2E=1 BROWSER_NATIVE_BROWSERS=edge` evidence 通过，session value、path 与数据库
+内容均未进入输出。Chrome `Default` profile 未返回目标 cookie，Safari 仍返回稳定的 storage
+permission denied；这些环境缺口不替代六目标 native runner。
 
 本机曾通过独立 Range 分片取得并完整校验固定 Firefox 153.0.3 DMG，挂载后确实启动了真实 Firefox
 profile。第一次 replay 暴露出 seed 依赖已迁移/可选的 `schemeMap` 等列，第二次 replay 暴露出临时
