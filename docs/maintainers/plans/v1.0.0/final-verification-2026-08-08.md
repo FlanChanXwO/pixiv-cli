@@ -115,6 +115,7 @@ signed URL 或下载内容。
 | 当前浏览器导入 session + 显式 `Chrome_146` HTTPClient 注入的真实 SDK re-probe（2026-08-09 continuation） | PASS（受控 SDK 路径） | 使用刚从现有 Edge 会话导入本地 authdb 的 session，仅在进程内存中注入 public SDK 的 `Options.HTTPClient`；FlareSolverr 固定 digest 只访问匿名 `https://www.fanbox.cc/` 首页。Aak `post.info` 返回完整 9 blocks、0 assets；Nakk 原始响应含 2 个 `fileMap` 条目，public SDK 返回 2 个 file assets，详情正文可读。Nakk 两个附件均完成 HEAD、全量保存和声明大小校验（`3,440,013`、`3,376,037` bytes）；临时文件、探针和容器均已清理。该证据验证了公共 SDK 映射与资源闭环，但显式注入的 `Chrome_146` 不是当前生产默认的 `Firefox_148` transport。 |
 | 当前生产默认 `Firefox_148` native/solver replay（2026-08-09 continuation） | FAIL / PENDING | 同一浏览器导入 session 的产品 CLI native 请求，以及固定 digest FlareSolverr 获取 clearance 后的 native replay，仍在 `Post` 阶段分类为 `challenge_required`。因此受控 `Chrome_146` 成功不能替代已批准的生产 profile direct gate；未改变 profile、solver 边界或发布状态。 |
 | 临时生产 profile 替换实验（2026-08-09 continuation） | FAIL / PENDING | 仅在隔离 worktree 将生产 `Firefox_148` 临时替换为 `Chrome_146`，使用同一 authdb session、native proxy 与匿名首页 solver；首次 `/post.info` 仍为 HTTP 403，solver replay 使用其返回的 UA 后为 HTTP 400。实验代码已恢复 `Firefox_148`，配置和容器均已清理；该结果不支持无证据的 profile 自动切换。 |
+| 提交 `70d54c8` 的 Quality workflow（2026-08-09 continuation） | PASS | [run 31302727125](https://github.com/FlanChanXwO/pixiv-cli/actions/runs/31302727125) 的 Classify、Windows login handler contracts 与 quality job 全部成功；仅有既有 Node.js 20 action deprecation annotation。workflow 未运行真实 FANBOX credential、浏览器或发版步骤。 |
 
 上述 Quality 与 Platform workflow 只用于 CI 质量和 packaged smoke 验证，没有触发任何发版操作。第一轮
 runner 失败及其修复原因也已保留在实现提交历史：packaged smoke 的自动 update 提示已在隔离 profile
