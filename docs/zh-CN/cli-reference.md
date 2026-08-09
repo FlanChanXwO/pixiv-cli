@@ -469,7 +469,7 @@ url = "http://127.0.0.1:8191"
 proxy_url = "socks5://solver-upstream.example:1080"
 ```
 
-`[pixiv.network].proxy_url` 与 `[fanbox.network].proxy_url` 区分缺失和显式空值：命令 `--proxy`/`--no-proxy` > 对应 service key（含显式空值） > `https_proxy`/`HTTPS_PROXY` > `[network].https_proxy` > direct。FANBOX native 只接受不带 userinfo 的 HTTP(S) CONNECT；Pixiv 接受 HTTP(S)、SOCKS5 与 SOCKS5H。`user_agent` 只修改 FANBOX native header，不改变 Firefox 148 TLS profile，也不保证绕过 Cloudflare。FlareSolverr 可选且仅 challenge-only；service URL 与 upstream proxy 独立于 native FANBOX proxy。默认 config generator 不创建这些可选 table。
+`[pixiv.network].proxy_url` 与 `[fanbox.network].proxy_url` 区分缺失和显式空值：命令 `--proxy`/`--no-proxy` > 对应 service key（含显式空值） > `https_proxy`/`HTTPS_PROXY` > `[network].https_proxy` > direct。FANBOX native 只接受不带 userinfo 的 HTTP(S) CONNECT；Pixiv 接受 HTTP(S)、SOCKS5 与 SOCKS5H。`user_agent` 只修改 FANBOX native header，不改变 Chrome 146 TLS profile，也不保证绕过 Cloudflare。FlareSolverr 可选且仅 challenge-only；service URL 与 upstream proxy 独立于 native FANBOX proxy。默认 config generator 不创建这些可选 table。
 
 `[account_pool]` 只保存 `enabled` 与 `strategy`；每个账号的 `schedulable`、冻结和 marker 状态位于 `pixiv-cli.db`。旧 `account_pool.accounts` 会一次性迁移为数据库标记后删除，并保留该表其他内容。不要把 refresh token 写入 `config.toml`。历史 `data/account-pool.json` scheduler 不会被自动读取、迁移或删除。旧 `[logging]` 表会为兼容性被忽略；`log_level` 不是受支持的 `pixiv config` 键。
 

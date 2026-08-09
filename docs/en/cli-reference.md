@@ -591,7 +591,7 @@ proxy_url = "socks5://solver-upstream.example:1080"
 the command override (`--proxy`/`--no-proxy`) wins, then the corresponding service value, then the global
 environment/config proxy, then direct access. FANBOX native accepts only userinfo-free HTTP(S) CONNECT;
 Pixiv accepts HTTP(S), SOCKS5, and SOCKS5H. `user_agent` changes only the FANBOX native header and does not
-change its Firefox 148 TLS profile or guarantee Cloudflare access. FlareSolverr is optional and challenge-only;
+change its Chrome 146 TLS profile or guarantee Cloudflare access. FlareSolverr is optional and challenge-only;
 its service URL and upstream proxy are independent from the native FANBOX proxy. The default config generator
 does not create any of these optional tables.
 

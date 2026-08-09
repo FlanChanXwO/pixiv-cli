@@ -48,7 +48,7 @@ v1.0.0 是公开 Pixiv Go SDK 的最后一次整体破坏性重写，同时首�
 - 跨产品错误分类的公开名称使用 `Reason`、`Error.Reason`、`ReasonOf` 与 `IsReason`；常量直接命名为
   `InvalidArgument`、`ChallengeRequired` 等，不保留与错误含义无关的 `Code` 前缀。稳定 wire value
   仍是 `invalid_argument`、`challenge_required` 等既有字符串。
-- FANBOX 当前以 native `tls-client` Firefox 148 作为 baseline，但不承诺该 profile 永久通过
+- FANBOX 当前以 native `tls-client` Chrome 146 TLS profile 作为 baseline，内置 HTTP User-Agent 为 Firefox 148 baseline，但不承诺该 profile 永久通过
   Cloudflare。FANBOX-only UA 可显式覆盖 native header；它不改变 TLS profile，solver state 存续时由
   solver user agent 优先。FlareSolverr 是显式配置、默认关闭的可选 challenge recovery：只有严格
   识别的 Cloudflare challenge 才匿名求解首页并把单个 `cf_clearance`/solver user agent 交回 native

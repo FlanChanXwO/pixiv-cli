@@ -75,8 +75,8 @@ client, err := fanbox.OpenWith(credentials, fanbox.Options{
 })
 ```
 
-The default `UserAgent` is the built-in Firefox 148 baseline; a custom value
-does not change the TLS profile or guarantee Cloudflare access. FlareSolverr
+The production native transport uses tls-client's Chrome 146 TLS profile. An
+empty `UserAgent` uses the built-in Firefox 148 HTTP header baseline; a custom value
 is disabled when the option is nil and is consulted only after a strict native
 Cloudflare challenge. Its service URL and upstream proxy are independent from
 the native proxy. The public constructor performs no network I/O.

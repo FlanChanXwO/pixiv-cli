@@ -80,7 +80,7 @@ session、完整 Cookie、signed query 或私密正文。测试启用后缺少�
    完整字节数。cover、preview 或任意预置 CDN URL 不替代该路径。
 4. 验证资源 host/redirect revalidation、credential stripping、Range/conditional request 与
    signed-query redaction。只有允许的 FANBOX API/第一方资源 host 可以收到同一个 session。
-5. 默认关闭 FlareSolverr，以当前 native Firefox 148 baseline 完成 E2E。结果只证明该次目标、账号、
+5. 默认关闭 FlareSolverr，以当前 native Chrome 146 TLS baseline（内置 Firefox 148 HTTP UA）完成 E2E。结果只证明该次目标、账号、
    网络出口和时间下的行为，不声明 profile 永久有效。若当时真实网络触发 challenge，可另以显式
    配置验证 recovery；报告必须区分 native 首次结果、solver 求解与 native replay，不能把 solver
    页面当作 SDK operation 成功。

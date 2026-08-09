@@ -193,7 +193,7 @@ Release 安装的失败语义仍是保护边界，而不是临时降级。
 - `sdk/pixiv`：Pixiv App-only SDK。`Open/OpenWith/New/NewWith` 构造器、OAuth `LoginSession`、credentials rotation、规范化模型、opaque cursor、`ParseURL` 与资源读取。没有匿名 Web 路径。
 - `sdk/fanbox`：FANBOX SDK。`Client.ValidateSession`、creator/tag/post/home/supporting、两类 pagination 与资源读取；不读取浏览器、DB 或 Pixiv credentials，也不 import `sdk/pixiv`。
 
-FANBOX native transport 使用 Firefox 148 profile，并只在构造时接收显式的 HTTP client、proxy、UA 与可选
+FANBOX native transport 使用 Chrome 146 TLS profile 与内置 Firefox 148 HTTP User-Agent baseline，并只在构造时接收显式的 HTTP client、proxy、UA 与可选
 FlareSolverr options。`FANBOXSESSID` 只允许在 `api.fanbox.cc` 与 `downloads.fanbox.cc` 的受校验请求中
 传播；第三方 CDN、Pixiv host 与 solver control request 均不携带该 Cookie。solver control transport
 直连 FlareSolverr，solver upstream proxy 只作为 solver 配置传入，不继承 native 或宿主环境 proxy；

@@ -195,7 +195,7 @@ func main() {
 }
 ```
 
-SDK import path 为 `github.com/FlanChanXwO/pixiv-cli/sdk/pixiv`。`sdk/fanbox` 显式接收 `FANBOXSESSID`，支持 Firefox 148 native 路由，以及可选的服务级 proxy、user-agent 和仅 challenge 使用的 FlareSolverr。`Download`/`DownloadAll` 使用有文档依据的新手默认值；`DownloadWith`/`DownloadAllWith` 可控制路径、命名、页码、质量与并发。[SDK 指南](docs/zh-CN/sdk.md)说明模型、cursor、资源、错误和调用方职责。
+SDK import path 为 `github.com/FlanChanXwO/pixiv-cli/sdk/pixiv`。`sdk/fanbox` 显式接收 `FANBOXSESSID`，使用 Chrome 146 TLS profile 与内置 Firefox 148 HTTP User-Agent baseline 的 native 路由，以及可选的服务级 proxy、user-agent 和仅 challenge 使用的 FlareSolverr。`Download`/`DownloadAll` 使用有文档依据的新手默认值；`DownloadWith`/`DownloadAllWith` 可控制路径、命名、页码、质量与并发。[SDK 指南](docs/zh-CN/sdk.md)说明模型、cursor、资源、错误和调用方职责。
 
 ## 认证与 token 安全
 

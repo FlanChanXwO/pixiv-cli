@@ -112,9 +112,11 @@ signed URL 或下载内容。
 | Edge UA 对照后的产品 CLI native replay（2026-08-09 continuation） | FAIL / PENDING | 通过无登录态公共页面读取当前 Edge 对外 UA（Chrome/Edge `151.0.0.0`），临时设置 `[fanbox.network] user_agent` 后，从刚导入的本地 authdb 串行运行 `aak/11870583` 与 `nakkemos/3625356`；两者仍在 `Post` 阶段返回 `challenge_required`。UA 配置已删除，未读取或输出 Cookie、Storage、响应正文或资源 URL；该结果说明仅同步浏览器 UA 仍不足以使 native SDK 通过挑战，也没有改变生产配置或 solver 边界。 |
 | 计划规定的 public SDK post-only E2E re-probe（2026-08-09 continuation） | FAIL / PENDING | 使用 `scripts/test-e2e.sh --fanbox-post-only`、Keychain session 与显式非 secret targets，Aak 与 Nakk 两个 `TestRealFanboxSDKPostInfo` 均在 `Post` 阶段返回 `challenge_required`。再启用固定 digest FlareSolverr 与独立 solver proxy 重跑，两者仍为同一结果；solver 日志仅有两次匿名 `https://www.fanbox.cc/` 首页 `request.get`，未出现 session、帖子 URL、API URL 或资源 URL。容器已删除，未写入正文、signed URL 或下载内容。 |
 | `fileMap` 仅有附件时的 public SDK 回归测试（2026-08-09 continuation） | PASS | `GOPROXY=off go test ./sdk/fanbox -run '^(TestPost|TestPostMapsFileMapWhenFilesListIsOmitted)$' -count=1 -v` 通过。修复前原始 `post.info` 已解码出 `fileMap`，但 public SDK 的 `Post.Body.Assets` 为空；现在 `mapPost` 会合并内部已解码的 `PostBody.Assets`，并按资源 ID 去重，使 `fileMap`/`imageMap` 不填充 `Files`/`Images` 列表时仍能发现资源。 |
-| 当前浏览器导入 session + 显式 `Chrome_146` HTTPClient 注入的真实 SDK re-probe（2026-08-09 continuation） | PASS（受控 SDK 路径） | 使用刚从现有 Edge 会话导入本地 authdb 的 session，仅在进程内存中注入 public SDK 的 `Options.HTTPClient`；FlareSolverr 固定 digest 只访问匿名 `https://www.fanbox.cc/` 首页。Aak `post.info` 返回完整 9 blocks、0 assets；Nakk 原始响应含 2 个 `fileMap` 条目，public SDK 返回 2 个 file assets，详情正文可读。Nakk 两个附件均完成 HEAD、全量保存和声明大小校验（`3,440,013`、`3,376,037` bytes）；临时文件、探针和容器均已清理。该证据验证了公共 SDK 映射与资源闭环，但显式注入的 `Chrome_146` 不是当前生产默认的 `Firefox_148` transport。 |
-| 当前生产默认 `Firefox_148` native/solver replay（2026-08-09 continuation） | FAIL / PENDING | 同一浏览器导入 session 的产品 CLI native 请求，以及固定 digest FlareSolverr 获取 clearance 后的 native replay，仍在 `Post` 阶段分类为 `challenge_required`。因此受控 `Chrome_146` 成功不能替代已批准的生产 profile direct gate；未改变 profile、solver 边界或发布状态。 |
-| 临时生产 profile 替换实验（2026-08-09 continuation） | FAIL / PENDING | 仅在隔离 worktree 将生产 `Firefox_148` 临时替换为 `Chrome_146`，使用同一 authdb session、native proxy 与匿名首页 solver；首次 `/post.info` 仍为 HTTP 403，solver replay 使用其返回的 UA 后为 HTTP 400。实验代码已恢复 `Firefox_148`，配置和容器均已清理；该结果不支持无证据的 profile 自动切换。 |
+| 当前浏览器导入 session + 显式 `Chrome_146` HTTPClient 注入的真实 SDK re-probe（2026-08-09 continuation，production 更新前） | PASS（受控 SDK 路径） | 使用刚从现有 Edge 会话导入本地 authdb 的 session，仅在进程内存中注入 public SDK 的 `Options.HTTPClient`；FlareSolverr 固定 digest 只访问匿名 `https://www.fanbox.cc/` 首页。Aak `post.info` 返回完整 9 blocks、0 assets；Nakk 原始响应含 2 个 `fileMap` 条目，public SDK 返回 2 个 file assets，详情正文可读。Nakk 两个附件均完成 HEAD、全量保存和声明大小校验（`3,440,013`、`3,376,037` bytes）；临时文件、探针和容器均已清理。该证据先验证了公共 SDK 映射与资源闭环，随后已由当前生产默认 `Chrome_146` transport 的独立复测补足。 |
+| 历史生产默认 `Firefox_148` native/solver replay（2026-08-09 continuation，变更前） | HISTORICAL FAIL / SUPERSEDED | 同一浏览器导入 session 的旧生产路径，以及固定 digest FlareSolverr 获取 clearance 后的旧 native replay，曾在 `Post` 阶段分类为 `challenge_required`。该结果保留为 profile 选择背景，不再代表当前生产 baseline。 |
+| 历史临时生产 profile 替换实验（2026-08-09 continuation，变更前） | HISTORICAL FAIL / SUPERSEDED | 早期隔离实验将旧生产 `Firefox_148` 临时替换为 `Chrome_146`；首次 `/post.info` 为 HTTP 403，solver replay 使用当时返回的 UA 后为 HTTP 400。实验代码已恢复，后续在同一网络出口重新登录 session 上完成了独立 Chrome_146 production re-probe；没有根据这次早期失败加入自动 profile fallback。 |
+| 当前生产 `Chrome_146` transport + FlareSolverr replay（2026-08-09 continuation） | PASS（production SDK） | 使用同一网络出口与重新登录后的本地 authdb session，由 SDK 默认构造 native transport（未注入 `HTTPClient`）：Chrome_146 TLS profile 配合内置 Firefox_148 HTTP UA。`nakkemos/3625356` 首次 native 请求为 403 challenge，FlareSolverr 固定 digest 只访问匿名 FANBOX 首页，native replay 为 200；随后两个媒体请求均为 200，两个文件完整 GET 通过，计数 `6,816,050` bytes（`3,440,013` + `3,376,037`）。`aak/11870583` 的 `post.info` 为 200、9 blocks、0 个第一方 file asset，因此没有伪造或发起文件请求。session、响应正文、资源 URL 和下载内容均未写入仓库或日志。 |
+| 计划规定的 Keychain-backed FANBOX post-only re-probe（2026-08-09 continuation） | BLOCKED / STALE CREDENTIAL | 同一命令入口 `scripts/test-e2e.sh --fanbox-post-only` 使用 release-prep 规定的 Keychain item 时返回 `credentials_expired`；本轮生产 SDK PASS 使用当前 authdb 内存 session 完成，未把该 stale Keychain 结果隐藏为成功。若要收口 Keychain release evidence，需用户重新写入该约定 Keychain item。 |
 | 提交 `70d54c8` 的 Quality workflow（2026-08-09 continuation） | PASS | [run 31302727125](https://github.com/FlanChanXwO/pixiv-cli/actions/runs/31302727125) 的 Classify、Windows login handler contracts 与 quality job 全部成功；仅有既有 Node.js 20 action deprecation annotation。workflow 未运行真实 FANBOX credential、浏览器或发版步骤。 |
 
 上述 Quality 与 Platform workflow 只用于 CI 质量和 packaged smoke 验证，没有触发任何发版操作。第一轮
@@ -125,13 +127,15 @@ runner 失败及其修复原因也已保留在实现提交历史：packaged smok
 
 真实 FANBOX target 已由用户补齐；新增的 `nakkemos/3625356` 与 `aak/11870583` 已通过 headed
 browser 路径形成完整的 `post.info` evidence，其中前者的两个 file attachment 也已完整读取并通过
-声明大小校验，后者的 `fileMap` 为空。修复 `fileMap` 映射后，两个 target 也已在当前浏览器导入
-session 与显式 `Chrome_146` HTTPClient 注入下完成一次受控 public SDK `post.info`/资源回归；但
-该注入路径不是当前生产默认的 `Firefox_148` native/solver direct gate，生产路径仍为
-`challenge_required`。仍待取得的是 `ro7274/12373249` 的可验证 file-resource 闭环，以及生产默认
-profile 对新增 target 的稳定 `Post` 结果。资源门禁仍必须从合法 `post.info` 详情发现 file attachment
-并完整读取，不能用 cover/preview 或 solver 页面替代；browser-only 或受控注入证据均不自动替代
-生产 SDK direct transport，且没有理由放宽 solver 不接收业务 URL/Cookie 的边界。
+声明大小校验，后者的 `fileMap` 为空。修复 `fileMap` 映射并将生产 TLS profile 更新为当前证据支持的
+`Chrome_146` 后，两个 target 又在 SDK 默认构造的 production transport 下完成复核：Nakk 经匿名首页
+FlareSolverr recovery 后两个媒体资源完整 GET 通过，Aak 的 `post.info` 成功且无第一方文件。因此这
+两个用户指定 target 的 public SDK/resource gate 已收口；native-only 在当前出口仍可能遇到 challenge
+或 CDN stream `unexpected EOF`，应由显式 solver recovery 或上游状态处理，不能加入无证据的重试、截断
+或静默 fallback。仍待取得的是 `ro7274/12373249` 的可验证 file-resource 闭环、release-prep 约定
+Keychain item 的新鲜 session，以及三平台六目标 native runner evidence。资源门禁仍必须从合法
+`post.info` 详情发现 file attachment 并完整读取，不能用 cover/preview 或 solver 页面替代；solver
+继续不接收业务 URL、Cookie、请求 body 或下载内容。
 
 此外，三平台 Chrome/Edge/Firefox provider contract（Safari 仅 macOS）的实际六目标 native runner
 evidence 仍尚未取得；当前新增的 DPAPI、Secret Service、跨平台 profile path 和 Chromium crypto

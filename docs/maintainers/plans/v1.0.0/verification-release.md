@@ -152,7 +152,7 @@ v1.0.0 release evidence 必须至少包含一次真实 Pixiv SDK 读取，并通
 
 FlareSolverr 是 v1.0.0 显式配置、默认关闭的可选 challenge recovery，不是默认 runtime、全量代理或
 普通测试依赖。实现完成后必须在 v1.0.0 发布前取得一次本机 protocol acceptance evidence，但不进入
-普通 CI，也不要求每个 RC 重复。native Firefox 148 transport 是当前 baseline 而非永久兼容性保证；
+普通 CI，也不要求每个 RC 重复。native Chrome 146 TLS transport（内置 Firefox 148 HTTP UA）是当前 baseline 而非永久兼容性保证；
 它始终先请求。只有严格识别的 Cloudflare challenge 才允许匿名求解 `https://www.fanbox.cc/`，再由
 native transport 使用 solver user agent、单个 `cf_clearance` 与用户原有 `FANBOXSESSID` 重放一次。
 API JSON、帖子 URL、文件 URL、session 和下载字节不得交给 solver。
@@ -169,7 +169,7 @@ challenge 时可另留 genuine recovery evidence，但没有自然 challenge 不
 CI/RC 的前置条件，也不能替代 public SDK 的真实 operation/file E2E。
 
 2026-08-04 的验证补充了关键边界：FlareSolverr 自己转发正确 API 未稳定返回目标 JSON；匿名首页
-求解却能返回 user agent 与 `cf_clearance`，二者交给 Firefox 148 `tls-client` 后可由 native 请求取得
+求解却能返回 user agent 与 `cf_clearance`，二者交给 Chrome 146 `tls-client` 后可由 native 请求取得
 合法详情。只使用 clearance 成功，混入额外 Cloudflare Cookie 曾失败；把 session 交给 solver 还会
 进入其 INFO 日志。因此 production route 必须采用匿名、clearance-only、native replay，而不是全量
 转发。完整设计与脱敏 evidence 见

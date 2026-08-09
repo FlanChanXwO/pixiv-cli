@@ -565,7 +565,7 @@ url = "http://127.0.0.1:8191"
 proxy_url = "socks5://solver-upstream.example:1080"
 ```
 
-`[pixiv.network].proxy_url` と `[fanbox.network].proxy_url` は absent と explicit empty を区別します。command `--proxy`/`--no-proxy` > 対応 service key（explicit empty を含む） > `https_proxy`/`HTTPS_PROXY` > `[network].https_proxy` > direct の順です。FANBOX native は userinfo のない HTTP(S) CONNECT のみ、Pixiv は HTTP(S)、SOCKS5、SOCKS5H を受け付けます。`user_agent` は FANBOX native header だけを変更し、Firefox 148 TLS profile を変更せず、Cloudflare 回避も保証しません。FlareSolverr は optional な challenge-only route で、service URL と upstream proxy は native FANBOX proxy と独立します。default config generator はこれらの optional table を作りません。
+`[pixiv.network].proxy_url` と `[fanbox.network].proxy_url` は absent と explicit empty を区別します。command `--proxy`/`--no-proxy` > 対応 service key（explicit empty を含む） > `https_proxy`/`HTTPS_PROXY` > `[network].https_proxy` > direct の順です。FANBOX native は userinfo のない HTTP(S) CONNECT のみ、Pixiv は HTTP(S)、SOCKS5、SOCKS5H を受け付けます。`user_agent` は FANBOX native header だけを変更し、Chrome 146 TLS profile を変更せず、Cloudflare 回避も保証しません。FlareSolverr は optional な challenge-only route で、service URL と upstream proxy は native FANBOX proxy と独立します。default config generator はこれらの optional table を作りません。
 
 `[account_pool]` は `enabled` と `strategy` だけを保存し、各 account の `schedulable`、freeze、marker は `pixiv-cli.db` に保存します。legacy `account_pool.accounts` は database flag に一度だけ移行してから削除されます。`config.toml` に refresh token を書かないでください。歴史的な `data/account-pool.json` scheduler は自動的に読み取り・移行・削除されません。legacy の `[logging]` table は互換性のため無視され、`log_level` は `pixiv config` の対応 key ではありません。
 

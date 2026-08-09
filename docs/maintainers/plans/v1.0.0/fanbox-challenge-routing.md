@@ -4,7 +4,7 @@
 
 ## 结论
 
-FANBOX 的 native 请求路径以 Go 进程内的 `tls-client` Firefox 148 profile 作为当前 baseline；该
+FANBOX 的 native 请求路径以 Go 进程内的 `tls-client` Chrome 146 TLS profile、内置 HTTP User-Agent Firefox 148 baseline 作为当前 baseline；该
 选择不构成长期通过 Cloudflare 的保证。调用方可以显式覆盖 FANBOX native `User-Agent` header，但
 这不会改变 TLS profile。FlareSolverr 是显式配置、默认关闭的可选 challenge recovery，不是全量
 HTTP 代理：
@@ -33,7 +33,7 @@ Cookie 池。
   session 的前提下，从 FANBOX 首页返回 user agent 与 `cf_clearance`。
 - 将这两个值交给 Firefox 148 `tls-client`，再由 native transport 携带原有 session 请求正确
   `post.info`，取得了合法 JSON。Chrome 146 profile 在同一恢复材料下也曾成功；这些都是特定日期、
-  目标、账号与网络出口下的观测结果，只支持把 Firefox 148 选为当前 baseline，不能推出它始终有效。
+  目标、账号与网络出口下的观测结果；当前 follow-up 依据同一网络出口重新登录后的矩阵将 Chrome 146 选为 baseline，不能推出它始终有效。
 - FlareSolverr 自己转发正确 API endpoint 时未稳定返回所需 JSON；标准 Go transport 即使复用 solver
   Cookie 与 user agent 也仍曾返回 403。故不能把 FlareSolverr 当作全量代理，也不能只复制 Cookie
   而继续使用普通 Go TLS。
@@ -106,7 +106,7 @@ Docker/外部部署和解析优先级的唯一契约见
 
 ### 正常路径
 
-- Client 尚无 solver state 时，以 Firefox 148 profile、配置或内置的 native UA 和用户的单个
+- Client 尚无 solver state 时，以 Chrome 146 profile、配置或内置的 native UA 和用户的单个
   `FANBOXSESSID` 发起请求。
 - Client 已有有效 solver state 时，native transport 同时使用缓存的 solver user agent 与
   `cf_clearance`；solver UA 优先于配置 UA，这不会再次调用 FlareSolverr。

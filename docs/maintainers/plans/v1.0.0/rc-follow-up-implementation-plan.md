@@ -29,7 +29,7 @@ Phase 0–9，或把已经完成的 SDK package migration、CLI/MCP 重写描述
 - CLI/MCP 只经 `internal/application` 调用 public `sdk`；业务调度不留在
   `internal/bootstrap`。
 - 公开 SDK 不读取本地 config、环境变量、authdb 或浏览器，也不增加 logger/debug writer。
-- FANBOX 始终先走 native Firefox 148 transport；配置 FlareSolverr 不等于全量转发。
+- FANBOX 始终先走 native Chrome 146 TLS transport（内置 Firefox 148 HTTP User-Agent baseline）；配置 FlareSolverr 不等于全量转发。
 - FlareSolverr 不接收 `FANBOXSESSID`、API/帖子/文件 URL、请求 body 或下载内容。
 - `config.toml` 的账号池只保留 `enabled` 与 `strategy`；账号调度字段全部以 authdb 为
   authority。
@@ -453,7 +453,7 @@ go test ./internal/cli -run 'Proxy|MCP|Fanbox' -count=1
    `limit` 必须来自已捕获的上游 contract/evidence并写代码注释，不凭空增加本地页数限制。
 3. 更新 DTO/map 以匹配真实 body shape；未知 block/embed 继续保留既有安全语义，不以空结果掩盖
    malformed response。
-4. 将 production tls-client profile 从 Chrome 146 改为 Firefox 148；同步 transport/type/comment 与
+4. 将 production tls-client profile 从 Firefox 148 改为 Chrome 146；同步 transport/type/comment 与
    内置 baseline UA，删除会误导为 Chrome 的命名。调用方 context 继续负责取消，不加内部总 deadline。
 5. challenge 检测改为专题文档的严格信号。对 body marker 使用流式匹配并丢弃内容，不保留/记录 raw
    body，也不沿用无依据的固定字节截断。
@@ -468,7 +468,7 @@ go test ./internal/cli -run 'Proxy|MCP|Fanbox' -count=1
 ### 聚焦测试
 
 - 每个 public FANBOX operation 的 canonical path/query/envelope/pagination fixture。
-- Firefox 148 profile 与 config/built-in UA header。
+- Chrome 146 TLS profile 与 config/built-in HTTP UA header。
 - `post.info` article/image/file 映射；从详情得到 file attachment ResourceRef。
 - session 只传播到允许 host；`downloads.fanbox.cc` 有 session 成功、无 session 对照失败 fixture；
   redirect 到不允许 host 时 Cookie 被移除或请求被拒绝。

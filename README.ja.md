@@ -193,7 +193,7 @@ func main() {
 }
 ```
 
-SDK の import path は `github.com/FlanChanXwO/pixiv-cli/sdk/pixiv` です。`sdk/fanbox` は `FANBOXSESSID` を明示的に受け取り、Firefox 148 native routing、任意の service-scoped proxy/user-agent、challenge 専用 FlareSolverr をサポートします。`Download`/`DownloadAll` は文書化された初心者 default を使い、`DownloadWith`/`DownloadAllWith` は path、naming、page、quality、concurrency を制御します。モデル、cursor、resource、error、呼び出し側の責務は [SDK ガイド](docs/ja/sdk.md)を参照してください。
+SDK の import path は `github.com/FlanChanXwO/pixiv-cli/sdk/pixiv` です。`sdk/fanbox` は `FANBOXSESSID` を明示的に受け取り、Chrome 146 TLS profile と組み込み Firefox 148 HTTP User-Agent baseline による native routing、任意の service-scoped proxy/user-agent、challenge 専用 FlareSolverr をサポートします。`Download`/`DownloadAll` は文書化された初心者 default を使い、`DownloadWith`/`DownloadAllWith` は path、naming、page、quality、concurrency を制御します。モデル、cursor、resource、error、呼び出し側の責務は [SDK ガイド](docs/ja/sdk.md)を参照してください。
 
 ## 認証と token の安全性
 

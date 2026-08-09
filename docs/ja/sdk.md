@@ -72,7 +72,7 @@ client, err := fanbox.OpenWith(credentials, fanbox.Options{
 })
 ```
 
-空の `UserAgent` は組み込み Firefox 148 baseline を使います。custom 値は TLS profile を変更せず、
+production native transport は tls-client の Chrome 146 TLS profile を使います。空の `UserAgent` は組み込み Firefox 148 HTTP header baseline を使います。custom 値は TLS profile を変更せず、
 Cloudflare 回避を保証しません。`FlareSolverr` が nil なら完全に無効で、native request が厳密に
 Cloudflare challenge と判定された場合だけ呼び出されます。solver service URL と upstream proxy は
 native proxy と独立しており、public constructor は network I/O を行いません。

@@ -24,8 +24,8 @@ import (
 const (
 	webBaseURL = "https://www.fanbox.cc/"
 	apiBaseURL = "https://api.fanbox.cc/"
-	// Firefox 148 is the profile selected by the recorded FANBOX native
-	// evidence. The UA is only a header baseline; it is not a bypass guarantee.
+	// Chrome 146 is the profile that passed the current authorized FANBOX native
+	// target probe. The UA is only a header baseline; it is not a bypass guarantee.
 	userAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:148.0) Gecko/20100101 Firefox/148.0"
 )
 
@@ -87,7 +87,7 @@ func WithHTTPClient(client *http.Client) Option {
 	return func(s *Session) { s.httpClient = client }
 }
 
-// WithProxyURL 使用 HTTP(S) CONNECT 代理构造 tls-client Firefox 指纹 transport。
+// WithProxyURL 使用 HTTP(S) CONNECT 代理构造 tls-client Chrome_146 指纹 transport。
 // 校验失败不回显原始 URL，避免 userinfo 出现在错误或日志中。
 func WithProxyURL(raw string) Option {
 	return func(s *Session) { s.proxyURL = raw }
@@ -103,7 +103,7 @@ func WithFlareSolverr(options FlareSolverrOptions) Option {
 	return func(s *Session) { s.flareSolverr = &options }
 }
 
-// NewSession 创建 FANBOX 只读会话。默认使用 tls-client Firefox_148 指纹的生产
+// NewSession 创建 FANBOX 只读会话。默认使用 tls-client Chrome_146 指纹的生产
 // transport；注入 WithHTTPClient 时使用调用方提供的标准 transport。
 func NewSession(cookieValue string, opts ...Option) (*Session, error) {
 	configured := &Session{}
@@ -141,7 +141,7 @@ func NewSessionWithOptions(cookieHeader string, options SessionOptions) (*Sessio
 		}
 		return newSession(cookieHeader, options.HTTPClient, proxyURL, validatedAgent, flareSolverr)
 	}
-	transport, err := newFirefoxTransport(proxyURL)
+	transport, err := newBrowserTransport(proxyURL)
 	if err != nil {
 		return nil, fmt.Errorf("create FANBOX TLS transport: %w", err)
 	}
@@ -489,10 +489,10 @@ func mediaHost(host string) bool {
 		host == "fanbox.pixiv.net" || strings.HasSuffix(host, ".fanbox.pixiv.net")
 }
 
-// firefoxTransport 将标准 RoundTripper 调用桥接到 tls-client，生产路径固定 Firefox_148。
-type firefoxTransport struct{ client tlsclient.HttpClient }
+// browserTransport 将标准 RoundTripper 调用桥接到 tls-client 的 Chrome_146 profile。
+type browserTransport struct{ client tlsclient.HttpClient }
 
-var _ http.RoundTripper = (*firefoxTransport)(nil)
+var _ http.RoundTripper = (*browserTransport)(nil)
 
 func validateUserAgent(raw string) (string, error) {
 	if raw == "" {
@@ -542,10 +542,10 @@ func normalizeFlareSolverrOptions(options *FlareSolverrOptions) (*FlareSolverrOp
 	return &FlareSolverrOptions{URL: serviceURL.String(), ProxyURL: options.ProxyURL}, nil
 }
 
-func newFirefoxTransport(proxyURL string) (*firefoxTransport, error) {
+func newBrowserTransport(proxyURL string) (*browserTransport, error) {
 	noIdleTimeout := time.Duration(0)
 	options := []tlsclient.HttpClientOption{
-		tlsclient.WithClientProfile(profiles.Firefox_148),
+		tlsclient.WithClientProfile(profiles.Chrome_146),
 		tlsclient.WithNotFollowRedirects(),
 		// 上下文取消负责中断请求；这里显式关闭依赖库默认的 30 秒总 deadline。
 		tlsclient.WithTimeoutSeconds(0),
@@ -563,7 +563,7 @@ func newFirefoxTransport(proxyURL string) (*firefoxTransport, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &firefoxTransport{client: client}, nil
+	return &browserTransport{client: client}, nil
 }
 
 // newFanboxProxyDialerFactory 为 tls-client 提供仅支持 HTTP(S) CONNECT 的代理拨号器。
@@ -679,7 +679,7 @@ func closeFanboxProxyConnOnCancel(ctx context.Context, conn net.Conn) func() {
 	return func() { once.Do(func() { close(done) }) }
 }
 
-func (t *firefoxTransport) RoundTrip(request *http.Request) (*http.Response, error) {
+func (t *browserTransport) RoundTrip(request *http.Request) (*http.Response, error) {
 	if request == nil || request.URL == nil {
 		return nil, errors.New("FANBOX request is invalid")
 	}
@@ -722,7 +722,7 @@ func (t *firefoxTransport) RoundTrip(request *http.Request) (*http.Response, err
 	return result, nil
 }
 
-func (t *firefoxTransport) CloseIdleConnections() {
+func (t *browserTransport) CloseIdleConnections() {
 	if t != nil && t.client != nil {
 		t.client.CloseIdleConnections()
 	}

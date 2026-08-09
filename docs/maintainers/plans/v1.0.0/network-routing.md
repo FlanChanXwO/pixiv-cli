@@ -98,7 +98,7 @@ state 因新 challenge 或 Client 回收而失效：
 solver user agent > fanbox.network.user_agent > built-in native UA
 ```
 
-Firefox 148 是当前锁定的 native TLS profile/baseline，不是 Cloudflare bypass 保证。自定义 UA 也不能
+Chrome 146 是当前锁定的 native TLS profile/baseline，内置 HTTP User-Agent 为 Firefox 148 baseline，不是 Cloudflare bypass 保证。自定义 UA 也不能
 把该结论提升为保证。
 
 ## FlareSolverr 的两个地址

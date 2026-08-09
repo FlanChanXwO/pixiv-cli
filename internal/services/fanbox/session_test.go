@@ -197,14 +197,14 @@ func TestStatusClassification(t *testing.T) {
 	}
 }
 
-func TestNewSessionUsesFirefoxTransportAndRejectsImplicitTransport(t *testing.T) {
+func TestNewSessionUsesBrowserTransportAndRejectsImplicitTransport(t *testing.T) {
 	session, err := NewSession("FANBOXSESSID=tls-canary")
 	if err != nil {
 		t.Fatalf("NewSession() error = %v", err)
 	}
 	defer session.CloseIdleConnections()
-	if _, ok := session.httpClient.Transport.(*firefoxTransport); !ok {
-		t.Fatalf("production transport = %T, want *firefoxTransport", session.httpClient.Transport)
+	if _, ok := session.httpClient.Transport.(*browserTransport); !ok {
+		t.Fatalf("production transport = %T, want *browserTransport", session.httpClient.Transport)
 	}
 	if _, err := NewSessionWithHTTPClient("FANBOXSESSID=tls-canary", &http.Client{}); err == nil {
 		t.Fatal("NewSessionWithHTTPClient() accepted implicit standard transport")

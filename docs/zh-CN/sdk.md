@@ -70,7 +70,7 @@ client, err := fanbox.OpenWith(credentials, fanbox.Options{
 })
 ```
 
-空 `UserAgent` 使用内置 Firefox 148 baseline；自定义值不会改变 TLS profile，也不保证能绕过 Cloudflare。
+生产 native transport 使用 tls-client 的 Chrome 146 TLS profile。空 `UserAgent` 使用内置 Firefox 148 HTTP header baseline；自定义值不会改变 TLS profile，也不保证能绕过 Cloudflare。
 `FlareSolverr` 为 nil 时完全关闭，只有 native 请求被严格识别为 Cloudflare challenge 后才会调用。
 solver service URL 与 upstream proxy 独立于 native proxy；public constructor 不联网。
 
