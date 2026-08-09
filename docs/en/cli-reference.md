@@ -1,6 +1,6 @@
 # Pixiv CLI Reference
 
-English | [简体中文](../zh-CN/cli-reference.md) | [日本語](../ja/cli-reference.md) | [Project home](../../README.md)
+English | [简体中文](../zh-CN/cli-reference.md) | [Project home](../../README.md)
 
 This is the complete contract for the `pixiv` command: installation, authentication, commands, flags,
 configuration, environment variables, authentication, and updates. It does not duplicate SDK or MCP details;

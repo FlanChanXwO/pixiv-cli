@@ -6,16 +6,16 @@ duplicated for every locale.
 
 ## User documentation
 
-| Interface | English | 简体中文 | 日本語 |
-| --- | --- | --- | --- |
-| Project overview | [README](../README.md) | [README](../README.zh-CN.md) | [README](../README.ja.md) |
-| CLI reference | [English](en/cli-reference.md) | [简体中文](zh-CN/cli-reference.md) | [日本語](ja/cli-reference.md) |
-| Go SDK | [English](en/sdk.md) | [简体中文](zh-CN/sdk.md) | [日本語](ja/sdk.md) |
-| MCP tools | [English](en/mcp-tools.md) | [简体中文](zh-CN/mcp-tools.md) | [日本語](ja/mcp-tools.md) |
-| Contributing | [English](../CONTRIBUTING.md) | [简体中文](../CONTRIBUTING.zh-CN.md) | Not translated; use English |
+| Interface | English | 简体中文 |
+| --- | --- | --- |
+| Project overview | [README](../README.md) | [README](../README.zh-CN.md) |
+| CLI reference | [English](en/cli-reference.md) | [简体中文](zh-CN/cli-reference.md) |
+| Go SDK | [English](en/sdk.md) | [简体中文](zh-CN/sdk.md) |
+| MCP tools | [English](en/mcp-tools.md) | [简体中文](zh-CN/mcp-tools.md) |
+| Contributing | [English](../CONTRIBUTING.md) | [简体中文](../CONTRIBUTING.zh-CN.md) |
 
 Public interface documents are organized by BCP 47 locale directory. English is the canonical public contract;
-translations must preserve behavior while using natural language for their audience.
+the Simplified Chinese translation must preserve behavior while using natural language for its audience.
 
 ## Maintainer documentation
 

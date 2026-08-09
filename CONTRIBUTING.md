@@ -58,7 +58,7 @@ Real Pixiv Web and authenticated App canaries are opt-in. Never run them with a 
 
 Update documentation in the same pull request when changing a command, flag, SDK API, MCP tool, configuration key, environment variable, output contract, authentication flow, proxy behavior, download behavior, or known limitation.
 
-- Keep `README.md`, `README.zh-CN.md`, and `README.ja.md` behaviorally aligned.
+- Keep `README.md` and `README.zh-CN.md` behaviorally aligned.
 - Keep all existing locale versions under `docs/<locale>/` behaviorally aligned; never use untranslated placeholder content.
 - Update localized SDK/MCP contracts or `docs/maintainers/` according to their documented responsibility.
 - Complete the required release-note declaration in the pull-request template for every contribution. Choose `Added`, `Changed`, `Fixed`, `Security`, `Documentation`, `Maintenance`, or `None`; `None` includes a concrete reason. After merge, the release-prep PR groups reviewed outcomes into matching English and Simplified Chinese version notes, with inline PR or direct-commit sources and a Full Changelog link. See the [release-note workflow](docs/maintainers/development.md#release-notes-and-publication) for the exact process.

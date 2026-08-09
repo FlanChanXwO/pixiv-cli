@@ -1,6 +1,6 @@
 # MCP tools
 
-English | [简体中文](../zh-CN/mcp-tools.md) | [日本語](../ja/mcp-tools.md) | [Documentation index](../index.md)
+English | [简体中文](../zh-CN/mcp-tools.md) | [Documentation index](../index.md)
 
 Start the stdio server with `pixiv mcp`. Configure accounts and local download settings with the CLI before starting the server; MCP then uses the selected local account or `PIXIV_REFRESH_TOKEN` according to the runtime configuration.
 

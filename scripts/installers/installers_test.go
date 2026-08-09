@@ -181,7 +181,6 @@ func TestReadmesExposeBothInstallersAndAgentPrompt(t *testing.T) {
 	for _, candidate := range []string{
 		filepath.Join("..", "..", "README.md"),
 		filepath.Join("..", "..", "README.zh-CN.md"),
-		filepath.Join("..", "..", "README.ja.md"),
 	} {
 		payload, err := os.ReadFile(candidate)
 		if err != nil {

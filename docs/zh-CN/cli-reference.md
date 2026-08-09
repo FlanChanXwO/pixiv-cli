@@ -1,6 +1,6 @@
 # Pixiv CLI 参考手册
 
-[English](../en/cli-reference.md) | 简体中文 | [日本語](../ja/cli-reference.md) | [项目首页](../../README.zh-CN.md)
+[English](../en/cli-reference.md) | 简体中文 | [项目首页](../../README.zh-CN.md)
 
 本文是 `pixiv` 命令的完整契约：安装、认证、命令、flag、配置、环境变量、匿名 fallback 和更新。
 SDK 与 MCP 细节不在此重复，入口见[相关文档](#相关文档)。

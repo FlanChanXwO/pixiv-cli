@@ -1,6 +1,6 @@
 # Pixiv SDK (v1)
 
-English | [简体中文](../zh-CN/sdk.md) | [日本語](../ja/sdk.md) | [Documentation index](../index.md)
+English | [简体中文](../zh-CN/sdk.md) | [Documentation index](../index.md)
 
 The v1 SDK exposes three public packages:
 

@@ -4,10 +4,9 @@
 
 ## 目录职责
 
-- `README.md`、`README.zh-CN.md`、`README.ja.md`：GitHub 项目入口，分别为英文、简体中文与日语。
+- `README.md`、`README.zh-CN.md`：GitHub 项目入口，分别为英文与简体中文。
 - `docs/en/`：面向用户的英文公开接口文档，也是 public contract 的 canonical source。
 - `docs/zh-CN/`：简体中文公开接口文档，行为语义须与英文对应。
-- `docs/ja/`：日语公开接口文档；只创建已完成翻译的文件，不用英文占位冒充日语。
 - `docs/maintainers/`：架构、开发流程、ADR 与 Agent 协作规则；每篇只保留一个 canonical 版本。
 - `docs/index.md`：语言与维护者文档总导航。
 - `docs/maintainers/adr/`：长期架构决策的唯一权威位置。
@@ -20,7 +19,7 @@
 
 ## Locale 规则
 
-- locale 目录使用 BCP 47 tag：`en`、`zh-CN`、`ja`；日语无需无意义地写成 `ja-JP`。
+- locale 目录使用 BCP 47 tag：`en`、`zh-CN`。
 - 英文 public contract 先更新，同一变更中同步已有翻译；允许自然改写，不得产生不同命令、参数、安全语义或限制。
 - 某语言尚未翻译的文档在 `docs/index.md` 明确链接到英文，不创建内容为英文却标为该 locale 的文件。
 - root README 的语言切换必须互相链接；新增语言时同步安装器 README 测试与文档导航。
@@ -28,8 +27,8 @@
 
 ## 更新规则
 
-- 项目定位、安装、快速开始、接口入口或用户必须先知道的安全提醒变化时，同步三语 README。
-- CLI command、flag、账号、配置、环境变量、fallback、更新或输出契约变化时，同步 `docs/en/cli-reference.md`、`docs/zh-CN/cli-reference.md` 与 `docs/ja/cli-reference.md`。
+- 项目定位、安装、快速开始、接口入口或用户必须先知道的安全提醒变化时，同步英文与简体中文 README。
+- CLI command、flag、账号、配置、环境变量、fallback、更新或输出契约变化时，同步 `docs/en/cli-reference.md` 与 `docs/zh-CN/cli-reference.md`。
 - SDK API、model、error 契约写 `docs/en/sdk.md` 与 `docs/zh-CN/sdk.md`；MCP tool/schema/wire 语义写 `docs/en/mcp-tools.md` 与 `docs/zh-CN/mcp-tools.md`。
 - 内部边界变化写 `docs/maintainers/architecture.md`；只有长期、难以逆转且未来维护者需要背景的取舍才写 `docs/maintainers/adr/`。
 - 测试、构建与发布流程写 `docs/maintainers/development.md`；贡献者入口要求变化时同步现有 CONTRIBUTING locale。
@@ -38,4 +37,4 @@
 
 ## 验证
 
-完成后检查三语导航、仓库内相对链接、locale 文件存在性、Markdown fence、`git diff --check`，并运行与文档约束相关的聚焦测试。
+完成后检查双语导航、仓库内相对链接、locale 文件存在性、Markdown fence、`git diff --check`，并运行与文档约束相关的聚焦测试。

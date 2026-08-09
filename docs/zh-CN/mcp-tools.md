@@ -1,6 +1,6 @@
 # MCP 工具
 
-[English](../en/mcp-tools.md) | 简体中文 | [日本語](../ja/mcp-tools.md) | [文档索引](../index.md)
+[English](../en/mcp-tools.md) | 简体中文 | [文档索引](../index.md)
 
 通过 `pixiv mcp` 启动 stdio server。启动前使用 CLI 配置账号与本地下载设置；运行时 MCP 按配置使用已选本地账号或 `PIXIV_REFRESH_TOKEN`。
 

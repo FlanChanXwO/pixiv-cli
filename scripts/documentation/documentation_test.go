@@ -20,7 +20,6 @@ func TestLocalizedDocumentationLayout(t *testing.T) {
 	required := []string{
 		"README.md",
 		"README.zh-CN.md",
-		"README.ja.md",
 		"changelog/README.md",
 		"changelog/README.zh-CN.md",
 		"changelog/unreleased/en.md",
@@ -31,9 +30,6 @@ func TestLocalizedDocumentationLayout(t *testing.T) {
 		"docs/zh-CN/cli-reference.md",
 		"docs/zh-CN/sdk.md",
 		"docs/zh-CN/mcp-tools.md",
-		"docs/ja/cli-reference.md",
-		"docs/ja/sdk.md",
-		"docs/ja/mcp-tools.md",
 		"docs/maintainers/architecture.md",
 		"docs/maintainers/development.md",
 		"docs/maintainers/plans/v1.0.0/index.md",
@@ -50,12 +46,27 @@ func TestLocalizedDocumentationLayout(t *testing.T) {
 	}
 }
 
+func TestJapaneseDocumentationFilesAreRemoved(t *testing.T) {
+	repositoryRoot := filepath.Clean(filepath.Join("..", ".."))
+	for _, relativePath := range []string{
+		"README.ja.md",
+		"docs/ja/cli-reference.md",
+		"docs/ja/sdk.md",
+		"docs/ja/mcp-tools.md",
+	} {
+		if _, err := os.Stat(filepath.Join(repositoryRoot, filepath.FromSlash(relativePath))); err == nil {
+			t.Errorf("Japanese documentation file %s still exists", relativePath)
+		} else if !os.IsNotExist(err) {
+			t.Errorf("stat removed Japanese documentation file %s: %v", relativePath, err)
+		}
+	}
+}
+
 func TestMarkdownRelativeLinksResolve(t *testing.T) {
 	repositoryRoot := filepath.Clean(filepath.Join("..", ".."))
 	candidates := []string{
 		filepath.Join(repositoryRoot, "README.md"),
 		filepath.Join(repositoryRoot, "README.zh-CN.md"),
-		filepath.Join(repositoryRoot, "README.ja.md"),
 		filepath.Join(repositoryRoot, "CONTRIBUTING.md"),
 		filepath.Join(repositoryRoot, "CONTRIBUTING.zh-CN.md"),
 	}
@@ -199,12 +210,12 @@ func TestVersionedChangelogHasEnglishAndSimplifiedChinesePairs(t *testing.T) {
 
 func TestContributionTemplatesArePresentAndLocalized(t *testing.T) {
 	repositoryRoot := filepath.Clean(filepath.Join("..", ".."))
-	const languageMarker = "English / 中文 / 日本語"
+	const languageMarker = "English / 中文"
 	for relativePath, markers := range map[string][]string{
-		".github/ISSUE_TEMPLATE/config.yml":          {"文档与使用问题", "ドキュメントと使い方の質問"},
-		".github/ISSUE_TEMPLATE/bug-report.yml":      {"发生了什么？", "何が起きましたか？"},
-		".github/ISSUE_TEMPLATE/feature-request.yml": {"要解决的问题", "解決したい問題"},
-		".github/PULL_REQUEST_TEMPLATE.md":           {"概述", "概要"},
+		".github/ISSUE_TEMPLATE/config.yml":          {"文档与使用问题"},
+		".github/ISSUE_TEMPLATE/bug-report.yml":      {"发生了什么？"},
+		".github/ISSUE_TEMPLATE/feature-request.yml": {"要解决的问题"},
+		".github/PULL_REQUEST_TEMPLATE.md":           {"概述"},
 	} {
 		payload, err := os.ReadFile(filepath.Join(repositoryRoot, filepath.FromSlash(relativePath)))
 		if err != nil {
@@ -214,10 +225,34 @@ func TestContributionTemplatesArePresentAndLocalized(t *testing.T) {
 		if !strings.Contains(string(payload), languageMarker) {
 			t.Errorf("contribution template %s is missing language marker %q", relativePath, languageMarker)
 		}
+		if strings.Contains(string(payload), "日本語") {
+			t.Errorf("contribution template %s still contains Japanese localization", relativePath)
+		}
 		for _, marker := range markers {
 			if !strings.Contains(string(payload), marker) {
 				t.Errorf("contribution template %s is missing localized marker %q", relativePath, marker)
 			}
+		}
+	}
+}
+
+func TestIssueTemplateTitlesUseCompactPrefixes(t *testing.T) {
+	repositoryRoot := filepath.Clean(filepath.Join("..", ".."))
+	for relativePath, expectedTitle := range map[string]string{
+		".github/ISSUE_TEMPLATE/bug-report.yml":      `title: "[Bug] "`,
+		".github/ISSUE_TEMPLATE/feature-request.yml": `title: "[Feature] "`,
+	} {
+		payload, err := os.ReadFile(filepath.Join(repositoryRoot, filepath.FromSlash(relativePath)))
+		if err != nil {
+			t.Errorf("read issue template %s: %v", relativePath, err)
+			continue
+		}
+		content := string(payload)
+		if !strings.Contains(content, expectedTitle) {
+			t.Errorf("issue template %s is missing compact title prefix %q", relativePath, expectedTitle)
+		}
+		if strings.Contains(content, `title: "[`) && strings.Contains(content, `]: "`) {
+			t.Errorf("issue template %s still uses a colon after its title prefix", relativePath)
 		}
 	}
 }
@@ -247,7 +282,6 @@ func TestCLIReferenceLocalesExposeStableCommands(t *testing.T) {
 	for _, relativePath := range []string{
 		"docs/en/cli-reference.md",
 		"docs/zh-CN/cli-reference.md",
-		"docs/ja/cli-reference.md",
 	} {
 		payload, err := os.ReadFile(filepath.Join(repositoryRoot, filepath.FromSlash(relativePath)))
 		if err != nil {
@@ -296,7 +330,6 @@ func TestAuthMigrationDocumentationRequiresExplicitBundleTransfer(t *testing.T) 
 		"skills/pixiv-cli/references/troubleshooting.md",
 		"docs/en/cli-reference.md",
 		"docs/zh-CN/cli-reference.md",
-		"docs/ja/cli-reference.md",
 	} {
 		payload, err := os.ReadFile(filepath.Join(repositoryRoot, filepath.FromSlash(relativePath)))
 		if err != nil {
@@ -314,7 +347,6 @@ func TestCLIReferenceLocalesHaveExactDrawingToolCatalog(t *testing.T) {
 	for _, relativePath := range []string{
 		"docs/en/cli-reference.md",
 		"docs/zh-CN/cli-reference.md",
-		"docs/ja/cli-reference.md",
 	} {
 		payload, err := os.ReadFile(filepath.Join(repositoryRoot, filepath.FromSlash(relativePath)))
 		if err != nil {
@@ -338,7 +370,6 @@ func TestMCPToolDocumentsMatchTheRegisteredPublicSurface(t *testing.T) {
 	for _, relativePath := range []string{
 		"docs/en/mcp-tools.md",
 		"docs/zh-CN/mcp-tools.md",
-		"docs/ja/mcp-tools.md",
 	} {
 		payload, err := os.ReadFile(filepath.Join(repositoryRoot, filepath.FromSlash(relativePath)))
 		if err != nil {
@@ -363,7 +394,7 @@ func TestMCPToolDocumentsMatchTheRegisteredPublicSurface(t *testing.T) {
 	}
 }
 
-func TestSDKAndMCPDocumentationExposeJapaneseLocale(t *testing.T) {
+func TestSDKAndMCPDocumentationExposeSupportedLocales(t *testing.T) {
 	repositoryRoot := filepath.Clean(filepath.Join("..", ".."))
 	for _, contract := range []struct {
 		indexPath       string
@@ -374,9 +405,9 @@ func TestSDKAndMCPDocumentationExposeJapaneseLocale(t *testing.T) {
 	}{
 		{
 			indexPath:       "docs/index.md",
-			localizedPath:   "docs/ja/sdk.md",
-			localizedTarget: "ja/sdk.md",
-			canonicalPaths:  []string{"docs/en/sdk.md", "docs/zh-CN/sdk.md"},
+			localizedPath:   "docs/zh-CN/sdk.md",
+			localizedTarget: "zh-CN/sdk.md",
+			canonicalPaths:  []string{"docs/en/sdk.md"},
 			requiredTerms: []string{
 				"pixiv.Open",
 				"sdk.Page",
@@ -389,15 +420,15 @@ func TestSDKAndMCPDocumentationExposeJapaneseLocale(t *testing.T) {
 		},
 		{
 			indexPath:       "docs/index.md",
-			localizedPath:   "docs/ja/mcp-tools.md",
-			localizedTarget: "ja/mcp-tools.md",
-			canonicalPaths:  []string{"docs/en/mcp-tools.md", "docs/zh-CN/mcp-tools.md"},
+			localizedPath:   "docs/zh-CN/mcp-tools.md",
+			localizedTarget: "zh-CN/mcp-tools.md",
+			canonicalPaths:  []string{"docs/en/mcp-tools.md"},
 			requiredTerms: []string{
 				"search_novel",
 				"search_user",
 				"illust_ranking",
 				"download_random_from_recommendation",
-				"week_r18g",
+				"illust_recommended",
 			},
 		},
 	} {
@@ -410,7 +441,7 @@ func TestSDKAndMCPDocumentationExposeJapaneseLocale(t *testing.T) {
 		}
 		localized, err := os.ReadFile(filepath.Join(repositoryRoot, filepath.FromSlash(contract.localizedPath)))
 		if err != nil {
-			t.Errorf("missing Japanese public contract %s: %v", contract.localizedPath, err)
+			t.Errorf("missing supported-language public contract %s: %v", contract.localizedPath, err)
 		} else {
 			for _, term := range contract.requiredTerms {
 				if !strings.Contains(string(localized), term) {
@@ -460,10 +491,8 @@ func TestOneTimeRemoteLoginDocumentationContract(t *testing.T) {
 	for _, relativePath := range []string{
 		"README.md",
 		"README.zh-CN.md",
-		"README.ja.md",
 		"docs/en/cli-reference.md",
 		"docs/zh-CN/cli-reference.md",
-		"docs/ja/cli-reference.md",
 	} {
 		payload, err := os.ReadFile(filepath.Join(repositoryRoot, filepath.FromSlash(relativePath)))
 		if err != nil {
@@ -491,7 +520,6 @@ func TestOneTimeRemoteLoginDocumentationContract(t *testing.T) {
 	for _, relativePath := range []string{
 		"docs/en/cli-reference.md",
 		"docs/zh-CN/cli-reference.md",
-		"docs/ja/cli-reference.md",
 	} {
 		payload, err := os.ReadFile(filepath.Join(repositoryRoot, filepath.FromSlash(relativePath)))
 		if err != nil {
@@ -568,12 +596,12 @@ func TestOneTimeRemoteLoginDocumentationContract(t *testing.T) {
 
 func TestRootReadmesLinkEverySupportedLocale(t *testing.T) {
 	repositoryRoot := filepath.Clean(filepath.Join("..", ".."))
-	for _, name := range []string{"README.md", "README.zh-CN.md", "README.ja.md"} {
+	for _, name := range []string{"README.md", "README.zh-CN.md"} {
 		payload, err := os.ReadFile(filepath.Join(repositoryRoot, name))
 		if err != nil {
 			t.Fatal(err)
 		}
-		for _, target := range []string{"README.md", "README.zh-CN.md", "README.ja.md"} {
+		for _, target := range []string{"README.md", "README.zh-CN.md"} {
 			if !strings.Contains(string(payload), "]("+target+")") {
 				t.Errorf("%s does not link locale %s", name, target)
 			}

@@ -1,9 +1,9 @@
-# Localized content: English / 中文 / 日本語
+# Localized content: English / 中文
 blank_issues_enabled: false
 contact_links:
-  - name: Documentation and usage questions / 文档与使用问题 / ドキュメントと使い方の質問
+  - name: Documentation and usage questions / 文档与使用问题
     url: https://github.com/FlanChanXwO/pixiv-cli/discussions
-    about: Ask for usage help or discuss an idea before opening a feature request. / 打开功能请求前，可在此寻求使用帮助或讨论想法。 / 機能リクエストを開く前に、使い方の支援を求めたりアイデアを相談したりできます。
-  - name: Security vulnerability / 安全漏洞 / セキュリティ脆弱性
+    about: Ask for usage help or discuss an idea before opening a feature request. / 打开功能请求前，可在此寻求使用帮助或讨论想法。
+  - name: Security vulnerability / 安全漏洞
     url: https://github.com/FlanChanXwO/pixiv-cli/security/advisories/new
-    about: Report suspected security issues privately. Do not disclose credentials or exploit details in a public issue. / 请私下报告疑似安全问题，不要在公开 Issue 中披露凭据或利用细节。 / セキュリティ上の懸念は非公開で報告してください。public issue で credential や exploit detail を開示しないでください。
+    about: Report suspected security issues privately. Do not disclose credentials or exploit details in a public issue. / 请私下报告疑似安全问题，不要在公开 Issue 中披露凭据或利用细节。

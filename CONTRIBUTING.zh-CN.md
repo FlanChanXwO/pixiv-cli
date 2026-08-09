@@ -58,7 +58,7 @@ Native library 校验、opt-in 真实 API 测试、发布门禁和平台细节�
 
 修改命令、flag、SDK API、MCP tool、配置键、环境变量、输出契约、认证流程、代理行为、下载行为或已知限制时，在同一 pull request 同步文档。
 
-- 保持 `README.md`、`README.zh-CN.md` 与 `README.ja.md` 的行为语义对应。
+- 保持 `README.md` 与 `README.zh-CN.md` 的行为语义对应。
 - 保持 `docs/<locale>/` 下已有语言版本的行为语义对应；不得用未翻译占位内容冒充对应语言。
 - 按文件职责更新 localized SDK/MCP contract 或 `docs/maintainers/`。
 - 每个贡献都要完成 PR 模板中的 release-note 声明，分类为 `Added`、`Changed`、`Fixed`、`Security`、`Documentation`、`Maintenance` 或 `None`；选择 `None` 时说明具体理由。合并后由 release-prep PR 将已审核结果归并为英文与简体中文版本说明，并在每个条目内标注 PR 或历史 direct commit 来源及完整变更链接。具体流程见[发布说明与发布](docs/maintainers/development.md#release-notes-and-publication)。

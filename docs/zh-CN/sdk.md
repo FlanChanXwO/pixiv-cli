@@ -1,6 +1,6 @@
 # Pixiv SDK (v1)
 
-[English](../en/sdk.md) | 简体中文 | [日本語](../ja/sdk.md) | [文档索引](../index.md)
+[English](../en/sdk.md) | 简体中文 | [文档索引](../index.md)
 
 v1 SDK 暴露三个公开包：
 

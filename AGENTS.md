@@ -44,7 +44,7 @@ FANBOX E2E target variables are explicit non-secret test targets; the session re
 ## 文档路由
 
 - 架构与包职责：`docs/maintainers/architecture.md`、`CONTEXT.md`、`docs/maintainers/adr/`。
-- CLI 完整契约：`docs/en/cli-reference.md`、`docs/zh-CN/cli-reference.md`、`docs/ja/cli-reference.md`；README 只作为多语言入口。
+- CLI 完整契约：`docs/en/cli-reference.md`、`docs/zh-CN/cli-reference.md`；README 只作为多语言入口。
 - MCP tools：`docs/en/mcp-tools.md`、`docs/zh-CN/mcp-tools.md`；改 tool 时用 `.agents/skills/pixiv-cli-mcp-tool/`。
 - 开发流程、配置、测试：`docs/maintainers/development.md`。
 - AI 协作文档地图与 checklist：`docs/maintainers/agents/`。
