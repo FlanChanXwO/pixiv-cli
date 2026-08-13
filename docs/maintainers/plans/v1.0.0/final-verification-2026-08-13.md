@@ -35,7 +35,7 @@ PIXIV_SDK_E2E=1 PIXIV_E2E_PROXY=http://127.0.0.1:7890 \
   跳过身份校验并继续，并据此把整体结果记为 PASS。
 - SearchArtworks（"初音ミク"）、Artwork detail、page Resource HEAD 均通过。
 
-### 判定撤销（CurrentUser 恢复 strict fail）
+#### 判定撤销（CurrentUser 恢复 strict fail）
 
 上述「按 Reason 跳过」把 mandatory 的身份断言降级为条件式，等于在测试内部
 单方面放宽验收契约：`OpenWith` 的 refresh 交换只证明 refresh token 可被兑换，
@@ -123,4 +123,13 @@ FANBOX_E2E_POST_ID=<post-with-file-attachment> FANBOX_E2E_POST_URL=<its-page-url
 ## 收尾提交
 
 `8179cb1 refactor: converge v1 architecture, restructure MCP and scripts`
-已推送至 `origin/codex/v1-sdk-rewrite`；随后新增本记录（无代码改动）。
+已推送至 `origin/codex/v1-sdk-rewrite`；随后新增本记录（当时无代码改动）。
+
+后续对本记录的两次修订**含代码改动**，不属于「只加文档」：
+
+| commit | 内容 |
+| --- | --- |
+| `211ab2d test(e2e): restore strict CurrentUser assertion in Pixiv SDK e2e` | 删除 `e2e/sdk_pixiv_e2e_test.go` 中对 `NotFound` 的 skip 分支；撤销本文件与 `index.md` 的 Pixiv PASS 判定 |
+| `4feeb79 docs(e2e): separate FANBOX post-only partial-pass from full read` | 为两个 FANBOX 真实测试补 doc comment 固定分层语义；本文件 FANBOX 结果改记 PARTIAL-PASS 并新增「覆盖分层」；`AGENTS.md` 补 post-only 变体说明 |
+
+两次修订均通过 pre-commit（`gofmt` + `go test ./...`）与全量离线门禁。
