@@ -122,22 +122,21 @@ func TestRealPixivSDKRead(t *testing.T) {
 	}
 
 	// 验证身份 + 一个稳定 detail + 一个 Resource HEAD。
-	// 部分账号/授权对 /v1/user/me 返回上游 404（Specified end-point
-	// doesn't exist）；此时身份已由 OpenWith 的 refresh 交换与 credential
-	// identity 校验确认，跳过 CurrentUser 断言，继续验证其余只读路径。
+	//
+	// CurrentUser 是本测试的 mandatory 身份证据：它读取服务端 /v1/user/me
+	// 并要求返回的身份与本地选中账号一致。OpenWith 的 refresh 交换只证明
+	// refresh token 可被兑换，不构成服务端身份读取，因此不得作为替代证据。
+	// 任何 Reason（含 NotFound）都不降级、不跳过：上游对某账号返回 404 时
+	// 本测试如实失败，由使用者更换或重新授权账号后重跑。
 	user, err := client.CurrentUser(ctx, pixivsdk.CurrentUserRequest{})
 	if err != nil {
-		if sdk.ReasonOf(err) != sdk.NotFound {
-			t.Fatalf("CurrentUser: %v", err)
-		}
-		t.Logf("CurrentUser skipped: upstream /v1/user/me unavailable for this account (%v)", err)
-	} else {
-		if user.User.ID <= 0 {
-			t.Fatal("current user has no id")
-		}
-		if user.User.ID != account.UserID {
-			t.Fatalf("current user identity differs from selected account: stored user %d, current user %d", account.UserID, user.User.ID)
-		}
+		t.Fatalf("CurrentUser: %v", err)
+	}
+	if user.User.ID <= 0 {
+		t.Fatal("current user has no id")
+	}
+	if user.User.ID != account.UserID {
+		t.Fatalf("current user identity differs from selected account: stored user %d, current user %d", account.UserID, user.User.ID)
 	}
 
 	searchPage, err := client.SearchArtworks(ctx, pixivsdk.SearchArtworksRequest{Word: "初音ミク"})
