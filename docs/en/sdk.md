@@ -98,6 +98,50 @@ for {
 Cursors are bound to the product, operation, binding version, and query digest;
 reusing one with a different query returns `InvalidCursor`.
 
+For identity-scoped operations, a client created with `pixiv.New` has no
+verified account ID. Its continuation cursor is ephemeral and carries a
+non-secret binding for that Client instance; the same Client may continue it,
+while another Client or process receives `InvalidCursor`. A client opened
+through `pixiv.Open` binds the cursor to the verified account identity instead.
+
+## Pixiv read operations
+
+The public Pixiv client keeps artwork, novel, and user searches separate while
+using the same typed pagination contract:
+
+- `SearchArtworks` accepts word, target, sort, duration/date bounds, artwork
+  type, AI mode, aspect ratio, resolution, drawing tool, and optional bookmark
+  bounds. Empty target and sort default to `partial_match_for_tags` and
+  `date_desc`. Unknown enum values, invalid dates, and invalid bookmark ranges
+  return `InvalidArgument` before a request is sent.
+- `SearchNovels` accepts word, target, sort, and duration. `SearchUsers` accepts
+  only word. Artwork-only fields are not silently copied to the other entity
+  requests.
+- `SearchAIModeOnly` is a local result-batch filter over the normalized
+  `Artwork.AIType == 2` field. Its mode is included in the cursor binding, so a
+  continuation cannot be reused for another AI mode.
+- `ArtworkRanking` defaults an omitted mode to `day` and validates ranking mode
+  and optional `YYYY-MM-DD` date. `Artwork`, `Novel`, and `User` are detail
+  operations with positive typed IDs. `ArtworkSeries` and `NovelSeries` keep
+  their series-specific continuation; the latter also returns series metadata.
+- `ArtworkComments` and `NovelComments` return `CommentPage`. Comment totals
+  and access-control metadata remain nil unless the upstream response supplied
+  them. A successful empty list is represented by a non-nil empty `Items`
+  slice, not an invented error or total.
+- `UserArtworkBookmarks`, `UserArtworkBookmarkTags`, and `UserNovelBookmarks`
+  validate `UserID`, `Restrict`, and the opaque continuation before the App API
+  request. They preserve successful empty pages and pass `tag` and the
+  server-provided bookmark continuation through unchanged. `ArtworkBookmark`
+  represents an absent bookmark with an empty `Restrict` and empty tags;
+  `AddBookmark` validates its visibility and never treats an unsupported value
+  as a server default.
+- `BookmarkMin` and `BookmarkMax` are optional, inclusive, non-negative App API
+  candidate bounds. The public SDK validates and forwards them as
+  `bookmark_num_min`/`bookmark_num_max`, but does not perform a Premium
+  preflight, claim global completeness, or silently fall back to another
+  candidate strategy. Application-level search may recheck `Artwork.TotalBookmarks`
+  and must report its resolved strategy and completeness separately.
+
 ## Errors
 
 All failures are `*sdk.Error` with a stable `Reason`:
@@ -115,7 +159,8 @@ config content.
 
 ## Resources
 
-First-party media is exposed through `sdk.Resource` with two parallel paths:
+Programmatic SDK callers receive first-party media through `sdk.Resource` with
+two runtime paths:
 
 - `Resource.URL` + `Resource.RequestHeaders` — stream directly or proxy without
   buffering to disk.
@@ -133,6 +178,32 @@ resp, err := client.OpenResource(ctx, sdk.OpenResourceRequest{Ref: image.Ref})
 
 `Resource` never carries tokens or cookies; `RequiresCredentials` reports when a
 resource still needs product credentials invisible to the caller.
+
+### Runtime models and output DTOs
+
+Runtime product models are intentionally separate from values that cross a CLI
+or MCP JSON boundary. `sdk.Resource` may contain the current usable `URL`,
+forwarding `RequestHeaders`, and `ExpiresAt` for an in-process streaming
+operation; these fields are never part of an output DTO.
+
+Use the explicit field-by-field converters when serializing a result:
+`pixiv.ToArtworkDTO`, `pixiv.ToNovelDTO`, `pixiv.ToUserDTO`,
+`pixiv.ToUserDetailDTO`, `pixiv.ToUserPreviewDTO`, `pixiv.ToCommentDTO`,
+`pixiv.ToNovelContentDTO`, `pixiv.ToUgoiraMetadataDTO`, and their related
+Pixiv converters; or the corresponding `fanbox.To*DTO` converters for creators,
+posts, blocks, assets, users, and tags. `sdk.ToResourceDTO` emits only the
+opaque `ref` and optional `requires_credentials` metadata. The CLI and MCP
+servers encode only these DTOs, pipeline `Record` values, and typed envelopes;
+they never reflect over or JSON-marshal runtime product models.
+
+For Pixiv, `Resource.Ref` contains only the resource kind, stable ID, page, and
+optional variant. It never embeds the current or signed media URL. The SDK can
+reuse the current locator held by the client, or re-fetch the corresponding
+artwork, novel, user, ugoira, or novel-content metadata before opening it; every
+resolved URL and redirect is allowlisted again. `SaveResource` writes through an
+atomic destination and reports the response `Content-Length` in
+`SaveProgress.Total` when upstream supplies it. Resource requests use an
+explicit header allowlist and never send the caller's Cookie jar.
 
 ## URL references
 

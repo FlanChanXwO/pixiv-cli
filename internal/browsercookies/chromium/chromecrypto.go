@@ -13,7 +13,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/browsercookies/core"
+	"github.com/FlanChanXwO/pixiv-cli/internal/browsercookies"
 )
 
 // peanuts 是 Chromium Linux 旧版 key derivation 使用的固定盐；它也保留为
@@ -47,19 +47,19 @@ func deriveChromeKey(password []byte) []byte {
 // decryptChromiumValue 处理外层版本标记。
 func decryptCookieValue(encrypted, key []byte) ([]byte, error) {
 	if len(key) < aes.BlockSize {
-		return nil, core.ErrEncryptedMalformed
+		return nil, browsercookies.ErrEncryptedMalformed
 	}
 	if len(encrypted) == 0 || len(encrypted)%aes.BlockSize != 0 {
-		return nil, core.ErrEncryptedMalformed
+		return nil, browsercookies.ErrEncryptedMalformed
 	}
 	block, err := aes.NewCipher(key[:aes.BlockSize])
 	if err != nil {
-		return nil, core.ErrEncryptedMalformed
+		return nil, browsercookies.ErrEncryptedMalformed
 	}
 	plain := make([]byte, len(encrypted))
 	cipher.NewCBCDecrypter(block, make([]byte, aes.BlockSize)).CryptBlocks(plain, encrypted)
 	if len(plain) < prefixLength {
-		return nil, core.ErrEncryptedMalformed
+		return nil, browsercookies.ErrEncryptedMalformed
 	}
 	return plain, nil
 }
@@ -68,21 +68,21 @@ func decryptCookieValue(encrypted, key []byte) ([]byte, error) {
 // 12 字节 nonce 与带 16 字节 authentication tag 的 ciphertext。
 func decryptChromiumGCM(encrypted, key []byte) ([]byte, error) {
 	if len(encrypted) < chromiumPrefixLength+chromiumNonceLength+16 || !hasChromiumPrefix(encrypted) {
-		return nil, core.ErrEncryptedMalformed
+		return nil, browsercookies.ErrEncryptedMalformed
 	}
 	block, err := aes.NewCipher(key)
 	if err != nil {
-		return nil, core.ErrEncryptedMalformed
+		return nil, browsercookies.ErrEncryptedMalformed
 	}
 	gcm, err := cipher.NewGCM(block)
 	if err != nil {
-		return nil, core.ErrEncryptedMalformed
+		return nil, browsercookies.ErrEncryptedMalformed
 	}
 	nonceStart := chromiumPrefixLength
 	nonceEnd := nonceStart + chromiumNonceLength
 	plain, err := gcm.Open(nil, encrypted[nonceStart:nonceEnd], encrypted[nonceEnd:], nil)
 	if err != nil {
-		return nil, core.ErrEncryptedMalformed
+		return nil, browsercookies.ErrEncryptedMalformed
 	}
 	return plain, nil
 }
@@ -91,15 +91,15 @@ func decryptChromiumGCM(encrypted, key []byte) ([]byte, error) {
 // 密文采用 AES-CBC、空格 IV，并使用标准 PKCS#7 padding。
 func decryptChromiumCBC(encrypted, key []byte) ([]byte, error) {
 	if len(encrypted) < chromiumPrefixLength+aes.BlockSize || !hasChromiumPrefix(encrypted) {
-		return nil, core.ErrEncryptedMalformed
+		return nil, browsercookies.ErrEncryptedMalformed
 	}
 	ciphertext := encrypted[chromiumPrefixLength:]
 	if len(ciphertext)%aes.BlockSize != 0 {
-		return nil, core.ErrEncryptedMalformed
+		return nil, browsercookies.ErrEncryptedMalformed
 	}
 	block, err := aes.NewCipher(key[:min(len(key), 32)])
 	if err != nil {
-		return nil, core.ErrEncryptedMalformed
+		return nil, browsercookies.ErrEncryptedMalformed
 	}
 	plain := make([]byte, len(ciphertext))
 	iv := bytesRepeat(' ', aes.BlockSize)
@@ -117,15 +117,15 @@ func bytesRepeat(value byte, count int) []byte {
 
 func unpadCBC(plain []byte) ([]byte, error) {
 	if len(plain) == 0 || len(plain)%aes.BlockSize != 0 {
-		return nil, core.ErrEncryptedMalformed
+		return nil, browsercookies.ErrEncryptedMalformed
 	}
 	padding := int(plain[len(plain)-1])
 	if padding < 1 || padding > aes.BlockSize || padding > len(plain) {
-		return nil, core.ErrEncryptedMalformed
+		return nil, browsercookies.ErrEncryptedMalformed
 	}
 	for _, value := range plain[len(plain)-padding:] {
 		if int(value) != padding {
-			return nil, core.ErrEncryptedMalformed
+			return nil, browsercookies.ErrEncryptedMalformed
 		}
 	}
 	return plain[:len(plain)-padding], nil
@@ -148,7 +148,7 @@ func stripChromiumHostDigest(plain []byte, host string) []byte {
 // 认证失败后再检查 legacy CBC 是格式兼容，不是网络或 provider fallback。
 func decryptChromiumValue(encrypted, key []byte) ([]byte, error) {
 	if !hasChromiumPrefix(encrypted) {
-		return nil, core.ErrEncryptedFormatUnknown
+		return nil, browsercookies.ErrEncryptedFormatUnknown
 	}
 	if plain, err := decryptChromiumGCM(encrypted, key); err == nil {
 		return plain, nil
@@ -164,10 +164,10 @@ func hasChromiumPrefix(plain []byte) bool {
 // stripChromiumPrefix 校验旧 fixture 的 32 字节前缀并返回 cookie value。
 func stripChromiumPrefix(plain []byte) ([]byte, error) {
 	if !hasChromiumPrefix(plain) {
-		return nil, core.ErrEncryptedFormatUnknown
+		return nil, browsercookies.ErrEncryptedFormatUnknown
 	}
 	if len(plain) < prefixLength {
-		return nil, core.ErrEncryptedMalformed
+		return nil, browsercookies.ErrEncryptedMalformed
 	}
 	return plain[prefixLength:], nil
 }
@@ -188,13 +188,13 @@ func (p *provider) localStateEncryptedKey() ([]byte, bool, error) {
 			return nil, false, nil
 		}
 		if errors.Is(err, fs.ErrPermission) {
-			return nil, true, core.ErrPermissionDenied
+			return nil, true, browsercookies.ErrPermissionDenied
 		}
-		return nil, true, core.ErrEncryptedFormatUnknown
+		return nil, true, browsercookies.ErrEncryptedFormatUnknown
 	}
 	var state localStateFile
 	if err := json.Unmarshal(body, &state); err != nil {
-		return nil, true, core.ErrEncryptedFormatUnknown
+		return nil, true, browsercookies.ErrEncryptedFormatUnknown
 	}
 	encoded := strings.TrimSpace(state.OSCrypt.EncryptedKey)
 	if encoded == "" {
@@ -205,7 +205,7 @@ func (p *provider) localStateEncryptedKey() ([]byte, bool, error) {
 		key, err = base64.RawStdEncoding.DecodeString(encoded)
 	}
 	if err != nil || len(key) == 0 {
-		return nil, true, core.ErrEncryptedFormatUnknown
+		return nil, true, browsercookies.ErrEncryptedFormatUnknown
 	}
 	return key, true, nil
 }

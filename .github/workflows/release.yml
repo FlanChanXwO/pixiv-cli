@@ -178,11 +178,11 @@ jobs:
         run: sh scripts/test-rust-vendor.sh
       - name: Check Rust formatting from vendored sources
         shell: bash
-        working-directory: internal/downloader/ugoira_rs
+        working-directory: internal/media/ugoira/rust
         run: cargo fmt --check
       - name: Lint vendored Rust sources
         shell: bash
-        working-directory: internal/downloader/ugoira_rs
+        working-directory: internal/media/ugoira/rust
         run: cargo clippy --locked --offline --all-targets -- -D warnings
       - name: Apply the audited test-only recovery overlay
         if: github.event_name == 'workflow_dispatch'
@@ -194,23 +194,24 @@ jobs:
           recovery_overlay_paths=(
             .github/workflows/release.yml
             scripts/installers/installers_test.go
-            scripts/internal/workflowpolicy/policy.go
-            scripts/releaseworkflow/build_policy.go
-            scripts/releaseworkflow/build_recovery_test.go
-            scripts/releaseworkflow/e2e_policy.go
-            scripts/releaseworkflow/e2e_policy_test.go
-            scripts/releaseworkflow/homebrew_policy.go
-            scripts/releaseworkflow/homebrew_policy_test.go
+            scripts/internal/releasecontract/releasecontract.go
+            scripts/internal/workflow/yaml/yaml.go
+            scripts/internal/releaseworkflow/build_policy.go
+            scripts/internal/releaseworkflow/build_recovery_test.go
+            scripts/internal/releaseworkflow/e2e_policy.go
+            scripts/internal/releaseworkflow/e2e_policy_test.go
+            scripts/internal/releaseworkflow/homebrew_policy.go
+            scripts/internal/releaseworkflow/homebrew_policy_test.go
             scripts/releaseworkflow/main.go
             scripts/releaseworkflow/main_test.go
-            scripts/releaseworkflow/publish_policy.go
-            scripts/releaseworkflow/publish_security_test.go
-            scripts/releaseworkflow/release_notes_policy.go
-            scripts/releaseworkflow/release_notes_policy_test.go
-            scripts/releaseworkflow/recovery_policy.go
-            scripts/releaseworkflow/test_helpers_test.go
-            scripts/releaseworkflow/workflow_policy.go
-            scripts/releaseworkflow/workflow_policy_test.go
+            scripts/internal/releaseworkflow/publish_policy.go
+            scripts/internal/releaseworkflow/publish_security_test.go
+            scripts/internal/releaseworkflow/release_notes_policy.go
+            scripts/internal/releaseworkflow/release_notes_policy_test.go
+            scripts/internal/releaseworkflow/recovery_policy.go
+            scripts/internal/releaseworkflow/test_helpers_test.go
+            scripts/internal/releaseworkflow/workflow_policy.go
+            scripts/internal/releaseworkflow/workflow_policy_test.go
           )
           git archive --format=tar "$GITHUB_SHA" -- "${recovery_overlay_paths[@]}" | tar -xf -
           actual_overlay_paths="$(
@@ -340,7 +341,7 @@ jobs:
           test -z "$(git status --porcelain --untracked-files=all)"
           test -z "$(git clean -ndx)"
           bash scripts/build-staticlibs.sh --target '${{ matrix.rust_target }}'
-          git restore --source="$RELEASE_TAG^{commit}" -- internal/downloader/ugoira_rs/staticlib/manifest.json
+          git restore --source="$RELEASE_TAG^{commit}" -- internal/media/ugoira/rust/staticlib/manifest.json
           git diff --exit-code
           test -z "$(git status --porcelain --untracked-files=all)"
           test -z "$(git clean -ndx)"
@@ -500,7 +501,7 @@ jobs:
             --output-dir release \
             --install-sh scripts/install.sh \
             --install-cmd scripts/install.cmd \
-            --release-sources internal/update/release_sources.txt \
+            --release-sources internal/update/source/release_sources.txt \
             --key-id "$RELEASE_SIGNING_KEY_ID" \
             --private-key "$key_path" \
             --changelog "changelog/v${RELEASE_TAG#v}/en.md" \

@@ -7,7 +7,7 @@ import (
 	"context"
 	"errors"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/browsercookies/core"
+	"github.com/FlanChanXwO/pixiv-cli/internal/browsercookies"
 	"github.com/FlanChanXwO/pixiv-cli/internal/browsercookies/secret"
 )
 
@@ -31,12 +31,12 @@ func (p *provider) keychainPassword(ctx context.Context) ([]byte, error) {
 	password, err := secret.Keychain{}.GetPassword(ctx, p.kind.keychainService(), p.kind.keychainAccount())
 	if err != nil {
 		if errors.Is(err, secret.ErrItemNotFound) {
-			return nil, core.ErrKeychainItemNotFound
+			return nil, browsercookies.ErrKeychainItemNotFound
 		}
 		if errors.Is(err, secret.ErrNotAvailableOnBuild) {
-			return nil, core.ErrEncryptedValueUnsupported
+			return nil, browsercookies.ErrEncryptedValueUnsupported
 		}
-		return nil, core.ErrKeychainAccess
+		return nil, browsercookies.ErrKeychainAccess
 	}
 	return password, nil
 }
@@ -70,10 +70,10 @@ func (p *provider) encryptionKeys(ctx context.Context) ([][]byte, error) {
 				return [][]byte{unwrapped}, nil
 			}
 		}
-		return nil, core.ErrEncryptedMalformed
+		return nil, browsercookies.ErrEncryptedMalformed
 	}
 	if bytes.HasPrefix(localStateKey, []byte("DPAPI")) {
-		return nil, core.ErrEncryptedFormatUnknown
+		return nil, browsercookies.ErrEncryptedFormatUnknown
 	}
 	return [][]byte{localStateKey}, nil
 }
@@ -92,5 +92,5 @@ func (p *provider) decryptLegacy(ctx context.Context, blob []byte) ([]byte, erro
 			return value, nil
 		}
 	}
-	return nil, core.ErrEncryptedMalformed
+	return nil, browsercookies.ErrEncryptedMalformed
 }

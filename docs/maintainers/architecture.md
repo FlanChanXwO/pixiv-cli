@@ -6,9 +6,9 @@
 
 1. `pixiv` 无参数显示 CLI 帮助。
 2. `pixiv auth/config/version/update/search/timeline/detail/ranking/recommended/user/bookmark/follow/download` 进入 CLI 模式；`pixiv fanbox` 进入 FANBOX 模式；`auth import` 负责 direct token import 或 bundle restore，`auth export` 负责本地 secret snapshot。
-3. `pixiv mcp` 与 `pixiv fanbox mcp` 委托 `internal/bootstrap` 组装并运行各自独立的 MCP stdio server。
-4. CLI 与 MCP 通过 `internal/bootstrap` 共享生产 wiring：
-   - 账号凭据来自 `~/.pixiv-cli/pixiv-cli.db`（SQLite，`internal/persistence/authdb`；Windows：`%USERPROFILE%\.pixiv-cli\pixiv-cli.db`）；旧 `auth.json` 不自动读取，用户须显式导出/导入 bundle
+3. `pixiv mcp` 与 `pixiv fanbox mcp` 在 `internal/cli` 的每次执行私有 resource graph 内按各自 typed requirements 组装并运行独立的 MCP stdio server。
+4. CLI 与 MCP 通过该私有 graph 按命令需求延迟构造生产资源：
+   - 账号凭据来自 `~/.pixiv-cli/pixiv-cli.db`（SQLite，`internal/storage/database`；Windows：`%USERPROFILE%\.pixiv-cli\pixiv-cli.db`）；旧 `auth.json` 不自动读取，用户须显式导出/导入 bundle
    - 全局配置来自 `~/.pixiv-cli/config.toml`（Windows：`%USERPROFILE%\.pixiv-cli\config.toml`）
    - 公开环境变量作为覆盖层参与合并
 5. 没有匿名 Web fallback：所有内容命令都要求认证态本地账号或显式凭据；已删除的 `web_fallback_enabled` 若仍显式存在则返回 `removed_setting`。
@@ -25,23 +25,28 @@
 
 - Cobra 命令树、help 和 flag 解析。
 - 文本/JSON 输出。
-- `auth import [REFRESH_TOKEN]` 的输入 adapter：位置参数直接作为 opaque token；无参 TTY 隐藏输入，非 TTY 读取 raw stdin；`--file PATH|-` 解码并离线恢复 bundle。
+- `auth import [REFRESH_TOKEN]` 的输入 adapter：位置参数直接作为 opaque token；无参 TTY 隐藏输入，非 TTY 按首个非空白字节区分 opaque token 与严格 bundle；bundle 通过 stdin 管道或重定向离线恢复，不再有 `--file`。
 - `auth export` 的 secret-output adapter：不带 `--output` 时，默认/UID 选择只输出 raw token 与换行，`--all` 只输出 versioned bundle；`--output` 改为私有文件并只输出无 secret 摘要。
-- CLI 协议的 `--page`/`--limit` 解析与错误文案；解析后的逻辑分页计划交给 application 共享遍历引擎。
+- CLI 协议的 `--page`/`--limit` 解析与错误文案；解析后的逻辑分页计划交给 `internal/pagination` 共享遍历算法。
 - `auth login` 的 loopback OAuth、浏览器打开和 TTY 交互。
 - `pixiv mcp` 分发。
 - `pixiv version`、根 `--version` 与 `pixiv update` 的输入/输出适配。
 - 普通 CLI 成功命令后的只读自动更新提示；提示和失败 warning 仅写 stderr。
 
-它不直接拥有账号存储变更、Pixiv client 构造或下载管理器构造；这些职责由 `internal/application` 与 `internal/bootstrap` 承接。
+`internal/cli/cli.go` 持有私有、per-run resource graph：在 Cobra 解析与输入校验完成后，才按命令 owner 的
+typed requirements（`internal/cli/requirements`）延迟构造 config snapshot、DB、account/session、media/download 与
+update 依赖；其关闭顺序与构造相反，并合并所有 close error。命令包只声明窄需求，不持有可跨命令检索服务的 locator。
+CLI 不再导出 `Runtime`，也没有独立 bootstrap constructor 或 `internal/cli/runtime`。
 
-命令树由 `root.go` 统一处理全局 flag、lazy runtime 与退出码，再交给
-`internal/cli/{auth,config,pixiv,download,fanbox,mcp,update,version}/command.go` 注册各领域命令。
-共享启动 factory 位于 `internal/cli/runtime`，通用 JSON fallback 位于 `internal/cli/output`；这些子包不反向导入
-`internal/cli`，根包只通过小的 host seam 挂载既有 handler。
+命令树由 `root.go` 统一处理全局 flag、需求驱动的启动生命周期与退出码，再交给 owner 命令包注册各领域命令：
+根级 `internal/cli/{config,mcp,update,version}`，Pixiv `internal/cli/pixiv/{auth,bookmark,comment,detail,download,follow,mypixiv,ranking,recommended,search,series,timeline,user}`，
+FANBOX `internal/cli/fanbox/{auth,download,mcp,post}`。数据命令经 `internal/cli/internal/{pixivdeps,fanboxdeps}` 的窄
+`Data` 端口（`Open`/`Pooled`/`JSONOut` 等）使用 public SDK `*pixiv.Client`/`*fanbox.Client`，不直连内部协议适配包；
+共享 stdin codec 与 Pixiv 实体记录位于 `internal/cli/pipeline`，`internal/cli/diagnostics` 把 diagnostics core 事件
+渲染为 `--debug` 文本。这些子包不反向导入 `internal/cli` 根包。
 
 `version` 的 JSON stdout 精确为 `version`、`commit`、`build_date`。自动更新只在普通业务命令
-成功后运行，跳过 MCP、help、`version`、`update`、全部 `auth export`、`auth import --file` 和开发构建；它选择 stable Release、使用用户
+成功后运行，跳过 MCP、help、`version`、`update`、全部 `auth export`、bundle-form `auth import` 和开发构建；它选择 stable Release、使用用户
 cache 的 24 小时节流，并最多等待 3 秒。配置、网络、来源识别失败只作为 stderr warning，不能
 改变已成功业务命令的退出码，也不能混入 JSON stdout 或 MCP JSON-RPC。
 进程启动时的 Windows pending-update cleanup 也属于潜在 mutation；全部 `auth export` invocation 在 Cobra
@@ -64,40 +69,40 @@ XDG desktop entry 与 `gio`。headless Linux 不注册 handler，但可运行 re
 保存由 Go linker 注入的 `Version`、`Commit`、`BuildDate`。本地默认是 `dev`/`unknown`/`unknown`；
 只有 version 为 `dev` 的构建被视为开发构建，并必须拒绝自更新。
 
-### `internal/application`
+### `internal/account`
 
-负责 CLI/MCP 之外的应用用例编排：
+负责账号领域与 CLI/MCP 共享的应用服务：
 
-- `AccountService`：账号 import/list/export/remove/use/check；bundle export/restore 只经 public SDK 读取或写入本地 store，direct token import 仍经 OAuth 验证并保存 rotation 后的 token。
-- `ConfigService`：`config.toml` path/get/set/unset。
-- `LoginService`：生成 PKCE/state、authorization-code exchange，并保存账号；Pixiv 登录 URL 构造仍留在 CLI adapter。
-- `SDKService`：为 CLI/MCP 打开 `sdk/pixiv` 与 `sdk/fanbox` client，并把调用方选择的账号/代理/JSON 设置映射到 SDK operation snapshot；作品查询和下载均从该 snapshot 的 public SDK 能力继续执行。
-- `DownloadService`：把同一 operation snapshot、本次下载路径和文件名模板交给 bootstrap 注入的窄 factory，并委托下载；应用层不构造具体 manager。
-- 分页遍历：统一负责 opaque cursor 跟随、逻辑 skip/limit、单批兼容语义与重复 cursor 止环；CLI 可按批流式消费，MCP 可经同一引擎收集结果。各 adapter 只解析各自协议输入并组织输出。
+- `internal/account/pixiv`：Pixiv 本地账号模型与持久化端口、`AccountService`（账号 import/list/export/remove/use/check；
+  bundle export/restore 只经 public SDK 读取或写入本地 store，direct token import 仍经 OAuth 验证并保存 rotation 后的 token）
+  与 `LoginService`（生成 PKCE/state、authorization-code exchange，并保存账号；Pixiv 登录 URL 构造仍留在 CLI adapter）。
+- `internal/account/fanbox`：FANBOX 本地账号模型与独立 storage port、session 校验与保存；FANBOX session 不与 Pixiv
+  refresh token 共享类型或生命周期。
 
-实现按用例拆在 `application/{pixiv,fanbox,config,download,pagination}`；根包只保留跨用例
-`ports.go`。Pixiv application ports 按认证、作品、小说、用户、mutation、resource 与账号池分域，
-bootstrap 通过 repository、proxy factory 和 SDK factory 注入具体设施。
+配置 schema、`config.toml` path/get/set/unset 与一次执行所需的 immutable `Snapshot` 位于 `internal/storage/config`；
+公开 SDK operation 的一次性打开与账号池安全重放边界在 `internal/session`（`internal/session/{pixiv,fanbox}`）；
+逻辑分页遍历（opaque cursor 跟随、逻辑 skip/limit、单批兼容语义与重复 cursor 止环）在 `internal/pagination` 共享引擎，
+CLI 可按批流式消费，MCP 可经同一引擎收集结果；各 adapter 只解析各自协议输入并组织输出。CLI/MCP 一律经窄端口
+（`pixivdeps`/`fanboxdeps`、MCP runtime `SDKPorts`）打开 public SDK，不再有 `SDKService` 之类跨产品 use case 层。
 
 ### `internal/diagnostics`
 
 提供显式、内存内的 typed diagnostics scope。CLI root、Pixiv MCP、FANBOX MCP、Pixiv/FANBOX
 network transport、账号池、下载与 FlareSolverr 只通过 scope 发出允许的模块、operation、route、status、
-proxy、UA、request ID、reason 和计数等字段；默认使用 Nop sink。CLI 的 `--debug` 将安全事件实时写入
-stderr，MCP request scope 只影响诊断，不改变 JSON-RPC stdout。该包不创建日志文件、不保存 response body、
+proxy、UA、request ID、reason 和计数等字段；默认使用 Nop sink。CLI 的 `--debug` 由
+`internal/cli/diagnostics` presenter 把核心安全事件实时渲染到 stderr，MCP request scope 只影响诊断，不改变
+JSON-RPC stdout。该包不创建日志文件、不保存 response body、
 Cookie、token、signed query 或 arbitrary error dump；公共 SDK 在没有显式 scope 时保持静默。
 
-### `internal/bootstrap`
+### Release trust root（`internal/cli/cli.go`）
 
-生产 composition root，负责把 `internal/application/config`、`internal/persistence/authdb`、`sdk/pixiv`、`sdk/fanbox`、`internal/downloader`、`internal/mcpserver/{pixiv,fanbox}`、更新 release client/installer 和 application services 组装起来。测试可以替换 service 里的小接口或 factory，不需要复制生产 wiring。
+`internal/bootstrap` 已随 v1 迁移删除，不再是 CLI/MCP composition root。production Ed25519 public trust root
+（key ID、public key、SPKI fingerprint）随源码提交在 `internal/cli/cli.go`：CLI 私有 graph 在每次构造时把
+key ID→public key map 复制给 Release installer，避免调用方污染 trust root。公开 key 的 fingerprint 与已知签名
+fixture 由同包测试验证；私钥不在源码或运行时配置中。只读更新检查不需要该 key；该 wiring 本身也不能代替每个版本
+独立的发布验收。
 
-`NewUpdateCoordinator` 通过 `productionReleaseInstallerOptions` 为 Release installer 注入随受支持
-binary 提交的 Ed25519 key ID→public key 映射，并在每次组装时复制 map 与 key bytes，避免调用方污染
-production trust root。该公开 key 的 SPKI fingerprint 与已知签名 fixture 由同包测试验证；私钥不在
-bootstrap、源码或运行时配置中。只读更新检查不需要该 key；当前 v0.3.0 已是可安装的公开 Release，
-但该 wiring 本身仍不能代替每个版本独立的发布验收。
-
-### `internal/persistence/authdb`
+### `internal/storage/database`
 
 负责本地账号状态的 SQLite authority：
 
@@ -109,9 +114,9 @@ bootstrap、源码或运行时配置中。只读更新检查不需要该 key；�
 
 旧 `auth.json` 不再作为 store 或 fixture API。用户须在旧版本显式执行
 `pixiv auth export --all --output <private bundle>`，再在新版本执行
-`pixiv auth import --file <bundle>`；失败原因直接返回，不自动删除旧文件。
+`pixiv auth import < bundle.json`；失败原因直接返回，不自动删除旧文件。
 
-### `internal/application/config`
+### `internal/storage/config`
 
 负责 `config.toml` 及运行时配置：
 
@@ -126,7 +131,7 @@ bootstrap、源码或运行时配置中。只读更新检查不需要该 key；�
 
 运行时设置使用 `koanf` 合并 `config.toml` 与公开环境变量；`config set/unset` 使用 `tomledit` 写回，尽量保留注释、顺序和布局。
 
-`application/config` 定义 file-store port，由 bootstrap 注入 `internal/filesystem` 的原子写入协议：于目标同目录使用不含
+`storage/config` 定义 `FileStore` port，由 CLI private composition graph 注入 `storage/file/{atomic,lock,replace,secret}` 的协议无关文件机制：于目标同目录使用不含
 凭据内容的随机文件名创建临时文件，完成全部写入并执行 file `Sync`，关闭文件后才替换目标。Unix-like 平台
 主动把父目录与文件分别收紧为 `0700`、`0600`，原子替换后继续同步目标目录；
 若本次调用新建了一层或多层目录，则在替换提交后按 leaf→root 顺序同步目标目录及每个新目录
@@ -151,10 +156,11 @@ fsync 的等价保证。
 ### `internal/browsercookies`
 
 负责只读的浏览器 cookie provider，不属于公开 SDK，也不依赖 FANBOX、Pixiv、CLI、MCP 或账号 store。
-`core` 只接受固定的 `CookieQuery`，按安全 profile identifier 发现浏览器目录，并以脱敏 `Secret`
-返回目标值；`chromium` 支持显式的 Chrome/Edge provider，`firefox` 解析 `profiles.ini`，`safari`
-只在 macOS 解析 `Cookies.binarycookies`。未知的 Chromium derivative 不做模糊识别，多个 profile 未指定
-时明确失败。
+根包（core）是 protocol-neutral：只接受固定的 `CookieQuery`，按安全 profile identifier 发现浏览器目录，
+并以脱敏 `Secret` 返回目标值；`chromium` 支持显式的 Chrome/Edge provider，`firefox` 解析 `profiles.ini`，
+`safari` 只在 macOS 解析 `Cookies.binarycookies`。未知的 Chromium derivative 不做模糊识别，多个 profile
+未指定时明确失败。系统/browser integration 位于 `internal/browsercookies/system`：它 import 并注册全部
+provider 子包，使根包 `New` 可分发所有浏览器；根包不导入任何 provider 子包，单独导入根包不会注册浏览器。
 
 平台秘密边界保持在 `secret` 子包：macOS 走 Keychain，Windows 走当前用户 DPAPI，Linux 通过固定属性的
 Secret Service `secret-tool` 查询。Chromium provider 按平台 profile 根目录读取 Local State/Cookies，
@@ -164,8 +170,9 @@ Secret Service `secret-tool` 查询。Chromium provider 按平台 profile 根目
 
 ### `internal/update`
 
-负责安装来源识别、GitHub Releases 查询、SemVer 选择、cache、显式更新策略与 Release binary
-安装协议：
+根包只保留 coordinator 与 automatic-check API（thin root）；安装来源识别、GitHub Releases 查询、SemVer 选择、
+cache、显式更新策略与 Release binary 安装协议分别由 `internal/update/{source,release,installer,process}` 实现，
+并由根包 re-export 给 CLI composition root：
 
 - Homebrew 通过 executable symlink 与 keg `INSTALL_RECEIPT.json` 区分 stable/beta；两个
   formula 的转换会先卸载冲突 formula，失败时显式尝试恢复原 formula。
@@ -184,6 +191,14 @@ Secret Service `secret-tool` 查询。Chromium provider 按平台 profile 根目
 签名私钥与 Keychain 恢复副本、受保护 `release` Environment 和公开 remote 已按 Task 20 配置；完整六目标
 native evidence 与 staticlib manifest 已回填。v0.3.0 已完成正式 tag、受签名 Release 与 stable tap formula；
 Release 安装的失败语义仍是保护边界，而不是临时降级。
+
+### `scripts/<name>` 与 `scripts/internal/<name>`
+
+每个脚本是 thin `main` 入口（`scripts/<name>/main.go`），实现逻辑位于对应的 owner package
+`scripts/internal/<name>`。共享 verifier/发布契约位于 `scripts/internal/workflow/yaml`（release 与 native
+evidence verifier 共用的 YAML AST 安全操作）、`scripts/internal/releasecontract`（Release/native-evidence
+契约与 per-target Rust toolchain 映射）与 `scripts/internal/releasenotesrender`（GitHub Release 正文渲染，
+被 `releaseassets` 与历史同步共用）。
 
 ### `sdk`、`sdk/pixiv`、`sdk/fanbox`
 
@@ -208,27 +223,27 @@ challenge 之外的 API/资源错误不自动进入 solver。
 内部协议包只由公开 SDK 组合：
 
 - `protocol`：上游 base、profile header、endpoint catalog 与脱敏 adapter failure 的唯一来源；不读配置、不发请求，也不保存响应 body、URL、header 或凭据。
-- `appapi`：有凭据的 App content API 与 raw DTO/mapper；幂等 JSON 读取只会在首次 429 的有效 `Retry-After` 后按 context 重试一次。
+- `appapi`：有凭据的 App API transport/auth/retry adapter。它只向 endpoint family 暴露窄的 `GetJSON`/`GetRaw`/`PostForm` 能力；幂等 JSON/原始响应读取只会在首次 429 的有效 `Retry-After` 后按 context 重试一次，不再承载 novel/user/artwork business method、route facade 或 raw DTO/mapper。
 - `oauth`：PKCE、code exchange、refresh 与 token state。
 - `resource`：受 policy 约束的 resource transport、redirect/header/body 边界。
 
-v1 已删除 `internal/services/pixiv/webapi` 与匿名 Web/AJAX 路径：App API 出错直接返回规范化错误，不自动切换协议。搜索的分辨率、横纵比、绘图工具、作品类型与屏蔽 AI 在 `appapi` adapter 翻译成上游参数，分级和仅 AI 则由公开 SDK 基于规范化字段筛选。R18/R18G/mature 与动态搜索选项返回认证需求，不伪造空结果。`internal/services/fanbox` 是 FANBOX 协议 adapter，只由 `sdk/fanbox` 组合。
+v1 已删除 `internal/services/pixiv/webapi` 与匿名 Web/AJAX 路径：App API 出错直接返回规范化错误，不自动切换协议。Pixiv artwork endpoint family 位于 `internal/services/pixiv/artwork/{search,detail,related,series,ranking,recommended,timeline,trending,comments,bookmark}`，各 family 自有 route、request、raw DTO、mapper 与 continuation/error 校验，父 `artwork` 包只拥有 normalized entity/value。搜索的分辨率、横纵比、绘图工具、作品类型与屏蔽 AI 在 `artwork/search` 翻译成上游参数，分级和仅 AI 则由公开 SDK 基于规范化字段筛选。R18/R18G/mature 与动态搜索选项返回认证需求，不伪造空结果。FANBOX 的 `internal/services/fanbox/protocol` 只拥有产品专属 session、cookie、challenge、URL policy 与窄 transport；`creator`/`post` 父包只拥有 normalized entity，`creator/{creators,tags}`、`post/{posts,info,home,supporting}` 与 `resource` 各自拥有 endpoint route/fixture/转换。`sdk/fanbox` 直接组合这些 capability，不再依赖同宽 internal service facade。
 
-### `internal/services/pixiv/model`
+### `internal/services/pixiv/artwork`、`novel`、`user`
 
-集中 Pixiv response/domain 类型以及 Pixiv 协议枚举 typed const，例如 search target、sort、ranking mode、restrict 和 illust type。MCP delivery 等传输层常量仍留在 `internal/mcpserver`。
+三个 parent 包只拥有各自 endpoint family 共享的 normalized entity/value；route、wire DTO、响应校验、分页与 mutation form 留在对应的子 family。novel 与 user 不再通过共享 model 包传递，避免 appapi 或跨域 mapper 重新成为业务 owner。MCP delivery 等传输层常量仍留在 `internal/mcpserver`。
 
 ### `internal/mcpserver`
 
-负责将 Pixiv 与下载能力注册为 MCP tools。所有 Pixiv 内容、认证、资源和写操作都通过 `SDKService` 使用 public SDK；旧构造器保留的首个 API 参数只是废弃占位，生产路径不会读取。下载由 operation snapshot 对应的 `DownloadManager` 执行。MCP 的 nullable `page`/`limit` 只在本 adapter 解析，逻辑分页遍历由 application 共享引擎执行；旧 offset wire 字段已移除。stdio runtime 由 `internal/bootstrap` 组装和启动。
+负责将 Pixiv 与下载能力注册为 MCP tools。所有 Pixiv 内容、认证、资源和写操作都通过 public SDK 使用；旧构造器保留的首个 API 参数只是废弃占位，生产路径不会读取。下载由 operation snapshot 对应的 `DownloadManager` 执行。MCP 的 nullable `page`/`limit` 只在本 adapter 解析，逻辑分页遍历由 `internal/pagination` 共享引擎执行；旧 offset wire 字段已移除。stdio transport 与 runtime lifecycle 归 `internal/mcpserver/stdio`，由各 CLI command 在私有 per-run graph 生命周期中组装和启动。
 
-包内按产品拆为 `internal/mcpserver/pixiv` 与 `internal/mcpserver/fanbox`，根包只保留构造转发；Pixiv 子包按 `server.go`、`registration.go`、`read_tools.go`、`download_tools.go`、`record_filters.go`、`sdk_runtime.go`、`sdk_tools.go` 与 `timeline_tools.go` 分工。MCP 不自行实现表达式、重试、归档或文件模板：它在打开 SDK operation 前编译输入，再把下载适配交给 application 下载用例；公开 SDK 不承担批量下载语义。运行期 handler 的失败结果保留其 structured output 并使用 `isError=true`；正常空结果不会伪装成失败。完整 wire 语义见 [MCP 工具](../zh-CN/mcp-tools.md#错误与分页)。
+包内按产品拆为 `internal/mcpserver/pixiv` 与 `internal/mcpserver/fanbox`，各自只保留构造与注册聚合；共享运行时（App、SDK ports、paged read/write、record filter）位于 `internal/mcpserver/{pixiv,fanbox}/internal/{runtime,records,filters,outputs}`。每个 tool 一个 package（例如 `internal/mcpserver/pixiv/search_illust`），拥有自己的 input/output 类型、schema 与 handler adapter，只依赖共享窄端口。MCP 不自行实现表达式、重试、归档或文件模板：它在打开 SDK operation 前编译输入，再把下载适配交给 `internal/media/downloader`；公开 SDK 不承担批量下载语义。运行期 handler 的失败结果保留其 structured output 并使用 `isError=true`；正常空结果不会伪装成失败。完整 wire 语义见 [MCP 工具](../zh-CN/mcp-tools.md#错误与分页)。
 
-### `internal/downloader`
+### `internal/media/downloader`
 
 负责下载和本地文件落盘：
 
-面向 CLI/MCP 的下载编排由 `internal/application`（`DownloadClient` 最小能力接口）与 `internal/downloader.Manager` 统一持有：来源展开、作品筛选、SQLite archive、目录/文件模板、sidecar、开放页选择、资源重试、进度事件和 ugoira 模式均不能在 adapter 中复制。公开 SDK 只保留单资源 `OpenResource`/`SaveResource`，不再暴露批量下载。
+`internal/media/downloader` 是 CLI/MCP 的下载 owner。它以 `DownloadTargetClient`/`DownloadClient` 接收 public SDK operation snapshot，统一负责来源展开、ID 去重、页码和质量校验、文件获取与 publication、进度事件和 ugoira 格式选择；这些语义不能在 adapter 中复制。`ResourceRef` 仅由产品 Client 解析，下载器只消费已验证的 opaque ref。公开 SDK 只保留原子资源解析/保存能力，不暴露批量下载工作流。
 
 - `Download` 会同步下载 ID 列表，并返回每个作品的实际产物路径。
 - 单页作品保存到下载目录。
@@ -253,14 +268,18 @@ logical slash path，再筛选 `src/`、`.cargo/` 与 `vendor/`；run `291897250
 release archive 的 `LICENSE` 与生成的许可证 bundle 同样固定 LF checkout；run `29191200569` 的六份
 source digest 已一致，但 Windows archive 的 `LICENSE` bytes 仍与 Unix/Git blob 分裂，因此
 consolidation 再次 fail-closed。该 run 也不可回填或跨 run 拼接，必须从修复后的新 SHA 完整重跑。
-`internal/downloader/staticlib` 只承载 source digest 与 manifest 的完整性契约，不导入 cgo encoder；
+`internal/media/ugoira/staticlib` 只承载 source digest 与 manifest 的完整性契约，不导入 cgo encoder；
 因此 native-evidence 的 **policy** gate 可以在目标库生成前执行。`record` 与 `consolidate` 同样不
 触发 cgo 链接，但分别仍需要已生成的 staticlib/binary/archive 与完整六份 evidence 输入；下载运行时
-仍只由 `internal/ugoira` 通过唯一 FFI 入口链接 `internal/downloader/ugoira_rs`。
+仍只由 `internal/media/ugoira` 通过唯一 FFI 入口链接 `internal/media/ugoira/rust`。
 
 run `29192425899` 已在六个平台完成 native build、真实 cgo GIF/APNG smoke、binary/archive record，
 并经本地 fail-closed consolidation 回填六个 target library 与统一 manifest；source build 会在链接前
 校验该 manifest 和库哈希。`ffmpeg` 仅保留给显式启用的开发质量对照，不在生产下载路径中。
+
+### `internal/media/ugoira`
+
+拥有 ugoira 的 `Format`、帧输入、`Encoder`、唯一 cgo FFI 入口、Rust crate 和 staticlib/source-digest 完整性契约。下载器只依赖该包的 `Encoder` 接口并构造 Rust encoder，不得复制 FFI adapter 或 publication 行为。`internal/media/ugoira/staticlib` 只验证 manifest、source digest 与提交的目标库文件，不反向导入 cgo encoder。
 
 ## Release assets 与信任边界
 
@@ -281,7 +300,7 @@ tap 后，以 tap-qualified formula name 真实安装并核对 `pixiv version --
 job 才能读取独立 tap deploy key 并只 push 对应 formula。
 v0.3.0 的正式 tag 已走完此发布路径并推送 stable formula；后续 tag 仍必须独立满足同一安装 gate。完整
 六目标 native 成功证据已回填 staticlib/manifest。production signing 私钥、Environment 与公开 remote
-已按 Task 20 配置，受支持 binary 的公开 trust root 已在 `internal/bootstrap/release_trust.go` 配置。Rust crates.io 依赖已由
+已按 Task 20 配置，受支持 binary 的公开 trust root 已在 `internal/cli/cli.go` 配置。Rust crates.io 依赖已由
 crate 内 source replacement 固定到完整 vendor 闭包，并以空 Cargo cache 离线 metadata/build/test 与六
 target 许可证检查验证。
 
@@ -296,18 +315,27 @@ Release 的匿名 URL 不可安装，Release 会先公开再执行四架构 gate
 SmartScreen 提示时，必须回到已验证的项目 GitHub Release、checksum 和签名记录，不能把系统提示视为
 可由 CLI 静默绕过的错误。
 
-### `internal/filesystem`
+### `internal/platform/localstate`
 
-不保留通用 constants 包。本地私有目录/文件权限与 `AppDataDirName` 归 `internal/filesystem`。Pixiv 协议值、MCP delivery 值、config key/default 等仍留在所属领域包。项目不维护 operation 日志或诊断元数据包；错误直接由 CLI、MCP 或 public SDK 的既有接口传递。
+不保留通用 constants 包。`platform/localstate` 唯一拥有 app-managed 路径、`AppDataDirName` 与
+Unix-like 私有目录/文件权限常量；它不读取业务配置，也不实现文件写入。Pixiv 协议值、MCP delivery
+值与 config key/default 仍留在所属领域包。项目不维护 operation 日志或诊断元数据包；错误直接由 CLI、MCP
+或 public SDK 的既有接口传递。
+
+### `internal/storage/file/{atomic,lock,replace,secret}`
+
+四个 leaf package 分别拥有原子写入、文件锁、替换/recovery 与私密文件 writer；它们只依赖
+`platform/localstate` 的路径/权限约定，不拥有配置 schema、账号状态或 Pixiv 协议语义。
 
 ### `internal/utils`
 
 只保留无协议语义的纯 helper：`parse` 负责正整数解析，`text` 负责字符串默认值，`uri`
 负责 URL path 提取与 file URI 生成。
 
-文件名清理、模板展开、ID 去重归 `internal/downloader/{filename,ids}`；稳定记录的媒体类型归
-`internal/record/media`；refresh-token 校验归 `internal/credentials`；路径、权限、原子写入和
-secret export writer 归 `internal/filesystem`。这样 `internal/utils` 不再承担具体设施或产品领域职责。
+文件名清理、模板展开归 `internal/media/downloader/filename`，ID 去重与媒体 MIME 类型归 `internal/media/downloader`；
+refresh-token 校验归 `internal/services/pixiv/oauth`；路径/权限归
+`internal/platform/localstate`，原子写入、锁、替换和 secret export writer 归
+`internal/storage/file/{atomic,lock,replace,secret}`。这样 `internal/utils` 不再承担具体设施或产品领域职责。
 
 ## 已知约束
 

@@ -110,7 +110,14 @@ func classifyStatus(failure protocol.Failure, operation string) *sdk.Error {
 }
 
 func classifyTransport(failure protocol.Failure, operation string) *sdk.Error {
-	opts := []sdk.ErrorOption{sdk.WithTransport(sdk.TransportHTTP)}
+	transport := sdk.TransportHTTP
+	switch failure.TransportKind {
+	case protocol.TransportDNS:
+		transport = sdk.TransportDNS
+	case protocol.TransportTLS:
+		transport = sdk.TransportTLS
+	}
+	opts := []sdk.ErrorOption{sdk.WithTransport(transport)}
 	if failure.TransportKind != "" {
 		opts = append(opts, sdk.WithDetail("transport: "+string(failure.TransportKind)))
 	}

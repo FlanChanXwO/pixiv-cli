@@ -2,7 +2,10 @@
 
 ## Status
 
-Accepted；内容查询与下载 seam 已由 [ADR 0009](0009-public-pixiv-sdk-and-caller-adapter.md) 的 public SDK 决策取代。
+**Superseded**：v1 SDK 迁移已删除 `internal/application`、`internal/bootstrap`（以及 `internal/persistence/authdb`），
+composition 收敛到 `internal/cli/cli.go`/`root.go` 的私有 graph 与 `pixivdeps`/`fanboxdeps` 窄端口，CLI/MCP 直接使用
+public SDK；MCP stdio runtime 归 `internal/mcpserver/stdio`。本 ADR 的决策与后果保留为历史记录，不再描述当前结构。
+（原状态：Accepted；内容查询与下载 seam 已由 [ADR 0009](0009-public-pixiv-sdk-and-caller-adapter.md) 的 public SDK 决策取代。）
 
 ## Context
 

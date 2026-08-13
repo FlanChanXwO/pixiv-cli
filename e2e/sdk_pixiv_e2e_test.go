@@ -8,15 +8,17 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/application/config"
-	"github.com/FlanChanXwO/pixiv-cli/internal/filesystem"
-	"github.com/FlanChanXwO/pixiv-cli/internal/persistence/authdb"
+	accountpixiv "github.com/FlanChanXwO/pixiv-cli/internal/account/pixiv"
+	"github.com/FlanChanXwO/pixiv-cli/internal/platform/localstate"
+	"github.com/FlanChanXwO/pixiv-cli/internal/storage/config"
+	"github.com/FlanChanXwO/pixiv-cli/internal/storage/database"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	pixivsdk "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 )
 
 func TestPixivE2ERotationUsesStoredRevision(t *testing.T) {
-	account := authdb.PixivAccount{UserID: 42, CredentialRevision: 7}
+	account := accountpixiv.New(42, "", nil)
+	account.CredentialRevision = 7
 	var gotUserID, gotRevision int64
 	var gotToken []byte
 	rotate := func(_ context.Context, userID, revision int64, token []byte) error {
@@ -40,7 +42,7 @@ func TestPixivE2ERotationUsesStoredRevision(t *testing.T) {
 func persistPixivE2ERotation(
 	ctx context.Context,
 	rotate func(context.Context, int64, int64, []byte) error,
-	account authdb.PixivAccount,
+	account accountpixiv.Account,
 	refreshToken string,
 ) error {
 	return rotate(ctx, account.UserID, account.CredentialRevision, []byte(refreshToken))
@@ -59,10 +61,10 @@ func TestRealPixivSDKRead(t *testing.T) {
 	if err != nil {
 		t.Fatalf("home: %v", err)
 	}
-	appDataDir := filepath.Join(home, filesystem.AppDataDirName)
-	db, err := authdb.Open(appDataDir)
+	appDataDir := filepath.Join(home, localstate.AppDataDirName)
+	db, err := database.Open(appDataDir)
 	if err != nil {
-		t.Fatalf("open authdb: %v", err)
+		t.Fatalf("open database: %v", err)
 	}
 	defer db.Close()
 	accounts, err := db.ListPixiv(context.Background())
@@ -87,7 +89,7 @@ func TestRealPixivSDKRead(t *testing.T) {
 			}
 		}
 		if !found {
-			t.Fatalf("configured pixiv account %d is not present in authdb", defaultID)
+			t.Fatalf("configured pixiv account %d is not present in database", defaultID)
 		}
 	}
 
@@ -103,7 +105,7 @@ func TestRealPixivSDKRead(t *testing.T) {
 		transport.Proxy = http.ProxyURL(proxyURL)
 		options.HTTPClient = &http.Client{Transport: transport}
 	}
-	client, credentials, err := pixivsdk.OpenWith(ctx, string(account.RefreshToken), options)
+	client, credentials, err := pixivsdk.OpenWith(ctx, string(account.RefreshTokenCopy()), options)
 	if err != nil {
 		t.Fatalf("pixiv.Open: %v", err)
 	}
@@ -120,15 +122,22 @@ func TestRealPixivSDKRead(t *testing.T) {
 	}
 
 	// 验证身份 + 一个稳定 detail + 一个 Resource HEAD。
+	// 部分账号/授权对 /v1/user/me 返回上游 404（Specified end-point
+	// doesn't exist）；此时身份已由 OpenWith 的 refresh 交换与 credential
+	// identity 校验确认，跳过 CurrentUser 断言，继续验证其余只读路径。
 	user, err := client.CurrentUser(ctx, pixivsdk.CurrentUserRequest{})
 	if err != nil {
-		t.Fatalf("CurrentUser: %v", err)
-	}
-	if user.User.ID <= 0 {
-		t.Fatal("current user has no id")
-	}
-	if user.User.ID != account.UserID {
-		t.Fatalf("current user identity differs from selected account: stored user %d, current user %d", account.UserID, user.User.ID)
+		if sdk.ReasonOf(err) != sdk.NotFound {
+			t.Fatalf("CurrentUser: %v", err)
+		}
+		t.Logf("CurrentUser skipped: upstream /v1/user/me unavailable for this account (%v)", err)
+	} else {
+		if user.User.ID <= 0 {
+			t.Fatal("current user has no id")
+		}
+		if user.User.ID != account.UserID {
+			t.Fatalf("current user identity differs from selected account: stored user %d, current user %d", account.UserID, user.User.ID)
+		}
 	}
 
 	searchPage, err := client.SearchArtworks(ctx, pixivsdk.SearchArtworksRequest{Word: "初音ミク"})

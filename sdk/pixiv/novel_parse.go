@@ -26,6 +26,7 @@ func (c *Client) parseNovelContent(novelID int64, raw []byte) (NovelContent, err
 }
 
 func (c *Client) collectNovelBody(doc *html.Node, novelID int64) (title, caption string, blocks []NovelBlock, err error) {
+	imageIndex, fileIndex := 0, 0
 	var walk func(*html.Node)
 	walk = func(n *html.Node) {
 		if err != nil {
@@ -52,11 +53,13 @@ func (c *Client) collectNovelBody(doc *html.Node, novelID int64) (title, caption
 				switch {
 				case strings.Contains(kind, "image"):
 					var block NovelBlock
-					block, err = c.imageBlock(n, novelID)
+					block, err = c.imageBlock(n, novelID, imageIndex)
+					imageIndex++
 					blocks = append(blocks, block)
 				case strings.Contains(kind, "file"):
 					var block NovelBlock
-					block, err = c.fileBlock(n, novelID)
+					block, err = c.fileBlock(n, novelID, fileIndex)
+					fileIndex++
 					blocks = append(blocks, block)
 				default:
 					var block NovelBlock
@@ -89,7 +92,7 @@ func (c *Client) textBlock(n *html.Node, kind NovelBlockKind) (NovelBlock, error
 	return NovelBlock{Kind: kind, Text: text, Marks: marks}, nil
 }
 
-func (c *Client) imageBlock(n *html.Node, novelID int64) (NovelBlock, error) {
+func (c *Client) imageBlock(n *html.Node, novelID int64, imageIndex int) (NovelBlock, error) {
 	url := firstAttribute(n, "src")
 	if url == "" {
 		for child := n.FirstChild; child != nil; child = child.NextSibling {
@@ -102,14 +105,14 @@ func (c *Client) imageBlock(n *html.Node, novelID int64) (NovelBlock, error) {
 	if url == "" {
 		return NovelBlock{}, newError("NovelContent", sdk.MalformedUpstreamResponse, "novel image block has no source")
 	}
-	res, err := c.newResource("novel_image", novelID, -1, url)
+	res, err := c.newResource("novel_image", novelID, imageIndex, url)
 	if err != nil {
 		return NovelBlock{}, err
 	}
 	return NovelBlock{Kind: NovelBlockImage, Image: &NovelImageBlock{Resource: res, Caption: textContent(n)}}, nil
 }
 
-func (c *Client) fileBlock(n *html.Node, novelID int64) (NovelBlock, error) {
+func (c *Client) fileBlock(n *html.Node, novelID int64, fileIndex int) (NovelBlock, error) {
 	href, filename := "", ""
 	for child := n.FirstChild; child != nil; child = child.NextSibling {
 		if child.Type == html.ElementNode && child.Data == "a" {
@@ -124,7 +127,7 @@ func (c *Client) fileBlock(n *html.Node, novelID int64) (NovelBlock, error) {
 	if href == "" {
 		return NovelBlock{}, newError("NovelContent", sdk.MalformedUpstreamResponse, "novel file block has no link")
 	}
-	res, err := c.newResource("novel_file", novelID, -1, href)
+	res, err := c.newResource("novel_file", novelID, fileIndex, href)
 	if err != nil {
 		return NovelBlock{}, err
 	}

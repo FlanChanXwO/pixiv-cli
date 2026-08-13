@@ -166,7 +166,7 @@ Fixed MCP status, error, and display text is English; Pixiv metadata and user-su
 
 ### Go SDK
 
-The public SDK receives credentials explicitly and does not read the CLI's local account store. This example reads a refresh token from the process environment only to keep the secret out of source code; persist the rotated credentials returned by `Open` in your own application:
+The public SDK receives credentials explicitly and does not read the CLI's local account store or process environment. Obtain the credential from your application's secret store and persist the rotated credentials returned by `Open`:
 
 ```go
 package main
@@ -175,14 +175,14 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"os"
 
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 )
 
 func main() {
 	ctx := context.Background()
-	client, _, err := pixiv.Open(ctx, os.Getenv("PIXIV_REFRESH_TOKEN"))
+	refreshToken := "replace-with-a-refresh-token-from-your-secret-store"
+	client, _, err := pixiv.Open(ctx, refreshToken)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -197,7 +197,7 @@ func main() {
 }
 ```
 
-The import path is `github.com/FlanChanXwO/pixiv-cli/sdk/pixiv`. `sdk/fanbox` accepts a `FANBOXSESSID` explicitly and supports native Chrome 146 TLS routing with the built-in Firefox 148 HTTP User-Agent baseline, with optional service-scoped proxy, user-agent, and challenge-only FlareSolverr options. `Download`/`DownloadAll` use documented beginner defaults; `DownloadWith`/`DownloadAllWith` expose paths, naming, pages, quality, and concurrency. The [SDK guide](docs/en/sdk.md) documents models, cursors, resources, errors, and caller responsibilities.
+The import path is `github.com/FlanChanXwO/pixiv-cli/sdk/pixiv`. `sdk/fanbox` accepts a `FANBOXSESSID` explicitly and supports native Chrome 146 TLS routing with the built-in Firefox 148 HTTP User-Agent baseline, with optional service-scoped proxy, user-agent, and challenge-only FlareSolverr options. `Download`/`DownloadAll` use documented beginner defaults; `DownloadWith`/`DownloadAllWith` expose paths, naming, pages, quality, and concurrency. The [SDK guide](docs/en/sdk.md) documents models, cursors, resources, errors, caller responsibilities, and the explicit DTO boundary used by CLI/MCP JSON output; media resources cross those boundaries only as opaque references.
 
 ## Authentication and token safety
 

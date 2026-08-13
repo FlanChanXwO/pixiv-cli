@@ -1,6 +1,7 @@
 package pixiv
 
 import (
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -82,7 +83,10 @@ func (c *Client) buildCursor(op string, baseQuery url.Values, key string, value 
 		if c.userID > 0 {
 			opts = append(opts, sdk.WithCursorIdentity(strconv.FormatInt(c.userID, 10)))
 		} else {
-			opts = append(opts, sdk.WithCursorEphemeral())
+			if c.cursorInstance == "" {
+				return sdk.Cursor{}, newError(op, sdk.LocalStateError, "cursor instance is not configured")
+			}
+			opts = append(opts, sdk.WithCursorEphemeralInstance(c.cursorInstance))
 		}
 	}
 	return sdk.NewCursor(product, op, cursorBindingVersion, queryDigest(baseQuery), payload, opts...)
@@ -100,6 +104,8 @@ func (c *Client) continuationFromCursor(op string, baseQuery url.Values, cur sdk
 			if strconv.FormatInt(c.userID, 10) != identity {
 				return "", 0, newError(op, sdk.InvalidCursor, "cursor belongs to a different account")
 			}
+		} else if err := sdk.ValidateCursorInstance(cur, c.cursorInstance); err != nil {
+			return "", 0, newError(op, sdk.InvalidCursor, "cursor belongs to a different client instance")
 		}
 	}
 	payload, err := sdk.CursorPayload(cur)
@@ -161,4 +167,12 @@ func (c *Client) continuationOffsetExists(op string, baseQuery url.Values, cur s
 
 func itoa(n int64) string {
 	return strconv.FormatInt(n, 10)
+}
+
+func newCursorInstanceID() (string, error) {
+	var raw [16]byte
+	if _, err := rand.Read(raw[:]); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(raw[:]), nil
 }

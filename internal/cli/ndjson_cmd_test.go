@@ -16,7 +16,7 @@ import (
 
 func TestVisualListAutoNDJSONWritesToNonTerminal(t *testing.T) {
 	useTempPaths(t)
-	setTestSDKCommandClient(t, sdkCommandFake{search: func(_ context.Context, _ pixiv.SearchArtworksRequest) (sdk.Page[pixiv.Artwork], error) {
+	setTestSDKCommandClient(t, &sdkCommandFake{search: func(_ context.Context, _ pixiv.SearchArtworksRequest) (sdk.Page[pixiv.Artwork], error) {
 		item := commandArtwork(71)
 		item.Kind = pixiv.ArtworkKindIllustration
 		return sdk.Page[pixiv.Artwork]{Items: []pixiv.Artwork{item}}, nil
@@ -40,7 +40,7 @@ func TestSearchNDJSONWritesRecordsBeforeFetchingNextPage(t *testing.T) {
 	useTempPaths(t)
 	nextCursor := testCursor(t, "next")
 	var stdout, stderr bytes.Buffer
-	setTestSDKCommandClient(t, sdkCommandFake{search: func(_ context.Context, request pixiv.SearchArtworksRequest) (sdk.Page[pixiv.Artwork], error) {
+	setTestSDKCommandClient(t, &sdkCommandFake{search: func(_ context.Context, request pixiv.SearchArtworksRequest) (sdk.Page[pixiv.Artwork], error) {
 		switch {
 		case request.Cursor.IsZero():
 			item := commandArtwork(11)
@@ -74,7 +74,7 @@ func TestSearchNDJSONWritesRecordsBeforeFetchingNextPage(t *testing.T) {
 func TestNovelSearchNDJSONWritesNovelRecord(t *testing.T) {
 	useTempPaths(t)
 	novel := pixiv.Novel{ID: 31, Title: "novel", User: pixiv.User{ID: 8, Name: "writer"}}
-	setTestSDKCommandClient(t, sdkCommandFake{searchNovel: func(_ context.Context, _ pixiv.SearchNovelsRequest) (sdk.Page[pixiv.Novel], error) {
+	setTestSDKCommandClient(t, &sdkCommandFake{searchNovel: func(_ context.Context, _ pixiv.SearchNovelsRequest) (sdk.Page[pixiv.Novel], error) {
 		return sdk.Page[pixiv.Novel]{Items: []pixiv.Novel{novel}}, nil
 	}})
 

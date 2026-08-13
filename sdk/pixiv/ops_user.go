@@ -4,25 +4,32 @@ import (
 	"context"
 	"net/url"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/model"
+	userentity "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/user"
+	userblocked "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/user/blocked"
+	userfollowers "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/user/followers"
+	userfollowing "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/user/following"
+	usermypixiv "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/user/mypixiv"
+	userrecommended "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/user/recommended"
+	userrelated "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/user/related"
+	usersearch "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/user/search"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 )
 
 // SearchUsers searches users.
 func (c *Client) SearchUsers(ctx context.Context, request SearchUsersRequest) (sdk.Page[UserPreview], error) {
-	if request.Word == "" {
-		return sdk.Page[UserPreview]{}, newError("SearchUsers", sdk.InvalidArgument, "search word is required")
+	if err := validateSearchWord("SearchUsers", request.Word); err != nil {
+		return sdk.Page[UserPreview]{}, err
 	}
 	query := url.Values{"word": {request.Word}}
 	offset, err := c.continuationOffset("SearchUsers", query, request.Cursor)
 	if err != nil {
 		return sdk.Page[UserPreview]{}, err
 	}
-	list, err := c.app.SearchUser(ctx, request.Word, offset)
+	list, err := c.userSearch.Search(ctx, usersearch.Request{Word: request.Word, Offset: offset})
 	if err != nil {
 		return sdk.Page[UserPreview]{}, classifyAppError(err, "SearchUsers")
 	}
-	return c.userPreviewPage("SearchUsers", query, list)
+	return c.userPreviewPage("SearchUsers", query, list.Items, list.NextOffset, list.HasNext)
 }
 
 // User returns one user's detail by their stable ID.
@@ -30,11 +37,11 @@ func (c *Client) User(ctx context.Context, request UserRequest) (UserDetail, err
 	if request.UserID <= 0 {
 		return UserDetail{}, newError("User", sdk.InvalidArgument, "user ID must be positive")
 	}
-	detail, err := c.app.UserDetail(ctx, request.UserID)
+	detail, err := c.userDetail.Detail(ctx, request.UserID)
 	if err != nil {
 		return UserDetail{}, classifyAppError(err, "User")
 	}
-	return c.mapUserDetail(*detail)
+	return c.mapUserDetail(detail)
 }
 
 // RecommendedUsers lists recommended users with sample works.
@@ -44,15 +51,15 @@ func (c *Client) RecommendedUsers(ctx context.Context, request RecommendedUsersR
 	if err != nil {
 		return sdk.Page[UserPreview]{}, err
 	}
-	list, err := c.app.UserRecommended(ctx, offset, contExists)
+	list, err := c.userRecommended.List(ctx, userrecommended.Request{Offset: offset, ContinuationExists: contExists})
 	if err != nil {
 		return sdk.Page[UserPreview]{}, classifyAppError(err, "RecommendedUsers")
 	}
-	items := make([]UserPreview, 0, len(list.UserPreviews))
-	for _, p := range list.UserPreviews {
+	items := make([]UserPreview, 0, len(list.Items))
+	for _, p := range list.Items {
 		items = append(items, c.mapUserPreview(p))
 	}
-	next, err := c.buildCursor("RecommendedUsers", query, "offset", int64(list.NextOffset), list.ContinuationExists)
+	next, err := c.buildCursor("RecommendedUsers", query, "offset", int64(list.NextOffset), list.HasNext)
 	if err != nil {
 		return sdk.Page[UserPreview]{}, err
 	}
@@ -69,11 +76,11 @@ func (c *Client) RelatedUsers(ctx context.Context, request RelatedUsersRequest) 
 	if err != nil {
 		return sdk.Page[UserPreview]{}, err
 	}
-	list, err := c.app.RelatedUsers(ctx, request.UserID, offset)
+	list, err := c.userRelated.List(ctx, userrelated.Request{SeedUserID: request.UserID, Offset: offset})
 	if err != nil {
 		return sdk.Page[UserPreview]{}, classifyAppError(err, "RelatedUsers")
 	}
-	return c.userPreviewPage("RelatedUsers", query, list)
+	return c.userPreviewPage("RelatedUsers", query, list.Items, list.NextOffset, list.HasNext)
 }
 
 // UserFollowing lists the users one user follows.
@@ -86,11 +93,11 @@ func (c *Client) UserFollowing(ctx context.Context, request UserFollowingRequest
 	if err != nil {
 		return sdk.Page[UserPreview]{}, err
 	}
-	list, err := c.app.UserFollowing(ctx, request.UserID, string(request.Restrict), offset)
+	list, err := c.userFollowing.List(ctx, userfollowing.Request{UserID: request.UserID, Restrict: string(request.Restrict), Offset: offset})
 	if err != nil {
 		return sdk.Page[UserPreview]{}, classifyAppError(err, "UserFollowing")
 	}
-	return c.userPreviewPage("UserFollowing", query, list)
+	return c.userPreviewPage("UserFollowing", query, list.Items, list.NextOffset, list.HasNext)
 }
 
 // UserFollowers lists the users following one user.
@@ -103,11 +110,11 @@ func (c *Client) UserFollowers(ctx context.Context, request UserFollowersRequest
 	if err != nil {
 		return sdk.Page[UserPreview]{}, err
 	}
-	list, err := c.app.UserFollowers(ctx, request.UserID, string(request.Restrict), offset)
+	list, err := c.userFollowers.List(ctx, userfollowers.Request{UserID: request.UserID, Restrict: string(request.Restrict), Offset: offset})
 	if err != nil {
 		return sdk.Page[UserPreview]{}, classifyAppError(err, "UserFollowers")
 	}
-	return c.userPreviewPage("UserFollowers", query, list)
+	return c.userPreviewPage("UserFollowers", query, list.Items, list.NextOffset, list.HasNext)
 }
 
 // UserBlockedUsers lists the users one user has blocked.
@@ -120,11 +127,11 @@ func (c *Client) UserBlockedUsers(ctx context.Context, request UserBlockedUsersR
 	if err != nil {
 		return sdk.Page[UserPreview]{}, err
 	}
-	list, err := c.app.UserBlockedUsers(ctx, request.UserID, offset)
+	list, err := c.userBlocked.List(ctx, userblocked.Request{UserID: request.UserID, Offset: offset})
 	if err != nil {
 		return sdk.Page[UserPreview]{}, classifyAppError(err, "UserBlockedUsers")
 	}
-	return c.userPreviewPage("UserBlockedUsers", query, list)
+	return c.userPreviewPage("UserBlockedUsers", query, list.Items, list.NextOffset, list.HasNext)
 }
 
 // MyPixivUsers lists the current user's MyPixiv feed users. It requires a
@@ -139,11 +146,11 @@ func (c *Client) MyPixivUsers(ctx context.Context, request MyPixivUsersRequest) 
 	if err != nil {
 		return sdk.Page[UserPreview]{}, err
 	}
-	list, err := c.app.UserMyPixiv(ctx, c.userID, offset)
+	list, err := c.userMyPixiv.List(ctx, usermypixiv.Request{UserID: c.userID, Offset: offset})
 	if err != nil {
 		return sdk.Page[UserPreview]{}, classifyAppError(err, "MyPixivUsers")
 	}
-	return c.userPreviewPage("MyPixivUsers", query, list)
+	return c.userPreviewPage("MyPixivUsers", query, list.Items, list.NextOffset, list.HasNext)
 }
 
 // CurrentUser returns the current authenticated user's detail. It requires a
@@ -153,15 +160,19 @@ func (c *Client) CurrentUser(ctx context.Context, request CurrentUserRequest) (U
 	if c.userID <= 0 {
 		return UserDetail{}, newError("CurrentUser", sdk.Unauthorized, "current user identity is unknown")
 	}
-	return c.User(ctx, UserRequest{UserID: c.userID})
+	detail, err := c.userDetail.Current(ctx)
+	if err != nil {
+		return UserDetail{}, classifyAppError(err, "CurrentUser")
+	}
+	return c.mapUserDetail(detail)
 }
 
-func (c *Client) userPreviewPage(op string, query url.Values, list *model.UserPreviewList) (sdk.Page[UserPreview], error) {
-	items := make([]UserPreview, 0, len(list.UserPreviews))
-	for _, p := range list.UserPreviews {
+func (c *Client) userPreviewPage(op string, query url.Values, list []userentity.Preview, nextOffset int, hasNext bool) (sdk.Page[UserPreview], error) {
+	items := make([]UserPreview, 0, len(list))
+	for _, p := range list {
 		items = append(items, UserPreview{User: c.mapUser(p.User)})
 	}
-	next, err := c.buildCursor(op, query, "offset", int64(list.NextOffset), list.ContinuationExists)
+	next, err := c.buildCursor(op, query, "offset", int64(nextOffset), hasNext)
 	if err != nil {
 		return sdk.Page[UserPreview]{}, err
 	}

@@ -3,7 +3,7 @@ package chromium
 import (
 	"context"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/browsercookies/core"
+	"github.com/FlanChanXwO/pixiv-cli/internal/browsercookies"
 )
 
 // decryptEncrypted 是所有 Chromium provider 共用的解密入口。平台文件只负责
@@ -15,7 +15,7 @@ func (p *provider) decryptEncrypted(ctx context.Context, blob []byte) ([]byte, e
 	}
 	if !hasChromiumPrefix(blob) {
 		if !legacyBlobSupported(blob) {
-			return nil, core.ErrEncryptedFormatUnknown
+			return nil, browsercookies.ErrEncryptedFormatUnknown
 		}
 		return p.decryptLegacy(ctx, blob)
 	}
@@ -28,5 +28,5 @@ func (p *provider) decryptEncrypted(ctx context.Context, blob []byte) ([]byte, e
 			return value, nil
 		}
 	}
-	return nil, core.ErrEncryptedMalformed
+	return nil, browsercookies.ErrEncryptedMalformed
 }

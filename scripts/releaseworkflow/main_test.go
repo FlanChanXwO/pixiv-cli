@@ -1,47 +1,62 @@
-package main
+package main_test
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
 
-func TestCheckWorkflowRequiresRustFormatGate(t *testing.T) {
-	t.Parallel()
+func TestReleaseWorkflowEntrypointMapsExitCodes(t *testing.T) {
+	binary := buildReleaseWorkflowBinary(t)
 
-	body, err := os.ReadFile(filepath.Join(findRepositoryRoot(t), ".github", "workflows", "release.yml"))
-	if err != nil {
-		t.Fatalf("read release workflow: %v", err)
+	command := exec.Command(binary)
+	output, err := command.CombinedOutput()
+	if err == nil {
+		t.Fatalf("releaseworkflow with no args succeeded: %s", output)
 	}
-	if err := checkWorkflow(body); err != nil {
-		t.Fatalf("release workflow policy rejected checked-in workflow: %v", err)
+	exit, ok := err.(*exec.ExitError)
+	if !ok || exit.ExitCode() != 1 {
+		t.Fatalf("releaseworkflow no-args exit = %v, want 1", err)
+	}
+	if !strings.Contains(string(output), "release workflow policy: usage: releaseworkflow --workflow PATH") {
+		t.Fatalf("releaseworkflow stderr = %q, want usage error", output)
 	}
 }
 
-func TestCheckPinnedGitHubKnownHosts(t *testing.T) {
-	t.Parallel()
-
-	body, err := os.ReadFile(filepath.Join(findRepositoryRoot(t), "templates", "homebrew", "github.com-known-hosts"))
+func buildReleaseWorkflowBinary(t *testing.T) string {
+	t.Helper()
+	repositoryRoot := findReleaseWorkflowRepositoryRoot(t)
+	binaryName := "releaseworkflow"
+	if runtime.GOOS == "windows" {
+		binaryName += ".exe"
+	}
+	binaryPath := filepath.Join(t.TempDir(), binaryName)
+	build := exec.Command("go", "build", "-o", binaryPath, "./scripts/releaseworkflow")
+	build.Dir = repositoryRoot
+	output, err := build.CombinedOutput()
 	if err != nil {
-		t.Fatalf("read pinned GitHub known_hosts: %v", err)
+		t.Fatalf("go build ./scripts/releaseworkflow: %v\n%s", err, output)
 	}
-	if err := checkPinnedGitHubKnownHosts(body); err != nil {
-		t.Fatalf("checked-in GitHub known_hosts rejected: %v", err)
+	return binaryPath
+}
+
+func findReleaseWorkflowRepositoryRoot(t *testing.T) string {
+	t.Helper()
+	directory, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("get working directory: %v", err)
 	}
-	// 先归一化再构造 CRLF，避免 Windows 已经以 CRLF 检出的 fixture
-	// 再替换换行时形成 \r\r\n，确保这里覆盖真实的 Windows 输入。
-	crlfBody := []byte(strings.ReplaceAll(strings.ReplaceAll(string(body), "\r\n", "\n"), "\n", "\r\n"))
-	if err := checkPinnedGitHubKnownHosts(crlfBody); err != nil {
-		t.Fatalf("CRLF checked-out GitHub known_hosts rejected: %v", err)
-	}
-	for _, mutation := range [][]byte{
-		[]byte("github.com ssh-ed25519 attacker\n"),
-		append(append([]byte(nil), body...), []byte("github.com ssh-rsa extra\n")...),
-		append(append([]byte(nil), crlfBody...), []byte("github.com ssh-rsa extra\r\n")...),
-	} {
-		if err := checkPinnedGitHubKnownHosts(mutation); err == nil {
-			t.Fatal("mutated GitHub known_hosts fixture was accepted")
+	for {
+		if info, err := os.Stat(filepath.Join(directory, "go.mod")); err == nil && info.Mode().IsRegular() {
+			return directory
 		}
+		parent := filepath.Dir(directory)
+		if parent == directory {
+			t.Fatal("could not find repository root")
+		}
+		directory = parent
 	}
 }

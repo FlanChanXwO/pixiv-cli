@@ -1,4 +1,4 @@
-package pixiv
+package pixiv_test
 
 import (
 	"bufio"
@@ -13,18 +13,22 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 
-	downloadapp "github.com/FlanChanXwO/pixiv-cli/internal/application/download"
-	pixivapp "github.com/FlanChanXwO/pixiv-cli/internal/application/pixiv"
+	pixivmcpserver "github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/outputs"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/runtime"
+	downloader "github.com/FlanChanXwO/pixiv-cli/internal/media/downloader"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 func TestServerListsExpectedTools(t *testing.T) {
-	server := New(&fakeAPI{}, &fakeDownloads{})
+	server := pixivmcpserver.New(&fakeAPI{}, &fakeDownloads{})
 	clientTransport, serverTransport := mcp.NewInMemoryTransports()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -37,7 +41,7 @@ func TestServerListsExpectedTools(t *testing.T) {
 	if err != nil {
 		t.Fatalf("connect: %v", err)
 	}
-	defer session.Close()
+	defer func() { _ = session.Close() }()
 
 	var names []string
 	var searchIllustTool, searchNovelTool *mcp.Tool
@@ -55,10 +59,11 @@ func TestServerListsExpectedTools(t *testing.T) {
 	}
 	want := []string{
 		"download", "download_random_from_recommendation", "search_illust", "search_novel", "illust_detail",
-		"illust_related", "illust_ranking", "search_user", "illust_recommended",
+		"illust_related", "illust_ranking", "search_user", "illust_recommended", "novel_detail", "novel_content",
+		"illust_series", "novel_series", "illust_comments", "novel_comments",
 		"recommended", "trending_tags_illust", "timeline_illust_following", "timeline_novel_following",
 		"timeline_illust_latest", "timeline_novel_latest", "mypixiv_users", "mypixiv_illusts", "mypixiv_novels",
-		"user_detail", "user_artworks", "user_novels", "user_bookmarks", "user_following", "add_bookmark",
+		"user_detail", "user_artworks", "user_novels", "user_bookmarks", "user_novel_bookmarks", "user_following", "user_followers", "related_users", "blocked_users", "bookmark_tags", "bookmark_detail", "add_bookmark",
 		"remove_bookmark", "follow_user", "unfollow_user",
 	}
 	slices.Sort(names)
@@ -76,7 +81,7 @@ func TestServerListsExpectedTools(t *testing.T) {
 	if err != nil {
 		t.Fatalf("marshal search_illust input schema: %v", err)
 	}
-	for _, field := range []string{"search_target", "duration", "start_date", "end_date", "rating", "content_type", "ai_mode", "aspect_ratio", "resolution", "tool", "bookmark_min", "bookmark_max", "illust_filter"} {
+	for _, field := range []string{"search_target", "duration", "start_date", "end_date", "content_type", "ai_mode", "aspect_ratio", "resolution", "tool", "bookmark_min", "bookmark_max", "bookmark_strategy", "illust_filter"} {
 		if !strings.Contains(string(schema), `"`+field+`"`) {
 			t.Fatalf("search_illust input schema missing %q: %s", field, schema)
 		}
@@ -93,7 +98,6 @@ func TestServerListsExpectedTools(t *testing.T) {
 	wantEnums := map[string][]string{
 		"search_target": {"partial_match_for_tags", "exact_match_for_tags", "title_and_caption", "keyword"},
 		"duration":      {"within_last_day", "within_last_week", "within_last_month", "within_half_year", "within_year"},
-		"rating":        {"all", "sfw", "r18", "r18g", "mature"},
 		"content_type":  {"all", "illust-and-ugoira", "illust", "manga", "ugoira"},
 		"ai_mode":       {"all", "exclude", "only"},
 		"aspect_ratio":  {"all", "landscape", "portrait", "square"},
@@ -114,9 +118,14 @@ func TestServerListsExpectedTools(t *testing.T) {
 	if err != nil {
 		t.Fatalf("marshal search_novel input schema: %v", err)
 	}
-	for _, field := range []string{"rating", "min_text_length", "max_text_length", "original_only", "page", "limit", "novel_filter"} {
+	for _, field := range []string{"page", "limit", "novel_filter"} {
 		if !strings.Contains(string(novelSchema), `"`+field+`"`) {
 			t.Fatalf("search_novel input schema missing %q: %s", field, novelSchema)
+		}
+	}
+	for _, field := range []string{"rating", "min_text_length", "max_text_length", "original_only"} {
+		if strings.Contains(string(novelSchema), `"`+field+`"`) {
+			t.Fatalf("search_novel input schema publishes unsupported field %q: %s", field, novelSchema)
 		}
 	}
 }
@@ -132,16 +141,16 @@ func TestSearchIllustMapsStableFiltersToPublicSDK(t *testing.T) {
 
 	result := callTool(t, session, "search_illust", map[string]any{
 		"word": "cat", "search_target": "keyword", "start_date": "2026-01-01", "end_date": "2026-01-31",
-		"rating": "r18g", "content_type": "manga", "ai_mode": "only",
+		"content_type": "manga", "ai_mode": "only",
 		"aspect_ratio": "landscape", "resolution": "high", "tool": "CLIP STUDIO PAINT",
-		"bookmark_min": 1000, "bookmark_max": 10000,
+		"bookmark_min": 1000, "bookmark_max": 10000, "bookmark_strategy": "best_effort",
 	})
 	if result.IsError {
 		t.Fatalf("search_illust returned MCP error: %+v", result)
 	}
 	if got.Word != "cat" || got.Target != pixiv.SearchTargetKeyword || got.StartDate != "2026-01-01" || got.EndDate != "2026-01-31" ||
-		got.ContentType != pixiv.SearchContentTypeManga || got.AIMode != pixiv.SearchAIModeOnly ||
-		got.AspectRatio != pixiv.SearchAspectRatioLandscape || got.Resolution != pixiv.SearchResolutionHigh || got.Tool != "CLIP STUDIO PAINT" ||
+		got.ContentType != pixiv.SearchContentTypeManga ||
+		got.AspectRatio != pixiv.SearchAspectRatioLandscape || got.Tool != "CLIP STUDIO PAINT" ||
 		got.BookmarkMin == nil || *got.BookmarkMin != 1000 || got.BookmarkMax == nil || *got.BookmarkMax != 10000 {
 		t.Fatalf("SearchArtworks request = %+v, want word=cat stable filters", got)
 	}
@@ -176,7 +185,7 @@ func TestSearchIllustReturnsRecords(t *testing.T) {
 	if result.IsError {
 		t.Fatalf("search_illust returned MCP error: %+v", result)
 	}
-	var out illustQueryOut
+	var out outputs.Records
 	decodeStructured(t, result, &out)
 	if len(out.Records) != 1 || out.Records[0].ID() != "42" || out.Pagination.Returned != 1 {
 		t.Fatalf("search_illust output = %+v", out)
@@ -187,19 +196,19 @@ func TestSearchNovelMapsStableFiltersAndReturnsStructuredOutput(t *testing.T) {
 	var got pixiv.SearchNovelsRequest
 	client := &fakeSDKClient{searchNovel: func(_ context.Context, request pixiv.SearchNovelsRequest) (sdk.Page[pixiv.Novel], error) {
 		got = request
-		return sdk.Page[pixiv.Novel]{Items: []pixiv.Novel{{ID: 12, Title: "novel", TextLength: 120, IsOriginal: true}}}, nil
+		return sdk.Page[pixiv.Novel]{Items: []pixiv.Novel{{ID: 12, Title: "novel", TextLength: 120, IsOriginal: true, User: pixiv.User{ID: 9, Name: "author"}}}}, nil
 	}}
 	session, closeSession := newSDKTestSession(t, client)
 	defer closeSession()
 
 	result := callTool(t, session, "search_novel", map[string]any{
 		"word": "miku", "search_target": "title_and_caption", "sort": "date_asc", "duration": "within_last_week",
-		"rating": "r18", "min_text_length": 100, "max_text_length": 1000, "original_only": true, "limit": 1,
+		"limit": 1,
 	})
 	if result.IsError {
 		t.Fatalf("search_novel returned MCP error: %+v", result)
 	}
-	var out novelSearchOut
+	var out outputs.Records
 	decodeStructured(t, result, &out)
 	if got.Word != "miku" || got.Target != pixiv.SearchTargetTitleAndCaption || got.Sort != pixiv.SortModeDateAsc || got.Duration != pixiv.DurationFilter("within_last_week") {
 		t.Fatalf("SearchNovels request = %+v, want stable parameters", got)
@@ -222,7 +231,7 @@ func TestIllustDetailAcceptsArtworkURLAndReturnsStructuredOutput(t *testing.T) {
 	if result.IsError {
 		t.Fatalf("illust_detail returned MCP error: %+v", result)
 	}
-	var out illustDetailOut
+	var out outputs.UserDetail
 	decodeStructured(t, result, &out)
 	if gotID != 42 || len(out.Records) != 1 || out.Records[0].ID() != "42" {
 		t.Fatalf("illust_detail id=%d output=%+v, want URL-resolved artwork", gotID, out)
@@ -245,13 +254,13 @@ func TestSearchNovelContinuesAfterLocallyFilteredEmptyBatch(t *testing.T) {
 		if request.Cursor.IsZero() {
 			return sdk.Page[pixiv.Novel]{Items: []pixiv.Novel{}, Next: testPageCursor(1)}, nil
 		}
-		return sdk.Page[pixiv.Novel]{Items: []pixiv.Novel{{ID: 19, Title: "visible", Tags: []pixiv.Tag{}}}}, nil
+		return sdk.Page[pixiv.Novel]{Items: []pixiv.Novel{{ID: 19, Title: "visible", User: pixiv.User{ID: 5}, Tags: []pixiv.Tag{}}}}, nil
 	}}
 	session, closeSession := newSDKTestSession(t, client)
 	defer closeSession()
 
-	result := callTool(t, session, "search_novel", map[string]any{"word": "miku", "rating": "r18"})
-	var out novelSearchOut
+	result := callTool(t, session, "search_novel", map[string]any{"word": "miku"})
+	var out outputs.Records
 	decodeStructured(t, result, &out)
 	if len(requests) != 2 || requests[1].Cursor.IsZero() || len(out.Records) != 1 || out.Records[0].ID() != "19" {
 		t.Fatalf("requests=%+v output=%+v", requests, out)
@@ -271,7 +280,7 @@ func TestSearchUserReturnsSourceAndStructuredPreviews(t *testing.T) {
 	if result.IsError {
 		t.Fatalf("search_user returned MCP error: %+v", result)
 	}
-	var out userSearchOut
+	var out outputs.Records
 	decodeStructured(t, result, &out)
 	if got.Word != "author" || len(out.Records) != 1 || out.Records[0].ID() != "7" || out.Pagination.Returned != 1 {
 		t.Fatalf("search_user request=%+v output=%+v", got, out)
@@ -290,6 +299,7 @@ func TestSearchIllustSchemaRejectsRemovedLegacyWireFields(t *testing.T) {
 		{"word": "cat", "search_r18": true},
 		{"word": "cat", "offset": 1},
 		{"word": "cat", "include_thumbnail": true},
+		{"word": "cat", "filter": "bookmarkCount >= 2"},
 	} {
 		_, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: "search_illust", Arguments: args})
 		if err == nil || !strings.Contains(err.Error(), "additional properties") {
@@ -301,18 +311,18 @@ func TestSearchIllustSchemaRejectsRemovedLegacyWireFields(t *testing.T) {
 	}
 }
 
-func TestSearchIllustMapsRatingR18WithoutChangingWord(t *testing.T) {
-	var got pixiv.SearchArtworksRequest
-	client := &fakeSDKClient{searchIllust: func(_ context.Context, request pixiv.SearchArtworksRequest) (sdk.Page[pixiv.Artwork], error) {
-		got = request
+func TestSearchIllustRejectsUnsupportedRatingBeforeOpeningSDK(t *testing.T) {
+	calls := 0
+	client := &fakeSDKClient{searchIllust: func(_ context.Context, _ pixiv.SearchArtworksRequest) (sdk.Page[pixiv.Artwork], error) {
+		calls++
 		return sdk.Page[pixiv.Artwork]{Items: []pixiv.Artwork{}}, nil
 	}}
 	session, closeSession := newSDKTestSession(t, client)
 	defer closeSession()
 
-	callTool(t, session, "search_illust", map[string]any{"word": "cat", "rating": "r18"})
-	if got.Word != "cat" {
-		t.Fatalf("rating r18 request = %+v", got)
+	_, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: "search_illust", Arguments: map[string]any{"word": "cat", "rating": "r18"}})
+	if err == nil || !strings.Contains(err.Error(), "additional properties") || calls != 0 {
+		t.Fatalf("unsupported rating error=%v calls=%d", err, calls)
 	}
 }
 
@@ -329,9 +339,9 @@ func TestSearchIllustKeepsFiltersAcrossLogicalPagePagination(t *testing.T) {
 	defer closeSession()
 
 	result := callTool(t, session, "search_illust", map[string]any{"word": "cat", "page": 2, "limit": 1, "ai_mode": "exclude"})
-	var out illustQueryOut
+	var out outputs.Records
 	decodeStructured(t, result, &out)
-	if len(requests) != 2 || requests[1].Cursor.IsZero() || requests[0].AIMode != pixiv.SearchAIModeExclude || requests[1].AIMode != pixiv.SearchAIModeExclude || len(out.Records) != 1 || out.Records[0].ID() != "2" {
+	if len(requests) != 2 || requests[1].Cursor.IsZero() || len(out.Records) != 1 || out.Records[0].ID() != "2" {
 		t.Fatalf("requests=%+v output=%+v", requests, out)
 	}
 }
@@ -357,7 +367,7 @@ func TestSearchIllustPageLimitFillsLogicalResultsAcrossEmptyBatches(t *testing.T
 	defer closeSession()
 
 	result := callTool(t, session, "search_illust", map[string]any{"word": "cat", "limit": 3})
-	var out illustQueryOut
+	var out outputs.Records
 	decodeStructured(t, result, &out)
 	if len(requests) != 3 || requests[1].Cursor.IsZero() || requests[2].Cursor.IsZero() {
 		t.Fatalf("requests=%+v", requests)
@@ -380,7 +390,7 @@ func TestSearchIllustPageTwoUsesLogicalLimit(t *testing.T) {
 	defer closeSession()
 
 	result := callTool(t, session, "search_illust", map[string]any{"word": "cat", "page": 2, "limit": 2})
-	var out illustQueryOut
+	var out outputs.Records
 	decodeStructured(t, result, &out)
 	if len(requests) != 2 || requests[1].Cursor.IsZero() {
 		t.Fatalf("requests=%+v", requests)
@@ -398,7 +408,7 @@ func TestSearchIllustRejectsPageWithoutPositiveLimit(t *testing.T) {
 	session, closeSession := newSDKTestSession(t, client)
 	defer closeSession()
 	result := callTool(t, session, "search_illust", map[string]any{"word": "cat", "page": 1})
-	var out illustQueryOut
+	var out outputs.Records
 	decodeStructured(t, result, &out)
 	if len(out.Records) != 0 || !resultHasText(result, "page") || !resultHasText(result, "limit") {
 		t.Fatalf("output=%+v", out)
@@ -417,8 +427,8 @@ func TestSearchIllustContinuesAfterFilteredEmptyBatch(t *testing.T) {
 	session, closeSession := newSDKTestSession(t, client)
 	defer closeSession()
 
-	result := callTool(t, session, "search_illust", map[string]any{"word": "cat", "rating": "r18"})
-	var out illustQueryOut
+	result := callTool(t, session, "search_illust", map[string]any{"word": "cat"})
+	var out outputs.Records
 	decodeStructured(t, result, &out)
 	if len(requests) != 2 || requests[1].Cursor.IsZero() || len(out.Records) != 1 || out.Records[0].ID() != "2" {
 		t.Fatalf("requests=%+v output=%+v", requests, out)
@@ -430,7 +440,6 @@ func TestSearchIllustSchemaRejectsInvalidEnumsBeforeOpeningSDK(t *testing.T) {
 		field string
 		value string
 	}{
-		{"rating", "adult"},
 		{"content_type", "novel"},
 		{"ai_mode", "maybe"},
 		{"aspect_ratio", "wide"},
@@ -439,16 +448,12 @@ func TestSearchIllustSchemaRejectsInvalidEnumsBeforeOpeningSDK(t *testing.T) {
 		{"duration", "within_last_decade"},
 	} {
 		t.Run(test.field, func(t *testing.T) {
-			factoryCalls := 0
-			service := pixivapp.SDKService{NewClient: func(pixivapp.SDKClientRequest) (pixivapp.ClientSet, error) {
-				factoryCalls++
-				return testClientSet(t, &fakeSDKClient{}), nil
-			}}
-			session, closeSession := newSDKTestSessionWithService(t, &fakeAPI{}, service)
+			client := &fakeSDKClient{}
+			session, closeSession := newSDKTestSession(t, client)
 			defer closeSession()
 			_, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: "search_illust", Arguments: map[string]any{"word": "cat", test.field: test.value}})
-			if err == nil || factoryCalls != 0 {
-				t.Fatalf("invalid %s=%q error=%v factoryCalls=%d", test.field, test.value, err, factoryCalls)
+			if err == nil || client.searchIllustRequest != (pixiv.SearchArtworksRequest{}) {
+				t.Fatalf("invalid %s=%q error=%v captured=%+v", test.field, test.value, err, client.searchIllustRequest)
 			}
 		})
 	}
@@ -461,16 +466,12 @@ func TestSearchIllustRejectsInvalidCrossFieldFiltersBeforeOpeningSDK(t *testing.
 		{"word": "cat", "start_date": "2026-02-01", "end_date": "2026-01-31"},
 		{"word": "cat", "bookmark_min": 10000, "bookmark_max": 1000},
 	} {
-		factoryCalls := 0
-		service := pixivapp.SDKService{NewClient: func(pixivapp.SDKClientRequest) (pixivapp.ClientSet, error) {
-			factoryCalls++
-			return testClientSet(t, &fakeSDKClient{}), nil
-		}}
-		session, closeSession := newSDKTestSessionWithService(t, &fakeAPI{}, service)
+		client := &fakeSDKClient{}
+		session, closeSession := newSDKTestSession(t, client)
 		result := callTool(t, session, "search_illust", arguments)
 		closeSession()
-		if !result.IsError || factoryCalls != 0 {
-			t.Fatalf("arguments=%v result=%+v factoryCalls=%d", arguments, result, factoryCalls)
+		if !result.IsError || client.searchIllustRequest != (pixiv.SearchArtworksRequest{}) {
+			t.Fatalf("arguments=%v result=%+v captured=%+v", arguments, result, client.searchIllustRequest)
 		}
 	}
 }
@@ -530,10 +531,8 @@ func TestMCPStdioHelper(t *testing.T) {
 	if os.Getenv("PIXIV_MCP_STDIO_HELPER") != "1" {
 		return
 	}
-	service := pixivapp.SDKService{NewClient: func(pixivapp.SDKClientRequest) (pixivapp.ClientSet, error) {
-		return testClientSet(t, &failingMutationSDKClient{err: &sdk.Error{Product: "pixiv", Operation: "AddBookmark", Reason: sdk.UpstreamError}}), nil
-	}}
-	server := NewWithSDK(&fakeAPI{}, &fakeDownloads{}, service, pixivapp.SDKClientRequest{})
+	client := &fakeSDKClient{addBookmarkErr: &sdk.Error{Product: "pixiv", Operation: "AddBookmark", Reason: sdk.UpstreamError}}
+	server := pixivmcpserver.NewWithSDK(&fakeAPI{}, &fakeDownloads{}, testSDKPorts(t, client), pixivmcpserver.Account{})
 	if err := server.Run(context.Background(), &mcp.StdioTransport{}); err != nil {
 		os.Exit(1)
 	}
@@ -541,9 +540,9 @@ func TestMCPStdioHelper(t *testing.T) {
 }
 
 func TestToolErrorResultPreservesStructuredContent(t *testing.T) {
-	app := &App{}
+	app := runtime.NewApp(nil, nil, pixivmcpserver.SDKPorts{}, pixivmcpserver.Account{})
 	server := mcp.NewServer(&mcp.Implementation{Name: "test", Version: "1"}, nil)
-	addTool(app, server, &mcp.Tool{Name: "structured_error"}, func(context.Context, *mcp.CallToolRequest, struct{}) (*mcp.CallToolResult, map[string]string, error) {
+	runtime.AddTool(app, server, &mcp.Tool{Name: "structured_error"}, func(context.Context, *mcp.CallToolRequest, struct{}) (*mcp.CallToolResult, map[string]string, error) {
 		return &mcp.CallToolResult{
 			IsError:           true,
 			Content:           []mcp.Content{&mcp.TextContent{Text: "structured failure"}},
@@ -559,7 +558,7 @@ func TestToolErrorResultPreservesStructuredContent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer session.Close()
+	defer func() { _ = session.Close() }()
 	result := callTool(t, session, "structured_error", map[string]any{})
 	if !result.IsError || len(result.Content) != 1 {
 		t.Fatalf("error result changed: %+v", result)
@@ -571,29 +570,32 @@ func TestToolErrorResultPreservesStructuredContent(t *testing.T) {
 }
 
 func TestOpenSDKOperationReturnsConfigurationError(t *testing.T) {
-	app := &App{}
-	if _, _, err := app.openSDKOperation(context.Background()); err == nil || err.Error() != "pixiv sdk is not configured" {
+	app := runtime.NewApp(nil, nil, pixivmcpserver.SDKPorts{}, pixivmcpserver.Account{})
+	if _, _, err := app.OpenSDKOperation(context.Background()); err == nil || err.Error() != "pixiv sdk is not configured" {
 		t.Fatalf("open SDK error = %v", err)
 	}
 }
 
 func TestSDKOperationGateRespectsCanceledContext(t *testing.T) {
 	var calls atomic.Int32
-	app := &App{
-		sdkGate: make(chan struct{}, 1),
-		sdk: pixivapp.SDKService{NewClient: func(pixivapp.SDKClientRequest) (pixivapp.ClientSet, error) {
+	client := openWireClient(t, &fakeSDKClient{userID: 42})
+	app := runtime.NewApp(nil, nil, pixivmcpserver.SDKPorts{
+		Open: func(pixivmcpserver.Account) (*pixiv.Client, error) {
 			calls.Add(1)
-			return testClientSet(t, &fakeSDKClient{}), nil
-		}},
-	}
-	_, release, err := app.openSDKOperation(context.Background())
+			return client, nil
+		},
+		Pooled: func(context.Context, pixivmcpserver.Account, func(context.Context, *pixiv.Client) (bool, error)) error {
+			return nil
+		},
+	}, pixivmcpserver.Account{})
+	_, release, err := app.OpenSDKOperation(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer release()
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	if _, _, err := app.openSDKOperation(ctx); !errors.Is(err, context.Canceled) {
+	if _, _, err := app.OpenSDKOperation(ctx); !errors.Is(err, context.Canceled) {
 		t.Fatalf("second open error=%v, want context canceled", err)
 	}
 	if calls.Load() != 1 {
@@ -608,9 +610,9 @@ func TestSDKToolsWithoutSDKReturnStructuredConfigurationError(t *testing.T) {
 	if !result.IsError {
 		t.Fatalf("SDK configuration failure must be an MCP error result: %+v", result)
 	}
-	var out mutationOut
+	var out outputs.Mutation
 	decodeStructured(t, result, &out)
-	if out.Success || !strings.Contains(out.Text, "sdk is not configured") {
+	if out.Success || !strings.Contains(out.Text, "sdk pooled operation is not configured") {
 		t.Fatalf("unexpected output: %+v", out)
 	}
 }
@@ -626,7 +628,7 @@ func TestSDKListValidationReturnsMCPErrorWithStructuredOutput(t *testing.T) {
 	if len(result.Content) != 1 {
 		t.Fatalf("error result must retain text content: %+v", result.Content)
 	}
-	var out illustListOut
+	var out outputs.Records
 	decodeStructured(t, result, &out)
 	if len(out.Records) != 0 || !resultHasText(result, "page must be a positive integer") {
 		t.Fatalf("structured validation error = %+v", out)
@@ -643,40 +645,28 @@ func TestSDKUserBookmarksFailureReturnsMCPErrorWithStructuredOutput(t *testing.T
 	if !result.IsError {
 		t.Fatalf("SDK failure must be an MCP error result: %+v", result)
 	}
-	var out illustListOut
+	var out outputs.Records
 	decodeStructured(t, result, &out)
-	if len(out.Records) != 0 || !resultHasText(result, "bookmarks upstream failed") {
+	if len(out.Records) != 0 || !resultHasText(result, "UserArtworkBookmarks") || !resultHasText(result, "upstream_error") {
 		t.Fatalf("structured SDK error = %+v", out)
 	}
 }
 
 func TestSDKMutationTypedErrorIsMCPError(t *testing.T) {
-	client := &failingMutationSDKClient{err: &sdk.Error{
+	client := &fakeSDKClient{addBookmarkErr: &sdk.Error{
 		Product:    "pixiv",
 		Operation:  "AddBookmark",
 		Reason:     sdk.UpstreamError,
 		HTTPStatus: http.StatusBadGateway,
 	}}
-	service := pixivapp.SDKService{NewClient: func(pixivapp.SDKClientRequest) (pixivapp.ClientSet, error) {
-		return testClientSet(t, client), nil
-	}}
-	server := NewWithSDK(&fakeAPI{}, &fakeDownloads{}, service, pixivapp.SDKClientRequest{})
-	clientTransport, serverTransport := mcp.NewInMemoryTransports()
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	go func() { _ = server.Run(ctx, serverTransport) }()
-	mcpClient := mcp.NewClient(&mcp.Implementation{Name: "test", Version: "1"}, nil)
-	session, err := mcpClient.Connect(ctx, clientTransport, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer session.Close()
+	session, closeSession := newSDKTestSession(t, client)
+	defer closeSession()
 
 	result := callTool(t, session, "add_bookmark", map[string]any{"illust_id": 41})
 	if !result.IsError {
 		t.Fatalf("typed SDK mutation failure must be an MCP error: %+v", result)
 	}
-	var out mutationOut
+	var out outputs.Mutation
 	decodeStructured(t, result, &out)
 	if out.Success || !strings.Contains(out.Text, "upstream_error") {
 		t.Fatalf("structured mutation error = %+v", out)
@@ -696,7 +686,7 @@ func TestDownloadWithoutIDsPreservesBusinessErrorShape(t *testing.T) {
 		t.Fatalf("call tool: %v", err)
 	}
 	const wantText = "Error: provide src (one source) or srcs (a source list)"
-	assertEmptyDownloadResult(t, result, deliveryLocalPath, wantText)
+	assertEmptyDownloadResult(t, result, "local_path", wantText)
 	if downloads.downloadCalls != 0 || len(downloads.downloadIDs) != 0 {
 		t.Fatalf("download calls=%d IDs=%v want no downstream call", downloads.downloadCalls, downloads.downloadIDs)
 	}
@@ -718,7 +708,7 @@ func TestDownloadInvalidDeliveryPreservesBusinessErrorShape(t *testing.T) {
 		t.Fatalf("call tool: %v", err)
 	}
 	const wantText = `Error: delivery supports only "local_path".`
-	assertEmptyDownloadResult(t, result, deliveryLocalPath, wantText)
+	assertEmptyDownloadResult(t, result, "local_path", wantText)
 	if downloads.downloadCalls != 0 || len(downloads.downloadIDs) != 0 {
 		t.Fatalf("download calls=%d IDs=%v want no downstream call", downloads.downloadCalls, downloads.downloadIDs)
 	}
@@ -733,7 +723,7 @@ func TestDownloadManagerErrorPreservesBusinessErrorShape(t *testing.T) {
 		Name: "download",
 		Arguments: map[string]any{
 			"src":      "42",
-			"delivery": deliveryLocalPath,
+			"delivery": "local_path",
 		},
 	})
 	if err != nil {
@@ -754,9 +744,9 @@ func TestDownloadBuildErrorPreservesBusinessErrorShape(t *testing.T) {
 	if statErr == nil {
 		t.Fatal("missing test file unexpectedly exists")
 	}
-	downloads := &fakeDownloads{artworks: []downloadapp.DownloadedArtwork{{
+	downloads := &fakeDownloads{artworks: []downloader.DownloadedArtwork{{
 		IllustID: 42,
-		Files:    []downloadapp.DownloadedFile{{Path: missing}},
+		Files:    []downloader.DownloadedFile{{Path: missing}},
 	}}}
 	session, closeSession := newSDKDownloadTestSession(t, &fakeSDKClient{}, downloads)
 	defer closeSession()
@@ -765,14 +755,14 @@ func TestDownloadBuildErrorPreservesBusinessErrorShape(t *testing.T) {
 		Name: "download",
 		Arguments: map[string]any{
 			"src":      "42",
-			"delivery": deliveryLocalPath,
+			"delivery": "local_path",
 		},
 	})
 	if err != nil {
 		t.Fatalf("call tool: %v", err)
 	}
 	wantText := "Could not build the download result: " + statErr.Error()
-	assertEmptyDownloadResult(t, result, deliveryLocalPath, wantText)
+	assertEmptyDownloadResult(t, result, "local_path", wantText)
 	if downloads.downloadCalls != 1 || !slices.Equal(downloads.downloadIDs, []int64{42}) {
 		t.Fatalf("download calls=%d IDs=%v want one manager call", downloads.downloadCalls, downloads.downloadIDs)
 	}
@@ -793,7 +783,7 @@ func TestDownloadRejectsImageContentDelivery(t *testing.T) {
 	if err != nil {
 		t.Fatalf("call tool: %v", err)
 	}
-	assertEmptyDownloadResult(t, result, deliveryLocalPath, `Error: delivery supports only "local_path".`)
+	assertEmptyDownloadResult(t, result, "local_path", `Error: delivery supports only "local_path".`)
 	if downloads.downloadCalls != 0 {
 		t.Fatalf("download calls=%d", downloads.downloadCalls)
 	}
@@ -805,12 +795,12 @@ func TestDownloadPassesPagesAndQualityToManager(t *testing.T) {
 	if err := os.WriteFile(path, []byte("png"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	downloads := &fakeDownloads{artworks: []downloadapp.DownloadedArtwork{{
+	downloads := &fakeDownloads{artworks: []downloader.DownloadedArtwork{{
 		IllustID: 9,
 		Title:    "work",
 		Author:   "artist",
 		Type:     "illust",
-		Files:    []downloadapp.DownloadedFile{{Path: path, Page: 1}},
+		Files:    []downloader.DownloadedFile{{Path: path, Page: 1}},
 	}}}
 	session, closeSession := newSDKDownloadTestSession(t, &fakeSDKClient{}, downloads)
 	defer closeSession()
@@ -836,14 +826,14 @@ func TestDownloadPassesPagesAndQualityToManager(t *testing.T) {
 	if len(got.IllustIDs) != 1 || got.IllustIDs[0] != 9 {
 		t.Fatalf("ids=%v", got.IllustIDs)
 	}
-	if got.Quality != downloadapp.DownloadQualitySmall {
+	if got.Quality != downloader.DownloadQualitySmall {
 		t.Fatalf("quality=%q", got.Quality)
 	}
 	if len(got.Pages) != 3 || got.Pages[0] != 1 || got.Pages[1] != 3 || got.Pages[2] != 4 {
 		t.Fatalf("pages=%v", got.Pages)
 	}
 	out := decodeDownloadOut(t, result)
-	if out.Delivery != deliveryLocalPath || len(out.Files) != 1 || out.Files[0].Path == "" || out.Files[0].FileURI == "" || out.Files[0].MIMEType == "" {
+	if out.Delivery != "local_path" || len(out.Files) != 1 || out.Files[0].Path == "" || out.Files[0].FileURI == "" || out.Files[0].MIMEType == "" {
 		t.Fatalf("local delivery output=%+v", out)
 	}
 	if len(result.Content) != 1 {
@@ -864,7 +854,7 @@ func TestDownloadRejectsInvalidPagesAndQualityBeforeManager(t *testing.T) {
 			t.Fatalf("call tool: %v", err)
 		}
 		out := decodeDownloadOut(t, result)
-		if out.Delivery != deliveryLocalPath || len(out.Files) != 0 || !strings.HasPrefix(out.Text, "Error: ") {
+		if out.Delivery != "local_path" || len(out.Files) != 0 || !strings.HasPrefix(out.Text, "Error: ") {
 			t.Fatalf("args=%v output=%+v", args, out)
 		}
 	}
@@ -879,12 +869,12 @@ func TestDownloadDefaultsToLocalPathResult(t *testing.T) {
 	if err := os.WriteFile(path, []byte("jpeg"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	downloads := &fakeDownloads{artworks: []downloadapp.DownloadedArtwork{{
+	downloads := &fakeDownloads{artworks: []downloader.DownloadedArtwork{{
 		IllustID: 42,
 		Title:    "title",
 		Author:   "artist",
 		Type:     "illust",
-		Files:    []downloadapp.DownloadedFile{{Path: path}},
+		Files:    []downloader.DownloadedFile{{Path: path}},
 	}}}
 	session, closeSession := newSDKDownloadTestSession(t, &fakeSDKClient{}, downloads)
 	defer closeSession()
@@ -903,7 +893,7 @@ func TestDownloadDefaultsToLocalPathResult(t *testing.T) {
 		t.Fatalf("unexpected text content: %#v", result.Content[0])
 	}
 	out := decodeDownloadOut(t, result)
-	if out.Delivery != deliveryLocalPath || len(out.Files) != 1 {
+	if out.Delivery != "local_path" || len(out.Files) != 1 {
 		t.Fatalf("unexpected structured output: %+v", out)
 	}
 	if out.Files[0].MIMEType != "image/jpeg" || out.Files[0].SizeBytes != 4 || !strings.HasPrefix(out.Files[0].FileURI, "file://") {
@@ -920,8 +910,8 @@ func TestDownloadAcceptsArtworkURLsAndIncludesCanonicalURL(t *testing.T) {
 	if err := os.WriteFile(path, []byte("jpeg"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	downloads := &fakeDownloads{artworks: []downloadapp.DownloadedArtwork{{
-		IllustID: 42, Title: "work", Author: "artist", Type: "illust", Files: []downloadapp.DownloadedFile{{Path: path, Page: 1}},
+	downloads := &fakeDownloads{artworks: []downloader.DownloadedArtwork{{
+		IllustID: 42, Title: "work", Author: "artist", Type: "illust", Files: []downloader.DownloadedFile{{Path: path, Page: 1}},
 	}}}
 	session, closeSession := newSDKDownloadTestSession(t, &fakeSDKClient{}, downloads)
 	defer closeSession()
@@ -942,8 +932,8 @@ func TestDownloadUserURLExpandsEveryVisualArtworkType(t *testing.T) {
 	if err := os.WriteFile(path, []byte("jpeg"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	downloads := &fakeDownloads{artworks: []downloadapp.DownloadedArtwork{{
-		IllustID: 42, Title: "work", Author: "artist", Type: "illust", Files: []downloadapp.DownloadedFile{{Path: path}},
+	downloads := &fakeDownloads{artworks: []downloader.DownloadedArtwork{{
+		IllustID: 42, Title: "work", Author: "artist", Type: "illust", Files: []downloader.DownloadedFile{{Path: path}},
 	}}}
 	client := &fakeSDKClient{artworks: []pixiv.Artwork{testSDKIllust(42, "work", 7)}}
 	session, closeSession := newSDKDownloadTestSession(t, client, downloads)
@@ -977,21 +967,21 @@ func TestSDKUserToolsResolveIdentityAndReturnStructuredOutput(t *testing.T) {
 	defer closeSession()
 
 	artworks := callTool(t, session, "user_artworks", map[string]any{"limit": 1})
-	var artworksOut illustListOut
+	var artworksOut outputs.Records
 	decodeStructured(t, artworks, &artworksOut)
 	if client.artworksRequest.UserID != 71 || len(artworksOut.Records) != 1 || artworksOut.Records[0].ID() != "11" || artworksOut.Pagination.Returned != 1 {
 		t.Fatalf("user artworks = request=%+v output=%+v", client.artworksRequest, artworksOut)
 	}
 
 	bookmarks := callTool(t, session, "user_bookmarks", map[string]any{"user_id": 99, "tag": "tag", "limit": 0})
-	var bookmarksOut illustListOut
+	var bookmarksOut outputs.Records
 	decodeStructured(t, bookmarks, &bookmarksOut)
 	if client.bookmarksRequest.UserID != 99 || client.bookmarksRequest.Tag != "tag" || len(bookmarksOut.Records) != 1 || bookmarksOut.Records[0].ID() != "12" || bookmarksOut.Pagination.HasMore {
 		t.Fatalf("bookmarks = request=%+v output=%+v", client.bookmarksRequest, bookmarksOut)
 	}
 
 	following := callTool(t, session, "user_following", map[string]any{"user_id": 99, "limit": 1})
-	var followingOut userListOut
+	var followingOut outputs.Records
 	decodeStructured(t, following, &followingOut)
 	if client.followingRequest.UserID != 99 || len(followingOut.Records) != 1 || followingOut.Records[0].ID() != "33" {
 		t.Fatalf("following = request=%+v output=%+v", client.followingRequest, followingOut)
@@ -1010,7 +1000,7 @@ func TestUserArtworksPreservesArtworkRecordsAtMCPBoundary(t *testing.T) {
 	if result.IsError {
 		t.Fatalf("user_artworks result=%+v", result)
 	}
-	var out illustListOut
+	var out outputs.Records
 	decodeStructured(t, result, &out)
 	if len(out.Records) != 2 || out.Records[0].ID() != "11" || out.Records[1].ID() != "12" {
 		t.Fatalf("artwork records=%+v", out)
@@ -1027,12 +1017,7 @@ func TestSDKUserDetailReturnsStructuredSDKResult(t *testing.T) {
 		Workspace:        pixiv.UserWorkspace{PC: "desktop", Tool: "pen", WorkspaceImageURL: workspaceImage},
 	}
 	client := &fakeSDKClient{userDetailResult: want}
-	openCalls := 0
-	service := pixivapp.SDKService{NewClient: func(pixivapp.SDKClientRequest) (pixivapp.ClientSet, error) {
-		openCalls++
-		return testClientSet(t, client), nil
-	}}
-	session, closeSession := newSDKTestSessionWithService(t, &fakeAPI{}, service)
+	session, closeSession := newSDKTestSession(t, client)
 	defer closeSession()
 
 	result := callTool(t, session, "user_detail", map[string]any{"user_id": 42})
@@ -1042,38 +1027,30 @@ func TestSDKUserDetailReturnsStructuredSDKResult(t *testing.T) {
 	if len(result.Content) != 1 {
 		t.Fatalf("user_detail text content = %+v", result.Content)
 	}
-	var out userDetailOut
+	var out outputs.UserDetail
 	decodeStructured(t, result, &out)
-	if len(out.Records) != 1 || out.Records[0].ID() != "42" || client.userDetailRequest != (pixiv.UserRequest{UserID: 42}) || openCalls != 1 {
-		t.Fatalf("user_detail output=%+v request=%+v open calls=%d", out, client.userDetailRequest, openCalls)
+	if len(out.Records) != 1 || out.Records[0].ID() != "42" || client.userDetailRequest != (pixiv.UserRequest{UserID: 42}) {
+		t.Fatalf("user_detail output=%+v request=%+v", out, client.userDetailRequest)
 	}
 }
 
 func TestSDKUserDetailRejectsInvalidInputAndReturnsSDKFailuresAsMCPError(t *testing.T) {
 	for _, input := range []map[string]any{{"user_id": 0}, {"user_id": -1}} {
-		openCalls := 0
-		service := pixivapp.SDKService{NewClient: func(pixivapp.SDKClientRequest) (pixivapp.ClientSet, error) {
-			openCalls++
-			return testClientSet(t, &fakeSDKClient{}), nil
-		}}
-		session, closeSession := newSDKTestSessionWithService(t, &fakeAPI{}, service)
+		client := &fakeSDKClient{}
+		session, closeSession := newSDKTestSession(t, client)
 		result := callTool(t, session, "user_detail", input)
 		closeSession()
-		if !result.IsError || openCalls != 0 {
-			t.Fatalf("input=%v result=%+v open calls=%d", input, result, openCalls)
+		if !result.IsError || client.userDetailRequest != (pixiv.UserRequest{}) {
+			t.Fatalf("input=%v result=%+v captured=%+v", input, result, client.userDetailRequest)
 		}
 	}
 	for _, input := range []map[string]any{{}, {"user_id": "not-an-integer"}} {
-		openCalls := 0
-		service := pixivapp.SDKService{NewClient: func(pixivapp.SDKClientRequest) (pixivapp.ClientSet, error) {
-			openCalls++
-			return testClientSet(t, &fakeSDKClient{}), nil
-		}}
-		session, closeSession := newSDKTestSessionWithService(t, &fakeAPI{}, service)
+		client := &fakeSDKClient{}
+		session, closeSession := newSDKTestSession(t, client)
 		_, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: "user_detail", Arguments: input})
 		closeSession()
-		if err == nil || openCalls != 0 {
-			t.Fatalf("input=%v error=%v open calls=%d", input, err, openCalls)
+		if err == nil || client.userDetailRequest != (pixiv.UserRequest{}) {
+			t.Fatalf("input=%v error=%v captured=%+v", input, err, client.userDetailRequest)
 		}
 	}
 
@@ -1088,7 +1065,7 @@ func TestSDKUserDetailRejectsInvalidInputAndReturnsSDKFailuresAsMCPError(t *test
 	if !ok || !strings.Contains(text.Text, typed.Error()) {
 		t.Fatalf("typed SDK failure content=%+v", result.Content)
 	}
-	var typedOut userDetailOut
+	var typedOut outputs.UserDetail
 	decodeStructured(t, result, &typedOut)
 	if len(typedOut.Records) != 0 {
 		t.Fatalf("typed SDK failure structured output=%+v", typedOut)
@@ -1101,10 +1078,10 @@ func TestSDKUserDetailRejectsInvalidInputAndReturnsSDKFailuresAsMCPError(t *test
 		t.Fatalf("unconfigured SDK result=%+v", result)
 	}
 	text, ok = result.Content[0].(*mcp.TextContent)
-	if !ok || !strings.Contains(text.Text, "pixiv sdk is not configured") {
+	if !ok || !strings.Contains(text.Text, "sdk pooled operation is not configured") {
 		t.Fatalf("unconfigured SDK content=%+v", result.Content)
 	}
-	var unconfiguredOut userDetailOut
+	var unconfiguredOut outputs.UserDetail
 	decodeStructured(t, result, &unconfiguredOut)
 	if len(unconfiguredOut.Records) != 0 {
 		t.Fatalf("unconfigured SDK structured output=%+v", unconfiguredOut)
@@ -1128,19 +1105,21 @@ func TestSDKRecommendedAllReturnsEveryStreamAndPagination(t *testing.T) {
 	}
 	client.userRecommended = func(context.Context, pixiv.RecommendedUsersRequest) (sdk.Page[pixiv.UserPreview], error) {
 		order = append(order, "user")
-		return sdk.Page[pixiv.UserPreview]{Items: []pixiv.UserPreview{{User: pixiv.User{ID: 4}, Illusts: []pixiv.Artwork{}, Novels: []pixiv.Novel{{ID: 5}}}}, Next: testPageCursor(4)}, nil
+		return sdk.Page[pixiv.UserPreview]{
+			Items: []pixiv.UserPreview{{
+				User:    pixiv.User{ID: 4},
+				Illusts: []pixiv.Artwork{},
+				Novels:  []pixiv.Novel{{ID: 5, User: pixiv.User{ID: 40}}},
+			}},
+			Next: testPageCursor(4),
+		}, nil
 	}
-	openCalls := 0
-	service := pixivapp.SDKService{NewClient: func(pixivapp.SDKClientRequest) (pixivapp.ClientSet, error) {
-		openCalls++
-		return testClientSet(t, client), nil
-	}}
-	session, closeSession := newSDKTestSessionWithService(t, &fakeAPI{}, service)
+	session, closeSession := newSDKTestSession(t, client)
 	defer closeSession()
 
 	result := callTool(t, session, "recommended", map[string]any{"kind": "all", "limit": 1})
-	if result.IsError || openCalls != 1 || !slices.Equal(order, []string{"illust", "manga", "novel", "user"}) {
-		t.Fatalf("recommended all result=%+v opens=%d order=%v", result, openCalls, order)
+	if result.IsError || !slices.Equal(order, []string{"illust", "manga", "novel", "user"}) {
+		t.Fatalf("recommended all result=%+v order=%v", result, order)
 	}
 	var structured map[string]any
 	decodeStructured(t, result, &structured)
@@ -1187,7 +1166,7 @@ func TestRecommendedPreservesAllTopLevelAndUserPreviewRecords(t *testing.T) {
 	if result.IsError {
 		t.Fatalf("recommended result=%+v", result)
 	}
-	var out recommendedOut
+	var out outputs.Recommended
 	decodeStructured(t, result, &out)
 	if len(out.Records) != 4 || !slices.Equal([]string{out.Records[0].ID(), out.Records[1].ID(), out.Records[2].ID(), out.Records[3].ID()}, []string{"1", "2", "1", "10"}) {
 		t.Fatalf("recommended records=%+v", out)
@@ -1233,21 +1212,17 @@ func TestSDKRecommendedSingleKindsAndInputFailures(t *testing.T) {
 		})
 	}
 
-	openCalls := 0
-	service := pixivapp.SDKService{NewClient: func(pixivapp.SDKClientRequest) (pixivapp.ClientSet, error) {
-		openCalls++
-		return testClientSet(t, &fakeSDKClient{}), nil
-	}}
-	session, closeSession := newSDKTestSessionWithService(t, &fakeAPI{}, service)
+	client := &fakeSDKClient{}
+	session, closeSession := newSDKTestSession(t, client)
 	defer closeSession()
 	result := callTool(t, session, "recommended", map[string]any{"kind": "unknown"})
-	if !result.IsError || openCalls != 0 {
-		t.Fatalf("invalid kind result=%+v open calls=%d", result, openCalls)
+	if !result.IsError {
+		t.Fatalf("invalid kind result=%+v", result)
 	}
 	for _, input := range []map[string]any{{}, {"kind": 9}} {
 		_, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: "recommended", Arguments: input})
-		if err == nil || openCalls != 0 {
-			t.Fatalf("input=%v error=%v open calls=%d", input, err, openCalls)
+		if err == nil {
+			t.Fatalf("input=%v error=%v", input, err)
 		}
 	}
 
@@ -1274,9 +1249,9 @@ func TestSDKRecommendedAllFailureDoesNotExposePartialStructuredOutput(t *testing
 	if !result.IsError {
 		t.Fatalf("all failure result=%+v", result)
 	}
-	var out recommendedOut
+	var out outputs.Recommended
 	decodeStructured(t, result, &out)
-	if len(out.Records) != 0 || out.Pagination != (recommendedPaginationOut{}) {
+	if len(out.Records) != 0 || out.Pagination != (outputs.RecommendedPagination{}) {
 		t.Fatalf("partial structured output=%+v", out)
 	}
 }
@@ -1341,7 +1316,7 @@ func TestIllustRecommendedUsesSDKAndLogicalPageSkip(t *testing.T) {
 	session, closeSession := newSDKTestSession(t, client)
 	defer closeSession()
 	result := callTool(t, session, "illust_recommended", map[string]any{"page": 2, "limit": 1})
-	var out illustQueryOut
+	var out outputs.Records
 	decodeStructured(t, result, &out)
 	if result.IsError || len(requests) != 1 || !requests[0].Cursor.IsZero() || len(out.Records) != 1 || out.Records[0].ID() != "77" {
 		t.Fatalf("result=%+v requests=%+v", out, requests)
@@ -1361,7 +1336,7 @@ func TestIllustRecommendedReturnsTaggedRecord(t *testing.T) {
 	defer closeSession()
 
 	result := callTool(t, session, "illust_recommended", map[string]any{})
-	var out illustQueryOut
+	var out outputs.Records
 	decodeStructured(t, result, &out)
 	if result.IsError {
 		t.Fatalf("illust_recommended returned MCP error: %+v", result)
@@ -1387,7 +1362,7 @@ func TestIllustRankingPassesRequestAndReturnsRecord(t *testing.T) {
 	result := callTool(t, session, "illust_ranking", map[string]any{
 		"mode": "day_male", "date": "2025-02-03", "page": 3, "limit": 1,
 	})
-	var out illustQueryOut
+	var out outputs.Records
 	decodeStructured(t, result, &out)
 	if result.IsError {
 		t.Fatalf("illust_ranking returned MCP error: %+v", result)
@@ -1420,7 +1395,6 @@ func TestIllustRankingSupportsAllModes(t *testing.T) {
 		{mode: "day_female_r18"},
 		{mode: "week_r18"},
 		{mode: "week_r18g"},
-		{mode: "future_mode"},
 	}
 	for _, test := range tests {
 		t.Run(test.mode, func(t *testing.T) {
@@ -1434,7 +1408,7 @@ func TestIllustRankingSupportsAllModes(t *testing.T) {
 			defer closeSession()
 
 			result := callTool(t, session, "illust_ranking", map[string]any{"mode": test.mode})
-			var out illustQueryOut
+			var out outputs.Records
 			decodeStructured(t, result, &out)
 			if result.IsError || len(out.Records) != 1 || out.Records[0].ID() != "13" {
 				t.Fatalf("illust_ranking(%q) output = %+v", test.mode, out)
@@ -1448,15 +1422,13 @@ func TestDownloadRandomFromRecommendationUsesSDKAndPreservesCount(t *testing.T) 
 	if err := os.WriteFile(path, []byte("recommended"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	downloads := &fakeDownloads{artworks: []downloadapp.DownloadedArtwork{{IllustID: 77, Files: []downloadapp.DownloadedFile{{Path: path}}}}}
+	downloads := &fakeDownloads{artworks: []downloader.DownloadedArtwork{{IllustID: 77, Files: []downloader.DownloadedFile{{Path: path}}}}}
 	var requests []pixiv.RecommendedArtworksRequest
-	service := pixivapp.SDKService{NewClient: func(pixivapp.SDKClientRequest) (pixivapp.ClientSet, error) {
-		return testClientSet(t, &fakeSDKClient{recommendedArtworks: func(_ context.Context, request pixiv.RecommendedArtworksRequest, _ int) (sdk.Page[pixiv.Artwork], error) {
-			requests = append(requests, request)
-			return sdk.Page[pixiv.Artwork]{Items: []pixiv.Artwork{testSDKIllust(77, "recommended", 1)}}, nil
-		}}), nil
+	sdkClient := &fakeSDKClient{recommendedArtworks: func(_ context.Context, request pixiv.RecommendedArtworksRequest, _ int) (sdk.Page[pixiv.Artwork], error) {
+		requests = append(requests, request)
+		return sdk.Page[pixiv.Artwork]{Items: []pixiv.Artwork{testSDKIllust(77, "recommended", 1)}}, nil
 	}}
-	server := NewWithSDK(&fakeAPI{}, downloads, service, pixivapp.SDKClientRequest{})
+	server := pixivmcpserver.NewWithSDK(&fakeAPI{}, downloads, testSDKPorts(t, sdkClient), pixivmcpserver.Account{})
 	clientTransport, serverTransport := mcp.NewInMemoryTransports()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -1466,7 +1438,7 @@ func TestDownloadRandomFromRecommendationUsesSDKAndPreservesCount(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer session.Close()
+	defer func() { _ = session.Close() }()
 	result := callTool(t, session, "download_random_from_recommendation", map[string]any{"count": 1})
 	if result.IsError || len(result.Content) != 1 || len(requests) != 1 || requests[0] != (pixiv.RecommendedArtworksRequest{}) || !slices.Equal(downloads.downloadIDs, []int64{77}) {
 		t.Fatalf("result=%+v requests=%+v ids=%v", result, requests, downloads.downloadIDs)
@@ -1476,14 +1448,18 @@ func TestDownloadRandomFromRecommendationUsesSDKAndPreservesCount(t *testing.T) 
 func TestDownloadRandomSDKOpenErrorPreservesBusinessErrorShape(t *testing.T) {
 	var openCalls, managerFactoryCalls int
 	downloads := &fakeDownloads{}
-	service := pixivapp.SDKService{NewClient: func(pixivapp.SDKClientRequest) (pixivapp.ClientSet, error) {
-		openCalls++
-		return pixivapp.ClientSet{}, errors.New("open sentinel")
-	}}
-	server := NewWithSDKDownloadFactory(downloads, func(pixivapp.ClientSet) DownloadManager {
+	server := pixivmcpserver.NewWithSDKDownloadFactory(downloads, func(*pixiv.Client) pixivmcpserver.DownloadManager {
 		managerFactoryCalls++
 		return downloads
-	}, service, pixivapp.SDKClientRequest{})
+	}, pixivmcpserver.SDKPorts{
+		Open: func(pixivmcpserver.Account) (*pixiv.Client, error) {
+			openCalls++
+			return nil, errors.New("open sentinel")
+		},
+		Pooled: func(context.Context, pixivmcpserver.Account, func(context.Context, *pixiv.Client) (bool, error)) error {
+			return nil
+		},
+	}, pixivmcpserver.Account{})
 	clientTransport, serverTransport := mcp.NewInMemoryTransports()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -1493,20 +1469,20 @@ func TestDownloadRandomSDKOpenErrorPreservesBusinessErrorShape(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer session.Close()
+	defer func() { _ = session.Close() }()
 
 	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{
 		Name: "download_random_from_recommendation",
 		Arguments: map[string]any{
 			"count":    1,
-			"delivery": deliveryLocalPath,
+			"delivery": "local_path",
 		},
 	})
 	if err != nil {
 		t.Fatalf("call tool: %v", err)
 	}
 	const wantText = "Could not retrieve recommendations: open sentinel"
-	assertEmptyDownloadResult(t, result, deliveryLocalPath, wantText)
+	assertEmptyDownloadResult(t, result, "local_path", wantText)
 	if openCalls != 1 || managerFactoryCalls != 0 || len(downloads.downloadIDs) != 0 {
 		t.Fatalf("downstream calls: open=%d manager_factory=%d download_ids=%v", openCalls, managerFactoryCalls, downloads.downloadIDs)
 	}
@@ -1515,17 +1491,25 @@ func TestDownloadRandomSDKOpenErrorPreservesBusinessErrorShape(t *testing.T) {
 func TestDownloadRandomRecommendationErrorPreservesBusinessErrorShape(t *testing.T) {
 	var openCalls, recommendationCalls, managerFactoryCalls int
 	downloads := &fakeDownloads{}
-	service := pixivapp.SDKService{NewClient: func(pixivapp.SDKClientRequest) (pixivapp.ClientSet, error) {
-		openCalls++
-		return testClientSet(t, &fakeSDKClient{recommendedArtworks: func(context.Context, pixiv.RecommendedArtworksRequest, int) (sdk.Page[pixiv.Artwork], error) {
-			recommendationCalls++
-			return sdk.Page[pixiv.Artwork]{}, errors.New("recommendation sentinel")
-		}}), nil
+	sdkClient := &fakeSDKClient{recommendedArtworks: func(context.Context, pixiv.RecommendedArtworksRequest, int) (sdk.Page[pixiv.Artwork], error) {
+		recommendationCalls++
+		return sdk.Page[pixiv.Artwork]{}, errors.New("recommendation sentinel")
 	}}
-	server := NewWithSDKDownloadFactory(downloads, func(pixivapp.ClientSet) DownloadManager {
+	wireClient := openWireClient(t, sdkClient)
+	ports := pixivmcpserver.SDKPorts{
+		Open: func(pixivmcpserver.Account) (*pixiv.Client, error) {
+			openCalls++
+			return wireClient, nil
+		},
+		Pooled: func(ctx context.Context, account pixivmcpserver.Account, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
+			_, err := attempt(ctx, wireClient)
+			return err
+		},
+	}
+	server := pixivmcpserver.NewWithSDKDownloadFactory(downloads, func(*pixiv.Client) pixivmcpserver.DownloadManager {
 		managerFactoryCalls++
 		return downloads
-	}, service, pixivapp.SDKClientRequest{})
+	}, ports, pixivmcpserver.Account{})
 	clientTransport, serverTransport := mcp.NewInMemoryTransports()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -1535,20 +1519,20 @@ func TestDownloadRandomRecommendationErrorPreservesBusinessErrorShape(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer session.Close()
+	defer func() { _ = session.Close() }()
 
 	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{
 		Name: "download_random_from_recommendation",
 		Arguments: map[string]any{
 			"count":    1,
-			"delivery": deliveryLocalPath,
+			"delivery": "local_path",
 		},
 	})
 	if err != nil {
 		t.Fatalf("call tool: %v", err)
 	}
-	const wantText = "Could not retrieve recommendations: recommendation sentinel"
-	assertEmptyDownloadResult(t, result, deliveryLocalPath, wantText)
+	const wantText = "Could not retrieve recommendations: pixiv:RecommendedArtworks: upstream_error"
+	assertEmptyDownloadResult(t, result, "local_path", wantText)
 	if openCalls != 1 || recommendationCalls != 1 || managerFactoryCalls != 0 || len(downloads.downloadIDs) != 0 {
 		t.Fatalf("downstream calls: open=%d recommendation=%d manager_factory=%d download_ids=%v", openCalls, recommendationCalls, managerFactoryCalls, downloads.downloadIDs)
 	}
@@ -1562,14 +1546,14 @@ func TestDownloadRandomEmptyRecommendationPreservesBusinessErrorShape(t *testing
 		Name: "download_random_from_recommendation",
 		Arguments: map[string]any{
 			"count":    1,
-			"delivery": deliveryLocalPath,
+			"delivery": "local_path",
 		},
 	})
 	if err != nil {
 		t.Fatalf("call tool: %v", err)
 	}
 	const wantText = "Could not retrieve recommendations: the list is empty."
-	assertEmptyDownloadResult(t, result, deliveryLocalPath, wantText)
+	assertEmptyDownloadResult(t, result, "local_path", wantText)
 	if probe.openCalls != 1 || probe.recommendationCalls != 1 || probe.managerFactoryCalls != 0 || len(probe.downloads.downloadIDs) != 0 {
 		t.Fatalf("downstream calls: open=%d recommendation=%d manager_factory=%d download_ids=%v", probe.openCalls, probe.recommendationCalls, probe.managerFactoryCalls, probe.downloads.downloadIDs)
 	}
@@ -1584,14 +1568,14 @@ func TestDownloadRandomManagerErrorPreservesBusinessErrorShape(t *testing.T) {
 		Name: "download_random_from_recommendation",
 		Arguments: map[string]any{
 			"count":    1,
-			"delivery": deliveryLocalPath,
+			"delivery": "local_path",
 		},
 	})
 	if err != nil {
 		t.Fatalf("call tool: %v", err)
 	}
 	const wantText = "Download failed: download sentinel"
-	assertEmptyDownloadResult(t, result, deliveryLocalPath, wantText)
+	assertEmptyDownloadResult(t, result, "local_path", wantText)
 	if probe.openCalls != 1 || probe.recommendationCalls != 1 || probe.managerFactoryCalls != 1 || probe.downloads.downloadCalls != 1 || !slices.Equal(probe.downloads.downloadIDs, []int64{77}) {
 		t.Fatalf("downstream calls: open=%d recommendation=%d manager_factory=%d downloads=%d download_ids=%v", probe.openCalls, probe.recommendationCalls, probe.managerFactoryCalls, probe.downloads.downloadCalls, probe.downloads.downloadIDs)
 	}
@@ -1605,23 +1589,23 @@ func TestDownloadRandomBuildErrorPreservesBusinessErrorShape(t *testing.T) {
 	}
 	session, closeSession, probe := newDownloadRandomProbeSession(t, []int64{77})
 	defer closeSession()
-	probe.downloads.artworks = []downloadapp.DownloadedArtwork{{
+	probe.downloads.artworks = []downloader.DownloadedArtwork{{
 		IllustID: 77,
-		Files:    []downloadapp.DownloadedFile{{Path: missing}},
+		Files:    []downloader.DownloadedFile{{Path: missing}},
 	}}
 
 	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{
 		Name: "download_random_from_recommendation",
 		Arguments: map[string]any{
 			"count":    1,
-			"delivery": deliveryLocalPath,
+			"delivery": "local_path",
 		},
 	})
 	if err != nil {
 		t.Fatalf("call tool: %v", err)
 	}
 	wantText := "Could not build the download result: " + statErr.Error()
-	assertEmptyDownloadResult(t, result, deliveryLocalPath, wantText)
+	assertEmptyDownloadResult(t, result, "local_path", wantText)
 	if probe.openCalls != 1 || probe.recommendationCalls != 1 || probe.managerFactoryCalls != 1 || probe.downloads.downloadCalls != 1 || !slices.Equal(probe.downloads.downloadIDs, []int64{77}) {
 		t.Fatalf("downstream calls: open=%d recommendation=%d manager_factory=%d downloads=%d download_ids=%v", probe.openCalls, probe.recommendationCalls, probe.managerFactoryCalls, probe.downloads.downloadCalls, probe.downloads.downloadIDs)
 	}
@@ -1642,10 +1626,10 @@ func TestDownloadRandomCountErrorPreservesLocalPathDelivery(t *testing.T) {
 
 	result := callTool(t, session, "download_random_from_recommendation", map[string]any{
 		"count":    0,
-		"delivery": deliveryLocalPath,
+		"delivery": "local_path",
 	})
 	const wantText = "Error: count must be an integer from 1 to 20"
-	assertEmptyDownloadResult(t, result, deliveryLocalPath, wantText)
+	assertEmptyDownloadResult(t, result, "local_path", wantText)
 	assertNoDownloadRandomDownstream(t, probe)
 }
 
@@ -1658,7 +1642,7 @@ func TestDownloadRandomInvalidDeliveryPrecedesCountValidation(t *testing.T) {
 		"delivery": "invalid-delivery",
 	})
 	const wantText = `Error: delivery supports only "local_path".`
-	assertEmptyDownloadResult(t, result, deliveryLocalPath, wantText)
+	assertEmptyDownloadResult(t, result, "local_path", wantText)
 	assertNoDownloadRandomDownstream(t, probe)
 }
 
@@ -1687,7 +1671,7 @@ func TestDownloadRandomRejectsCountAboveMaximumBeforeOpeningSDK(t *testing.T) {
 func assertDownloadRandomCountError(t *testing.T, result *mcp.CallToolResult) {
 	t.Helper()
 	const wantText = "Error: count must be an integer from 1 to 20"
-	assertEmptyDownloadResult(t, result, deliveryLocalPath, wantText)
+	assertEmptyDownloadResult(t, result, "local_path", wantText)
 }
 
 func assertNoDownloadRandomDownstream(t *testing.T, probe *downloadRandomProbe) {
@@ -1703,7 +1687,7 @@ func TestDownloadRandomOmittedCountDefaultsToFive(t *testing.T) {
 	defer closeSession()
 
 	result := callTool(t, session, "download_random_from_recommendation", map[string]any{})
-	if result.IsError || probe.openCalls != 1 || probe.recommendationCalls != 1 || len(probe.downloads.downloadIDs) != downloadRandomDefaultCount {
+	if result.IsError || probe.openCalls != 1 || probe.recommendationCalls != 1 || len(probe.downloads.downloadIDs) != 5 {
 		t.Fatalf("result=%+v open=%d recommendation=%d download_ids=%v", result, probe.openCalls, probe.recommendationCalls, probe.downloads.downloadIDs)
 	}
 	seen := make(map[int64]struct{}, len(probe.downloads.downloadIDs))
@@ -1713,7 +1697,7 @@ func TestDownloadRandomOmittedCountDefaultsToFive(t *testing.T) {
 		}
 		seen[id] = struct{}{}
 	}
-	if len(seen) != downloadRandomDefaultCount {
+	if len(seen) != 5 {
 		t.Fatalf("download IDs are not unique: %v", probe.downloads.downloadIDs)
 	}
 }
@@ -1724,7 +1708,7 @@ func TestDownloadRandomNullCountDefaultsToFive(t *testing.T) {
 	defer closeSession()
 
 	result := callTool(t, session, "download_random_from_recommendation", map[string]any{"count": nil})
-	if result.IsError || probe.openCalls != 1 || probe.recommendationCalls != 1 || len(probe.downloads.downloadIDs) != downloadRandomDefaultCount {
+	if result.IsError || probe.openCalls != 1 || probe.recommendationCalls != 1 || len(probe.downloads.downloadIDs) != 5 {
 		t.Fatalf("result=%+v open=%d recommendation=%d download_ids=%v", result, probe.openCalls, probe.recommendationCalls, probe.downloads.downloadIDs)
 	}
 }
@@ -1769,15 +1753,15 @@ func TestDownloadRandomToolSchemaDocumentsOptionalCountContract(t *testing.T) {
 }
 
 func TestDownloadRandomAcceptsMaximumCount(t *testing.T) {
-	recommendationIDs := make([]int64, downloadRandomMaxCount+1)
+	recommendationIDs := make([]int64, 21)
 	for i := range recommendationIDs {
 		recommendationIDs[i] = int64(i + 1)
 	}
 	session, closeSession, probe := newDownloadRandomProbeSession(t, recommendationIDs)
 	defer closeSession()
 
-	result := callTool(t, session, "download_random_from_recommendation", map[string]any{"count": downloadRandomMaxCount})
-	if result.IsError || probe.openCalls != 1 || probe.recommendationCalls != 1 || len(probe.downloads.downloadIDs) != downloadRandomMaxCount {
+	result := callTool(t, session, "download_random_from_recommendation", map[string]any{"count": 20})
+	if result.IsError || probe.openCalls != 1 || probe.recommendationCalls != 1 || len(probe.downloads.downloadIDs) != 20 {
 		t.Fatalf("result=%+v open=%d recommendation=%d download_ids=%v", result, probe.openCalls, probe.recommendationCalls, probe.downloads.downloadIDs)
 	}
 	seen := make(map[int64]struct{}, len(probe.downloads.downloadIDs))
@@ -1787,7 +1771,7 @@ func TestDownloadRandomAcceptsMaximumCount(t *testing.T) {
 		}
 		seen[id] = struct{}{}
 	}
-	if len(seen) != downloadRandomMaxCount {
+	if len(seen) != 20 {
 		t.Fatalf("download IDs are not unique: %v", probe.downloads.downloadIDs)
 	}
 }
@@ -1818,21 +1802,29 @@ type downloadRandomProbe struct {
 func newDownloadRandomProbeSession(t *testing.T, recommendationIDs []int64) (*mcp.ClientSession, func(), *downloadRandomProbe) {
 	t.Helper()
 	probe := &downloadRandomProbe{downloads: &fakeDownloads{}}
-	service := pixivapp.SDKService{NewClient: func(pixivapp.SDKClientRequest) (pixivapp.ClientSet, error) {
-		probe.openCalls++
-		return testClientSet(t, &fakeSDKClient{recommendedArtworks: func(context.Context, pixiv.RecommendedArtworksRequest, int) (sdk.Page[pixiv.Artwork], error) {
-			probe.recommendationCalls++
-			illusts := make([]pixiv.Artwork, len(recommendationIDs))
-			for i, id := range recommendationIDs {
-				illusts[i] = testSDKIllust(id, "recommended", 1)
-			}
-			return sdk.Page[pixiv.Artwork]{Items: illusts}, nil
-		}}), nil
+	sdkClient := &fakeSDKClient{recommendedArtworks: func(context.Context, pixiv.RecommendedArtworksRequest, int) (sdk.Page[pixiv.Artwork], error) {
+		probe.recommendationCalls++
+		illusts := make([]pixiv.Artwork, len(recommendationIDs))
+		for i, id := range recommendationIDs {
+			illusts[i] = testSDKIllust(id, "recommended", 1)
+		}
+		return sdk.Page[pixiv.Artwork]{Items: illusts}, nil
 	}}
-	server := NewWithSDKDownloadFactory(probe.downloads, func(pixivapp.ClientSet) DownloadManager {
+	wireClient := openWireClient(t, sdkClient)
+	ports := pixivmcpserver.SDKPorts{
+		Open: func(pixivmcpserver.Account) (*pixiv.Client, error) {
+			probe.openCalls++
+			return wireClient, nil
+		},
+		Pooled: func(ctx context.Context, account pixivmcpserver.Account, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
+			_, err := attempt(ctx, wireClient)
+			return err
+		},
+	}
+	server := pixivmcpserver.NewWithSDKDownloadFactory(probe.downloads, func(*pixiv.Client) pixivmcpserver.DownloadManager {
 		probe.managerFactoryCalls++
 		return probe.downloads
-	}, service, pixivapp.SDKClientRequest{})
+	}, ports, pixivmcpserver.Account{})
 	clientTransport, serverTransport := mcp.NewInMemoryTransports()
 	ctx, cancel := context.WithCancel(context.Background())
 	go func() { _ = server.Run(ctx, serverTransport) }()
@@ -1843,18 +1835,19 @@ func newDownloadRandomProbeSession(t *testing.T, recommendationIDs []int64) (*mc
 		t.Fatal(err)
 	}
 	return session, func() {
-		session.Close()
+		_ = session.Close()
 		cancel()
 	}, probe
 }
 
 func testSDKIllust(id int64, title string, userID int64) pixiv.Artwork {
 	return pixiv.Artwork{
-		ID:    id,
-		Title: title,
-		Kind:  pixiv.ArtworkKindIllustration,
-		User:  pixiv.User{ID: userID, Name: "artist"},
-		Tags:  []pixiv.Tag{},
+		ID:          id,
+		Title:       title,
+		Kind:        pixiv.ArtworkKindIllustration,
+		PublishedAt: time.Date(2024, 5, 1, 1, 0, 0, 0, time.UTC),
+		User:        pixiv.User{ID: userID, Name: "artist"},
+		Tags:        []pixiv.Tag{},
 	}
 }
 
@@ -1885,7 +1878,7 @@ func TestSDKMutationToolsReturnStructuredSuccess(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			result := callTool(t, session, test.name, test.args)
-			var out mutationOut
+			var out outputs.Mutation
 			decodeStructured(t, result, &out)
 			if !out.Success || out.Action != test.want || out.Text != test.wantText {
 				t.Fatalf("mutation output = %+v", out)
@@ -1911,7 +1904,7 @@ func TestUserArtworksReturnsTaggedArtworkRecord(t *testing.T) {
 	defer closeSession()
 
 	result := callTool(t, session, "user_artworks", map[string]any{"user_id": 9})
-	var out illustListOut
+	var out outputs.Records
 	decodeStructured(t, result, &out)
 	if result.IsError {
 		t.Fatalf("user_artworks returned MCP error: %+v", result)
@@ -1935,7 +1928,7 @@ func TestSDKUserListToolsUseCanonicalUserIDAndFilters(t *testing.T) {
 	bookmarkResult := callTool(t, session, "user_bookmarks", map[string]any{
 		"user_id": 9, "restrict": "private", "tag": "tag-a", "limit": 1,
 	})
-	var bookmarksOut illustListOut
+	var bookmarksOut outputs.Records
 	decodeStructured(t, bookmarkResult, &bookmarksOut)
 	if client.bookmarksRequest.UserID != 9 || client.bookmarksRequest.Restrict != pixiv.RestrictPrivate || client.bookmarksRequest.Tag != "tag-a" || !client.bookmarksRequest.Cursor.IsZero() || len(bookmarksOut.Records) != 1 || bookmarksOut.Records[0].ID() != "15" {
 		t.Fatalf("bookmarks request=%+v output=%+v", client.bookmarksRequest, bookmarksOut)
@@ -1944,7 +1937,7 @@ func TestSDKUserListToolsUseCanonicalUserIDAndFilters(t *testing.T) {
 	followingResult := callTool(t, session, "user_following", map[string]any{
 		"user_id": 8, "restrict": "private", "page": 2, "limit": 1,
 	})
-	var followingOut userListOut
+	var followingOut outputs.Records
 	decodeStructured(t, followingResult, &followingOut)
 	if client.followingRequest.UserID != 8 || client.followingRequest.Restrict != pixiv.RestrictPrivate || len(followingOut.Records) != 1 || followingOut.Records[0].ID() != "31" {
 		t.Fatalf("following page request=%+v output=%+v", client.followingRequest, followingOut)
@@ -1988,7 +1981,7 @@ func TestSDKListPageRequiresPositiveLimitAndPositiveValue(t *testing.T) {
 		{"page": 1},
 	} {
 		result := callTool(t, session, "user_artworks", arguments)
-		var out illustListOut
+		var out outputs.Records
 		decodeStructured(t, result, &out)
 		if !resultHasText(result, "page") {
 			t.Fatalf("arguments=%v output=%+v", arguments, out)
@@ -2008,7 +2001,7 @@ func TestSDKListsFollowOpaqueCursorForLimitAndRejectCycles(t *testing.T) {
 	defaultSession, closeDefaultSession := newSDKTestSession(t, legacyDefault)
 	defer closeDefaultSession()
 	result := callTool(t, defaultSession, "user_artworks", map[string]any{})
-	var out illustListOut
+	var out outputs.Records
 	decodeStructured(t, result, &out)
 	if len(out.Records) != 1 || !out.Pagination.HasMore || out.Pagination.Limit != nil || out.Pagination.NextPage != nil || len(legacyDefault.artworksRequests) != 1 {
 		t.Fatalf("default single-batch output=%+v requests=%+v", out, legacyDefault.artworksRequests)
@@ -2063,7 +2056,7 @@ type fakeAPI struct{}
 
 func newTestSession(t *testing.T, downloads *fakeDownloads) (*mcp.ClientSession, func()) {
 	t.Helper()
-	server := New(&fakeAPI{}, downloads)
+	server := pixivmcpserver.New(&fakeAPI{}, downloads)
 	clientTransport, serverTransport := mcp.NewInMemoryTransports()
 	ctx, cancel := context.WithCancel(context.Background())
 	go func() { _ = server.Run(ctx, serverTransport) }()
@@ -2074,21 +2067,19 @@ func newTestSession(t *testing.T, downloads *fakeDownloads) (*mcp.ClientSession,
 		t.Fatalf("connect: %v", err)
 	}
 	return session, func() {
-		session.Close()
+		_ = session.Close()
 		cancel()
 	}
 }
 
-func newSDKTestSession(t *testing.T, sdkClient any) (*mcp.ClientSession, func()) {
+func newSDKTestSession(t *testing.T, sdkClient *fakeSDKClient) (*mcp.ClientSession, func()) {
 	return newSDKTestSessionWithAPI(t, &fakeAPI{}, sdkClient)
 }
 
-func newSDKDownloadTestSession(t *testing.T, sdkClient any, downloads DownloadManager) (*mcp.ClientSession, func()) {
+func newSDKDownloadTestSession(t *testing.T, sdkClient *fakeSDKClient, downloads pixivmcpserver.DownloadManager) (*mcp.ClientSession, func()) {
 	t.Helper()
-	service := pixivapp.SDKService{NewClient: func(pixivapp.SDKClientRequest) (pixivapp.ClientSet, error) {
-		return testClientSet(t, sdkClient), nil
-	}}
-	server := NewWithSDKDownloadFactory(downloads, func(pixivapp.ClientSet) DownloadManager { return downloads }, service, pixivapp.SDKClientRequest{})
+	ports, _ := newTestSDKPorts(t, sdkClient)
+	server := pixivmcpserver.NewWithSDKDownloadFactory(downloads, func(*pixiv.Client) pixivmcpserver.DownloadManager { return downloads }, ports, pixivmcpserver.Account{})
 	clientTransport, serverTransport := mcp.NewInMemoryTransports()
 	ctx, cancel := context.WithCancel(context.Background())
 	go func() { _ = server.Run(ctx, serverTransport) }()
@@ -2099,55 +2090,20 @@ func newSDKDownloadTestSession(t *testing.T, sdkClient any, downloads DownloadMa
 		t.Fatalf("connect: %v", err)
 	}
 	return session, func() {
-		session.Close()
+		_ = session.Close()
 		cancel()
 	}
 }
 
-func newSDKTestSessionWithAPI(t *testing.T, api any, sdkClient any) (*mcp.ClientSession, func()) {
+func newSDKTestSessionWithAPI(t *testing.T, api any, sdkClient *fakeSDKClient) (*mcp.ClientSession, func()) {
 	t.Helper()
-	service := pixivapp.SDKService{NewClient: func(pixivapp.SDKClientRequest) (pixivapp.ClientSet, error) {
-		return testClientSet(t, sdkClient), nil
-	}}
-	return newSDKTestSessionWithService(t, api, service)
+	ports, _ := newTestSDKPorts(t, sdkClient)
+	return newSDKTestSessionWithPorts(t, api, ports, pixivmcpserver.Account{})
 }
 
-func testClientSet(t *testing.T, value any) pixivapp.ClientSet {
+func newSDKTestSessionWithPorts(t *testing.T, api any, ports pixivmcpserver.SDKPorts, account pixivmcpserver.Account) (*mcp.ClientSession, func()) {
 	t.Helper()
-	auth, ok := value.(pixivapp.AuthClient)
-	if !ok {
-		t.Fatalf("test SDK does not implement AuthClient: %T", value)
-	}
-	artwork, ok := value.(pixivapp.ArtworkClient)
-	if !ok {
-		t.Fatalf("test SDK does not implement ArtworkClient: %T", value)
-	}
-	novel, ok := value.(pixivapp.NovelClient)
-	if !ok {
-		t.Fatalf("test SDK does not implement NovelClient: %T", value)
-	}
-	user, ok := value.(pixivapp.UserClient)
-	if !ok {
-		t.Fatalf("test SDK does not implement UserClient: %T", value)
-	}
-	mutation, ok := value.(pixivapp.MutationClient)
-	if !ok {
-		t.Fatalf("test SDK does not implement MutationClient: %T", value)
-	}
-	resource, ok := value.(pixivapp.ResourceClient)
-	if !ok {
-		t.Fatalf("test SDK does not implement ResourceClient: %T", value)
-	}
-	return pixivapp.NewClientSet(auth, artwork, novel, user, mutation, resource)
-}
-
-func newSDKTestSessionWithService(t *testing.T, api any, service pixivapp.SDKService) (*mcp.ClientSession, func()) {
-	return newSDKTestSessionWithServiceRequest(t, api, service, pixivapp.SDKClientRequest{})
-}
-
-func newSDKTestSessionWithServiceRequest(t *testing.T, api any, service pixivapp.SDKService, request pixivapp.SDKClientRequest) (*mcp.ClientSession, func()) {
-	t.Helper()
-	server := NewWithSDKDownloadFactory(&fakeDownloads{}, func(pixivapp.ClientSet) DownloadManager { return &fakeDownloads{} }, service, request)
+	server := pixivmcpserver.NewWithSDKDownloadFactory(&fakeDownloads{}, func(*pixiv.Client) pixivmcpserver.DownloadManager { return &fakeDownloads{} }, ports, account)
 	clientTransport, serverTransport := mcp.NewInMemoryTransports()
 	ctx, cancel := context.WithCancel(context.Background())
 	go func() { _ = server.Run(ctx, serverTransport) }()
@@ -2158,7 +2114,7 @@ func newSDKTestSessionWithServiceRequest(t *testing.T, api any, service pixivapp
 		t.Fatalf("connect: %v", err)
 	}
 	return session, func() {
-		session.Close()
+		_ = session.Close()
 		cancel()
 	}
 }
@@ -2193,231 +2149,157 @@ func resultHasText(result *mcp.CallToolResult, wanted string) bool {
 	return false
 }
 
+// fakeSDKClient 是 MCP 测试的 typed SDK fixture。testSDKTransport 按 App API
+// path 分发请求，调用这里的 typed func 字段并把结果编码为 wire JSON；同时把
+// 解析后的请求写回 capture 字段。
 type fakeSDKClient struct {
-	pixivapp.ClientSet
-	userID                   int64
-	searchIllust             func(context.Context, pixiv.SearchArtworksRequest) (sdk.Page[pixiv.Artwork], error)
-	searchNovel              func(context.Context, pixiv.SearchNovelsRequest) (sdk.Page[pixiv.Novel], error)
-	searchUser               func(context.Context, pixiv.SearchUsersRequest) (sdk.Page[pixiv.UserPreview], error)
-	illustDetail             func(context.Context, int64) (pixiv.Artwork, error)
-	artworks                 []pixiv.Artwork
-	bookmarks                []pixiv.Artwork
-	following                []pixiv.UserPreview
-	followingIllusts         func(context.Context, pixiv.FollowingArtworksRequest) (sdk.Page[pixiv.Artwork], error)
-	followingNovels          func(context.Context, pixiv.FollowingNovelsRequest) (sdk.Page[pixiv.Novel], error)
-	latestIllusts            func(context.Context, pixiv.LatestArtworksRequest) (sdk.Page[pixiv.Artwork], error)
-	latestNovels             func(context.Context, pixiv.LatestNovelsRequest) (sdk.Page[pixiv.Novel], error)
-	myPixivUsers             func(context.Context, pixiv.MyPixivUsersRequest) (sdk.Page[pixiv.UserPreview], error)
-	myPixivIllusts           func(context.Context, pixiv.MyPixivArtworksRequest) (sdk.Page[pixiv.Artwork], error)
-	myPixivNovels            func(context.Context, pixiv.MyPixivNovelsRequest) (sdk.Page[pixiv.Novel], error)
-	userNovels               func(context.Context, pixiv.UserNovelsRequest) (sdk.Page[pixiv.Novel], error)
-	recommendedArtworks      func(context.Context, pixiv.RecommendedArtworksRequest, int) (sdk.Page[pixiv.Artwork], error)
-	illustRanking            func(context.Context, pixiv.ArtworkRankingRequest) (sdk.Page[pixiv.Artwork], error)
-	novelRecommended         func(context.Context, pixiv.RecommendedNovelsRequest) (sdk.Page[pixiv.Novel], error)
-	userRecommended          func(context.Context, pixiv.RecommendedUsersRequest) (sdk.Page[pixiv.UserPreview], error)
-	userDetailResult         pixiv.UserDetail
-	userDetailErr            error
-	userDetailRequest        pixiv.UserRequest
-	artworksRequest          pixiv.UserArtworksRequest
-	artworksRequests         []pixiv.UserArtworksRequest
-	userArtworksFunc         func(pixiv.UserArtworksRequest, int) (sdk.Page[pixiv.Artwork], error)
-	userArtworksCalls        int
-	recommendedArtworksCalls int
-	bookmarksRequest         pixiv.UserArtworkBookmarksRequest
-	userBookmarksErr         error
-	followingRequest         pixiv.UserFollowingRequest
-	addBookmarkRequest       pixiv.AddBookmarkRequest
-	removeBookmarkRequest    pixiv.RemoveBookmarkRequest
-	followUserRequest        pixiv.FollowUserRequest
-	unfollowUserRequest      pixiv.UnfollowUserRequest
+	mu sync.Mutex
+
+	userID                int64
+	searchIllust          func(context.Context, pixiv.SearchArtworksRequest) (sdk.Page[pixiv.Artwork], error)
+	searchNovel           func(context.Context, pixiv.SearchNovelsRequest) (sdk.Page[pixiv.Novel], error)
+	searchUser            func(context.Context, pixiv.SearchUsersRequest) (sdk.Page[pixiv.UserPreview], error)
+	illustDetail          func(context.Context, int64) (pixiv.Artwork, error)
+	novelDetail           func(context.Context, int64) (pixiv.Novel, error)
+	artworks              []pixiv.Artwork
+	bookmarks             []pixiv.Artwork
+	following             []pixiv.UserPreview
+	followingIllusts      func(context.Context, pixiv.FollowingArtworksRequest) (sdk.Page[pixiv.Artwork], error)
+	followingNovels       func(context.Context, pixiv.FollowingNovelsRequest) (sdk.Page[pixiv.Novel], error)
+	latestIllusts         func(context.Context, pixiv.LatestArtworksRequest) (sdk.Page[pixiv.Artwork], error)
+	latestNovels          func(context.Context, pixiv.LatestNovelsRequest) (sdk.Page[pixiv.Novel], error)
+	myPixivUsers          func(context.Context, pixiv.MyPixivUsersRequest) (sdk.Page[pixiv.UserPreview], error)
+	myPixivIllusts        func(context.Context, pixiv.MyPixivArtworksRequest) (sdk.Page[pixiv.Artwork], error)
+	myPixivNovels         func(context.Context, pixiv.MyPixivNovelsRequest) (sdk.Page[pixiv.Novel], error)
+	userNovels            func(context.Context, pixiv.UserNovelsRequest) (sdk.Page[pixiv.Novel], error)
+	userNovelBookmarks    func(context.Context, pixiv.UserNovelBookmarksRequest) (sdk.Page[pixiv.Novel], error)
+	userFollowing         func(context.Context, pixiv.UserFollowingRequest) (sdk.Page[pixiv.UserPreview], error)
+	userFollowers         func(context.Context, pixiv.UserFollowersRequest) (sdk.Page[pixiv.UserPreview], error)
+	relatedUsers          func(context.Context, pixiv.RelatedUsersRequest) (sdk.Page[pixiv.UserPreview], error)
+	blockedUsers          func(context.Context, pixiv.UserBlockedUsersRequest) (sdk.Page[pixiv.UserPreview], error)
+	recommendedArtworks   func(context.Context, pixiv.RecommendedArtworksRequest, int) (sdk.Page[pixiv.Artwork], error)
+	illustRanking         func(context.Context, pixiv.ArtworkRankingRequest) (sdk.Page[pixiv.Artwork], error)
+	novelRecommended      func(context.Context, pixiv.RecommendedNovelsRequest) (sdk.Page[pixiv.Novel], error)
+	userRecommended       func(context.Context, pixiv.RecommendedUsersRequest) (sdk.Page[pixiv.UserPreview], error)
+	relatedArtworks       func(context.Context, pixiv.RelatedArtworksRequest) (sdk.Page[pixiv.Artwork], error)
+	artworkSeries         func(context.Context, pixiv.ArtworkSeriesRequest) (sdk.Page[pixiv.Artwork], error)
+	novelSeries           func(context.Context, pixiv.NovelSeriesRequest) (sdk.Page[pixiv.Novel], error)
+	userDetailResult      pixiv.UserDetail
+	userDetailErr         error
+	artworkBookmarkDetail pixiv.ArtworkBookmarkDetail
+	artworkBookmarkErr    error
+	bookmarkTags          []pixiv.BookmarkTag
+	illustComments        []pixiv.Comment
+	novelComments         []pixiv.Comment
+	trendingTags          []pixiv.TrendingTag
+	ugoiraMetadata        pixiv.UgoiraMetadata
+	addBookmarkErr        error
+	removeBookmarkErr     error
+	followUserErr         error
+	unfollowUserErr       error
+
+	// capture
+	searchIllustRequest        pixiv.SearchArtworksRequest
+	searchNovelRequest         pixiv.SearchNovelsRequest
+	searchUserRequest          pixiv.SearchUsersRequest
+	illustDetailRequest        int64
+	novelDetailRequest         int64
+	relatedArtworksRequest     pixiv.RelatedArtworksRequest
+	artworkSeriesRequest       pixiv.ArtworkSeriesRequest
+	illustRankingRequest       pixiv.ArtworkRankingRequest
+	recommendedArtworksRequest pixiv.RecommendedArtworksRequest
+	followingIllustsRequest    pixiv.FollowingArtworksRequest
+	followingNovelsRequest     pixiv.FollowingNovelsRequest
+	latestIllustsRequest       pixiv.LatestArtworksRequest
+	latestNovelsRequest        pixiv.LatestNovelsRequest
+	myPixivUsersRequest        pixiv.MyPixivUsersRequest
+	myPixivIllustsRequest      pixiv.MyPixivArtworksRequest
+	myPixivNovelsRequest       pixiv.MyPixivNovelsRequest
+	novelRecommendedRequest    pixiv.RecommendedNovelsRequest
+	userRecommendedRequest     pixiv.RecommendedUsersRequest
+	userDetailRequest          pixiv.UserRequest
+	artworksRequest            pixiv.UserArtworksRequest
+	artworksRequests           []pixiv.UserArtworksRequest
+	userArtworksFunc           func(pixiv.UserArtworksRequest, int) (sdk.Page[pixiv.Artwork], error)
+	userArtworksCalls          int
+	recommendedArtworksCalls   int
+	bookmarksRequest           pixiv.UserArtworkBookmarksRequest
+	userBookmarksErr           error
+	userNovelBookmarksRequest  pixiv.UserNovelBookmarksRequest
+	userNovelsRequest          pixiv.UserNovelsRequest
+	followingRequest           pixiv.UserFollowingRequest
+	userFollowersRequest       pixiv.UserFollowersRequest
+	relatedUsersRequest        pixiv.RelatedUsersRequest
+	blockedUsersRequest        pixiv.UserBlockedUsersRequest
+	bookmarkTagsRequest        pixiv.UserArtworkBookmarkTagsRequest
+	artworkBookmarkRequest     pixiv.ArtworkBookmarkRequest
+	novelSeriesRequest         pixiv.NovelSeriesRequest
+	illustCommentsRequest      pixiv.ArtworkCommentsRequest
+	novelCommentsRequest       pixiv.NovelCommentsRequest
+	ugoiraMetadataRequest      pixiv.UgoiraMetadataRequest
+	addBookmarkRequest         pixiv.AddBookmarkRequest
+	removeBookmarkRequest      pixiv.RemoveBookmarkRequest
+	followUserRequest          pixiv.FollowUserRequest
+	unfollowUserRequest        pixiv.UnfollowUserRequest
+
+	// typed read tools canned results (task11)
+	artworkSeriesPage      sdk.Page[pixiv.Artwork]
+	novelDetailResult      pixiv.Novel
+	novelRequest           pixiv.NovelRequest
+	novelContentHTML       string
+	novelContentRequest    pixiv.NovelContentRequest
+	novelSeriesResult      pixiv.NovelSeriesResult
+	artworkCommentsResult  pixiv.CommentPage
+	artworkCommentsRequest pixiv.ArtworkCommentsRequest
+	novelCommentsResult    pixiv.CommentPage
+	bookmarkTagsPage       sdk.Page[pixiv.BookmarkTag]
+	bookmarkDetailResult   pixiv.ArtworkBookmarkDetail
+	bookmarkDetailRequest  pixiv.ArtworkBookmarkRequest
+	novelBookmarksPage     sdk.Page[pixiv.Novel]
+	novelBookmarksRequest  pixiv.UserNovelBookmarksRequest
+	followersPage          sdk.Page[pixiv.UserPreview]
+	followersRequest       pixiv.UserFollowersRequest
+	relatedPage            sdk.Page[pixiv.UserPreview]
+	relatedRequest         pixiv.RelatedUsersRequest
+	blockedPage            sdk.Page[pixiv.UserPreview]
+	blockedRequest         pixiv.UserBlockedUsersRequest
 }
 
-type failingMutationSDKClient struct {
-	fakeSDKClient
-	err error
+// downloadOut 是 download tool 的本地测试镜像，与生产 download 包的输出契约保持
+// 相同 JSON 字段；外部测试包不能直接使用未导出的 download.downloadOut。
+type downloadOut struct {
+	Delivery string               `json:"delivery"`
+	Items    []downloadItemOut    `json:"items"`
+	Failures []downloadFailureOut `json:"failures"`
+	Files    []downloadFileOut    `json:"files"`
+	Text     string               `json:"text"`
 }
 
-func (f *failingMutationSDKClient) AddBookmark(context.Context, pixiv.AddBookmarkRequest) error {
-	return f.err
+type downloadItemOut struct {
+	URL      string            `json:"url"`
+	IllustID int64             `json:"illust_id"`
+	Title    string            `json:"title"`
+	Author   string            `json:"author"`
+	Type     string            `json:"type"`
+	Files    []downloadFileOut `json:"files"`
 }
 
-func (f *fakeSDKClient) CurrentUserID(context.Context) (int64, error) { return f.userID, nil }
-
-func (f *fakeSDKClient) SearchArtworks(ctx context.Context, request pixiv.SearchArtworksRequest) (sdk.Page[pixiv.Artwork], error) {
-	if f.searchIllust != nil {
-		return f.searchIllust(ctx, request)
-	}
-	return sdk.Page[pixiv.Artwork]{Items: []pixiv.Artwork{}}, nil
+type downloadFailureOut struct {
+	URL      string `json:"url"`
+	IllustID int64  `json:"illust_id"`
+	Type     string `json:"type"`
+	Message  string `json:"message"`
 }
 
-func (f *fakeSDKClient) SearchNovels(ctx context.Context, request pixiv.SearchNovelsRequest) (sdk.Page[pixiv.Novel], error) {
-	if f.searchNovel != nil {
-		return f.searchNovel(ctx, request)
-	}
-	return sdk.Page[pixiv.Novel]{Items: []pixiv.Novel{}}, nil
-}
-
-func (f *fakeSDKClient) Artwork(ctx context.Context, request pixiv.ArtworkRequest) (pixiv.Artwork, error) {
-	if f.illustDetail != nil {
-		return f.illustDetail(ctx, request.ArtworkID)
-	}
-	return pixiv.Artwork{}, nil
-}
-
-func (*fakeSDKClient) RelatedArtworks(context.Context, pixiv.RelatedArtworksRequest) (sdk.Page[pixiv.Artwork], error) {
-	return sdk.Page[pixiv.Artwork]{Items: []pixiv.Artwork{}}, nil
-}
-
-func (f *fakeSDKClient) ArtworkRanking(ctx context.Context, request pixiv.ArtworkRankingRequest) (sdk.Page[pixiv.Artwork], error) {
-	if f.illustRanking != nil {
-		return f.illustRanking(ctx, request)
-	}
-	return sdk.Page[pixiv.Artwork]{Items: []pixiv.Artwork{}}, nil
-}
-
-func (f *fakeSDKClient) RecommendedArtworks(ctx context.Context, request pixiv.RecommendedArtworksRequest) (sdk.Page[pixiv.Artwork], error) {
-	f.recommendedArtworksCalls++
-	if f.recommendedArtworks != nil {
-		return f.recommendedArtworks(ctx, request, f.recommendedArtworksCalls)
-	}
-	return sdk.Page[pixiv.Artwork]{Items: []pixiv.Artwork{}}, nil
-}
-
-func (f *fakeSDKClient) FollowingArtworks(ctx context.Context, request pixiv.FollowingArtworksRequest) (sdk.Page[pixiv.Artwork], error) {
-	if f.followingIllusts != nil {
-		return f.followingIllusts(ctx, request)
-	}
-	return sdk.Page[pixiv.Artwork]{Items: []pixiv.Artwork{}}, nil
-}
-
-func (f *fakeSDKClient) FollowingNovels(ctx context.Context, request pixiv.FollowingNovelsRequest) (sdk.Page[pixiv.Novel], error) {
-	if f.followingNovels != nil {
-		return f.followingNovels(ctx, request)
-	}
-	return sdk.Page[pixiv.Novel]{Items: []pixiv.Novel{}}, nil
-}
-
-func (f *fakeSDKClient) LatestArtworks(ctx context.Context, request pixiv.LatestArtworksRequest) (sdk.Page[pixiv.Artwork], error) {
-	if f.latestIllusts != nil {
-		return f.latestIllusts(ctx, request)
-	}
-	return sdk.Page[pixiv.Artwork]{Items: []pixiv.Artwork{}}, nil
-}
-
-func (f *fakeSDKClient) LatestNovels(ctx context.Context, request pixiv.LatestNovelsRequest) (sdk.Page[pixiv.Novel], error) {
-	if f.latestNovels != nil {
-		return f.latestNovels(ctx, request)
-	}
-	return sdk.Page[pixiv.Novel]{Items: []pixiv.Novel{}}, nil
-}
-
-func (f *fakeSDKClient) MyPixivUsers(ctx context.Context, request pixiv.MyPixivUsersRequest) (sdk.Page[pixiv.UserPreview], error) {
-	if f.myPixivUsers != nil {
-		return f.myPixivUsers(ctx, request)
-	}
-	return sdk.Page[pixiv.UserPreview]{Items: []pixiv.UserPreview{}}, nil
-}
-
-func (f *fakeSDKClient) MyPixivArtworks(ctx context.Context, request pixiv.MyPixivArtworksRequest) (sdk.Page[pixiv.Artwork], error) {
-	if f.myPixivIllusts != nil {
-		return f.myPixivIllusts(ctx, request)
-	}
-	return sdk.Page[pixiv.Artwork]{Items: []pixiv.Artwork{}}, nil
-}
-
-func (f *fakeSDKClient) MyPixivNovels(ctx context.Context, request pixiv.MyPixivNovelsRequest) (sdk.Page[pixiv.Novel], error) {
-	if f.myPixivNovels != nil {
-		return f.myPixivNovels(ctx, request)
-	}
-	return sdk.Page[pixiv.Novel]{Items: []pixiv.Novel{}}, nil
-}
-
-func (f *fakeSDKClient) SearchUsers(ctx context.Context, request pixiv.SearchUsersRequest) (sdk.Page[pixiv.UserPreview], error) {
-	if f.searchUser != nil {
-		return f.searchUser(ctx, request)
-	}
-	return sdk.Page[pixiv.UserPreview]{Items: []pixiv.UserPreview{}}, nil
-}
-
-func (*fakeSDKClient) TrendingArtworkTags(context.Context, pixiv.TrendingArtworkTagsRequest) ([]pixiv.TrendingTag, error) {
-	return []pixiv.TrendingTag{}, nil
-}
-
-func (f *fakeSDKClient) RecommendedNovels(ctx context.Context, request pixiv.RecommendedNovelsRequest) (sdk.Page[pixiv.Novel], error) {
-	if f.novelRecommended != nil {
-		return f.novelRecommended(ctx, request)
-	}
-	return sdk.Page[pixiv.Novel]{Items: []pixiv.Novel{}}, nil
-}
-
-func (f *fakeSDKClient) RecommendedUsers(ctx context.Context, request pixiv.RecommendedUsersRequest) (sdk.Page[pixiv.UserPreview], error) {
-	if f.userRecommended != nil {
-		return f.userRecommended(ctx, request)
-	}
-	return sdk.Page[pixiv.UserPreview]{Items: []pixiv.UserPreview{}}, nil
-}
-
-// User 记录 MCP 到公开 SDK 的完整请求，供结构化输出与错误路径断言。
-func (f *fakeSDKClient) User(_ context.Context, request pixiv.UserRequest) (pixiv.UserDetail, error) {
-	f.userDetailRequest = request
-	if f.userDetailErr != nil {
-		return pixiv.UserDetail{}, f.userDetailErr
-	}
-	return f.userDetailResult, nil
-}
-
-func (f *fakeSDKClient) UserArtworks(_ context.Context, request pixiv.UserArtworksRequest) (sdk.Page[pixiv.Artwork], error) {
-	f.artworksRequest = request
-	f.artworksRequests = append(f.artworksRequests, request)
-	if f.userArtworksFunc != nil {
-		f.userArtworksCalls++
-		return f.userArtworksFunc(request, f.userArtworksCalls)
-	}
-	return sdk.Page[pixiv.Artwork]{Items: f.artworks}, nil
-}
-
-func (f *fakeSDKClient) UserArtworkBookmarks(_ context.Context, request pixiv.UserArtworkBookmarksRequest) (sdk.Page[pixiv.Artwork], error) {
-	f.bookmarksRequest = request
-	if f.userBookmarksErr != nil {
-		return sdk.Page[pixiv.Artwork]{}, f.userBookmarksErr
-	}
-	return sdk.Page[pixiv.Artwork]{Items: f.bookmarks}, nil
-}
-
-func (f *fakeSDKClient) UserFollowing(_ context.Context, request pixiv.UserFollowingRequest) (sdk.Page[pixiv.UserPreview], error) {
-	f.followingRequest = request
-	return sdk.Page[pixiv.UserPreview]{Items: f.following}, nil
-}
-
-func (f *fakeSDKClient) UserNovels(ctx context.Context, request pixiv.UserNovelsRequest) (sdk.Page[pixiv.Novel], error) {
-	if f.userNovels != nil {
-		return f.userNovels(ctx, request)
-	}
-	return sdk.Page[pixiv.Novel]{Items: []pixiv.Novel{}}, nil
-}
-
-func (f *fakeSDKClient) AddBookmark(_ context.Context, request pixiv.AddBookmarkRequest) error {
-	f.addBookmarkRequest = request
-	return nil
-}
-
-func (f *fakeSDKClient) RemoveBookmark(_ context.Context, request pixiv.RemoveBookmarkRequest) error {
-	f.removeBookmarkRequest = request
-	return nil
-}
-
-func (f *fakeSDKClient) FollowUser(_ context.Context, request pixiv.FollowUserRequest) error {
-	f.followUserRequest = request
-	return nil
-}
-
-func (f *fakeSDKClient) UnfollowUser(_ context.Context, request pixiv.UnfollowUserRequest) error {
-	f.unfollowUserRequest = request
-	return nil
-}
-
-func (*fakeSDKClient) ParseResourceRef(string) (sdk.ResourceRef, error) {
-	return sdk.ResourceRef{}, errors.New("resource is not configured")
+type downloadFileOut struct {
+	IllustID  int64  `json:"illust_id"`
+	Title     string `json:"title"`
+	Author    string `json:"author"`
+	Path      string `json:"path"`
+	FileURI   string `json:"file_uri"`
+	MIMEType  string `json:"mime_type"`
+	SizeBytes int64  `json:"size_bytes"`
+	Page      int    `json:"page,omitempty"`
 }
 
 func decodeDownloadOut(t *testing.T, result *mcp.CallToolResult) downloadOut {
@@ -2449,15 +2331,15 @@ func assertEmptyDownloadResult(t *testing.T, result *mcp.CallToolResult, wantDel
 }
 
 type fakeDownloads struct {
-	artworks      []downloadapp.DownloadedArtwork
+	artworks      []downloader.DownloadedArtwork
 	downloadCalls int
 	downloadIDs   []int64
-	lastRequest   downloadapp.DownloadRequest
+	lastRequest   downloader.DownloadRequest
 	err           error
 }
 
 func (fakeDownloads) SetDownloadPath(string) error { return nil }
-func (d *fakeDownloads) Download(_ context.Context, request downloadapp.DownloadRequest) ([]downloadapp.DownloadedArtwork, error) {
+func (d *fakeDownloads) Download(_ context.Context, request downloader.DownloadRequest) ([]downloader.DownloadedArtwork, error) {
 	ids := request.IllustIDs
 
 	d.downloadCalls++

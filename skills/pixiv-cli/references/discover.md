@@ -6,7 +6,7 @@ in SKILL.md already ran. Verify flags with `pixiv <cmd> --help`.
 ## Find works by keyword/tag
 
 ```
-pixiv search "初音ミク" --limit 10 --json
+pixiv search "初音ミク" --type artwork --limit 10 --json
 ```
 
 - Default search field is partial tag match (`--search-by tag-partial`); switch
@@ -25,27 +25,30 @@ pixiv search "初音ミク" --limit 10 --json
   reserve `--tag` for `user bookmarks` (filter) and `bookmark add` (repeatable
   bookmark tag).
 - Sort defaults to `date_desc`; `date_asc` is the only other supported value.
-- Stable filters include `--rating sfw|r18|r18g|mature|all`, `--type
-  all|illust-and-ugoira|illust|manga|ugoira`, `--ai-mode all|exclude|only`,
-  `--aspect-ratio all|landscape|portrait|square`, `--resolution
-  all|high|medium|low`, exact `--draw-tool` names, and App-only, Pixiv Premium-only
-  `--bookmark-min N` / `--bookmark-max N` public bookmark-count bounds. Only pass restricted
-  ratings or bookmark bounds when the user explicitly asks; say that Pixiv Premium is required
-  for bookmark bounds, and never call bookmark count a like count. For a saved account, bookmark bounds use a cached
-  self-profile membership check (24h by default) and a non-Premium account is blocked before search; do not refresh
-  that cache unless the user explicitly asks for `pixiv auth refresh`.
-- `--filter EXPR` adds a local typed artwork rule and combines with every other
-  illustration flag using AND. It permits comparisons, `and`/`or`/`not`,
-  `in`/`not in`, array literals, and `any`/`all`; use fields such as
-  `bookmarkCount`, `viewCount`, `xRestrict`, `tags`, `tools`, `rating`, and
-  `aiMode`. For example: `--filter 'bookmarkCount >= 5000 and xRestrict == 0'`.
+- `--content-type all|illust-and-ugoira|illust|manga|ugoira`, `--ai-mode
+  all|exclude|only`, `--aspect-ratio all|landscape|portrait|square`,
+  `--resolution all|high|medium|low`, and exact `--draw-tool` names are
+  artwork-only filters. `--type` selects the entity route; it is not an
+  artwork subtype flag.
+- `--bookmark-min N` / `--bookmark-max N` are non-negative inclusive public
+  bookmark-count bounds. Use `--bookmark-strategy auto|local|best_effort|server`
+  only when the user explicitly asks for bookmark-count filtering. `auto`
+  currently uses the local candidate filtering path; `local` has the same
+  filtering semantics. `best_effort` preserves the upstream candidate bounds
+  and marks the result partial when local completeness cannot be established.
+  `server` fails explicitly because this branch has no reliable server-filter
+  evidence. Never call bookmark count a like count, and do not describe a
+  candidate page as a complete site-wide result.
+- `--rating` is retained only as a compatibility diagnostic. Any non-empty
+  value is rejected because the v1 App API search contract has no verified
+  rating field; it is not a local filter. The same unsupported-field rule
+  applies when a flag is not valid for the selected entity.
 - Drawing-tool names use the fixed catalog for this CLI version. Choose an exact
   value from the [CLI reference](../../../docs/en/cli-reference.md#drawing-tool-catalog);
   a unique one-edit spelling correction is shown in the validation error.
-- Search requires an authenticated local account. R18/R18G/mature,
-  `tag-title-caption` and bookmark bounds require authentication; bookmark
-  bounds also require Pixiv Premium. Never add a Cookie workaround or report an authentication
-  failure as an empty result.
+- Search requires an authenticated local account. `tag-title-caption` and
+  bookmark-count filtering are App-only in this branch. Never add a Cookie
+  workaround or report an authentication failure as an empty result.
 - Need page 2+: `--page N` (1-based) with a positive `--limit`.
 - Local filters skip leading empty upstream batches until the first non-empty
   logical batch or true end. `--limit N` fills filtered results across batches;
@@ -57,19 +60,19 @@ pixiv search "初音ミク" --limit 10 --json
 ## Find novels by keyword/tag
 
 ```
-pixiv novel search "初音ミク" --rating sfw --min-text-length 1000 --limit 10 --json
+pixiv search "初音ミク" --type novel --limit 10 --json
 ```
 
-- `novel search` uses App authentication.
-- It supports `--search-by tag-partial|tag-exact|title-caption`, `--sort
-  date_desc|date_asc`, `--period day|week|month`, and `--rating
-  sfw|r18|r18g|mature|all`.
-- `--min-text-length` and `--max-text-length` are non-negative character bounds;
-  `0` disables a bound, and a non-zero maximum cannot be below the minimum.
-  Use `--original-only` only when the user explicitly wants original novels.
-- Rating, text length, and original-only are verified from returned novel fields.
-  They may therefore skip upstream batches; pagination follows the same logical
-  `--limit`/`--page` rules as illustration search. Never infer a request cap.
+- The canonical route uses `--type novel` and supports only
+  `--search-by tag-partial|tag-exact|title-caption`, `--sort
+  date_desc|date_asc`, and `--period day|week|month`. The legacy
+  `pixiv novel search` route remains a compatibility route with the same basic
+  fields.
+- `--rating`, `--min-text-length`, `--max-text-length`, and `--original-only`
+  are not part of the v1 novel-search contract. Do not send them or treat them
+  as local filters.
+- Novel search uses App authentication and follows the same logical
+  `--limit`/`--page` rules as other paged lists. Never infer a request cap.
 - Novel JSON includes `url`, `x_restrict`, `text_length`, and `is_original`.
 
 ## Pagination and completeness
@@ -106,8 +109,12 @@ prefer one `detail` call over re-searching the same work.
 ```
 pixiv user detail 11
 pixiv user artworks 11 --limit 20
+pixiv user novels 11 --limit 20
 pixiv user bookmarks 11 --tag "初音ミク" --limit 20
 pixiv user following 11 --limit 20
+pixiv user followers 11 --limit 20
+pixiv user related 11 --limit 20
+pixiv user blocked 11 --limit 20
 ```
 
 To discover a user by name instead of starting from an artwork, use:
@@ -116,20 +123,18 @@ To discover a user by name instead of starting from an artwork, use:
 pixiv user search "NAME" --limit 20 --json
 ```
 
-- Authenticated results use Pixiv's App user search and report
-  `source: "app_search"`.
-- Anonymous fallback reports `source: "related_illust_authors"`; it is a
-  deduplicated list of authors from illustration search, not username search.
-  State that distinction before claiming a name search is complete.
+- User search uses the authenticated App user-search operation. This v1 branch
+  has no anonymous or `related_illust_authors` fallback; an account or an
+  explicit authentication error is required.
 
 - `user detail USER_ID` requires the ID (no self-default). `--json` gives the
   full stable profile envelope.
 - `user artworks` / `bookmarks` / `following` default to the current account
   when USER_ID is omitted.
 - `user detail` accepts only the ID. If the user gives a `pixiv.net/users/<id>`
-  URL, extract its numeric ID. For a name, prefer `user search` when authenticated;
-  otherwise search works and take the author ID from results while labeling the
-  anonymous source correctly.
+  URL, extract its numeric ID. For a name, use `user search` while
+  authenticated. Do not substitute an artwork search or label its authors as a
+  username-search result.
 
 ## Rankings and recommendations
 
@@ -137,8 +142,8 @@ pixiv user search "NAME" --limit 20 --json
 pixiv ranking --mode day --limit 10
 pixiv ranking --mode week --date 2026-07-01 --limit 10
 pixiv ranking --mode week_r18 --limit 10
-pixiv recommended illust --limit 10
-pixiv recommended all --limit 5
+pixiv recommended --type artwork --limit 10
+pixiv recommended --type all --limit 5
 ```
 
 - `ranking` supports `day`, `day_male`, `day_female`, `week`, `week_original`,
@@ -146,15 +151,18 @@ pixiv recommended all --limit 5
   `week_rookie_manga`, `day_r18`, `day_male_r18`, `day_female_r18`,
   `week_r18`, and `week_r18g`. The final nine require authentication; never
   substitute a failed extended mode with `day`.
-- `recommended` always needs authentication and a kind. For `all`, inspect the
-  actual output shape and keep the returned categories separate rather than
-  assuming one flat list.
+- `recommended` always needs authentication and a kind. Use the typed
+  `--type` flag; for `all`, inspect the actual output shape and keep the
+  returned categories separate rather than assuming one flat list.
 
 ## Curate: bookmarks and follows (write ops)
 
 ```
 pixiv bookmark add 129543211
 pixiv follow add 11
+pixiv bookmark list --type artwork --limit 20
+pixiv bookmark tags --limit 20
+pixiv bookmark detail 129543211 --json
 ```
 
 State the target ID in one line before executing (SKILL.md operation tiers).

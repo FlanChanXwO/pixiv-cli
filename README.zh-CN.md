@@ -164,7 +164,7 @@ MCP 固定状态、错误和展示文本使用英文；Pixiv 元数据及用户�
 
 ### Go SDK
 
-Public SDK 显式接收 credential，不读取 CLI 的本地账号库。下面示例只为避免把 secret 写入源码而从进程环境读取 refresh token；应用应自行保存 `Open` 返回的 rotation 后 credential：
+Public SDK 显式接收 credential，不读取 CLI 的本地账号库或进程环境。应用应从自己的 secret store 取得 credential，并自行保存 `Open` 返回的 rotation 后 credential：
 
 ```go
 package main
@@ -173,14 +173,14 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"os"
 
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 )
 
 func main() {
 	ctx := context.Background()
-	client, _, err := pixiv.Open(ctx, os.Getenv("PIXIV_REFRESH_TOKEN"))
+	refreshToken := "replace-with-a-refresh-token-from-your-secret-store"
+	client, _, err := pixiv.Open(ctx, refreshToken)
 	if err != nil {
 		log.Fatal(err)
 	}

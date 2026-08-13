@@ -1,10 +1,12 @@
-package pixiv
+package pixiv_test
 
 import (
 	"context"
 	"slices"
+	"strings"
 	"testing"
 
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/outputs"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -35,7 +37,7 @@ func TestSearchIllustFilterFillsLogicalLimitAndDeduplicatesAcrossPages(t *testin
 	if result.IsError {
 		t.Fatalf("search_illust result=%+v", result)
 	}
-	var out illustQueryOut
+	var out outputs.Records
 	decodeStructured(t, result, &out)
 	got := make([]string, 0, len(out.Records))
 	for _, record := range out.Records {
@@ -79,26 +81,15 @@ func TestMCPRecordFilterSchemasAreEntitySpecific(t *testing.T) {
 	}
 }
 
-func TestTopLevelFilterExpressionIsIgnored(t *testing.T) {
-	client := &fakeSDKClient{searchIllust: func(_ context.Context, _ pixiv.SearchArtworksRequest) (sdk.Page[pixiv.Artwork], error) {
-		first := filteredTestIllust(1, 100, 1, "keep")
-		first.TotalBookmarks = 1
-		second := filteredTestIllust(2, 100, 1, "other")
-		second.TotalBookmarks = 2
-		return sdk.Page[pixiv.Artwork]{Items: []pixiv.Artwork{first, second}}, nil
-	}}
-	session, closeSession := newSDKTestSession(t, client)
+func TestTopLevelFilterExpressionIsRejected(t *testing.T) {
+	session, closeSession := newSDKTestSession(t, &fakeSDKClient{})
 	defer closeSession()
-	result := callTool(t, session, "search_illust", map[string]any{
-		"word": "cat", "filter": "bookmarkCount >= 2", "illust_filter": map[string]any{"tags": []string{"keep"}},
+	_, err := session.CallTool(context.Background(), &mcp.CallToolParams{
+		Name:      "search_illust",
+		Arguments: map[string]any{"word": "cat", "filter": "bookmarkCount >= 2"},
 	})
-	if result.IsError {
-		t.Fatalf("search_illust result=%+v", result)
-	}
-	var out illustQueryOut
-	decodeStructured(t, result, &out)
-	if len(out.Records) != 1 || out.Records[0].ID() != "1" {
-		t.Fatalf("top-level expression must be ignored and structured filter applied: %+v", out.Records)
+	if err == nil || !strings.Contains(err.Error(), "additional properties") {
+		t.Fatalf("top-level filter must be rejected, err=%v", err)
 	}
 }
 

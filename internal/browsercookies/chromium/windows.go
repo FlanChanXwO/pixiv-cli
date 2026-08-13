@@ -7,7 +7,7 @@ import (
 	"context"
 	"errors"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/browsercookies/core"
+	"github.com/FlanChanXwO/pixiv-cli/internal/browsercookies"
 	"github.com/FlanChanXwO/pixiv-cli/internal/browsercookies/secret"
 )
 
@@ -20,7 +20,7 @@ func (p *provider) encryptionKeys(ctx context.Context) ([][]byte, error) {
 		return nil, err
 	}
 	if !present {
-		return nil, core.ErrEncryptedValueUnsupported
+		return nil, browsercookies.ErrEncryptedValueUnsupported
 	}
 	if bytes.HasPrefix(localStateKey, []byte("DPAPI")) {
 		localStateKey = localStateKey[len("DPAPI"):]
@@ -42,7 +42,7 @@ func (p *provider) decryptLegacy(ctx context.Context, blob []byte) ([]byte, erro
 
 func mapDPAPIError(err error) error {
 	if errors.Is(err, secret.ErrInvalidBlob) || errors.Is(err, secret.ErrDPAPI) {
-		return core.ErrDPAPI
+		return browsercookies.ErrDPAPI
 	}
 	return err
 }

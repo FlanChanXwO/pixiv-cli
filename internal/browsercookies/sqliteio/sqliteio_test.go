@@ -1,4 +1,4 @@
-package sqliteio
+package sqliteio_test
 
 import (
 	"context"
@@ -8,7 +8,8 @@ import (
 	"runtime"
 	"testing"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/browsercookies/core"
+	"github.com/FlanChanXwO/pixiv-cli/internal/browsercookies"
+	"github.com/FlanChanXwO/pixiv-cli/internal/browsercookies/sqliteio"
 )
 
 func TestQueryMapsPermissionFailureWithoutLeakingCommandOutput(t *testing.T) {
@@ -25,8 +26,8 @@ func TestQueryMapsPermissionFailureWithoutLeakingCommandOutput(t *testing.T) {
 	oldPath := os.Getenv("PATH")
 	t.Setenv("PATH", dir+string(os.PathListSeparator)+oldPath)
 
-	_, err := Query(context.Background(), filepath.Join(dir, "Cookies"), "SELECT 1", nil)
-	if !errors.Is(err, core.ErrPermissionDenied) {
+	_, err := sqliteio.Query(context.Background(), filepath.Join(dir, "Cookies"), "SELECT 1", nil)
+	if !errors.Is(err, browsercookies.ErrPermissionDenied) {
 		t.Fatalf("err = %v, want ErrPermissionDenied", err)
 	}
 	if err.Error() == "permission denied: fixture-secret" {

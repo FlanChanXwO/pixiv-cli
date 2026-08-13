@@ -10,11 +10,12 @@ import (
 	"os"
 	"strings"
 	"testing"
-	"time"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/application/config"
-	"github.com/FlanChanXwO/pixiv-cli/internal/bootstrap"
 	"github.com/FlanChanXwO/pixiv-cli/internal/buildinfo"
+	mcpcommands "github.com/FlanChanXwO/pixiv-cli/internal/cli/mcp"
+	"github.com/FlanChanXwO/pixiv-cli/internal/platform/localstate"
+	"github.com/FlanChanXwO/pixiv-cli/internal/storage/config"
+	filesecret "github.com/FlanChanXwO/pixiv-cli/internal/storage/file/secret"
 	"github.com/FlanChanXwO/pixiv-cli/internal/update"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -150,7 +151,7 @@ func TestRunSkipsAutomaticUpdateForExcludedCommands(t *testing.T) {
 	})
 	t.Run("MCP", func(t *testing.T) {
 		oldMCP := runMCPServer
-		runMCPServer = func(context.Context, *string, *time.Duration) error { return nil }
+		runMCPServer = func(*runResources, context.Context, mcpcommands.Request) error { return nil }
 		t.Cleanup(func() { runMCPServer = oldMCP })
 
 		var stdout, stderr bytes.Buffer
@@ -212,7 +213,7 @@ func TestRunReleaseBuildSkipsAutomaticUpdateForOfflineAuthBundleImport(t *testin
 	const bundle = `{"schema":"pixiv-cli.auth-export","version":1,"default_user_id":7,"accounts":[{"user_id":7,"username":"","refresh_token":"offline-import-secret"}]}`
 
 	var stdout, stderr bytes.Buffer
-	code := Run([]string{"pixiv", "auth", "import", "--file", "-"}, strings.NewReader(bundle), &stdout, &stderr)
+	code := Run([]string{"pixiv", "auth", "import"}, strings.NewReader(bundle), &stdout, &stderr)
 
 	require.Equal(t, 0, code, stderr.String())
 	assert.Equal(t, "added uid:7\ndefault uid: 7\n", stdout.String())
@@ -222,7 +223,7 @@ func TestRunReleaseBuildSkipsAutomaticUpdateForOfflineAuthBundleImport(t *testin
 func TestRunAutomaticUpdateUsesCurrentCommandProxyOverride(t *testing.T) {
 	useTempPaths(t)
 	useReleaseBuildInfo(t, "v0.1.0")
-	setTestSDKCommandClient(t, proxySDKClient())
+	setTestSDKCommandClient(t, proxySDKClientPtr())
 	checker := &cliAutomaticReleaseChecker{}
 	restore := stubAutomaticUpdateCheck(t, config.RuntimeConfig{HTTPSProxy: "http://config-proxy", UpdateCheckEnabled: true}, func(proxy string) (*update.AutomaticUpdateChecker, error) {
 		assert.Equal(t, "http://command-proxy", proxy)
@@ -243,7 +244,7 @@ func TestRunAutomaticUpdateUsesCurrentCommandProxyOverride(t *testing.T) {
 func TestRunAutomaticUpdateUsesCurrentCommandNoProxyOverride(t *testing.T) {
 	useTempPaths(t)
 	useReleaseBuildInfo(t, "v0.1.0")
-	setTestSDKCommandClient(t, proxySDKClient())
+	setTestSDKCommandClient(t, proxySDKClientPtr())
 	checker := &cliAutomaticReleaseChecker{}
 	restore := stubAutomaticUpdateCheck(t, config.RuntimeConfig{HTTPSProxy: "http://config-proxy", UpdateCheckEnabled: true}, func(proxy string) (*update.AutomaticUpdateChecker, error) {
 		assert.Empty(t, proxy)
@@ -265,7 +266,7 @@ func TestRunAutomaticUpdateMalformedRuntimeProxyWritesSafeWarningWithoutNetwork(
 	_, configPath := useTempPaths(t)
 	useReleaseBuildInfo(t, "v0.1.0")
 	proxy := "http://proxy-user-secret:proxy-pass-secret@proxy-host-secret.invalid/proxy-path-secret-%zz?proxy-query-secret=value"
-	require.NoError(t, config.WritePrivateFile(configPath, []byte("[network]\nhttps_proxy = "+fmt.Sprintf("%q", proxy)+"\n[update]\ncheck_enabled = true\n")))
+	require.NoError(t, filesecret.WritePrivateFile(configPath, []byte("[network]\nhttps_proxy = "+fmt.Sprintf("%q", proxy)+"\n[update]\ncheck_enabled = true\n"), localstate.PrivateFileMode))
 	// 环境代理优先于文件配置；显式移除它们，确保 canary 来自临时 runtime config。
 	for _, name := range []string{"https_proxy", "HTTPS_PROXY"} {
 		value, existed := os.LookupEnv(name)
@@ -279,17 +280,17 @@ func TestRunAutomaticUpdateMalformedRuntimeProxyWritesSafeWarningWithoutNetwork(
 		})
 	}
 
-	oldLoad := loadAutomaticUpdateRuntimeConfig
+	oldLoad := loadCLIRuntimeConfig
 	oldNew := newCLIAutomaticUpdateChecker
-	loadAutomaticUpdateRuntimeConfig = bootstrap.LoadRuntimeConfig
+	loadCLIRuntimeConfig = defaultCLIRuntimeConfig
 	constructorCalls := 0
 	newCLIAutomaticUpdateChecker = func(gotProxy string) (*update.AutomaticUpdateChecker, error) {
 		constructorCalls++
 		require.Equal(t, proxy, gotProxy)
-		return bootstrap.NewAutomaticUpdateChecker(gotProxy)
+		return newAutomaticUpdateChecker(gotProxy)
 	}
 	t.Cleanup(func() {
-		loadAutomaticUpdateRuntimeConfig = oldLoad
+		loadCLIRuntimeConfig = oldLoad
 		newCLIAutomaticUpdateChecker = oldNew
 	})
 
@@ -308,30 +309,24 @@ func TestRunAutomaticUpdateMalformedRuntimeProxyWritesSafeWarningWithoutNetwork(
 
 func stubAutomaticUpdateCheck(t *testing.T, runtimeConfig config.RuntimeConfig, constructor func(string) (*update.AutomaticUpdateChecker, error)) func() {
 	t.Helper()
-	oldLoad := loadAutomaticUpdateRuntimeConfig
+	oldLoad := loadCLIRuntimeConfig
 	oldNew := newCLIAutomaticUpdateChecker
-	loadAutomaticUpdateRuntimeConfig = func() (config.RuntimeConfig, error) { return runtimeConfig, nil }
+	loadCLIRuntimeConfig = func() (config.RuntimeConfig, error) { return runtimeConfig, nil }
 	newCLIAutomaticUpdateChecker = constructor
 	return func() {
-		loadAutomaticUpdateRuntimeConfig = oldLoad
+		loadCLIRuntimeConfig = oldLoad
 		newCLIAutomaticUpdateChecker = oldNew
 	}
 }
 
 func automaticUpdateMustNotRun(t *testing.T) func() {
 	t.Helper()
-	oldLoad := loadAutomaticUpdateRuntimeConfig
 	oldNew := newCLIAutomaticUpdateChecker
-	loadAutomaticUpdateRuntimeConfig = func() (config.RuntimeConfig, error) {
-		t.Fatal("excluded command must not load automatic update configuration")
-		return config.RuntimeConfig{}, nil
-	}
 	newCLIAutomaticUpdateChecker = func(string) (*update.AutomaticUpdateChecker, error) {
 		t.Fatal("excluded command must not construct an automatic update checker")
 		return nil, nil
 	}
 	return func() {
-		loadAutomaticUpdateRuntimeConfig = oldLoad
 		newCLIAutomaticUpdateChecker = oldNew
 	}
 }

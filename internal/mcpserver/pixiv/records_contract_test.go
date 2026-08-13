@@ -1,4 +1,4 @@
-package pixiv
+package pixiv_test
 
 import (
 	"context"
@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	pixivmcpserver "github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -150,7 +151,7 @@ func TestEntityRecordPreservesUserDetailEnvelopeAndErrorHasEmptyRecords(t *testi
 }
 
 func TestServerImplementationVersionIsProtocolOnlyException(t *testing.T) {
-	server := New(&fakeAPI{}, &fakeDownloads{})
+	server := pixivmcpserver.New(&fakeAPI{}, &fakeDownloads{})
 	clientTransport, serverTransport := mcp.NewInMemoryTransports()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -160,7 +161,7 @@ func TestServerImplementationVersionIsProtocolOnlyException(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer session.Close()
+	defer func() { _ = session.Close() }()
 	if session.InitializeResult().ServerInfo.Version != "3.0.0" {
 		t.Fatalf("serverInfo.version=%q, want 3.0.0", session.InitializeResult().ServerInfo.Version)
 	}

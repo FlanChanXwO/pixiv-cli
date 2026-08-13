@@ -6,7 +6,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/application/config"
+	"github.com/FlanChanXwO/pixiv-cli/internal/platform/localstate"
+	"github.com/FlanChanXwO/pixiv-cli/internal/storage/config"
+	filesecret "github.com/FlanChanXwO/pixiv-cli/internal/storage/file/secret"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -73,7 +75,7 @@ func TestConfigInitializationNeverOverwritesExistingFile(t *testing.T) {
 	clearConfigEnv(t)
 	_, configPath := useTempPaths(t)
 	const original = "# keep me\n[custom]\nvalue = \"preserved\"\n"
-	require.NoError(t, config.WritePrivateFile(configPath, []byte(original)))
+	require.NoError(t, filesecret.WritePrivateFile(configPath, []byte(original), localstate.PrivateFileMode))
 
 	var stdout, stderr bytes.Buffer
 	code := Run([]string{"pixiv", "config", "path"}, strings.NewReader(""), &stdout, &stderr)
@@ -136,7 +138,7 @@ func TestConfigWebFallbackRemovedAbsentSucceeds(t *testing.T) {
 	clearConfigEnv(t)
 	useTempPaths(t)
 
-	settings, err := config.LoadSettingsState()
+	settings, err := config.LoadSnapshot()
 	require.NoError(t, err)
 	value, err := settings.Effective("web_fallback_enabled")
 	require.NoError(t, err)
@@ -148,9 +150,9 @@ func TestConfigWebFallbackRemovedAbsentSucceeds(t *testing.T) {
 func TestConfigWebFallbackPresentReturnsRemovedSetting(t *testing.T) {
 	clearConfigEnv(t)
 	_, configPath := useTempPaths(t)
-	require.NoError(t, config.WritePrivateFile(configPath, []byte("[web]\nfallback_enabled = true\n")))
+	require.NoError(t, filesecret.WritePrivateFile(configPath, []byte("[web]\nfallback_enabled = true\n"), localstate.PrivateFileMode))
 
-	settings, err := config.LoadSettingsState()
+	settings, err := config.LoadSnapshot()
 	require.NoError(t, err)
 	_, err = settings.Effective("web_fallback_enabled")
 	require.ErrorIs(t, err, config.ErrRemovedSetting)
@@ -161,13 +163,13 @@ func TestConfigWebFallbackPresentReturnsRemovedSetting(t *testing.T) {
 func TestConfigWebFallbackUnsetClearsTombstone(t *testing.T) {
 	clearConfigEnv(t)
 	_, configPath := useTempPaths(t)
-	require.NoError(t, config.WritePrivateFile(configPath, []byte("[web]\nfallback_enabled = true\n")))
+	require.NoError(t, filesecret.WritePrivateFile(configPath, []byte("[web]\nfallback_enabled = true\n"), localstate.PrivateFileMode))
 
 	removed, err := config.UnsetConfigValue(configPath, "web_fallback_enabled")
 	require.NoError(t, err)
 	assert.True(t, removed)
 
-	settings, err := config.LoadSettingsState()
+	settings, err := config.LoadSnapshot()
 	require.NoError(t, err)
 	_, err = settings.Effective("web_fallback_enabled")
 	require.NoError(t, err)
@@ -193,14 +195,14 @@ func TestConfigGetSetUnsetWebFallbackCLISurface(t *testing.T) {
 	assert.Contains(t, stderr.String(), "removed_setting")
 
 	// unset 允许清理旧值；写入后再 unset 验证真实清除了墓碑。
-	require.NoError(t, config.WritePrivateFile(configPath, []byte("[web]\nfallback_enabled = true\n")))
+	require.NoError(t, filesecret.WritePrivateFile(configPath, []byte("[web]\nfallback_enabled = true\n"), localstate.PrivateFileMode))
 	stdout.Reset()
 	stderr.Reset()
 	code = Run([]string{"pixiv", "config", "unset", "web_fallback_enabled"}, strings.NewReader(""), &stdout, &stderr)
 	assert.Equal(t, 0, code, stderr.String())
 	assert.Contains(t, stdout.String(), "removed")
 
-	settings, err := config.LoadSettingsState()
+	settings, err := config.LoadSnapshot()
 	require.NoError(t, err)
 	_, err = settings.Runtime()
 	require.NoError(t, err)
@@ -210,7 +212,7 @@ func TestConfigUpdateCheckDefaultEnabled(t *testing.T) {
 	clearConfigEnv(t)
 	useTempPaths(t)
 
-	settings, err := config.LoadSettingsState()
+	settings, err := config.LoadSnapshot()
 	require.NoError(t, err)
 	runtimeConfig, err := settings.Runtime()
 	require.NoError(t, err)
@@ -222,9 +224,9 @@ func TestConfigUpdateCheckCanBeExplicitlyDisabled(t *testing.T) {
 	t.Run("config file", func(t *testing.T) {
 		clearConfigEnv(t)
 		_, configPath := useTempPaths(t)
-		require.NoError(t, config.WritePrivateFile(configPath, []byte("[update]\ncheck_enabled = false\n")))
+		require.NoError(t, filesecret.WritePrivateFile(configPath, []byte("[update]\ncheck_enabled = false\n"), localstate.PrivateFileMode))
 
-		settings, err := config.LoadSettingsState()
+		settings, err := config.LoadSnapshot()
 		require.NoError(t, err)
 		runtimeConfig, err := settings.Runtime()
 		require.NoError(t, err)
@@ -236,7 +238,7 @@ func TestConfigUpdateCheckCanBeExplicitlyDisabled(t *testing.T) {
 func TestConfigGetUsesEnvironmentOverrideAndSetWarns(t *testing.T) {
 	clearConfigEnv(t)
 	_, configPath := useTempPaths(t)
-	require.NoError(t, config.WritePrivateFile(configPath, []byte("[network]\nhttps_proxy = \"http://file-proxy\"\n")))
+	require.NoError(t, filesecret.WritePrivateFile(configPath, []byte("[network]\nhttps_proxy = \"http://file-proxy\"\n"), localstate.PrivateFileMode))
 	t.Setenv("HTTPS_PROXY", "http://env-proxy")
 
 	var stdout, stderr bytes.Buffer
@@ -284,7 +286,7 @@ func TestConfigSetHTTPSProxyDoesNotRevealEnvironmentOverride(t *testing.T) {
 func TestConfigUnsetHTTPSProxyDoesNotRevealEnvironmentOverride(t *testing.T) {
 	clearConfigEnv(t)
 	_, configPath := useTempPaths(t)
-	require.NoError(t, config.WritePrivateFile(configPath, []byte("[network]\nhttps_proxy = \"http://file-proxy\"\n")))
+	require.NoError(t, filesecret.WritePrivateFile(configPath, []byte("[network]\nhttps_proxy = \"http://file-proxy\"\n"), localstate.PrivateFileMode))
 	t.Setenv("HTTPS_PROXY", "https://upper-user:upper-password@upper-host/upper-private?token=upper-query")
 	t.Setenv("https_proxy", "https://lower-user:lower-password@lower-host/lower-private?token=lower-query")
 
@@ -336,7 +338,7 @@ func TestConfigLowercaseProxyBeatsUppercase(t *testing.T) {
 	t.Setenv("HTTPS_PROXY", "http://upper")
 	t.Setenv("https_proxy", "http://lower")
 
-	settings, err := config.LoadSettingsState()
+	settings, err := config.LoadSnapshot()
 	require.NoError(t, err)
 	cfg, err := settings.Runtime()
 	require.NoError(t, err)

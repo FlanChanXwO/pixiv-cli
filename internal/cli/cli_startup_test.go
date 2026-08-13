@@ -11,23 +11,23 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/bootstrap"
-	"github.com/FlanChanXwO/pixiv-cli/internal/cli/auth/loginhelper"
-	"github.com/FlanChanXwO/pixiv-cli/internal/filesystem"
+	mcpcommands "github.com/FlanChanXwO/pixiv-cli/internal/cli/mcp"
+	"github.com/FlanChanXwO/pixiv-cli/internal/cli/pixiv/auth/loginhelper"
+	"github.com/FlanChanXwO/pixiv-cli/internal/platform/localstate"
 )
 
 func TestAuthURLCallbackIsHiddenAndRelaysWithoutStartupSideEffects(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	t.Setenv("USERPROFILE", os.Getenv("HOME"))
-	dir, err := filesystem.UserDataSubdir(filesystem.AppDataDirName)
+	dir, err := localstate.UserDataSubdir(localstate.AppDataDirName)
 	requireNoError(t, err)
-	requireNoError(t, os.MkdirAll(dir, filesystem.PrivateDirMode))
-	requireNoError(t, os.WriteFile(filepath.Join(dir, "url-handler-endpoint"), []byte("http://127.0.0.1:41871/callback\n"), filesystem.PrivateFileMode))
+	requireNoError(t, os.MkdirAll(dir, localstate.PrivateDirMode))
+	requireNoError(t, os.WriteFile(filepath.Join(dir, "url-handler-endpoint"), []byte("http://127.0.0.1:41871/callback\n"), localstate.PrivateFileMode))
 
-	command := app{}.newAccountCommand()
-	callback, _, findErr := command.Find([]string{internalURLCallbackCommand})
+	authCommand, _, findErr := app{}.newRootCommand().Find([]string{"auth"})
+	requireNoError(t, findErr)
+	callback, _, findErr := authCommand.Find([]string{internalURLCallbackCommand})
 	requireNoError(t, findErr)
 	if callback == nil || !callback.Hidden {
 		t.Fatal("internal URL callback command must remain hidden")
@@ -360,18 +360,18 @@ func TestRunUnknownOptionsAreNormalizedBeforeStartupSideEffects(t *testing.T) {
 		return nil
 	}
 	oldMCP := runMCPServer
-	runMCPServer = func(context.Context, *string, *time.Duration) error {
+	runMCPServer = func(*runResources, context.Context, mcpcommands.Request) error {
 		mcpCalls++
 		return nil
 	}
-	oldServices := newCLIServices
-	newCLIServices = func() (*bootstrap.Runtime, error) {
+	oldResources := newCLIRunResources
+	newCLIRunResources = func() (*runResources, error) {
 		serviceCalls++
-		return &bootstrap.Runtime{}, nil
+		return &runResources{}, nil
 	}
 	t.Cleanup(func() {
 		runMCPServer = oldMCP
-		newCLIServices = oldServices
+		newCLIRunResources = oldResources
 	})
 
 	for _, test := range []struct {
@@ -417,17 +417,17 @@ func TestRunReportsNilRuntimeFactoryResult(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	t.Setenv("USERPROFILE", os.Getenv("HOME"))
 
-	oldServices := newCLIServices
-	newCLIServices = func() (*bootstrap.Runtime, error) { return nil, nil }
-	t.Cleanup(func() { newCLIServices = oldServices })
+	oldResources := newCLIRunResources
+	newCLIRunResources = func() (*runResources, error) { return nil, nil }
+	t.Cleanup(func() { newCLIRunResources = oldResources })
 
 	var stdout, stderr bytes.Buffer
 	code := Run([]string{"pixiv", "search", "miku"}, strings.NewReader(""), &stdout, &stderr)
 	if code != 1 {
 		t.Fatalf("Run exit code = %d, want 1; stderr=%q", code, stderr.String())
 	}
-	if got := stderr.String(); got != "initialize local state: runtime factory returned nil\n" {
-		t.Fatalf("stderr = %q, want explicit runtime initialization error", got)
+	if got := stderr.String(); got != "initialize local state: resource factory returned nil\n" {
+		t.Fatalf("stderr = %q, want explicit resource initialization error", got)
 	}
 	if stdout.Len() != 0 {
 		t.Fatalf("runtime initialization failure wrote stdout: %q", stdout.String())

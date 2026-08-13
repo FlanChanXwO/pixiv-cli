@@ -16,7 +16,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/browsercookies/core"
+	"github.com/FlanChanXwO/pixiv-cli/internal/browsercookies"
 	"github.com/FlanChanXwO/pixiv-cli/internal/browsercookies/sqliteio"
 )
 
@@ -29,7 +29,7 @@ const (
 )
 
 func init() {
-	core.Register("firefox", func() (core.Provider, error) { return newProvider("") })
+	browsercookies.Register("firefox", func() (browsercookies.Provider, error) { return newProvider("") })
 }
 
 // defaultRoot 返回当前平台的 Firefox 用户目录；其他平台返回空路径并按
@@ -69,34 +69,34 @@ func safeProfileID(id string) bool {
 // DiscoverProfiles 解析 profiles.ini 中的 [ProfileN] 节，只保留存在
 // cookies.sqlite 的 profile。Firefox 未安装（根目录或 profiles.ini 缺失）时
 // 返回 ErrNotInstalled。
-func (p *provider) DiscoverProfiles(ctx context.Context) ([]core.Profile, error) {
+func (p *provider) DiscoverProfiles(ctx context.Context) ([]browsercookies.Profile, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
 	file, err := os.Open(filepath.Join(p.root, profilesIni))
 	if err != nil {
 		if errors.Is(err, fs.ErrPermission) {
-			return nil, core.ErrPermissionDenied
+			return nil, browsercookies.ErrPermissionDenied
 		}
-		return nil, core.ErrNotInstalled
+		return nil, browsercookies.ErrNotInstalled
 	}
 	defer file.Close()
 	profiles, err := parseProfilesIni(file, p.root)
 	if err != nil {
 		if errors.Is(err, fs.ErrPermission) {
-			return nil, core.ErrPermissionDenied
+			return nil, browsercookies.ErrPermissionDenied
 		}
-		return nil, core.ErrInvalidFormat
+		return nil, browsercookies.ErrInvalidFormat
 	}
 	if len(profiles) == 0 {
-		return nil, core.ErrNotInstalled
+		return nil, browsercookies.ErrNotInstalled
 	}
 	return profiles, nil
 }
 
 // parseProfilesIni 解析 profiles.ini；相对 Path 相对于 root 解析，绝对 Path 使用
 // 其 basename 作为安全 identifier。
-func parseProfilesIni(file *os.File, root string) ([]core.Profile, error) {
+func parseProfilesIni(file *os.File, root string) ([]browsercookies.Profile, error) {
 	type iniSection struct {
 		name       string
 		path       string
@@ -146,7 +146,7 @@ func parseProfilesIni(file *os.File, root string) ([]core.Profile, error) {
 			return nil, readErr
 		}
 	}
-	var profiles []core.Profile
+	var profiles []browsercookies.Profile
 	for _, s := range sections {
 		if s.path == "" {
 			continue
@@ -161,7 +161,7 @@ func parseProfilesIni(file *os.File, root string) ([]core.Profile, error) {
 		}
 		if _, err := os.Stat(filepath.Join(dir, cookiesDB)); err != nil {
 			if errors.Is(err, fs.ErrPermission) {
-				return nil, core.ErrPermissionDenied
+				return nil, browsercookies.ErrPermissionDenied
 			}
 			continue
 		}
@@ -169,42 +169,42 @@ func parseProfilesIni(file *os.File, root string) ([]core.Profile, error) {
 		if name == "" {
 			name = id
 		}
-		profiles = append(profiles, core.Profile{ID: id, Name: name, Path: dir})
+		profiles = append(profiles, browsercookies.Profile{ID: id, Name: name, Path: dir})
 	}
 	return profiles, nil
 }
 
 // resolveProfile 通过 discovery 按 identifier 解析 profile 的绝对路径。
-func (p *provider) resolveProfile(ctx context.Context, profileID string) (core.Profile, error) {
+func (p *provider) resolveProfile(ctx context.Context, profileID string) (browsercookies.Profile, error) {
 	profiles, err := p.DiscoverProfiles(ctx)
 	if err != nil {
-		return core.Profile{}, err
+		return browsercookies.Profile{}, err
 	}
-	return core.SelectProfile(profiles, profileID)
+	return browsercookies.SelectProfile(profiles, profileID)
 }
 
 // Read 读取 profileID 下匹配 query 的明文 cookie。加密值（非 UTF-8）返回
 // ErrEncryptedCookieUnsupported 分类。
-func (p *provider) Read(ctx context.Context, query core.CookieQuery, profileID string) ([]core.Secret, error) {
+func (p *provider) Read(ctx context.Context, query browsercookies.CookieQuery, profileID string) ([]browsercookies.Secret, error) {
 	if err := query.Valid(); err != nil {
 		return nil, err
 	}
 	if !safeProfileID(profileID) {
-		return nil, core.ErrInvalidProfileID
+		return nil, browsercookies.ErrInvalidProfileID
 	}
 	profile, err := p.resolveProfile(ctx, profileID)
 	if err != nil {
 		return nil, err
 	}
 	dbPath := filepath.Join(profile.Path, cookiesDB)
-	data, hooked, err := core.HookBytes("firefox", dbPath)
+	data, hooked, err := browsercookies.HookBytes("firefox", dbPath)
 	if err != nil {
 		return nil, err
 	}
 	path := dbPath
 	if hooked {
 		var cleanup func()
-		path, cleanup, err = core.WriteTempSnapshot(data)
+		path, cleanup, err = browsercookies.WriteTempSnapshot(data)
 		if err != nil {
 			return nil, err
 		}
@@ -219,16 +219,16 @@ func (p *provider) Read(ctx context.Context, query core.CookieQuery, profileID s
 	if err != nil {
 		return nil, err
 	}
-	secrets := make([]core.Secret, 0, len(rows))
+	secrets := make([]browsercookies.Secret, 0, len(rows))
 	for _, row := range rows {
 		if len(row) < 1 {
-			return nil, core.ErrQueryFailed
+			return nil, browsercookies.ErrQueryFailed
 		}
 		value := row[0]
 		if looksEncrypted(value) {
-			return nil, core.ErrEncryptedCookieUnsupported
+			return nil, browsercookies.ErrEncryptedCookieUnsupported
 		}
-		secrets = append(secrets, core.NewSecret(value))
+		secrets = append(secrets, browsercookies.NewSecret(value))
 	}
 	return secrets, nil
 }

@@ -219,3 +219,41 @@ func TestCursorIdentityAbsentByDefault(t *testing.T) {
 		t.Fatal("unexpected ephemeral flag")
 	}
 }
+
+func TestCursorEphemeralInstanceBinding(t *testing.T) {
+	c, err := sdk.NewCursor("pixiv", "FollowingArtworks", 1, "digest", []byte("p"),
+		sdk.WithCursorEphemeralInstance("instance-a"),
+	)
+	if err != nil {
+		t.Fatalf("NewCursor: %v", err)
+	}
+	if !sdk.CursorEphemeral(c) {
+		t.Fatal("cursor should be ephemeral")
+	}
+	if err := sdk.ValidateCursorInstance(c, "instance-a"); err != nil {
+		t.Fatalf("same instance should validate: %v", err)
+	}
+	if err := sdk.ValidateCursorInstance(c, "instance-b"); sdk.ReasonOf(err) != sdk.InvalidCursor {
+		t.Fatalf("different instance should return InvalidCursor, got %v", err)
+	}
+	text, err := c.MarshalText()
+	if err != nil {
+		t.Fatalf("MarshalText: %v", err)
+	}
+	parsed, err := sdk.ParseCursor(string(text))
+	if err != nil {
+		t.Fatalf("ParseCursor: %v", err)
+	}
+	if err := sdk.ValidateCursorInstance(parsed, "instance-a"); err != nil {
+		t.Fatalf("round-tripped instance should validate: %v", err)
+	}
+}
+
+func TestCursorEphemeralInstanceRequiresIdentifier(t *testing.T) {
+	_, err := sdk.NewCursor("pixiv", "FollowingArtworks", 1, "digest", []byte("p"),
+		sdk.WithCursorEphemeralInstance(""),
+	)
+	if sdk.ReasonOf(err) != sdk.InvalidArgument {
+		t.Fatalf("empty instance should return InvalidArgument, got %v", err)
+	}
+}

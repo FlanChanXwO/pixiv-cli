@@ -1,4 +1,4 @@
-package fanbox
+package fanbox_test
 
 import (
 	"context"
@@ -12,10 +12,14 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/application/config"
-	fanboxapp "github.com/FlanChanXwO/pixiv-cli/internal/application/fanbox"
-	"github.com/FlanChanXwO/pixiv-cli/internal/filesystem"
-	"github.com/FlanChanXwO/pixiv-cli/internal/persistence/authdb"
+	accountfanbox "github.com/FlanChanXwO/pixiv-cli/internal/account/fanbox"
+	fanboxapp "github.com/FlanChanXwO/pixiv-cli/internal/account/fanbox"
+	fanboxmcpserver "github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/fanbox"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/fanbox/currentuser"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/fanbox/openresource"
+	"github.com/FlanChanXwO/pixiv-cli/internal/platform/localstate"
+	"github.com/FlanChanXwO/pixiv-cli/internal/storage/config"
+	"github.com/FlanChanXwO/pixiv-cli/internal/storage/database"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	fanboxsdk "github.com/FlanChanXwO/pixiv-cli/sdk/fanbox"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -38,50 +42,38 @@ func homeMetadataBody(userID int64, name string) string {
 }
 
 // fanboxTestService 构造注入 httptest transport 的 FANBOX 服务，绝不拨号网络。
-func fanboxTestService(t *testing.T, rt http.RoundTripper) (*fanboxapp.Service, *authdb.DB) {
+func fanboxTestService(t *testing.T, rt http.RoundTripper) (*fanboxapp.Service, *database.DB) {
 	t.Helper()
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("USERPROFILE", home)
-	t.Cleanup(config.SetFilePathForTest(filepath.Join(home, filesystem.AppDataDirName, "config.toml")))
-	appDataDir := filepath.Join(home, filesystem.AppDataDirName)
-	db, err := authdb.Open(appDataDir)
+	t.Cleanup(localstate.SetConfigFilePathForTest(filepath.Join(home, localstate.AppDataDirName, "config.toml")))
+	appDataDir := filepath.Join(home, localstate.AppDataDirName)
+	db, err := database.Open(appDataDir)
 	if err != nil {
 		t.Fatalf("open auth db: %v", err)
 	}
 	t.Cleanup(func() { _ = db.Close() })
-	service := fanboxapp.New(fanboxMCPRepository{db: db}, fanboxMCPDefaults{})
+	service := fanboxapp.NewService(fanboxMCPRepository{db: db}, fanboxMCPDefaults{})
 	service.OpenClientFunc = func(context.Context) (*fanboxsdk.Client, error) {
 		return fanboxsdk.OpenWith(fanboxsdk.SessionCredentials{FANBOXSESSID: "stored-session"}, fanboxsdk.Options{HTTPClient: &http.Client{Transport: rt}})
 	}
 	return service, db
 }
 
-type fanboxMCPRepository struct{ db *authdb.DB }
+type fanboxMCPRepository struct{ db *database.DB }
 
-func (r fanboxMCPRepository) SaveFanboxCredential(ctx context.Context, account fanboxapp.FanboxAccountRecord) error {
-	return r.db.SaveFanboxCredential(ctx, authdb.FanboxAccount{UserID: account.UserID, SortOrder: account.SortOrder, DisplayName: account.DisplayName, CreatorID: account.CreatorID, SessionID: account.SessionID, CredentialRevision: account.CredentialRevision, ValidatedAt: account.ValidatedAt})
+func (r fanboxMCPRepository) SaveFanboxCredential(ctx context.Context, account accountfanbox.Account) error {
+	return r.db.SaveFanboxCredential(ctx, account)
 }
 func (r fanboxMCPRepository) RotateFanboxSession(ctx context.Context, userID, revision int64, session []byte, validatedAt int64) error {
 	return r.db.RotateFanboxSession(ctx, userID, revision, session, validatedAt)
 }
-func (r fanboxMCPRepository) ListFanbox(ctx context.Context) ([]fanboxapp.FanboxAccountRecord, error) {
-	accounts, err := r.db.ListFanbox(ctx)
-	if err != nil {
-		return nil, err
-	}
-	out := make([]fanboxapp.FanboxAccountRecord, 0, len(accounts))
-	for _, account := range accounts {
-		out = append(out, fanboxapp.FanboxAccountRecord{UserID: account.UserID, SortOrder: account.SortOrder, DisplayName: account.DisplayName, CreatorID: account.CreatorID, SessionID: account.SessionID, CredentialRevision: account.CredentialRevision, ValidatedAt: account.ValidatedAt})
-	}
-	return out, nil
+func (r fanboxMCPRepository) ListFanbox(ctx context.Context) ([]accountfanbox.Account, error) {
+	return r.db.ListFanbox(ctx)
 }
-func (r fanboxMCPRepository) GetFanbox(ctx context.Context, userID int64) (fanboxapp.FanboxAccountRecord, error) {
-	account, err := r.db.GetFanbox(ctx, userID)
-	if err != nil {
-		return fanboxapp.FanboxAccountRecord{}, err
-	}
-	return fanboxapp.FanboxAccountRecord{UserID: account.UserID, SortOrder: account.SortOrder, DisplayName: account.DisplayName, CreatorID: account.CreatorID, SessionID: account.SessionID, CredentialRevision: account.CredentialRevision, ValidatedAt: account.ValidatedAt}, nil
+func (r fanboxMCPRepository) GetFanbox(ctx context.Context, userID int64) (accountfanbox.Account, error) {
+	return r.db.GetFanbox(ctx, userID)
 }
 func (r fanboxMCPRepository) RemoveFanbox(ctx context.Context, userID int64) error {
 	return r.db.RemoveFanbox(ctx, userID)
@@ -101,7 +93,7 @@ func (fanboxMCPDefaults) ClearFanboxDefaultUserID() error {
 
 func newFanboxMCPSession(t *testing.T, service *fanboxapp.Service) (*mcp.ClientSession, func()) {
 	t.Helper()
-	server := New(service)
+	server := fanboxmcpserver.New(service)
 	clientTransport, serverTransport := mcp.NewInMemoryTransports()
 	ctx, cancel := context.WithCancel(context.Background())
 	go func() { _ = server.Run(ctx, serverTransport) }()
@@ -163,7 +155,7 @@ func TestFanboxMCPCurrentUserHappyPath(t *testing.T) {
 	if result.IsError {
 		t.Fatalf("current_user failed: %+v", result)
 	}
-	var out currentUserOut
+	var out currentuser.Out
 	decodeStructured(t, result, &out)
 	if out.UserID != 42 || out.DisplayName != "tester" {
 		t.Fatalf("current_user output=%+v", out)
@@ -194,14 +186,14 @@ func TestFanboxMCPFailureReturnsStructuredError(t *testing.T) {
 	if result.StructuredContent == nil {
 		t.Fatalf("structured content must be preserved on error")
 	}
-	var out currentUserOut
+	var out currentuser.Out
 	decodeStructured(t, result, &out)
 	if out.UserID != 0 {
 		t.Fatalf("structured error output=%+v", out)
 	}
 }
 
-func TestFanboxMCPOpenResourceReturnsHeadersWithoutBytes(t *testing.T) {
+func TestFanboxMCPOpenResourceReturnsSafeMetadataWithoutBytes(t *testing.T) {
 	service, _ := fanboxTestService(t, roundTripFunc(func(req *http.Request) (*http.Response, error) {
 		if req.URL.Host == "i.pximg.net" {
 			return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": {"image/png"}, "Content-Length": {"4"}}, Body: io.NopCloser(strings.NewReader("PNG!"))}, nil
@@ -229,7 +221,7 @@ func TestFanboxMCPOpenResourceReturnsHeadersWithoutBytes(t *testing.T) {
 	if result.IsError {
 		t.Fatalf("open_resource failed: %+v", result)
 	}
-	var out openResourceOut
+	var out openresource.Out
 	decodeStructured(t, result, &out)
 	if out.StatusCode != http.StatusOK || out.ContentType != "image/png" {
 		t.Fatalf("open_resource output=%+v", out)

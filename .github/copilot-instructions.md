@@ -11,7 +11,7 @@
 - Production wiring: `internal/bootstrap`
 - Pixiv protocol adapters: `internal/services/pixiv/{appapi,model,oauth,protocol,resource}`
 - MCP tool adapter: `internal/mcpserver`
-- Download manager: `internal/downloader`; download use case/port: `internal/application/download`
+- Download and ugoira owners: `internal/media/{downloader,ugoira}`
 - Config/auth storage: `internal/application/config`, `internal/persistence/authdb`; legacy `auth.json` is never auto-read
 
 ## Commands

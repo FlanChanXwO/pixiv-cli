@@ -77,20 +77,24 @@ check the exit status before reading either output.
 ## Restore an export bundle
 
 ```
-pixiv auth import --file /private/path/pixiv-auth.json
-pixiv auth import --file - < /private/path/pixiv-auth.json
+pixiv auth import < /private/path/pixiv-auth.json
+pixiv auth export --all | ssh trusted-host pixiv auth import
 ```
 
 The v1 CLI never reads or migrates the old `~/.pixiv-cli/auth.json`. When
 moving from an older CLI, run `pixiv auth export --all --output <private
-bundle>` with the old version, then restore that private bundle with
-`pixiv auth import --file <bundle>` on v1.
+bundle>` with the old version, then restore that private bundle through shell
+redirection or a pipe such as `pixiv auth import < bundle.json`.
 
-`--file PATH` and `--file -` restore a versioned bundle entirely offline. A
-file import cannot be combined with a positional token, `--proxy`, or
-`--no-proxy`; proxy flags do not apply to bundle restore. The bundle itself
-contains plaintext refresh tokens, even though normal text/JSON success output
-and errors do not echo them. Do not inspect, summarize, or log bundle content.
+With no positional token, the import classifier checks the first non-whitespace
+byte of non-TTY stdin. `{` selects strict versioned bundle decoding; any other
+input is one opaque refresh token. Bundle decoding is completely offline and a
+failure never falls back to OAuth. An explicit positional value is always an
+opaque token, even when it starts with `{`. Bundle input cannot be combined
+with `--proxy` or `--no-proxy`; those flags apply only to single-token OAuth
+validation. The bundle itself contains plaintext refresh tokens, even though
+normal text/JSON success output and errors do not echo them. Do not inspect,
+summarize, or log bundle content.
 
 ## Export safely
 

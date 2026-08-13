@@ -9,21 +9,23 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/filesystem"
+	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/artwork"
+	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/novel"
 	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/protocol"
 	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/resource"
+	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/user"
+	atomicfile "github.com/FlanChanXwO/pixiv-cli/internal/storage/file/atomic"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 )
 
 // resourceRefPayload is the opaque identity payload embedded in a Pixiv
-// ResourceRef. It carries the stable identity plus the current valid URL so
-// OpenResource and SaveResource can revalidate and safely open the resource
-// without an extra API round trip.
+// ResourceRef. It carries only stable identity fields; a resolved or signed
+// URL is kept in the client registry or reconstructed from trusted metadata.
 type resourceRefPayload struct {
-	Kind string `json:"k"`
-	ID   int64  `json:"id"`
-	Page int    `json:"p,omitempty"`
-	URL  string `json:"u"`
+	Kind    string `json:"k"`
+	ID      int64  `json:"id"`
+	Page    int    `json:"p,omitempty"`
+	Variant string `json:"v,omitempty"`
 }
 
 // defaultResourceHosts are the official Pixiv media hosts whose HTTPS URLs are
@@ -34,13 +36,17 @@ var defaultResourceHosts = []string{"i.pximg.net", "s.pximg.net", "i-f.pximg.net
 // returns ResourceForbidden when the URL does not satisfy the resource
 // policy and InvalidArgument when the identity payload is invalid.
 func (c *Client) newResource(kind string, id int64, page int, rawURL string) (sdk.Resource, error) {
+	return c.newResourceWithVariant(kind, id, page, "", rawURL)
+}
+
+func (c *Client) newResourceWithVariant(kind string, id int64, page int, variant, rawURL string) (sdk.Resource, error) {
 	if rawURL == "" {
 		return sdk.Resource{}, nil
 	}
 	if err := c.validateResourceURL(rawURL); err != nil {
 		return sdk.Resource{}, err
 	}
-	payload, err := json.Marshal(resourceRefPayload{Kind: kind, ID: id, Page: page, URL: rawURL})
+	payload, err := json.Marshal(resourceRefPayload{Kind: kind, ID: id, Page: page, Variant: variant})
 	if err != nil {
 		return sdk.Resource{}, newError("resource", sdk.UpstreamError, "cannot encode resource reference")
 	}
@@ -48,6 +54,9 @@ func (c *Client) newResource(kind string, id int64, page int, rawURL string) (sd
 	if err != nil {
 		return sdk.Resource{}, newError("resource", sdk.UpstreamError, "cannot encode resource reference")
 	}
+	c.resourceMu.Lock()
+	c.resourceURLs[ref.String()] = rawURL
+	c.resourceMu.Unlock()
 	return sdk.Resource{
 		Ref:            ref,
 		URL:            rawURL,
@@ -95,11 +104,11 @@ func (c *Client) OpenResource(ctx context.Context, request sdk.OpenResourceReque
 	if err := request.Validate(); err != nil {
 		return nil, err
 	}
-	rp, err := c.decodeResourceRef(request.Ref)
+	rawURL, err := c.resolveResourceURL(ctx, request.Ref, "OpenResource")
 	if err != nil {
-		return nil, newError("OpenResource", sdk.InvalidArgument, "invalid resource reference")
+		return nil, err
 	}
-	if err := c.validateResourceURL(rp.URL); err != nil {
+	if err := c.validateResourceURL(rawURL); err != nil {
 		return nil, newError("OpenResource", sdk.ResourceForbidden, "resource URL is not allowed")
 	}
 	header := http.Header{}
@@ -119,7 +128,7 @@ func (c *Client) OpenResource(ctx context.Context, request sdk.OpenResourceReque
 		method = http.MethodGet
 	}
 	response, err := c.resClient.Open(ctx, resource.OpenRequest{
-		URL:            rp.URL,
+		URL:            rawURL,
 		Method:         method,
 		Header:         header,
 		Validate:       c.validateResourceURL,
@@ -139,11 +148,11 @@ func (c *Client) SaveResource(ctx context.Context, ref sdk.ResourceRef, options 
 	if strings.TrimSpace(options.Path) == "" {
 		return sdk.SavedResource{}, newError("SaveResource", sdk.InvalidArgument, "destination path is required")
 	}
-	rp, err := c.decodeResourceRef(ref)
+	rawURL, err := c.resolveResourceURL(ctx, ref, "SaveResource")
 	if err != nil {
-		return sdk.SavedResource{}, newError("SaveResource", sdk.InvalidArgument, "invalid resource reference")
+		return sdk.SavedResource{}, err
 	}
-	if err := c.validateResourceURL(rp.URL); err != nil {
+	if err := c.validateResourceURL(rawURL); err != nil {
 		return sdk.SavedResource{}, newError("SaveResource", sdk.ResourceForbidden, "resource URL is not allowed")
 	}
 	response, err := c.OpenResource(ctx, sdk.OpenResourceRequest{Ref: ref, Method: sdk.ResourceMethodGet})
@@ -154,7 +163,7 @@ func (c *Client) SaveResource(ctx context.Context, ref sdk.ResourceRef, options 
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		return sdk.SavedResource{}, newError("SaveResource", sdk.UpstreamError, "resource returned a non-success status")
 	}
-	size, err := filesystem.Write(ctx, options.Path, &progressReader{src: response.Body, progress: options.Progress})
+	size, err := atomicfile.Write(ctx, options.Path, &progressReader{src: response.Body, total: response.ContentLength(), progress: options.Progress})
 	if err != nil {
 		return sdk.SavedResource{}, newError("SaveResource", sdk.LocalStateError, "cannot write resource")
 	}
@@ -163,6 +172,7 @@ func (c *Client) SaveResource(ctx context.Context, ref sdk.ResourceRef, options 
 
 type progressReader struct {
 	src      io.Reader
+	total    int64
 	progress func(sdk.SaveProgress)
 	done     int64
 }
@@ -172,7 +182,7 @@ func (r *progressReader) Read(p []byte) (int, error) {
 	if n > 0 {
 		r.done += int64(n)
 		if r.progress != nil {
-			r.progress(sdk.SaveProgress{Done: r.done})
+			r.progress(sdk.SaveProgress{Total: r.total, Done: r.done})
 		}
 	}
 	return n, err
@@ -182,13 +192,202 @@ func (c *Client) decodeResourceRef(ref sdk.ResourceRef) (resourceRefPayload, err
 	if ref.IsZero() {
 		return resourceRefPayload{}, errors.New("zero resource reference")
 	}
+	refProduct, err := sdk.ResourceRefProduct(ref)
+	if err != nil || refProduct != product {
+		return resourceRefPayload{}, errors.New("resource reference belongs to another product")
+	}
 	payload, err := sdk.ResourceRefPayload(ref)
 	if err != nil {
 		return resourceRefPayload{}, err
 	}
 	var rp resourceRefPayload
-	if err := json.Unmarshal(payload, &rp); err != nil || rp.URL == "" {
+	if err := json.Unmarshal(payload, &rp); err != nil || rp.Kind == "" || rp.ID <= 0 || rp.Page < -1 {
 		return resourceRefPayload{}, errors.New("malformed resource reference")
 	}
 	return rp, nil
+}
+
+func (c *Client) resolveResourceURL(ctx context.Context, ref sdk.ResourceRef, operation string) (string, error) {
+	rp, err := c.decodeResourceRef(ref)
+	if err != nil {
+		return "", newError(operation, sdk.InvalidArgument, "invalid resource reference")
+	}
+	c.resourceMu.RLock()
+	rawURL := c.resourceURLs[ref.String()]
+	c.resourceMu.RUnlock()
+	if rawURL != "" {
+		return rawURL, nil
+	}
+
+	switch rp.Kind {
+	case "artwork":
+		detail, appErr := c.artworkDetail.Artwork(ctx, rp.ID)
+		if appErr != nil {
+			return "", classifyAppError(appErr, operation)
+		}
+		rawURL, err = artworkResourceURL(detail.Artwork, rp.Page, rp.Variant)
+	case "novel_cover":
+		detail, appErr := c.novelDetail.Detail(ctx, rp.ID)
+		if appErr != nil {
+			return "", classifyAppError(appErr, operation)
+		}
+		rawURL, err = imageURLsResourceURL(detail.Novel.ImageURLs, rp.Variant)
+	case "user_profile":
+		detail, appErr := c.userDetail.Detail(ctx, rp.ID)
+		if appErr != nil {
+			return "", classifyAppError(appErr, operation)
+		}
+		rawURL, err = profileImageResourceURL(detail.User.ProfileImageURLs)
+	case "ugoira_archive":
+		result, appErr := c.artworkDetail.UgoiraMetadata(ctx, rp.ID)
+		if appErr != nil {
+			return "", classifyAppError(appErr, operation)
+		}
+		rawURL, err = ugoiraResourceURL(result.Metadata, rp.Variant)
+	case "novel_image", "novel_file":
+		raw, appErr := c.novelDetail.Content(ctx, rp.ID)
+		if appErr != nil {
+			return "", classifyAppError(appErr, operation)
+		}
+		rawURL, err = c.novelContentResourceURL(rp, raw)
+	default:
+		return "", newError(operation, sdk.InvalidArgument, "resource kind is unsupported")
+	}
+	if err != nil {
+		if _, ok := err.(*sdk.Error); ok {
+			return "", err
+		}
+		return "", newError(operation, sdk.MalformedUpstreamResponse, "resource metadata has no usable URL")
+	}
+	if err := c.validateResourceURL(rawURL); err != nil {
+		return "", newError(operation, sdk.ResourceForbidden, "resolved resource URL is not allowed")
+	}
+	c.resourceMu.Lock()
+	c.resourceURLs[ref.String()] = rawURL
+	c.resourceMu.Unlock()
+	return rawURL, nil
+}
+
+func artworkResourceURL(illust artwork.Artwork, page int, variant string) (string, error) {
+	if page >= 0 {
+		for _, candidate := range illust.MetaPages {
+			if candidate.PageIndex == page {
+				if variant == "original" || variant == "" {
+					if value := firstArtworkImageURL(candidate.ImageURLs); value != "" {
+						return value, nil
+					}
+					return "", errors.New("artwork page is unavailable")
+				}
+				return artworkImageURLsResourceURL(candidate.ImageURLs, variant)
+			}
+		}
+		if page == 0 && illust.MetaSinglePage.OriginalImageURL != "" {
+			return illust.MetaSinglePage.OriginalImageURL, nil
+		}
+		return "", errors.New("artwork page is unavailable")
+	}
+	return artworkImageURLsResourceURL(illust.ImageURLs, variant)
+}
+
+func imageURLsResourceURL(urls novel.ImageURLs, variant string) (string, error) {
+	values := map[string]string{
+		"original":      urls.Original,
+		"large":         urls.Large,
+		"medium":        urls.Medium,
+		"square_medium": urls.SquareMedium,
+	}
+	if variant != "" {
+		if value := values[variant]; value != "" {
+			return value, nil
+		}
+		return "", errors.New("requested image variant is unavailable")
+	}
+	if value := firstAvailable(urls); value != "" {
+		return value, nil
+	}
+	return "", errors.New("image URL is unavailable")
+}
+
+func artworkImageURLsResourceURL(urls artwork.ImageURLs, variant string) (string, error) {
+	values := map[string]string{
+		"original":      urls.Original,
+		"large":         urls.Large,
+		"medium":        urls.Medium,
+		"square_medium": urls.SquareMedium,
+	}
+	if variant != "" {
+		if value := values[variant]; value != "" {
+			return value, nil
+		}
+		return "", errors.New("requested image variant is unavailable")
+	}
+	if value := firstArtworkImageURL(urls); value != "" {
+		return value, nil
+	}
+	return "", errors.New("image URL is unavailable")
+}
+
+func profileImageResourceURL(urls user.ProfileImageURLs) (string, error) {
+	if urls.Medium == nil || *urls.Medium == "" {
+		return "", errors.New("profile image is unavailable")
+	}
+	return *urls.Medium, nil
+}
+
+func ugoiraResourceURL(meta artwork.UgoiraMetadata, variant string) (string, error) {
+	values := map[string]string{
+		"medium":   meta.ZipURLs.Medium,
+		"original": meta.ZipURLs.Original,
+	}
+	if variant != "" {
+		if value := values[variant]; value != "" {
+			return value, nil
+		}
+		return "", errors.New("requested ugoira archive is unavailable")
+	}
+	for _, value := range []string{values["original"], values["medium"]} {
+		if value != "" {
+			return value, nil
+		}
+	}
+	return "", errors.New("ugoira archive is unavailable")
+}
+
+func (c *Client) novelContentResourceURL(rp resourceRefPayload, raw []byte) (string, error) {
+	content, err := c.parseNovelContent(rp.ID, raw)
+	if err != nil {
+		return "", err
+	}
+	if rp.Page < 0 {
+		return "", errors.New("novel resource index is invalid")
+	}
+	index := 0
+	for _, block := range content.Blocks {
+		switch rp.Kind {
+		case "novel_image":
+			if block.Kind != NovelBlockImage {
+				continue
+			}
+			if index == rp.Page {
+				if block.Image == nil {
+					return "", errors.New("novel image block is unavailable")
+				}
+				return block.Image.Resource.URL, nil
+			}
+		case "novel_file":
+			if block.Kind != NovelBlockFile {
+				continue
+			}
+			if index == rp.Page {
+				if block.File == nil {
+					return "", errors.New("novel file block is unavailable")
+				}
+				return block.File.Resource.URL, nil
+			}
+		default:
+			return "", errors.New("novel resource kind is unsupported")
+		}
+		index++
+	}
+	return "", errors.New("novel resource is unavailable")
 }

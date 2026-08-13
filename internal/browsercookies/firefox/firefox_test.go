@@ -11,7 +11,7 @@ import (
 
 	_ "modernc.org/sqlite"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/browsercookies/core"
+	"github.com/FlanChanXwO/pixiv-cli/internal/browsercookies"
 )
 
 func skipIfNoSQLite3(t *testing.T) {
@@ -83,7 +83,7 @@ func TestDiscoverProfilesFromProfilesIni(t *testing.T) {
 	if len(profiles) != 2 {
 		t.Fatalf("profiles = %+v", profiles)
 	}
-	byID := map[string]core.Profile{}
+	byID := map[string]browsercookies.Profile{}
 	for _, pr := range profiles {
 		byID[pr.ID] = pr
 	}
@@ -97,7 +97,7 @@ func TestDiscoverProfilesFromProfilesIni(t *testing.T) {
 
 func TestDiscoverNotInstalled(t *testing.T) {
 	p, _ := newProvider(filepath.Join(t.TempDir(), "missing"))
-	if _, err := p.DiscoverProfiles(context.Background()); !errors.Is(err, core.ErrNotInstalled) {
+	if _, err := p.DiscoverProfiles(context.Background()); !errors.Is(err, browsercookies.ErrNotInstalled) {
 		t.Fatalf("err = %v, want ErrNotInstalled", err)
 	}
 	// 有 profiles.ini 但没有任何含 cookies.sqlite 的 profile → 未安装。
@@ -106,7 +106,7 @@ func TestDiscoverNotInstalled(t *testing.T) {
 		t.Fatal(err)
 	}
 	p2, _ := newProvider(root)
-	if _, err := p2.DiscoverProfiles(context.Background()); !errors.Is(err, core.ErrNotInstalled) {
+	if _, err := p2.DiscoverProfiles(context.Background()); !errors.Is(err, browsercookies.ErrNotInstalled) {
 		t.Fatalf("empty profiles err = %v, want ErrNotInstalled", err)
 	}
 }
@@ -119,11 +119,11 @@ func TestReadPlaintextCookie(t *testing.T) {
 	fixture := buildMozFixture(t,
 		`INSERT INTO moz_cookies (name, value, host, path) VALUES ('FANBOXSESSID', 'ff-session', '.fanbox.cc', '/');`,
 	)
-	restore := core.SetProviderFixtureForTest("firefox", func(string) ([]byte, error) { return fixture, nil })
+	restore := browsercookies.SetProviderFixtureForTest("firefox", func(string) ([]byte, error) { return fixture, nil })
 	defer restore()
 
 	p, _ := newProvider(root)
-	secrets, err := p.Read(context.Background(), core.DefaultQuery, "default-release")
+	secrets, err := p.Read(context.Background(), browsercookies.DefaultQuery, "default-release")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -141,11 +141,11 @@ func TestReadEncryptedClassified(t *testing.T) {
 	fixture := buildMozFixture(t,
 		`INSERT INTO moz_cookies (name, value, host, path) VALUES ('FANBOXSESSID', X'8F8F8F8F8F', '.fanbox.cc', '/');`,
 	)
-	restore := core.SetProviderFixtureForTest("firefox", func(string) ([]byte, error) { return fixture, nil })
+	restore := browsercookies.SetProviderFixtureForTest("firefox", func(string) ([]byte, error) { return fixture, nil })
 	defer restore()
 
 	p, _ := newProvider(root)
-	if _, err := p.Read(context.Background(), core.DefaultQuery, "default-release"); !errors.Is(err, core.ErrEncryptedCookieUnsupported) {
+	if _, err := p.Read(context.Background(), browsercookies.DefaultQuery, "default-release"); !errors.Is(err, browsercookies.ErrEncryptedCookieUnsupported) {
 		t.Fatalf("err = %v, want ErrEncryptedCookieUnsupported", err)
 	}
 }
@@ -155,13 +155,13 @@ func TestReadInvalidInputs(t *testing.T) {
 	writeProfiles(t, root, "[Profile0]\nName=default\nPath=default-release\n", "default-release")
 	p, _ := newProvider(root)
 
-	if _, err := p.Read(context.Background(), core.CookieQuery{}, "default-release"); !errors.Is(err, core.ErrQueryInvalid) {
+	if _, err := p.Read(context.Background(), browsercookies.CookieQuery{}, "default-release"); !errors.Is(err, browsercookies.ErrQueryInvalid) {
 		t.Fatalf("invalid query err = %v", err)
 	}
-	if _, err := p.Read(context.Background(), core.DefaultQuery, "../x"); !errors.Is(err, core.ErrInvalidProfileID) {
+	if _, err := p.Read(context.Background(), browsercookies.DefaultQuery, "../x"); !errors.Is(err, browsercookies.ErrInvalidProfileID) {
 		t.Fatalf("invalid profile err = %v", err)
 	}
-	if _, err := p.Read(context.Background(), core.DefaultQuery, "unknown-profile"); !errors.Is(err, core.ErrProfileNotFound) {
+	if _, err := p.Read(context.Background(), browsercookies.DefaultQuery, "unknown-profile"); !errors.Is(err, browsercookies.ErrProfileNotFound) {
 		t.Fatalf("unknown profile err = %v", err)
 	}
 }

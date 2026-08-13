@@ -1,10 +1,11 @@
-package pixiv
+package pixiv_test
 
 import (
 	"net/url"
 	"testing"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/protocol"
+	. "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/stretchr/testify/require"
 )
 

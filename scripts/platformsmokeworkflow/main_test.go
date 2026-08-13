@@ -1,4 +1,4 @@
-package main
+package platformsmokeworkflow_test
 
 import (
 	"errors"
@@ -6,10 +6,12 @@ import (
 	"os"
 	"strings"
 	"testing"
+
+	"github.com/FlanChanXwO/pixiv-cli/scripts/internal/platformsmokeworkflow"
 )
 
 func TestPlatformSmokeWorkflowPolicy(t *testing.T) {
-	if err := Validate("../../.github/workflows/platform-smoke.yml"); err != nil {
+	if err := platformsmokeworkflow.Validate("../../.github/workflows/platform-smoke.yml"); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -32,7 +34,7 @@ func TestPlatformSmokeLocksPortableLinuxABI(t *testing.T) {
 }
 
 func TestQualityWorkflowPolicy(t *testing.T) {
-	if err := ValidateQuality("../../.github/workflows/ci.yml"); err != nil {
+	if err := platformsmokeworkflow.ValidateQuality("../../.github/workflows/ci.yml"); err != nil {
 		t.Fatal(err)
 	}
 }

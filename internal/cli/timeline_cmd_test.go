@@ -19,7 +19,7 @@ func TestTimelineCommandsRouteTypedAppSDKRequestsAndOutputLists(t *testing.T) {
 	var followingNovel pixiv.FollowingNovelsRequest
 	var latestIllust pixiv.LatestArtworksRequest
 	var latestNovel pixiv.LatestNovelsRequest
-	setTestSDKCommandClient(t, sdkCommandFake{
+	setTestSDKCommandClient(t, &sdkCommandFake{
 		followingArtworks: func(_ context.Context, request pixiv.FollowingArtworksRequest) (sdk.Page[pixiv.Artwork], error) {
 			followingIllust = request
 			return sdk.Page[pixiv.Artwork]{Items: []pixiv.Artwork{commandArtwork(11)}}, nil
@@ -84,7 +84,7 @@ func TestMyPixivCommandsRouteAggregateAndSpecificUserRequests(t *testing.T) {
 	var myPixivNovels pixiv.MyPixivNovelsRequest
 	var userArtworks pixiv.UserArtworksRequest
 	var userNovels pixiv.UserNovelsRequest
-	setTestSDKCommandClient(t, sdkCommandFake{
+	setTestSDKCommandClient(t, &sdkCommandFake{
 		currentUserID: func(context.Context) (int64, error) { return 77, nil },
 		myPixivUsers: func(_ context.Context, request pixiv.MyPixivUsersRequest) (sdk.Page[pixiv.UserPreview], error) {
 			myPixivUsers = request
@@ -144,7 +144,7 @@ func TestMyPixivCommandsRouteAggregateAndSpecificUserRequests(t *testing.T) {
 func TestTimelineAndMyPixivRejectUnsupportedTypeCombinationsBeforeSDKCalls(t *testing.T) {
 	useTempPaths(t)
 	opened := 0
-	setTestSDKCommandClient(t, sdkCommandFake{latestArtworks: func(context.Context, pixiv.LatestArtworksRequest) (sdk.Page[pixiv.Artwork], error) {
+	setTestSDKCommandClient(t, &sdkCommandFake{latestArtworks: func(context.Context, pixiv.LatestArtworksRequest) (sdk.Page[pixiv.Artwork], error) {
 		opened++
 		return sdk.Page[pixiv.Artwork]{}, nil
 	}})

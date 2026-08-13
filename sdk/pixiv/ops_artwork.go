@@ -4,15 +4,28 @@ import (
 	"context"
 	"net/url"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/model"
+	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/artwork/bookmark"
+	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/artwork/comments"
+	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/artwork/ranking"
+	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/artwork/recommended"
+	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/artwork/related"
+	artworksearch "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/artwork/search"
+	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/artwork/series"
+	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/artwork/timeline"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 )
 
 // SearchArtworks searches artworks. Repeat the original request fields when
 // continuing with a non-zero Cursor.
 func (c *Client) SearchArtworks(ctx context.Context, request SearchArtworksRequest) (sdk.Page[Artwork], error) {
-	if request.Word == "" {
-		return sdk.Page[Artwork]{}, newError("SearchArtworks", sdk.InvalidArgument, "search word is required")
+	if err := validateSearchWord("SearchArtworks", request.Word); err != nil {
+		return sdk.Page[Artwork]{}, err
+	}
+	if err := validateSearchArtworksRequest("SearchArtworks", request); err != nil {
+		return sdk.Page[Artwork]{}, err
+	}
+	if err := validateBookmarkRange("SearchArtworks", request.BookmarkMin, request.BookmarkMax); err != nil {
+		return sdk.Page[Artwork]{}, err
 	}
 	if request.Target == "" {
 		request.Target = SearchTargetPartialMatchForTags
@@ -42,6 +55,12 @@ func (c *Client) SearchArtworks(ctx context.Context, request SearchArtworksReque
 	if request.ContentType != "" && request.ContentType != SearchContentTypeAll {
 		query.Set("content_type", string(request.ContentType))
 	}
+	if request.AIMode != "" && request.AIMode != SearchAIModeAll {
+		// The App adapter uses search_ai_type=0 for both all and only. Keep the
+		// public mode in the cursor digest so changing local filtering cannot
+		// reuse a continuation produced for another result set.
+		query.Set("ai_mode", string(request.AIMode))
+	}
 	if request.AspectRatio != "" && request.AspectRatio != SearchAspectRatioAll {
 		query.Set("ratio_pattern", string(request.AspectRatio))
 	}
@@ -61,7 +80,7 @@ func (c *Client) SearchArtworks(ctx context.Context, request SearchArtworksReque
 	if err != nil {
 		return sdk.Page[Artwork]{}, err
 	}
-	filters := model.SearchIllustFilters{
+	filters := artworksearch.Filters{
 		AIMode:      string(request.AIMode),
 		ContentType: string(request.ContentType),
 		AspectRatio: string(request.AspectRatio),
@@ -70,11 +89,43 @@ func (c *Client) SearchArtworks(ctx context.Context, request SearchArtworksReque
 		BookmarkMin: request.BookmarkMin,
 		BookmarkMax: request.BookmarkMax,
 	}
-	list, err := c.app.SearchIllust(ctx, request.Word, string(request.Target), string(request.Sort), string(request.Duration), request.StartDate, request.EndDate, offset, filters)
+	result, err := c.artworkSearch.Search(ctx, artworksearch.Request{
+		Word:      request.Word,
+		Target:    string(request.Target),
+		Sort:      string(request.Sort),
+		Duration:  string(request.Duration),
+		StartDate: request.StartDate,
+		EndDate:   request.EndDate,
+		Offset:    offset,
+		Filters:   filters,
+	})
 	if err != nil {
 		return sdk.Page[Artwork]{}, classifyAppError(err, "SearchArtworks")
 	}
-	return c.illustPage("SearchArtworks", query, "offset", list)
+	items := make([]Artwork, len(result.Items))
+	for index, item := range result.Items {
+		items[index], err = c.mapArtworkEntity(item)
+		if err != nil {
+			return sdk.Page[Artwork]{}, err
+		}
+	}
+	page := sdk.Page[Artwork]{Items: items}
+	if result.HasNext {
+		page.Next, err = c.buildCursor("SearchArtworks", query, "offset", int64(result.NextOffset), true)
+		if err != nil {
+			return sdk.Page[Artwork]{}, err
+		}
+	}
+	if request.AIMode == SearchAIModeOnly {
+		filtered := make([]Artwork, 0, len(page.Items))
+		for _, artwork := range page.Items {
+			if artwork.AIType == 2 {
+				filtered = append(filtered, artwork)
+			}
+		}
+		page.Items = filtered
+	}
+	return page, nil
 }
 
 // Artwork returns one artwork by its stable ID, including every image page.
@@ -82,11 +133,11 @@ func (c *Client) Artwork(ctx context.Context, request ArtworkRequest) (Artwork, 
 	if request.ArtworkID <= 0 {
 		return Artwork{}, newError("Artwork", sdk.InvalidArgument, "artwork ID must be positive")
 	}
-	detail, err := c.app.IllustDetail(ctx, request.ArtworkID)
+	detail, err := c.artworkDetail.Artwork(ctx, request.ArtworkID)
 	if err != nil {
 		return Artwork{}, classifyAppError(err, "Artwork")
 	}
-	return c.mapArtworkDetail(detail.Illust)
+	return c.mapArtworkEntityDetail(detail.Artwork)
 }
 
 // ArtworkPages returns every image page of one artwork as usable resources.
@@ -94,11 +145,11 @@ func (c *Client) ArtworkPages(ctx context.Context, request ArtworkPagesRequest) 
 	if request.ArtworkID <= 0 {
 		return nil, newError("ArtworkPages", sdk.InvalidArgument, "artwork ID must be positive")
 	}
-	detail, err := c.app.IllustDetail(ctx, request.ArtworkID)
+	detail, err := c.artworkDetail.Artwork(ctx, request.ArtworkID)
 	if err != nil {
 		return nil, classifyAppError(err, "ArtworkPages")
 	}
-	return c.mapArtworkPages(detail.Illust)
+	return c.mapArtworkEntityPages(detail.Artwork)
 }
 
 // RelatedArtworks lists artworks related to one artwork.
@@ -111,11 +162,11 @@ func (c *Client) RelatedArtworks(ctx context.Context, request RelatedArtworksReq
 	if err != nil {
 		return sdk.Page[Artwork]{}, err
 	}
-	list, err := c.app.IllustRelated(ctx, request.ArtworkID, offset)
+	list, err := c.artworkRelated.List(ctx, related.Request{ArtworkID: request.ArtworkID, Offset: offset})
 	if err != nil {
 		return sdk.Page[Artwork]{}, classifyAppError(err, "RelatedArtworks")
 	}
-	return c.illustPage("RelatedArtworks", query, "offset", list)
+	return c.artworkPage("RelatedArtworks", query, "offset", list.Items, int64(list.NextOffset), list.HasNext)
 }
 
 // ArtworkSeries lists artworks within one illustration series.
@@ -128,15 +179,24 @@ func (c *Client) ArtworkSeries(ctx context.Context, request ArtworkSeriesRequest
 	if err != nil {
 		return sdk.Page[Artwork]{}, err
 	}
-	list, err := c.app.IllustSeries(ctx, request.SeriesID, lastOrder)
+	list, err := c.artworkSeries.List(ctx, series.Request{SeriesID: request.SeriesID, LastOrder: lastOrder})
 	if err != nil {
 		return sdk.Page[Artwork]{}, classifyAppError(err, "ArtworkSeries")
 	}
-	return c.illustPage("ArtworkSeries", query, "last_order", list)
+	return c.artworkPage("ArtworkSeries", query, "last_order", list.Items, list.NextLastOrder, list.HasNext)
 }
 
 // ArtworkRanking lists the current artwork ranking.
 func (c *Client) ArtworkRanking(ctx context.Context, request ArtworkRankingRequest) (sdk.Page[Artwork], error) {
+	if request.Mode == "" {
+		request.Mode = RankingModeDay
+	}
+	if err := validateRankingMode("ArtworkRanking", request.Mode); err != nil {
+		return sdk.Page[Artwork]{}, err
+	}
+	if err := validateDate("ArtworkRanking", "date", request.Date); err != nil {
+		return sdk.Page[Artwork]{}, err
+	}
 	query := url.Values{"mode": {string(request.Mode)}}
 	if request.Date != "" {
 		query.Set("date", request.Date)
@@ -145,11 +205,11 @@ func (c *Client) ArtworkRanking(ctx context.Context, request ArtworkRankingReque
 	if err != nil {
 		return sdk.Page[Artwork]{}, err
 	}
-	list, err := c.app.IllustRanking(ctx, string(request.Mode), request.Date, offset)
+	list, err := c.artworkRanking.List(ctx, ranking.Request{Mode: string(request.Mode), Date: request.Date, Offset: offset})
 	if err != nil {
 		return sdk.Page[Artwork]{}, classifyAppError(err, "ArtworkRanking")
 	}
-	return c.illustPage("ArtworkRanking", query, "offset", list)
+	return c.artworkPage("ArtworkRanking", query, "offset", list.Items, int64(list.NextOffset), list.HasNext)
 }
 
 // RecommendedArtworks lists recommended artworks.
@@ -159,11 +219,11 @@ func (c *Client) RecommendedArtworks(ctx context.Context, request RecommendedArt
 	if err != nil {
 		return sdk.Page[Artwork]{}, err
 	}
-	list, err := c.app.IllustRecommended(ctx, offset, contExists)
+	list, err := c.artworkRecommended.List(ctx, recommended.Request{Offset: offset, ContinuationExists: contExists})
 	if err != nil {
 		return sdk.Page[Artwork]{}, classifyAppError(err, "RecommendedArtworks")
 	}
-	return c.illustPage("RecommendedArtworks", query, "offset", list)
+	return c.artworkPage("RecommendedArtworks", query, "offset", list.Items, int64(list.NextOffset), list.HasNext)
 }
 
 // FollowingArtworks lists artworks by followed users.
@@ -173,11 +233,11 @@ func (c *Client) FollowingArtworks(ctx context.Context, request FollowingArtwork
 	if err != nil {
 		return sdk.Page[Artwork]{}, err
 	}
-	list, err := c.app.IllustFollow(ctx, string(request.Restrict), offset)
+	list, err := c.artworkTimeline.List(ctx, timeline.Request{Kind: timeline.Following, Restrict: string(request.Restrict), Offset: offset})
 	if err != nil {
 		return sdk.Page[Artwork]{}, classifyAppError(err, "FollowingArtworks")
 	}
-	return c.illustPage("FollowingArtworks", query, "offset", list)
+	return c.artworkPage("FollowingArtworks", query, "offset", list.Items, int64(list.NextOffset), list.HasNext)
 }
 
 // LatestArtworks lists the newest artworks.
@@ -191,11 +251,11 @@ func (c *Client) LatestArtworks(ctx context.Context, request LatestArtworksReque
 	if err != nil {
 		return sdk.Page[Artwork]{}, err
 	}
-	list, err := c.app.IllustNew(ctx, contentType, offset)
+	list, err := c.artworkTimeline.List(ctx, timeline.Request{Kind: timeline.Latest, ContentType: contentType, Offset: offset})
 	if err != nil {
 		return sdk.Page[Artwork]{}, classifyAppError(err, "LatestArtworks")
 	}
-	return c.illustPage("LatestArtworks", query, "offset", list)
+	return c.artworkPage("LatestArtworks", query, "offset", list.Items, int64(list.NextOffset), list.HasNext)
 }
 
 // UserArtworks lists one user's artworks.
@@ -209,17 +269,20 @@ func (c *Client) UserArtworks(ctx context.Context, request UserArtworksRequest) 
 	if err != nil {
 		return sdk.Page[Artwork]{}, err
 	}
-	list, err := c.app.UserArtworks(ctx, request.UserID, kind, offset)
+	list, err := c.artworkTimeline.List(ctx, timeline.Request{Kind: timeline.UserArtworks, UserID: request.UserID, ArtworkType: kind, Offset: offset})
 	if err != nil {
 		return sdk.Page[Artwork]{}, classifyAppError(err, "UserArtworks")
 	}
-	return c.illustPage("UserArtworks", query, "offset", list)
+	return c.artworkPage("UserArtworks", query, "offset", list.Items, int64(list.NextOffset), list.HasNext)
 }
 
 // UserArtworkBookmarks lists one user's bookmarked artworks.
 func (c *Client) UserArtworkBookmarks(ctx context.Context, request UserArtworkBookmarksRequest) (sdk.Page[Artwork], error) {
 	if request.UserID <= 0 {
 		return sdk.Page[Artwork]{}, newError("UserArtworkBookmarks", sdk.InvalidArgument, "user ID must be positive")
+	}
+	if err := validateRestrict("UserArtworkBookmarks", request.Restrict); err != nil {
+		return sdk.Page[Artwork]{}, err
 	}
 	query := url.Values{"user_id": {itoa(request.UserID)}, "restrict": {string(request.Restrict)}}
 	if request.Tag != "" {
@@ -229,11 +292,11 @@ func (c *Client) UserArtworkBookmarks(ctx context.Context, request UserArtworkBo
 	if err != nil {
 		return sdk.Page[Artwork]{}, err
 	}
-	list, err := c.app.UserBookmarks(ctx, request.UserID, string(request.Restrict), request.Tag, maxID)
+	list, err := c.artworkBookmark.Artworks(ctx, bookmark.ArtworksRequest{UserID: request.UserID, Restrict: string(request.Restrict), Tag: request.Tag, MaxBookmarkID: maxID})
 	if err != nil {
 		return sdk.Page[Artwork]{}, classifyAppError(err, "UserArtworkBookmarks")
 	}
-	return c.illustPage("UserArtworkBookmarks", query, "max_bookmark_id", list)
+	return c.artworkPage("UserArtworkBookmarks", query, "max_bookmark_id", list.Items, list.NextMaxBookmarkID, list.HasNext)
 }
 
 // UserArtworkBookmarkTags lists the bookmark tags of one user's bookmarked
@@ -242,20 +305,23 @@ func (c *Client) UserArtworkBookmarkTags(ctx context.Context, request UserArtwor
 	if request.UserID <= 0 {
 		return sdk.Page[BookmarkTag]{}, newError("UserArtworkBookmarkTags", sdk.InvalidArgument, "user ID must be positive")
 	}
+	if err := validateRestrict("UserArtworkBookmarkTags", request.Restrict); err != nil {
+		return sdk.Page[BookmarkTag]{}, err
+	}
 	query := url.Values{"user_id": {itoa(request.UserID)}, "restrict": {string(request.Restrict)}}
 	offset, err := c.continuationOffset("UserArtworkBookmarkTags", query, request.Cursor)
 	if err != nil {
 		return sdk.Page[BookmarkTag]{}, err
 	}
-	list, err := c.app.UserArtworkBookmarkTags(ctx, request.UserID, string(request.Restrict), offset)
+	list, err := c.artworkBookmark.Tags(ctx, bookmark.TagsRequest{UserID: request.UserID, Restrict: string(request.Restrict), Offset: offset})
 	if err != nil {
 		return sdk.Page[BookmarkTag]{}, classifyAppError(err, "UserArtworkBookmarkTags")
 	}
-	items := make([]BookmarkTag, 0, len(list.Tags))
-	for _, tag := range list.Tags {
+	items := make([]BookmarkTag, 0, len(list.Items))
+	for _, tag := range list.Items {
 		items = append(items, BookmarkTag{Name: tag.Name, Count: tag.Count})
 	}
-	next, err := c.buildCursor("UserArtworkBookmarkTags", query, "offset", int64(list.NextOffset), list.ContinuationExists)
+	next, err := c.buildCursor("UserArtworkBookmarkTags", query, "offset", int64(list.NextOffset), list.HasNext)
 	if err != nil {
 		return sdk.Page[BookmarkTag]{}, err
 	}
@@ -269,26 +335,26 @@ func (c *Client) MyPixivArtworks(ctx context.Context, request MyPixivArtworksReq
 	if err != nil {
 		return sdk.Page[Artwork]{}, err
 	}
-	list, err := c.app.IllustMyPixiv(ctx, offset)
+	list, err := c.artworkTimeline.List(ctx, timeline.Request{Kind: timeline.MyPixiv, Offset: offset})
 	if err != nil {
 		return sdk.Page[Artwork]{}, classifyAppError(err, "MyPixivArtworks")
 	}
-	return c.illustPage("MyPixivArtworks", query, "offset", list)
+	return c.artworkPage("MyPixivArtworks", query, "offset", list.Items, int64(list.NextOffset), list.HasNext)
 }
 
 // TrendingArtworkTags lists currently trending artwork tags.
 func (c *Client) TrendingArtworkTags(ctx context.Context, request TrendingArtworkTagsRequest) ([]TrendingTag, error) {
-	result, err := c.app.TrendingTagsIllust(ctx)
+	result, err := c.artworkTrending.List(ctx)
 	if err != nil {
 		return nil, classifyAppError(err, "TrendingArtworkTags")
 	}
-	items := make([]TrendingTag, 0, len(result.TrendTags))
-	for _, tag := range result.TrendTags {
-		artwork, err := c.mapArtwork(tag.Illust)
+	items := make([]TrendingTag, 0, len(result))
+	for _, tag := range result {
+		mapped, err := c.mapArtworkEntity(tag.Artwork)
 		if err != nil {
 			return nil, err
 		}
-		items = append(items, TrendingTag{Tag: tag.Tag, TranslatedName: tag.TranslatedName, Artwork: artwork})
+		items = append(items, TrendingTag{Tag: tag.Tag, TranslatedName: tag.TranslatedName, Artwork: mapped})
 	}
 	return items, nil
 }
@@ -299,11 +365,11 @@ func (c *Client) UgoiraMetadata(ctx context.Context, request UgoiraMetadataReque
 	if request.ArtworkID <= 0 {
 		return UgoiraMetadata{}, newError("UgoiraMetadata", sdk.InvalidArgument, "artwork ID must be positive")
 	}
-	result, err := c.app.UgoiraMetadata(ctx, request.ArtworkID)
+	result, err := c.artworkDetail.UgoiraMetadata(ctx, request.ArtworkID)
 	if err != nil {
 		return UgoiraMetadata{}, classifyAppError(err, "UgoiraMetadata")
 	}
-	return c.mapUgoiraMetadata(request.ArtworkID, result)
+	return c.mapUgoiraMetadataEntity(request.ArtworkID, result.Metadata)
 }
 
 // ArtworkComments lists comments on one artwork.
@@ -316,11 +382,11 @@ func (c *Client) ArtworkComments(ctx context.Context, request ArtworkCommentsReq
 	if err != nil {
 		return CommentPage{}, err
 	}
-	list, err := c.app.ArtworkComments(ctx, request.ArtworkID, offset)
+	list, err := c.artworkComments.List(ctx, comments.Request{ArtworkID: request.ArtworkID, Offset: offset})
 	if err != nil {
 		return CommentPage{}, classifyAppError(err, "ArtworkComments")
 	}
-	return c.commentPage("ArtworkComments", query, list)
+	return c.mapArtworkCommentPage("ArtworkComments", query, list.Items, list.NextOffset, list.HasNext, list.Total, list.AccessControl)
 }
 
 // ArtworkBookmark reads the current user's bookmark detail for one artwork.
@@ -328,33 +394,9 @@ func (c *Client) ArtworkBookmark(ctx context.Context, request ArtworkBookmarkReq
 	if request.ArtworkID <= 0 {
 		return ArtworkBookmarkDetail{}, newError("ArtworkBookmark", sdk.InvalidArgument, "artwork ID must be positive")
 	}
-	detail, err := c.app.ArtworkBookmarkDetail(ctx, request.ArtworkID)
+	detail, err := c.artworkBookmark.Detail(ctx, request.ArtworkID)
 	if err != nil {
 		return ArtworkBookmarkDetail{}, classifyAppError(err, "ArtworkBookmark")
 	}
 	return ArtworkBookmarkDetail{Restrict: Restrict(detail.Restrict), Tags: detail.Tags}, nil
-}
-
-// illustPage maps an adapter illust list into a public artwork page, encoding
-// the given continuation kind into an opaque cursor.
-func (c *Client) illustPage(op string, query url.Values, key string, list *model.IllustList) (sdk.Page[Artwork], error) {
-	items := make([]Artwork, 0, len(list.Illusts))
-	for _, m := range list.Illusts {
-		artwork, err := c.mapArtwork(m)
-		if err != nil {
-			return sdk.Page[Artwork]{}, err
-		}
-		items = append(items, artwork)
-	}
-	value := int64(list.NextOffset)
-	if key == "max_bookmark_id" {
-		value = list.NextMaxBookmarkID
-	} else if key == "last_order" {
-		value = list.NextValue
-	}
-	next, err := c.buildCursor(op, query, key, value, list.ContinuationExists)
-	if err != nil {
-		return sdk.Page[Artwork]{}, err
-	}
-	return sdk.Page[Artwork]{Items: items, Next: next}, nil
 }

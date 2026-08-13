@@ -7,9 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/application/config"
-	downloadapp "github.com/FlanChanXwO/pixiv-cli/internal/application/download"
-	pixivapp "github.com/FlanChanXwO/pixiv-cli/internal/application/pixiv"
+	downloader "github.com/FlanChanXwO/pixiv-cli/internal/media/downloader"
+	"github.com/FlanChanXwO/pixiv-cli/internal/storage/config"
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -18,7 +17,7 @@ import (
 func TestBookmarkAddConsumesNDJSONAndSkipsFailedRecord(t *testing.T) {
 	useTempPaths(t)
 	var requests []pixiv.AddBookmarkRequest
-	setTestSDKCommandClient(t, sdkCommandFake{addBookmark: func(_ context.Context, request pixiv.AddBookmarkRequest) error {
+	setTestSDKCommandClient(t, &sdkCommandFake{addBookmark: func(_ context.Context, request pixiv.AddBookmarkRequest) error {
 		requests = append(requests, request)
 		return nil
 	}})
@@ -39,15 +38,67 @@ func TestBookmarkAddConsumesNDJSONAndSkipsFailedRecord(t *testing.T) {
 	assert.Equal(t, "82", diagnostic["id"])
 }
 
+func TestBookmarkAddConsumesOneRawIDFromStdin(t *testing.T) {
+	useTempPaths(t)
+	var requests []pixiv.AddBookmarkRequest
+	setTestSDKCommandClient(t, &sdkCommandFake{addBookmark: func(_ context.Context, request pixiv.AddBookmarkRequest) error {
+		requests = append(requests, request)
+		return nil
+	}})
+
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"pixiv", "bookmark", "add"}, strings.NewReader("81\r\n"), &stdout, &stderr)
+
+	require.Equal(t, 0, code, stderr.String())
+	assert.Equal(t, []pixiv.AddBookmarkRequest{{ArtworkID: 81, Restrict: pixiv.RestrictPublic}}, requests)
+	assert.Empty(t, stdout.String())
+	assert.Empty(t, stderr.String())
+}
+
+func TestFollowAddConsumesOneRawIDFromStdin(t *testing.T) {
+	useTempPaths(t)
+	var request pixiv.FollowUserRequest
+	setTestSDKCommandClient(t, &sdkCommandFake{follow: func(_ context.Context, got pixiv.FollowUserRequest) error {
+		request = got
+		return nil
+	}})
+
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"pixiv", "follow", "add"}, strings.NewReader("88\n"), &stdout, &stderr)
+
+	require.Equal(t, 0, code, stderr.String())
+	assert.Equal(t, pixiv.FollowUserRequest{UserID: 88, Restrict: pixiv.RestrictPublic}, request)
+	assert.Empty(t, stdout.String())
+	assert.Empty(t, stderr.String())
+}
+
+func TestDownloadConsumesOneRawIDFromStdin(t *testing.T) {
+	useTempPaths(t)
+	var requests []downloader.DownloadRequest
+	setTestDownloadCommandServices(t, &sdkCommandFake{}, nil, config.RuntimeConfig{}, func(downloader.DownloadClient, string, string) (downloader.DownloadManager, error) {
+		return downloadManagerFake{download: func(_ context.Context, request downloader.DownloadRequest) ([]downloader.DownloadedArtwork, error) {
+			requests = append(requests, request)
+			return []downloader.DownloadedArtwork{{IllustID: request.IllustIDs[0], Files: []downloader.DownloadedFile{{Path: "/downloads/work.jpg"}}}}, nil
+		}}, nil
+	})
+
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"pixiv", "download"}, strings.NewReader("91\r\n"), &stdout, &stderr)
+
+	require.Equal(t, 0, code, stderr.String())
+	require.Len(t, requests, 1)
+	assert.Equal(t, []int64{91}, requests[0].IllustIDs)
+	assert.Empty(t, stdout.String())
+	assert.Empty(t, stderr.String())
+}
+
 func TestDownloadConsumesNDJSONWithoutWritingAReport(t *testing.T) {
 	useTempPaths(t)
-	var requests []downloadapp.DownloadRequest
-	setTestDownloadCommandServices(t, func(pixivapp.SDKClientRequest) (pixivapp.ClientSet, error) {
-		return testClientSet(t, &sdkCommandFake{}), nil
-	}, config.RuntimeConfig{}, func(downloadapp.DownloadClient, string, string) (downloadapp.DownloadManager, error) {
-		return downloadManagerFake{download: func(_ context.Context, request downloadapp.DownloadRequest) ([]downloadapp.DownloadedArtwork, error) {
+	var requests []downloader.DownloadRequest
+	setTestDownloadCommandServices(t, &sdkCommandFake{}, nil, config.RuntimeConfig{}, func(downloader.DownloadClient, string, string) (downloader.DownloadManager, error) {
+		return downloadManagerFake{download: func(_ context.Context, request downloader.DownloadRequest) ([]downloader.DownloadedArtwork, error) {
 			requests = append(requests, request)
-			return []downloadapp.DownloadedArtwork{{IllustID: request.IllustIDs[0], Files: []downloadapp.DownloadedFile{{Path: "/downloads/work.jpg"}}}}, nil
+			return []downloader.DownloadedArtwork{{IllustID: request.IllustIDs[0], Files: []downloader.DownloadedFile{{Path: "/downloads/work.jpg"}}}}, nil
 		}}, nil
 	})
 	input := strings.Join([]string{
@@ -60,7 +111,7 @@ func TestDownloadConsumesNDJSONWithoutWritingAReport(t *testing.T) {
 	assert.Equal(t, 1, code)
 	require.Len(t, requests, 1)
 	assert.Equal(t, []int64{91}, requests[0].IllustIDs)
-	assert.Equal(t, downloadapp.DownloadQualityMini, requests[0].Quality)
+	assert.Equal(t, downloader.DownloadQualityMini, requests[0].Quality)
 	assert.Empty(t, stdout.String())
 	var diagnostic map[string]any
 	require.NoError(t, json.Unmarshal(stderr.Bytes(), &diagnostic))
@@ -71,7 +122,7 @@ func TestDownloadConsumesNDJSONWithoutWritingAReport(t *testing.T) {
 func TestBookmarkAddFailFastDoesNotReadTheNextActionRecord(t *testing.T) {
 	useTempPaths(t)
 	called := false
-	setTestSDKCommandClient(t, sdkCommandFake{addBookmark: func(context.Context, pixiv.AddBookmarkRequest) error {
+	setTestSDKCommandClient(t, &sdkCommandFake{addBookmark: func(context.Context, pixiv.AddBookmarkRequest) error {
 		called = true
 		return nil
 	}})

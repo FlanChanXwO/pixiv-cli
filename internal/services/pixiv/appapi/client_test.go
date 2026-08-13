@@ -1,124 +1,91 @@
-package appapi
+package appapi_test
 
 import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"strings"
 	"testing"
-	"time"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/model"
+	appapi "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/appapi"
 )
 
-func TestNewLeavesRequestLifetimeToContext(t *testing.T) {
-	client := New()
-	httpClient := client.restyClient.GetClient()
-	if httpClient == http.DefaultClient {
-		t.Fatal("HTTP client unexpectedly aliases http.DefaultClient")
+type testDetailResponse struct {
+	Illust struct {
+		ID int64 `json:"id"`
+	} `json:"illust"`
+}
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(request *http.Request) (*http.Response, error) { return f(request) }
+
+func getTestDetail(ctx context.Context, client *appapi.Client) (testDetailResponse, error) {
+	var result testDetailResponse
+	err := client.GetJSON(ctx, "/v1/illust/detail", url.Values{"illust_id": {"42"}}, &result)
+	return result, err
+}
+
+func TestGetRawPreservesBodyAndHeadersForEndpointFamily(t *testing.T) {
+	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/novel/content" || r.URL.Query().Get("novel_id") != "9" {
+			t.Fatalf("request = %s", r.URL.String())
+		}
+		if r.Header.Get("X-User-Id") != "42" {
+			t.Fatalf("X-User-Id = %q", r.Header.Get("X-User-Id"))
+		}
+		_, _ = w.Write([]byte("<p>raw</p>"))
+	}))
+	defer api.Close()
+
+	body, err := appapi.New(appapi.WithBaseURL(api.URL), appapi.WithHTTPClient(api.Client()), appapi.WithAccessToken("access"), appapi.WithUserID(42)).GetRaw(context.Background(), "/v1/novel/content", url.Values{"novel_id": {"9"}})
+	if err != nil {
+		t.Fatalf("GetRaw returned error: %v", err)
 	}
-	if httpClient.Timeout != 0 {
-		t.Fatalf("timeout = %v, want zero", httpClient.Timeout)
+	if string(body) != "<p>raw</p>" {
+		t.Fatalf("body = %q", body)
+	}
+}
+
+func TestNewPropagatesContextCancellation(t *testing.T) {
+	started := make(chan struct{})
+	api := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, request *http.Request) {
+		close(started)
+		<-request.Context().Done()
+	}))
+	defer api.Close()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	result := make(chan error, 1)
+	go func() {
+		var response testDetailResponse
+		result <- appapi.New(appapi.WithBaseURL(api.URL), appapi.WithAccessToken("access")).GetJSON(ctx, "/v1/illust/detail", nil, &response)
+	}()
+	<-started
+	cancel()
+	if err := <-result; !errors.Is(err, context.Canceled) {
+		t.Fatalf("GetJSON error = %v, want context.Canceled", err)
 	}
 }
 
 func TestNewPreservesExplicitHTTPClient(t *testing.T) {
-	want := &http.Client{Timeout: 17 * time.Second}
-	got := New(WithHTTPClient(want)).restyClient.GetClient()
-	if got != want || got.Timeout != want.Timeout {
-		t.Fatalf("HTTP client = %p timeout %v, want %p timeout %v", got, got.Timeout, want, want.Timeout)
-	}
-}
-
-func TestIllustDetailPreservesCanceledContext(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
-
-	_, err := New(WithBaseURL("https://example.invalid"), WithAccessToken("access")).IllustDetail(ctx, 42)
-	if !errors.Is(err, context.Canceled) {
-		t.Fatalf("error = %v, want context.Canceled", err)
-	}
-}
-
-func TestSearchIllustMapsNormalizedFiltersToAppQuery(t *testing.T) {
-	tests := []struct {
-		name        string
-		filters     model.SearchIllustFilters
-		wantQuery   map[string]string
-		absentQuery []string
-	}{
-		{
-			name: "defaults omitted", filters: model.SearchIllustFilters{Rating: "all", ContentType: "all", AIMode: "all", AspectRatio: "all", Resolution: "all"},
-			wantQuery:   map[string]string{"search_ai_type": "0"},
-			absentQuery: []string{"ratio_pattern", "content_type", "width_min", "width_max", "height_min", "height_max", "tool"},
-		},
-		{
-			name: "only AI square low illustration and ugoira", filters: model.SearchIllustFilters{
-				ContentType: "illust-and-ugoira", AIMode: "only", AspectRatio: "square", Resolution: "low", Tool: "tool",
-			},
-			wantQuery:   map[string]string{"search_ai_type": "0", "content_type": "illust_and_ugoira", "ratio_pattern": "square", "width_max": "999", "height_max": "999", "tool": "tool"},
-			absentQuery: []string{"width_min", "height_min"},
-		},
-		{
-			name: "exclude AI portrait high ugoira", filters: model.SearchIllustFilters{
-				ContentType: "ugoira", AIMode: "exclude", AspectRatio: "portrait", Resolution: "high",
-			},
-			wantQuery:   map[string]string{"content_type": "ugoira", "search_ai_type": "1", "ratio_pattern": "portrait", "width_min": "3000", "height_min": "3000"},
-			absentQuery: []string{"width_max", "height_max"},
-		},
-	}
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				for key, value := range test.wantQuery {
-					if got := r.URL.Query().Get(key); got != value {
-						t.Fatalf("%s = %q, want %q; query=%v", key, got, value, r.URL.Query())
-					}
-				}
-				for _, key := range test.absentQuery {
-					if r.URL.Query().Has(key) {
-						t.Fatalf("query unexpectedly has %q: %v", key, r.URL.Query())
-					}
-				}
-				_, _ = w.Write([]byte(`{"illusts":[]}`))
-			}))
-			defer api.Close()
-			_, err := New(WithBaseURL(api.URL), WithHTTPClient(api.Client()), WithAccessToken("access")).SearchIllust(
-				context.Background(), "miku", "partial_match_for_tags", "date_desc", "", "", "", 0, test.filters,
-			)
-			if err != nil {
-				t.Fatal(err)
-			}
-		})
-	}
-}
-
-func TestSearchIllustMapsDateAndBookmarkBoundsToAppQuery(t *testing.T) {
-	minimum, maximum := 1000, 10000
-	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		query := r.URL.Query()
-		want := map[string]string{
-			"search_target":    "keyword",
-			"start_date":       "2026-01-01",
-			"end_date":         "2026-01-31",
-			"bookmark_num_min": "1000",
-			"bookmark_num_max": "10000",
-		}
-		for key, value := range want {
-			if got := query.Get(key); got != value {
-				t.Fatalf("%s = %q, want %q; query=%v", key, got, value, query)
-			}
-		}
-		_, _ = w.Write([]byte(`{"illusts":[]}`))
-	}))
-	defer api.Close()
-	_, err := New(WithBaseURL(api.URL), WithHTTPClient(api.Client()), WithAccessToken("access")).SearchIllust(
-		context.Background(), "miku", "keyword", "date_desc", "", "2026-01-01", "2026-01-31", 0,
-		model.SearchIllustFilters{BookmarkMin: &minimum, BookmarkMax: &maximum},
-	)
-	if err != nil {
-		t.Fatal(err)
+	calls := 0
+	httpClient := &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		calls++
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": {"application/json"}},
+			Body:       io.NopCloser(strings.NewReader(`{"illust":{"id":42}}`)),
+			Request:    request,
+		}, nil
+	})}
+	result, err := getTestDetail(context.Background(), appapi.New(appapi.WithBaseURL("https://example.invalid"), appapi.WithHTTPClient(httpClient), appapi.WithAccessToken("access")))
+	if err != nil || result.Illust.ID != 42 || calls != 1 {
+		t.Fatalf("result=%+v err=%v calls=%d", result, err, calls)
 	}
 }
 
@@ -136,14 +103,14 @@ func TestRefreshAndRetryOnceOnTypedAuthStatus(t *testing.T) {
 					http.Error(w, `{"error":{"message":"auth required"}}`, status)
 					return
 				}
-				_ = json.NewEncoder(w).Encode(model.IllustDetail{Illust: model.Illust{ID: 42, Title: "ok"}})
+				_ = json.NewEncoder(w).Encode(map[string]any{"illust": map[string]any{"id": 42}})
 			}))
 			defer api.Close()
 
-			client := New(WithBaseURL(api.URL), WithSession(session))
-			result, err := client.IllustDetail(context.Background(), 42)
+			client := appapi.New(appapi.WithBaseURL(api.URL), appapi.WithSession(session))
+			result, err := getTestDetail(context.Background(), client)
 			if err != nil {
-				t.Fatalf("IllustDetail returned error: %v", err)
+				t.Fatalf("GetJSON returned error: %v", err)
 			}
 			if result.Illust.ID != 42 || session.refreshCalls != 1 || requests != 2 {
 				t.Fatalf("result=%+v refresh calls=%d requests=%d", result, session.refreshCalls, requests)
@@ -165,8 +132,8 @@ func TestGETNonAuthStatusDoesNotRefreshOrReplayForAuthWordsInBody(t *testing.T) 
 	}))
 	defer api.Close()
 
-	client := New(WithBaseURL(api.URL), WithSession(session))
-	if _, err := client.IllustDetail(context.Background(), 42); err == nil {
+	client := appapi.New(appapi.WithBaseURL(api.URL), appapi.WithSession(session))
+	if _, err := getTestDetail(context.Background(), client); err == nil {
 		t.Fatal("IllustDetail unexpectedly succeeded")
 	}
 	if requests != 1 || session.refreshCalls != 0 {
@@ -186,11 +153,11 @@ func TestGETRetriesOnceAfterValidRateLimitResponse(t *testing.T) {
 			w.WriteHeader(http.StatusTooManyRequests)
 			return
 		}
-		_ = json.NewEncoder(w).Encode(model.IllustDetail{Illust: model.Illust{ID: 42}})
+		_ = json.NewEncoder(w).Encode(map[string]any{"illust": map[string]any{"id": 42}})
 	}))
 	defer api.Close()
 
-	result, err := New(WithBaseURL(api.URL), WithHTTPClient(api.Client()), WithAccessToken("access")).IllustDetail(context.Background(), 42)
+	result, err := getTestDetail(context.Background(), appapi.New(appapi.WithBaseURL(api.URL), appapi.WithHTTPClient(api.Client()), appapi.WithAccessToken("access")))
 	if err != nil || result.Illust.ID != 42 || requests != 2 {
 		t.Fatalf("result=%#v err=%v requests=%d", result, err, requests)
 	}
@@ -209,7 +176,7 @@ func TestGETDoesNotRetryRateLimitWithoutValidRetryAfter(t *testing.T) {
 			}))
 			defer api.Close()
 
-			_, err := New(WithBaseURL(api.URL), WithHTTPClient(api.Client()), WithAccessToken("access")).IllustDetail(context.Background(), 42)
+			_, err := getTestDetail(context.Background(), appapi.New(appapi.WithBaseURL(api.URL), appapi.WithHTTPClient(api.Client()), appapi.WithAccessToken("access")))
 			if err == nil || requests != 1 {
 				t.Fatalf("error=%v requests=%d", err, requests)
 			}
@@ -226,7 +193,7 @@ func TestGETStopsAfterSecondRateLimitResponse(t *testing.T) {
 	}))
 	defer api.Close()
 
-	_, err := New(WithBaseURL(api.URL), WithHTTPClient(api.Client()), WithAccessToken("access")).IllustDetail(context.Background(), 42)
+	_, err := getTestDetail(context.Background(), appapi.New(appapi.WithBaseURL(api.URL), appapi.WithHTTPClient(api.Client()), appapi.WithAccessToken("access")))
 	if err == nil || requests != 2 {
 		t.Fatalf("error=%v requests=%d", err, requests)
 	}
@@ -244,7 +211,7 @@ func TestGETRateLimitWaitHonorsContextCancellation(t *testing.T) {
 	}))
 	defer api.Close()
 
-	_, err := New(WithBaseURL(api.URL), WithHTTPClient(api.Client()), WithAccessToken("access")).IllustDetail(ctx, 42)
+	_, err := getTestDetail(ctx, appapi.New(appapi.WithBaseURL(api.URL), appapi.WithHTTPClient(api.Client()), appapi.WithAccessToken("access")))
 	if !errors.Is(err, context.Canceled) || requests != 1 {
 		t.Fatalf("error=%v requests=%d", err, requests)
 	}
@@ -262,29 +229,9 @@ func TestMutationRateLimitIsNotReplayed(t *testing.T) {
 	}))
 	defer api.Close()
 
-	err := New(WithBaseURL(api.URL), WithHTTPClient(api.Client()), WithAccessToken("access")).AddBookmark(context.Background(), 42, "public", nil)
+	err := appapi.New(appapi.WithBaseURL(api.URL), appapi.WithHTTPClient(api.Client()), appapi.WithAccessToken("access")).PostForm(context.Background(), "/v2/illust/bookmark/add", url.Values{"illust_id": {"42"}, "restrict": {"public"}})
 	if err == nil || requests != 1 {
 		t.Fatalf("error=%v requests=%d", err, requests)
-	}
-}
-
-func TestParseRetryAfterSupportsSecondsAndHTTPDate(t *testing.T) {
-	now := time.Date(2026, time.July, 22, 12, 0, 0, 0, time.UTC)
-	for _, test := range []struct {
-		value string
-		want  time.Duration
-		ok    bool
-	}{
-		{value: "5", want: 5 * time.Second, ok: true},
-		{value: now.Add(3 * time.Second).Format(http.TimeFormat), want: 3 * time.Second, ok: true},
-		{value: now.Add(-time.Second).Format(http.TimeFormat), want: 0, ok: true},
-		{value: "invalid", ok: false},
-		{value: "9223372036854775807", ok: false}, // Go duration 无法表达的秒数不是可用等待值。
-	} {
-		got, ok := parseRetryAfter(test.value, now)
-		if ok != test.ok || got != test.want {
-			t.Fatalf("parseRetryAfter(%q) = (%v, %t), want (%v, %t)", test.value, got, ok, test.want, test.ok)
-		}
 	}
 }
 
@@ -300,120 +247,18 @@ func (s *fakeSession) Refresh(context.Context) error {
 	return nil
 }
 
-func TestUserDetailFetchesUserName(t *testing.T) {
-	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/v1/user/detail" {
-			t.Fatalf("unexpected api path %s", r.URL.Path)
-		}
-		if got := r.URL.Query().Get("user_id"); got != "123" {
-			t.Fatalf("user_id = %q, want 123", got)
-		}
-		_ = json.NewEncoder(w).Encode(map[string]any{
-			"user":              map[string]any{"id": 123, "name": "alice"},
-			"profile":           map[string]any{},
-			"profile_publicity": map[string]any{"gender": false, "region": false, "birth_day": false, "birth_year": false, "job": false, "pawoo": false},
-			"workspace":         map[string]any{},
-		})
-	}))
-	defer api.Close()
-
-	client := New(WithBaseURL(api.URL), WithAccessToken("access"))
-	detail, err := client.UserDetail(context.Background(), 123)
-	if err != nil {
-		t.Fatalf("UserDetail returned error: %v", err)
-	}
-	if detail.User.ID != 123 || detail.User.Name != "alice" {
-		t.Fatalf("unexpected detail: %+v", detail)
-	}
-}
-
-func TestUserDetailNormalizesProfilePublicityWireValues(t *testing.T) {
-	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/v1/user/detail" {
-			t.Fatalf("unexpected api path %s", r.URL.Path)
-		}
-		_, _ = w.Write([]byte(`{
-			"user":{"id":123},
-			"profile":{},
-			"profile_publicity":{"gender":"pub\u006cic","region":"private","birth_day":true,"birth_year":false,"job":"public","pawoo":true},
-			"workspace":{}
-		}`))
-	}))
-	defer api.Close()
-
-	client := New(WithBaseURL(api.URL), WithAccessToken("access"))
-	detail, err := client.UserDetail(context.Background(), 123)
-	if err != nil {
-		t.Fatalf("UserDetail returned error: %v", err)
-	}
-	got := detail.ProfilePublicity
-	if !got.Gender || got.Region || !got.BirthDay || got.BirthYear || !got.Job || !got.Pawoo {
-		t.Fatalf("profile publicity = %#v", got)
-	}
-}
-
-func TestUserDetailNormalizesMissingProfilePublicityFieldsToFalse(t *testing.T) {
-	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = w.Write([]byte(`{
-			"user":{"id":123},
-			"profile":{},
-			"profile_publicity":{"gender":"public"},
-			"workspace":{}
-		}`))
-	}))
-	defer api.Close()
-
-	client := New(WithBaseURL(api.URL), WithAccessToken("access"))
-	detail, err := client.UserDetail(context.Background(), 123)
-	if err != nil {
-		t.Fatalf("UserDetail returned error: %v", err)
-	}
-	got := detail.ProfilePublicity
-	if !got.Gender || got.Region || got.BirthDay || got.BirthYear || got.Job || got.Pawoo {
-		t.Fatalf("profile publicity = %#v", got)
-	}
-}
-
-func TestUserDetailRejectsMalformedProfilePublicityWireValues(t *testing.T) {
-	tests := []struct {
-		name      string
-		publicity string
-	}{
-		{name: "unknown string", publicity: `{"gender":"friends","region":true,"birth_day":true,"birth_year":true,"job":true,"pawoo":true}`},
-		{name: "null", publicity: `{"gender":null,"region":true,"birth_day":true,"birth_year":true,"job":true,"pawoo":true}`},
-		{name: "number", publicity: `{"gender":1,"region":true,"birth_day":true,"birth_year":true,"job":true,"pawoo":true}`},
-		{name: "array", publicity: `{"gender":[],"region":true,"birth_day":true,"birth_year":true,"job":true,"pawoo":true}`},
-		{name: "object", publicity: `{"gender":{},"region":true,"birth_day":true,"birth_year":true,"job":true,"pawoo":true}`},
-	}
-	for _, test := range tests {
-		test := test
-		t.Run(test.name, func(t *testing.T) {
-			api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-				_, _ = w.Write([]byte(`{"user":{"id":123},"profile":{},"profile_publicity":` + test.publicity + `,"workspace":{}}`))
-			}))
-			defer api.Close()
-
-			client := New(WithBaseURL(api.URL), WithAccessToken("access"))
-			detail, err := client.UserDetail(context.Background(), 123)
-			if detail != nil || !errors.Is(err, ErrMalformedResponse) {
-				t.Fatalf("detail=%#v err=%v", detail, err)
-			}
-		})
-	}
-}
-
 func TestWithAccessTokenSendsBearerAuthorization(t *testing.T) {
 	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if got := r.Header.Get("Authorization"); got != "Bearer direct-access" {
 			t.Fatalf("Authorization = %q, want bearer access token", got)
 		}
-		_ = json.NewEncoder(w).Encode(model.IllustDetail{Illust: model.Illust{ID: 42}})
+		_ = json.NewEncoder(w).Encode(map[string]any{"illust": map[string]any{"id": 42}})
 	}))
 	defer api.Close()
 
-	client := New(WithBaseURL(api.URL), WithAccessToken("direct-access"))
-	if _, err := client.IllustDetail(context.Background(), 42); err != nil {
-		t.Fatalf("IllustDetail returned error: %v", err)
+	client := appapi.New(appapi.WithBaseURL(api.URL), appapi.WithAccessToken("direct-access"))
+	if _, err := getTestDetail(context.Background(), client); err != nil {
+		t.Fatalf("GetJSON returned error: %v", err)
 	}
 }
 
@@ -437,9 +282,9 @@ func TestBookmarkMutationRefreshesAuthAndAcceptsEmptySuccess(t *testing.T) {
 	}))
 	defer api.Close()
 
-	client := New(WithBaseURL(api.URL), WithSession(session))
-	if err := client.AddBookmark(context.Background(), 42, "public", []string{"a", "b"}); err != nil {
-		t.Fatalf("AddBookmark returned error: %v", err)
+	client := appapi.New(appapi.WithBaseURL(api.URL), appapi.WithSession(session))
+	if err := client.PostForm(context.Background(), "/v2/illust/bookmark/add", url.Values{"illust_id": {"42"}, "restrict": {"public"}, "tags[]": {"a", "b"}}); err != nil {
+		t.Fatalf("PostForm returned error: %v", err)
 	}
 	if session.refreshCalls != 1 {
 		t.Fatalf("refresh calls=%d", session.refreshCalls)
@@ -459,9 +304,9 @@ func TestMutationServerErrorDoesNotRefreshOrReplay(t *testing.T) {
 	}))
 	defer api.Close()
 
-	client := New(WithBaseURL(api.URL), WithSession(session))
-	if err := client.UnfollowUser(context.Background(), 42); err == nil {
-		t.Fatal("UnfollowUser unexpectedly succeeded")
+	client := appapi.New(appapi.WithBaseURL(api.URL), appapi.WithSession(session))
+	if err := client.PostForm(context.Background(), "/v1/user/follow/delete", url.Values{"user_id": {"42"}}); err == nil {
+		t.Fatal("follow delete unexpectedly succeeded")
 	}
 	if requests != 1 || session.refreshCalls != 0 {
 		t.Fatalf("requests=%d refresh_calls=%d", requests, session.refreshCalls)

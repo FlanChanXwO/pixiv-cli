@@ -1,4 +1,4 @@
-package oauth
+package oauth_test
 
 import (
 	"context"
@@ -7,31 +7,17 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
-	"time"
 
+	oauth "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/oauth"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
-
-func TestNewLeavesRequestLifetimeToContext(t *testing.T) {
-	client := New("")
-	httpClient := client.restyClient.GetClient()
-	require.NotSame(t, http.DefaultClient, httpClient)
-	require.Zero(t, httpClient.Timeout)
-}
-
-func TestNewPreservesExplicitHTTPClient(t *testing.T) {
-	want := &http.Client{Timeout: 23 * time.Second}
-	got := New("", WithHTTPClient(want)).restyClient.GetClient()
-	require.Same(t, want, got)
-	require.Equal(t, want.Timeout, got.Timeout)
-}
 
 func TestRefreshPreservesCanceledContext(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	err := New("refresh-token", WithBaseURL("https://example.invalid")).Refresh(ctx)
+	err := oauth.New("refresh-token", oauth.WithBaseURL("https://example.invalid")).Refresh(ctx)
 	require.True(t, errors.Is(err, context.Canceled), "error = %v", err)
 }
 
@@ -43,7 +29,7 @@ func TestRefreshOwnsIdentityState(t *testing.T) {
 		_ = json.NewEncoder(w).Encode(map[string]any{"access_token": "access", "refresh_token": "new-refresh", "user": map[string]any{"id": "7", "name": "alice"}})
 	}))
 	defer server.Close()
-	client := New("old/refresh", WithHTTPClient(server.Client()), WithBaseURL(server.URL))
+	client := oauth.New("old/refresh", oauth.WithHTTPClient(server.Client()), oauth.WithBaseURL(server.URL))
 	require.NoError(t, client.Refresh(context.Background()))
 	assert.Equal(t, "access", client.AccessToken())
 	assert.Equal(t, "new-refresh", client.RefreshTokenValue())
@@ -52,7 +38,7 @@ func TestRefreshOwnsIdentityState(t *testing.T) {
 }
 
 func TestRefreshRejectsCookieInputWithoutRequest(t *testing.T) {
-	client := New("PHPSESSID=secret; refresh_token=another")
+	client := oauth.New("PHPSESSID=secret; refresh_token=another")
 	require.ErrorContains(t, client.Refresh(context.Background()), "cookie input is not supported; provide a Pixiv App API refresh token")
 
 	client.SetRefreshToken("csrftoken=secret")
@@ -68,7 +54,7 @@ func TestExchangeAuthorizationCodeStoresToken(t *testing.T) {
 		_ = json.NewEncoder(w).Encode(map[string]any{"response": map[string]any{"access_token": "access", "refresh_token": "refresh", "user": map[string]any{"id": 9, "name": "bob"}}})
 	}))
 	defer server.Close()
-	client := New("", WithHTTPClient(server.Client()), WithBaseURL(server.URL))
+	client := oauth.New("", oauth.WithHTTPClient(server.Client()), oauth.WithBaseURL(server.URL))
 	token, err := client.ExchangeAuthorizationCode(context.Background(), "code", "verifier")
 	require.NoError(t, err)
 	assert.Equal(t, "refresh", token.RefreshToken)

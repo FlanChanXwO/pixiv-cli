@@ -4,20 +4,20 @@
 
 ## 边界
 
-- `internal/cli` 是否只做 Cobra、TTY、OAuth loopback 和 presenter；业务用例是否留在 `internal/application`。
-- `internal/bootstrap` 是否仍是生产 wiring 的唯一入口；MCP runtime 是否仍由 bootstrap 启动。
-- CLI/MCP 是否经 `internal/application.SDKService` 调用顶层 `pixiv` public SDK；不得绕到 `internal/services/pixiv/appapi`、`webapi`、`oauth` 或 `resource` 协议适配包。
-- `internal/application/config` 是否只维护 `config.toml` schema、defaults、effective runtime config 和 sparse writes。
+- `internal/cli` 的 command owner 是否只处理 Cobra、TTY、OAuth loopback、presenter 与 typed requirements；`internal/cli/cli.go` 的私有 per-run graph 是否只负责 production wiring 与生命周期，`internal/cli/root.go` 是否统一全局 flag、启动生命周期与退出码。
+- `internal/bootstrap` 已删除；不得重新引入 composition root、`Runtime`、service locator 或 CLI/MCP constructor。MCP stdio runtime 是否在 CLI 私有 graph 生命周期内经 `internal/mcpserver/stdio` 启动。
+- CLI/MCP 是否经 `internal/account/{pixiv,fanbox}` 账号服务与窄端口（`internal/cli/internal/{pixivdeps,fanboxdeps}`、MCP runtime `SDKPorts`）调用 public SDK；不得直连 `internal/services/pixiv/appapi`、`oauth`、`resource` 或 `internal/services/fanbox` 协议适配包。
+- `internal/storage/config` 是否只维护 `config.toml` schema、defaults、effective runtime config、immutable snapshots 和 sparse writes。
 - `internal/utils/*` 是否保持协议无关；Pixiv/MCP/config 协议值不要搬进 generic utils/common。
 
 ## 行为风险
 
 - refresh token 只允许显式、不带 `--output` 的 `pixiv auth export [UID]` 以 raw token 加换行输出，或 `pixiv auth export --all` 以 versioned secret bundle 输出；两者必须 local-only、无额外输出，且不得读取环境 token、联网、刷新、修改状态、运行 startup cleanup/automatic update。带 `--output` 的 export stdout 只能是无 secret 摘要。token 不得进入 stderr、JSON、MCP result 或错误；测试 fixture 禁止真实或可用凭据，但允许明显无效、不可认证的 synthetic canary 用于证明不会泄漏；其他命令不得打印 token。
-- `auth import [REFRESH_TOKEN]` 的位置参数有 argv/shell history 泄露风险；无参 TTY 必须隐藏输入，非 TTY 才读取 raw stdin。`auth import --file PATH|-` 是离线、原子 bundle restore，必须拒绝 token 与 proxy flag 组合；不得新增 `auth add`、`auth token`、`--token` alias，也不得新增持久认证 MCP tool。
+- `auth import [REFRESH_TOKEN]` 的位置参数有 argv/shell history 泄露风险；无参 TTY 必须隐藏输入，非 TTY 按首个非空白字节区分 raw token 与严格 bundle。bundle 只经 stdin 管道或重定向离线、原子恢复，必须拒绝 token 与 proxy flag 组合；不得恢复 `--file`，也不得新增 `auth add`、`auth token`、`--token` alias 或持久认证 MCP tool。
 - auth bundle 是未加密、含 secret 的 point-in-time backup，不是 live sync；rotation 后旧 bundle 与其他机器副本可能 stale。restore 写失败必须准确保留 `LocalWriteCommitOutcome`：提交前为 `not_committed`，replacement 后 durability/cleanup 失败为 `committed`，无法确认恢复结果为 `unknown`，不得伪造 rollback。
 - 认证、网络、Pixiv API、文件系统、`ffmpeg` 错误要暴露真实原因，不要返回空成功。
 - 不新增无依据的 timeout、截断、分页上限、重试上限、静默 fallback 或隐藏降级。
-- Pixiv web fallback 只在无 refresh token 且 `web_fallback_enabled=true` 时使用；App API 错误不要自动 fallback。
+- 没有匿名 Web fallback：App API 是唯一 Pixiv 内容路径，失败直接返回规范化错误，不自动切换协议；已删除的 `web_fallback_enabled` 若仍显式存在应返回 `removed_setting`。
 - MCP stdout 保留给 JSON-RPC；运行期失败必须保留 structured result 并设置 `isError=true`，不得写项目级日志。
 - bootstrap 安装脚本必须固定官方 Release 来源，先验证 checksum 和暂存 binary 再替换；不得静默安装前置工具、提权、读取凭据或把初始 SHA-256 完整性检查误写成 Ed25519 来源认证。
 

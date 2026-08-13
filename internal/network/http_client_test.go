@@ -1,4 +1,4 @@
-package network
+package network_test
 
 import (
 	"errors"
@@ -6,11 +6,12 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/FlanChanXwO/pixiv-cli/internal/network"
 	"github.com/FlanChanXwO/pixiv-cli/internal/utils/uri"
 )
 
 func TestHTTPClientLeavesRequestLifetimeToContext(t *testing.T) {
-	client, err := HTTPClient("")
+	client, err := network.HTTPClient("")
 	if err != nil {
 		t.Fatalf("HTTPClient returned error: %v", err)
 	}
@@ -29,7 +30,7 @@ func TestHTTPClientLeavesRequestLifetimeToContext(t *testing.T) {
 func TestHTTPClientConfiguresSOCKS5AndSOCKS5HProxySchemes(t *testing.T) {
 	for _, scheme := range []string{"socks5", "socks5h"} {
 		t.Run(scheme, func(t *testing.T) {
-			client, err := HTTPClient(scheme + "://proxy.example:1080")
+			client, err := network.HTTPClient(scheme + "://proxy.example:1080")
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -53,7 +54,7 @@ func TestHTTPClientConfiguresSOCKS5AndSOCKS5HProxySchemes(t *testing.T) {
 }
 
 func TestHTTPClientKeepsProxyWithoutAddingTotalTimeout(t *testing.T) {
-	client, err := HTTPClient("http://127.0.0.1:7890")
+	client, err := network.HTTPClient("http://127.0.0.1:7890")
 	if err != nil {
 		t.Fatalf("HTTPClient returned error: %v", err)
 	}
@@ -72,7 +73,7 @@ func TestHTTPClientKeepsProxyWithoutAddingTotalTimeout(t *testing.T) {
 func TestHTTPClientRejectsMalformedProxyWithSafeClassifiableError(t *testing.T) {
 	proxy := "http://proxy-user-secret:proxy-pass-secret@proxy-host-secret.invalid/proxy-path-secret-%zz?proxy-query-secret=value"
 
-	client, err := HTTPClient(proxy)
+	client, err := network.HTTPClient(proxy)
 
 	if client != nil {
 		t.Fatalf("HTTPClient() client = %#v, want nil", client)

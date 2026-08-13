@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/browsercookies/core"
+	"github.com/FlanChanXwO/pixiv-cli/internal/browsercookies"
 )
 
 // TestReadEncryptedCookieWithInjectedKey 在 macOS 上端到端验证加密 cookie 读取：
@@ -26,7 +26,7 @@ func TestReadEncryptedCookieWithInjectedKey(t *testing.T) {
 	fixture := buildFixtureDB(t, cookiesSchema,
 		`INSERT INTO cookies (host_key, name, value, encrypted_value) VALUES ('.fanbox.cc', 'FANBOXSESSID', '', X'`+hex.EncodeToString(blob)+`');`,
 	)
-	restore := core.SetProviderFixtureForTest("chrome", func(string) ([]byte, error) { return fixture, nil })
+	restore := browsercookies.SetProviderFixtureForTest("chrome", func(string) ([]byte, error) { return fixture, nil })
 	defer restore()
 
 	p, err := newProvider("chrome", root)
@@ -35,7 +35,7 @@ func TestReadEncryptedCookieWithInjectedKey(t *testing.T) {
 	}
 	p.keychainKeyOverride = func(context.Context) ([]byte, error) { return key, nil }
 
-	secrets, err := p.Read(context.Background(), core.DefaultQuery, "Default")
+	secrets, err := p.Read(context.Background(), browsercookies.DefaultQuery, "Default")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -54,14 +54,14 @@ func TestReadEncryptedKeychainItemNotFound(t *testing.T) {
 	fixture := buildFixtureDB(t, cookiesSchema,
 		`INSERT INTO cookies (host_key, name, value, encrypted_value) VALUES ('.fanbox.cc', 'FANBOXSESSID', '', X'`+hex.EncodeToString(blob)+`');`,
 	)
-	restore := core.SetProviderFixtureForTest("chrome", func(string) ([]byte, error) { return fixture, nil })
+	restore := browsercookies.SetProviderFixtureForTest("chrome", func(string) ([]byte, error) { return fixture, nil })
 	defer restore()
 
 	p, _ := newProvider("chrome", root)
 	// 注入失败：模拟 Keychain item 不存在，验证分类错误且不泄露任何内容。
-	p.keychainKeyOverride = func(context.Context) ([]byte, error) { return nil, core.ErrKeychainItemNotFound }
-	_, err := p.Read(context.Background(), core.DefaultQuery, "Default")
-	if !errors.Is(err, core.ErrKeychainItemNotFound) {
+	p.keychainKeyOverride = func(context.Context) ([]byte, error) { return nil, browsercookies.ErrKeychainItemNotFound }
+	_, err := p.Read(context.Background(), browsercookies.DefaultQuery, "Default")
+	if !errors.Is(err, browsercookies.ErrKeychainItemNotFound) {
 		t.Fatalf("err = %v, want ErrKeychainItemNotFound", err)
 	}
 }

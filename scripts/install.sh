@@ -3,7 +3,7 @@ set -eu
 
 repository='FlanChanXwO/pixiv-cli'
 release_root="https://github.com/$repository/releases/latest/download"
-# 发布阶段会把 internal/update/release_sources.txt 注入此块。工作树模板保留直连，
+# 发布阶段会把 internal/update/source/release_sources.txt 注入此块。工作树模板保留直连，
 # 以便审阅中的脚本不会擅自依赖公共中继。
 # PIXIV_RELEASE_SOURCES_BEGIN
 release_sources='github-direct|{url}|{url}'

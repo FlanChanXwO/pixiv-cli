@@ -4,112 +4,14 @@ import (
 	"errors"
 	"time"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/model"
+	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/novel"
+	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/user"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 )
 
 var errNoPublishTime = errors.New("no publish time")
 
-// mapArtwork converts a normalized adapter artwork into the public model. The
-// cover is the largest available size; pages are populated from detail results.
-func (c *Client) mapArtwork(m model.Illust) (Artwork, error) {
-	published, err := parseUTCTime(m.CreateDate)
-	if err != nil {
-		return Artwork{}, newError("Artwork", sdk.MalformedUpstreamResponse, "invalid publish time")
-	}
-	kind, raw := artworkKind(m.Type)
-	out := Artwork{
-		ID:             m.ID,
-		Title:          m.Title,
-		Caption:        m.Caption,
-		Kind:           kind,
-		RawKind:        raw,
-		Tags:           mapTags(m.Tags),
-		User:           c.mapUser(m.User),
-		PublishedAt:    published,
-		TotalBookmarks: m.TotalBookmarks,
-		TotalViews:     m.TotalView,
-		Width:          m.Width,
-		Height:         m.Height,
-		PageCount:      m.PageCount,
-		XRestrict:      m.XRestrict,
-		AIType:         m.AIType,
-		Tools:          m.Tools,
-	}
-	out.Cover, err = c.mapArtworkCover(m)
-	if err != nil {
-		return Artwork{}, err
-	}
-	return out, nil
-}
-
-// mapArtworkDetail additionally populates pages from a detail result.
-func (c *Client) mapArtworkDetail(m model.Illust) (Artwork, error) {
-	out, err := c.mapArtwork(m)
-	if err != nil {
-		return Artwork{}, err
-	}
-	pages, err := c.mapArtworkPages(m)
-	if err != nil {
-		return Artwork{}, err
-	}
-	out.Pages = pages
-	return out, nil
-}
-
-func (c *Client) mapArtworkCover(m model.Illust) (ImageResource, error) {
-	for _, size := range []struct {
-		variant string
-		value   string
-	}{
-		{"original", m.ImageURLs.Original},
-		{"large", m.ImageURLs.Large},
-		{"medium", m.ImageURLs.Medium},
-		{"square_medium", m.ImageURLs.SquareMedium},
-	} {
-		if size.value != "" {
-			res, err := c.newResource("artwork", m.ID, -1, size.value)
-			if err != nil {
-				return ImageResource{}, err
-			}
-			return ImageResource{Resource: res, Variant: size.variant, Width: m.Width, Height: m.Height}, nil
-		}
-	}
-	return ImageResource{}, nil
-}
-
-func (c *Client) mapArtworkPages(m model.Illust) ([]ArtworkPage, error) {
-	if len(m.MetaPages) > 0 {
-		pages := make([]ArtworkPage, 0, len(m.MetaPages))
-		for _, page := range m.MetaPages {
-			url := firstAvailable(page.ImageURLs)
-			if url == "" {
-				return nil, newError("ArtworkPages", sdk.MalformedUpstreamResponse, "page has no image URL")
-			}
-			res, err := c.newResource("artwork", m.ID, page.PageIndex, url)
-			if err != nil {
-				return nil, err
-			}
-			pages = append(pages, ArtworkPage{
-				PageIndex: page.PageIndex,
-				Image:     ImageResource{Resource: res, Variant: "original", Width: page.Width, Height: page.Height},
-				Width:     page.Width,
-				Height:    page.Height,
-			})
-		}
-		return pages, nil
-	}
-	if m.MetaSinglePage.OriginalImageURL != "" {
-		res, err := c.newResource("artwork", m.ID, 0, m.MetaSinglePage.OriginalImageURL)
-		if err != nil {
-			return nil, err
-		}
-		return []ArtworkPage{{PageIndex: 0, Image: ImageResource{Resource: res, Variant: "original", Width: m.Width, Height: m.Height}, Width: m.Width, Height: m.Height}}, nil
-	}
-	return nil, nil
-}
-
-func (c *Client) mapNovel(m model.Novel) (Novel, error) {
+func (c *Client) mapNovel(m novel.Novel) (Novel, error) {
 	published, err := parseUTCTime(m.CreateDate)
 	if err != nil {
 		return Novel{}, newError("Novel", sdk.MalformedUpstreamResponse, "invalid publish time")
@@ -118,7 +20,7 @@ func (c *Client) mapNovel(m model.Novel) (Novel, error) {
 		ID:             m.ID,
 		Title:          m.Title,
 		Caption:        m.Caption,
-		User:           c.mapUser(m.User),
+		User:           c.mapNovelUser(m.User),
 		Tags:           mapTags(m.Tags),
 		PublishedAt:    published,
 		XRestrict:      m.XRestrict,
@@ -137,7 +39,7 @@ func (c *Client) mapNovel(m model.Novel) (Novel, error) {
 		{"square_medium", m.ImageURLs.SquareMedium},
 	} {
 		if size.value != "" {
-			res, err := c.newResource("novel_cover", m.ID, -1, size.value)
+			res, err := c.newResourceWithVariant("novel_cover", m.ID, -1, size.variant, size.value)
 			if err != nil {
 				return Novel{}, err
 			}
@@ -148,7 +50,7 @@ func (c *Client) mapNovel(m model.Novel) (Novel, error) {
 	return out, nil
 }
 
-func (c *Client) mapUser(m model.User) User {
+func (c *Client) mapNovelUser(m novel.UserSummary) User {
 	out := User{
 		ID:         m.ID,
 		Name:       m.Name,
@@ -157,14 +59,30 @@ func (c *Client) mapUser(m model.User) User {
 		IsFollowed: m.IsFollowed,
 	}
 	if m.ProfileImageURLs.Medium != nil && *m.ProfileImageURLs.Medium != "" {
-		if res, err := c.newResource("user_profile", m.ID, -1, *m.ProfileImageURLs.Medium); err == nil {
+		if res, err := c.newResourceWithVariant("user_profile", m.ID, -1, "medium", *m.ProfileImageURLs.Medium); err == nil {
 			out.ProfileImage = ImageResource{Resource: res, Variant: "medium"}
 		}
 	}
 	return out
 }
 
-func (c *Client) mapUserDetail(d model.UserDetail) (UserDetail, error) {
+func (c *Client) mapUser(m user.User) User {
+	out := User{
+		ID:         m.ID,
+		Name:       m.Name,
+		Account:    m.Account,
+		Comment:    m.Comment,
+		IsFollowed: m.IsFollowed,
+	}
+	if m.ProfileImageURLs.Medium != nil && *m.ProfileImageURLs.Medium != "" {
+		if res, err := c.newResourceWithVariant("user_profile", m.ID, -1, "medium", *m.ProfileImageURLs.Medium); err == nil {
+			out.ProfileImage = ImageResource{Resource: res, Variant: "medium"}
+		}
+	}
+	return out
+}
+
+func (c *Client) mapUserDetail(d user.Detail) (UserDetail, error) {
 	out := UserDetail{User: c.mapUser(d.User)}
 	out.Profile = UserProfile{
 		Webpage:                   strValue(d.Profile.Webpage),
@@ -215,12 +133,12 @@ func (c *Client) mapUserDetail(d model.UserDetail) (UserDetail, error) {
 	return out, nil
 }
 
-func (c *Client) mapUserPreview(p model.RecommendedUserPreview) UserPreview {
+func (c *Client) mapUserPreview(p user.Preview) UserPreview {
 	out := UserPreview{User: c.mapUser(p.User)}
 	if len(p.Illusts) > 0 {
 		out.Illusts = make([]Artwork, 0, len(p.Illusts))
 		for _, m := range p.Illusts {
-			if a, err := c.mapArtwork(m); err == nil {
+			if a, err := c.mapArtworkEntity(m); err == nil {
 				out.Illusts = append(out.Illusts, a)
 			}
 		}
@@ -236,7 +154,7 @@ func (c *Client) mapUserPreview(p model.RecommendedUserPreview) UserPreview {
 	return out
 }
 
-func mapTags(tags []model.Tag) []Tag {
+func mapTags(tags []novel.Tag) []Tag {
 	if len(tags) == 0 {
 		return []Tag{}
 	}
@@ -271,7 +189,7 @@ func parseUTCTime(value string) (time.Time, error) {
 	return parsed.UTC(), nil
 }
 
-func firstAvailable(urls model.ImageURLs) string {
+func firstAvailable(urls novel.ImageURLs) string {
 	for _, value := range []string{urls.Original, urls.Large, urls.Medium, urls.SquareMedium} {
 		if value != "" {
 			return value

@@ -9,7 +9,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/browsercookies/core"
+	"github.com/FlanChanXwO/pixiv-cli/internal/browsercookies"
 )
 
 // TestDeriveChromeKeyVectors 用独立实现（python hashlib）预计算的已知向量
@@ -136,7 +136,7 @@ func TestUnpadCBCRejectsInvalidPadding(t *testing.T) {
 		{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 2},
 	}
 	for _, plain := range cases {
-		if _, err := unpadCBC(plain); !errors.Is(err, core.ErrEncryptedMalformed) {
+		if _, err := unpadCBC(plain); !errors.Is(err, browsercookies.ErrEncryptedMalformed) {
 			t.Fatalf("unpadCBC(len=%d) err = %v, want ErrEncryptedMalformed", len(plain), err)
 		}
 	}
@@ -156,16 +156,16 @@ func TestDecryptCookieValueMalformed(t *testing.T) {
 		}
 	}
 	// 短 key。
-	if _, err := decryptCookieValue(make([]byte, 32), []byte("short")); !errors.Is(err, core.ErrEncryptedMalformed) {
+	if _, err := decryptCookieValue(make([]byte, 32), []byte("short")); !errors.Is(err, browsercookies.ErrEncryptedMalformed) {
 		t.Fatalf("short key err = %v", err)
 	}
 }
 
 func TestStripChromiumPrefixUnknownFormat(t *testing.T) {
-	if _, err := stripChromiumPrefix(make([]byte, 32)); !errors.Is(err, core.ErrEncryptedFormatUnknown) {
+	if _, err := stripChromiumPrefix(make([]byte, 32)); !errors.Is(err, browsercookies.ErrEncryptedFormatUnknown) {
 		t.Fatalf("err = %v, want ErrEncryptedFormatUnknown", err)
 	}
-	if _, err := stripChromiumPrefix([]byte("v11")); !errors.Is(err, core.ErrEncryptedMalformed) {
+	if _, err := stripChromiumPrefix([]byte("v11")); !errors.Is(err, browsercookies.ErrEncryptedMalformed) {
 		t.Fatalf("short prefix err = %v, want ErrEncryptedMalformed", err)
 	}
 }

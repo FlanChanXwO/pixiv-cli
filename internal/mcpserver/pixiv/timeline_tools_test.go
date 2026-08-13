@@ -1,4 +1,4 @@
-package pixiv
+package pixiv_test
 
 import (
 	"context"
@@ -23,7 +23,7 @@ func TestTimelineAndMyPixivToolsRouteAppSDKRequestsWithRecords(t *testing.T) {
 		userID: 71,
 		followingNovels: func(_ context.Context, request pixiv.FollowingNovelsRequest) (sdk.Page[pixiv.Novel], error) {
 			followingNovel = request
-			return sdk.Page[pixiv.Novel]{Items: []pixiv.Novel{{ID: 1, Title: "follow", User: pixiv.User{Name: "writer"}}}, Next: testPageCursor(2)}, nil
+			return sdk.Page[pixiv.Novel]{Items: []pixiv.Novel{{ID: 1, Title: "follow", User: pixiv.User{ID: 10, Name: "writer"}}}, Next: testPageCursor(2)}, nil
 		},
 		latestIllusts: func(_ context.Context, request pixiv.LatestArtworksRequest) (sdk.Page[pixiv.Artwork], error) {
 			latestIllust = request
@@ -31,7 +31,7 @@ func TestTimelineAndMyPixivToolsRouteAppSDKRequestsWithRecords(t *testing.T) {
 		},
 		latestNovels: func(_ context.Context, request pixiv.LatestNovelsRequest) (sdk.Page[pixiv.Novel], error) {
 			latestNovel = request
-			return sdk.Page[pixiv.Novel]{Items: []pixiv.Novel{{ID: 3, Title: "latest novel", User: pixiv.User{Name: "writer"}}}}, nil
+			return sdk.Page[pixiv.Novel]{Items: []pixiv.Novel{{ID: 3, Title: "latest novel", User: pixiv.User{ID: 10, Name: "writer"}}}}, nil
 		},
 		myPixivUsers: func(_ context.Context, request pixiv.MyPixivUsersRequest) (sdk.Page[pixiv.UserPreview], error) {
 			myPixivUsers = request
@@ -43,11 +43,11 @@ func TestTimelineAndMyPixivToolsRouteAppSDKRequestsWithRecords(t *testing.T) {
 		},
 		myPixivNovels: func(_ context.Context, request pixiv.MyPixivNovelsRequest) (sdk.Page[pixiv.Novel], error) {
 			myPixivNovels = request
-			return sdk.Page[pixiv.Novel]{Items: []pixiv.Novel{{ID: 6, Title: "mypixiv novel", User: pixiv.User{Name: "writer"}}}}, nil
+			return sdk.Page[pixiv.Novel]{Items: []pixiv.Novel{{ID: 6, Title: "mypixiv novel", User: pixiv.User{ID: 10, Name: "writer"}}}}, nil
 		},
 		userNovels: func(_ context.Context, request pixiv.UserNovelsRequest) (sdk.Page[pixiv.Novel], error) {
 			userNovels = request
-			return sdk.Page[pixiv.Novel]{Items: []pixiv.Novel{{ID: 7, Title: "user novel", User: pixiv.User{Name: "writer"}}}}, nil
+			return sdk.Page[pixiv.Novel]{Items: []pixiv.Novel{{ID: 7, Title: "user novel", User: pixiv.User{ID: 10, Name: "writer"}}}}, nil
 		},
 	}
 	session, closeSession := newSDKTestSession(t, client)

@@ -13,24 +13,24 @@ import (
 	"os/exec"
 	"strings"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/browsercookies/core"
+	"github.com/FlanChanXwO/pixiv-cli/internal/browsercookies"
 )
 
 // Query 在 dbPath 上以只读方式执行 sql。参数通过 sqlite3 CLI 的 `.parameter
 // set` 绑定（不进行 SQL 字符串拼接）。返回 CSV 行（每行按 SELECT 列序）。
 //
 // 分类错误：
-//   - 数据库被浏览器锁定时返回 core.ErrDatabaseLocked；
-//   - sqlite3 命令缺失时返回 core.ErrSQLiteUnavailable；
-//   - 其余失败返回 core.ErrQueryFailed。
+//   - 数据库被浏览器锁定时返回 browsercookies.ErrDatabaseLocked；
+//   - sqlite3 命令缺失时返回 browsercookies.ErrSQLiteUnavailable；
+//   - 其余失败返回 browsercookies.ErrQueryFailed。
 func Query(ctx context.Context, dbPath, sql string, params map[string]string) ([][]string, error) {
 	if strings.TrimSpace(dbPath) == "" || strings.TrimSpace(sql) == "" {
-		return nil, core.ErrQueryFailed
+		return nil, browsercookies.ErrQueryFailed
 	}
 	args := []string{"-readonly", "-noheader", "-csv"}
 	for name, value := range params {
 		if !safeParam(name) || !safeParam(value) {
-			return nil, core.ErrQueryFailed
+			return nil, browsercookies.ErrQueryFailed
 		}
 		args = append(args, "-cmd", ".parameter set "+name+" "+value)
 	}
@@ -44,23 +44,23 @@ func Query(ctx context.Context, dbPath, sql string, params map[string]string) ([
 			return nil, ctx.Err()
 		}
 		if errors.Is(err, exec.ErrNotFound) {
-			return nil, core.ErrSQLiteUnavailable
+			return nil, browsercookies.ErrSQLiteUnavailable
 		}
 		lowerStderr := strings.ToLower(stderr.String())
 		if strings.Contains(lowerStderr, "permission denied") || strings.Contains(lowerStderr, "not authorized") {
-			return nil, core.ErrPermissionDenied
+			return nil, browsercookies.ErrPermissionDenied
 		}
 		var exitErr *exec.ExitError
 		if errors.As(err, &exitErr) && (exitErr.ExitCode() == 5 || strings.Contains(lowerStderr, "locked")) {
-			return nil, core.ErrDatabaseLocked
+			return nil, browsercookies.ErrDatabaseLocked
 		}
-		return nil, core.ErrQueryFailed
+		return nil, browsercookies.ErrQueryFailed
 	}
 	reader := csv.NewReader(bytes.NewReader(out))
 	reader.FieldsPerRecord = -1
 	rows, err := reader.ReadAll()
 	if err != nil {
-		return nil, core.ErrQueryFailed
+		return nil, browsercookies.ErrQueryFailed
 	}
 	return rows, nil
 }

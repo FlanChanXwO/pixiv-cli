@@ -1,4 +1,4 @@
-package pixiv
+package pixiv_test
 
 import (
 	"context"
@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/diagnostics"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/runtime"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -23,7 +24,7 @@ func TestPixivMCPDiagnosticsUseStableLocalRequestIDs(t *testing.T) {
 	defer cancel()
 
 	server := mcp.NewServer(&mcp.Implementation{Name: "debug-test", Version: "1"}, nil)
-	addTool(&App{}, server, &mcp.Tool{Name: "diagnostic_test"}, func(context.Context, *mcp.CallToolRequest, struct{}) (*mcp.CallToolResult, struct{}, error) {
+	runtime.AddTool(runtime.NewApp(nil, nil, runtime.SDKPorts{}, runtime.Account{}), server, &mcp.Tool{Name: "diagnostic_test"}, func(context.Context, *mcp.CallToolRequest, struct{}) (*mcp.CallToolResult, struct{}, error) {
 		return &mcp.CallToolResult{}, struct{}{}, nil
 	})
 	clientTransport, serverTransport := mcp.NewInMemoryTransports()
@@ -33,7 +34,7 @@ func TestPixivMCPDiagnosticsUseStableLocalRequestIDs(t *testing.T) {
 	if err != nil {
 		t.Fatalf("connect: %v", err)
 	}
-	defer session.Close()
+	defer func() { _ = session.Close() }()
 
 	callTool(t, session, "diagnostic_test", map[string]any{})
 	callTool(t, session, "diagnostic_test", map[string]any{})

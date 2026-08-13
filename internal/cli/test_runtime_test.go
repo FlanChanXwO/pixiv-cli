@@ -6,24 +6,31 @@ import (
 	"testing"
 	"time"
 
-	configapp "github.com/FlanChanXwO/pixiv-cli/internal/application/config"
-	"github.com/FlanChanXwO/pixiv-cli/internal/bootstrap"
-	"github.com/FlanChanXwO/pixiv-cli/internal/persistence/authdb"
+	accountpixiv "github.com/FlanChanXwO/pixiv-cli/internal/account/pixiv"
+	configapp "github.com/FlanChanXwO/pixiv-cli/internal/storage/config"
+	"github.com/FlanChanXwO/pixiv-cli/internal/storage/database"
 	"github.com/stretchr/testify/require"
 )
 
-// newTestRuntime 为需要真实 authdb-backed application service 的 CLI 测试提供
-// 一个明确拥有者；Run 结束和 t.Cleanup 的第二次 Close 都由 Runtime 的幂等契约处理。
-func newTestRuntime(t *testing.T) *bootstrap.Runtime {
+// newTestResources 为需要真实 database-backed application service 的 CLI 测试
+// 准备一次私有 graph；Run 结束和 t.Cleanup 的第二次关闭都必须保持幂等。
+func newTestResources(t *testing.T) *runResources {
 	t.Helper()
-	runtime, err := bootstrap.NewRuntime(bootstrap.RuntimeOptions{})
-	require.NoError(t, err)
-	t.Cleanup(func() { require.NoError(t, runtime.Close()) })
-	return runtime
+	resources := &runResources{}
+	require.NoError(t, resources.prepare(commandResources{
+		Database:     true,
+		PixivAccount: true,
+		PixivLogin:   true,
+		PixivSDK:     true,
+		Download:     true,
+		Fanbox:       true,
+	}))
+	t.Cleanup(func() { require.NoError(t, resources.close()) })
+	return resources
 }
 
 // testAuthStore 是旧 JSON fixture 的最小测试表示；写入时直接建立新的
-// authdb 记录，避免测试继续依赖已删除的 auth.json 存储实现。
+// database 记录，避免测试继续依赖已删除的 auth.json 存储实现。
 type testAuthStore struct {
 	DefaultUserID int64
 	Accounts      []testAuthAccount
@@ -39,7 +46,7 @@ type testAuthAccount struct {
 
 func saveTestAuthStore(t *testing.T, databasePath string, store testAuthStore) error {
 	t.Helper()
-	db, err := authdb.Open(filepath.Dir(databasePath))
+	db, err := database.Open(filepath.Dir(databasePath))
 	if err != nil {
 		return err
 	}
@@ -50,10 +57,10 @@ func saveTestAuthStore(t *testing.T, databasePath string, store testAuthStore) e
 			value := account.PremiumStatusCheckedAt.UTC().Unix()
 			checkedAt = &value
 		}
-		if err := db.SavePixivCredential(context.Background(), authdb.PixivAccount{
-			UserID: account.UserID, Username: account.Username, RefreshToken: []byte(account.RefreshToken),
-			PremiumStatus: account.PremiumStatus, PremiumCheckedAt: checkedAt,
-		}); err != nil {
+		stored := accountpixiv.New(account.UserID, account.Username, []byte(account.RefreshToken))
+		stored.PremiumStatus = account.PremiumStatus
+		stored.PremiumCheckedAt = checkedAt
+		if err := db.SavePixivCredential(context.Background(), stored); err != nil {
 			return err
 		}
 	}

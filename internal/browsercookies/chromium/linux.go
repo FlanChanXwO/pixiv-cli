@@ -6,7 +6,7 @@ import (
 	"context"
 	"errors"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/browsercookies/core"
+	"github.com/FlanChanXwO/pixiv-cli/internal/browsercookies"
 	"github.com/FlanChanXwO/pixiv-cli/internal/browsercookies/secret"
 )
 
@@ -39,10 +39,10 @@ func (p *provider) encryptionKeys(ctx context.Context) ([][]byte, error) {
 				return [][]byte{unwrapped}, nil
 			}
 		}
-		return nil, core.ErrEncryptedMalformed
+		return nil, browsercookies.ErrEncryptedMalformed
 	}
 	if len(localStateKey) >= 5 && string(localStateKey[:5]) == "DPAPI" {
-		return nil, core.ErrEncryptedFormatUnknown
+		return nil, browsercookies.ErrEncryptedFormatUnknown
 	}
 	return [][]byte{localStateKey}, nil
 }
@@ -61,17 +61,17 @@ func (p *provider) decryptLegacy(ctx context.Context, blob []byte) ([]byte, erro
 			return value, nil
 		}
 	}
-	return nil, core.ErrEncryptedMalformed
+	return nil, browsercookies.ErrEncryptedMalformed
 }
 
 func mapSecretError(err error) error {
 	switch {
 	case errors.Is(err, secret.ErrNotAvailableOnBuild):
-		return core.ErrSecretServiceUnavailable
+		return browsercookies.ErrSecretServiceUnavailable
 	case errors.Is(err, secret.ErrItemNotFound):
-		return core.ErrSecretServiceAccess
+		return browsercookies.ErrSecretServiceAccess
 	case errors.Is(err, secret.ErrEmptyPassword), errors.Is(err, secret.ErrInvalidItem), errors.Is(err, secret.ErrSecretService):
-		return core.ErrSecretServiceAccess
+		return browsercookies.ErrSecretServiceAccess
 	default:
 		return err
 	}

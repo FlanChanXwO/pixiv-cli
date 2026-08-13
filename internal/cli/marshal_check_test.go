@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"testing"
 
-	recordpkg "github.com/FlanChanXwO/pixiv-cli/internal/record"
+	pipeline "github.com/FlanChanXwO/pixiv-cli/internal/cli/pipeline"
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/stretchr/testify/require"
 )
@@ -13,7 +13,7 @@ import (
 // record 顶层始终携带 id/type/url，且作品 type 使用 illustration 常量。
 func TestRecordMarshalStableFields(t *testing.T) {
 	artwork := pixiv.Artwork{ID: 123, Title: "work", Kind: pixiv.ArtworkKindIllustration, User: pixiv.User{Name: "artist"}}
-	record, err := recordpkg.RecordFromArtwork(artwork)
+	record, err := pipeline.RecordFromArtworkDTO(pixiv.ToArtworkDTO(artwork))
 	require.NoError(t, err)
 	body, err := json.Marshal(record)
 	require.NoError(t, err)
@@ -24,7 +24,7 @@ func TestRecordMarshalStableFields(t *testing.T) {
 	require.Equal(t, "https://www.pixiv.net/artworks/123", decoded["url"])
 
 	novel := pixiv.Novel{ID: 9, Title: "novel", User: pixiv.User{Name: "writer"}}
-	record, err = recordpkg.RecordFromNovel(novel)
+	record, err = pipeline.RecordFromNovelDTO(pixiv.ToNovelDTO(novel))
 	require.NoError(t, err)
 	body, err = json.Marshal(record)
 	require.NoError(t, err)
@@ -39,7 +39,7 @@ func TestRecordMarshalStableFields(t *testing.T) {
 // 以 snake_case 字段输出，且不缺失 id/title 等关键字段。
 func TestRecordMarshalArtworkJSON(t *testing.T) {
 	artwork := pixiv.Artwork{ID: 7, Title: "title", TotalViews: 10, Kind: pixiv.ArtworkKindIllustration}
-	record, err := recordpkg.RecordFromArtwork(artwork)
+	record, err := pipeline.RecordFromArtworkDTO(pixiv.ToArtworkDTO(artwork))
 	require.NoError(t, err)
 	body, err := json.Marshal(record)
 	require.NoError(t, err)

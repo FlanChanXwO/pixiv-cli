@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/buildinfo"
+	"github.com/FlanChanXwO/pixiv-cli/internal/update/release"
 )
 
 // AutomaticUpdateCheckerOptions 注入自动检查所需的只读依赖。
@@ -57,7 +58,7 @@ func (c *AutomaticUpdateChecker) Check(ctx context.Context, request AutomaticUpd
 	if request.BuildInfo.IsDevelopment() {
 		return nil, nil
 	}
-	current, err := parseSemanticVersion(request.BuildInfo.Version)
+	current, err := release.ParseSemanticVersion(request.BuildInfo.Version)
 	if err != nil {
 		return nil, fmt.Errorf("parse current build version %q: %w", request.BuildInfo.Version, err)
 	}
@@ -72,11 +73,11 @@ func (c *AutomaticUpdateChecker) Check(ctx context.Context, request AutomaticUpd
 	if checked.Throttled || checked.Release == nil {
 		return nil, nil
 	}
-	candidate, err := parseSemanticVersion(checked.Release.TagName)
+	candidate, err := release.ParseSemanticVersion(checked.Release.TagName)
 	if err != nil {
 		return nil, fmt.Errorf("parse selected GitHub release tag %q: %w", checked.Release.TagName, err)
 	}
-	if candidate.compare(current) <= 0 {
+	if candidate.Compare(current) <= 0 {
 		return nil, nil
 	}
 	source, err := c.sourceDetector.Detect(request.BuildInfo)

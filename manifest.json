@@ -20,7 +20,6 @@
       "command": "${__dirname}/pixiv",
       "args": ["mcp"],
       "env": {
-        "PIXIV_REFRESH_TOKEN": "${user_config.pixiv_refresh_token}",
         "DOWNLOAD_PATH": "${user_config.download_path}",
         "FILENAME_TEMPLATE": "${user_config.filename_template}",
         "https_proxy": "${user_config.proxy_url}"
@@ -28,12 +27,6 @@
     }
   },
   "user_config": {
-    "pixiv_refresh_token": {
-      "type": "string",
-      "title": "Pixiv Refresh Token or Cookie with refresh_token",
-      "sensitive": true,
-      "required": true
-    },
     "download_path": {
       "type": "directory",
       "title": "Download Directory",

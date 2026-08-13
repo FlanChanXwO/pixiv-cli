@@ -79,6 +79,36 @@ solver service URL 与 upstream proxy 独立于 native proxy；public constructo
 列表操作返回 `sdk.Page[T]` 与不透明 `Cursor`。游标绑定 product、operation、
 binding version 与查询摘要；用不同查询复用游标会返回 `InvalidCursor`。
 
+对 identity-scoped operation，`pixiv.New` 创建的 Client 没有已验证的账号 ID，
+因此其续页 cursor 是 ephemeral，并携带只用于绑定该 Client 实例的非敏感标识；
+同一 Client 可以继续，其他 Client 或进程会返回 `InvalidCursor`。通过
+`pixiv.Open` 创建的 Client 则把 cursor 绑定到已验证的账号 identity。
+
+## Pixiv 读取操作
+
+公开 Pixiv Client 将 artwork、novel、user 搜索分开，同时使用相同的 typed 分页契约：
+
+- `SearchArtworks` 支持关键词、target、排序、时间/日期边界、作品类型、AI、横纵比、
+  分辨率、绘图工具和可选收藏数边界。省略 target、sort 时分别默认为
+  `partial_match_for_tags`、`date_desc`。未知枚举、非法日期和非法收藏数范围会在发请求前返回
+  `InvalidArgument`。
+- `SearchNovels` 只接受关键词、target、排序和 duration；`SearchUsers` 只接受关键词。
+  作品专用字段不会静默复制到其他实体的请求。
+- `SearchAIModeOnly` 按规范化后的 `Artwork.AIType == 2` 对当前返回批次做本地筛选；该 mode
+  会进入 cursor 绑定，因此不能把另一种 AI mode 的续页 cursor 复用过来。
+- `ArtworkRanking` 省略 mode 时默认为 `day`，并校验排行 mode 和可选的 `YYYY-MM-DD` 日期。
+  `Artwork`、`Novel`、`User` 是使用正数 typed ID 的详情操作。`ArtworkSeries` 与 `NovelSeries`
+  保留各自的系列分页续接；后者同时返回系列 metadata。
+- `ArtworkComments` 与 `NovelComments` 返回 `CommentPage`。只有上游明确提供时才填充评论总数和
+  访问控制 metadata。成功的空列表使用非 nil 的空 `Items` slice 表示，不伪造错误或总数。
+- `UserArtworkBookmarks`、`UserArtworkBookmarkTags` 与 `UserNovelBookmarks` 会在请求 App API
+  前校验 `UserID`、`Restrict` 和 opaque continuation；`tag` 与服务端提供的收藏续页值按原语义传递。
+  成功的空页仍是空 `Items`。`ArtworkBookmark` 用空 `Restrict` 与空 tags 表示当前作品未收藏；
+  `AddBookmark` 校验可见性值，不把未知值静默交给服务端默认处理。
+- `BookmarkMin` 与 `BookmarkMax` 是可选、闭区间、非负的 App API 候选边界。public SDK 只负责
+  校验并转发为 `bookmark_num_min`/`bookmark_num_max`，不做 Premium 前置探测，不宣称全局完备，
+  也不静默切换候选策略。application 若做本地精确复核，应另行报告已解析的策略与结果完备性。
+
 ## 错误
 
 所有失败都是带稳定 `Reason` 的 `*sdk.Error`：
@@ -95,7 +125,7 @@ local_state_error, removed_setting
 
 ## 资源
 
-第一方媒体通过 `sdk.Resource` 以两条并行路径暴露：
+程序化 SDK 调用方通过 `sdk.Resource` 获取第一方媒体；它有两条 runtime 路径：
 
 - `Resource.URL` + `Resource.RequestHeaders` — 直接流式读取或无落盘反代。
 - `Resource.Ref` — 交回 `OpenResource`/`SaveResource` 做 SDK 校验读取
@@ -105,6 +135,27 @@ local_state_error, removed_setting
 
 `Resource` 不携带 token 或 Cookie；`RequiresCredentials` 表示资源仍需要调用方
 不可见的产品凭据。
+
+Pixiv 的 `Resource.Ref` 只包含资源 kind、稳定 ID、page 和可选 variant，绝不嵌入当前或签名媒体 URL。
+SDK 会优先复用当前 Client 保存的 locator，或重新读取对应 artwork、novel、user、ugoira 或小说正文
+metadata 后再打开；解析出的 URL 与每次 redirect 都会再次通过 allowlist 校验。`SaveResource` 通过
+原子目标写入；上游提供 `Content-Length` 时，`SaveProgress.Total` 会报告该值。资源请求只使用显式
+允许的 header，绝不发送调用方 Cookie jar。
+
+### Runtime model 与输出 DTO
+
+运行时 product model 与 CLI/MCP JSON 边界的值是有意分离的。`sdk.Resource` 在进程内
+streaming 操作中可以带当前可用的 `URL`、转发所需的 `RequestHeaders` 和 `ExpiresAt`；
+这些字段绝不进入输出 DTO。
+
+序列化结果时使用显式的逐字段转换器：Pixiv 使用
+`pixiv.ToArtworkDTO`、`pixiv.ToNovelDTO`、`pixiv.ToUserDTO`、
+`pixiv.ToUserDetailDTO`、`pixiv.ToUserPreviewDTO`、`pixiv.ToCommentDTO`、
+`pixiv.ToNovelContentDTO`、`pixiv.ToUgoiraMetadataDTO` 及其相关转换器；FANBOX
+使用对应的 `fanbox.To*DTO` 转换 creator、post、block、asset、user 与 tag。
+`sdk.ToResourceDTO` 只输出 opaque `ref` 与可选的 `requires_credentials` metadata。
+CLI/MCP 只编码这些 DTO、管道 `Record` 与 typed envelope，不反射遍历或直接 JSON 编码
+运行时 product model。
 
 ## URL 引用
 

@@ -7,14 +7,17 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/application/config"
-	pixivapp "github.com/FlanChanXwO/pixiv-cli/internal/application/pixiv"
+	pixivapp "github.com/FlanChanXwO/pixiv-cli/internal/account/pixiv"
+	"github.com/FlanChanXwO/pixiv-cli/internal/platform/localstate"
+	filesecret "github.com/FlanChanXwO/pixiv-cli/internal/storage/file/secret"
 	"github.com/stretchr/testify/require"
 )
 
 type poolCapableFakeAccountStore struct {
 	*fakeAccountStore
 }
+
+func valueOrFalse(value *bool) bool { return value != nil && *value }
 
 func (s *poolCapableFakeAccountStore) SetPoolSchedulable(_ context.Context, userIDs []int64, schedulable bool) error {
 	indices := make(map[int64]int, len(userIDs))
@@ -47,8 +50,8 @@ func (s *poolCapableFakeAccountStore) SetAllPoolSchedulable(_ context.Context, s
 
 func TestAuthPoolStatusEnableDisableAndAtomicUIDValidation(t *testing.T) {
 	_, configPath := useTempPaths(t)
-	require.NoError(t, config.WritePrivateFile(configPath, []byte("[account_pool]\nenabled=true\nstrategy='random'\n")))
-	store := &poolCapableFakeAccountStore{fakeAccountStore: &fakeAccountStore{accounts: []pixivapp.Account{
+	require.NoError(t, filesecret.WritePrivateFile(configPath, []byte("[account_pool]\nenabled=true\nstrategy='random'\n"), localstate.PrivateFileMode))
+	store := &poolCapableFakeAccountStore{fakeAccountStore: &fakeAccountStore{accounts: []pixivapp.AccountSummary{
 		{UserID: 11, Username: "first", Schedulable: true, Eligible: true, PoolStatusKnown: true},
 		{UserID: 22, Username: "second", Schedulable: true, Eligible: true, PoolStatusKnown: true},
 	}}}

@@ -1,4 +1,4 @@
-package fanbox
+package fanbox_test
 
 import (
 	"context"
@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/diagnostics"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/fanbox/internal/runtime"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -23,7 +24,7 @@ func TestFanboxMCPDiagnosticsUseFanboxModuleAndRequestID(t *testing.T) {
 	defer cancel()
 
 	server := mcp.NewServer(&mcp.Implementation{Name: "debug-test", Version: "1"}, nil)
-	addTool(&App{}, server, &mcp.Tool{Name: "diagnostic_test"}, func(context.Context, *mcp.CallToolRequest, struct{}) (*mcp.CallToolResult, struct{}, error) {
+	runtime.AddTool(runtime.NewApp(nil, nil), server, &mcp.Tool{Name: "diagnostic_test"}, func(context.Context, *mcp.CallToolRequest, struct{}) (*mcp.CallToolResult, struct{}, error) {
 		return &mcp.CallToolResult{}, struct{}{}, nil
 	})
 	clientTransport, serverTransport := mcp.NewInMemoryTransports()

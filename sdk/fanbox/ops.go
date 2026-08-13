@@ -6,7 +6,15 @@ import (
 	"net/url"
 	"time"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/services/fanbox"
+	creatorservice "github.com/FlanChanXwO/pixiv-cli/internal/services/fanbox/creator"
+	creatorlist "github.com/FlanChanXwO/pixiv-cli/internal/services/fanbox/creator/creators"
+	creatortags "github.com/FlanChanXwO/pixiv-cli/internal/services/fanbox/creator/tags"
+	postservice "github.com/FlanChanXwO/pixiv-cli/internal/services/fanbox/post"
+	"github.com/FlanChanXwO/pixiv-cli/internal/services/fanbox/post/home"
+	postinfo "github.com/FlanChanXwO/pixiv-cli/internal/services/fanbox/post/info"
+	postposts "github.com/FlanChanXwO/pixiv-cli/internal/services/fanbox/post/posts"
+	"github.com/FlanChanXwO/pixiv-cli/internal/services/fanbox/post/supporting"
+	"github.com/FlanChanXwO/pixiv-cli/internal/services/fanbox/protocol"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 )
 
@@ -34,7 +42,7 @@ func (c *Client) Creator(ctx context.Context, request CreatorRequest) (Creator, 
 	if request.CreatorID == "" {
 		return Creator{}, newError("Creator", sdk.InvalidArgument, errors.New("creator id is required"))
 	}
-	profile, err := c.session.Creator(ctx, request.CreatorID)
+	profile, err := c.creators.Profile(ctx, creatorlist.ProfileRequest{CreatorID: request.CreatorID})
 	if err != nil {
 		return Creator{}, classifyError("Creator", err)
 	}
@@ -52,12 +60,12 @@ func (c *Client) Creators(ctx context.Context, request CreatorsRequest) (sdk.Pag
 	if err != nil {
 		return sdk.Page[CreatorSummary]{}, err
 	}
-	page, err := c.session.Creators(ctx, fanbox.CreatorListKind(kind), nextURL)
+	page, err := c.creators.List(ctx, creatorlist.ListRequest{Kind: creatorlist.ListKind(kind), NextURL: nextURL})
 	if err != nil {
 		return sdk.Page[CreatorSummary]{}, classifyError("Creators", err)
 	}
-	items := make([]CreatorSummary, 0, len(page.Creators))
-	for _, creator := range page.Creators {
+	items := make([]CreatorSummary, 0, len(page.Items))
+	for _, creator := range page.Items {
 		items = append(items, c.mapCreatorSummary(creator))
 	}
 	next, err := c.buildCursor("Creators", query, page.NextURL)
@@ -72,13 +80,13 @@ func (c *Client) CreatorTags(ctx context.Context, request CreatorTagsRequest) ([
 	if request.CreatorID == "" {
 		return nil, newError("CreatorTags", sdk.InvalidArgument, errors.New("creator id is required"))
 	}
-	tags, err := c.session.CreatorTags(ctx, request.CreatorID)
+	tags, err := c.creatorTags.List(ctx, creatortags.Request{CreatorID: request.CreatorID})
 	if err != nil {
 		return nil, classifyError("CreatorTags", err)
 	}
 	items := make([]CreatorTag, 0, len(tags))
 	for _, tag := range tags {
-		items = append(items, CreatorTag{Name: tag.Tag, URL: tag.URL})
+		items = append(items, CreatorTag{Name: tag.Name, URL: tag.URL})
 	}
 	return items, nil
 }
@@ -93,7 +101,7 @@ func (c *Client) CreatorPosts(ctx context.Context, request CreatorPostsRequest) 
 	if err != nil {
 		return sdk.Page[Post]{}, err
 	}
-	page, err := c.session.CreatorPosts(ctx, request.CreatorID, nextURL)
+	page, err := c.creatorPosts.Creator(ctx, postposts.Request{CreatorID: request.CreatorID, NextURL: nextURL})
 	if err != nil {
 		return sdk.Page[Post]{}, classifyError("CreatorPosts", err)
 	}
@@ -110,7 +118,7 @@ func (c *Client) TaggedPosts(ctx context.Context, request TaggedPostsRequest) (s
 	if err != nil {
 		return sdk.Page[Post]{}, err
 	}
-	page, err := c.session.TaggedPosts(ctx, request.CreatorID, request.Tag, nextURL)
+	page, err := c.creatorPosts.Tagged(ctx, postposts.Request{CreatorID: request.CreatorID, Tag: request.Tag, NextURL: nextURL})
 	if err != nil {
 		return sdk.Page[Post]{}, classifyError("TaggedPosts", err)
 	}
@@ -122,7 +130,7 @@ func (c *Client) Post(ctx context.Context, request PostRequest) (Post, error) {
 	if request.PostID == "" {
 		return Post{}, newError("Post", sdk.InvalidArgument, errors.New("post id is required"))
 	}
-	post, err := c.session.Post(ctx, request.PostID)
+	post, err := c.postInfo.Get(ctx, postinfo.Request{PostID: request.PostID})
 	if err != nil {
 		return Post{}, classifyError("Post", err)
 	}
@@ -136,7 +144,7 @@ func (c *Client) Home(ctx context.Context, request HomeRequest) (sdk.Page[Post],
 	if err != nil {
 		return sdk.Page[Post]{}, err
 	}
-	page, err := c.session.Home(ctx, nextURL)
+	page, err := c.home.List(ctx, home.Request{NextURL: nextURL})
 	if err != nil {
 		return sdk.Page[Post]{}, classifyError("Home", err)
 	}
@@ -150,14 +158,14 @@ func (c *Client) Supporting(ctx context.Context, request SupportingRequest) (sdk
 	if err != nil {
 		return sdk.Page[Post]{}, err
 	}
-	page, err := c.session.Supporting(ctx, nextURL)
+	page, err := c.supporting.List(ctx, supporting.Request{NextURL: nextURL})
 	if err != nil {
 		return sdk.Page[Post]{}, classifyError("Supporting", err)
 	}
 	return c.postPage("Supporting", query, page)
 }
 
-func (c *Client) postPage(op string, query url.Values, page fanbox.PostPage) (sdk.Page[Post], error) {
+func (c *Client) postPage(op string, query url.Values, page postservice.Page) (sdk.Page[Post], error) {
 	items := make([]Post, 0, len(page.Posts))
 	for _, source := range page.Posts {
 		post, err := c.mapPost(source)
@@ -173,7 +181,7 @@ func (c *Client) postPage(op string, query url.Values, page fanbox.PostPage) (sd
 	return sdk.Page[Post]{Items: items, Next: next}, nil
 }
 
-func mapUser(identity fanbox.Identity) User {
+func mapUser(identity protocol.Identity) User {
 	return User{
 		UserID:        identity.UserID,
 		DisplayName:   identity.DisplayName,
@@ -183,12 +191,12 @@ func mapUser(identity fanbox.Identity) User {
 	}
 }
 
-func (c *Client) mapCreatorSummary(source fanbox.Creator) CreatorSummary {
+func (c *Client) mapCreatorSummary(source creatorservice.Summary) CreatorSummary {
 	out := CreatorSummary{ID: source.ID}
 	return out
 }
 
-func (c *Client) mapCreator(profile fanbox.CreatorProfile) (Creator, error) {
+func (c *Client) mapCreator(profile creatorservice.Creator) (Creator, error) {
 	out := Creator{
 		CreatorSummary:    CreatorSummary{ID: profile.ID, Name: profile.DisplayName},
 		HasAdultContent:   profile.HasAdultContent,
@@ -213,7 +221,7 @@ func (c *Client) mapCreator(profile fanbox.CreatorProfile) (Creator, error) {
 	return out, nil
 }
 
-func (c *Client) mapPost(source fanbox.Post) (Post, error) {
+func (c *Client) mapPost(source postservice.Post) (Post, error) {
 	published, err := parseUTCTime(source.PublishedDateTime)
 	if err != nil {
 		return Post{}, newError("Post", sdk.MalformedUpstreamResponse, err)
@@ -233,8 +241,8 @@ func (c *Client) mapPost(source fanbox.Post) (Post, error) {
 		return out, nil
 	}
 	body := &PostBody{Text: source.Body.Text}
-	imageByID := map[string]fanbox.Image{}
-	fileByID := map[string]fanbox.File{}
+	imageByID := map[string]postservice.Image{}
+	fileByID := map[string]postservice.File{}
 	for _, image := range mergePostImages(*source.Body) {
 		imageByID[image.ID] = image
 		if image.OriginalURL != "" {
@@ -286,8 +294,8 @@ func (c *Client) mapPost(source fanbox.Post) (Post, error) {
 }
 
 // mergePostImages 补上 FANBOX 在 block 的 imageMap 中提供、但未填充 Images 列表的资源。
-func mergePostImages(body fanbox.PostBody) []fanbox.Image {
-	images := append([]fanbox.Image(nil), body.Images...)
+func mergePostImages(body postservice.Body) []postservice.Image {
+	images := append([]postservice.Image(nil), body.Images...)
 	seen := make(map[string]struct{}, len(images))
 	for _, image := range images {
 		if image.ID != "" {
@@ -295,13 +303,13 @@ func mergePostImages(body fanbox.PostBody) []fanbox.Image {
 		}
 	}
 	for _, asset := range body.Assets {
-		if asset.Kind != fanbox.AssetKindImage || asset.ID == "" {
+		if asset.Kind != postservice.AssetKindImage || asset.ID == "" {
 			continue
 		}
 		if _, ok := seen[asset.ID]; ok {
 			continue
 		}
-		images = append(images, fanbox.Image{
+		images = append(images, postservice.Image{
 			ID:           asset.ID,
 			Extension:    asset.Extension,
 			OriginalURL:  asset.URL,
@@ -313,8 +321,8 @@ func mergePostImages(body fanbox.PostBody) []fanbox.Image {
 }
 
 // mergePostFiles 补上 FANBOX 在 block 的 fileMap 中提供、但未填充 Files 列表的资源。
-func mergePostFiles(body fanbox.PostBody) []fanbox.File {
-	files := append([]fanbox.File(nil), body.Files...)
+func mergePostFiles(body postservice.Body) []postservice.File {
+	files := append([]postservice.File(nil), body.Files...)
 	seen := make(map[string]struct{}, len(files))
 	for _, file := range files {
 		if file.ID != "" {
@@ -322,13 +330,13 @@ func mergePostFiles(body fanbox.PostBody) []fanbox.File {
 		}
 	}
 	for _, asset := range body.Assets {
-		if asset.Kind != fanbox.AssetKindFile || asset.ID == "" {
+		if asset.Kind != postservice.AssetKindFile || asset.ID == "" {
 			continue
 		}
 		if _, ok := seen[asset.ID]; ok {
 			continue
 		}
-		files = append(files, fanbox.File{
+		files = append(files, postservice.File{
 			ID:        asset.ID,
 			Name:      asset.Name,
 			Extension: asset.Extension,

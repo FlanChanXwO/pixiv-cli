@@ -44,7 +44,7 @@ func isolatedEnv(t *testing.T) isolatedProcessEnv {
 func isIsolatedEnvKey(name string) bool {
 	for _, key := range []string{
 		"HOME", "XDG_CONFIG_HOME", "APPDATA", "LOCALAPPDATA", "USERPROFILE", "HOMEDRIVE", "HOMEPATH",
-		"DOWNLOAD_PATH", "FILENAME_TEMPLATE", "https_proxy", "HTTPS_PROXY", "PIXIV_REFRESH_TOKEN",
+		"DOWNLOAD_PATH", "FILENAME_TEMPLATE", "https_proxy", "HTTPS_PROXY",
 	} {
 		if strings.EqualFold(name, key) {
 			return true

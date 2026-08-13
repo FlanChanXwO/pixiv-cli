@@ -4,21 +4,37 @@ import (
 	"context"
 	"net/url"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/model"
+	novelentity "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/novel"
+	novelcomments "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/novel/comments"
+	novelrecommended "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/novel/recommended"
+	novelsearch "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/novel/search"
+	novelseries "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/novel/series"
+	noveltimeline "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/novel/timeline"
+	usernovelbookmarks "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/user/novelbookmarks"
+	usernovels "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/user/novels"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 )
 
 // SearchNovels searches novels. Repeat the original request fields when
 // continuing with a non-zero Cursor.
 func (c *Client) SearchNovels(ctx context.Context, request SearchNovelsRequest) (sdk.Page[Novel], error) {
-	if request.Word == "" {
-		return sdk.Page[Novel]{}, newError("SearchNovels", sdk.InvalidArgument, "search word is required")
+	if err := validateSearchWord("SearchNovels", request.Word); err != nil {
+		return sdk.Page[Novel]{}, err
 	}
 	if request.Target == "" {
 		request.Target = SearchTargetPartialMatchForTags
 	}
 	if request.Sort == "" {
 		request.Sort = SortModeDateDesc
+	}
+	if err := validateSearchTarget("SearchNovels", request.Target); err != nil {
+		return sdk.Page[Novel]{}, err
+	}
+	if err := validateSortMode("SearchNovels", request.Sort); err != nil {
+		return sdk.Page[Novel]{}, err
+	}
+	if err := validateDuration("SearchNovels", request.Duration); err != nil {
+		return sdk.Page[Novel]{}, err
 	}
 	query := url.Values{}
 	if request.Word != "" {
@@ -37,11 +53,13 @@ func (c *Client) SearchNovels(ctx context.Context, request SearchNovelsRequest) 
 	if err != nil {
 		return sdk.Page[Novel]{}, err
 	}
-	list, err := c.app.SearchNovel(ctx, request.Word, string(request.Target), string(request.Sort), string(request.Duration), offset)
+	list, err := c.novelSearch.Search(ctx, novelsearch.Request{
+		Word: request.Word, Target: string(request.Target), Sort: string(request.Sort), Duration: string(request.Duration), Offset: offset,
+	})
 	if err != nil {
 		return sdk.Page[Novel]{}, classifyAppError(err, "SearchNovels")
 	}
-	return c.novelPage("SearchNovels", query, "offset", list)
+	return c.novelPage("SearchNovels", query, "offset", list.Items, int64(list.NextOffset), list.HasNext)
 }
 
 // Novel returns one novel by its stable ID.
@@ -49,7 +67,7 @@ func (c *Client) Novel(ctx context.Context, request NovelRequest) (Novel, error)
 	if request.NovelID <= 0 {
 		return Novel{}, newError("Novel", sdk.InvalidArgument, "novel ID must be positive")
 	}
-	detail, err := c.app.NovelDetail(ctx, request.NovelID)
+	detail, err := c.novelDetail.Detail(ctx, request.NovelID)
 	if err != nil {
 		return Novel{}, classifyAppError(err, "Novel")
 	}
@@ -66,19 +84,19 @@ func (c *Client) NovelSeries(ctx context.Context, request NovelSeriesRequest) (N
 	if err != nil {
 		return NovelSeriesResult{}, err
 	}
-	result, err := c.app.NovelSeries(ctx, request.SeriesID, lastOrder)
+	result, err := c.novelSeries.List(ctx, novelseries.Request{SeriesID: request.SeriesID, LastOrder: lastOrder})
 	if err != nil {
 		return NovelSeriesResult{}, classifyAppError(err, "NovelSeries")
 	}
-	items := make([]Novel, 0, len(result.Novels))
-	for _, m := range result.Novels {
+	items := make([]Novel, 0, len(result.Items))
+	for _, m := range result.Items {
 		novel, err := c.mapNovel(m)
 		if err != nil {
 			return NovelSeriesResult{}, err
 		}
 		items = append(items, novel)
 	}
-	next, err := c.buildCursor("NovelSeries", query, "last_order", result.NextValue, result.ContinuationExists)
+	next, err := c.buildCursor("NovelSeries", query, "last_order", result.NextLastOrder, result.HasNext)
 	if err != nil {
 		return NovelSeriesResult{}, err
 	}
@@ -87,7 +105,7 @@ func (c *Client) NovelSeries(ctx context.Context, request NovelSeriesRequest) (N
 			ID:          result.Series.ID,
 			Title:       result.Series.Title,
 			Caption:     result.Series.Caption,
-			User:        c.mapUser(result.Series.User),
+			User:        c.mapNovelUser(result.Series.User),
 			IsConcluded: result.Series.IsConcluded,
 		},
 		Novels: sdk.Page[Novel]{Items: items, Next: next},
@@ -99,7 +117,7 @@ func (c *Client) NovelContent(ctx context.Context, request NovelContentRequest) 
 	if request.NovelID <= 0 {
 		return NovelContent{}, newError("NovelContent", sdk.InvalidArgument, "novel ID must be positive")
 	}
-	html, err := c.app.NovelContent(ctx, request.NovelID)
+	html, err := c.novelDetail.Content(ctx, request.NovelID)
 	if err != nil {
 		return NovelContent{}, classifyAppError(err, "NovelContent")
 	}
@@ -116,11 +134,11 @@ func (c *Client) NovelComments(ctx context.Context, request NovelCommentsRequest
 	if err != nil {
 		return CommentPage{}, err
 	}
-	list, err := c.app.NovelComments(ctx, request.NovelID, offset)
+	list, err := c.novelComments.List(ctx, novelcomments.Request{NovelID: request.NovelID, Offset: offset})
 	if err != nil {
 		return CommentPage{}, classifyAppError(err, "NovelComments")
 	}
-	return c.commentPage("NovelComments", query, list)
+	return c.commentPage("NovelComments", query, list.Items, list.NextOffset, list.HasNext, list.Total, list.AccessControl)
 }
 
 // RecommendedNovels lists recommended novels.
@@ -130,11 +148,11 @@ func (c *Client) RecommendedNovels(ctx context.Context, request RecommendedNovel
 	if err != nil {
 		return sdk.Page[Novel]{}, err
 	}
-	list, err := c.app.NovelRecommended(ctx, offset, contExists)
+	list, err := c.novelRecommended.List(ctx, novelrecommended.Request{Offset: offset, ContinuationExists: contExists})
 	if err != nil {
 		return sdk.Page[Novel]{}, classifyAppError(err, "RecommendedNovels")
 	}
-	return c.novelPage("RecommendedNovels", query, "offset", list)
+	return c.novelPage("RecommendedNovels", query, "offset", list.Items, int64(list.NextOffset), list.HasNext)
 }
 
 // FollowingNovels lists novels by followed users.
@@ -144,11 +162,11 @@ func (c *Client) FollowingNovels(ctx context.Context, request FollowingNovelsReq
 	if err != nil {
 		return sdk.Page[Novel]{}, err
 	}
-	list, err := c.app.NovelFollow(ctx, string(request.Restrict), offset)
+	list, err := c.novelTimeline.List(ctx, noveltimeline.Request{Kind: noveltimeline.Following, Restrict: string(request.Restrict), Offset: offset})
 	if err != nil {
 		return sdk.Page[Novel]{}, classifyAppError(err, "FollowingNovels")
 	}
-	return c.novelPage("FollowingNovels", query, "offset", list)
+	return c.novelPage("FollowingNovels", query, "offset", list.Items, int64(list.NextOffset), list.HasNext)
 }
 
 // LatestNovels lists the newest novels.
@@ -158,11 +176,11 @@ func (c *Client) LatestNovels(ctx context.Context, request LatestNovelsRequest) 
 	if err != nil {
 		return sdk.Page[Novel]{}, err
 	}
-	list, err := c.app.NovelNew(ctx, offset)
+	list, err := c.novelTimeline.List(ctx, noveltimeline.Request{Kind: noveltimeline.Latest, Offset: offset})
 	if err != nil {
 		return sdk.Page[Novel]{}, classifyAppError(err, "LatestNovels")
 	}
-	return c.novelPage("LatestNovels", query, "offset", list)
+	return c.novelPage("LatestNovels", query, "offset", list.Items, int64(list.NextOffset), list.HasNext)
 }
 
 // UserNovels lists one user's novels.
@@ -175,17 +193,20 @@ func (c *Client) UserNovels(ctx context.Context, request UserNovelsRequest) (sdk
 	if err != nil {
 		return sdk.Page[Novel]{}, err
 	}
-	list, err := c.app.UserNovels(ctx, request.UserID, offset)
+	list, err := c.userNovels.List(ctx, usernovels.Request{UserID: request.UserID, Offset: offset})
 	if err != nil {
 		return sdk.Page[Novel]{}, classifyAppError(err, "UserNovels")
 	}
-	return c.novelPage("UserNovels", query, "offset", list)
+	return c.novelPage("UserNovels", query, "offset", list.Items, int64(list.NextOffset), list.HasNext)
 }
 
 // UserNovelBookmarks lists one user's bookmarked novels.
 func (c *Client) UserNovelBookmarks(ctx context.Context, request UserNovelBookmarksRequest) (sdk.Page[Novel], error) {
 	if request.UserID <= 0 {
 		return sdk.Page[Novel]{}, newError("UserNovelBookmarks", sdk.InvalidArgument, "user ID must be positive")
+	}
+	if err := validateRestrict("UserNovelBookmarks", request.Restrict); err != nil {
+		return sdk.Page[Novel]{}, err
 	}
 	query := url.Values{"user_id": {itoa(request.UserID)}, "restrict": {string(request.Restrict)}}
 	if request.Tag != "" {
@@ -195,11 +216,13 @@ func (c *Client) UserNovelBookmarks(ctx context.Context, request UserNovelBookma
 	if err != nil {
 		return sdk.Page[Novel]{}, err
 	}
-	list, err := c.app.UserNovelBookmarks(ctx, request.UserID, string(request.Restrict), request.Tag, maxID)
+	list, err := c.userNovelBookmarks.List(ctx, usernovelbookmarks.Request{
+		UserID: request.UserID, Restrict: string(request.Restrict), Tag: request.Tag, MaxBookmarkID: maxID,
+	})
 	if err != nil {
 		return sdk.Page[Novel]{}, classifyAppError(err, "UserNovelBookmarks")
 	}
-	return c.novelPage("UserNovelBookmarks", query, "max_bookmark_id", list)
+	return c.novelPage("UserNovelBookmarks", query, "max_bookmark_id", list.Items, list.NextMaxBookmarkID, list.HasNext)
 }
 
 // MyPixivNovels lists novels from the current user's MyPixiv feed.
@@ -209,27 +232,23 @@ func (c *Client) MyPixivNovels(ctx context.Context, request MyPixivNovelsRequest
 	if err != nil {
 		return sdk.Page[Novel]{}, err
 	}
-	list, err := c.app.NovelMyPixiv(ctx, offset)
+	list, err := c.novelTimeline.List(ctx, noveltimeline.Request{Kind: noveltimeline.MyPixiv, Offset: offset})
 	if err != nil {
 		return sdk.Page[Novel]{}, classifyAppError(err, "MyPixivNovels")
 	}
-	return c.novelPage("MyPixivNovels", query, "offset", list)
+	return c.novelPage("MyPixivNovels", query, "offset", list.Items, int64(list.NextOffset), list.HasNext)
 }
 
-func (c *Client) novelPage(op string, query url.Values, key string, list *model.NovelList) (sdk.Page[Novel], error) {
-	items := make([]Novel, 0, len(list.Novels))
-	for _, m := range list.Novels {
+func (c *Client) novelPage(op string, query url.Values, key string, list []novelentity.Novel, nextValue int64, hasNext bool) (sdk.Page[Novel], error) {
+	items := make([]Novel, 0, len(list))
+	for _, m := range list {
 		novel, err := c.mapNovel(m)
 		if err != nil {
 			return sdk.Page[Novel]{}, err
 		}
 		items = append(items, novel)
 	}
-	value := int64(list.NextOffset)
-	if key == "max_bookmark_id" {
-		value = list.NextMaxBookmarkID
-	}
-	next, err := c.buildCursor(op, query, key, value, list.ContinuationExists)
+	next, err := c.buildCursor(op, query, key, nextValue, hasNext)
 	if err != nil {
 		return sdk.Page[Novel]{}, err
 	}

@@ -94,7 +94,7 @@ jobs:
           if [ '${{ matrix.goos }}' = windows ]; then
             export CC='clang -fuse-ld=lld'
           fi
-          go test ./internal/ugoira -run '^TestRustUgoiraEncoderNativeGIFAndAPNG$' -count=1
+          go test ./internal/media/ugoira -run '^TestRustUgoiraEncoderNativeGIFAndAPNG$' -count=1
       - name: Build and run the versioned native binary
         shell: bash
         run: |
@@ -140,7 +140,7 @@ jobs:
           if [ '${{ matrix.goos }}' = windows ]; then
             staticlib='ugoira_rs.lib'
           fi
-          cp "internal/downloader/ugoira_rs/staticlib/${{ matrix.rust_target }}/$staticlib" "evidence/$staticlib"
+          cp "internal/media/ugoira/rust/staticlib/${{ matrix.rust_target }}/$staticlib" "evidence/$staticlib"
           archive="evidence/pixiv-cli_${version}_${{ matrix.goos }}_${{ matrix.goarch }}"
           if [ '${{ matrix.goos }}' = windows ]; then
             archive="$archive.zip"

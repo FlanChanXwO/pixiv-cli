@@ -113,7 +113,7 @@ jobs:
         run: bash scripts/build-staticlibs.sh --target '${{ matrix.rust_target }}'
       - name: Run native GIF/APNG smoke
         shell: bash
-        run: go test ./internal/ugoira -run '^TestRustUgoiraEncoderNativeGIFAndAPNG$' -count=1
+        run: go test ./internal/media/ugoira -run '^TestRustUgoiraEncoderNativeGIFAndAPNG$' -count=1
       - name: Build and package a versioned binary
         shell: bash
         run: |

@@ -3,9 +3,9 @@
 set -eu
 
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
-crate_manifest="$repo_root/internal/downloader/ugoira_rs/Cargo.toml"
+crate_manifest="$repo_root/internal/media/ugoira/rust/Cargo.toml"
 crate_dir=$(dirname "$crate_manifest")
-staticlib_dir=${PIXIV_UGOIRA_STATICLIB_DIR:-"$repo_root/internal/downloader/ugoira_rs/staticlib"}
+staticlib_dir=${PIXIV_UGOIRA_STATICLIB_DIR:-"$repo_root/internal/media/ugoira/rust/staticlib"}
 target_dir=${PIXIV_UGOIRA_TARGET_DIR:-}
 target_arg=
 target_supplied=false
@@ -134,9 +134,9 @@ fi
 
 (
 	cd "$repo_root"
-	go test ./internal/downloader -run '^TestUgoiraRustSourceDigestMatchesRecordedFixture$' -count=1
+	go test ./internal/media/ugoira/staticlib -run '^TestUgoiraRustSourceDigestMatchesRecordedFixture$' -count=1
 )
-source_digest=$(tr -d '\r\n[:space:]' < "$repo_root/internal/downloader/testdata/ugoira-source-digest.txt")
+source_digest=$(tr -d '\r\n[:space:]' < "$repo_root/internal/media/ugoira/testdata/ugoira-source-digest.txt")
 
 manifest_temp=$(mktemp "$staticlib_dir/.manifest.json.XXXXXX")
 {

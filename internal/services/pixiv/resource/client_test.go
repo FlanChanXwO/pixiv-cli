@@ -1,4 +1,4 @@
-package resource
+package resource_test
 
 import (
 	"bytes"
@@ -12,24 +12,11 @@ import (
 	"net/url"
 	"strings"
 	"testing"
-	"time"
 
+	resource "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/resource"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
-
-func TestNewAppUsesDedicatedClientWithoutTotalTimeout(t *testing.T) {
-	client := NewApp(nil)
-	require.NotSame(t, http.DefaultClient, client.httpClient)
-	require.Zero(t, client.httpClient.Timeout)
-}
-
-func TestNewAppPreservesExplicitHTTPClient(t *testing.T) {
-	want := &http.Client{Timeout: 31 * time.Second}
-	got := NewApp(want).httpClient
-	require.Same(t, want, got)
-	require.Equal(t, want.Timeout, got.Timeout)
-}
 
 func TestOpenStreamingBodyLifetimeIsControlledByContext(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -40,7 +27,7 @@ func TestOpenStreamingBodyLifetimeIsControlledByContext(t *testing.T) {
 	defer server.Close()
 
 	ctx, cancel := context.WithCancel(context.Background())
-	response, err := NewApp(nil).Open(ctx, OpenRequest{URL: server.URL})
+	response, err := resource.NewApp(nil).Open(ctx, resource.OpenRequest{URL: server.URL})
 	require.NoError(t, err)
 	cancel()
 	defer response.Body.Close()
@@ -52,12 +39,12 @@ func TestOpenStreamingBodyLifetimeIsControlledByContext(t *testing.T) {
 func TestClientsPreserveHeadersStatusAndCopy(t *testing.T) {
 	tests := []struct {
 		name               string
-		newClient          func(*http.Client) *Client
+		newClient          func(*http.Client) *resource.Client
 		referer, userAgent string
 		accept             string
 	}{
-		{"app", NewApp, AppReferer, AppUserAgent, ""},
-		{"web", func(h *http.Client) *Client { return NewWeb(h, "https://www.pixiv.net/") }, "https://www.pixiv.net/", WebUserAgent, "application/json,text/plain,*/*"},
+		{"app", resource.NewApp, resource.AppReferer, resource.AppUserAgent, ""},
+		{"web", func(h *http.Client) *resource.Client { return resource.NewWeb(h, "https://www.pixiv.net/") }, "https://www.pixiv.net/", resource.WebUserAgent, "application/json,text/plain,*/*"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -78,7 +65,7 @@ func TestClientsPreserveHeadersStatusAndCopy(t *testing.T) {
 func TestAppDownloadExposesNonSuccessStatusWithoutBody(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { http.Error(w, "blocked", http.StatusForbidden) }))
 	defer server.Close()
-	err := NewApp(server.Client()).Download(context.Background(), server.URL, &bytes.Buffer{})
+	err := resource.NewApp(server.Client()).Download(context.Background(), server.URL, &bytes.Buffer{})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "403")
 	assert.NotContains(t, err.Error(), "blocked")
@@ -90,7 +77,7 @@ func TestWebDownloadPreservesNonSuccessBodyPolicy(t *testing.T) {
 			http.Error(w, "blocked", http.StatusForbidden)
 		}))
 		defer server.Close()
-		err := NewWeb(server.Client(), server.URL).Download(context.Background(), server.URL, &bytes.Buffer{})
+		err := resource.NewWeb(server.Client(), server.URL).Download(context.Background(), server.URL, &bytes.Buffer{})
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "403")
 		assert.Contains(t, err.Error(), "blocked")
@@ -101,7 +88,7 @@ func TestWebDownloadPreservesNonSuccessBodyPolicy(t *testing.T) {
 			w.WriteHeader(http.StatusForbidden)
 		}))
 		defer server.Close()
-		err := NewWeb(server.Client(), server.URL).Download(context.Background(), server.URL, &bytes.Buffer{})
+		err := resource.NewWeb(server.Client(), server.URL).Download(context.Background(), server.URL, &bytes.Buffer{})
 		require.Error(t, err)
 		assert.Equal(t, "download failed: 403 Forbidden", err.Error())
 	})
@@ -110,7 +97,7 @@ func TestWebDownloadPreservesNonSuccessBodyPolicy(t *testing.T) {
 func TestWebDownloadReportsErrorBodyReadFailureAndClosesBody(t *testing.T) {
 	readErr := errors.New("read failed")
 	body := &trackingBody{Reader: errorReader{err: readErr}}
-	client := NewWeb(&http.Client{Transport: roundTripperFunc(func(*http.Request) (*http.Response, error) {
+	client := resource.NewWeb(&http.Client{Transport: roundTripperFunc(func(*http.Request) (*http.Response, error) {
 		return &http.Response{StatusCode: http.StatusForbidden, Status: "403 Forbidden", Body: body}, nil
 	})}, "https://www.pixiv.net")
 
@@ -123,7 +110,7 @@ func TestWebDownloadReportsErrorBodyReadFailureAndClosesBody(t *testing.T) {
 
 func TestDownloadClosesResponseBody(t *testing.T) {
 	body := &trackingBody{Reader: strings.NewReader("image")}
-	client := NewApp(&http.Client{Transport: roundTripperFunc(func(*http.Request) (*http.Response, error) {
+	client := resource.NewApp(&http.Client{Transport: roundTripperFunc(func(*http.Request) (*http.Response, error) {
 		return &http.Response{StatusCode: http.StatusOK, Status: "200 OK", Body: body}, nil
 	})})
 	require.NoError(t, client.Download(context.Background(), "https://i.pximg.net/a.jpg", io.Discard))
@@ -146,7 +133,7 @@ func TestLegacyDownloadPreservesCallerCookieJar(t *testing.T) {
 	httpClient := server.Client()
 	httpClient.Jar = jar
 
-	require.NoError(t, NewApp(httpClient).Download(context.Background(), server.URL, io.Discard))
+	require.NoError(t, resource.NewApp(httpClient).Download(context.Background(), server.URL, io.Discard))
 	assert.Contains(t, requestCookie, "legacy=present")
 	updated := false
 	for _, cookie := range jar.Cookies(serverURL) {

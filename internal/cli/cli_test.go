@@ -10,7 +10,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/application/config"
+	mcpcommands "github.com/FlanChanXwO/pixiv-cli/internal/cli/mcp"
+	"github.com/FlanChanXwO/pixiv-cli/internal/platform/localstate"
+	filesecret "github.com/FlanChanXwO/pixiv-cli/internal/storage/file/secret"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -30,7 +32,7 @@ func TestRunNoArgsPrintsHelp(t *testing.T) {
 
 func TestRunIgnoresLegacyLoggingConfiguration(t *testing.T) {
 	_, configPath := useTempPaths(t)
-	if err := config.WritePrivateFile(configPath, []byte("[logging]\nlevel = 'info'\n")); err != nil {
+	if err := filesecret.WritePrivateFile(configPath, []byte("[logging]\nlevel = 'info'\n"), localstate.PrivateFileMode); err != nil {
 		t.Fatal(err)
 	}
 	var stdout, stderr bytes.Buffer
@@ -48,7 +50,7 @@ func TestHelpAndConfigPathSurviveBrokenNonLoggingRuntimeConfig(t *testing.T) {
 		"[unterminated\n",
 	} {
 		_, configPath := useTempPaths(t)
-		if err := config.WritePrivateFile(configPath, []byte(body)); err != nil {
+		if err := filesecret.WritePrivateFile(configPath, []byte(body), localstate.PrivateFileMode); err != nil {
 			t.Fatal(err)
 		}
 		for _, args := range [][]string{{"pixiv"}, {"pixiv", "config", "path"}} {
@@ -62,7 +64,7 @@ func TestHelpAndConfigPathSurviveBrokenNonLoggingRuntimeConfig(t *testing.T) {
 
 func TestInvalidLegacyLoggingConfigurationDoesNotBlockOtherCommands(t *testing.T) {
 	_, configPath := useTempPaths(t)
-	require.NoError(t, config.WritePrivateFile(configPath, []byte("[logging]\nlevel = 'loud'\n")))
+	require.NoError(t, filesecret.WritePrivateFile(configPath, []byte("[logging]\nlevel = 'loud'\n"), localstate.PrivateFileMode))
 
 	var stdout, stderr bytes.Buffer
 	code := Run([]string{"pixiv", "config", "path"}, strings.NewReader(""), &stdout, &stderr)
@@ -74,7 +76,7 @@ func TestInvalidLegacyLoggingConfigurationDoesNotBlockOtherCommands(t *testing.T
 
 func TestRunUnknownCommandReturnsError(t *testing.T) {
 	_, configPath := useTempPaths(t)
-	if err := config.WritePrivateFile(configPath, []byte("[logging]\nlevel = 'error'\n")); err != nil {
+	if err := filesecret.WritePrivateFile(configPath, []byte("[logging]\nlevel = 'error'\n"), localstate.PrivateFileMode); err != nil {
 		t.Fatal(err)
 	}
 
@@ -107,9 +109,9 @@ func TestRunMCPDispatch(t *testing.T) {
 
 	called := false
 	var seenProxy *string
-	runMCPServer = func(_ context.Context, proxyOverride *string, _ *time.Duration) error {
+	runMCPServer = func(_ *runResources, _ context.Context, request mcpcommands.Request) error {
 		called = true
-		seenProxy = proxyOverride
+		seenProxy = request.HTTPSProxyOverride
 		return nil
 	}
 
@@ -129,8 +131,8 @@ func TestRunMCPNoProxyDispatch(t *testing.T) {
 	t.Cleanup(func() { runMCPServer = old })
 
 	var seenProxy *string
-	runMCPServer = func(_ context.Context, proxyOverride *string, _ *time.Duration) error {
-		seenProxy = proxyOverride
+	runMCPServer = func(_ *runResources, _ context.Context, request mcpcommands.Request) error {
+		seenProxy = request.HTTPSProxyOverride
 		return nil
 	}
 
@@ -149,8 +151,8 @@ func TestRunMCPEmptyProxyDispatch(t *testing.T) {
 	t.Cleanup(func() { runMCPServer = old })
 
 	var seenProxy *string
-	runMCPServer = func(_ context.Context, proxyOverride *string, _ *time.Duration) error {
-		seenProxy = proxyOverride
+	runMCPServer = func(_ *runResources, _ context.Context, request mcpcommands.Request) error {
+		seenProxy = request.HTTPSProxyOverride
 		return nil
 	}
 
@@ -167,7 +169,7 @@ func TestRunMCPDispatchError(t *testing.T) {
 
 	old := runMCPServer
 	t.Cleanup(func() { runMCPServer = old })
-	runMCPServer = func(context.Context, *string, *time.Duration) error {
+	runMCPServer = func(*runResources, context.Context, mcpcommands.Request) error {
 		return errors.New("boom")
 	}
 
@@ -183,8 +185,8 @@ func TestRunMCPDispatchesSleepRequestOverride(t *testing.T) {
 	old := runMCPServer
 	t.Cleanup(func() { runMCPServer = old })
 	var seen *time.Duration
-	runMCPServer = func(_ context.Context, _ *string, requestInterval *time.Duration) error {
-		seen = requestInterval
+	runMCPServer = func(_ *runResources, _ context.Context, request mcpcommands.Request) error {
+		seen = request.RequestIntervalOverride
 		return nil
 	}
 

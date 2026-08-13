@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/application/config"
 	"github.com/FlanChanXwO/pixiv-cli/internal/buildinfo"
+	"github.com/FlanChanXwO/pixiv-cli/internal/storage/config"
 	"github.com/FlanChanXwO/pixiv-cli/internal/update"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -47,9 +47,13 @@ func TestRunUpdateCheckJSONUsesExplicitProxyAndKeepsStdoutPure(t *testing.T) {
 
 func TestRunUpdateRejectsJSONWithoutCheckBeforeLoadingDependencies(t *testing.T) {
 	useTempPaths(t)
-	oldLoad := loadUpdateRuntimeConfig
+	oldLoad := loadCLIRuntimeConfig
 	oldNew := newUpdateCommandCoordinator
-	loadUpdateRuntimeConfig = func() (config.RuntimeConfig, error) {
+	oldResources := newCLIRunResources
+	oldCleanup := cleanupPendingWindowsUpdate
+	resourceCalls := 0
+	cleanupCalls := 0
+	loadCLIRuntimeConfig = func() (config.RuntimeConfig, error) {
 		t.Fatal("--json without --check must fail before reading configuration")
 		return config.RuntimeConfig{}, nil
 	}
@@ -57,9 +61,19 @@ func TestRunUpdateRejectsJSONWithoutCheckBeforeLoadingDependencies(t *testing.T)
 		t.Fatal("--json without --check must fail before creating source/checker/runner")
 		return nil, nil
 	}
+	newCLIRunResources = func() (*runResources, error) {
+		resourceCalls++
+		return &runResources{}, nil
+	}
+	cleanupPendingWindowsUpdate = func() error {
+		cleanupCalls++
+		return nil
+	}
 	t.Cleanup(func() {
-		loadUpdateRuntimeConfig = oldLoad
+		loadCLIRuntimeConfig = oldLoad
 		newUpdateCommandCoordinator = oldNew
+		newCLIRunResources = oldResources
+		cleanupPendingWindowsUpdate = oldCleanup
 	})
 
 	var stdout, stderr bytes.Buffer
@@ -68,6 +82,8 @@ func TestRunUpdateRejectsJSONWithoutCheckBeforeLoadingDependencies(t *testing.T)
 	require.NotZero(t, code)
 	assert.Empty(t, stdout.String())
 	assert.Contains(t, stderr.String(), "--json is only supported with --check")
+	assert.Zero(t, resourceCalls)
+	assert.Zero(t, cleanupCalls)
 }
 
 func TestRunUpdateUsesConfiguredProxyAndDoesNotInheritOutputJSON(t *testing.T) {
@@ -104,12 +120,12 @@ func TestRunUpdateRejectsMalformedExplicitProxyWithoutLeakingSensitiveComponents
 
 func stubUpdateCommand(t *testing.T, runtimeConfig config.RuntimeConfig, coordinator func(string, io.Writer, io.Writer) (*update.UpdateCoordinator, error)) func() {
 	t.Helper()
-	oldLoad := loadUpdateRuntimeConfig
+	oldLoad := loadCLIRuntimeConfig
 	oldNew := newUpdateCommandCoordinator
-	loadUpdateRuntimeConfig = func() (config.RuntimeConfig, error) { return runtimeConfig, nil }
+	loadCLIRuntimeConfig = func() (config.RuntimeConfig, error) { return runtimeConfig, nil }
 	newUpdateCommandCoordinator = coordinator
 	return func() {
-		loadUpdateRuntimeConfig = oldLoad
+		loadCLIRuntimeConfig = oldLoad
 		newUpdateCommandCoordinator = oldNew
 	}
 }

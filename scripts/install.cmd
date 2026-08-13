@@ -4,7 +4,7 @@ setlocal EnableExtensions DisableDelayedExpansion
 rem 该脚本只使用 Windows 10/11 自带的命令行工具，不调用其他脚本宿主。
 set "REPOSITORY=FlanChanXwO/pixiv-cli"
 set "RELEASE_ROOT=https://github.com/%REPOSITORY%/releases/latest/download"
-rem 发布阶段会把 internal/update/release_sources.txt 注入此块；工作树模板只保留直连。
+rem 发布阶段会把 internal/update/source/release_sources.txt 注入此块；工作树模板只保留直连。
 rem PIXIV_RELEASE_SOURCES_BEGIN
 set "RELEASE_SOURCE_COUNT=1"
 set "RELEASE_SOURCE_1=github-direct|{url}|{url}"

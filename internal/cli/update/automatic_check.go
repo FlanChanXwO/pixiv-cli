@@ -3,8 +3,9 @@ package update
 import (
 	"fmt"
 
-	configapp "github.com/FlanChanXwO/pixiv-cli/internal/application/config"
 	"github.com/FlanChanXwO/pixiv-cli/internal/buildinfo"
+	"github.com/FlanChanXwO/pixiv-cli/internal/cli/pipeline"
+	configapp "github.com/FlanChanXwO/pixiv-cli/internal/storage/config"
 	updateapp "github.com/FlanChanXwO/pixiv-cli/internal/update"
 	"github.com/spf13/cobra"
 )
@@ -56,7 +57,7 @@ func shouldCheck(cmd *cobra.Command) bool {
 		return false
 	}
 	if cmd.CommandPath() == "pixiv auth import" {
-		if fileFlag := cmd.Flags().Lookup("file"); fileFlag != nil && fileFlag.Changed {
+		if pipeline.SkipAutomaticUpdate(cmd) {
 			return false
 		}
 	}

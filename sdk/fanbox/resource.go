@@ -5,16 +5,15 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
-	"net/url"
 	"strings"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/filesystem"
-	fanboxservice "github.com/FlanChanXwO/pixiv-cli/internal/services/fanbox"
+	fanboxresource "github.com/FlanChanXwO/pixiv-cli/internal/services/fanbox/resource"
+	atomicfile "github.com/FlanChanXwO/pixiv-cli/internal/storage/file/atomic"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 )
 
 // fanboxReferer is the non-secret referer FANBOX media requests carry.
-const fanboxReferer = "https://www.fanbox.cc/"
+const fanboxReferer = fanboxresource.Referer
 
 // resourceRefPayload is the opaque identity payload embedded in a FANBOX
 // ResourceRef.
@@ -24,30 +23,8 @@ type resourceRefPayload struct {
 	URL  string `json:"u"`
 }
 
-// allowedMediaHost reports whether host is an allowed FANBOX media host.
-func allowedMediaHost(host string) bool {
-	host = strings.ToLower(host)
-	if host == "i.pximg.net" || host == "s.pximg.net" || strings.HasSuffix(host, ".pximg.net") {
-		return true
-	}
-	if host == "fanbox.pixiv.net" || strings.HasSuffix(host, ".fanbox.pixiv.net") {
-		return true
-	}
-	if host == "www.fanbox.cc" || host == "api.fanbox.cc" || strings.HasSuffix(host, ".fanbox.cc") {
-		return true
-	}
-	return false
-}
-
 func (c *Client) validateResourceURL(rawURL string) error {
-	parsed, err := url.Parse(rawURL)
-	if err != nil {
-		return newError("resource", sdk.ResourceForbidden, errors.New("invalid resource URL"))
-	}
-	if parsed.Scheme != "https" || parsed.User != nil || parsed.Path == "" || parsed.Path == "/" {
-		return newError("resource", sdk.ResourceForbidden, errors.New("resource URL must be https without userinfo and with a path"))
-	}
-	if !allowedMediaHost(parsed.Hostname()) {
+	if err := fanboxresource.ValidateURL(rawURL); err != nil {
 		return newError("resource", sdk.ResourceForbidden, errors.New("resource host is not allowed"))
 	}
 	return nil
@@ -89,7 +66,7 @@ func (c *Client) OpenResource(ctx context.Context, request sdk.OpenResourceReque
 	if err := c.validateResourceURL(rp.URL); err != nil {
 		return nil, newError("OpenResource", sdk.ResourceForbidden, errors.New("resource URL is not allowed"))
 	}
-	response, err := c.session.OpenMediaWithRequest(ctx, rp.URL, fanboxservice.MediaRequest{
+	response, err := c.resource.Open(ctx, rp.URL, fanboxresource.Request{
 		Method:          string(request.Method),
 		Range:           request.Range,
 		IfNoneMatch:     request.IfNoneMatch,
@@ -117,7 +94,7 @@ func (c *Client) SaveResource(ctx context.Context, ref sdk.ResourceRef, options 
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		return sdk.SavedResource{}, newError("SaveResource", sdk.UpstreamError, errors.New("resource returned a non-success status"))
 	}
-	size, err := filesystem.Write(ctx, options.Path, &progressReader{src: response.Body, progress: options.Progress})
+	size, err := atomicfile.Write(ctx, options.Path, &progressReader{src: response.Body, progress: options.Progress})
 	if err != nil {
 		return sdk.SavedResource{}, newError("SaveResource", sdk.LocalStateError, errors.New("cannot write resource"))
 	}

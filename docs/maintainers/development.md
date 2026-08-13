@@ -83,11 +83,11 @@ toolchain：`x86_64-apple-darwin` 与 `x86_64-pc-windows-msvc` 使用 Rust `1.96
 
 ```bash
 sh scripts/build-staticlibs.sh --target <rust-target>
-go test ./internal/downloader -run '^TestCommittedUgoiraStaticlibManifestWhenPresent$' -count=1
+go test ./internal/media/ugoira/staticlib -run '^TestCommittedManifestWhenPresent$' -count=1
 ```
 
-不要提交 `internal/downloader/ugoira_rs/target/`；它是机器产物。完成验证的
-`internal/downloader/ugoira_rs/staticlib/` 及其 `manifest.json` 是可追溯输入，不能以 ignore 规则隐藏。
+不要提交 `internal/media/ugoira/rust/target/`；它是机器产物。完成验证的
+`internal/media/ugoira/rust/staticlib/` 及其 `manifest.json` 是可追溯输入，不能以 ignore 规则隐藏。
 
 Rust crate 的 `.cargo/config.toml` 将 crates.io 替换为其相邻 `vendor/` 中完整的 locked
 依赖闭包。`vendor/` 的每个 package 都带 Cargo 生成的 `.cargo-checksum.json`；它、Cargo config、
@@ -114,7 +114,7 @@ blob bytes 不同，`consolidate` 再次 fail-closed，且未生成输出目录�
 
 ```bash
 (
-  cd internal/downloader/ugoira_rs
+  cd internal/media/ugoira/rust
   cargo test --locked --offline
   cargo clippy --locked --offline --all-targets -- -D warnings
 )
@@ -138,7 +138,7 @@ checkout、vendored Rust 检查、单目标 staticlib、真实 cgo GIF/APNG smok
 
 matrix 的每个 target 还必须声明与 release test/production 完全相同的 `rust_toolchain`，job 通过
 `RUSTUP_TOOLCHAIN` 绑定该值，并执行带 `--profile minimal --target ... --no-self-update` 的精确
-`rustup toolchain install`。两个 verifier 共用 `scripts/internal/workflowpolicy` 中唯一的目标版本映射；
+`rustup toolchain install`。两个 verifier 共用 `scripts/internal/releasecontract` 中唯一的目标版本映射；
 任一 workflow 删除、替换、重复或错误插值该映射，policy 都会 fail closed。
 
 Windows 两个 target 的 Rust library 使用 `*-pc-windows-msvc`；相应 cgo selector 必须以
@@ -153,7 +153,7 @@ go test ./scripts/nativeevidence -count=1
 go run ./scripts/nativeevidence policy --workflow .github/workflows/native-evidence.yml
 ```
 
-该 policy command 只依赖 `internal/downloader/staticlib` 的 source-digest/manifest 契约，不导入 cgo
+该 policy command 只依赖 `internal/media/ugoira/staticlib` 的 source-digest/manifest 契约，不导入 cgo
 encoder；因此它必须能在每个 runner 构建目标 staticlib **之前**执行。若 policy gate 因缺库或 cgo
 link 失败，属于 workflow bootstrap 缺陷，而不是可接受的“尚无 native evidence”结果。
 
@@ -204,11 +204,11 @@ Task 20 的 main push 成功后，Task 13 只能按以下过程回填可提交�
    six-target run。
 3. 人工复核 `.native-evidence-backfill/staticlib` 与六份 record 的 target、source digest、SHA-256 和
    archive members，确认 artifact 均来自上述 main run。通过后才把该目录中六个 target library 与
-   `manifest.json` 明确回填到 `internal/downloader/ugoira_rs/staticlib/`；逐文件复核哈希，随后审查
+   `manifest.json` 明确回填到 `internal/media/ugoira/rust/staticlib/`；逐文件复核哈希，随后审查
    `git diff`，不得复用或改名 host library。
 4. 在回填后的工作树运行
-   `go test ./internal/downloader -run '^TestCommittedUgoiraStaticlibManifestWhenPresent$' -count=1`、
-   `go test ./internal/ugoira -run '^TestRustUgoiraEncoderNativeGIFAndAPNG$' -count=1` 与
+   `go test ./internal/media/ugoira/staticlib -run '^TestCommittedManifestWhenPresent$' -count=1`、
+   `go test ./internal/media/ugoira -run '^TestRustUgoiraEncoderNativeGIFAndAPNG$' -count=1` 与
    `git diff --check`，再把六个 blobs、manifest 和对应 evidence/review 摘要
    作为 Task 13 的独立审查提交。任一验证失败都阻断 release，不能以部分 artifact 继续。
 
@@ -233,13 +233,13 @@ pixiv download 123456
 MCP stdio 运行：
 
 ```bash
-PIXIV_REFRESH_TOKEN=... \
+pixiv auth use 12345678
 DOWNLOAD_PATH=./downloads \
 FILENAME_TEMPLATE="{author} - {title}_{id}" \
 ./build/pixiv mcp
 ```
 
-真实 token 写在 inline 环境变量里也可能进入 shell history；长期使用建议通过 MCP client 的私密环境配置或本地账号管理。
+MCP 使用本地 `auth use` 选定的 Pixiv 账号；refresh token 不属于配置文件或环境变量入口。
 
 如网络环境需要代理，可额外设置：
 
@@ -254,7 +254,7 @@ https_proxy=http://127.0.0.1:7890 ./build/pixiv mcp
 ./build/pixiv mcp --no-proxy
 ```
 
-CLI 的认证、配置、回调桥接、Release 检查缓存与 callback helper 都位于当前用户主目录下的 `.pixiv-cli`：macOS/Linux 为 `~/.pixiv-cli`，Windows 为 `%USERPROFILE%\.pixiv-cli`。账号凭据保存在 `pixiv-cli.db`（SQLite，账号 key 是 Pixiv UID / FANBOX UID）；新版本不自动读取或删除旧 `auth.json`，跨版本迁移须在旧版本执行 `pixiv auth export --all --output <private bundle>`，再在新版本执行 `pixiv auth import --file <bundle>`。全局配置保存在 `config.toml`。Unix-like 主动使用 `0700` 父目录与 `0600` 文件；Windows 首次创建继承父目录 ACL，替换既有目标保留其 ACL，不主动收紧或放宽 DACL。推荐使用 `pixiv auth login` 通过本地 loopback server 和浏览器 OAuth 登录；服务器同时配置 `login_relay_public_url` 与 `login_relay_listen_addr` 时，会输出一次性远程 handoff URL，并直接转交已安装 pixiv-cli 的 desktop handler 完成登录，不渲染项目中间页或手动 callback 表单。已有 raw token 可用 `pixiv auth import` 输入，账号备份使用 `auth export` 与 `auth import --file`。`pixiv config path/get/set/unset` 管理 `download_path`、`filename_template`、`directory_template`、`request_interval` 与 `https_proxy`；其余高级 TOML 由用户手工维护。已删除的 `[web] fallback_enabled` 若仍存在会返回 `removed_setting`，用 `pixiv config unset web_fallback_enabled` 清理。旧 `[logging]` 表和 `PIXIV_LOG_LEVEL` 为兼容性被忽略。
+CLI 的认证、配置、回调桥接、Release 检查缓存与 callback helper 都位于当前用户主目录下的 `.pixiv-cli`：macOS/Linux 为 `~/.pixiv-cli`，Windows 为 `%USERPROFILE%\.pixiv-cli`。账号凭据保存在 `pixiv-cli.db`（SQLite，账号 key 是 Pixiv UID / FANBOX UID）；新版本不自动读取或删除旧 `auth.json`，跨版本迁移须在旧版本执行 `pixiv auth export --all --output <private bundle>`，再通过 shell 重定向或管道在新版本执行 `pixiv auth import < bundle.json`。全局配置保存在 `config.toml`。Unix-like 主动使用 `0700` 父目录与 `0600` 文件；Windows 首次创建继承父目录 ACL，替换既有目标保留其 ACL，不主动收紧或放宽 DACL。推荐使用 `pixiv auth login` 通过本地 loopback server 和浏览器 OAuth 登录；服务器同时配置 `login_relay_public_url` 与 `login_relay_listen_addr` 时，会输出一次性远程 handoff URL，并直接转交已安装 pixiv-cli 的 desktop handler 完成登录，不渲染项目中间页或手动 callback 表单。已有 raw token 可用 `pixiv auth import` 输入，账号备份使用 `auth export` 与 `auth import < bundle.json`。`pixiv config path/get/set/unset` 管理 `download_path`、`filename_template`、`directory_template`、`request_interval` 与 `https_proxy`；其余高级 TOML 由用户手工维护。已删除的 `[web] fallback_enabled` 若仍存在会返回 `removed_setting`，用 `pixiv config unset web_fallback_enabled` 清理。旧 `[logging]` 表和 `PIXIV_LOG_LEVEL` 为兼容性被忽略。
 CLI 使用 Cobra/pflag，flag 可以写在位置参数前后；例如 `pixiv auth check 12345678 --json` 和 `pixiv search "初音ミク" --json` 都受支持。
 
 `--debug` 是唯一显式诊断入口：它只向 stderr 写入脱敏的模块、路由、status、challenge/solver、账号池和下载事件，不创建日志文件；MCP stdout 仍只承载 JSON-RPC。Pixiv command proxy、`[pixiv.network]`、环境变量与 `[network]`，以及 FANBOX 独立的 `[fanbox.network]`/`[fanbox.flaresolverr]` 配置，均按各自服务边界解析，FlareSolverr 仅用于 challenge recovery。
@@ -279,13 +279,13 @@ pixiv auth login
 
 浏览器使用的系统代理不会自动传给 Go CLI。`https_proxy`、`--proxy` 与更新路径都接受 `http`、`https`、`socks5`、`socks5h` URI。若 Pixiv token exchange 需要代理，请配置 `pixiv config set https_proxy socks5h://127.0.0.1:7890`，在单次命令前设置 `https_proxy=...`，或对网络命令使用运行期覆盖 `--proxy socks5h://127.0.0.1:7890`。`--no-proxy` 会清空本次命令的代理，即使环境变量或 `config.toml` 设置了 `https_proxy`；`--proxy` 和 `--no-proxy` 不能同用，也不会写入 `config.toml`。`--sleep-request DURATION` 只覆盖本次 CLI/MCP 运行的请求起始间隔；它优先于 `PIXIV_REQUEST_INTERVAL` 与 `[network].request_interval`。
 
-当前支持代理覆盖的网络入口是 direct-token `auth import`、`auth login`、`auth check`、`search`、`timeline`、`detail`、`ranking`、`recommended`、`download` 和 `mcp` 启动。`auth import --file` 明确拒绝代理 flag；`auth export/list/use/remove` 与 `config path/get/set/unset` 不接受这些 flag。
+当前支持代理覆盖的网络入口是 direct-token `auth import`、`auth login`、`auth check`、`search`、`timeline`、`detail`、`ranking`、`recommended`、`download` 和 `mcp` 启动。bundle-form `auth import` 明确拒绝代理 flag；`auth export/list/use/remove` 与 `config path/get/set/unset` 不接受这些 flag。
 
 ### 认证 import/export
 
-`pixiv auth import [REFRESH_TOKEN]` 会经 App OAuth 校验输入并保存 rotation 后的 token。位置参数会进入 argv/shell history；无参 TTY 使用隐藏输入，无参非 TTY 从 raw stdin 读取一行。`--file PATH` 或 `--file -` 则 strict decode versioned bundle，完全离线地 merge 并原子写回；它与位置 token、`--proxy`、`--no-proxy` 冲突。restore 保留已有 default，仅当本地尚无 default 时采用 bundle default。
+`pixiv auth import [REFRESH_TOKEN]` 会经 App OAuth 校验输入并保存 rotation 后的 token。位置参数会进入 argv/shell history；无参 TTY 使用隐藏输入，无参非 TTY 读取完整 stdin，并按首个非空白字节自动区分 raw token 与 versioned bundle。bundle 严格 decode、完全离线地 merge 并原子写回；失败不得回退 OAuth，且与位置 token、`--proxy`、`--no-proxy` 冲突。restore 保留已有 default，仅当本地尚无 default 时采用 bundle default。
 
-`pixiv auth export [UID]` 省略 UID 时选择默认账号；不带 `--output` 时只向 stdout 写 raw token 与换行。`pixiv auth export --all` 不带 `--output` 时只向 stdout 写 versioned secret bundle。两者是唯一 secret stdout 例外，且都只读本地 store，不读 `PIXIV_REFRESH_TOKEN`、不刷新、不联网、不修改状态，并跳过 startup pending-update cleanup 与 automatic update。`--output PATH` 总是写 bundle，默认拒绝覆盖，只有 `--force` 可 replacement；stdout 仅为 path/account count 摘要。其他 stdout、stderr、JSON、MCP result 与错误仍不得暴露 secret。
+`pixiv auth export [UID]` 省略 UID 时选择默认账号；不带 `--output` 时只向 stdout 写 raw token 与换行。`pixiv auth export --all` 不带 `--output` 时只向 stdout 写 versioned secret bundle。两者是唯一 secret stdout 例外，且都只读本地 store，不刷新、不联网、不修改状态，并跳过 startup pending-update cleanup 与 automatic update。`--output PATH` 总是写 bundle，默认拒绝覆盖，只有 `--force` 可 replacement；stdout 仅为 path/account count 摘要。其他 stdout、stderr、JSON、MCP result 与错误仍不得暴露 secret。
 
 bundle 是未加密、含 secret 的 point-in-time backup，不是 live sync；token rotation 后旧 bundle及其他机器副本可能 stale。任意目标 export writer 在 Unix-like 使用 `0600` 文件且不改变既有 parent；Windows 明确设置 owner 与 protected DACL，只授权当前用户、LocalSystem、builtin Administrators。Windows 行为有 CI tests，后续验收可本地交叉编译；这里不声称已在真实 Windows 主机执行。
 
@@ -295,7 +295,7 @@ restore 原子写失败时检查 public `LocalWriteCommitOutcome`：pre-commit �
 
 ## 测试
 
-当前测试覆盖 CLI 命令与 build metadata、显式/自动更新、`internal/application/{config,pixiv,fanbox,download,pagination}` 应用用例、`internal/persistence/authdb` 认证存储、Pixiv App API 认证重试、公开 SDK（`sdk`/`sdk/pixiv`/`sdk/fanbox`）、HTTP client wiring、下载管理、Rust encoder/staticlib 合约和 `internal/mcpserver/{pixiv,fanbox}` tool 注册：
+当前测试覆盖 CLI 命令与 build metadata、显式/自动更新、`internal/account/{pixiv,fanbox}` 账号服务、`internal/storage/{database,config}` 认证存储与配置、`internal/session` 生命周期、`internal/pagination` 逻辑分页、Pixiv App API 认证重试、公开 SDK（`sdk`/`sdk/pixiv`/`sdk/fanbox`）、HTTP client wiring、下载管理、Rust encoder/staticlib 合约和 `internal/mcpserver/{pixiv,fanbox}` tool 注册：
 
 ```bash
 go test ./...
@@ -407,28 +407,30 @@ allowlist 必须逐字列出以下路径，不能改成目录或 glob：
 
 - `.github/workflows/release.yml`
 - `scripts/installers/installers_test.go`
-- `scripts/internal/workflowpolicy/policy.go`
-- `scripts/releaseworkflow/build_policy.go`
-- `scripts/releaseworkflow/build_recovery_test.go`
-- `scripts/releaseworkflow/e2e_policy.go`
-- `scripts/releaseworkflow/e2e_policy_test.go`
-- `scripts/releaseworkflow/homebrew_policy.go`
-- `scripts/releaseworkflow/homebrew_policy_test.go`
+- `scripts/internal/releasecontract/releasecontract.go`
+- `scripts/internal/workflow/yaml/yaml.go`
+- `scripts/internal/releaseworkflow/build_policy.go`
+- `scripts/internal/releaseworkflow/build_recovery_test.go`
+- `scripts/internal/releaseworkflow/e2e_policy.go`
+- `scripts/internal/releaseworkflow/e2e_policy_test.go`
+- `scripts/internal/releaseworkflow/homebrew_policy.go`
+- `scripts/internal/releaseworkflow/homebrew_policy_test.go`
 - `scripts/releaseworkflow/main.go`
 - `scripts/releaseworkflow/main_test.go`
-- `scripts/releaseworkflow/publish_policy.go`
-- `scripts/releaseworkflow/publish_security_test.go`
-- `scripts/releaseworkflow/release_notes_policy.go`
-- `scripts/releaseworkflow/release_notes_policy_test.go`
-- `scripts/releaseworkflow/recovery_policy.go`
-- `scripts/releaseworkflow/test_helpers_test.go`
-- `scripts/releaseworkflow/workflow_policy.go`
-- `scripts/releaseworkflow/workflow_policy_test.go`
+- `scripts/internal/releaseworkflow/publish_policy.go`
+- `scripts/internal/releaseworkflow/publish_security_test.go`
+- `scripts/internal/releaseworkflow/release_notes_policy.go`
+- `scripts/internal/releaseworkflow/release_notes_policy_test.go`
+- `scripts/internal/releaseworkflow/recovery_policy.go`
+- `scripts/internal/releaseworkflow/test_helpers_test.go`
+- `scripts/internal/releaseworkflow/workflow_policy.go`
+- `scripts/internal/releaseworkflow/workflow_policy_test.go`
 
-全部拆出的 release test files 与 `scripts/installers/installers_test.go` 都必须 overlay，才能保留当前 mutation suite，并修复已失败 tag 的受控 installer fixture。`release_notes_policy.go` 及其测试同样属于该范围：它只验证来自默认分支的恢复 workflow 定义与 tag 内 release notes 的来源映射，并不改写 tag 的发布输入。共享 production helper
-`scripts/internal/workflowpolicy/policy.go` 是两个 verifier 共用的 YAML policy 实现及唯一的 per-target
-Rust toolchain 映射，也是从默认分支编译 release verifier 的必要依赖；它不参与生产资产构建，且共享包
-自己的 `policy_test.go` 仍不进入恢复 overlay。提取前必须用
+全部拆出的 release test files 与 `scripts/installers/installers_test.go` 都必须 overlay，才能保留当前 mutation suite，并修复已失败 tag 的受控 installer fixture。`scripts/internal/releaseworkflow/release_notes_policy.go` 及其测试同样属于该范围：它只验证来自默认分支的恢复 workflow 定义与 tag 内 release notes 的来源映射，并不改写 tag 的发布输入。共享 production helper 已按发布职责拆分：
+`scripts/internal/workflow/yaml/yaml.go` 是两个 verifier 共用的 YAML AST 安全操作，
+`scripts/internal/releasecontract/releasecontract.go` 持有唯一的 per-target Rust toolchain
+映射与六平台契约，都是从默认分支编译 release verifier 的必要依赖；它们不参与生产资产构建，且共享包
+自己的测试仍不进入恢复 overlay。提取前必须用
 `git status --porcelain=v1 --untracked-files=all` 确认工作树为空，并显式确认 cached
 diff 为空；覆盖通过一次 `git archive` 提取后，将 tracked diff 与未忽略的 untracked files 合并、按 C locale
 排序去重，要求结果非空且每个路径都在上述逐字 allowlist 内，同时再次确认 cached diff 为空。这样同一份默认
@@ -552,7 +554,7 @@ six-target staticlib/manifest 与真实 native artifact 证据已由 run `291924
 不等于 Release/tap 已创建或安装路径已验收。
 
 production Ed25519 public trust root 已在
-[`internal/bootstrap/release_trust.go`](../../internal/bootstrap/release_trust.go) 随源码提交：key ID 为
+[`internal/cli/cli.go`](../../internal/cli/cli.go) 随源码提交：key ID 为
 `ed25519-2c27e77742d3c33a`，其 SPKI DER SHA-256 fingerprint 为
 `2c27e77742d3c33ad14be867d4e0519229a220898c9a7c868447eaef0951b4cf`。同包测试以已知真实签名验证
 此映射；它只证明公开信任根进入 production wiring，并不证明实际签名、Release asset 或安装验收已经
@@ -599,7 +601,7 @@ validation 会在受保护 E2E 和任何发布凭据之前拒绝不匹配的版�
 - 本地下载目录 `downloads/`
 - 本地数据库 `*.db`
 - 常见缓存和临时文件
-- Rust `internal/downloader/ugoira_rs/target/`
+- Rust `internal/media/ugoira/rust/target/`
 
 不要提交 Pixiv token、下载内容、本地数据库、机器相关配置、Ed25519 私钥或 tap deploy key。
 

@@ -13,7 +13,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/browsercookies/core"
+	"github.com/FlanChanXwO/pixiv-cli/internal/browsercookies"
 	"github.com/FlanChanXwO/pixiv-cli/internal/browsercookies/sqliteio"
 )
 
@@ -25,8 +25,8 @@ const cookiesFile = "Cookies"
 const selectCookiesSQL = `SELECT host_key, value, hex(encrypted_value) FROM cookies WHERE (host_key = @h1 OR host_key = @h2) AND name = @n;`
 
 func init() {
-	core.Register("chrome", func() (core.Provider, error) { return newProvider("chrome", "") })
-	core.Register("edge", func() (core.Provider, error) { return newProvider("edge", "") })
+	browsercookies.Register("chrome", func() (browsercookies.Provider, error) { return newProvider("chrome", "") })
+	browsercookies.Register("edge", func() (browsercookies.Provider, error) { return newProvider("edge", "") })
 }
 
 type kind int
@@ -81,18 +81,18 @@ func safeProfileID(id string) bool {
 
 // DiscoverProfiles 扫描用户数据目录下包含 Cookies 文件的 profile 子目录。
 // 不修改或启动浏览器；目录不存在时返回 ErrNotInstalled。
-func (p *provider) DiscoverProfiles(ctx context.Context) ([]core.Profile, error) {
+func (p *provider) DiscoverProfiles(ctx context.Context) ([]browsercookies.Profile, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
 	entries, err := os.ReadDir(p.root)
 	if err != nil {
 		if errors.Is(err, fs.ErrPermission) {
-			return nil, core.ErrPermissionDenied
+			return nil, browsercookies.ErrPermissionDenied
 		}
-		return nil, core.ErrNotInstalled
+		return nil, browsercookies.ErrNotInstalled
 	}
-	var profiles []core.Profile
+	var profiles []browsercookies.Profile
 	for _, entry := range entries {
 		if !entry.IsDir() || !safeProfileID(entry.Name()) {
 			continue
@@ -100,52 +100,52 @@ func (p *provider) DiscoverProfiles(ctx context.Context) ([]core.Profile, error)
 		info, err := os.Stat(filepath.Join(p.root, entry.Name(), cookiesFile))
 		if err != nil {
 			if errors.Is(err, fs.ErrPermission) {
-				return nil, core.ErrPermissionDenied
+				return nil, browsercookies.ErrPermissionDenied
 			}
 			continue
 		}
 		if info.IsDir() {
 			continue
 		}
-		profiles = append(profiles, core.Profile{
+		profiles = append(profiles, browsercookies.Profile{
 			ID:   entry.Name(),
 			Name: entry.Name(),
 			Path: filepath.Join(p.root, entry.Name()),
 		})
 	}
 	if len(profiles) == 0 {
-		return nil, core.ErrNotInstalled
+		return nil, browsercookies.ErrNotInstalled
 	}
 	return profiles, nil
 }
 
 // Read 读取 profileID 下匹配 query 的 cookie secret。解密前查询已经收敛到
 // 固定 host/name，且浏览器数据库通过 sqliteio 的只读参数查询。
-func (p *provider) Read(ctx context.Context, query core.CookieQuery, profileID string) ([]core.Secret, error) {
+func (p *provider) Read(ctx context.Context, query browsercookies.CookieQuery, profileID string) ([]browsercookies.Secret, error) {
 	if err := query.Valid(); err != nil {
 		return nil, err
 	}
 	if !safeProfileID(profileID) {
-		return nil, core.ErrInvalidProfileID
+		return nil, browsercookies.ErrInvalidProfileID
 	}
 	cookiesPath := filepath.Join(p.root, profileID, cookiesFile)
-	data, hooked, err := core.HookBytes(p.name, cookiesPath)
+	data, hooked, err := browsercookies.HookBytes(p.name, cookiesPath)
 	if err != nil {
 		return nil, err
 	}
 	path := cookiesPath
 	if hooked {
 		var cleanup func()
-		path, cleanup, err = core.WriteTempSnapshot(data)
+		path, cleanup, err = browsercookies.WriteTempSnapshot(data)
 		if err != nil {
 			return nil, err
 		}
 		defer cleanup()
 	} else if _, err := os.Stat(cookiesPath); err != nil {
 		if errors.Is(err, fs.ErrPermission) {
-			return nil, core.ErrPermissionDenied
+			return nil, browsercookies.ErrPermissionDenied
 		}
-		return nil, core.ErrDatabaseNotFound
+		return nil, browsercookies.ErrDatabaseNotFound
 	}
 	params := map[string]string{
 		"@h1": query.Host,
@@ -160,18 +160,18 @@ func (p *provider) Read(ctx context.Context, query core.CookieQuery, profileID s
 	if err != nil {
 		return nil, err
 	}
-	secrets := make([]core.Secret, 0, len(snapshot.Cookies))
+	secrets := make([]browsercookies.Secret, 0, len(snapshot.Cookies))
 	for _, c := range snapshot.Cookies {
 		secrets = append(secrets, c.Value)
 	}
 	return secrets, nil
 }
 
-func (p *provider) rowsToSnapshot(ctx context.Context, query core.CookieQuery, profileID string, rows [][]string) (core.Snapshot, error) {
-	snap := core.Snapshot{ProfileID: profileID, Cookies: []core.Cookie{}}
+func (p *provider) rowsToSnapshot(ctx context.Context, query browsercookies.CookieQuery, profileID string, rows [][]string) (browsercookies.Snapshot, error) {
+	snap := browsercookies.Snapshot{ProfileID: profileID, Cookies: []browsercookies.Cookie{}}
 	for _, row := range rows {
 		if len(row) < 3 {
-			return snap, core.ErrQueryFailed
+			return snap, browsercookies.ErrQueryFailed
 		}
 		host := row[0]
 		plain := row[1]
@@ -179,22 +179,22 @@ func (p *provider) rowsToSnapshot(ctx context.Context, query core.CookieQuery, p
 		if encHex != "" {
 			enc, err := hex.DecodeString(encHex)
 			if err != nil {
-				return snap, core.ErrEncryptedFormatUnknown
+				return snap, browsercookies.ErrEncryptedFormatUnknown
 			}
 			value, err := p.decryptEncrypted(ctx, enc)
 			if err != nil {
 				return snap, err
 			}
 			value = stripChromiumHostDigest(value, host)
-			snap.Cookies = append(snap.Cookies, core.Cookie{
+			snap.Cookies = append(snap.Cookies, browsercookies.Cookie{
 				Name:  query.Name,
-				Value: core.NewSecret(string(value)),
+				Value: browsercookies.NewSecret(string(value)),
 			})
 			continue
 		}
-		snap.Cookies = append(snap.Cookies, core.Cookie{
+		snap.Cookies = append(snap.Cookies, browsercookies.Cookie{
 			Name:  query.Name,
-			Value: core.NewSecret(plain),
+			Value: browsercookies.NewSecret(plain),
 		})
 	}
 	return snap, nil

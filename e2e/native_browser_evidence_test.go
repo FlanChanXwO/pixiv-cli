@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/browsercookies"
+	"github.com/FlanChanXwO/pixiv-cli/internal/browsercookies/system"
 )
 
 const (
@@ -29,7 +29,7 @@ func TestRealNativeBrowserProvider(t *testing.T) {
 	for _, browser := range browsers {
 		browser := browser
 		t.Run(browser, func(t *testing.T) {
-			provider, err := browsercookies.New(browser)
+			provider, err := system.New(browser)
 			if err != nil {
 				t.Fatalf("create %s provider: %v", browser, err)
 			}
@@ -51,12 +51,12 @@ func TestRealNativeBrowserProvider(t *testing.T) {
 			t.Logf("discovered %s profile IDs: %s", browser, strings.Join(ids, ","))
 
 			profileID := os.Getenv(nativeBrowserProfileEnv(browser))
-			profile, err := browsercookies.SelectProfile(profiles, profileID)
+			profile, err := system.SelectProfile(profiles, profileID)
 			if err != nil {
 				t.Fatalf("select %s profile: %v", browser, err)
 			}
 
-			secrets, err := provider.Read(t.Context(), browsercookies.DefaultQuery, profile.ID)
+			secrets, err := provider.Read(t.Context(), system.DefaultQuery, profile.ID)
 			if err != nil {
 				t.Fatalf("read %s FANBOX session: %v", browser, err)
 			}

@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/services/fanbox"
+	"github.com/FlanChanXwO/pixiv-cli/internal/services/fanbox/protocol"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 )
 
@@ -28,17 +28,17 @@ func classifyError(operation string, err error) *sdk.Error {
 		return sdk.NewError(product, operation, sdk.UpstreamError, sdk.WithCause(context.Canceled))
 	case errors.Is(err, context.DeadlineExceeded):
 		return sdk.NewError(product, operation, sdk.UpstreamError, sdk.WithCause(context.DeadlineExceeded))
-	case errors.Is(err, fanbox.ErrChallenge):
+	case errors.Is(err, protocol.ErrChallenge):
 		return newError(operation, sdk.ChallengeRequired, err)
-	case errors.Is(err, fanbox.ErrSolverFailed):
+	case errors.Is(err, protocol.ErrSolverFailed):
 		return newError(operation, sdk.ChallengeRequired, err)
-	case errors.Is(err, fanbox.ErrSolverUnavailable):
+	case errors.Is(err, protocol.ErrSolverUnavailable):
 		return newError(operation, sdk.UpstreamUnavailable, err)
-	case errors.Is(err, fanbox.ErrMalformedSolverResponse):
+	case errors.Is(err, protocol.ErrMalformedSolverResponse):
 		return newError(operation, sdk.MalformedUpstreamResponse, err)
-	case errors.Is(err, fanbox.ErrForbidden):
+	case errors.Is(err, protocol.ErrForbidden):
 		return newError(operation, sdk.Forbidden, err)
-	case errors.Is(err, fanbox.ErrNotAuthenticated):
+	case errors.Is(err, protocol.ErrNotAuthenticated):
 		return newError(operation, sdk.CredentialsExpired, err)
 	default:
 		return newError(operation, sdk.UpstreamError, err)

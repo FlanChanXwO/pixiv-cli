@@ -3,7 +3,7 @@
 set -eu
 
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
-crate_dir="$repo_root/internal/downloader/ugoira_rs"
+crate_dir="$repo_root/internal/media/ugoira/rust"
 manifest="$crate_dir/Cargo.toml"
 
 fail() {

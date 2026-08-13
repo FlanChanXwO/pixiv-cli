@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/buildinfo"
+	"github.com/FlanChanXwO/pixiv-cli/internal/update/release"
 )
 
 const (
@@ -12,40 +13,6 @@ const (
 	homebrewStableFormula = "FlanChanXwO/tap/pixiv-cli"
 	homebrewBetaFormula   = "FlanChanXwO/tap/pixiv-cli-beta"
 )
-
-// SourceDetector 识别当前可执行文件的安装渠道。
-type SourceDetector interface {
-	Detect(buildinfo.Info) (InstallSource, error)
-}
-
-// SourceDetectorFunc 让函数可以作为 SourceDetector 使用。
-type SourceDetectorFunc func(buildinfo.Info) (InstallSource, error)
-
-// Detect 调用底层函数。
-func (f SourceDetectorFunc) Detect(info buildinfo.Info) (InstallSource, error) {
-	return f(info)
-}
-
-// ReleaseChecker 查询某个更新渠道可用的 GitHub Release。
-type ReleaseChecker interface {
-	Check(context.Context, ReleaseCheckOptions) (ReleaseCheckResult, error)
-}
-
-// Command 是无需 shell 解析的程序及其参数。
-type Command struct {
-	Name string
-	Args []string
-}
-
-// CommandRunner 执行 Homebrew 或 Go 的更新命令。
-type CommandRunner interface {
-	Run(context.Context, Command) error
-}
-
-// ReleaseInstaller 安装已核验的 Release。
-type ReleaseInstaller interface {
-	Install(context.Context, Release) error
-}
 
 // UpdateCoordinatorOptions 注入更新策略需要的外部依赖，供 CLI 和受控测试复用。
 type UpdateCoordinatorOptions struct {
@@ -110,7 +77,7 @@ func (c *UpdateCoordinator) Execute(ctx context.Context, request UpdateRequest) 
 	if source == InstallSourceDevelopment {
 		return UpdateResult{}, fmt.Errorf("development builds cannot update themselves")
 	}
-	current, err := parseSemanticVersion(request.BuildInfo.Version)
+	current, err := release.ParseSemanticVersion(request.BuildInfo.Version)
 	if err != nil {
 		return UpdateResult{}, fmt.Errorf("parse current build version %q: %w", request.BuildInfo.Version, err)
 	}
@@ -123,14 +90,14 @@ func (c *UpdateCoordinator) Execute(ctx context.Context, request UpdateRequest) 
 	}
 	result := UpdateResult{Source: source, CurrentVersion: request.BuildInfo.Version}
 	if checked.Release != nil {
-		candidate, err := parseSemanticVersion(checked.Release.TagName)
+		candidate, err := release.ParseSemanticVersion(checked.Release.TagName)
 		if err != nil {
 			return UpdateResult{}, fmt.Errorf("parse selected GitHub release tag %q: %w", checked.Release.TagName, err)
 		}
 		latest := checked.Release.TagName
 		result.LatestVersion = &latest
 		result.LatestPrerelease = checked.Release.Prerelease
-		result.UpdateAvailable = candidate.compare(current) > 0
+		result.UpdateAvailable = candidate.Compare(current) > 0
 	}
 	if homebrewChannelSwitchRequested(source, request.IncludePrerelease) {
 		// 渠道切换是用户的显式选择，即使目标渠道当前的 SemVer 较低也不能误报为无需更新。

@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/browsercookies/core"
+	"github.com/FlanChanXwO/pixiv-cli/internal/browsercookies"
 )
 
 // buildRecord 按 binarycookies cookie record 布局构造一条记录。
@@ -127,7 +127,7 @@ func TestDiscoverProfiles(t *testing.T) {
 
 func TestDiscoverNotInstalled(t *testing.T) {
 	p, _ := newProvider([]string{filepath.Join(t.TempDir(), "missing.binarycookies")})
-	if _, err := p.DiscoverProfiles(context.Background()); !errors.Is(err, core.ErrNotInstalled) {
+	if _, err := p.DiscoverProfiles(context.Background()); !errors.Is(err, browsercookies.ErrNotInstalled) {
 		t.Fatalf("err = %v, want ErrNotInstalled", err)
 	}
 }
@@ -137,11 +137,11 @@ func TestReadPlaintextBinaryCookies(t *testing.T) {
 		domain: ".fanbox.cc", name: "FANBOXSESSID", path: "/",
 		value: []byte("sf-session"), secure: true, httpOnly: true,
 	})
-	restore := core.SetProviderFixtureForTest("safari", func(string) ([]byte, error) { return file, nil })
+	restore := browsercookies.SetProviderFixtureForTest("safari", func(string) ([]byte, error) { return file, nil })
 	defer restore()
 
 	p, _ := newProvider([]string{filepath.Join(t.TempDir(), "Cookies.binarycookies")})
-	secrets, err := p.Read(context.Background(), core.DefaultQuery, "Default")
+	secrets, err := p.Read(context.Background(), browsercookies.DefaultQuery, "Default")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -155,11 +155,11 @@ func TestReadHostVariantAndNonMatching(t *testing.T) {
 		safariCookie{domain: "fanbox.cc", name: "FANBOXSESSID", path: "/", value: []byte("no-dot")},
 		safariCookie{domain: ".example.com", name: "OTHER", path: "/", value: []byte("x")},
 	)
-	restore := core.SetProviderFixtureForTest("safari", func(string) ([]byte, error) { return file, nil })
+	restore := browsercookies.SetProviderFixtureForTest("safari", func(string) ([]byte, error) { return file, nil })
 	defer restore()
 
 	p, _ := newProvider([]string{filepath.Join(t.TempDir(), "Cookies.binarycookies")})
-	secrets, err := p.Read(context.Background(), core.DefaultQuery, "Default")
+	secrets, err := p.Read(context.Background(), browsercookies.DefaultQuery, "Default")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -173,36 +173,36 @@ func TestReadEncryptedClassified(t *testing.T) {
 		domain: ".fanbox.cc", name: "FANBOXSESSID", path: "/",
 		value: []byte{0x8F, 0x8F, 0x8F, 0x8F},
 	})
-	restore := core.SetProviderFixtureForTest("safari", func(string) ([]byte, error) { return file, nil })
+	restore := browsercookies.SetProviderFixtureForTest("safari", func(string) ([]byte, error) { return file, nil })
 	defer restore()
 
 	p, _ := newProvider([]string{filepath.Join(t.TempDir(), "Cookies.binarycookies")})
-	if _, err := p.Read(context.Background(), core.DefaultQuery, "Default"); !errors.Is(err, core.ErrEncryptedCookieUnsupported) {
+	if _, err := p.Read(context.Background(), browsercookies.DefaultQuery, "Default"); !errors.Is(err, browsercookies.ErrEncryptedCookieUnsupported) {
 		t.Fatalf("err = %v, want ErrEncryptedCookieUnsupported", err)
 	}
 }
 
 func TestReadInvalidFormat(t *testing.T) {
-	restore := core.SetProviderFixtureForTest("safari", func(string) ([]byte, error) {
+	restore := browsercookies.SetProviderFixtureForTest("safari", func(string) ([]byte, error) {
 		return []byte("not-a-binarycookies-file"), nil
 	})
 	defer restore()
 	p, _ := newProvider([]string{filepath.Join(t.TempDir(), "Cookies.binarycookies")})
-	if _, err := p.Read(context.Background(), core.DefaultQuery, "Default"); !errors.Is(err, core.ErrInvalidFormat) {
+	if _, err := p.Read(context.Background(), browsercookies.DefaultQuery, "Default"); !errors.Is(err, browsercookies.ErrInvalidFormat) {
 		t.Fatalf("err = %v, want ErrInvalidFormat", err)
 	}
 }
 
 func TestReadDatabaseNotFound(t *testing.T) {
 	p, _ := newProvider([]string{filepath.Join(t.TempDir(), "missing.binarycookies")})
-	if _, err := p.Read(context.Background(), core.DefaultQuery, "Default"); !errors.Is(err, core.ErrDatabaseNotFound) {
+	if _, err := p.Read(context.Background(), browsercookies.DefaultQuery, "Default"); !errors.Is(err, browsercookies.ErrDatabaseNotFound) {
 		t.Fatalf("err = %v, want ErrDatabaseNotFound", err)
 	}
 	// 未知 profile。
 	root := t.TempDir()
 	writePlaceholder(t, root, "Cookies.binarycookies")
 	p2, _ := newProvider([]string{filepath.Join(root, "Cookies.binarycookies")})
-	if _, err := p2.Read(context.Background(), core.DefaultQuery, "Other"); !errors.Is(err, core.ErrProfileNotFound) {
+	if _, err := p2.Read(context.Background(), browsercookies.DefaultQuery, "Other"); !errors.Is(err, browsercookies.ErrProfileNotFound) {
 		t.Fatalf("unknown profile err = %v", err)
 	}
 }

@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	internalpixiv "github.com/FlanChanXwO/pixiv-cli/internal/application/pixiv"
+	internalpixiv "github.com/FlanChanXwO/pixiv-cli/internal/search/pixiv"
 )
 
 var markdownLinkPattern = regexp.MustCompile(`!?\[[^\]]*\]\(([^)]+)\)`)
@@ -296,7 +296,6 @@ func TestCLIReferenceLocalesExposeStableCommands(t *testing.T) {
 			"--ai-mode",
 			"--resolution",
 			"web_fallback_enabled",
-			"PIXIV_REFRESH_TOKEN",
 		} {
 			if !strings.Contains(string(payload), contract) {
 				t.Errorf("%s is missing CLI contract %q", relativePath, contract)
@@ -320,7 +319,7 @@ func TestAuthMigrationDocumentationRequiresExplicitBundleTransfer(t *testing.T) 
 	for _, contract := range []string{
 		"never reads or migrates the old `auth.json` automatically",
 		"pixiv auth export --all --output <private bundle>",
-		"pixiv auth import --file <bundle>",
+		"pixiv auth import < bundle.json",
 	} {
 		if !strings.Contains(migrationText, contract) {
 			t.Errorf("v1 migration guide is missing explicit auth transfer contract %q", contract)

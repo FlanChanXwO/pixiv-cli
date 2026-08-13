@@ -13,7 +13,7 @@ import (
 
 	_ "modernc.org/sqlite"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/browsercookies/core"
+	"github.com/FlanChanXwO/pixiv-cli/internal/browsercookies"
 )
 
 // skipIfNoSQLite3 在系统缺少 sqlite3 CLI 时跳过依赖它的测试。
@@ -99,7 +99,7 @@ func TestDiscoverProfilesNotInstalled(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := p.DiscoverProfiles(context.Background()); !errors.Is(err, core.ErrNotInstalled) {
+	if _, err := p.DiscoverProfiles(context.Background()); !errors.Is(err, browsercookies.ErrNotInstalled) {
 		t.Fatalf("err = %v, want ErrNotInstalled", err)
 	}
 	// Edge 同样未安装。
@@ -107,7 +107,7 @@ func TestDiscoverProfilesNotInstalled(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := pe.DiscoverProfiles(context.Background()); !errors.Is(err, core.ErrNotInstalled) {
+	if _, err := pe.DiscoverProfiles(context.Background()); !errors.Is(err, browsercookies.ErrNotInstalled) {
 		t.Fatalf("edge err = %v, want ErrNotInstalled", err)
 	}
 }
@@ -120,14 +120,14 @@ func TestReadPlaintextCookie(t *testing.T) {
 	fixture := buildFixtureDB(t, cookiesSchema,
 		`INSERT INTO cookies (host_key, name, value, encrypted_value) VALUES ('.fanbox.cc', 'FANBOXSESSID', 'plain-session', X'');`,
 	)
-	restore := core.SetProviderFixtureForTest("chrome", func(string) ([]byte, error) { return fixture, nil })
+	restore := browsercookies.SetProviderFixtureForTest("chrome", func(string) ([]byte, error) { return fixture, nil })
 	defer restore()
 
 	p, err := newProvider("chrome", root)
 	if err != nil {
 		t.Fatal(err)
 	}
-	secrets, err := p.Read(context.Background(), core.DefaultQuery, "Default")
+	secrets, err := p.Read(context.Background(), browsercookies.DefaultQuery, "Default")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -149,11 +149,11 @@ func TestReadPlaintextHostVariant(t *testing.T) {
 	fixture := buildFixtureDB(t, cookiesSchema,
 		`INSERT INTO cookies (host_key, name, value, encrypted_value) VALUES ('fanbox.cc', 'FANBOXSESSID', 'no-dot-session', X'');`,
 	)
-	restore := core.SetProviderFixtureForTest("chrome", func(string) ([]byte, error) { return fixture, nil })
+	restore := browsercookies.SetProviderFixtureForTest("chrome", func(string) ([]byte, error) { return fixture, nil })
 	defer restore()
 
 	p, _ := newProvider("chrome", root)
-	secrets, err := p.Read(context.Background(), core.DefaultQuery, "Default")
+	secrets, err := p.Read(context.Background(), browsercookies.DefaultQuery, "Default")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -172,12 +172,12 @@ func TestReadModernEncryptedCookieHostDigest(t *testing.T) {
 	fixture := buildFixtureDB(t, cookiesSchema,
 		`INSERT INTO cookies (host_key, name, value, encrypted_value) VALUES ('`+host+`', 'FANBOXSESSID', '', X'`+hex.EncodeToString(blob)+`');`,
 	)
-	restore := core.SetProviderFixtureForTest("chrome", func(string) ([]byte, error) { return fixture, nil })
+	restore := browsercookies.SetProviderFixtureForTest("chrome", func(string) ([]byte, error) { return fixture, nil })
 	defer restore()
 
 	p, _ := newProvider("chrome", root)
 	p.encryptionKeyOverride = func(context.Context) ([][]byte, error) { return [][]byte{key}, nil }
-	secrets, err := p.Read(context.Background(), core.DefaultQuery, "Default")
+	secrets, err := p.Read(context.Background(), browsercookies.DefaultQuery, "Default")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -197,17 +197,17 @@ func TestReadEncryptedClassification(t *testing.T) {
 	fixture := buildFixtureDB(t, cookiesSchema,
 		`INSERT INTO cookies (host_key, name, value, encrypted_value) VALUES ('.fanbox.cc', 'FANBOXSESSID', '', X'DEADBEEF');`,
 	)
-	restore := core.SetProviderFixtureForTest("chrome", func(string) ([]byte, error) { return fixture, nil })
+	restore := browsercookies.SetProviderFixtureForTest("chrome", func(string) ([]byte, error) { return fixture, nil })
 	defer restore()
 
 	p, _ := newProvider("chrome", root)
-	_, err := p.Read(context.Background(), core.DefaultQuery, "Default")
+	_, err := p.Read(context.Background(), browsercookies.DefaultQuery, "Default")
 	if err == nil {
 		t.Fatal("expected classification error")
 	}
-	want := core.ErrEncryptedFormatUnknown
+	want := browsercookies.ErrEncryptedFormatUnknown
 	if runtime.GOOS == "windows" {
-		want = core.ErrDPAPI
+		want = browsercookies.ErrDPAPI
 	}
 	if !errors.Is(err, want) {
 		t.Fatalf("err = %v, want %v", err, want)
@@ -245,20 +245,20 @@ func TestReadLockedDatabaseClassified(t *testing.T) {
 	}()
 
 	p, _ := newProvider("chrome", root)
-	if _, err := p.Read(context.Background(), core.DefaultQuery, "Default"); !errors.Is(err, core.ErrDatabaseLocked) {
+	if _, err := p.Read(context.Background(), browsercookies.DefaultQuery, "Default"); !errors.Is(err, browsercookies.ErrDatabaseLocked) {
 		t.Fatalf("err = %v, want ErrDatabaseLocked", err)
 	}
 }
 
 func TestReadInvalidQueryOrProfile(t *testing.T) {
 	p, _ := newProvider("chrome", t.TempDir())
-	if _, err := p.Read(context.Background(), core.CookieQuery{}, "Default"); !errors.Is(err, core.ErrQueryInvalid) {
+	if _, err := p.Read(context.Background(), browsercookies.CookieQuery{}, "Default"); !errors.Is(err, browsercookies.ErrQueryInvalid) {
 		t.Fatalf("invalid query err = %v", err)
 	}
-	if _, err := p.Read(context.Background(), core.DefaultQuery, "../evil"); !errors.Is(err, core.ErrInvalidProfileID) {
+	if _, err := p.Read(context.Background(), browsercookies.DefaultQuery, "../evil"); !errors.Is(err, browsercookies.ErrInvalidProfileID) {
 		t.Fatalf("invalid profile err = %v", err)
 	}
-	if _, err := p.Read(context.Background(), core.DefaultQuery, ""); !errors.Is(err, core.ErrInvalidProfileID) {
+	if _, err := p.Read(context.Background(), browsercookies.DefaultQuery, ""); !errors.Is(err, browsercookies.ErrInvalidProfileID) {
 		t.Fatalf("empty profile err = %v", err)
 	}
 }
@@ -269,7 +269,7 @@ func TestReadDatabaseNotFound(t *testing.T) {
 	p, _ := newProvider("chrome", root)
 	// 无 hook：真实路径不存在该 profile 的 Cookies（"Default" 存在占位，
 	// 但换成不存在的 profile）。
-	if _, err := p.Read(context.Background(), core.DefaultQuery, "Nope"); !errors.Is(err, core.ErrDatabaseNotFound) {
+	if _, err := p.Read(context.Background(), browsercookies.DefaultQuery, "Nope"); !errors.Is(err, browsercookies.ErrDatabaseNotFound) {
 		t.Fatalf("err = %v, want ErrDatabaseNotFound", err)
 	}
 }

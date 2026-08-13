@@ -14,15 +14,18 @@ const cursorFormatVersion = 1
 
 // cursorEnvelope is the versioned, JSON-marshalable form of a cursor. It must
 // never contain tokens, cookies, signed URLs, raw search text, or local paths.
+// Instance is only a non-secret client binding for ephemeral cursors.
 type cursorEnvelope struct {
-	Version   int    `json:"v"`
-	Product   string `json:"p"`
-	Operation string `json:"o"`
-	Binding   int    `json:"b"`
-	QueryHash string `json:"q"`
-	Identity  string `json:"id,omitempty"`
-	Ephemeral bool   `json:"e,omitempty"`
-	Payload   []byte `json:"pl"`
+	Version     int    `json:"v"`
+	Product     string `json:"p"`
+	Operation   string `json:"o"`
+	Binding     int    `json:"b"`
+	QueryHash   string `json:"q"`
+	Identity    string `json:"id,omitempty"`
+	Ephemeral   bool   `json:"e,omitempty"`
+	Instance    string `json:"i,omitempty"`
+	Payload     []byte `json:"pl"`
+	instanceSet bool   `json:"-"`
 }
 
 // Cursor is an opaque continuation token carried by sdk.Page. Its value is
@@ -49,10 +52,22 @@ func WithCursorIdentity(identity string) CursorOption {
 }
 
 // WithCursorEphemeral marks a cursor that could not be bound to a verifiable
-// identity. Such a cursor is only valid for continued use by the same client
-// instance that produced it; product SDKs reject its reuse elsewhere.
+// identity. Product SDKs should pair it with WithCursorEphemeralInstance so
+// reuse by another client instance is rejected.
 func WithCursorEphemeral() CursorOption {
 	return func(e *cursorEnvelope) { e.Ephemeral = true }
+}
+
+// WithCursorEphemeralInstance binds an ephemeral cursor to a non-secret
+// identifier owned by the client instance that created it. Product SDKs should
+// generate a fresh identifier for each client and validate it before
+// continuing an identity-scoped operation whose upstream identity is unknown.
+func WithCursorEphemeralInstance(instance string) CursorOption {
+	return func(e *cursorEnvelope) {
+		e.Ephemeral = true
+		e.Instance = instance
+		e.instanceSet = true
+	}
 }
 
 // NewCursor constructs a cursor bound to the given product operation. It is
@@ -89,6 +104,9 @@ func NewCursor(product, operation string, bindingVersion int, queryHash string, 
 		if opt != nil {
 			opt(env)
 		}
+	}
+	if env.instanceSet && env.Instance == "" {
+		return Cursor{}, NewError("", "NewCursor", InvalidArgument, WithDetail("cursor instance is required"))
 	}
 	raw, err := json.Marshal(env)
 	if err != nil {
@@ -142,7 +160,8 @@ func (c *Cursor) UnmarshalJSON(data []byte) error {
 }
 
 // String returns the route-safe text encoding of the cursor. It is safe to log
-// and to persist across processes.
+// and persist; an ephemeral cursor may still be rejected when used by another
+// client instance or process.
 func (c Cursor) String() string { return c.text }
 
 // ParseCursor decodes a cursor from its route-safe unpadded base64url text
@@ -169,6 +188,20 @@ func ValidateCursor(c Cursor, product, operation string, bindingVersion int, que
 	if env.Product != product || env.Operation != operation ||
 		env.Binding != bindingVersion || env.QueryHash != queryHash {
 		return NewError("", "ValidateCursor", InvalidCursor, WithDetail("cursor binding mismatch"))
+	}
+	return nil
+}
+
+// ValidateCursorInstance verifies the non-secret instance binding of an
+// ephemeral cursor. A zero cursor, malformed cursor, non-ephemeral cursor,
+// missing instance binding, or mismatched instance returns InvalidCursor.
+func ValidateCursorInstance(c Cursor, instance string) error {
+	if c.IsZero() || instance == "" {
+		return NewError("", "ValidateCursorInstance", InvalidCursor, WithDetail("cursor instance binding is unavailable"))
+	}
+	env, err := decodeCursor(c.text)
+	if err != nil || !env.Ephemeral || env.Instance == "" || env.Instance != instance {
+		return NewError("", "ValidateCursorInstance", InvalidCursor, WithDetail("cursor instance binding mismatch"))
 	}
 	return nil
 }
