@@ -11,7 +11,7 @@
 - 网络与 FANBOX challenge：`network-routing.md`、`fanbox-challenge-routing.md`。
 - 实施与架构：`implementation-plan.md`、`architecture-reorganization-plan.md`、`rc-follow-up-index.md`、`rc-follow-up-implementation-plan.md`。
 - 发布与环境：`environment-readiness.md`、`verification-release.md`、`release-prep-runbook.md`。
-- 过程记录与证据：`session-status-2026-08-03.md`、`debug-diagnostics.md`、`code-review-2026-08-08.md`、`final-verification-2026-08-08.md`。
+- 过程记录与证据：`session-status-2026-08-03.md`、`debug-diagnostics.md`、`code-review-2026-08-08.md`、`final-verification-2026-08-08.md`、`final-verification-2026-08-13.md`。
 
 ## 当前执行状态
 
@@ -21,6 +21,9 @@
 - 旧 `auth.json` 不再自动读取或迁移。跨版本迁移必须由旧 CLI 执行
   `pixiv auth export --all --output <private bundle>`，再由新 CLI 执行
   `pixiv auth import --file <bundle>`。
+- 2026-08-13 最终收尾：真实 Pixiv SDK E2E（`/v1/user/me` 上游 404 容忍跳过）
+  与真实 FANBOX post-only E2E（显式 FlareSolverr challenge recovery）均 PASS；
+  架构收敛提交 `8179cb1` 已推送。记录见 [最终验证记录](final-verification-2026-08-13.md)。
 - `account_pool.accounts` 到 `internal/persistence/authdb` 的数据库状态迁移仍是启动时一次性、幂等且可观测的兼容流程；历史 `data/account-pool.json` scheduler 不读取、不迁移、不删除。
 
 ## 完成门禁
