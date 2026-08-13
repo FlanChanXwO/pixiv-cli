@@ -21,11 +21,13 @@
 - 旧 `auth.json` 不再自动读取或迁移。跨版本迁移必须由旧 CLI 执行
   `pixiv auth export --all --output <private bundle>`，再由新 CLI 执行
   `pixiv auth import --file <bundle>`。
-- 2026-08-13 最终收尾：架构收敛提交 `8179cb1` 已推送。真实 FANBOX post-only
-  E2E（显式 FlareSolverr challenge recovery）PASS。真实 Pixiv SDK E2E 当时以
-  「`/v1/user/me` 上游 404 容忍跳过」记为 PASS，该跳过后被判定为削弱验收契约，
-  已恢复 strict fail；`TestRealPixivSDKRead` 现状为 **blocked**，需 `/v1/user/me`
-  可用的账号重跑。记录见 [最终验证记录](final-verification-2026-08-13.md)。
+- 2026-08-13 最终收尾：架构收敛提交 `8179cb1` 已推送。真实 FANBOX
+  post-only E2E（显式 FlareSolverr challenge recovery）为 **partial-pass**——
+  只覆盖 `Post`/body/`ResolveURL`，完整 `TestRealFanboxSDKRead` 仍 **not-run**，
+  缺一个带 file attachment 的显式 post 目标与 creator/tag 目标。真实 Pixiv SDK
+  E2E 当时以「`/v1/user/me` 上游 404 容忍跳过」记为 PASS，该跳过后被判定为
+  削弱验收契约，已恢复 strict fail；`TestRealPixivSDKRead` 现状为 **blocked**，
+  需 `/v1/user/me` 可用的账号重跑。记录见 [最终验证记录](final-verification-2026-08-13.md)。
 - `account_pool.accounts` 到 `internal/persistence/authdb` 的数据库状态迁移仍是启动时一次性、幂等且可观测的兼容流程；历史 `data/account-pool.json` scheduler 不读取、不迁移、不删除。
 
 ## 完成门禁

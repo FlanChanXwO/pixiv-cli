@@ -20,6 +20,8 @@ FANBOX_SDK_E2E=1 go test ./e2e -run TestRealFanboxSDKRead -count=1 -v
 
 FANBOX E2E target variables are explicit non-secret test targets; the session remains in the macOS Keychain.
 
+`TestRealFanboxSDKRead` 是唯一可以记为「完整 FANBOX read」的测试，它强制要求 post 目标带 first-party file attachment。`TestRealFanboxSDKPostInfo`（额外需要 `FANBOX_E2E_POST_ONLY=1`）只覆盖 `Post`/body/`ResolveURL`，通过时记为 **partial-pass**，不得替代完整 read 的状态。
+
 ## 边界规则
 
 各包职责描述见 `docs/maintainers/architecture.md`；以下是不可违反的规则：

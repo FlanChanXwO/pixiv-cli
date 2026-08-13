@@ -13,7 +13,8 @@ evidence 状态，不包含 credential、Cookie、私有 URL、下载内容或�
   thin main + `scripts/internal/<tool>`。
 - legacy `internal/services` 协议适配与 downloader 包移除。
 - 真实 SDK E2E 收尾（当时记 Pixiv PASS、FANBOX post-only PASS；Pixiv 判定
-  已撤销为 BLOCKED，见下文「判定撤销」）。
+  已撤销为 BLOCKED，FANBOX post-only 改记 PARTIAL-PASS 且完整 read 为
+  NOT-RUN，见下文「判定撤销」与「覆盖分层」）。
 
 ## 最终真实 SDK evidence（2026-08-13，显式授权）
 
@@ -70,7 +71,7 @@ PIXIV_E2E_PROXY='http://127.0.0.1:7890' \
   go test ./e2e -run '^TestRealFanboxSDKPostInfo$' -count=1 -v
 ```
 
-结果：PASS（`post.info body verified; assets=1 file_assets=0`）。
+结果：**PARTIAL-PASS**（`post.info body verified; assets=1 file_assets=0`）。
 
 - 代理出口 IP 被 Cloudflare `block_ip` 拦截时，配置显式 FlareSolverr
   （loopback `:8191`，经 `host.docker.internal:7890` 出网）完成 challenge
@@ -78,6 +79,34 @@ PIXIV_E2E_PROXY='http://127.0.0.1:7890' \
 - 过程中发现并修复本机 Keychain 中仍为 2026-08-10 过期 session 的问题；
   更新后 `find-generic-password -w` 返回值与期望值一致（注意该命令输出带
   尾随换行，对比时需去除）。
+
+#### 覆盖分层（不得把 post-only 当作完整 FANBOX read）
+
+| 档位 | 测试 | 状态 | 覆盖 |
+| --- | --- | --- | --- |
+| post-only | `TestRealFanboxSDKPostInfo` | **partial-pass** | `Post`、post body、`ResolveURL`，以及 challenge recovery 路径 |
+| 完整 read | `TestRealFanboxSDKRead` | **not-run** | `ValidateSession`、`CurrentUser` 身份、`Creator`、`CreatorTags`、`Creators`（supporting/following）、`Home`、`Supporting`、`CreatorPosts`、显式 tag query、cursor continuation、post body 的**强制** file attachment、`OpenResource` HEAD 与 `SaveResource` 大小交叉校验 |
+
+post-only 明确**不覆盖**：会话校验、身份、creator/tag/list 家族、分页 continuation、file resource 的打开与保存。
+
+完整 read 未运行的**非 secret** 前提（缺一不可）：
+
+| 前提 | 环境变量 / 条件 | 现状 |
+| --- | --- | --- |
+| creator 目标 | `FANBOX_E2E_CREATOR_ID` | 未提供 |
+| tag 目标 | `FANBOX_E2E_TAG` | 未提供 |
+| post 目标 | `FANBOX_E2E_POST_ID`、`FANBOX_E2E_POST_URL`（必须是无 query/fragment/userinfo 的 `https://(www.)fanbox.cc/...`） | 已提供 |
+| **post 必须带 file attachment** | 由 `TestRealFanboxSDKRead` 强制要求（`explicit post target has no file attachment`） | **不满足**：现有 post 目标 `file_assets=0`；2026-08-08 记录中的另一目标同样在资源阶段失败 |
+| 授权 session | macOS Keychain item `pixiv-cli-e2e-fanbox/fanbox-e2e` | 已具备（session 不进入 argv/env/log/test name） |
+
+即：阻塞完整 read 的唯一实质缺口是**一个带 first-party file attachment 的显式 post 目标**（外加 creator 与 tag 目标）。这不是 secret，也不是代码问题。运行方式：
+
+```bash
+FANBOX_SDK_E2E=1 \
+FANBOX_E2E_CREATOR_ID=<non-secret-creator-id> FANBOX_E2E_TAG=<non-secret-tag> \
+FANBOX_E2E_POST_ID=<post-with-file-attachment> FANBOX_E2E_POST_URL=<its-page-url> \
+  go test ./e2e -run '^TestRealFanboxSDKRead$' -count=1 -v
+```
 
 ## 自动门禁（本轮收尾后）
 

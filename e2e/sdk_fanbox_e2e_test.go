@@ -177,6 +177,17 @@ func TestFollowFanboxPostPageAllowsTerminalPage(t *testing.T) {
 // TestRealFanboxSDKRead is the v1 release-prep real FANBOX SDK e2e. It runs only
 // when FANBOX_SDK_E2E=1 and the authorized Keychain item exists. The session is
 // read through the Keychain API and never enters argv, env, logs, or test names.
+// TestRealFanboxSDKRead is the full FANBOX read contract. It is the only test
+// that may be reported as a complete real FANBOX read: session validation,
+// identity, creator, creator tags, creator lists with cursor continuation,
+// home, supporting, creator posts, an explicit tag query, post body with a
+// mandatory file attachment, URL resolution, and per-asset resource HEAD plus
+// SaveResource with a size cross-check.
+//
+// TestRealFanboxSDKPostInfo covers a strict subset (post body and URL
+// resolution only) and must never be reported in place of this test. Running
+// it requires an explicit post target that actually carries a file
+// attachment; a post with zero first-party file assets fails here by design.
 func TestRealFanboxSDKRead(t *testing.T) {
 	if os.Getenv("FANBOX_SDK_E2E") != "1" {
 		t.Skip("set FANBOX_SDK_E2E=1 to run the real FANBOX SDK e2e")
@@ -324,6 +335,12 @@ func TestRealFanboxSDKRead(t *testing.T) {
 // TestRealFanboxSDKPostInfo verifies one explicit post.info target without
 // requiring a file attachment. A successful post may legitimately expose zero
 // first-party file assets, as with public article posts.
+//
+// This is a strict subset of TestRealFanboxSDKRead: it covers Post, post body
+// and ResolveURL only. It does NOT cover session validation, identity,
+// creator, creator tags, creator lists, home, supporting, creator posts, tag
+// queries, cursor continuation, or resource HEAD/SaveResource. A pass here is
+// a partial result and must not be recorded as a complete FANBOX read.
 func TestRealFanboxSDKPostInfo(t *testing.T) {
 	if os.Getenv("FANBOX_SDK_E2E") != "1" {
 		t.Skip("set FANBOX_SDK_E2E=1 to run the real FANBOX SDK e2e")
