@@ -123,4 +123,4 @@ jobs:
           # Quality gate 已运行完整 internal/cli；Windows job 聚焦 root callback
           # wiring，并由 loginhelper 包承担真实 Windows registry contract。
           go test ./internal/cli -run '^(TestAuthURLCallback|TestAuthURLHandlerInstall|TestNormalCLIInvocationEnsuresPersistentHandlerWithoutBlockingCommand)$' -count=1
-          go test ./internal/cli/auth/loginhelper -count=1
+          go test ./internal/cli/pixiv/auth/loginhelper -count=1

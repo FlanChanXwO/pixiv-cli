@@ -107,7 +107,7 @@ jobs:
         run: go test ./scripts/installers -count=1
       - name: Test platform OAuth callback integration
         shell: bash
-        run: go test ./internal/cli/auth/loginhelper -count=1
+        run: go test ./internal/cli/pixiv/auth/loginhelper -count=1
       - name: Build the native Rust static library
         shell: bash
         run: bash scripts/build-staticlibs.sh --target '${{ matrix.rust_target }}'
