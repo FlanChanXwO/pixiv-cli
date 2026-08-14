@@ -2,10 +2,12 @@ package pixiv_test
 
 import (
 	"context"
+	"net/http"
 	"slices"
 	"strings"
 	"testing"
 
+	pixivmcpserver "github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/outputs"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
@@ -356,5 +358,66 @@ func TestSearchIllustRejectsInvalidCrossFieldFiltersBeforeOpeningSDK(t *testing.
 		if !result.IsError || client.searchIllustRequest != (pixiv.SearchArtworksRequest{}) {
 			t.Fatalf("arguments=%v result=%+v captured=%+v", arguments, result, client.searchIllustRequest)
 		}
+	}
+}
+
+func TestSearchIllustBookmarkRangeUsesSearchWorkflow(t *testing.T) {
+	var pooled bool
+	fake := &fakeSDKClient{searchIllust: func(_ context.Context, _ pixiv.SearchArtworksRequest) (sdk.Page[pixiv.Artwork], error) {
+		low := testSDKIllust(51, "low", 1)
+		low.TotalBookmarks = 2
+		high := testSDKIllust(52, "high", 1)
+		high.TotalBookmarks = 20
+		return sdk.Page[pixiv.Artwork]{Items: []pixiv.Artwork{low, high}}, nil
+	}}
+	sdkClient := openWireClient(t, fake)
+	ports := pixivmcpserver.SDKPorts{
+		Open: func(pixivmcpserver.Account) (*pixiv.Client, error) {
+			return sdkClient, nil
+		},
+		Pooled: func(ctx context.Context, account pixivmcpserver.Account, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
+			pooled = true
+			_, err := attempt(ctx, sdkClient)
+			return err
+		},
+	}
+	session, closeSession := newSDKTestSessionWithPorts(t, &fakeAPI{}, ports, pixivmcpserver.Account{})
+	defer closeSession()
+
+	result := callTool(t, session, "search_illust", map[string]any{"word": "miku", "bookmark_min": 10, "limit": 1})
+	if !pooled || result.IsError {
+		t.Fatalf("pooled=%v result=%+v", pooled, result)
+	}
+	var out map[string]any
+	decodeStructured(t, result, &out)
+	if _, ok := out["filter"]; !ok {
+		t.Fatalf("search output lacks bookmark filter metadata: %#v", out)
+	}
+	if resultHasText(result, "51") || !resultHasText(result, "Retrieved 1 records.") {
+		t.Fatalf("search result=%+v", result)
+	}
+}
+
+func TestSearchFailurePreservesStructuredErrorResult(t *testing.T) {
+	typedErr := &sdk.Error{
+		Product:    "pixiv",
+		Operation:  "SearchArtworks",
+		Reason:     sdk.UpstreamError,
+		HTTPStatus: http.StatusBadGateway,
+	}
+	client := &fakeSDKClient{searchIllust: func(context.Context, pixiv.SearchArtworksRequest) (sdk.Page[pixiv.Artwork], error) {
+		return sdk.Page[pixiv.Artwork]{}, typedErr
+	}}
+	session, closeSession := newSDKTestSession(t, client)
+	defer closeSession()
+
+	result := callTool(t, session, "search_illust", map[string]any{"word": "ordinary-query"})
+	if !result.IsError || !resultHasText(result, "Error: "+typedErr.Error()) {
+		t.Fatalf("structured search failure changed: %+v", result)
+	}
+	var out outputs.Records
+	decodeStructured(t, result, &out)
+	if len(out.Records) != 0 {
+		t.Fatalf("structured output=%+v, want empty records", out)
 	}
 }

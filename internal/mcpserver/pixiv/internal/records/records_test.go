@@ -1,4 +1,4 @@
-package pixiv_test
+package records_test
 
 import (
 	"encoding/json"
@@ -12,7 +12,9 @@ import (
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 )
 
-func TestTask12MCPRecordSerializationOmitsResourceTransport(t *testing.T) {
+// records 包的 owner 契约：serialization 只保留 opaque resource reference，
+// 绝不携带 transport（签名 URL、请求头、Cookie）或过期时间。
+func TestRecordSerializationOmitsResourceTransport(t *testing.T) {
 	ref, err := sdk.NewResourceRef("pixiv", []byte(`{"kind":"artwork-cover","id":1}`))
 	if err != nil {
 		t.Fatal(err)

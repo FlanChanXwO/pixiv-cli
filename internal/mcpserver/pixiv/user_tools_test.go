@@ -3,9 +3,11 @@ package pixiv_test
 import (
 	"context"
 	"errors"
+	"slices"
 	"strings"
 	"testing"
 
+	pixivmcpserver "github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/outputs"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
@@ -335,5 +337,119 @@ func TestSDKListsFollowOpaqueCursorForLimitAndRejectCycles(t *testing.T) {
 	decodeStructured(t, result, &out)
 	if !resultHasText(result, "cursor repeated") || len(cyclic.artworksRequests) != 2 {
 		t.Fatalf("cycle output=%+v requests=%+v", out, cyclic.artworksRequests)
+	}
+}
+
+func TestBookmarkTagsMapsRequestAndReturnsTags(t *testing.T) {
+	client := &fakeSDKClient{
+		bookmarkTagsPage: sdk.Page[pixiv.BookmarkTag]{Items: []pixiv.BookmarkTag{{Name: "blue", Count: 4}}},
+	}
+	session, closeSession := newSDKTestSession(t, client)
+	defer closeSession()
+
+	result := callTool(t, session, "bookmark_tags", map[string]any{"user_id": 90, "restrict": "private"})
+	if result.IsError || client.bookmarkTagsRequest.UserID != 90 || client.bookmarkTagsRequest.Restrict != pixiv.RestrictPrivate {
+		t.Fatalf("bookmark tags result=%+v request=%+v", result, client.bookmarkTagsRequest)
+	}
+	var out outputs.BookmarkTags
+	decodeStructured(t, result, &out)
+	if len(out.Tags) != 1 || out.Tags[0].Name != "blue" {
+		t.Fatalf("bookmark tags=%+v", out)
+	}
+}
+
+func TestBookmarkDetailMapsRequestAndReturnsState(t *testing.T) {
+	client := &fakeSDKClient{
+		bookmarkDetailResult: pixiv.ArtworkBookmarkDetail{Restrict: pixiv.RestrictPrivate, Tags: []string{"blue"}},
+	}
+	session, closeSession := newSDKTestSession(t, client)
+	defer closeSession()
+
+	result := callTool(t, session, "bookmark_detail", map[string]any{"illust_id": 11})
+	if result.IsError || client.bookmarkDetailRequest.ArtworkID != 11 {
+		t.Fatalf("bookmark detail result=%+v request=%+v", result, client.bookmarkDetailRequest)
+	}
+	var out outputs.BookmarkDetail
+	decodeStructured(t, result, &out)
+	if !out.Bookmarked || out.Restrict != string(pixiv.RestrictPrivate) || !slices.Equal(out.Tags, []string{"blue"}) {
+		t.Fatalf("bookmark detail=%+v", out)
+	}
+}
+
+func TestUserNovelBookmarksMapsRequestAndReturnsRecords(t *testing.T) {
+	client := &fakeSDKClient{
+		novelBookmarksPage: sdk.Page[pixiv.Novel]{Items: []pixiv.Novel{{ID: 31, Title: "bookmark-novel", User: pixiv.User{ID: 6}}}},
+	}
+	session, closeSession := newSDKTestSession(t, client)
+	defer closeSession()
+
+	result := callTool(t, session, "user_novel_bookmarks", map[string]any{"user_id": 91, "restrict": "public", "tag": "blue"})
+	if result.IsError || client.novelBookmarksRequest.UserID != 91 || client.novelBookmarksRequest.Tag != "blue" {
+		t.Fatalf("novel bookmarks result=%+v request=%+v", result, client.novelBookmarksRequest)
+	}
+	var out outputs.Records
+	decodeStructured(t, result, &out)
+	if len(out.Records) != 1 || out.Records[0].ID() != "31" {
+		t.Fatalf("novel bookmarks=%+v", out)
+	}
+}
+
+func TestUserFollowersMapsRequestAndReturnsRecords(t *testing.T) {
+	client := &fakeSDKClient{
+		followersPage: sdk.Page[pixiv.UserPreview]{Items: []pixiv.UserPreview{{User: pixiv.User{ID: 41, Name: "follower"}}}},
+	}
+	session, closeSession := newSDKTestSession(t, client)
+	defer closeSession()
+
+	result := callTool(t, session, "user_followers", map[string]any{"user_id": 92, "restrict": "private"})
+	if result.IsError || client.followersRequest.UserID != 92 || client.followersRequest.Restrict != pixiv.RestrictPrivate {
+		t.Fatalf("followers result=%+v request=%+v", result, client.followersRequest)
+	}
+}
+
+func TestRelatedUsersMapsRequestAndReturnsRecords(t *testing.T) {
+	client := &fakeSDKClient{
+		relatedPage: sdk.Page[pixiv.UserPreview]{Items: []pixiv.UserPreview{{User: pixiv.User{ID: 42, Name: "related"}}}},
+	}
+	session, closeSession := newSDKTestSession(t, client)
+	defer closeSession()
+
+	result := callTool(t, session, "related_users", map[string]any{"user_id": 93})
+	if result.IsError || client.relatedRequest.UserID != 93 {
+		t.Fatalf("related result=%+v request=%+v", result, client.relatedRequest)
+	}
+}
+
+func TestBlockedUsersMapsRequestAndReturnsRecords(t *testing.T) {
+	client := &fakeSDKClient{
+		blockedPage: sdk.Page[pixiv.UserPreview]{Items: []pixiv.UserPreview{{User: pixiv.User{ID: 43, Name: "blocked"}}}},
+	}
+	session, closeSession := newSDKTestSession(t, client)
+	defer closeSession()
+
+	result := callTool(t, session, "blocked_users", map[string]any{"user_id": 94})
+	if result.IsError || client.blockedRequest.UserID != 94 {
+		t.Fatalf("blocked result=%+v request=%+v", result, client.blockedRequest)
+	}
+}
+
+func TestUserDetailUsesApplicationPooledService(t *testing.T) {
+	var pooled bool
+	client := openWireClient(t, &fakeSDKClient{userID: 42})
+	ports := pixivmcpserver.SDKPorts{
+		Open: func(pixivmcpserver.Account) (*pixiv.Client, error) {
+			return client, nil
+		},
+		Pooled: func(context.Context, pixivmcpserver.Account, func(context.Context, *pixiv.Client) (bool, error)) error {
+			pooled = true
+			return errors.New("application pool failure")
+		},
+	}
+	session, closeSession := newSDKTestSessionWithPorts(t, &fakeAPI{}, ports, pixivmcpserver.Account{})
+	defer closeSession()
+
+	result := callTool(t, session, "user_detail", map[string]any{"user_id": 42})
+	if !pooled || !result.IsError || !resultHasText(result, "application pool failure") {
+		t.Fatalf("pooled=%v result=%+v", pooled, result)
 	}
 }
