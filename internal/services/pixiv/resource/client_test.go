@@ -3,7 +3,6 @@ package resource_test
 import (
 	"bytes"
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -44,7 +43,6 @@ func TestClientsPreserveHeadersStatusAndCopy(t *testing.T) {
 		accept             string
 	}{
 		{"app", resource.NewApp, resource.AppReferer, resource.AppUserAgent, ""},
-		{"web", func(h *http.Client) *resource.Client { return resource.NewWeb(h, "https://www.pixiv.net/") }, "https://www.pixiv.net/", resource.WebUserAgent, "application/json,text/plain,*/*"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -69,43 +67,6 @@ func TestAppDownloadExposesNonSuccessStatusWithoutBody(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "403")
 	assert.NotContains(t, err.Error(), "blocked")
-}
-
-func TestWebDownloadPreservesNonSuccessBodyPolicy(t *testing.T) {
-	t.Run("non-empty body", func(t *testing.T) {
-		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-			http.Error(w, "blocked", http.StatusForbidden)
-		}))
-		defer server.Close()
-		err := resource.NewWeb(server.Client(), server.URL).Download(context.Background(), server.URL, &bytes.Buffer{})
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "403")
-		assert.Contains(t, err.Error(), "blocked")
-	})
-
-	t.Run("empty body", func(t *testing.T) {
-		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-			w.WriteHeader(http.StatusForbidden)
-		}))
-		defer server.Close()
-		err := resource.NewWeb(server.Client(), server.URL).Download(context.Background(), server.URL, &bytes.Buffer{})
-		require.Error(t, err)
-		assert.Equal(t, "download failed: 403 Forbidden", err.Error())
-	})
-}
-
-func TestWebDownloadReportsErrorBodyReadFailureAndClosesBody(t *testing.T) {
-	readErr := errors.New("read failed")
-	body := &trackingBody{Reader: errorReader{err: readErr}}
-	client := resource.NewWeb(&http.Client{Transport: roundTripperFunc(func(*http.Request) (*http.Response, error) {
-		return &http.Response{StatusCode: http.StatusForbidden, Status: "403 Forbidden", Body: body}, nil
-	})}, "https://www.pixiv.net")
-
-	err := client.Download(context.Background(), "https://i.pximg.net/a.jpg", io.Discard)
-
-	require.ErrorIs(t, err, readErr)
-	assert.Contains(t, err.Error(), "download failed: 403 Forbidden: read error body")
-	assert.True(t, body.closed)
 }
 
 func TestDownloadClosesResponseBody(t *testing.T) {

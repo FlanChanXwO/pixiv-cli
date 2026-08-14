@@ -4,6 +4,8 @@
 
 已采纳。
 
+> 原状态：Accepted；**v1 已删除匿名 Web 路径**（`internal/services/pixiv/webapi` 与匿名 Web/AJAX read 一并移除，App API 是唯一 Pixiv 内容路径）。本 ADR 中「匿名 Web 取得 original ZIP 才标记为 `original`」「匿名路径仍独立使用 Web detail/pages」等描述只适用于 v0；v1 契约见 `AGENTS.md`「没有匿名 Web fallback」与 `docs/maintainers/architecture.md` 的 webapi 删除说明。
+
 ## Decision
 
 认证会话只从 App API 读取 `IllustDetail`、`IllustPages` 和 `UgoiraMetadata`。多页直接采用 App

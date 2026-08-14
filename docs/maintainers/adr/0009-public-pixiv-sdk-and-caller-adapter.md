@@ -4,6 +4,8 @@
 
 已采纳。
 
+> 原状态：Accepted；**v1 已删除匿名 Web fallback**。本 ADR 决策清单中「内部使用物理包 `appapi`、`webapi`、`oauth`、`resource`」「匿名 Web read 仅在无 refresh token 时按配置 fallback」两条已被 v1 取代：`internal/services/pixiv/webapi` 与匿名 Web/AJAX 路径删除，无 refresh token 时不 fallback 而是返回认证要求/`removed_setting`；App API 出错不自动切换协议。v1 契约见 `AGENTS.md` 与 `docs/maintainers/architecture.md`；公开 SDK 契约本身（顶层 package、typed error、opaque cursor、ResourceRef/OpenResource/Download）继续有效。
+
 ## 背景
 
 外部消费者需要 Pixiv 读取、写入、账号处理和安全媒体访问。早期替换讨论把它建模为 HTTP Provider，包含 discovery、source probe、RSS/crawler ingestion 与 capability negotiation。这些概念属于图库/采集调用方领域，不属于 CLI 仓库；加入它们会强制引入 service lifecycle、重复的持久化语义和宽而不稳定的接口。

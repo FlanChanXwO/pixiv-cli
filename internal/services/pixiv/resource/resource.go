@@ -2,13 +2,11 @@
 package resource
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
-	"strings"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/protocol"
 )
@@ -16,7 +14,6 @@ import (
 const (
 	AppReferer   = protocol.AppReferer
 	AppUserAgent = protocol.AppUserAgent
-	WebUserAgent = protocol.WebUserAgent
 )
 
 type Client struct {
@@ -24,8 +21,6 @@ type Client struct {
 	referer    string
 	userAgent  string
 	headers    map[string]string
-	// includeErrorBody 保留 Web resource 旧有的非 2xx body 诊断语义；App 仅报告 status。
-	includeErrorBody bool
 }
 
 // OpenRequest 描述一次已由上层 policy 限定的资源读取。
@@ -50,18 +45,6 @@ func NewApp(httpClient *http.Client) *Client {
 	return newClient(httpClient, AppReferer, AppUserAgent)
 }
 
-func NewWeb(httpClient *http.Client, webBase string) *Client {
-	base := strings.TrimRight(webBase, "/")
-	if base == "" {
-		base = protocol.WebAPIBase
-	}
-	c := newClient(httpClient, base+"/", WebUserAgent)
-	c.includeErrorBody = true
-	c.headers = protocol.WebHeaders()
-	delete(c.headers, "User-Agent")
-	return c
-}
-
 func newClient(httpClient *http.Client, referer, userAgent string) *Client {
 	if httpClient == nil {
 		httpClient = &http.Client{}
@@ -76,15 +59,6 @@ func (c *Client) Download(ctx context.Context, rawURL string, dst io.Writer) err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		if c.includeErrorBody {
-			body, readErr := io.ReadAll(resp.Body)
-			if readErr != nil {
-				return fmt.Errorf("download failed: %s: read error body: %w", resp.Status, readErr)
-			}
-			if len(bytes.TrimSpace(body)) != 0 {
-				return fmt.Errorf("download failed: %s: %s", resp.Status, string(body))
-			}
-		}
 		return fmt.Errorf("download failed: %s", resp.Status)
 	}
 	_, err = io.Copy(dst, resp.Body)
