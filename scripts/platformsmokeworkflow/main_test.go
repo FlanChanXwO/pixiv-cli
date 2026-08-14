@@ -5,7 +5,6 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"testing"
 
@@ -62,7 +61,6 @@ func TestWorkflowGoPackagePathsExist(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	pattern := regexp.MustCompile(`go (?:test|build|run) (\./[A-Za-z0-9_./-]+)`)
 	checked := 0
 	for _, entry := range entries {
 		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".yml") {
@@ -72,19 +70,53 @@ func TestWorkflowGoPackagePathsExist(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		for _, match := range pattern.FindAllStringSubmatch(string(payload), -1) {
-			directory := strings.TrimSuffix(match[1], "/...")
-			if directory == "." {
-				continue
-			}
+		for _, directory := range extractGoPackagePaths(string(payload)) {
 			checked++
 			info, err := os.Stat(filepath.Join("../..", directory))
 			if err != nil || !info.IsDir() {
-				t.Errorf("%s references a Go package path that does not exist: %s", entry.Name(), match[1])
+				t.Errorf("%s references a Go package path that does not exist: %s", entry.Name(), directory)
 			}
 		}
 	}
 	if checked == 0 {
 		t.Fatal("no Go package paths found in workflows; the extraction pattern is stale")
 	}
+}
+
+// extractGoPackagePaths 从 workflow 文本中提取 `go <sub> [flags] <package...>`
+// 的所有包参数。不做正则猜测：逐 token 扫描，跳过所有 `-flag` / `-flag=value`
+// 形式的参数，`./...` 与包路径是剩余的参数。覆盖 `go test -race ./...`、
+// `go build -trimpath -buildvcs=false ./cmd/pixiv` 这类带 flags 的写法。
+func extractGoPackagePaths(payload string) []string {
+	var paths []string
+	tokens := strings.Fields(payload)
+	for i := 0; i < len(tokens); i++ {
+		if tokens[i] != "go" {
+			continue
+		}
+		if i+1 >= len(tokens) || (tokens[i+1] != "test" && tokens[i+1] != "build" && tokens[i+1] != "run") {
+			continue
+		}
+		for j := i + 2; j < len(tokens); j++ {
+			token := tokens[j]
+			if token == "go" {
+				break
+			}
+			if strings.HasPrefix(token, "-") {
+				continue
+			}
+			if !strings.HasPrefix(token, "./") && token != "." {
+				// 非包参数（命令位置参数、test name、`-run` 的取值等）。
+				// 只收集以 ./ 开头的包路径；`go test -run X pkg` 里 pkg
+				// 也是包，但位置参数也可能是非包值，保守起见只收 ./ 前缀。
+				continue
+			}
+			directory := strings.TrimSuffix(token, "/...")
+			if directory == "." {
+				continue
+			}
+			paths = append(paths, directory)
+		}
+	}
+	return paths
 }

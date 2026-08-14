@@ -162,6 +162,13 @@ CLI/MCP 只编码这些 DTO、管道 `Record` 与 typed envelope，不反射遍�
 `pixiv.ParseURL` 与 `fanbox.ResolveURL` 在无网络的情况下把页面 URL 转为类型化
 引用，`Reference.CanonicalURL` 返回无 tracking 的规范形式。
 
+### 可选 DTO 字段
+
+输出 DTO 对上游响应未提供的字段采用**省略**而不是发 `null` 或空值：例如
+`ArtworkDTO` 在 SDK 没有更新时间、没有工具列表或没有页面列表时省略
+`updated_at`、`tools` 与 `pages`（pages 只在 detail 路径填充）。调用方应把
+缺失的 key 视为未知值；MCP tool 发布的 JSON schema 相应把这些字段标为可选。
+
 ## FANBOX
 
 `sdk/fanbox` 提供 creator 资料、帖子、标签、home 与 supporting 流、URL 解析与

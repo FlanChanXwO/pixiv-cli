@@ -198,6 +198,7 @@ they never reflect over or JSON-marshal runtime product models.
 
 For Pixiv, `Resource.Ref` contains only the resource kind, stable ID, page, and
 optional variant. It never embeds the current or signed media URL. The SDK can
+
 reuse the current locator held by the client, or re-fetch the corresponding
 artwork, novel, user, ugoira, or novel-content metadata before opening it; every
 resolved URL and redirect is allowlisted again. `SaveResource` writes through an
@@ -210,6 +211,15 @@ explicit header allowlist and never send the caller's Cookie jar.
 `pixiv.ParseURL` and `fanbox.ResolveURL` turn page URLs into typed references
 without network I/O, and `Reference.CanonicalURL` returns the tracking-free
 canonical form.
+
+### Optional DTO fields
+
+Output DTOs omit fields that the upstream response does not provide instead of
+emitting `null` or empty values: for example `ArtworkDTO` omits `updated_at`,
+`tools` and `pages` when the SDK has no update time, no tool list, or no page
+list (pages are populated on the detail path only). Consumers must treat a
+missing key the same as an unknown value; the JSON schema published for MCP
+tools marks these fields optional accordingly.
 
 ## FANBOX
 

@@ -10,6 +10,7 @@
 
 | 目录 | 必须 same-package 的理由 |
 | --- | --- |
+| `internal/cli` | **composition root（从旧 `permanentSamePackageTest` 继承，2026-08-15 复审补录）**。`internal/cli/cli.go` 持有私有 per-run resource graph，测试必须同包替换资源工厂 seam（`newTestResources` 等）并直接观察私有运行图与关闭顺序；external package 无法注入这些 seam。`internal/cli` 的集成测试全部为 `package cli`。 |
 | `internal/browsercookies/chromium` | 测试直接构造 provider 并注入加密 key override（`newProvider` + 私钥链状态），观察未导出的 cookie 记录解密路径与 profile 发现逻辑；导出这些状态只为测试会污染生产 API。 |
 | `internal/browsercookies/firefox` | 测试观察未导出的 profile 发现（`profiles.ini` 解析）、cookie database 路径解析与记录布局；这些是 provider 内部实现细节，不构成公开契约。 |
 | `internal/browsercookies/safari` | 测试直接调用未导出的 `parseBinaryCookies`，断言 binarycookies 记录布局（`c.domain`/`c.httpOnly` 等字段级断言）；记录布局是内部格式，只对同一包测试开放。 |
@@ -38,3 +39,27 @@
 - 新增目录进入本清单：必须在 review 中说明观察到的**具体未导出符号**，并确认不能通过导出最小接口替代。
 - 从本清单移除：必须给出删除 task 与测试迁移证据（external package 编译通过 + 覆盖不变）。
 - 本清单不接受「迁移期」「将来」这类无期限表述。
+
+## 跨平台核对命令（人工 review 复验）
+
+清单只覆盖**必须** same-package 的目录；其余目录的测试应使用 external package。核对当前实际状态：
+
+```bash
+# 列出所有测试留在生产包内（package X 而非 X_test）的目录
+go list -json ./... | python3 -c '
+import json,sys
+dec = json.JSONDecoder(); s = sys.stdin.read(); i = 0; same = []
+while i < len(s):
+    try: p, i = dec.raw_decode(s, i)
+    except json.JSONDecodeError: break
+    while i < len(s) and s[i] in " \n\t": i += 1
+    if p.get("Dir") and p.get("TestGoFiles") and not p["ImportPath"].endswith(("_test",)):
+        same.append((p["ImportPath"], len(p["TestGoFiles"])))
+for ip, n in sorted(same): print(ip, n)'
+# 期望结果 = 上表 Permanent 目录（18 项旧 allowlist + internal/cli composition root）
+```
+
+说明：
+
+- `e2e/` 与 `scripts/clawhubworkflow/` 的测试文件也是 `package X`，但这两个目录**没有生产代码**（纯测试载体），不存在「观察未导出生产态」问题，不属于本清单适用范围。
+- 跨平台差异：带 build tag 的测试文件（如 `scripts/internal/*`）在不同 `GOOS`/`GOARCH` 下可见文件数不同；核对时用 `GOOS=darwin`、`GOOS=windows`、`GOOS=linux` 分别跑 `go list`，确认目录集合一致（约 19 个生产包）。

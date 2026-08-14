@@ -89,3 +89,56 @@ func TestNovelContentDTOPreservesUnknownBlockSafely(t *testing.T) {
 		t.Fatal("DTO shares the source unknown payload map")
 	}
 }
+
+func TestArtworkDTOOmitsAbsentOptionalFields(t *testing.T) {
+	artwork := pixiv.Artwork{
+		ID:          1,
+		Title:       "no-optional-fields",
+		Kind:        pixiv.ArtworkKindIllustration,
+		RawKind:     "illust",
+		User:        pixiv.User{ID: 2, Name: "artist"},
+		PublishedAt: time.Date(2026, time.January, 2, 3, 4, 5, 0, time.UTC),
+		Tags:        []pixiv.Tag{},
+	}
+	raw, err := json.Marshal(pixiv.ToArtworkDTO(artwork))
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(raw)
+	for _, key := range []string{`"updated_at"`, `"tools"`, `"pages"`} {
+		if strings.Contains(text, key) {
+			t.Fatalf("ArtworkDTO with absent optional fields still emits %s: %s", key, text)
+		}
+	}
+	for _, key := range []string{`"id"`, `"title"`, `"kind"`, `"raw_kind"`, `"tags"`, `"published_at"`} {
+		if !strings.Contains(text, key) {
+			t.Fatalf("ArtworkDTO missing required key %s: %s", key, text)
+		}
+	}
+}
+
+func TestArtworkDTOEmitsOptionalFieldsWhenPresent(t *testing.T) {
+	updated := time.Date(2026, time.February, 2, 3, 4, 5, 0, time.UTC)
+	artwork := pixiv.Artwork{
+		ID:          1,
+		Title:       "with-optional-fields",
+		Kind:        pixiv.ArtworkKindIllustration,
+		RawKind:     "illust",
+		User:        pixiv.User{ID: 2, Name: "artist"},
+		PublishedAt: time.Date(2026, time.January, 2, 3, 4, 5, 0, time.UTC),
+		UpdatedAt:   &updated,
+		Tools:       []string{"CLIP STUDIO PAINT"},
+		Tags:        []pixiv.Tag{},
+		Pages:       []pixiv.ArtworkPage{{PageIndex: 0, Width: 100, Height: 100}},
+	}
+	raw, err := json.Marshal(pixiv.ToArtworkDTO(artwork))
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(raw)
+	for _, key := range []string{`"updated_at"`, `"tools"`, `"pages"`} {
+		if !strings.Contains(text, key) {
+			t.Fatalf("ArtworkDTO with present optional fields missing %s: %s", key, text)
+		}
+	}
+}

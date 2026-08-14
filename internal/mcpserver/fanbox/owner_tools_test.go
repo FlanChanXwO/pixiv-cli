@@ -2,6 +2,7 @@ package fanbox_test
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"strings"
@@ -426,4 +427,35 @@ func textOf(t *testing.T, result *mcp.CallToolResult) string {
 		t.Fatalf("result content type=%T", result.Content[0])
 	}
 	return text.Text
+}
+
+// 运行期输出安全 canary：真实调用 fanbox_post，上游 post body 的图片 URL 携带
+// 签名 canary query（host 通过 media policy），structured 与 text 输出都不能带它。
+func TestFanboxPostOutputValuesDoNotLeakResourceCanary(t *testing.T) {
+	const canaryURL = "https://downloads.fanbox.cc/post/1/image.png?signature=topsecret"
+	service, _ := fanboxTestService(t, roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		return jsonResponse(`{"body":{"post":{"id":"p1","title":"t","publishedDatetime":"2024-06-01T10:00:00Z","creatorId":"c","isRestricted":false,"isPinned":false,"body":{"blocks":[{"type":"image","imageId":"image-1"}],"imageMap":{"image-1":{"id":"image-1","extension":"png","originalUrl":"` + canaryURL + `"}}}}}}`), nil
+	}))
+	session, closeSession := newFanboxMCPSession(t, service)
+	defer closeSession()
+
+	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: "fanbox_post", Arguments: map[string]any{"post_id": "p1"}})
+	if err != nil {
+		t.Fatalf("call tool: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("fanbox_post failed: %+v", result)
+	}
+	raw, err := json.Marshal(result.StructuredContent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(raw), canaryURL) || strings.Contains(string(raw), "signature=topsecret") {
+		t.Fatalf("fanbox_post structured output leaked resource canary: %s", raw)
+	}
+	for _, content := range result.Content {
+		if text, ok := content.(*mcp.TextContent); ok && strings.Contains(text.Text, canaryURL) {
+			t.Fatalf("fanbox_post text output leaked resource canary: %s", text.Text)
+		}
+	}
 }
