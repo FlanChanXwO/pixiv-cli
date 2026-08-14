@@ -274,7 +274,9 @@ consolidation 再次 fail-closed。该 run 也不可回填或跨 run 拼接，�
 仍只由 `internal/media/ugoira` 通过唯一 FFI 入口链接 `internal/media/ugoira/rust`。
 
 run `29192425899` 已在六个平台完成 native build、真实 cgo GIF/APNG smoke、binary/archive record，
-并经本地 fail-closed consolidation 回填六个 target library 与统一 manifest；source build 会在链接前
+并经本地 fail-closed consolidation 回填六个 target library 与统一 manifest（该 run 是首次 evidence
+收集，职责已被后续 run `29567721284` 的 pinned-toolchain 重建取代为当前 committed 六库的唯一来源，
+见 `development.md` 的 provenance 说明）；source build 会在链接前
 校验该 manifest 和库哈希。`ffmpeg` 仅保留给显式启用的开发质量对照，不在生产下载路径中。
 
 ### `internal/media/ugoira`

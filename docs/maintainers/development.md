@@ -66,9 +66,14 @@ go run ./scripts/linuxabi --binary <linux-elf>
 继续校验同一 version、commit、source digest、目标集合与逐库 hash，再成套生成本目录和 manifest。
 合并前使用临时 review ref 只为让 workflow 精确 checkout 该受审计 commit；产物回填后 workflow
 已经恢复只接受 `refs/heads/main`。
-六库 manifest 的 Rust source digest 为
-`2f076376eb8a0ce0142fa6b03e856ef0e570c3d99b5fe98a73de0df95c70cc91`，与该 commit 的 vendored
-Rust 输入一致；不得用旧 run `29559729696` 的 runner 默认 Rust `1.97.0` 产物替代。
+
+六库 manifest 的 Rust source digest 为该 run 回填时的 `2f076376eb8a0ce0142fa6b03e856ef0e570c3d99b5fe98a73de0df95c70cc91`
+（与该 commit 的 vendored Rust 输入一致）；v1 收敛（commit `8179cb1`）把 crate 目录移到
+`internal/media/ugoira/rust` 后，digest 按新路径布局重算为
+`4318464a846c6a6701f1868adb48c0ccab67e0e4eb1a5a21e6f8c4fde89bbb02`——六个 committed library
+的 SHA-256 与回填时逐字节相同（`git diff 04f2430 8179cb1` 仅 manifest 的 source_digest 变化），
+当前提交的 manifest 以 `4318464a…` 为准，由 `internal/media/ugoira/staticlib` 的完整性测试锁定。
+不得用旧 run `29559729696` 的 runner 默认 Rust `1.97.0` 产物替代。
 
 合规 committed library 的编译器 provenance 必须按 target 固定，而不是使用可移动的 runner 默认
 toolchain：`x86_64-apple-darwin` 与 `x86_64-pc-windows-msvc` 使用 Rust `1.96.0`；
@@ -549,8 +554,10 @@ macOS Intel/arm64 与 Linux amd64/arm64 四个生产同款 runner 上执行真�
 安装验收。`sh scripts/test-homebrew-prepublish-workflow.sh` 会在本地和质量门中检查该 workflow 的不可变边界。
 
 正式发布目前仍必须被正式 tag、签名 GitHub Release、tap formula 与后续安装验收阻断。完整
-six-target staticlib/manifest 与真实 native artifact 证据已由 run `29192425899` 收集并受控回填；
-受保护 `release` Environment、生产 signing 私钥与公开仓库也已按 Task 20 配置，但这些前置条件本身
+six-target staticlib/manifest 与真实 native artifact 证据已由 run `29192425899`（head `a1c6b838…`）收集并受控回填，
+后续 run `29567721284` 按 pinned toolchain 重建同一组 library 并成为当前 committed 六库的 canonical
+provenance（见「Rust ugoira staticlib」一节；`29192425899` 的职责是首次收集 evidence，已由
+`29567721284` 取代为唯一来源）；受保护 `release` Environment、生产 signing 私钥与公开仓库也已按 Task 20 配置，但这些前置条件本身
 不等于 Release/tap 已创建或安装路径已验收。
 
 production Ed25519 public trust root 已在
