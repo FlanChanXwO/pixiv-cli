@@ -880,7 +880,33 @@ func wireCommentValue(comment pixivsdk.Comment) map[string]any {
 func wireTrendingTags(tags []pixivsdk.TrendingTag) (int, []byte, error) {
 	items := make([]map[string]any, 0, len(tags))
 	for _, item := range tags {
-		items = append(items, map[string]any{"tag": item.Tag, "translated_name": item.TranslatedName})
+		wireTags := make([]map[string]any, 0, len(item.Artwork.Tags))
+		for _, tag := range item.Artwork.Tags {
+			wireTags = append(wireTags, map[string]any{"tag": tag.Name, "translated_name": tag.TranslatedName})
+		}
+		tools := item.Artwork.Tools
+		if tools == nil {
+			tools = []string{}
+		}
+		illust := map[string]any{
+			"id":              item.Artwork.ID,
+			"title":           item.Artwork.Title,
+			"caption":         item.Artwork.Caption,
+			"user":            map[string]any{"id": item.Artwork.User.ID, "name": item.Artwork.User.Name},
+			"tags":            wireTags,
+			"create_date":     item.Artwork.PublishedAt.UTC().Format(time.RFC3339),
+			"updated_at":      item.Artwork.PublishedAt.UTC().Format(time.RFC3339),
+			"type":            string(item.Artwork.RawKind),
+			"page_count":      item.Artwork.PageCount,
+			"total_view":      item.Artwork.TotalViews,
+			"total_bookmarks": item.Artwork.TotalBookmarks,
+			"width":           item.Artwork.Width,
+			"height":          item.Artwork.Height,
+			"tools":           tools,
+			"image_urls":      map[string]any{"large": "https://i.pximg.net/artworks/" + strconv.FormatInt(item.Artwork.ID, 10) + "/1.png"},
+			"meta_pages":      []any{},
+		}
+		items = append(items, map[string]any{"tag": item.Tag, "translated_name": item.TranslatedName, "illust": illust})
 	}
 	body, err := json.Marshal(struct {
 		TrendTags []map[string]any `json:"trend_tags"`

@@ -22,7 +22,7 @@ type in struct {
 }
 
 func handle(ctx context.Context, app *runtime.App, input in) (*mcp.CallToolResult, runtime.PostOut, error) {
-	out := runtime.PostOut{}
+	out := runtime.PostOut{Assets: []runtime.PostAssetOut{}}
 	if input.PostID == "" {
 		return runtime.Result(out, true, "Error: post_id is required"), out, nil
 	}

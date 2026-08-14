@@ -39,7 +39,7 @@ type ArtworkDTO struct {
 	Tags           []TagDTO         `json:"tags"`
 	User           UserDTO          `json:"user"`
 	PublishedAt    time.Time        `json:"published_at"`
-	UpdatedAt      *time.Time       `json:"updated_at"`
+	UpdatedAt      *time.Time       `json:"updated_at,omitempty"`
 	TotalBookmarks int              `json:"total_bookmarks"`
 	TotalViews     int              `json:"total_views"`
 	Width          int              `json:"width"`
@@ -47,9 +47,9 @@ type ArtworkDTO struct {
 	PageCount      int              `json:"page_count"`
 	XRestrict      int              `json:"x_restrict"`
 	AIType         int              `json:"ai_type"`
-	Tools          []string         `json:"tools"`
+	Tools          []string         `json:"tools,omitempty"`
 	Cover          ImageResourceDTO `json:"cover"`
-	Pages          []ArtworkPageDTO `json:"pages"`
+	Pages          []ArtworkPageDTO `json:"pages,omitempty"`
 }
 
 // NovelDTO is the output-safe form of Novel.
