@@ -220,6 +220,9 @@ SQLite 永久 schema 只维护 `pixiv_account`、`fanbox_account`、`schema_migr
   lookup、三平台 Chromium/Firefox profile root 与 v10/v11 GCM/legacy CBC 解密；合成 profile/key
   与 Safari 多页解析测试通过。对应 Windows/Linux 实机、Firefox 临时 profile 和 macOS Safari 的
   native provider evidence 仍按 RC-11 单独执行，不能以本机测试代替。
-- 上述本地验证在合法 Git worktree `codex/v1-sdk-rewrite` 完成；本地架构门禁本身不读取 credential。
+- 上述本地验证在合法 Git worktree `codex/v1-sdk-rewrite` 完成。当时记录的「本地架构门禁」
+  指 `internal/architecture` 的全仓结构快照检查，该 gate 此后被整体删除（它本身不读取
+  credential）。其 15 条规则的替代保障与删除理由见 `goal-4/architecture-replacement-matrix.md`；
+  现由 owner 行为测试、Go 编译约束、public API golden 与 review checklist 承担。
   2026-08-08 获授权后的真实 Pixiv/solver evidence 与仍待完成的 FANBOX/native browser evidence
   统一记录在 [最终验证记录](final-verification-2026-08-08.md)。
