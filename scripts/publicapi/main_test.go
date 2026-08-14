@@ -58,3 +58,50 @@ func findPublicAPIRepositoryRoot(t *testing.T) string {
 		directory = parent
 	}
 }
+
+func TestPublicAPICheckFailsWhenGoldenDrifts(t *testing.T) {
+	binary := buildPublicAPIBinary(t)
+
+	directory := t.TempDir()
+	sdkDir := filepath.Join(directory, "sdk")
+	if err := os.MkdirAll(sdkDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(sdkDir, "sdk.go"), []byte(`package sdk
+func Exported() {}
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	staleGolden := filepath.Join(t.TempDir(), "public-api-inventory.md")
+	if err := os.WriteFile(staleGolden, []byte("## sdk\n- Different\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	command := exec.Command(binary, "--dir", directory, "--check", "--golden", staleGolden)
+	output, err := command.CombinedOutput()
+	if err == nil {
+		t.Fatalf("check against drifted golden must exit non-zero, output=%q", output)
+	}
+	if !strings.Contains(string(output), "drifted from golden") {
+		t.Fatalf("drift failure output = %q, want 'drifted from golden'", output)
+	}
+
+	correctGolden := filepath.Join(t.TempDir(), "public-api-inventory.md")
+	render := exec.Command(binary, "--dir", directory)
+	renderOutput, renderErr := render.CombinedOutput()
+	if renderErr != nil {
+		t.Fatalf("render inventory: %v\n%s", renderErr, renderOutput)
+	}
+	if err := os.WriteFile(correctGolden, renderOutput, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	pass := exec.Command(binary, "--dir", directory, "--check", "--golden", correctGolden)
+	passOutput, passErr := pass.CombinedOutput()
+	if passErr != nil {
+		t.Fatalf("check against matching golden must exit 0: %v\n%s", passErr, passOutput)
+	}
+	if !strings.Contains(string(passOutput), "matches golden") {
+		t.Fatalf("match output = %q, want 'matches golden'", passOutput)
+	}
+}
