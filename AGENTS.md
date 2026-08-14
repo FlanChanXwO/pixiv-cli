@@ -26,9 +26,9 @@ FANBOX E2E target variables are explicit non-secret test targets; the session re
 
 各包职责描述见 `docs/maintainers/architecture.md`；以下是不可违反的规则：
 
-- `cmd/pixiv` 只委托 `internal/cli`；`internal/cli` 是 thin controller，业务用例在 `internal/application`，生产组装只在 `internal/bootstrap`。
-- CLI/MCP 的 Pixiv/FANBOX 能力只经 `internal/application.SDKService` 调用 `sdk/pixiv` 与 `sdk/fanbox` public SDK；不得直连 `internal/services/pixiv/appapi`、`oauth`、`resource` 或 `internal/services/fanbox` 协议适配包。
-- MCP tool 注册和输入/输出适配在 `internal/mcpserver/{pixiv,fanbox}`；stdio runtime 由 `internal/bootstrap` 启动。
+- `cmd/pixiv` 只委托 `internal/cli`；`internal/cli` 是 thin controller，`internal/cli/cli.go` 持有私有 per-run resource graph 并负责生产组装（`internal/application`、`internal/bootstrap` 已删除，不再是业务用例层或 composition root）。
+- CLI/MCP 的 Pixiv/FANBOX 能力只经 `internal/cli/internal/{pixivdeps,fanboxdeps}` 的窄 `Data` 端口（`Open`/`Pooled`/`JSONOut` 等）或 MCP runtime `SDKPorts` 调用 `sdk/pixiv` 与 `sdk/fanbox` public SDK；不得直连 `internal/services/pixiv/appapi`、`oauth`、`resource` 或 `internal/services/fanbox` 协议适配包。
+- MCP tool 注册和输入/输出适配在 `internal/mcpserver/{pixiv,fanbox}`；stdio runtime 由 `internal/cli` 的 MCP 命令启动（`internal/bootstrap` 已删除）。
 - `internal/utils/{parse,text,uri}` 保持协议无关；文件、权限与本地状态路径位于 `internal/filesystem`。
 
 ## 注意事项

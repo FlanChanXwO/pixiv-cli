@@ -33,3 +33,9 @@
 - 共享行为、CLI/MCP 公开接口、下载、认证或 config 变更，优先运行 `go test ./...`。
 - 文档/agent-only 改动至少运行 `git diff --check` 并检查链接。
 - 真实 Pixiv e2e 是 opt-in；不能运行时说明原因和剩余风险。
+- **测试资产完成条件**（人工核对，不恢复目录/AST/allowlist scanner）：
+  - 测试归属 owner：断言真实运行对象的测试放在该 owner 的目录或产品根包内；root 只保留 registry/inventory/stdio/lifecycle 聚合断言（对照 `goal-4/owner-test-matrix.md` 的 U/A/D 标注）。
+  - 命名：无 `taskNN_` / 无理由 `legacy_` 测试文件名与测试名；测试名描述行为而非迁移历史。
+  - helper 归属：helper-only 测试文件按 owner 就近放置；只有跨 2+ 文件复用的 helper 留在共享位置；不预设 `internal/testkit`（真实跨包复用例外需证据，见 `docs/maintainers/test-ownership.md`）。
+  - same-package 例外披露：测试留在生产包内时，目录必须在 `docs/maintainers/test-ownership.md` 登记（permanent 理由或 temporary 删除条件），禁止「迁移期」类无期限表述。
+  - capability 边界：新增 CLI/MCP/SDK 入口前对照 `docs/maintainers/capability-scope.md` 的 unsupported/evidence-gated 清单；无入口能力不得以 schema 占位或 mock 空结果「预留」。

@@ -28,7 +28,7 @@
   E2E 当时以「`/v1/user/me` 上游 404 容忍跳过」记为 PASS，该跳过后被判定为
   削弱验收契约，已恢复 strict fail；`TestRealPixivSDKRead` 现状为 **blocked**，
   需 `/v1/user/me` 可用的账号重跑。记录见 [最终验证记录](final-verification-2026-08-13.md)。
-- `account_pool.accounts` 到 `internal/persistence/authdb` 的数据库状态迁移仍是启动时一次性、幂等且可观测的兼容流程；历史 `data/account-pool.json` scheduler 不读取、不迁移、不删除。
+- `account_pool.accounts` 到 `internal/storage/database`（`authdb` 已随 v1 迁移并删除）的数据库状态迁移仍是启动时一次性、幂等且可观测的兼容流程；历史 `data/account-pool.json` scheduler 不读取、不迁移、不删除。
 
 ## 完成门禁
 
