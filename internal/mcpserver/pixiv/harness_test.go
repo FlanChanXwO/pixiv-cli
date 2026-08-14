@@ -18,66 +18,6 @@ import (
 // 本文件是 Pixiv MCP 产品级测试 harness：fake SDK client、fake 下载器与
 // session/调用 helper。它被本包内多个 owner 契约测试文件共享，因此集中在此，
 // 而不是散落在某一个 owner 测试文件的末尾。
-func assertDownloadRandomCountError(t *testing.T, result *mcp.CallToolResult) {
-	t.Helper()
-	const wantText = "Error: count must be an integer from 1 to 20"
-	assertEmptyDownloadResult(t, result, "local_path", wantText)
-}
-
-func assertNoDownloadRandomDownstream(t *testing.T, probe *downloadRandomProbe) {
-	t.Helper()
-	if probe.openCalls != 0 || probe.recommendationCalls != 0 || probe.managerFactoryCalls != 0 || probe.downloads.downloadCalls != 0 || len(probe.downloads.downloadIDs) != 0 {
-		t.Fatalf("downstream calls: open=%d recommendation=%d manager_factory=%d downloads=%d download_ids=%v", probe.openCalls, probe.recommendationCalls, probe.managerFactoryCalls, probe.downloads.downloadCalls, probe.downloads.downloadIDs)
-	}
-}
-
-type downloadRandomProbe struct {
-	openCalls           int
-	recommendationCalls int
-	managerFactoryCalls int
-	downloads           *fakeDownloads
-}
-
-func newDownloadRandomProbeSession(t *testing.T, recommendationIDs []int64) (*mcp.ClientSession, func(), *downloadRandomProbe) {
-	t.Helper()
-	probe := &downloadRandomProbe{downloads: &fakeDownloads{}}
-	sdkClient := &fakeSDKClient{recommendedArtworks: func(context.Context, pixiv.RecommendedArtworksRequest, int) (sdk.Page[pixiv.Artwork], error) {
-		probe.recommendationCalls++
-		illusts := make([]pixiv.Artwork, len(recommendationIDs))
-		for i, id := range recommendationIDs {
-			illusts[i] = testSDKIllust(id, "recommended", 1)
-		}
-		return sdk.Page[pixiv.Artwork]{Items: illusts}, nil
-	}}
-	wireClient := openWireClient(t, sdkClient)
-	ports := pixivmcpserver.SDKPorts{
-		Open: func(pixivmcpserver.Account) (*pixiv.Client, error) {
-			probe.openCalls++
-			return wireClient, nil
-		},
-		Pooled: func(ctx context.Context, account pixivmcpserver.Account, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
-			_, err := attempt(ctx, wireClient)
-			return err
-		},
-	}
-	server := pixivmcpserver.NewWithSDKDownloadFactory(probe.downloads, func(*pixiv.Client) pixivmcpserver.DownloadManager {
-		probe.managerFactoryCalls++
-		return probe.downloads
-	}, ports, pixivmcpserver.Account{})
-	clientTransport, serverTransport := mcp.NewInMemoryTransports()
-	ctx, cancel := context.WithCancel(context.Background())
-	go func() { _ = server.Run(ctx, serverTransport) }()
-	client := mcp.NewClient(&mcp.Implementation{Name: "test", Version: "1"}, nil)
-	session, err := client.Connect(ctx, clientTransport, nil)
-	if err != nil {
-		cancel()
-		t.Fatal(err)
-	}
-	return session, func() {
-		_ = session.Close()
-		cancel()
-	}, probe
-}
 
 func testSDKIllust(id int64, title string, userID int64) pixiv.Artwork {
 	return pixiv.Artwork{
@@ -122,25 +62,6 @@ func newTestSession(t *testing.T, downloads *fakeDownloads) (*mcp.ClientSession,
 
 func newSDKTestSession(t *testing.T, sdkClient *fakeSDKClient) (*mcp.ClientSession, func()) {
 	return newSDKTestSessionWithAPI(t, &fakeAPI{}, sdkClient)
-}
-
-func newSDKDownloadTestSession(t *testing.T, sdkClient *fakeSDKClient, downloads pixivmcpserver.DownloadManager) (*mcp.ClientSession, func()) {
-	t.Helper()
-	ports, _ := newTestSDKPorts(t, sdkClient)
-	server := pixivmcpserver.NewWithSDKDownloadFactory(downloads, func(*pixiv.Client) pixivmcpserver.DownloadManager { return downloads }, ports, pixivmcpserver.Account{})
-	clientTransport, serverTransport := mcp.NewInMemoryTransports()
-	ctx, cancel := context.WithCancel(context.Background())
-	go func() { _ = server.Run(ctx, serverTransport) }()
-	client := mcp.NewClient(&mcp.Implementation{Name: "test", Version: "0.0.0"}, nil)
-	session, err := client.Connect(ctx, clientTransport, nil)
-	if err != nil {
-		cancel()
-		t.Fatalf("connect: %v", err)
-	}
-	return session, func() {
-		_ = session.Close()
-		cancel()
-	}
 }
 
 func newSDKTestSessionWithAPI(t *testing.T, api any, sdkClient *fakeSDKClient) (*mcp.ClientSession, func()) {
@@ -311,56 +232,6 @@ type fakeSDKClient struct {
 	relatedRequest         pixiv.RelatedUsersRequest
 	blockedPage            sdk.Page[pixiv.UserPreview]
 	blockedRequest         pixiv.UserBlockedUsersRequest
-}
-
-// downloadOut 是 download tool 的本地测试镜像，与生产 download 包的输出契约保持
-// 相同 JSON 字段；外部测试包不能直接使用未导出的 download.downloadOut。
-type downloadOut struct {
-	Delivery string               `json:"delivery"`
-	Items    []downloadItemOut    `json:"items"`
-	Failures []downloadFailureOut `json:"failures"`
-	Files    []downloadFileOut    `json:"files"`
-	Text     string               `json:"text"`
-}
-
-type downloadItemOut struct {
-	URL      string            `json:"url"`
-	IllustID int64             `json:"illust_id"`
-	Title    string            `json:"title"`
-	Author   string            `json:"author"`
-	Type     string            `json:"type"`
-	Files    []downloadFileOut `json:"files"`
-}
-
-type downloadFailureOut struct {
-	URL      string `json:"url"`
-	IllustID int64  `json:"illust_id"`
-	Type     string `json:"type"`
-	Message  string `json:"message"`
-}
-
-type downloadFileOut struct {
-	IllustID  int64  `json:"illust_id"`
-	Title     string `json:"title"`
-	Author    string `json:"author"`
-	Path      string `json:"path"`
-	FileURI   string `json:"file_uri"`
-	MIMEType  string `json:"mime_type"`
-	SizeBytes int64  `json:"size_bytes"`
-	Page      int    `json:"page,omitempty"`
-}
-
-func decodeDownloadOut(t *testing.T, result *mcp.CallToolResult) downloadOut {
-	t.Helper()
-	var out downloadOut
-	raw, err := json.Marshal(result.StructuredContent)
-	if err != nil {
-		t.Fatalf("marshal StructuredContent: %v", err)
-	}
-	if err := json.Unmarshal(raw, &out); err != nil {
-		t.Fatalf("unmarshal StructuredContent: %v", err)
-	}
-	return out
 }
 
 func assertEmptyDownloadResult(t *testing.T, result *mcp.CallToolResult, wantDelivery, wantText string) {

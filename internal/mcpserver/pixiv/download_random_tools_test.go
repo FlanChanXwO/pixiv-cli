@@ -379,3 +379,64 @@ func TestDownloadRandomUsesAvailableRecommendationsWhenListIsShorter(t *testing.
 		t.Fatalf("download IDs=%v want available recommendations %v", got, recommendationIDs)
 	}
 }
+
+func assertDownloadRandomCountError(t *testing.T, result *mcp.CallToolResult) {
+	t.Helper()
+	const wantText = "Error: count must be an integer from 1 to 20"
+	assertEmptyDownloadResult(t, result, "local_path", wantText)
+}
+
+func assertNoDownloadRandomDownstream(t *testing.T, probe *downloadRandomProbe) {
+	t.Helper()
+	if probe.openCalls != 0 || probe.recommendationCalls != 0 || probe.managerFactoryCalls != 0 || probe.downloads.downloadCalls != 0 || len(probe.downloads.downloadIDs) != 0 {
+		t.Fatalf("downstream calls: open=%d recommendation=%d manager_factory=%d downloads=%d download_ids=%v", probe.openCalls, probe.recommendationCalls, probe.managerFactoryCalls, probe.downloads.downloadCalls, probe.downloads.downloadIDs)
+	}
+}
+
+type downloadRandomProbe struct {
+	openCalls           int
+	recommendationCalls int
+	managerFactoryCalls int
+	downloads           *fakeDownloads
+}
+
+func newDownloadRandomProbeSession(t *testing.T, recommendationIDs []int64) (*mcp.ClientSession, func(), *downloadRandomProbe) {
+	t.Helper()
+	probe := &downloadRandomProbe{downloads: &fakeDownloads{}}
+	sdkClient := &fakeSDKClient{recommendedArtworks: func(context.Context, pixiv.RecommendedArtworksRequest, int) (sdk.Page[pixiv.Artwork], error) {
+		probe.recommendationCalls++
+		illusts := make([]pixiv.Artwork, len(recommendationIDs))
+		for i, id := range recommendationIDs {
+			illusts[i] = testSDKIllust(id, "recommended", 1)
+		}
+		return sdk.Page[pixiv.Artwork]{Items: illusts}, nil
+	}}
+	wireClient := openWireClient(t, sdkClient)
+	ports := pixivmcpserver.SDKPorts{
+		Open: func(pixivmcpserver.Account) (*pixiv.Client, error) {
+			probe.openCalls++
+			return wireClient, nil
+		},
+		Pooled: func(ctx context.Context, account pixivmcpserver.Account, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
+			_, err := attempt(ctx, wireClient)
+			return err
+		},
+	}
+	server := pixivmcpserver.NewWithSDKDownloadFactory(probe.downloads, func(*pixiv.Client) pixivmcpserver.DownloadManager {
+		probe.managerFactoryCalls++
+		return probe.downloads
+	}, ports, pixivmcpserver.Account{})
+	clientTransport, serverTransport := mcp.NewInMemoryTransports()
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() { _ = server.Run(ctx, serverTransport) }()
+	client := mcp.NewClient(&mcp.Implementation{Name: "test", Version: "1"}, nil)
+	session, err := client.Connect(ctx, clientTransport, nil)
+	if err != nil {
+		cancel()
+		t.Fatal(err)
+	}
+	return session, func() {
+		_ = session.Close()
+		cancel()
+	}, probe
+}

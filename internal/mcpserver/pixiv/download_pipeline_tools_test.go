@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	pixivmcpserver "github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv"
 	downloader "github.com/FlanChanXwO/pixiv-cli/internal/media/downloader"
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -330,4 +331,73 @@ func TestDownloadSchemaPublishesOnlyMappedOptions(t *testing.T) {
 			t.Fatalf("download schema publishes unmapped field %q: %s", field, raw)
 		}
 	}
+}
+
+func newSDKDownloadTestSession(t *testing.T, sdkClient *fakeSDKClient, downloads pixivmcpserver.DownloadManager) (*mcp.ClientSession, func()) {
+	t.Helper()
+	ports, _ := newTestSDKPorts(t, sdkClient)
+	server := pixivmcpserver.NewWithSDKDownloadFactory(downloads, func(*pixiv.Client) pixivmcpserver.DownloadManager { return downloads }, ports, pixivmcpserver.Account{})
+	clientTransport, serverTransport := mcp.NewInMemoryTransports()
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() { _ = server.Run(ctx, serverTransport) }()
+	client := mcp.NewClient(&mcp.Implementation{Name: "test", Version: "0.0.0"}, nil)
+	session, err := client.Connect(ctx, clientTransport, nil)
+	if err != nil {
+		cancel()
+		t.Fatalf("connect: %v", err)
+	}
+	return session, func() {
+		_ = session.Close()
+		cancel()
+	}
+}
+
+// downloadOut 是 download tool 的本地测试镜像，与生产 download 包的输出契约保持
+// 相同 JSON 字段；外部测试包不能直接使用未导出的 download.downloadOut。
+type downloadOut struct {
+	Delivery string               `json:"delivery"`
+	Items    []downloadItemOut    `json:"items"`
+	Failures []downloadFailureOut `json:"failures"`
+	Files    []downloadFileOut    `json:"files"`
+	Text     string               `json:"text"`
+}
+
+type downloadItemOut struct {
+	URL      string            `json:"url"`
+	IllustID int64             `json:"illust_id"`
+	Title    string            `json:"title"`
+	Author   string            `json:"author"`
+	Type     string            `json:"type"`
+	Files    []downloadFileOut `json:"files"`
+}
+
+type downloadFailureOut struct {
+	URL      string `json:"url"`
+	IllustID int64  `json:"illust_id"`
+	Type     string `json:"type"`
+	Message  string `json:"message"`
+}
+
+type downloadFileOut struct {
+	IllustID  int64  `json:"illust_id"`
+	Title     string `json:"title"`
+	Author    string `json:"author"`
+	Path      string `json:"path"`
+	FileURI   string `json:"file_uri"`
+	MIMEType  string `json:"mime_type"`
+	SizeBytes int64  `json:"size_bytes"`
+	Page      int    `json:"page,omitempty"`
+}
+
+func decodeDownloadOut(t *testing.T, result *mcp.CallToolResult) downloadOut {
+	t.Helper()
+	var out downloadOut
+	raw, err := json.Marshal(result.StructuredContent)
+	if err != nil {
+		t.Fatalf("marshal StructuredContent: %v", err)
+	}
+	if err := json.Unmarshal(raw, &out); err != nil {
+		t.Fatalf("unmarshal StructuredContent: %v", err)
+	}
+	return out
 }
