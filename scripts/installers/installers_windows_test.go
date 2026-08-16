@@ -25,14 +25,14 @@ func TestInstallCmdInstallsVerifiedLatestArchive(t *testing.T) {
 		t.Fatalf("install verified fixture %s: %v\n%s", assetName, err, output)
 	}
 	installed := filepath.Join(installDir, "pixiv.exe")
-	result, err := exec.Command(installed, "version", "--json").CombinedOutput()
+	result, err := exec.Command(installed, "--version").CombinedOutput()
 	if err != nil {
 		t.Fatalf("run installed fixture: %v\n%s", err, result)
 	}
-	if !strings.Contains(string(result), `"version":"v`+fixtureVersion+`"`) {
-		t.Fatalf("installed fixture returned unexpected version: %s", result)
+	if got, want := string(result), "pixiv v"+fixtureVersion+"\n"; got != want {
+		t.Fatalf("installed fixture returned version %q, want %q", got, want)
 	}
-	if !strings.Contains(string(output), "SHA-256 verified") || !strings.Contains(string(output), installed) {
+	if !strings.Contains(string(output), "SHA-256 verified") || !strings.Contains(string(output), installed) || !strings.Contains(string(output), "pixiv v"+fixtureVersion) {
 		t.Fatalf("installer did not report verification and destination:\n%s", output)
 	}
 }
@@ -56,6 +56,28 @@ func TestInstallCmdChecksumFailurePreservesExistingBinary(t *testing.T) {
 	}
 	if string(payload) != sentinel {
 		t.Fatalf("checksum failure changed existing binary: %q", payload)
+	}
+}
+
+func TestInstallCmdVersionPreflightFailurePreservesExistingBinary(t *testing.T) {
+	fixtureDir, _ := prepareWindowsFixtureWithVersion(t, false, "0.0.0")
+	fakeBin := prepareFakeCurlExe(t)
+	installDir := t.TempDir()
+	installed := filepath.Join(installDir, "pixiv.exe")
+	const sentinel = "existing-install-must-survive-version-preflight\r\n"
+	if err := os.WriteFile(installed, []byte(sentinel), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	if output, err := runInstallCmd(t, fakeBin, fixtureDir, installDir); err == nil {
+		t.Fatalf("version preflight mismatch unexpectedly succeeded:\n%s", output)
+	}
+	payload, err := os.ReadFile(installed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(payload) != sentinel {
+		t.Fatalf("version preflight failure changed existing binary: %q", payload)
 	}
 }
 
@@ -92,6 +114,10 @@ func requireNoWindowsInstallerTemporaryDirectory(t *testing.T, tempRoot string) 
 }
 
 func prepareWindowsFixture(t *testing.T, corruptChecksum bool) (string, string) {
+	return prepareWindowsFixtureWithVersion(t, corruptChecksum, fixtureVersion)
+}
+
+func prepareWindowsFixtureWithVersion(t *testing.T, corruptChecksum bool, binaryVersion string) (string, string) {
 	t.Helper()
 	targetArch := map[string]string{"amd64": "amd64", "arm64": "arm64"}[runtime.GOARCH]
 	if targetArch == "" {
@@ -105,8 +131,8 @@ import (
   "os"
 )
 func main() {
-  if len(os.Args) < 2 || os.Args[1] != "version" { os.Exit(64) }
-  fmt.Println("{\"version\":\"v`+fixtureVersion+`\"}")
+  if len(os.Args) < 2 || os.Args[1] != "--version" { os.Exit(64) }
+  fmt.Println("pixiv v`+binaryVersion+`")
 }
 `)
 

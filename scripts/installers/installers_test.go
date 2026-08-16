@@ -38,15 +38,32 @@ func TestInstallShInstallsVerifiedLatestArchive(t *testing.T) {
 	}
 
 	installed := filepath.Join(installDir, "pixiv")
-	result, err := exec.Command(installed, "version", "--json").CombinedOutput()
+	result, err := exec.Command(installed, "--version").CombinedOutput()
 	if err != nil {
 		t.Fatalf("run installed fixture: %v\n%s", err, result)
 	}
-	if !strings.Contains(string(result), `"version":"v`+fixtureVersion+`"`) {
-		t.Fatalf("installed fixture returned unexpected version: %s", result)
+	if got, want := string(result), "pixiv v"+fixtureVersion+"\n"; got != want {
+		t.Fatalf("installed fixture returned version %q, want %q", got, want)
 	}
-	if !strings.Contains(string(output), "SHA-256 verified") || !strings.Contains(string(output), installed) {
+	if !strings.Contains(string(output), "SHA-256 verified") || !strings.Contains(string(output), installed) || !strings.Contains(string(output), "pixiv v"+fixtureVersion+"\n") {
 		t.Fatalf("installer did not report verification and destination:\n%s", output)
+	}
+}
+
+func TestStandaloneInstallersUseRootVersionContract(t *testing.T) {
+	removedVersionJSON := "version " + "--json"
+	for _, script := range []string{"install.sh", "install.cmd"} {
+		payload, err := os.ReadFile(filepath.Join("..", script))
+		if err != nil {
+			t.Fatal(err)
+		}
+		content := string(payload)
+		if count := strings.Count(content, "--version"); count != 2 {
+			t.Errorf("%s --version invocation count = %d, want staged preflight and final report", script, count)
+		}
+		if strings.Contains(content, removedVersionJSON) {
+			t.Errorf("%s retains the removed version JSON contract", script)
+		}
 	}
 }
 
@@ -78,6 +95,37 @@ func TestInstallShChecksumFailurePreservesExistingBinary(t *testing.T) {
 	}
 	if string(payload) != sentinel {
 		t.Fatalf("checksum failure changed existing binary: %q", payload)
+	}
+}
+
+func TestInstallShVersionPreflightFailurePreservesExistingBinary(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX installer is exercised by Unix platform jobs")
+	}
+
+	fixtureDir, _ := prepareUnixFixtureWithVersion(t, false, "0.0.0")
+	fakeBin := prepareFakeCurl(t)
+	installDir := t.TempDir()
+	installed := filepath.Join(installDir, "pixiv")
+	const sentinel = "existing-install-must-survive-version-preflight\n"
+	if err := os.WriteFile(installed, []byte(sentinel), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	command := exec.Command("sh", filepath.Join("..", "install.sh"), "--install-dir", installDir, "--no-path")
+	command.Env = append(os.Environ(),
+		"PATH="+fakeBin+string(os.PathListSeparator)+os.Getenv("PATH"),
+		"PIXIV_INSTALLER_FIXTURES="+fixtureDir,
+	)
+	if output, err := command.CombinedOutput(); err == nil {
+		t.Fatalf("version preflight mismatch unexpectedly succeeded:\n%s", output)
+	}
+	payload, err := os.ReadFile(installed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(payload) != sentinel {
+		t.Fatalf("version preflight failure changed existing binary: %q", payload)
 	}
 }
 
@@ -408,6 +456,10 @@ func installCmdInvocation(script, installDir string) []string {
 }
 
 func prepareUnixFixture(t *testing.T, corruptChecksum bool) (string, string) {
+	return prepareUnixFixtureWithVersion(t, corruptChecksum, fixtureVersion)
+}
+
+func prepareUnixFixtureWithVersion(t *testing.T, corruptChecksum bool, binaryVersion string) (string, string) {
 	t.Helper()
 	targetOS := runtime.GOOS
 	if targetOS != "linux" && targetOS != "darwin" {
@@ -422,7 +474,7 @@ func prepareUnixFixture(t *testing.T, corruptChecksum bool) (string, string) {
 	assetName := fmt.Sprintf("pixiv-cli_%s_%s_%s.tar.gz", fixtureVersion, targetOS, targetArch)
 	assetPath := filepath.Join(directory, assetName)
 	writeTarGz(t, assetPath, map[string]string{
-		"pixiv": "#!/bin/sh\n[ \"${1:-}\" = version ] || exit 64\nprintf '{\"version\":\"v" + fixtureVersion + "\"}\\n'\n",
+		"pixiv": "#!/bin/sh\n[ \"${1:-}\" = --version ] || exit 64\nprintf 'pixiv v" + binaryVersion + "\\n'\n",
 	})
 	payload, err := os.ReadFile(assetPath)
 	if err != nil {

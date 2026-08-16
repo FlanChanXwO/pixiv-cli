@@ -72,6 +72,8 @@ for /f "tokens=1,2" %%A in ('findstr.exe /R /X /C:"[0-9a-f][0-9a-f]*  pixiv-cli_
 )
 if not defined ASSET (set "ERROR_MESSAGE=checksums.txt does not contain the Windows archive" & goto fatal)
 if defined DUPLICATE_ASSET (set "ERROR_MESSAGE=checksums.txt contains more than one Windows archive" & goto fatal)
+for /f "tokens=2 delims=_" %%V in ("%ASSET%") do set "RELEASE_VERSION=%%V"
+if not defined RELEASE_VERSION (set "ERROR_MESSAGE=release archive name does not contain a version" & goto fatal)
 if "%EXPECTED:~63,1%"=="" (set "ERROR_MESSAGE=release checksum is not a SHA-256 digest" & goto fatal)
 if not "%EXPECTED:~64,1%"=="" (set "ERROR_MESSAGE=release checksum is not a SHA-256 digest" & goto fatal)
 for %%F in ("%ASSET%") do if /I not "%%~nxF"=="%ASSET%" (set "ERROR_MESSAGE=release archive name must be a basename" & goto fatal)
@@ -99,7 +101,16 @@ if not exist "%INSTALL_DIR%" mkdir "%INSTALL_DIR%" >nul 2>&1
 if not exist "%INSTALL_DIR%" (set "ERROR_MESSAGE=cannot create the install directory" & goto fatal)
 set "STAGED=%INSTALL_DIR%\pixiv.new-%RANDOM%-%RANDOM%.exe"
 copy /Y "%EXTRACT_DIR%\pixiv.exe" "%STAGED%" >nul || (set "ERROR_MESSAGE=cannot stage the verified binary" & goto fatal)
-"%STAGED%" version --json >nul 2>&1 || (set "ERROR_MESSAGE=the staged binary failed its version preflight" & goto fatal)
+set "VERSION_OUTPUT=%WORK_DIR%\version.txt"
+"%STAGED%" --version >"%VERSION_OUTPUT%" 2>nul || (set "ERROR_MESSAGE=the staged binary failed its version preflight" & goto fatal)
+set "ACTUAL_VERSION="
+set /a VERSION_LINE_COUNT=0
+for /f "tokens=1,* delims=:" %%A in ('findstr.exe /N /R "^" "%VERSION_OUTPUT%"') do (
+  set /a VERSION_LINE_COUNT+=1
+  if "%%A"=="1" set "ACTUAL_VERSION=%%B"
+)
+if not "%VERSION_LINE_COUNT%"=="1" (set "ERROR_MESSAGE=the staged binary reported an unexpected version; the existing installation was not changed" & goto fatal)
+if not "%ACTUAL_VERSION%"=="pixiv v%RELEASE_VERSION%" (set "ERROR_MESSAGE=the staged binary reported an unexpected version; the existing installation was not changed" & goto fatal)
 move /Y "%STAGED%" "%INSTALL_DIR%\pixiv.exe" >nul || (set "ERROR_MESSAGE=cannot replace the installed binary" & goto fatal)
 set "STAGED="
 
@@ -111,7 +122,7 @@ if /I "%PATH_MODE%"=="add" call :add_user_path || goto fatal
 if /I "%PATH_MODE%"=="report" call :report_path
 
 echo Installed pixiv to %INSTALL_DIR%\pixiv.exe
-"%INSTALL_DIR%\pixiv.exe" version
+"%INSTALL_DIR%\pixiv.exe" --version
 call :cleanup
 exit /b 0
 
