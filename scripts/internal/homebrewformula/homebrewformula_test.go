@@ -1,9 +1,38 @@
 package homebrewformula
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
+
+func TestCheckedInTemplatesUseRootVersionContract(t *testing.T) {
+	t.Parallel()
+
+	templatesDir := filepath.Join("..", "..", "..", "templates", "homebrew")
+	for _, name := range []string{"pixiv-cli.rb.tmpl", "pixiv-cli-beta.rb.tmpl"} {
+		name := name
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			body, err := os.ReadFile(filepath.Join(templatesDir, name))
+			if err != nil {
+				t.Fatal(err)
+			}
+			content := string(body)
+			const rootVersionAssertion = `assert_equal "pixiv v#{version}\n", shell_output("#{bin}/pixiv --version")`
+			if !strings.Contains(content, rootVersionAssertion) {
+				t.Errorf("%s is missing root version assertion %q", name, rootVersionAssertion)
+			}
+			for _, removed := range []string{"pixiv version", "version --json", "JSON.parse"} {
+				if strings.Contains(content, removed) {
+					t.Errorf("%s retains removed version contract %q", name, removed)
+				}
+			}
+		})
+	}
+}
 
 func TestRenderFormulaFillsStablePlaceholders(t *testing.T) {
 	t.Parallel()
