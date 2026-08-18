@@ -5,7 +5,7 @@ import (
 	"path"
 	"strings"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/artwork"
+	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/artwork"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 )
 

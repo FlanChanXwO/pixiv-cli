@@ -1,6 +1,6 @@
 # MCP 工具
 
-[English](../en/mcp-tools.md) | 简体中文 | [文档索引](../index.md)
+[English](../en/mcp-tools.md) | 简体中文 | [文档索引](../index-zh-CN.md)
 
 通过 `pixiv mcp` 启动 Pixiv stdio MCP server。MCP 使用自身 runtime 的凭据选择，
 不接受 CLI 数据命令的账号覆盖；stdout 始终保留给 JSON-RPC。
@@ -115,12 +115,9 @@ application outcome 的 `filter` 会报告 `min`、`max`、`membership`、`strat
 写操作只包含作品收藏和用户关注 mutation。提交后状态未知时不会换账号重放；失败写操作返回
 `success=false`、`isError=true` 和安全诊断。
 
-## 认证、fallback 与 debug
+## 认证与 fallback
 
 Pixiv 读写要求配置好的 App API access path。不存在匿名或 Web fallback，App API 错误即为最终错误。若配置仍含已移除的
 `web_fallback_enabled`，会返回 `removed_setting`。
-
-`pixiv --debug mcp` 只向 stderr 写安全的生命周期、网络、下载和失败诊断，不改变 tool schema、structured error 或 stdout。
-不会输出 raw URL query、Cookie、token、proxy userinfo 或 response body。
 
 FANBOX 使用独立 MCP server，不共享 Pixiv 凭据、代理设置、tool 或 route。

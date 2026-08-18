@@ -12,7 +12,7 @@ on:
       - 'go.mod'
       - 'go.sum'
       - 'internal/browsercookies/**'
-      - 'scripts/browsernativeevidence/**'
+      - 'scripts/cmd/browsernativeevidence/**'
       - 'scripts/internal/browsernativeevidence/**'
   workflow_dispatch: {}
 
@@ -55,7 +55,7 @@ jobs:
           go-version: '1.26.3'
       - name: Check browser evidence workflow policy
         shell: bash
-        run: go run ./scripts/browsernativeevidence policy --workflow .github/workflows/browser-evidence.yml
+        run: go run ./scripts/cmd/browsernativeevidence policy --workflow .github/workflows/browser-evidence.yml
       - name: Require SQLite CLI for browser database contracts
         shell: bash
         run: |
@@ -117,7 +117,7 @@ jobs:
           go-version: '1.26.3'
       - name: Check browser evidence workflow policy
         shell: bash
-        run: go run ./scripts/browsernativeevidence policy --workflow .github/workflows/browser-evidence.yml
+        run: go run ./scripts/cmd/browsernativeevidence policy --workflow .github/workflows/browser-evidence.yml
       - name: Require SQLite CLI for Firefox database contract
         shell: bash
         run: |
@@ -207,11 +207,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          go run ./scripts/browsernativeevidence firefox-contract --firefox "$FIREFOX_BINARY"
+          go run ./scripts/cmd/browsernativeevidence firefox-contract --firefox "$FIREFOX_BINARY"
       - name: Run the temporary Firefox provider contract on Windows
         if: runner.os == 'Windows'
         shell: pwsh
-        run: go run ./scripts/browsernativeevidence firefox-contract --firefox "$env:FIREFOX_BINARY"
+        run: go run ./scripts/cmd/browsernativeevidence firefox-contract --firefox "$env:FIREFOX_BINARY"
       - name: Remove Firefox package and installation on Unix
         if: always() && runner.os != 'Windows'
         shell: bash

@@ -4,17 +4,10 @@ on:
   push:
     tags:
       - 'v[0-9]*'
-  workflow_dispatch:
-    inputs:
-      release_tag:
-        description: Existing immutable SemVer tag to recover
-        required: true
-        type: string
 
-# push 与手工恢复只允许在这里选择发布 tag；其余版本、checkout、Release 与 Formula
-# 全部绑定此值，禁止 workflow_dispatch 的 main ref 混入生产产物。
+# 版本、checkout、Release 与 Formula 全部绑定触发 workflow 的 immutable tag。
 env:
-  RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
+  RELEASE_TAG: ${{ github.ref_name }}
 
 # 令每个 job 显式声明自己所需的最小 token 权限。
 permissions: {}
@@ -36,7 +29,7 @@ jobs:
           go-version: '1.26.3'
       - name: Validate release SemVer
         shell: bash
-        run: go run ./scripts/releaseassets validate --version "${RELEASE_TAG#v}"
+        run: go run ./scripts/cmd/releaseassets validate --version "${RELEASE_TAG#v}"
       - name: Verify the exact immutable release tag
         shell: bash
         env:
@@ -48,14 +41,11 @@ jobs:
             v[0-9]*) ;;
             *) printf '%s\n' 'release tag must start with v and a digit' >&2; exit 1 ;;
           esac
-          if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then
-            test "$GITHUB_REF" = "refs/heads/$DEFAULT_BRANCH"
-          fi
           git show-ref --verify --quiet "refs/tags/$RELEASE_TAG"
           tag_commit=$(git rev-parse "$RELEASE_TAG^{commit}")
           tag_skill="$RUNNER_TEMP/pixiv-cli-SKILL.md"
           git show "$RELEASE_TAG:skills/pixiv-cli/SKILL.md" > "$tag_skill"
-          go run ./scripts/releaseassets validate-source --version "${RELEASE_TAG#v}" --product-skill "$tag_skill"
+          go run ./scripts/cmd/releaseassets validate-source --version "${RELEASE_TAG#v}" --product-skill "$tag_skill"
           git show-ref --verify --quiet "refs/remotes/origin/$DEFAULT_BRANCH"
           git merge-base --is-ancestor "$tag_commit" "origin/$DEFAULT_BRANCH"
           set +e
@@ -69,7 +59,7 @@ jobs:
           printf '%s\n' "$response" | grep -Eq 'HTTP/[0-9.]+ 404|HTTP 404'
       - name: Statically check release workflow policy
         shell: bash
-        run: sh scripts/test-release-workflow.sh
+        run: go run ./scripts/cmd/releaseworkflow --workflow .github/workflows/release.yml
 
   e2e:
     name: SDK E2E contract gate
@@ -166,10 +156,10 @@ jobs:
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
         with:
           go-version: '1.26.3'
-      # 恢复 run 的 workflow 定义来自默认分支，但版本、CHANGELOG 与 Release notes 必须来自不可变 tag。
+      # 质量门从不可变 tag 读取 workflow、版本、CHANGELOG 与 Release notes。
       - name: Validate the exact immutable release source
         shell: bash
-        run: go run ./scripts/releaseassets validate-source --version "${RELEASE_TAG#v}" --product-skill skills/pixiv-cli/SKILL.md
+        run: go run ./scripts/cmd/releaseassets validate-source --version "${RELEASE_TAG#v}" --product-skill skills/pixiv-cli/SKILL.md
       - name: Install the pinned native Rust toolchain
         shell: bash
         run: rustup toolchain install '${{ matrix.rust_toolchain }}' --profile minimal --component 'clippy,rustfmt' --target '${{ matrix.rust_target }}' --no-self-update
@@ -184,57 +174,6 @@ jobs:
         shell: bash
         working-directory: internal/media/ugoira/rust
         run: cargo clippy --locked --offline --all-targets -- -D warnings
-      - name: Apply the audited test-only recovery overlay
-        if: github.event_name == 'workflow_dispatch'
-        shell: bash
-        run: |
-          set -euo pipefail
-          test -z "$(git status --porcelain=v1 --untracked-files=all)"
-          test -z "$(git diff --cached --name-only)"
-          recovery_overlay_paths=(
-            .github/workflows/release.yml
-            scripts/installers/installers_test.go
-            scripts/internal/releasecontract/releasecontract.go
-            scripts/internal/workflow/yaml/yaml.go
-            scripts/internal/releaseworkflow/build_policy.go
-            scripts/internal/releaseworkflow/build_recovery_test.go
-            scripts/internal/releaseworkflow/e2e_policy.go
-            scripts/internal/releaseworkflow/e2e_policy_test.go
-            scripts/internal/releaseworkflow/homebrew_policy.go
-            scripts/internal/releaseworkflow/homebrew_policy_test.go
-            scripts/releaseworkflow/main.go
-            scripts/releaseworkflow/main_test.go
-            scripts/internal/releaseworkflow/publish_policy.go
-            scripts/internal/releaseworkflow/publish_security_test.go
-            scripts/internal/releaseworkflow/release_notes_policy.go
-            scripts/internal/releaseworkflow/release_notes_policy_test.go
-            scripts/internal/releaseworkflow/recovery_policy.go
-            scripts/internal/releaseworkflow/test_helpers_test.go
-            scripts/internal/releaseworkflow/workflow_policy.go
-            scripts/internal/releaseworkflow/workflow_policy_test.go
-          )
-          git archive --format=tar "$GITHUB_SHA" -- "${recovery_overlay_paths[@]}" | tar -xf -
-          actual_overlay_paths="$(
-            {
-              git diff --name-only
-              git ls-files --others --exclude-standard
-            } | LC_ALL=C sort -u
-          )"
-          test -n "$actual_overlay_paths"
-          while IFS= read -r path; do
-            overlay_path_allowed=false
-            for allowed_path in "${recovery_overlay_paths[@]}"; do
-              if [ "$path" = "$allowed_path" ]; then
-                overlay_path_allowed=true
-                break
-              fi
-            done
-            if [ "$overlay_path_allowed" != true ]; then
-              printf 'unexpected recovery overlay path: %s\n' "$path" >&2
-              exit 1
-            fi
-          done <<< "$actual_overlay_paths"
-          test -z "$(git diff --cached --name-only)"
       - name: Test Go sources
         shell: bash
         run: go test ./...
@@ -248,7 +187,7 @@ jobs:
         run: go vet ./...
       - name: Audit bundled licenses
         shell: bash
-        run: go run ./scripts/licensebundle --check
+        run: go run ./scripts/cmd/licensebundle --check
       - name: Test release packages
         shell: bash
         run: sh scripts/test-package-release.sh
@@ -259,8 +198,7 @@ jobs:
         shell: bash
         run: python -m pre_commit run --all-files
 
-  # recovery overlay 仅存在于 build test gate。生产资产必须在新的 runner 上从不可变 tag 重建，
-  # 使测试进程对 GITHUB_ENV、PATH 或 runner 临时目录的副作用无法跨 job 影响 Release。
+  # 生产资产在独立 runner 上从 immutable tag 重建，避免测试进程的副作用影响 Release。
   build_production:
     name: Build production ${{ matrix.goos }}/${{ matrix.goarch }}
     needs: build
@@ -329,7 +267,7 @@ jobs:
           cache: false
       - name: Validate the exact immutable production source
         shell: bash
-        run: go run ./scripts/releaseassets validate-source --version "${RELEASE_TAG#v}" --product-skill skills/pixiv-cli/SKILL.md
+        run: go run ./scripts/cmd/releaseassets validate-source --version "${RELEASE_TAG#v}" --product-skill skills/pixiv-cli/SKILL.md
       - name: Install the pinned native Rust toolchain
         shell: bash
         run: rustup toolchain install '${{ matrix.rust_toolchain }}' --profile minimal --target '${{ matrix.rust_target }}' --no-self-update
@@ -358,15 +296,15 @@ jobs:
             output='dist/pixiv.exe'
           fi
           go build -trimpath -buildvcs=false \
-            -ldflags "-X github.com/FlanChanXwO/pixiv-cli/internal/buildinfo.Version=${RELEASE_TAG} -X github.com/FlanChanXwO/pixiv-cli/internal/buildinfo.Commit=$(git rev-parse HEAD) -X github.com/FlanChanXwO/pixiv-cli/internal/buildinfo.BuildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            -ldflags "-X github.com/FlanChanXwO/pixiv-cli/internal/shared/buildinfo.Version=${RELEASE_TAG}" \
             -o "$output" ./cmd/pixiv
           if [ '${{ matrix.goos }}' = linux ]; then
-            go run ./scripts/linuxabi --binary "$output"
+            go run ./scripts/cmd/linuxabi --binary "$output"
           fi
       - name: Package the fixed-name platform asset
         shell: bash
         run: |
-          go run ./scripts/releaseassets package \
+          go run ./scripts/cmd/releaseassets package \
             --repo-root . \
             --version "${RELEASE_TAG#v}" \
             --target '${{ matrix.goos }}/${{ matrix.goarch }}' \
@@ -396,7 +334,7 @@ jobs:
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
         with:
           go-version: '1.26.3'
-      - name: Audit release-note sources and validate the bilingual tag notes
+      - name: Audit release sources and validate the bilingual tag notes
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
@@ -405,12 +343,12 @@ jobs:
           previous_tag=$(git tag --merged "$RELEASE_TAG^" --sort=-version:refname | head -n 1)
           test -n "$previous_tag"
           audit_report="$RUNNER_TEMP/release-notes-audit.json"
-          go run ./scripts/releasenotes audit \
+          go run ./scripts/cmd/releasenotes audit \
             --repo "$GITHUB_REPOSITORY" \
             --from "$previous_tag" \
             --to "$RELEASE_TAG" \
             --output "$audit_report"
-          go run ./scripts/releasenotes validate \
+          go run ./scripts/cmd/releasenotes validate \
             --version "${RELEASE_TAG#v}" \
             --dir "changelog/$RELEASE_TAG" \
             --previous "$previous_tag" \
@@ -495,7 +433,7 @@ jobs:
           test -n "$RELEASE_SIGNING_PRIVATE_KEY"
           test -n "$RELEASE_SIGNING_KEY_ID"
           printf '%s' "$RELEASE_SIGNING_PRIVATE_KEY" > "$key_path"
-          go run ./scripts/releaseassets finalize \
+          go run ./scripts/cmd/releaseassets finalize \
             --version "${RELEASE_TAG#v}" \
             --input-dir dist \
             --output-dir release \
@@ -513,7 +451,7 @@ jobs:
         run: |
           set -eu
           prerelease=()
-          case "$(go run ./scripts/releaseassets channel --version "${RELEASE_TAG#v}")" in
+          case "$(go run ./scripts/cmd/releaseassets channel --version "${RELEASE_TAG#v}")" in
             stable)
               ;;
             prerelease)
@@ -576,7 +514,7 @@ jobs:
         run: |
           set -eu
           version="${RELEASE_TAG#v}"
-          case "$(go run ./scripts/releaseassets channel --version "$version")" in
+          case "$(go run ./scripts/cmd/releaseassets channel --version "$version")" in
             stable)
               formula_name=pixiv-cli
               ;;
@@ -589,7 +527,7 @@ jobs:
               ;;
           esac
           mkdir -p staging-formula
-          go run ./scripts/homebrewformula render \
+          go run ./scripts/cmd/homebrewformula render \
             --formula "$formula_name" \
             --version "$version" \
             --checksums verified-release/checksums.txt \
@@ -661,7 +599,7 @@ jobs:
                 brew tap-new "$staging_tap" --no-git
                 cp "/staging-formula/$formula_name.rb" "$tap_dir/Formula/$formula_name.rb"
                 brew install --formula "$staging_tap/$formula_name"
-                pixiv version --json | brew ruby -rjson -e "actual = JSON.parse(STDIN.read).fetch(\"version\"); expected = ARGV.fetch(0); abort(\"version #{actual.inspect} != #{expected.inspect}\") unless actual == expected" "$RELEASE_TAG"
+                test "$(pixiv --version)" = "pixiv $RELEASE_TAG"
               '
           else
             staging_tap=pixiv-cli-release/staging
@@ -670,7 +608,7 @@ jobs:
             brew trust --tap "$staging_tap"
             cp "staging-formula/$formula_name.rb" "$tap_dir/Formula/$formula_name.rb"
             brew install --formula "$staging_tap/$formula_name"
-            pixiv version --json | python3 -c 'import json, sys; actual = json.load(sys.stdin)["version"]; expected = sys.argv[1]; assert actual == expected, f"version {actual!r} != {expected!r}"' "$RELEASE_TAG"
+            test "$(pixiv --version)" = "pixiv $RELEASE_TAG"
           fi
 
   deploy_homebrew_tap:

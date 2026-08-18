@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 
+	record "github.com/FlanChanXwO/pixiv-cli/internal/shared/record"
 	"github.com/FlanChanXwO/pixiv-cli/internal/utils/parse"
 )
 
@@ -53,7 +54,7 @@ func FatalRecordPipeline(err error) error { return &fatalRecordPipelineError{err
 
 // consumeNDJSONRecords 逐行解析 NDJSON 并顺序处理记录。它不使用 Scanner，避免
 // 合法的大记录受隐藏 token 限制；每次回调结束后才读取下一行，以便取消后不启动新任务。
-func ConsumeNDJSONRecords(ctx context.Context, in io.Reader, errOut io.Writer, operation string, failFast bool, consume func(context.Context, Record) error) error {
+func ConsumeNDJSONRecords(ctx context.Context, in io.Reader, errOut io.Writer, operation string, failFast bool, consume func(context.Context, record.Record) error) error {
 	reader := bufio.NewReader(in)
 	lineNumber := int64(0)
 	failed := false
@@ -70,7 +71,7 @@ func ConsumeNDJSONRecords(ctx context.Context, in io.Reader, errOut io.Writer, o
 		}
 		if len(line) > 0 {
 			lineNumber++
-			record, recordErr := ParseRecordJSON(bytes.TrimSpace(line))
+			parsedRecord, recordErr := record.ParseRecordJSON(bytes.TrimSpace(line))
 			if recordErr != nil {
 				failed = true
 				if err := writeRecordDiagnostic(errOut, operation, lineNumber, line, "invalid_record", recordErr); err != nil {
@@ -79,7 +80,7 @@ func ConsumeNDJSONRecords(ctx context.Context, in io.Reader, errOut io.Writer, o
 				if failFast {
 					return &PipelineDiagnosticError{}
 				}
-			} else if err := consume(ctx, record); err != nil {
+			} else if err := consume(ctx, parsedRecord); err != nil {
 				if ctxErr := ctx.Err(); ctxErr != nil {
 					return ctxErr
 				}
@@ -154,8 +155,8 @@ func diagnosticRecordIdentity(line []byte) (string, string) {
 	return id, typ
 }
 
-func RequiredRecordID(record Record) (int64, error) {
-	id, err := parse.PositiveInt64(record.ID(), "record id")
+func RequiredRecordID(value record.Record) (int64, error) {
+	id, err := parse.PositiveInt64(value.ID(), "record id")
 	if err != nil {
 		return 0, fmt.Errorf("record id must be a positive integer: %w", err)
 	}

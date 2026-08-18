@@ -8,6 +8,8 @@ var semanticVersionPattern = regexp.MustCompile(`^(0|[1-9][0-9]*)\.(0|[1-9][0-9]
 
 var gitCommitPattern = regexp.MustCompile(`^[0-9a-f]{40}$`)
 
+const evidenceSchemaVersion = 2
+
 type nativeTarget struct {
 	goos       string
 	goarch     string
@@ -25,21 +27,24 @@ var nativeTargets = map[string]nativeTarget{
 }
 
 type recordOptions struct {
-	repoRoot   string
-	version    string
-	target     string
-	rustTarget string
-	staticlib  string
-	binary     string
-	archive    string
-	output     string
+	repoRoot     string
+	version      string
+	sourceCommit string
+	target       string
+	rustTarget   string
+	staticlib    string
+	binary       string
+	archive      string
+	output       string
 }
 
 // evidenceRecord 是单个真实 runner 输出的可迁移审计记录。测试可构造 fixture 验证格式，
 // 但只有 workflow 产生、绑定 main SHA 的记录才是 Task 33 所要求的 native evidence。
 type evidenceRecord struct {
-	Schema       int             `json:"schema"`
-	Target       evidenceTarget  `json:"target"`
+	Schema int            `json:"schema"`
+	Target evidenceTarget `json:"target"`
+	// SourceCommit 由 workflow 上下文提供，不再从 binary runtime 元数据推断。
+	SourceCommit string          `json:"source_commit"`
 	SourceDigest string          `json:"source_digest"`
 	Staticlib    evidenceFile    `json:"staticlib"`
 	Binary       evidenceBinary  `json:"binary"`
@@ -59,9 +64,7 @@ type evidenceFile struct {
 
 type evidenceBinary struct {
 	evidenceFile
-	Version   string `json:"version"`
-	Commit    string `json:"commit"`
-	BuildDate string `json:"build_date"`
+	Version string `json:"version"`
 }
 
 type evidenceArchive struct {

@@ -4,8 +4,8 @@ import (
 	"errors"
 	"time"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/novel"
-	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/user"
+	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/novel"
+	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/user"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 )
 

@@ -132,8 +132,17 @@ func verifyEvidenceLocations(locations []evidenceLocation, repoRoot, sourceDiges
 	seen := make(map[string]struct{}, len(locations))
 	for _, location := range locations {
 		record := location.record
-		if record.Schema != 1 || record.SourceDigest != sourceDigest {
+		if record.Schema != evidenceSchemaVersion {
+			return fmt.Errorf("evidence record for %s/%s uses unsupported schema %d", record.Target.GOOS, record.Target.GOARCH, record.Schema)
+		}
+		if record.SourceDigest != sourceDigest {
 			return errors.New("evidence record source digest does not match the audited repository")
+		}
+		if !gitCommitPattern.MatchString(record.SourceCommit) {
+			return fmt.Errorf("source metadata for %s is incomplete", record.Target.GOOS+"/"+record.Target.GOARCH)
+		}
+		if record.SourceCommit != expectedCommit {
+			return fmt.Errorf("source metadata for %s does not match the expected workflow run", record.Target.GOOS+"/"+record.Target.GOARCH)
 		}
 		platform := record.Target.GOOS + "/" + record.Target.GOARCH
 		target, ok := nativeTargets[platform]
@@ -154,11 +163,11 @@ func verifyEvidenceLocations(locations []evidenceLocation, repoRoot, sourceDiges
 		if err := verifyRecordedArtifact(location.dir, record.Binary.evidenceFile, binaryName); err != nil {
 			return fmt.Errorf("validate binary for %s: %w", platform, err)
 		}
-		if !strings.HasPrefix(record.Binary.Version, "v") || !semanticVersionPattern.MatchString(strings.TrimPrefix(record.Binary.Version, "v")) || strings.TrimSpace(record.Binary.Commit) == "" || strings.TrimSpace(record.Binary.BuildDate) == "" {
-			return fmt.Errorf("binary metadata for %s is incomplete", platform)
+		if !strings.HasPrefix(record.Binary.Version, "v") || !semanticVersionPattern.MatchString(strings.TrimPrefix(record.Binary.Version, "v")) {
+			return fmt.Errorf("binary version for %s is invalid", platform)
 		}
-		if record.Binary.Version != expectedVersion || record.Binary.Commit != expectedCommit {
-			return fmt.Errorf("binary metadata for %s does not match the expected workflow run", platform)
+		if record.Binary.Version != expectedVersion {
+			return fmt.Errorf("binary version for %s does not match the expected workflow run", platform)
 		}
 		if err := verifyRecordedArtifact(location.dir, record.Archive.evidenceFile, expectedArchiveName(strings.TrimPrefix(record.Binary.Version, "v"), target)); err != nil {
 			return fmt.Errorf("validate archive for %s: %w", platform, err)

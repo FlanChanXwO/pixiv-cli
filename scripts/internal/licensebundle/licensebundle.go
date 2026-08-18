@@ -72,7 +72,7 @@ type options struct {
 	Repository string
 }
 
-// Run 是 scripts/licensebundle 的入口 owner：解析参数并委托给许可证生成逻辑。
+// Run 是 scripts/cmd/licensebundle 的入口 owner：解析参数并委托给许可证生成逻辑。
 func Run(args []string) error {
 	return run(args)
 }
@@ -564,7 +564,7 @@ func renderIndex(bundle []bundledPackage, indexPath, licensesDir string) string 
 	}
 	var out strings.Builder
 	out.WriteString("# Third-party licenses\n\n")
-	out.WriteString("本文件由 `go run ./scripts/licensebundle` 根据 `Cargo.lock` 与六个 Rust release target 的 `cargo metadata --locked --offline` 并集生成。发布包必须携带本索引和完整许可证正文目录；不要手工编辑。\n")
+	out.WriteString("本文件由 `go run ./scripts/cmd/licensebundle` 根据 `Cargo.lock` 与六个 Rust release target 的 `cargo metadata --locked --offline` 并集生成。发布包必须携带本索引和完整许可证正文目录；不要手工编辑。\n")
 	out.WriteString("\n## Six-target release dependency union\n")
 	for _, pkg := range bundle {
 		out.WriteString("\n### " + pkg.Package.Name + " " + pkg.Package.Version + "\n\n")

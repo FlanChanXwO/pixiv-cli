@@ -28,7 +28,6 @@
 - **直达 Pixiv 引用**——可把受支持作品 URL 直接粘贴给详情或下载；已认证的作者主页/作品页 URL 会展开为该作者的视觉作品。
 - **本地多账号 OAuth**——支持浏览器登录、账号选择、refresh token rotation 和可选的跨机器 callback relay。
 - **适合自动化**——typed SDK error、JSON 输出、纯净 MCP stdio、签名更新和完整结果报告。
-- **显式诊断**——使用 `--debug` 可将路由、challenge 恢复、账号池和下载事件安全地实时写入 stderr；不创建日志文件。
 
 ## 安装
 
@@ -57,7 +56,7 @@ binary，并在修改 PATH 前完成用户级安装。可用 `--no-path` 保持 
 把下面这一段 prompt 复制给能够操作本机终端的 Codex、Claude Code、Cursor 或其他 AI Agent：
 
 ```text
-请为这台机器安装 https://github.com/FlanChanXwO/pixiv-cli 的最新 stable 版本：先审阅仓库中的 scripts/install.sh 或 scripts/install.cmd，再根据检测到的操作系统与架构选择对应脚本（Windows 必须使用 cmd.exe，禁止调用 PowerShell），只下载官方 GitHub Release 资产，只有发布的 SHA-256 校验通过后才能替换文件，使用无需管理员或 root 权限的用户级目录，只把选定安装目录加入用户 PATH，缺少任何前置工具时先征求同意，绝不读取或输出 Pixiv 凭据，最后运行 pixiv version 验证，并报告安装版本及全部文件和 PATH 变更。
+请为这台机器安装 https://github.com/FlanChanXwO/pixiv-cli 的最新 stable 版本：先审阅仓库中的 scripts/install.sh 或 scripts/install.cmd，再根据检测到的操作系统与架构选择对应脚本（Windows 必须使用 cmd.exe，禁止调用 PowerShell），只下载官方 GitHub Release 资产，只有发布的 SHA-256 校验通过后才能替换文件，使用无需管理员或 root 权限的用户级目录，只把选定安装目录加入用户 PATH，缺少任何前置工具时先征求同意，绝不读取或输出 Pixiv 凭据，最后运行 pixiv --version 验证，并报告安装版本及全部文件和 PATH 变更。
 
 同时安装与该 stable 发布 tag 完全一致的 `pixiv-cli` Skill（不要跟随 main）：把该 tag 下的完整 skills/pixiv-cli/ 目录安装到用户确认的 Agent skills 目录。不要猜测 skills 路径，也不要用 main 上的 skill 内容。
 ```
@@ -147,16 +146,12 @@ pixiv timeline latest --type illust --limit 10 --json
 
 ### MCP
 
-诊断默认关闭；显式启用后只将安全事件写入 stderr，MCP stdout 仍为 JSON-RPC。
-
 显式启动 stdio server。stdout 只用于 JSON-RPC；tool 运行失败会以 `isError=true` 的 structured result 返回。默认不创建项目级或每日日志文件。
 
 ```bash
 pixiv mcp
-# 可选的安全诊断写入 stderr，不改变 MCP stdout。
-pixiv --debug mcp
 # FANBOX tools 使用独立的 runtime credential 选择。
-pixiv --debug fanbox mcp
+pixiv fanbox mcp
 ```
 
 [MCP tool 契约](docs/zh-CN/mcp-tools.md)记录了 tools、参数、structured output 和认证行为。
@@ -220,8 +215,8 @@ pixiv auth check
 | [CLI 参考手册](docs/zh-CN/cli-reference.md) | 命令、flag、认证、配置、fallback、下载和更新 |
 | [Go SDK](docs/zh-CN/sdk.md) | Public client、模型、分页、资源和 typed error |
 | [MCP tools](docs/zh-CN/mcp-tools.md) | Tool schema 与输出语义 |
-| [架构](docs/maintainers/architecture.md) | 包边界和运行流程 |
-| [开发流程](docs/maintainers/development.md) | 工具链、测试、构建和发布 |
+| [架构](docs/zh-CN/maintainers/architecture.md) | 包边界和运行流程 |
+| [开发流程](docs/zh-CN/maintainers/development.md) | 工具链、测试、构建和发布 |
 | [更新日志](changelog/README.zh-CN.md) | 用户可感知变化 |
 
 ## 参与贡献

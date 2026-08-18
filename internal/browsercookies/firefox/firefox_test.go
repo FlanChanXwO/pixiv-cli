@@ -4,14 +4,15 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+
+	"github.com/FlanChanXwO/pixiv-cli/internal/browsercookies"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	_ "modernc.org/sqlite"
-
-	"github.com/FlanChanXwO/pixiv-cli/internal/browsercookies"
 )
 
 func skipIfNoSQLite3(t *testing.T) {
@@ -100,7 +101,7 @@ func TestDiscoverNotInstalled(t *testing.T) {
 	if _, err := p.DiscoverProfiles(context.Background()); !errors.Is(err, browsercookies.ErrNotInstalled) {
 		t.Fatalf("err = %v, want ErrNotInstalled", err)
 	}
-	// 有 profiles.ini 但没有任何含 cookies.sqlite 的 profile → 未安装。
+
 	root := t.TempDir()
 	if err := os.WriteFile(filepath.Join(root, profilesIni), []byte("[Profile0]\nPath=ghost\n"), 0o600); err != nil {
 		t.Fatal(err)
@@ -137,7 +138,6 @@ func TestReadEncryptedClassified(t *testing.T) {
 	root := t.TempDir()
 	writeProfiles(t, root, "[Profile0]\nName=default\nPath=default-release\n", "default-release")
 
-	// 二进制值（非 UTF-8）→ 加密分类。
 	fixture := buildMozFixture(t,
 		`INSERT INTO moz_cookies (name, value, host, path) VALUES ('FANBOXSESSID', X'8F8F8F8F8F', '.fanbox.cc', '/');`,
 	)
@@ -163,5 +163,28 @@ func TestReadInvalidInputs(t *testing.T) {
 	}
 	if _, err := p.Read(context.Background(), browsercookies.DefaultQuery, "unknown-profile"); !errors.Is(err, browsercookies.ErrProfileNotFound) {
 		t.Fatalf("unknown profile err = %v", err)
+	}
+}
+func TestFirefoxDataRootMatchesSupportedPlatformLayout(t *testing.T) {
+	home := filepath.FromSlash("/fixture-home")
+	switch runtime.GOOS {
+	case "darwin":
+		if got := firefoxDataRoot(home); got != filepath.Join(home, "Library", "Application Support", "Firefox") {
+			t.Fatalf("Firefox root = %q", got)
+		}
+	case "linux":
+		configHome := filepath.Join(home, "xdg-config")
+		t.Setenv("XDG_CONFIG_HOME", configHome)
+		if got := firefoxDataRoot(home); got != filepath.Join(configHome, "mozilla", "firefox") {
+			t.Fatalf("Firefox root = %q", got)
+		}
+	case "windows":
+		if got := firefoxDataRoot(home); got != filepath.Join(home, "AppData", "Roaming", "Mozilla", "Firefox") {
+			t.Fatalf("Firefox root = %q", got)
+		}
+	default:
+		if got := firefoxDataRoot(home); got != "" {
+			t.Fatalf("unsupported-platform Firefox root = %q, want empty", got)
+		}
 	}
 }

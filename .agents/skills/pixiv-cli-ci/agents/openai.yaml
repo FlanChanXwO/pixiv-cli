@@ -1,0 +1,4 @@
+interface:
+  display_name: "pixiv-cli CI"
+  short_description: "Diagnose and verify pixiv-cli CI runs"
+  default_prompt: "Use $pixiv-cli-ci to diagnose a failing pixiv-cli workflow."

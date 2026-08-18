@@ -9,11 +9,11 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/artwork"
-	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/novel"
+	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/artwork"
+	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/novel"
+	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/user"
 	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/protocol"
 	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/resource"
-	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/user"
 	atomicfile "github.com/FlanChanXwO/pixiv-cli/internal/storage/file/atomic"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 )

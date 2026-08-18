@@ -13,11 +13,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/diagnostics"
 	"github.com/FlanChanXwO/pixiv-cli/internal/media/downloader/filename"
 	"github.com/FlanChanXwO/pixiv-cli/internal/media/downloader/parallel"
 	sharedugoira "github.com/FlanChanXwO/pixiv-cli/internal/media/ugoira"
-	"github.com/FlanChanXwO/pixiv-cli/internal/pagination"
+	"github.com/FlanChanXwO/pixiv-cli/internal/shared/diagnostics"
+	"github.com/FlanChanXwO/pixiv-cli/internal/shared/pagination"
 	"github.com/FlanChanXwO/pixiv-cli/internal/utils/text"
 	uriutil "github.com/FlanChanXwO/pixiv-cli/internal/utils/uri"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"

@@ -32,7 +32,7 @@ func run(arguments []string) error {
 	return runRender(arguments[1:])
 }
 
-// Run 是 scripts/homebrewformula 的入口 owner：解析参数并委托给 render 逻辑。
+// Run 是 scripts/cmd/homebrewformula 的入口 owner：解析参数并委托给 render 逻辑。
 func Run(args []string) error {
 	return run(args)
 }

@@ -1,6 +1,6 @@
 # Third-party licenses
 
-本文件由 `go run ./scripts/licensebundle` 根据 `Cargo.lock` 与六个 Rust release target 的 `cargo metadata --locked --offline` 并集生成。发布包必须携带本索引和完整许可证正文目录；不要手工编辑。
+本文件由 `go run ./scripts/cmd/licensebundle` 根据 `Cargo.lock` 与六个 Rust release target 的 `cargo metadata --locked --offline` 并集生成。发布包必须携带本索引和完整许可证正文目录；不要手工编辑。
 
 ## Six-target release dependency union
 

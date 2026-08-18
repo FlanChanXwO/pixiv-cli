@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"path/filepath"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/platform/localstate"
+	"github.com/FlanChanXwO/pixiv-cli/internal/config/paths"
 	"github.com/FlanChanXwO/pixiv-cli/internal/update/installer"
 	"github.com/FlanChanXwO/pixiv-cli/internal/update/process"
 	"github.com/FlanChanXwO/pixiv-cli/internal/update/release"
@@ -67,7 +67,7 @@ func NewGitHubReleaseClient(options ReleaseClientOptions) (*GitHubReleaseClient,
 	if options.Cache == nil {
 		cacheDir := options.CacheDir
 		if cacheDir == "" {
-			appDataDir, err := localstate.UserDataSubdir(localstate.AppDataDirName)
+			appDataDir, err := paths.UserDataSubdir(paths.AppDataDirName)
 			if err != nil {
 				return nil, fmt.Errorf("determine application data directory: %w", err)
 			}

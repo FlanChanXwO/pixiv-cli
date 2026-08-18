@@ -4,14 +4,14 @@ import (
 	"context"
 	"net/url"
 
-	novelentity "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/novel"
-	novelcomments "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/novel/comments"
-	novelrecommended "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/novel/recommended"
-	novelsearch "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/novel/search"
-	novelseries "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/novel/series"
-	noveltimeline "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/novel/timeline"
-	usernovelbookmarks "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/user/novelbookmarks"
-	usernovels "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/user/novels"
+	novelentity "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/novel"
+	novelcomments "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/novel/comments"
+	novelrecommended "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/novel/recommended"
+	novelsearch "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/novel/search"
+	novelseries "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/novel/series"
+	noveltimeline "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/novel/timeline"
+	usernovelbookmarks "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/user/novelbookmarks"
+	usernovels "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/user/novels"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 )
 

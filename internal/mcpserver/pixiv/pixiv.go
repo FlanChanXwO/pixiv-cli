@@ -1,49 +1,48 @@
 // Package pixiv 聚合 Pixiv MCP tool 注册。它只负责把 tool packages 注册到
 // server；具体 input/output/schema/adapter 与业务逻辑归各 tool package，共享
-// runtime/records/filters/outputs 在 internal 子包，stdio runtime 归
-// internal/mcpserver/stdio。
+// runtime/records/filters/outputs 在 internal 子包，stdio runtime 由父包提供。
 package pixiv
 
 import (
-	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/add_bookmark"
-	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/blocked_users"
-	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/bookmark_detail"
-	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/bookmark_tags"
-	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/download"
-	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/follow_user"
-	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/illust_comments"
-	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/illust_detail"
-	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/illust_ranking"
-	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/illust_recommended"
-	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/illust_related"
-	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/illust_series"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/runtime"
-	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/mypixiv_illusts"
-	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/mypixiv_novels"
-	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/mypixiv_users"
-	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/novel_comments"
-	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/novel_content"
-	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/novel_detail"
-	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/novel_series"
-	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/recommended"
-	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/related_users"
-	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/remove_bookmark"
-	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/search_illust"
-	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/search_novel"
-	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/search_user"
-	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/timeline_illust_following"
-	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/timeline_illust_latest"
-	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/timeline_novel_following"
-	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/timeline_novel_latest"
-	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/trending_tags_illust"
-	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/unfollow_user"
-	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/user_artworks"
-	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/user_bookmarks"
-	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/user_detail"
-	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/user_followers"
-	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/user_following"
-	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/user_novel_bookmarks"
-	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/user_novels"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/add_bookmark"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/blocked_users"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/bookmark_detail"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/bookmark_tags"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/download"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/follow_user"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/illust_comments"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/illust_detail"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/illust_ranking"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/illust_recommended"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/illust_related"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/illust_series"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/mypixiv_illusts"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/mypixiv_novels"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/mypixiv_users"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/novel_comments"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/novel_content"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/novel_detail"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/novel_series"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/recommended"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/related_users"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/remove_bookmark"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/search_illust"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/search_novel"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/search_user"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/timeline_illust_following"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/timeline_illust_latest"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/timeline_novel_following"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/timeline_novel_latest"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/trending_tags_illust"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/unfollow_user"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/user_artworks"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/user_bookmarks"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/user_detail"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/user_followers"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/user_following"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/user_novel_bookmarks"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/user_novels"
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -51,7 +50,7 @@ import (
 // DownloadManager 是下载器在 MCP 侧的窄能力接口。
 type DownloadManager = runtime.DownloadManager
 
-// Account 是 MCP operation 的本地请求值；只携带传输覆写与账号选择，不持有
+// Account 是 MCP 请求的本地值；只携带传输覆写与账号选择，不持有
 // client 或凭据。
 type Account = runtime.Account
 
@@ -65,7 +64,7 @@ func New(_ any, downloads DownloadManager) *mcp.Server {
 	return newServer(runtime.NewApp(downloads, nil, SDKPorts{}, Account{}))
 }
 
-// NewWithSDK 通过 public SDK 端口为每个 MCP tool 建立独立 operation snapshot。
+// NewWithSDK 通过 services Facade 的窄端口为每个 MCP tool 建立独立 client snapshot。
 // 首个参数仅是已废弃的兼容占位，绝不构成内容、认证或资源调用链。
 func NewWithSDK(_ any, downloads DownloadManager, ports SDKPorts, account Account) *mcp.Server {
 	return newServer(runtime.NewApp(downloads, nil, ports, account))

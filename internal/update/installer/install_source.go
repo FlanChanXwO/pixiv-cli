@@ -12,7 +12,7 @@ import (
 	"runtime/debug"
 	"strings"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/buildinfo"
+	"github.com/FlanChanXwO/pixiv-cli/internal/shared/buildinfo"
 )
 
 const pixivCLIImportPath = "github.com/FlanChanXwO/pixiv-cli"

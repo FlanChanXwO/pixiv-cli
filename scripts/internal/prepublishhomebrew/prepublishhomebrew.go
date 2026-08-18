@@ -25,7 +25,7 @@ var nativeTargets = map[string]struct{}{
 // 在既有步骤尾部追加 Release、tap 或网络写入命令绕过 workflow policy。
 const validateReleaseRun = `set -euo pipefail
 test "$GITHUB_REF" = "refs/heads/$DEFAULT_BRANCH"
-go run ./scripts/releaseassets validate --version "${RELEASE_TAG#v}"
+go run ./scripts/cmd/releaseassets validate --version "${RELEASE_TAG#v}"
 case "$RELEASE_TAG" in
   v[0-9]*) ;;
   *) printf '%s\n' 'release tag must start with v and a digit' >&2; exit 1 ;;
@@ -53,9 +53,9 @@ test "$(find verified-release -maxdepth 1 -type f -print | LC_ALL=C sort)" = "ve
 
 const renderStableFormulaRun = `set -euo pipefail
 version="${RELEASE_TAG#v}"
-test "$(go run ./scripts/releaseassets channel --version "$version")" = stable
+test "$(go run ./scripts/cmd/releaseassets channel --version "$version")" = stable
 mkdir -p staging-formula
-go run ./scripts/homebrewformula render \
+go run ./scripts/cmd/homebrewformula render \
   --formula pixiv-cli \
   --version "$version" \
   --checksums verified-release/checksums.txt \
@@ -86,7 +86,7 @@ if [ '${{ matrix.os }}' = linux ]; then
       brew tap-new "$staging_tap" --no-git
       cp /staging-formula/pixiv-cli.rb "$tap_dir/Formula/pixiv-cli.rb"
       brew install --formula "$staging_tap/$formula_name"
-      pixiv version --json | brew ruby -rjson -e "actual = JSON.parse(STDIN.read).fetch(\"version\"); expected = ARGV.fetch(0); abort(\"version #{actual.inspect} != #{expected.inspect}\") unless actual == expected" "$RELEASE_TAG"
+      test "$(pixiv --version)" = "pixiv $RELEASE_TAG"
     '
 else
   staging_tap=pixiv-cli-release/staging
@@ -95,7 +95,7 @@ else
   brew trust --tap "$staging_tap"
   cp staging-formula/pixiv-cli.rb "$tap_dir/Formula/pixiv-cli.rb"
   brew install --formula "$staging_tap/$formula_name"
-  pixiv version --json | python3 -c 'import json, sys; actual = json.load(sys.stdin)["version"]; expected = sys.argv[1]; assert actual == expected, f"version {actual!r} != {expected!r}"' "$RELEASE_TAG"
+  test "$(pixiv --version)" = "pixiv $RELEASE_TAG"
 fi
 `
 
@@ -133,7 +133,7 @@ GIT_SSH_COMMAND="ssh -i $key_path -o IdentitiesOnly=yes -o StrictHostKeyChecking
   git -C "$tap_dir" push origin HEAD:main
 `
 
-// Run 是 scripts/prepublishhomebrew 的入口 owner：解析参数、读取 workflow 并校验。
+// Run 是 scripts/cmd/prepublishhomebrew 的入口 owner：解析参数、读取 workflow 并校验。
 func Run(args []string) error {
 	if len(args) != 2 || args[0] != "--workflow" {
 		return errors.New("usage: prepublishhomebrew --workflow PATH")

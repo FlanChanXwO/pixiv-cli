@@ -7,7 +7,7 @@ import (
 	"runtime"
 	"testing"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/platform/localstate"
+	"github.com/FlanChanXwO/pixiv-cli/internal/config/paths"
 	secret "github.com/FlanChanXwO/pixiv-cli/internal/storage/file/secret"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -15,8 +15,8 @@ import (
 
 func TestWritePrivateFileCreatesPrivatePathAndReplacesExistingContent(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "nested", "config.toml")
-	require.NoError(t, secret.WritePrivateFile(path, []byte("old"), localstate.PrivateFileMode))
-	require.NoError(t, secret.WritePrivateFile(path, []byte("new"), localstate.PrivateFileMode))
+	require.NoError(t, secret.WritePrivateFile(path, []byte("old"), paths.PrivateFileMode))
+	require.NoError(t, secret.WritePrivateFile(path, []byte("new"), paths.PrivateFileMode))
 
 	body, err := os.ReadFile(path)
 	require.NoError(t, err)
@@ -29,9 +29,9 @@ func TestWritePrivateFileCreatesPrivatePathAndReplacesExistingContent(t *testing
 func TestWritePrivateFileReportsReplacementFailureWithoutHidingExistingDirectory(t *testing.T) {
 	directory := t.TempDir()
 	target := filepath.Join(directory, "target-directory")
-	require.NoError(t, os.Mkdir(target, localstate.PrivateDirMode))
+	require.NoError(t, os.Mkdir(target, paths.PrivateDirMode))
 
-	err := secret.WritePrivateFile(target, []byte("new"), localstate.PrivateFileMode)
+	err := secret.WritePrivateFile(target, []byte("new"), paths.PrivateFileMode)
 	require.Error(t, err)
 	info, statErr := os.Stat(target)
 	require.NoError(t, statErr)
@@ -41,8 +41,8 @@ func TestWritePrivateFileReportsReplacementFailureWithoutHidingExistingDirectory
 
 func TestEnsurePrivateFileDoesNotOverwriteExistingContent(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "nested", "state.json")
-	require.NoError(t, secret.EnsurePrivateFile(path, []byte("first"), localstate.PrivateFileMode))
-	require.NoError(t, secret.EnsurePrivateFile(path, []byte("second"), localstate.PrivateFileMode))
+	require.NoError(t, secret.EnsurePrivateFile(path, []byte("first"), paths.PrivateFileMode))
+	require.NoError(t, secret.EnsurePrivateFile(path, []byte("second"), paths.PrivateFileMode))
 
 	body, err := os.ReadFile(path)
 	require.NoError(t, err)
@@ -91,7 +91,7 @@ func TestWriteJSONAndReadJSONUsePrivateFileProtocol(t *testing.T) {
 	require.NoError(t, err)
 	assert.False(t, present)
 
-	require.NoError(t, os.WriteFile(path, []byte("not-json"), localstate.PrivateFileMode))
+	require.NoError(t, os.WriteFile(path, []byte("not-json"), paths.PrivateFileMode))
 	_, err = secret.ReadJSON(path, &got)
 	assert.Error(t, err)
 }
@@ -103,7 +103,7 @@ func assertPrivateFileMode(t *testing.T, path string) {
 	}
 	info, err := os.Stat(path)
 	require.NoError(t, err)
-	assert.Equal(t, os.FileMode(localstate.PrivateFileMode), info.Mode().Perm())
+	assert.Equal(t, os.FileMode(paths.PrivateFileMode), info.Mode().Perm())
 }
 
 func assertPrivateDirMode(t *testing.T, path string) {
@@ -113,7 +113,7 @@ func assertPrivateDirMode(t *testing.T, path string) {
 	}
 	info, err := os.Stat(path)
 	require.NoError(t, err)
-	assert.Equal(t, os.FileMode(localstate.PrivateDirMode), info.Mode().Perm())
+	assert.Equal(t, os.FileMode(paths.PrivateDirMode), info.Mode().Perm())
 }
 
 func assertNoPrivateTemporary(t *testing.T, directory string) {
@@ -126,7 +126,7 @@ func assertNoPrivateTemporary(t *testing.T, directory string) {
 func TestSecretFileWriteErrorKeepsCauseClassifiable(t *testing.T) {
 	directory := t.TempDir()
 	parent := filepath.Join(directory, "not-a-directory")
-	require.NoError(t, os.WriteFile(parent, []byte("file"), localstate.PrivateFileMode))
+	require.NoError(t, os.WriteFile(parent, []byte("file"), paths.PrivateFileMode))
 	path := filepath.Join(parent, "auth.json")
 	err := secret.WriteSecretFile(path, []byte("secret"), false)
 	require.Error(t, err)

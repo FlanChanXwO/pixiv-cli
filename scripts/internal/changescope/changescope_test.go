@@ -12,7 +12,7 @@ func TestDocsOnlyPaths(t *testing.T) {
 	}{
 		{
 			name:  "approved documentation paths",
-			paths: []string{"README.md", "README.zh-CN.md", "docs/maintainers/development.md", "changelog/unreleased/en.md", "skills/pixiv-cli/SKILL.md"},
+			paths: []string{"README.md", "README.zh-CN.md", "docs/zh-CN/maintainers/development.md", "changelog/unreleased/en.md", "skills/pixiv-cli/SKILL.md"},
 			want:  true,
 		},
 		{name: "empty diff stays full", paths: nil, want: false},

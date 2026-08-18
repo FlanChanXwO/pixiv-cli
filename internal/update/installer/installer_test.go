@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
+
 	"crypto/ed25519"
 	"crypto/rand"
 	"crypto/sha256"
@@ -14,17 +15,23 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+
+	"github.com/FlanChanXwO/pixiv-cli/internal/shared/buildinfo"
+	"github.com/FlanChanXwO/pixiv-cli/internal/update/release"
+
+	"github.com/FlanChanXwO/pixiv-cli/internal/update/source"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"runtime"
+	"runtime/debug"
+	"strings"
 	"testing"
-
-	"github.com/stretchr/testify/require"
-
-	"github.com/FlanChanXwO/pixiv-cli/internal/update/release"
 )
 
 // Release 与 ReleaseAsset 是 installer 包消费的 release 值类型别名，保持既有测试字面量不变。
@@ -32,14 +39,61 @@ type Release = release.Release
 
 type ReleaseAsset = release.ReleaseAsset
 
+const (
+	testVersionOutputOverrideEnv = "PIXIV_INSTALLER_TEST_VERSION_OUTPUT_OVERRIDE"
+	testVersionOutputEnv         = "PIXIV_INSTALLER_TEST_VERSION_OUTPUT"
+	testVersionFailureEnv        = "PIXIV_INSTALLER_TEST_VERSION_FAILURE"
+)
+
 // TestMain 让复制到 fixture archive 的当前测试二进制可以作为真实更新二进制运行。
-// 生产 checker 固定调用 `version --json`，此分支模拟该公开 CLI 契约，而常规测试不受影响。
+// 生产 checker 固定调用根 `--version`；测试环境变量仅用于覆盖子进程的错误路径。
 func TestMain(m *testing.M) {
-	if len(os.Args) == 3 && os.Args[1] == "version" && os.Args[2] == "--json" {
-		_, _ = fmt.Fprintln(os.Stdout, `{"version":"v0.2.0"}`)
+	if len(os.Args) == 2 && os.Args[1] == "--version" {
+		if os.Getenv(testVersionFailureEnv) != "" {
+			_, _ = fmt.Fprintln(os.Stderr, "fixture version failure")
+			os.Exit(1)
+		}
+		if os.Getenv(testVersionOutputOverrideEnv) != "" {
+			_, _ = fmt.Fprint(os.Stdout, os.Getenv(testVersionOutputEnv))
+		} else {
+			_, _ = fmt.Fprintln(os.Stdout, "pixiv v0.2.0")
+		}
 		os.Exit(0)
 	}
 	os.Exit(m.Run())
+}
+
+func TestProcessReleaseBinaryCheckerRequiresExactRootVersionOutput(t *testing.T) {
+	tests := []struct {
+		name      string
+		output    string
+		failure   bool
+		wantError string
+	}{
+		{name: "exact output", output: "pixiv v0.2.0\n"},
+		{name: "wrong version", output: "pixiv v0.1.0\n", wantError: `reports version output "pixiv v0.1.0\n"`},
+		{name: "missing newline", output: "pixiv v0.2.0", wantError: `reports version output "pixiv v0.2.0"`},
+		{name: "trailing data", output: "pixiv v0.2.0\nextra\n", wantError: `reports version output "pixiv v0.2.0\nextra\n"`},
+		{name: "legacy JSON", output: `{"version":"v0.2.0"}` + "\n", wantError: `reports version output "{\"version\":\"v0.2.0\"}\n"`},
+		{name: "process failure", failure: true, wantError: "run --version"},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Setenv(testVersionOutputOverrideEnv, "1")
+			t.Setenv(testVersionOutputEnv, test.output)
+			if test.failure {
+				t.Setenv(testVersionFailureEnv, "1")
+			}
+
+			err := (processReleaseBinaryChecker{}).Check(context.Background(), os.Args[0], "v0.2.0")
+			if test.wantError == "" {
+				require.NoError(t, err)
+				return
+			}
+			require.ErrorContains(t, err, test.wantError)
+		})
+	}
 }
 
 func TestVerifyArchiveChecksumAllowsFixedInstallerAssets(t *testing.T) {
@@ -225,7 +279,7 @@ func TestReleaseInstallerRejectsBrokenExecutableSymlink(t *testing.T) {
 
 	err := installer.Install(context.Background(), release)
 	require.ErrorContains(t, err, "resolve executable symlink")
-	// 错误上下文以 %q 呈现路径；Windows 路径中的反斜杠会随 Go 字符串规则转义。
+
 	require.ErrorContains(t, err, fmt.Sprintf("%q", rawLink))
 	require.ErrorIs(t, err, os.ErrNotExist)
 	require.False(t, checkerCalled)
@@ -881,7 +935,7 @@ func TestCleanupPendingWindowsUpdateRejectsBrokenExecutableSymlink(t *testing.T)
 		return fmt.Errorf("remove must not run for a broken executable symlink")
 	})
 	require.ErrorContains(t, err, "resolve executable symlink")
-	// 错误上下文以 %q 呈现路径；Windows 路径中的反斜杠会随 Go 字符串规则转义。
+
 	require.ErrorContains(t, err, fmt.Sprintf("%q", rawLink))
 	require.ErrorIs(t, err, os.ErrNotExist)
 	require.False(t, removeCalled)
@@ -1174,4 +1228,455 @@ func signedChecksumsManifest(t *testing.T, keyID string, privateKey ed25519.Priv
 	})
 	require.NoError(t, err)
 	return manifest
+}
+func TestReleaseAssetDownloadRetriesRemainingSourcesAfterPreferredSourceFails(t *testing.T) {
+	t.Parallel()
+
+	const canonical = "https://github.com/FlanChanXwO/pixiv-cli/releases/download/v1.2.3/checksums.txt"
+	preferred := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "unavailable", http.StatusBadGateway)
+	}))
+	t.Cleanup(preferred.Close)
+	fallback := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, "verified checksums")
+	}))
+	t.Cleanup(fallback.Close)
+
+	sources := mustTestReleaseSources(t,
+		"preferred|-|"+preferred.URL+"?target={url_query}",
+		"fallback|-|"+fallback.URL+"?target={url_query}",
+	)
+	installer := NewReleaseInstaller(ReleaseInstallerOptions{HTTPClient: preferred.Client()}).(*releaseInstaller)
+	body, err := installer.download(context.Background(), release.ReleaseAsset{Name: checksumsAssetName, DownloadURL: canonical}, sources)
+	if err != nil {
+		t.Fatalf("download() error = %v", err)
+	}
+	if got := string(body); got != "verified checksums" {
+		t.Fatalf("downloaded body = %q, want fallback body", got)
+	}
+}
+
+func TestReleaseAssetDownloadReportsEverySourceFailure(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "unavailable", http.StatusBadGateway)
+	}))
+	t.Cleanup(server.Close)
+	sources := mustTestReleaseSources(t,
+		"first|-|"+server.URL+"?target={url_query}",
+		"second|-|"+server.URL+"?target={url_query}",
+	)
+	installer := NewReleaseInstaller(ReleaseInstallerOptions{HTTPClient: server.Client()}).(*releaseInstaller)
+	_, err := installer.download(context.Background(), release.ReleaseAsset{Name: checksumsAssetName, DownloadURL: "https://github.com/FlanChanXwO/pixiv-cli/releases/download/v1.2.3/checksums.txt"}, sources)
+	if err == nil {
+		t.Fatal("download() succeeded, want aggregate source failure")
+	}
+	for _, sourceID := range []string{"first", "second"} {
+		if !strings.Contains(err.Error(), sourceID) {
+			t.Fatalf("download() error = %v, missing source %q", err, sourceID)
+		}
+	}
+}
+
+func mustTestReleaseSources(t *testing.T, lines ...string) []source.ReleaseSource {
+	t.Helper()
+	sources, err := source.ParseReleaseSources([]byte(joinReleaseSourceLines(lines)))
+	if err != nil {
+		t.Fatalf("ParseReleaseSources() error = %v", err)
+	}
+	return sources
+}
+
+func joinReleaseSourceLines(lines []string) string {
+	result := ""
+	for _, line := range lines {
+		result += line + "\n"
+	}
+	return result
+}
+
+const pixivCLIModulePath = "github.com/FlanChanXwO/pixiv-cli"
+
+func TestDetectInstallSourceDevelopmentAvoidsSystemAccess(t *testing.T) {
+	deps := sourceDetector{
+		executable: func() (string, error) {
+			t.Fatal("development build must not inspect the executable path")
+			return "", nil
+		},
+		evalSymlinks: func(string) (string, error) {
+			t.Fatal("development build must not resolve symlinks")
+			return "", nil
+		},
+		readFile: func(string) ([]byte, error) {
+			t.Fatal("development build must not read the filesystem")
+			return nil, nil
+		},
+		readBuildInfo: func() (*debug.BuildInfo, bool) {
+			t.Fatal("development build must not read Go build info")
+			return nil, false
+		},
+	}
+
+	got, err := detectInstallSource(buildinfo.Info{Version: "dev"}, deps)
+	if err != nil {
+		t.Fatalf("detectInstallSource() error = %v", err)
+	}
+	if got != InstallSourceDevelopment {
+		t.Fatalf("detectInstallSource() = %q, want %q", got, InstallSourceDevelopment)
+	}
+}
+
+func TestDetectInstallSourceHomebrewKeg(t *testing.T) {
+	tests := []struct {
+		name    string
+		formula string
+		want    InstallSource
+	}{
+		{name: "stable formula", formula: "pixiv-cli", want: InstallSourceHomebrewStable},
+		{name: "beta formula", formula: "pixiv-cli-beta", want: InstallSourceHomebrewBeta},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			rawPath, actualPath := homebrewExecutableFixture(t, test.formula, homebrewReceipt(test.formula))
+			deps := testDetector(rawPath, actualPath, map[string]string{})
+			deps.evalSymlinks = filepath.EvalSymlinks
+			deps.readFile = os.ReadFile
+
+			got, err := detectInstallSource(buildinfo.Info{Version: "v0.1.0"}, deps)
+			if err != nil {
+				t.Fatalf("detectInstallSource() error = %v", err)
+			}
+			if got != test.want {
+				t.Fatalf("detectInstallSource() = %q, want %q", got, test.want)
+			}
+		})
+	}
+}
+
+func TestDetectInstallSourceRejectsInvalidHomebrewKeg(t *testing.T) {
+	tests := []struct {
+		name        string
+		formula     string
+		receipt     string
+		removeFile  bool
+		wantSubtext []string
+	}{
+		{
+			name:        "malformed receipt",
+			formula:     "pixiv-cli",
+			receipt:     "{not-json",
+			wantSubtext: []string{"INSTALL_RECEIPT.json", "parse Homebrew receipt"},
+		},
+		{
+			name:        "missing receipt",
+			formula:     "pixiv-cli",
+			receipt:     homebrewReceipt("pixiv-cli"),
+			removeFile:  true,
+			wantSubtext: []string{"INSTALL_RECEIPT.json", "read Homebrew receipt"},
+		},
+		{
+			name:        "unsupported formula",
+			formula:     "other-pixiv",
+			receipt:     homebrewReceipt("other-pixiv"),
+			wantSubtext: []string{"other-pixiv", "unsupported Homebrew formula"},
+		},
+		{
+			name:        "receipt formula does not match keg",
+			formula:     "pixiv-cli",
+			receipt:     homebrewReceipt("pixiv-cli-beta"),
+			wantSubtext: []string{"INSTALL_RECEIPT.json", "does not match keg formula"},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			rawPath, actualPath := homebrewExecutableFixture(t, test.formula, test.receipt)
+			receiptPath := filepath.Join(filepath.Dir(filepath.Dir(actualPath)), "INSTALL_RECEIPT.json")
+			if test.removeFile {
+				if err := os.Remove(receiptPath); err != nil {
+					t.Fatalf("remove receipt fixture: %v", err)
+				}
+			}
+
+			deps := testDetector(rawPath, actualPath, map[string]string{})
+			deps.evalSymlinks = filepath.EvalSymlinks
+			deps.readFile = os.ReadFile
+
+			got, err := detectInstallSource(buildinfo.Info{Version: "v0.1.0"}, deps)
+			if got != "" {
+				t.Fatalf("detectInstallSource() source = %q, want no successful classification", got)
+			}
+			if err == nil {
+				t.Fatal("detectInstallSource() error = nil, want visible Homebrew validation error")
+			}
+			for _, want := range test.wantSubtext {
+				if !strings.Contains(err.Error(), want) {
+					t.Errorf("detectInstallSource() error = %q, want substring %q", err, want)
+				}
+			}
+		})
+	}
+}
+
+func TestDetectInstallSourceGoInstallWithExplicitGOBIN(t *testing.T) {
+	gobin := filepath.Join(t.TempDir(), "bin")
+	executable := filepath.Join(gobin, pixivExecutableName(runtime.GOOS))
+	deps := testDetector(executable, executable, map[string]string{"GOBIN": gobin})
+	deps.readBuildInfo = func() (*debug.BuildInfo, bool) {
+		return &debug.BuildInfo{Path: pixivCLIModulePath + "/cmd/pixiv", Main: debug.Module{Path: pixivCLIModulePath}}, true
+	}
+
+	got, err := detectInstallSource(buildinfo.Info{Version: "v0.1.0"}, deps)
+	if err != nil {
+		t.Fatalf("detectInstallSource() error = %v", err)
+	}
+	if got != InstallSourceGoInstall {
+		t.Fatalf("detectInstallSource() = %q, want %q", got, InstallSourceGoInstall)
+	}
+}
+
+func TestDetectInstallSourceDoesNotMistakeGoBuildForGoInstall(t *testing.T) {
+	tests := []struct {
+		name          string
+		executable    string
+		buildInfo     *debug.BuildInfo
+		buildInfoOkay bool
+		env           map[string]string
+	}{
+		{
+			name:          "matching module outside GOBIN",
+			executable:    filepath.Join(t.TempDir(), "pixiv"),
+			buildInfo:     &debug.BuildInfo{Path: pixivCLIModulePath + "/cmd/pixiv", Main: debug.Module{Path: pixivCLIModulePath}},
+			buildInfoOkay: true,
+			env:           map[string]string{"GOBIN": filepath.Join(t.TempDir(), "bin")},
+		},
+		{
+			name:          "GOBIN executable with another main module",
+			buildInfo:     &debug.BuildInfo{Path: pixivCLIModulePath, Main: debug.Module{Path: "example.com/not-pixiv"}},
+			buildInfoOkay: true,
+			env:           map[string]string{},
+		},
+		{
+			name:          "GOBIN executable without build info",
+			buildInfoOkay: false,
+			env:           map[string]string{},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			gobin := filepath.Join(t.TempDir(), "bin")
+			if test.env == nil {
+				test.env = map[string]string{}
+			}
+			if test.env["GOBIN"] == "" {
+				test.env["GOBIN"] = gobin
+			}
+			if test.executable == "" {
+				test.executable = filepath.Join(test.env["GOBIN"], pixivExecutableName(runtime.GOOS))
+			}
+			deps := testDetector(test.executable, test.executable, test.env)
+			deps.readBuildInfo = func() (*debug.BuildInfo, bool) {
+				return test.buildInfo, test.buildInfoOkay
+			}
+
+			got, err := detectInstallSource(buildinfo.Info{Version: "v0.1.0"}, deps)
+			if err != nil {
+				t.Fatalf("detectInstallSource() error = %v", err)
+			}
+			if got != InstallSourceRelease {
+				t.Fatalf("detectInstallSource() = %q, want %q", got, InstallSourceRelease)
+			}
+		})
+	}
+}
+
+func TestDetectInstallSourceUsesFirstGOPATHWhenGOBINIsUnset(t *testing.T) {
+	firstGOPATH := t.TempDir()
+	secondGOPATH := t.TempDir()
+	executable := filepath.Join(firstGOPATH, "bin", pixivExecutableName(runtime.GOOS))
+	deps := testDetector(executable, executable, map[string]string{"GOPATH": firstGOPATH + string(os.PathListSeparator) + secondGOPATH})
+	deps.readBuildInfo = func() (*debug.BuildInfo, bool) {
+		return &debug.BuildInfo{Path: pixivCLIModulePath + "/cmd/pixiv", Main: debug.Module{Path: pixivCLIModulePath}}, true
+	}
+
+	got, err := detectInstallSource(buildinfo.Info{Version: "v0.1.0"}, deps)
+	if err != nil {
+		t.Fatalf("detectInstallSource() error = %v", err)
+	}
+	if got != InstallSourceGoInstall {
+		t.Fatalf("detectInstallSource() = %q, want %q", got, InstallSourceGoInstall)
+	}
+}
+
+func TestDetectInstallSourceTreatsAbsentGoInstallTargetAsRelease(t *testing.T) {
+	root := t.TempDir()
+	actualExecutable := filepath.Join(root, "release", pixivExecutableName(runtime.GOOS))
+	if err := os.MkdirAll(filepath.Dir(actualExecutable), 0o755); err != nil {
+		t.Fatalf("create release executable directory: %v", err)
+	}
+	if err := os.WriteFile(actualExecutable, []byte("fixture"), 0o755); err != nil {
+		t.Fatalf("write release executable: %v", err)
+	}
+	gobin := filepath.Join(root, "bin")
+	if err := os.MkdirAll(gobin, 0o755); err != nil {
+		t.Fatalf("create GOBIN directory: %v", err)
+	}
+
+	deps := testDetector(actualExecutable, actualExecutable, map[string]string{"GOBIN": gobin})
+	deps.evalSymlinks = filepath.EvalSymlinks
+	deps.readBuildInfo = func() (*debug.BuildInfo, bool) {
+		return &debug.BuildInfo{Path: pixivCLIModulePath + "/cmd/pixiv", Main: debug.Module{Path: pixivCLIModulePath}}, true
+	}
+
+	got, err := detectInstallSource(buildinfo.Info{Version: "v0.1.0"}, deps)
+	if err != nil {
+		t.Fatalf("detectInstallSource() error = %v, want absent GOBIN executable to mean not go install", err)
+	}
+	if got != InstallSourceRelease {
+		t.Fatalf("detectInstallSource() = %q, want %q", got, InstallSourceRelease)
+	}
+}
+
+func TestDetectInstallSourcePreservesUnexpectedGoInstallTargetResolutionError(t *testing.T) {
+	root := t.TempDir()
+	actualExecutable := filepath.Join(root, "release", pixivExecutableName(runtime.GOOS))
+	gobin := filepath.Join(root, "bin")
+	expectedExecutable := filepath.Join(gobin, pixivExecutableName(runtime.GOOS))
+	resolutionErr := errors.New("permission denied")
+
+	deps := testDetector(actualExecutable, actualExecutable, map[string]string{"GOBIN": gobin})
+	deps.evalSymlinks = func(executable string) (string, error) {
+		switch executable {
+		case actualExecutable:
+			return actualExecutable, nil
+		case expectedExecutable:
+			return "", resolutionErr
+		default:
+			t.Fatalf("evalSymlinks() path = %q, want current or expected executable", executable)
+			return "", nil
+		}
+	}
+	deps.readBuildInfo = func() (*debug.BuildInfo, bool) {
+		return &debug.BuildInfo{Path: pixivCLIModulePath + "/cmd/pixiv", Main: debug.Module{Path: pixivCLIModulePath}}, true
+	}
+
+	got, err := detectInstallSource(buildinfo.Info{Version: "v0.1.0"}, deps)
+	if got != "" {
+		t.Fatalf("detectInstallSource() source = %q, want no successful classification", got)
+	}
+	if !errors.Is(err, resolutionErr) {
+		t.Fatalf("detectInstallSource() error = %v, want wrapped resolution error", err)
+	}
+	if !strings.Contains(err.Error(), "resolve Go install executable symlink") {
+		t.Fatalf("detectInstallSource() error = %q, want resolution context", err)
+	}
+}
+
+func TestDetectInstallSourceTreatsUnknownFormalBinaryAsRelease(t *testing.T) {
+	executable := filepath.Join(t.TempDir(), "opt", pixivExecutableName(runtime.GOOS))
+	deps := testDetector(executable, executable, map[string]string{})
+	deps.readBuildInfo = func() (*debug.BuildInfo, bool) {
+		return nil, false
+	}
+
+	got, err := detectInstallSource(buildinfo.Info{Version: "v0.1.0"}, deps)
+	if err != nil {
+		t.Fatalf("detectInstallSource() error = %v", err)
+	}
+	if got != InstallSourceRelease {
+		t.Fatalf("detectInstallSource() = %q, want %q", got, InstallSourceRelease)
+	}
+}
+
+func homebrewExecutableFixture(t *testing.T, formula, receipt string) (rawPath, actualPath string) {
+	t.Helper()
+	root := t.TempDir()
+	actualPath = filepath.Join(root, "Cellar", formula, "0.1.0", "bin", pixivExecutableName(runtime.GOOS))
+	if err := os.MkdirAll(filepath.Dir(actualPath), 0o755); err != nil {
+		t.Fatalf("create keg fixture: %v", err)
+	}
+	if err := os.WriteFile(actualPath, []byte("fixture"), 0o755); err != nil {
+		t.Fatalf("write keg executable fixture: %v", err)
+	}
+	receiptPath := filepath.Join(filepath.Dir(filepath.Dir(actualPath)), "INSTALL_RECEIPT.json")
+	if err := os.WriteFile(receiptPath, []byte(receipt), 0o644); err != nil {
+		t.Fatalf("write receipt fixture: %v", err)
+	}
+	rawPath = filepath.Join(root, "bin", pixivExecutableName(runtime.GOOS))
+	if err := os.MkdirAll(filepath.Dir(rawPath), 0o755); err != nil {
+		t.Fatalf("create raw executable directory: %v", err)
+	}
+	if err := os.Symlink(actualPath, rawPath); err != nil {
+		t.Fatalf("create Homebrew executable symlink: %v", err)
+	}
+	return rawPath, actualPath
+}
+
+func homebrewReceipt(formula string) string {
+	return `{"source":{"path":"Formula/` + formula + `.rb"}}`
+}
+
+func testDetector(executable, resolvedPath string, env map[string]string) sourceDetector {
+	return sourceDetector{
+		executable: func() (string, error) { return executable, nil },
+		evalSymlinks: func(path string) (string, error) {
+			if path == executable {
+				return resolvedPath, nil
+			}
+			return path, nil
+		},
+		readFile: func(string) ([]byte, error) {
+			return nil, errors.New("unexpected Homebrew receipt read")
+		},
+		readBuildInfo: func() (*debug.BuildInfo, bool) { return nil, false },
+		getenv:        func(key string) string { return env[key] },
+		goos:          runtime.GOOS,
+	}
+}
+func TestWriteReleaseCachePreservesNewSourceWhenReplacementRecoveryIsUnresolved(t *testing.T) {
+	cacheDir := t.TempDir()
+	cachePath := filepath.Join(cacheDir, release.CacheFilename)
+	fileCache := NewFileReleaseCache(cacheDir, cachePath).(*fileReleaseCache)
+	require.NoError(t, os.WriteFile(cachePath, []byte("old cache"), 0o600))
+	var source string
+	replaceCause := errors.New("replacement recovery unresolved")
+	fileCache.replaceFile = func(sourcePath, _ string) error {
+		source = sourcePath
+		return preserveInstallerSourceError{err: replaceCause}
+	}
+
+	err := fileCache.Write(context.Background(), []byte(`{"schema_version":2,"checked_at":"2026-07-11T12:00:00Z"}`+"\n"))
+	require.ErrorIs(t, err, replaceCause)
+
+	oldBody, readErr := os.ReadFile(cachePath)
+	require.NoError(t, readErr)
+	assert.Equal(t, "old cache", string(oldBody))
+	newBody, readErr := os.ReadFile(source)
+	require.NoError(t, readErr)
+	assert.Contains(t, string(newBody), `"schema_version":2`)
+	assert.Equal(t, cacheDir, filepath.Dir(source))
+}
+
+func TestWriteReleaseCacheCleansNewSourceAfterOrdinaryReplacementFailure(t *testing.T) {
+	cacheDir := t.TempDir()
+	cachePath := filepath.Join(cacheDir, release.CacheFilename)
+	fileCache := NewFileReleaseCache(cacheDir, cachePath).(*fileReleaseCache)
+	require.NoError(t, os.WriteFile(cachePath, []byte("old cache"), 0o600))
+	var source string
+	replaceCause := errors.New("replacement unchanged")
+	fileCache.replaceFile = func(sourcePath, _ string) error {
+		source = sourcePath
+		return replaceCause
+	}
+
+	err := fileCache.Write(context.Background(), []byte(`{"schema_version":2,"checked_at":"2026-07-11T12:00:00Z"}`+"\n"))
+	require.ErrorIs(t, err, replaceCause)
+	_, statErr := os.Stat(source)
+	require.ErrorIs(t, statErr, os.ErrNotExist)
+	oldBody, readErr := os.ReadFile(cachePath)
+	require.NoError(t, readErr)
+	assert.Equal(t, "old cache", string(oldBody))
 }

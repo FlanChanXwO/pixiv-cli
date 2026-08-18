@@ -2,7 +2,6 @@ package e2e
 
 import (
 	"bytes"
-	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -14,21 +13,37 @@ import (
 
 const versionSmokeConfig = "[update]\ncheck_enabled = false\n"
 
-func TestPixivBinaryReportsBuildMetadata(t *testing.T) {
+func TestPixivBinaryReportsRootVersion(t *testing.T) {
 	repoRoot := ".."
 
 	t.Run("development build uses defaults", func(t *testing.T) {
-		assertPixivBuildMetadata(t, repoRoot, buildPixivVersionBinary(t, repoRoot), "dev", "unknown", "unknown")
+		assertPixivVersionContract(t, repoRoot, buildPixivVersionBinary(t, repoRoot), "dev")
 	})
 
-	t.Run("linker injected build uses release metadata", func(t *testing.T) {
+	t.Run("linker injected build uses release version", func(t *testing.T) {
 		binaryPath := buildPixivVersionBinary(t, repoRoot,
-			"-X github.com/FlanChanXwO/pixiv-cli/internal/buildinfo.Version=v0.1.0",
-			"-X github.com/FlanChanXwO/pixiv-cli/internal/buildinfo.Commit=0123456789abcdef",
-			"-X github.com/FlanChanXwO/pixiv-cli/internal/buildinfo.BuildDate=2026-07-11T00:00:00Z",
+			"-X github.com/FlanChanXwO/pixiv-cli/internal/shared/buildinfo.Version=v0.1.0",
 		)
-		assertPixivBuildMetadata(t, repoRoot, binaryPath, "v0.1.0", "0123456789abcdef", "2026-07-11T00:00:00Z")
+		assertPixivVersionContract(t, repoRoot, binaryPath, "v0.1.0")
 	})
+}
+
+func TestPixivBinaryRejectsRemovedVersionCommand(t *testing.T) {
+	binaryPath := buildPixivVersionBinary(t, "..")
+	for _, args := range [][]string{{"version"}, {"version", "--json"}} {
+		t.Run(strings.Join(args, " "), func(t *testing.T) {
+			stdout, stderr, err := runPixivVersionProcess(t, "..", binaryPath, args...)
+			if err == nil {
+				t.Fatalf("pixiv %s succeeded, want unknown command", strings.Join(args, " "))
+			}
+			if stdout != "" {
+				t.Fatalf("pixiv %s stdout = %q, want empty", strings.Join(args, " "), stdout)
+			}
+			if !strings.Contains(stderr, `unknown command "version"`) {
+				t.Fatalf("pixiv %s stderr = %q, want unknown command", strings.Join(args, " "), stderr)
+			}
+		})
+	}
 }
 
 func TestIsolatedVersionProcessEnvDisablesAutomaticUpdate(t *testing.T) {
@@ -71,7 +86,7 @@ func TestPixivBinaryPackagedSmoke(t *testing.T) {
 		t.Fatal("PIXIV_E2E_EXPECTED_VERSION is required with PIXIV_E2E_BINARY")
 	}
 
-	assertPixivBuildMetadata(t, "..", binaryPath, expectedVersion, "", "")
+	assertPixivVersionContract(t, "..", binaryPath, expectedVersion)
 	for _, args := range [][]string{{"config", "path"}, {"mcp", "--help"}, {"fanbox", "mcp", "--help"}} {
 		t.Run(fmt.Sprintf("%s %s", args[0], strings.Join(args[1:], " ")), func(t *testing.T) {
 			stdout := runPixivVersionCommand(t, "..", binaryPath, args...)
@@ -82,22 +97,8 @@ func TestPixivBinaryPackagedSmoke(t *testing.T) {
 	}
 }
 
-func assertPixivBuildMetadata(t *testing.T, repoRoot, binaryPath, version, commit, buildDate string) {
+func assertPixivVersionContract(t *testing.T, repoRoot, binaryPath, version string) {
 	t.Helper()
-
-	t.Run("version text", func(t *testing.T) {
-		stdout := runPixivVersionCommand(t, repoRoot, binaryPath, "version")
-		if commit == "" || buildDate == "" {
-			if !strings.HasPrefix(stdout, "pixiv "+version+"\ncommit: ") || !strings.Contains(stdout, "\nbuild date: ") {
-				t.Fatalf("pixiv version stdout = %q, want version %q with build metadata", stdout, version)
-			}
-			return
-		}
-		want := "pixiv " + version + "\ncommit: " + commit + "\nbuild date: " + buildDate + "\n"
-		if stdout != want {
-			t.Fatalf("pixiv version stdout = %q, want %q", stdout, want)
-		}
-	})
 
 	t.Run("root version flag", func(t *testing.T) {
 		stdout := runPixivVersionCommand(t, repoRoot, binaryPath, "--version")
@@ -107,31 +108,6 @@ func assertPixivBuildMetadata(t *testing.T, repoRoot, binaryPath, version, commi
 		}
 	})
 
-	t.Run("version JSON", func(t *testing.T) {
-		stdout := runPixivVersionCommand(t, repoRoot, binaryPath, "version", "--json")
-		var metadata map[string]any
-		if err := json.Unmarshal([]byte(stdout), &metadata); err != nil {
-			t.Fatalf("pixiv version --json stdout is not a standalone JSON object: %v\n%s", err, stdout)
-		}
-		want := map[string]string{"version": version}
-		if commit != "" || buildDate != "" {
-			want["commit"] = commit
-			want["build_date"] = buildDate
-		}
-		if commit != "" || buildDate != "" {
-			if len(metadata) != len(want) {
-				t.Fatalf("pixiv version --json fields = %#v, want exactly %#v", metadata, want)
-			}
-		} else if len(metadata) < len(want) {
-			t.Fatalf("pixiv version --json fields = %#v, want at least %#v", metadata, want)
-		}
-		for field, wantValue := range want {
-			gotValue, ok := metadata[field].(string)
-			if !ok || gotValue != wantValue {
-				t.Fatalf("pixiv version --json %q = %#v, want %q", field, metadata[field], wantValue)
-			}
-		}
-	})
 }
 
 func buildPixivVersionBinary(t *testing.T, repoRoot string, ldflags ...string) string {
@@ -159,21 +135,27 @@ func buildPixivVersionBinary(t *testing.T, repoRoot string, ldflags ...string) s
 }
 
 func runPixivVersionCommand(t *testing.T, repoRoot, binaryPath string, args ...string) string {
+	stdout, stderr, err := runPixivVersionProcess(t, repoRoot, binaryPath, args...)
+	if err != nil {
+		t.Fatalf("pixiv %s exited unsuccessfully: %v\nstdout:\n%s\nstderr:\n%s", strings.Join(args, " "), err, stdout, stderr)
+	}
+	if stderr != "" {
+		t.Fatalf("pixiv %s wrote to stderr:\n%s", strings.Join(args, " "), stderr)
+	}
+	return stdout
+}
+
+func runPixivVersionProcess(t *testing.T, repoRoot, binaryPath string, args ...string) (stdout, stderr string, err error) {
 	t.Helper()
 
 	run := exec.CommandContext(testCommandContext(t), binaryPath, args...)
 	run.Dir = repoRoot
 	run.Env = isolatedVersionProcessEnv(t)
-	var stdout, stderr bytes.Buffer
-	run.Stdout = &stdout
-	run.Stderr = &stderr
-	if err := run.Run(); err != nil {
-		t.Fatalf("pixiv %s exited unsuccessfully: %v\nstdout:\n%s\nstderr:\n%s", strings.Join(args, " "), err, stdout.String(), stderr.String())
-	}
-	if stderr.Len() != 0 {
-		t.Fatalf("pixiv %s wrote to stderr:\n%s", strings.Join(args, " "), stderr.String())
-	}
-	return stdout.String()
+	var stdoutBuffer, stderrBuffer bytes.Buffer
+	run.Stdout = &stdoutBuffer
+	run.Stderr = &stderrBuffer
+	err = run.Run()
+	return stdoutBuffer.String(), stderrBuffer.String(), err
 }
 
 func isolatedVersionProcessEnv(t *testing.T) []string {

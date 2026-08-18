@@ -6,7 +6,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/platform/localstate"
+	"github.com/FlanChanXwO/pixiv-cli/internal/config/paths"
 )
 
 // ReadJSON 读取私有 JSON 状态；不存在是正常的首次运行状态，空文件则是明确损坏。
@@ -34,5 +34,5 @@ func WriteJSON(path string, value any) error {
 		return err
 	}
 	body = append(body, '\n')
-	return WritePrivateFile(path, body, localstate.PrivateFileMode)
+	return WritePrivateFile(path, body, paths.PrivateFileMode)
 }

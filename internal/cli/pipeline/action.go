@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 
+	record "github.com/FlanChanXwO/pixiv-cli/internal/shared/record"
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 )
@@ -48,11 +49,11 @@ func ConsumeActionRecords(ctx context.Context, in io.Reader, errOut io.Writer, o
 	if err != nil {
 		return usageError(err)
 	}
-	return ConsumeNDJSONRecords(ctx, in, errOut, operation, failFast, func(ctx context.Context, record Record) error {
-		if _, ok := allowedTypes[record.Type()]; !ok {
-			return NewRecordActionError("unsupported_type", fmt.Errorf("record type %q is not supported by %s", record.Type(), operation))
+	return ConsumeNDJSONRecords(ctx, in, errOut, operation, failFast, func(ctx context.Context, value record.Record) error {
+		if _, ok := allowedTypes[value.Type()]; !ok {
+			return NewRecordActionError("unsupported_type", fmt.Errorf("record type %q is not supported by %s", value.Type(), operation))
 		}
-		id, err := RequiredRecordID(record)
+		id, err := RequiredRecordID(value)
 		if err != nil {
 			return NewRecordActionError("invalid_id", err)
 		}

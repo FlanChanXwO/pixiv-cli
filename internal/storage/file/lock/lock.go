@@ -6,7 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/platform/localstate"
+	"github.com/FlanChanXwO/pixiv-cli/internal/config/paths"
 )
 
 // WithPrivateLock 在原子替换目标文件之外使用同目录侧车锁串行化事务。锁文件不随
@@ -36,17 +36,17 @@ func WithPrivateLock(ctx context.Context, path string, action func() error) erro
 
 func openLockFile(path string) (*os.File, error) {
 	directory := filepath.Dir(path)
-	if err := os.MkdirAll(directory, localstate.PrivateDirMode); err != nil {
+	if err := os.MkdirAll(directory, paths.PrivateDirMode); err != nil {
 		return nil, err
 	}
-	if err := os.Chmod(directory, localstate.PrivateDirMode); err != nil {
+	if err := os.Chmod(directory, paths.PrivateDirMode); err != nil {
 		return nil, err
 	}
-	file, err := os.OpenFile(path+".lock", os.O_CREATE|os.O_RDWR, localstate.PrivateFileMode)
+	file, err := os.OpenFile(path+".lock", os.O_CREATE|os.O_RDWR, paths.PrivateFileMode)
 	if err != nil {
 		return nil, err
 	}
-	if err := file.Chmod(localstate.PrivateFileMode); err != nil {
+	if err := file.Chmod(paths.PrivateFileMode); err != nil {
 		_ = file.Close()
 		return nil, err
 	}

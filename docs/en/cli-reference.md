@@ -17,7 +17,7 @@ User-visible changes are recorded in the [versioned changelog](../../changelog/R
 ## Installation
 
 > **Release status**: the Ed25519 public key, key ID, and fingerprint for supported binaries are committed in
-> [`internal/cli/cli.go`](../../internal/cli/cli.go); the public source/tap repositories,
+> [`internal/update/installer/release_installer.go`](../../internal/update/installer/release_installer.go); the public source/tap repositories,
 > the protected `release` Environment, and isolated credentials are configured. v0.4.4 is a published public GitHub
 > Release with six platform archives, checksums, and a signed manifest. Use the official [GitHub Releases page]
 > and `brew info FlanChanXwO/tap/pixiv-cli` for the current Release and tap state: they are independently published
@@ -80,7 +80,7 @@ command via Git Bash, MSYS2, or WSL.
 
 The working tree ships six runner-verified staticlibs for darwin/linux/windows × amd64/arm64 plus a same-origin
 `manifest.json`; `scripts/build.sh` verifies the source digest, target/path, and each library's SHA-256 before
-building the native binary. See [the development guide](../maintainers/development.md#rust-ugoira-staticlib) for the full
+building the native binary. See [the development guide](maintainers/development.md#rust-ugoira-staticlib) for the full
 requirements, evidence backfill process, and failure semantics.
 
 ### Go install
@@ -314,8 +314,6 @@ pixiv config get download_path
 pixiv config set download_path ~/Downloads/pixiv
 pixiv config unset https_proxy
 
-pixiv version
-pixiv version --json
 pixiv --version
 pixiv update --check
 pixiv update --check --json
@@ -343,8 +341,8 @@ Unix-like systems actively use `0700` parent directories and `0600` files. On Wi
 parent ACL and replacement preserves the existing target ACL; the CLI does not claim to tighten or loosen the DACL.
 On the first ordinary command, a missing `config.toml` is created with the common download, output, login, and
 update settings. It never overwrites an existing file. Advanced settings such as proxy, login
-timeout, and the Premium-status cache are intentionally omitted until explicitly configured; help, version, secret
-export, and the internal OAuth callback do not create it.
+timeout, and the Premium-status cache are intentionally omitted until explicitly configured; help, the root
+`--version` flag, secret export, and the internal OAuth callback do not create it.
 Output defaults to text; commands that expose `--json` can produce machine-parseable JSON. `auth export`
 deliberately does not expose that flag.
 The CLI uses Cobra/pflag, so options may appear before or after positional arguments — both
@@ -382,9 +380,8 @@ Only the structured entity filters documented by each command are accepted. The 
 | `auth refresh` | `pixiv auth refresh [UID] [--all] [--json] [--proxy URL\|--no-proxy]` | Refreshes the selected/default saved account's OAuth access token and rotated refresh token, then forces a profile read to update its cached Pixiv Premium status. `--all` refreshes every stored account. JSON always returns `accounts`. |
 | `config path` | `pixiv config path` | Prints the `config.toml` path, creating the baseline file if it is missing. |
 | `config get` | `pixiv config get KEY` | Prints one effective config value. |
-| `config set` | `pixiv config set KEY [VALUE]` | Writes one known config key, including `account_pool_enabled`, `account_pool_strategy`, `download_path`, `filename_template`, `directory_template`, `request_interval`, and `https_proxy`. |
+| `config set` | `pixiv config set KEY [VALUE]` | Writes one known config key, including `account_pool_enabled`, `account_pool_strategy`, `download_path`, `filename_template`, `directory_template`, `request_interval`, `https_proxy`, `log_level`, and `log_format`. |
 | `config unset` | `pixiv config unset KEY` | Deletes one known config key from `config.toml`. |
-| `version` | `pixiv version [--json]` | Prints the binary's `version`, `commit`, and `build_date`; the root `pixiv --version` prints only the version. |
 | `update` | `pixiv update [--check] [--prerelease] [--proxy URL]` | Checks for or performs an update matching the current install source; `--json` is only valid together with `--check`. |
 | `search` | `pixiv search [WORD] [-t artwork\|novel\|user] [options]` | Canonical entity search. `artwork` is the default; `--trending-tags` is the no-word artwork tag-list mode and does not accept search filters or pagination. |
 | `detail` | `pixiv detail ID_OR_URL [-t artwork\|novel\|user] [--content] [--json]` | Reads one artwork, novel, or user. `--content` is explicit and valid only for novels. |
@@ -547,11 +544,9 @@ report every outcome through diagnostics; cancellation stops immediately.
 | Flag | Applies to | Default | Description |
 | --- | --- | --- | --- |
 | `--ndjson` | data list/read commands | `false` | Emits one canonical Record per line for streaming filters and actions; cannot be combined with `--json`. |
-| `--json` | safe data reads, auth summaries, `version`, `update --check` | `false` | Emits one complete result document where the command exposes it. Download and mutation actions do not emit a success report. |
-| `--sleep-request DURATION` | network commands and `mcp` | configuration/default | Minimum interval between network request starts for this invocation; overrides `PIXIV_REQUEST_INTERVAL` and `[network].request_interval`. |
+| `--json` | safe data reads, auth summaries, `update --check` | `false` | Emits one complete result document where the command exposes it. Download and mutation actions do not emit a success report. |
 | `--proxy URL` | network commands and `mcp` | `https_proxy`/`HTTPS_PROXY`, `config.toml`, or empty | Uses an `http`, `https`, `socks5`, or `socks5h` proxy URI for this command only; forbidden with bundle-form `auth import`. |
 | `--no-proxy` | same as `--proxy` | empty | Clears the proxy for this command; cannot be combined with `--proxy` or bundle restore. |
-| `--debug` | every CLI command, `mcp`, and `fanbox mcp` | `false` | Writes safe, real-time English diagnostics to stderr only. It creates no log file and does not change stdout, routing, retries, or result shape. `auth export` and hidden OAuth callback commands keep stderr empty. |
 
 ### CLI-managed `config` aliases
 
@@ -564,8 +559,15 @@ report every outcome through diagnostics; cancellation stops immediately.
 | `download_path` | string | `./downloads` | Download directory. |
 | `filename_template` | string | `{author} - {title}_{id}` | Filename template. |
 | `directory_template` | string | empty | Relative download directory template. |
-| `request_interval` | duration | `0` | Minimum interval between network request starts; `PIXIV_REQUEST_INTERVAL` and `--sleep-request` can override it. |
+| `request_interval` | duration | `0` | Minimum interval between network request starts; configure it with `PIXIV_REQUEST_INTERVAL` or `[network].request_interval`. |
 | `https_proxy` | string | empty | Global proxy URI (`http`, `https`, `socks5`, or `socks5h`); the lowercase `https_proxy` environment variable takes precedence. |
+| `log_level` | string | `info` | Diagnostic level: `info` is silent; `debug` enables typed stderr diagnostics. The value is written as `[logging].level`. |
+| `log_format` | string | `text` | Diagnostic stderr format: `text` or one JSON event per line. The value is written as `[logging].format`. |
+
+The first command that needs configuration creates a compact baseline `config.toml` from the current schema.
+It includes the core download, output, login, update, and logging defaults; advanced settings such as
+`directory_template` and `request_interval` remain omitted until explicitly configured. Existing files are never
+overwritten. Configuration is read when the command starts, so a change applies on the next invocation.
 
 Manual TOML may contain advanced runtime sections such as `[account_pool]`, `[network]`, `[pixiv.network]`,
 `[fanbox.network]`, `[fanbox.flaresolverr]`, `[login]`, and `[update]`:
@@ -595,10 +597,14 @@ its service URL and upstream proxy are independent from the native FANBOX proxy.
 does not create any of these optional tables.
 
 `[account_pool]` stores only `enabled` and `strategy`; per-account `schedulable`, freeze, and marker state lives
-in `pixiv-cli.db`. A legacy `account_pool.accounts` array is migrated once into those database flags and then
-removed while preserving the rest of the table. Never put a refresh token in `config.toml`. The historical
+in `pixiv-cli.db`. The removed `account_pool.accounts` key is not migrated; if present, runtime configuration
+returns `removed_setting` and it must be cleared explicitly with `pixiv config unset account_pool_accounts`.
+Never put a refresh token in `config.toml`. The historical
 `data/account-pool.json` scheduler is not read, migrated, or deleted automatically. Legacy `[logging]` tables
-are ignored; `log_level` is not a supported `pixiv config` key.
+are no longer ignored: `[logging].level` accepts `info` or `debug`, and `[logging].format` accepts `text` or
+`json`. `PIXIV_LOG_LEVEL` and `PIXIV_LOG_FORMAT` override the file values. Debug diagnostics are emitted only to
+stderr, omit query strings, headers, cookies, tokens, response bodies, and proxy userinfo, and never create log
+files; `config` management and secret export remain quiet, while MCP stdout remains JSON-RPC only.
 
 The v1 CLI does not read or migrate a legacy `~/.pixiv-cli/auth.json`. Before switching from an older CLI, run
 `pixiv auth export --all --output <private bundle>` with the old version, then run `pixiv auth import < bundle.json`
@@ -612,6 +618,8 @@ with v1. The transfer is explicit so a stale or unexpected local file cannot bec
 | `FILENAME_TEMPLATE` | `{author} - {title}_{id}` | Filename template. |
 | `DIRECTORY_TEMPLATE` | empty | Relative download directory template. |
 | `PIXIV_REQUEST_INTERVAL` | empty | Minimum interval between network request starts. |
+| `PIXIV_LOG_LEVEL` | `info` | Diagnostic level: `info` or `debug`; overrides `[logging].level`. |
+| `PIXIV_LOG_FORMAT` | `text` | Diagnostic stderr format: `text` or `json`; overrides `[logging].format`. |
 | `https_proxy` / `HTTPS_PROXY` | empty | Proxy URI (`http`, `https`, `socks5`, or `socks5h`); the lowercase `https_proxy` takes precedence. |
 
 CLI data commands select the explicit/default account through `pixiv auth use` when pooling is disabled, or an eligible database account when pooling is enabled; they do not accept credential-selection flags.
@@ -620,23 +628,6 @@ Settings precedence is service-scoped: command `--proxy URL` / `--no-proxy` > th
 proxy key (including an explicit empty value) > `https_proxy`/`HTTPS_PROXY` > `[network].https_proxy` > direct.
 CLI proxy overrides are never persisted. Update checks use only their general network fallback and never consume
 FANBOX service or solver settings.
-
-### Debug diagnostics
-
-Pass `--debug` before or after a command to observe safe lifecycle, account-pool, network, challenge, solver,
-download, and error events:
-
-```bash
-pixiv --debug detail 123456
-pixiv fanbox --debug post 12221352
-pixiv --debug mcp 2>debug.log
-```
-
-Every line is written to stderr with a product-plus-subsystem module and a complete English sentence. No `logs/`
-directory, daily file, JSON event stream, raw URL, Cookie, token, signed query, proxy userinfo, or solver
-clearance is written. stdout and MCP JSON-RPC remain unchanged. `pixiv auth export` deliberately creates no
-diagnostic scope, even when `--debug` is supplied, so its raw-token/bundle stdout and empty stderr contract stays
-byte-for-byte intact. An unknown option is reported before a scope is created and exits with code `2`.
 
 ### Removed anonymous web fallback
 
@@ -652,13 +643,12 @@ failure.
 
 ## Version and updates
 
-`pixiv version` prints the version, commit, and build date as text; `pixiv version --json` writes JSON
-containing only `version`, `commit`, and `build_date` to stdout. The root `pixiv --version` is handy for a quick
-version check.
+`pixiv --version` is the only public version surface. It writes exactly one line, `pixiv <version>`, to stdout,
+writes no stderr, and does not run startup update checks.
+The former `version` subcommand, its `--json` form, and the public `commit`/`build_date` fields were removed as a
+breaking change; they now produce a non-zero unknown-command error with empty stdout. Scripts must migrate to the root flag.
 
 ```bash
-pixiv version
-pixiv version --json
 pixiv --version
 ```
 
@@ -676,8 +666,8 @@ Development builds show `dev` and refuse to self-update. For official installs, 
 stable/beta, `go install`, or a Release binary: stable/beta switch between the two conflicting formulas according
 to `--prerelease`; if the switch install fails, it explicitly attempts to restore the original formula and reports
 both the original error and the recovery result. `go install` uses the exact Release tag; Release binaries verify
-the Ed25519-signed checksum manifest and the archive SHA-256 before downloading, then preflight
-`pixiv version --json` and atomically replace the executable.
+the Ed25519-signed checksum manifest and the archive SHA-256 before downloading, then require an exact
+`pixiv --version` match and atomically replace the executable.
 
 Unless an explicit `--proxy`, configured `https_proxy`, or `HTTPS_PROXY` is in effect, Release-binary updates probe
 the embedded source list concurrently. API-capable candidates are used for the GitHub Releases API; archive-capable
@@ -696,7 +686,7 @@ protected `release` Environment and a controlled macOS Keychain recovery copy. S
 Release from the [GitHub Releases page]; `pixiv update --check` remains a read-only check and is not a substitute for
 verifying the selected version's assets, checksums, and signatures at install time.
 
-Successful regular CLI commands make a best-effort stable-update check. It skips MCP, help, `version`, `update`, every `auth export`, and bundle-form `auth import`,
+Successful regular CLI commands make a best-effort stable-update check. It skips MCP, help and root `--version`, `update`, every `auth export`, and bundle-form `auth import`,
 and development builds, queries at most once per 24 hours per user cache, and caps the automatic check at 3
 seconds. A discovered new version or a failed check only writes to stderr (failures as warnings), never changes
 the business command's exit code, and never pollutes JSON stdout or MCP JSON-RPC stdout. To disable the automatic
@@ -715,6 +705,6 @@ maintainer workflows:
 
 - [Go SDK](sdk.md): public client, models, pagination, resources, and typed errors.
 - [MCP tools](mcp-tools.md): tool names, input schemas, output, and stdio behavior.
-- [Architecture (Simplified Chinese)](../maintainers/architecture.md): package responsibilities and runtime flow.
-- [Development (Simplified Chinese)](../maintainers/development.md): environment, tests, builds, and release gates.
+- [Architecture](maintainers/architecture.md): package responsibilities and runtime flow.
+- [Development](maintainers/development.md): environment, tests, builds, and release gates.
 - [Agent skill](../../skills/pixiv-cli/SKILL.md): safe instructions for an agent driving the installed CLI.

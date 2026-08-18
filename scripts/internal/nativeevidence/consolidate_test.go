@@ -93,13 +93,15 @@ func TestConsolidateEvidenceRejectsArchiveMemberHashMismatch(t *testing.T) {
 	}
 }
 
-func TestConsolidateEvidenceRejectsMixedBuildMetadataWithoutPublishingOutput(t *testing.T) {
+func TestConsolidateEvidenceRejectsMixedSourceOrBinaryVersionWithoutPublishingOutput(t *testing.T) {
 	for _, mutation := range []struct {
-		name  string
-		apply func(*evidenceRecord)
+		name      string
+		wantError string
+		apply     func(*evidenceRecord)
 	}{
-		{name: "commit", apply: func(record *evidenceRecord) { record.Binary.Commit = "other-main-sha" }},
-		{name: "version", apply: func(record *evidenceRecord) { record.Binary.Version = "v0.1.0-native-evidence.other" }},
+		{name: "schema", wantError: "unsupported schema", apply: func(record *evidenceRecord) { record.Schema = 1 }},
+		{name: "commit", wantError: "source metadata", apply: func(record *evidenceRecord) { record.SourceCommit = "other-main-sha" }},
+		{name: "version", wantError: "binary version", apply: func(record *evidenceRecord) { record.Binary.Version = "v0.1.0-native-evidence.other" }},
 	} {
 		t.Run(mutation.name, func(t *testing.T) {
 			workDir := newRepositoryWorkDir(t)
@@ -129,8 +131,8 @@ func TestConsolidateEvidenceRejectsMixedBuildMetadataWithoutPublishingOutput(t *
 			}
 			outputDir := filepath.Join(workDir, "staticlib")
 			err = consolidateEvidence(consolidateOptions{repoRoot: findRepositoryRoot(t), expectedVersion: "v0.1.0-native-evidence.test", expectedCommit: testEvidenceCommit, inputDir: inputDir, outputDir: outputDir})
-			if err == nil || !strings.Contains(err.Error(), "metadata") {
-				t.Fatalf("consolidate error = %v, want metadata rejection", err)
+			if err == nil || !strings.Contains(err.Error(), mutation.wantError) {
+				t.Fatalf("consolidate error = %v, want %q rejection", err, mutation.wantError)
 			}
 			if _, statErr := os.Lstat(outputDir); !os.IsNotExist(statErr) {
 				t.Fatalf("failed consolidation published output: %v", statErr)

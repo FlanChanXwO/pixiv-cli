@@ -11,31 +11,72 @@ import (
 	"sync/atomic"
 	"time"
 
-	fanboxapp "github.com/FlanChanXwO/pixiv-cli/internal/account/fanbox"
-	"github.com/FlanChanXwO/pixiv-cli/internal/diagnostics"
+	"github.com/FlanChanXwO/pixiv-cli/internal/shared/diagnostics"
+	"github.com/FlanChanXwO/pixiv-cli/internal/shared/lifecycle"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	fanbox "github.com/FlanChanXwO/pixiv-cli/sdk/fanbox"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// App 是 FANBOX MCP 应用，持有 service 与命令级代理覆写。
+// Account carries only request-scoped transport overrides.
+type Account struct {
+	HTTPSProxyOverride *string
+}
+
+// SDKPorts is the runtime's narrow dependency on the public FANBOX SDK.
+type SDKPorts struct {
+	// Open is retained as a raw-client adapter for existing embeddings. New
+	// composition roots should inject OpenLease so the services Facade owns the
+	// complete client lifecycle.
+	Open      func(context.Context, Account) (*fanbox.Client, error)
+	OpenLease func(context.Context, Account) (*lifecycle.Lease[*fanbox.Client], error)
+}
+
+// App 是 FANBOX MCP 应用，持有 SDK port 与命令级代理覆写。
 type App struct {
-	service        *fanboxapp.Service
-	proxyOverride  *string
+	sdk            SDKPorts
+	account        Account
 	requestCounter atomic.Uint64
 }
 
-// NewApp 构造带 service 与代理覆写的 FANBOX MCP 应用。
-func NewApp(service *fanboxapp.Service, proxyOverride *string) *App {
-	return &App{service: service, proxyOverride: proxyOverride}
+// NewApp 构造带 SDK port 与请求覆写的 FANBOX MCP 应用。
+func NewApp(sdk SDKPorts, account Account) *App {
+	return &App{sdk: sdk, account: account}
 }
 
-// OpenClient 为一次 tool 调用建立独立 client，不共享客户端状态。
-func (a *App) OpenClient(ctx context.Context) (*fanbox.Client, error) {
-	if a == nil || a.service == nil {
+// OpenClient 为一次 tool 调用建立独立 client snapshot，并返回显式 Lease。
+// tool 必须关闭 Lease，不得直接管理 SDK client 的底层连接。
+func (a *App) OpenClient(ctx context.Context) (*lifecycle.Lease[*fanbox.Client], error) {
+	if a == nil {
 		return nil, errors.New("fanbox service is not configured")
 	}
-	return a.service.OpenClientWithProxy(ctx, a.proxyOverride)
+	openLease := a.sdk.OpenLease
+	if openLease == nil && a.sdk.Open != nil {
+		openLease = func(ctx context.Context, account Account) (*lifecycle.Lease[*fanbox.Client], error) {
+			client, err := a.sdk.Open(ctx, account)
+			if err != nil {
+				return nil, err
+			}
+			if client == nil {
+				return nil, lifecycle.ErrNilLease
+			}
+			return lifecycle.NewLease(client, func() error {
+				client.CloseIdleConnections()
+				return nil
+			}), nil
+		}
+	}
+	if openLease == nil {
+		return nil, errors.New("fanbox service is not configured")
+	}
+	lease, err := openLease(ctx, a.account)
+	if err != nil {
+		return nil, err
+	}
+	if lease == nil {
+		return nil, lifecycle.ErrNilLease
+	}
+	return lease, nil
 }
 
 // AddTool 统一保留注册入口；失败结果直接由各 handler 的 CallToolResult 表达。
@@ -136,10 +177,7 @@ func ListPagination(plan ListPlan, limit *int, returned int, hasMore bool) Pagin
 
 // CollectPages 跟随 sdk.Cursor 收集分页结果；失败时丢弃部分结果。
 func CollectPages[T any](ctx context.Context, plan ListPlan, fetch func(context.Context, sdk.Cursor) (sdk.Page[T], error)) ([]T, bool, error) {
-	limit := plan.Limit
-	if limit < 0 {
-		limit = 0
-	}
+	limit := max(0, plan.Limit)
 	items := make([]T, 0)
 	cursor := sdk.Cursor{}
 	seen := make(map[string]struct{})

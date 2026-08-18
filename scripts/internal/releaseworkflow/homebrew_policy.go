@@ -22,7 +22,7 @@ func checkRenderHomebrewJob(job *yaml.Node) error {
 	const renderCommands = `
 set -eu
 version="${RELEASE_TAG#v}"
-case "$(go run ./scripts/releaseassets channel --version "$version")" in
+case "$(go run ./scripts/cmd/releaseassets channel --version "$version")" in
 stable)
 formula_name=pixiv-cli
 ;;
@@ -35,7 +35,7 @@ exit 1
 ;;
 esac
 mkdir -p staging-formula
-go run ./scripts/homebrewformula render \
+go run ./scripts/cmd/homebrewformula render \
 --formula "$formula_name" \
 --version "$version" \
 --checksums verified-release/checksums.txt \
@@ -121,7 +121,7 @@ tap_dir="$(brew --repository)/Library/Taps/pixiv-cli-release/homebrew-staging"
 brew tap-new "$staging_tap" --no-git
 cp "/staging-formula/$formula_name.rb" "$tap_dir/Formula/$formula_name.rb"
 brew install --formula "$staging_tap/$formula_name"
-pixiv version --json | brew ruby -rjson -e "actual = JSON.parse(STDIN.read).fetch(\"version\"); expected = ARGV.fetch(0); abort(\"version #{actual.inspect} != #{expected.inspect}\") unless actual == expected" "$RELEASE_TAG"
+test "$(pixiv --version)" = "pixiv $RELEASE_TAG"
 '
 else
 staging_tap=pixiv-cli-release/staging
@@ -130,7 +130,7 @@ brew tap-new "$staging_tap" --no-git
 brew trust --tap "$staging_tap"
 cp "staging-formula/$formula_name.rb" "$tap_dir/Formula/$formula_name.rb"
 brew install --formula "$staging_tap/$formula_name"
-pixiv version --json | python3 -c 'import json, sys; actual = json.load(sys.stdin)["version"]; expected = sys.argv[1]; assert actual == expected, f"version {actual!r} != {expected!r}"' "$RELEASE_TAG"
+test "$(pixiv --version)" = "pixiv $RELEASE_TAG"
 fi
 `
 

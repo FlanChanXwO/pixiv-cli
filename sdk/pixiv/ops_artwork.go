@@ -4,14 +4,14 @@ import (
 	"context"
 	"net/url"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/artwork/bookmark"
-	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/artwork/comments"
-	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/artwork/ranking"
-	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/artwork/recommended"
-	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/artwork/related"
-	artworksearch "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/artwork/search"
-	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/artwork/series"
-	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/artwork/timeline"
+	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/artwork/bookmark"
+	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/artwork/comments"
+	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/artwork/ranking"
+	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/artwork/recommended"
+	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/artwork/related"
+	artworksearch "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/artwork/search"
+	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/artwork/series"
+	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/artwork/timeline"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 )
 

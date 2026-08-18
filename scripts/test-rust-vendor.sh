@@ -33,5 +33,5 @@ target_dir="$temporary/target"
 # 的许可证闭包同样不能退回 registry cache。
 (
 	cd "$repo_root"
-	CARGO_HOME="$cargo_home" CARGO_TARGET_DIR="$target_dir" go run ./scripts/licensebundle --check
+	CARGO_HOME="$cargo_home" CARGO_TARGET_DIR="$target_dir" go run ./scripts/cmd/licensebundle --check
 )

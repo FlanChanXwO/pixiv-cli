@@ -1,19 +1,21 @@
-//go:build cgo && ((darwin && (amd64 || arm64)) || (linux && (amd64 || arm64)) || (windows && (amd64 || arm64)))
-
 package ugoira_test
 
 import (
 	"archive/zip"
 	"bytes"
 	"context"
+
+	"github.com/stretchr/testify/require"
 	"image"
 	"image/color"
 	"image/gif"
 	"image/jpeg"
 	"image/png"
 	"os"
+
 	"os/exec"
 	"path/filepath"
+
 	"strings"
 	"testing"
 
@@ -65,8 +67,7 @@ func TestRustUgoiraEncoderNativeGIFAndAPNG(t *testing.T) {
 }
 
 func TestCGODisabledBuildRejectsMissingRustStaticlib(t *testing.T) {
-	// 顶层 pixiv 是公开 SDK 源码目录；显式输出到临时目录，确保本测试验证的是
-	// CGO/staticlib 编译门，而不是 Go 对同名默认二进制输出的目录冲突。
+
 	command := exec.Command("go", "build", "-o", filepath.Join(t.TempDir(), "pixiv"), "./cmd/pixiv")
 	command.Dir = filepath.Clean(filepath.Join("..", "..", ".."))
 	command.Env = append(os.Environ(), "CGO_ENABLED=0")
@@ -113,8 +114,7 @@ func TestWindowsRustStaticlibSelectorsUseCgoLibrarySearchFlags(t *testing.T) {
 		if err != nil {
 			t.Fatalf("read Windows cgo selector %q: %v", source, err)
 		}
-		// Windows checkout 可能把普通 Go 源文件转换为 CRLF；cgo 注释位置的
-		// 语义不随行尾表示变化，断言前统一为 LF 以免把注释误判进 preamble。
+
 		line := strings.ReplaceAll(string(body), "\r\n", "\n")
 		for _, want := range []string{
 			"#cgo LDFLAGS: -L${SRCDIR}/rust/staticlib/",
@@ -242,4 +242,29 @@ func createZip(t *testing.T, path, name string, body []byte) {
 	if err := os.WriteFile(path, archive.Bytes(), 0o644); err != nil {
 		t.Fatal(err)
 	}
+}
+
+// 目标路径已经是目录时，Rust 编码完成后的发布必须显式失败且不能替换现有目标。
+func TestRustEncoderDoesNotReplaceExistingDestination(t *testing.T) {
+	directory := t.TempDir()
+	zipPath := filepath.Join(directory, "ugoira.zip")
+	createZip(t, zipPath, "000000.jpg", rustUgoiraJPEG(t))
+	outputPath := filepath.Join(directory, "existing.gif")
+	require.NoError(t, os.Mkdir(outputPath, 0o755))
+
+	err := ugoira.NewRustEncoder().Encode(context.Background(), ugoira.Input{
+		ZipPath:    zipPath,
+		Frames:     []ugoira.Frame{{File: "000000.jpg", Delay: 80}},
+		WorkDir:    directory,
+		OutputPath: outputPath,
+		Format:     ugoira.FormatGIF,
+	})
+	require.Error(t, err)
+
+	info, statErr := os.Stat(outputPath)
+	require.NoError(t, statErr)
+	require.True(t, info.IsDir())
+	temporary, globErr := filepath.Glob(filepath.Join(directory, ".ugoira-*.gif"))
+	require.NoError(t, globErr)
+	require.Empty(t, temporary)
 }

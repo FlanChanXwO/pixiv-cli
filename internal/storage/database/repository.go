@@ -7,8 +7,8 @@ import (
 	"fmt"
 	"time"
 
-	accountfanbox "github.com/FlanChanXwO/pixiv-cli/internal/account/fanbox"
-	accountpixiv "github.com/FlanChanXwO/pixiv-cli/internal/account/pixiv"
+	accountfanbox "github.com/FlanChanXwO/pixiv-cli/internal/services/fanbox/account"
+	accountpixiv "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/account"
 )
 
 const pixivAccountColumns = `user_id, sort_order, username, refresh_token, credential_revision,
@@ -281,8 +281,8 @@ func (d *DB) SelectPixiv(ctx context.Context, now int64, attemptedUserIDs []int6
 	return selected, nil
 }
 
-// FreezePooledPixiv 记录一个账号的有效冻结时间。
-func (d *DB) FreezePooledPixiv(ctx context.Context, userID, frozenUntil int64) error {
+// Freeze 记录一个账号的有效冻结时间。
+func (d *DB) Freeze(ctx context.Context, userID, frozenUntil int64) error {
 	result, err := d.db.ExecContext(ctx, `UPDATE pixiv_account SET pool_frozen_until=CASE WHEN pool_frozen_until IS NULL OR pool_frozen_until < ? THEN ? ELSE pool_frozen_until END, updated_at=? WHERE user_id=?`,
 		frozenUntil, frozenUntil, time.Now().UTC().Unix(), userID)
 	if err != nil {

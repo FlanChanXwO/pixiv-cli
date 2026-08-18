@@ -48,9 +48,8 @@ safe metadata output does not make raw token or bundle stdout safe to display.
 - Pixiv service configuration can be scoped with `[pixiv.network].proxy_url`;
   FANBOX uses independent `[fanbox.network].proxy_url` and `user_agent` values.
   `[fanbox.flaresolverr]` is challenge-only and is not a general FANBOX proxy.
-- `--debug` is opt-in and writes safe routing/status/challenge/solver details to
-  stderr. It does not create log files or change MCP stdout; it never prints
-  tokens, cookies, signed queries, or response bodies.
+- Request pacing comes from `PIXIV_REQUEST_INTERVAL` or
+  `[network].request_interval`.
 
 ## Authentication semantics (not a bug)
 
@@ -82,7 +81,10 @@ safe metadata output does not make raw token or bundle stdout safe to display.
   protocol-clean.
 - Go SDK calls return typed errors to the caller. MCP tool failures return their
   structured result with `isError=true`.
-- Legacy `[logging]` config and `PIXIV_LOG_LEVEL` are ignored. `log_level` is not a
-  supported `pixiv config` key.
+- Set `pixiv config set log_level debug` (or `PIXIV_LOG_LEVEL=debug`) to enable
+  safe typed diagnostics on stderr. `log_format=json` (or
+  `PIXIV_LOG_FORMAT=json`) emits one JSON event per stderr line. Diagnostics are
+  startup-scoped, omit query strings, headers, cookies, tokens, response bodies,
+  and proxy userinfo, and never mix with MCP stdout.
 - `pixiv update --check --json` is read-only and safe; a real `pixiv update`
   installs a new binary — treat as account/config-state tier (confirm).

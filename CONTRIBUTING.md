@@ -29,17 +29,16 @@ sh scripts/build.sh
 ./build/pixiv --help
 ```
 
-See the [development guide (Simplified Chinese)](docs/maintainers/development.md) for native-library verification, opt-in real API tests, release gates, and platform details.
+See the [development guide](docs/en/maintainers/development.md) for native-library verification, opt-in real API tests, release gates, and platform details.
 
 ## Architecture guardrails
 
-- `cmd/pixiv` delegates to `internal/cli`; CLI controllers keep business use cases in `internal/application`.
-- Production wiring belongs in `internal/bootstrap`.
-- CLI and MCP Pixiv capabilities call the top-level public `pixiv` SDK through `internal/application.SDKService`; they do not call App/Web/OAuth/resource protocol adapters directly.
-- MCP registration and transport adaptation belong in `internal/mcpserver`; stdout is reserved for JSON-RPC.
-- Keep protocol-independent utilities under `internal/utils/*`, and keep files focused on one responsibility or a few tightly related responsibilities.
+- `cmd/pixiv` delegates to `internal/cli`; `internal/cli/root.go` owns command registration, global lifecycle, and production wiring, while concrete commands live under `internal/cli/commands`.
+- CLI and MCP Pixiv/FANBOX capabilities call the public `sdk/pixiv` and `sdk/fanbox` APIs through owner-local narrow ports; they do not call `internal/services/{pixiv,fanbox}` protocol adapters directly.
+- MCP product aggregators live in `internal/mcpserver/{pixiv,fanbox}`, tools in each product's `tools/<tool>` directory, and stdio is started by the CLI MCP command; stdout remains reserved for JSON-RPC.
+- Keep cross-subsystem mechanisms under `internal/shared/*`, protocol-independent leaf helpers under `internal/utils/*`, config/path ownership under `internal/config/{settings,paths}`, and files focused on one responsibility.
 
-Read [the architecture guide (Simplified Chinese)](docs/maintainers/architecture.md) and the repository [AGENTS.md](AGENTS.md) before changing these boundaries.
+Read [the architecture guide](docs/en/maintainers/architecture.md) and the repository [AGENTS.md](AGENTS.md) before changing these boundaries.
 
 ## Develop with tests
 
@@ -60,8 +59,8 @@ Update documentation in the same pull request when changing a command, flag, SDK
 
 - Keep `README.md` and `README.zh-CN.md` behaviorally aligned.
 - Keep all existing locale versions under `docs/<locale>/` behaviorally aligned; never use untranslated placeholder content.
-- Update localized SDK/MCP contracts or `docs/maintainers/` according to their documented responsibility.
-- Complete the required release-note declaration in the pull-request template for every contribution. Choose `Added`, `Changed`, `Fixed`, `Security`, `Documentation`, `Maintenance`, or `None`; `None` includes a concrete reason. After merge, the release-prep PR groups reviewed outcomes into matching English and Simplified Chinese version notes, with inline PR or direct-commit sources and a Full Changelog link. See the [release-note workflow](docs/maintainers/development.md#release-notes-and-publication) for the exact process.
+- Update localized SDK/MCP contracts or `docs/en/maintainers/` according to their documented responsibility.
+- Keep the pull-request body useful for review: explain what changed, record the verification you actually ran, and complete the checklist. During release preparation, maintainers audit every merged PR and direct commit, then write matching English and Simplified Chinese notes with inline sources. Internal-only work belongs under `Maintenance`. See [release notes and publication](docs/en/maintainers/development.md#release-notes-and-publication).
 - Check `skills/pixiv-cli/` when CLI commands, flags, or safety semantics change.
 
 Keep stable rules in one authoritative document and link to them elsewhere instead of copying large sections.

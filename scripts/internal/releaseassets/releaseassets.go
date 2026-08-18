@@ -27,7 +27,7 @@ import (
 
 var fixedTargets = releasecontract.FixedTargets()
 
-// Run 是 scripts/releaseassets 的入口 owner：解析参数并委托给 release asset 业务逻辑。
+// Run 是 scripts/cmd/releaseassets 的入口 owner：解析参数并委托给 release asset 业务逻辑。
 func Run(args []string) error {
 	return run(args)
 }

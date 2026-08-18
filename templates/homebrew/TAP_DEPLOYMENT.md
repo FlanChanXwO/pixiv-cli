@@ -32,5 +32,5 @@ credential material。远端 Environment 与 deploy key 已由 **Task20** 接入
    仅当显式设置 `deploy=true` 且同一 run 的四平台安装均通过后，才会请求 `release` Environment
    并使用上述 deploy key 更新 tap。发现 secret 泄露或权限漂移时，立即撤销 tap deploy key。
 
-`sh scripts/test-release-workflow.sh` 与 `sh scripts/test-homebrew-formula.sh` 只验证本地策略和
+`go run ./scripts/cmd/releaseworkflow --workflow .github/workflows/release.yml` 与 `sh scripts/test-homebrew-formula.sh` 只验证本地策略和
 fixture；它们不能替代正式 tag workflow 的四个平台外部安装证据。

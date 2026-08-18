@@ -104,7 +104,7 @@ func checkNativeEvidenceJob(job *yaml.Node) error {
 	if err := requireCanonicalSetupGo(steps.Content[1]); err != nil {
 		return err
 	}
-	if err := requireDirectRunStep(steps.Content[2], "Check native evidence workflow policy", "go run ./scripts/nativeevidence policy --workflow .github/workflows/native-evidence.yml"); err != nil {
+	if err := requireDirectRunStep(steps.Content[2], "Check native evidence workflow policy", "go run ./scripts/cmd/nativeevidence policy --workflow .github/workflows/native-evidence.yml"); err != nil {
 		return err
 	}
 	if err := requireDirectRunStep(steps.Content[3], "Require audited main ref", "test \"$GITHUB_REF\" = 'refs/heads/main'"); err != nil {
@@ -226,19 +226,19 @@ if [ '${{ matrix.goos }}' = windows ]; then
   export CC='clang -fuse-ld=lld'
 fi
 version="0.1.0-native-evidence.${GITHUB_RUN_ID}"
-go run ./scripts/releaseassets validate --version "$version"
+go run ./scripts/cmd/releaseassets validate --version "$version"
 mkdir -p evidence
 binary='evidence/pixiv'
 if [ '${{ matrix.goos }}' = windows ]; then
   binary='evidence/pixiv.exe'
 fi
 go build -trimpath -buildvcs=false \
-  -ldflags "-X github.com/FlanChanXwO/pixiv-cli/internal/buildinfo.Version=v${version} -X github.com/FlanChanXwO/pixiv-cli/internal/buildinfo.Commit=${GITHUB_SHA} -X github.com/FlanChanXwO/pixiv-cli/internal/buildinfo.BuildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+  -ldflags "-X github.com/FlanChanXwO/pixiv-cli/internal/shared/buildinfo.Version=v${version}" \
   -o "$binary" ./cmd/pixiv
 if [ '${{ matrix.goos }}' = linux ]; then
-  go run ./scripts/linuxabi --binary "$binary"
+  go run ./scripts/cmd/linuxabi --binary "$binary"
 fi
-"$binary" version --json
+"$binary" --version
 `
 
 const canonicalPackageRun = `set -eu
@@ -247,7 +247,7 @@ binary='evidence/pixiv'
 if [ '${{ matrix.goos }}' = windows ]; then
   binary='evidence/pixiv.exe'
 fi
-go run ./scripts/releaseassets package \
+go run ./scripts/cmd/releaseassets package \
   --repo-root . \
   --version "$version" \
   --target '${{ matrix.goos }}/${{ matrix.goarch }}' \
@@ -272,9 +272,10 @@ binary='evidence/pixiv'
 if [ '${{ matrix.goos }}' = windows ]; then
   binary='evidence/pixiv.exe'
 fi
-go run ./scripts/nativeevidence record \
+go run ./scripts/cmd/nativeevidence record \
   --repo-root . \
   --version "$version" \
+  --source-commit "$GITHUB_SHA" \
   --target '${{ matrix.goos }}/${{ matrix.goarch }}' \
   --rust-target '${{ matrix.rust_target }}' \
   --staticlib "evidence/$staticlib" \

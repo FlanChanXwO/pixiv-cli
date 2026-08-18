@@ -8,10 +8,9 @@ import (
 	"errors"
 	"fmt"
 
-	pipeline "github.com/FlanChanXwO/pixiv-cli/internal/cli/pipeline"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/records"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/runtime"
-	searchpixiv "github.com/FlanChanXwO/pixiv-cli/internal/search/pixiv"
+	record "github.com/FlanChanXwO/pixiv-cli/internal/shared/record"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -19,7 +18,7 @@ import (
 
 // Records 是实体记录列表的输出 envelope。
 type Records struct {
-	Records    []pipeline.Record     `json:"records"`
+	Records    []record.Record       `json:"records"`
 	Pagination runtime.PaginationOut `json:"pagination"`
 	Filter     *BookmarkFilter       `json:"filter,omitempty"`
 }
@@ -33,20 +32,6 @@ type BookmarkFilter struct {
 	Completeness string `json:"completeness"`
 }
 
-// BookmarkFilterFrom 把 search workflow 的结果转为输出元数据。
-func BookmarkFilterFrom(value *searchpixiv.BookmarkFilterOutcome) *BookmarkFilter {
-	if value == nil {
-		return nil
-	}
-	return &BookmarkFilter{
-		Min:          value.Min,
-		Max:          value.Max,
-		Membership:   string(value.Membership),
-		Strategy:     string(value.Strategy),
-		Completeness: string(value.Completeness),
-	}
-}
-
 // Result 构造实体列表的 MCP 文本摘要。
 func Result(out Records, isError bool) *mcp.CallToolResult {
 	return records.Result(out.Records, isError, "")
@@ -54,13 +39,13 @@ func Result(out Records, isError bool) *mcp.CallToolResult {
 
 // Error 构造实体列表的 MCP error 摘要。
 func Error(err error) (*mcp.CallToolResult, Records, error) {
-	out := Records{Records: []pipeline.Record{}, Pagination: runtime.PaginationOut{Page: 1}}
+	out := Records{Records: []record.Record{}, Pagination: runtime.PaginationOut{Page: 1}}
 	return records.Result(out.Records, true, records.ErrorMessage(err)), out, nil
 }
 
 // UserDetail 是 user_detail tool 的输出 envelope。
 type UserDetail struct {
-	Records []pipeline.Record `json:"records"`
+	Records []record.Record `json:"records"`
 }
 
 // UserDetailResult 构造 user detail 的 MCP 摘要。
@@ -70,7 +55,7 @@ func UserDetailResult(out UserDetail, isError bool) *mcp.CallToolResult {
 
 // UserDetailError 构造 user detail 的 MCP error 摘要。
 func UserDetailError(err error) (*mcp.CallToolResult, UserDetail, error) {
-	out := UserDetail{Records: []pipeline.Record{}}
+	out := UserDetail{Records: []record.Record{}}
 	return records.Result(out.Records, true, records.ErrorMessage(err)), out, nil
 }
 
@@ -84,13 +69,13 @@ type RecommendedPagination struct {
 
 // Recommended 是 recommended tool 的输出 envelope。
 type Recommended struct {
-	Records    []pipeline.Record     `json:"records"`
+	Records    []record.Record       `json:"records"`
 	Pagination RecommendedPagination `json:"pagination"`
 }
 
 // NewRecommended 构造空的 recommended 输出。
 func NewRecommended() Recommended {
-	return Recommended{Records: []pipeline.Record{}}
+	return Recommended{Records: []record.Record{}}
 }
 
 // RecommendedError 构造 recommended 的 MCP error 摘要。
@@ -164,7 +149,7 @@ func CommentsError(err error) (*mcp.CallToolResult, Comments, error) {
 
 // NovelDetail 是 novel_detail tool 的输出 envelope。
 type NovelDetail struct {
-	Records []pipeline.Record `json:"records"`
+	Records []record.Record `json:"records"`
 }
 
 // NovelDetailResult 构造 novel detail 的 MCP 摘要。
@@ -174,7 +159,7 @@ func NovelDetailResult(out NovelDetail) *mcp.CallToolResult {
 
 // NovelDetailError 构造 novel detail 的 MCP error 摘要。
 func NovelDetailError(err error) (*mcp.CallToolResult, NovelDetail, error) {
-	out := NovelDetail{Records: []pipeline.Record{}}
+	out := NovelDetail{Records: []record.Record{}}
 	return records.Result(out.Records, true, records.ErrorMessage(err)), out, nil
 }
 
@@ -197,7 +182,7 @@ func NovelContentError(err error) (*mcp.CallToolResult, NovelContent, error) {
 // NovelSeries 是 novel_series tool 的输出 envelope。
 type NovelSeries struct {
 	Series     pixiv.NovelSeriesDTO  `json:"series"`
-	Records    []pipeline.Record     `json:"records"`
+	Records    []record.Record       `json:"records"`
 	Pagination runtime.PaginationOut `json:"pagination"`
 }
 
@@ -208,7 +193,7 @@ func NovelSeriesResult(out NovelSeries) *mcp.CallToolResult {
 
 // NovelSeriesError 构造 novel series 的 MCP error 摘要。
 func NovelSeriesError(err error) (*mcp.CallToolResult, NovelSeries, error) {
-	out := NovelSeries{Records: []pipeline.Record{}}
+	out := NovelSeries{Records: []record.Record{}}
 	return records.Result(out.Records, true, records.ErrorMessage(err)), out, nil
 }
 
@@ -285,7 +270,7 @@ func ListComments(ctx context.Context, app *runtime.App, id int64, novel bool, i
 		return result, out, nil
 	}
 	metadata := CommentToolMetadata{}
-	items, more, err := runtime.CollectPooledPages(ctx, app, plan, func(ctx context.Context, client *pixiv.Client, cursor sdk.Cursor) ([]pixiv.Comment, sdk.Cursor, error) {
+	items, more, err := runtime.CollectWith(ctx, app, plan, func(ctx context.Context, client *pixiv.Client, cursor sdk.Cursor) ([]pixiv.Comment, sdk.Cursor, error) {
 		var page pixiv.CommentPage
 		var err error
 		if novel {
@@ -330,7 +315,7 @@ func ListUserRelations(ctx context.Context, app *runtime.App, kind string, userI
 	if err != nil {
 		return Error(err)
 	}
-	items, more, err := runtime.CollectPooledPages(ctx, app, plan, func(ctx context.Context, client *pixiv.Client, cursor sdk.Cursor) ([]pixiv.UserPreview, sdk.Cursor, error) {
+	items, more, err := runtime.CollectWith(ctx, app, plan, func(ctx context.Context, client *pixiv.Client, cursor sdk.Cursor) ([]pixiv.UserPreview, sdk.Cursor, error) {
 		var result sdk.Page[pixiv.UserPreview]
 		var err error
 		switch kind {

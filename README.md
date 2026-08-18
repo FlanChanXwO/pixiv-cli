@@ -28,7 +28,6 @@
 - **Direct Pixiv references** — paste supported artwork URLs into detail or download; authenticated profile and artworks URLs expand to that creator's visual works.
 - **Local multi-account OAuth** — browser login, account selection, refresh-token rotation, and an optional cross-machine callback relay.
 - **Automation-ready integration** — typed SDK errors, JSON output, clean MCP stdio, signed release updates, and complete result reporting.
-- **Explicit diagnostics** — opt in with `--debug` for safe live stderr events covering routing, challenge recovery, account-pool decisions, and downloads; no log file is created.
 
 ## Install
 
@@ -59,7 +58,7 @@ pass SHA-256 verification. This changes transport availability, never Release id
 Copy this single prompt into Codex, Claude Code, Cursor, or another local AI agent with terminal access:
 
 ```text
-Install the latest stable pixiv-cli from https://github.com/FlanChanXwO/pixiv-cli for this machine: inspect the repository's scripts/install.sh or scripts/install.cmd first, choose the script matching the detected OS and architecture (the Windows path must use cmd.exe and must not invoke PowerShell), download only official GitHub Release assets, require the published SHA-256 check to pass before replacing anything, install per-user without administrator or root privileges, add only the chosen install directory to the user PATH, ask before installing any missing prerequisite, never read or output Pixiv credentials, verify with pixiv version, and report the installed version plus every file and PATH change.
+Install the latest stable pixiv-cli from https://github.com/FlanChanXwO/pixiv-cli for this machine: inspect the repository's scripts/install.sh or scripts/install.cmd first, choose the script matching the detected OS and architecture (the Windows path must use cmd.exe and must not invoke PowerShell), download only official GitHub Release assets, require the published SHA-256 check to pass before replacing anything, install per-user without administrator or root privileges, add only the chosen install directory to the user PATH, ask before installing any missing prerequisite, never read or output Pixiv credentials, verify with pixiv --version, and report the installed version plus every file and PATH change.
 
 Also install the `pixiv-cli` Skill that matches the same stable release tag (not main): download the full skills/pixiv-cli/ directory from that tag into the agent skills directory the user confirms. Do not guess the skills path and do not follow the main branch for skill content.
 ```
@@ -149,16 +148,12 @@ pixiv timeline latest --type illust --limit 10 --json
 
 ### MCP
 
-Diagnostics are opt-in and write only safe event fields to stderr; MCP stdout remains JSON-RPC only.
-
 Start the stdio server explicitly. stdout remains reserved for JSON-RPC; tool failures are returned as structured results with `isError=true`. No project-level or daily log files are created by default.
 
 ```bash
 pixiv mcp
-# Optional safe diagnostics go to stderr and never change MCP stdout.
-pixiv --debug mcp
 # FANBOX tools use their own runtime credential selection.
-pixiv --debug fanbox mcp
+pixiv fanbox mcp
 ```
 
 See the [MCP tool contract](docs/en/mcp-tools.md) for tools, parameters, structured output, and authentication behavior.
@@ -223,8 +218,8 @@ pixiv auth check
 | [CLI reference](docs/en/cli-reference.md) | Commands, flags, auth, configuration, fallback, downloads, and updates |
 | [Go SDK](docs/en/sdk.md) | Public client, models, pagination, resources, and typed errors |
 | [MCP tools](docs/en/mcp-tools.md) | Tool schemas and output semantics |
-| [Architecture (Simplified Chinese)](docs/maintainers/architecture.md) | Package boundaries and runtime flow |
-| [Development (Simplified Chinese)](docs/maintainers/development.md) | Toolchain, tests, builds, and releases |
+| [Architecture](docs/en/maintainers/architecture.md) | Package boundaries and runtime flow |
+| [Development](docs/en/maintainers/development.md) | Toolchain, tests, builds, and releases |
 | [Changelog](changelog/README.md) | User-visible changes |
 
 ## Contributing

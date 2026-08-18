@@ -8,9 +8,9 @@ import (
 	"path/filepath"
 	"testing"
 
-	accountpixiv "github.com/FlanChanXwO/pixiv-cli/internal/account/pixiv"
-	"github.com/FlanChanXwO/pixiv-cli/internal/platform/localstate"
-	"github.com/FlanChanXwO/pixiv-cli/internal/storage/config"
+	"github.com/FlanChanXwO/pixiv-cli/internal/config/paths"
+	config "github.com/FlanChanXwO/pixiv-cli/internal/config/settings"
+	accountpixiv "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/account"
 	"github.com/FlanChanXwO/pixiv-cli/internal/storage/database"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	pixivsdk "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
@@ -61,7 +61,7 @@ func TestRealPixivSDKRead(t *testing.T) {
 	if err != nil {
 		t.Fatalf("home: %v", err)
 	}
-	appDataDir := filepath.Join(home, localstate.AppDataDirName)
+	appDataDir := filepath.Join(home, paths.AppDataDirName)
 	db, err := database.Open(appDataDir)
 	if err != nil {
 		t.Fatalf("open database: %v", err)

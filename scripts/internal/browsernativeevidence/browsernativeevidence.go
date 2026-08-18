@@ -20,7 +20,7 @@ const (
 	setupGoAction  = "actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff"
 )
 
-// Run 是 scripts/browsernativeevidence 的入口 owner：解析参数并映射 exit code。
+// Run 是 scripts/cmd/browsernativeevidence 的入口 owner：解析参数并映射 exit code。
 func Run(args []string) int {
 	switch {
 	case len(args) == 3 && args[0] == "policy" && args[1] == "--workflow":
@@ -66,7 +66,7 @@ func Validate(path string) error {
 		"runner: windows-2025\n            goos: windows\n            goarch: amd64",
 		"runner: windows-11-arm\n            goos: windows\n            goarch: arm64",
 		"firefox_native:",
-		"go run ./scripts/browsernativeevidence firefox-contract --firefox",
+		"go run ./scripts/cmd/browsernativeevidence firefox-contract --firefox",
 		"Firefox version: 153.0.3",
 		"Firefox package SHA-256:",
 		"Firefox runner target:",

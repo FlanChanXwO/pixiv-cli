@@ -18,9 +18,10 @@ the installed binary's `pixiv <cmd> --help` output.
 
 ## Preflight and account checks
 
-1. Run `pixiv version --json`. The binary itself is the only environment probe:
-   if it is missing or not executable, report that blocker. Install only when
-   the user explicitly asked for installation; then read
+1. Run `pixiv --version` and require one line in the form `pixiv <version>`.
+   The binary itself is the only environment probe: if it is missing or not
+   executable, report that blocker. Install only when the user explicitly asked
+   for installation; then read
    `references/install.md` and use the official platform script. Otherwise do
    not install or guess an installation method.
 2. Do not enumerate local accounts on every session. Run
@@ -74,7 +75,7 @@ the installed binary's `pixiv <cmd> --help` output.
 | Tier | Commands | Behavior |
 | --- | --- | --- |
 | Credential transfer | `auth import` `auth export` | Execute only for the user's explicit import/export task; follow `references/auth.md` so secret input/output is not exposed accidentally |
-| Read | `search` `detail` `ranking` `series` `comment` `bookmark list/tags/detail` `recommended` `timeline *` `mypixiv *` `user *` `config get/path` `version` `update --check` | Execute when the user's task requires it |
+| Read | `search` `detail` `ranking` `series` `comment` `bookmark list/tags/detail` `recommended` `timeline *` `mypixiv *` `user *` `config get/path` root `--version` `update --check` | Execute when the user's task requires it |
 | Account diagnosis | `auth list/check` | List only for authentication/account/fallback decisions; check only when network validation is needed |
 | Account maintenance | `auth refresh` | Rotates saved OAuth credentials and refreshes the cached account profile/Premium status; run only on an explicit request |
 | Write | `bookmark add/remove` `follow add/remove` | State the target (illust/user ID) in one line before executing; for NDJSON stdin actions, state the record type and scope before starting |
@@ -186,12 +187,11 @@ with `pixiv auth pool status|enable|disable`; the config stores only `enabled` a
 local account selected by `pixiv auth use`.
 Common data flags are command-scoped `--json` or `--ndjson`, plus `--proxy URL` /
 `--no-proxy` (this command only, never persisted). Proxy URIs may use `http`,
-`https`, `socks5`, or `socks5h`; `--sleep-request D` sets a one-command minimum
-interval between network request starts.
+`https`, `socks5`, or `socks5h`.
 
 `pixiv config` manages `account_pool_enabled`, `account_pool_strategy`,
 `download_path`, `filename_template`, `directory_template`, `request_interval`,
-and `https_proxy`.
+`https_proxy`, `log_level`, and `log_format`.
 Other TOML settings are hand-maintained; inspect the installed help before suggesting them.
 
 FANBOX is a separate read-only service surface. Import its `FANBOXSESSID` with
@@ -201,21 +201,14 @@ resources using the installed `pixiv fanbox --help` output. `pixiv fanbox mcp`
 uses its own runtime credential selection and does not reuse the Pixiv account
 pool.
 
-The root `--debug` flag is opt-in and writes safe routing/status/challenge,
-solver, account-pool, download, and configuration events to stderr only:
-
-```text
-pixiv --debug search "初音ミク"
-pixiv --debug mcp
-pixiv --debug fanbox mcp
-```
-
-MCP stdout remains JSON-RPC, and `auth export` plus hidden callback/installer
-paths retain their quiet/secret-output contracts. Debug output never includes
-tokens, session cookies, signed query strings, response bodies, or proxy
-userinfo. There is no default log file. FANBOX's optional
-`[fanbox.flaresolverr]` table is a challenge-only recovery route; it does not
-proxy ordinary API/resource requests or receive the FANBOX session.
+Request pacing is configured with `PIXIV_REQUEST_INTERVAL` or
+`[network].request_interval`. Set `log_level=debug` (or
+`PIXIV_LOG_LEVEL=debug`) to enable safe typed diagnostics; use `log_format=json`
+or `PIXIV_LOG_FORMAT=json` for one JSON event per stderr line. MCP stdout remains JSON-RPC, and `auth export`
+plus hidden callback/installer paths retain their quiet/secret-output contracts.
+FANBOX's optional `[fanbox.flaresolverr]` table is a challenge-only recovery
+route; it does not proxy ordinary API/resource requests or receive the FANBOX
+session.
 
 ## Critical semantics (traps — read before assuming a bug)
 

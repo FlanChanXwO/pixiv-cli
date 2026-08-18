@@ -27,7 +27,7 @@ const (
 	prodRustInstallCommand = "rustup toolchain install '${{ matrix.rust_toolchain }}' --profile minimal --target '${{ matrix.rust_target }}' --no-self-update"
 )
 
-// Run 是 scripts/releaseworkflow 的入口 owner：解析参数并委托给 workflow 校验逻辑。
+// Run 是 scripts/cmd/releaseworkflow 的入口 owner：解析参数并委托给 workflow 校验逻辑。
 func Run(args []string) error {
 	return checkWorkflowPath(args)
 }
@@ -81,6 +81,9 @@ func checkWorkflow(body []byte) error {
 		return err
 	}
 	if err := checkTagTrigger(root); err != nil {
+		return err
+	}
+	if err := checkReleaseTagBinding(root); err != nil {
 		return err
 	}
 	if err := checkGlobalPermissions(root); err != nil {
@@ -152,9 +155,6 @@ func checkWorkflow(body []byte) error {
 		return err
 	}
 	if err := checkProductionBuildJob(productionBuild); err != nil {
-		return err
-	}
-	if err := checkRecoveryPolicy(root); err != nil {
 		return err
 	}
 	if err := checkReleaseNotesAuditJob(releaseNotesAudit); err != nil {

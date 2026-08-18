@@ -4,6 +4,7 @@
 /build/
 /pixiv-cli
 /pixiv-auth
+/pixiv
 *.test
 *.out
 coverage/

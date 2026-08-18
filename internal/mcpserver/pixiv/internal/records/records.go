@@ -1,12 +1,12 @@
 // Package records 持有 Pixiv MCP 各 tool 共享的 record 构造、输出 schema 与
-// 本地筛选。它从 public DTO 构造 pipeline.Record，保持未知字段与精确数字；
+// 本地筛选。它从 public DTO 构造 record.Record，保持未知字段与精确数字；
 // CLI 与 MCP 共用同一 Record 机制。
 package records
 
 import (
 	"fmt"
 
-	pipeline "github.com/FlanChanXwO/pixiv-cli/internal/cli/pipeline"
+	record "github.com/FlanChanXwO/pixiv-cli/internal/shared/record"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/google/jsonschema-go/jsonschema"
@@ -15,7 +15,7 @@ import (
 
 // Result 统一实体查询的 MCP 文本摘要。完整实体只存在于 structured records，
 // Content 绝不复制 JSON，以便客户端始终只消费一个机器可读载荷。
-func Result(records []pipeline.Record, isError bool, message string) *mcp.CallToolResult {
+func Result(records []record.Record, isError bool, message string) *mcp.CallToolResult {
 	if message == "" {
 		message = fmt.Sprintf("Retrieved %d records.", len(records))
 	}
@@ -31,8 +31,8 @@ func ErrorMessage(err error) string {
 }
 
 // FromArtworks 构造 artwork records。
-func FromArtworks(items []pixiv.Artwork) ([]pipeline.Record, error) {
-	records := make([]pipeline.Record, 0, len(items))
+func FromArtworks(items []pixiv.Artwork) ([]record.Record, error) {
+	records := make([]record.Record, 0, len(items))
 	for _, item := range items {
 		record, err := FromArtwork(item)
 		if err != nil {
@@ -44,8 +44,8 @@ func FromArtworks(items []pixiv.Artwork) ([]pipeline.Record, error) {
 }
 
 // FromNovels 构造 novel records。
-func FromNovels(items []pixiv.Novel) ([]pipeline.Record, error) {
-	records := make([]pipeline.Record, 0, len(items))
+func FromNovels(items []pixiv.Novel) ([]record.Record, error) {
+	records := make([]record.Record, 0, len(items))
 	for _, item := range items {
 		record, err := FromNovel(item)
 		if err != nil {
@@ -57,8 +57,8 @@ func FromNovels(items []pixiv.Novel) ([]pipeline.Record, error) {
 }
 
 // FromUserPreviews 构造 user records。
-func FromUserPreviews(items []pixiv.UserPreview) ([]pipeline.Record, error) {
-	records := make([]pipeline.Record, 0, len(items))
+func FromUserPreviews(items []pixiv.UserPreview) ([]record.Record, error) {
+	records := make([]record.Record, 0, len(items))
 	for _, item := range items {
 		record, err := FromUserPreview(item)
 		if err != nil {
@@ -70,23 +70,23 @@ func FromUserPreviews(items []pixiv.UserPreview) ([]pipeline.Record, error) {
 }
 
 // FromArtwork 把单个 artwork DTO 转为 record。
-func FromArtwork(artwork pixiv.Artwork) (pipeline.Record, error) {
-	return pipeline.RecordFromArtworkDTO(pixiv.ToArtworkDTO(artwork))
+func FromArtwork(artwork pixiv.Artwork) (record.Record, error) {
+	return record.RecordFromArtworkDTO(pixiv.ToArtworkDTO(artwork))
 }
 
 // FromNovel 把单个 novel DTO 转为 record。
-func FromNovel(novel pixiv.Novel) (pipeline.Record, error) {
-	return pipeline.RecordFromNovelDTO(pixiv.ToNovelDTO(novel))
+func FromNovel(novel pixiv.Novel) (record.Record, error) {
+	return record.RecordFromNovelDTO(pixiv.ToNovelDTO(novel))
 }
 
 // FromUserPreview 把单个 user preview DTO 转为 record。
-func FromUserPreview(preview pixiv.UserPreview) (pipeline.Record, error) {
-	return pipeline.RecordFromUserPreviewDTO(pixiv.ToUserPreviewDTO(preview))
+func FromUserPreview(preview pixiv.UserPreview) (record.Record, error) {
+	return record.RecordFromUserPreviewDTO(pixiv.ToUserPreviewDTO(preview))
 }
 
 // FromUserDetail 把 user detail DTO 转为 record。
-func FromUserDetail(detail pixiv.UserDetail) (pipeline.Record, error) {
-	return pipeline.RecordFromUserDetailDTO(pixiv.ToUserDetailDTO(detail))
+func FromUserDetail(detail pixiv.UserDetail) (record.Record, error) {
+	return record.RecordFromUserDetailDTO(pixiv.ToUserDetailDTO(detail))
 }
 
 // OpenObjectSchema 返回允许任意附加属性的开放对象 schema。

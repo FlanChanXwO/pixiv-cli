@@ -9,14 +9,6 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-func mustJobSteps(job *yaml.Node) []*yaml.Node {
-	steps, err := jobSteps(job)
-	if err != nil {
-		return nil
-	}
-	return steps
-}
-
 func containsScalarFragment(node *yaml.Node, fragment string) bool {
 	if node == nil {
 		return false
@@ -30,20 +22,6 @@ func containsScalarFragment(node *yaml.Node, fragment string) bool {
 		}
 	}
 	return false
-}
-
-func countScalarFragment(node *yaml.Node, fragment string) int {
-	if node == nil {
-		return 0
-	}
-	count := 0
-	if node.Kind == yaml.ScalarNode {
-		count += strings.Count(node.Value, fragment)
-	}
-	for _, child := range node.Content {
-		count += countScalarFragment(child, fragment)
-	}
-	return count
 }
 
 func stepIndexWithRunFragment(steps []*yaml.Node, fragment string) int {
@@ -112,6 +90,42 @@ func checkGlobalPermissions(root *yaml.Node) error {
 	permissions, ok := workflowyaml.MappingValue(root, "permissions")
 	if !ok || permissions.Kind != yaml.MappingNode || len(permissions.Content) != 0 {
 		return errors.New("global permissions must be an empty mapping")
+	}
+	return nil
+}
+
+func checkTagTrigger(root *yaml.Node) error {
+	on, ok := workflowyaml.MappingValue(root, "on")
+	if !ok || on.Kind != yaml.MappingNode {
+		return errors.New("workflow must have an on mapping")
+	}
+	if err := requireOnlyMappingKeys(on, "push"); err != nil {
+		return errors.New("on must contain only the push trigger")
+	}
+	push, ok := workflowyaml.MappingValue(on, "push")
+	if !ok || push.Kind != yaml.MappingNode {
+		return errors.New("on.push must be a mapping")
+	}
+	if err := requireOnlyMappingKeys(push, "tags"); err != nil {
+		return errors.New("on.push must contain only tags")
+	}
+	tags, ok := workflowyaml.MappingValue(push, "tags")
+	if !ok || tags.Kind != yaml.SequenceNode || len(tags.Content) != 1 || tags.Content[0].Value != "v[0-9]*" {
+		return errors.New("on.push.tags must equal [v[0-9]*]")
+	}
+	return nil
+}
+
+func checkReleaseTagBinding(root *yaml.Node) error {
+	env, ok := workflowyaml.MappingValue(root, "env")
+	if !ok || requireOnlyMappingKeys(env, "RELEASE_TAG") != nil || workflowyaml.RequireScalar(env, "RELEASE_TAG", "${{ github.ref_name }}") != nil {
+		return errors.New("workflow must bind RELEASE_TAG only to the pushed tag")
+	}
+	if containsScalarFragment(root, "GITHUB_SHA") {
+		return errors.New("release workflow must not read the workflow GITHUB_SHA")
+	}
+	if containsScalarFragment(root, "GITHUB_REF_NAME") {
+		return errors.New("release workflow must not derive production identity from GITHUB_REF_NAME")
 	}
 	return nil
 }

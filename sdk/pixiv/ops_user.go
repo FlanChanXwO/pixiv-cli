@@ -4,14 +4,14 @@ import (
 	"context"
 	"net/url"
 
-	userentity "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/user"
-	userblocked "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/user/blocked"
-	userfollowers "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/user/followers"
-	userfollowing "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/user/following"
-	usermypixiv "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/user/mypixiv"
-	userrecommended "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/user/recommended"
-	userrelated "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/user/related"
-	usersearch "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/user/search"
+	userentity "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/user"
+	userblocked "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/user/blocked"
+	userfollowers "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/user/followers"
+	userfollowing "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/user/following"
+	usermypixiv "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/user/mypixiv"
+	userrecommended "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/user/recommended"
+	userrelated "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/user/related"
+	usersearch "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/user/search"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 )
 

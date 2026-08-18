@@ -9,19 +9,19 @@ import (
 )
 
 // checkReleaseNotesAuditJob 将来源审计固定在受保护 publish job 之前。该 job
-// 只有读取提交、PR 元数据和 tag 内说明所需的权限，不能读取发布签名 secret。
+// 只有读取提交、PR 关联和 tag 内说明所需的权限，不能读取发布签名 secret。
 func checkReleaseNotesAuditJob(job *yaml.Node) error {
 	const auditCommands = `
 set -euo pipefail
 previous_tag=$(git tag --merged "$RELEASE_TAG^" --sort=-version:refname | head -n 1)
 test -n "$previous_tag"
 audit_report="$RUNNER_TEMP/release-notes-audit.json"
-go run ./scripts/releasenotes audit \
+go run ./scripts/cmd/releasenotes audit \
 --repo "$GITHUB_REPOSITORY" \
 --from "$previous_tag" \
 --to "$RELEASE_TAG" \
 --output "$audit_report"
-go run ./scripts/releasenotes validate \
+go run ./scripts/cmd/releasenotes validate \
 --version "${RELEASE_TAG#v}" \
 --dir "changelog/$RELEASE_TAG" \
 --previous "$previous_tag" \
@@ -62,7 +62,7 @@ go run ./scripts/releasenotes validate \
 		return err
 	}
 	if err := requireOnlyMappingKeys(steps[2], "name", "shell", "env", "run"); err != nil ||
-		workflowyaml.RequireScalar(steps[2], "name", "Audit release-note sources and validate the bilingual tag notes") != nil ||
+		workflowyaml.RequireScalar(steps[2], "name", "Audit release sources and validate the bilingual tag notes") != nil ||
 		workflowyaml.RequireScalar(steps[2], "shell", "bash") != nil ||
 		!equalCommands(splitCommands(requireRunValue(steps[2])), splitCommands(auditCommands)) {
 		return errors.New("release_notes_audit job must run the canonical direct audit commands")

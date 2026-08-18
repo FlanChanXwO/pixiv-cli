@@ -1,9 +1,9 @@
-// Package diagnostics renders safe events from the diagnostics core as
-// synchronized English narrative lines for CLI --debug output. It is owned by
-// the CLI and never defines event/reason/sink semantics itself.
+// Package diagnostics renders safe typed events for the CLI-owned stderr
+// presenter. Event definitions and emission remain in shared/diagnostics.
 package diagnostics
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/url"
@@ -12,42 +12,60 @@ import (
 	"sync"
 	"time"
 
-	core "github.com/FlanChanXwO/pixiv-cli/internal/diagnostics"
+	core "github.com/FlanChanXwO/pixiv-cli/internal/shared/diagnostics"
 )
 
-// Presenter renders typed events as synchronized English narrative lines.
+const (
+	formatText = "text"
+	formatJSON = "json"
+)
+
+// Presenter renders typed events as safe text or one-line JSON records.
 type Presenter struct {
 	writer io.Writer
+	format string
 	now    func() time.Time
 
 	mu  sync.Mutex
 	err error
 }
 
-// NewPresenter creates a real-time presenter using the local clock.
+// NewPresenter creates a text presenter using the local clock.
 func NewPresenter(writer io.Writer) *Presenter {
-	return NewPresenterWithClock(writer, time.Now)
+	return NewPresenterWithFormat(writer, formatText, time.Now)
 }
 
 // NewPresenterWithClock is deterministic-test friendly while preserving the
-// same production rendering path.
+// production text rendering path.
 func NewPresenterWithClock(writer io.Writer, now func() time.Time) *Presenter {
+	return NewPresenterWithFormat(writer, formatText, now)
+}
+
+// NewPresenterWithFormat creates a presenter for the configured stderr format.
+func NewPresenterWithFormat(writer io.Writer, format string, now func() time.Time) *Presenter {
 	if writer == nil {
 		writer = io.Discard
 	}
 	if now == nil {
 		now = time.Now
 	}
-	return &Presenter{writer: writer, now: now}
+	if format != formatJSON {
+		format = formatText
+	}
+	return &Presenter{writer: writer, format: format, now: now}
 }
 
-// Emit renders and writes one complete line. The first writer error is kept;
+// Emit renders and writes one complete record. The first writer error is kept;
 // business execution is never cancelled by a diagnostic sink failure.
 func (p *Presenter) Emit(event core.Event) {
 	if p == nil {
 		return
 	}
-	line := fmt.Sprintf("[%s] %s %s\n", event.Module, p.now().Format("15:04:05"), narrative(event))
+	line, err := p.render(event)
+	if err != nil {
+		p.recordError(err)
+		return
+	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if _, err := io.WriteString(p.writer, line); err != nil && p.err == nil {
@@ -55,7 +73,7 @@ func (p *Presenter) Emit(event core.Event) {
 	}
 }
 
-// Err returns the first writer error observed by the presenter.
+// Err returns the first writer or rendering error observed by the presenter.
 func (p *Presenter) Err() error {
 	if p == nil {
 		return nil
@@ -63,6 +81,58 @@ func (p *Presenter) Err() error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	return p.err
+}
+
+func (p *Presenter) recordError(err error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.err == nil {
+		p.err = err
+	}
+}
+
+func (p *Presenter) render(event core.Event) (string, error) {
+	if p.format == formatJSON {
+		record := jsonRecord{
+			Time:      p.now().Format(time.RFC3339Nano),
+			Level:     "DEBUG",
+			Module:    safeText(string(event.Module)),
+			Kind:      safeText(string(event.Kind)),
+			Operation: safeText(event.Operation),
+			Resource:  safeText(event.Resource),
+			Route:     safeText(event.Route),
+			Proxy:     safeAddress(event.Proxy),
+			Reason:    safeText(string(event.Reason)),
+			Status:    event.Status,
+			Count:     event.Count,
+			RequestID: event.RequestID,
+		}
+		if event.Duration != 0 {
+			record.DurationMS = event.Duration.Milliseconds()
+		}
+		body, err := json.Marshal(record)
+		if err != nil {
+			return "", err
+		}
+		return string(body) + "\n", nil
+	}
+	return fmt.Sprintf("[%s] %s %s\n", event.Module, p.now().Format("15:04:05"), narrative(event)), nil
+}
+
+type jsonRecord struct {
+	Time       string `json:"time"`
+	Level      string `json:"level"`
+	Module     string `json:"module"`
+	Kind       string `json:"kind"`
+	Operation  string `json:"operation,omitempty"`
+	Resource   string `json:"resource,omitempty"`
+	Route      string `json:"route,omitempty"`
+	Proxy      string `json:"proxy,omitempty"`
+	Reason     string `json:"reason,omitempty"`
+	Status     int    `json:"status,omitempty"`
+	Count      int    `json:"count,omitempty"`
+	RequestID  uint64 `json:"request_id,omitempty"`
+	DurationMS int64  `json:"duration_ms,omitempty"`
 }
 
 func narrative(event core.Event) string {
@@ -105,20 +175,13 @@ func narrative(event core.Event) string {
 		if route != "" {
 			verb += " through the " + route
 		}
-		if event.Proxy != "" {
-			if proxy := safeAddress(event.Proxy); proxy != "" {
-				verb += " via proxy " + proxy
-			}
-		}
-		if event.UserAgent != "" {
-			if agent := safeHeader(event.UserAgent); agent != "" {
-				verb += " with User-Agent " + agent
-			}
+		if proxy := safeAddress(event.Proxy); proxy != "" {
+			verb += " via proxy " + proxy
 		}
 		if request != "" {
 			return fmt.Sprintf("Request %s is %s.", request, verb)
 		}
-		return capitalizeFirst(verb) + "."
+		return "Request is " + verb + "."
 	case core.EventChallenge:
 		if event.Status > 0 && request != "" {
 			return fmt.Sprintf("Cloudflare challenged request %s with HTTP %d.", request, event.Status)
@@ -221,9 +284,7 @@ func formatDuration(duration time.Duration) string {
 	return strconv.FormatFloat(duration.Seconds(), 'f', 1, 64) + " seconds"
 }
 
-func capitalize(value string) string {
-	return capitalizeFirst(value)
-}
+func capitalize(value string) string { return capitalizeFirst(value) }
 
 func capitalizeFirst(value string) string {
 	if value == "" {
@@ -252,6 +313,9 @@ func safeText(value string) string {
 }
 
 func safeAddress(value string) string {
+	if value == "" {
+		return ""
+	}
 	parsed, err := url.Parse(value)
 	if err != nil || parsed == nil || parsed.Hostname() == "" {
 		return safeText(value)
@@ -261,11 +325,4 @@ func safeAddress(value string) string {
 	parsed.ForceQuery = false
 	parsed.Fragment = ""
 	return parsed.String()
-}
-
-func safeHeader(value string) string {
-	if strings.ContainsAny(value, "\r\n\x00") {
-		return ""
-	}
-	return value
 }

@@ -5,127 +5,36 @@ import (
 	"bytes"
 	"context"
 	"errors"
+
+	"github.com/FlanChanXwO/pixiv-cli/sdk"
+
+	"github.com/stretchr/testify/require"
 	"os"
 	"path/filepath"
+
 	"slices"
 	"strings"
 	"testing"
 
 	downloader "github.com/FlanChanXwO/pixiv-cli/internal/media/downloader"
-	"github.com/FlanChanXwO/pixiv-cli/internal/media/downloader/filename"
-	sharedugoira "github.com/FlanChanXwO/pixiv-cli/internal/media/ugoira"
-	"github.com/FlanChanXwO/pixiv-cli/sdk"
+
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
+
+	sharedugoira "github.com/FlanChanXwO/pixiv-cli/internal/media/ugoira"
 )
 
-func TestSanitizeAndGenerateFilename(t *testing.T) {
-	illust := filename.FilenameData{ID: 123, Title: `a/b:c`, PageCount: 2, Author: `x*y`}
-	got := filename.Generate(illust, 1, "{author}_{id}_{title}")
-	if got != "x_y_123_a_b_c_p1" {
-		t.Fatalf("filename = %q", got)
-	}
-}
-
-func TestGenerateFilenameSanitizesTemplatePathSeparators(t *testing.T) {
-	illust := filename.FilenameData{ID: 123, Title: "safe", PageCount: 1, Author: "artist"}
-	got := filename.Generate(illust, 0, "../nested/{author}/{id}")
-	if got != ".._nested_artist_123" {
-		t.Fatalf("filename = %q", got)
-	}
-	if strings.ContainsAny(got, `/\`) {
-		t.Fatalf("filename still contains path separator: %q", got)
-	}
-}
-
-func TestSetDownloadPathCreatesDirectory(t *testing.T) {
-	dir := filepath.Join(t.TempDir(), "nested")
-	m := downloader.NewManager(nil, t.TempDir(), "{id}")
-	if err := m.SetDownloadPath(dir); err != nil {
-		t.Fatalf("SetDownloadPath returned error: %v", err)
-	}
-	if _, err := os.Stat(dir); err != nil {
-		t.Fatalf("download dir was not created: %v", err)
-	}
-}
-
-func TestDownloadSingleArtworkReturnsPath(t *testing.T) {
-	dir := t.TempDir()
-	rawURL := "https://i.example/42.jpg"
-	client := &fakePixivClient{
-		details: map[int64]pixiv.Artwork{
-			42: {
-				ID: 42, Title: "single", PageCount: 1, Kind: pixiv.ArtworkKindIllustration,
-				User:  pixiv.User{Name: "author"},
-				Pages: []pixiv.ArtworkPage{artworkPage(rawURL, 0)},
-			},
-		},
-		downloads: map[string][]byte{rawURL: []byte("jpg")},
-	}
-	m := downloader.NewManager(client, dir, "{id}")
-
-	got, err := m.Download(context.Background(), downloader.DownloadRequest{IllustIDs: []int64{42, 42, 0, -1}})
-	if err != nil {
-		t.Fatalf("Download returned error: %v", err)
-	}
-	if len(got) != 1 || len(got[0].Files) != 1 {
-		t.Fatalf("Download returned unexpected artworks: %+v", got)
-	}
-	if got[0].IllustID != 42 || got[0].Title != "single" || got[0].Author != "author" {
-		t.Fatalf("Download returned wrong metadata: %+v", got[0])
-	}
-	if filepath.Base(got[0].Files[0].Path) != "42.jpg" {
-		t.Fatalf("download path = %q", got[0].Files[0].Path)
-	}
-	assertFileBody(t, got[0].Files[0].Path, "jpg")
-}
-
-func TestDownloadSingleArtworkSanitizesExtensionFromURL(t *testing.T) {
-	dir := t.TempDir()
-	rawURL := "https://i.example/42.jp%2Ag%3A%7C"
-	client := &fakePixivClient{
-		details: map[int64]pixiv.Artwork{42: {
-			ID: 42, Title: "single", PageCount: 1, Kind: pixiv.ArtworkKindIllustration,
-			User:  pixiv.User{Name: "author"},
-			Pages: []pixiv.ArtworkPage{artworkPage(rawURL, 0)},
-		}},
-		downloads: map[string][]byte{rawURL: []byte("image")},
-	}
-	m := downloader.NewManager(client, dir, "{id}")
-
-	got, err := m.Download(context.Background(), downloader.DownloadRequest{IllustIDs: []int64{42}})
-	if err != nil {
-		t.Fatalf("Download returned error: %v", err)
-	}
-	if len(got) != 1 || len(got[0].Files) != 1 {
-		t.Fatalf("Download returned unexpected artworks: %+v", got)
-	}
-	path := got[0].Files[0].Path
-	if base := filepath.Base(path); base != "42.jp_g__" {
-		t.Fatalf("download filename = %q, want %q", base, "42.jp_g__")
-	}
-	if strings.ContainsAny(filepath.Base(path), `/\:*?"<>|`) {
-		t.Fatalf("download filename contains an unsafe character: %q", path)
-	}
-	rel, err := filepath.Rel(dir, path)
-	if err != nil {
-		t.Fatalf("Rel returned error: %v", err)
-	}
-	if rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) || filepath.IsAbs(rel) {
-		t.Fatalf("download escaped root: path=%q root=%q rel=%q", path, dir, rel)
-	}
-	assertFileBody(t, path, "image")
-}
-
-func TestDownloadSingleArtworkNormalizesPlatformInvalidExtensionEndings(t *testing.T) {
+func TestDownloadSingleArtworkNormalizesFilename(t *testing.T) {
 	tests := []struct {
 		name   string
 		rawURL string
 		want   string
 	}{
+		{name: "encoded unsafe extension", rawURL: "https://i.example/42.jp%2Ag%3A%7C", want: "42.jp_g__"},
 		{name: "nul", rawURL: "https://i.example/42.jp%00", want: "42.jp_"},
 		{name: "newline", rawURL: "https://i.example/42.jp%0A", want: "42.jp_"},
 		{name: "trailing space", rawURL: "https://i.example/42.jpg%20", want: "42.jpg"},
 		{name: "trailing dot", rawURL: "https://i.example/42.", want: "42"},
+		{name: "without extension", rawURL: "https://i.example/42", want: "42"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -152,6 +61,9 @@ func TestDownloadSingleArtworkNormalizesPlatformInvalidExtensionEndings(t *testi
 			if base != test.want {
 				t.Fatalf("download filename = %q, want %q", base, test.want)
 			}
+			if strings.ContainsAny(base, `/\:*?"<>|`) {
+				t.Fatalf("download filename contains an unsafe character: %q", base)
+			}
 			for _, character := range base {
 				if character < 0x20 || character == 0x7f {
 					t.Fatalf("download filename contains ASCII control %#U: %q", character, base)
@@ -170,33 +82,6 @@ func TestDownloadSingleArtworkNormalizesPlatformInvalidExtensionEndings(t *testi
 			assertFileBody(t, path, "image")
 		})
 	}
-}
-
-func TestDownloadSingleArtworkWithoutURLExtensionDoesNotInventOne(t *testing.T) {
-	dir := t.TempDir()
-	rawURL := "https://i.example/42"
-	client := &fakePixivClient{
-		details: map[int64]pixiv.Artwork{42: {
-			ID: 42, Title: "single", PageCount: 1, Kind: pixiv.ArtworkKindIllustration,
-			User:  pixiv.User{Name: "author"},
-			Pages: []pixiv.ArtworkPage{artworkPage(rawURL, 0)},
-		}},
-		downloads: map[string][]byte{rawURL: []byte("image")},
-	}
-	m := downloader.NewManager(client, dir, "{id}")
-
-	got, err := m.Download(context.Background(), downloader.DownloadRequest{IllustIDs: []int64{42}})
-	if err != nil {
-		t.Fatalf("Download returned error: %v", err)
-	}
-	if len(got) != 1 || len(got[0].Files) != 1 {
-		t.Fatalf("Download returned unexpected artworks: %+v", got)
-	}
-	path := got[0].Files[0].Path
-	if base := filepath.Base(path); base != "42" {
-		t.Fatalf("download filename = %q, want %q", base, "42")
-	}
-	assertFileBody(t, path, "image")
 }
 
 func TestDownloadUsesSDKResourceReferenceAndDestination(t *testing.T) {
@@ -546,19 +431,6 @@ func TestDownloadUgoiraUsesOriginalArchive(t *testing.T) {
 	}
 }
 
-func TestDownloadMissingPageMetadataReturnsError(t *testing.T) {
-	m := downloader.NewManager(&fakePixivClient{
-		details: map[int64]pixiv.Artwork{
-			1: {ID: 1, Title: "empty", PageCount: 1, Kind: pixiv.ArtworkKindIllustration},
-		},
-	}, t.TempDir(), "{id}")
-
-	_, err := m.Download(context.Background(), downloader.DownloadRequest{IllustIDs: []int64{1}})
-	if err == nil || !strings.Contains(err.Error(), "no page metadata") {
-		t.Fatalf("Download error = %v", err)
-	}
-}
-
 func TestDownloadUgoiraExplicitAPNGUsesRustEncoder(t *testing.T) {
 	dir := t.TempDir()
 	zipURL := "https://i.example/ugoira.zip"
@@ -705,3 +577,409 @@ func assertFileBody(t *testing.T, path, want string) {
 		t.Fatalf("%s body = %q, want %q", path, string(body), want)
 	}
 }
+func TestDownloadPagesSelectionIsOneBasedAndErrorsOnMissing(t *testing.T) {
+	dir := t.TempDir()
+	client := &fakePixivClient{
+		details: map[int64]pixiv.Artwork{
+			7: {
+				ID: 7, Title: "multi", PageCount: 3, Kind: pixiv.ArtworkKindIllustration, User: pixiv.User{Name: "author"},
+				Pages: []pixiv.ArtworkPage{
+					artworkPage("https://i.example/7_p0.png", 0),
+					artworkPage("https://i.example/7_p1.png", 1),
+					artworkPage("https://i.example/7_p2.png", 2),
+				},
+			},
+		},
+		downloads: map[string][]byte{
+			"https://i.example/7_p0.png": []byte("p0"),
+			"https://i.example/7_p1.png": []byte("p1"),
+			"https://i.example/7_p2.png": []byte("p2"),
+		},
+	}
+	m := downloader.NewManager(client, dir, "{id}")
+	got, err := m.Download(context.Background(), downloader.DownloadRequest{
+		IllustIDs: []int64{7},
+		Pages:     []int{1, 3},
+		Quality:   downloader.DownloadQualityOriginal,
+	})
+	if err != nil {
+		t.Fatalf("Download error: %v", err)
+	}
+	if len(got) != 1 || len(got[0].Files) != 2 {
+		t.Fatalf("files=%+v", got)
+	}
+	if got[0].Files[0].Page != 1 || got[0].Files[1].Page != 3 {
+		t.Fatalf("pages=%+v", got[0].Files)
+	}
+	if filepath.Base(got[0].Files[0].Path) != "7_p0.png" || filepath.Base(got[0].Files[1].Path) != "7_p2.png" {
+		t.Fatalf("paths=%q %q", got[0].Files[0].Path, got[0].Files[1].Path)
+	}
+
+	_, err = m.Download(context.Background(), downloader.DownloadRequest{
+		IllustIDs: []int64{7},
+		Pages:     []int{4},
+		Quality:   downloader.DownloadQualityOriginal,
+	})
+	if err == nil || !strings.Contains(err.Error(), "page 4 does not exist") {
+		t.Fatalf("missing page error=%v", err)
+	}
+}
+
+func TestDownloadUgoiraRejectsQualityAndPages(t *testing.T) {
+	dir := t.TempDir()
+	client := &fakePixivClient{
+		details: map[int64]pixiv.Artwork{
+			9: {ID: 9, Title: "u", Kind: pixiv.ArtworkKindUgoira, PageCount: 1, User: pixiv.User{Name: "a"}},
+		},
+	}
+	m := downloader.NewManager(client, dir, "{id}")
+	_, err := m.Download(context.Background(), downloader.DownloadRequest{
+		IllustIDs: []int64{9},
+		Quality:   downloader.DownloadQualityRegular,
+	})
+	if err == nil || !strings.Contains(err.Error(), "ugoira quality") {
+		t.Fatalf("quality error=%v", err)
+	}
+	_, err = m.Download(context.Background(), downloader.DownloadRequest{
+		IllustIDs: []int64{9},
+		Pages:     []int{1},
+		Quality:   downloader.DownloadQualityOriginal,
+	})
+	if err == nil || !strings.Contains(err.Error(), "page selection is unsupported") {
+		t.Fatalf("pages error=%v", err)
+	}
+}
+func TestParsePageSpec(t *testing.T) {
+	for _, test := range []struct {
+		name      string
+		spec      string
+		wantPages []int
+		wantNil   bool
+		wantError bool
+	}{
+		{name: "ranges dedup and sort", spec: "3,1,2-4,1", wantPages: []int{1, 2, 3, 4}},
+		{name: "empty means all", spec: "  ", wantNil: true},
+		{name: "zero", spec: "0", wantError: true},
+		{name: "open range", spec: "1-", wantError: true},
+		{name: "negative range", spec: "-2", wantError: true},
+		{name: "non integer", spec: "a", wantError: true},
+		{name: "reversed range", spec: "2-1", wantError: true},
+		{name: "empty item", spec: "1,,2", wantError: true},
+		{name: "multiple ranges", spec: "1-2-3", wantError: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			pages, err := downloader.ParsePageSpec(test.spec)
+			if test.wantError {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			if test.wantNil {
+				require.Nil(t, pages)
+				return
+			}
+			require.Equal(t, test.wantPages, pages)
+		})
+	}
+}
+
+func TestValidateDownloadQuality(t *testing.T) {
+	for _, q := range []downloader.DownloadQuality{
+		downloader.DownloadQualityOriginal,
+		downloader.DownloadQualityRegular,
+		downloader.DownloadQualitySmall,
+		downloader.DownloadQualityThumb,
+		downloader.DownloadQualityMini,
+	} {
+		require.NoError(t, downloader.ValidateDownloadQuality(q))
+	}
+	require.Error(t, downloader.ValidateDownloadQuality("huge"))
+}
+func TestDownloadServiceDelegatesOperationClientAndRequest(t *testing.T) {
+	type contextKey string
+	ctx := context.WithValue(context.Background(), contextKey("request"), "same-context")
+	client := &downloadClientStub{}
+	want := []downloader.DownloadedArtwork{{
+		IllustID: 42,
+		Title:    "work",
+		Author:   "artist",
+		Type:     "illust",
+		Files:    []downloader.DownloadedFile{{Path: "/tmp/downloads/42.jpg", Page: 3}},
+	}}
+	manager := &downloadManagerStub{download: func(gotContext context.Context, request downloader.DownloadRequest) ([]downloader.DownloadedArtwork, error) {
+		require.Same(t, ctx, gotContext)
+		require.Equal(t, []int64{42, 84}, request.IllustIDs)
+		return want, nil
+	}}
+	service := downloader.DownloadService{NewManager: func(gotClient downloader.DownloadClient, gotPath, gotTemplate string) (downloader.DownloadManager, error) {
+		require.Same(t, client, gotClient)
+		require.Equal(t, "/tmp/downloads", gotPath)
+		require.Equal(t, "{id}-{title}", gotTemplate)
+		return manager, nil
+	}}
+
+	got, err := service.Download(ctx, client, downloader.DownloadRequest{
+		IllustIDs:        []int64{42, 84},
+		DownloadPath:     "/tmp/downloads",
+		FilenameTemplate: "{id}-{title}",
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, want, got)
+}
+
+func TestDownloadSourcesDeduplicatesCanonicalArtwork(t *testing.T) {
+	client := &downloadSourcesStub{}
+	var downloaded []int64
+	service := downloader.DownloadService{NewManager: func(downloader.DownloadClient, string, string) (downloader.DownloadManager, error) {
+		return &downloadManagerStub{download: func(_ context.Context, request downloader.DownloadRequest) ([]downloader.DownloadedArtwork, error) {
+			downloaded = append(downloaded, request.IllustIDs...)
+			return []downloader.DownloadedArtwork{{IllustID: 1}}, nil
+		}}, nil
+	}}
+
+	report, err := service.DownloadSources(context.Background(), client, []string{"1", "https://www.pixiv.net/artworks/1", "2"}, downloader.DownloadRequest{})
+	require.NoError(t, err)
+	require.Equal(t, []int64{1, 2}, downloaded)
+	require.Len(t, report.Failures, 0)
+}
+
+func TestDownloadSourcesExpandsUserArtworksAndDeduplicates(t *testing.T) {
+	client := &downloadSourcesStub{}
+	client.userArtworks = func(_ context.Context, request pixiv.UserArtworksRequest) (sdk.Page[pixiv.Artwork], error) {
+		return sdk.Page[pixiv.Artwork]{Items: []pixiv.Artwork{
+			{ID: 1, Kind: pixiv.ArtworkKindIllustration},
+			{ID: 2, Kind: pixiv.ArtworkKindIllustration},
+		}}, nil
+	}
+	var downloaded []int64
+	service := downloader.DownloadService{NewManager: func(downloader.DownloadClient, string, string) (downloader.DownloadManager, error) {
+		return &downloadManagerStub{download: func(_ context.Context, request downloader.DownloadRequest) ([]downloader.DownloadedArtwork, error) {
+			downloaded = append(downloaded, request.IllustIDs...)
+			return []downloader.DownloadedArtwork{{IllustID: 1}}, nil
+		}}, nil
+	}}
+
+	report, err := service.DownloadSources(context.Background(), client, []string{"1", "https://www.pixiv.net/users/7/artworks"}, downloader.DownloadRequest{})
+	require.NoError(t, err)
+	require.Equal(t, []int64{1, 2}, downloaded)
+	require.Len(t, report.Failures, 0)
+}
+
+func TestDownloadSourcesRedactsRejectedSource(t *testing.T) {
+	source := "https://signed.example/private?signature=secret"
+	client := &downloadSourcesStub{}
+
+	report, err := (downloader.DownloadService{}).DownloadSources(context.Background(), client, []string{source}, downloader.DownloadRequest{})
+
+	require.NoError(t, err)
+	require.Len(t, report.Failures, 1)
+	require.Equal(t, "[redacted source]", report.Failures[0].URL)
+	require.NotContains(t, report.Failures[0].URL, source)
+}
+
+func TestDownloadServiceStopsImmediatelyWhenContextIsCanceled(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	calls := 0
+	service := downloader.DownloadService{NewManager: func(downloader.DownloadClient, string, string) (downloader.DownloadManager, error) {
+		return &downloadManagerStub{download: func(ctx context.Context, _ downloader.DownloadRequest) ([]downloader.DownloadedArtwork, error) {
+			calls++
+			return nil, ctx.Err()
+		}}, nil
+	}}
+
+	report, err := service.DownloadSources(ctx, &downloadSourcesStub{}, []string{"1"}, downloader.DownloadRequest{})
+	require.ErrorIs(t, err, context.Canceled)
+	require.Zero(t, calls)
+	require.Empty(t, report.Items)
+	require.Empty(t, report.Failures)
+}
+
+func TestDownloadServiceRejectsMissingDependencies(t *testing.T) {
+	var typedNilClient *typedNilDownloadClient
+	var typedNilManager *typedNilDownloadManager
+	for _, test := range []struct {
+		name             string
+		client           downloader.DownloadClient
+		factoryMode      string
+		wantError        string
+		wantFactoryCalls int
+	}{
+		{
+			name:        "missing factory",
+			client:      &downloadClientStub{},
+			factoryMode: "missing",
+			wantError:   "download manager factory is not configured",
+		},
+		{
+			name:             "missing operation client",
+			factoryMode:      "valid",
+			wantError:        "download operation client is not configured",
+			wantFactoryCalls: 0,
+		},
+		{
+			name:             "typed nil operation client",
+			client:           typedNilClient,
+			factoryMode:      "valid",
+			wantError:        "download operation client is not configured",
+			wantFactoryCalls: 0,
+		},
+		{
+			name:             "missing manager",
+			client:           &downloadClientStub{},
+			factoryMode:      "missing-manager",
+			wantError:        "download manager factory returned nil",
+			wantFactoryCalls: 1,
+		},
+		{
+			name:             "typed nil manager",
+			client:           &downloadClientStub{},
+			factoryMode:      "typed nil-manager",
+			wantError:        "download manager factory returned nil",
+			wantFactoryCalls: 1,
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			factoryCalls := 0
+			service := downloader.DownloadService{}
+			if test.factoryMode != "missing" {
+				service.NewManager = func(downloader.DownloadClient, string, string) (downloader.DownloadManager, error) {
+					factoryCalls++
+					switch test.factoryMode {
+					case "missing-manager":
+						return nil, nil
+					case "typed nil-manager":
+						return typedNilManager, nil
+					default:
+						return &downloadManagerStub{download: func(context.Context, downloader.DownloadRequest) ([]downloader.DownloadedArtwork, error) {
+							return nil, nil
+						}}, nil
+					}
+				}
+			}
+
+			_, err := service.Download(context.Background(), test.client, downloader.DownloadRequest{})
+			require.EqualError(t, err, test.wantError)
+			require.Equal(t, test.wantFactoryCalls, factoryCalls)
+		})
+	}
+}
+
+func TestDownloadServicePropagatesManagerFailure(t *testing.T) {
+	want := errors.New("download failed")
+	service := downloader.DownloadService{NewManager: func(downloader.DownloadClient, string, string) (downloader.DownloadManager, error) {
+		return &downloadManagerStub{download: func(context.Context, downloader.DownloadRequest) ([]downloader.DownloadedArtwork, error) {
+			return nil, want
+		}}, nil
+	}}
+
+	_, err := service.Download(context.Background(), &downloadClientStub{}, downloader.DownloadRequest{IllustIDs: []int64{42}})
+	require.ErrorIs(t, err, want)
+}
+
+type downloadManagerStub struct {
+	download func(context.Context, downloader.DownloadRequest) ([]downloader.DownloadedArtwork, error)
+}
+
+func (m *downloadManagerStub) Download(ctx context.Context, request downloader.DownloadRequest) ([]downloader.DownloadedArtwork, error) {
+	return m.download(ctx, request)
+}
+
+type typedNilDownloadManager struct{}
+
+func (*typedNilDownloadManager) Download(context.Context, downloader.DownloadRequest) ([]downloader.DownloadedArtwork, error) {
+	panic("typed-nil download manager must not be called")
+}
+
+type downloadClientStub struct {
+	artwork          func(context.Context, pixiv.ArtworkRequest) (pixiv.Artwork, error)
+	ugoiraMetadata   func(context.Context, pixiv.UgoiraMetadataRequest) (pixiv.UgoiraMetadata, error)
+	parseResourceRef func(string) (sdk.ResourceRef, error)
+	saveResource     func(context.Context, sdk.ResourceRef, sdk.SaveOptions) (sdk.SavedResource, error)
+}
+
+func (c *downloadClientStub) Artwork(ctx context.Context, request pixiv.ArtworkRequest) (pixiv.Artwork, error) {
+	if c.artwork != nil {
+		return c.artwork(ctx, request)
+	}
+	return pixiv.Artwork{}, nil
+}
+
+func (c *downloadClientStub) UgoiraMetadata(ctx context.Context, request pixiv.UgoiraMetadataRequest) (pixiv.UgoiraMetadata, error) {
+	if c.ugoiraMetadata != nil {
+		return c.ugoiraMetadata(ctx, request)
+	}
+	return pixiv.UgoiraMetadata{}, nil
+}
+
+func (c *downloadClientStub) ParseResourceRef(value string) (sdk.ResourceRef, error) {
+	if c.parseResourceRef != nil {
+		return c.parseResourceRef(value)
+	}
+	return sdk.ResourceRef{}, nil
+}
+
+func (c *downloadClientStub) SaveResource(ctx context.Context, ref sdk.ResourceRef, options sdk.SaveOptions) (sdk.SavedResource, error) {
+	if c.saveResource != nil {
+		return c.saveResource(ctx, ref, options)
+	}
+	return sdk.SavedResource{}, nil
+}
+
+type typedNilDownloadClient struct{}
+
+func (*typedNilDownloadClient) Artwork(context.Context, pixiv.ArtworkRequest) (pixiv.Artwork, error) {
+	panic("typed-nil download client must not be called")
+}
+
+func (*typedNilDownloadClient) UgoiraMetadata(context.Context, pixiv.UgoiraMetadataRequest) (pixiv.UgoiraMetadata, error) {
+	panic("typed-nil download client must not be called")
+}
+
+func (*typedNilDownloadClient) ParseResourceRef(string) (sdk.ResourceRef, error) {
+	panic("typed-nil download client must not be called")
+}
+
+func (*typedNilDownloadClient) SaveResource(context.Context, sdk.ResourceRef, sdk.SaveOptions) (sdk.SavedResource, error) {
+	panic("typed-nil download client must not be called")
+}
+
+// downloadSourcesStub 实现下载用例需要的窄 port，只覆写 DownloadSources
+// 触达的方法。
+type downloadSourcesStub struct {
+	userArtworks         func(context.Context, pixiv.UserArtworksRequest) (sdk.Page[pixiv.Artwork], error)
+	userArtworkBookmarks func(context.Context, pixiv.UserArtworkBookmarksRequest) (sdk.Page[pixiv.Artwork], error)
+	saveResource         func(context.Context, sdk.ResourceRef, sdk.SaveOptions) (sdk.SavedResource, error)
+}
+
+func (c *downloadSourcesStub) UserArtworks(ctx context.Context, request pixiv.UserArtworksRequest) (sdk.Page[pixiv.Artwork], error) {
+	if c.userArtworks != nil {
+		return c.userArtworks(ctx, request)
+	}
+	return sdk.Page[pixiv.Artwork]{}, nil
+}
+
+func (c *downloadSourcesStub) UserArtworkBookmarks(ctx context.Context, request pixiv.UserArtworkBookmarksRequest) (sdk.Page[pixiv.Artwork], error) {
+	if c.userArtworkBookmarks != nil {
+		return c.userArtworkBookmarks(ctx, request)
+	}
+	return sdk.Page[pixiv.Artwork]{}, nil
+}
+
+func (c *downloadSourcesStub) SaveResource(ctx context.Context, ref sdk.ResourceRef, options sdk.SaveOptions) (sdk.SavedResource, error) {
+	if c.saveResource != nil {
+		return c.saveResource(ctx, ref, options)
+	}
+	return sdk.SavedResource{}, nil
+}
+
+func (c *downloadSourcesStub) Artwork(context.Context, pixiv.ArtworkRequest) (pixiv.Artwork, error) {
+	panic("downloadSourcesStub.Artwork must not be called by source expansion")
+}
+
+func (c *downloadSourcesStub) UgoiraMetadata(context.Context, pixiv.UgoiraMetadataRequest) (pixiv.UgoiraMetadata, error) {
+	panic("downloadSourcesStub.UgoiraMetadata must not be called by source expansion")
+}
+
+var _ downloader.DownloadTargetClient = (*downloadSourcesStub)(nil)

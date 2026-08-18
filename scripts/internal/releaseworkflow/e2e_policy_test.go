@@ -101,17 +101,3 @@ func TestCheckWorkflowRejectsOfflineE2EContractMutations(t *testing.T) {
 		})
 	}
 }
-
-func TestRecoveryOverlayIncludesE2EPolicyAndMutationTests(t *testing.T) {
-	t.Parallel()
-
-	root := releaseWorkflowRoot(t)
-	step := stepWithRun(t, jobNode(t, root, "build"), `git archive --format=tar "$GITHUB_SHA"`)
-	run := requireMappingValue(t, step, "run").Value
-	if strings.Count(run, "scripts/internal/releaseworkflow/e2e_policy.go") != 1 {
-		t.Fatal("recovery overlay must include the E2E policy implementation in its audited path list")
-	}
-	if strings.Count(run, "scripts/internal/releaseworkflow/e2e_policy_test.go") != 1 {
-		t.Fatal("recovery overlay must include the E2E policy mutation tests in its audited path list")
-	}
-}

@@ -7,7 +7,7 @@ import (
 	"os"
 )
 
-// Run 是 scripts/nativeevidence 的入口 owner：解析参数并委托给记录/校验业务逻辑。
+// Run 是 scripts/cmd/nativeevidence 的入口 owner：解析参数并委托给记录/校验业务逻辑。
 func Run(args []string) error {
 	return run(args)
 }
@@ -45,6 +45,7 @@ func runRecord(arguments []string) error {
 	options := recordOptions{}
 	flags.StringVar(&options.repoRoot, "repo-root", "", "repository root")
 	flags.StringVar(&options.version, "version", "", "semantic version without v")
+	flags.StringVar(&options.sourceCommit, "source-commit", "", "exact source commit SHA for this workflow run")
 	flags.StringVar(&options.target, "target", "", "GOOS/GOARCH target")
 	flags.StringVar(&options.rustTarget, "rust-target", "", "Rust target triple")
 	flags.StringVar(&options.staticlib, "staticlib", "", "native Rust static library")

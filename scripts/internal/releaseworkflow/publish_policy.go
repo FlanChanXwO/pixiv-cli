@@ -261,7 +261,7 @@ func checkReleaseChannelBinding(releaseStep *yaml.Node) error {
 	// 将受信 channel command substitution、case 分支、数组赋值和 gh release create 固定在同一
 	// run 中。workflow 不引入可重写的 channel 变量，避免分类结果在分支前被其它 shell 命令覆盖。
 	lines := splitCommands(requireRunValue(releaseStep))
-	channelCase := "case \"$(go run ./scripts/releaseassets channel --version \"${RELEASE_TAG#v}\")\" in"
+	channelCase := "case \"$(go run ./scripts/cmd/releaseassets channel --version \"${RELEASE_TAG#v}\")\" in"
 	if countCommand(lines, channelCase) != 1 {
 		return errors.New("release publishing step must classify with the direct releaseassets case expression")
 	}
@@ -381,7 +381,7 @@ func checkSigningStep(step *yaml.Node) error {
 		}
 	}
 	run, _ := workflowyaml.MappingValue(step, "run")
-	if err := requireRunFragments(step, "signing-secret step", "trap 'rm -f \"$key_path\"'", "go run ./scripts/releaseassets finalize", "--input-dir dist", "--output-dir release", "--install-sh scripts/install.sh", "--install-cmd scripts/install.cmd", "--release-sources internal/update/source/release_sources.txt", "--private-key \"$key_path\"", "--changelog \"changelog/v${RELEASE_TAG#v}/en.md\"", "--changelog-zh \"changelog/v${RELEASE_TAG#v}/zh-CN.md\""); err != nil {
+	if err := requireRunFragments(step, "signing-secret step", "trap 'rm -f \"$key_path\"'", "go run ./scripts/cmd/releaseassets finalize", "--input-dir dist", "--output-dir release", "--install-sh scripts/install.sh", "--install-cmd scripts/install.cmd", "--release-sources internal/update/source/release_sources.txt", "--private-key \"$key_path\"", "--changelog \"changelog/v${RELEASE_TAG#v}/en.md\"", "--changelog-zh \"changelog/v${RELEASE_TAG#v}/zh-CN.md\""); err != nil {
 		return err
 	}
 	if strings.Contains(run.Value, "set -x") || strings.Contains(run.Value, "echo $RELEASE_SIGNING") {

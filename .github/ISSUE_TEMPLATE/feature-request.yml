@@ -1,6 +1,5 @@
-# Localized content: English / 中文
-name: Feature request / 功能请求
-description: Propose a focused improvement to pixiv-cli. / 为 pixiv-cli 提出明确的改进建议。
+name: 功能请求 / Feature request
+description: 提出明确的改进建议。 / Propose a focused improvement.
 title: "[Feature] "
 labels:
   - enhancement
@@ -8,61 +7,32 @@ body:
   - type: markdown
     attributes:
       value: |
-        English: Please describe the user problem first. Do not include refresh tokens, cookies, private URLs, downloaded works, or private API responses.
-        中文：请先描述用户问题。不要包含 refresh token、cookie、私有 URL、下载作品或私有 API 响应。
+        先说明你想解决的问题。不要包含凭据、cookie、token、私有 URL 或敏感数据。
+        Start with the problem. No credentials, cookies, tokens, private URLs, or sensitive data.
 
   - type: textarea
     id: problem
     attributes:
-      label: Problem to solve / 要解决的问题
-      description: Explain the concrete workflow or limitation that motivates this request. / 请说明促使你提出此请求的具体流程或限制。
+      label: 要解决的问题 / Problem to solve
+      description: 促使你提出此请求的具体流程或限制。 / The concrete workflow or limitation that motivates this request.
+      placeholder: |
+        想批量处理某个范围，但目前只能一次一个。
     validations:
       required: true
 
   - type: textarea
     id: proposal
     attributes:
-      label: Proposed behavior / 建议的行为
-      description: Describe the desired CLI, MCP, SDK, or documentation behavior. Include examples when useful. / 请描述期望的 CLI、MCP、SDK 或文档行为；适当时附上示例。
-    validations:
-      required: true
-
-  - type: dropdown
-    id: surface
-    attributes:
-      label: Affected interface / 受影响的接口
-      description: Select every interface that should expose the change. / 请选择应提供此变更的所有接口。
-      multiple: true
-      options:
-        - CLI
-        - MCP server
-        - Public Go SDK
-        - OAuth or account management / OAuth 或账号管理
-        - Download or ugoira processing / 下载或 ugoira 处理
-        - Release installer or updater / 发布安装器或更新器
-        - Documentation / 文档
-        - Other / 其他
+      label: 期望行为 / Proposed behavior
+      description: 期望的行为，必要时附示例。 / Desired behavior. Examples welcome.
+      placeholder: |
+        <command> <args>
+        期望完成 X / Expected: does X.
     validations:
       required: true
 
   - type: textarea
-    id: alternatives
+    id: context
     attributes:
-      label: Alternatives considered / 已考虑的替代方案
-      description: Describe existing commands, workarounds, or other designs you considered. / 请说明已考虑的现有命令、变通方案或其他设计。
-
-  - type: checkboxes
-    id: compatibility
-    attributes:
-      label: Compatibility / 兼容性
-      options:
-        - label: This proposal may require a breaking CLI, MCP, SDK, configuration, or output-contract change. / 此提案可能需要破坏性变更 CLI、MCP、SDK、配置或输出契约。
-          required: false
-
-  - type: checkboxes
-    id: safety
-    attributes:
-      label: Safety confirmation / 安全确认
-      options:
-        - label: I have not included secrets or private content in this request. / 我没有在此请求中包含密钥或私密内容。
-          required: true
+      label: 补充信息 / Additional context
+      description: 可选。示例、受影响接口、兼容性顾虑或尝试过的替代方法。 / Optional. Examples, affected interfaces, compatibility concerns, workarounds tried.

@@ -5,7 +5,7 @@
 本文是 `pixiv` 命令的完整契约：安装、认证、命令、flag、配置、环境变量、匿名 fallback 和更新。
 SDK 与 MCP 细节不在此重复，入口见[相关文档](#相关文档)。
 
-> 视觉列表在管道中会自动输出 canonical NDJSON。下载目前支持页码、静态质量、`gif|apng`、输出目录、文件名模板和 `--on-error`；不支持的选项会作为 unknown flag 失败。代理接受 `http`、`https`、`socks5` 与 `socks5h`；配置包含 `directory_template`、`request_interval`（也可用 `PIXIV_REQUEST_INTERVAL` 或本次 `--sleep-request` 覆盖）。
+> 视觉列表在管道中会自动输出 canonical NDJSON。下载目前支持页码、静态质量、`gif|apng`、输出目录、文件名模板和 `--on-error`；不支持的选项会作为 unknown flag 失败。代理接受 `http`、`https`、`socks5` 与 `socks5h`；配置包含 `directory_template`、`request_interval`（可用 `PIXIV_REQUEST_INTERVAL` 或 `[network].request_interval` 设置）。
 
 用户可感知变化记录在[按版本归档的更新日志](../../changelog/README.zh-CN.md)。
 
@@ -14,7 +14,7 @@ SDK 与 MCP 细节不在此重复，入口见[相关文档](#相关文档)。
 ## 安装与构建
 
 > **发布状态**：受支持 binary 的 Ed25519 公钥、key ID 与 fingerprint 已提交到
-> [`internal/cli/cli.go`](../../internal/cli/cli.go)；公开 source/tap repositories、
+> [`internal/update/installer/release_installer.go`](../../internal/update/installer/release_installer.go)；公开 source/tap repositories、
 > 受保护 `release` Environment 与隔离 credentials 已配置。v0.4.4 已作为公开 GitHub Release 发布，包含六个
 > 平台 archive、checksum 与签名清单。GitHub Release 与 tap 是相互独立的发布物；当前状态请以官方
 > [GitHub Releases 页面]和 `brew info FlanChanXwO/tap/pixiv-cli` 为准。后续版本仍必须通过同一套 tag、签名、
@@ -67,7 +67,7 @@ sh scripts/build.sh
 
 当前工作树已保存 darwin/linux/windows × amd64/arm64 的六个 runner-verified staticlib 与同源
 `manifest.json`；`scripts/build.sh` 会先校验 source digest、target/path 与每个库的 SHA-256，再构建
-本机 binary。完整要求、证据回填流程和失败含义见[开发流程](../maintainers/development.md#rust-ugoira-staticlib)。
+本机 binary。完整要求、证据回填流程和失败含义见[开发流程](maintainers/development.md#rust-ugoira-staticlib)。
 
 ### Go 安装
 
@@ -243,8 +243,6 @@ pixiv config get download_path
 pixiv config set download_path ~/Downloads/pixiv
 pixiv config unset https_proxy
 
-pixiv version
-pixiv version --json
 pixiv --version
 pixiv update --check
 pixiv update --check --json
@@ -266,7 +264,7 @@ pixiv download 123456 789012 --output ./downloads
 ```
 
 所有持久的应用管理数据直接保存到当前用户主目录：macOS/Linux 为 `~/.pixiv-cli`，Windows 为 `%USERPROFILE%\.pixiv-cli`。其中包括 `pixiv-cli.db`、`config.toml`、回调桥接状态、Release 检查缓存和 macOS 回调 helper；账号认证以 Pixiv UID 为 key。Unix-like 主动使用 `0700` 父目录与 `0600` 文件；Windows 首次创建继承父目录 ACL，替换既有目标保留其 ACL，不主动收紧或放宽 DACL。输出默认给人读；只有 help 中提供 `--json` 的命令可输出机器可解析 JSON，`auth export` 明确不提供该 flag。
-首次执行普通命令时，若不存在 `config.toml`，CLI 会生成只含下载、输出、登录与更新常用设置的基础文件，且绝不覆盖已有文件。代理、登录超时和 Premium 状态缓存等高级设置会保持省略，直到用户显式配置；help、version、secret export 和内部 OAuth callback 不会创建该文件。
+首次执行普通命令时，若不存在 `config.toml`，CLI 会生成只含下载、输出、登录与更新常用设置的基础文件，且绝不覆盖已有文件。代理、登录超时和 Premium 状态缓存等高级设置会保持省略，直到用户显式配置；help、根 `--version` flag、secret export 和内部 OAuth callback 不会创建该文件。
 CLI 使用 Cobra/pflag，选项可以写在位置参数前后，例如 `pixiv auth check 12345678 --json` 和 `pixiv search "初音ミク" --json` 都是正式支持的写法。
 
 ### v0.8.0 数据命令契约
@@ -297,9 +295,8 @@ canonical 数据 action 是 `search`、`detail`、`ranking`、`series`、`commen
 | `auth refresh` | `pixiv auth refresh [UID] [--all] [--json] [--proxy URL\|--no-proxy]` | 刷新指定/默认已保存账号的 OAuth access token 与 rotation 后 refresh token，再强制读取 profile 更新 Pixiv 高级会员缓存。`--all` 刷新全部已保存账号；JSON 固定返回 `accounts`。 |
 | `config path` | `pixiv config path` | 输出 `config.toml` 路径；不存在时创建基础文件。 |
 | `config get` | `pixiv config get KEY` | 输出一个生效中的配置值。 |
-| `config set` | `pixiv config set KEY [VALUE]` | 写入已知配置键，包括 `account_pool_enabled`、`account_pool_strategy`、`download_path`、`filename_template`、`directory_template`、`request_interval` 与 `https_proxy`。 |
+| `config set` | `pixiv config set KEY [VALUE]` | 写入已知配置键，包括 `account_pool_enabled`、`account_pool_strategy`、`download_path`、`filename_template`、`directory_template`、`request_interval`、`https_proxy`、`log_level` 与 `log_format`。 |
 | `config unset` | `pixiv config unset KEY` | 从 `config.toml` 删除一个已知配置键。 |
-| `version` | `pixiv version [--json]` | 输出当前二进制的 `version`、`commit`、`build_date`；根 `pixiv --version` 只输出版本。 |
 | `update` | `pixiv update [--check] [--prerelease] [--proxy URL]` | 检查或执行与当前安装来源匹配的更新；`--json` 仅可与 `--check` 同用。 |
 | `search` | `pixiv search [WORD] [-t artwork\|novel\|user] [options]` | canonical 实体搜索；默认 `artwork`。`--trending-tags` 是无 WORD 的完整作品趋势标签模式，不接受搜索筛选或分页。 |
 | `detail` | `pixiv detail ID_OR_URL [-t artwork\|novel\|user] [--content] [--json]` | 读取一件作品、一本小说或一个用户；`--content` 只对小说有效。 |
@@ -446,11 +443,9 @@ URL 在本地解析，不会抓 HTML 或跟随重定向。当前 CLI download �
 | 参数 | 适用命令 | 默认值 | 说明 |
 | --- | --- | --- | --- |
 | `--ndjson` | 数据列表/读取命令 | `false` | 每行输出一个规范 Record，用于流式 filter 与 action；不能与 `--json` 同用。 |
-| `--json` | 安全数据读取、认证摘要、`version`、`update --check` | `false` | 在命令提供时输出一个完整结果文档。下载和写动作不输出成功报告。 |
-| `--sleep-request DURATION` | 联网命令和 `mcp` | 配置/默认值 | 本次请求起始间隔，覆盖 `PIXIV_REQUEST_INTERVAL` 与 `[network].request_interval`。 |
+| `--json` | 安全数据读取、认证摘要、`update --check` | `false` | 在命令提供时输出一个完整结果文档。下载和写动作不输出成功报告。 |
 | `--proxy URL` | 联网命令和 `mcp` | `https_proxy`/`HTTPS_PROXY`、`config.toml` 或空 | 仅本次使用 `http`、`https`、`socks5` 或 `socks5h` 代理 URI；bundle 形式的 `auth import` 禁用。 |
 | `--no-proxy` | 同 `--proxy` | 空 | 仅本次清空代理；不能与 `--proxy` 或 bundle restore 同用。 |
-| `--debug` | 所有 CLI 命令、`mcp` 与 `fanbox mcp` | `false` | 只向 stderr 写安全的实时英文诊断；不创建日志文件，也不改变 stdout、路由、重试或结果 shape。`auth export` 与隐藏 OAuth callback 仍保持 stderr 为空。 |
 
 ### CLI 可管理的 `config` 别名
 
@@ -463,8 +458,14 @@ URL 在本地解析，不会抓 HTML 或跟随重定向。当前 CLI download �
 | `download_path` | string | `./downloads` | 下载目录。 |
 | `filename_template` | string | `{author} - {title}_{id}` | 文件名模板。 |
 | `directory_template` | string | 空 | 相对下载目录模板。 |
-| `request_interval` | duration | `0` | 请求起始间隔；`PIXIV_REQUEST_INTERVAL` 与一次性的 `--sleep-request` 可覆盖。 |
+| `request_interval` | duration | `0` | 请求起始间隔；可通过 `PIXIV_REQUEST_INTERVAL` 或 `[network].request_interval` 设置。 |
 | `https_proxy` | string | 空 | 全局 `http`、`https`、`socks5` 或 `socks5h` 代理 URI；小写 `https_proxy` 环境变量优先。 |
+| `log_level` | string | `info` | 诊断级别：`info` 静默，`debug` 启用 typed stderr diagnostics；写入 `[logging].level`。 |
+| `log_format` | string | `text` | 诊断 stderr 格式：`text` 或每行一个 JSON 事件；写入 `[logging].format`。 |
+
+首次需要配置的命令会根据当前 schema 自动生成精简的 `config.toml`。文件包含下载、输出、登录、更新和
+logging 默认项；`directory_template`、`request_interval` 等高级设置在显式配置前继续省略。已有文件绝不
+覆盖。配置在命令启动时读取，因此修改会在下一次运行生效。
 
 手工 TOML 可以包含 `[account_pool]`、`[network]`、`[pixiv.network]`、`[fanbox.network]`、`[fanbox.flaresolverr]`、`[login]`、`[update]` 等高级运行时段：
 
@@ -486,7 +487,7 @@ proxy_url = "socks5://solver-upstream.example:1080"
 
 `[pixiv.network].proxy_url` 与 `[fanbox.network].proxy_url` 区分缺失和显式空值：命令 `--proxy`/`--no-proxy` > 对应 service key（含显式空值） > `https_proxy`/`HTTPS_PROXY` > `[network].https_proxy` > direct。FANBOX native 只接受不带 userinfo 的 HTTP(S) CONNECT；Pixiv 接受 HTTP(S)、SOCKS5 与 SOCKS5H。`user_agent` 只修改 FANBOX native header，不改变 Chrome 146 TLS profile，也不保证绕过 Cloudflare。FlareSolverr 可选且仅 challenge-only；service URL 与 upstream proxy 独立于 native FANBOX proxy。默认 config generator 不创建这些可选 table。
 
-`[account_pool]` 只保存 `enabled` 与 `strategy`；每个账号的 `schedulable`、冻结和 marker 状态位于 `pixiv-cli.db`。旧 `account_pool.accounts` 会一次性迁移为数据库标记后删除，并保留该表其他内容。不要把 refresh token 写入 `config.toml`。历史 `data/account-pool.json` scheduler 不会被自动读取、迁移或删除。旧 `[logging]` 表会为兼容性被忽略；`log_level` 不是受支持的 `pixiv config` 键。
+`[account_pool]` 只保存 `enabled` 与 `strategy`；每个账号的 `schedulable`、冻结和 marker 状态位于 `pixiv-cli.db`。已移除的 `account_pool.accounts` 不会自动迁移；若仍存在，runtime 配置会返回 `removed_setting`，必须显式执行 `pixiv config unset account_pool_accounts` 清理。不要把 refresh token 写入 `config.toml`。历史 `data/account-pool.json` scheduler 不会被自动读取、迁移或删除。`[logging].level` 只接受 `info`、`debug`，`[logging].format` 只接受 `text`、`json`；`PIXIV_LOG_LEVEL` 与 `PIXIV_LOG_FORMAT` 覆盖文件值。debug 诊断只写 stderr，不输出 query、header、Cookie、token、响应体或 proxy userinfo，也不创建日志文件；config 管理与 secret export 继续静默，MCP stdout 仍只保留 JSON-RPC。
 
 v1 CLI 不会读取或迁移旧的 `~/.pixiv-cli/auth.json`。从旧版本切换前，请在旧 CLI 执行
 `pixiv auth export --all --output <private bundle>`，再通过 shell 重定向或管道在 v1 执行
@@ -500,23 +501,13 @@ v1 CLI 不会读取或迁移旧的 `~/.pixiv-cli/auth.json`。从旧版本切换
 | `FILENAME_TEMPLATE` | `{author} - {title}_{id}` | 文件名模板。 |
 | `DIRECTORY_TEMPLATE` | 空 | 相对下载目录模板。 |
 | `PIXIV_REQUEST_INTERVAL` | 空 | 请求起始间隔。 |
+| `PIXIV_LOG_LEVEL` | `info` | 诊断级别：`info` 或 `debug`，覆盖 `[logging].level`。 |
+| `PIXIV_LOG_FORMAT` | `text` | 诊断 stderr 格式：`text` 或 `json`，覆盖 `[logging].format`。 |
 | `https_proxy` / `HTTPS_PROXY` | 空 | `http`、`https`、`socks5` 或 `socks5h` 代理 URI；优先使用小写 `https_proxy`。 |
 
 CLI 数据命令在账号池关闭时使用 `pixiv auth use` 的显式/默认账号，启用时从数据库选择 eligible 账号；不接受身份选择参数。
 
 设置类字段按 service 分域：命令 `--proxy URL`/`--no-proxy` > 对应 service proxy（含显式空值） > `https_proxy`/`HTTPS_PROXY` > `[network].https_proxy` > direct。代理覆盖不会持久化；update 只使用通用 network fallback，不消费 FANBOX 或 solver 配置。
-
-### Debug 诊断
-
-可在命令前后传入 `--debug`，观察安全的生命周期、账号池、网络、challenge、solver、下载与错误事件：
-
-```bash
-pixiv --debug detail 123456
-pixiv fanbox --debug post 12221352
-pixiv --debug mcp 2>debug.log
-```
-
-每行都写入 stderr，带明确的产品+子系统模块和完整英文句子；不会创建 `logs/`、daily file、JSON event stream，也不会写 raw URL、Cookie、token、signed query、proxy userinfo 或 clearance。stdout 与 MCP JSON-RPC 不变。`pixiv auth export` 即使带 `--debug` 也不创建诊断 scope，因此 raw-token/bundle stdout 与空 stderr 契约保持原样。unknown option 会在 scope 创建前以 exit code `2` 报告。
 
 ### 移除的匿名 web fallback
 
@@ -529,12 +520,11 @@ v1 已删除匿名 Web API fallback。内容命令要求先通过 `pixiv auth us
 
 ## 版本与更新
 
-`pixiv version` 输出可读的版本、commit 与构建日期；`pixiv version --json` 的 stdout 是只含
-`version`、`commit`、`build_date` 的 JSON。根 `pixiv --version` 适合快速检查版本。
+`pixiv --version` 是唯一公开版本接口，stdout 精确输出一行 `pixiv <version>`，stderr 为空，且不会执行启动期更新检查。原 `version`
+子命令、其 `--json` 形式以及公开 `commit`/`build_date` 字段均作为 breaking change 删除；现在调用会返回
+非零退出的 unknown-command，stdout 为空。脚本必须迁移到根 flag。
 
 ```bash
-pixiv version
-pixiv version --json
 pixiv --version
 ```
 
@@ -550,8 +540,8 @@ pixiv update --proxy http://127.0.0.1:7890
 开发构建显示 `dev` 并拒绝自更新。正式安装时，更新器会识别 Homebrew stable/beta、`go install`
 或 Release binary：stable/beta 按 `--prerelease` 在两个相互冲突的 formula 间切换；若切换
 安装失败，会显式尝试恢复原 formula 并报告原错误和恢复结果。`go install` 使用精确 Release
-tag；Release binary 在下载前校验 Ed25519 签名的 checksum 清单和 archive SHA-256，再预检
-`pixiv version --json` 并原子替换可执行文件。
+tag；Release binary 在下载前校验 Ed25519 签名的 checksum 清单和 archive SHA-256，再要求
+`pixiv --version` 精确匹配并原子替换可执行文件。
 
 未显式使用 `--proxy`、已配置的 `https_proxy` 或 `HTTPS_PROXY` 时，Release binary 更新会并发探测内嵌 source 列表。支持 API 的候选用于 GitHub Releases API；支持 archive 的候选用于签名 manifest、checksum 与平台 archive。首个有效响应成为首选路由；某个 asset 下载失败时会静默依次尝试其余已声明路由各一次，全部失败才会在错误中列出每条失败路由。候选不会改变规范 Release URL、SemVer 选择、Ed25519 验证或 SHA-256 验证。自动更新通知只使用支持 API 的候选，并保持原有的三秒总时限和 24 小时缓存。
 
@@ -564,7 +554,7 @@ SemVer tag，检查会报告该 tag 并 fail-closed。
 [GitHub Releases 页面]为准；`pixiv update --check` 仍只是只读检查，不能替代对选中版本资产、checksum 与
 签名的安装验证。
 
-普通 CLI 命令成功后会尽力检查 stable 更新。它跳过 MCP、help、`version`、`update`、全部 `auth export`、bundle 形式的 `auth import` 与开发构建，
+普通 CLI 命令成功后会尽力检查 stable 更新。它跳过 MCP、help 与根 `--version`、`update`、全部 `auth export`、bundle 形式的 `auth import` 与开发构建，
 对同一用户 cache 最多每 24 小时查询一次，并为自动检查设定最多 3 秒的等待时间。发现新版本或
 检查失败只写 stderr（失败为 warning），不改变业务命令退出码，也不会污染 JSON stdout 或 MCP
 JSON-RPC stdout。可关闭自动检查：
@@ -581,6 +571,6 @@ check_enabled = false
 
 - [Go SDK](sdk.md)：public client、模型、分页、资源和 typed error。
 - [MCP tools](mcp-tools.md)：tool 名称、输入 schema、输出和 stdio 行为。
-- [架构](../maintainers/architecture.md)：包职责和运行流程。
-- [开发流程](../maintainers/development.md)：环境、测试、构建和发布门禁。
+- [架构](maintainers/architecture.md)：包职责和运行流程。
+- [开发流程](maintainers/development.md)：环境、测试、构建和发布门禁。
 - [Agent skill](../../skills/pixiv-cli/SKILL.md)：供 Agent 安全驱动已安装 CLI 的说明。

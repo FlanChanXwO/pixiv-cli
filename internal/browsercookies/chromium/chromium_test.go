@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"errors"
+
+	"github.com/FlanChanXwO/pixiv-cli/internal/browsercookies"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -12,8 +14,6 @@ import (
 	"testing"
 
 	_ "modernc.org/sqlite"
-
-	"github.com/FlanChanXwO/pixiv-cli/internal/browsercookies"
 )
 
 // skipIfNoSQLite3 在系统缺少 sqlite3 CLI 时跳过依赖它的测试。
@@ -68,7 +68,7 @@ func TestDiscoverProfiles(t *testing.T) {
 	root := t.TempDir()
 	mustWriteFile(t, filepath.Join(root, "Default", cookiesFile))
 	mustWriteFile(t, filepath.Join(root, "Profile 1", cookiesFile))
-	// 无 Cookies 文件的目录不是 profile。
+
 	mustWriteFile(t, filepath.Join(root, "Cache", "data.txt"))
 
 	p, err := newProvider("chrome", root)
@@ -102,7 +102,7 @@ func TestDiscoverProfilesNotInstalled(t *testing.T) {
 	if _, err := p.DiscoverProfiles(context.Background()); !errors.Is(err, browsercookies.ErrNotInstalled) {
 		t.Fatalf("err = %v, want ErrNotInstalled", err)
 	}
-	// Edge 同样未安装。
+
 	pe, err := newProvider("edge", filepath.Join(t.TempDir(), "missing"))
 	if err != nil {
 		t.Fatal(err)
@@ -134,7 +134,7 @@ func TestReadPlaintextCookie(t *testing.T) {
 	if len(secrets) != 1 || secrets[0].Value() != "plain-session" {
 		t.Fatalf("secrets = %+v", secrets)
 	}
-	// 脱敏路径：格式化不泄露。
+
 	if got := secrets[0].String(); got == "plain-session" {
 		t.Fatal("Secret.String leaked value")
 	}
@@ -145,7 +145,6 @@ func TestReadPlaintextHostVariant(t *testing.T) {
 	root := t.TempDir()
 	mustWriteFile(t, filepath.Join(root, "Default", cookiesFile))
 
-	// 存储 host 无前导点（"fanbox.cc"），query ".fanbox.cc" 也应命中。
 	fixture := buildFixtureDB(t, cookiesSchema,
 		`INSERT INTO cookies (host_key, name, value, encrypted_value) VALUES ('fanbox.cc', 'FANBOXSESSID', 'no-dot-session', X'');`,
 	)
@@ -231,7 +230,7 @@ func TestReadLockedDatabaseClassified(t *testing.T) {
 	if _, err := db.Exec(cookiesSchema); err != nil {
 		t.Fatal(err)
 	}
-	// 持有 EXCLUSIVE 事务，模拟运行中的浏览器锁定数据库。
+
 	conn, err := db.Conn(context.Background())
 	if err != nil {
 		t.Fatal(err)
@@ -267,9 +266,40 @@ func TestReadDatabaseNotFound(t *testing.T) {
 	root := t.TempDir()
 	mustWriteFile(t, filepath.Join(root, "Default", cookiesFile))
 	p, _ := newProvider("chrome", root)
-	// 无 hook：真实路径不存在该 profile 的 Cookies（"Default" 存在占位，
-	// 但换成不存在的 profile）。
+
 	if _, err := p.Read(context.Background(), browsercookies.DefaultQuery, "Nope"); !errors.Is(err, browsercookies.ErrDatabaseNotFound) {
 		t.Fatalf("err = %v, want ErrDatabaseNotFound", err)
+	}
+}
+func TestBrowserDataRootMatchesSupportedPlatformLayout(t *testing.T) {
+	home := filepath.FromSlash("/fixture-home")
+	switch runtime.GOOS {
+	case "darwin":
+		if got := browserDataRoot(home, kindChrome); got != filepath.Join(home, "Library", "Application Support", "Google", "Chrome") {
+			t.Fatalf("Chrome root = %q", got)
+		}
+		if got := browserDataRoot(home, kindEdge); got != filepath.Join(home, "Library", "Application Support", "Microsoft Edge") {
+			t.Fatalf("Edge root = %q", got)
+		}
+	case "linux":
+		configHome := filepath.Join(home, "xdg-config")
+		t.Setenv("XDG_CONFIG_HOME", configHome)
+		if got := browserDataRoot(home, kindChrome); got != filepath.Join(configHome, "google-chrome") {
+			t.Fatalf("Chrome root = %q", got)
+		}
+		if got := browserDataRoot(home, kindEdge); got != filepath.Join(configHome, "microsoft-edge") {
+			t.Fatalf("Edge root = %q", got)
+		}
+	case "windows":
+		if got := browserDataRoot(home, kindChrome); got != filepath.Join(home, "AppData", "Local", "Google", "Chrome", "User Data") {
+			t.Fatalf("Chrome root = %q", got)
+		}
+		if got := browserDataRoot(home, kindEdge); got != filepath.Join(home, "AppData", "Local", "Microsoft", "Edge", "User Data") {
+			t.Fatalf("Edge root = %q", got)
+		}
+	default:
+		if got := browserDataRoot(home, kindChrome); got != "" {
+			t.Fatalf("unsupported-platform Chrome root = %q, want empty", got)
+		}
 	}
 }

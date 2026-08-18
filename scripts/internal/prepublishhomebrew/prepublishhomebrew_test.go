@@ -37,7 +37,7 @@ func TestWorkflowUsesLinuxOnlyContainerizedHomebrewVerification(t *testing.T) {
 		`HOMEBREW_NO_AUTO_UPDATE=1`,
 		`HOMEBREW_NO_ENV_HINTS=1`,
 		`brew install --formula "$staging_tap/$formula_name"`,
-		`pixiv version --json`,
+		`test "$(pixiv --version)" = "pixiv $RELEASE_TAG"`,
 	} {
 		if !strings.Contains(run, want) {
 			t.Fatalf("prepublish Linux container verification missing %q", want)
@@ -49,11 +49,11 @@ func TestWorkflowUsesLinuxOnlyContainerizedHomebrewVerification(t *testing.T) {
 		}
 	}
 	linuxBranch, macOSBranch, ok := strings.Cut(run, "\nelse\n")
-	if !ok || strings.Contains(linuxBranch, "brew trust --tap") || strings.Contains(linuxBranch, "python3 -c") {
-		t.Fatal("fixed Linux Homebrew 4.6 container must not call unavailable brew trust or Python")
+	if !ok || strings.Contains(linuxBranch, "brew trust --tap") || strings.Contains(linuxBranch, "python3 -c") || strings.Contains(linuxBranch, "brew ruby -rjson") {
+		t.Fatal("fixed Linux Homebrew 4.6 container must not call unavailable brew trust or JSON parsers")
 	}
-	if !strings.Contains(linuxBranch, `brew ruby -rjson -e`) {
-		t.Fatal("fixed Linux container must compare the JSON version with Ruby standard JSON")
+	if strings.Contains(macOSBranch, "python3 -c") || strings.Contains(macOSBranch, "brew ruby -rjson") {
+		t.Fatal("macOS native Homebrew must not use a JSON parser")
 	}
 	if !strings.Contains(macOSBranch, "brew trust --tap \"$staging_tap\"") {
 		t.Fatal("macOS native Homebrew must retain explicit staging-tap trust")
@@ -172,7 +172,7 @@ func TestWorkflowRejectsReadOnlyBoundaryMutations(t *testing.T) {
 		{
 			name: "native verification creates a Release through the API",
 			mutate: func(t *testing.T, root *yaml.Node) {
-				appendRun(t, runStepWith(t, job(t, root, "verify_homebrew_formula"), "pixiv version --json"), "gh api --method POST \"repos/$GITHUB_REPOSITORY/releases\"")
+				appendRun(t, runStepWith(t, job(t, root, "verify_homebrew_formula"), `test "$(pixiv --version)" = "pixiv $RELEASE_TAG"`), "gh api --method POST \"repos/$GITHUB_REPOSITORY/releases\"")
 			},
 		},
 	} {
@@ -192,7 +192,7 @@ func TestQualityWorkflowRunsPrepublishPolicy(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read quality workflow: %v", err)
 	}
-	if !strings.Contains(string(body), "sh scripts/test-homebrew-prepublish-workflow.sh") {
+	if !strings.Contains(string(body), "go run ./scripts/cmd/prepublishhomebrew --workflow .github/workflows/homebrew-prepublish-verify.yml") {
 		t.Fatal("quality workflow does not run the prepublish Homebrew policy")
 	}
 }

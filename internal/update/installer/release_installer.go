@@ -22,7 +22,6 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/buildinfo"
 	filereplace "github.com/FlanChanXwO/pixiv-cli/internal/storage/file/replace"
 	"github.com/FlanChanXwO/pixiv-cli/internal/update/release"
 	"github.com/FlanChanXwO/pixiv-cli/internal/update/source"
@@ -662,17 +661,14 @@ func writeExtractedBinary(destination string, source io.Reader) (err error) {
 type processReleaseBinaryChecker struct{}
 
 func (processReleaseBinaryChecker) Check(ctx context.Context, executablePath, expectedTag string) error {
-	command := exec.CommandContext(ctx, executablePath, "version", "--json")
+	command := exec.CommandContext(ctx, executablePath, "--version")
 	output, err := command.Output()
 	if err != nil {
-		return fmt.Errorf("run version --json: %w", err)
+		return fmt.Errorf("run --version: %w", err)
 	}
-	var info buildinfo.Info
-	if err := json.Unmarshal(output, &info); err != nil {
-		return fmt.Errorf("decode version --json output: %w", err)
-	}
-	if info.Version != expectedTag {
-		return fmt.Errorf("downloaded executable reports version %q, want %q", info.Version, expectedTag)
+	want := []byte("pixiv " + expectedTag + "\n")
+	if !bytes.Equal(output, want) {
+		return fmt.Errorf("downloaded executable reports version output %q, want %q", output, want)
 	}
 	return nil
 }

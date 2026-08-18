@@ -2,65 +2,68 @@ package diagnostics_test
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/diagnostics"
-	core "github.com/FlanChanXwO/pixiv-cli/internal/diagnostics"
+	core "github.com/FlanChanXwO/pixiv-cli/internal/shared/diagnostics"
 )
 
-func TestPresenterUsesStableNarrativeAndClock(t *testing.T) {
+func fixedClock() time.Time {
+	return time.Date(2026, time.August, 8, 12, 21, 18, 0, time.FixedZone("CST", 8*60*60))
+}
+
+func TestPresenterRendersStableTextWithClock(t *testing.T) {
 	var output bytes.Buffer
-	clock := func() time.Time {
-		return time.Date(2026, time.August, 8, 12, 21, 18, 0, time.FixedZone("CST", 8*60*60))
-	}
-	presenter := diagnostics.NewPresenterWithClock(&output, clock)
+	presenter := diagnostics.NewPresenterWithClock(&output, fixedClock)
+	presenter.Emit(core.Event{
+		Module:    core.ModulePixivNetwork,
+		Kind:      core.EventNetworkRequest,
+		Operation: "retrieving",
+		Resource:  "/v1/search?query=secret",
+		Route:     "App API",
+	})
 
-	presenter.Emit(core.Event{Module: core.ModuleFanboxMCPServer, Kind: core.EventStarted, Operation: "tool fanbox_get_post", RequestID: 7})
-	presenter.Emit(core.Event{Module: core.ModuleFanboxNetwork, Kind: core.EventNetworkRequest, Operation: "retrieving", Resource: "post 12221352", Route: "native transport", RequestID: 7})
-	presenter.Emit(core.Event{Module: core.ModuleFanboxNetwork, Kind: core.EventChallenge, Operation: "request", Status: 403, RequestID: 7})
-	presenter.Emit(core.Event{Module: core.ModuleFanboxSolver, Kind: core.EventSolverStarted, Operation: "challenge recovery", RequestID: 7})
-	presenter.Emit(core.Event{Module: core.ModuleFanboxSolver, Kind: core.EventSolverCompleted, Operation: "clearance", RequestID: 7})
-	presenter.Emit(core.Event{Module: core.ModuleFanboxNetwork, Kind: core.EventReplay, Operation: "request", Route: "native transport", RequestID: 7})
-	presenter.Emit(core.Event{Module: core.ModuleFanboxMCPServer, Kind: core.EventCompleted, Operation: "tool fanbox_get_post", RequestID: 7, Duration: 16*time.Second + 200*time.Millisecond})
-
-	want := strings.Join([]string{
-		"[FANBOX MCP server] 12:21:18 Started request 7 for tool fanbox_get_post.",
-		"[FANBOX network] 12:21:18 Request 7 is retrieving post 12221352 through the native transport.",
-		"[FANBOX network] 12:21:18 Cloudflare challenged request 7 with HTTP 403.",
-		"[FANBOX FlareSolverr] 12:21:18 Request 7 requires fresh Cloudflare clearance.",
-		"[FANBOX FlareSolverr] 12:21:18 Clearance was acquired; request 7 will be replayed natively.",
-		"[FANBOX network] 12:21:18 Request 7 is replaying through the native transport.",
-		"[FANBOX MCP server] 12:21:18 Request 7 completed successfully in 16.2 seconds.",
-	}, "\n") + "\n"
-	if output.String() != want {
-		t.Fatalf("narrative output=\n%s\nwant=\n%s", output.String(), want)
+	requireText := "[Pixiv network] 12:21:18 Request is retrieving /v1/search through the App API.\n"
+	if output.String() != requireText {
+		t.Fatalf("text output=%q want=%q", output.String(), requireText)
 	}
 }
 
-func TestPresenterRemovesSensitiveURLParts(t *testing.T) {
+func TestPresenterRendersSafeJSONLines(t *testing.T) {
 	var output bytes.Buffer
-	presenter := diagnostics.NewPresenterWithClock(&output, func() time.Time { return time.Unix(0, 0) })
+	presenter := diagnostics.NewPresenterWithFormat(&output, "json", fixedClock)
 	presenter.Emit(core.Event{
-		Module:    core.ModuleFanboxNetwork,
+		Module:    core.ModulePixivNetwork,
 		Kind:      core.EventNetworkRequest,
 		Operation: "retrieving",
-		Resource:  "https://user:secret@example.test/post/1?signature=secret#fragment",
-		Route:     "native transport",
-		Proxy:     "https://proxy-user:proxy-secret@proxy.test:7890?token=secret",
-		UserAgent: "Mozilla/5.0\nAuthorization: secret",
+		Resource:  "https://user:secret@example.test/v1/search?token=secret#fragment",
+		Route:     "App API",
+		Proxy:     "https://proxy-user:proxy-secret@example.test:7890?token=secret",
+		UserAgent: "Authorization: secret",
+		Status:    200,
 	})
 
-	got := output.String()
-	for _, secret := range []string{"secret", "proxy-user", "Authorization:"} {
-		if strings.Contains(got, secret) {
-			t.Fatalf("diagnostic output leaked %q: %s", secret, got)
+	var record map[string]any
+	if err := json.Unmarshal([]byte(strings.TrimSpace(output.String())), &record); err != nil {
+		t.Fatalf("invalid JSON diagnostics: %v", err)
+	}
+	if record["time"] != "2026-08-08T12:21:18+08:00" || record["level"] != "DEBUG" {
+		t.Fatalf("unexpected metadata: %#v", record)
+	}
+	if record["resource"] != "https://example.test/v1/search" || record["proxy"] != "https://example.test:7890" {
+		t.Fatalf("unsafe URL fields were not sanitized: %#v", record)
+	}
+	for _, secret := range []string{"secret", "proxy-user", "Authorization", "user"} {
+		if strings.Contains(output.String(), secret) {
+			t.Fatalf("diagnostic output leaked %q: %s", secret, output.String())
 		}
 	}
-	if strings.Contains(got, "?signature=") || strings.Contains(got, "#fragment") {
-		t.Fatalf("diagnostic output retained signed URL parts: %s", got)
+	if _, ok := record["user_agent"]; ok {
+		t.Fatal("diagnostic JSON must not include headers")
 	}
 }
 

@@ -47,14 +47,14 @@ func checkValidateJob(job *yaml.Node) error {
 	if err := requireCanonicalCheckout(steps[0], "validate job", checkoutWithRequirement{"fetch-depth", "0"}, checkoutWithRequirement{"persist-credentials", "false"}, checkoutWithRequirement{"ref", "${{ github.sha }}"}); err != nil {
 		return err
 	}
-	if err := requireCanonicalNamedRunStep(steps[2], "Validate release SemVer", `go run ./scripts/releaseassets validate --version "${RELEASE_TAG#v}"`); err != nil {
+	if err := requireCanonicalNamedRunStep(steps[2], "Validate release SemVer", `go run ./scripts/cmd/releaseassets validate --version "${RELEASE_TAG#v}"`); err != nil {
 		return err
 	}
 	validateStep := steps[3]
-	if err := requireRunFragments(validateStep, "validate release tag step", "test \"$GITHUB_REF\" = \"refs/heads/$DEFAULT_BRANCH\"", "git show-ref --verify --quiet \"refs/tags/$RELEASE_TAG\"", "tag_skill=\"$RUNNER_TEMP/pixiv-cli-SKILL.md\"", "git show \"$RELEASE_TAG:skills/pixiv-cli/SKILL.md\" > \"$tag_skill\"", "go run ./scripts/releaseassets validate-source --version \"${RELEASE_TAG#v}\" --product-skill \"$tag_skill\"", "git merge-base --is-ancestor \"$tag_commit\" \"origin/$DEFAULT_BRANCH\"", "gh api --include \"repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG\"", "HTTP/[0-9.]+ 404"); err != nil {
+	if err := requireRunFragments(validateStep, "validate release tag step", "git show-ref --verify --quiet \"refs/tags/$RELEASE_TAG\"", "tag_skill=\"$RUNNER_TEMP/pixiv-cli-SKILL.md\"", "git show \"$RELEASE_TAG:skills/pixiv-cli/SKILL.md\" > \"$tag_skill\"", "go run ./scripts/cmd/releaseassets validate-source --version \"${RELEASE_TAG#v}\" --product-skill \"$tag_skill\"", "git merge-base --is-ancestor \"$tag_commit\" \"origin/$DEFAULT_BRANCH\"", "gh api --include \"repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG\"", "HTTP/[0-9.]+ 404"); err != nil {
 		return err
 	}
-	if !hasCommand(job, "", "sh scripts/test-release-workflow.sh") {
+	if !hasCommand(job, "", "go run ./scripts/cmd/releaseworkflow --workflow .github/workflows/release.yml") {
 		return errors.New("validate job must run the release workflow policy")
 	}
 	return nil
@@ -70,6 +70,9 @@ func checkBuildJob(job *yaml.Node) error {
 	if err := requireOnlyMappingKeys(job, "name", "needs", "runs-on", "permissions", "env", "strategy", "steps"); err != nil {
 		return fmt.Errorf("build job: %w", err)
 	}
+	if err := checkBuildEnvironment(job); err != nil {
+		return err
+	}
 	if err := requireExactStringSequence(job, "needs", "validate", "e2e"); err != nil {
 		return fmt.Errorf("build job: %w", err)
 	}
@@ -82,6 +85,9 @@ func checkBuildJob(job *yaml.Node) error {
 	steps, err := jobSteps(job)
 	if err != nil || len(steps) == 0 {
 		return errors.New("build job must contain steps")
+	}
+	if err := requireBuildCommandsPresent(job); err != nil {
+		return err
 	}
 	if err := requireCanonicalCheckout(steps[0], "build job", checkoutWithRequirement{"fetch-depth", "0"}, checkoutWithRequirement{"persist-credentials", "false"}, checkoutWithRequirement{"ref", "${{ env.RELEASE_TAG }}"}); err != nil {
 		return err
@@ -101,56 +107,129 @@ func checkBuildJob(job *yaml.Node) error {
 		return err
 	}
 
-	for _, gate := range []struct {
-		workingDirectory string
-		command          string
-	}{
-		{command: "go run ./scripts/releaseassets validate-source --version \"${RELEASE_TAG#v}\" --product-skill skills/pixiv-cli/SKILL.md"},
-		{command: "sh scripts/test-rust-vendor.sh"},
-		{workingDirectory: "internal/media/ugoira/rust", command: "cargo fmt --check"},
-		{workingDirectory: "internal/media/ugoira/rust", command: "cargo clippy --locked --offline --all-targets -- -D warnings"},
-		{command: "go test ./..."},
-		{command: "go vet ./..."},
-		{command: "go run ./scripts/licensebundle --check"},
-		{command: "sh scripts/test-package-release.sh"},
-		{command: "python -m pip install --disable-pip-version-check pre-commit==4.6.0"},
-		{command: "python -m pre_commit run --all-files"},
-	} {
-		if err := requireIndependentQualityGate(job, gate.workingDirectory, gate.command); err != nil {
-			return err
-		}
-	}
-	if err := requireConditionalRaceQualityGate(job); err != nil {
+	if err := requireCanonicalBuildSteps(steps); err != nil {
 		return err
 	}
 	return nil
 }
 
-func requireConditionalRaceQualityGate(job *yaml.Node) error {
-	steps, err := jobSteps(job)
-	if err != nil {
-		return errors.New("build must run go test -race ./...")
+func requireCanonicalBuildSteps(steps []*yaml.Node) error {
+	if len(steps) != 14 {
+		return errors.New("build job must contain exactly the 14 canonical quality steps")
 	}
-	var matches []*yaml.Node
-	for _, step := range steps {
-		if equalCommands(splitCommands(requireRunValue(step)), splitCommands("go test -race ./...")) {
-			matches = append(matches, step)
+	if err := requireCanonicalCheckout(steps[0], "build checkout", checkoutWithRequirement{"fetch-depth", "0"}, checkoutWithRequirement{"persist-credentials", "false"}, checkoutWithRequirement{"ref", "${{ env.RELEASE_TAG }}"}); err != nil {
+		return err
+	}
+	if err := requireExactActionStep(steps[1], "build Go setup", setupGoAction, map[string]string{"go-version": "1.26.3"}); err != nil {
+		return err
+	}
+	for index, gate := range []struct {
+		name      string
+		command   string
+		directory string
+	}{
+		{name: "Validate the exact immutable release source", command: `go run ./scripts/cmd/releaseassets validate-source --version "${RELEASE_TAG#v}" --product-skill skills/pixiv-cli/SKILL.md`},
+		{name: "Install the pinned native Rust toolchain", command: testRustInstallCommand},
+		{name: "Check vendored Rust sources", command: "sh scripts/test-rust-vendor.sh"},
+		{name: "Check Rust formatting from vendored sources", command: "cargo fmt --check", directory: "internal/media/ugoira/rust"},
+		{name: "Lint vendored Rust sources", command: "cargo clippy --locked --offline --all-targets -- -D warnings", directory: "internal/media/ugoira/rust"},
+	} {
+		step := steps[index+2]
+		if hasExecutionOverride(step) {
+			return fmt.Errorf("build quality gate %s must not define continue-on-error or if", gate.command)
+		}
+		if gate.directory == "" {
+			if err := requireCanonicalNamedRunStep(step, gate.name, gate.command); err != nil {
+				return fmt.Errorf("%s: %w", gate.command, err)
+			}
+			continue
+		}
+		if err := requireCanonicalNamedRunStepInDirectory(step, gate.name, gate.directory, gate.command); err != nil {
+			return fmt.Errorf("%s: %w", gate.command, err)
 		}
 	}
-	if len(matches) != 1 {
-		return errors.New("build must run go test -race ./... in exactly one quality gate step")
+	for index, gate := range []struct {
+		name    string
+		command string
+	}{
+		{name: "Test Go sources", command: "go test ./..."},
+		{name: "Test Go sources with the race detector", command: "go test -race ./..."},
+		{name: "Vet Go sources", command: "go vet ./..."},
+		{name: "Audit bundled licenses", command: "go run ./scripts/cmd/licensebundle --check"},
+		{name: "Test release packages", command: "sh scripts/test-package-release.sh"},
+		{name: "Install the pinned pre-commit version", command: "python -m pip install --disable-pip-version-check pre-commit==4.6.0"},
+		{name: "Run pre-commit checks", command: "python -m pre_commit run --all-files"},
+	} {
+		step := steps[index+7]
+		if gate.command != "go test -race ./..." && hasExecutionOverride(step) {
+			return fmt.Errorf("build quality gate %s must not define continue-on-error or if", gate.command)
+		}
+		if gate.command == "go test -race ./..." {
+			if err := requireCanonicalConditionalRunStep(step, "build quality gate "+gate.name, "matrix.goos != 'windows' || matrix.goarch != 'arm64'", gate.command); err != nil {
+				return fmt.Errorf("%s: %w", gate.command, err)
+			}
+			continue
+		}
+		if err := requireCanonicalNamedRunStep(step, gate.name, gate.command); err != nil {
+			return fmt.Errorf("%s: %w", gate.command, err)
+		}
 	}
-	return requireCanonicalConditionalRunStep(matches[0], "build quality gate go test -race ./...", "matrix.goos != 'windows' || matrix.goarch != 'arm64'", "go test -race ./...")
+	return nil
 }
 
-// checkProductionBuildJob 将最终资产放入独立 runner：它只能读取 immutable tag，不能承接
-// recovery 测试进程对环境变量、PATH 或临时目录的跨 step 副作用。
+func requireBuildCommandsPresent(job *yaml.Node) error {
+	for _, gate := range []struct {
+		name      string
+		directory string
+		command   string
+	}{
+		{name: "Validate the exact immutable release source", command: `go run ./scripts/cmd/releaseassets validate-source --version "${RELEASE_TAG#v}" --product-skill skills/pixiv-cli/SKILL.md`},
+		{name: "Install the pinned native Rust toolchain", command: testRustInstallCommand},
+		{name: "Check vendored Rust sources", command: "sh scripts/test-rust-vendor.sh"},
+		{name: "Check Rust formatting from vendored sources", directory: "internal/media/ugoira/rust", command: "cargo fmt --check"},
+		{name: "Lint vendored Rust sources", directory: "internal/media/ugoira/rust", command: "cargo clippy --locked --offline --all-targets -- -D warnings"},
+		{name: "Test Go sources", command: "go test ./..."},
+		{name: "Test Go sources with the race detector", command: "go test -race ./..."},
+		{name: "Vet Go sources", command: "go vet ./..."},
+		{name: "Audit bundled licenses", command: "go run ./scripts/cmd/licensebundle --check"},
+		{name: "Test release packages", command: "sh scripts/test-package-release.sh"},
+		{name: "Install the pinned pre-commit version", command: "python -m pip install --disable-pip-version-check pre-commit==4.6.0"},
+		{name: "Run pre-commit checks", command: "python -m pre_commit run --all-files"},
+	} {
+		if !hasCommand(job, gate.directory, gate.command) {
+			return fmt.Errorf("%s (%s) must be present", gate.name, gate.command)
+		}
+	}
+	return nil
+}
+
+func hasExecutionOverride(step *yaml.Node) bool {
+	for _, key := range []string{"continue-on-error", "if"} {
+		if _, exists := workflowyaml.MappingValue(step, key); exists {
+			return true
+		}
+	}
+	return false
+}
+
+func checkBuildEnvironment(job *yaml.Node) error {
+	env, ok := workflowyaml.MappingValue(job, "env")
+	if !ok || requireOnlyMappingKeys(env, "CC", "RUSTUP_TOOLCHAIN", "GIT_CONFIG_COUNT", "GIT_CONFIG_KEY_0", "GIT_CONFIG_VALUE_0") != nil || workflowyaml.RequireScalar(env, "CC", "${{ matrix.cc }}") != nil || workflowyaml.RequireScalar(env, "RUSTUP_TOOLCHAIN", "${{ matrix.rust_toolchain }}") != nil || workflowyaml.RequireScalar(env, "GIT_CONFIG_COUNT", "1") != nil || workflowyaml.RequireScalar(env, "GIT_CONFIG_KEY_0", "core.autocrlf") != nil || workflowyaml.RequireScalar(env, "GIT_CONFIG_VALUE_0", "false") != nil {
+		return errors.New("build job must bind the audited compiler, Rust toolchain, and immutable source byte checkout")
+	}
+	return nil
+}
+
+// checkProductionBuildJob 将最终资产放入独立 runner，并只读取 immutable tag。
 func checkProductionBuildJob(job *yaml.Node) error {
 	if err := requireRequiredJobExecution(job, "build_production job"); err != nil {
 		return err
 	}
 	if err := requireNoEnvironment(job, "build_production job"); err != nil {
 		return err
+	}
+	if containsScalarFragment(job, "GITHUB_SHA") {
+		return errors.New("build_production job must not read the workflow GITHUB_SHA")
 	}
 	if err := requireOnlyMappingKeys(job, "name", "needs", "runs-on", "permissions", "env", "strategy", "steps"); err != nil {
 		return fmt.Errorf("build_production job: %w", err)
@@ -189,7 +268,7 @@ func checkProductionBuildJob(job *yaml.Node) error {
 	if err := requireExactActionStep(steps[1], "build_production Go setup", setupGoAction, map[string]string{"go-version": "1.26.3", "cache": "false"}); err != nil {
 		return err
 	}
-	if err := requireCanonicalNamedRunStep(steps[2], "Validate the exact immutable production source", `go run ./scripts/releaseassets validate-source --version "${RELEASE_TAG#v}" --product-skill skills/pixiv-cli/SKILL.md`); err != nil {
+	if err := requireCanonicalNamedRunStep(steps[2], "Validate the exact immutable production source", `go run ./scripts/cmd/releaseassets validate-source --version "${RELEASE_TAG#v}" --product-skill skills/pixiv-cli/SKILL.md`); err != nil {
 		return err
 	}
 	if err := requireCanonicalNamedRunStep(steps[3], "Install the pinned native Rust toolchain", prodRustInstallCommand); err != nil {
@@ -215,46 +294,53 @@ func checkProductionBuildJob(job *yaml.Node) error {
 	})
 }
 
-// requireIndependentQualityGate 将每项质量命令约束为唯一、单命令的 bash step。相比从
-// 多行 shell 文本中猜测控制流，这样可以证明 gate 不会藏在 if、循环或 `|| true` 之中。
-func requireIndependentQualityGate(job *yaml.Node, directory, command string) error {
-	steps, err := jobSteps(job)
-	if err != nil {
-		return fmt.Errorf("build must run %s", command)
+func requireProductionRebuildStep(step *yaml.Node) error {
+	const commands = `
+set -euo pipefail
+test "$(git rev-parse HEAD)" = "$(git rev-parse "$RELEASE_TAG^{commit}")"
+test -z "$(git status --porcelain --untracked-files=all)"
+test -z "$(git clean -ndx)"
+bash scripts/build-staticlibs.sh --target '${{ matrix.rust_target }}'
+git restore --source="$RELEASE_TAG^{commit}" -- internal/media/ugoira/rust/staticlib/manifest.json
+git diff --exit-code
+test -z "$(git status --porcelain --untracked-files=all)"
+test -z "$(git clean -ndx)"`
+	if err := requireCanonicalRunStep(step, "production staticlib rebuild", commands); err != nil {
+		return errors.New("production staticlib rebuild must use the exact clean tag command sequence")
 	}
-	var matches []*yaml.Node
-	for _, step := range steps {
-		if requireRunValue(step) == command {
-			matches = append(matches, step)
-		}
+	return nil
+}
+
+func requireProductionBuildStep(step *yaml.Node) error {
+	const commands = `
+set -eu
+mkdir -p dist
+output='dist/pixiv'
+if [ '${{ matrix.goos }}' = windows ]; then
+output='dist/pixiv.exe'
+fi
+go build -trimpath -buildvcs=false \
+-ldflags "-X github.com/FlanChanXwO/pixiv-cli/internal/shared/buildinfo.Version=${RELEASE_TAG}" \
+-o "$output" ./cmd/pixiv
+if [ '${{ matrix.goos }}' = linux ]; then
+go run ./scripts/cmd/linuxabi --binary "$output"
+fi`
+	if err := requireCanonicalRunStep(step, "production versioned binary build", commands); err != nil {
+		return errors.New("production build must use the exact tag-bound version and output command sequence")
 	}
-	if len(matches) != 1 {
-		return fmt.Errorf("build must run %s in an independent quality gate step", command)
-	}
-	step := matches[0]
-	for _, key := range []string{"continue-on-error", "if"} {
-		if _, exists := workflowyaml.MappingValue(step, key); exists {
-			return fmt.Errorf("build quality gate %s must not define continue-on-error or if", command)
-		}
-	}
-	keys := []string{"name", "shell", "run"}
-	if directory != "" {
-		keys = append(keys, "working-directory")
-	}
-	if err := requireOnlyMappingKeys(step, keys...); err != nil {
-		return fmt.Errorf("build quality gate %s must be an independent direct bash step", command)
-	}
-	if err := workflowyaml.RequireScalar(step, "shell", "bash"); err != nil {
-		return fmt.Errorf("build quality gate %s must use shell bash", command)
-	}
-	if directory == "" {
-		if _, exists := workflowyaml.MappingValue(step, "working-directory"); exists {
-			return fmt.Errorf("build quality gate %s must run from the repository root", command)
-		}
-		return nil
-	}
-	if err := workflowyaml.RequireScalar(step, "working-directory", directory); err != nil {
-		return fmt.Errorf("build quality gate %s must run from %s", command, directory)
+	return nil
+}
+
+func requireProductionPackageStep(step *yaml.Node) error {
+	const commands = `
+go run ./scripts/cmd/releaseassets package \
+--repo-root . \
+--version "${RELEASE_TAG#v}" \
+--target '${{ matrix.goos }}/${{ matrix.goarch }}' \
+--binary "dist/pixiv${{ matrix.goos == 'windows' && '.exe' || '' }}" \
+--output-dir dist`
+	if err := requireCanonicalRunStep(step, "production asset package", commands); err != nil {
+		return errors.New("production package must use the exact tag, target, binary and output command sequence")
 	}
 	return nil
 }

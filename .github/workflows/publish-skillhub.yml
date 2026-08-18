@@ -85,10 +85,10 @@ jobs:
           git merge-base --is-ancestor "$tag_commit" "origin/$DEFAULT_BRANCH"
           test "$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" --jq '.draft')" = false
           test -n "$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" --jq '.published_at')"
-          go run ./scripts/releaseassets validate --version "${RELEASE_TAG#v}"
+          go run ./scripts/cmd/releaseassets validate --version "${RELEASE_TAG#v}"
           previous_tag=
           while IFS= read -r tag; do
-            if [ "$tag" != "$RELEASE_TAG" ] && go run ./scripts/releaseassets validate --version "${tag#v}" >/dev/null 2>&1; then
+            if [ "$tag" != "$RELEASE_TAG" ] && go run ./scripts/cmd/releaseassets validate --version "${tag#v}" >/dev/null 2>&1; then
               previous_tag=$tag
               break
             fi

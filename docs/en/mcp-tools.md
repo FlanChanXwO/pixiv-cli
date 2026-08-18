@@ -49,7 +49,7 @@ caller must use the entity-specific filter instead.
 | `novel_filter` | `id` (positive), `tags` (all exact matches), `min_views` (non-negative) |
 | `user_filter` | `id` (positive) |
 
-Artwork search additionally accepts `bookmark_min`, `bookmark_max`, and
+Artwork search also accepts `bookmark_min`, `bookmark_max`, and
 `bookmark_strategy` (`auto`, `local`, `best_effort`, or `server`). The range is
 inclusive and non-negative. The application outcome reports `filter.min`,
 `filter.max`, `membership`, `strategy`, and `completeness`:
@@ -92,7 +92,7 @@ not treated as an artwork detail request.
 | `illust_detail` | Exactly one of positive `illust_id` or a supported artwork `url`; returns one safe record. |
 | `novel_detail` / `novel_content` | Positive `novel_id`; the first returns metadata and the second returns complete structured content blocks. |
 | `illust_related` | Positive `illust_id`, optional `illust_filter`, `page`, `limit`. |
-| `illust_series` / `novel_series` | Positive `series_id`, `page`, `limit`; novel series additionally returns safe series metadata. |
+| `illust_series` / `novel_series` | Positive `series_id`, `page`, `limit`; novel series also returns safe series metadata. |
 | `illust_comments` / `novel_comments` | Positive artwork/novel `id`, `page`, `limit`; output includes safe comments, pagination, and available `total`/`access_control` metadata. |
 | `illust_ranking` | Optional `mode`, `date`, `illust_filter`, `page`, `limit`; omitted mode is `day`. |
 | `search_user` | Required `word`, optional `user_filter`, `page`, `limit`; uses the App user-search operation. |
@@ -133,15 +133,11 @@ Writes are artwork-bookmark and user-follow mutations only. A post-submit
 unknown state is not replayed under another account. Failed writes return
 `success=false` with `isError=true` and a safe diagnostic.
 
-## Authentication, fallback, and debug
+## Authentication and fallback
 
 Pixiv reads and writes require the configured App API access path. There is no
 anonymous or Web fallback, and an App API error is final. A removed
 `web_fallback_enabled` setting is reported as `removed_setting`.
-
-`pixiv --debug mcp` writes safe lifecycle/network/download/failure diagnostics to
-stderr only. It does not change tool schemas, structured errors, or stdout. No
-raw URL query, Cookie, token, proxy userinfo, or response body is emitted.
 
 FANBOX uses a separate MCP server and does not share Pixiv credentials, proxy
 settings, tools, or routes.

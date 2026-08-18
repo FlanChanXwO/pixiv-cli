@@ -6,7 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/platform/localstate"
+	"github.com/FlanChanXwO/pixiv-cli/internal/config/paths"
 	filereplace "github.com/FlanChanXwO/pixiv-cli/internal/storage/file/replace"
 )
 
@@ -39,10 +39,10 @@ func WritePrivateFile(path string, body []byte, mode os.FileMode) error {
 // EnsurePrivateDir 创建目录并把权限收紧到本项目约定的私有目录模式。
 // 该 API 不负责清理或覆盖目录之外的内容。
 func EnsurePrivateDir(path string) error {
-	if err := os.MkdirAll(path, localstate.PrivateDirMode); err != nil {
+	if err := os.MkdirAll(path, paths.PrivateDirMode); err != nil {
 		return err
 	}
-	return os.Chmod(path, localstate.PrivateDirMode)
+	return os.Chmod(path, paths.PrivateDirMode)
 }
 
 // EnsurePrivateFile 创建一个私密文件但绝不覆盖已有内容。它用于配置基线等
@@ -100,10 +100,10 @@ func writePrivateFile(path string, body []byte, mode os.FileMode, ops privateFil
 	if err != nil {
 		return err
 	}
-	if err := os.MkdirAll(targetDirectory, localstate.PrivateDirMode); err != nil {
+	if err := os.MkdirAll(targetDirectory, paths.PrivateDirMode); err != nil {
 		return err
 	}
-	if err := os.Chmod(targetDirectory, localstate.PrivateDirMode); err != nil {
+	if err := os.Chmod(targetDirectory, paths.PrivateDirMode); err != nil {
 		return err
 	}
 	temporary, err := os.CreateTemp(targetDirectory, ".pixiv-private-*")

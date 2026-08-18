@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/diagnostics"
+	"github.com/FlanChanXwO/pixiv-cli/internal/shared/diagnostics"
 )
 
 var (

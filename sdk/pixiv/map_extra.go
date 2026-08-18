@@ -3,7 +3,7 @@ package pixiv
 import (
 	"net/url"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/novel"
+	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/novel"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 )
 

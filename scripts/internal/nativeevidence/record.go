@@ -1,21 +1,20 @@
 package nativeevidence
 
 import (
-	"encoding/json"
-	"errors"
+	"bytes"
 	"fmt"
-	"io"
 	"os/exec"
 	"path/filepath"
-	"strings"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/buildinfo"
 	"github.com/FlanChanXwO/pixiv-cli/internal/media/ugoira/staticlib"
 )
 
 func recordEvidence(options recordOptions) (evidenceRecord, error) {
 	if !semanticVersionPattern.MatchString(options.version) {
 		return evidenceRecord{}, fmt.Errorf("version is not semantic: %q", options.version)
+	}
+	if !gitCommitPattern.MatchString(options.sourceCommit) {
+		return evidenceRecord{}, fmt.Errorf("source commit must be a 40-character lowercase Git SHA: %q", options.sourceCommit)
 	}
 	target, ok := nativeTargets[options.target]
 	if !ok || target.rustTarget != options.rustTarget {
@@ -58,7 +57,7 @@ func recordEvidence(options recordOptions) (evidenceRecord, error) {
 	if err != nil {
 		return evidenceRecord{}, err
 	}
-	binaryInfo, err := readBinaryVersion(options.binary, "v"+options.version)
+	binaryVersion, err := readBinaryVersion(options.binary, "v"+options.version)
 	if err != nil {
 		return evidenceRecord{}, err
 	}
@@ -71,15 +70,14 @@ func recordEvidence(options recordOptions) (evidenceRecord, error) {
 		return evidenceRecord{}, err
 	}
 	record := evidenceRecord{
-		Schema:       1,
+		Schema:       evidenceSchemaVersion,
 		Target:       evidenceTarget{GOOS: target.goos, GOARCH: target.goarch, RustTarget: target.rustTarget},
+		SourceCommit: options.sourceCommit,
 		SourceDigest: sourceDigest,
 		Staticlib:    evidenceFile{Name: filepath.Base(options.staticlib), SHA256: staticlibDigest},
 		Binary: evidenceBinary{
 			evidenceFile: evidenceFile{Name: filepath.Base(options.binary), SHA256: binaryDigest},
-			Version:      binaryInfo.Version,
-			Commit:       binaryInfo.Commit,
-			BuildDate:    binaryInfo.BuildDate,
+			Version:      binaryVersion,
 		},
 		Archive: evidenceArchive{evidenceFile: evidenceFile{Name: filepath.Base(options.archive), SHA256: archiveDigest}, Members: members},
 	}
@@ -97,24 +95,16 @@ func expectedArchiveName(version string, target nativeTarget) string {
 	return "pixiv-cli_" + version + "_" + target.goos + "_" + target.goarch + extension
 }
 
-func readBinaryVersion(binary, expectedVersion string) (buildinfo.Info, error) {
-	command := exec.Command(binary, "version", "--json")
+func readBinaryVersion(binary, expectedVersion string) (string, error) {
+	command := exec.Command(binary, "--version")
 	body, err := command.Output()
 	if err != nil {
-		return buildinfo.Info{}, fmt.Errorf("run binary version --json: %w", err)
+		return "", fmt.Errorf("run binary --version: %w", err)
 	}
-	decoder := json.NewDecoder(strings.NewReader(string(body)))
-	decoder.DisallowUnknownFields()
-	var info buildinfo.Info
-	if err := decoder.Decode(&info); err != nil {
-		return buildinfo.Info{}, fmt.Errorf("decode binary version --json: %w", err)
+	// 发布预检要求完整单行逐字一致，避免接受尾随数据或旧 JSON 契约。
+	expected := []byte("pixiv " + expectedVersion + "\n")
+	if !bytes.Equal(body, expected) {
+		return "", fmt.Errorf("binary --version output does not match %q", string(expected))
 	}
-	var extra any
-	if err := decoder.Decode(&extra); err != io.EOF {
-		return buildinfo.Info{}, errors.New("binary version --json contains trailing data")
-	}
-	if info.Version != expectedVersion || strings.TrimSpace(info.Commit) == "" || strings.TrimSpace(info.BuildDate) == "" {
-		return buildinfo.Info{}, fmt.Errorf("binary version metadata does not match %q", expectedVersion)
-	}
-	return info, nil
+	return expectedVersion, nil
 }

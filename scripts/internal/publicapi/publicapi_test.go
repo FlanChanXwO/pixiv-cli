@@ -54,14 +54,3 @@ func ExportedFromTest() {}
 		t.Fatalf("render inventory leaked non-exported or test symbols: %q", got)
 	}
 }
-
-func TestInventoryIgnoresMissingDirectory(t *testing.T) {
-	t.Parallel()
-
-	inventory := Inventory(filepath.Join(t.TempDir(), "missing"))
-	for _, pkg := range []string{"sdk", "sdk/pixiv", "sdk/fanbox"} {
-		if len(inventory[pkg]) != 0 {
-			t.Fatalf("Inventory(missing dir)[%q] = %v, want empty", pkg, inventory[pkg])
-		}
-	}
-}

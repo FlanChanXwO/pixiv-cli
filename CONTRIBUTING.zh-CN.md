@@ -29,17 +29,16 @@ sh scripts/build.sh
 ./build/pixiv --help
 ```
 
-Native library 校验、opt-in 真实 API 测试、发布门禁和平台细节见[开发流程](docs/maintainers/development.md)。
+Native library 校验、opt-in 真实 API 测试、发布门禁和平台细节见[开发流程](docs/zh-CN/maintainers/development.md)。
 
 ## 架构边界
 
-- `cmd/pixiv` 委托 `internal/cli`；CLI controller 把业务 use case 留在 `internal/application`。
-- Production wiring 只放在 `internal/bootstrap`。
-- CLI 与 MCP 的 Pixiv 能力通过 `internal/application.SDKService` 调用顶层 public `pixiv` SDK，不得直连 App/Web/OAuth/resource 协议 adapter。
-- MCP 注册和 transport 适配放在 `internal/mcpserver`；stdout 只用于 JSON-RPC。
-- `internal/utils/*` 保持协议无关；文件应聚焦于一个职责或少数紧密相关职责。
+- `cmd/pixiv` 委托 `internal/cli`；`internal/cli/root.go` 负责命令注册、全局生命周期与生产组装，具体命令位于 `internal/cli/commands`。
+- CLI/MCP 的 Pixiv/FANBOX 能力经 owner-local 窄端口调用公开 `sdk/pixiv`、`sdk/fanbox`，不得直连 `internal/services/{pixiv,fanbox}` 协议适配包。
+- MCP 产品聚合在 `internal/mcpserver/{pixiv,fanbox}`，具体 tool 位于各产品 `tools/<tool>`；stdio 由 CLI MCP 命令启动，stdout 只用于 JSON-RPC。
+- `internal/shared/*` 负责跨子系统机制，`internal/utils/*` 保持协议无关，配置/路径归 `internal/config/{settings,paths}`；文件应聚焦于一个职责或少数紧密相关职责。
 
-修改这些边界前，请阅读[架构说明](docs/maintainers/architecture.md)与仓库 [AGENTS.md](AGENTS.md)。
+修改这些边界前，请阅读[架构说明](docs/zh-CN/maintainers/architecture.md)与仓库 [AGENTS.md](AGENTS.md)。
 
 ## 使用测试驱动开发
 
@@ -60,8 +59,8 @@ Native library 校验、opt-in 真实 API 测试、发布门禁和平台细节�
 
 - 保持 `README.md` 与 `README.zh-CN.md` 的行为语义对应。
 - 保持 `docs/<locale>/` 下已有语言版本的行为语义对应；不得用未翻译占位内容冒充对应语言。
-- 按文件职责更新 localized SDK/MCP contract 或 `docs/maintainers/`。
-- 每个贡献都要完成 PR 模板中的 release-note 声明，分类为 `Added`、`Changed`、`Fixed`、`Security`、`Documentation`、`Maintenance` 或 `None`；选择 `None` 时说明具体理由。合并后由 release-prep PR 将已审核结果归并为英文与简体中文版本说明，并在每个条目内标注 PR 或历史 direct commit 来源及完整变更链接。具体流程见[发布说明与发布](docs/maintainers/development.md#release-notes-and-publication)。
+- 按文件职责更新 localized SDK/MCP contract 或 `docs/zh-CN/maintainers/`。
+- PR 正文只留审查需要的内容：变更说明、实际验证和简短自查。发布准备阶段由维护者审计所有已合并 PR 和 direct commit，再直接编写带来源的英文与简体中文版本说明；纯内部改动归入 `Maintenance`。具体流程见[发布说明与发布](docs/zh-CN/maintainers/development.md#release-notes-and-publication)。
 - CLI 命令、flag 或安全语义变化时检查 `skills/pixiv-cli/`。
 
 稳定规则只在一个权威文档中定义，其他位置应链接过去，避免复制大段内容。

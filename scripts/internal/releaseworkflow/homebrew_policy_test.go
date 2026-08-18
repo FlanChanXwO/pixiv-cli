@@ -70,7 +70,7 @@ func TestWorkflowUsesLinuxOnlyContainerizedHomebrewVerification(t *testing.T) {
 		`HOMEBREW_NO_AUTO_UPDATE=1`,
 		`HOMEBREW_NO_ENV_HINTS=1`,
 		`brew install --formula "$staging_tap/$formula_name"`,
-		`pixiv version --json`,
+		`test "$(pixiv --version)" = "pixiv $RELEASE_TAG"`,
 	} {
 		if !strings.Contains(run, command) {
 			t.Fatalf("Homebrew install gate must retain Linux container verification and the macOS native install command; missing %q", command)
@@ -82,14 +82,11 @@ func TestWorkflowUsesLinuxOnlyContainerizedHomebrewVerification(t *testing.T) {
 		}
 	}
 	linuxBranch, _, ok := strings.Cut(run, "\nelse\n")
-	if !ok || strings.Contains(linuxBranch, "brew trust --tap") || strings.Contains(linuxBranch, "python3 -c") {
-		t.Fatal("Linux container branch must not use unavailable Homebrew 6 trust or Python")
+	if !ok || strings.Contains(linuxBranch, "brew trust --tap") || strings.Contains(linuxBranch, "python3 -c") || strings.Contains(linuxBranch, "brew ruby -rjson") {
+		t.Fatal("Linux container branch must not use unavailable Homebrew 6 trust or JSON parsers")
 	}
-	if !strings.Contains(linuxBranch, `brew ruby -rjson -e`) {
-		t.Fatal("Linux container branch must compare the JSON version with Ruby's standard JSON library")
-	}
-	if !strings.Contains(macOSBranchFromVerifyRun(t, run), "python3 -c") {
-		t.Fatal("macOS native Homebrew must retain the host Python JSON assertion")
+	if strings.Contains(macOSBranchFromVerifyRun(t, run), "python3 -c") || strings.Contains(macOSBranchFromVerifyRun(t, run), "brew ruby -rjson") {
+		t.Fatal("macOS native Homebrew must not use a JSON parser")
 	}
 }
 
@@ -263,10 +260,10 @@ func TestCheckWorkflowRejectsHomebrewReleaseGateMutations(t *testing.T) {
 			},
 		},
 		{
-			name: "version JSON assertion removed",
+			name: "root version assertion removed",
 			want: "Homebrew native install gate must use the required direct command sequence",
 			mutate: func(t *testing.T, root *yaml.Node) {
-				removeRunFragment(t, stepWithRun(t, jobNode(t, root, "verify_homebrew_formula"), "pixiv version --json"), "pixiv version --json")
+				removeRunFragment(t, stepWithRun(t, jobNode(t, root, "verify_homebrew_formula"), `test "$(pixiv --version)" = "pixiv $RELEASE_TAG"`), `test "$(pixiv --version)" = "pixiv $RELEASE_TAG"`)
 			},
 		},
 		{

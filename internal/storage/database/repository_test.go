@@ -7,10 +7,10 @@ import (
 	"sync"
 	"testing"
 
-	accountfanbox "github.com/FlanChanXwO/pixiv-cli/internal/account/fanbox"
-	accountpixiv "github.com/FlanChanXwO/pixiv-cli/internal/account/pixiv"
-	sessionpixiv "github.com/FlanChanXwO/pixiv-cli/internal/session/pixiv"
-	"github.com/FlanChanXwO/pixiv-cli/internal/storage/config"
+	config "github.com/FlanChanXwO/pixiv-cli/internal/config/settings"
+	accountfanbox "github.com/FlanChanXwO/pixiv-cli/internal/services/fanbox/account"
+	accountpixiv "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/account"
+	pixivpool "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/pool"
 	database "github.com/FlanChanXwO/pixiv-cli/internal/storage/database"
 )
 
@@ -36,7 +36,7 @@ func fanboxAccount(userID int64, displayName, creatorID, session string, validat
 
 func choose(strategy config.AccountPoolStrategy, random func(int) (int, error)) accountpixiv.Chooser {
 	return func(snapshot accountpixiv.PoolSnapshot) (int64, error) {
-		return sessionpixiv.Choose(snapshot, strategy, random)
+		return pixivpool.Choose(snapshot, strategy, random)
 	}
 }
 
@@ -133,14 +133,14 @@ func TestPixivPoolTransactionChooserFreezeAndValidation(t *testing.T) {
 	if err != nil || second.UserID != 2 {
 		t.Fatalf("second = %+v, err=%v", second, err)
 	}
-	if err := db.FreezePooledPixiv(ctx, 2, 200); err != nil {
+	if err := db.Freeze(ctx, 2, 200); err != nil {
 		t.Fatal(err)
 	}
 	third, err := db.SelectPixiv(ctx, 102, nil, choose(config.AccountPoolStrategyRoundRobin, nil))
 	if err != nil || third.UserID != 3 {
 		t.Fatalf("frozen marker selection = %+v, err=%v", third, err)
 	}
-	if err := db.FreezePooledPixiv(ctx, 1, 300); err != nil {
+	if err := db.Freeze(ctx, 1, 300); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := db.SelectPixiv(ctx, 150, nil, func(accountpixiv.PoolSnapshot) (int64, error) { return 999, nil }); err == nil {
@@ -166,7 +166,7 @@ func TestPixivPoolErrorsAndRandomChooser(t *testing.T) {
 	if err := db.SavePixivCredential(ctx, pixivAccount(1, "u", "token")); err != nil {
 		t.Fatal(err)
 	}
-	if err := db.FreezePooledPixiv(ctx, 1, 250); err != nil {
+	if err := db.Freeze(ctx, 1, 250); err != nil {
 		t.Fatal(err)
 	}
 	_, err = db.SelectPixiv(ctx, 100, nil, choose(config.AccountPoolStrategyRoundRobin, nil))

@@ -177,7 +177,7 @@ func run(args []string) error {
 	return verifyBinary(*binary)
 }
 
-// Run 是 scripts/linuxabi 的入口 owner：解析参数并委托给 ELF 校验逻辑。
+// Run 是 scripts/cmd/linuxabi 的入口 owner：解析参数并委托给 ELF 校验逻辑。
 func Run(args []string) error {
 	return run(args)
 }

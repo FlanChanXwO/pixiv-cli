@@ -4,16 +4,87 @@ English | [简体中文](../zh-CN/sdk.md) | [Documentation index](../index.md)
 
 The v1 SDK exposes three public packages:
 
-- `github.com/FlanChanXwO/pixiv-cli/sdk` — protocol-agnostic primitives shared by
-  both products: paginated pages, opaque cursors, classified errors, and the
-  resource contract.
-- `github.com/FlanChanXwO/pixiv-cli/sdk/pixiv` — the Pixiv App API client,
-  models, URL references, and mutations.
-- `github.com/FlanChanXwO/pixiv-cli/sdk/fanbox` — the Pixiv FANBOX client,
-  models, and URL resolution.
+- `github.com/FlanChanXwO/pixiv-cli/sdk` — protocol-agnostic primitives shared by both products: paginated pages, opaque cursors, classified errors, and the resource contract.
+- `github.com/FlanChanXwO/pixiv-cli/sdk/pixiv` — the Pixiv App API client, models, URL references, and mutations.
+- `github.com/FlanChanXwO/pixiv-cli/sdk/fanbox` — the Pixiv FANBOX client, models, and URL resolution.
 
-All exported declarations carry English GoDoc; the package source is the
-canonical API summary.
+All exported declarations carry English GoDoc; the package source is the canonical API summary.
+
+## Quickstart
+
+A complete Pixiv flow: authenticate, search, fetch detail, and save an image.
+
+```go
+package main
+
+import (
+	"context"
+	"fmt"
+	"os"
+
+	"github.com/FlanChanXwO/pixiv-cli/sdk"
+	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
+)
+
+func main() {
+	ctx := context.Background()
+
+	// 1. Authenticate via OAuth rotation. Persist the rotated refresh token
+	//    before issuing content requests; the client never refreshes itself.
+	client, creds, err := pixiv.Open(ctx, os.Getenv("PIXIV_REFRESH_TOKEN"))
+	if err != nil {
+		panic(err)
+	}
+	_ = creds // persist creds.RefreshToken() to durable storage
+
+	// 2. Search artworks and iterate the typed page cursor.
+	page, err := client.SearchArtworks(ctx, pixiv.SearchArtworksRequest{Word: "miku"})
+	if err != nil {
+		panic(err)
+	}
+	if len(page.Items) == 0 {
+		return
+	}
+	first := page.Items[0]
+
+	// 3. Fetch artwork pages (image resources).
+	pages, err := client.ArtworkPages(ctx, pixiv.ArtworkPagesRequest{ArtworkID: first.ID})
+	if err != nil {
+		panic(err)
+	}
+
+	// 4. Save the first image through the SDK-validated resource path.
+	_, err = client.SaveResource(ctx, sdk.SaveOptions{
+		Ref:  pages[0].Image.Resource.Ref,
+		Dest: "./first.png",
+	})
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println("saved", first.ID)
+}
+```
+
+A FANBOX flow: open with a session, list supporting posts, resolve one post's resource.
+
+```go
+client, err := fanbox.Open(fanbox.SessionCredentials{FANBOXSESSID: sess})
+if err != nil {
+    panic(err)
+}
+page, err := client.Supporting(ctx, fanbox.SupportingRequest{})
+if err != nil {
+    panic(err)
+}
+if len(page.Items) == 0 {
+    return
+}
+post, err := client.Post(ctx, fanbox.PostRequest{PostID: page.Items[0].ID})
+if err != nil {
+    panic(err)
+}
+_ = post // post.Body blocks carry image/file assets with their Resource refs
+```
 
 ## Authentication
 
@@ -60,7 +131,8 @@ FANBOX is authenticated with an explicit `FANBOXSESSID` value:
 client, err := fanbox.Open(fanbox.SessionCredentials{FANBOXSESSID: session})
 ```
 
-Pixiv refresh tokens and FANBOX sessions are independent and never convert.
+> [!IMPORTANT]
+> Pixiv refresh tokens and FANBOX sessions are independent and never convert.
 
 FANBOX connection options are explicit and optional:
 
@@ -89,14 +161,15 @@ List operations return `sdk.Page[T]` with an opaque `Cursor`:
 page, err := client.SearchArtworks(ctx, pixiv.SearchArtworksRequest{Word: "miku"})
 for {
     for _, artwork := range page.Items { /* ... */ }
-    if page.Next.IsZero() { break }
+    if page.Next.IsZero() { break }   // stop when no cursor remains
     request.Cursor = page.Next
     page, err = client.SearchArtworks(ctx, request)
 }
 ```
 
-Cursors are bound to the product, operation, binding version, and query digest;
-reusing one with a different query returns `InvalidCursor`.
+> [!NOTE]
+> Cursors are bound to the product, operation, binding version, and query digest.
+> Reusing one with a different query returns `InvalidCursor`.
 
 For identity-scoped operations, a client created with `pixiv.New` has no
 verified account ID. Its continuation cursor is ephemeral and carries a
@@ -106,41 +179,34 @@ through `pixiv.Open` binds the cursor to the verified account identity instead.
 
 ## Pixiv read operations
 
-The public Pixiv client keeps artwork, novel, and user searches separate while
-using the same typed pagination contract:
+| Operation | Input highlights | Returns | Common errors |
+| --- | --- | --- | --- |
+| `SearchArtworks` | word, target, sort, date bounds, type, AI mode, aspect ratio, resolution, tool, bookmark bounds | `Page[Artwork]` | `InvalidArgument` (unknown enum, bad dates, bad bookmark range) |
+| `SearchNovels` | word, target, sort, duration | `Page[Novel]` | `InvalidArgument` |
+| `SearchUsers` | word | `Page[User]` | `InvalidArgument` |
+| `ArtworkRanking` | mode (default `day`), optional `YYYY-MM-DD` | `Page[Artwork]` | `InvalidArgument` |
+| `Artwork` / `Novel` / `User` | positive typed ID | detail record | `NotFound`, `InvalidArgument` |
+| `ArtworkSeries` / `NovelSeries` | positive series ID, cursor | series page (novel also returns metadata) | `InvalidCursor` |
+| `ArtworkComments` / `NovelComments` | positive ID, cursor | `CommentPage` | `NotFound` |
+| `UserArtworkBookmarks` / `UserArtworkBookmarkTags` / `UserNovelBookmarks` | `UserID`, `Restrict`, `tag`, cursor | typed page | `InvalidArgument`, `InvalidCursor` |
 
-- `SearchArtworks` accepts word, target, sort, duration/date bounds, artwork
-  type, AI mode, aspect ratio, resolution, drawing tool, and optional bookmark
-  bounds. Empty target and sort default to `partial_match_for_tags` and
-  `date_desc`. Unknown enum values, invalid dates, and invalid bookmark ranges
-  return `InvalidArgument` before a request is sent.
-- `SearchNovels` accepts word, target, sort, and duration. `SearchUsers` accepts
-  only word. Artwork-only fields are not silently copied to the other entity
-  requests.
-- `SearchAIModeOnly` is a local result-batch filter over the normalized
-  `Artwork.AIType == 2` field. Its mode is included in the cursor binding, so a
-  continuation cannot be reused for another AI mode.
-- `ArtworkRanking` defaults an omitted mode to `day` and validates ranking mode
-  and optional `YYYY-MM-DD` date. `Artwork`, `Novel`, and `User` are detail
-  operations with positive typed IDs. `ArtworkSeries` and `NovelSeries` keep
-  their series-specific continuation; the latter also returns series metadata.
-- `ArtworkComments` and `NovelComments` return `CommentPage`. Comment totals
-  and access-control metadata remain nil unless the upstream response supplied
-  them. A successful empty list is represented by a non-nil empty `Items`
+Key semantics:
+
+- `SearchAIModeOnly` is a local result-batch filter over `Artwork.AIType == 2`.
+  Its mode is included in the cursor binding, so a continuation cannot be reused
+  for another AI mode.
+- Comment totals and access-control metadata remain nil unless the upstream
+  response supplied them. A successful empty list is a non-nil empty `Items`
   slice, not an invented error or total.
-- `UserArtworkBookmarks`, `UserArtworkBookmarkTags`, and `UserNovelBookmarks`
-  validate `UserID`, `Restrict`, and the opaque continuation before the App API
-  request. They preserve successful empty pages and pass `tag` and the
-  server-provided bookmark continuation through unchanged. `ArtworkBookmark`
-  represents an absent bookmark with an empty `Restrict` and empty tags;
-  `AddBookmark` validates its visibility and never treats an unsupported value
-  as a server default.
+- `ArtworkBookmark` represents an absent bookmark with an empty `Restrict` and
+  empty tags; `AddBookmark` validates visibility and never treats an unsupported
+  value as a server default.
 - `BookmarkMin` and `BookmarkMax` are optional, inclusive, non-negative App API
-  candidate bounds. The public SDK validates and forwards them as
-  `bookmark_num_min`/`bookmark_num_max`, but does not perform a Premium
-  preflight, claim global completeness, or silently fall back to another
-  candidate strategy. Application-level search may recheck `Artwork.TotalBookmarks`
-  and must report its resolved strategy and completeness separately.
+  candidate bounds. The SDK validates and forwards them as
+  `bookmark_num_min`/`bookmark_num_max` but performs no Premium preflight, claims
+  no global completeness, and never silently falls back to another candidate
+  strategy. Application-level search may recheck `Artwork.TotalBookmarks` and
+  must report its resolved strategy and completeness separately.
 
 ## Errors
 
@@ -157,6 +223,14 @@ local_state_error, removed_setting
 preserved. The error chain never contains URLs, headers, tokens, cookies, or
 config content.
 
+```go
+if errors.Is(err, sdk.Unauthorized{}) {
+    // re-authenticate
+} else if sdk.ReasonOf(err) == sdk.RateLimited {
+    // back off using RetryAdvice
+}
+```
+
 ## Resources
 
 Programmatic SDK callers receive first-party media through `sdk.Resource` with
@@ -165,19 +239,32 @@ two runtime paths:
 - `Resource.URL` + `Resource.RequestHeaders` — stream directly or proxy without
   buffering to disk.
 - `Resource.Ref` — hand back to `OpenResource`/`SaveResource` for SDK-validated
-  reads (scheme/host/path revalidation and redirect-safe handling). A
-  `Resource` never stores a cookie; a bound FANBOX client may use its session
-  only for the authenticated FANBOX API and `downloads.fanbox.cc` request
-  policy, never for Pixiv/CDN or third-party hosts.
+  reads (scheme/host/path revalidation and redirect-safe handling).
 
 ```go
+// Stream directly without buffering to disk.
 page, _ := client.ArtworkPages(ctx, pixiv.ArtworkPagesRequest{ArtworkID: id})
 image := page[0].Image.Resource
 resp, err := client.OpenResource(ctx, sdk.OpenResourceRequest{Ref: image.Ref})
+if err != nil { /* handle */ }
+defer resp.Body.Close()
+// read from resp.Body using image.URL + image.RequestHeaders as needed
 ```
 
-`Resource` never carries tokens or cookies; `RequiresCredentials` reports when a
-resource still needs product credentials invisible to the caller.
+```go
+// Save through the SDK-validated path (revalidates URL/redirects, atomic write).
+_, err := client.SaveResource(ctx, sdk.SaveOptions{
+    Ref:  image.Ref,
+    Dest: "./out.png",
+})
+```
+
+> [!IMPORTANT]
+> A `Resource` never stores a cookie; a bound FANBOX client may use its session
+> only for the authenticated FANBOX API and `downloads.fanbox.cc` request policy,
+> never for Pixiv/CDN or third-party hosts. `Resource` never carries tokens or
+> cookies; `RequiresCredentials` reports when a resource still needs product
+> credentials invisible to the caller.
 
 ### Runtime models and output DTOs
 
@@ -198,7 +285,6 @@ they never reflect over or JSON-marshal runtime product models.
 
 For Pixiv, `Resource.Ref` contains only the resource kind, stable ID, page, and
 optional variant. It never embeds the current or signed media URL. The SDK can
-
 reuse the current locator held by the client, or re-fetch the corresponding
 artwork, novel, user, ugoira, or novel-content metadata before opening it; every
 resolved URL and redirect is allowlisted again. `SaveResource` writes through an
@@ -211,6 +297,12 @@ explicit header allowlist and never send the caller's Cookie jar.
 `pixiv.ParseURL` and `fanbox.ResolveURL` turn page URLs into typed references
 without network I/O, and `Reference.CanonicalURL` returns the tracking-free
 canonical form.
+
+```go
+ref, err := pixiv.ParseURL(pageURL)
+if err != nil { /* handle */ }
+canonical := ref.CanonicalURL()
+```
 
 ### Optional DTO fields
 

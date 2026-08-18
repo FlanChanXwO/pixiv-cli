@@ -10,12 +10,12 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/diagnostics"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/filters"
 	downloader "github.com/FlanChanXwO/pixiv-cli/internal/media/downloader"
-	"github.com/FlanChanXwO/pixiv-cli/internal/pagination"
-	searchpixiv "github.com/FlanChanXwO/pixiv-cli/internal/search/pixiv"
-	sessionpixiv "github.com/FlanChanXwO/pixiv-cli/internal/session/pixiv"
+	"github.com/FlanChanXwO/pixiv-cli/internal/shared/diagnostics"
+	"github.com/FlanChanXwO/pixiv-cli/internal/shared/lifecycle"
+	"github.com/FlanChanXwO/pixiv-cli/internal/shared/pagination"
+	"github.com/FlanChanXwO/pixiv-cli/internal/shared/traversal"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -27,32 +27,32 @@ type DownloadManager interface {
 	Download(context.Context, downloader.DownloadRequest) ([]downloader.DownloadedArtwork, error)
 }
 
-// Account 是 MCP operation 的本地请求值；只携带传输覆写与账号选择，不持有
+// Account 是 MCP 请求的本地值；只携带传输覆写与账号选择，不持有
 // client 或凭据。
 type Account struct {
-	UserID                  int64
-	HTTPSProxyOverride      *string
-	RequestIntervalOverride *time.Duration
+	UserID             int64
+	HTTPSProxyOverride *string
 }
 
-// SDKPorts 是 MCP 对 Pixiv SDK 的窄端口：打开独立认证快照、在账号池重放边界内
-// 执行操作。composition root 注入实现；MCP 不持有 service locator。
+// SDKPorts 是 MCP 对 Pixiv services Facade 的窄端口：打开独立认证快照、在账号
+// 池重放边界内执行用例。composition root 注入实现；MCP 不持有 service locator。
 type SDKPorts struct {
-	Open   func(Account) (*pixiv.Client, error)
-	Pooled func(context.Context, Account, func(context.Context, *pixiv.Client) (bool, error)) error
+	// Open is the raw-client compatibility adapter for existing embeddings. New
+	// composition roots should inject OpenLease so the services Facade owns the
+	// complete client lifecycle.
+	Open      func(Account) (*pixiv.Client, error)
+	OpenLease func(context.Context, Account) (*lifecycle.Lease[*pixiv.Client], error)
+	Execute   func(context.Context, Account, func(context.Context, *pixiv.Client) (bool, error)) error
 }
 
 // App 是 Pixiv MCP 应用。
 type App struct {
 	downloads DownloadManager
-	// newDownloads 在每个 SDK operation 的稳定认证 snapshot 上创建下载器。
+	// newDownloads 在每个 SDK client 的稳定认证 snapshot 上创建下载器。
 	// 固定 downloads 仅保留给未注入 SDK 的嵌入测试兼容路径。
-	newDownloads func(*pixiv.Client) DownloadManager
-	sdk          SDKPorts
-	sdkAccount   Account
-	// sdkGate 串行化同一 MCP 实例中会刷新 OAuth 的 SDK operation，避免两个
-	// OpenDefault 快照同时消费同一个 rotation token；channel select 可响应 ctx。
-	sdkGate        *sessionpixiv.Gate
+	newDownloads   func(*pixiv.Client) DownloadManager
+	sdk            SDKPorts
+	sdkAccount     Account
 	requestCounter atomic.Uint64
 }
 
@@ -158,26 +158,26 @@ func ListPagination(plan ListPlan, limit *int, returned int, hasMore bool) Pagin
 	return out
 }
 
-// PooledOperation 只将 MCP 当前请求接入 session 的重放边界；逻辑分页和
-// cursor 处理由 internal/search/pixiv 统一拥有。
-func (a *App) PooledOperation() searchpixiv.Operation[*pixiv.Client] {
-	if a.sdk.Pooled == nil {
+// Execute 将 MCP 当前请求接入 services Facade 提供的重放边界；逻辑分页和
+// cursor 处理由 internal/shared/traversal 与 pagination 统一拥有。
+func (a *App) Execute() traversal.Execute[*pixiv.Client] {
+	if a == nil || a.sdk.Execute == nil {
 		return nil
 	}
 	return func(ctx context.Context, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
-		return a.sdk.Pooled(ctx, a.sdkAccount, attempt)
+		return a.sdk.Execute(ctx, a.sdkAccount, attempt)
 	}
 }
 
 // Read 在账号池重放边界内执行一次只读用例；MCP 只在成功后拿到结果。
 func Read[T any](a *App, ctx context.Context, invoke func(context.Context, *pixiv.Client) (T, error)) (T, error) {
 	var zero T
-	if a.sdk.Pooled == nil {
+	if a == nil || a.sdk.Execute == nil {
 		return zero, sdk.NewError("pixiv", "PagedRead", sdk.LocalStateError,
 			sdk.WithDetail("sdk pooled operation is not configured"))
 	}
 	var result T
-	err := a.sdk.Pooled(ctx, a.sdkAccount, func(ctx context.Context, client *pixiv.Client) (bool, error) {
+	err := a.sdk.Execute(ctx, a.sdkAccount, func(ctx context.Context, client *pixiv.Client) (bool, error) {
 		var err error
 		result, err = invoke(ctx, client)
 		return false, err
@@ -188,22 +188,22 @@ func Read[T any](a *App, ctx context.Context, invoke func(context.Context, *pixi
 	return result, nil
 }
 
-// Write 在账号池重放边界内执行一次 mutation；提交边界由 session 语义决定。
+// Write 在账号池重放边界内执行一次 mutation；提交边界由 services Facade 语义决定。
 func Write(a *App, ctx context.Context, invoke func(context.Context, *pixiv.Client) error) error {
-	if a.sdk.Pooled == nil {
+	if a == nil || a.sdk.Execute == nil {
 		return sdk.NewError("pixiv", "Write", sdk.LocalStateError,
 			sdk.WithDetail("sdk pooled operation is not configured"))
 	}
-	return a.sdk.Pooled(ctx, a.sdkAccount, func(ctx context.Context, client *pixiv.Client) (bool, error) {
+	return a.sdk.Execute(ctx, a.sdkAccount, func(ctx context.Context, client *pixiv.Client) (bool, error) {
 		return true, invoke(ctx, client)
 	})
 }
 
-// CollectPooledPages 只负责 MCP record filter，逻辑分页由 search workflow
-// 执行。MCP 不自行打开 operation、重放账号或解释 opaque cursor。
-func CollectPooledPages[T any](ctx context.Context, app *App, plan ListPlan, fetch func(context.Context, *pixiv.Client, sdk.Cursor) ([]T, sdk.Cursor, error)) ([]T, bool, error) {
+// CollectWith 只负责 MCP record filter，逻辑分页由共享 traversal 引擎执行。
+// MCP 不自行打开 client、重放账号或解释 opaque cursor。
+func CollectWith[T any](ctx context.Context, app *App, plan ListPlan, fetch func(context.Context, *pixiv.Client, sdk.Cursor) ([]T, sdk.Cursor, error)) ([]T, bool, error) {
 	seen := make(map[string]struct{})
-	result, err := searchpixiv.CollectPooledPagedRead(ctx, app.PooledOperation(), pagination.PagePlan{
+	result, err := traversal.CollectWith(ctx, app.Execute(), pagination.PagePlan{
 		Skip: plan.Skip, Limit: max(0, plan.Limit), OneBatch: plan.OneBatch,
 	}, func(ctx context.Context, client *pixiv.Client, cursor sdk.Cursor) ([]T, sdk.Cursor, error) {
 		if cursor.IsZero() {
@@ -215,16 +215,17 @@ func CollectPooledPages[T any](ctx context.Context, app *App, plan ListPlan, fet
 		}
 		return filters.FilterPage(ctx, items, seen), next, nil
 	})
+	if errors.Is(err, traversal.ErrExecuteNotConfigured) {
+		err = sdk.NewError("pixiv", "PagedRead", sdk.LocalStateError,
+			sdk.WithDetail("sdk pooled operation is not configured"))
+	}
 	return result.Items, result.HasMore, err
 }
 
 // CollectPages 仅把 MCP 的兼容 sentinel 映射到共享分页语义；成功空结果
 // 仍保持 non-nil slice，失败时共享 collector 会丢弃部分结果。
 func CollectPages[T any](ctx context.Context, plan ListPlan, fetch func(context.Context, sdk.Cursor) ([]T, sdk.Cursor, error)) ([]T, bool, error) {
-	limit := plan.Limit
-	if limit < 0 {
-		limit = 0
-	}
+	limit := max(0, plan.Limit)
 	seen := make(map[string]struct{})
 	items, result, err := pagination.CollectPages(ctx, pagination.PagePlan{
 		Skip:     plan.Skip,
@@ -243,40 +244,42 @@ func CollectPages[T any](ctx context.Context, plan ListPlan, fetch func(context.
 	return items, result.HasMore, nil
 }
 
-// OpenSDKOperation 打开一次带 OAuth gate 的独立 SDK snapshot。
-func (a *App) OpenSDKOperation(ctx context.Context) (client *pixiv.Client, release func(), err error) {
-	if a.sdk.Open == nil {
-		return nil, nil, errors.New("pixiv sdk is not configured")
+// OpenClient 打开一次由 services Facade 管理的独立 SDK snapshot，并返回
+// 显式 Lease。调用方必须关闭 Lease；底层 gate 与 client 释放由注入端口拥有。
+func (a *App) OpenClient(ctx context.Context) (*lifecycle.Lease[*pixiv.Client], error) {
+	if a == nil {
+		return nil, errors.New("pixiv sdk is not configured")
 	}
-	if err = a.acquireSDKGate(ctx); err != nil {
-		return nil, nil, err
+	openLease := a.sdk.OpenLease
+	if openLease == nil && a.sdk.Open != nil {
+		openLease = func(_ context.Context, account Account) (*lifecycle.Lease[*pixiv.Client], error) {
+			client, err := a.sdk.Open(account)
+			if err != nil {
+				return nil, err
+			}
+			if client == nil {
+				return nil, lifecycle.ErrNilLease
+			}
+			return lifecycle.NewLease(client, func() error {
+				client.CloseIdleConnections()
+				return nil
+			}), nil
+		}
 	}
-	client, err = a.sdk.Open(a.sdkAccount)
+	if openLease == nil {
+		return nil, errors.New("pixiv sdk is not configured")
+	}
+	lease, err := openLease(ctx, a.sdkAccount)
 	if err != nil {
-		a.releaseSDKGate()
-		return nil, nil, err
+		return nil, err
 	}
-	return client, a.releaseSDKOperation, nil
-}
-
-func (a *App) releaseSDKOperation() {
-	a.releaseSDKGate()
-}
-
-func (a *App) acquireSDKGate(ctx context.Context) error {
-	if a.sdkGate == nil {
-		a.sdkGate = sessionpixiv.NewGate()
+	if lease == nil {
+		return nil, lifecycle.ErrNilLease
 	}
-	return a.sdkGate.Acquire(ctx)
+	return lease, nil
 }
 
-func (a *App) releaseSDKGate() {
-	if a.sdkGate != nil {
-		a.sdkGate.Release()
-	}
-}
-
-// CurrentUserID 返回当前 operation snapshot 的身份 UID；未携带账号时报错，
+// CurrentUserID 返回当前 client snapshot 的身份 UID；未携带账号时报错，
 // 不静默回退到默认账号语义。
 func (a *App) CurrentUserID(ctx context.Context) (int64, error) {
 	return Read(a, ctx, func(ctx context.Context, client *pixiv.Client) (int64, error) {

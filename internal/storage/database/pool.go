@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	accountpixiv "github.com/FlanChanXwO/pixiv-cli/internal/account/pixiv"
+	accountpixiv "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/account"
 )
 
 func (d *DB) SetPixivSchedulable(ctx context.Context, userIDs []int64, schedulable bool) error {
@@ -48,34 +48,6 @@ func (d *DB) SetAllPixivSchedulable(ctx context.Context, schedulable bool) error
 	defer func() { _ = tx.Rollback() }()
 	if _, err := tx.ExecContext(ctx, `UPDATE pixiv_account SET schedulable=?, updated_at=?`, boolInt(schedulable), nowUnix()); err != nil {
 		return err
-	}
-	return tx.Commit()
-}
-
-// MigratePixivSchedulable 把旧 config 的 UID 列表映射为数据库调度状态。
-// 列表中已不存在的 UID 被忽略；整个重映射仍在一个事务内完成。
-func (d *DB) MigratePixivSchedulable(ctx context.Context, enabledUserIDs []int64) error {
-	if err := validatePoolUserIDsAllowEmpty(enabledUserIDs); err != nil {
-		return err
-	}
-	tx, err := d.db.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = tx.Rollback() }()
-	if _, err := tx.ExecContext(ctx, `UPDATE pixiv_account SET schedulable=0, updated_at=?`, nowUnix()); err != nil {
-		return err
-	}
-	if len(enabledUserIDs) > 0 {
-		placeholders := strings.TrimSuffix(strings.Repeat("?,", len(enabledUserIDs)), ",")
-		args := make([]any, 0, len(enabledUserIDs)+1)
-		args = append(args, nowUnix())
-		for _, userID := range enabledUserIDs {
-			args = append(args, userID)
-		}
-		if _, err := tx.ExecContext(ctx, `UPDATE pixiv_account SET schedulable=1, updated_at=? WHERE user_id IN (`+placeholders+`)`, args...); err != nil {
-			return err
-		}
 	}
 	return tx.Commit()
 }

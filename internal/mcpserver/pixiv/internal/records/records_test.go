@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	pipeline "github.com/FlanChanXwO/pixiv-cli/internal/cli/pipeline"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/records"
+	record "github.com/FlanChanXwO/pixiv-cli/internal/shared/record"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 )
@@ -58,7 +58,7 @@ func TestRecordSerializationOmitsResourceTransport(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assertMCPResourceTransportAbsent(t, []pipeline.Record{detailRecord}, ref.String())
+	assertMCPResourceTransportAbsent(t, []record.Record{detailRecord}, ref.String())
 
 	trending := pixiv.ToTrendingTagDTO(pixiv.TrendingTag{Tag: "safe-tag", TranslatedName: "safe", Artwork: artwork})
 	rawTrending, err := json.Marshal(trending)

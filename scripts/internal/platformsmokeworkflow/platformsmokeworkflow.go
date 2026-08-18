@@ -19,7 +19,7 @@ func Validate(path string) error {
 		"workflow_dispatch:",
 		"permissions: {}",
 		"classify_changes:",
-		"go run ./scripts/changescope --base \"$BASE_SHA\" --head \"$HEAD_SHA\" --github-output \"$GITHUB_OUTPUT\"",
+		"go run ./scripts/cmd/changescope --base \"$BASE_SHA\" --head \"$HEAD_SHA\" --github-output \"$GITHUB_OUTPUT\"",
 		"needs: classify_changes",
 		"if: ${{ needs.classify_changes.outputs.docs_only != 'true' }}",
 		"    name: Packaged binary smoke\n",
@@ -33,9 +33,10 @@ func Validate(path string) error {
 		"ubuntu-22.04-arm",
 		"windows-2025",
 		"windows-11-arm",
-		"go run ./scripts/releaseassets package",
-		`go run ./scripts/linuxabi --binary "$binary"`,
-		"go test ./scripts/installers -count=1",
+		"go run ./scripts/cmd/releaseassets package",
+		`-ldflags "-X github.com/FlanChanXwO/pixiv-cli/internal/shared/buildinfo.Version=v${version}"`,
+		`go run ./scripts/cmd/linuxabi --binary "$binary"`,
+		"go test ./scripts/tests/installers -count=1",
 		"PIXIV_E2E_BINARY=",
 		"PIXIV_E2E_EXPECTED_VERSION=",
 		"go test ./e2e -run '^TestPixivBinaryPackagedSmoke$' -count=1",
@@ -47,7 +48,7 @@ func Validate(path string) error {
 	if strings.Contains(workflow, "name: Packaged binary smoke ${{") {
 		return fmt.Errorf("platform smoke matrix job name must not expose GitHub expression placeholders")
 	}
-	for _, forbidden := range []string{"secrets.", "environment:", "PIXIV_SDK_E2E=1", "FANBOX_SDK_E2E=1"} {
+	for _, forbidden := range []string{"secrets.", "environment:", "PIXIV_SDK_E2E=1", "FANBOX_SDK_E2E=1", "buildinfo.Commit", "buildinfo.BuildDate"} {
 		if strings.Contains(workflow, forbidden) {
 			return fmt.Errorf("platform smoke workflow must not contain %q", forbidden)
 		}
@@ -67,9 +68,9 @@ func ValidateQuality(path string) error {
 		"workflow_dispatch:",
 		"permissions: {}",
 		"classify_changes:",
-		"go run ./scripts/changescope --base \"$BASE_SHA\" --head \"$HEAD_SHA\" --github-output \"$GITHUB_OUTPUT\"",
+		"go run ./scripts/cmd/changescope --base \"$BASE_SHA\" --head \"$HEAD_SHA\" --github-output \"$GITHUB_OUTPUT\"",
 		"needs: classify_changes",
-		"go test ./scripts/documentation -count=1",
+		"go test ./scripts/tests/documentation -count=1",
 		"if: ${{ needs.classify_changes.outputs.docs_only == 'true' }}",
 		"if: ${{ needs.classify_changes.outputs.docs_only != 'true' }}",
 		"go test ./... -count=1",
@@ -77,14 +78,14 @@ func ValidateQuality(path string) error {
 		"go vet ./...",
 		"sh scripts/build.sh",
 		"sh scripts/test-package-release.sh",
-		"sh scripts/test-release-workflow.sh",
-		"go test ./scripts/platformsmokeworkflow -count=1",
+		"go run ./scripts/cmd/releaseworkflow --workflow .github/workflows/release.yml",
+		"go test ./scripts/tests/platformsmokeworkflow -count=1",
 		"pre_commit run --all-files",
 		"windows_login_handler:",
 		"name: Windows login handler contracts",
 		"CC: clang -fuse-ld=lld",
 		"go test ./internal/cli -run '^(TestAuthURLCallback|TestAuthURLHandlerInstall|TestNormalCLIInvocationEnsuresPersistentHandlerWithoutBlockingCommand)$' -count=1",
-		"go test ./internal/cli/pixiv/auth/loginhelper -count=1",
+		"go test ./internal/cli/commands/pixiv/auth/loginhelper -count=1",
 	} {
 		if !strings.Contains(workflow, required) {
 			return fmt.Errorf("quality workflow missing %q", required)
@@ -95,7 +96,7 @@ func ValidateQuality(path string) error {
 		"environment:",
 		"PIXIV_SDK_E2E=1",
 		"FANBOX_SDK_E2E=1",
-		"go test ./internal/cli ./internal/cli/pixiv/auth/loginhelper -count=1",
+		"go test ./internal/cli ./internal/cli/commands/pixiv/auth/loginhelper -count=1",
 	} {
 		if strings.Contains(workflow, forbidden) {
 			return fmt.Errorf("quality workflow must not contain %q", forbidden)

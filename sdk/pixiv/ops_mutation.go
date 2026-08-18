@@ -3,8 +3,8 @@ package pixiv
 import (
 	"context"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/artwork/bookmark"
-	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/user/follow"
+	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/artwork/bookmark"
+	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/user/follow"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 )
 

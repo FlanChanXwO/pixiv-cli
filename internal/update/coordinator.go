@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/buildinfo"
+	"github.com/FlanChanXwO/pixiv-cli/internal/shared/buildinfo"
 	"github.com/FlanChanXwO/pixiv-cli/internal/update/release"
 )
 
