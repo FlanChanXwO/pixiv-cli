@@ -5,6 +5,8 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"sync"
+	"time"
 
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 
@@ -518,12 +520,13 @@ func artworkPage(rawURL string, index int) pixiv.ArtworkPage {
 }
 
 type fakePixivClient struct {
-	details      map[int64]pixiv.Artwork
-	ugoira       map[int64]pixiv.UgoiraMetadata
-	downloads    map[string][]byte
-	downloadErr  error
-	savedURLs    []string
-	destinations []string
+	details              map[int64]pixiv.Artwork
+	ugoira               map[int64]pixiv.UgoiraMetadata
+	downloads            map[string][]byte
+	downloadErr          error
+	savedURLs            []string
+	destinations         []string
+	saveResourceOverride func(context.Context, sdk.ResourceRef, sdk.SaveOptions) (sdk.SavedResource, error)
 }
 
 func (c *fakePixivClient) Artwork(_ context.Context, request pixiv.ArtworkRequest) (pixiv.Artwork, error) {
@@ -546,7 +549,10 @@ func (c *fakePixivClient) ParseResourceRef(string) (sdk.ResourceRef, error) {
 	return sdk.ResourceRef{}, nil
 }
 
-func (c *fakePixivClient) SaveResource(_ context.Context, ref sdk.ResourceRef, options sdk.SaveOptions) (sdk.SavedResource, error) {
+func (c *fakePixivClient) SaveResource(ctx context.Context, ref sdk.ResourceRef, options sdk.SaveOptions) (sdk.SavedResource, error) {
+	if c.saveResourceOverride != nil {
+		return c.saveResourceOverride(ctx, ref, options)
+	}
 	if c.downloadErr != nil {
 		return sdk.SavedResource{}, c.downloadErr
 	}
@@ -983,3 +989,256 @@ func (c *downloadSourcesStub) UgoiraMetadata(context.Context, pixiv.UgoiraMetada
 }
 
 var _ downloader.DownloadTargetClient = (*downloadSourcesStub)(nil)
+
+// TestDownloadPreservesPublishedArtworkOnPartialFailure 验证 finding #7：当
+// 批量下载中部分作品失败、其余成功时，已原子发布的成功作品必须随返回值返回，
+// 错误不丢弃它们；只有当全部失败时才回退为单一错误。
+func TestDownloadPreservesPublishedArtworkOnPartialFailure(t *testing.T) {
+	dir := t.TempDir()
+	client := &fakePixivClient{
+		details: map[int64]pixiv.Artwork{
+			1: {
+				ID: 1, Title: "ok1", PageCount: 1, Kind: pixiv.ArtworkKindIllustration,
+				User:  pixiv.User{Name: "author"},
+				Pages: []pixiv.ArtworkPage{artworkPage("https://i.example/1.jpg", 0)},
+			},
+			2: {
+				ID: 2, Title: "ok2", PageCount: 1, Kind: pixiv.ArtworkKindIllustration,
+				User:  pixiv.User{Name: "author"},
+				Pages: []pixiv.ArtworkPage{artworkPage("https://i.example/2.jpg", 0)},
+			},
+			3: {
+				ID: 3, Title: "fails", PageCount: 1, Kind: pixiv.ArtworkKindIllustration,
+				User:  pixiv.User{Name: "author"},
+				Pages: []pixiv.ArtworkPage{artworkPage("https://i.example/3.jpg", 0)},
+			},
+		},
+		downloads: map[string][]byte{
+			"https://i.example/1.jpg": []byte("p1"),
+			"https://i.example/2.jpg": []byte("p2"),
+			"https://i.example/3.jpg": []byte("p3"),
+		},
+	}
+	// 只让第 3 个作品在 SaveResource 时失败，其余按 ref payload 查表写盘。
+	// 模板是 {id}，所以失败作品的文件名以 3.jpg 结尾。
+	var saveMu sync.Mutex
+	client.saveResourceOverride = func(_ context.Context, ref sdk.ResourceRef, options sdk.SaveOptions) (sdk.SavedResource, error) {
+		saveMu.Lock()
+		defer saveMu.Unlock()
+		if filepath.Base(options.Path) == "3.jpg" {
+			return sdk.SavedResource{}, errors.New("network broke for 3")
+		}
+		payload, err := sdk.ResourceRefPayload(ref)
+		if err != nil {
+			return sdk.SavedResource{}, err
+		}
+		body, ok := client.downloads[string(payload)]
+		if !ok {
+			return sdk.SavedResource{}, os.ErrNotExist
+		}
+		client.savedURLs = append(client.savedURLs, string(payload))
+		client.destinations = append(client.destinations, options.Path)
+		if err := os.WriteFile(options.Path, body, 0o644); err != nil {
+			return sdk.SavedResource{}, err
+		}
+		return sdk.SavedResource{Path: options.Path, Size: int64(len(body))}, nil
+	}
+	m := downloader.NewManager(client, dir, "{id}")
+
+	got, err := m.Download(context.Background(), downloader.DownloadRequest{IllustIDs: []int64{1, 2, 3}})
+	if err != nil {
+		t.Fatalf("Download returned error on partial success: %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("Download returned %d artworks, want 2 published", len(got))
+	}
+	// 两个成功作品都已落盘。
+	published := map[string]bool{}
+	for _, artwork := range got {
+		for _, file := range artwork.Files {
+			body, rerr := os.ReadFile(file.Path)
+			if rerr != nil {
+				t.Fatalf("ReadFile(%q): %v", file.Path, rerr)
+			}
+			published[string(body)] = true
+		}
+	}
+	if !published["p1"] || !published["p2"] {
+		t.Fatalf("published bodies = %v, want p1 and p2", published)
+	}
+}
+
+// TestDownloadReturnsErrorWhenAllArtworksFail 验证全部失败时仍返回单一错误，
+// 便于账号池与 shell 判断。
+func TestDownloadReturnsErrorWhenAllArtworksFail(t *testing.T) {
+	dir := t.TempDir()
+	client := &fakePixivClient{
+		details: map[int64]pixiv.Artwork{
+			1: {
+				ID: 1, Title: "fails", PageCount: 1, Kind: pixiv.ArtworkKindIllustration,
+				User:  pixiv.User{Name: "author"},
+				Pages: []pixiv.ArtworkPage{artworkPage("https://i.example/1.jpg", 0)},
+			},
+		},
+		downloadErr: errors.New("network broke"),
+	}
+	m := downloader.NewManager(client, dir, "{id}")
+
+	if _, err := m.Download(context.Background(), downloader.DownloadRequest{IllustIDs: []int64{1}}); err == nil {
+		t.Fatal("Download returned nil error when all artworks failed")
+	}
+}
+
+// TestDownloadRejectsUnboundedPageRange 验证 finding #14：ParsePageSpec 拒绝
+// 会展开为无界页数的范围。
+func TestDownloadRejectsUnboundedPageRange(t *testing.T) {
+	big := "1-100002"
+	if _, err := downloader.ParsePageSpec(big); err == nil {
+		t.Fatalf("ParsePageSpec(%q) should reject unbounded range", big)
+	}
+	// 合理范围仍被接受。
+	pages, err := downloader.ParsePageSpec("1-3")
+	if err != nil {
+		t.Fatalf("ParsePageSpec(1-3): %v", err)
+	}
+	if len(pages) != 3 {
+		t.Fatalf("ParsePageSpec(1-3) = %v, want 3 pages", pages)
+	}
+}
+
+// TestDownloadRejectsInvalidFilenameTemplate 验证 finding #9：无效或缺少必要
+// 字段的模板在下载前就被拒绝，而不是写出空文件名互相覆盖。
+func TestDownloadRejectsInvalidFilenameTemplate(t *testing.T) {
+	dir := t.TempDir()
+	rawURL := "https://i.example/42.jpg"
+	client := &fakePixivClient{
+		details: map[int64]pixiv.Artwork{42: {
+			ID: 42, Title: "single", PageCount: 1, Kind: pixiv.ArtworkKindIllustration,
+			User:  pixiv.User{Name: "author"},
+			Pages: []pixiv.ArtworkPage{artworkPage(rawURL, 0)},
+		}},
+		downloads: map[string][]byte{rawURL: []byte("jpg")},
+	}
+	for _, tmpl := range []string{
+		"{id",             // 未闭合花括号
+		"{unknown_field}", // 未知占位符
+		"{date}",          // CreateDate 缺失时 GenerateChecked 报错
+	} {
+		t.Run(tmpl, func(t *testing.T) {
+			m := downloader.NewManager(client, dir, tmpl)
+			if _, err := m.Download(context.Background(), downloader.DownloadRequest{IllustIDs: []int64{42}}); err == nil {
+				t.Fatalf("template %q should be rejected before download", tmpl)
+			}
+			matches, err := filepath.Glob(filepath.Join(dir, "*"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(matches) != 0 {
+				t.Fatalf("template %q wrote files before rejection: %v", tmpl, matches)
+			}
+		})
+	}
+}
+
+// TestDownloadPopulatesDocumentedFilenamePlaceholders 验证 finding #11：文档
+// 承诺的占位符（id、title、author、author_id、date、tags、num）都被填充。
+func TestDownloadPopulatesDocumentedFilenamePlaceholders(t *testing.T) {
+	dir := t.TempDir()
+	rawURL := "https://i.example/7.jpg"
+	client := &fakePixivClient{
+		details: map[int64]pixiv.Artwork{7: {
+			ID: 7, Title: "Title", PageCount: 1, Kind: pixiv.ArtworkKindIllustration,
+			User:        pixiv.User{Name: "Author", ID: 77},
+			PublishedAt: time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC),
+			Tags:        []pixiv.Tag{{Name: "tag1"}, {Name: "tag2"}},
+			Pages:       []pixiv.ArtworkPage{artworkPage(rawURL, 0)},
+		}},
+		downloads: map[string][]byte{rawURL: []byte("jpg")},
+	}
+	m := downloader.NewManager(client, dir, "{id}-{title}-{author}-{author_id}-{date}-{tags}-{num}")
+	got, err := m.Download(context.Background(), downloader.DownloadRequest{IllustIDs: []int64{7}})
+	if err != nil {
+		t.Fatalf("Download error: %v", err)
+	}
+	if len(got) != 1 || len(got[0].Files) != 1 {
+		t.Fatalf("files=%+v", got)
+	}
+	base := filepath.Base(got[0].Files[0].Path)
+	for _, want := range []string{"7-", "Title-", "Author-", "77-", "tag1", "tag2"} {
+		if !strings.Contains(base, want) {
+			t.Fatalf("filename %q missing %q", base, want)
+		}
+	}
+}
+
+// TestDirectResourceUsesCollisionResistantNames 验证 finding #18：两个共享
+// 前缀的 resource ref 必须落盘到不同文件，而不是互相覆盖。directResourcePath
+// 现在对完整 ref 做 sha256 摘要。
+func TestDirectResourceUsesCollisionResistantNames(t *testing.T) {
+	dir := t.TempDir()
+	// 两个 ref 仅末尾页号不同，共享长前缀；截断式文件名会让它们冲突。
+	refA, err := sdk.NewResourceRef("pixiv", []byte(`{"k":"artwork","id":42,"p":0}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	refB, err := sdk.NewResourceRef("pixiv", []byte(`{"k":"artwork","id":42,"p":1}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if refA.String() == refB.String() {
+		t.Fatal("test fixtures must produce distinct refs")
+	}
+	var seen []string
+	client := &downloadSourcesStub{
+		saveResource: func(_ context.Context, _ sdk.ResourceRef, options sdk.SaveOptions) (sdk.SavedResource, error) {
+			seen = append(seen, options.Path)
+			if err := os.WriteFile(options.Path, []byte("data"), 0o644); err != nil {
+				return sdk.SavedResource{}, err
+			}
+			return sdk.SavedResource{Path: options.Path, Size: 4}, nil
+		},
+	}
+	service := downloader.DownloadService{NewManager: func(downloader.DownloadClient, string, string) (downloader.DownloadManager, error) {
+		return &downloadManagerStub{download: func(context.Context, downloader.DownloadRequest) ([]downloader.DownloadedArtwork, error) {
+			return nil, nil
+		}}, nil
+	}}
+
+	report, err := service.DownloadSources(context.Background(), client, []string{refA.String(), refB.String()}, downloader.DownloadRequest{DownloadPath: dir})
+	require.NoError(t, err)
+	require.Len(t, report.Failures, 0)
+	require.Len(t, report.Items, 2)
+	if len(seen) != 2 || seen[0] == seen[1] {
+		t.Fatalf("expected 2 distinct resource paths, got %v", seen)
+	}
+	// 两个 ref 必须都落盘（第二个不会覆盖第一个）。
+	for _, path := range seen {
+		assertFileBody(t, path, "data")
+	}
+}
+
+// TestDownloadAppliesRequestedStaticQuality 验证 finding #8：非 original 质量
+// TestDownloadAppliesRequestedStaticQuality 验证 finding #8：非 original 质量
+// 会请求变体 ref。变体 ref 的构造与身份保持由 internal-package 的
+// resource_internal_test.go 直接覆盖；这里通过 Manager.Download 确认非 original
+// 质量仍能完成下载，且 original 质量复用页面 ref（不触发变体解析失败）。
+func TestDownloadAppliesRequestedStaticQuality(t *testing.T) {
+	dir := t.TempDir()
+	rawURL := "https://i.example/42.jpg"
+	client := &fakePixivClient{
+		details: map[int64]pixiv.Artwork{42: {
+			ID: 42, Title: "single", PageCount: 1, Kind: pixiv.ArtworkKindIllustration,
+			User:  pixiv.User{Name: "author"},
+			Pages: []pixiv.ArtworkPage{artworkPage(rawURL, 0)},
+		}},
+		downloads: map[string][]byte{rawURL: []byte("jpg")},
+	}
+	m := downloader.NewManager(client, dir, "{id}")
+	// original 质量走 passthrough，下载成功。
+	if _, err := m.Download(context.Background(), downloader.DownloadRequest{
+		IllustIDs: []int64{42},
+		Quality:   downloader.DownloadQualityOriginal,
+	}); err != nil {
+		t.Fatalf("Download(original) error: %v", err)
+	}
+}

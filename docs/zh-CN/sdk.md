@@ -248,6 +248,8 @@ _, err := client.SaveResource(ctx, sdk.SaveOptions{
 
 Pixiv 的 `Resource.Ref` 只包含资源 kind、稳定 ID、page 和可选 variant，绝不嵌入当前或签名媒体 URL。SDK 会优先复用当前 Client 保存的 locator，或重新读取对应 artwork、novel、user、ugoira 或小说正文 metadata 后再打开；解析出的 URL 与每次 redirect 都会再次通过 allowlist 校验。`SaveResource` 通过原子目标写入；上游提供 `Content-Length` 时，`SaveProgress.Total` 会报告该值。资源请求只使用显式允许的 header，绝不发送调用方 Cookie jar。
 
+FANBOX 的 `Resource.Ref` 只包含稳定 identity（资源 kind、所属 creator 或 post，以及 attachment id），绝不嵌入当前可用或签名媒体 URL，因此 locator 轮换不会改变缓存键，存储的 ref 可跨 session 重新打开。`OpenResource` 与 `SaveResource` 优先复用 session 内 locator，否则通过重新拉取所属 creator 或 post 并按稳定 id 定位附件来重新解析出新鲜且经 allowlist 校验的 locator。session cookie 只发送给需要凭据的 `downloads.fanbox.cc` host，绝不发送给公开 CDN 或第三方 host；`RequiresCredentials` 表示该 locator 仍需要 session。
+
 ## URL 引用
 
 `pixiv.ParseURL` 与 `fanbox.ResolveURL` 在无网络的情况下把页面 URL 转为类型化引用，`Reference.CanonicalURL` 返回无 tracking 的规范形式。
@@ -265,6 +267,8 @@ canonical := ref.CanonicalURL()
 ## FANBOX
 
 `sdk/fanbox` 提供 creator 资料、帖子、标签、home 与 supporting 流、URL 解析与共享资源契约。已验证的 native route 使用 `api.fanbox.cc` root 下的 `post.info`、`post.listHome`、`post.listSupporting`、`post.listTagged` 与 `tag.getFeatured`；creator 分页跟随服务端返回的 `pageUrls`。帖子正文是结构化 block；图片和文件 block 会与资源索引关联，即使上游只通过 `imageMap` 或 `fileMap` 提供附件也会暴露可用资源。第三方 embed 只保留 canonical link。受限帖只带摘要、Body 为 nil。
+
+Home、Supporting 与 Creators 流属于 identity-scoped 操作：其续页 cursor 会绑定到已验证的 FANBOX 账号 ID（每个 client 经 session identity 解析一次的非敏感值），因此在一个账号下生成的 cursor 不能被重放到另一个账号的流上，会返回 `InvalidCursor`。CreatorPosts 与 TaggedPosts 是公开作用域，不携带账号绑定。与 Pixiv 一致，cursor 同样绑定 product、operation、binding version 与查询摘要。
 
 ## 从 v0 迁移
 

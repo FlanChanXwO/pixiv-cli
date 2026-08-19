@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"strconv"
 	"strings"
 	"time"
@@ -34,6 +35,7 @@ type AccountPort interface {
 	RefreshAccountWith(context.Context, int64, pixiv.Options) (pixivaccount.AccountSummary, error)
 	CurrentUser(context.Context) (*pixivaccount.AccountSummary, error)
 	RestoreAccount(context.Context, pixivaccount.AccountSummary, string, bool) error
+	RestoreAccounts(context.Context, []pixivaccount.RestoreAccountInput) (pixivaccount.RestoreAccountsResult, error)
 	AccountsWithTokens(context.Context) ([]pixivaccount.AccountWithToken, error)
 	SetPoolSchedulable(context.Context, []int64, bool) error
 	SetAllPoolSchedulable(context.Context, bool) error
@@ -207,19 +209,29 @@ func (s AccountService) ImportBundle(body []byte) (accountBundleImportResult, er
 	if err != nil {
 		return accountBundleImportResult{}, err
 	}
-	result := accountBundleImportResult{
-		Accounts:      make([]accountImportResult, 0, len(bundle.Accounts)),
-		DefaultUserID: bundle.DefaultUserID,
-	}
+	inputs := make([]pixivaccount.RestoreAccountInput, 0, len(bundle.Accounts))
 	for _, account := range bundle.Accounts {
 		summary := pixivaccount.AccountSummary{UserID: account.UserID, Username: account.Username}
-		if err := service.RestoreAccount(context.Background(), summary, account.RefreshToken, account.UserID == bundle.DefaultUserID); err != nil {
-			return accountBundleImportResult{}, err
-		}
-		result.Accounts = append(result.Accounts, accountImportResultFrom(summary, accountImportStatusAdded))
+		inputs = append(inputs, pixivaccount.RestoreAccountInput{
+			Account:         summary,
+			RefreshToken:    account.RefreshToken,
+			IsBundleDefault: account.UserID == bundle.DefaultUserID,
+		})
 	}
-	if result.DefaultUserID == 0 && len(result.Accounts) > 0 {
-		result.DefaultUserID = result.Accounts[0].UserID
+	restore, err := service.RestoreAccounts(context.Background(), inputs)
+	if err != nil {
+		return accountBundleImportResult{}, err
+	}
+	result := accountBundleImportResult{
+		Accounts:      make([]accountImportResult, 0, len(restore.Accounts)),
+		DefaultUserID: restore.ResultingDefault,
+	}
+	for _, outcome := range restore.Accounts {
+		status := accountImportStatusAdded
+		if outcome.IsReplacement {
+			status = accountImportStatusUpdated
+		}
+		result.Accounts = append(result.Accounts, accountImportResultFrom(outcome.Account, status))
 	}
 	return result, nil
 }
@@ -464,14 +476,22 @@ func encodeAuthExportBundle(bundle *authExportBundle) ([]byte, error) {
 }
 
 func decodeAuthExportBundle(body []byte) (*authExportBundle, error) {
-	if !json.Valid(body) {
-		return nil, errors.New("invalid auth export bundle JSON")
+	if err := rejectDuplicateObjectKeys(body); err != nil {
+		return nil, fmt.Errorf("invalid auth export bundle: %w", err)
 	}
 	decoder := json.NewDecoder(bytes.NewReader(body))
 	decoder.UseNumber()
+	decoder.DisallowUnknownFields()
 	var bundle authExportBundle
 	if err := decoder.Decode(&bundle); err != nil {
 		return nil, fmt.Errorf("invalid auth export bundle: %w", err)
+	}
+	if dec := json.NewDecoder(bytes.NewReader(body)); true {
+		dec.UseNumber()
+		_ = dec.Decode(new(json.RawMessage))
+		if dec.More() {
+			return nil, errors.New("auth export bundle has trailing JSON")
+		}
 	}
 	if bundle.Schema != authExportBundleSchema || bundle.Version != authExportBundleVersion {
 		return nil, errors.New("unsupported auth export bundle schema or version")
@@ -479,10 +499,77 @@ func decodeAuthExportBundle(body []byte) (*authExportBundle, error) {
 	if len(bundle.Accounts) == 0 {
 		return nil, errors.New("auth export bundle has no accounts")
 	}
+	seen := make(map[int64]struct{}, len(bundle.Accounts))
 	for _, account := range bundle.Accounts {
 		if account.UserID <= 0 || account.RefreshToken == "" {
 			return nil, errors.New("auth export bundle contains an invalid account")
 		}
+		if _, duplicate := seen[account.UserID]; duplicate {
+			return nil, fmt.Errorf("auth export bundle contains duplicate account %d", account.UserID)
+		}
+		seen[account.UserID] = struct{}{}
+	}
+	if bundle.DefaultUserID != 0 {
+		if _, ok := seen[bundle.DefaultUserID]; !ok {
+			return nil, errors.New("auth export bundle default does not name an included account")
+		}
 	}
 	return &bundle, nil
+}
+
+// rejectDuplicateObjectKeys 流式扫描 JSON，拒绝同一 object 内重复出现的 key。
+// strict versioned codec 要求 canonical JSON：重复 key 会被编码器视为歧义输入。
+func rejectDuplicateObjectKeys(body []byte) error {
+	dec := json.NewDecoder(bytes.NewReader(body))
+	// frame.expectKey 为 true 表示下一个 string token 是 object key；否则是值。
+	type frame struct {
+		seen      map[string]struct{}
+		expectKey bool
+	}
+	var stack []frame
+	for {
+		token, err := dec.Token()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return err
+		}
+		if len(stack) == 0 {
+			if delim, isDelim := token.(json.Delim); isDelim && delim == '{' {
+				stack = append(stack, frame{seen: make(map[string]struct{}), expectKey: true})
+				continue
+			}
+			continue
+		}
+		top := &stack[len(stack)-1]
+		switch value := token.(type) {
+		case json.Delim:
+			switch value {
+			case '{':
+				stack = append(stack, frame{seen: make(map[string]struct{}), expectKey: true})
+			case '[':
+				stack = append(stack, frame{seen: nil, expectKey: false})
+			case '}', ']':
+				stack = stack[:len(stack)-1]
+				if len(stack) > 0 {
+					parent := &stack[len(stack)-1]
+					parent.expectKey = true
+				}
+			}
+		case string:
+			if top.expectKey {
+				if _, duplicate := top.seen[value]; duplicate {
+					return fmt.Errorf("auth export bundle JSON has duplicate object key %q", value)
+				}
+				top.seen[value] = struct{}{}
+				top.expectKey = false
+			} else {
+				top.expectKey = true
+			}
+		default:
+			top.expectKey = true
+		}
+	}
+	return nil
 }

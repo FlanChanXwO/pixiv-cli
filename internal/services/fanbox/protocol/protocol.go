@@ -402,7 +402,9 @@ func (s *Session) doNativeWithRequest(ctx context.Context, rawURL string, kind r
 			UserAgent: agent,
 			Status:    response.StatusCode,
 		})
-		if response.StatusCode >= http.StatusMultipleChoices && response.StatusCode < http.StatusBadRequest {
+		// 只有真正的 redirect 状态码（301/302/303/307/308）才跟随 Location；
+		// 304 Not Modified 是条件 GET 的正常结果，没有 Location，必须原样返回。
+		if isRedirectStatus(response.StatusCode) {
 			location := response.Header.Get("Location")
 			if err := closeResponseBody(ctx, response); err != nil {
 				return nil, err
@@ -418,11 +420,25 @@ func (s *Session) doNativeWithRequest(ctx context.Context, rawURL string, kind r
 			redirected = true
 			continue
 		}
+		// 304 Not Modified 是条件 GET 的正常结果，原样返回给调用方；其余非 2xx 才报错。
+		if response.StatusCode == http.StatusNotModified {
+			return response, nil
+		}
 		if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
 			return nil, s.classifyError(ctx, response)
 		}
 		return response, nil
 	}
+}
+
+// isRedirectStatus 仅识别真正带 Location 的重定向状态码。304 Not Modified 是
+// 条件 GET 的正常结果，必须排除，否则会被误当 redirect 并因无 Location 报错。
+func isRedirectStatus(status int) bool {
+	switch status {
+	case http.StatusMovedPermanently, http.StatusFound, http.StatusSeeOther, http.StatusTemporaryRedirect, http.StatusPermanentRedirect:
+		return true
+	}
+	return false
 }
 
 // classifyError 把非 2xx 响应映射为分类 sentinel；403 依 body/header 区分 challenge。

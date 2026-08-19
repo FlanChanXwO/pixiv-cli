@@ -135,35 +135,43 @@ func downloadSources(ctx context.Context, app *runtime.App, sources []string, pa
 		}
 		return app.Downloads(), nil
 	}}
-	path, template := downloadDefaults(app)
+	path, template, directory := downloadDefaults(app)
 	request := downloader.DownloadRequest{
-		Pages:            pages,
-		Quality:          quality,
-		UgoiraFormat:     ugoiraFormat,
-		DownloadPath:     path,
-		FilenameTemplate: template,
+		Pages:             pages,
+		Quality:           quality,
+		UgoiraFormat:      ugoiraFormat,
+		DownloadPath:      path,
+		FilenameTemplate:  template,
+		DirectoryTemplate: directory,
 	}
 	return service.DownloadSources(ctx, client, sources, request)
 }
 
-func downloadDefaults(app *runtime.App) (string, string) {
+func downloadDefaults(app *runtime.App) (string, string, string) {
 	downloads := app.Downloads()
-	path, template := "", ""
+	path, template, directory := "", "", ""
 	if configured, ok := downloads.(interface{ DownloadPath() string }); ok && strings.TrimSpace(configured.DownloadPath()) != "" {
 		path = configured.DownloadPath()
 	}
 	if configured, ok := downloads.(interface{ FilenameTemplate() string }); ok && strings.TrimSpace(configured.FilenameTemplate()) != "" {
 		template = configured.FilenameTemplate()
 	}
-	return path, template
+	if configured, ok := downloads.(interface{ DirectoryTemplate() string }); ok && strings.TrimSpace(configured.DirectoryTemplate()) != "" {
+		directory = configured.DirectoryTemplate()
+	}
+	return path, template, directory
 }
 
 func downloadArtworks(ctx context.Context, app *runtime.App, ids []int64, client *pixiv.Client, pages []int, quality downloader.DownloadQuality, ugoiraFormat downloader.UgoiraFormat) ([]downloader.DownloadedArtwork, error) {
+	path, template, directory := downloadDefaults(app)
 	req := downloader.DownloadRequest{
-		IllustIDs:    ids,
-		Pages:        pages,
-		Quality:      quality,
-		UgoiraFormat: ugoiraFormat,
+		IllustIDs:         ids,
+		Pages:             pages,
+		Quality:           quality,
+		UgoiraFormat:      ugoiraFormat,
+		DownloadPath:      path,
+		FilenameTemplate:  template,
+		DirectoryTemplate: directory,
 	}
 	newDownloads := app.NewDownloads()
 	if newDownloads == nil {

@@ -266,7 +266,7 @@ func newPixivTestService(repo *pixivTestRepository, defaults *pixivTestDefaults)
 	return accountpixiv.NewService(repo, defaults)
 }
 
-func TestRemoveAccountRejectsExplicitDefaultBeforeMutation(t *testing.T) {
+func TestRemoveAccountClearsExplicitDefaultThenRemoves(t *testing.T) {
 	repo := newPixivTestRepository()
 	account := accountpixiv.New(42, "first", []byte("token"))
 	account.SortOrder, account.Schedulable = 1, true
@@ -275,11 +275,25 @@ func TestRemoveAccountRejectsExplicitDefaultBeforeMutation(t *testing.T) {
 	service := newPixivTestService(repo, defaults)
 
 	err := service.RemoveAccount(context.Background(), 42)
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "auth use --auto")
+	require.NoError(t, err)
 	_, getErr := repo.GetPixiv(context.Background(), 42)
-	require.NoError(t, getErr)
-	require.Equal(t, int64(42), defaults.userID)
+	require.ErrorIs(t, getErr, accountpixiv.ErrNotFound)
+	require.False(t, defaults.ok, "explicit default cleared so first remaining account becomes implicit default")
+}
+
+func TestRemoveAccountDefaultClearFailureAbortsRemoval(t *testing.T) {
+	repo := newPixivTestRepository()
+	account := accountpixiv.New(42, "first", []byte("token"))
+	account.SortOrder, account.Schedulable = 1, true
+	repo.accounts[42] = account
+	defaults := &pixivTestDefaults{userID: 42, ok: true, clearErr: errors.New("clear failed")}
+	service := newPixivTestService(repo, defaults)
+
+	err := service.RemoveAccount(context.Background(), 42)
+	require.ErrorContains(t, err, "clear failed")
+	_, getErr := repo.GetPixiv(context.Background(), 42)
+	require.NoError(t, getErr, "removal must not proceed when default cannot be cleared")
+	require.True(t, defaults.ok, "default preserved on clear failure")
 }
 
 func TestVerifyPixivAccountIdentity(t *testing.T) {
@@ -417,6 +431,81 @@ func TestRestoreAccountPreservesExistingDefault(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, int64(7), defaults.userID)
 	require.True(t, defaults.ok)
+}
+
+func TestRestoreAccountsRejectsInvalidInputs(t *testing.T) {
+	repo := newPixivTestRepository()
+	service := newPixivTestService(repo, &pixivTestDefaults{})
+
+	_, err := service.RestoreAccounts(context.Background(), nil)
+	require.ErrorContains(t, err, "no accounts")
+	_, err = service.RestoreAccounts(context.Background(), []accountpixiv.RestoreAccountInput{{Account: accountpixiv.AccountSummary{UserID: 0}, RefreshToken: "token"}})
+	require.EqualError(t, err, "pixiv refresh token is required")
+	_, err = service.RestoreAccounts(context.Background(), []accountpixiv.RestoreAccountInput{{Account: accountpixiv.AccountSummary{UserID: 42}, RefreshToken: "  "}})
+	require.EqualError(t, err, "pixiv refresh token is required")
+	require.Empty(t, repo.accounts, "validation must occur before any write")
+}
+
+func TestRestoreAccountsReportsReplacementsAndAdoptsBundleDefaultOnEmptyStore(t *testing.T) {
+	repo := newPixivTestRepository()
+	existing := accountpixiv.New(7, "old-seven", []byte("old-token"))
+	existing.SortOrder = 1
+	existing.Schedulable = true
+	repo.accounts[7] = existing
+	defaults := &pixivTestDefaults{}
+	service := newPixivTestService(repo, defaults)
+
+	inputs := []accountpixiv.RestoreAccountInput{
+		{Account: accountpixiv.AccountSummary{UserID: 7, Username: "seven"}, RefreshToken: "new-seven", IsBundleDefault: false},
+		{Account: accountpixiv.AccountSummary{UserID: 42, Username: "forty-two"}, RefreshToken: "forty-token", IsBundleDefault: true},
+	}
+	result, err := service.RestoreAccounts(context.Background(), inputs)
+	require.NoError(t, err)
+	require.Equal(t, int64(42), result.ResultingDefault, "bundle default adopted when store had no default")
+	require.Equal(t, int64(42), defaults.userID)
+	require.True(t, defaults.ok)
+	require.Len(t, result.Accounts, 2)
+	for _, outcome := range result.Accounts {
+		if outcome.Account.UserID == 7 {
+			require.True(t, outcome.IsReplacement, "pre-existing UID reported as replacement")
+		} else {
+			require.False(t, outcome.IsReplacement, "new UID reported as added")
+		}
+	}
+	updated, err := repo.GetPixiv(context.Background(), 7)
+	require.NoError(t, err)
+	require.Equal(t, "new-seven", string(updated.RefreshTokenCopy()))
+}
+
+func TestRestoreAccountsPreservesExistingDefault(t *testing.T) {
+	repo := newPixivTestRepository()
+	existing := accountpixiv.New(7, "seven", []byte("seven-token"))
+	existing.SortOrder = 1
+	existing.Schedulable = true
+	repo.accounts[7] = existing
+	defaults := &pixivTestDefaults{userID: 7, ok: true}
+	service := newPixivTestService(repo, defaults)
+
+	inputs := []accountpixiv.RestoreAccountInput{
+		{Account: accountpixiv.AccountSummary{UserID: 42, Username: "forty-two"}, RefreshToken: "forty-token", IsBundleDefault: true},
+	}
+	result, err := service.RestoreAccounts(context.Background(), inputs)
+	require.NoError(t, err)
+	require.Equal(t, int64(7), result.ResultingDefault, "existing local default preserved; bundle default ignored")
+	require.Equal(t, int64(7), defaults.userID)
+}
+
+func TestRestoreAccountsAdoptsFirstAccountWhenBundleDefaultAbsent(t *testing.T) {
+	repo := newPixivTestRepository()
+	service := newPixivTestService(repo, &pixivTestDefaults{})
+
+	inputs := []accountpixiv.RestoreAccountInput{
+		{Account: accountpixiv.AccountSummary{UserID: 42, Username: "forty-two"}, RefreshToken: "forty-token", IsBundleDefault: false},
+		{Account: accountpixiv.AccountSummary{UserID: 7, Username: "seven"}, RefreshToken: "seven-token", IsBundleDefault: false},
+	}
+	result, err := service.RestoreAccounts(context.Background(), inputs)
+	require.NoError(t, err)
+	require.Equal(t, int64(42), result.ResultingDefault, "first account becomes default when bundle has none")
 }
 
 func TestExportReadsStoredCredentialThroughDefensiveCopy(t *testing.T) {

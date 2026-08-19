@@ -15,6 +15,24 @@ import (
 // Referer is the non-secret referer required by FANBOX media requests.
 const Referer = protocol.WebBaseURL
 
+// DownloadsHost is the first-party FANBOX attachment host whose media URLs
+// require the FANBOXSESSID cookie. Resources on this host are credentialed and
+// callers must open them through OpenResource rather than treating the URL as
+// a public link; Pixiv CDN and other allowlisted media hosts are public.
+const DownloadsHost = "downloads.fanbox.cc"
+
+// RequiresCredentials reports whether rawURL points at a credentialed FANBOX
+// attachment host. It parses rawURL defensively and returns false on any parse
+// error so callers treat unparseable locators as public (and let the host
+// allowlist reject them later) rather than falsely advertising credentials.
+func RequiresCredentials(rawURL string) bool {
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		return false
+	}
+	return strings.EqualFold(parsed.Hostname(), DownloadsHost)
+}
+
 // Transport is the narrow product-session capability required to open media.
 type Transport interface {
 	OpenMediaWithRequest(context.Context, string, protocol.MediaRequest) (*http.Response, error)

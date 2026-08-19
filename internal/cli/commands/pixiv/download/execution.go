@@ -180,11 +180,12 @@ func (a controller) runDownload(cmd *cobra.Command, args []string, opts download
 		runtime.FilenameTemplate = opts.filenameTemplate
 	}
 	request := downloader.DownloadRequest{
-		DownloadPath:     runtime.DownloadPath,
-		FilenameTemplate: runtime.FilenameTemplate,
-		Pages:            pages,
-		Quality:          quality,
-		UgoiraFormat:     ugoiraFormat,
+		DownloadPath:      runtime.DownloadPath,
+		FilenameTemplate:  runtime.FilenameTemplate,
+		DirectoryTemplate: runtime.DirectoryTemplate,
+		Pages:             pages,
+		Quality:           quality,
+		UgoiraFormat:      ugoiraFormat,
 	}
 	// 先完成所有纯输入和运行参数校验，再解析下载服务。这样 owner 的依赖端口
 	// 不会在互斥 flag 等用户输入错误上提前触发资源或文件系统准备。

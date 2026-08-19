@@ -16,7 +16,7 @@ func TestTraverseWithPreservesCommitBoundaryAndPagePlan(t *testing.T) {
 	var received []int
 	var beginCalls int
 
-	err := traversal.TraverseWith(
+	_, err := traversal.TraverseWith(
 		context.Background(),
 		onceExecute(t, struct{}{}, true),
 		pagination.PagePlan{Skip: 1, Limit: 1},
@@ -109,7 +109,7 @@ func TestCollectWithClearsUncommittedResultsBeforeReplay(t *testing.T) {
 }
 
 func TestTraverseWithReportsUnconfiguredExecute(t *testing.T) {
-	err := traversal.TraverseWith(context.Background(), nil, pagination.PagePlan{}, nil,
+	_, err := traversal.TraverseWith(context.Background(), nil, pagination.PagePlan{}, nil,
 		func(context.Context, struct{}, sdk.Cursor) ([]int, sdk.Cursor, error) {
 			return nil, sdk.Cursor{}, nil
 		}, func([]int) (bool, error) {
@@ -117,6 +117,47 @@ func TestTraverseWithReportsUnconfiguredExecute(t *testing.T) {
 		})
 	if !errors.Is(err, traversal.ErrExecuteNotConfigured) {
 		t.Fatalf("error = %v", err)
+	}
+}
+
+// TestCollectWithPreservesHasMoreWhenTruncatingInsideBatch 验证 finding #17：当
+// 逻辑 limit 小于上游最后一批、且该批上游 cursor 已为空时，分页引擎内部已标记
+// 仍有未返回条目，CollectWith 必须把 has_more=true 传给调用方，而不是仅依据
+// 上游 cursor 重新推导出 false。
+func TestCollectWithPreservesHasMoreWhenTruncatingInsideBatch(t *testing.T) {
+	// Single upstream batch of 5 items, no continuation cursor, limit 2:
+	// 3 items remain unreturned, so has_more must be true.
+	result, err := traversal.CollectWith(context.Background(), onceExecute(t, struct{}{}, false), pagination.PagePlan{Limit: 2}, func(_ context.Context, _ struct{}, cursor sdk.Cursor) ([]int, sdk.Cursor, error) {
+		if !cursor.IsZero() {
+			t.Fatalf("unexpected continuation fetch for zero-cursor batch")
+		}
+		return []int{1, 2, 3, 4, 5}, sdk.Cursor{}, nil
+	})
+	if err != nil {
+		t.Fatalf("CollectWith error = %v", err)
+	}
+	if len(result.Items) != 2 || result.Items[0] != 1 || result.Items[1] != 2 {
+		t.Fatalf("items = %#v", result.Items)
+	}
+	if !result.HasMore {
+		t.Fatalf("HasMore = false, want true (batch truncated with unreturned items)")
+	}
+}
+
+// TestCollectWithHasMoreFalseWhenBatchFullyReturned 验证非截断的正常路径
+// 不被 #17 修复误判为 has_more=true。
+func TestCollectWithHasMoreFalseWhenBatchFullyReturned(t *testing.T) {
+	result, err := traversal.CollectWith(context.Background(), onceExecute(t, struct{}{}, false), pagination.PagePlan{Limit: 5}, func(_ context.Context, _ struct{}, cursor sdk.Cursor) ([]int, sdk.Cursor, error) {
+		return []int{1, 2, 3}, sdk.Cursor{}, nil
+	})
+	if err != nil {
+		t.Fatalf("CollectWith error = %v", err)
+	}
+	if len(result.Items) != 3 {
+		t.Fatalf("items = %#v", result.Items)
+	}
+	if result.HasMore {
+		t.Fatalf("HasMore = true, want false (batch fully returned, no continuation)")
 	}
 }
 

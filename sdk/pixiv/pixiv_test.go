@@ -531,6 +531,33 @@ func TestSearchArtworksRejectsChangedQuery(t *testing.T) {
 	}
 }
 
+// TestLatestArtworksBindsCursorToContentType 验证 finding #12：latest-artwork 游标
+// 绑定 content type，一个为 illust 生成的 continuation 不得在 manga 请求里复用，
+// 否则会在错误的 result set 上恢复 offset。
+func TestLatestArtworksBindsCursorToContentType(t *testing.T) {
+	rt := roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		body := `{"illusts":[{"id":42,"title":"art","type":"illust","create_date":"2024-05-01T10:00:00+09:00","image_urls":{"original":"https://i.pximg.net/img/42.png"},"user":{"id":7,"name":"n","account":"a"},"tags":[]}],"next_url":"https://app-api.pixiv.net/v1/illust/new?content_type=illust&filter=for_android&offset=30"}`
+		return jsonResponse(body), nil
+	})
+	client, _ := NewWith("token", Options{HTTPClient: &http.Client{Transport: rt}})
+	page, err := client.LatestArtworks(context.Background(), LatestArtworksRequest{ContentType: SearchContentTypeIllust})
+	if err != nil {
+		t.Fatalf("LatestArtworks: %v", err)
+	}
+	if page.Next.IsZero() {
+		t.Fatal("expected continuation cursor")
+	}
+	// A cursor produced for the illust feed must be rejected for the manga feed.
+	_, err = client.LatestArtworks(context.Background(), LatestArtworksRequest{ContentType: SearchContentTypeManga, Cursor: page.Next})
+	if sdk.ReasonOf(err) != sdk.InvalidCursor {
+		t.Fatalf("expected InvalidCursor for changed content type, got %v", err)
+	}
+	// The same content type must continue successfully.
+	if _, err := client.LatestArtworks(context.Background(), LatestArtworksRequest{ContentType: SearchContentTypeIllust, Cursor: page.Next}); err != nil {
+		t.Fatalf("continuation LatestArtworks: %v", err)
+	}
+}
+
 func TestArtworkWiresDetailPreservesPagesAndResources(t *testing.T) {
 	rt := roundTripFunc(func(req *http.Request) (*http.Response, error) {
 		if req.URL.Path != "/v1/illust/detail" {

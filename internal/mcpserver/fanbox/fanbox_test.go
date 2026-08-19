@@ -15,7 +15,6 @@ import (
 	fanboxapp "github.com/FlanChanXwO/pixiv-cli/internal/services/fanbox/account"
 	"github.com/FlanChanXwO/pixiv-cli/internal/shared/diagnostics"
 	"github.com/FlanChanXwO/pixiv-cli/internal/storage/database"
-	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	fanboxsdk "github.com/FlanChanXwO/pixiv-cli/sdk/fanbox"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"io"
@@ -828,7 +827,11 @@ func TestFanboxMCPFailureReturnsStructuredError(t *testing.T) {
 }
 
 func TestFanboxMCPOpenResourceReturnsSafeMetadataWithoutBytes(t *testing.T) {
+	postBody := `{"body":{"post":{"id":"p-open","title":"resource","publishedDatetime":"2024-01-01T00:00:00Z","isRestricted":false,"isPinned":false,"body":{"images":[{"id":"image-1","originalUrl":"https://i.pximg.net/image-1.png"}]}}}}`
 	service, _ := fanboxTestService(t, roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		if req.URL.Host == "api.fanbox.cc" && req.URL.Path == "/post.info" {
+			return jsonResponse(postBody), nil
+		}
 		if req.URL.Host == "i.pximg.net" {
 			return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": {"image/png"}, "Content-Length": {"4"}}, Body: io.NopCloser(strings.NewReader("PNG!"))}, nil
 		}
@@ -837,14 +840,21 @@ func TestFanboxMCPOpenResourceReturnsSafeMetadataWithoutBytes(t *testing.T) {
 	session, closeSession := newFanboxMCPSession(t, service)
 	defer closeSession()
 
-	payload, err := json.Marshal(map[string]string{"k": "post_image", "id": "img1", "u": "https://i.pximg.net/img/1.png"})
+	// Obtain a ref through the real SDK path so it carries only stable identity
+	// (no embedded URL) and is bound to the in-session locator cache.
+	client, err := service.OpenClient(context.Background())
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("open client: %v", err)
 	}
-	ref, err := sdk.NewResourceRef("fanbox", payload)
+	post, err := client.Post(context.Background(), fanboxsdk.PostRequest{PostID: "p-open"})
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("Post: %v", err)
 	}
+	if len(post.Body.Assets) != 1 || post.Body.Assets[0].Resource.Ref.IsZero() {
+		t.Fatalf("post resource = %+v", post.Body)
+	}
+	ref := post.Body.Assets[0].Resource.Ref
+
 	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{
 		Name:      "fanbox_open_resource",
 		Arguments: map[string]any{"ref": ref.String()},

@@ -30,7 +30,9 @@ type PagedReadResult[T any] struct {
 //
 // begin 会在每次 execute 尝试开始时调用。consume 返回 committed=true 时，
 // execute owner 可以据此禁止后续重放。分页引擎仍由 shared/pagination 负责
-// Skip、Limit、OneBatch、cursor 循环检测和 HasMore 语义。
+// Skip、Limit、OneBatch、cursor 循环检测和 HasMore 语义。返回的 PageResult
+// 携带引擎权威的 Returned 与 HasMore，包括上游批次内被 Limit 截断但上游
+// cursor 已为空的情形——此时仍有未返回的条目，HasMore 必须为 true。
 func TraverseWith[C any, T any](
 	ctx context.Context,
 	execute Execute[C],
@@ -38,12 +40,13 @@ func TraverseWith[C any, T any](
 	begin func() error,
 	fetch func(context.Context, C, sdk.Cursor) ([]T, sdk.Cursor, error),
 	consume func([]T) (committed bool, err error),
-) error {
+) (pagination.PageResult, error) {
 	if execute == nil {
-		return ErrExecuteNotConfigured
+		return pagination.PageResult{}, ErrExecuteNotConfigured
 	}
 
-	return execute(ctx, func(ctx context.Context, client C) (bool, error) {
+	var pageResult pagination.PageResult
+	err := execute(ctx, func(ctx context.Context, client C) (bool, error) {
 		if begin != nil {
 			if err := begin(); err != nil {
 				return false, err
@@ -51,7 +54,8 @@ func TraverseWith[C any, T any](
 		}
 
 		committed := false
-		_, err := pagination.TraversePagesFrom(ctx, plan, sdk.Cursor{}, func(ctx context.Context, cursor sdk.Cursor) ([]T, sdk.Cursor, error) {
+		var err error
+		pageResult, err = pagination.TraversePagesFrom(ctx, plan, sdk.Cursor{}, func(ctx context.Context, cursor sdk.Cursor) ([]T, sdk.Cursor, error) {
 			return fetch(ctx, client, cursor)
 		}, func(items []T) error {
 			published, err := consume(items)
@@ -60,6 +64,7 @@ func TraverseWith[C any, T any](
 		})
 		return committed, err
 	})
+	return pageResult, err
 }
 
 // CollectWith 在 execute 提供的重放边界内收集逻辑分页结果。
@@ -72,23 +77,18 @@ func CollectWith[C any, T any](
 	fetch func(context.Context, C, sdk.Cursor) ([]T, sdk.Cursor, error),
 ) (PagedReadResult[T], error) {
 	result := PagedReadResult[T]{Items: make([]T, 0)}
-	var next sdk.Cursor
 
-	err := TraverseWith(ctx, execute, plan, func() error {
+	pageResult, err := TraverseWith(ctx, execute, plan, func() error {
 		result.Items = result.Items[:0]
 		result.HasMore = false
-		next = sdk.Cursor{}
 		return nil
 	}, func(ctx context.Context, client C, cursor sdk.Cursor) ([]T, sdk.Cursor, error) {
 		items, cursorNext, err := fetch(ctx, client, cursor)
-		if err == nil {
-			next = cursorNext
-		}
 		return items, cursorNext, err
 	}, func(items []T) (bool, error) {
 		result.Items = append(result.Items, items...)
 		return false, nil
 	})
-	result.HasMore = !next.IsZero()
+	result.HasMore = pageResult.HasMore
 	return result, err
 }

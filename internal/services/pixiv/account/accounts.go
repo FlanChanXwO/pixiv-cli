@@ -169,14 +169,18 @@ func (s *Service) PoolStatus(ctx context.Context) (PoolStatus, error) {
 	return s.repo.ListPixivPoolStatus(ctx, time.Now().UTC().Unix())
 }
 
-// RemoveAccount 删除一个 Pixiv 账号。
+// RemoveAccount 删除一个 Pixiv 账号。当被删账号是显式 default 时，先清除
+// 显式 default 再删除凭据，使首个剩余账号成为新的隐式 default；删除失败时
+// 显式 default 不被改变，保持与文档「删除 default 后自动选择首个剩余账号」一致。
 func (s *Service) RemoveAccount(ctx context.Context, userID int64) error {
 	defaultID, explicit, err := s.readDefaultUserID()
 	if err != nil {
 		return fmt.Errorf("read pixiv default account: %w", err)
 	}
 	if explicit && defaultID == userID {
-		return fmt.Errorf("cannot remove pixiv account %d while it is the explicit default; use `pixiv auth use --auto` or select another account first", userID)
+		if err := s.clearDefaultUserID(); err != nil {
+			return fmt.Errorf("clear pixiv default account: %w", err)
+		}
 	}
 	if err := s.repo.RemovePixiv(ctx, userID); err != nil {
 		return err
@@ -355,7 +359,10 @@ func (s *Service) AccountsWithTokens(ctx context.Context) ([]AccountWithToken, e
 	return out, nil
 }
 
-// RestoreAccount 离线恢复一个 bundle 账号，不做网络验证；已有 default 始终保持不变。
+// RestoreAccount 离线恢复单个 bundle 账号，不做网络验证；已有 default 始终保持不变。
+//
+// 单账号恢复无法提供 bundle 恢复的原子合并语义；多账号 bundle 恢复必须使用
+// RestoreAccounts，使任一写入失败时不会留下部分提交。
 func (s *Service) RestoreAccount(ctx context.Context, account AccountSummary, refreshToken string, _ bool) error {
 	refreshToken = strings.TrimSpace(refreshToken)
 	if account.UserID <= 0 || refreshToken == "" {
@@ -377,6 +384,82 @@ func (s *Service) RestoreAccount(ctx context.Context, account AccountSummary, re
 		}
 	}
 	return nil
+}
+
+// RestoreAccountInput 是一次 bundle 恢复的单账号输入。
+type RestoreAccountInput struct {
+	Account         AccountSummary
+	RefreshToken    string
+	IsBundleDefault bool
+}
+
+// RestoreAccountsResult 是一次原子 bundle 恢复的结果。ResultingDefault 为最终
+// 选中默认账号；IsDefaultReplacement 区分本次写入是否替换了已有凭据。
+type RestoreAccountsResult struct {
+	Accounts         []RestoreAccountOutcome
+	ResultingDefault int64
+}
+
+// RestoreAccountOutcome 是单账号恢复结果。IsReplacement 区分新增与替换。
+type RestoreAccountOutcome struct {
+	Account       AccountSummary
+	IsReplacement bool
+}
+
+// RestoreAccounts 原子合并一个 bundle：先读取恢复前 default 与已有 UID 集合，
+// 再用一次批量事务写入全部凭据，最后仅在本地无 default 时采用 bundle default。
+// 任一凭据写入失败时事务整体回滚，default 配置保持不变。
+func (s *Service) RestoreAccounts(ctx context.Context, inputs []RestoreAccountInput) (RestoreAccountsResult, error) {
+	if len(inputs) == 0 {
+		return RestoreAccountsResult{}, errors.New("pixiv restore bundle has no accounts")
+	}
+	stored := make([]Account, 0, len(inputs))
+	for _, input := range inputs {
+		refreshToken := strings.TrimSpace(input.RefreshToken)
+		if input.Account.UserID <= 0 || refreshToken == "" {
+			return RestoreAccountsResult{}, errors.New("pixiv refresh token is required")
+		}
+		account := New(input.Account.UserID, input.Account.Username, []byte(refreshToken))
+		account.CredentialRevision = 1
+		account.PremiumStatus = input.Account.Premium
+		stored = append(stored, account)
+	}
+	preExistingDefault, hasDefault, err := s.readDefaultUserID()
+	if err != nil {
+		return RestoreAccountsResult{}, fmt.Errorf("read pixiv default account: %w", err)
+	}
+	existingUIDs := make(map[int64]struct{})
+	if before, err := s.repo.ListPixiv(ctx); err != nil {
+		return RestoreAccountsResult{}, fmt.Errorf("read pixiv accounts: %w", err)
+	} else {
+		for _, account := range before {
+			existingUIDs[account.UserID] = struct{}{}
+		}
+	}
+	if err := s.repo.SavePixivCredentials(ctx, stored); err != nil {
+		return RestoreAccountsResult{}, fmt.Errorf("restore pixiv accounts: %w", err)
+	}
+	resultingDefault := preExistingDefault
+	if !hasDefault {
+		for _, input := range inputs {
+			if input.IsBundleDefault {
+				resultingDefault = input.Account.UserID
+				break
+			}
+		}
+		if resultingDefault == 0 {
+			resultingDefault = inputs[0].Account.UserID
+		}
+		if err := s.setDefaultUserID(resultingDefault); err != nil {
+			return RestoreAccountsResult{}, fmt.Errorf("set pixiv default account: %w", err)
+		}
+	}
+	outcomes := make([]RestoreAccountOutcome, 0, len(inputs))
+	for _, input := range inputs {
+		_, replaced := existingUIDs[input.Account.UserID]
+		outcomes = append(outcomes, RestoreAccountOutcome{Account: input.Account, IsReplacement: replaced})
+	}
+	return RestoreAccountsResult{Accounts: outcomes, ResultingDefault: resultingDefault}, nil
 }
 
 func (s *Service) setPremiumStatus(ctx context.Context, userID int64, premium *bool) error {

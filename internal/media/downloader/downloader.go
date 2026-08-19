@@ -2,6 +2,8 @@ package downloader
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"os"
@@ -59,6 +61,8 @@ const (
 )
 
 // ParsePageSpec 解析逗号/连字符分隔的 1-based 页码选择，返回闭区间页号列表。
+// 单个范围在读取作品元数据前就会被展开，因此这里拒绝跨度过大的范围，避免
+// 1-1000000000 这类无界输入立即分配巨量内存或在 page++ 溢出时死循环。
 func ParsePageSpec(raw string) ([]int, error) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
@@ -82,6 +86,9 @@ func ParsePageSpec(raw string) ([]int, error) {
 			if err != nil || parsedEnd < parsedStart {
 				return nil, fmt.Errorf("invalid page range %q", part)
 			}
+			if parsedEnd-parsedStart > maxPageExpansion {
+				return nil, fmt.Errorf("page range %q is too large", part)
+			}
 			start, end = parsedStart, parsedEnd
 		} else {
 			page, err := strconv.Atoi(part)
@@ -101,6 +108,10 @@ func ParsePageSpec(raw string) ([]int, error) {
 	slices.Sort(pages)
 	return pages, nil
 }
+
+// maxPageExpansion 限制单个范围展开的页数。真实的 Pixiv 作品页数远小于此值，
+// 超过即视为用户误传的无界范围并在解析期拒绝。
+const maxPageExpansion = 100000
 
 // ValidateDownloadQuality 校验静态图片质量。
 func ValidateDownloadQuality(quality DownloadQuality) error {
@@ -168,6 +179,9 @@ type DownloadRequest struct {
 	IllustIDs        []int64
 	DownloadPath     string
 	FilenameTemplate string
+	// DirectoryTemplate 渲染每个作品相对下载根目录的子目录层级；空表示既有
+	// 扁平/多页目录布局。由 BuildRelativeDirectory 应用，仅接受相对、安全段。
+	DirectoryTemplate string
 	// Pages 为 1-based 页码列表；空表示全部页。由 ParsePageSpec 生成。
 	Pages []int
 	// Quality 默认 original。
@@ -385,11 +399,12 @@ func directResourcePath(downloadPath string, ref sdk.ResourceRef) (string, error
 	if strings.TrimSpace(downloadPath) == "" {
 		return "", errors.New("download path is required for direct resource sources")
 	}
+	// 直接 resource 源没有作品标题或页号，必须用完整 ref 的稳定摘要作为文件名。
+	// 之前截断 ref 前 64 字符会让同 kind 不同 ID/page 的 ref 共享前缀并互相覆盖。
 	name := ref.String()
-	if len(name) > 64 {
-		name = name[:64]
-	}
-	return filepath.Join(downloadPath, "resource-"+name), nil
+	digest := sha256.Sum256([]byte(name))
+	encoded := hex.EncodeToString(digest[:])
+	return filepath.Join(downloadPath, "resource-"+encoded), nil
 }
 
 func referenceURL(reference pixiv.Reference) string {
@@ -414,11 +429,12 @@ func isNilLike(value any) bool {
 }
 
 type Manager struct {
-	client           DownloadClient
-	ugoiraEncoder    sharedugoira.Encoder
-	downloadPath     string
-	filenameTemplate string
-	mu               sync.RWMutex
+	client            DownloadClient
+	ugoiraEncoder     sharedugoira.Encoder
+	downloadPath      string
+	filenameTemplate  string
+	directoryTemplate string
+	mu                sync.RWMutex
 }
 
 func NewManager(client DownloadClient, downloadPath, filenameTemplate string) *Manager {
@@ -428,6 +444,21 @@ func NewManager(client DownloadClient, downloadPath, filenameTemplate string) *M
 		downloadPath:     downloadPath,
 		filenameTemplate: filenameTemplate,
 	}
+}
+
+// SetDirectoryTemplate 配置 Manager 默认目录模板；MCP 组装在启动期注入运行时值，
+// CLI 通过 DownloadRequest.DirectoryTemplate 逐次覆盖。
+func (m *Manager) SetDirectoryTemplate(template string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.directoryTemplate = template
+}
+
+// DirectoryTemplate 返回 Manager 配置的默认目录模板。
+func (m *Manager) DirectoryTemplate() string {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.directoryTemplate
 }
 
 // SetUgoiraEncoder 设置动图编码器，供启动装配和聚焦测试替换。
@@ -476,22 +507,49 @@ func (m *Manager) Download(ctx context.Context, request DownloadRequest) ([]Down
 	if err := ValidateUgoiraFormat(ugoiraFormat); err != nil {
 		return nil, err
 	}
-	artworks := make([]DownloadedArtwork, len(unique))
-	errs := make([]error, len(unique))
+	directoryTemplate := strings.TrimSpace(request.DirectoryTemplate)
+	if directoryTemplate == "" {
+		directoryTemplate = strings.TrimSpace(m.DirectoryTemplate())
+	}
+	if err := filename.ValidateDirectoryTemplate(directoryTemplate); err != nil {
+		return nil, err
+	}
+	results := make([]struct {
+		artwork DownloadedArtwork
+		err     error
+	}, len(unique))
 	if err := parallel.ForEach(ctx, len(unique), func(ctx context.Context, index int) {
-		artworks[index], errs[index] = m.downloadArtwork(ctx, unique[index], request.Pages, quality, ugoiraFormat)
+		results[index].artwork, results[index].err = m.downloadArtwork(ctx, unique[index], request.Pages, quality, ugoiraFormat, directoryTemplate)
 	}); err != nil {
 		return nil, err
 	}
-	for index, err := range errs {
-		if err != nil {
-			return nil, fmt.Errorf("download illust %d: %w", unique[index], err)
+	// 部分成功：每个 worker 已原子发布它写出的文件。返回已发布作品使报告与
+	// 账号池重放边界反映真实磁盘状态；只有 context 错误才整体中止。否则逐作品
+	// 失败降级为返回的失败集合，调用方据此决定是否报错。
+	var published []DownloadedArtwork
+	var failures []DownloadFailure
+	for index, result := range results {
+		if result.err == nil {
+			published = append(published, result.artwork)
+			continue
 		}
+		if ctx.Err() != nil {
+			return published, result.err
+		}
+		failures = append(failures, DownloadFailure{
+			IllustID: unique[index],
+			Message:  result.err.Error(),
+			Cause:    result.err,
+		})
 	}
-	return artworks, nil
+	if len(failures) > 0 && len(published) == 0 {
+		// 没有任何作品发布时保留单一错误语义，便于调用方直接判断。
+		return nil, failures[0].Cause
+	}
+	return published, nil
 }
 
-func (m *Manager) downloadArtwork(ctx context.Context, id int64, pages []int, quality DownloadQuality, ugoiraFormat UgoiraFormat) (out DownloadedArtwork, err error) {
+func (m *Manager) downloadArtwork(ctx context.Context, id int64, pages []int, quality DownloadQuality, ugoiraFormat UgoiraFormat, directoryTemplate string) (out DownloadedArtwork, err error) {
 	artwork, err := m.client.Artwork(ctx, pixiv.ArtworkRequest{ArtworkID: id})
 	if err != nil {
 		return DownloadedArtwork{}, err
@@ -501,8 +559,18 @@ func (m *Manager) downloadArtwork(ctx context.Context, id int64, pages []int, qu
 	if err != nil {
 		return DownloadedArtwork{}, err
 	}
+	data := filenameData(artwork)
+	if directoryTemplate != "" {
+		relative, err := filename.BuildRelativeDirectory(directoryTemplate, data, 0)
+		if err != nil {
+			return DownloadedArtwork{}, err
+		}
+		if relative != "" {
+			base = filepath.Join(base, filepath.FromSlash(relative))
+		}
+	}
 	kind := string(artwork.Kind)
-	if artwork.PageCount > 1 || kind == string(pixiv.ArtworkKindUgoira) {
+	if directoryTemplate == "" && (artwork.PageCount > 1 || kind == string(pixiv.ArtworkKindUgoira)) {
 		base = filepath.Join(base, filename.Sanitize(fmt.Sprintf("%d - %s", artwork.ID, text.DefaultString(artwork.Title, "Untitled"))))
 	}
 	if err := os.MkdirAll(base, 0o755); err != nil {
@@ -536,19 +604,63 @@ func (m *Manager) downloadArtwork(ctx context.Context, id int64, pages []int, qu
 	if err != nil {
 		return DownloadedArtwork{}, err
 	}
+	if err := filename.ValidateTemplate(m.filenameTemplate); err != nil {
+		return DownloadedArtwork{}, err
+	}
 	for _, item := range selected {
 		rawURL := item.image.Image.Resource.URL
 		if rawURL == "" {
 			return DownloadedArtwork{}, fmt.Errorf("illust %d page %d has no image URL", artwork.ID, item.page1)
 		}
-		// 文件名页索引仍用 0-based，保持既有模板语义；DownloadedFile.Page 改为 1-based 用户页号。
-		path := filepath.Join(base, filename.Generate(filenameData(artwork), item.page1-1, m.filenameTemplate)+downloadExtension(rawURL))
-		if err := m.saveResource(ctx, item.image.Image.Resource.Ref, path); err != nil {
+		// GenerateChecked 在模板使用 {date} 但 CreateDate 缺失时返回错误，
+		// 这样在网络请求前就把未知占位符或不匹配花括号暴露为失败，而不是
+		// 写出空文件名并相互覆盖。
+		basename, err := filename.GenerateChecked(data, item.page1-1, m.filenameTemplate)
+		if err != nil {
+			return DownloadedArtwork{}, err
+		}
+		if basename == "" {
+			return DownloadedArtwork{}, fmt.Errorf("illust %d page %d produced an empty filename", artwork.ID, item.page1)
+		}
+		ref, err := resourceForQuality(item.image.Image, quality)
+		if err != nil {
+			return DownloadedArtwork{}, err
+		}
+		path := filepath.Join(base, basename+downloadExtension(rawURL))
+		if err := m.saveResource(ctx, ref, path); err != nil {
 			return DownloadedArtwork{}, err
 		}
 		artworkOut.Files = append(artworkOut.Files, DownloadedFile{Path: path, Page: item.page1})
 	}
 	return artworkOut, nil
+}
+
+// resourceForQuality 把公开 DownloadQuality 映射到 SDK 的 artwork variant。
+// original 复用页面既有的 Resource；其余质量请求对应变体的 ResourceRef，
+// SaveResource 会在 revalidate 路径上按 variant 重新解析 locator。
+func resourceForQuality(image pixiv.ImageResource, quality DownloadQuality) (sdk.ResourceRef, error) {
+	variant := qualityVariant(quality)
+	if variant == "" {
+		return image.Resource.Ref, nil
+	}
+	return pixiv.ArtworkVariantResource(image.Resource, variant)
+}
+
+func qualityVariant(quality DownloadQuality) string {
+	switch quality {
+	case "", DownloadQualityOriginal:
+		return "original"
+	case DownloadQualityRegular:
+		return "regular"
+	case DownloadQualitySmall:
+		return "small"
+	case DownloadQualityThumb:
+		return "thumb"
+	case DownloadQualityMini:
+		return "mini"
+	default:
+		return "original"
+	}
 }
 
 type staticPage struct {
@@ -691,10 +803,23 @@ func downloadExtension(rawURL string) string {
 }
 
 func filenameData(artwork pixiv.Artwork) filename.FilenameData {
+	tags := make([]string, 0, len(artwork.Tags))
+	for _, tag := range artwork.Tags {
+		if name := strings.TrimSpace(tag.Name); name != "" {
+			tags = append(tags, name)
+		}
+	}
+	createDate := ""
+	if !artwork.PublishedAt.IsZero() {
+		createDate = artwork.PublishedAt.Format(time.RFC3339)
+	}
 	return filename.FilenameData{
-		ID:        artwork.ID,
-		Author:    artwork.User.Name,
-		Title:     artwork.Title,
-		PageCount: artwork.PageCount,
+		ID:         artwork.ID,
+		Author:     artwork.User.Name,
+		AuthorID:   artwork.User.ID,
+		Title:      artwork.Title,
+		CreateDate: createDate,
+		Tags:       tags,
+		PageCount:  artwork.PageCount,
 	}
 }

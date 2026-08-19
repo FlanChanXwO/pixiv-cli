@@ -84,13 +84,18 @@ func TestCurrentUser(t *testing.T) {
 
 func TestCreatorsPagination(t *testing.T) {
 	const nextURL = "https://api.fanbox.cc/plan.listSupporting?page=2"
-	calls := 0
+	apiCalls := 0
 	rt := roundTripFunc(func(req *http.Request) (*http.Response, error) {
-		calls++
+		if req.URL.Host == "www.fanbox.cc" {
+			// Account identity is verified once per client for identity-scoped
+			// cursors (Creators is supporting/following, scoped to the account).
+			return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": {"text/html"}}, Body: io.NopCloser(strings.NewReader(homeMetadataBody(42, "tester")))}, nil
+		}
 		if req.URL.Host != "api.fanbox.cc" || req.URL.Path != "/plan.listSupporting" {
 			t.Errorf("request = %s", req.URL.String())
 		}
-		if calls == 1 {
+		apiCalls++
+		if apiCalls == 1 {
 			return jsonResponse(`{"body":{"plans":[{"creatorId":"supported-1"}],"pageUrls":["` + nextURL + `"]}}`), nil
 		}
 		if req.URL.String() != nextURL {
@@ -118,8 +123,8 @@ func TestCreatorsPagination(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Creators page 2: %v", err)
 	}
-	if len(page2.Items) != 1 || page2.Items[0].ID != "supported-2" || calls != 2 {
-		t.Fatalf("page 2 = %+v calls=%d", page2.Items, calls)
+	if len(page2.Items) != 1 || page2.Items[0].ID != "supported-2" || apiCalls != 2 {
+		t.Fatalf("page 2 = %+v apiCalls=%d", page2.Items, apiCalls)
 	}
 }
 
@@ -413,5 +418,77 @@ func TestParallelClientsKeepSessionCookiesAndTransportStateIsolated(t *testing.T
 	}
 	if secondObservation.cookie != "FANBOXSESSID=second-session" {
 		t.Fatalf("second cookie = %q", secondObservation.cookie)
+	}
+}
+
+// TestIdentityScopedCursorRejectsCrossAccountReplay 验证 finding #13：Home/Supporting/
+// Creators 是账号作用域操作，其 cursor 绑定已验证的 FANBOX 用户 ID。一个在账号 A
+// 下生成的 cursor 在账号 B 的 client 上继续时必须被拒绝，避免把 A 的私密 feed 页
+// 用 B 的会话拉取。
+func TestIdentityScopedCursorRejectsCrossAccountReplay(t *testing.T) {
+	const nextURL = "https://api.fanbox.cc/post.listHome?maxPublishedDatetime=2024-01-01T00:00:00Z"
+	// mintClient serves account A's identity and its first Home page (with a
+	// continuation). consumeClient serves account B's identity; presenting A's
+	// cursor there must fail before the feed is fetched.
+	mintClient := testClient(t, roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		if req.URL.Host == "www.fanbox.cc" {
+			return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": {"text/html"}}, Body: io.NopCloser(strings.NewReader(homeMetadataBody(42, "account-a")))}, nil
+		}
+		if req.URL.Host == "api.fanbox.cc" && req.URL.Path == "/post.listHome" {
+			return jsonResponse(`{"body":{"posts":[{"id":"home-1","title":"a","publishedDatetime":"2024-01-01T00:00:00Z","creatorId":"c","isRestricted":false,"isPinned":false}],"pageUrls":["` + nextURL + `"]}}`), nil
+		}
+		t.Errorf("mint unexpected request %s", req.URL)
+		return nil, errors.New("unexpected")
+	}))
+	page, err := mintClient.Home(context.Background(), fanbox.HomeRequest{})
+	require.NoError(t, err)
+	require.False(t, page.Next.IsZero(), "Home must return a continuation cursor")
+
+	consumeFeedCalled := false
+	consumeClient := testClient(t, roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		if req.URL.Host == "www.fanbox.cc" {
+			return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": {"text/html"}}, Body: io.NopCloser(strings.NewReader(homeMetadataBody(99, "account-b")))}, nil
+		}
+		consumeFeedCalled = true
+		return nil, errors.New("account B feed must not be fetched with account A's cursor")
+	}))
+	_, err = consumeClient.Home(context.Background(), fanbox.HomeRequest{Cursor: page.Next})
+	if sdk.ReasonOf(err) != sdk.InvalidCursor {
+		t.Fatalf("cross-account Home continuation error = %v, want InvalidCursor", err)
+	}
+	if consumeFeedCalled {
+		t.Fatal("account B feed was fetched using account A's cursor")
+	}
+}
+
+// TestIdentityScopedCursorContinuesSameAccount 验证 finding #13：同一账号下的 cursor
+// 可以正常继续翻页，绑定不会误伤合法的同账号分页。
+func TestIdentityScopedCursorContinuesSameAccount(t *testing.T) {
+	const nextURL = "https://api.fanbox.cc/post.listHome?maxPublishedDatetime=2024-01-01T00:00:00Z"
+	calls := 0
+	client := testClient(t, roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		if req.URL.Host == "www.fanbox.cc" {
+			return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": {"text/html"}}, Body: io.NopCloser(strings.NewReader(homeMetadataBody(42, "tester")))}, nil
+		}
+		if req.URL.Host != "api.fanbox.cc" || req.URL.Path != "/post.listHome" {
+			t.Errorf("request = %s", req.URL.String())
+		}
+		calls++
+		if calls == 1 {
+			return jsonResponse(`{"body":{"posts":[{"id":"home-1","title":"a","publishedDatetime":"2024-01-01T00:00:00Z","creatorId":"c","isRestricted":false,"isPinned":false}],"pageUrls":["` + nextURL + `"]}}`), nil
+		}
+		if req.URL.String() != nextURL {
+			t.Errorf("continuation request = %s, want %s", req.URL.String(), nextURL)
+		}
+		return jsonResponse(`{"body":{"posts":[{"id":"home-2","title":"b","publishedDatetime":"2024-01-01T00:00:00Z","creatorId":"c","isRestricted":false,"isPinned":false}]}}`), nil
+	}))
+	page, err := client.Home(context.Background(), fanbox.HomeRequest{})
+	require.NoError(t, err)
+	require.False(t, page.Next.IsZero())
+
+	page2, err := client.Home(context.Background(), fanbox.HomeRequest{Cursor: page.Next})
+	require.NoError(t, err)
+	if len(page2.Items) != 1 || page2.Items[0].ID != "home-2" || calls != 2 {
+		t.Fatalf("page 2 = %+v calls=%d", page2.Items, calls)
 	}
 }

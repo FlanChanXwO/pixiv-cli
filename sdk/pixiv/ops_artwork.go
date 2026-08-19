@@ -247,6 +247,10 @@ func (c *Client) LatestArtworks(ctx context.Context, request LatestArtworksReque
 	if contentType == "" {
 		contentType = "illust"
 	}
+	// Bind the resolved content type into the cursor digest so a continuation
+	// produced for one feed (e.g. illust) cannot be replayed against another
+	// (e.g. manga), which would resume at an offset for the wrong result set.
+	query.Set("content_type", contentType)
 	offset, err := c.continuationOffset("LatestArtworks", query, request.Cursor)
 	if err != nil {
 		return sdk.Page[Artwork]{}, err

@@ -12,8 +12,9 @@ import (
 
 // Runtime 是 download 命令从一次执行 snapshot 取用的窄配置值。
 type Runtime struct {
-	DownloadPath     string
-	FilenameTemplate string
+	DownloadPath      string
+	FilenameTemplate  string
+	DirectoryTemplate string
 }
 
 // Deps 是 download command 所需的窄运行依赖；root 仅在构造命令时注入它们。

@@ -103,7 +103,8 @@ func runPages[C any, T any](ctx context.Context, execute traversal.Execute[C], p
 		return sdk.NewError("pixiv", "PagedRead", sdk.LocalStateError,
 			sdk.WithDetail("sdk pooled operation is not configured"))
 	}
-	return traversal.TraverseWith(ctx, execute, plan, begin, fetch, consume)
+	_, err := traversal.TraverseWith(ctx, execute, plan, begin, fetch, consume)
+	return err
 }
 
 // pageItems 只把 CLI 的分页计划交给共享算法；cursor 遍历、跳过、限量与止环

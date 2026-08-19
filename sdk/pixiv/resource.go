@@ -64,6 +64,37 @@ func (c *Client) newResourceWithVariant(kind string, id int64, page int, variant
 	}, nil
 }
 
+// ArtworkVariantResource 返回同一页的另一个质量变体的 ResourceRef。
+// 它解码既有 ref 的稳定身份并替换 variant，使 SaveResource 走与 original
+// 相同的 revalidation / re-resolution 路径。variant 为空或 "original" 时
+// 原样返回 original.Ref。只支持 artwork kind；其他 kind 报错。
+func ArtworkVariantResource(original sdk.Resource, variant string) (sdk.ResourceRef, error) {
+	if variant == "" || variant == "original" {
+		return original.Ref, nil
+	}
+	payload, err := sdk.ResourceRefPayload(original.Ref)
+	if err != nil {
+		return sdk.ResourceRef{}, err
+	}
+	var rp resourceRefPayload
+	if err := json.Unmarshal(payload, &rp); err != nil || rp.Kind == "" || rp.ID <= 0 {
+		return sdk.ResourceRef{}, newError("resource", sdk.InvalidArgument, "cannot decode resource reference")
+	}
+	if rp.Kind != "artwork" {
+		return sdk.ResourceRef{}, newError("resource", sdk.InvalidArgument, "only artwork resources support quality variants")
+	}
+	rp.Variant = variant
+	encoded, err := json.Marshal(rp)
+	if err != nil {
+		return sdk.ResourceRef{}, newError("resource", sdk.UpstreamError, "cannot encode resource reference")
+	}
+	ref, err := sdk.NewResourceRef(product, encoded)
+	if err != nil {
+		return sdk.ResourceRef{}, newError("resource", sdk.UpstreamError, "cannot encode resource reference")
+	}
+	return ref, nil
+}
+
 func (c *Client) validateResourceURL(rawURL string) error {
 	parsed, err := url.Parse(rawURL)
 	if err != nil {
@@ -282,6 +313,12 @@ func artworkResourceURL(illust artwork.Artwork, page int, variant string) (strin
 			}
 		}
 		if page == 0 && illust.MetaSinglePage.OriginalImageURL != "" {
+			if variant != "" && variant != "original" {
+				if derived, ok := deriveImageVariantURL(illust.MetaSinglePage.OriginalImageURL, variant); ok {
+					return derived, nil
+				}
+				return "", errors.New("requested image variant is unavailable")
+			}
 			return illust.MetaSinglePage.OriginalImageURL, nil
 		}
 		return "", errors.New("artwork page is unavailable")
@@ -319,12 +356,69 @@ func artworkImageURLsResourceURL(urls artwork.ImageURLs, variant string) (string
 		if value := values[variant]; value != "" {
 			return value, nil
 		}
+		if derived, ok := deriveImageVariantURL(urls.Original, variant); ok {
+			return derived, nil
+		}
 		return "", errors.New("requested image variant is unavailable")
 	}
 	if value := firstArtworkImageURL(urls); value != "" {
 		return value, nil
 	}
 	return "", errors.New("image URL is unavailable")
+}
+
+// deriveImageVariantURL 在 upstream 没有直接提供请求质量时，按 Pixiv 的公开
+// img-master / 缩略图路径约定从 original locator 推导对应 URL。variant 取
+// regular / small / thumb / mini（与下载器公开的 DownloadQuality 一致）；
+// 这些 locator 不携带签名参数，cache key 由稳定身份决定。
+func deriveImageVariantURL(originalURL, variant string) (string, bool) {
+	original := strings.TrimSpace(originalURL)
+	if original == "" {
+		return "", false
+	}
+	parsed, err := url.Parse(original)
+	if err != nil || parsed.Scheme != "https" || parsed.Path == "" {
+		return "", false
+	}
+	prefix, crop, suffix, ok := variantPathComponents(variant)
+	if !ok {
+		return "", false
+	}
+	// img-original/img/.../FILENAME.ext → img-master/img/.../FILENAME_{suffix}.jpg
+	marker := "/img-original/img/"
+	index := strings.Index(parsed.Path, marker)
+	if index < 0 {
+		return "", false
+	}
+	rel := parsed.Path[index+len(marker):]
+	base := rel[strings.LastIndex(rel, "/")+1:]
+	stem := base
+	if dot := strings.LastIndex(base, "."); dot > 0 {
+		stem = base[:dot]
+	}
+	derivedPath := prefix + crop + "img-master/img/" + rel[:len(rel)-len(base)] + stem + suffix + ".jpg"
+	clone := *parsed
+	clone.Path = derivedPath
+	clone.RawQuery = ""
+	clone.Fragment = ""
+	return clone.String(), true
+}
+
+// variantPathComponents 返回某质量的 img-master 前缀、裁剪段与文件名后缀。
+// 前缀以 / 开头；crop 形如 "c/1200x1200/" 或为空。
+func variantPathComponents(variant string) (prefix, crop, suffix string, ok bool) {
+	switch variant {
+	case "regular":
+		return "/", "c/1200x1200/", "_master1200", true
+	case "small":
+		return "/", "c/540x540_70/", "_master1200", true
+	case "thumb":
+		return "/", "c/250x250_80_a2/", "_square1200", true
+	case "mini":
+		return "/", "c/48x48/", "_square1200", true
+	default:
+		return "", "", "", false
+	}
 }
 
 func profileImageResourceURL(urls user.ProfileImageURLs) (string, error) {

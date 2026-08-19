@@ -292,6 +292,17 @@ atomic destination and reports the response `Content-Length` in
 `SaveProgress.Total` when upstream supplies it. Resource requests use an
 explicit header allowlist and never send the caller's Cookie jar.
 
+For FANBOX, `Resource.Ref` contains only stable identity (the resource kind,
+the owning creator or post, and the attachment id) and never embeds the
+currently-usable or signed media URL, so locator rotation never changes the
+cache key and a stored ref can be reopened across sessions. `OpenResource` and
+`SaveResource` reuse the in-session locator when present, otherwise they
+re-resolve a fresh, allowlisted locator by re-fetching the owning creator or
+post and locating the attachment by its stable id. The session cookie is sent
+only on the credentialed `downloads.fanbox.cc` host; public CDN and third-party
+hosts never receive it. `RequiresCredentials` reports when a locator still
+needs the session.
+
 ## URL references
 
 `pixiv.ParseURL` and `fanbox.ResolveURL` turn page URLs into typed references
@@ -324,6 +335,14 @@ blocks; image and file blocks are joined with their resource indexes, including
 responses that provide attachments only through `imageMap` or `fileMap`.
 Third-party embeds keep only their canonical link. Restricted posts carry a
 summary with a nil body.
+
+The Home, Supporting, and Creators feeds are identity-scoped: their continuation
+cursors bind to the verified FANBOX account id (a non-secret value resolved once
+per client via the session identity), so a cursor minted under one account
+cannot be replayed against another account's feed and returns `InvalidCursor`.
+CreatorPosts and TaggedPosts are public-scoped and carry no account binding.
+As with Pixiv, cursors are also bound to the product, operation, binding
+version, and query digest.
 
 ## Migrating from v0
 

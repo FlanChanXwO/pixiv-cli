@@ -72,7 +72,17 @@ func (a command) savePostAssets(ctx context.Context, client *fanbox.Client, base
 	if post.Body == nil {
 		return nil
 	}
-	dir := filepath.Join(baseDir, post.CreatorID, post.ID)
+	// 每段路径都来自上游不可信内容（creator id、post id、asset name），必须单独
+	// 清理并在 join 后校验最终绝对路径仍位于 baseDir 之内，杜绝 ../ 逃逸。
+	creatorSeg := safePathSegment(post.CreatorID)
+	postSeg := safePathSegment(post.ID)
+	if creatorSeg == "" || postSeg == "" {
+		return fmt.Errorf("post %s from creator %s has no usable path identity", post.ID, post.CreatorID)
+	}
+	dir := filepath.Join(baseDir, creatorSeg, postSeg)
+	if !pathInsideBase(dir, baseDir) {
+		return fmt.Errorf("post %s from creator %s resolves outside the download directory", post.ID, post.CreatorID)
+	}
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
 	}
@@ -80,7 +90,14 @@ func (a command) savePostAssets(ctx context.Context, client *fanbox.Client, base
 		if asset.Resource.Ref.IsZero() {
 			continue
 		}
-		path := filepath.Join(dir, assetFilename(asset))
+		name := safePathSegment(assetFilename(asset))
+		if name == "" {
+			return fmt.Errorf("asset %s in post %s has no usable filename", asset.ID, post.ID)
+		}
+		path := filepath.Join(dir, name)
+		if !pathInsideBase(path, baseDir) {
+			return fmt.Errorf("asset %s in post %s resolves outside the download directory", asset.ID, post.ID)
+		}
 		if _, exists := seen[path]; exists {
 			continue
 		}
@@ -91,6 +108,48 @@ func (a command) savePostAssets(ctx context.Context, client *fanbox.Client, base
 		fmt.Fprintf(a.out, "saved: %s\n", path)
 	}
 	return nil
+}
+
+// safePathSegment cleans one path component derived from upstream content. It
+// rejects empty segments, the dot and dot-dot traversals, and anything that
+// still carries a path separator after sanitization; callers must also verify
+// the joined path stays inside the base directory.
+func safePathSegment(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" || value == "." || value == ".." {
+		return ""
+	}
+	// Strip OS path separators and shell metacharacters that must never appear
+	// in a single filename component.
+	cleaned := strings.Map(func(r rune) rune {
+		switch r {
+		case '/', '\\', ':', '*', '?', '"', '<', '>', '|':
+			return '_'
+		}
+		return r
+	}, value)
+	cleaned = strings.TrimSpace(cleaned)
+	if cleaned == "" || cleaned == "." || cleaned == ".." {
+		return ""
+	}
+	return cleaned
+}
+
+// pathInsideBase reports whether target, after cleaning, is base or lives
+// beneath base. It uses lexical cleaning so a crafted ../ in any segment cannot
+// escape the download directory.
+func pathInsideBase(target, base string) bool {
+	cleanTarget := filepath.Clean(target)
+	cleanBase := filepath.Clean(base)
+	if cleanTarget == cleanBase {
+		return true
+	}
+	rel, err := filepath.Rel(cleanBase, cleanTarget)
+	if err != nil {
+		return false
+	}
+	rel = filepath.ToSlash(rel)
+	return rel != ".." && !strings.HasPrefix(rel, "../") && !filepath.IsAbs(rel)
 }
 
 func assetFilename(asset fanbox.Asset) string {

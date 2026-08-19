@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"sync"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/services/fanbox/endpoint/creator/creators"
 	creatorTags "github.com/FlanChanXwO/pixiv-cli/internal/services/fanbox/endpoint/creator/tags"
@@ -73,6 +74,21 @@ type Client struct {
 	home         *home.Client
 	supporting   *supporting.Client
 	resource     *fanboxresource.Client
+
+	// resourceMu guards resourceURLs, the in-session locator cache keyed by the
+	// opaque ResourceRef string. The cache holds the currently-usable URL only;
+	// the ref envelope encodes stable identity, never the locator. OpenResource
+	// re-resolves from trusted metadata when a ref arrives without a cached
+	// locator (for example across process restarts).
+	resourceMu   sync.RWMutex
+	resourceURLs map[string]string
+
+	// identityMu guards userID, the lazily-verified FANBOX account identity.
+	// The user id is non-secret and is bound into identity-scoped cursors
+	// (Home, Supporting, Creators) so a cursor minted under one account cannot
+	// be replayed against another. The session cookie never enters this value.
+	identityMu sync.Mutex
+	userID     int64
 }
 
 // Open constructs a Client for the given session credentials. It performs no
@@ -113,6 +129,7 @@ func OpenWith(credentials SessionCredentials, options Options) (*Client, error) 
 		home:         home.New(session),
 		supporting:   supporting.New(session),
 		resource:     fanboxresource.New(session),
+		resourceURLs: make(map[string]string),
 	}, nil
 }
 

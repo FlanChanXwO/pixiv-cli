@@ -616,8 +616,9 @@ func (a app) downloadDeps() downloadcommands.Deps {
 				return downloadcommands.Runtime{}, err
 			}
 			return downloadcommands.Runtime{
-				DownloadPath:     runtime.DownloadPath,
-				FilenameTemplate: runtime.FilenameTemplate,
+				DownloadPath:      runtime.DownloadPath,
+				FilenameTemplate:  runtime.FilenameTemplate,
+				DirectoryTemplate: runtime.DirectoryTemplate,
 			}, nil
 		},
 		Download: newCLIDownloadService,
@@ -914,8 +915,11 @@ func (a app) runPixivMCP(ctx context.Context, request mcpcommands.Request) error
 		HTTPSProxyOverride: request.HTTPSProxyOverride,
 	}
 	manager := downloader.NewManager(nil, runtime.DownloadPath, runtime.FilenameTemplate)
+	manager.SetDirectoryTemplate(runtime.DirectoryTemplate)
 	server := mcpserver.NewWithSDKDownloadFactory(manager, func(client *pixiv.Client) mcpserver.DownloadManager {
-		return downloader.NewManager(client, runtime.DownloadPath, runtime.FilenameTemplate)
+		snapshot := downloader.NewManager(client, runtime.DownloadPath, runtime.FilenameTemplate)
+		snapshot.SetDirectoryTemplate(runtime.DirectoryTemplate)
+		return snapshot
 	}, mcpserver.SDKPorts{
 		Open: func(account mcpserver.Account) (*pixiv.Client, error) {
 			return ports.open(pixivdeps.Request{UserID: account.UserID, HTTPSProxyOverride: account.HTTPSProxyOverride})

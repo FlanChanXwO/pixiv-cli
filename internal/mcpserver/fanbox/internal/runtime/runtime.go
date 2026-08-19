@@ -204,22 +204,28 @@ func CollectPages[T any](ctx context.Context, plan ListPlan, fetch func(context.
 			batch = batch[skip:]
 			skip = 0
 		}
+		// truncated reports whether this upstream batch still holds unreturned
+		// items after the logical limit is applied. When it does, has_more must
+		// be true even if the upstream cursor is zero, otherwise clients see
+		// has_more=false with unreturned items and no next_page (finding #17).
+		truncated := false
 		if limit > 0 {
 			remaining := limit - returned
 			if len(batch) > remaining {
 				batch = batch[:remaining]
+				truncated = true
 			}
 		}
 		items = append(items, batch...)
 		returned += len(batch)
 		if limit > 0 && returned >= limit {
-			return items, !page.Next.IsZero(), nil
+			return items, truncated || !page.Next.IsZero(), nil
 		}
 		if plan.OneBatch && (returned > 0 || page.Next.IsZero()) {
-			return items, !page.Next.IsZero(), nil
+			return items, truncated || !page.Next.IsZero(), nil
 		}
 		if page.Next.IsZero() {
-			return items, false, nil
+			return items, truncated, nil
 		}
 		cursor = page.Next
 	}

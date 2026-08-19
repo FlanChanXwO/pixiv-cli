@@ -56,7 +56,7 @@ func (c *Client) Creators(ctx context.Context, request CreatorsRequest) (sdk.Pag
 		kind = CreatorListSupporting
 	}
 	query := url.Values{"kind": {string(kind)}}
-	nextURL, err := c.continuationURL("Creators", query, request.Cursor)
+	nextURL, err := c.continuationURL(ctx, "Creators", query, request.Cursor)
 	if err != nil {
 		return sdk.Page[CreatorSummary]{}, err
 	}
@@ -68,7 +68,7 @@ func (c *Client) Creators(ctx context.Context, request CreatorsRequest) (sdk.Pag
 	for _, creator := range page.Items {
 		items = append(items, c.mapCreatorSummary(creator))
 	}
-	next, err := c.buildCursor("Creators", query, page.NextURL)
+	next, err := c.buildCursor(ctx, "Creators", query, page.NextURL)
 	if err != nil {
 		return sdk.Page[CreatorSummary]{}, err
 	}
@@ -97,7 +97,7 @@ func (c *Client) CreatorPosts(ctx context.Context, request CreatorPostsRequest) 
 		return sdk.Page[Post]{}, newError("CreatorPosts", sdk.InvalidArgument, errors.New("creator id is required"))
 	}
 	query := url.Values{"creatorId": {request.CreatorID}}
-	nextURL, err := c.continuationURL("CreatorPosts", query, request.Cursor)
+	nextURL, err := c.continuationURL(ctx, "CreatorPosts", query, request.Cursor)
 	if err != nil {
 		return sdk.Page[Post]{}, err
 	}
@@ -105,7 +105,7 @@ func (c *Client) CreatorPosts(ctx context.Context, request CreatorPostsRequest) 
 	if err != nil {
 		return sdk.Page[Post]{}, classifyError("CreatorPosts", err)
 	}
-	return c.postPage("CreatorPosts", query, page)
+	return c.postPage(ctx, "CreatorPosts", query, page)
 }
 
 // TaggedPosts lists one creator's posts for a single tag.
@@ -114,7 +114,7 @@ func (c *Client) TaggedPosts(ctx context.Context, request TaggedPostsRequest) (s
 		return sdk.Page[Post]{}, newError("TaggedPosts", sdk.InvalidArgument, errors.New("creator id and tag are required"))
 	}
 	query := url.Values{"creatorId": {request.CreatorID}, "tag": {request.Tag}}
-	nextURL, err := c.continuationURL("TaggedPosts", query, request.Cursor)
+	nextURL, err := c.continuationURL(ctx, "TaggedPosts", query, request.Cursor)
 	if err != nil {
 		return sdk.Page[Post]{}, err
 	}
@@ -122,7 +122,7 @@ func (c *Client) TaggedPosts(ctx context.Context, request TaggedPostsRequest) (s
 	if err != nil {
 		return sdk.Page[Post]{}, classifyError("TaggedPosts", err)
 	}
-	return c.postPage("TaggedPosts", query, page)
+	return c.postPage(ctx, "TaggedPosts", query, page)
 }
 
 // Post returns one post by its stable ID.
@@ -140,7 +140,7 @@ func (c *Client) Post(ctx context.Context, request PostRequest) (Post, error) {
 // Home lists the current user's home feed.
 func (c *Client) Home(ctx context.Context, request HomeRequest) (sdk.Page[Post], error) {
 	query := url.Values{}
-	nextURL, err := c.continuationURL("Home", query, request.Cursor)
+	nextURL, err := c.continuationURL(ctx, "Home", query, request.Cursor)
 	if err != nil {
 		return sdk.Page[Post]{}, err
 	}
@@ -148,13 +148,13 @@ func (c *Client) Home(ctx context.Context, request HomeRequest) (sdk.Page[Post],
 	if err != nil {
 		return sdk.Page[Post]{}, classifyError("Home", err)
 	}
-	return c.postPage("Home", query, page)
+	return c.postPage(ctx, "Home", query, page)
 }
 
 // Supporting lists posts from the current user's supporting creators.
 func (c *Client) Supporting(ctx context.Context, request SupportingRequest) (sdk.Page[Post], error) {
 	query := url.Values{}
-	nextURL, err := c.continuationURL("Supporting", query, request.Cursor)
+	nextURL, err := c.continuationURL(ctx, "Supporting", query, request.Cursor)
 	if err != nil {
 		return sdk.Page[Post]{}, err
 	}
@@ -162,10 +162,10 @@ func (c *Client) Supporting(ctx context.Context, request SupportingRequest) (sdk
 	if err != nil {
 		return sdk.Page[Post]{}, classifyError("Supporting", err)
 	}
-	return c.postPage("Supporting", query, page)
+	return c.postPage(ctx, "Supporting", query, page)
 }
 
-func (c *Client) postPage(op string, query url.Values, page postservice.Page) (sdk.Page[Post], error) {
+func (c *Client) postPage(ctx context.Context, op string, query url.Values, page postservice.Page) (sdk.Page[Post], error) {
 	items := make([]Post, 0, len(page.Posts))
 	for _, source := range page.Posts {
 		post, err := c.mapPost(source)
@@ -174,7 +174,7 @@ func (c *Client) postPage(op string, query url.Values, page postservice.Page) (s
 		}
 		items = append(items, post)
 	}
-	next, err := c.buildCursor(op, query, page.NextURL)
+	next, err := c.buildCursor(ctx, op, query, page.NextURL)
 	if err != nil {
 		return sdk.Page[Post]{}, err
 	}
@@ -205,14 +205,14 @@ func (c *Client) mapCreator(profile creatorservice.Creator) (Creator, error) {
 		HasSupportingPlan: profile.HasSupportingPlan,
 	}
 	if profile.IconURL != "" {
-		res, err := c.newResource("creator_icon", profile.ID, profile.IconURL)
+		res, err := c.newResource("creator_icon", profile.ID, "", "", profile.IconURL)
 		if err != nil {
 			return Creator{}, err
 		}
 		out.Icon = ImageResource{Resource: res}
 	}
 	if profile.CoverURL != "" {
-		res, err := c.newResource("creator_cover", profile.ID, profile.CoverURL)
+		res, err := c.newResource("creator_cover", profile.ID, "", "", profile.CoverURL)
 		if err != nil {
 			return Creator{}, err
 		}
@@ -246,7 +246,7 @@ func (c *Client) mapPost(source postservice.Post) (Post, error) {
 	for _, image := range mergePostImages(*source.Body) {
 		imageByID[image.ID] = image
 		if image.OriginalURL != "" {
-			res, err := c.newResource("post_image", image.ID, image.OriginalURL)
+			res, err := c.newResource("post_image", source.CreatorID, source.ID, image.ID, image.OriginalURL)
 			if err != nil {
 				return Post{}, err
 			}
@@ -256,7 +256,7 @@ func (c *Client) mapPost(source postservice.Post) (Post, error) {
 	for _, file := range mergePostFiles(*source.Body) {
 		fileByID[file.ID] = file
 		if file.URL != "" {
-			res, err := c.newResource("post_file", file.ID, file.URL)
+			res, err := c.newResource("post_file", source.CreatorID, source.ID, file.ID, file.URL)
 			if err != nil {
 				return Post{}, err
 			}
@@ -267,7 +267,7 @@ func (c *Client) mapPost(source postservice.Post) (Post, error) {
 		switch block.Type {
 		case "image":
 			if image, ok := imageByID[block.ImageID]; ok && image.OriginalURL != "" {
-				res, err := c.newResource("post_image", image.ID, image.OriginalURL)
+				res, err := c.newResource("post_image", source.CreatorID, source.ID, image.ID, image.OriginalURL)
 				if err != nil {
 					return Post{}, err
 				}
@@ -275,7 +275,7 @@ func (c *Client) mapPost(source postservice.Post) (Post, error) {
 			}
 		case "file":
 			if file, ok := fileByID[block.FileID]; ok && file.URL != "" {
-				res, err := c.newResource("post_file", file.ID, file.URL)
+				res, err := c.newResource("post_file", source.CreatorID, source.ID, file.ID, file.URL)
 				if err != nil {
 					return Post{}, err
 				}

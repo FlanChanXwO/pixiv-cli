@@ -146,6 +146,35 @@ func TestAPIRedirectDropsCookie(t *testing.T) {
 	}
 }
 
+// TestMediaOpenReturnsNotModifiedForConditionalGet 验证 finding #6：条件 GET 的
+// 304 Not Modified 是正常结果，没有 Location，必须原样返回，不得被误当 redirect。
+func TestMediaOpenReturnsNotModifiedForConditionalGet(t *testing.T) {
+	calls := 0
+	session := newTestSession(t, http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+		calls++
+		if request.Header.Get("If-None-Match") != `"etag-1"` {
+			t.Errorf("If-None-Match = %q", request.Header.Get("If-None-Match"))
+		}
+		w.Header().Set("ETag", `"etag-1"`)
+		w.WriteHeader(http.StatusNotModified)
+	}), "FANBOXSESSID=conditional-canary")
+
+	response, err := session.OpenMediaWithRequest(context.Background(), "https://downloads.fanbox.cc/media/asset.jpg", protocol.MediaRequest{
+		Method:      http.MethodGet,
+		IfNoneMatch: `"etag-1"`,
+	})
+	if err != nil {
+		t.Fatalf("OpenMediaWithRequest() error = %v", err)
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusNotModified {
+		t.Fatalf("status = %d, want 304", response.StatusCode)
+	}
+	if calls != 1 {
+		t.Fatalf("requests = %d, want 1 (no redirect follow on 304)", calls)
+	}
+}
+
 func TestStatusClassification(t *testing.T) {
 	session := newTestSession(t, http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
 		switch request.URL.Path {
