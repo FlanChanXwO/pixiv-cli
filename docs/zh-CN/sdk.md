@@ -1,255 +1,275 @@
-# Pixiv Go SDK 接口
+# Pixiv SDK (v1)
 
-[English](../en/sdk.md) | 简体中文 | [日本語](../ja/sdk.md) | [文档索引](../index.md)
+[English](../en/sdk.md) | 简体中文 | [文档索引](../index-zh-CN.md)
 
-本文件取代旧 HTTP Provider interface。公开入口是 `github.com/FlanChanXwO/pixiv-cli/pixiv` 的具体 `*pixiv.Client`，不是 HTTP endpoint、Provider server 或可发现服务。
+v1 SDK 暴露三个公开包：
 
-调用方若需要接口，应在自身 adapter 内定义最小方法集；SDK 不输出 `Discover`、Probe、Capabilities、RSS 或 crawler。
+- `github.com/FlanChanXwO/pixiv-cli/sdk` — 两个产品共享的协议无关原语：分页、不透明游标、分类错误与资源契约。
+- `github.com/FlanChanXwO/pixiv-cli/sdk/pixiv` — Pixiv App API 客户端、模型、URL 引用与 mutation。
+- `github.com/FlanChanXwO/pixiv-cli/sdk/fanbox` — Pixiv FANBOX 客户端、模型与 URL 解析。
 
-## 构造
+所有导出声明均带英文 GoDoc；源码是 API 的权威摘要。
+
+## 快速开始
+
+一个完整的 Pixiv 流程：认证、搜索、取详情、保存图片。
 
 ```go
-// 新手/本地入口：无需 options。
-local, err := pixiv.OpenDefault()
+package main
 
-// 显式 access token 或匿名客户端：此 options 没有本地 auth/config 字段。
-client, err := pixiv.NewClient(pixiv.NewClientOptions{
-    AccessToken: accessToken,
-})
+import (
+	"context"
+	"fmt"
+	"os"
 
-// 高级本地默认客户端。
-local, err := pixiv.OpenDefaultWith(pixiv.OpenDefaultOptions{
-    UserID: 12345678, // 可选本地账号
+	"github.com/FlanChanXwO/pixiv-cli/sdk"
+	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
+)
+
+func main() {
+	ctx := context.Background()
+
+	// 1. 通过 OAuth rotation 认证。在发起内容请求前持久化新的 refresh token；
+	//    client 不会自动 refresh。
+	client, creds, err := pixiv.Open(ctx, os.Getenv("PIXIV_REFRESH_TOKEN"))
+	if err != nil {
+		panic(err)
+	}
+	_ = creds // 持久化 creds.RefreshToken() 到可靠存储
+
+	// 2. 搜索作品并按 typed page cursor 迭代。
+	page, err := client.SearchArtworks(ctx, pixiv.SearchArtworksRequest{Word: "miku"})
+	if err != nil {
+		panic(err)
+	}
+	if len(page.Items) == 0 {
+		return
+	}
+	first := page.Items[0]
+
+	// 3. 取作品页面（图片资源）。
+	pages, err := client.ArtworkPages(ctx, pixiv.ArtworkPagesRequest{ArtworkID: first.ID})
+	if err != nil {
+		panic(err)
+	}
+
+	// 4. 通过 SDK 校验的资源路径保存第一张图。
+	_, err = client.SaveResource(ctx, sdk.SaveOptions{
+		Ref:  pages[0].Image.Resource.Ref,
+		Dest: "./first.png",
+	})
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println("saved", first.ID)
+}
+```
+
+一个 FANBOX 流程：用 session 打开、列出 supporting 帖子、解析某帖资源。
+
+```go
+client, err := fanbox.Open(fanbox.SessionCredentials{FANBOXSESSID: sess})
+if err != nil {
+    panic(err)
+}
+page, err := client.Supporting(ctx, fanbox.SupportingRequest{})
+if err != nil {
+    panic(err)
+}
+if len(page.Items) == 0 {
+    return
+}
+post, err := client.Post(ctx, fanbox.PostRequest{PostID: page.Items[0].ID})
+if err != nil {
+    panic(err)
+}
+_ = post // post.Body 的 block 携带 image/file asset 及其 Resource ref
+```
+
+## 认证
+
+Pixiv 只走 App API。每个内容操作都需要有效 access token。
+
+```go
+client, creds, err := pixiv.Open(ctx, refreshToken) // OAuth rotation
+// 在发起内容请求前持久化 creds.RefreshToken()
+
+client, err := pixiv.New(accessToken) // 静态 token，无网络 I/O
+```
+
+`Open` 返回只持有 access token 的 Client，它不会自动 refresh。token 过期后操作
+返回 `CredentialsExpired`。OAuth 成功响应必须包含正数 account user ID；缺少身份时
+`Open` 返回 `MalformedUpstreamResponse`，不返回 Client 或 credentials。不存在匿名或
+Web fallback。
+
+### 以编程方式发起浏览器登录
+
+`BeginLogin` 创建 self-contained、one-shot 的 PKCE session。它不会打开浏览器或
+启动 loopback listener；调用方自行打开 `AuthorizationURL()`，再把 callback URL 或
+bare code 交给 `Complete`。
+
+```go
+session, err := pixiv.BeginLogin(pixiv.LoginOptions{HTTPClient: httpClient})
+if err != nil { /* 处理错误 */ }
+if !session.AcceptsCallbackURL(callbackURL) {
+    // 在消耗 one-shot session 前拒绝 callback。
+}
+credentials, err := session.Complete(ctx, callbackURL)
+```
+
+`AcceptsCallbackURL` 是非消耗性的，不联网。官方 HTTPS callback 必须包含本 session 的
+`state`；支持的 `pixiv://account/login` callback 可以省略 `state`，但如果提供则必须匹配。
+`IsOfficialOAuthCallbackURL` 与 `IsOfficialOAuthStartURL` 会校验精确 origin/path，且不访问 Pixiv。
+session 的格式化输出不会暴露 verifier、state、authorization code 或 callback URL。
+
+FANBOX 使用显式 `FANBOXSESSID` 值认证：
+
+```go
+client, err := fanbox.Open(fanbox.SessionCredentials{FANBOXSESSID: session})
+```
+
+> [!IMPORTANT]
+> Pixiv refresh token 与 FANBOX session 相互独立，永不转换。
+
+FANBOX 的连接选项均为显式可选项：
+
+```go
+client, err := fanbox.OpenWith(credentials, fanbox.Options{
+    ProxyURL:  "https://proxy.example:8443", // 仅 native HTTP(S) CONNECT
+    UserAgent: "my-native-agent/1.0",          // 仅修改 native header
+    FlareSolverr: &fanbox.FlareSolverrOptions{
+        URL:      "http://127.0.0.1:8191",
+        ProxyURL: "socks5://solver-upstream.example:1080",
+    },
 })
 ```
 
-`NewClient` 不读本地文件，也不网络认证。`OpenDefault` 使用 `AuthFilePath`、`ConfigFilePath`、`RefreshToken`、`UserID` 或现有默认路径和环境选择认证；需要 runtime configuration 的公开操作重新取得一次 configuration/auth snapshot。多次续页若要求同一 snapshot，调用 `client.Snapshot(ctx)`。显式 token 导出是例外，只读取 auth store。
-
-`NewClientOptions` 只保留直连客户端字段：`AccessToken`、`WebFallbackEnabled`、HTTP、App/Web endpoint、`ResourcePolicy`、可选 `ResourceCachePath` 与 `RequestInterval`。`OpenDefaultOptions` 则拥有本地路径、OAuth endpoint、账号选择、HTTP/endpoint、资源策略/缓存路径与请求间隔。两种 options 不混入无效字段；`OpenDefault` 每次 snapshot 从本地 `web_fallback_enabled` 读取 Web fallback 设置。
-
-### HTTP client 与请求生命周期
-
-未提供 options 的 `HTTPClient` 时，SDK 为该 `Client` 创建专用的 `http.Client`，其整请求 `Timeout` 为零；App API、Web API、OAuth 与资源读取复用这一个 client，不依赖全局可变的 `http.DefaultClient`。零值只表示 SDK 不添加覆盖 response body 读取的固定总时限；Go 默认 transport 的连接、TLS handshake 与 idle connection 等阶段策略保持不变。
-
-每次操作的总生命周期由传入的 `context.Context` 控制。调用方应按操作建立 cancel 或 deadline；`context.Canceled` 与 `context.DeadlineExceeded` 可继续通过 `errors.Is` 判断。`OpenResource` 返回后，context 也覆盖后续 body 读取，调用方须关闭 body，并在不再消费流时取消 context。
-
-显式提供 options 的 `HTTPClient` 时，SDK constructor 保留同一指针及其 `Timeout`、`Transport`、cookie jar 与 redirect policy，不修改调用方对象。需要 client-wide timeout 的集成方可在该 client 上自行设置；SDK 不另加默认 timeout。资源请求按下文安全契约使用逐请求副本和 redirect 校验。完整决策见 [ADR 0010](../maintainers/adr/0010-http-client-timeout-and-context.md)。
-
-## 读取与写入
-
-`Client` 提供以下稳定的公开操作：
-
-| 类别 | 方法 |
-| --- | --- |
-| 作品与推荐 | `SearchIllust`、`SearchNovel`、`SupportedDrawingTools`、`IllustDetail`、`IllustPages`、`IllustRelated`、`IllustRanking`、`IllustRecommended`、`MangaRecommended`、`NovelRecommended`、`UserRecommended`、`FollowingIllusts`、`TrendingTagsIllust`、`IllustSeries`、`UgoiraMetadata`。 |
-| 用户 | `SearchUser`、`UserDetail`、`UserArtworks`、`UserBookmarks`、`UserFollowing`、`CurrentUserID`。 |
-| 写操作 | `AddBookmark`、`RemoveBookmark`、`FollowUser`、`UnfollowUser`。 |
-| 账号/配置 | `ImportAccount`、`ListAccounts`、`SelectAccount`、`RemoveAccount`、`ExportAccountRefreshToken`、`ExportAuthBundle`、`RestoreAuthBundle`、`CheckAccount`、`CheckRefreshToken`、`Refresh`、`RefreshAccount`、`PremiumStatus`、`RefreshPremiumStatus`、`GetConfig`、`SetConfig`、`UnsetConfig`；bundle codec 是 package-level function。 |
-| 登录 | `StartLogin`、`CompleteLogin`、`BuildLoginAuthorizationURL`。集成方负责浏览器、loopback server 或 TTY 的运行。 |
-| 资源 | `Download`、`DownloadAll`、`DownloadWith`、`DownloadAllWith`、`ParseResourceRef`、`OpenResource`、`DownloadResource`。 |
-
-请求型方法使用命名 request，例如 `SearchIllustRequest`、`SearchNovelRequest`、`UserArtworksRequest`、`UserBookmarksRequest`、`UserFollowingRequest`、`AddBookmarkRequest`、`FollowUserRequest`。返回模型为 `IllustListResult`、`NovelListResult`、`UserListResult`、`IllustDetail`、`UserDetailResult` 等，均来自顶层 `pixiv` package。
-每个 public `Illust` 都包含稳定作品页 URL `https://www.pixiv.net/artworks/{id}`，JSON 首字段为 `url`。SDK 不提供点赞数字段，不得把收藏数文案为点赞。
-
-### 下载：新手层与高级层
-
-`Download(ctx, src)`、`DownloadAll(ctx, srcs)` 是新手入口。`src` 可为正整数作品 PID、官方作品 URL 或 `ResourcePolicy` 允许的 CDN 直链；默认使用 `./downloads`、`{author} - {title}_{id}`、原图、全部页与 `2 × runtime.GOMAXPROCS(0)` 自动并发。
-
-`DownloadWith`、`DownloadAllWith` 接受 `DownloadOptions`，可控制 `DownloadPath`、`FilenameTemplate`、`DirectoryTemplate`、闭区间 `Pages` 或支持开区间的 `PageSelection`、`Quality`、`UgoiraMode`、`Concurrency`、已编译的 `Filter`、`ArchivePath`、`WriteMetadata`、`RetryPolicy` 与只观察的 `Progress` 回调。`UgoiraMode` 默认为 `gif`，还支持 `apng`、无损 `zip` 与 `frames`（帧文件及时间描述）。作品模板支持 `{id}`、`{title}`、`{author}`、`{author_id}`、`{date}`、`{tags}`、`{num}`；目录模板只能是安全相对路径，`{num}` 从 0 开始。SQLite archive 只在一个作品的全部选中产物与要求 sidecar 都成功后记录该作品；sidecar 是原子 `{artifact}.json`，包含 public `Illust`、相对产物路径、页码、模式和可用的 ugoira 帧时序。CDN 直链使用 URL 文件名，并拒绝筛选、页选择、派生质量、作品模板及 sidecar 等依赖作品元数据的选项。`Concurrency==0` 为自动；任意正数精确采用且不设人为上限。ugoira 不支持页选择和非 original 质量。使用 `DownloadOptions` 时，具有效 `Retry-After` 的 429、5xx 与可重试传输错误默认额外重试三次（1/2/4 秒）；取消、永久本地错误和 4xx 不重试。
-
-`Progress func(DownloadProgress)` 由下载 worker 直接并发调用。每个事件提供输入 `SourceIndex`、从 1 开始的 `Page`、目标路径、可用作品元数据、单资源字节数与批次字节数。设置该回调后，SDK 会对每项资源安全执行 HEAD 探测；全部资源大小确定时，`TotalBytesKnown` 与 `TotalBytes` 描述整个批次，否则仍持续提供资源与批次的已传输字节。已验证残片的字节从首个事件开始计入。回调应保持非阻塞，取消传入的 context 即可停止传输。
-
-`DownloadResource(ctx, ref, destination)` 是显式 raw-resource 高级 API，返回带 `miss`、`revalidated`、`resumed` 或 `refreshed` 状态的 `ResourceDownloadResult`；它取代旧 `Download(ctx, ResourceRef, path)`。
-
-配置也采用强类型：`GetConfig`、`SetConfig`、`UnsetConfig` 使用 `ConfigKey` 常量；写入由 `StringConfigInput`、`BoolConfigInput`、`DurationConfigInput` 构造。CLI/MCP 的文本边界使用 `ParseConfigKey` 与 `ParseConfigInput`。敏感中继密钥不能走通用 setter，只能用 `SetLoginRelaySecret` 写入；读取只返回脱敏的“是否存在”标记。
-
-### 本地 Pixiv 引用解析
-
-`ParseReference(raw)` 不执行 I/O，接受正整数作品 ID 或严格的官方 Pixiv HTTPS URL，并返回
-`Reference{Kind, ID}`：ID 与 `/artworks/{id}` 的 `Kind` 是 `artwork`，`/users/{id}` 与
-`/users/{id}/artworks` 的 `Kind` 是 `user`，`/users/{id}/bookmarks/artworks` 是 `user_bookmarks`，
-`/user/{id}/series/{series_id}` 是 `illust_series`。host 必须为 `pixiv.net` 或 `www.pixiv.net`，可带可选
-locale、query 与 fragment。`ParseArtworkReference(raw)` 与 `ParseUserReference(raw)` 是领域类型安全变体（后者也接受用户 ID），`Reference.URL()` 返回规范
-作品或用户页 URL。解析器不跟随跳转、不抓取 HTML，拒绝其他 Pixiv 属性或 URL 形式，校验错误也不会复现输入 URL。
-
-`UserArtworksRequest.UserID` 等 SDK 用户 ID 必填；“省略 UID 就是自己”是 CLI/MCP adapter 行为，外部 Go 调用方先调用 `CurrentUserID(ctx)` 后再组装 request。
-
-`UserDetail` 固定返回 `UserDetailResult{User, Profile, ProfilePublicity, Workspace}` 四个 envelope。上游任一 envelope 缺失、`null`、非 object 或 `user.id <= 0` 时，SDK 返回带 `OperationUserDetail`、`BackendAppAPI` 和请求 UID 的 `malformed_upstream_response`；不会暴露上游 body、URL 或凭据。`User.ProfileImageURLs.Medium`、`Profile` 中的网页/背景/社交 URL 以及 `Workspace.WorkspaceImageURL` 均是可选指针，缺失、`null` 与空字符串统一为 `nil`；未公开的文本、计数和字段保持 Go 零值。
-
-四类个性化推荐均是 App API 认证操作：插画/漫画使用 `IllustRecommendedRequest`，小说使用 `NovelRecommendedRequest`，作者使用 `UserRecommendedRequest`；各自返回独立的 opaque `NextCursor`。CLI/MCP 的 `all` 仅是边缘层按插画、漫画、小说、作者顺序组合四次 SDK 调用，不改变 SDK 的单流 cursor 契约。
-
-认证输入为原始 Pixiv App API refresh token。无效凭据输入会在 OAuth 请求前返回不含原始输入的 `invalid_argument`。
-
-`ExportAccountRefreshToken(userID int64)` 是显式的本地 secret 导出接口，只供需要把已存凭据交给另一个
-可信本地集成的调用方使用。`userID == 0` 选择 `auth.json.default_user_id`，正数选择精确账号；它只读取
-auth store，不读取 `PIXIV_REFRESH_TOKEN` 或 runtime config，不刷新、不联网、不修改文件。`NewClient` 没有
-本地 auth path 时返回 `unsupported`。返回值是应按 opaque secret 处理的原始 refresh token；调用方不得
-记录、格式化进错误、写入遥测或经 MCP/JSON 暴露。
-
-### 认证 bundle 与离线 restore
-
-`AuthExportSelection{}` 选择本地 default，`AuthExportSelection{UserID: id}` 精确选择单账号，`AuthExportSelection{All: true}` 选择全部已存账号。`UserID` 不能为负，也不能和 `All` 同用。`Client.ExportAuthBundle` 在锁内取得只读本地 snapshot：忽略环境 token 与 runtime 账号覆盖，不联网、不刷新、不修改状态。它返回 `AuthExportBundle{Schema, Version, DefaultUserID, Accounts}`；每个 `AuthExportSecretAccount` 包含 UID、可选 username 与 opaque refresh-token secret。
-
-`EncodeAuthExportBundle` 输出带末尾换行的稳定缩进 JSON。`DecodeAuthExportBundle` 使用 strict codec，拒绝不支持的 schema/version、未知或重复字段、尾随 JSON、空账号列表、重复/非正 UID、空 refresh token，以及未指向账号列表成员的 default UID。顶层与 account object 的 key 必须严格匹配 canonical 拼写和大小写；case alias 以及 canonical key 与 alias 冲突均会被拒绝。两者只返回脱敏 typed error，不包含 bundle 内容。
-
-`Client.RestoreAuthBundle` 校验已 decode 的 bundle，在锁内按 UID merge 本地 auth state，并执行一次原子 store write；全过程不使用 OAuth 或 transport。已有账号更新，新账号添加；local default 非空时保持不变，仅为空时采用 bundle default。`AuthRestoreResult` 只报告 `DefaultUserID`、不含 secret 的 `Added` 与 `Updated` 账号摘要。
-
-该格式是未加密、含 secret 的 point-in-time backup，不是 live sync。调用方必须像保护原 token 一样保护编码 bytes，并考虑 token rotation 后旧 bundle 或其他机器副本 stale。
-
-`BuildLoginAuthorizationURL(challenge, state)` 仅构造官方授权 URL，适合自行持有 PKCE/state 的浏览器 adapter；它不生成或保存凭据。需要 SDK 管理 PKCE/session 时使用 `StartLogin`。
-
-### 插画搜索筛选
-
-`SearchIllustRequest.Filters` 是独立于 App/Web wire 参数的稳定 `SearchIllustFilters`：
-
-| 字段 | 稳定值 |
-| --- | --- |
-| `Rating` | `all`、`sfw`、`r18`、`r18g`、`mature` |
-| `ContentType` | `all`、`illust-and-ugoira`、`illust`、`manga`、`ugoira` |
-| `AIMode` | `all`、`exclude`、`only`；Pixiv `AIType==2` 表示 AI 生成 |
-| `AspectRatio` | `all`、`landscape`、`portrait`、`square` |
-| `Resolution` | `all`、`high`、`medium`、`low`；三档分别要求宽高均 `>=3000`、均在 `1000..2999`、均 `<=999` |
-| `Tool` | 版本化绘图工具目录中的精确值；唯一的单编辑拼写错误会给出建议，含混前缀返回 `invalid_argument`。 |
-| `BookmarkMin` / `BookmarkMax` | 可选、包含边界的非负公开收藏数；需要 App OAuth 和有效的 Pixiv 高级会员；`Min` 不得大于 `Max`。保存账号的 `OpenDefault` 会在请求前检查缓存的自身 profile 状态；非会员会在本地得到 `forbidden`。 |
-
-枚举零值规范化为 `all`，`Tool` 会去除首尾空白；未知枚举返回 `invalid_argument`，不会发起上游
-请求。`SearchIllustRequest.Target` 还接受搜索标签、标题、说明文字的 `keyword`；`Duration` 接受
-`within_last_day|within_last_week|within_last_month`；`StartDate`、`EndDate` 是可选、包含边界的
-`YYYY-MM-DD`。日期区间不能与 `Duration` 同用，且起始不得晚于结束。认证路径把分辨率、横纵比、工具、作品类型、`exclude` AI、
-日期边界和仅限 Pixiv 高级会员的收藏数边界翻译为 App 服务端参数；分级与 `only` AI 再基于当前 App 批次的规范化字段筛选。`Illust.Tools []string` 保留 App 返回的工具顺序和
-原值；该字段不是收藏数筛选。
-
-`SupportedDrawingTools() []string` 返回版本化绘图工具目录及其文档顺序，不发起网络请求，并返回可由调用方修改的防御性副本。`PremiumStatus(ctx)` 返回已保存认证账号缓存或新读取的会员状态快照；
-`RefreshPremiumStatus(ctx)` 强制读取 profile 并持久化结果。`OpenDefault` 使用
-`[premium] status_cache_ttl`（默认 `24h`，`0s` 禁用复用）。直接 `NewClient` access token 没有可验证的账号 UID，不能执行这项已保存账号预检。
-
-### 本地插画表达式筛选
-
-`CompileIllustFilter(expression)` 会编译不透明、无副作用的 `*IllustFilter`；对一个 public `Illust` 调用 `Match` 即可判断。字段仅限 `id`、`userId`、`userName`、`type`、`title`、`createDate`、`pageCount`、`bookmarkCount`、`viewCount`、`xRestrict`、`aiType`、`width`、`height`、`tags`、`tools`、`rating`、`aiMode`、`aspectRatio`、`resolution`、`drawTool`。表达式只允许布尔比较、`and`/`or`/`not`、`in`/`not in`、数组字面量和 Expr 原生 `any`/`all`，例如 `any(tags, # in ["miku", "vocaloid"]) and bookmarkCount >= 5000`。算术、正则、对象/map/成员访问、变量、条件表达式、管道、反射和其他函数都会在联网前被拒绝。编译错误会指出无效字段、类型或源码列，失败不会伪装为空结果。
-
-### 小说搜索与用户搜索来源
-
-`SearchNovel(ctx, SearchNovelRequest{...})` 仅支持认证 App API。`Target` 与插画搜索一样支持稳定值
-`partial_match_for_tags`、`exact_match_for_tags`、`title_and_caption`；`Sort` 支持 `date_desc|date_asc`；
-`Duration` 可为空，或为 `within_last_day|within_last_week|within_last_month`。`NovelSearchFilters` 包含
-`Rating`、`MinTextLength`、`MaxTextLength` 与 `OriginalOnly`。正文长度为零时关闭相应边界；非零上界小于下界时返回
-`invalid_argument`。
-
-App endpoint 没有经验证的分级、正文长度或原创 wire 参数。SDK 改为按稳定结果字段
-`Novel.XRestrict`、`Novel.TextLength`、`Novel.IsOriginal` 筛选。每个搜索响应都必须具备三项字段；缺失时返回 typed
-`malformed_upstream_response`，不会猜测匹配或返回无标记 partial result。返回的 `Novel` 还提供稳定 URL
-`https://www.pixiv.net/novel/show.php?id={id}`。
-
-`SearchUser` 始终在 `UserListResult.Source` 标识结果语义。认证 App 搜索为 `app_search`；匿名 Web fallback 为
-`related_illust_authors`，即从插画搜索去重得到的作者列表，而不是官方用户名搜索。同一 cursor 序列中的来源稳定不变。
-
-### 插画排行榜
-
-`IllustRankingRequest.Mode` 支持全部 16 种 App API mode：`day`、`day_male`、`day_female`、`week`、
-`week_original`、`week_rookie`、`month`、`day_manga`、`week_manga`、`month_manga`、`week_rookie_manga`、
-`day_r18`、`day_male_r18`、`day_female_r18`、`week_r18`、`week_r18g`。前七种仍属于匿名 Web 白名单；后九种
-必须认证，无 refresh token 时会在请求 Web 前返回 `unauthorized`，绝不会静默变成日榜。
+生产 native transport 使用 tls-client 的 Chrome 146 TLS profile。空 `UserAgent` 使用内置 Firefox 148 HTTP header baseline；自定义值不会改变 TLS profile，也不保证能绕过 Cloudflare。
+`FlareSolverr` 为 nil 时完全关闭，只有 native 请求被严格识别为 Cloudflare challenge 后才会调用。
+solver service URL 与 upstream proxy 独立于 native proxy；public constructor 不联网。
 
 ## 分页
 
-列表 result 的 `NextCursor` 类型为 `pixiv.Cursor`。将它原样传到同一个请求的 `Cursor` 字段：
+列表操作返回 `sdk.Page[T]` 与不透明 `Cursor`：
 
 ```go
-result, err := client.UserArtworks(ctx, pixiv.UserArtworksRequest{UserID: uid})
-if err != nil { /* handle */ }
-next, err := client.UserArtworks(ctx, pixiv.UserArtworksRequest{
-    UserID: uid,
-    Cursor: result.NextCursor,
-})
-_ = next
+page, err := client.SearchArtworks(ctx, pixiv.SearchArtworksRequest{Word: "miku"})
+for {
+    for _, artwork := range page.Items { /* ... */ }
+    if page.Next.IsZero() { break }   // 没有剩余 cursor 时停止
+    request.Cursor = page.Next
+    page, err = client.SearchArtworks(ctx, request)
+}
 ```
 
-cursor 是版本化、不透明、绑定操作和完整查询的 token；插画 `SearchIllust` cursor 同时绑定 target、duration、日期边界，以及规范化后的
-`Rating`、`ContentType`、`AIMode`、`AspectRatio`、`Resolution`、`Tool` 与收藏数边界；小说搜索 cursor 绑定 target、sort、duration、
-分级、正文长度边界与原创条件。改变任一筛选字段后复用旧 cursor 会返回 `invalid_argument`。cursor 不可解析、编辑、跨请求复用或替换为上游 offset/page。
-SDK 不以 `page` 为输入；CLI/MCP 在边缘层将逻辑 `page`/`limit` 转为 cursor 遍历。
+> [!NOTE]
+> 游标绑定 product、operation、binding version 与查询摘要；用不同查询复用游标会返回 `InvalidCursor`。
 
-## 路由
+对 identity-scoped operation，`pixiv.New` 创建的 Client 没有已验证的账号 ID，
+因此其续页 cursor 是 ephemeral，并携带只用于绑定该 Client 实例的非敏感标识；
+同一 Client 可以继续，其他 Client 或进程会返回 `InvalidCursor`。通过
+`pixiv.Open` 创建的 Client 则把 cursor 绑定到已验证的账号 identity。
 
-有 refresh token 时，插画搜索由 App API 执行；认证、网络、服务端失败返回对应 typed error。
-`NewClient` 无 refresh token 且 `WebFallbackEnabled=true` 时，匿名白名单读操作使用 Web API；
-`OpenDefault` 则每次 snapshot 读取本地 `web_fallback_enabled`。匿名 `SearchIllust` 只执行 Web 能可靠
-表达的筛选；`Rating` 为 `r18`、`r18g`、`mature`、`Target=keyword` 或收藏数边界时在联网前返回 `unauthorized`。
+## Pixiv 读取操作
 
-`SearchNovel` 使用 App 认证。`SearchUser` 在认证态使用 App 搜索；其匿名 allowlist 路径以
-`Source=related_illust_authors` 输出。
+| 操作 | 入参要点 | 返回 | 常见错误 |
+| --- | --- | --- | --- |
+| `SearchArtworks` | 关键词、target、排序、日期边界、类型、AI、横纵比、分辨率、工具、收藏数边界 | `Page[Artwork]` | `InvalidArgument`（未知枚举、非法日期、非法收藏范围） |
+| `SearchNovels` | 关键词、target、排序、duration | `Page[Novel]` | `InvalidArgument` |
+| `SearchUsers` | 关键词 | `Page[User]` | `InvalidArgument` |
+| `ArtworkRanking` | mode（默认 `day`）、可选 `YYYY-MM-DD` | `Page[Artwork]` | `InvalidArgument` |
+| `Artwork` / `Novel` / `User` | 正数 typed ID | 详情记录 | `NotFound`、`InvalidArgument` |
+| `ArtworkSeries` / `NovelSeries` | 正数 series ID、cursor | 系列分页（novel 还返回系列 metadata） | `InvalidCursor` |
+| `ArtworkComments` / `NovelComments` | 正数 ID、cursor | `CommentPage` | `NotFound` |
+| `UserArtworkBookmarks` / `UserArtworkBookmarkTags` / `UserNovelBookmarks` | `UserID`、`Restrict`、`tag`、cursor | typed 分页 | `InvalidArgument`、`InvalidCursor` |
 
-认证态的 `IllustDetail`、`IllustPages` 与 `UgoiraMetadata` 只使用 App API。多页 `IllustPages` 直接使用 App
-`meta_pages`；单页从 App 的单页/图片字段派生 `meta_pages[0]`，公开 JSON 结构保持不变。缺页或 page count
-不一致会明确返回 `malformed_upstream_response`；App 失败返回该请求的 typed error。
-`Illust.Caption` 保留原始 App `caption` 或匿名 Web `description`；是否将 HTML 转为展示文本由 public SDK 之外的
-展示适配层决定。
+关键语义：
 
-`UgoiraMetadata.UgoiraMetadata` 提供已验证的下载资源对：非空 `download_url` 与 `download_quality`（`medium`
-或 `original`）。`zip_urls.original` 只有实际取得 original ZIP 时才输出。认证 App 响应选择 medium ZIP
-（`download_quality=medium`），不请求 Web 补全；匿名 Web 响应若取得 original 则选择 `original`。`Download`
-使用 `download_url`，调用方不得假设 `zip_urls.original` 必定存在。匿名 `IllustDetail` 仍依次读取 Web detail
-与 pages，任一阶段失败都不返回 partial result。完整决策见 [ADR 0006](../maintainers/adr/0006-original-ugoira-resource-resolution.md)。
-
-## 资源与图片代理
-
-```go
-ref, err := client.ParseResourceRef(rawURL)
-if err != nil { /* reject */ }
-response, err := client.OpenResource(ctx, pixiv.OpenResourceRequest{
-    Ref: ref, Range: request.Header.Get("Range"), IfRange: request.Header.Get("If-Range"),
-})
-if err != nil { /* map typed error */ }
-defer response.Body.Close()
-// 使用 response.StatusCode、response.Header，流式 io.Copy 到下游。
-```
-
-`ResourceRef` 只是可持久化引用；每次 `OpenResource` 都重新校验。默认仅官方 Pixiv 资源，调用方可在 `ResourcePolicy.Mirrors` 加入明确 host/path prefix。SDK 使用 `Range`、`If-None-Match`、`If-Modified-Since`、`If-Range` 条件 header，过滤响应 header，并验证 redirect，避免 SSRF。`DownloadResource` 在 `.pixiv-cache`（或 `ResourceCachePath`）保存元数据和残片：已完成文件以 ETag/Last-Modified 重验证，只以 `Range` + `If-Range` 续接已验证残片，并原子发布完成文件；没有 validator 时绝不冒险续传。
-
-仅对幂等 App API JSON 读取：首次 HTTP 429 且 `Retry-After` 是有效秒数或 HTTP-date 时，SDK 等待一次并重试一次；
-等待受调用方 context 取消控制。header 缺失/非法、第二次 429 和其他错误都保留真实 typed error；写操作和资源下载
-绝不重放。
+- `SearchAIModeOnly` 按规范化后的 `Artwork.AIType == 2` 对当前返回批次做本地筛选；该 mode 会进入 cursor 绑定，因此不能把另一种 AI mode 的续页 cursor 复用过来。
+- 只有上游明确提供时才填充评论总数和访问控制 metadata。成功的空列表使用非 nil 的空 `Items` slice 表示，不伪造错误或总数。
+- `ArtworkBookmark` 用空 `Restrict` 与空 tags 表示当前作品未收藏；`AddBookmark` 校验可见性值，不把未知值静默交给服务端默认处理。
+- `BookmarkMin` 与 `BookmarkMax` 是可选、闭区间、非负的 App API 候选边界。public SDK 只负责校验并转发为 `bookmark_num_min`/`bookmark_num_max`，不做 Premium 前置探测，不宣称全局完备，也不静默切换候选策略。application 若做本地精确复核，应另行报告已解析的策略与结果完备性。
 
 ## 错误
 
-所有公开失败可为 `*pixiv.Error`：
+所有失败都是带稳定 `Reason` 的 `*sdk.Error`：
 
-```go
-var pixivErr *pixiv.Error
-if errors.As(err, &pixivErr) {
-    switch pixivErr.Code {
-    case pixiv.CodeArtworkUnavailable:
-        // 删除、私密、地区/权限不可用等可跳过项目。
-    case pixiv.CodeRateLimited:
-        // 调用方按自身策略调度。
-    }
-}
-if errors.Is(err, pixiv.ErrUnauthorized) { /* re-auth */ }
+```text
+invalid_argument, invalid_cursor, unauthorized, credentials_expired, forbidden,
+not_found, content_unavailable, challenge_required, rate_limited, upstream_error,
+upstream_unavailable, malformed_upstream_response, resource_forbidden,
+local_state_error, removed_setting
 ```
 
-稳定 code 包括 `invalid_argument`、`artwork_unavailable`、`unauthorized`、`forbidden`、`unsupported`、`rate_limited`、`upstream_error`、`upstream_unavailable`、`malformed_upstream_response`。错误带 operation/backend/retryable/status/已验证 ID 与脱敏诊断。
+支持 `errors.Is`/`errors.As`，并保留 `context.Canceled`/`DeadlineExceeded`。
+错误链不包含 URL、header、token、Cookie 或配置内容。
 
-补全失败的阶段可直接从 typed error 观察：
+```go
+if errors.Is(err, sdk.Unauthorized{}) {
+    // 重新认证
+} else if sdk.ReasonOf(err) == sdk.RateLimited {
+    // 用 RetryAdvice 退避
+}
+```
 
-| 调用与失败阶段 | 返回结果 | `Operation` | `Backend` |
-| --- | --- | --- | --- |
-| 认证 `IllustDetail` 的 App detail/pages 失败 | `nil` | `OperationIllustDetail` | `BackendAppAPI` |
-| 认证 `IllustPages` 的 App detail/pages 失败 | `nil` | `OperationIllustPages` | `BackendAppAPI` |
-| 匿名 `IllustDetail` 的 Web pages 失败 | `nil` | `OperationIllustPages` | `BackendWebAPI` |
-| 匿名 `IllustDetail` 的 Web detail 失败 | `nil` | `OperationIllustDetail` | `BackendWebAPI` |
-| 认证 `UgoiraMetadata` 的 App metadata 失败 | `nil` | `OperationUgoiraMetadata` | `BackendAppAPI` |
-| 匿名 `UgoiraMetadata` 的 Web metadata 失败 | `nil` | `OperationUgoiraMetadata` | `BackendWebAPI` |
+## 资源
 
-例如认证 pages 读取返回 HTTP 403 时，错误为 `CodeForbidden`、`BackendAppAPI`、`OperationIllustPages`，并保留 `UpstreamStatus=403`。调用方应按这些字段处理失败。
+程序化 SDK 调用方通过 `sdk.Resource` 获取第一方媒体；它有两条 runtime 路径：
 
-`upstream_unavailable` 的网络传输失败还可通过 `Error.TransportKind` 区分安全子类：`dns`、`tls`、`proxy`、`connection_refused`、`connection_reset`、`timeout`、`unknown`。分类只依据 Go 标准库的 typed/wrapped cause，不解析错误文本；例如没有 typed 信号的 HTTPS proxy CONNECT 非 200 文本错误会保持 `unknown`。`Error()` 只输出稳定枚举，不输出 DNS name、代理 userinfo、证书内容或原始 cause。`context.Canceled` 与 `context.DeadlineExceeded` 不设置 transport 子类，继续通过 `errors.Is` 判断。
+- `Resource.URL` + `Resource.RequestHeaders` — 直接流式读取或无落盘反代。
+- `Resource.Ref` — 交回 `OpenResource`/`SaveResource` 做 SDK 校验读取（scheme/host/path 复验与 redirect 安全）。
 
-`OpenDefault` 和本地账号/配置操作的 `invalid_argument` 还可通过 `Error.LocalStateKind` 区分安全子类：`auth_malformed`、`config_malformed`、`permission_denied`、`not_found`、`invalid_proxy`、`account_mismatch`、`unavailable`、`unknown`。顶层 code、operation、backend、user ID 与 retryable 语义保持不变；`account_mismatch` 仍带 `oauth` backend 和所选 user ID。`errors.Unwrap` 只返回固定的脱敏原因，不返回原始 filesystem/parser 错误、路径、配置/auth 内容或含 userinfo 的代理 URL；`Error()` 也只输出白名单枚举。正常加载时缺失的可选 `auth.json` 或 `config.toml` 继续视为空状态并成功，不会产生 `not_found`。
+```go
+// 直接流式读取，不落盘。
+page, _ := client.ArtworkPages(ctx, pixiv.ArtworkPagesRequest{ArtworkID: id})
+image := page[0].Image.Resource
+resp, err := client.OpenResource(ctx, sdk.OpenResourceRequest{Ref: image.Ref})
+if err != nil { /* 处理 */ }
+defer resp.Body.Close()
+// 按需用 image.URL + image.RequestHeaders 从 resp.Body 读取
+```
 
-`RestoreAuthBundle` 保存 merge 后的 auth store 失败时，其 error 还会设置 `Error.LocalWriteCommitOutcome`：`not_committed` 表示 replacement 未发生；`committed` 表示 replacement 已发生但后续 durability/cleanup 失败，调用方必须重新加载目标；`unknown` 表示 recovery 无法确认目标状态，需要人工检查。不得把 `committed` 或 `unknown` 报告为成功 rollback。
+```go
+// 通过 SDK 校验路径保存（复验 URL/redirect，原子写入）。
+_, err := client.SaveResource(ctx, sdk.SaveOptions{
+    Ref:  image.Ref,
+    Dest: "./out.png",
+})
+```
 
-## 调用方责任
+> [!IMPORTANT]
+> `Resource` 本身不保存 Cookie；绑定的 FANBOX client 只可按策略把 session 发送给 FANBOX API 与 `downloads.fanbox.cc`，不会发送给 Pixiv/CDN 或第三方 host。`Resource` 不携带 token 或 Cookie；`RequiresCredentials` 表示资源仍需要调用方不可见的产品凭据。
 
-调用方 adapter 决定采集模式、budget、filter、cursor 存储、数据库事务、任务调度、重试与对外 HTTP API。`atri-setu-api` 的随机选图、审查、图库和图片代理不属于 SDK；它可使用 SDK 的规范化模型和资源流实现这些功能。
+### Runtime model 与输出 DTO
 
-更多边界说明见 [ADR 0009](../maintainers/adr/0009-public-pixiv-sdk-and-caller-adapter.md) 与 [ADR 0010](../maintainers/adr/0010-http-client-timeout-and-context.md)。
+运行时 product model 与 CLI/MCP JSON 边界的值是有意分离的。`sdk.Resource` 在进程内 streaming 操作中可以带当前可用的 `URL`、转发所需的 `RequestHeaders` 和 `ExpiresAt`；这些字段绝不进入输出 DTO。
+
+序列化结果时使用显式的逐字段转换器：Pixiv 使用 `pixiv.ToArtworkDTO`、`pixiv.ToNovelDTO`、`pixiv.ToUserDTO`、`pixiv.ToUserDetailDTO`、`pixiv.ToUserPreviewDTO`、`pixiv.ToCommentDTO`、`pixiv.ToNovelContentDTO`、`pixiv.ToUgoiraMetadataDTO` 及其相关转换器；FANBOX 使用对应的 `fanbox.To*DTO` 转换 creator、post、block、asset、user 与 tag。`sdk.ToResourceDTO` 只输出 opaque `ref` 与可选的 `requires_credentials` metadata。CLI/MCP 只编码这些 DTO、管道 `Record` 与 typed envelope，不反射遍历或直接 JSON 编码运行时 product model。
+
+Pixiv 的 `Resource.Ref` 只包含资源 kind、稳定 ID、page 和可选 variant，绝不嵌入当前或签名媒体 URL。SDK 会优先复用当前 Client 保存的 locator，或重新读取对应 artwork、novel、user、ugoira 或小说正文 metadata 后再打开；解析出的 URL 与每次 redirect 都会再次通过 allowlist 校验。`SaveResource` 通过原子目标写入；上游提供 `Content-Length` 时，`SaveProgress.Total` 会报告该值。资源请求只使用显式允许的 header，绝不发送调用方 Cookie jar。
+
+FANBOX 的 `Resource.Ref` 只包含稳定 identity（资源 kind、所属 creator 或 post，以及 attachment id），绝不嵌入当前可用或签名媒体 URL，因此 locator 轮换不会改变缓存键，存储的 ref 可跨 session 重新打开。`OpenResource` 与 `SaveResource` 优先复用 session 内 locator，否则通过重新拉取所属 creator 或 post 并按稳定 id 定位附件来重新解析出新鲜且经 allowlist 校验的 locator。session cookie 只发送给需要凭据的 `downloads.fanbox.cc` host，绝不发送给公开 CDN 或第三方 host；`RequiresCredentials` 表示该 locator 仍需要 session。
+
+## URL 引用
+
+`pixiv.ParseURL` 与 `fanbox.ResolveURL` 在无网络的情况下把页面 URL 转为类型化引用，`Reference.CanonicalURL` 返回无 tracking 的规范形式。
+
+```go
+ref, err := pixiv.ParseURL(pageURL)
+if err != nil { /* 处理 */ }
+canonical := ref.CanonicalURL()
+```
+
+### 可选 DTO 字段
+
+输出 DTO 对上游响应未提供的字段采用**省略**而不是发 `null` 或空值：例如 `ArtworkDTO` 在 SDK 没有更新时间、没有工具列表或没有页面列表时省略 `updated_at`、`tools` 与 `pages`（pages 只在 detail 路径填充）。调用方应把缺失的 key 视为未知值；MCP tool 发布的 JSON schema 相应把这些字段标为可选。
+
+## FANBOX
+
+`sdk/fanbox` 提供 creator 资料、帖子、标签、home 与 supporting 流、URL 解析与共享资源契约。已验证的 native route 使用 `api.fanbox.cc` root 下的 `post.info`、`post.listHome`、`post.listSupporting`、`post.listTagged` 与 `tag.getFeatured`；creator 分页跟随服务端返回的 `pageUrls`。帖子正文是结构化 block；图片和文件 block 会与资源索引关联，即使上游只通过 `imageMap` 或 `fileMap` 提供附件也会暴露可用资源。第三方 embed 只保留 canonical link。受限帖只带摘要、Body 为 nil。
+
+Home、Supporting 与 Creators 流属于 identity-scoped 操作：其续页 cursor 会绑定到已验证的 FANBOX 账号 ID（每个 client 经 session identity 解析一次的非敏感值），因此在一个账号下生成的 cursor 不能被重放到另一个账号的流上，会返回 `InvalidCursor`。CreatorPosts 与 TaggedPosts 是公开作用域，不携带账号绑定。与 Pixiv 一致，cursor 同样绑定 product、operation、binding version 与查询摘要。
+
+## 从 v0 迁移
+
+见[迁移指南](../en/v1.0.0-migration.md)了解 v0 `pixiv` 到 v1 `sdk/pixiv` 的切换。

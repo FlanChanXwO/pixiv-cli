@@ -1,0 +1,13 @@
+# 自动为 pull request 添加维护者 reviewer。
+addReviewers: true
+addAssignees: false
+
+reviewers:
+  - FlanChanXwO
+
+# 0 表示添加配置中的全部 reviewer。
+numberOfReviewers: 0
+
+skipKeywords:
+  - wip
+  - draft

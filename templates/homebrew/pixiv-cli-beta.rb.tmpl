@@ -31,7 +31,6 @@ class {{FORMULA_CLASS}} < Formula
   end
 
   test do
-    version_info = JSON.parse(shell_output("#{bin}/pixiv version --json"))
-    assert_equal "v#{version}", version_info["version"]
+    assert_equal "pixiv v#{version}\n", shell_output("#{bin}/pixiv --version")
   end
 end

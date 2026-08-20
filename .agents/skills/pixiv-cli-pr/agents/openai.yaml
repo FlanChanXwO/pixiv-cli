@@ -1,0 +1,4 @@
+interface:
+  display_name: "pixiv-cli PR"
+  short_description: "Create compliant pixiv-cli pull requests"
+  default_prompt: "Use $pixiv-cli-pr to prepare a compliant pixiv-cli pull request."

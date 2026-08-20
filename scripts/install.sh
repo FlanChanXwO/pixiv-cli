@@ -3,7 +3,7 @@ set -eu
 
 repository='FlanChanXwO/pixiv-cli'
 release_root="https://github.com/$repository/releases/latest/download"
-# 发布阶段会把 internal/update/release_sources.txt 注入此块。工作树模板保留直连，
+# 发布阶段会把 internal/update/source/release_sources.txt 注入此块。工作树模板保留直连，
 # 以便审阅中的脚本不会擅自依赖公共中继。
 # PIXIV_RELEASE_SOURCES_BEGIN
 release_sources='github-direct|{url}|{url}'
@@ -110,6 +110,9 @@ esac
 case "$asset" in
 */* | *\\*) fail 'release archive name must be a basename' ;;
 esac
+release_version=${asset#pixiv-cli_}
+release_version=${release_version%"$suffix"}
+[ -n "$release_version" ] || fail 'release archive name does not contain a version'
 
 expected=$(awk -v asset="$asset" '$2 == asset { print $1 }' "$checksums")
 [ "${#expected}" -eq 64 ] || fail 'release checksum is not a SHA-256 digest'
@@ -247,7 +250,11 @@ mkdir -p "$install_dir" || fail 'cannot create the install directory'
 staged=$(mktemp "$install_dir/.pixiv-install.XXXXXX") || fail 'cannot stage pixiv in the install directory'
 cp "$extract_dir/pixiv" "$staged" || fail 'cannot stage the verified binary'
 chmod 0755 "$staged" || fail 'cannot make the staged binary executable'
-"$staged" version --json >/dev/null 2>&1 || fail 'the staged binary failed its version preflight'
+version_output="$temporary/version.txt"
+expected_version_output="$temporary/expected-version.txt"
+"$staged" --version >"$version_output" 2>/dev/null || fail 'the staged binary failed its version preflight'
+printf 'pixiv v%s\n' "$release_version" >"$expected_version_output" || fail 'cannot prepare the expected version output'
+cmp -s "$expected_version_output" "$version_output" || fail 'the staged binary reported an unexpected version; the existing installation was not changed'
 target="$install_dir/pixiv"
 mv -f "$staged" "$target" || fail 'cannot replace the installed binary'
 staged=
@@ -279,4 +286,4 @@ elif [ "$path_mode" != skip ] && [ "$path_contains_install_dir" = false ]; then
 fi
 
 printf 'Installed pixiv to %s\n' "$target"
-"$target" version
+"$target" --version

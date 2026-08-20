@@ -1,26 +1,40 @@
 # MCP 工具
 
-[English](../en/mcp-tools.md) | 简体中文 | [日本語](../ja/mcp-tools.md) | [文档索引](../index.md)
+[English](../en/mcp-tools.md) | 简体中文 | [文档索引](../index-zh-CN.md)
 
-通过 `pixiv mcp` 启动 stdio server。启动前使用 CLI 配置账号与本地下载设置；运行时 MCP 按配置使用已选本地账号或 `PIXIV_REFRESH_TOKEN`。
+通过 `pixiv mcp` 启动 Pixiv stdio MCP server。MCP 使用自身 runtime 的凭据选择，
+不接受 CLI 数据命令的账号覆盖；stdout 始终保留给 JSON-RPC。
 
-所有实体读取 tool 返回 structured `{records, pagination?}`。每条 Record 都有稳定的 `id`、`type`、`url`，并保留适用的公开 SDK 字段；text Content 只提供同一操作的简短摘要。
+## 错误、分页与输出
 
-## 错误与分页
+不符合 schema 的输入会在打开 SDK operation 前作为 JSON-RPC/tool input error
+拒绝。handler 执行后的失败会保留该 tool 的 structured result 并设置
+`isError=true`：实体读取返回空 `records`，下载保留下载报告形状。正常空页是成功，
+不会被转换为错误。
 
-不符合 MCP schema 的输入会产生 JSON-RPC schema error。tool 开始执行后的任何失败都会保留其约定的 structured 结果并设置 `isError=true`：下载保留下载报告形状，实体读取保留 `records: []`。正常空结果仍是成功。
+列表 tool 接收 `page` 和 `limit`：
 
-列表 tool 使用 `limit` 与 `page`：
+- 省略 `limit` 时读取一个上游批次。
+- 正数 `limit` 会跨上游批次填充请求的逻辑页。
+- `limit: 0` 会沿当前上游 cursor 读取至结束。
+- `page` 从 1 开始，必须配合正数 `limit`。
+- 实体 filter 在逻辑分页前执行，并按稳定实体身份去重。
 
-- 省略 `limit` 时读取一个上游批次；`limit: 0` 持续读取至上游耗尽。
-- `page` 是从 1 开始的逻辑页，必须配合正数 `limit`。
-- 筛选先于逻辑分页；以 `type + id` 去重。服务端会继续读取上游页，直至填满所请求逻辑页或上游耗尽。
+SDK opaque cursor 不离开 server。列表结果提供 `pagination.page`、`limit`、
+`returned`、`has_more`，适用时提供 `next_page`。`recommended(kind="all")`
+对 artwork、manga、novel、user 分别提供独立的分页对象。
 
-SDK cursor 保持在服务端内部。列表结果提供 `pagination.page`、`limit`、`returned`、`has_more`，以及适用时的 `next_page`。
+Record 保留公开实体字段以及必要的 opaque resource reference，但不会输出已解析/签名资源 URL、
+请求头、Cookie、过期 metadata、access token 或其他资源传输凭据。小说正文 block、评论和 profile image
+引用同样遵循此规则。
+Structured result 使用显式 DTO 与 typed envelope，不直接编码 runtime SDK model。独立的
+FANBOX MCP server 也遵循相同资源形状：第一方 resource 只包含 opaque `ref` 与可选的
+`requires_credentials`，不会包含 `url`、`request_headers` 或 `expires_at`。
 
-## 实体筛选
+## 实体 filter 与收藏数搜索
 
-实体列表可使用按实体命名的可选 filter：
+输入只包含下列 typed filter。原先的顶层表达式 `filter` 没有接入 handler，
+因此不再发布；调用方应使用对应实体 filter。
 
 | Filter | 字段 |
 | --- | --- |
@@ -28,48 +42,82 @@ SDK cursor 保持在服务端内部。列表结果提供 `pagination.page`、`li
 | `novel_filter` | `id`（正数）、`tags`（全部精确匹配）、`min_views`（非负） |
 | `user_filter` | `id`（正数） |
 
-插画列表接收 `illust_filter`，小说列表接收 `novel_filter`，用户列表接收 `user_filter`；混合推荐可分别为每种实体提供对应 filter。所有插画列表 tool 和 `download` 还接收顶层 `filter` 字符串：它是基于公开插画字段的安全本地表达式，并与 `illust_filter` 按 AND 组合。表达式只支持比较、`and`/`or`/`not`、`in`/`not in`、数组以及 `any`/`all`；例如 `bookmarkCount >= 5000 and xRestrict == 0`、`any(tags, # in ["miku"])`。混合结果使用 `filter` 时会丢弃小说与用户记录。
+Artwork search 另外接受 `bookmark_min`、`bookmark_max` 和
+`bookmark_strategy`（`auto`、`local`、`best_effort`、`server`）。范围是非负闭区间。
+application outcome 的 `filter` 会报告 `min`、`max`、`membership`、`strategy` 和
+`completeness`：
 
-## 下载
+- `auto` 当前解析为对已取得候选的 `TotalBookmarks` 本地筛选。
+- `local` 执行同样的候选精确筛选，但不声称全局结果完备。
+- `best_effort` 保留 App candidate bounds，并报告 partial completeness。
+- `server` 在可靠服务端行为有证据前显式失败，不会静默切换其他策略。
 
-| tool | 参数 | structured output |
+未知 membership 不等于 non-Premium。Premium 不是本地硬门槛，收藏数也不得称为点赞数。
+
+## 下载工具
+
+| Tool | 输入 | Structured output |
 | --- | --- | --- |
-| `download` | `src` 与有序 `srcs` 二选一；每项为 PID、支持的 Pixiv 作品/用户/公开收藏/插画系列 URL 或允许的 CDN URL。可选 `pages`（包括 `3-`）、`quality`、`concurrency`、`ugoira_mode`（`gif`、`apng`、`zip`、`frames`）、`filter`、`archive`、`directory_template`、`write_metadata`、`retries`、`retry_delay` 与 `delivery: "local_path"`。 | `{items, failures, files, text}` 本地文件报告。 |
-| `download_random_from_recommendation` | 可选 `count`（省略或 `null` 为 5；显式值为 1..20）、可选 `pages`、`quality`、`ugoira_mode` 与 `delivery: "local_path"`。 | 使用同一错误语义的本地文件报告。 |
+| `download` | `src` 与非空 `srcs` 必须二选一；每项是作品 PID、受支持的 Pixiv 作品/用户/公开收藏 URL 或允许的 CDN URL。可选 `pages` 使用 `1,3-5` 这类闭区间，`quality` 为 `original`、`regular`、`small`、`thumb`、`mini`，`ugoira_mode` 为 `gif` 或 `apng`，`delivery` 为 `local_path`。 | `{delivery, items, failures, files, text}`；每个 file 包含安全的本地 path/URI、MIME、大小和页码。任何失败都会保留 failure 并设置 `isError=true`。 |
+| `download_random_from_recommendation` | 可选 `count`（默认 `5`，显式值 `1..20`）、`pages`、`quality`、`ugoira_mode` 和 `delivery: "local_path"`。 | 同样的本地文件报告结构。 |
 
-用户、公开收藏和插画系列 URL 会按来源顺序展开认证态的插画、漫画和 ugoira，重复 artwork ID 只下载一次。`filter` 在取得作品详情后、写文件前执行；CDN URL 没有作品元数据，因此会拒绝 `filter`。`archive` 是 SQLite 文件，只有全部选中产物与要求的 metadata sidecar 都成功后才记录 artwork。目录模板和文件名模板都支持 `{id}`、`{title}`、`{author}`、`{author_id}`、`{date}`、`{tags}`、`{num}`。`concurrency: 0` 使用 `2 × GOMAXPROCS`。资源请求默认重试三次（1/2/4 秒；有效 `Retry-After` 优先），资源缓存会安全续传 validator 匹配的残片。某一项失败会保留在 `failures` 中，其他独立项继续；任一失败都会设置 `isError=true`。
+当前 MCP handler 没有把并发、filter、archive、directory-template、metadata sidecar、重试次数或重试延迟
+映射到 `DownloadRequest`，因此 download schema 不发布这些字段。下载使用已配置的 application 路径/模板，
+选项错误会显露，不会静默忽略输入。
 
-## 读取
+用户和公开收藏 URL 按来源顺序展开认证态视觉作品，不包含小说；插画系列 URL 不是下载来源。URL 在本地解析，不抓 HTML
+或跟随重定向；CDN source 没有作品 metadata，不会被当作作品详情请求。
 
-| tool | 参数 |
+## 读取工具
+
+| Tool | 输入与语义 |
 | --- | --- |
-| `search_illust` | `word`、搜索筛选、`page`、`limit`、可选 `filter` 与 `illust_filter` |
-| `search_novel` | `word`、小说搜索筛选、`page`、`limit`、可选 `novel_filter` |
-| `illust_detail` | `illust_id` 或支持的 `url` 二选一 |
-| `illust_related`、`illust_ranking`、`illust_recommended` | 对应操作参数、`page`、`limit`、可选 `filter` 与 `illust_filter` |
-| `recommended` | 必填 `kind`（`all`、`illust`、`manga`、`novel`、`user`）、`page`、`limit`、可选 `filter` 与适用的实体 filter |
-| `trending_tags_illust` | 无参数，返回 `{tags, text}` |
-| `timeline_illust_following` | `restrict`、`page`、`limit`、可选 `filter` 与 `illust_filter` |
-| `timeline_novel_following` | `restrict`、`page`、`limit`、可选 `novel_filter` |
-| `timeline_illust_latest` | 必填 `content_type`（`illust` 或 `manga`）、`page`、`limit`、可选 `filter` 与 `illust_filter` |
-| `timeline_novel_latest` | `page`、`limit`、可选 `novel_filter` |
-| `mypixiv_users` | `page`、`limit`、可选 `user_filter` |
-| `mypixiv_illusts` / `mypixiv_novels` | `page`、`limit`、插画可选顶层 `filter`，以及对应的插画或小说 filter |
-| `search_user` | `word`、`page`、`limit`、可选 `user_filter` |
-| `user_detail` | 必填 `user_id` |
-| `user_artworks`、`user_novels`、`user_bookmarks`、`user_following` | 可选 `user_id`、操作专有参数、`page`、`limit`、插画列表可选顶层 `filter`，以及对应实体 filter |
+| `search_illust` | 必填 `word`；可选 `search_target`、`sort`、`duration`、`start_date`、`end_date`、`content_type`、`ai_mode`、`aspect_ratio`、`resolution`、精确 `tool`、收藏范围/策略、`illust_filter`、`page`、`limit`。稳定 enum/date 会在打开 SDK 前校验。 |
+| `search_novel` | 必填 `word`；可选 `search_target`、`sort`、`duration`、`novel_filter`、`page`、`limit`。rating、正文长度和 original 字段明确不发布。 |
+| `illust_detail` | 正数 `illust_id` 与受支持作品 `url` 必须二选一；返回一条安全 record。 |
+| `novel_detail` / `novel_content` | 正数 `novel_id`；前者返回 metadata，后者返回完整结构化正文 block。 |
+| `illust_related` | 正数 `illust_id`，可选 `illust_filter`、`page`、`limit`。 |
+| `illust_series` / `novel_series` | 正数 `series_id`、`page`、`limit`；小说系列额外返回安全 series metadata。 |
+| `illust_comments` / `novel_comments` | 正数作品/小说 `id`、`page`、`limit`；输出安全 comments、pagination，以及可取得的 `total`/`access_control` metadata。 |
+| `illust_ranking` | 可选 `mode`、`date`、`illust_filter`、`page`、`limit`；省略 mode 为 `day`。 |
+| `search_user` | 必填 `word`，可选 `user_filter`、`page`、`limit`；调用 App user-search operation。 |
+| `illust_recommended` | 作品推荐，可选 `illust_filter`、`page`、`limit`。 |
+| `recommended` | 必填 `kind`：`all`、`illust`、`manga`、`novel` 或 `user`；可选匹配的 typed filter、`page`、`limit`。 |
+| `trending_tags_illust` | 无输入；返回完整当前作品趋势标签列表。 |
+| `timeline_illust_following` / `timeline_novel_following` | `restrict`（`public`/`private`）、匹配实体 filter、`page`、`limit`。 |
+| `timeline_illust_latest` | 必填 `content_type`（`illust` 或 `manga`），可选 `illust_filter`、`page`、`limit`。 |
+| `timeline_novel_latest` | 可选 `novel_filter`、`page`、`limit`。 |
+| `mypixiv_users` | 可选 `user_filter`、`page`、`limit`。 |
+| `mypixiv_illusts` / `mypixiv_novels` | 对应 typed filter、`page`、`limit`。 |
+| `user_detail` | 必填正数 `user_id`；返回一条安全公开 profile record。 |
+| `user_artworks` | 可选 `user_id`、`type`（`illust`、`manga`、`ugoira`）、`illust_filter`、`page`、`limit`；省略 ID 使用认证账号。 |
+| `user_novels` | 可选 `user_id`、`novel_filter`、`page`、`limit`；省略 ID 使用认证账号。 |
+| `user_bookmarks` | 可选 `user_id`、`restrict`、`tag`、`illust_filter`、`page`、`limit`；读取作品收藏。 |
+| `user_novel_bookmarks` | 可选 `user_id`、`restrict`、`tag`、`page`、`limit`；读取小说收藏。 |
+| `user_following` / `user_followers` | 可选 `user_id`、`restrict`、`user_filter`、`page`、`limit`；省略 ID 使用认证账号。 |
+| `related_users` | 正数 `user_id`，可选 `user_filter`、`page`、`limit`。 |
+| `blocked_users` | 可选 `user_id`、`page`、`limit`；省略 ID 使用认证账号。App API 失败会显露，不切换 Web fallback。 |
+| `bookmark_tags` | 可选 `user_id`、`restrict`、`page`、`limit`；返回 `{bookmark_tags, pagination}`。 |
+| `bookmark_detail` | 必填正数 `illust_id`；返回 `{bookmarked, restrict, tags}`，保留未收藏状态。 |
 
-`search_illust.tool` 使用 [CLI 参考](cli-reference.md#drawing-tool-catalog)中的版本化绘图工具目录，必须精确匹配。唯一的单编辑拼写修正会在参数错误中给出建议；含混前缀会直接报错。
+所有读取 tool 共用 application/public SDK 路径，保留认证、授权、not found、上游、取消和 malformed response
+等 typed error。可选 port 缺失或 App 请求失败不会伪造空成功结果。
 
-认证态请求走 App API。没有 refresh token 且 `web_fallback_enabled=true` 时，受支持读取操作走 Web API。匿名插画和排行榜列表会在返回前逐项通过详情接口补全；任一补全失败都会使整个列表调用失败。
+## 写工具
 
-## 写操作
-
-| tool | 参数 | structured output |
+| Tool | 输入 | Structured output |
 | --- | --- | --- |
-| `add_bookmark` | `illust_id`、可选 `restrict`、`tags` | `{success, action, illust_id}` |
+| `add_bookmark` | `illust_id`，可选 `restrict`、可重复 `tags` | `{success, action, illust_id}` |
 | `remove_bookmark` | `illust_id` | `{success, action, illust_id}` |
-| `follow_user` | `user_id`、可选 `restrict` | `{success, action, user_id}` |
+| `follow_user` | `user_id`，可选 `restrict` | `{success, action, user_id}` |
 | `unfollow_user` | `user_id` | `{success, action, user_id}` |
 
-写操作失败时 `success=false` 且 MCP result 为 `isError=true`。
+写操作只包含作品收藏和用户关注 mutation。提交后状态未知时不会换账号重放；失败写操作返回
+`success=false`、`isError=true` 和安全诊断。
+
+## 认证与 fallback
+
+Pixiv 读写要求配置好的 App API access path。不存在匿名或 Web fallback，App API 错误即为最终错误。若配置仍含已移除的
+`web_fallback_enabled`，会返回 `removed_setting`。
+
+FANBOX 使用独立 MCP server，不共享 Pixiv 凭据、代理设置、tool 或 route。

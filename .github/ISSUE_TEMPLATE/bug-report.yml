@@ -1,83 +1,71 @@
-# Localized content: English / 中文 / 日本語
-name: Bug report / Bug 报告 / バグ報告
-description: Report a reproducible problem in the CLI, MCP server, or public Go SDK. / 报告 CLI、MCP server 或 public Go SDK 中可复现的问题。 / CLI、MCP server、または public Go SDK で再現できる問題を報告します。
-title: "[Bug]: "
+name: Bug 报告 / Bug report
+description: 报告可复现的问题。 / Report a reproducible problem.
+title: "[Bug] "
 labels:
   - bug
 body:
   - type: markdown
     attributes:
       value: |
-        English: Thank you for taking the time to report a problem. Remove or redact refresh tokens, cookies, proxy credentials, private URLs, downloaded work, and private API responses before submitting.
-        中文：感谢你报告问题。提交前请删除或脱敏 refresh token、cookie、代理凭据、私有 URL、下载作品和私有 API 响应。
-        日本語：問題の報告ありがとうございます。送信前に refresh token、cookie、proxy credential、private URL、downloaded work、private API response を削除またはマスクしてください。
+        提交前请移除凭据、cookie、token、私有 URL 或任何敏感数据。
+        Remove credentials, cookies, tokens, private URLs, and any sensitive data before submitting.
 
   - type: textarea
     id: summary
     attributes:
-      label: What happened? / 发生了什么？ / 何が起きましたか？
-      description: Describe the observed behavior and why it is incorrect. / 请描述观察到的行为及其不正确的原因。 / 観測した動作と、それが正しくない理由を説明してください。
+      label: 发生了什么？ / What happened?
+      description: 实际发生了什么，你期望的结果是什么。 / What happened, and what you expected instead.
+      placeholder: |
+        运行某命令后退出码非 0，且没有可读输出。
+        Expected: 返回结果或给出可读错误。
     validations:
       required: true
 
   - type: textarea
     id: reproduction
     attributes:
-      label: Reproduction steps / 复现步骤 / 再現手順
-      description: Provide the smallest safe sequence that reproduces the problem. Use placeholder IDs or redacted values when needed. / 请提供可复现问题的最小安全步骤；必要时使用占位 ID 或脱敏值。 / 問題を再現する最小限で安全な手順を示してください。必要に応じてプレースホルダー ID またはマスク済みの値を使用します。
+      label: 如何复现 / How to reproduce
+      description: 最小可复现步骤，必要时用占位值。 / Smallest safe steps to reproduce. Use placeholders when needed.
       placeholder: |
-        1. Run `pixiv ...`
-        2. Provide the redacted input or configuration
-        3. Observe ...
-    validations:
-      required: true
-
-  - type: textarea
-    id: expected
-    attributes:
-      label: Expected behavior / 预期行为 / 期待する動作
-      description: Describe what you expected to happen instead. / 请描述你期望发生的行为。 / 本来期待していた動作を説明してください。
+        1. 运行 / Run: <command>
+        2. 输入或配置 / Input or config: <redacted>
+        3. 观察到 / Observed: ...
     validations:
       required: true
 
   - type: dropdown
-    id: surface
+    id: os
     attributes:
-      label: Affected interface / 受影响的接口 / 影響を受けたインターフェース
-      description: Select every interface where you observed the problem. / 请选择发现该问题的所有接口。 / 問題を確認したすべてのインターフェースを選択してください。
-      multiple: true
+      label: 操作系统 / OS
+      description: 运行环境。 / Where you run it.
       options:
-        - CLI
-        - MCP server
-        - Public Go SDK
-        - OAuth or account management / OAuth 或账号管理 / OAuth またはアカウント管理
-        - Download or ugoira processing / 下载或 ugoira 处理 / download または ugoira 処理
-        - Release installer or updater / 发布安装器或更新器 / release installer または updater
-        - Documentation / 文档 / ドキュメント
-        - Other / 其他 / その他
+        - macOS (Apple Silicon)
+        - macOS (Intel)
+        - Linux x86_64
+        - Linux arm64
+        - Windows x86_64
+        - Windows arm64
+        - Other / 其他
     validations:
       required: true
 
-  - type: textarea
-    id: environment
+  - type: input
+    id: version
     attributes:
-      label: Environment / 环境 / 環境
-      description: Include `pixiv version --json`, operating system, architecture, installation method, and any relevant proxy or authentication state. Do not include secrets. / 请提供 `pixiv version --json`、操作系统、架构、安装方式以及相关代理或认证状态；不要包含密钥。 / `pixiv version --json`、OS、architecture、installation method、関連する proxy または authentication state を記載してください。secret は含めないでください。
-      render: text
+      label: 版本 / Version
+      description: "`pixiv --version` 输出。 / Output of `pixiv --version`."
+      placeholder: pixiv 1.x.x
     validations:
       required: true
 
   - type: textarea
     id: logs
     attributes:
-      label: Redacted logs or output / 脱敏日志或输出 / マスク済みのログまたは出力
-      description: Paste only redacted output. Never include refresh tokens, cookies, authorization codes, proxy userinfo, private URLs, or response bodies. / 仅粘贴已脱敏的输出，切勿包含 refresh token、cookie、authorization code、代理用户信息、私有 URL 或响应体。 / マスク済みの出力だけを貼り付けてください。refresh token、cookie、authorization code、proxy userinfo、private URL、response body は絶対に含めないでください。
+      label: 脱敏日志或输出 / Redacted logs or output
+      description: 可选。只粘贴排查所需的脱敏输出。 / Optional. Paste only what's needed to debug, redacted.
       render: shell
-
-  - type: checkboxes
-    id: safety
-    attributes:
-      label: Safety confirmation / 安全确认 / 安全確認
-      options:
-        - label: I have removed all secrets and private content from this report. / 我已从此报告中移除所有密钥和私密内容。 / この報告からすべての secret と private content を削除しました。
-          required: true
+      placeholder: |
+        $ pixiv --version
+        pixiv 1.x.x
+        $ pixiv ...
+        (redacted output)

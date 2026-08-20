@@ -4,7 +4,7 @@
 
 **Pixiv CLI · MCP stdio server · Go SDK**
 
-[English](README.md) · [简体中文](README.zh-CN.md) · [日本語](README.ja.md)
+[English](README.md) · [简体中文](README.zh-CN.md)
 
 <p><a href="https://github.com/FlanChanXwO/pixiv-cli/actions/workflows/ci.yml"><img alt="Quality gate" src="https://github.com/FlanChanXwO/pixiv-cli/actions/workflows/ci.yml/badge.svg"></a> <a href="https://github.com/FlanChanXwO/pixiv-cli/releases/latest"><img alt="Release" src="https://img.shields.io/github/v/release/FlanChanXwO/pixiv-cli?style=flat-square"></a> <a href="go.mod"><img alt="Go" src="https://img.shields.io/github/go-mod/go-version/FlanChanXwO/pixiv-cli?style=flat-square"></a> <a href="LICENSE"><img alt="License" src="https://img.shields.io/github/license/FlanChanXwO/pixiv-cli?style=flat-square"></a> <img alt="Views" src="https://hits.sh/github.com/FlanChanXwO/pixiv-cli.svg?style=flat-square&amp;label=views"></p>
 
@@ -17,8 +17,9 @@
 ## Why pixiv-cli?
 
 - **One capability surface** — search, details, rankings, recommendations, users, bookmarks, follows, downloads, and ugoira across CLI, MCP, and SDK.
+- **Read-only FANBOX access** — authenticate with `FANBOXSESSID`, inspect creators, posts, home/supporting feeds, tags, and first-party file resources through the CLI, MCP, or `sdk/fanbox`.
 - **Composable visual pipelines** — visual lists automatically emit canonical NDJSON when piped; use `--filter` for typed local artwork rules and pass matching records straight to `download`.
-- **Local account pools** — select eligible local accounts for read workloads and honor Pixiv `Retry-After` responses during pagination and download preparation.
+- **Local account pools** — enable database-backed scheduling for read workloads with `pixiv auth pool status|enable|disable`; selection honors Pixiv `Retry-After` responses without exposing credentials.
 - **Guided account sign-in** — complete browser OAuth with `pixiv auth login`, then use `auth list`, `auth use`, and `auth check` to manage local multi-account access.
 - **Four ugoira output modes** — choose GIF, APNG, lossless ZIP, or extracted frames.
 - **Reliable, organized downloads** — revalidate `.pixiv-cache` metadata, resume verified partials, retry eligible resource failures, optionally archive completed artwork IDs, write sidecars, and show exact terminal progress when available.
@@ -57,7 +58,7 @@ pass SHA-256 verification. This changes transport availability, never Release id
 Copy this single prompt into Codex, Claude Code, Cursor, or another local AI agent with terminal access:
 
 ```text
-Install the latest stable pixiv-cli from https://github.com/FlanChanXwO/pixiv-cli for this machine: inspect the repository's scripts/install.sh or scripts/install.cmd first, choose the script matching the detected OS and architecture (the Windows path must use cmd.exe and must not invoke PowerShell), download only official GitHub Release assets, require the published SHA-256 check to pass before replacing anything, install per-user without administrator or root privileges, add only the chosen install directory to the user PATH, ask before installing any missing prerequisite, never read or output Pixiv credentials, verify with pixiv version, and report the installed version plus every file and PATH change.
+Install the latest stable pixiv-cli from https://github.com/FlanChanXwO/pixiv-cli for this machine: inspect the repository's scripts/install.sh or scripts/install.cmd first, choose the script matching the detected OS and architecture (the Windows path must use cmd.exe and must not invoke PowerShell), download only official GitHub Release assets, require the published SHA-256 check to pass before replacing anything, install per-user without administrator or root privileges, add only the chosen install directory to the user PATH, ask before installing any missing prerequisite, never read or output Pixiv credentials, verify with pixiv --version, and report the installed version plus every file and PATH change.
 
 Also install the `pixiv-cli` Skill that matches the same stable release tag (not main): download the full skills/pixiv-cli/ directory from that tag into the agent skills directory the user confirms. Do not guess the skills path and do not follow the main branch for skill content.
 ```
@@ -107,6 +108,10 @@ Direct downloads include checksums and a signed manifest. See the [CLI reference
 # Save a Pixiv account through browser OAuth.
 pixiv auth login
 
+# Save a FANBOX session through hidden input, then inspect FANBOX content.
+pixiv fanbox auth import
+pixiv fanbox post 123456
+
 # Search with App-side filters.
 pixiv search "初音ミク" --type illust --ai-mode exclude --resolution high
 pixiv novel search "初音ミク" --rating sfw --min-text-length 1000
@@ -143,10 +148,12 @@ pixiv timeline latest --type illust --limit 10 --json
 
 ### MCP
 
-Start the stdio server explicitly. stdout remains reserved for JSON-RPC. Operation summaries are written as daily plain-text files named `YYYY-MM-DD.txt` under `~/.pixiv-cli/logs` (on Windows, `%USERPROFILE%\.pixiv-cli\logs`; default retention 7 days); the terminal stays free of log traces by default.
+Start the stdio server explicitly. stdout remains reserved for JSON-RPC; tool failures are returned as structured results with `isError=true`. No project-level or daily log files are created by default.
 
 ```bash
 pixiv mcp
+# FANBOX tools use their own runtime credential selection.
+pixiv fanbox mcp
 ```
 
 See the [MCP tool contract](docs/en/mcp-tools.md) for tools, parameters, structured output, and authentication behavior.
@@ -154,7 +161,7 @@ Fixed MCP status, error, and display text is English; Pixiv metadata and user-su
 
 ### Go SDK
 
-For a local first use, run `pixiv auth login` once, then create a client from that local account and make a search:
+The public SDK receives credentials explicitly and does not read the CLI's local account store or process environment. Obtain the credential from your application's secret store and persist the rotated credentials returned by `Open`:
 
 ```go
 package main
@@ -164,27 +171,28 @@ import (
 	"fmt"
 	"log"
 
-	pixiv "github.com/FlanChanXwO/pixiv-cli/pixiv"
+	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 )
 
 func main() {
 	ctx := context.Background()
-	client, err := pixiv.OpenDefault()
+	refreshToken := "replace-with-a-refresh-token-from-your-secret-store"
+	client, _, err := pixiv.Open(ctx, refreshToken)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	result, err := client.SearchIllust(ctx, pixiv.SearchIllustRequest{Word: "初音ミク"})
+	result, err := client.SearchArtworks(ctx, pixiv.SearchArtworksRequest{Word: "初音ミク"})
 	if err != nil {
 		log.Fatal(err)
 	}
-	for _, illust := range result.Illusts {
-		fmt.Printf("%d %s\\n", illust.ID, illust.URL)
+	for _, artwork := range result.Items {
+		fmt.Printf("%d %s\\n", artwork.ID, artwork.URL)
 	}
 }
 ```
 
-The import path is `github.com/FlanChanXwO/pixiv-cli/pixiv`. `Download`/`DownloadAll` use documented beginner defaults; `DownloadWith`/`DownloadAllWith` expose paths, naming, pages, quality, and concurrency. The [SDK guide](docs/en/sdk.md) documents models, cursors, resources, errors, and caller responsibilities.
+The import path is `github.com/FlanChanXwO/pixiv-cli/sdk/pixiv`. `sdk/fanbox` accepts a `FANBOXSESSID` explicitly and supports native Chrome 146 TLS routing with the built-in Firefox 148 HTTP User-Agent baseline, with optional service-scoped proxy, user-agent, and challenge-only FlareSolverr options. `Download`/`DownloadAll` use documented beginner defaults; `DownloadWith`/`DownloadAllWith` expose paths, naming, pages, quality, and concurrency. The [SDK guide](docs/en/sdk.md) documents models, cursors, resources, errors, caller responsibilities, and the explicit DTO boundary used by CLI/MCP JSON output; media resources cross those boundaries only as opaque references.
 
 ## Authentication and token safety
 
@@ -198,6 +206,7 @@ On macOS, Windows, and desktop Linux, `pixiv` prepares the current-user `pixiv:/
 
 ```bash
 pixiv auth list
+pixiv auth pool status
 pixiv auth use 12345678
 pixiv auth check
 ```
@@ -209,8 +218,8 @@ pixiv auth check
 | [CLI reference](docs/en/cli-reference.md) | Commands, flags, auth, configuration, fallback, downloads, and updates |
 | [Go SDK](docs/en/sdk.md) | Public client, models, pagination, resources, and typed errors |
 | [MCP tools](docs/en/mcp-tools.md) | Tool schemas and output semantics |
-| [Architecture (Simplified Chinese)](docs/maintainers/architecture.md) | Package boundaries and runtime flow |
-| [Development (Simplified Chinese)](docs/maintainers/development.md) | Toolchain, tests, builds, and releases |
+| [Architecture](docs/en/maintainers/architecture.md) | Package boundaries and runtime flow |
+| [Development](docs/en/maintainers/development.md) | Toolchain, tests, builds, and releases |
 | [Changelog](changelog/README.md) | User-visible changes |
 
 ## Contributing

@@ -16,7 +16,8 @@ credential material。远端 Environment 与 deploy key 已由 **Task20** 接入
 4. renderer artifact 必须先在 macOS Intel、macOS arm64、Linux amd64 与 Linux arm64
    runner 上分别复制到隔离 local staging tap 的 `Formula/`，以精确
    `brew trust --tap pixiv-cli-release/staging` 写入 runner 的临时 trust store，再以 tap-qualified
-   name 执行真实 `brew install`，并解析 `pixiv version --json` 断言 embedded version 等于 tag。它不使用
+   name 执行真实 `brew install`，再以 `test "$(pixiv --version)" = "pixiv $RELEASE_TAG"`
+   核对 tag。它不使用
    workspace formula path、developer/环境变量 bypass 或公开 tap；任一 matrix job 失败时，最终 tap job 不会启动。
 5. Homebrew 下游 jobs 中只有最后的 `deploy_homebrew_tap` 声明受保护 `release` Environment；
    publish job 仍在同一 Environment 内隔离 Release signing secrets。deploy job 先以 public HTTPS
@@ -31,5 +32,5 @@ credential material。远端 Environment 与 deploy key 已由 **Task20** 接入
    仅当显式设置 `deploy=true` 且同一 run 的四平台安装均通过后，才会请求 `release` Environment
    并使用上述 deploy key 更新 tap。发现 secret 泄露或权限漂移时，立即撤销 tap deploy key。
 
-`sh scripts/test-release-workflow.sh` 与 `sh scripts/test-homebrew-formula.sh` 只验证本地策略和
+`go run ./scripts/cmd/releaseworkflow --workflow .github/workflows/release.yml` 与 `sh scripts/test-homebrew-formula.sh` 只验证本地策略和
 fixture；它们不能替代正式 tag workflow 的四个平台外部安装证据。

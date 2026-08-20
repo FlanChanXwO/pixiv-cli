@@ -33,7 +33,7 @@ The installer itself must select the latest stable official Release and report
    direct GitHub checksum.
 5. Never read authentication storage, import/export authentication, or request
    a Pixiv credential as part of installation.
-6. Require installer success, then run `pixiv version`. Report the installed
+6. Require installer success, then run `pixiv --version`. Report the installed
    version, binary path, profile/registry PATH change, and any warning exactly.
 
 If the user wants no PATH change, pass `--no-path`. A custom

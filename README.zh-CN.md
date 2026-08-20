@@ -4,7 +4,7 @@
 
 **Pixiv CLI · MCP stdio server · Go SDK**
 
-[English](README.md) · [简体中文](README.zh-CN.md) · [日本語](README.ja.md)
+[English](README.md) · [简体中文](README.zh-CN.md)
 
 <p><a href="https://github.com/FlanChanXwO/pixiv-cli/actions/workflows/ci.yml"><img alt="Quality gate" src="https://github.com/FlanChanXwO/pixiv-cli/actions/workflows/ci.yml/badge.svg"></a> <a href="https://github.com/FlanChanXwO/pixiv-cli/releases/latest"><img alt="Release" src="https://img.shields.io/github/v/release/FlanChanXwO/pixiv-cli?style=flat-square"></a> <a href="go.mod"><img alt="Go" src="https://img.shields.io/github/go-mod/go-version/FlanChanXwO/pixiv-cli?style=flat-square"></a> <a href="LICENSE"><img alt="License" src="https://img.shields.io/github/license/FlanChanXwO/pixiv-cli?style=flat-square"></a> <img alt="Views" src="https://hits.sh/github.com/FlanChanXwO/pixiv-cli.svg?style=flat-square&amp;label=views"></p>
 
@@ -17,6 +17,7 @@
 ## 为什么选择 pixiv-cli？
 
 - **一致的能力面**——CLI、MCP 与 SDK 均可完成搜索、详情、排行、推荐、用户、收藏、关注、下载和 ugoira 处理。
+- **只读 FANBOX 能力**——通过 `FANBOXSESSID` 登录后，可从 CLI、MCP 或 `sdk/fanbox` 查看创作者、帖子、主页/支持中 feed、标签和第一方文件资源。
 - **组合式视觉作品管道**——视觉列表接入管道时自动输出 canonical NDJSON；用 `--filter` 编写有类型的本地作品筛选，并可直接传给 `download`。
 - **本地账号池**——为读取型任务选择符合条件的本地账号，并在分页和下载准备阶段遵循 Pixiv 的 `Retry-After` 响应。
 - **易用的账号登录流程**——运行 `pixiv auth login` 即可在浏览器完成 OAuth，随后可使用 `auth list`、`auth use` 和 `auth check` 管理和确认本地多账号。
@@ -55,7 +56,7 @@ binary，并在修改 PATH 前完成用户级安装。可用 `--no-path` 保持 
 把下面这一段 prompt 复制给能够操作本机终端的 Codex、Claude Code、Cursor 或其他 AI Agent：
 
 ```text
-请为这台机器安装 https://github.com/FlanChanXwO/pixiv-cli 的最新 stable 版本：先审阅仓库中的 scripts/install.sh 或 scripts/install.cmd，再根据检测到的操作系统与架构选择对应脚本（Windows 必须使用 cmd.exe，禁止调用 PowerShell），只下载官方 GitHub Release 资产，只有发布的 SHA-256 校验通过后才能替换文件，使用无需管理员或 root 权限的用户级目录，只把选定安装目录加入用户 PATH，缺少任何前置工具时先征求同意，绝不读取或输出 Pixiv 凭据，最后运行 pixiv version 验证，并报告安装版本及全部文件和 PATH 变更。
+请为这台机器安装 https://github.com/FlanChanXwO/pixiv-cli 的最新 stable 版本：先审阅仓库中的 scripts/install.sh 或 scripts/install.cmd，再根据检测到的操作系统与架构选择对应脚本（Windows 必须使用 cmd.exe，禁止调用 PowerShell），只下载官方 GitHub Release 资产，只有发布的 SHA-256 校验通过后才能替换文件，使用无需管理员或 root 权限的用户级目录，只把选定安装目录加入用户 PATH，缺少任何前置工具时先征求同意，绝不读取或输出 Pixiv 凭据，最后运行 pixiv --version 验证，并报告安装版本及全部文件和 PATH 变更。
 
 同时安装与该 stable 发布 tag 完全一致的 `pixiv-cli` Skill（不要跟随 main）：把该 tag 下的完整 skills/pixiv-cli/ 目录安装到用户确认的 Agent skills 目录。不要猜测 skills 路径，也不要用 main 上的 skill 内容。
 ```
@@ -105,6 +106,10 @@ sh scripts/build.sh
 # 通过浏览器 OAuth 保存 Pixiv 账号。
 pixiv auth login
 
+# 通过隐藏输入保存 FANBOX session，然后查看 FANBOX 内容。
+pixiv fanbox auth import
+pixiv fanbox post 123456
+
 # 使用 App 服务端筛选搜索。
 pixiv search "初音ミク" --type illust --ai-mode exclude --resolution high
 pixiv novel search "初音ミク" --rating sfw --min-text-length 1000
@@ -141,10 +146,12 @@ pixiv timeline latest --type illust --limit 10 --json
 
 ### MCP
 
-显式启动 stdio server。stdout 只用于 JSON-RPC；tool 运行失败会以 `isError=true` 的 structured result 返回。
+显式启动 stdio server。stdout 只用于 JSON-RPC；tool 运行失败会以 `isError=true` 的 structured result 返回。默认不创建项目级或每日日志文件。
 
 ```bash
 pixiv mcp
+# FANBOX tools 使用独立的 runtime credential 选择。
+pixiv fanbox mcp
 ```
 
 [MCP tool 契约](docs/zh-CN/mcp-tools.md)记录了 tools、参数、structured output 和认证行为。
@@ -152,7 +159,7 @@ MCP 固定状态、错误和展示文本使用英文；Pixiv 元数据及用户�
 
 ### Go SDK
 
-首次在本地使用时，先运行一次 `pixiv auth login`，再从该本地账号创建 client 并进行搜索：
+Public SDK 显式接收 credential，不读取 CLI 的本地账号库或进程环境。应用应从自己的 secret store 取得 credential，并自行保存 `Open` 返回的 rotation 后 credential：
 
 ```go
 package main
@@ -162,27 +169,28 @@ import (
 	"fmt"
 	"log"
 
-	pixiv "github.com/FlanChanXwO/pixiv-cli/pixiv"
+	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 )
 
 func main() {
 	ctx := context.Background()
-	client, err := pixiv.OpenDefault()
+	refreshToken := "replace-with-a-refresh-token-from-your-secret-store"
+	client, _, err := pixiv.Open(ctx, refreshToken)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	result, err := client.SearchIllust(ctx, pixiv.SearchIllustRequest{Word: "初音ミク"})
+	result, err := client.SearchArtworks(ctx, pixiv.SearchArtworksRequest{Word: "初音ミク"})
 	if err != nil {
 		log.Fatal(err)
 	}
-	for _, illust := range result.Illusts {
-		fmt.Printf("%d %s\\n", illust.ID, illust.URL)
+	for _, artwork := range result.Items {
+		fmt.Printf("%d %s\\n", artwork.ID, artwork.URL)
 	}
 }
 ```
 
-SDK import path 为 `github.com/FlanChanXwO/pixiv-cli/pixiv`。`Download`/`DownloadAll` 使用有文档依据的新手默认值；`DownloadWith`/`DownloadAllWith` 可控制路径、命名、页码、质量与并发。[SDK 指南](docs/zh-CN/sdk.md)说明模型、cursor、资源、错误和调用方职责。
+SDK import path 为 `github.com/FlanChanXwO/pixiv-cli/sdk/pixiv`。`sdk/fanbox` 显式接收 `FANBOXSESSID`，使用 Chrome 146 TLS profile 与内置 Firefox 148 HTTP User-Agent baseline 的 native 路由，以及可选的服务级 proxy、user-agent 和仅 challenge 使用的 FlareSolverr。`Download`/`DownloadAll` 使用有文档依据的新手默认值；`DownloadWith`/`DownloadAllWith` 可控制路径、命名、页码、质量与并发。[SDK 指南](docs/zh-CN/sdk.md)说明模型、cursor、资源、错误和调用方职责。
 
 ## 认证与 token 安全
 
@@ -207,8 +215,8 @@ pixiv auth check
 | [CLI 参考手册](docs/zh-CN/cli-reference.md) | 命令、flag、认证、配置、fallback、下载和更新 |
 | [Go SDK](docs/zh-CN/sdk.md) | Public client、模型、分页、资源和 typed error |
 | [MCP tools](docs/zh-CN/mcp-tools.md) | Tool schema 与输出语义 |
-| [架构](docs/maintainers/architecture.md) | 包边界和运行流程 |
-| [开发流程](docs/maintainers/development.md) | 工具链、测试、构建和发布 |
+| [架构](docs/zh-CN/maintainers/architecture.md) | 包边界和运行流程 |
+| [开发流程](docs/zh-CN/maintainers/development.md) | 工具链、测试、构建和发布 |
 | [更新日志](changelog/README.zh-CN.md) | 用户可感知变化 |
 
 ## 参与贡献

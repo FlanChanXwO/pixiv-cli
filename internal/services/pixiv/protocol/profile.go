@@ -6,11 +6,9 @@ package protocol
 
 const (
 	AppAPIBase   = "https://app-api.pixiv.net"
-	WebAPIBase   = "https://www.pixiv.net"
 	OAuthBase    = "https://oauth.secure.pixiv.net"
 	AppReferer   = AppAPIBase + "/"
 	AppUserAgent = "PixivAndroidApp/5.0.234 (Android 11; Pixel 5)"
-	WebUserAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36"
 	AppOS        = "android"
 	AppOSVersion = "11"
 	AppVersion   = "5.0.234"
@@ -38,12 +36,4 @@ func OAuthHeaders() map[string]string {
 	headers := AppHeaders("")
 	headers["Content-Type"] = "application/x-www-form-urlencoded"
 	return headers
-}
-
-func WebHeaders() map[string]string {
-	return map[string]string{
-		"User-Agent":      WebUserAgent,
-		"Accept":          "application/json,text/plain,*/*",
-		"Accept-Language": "zh-CN,zh;q=0.9,ja;q=0.8,en;q=0.7",
-	}
 }

@@ -22,7 +22,7 @@ ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff  pixiv-cli_${ve
 2222222222222222222222222222222222222222222222222222222222222222  install.sh
 EOF
 
-go run ./scripts/homebrewformula render --formula pixiv-cli --version "$version" --checksums "$checksums" --output "$formula"
+go run ./scripts/cmd/homebrewformula render --formula pixiv-cli --version "$version" --checksums "$checksums" --output "$formula"
 ruby -c "$formula" >/dev/null
 
 grep -F 'class PixivCli < Formula' "$formula" >/dev/null
@@ -57,7 +57,7 @@ beta_version=0.2.0-beta.1
 beta_checksums="$temporary/beta-checksums.txt"
 beta_formula="$temporary/pixiv-cli-beta.rb"
 sed "s/$version/$beta_version/g" "$checksums" > "$beta_checksums"
-go run ./scripts/homebrewformula render --formula pixiv-cli-beta --version "$beta_version" --checksums "$beta_checksums" --output "$beta_formula"
+go run ./scripts/cmd/homebrewformula render --formula pixiv-cli-beta --version "$beta_version" --checksums "$beta_checksums" --output "$beta_formula"
 ruby -c "$beta_formula" >/dev/null
 grep -F 'class PixivCliBeta < Formula' "$beta_formula" >/dev/null
 grep -F 'version "0.2.0-beta.1"' "$beta_formula" >/dev/null
@@ -74,7 +74,7 @@ next_version=0.1.1
 next_checksums="$temporary/next-checksums.txt"
 next_formula="$temporary/pixiv-cli-next.rb"
 sed "s/$version/$next_version/g; s/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/1111111111111111111111111111111111111111111111111111111111111111/" "$checksums" > "$next_checksums"
-go run ./scripts/homebrewformula render --formula pixiv-cli --version "$next_version" --checksums "$next_checksums" --output "$next_formula"
+go run ./scripts/cmd/homebrewformula render --formula pixiv-cli --version "$next_version" --checksums "$next_checksums" --output "$next_formula"
 grep -F 'version "0.1.1"' "$next_formula" >/dev/null
 grep -F 'https://github.com/FlanChanXwO/pixiv-cli/releases/download/v0.1.1/pixiv-cli_0.1.1_darwin_amd64.tar.gz' "$next_formula" >/dev/null
 grep -F 'sha256 "1111111111111111111111111111111111111111111111111111111111111111"' "$next_formula" >/dev/null
@@ -94,21 +94,21 @@ expect_failure() {
 
 # 预发布与稳定版绝不可以写进错误的 formula；缺失和重复 checksum 也必须可见地失败。
 expect_failure 'stable formula "pixiv-cli" only accepts a stable semantic version' \
-	go run ./scripts/homebrewformula render --formula pixiv-cli --version "$beta_version" --checksums "$beta_checksums" --output "$temporary/wrong-stable.rb"
+	go run ./scripts/cmd/homebrewformula render --formula pixiv-cli --version "$beta_version" --checksums "$beta_checksums" --output "$temporary/wrong-stable.rb"
 expect_failure 'beta formula "pixiv-cli-beta" only accepts a prerelease semantic version' \
-	go run ./scripts/homebrewformula render --formula pixiv-cli-beta --version "$version" --checksums "$checksums" --output "$temporary/wrong-beta.rb"
+	go run ./scripts/cmd/homebrewformula render --formula pixiv-cli-beta --version "$version" --checksums "$checksums" --output "$temporary/wrong-beta.rb"
 missing_checksums="$temporary/missing-checksums.txt"
 sed '/install[.]sh/d' "$checksums" > "$missing_checksums"
 expect_failure 'has no entry for required release asset' \
-	go run ./scripts/homebrewformula render --formula pixiv-cli --version "$version" --checksums "$missing_checksums" --output "$temporary/missing.rb"
+	go run ./scripts/cmd/homebrewformula render --formula pixiv-cli --version "$version" --checksums "$missing_checksums" --output "$temporary/missing.rb"
 duplicate_checksums="$temporary/duplicate-checksums.txt"
 cat "$checksums" "$checksums" > "$duplicate_checksums"
 expect_failure 'has duplicate entry for' \
-	go run ./scripts/homebrewformula render --formula pixiv-cli --version "$version" --checksums "$duplicate_checksums" --output "$temporary/duplicate.rb"
+	go run ./scripts/cmd/homebrewformula render --formula pixiv-cli --version "$version" --checksums "$duplicate_checksums" --output "$temporary/duplicate.rb"
 malformed_checksums="$temporary/malformed-checksums.txt"
 sed '1s/^a/z/' "$checksums" > "$malformed_checksums"
 expect_failure "checksums file line 1 must be '<64 lowercase hex>  <asset>'" \
-	go run ./scripts/homebrewformula render --formula pixiv-cli --version "$version" --checksums "$malformed_checksums" --output "$temporary/malformed.rb"
+	go run ./scripts/cmd/homebrewformula render --formula pixiv-cli --version "$version" --checksums "$malformed_checksums" --output "$temporary/malformed.rb"
 
 # 输出位置可能由 release job 提供，不能透过非直接父目录的 symlink 写进别处。
 real_output="$temporary/real-output"
@@ -116,7 +116,7 @@ mkdir -p "$real_output/nested"
 output_link="$temporary/output-link"
 ln -s "$real_output" "$output_link"
 expect_failure 'output directory contains a symlink ancestor' \
-	go run ./scripts/homebrewformula render --formula pixiv-cli --version "$version" --checksums "$checksums" --output "$output_link/nested/symlinked.rb"
+	go run ./scripts/cmd/homebrewformula render --formula pixiv-cli --version "$version" --checksums "$checksums" --output "$output_link/nested/symlinked.rb"
 if [ -e "$real_output/nested/symlinked.rb" ]; then
 	printf '%s\n' 'renderer wrote through a symlinked output ancestor' >&2
 	exit 1

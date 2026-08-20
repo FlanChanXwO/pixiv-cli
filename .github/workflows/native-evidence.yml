@@ -74,7 +74,7 @@ jobs:
           go-version: '1.26.3'
       - name: Check native evidence workflow policy
         shell: bash
-        run: go run ./scripts/nativeevidence policy --workflow .github/workflows/native-evidence.yml
+        run: go run ./scripts/cmd/nativeevidence policy --workflow .github/workflows/native-evidence.yml
       - name: Require audited main ref
         shell: bash
         run: test "$GITHUB_REF" = 'refs/heads/main'
@@ -94,7 +94,7 @@ jobs:
           if [ '${{ matrix.goos }}' = windows ]; then
             export CC='clang -fuse-ld=lld'
           fi
-          go test ./internal/download -run '^TestRustUgoiraEncoderNativeGIFAndAPNG$' -count=1
+          go test ./internal/media/ugoira -run '^TestRustUgoiraEncoderNativeGIFAndAPNG$' -count=1
       - name: Build and run the versioned native binary
         shell: bash
         run: |
@@ -103,19 +103,19 @@ jobs:
             export CC='clang -fuse-ld=lld'
           fi
           version="0.1.0-native-evidence.${GITHUB_RUN_ID}"
-          go run ./scripts/releaseassets validate --version "$version"
+          go run ./scripts/cmd/releaseassets validate --version "$version"
           mkdir -p evidence
           binary='evidence/pixiv'
           if [ '${{ matrix.goos }}' = windows ]; then
             binary='evidence/pixiv.exe'
           fi
           go build -trimpath -buildvcs=false \
-            -ldflags "-X github.com/FlanChanXwO/pixiv-cli/internal/buildinfo.Version=v${version} -X github.com/FlanChanXwO/pixiv-cli/internal/buildinfo.Commit=${GITHUB_SHA} -X github.com/FlanChanXwO/pixiv-cli/internal/buildinfo.BuildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            -ldflags "-X github.com/FlanChanXwO/pixiv-cli/internal/shared/buildinfo.Version=v${version}" \
             -o "$binary" ./cmd/pixiv
           if [ '${{ matrix.goos }}' = linux ]; then
-            go run ./scripts/linuxabi --binary "$binary"
+            go run ./scripts/cmd/linuxabi --binary "$binary"
           fi
-          "$binary" version --json
+          "$binary" --version
       - name: Package the versioned native binary
         shell: bash
         run: |
@@ -125,7 +125,7 @@ jobs:
           if [ '${{ matrix.goos }}' = windows ]; then
             binary='evidence/pixiv.exe'
           fi
-          go run ./scripts/releaseassets package \
+          go run ./scripts/cmd/releaseassets package \
             --repo-root . \
             --version "$version" \
             --target '${{ matrix.goos }}/${{ matrix.goarch }}' \
@@ -140,7 +140,7 @@ jobs:
           if [ '${{ matrix.goos }}' = windows ]; then
             staticlib='ugoira_rs.lib'
           fi
-          cp "internal/download/ugoira_rs/staticlib/${{ matrix.rust_target }}/$staticlib" "evidence/$staticlib"
+          cp "internal/media/ugoira/rust/staticlib/${{ matrix.rust_target }}/$staticlib" "evidence/$staticlib"
           archive="evidence/pixiv-cli_${version}_${{ matrix.goos }}_${{ matrix.goarch }}"
           if [ '${{ matrix.goos }}' = windows ]; then
             archive="$archive.zip"
@@ -151,9 +151,10 @@ jobs:
           if [ '${{ matrix.goos }}' = windows ]; then
             binary='evidence/pixiv.exe'
           fi
-          go run ./scripts/nativeevidence record \
+          go run ./scripts/cmd/nativeevidence record \
             --repo-root . \
             --version "$version" \
+            --source-commit "$GITHUB_SHA" \
             --target '${{ matrix.goos }}/${{ matrix.goarch }}' \
             --rust-target '${{ matrix.rust_target }}' \
             --staticlib "evidence/$staticlib" \

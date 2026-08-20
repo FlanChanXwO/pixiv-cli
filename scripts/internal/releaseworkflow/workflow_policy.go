@@ -1,0 +1,422 @@
+package releaseworkflow
+
+import (
+	"errors"
+	"fmt"
+	"strings"
+
+	workflowyaml "github.com/FlanChanXwO/pixiv-cli/scripts/internal/workflow/yaml"
+	"gopkg.in/yaml.v3"
+)
+
+func containsScalarFragment(node *yaml.Node, fragment string) bool {
+	if node == nil {
+		return false
+	}
+	if node.Kind == yaml.ScalarNode && strings.Contains(node.Value, fragment) {
+		return true
+	}
+	for _, child := range node.Content {
+		if containsScalarFragment(child, fragment) {
+			return true
+		}
+	}
+	return false
+}
+
+func stepIndexWithRunFragment(steps []*yaml.Node, fragment string) int {
+	for index, step := range steps {
+		if strings.Contains(requireRunValue(step), fragment) {
+			return index
+		}
+	}
+	return -1
+}
+
+func actionStepIndices(steps []*yaml.Node, action string) []int {
+	var indices []int
+	for index, step := range steps {
+		uses, ok := workflowyaml.MappingValue(step, "uses")
+		if ok && uses.Kind == yaml.ScalarNode && uses.Value == action {
+			indices = append(indices, index)
+		}
+	}
+	return indices
+}
+
+func requireCanonicalNamedRunStep(step *yaml.Node, name, command string) error {
+	if err := requireCanonicalRunStep(step, name, command); err != nil {
+		return err
+	}
+	if err := workflowyaml.RequireScalar(step, "name", name); err != nil {
+		return fmt.Errorf("%s must keep its canonical name", name)
+	}
+	return nil
+}
+
+func requireCanonicalNamedRunStepInDirectory(step *yaml.Node, name, directory, command string) error {
+	if err := requireOnlyMappingKeys(step, "name", "shell", "working-directory", "run"); err != nil || workflowyaml.RequireScalar(step, "name", name) != nil || workflowyaml.RequireScalar(step, "shell", "bash") != nil || workflowyaml.RequireScalar(step, "working-directory", directory) != nil || workflowyaml.RequireScalar(step, "run", command) != nil {
+		return fmt.Errorf("%s must be the exact canonical step in %s", name, directory)
+	}
+	return nil
+}
+
+func requireCanonicalConditionalRunStep(step *yaml.Node, context, condition, canonical string) error {
+	if err := requireOnlyMappingKeys(step, "name", "if", "shell", "run"); err != nil {
+		return fmt.Errorf("%s must be the canonical conditional bash step", context)
+	}
+	if err := workflowyaml.RequireScalar(step, "if", condition); err != nil {
+		return fmt.Errorf("%s must use only the approved condition", context)
+	}
+	if err := workflowyaml.RequireScalar(step, "shell", "bash"); err != nil || !equalCommands(splitCommands(requireRunValue(step)), splitCommands(canonical)) {
+		return fmt.Errorf("%s must use the exact command sequence", context)
+	}
+	return nil
+}
+
+func mustMappingPath(root *yaml.Node, keys ...string) *yaml.Node {
+	current := root
+	for _, key := range keys {
+		var ok bool
+		current, ok = workflowyaml.MappingValue(current, key)
+		if !ok {
+			return nil
+		}
+	}
+	return current
+}
+
+func checkGlobalPermissions(root *yaml.Node) error {
+	permissions, ok := workflowyaml.MappingValue(root, "permissions")
+	if !ok || permissions.Kind != yaml.MappingNode || len(permissions.Content) != 0 {
+		return errors.New("global permissions must be an empty mapping")
+	}
+	return nil
+}
+
+func checkTagTrigger(root *yaml.Node) error {
+	on, ok := workflowyaml.MappingValue(root, "on")
+	if !ok || on.Kind != yaml.MappingNode {
+		return errors.New("workflow must have an on mapping")
+	}
+	if err := requireOnlyMappingKeys(on, "push"); err != nil {
+		return errors.New("on must contain only the push trigger")
+	}
+	push, ok := workflowyaml.MappingValue(on, "push")
+	if !ok || push.Kind != yaml.MappingNode {
+		return errors.New("on.push must be a mapping")
+	}
+	if err := requireOnlyMappingKeys(push, "tags"); err != nil {
+		return errors.New("on.push must contain only tags")
+	}
+	tags, ok := workflowyaml.MappingValue(push, "tags")
+	if !ok || tags.Kind != yaml.SequenceNode || len(tags.Content) != 1 || tags.Content[0].Value != "v[0-9]*" {
+		return errors.New("on.push.tags must equal [v[0-9]*]")
+	}
+	return nil
+}
+
+func checkReleaseTagBinding(root *yaml.Node) error {
+	env, ok := workflowyaml.MappingValue(root, "env")
+	if !ok || requireOnlyMappingKeys(env, "RELEASE_TAG") != nil || workflowyaml.RequireScalar(env, "RELEASE_TAG", "${{ github.ref_name }}") != nil {
+		return errors.New("workflow must bind RELEASE_TAG only to the pushed tag")
+	}
+	if containsScalarFragment(root, "GITHUB_SHA") {
+		return errors.New("release workflow must not read the workflow GITHUB_SHA")
+	}
+	if containsScalarFragment(root, "GITHUB_REF_NAME") {
+		return errors.New("release workflow must not derive production identity from GITHUB_REF_NAME")
+	}
+	return nil
+}
+
+func checkActionReferences(root *yaml.Node) error {
+	var references []string
+	invalidReference := false
+	collectActionReferences(root, &references, &invalidReference)
+	if len(references) == 0 {
+		return errors.New("workflow must use at least one action")
+	}
+	if invalidReference {
+		return errors.New("every action uses reference must be an owner/repo full 40-character lowercase SHA")
+	}
+	for _, reference := range references {
+		if !actionReferencePattern.MatchString(reference) {
+			return errors.New("every action uses reference must be an owner/repo full 40-character lowercase SHA")
+		}
+	}
+	return nil
+}
+
+func collectActionReferences(node *yaml.Node, references *[]string, invalidReference *bool) {
+	if node == nil {
+		return
+	}
+	if node.Kind == yaml.MappingNode {
+		for index := 0; index+1 < len(node.Content); index += 2 {
+			key, value := node.Content[index], node.Content[index+1]
+			if key.Value == "uses" {
+				if value.Kind != yaml.ScalarNode {
+					*invalidReference = true
+				} else {
+					*references = append(*references, value.Value)
+				}
+			}
+			collectActionReferences(value, references, invalidReference)
+		}
+		return
+	}
+	for _, child := range node.Content {
+		collectActionReferences(child, references, invalidReference)
+	}
+}
+
+func requireNoWorkflowExecutionOverrides(root *yaml.Node) error {
+	if _, exists := workflowyaml.MappingValue(root, "defaults"); exists {
+		return errors.New("workflow root must not declare defaults")
+	}
+	return nil
+}
+
+func requireNoEnvironment(job *yaml.Node, jobName string) error {
+	if _, exists := workflowyaml.MappingValue(job, "environment"); exists {
+		return fmt.Errorf("%s must not declare an environment", jobName)
+	}
+	return nil
+}
+
+func requireRequiredJobExecution(job *yaml.Node, jobName string) error {
+	for _, key := range []string{"if", "continue-on-error"} {
+		if _, exists := workflowyaml.MappingValue(job, key); exists {
+			return fmt.Errorf("%s must not define if or continue-on-error", jobName)
+		}
+	}
+	if _, exists := workflowyaml.MappingValue(job, "defaults"); exists {
+		return fmt.Errorf("%s must not declare defaults", jobName)
+	}
+	return nil
+}
+
+func requireExactActionStep(step *yaml.Node, context, action string, withValues map[string]string) error {
+	if err := requireOnlyMappingKeys(step, "uses", "with"); err != nil {
+		return fmt.Errorf("%s must be the exact pinned action step", context)
+	}
+	if err := workflowyaml.RequireScalar(step, "uses", action); err != nil {
+		return fmt.Errorf("%s must be the exact pinned action step", context)
+	}
+	with, ok := workflowyaml.MappingValue(step, "with")
+	if !ok || with.Kind != yaml.MappingNode || len(with.Content) != len(withValues)*2 {
+		return fmt.Errorf("%s must be the exact pinned action step", context)
+	}
+	for key, value := range withValues {
+		if err := workflowyaml.RequireScalar(with, key, value); err != nil {
+			return fmt.Errorf("%s must be the exact pinned action step", context)
+		}
+	}
+	return nil
+}
+
+func requireCanonicalRunStep(step *yaml.Node, context, canonical string) error {
+	if err := requireOnlyMappingKeys(step, "name", "shell", "run"); err != nil {
+		return fmt.Errorf("%s must be the canonical direct bash step", context)
+	}
+	if err := workflowyaml.RequireScalar(step, "shell", "bash"); err != nil {
+		return fmt.Errorf("%s must be the canonical direct bash step", context)
+	}
+	if !equalCommands(splitCommands(requireRunValue(step)), splitCommands(canonical)) {
+		return fmt.Errorf("%s must use the required direct command sequence", context)
+	}
+	return nil
+}
+
+func requireCanonicalRunStepWithEnvironment(step *yaml.Node, context, canonical string) error {
+	if err := requireOnlyMappingKeys(step, "name", "shell", "env", "run"); err != nil {
+		return fmt.Errorf("%s must be the canonical direct bash step", context)
+	}
+	if err := workflowyaml.RequireScalar(step, "shell", "bash"); err != nil {
+		return fmt.Errorf("%s must be the canonical direct bash step", context)
+	}
+	if !equalCommands(splitCommands(requireRunValue(step)), splitCommands(canonical)) {
+		return fmt.Errorf("%s must use the required direct command sequence", context)
+	}
+	return nil
+}
+
+func requireOnlyMappingKeys(mapping *yaml.Node, keys ...string) error {
+	if !workflowyaml.HasExactMappingKeys(mapping, keys...) {
+		return errors.New("must contain exactly the required keys")
+	}
+	return nil
+}
+
+func requireContentsPermission(job *yaml.Node, level string) error {
+	permissions, ok := workflowyaml.MappingValue(job, "permissions")
+	if !ok || permissions.Kind != yaml.MappingNode || len(permissions.Content) != 2 {
+		return fmt.Errorf("permissions must contain only contents: %s", level)
+	}
+	if err := workflowyaml.RequireScalar(permissions, "contents", level); err != nil {
+		return fmt.Errorf("permissions must contain only contents: %s", level)
+	}
+	return nil
+}
+
+func jobSteps(job *yaml.Node) ([]*yaml.Node, error) {
+	steps, ok := workflowyaml.MappingValue(job, "steps")
+	if !ok || steps.Kind != yaml.SequenceNode || len(steps.Content) == 0 {
+		return nil, errors.New("must contain a non-empty steps sequence")
+	}
+	return steps.Content, nil
+}
+
+func hasCommandInWorkingDirectory(job *yaml.Node, directory, command string) bool {
+	steps, err := jobSteps(job)
+	if err != nil {
+		return false
+	}
+	for _, step := range steps {
+		workingDirectory, hasWorkingDirectory := workflowyaml.MappingValue(step, "working-directory")
+		run, hasRun := workflowyaml.MappingValue(step, "run")
+		if !hasWorkingDirectory || !hasRun || workingDirectory.Value != directory {
+			continue
+		}
+		for _, line := range splitCommands(run.Value) {
+			if line == command {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func hasCommand(job *yaml.Node, directory, command string) bool {
+	if directory != "" {
+		return hasCommandInWorkingDirectory(job, directory, command)
+	}
+	steps, err := jobSteps(job)
+	if err != nil {
+		return false
+	}
+	for _, step := range steps {
+		workingDirectory, hasWorkingDirectory := workflowyaml.MappingValue(step, "working-directory")
+		if hasWorkingDirectory && (workingDirectory.Kind != yaml.ScalarNode || workingDirectory.Value != ".") {
+			continue
+		}
+		if hasStepCommand(step, command) {
+			return true
+		}
+	}
+	return false
+}
+
+func rootStepWithRunFragment(job *yaml.Node, fragment string) (*yaml.Node, bool) {
+	steps, err := jobSteps(job)
+	if err != nil {
+		return nil, false
+	}
+	for _, step := range steps {
+		workingDirectory, hasWorkingDirectory := workflowyaml.MappingValue(step, "working-directory")
+		if hasWorkingDirectory && (workingDirectory.Kind != yaml.ScalarNode || workingDirectory.Value != ".") {
+			continue
+		}
+		run, hasRun := workflowyaml.MappingValue(step, "run")
+		if hasRun && run.Kind == yaml.ScalarNode && strings.Contains(run.Value, fragment) {
+			return step, true
+		}
+	}
+	return nil, false
+}
+
+func requireRunFragments(step *yaml.Node, context string, fragments ...string) error {
+	run := requireRunValue(step)
+	if run == "" {
+		return fmt.Errorf("%s must have a run command", context)
+	}
+	for _, fragment := range fragments {
+		if !strings.Contains(run, fragment) {
+			return fmt.Errorf("%s must contain %s", context, fragment)
+		}
+	}
+	return nil
+}
+
+func requireRunValue(step *yaml.Node) string {
+	run, hasRun := workflowyaml.MappingValue(step, "run")
+	if !hasRun || run.Kind != yaml.ScalarNode {
+		return ""
+	}
+	return run.Value
+}
+
+func commandIndexAfter(commands []string, want string, after int) int {
+	for index := after + 1; index < len(commands); index++ {
+		if commands[index] == want {
+			return index
+		}
+	}
+	return -1
+}
+
+func countCommand(commands []string, want string) int {
+	count := 0
+	for _, command := range commands {
+		if command == want {
+			count++
+		}
+	}
+	return count
+}
+
+func countRunFragment(step *yaml.Node, fragment string) int {
+	return strings.Count(requireRunValue(step), fragment)
+}
+
+func hasShellArgument(step *yaml.Node, argument string) bool {
+	run, hasRun := workflowyaml.MappingValue(step, "run")
+	if !hasRun || run.Kind != yaml.ScalarNode {
+		return false
+	}
+	for _, line := range strings.Split(run.Value, "\n") {
+		line = strings.TrimSpace(line)
+		line = strings.TrimSpace(strings.TrimSuffix(line, "\\"))
+		if line == argument {
+			return true
+		}
+	}
+	return false
+}
+
+func hasStepCommand(step *yaml.Node, command string) bool {
+	run, hasRun := workflowyaml.MappingValue(step, "run")
+	if !hasRun || run.Kind != yaml.ScalarNode {
+		return false
+	}
+	for _, line := range splitCommands(run.Value) {
+		if line == command {
+			return true
+		}
+	}
+	return false
+}
+
+func splitCommands(run string) []string {
+	var commands []string
+	for _, line := range strings.Split(run, "\n") {
+		line = strings.TrimSpace(line)
+		if line != "" && !strings.HasPrefix(line, "#") {
+			commands = append(commands, line)
+		}
+	}
+	return commands
+}
+
+func equalCommands(got, want []string) bool {
+	if len(got) != len(want) {
+		return false
+	}
+	for index := range want {
+		if got[index] != want[index] {
+			return false
+		}
+	}
+	return true
+}

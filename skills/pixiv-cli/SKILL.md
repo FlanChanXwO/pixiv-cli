@@ -18,9 +18,10 @@ the installed binary's `pixiv <cmd> --help` output.
 
 ## Preflight and account checks
 
-1. Run `pixiv version --json`. The binary itself is the only environment probe:
-   if it is missing or not executable, report that blocker. Install only when
-   the user explicitly asked for installation; then read
+1. Run `pixiv --version` and require one line in the form `pixiv <version>`.
+   The binary itself is the only environment probe: if it is missing or not
+   executable, report that blocker. Install only when the user explicitly asked
+   for installation; then read
    `references/install.md` and use the official platform script. Otherwise do
    not install or guess an installation method.
 2. Do not enumerate local accounts on every session. Run
@@ -74,7 +75,7 @@ the installed binary's `pixiv <cmd> --help` output.
 | Tier | Commands | Behavior |
 | --- | --- | --- |
 | Credential transfer | `auth import` `auth export` | Execute only for the user's explicit import/export task; follow `references/auth.md` so secret input/output is not exposed accidentally |
-| Read | `search` `novel search` `detail` `ranking` `recommended` `timeline *` `mypixiv *` `user *` `config get/path` `version` `update --check` | Execute when the user's task requires it |
+| Read | `search` `detail` `ranking` `series` `comment` `bookmark list/tags/detail` `recommended` `timeline *` `mypixiv *` `user *` `config get/path` root `--version` `update --check` | Execute when the user's task requires it |
 | Account diagnosis | `auth list/check` | List only for authentication/account/fallback decisions; check only when network validation is needed |
 | Account maintenance | `auth refresh` | Rotates saved OAuth credentials and refreshes the cached account profile/Premium status; run only on an explicit request |
 | Write | `bookmark add/remove` `follow add/remove` | State the target (illust/user ID) in one line before executing; for NDJSON stdin actions, state the record type and scope before starting |
@@ -86,10 +87,10 @@ the installed binary's `pixiv <cmd> --help` output.
 ## Output & token control (in priority order)
 
 1. **Reduce at the source (preferred):** pass a positive `--limit N` only when
-   that command's help exposes it. In the audited binary these commands are
-   `search`, `novel search`, `ranking`, `recommended`, `user search`, `user artworks`, `user bookmarks`, and
-   `user following`. Add `--page`, `--type`, `--rating`, or other flags only
-   when that specific command's help exposes them.
+   that command's help exposes it. In the audited binary this includes list
+   forms of `search`, `novel search`, `ranking`, `series`, `comment`, `bookmark list/tags`,
+   `recommended`, `timeline`, `mypixiv`, and `user`. Add `--page`, `--type`,
+   or other flags only when that specific command's help exposes them.
    `--limit 0` requests all results, so never use it unless the user explicitly
    asks for everything. A result that reaches `--limit N` is not proof that
    only N matches exist; follow the pagination and completeness contract in
@@ -99,9 +100,11 @@ the installed binary's `pixiv <cmd> --help` output.
    table for display purposes.
 3. **Programmatic processing** (extract IDs, filter, chain into a next
    command): visual lists automatically emit canonical NDJSON when stdout is a
-   pipe. Use `--ndjson` when explicit output is clearer, and apply typed local
-   rules with `--filter EXPR` before passing records to a compatible action.
-   NDJSON is streaming: do not add a collector merely to make a pipeline
+   pipe. Use `--ndjson` when explicit output is clearer. The current v1 search
+   contract has no top-level expression filter; use the supported typed search
+   flags and inspect records before passing them to a compatible action.
+   NDJSON is streaming: inspect the selected records before passing them to a
+   compatible action; do not add a collector merely to make a pipeline
    convenient. `--json` remains for one complete result document when a command
    exposes it, but cannot be combined with `--ndjson`.
 4. **Opportunistic tooling:** probe once for `jq`; if present, prefer
@@ -118,102 +121,151 @@ Verify flags with `--help` before use; this list is orientation, not a contract.
 
 ```
 pixiv auth list --json                    # only when an account decision needs it
+pixiv auth pool status --json              # inspect non-secret database scheduling state
+pixiv auth pool enable UID...              # enable selected local accounts for pooling
+pixiv auth pool disable UID...             # disable selected local accounts for pooling
 pixiv auth check [UID] --json             # validate token, shows user_id/username
 pixiv auth refresh [UID] --json           # explicit maintenance: token + Premium cache
 pixiv auth import                         # hidden TTY prompt, or automatic non-TTY stdin
-pixiv auth import --file PATH             # restore a versioned bundle offline
+pixiv auth import < bundle.json           # restore a versioned bundle offline
 pixiv auth export UID --output PATH       # write one private versioned bundle
 pixiv auth export --all --output PATH     # write all accounts to a private bundle
 pixiv auth use [UID]                      # switch default account (confirm first)
 pixiv config path                         # print location; creates baseline config if missing
 pixiv config get download_path            # read one effective setting
 pixiv config set download_path ./downloads # config write; confirm first
-pixiv search "WORD" --limit 10 --json     # illustration search
-pixiv search "WORD" --rating sfw --type illust --ai-mode exclude
+pixiv search "WORD" --type artwork --limit 10 --json
+pixiv search "WORD" --type novel --limit 10 --json
+pixiv search "NAME" --type user --limit 10 --json
+pixiv search "WORD" --content-type manga --ai-mode exclude
 pixiv search "WORD" --resolution high --aspect-ratio landscape --draw-tool "CLIP STUDIO PAINT"
-pixiv novel search "WORD" --rating sfw --min-text-length 1000 --limit 10 --json
-pixiv detail ILLUST_ID_OR_URL --json      # single artwork detail
+pixiv search --trending-tags --json
+pixiv detail ARTWORK_ID_OR_URL --type artwork --json
+pixiv detail NOVEL_ID --type novel --content --json
+pixiv series SERIES_ID --type novel --limit 20 --json
+pixiv comment ID --type artwork --limit 20 --json
+pixiv bookmark list --type artwork --limit 20 --json
+pixiv bookmark tags --limit 20 --json
+pixiv bookmark detail ARTWORK_ID --json
+pixiv user novels USER_ID --limit 20 --json
 pixiv ranking --mode day
-pixiv recommended illust --limit 10       # kind is REQUIRED; needs auth
-pixiv recommended all --limit 10          # request all supported kinds; needs auth
-pixiv timeline following --type illust --limit 20
+pixiv recommended --type artwork --limit 10 # type is required; needs auth
+pixiv recommended --type all --limit 10     # request all supported kinds; needs auth
+pixiv timeline following --type artwork --content-type illust --limit 20
 pixiv timeline latest --type novel --limit 20
-pixiv mypixiv works --type illust --limit 20
-pixiv user search "WORD" --limit 10 --json # source labels App search vs related-author fallback
+pixiv mypixiv works --type artwork --limit 20
+pixiv user search "WORD" --limit 10 --json # authenticated App user search
 pixiv user detail USER_ID --json          # full public profile (USER_ID required)
 pixiv user artworks [USER_ID] --limit 20  # omit USER_ID = current account
 pixiv user bookmarks [USER_ID] --tag TAG --limit 20
 pixiv user following [USER_ID] --limit 20
-pixiv search "miku" --limit 50 --filter 'bookmarkCount >= 1000'
-pixiv search "miku" --limit 20 --filter 'xRestrict == 0' | pixiv download --ugoira-mode apng
 pixiv bookmark add ILLUST_ID --tag TAG    # --tag repeatable; write op
 pixiv bookmark remove ILLUST_ID           # write op
 pixiv follow add USER_ID                  # write op
 pixiv follow remove USER_ID               # write op
-pixiv download [SRC...] [--filter EXPR] [--pages 1,3-5,8-] [--quality original|regular|small|thumb|mini] [--ugoira-mode gif|apng|zip|frames] [--archive FILE] [--write-metadata] [--download-path DIR] [--directory-template T] [--concurrency N]
+pixiv download [SRC...] [--pages 1,3-5] [--quality original|regular|small|thumb|mini] [--ugoira-mode gif|apng] [--output DIR] [--on-error skip|fail-fast]
 pixiv update --check --json               # read-only update check
 ```
 
-Data commands use the account selected by `pixiv auth use`; they do not accept
-credential-selection flags and ignore `PIXIV_REFRESH_TOKEN`. A manually maintained
-`[account_pool]` can choose local accounts only for safe non-mutating reads and downloads.
+Public positional commands can fill one missing value from non-TTY stdin. The
+stream is read as one complete value and only one final LF or CRLF is removed;
+spaces and internal newlines are preserved. An explicit positional value wins,
+an empty optional stream leaves the original omission/default behavior intact,
+and commands missing two or more required values do not read stdin. This
+applies to queries such as `pixiv search`, `detail`, `series`, `comment`,
+`user`, `config`, and account operations. `download` and bookmark/follow
+actions classify stdin as strict canonical NDJSON when its first non-whitespace
+byte is `{`; otherwise they use one raw ID/URL value. Once selected, a mode
+does not fall back to the other mode. `-` is ordinary positional text and is
+not a stdin sentinel.
+
+Data commands use the account selected by `pixiv auth use` when the pool is disabled;
+when `[account_pool].enabled = true`, the database selects eligible local accounts
+for safe non-mutating reads and downloads. The pool's `schedulable` flags are managed
+with `pixiv auth pool status|enable|disable`; the config stores only `enabled` and
+`strategy`. Data commands do not accept credential-selection flags and use the
+local account selected by `pixiv auth use`.
 Common data flags are command-scoped `--json` or `--ndjson`, plus `--proxy URL` /
 `--no-proxy` (this command only, never persisted). Proxy URIs may use `http`,
-`https`, `socks5`, or `socks5h`; `--sleep-request D` sets a one-command minimum
-interval between network request starts.
+`https`, `socks5`, or `socks5h`.
 
-`pixiv config` manages `download_path`, `filename_template`, `directory_template`,
-`request_interval`, and `https_proxy`.
+`pixiv config` manages `account_pool_enabled`, `account_pool_strategy`,
+`download_path`, `filename_template`, `directory_template`, `request_interval`,
+`https_proxy`, `log_level`, and `log_format`.
 Other TOML settings are hand-maintained; inspect the installed help before suggesting them.
+
+FANBOX is a separate read-only service surface. Import its `FANBOXSESSID` with
+`pixiv fanbox auth import`, select it with `pixiv fanbox auth use --auto` or an
+explicit UID, and inspect creators, posts, tags, home/supporting feeds, or
+resources using the installed `pixiv fanbox --help` output. `pixiv fanbox mcp`
+uses its own runtime credential selection and does not reuse the Pixiv account
+pool.
+
+Request pacing is configured with `PIXIV_REQUEST_INTERVAL` or
+`[network].request_interval`. Set `log_level=debug` (or
+`PIXIV_LOG_LEVEL=debug`) to enable safe typed diagnostics; use `log_format=json`
+or `PIXIV_LOG_FORMAT=json` for one JSON event per stderr line. MCP stdout remains JSON-RPC, and `auth export`
+plus hidden callback/installer paths retain their quiet/secret-output contracts.
+FANBOX's optional `[fanbox.flaresolverr]` table is a challenge-only recovery
+route; it does not proxy ordinary API/resource requests or receive the FANBOX
+session.
 
 ## Critical semantics (traps — read before assuming a bug)
 
-1. **No silent fallback, by design.** With a refresh token present, App API
-   errors are surfaced as-is and NEVER auto-fall back to the anonymous web API.
-   Anonymous fallback happens only when *no* token exists anywhere AND
-   `web_fallback_enabled=true`, and only for `search` / `detail` / `ranking` /
-   `download`. Authenticated `detail`, pages, and ugoira metadata therefore
-   come from App API; a missing App page resource is a real error, not a reason
-   to scrape or retry Web.
+1. **No anonymous Web fallback.** v1 removed the anonymous Web API. Every
+   content command requires an authenticated local account selected through
+   `pixiv auth use`, or an eligible database account when the account pool is
+   enabled; without one it returns an authentication requirement. App API
+   errors are surfaced as-is and NEVER auto-fall back to a Web path. A missing
+   App page resource is a real error, not a reason to scrape or retry Web.
 2. **`recommended` requires a kind.** Choose one of the kinds shown by
    `pixiv recommended --help`; it requires authentication and does not work
    anonymously.
-3. **`--limit` is command-specific.** It is available on `search`, `ranking`,
-   `recommended`, `user search`, `user artworks`, `user bookmarks`, and `user following`;
-   do not attach it to `detail`, auth/config commands, or
-   other commands whose help omits it. Where supported, a positive value sets
-   the maximum result count and `0` requests all results. `--page` requires a
-   positive `--limit`.
-4. **Search flags are command-scoped.** Verify `--search-by`, `--period`,
-   `--start-date`, `--end-date`, `--sort`, `--rating`, `--type`, `--ai-mode`, `--aspect-ratio`,
-   `--resolution`, `--draw-tool`, `--bookmark-min`, and `--bookmark-max` against `pixiv search --help`; do not infer
-   undocumented aliases or attach illustration-only filters to other commands.
-   `novel search` supports `--search-by`, `--sort`, `--period`, `--rating`,
-   `--min-text-length`, `--max-text-length`, and `--original-only`; it does not
-   support illustration AI, drawing-tool, resolution, aspect-ratio, or type filters.
-5. **Anonymous restricted search fails explicitly.** Web fallback uses only
-   reliable illustration-search filters. `r18`, `r18g`, `mature`, `--search-by tag-title-caption`,
-   bookmark-count bounds
-   require App authentication; bookmark-count bounds additionally require Pixiv Premium. For a saved account the CLI
-   checks the cached self-profile status before search (24h by default); a non-Premium result fails locally rather than
-   making a misleading search request. Use explicit `auth refresh` to force that cache. Do not
-   present the failure as an empty result. `novel search` is App-only and requires authentication.
-   Bookmark count is a public bookmark total, never a like count.
+3. **`--limit` is command-specific.** Verify the installed help before adding it;
+   list forms of `search`, `novel search`, `ranking`, `series`, `comment`, `bookmark`,
+   `recommended`, `timeline`, `mypixiv`, and `user` expose it where applicable.
+   Where supported, a positive value fills logical results across upstream
+   batches and `0` traverses the current upstream result to exhaustion. `--page`
+   requires a positive `--limit`.
+4. **Search flags are command-scoped.** `search` uses `--type artwork|novel|user`
+   for the entity route and `--content-type` for artwork subtype. Verify
+   `--search-by`, `--period`, `--start-date`, `--end-date`, `--sort`, `--ai-mode`,
+   `--aspect-ratio`, `--resolution`, `--draw-tool`, bookmark bounds, and
+   `--bookmark-strategy` against `pixiv search --help`. `--rating` is a retained
+   compatibility flag whose non-empty value is rejected; it is not a filter.
+   `novel search` exposes only its basic search-by/sort/period contract and does
+   not publish rating, text-length, or original-only filters.
+5. **Restricted search fails explicitly.** There is no anonymous search path.
+   Restricted rating requests are not represented by a silent `--rating` filter;
+   use the command's actual authenticated/API contract and surface failures.
+   Bookmark-count bounds use the application strategy/completeness result:
+   Premium is not a local hard gate, `auto` currently means local candidate
+   filtering, `best_effort` is explicitly partial, and `server` fails until
+   reliable evidence exists. Do not present a strategy error as an empty result.
+   `novel search` is App-only and requires authentication. Bookmark count is a
+   public bookmark total, never a like count.
 6. **Extended rankings need authentication.** Valid modes are `day`,
    `day_male`, `day_female`, `week`, `week_original`, `week_rookie`, `month`,
    `day_manga`, `week_manga`, `month_manga`, `week_rookie_manga`, `day_r18`,
    `day_male_r18`, `day_female_r18`, `week_r18`, `week_r18g`. The final nine
    must not be replaced with an anonymous day ranking.
-7. **Empty filtered batches are skipped.** With local filters, search continues past leading empty upstream batches to the first non-empty logical batch or true end; `--limit N` fills logical results and `--limit 0` walks all filtered results. Do not invent request caps.
+7. **Empty filtered batches are skipped.** With application-side bookmark
+   filtering, search continues past leading empty upstream batches to the first
+   non-empty logical batch or true end; `--limit N` fills logical results and
+   `--limit 0` walks the current filtered result. Do not invent request caps.
 8. **No like-count field.** Do not invent or label bookmark totals as likes.
 9. **`update --json` is only valid with `--check`.** The actual install never
    emits JSON.
-10. **Proxy is per-command.** The browser's system proxy is NOT inherited.
-   Persist with `pixiv config set https_proxy URL`; override per command with
-   `--proxy` / `--no-proxy` (mutually exclusive). HTTP, HTTPS, SOCKS5, and
-   SOCKS5H proxy URIs are supported. With an explicit proxy,
-   resource downloads deliberately use HTTP/1.1; App API, OAuth, and Web
-   metadata requests retain normal protocol negotiation.
+10. **Proxy is per-command or service-scoped.** The browser's system proxy is
+   NOT inherited. Pixiv command overrides take precedence over
+   `[pixiv.network].proxy_url`, environment, and the global `[network]` value;
+   persist the global value with `pixiv config set https_proxy URL` when that is
+   the intended scope. `--proxy` / `--no-proxy` are mutually exclusive. HTTP,
+   HTTPS, SOCKS5, and SOCKS5H proxy URIs are supported. FANBOX has independent
+   `[fanbox.network].proxy_url` and `user_agent` settings, plus an optional
+   `[fanbox.flaresolverr]` challenge-only route. With an explicit Pixiv proxy,
+   resource downloads deliberately use HTTP/1.1; App API and OAuth retain
+   normal protocol negotiation.
 11. **Long downloads may legitimately take time.** Do not impose an arbitrary
    timeout or kill the process merely because it is slow; wait for completion,
    user cancellation, or a real error.
@@ -229,9 +281,10 @@ Other TOML settings are hand-maintained; inspect the installed help before sugge
 13. **Direct URLs are intentionally narrow.** `detail` accepts only an artwork
     ID or a `pixiv.net`/`www.pixiv.net` HTTPS `/artworks/{id}` URL (an optional
     locale, query, or fragment is harmless). `download` also accepts `/users/{id}`
-    and `/users/{id}/artworks`, `/users/{id}/bookmarks/artworks`, and
-    `/user/{id}/series/{series_id}`. These expand visual works in first-seen
-    artwork-ID order; user, bookmarks, and series downloads use App OAuth.
+    and `/users/{id}/artworks`, plus `/users/{id}/bookmarks/artworks`. These
+    expand visual works in first-seen artwork-ID order; user and bookmark
+    downloads use App OAuth. Artwork-series URLs are rejected as unsupported
+    download sources.
 
 ## Routing
 

@@ -4,6 +4,7 @@
 /build/
 /pixiv-cli
 /pixiv-auth
+/pixiv
 *.test
 *.out
 coverage/
@@ -15,6 +16,12 @@ downloads/
 *.sqlite
 *.sqlite3
 *.log
+
+# Browser automation tool runtime logs
+/.playwright-mcp/
+
+# E2E native-evidence test output
+/.native-evidence-test.*/
 
 # Local environment and editor files
 .env
@@ -32,6 +39,6 @@ __pycache__/
 *.py[cod]
 
 # Rust compiler output is machine-specific; verified staticlib/manifest stays tracked.
-/internal/download/ugoira_rs/target/
+/internal/media/ugoira/rust/target/
 
 .worktrees/

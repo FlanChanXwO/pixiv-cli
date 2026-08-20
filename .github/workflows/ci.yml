@@ -44,7 +44,7 @@ jobs:
             printf '%s\n' 'docs_only=false' >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          go run ./scripts/changescope --base "$BASE_SHA" --head "$HEAD_SHA" --github-output "$GITHUB_OUTPUT"
+          go run ./scripts/cmd/changescope --base "$BASE_SHA" --head "$HEAD_SHA" --github-output "$GITHUB_OUTPUT"
 
   quality:
     needs: classify_changes
@@ -58,14 +58,10 @@ jobs:
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
         with:
           go-version: '1.26.3'
-      - name: Validate pull request release-note declaration
-        if: ${{ github.event_name == 'pull_request' }}
-        shell: bash
-        run: go run ./scripts/releasenotes pr-validate --event "$GITHUB_EVENT_PATH"
       - name: Test documentation contracts
         if: ${{ needs.classify_changes.outputs.docs_only == 'true' }}
         shell: bash
-        run: go test ./scripts/documentation -count=1
+        run: go test ./scripts/tests/documentation -count=1
       - name: Test Go sources
         if: ${{ needs.classify_changes.outputs.docs_only != 'true' }}
         shell: bash
@@ -87,10 +83,10 @@ jobs:
         shell: bash
         run: |
           sh scripts/test-package-release.sh
-          sh scripts/test-release-workflow.sh
-          sh scripts/test-homebrew-prepublish-workflow.sh
-          go test ./scripts/clawhubworkflow -count=1
-          go test ./scripts/platformsmokeworkflow -count=1
+          go run ./scripts/cmd/releaseworkflow --workflow .github/workflows/release.yml
+          go run ./scripts/cmd/prepublishhomebrew --workflow .github/workflows/homebrew-prepublish-verify.yml
+          go test ./scripts/tests/clawhubworkflow -count=1
+          go test ./scripts/tests/platformsmokeworkflow -count=1
       - name: Install pinned pre-commit
         if: ${{ needs.classify_changes.outputs.docs_only != 'true' }}
         shell: bash
@@ -119,4 +115,8 @@ jobs:
           go-version: '1.26.3'
       - name: Test native login handler contracts
         shell: bash
-        run: go test ./internal/cli ./internal/cli/loginhelper -count=1
+        run: |
+          # Quality gate 已运行完整 internal/cli；Windows job 聚焦 root callback
+          # wiring，并由 loginhelper 包承担真实 Windows registry contract。
+          go test ./internal/cli -run '^(TestAuthURLCallback|TestAuthURLHandlerInstall|TestNormalCLIInvocationEnsuresPersistentHandlerWithoutBlockingCommand)$' -count=1
+          go test ./internal/cli/commands/pixiv/auth/loginhelper -count=1

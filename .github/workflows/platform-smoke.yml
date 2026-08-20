@@ -44,7 +44,7 @@ jobs:
             printf '%s\n' 'docs_only=false' >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          go run ./scripts/changescope --base "$BASE_SHA" --head "$HEAD_SHA" --github-output "$GITHUB_OUTPUT"
+          go run ./scripts/cmd/changescope --base "$BASE_SHA" --head "$HEAD_SHA" --github-output "$GITHUB_OUTPUT"
 
   packaged_binary_smoke:
     needs: classify_changes
@@ -104,16 +104,16 @@ jobs:
         run: sh scripts/test-rust-vendor.sh
       - name: Test the platform installer
         shell: bash
-        run: go test ./scripts/installers -count=1
+        run: go test ./scripts/tests/installers -count=1
       - name: Test platform OAuth callback integration
         shell: bash
-        run: go test ./internal/cli/loginhelper -count=1
+        run: go test ./internal/cli/commands/pixiv/auth/loginhelper -count=1
       - name: Build the native Rust static library
         shell: bash
         run: bash scripts/build-staticlibs.sh --target '${{ matrix.rust_target }}'
       - name: Run native GIF/APNG smoke
         shell: bash
-        run: go test ./internal/download -run '^TestRustUgoiraEncoderNativeGIFAndAPNG$' -count=1
+        run: go test ./internal/media/ugoira -run '^TestRustUgoiraEncoderNativeGIFAndAPNG$' -count=1
       - name: Build and package a versioned binary
         shell: bash
         run: |
@@ -125,12 +125,12 @@ jobs:
             binary='dist/pixiv.exe'
           fi
           go build -trimpath -buildvcs=false \
-            -ldflags "-X github.com/FlanChanXwO/pixiv-cli/internal/buildinfo.Version=v${version} -X github.com/FlanChanXwO/pixiv-cli/internal/buildinfo.Commit=${GITHUB_SHA} -X github.com/FlanChanXwO/pixiv-cli/internal/buildinfo.BuildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            -ldflags "-X github.com/FlanChanXwO/pixiv-cli/internal/shared/buildinfo.Version=v${version}" \
             -o "$binary" ./cmd/pixiv
           if [ '${{ matrix.goos }}' = linux ]; then
-            go run ./scripts/linuxabi --binary "$binary"
+            go run ./scripts/cmd/linuxabi --binary "$binary"
           fi
-          go run ./scripts/releaseassets package \
+          go run ./scripts/cmd/releaseassets package \
             --repo-root . \
             --version "$version" \
             --target '${{ matrix.goos }}/${{ matrix.goarch }}' \
@@ -153,9 +153,7 @@ jobs:
           test -f "$binary"
           PIXIV_E2E_BINARY="$(pwd)/$binary" \
           PIXIV_E2E_EXPECTED_VERSION="v${version}" \
-          PIXIV_E2E_REAL_API= \
-          PIXIV_E2E_WEB_API= \
-          go test ./e2e -run '^TestPixivBinary' -count=1
+          go test ./e2e -run '^TestPixivBinaryPackagedSmoke$' -count=1
 
   # 分支保护只要求此汇总 job：完整变更必须等全部六个 matrix job 成功，文档改动
   # 则确认 matrix 被有意跳过，避免缺失 matrix check 导致 PR 永远处于 pending。

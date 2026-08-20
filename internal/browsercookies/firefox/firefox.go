@@ -1,0 +1,239 @@
+// Package firefox 实现 Firefox provider。
+//
+// 它从 profiles.ini 发现 profile，从 cookies.sqlite 读取明文 cookie；值看起来
+// 加密（非 UTF-8）时返回明确分类。Firefox 未安装时 Discover 返回
+// ErrNotInstalled，New 本身仍返回可用 provider。
+package firefox
+
+import (
+	"bufio"
+	"context"
+	"errors"
+	"io"
+	"io/fs"
+	"os"
+	"path/filepath"
+	"strings"
+	"unicode/utf8"
+
+	"github.com/FlanChanXwO/pixiv-cli/internal/browsercookies"
+	"github.com/FlanChanXwO/pixiv-cli/internal/browsercookies/sqliteio"
+)
+
+const (
+	profilesIni = "profiles.ini"
+	cookiesDB   = "cookies.sqlite"
+
+	// selectCookiesSQL 是唯一允许执行的查询：按受约束的 host/name 精确匹配。
+	selectCookiesSQL = `SELECT value FROM moz_cookies WHERE (host = @h1 OR host = @h2) AND name = @n;`
+)
+
+func init() {
+	browsercookies.Register("firefox", func() (browsercookies.Provider, error) { return newProvider("") })
+}
+
+// defaultRoot 返回当前平台的 Firefox 用户目录；其他平台返回空路径并按
+// 未安装处理，不把一个平台的 profile 路径误用于另一平台。
+func defaultRoot() string {
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		return ""
+	}
+	return firefoxDataRoot(home)
+}
+
+type provider struct {
+	root string
+}
+
+// newProvider 构造 provider；root 为空时使用默认用户目录。
+func newProvider(root string) (*provider, error) {
+	if root == "" {
+		root = defaultRoot()
+	}
+	return &provider{root: root}, nil
+}
+
+func (p *provider) Name() string { return "firefox" }
+
+func (p *provider) Close() error { return nil }
+
+// safeProfileID 校验 Firefox profile 目录名是安全 identifier：非空、非隐藏。
+func safeProfileID(id string) bool {
+	if id == "" || id == "." || id == ".." || strings.HasPrefix(id, ".") {
+		return false
+	}
+	return filepath.Base(id) == id
+}
+
+// DiscoverProfiles 解析 profiles.ini 中的 [ProfileN] 节，只保留存在
+// cookies.sqlite 的 profile。Firefox 未安装（根目录或 profiles.ini 缺失）时
+// 返回 ErrNotInstalled。
+func (p *provider) DiscoverProfiles(ctx context.Context) ([]browsercookies.Profile, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	file, err := os.Open(filepath.Join(p.root, profilesIni))
+	if err != nil {
+		if errors.Is(err, fs.ErrPermission) {
+			return nil, browsercookies.ErrPermissionDenied
+		}
+		return nil, browsercookies.ErrNotInstalled
+	}
+	defer file.Close()
+	profiles, err := parseProfilesIni(file, p.root)
+	if err != nil {
+		if errors.Is(err, fs.ErrPermission) {
+			return nil, browsercookies.ErrPermissionDenied
+		}
+		return nil, browsercookies.ErrInvalidFormat
+	}
+	if len(profiles) == 0 {
+		return nil, browsercookies.ErrNotInstalled
+	}
+	return profiles, nil
+}
+
+// parseProfilesIni 解析 profiles.ini；相对 Path 相对于 root 解析，绝对 Path 使用
+// 其 basename 作为安全 identifier。
+func parseProfilesIni(file *os.File, root string) ([]browsercookies.Profile, error) {
+	type iniSection struct {
+		name       string
+		path       string
+		isRelative bool
+	}
+	var sections []iniSection
+	current := -1
+	reader := bufio.NewReader(file)
+	for {
+		rawLine, readErr := reader.ReadString('\n')
+		line := strings.TrimSpace(rawLine)
+		if line == "" || strings.HasPrefix(line, ";") || strings.HasPrefix(line, "#") {
+			if errors.Is(readErr, io.EOF) {
+				break
+			}
+			if readErr != nil {
+				return nil, readErr
+			}
+			continue
+		}
+		if strings.HasPrefix(line, "[") && strings.HasSuffix(line, "]") {
+			sections = append(sections, iniSection{isRelative: true})
+			current = len(sections) - 1
+			continue
+		}
+		if current < 0 {
+			continue
+		}
+		key, value, ok := strings.Cut(line, "=")
+		if !ok {
+			continue
+		}
+		key = strings.TrimSpace(key)
+		value = strings.TrimSpace(value)
+		switch key {
+		case "Name":
+			sections[current].name = value
+		case "Path":
+			sections[current].path = value
+		case "IsRelative":
+			sections[current].isRelative = value == "1"
+		}
+		if errors.Is(readErr, io.EOF) {
+			break
+		}
+		if readErr != nil {
+			return nil, readErr
+		}
+	}
+	var profiles []browsercookies.Profile
+	for _, s := range sections {
+		if s.path == "" {
+			continue
+		}
+		dir := s.path
+		if s.isRelative {
+			dir = filepath.Join(root, s.path)
+		}
+		id := filepath.Base(s.path)
+		if !safeProfileID(id) {
+			continue
+		}
+		if _, err := os.Stat(filepath.Join(dir, cookiesDB)); err != nil {
+			if errors.Is(err, fs.ErrPermission) {
+				return nil, browsercookies.ErrPermissionDenied
+			}
+			continue
+		}
+		name := s.name
+		if name == "" {
+			name = id
+		}
+		profiles = append(profiles, browsercookies.Profile{ID: id, Name: name, Path: dir})
+	}
+	return profiles, nil
+}
+
+// resolveProfile 通过 discovery 按 identifier 解析 profile 的绝对路径。
+func (p *provider) resolveProfile(ctx context.Context, profileID string) (browsercookies.Profile, error) {
+	profiles, err := p.DiscoverProfiles(ctx)
+	if err != nil {
+		return browsercookies.Profile{}, err
+	}
+	return browsercookies.SelectProfile(profiles, profileID)
+}
+
+// Read 读取 profileID 下匹配 query 的明文 cookie。加密值（非 UTF-8）返回
+// ErrEncryptedCookieUnsupported 分类。
+func (p *provider) Read(ctx context.Context, query browsercookies.CookieQuery, profileID string) ([]browsercookies.Secret, error) {
+	if err := query.Valid(); err != nil {
+		return nil, err
+	}
+	if !safeProfileID(profileID) {
+		return nil, browsercookies.ErrInvalidProfileID
+	}
+	profile, err := p.resolveProfile(ctx, profileID)
+	if err != nil {
+		return nil, err
+	}
+	dbPath := filepath.Join(profile.Path, cookiesDB)
+	data, hooked, err := browsercookies.HookBytes("firefox", dbPath)
+	if err != nil {
+		return nil, err
+	}
+	path := dbPath
+	if hooked {
+		var cleanup func()
+		path, cleanup, err = browsercookies.WriteTempSnapshot(data)
+		if err != nil {
+			return nil, err
+		}
+		defer cleanup()
+	}
+	params := map[string]string{
+		"@h1": query.Host,
+		"@h2": strings.TrimPrefix(query.Host, "."),
+		"@n":  query.Name,
+	}
+	rows, err := sqliteio.Query(ctx, path, selectCookiesSQL, params)
+	if err != nil {
+		return nil, err
+	}
+	secrets := make([]browsercookies.Secret, 0, len(rows))
+	for _, row := range rows {
+		if len(row) < 1 {
+			return nil, browsercookies.ErrQueryFailed
+		}
+		value := row[0]
+		if looksEncrypted(value) {
+			return nil, browsercookies.ErrEncryptedCookieUnsupported
+		}
+		secrets = append(secrets, browsercookies.NewSecret(value))
+	}
+	return secrets, nil
+}
+
+// looksEncrypted 用 UTF-8 合法性判断 cookie 值是否看起来已加密。
+func looksEncrypted(value string) bool {
+	return !utf8.ValidString(value)
+}

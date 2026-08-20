@@ -40,9 +40,9 @@ release:
   - changed-files:
       - any-glob-to-any-file:
           - changelog/**
-          - scripts/homebrewformula/**
-          - scripts/prepublishhomebrew/**
-          - scripts/releaseassets/**
-          - scripts/releasenotes/**
-          - scripts/releaseworkflow/**
+          - scripts/cmd/homebrewformula/**
+          - scripts/cmd/prepublishhomebrew/**
+          - scripts/cmd/releaseassets/**
+          - scripts/cmd/releasenotes/**
+          - scripts/cmd/releaseworkflow/**
           - templates/homebrew/**
