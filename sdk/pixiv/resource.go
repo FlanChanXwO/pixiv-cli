@@ -198,7 +198,7 @@ func (c *Client) SaveResource(ctx context.Context, ref sdk.ResourceRef, options 
 	if err != nil {
 		return sdk.SavedResource{}, newError("SaveResource", sdk.LocalStateError, "cannot write resource")
 	}
-	return sdk.SavedResource{Path: options.Path, Size: size}, nil
+	return sdk.SavedResource{Path: options.Path, Size: size, ContentType: response.ContentType()}, nil
 }
 
 type progressReader struct {

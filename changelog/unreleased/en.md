@@ -11,6 +11,7 @@
 
 ## Maintenance
 
+- Fixed Pixiv current-user lookup to use the active `/v1/user/detail` route, accepted `max_illust_id` pagination for the latest-artwork feed, and corrected thumbnail filenames/MCP MIME metadata when CDN bytes are JPEG behind a `.png` URL.
 - Hardened the FANBOX identity-scoped cursor binding (Home, Supporting, Creators) to the verified FANBOX account id so a cursor minted under one account cannot be replayed against another account's feed; CreatorPosts and TaggedPosts remain public-scoped. ([#59](https://github.com/FlanChanXwO/pixiv-cli/pull/59))
 - Replaced the embedded-URL FANBOX resource ref with a stable identity-only envelope (kind, owning creator/post, attachment id); `OpenResource`/`SaveResource` re-resolve a fresh allowlisted locator from trusted metadata when no in-session locator is cached, and the session cookie is sent only on the credentialed `downloads.fanbox.cc` host. ([#59](https://github.com/FlanChanXwO/pixiv-cli/pull/59))
 - Fixed logical pagination `has_more` to stay true when a batch is truncated mid-way by a limit even if the upstream cursor is empty, across the shared traversal engine and the FANBOX MCP runtime. ([#59](https://github.com/FlanChanXwO/pixiv-cli/pull/59))

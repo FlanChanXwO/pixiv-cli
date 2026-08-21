@@ -408,9 +408,9 @@ Only the structured entity filters documented by each command are accepted. The 
 | `fanbox mcp` | `pixiv fanbox mcp [--proxy URL\|--no-proxy]` | Starts the read-only FANBOX MCP stdio server; the native proxy override does not alter FlareSolverr settings. |
 
 Downloaded filenames normalize cross-platform-invalid characters in both the filename template and URL-derived
-extension. Extensions also replace ASCII control characters and remove trailing dots or spaces rejected by
-Windows. The extension still comes from the upstream URL; no allowlist, MIME guessing, or silent substitution is
-used.
+extension. For Pixiv thumbnail artwork, a successful resource Content-Type may replace an ambiguous URL extension
+such as `.png` so the published filename matches the actual image bytes. Unknown media types retain the URL
+extension. Extensions also replace ASCII control characters and remove trailing dots or spaces rejected by Windows.
 
 ### `auth login` flags
 

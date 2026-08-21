@@ -535,8 +535,13 @@ func TestSearchArtworksRejectsChangedQuery(t *testing.T) {
 // 绑定 content type，一个为 illust 生成的 continuation 不得在 manga 请求里复用，
 // 否则会在错误的 result set 上恢复 offset。
 func TestLatestArtworksBindsCursorToContentType(t *testing.T) {
+	calls := 0
 	rt := roundTripFunc(func(req *http.Request) (*http.Response, error) {
-		body := `{"illusts":[{"id":42,"title":"art","type":"illust","create_date":"2024-05-01T10:00:00+09:00","image_urls":{"original":"https://i.pximg.net/img/42.png"},"user":{"id":7,"name":"n","account":"a"},"tags":[]}],"next_url":"https://app-api.pixiv.net/v1/illust/new?content_type=illust&filter=for_android&offset=30"}`
+		calls++
+		if calls == 2 && req.URL.Query().Get("max_illust_id") != "987654" {
+			t.Errorf("continuation query = %v", req.URL.Query())
+		}
+		body := `{"illusts":[{"id":42,"title":"art","type":"illust","create_date":"2024-05-01T10:00:00+09:00","image_urls":{"original":"https://i.pximg.net/img/42.png"},"user":{"id":7,"name":"n","account":"a"},"tags":[]}],"next_url":"https://app-api.pixiv.net/v1/illust/new?content_type=illust&filter=for_android&max_illust_id=987654"}`
 		return jsonResponse(body), nil
 	})
 	client, _ := NewWith("token", Options{HTTPClient: &http.Client{Transport: rt}})

@@ -251,15 +251,27 @@ func (c *Client) LatestArtworks(ctx context.Context, request LatestArtworksReque
 	// produced for one feed (e.g. illust) cannot be replayed against another
 	// (e.g. manga), which would resume at an offset for the wrong result set.
 	query.Set("content_type", contentType)
-	offset, err := c.continuationOffset("LatestArtworks", query, request.Cursor)
-	if err != nil {
-		return sdk.Page[Artwork]{}, err
+	var offset int
+	var maxIllustID int64
+	if !request.Cursor.IsZero() {
+		key, value, err := c.continuationFromCursor("LatestArtworks", query, request.Cursor)
+		if err != nil {
+			return sdk.Page[Artwork]{}, err
+		}
+		switch key {
+		case "offset":
+			offset = int(value)
+		case "max_illust_id":
+			maxIllustID = value
+		default:
+			return sdk.Page[Artwork]{}, newError("LatestArtworks", sdk.InvalidCursor, "cursor continuation kind mismatch")
+		}
 	}
-	list, err := c.artworkTimeline.List(ctx, timeline.Request{Kind: timeline.Latest, ContentType: contentType, Offset: offset})
+	list, err := c.artworkTimeline.List(ctx, timeline.Request{Kind: timeline.Latest, ContentType: contentType, Offset: offset, MaxIllustID: maxIllustID})
 	if err != nil {
 		return sdk.Page[Artwork]{}, classifyAppError(err, "LatestArtworks")
 	}
-	return c.artworkPage("LatestArtworks", query, "offset", list.Items, int64(list.NextOffset), list.HasNext)
+	return c.artworkPage("LatestArtworks", query, list.NextKey, list.Items, list.NextValue, list.HasNext)
 }
 
 // UserArtworks lists one user's artworks.

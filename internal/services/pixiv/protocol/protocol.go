@@ -46,7 +46,6 @@ const (
 	AppUserFollower         = "/v1/user/follower"
 	AppUserList             = "/v1/user/list"
 	AppEditAIShowSettings   = "/v1/user/edit-ai-show-settings"
-	AppUserMe               = "/v1/user/me"
 	OAuthToken              = "/auth/token"
 	AppLogin                = "/web/v1/login"
 	AppOAuthStart           = "/web/v1/users/auth/pixiv/start"

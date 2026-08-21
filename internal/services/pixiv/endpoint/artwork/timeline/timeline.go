@@ -36,11 +36,14 @@ type Request struct {
 	UserID      int64
 	ArtworkType string
 	Offset      int
+	MaxIllustID int64
 }
 
 type Result struct {
 	Items      []artwork.Artwork
 	NextOffset int
+	NextKey    string
+	NextValue  int64
 	HasNext    bool
 }
 
@@ -66,11 +69,19 @@ func (c *Client) List(ctx context.Context, request Request) (Result, error) {
 		}
 		items[index] = mapArtwork(value)
 	}
-	nextOffset, hasNext, err := continuation(raw.NextURL)
+	continuationKeys := []string{"offset"}
+	if request.Kind == Latest {
+		continuationKeys = []string{"max_illust_id", "offset"}
+	}
+	nextKey, nextValue, hasNext, err := continuation(raw.NextURL, continuationKeys)
 	if err != nil {
 		return Result{}, err
 	}
-	return Result{Items: items, NextOffset: nextOffset, HasNext: hasNext}, nil
+	result := Result{Items: items, NextKey: nextKey, NextValue: nextValue, HasNext: hasNext}
+	if nextKey == "offset" {
+		result.NextOffset = int(nextValue)
+	}
+	return result, nil
 }
 
 func requestValues(request Request) (string, url.Values, error) {
@@ -81,7 +92,11 @@ func requestValues(request Request) (string, url.Values, error) {
 		return protocol.AppIllustFollow, query, nil
 	case Latest:
 		query := url.Values{"content_type": {request.ContentType}, "filter": {"for_android"}}
-		setOffset(query, request.Offset)
+		if request.MaxIllustID > 0 {
+			query.Set("max_illust_id", strconv.FormatInt(request.MaxIllustID, 10))
+		} else {
+			setOffset(query, request.Offset)
+		}
 		return protocol.AppIllustNew, query, nil
 	case MyPixiv:
 		query := url.Values{}
@@ -204,26 +219,40 @@ func (l *requiredList[T]) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-func continuation(rawURL *string) (int, bool, error) {
+func continuation(rawURL *string, keys []string) (string, int64, bool, error) {
 	if rawURL == nil {
-		return 0, false, nil
+		return "", 0, false, nil
 	}
 	if *rawURL == "" {
-		return 0, false, protocol.MalformedResponse()
+		return "", 0, false, protocol.MalformedResponse()
 	}
 	parsed, err := url.Parse(*rawURL)
 	if err != nil {
-		return 0, false, protocol.MalformedResponse()
+		return "", 0, false, protocol.MalformedResponse()
 	}
 	values, err := url.ParseQuery(parsed.RawQuery)
-	if err != nil || len(values["offset"]) != 1 {
-		return 0, false, protocol.MalformedResponse()
+	if err != nil {
+		return "", 0, false, protocol.MalformedResponse()
 	}
-	value, err := strconv.ParseInt(values.Get("offset"), 10, 64)
-	if err != nil || value <= 0 || int64(int(value)) != value {
-		return 0, false, protocol.MalformedResponse()
+	key := ""
+	for _, candidate := range keys {
+		entries, present := values[candidate]
+		if !present {
+			continue
+		}
+		if len(entries) != 1 || key != "" {
+			return "", 0, false, protocol.MalformedResponse()
+		}
+		key = candidate
 	}
-	return int(value), true, nil
+	if key == "" {
+		return "", 0, false, protocol.MalformedResponse()
+	}
+	value, err := strconv.ParseInt(values.Get(key), 10, 64)
+	if err != nil || value <= 0 || (key == "offset" && int64(int(value)) != value) {
+		return "", 0, false, protocol.MalformedResponse()
+	}
+	return key, value, true, nil
 }
 
 func mapArtwork(dto illustDTO) artwork.Artwork {

@@ -25,7 +25,7 @@ func (c *Client) Detail(ctx context.Context, userID int64) (user.Detail, error) 
 }
 
 func (c *Client) Current(ctx context.Context) (user.Detail, error) {
-	return c.get(ctx, protocol.AppUserMe, nil)
+	return c.get(ctx, protocol.AppUserDetail, url.Values{"user_id": {"0"}, "filter": {"for_android"}})
 }
 
 func (c *Client) get(ctx context.Context, path string, query url.Values) (user.Detail, error) {
