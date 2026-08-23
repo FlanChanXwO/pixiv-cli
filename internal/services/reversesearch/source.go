@@ -29,10 +29,11 @@ type SourceLoader interface {
 type Loader struct {
 	tempDir    string
 	httpClient *http.Client
+	openFile   func(string) (*os.File, error)
 }
 
 func NewSourceLoader(options SourceLoaderOptions) *Loader {
-	return &Loader{tempDir: options.TempDir, httpClient: options.HTTPClient}
+	return &Loader{tempDir: options.TempDir, httpClient: options.HTTPClient, openFile: os.Open}
 }
 
 // Snapshot 是 provider 共享的不可变载荷。调用方必须在所有 reader 关闭后 Close。
@@ -92,22 +93,25 @@ func (l *Loader) Load(ctx context.Context, source string) (*Snapshot, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	if hasHTTPSourcePrefix(source) {
-		_, parseErr := url.Parse(source)
-		if parseErr != nil {
-			return nil, NewError(CodeInvalidSource, "image source URL is invalid", parseErr)
-		}
+	if hasHTTPScheme(source) {
 		return l.loadURL(ctx, source)
 	}
-	input, err := os.Open(source)
+	info, err := os.Stat(source)
 	if err != nil {
 		if parsed, parseErr := url.Parse(source); parseErr == nil && parsed.Scheme != "" {
 			return nil, NewError(CodeInvalidSource, "image source must use HTTP or HTTPS", nil)
 		}
 		return nil, NewError(CodeSourceReadFailed, "could not read image source", err)
 	}
+	if !info.Mode().IsRegular() {
+		return nil, NewError(CodeSourceNotRegularFile, "image source must be a regular file", nil)
+	}
+	input, err := l.openSourceFile(source)
+	if err != nil {
+		return nil, NewError(CodeSourceReadFailed, "could not read image source", err)
+	}
 	defer input.Close()
-	info, err := input.Stat()
+	info, err = input.Stat()
 	if err != nil {
 		return nil, NewError(CodeSourceReadFailed, "could not inspect image source", err)
 	}
@@ -117,9 +121,16 @@ func (l *Loader) Load(ctx context.Context, source string) (*Snapshot, error) {
 	return l.copySnapshot(ctx, SourceKindFile, input)
 }
 
-func hasHTTPSourcePrefix(source string) bool {
+func (l *Loader) openSourceFile(path string) (*os.File, error) {
+	if l.openFile == nil {
+		return os.Open(path)
+	}
+	return l.openFile(path)
+}
+
+func hasHTTPScheme(source string) bool {
 	lower := strings.ToLower(source)
-	return strings.HasPrefix(lower, "http://") || strings.HasPrefix(lower, "https://")
+	return strings.HasPrefix(lower, "http:") || strings.HasPrefix(lower, "https:")
 }
 
 func (l *Loader) loadURL(ctx context.Context, source string) (*Snapshot, error) {

@@ -276,6 +276,19 @@ func TestExistingRegularFileWinsOverURLLikeColonSyntax(t *testing.T) {
 	require.NoError(t, snapshot.Close())
 }
 
+func TestExplicitHTTPSchemeNeverFallsBackToAnExistingFile(t *testing.T) {
+	t.Chdir(t.TempDir())
+	loader := reversesearch.NewSourceLoader(reversesearch.SourceLoaderOptions{TempDir: t.TempDir()})
+
+	for _, source := range []string{"http:opaque", "HtTpS:opaque"} {
+		require.NoError(t, os.WriteFile(source, []byte("must-not-be-read"), 0o600))
+
+		_, err := loader.Load(context.Background(), source)
+		require.Equal(t, reversesearch.CodeInvalidSource, reversesearch.CodeOf(err), source)
+		require.EqualError(t, err, "image source URL is invalid")
+	}
+}
+
 func TestSnapshotCloseRemovesPayloadAndPreventsReopen(t *testing.T) {
 	snapshotDir := t.TempDir()
 	sourcePath := filepath.Join(t.TempDir(), "image.bin")
