@@ -13,7 +13,7 @@
 
 ## Result
 
-95 cases were recorded: 82 PASS and 13 retained FAIL. PASS includes four representative rejection tests with expected exit code 1. All 38 successful JSON documents and three NDJSON records are valid; no successful command wrote unexpected stderr. Task 16A invoked the previously missing novel branch of `pixiv series`; both artwork and novel probes currently return upstream `not_found`. The run awaits final review and delivery in Task 17. See `task15-validation.md`, `task16-audit.md`, and `task16a-validation.md`.
+95 cases were recorded: 82 PASS and 13 retained FAIL. PASS includes four representative rejection tests with expected exit code 1. All 38 successful JSON documents and three NDJSON records are valid; no successful command wrote unexpected stderr. Task 16A invoked the previously missing novel branch of `pixiv series`; both artwork and novel probes currently return upstream `not_found`. Task 17 completed final review and corrected the last-mile ignore rule that had omitted the three download case directories from the first push. See `task15-validation.md`, `task16-audit.md`, `task16a-validation.md`, `final-validation.md`, and `task17-delivery-correction.md`.
 
 ## Coverage groups
 

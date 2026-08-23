@@ -12,6 +12,14 @@ coverage.txt
 
 # Runtime outputs and local data
 downloads/
+# Structured E2E evidence may use `downloads` as a case group; only its text
+# reports are stored there, while real downloaded media remains outside Git.
+!output/runs/**/cases/downloads/
+!output/runs/**/cases/downloads/*/
+output/runs/**/cases/downloads/*/*
+!output/runs/**/cases/downloads/*/report.md
+!output/runs/**/cases/downloads/*/stdout.txt
+!output/runs/**/cases/downloads/*/stderr.txt
 *.db
 *.sqlite
 *.sqlite3
