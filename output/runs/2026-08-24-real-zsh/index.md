@@ -13,7 +13,7 @@
 
 ## Result
 
-94 cases were recorded: 82 PASS and 12 retained FAIL. PASS includes four representative rejection tests with expected exit code 1. All 38 successful JSON documents and three NDJSON records are valid; no successful command wrote unexpected stderr. The full facts and retained failures are in `task15-validation.md`.
+94 cases were recorded: 82 PASS and 12 retained FAIL. PASS includes four representative rejection tests with expected exit code 1. All 38 successful JSON documents and three NDJSON records are valid; no successful command wrote unexpected stderr. The Task 16 audit confirmed the evidence contract but identified one remaining coverage gap: the novel branch of `pixiv series` has not yet been invoked. The run is therefore not final. See `task15-validation.md` and `task16-audit.md`.
 
 ## Coverage groups
 
