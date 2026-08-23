@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	reversesearch "github.com/FlanChanXwO/pixiv-cli/internal/services/reversesearch"
@@ -18,6 +19,16 @@ import (
 type roundTripFunc func(*http.Request) (*http.Response, error)
 
 func (f roundTripFunc) RoundTrip(request *http.Request) (*http.Response, error) { return f(request) }
+
+type closeTrackingBody struct {
+	io.Reader
+	closed bool
+}
+
+func (body *closeTrackingBody) Close() error {
+	body.closed = true
+	return nil
+}
 
 func TestPreflightRequiresAPIKeyWithoutMakingARequest(t *testing.T) {
 	requests := 0
@@ -254,6 +265,33 @@ func TestMalformedResponseDoesNotLeakRawValuesThroughErrorChain(t *testing.T) {
 	require.NotContains(t, errorChainText(err), "private-source")
 }
 
+func TestSearchRejectsNonFiniteSimilarity(t *testing.T) {
+	const secret = "fixture-secret-key"
+	const payload = "private-source"
+	for _, similarity := range []string{"NaN", "Inf", "-Inf"} {
+		t.Run(similarity, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+				_, _ = io.Copy(io.Discard, request.Body)
+				_, _ = io.WriteString(w, `{
+  "header": {"status": 0, "short_remaining": 3, "long_remaining": 97, "short_limit": 4, "long_limit": 100},
+  "results": [{
+    "header": {"similarity": "`+similarity+`", "index_id": 9, "index_name": "Fixture index"},
+    "data": {}
+  }]
+}`)
+			}))
+			t.Cleanup(server.Close)
+			client := saucenao.New(saucenao.Options{APIKey: secret, HTTPClient: server.Client(), Endpoint: server.URL})
+
+			_, err := client.Search(context.Background(), loadSnapshot(t, []byte(payload)))
+			require.Equal(t, reversesearch.CodeMalformedUpstreamResponse, reversesearch.CodeOf(err))
+			require.EqualError(t, err, "SauceNAO returned a malformed response")
+			require.NotContains(t, errorChainText(err), secret)
+			require.NotContains(t, errorChainText(err), payload)
+		})
+	}
+}
+
 func TestTransportErrorDoesNotLeakMultipartThroughErrorChain(t *testing.T) {
 	const secret = "fixture-secret-key"
 	const payload = "private-source"
@@ -272,6 +310,34 @@ func TestTransportErrorDoesNotLeakMultipartThroughErrorChain(t *testing.T) {
 	require.EqualError(t, err, "SauceNAO request failed")
 	require.NotContains(t, errorChainText(err), secret)
 	require.NotContains(t, errorChainText(err), payload)
+}
+
+func TestSearchPrioritizesHTTPStatusWhenUploadAlsoFails(t *testing.T) {
+	const secret = "fixture-secret-key"
+	const payload = "private-source"
+	const responseBody = "private-upstream-body"
+	body := &closeTrackingBody{Reader: strings.NewReader(responseBody)}
+	client := saucenao.New(saucenao.Options{
+		APIKey:   secret,
+		Endpoint: "https://saucenao.invalid/search.php",
+		HTTPClient: &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+			require.NoError(t, request.Body.Close())
+			return &http.Response{
+				StatusCode: http.StatusTooManyRequests,
+				Body:       body,
+				Header:     make(http.Header),
+				Request:    request,
+			}, nil
+		})},
+	})
+
+	_, err := client.Search(context.Background(), loadSnapshot(t, []byte(payload)))
+	require.Equal(t, reversesearch.CodeUpstreamHTTPStatus, reversesearch.CodeOf(err))
+	require.EqualError(t, err, "SauceNAO returned an unsuccessful HTTP status")
+	require.NotContains(t, errorChainText(err), secret)
+	require.NotContains(t, errorChainText(err), payload)
+	require.NotContains(t, errorChainText(err), responseBody)
+	require.True(t, body.closed)
 }
 
 func TestSearchPreservesContextCancellation(t *testing.T) {

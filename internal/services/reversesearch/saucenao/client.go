@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"mime/multipart"
 	"net/http"
 	"strconv"
@@ -82,14 +83,15 @@ func (c *Client) Search(ctx context.Context, snapshot *reversesearch.Snapshot) (
 		return reversesearch.ProviderResponse{}, reversesearch.NewError(reversesearch.CodeProviderFailed, "SauceNAO request failed", nil)
 	}
 	defer response.Body.Close()
-	if writeErr := <-writeResult; writeErr != nil {
-		if ctxErr := ctx.Err(); ctxErr != nil {
-			return reversesearch.ProviderResponse{}, ctxErr
-		}
-		return reversesearch.ProviderResponse{}, reversesearch.NewError(reversesearch.CodeProviderFailed, "could not upload image to SauceNAO", nil)
+	writeErr := <-writeResult
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return reversesearch.ProviderResponse{}, ctxErr
 	}
 	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
 		return reversesearch.ProviderResponse{}, reversesearch.NewError(reversesearch.CodeUpstreamHTTPStatus, "SauceNAO returned an unsuccessful HTTP status", nil)
+	}
+	if writeErr != nil {
+		return reversesearch.ProviderResponse{}, reversesearch.NewError(reversesearch.CodeProviderFailed, "could not upload image to SauceNAO", nil)
 	}
 	return decodeResponse(response.Body)
 }
@@ -169,6 +171,9 @@ func (value *flexibleFloat) UnmarshalJSON(raw []byte) error {
 	parsed, err := strconv.ParseFloat(text, 64)
 	if err != nil {
 		return err
+	}
+	if math.IsNaN(parsed) || math.IsInf(parsed, 0) {
+		return errors.New("floating-point value must be finite")
 	}
 	*value = flexibleFloat(parsed)
 	return nil
