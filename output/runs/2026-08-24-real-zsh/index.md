@@ -13,7 +13,7 @@
 
 ## Result
 
-94 cases were recorded: 82 PASS and 12 retained FAIL. PASS includes four representative rejection tests with expected exit code 1. All 38 successful JSON documents and three NDJSON records are valid; no successful command wrote unexpected stderr. The Task 16 audit confirmed the evidence contract but identified one remaining coverage gap: the novel branch of `pixiv series` has not yet been invoked. The run is therefore not final. See `task15-validation.md` and `task16-audit.md`.
+95 cases were recorded: 82 PASS and 13 retained FAIL. PASS includes four representative rejection tests with expected exit code 1. All 38 successful JSON documents and three NDJSON records are valid; no successful command wrote unexpected stderr. Task 16A invoked the previously missing novel branch of `pixiv series`; both artwork and novel probes currently return upstream `not_found`. The run awaits final review and delivery in Task 17. See `task15-validation.md`, `task16-audit.md`, and `task16a-validation.md`.
 
 ## Coverage groups
 
@@ -26,7 +26,7 @@
 | Timeline | following artwork/novel PASS; corrected latest artwork pages 1/2 PASS; default-all artwork and latest novel retained FAIL |
 | MyPixiv | users, works illust, works novel PASS; documented `artwork` spelling retained FAIL |
 | Current/discovered users | detail and read-only lists PASS except blocked-user upstream 404 |
-| Detail/comments/bookmarks/series | artwork/user detail and novel comments PASS; remaining upstream 404s retained |
+| Detail/comments/bookmarks/series | artwork/user detail and novel comments PASS; artwork and novel series probes plus remaining upstream 404s retained |
 | Downloads | regular JPEG, thumb JPEG, Ugoira APNG PASS with file signatures |
 | Error paths | invalid ID, invalid pagination, invalid proxy, anonymous auth requirement all rejected as expected |
 

@@ -18,7 +18,7 @@
 | Novel detail | `detail/novel*` | FAIL | Two current samples return upstream 404. |
 | Comments | `comments/*` | PARTIAL | Novel comments returns a valid empty envelope; artwork comments return upstream 404. |
 | Bookmarks | `bookmarks/*` | PARTIAL | Artwork/novel lists and tags pass; detail returns upstream 404. |
-| Series | `series/artwork-probe` | INCOMPLETE | Artwork probe returns upstream 404; the novel branch has not yet been invoked and is assigned to Task 16A. |
+| Series | `series/artwork-probe`, `series/novel-probe` | FAIL | Both documented type branches were invoked; no valid series ID was exposed by successful discovery payloads, and explicit probes return upstream 404. |
 | Downloads | `downloads/*` | PASS | regular `.jpg`/JPEG, thumb `.jpg`/JPEG, Ugoira `.apng`/PNG. |
 | Rejection paths | `errors/*` | PASS | Four representative invalid/auth paths reject with expected exit 1 and explicit stderr. |
 

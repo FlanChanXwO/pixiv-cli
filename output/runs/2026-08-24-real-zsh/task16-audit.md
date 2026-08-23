@@ -64,3 +64,7 @@ The E2E binary hash is `9e8fe0f51e2f0564ca0b55ff654a8dbb67bbefcaba6e0a16551c2011
 FANBOX, MCP stdio, interactive login, credential refresh/rotation, configuration writes, updates, and bookmark/follow mutations remain excluded as required. No account-mutating command was executed.
 
 The only newly identified evidence gap is the uninvoked novel branch of `pixiv series`. This audit therefore appends a focused Task 16A rather than declaring the run complete or entering final delivery early.
+
+## Task 16A follow-up
+
+Task 16A subsequently invoked `pixiv series 1 --type novel --limit 3 --json` through the same runner, isolated HOME, cwd, binary, and explicit proxy. Pixiv returned `NovelSeries: not_found`; the case is retained as FAIL with empty stdout and raw stderr. The run now contains 95 cases: 82 PASS and 13 FAIL. Both documented series type branches have been invoked, so the coverage gap identified above is closed even though no successful series sample was available.
