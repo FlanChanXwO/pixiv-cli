@@ -37,3 +37,9 @@
 | Current user endpoint | `cases/current-user/detail/` returned isolated account ID `25649510` | PASS |
 | Latest timeline continuation | `cases/timeline/latest-artwork-illust-page-{1,2}/` returned distinct ordered ID arrays | PASS |
 | Thumbnail MIME/extension | `cases/downloads/thumb/` produced `.jpg` detected as `image/jpeg` | PASS |
+
+## Final artifacts
+
+- `final-summary.md`: final status classification, repair evidence, exclusions, residual risk, and recovery.
+- `final-review.md`: code-review-expert findings and reviewed boundaries.
+- `final-validation.md`: final local gates, evidence/security metrics, and remote-baseline proof.
