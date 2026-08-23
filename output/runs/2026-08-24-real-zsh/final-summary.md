@@ -66,6 +66,7 @@ Historical combined-stream reports are preserved without pretending they satisfy
 - `go vet ./...`: PASS.
 - `sh scripts/build.sh`: PASS with Go 1.26.3, CGO, and darwin/arm64.
 - Runner behavior test: PASS.
+- Product, runner, and current structured-run diff checks: PASS. The preserved legacy failed-audit transcript has one known trailing-whitespace line in its raw shell error context and is excluded from current-artifact formatting gates.
 - Structured case, JSON/NDJSON, download-signature, proxy, secret, cwd, legacy-layout, and temporary-artifact audits: PASS.
 - Code review: APPROVE; P0: 0, P1: 0, P2: 0, P3: 0.
 

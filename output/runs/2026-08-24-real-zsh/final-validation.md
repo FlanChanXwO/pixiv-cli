@@ -16,6 +16,8 @@
 
 The standard build used Go 1.26.3 with CGO on darwin/arm64. The E2E binary differs from the standard-build hash only because the standard script adds `-trimpath`; module and dependency metadata match, and no Go/product source changed after the repair commit.
 
+Product/non-output `git diff --check`, the evidence runner, and `output/runs/` pass without findings. A whole-branch check that includes archived raw transcripts reports exactly one pre-existing trailing-whitespace line in `output/legacy/2026-08-21/174_review_scope_check.md`; that file is the retained output of a failed historical awk audit. The line is preserved for traceability and excluded from formatting gates for current code and structured evidence rather than silently rewritten.
+
 ## Evidence and security gates
 
 | Metric | Result |
