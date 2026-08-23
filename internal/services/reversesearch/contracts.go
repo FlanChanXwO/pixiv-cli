@@ -41,6 +41,41 @@ type Response struct {
 	Input Input `json:"input"`
 }
 
+// Quota 是 provider 可安全公开的剩余额度摘要，不包含凭据或账号标识。
+type Quota struct {
+	ShortRemaining int `json:"short_remaining"`
+	LongRemaining  int `json:"long_remaining"`
+	ShortLimit     int `json:"short_limit"`
+	LongLimit      int `json:"long_limit"`
+}
+
+// Match 是单个 provider 的原始领域命中。Canonical Pixiv 去重与 evidence
+// 聚合属于顶层 aggregator，而不是协议 adapter。
+type Match struct {
+	Rank         int      `json:"rank"`
+	Similarity   float64  `json:"similarity"`
+	IndexID      int      `json:"index_id"`
+	IndexName    string   `json:"index_name"`
+	Title        string   `json:"title,omitempty"`
+	Author       string   `json:"author,omitempty"`
+	ArtworkID    int64    `json:"artwork_id,omitempty"`
+	UserID       int64    `json:"user_id,omitempty"`
+	ExternalURLs []string `json:"external_urls,omitempty"`
+}
+
+// ProviderResponse 是一次 provider 查询的领域结果。
+type ProviderResponse struct {
+	Provider Provider `json:"provider"`
+	Matches  []Match  `json:"matches"`
+	Quota    *Quota   `json:"quota,omitempty"`
+}
+
+// ProviderClient 是 aggregator 注入的 provider 端口。
+type ProviderClient interface {
+	Preflight(context.Context) error
+	Search(context.Context, *Snapshot) (ProviderResponse, error)
+}
+
 // Searcher 是 CLI/MCP 依赖的反向搜图端口。
 type Searcher interface {
 	Search(context.Context, Request) (Response, error)
