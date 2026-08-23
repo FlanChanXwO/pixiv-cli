@@ -1,0 +1,13 @@
+{
+  "default_user_id": 25649510,
+  "accounts": [
+    {
+      "user_id": 25649510,
+      "username": "Flan",
+      "default": true,
+      "has_token": true,
+      "schedulable": true,
+      "eligible": true
+    }
+  ]
+}

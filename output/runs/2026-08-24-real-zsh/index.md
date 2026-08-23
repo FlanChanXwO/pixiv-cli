@@ -3,15 +3,37 @@
 - Run ID: `2026-08-24-real-zsh`
 - Source worktree: `/private/tmp/pixiv-cli-pixiv-e2e-fixes`
 - Shell workspace: `/private/tmp/pixiv-cli-e2e-shell-20260821`
-- Scope: Pixiv CLI only; FANBOX and account-mutating operations are excluded.
+- Shell: zsh 5.9
+- Binary: `/private/tmp/pixiv-cli-e2e-shell-20260821/bin/pixiv`
+- Binary SHA-256: `9e8fe0f51e2f0564ca0b55ff654a8dbb67bbefcaba6e0a16551c20113aae3263`
+- Authentication: account exported from the local installed pixiv-cli, restored into an isolated HOME; no secret was logged.
+- Network: explicit per-command proxy `http://127.0.0.1:7890` after the previously observed direct-network failure.
+- Scope: Pixiv CLI only; FANBOX, MCP runtime, interactive login, credential refresh, and account-mutating operations are excluded.
 - Evidence contract: one logical Pixiv CLI invocation per case directory, with `report.md`, raw `stdout.txt`, and raw `stderr.txt`.
 
-## Status
+## Result
 
-Task 14 establishes and proves the evidence runner with a non-sensitive `pixiv --version` smoke case. Task 15 will populate the complete read-only, authentication-diagnostic, download, error-path, and targeted repair coverage.
+94 cases were recorded: 82 PASS and 12 retained FAIL. PASS includes four representative rejection tests with expected exit code 1. All 38 successful JSON documents and three NDJSON records are valid; no successful command wrote unexpected stderr. The full facts and retained failures are in `task15-validation.md`.
 
-## Cases
+## Coverage groups
 
-| Group | Case | Result | Purpose |
-| --- | --- | --- | --- |
-| baseline | `version` | PASS | Prove direct execution of the built Pixiv CLI from the independent shell workspace and separate raw stdout/stderr capture. |
+| Group | Result |
+| --- | --- |
+| Current binary help | 35/35 PASS |
+| Isolated authentication | list/check PASS |
+| Search/discovery/ranking | artwork JSON, artwork NDJSON, Ugoira, trending tags, novel, user, daily ranking PASS |
+| Recommendations | artwork, novel, user, all PASS |
+| Timeline | following artwork/novel PASS; corrected latest artwork pages 1/2 PASS; default-all artwork and latest novel retained FAIL |
+| MyPixiv | users, works illust, works novel PASS; documented `artwork` spelling retained FAIL |
+| Current/discovered users | detail and read-only lists PASS except blocked-user upstream 404 |
+| Detail/comments/bookmarks/series | artwork/user detail and novel comments PASS; remaining upstream 404s retained |
+| Downloads | regular JPEG, thumb JPEG, Ugoira APNG PASS with file signatures |
+| Error paths | invalid ID, invalid pagination, invalid proxy, anonymous auth requirement all rejected as expected |
+
+## Targeted repairs
+
+| Repair | Evidence | Result |
+| --- | --- | --- |
+| Current user endpoint | `cases/current-user/detail/` returned isolated account ID `25649510` | PASS |
+| Latest timeline continuation | `cases/timeline/latest-artwork-illust-page-{1,2}/` returned distinct ordered ID arrays | PASS |
+| Thumbnail MIME/extension | `cases/downloads/thumb/` produced `.jpg` detected as `image/jpeg` | PASS |

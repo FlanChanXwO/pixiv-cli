@@ -2,7 +2,7 @@
 set -euo pipefail
 
 usage() {
-  print -u2 -r -- 'usage: run-case.zsh --run-dir DIR --group SLUG --case SLUG --title TEXT --purpose TEXT --cwd DIR [--expect-exit CODE] --expected TEXT --assertion TEXT -- PIXIV [ARG ...]'
+  print -u2 -r -- 'usage: run-case.zsh --run-dir DIR --group SLUG --case SLUG --title TEXT --purpose TEXT --cwd DIR [--home DIR] [--expect-exit CODE] --expected TEXT --assertion TEXT -- PIXIV [ARG ...]'
 }
 
 run_dir=
@@ -11,13 +11,15 @@ case_id=
 title=
 purpose=
 cwd=
+home=$HOME
+home_explicit=false
 expected_exit=0
 expected=
 assertion=
 
 while (( $# > 0 )); do
   case "$1" in
-    --run-dir|--group|--case|--title|--purpose|--cwd|--expect-exit|--expected|--assertion)
+    --run-dir|--group|--case|--title|--purpose|--cwd|--home|--expect-exit|--expected|--assertion)
       option=$1
       shift
       (( $# > 0 )) || { usage; exit 2; }
@@ -28,6 +30,7 @@ while (( $# > 0 )); do
         --title) title=$1 ;;
         --purpose) purpose=$1 ;;
         --cwd) cwd=$1 ;;
+        --home) home=$1; home_explicit=true ;;
         --expect-exit) expected_exit=$1 ;;
         --expected) expected=$1 ;;
         --assertion) assertion=$1 ;;
@@ -60,6 +63,7 @@ done
 
 cwd=${cwd:A}
 run_dir=${run_dir:A}
+home=${home:A}
 [[ -d "$cwd" ]] || {
   print -u2 -r -- "case cwd does not exist: $cwd"
   exit 2
@@ -72,6 +76,20 @@ run_dir=${run_dir:A}
   print -u2 -r -- "case cwd must not be the report directory or one of its descendants: $cwd"
   exit 2
 }
+if [[ "$home_explicit" == true ]]; then
+  [[ -d "$home" ]] || {
+    print -u2 -r -- "case HOME does not exist: $home"
+    exit 2
+  }
+  [[ "$home" == /private/tmp/* ]] || {
+    print -u2 -r -- "explicit case HOME must be under /private/tmp: $home"
+    exit 2
+  }
+  [[ "$home" != "$run_dir" && "$home" != "$run_dir"/* ]] || {
+    print -u2 -r -- "case HOME must not be the report directory or one of its descendants: $home"
+    exit 2
+  }
+fi
 [[ ${1:t} == pixiv ]] || {
   print -u2 -r -- 'case command must invoke a pixiv executable directly'
   exit 2
@@ -91,7 +109,7 @@ report_file=$case_dir/report.md
 set +e
 (
   cd "$cwd"
-  "$@"
+  HOME=$home "$@"
 ) >"$stdout_file" 2>"$stderr_file"
 actual_exit=$?
 set -e
@@ -113,6 +131,7 @@ fi
   print -r -- '## Invocation'
   print
   print -r -- "- cwd: \`$cwd\`"
+  print -r -- "- HOME: \`$home\`"
   print -r -- "- shell: \`zsh $ZSH_VERSION\`"
   print -r -- "- expected exit code: \`$expected_exit\`"
   print -r -- "- actual exit code: \`$actual_exit\`"

@@ -1,0 +1,32 @@
+Search artworks, novels, or users
+
+Usage:
+  pixiv search [WORD] [flags]
+
+Examples:
+pixiv search "miku" --json
+
+Flags:
+      --ai-mode string             AI artwork filter: all, exclude, only (default "all")
+      --aspect-ratio string        aspect ratio filter: all, landscape, portrait, square (default "all")
+      --bookmark-max int           maximum public bookmark count; strategy controls filtering completeness
+      --bookmark-min int           minimum public bookmark count; strategy controls filtering completeness
+      --bookmark-strategy string   bookmark count strategy: auto, local, best_effort, server (default "auto")
+      --content-type string        artwork type filter: all, illust-and-ugoira, illust, manga, ugoira (default "all")
+      --draw-tool string           exact drawing tool name from the versioned drawing-tool catalog
+      --end-date string            inclusive end date: YYYY-MM-DD
+  -h, --help                       help for search
+  -j, --json                       print JSON
+  -l, --limit int                  maximum results; omitted returns one upstream batch; 0 returns all results
+      --ndjson                     print one Pixiv entity record as JSON per line
+      --no-proxy                   clear the configured proxy for this command
+  -p, --page int                   1-based logical page (requires --limit > 0)
+      --period string              time range: day, week, month, half-year, year
+      --proxy string               proxy URL (http, https, socks5, or socks5h) for this command
+      --rating string              rating filter is not supported by the v1 App API search contract
+      --resolution string          resolution filter: all, high, medium, low (default "all")
+      --search-by string           search field: tag-partial, tag-exact, title-caption, tag-title-caption (default "tag-partial")
+      --sort string                sort mode: date_desc, date_asc (default "date_desc")
+      --start-date string          inclusive start date: YYYY-MM-DD
+      --trending-tags              return the complete current artwork trending-tag list; WORD and list pagination are not accepted
+  -t, --type string                entity type: artwork, novel, user (default "artwork")
