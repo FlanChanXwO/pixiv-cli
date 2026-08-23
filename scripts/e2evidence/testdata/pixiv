@@ -1,0 +1,5 @@
+#!/bin/zsh
+
+print -r -- "stdout:$1"
+print -r -- "stderr:$2" >&2
+exit 7
