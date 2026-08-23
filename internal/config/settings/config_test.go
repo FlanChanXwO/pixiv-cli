@@ -51,6 +51,44 @@ func TestRuntimeAccountPoolUsesOnlyCurrentSettings(t *testing.T) {
 	}
 }
 
+func TestRuntimeDefaultsReverseSearchSettings(t *testing.T) {
+	state, err := config.LoadSnapshotAt(filepath.Join(t.TempDir(), "config.toml"))
+	require.NoError(t, err)
+
+	runtimeConfig, err := state.Runtime()
+	require.NoError(t, err)
+	require.Equal(t, "saucenao", runtimeConfig.ReverseSearchProvider)
+	require.True(t, runtimeConfig.ReverseSearchPixivOnly)
+	require.Empty(t, runtimeConfig.SauceNAOAPIKey)
+}
+
+func TestReverseSearchProviderAcceptsOnlySupportedValues(t *testing.T) {
+	for _, provider := range []string{"saucenao", "ascii2d-color", "ascii2d-bovw", "all"} {
+		t.Run(provider, func(t *testing.T) {
+			value, _, err := config.ParseSettingInput("reverse_search_provider", provider)
+			require.NoError(t, err)
+			require.Equal(t, provider, value.Value)
+		})
+	}
+
+	_, _, err := config.ParseSettingInput("reverse_search_provider", "unknown")
+	require.EqualError(t, err, "reverse_search_provider must be one of: saucenao, ascii2d-color, ascii2d-bovw, all")
+}
+
+func TestSauceNAOAPIKeyEnvironmentOverridesFileInSnapshot(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.toml")
+	require.NoError(t, os.WriteFile(path, []byte("[reverse_search]\nsaucenao_api_key = 'file-key'\n"), 0o600))
+	t.Setenv("SAUCENAO_API_KEY", "environment-key")
+
+	state, err := config.LoadSnapshotAt(path)
+	require.NoError(t, err)
+	t.Setenv("SAUCENAO_API_KEY", "changed-after-snapshot")
+
+	runtimeConfig, err := state.Runtime()
+	require.NoError(t, err)
+	require.Equal(t, "environment-key", runtimeConfig.SauceNAOAPIKey)
+}
+
 func TestAccountPoolAliasesExposeOnlyRuntimeSettings(t *testing.T) {
 	for _, alias := range []string{"account_pool_enabled", "account_pool_strategy"} {
 		_, exists := config.SettingSpecByAlias(alias)

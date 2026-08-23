@@ -52,6 +52,9 @@ func TestCLIManagedAliasesComeFromSchema(t *testing.T) {
 		"log_format",
 		"log_level",
 		"request_interval",
+		"reverse_search_pixiv_only",
+		"reverse_search_provider",
+		"saucenao_api_key",
 	}
 	require.Equal(t, want, configapp.CLISettingAliases())
 	for _, alias := range want {
@@ -94,6 +97,74 @@ func TestCLIManagesLoggingAndRuntimeDownloadAliases(t *testing.T) {
 		host.out.Reset()
 		require.NoError(t, unset(host, test.alias))
 	}
+}
+
+func TestSensitiveConfigSetRejectsArgumentValue(t *testing.T) {
+	path := t.TempDir() + "/config.toml"
+	host := testHost{
+		in:    bytes.NewReader(nil),
+		out:   &bytes.Buffer{},
+		err:   &bytes.Buffer{},
+		store: configapp.Store{Files: localFileStore{path: path}},
+	}
+	cmd := newSetCommand(host)
+	cmd.SetArgs([]string{"saucenao_api_key", "must-not-enter-argv"})
+
+	err := cmd.Execute()
+	require.EqualError(t, err, "sensitive config values must be provided through non-TTY stdin")
+	_, statErr := os.Stat(path)
+	require.ErrorIs(t, statErr, os.ErrNotExist)
+}
+
+func TestSensitiveConfigSetReadsNonTTYStdinAndGetIsRedacted(t *testing.T) {
+	path := t.TempDir() + "/config.toml"
+	host := testHost{
+		in:    bytes.NewBufferString("private-key\n"),
+		out:   &bytes.Buffer{},
+		err:   &bytes.Buffer{},
+		store: configapp.Store{Files: localFileStore{path: path}},
+	}
+	cmd := newSetCommand(host)
+	cmd.SetArgs([]string{"saucenao_api_key"})
+
+	require.NoError(t, cmd.Execute())
+	require.Equal(t, "saucenao_api_key updated\n", host.out.String())
+	value, err := host.store.Get("saucenao_api_key")
+	require.NoError(t, err)
+	require.Equal(t, "private-key", value.Value)
+
+	host.out.Reset()
+	require.NoError(t, get(host, "saucenao_api_key"))
+	require.Equal(t, "<redacted>\n", host.out.String())
+}
+
+func TestSensitiveConfigGetIsRedactedEvenWhenUnset(t *testing.T) {
+	host := testHost{
+		in:    bytes.NewReader(nil),
+		out:   &bytes.Buffer{},
+		err:   &bytes.Buffer{},
+		store: configapp.Store{Files: localFileStore{path: t.TempDir() + "/config.toml"}},
+	}
+
+	require.NoError(t, get(host, "saucenao_api_key"))
+	require.Equal(t, "<redacted>\n", host.out.String())
+}
+
+func TestSensitiveEnvironmentOverrideNoteDoesNotExposeAValue(t *testing.T) {
+	t.Setenv("SAUCENAO_API_KEY", "environment-secret")
+	host := testHost{
+		in:    bytes.NewBufferString("file-secret\n"),
+		out:   &bytes.Buffer{},
+		err:   &bytes.Buffer{},
+		store: configapp.Store{Files: localFileStore{path: t.TempDir() + "/config.toml"}},
+	}
+	cmd := newSetCommand(host)
+	cmd.SetArgs([]string{"saucenao_api_key"})
+
+	require.NoError(t, cmd.Execute())
+	require.Equal(t, "note: saucenao_api_key is currently overridden by environment; effective value remains controlled by environment\n", host.err.String())
+	require.NotContains(t, host.err.String(), "environment-secret")
+	require.NotContains(t, host.err.String(), "file-secret")
 }
 
 type localFileStore struct{ path string }
