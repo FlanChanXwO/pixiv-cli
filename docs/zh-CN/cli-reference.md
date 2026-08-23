@@ -371,8 +371,8 @@ Content-Type 与 URL 后缀不一致（例如 URL 为 `.png`、实体为 JPEG）
 | `user bookmarks` | `--restrict`、`--tag` | `public`、空 | 收藏可见性与精确收藏 tag 筛选。 |
 | `user following`、`user followers` | `--restrict` | `public` | 关注可见性：`public` 或 `private`。 |
 | `timeline following` | `--type` / `-t`、`--content-type` | 必填、`all` | 实体类型为 `artwork` 或 `novel`；作品子类型独立设置，`--restrict` 为 public/private。 |
-| `timeline latest` | `--type` / `-t`、`--content-type` | 必填、`all` | 实体类型为 `artwork` 或 `novel`；作品子类型使用 `--content-type`。 |
-| `mypixiv works` | `--type` / `-t` | 必填 | 实体类型为 `artwork` 或 `novel`。 |
+| `timeline latest` | `--type` / `-t`、`--content-type` | 必填、`illust` | 实体类型为 `artwork` 或 `novel`；最新作品接口支持 `illust` 或 `manga`，省略 `--content-type` 时选择 `illust`。 |
+| `mypixiv works` | `--type` / `-t` | 必填 | 省略 `USER_ID` 时使用实体类型 `artwork` 或 `novel`；提供 `USER_ID` 时还支持 `manga`。旧 `illust` 写法继续作为 `artwork` 的兼容别名。 |
 | `recommended` | `--type` / `-t` | 空 | `artwork`、`novel`、`user` 或 `all`；位置参数 `KIND` 是兼容写法。 |
 | Record 动作 | `--on-error` | `skip` | 对格式错误/不兼容记录选择写 stderr 后跳过，或 `fail-fast`。 |
 | `download` | `--pages` | 空 | 1-based 闭区间页选择，如 `1,3-5`；默认下载全部页。页不存在会明确失败。 |

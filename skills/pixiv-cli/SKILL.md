@@ -152,6 +152,7 @@ pixiv ranking --mode day
 pixiv recommended --type artwork --limit 10 # type is required; needs auth
 pixiv recommended --type all --limit 10     # request all supported kinds; needs auth
 pixiv timeline following --type artwork --content-type illust --limit 20
+pixiv timeline latest --type artwork --limit 20 # defaults to the supported illust feed
 pixiv timeline latest --type novel --limit 20
 pixiv mypixiv works --type artwork --limit 20
 pixiv user search "WORD" --limit 10 --json # authenticated App user search
@@ -235,6 +236,10 @@ session.
    compatibility flag whose non-empty value is rejected; it is not a filter.
    `novel search` exposes only its basic search-by/sort/period contract and does
    not publish rating, text-length, or original-only filters.
+   `timeline latest --type artwork` defaults `--content-type` to `illust` and
+   accepts `illust|manga`; it does not use search's broader `all` subtype.
+   `mypixiv works --type artwork` maps the public artwork entity to Pixiv's
+   `illust` feed; the older `--type illust` spelling remains compatible.
 5. **Restricted search fails explicitly.** There is no anonymous search path.
    Restricted rating requests are not represented by a silent `--rating` filter;
    use the command's actual authenticated/API contract and surface failures.
