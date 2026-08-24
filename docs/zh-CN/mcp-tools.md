@@ -31,6 +31,34 @@ Structured result 使用显式 DTO 与 typed envelope，不直接编码 runtime 
 FANBOX MCP server 也遵循相同资源形状：第一方 resource 只包含 opaque `ref` 与可选的
 `requires_credentials`，不会包含 `url`、`request_headers` 或 `expires_at`。
 
+## 反向搜图
+
+`reverse_search` 是 Pixiv MCP tool，输入是封闭 object：
+
+```json
+{"source":"/private/path/image.png","provider":"ascii2d-color"}
+```
+
+`source` 必填，`provider` 可选。provider enum 为 `saucenao`、`ascii2d-color`、`ascii2d-bovw` 或 `all`；省略时
+使用 MCP 进程启动时的配置，默认是 `saucenao`。`reverse_search_pixiv_only` 也在启动时固定，并控制
+`results` 是否保留非 Pixiv 命中。单次 tool call 不能改变代理、API key 或其他传输配置。
+
+source 可以是任意可读常规本地文件或 HTTP(S) URL。按明确的可信本机 client 信任模型，允许私网、loopback、
+link-local URL 目标，server 也可以读取私有文件。server 只抓取或打开一次私有快照，再上传给所选第三方
+provider；不会返回原始 source、临时路径、请求头、cookie、API key、CSRF 值、redirect `Location` 或上游
+response body。只有在信任 MCP client 会请求这些本地资源时才运行 `pixiv mcp`。SauceNAO/ascii2d 的处理与
+保存遵循各自政策，URL 查询也可能被缓存；ascii2d 接受 JPEG、PNG、WEBP，并执行 provider 自身的 10 MB 限制。
+
+structured output 始终是封闭 envelope：`{input, providers, results, records, provider_errors, partial}`。
+`input` 只包含 `kind` 和 `sha256`；`providers` 是固定 provider 状态列表；`results` 保留 provider evidence
+和可选 canonical Pixiv identity；`provider_errors` 只包含稳定的 `provider`、`code`、`message`；`records` 包含
+canonical `artwork` 或 `user` record。因为 provider 无法确定 Pixiv 作品 subtype，作品 record 刻意使用通用
+类型，tool 不会调用作品详情来猜测。纯外部结果不会进入 `records`。
+
+至少一个 provider 成功且另一个失败时，`partial=true`，tool 成功（`isError=false`）。单 provider 失败或全部
+provider 失败时保留 envelope 并设置 `isError=true`；schema 错误在 provider 执行前拒绝。取消仍是完整请求取消，
+不会伪装为 partial 成功。
+
 ## 实体 filter 与收藏数搜索
 
 输入只包含下列 typed filter。原先的顶层表达式 `filter` 没有接入 handler，
@@ -74,6 +102,7 @@ application outcome 的 `filter` 会报告 `min`、`max`、`membership`、`strat
 | --- | --- |
 | `search_illust` | 必填 `word`；可选 `search_target`、`sort`、`duration`、`start_date`、`end_date`、`content_type`、`ai_mode`、`aspect_ratio`、`resolution`、精确 `tool`、收藏范围/策略、`illust_filter`、`page`、`limit`。稳定 enum/date 会在打开 SDK 前校验。 |
 | `search_novel` | 必填 `word`；可选 `search_target`、`sort`、`duration`、`novel_filter`、`page`、`limit`。rating、正文长度和 original 字段明确不发布。 |
+| `reverse_search` | 必填 `source`（常规本地文件或 HTTP(S) URL）；可选 `provider` enum。使用启动时固定的代理/key/pixiv-only 配置，返回上文的反向搜图 envelope。 |
 | `illust_detail` | 正数 `illust_id` 与受支持作品 `url` 必须二选一；返回一条安全 record。 |
 | `novel_detail` / `novel_content` | 正数 `novel_id`；前者返回 metadata，后者返回完整结构化正文 block。 |
 | `illust_related` | 正数 `illust_id`，可选 `illust_filter`、`page`、`limit`。 |

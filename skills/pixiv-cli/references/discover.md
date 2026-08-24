@@ -57,6 +57,40 @@ pixiv search "初音ミク" --type artwork --limit 10 --json
 - Artwork JSON/text include the stable page URL
   `https://www.pixiv.net/artworks/{id}` as the first field/line.
 
+## Reverse-search an image
+
+Use the same `search` command with a local regular file or an HTTP(S) image URL:
+
+```
+pixiv search ./image.png --provider saucenao --json
+pixiv search https://example.com/image.png --provider all --ndjson
+```
+
+- An explicit `http:`/`https:` scheme always selects reverse-search mode. An
+  invalid URL is an error and must not be retried as a keyword. Other values
+  select image mode only when they resolve to an existing regular file; other
+  text remains a keyword.
+- Providers are `saucenao`, `ascii2d-color`, `ascii2d-bovw`, and `all`.
+  `reverse_search_provider` defaults to `saucenao`; `--provider` is a one-call
+  override. `reverse_search_pixiv_only` defaults to true and controls whether
+  non-Pixiv evidence stays in `results`.
+- Image mode accepts provider/output/proxy flags only. Do not add keyword
+  filters, `--type`, `--limit`, `--page`, or `--trending-tags`.
+- SauceNAO and ascii2d are third-party upload services. The CLI snapshots the
+  source once and returns only its kind/hash, so use an image and URL that the
+  user is authorized to share. Provider retention/caching follows provider
+  policy; ascii2d accepts JPEG/PNG/WEBP and has a provider-specific 10 MB limit.
+- JSON returns `input`, provider summaries, raw provider evidence, canonical
+  `records`, provider errors, and `partial`. Piped/explicit NDJSON emits only
+  canonical records. Reverse-search artwork records use generic `type=artwork`,
+  not `illust`, because subtype is not established; external-only hits are not
+  records. With `all`, one successful and one failed provider is a successful
+  partial result; a single-provider or all-provider failure is non-zero.
+- Never echo the source, API key, temporary path, CSRF/redirect values, or
+  upstream response body. The MCP version has the same provider result shape
+  but permits private files and private/loopback/link-local URLs only for a
+  trusted local MCP client; see the MCP reference for that trust model.
+
 ## Find novels by keyword/tag
 
 ```

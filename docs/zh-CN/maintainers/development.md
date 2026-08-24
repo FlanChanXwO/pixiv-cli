@@ -1,5 +1,7 @@
 # 开发流程
 
+[English](../../en/maintainers/development.md) | 简体中文 | [文档索引](../../index-zh-CN.md)
+
 | 要做的事 | 从这里开始 |
 | --- | --- |
 | 检查本地工具链 | [环境检查](#环境检查) |
@@ -290,7 +292,7 @@ restore 原子写失败时检查 public `LocalWriteCommitOutcome`：pre-commit �
 
 ## 测试
 
-当前测试覆盖 CLI 命令与 build metadata、显式/自动更新、`internal/services/{pixiv,fanbox}/account` 账号服务、`internal/services/pixiv/pool` 账号池、`internal/storage/database` 认证存储与 `internal/config/settings` 配置、`internal/shared/lifecycle` 生命周期、`internal/shared/pagination` 逻辑分页、`internal/shared/traversal` 泛型可重入遍历、Pixiv App API 认证重试、公开 SDK（`sdk`/`sdk/pixiv`/`sdk/fanbox`）、HTTP client wiring、下载管理、Rust encoder/staticlib 合约和 `internal/mcpserver/{pixiv,fanbox}/tools` tool 注册。`internal/account` 与 `internal/session` 已删除，不保留兼容测试入口。测试文件布局与 same-package 例外见[测试文件布局](#测试文件布局)：
+当前测试覆盖 CLI 命令与 build metadata、显式/自动更新、`internal/services/{pixiv,fanbox}/account` 账号服务、`internal/services/pixiv/pool` 账号池、`internal/services/reversesearch` source/provider fixture 与聚合、`internal/storage/database` 认证存储与 `internal/config/settings` 配置、`internal/shared/lifecycle` 生命周期、`internal/shared/pagination` 逻辑分页、`internal/shared/traversal` 泛型可重入遍历、Pixiv App API 认证重试、公开 SDK（`sdk`/`sdk/pixiv`/`sdk/fanbox`）、HTTP client wiring、下载管理、Rust encoder/staticlib 合约和 `internal/mcpserver/{pixiv,fanbox}/tools` tool 注册。`internal/account` 与 `internal/session` 已删除，不保留兼容测试入口。测试文件布局与 same-package 例外见[测试文件布局](#测试文件布局)：
 
 ```bash
 go test ./...
@@ -316,10 +318,21 @@ scripts/test-e2e.sh
 # 只运行其中一项，或只验证单帖 post.info。
 scripts/test-e2e.sh --pixiv-only
 scripts/test-e2e.sh --fanbox-post-only
+# 显式观察反向搜图上游兼容性；默认不会运行。
+PIXIV_REVERSE_SEARCH_E2E=1 \
+PIXIV_REVERSE_SEARCH_SOURCE=<private-test-image-path-or-url> \
+PIXIV_REVERSE_SEARCH_PROVIDER=all \
+SAUCENAO_API_KEY=<secret-from-private-environment> \
+scripts/test-reverse-search-e2e.sh
 ```
 
 `go test ./...` 保持默认离线稳定；真实 SDK e2e 在未显式设置 `PIXIV_SDK_E2E=1` 或 `FANBOX_SDK_E2E=1` 时跳过。
 显式启用后，缺少本机授权凭据或 FANBOX 非 secret target 会直接失败并暴露缺口，不会以 skip 伪装 release evidence。
+
+反向搜图 provider fixture 以及 CLI/MCP/config 回归属于离线套件。真实反向搜图网络观察只有显式设置
+`PIXIV_REVERSE_SEARCH_E2E=1` 才运行，必须提供 source；provider 为 SauceNAO 或 `all` 时还必须提供
+`SAUCENAO_API_KEY`，仅 ascii2d 时不要求 key。脚本不接受 source/key 参数，也不会回显它们，只应配合获授权的
+测试图片运行。它用于观察第三方兼容性，不是默认 release 门禁；skip 或上游不可用不能被报告成真实网络成功。
 
 `scripts/test-e2e.sh` 只选择当前的 public SDK E2E 测试：Pixiv 测试从本地 `pixiv-cli.db` 读取选中账号，
 FANBOX 测试从约定的 macOS Keychain item 读取 `FANBOXSESSID`。FANBOX 的

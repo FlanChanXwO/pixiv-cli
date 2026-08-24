@@ -24,6 +24,9 @@ usually the answer. Never mask an error with retries or silent fallbacks.
 | A restricted-content operation requires authentication | No authenticated local account selected | Select an account with `pixiv auth use UID` (or import credentials) before retrying; never add a Cookie workaround |
 | `--draw-tool` is rejected | Value is absent from this version's catalog | Choose an exact catalog value; a unique one-edit spelling mistake includes a suggestion |
 | Bookmark-count search is incomplete or rejected | The selected strategy controls whether candidate bounds are filtered locally; `server` is evidence-gated | Inspect the returned `filter.strategy` and `filter.completeness`. `auto`/`local` use local candidate filtering, `best_effort` is explicitly partial, and `server` returns an explicit unsupported error. Premium is not a local hard gate; only run `pixiv auth refresh [UID]` for an explicit account-maintenance request |
+| Reverse search reports `missing_credential` | SauceNAO is selected without a key | Set `saucenao_api_key` through non-TTY stdin or provide `SAUCENAO_API_KEY`; `config get` is redacted. ascii2d-only providers do not require the SauceNAO key |
+| Reverse search reports `partial=true` | At least one provider succeeded and another failed | Inspect the safe `provider_errors` entries and retry only when the user explicitly wants another upstream request; do not hide the partial result or invent a fallback |
+| A reverse-search input was treated as a keyword | The value was not an explicit HTTP(S) source and did not resolve to a regular file | Check the exact path and provider/output flags. Explicit `http:`/`https:` values never fall back to keyword search, even when the URL is invalid |
 | Wrong account acting | Multiple local accounts | `pixiv auth list --json`, then `pixiv auth use UID` (confirm first); data commands do not accept per-command account overrides. |
 | `auth import` waits for hidden input the user cannot enter | Agent PTY has no direct user-input channel | Cancel the waiting command; give it to the user for their private terminal, or use an authorized secret-manager-to-stdin pipeline as described in `auth.md` |
 | Cookie string rejected | By design | Only raw App API refresh tokens are accepted; for an explicit import request follow `auth.md` without asking the user to disclose an undisclosed token |
@@ -50,6 +53,9 @@ safe metadata output does not make raw token or bundle stdout safe to display.
   `[fanbox.flaresolverr]` is challenge-only and is not a general FANBOX proxy.
 - Request pacing comes from `PIXIV_REQUEST_INTERVAL` or
   `[network].request_interval`.
+- Reverse search may upload the image to SauceNAO/ascii2d. Verify the source is
+  authorized before retrying a provider/network failure; do not paste the key,
+  source URL, or upstream response into diagnostics.
 
 ## Authentication semantics (not a bug)
 

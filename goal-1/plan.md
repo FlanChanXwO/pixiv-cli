@@ -21,6 +21,7 @@
 - 目标分支是 v1 重构后的布局：CLI owner 位于 `internal/cli/commands`，Pixiv MCP tool 位于 `internal/mcpserver/pixiv/tools/<tool>`，配置位于 `internal/config/settings`。
 - 维护者文档仅有英/中文，路径为 `docs/{en,zh-CN}/maintainers/`；发布说明直接维护 `changelog/unreleased/{en,zh-CN}.md`。
 - `golang.org/x/net/html` 已是直接依赖，可用于 ascii2d HTML 解析。
+- 当前进度：Tasks 1–10 与 Checkpoints 1–3 已完成；Task 11 的双语文档、产品 skill 和文档路由门禁已完成；Task 12 进行中，下一步是更新双语 unreleased changelog 并执行最终验证。
 
 ## 固定设计决策
 

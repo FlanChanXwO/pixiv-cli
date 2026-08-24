@@ -134,13 +134,13 @@
 
 ## Task 11：英/中文用户与维护者文档、产品 skill
 
-- 状态：未开始
+- 状态：已完成
 - 目标：更新 README、CLI reference、MCP tools、双语 architecture/development 和 `skills/pixiv-cli/`。
 - 验收：覆盖识别规则、provider/config、secret stdin、第三方上传与保存、MCP 文件外传/SSRF 信任模型、partial、pixiv-only、NDJSON/generic artwork；链接和现有 locale 路由检查通过。
-- 实际完成：
-- 验证证据：
-- 剩余风险：
-- 下一步：
+- 实际完成：同步英/中文 README、CLI reference、MCP tools、维护者 architecture/development 与 `skills/pixiv-cli/` 及其 discover/troubleshooting reference。文档固定了关键词/显式 HTTP(S)/常规文件识别、图片模式 flag 边界、provider/config 与 stdin-only SauceNAO key、第三方上传/保存、MCP 私有文件与私网 URL 的可信本机 client 信任模型、单次私有快照、pixiv-only、partial、generic `artwork`、JSON envelope 和 NDJSON 语义；补充中英文 locale 互链。新增 `scripts/tests/documentation` 标准库测试包，检查双语契约短语与 locale 路由。
+- 验证证据：先运行 `go test ./scripts/tests/documentation -count=1` 实际得到 Red，暴露目标分支缺少该测试包（`directory not found`）；新增测试后同命令 Green，`go vet ./scripts/tests/documentation` 与 `git diff --check` 通过，测试文件已 `gofmt`。未执行真实网络请求，未写入或回显任何 key、source、Cookie 或上游 body。
+- 剩余风险：文档测试验证关键契约短语和路由，不替代完整 Markdown 渲染器；第三方 provider 的实时兼容性、保存/缓存行为仍由 Task 10 的显式 opt-in e2e 观察，默认离线门禁不声称真实网络成功。本 task 未修改 public SDK、依赖或生产运行时。
+- 下一步：Task 12 更新双语 unreleased changelog，并运行目标级聚焦测试、全仓测试与构建。
 
 ## Task 12：双语未发布说明与目标级验证
 

@@ -7,7 +7,7 @@ license: MIT
 homepage: https://github.com/FlanChanXwO/pixiv-cli
 tags: [pixiv, cli, mcp]
 name: pixiv-cli
-description: Operate Pixiv through the pixiv-cli binary — search illustrations, novels, and users; inspect Pixiv artwork or user IDs/URLs; view rankings and recommendations; manage bookmarks/follows; and download works. Load only when the user explicitly mentions Pixiv or pixiv-cli, provides a pixiv.net URL or ID in a clear Pixiv context, or requests a specific Pixiv operation or `pixiv` command. Do not trigger for generic illustration, artist, image-search, or download requests without Pixiv context. Verify current syntax with `pixiv <cmd> --help`.
+description: Operate Pixiv through the pixiv-cli binary — search illustrations, novels, and users; reverse-search images with SauceNAO or ascii2d; inspect Pixiv artwork or user IDs/URLs; view rankings and recommendations; manage bookmarks/follows; and download works. Load only when the user explicitly mentions Pixiv or pixiv-cli, provides a pixiv.net URL or ID in a clear Pixiv context, or requests a specific Pixiv operation or `pixiv` command. Do not trigger for generic illustration, artist, image-search, or download requests without Pixiv context. Verify current syntax with `pixiv <cmd> --help`.
 ---
 
 # pixiv-cli Operator
@@ -137,6 +137,8 @@ pixiv config set download_path ./downloads # config write; confirm first
 pixiv search "WORD" --type artwork --limit 10 --json
 pixiv search "WORD" --type novel --limit 10 --json
 pixiv search "NAME" --type user --limit 10 --json
+pixiv search IMAGE_PATH_OR_URL --provider saucenao --json
+pixiv search IMAGE_PATH_OR_URL --provider all --ndjson
 pixiv search "WORD" --content-type manga --ai-mode exclude
 pixiv search "WORD" --resolution high --aspect-ratio landscape --draw-tool "CLIP STUDIO PAINT"
 pixiv search --trending-tags --json
@@ -190,9 +192,21 @@ Common data flags are command-scoped `--json` or `--ndjson`, plus `--proxy URL` 
 `--no-proxy` (this command only, never persisted). Proxy URIs may use `http`,
 `https`, `socks5`, or `socks5h`.
 
+`pixiv search` also recognizes reverse-image sources. An explicit case-insensitive
+`http:`/`https:` input always uses image mode, including an invalid URL (which
+must fail without keyword fallback); other inputs use image mode only when they
+are existing regular files after symlink resolution. Image mode accepts only
+`--provider`, output flags, and proxy flags. It does not accept keyword filters,
+`--type`, pagination, or trending flags and does not open the Pixiv account pool
+just to resolve output settings.
+
 `pixiv config` manages `account_pool_enabled`, `account_pool_strategy`,
 `download_path`, `filename_template`, `directory_template`, `request_interval`,
-`https_proxy`, `log_level`, and `log_format`.
+`https_proxy`, `log_level`, `log_format`, `reverse_search_provider`, and
+`reverse_search_pixiv_only`. `saucenao_api_key` is a sensitive config key: set
+it only through non-TTY stdin (`printf '%s\n' 'KEY' | pixiv config set
+saucenao_api_key`), and `pixiv config get saucenao_api_key` is always
+`<redacted>`. `SAUCENAO_API_KEY` overrides the file without being displayed.
 Other TOML settings are hand-maintained; inspect the installed help before suggesting them.
 
 FANBOX is a separate read-only service surface. Import its `FANBOXSESSID` with
@@ -290,6 +304,20 @@ session.
     expand visual works in first-seen artwork-ID order; user and bookmark
     downloads use App OAuth. Artwork-series URLs are rejected as unsupported
     download sources.
+14. **Reverse-image search has a separate privacy and result contract.** The
+    providers are `saucenao`, `ascii2d-color`, `ascii2d-bovw`, and `all`; the
+    default is `reverse_search_provider=saucenao`, and `--provider` is a
+    one-command override. `reverse_search_pixiv_only=true` keeps only explicit
+    Pixiv artwork/user identities in the canonical result set. The source is
+    loaded once into a private snapshot and may be uploaded or retained by a
+    third party, so use only authorized images/URLs. JSON returns
+    `input/providers/results/records/provider_errors/partial`; piped or explicit
+    NDJSON returns only canonical records. Reverse-search artwork records use
+    generic `type="artwork"` (not `illust`) because the provider does not prove
+    the Pixiv subtype. With `all`, one success plus one failure is `partial` and
+    exits successfully with a stderr warning; one-provider or all-provider
+    failure is non-zero. Never expose source, key, temporary path, CSRF,
+    redirect location, or upstream response body.
 
 ## Routing
 
@@ -297,7 +325,7 @@ session.
 | --- | --- |
 | Explicitly install or repair the missing `pixiv` binary | `references/install.md` |
 | Import, export, back up, or restore authentication | `references/auth.md` |
-| Find works/artists (search → filter → detail chains) | `references/discover.md` |
+| Find works/artists (keyword and reverse-image search → filter → detail chains) | `references/discover.md` |
 | Download workflows (single, batch, ugoira) | `references/download.md` |
 | Errors: auth failures, network/proxy, empty results | `references/troubleshooting.md` |
 

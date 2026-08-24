@@ -225,7 +225,7 @@ Real login depends on the Pixiv OAuth web flow being available. Automated tests 
 
 ## Tests
 
-Current test coverage spans CLI commands and build metadata, explicit/automatic updates, `internal/services/{pixiv,fanbox}/account` account services, `internal/services/pixiv/pool` account pool, `internal/storage/database` auth storage and `internal/config/settings` configuration, `internal/shared/lifecycle` lifecycle, `internal/shared/pagination` logical pagination, `internal/shared/traversal` generic reentrant traversal, Pixiv App API auth retry, the public SDK (`sdk`/`sdk/pixiv`/`sdk/fanbox`), HTTP client wiring, download management, the Rust encoder/staticlib contract and `internal/mcpserver/{pixiv,fanbox}/tools` tool registration. `internal/account` and `internal/session` have been deleted and no compatibility test entry points are retained. Test file layout and same-package exceptions follow [Test file layout](#test-file-layout):
+Current test coverage spans CLI commands and build metadata, explicit/automatic updates, `internal/services/{pixiv,fanbox}/account` account services, `internal/services/pixiv/pool` account pool, `internal/services/reversesearch` source/provider fixtures and aggregation, `internal/storage/database` auth storage and `internal/config/settings` configuration, `internal/shared/lifecycle` lifecycle, `internal/shared/pagination` logical pagination, `internal/shared/traversal` generic reentrant traversal, Pixiv App API auth retry, the public SDK (`sdk`/`sdk/pixiv`/`sdk/fanbox`), HTTP client wiring, download management, the Rust encoder/staticlib contract and `internal/mcpserver/{pixiv,fanbox}/tools` tool registration. `internal/account` and `internal/session` have been deleted and no compatibility test entry points are retained. Test file layout and same-package exceptions follow [Test file layout](#test-file-layout):
 
 ```bash
 go test ./...
@@ -251,9 +251,22 @@ scripts/test-e2e.sh
 # Run only one of them, or only verify single-post post.info.
 scripts/test-e2e.sh --pixiv-only
 scripts/test-e2e.sh --fanbox-post-only
+# Explicit reverse-search upstream compatibility observation; never run by default.
+PIXIV_REVERSE_SEARCH_E2E=1 \
+PIXIV_REVERSE_SEARCH_SOURCE=<private-test-image-path-or-url> \
+PIXIV_REVERSE_SEARCH_PROVIDER=all \
+SAUCENAO_API_KEY=<secret-from-private-environment> \
+scripts/test-reverse-search-e2e.sh
 ```
 
 `go test ./...` stays offline-stable by default; real SDK e2e is skipped when `PIXIV_SDK_E2E=1` or `FANBOX_SDK_E2E=1` is not explicitly set. Once explicitly enabled, missing local authorization credentials or a missing non-secret FANBOX target fails directly and exposes the gap, rather than disguising a skip as release evidence.
+
+Reverse-search provider fixtures and CLI/MCP/config regressions remain part of the offline suite. Real reverse-search
+network observation is separate and runs only when `PIXIV_REVERSE_SEARCH_E2E=1` is explicitly set; the source is
+required, and SauceNAO or `all` additionally requires `SAUCENAO_API_KEY` while ascii2d-only runs do not. The script
+accepts no source or key arguments, does not echo either value, and must be run only with an authorized test image.
+It observes third-party compatibility, not a default release gate; a skipped or unavailable upstream must not be
+reported as a successful real-network result.
 
 `scripts/test-e2e.sh` only selects the current public SDK E2E tests: the Pixiv test reads the selected account from the local `pixiv-cli.db`, and the FANBOX test reads `FANBOXSESSID` from the agreed macOS Keychain item. The FANBOX `FANBOX_E2E_CREATOR_ID`, `FANBOX_E2E_TAG`, `FANBOX_E2E_POST_ID` and `FANBOX_E2E_POST_URL` only accept explicit, non-secret test targets; refresh tokens, sessions or full cookies are not accepted as arguments or environment variables. The optional `PIXIV_E2E_PROXY` only denotes a non-secret proxy URI; `FANBOX_E2E_SOLVER_URL` and `FANBOX_E2E_SOLVER_PROXY` are optional non-secret recovery topology configuration and the solver is not enabled by default. When real E2E is not explicitly enabled, tests skip by default; when explicitly enabled but missing local credentials or FANBOX targets, they fail, and a default skip or automatic discovery must not be recorded as release evidence.
 
