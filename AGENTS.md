@@ -28,6 +28,7 @@ FANBOX E2E target variables are explicit non-secret test targets; the session re
 
 - `cmd/pixiv` 只委托 `internal/cli`；`internal/cli/root.go` 负责命令树、全局生命周期与生产组装，具体命令位于 `internal/cli/commands` 及其 Pixiv/FANBOX owner 子目录，不恢复旧 resource graph/requirements 层。
 - CLI/MCP 的 Pixiv/FANBOX 能力只经公开 `sdk/pixiv`、`sdk/fanbox` 及 owner-local 窄端口调用；不得直连 `internal/services/{pixiv,fanbox}` 协议适配包。
+- reverse-search is the only cross-boundary exception：生产组装仅允许 `internal/cli/root.go` 依赖 `internal/services/reversesearch/assembly`；`internal/cli/commands` 与 `internal/mcpserver` 只能依赖 `internal/services/reversesearch` 顶层契约，不得导入 `internal/services/reversesearch/saucenao`、`internal/services/reversesearch/ascii2d` 或其他其子包。provider 协议构造、HTTP client、凭据与代理只由 composition root/assembly 持有。
 - MCP 聚合与输入/输出适配在 `internal/mcpserver/{pixiv,fanbox}`，具体 tool 位于各自 `tools/<tool>`；stdio runtime 由 CLI MCP 命令启动。
 - `internal/shared/*` 承载跨命令共享机制，`internal/utils/{parse,text,uri}` 保持协议无关；配置 schema/snapshot 在 `internal/config/settings`，本地路径和权限在 `internal/config/paths`，文件机制在 `internal/storage/file/*`。
 - 测试文件遵循 [`docs/zh-CN/maintainers/development.md` 测试文件布局](docs/zh-CN/maintainers/development.md#测试文件布局)的 same-stem、平台后缀和 same-package 例外规则；该节是唯一 canonical test-layout 规则。

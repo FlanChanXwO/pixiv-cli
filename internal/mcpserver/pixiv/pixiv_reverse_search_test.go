@@ -180,7 +180,7 @@ func TestReverseSearchFailurePreservesSafeStructuredEnvelope(t *testing.T) {
 				return reversesearch.Response{
 					Providers:      []reversesearch.ProviderSummary{{Name: reversesearch.ProviderAll, Status: reversesearch.ProviderStatusError}},
 					ProviderErrors: []reversesearch.ProviderError{{Provider: reversesearch.ProviderAll, Code: reversesearch.CodeAllProvidersFailed, Message: "all reverse-search providers failed"}},
-				}, reversesearch.NewError(reversesearch.CodeAllProvidersFailed, "all reverse-search providers failed", errors.New("api-key-secret source-secret upstream-body-secret"))
+				}, reversesearch.NewError(reversesearch.CodeAllProvidersFailed, "all reverse-search providers failed", errors.New("api-key-secret source-secret upstream-body-secret csrf-secret location-secret"))
 			}),
 		},
 	}, pixivmcpserver.Account{})
@@ -198,7 +198,7 @@ func TestReverseSearchFailurePreservesSafeStructuredEnvelope(t *testing.T) {
 		t.Fatalf("failure envelope is not preserved: %+v", out)
 	}
 	raw := string(mustJSON(t, result))
-	for _, secret := range []string{"source-secret.example.test", "api-key-secret", "upstream-body-secret"} {
+	for _, secret := range []string{"source-secret.example.test", "api-key-secret", "upstream-body-secret", "csrf-secret", "location-secret"} {
 		if strings.Contains(raw, secret) {
 			t.Fatalf("MCP failure leaked %q: %s", secret, raw)
 		}

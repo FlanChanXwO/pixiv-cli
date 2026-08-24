@@ -104,13 +104,13 @@
 
 ## Task 9：架构规则、静态边界与 secret 回归
 
-- 状态：未开始
+- 状态：已完成
 - 目标：为 reverse-search 顶层 Facade 例外建立精确架构规则，禁止 CLI/MCP 导入 provider 子包，并补全跨层泄漏 canary。
 - 验收：先确认 architecture/secret tests Red，再证明 public SDK inventory 不变、provider import 禁令生效、source/key/body/CSRF/Location 不跨错误/日志/输出边界。
-- 实际完成：
-- 验证证据：
-- 剩余风险：
-- 下一步：
+- 实际完成：在 `AGENTS.md`、中英文维护者架构文档中明确 reverse-search 是唯一跨常规 public SDK 边界的例外：生产组装只允许 `internal/cli/root.go` 依赖 `internal/services/reversesearch/assembly`，CLI commands 与 MCP 只依赖顶层 `internal/services/reversesearch` 契约；新增 `internal/architecture` AST 静态测试禁止 CLI/MCP/Record 层导入 provider 子包；新增 public SDK inventory SHA-256 pin，固定 `sdk`、`sdk/pixiv`、`sdk/fanbox` 导出符号清单未被本目标修改；CLI 根命令与 MCP failure canary 覆盖 source、API key、上游 body、CSRF 与 Location 私密值，确认它们不进入错误、stdout/stderr 或 structured envelope。
+- 验证证据：首个 architecture Red 运行 `go test ./internal/architecture -run '^TestReverseSearchBoundaryExceptionIsDocumented$' -count=1 -v`，在规则尚未写入三份文档时因缺少约束短语失败；完成后 `go test ./internal/architecture -count=1 -v`、`go test ./scripts/internal/publicapi -run 'TestRepositoryPublicAPIInventoryIsPinned|TestInventoryCollectsOnlyExportedPackageSymbols' -count=1 -v`、CLI/MCP secret canary 均通过。随后 `go test ./internal/architecture ./scripts/internal/publicapi ./internal/cli/commands/pixiv/search ./internal/cli ./internal/mcpserver/pixiv -count=1`、对应 `go test -race`（architecture/publicapi/search/mcp）、`go vet` 和 `git diff --check` 全部通过；未新增依赖，public SDK inventory hash 保持 `ed45ee60aba67e2a657174325e9796451a6ef88f4161dc643ad97368f5e7eb31`。
+- 剩余风险：静态 import gate 只覆盖其声明的 CLI commands、MCP、shared Record 目录，生产 assembly 仍按规则允许留在 `internal/cli/root.go`；真实 provider 网络兼容性与 opt-in e2e 仍待 Task 10，用户文档与 release note 仍待 Task 11–12。本 task 不增加超时、重试、截断或 fallback。
+- 下一步：Checkpoint 3 集中检查 Tasks 7–9。
 
 ## Checkpoint 3：集中检查-debug 循环（Tasks 7–9）
 

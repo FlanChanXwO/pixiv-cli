@@ -65,6 +65,32 @@ func TestImageSearchJSONDoesNotOpenPixivSDK(t *testing.T) {
 	assert.False(t, sdkOpened, "image search initialized Pixiv SDK/account DB")
 }
 
+func TestImageSearchFailureDoesNotLeakPrivateCauseAcrossCLIOutput(t *testing.T) {
+	useTempPaths(t)
+	oldReverse := newCLIReverseSearch
+	newCLIReverseSearch = func(_ reverseassembly.Options) (reversesearch.Searcher, error) {
+		return rootReverseSearcherFunc(func(_ context.Context, _ reversesearch.Request) (reversesearch.Response, error) {
+			return reversesearch.Response{
+				Input:     reversesearch.Input{Kind: reversesearch.SourceKindURL, SHA256: "deadbeef"},
+				Providers: []reversesearch.ProviderSummary{{Name: reversesearch.ProviderAll, Status: reversesearch.ProviderStatusError}},
+				ProviderErrors: []reversesearch.ProviderError{{
+					Provider: reversesearch.ProviderAll, Code: reversesearch.CodeAllProvidersFailed, Message: "reverse search provider failed",
+				}},
+			}, reversesearch.NewError(reversesearch.CodeAllProvidersFailed, "reverse search provider failed", errors.New("api-key-secret source-secret upstream-body-secret csrf-secret location-secret"))
+		}), nil
+	}
+	t.Cleanup(func() { newCLIReverseSearch = oldReverse })
+
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"pixiv", "search", "https://source-secret.example.test/image?token=api-key-secret", "--json"}, strings.NewReader(""), &stdout, &stderr)
+
+	assert.Equal(t, 1, code, stderr.String())
+	assert.Contains(t, stderr.String(), "reverse search provider failed")
+	for _, secret := range []string{"source-secret.example.test", "api-key-secret", "upstream-body-secret", "csrf-secret", "location-secret"} {
+		assert.NotContains(t, stdout.String()+stderr.String(), secret)
+	}
+}
+
 func TestImageSearchBuildsReverseSearchWithCLIProxyOverride(t *testing.T) {
 	useTempPaths(t)
 	oldReverse := newCLIReverseSearch
