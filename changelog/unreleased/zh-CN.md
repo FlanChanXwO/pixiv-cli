@@ -2,12 +2,26 @@
 
 > 此处用于准备发布说明。先审计目标 tag 范围，再直接编写下一版双语 Markdown；审计中的每个 PR 或 direct commit 都要出现在两种语言中。
 
+## 新增
+
+- 为 `pixiv search SOURCE` 与 Pixiv MCP `reverse_search` tool 新增反向搜图。CLI 会自动把显式 HTTP(S) URL 和现有常规文件识别为图片模式；SauceNAO、ascii2d color/BOVW 与 `all` provider 返回稳定 JSON envelope、通用 artwork/user record 以及 canonical record 的 NDJSON，并明确报告 provider partial 结果。([`69caa31`](https://github.com/FlanChanXwO/pixiv-cli/commit/69caa31)、[`6599dec`](https://github.com/FlanChanXwO/pixiv-cli/commit/6599dec)、[`ef0dcfe`](https://github.com/FlanChanXwO/pixiv-cli/commit/ef0dcfe)、[`e67e21f`](https://github.com/FlanChanXwO/pixiv-cli/commit/e67e21f)、[`ce03802`](https://github.com/FlanChanXwO/pixiv-cli/commit/ce03802)、[`298e0f3`](https://github.com/FlanChanXwO/pixiv-cli/commit/298e0f3))
+
+## 安全
+
+- 反向搜图每个 source 只加载一次到私有快照，并在 provider 工作结束后清理；发布输出和诊断不会包含 source 字符串、凭据、临时路径、cookie、CSRF/redirect 值或上游 body。MCP 契约有意允许私有文件以及私网/loopback/link-local URL，但只适用于可信本机 client，同时说明第三方上传、保存和 URL 缓存影响。([`69caa31`](https://github.com/FlanChanXwO/pixiv-cli/commit/69caa31)、[`3e2cb47`](https://github.com/FlanChanXwO/pixiv-cli/commit/3e2cb47)、[`80d5729`](https://github.com/FlanChanXwO/pixiv-cli/commit/80d5729)、[`8169787`](https://github.com/FlanChanXwO/pixiv-cli/commit/8169787)、[`4632334`](https://github.com/FlanChanXwO/pixiv-cli/commit/4632334)、[`4cfc4d4`](https://github.com/FlanChanXwO/pixiv-cli/commit/4cfc4d4))
+
+## 文档
+
+- 在双语用户文档、维护者文档和产品 skill 中说明反向搜图 source 识别、provider/配置、stdin-only SauceNAO credential、第三方隐私影响、MCP 可信 client 边界、partial 结果、通用 artwork record 以及 opt-in 上游兼容性流程。([`d103eb4`](https://github.com/FlanChanXwO/pixiv-cli/commit/d103eb4)、[`9cf51d7`](https://github.com/FlanChanXwO/pixiv-cli/commit/9cf51d7))
+
 ## 配置与诊断
 
 - 恢复统一的 `[logging].level`/`[logging].format` 配置及 `PIXIV_LOG_LEVEL`、`PIXIV_LOG_FORMAT` 覆盖；`debug`
   诊断只写 stderr，MCP stdout 继续保持 JSON-RPC。
 - `pixiv config` 依据同一份 schema 管理 logging、下载目录、请求节奏、代理和账号池配置；首次生成的
   `config.toml` 由 schema 元数据自动生成，且不会覆盖已有文件。
+- 新增 `reverse_search_provider` 与 `reverse_search_pixiv_only` 配置、仅限 stdin 且始终脱敏的
+  `saucenao_api_key`，以及不显示 key 内容的 `SAUCENAO_API_KEY` 环境覆盖；public SDK 的构造与 API 保持不变。([`d4a1254`](https://github.com/FlanChanXwO/pixiv-cli/commit/d4a1254)、[`ce03802`](https://github.com/FlanChanXwO/pixiv-cli/commit/ce03802)、[`9cf51d7`](https://github.com/FlanChanXwO/pixiv-cli/commit/9cf51d7))
 
 ## 维护
 
@@ -19,3 +33,4 @@
 - 把非 original 下载质量映射到对应 artwork variant resource，使 `SaveResource` 重新解析正确 locator；文件名生成在遇到未知占位符、不匹配花括号或缺失 `{date}` 值时提前失败，而不是写出空文件名。([#59](https://github.com/FlanChanXwO/pixiv-cli/pull/59))
 - 下载现在报告部分成功：每个作品原子写入其文件，单个作品的独立失败以失败集合返回而非中止整批，只有 context 取消才会立即停止。([#59](https://github.com/FlanChanXwO/pixiv-cli/pull/59))
 - 账号移除现在默认在 TTY 上确认，移除默认账号后自动重新选中第一个剩余账号。([#59](https://github.com/FlanChanXwO/pixiv-cli/pull/59))
+- 新增默认关闭的 `PIXIV_REVERSE_SEARCH_E2E=1` 维护脚本，用于在获授权环境观察真实 provider 兼容性；source 和 key 只从私有环境提供，绝不作为命令参数传入，且不属于普通 release 门禁。([`d103eb4`](https://github.com/FlanChanXwO/pixiv-cli/commit/d103eb4))

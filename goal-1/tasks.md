@@ -144,17 +144,17 @@
 
 ## Task 12：双语未发布说明与目标级验证
 
-- 状态：未开始
+- 状态：已完成
 - 目标：更新 `changelog/unreleased/{en,zh-CN}.md`，运行全部聚焦测试、全仓测试和构建，修复仅归属于本目标的问题。
 - 验收：两种语言覆盖同一用户可感知变更；目标包测试、architecture/secret 回归、`go test ./...`、`sh scripts/build.sh` 有实际结果；无意外依赖或机器文件进入 diff。
-- 实际完成：
-- 验证证据：
-- 剩余风险：
-- 下一步：
+- 实际完成：更新 `changelog/unreleased/en.md` 与 `changelog/unreleased/zh-CN.md`，以相同的 Added/Security/Documentation/Configuration/Maintenance 结果记录反向搜图、配置与 secret、MCP 信任边界、隐私输出、opt-in e2e 和产品文档，并为目标 direct commit 保留来源链接；未执行 tag、push 或 Release 发布动作。
+- 验证证据：`go test ./scripts/internal/releasenotes ./scripts/tests/documentation -count=1`、`go test ./internal/services/reversesearch/... -count=1`、`go test ./internal/shared/record/... -count=1`、配置/CLI/MCP/architecture/public API/e2e 聚焦测试、`go test ./... -count=1` 与 `sh scripts/build.sh` 全部通过；`git diff --check` 通过。构建输出为当前平台 `build/pixiv`，未进入 Git diff；无新增依赖或 public SDK inventory 变化。
+- 剩余风险：本机没有授权的真实图片、SauceNAO key 或 provider 网络凭据，因此 Task 10 真实上游路径仍未运行；该外部兼容性风险由显式 `PIXIV_REVERSE_SEARCH_E2E=1` 入口保留，不能以离线 fixture 或默认 skip 代替。unreleased 说明已按本目标授权更新，正式版本号、tag、审计和 Release 发布仍属于后续 release-prep。
+- 下一步：Checkpoint 4 集中检查 Tasks 10–12 的 e2e 隔离、文档/skill/release-note 一致性、全仓测试/构建、敏感信息与机器文件。
 
 ## Checkpoint 4：集中检查-debug 循环（Tasks 10–12）
 
-- 状态：未开始
+- 状态：进行中
 - 检查：真实 e2e 隔离、fixture 可维护性、文档/skill/发布说明一致性、全仓测试/构建、git diff、敏感信息与机器文件。
 - 发现问题时：追加修复 task；所有新增 task 完成后才可进入终审。
 - 实际检查：
