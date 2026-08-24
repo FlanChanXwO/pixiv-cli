@@ -94,7 +94,8 @@ func TestAggregatorSingleSauceNAOSuccessProducesCanonicalEnvelope(t *testing.T) 
 func TestAggregatorSingleProviderFailureReturnsSafeEnvelopeAndError(t *testing.T) {
 	privateCause := errors.New("private upstream body and credential")
 	wantErr := reversesearch.NewError(reversesearch.CodeUpstreamHTTPStatus, "SauceNAO returned an unsuccessful HTTP status", privateCause)
-	joinedErr := errors.Join(wantErr, errors.New("second private diagnostic"))
+	privateDiagnostic := errors.New("second private diagnostic")
+	joinedErr := errors.Join(wantErr, privateDiagnostic)
 	sauce := providerClientStub{search: func(context.Context, *reversesearch.Snapshot) (reversesearch.ProviderResponse, error) {
 		return reversesearch.ProviderResponse{}, joinedErr
 	}}
@@ -103,7 +104,13 @@ func TestAggregatorSingleProviderFailureReturnsSafeEnvelopeAndError(t *testing.T
 	response, err := searcher.Search(context.Background(), reversesearch.Request{
 		Source: fixtureImagePath(t), Provider: reversesearch.ProviderSauceNAO,
 	})
-	require.ErrorIs(t, err, wantErr)
+	require.False(t, errors.Is(err, wantErr))
+	require.False(t, errors.Is(err, privateCause))
+	require.False(t, errors.Is(err, privateDiagnostic))
+	var publicErr *reversesearch.Error
+	require.True(t, errors.As(err, &publicErr))
+	require.Equal(t, reversesearch.CodeUpstreamHTTPStatus, publicErr.Code())
+	require.Nil(t, errors.Unwrap(publicErr))
 	require.EqualError(t, err, "SauceNAO returned an unsuccessful HTTP status")
 	require.Equal(t, []reversesearch.ProviderSummary{{
 		Name: reversesearch.ProviderSauceNAO, Status: reversesearch.ProviderStatusError,

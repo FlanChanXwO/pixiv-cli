@@ -212,10 +212,10 @@
 ## Task 16：清洗 aggregator classified provider error chain
 
 - 来源：Checkpoint 2，P1。
-- 状态：未开始
+- 状态：已完成
 - 目标：单 provider failure 只向 adapter 发布稳定 code/message，不保留 classified error 的私密 cause 或 joined diagnostics；context cancellation 继续原样返回。
 - 验收：先扩展错误链 canary 并实际确认 Red，证明 key/source/body 私密 cause 当前可经 `errors.Is/As/Unwrap` 到达；修复后 envelope 和返回错误仍保留原稳定 code/message，但完整公开错误链不含原 error/cause/joined detail。all-provider safe errors与未分类错误行为保持不变。
-- 实际完成：
-- 验证证据：
-- 剩余风险：
-- 下一步：
+- 实际完成：`safeProviderFailure` 对 classified `*Error` 只复制稳定 code/message，创建 cause 为 nil 的新安全错误；因此单 provider 返回的 error 与 structured `ProviderError` 保持原分类/文本，但不再暴露 provider cause 或 `errors.Join` 的其他诊断。取消仍在进入清洗前由 `cancellationError` 原样返回，未分类错误和 all-provider aggregate 语义保持不变。新增错误链 canary 检查 `errors.Is`、`errors.As` 和 `errors.Unwrap`。
+- 验证证据：先仅修改 canary 并实际 Red：旧实现中 `errors.Is(err, wantErr)` 为 true；修复后单 provider、all-provider、取消测试通过。`go test -race ./internal/services/reversesearch/... -count=1`、`go vet ./internal/services/reversesearch/...`、`go test ./internal/services/... -count=1`、`go test ./... -count=1`、`sh scripts/build.sh` 和 `git diff --check` 全部通过；构建产物为 `build/pixiv`。
+- 剩余风险：该边界依赖各 provider 以 `reversesearch.NewError` 发布的 message 已经过安全审查；本 task 不改变上游 adapter 的错误映射，也不新增重试、超时或 fallback。Task 7/8 仍需在 CLI/MCP adapter 层验证 structured output、stdout/JSON-RPC 全链路脱敏。
+- 下一步：Checkpoint 3 集中检查 Tasks 7–9；在此之前执行 Task 7。

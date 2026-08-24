@@ -193,7 +193,9 @@ func (a *Aggregator) searchSingle(ctx context.Context, provider Provider, snapsh
 func safeProviderFailure(provider Provider, err error) (ProviderError, error) {
 	var classified *Error
 	if errors.As(err, &classified) {
-		return ProviderError{Provider: provider, Code: classified.Code(), Message: classified.Error()}, classified
+		// 只复制已审查的稳定字段；不能把 provider 的 cause 或 errors.Join 诊断带过边界。
+		safeErr := NewError(classified.Code(), classified.Error(), nil)
+		return ProviderError{Provider: provider, Code: safeErr.Code(), Message: safeErr.Error()}, safeErr
 	}
 	safeErr := NewError(CodeProviderFailed, "reverse search provider failed", nil)
 	return ProviderError{Provider: provider, Code: CodeProviderFailed, Message: safeErr.Error()}, safeErr
