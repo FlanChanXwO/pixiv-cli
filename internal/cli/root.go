@@ -53,6 +53,8 @@ import (
 	pixivapp "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv"
 	pixivaccount "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/account"
 	pixivpool "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/pool"
+	"github.com/FlanChanXwO/pixiv-cli/internal/services/reversesearch"
+	reverseassembly "github.com/FlanChanXwO/pixiv-cli/internal/services/reversesearch/assembly"
 	"github.com/FlanChanXwO/pixiv-cli/internal/shared/buildinfo"
 	coreDiagnostics "github.com/FlanChanXwO/pixiv-cli/internal/shared/diagnostics"
 	"github.com/FlanChanXwO/pixiv-cli/internal/shared/lifecycle"
@@ -170,6 +172,9 @@ var (
 		return a.newFanboxAccountService()
 	}
 	newCLIDownloadService = func() downloader.DownloadService { return defaultDownloadService() }
+	newCLIReverseSearch   = func(options reverseassembly.Options) (reversesearch.Searcher, error) {
+		return reverseassembly.New(options)
+	}
 )
 
 const internalURLCallbackCommand = loginhelper.CallbackCommand
@@ -679,17 +684,50 @@ func (a app) pixivCommands() []*cobra.Command {
 	}
 }
 
-// searchDeps 只把输入、输出、JSON 配置和公开 SDK 的 pooled read 端口交给
-// search owner；该 owner 不导入旧 resource graph 或内部 service adapter。
+// searchDeps 只把输入、输出、JSON 配置、公开 SDK pooled read 和反向搜图 Facade
+// 端口交给 search owner；该 owner 不导入账号资源图或 provider 协议适配器。
 func (a app) searchDeps() pixivsearch.Dependencies {
 	data := a.pixivDataDeps()
 	return pixivsearch.Dependencies{
-		Input:      data.Input,
-		Output:     data.Output,
-		UsageError: data.UsageError,
-		JSONOut:    data.JSONOut,
+		Input:       data.Input,
+		Output:      data.Output,
+		ErrorOutput: data.ErrorOutput,
+		UsageError:  data.UsageError,
+		JSONOut: func(override *bool) (bool, error) {
+			if override != nil {
+				return *override, nil
+			}
+			runtime, err := a.runtimeConfig()
+			if err != nil {
+				return false, err
+			}
+			return runtime.OutputJSON, nil
+		},
 		Pooled: func(ctx context.Context, request pixivsearch.Request, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
 			return data.Pooled(ctx, pixivdeps.Request(request), attempt)
+		},
+		ReverseSearch: func(ctx context.Context, request pixivsearch.ReverseSearchRequest) (reversesearch.Response, error) {
+			runtime, err := a.runtimeConfig()
+			if err != nil {
+				return reversesearch.Response{}, err
+			}
+			provider := reversesearch.Provider(runtime.ReverseSearchProvider)
+			if request.Provider != "" {
+				provider = request.Provider
+			}
+			proxy := runtime.HTTPSProxy
+			if request.HTTPSProxyOverride != nil {
+				proxy = *request.HTTPSProxyOverride
+			}
+			searcher, err := newCLIReverseSearch(reverseassembly.Options{
+				Proxy: proxy, SauceNAOKey: runtime.SauceNAOAPIKey,
+			})
+			if err != nil {
+				return reversesearch.Response{}, err
+			}
+			return searcher.Search(ctx, reversesearch.Request{
+				Source: request.Source, Provider: provider, PixivOnly: runtime.ReverseSearchPixivOnly,
+			})
 		},
 	}
 }

@@ -84,13 +84,13 @@
 
 ## Task 7：CLI `pixiv search` 自动图片模式
 
-- 状态：未开始
+- 状态：已完成
 - 目标：在现有 search owner 中实现 URL/常规文件智能识别、provider 覆盖、flags 冲突、proxy 构造、human/JSON/NDJSON 和 partial warning。
 - 验收：先确认 CLI tests Red，再证明普通关键词完全保持、非法 URL 不回退、图片模式不打开 Pixiv SDK/账号 DB、输出与 exit code 契约正确。
-- 实际完成：
-- 验证证据：
-- 剩余风险：
-- 下一步：
+- 实际完成：`pixiv search SOURCE` 现在把明确 HTTP(S) scheme 始终送入反向搜图，把跟随符号链接后的现有常规文件送入反向搜图，其他输入继续走普通关键词搜索；非法 HTTP(S) 不回退关键词。新增 `--provider` 校验与覆盖、`--proxy/--no-proxy` 传输覆写、图片模式搜索过滤/类型/分页/trending 冲突校验，以及独立的 production assembly 按每次调用构造代理化 Facade。CLI JSON 输出完整 `input/providers/results/records/provider_errors/partial` envelope，human 输出安全摘要，显式或非 TTY NDJSON 只输出 canonical records；partial 结果写 stderr warning，单 provider/全失败保留 envelope 并返回错误。JSON 配置解析走独立 runtime 端口，图片模式不初始化 Pixiv SDK 或账号数据库。
+- 验证证据：首条 URL 测试先因 `Dependencies.ReverseSearch`/请求类型缺失编译 Red；provider flag、输出 envelope、partial、过滤冲突与 root 隔离测试也分别先确认旧行为失败，再逐切片转 Green。`go test ./internal/cli/commands/pixiv/search ./internal/cli ./internal/services/reversesearch/assembly -count=1`、`go vet ./internal/cli/commands/pixiv/search ./internal/cli ./internal/services/reversesearch/...`、对应 `go test -race`、`go test ./... -count=1` 与 `sh scripts/build.sh` 全部通过；审查覆盖源分类、代理/配置、记录投影、stdout/stderr、错误链边界和 CLI/provider import 边界，未发现 P0/P1。工作树将在提交后保持仅有本目标提交。
+- 剩余风险：真实 SauceNAO/ascii2d 网络兼容性仍按 Task 10 的显式 opt-in e2e 观察；MCP tool、架构/secret 回归和用户文档属于后续 Task 8–12，当前 CLI 端口已为其保留顶层 Facade 契约。生产 provider 缺 key、上游失败和 source 错误继续按 service 的安全错误分类传播，不自动重试或 fallback。
+- 下一步：Task 8 新增 MCP `reverse_search` tool 与启动时运行时注入。
 
 ## Task 8：MCP `reverse_search` tool 与运行时注入
 

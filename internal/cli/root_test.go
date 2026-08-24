@@ -19,11 +19,71 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/pipeline"
 	"github.com/FlanChanXwO/pixiv-cli/internal/config/paths"
 	configapp "github.com/FlanChanXwO/pixiv-cli/internal/config/settings"
+	"github.com/FlanChanXwO/pixiv-cli/internal/services/reversesearch"
+	reverseassembly "github.com/FlanChanXwO/pixiv-cli/internal/services/reversesearch/assembly"
 	"github.com/FlanChanXwO/pixiv-cli/internal/storage/database"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+type rootReverseSearcherFunc func(context.Context, reversesearch.Request) (reversesearch.Response, error)
+
+func (f rootReverseSearcherFunc) Search(ctx context.Context, request reversesearch.Request) (reversesearch.Response, error) {
+	return f(ctx, request)
+}
+
+func TestImageSearchJSONDoesNotOpenPixivSDK(t *testing.T) {
+	useTempPaths(t)
+	oldSDK := newCLIPixivSDKPorts
+	oldReverse := newCLIReverseSearch
+	sdkOpened := false
+	newCLIPixivSDKPorts = func(_ app) (pixivSDKPorts, error) {
+		sdkOpened = true
+		return pixivSDKPorts{}, errors.New("Pixiv SDK must not be opened for image search")
+	}
+	newCLIReverseSearch = func(_ reverseassembly.Options) (reversesearch.Searcher, error) {
+		return rootReverseSearcherFunc(func(_ context.Context, request reversesearch.Request) (reversesearch.Response, error) {
+			if request.Provider != reversesearch.ProviderSauceNAO || !request.PixivOnly {
+				t.Fatalf("unexpected reverse search request: %+v", request)
+			}
+			return reversesearch.Response{
+				Input: reversesearch.Input{Kind: reversesearch.SourceKindURL, SHA256: "deadbeef"},
+			}, nil
+		}), nil
+	}
+	t.Cleanup(func() {
+		newCLIPixivSDKPorts = oldSDK
+		newCLIReverseSearch = oldReverse
+	})
+
+	var stdout, stderr bytes.Buffer
+	root := (app{in: strings.NewReader(""), out: &stdout, errOut: &stderr, closeState: &closeState{}}).newRootCommand()
+	root.SetArgs([]string{"search", "https://example.test/image.jpg", "--json"})
+
+	require.NoError(t, root.Execute(), stderr.String())
+	assert.False(t, sdkOpened, "image search initialized Pixiv SDK/account DB")
+}
+
+func TestImageSearchBuildsReverseSearchWithCLIProxyOverride(t *testing.T) {
+	useTempPaths(t)
+	oldReverse := newCLIReverseSearch
+	var captured reverseassembly.Options
+	newCLIReverseSearch = func(options reverseassembly.Options) (reversesearch.Searcher, error) {
+		captured = options
+		return rootReverseSearcherFunc(func(_ context.Context, _ reversesearch.Request) (reversesearch.Response, error) {
+			return reversesearch.Response{}, nil
+		}), nil
+	}
+	t.Cleanup(func() { newCLIReverseSearch = oldReverse })
+
+	var stdout, stderr bytes.Buffer
+	root := (app{in: strings.NewReader(""), out: &stdout, errOut: &stderr, closeState: &closeState{}}).newRootCommand()
+	root.SetArgs([]string{"search", "https://example.test/image.jpg", "--proxy", "http://127.0.0.1:7890", "--ndjson"})
+
+	require.NoError(t, root.Execute(), stderr.String())
+	assert.Equal(t, "http://127.0.0.1:7890", captured.Proxy)
+}
 
 func TestCloseStateClosesInReverseOrderOnceAndJoinsErrors(t *testing.T) {
 	firstErr := errors.New("first close")
