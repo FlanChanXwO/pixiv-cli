@@ -154,17 +154,17 @@
 
 ## Checkpoint 4：集中检查-debug 循环（Tasks 10–12）
 
-- 状态：进行中
+- 状态：已完成
 - 检查：真实 e2e 隔离、fixture 可维护性、文档/skill/发布说明一致性、全仓测试/构建、git diff、敏感信息与机器文件。
 - 发现问题时：追加修复 task；所有新增 task 完成后才可进入终审。
-- 实际检查：
-- 验证证据：
-- 剩余风险：
-- 下一步：
+- 实际检查：按 `pixiv-cli-review` 与 `code-review-expert` 审查 `4cfc4d4..HEAD` 的 Tasks 10–12（21 个文件，796 行新增）。确认真实 e2e 只有显式环境 opt-in，脚本不接收 source/key 参数且不在 opt-in 前启动 Go；测试 fixture 不把 synthetic secret 写入输出。检查 CLI/MCP/SDK 边界、MCP trusted-local-client 说明、双语 contract/skill/release note、文档测试、无新依赖和无删除候选，未发现 P0/P1/P2，也未追加修复 task。
+- 验证证据：`go test ./... -count=1`、`go test -race ./e2e -count=1`、`go vet ./...`、`bash -n scripts/test-reverse-search-e2e.sh`、`git diff --check` 与工作区洁净检查全部通过；Task 10 的 opt-in 配置/脚本测试、Task 11 的文档路由测试、Task 12 的 release-notes 测试和 `sh scripts/build.sh` 均已有实际 Green 证据。未运行真实 provider 网络请求，当前环境未提供 source/key。
+- 剩余风险：第三方 SauceNAO/ascii2d 的实时协议、Cloudflare、限额和保存/缓存行为仍需获授权环境运行 `scripts/test-reverse-search-e2e.sh` 观察；该风险已显式记录，不影响默认离线门禁。正式版本 tag/Release 发布不在本目标范围内。
+- 下一步：Final Review 重新阅读 `input.md`、`plan.md`、`tasks.md`，核对目标验收、回滚与最终工作区状态。
 
 ## Final Review：目标终审
 
-- 状态：未开始
+- 状态：进行中
 - 范围：重新全量阅读 `input.md`、`plan.md`、`tasks.md`；审查用户体验、代码边界、并发/取消、安全/隐私、错误语义、配置、Record 管道、MCP JSON-RPC、测试、构建、文档、release note 与回滚方案。
 - 验收：不存在已知高风险问题；所有未阻塞 task/修复 task 已完成；阻塞项有事实依据；最终验证证据完整；按项目规则完成代码审查并处理阻塞 finding。
 - 实际检查：
