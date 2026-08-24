@@ -35,10 +35,70 @@ type Input struct {
 	SHA256 string     `json:"sha256"`
 }
 
-// Response 是 service 层的领域响应。provider 结果与聚合字段将在对应实现
-// task 中扩展；它不依赖 CLI/MCP 的 Record 类型。
+// Response 是 service 层的稳定领域 envelope；它不依赖 CLI/MCP 的 Record 类型。
 type Response struct {
-	Input Input `json:"input"`
+	Input          Input             `json:"input"`
+	Providers      []ProviderSummary `json:"providers"`
+	Results        []Result          `json:"results"`
+	ProviderErrors []ProviderError   `json:"provider_errors"`
+	Partial        bool              `json:"partial"`
+}
+
+// ProviderStatus 描述 provider 是否产生了可用响应。
+type ProviderStatus string
+
+const (
+	ProviderStatusSuccess ProviderStatus = "success"
+	ProviderStatusError   ProviderStatus = "error"
+)
+
+// ProviderSummary 是按请求固定顺序发布的 provider 执行摘要。
+type ProviderSummary struct {
+	Name        Provider       `json:"name"`
+	Status      ProviderStatus `json:"status"`
+	ResultCount int            `json:"result_count"`
+	Quota       *Quota         `json:"quota,omitempty"`
+}
+
+// ProviderError 是可安全跨 CLI/MCP 边界发布的 provider 错误。
+type ProviderError struct {
+	Provider Provider  `json:"provider"`
+	Code     ErrorCode `json:"code"`
+	Message  string    `json:"message"`
+}
+
+// PixivRefType 是严格识别出的 Pixiv canonical identity 类型。
+type PixivRefType string
+
+const (
+	PixivRefArtwork PixivRefType = "artwork"
+	PixivRefUser    PixivRefType = "user"
+)
+
+// PixivRef 是不猜测 artwork subtype 的 canonical Pixiv identity。
+type PixivRef struct {
+	Type PixivRefType `json:"type"`
+	ID   int64        `json:"id"`
+}
+
+// Evidence 保留单个 provider/rank 的原始证据；跨 provider 分数不换算。
+type Evidence struct {
+	Provider     Provider `json:"provider"`
+	Rank         int      `json:"rank"`
+	Similarity   float64  `json:"similarity"`
+	IndexID      int      `json:"index_id"`
+	IndexName    string   `json:"index_name"`
+	Title        string   `json:"title,omitempty"`
+	Author       string   `json:"author,omitempty"`
+	ExternalURLs []string `json:"external_urls,omitempty"`
+}
+
+// Result 是一个可选 canonical Pixiv identity 及其一个或多个 provider 证据。
+type Result struct {
+	Pixiv    *PixivRef  `json:"pixiv,omitempty"`
+	Title    string     `json:"title,omitempty"`
+	Author   string     `json:"author,omitempty"`
+	Evidence []Evidence `json:"evidence"`
 }
 
 // Quota 是 provider 可安全公开的剩余额度摘要，不包含凭据或账号标识。
