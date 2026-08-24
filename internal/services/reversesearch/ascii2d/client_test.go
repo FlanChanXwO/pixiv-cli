@@ -2,6 +2,7 @@ package ascii2d_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -23,6 +24,128 @@ import (
 const fixtureHash = "0123456789abcdef0123456789abcdef"
 
 var _ reversesearch.ASCII2DClient = (*ascii2d.Client)(nil)
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(request *http.Request) (*http.Response, error) { return f(request) }
+
+type closeTrackingBody struct {
+	io.Reader
+	closed atomic.Bool
+}
+
+func (body *closeTrackingBody) Close() error {
+	body.closed.Store(true)
+	return nil
+}
+
+func TestUploadPrioritizesHTTPStatusWhenMultipartWriterAlsoFails(t *testing.T) {
+	const privateResponse = "private upstream response body"
+	responseBody := &closeTrackingBody{Reader: strings.NewReader(privateResponse)}
+	client := newTransportClient(t, func(request *http.Request) (*http.Response, error) {
+		require.Equal(t, http.MethodPost, request.Method)
+		require.NoError(t, request.Body.Close())
+		return &http.Response{
+			StatusCode: http.StatusTooManyRequests,
+			Header:     make(http.Header),
+			Body:       responseBody,
+			Request:    request,
+		}, nil
+	})
+
+	_, err := client.Upload(context.Background(), loadSnapshot(t, []byte("\x89PNG\r\n\x1a\nprivate source payload")))
+	require.Equal(t, reversesearch.CodeUpstreamHTTPStatus, reversesearch.CodeOf(err))
+	require.EqualError(t, err, "ascii2d returned an unsuccessful HTTP status")
+	require.True(t, responseBody.closed.Load())
+	require.NotContains(t, errorChainText(err), "private source payload")
+	require.NotContains(t, errorChainText(err), privateResponse)
+}
+
+func TestUploadPrioritizesMalformedLocationWhenMultipartWriterAlsoFails(t *testing.T) {
+	tests := []struct {
+		name      string
+		location  string
+		wantError string
+	}{
+		{name: "missing", wantError: "ascii2d returned a malformed upload location"},
+		{name: "cross origin", location: "https://private-location.invalid/search/color/" + fixtureHash, wantError: "ascii2d returned an unsafe upload location"},
+		{name: "wrong route", location: "/search/bovw/" + fixtureHash, wantError: "ascii2d returned a malformed upload location"},
+		{name: "invalid hash", location: "/search/color/private-invalid-hash", wantError: "ascii2d returned a malformed upload location"},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			responseBody := &closeTrackingBody{Reader: strings.NewReader("private upstream response body")}
+			client := newTransportClient(t, func(request *http.Request) (*http.Response, error) {
+				require.Equal(t, http.MethodPost, request.Method)
+				require.NoError(t, request.Body.Close())
+				header := make(http.Header)
+				header.Set("Location", test.location)
+				return &http.Response{
+					StatusCode: http.StatusFound,
+					Header:     header,
+					Body:       responseBody,
+					Request:    request,
+				}, nil
+			})
+
+			_, err := client.Upload(context.Background(), loadSnapshot(t, []byte("\x89PNG\r\n\x1a\nprivate source payload")))
+			require.Equal(t, reversesearch.CodeMalformedUpstreamResponse, reversesearch.CodeOf(err))
+			require.EqualError(t, err, test.wantError)
+			require.True(t, responseBody.closed.Load())
+			require.NotContains(t, errorChainText(err), "private source payload")
+			require.NotContains(t, errorChainText(err), "private upstream response body")
+			require.NotContains(t, errorChainText(err), "private-location.invalid")
+			require.NotContains(t, errorChainText(err), "private-invalid-hash")
+		})
+	}
+}
+
+func TestUploadReportsWriterFailureAfterValidLocation(t *testing.T) {
+	responseBody := &closeTrackingBody{Reader: strings.NewReader("private upstream response body")}
+	client := newTransportClient(t, func(request *http.Request) (*http.Response, error) {
+		require.Equal(t, http.MethodPost, request.Method)
+		require.NoError(t, request.Body.Close())
+		header := make(http.Header)
+		header.Set("Location", "/search/color/"+fixtureHash)
+		return &http.Response{
+			StatusCode: http.StatusFound,
+			Header:     header,
+			Body:       responseBody,
+			Request:    request,
+		}, nil
+	})
+
+	_, err := client.Upload(context.Background(), loadSnapshot(t, []byte("\x89PNG\r\n\x1a\nprivate source payload")))
+	require.Equal(t, reversesearch.CodeProviderFailed, reversesearch.CodeOf(err))
+	require.EqualError(t, err, "could not upload image to ascii2d")
+	require.True(t, responseBody.closed.Load())
+	require.NotContains(t, errorChainText(err), "private source payload")
+	require.NotContains(t, errorChainText(err), "private upstream response body")
+}
+
+func TestUploadPreservesCancellationAndClosesResponseBody(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	responseBody := &closeTrackingBody{Reader: strings.NewReader("private upstream response body")}
+	client := newTransportClient(t, func(request *http.Request) (*http.Response, error) {
+		require.Equal(t, http.MethodPost, request.Method)
+		require.NoError(t, request.Body.Close())
+		cancel()
+		return &http.Response{
+			StatusCode: http.StatusFound,
+			Header:     http.Header{"Location": []string{"/search/color/" + fixtureHash}},
+			Body:       responseBody,
+			Request:    request,
+		}, nil
+	})
+
+	_, err := client.Upload(ctx, loadSnapshot(t, []byte("\x89PNG\r\n\x1a\nprivate source payload")))
+	require.ErrorIs(t, err, context.Canceled)
+	require.True(t, responseBody.closed.Load())
+	require.NotContains(t, errorChainText(err), "private source payload")
+	require.NotContains(t, errorChainText(err), "private upstream response body")
+}
 
 func TestUploadAcceptsSupportedMediaAtOfficialSizeBoundary(t *testing.T) {
 	tests := []struct {
@@ -405,6 +528,26 @@ func newClient(t *testing.T, server *httptest.Server) *ascii2d.Client {
 	return client
 }
 
+func newTransportClient(t *testing.T, upload roundTripFunc) *ascii2d.Client {
+	t.Helper()
+	client, err := ascii2d.New(ascii2d.Options{
+		Endpoint: "https://ascii2d.invalid",
+		HTTPClient: &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+			if request.Method == http.MethodGet {
+				return &http.Response{
+					StatusCode: http.StatusOK,
+					Header:     make(http.Header),
+					Body:       io.NopCloser(strings.NewReader(uploadFormFixture())),
+					Request:    request,
+				}, nil
+			}
+			return upload(request)
+		})},
+	})
+	require.NoError(t, err)
+	return client
+}
+
 func loadSnapshot(t *testing.T, content []byte) *reversesearch.Snapshot {
 	t.Helper()
 	return loadSizedSnapshot(t, content, int64(len(content)))
@@ -451,4 +594,18 @@ func resultFixture() string {
   </div>
 </div>
 </body></html>`
+}
+
+func errorChainText(err error) string {
+	if err == nil {
+		return ""
+	}
+	text := err.Error()
+	if many, ok := err.(interface{ Unwrap() []error }); ok {
+		for _, nested := range many.Unwrap() {
+			text += "\n" + errorChainText(nested)
+		}
+		return text
+	}
+	return text + "\n" + errorChainText(errors.Unwrap(err))
 }

@@ -209,10 +209,14 @@ func (c *Client) upload(ctx context.Context, snapshot *reversesearch.Snapshot, m
 	if response.StatusCode < http.StatusMultipleChoices || response.StatusCode >= http.StatusBadRequest {
 		return "", reversesearch.NewError(reversesearch.CodeUpstreamHTTPStatus, "ascii2d returned an unsuccessful HTTP status", nil)
 	}
+	hash, locationErr := c.validateUploadLocation(response.Header.Get("Location"))
+	if locationErr != nil {
+		return "", locationErr
+	}
 	if writeErr != nil {
 		return "", reversesearch.NewError(reversesearch.CodeProviderFailed, "could not upload image to ascii2d", nil)
 	}
-	return c.validateUploadLocation(response.Header.Get("Location"))
+	return hash, nil
 }
 
 func uploadBody(ctx context.Context, snapshot *reversesearch.Snapshot, mediaType, token string) (*io.PipeReader, string, <-chan error) {
