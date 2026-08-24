@@ -76,6 +76,18 @@ type ProviderClient interface {
 	Search(context.Context, *Snapshot) (ProviderResponse, error)
 }
 
+// ASCII2DClient 是 aggregator 注入的 ascii2d 上传端口。一次上传返回的
+// session 可供 color 与 bovw 并发查询，避免重复外传同一图片。
+type ASCII2DClient interface {
+	Preflight(context.Context) error
+	Upload(context.Context, *Snapshot) (ASCII2DSession, error)
+}
+
+// ASCII2DSession 是一次 ascii2d 上传产生的查询端口。
+type ASCII2DSession interface {
+	Search(context.Context, Provider) (ProviderResponse, error)
+}
+
 // Searcher 是 CLI/MCP 依赖的反向搜图端口。
 type Searcher interface {
 	Search(context.Context, Request) (Response, error)
