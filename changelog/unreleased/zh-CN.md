@@ -4,7 +4,7 @@
 
 ## 新增
 
-- 为 `pixiv search SOURCE` 与 Pixiv MCP `reverse_search` tool 新增反向搜图。CLI 会自动把显式 HTTP(S) URL 和现有常规文件识别为图片模式；SauceNAO、ascii2d color/BOVW 与 `all` provider 返回稳定 JSON envelope、通用 artwork/user record 以及 canonical record 的 NDJSON，并明确报告 provider partial 结果。([`69caa31`](https://github.com/FlanChanXwO/pixiv-cli/commit/69caa31)、[`6599dec`](https://github.com/FlanChanXwO/pixiv-cli/commit/6599dec)、[`ef0dcfe`](https://github.com/FlanChanXwO/pixiv-cli/commit/ef0dcfe)、[`e67e21f`](https://github.com/FlanChanXwO/pixiv-cli/commit/e67e21f)、[`ce03802`](https://github.com/FlanChanXwO/pixiv-cli/commit/ce03802)、[`298e0f3`](https://github.com/FlanChanXwO/pixiv-cli/commit/298e0f3))
+- 为 `pixiv search SOURCE` 与 Pixiv MCP `reverse_search` tool 新增反向搜图。CLI 会自动把显式 HTTP(S) URL 和现有常规文件识别为图片模式；SauceNAO、ascii2d color/BOVW 与 `all` provider 返回稳定 JSON envelope、通用 artwork/user record 以及 canonical record 的 NDJSON，并明确报告 provider partial 结果。([`69caa31`](https://github.com/FlanChanXwO/pixiv-cli/commit/69caa31)、[`6599dec`](https://github.com/FlanChanXwO/pixiv-cli/commit/6599dec)、[`ef0dcfe`](https://github.com/FlanChanXwO/pixiv-cli/commit/ef0dcfe)、[`e67e21f`](https://github.com/FlanChanXwO/pixiv-cli/commit/e67e21f)、[`959414e`](https://github.com/FlanChanXwO/pixiv-cli/commit/959414e)、[`ce03802`](https://github.com/FlanChanXwO/pixiv-cli/commit/ce03802)、[`298e0f3`](https://github.com/FlanChanXwO/pixiv-cli/commit/298e0f3))
 
 ## 安全
 

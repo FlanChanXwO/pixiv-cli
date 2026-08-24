@@ -164,13 +164,13 @@
 
 ## Final Review：目标终审
 
-- 状态：进行中
+- 状态：已完成
 - 范围：重新全量阅读 `input.md`、`plan.md`、`tasks.md`；审查用户体验、代码边界、并发/取消、安全/隐私、错误语义、配置、Record 管道、MCP JSON-RPC、测试、构建、文档、release note 与回滚方案。
 - 验收：不存在已知高风险问题；所有未阻塞 task/修复 task 已完成；阻塞项有事实依据；最终验证证据完整；按项目规则完成代码审查并处理阻塞 finding。
-- 实际检查：
-- 验证证据：
-- 剩余低风险事项：
-- 完成结论：
+- 实际检查：重新阅读原始输入、执行计划和完整 task 记录；逐项核对自动识别、四 provider、单次快照、partial/cancellation、Record/action、CLI/MCP JSON-RPC、配置/secret、架构例外、双语文档与 unreleased note。确认 Tasks 1–16、Checkpoints 1–4 均已完成，未遗留未开始或进行中的修复 task。对 `origin/main..HEAD` 核对无 public SDK、go.mod/go.sum 或下载/机器文件变化；对 Tasks 10–12 的 `4cfc4d4..HEAD` 已由 `pixiv-cli-review` 和 `code-review-expert` 完成 finding-first 审查，未发现 P0/P1/P2。
+- 验证证据：目标 provider/Facade、Record、配置、CLI、MCP、architecture/public API、secret/e2e fixture、release-notes/documentation 聚焦测试均 Green；`go test ./... -count=1`、`go test -race ./e2e -count=1`、`go vet ./...`、`bash -n scripts/test-reverse-search-e2e.sh`、`sh scripts/build.sh` 和 `git diff --check` 均通过。最终 `git status --porcelain` 为空，当前分支为 `codex/image-search-integration`，提交链保持每个实现 task 独立可回滚。
+- 剩余低风险事项：真实 SauceNAO/ascii2d 网络兼容性未在本机执行，因为没有获授权 source/key；需在授权环境显式设置 `PIXIV_REVERSE_SEARCH_E2E=1` 后运行维护脚本。第三方协议漂移、Cloudflare、限额与保存/缓存行为仍属外部观察项；正式版本审计、tag、push 和 Release 发布不在本目标范围。
+- 完成结论：目标已满足。反向搜图集成、配置/安全边界、CLI/MCP/Record 管道、opt-in e2e、双语文档、产品 skill、双语 unreleased 说明和最终验证均已完成；未引入 public SDK API、新依赖或默认网络门禁。
 
 ## 追加修复任务区
 

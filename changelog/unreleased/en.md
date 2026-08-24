@@ -4,7 +4,7 @@
 
 ## Added
 
-- Added reverse-image search to `pixiv search SOURCE` and the Pixiv MCP `reverse_search` tool. The CLI automatically selects image mode for explicit HTTP(S) URLs and existing regular files; SauceNAO, ascii2d color/BOVW, and `all` providers return a stable JSON envelope, generic artwork/user records, and NDJSON for canonical records, with explicit partial-provider semantics. ([`69caa31`](https://github.com/FlanChanXwO/pixiv-cli/commit/69caa31), [`6599dec`](https://github.com/FlanChanXwO/pixiv-cli/commit/6599dec), [`ef0dcfe`](https://github.com/FlanChanXwO/pixiv-cli/commit/ef0dcfe), [`e67e21f`](https://github.com/FlanChanXwO/pixiv-cli/commit/e67e21f), [`ce03802`](https://github.com/FlanChanXwO/pixiv-cli/commit/ce03802), [`298e0f3`](https://github.com/FlanChanXwO/pixiv-cli/commit/298e0f3))
+- Added reverse-image search to `pixiv search SOURCE` and the Pixiv MCP `reverse_search` tool. The CLI automatically selects image mode for explicit HTTP(S) URLs and existing regular files; SauceNAO, ascii2d color/BOVW, and `all` providers return a stable JSON envelope, generic artwork/user records, and NDJSON for canonical records, with explicit partial-provider semantics. ([`69caa31`](https://github.com/FlanChanXwO/pixiv-cli/commit/69caa31), [`6599dec`](https://github.com/FlanChanXwO/pixiv-cli/commit/6599dec), [`ef0dcfe`](https://github.com/FlanChanXwO/pixiv-cli/commit/ef0dcfe), [`e67e21f`](https://github.com/FlanChanXwO/pixiv-cli/commit/e67e21f), [`959414e`](https://github.com/FlanChanXwO/pixiv-cli/commit/959414e), [`ce03802`](https://github.com/FlanChanXwO/pixiv-cli/commit/ce03802), [`298e0f3`](https://github.com/FlanChanXwO/pixiv-cli/commit/298e0f3))
 
 ## Security
 
