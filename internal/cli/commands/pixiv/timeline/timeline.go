@@ -64,11 +64,11 @@ func (a command) newFollowingCommand() *cobra.Command {
 }
 
 func (a command) newLatestCommand() *cobra.Command {
-	opts := options{artworkType: string(pixiv.SearchContentTypeAll)}
+	opts := options{artworkType: string(pixiv.SearchContentTypeIllust)}
 	cmd := &cobra.Command{
 		Use:   "latest",
 		Short: "Browse Pixiv's latest works",
-		Args:  a.data.ExactArgs(0, "pixiv timeline latest --type illust|manga|novel"),
+		Args:  a.data.ExactArgs(0, "pixiv timeline latest --type artwork|novel [--content-type illust|manga]"),
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return a.runLatest(cmd, opts)
 		},
@@ -77,7 +77,7 @@ func (a command) newLatestCommand() *cobra.Command {
 	listing.BindNDJSONFlag(cmd, &opts.ndjson)
 	listing.BindListFlags(cmd, &opts.limit, &opts.page)
 	cmd.Flags().StringVarP(&opts.contentType, "type", "t", "", "required entity type: artwork or novel; use --content-type for subtype")
-	cmd.Flags().StringVar(&opts.artworkType, "content-type", string(pixiv.SearchContentTypeAll), "artwork subtype: all, illust-and-ugoira, illust, manga, ugoira")
+	cmd.Flags().StringVar(&opts.artworkType, "content-type", opts.artworkType, "artwork subtype: illust or manga")
 	a.data.BindNoInput(cmd)
 	requirements.Bind(cmd, requirements.PixivData())
 	return cmd
@@ -128,6 +128,9 @@ func (a command) runLatest(cmd *cobra.Command, opts options) error {
 	}
 	if entity != "artwork" && entity != "novel" {
 		return errors.New("type must be one of: artwork, novel")
+	}
+	if entity == "artwork" && opts.artworkType != string(pixiv.SearchContentTypeIllust) && opts.artworkType != string(pixiv.SearchContentTypeManga) {
+		return errors.New("content-type must be one of: illust, manga")
 	}
 	plan, request, jsonOut, ndjson, err := a.resolve(cmd, opts)
 	if err != nil {

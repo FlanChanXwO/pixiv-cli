@@ -1041,7 +1041,7 @@ func TestDownloadPreservesPublishedArtworkOnPartialFailure(t *testing.T) {
 		if err := os.WriteFile(options.Path, body, 0o644); err != nil {
 			return sdk.SavedResource{}, err
 		}
-		return sdk.SavedResource{Path: options.Path, Size: int64(len(body))}, nil
+		return sdk.SavedResource{Path: options.Path, Size: int64(len(body)), ContentType: "image/jpeg"}, nil
 	}
 	m := downloader.NewManager(client, dir, "{id}")
 
@@ -1240,5 +1240,37 @@ func TestDownloadAppliesRequestedStaticQuality(t *testing.T) {
 		Quality:   downloader.DownloadQualityOriginal,
 	}); err != nil {
 		t.Fatalf("Download(original) error: %v", err)
+	}
+}
+
+func TestThumbnailDownloadPublishesDetectedImageExtension(t *testing.T) {
+	dir := t.TempDir()
+	rawURL := "https://i.example/42.png"
+	ref, err := sdk.NewResourceRef("pixiv", []byte(`{"k":"artwork","id":42,"p":0}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	client := &fakePixivClient{
+		details: map[int64]pixiv.Artwork{42: {
+			ID: 42, Title: "thumb", PageCount: 1, Kind: pixiv.ArtworkKindIllustration,
+			User:  pixiv.User{Name: "author"},
+			Pages: []pixiv.ArtworkPage{{PageIndex: 0, Image: pixiv.ImageResource{Resource: sdk.Resource{URL: rawURL, Ref: ref}}}},
+		}},
+	}
+	client.saveResourceOverride = func(_ context.Context, _ sdk.ResourceRef, options sdk.SaveOptions) (sdk.SavedResource, error) {
+		body := []byte("\xff\xd8\xff\xe0\x00\x10JFIF\x00")
+		if err := os.WriteFile(options.Path, body, 0o600); err != nil {
+			return sdk.SavedResource{}, err
+		}
+		return sdk.SavedResource{Path: options.Path, Size: int64(len(body))}, nil
+	}
+	got, err := downloader.NewManager(client, dir, "{id}").Download(context.Background(), downloader.DownloadRequest{
+		IllustIDs: []int64{42}, Quality: downloader.DownloadQualityThumb,
+	})
+	if err != nil {
+		t.Fatalf("Download: %v", err)
+	}
+	if len(got) != 1 || len(got[0].Files) != 1 || filepath.Ext(got[0].Files[0].Path) != ".jpg" {
+		t.Fatalf("downloaded = %#v", got)
 	}
 }

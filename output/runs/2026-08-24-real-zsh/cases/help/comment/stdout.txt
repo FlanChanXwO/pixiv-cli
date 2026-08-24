@@ -1,0 +1,14 @@
+List artwork or novel comments
+
+Usage:
+  pixiv comment ID [flags]
+
+Flags:
+  -h, --help           help for comment
+  -j, --json           print JSON
+  -l, --limit int      maximum results; omitted returns one upstream batch; 0 returns all results
+      --ndjson         print one Pixiv entity record as JSON per line
+      --no-proxy       clear the configured proxy for this command
+  -p, --page int       1-based logical page (requires --limit > 0)
+      --proxy string   proxy URL (http, https, socks5, or socks5h) for this command
+  -t, --type string    entity type: artwork or novel (required)

@@ -322,7 +322,9 @@ canonical 数据 action 是 `search`、`detail`、`ranking`、`series`、`commen
 | `fanbox download` | `pixiv fanbox download SOURCE...` | 将 FANBOX 帖子 asset 保存到配置的下载目录下。 |
 | `fanbox mcp` | `pixiv fanbox mcp [--proxy URL\|--no-proxy]` | 启动只读 FANBOX MCP stdio server；native 代理不会修改 FlareSolverr 配置。 |
 
-下载文件名会规范化文件名模板以及 URL 推导扩展名中的跨平台非法字符；扩展名还会替换 ASCII 控制字符并移除 Windows 不接受的尾随点或空格。扩展名仍来自上游 URL，不使用 allowlist、MIME 猜测或静默替代。
+下载文件名会规范化文件名模板以及 URL 推导扩展名中的跨平台非法字符。Pixiv 缩略图若资源响应的
+Content-Type 与 URL 后缀不一致（例如 URL 为 `.png`、实体为 JPEG），会按实际媒体类型修正发布后的扩展名；
+未知媒体类型保留 URL 扩展名。扩展名还会替换 ASCII 控制字符并移除 Windows 不接受的尾随点或空格。
 
 ### `auth login` 参数
 
@@ -369,8 +371,8 @@ canonical 数据 action 是 `search`、`detail`、`ranking`、`series`、`commen
 | `user bookmarks` | `--restrict`、`--tag` | `public`、空 | 收藏可见性与精确收藏 tag 筛选。 |
 | `user following`、`user followers` | `--restrict` | `public` | 关注可见性：`public` 或 `private`。 |
 | `timeline following` | `--type` / `-t`、`--content-type` | 必填、`all` | 实体类型为 `artwork` 或 `novel`；作品子类型独立设置，`--restrict` 为 public/private。 |
-| `timeline latest` | `--type` / `-t`、`--content-type` | 必填、`all` | 实体类型为 `artwork` 或 `novel`；作品子类型使用 `--content-type`。 |
-| `mypixiv works` | `--type` / `-t` | 必填 | 实体类型为 `artwork` 或 `novel`。 |
+| `timeline latest` | `--type` / `-t`、`--content-type` | 必填、`illust` | 实体类型为 `artwork` 或 `novel`；最新作品接口支持 `illust` 或 `manga`，省略 `--content-type` 时选择 `illust`。 |
+| `mypixiv works` | `--type` / `-t` | 必填 | 省略 `USER_ID` 时使用实体类型 `artwork` 或 `novel`；提供 `USER_ID` 时还支持 `manga`。旧 `illust` 写法继续作为 `artwork` 的兼容别名。 |
 | `recommended` | `--type` / `-t` | 空 | `artwork`、`novel`、`user` 或 `all`；位置参数 `KIND` 是兼容写法。 |
 | Record 动作 | `--on-error` | `skip` | 对格式错误/不兼容记录选择写 stderr 后跳过，或 `fail-fast`。 |
 | `download` | `--pages` | 空 | 1-based 闭区间页选择，如 `1,3-5`；默认下载全部页。页不存在会明确失败。 |

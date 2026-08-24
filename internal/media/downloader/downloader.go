@@ -627,8 +627,15 @@ func (m *Manager) downloadArtwork(ctx context.Context, id int64, pages []int, qu
 			return DownloadedArtwork{}, err
 		}
 		path := filepath.Join(base, basename+downloadExtension(rawURL))
-		if err := m.saveResource(ctx, ref, path); err != nil {
+		saved, err := m.saveResource(ctx, ref, path)
+		if err != nil {
 			return DownloadedArtwork{}, err
+		}
+		if quality == DownloadQualityThumb || quality == DownloadQualityMini {
+			path, err = publishDetectedImageExtension(path, saved.ContentType)
+			if err != nil {
+				return DownloadedArtwork{}, err
+			}
 		}
 		artworkOut.Files = append(artworkOut.Files, DownloadedFile{Path: path, Page: item.page1})
 	}
@@ -719,7 +726,7 @@ func (m *Manager) downloadUgoira(ctx context.Context, artwork pixiv.Artwork, bas
 		return "", err
 	}
 	defer os.Remove(zipPath)
-	if err := m.saveResource(ctx, archive.Resource.Ref, zipPath); err != nil {
+	if _, err := m.saveResource(ctx, archive.Resource.Ref, zipPath); err != nil {
 		return "", err
 	}
 	outPath := filepath.Join(base, filename.Generate(filenameData(artwork), 0, m.filenameTemplate)+"."+string(format))
@@ -744,9 +751,8 @@ func selectUgoiraArchive(meta pixiv.UgoiraMetadata) *pixiv.UgoiraArchive {
 	return fallback
 }
 
-func (m *Manager) saveResource(ctx context.Context, ref sdk.ResourceRef, path string) error {
-	_, err := m.client.SaveResource(ctx, ref, sdk.SaveOptions{Path: path})
-	return err
+func (m *Manager) saveResource(ctx context.Context, ref sdk.ResourceRef, path string) (sdk.SavedResource, error) {
+	return m.client.SaveResource(ctx, ref, sdk.SaveOptions{Path: path})
 }
 
 func (m *Manager) ConvertUgoira(ctx context.Context, zipPath string, frames []pixiv.UgoiraFrame, workDir, outputGIF string) error {
@@ -800,6 +806,41 @@ func downloadExtension(rawURL string) string {
 		return character
 	}, extension)
 	return strings.TrimRight(extension, ". ")
+}
+
+// publishDetectedImageExtension 修正 Pixiv 缩略图 URL 后缀与实际实体格式不一致的情况。
+// hard link 发布不会覆盖同名目标；删除旧路径失败时撤销新 link，保留原文件并暴露错误。
+func publishDetectedImageExtension(path, contentType string) (string, error) {
+	extension := ""
+	mediaType := strings.TrimSpace(strings.SplitN(contentType, ";", 2)[0])
+	if mediaType == "" {
+		mediaType = MimeTypeForFile(path)
+	}
+	switch mediaType {
+	case "image/jpeg":
+		extension = ".jpg"
+	case "image/png":
+		extension = ".png"
+	case "image/gif":
+		extension = ".gif"
+	case "image/webp":
+		extension = ".webp"
+	default:
+		return path, nil
+	}
+	current := filepath.Ext(path)
+	if strings.EqualFold(current, extension) || (extension == ".jpg" && strings.EqualFold(current, ".jpeg")) {
+		return path, nil
+	}
+	target := strings.TrimSuffix(path, current) + extension
+	if err := os.Link(path, target); err != nil {
+		return "", fmt.Errorf("publish detected image extension: %w", err)
+	}
+	if err := os.Remove(path); err != nil {
+		_ = os.Remove(target)
+		return "", fmt.Errorf("remove mismatched image path: %w", err)
+	}
+	return target, nil
 }
 
 func filenameData(artwork pixiv.Artwork) filename.FilenameData {

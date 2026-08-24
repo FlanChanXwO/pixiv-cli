@@ -408,9 +408,9 @@ Only the structured entity filters documented by each command are accepted. The 
 | `fanbox mcp` | `pixiv fanbox mcp [--proxy URL\|--no-proxy]` | Starts the read-only FANBOX MCP stdio server; the native proxy override does not alter FlareSolverr settings. |
 
 Downloaded filenames normalize cross-platform-invalid characters in both the filename template and URL-derived
-extension. Extensions also replace ASCII control characters and remove trailing dots or spaces rejected by
-Windows. The extension still comes from the upstream URL; no allowlist, MIME guessing, or silent substitution is
-used.
+extension. For Pixiv thumbnail artwork, a successful resource Content-Type may replace an ambiguous URL extension
+such as `.png` so the published filename matches the actual image bytes. Unknown media types retain the URL
+extension. Extensions also replace ASCII control characters and remove trailing dots or spaces rejected by Windows.
 
 ### `auth login` flags
 
@@ -457,8 +457,8 @@ used.
 | `user bookmarks` | `--restrict`, `--tag` | `public`, empty | Bookmark visibility and exact bookmark-tag filter. |
 | `user following`, `user followers` | `--restrict` | `public` | Follow visibility: `public` or `private`. |
 | `timeline following` | `--type` / `-t`, `--content-type` | required, `all` | Entity type is `artwork` or `novel`; artwork subtype is separate and `--restrict` is `public` or `private`. |
-| `timeline latest` | `--type` / `-t`, `--content-type` | required, `all` | Entity type is `artwork` or `novel`; artwork subtype uses `--content-type`. |
-| `mypixiv works` | `--type` / `-t` | required | Entity type is `artwork` or `novel`. |
+| `timeline latest` | `--type` / `-t`, `--content-type` | required, `illust` | Entity type is `artwork` or `novel`; the latest-artwork endpoint supports `illust` or `manga`, and omitted `--content-type` selects `illust`. |
+| `mypixiv works` | `--type` / `-t` | required | Without `USER_ID`, use entity type `artwork` or `novel`; with `USER_ID`, `manga` is also supported. Legacy `illust` remains an alias for `artwork`. |
 | `recommended` | `--type` / `-t` | empty | `artwork`, `novel`, `user`, or `all`; positional `KIND` is compatibility syntax. |
 | record actions | `--on-error` | `skip` | Skip malformed/incompatible records with a stderr diagnostic, or use `fail-fast`. |
 | `download` | `--pages` | empty | 1-based closed page selection such as `1,3-5`; default downloads every page. Missing pages fail explicitly. |

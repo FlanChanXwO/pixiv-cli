@@ -17,8 +17,10 @@ type SaveOptions struct {
 	Progress func(SaveProgress)
 }
 
-// SavedResource reports the result of SaveResource.
+// SavedResource reports the result of SaveResource. ContentType is the
+// allowlisted upstream media type when the product resource response supplied it.
 type SavedResource struct {
-	Path string
-	Size int64
+	Path        string
+	Size        int64
+	ContentType string
 }

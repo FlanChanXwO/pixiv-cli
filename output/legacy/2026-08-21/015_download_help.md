@@ -1,0 +1,30 @@
+# Inspect download command syntax
+
+## Command
+```shell
+cd /private/tmp/pixiv-cli-e2e-shell-20260821 && ./bin/pixiv download --help
+```
+
+## Output
+```text
+Download illustrations
+
+Usage:
+  pixiv download [SRC...] [flags]
+
+Flags:
+      --download-path string       download directory
+      --filename-template string   filename template placeholders: {id}, {title}, {author}, {author_id}, {date}, {tags}, {num}
+  -h, --help                       help for download
+      --no-proxy                   clear the configured proxy for this command
+      --on-error string            record failure strategy: skip or fail-fast (default "skip")
+  -o, --output string              download directory (alias for --download-path)
+      --pages string               1-based page selection, e.g. 1,3-5; default all pages
+      --proxy string               proxy URL (http, https, socks5, or socks5h) for this command
+      --quality string             static image quality: original, regular, small, thumb, mini (default "original")
+      --ugoira-mode string         ugoira output mode: gif, apng (default "gif")
+```
+
+Exit code: 0
+
+Verdict: PASS

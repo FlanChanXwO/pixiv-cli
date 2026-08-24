@@ -1,0 +1,28 @@
+# Inspect series command syntax
+
+## Command
+```shell
+cd /private/tmp/pixiv-cli-e2e-shell-20260821 && ./bin/pixiv series --help
+```
+
+## Output
+```text
+List the artworks or novels in a series
+
+Usage:
+  pixiv series SERIES_ID [flags]
+
+Flags:
+  -h, --help           help for series
+  -j, --json           print JSON
+  -l, --limit int      maximum results; omitted returns one upstream batch; 0 returns all results
+      --ndjson         print one Pixiv entity record as JSON per line
+      --no-proxy       clear the configured proxy for this command
+  -p, --page int       1-based logical page (requires --limit > 0)
+      --proxy string   proxy URL (http, https, socks5, or socks5h) for this command
+  -t, --type string    entity type: artwork or novel (required)
+```
+
+Exit code: 0
+
+Verdict: PASS

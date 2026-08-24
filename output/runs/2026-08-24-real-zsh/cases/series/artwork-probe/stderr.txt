@@ -1,0 +1,1 @@
+error: pixiv:ArtworkSeries: not_found

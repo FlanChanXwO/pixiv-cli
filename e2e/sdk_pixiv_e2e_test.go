@@ -123,7 +123,7 @@ func TestRealPixivSDKRead(t *testing.T) {
 
 	// 验证身份 + 一个稳定 detail + 一个 Resource HEAD。
 	//
-	// CurrentUser 是本测试的 mandatory 身份证据：它读取服务端 /v1/user/me
+	// CurrentUser 是本测试的 mandatory 身份证据：它读取服务端 /v1/user/detail
 	// 并要求返回的身份与本地选中账号一致。OpenWith 的 refresh 交换只证明
 	// refresh token 可被兑换，不构成服务端身份读取，因此不得作为替代证据。
 	// 任何 Reason（含 NotFound）都不降级、不跳过：上游对某账号返回 404 时

@@ -1,0 +1,6 @@
+{
+  "user_id": 25649510,
+  "username": "Flan",
+  "default": false,
+  "has_token": true
+}
