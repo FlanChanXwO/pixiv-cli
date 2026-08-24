@@ -20,9 +20,10 @@ import (
 )
 
 var visualRecordTypes = map[string]struct{}{
-	"illust": {},
-	"manga":  {},
-	"ugoira": {},
+	"artwork": {},
+	"illust":  {},
+	"manga":   {},
+	"ugoira":  {},
 }
 
 type listOptions struct {
