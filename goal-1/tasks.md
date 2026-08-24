@@ -114,13 +114,13 @@
 
 ## Checkpoint 3：集中检查-debug 循环（Tasks 7–9）
 
-- 状态：未开始
+- 状态：已完成
 - 检查：CLI 兼容、MCP schema/runtime、静态架构、stdout/stderr/JSON-RPC、代理、账号 DB 隔离、race/类型/聚焦回归。
 - 发现问题时：追加修复 task并按顺序处理。
-- 实际检查：
-- 验证证据：
-- 剩余风险：
-- 下一步：
+- 实际检查：按 `pixiv-cli-review` 对 `ce03802^..4cfc4d4`（Tasks 7–9，18 个文件）逐项检查 CLI owner/production assembly、MCP tool/schema/runtime、Facade/provider import 边界、Record 投影、代理与启动快照、Pixiv SDK/账号 DB 隔离、错误/诊断/stdout/JSON-RPC 和敏感信息；未发现 P0/P1/P2，未追加修复 task。额外的 same-package 清单命令暴露出维护文档既有基线与当前仓库目录不一致，但本范围新增的 `internal/architecture` 使用 external test package，不新增该类偏差。
+- 验证证据：`go test ./... -count=1` 全部通过；`go vet ./internal/cli ./internal/cli/commands/pixiv/search ./internal/mcpserver/pixiv ./internal/services/reversesearch/... ./internal/architecture ./scripts/internal/publicapi` 通过；Task 9 的聚焦 `go test`、race、public SDK inventory pin、AST import gate、secret canary 与 `git diff --check` 通过；Task 7/8/9 提交钩子均实际运行 gofmt 与全仓测试，当前 HEAD 为 `4cfc4d4`。
+- 剩余风险：真实 SauceNAO/ascii2d 上游兼容性仍未在默认门禁验证，按 Task 10 的显式 opt-in e2e 观察；用户文档、产品 skill、未发布说明和最终构建交付仍待 Task 11–12。MCP 的本地文件/私网 URL 能力继续只适合可信本机客户端，未新增隐藏限制或 fallback。
+- 下一步：Task 10 新增默认跳过、显式启用的真实网络 e2e 与 fixture 维护入口。
 
 ## Task 10：真实网络 e2e opt-in 与 fixture 维护入口
 
