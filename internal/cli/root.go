@@ -175,6 +175,9 @@ var (
 	newCLIReverseSearch   = func(options reverseassembly.Options) (reversesearch.Searcher, error) {
 		return reverseassembly.New(options)
 	}
+	newCLIMCPReverseSearch = func(options reverseassembly.Options) (reversesearch.Searcher, error) {
+		return reverseassembly.New(options)
+	}
 )
 
 const internalURLCallbackCommand = loginhelper.CallbackCommand
@@ -945,6 +948,10 @@ func (a app) runPixivMCP(ctx context.Context, request mcpcommands.Request) error
 			return err
 		}
 	}
+	reverseSearchPorts, err := newMCPReverseSearchPorts(runtime, request)
+	if err != nil {
+		return err
+	}
 	ports, err := newCLIPixivSDKPorts(a)
 	if err != nil {
 		return err
@@ -968,8 +975,34 @@ func (a app) runPixivMCP(ctx context.Context, request mcpcommands.Request) error
 		Execute: func(ctx context.Context, account mcpserver.Account, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
 			return ports.run(ctx, pixivdeps.Request{UserID: account.UserID, HTTPSProxyOverride: account.HTTPSProxyOverride}, attempt)
 		},
+		ReverseSearch: reverseSearchPorts,
 	}, account)
 	return stdiotransport.RunStdio(ctx, server)
+}
+
+// newMCPReverseSearchPorts 在 MCP stdio 启动时创建一次反向搜图 Facade，并
+// 固定代理、凭据和配置默认值。后续 tool input 只允许覆盖 provider，不能改变
+// 传输或 credential 依赖，避免同一 MCP session 的运行时语义漂移。
+func newMCPReverseSearchPorts(runtime configapp.RuntimeConfig, request mcpcommands.Request) (mcpserver.ReverseSearchPorts, error) {
+	proxy := runtime.HTTPSProxy
+	if request.HTTPSProxyOverride != nil {
+		proxy = *request.HTTPSProxyOverride
+	}
+	searcher, err := newCLIMCPReverseSearch(reverseassembly.Options{
+		Proxy: proxy, SauceNAOKey: runtime.SauceNAOAPIKey,
+	})
+	if err != nil {
+		return mcpserver.ReverseSearchPorts{}, err
+	}
+	provider := reversesearch.Provider(runtime.ReverseSearchProvider)
+	if provider == "" {
+		provider = reversesearch.ProviderSauceNAO
+	}
+	return mcpserver.ReverseSearchPorts{
+		Searcher:  searcher,
+		Provider:  provider,
+		PixivOnly: runtime.ReverseSearchPixivOnly,
+	}, nil
 }
 
 func (a app) runtimeConfig() (configapp.RuntimeConfig, error) {

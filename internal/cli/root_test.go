@@ -85,6 +85,32 @@ func TestImageSearchBuildsReverseSearchWithCLIProxyOverride(t *testing.T) {
 	assert.Equal(t, "http://127.0.0.1:7890", captured.Proxy)
 }
 
+func TestMCPReverseSearchUsesStartupConfigAndProxySnapshot(t *testing.T) {
+	oldReverse := newCLIMCPReverseSearch
+	var captured reverseassembly.Options
+	newCLIMCPReverseSearch = func(options reverseassembly.Options) (reversesearch.Searcher, error) {
+		captured = options
+		return rootReverseSearcherFunc(func(_ context.Context, _ reversesearch.Request) (reversesearch.Response, error) {
+			return reversesearch.Response{}, nil
+		}), nil
+	}
+	t.Cleanup(func() { newCLIMCPReverseSearch = oldReverse })
+
+	proxy := "http://mcp-flag-proxy"
+	ports, err := newMCPReverseSearchPorts(configapp.RuntimeConfig{
+		HTTPSProxy:             "http://configured-proxy",
+		ReverseSearchProvider:  "all",
+		ReverseSearchPixivOnly: false,
+		SauceNAOAPIKey:         "startup-key",
+	}, mcpcommands.Request{HTTPSProxyOverride: &proxy})
+	require.NoError(t, err)
+	assert.Equal(t, "http://mcp-flag-proxy", captured.Proxy)
+	assert.Equal(t, "startup-key", captured.SauceNAOKey)
+	assert.Equal(t, reversesearch.ProviderAll, ports.Provider)
+	assert.False(t, ports.PixivOnly)
+	assert.NotNil(t, ports.Searcher)
+}
+
 func TestCloseStateClosesInReverseOrderOnceAndJoinsErrors(t *testing.T) {
 	firstErr := errors.New("first close")
 	secondErr := errors.New("second close")

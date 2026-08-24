@@ -228,7 +228,7 @@ func TestServerListsExpectedTools(t *testing.T) {
 		"recommended", "trending_tags_illust", "timeline_illust_following", "timeline_novel_following",
 		"timeline_illust_latest", "timeline_novel_latest", "mypixiv_users", "mypixiv_illusts", "mypixiv_novels",
 		"user_detail", "user_artworks", "user_novels", "user_bookmarks", "user_novel_bookmarks", "user_following", "user_followers", "related_users", "blocked_users", "bookmark_tags", "bookmark_detail", "add_bookmark",
-		"remove_bookmark", "follow_user", "unfollow_user",
+		"remove_bookmark", "follow_user", "unfollow_user", "reverse_search",
 	}
 	slices.Sort(names)
 	slices.Sort(want)
@@ -316,14 +316,15 @@ func TestMCPStdioKeepsJSONRPCOnStdout(t *testing.T) {
 		`{"jsonrpc":"2.0","method":"notifications/initialized","params":{}}`,
 		`{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"search_illust","arguments":{"word":"stdio-secret-canary"}}}`,
 		`{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"add_bookmark","arguments":{"illust_id":41}}}`,
+		`{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"reverse_search","arguments":{"source":"https://stdio-source-secret.example/image.png?token=stdio-key"}}}`,
 	} {
 		if _, err := io.WriteString(stdin, message+"\n"); err != nil {
 			t.Fatal(err)
 		}
 	}
 	scanner := bufio.NewScanner(stdout)
-	lines := make([]string, 0, 3)
-	for range 3 {
+	lines := make([]string, 0, 4)
+	for range 4 {
 		if !scanner.Scan() {
 			t.Fatalf("stdio server ended before responses: %v; stderr=%s", scanner.Err(), stderr.String())
 		}
@@ -338,6 +339,11 @@ func TestMCPStdioKeepsJSONRPCOnStdout(t *testing.T) {
 	protocol := strings.Join(lines, "\n")
 	if !strings.Contains(protocol, `"jsonrpc":"2.0"`) || !strings.Contains(protocol, `"isError":true`) {
 		t.Fatalf("stdout is not protocol-only: %s; stderr=%s", protocol, stderr.String())
+	}
+	for _, secret := range []string{"stdio-source-secret.example", "stdio-key"} {
+		if strings.Contains(protocol, secret) {
+			t.Fatalf("MCP stdout leaked %q: %s", secret, protocol)
+		}
 	}
 	if stderr.Len() != 0 {
 		t.Fatalf("stderr must remain empty without project logging: %s", stderr.String())

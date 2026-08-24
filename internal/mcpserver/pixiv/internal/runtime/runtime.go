@@ -12,6 +12,7 @@ import (
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/filters"
 	downloader "github.com/FlanChanXwO/pixiv-cli/internal/media/downloader"
+	"github.com/FlanChanXwO/pixiv-cli/internal/services/reversesearch"
 	"github.com/FlanChanXwO/pixiv-cli/internal/shared/diagnostics"
 	"github.com/FlanChanXwO/pixiv-cli/internal/shared/lifecycle"
 	"github.com/FlanChanXwO/pixiv-cli/internal/shared/pagination"
@@ -43,6 +44,18 @@ type SDKPorts struct {
 	Open      func(Account) (*pixiv.Client, error)
 	OpenLease func(context.Context, Account) (*lifecycle.Lease[*pixiv.Client], error)
 	Execute   func(context.Context, Account, func(context.Context, *pixiv.Client) (bool, error)) error
+	// ReverseSearch 是启动时注入的反向搜图能力与配置快照。Searcher 的
+	// HTTP client、代理和凭据均由 composition root 构造，不从 MCP input 传入。
+	ReverseSearch ReverseSearchPorts
+}
+
+// ReverseSearchPorts 是 reverse_search tool 使用的窄端口与启动时配置快照。
+// Provider 为空时由 tool 使用 saucenao 作为配置默认值；PixivOnly 的 false
+// 是合法配置，因此不能用零值推断是否启用。
+type ReverseSearchPorts struct {
+	Searcher  reversesearch.Searcher
+	Provider  reversesearch.Provider
+	PixivOnly bool
 }
 
 // App 是 Pixiv MCP 应用。
@@ -69,6 +82,14 @@ func (a *App) NewDownloads() func(*pixiv.Client) DownloadManager { return a.newD
 
 // SDKPorts 返回注入的 SDK 端口。
 func (a *App) SDKPorts() SDKPorts { return a.sdk }
+
+// ReverseSearchPorts 返回启动时注入的反向搜图端口与配置。
+func (a *App) ReverseSearchPorts() ReverseSearchPorts {
+	if a == nil {
+		return ReverseSearchPorts{}
+	}
+	return a.sdk.ReverseSearch
+}
 
 // Account 返回注入的账号请求值。
 func (a *App) Account() Account { return a.sdkAccount }

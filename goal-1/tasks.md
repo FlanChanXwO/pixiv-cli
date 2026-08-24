@@ -94,13 +94,13 @@
 
 ## Task 8：MCP `reverse_search` tool 与运行时注入
 
-- 状态：未开始
+- 状态：已完成
 - 目标：按 repo-local MCP tool 规范新增 tool package、封闭 input/output schema、Facade 注入和 structured result/error。
 - 验收：先确认 MCP tests Red，再证明 source/provider schema、配置默认、records/results、partial `isError=false`、全失败 `isError=true`、JSON-RPC stdout 与敏感信息安全。
-- 实际完成：
-- 验证证据：
-- 剩余风险：
-- 下一步：
+- 实际完成：新增 `internal/mcpserver/pixiv/tools/reverse_search`，输入 schema 只开放必填 `source` 与可选 provider enum，输出固定为 `input/providers/results/records/provider_errors/partial` envelope。MCP runtime 增加启动时注入的 `ReverseSearchPorts`，由 CLI composition root 在 stdio 启动时一次构造 Facade，固定代理、SauceNAO key、provider 默认值和 pixiv-only；单次 MCP input 只能覆盖 provider。结果只投影 canonical artwork/user Record，不回显原始 source；partial 保持 `isError=false`，执行/配置/全 provider 失败保留 structured envelope 并设置 `isError=true`，错误文本只发布稳定 code/通用摘要。
+- 验证证据：先把 `reverse_search` 加入精确注册集合，旧实现实际因缺少 tool 失败；随后新增 schema/端口测试，旧端口字段缺失导致编译 Red。Green 后 `go test ./internal/mcpserver/pixiv -count=1`、`go test -race ./internal/mcpserver/pixiv -count=1`、`go vet ./internal/mcpserver/pixiv ./internal/cli`、`go test ./internal/cli ./internal/mcpserver/pixiv -count=1` 和 `git diff --check` 全部通过。聚焦测试覆盖 source/provider schema、启动默认、records/results、partial、全失败/未配置 structured envelope、source/key/body 脱敏与 JSON-RPC stdout-only；对应代码将在本 task 提交。
+- 剩余风险：真实 SauceNAO/ascii2d 网络兼容性仍由 Task 10 的显式 opt-in e2e 观察；架构静态边界、跨链路 secret canary 和用户文档属于 Task 9–12。MCP 继续沿已确认的可信本机信任模型允许服务层处理本地文件和私网 URL。
+- 下一步：Task 9 补 reverse-search Facade 例外的架构规则、provider import 静态边界和 secret 回归。
 
 ## Task 9：架构规则、静态边界与 secret 回归
 
