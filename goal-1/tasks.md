@@ -124,13 +124,13 @@
 
 ## Task 10：真实网络 e2e opt-in 与 fixture 维护入口
 
-- 状态：未开始
+- 状态：已完成
 - 目标：新增默认跳过的真实 SauceNAO/ascii2d 兼容性 e2e，使用显式环境变量且不记录 source/key；明确它不属于普通 CI 门禁。
 - 验收：默认测试不访问网络；启用条件、缺 key 行为和安全输出有测试。若当前环境具备明确凭据/测试源则记录真实结果，否则标注外部阻塞，不伪造通过。
-- 实际完成：
-- 验证证据：
-- 剩余风险：
-- 下一步：
+- 实际完成：新增 `e2e/TestRealReverseSearch` 与配置门禁，只有 `PIXIV_REVERSE_SEARCH_E2E=1` 才创建真实 Facade；`PIXIV_REVERSE_SEARCH_SOURCE` 必填，provider 默认 `all`，可选 `saucenao`、`ascii2d-color`、`ascii2d-bovw`、`all`，选 SauceNAO 或 `all` 时显式要求 `SAUCENAO_API_KEY`，ascii2d-only 不要求 key，代理由 `PIXIV_REVERSE_SEARCH_PROXY` 提供。真实测试只断言安全 envelope 完整性与错误分类，不输出 source、key、上游 body 或完整错误。新增 `scripts/test-reverse-search-e2e.sh` 作为维护入口：未 opt-in 时在启动 Go 前失败，启用后只选择该真实测试；脚本不回显 source/key，真实测试不进入普通 CI/默认 `go test` 门禁。
+- 验证证据：首个 Red 运行 `go test ./e2e -run '^TestReverseSearchE2EConfig' -count=1 -v`，在配置 helper 尚不存在时因未定义 helper/环境常量编译失败；实现后 `go test ./e2e -run '^(TestReverseSearchE2EConfig|TestRealReverseSearch|TestReverseSearchE2EScript)' -count=1 -v`、`go test ./e2e -count=1`、`go vet ./e2e`、`bash -n scripts/test-reverse-search-e2e.sh` 和 `git diff --check` 全部通过。脚本 fake-go 回归确认未 opt-in 不启动 Go、启用时参数/环境传递正确且输出不含 synthetic source/key。本机 `PIXIV_REVERSE_SEARCH_E2E`、source、provider、proxy、`SAUCENAO_API_KEY` 均未设置，因此真实上游请求按设计 skip，未伪造兼容性通过。
+- 剩余风险：当前环境没有明确的公开测试源与 SauceNAO key，未运行真实 SauceNAO/ascii2d 网络路径；Cloudflare、第三方限额和上游协议漂移仍需授权环境通过脚本显式观察。source/key 由环境注入且不会进入测试错误文本；脚本本身不保存 fixture 响应，确定性 provider fixture 继续由各 adapter 测试维护。本 task 不增加 timeout、重试、统一载荷上限或 fallback。
+- 下一步：Task 11 更新英/中文用户与维护者文档、MCP/CLI reference 和产品 skill。
 
 ## Task 11：英/中文用户与维护者文档、产品 skill
 
