@@ -284,7 +284,7 @@ func buildDownloadOut(delivery string, artworks []downloader.DownloadedArtwork) 
 			if err != nil {
 				return downloadOut{}, err
 			}
-			mimeType := downloader.MimeTypeForPath(file.Path)
+			mimeType := downloader.MimeTypeForFile(file.Path)
 			fileOut := downloadFileOut{
 				IllustID:  artwork.IllustID,
 				Title:     artwork.Title,

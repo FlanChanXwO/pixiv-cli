@@ -64,7 +64,7 @@ func (a command) newWorksCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "works [USER_ID]",
 		Short: "Browse MyPixiv works or one user's works",
-		Args:  a.data.MaxArgs(1, "pixiv mypixiv works [USER_ID] --type illust|manga|novel"),
+		Args:  a.data.MaxArgs(1, "pixiv mypixiv works [USER_ID] --type artwork|manga|novel"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return a.runWorks(cmd, args, opts)
 		},
@@ -119,14 +119,19 @@ func (a command) runUsers(cmd *cobra.Command, opts options) error {
 }
 
 func (a command) runWorks(cmd *cobra.Command, args []string, opts options) error {
+	// CLI 的 --type 选择实体，公开名称 artwork 对应 App API 的 illust 子类型。
+	// 保留 illust 输入兼容既有脚本，但帮助与文档统一使用 artwork。
+	if opts.contentType == "artwork" {
+		opts.contentType = "illust"
+	}
 	var userID int64
 	if len(args) == 0 {
 		if opts.contentType != "illust" && opts.contentType != "novel" {
-			return errors.New("type without USER_ID must be one of: illust, novel")
+			return errors.New("type without USER_ID must be one of: artwork, novel")
 		}
 	} else {
 		if opts.contentType != "illust" && opts.contentType != "manga" && opts.contentType != "novel" {
-			return errors.New("type with USER_ID must be one of: illust, manga, novel")
+			return errors.New("type with USER_ID must be one of: artwork, manga, novel")
 		}
 		var err error
 		userID, err = parse.PositiveInt64(args[0], "user_id")

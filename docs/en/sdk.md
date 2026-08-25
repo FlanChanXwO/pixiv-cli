@@ -192,6 +192,7 @@ through `pixiv.Open` binds the cursor to the verified account identity instead.
 
 Key semantics:
 
+- `CurrentUser` reads the authenticated account through `/v1/user/detail` with `user_id=0` and the Android App API filter; the removed `/v1/user/me` route is not used.
 - `SearchAIModeOnly` is a local result-batch filter over `Artwork.AIType == 2`.
   Its mode is included in the cursor binding, so a continuation cannot be reused
   for another AI mode.

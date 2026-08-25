@@ -1,0 +1,8 @@
+List accounts
+
+Usage:
+  pixiv auth list [flags]
+
+Flags:
+  -h, --help   help for list
+      --json   print JSON

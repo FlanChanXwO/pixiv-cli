@@ -61,3 +61,22 @@ func TestTimelineRejectsNullList(t *testing.T) {
 		t.Fatal("null list unexpectedly succeeded")
 	}
 }
+
+func TestLatestTimelinePreservesMaxIllustIDContinuation(t *testing.T) {
+	transport := &fakeTransport{body: `{"illusts":[],"next_url":"https://app-api.pixiv.net/v1/illust/new?max_illust_id=987654"}`}
+	result, err := timeline.New(transport).List(context.Background(), timeline.Request{Kind: timeline.Latest, ContentType: "illust"})
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if result.NextKey != "max_illust_id" || result.NextValue != 987654 || !result.HasNext {
+		t.Fatalf("result = %#v", result)
+	}
+}
+
+func TestLatestTimelineRejectsDuplicateContinuationValues(t *testing.T) {
+	transport := &fakeTransport{body: `{"illusts":[],"next_url":"https://app-api.pixiv.net/v1/illust/new?max_illust_id=987654&max_illust_id=123456&offset=30"}`}
+	_, err := timeline.New(transport).List(context.Background(), timeline.Request{Kind: timeline.Latest, ContentType: "illust"})
+	if err == nil {
+		t.Fatal("duplicate continuation values unexpectedly succeeded")
+	}
+}

@@ -1,0 +1,700 @@
+{
+  "user_previews": [
+    {
+      "user": {
+        "id": 54525598,
+        "name": "Okkimon",
+        "account": "okkimon9999",
+        "comment": "",
+        "is_followed": false,
+        "profile_image": {
+          "resource": {
+            "ref": "eyJ2IjoxLCJwIjoicGl4aXYiLCJkIjoiZXlKcklqb2lkWE5sY2w5d2NtOW1hV3hsSWl3aWFXUWlPalUwTlRJMU5UazRMQ0p3SWpvdE1Td2lkaUk2SW0xbFpHbDFiU0o5In0"
+          },
+          "variant": "medium",
+          "width": 0,
+          "height": 0
+        }
+      },
+      "illusts": [
+        {
+          "id": 147807175,
+          "title": "0730",
+          "caption": "",
+          "kind": "illustration",
+          "raw_kind": "illust",
+          "tags": [
+            {
+              "name": "ブルーアーカイブ",
+              "translated_name": ""
+            },
+            {
+              "name": "サツキ(ブルーアーカイブ)",
+              "translated_name": ""
+            },
+            {
+              "name": "京極サツキ",
+              "translated_name": ""
+            },
+            {
+              "name": "京極サツキ(水着)",
+              "translated_name": ""
+            },
+            {
+              "name": "出航!万魔船マコト議長の華麗なる避暑",
+              "translated_name": ""
+            },
+            {
+              "name": "ブルーアーカイブ1000users入り",
+              "translated_name": ""
+            }
+          ],
+          "user": {
+            "id": 54525598,
+            "name": "Okkimon",
+            "account": "okkimon9999",
+            "comment": "",
+            "is_followed": false,
+            "profile_image": {
+              "resource": {
+                "ref": "eyJ2IjoxLCJwIjoicGl4aXYiLCJkIjoiZXlKcklqb2lkWE5sY2w5d2NtOW1hV3hsSWl3aWFXUWlPalUwTlRJMU5UazRMQ0p3SWpvdE1Td2lkaUk2SW0xbFpHbDFiU0o5In0"
+              },
+              "variant": "medium",
+              "width": 0,
+              "height": 0
+            }
+          },
+          "published_at": "2026-07-30T09:22:23Z",
+          "total_bookmarks": 3737,
+          "total_views": 10439,
+          "width": 3473,
+          "height": 5112,
+          "page_count": 1,
+          "x_restrict": 0,
+          "ai_type": 1,
+          "cover": {
+            "resource": {
+              "ref": "eyJ2IjoxLCJwIjoicGl4aXYiLCJkIjoiZXlKcklqb2lZWEowZDI5eWF5SXNJbWxrSWpveE5EYzRNRGN4TnpVc0luQWlPaTB4TENKMklqb2liR0Z5WjJVaWZRPT0ifQ"
+            },
+            "variant": "large",
+            "width": 3473,
+            "height": 5112
+          }
+        },
+        {
+          "id": 146724675,
+          "title": "0702",
+          "caption": "신데렐라의 여름을 상상하며 그려보았습니다! ☀️🏖️",
+          "kind": "illustration",
+          "raw_kind": "illust",
+          "tags": [
+            {
+              "name": "NIKKE",
+              "translated_name": ""
+            },
+            {
+              "name": "NIKKEfanart",
+              "translated_name": ""
+            },
+            {
+              "name": "니케여름2026",
+              "translated_name": ""
+            },
+            {
+              "name": "シンデレラ(勝利の女神:NIKKE)",
+              "translated_name": ""
+            },
+            {
+              "name": "勝利の女神:NIKKE",
+              "translated_name": ""
+            },
+            {
+              "name": "NIKKE1000users入り",
+              "translated_name": ""
+            }
+          ],
+          "user": {
+            "id": 54525598,
+            "name": "Okkimon",
+            "account": "okkimon9999",
+            "comment": "",
+            "is_followed": false,
+            "profile_image": {
+              "resource": {
+                "ref": "eyJ2IjoxLCJwIjoicGl4aXYiLCJkIjoiZXlKcklqb2lkWE5sY2w5d2NtOW1hV3hsSWl3aWFXUWlPalUwTlRJMU5UazRMQ0p3SWpvdE1Td2lkaUk2SW0xbFpHbDFiU0o5In0"
+              },
+              "variant": "medium",
+              "width": 0,
+              "height": 0
+            }
+          },
+          "published_at": "2026-07-02T09:00:20Z",
+          "total_bookmarks": 2794,
+          "total_views": 9493,
+          "width": 4279,
+          "height": 6530,
+          "page_count": 1,
+          "x_restrict": 0,
+          "ai_type": 1,
+          "cover": {
+            "resource": {
+              "ref": "eyJ2IjoxLCJwIjoicGl4aXYiLCJkIjoiZXlKcklqb2lZWEowZDI5eWF5SXNJbWxrSWpveE5EWTNNalEyTnpVc0luQWlPaTB4TENKMklqb2liR0Z5WjJVaWZRPT0ifQ"
+            },
+            "variant": "large",
+            "width": 4279,
+            "height": 6530
+          }
+        },
+        {
+          "id": 146110830,
+          "title": "0617",
+          "caption": "",
+          "kind": "illustration",
+          "raw_kind": "illust",
+          "tags": [
+            {
+              "name": "ブルーアーカイブ",
+              "translated_name": ""
+            },
+            {
+              "name": "ブルアカ",
+              "translated_name": ""
+            },
+            {
+              "name": "空崎ヒナ",
+              "translated_name": ""
+            },
+            {
+              "name": "BlueArchive",
+              "translated_name": ""
+            },
+            {
+              "name": "女の子",
+              "translated_name": ""
+            },
+            {
+              "name": "私服",
+              "translated_name": ""
+            },
+            {
+              "name": "壁ドン",
+              "translated_name": ""
+            },
+            {
+              "name": "照れ顔",
+              "translated_name": ""
+            },
+            {
+              "name": "美少女",
+              "translated_name": ""
+            },
+            {
+              "name": "ブルーアーカイブ5000users入り",
+              "translated_name": ""
+            }
+          ],
+          "user": {
+            "id": 54525598,
+            "name": "Okkimon",
+            "account": "okkimon9999",
+            "comment": "",
+            "is_followed": false,
+            "profile_image": {
+              "resource": {
+                "ref": "eyJ2IjoxLCJwIjoicGl4aXYiLCJkIjoiZXlKcklqb2lkWE5sY2w5d2NtOW1hV3hsSWl3aWFXUWlPalUwTlRJMU5UazRMQ0p3SWpvdE1Td2lkaUk2SW0xbFpHbDFiU0o5In0"
+              },
+              "variant": "medium",
+              "width": 0,
+              "height": 0
+            }
+          },
+          "published_at": "2026-06-17T04:28:02Z",
+          "total_bookmarks": 5577,
+          "total_views": 19609,
+          "width": 3437,
+          "height": 4860,
+          "page_count": 1,
+          "x_restrict": 0,
+          "ai_type": 1,
+          "cover": {
+            "resource": {
+              "ref": "eyJ2IjoxLCJwIjoicGl4aXYiLCJkIjoiZXlKcklqb2lZWEowZDI5eWF5SXNJbWxrSWpveE5EWXhNVEE0TXpBc0luQWlPaTB4TENKMklqb2liR0Z5WjJVaWZRPT0ifQ"
+            },
+            "variant": "large",
+            "width": 3437,
+            "height": 4860
+          }
+        }
+      ],
+      "novels": []
+    },
+    {
+      "user": {
+        "id": 117863916,
+        "name": "音無愛-OtonashiAi",
+        "account": "user_srpc4277",
+        "comment": "",
+        "is_followed": false,
+        "profile_image": {
+          "resource": {
+            "ref": "eyJ2IjoxLCJwIjoicGl4aXYiLCJkIjoiZXlKcklqb2lkWE5sY2w5d2NtOW1hV3hsSWl3aWFXUWlPakV4TnpnMk16a3hOaXdpY0NJNkxURXNJbllpT2lKdFpXUnBkVzBpZlE9PSJ9"
+          },
+          "variant": "medium",
+          "width": 0,
+          "height": 0
+        }
+      },
+      "illusts": [
+        {
+          "id": 148798659,
+          "title": "音声あり動画❗内海アオバ",
+          "caption": "\u003ca href=\"https://www.fansky.co/OtonashiAi\" target='_blank' rel='noopener noreferrer'\u003ehttps://www.fansky.co/OtonashiAi\u003c/a\u003e (Paypal / Card / USDT / Alipay / Wechat)\u003cbr /\u003e\u003ca href=\"https://app.unifans.io/c/otonashiai\" target='_blank' rel='noopener noreferrer'\u003ehttps://app.unifans.io/c/otonashiai\u003c/a\u003e (Paypal /USDT / Alipay / Wechat)\u003cbr /\u003e\u003cbr /\u003e從本次作品開始，製作技術正式升級！\u003cbr /\u003e解析度提升至 2K，畫面更加清晰，整體觀感也更加色情！\u003cbr /\u003e\u003cbr /\u003e今回の作品から、制作技術をアップグレードしました！\u003cbr /\u003e解像度も 2K にアップして、より鮮明で、さらにセクシーな仕上がりになっています！\u003cbr /\u003e\u003cbr /\u003eStarting with this release\u0026#44; I\u0026#39;ve upgraded my production technology!\u003cbr /\u003eThe resolution has been upgraded to 2K\u0026#44; making the visuals much sharper and the overall experience even more erotic!\u003cbr /\u003e\u003cbr /\u003e(212p + 🎥204s音声あり動画)は8月コレクションに追加しました \u003cbr /\u003eプラン加入者の方は、すぐに見れます\u003cbr /\u003e音声付き動画入り！ 【使用音声：音声素材_Pincree (CV:猫乃しろね)】※音声は商用利用可能な素材を使用しています\u003cbr /\u003eSNS未公開の高画質差分もたっぷり入った完全版です いつも応援ありがとう！ あなたのサポートが、次の制作の力になってます❤\u003cbr /\u003e\u003cbr /\u003eThe full set (212p + 🎥204s Video with audio) is now available in the Unifans August collection. If you\u0026#39;re a subscriber\u0026#44; you can access it immediately.\u003cbr /\u003eNow featuring a voiced long video ! [Voice Asset: Pincree (CV:猫乃しろね)] *Using commercial stock audio assets.\u003cbr /\u003eIt includes high-quality versions and unreleased content. Thank you always for your support! Your love helps me keep creating ❤\u003cbr /\u003e\u003cbr /\u003e完整版（212p + 🎥204s帶音頻的視頻）已加入八月合集。\u003cbr /\u003e訂閱用戶可立即觀看。\u003cbr /\u003e[音訊素材：Pincree音訊素材(CV:猫乃しろね)] *音頻使用了市面上可買到的素材。\u003cbr /\u003e包含先前未在社群媒體上發布的高品質版本。感謝大家一直以來的支持！你們的支持將激勵我們推出下一個計畫。 ❤",
+          "kind": "ugoira",
+          "raw_kind": "ugoira",
+          "tags": [
+            {
+              "name": "R-18",
+              "translated_name": ""
+            },
+            {
+              "name": "うごイラ",
+              "translated_name": ""
+            },
+            {
+              "name": "ブルーアーカイブ",
+              "translated_name": ""
+            },
+            {
+              "name": "ブルアカ",
+              "translated_name": ""
+            },
+            {
+              "name": "BlueArchive",
+              "translated_name": ""
+            },
+            {
+              "name": "内海アオバ",
+              "translated_name": ""
+            },
+            {
+              "name": "少女",
+              "translated_name": ""
+            },
+            {
+              "name": "ちっぱい",
+              "translated_name": ""
+            },
+            {
+              "name": "セックス",
+              "translated_name": ""
+            },
+            {
+              "name": "制服",
+              "translated_name": ""
+            }
+          ],
+          "user": {
+            "id": 117863916,
+            "name": "音無愛-OtonashiAi",
+            "account": "user_srpc4277",
+            "comment": "",
+            "is_followed": false,
+            "profile_image": {
+              "resource": {
+                "ref": "eyJ2IjoxLCJwIjoicGl4aXYiLCJkIjoiZXlKcklqb2lkWE5sY2w5d2NtOW1hV3hsSWl3aWFXUWlPakV4TnpnMk16a3hOaXdpY0NJNkxURXNJbllpT2lKdFpXUnBkVzBpZlE9PSJ9"
+              },
+              "variant": "medium",
+              "width": 0,
+              "height": 0
+            }
+          },
+          "published_at": "2026-08-23T13:08:17Z",
+          "total_bookmarks": 87,
+          "total_views": 399,
+          "width": 260,
+          "height": 260,
+          "page_count": 1,
+          "x_restrict": 1,
+          "ai_type": 2,
+          "cover": {
+            "resource": {
+              "ref": "eyJ2IjoxLCJwIjoicGl4aXYiLCJkIjoiZXlKcklqb2lZWEowZDI5eWF5SXNJbWxrSWpveE5EZzNPVGcyTlRrc0luQWlPaTB4TENKMklqb2liR0Z5WjJVaWZRPT0ifQ"
+            },
+            "variant": "large",
+            "width": 260,
+            "height": 260
+          }
+        },
+        {
+          "id": 148798658,
+          "title": "音声あり動画❗内海アオバ",
+          "caption": "\u003ca href=\"https://www.fansky.co/OtonashiAi\" target='_blank' rel='noopener noreferrer'\u003ehttps://www.fansky.co/OtonashiAi\u003c/a\u003e (Paypal / Card / USDT / Alipay / Wechat)\u003cbr /\u003e\u003ca href=\"https://app.unifans.io/c/otonashiai\" target='_blank' rel='noopener noreferrer'\u003ehttps://app.unifans.io/c/otonashiai\u003c/a\u003e (Paypal /USDT / Alipay / Wechat)\u003cbr /\u003e\u003cbr /\u003e從本次作品開始，製作技術正式升級！\u003cbr /\u003e解析度提升至 2K，畫面更加清晰，整體觀感也更加色情！\u003cbr /\u003e\u003cbr /\u003e今回の作品から、制作技術をアップグレードしました！\u003cbr /\u003e解像度も 2K にアップして、より鮮明で、さらにセクシーな仕上がりになっています！\u003cbr /\u003e\u003cbr /\u003eStarting with this release\u0026#44; I\u0026#39;ve upgraded my production technology!\u003cbr /\u003eThe resolution has been upgraded to 2K\u0026#44; making the visuals much sharper and the overall experience even more erotic!\u003cbr /\u003e\u003cbr /\u003e(212p + 🎥204s音声あり動画)は8月コレクションに追加しました \u003cbr /\u003eプラン加入者の方は、すぐに見れます\u003cbr /\u003e音声付き動画入り！ 【使用音声：音声素材_Pincree (CV:猫乃しろね)】※音声は商用利用可能な素材を使用しています\u003cbr /\u003eSNS未公開の高画質差分もたっぷり入った完全版です いつも応援ありがとう！ あなたのサポートが、次の制作の力になってます❤\u003cbr /\u003e\u003cbr /\u003eThe full set (212p + 🎥204s Video with audio) is now available in the Unifans August collection. If you\u0026#39;re a subscriber\u0026#44; you can access it immediately.\u003cbr /\u003eNow featuring a voiced long video ! [Voice Asset: Pincree (CV:猫乃しろね)] *Using commercial stock audio assets.\u003cbr /\u003eIt includes high-quality versions and unreleased content. Thank you always for your support! Your love helps me keep creating ❤\u003cbr /\u003e\u003cbr /\u003e完整版（212p + 🎥204s帶音頻的視頻）已加入八月合集。\u003cbr /\u003e訂閱用戶可立即觀看。\u003cbr /\u003e[音訊素材：Pincree音訊素材(CV:猫乃しろね)] *音頻使用了市面上可買到的素材。\u003cbr /\u003e包含先前未在社群媒體上發布的高品質版本。感謝大家一直以來的支持！你們的支持將激勵我們推出下一個計畫。 ❤",
+          "kind": "ugoira",
+          "raw_kind": "ugoira",
+          "tags": [
+            {
+              "name": "R-18",
+              "translated_name": ""
+            },
+            {
+              "name": "うごイラ",
+              "translated_name": ""
+            },
+            {
+              "name": "ブルーアーカイブ",
+              "translated_name": ""
+            },
+            {
+              "name": "ブルアカ",
+              "translated_name": ""
+            },
+            {
+              "name": "BlueArchive",
+              "translated_name": ""
+            },
+            {
+              "name": "内海アオバ",
+              "translated_name": ""
+            },
+            {
+              "name": "少女",
+              "translated_name": ""
+            },
+            {
+              "name": "ちっぱい",
+              "translated_name": ""
+            },
+            {
+              "name": "セックス",
+              "translated_name": ""
+            },
+            {
+              "name": "制服",
+              "translated_name": ""
+            }
+          ],
+          "user": {
+            "id": 117863916,
+            "name": "音無愛-OtonashiAi",
+            "account": "user_srpc4277",
+            "comment": "",
+            "is_followed": false,
+            "profile_image": {
+              "resource": {
+                "ref": "eyJ2IjoxLCJwIjoicGl4aXYiLCJkIjoiZXlKcklqb2lkWE5sY2w5d2NtOW1hV3hsSWl3aWFXUWlPakV4TnpnMk16a3hOaXdpY0NJNkxURXNJbllpT2lKdFpXUnBkVzBpZlE9PSJ9"
+              },
+              "variant": "medium",
+              "width": 0,
+              "height": 0
+            }
+          },
+          "published_at": "2026-08-23T13:08:16Z",
+          "total_bookmarks": 76,
+          "total_views": 236,
+          "width": 260,
+          "height": 260,
+          "page_count": 1,
+          "x_restrict": 1,
+          "ai_type": 2,
+          "cover": {
+            "resource": {
+              "ref": "eyJ2IjoxLCJwIjoicGl4aXYiLCJkIjoiZXlKcklqb2lZWEowZDI5eWF5SXNJbWxrSWpveE5EZzNPVGcyTlRnc0luQWlPaTB4TENKMklqb2liR0Z5WjJVaWZRPT0ifQ"
+            },
+            "variant": "large",
+            "width": 260,
+            "height": 260
+          }
+        },
+        {
+          "id": 148791946,
+          "title": "音声あり動画❗内海アオバ Part.2",
+          "caption": "\u003ca href=\"https://www.fansky.co/OtonashiAi\" target='_blank' rel='noopener noreferrer'\u003ehttps://www.fansky.co/OtonashiAi\u003c/a\u003e (Paypal / Card / USDT / Alipay / Wechat)\u003cbr /\u003e\u003ca href=\"https://app.unifans.io/c/otonashiai\" target='_blank' rel='noopener noreferrer'\u003ehttps://app.unifans.io/c/otonashiai\u003c/a\u003e (Paypal /USDT / Alipay / Wechat)\u003cbr /\u003e\u003cbr /\u003e從本次作品開始，製作技術正式升級！\u003cbr /\u003e解析度提升至 2K，畫面更加清晰，整體觀感也更加色情！\u003cbr /\u003e\u003cbr /\u003e今回の作品から、制作技術をアップグレードしました！\u003cbr /\u003e解像度も 2K にアップして、より鮮明で、さらにセクシーな仕上がりになっています！\u003cbr /\u003e\u003cbr /\u003eStarting with this release\u0026#44; I\u0026#39;ve upgraded my production technology!\u003cbr /\u003eThe resolution has been upgraded to 2K\u0026#44; making the visuals much sharper and the overall experience even more erotic!\u003cbr /\u003e\u003cbr /\u003e(212p + 🎥204s音声あり動画)は8月コレクションに追加しました \u003cbr /\u003eプラン加入者の方は、すぐに見れます\u003cbr /\u003e音声付き動画入り！ 【使用音声：音声素材_Pincree (CV:猫乃しろね)】※音声は商用利用可能な素材を使用しています\u003cbr /\u003eSNS未公開の高画質差分もたっぷり入った完全版です いつも応援ありがとう！ あなたのサポートが、次の制作の力になってます❤\u003cbr /\u003e\u003cbr /\u003eThe full set (212p + 🎥204s Video with audio) is now available in the Unifans August collection. If you\u0026#39;re a subscriber\u0026#44; you can access it immediately.\u003cbr /\u003eNow featuring a voiced long video ! [Voice Asset: Pincree (CV:猫乃しろね)] *Using commercial stock audio assets.\u003cbr /\u003eIt includes high-quality versions and unreleased content. Thank you always for your support! Your love helps me keep creating ❤\u003cbr /\u003e\u003cbr /\u003e完整版（212p + 🎥204s帶音頻的視頻）已加入八月合集。\u003cbr /\u003e訂閱用戶可立即觀看。\u003cbr /\u003e[音訊素材：Pincree音訊素材(CV:猫乃しろね)] *音頻使用了市面上可買到的素材。\u003cbr /\u003e包含先前未在社群媒體上發布的高品質版本。感謝大家一直以來的支持！你們的支持將激勵我們推出下一個計畫。 ❤",
+          "kind": "illustration",
+          "raw_kind": "illust",
+          "tags": [
+            {
+              "name": "R-18",
+              "translated_name": ""
+            },
+            {
+              "name": "ブルーアーカイブ",
+              "translated_name": ""
+            },
+            {
+              "name": "ブルアカ",
+              "translated_name": ""
+            },
+            {
+              "name": "BlueArchive",
+              "translated_name": ""
+            },
+            {
+              "name": "内海アオバ",
+              "translated_name": ""
+            },
+            {
+              "name": "少女",
+              "translated_name": ""
+            },
+            {
+              "name": "ちっぱい",
+              "translated_name": ""
+            },
+            {
+              "name": "セックス",
+              "translated_name": ""
+            },
+            {
+              "name": "制服",
+              "translated_name": ""
+            },
+            {
+              "name": "舐め回したい穴",
+              "translated_name": ""
+            }
+          ],
+          "user": {
+            "id": 117863916,
+            "name": "音無愛-OtonashiAi",
+            "account": "user_srpc4277",
+            "comment": "",
+            "is_followed": false,
+            "profile_image": {
+              "resource": {
+                "ref": "eyJ2IjoxLCJwIjoicGl4aXYiLCJkIjoiZXlKcklqb2lkWE5sY2w5d2NtOW1hV3hsSWl3aWFXUWlPakV4TnpnMk16a3hOaXdpY0NJNkxURXNJbllpT2lKdFpXUnBkVzBpZlE9PSJ9"
+              },
+              "variant": "medium",
+              "width": 0,
+              "height": 0
+            }
+          },
+          "published_at": "2026-08-23T11:01:59Z",
+          "total_bookmarks": 162,
+          "total_views": 573,
+          "width": 1536,
+          "height": 1536,
+          "page_count": 21,
+          "x_restrict": 1,
+          "ai_type": 2,
+          "cover": {
+            "resource": {
+              "ref": "eyJ2IjoxLCJwIjoicGl4aXYiLCJkIjoiZXlKcklqb2lZWEowZDI5eWF5SXNJbWxrSWpveE5EZzNPVEU1TkRZc0luQWlPaTB4TENKMklqb2liR0Z5WjJVaWZRPT0ifQ"
+            },
+            "variant": "large",
+            "width": 1536,
+            "height": 1536
+          }
+        }
+      ],
+      "novels": []
+    },
+    {
+      "user": {
+        "id": 121277597,
+        "name": "導火線",
+        "account": "user_vxdr4782",
+        "comment": "",
+        "is_followed": false,
+        "profile_image": {
+          "resource": {
+            "ref": "eyJ2IjoxLCJwIjoicGl4aXYiLCJkIjoiZXlKcklqb2lkWE5sY2w5d2NtOW1hV3hsSWl3aWFXUWlPakV5TVRJM056VTVOeXdpY0NJNkxURXNJbllpT2lKdFpXUnBkVzBpZlE9PSJ9"
+          },
+          "variant": "medium",
+          "width": 0,
+          "height": 0
+        }
+      },
+      "illusts": [
+        {
+          "id": 148798407,
+          "title": "先生に話しかけるハルカ",
+          "caption": "エピローグ\u003cbr /\u003e\u003ca href=\"https://fantia.jp/posts/4206311\" target='_blank' rel='noopener noreferrer'\u003ehttps://fantia.jp/posts/4206311\u003c/a\u003e",
+          "kind": "manga",
+          "raw_kind": "manga",
+          "tags": [
+            {
+              "name": "漫画",
+              "translated_name": ""
+            },
+            {
+              "name": "BlueArchive",
+              "translated_name": ""
+            },
+            {
+              "name": "ブルアカ",
+              "translated_name": ""
+            },
+            {
+              "name": "ブルーアーカイブ",
+              "translated_name": ""
+            },
+            {
+              "name": "伊草ハルカ",
+              "translated_name": ""
+            }
+          ],
+          "user": {
+            "id": 121277597,
+            "name": "導火線",
+            "account": "user_vxdr4782",
+            "comment": "",
+            "is_followed": false,
+            "profile_image": {
+              "resource": {
+                "ref": "eyJ2IjoxLCJwIjoicGl4aXYiLCJkIjoiZXlKcklqb2lkWE5sY2w5d2NtOW1hV3hsSWl3aWFXUWlPakV5TVRJM056VTVOeXdpY0NJNkxURXNJbllpT2lKdFpXUnBkVzBpZlE9PSJ9"
+              },
+              "variant": "medium",
+              "width": 0,
+              "height": 0
+            }
+          },
+          "published_at": "2026-08-23T13:03:14Z",
+          "total_bookmarks": 356,
+          "total_views": 3336,
+          "width": 1536,
+          "height": 2048,
+          "page_count": 1,
+          "x_restrict": 0,
+          "ai_type": 1,
+          "cover": {
+            "resource": {
+              "ref": "eyJ2IjoxLCJwIjoicGl4aXYiLCJkIjoiZXlKcklqb2lZWEowZDI5eWF5SXNJbWxrSWpveE5EZzNPVGcwTURjc0luQWlPaTB4TENKMklqb2liR0Z5WjJVaWZRPT0ifQ"
+            },
+            "variant": "large",
+            "width": 1536,
+            "height": 2048
+          }
+        },
+        {
+          "id": 148510603,
+          "title": "足立　って一人称",
+          "caption": "エピローグ\u003cbr /\u003e\u003ca href=\"https://fantia.jp/posts/4196623\" target='_blank' rel='noopener noreferrer'\u003ehttps://fantia.jp/posts/4196623\u003c/a\u003e",
+          "kind": "manga",
+          "raw_kind": "manga",
+          "tags": [
+            {
+              "name": "漫画",
+              "translated_name": ""
+            },
+            {
+              "name": "足立レイ",
+              "translated_name": ""
+            },
+            {
+              "name": "下げてから上げる",
+              "translated_name": ""
+            },
+            {
+              "name": "バカップル",
+              "translated_name": ""
+            }
+          ],
+          "user": {
+            "id": 121277597,
+            "name": "導火線",
+            "account": "user_vxdr4782",
+            "comment": "",
+            "is_followed": false,
+            "profile_image": {
+              "resource": {
+                "ref": "eyJ2IjoxLCJwIjoicGl4aXYiLCJkIjoiZXlKcklqb2lkWE5sY2w5d2NtOW1hV3hsSWl3aWFXUWlPakV5TVRJM056VTVOeXdpY0NJNkxURXNJbllpT2lKdFpXUnBkVzBpZlE9PSJ9"
+              },
+              "variant": "medium",
+              "width": 0,
+              "height": 0
+            }
+          },
+          "published_at": "2026-08-16T11:59:42Z",
+          "total_bookmarks": 1200,
+          "total_views": 16908,
+          "width": 1536,
+          "height": 2048,
+          "page_count": 1,
+          "x_restrict": 0,
+          "ai_type": 1,
+          "cover": {
+            "resource": {
+              "ref": "eyJ2IjoxLCJwIjoicGl4aXYiLCJkIjoiZXlKcklqb2lZWEowZDI5eWF5SXNJbWxrSWpveE5EZzFNVEEyTURNc0luQWlPaTB4TENKMklqb2liR0Z5WjJVaWZRPT0ifQ"
+            },
+            "variant": "large",
+            "width": 1536,
+            "height": 2048
+          }
+        },
+        {
+          "id": 148424148,
+          "title": "スミカ　怒りすぎ先生",
+          "caption": "エピローグ\u003cbr /\u003e\u003ca href=\"https://fantia.jp/posts/4193957\" target='_blank' rel='noopener noreferrer'\u003ehttps://fantia.jp/posts/4193957\u003c/a\u003e",
+          "kind": "manga",
+          "raw_kind": "manga",
+          "tags": [
+            {
+              "name": "漫画",
+              "translated_name": ""
+            },
+            {
+              "name": "BlueArchive",
+              "translated_name": ""
+            },
+            {
+              "name": "ブルアカ",
+              "translated_name": ""
+            },
+            {
+              "name": "ブルーアーカイブ",
+              "translated_name": ""
+            },
+            {
+              "name": "小森スミカ",
+              "translated_name": ""
+            },
+            {
+              "name": "順当",
+              "translated_name": ""
+            },
+            {
+              "name": "壁ドン",
+              "translated_name": ""
+            },
+            {
+              "name": "先生(ブルーアーカイブ)",
+              "translated_name": ""
+            }
+          ],
+          "user": {
+            "id": 121277597,
+            "name": "導火線",
+            "account": "user_vxdr4782",
+            "comment": "",
+            "is_followed": false,
+            "profile_image": {
+              "resource": {
+                "ref": "eyJ2IjoxLCJwIjoicGl4aXYiLCJkIjoiZXlKcklqb2lkWE5sY2w5d2NtOW1hV3hsSWl3aWFXUWlPakV5TVRJM056VTVOeXdpY0NJNkxURXNJbllpT2lKdFpXUnBkVzBpZlE9PSJ9"
+              },
+              "variant": "medium",
+              "width": 0,
+              "height": 0
+            }
+          },
+          "published_at": "2026-08-14T12:05:00Z",
+          "total_bookmarks": 1339,
+          "total_views": 27790,
+          "width": 1536,
+          "height": 2048,
+          "page_count": 1,
+          "x_restrict": 0,
+          "ai_type": 1,
+          "cover": {
+            "resource": {
+              "ref": "eyJ2IjoxLCJwIjoicGl4aXYiLCJkIjoiZXlKcklqb2lZWEowZDI5eWF5SXNJbWxrSWpveE5EZzBNalF4TkRnc0luQWlPaTB4TENKMklqb2liR0Z5WjJVaWZRPT0ifQ"
+            },
+            "variant": "large",
+            "width": 1536,
+            "height": 2048
+          }
+        }
+      ],
+      "novels": []
+    }
+  ]
+}

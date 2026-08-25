@@ -1,0 +1,12 @@
+Query Pixiv novels
+
+Usage:
+  pixiv novel [command]
+
+Available Commands:
+  search      Search novels
+
+Flags:
+  -h, --help   help for novel
+
+Use "pixiv novel [command] --help" for more information about a command.

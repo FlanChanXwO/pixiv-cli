@@ -1,0 +1,1 @@
+error: pixiv:auth: unauthorized: no pixiv account is authenticated
