@@ -275,17 +275,17 @@
 
 ### Task 14: 用户文档 — README + README.zh-CN
 
-- [ ] **目标**：先更新 `README.md`（canonical 英文安装/quick-start 入口），再同步 `README.zh-CN.md`。
+- [x] **目标**：先更新 `README.md`（canonical 英文安装/quick-start 入口），再同步 `README.zh-CN.md`。
 - **覆盖内容**：
   - exact-version 和 `latest` pull 语义
   - 持久 `~/.pixiv-cli` volume
   - `/work` 下载 bind mount
   - 镜像架构支持
 - **验收**：双语文档覆盖上述内容。
-- **实际做了什么**：（待填）
-- **验证证据**：（待填）
-- **剩余风险**：（待填）
-- **下一步建议**：（待填）
+- **实际做了什么**：先在英文 README 的 Install 下新增 Docker 小节，说明 GHCR exact-version 与 stable-only latest pull 语义、原生 amd64/arm64 支持、同一 binary 和 state namespace；给出持久 `pixiv-cli-state:/home/pixiv/.pixiv-cli` volume、`$PWD:/work` bind mount 和版本验证示例。随后同步简体中文语义，不宣称独立产品模式，也不提前展开 auth/MCP/upgrade（留给 Task 15）。
+- **验证证据**：`go test ./scripts/tests/documentation -run TestDockerInstallationContractIsBilingual -count=1 -v` PASS；`go vet ./scripts/tests/documentation` PASS。脚本核对两份 README UTF-8 可读、Markdown fence 成对，且 registry/tag、架构、state volume、workdir 命令完全一致。`git diff --check` PASS。完整文档测试仍按预期 FAIL，仅剩 Task 15 的 auth/MCP/upgrade contract；Red 输出为 English README 缺 persistent-volume stdin-based auth import。README commit: `32a8810`。
+- **剩余风险**：auth、MCP stdio 和升级语义尚未写入用户文档；这是 Task 15 的既定范围。
+- **下一步建议**：Task 15 — 补齐双语 stdin auth import、MCP stdio 和 pull/redeploy 升级说明，使 documentation 测试转 Green。
 
 ---
 
