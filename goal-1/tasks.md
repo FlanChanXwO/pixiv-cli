@@ -207,20 +207,20 @@
 - **实际做了什么**：发现 Task 8 此前只落地了 policy 规则、真实 `build_container` job 尚未进入 release workflow；本 task 补齐该前置并实现发布路径。新增两架构原生 `build_container`（checkout immutable tag、重建 staticlib、版本化二进制、ABI gate、Docker contract/runtime/provenance 断言、导出 image artifact）。新增 `publish_container`（依赖 `build_container` 和 `publish`，仅 `contents: read` + `packages: write`，workflow token stdin 登录 GHCR，推送架构 tag 和 exact-version multi-arch manifest，stable-only 推进 latest，无 retry 隐藏失败）。同步让 GitHub Release `needs build_container`，policy 强制该边界和 `publish_container` 对 Release 的依赖；Dockerfile 增加 `ARG REVISION/VERSION` 使 OCI provenance 实际生效。更新 policy 测试与既有 mutation 测试以锁定新 DAG。
 - **验证证据**：Red：新增 3 个测试先运行失败（缺正式 container jobs、Release 不等容器 artifact、publish_container 不要求依赖 publish）。Green：`go test ./scripts/internal/releaseworkflow -count=1` PASS；`go test ./scripts/tests/containerrelease -count=1` PASS；`go run ./scripts/cmd/releaseworkflow --workflow .github/workflows/release.yml` exit 0；`go vet ./scripts/internal/releaseworkflow ./scripts/tests/containerrelease` PASS；`git diff --check` 干净。本地 dummy-binary Docker 构建断言 uid=1000、version/path/workdir 正确、四个 OCI labels 注入正确。commit: `2bd8e41`。
 - **剩余风险**：真实 GHCR push 未在本地执行，需后续 tagged release 或 credential-free CI 证据覆盖；GHCR 失败后的恢复语义文档化属于 Task 11。
-- **下一步建议**：Task 11 — 实现 stable/prerelease exact-version/latest 语义的可重跑发布细节，并文档说明 post-Release 恢复边界。议**：（待填）
+- **下一步建议**：Task 11 — 实现 stable/prerelease exact-version/latest 语义的可重跑发布细节，并文档说明 post-Release 恢复边界。
 
 ---
 
 ### Task 11: Tag policy + 恢复语义
 
-- [ ] **目标**：
+- [x] **目标**：
   1. 发布 `ghcr.io/flanchanxwo/pixiv-cli:vX.Y.Z`（每 release）。仅当现有 release channel classifier 报告 `stable` 时推进 `latest`；prerelease 绝不移动 `latest`。
   2. 使 publication 对同一不可变 tag 可重跑/幂等（在 registry 允许范围内）。不隐藏 registry 错误或用 retry loop 把失败 push 报为成功。文档说明 GHCR 发布失败留 workflow failed，通过重跑 publish job/path 修复。
 - **验收**：tag policy 测试绿色；恢复语义文档化。
-- **实际做了什么**：（待填）
-- **验证证据**：（待填）
-- **剩余风险**：（待填）
-- **下一步建议**：（待填）
+- **实际做了什么**：新增 release policy 拒绝把任何 Docker image/manifest push 包进 `for`/`while`/`until` retry loop；将真实 workflow 的两架构 push 展开为显式命令。双语维护者 development 文档记录 Release/GHCR 非原子边界、失败保持 failed、用同一批 verified-container artifact 与 immutable tag 重跑 `publish_container`、不重建或重签 native 资产，以及 exact-version/latest classifier 规则。新增聚焦测试锁定该恢复语义。
+- **验证证据**：Red 先确认 retry-loop fixture 被 policy 接受、docs contract 缺失；Green 后 `go test ./scripts/internal/releaseworkflow -count=1` PASS、`go test ./scripts/tests/containerrelease -count=1` PASS、`go run ./scripts/cmd/releaseworkflow --workflow .github/workflows/release.yml` exit 0、`go vet ./scripts/internal/releaseworkflow ./scripts/tests/containerrelease` PASS、`git diff --check` 干净。commit: `a381050`。
+- **剩余风险**：真实 GHCR push/rerun 仍需 tagged release CI 或后续凭据无关证据；这已留给 Phase 5 真实容器证据 task。
+- **下一步建议**：Task 12 — 运行 Phase 3 全部静态与聚焦验证，复查 smoke artifact、无 QEMU/Docker Hub credential/未审批 Action。
 
 ---
 
