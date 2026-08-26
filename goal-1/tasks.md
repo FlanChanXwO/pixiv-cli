@@ -202,12 +202,12 @@
 
 ### Task 10: Green/publish — 添加 publish_container job
 
-- [ ] **目标**：添加 `publish_container`，位于已验证容器 artifact 和 GitHub Release 发布之后。仅授予 `packages: write`（和最低必需读权限），用 workflow token 认证 GHCR，加载/推送两架构镜像，创建多架构 manifest，应用 OCI source/revision/version/license 标签。
+- [x] **目标**：添加 `publish_container`，位于已验证容器 artifact 和 GitHub Release 发布之后。仅授予 `packages: write`（和最低必需读权限），用 workflow token 认证 GHCR，加载/推送两架构镜像，创建多架构 manifest，应用 OCI source/revision/version/license 标签。
 - **验收**：`go test ./scripts/tests/containerrelease -count=1` 绿色；release policy 测试对 publish_container 部分绿色。
-- **实际做了什么**：（待填）
-- **验证证据**：（待填）
-- **剩余风险**：（待填）
-- **下一步建议**：（待填）
+- **实际做了什么**：发现 Task 8 此前只落地了 policy 规则、真实 `build_container` job 尚未进入 release workflow；本 task 补齐该前置并实现发布路径。新增两架构原生 `build_container`（checkout immutable tag、重建 staticlib、版本化二进制、ABI gate、Docker contract/runtime/provenance 断言、导出 image artifact）。新增 `publish_container`（依赖 `build_container` 和 `publish`，仅 `contents: read` + `packages: write`，workflow token stdin 登录 GHCR，推送架构 tag 和 exact-version multi-arch manifest，stable-only 推进 latest，无 retry 隐藏失败）。同步让 GitHub Release `needs build_container`，policy 强制该边界和 `publish_container` 对 Release 的依赖；Dockerfile 增加 `ARG REVISION/VERSION` 使 OCI provenance 实际生效。更新 policy 测试与既有 mutation 测试以锁定新 DAG。
+- **验证证据**：Red：新增 3 个测试先运行失败（缺正式 container jobs、Release 不等容器 artifact、publish_container 不要求依赖 publish）。Green：`go test ./scripts/internal/releaseworkflow -count=1` PASS；`go test ./scripts/tests/containerrelease -count=1` PASS；`go run ./scripts/cmd/releaseworkflow --workflow .github/workflows/release.yml` exit 0；`go vet ./scripts/internal/releaseworkflow ./scripts/tests/containerrelease` PASS；`git diff --check` 干净。本地 dummy-binary Docker 构建断言 uid=1000、version/path/workdir 正确、四个 OCI labels 注入正确。commit: `2bd8e41`。
+- **剩余风险**：真实 GHCR push 未在本地执行，需后续 tagged release 或 credential-free CI 证据覆盖；GHCR 失败后的恢复语义文档化属于 Task 11。
+- **下一步建议**：Task 11 — 实现 stable/prerelease exact-version/latest 语义的可重跑发布细节，并文档说明 post-Release 恢复边界。议**：（待填）
 
 ---
 
