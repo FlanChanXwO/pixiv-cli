@@ -98,12 +98,12 @@
 
 ### Task 5: Green — 创建最小 Dockerfile
 
-- [ ] **目标**：添加最小 `Dockerfile`，拷贝预构建版本化 `pixiv` 二进制到 pinned Debian slim runtime，安装运行时必要材料（如 CA 证书），创建专用非 root 用户，设置 `HOME=/home/pixiv`、`WORKDIR /work`、`ENTRYPOINT ["/usr/local/bin/pixiv"]`。
+- [x] **目标**：添加最小 `Dockerfile`，拷贝预构建版本化 `pixiv` 二进制到 pinned Debian slim runtime，安装运行时必要材料（如 CA 证书），创建专用非 root 用户，设置 `HOME=/home/pixiv`、`WORKDIR /work`、`ENTRYPOINT ["/usr/local/bin/pixiv"]`。
 - **验收**：`go test ./scripts/tests/containerrelease -count=1` 绿色。
-- **实际做了什么**：（待填）
-- **验证证据**：（待填）
-- **剩余风险**：（待填）
-- **下一步建议**：（待填）
+- **实际做了什么**：创建 `Dockerfile`，使用 Debian bookworm-slim pinned by immutable multi-arch manifest digest（`sha256:882008...`）。安装 ca-certificates + tzdata，创建非 root 用户 pixiv（UID 1000），设置 ENV HOME=/home/pixiv、WORKDIR /work、ENTRYPOINT ["/usr/local/bin/pixiv"]，COPY dist/pixiv，OCI 标签（source/revision/version/license）。修复注释中 ".pixiv-cli/" 字符串触发 secret/state 检查。commit: `f2a2db7`。
+- **验证证据**：`go test ./scripts/tests/containerrelease -count=1 -v` → 全部 12 个测试 PASS（Green）。`go test ./scripts/internal/releaseworkflow -count=1` → PASS（无回归）。`go run ./scripts/cmd/releaseworkflow --workflow .github/workflows/release.yml` → exit 0。
+- **剩余风险**：Dockerfile 尚未经过真实 Docker 构建（Task 6 将补充 .dockerignore + 真实 smoke）。OCI revision/version 标签使用 `${REVISION}`/`${VERSION}` 占位符，CI 构建时需注入实际值。
+- **下一步建议**：Task 6 — 添加 .dockerignore，在原生 Linux 上构建镜像并运行 smoke 断言（id -u != 0、pixiv --version、pixiv config path、/work）。
 
 ---
 
