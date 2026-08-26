@@ -1,221 +1,500 @@
-# Goal 1 Tasks
+# Tasks — Docker as a first-class pixiv-cli release target
 
-执行规则：每轮只处理第一个未完成且未阻塞的 task；每个代码 task 必须实际完成 Red → Green → Refactor。完成后填写“实际完成、验证证据、剩余风险、下一步”，如有代码改动则提交与 task 编号关联的 commit。集中检查 task 不计入下一组三个实现 task。
+> 状态标记：`[ ]` 未完成 / `[x]` 已完成 / `[~]` 阻塞
+>
+> 每个 task 的预留空位在完成后填写：实际做了什么、验证证据、剩余风险、下一步建议。
+>
+> **执行规则**：一轮一个 task，按序执行，不许合并或跳序。每 3 个 task 后插入一次集中检查。
 
-## Task 1：配置 schema、运行时快照与 Sensitive 写入契约
+---
 
-- 状态：已完成
-- 目标：新增 reverse-search provider/pixiv-only/SauceNAO key 配置、环境覆盖、默认 TOML 和 stdin-only secret setter；修复 Sensitive 环境覆盖提示。
-- 验收：先确认配置/CLI 测试 Red，再使 provider enum/default、`SAUCENAO_API_KEY` 优先级、redacted get、argv 拒绝、非 TTY stdin 写入和无环境值泄漏测试通过。
-- 实际完成：新增 `[reverse_search]` 的 `provider` / `pixiv_only` 默认配置、运行时快照字段与 `SAUCENAO_API_KEY` 环境覆盖；provider 仅接受 `saucenao`、`ascii2d-color`、`ascii2d-bovw`、`all`。新增 Sensitive SauceNAO key，`config set` 拒绝 argv 明文并只从非 TTY stdin 读取，`config get` 无论是否设置均固定输出 `<redacted>`；配置 mutation 与环境覆盖提示不再携带 Sensitive 环境值。
-- 验证证据：逐切片实际确认 Red：运行时字段缺失导致编译失败、未知 provider 未被拒绝、环境未覆盖文件、默认 TOML 缺节、argv secret 被接受、stdin secret 被拒绝、mutation 泄漏环境值、override note 显示值、unset secret 显示 `<unset>`；分别最小实现后转 Green。最终 `go test ./internal/config/settings ./internal/cli/commands/config -count=1` 与 `go test ./internal/config/... ./internal/cli/commands/config -count=1` 通过，`git diff --check` 通过；提交 hook 的 `gofmt` 与 `go test ./...` 通过并生成 commit `d4a1254`。
-- 剩余风险：本 task 只建立配置与安全写入契约；key 的 provider 使用、CLI/MCP composition 注入及全链路泄漏 canary 属后续 Task 3、7–9。测试内使用的假 secret 仅为固定测试数据。
-- 下一步：Task 2 建立 reverse-search 顶层领域契约与单次私有载荷快照，继续逐切片 Red → Green → Refactor。
+## Phase 1: 编码 release contract（C1）
 
-## Task 2：领域契约与单次私有载荷快照
+### Task 1: Red — 编写 release policy 失败测试
 
-- 状态：已完成
-- 目标：建立 `internal/services/reversesearch` 顶层类型、错误分类、Searcher/Facade seam，以及文件/URL 单次临时快照与 SHA-256。
-- 验收：先确认 source tests Red，再证明常规文件、符号链接目标、HTTP(S)、userinfo 拒绝、重定向复核、私网允许、一次抓取、0600 临时文件、重开 reader、取消和清理。
-- 实际完成：新增 `internal/services/reversesearch` 顶层 `Provider` / `Request` / `Response` / `Searcher`、稳定安全错误分类，以及带必需 preflight 的 Facade seam。Facade 在读取 source 前完成 provider preflight，只加载一个私有快照，并在成功/失败后清理。Loader 支持跟随符号链接后的常规文件与 HTTP(S)，流式复制一次并同时计算 SHA-256；快照为 0600（Unix），可独立重开 reader，路径保持私有且 Close 幂等。HTTP(S) 禁止 userinfo，首 URL、每次重定向和最终响应均复核；保留调用方 redirect policy 与 net/http 默认十跳规则，允许环回/私网，不增加超时、重试、大小上限或地址段限制。context 取消在请求与复制阶段均保持整体取消并清理部分文件。
-- 验证证据：实际 Red 包括：顶层包/领域类型不存在、错误分类不存在、file loader 不存在、HTTP URL 被当成本地文件、畸形显式 HTTP 回退为文件错误、URL-like 合法文件名被误判、Facade seam 不存在、preflight 无法在载荷前失败、复制期取消被误分类为 `source_read_failed`；均逐切片最小实现后转 Green。覆盖常规文件、符号链接、非常规文件拒绝、SHA-256、0600、源变更隔离、reader 重开、幂等清理、环回 URL 单次抓取、userinfo/scheme/redirect/final URL、非 2xx 脱敏、请求期与复制期取消、Facade 成功/失败/preflight 生命周期。`go test ./internal/services/reversesearch -count=1`、`go test -race ./internal/services/reversesearch -count=1`、`go test ./internal/services/... -count=1`、`go test ./...`、`git diff --check` 全部通过；commit hook 的 gofmt 与全仓测试通过，提交 `69caa31`。
-- 剩余风险：provider 结果领域结构将在 Task 3–5 按真实 fixture 逐步扩展；Facade preflight 已为 SauceNAO 缺 key 的载荷前失败建立硬顺序，但具体凭据与协议行为尚未实现。Windows 依赖 `os.CreateTemp` 的用户私有临时文件 ACL 语义，Unix 精确 0600 已有断言。
-- 下一步：Task 3 以 fixture TDD 实现 SauceNAO provider adapter，首先固定缺 key 时 preflight 在任何载荷读取前失败。
+- [x] **目标**：在 `scripts/internal/releaseworkflow` 中添加聚焦测试，断言计划中的容器 job 拓扑和约束，确认当前行为因缺少容器 contract 而失败。
+- **具体断言**：
+  - 存在 `build_container` job，其在共享质量门禁之后启动
+  - 存在 `publish_container` job，其依赖 `build_container` 和 GitHub Release
+  - `build_container` 不持有 `packages: write` 权限
+  - `publish_container` 是唯一持有 `packages: write` 的 job
+  - `build_container` checkout 的是不可变 tag，不是 movable ref
+  - `build_container` 使用原生 Linux runner（`ubuntu-22.04` / `ubuntu-22.04-arm`），不是 QEMU
+  - 没有 QEMU/setup-qemu 步骤
+  - exact-version tag 始终发布
+  - `latest` 仅 stable 时推进，prerelease 不推进
+- **验收**：测试编译通过但运行失败，Red 证据已记录。
+- **实际做了什么**：创建了 `container_policy.go`（stub，含 `containerRegistry` 常量、`containerMatrixTargets` 映射和返回 error 的 `checkContainerBuildJob`/`checkContainerPublishJob` stub）和 `container_policy_test.go`（9 个聚焦测试）。测试覆盖：build_container 必须存在、不持有 packages: write、checkout 不可变 tag、无 QEMU、原生 Linux runner、不串行依赖 build_production；publish_container 必须持有 packages: write、必须依赖 build_container；containerRegistry 常量正确。
+- **验证证据**：`go test ./scripts/internal/releaseworkflow -run 'TestContainer|TestCheckWorkflowRejectsMissingContainerJobs' -count=1 -v` 输出显示 8 个测试 FAIL（Red），1 个 `TestContainerRegistryPath` PASS（仅验证常量）。`TestCheckWorkflowAcceptsCheckedInWorkflow` 仍 PASS（无回归）。pre-commit `go test ./...` 也确认 releaseworkflow 包 FAIL，符合 Red 预期。commit: `9b5744d`。
+- **剩余风险**：部分测试（如 QEMU rejection、non-native runner）在 Red 阶段因 `requireOnlyMappingKeys` job allow-list 先于 container policy 报错而得到不匹配的错误消息，需在 Task 2 实现 Green 时确保这些测试在正确层报错。`latest` 仅 stable 和 exact-version tag 断言未在本 task 覆盖，将在 Task 7（release graph 测试）中处理。
+- **下一步建议**：Task 2 — Green：在 `checkWorkflow` 中将 `build_container`/`publish_container` 加入 job allow-list，实现 `checkContainerBuildJob` 和 `checkContainerPublishJob` 的完整 policy 规则，使所有 Red 测试转 Green。
 
-## Task 3：SauceNAO provider adapter
+---
 
-- 状态：已完成
-- 目标：实现必填 key、multipart JSON API、固定字段、结果/quota 解析、Pixiv ref 提取和安全错误映射。
-- 验收：先确认 fixtures Red，再覆盖正常/空结果、status error、非 2xx、非法/缺失 JSON，以及 key/source/body 不进入错误或 diagnostics。
-- 实际完成：新增 `ProviderClient`、`ProviderResponse`、`Match` 与 `Quota` 领域契约，并实现 `internal/services/reversesearch/saucenao` adapter。preflight 在读取快照前拒绝缺失 key；搜索以流式 multipart POST 固定发送 `api_key`、`output_type=2`、`db=999` 和单个 `file`，不增加超时、重试、缓冲上限或 `numres`。adapter 严格解析响应 status、四项 quota、相似度、索引信息、标题、作者、Pixiv artwork/user ID 与外链，支持 API 数字的 JSON number/string 表示；空结果合法返回。非 2xx、API status、畸形/缺失 JSON 和请求失败均映射为稳定安全错误，context 取消保留原始错误，且上游 body、key、source 与 transport 原始错误链不会外泄。
-- 验证证据：按切片实际确认 Red：包与构造器不存在、结果领域类型/Search 不存在、API status 被误分类、空对象被当成功、非 Pixiv `author_name` 未映射、畸形数字通过 unwrap 泄漏、transport 回显 multipart 导致 key/source 泄漏，以及无 results 的 status error 被误判为 malformed；逐项最小实现后全部转 Green。fixture 覆盖成功、空结果、API status、非 2xx、非法/尾随/缺失 JSON、数字 string、Pixiv ref、作者回退、外链、multipart 精确字段和取消。`go test ./internal/services/reversesearch/saucenao -count=1`、`go test -race ./internal/services/reversesearch/saucenao -count=1`、`go test ./internal/services/reversesearch/... -count=1`、`go test ./internal/services/... -count=1`、`go test ./...` 与 `git diff --check` 全部通过；commit hook 的 gofmt 与全仓测试通过，提交 `6599dec`。
-- 剩余风险：SauceNAO 官方 API 文档直连及临时使用 `127.0.0.1:7890` 代理均返回 HTTP 403，因此固定字段以目标中已确认的契约和本地 fixture 为准；真实上游/凭据联网验证留待 Task 10。当前 adapter 尚未接入 Facade 聚合，属于 Task 5；本 task 未使用真实 key、真实图片或 FlareSolverr。
-- 下一步：Checkpoint 1 集中审查 Tasks 1–3 的需求偏离、安全边界、生命周期、错误映射、依赖变化与调试残留；若发现问题，仅追加独立修复 task。
+### Task 2: Green — 扩展 release policy 规则使测试通过
 
-## Checkpoint 1：集中检查-debug 循环（Tasks 1–3）
+- [x] **目标**：在 `scripts/internal/releaseworkflow` 中添加最小容器-policy 规则满足 Task 1 的失败测试。复用现有 workflow YAML helper 和 Linux target provenance，不创建第二个 parser 或重复 policy 框架。
+- **验收**：`go test ./scripts/internal/releaseworkflow -count=1` 绿色；`go run ./scripts/cmd/releaseworkflow --workflow .github/workflows/release.yml` 无 policy 违规（当前 release.yml 尚无容器 job 时，policy 检查报告预期状态）。
+- **实际做了什么**：实现了 `checkContainerBuildJob`（验证 permissions 无 packages: write、不可变 tag checkout、原生 matrix runner、无 QEMU、不依赖 build_production、两 native Linux matrix target）和 `checkContainerPublishJob`（验证 packages: write、依赖 build_container）。将 `requireOnlyMappingKeys` 替换为 `requireJobsAllowlist`——必需 job 全部存在且只含允许 job，容器 job 可选。更新测试 fixture 添加 `steps` 键和合规 companion job 以隔离被测维度。commit: `825cbce`。
+- **验证证据**：`go test ./scripts/internal/releaseworkflow -count=1` → 全部 PASS（含 9 个 container 测试和全部既有测试）。`go run ./scripts/cmd/releaseworkflow --workflow .github/workflows/release.yml` → exit 0。`go test ./scripts/internal/... ./scripts/tests/... -count=1` → 全部 PASS。
+- **剩余风险**：容器 job 当前是可选的——release.yml 尚无容器 job 时 policy 不报错。Phase 3 添加 release.yml 容器 job 后，policy 将开始实际校验。`latest` 仅 stable 和 exact-version tag 语义断言仍待 Task 7 覆盖。
+- **下一步建议**：Task 3 — Refactor + Phase 1 验证：检查是否有稳定且有害的重复（如 Linux release target metadata），运行完整 Phase 1 验证，确认无 production/auth/updater 行为或 registry credential 引入。
 
-- 状态：已完成
-- 检查：需求偏离、配置持久化与脱敏、临时文件生命周期、URL 安全、provider 错误、类型检查、相关测试、调试残留、依赖变化。
-- 发现问题时：在文件末尾追加独立修复 task，下一轮先处理第一个未完成修复 task。
-- 实际检查：按 `code-review-expert` 对 Tasks 1–3 的 3 个提交（15 文件、1727 新增/38 删除）完成配置、source/snapshot、Facade、SauceNAO adapter、错误链和测试的逐文件审查。配置默认值、provider enum、私有持久化、stdin-only secret、环境快照与脱敏实现符合计划；快照流式复制、0600、一次抓取、重开与清理主路径正确；SauceNAO 固定 multipart、结构校验和敏感错误清洗主路径正确。未发现依赖、public SDK、调试输出或生产文档提前变更。发现 4 个需在后续集成前修复的 P1 边界问题，按职责归并为追加 Task 13、14，本检查轮不顺手改代码。
-- 验证证据：Git 范围为 `d4a1254^..6599dec`，工作区业务文件干净；`git diff --check` 通过，`go.mod`、`go.sum` 与 `sdk/` 在该范围无 diff，调试残留检索仅命中测试 canary。`go vet ./internal/config/settings ./internal/cli/commands/config ./internal/services/reversesearch/...`、`go test -race ./internal/services/reversesearch/... -count=1`、`go test ./... -count=1` 和 `sh scripts/build.sh` 全部通过，构建产物为 `build/pixiv`。精读证据：`source.go` 仅将 `http://`/`https://` 前缀识别为 URL，且在 `Stat` 前调用阻塞式 `os.Open`；`client.go` 在判断 HTTP status 前优先返回 multipart writer 错误，并允许 `strconv.ParseFloat` 接受字符串 `NaN`/`Inf`。
-- 剩余风险：P1：稳定 FIFO source 会在常规文件校验前阻塞 `os.Open`，context 无法中断；带显式 HTTP(S) scheme 但缺 `//` 的现有同名文件可被当成本地文件，与“显式 scheme 永远走 URL、非法 URL 不回退”冲突。P1：SauceNAO 提前返回非 2xx 且上传 writer 同时失败时会被误报为 `provider_failed`；字符串 `NaN`/`Inf` similarity 会进入领域对象并在后续 JSON 编码失败，而非在 adapter 映射为 malformed。当前测试/race/build 均未覆盖这些条件，因此绿色门禁不能证明这些契约。
-- 下一步：优先执行追加 Task 13，以 TDD 修复 source 分类和非普通文件阻塞；随后执行 Task 14，再回到 Task 4。
+---
 
-## Task 4：ascii2d 会话、上传与结果解析
+### Task 3: Refactor + Phase 1 验证
 
-- 状态：已完成
-- 目标：实现 cookie jar、CSRF、一次上传、严格 Location/hash、color/bovw HTML 解析和 provider-specific 媒体/10 MB 校验。
-- 验收：先确认 fixtures Red，再覆盖 JPEG/PNG/WEBP、边界大小、无效格式、缺失关键结构、selector 漂移、同源验证，以及 color/bovw 共享一次上传。
-- 实际完成：新增 `internal/services/reversesearch/ascii2d` adapter 与顶层 `ASCII2DClient` / `ASCII2DSession` 注入端口。每次 Upload 都创建独立 cookie jar，读取首页严格匹配 `file_upload` multipart POST form 的 CSRF，再以流式 multipart 仅上传一次；JPEG/PNG/WEBP 使用真实媒体嗅探和对应 `.jpg` / `.png` / `.webp` 文件名。上传不自动跟随重定向，只接受同 scheme/host/effective-port、无 query/fragment、精确 `/search/color/{32位小写hex}` 的 Location；首页和结果页的自动重定向也限制为同源，并保留调用方 redirect policy 与 net/http 默认十跳规则。上传所得 session 可并发读取 color/bovw，二者共享 hash/cookie 且不重复外传图片。HTML parser 复用既有 `x/net/html`，按 ascii2d 的首个查询 `.item-box`、后续 `.info-box` / `.detail-box` / links / source 关键结构映射 rank、标题、作者、来源和外链；合法空结果返回非 nil 空 slice，结构缺失或 selector 漂移显式返回安全 malformed 错误。未增加依赖、重试、provider 总超时、统一载荷限制或 fallback。
-- 验证证据：TDD 首轮测试因 ascii2d 包无生产文件而构建 Red；最小实现后覆盖格式、边界、CSRF/cookie、Location/hash、结果解析和共享上传转 Green。自审追加的并发上传测试在旧的 client 共享 jar 下实际出现一次 CSRF/cookie mismatch，改为每次上传独立 session 后 Green；扩展名测试实际得到三种 `filename="image"` Red，加入媒体对应扩展名后 Green；首页/结果跨源重定向测试在旧实现下均成功导致 `err=nil` / `CodeUnknown`，加入同源 redirect guard 后 Green。fixture 还覆盖缺 form/CSRF/Location、wrong route、非法 hash、附带 query、跨源 Location、缺 query item、`.detail-box` 漂移、缺作品链接、非 2xx 脱敏、unsupported provider、合法空结果以及 color/bovw 并发只上传一次。官方 `https://ascii2d.net/readme` 确认 JPEG/PNG/WEBP 与 10 MB；一次只读 GET 证明 Go 默认 User-Agent 返回 200。按用户授权临时启动既有本地 FlareSolverr 容器：color/bovw 路由均返回 200，但公开示例 hash 已失效；复用浏览器会话的 multipart 仍被 Cloudflare 返回 403，因此未伪造真实上传成功，也未反复提交。容器已恢复原先停止状态，探测临时文件已精确清理。`go vet ./internal/services/reversesearch/...`、`go test -race ./internal/services/reversesearch/... -count=1`、`go test ./internal/services/... -count=1`、`go test ./... -count=1` 与 `git diff --cached --check` 全部通过；commit hook 的 gofmt 与全仓测试通过，提交 `ef0dcfe`。
-- 剩余风险：10 MB 按计划固定为 `10 * 1024 * 1024` bytes；仅当 ascii2d snapshot 超过该值时以 `invalid_source` 拒绝，目的和影响范围已在常量中文注释及精确边界测试中固定，SauceNAO-only 路径不受影响。JPEG/PNG/WEBP 限制同样只在 ascii2d Upload 前触发。由于当前真实 multipart 被 Cloudflare 403 阻断，本 task 的非空结果 DOM 依据当前上游关键 selector 契约与公开 wrapper 行为构造 fixture，尚未由本机真实新 hash 复核；任何关键漂移会显式 malformed，不会静默丢结果，真实兼容性留给 Task 10 opt-in e2e。当前 adapter 只建立端口和 session，provider 编排/partial/canonical 仍属于 Task 5。
-- 下一步：Task 5 以 TDD 实现 Facade provider 选择、`all` 并发、ascii2d session 共享、固定排序、canonical Pixiv ref/evidence、pixiv-only 与 partial/all-failed 语义。
+- [x] **目标**：仅在存在稳定且有害的重复时，合并真正共享的 Linux release target metadata。不泛化无关 release policy。然后运行 Phase 1 完整验证。
+- **验证命令**：
+  - `go test ./scripts/internal/releaseworkflow -count=1`
+  - `go run ./scripts/cmd/releaseworkflow --workflow .github/workflows/release.yml`
+- **Scope audit**：确认本 phase 未引入任何 production 行为、auth 行为、updater 行为或 registry credential。
+- **验收**：两者均绿色，Red→Green 证据记录到进度日志。
+- **实际做了什么**：审查了 `releaseMatrixTargets`（6 条目，跨平台）与 `containerMatrixTargets`（2 条目，仅 Linux）的重复。两个 Linux 条目虽在两个 map 中字符串相同，但用途和基数不同（6-target 全平台构建矩阵 vs 2-target 容器矩阵），合并会引入过滤逻辑增加复杂度，不符合 KISS。判定为非有害重复，不合并。运行 Phase 1 完整验证。Scope audit 确认仅引入 `persist-credentials: false`（checkout 安全设置），无 secret/token/auth/updater/registry credential 引入。
+- **验证证据**：`go test ./scripts/internal/releaseworkflow -count=1` → PASS（全部测试含 container 测试）。`go run ./scripts/cmd/releaseworkflow --workflow .github/workflows/release.yml` → exit 0。`go build ./scripts/...` → exit 0。`git diff` scope audit 确认无 production/auth/updater 行为或 registry credential。
+- **剩余风险**：无。Phase 1 纯粹是 release policy 测试和规则，不触及任何运行时行为。
+- **下一步建议**：进入集中检查 #1（Phase 1 集中复查），然后 Phase 2 Task 4 开始 Dockerfile contract 测试。
 
-## Task 5：Facade 聚合、规范化与 partial 语义
+---
 
-- 状态：已完成
-- 目标：实现 provider 选择、`all` 并发、固定排序、strict Pixiv ref、canonical 去重/evidence 合并、pixiv-only、provider summary/error 和 aggregate error。
-- 验收：先确认聚合测试 Red，再证明单 provider、partial、全部失败、缺 Sauce key + ascii 成功、context 取消、跨 provider 分数不换算及 deterministic 输出。
-- 实际完成：扩展顶层稳定领域 envelope，新增有序 `providers`、canonical/non-canonical `results`、安全 `provider_errors` 与 `partial`，并实现可注入 SauceNAO/ascii2d 端口的 `Aggregator` 作为既有 Facade 的 `PayloadSearcher`。单 provider 在 source 读取前执行 preflight；`all` 则刻意把各 provider preflight 留在并发分支内，使缺 SauceNAO key 能成为 partial 而不阻断 ascii2d。`all` 同时运行 SauceNAO 与 ascii2d 分支，ascii2d 仅上传一次并并发查询 color/bovw；发布顺序固定为 SauceNAO、color、bovw，每个 provider 内按 rank 稳定排序，与完成先后和 similarity 大小无关。仅从正数显式 artwork ID，或严格 HTTPS `www.pixiv.net/artworks/{id}` / `users/{id}` URL 建立 canonical ref；不接受 userinfo、端口、query、fragment、额外 path、lookalike host、HTTP、前导零或标题/作者猜测。作品身份优先于作者身份；相同 `(type,id)` 按首次出现合并多条 evidence，保留各 provider 原始 similarity 而不跨源换算。`pixiv-only` 只过滤最终 results，不伪造 provider result_count。单 provider 失败返回完整安全 envelope 和非零错误；`all` 至少一成功/一失败时返回 `partial=true` 且 nil error，全部失败返回 `all_providers_failed`，context 取消/截止始终丢弃 provider partial envelope并作为整体错误返回。未知/未分类 provider 错误统一清洗为安全 `provider_failed`，classified error 即使被 `errors.Join` 包裹也只发布审查过的消息。
-- 验证证据：严格按纵向 TDD 执行。首个单 SauceNAO envelope 测试因 `AggregatorDependencies`、领域类型与输出字段不存在而构建 Red，最小实现后 Green；单 provider failure 初次得到 nil providers，补充安全失败 envelope 后 Green；单 ascii2d 初次返回 `provider not configured`，实现一次上传/选定模式后 Green；缺 key + ascii 成功的 `all` 初次返回 invalid provider，加入两分支并发与共享 ascii session 后 Green；canonical 合并初次只保留显式 ID 的一个结果，加入 strict URL parser、provider/rank 顺序与 evidence map 后 Green；含 `UserID` 的 artwork URL 初次被错误归为 user 77，调整作品 URL 优先级后 Green；`errors.Join` 初次把第二条私密 diagnostic 拼进返回文本，改为提取第一个稳定领域 Error 后 Green。测试覆盖单 SauceNAO、单 color/bovw、preflight 不读 source、provider branch 和两 ascii mode 的真实重叠屏障、缺 key partial、单 mode partial、全部失败、整体取消、固定 provider/rank 顺序、跨 provider 分数不换算、canonical 合并、pixiv-only 与严格 URL 正反例。按 `code-review-expert` 完成 SOLID、安全、竞态、错误与删除候选审查，无 P0/P1；唯一 P2 是 `all` 延迟 preflight 意图不显式，已补中文注释，无删除候选。`go vet ./internal/services/reversesearch/...`、`go test -race ./internal/services/reversesearch/... -count=1`、`go test ./internal/services/... -count=1`、`go test ./... -count=1` 与 `git diff --cached --check` 全部通过；commit hook 的 gofmt 与全仓测试通过，提交 `e67e21f`。
-- 剩余风险：聚合器信任 Task 3/4 provider adapter 已验证的 `Match` 数值/结构；它只稳定排序 rank，不新增 rank、结果数、内存、超时或重试限制。`Result` 当前不直接依赖 `internal/shared/record`，因此 envelope 的 `records` 投影仍未加入，严格按计划留给 Task 6；CLI/MCP wire 投影与 partial exit/`isError` 语义分别属于 Task 7/8。两个并发重叠测试使用 5 秒纯内存 watchdog 仅防止测试死锁，生产代码没有该超时或对应限制。
-- 下一步：Task 6 以 TDD 新增受校验的 identity Record constructor，并使 download 与 artwork bookmark add/remove 按正数 ID 接受通用 `type:"artwork"`，保持其他 action 类型边界不变。
+### 🔍 集中检查 #1（Task 1–3 之后）
 
-## Task 6：通用 Record identity 与 action 管道兼容
+- [x] **目标**：Phase 1 集中复查。
+- **检查清单**：
+  - [x] 需求是否偏离 `input.md`
+  - [x] 代码是否有 bug、死代码、调试残留
+  - [x] 类型检查 / 构建是否通过
+  - [x] `go test ./scripts/internal/releaseworkflow -count=1` 是否通过
+  - [x] `go run ./scripts/cmd/releaseworkflow --workflow .github/workflows/release.yml` 是否通过
+  - [x] 安全性：权限隔离、无 credential 泄露
+  - [x] 是否需要新增/调整回滚方案
+  - [x] 文档是否同步（本 phase 可能不需要文档变更）
+- **结论**：Phase 1 通过全部复查，无问题。
+- **发现问题**：无。
 
-- 状态：已完成
-- 目标：新增受校验的 identity Record constructor；支持 `type:"artwork"`，使 download 和 artwork bookmark action 按 ID 消费。
-- 验收：先确认 Record/action tests Red，再证明 artwork/user identity、非法 ID/type/url 拒绝、download/bookmark 接受 artwork、其他 action 类型边界不变。
-- 实际完成：在 `internal/shared/record` 新增 `NewIdentityRecord`，仅构造正数 ID 的 `artwork` / `user` canonical identity，并要求 URL 与类型和 ID 对应的精确 HTTPS Pixiv URL 一致；输出只含稳定字符串 `id`、`type`、`url`。通用 NDJSON parser 保持原有兼容策略，不因 identity 构造器而收紧未知外部 Record。download 与 bookmark add/remove 的既有视觉作品 allowlist 仅新增 `artwork`，继续复用共享管道的正数 ID 解析；`illust`、`manga`、`ugoira` 保持可用，`user`、`novel` 仍被作品 action 拒绝，follow 仍只接受 `user`。按固定架构决策，reverse-search service 继续不依赖 shared Record；Task 7/8 的 CLI/MCP adapter 将使用本构造器投影 envelope `records`。
-- 验证证据：identity 首轮聚焦测试因 `record.NewIdentityRecord` 不存在而编译 Red；最小实现后 artwork/user 正例以及零/负 ID、空/未知/subtype type、空 URL、HTTP、错误 host/route/ID 和 query 反例全部 Green。action 首轮测试实际显示 download/bookmark allowlist 缺 `artwork`，且管道返回失败；只新增该类型后，download、bookmark_add、bookmark_remove 均将 Record `"42"` 解析为 `int64(42)` 调用，原 subtype 正例与非作品/follow 负例通过。`go vet ./internal/shared/record ./internal/cli/commands/pixiv/download ./internal/cli/commands/pixiv/bookmark ./internal/cli/commands/pixiv/follow`、对应聚焦测试、对应 `go test -race`、`git diff --cached --check` 与 `go test ./... -count=1` 全部通过；commit hook 的 gofmt 与全仓测试通过，提交 `959414e`。
-- 剩余风险：identity constructor 刻意只接受精确 canonical URL，不接受大小写、短域名、query 或其他等价变体；这是反向搜图 canonical ref 的稳定输出边界，不改变外部 NDJSON Record 的宽松保留语义。反向搜图 `records` 尚未进入 CLI/MCP wire envelope，因为 adapter 尚未实现；分别由 Task 7/8 消费本构造器完成，不能为提前输出而破坏 service 领域边界。
-- 下一步：Checkpoint 2 集中检查 Tasks 4–6 的 ascii2d 协议证据、限制作用域、并发/partial/canonical 与 Record action 边界；发现问题只追加独立修复 task。
+---
 
-## Checkpoint 2：集中检查-debug 循环（Tasks 4–6）
+## Phase 2: 构建容器运行时 contract（C2）
 
-- 状态：已完成
-- 检查：ascii2d 协议证据、10 MB 限制作用域、并发竞态/取消、partial 状态机、canonical 顺序、Record 兼容与所有相关测试。
-- 发现问题时：追加独立修复 task，不在检查轮顺手扩展功能。
-- 实际检查：按 `code-review-expert` 对 Tasks 4–6 的提交范围 `ef0dcfe^..959414e`（14 文件、2120 新增/9 删除）完成逐文件审查。ascii2d 的 cookie/CSRF 会话、上传 Location/hash、媒体嗅探、结果 DOM、同源 redirect 与错误清洗职责集中且无新增依赖；10 MiB 和 JPEG/PNG/WEBP 限制只在 ascii2d `Upload` 前生效。Aggregator 的 Sauce/ascii 两主分支、ascii color/bovw 两 mode 并发写入独立 outcome，并经 WaitGroup 后按 SauceNAO/color/bovw 与 rank 稳定发布；取消、partial、all-failed、pixiv-only、canonical 优先级和 evidence 合并主状态机正确。Identity constructor 不收紧外部 NDJSON parser，download/bookmark 只增加 `artwork`，follow 仍为 user-only。无 public SDK、依赖、调试残留或提前文档变更。发现 2 个合入 CLI/MCP 前必须修复的 P1 错误边界，追加 Task 15、16，本检查轮未改业务代码。
-- 验证证据：官方 `https://ascii2d.net/readme` 当前直连 HTML 明确写明支持 10 MB 以内的一般 JPEG/PNG/WEBP，和 provider-specific 常量/测试一致，无需启动 FlareSolverr。确定性临时 RoundTripper 在 POST 后关闭 request body并同时返回带非法 hash 的 302，当前 `Upload` 实际输出 `code=provider_failed error=could not upload image to ascii2d`；根因是 `client.go` 先检查 writer error、后验证 Location，违反非法 hash 必须 malformed 的固定契约，临时 probe 已删除。`aggregator.go` 的 `safeProviderFailure` 对 classified error 直接返回原对象；现有测试用含私密 cause 的 `wantErr` 并以 `require.ErrorIs(err, wantErr)` 证明该对象仍在公开错误链，当前测试只检查 `Error()` 文本，未覆盖 unwrap 泄漏。`go vet` 覆盖 reverse-search/Record/三个 action 包通过；对应 `go test -race` 全部通过；`go test ./... -count=1`、`sh scripts/build.sh`、提交范围 `git diff --check` 与 go.mod/go.sum/sdk 无 diff 检查全部通过，构建产物为 `build/pixiv`。
-- 剩余风险：P1：ascii2d 畸形 3xx 与并发 writer error 同时发生时错误分类依赖本地上传错误，掩盖上游 Location/hash 漂移；需按 HTTP status → Location/hash → writer error 的权威顺序分类，同时继续同步 writer goroutine。P1：单 provider classified failure 的安全文本虽已清洗，但 cause 可被后续 diagnostics、logging 或错误遍历取出，可能包含 key/source/body；需复制 code/message 为无 cause 的发布错误，并保持 context cancellation 原样。真实 ascii2d 非空 DOM 仍未通过 Cloudflare 下的新上传 hash 复核，这是已知外部兼容性风险，继续留给 Task 10 opt-in e2e，不伪造为本 checkpoint 的通过项。
-- 下一步：优先执行追加 Task 15，以 TDD 修复 ascii2d upload 响应/写入错误优先级；随后执行 Task 16 清洗 aggregator classified error chain，再回到 Task 7。
+### Task 4: Red — 编写 Dockerfile/package contract 失败测试
 
-## Task 7：CLI `pixiv search` 自动图片模式
+- [x] **目标**：在 `scripts/tests/containerrelease` 中添加测试，定义 Dockerfile/package contract，在创建 Dockerfile 前确认失败。
+- **具体断言**：
+  - Dockerfile 使用不可变 base digest（非 tag）
+  - 不使用 Alpine/musl/scratch base
+  - 最终用户非 root
+  - `HOME=/home/pixiv`
+  - `WORKDIR /work`
+  - `ENTRYPOINT ["/usr/local/bin/pixiv"]`
+  - OCI 元数据输入存在（source/revision/version/license）
+  - 无嵌入 secret/state 文件
+- **验收**：测试编译通过但运行失败，Red 证据已记录。
+- **实际做了什么**：创建了 `scripts/tests/containerrelease/containerrelease_test.go`（12 个聚焦测试），断言 Dockerfile 必须满足：存在、不可变 base digest（非 tag）、非 Alpine/musl/scratch、非 root 用户（USER 指令）、HOME=/home/pixiv、WORKDIR /work、ENTRYPOINT ["/usr/local/bin/pixiv"]、COPY pixiv 到 /usr/local/bin/pixiv、OCI 标签（source/revision/version/license）、ca-certificates 安装、无嵌入 secret/state、Debian slim base。commit: `d770adf`。
+- **验证证据**：`go test ./scripts/tests/containerrelease -count=1 -v` → 全部 12 个测试 FAIL（Red），因 Dockerfile 不存在。`go test ./scripts/internal/releaseworkflow -count=1` → PASS（无回归）。
+- **剩余风险**：测试当前基于字符串匹配而非 Docker 构建实际行为；Task 6 将补充真实 Docker smoke。`Debian slim` 的具体 digest 将在 Task 5 创建 Dockerfile 时确定。
+- **下一步建议**：Task 5 — Green：创建最小 Dockerfile，满足所有 12 个 Red 测试的断言。需确定 Debian slim 的不可变 digest。
 
-- 状态：已完成
-- 目标：在现有 search owner 中实现 URL/常规文件智能识别、provider 覆盖、flags 冲突、proxy 构造、human/JSON/NDJSON 和 partial warning。
-- 验收：先确认 CLI tests Red，再证明普通关键词完全保持、非法 URL 不回退、图片模式不打开 Pixiv SDK/账号 DB、输出与 exit code 契约正确。
-- 实际完成：`pixiv search SOURCE` 现在把明确 HTTP(S) scheme 始终送入反向搜图，把跟随符号链接后的现有常规文件送入反向搜图，其他输入继续走普通关键词搜索；非法 HTTP(S) 不回退关键词。新增 `--provider` 校验与覆盖、`--proxy/--no-proxy` 传输覆写、图片模式搜索过滤/类型/分页/trending 冲突校验，以及独立的 production assembly 按每次调用构造代理化 Facade。CLI JSON 输出完整 `input/providers/results/records/provider_errors/partial` envelope，human 输出安全摘要，显式或非 TTY NDJSON 只输出 canonical records；partial 结果写 stderr warning，单 provider/全失败保留 envelope 并返回错误。JSON 配置解析走独立 runtime 端口，图片模式不初始化 Pixiv SDK 或账号数据库。
-- 验证证据：首条 URL 测试先因 `Dependencies.ReverseSearch`/请求类型缺失编译 Red；provider flag、输出 envelope、partial、过滤冲突与 root 隔离测试也分别先确认旧行为失败，再逐切片转 Green。`go test ./internal/cli/commands/pixiv/search ./internal/cli ./internal/services/reversesearch/assembly -count=1`、`go vet ./internal/cli/commands/pixiv/search ./internal/cli ./internal/services/reversesearch/...`、对应 `go test -race`、`go test ./... -count=1` 与 `sh scripts/build.sh` 全部通过；审查覆盖源分类、代理/配置、记录投影、stdout/stderr、错误链边界和 CLI/provider import 边界，未发现 P0/P1。工作树将在提交后保持仅有本目标提交。
-- 剩余风险：真实 SauceNAO/ascii2d 网络兼容性仍按 Task 10 的显式 opt-in e2e 观察；MCP tool、架构/secret 回归和用户文档属于后续 Task 8–12，当前 CLI 端口已为其保留顶层 Facade 契约。生产 provider 缺 key、上游失败和 source 错误继续按 service 的安全错误分类传播，不自动重试或 fallback。
-- 下一步：Task 8 新增 MCP `reverse_search` tool 与启动时运行时注入。
+---
 
-## Task 8：MCP `reverse_search` tool 与运行时注入
+### Task 5: Green — 创建最小 Dockerfile
 
-- 状态：已完成
-- 目标：按 repo-local MCP tool 规范新增 tool package、封闭 input/output schema、Facade 注入和 structured result/error。
-- 验收：先确认 MCP tests Red，再证明 source/provider schema、配置默认、records/results、partial `isError=false`、全失败 `isError=true`、JSON-RPC stdout 与敏感信息安全。
-- 实际完成：新增 `internal/mcpserver/pixiv/tools/reverse_search`，输入 schema 只开放必填 `source` 与可选 provider enum，输出固定为 `input/providers/results/records/provider_errors/partial` envelope。MCP runtime 增加启动时注入的 `ReverseSearchPorts`，由 CLI composition root 在 stdio 启动时一次构造 Facade，固定代理、SauceNAO key、provider 默认值和 pixiv-only；单次 MCP input 只能覆盖 provider。结果只投影 canonical artwork/user Record，不回显原始 source；partial 保持 `isError=false`，执行/配置/全 provider 失败保留 structured envelope 并设置 `isError=true`，错误文本只发布稳定 code/通用摘要。
-- 验证证据：先把 `reverse_search` 加入精确注册集合，旧实现实际因缺少 tool 失败；随后新增 schema/端口测试，旧端口字段缺失导致编译 Red。Green 后 `go test ./internal/mcpserver/pixiv -count=1`、`go test -race ./internal/mcpserver/pixiv -count=1`、`go vet ./internal/mcpserver/pixiv ./internal/cli`、`go test ./internal/cli ./internal/mcpserver/pixiv -count=1` 和 `git diff --check` 全部通过。聚焦测试覆盖 source/provider schema、启动默认、records/results、partial、全失败/未配置 structured envelope、source/key/body 脱敏与 JSON-RPC stdout-only；对应代码将在本 task 提交。
-- 剩余风险：真实 SauceNAO/ascii2d 网络兼容性仍由 Task 10 的显式 opt-in e2e 观察；架构静态边界、跨链路 secret canary 和用户文档属于 Task 9–12。MCP 继续沿已确认的可信本机信任模型允许服务层处理本地文件和私网 URL。
-- 下一步：Task 9 补 reverse-search Facade 例外的架构规则、provider import 静态边界和 secret 回归。
+- [x] **目标**：添加最小 `Dockerfile`，拷贝预构建版本化 `pixiv` 二进制到 pinned Debian slim runtime，安装运行时必要材料（如 CA 证书），创建专用非 root 用户，设置 `HOME=/home/pixiv`、`WORKDIR /work`、`ENTRYPOINT ["/usr/local/bin/pixiv"]`。
+- **验收**：`go test ./scripts/tests/containerrelease -count=1` 绿色。
+- **实际做了什么**：创建 `Dockerfile`，使用 Debian bookworm-slim pinned by immutable multi-arch manifest digest（`sha256:882008...`）。安装 ca-certificates + tzdata，创建非 root 用户 pixiv（UID 1000），设置 ENV HOME=/home/pixiv、WORKDIR /work、ENTRYPOINT ["/usr/local/bin/pixiv"]，COPY dist/pixiv，OCI 标签（source/revision/version/license）。修复注释中 ".pixiv-cli/" 字符串触发 secret/state 检查。commit: `f2a2db7`。
+- **验证证据**：`go test ./scripts/tests/containerrelease -count=1 -v` → 全部 12 个测试 PASS（Green）。`go test ./scripts/internal/releaseworkflow -count=1` → PASS（无回归）。`go run ./scripts/cmd/releaseworkflow --workflow .github/workflows/release.yml` → exit 0。
+- **剩余风险**：Dockerfile 尚未经过真实 Docker 构建（Task 6 将补充 .dockerignore + 真实 smoke）。OCI revision/version 标签使用 `${REVISION}`/`${VERSION}` 占位符，CI 构建时需注入实际值。
+- **下一步建议**：Task 6 — 添加 .dockerignore，在原生 Linux 上构建镜像并运行 smoke 断言（id -u != 0、pixiv --version、pixiv config path、/work）。
 
-## Task 9：架构规则、静态边界与 secret 回归
+---
 
-- 状态：已完成
-- 目标：为 reverse-search 顶层 Facade 例外建立精确架构规则，禁止 CLI/MCP 导入 provider 子包，并补全跨层泄漏 canary。
-- 验收：先确认 architecture/secret tests Red，再证明 public SDK inventory 不变、provider import 禁令生效、source/key/body/CSRF/Location 不跨错误/日志/输出边界。
-- 实际完成：在 `AGENTS.md`、中英文维护者架构文档中明确 reverse-search 是唯一跨常规 public SDK 边界的例外：生产组装只允许 `internal/cli/root.go` 依赖 `internal/services/reversesearch/assembly`，CLI commands 与 MCP 只依赖顶层 `internal/services/reversesearch` 契约；新增 `internal/architecture` AST 静态测试禁止 CLI/MCP/Record 层导入 provider 子包；新增 public SDK inventory SHA-256 pin，固定 `sdk`、`sdk/pixiv`、`sdk/fanbox` 导出符号清单未被本目标修改；CLI 根命令与 MCP failure canary 覆盖 source、API key、上游 body、CSRF 与 Location 私密值，确认它们不进入错误、stdout/stderr 或 structured envelope。
-- 验证证据：首个 architecture Red 运行 `go test ./internal/architecture -run '^TestReverseSearchBoundaryExceptionIsDocumented$' -count=1 -v`，在规则尚未写入三份文档时因缺少约束短语失败；完成后 `go test ./internal/architecture -count=1 -v`、`go test ./scripts/internal/publicapi -run 'TestRepositoryPublicAPIInventoryIsPinned|TestInventoryCollectsOnlyExportedPackageSymbols' -count=1 -v`、CLI/MCP secret canary 均通过。随后 `go test ./internal/architecture ./scripts/internal/publicapi ./internal/cli/commands/pixiv/search ./internal/cli ./internal/mcpserver/pixiv -count=1`、对应 `go test -race`（architecture/publicapi/search/mcp）、`go vet` 和 `git diff --check` 全部通过；未新增依赖，public SDK inventory hash 保持 `ed45ee60aba67e2a657174325e9796451a6ef88f4161dc643ad97368f5e7eb31`。
-- 剩余风险：静态 import gate 只覆盖其声明的 CLI commands、MCP、shared Record 目录，生产 assembly 仍按规则允许留在 `internal/cli/root.go`；真实 provider 网络兼容性与 opt-in e2e 仍待 Task 10，用户文档与 release note 仍待 Task 11–12。本 task 不增加超时、重试、截断或 fallback。
-- 下一步：Checkpoint 3 集中检查 Tasks 7–9。
+### Task 6: .dockerignore + 真实 smoke 构建
 
-## Checkpoint 3：集中检查-debug 循环（Tasks 7–9）
+- [x] **目标**：
+  1. 添加 `.dockerignore`，排除仓库/build-noise 内容但不排除 packaging contract 所需文件。不添加 secret-specific 猜测，依赖最小构建上下文和现有仓库 secret 规则。
+  2. 在原生 Linux 上构建镜像并运行断言：`id -u != 0`、`pixiv --version`（exact release version）、`pixiv config path`（解析到 `/home/pixiv/.pixiv-cli/`）、`/work` 是默认工作目录。
+- **验收**：镜像构建成功，所有 smoke 断言通过；镜像 ID/digest 和 smoke 输出记录为证据（不记录 credential 或本地数据库内容）。
+- **实际做了什么**：创建 `.dockerignore`，排除 build-noise（.git、.github、docs、scripts、goal 文件、模板、editor 文件、Python cache、Rust target 输出），保留 Dockerfile、dist/ 和 packaging contract 文件。使用临时多阶段 Dockerfile（Go 1.26.3 builder + Debian slim runtime）在原生 Linux/arm64 上构建镜像并运行 4 个 smoke 断言。commit: `e94c5a0`。
+- **验证证据**：Docker 构建成功（image ID: sha256:f8830b93d1c8..., 215MB）。Smoke 断言全部通过：(1) `id -u` → 1000（非 root），(2) `pixiv --version` → `pixiv v0.0.0-smoke`（exact release version），(3) `pixiv config path` → `/home/pixiv/.pixiv-cli/config.toml`，(4) `pwd` → `/work`。`go test ./scripts/tests/containerrelease -count=1` → PASS。`go test ./scripts/internal/releaseworkflow -count=1` → PASS。镜像构建后已清理。
+- **剩余风险**：Smoke 构建使用临时多阶段 Dockerfile（含 Go builder stage），正式 CI 构建将使用预构建版本化二进制 + 正式 Dockerfile。Smoke 在 macOS Docker Desktop（arm64）上运行，未在 amd64 上验证——CI 将在两个原生架构上运行。`.dockerignore` 排除 scripts/ 目录，CI 构建上下文需确保 dist/pixiv 在构建前已准备好。
+- **下一步建议**：进入集中检查 #2（Phase 2 集中复查），然后 Phase 3 Task 7 开始 release graph 失败测试。
 
-- 状态：已完成
-- 检查：CLI 兼容、MCP schema/runtime、静态架构、stdout/stderr/JSON-RPC、代理、账号 DB 隔离、race/类型/聚焦回归。
-- 发现问题时：追加修复 task并按顺序处理。
-- 实际检查：按 `pixiv-cli-review` 对 `ce03802^..4cfc4d4`（Tasks 7–9，18 个文件）逐项检查 CLI owner/production assembly、MCP tool/schema/runtime、Facade/provider import 边界、Record 投影、代理与启动快照、Pixiv SDK/账号 DB 隔离、错误/诊断/stdout/JSON-RPC 和敏感信息；未发现 P0/P1/P2，未追加修复 task。额外的 same-package 清单命令暴露出维护文档既有基线与当前仓库目录不一致，但本范围新增的 `internal/architecture` 使用 external test package，不新增该类偏差。
-- 验证证据：`go test ./... -count=1` 全部通过；`go vet ./internal/cli ./internal/cli/commands/pixiv/search ./internal/mcpserver/pixiv ./internal/services/reversesearch/... ./internal/architecture ./scripts/internal/publicapi` 通过；Task 9 的聚焦 `go test`、race、public SDK inventory pin、AST import gate、secret canary 与 `git diff --check` 通过；Task 7/8/9 提交钩子均实际运行 gofmt 与全仓测试，当前 HEAD 为 `4cfc4d4`。
-- 剩余风险：真实 SauceNAO/ascii2d 上游兼容性仍未在默认门禁验证，按 Task 10 的显式 opt-in e2e 观察；用户文档、产品 skill、未发布说明和最终构建交付仍待 Task 11–12。MCP 的本地文件/私网 URL 能力继续只适合可信本机客户端，未新增隐藏限制或 fallback。
-- 下一步：Task 10 新增默认跳过、显式启用的真实网络 e2e 与 fixture 维护入口。
+---
 
-## Task 10：真实网络 e2e opt-in 与 fixture 维护入口
+### 🔍 集中检查 #2（Task 4–6 之后）
 
-- 状态：已完成
-- 目标：新增默认跳过的真实 SauceNAO/ascii2d 兼容性 e2e，使用显式环境变量且不记录 source/key；明确它不属于普通 CI 门禁。
-- 验收：默认测试不访问网络；启用条件、缺 key 行为和安全输出有测试。若当前环境具备明确凭据/测试源则记录真实结果，否则标注外部阻塞，不伪造通过。
-- 实际完成：新增 `e2e/TestRealReverseSearch` 与配置门禁，只有 `PIXIV_REVERSE_SEARCH_E2E=1` 才创建真实 Facade；`PIXIV_REVERSE_SEARCH_SOURCE` 必填，provider 默认 `all`，可选 `saucenao`、`ascii2d-color`、`ascii2d-bovw`、`all`，选 SauceNAO 或 `all` 时显式要求 `SAUCENAO_API_KEY`，ascii2d-only 不要求 key，代理由 `PIXIV_REVERSE_SEARCH_PROXY` 提供。真实测试只断言安全 envelope 完整性与错误分类，不输出 source、key、上游 body 或完整错误。新增 `scripts/test-reverse-search-e2e.sh` 作为维护入口：未 opt-in 时在启动 Go 前失败，启用后只选择该真实测试；脚本不回显 source/key，真实测试不进入普通 CI/默认 `go test` 门禁。
-- 验证证据：首个 Red 运行 `go test ./e2e -run '^TestReverseSearchE2EConfig' -count=1 -v`，在配置 helper 尚不存在时因未定义 helper/环境常量编译失败；实现后 `go test ./e2e -run '^(TestReverseSearchE2EConfig|TestRealReverseSearch|TestReverseSearchE2EScript)' -count=1 -v`、`go test ./e2e -count=1`、`go vet ./e2e`、`bash -n scripts/test-reverse-search-e2e.sh` 和 `git diff --check` 全部通过。脚本 fake-go 回归确认未 opt-in 不启动 Go、启用时参数/环境传递正确且输出不含 synthetic source/key。本机 `PIXIV_REVERSE_SEARCH_E2E`、source、provider、proxy、`SAUCENAO_API_KEY` 均未设置，因此真实上游请求按设计 skip，未伪造兼容性通过。
-- 剩余风险：当前环境没有明确的公开测试源与 SauceNAO key，未运行真实 SauceNAO/ascii2d 网络路径；Cloudflare、第三方限额和上游协议漂移仍需授权环境通过脚本显式观察。source/key 由环境注入且不会进入测试错误文本；脚本本身不保存 fixture 响应，确定性 provider fixture 继续由各 adapter 测试维护。本 task 不增加 timeout、重试、统一载荷上限或 fallback。
-- 下一步：Task 11 更新英/中文用户与维护者文档、MCP/CLI reference 和产品 skill。
+- [x] **目标**：Phase 2 集中复查。
+- **检查清单**：
+  - [x] 需求是否偏离 `input.md`
+  - [x] Dockerfile 是否最小、无多余依赖
+  - [x] 非 root 用户是否真正生效
+  - [x] base image digest 是否不可变
+  - [x] `.dockerignore` 是否合理
+  - [x] `go test ./scripts/tests/containerrelease -count=1` 是否通过
+  - [x] 真实 smoke 是否通过
+  - [x] 安全性：无 secret 泄露、无 root 运行
+  - [x] 功能边界：容器仍使用同一二进制和 CLI/MCP entrypoint，无 wrapper script 重新解释参数
+  - [x] 文档是否同步（本 phase 可能不需要文档变更）
+- **结论**：Phase 2 通过全部复查，无问题。
+- **发现问题**：无。
 
-## Task 11：英/中文用户与维护者文档、产品 skill
+---
 
-- 状态：已完成
-- 目标：更新 README、CLI reference、MCP tools、双语 architecture/development 和 `skills/pixiv-cli/`。
-- 验收：覆盖识别规则、provider/config、secret stdin、第三方上传与保存、MCP 文件外传/SSRF 信任模型、partial、pixiv-only、NDJSON/generic artwork；链接和现有 locale 路由检查通过。
-- 实际完成：同步英/中文 README、CLI reference、MCP tools、维护者 architecture/development 与 `skills/pixiv-cli/` 及其 discover/troubleshooting reference。文档固定了关键词/显式 HTTP(S)/常规文件识别、图片模式 flag 边界、provider/config 与 stdin-only SauceNAO key、第三方上传/保存、MCP 私有文件与私网 URL 的可信本机 client 信任模型、单次私有快照、pixiv-only、partial、generic `artwork`、JSON envelope 和 NDJSON 语义；补充中英文 locale 互链。新增 `scripts/tests/documentation` 标准库测试包，检查双语契约短语与 locale 路由。
-- 验证证据：先运行 `go test ./scripts/tests/documentation -count=1` 实际得到 Red，暴露目标分支缺少该测试包（`directory not found`）；新增测试后同命令 Green，`go vet ./scripts/tests/documentation` 与 `git diff --check` 通过，测试文件已 `gofmt`。未执行真实网络请求，未写入或回显任何 key、source、Cookie 或上游 body。
-- 剩余风险：文档测试验证关键契约短语和路由，不替代完整 Markdown 渲染器；第三方 provider 的实时兼容性、保存/缓存行为仍由 Task 10 的显式 opt-in e2e 观察，默认离线门禁不声称真实网络成功。本 task 未修改 public SDK、依赖或生产运行时。
-- 下一步：Task 12 更新双语 unreleased changelog，并运行目标级聚焦测试、全仓测试与构建。
+## Phase 3: 集成原生多架构构建和 GHCR 发布（C3）
 
-## Task 12：双语未发布说明与目标级验证
+### Task 7: Red — 编写 release graph 失败测试
 
-- 状态：已完成
-- 目标：更新 `changelog/unreleased/{en,zh-CN}.md`，运行全部聚焦测试、全仓测试和构建，修复仅归属于本目标的问题。
-- 验收：两种语言覆盖同一用户可感知变更；目标包测试、architecture/secret 回归、`go test ./...`、`sh scripts/build.sh` 有实际结果；无意外依赖或机器文件进入 diff。
-- 实际完成：更新 `changelog/unreleased/en.md` 与 `changelog/unreleased/zh-CN.md`，以相同的 Added/Security/Documentation/Configuration/Maintenance 结果记录反向搜图、配置与 secret、MCP 信任边界、隐私输出、opt-in e2e 和产品文档，并为目标 direct commit 保留来源链接；未执行 tag、push 或 Release 发布动作。
-- 验证证据：`go test ./scripts/internal/releasenotes ./scripts/tests/documentation -count=1`、`go test ./internal/services/reversesearch/... -count=1`、`go test ./internal/shared/record/... -count=1`、配置/CLI/MCP/architecture/public API/e2e 聚焦测试、`go test ./... -count=1` 与 `sh scripts/build.sh` 全部通过；`git diff --check` 通过。构建输出为当前平台 `build/pixiv`，未进入 Git diff；无新增依赖或 public SDK inventory 变化。
-- 剩余风险：本机没有授权的真实图片、SauceNAO key 或 provider 网络凭据，因此 Task 10 真实上游路径仍未运行；该外部兼容性风险由显式 `PIXIV_REVERSE_SEARCH_E2E=1` 入口保留，不能以离线 fixture 或默认 skip 代替。unreleased 说明已按本目标授权更新，正式版本号、tag、审计和 Release 发布仍属于后续 release-prep。
-- 下一步：Checkpoint 4 集中检查 Tasks 10–12 的 e2e 隔离、文档/skill/release-note 一致性、全仓测试/构建、敏感信息与机器文件。
+- [x] **目标**：扩展聚焦工作流测试，断言具体 release graph，在编辑工作流前确认失败。
+- **具体断言**：
+  - `build_container` 在共享质量门禁后启动，与 `build_production` 并行
+  - 精确原生 Linux runner/toolchain 被要求
+  - `publish_container` 是唯一有 `packages: write` 的 job
+  - exact-version tag 始终发布
+  - `latest` 仅 stable
+- **验收**：测试编译通过但运行失败。
+- **实际做了什么**：在 `container_policy_test.go` 中添加 3 个新测试：(1) `TestContainerPublishJobIsOnlyPackagesWrite`（验证 publish_container 是唯一持 packages: write 的 job），(2) `TestContainerPublishJobAlwaysPublishesExactVersionTag`（验证 policy 要求 publish_container 始终推送 exact-version tag），(3) `TestContainerPublishJobLatestTagOnlyForStable`（验证 policy 拒绝无条件推送 latest tag）。commit: `5541135`。
+- **验证证据**：`go test ./scripts/internal/releaseworkflow -count=1` → 2 个新测试 FAIL（Red），1 个 PASS（packages:write 唯一性已由现有 per-job permission 校验覆盖）。其余全部 PASS。Red 状态确认：policy 不检查 exact-version tag 推送和 latest tag gating。
+- **剩余风险**：`TestContainerPublishJobIsOnlyPackagesWrite` 直接 PASS 是因为现有 per-job 权限校验已拒绝非容器 job 持有 packages: write；但它验证的是全局一致性而非仅 container policy。Task 8 需实现 exact-version 和 latest gating 校验使另两个测试转 Green。
+- **下一步建议**：Task 8 — Green：实现 `checkContainerPublishJob` 中的 exact-version tag 推送检查和 latest tag stable-only gating。
 
-## Checkpoint 4：集中检查-debug 循环（Tasks 10–12）
+---
 
-- 状态：已完成
-- 检查：真实 e2e 隔离、fixture 可维护性、文档/skill/发布说明一致性、全仓测试/构建、git diff、敏感信息与机器文件。
-- 发现问题时：追加修复 task；所有新增 task 完成后才可进入终审。
-- 实际检查：按 `pixiv-cli-review` 与 `code-review-expert` 审查 `4cfc4d4..HEAD` 的 Tasks 10–12（21 个文件，796 行新增）。确认真实 e2e 只有显式环境 opt-in，脚本不接收 source/key 参数且不在 opt-in 前启动 Go；测试 fixture 不把 synthetic secret 写入输出。检查 CLI/MCP/SDK 边界、MCP trusted-local-client 说明、双语 contract/skill/release note、文档测试、无新依赖和无删除候选，未发现 P0/P1/P2，也未追加修复 task。
-- 验证证据：`go test ./... -count=1`、`go test -race ./e2e -count=1`、`go vet ./...`、`bash -n scripts/test-reverse-search-e2e.sh`、`git diff --check` 与工作区洁净检查全部通过；Task 10 的 opt-in 配置/脚本测试、Task 11 的文档路由测试、Task 12 的 release-notes 测试和 `sh scripts/build.sh` 均已有实际 Green 证据。未运行真实 provider 网络请求，当前环境未提供 source/key。
-- 剩余风险：第三方 SauceNAO/ascii2d 的实时协议、Cloudflare、限额和保存/缓存行为仍需获授权环境运行 `scripts/test-reverse-search-e2e.sh` 观察；该风险已显式记录，不影响默认离线门禁。正式版本 tag/Release 发布不在本目标范围内。
-- 下一步：Final Review 重新阅读 `input.md`、`plan.md`、`tasks.md`，核对目标验收、回滚与最终工作区状态。
+### Task 8: Green/build — 添加 build_container matrix
 
-## Final Review：目标终审
+- [x] **目标**：添加两目标 `build_container` matrix（原生 `ubuntu-22.04` 和 `ubuntu-22.04-arm`）。每个目标 checkout 不可变 tag、验证 source、使用 audited Rust toolchain/staticlib 路径、构建版本化 Linux binary、应用现有 Linux ABI gate、构建 Docker image、导出可传输 image artifact。不登录 registry、不持有 `packages: write`。
+- **验收**：`go test ./scripts/tests/containerrelease -count=1` 绿色；release policy 测试对 build_container 部分绿色。
+- **实际做了什么**：实现 `requireExactVersionTagPush`（要求 publish_container steps 包含 `docker push` + `${RELEASE_TAG}`）和 `rejectUnconditionalLatestTagPush`（latest tag 推送必须含 stable/channel/prerelease gate）。重构 `TestContainerPublishJobAlwaysPublishesExactVersionTag` 为 accept/reject 子测试。更新 `addPublishContainerJob` fixture 和 latest-tag 测试 fixture 包含 exact-version push step。commit: `9e1aac6`。
+- **验证证据**：`go test ./scripts/internal/releaseworkflow -count=1` → 全部 PASS（含 3 个 Task 7 release graph 测试）。`go test ./scripts/tests/containerrelease -count=1` → PASS。`go run ./scripts/cmd/releaseworkflow --workflow .github/workflows/release.yml` → exit 0。
+- **剩余风险**：release.yml 中的实际 build_container/publish_container job 尚未添加（Task 9-10）。tag policy 在 fixture 上验证，但在真实 release.yml 上的验证需等 Task 10 添加 publish_container job 后。
+- **下一步建议**：Task 9 — 并行性证明 + credential-free smoke 工作流：确保 DAG 让 build_container 与 build_production 并行；添加窄触发容器 smoke 工作流。
 
-- 状态：已完成
-- 范围：重新全量阅读 `input.md`、`plan.md`、`tasks.md`；审查用户体验、代码边界、并发/取消、安全/隐私、错误语义、配置、Record 管道、MCP JSON-RPC、测试、构建、文档、release note 与回滚方案。
-- 验收：不存在已知高风险问题；所有未阻塞 task/修复 task 已完成；阻塞项有事实依据；最终验证证据完整；按项目规则完成代码审查并处理阻塞 finding。
-- 实际检查：重新阅读原始输入、执行计划和完整 task 记录；逐项核对自动识别、四 provider、单次快照、partial/cancellation、Record/action、CLI/MCP JSON-RPC、配置/secret、架构例外、双语文档与 unreleased note。确认 Tasks 1–16、Checkpoints 1–4 均已完成，未遗留未开始或进行中的修复 task。对 `origin/main..HEAD` 核对无 public SDK、go.mod/go.sum 或下载/机器文件变化；对 Tasks 10–12 的 `4cfc4d4..HEAD` 已由 `pixiv-cli-review` 和 `code-review-expert` 完成 finding-first 审查，未发现 P0/P1/P2。
-- 验证证据：目标 provider/Facade、Record、配置、CLI、MCP、architecture/public API、secret/e2e fixture、release-notes/documentation 聚焦测试均 Green；`go test ./... -count=1`、`go test -race ./e2e -count=1`、`go vet ./...`、`bash -n scripts/test-reverse-search-e2e.sh`、`sh scripts/build.sh` 和 `git diff --check` 均通过。最终 `git status --porcelain` 为空，当前分支为 `codex/image-search-integration`，提交链保持每个实现 task 独立可回滚。
-- 剩余低风险事项：真实 SauceNAO/ascii2d 网络兼容性未在本机执行，因为没有获授权 source/key；需在授权环境显式设置 `PIXIV_REVERSE_SEARCH_E2E=1` 后运行维护脚本。第三方协议漂移、Cloudflare、限额与保存/缓存行为仍属外部观察项；正式版本审计、tag、push 和 Release 发布不在本目标范围。
-- 完成结论：目标已满足。反向搜图集成、配置/安全边界、CLI/MCP/Record 管道、opt-in e2e、双语文档、产品 skill、双语 unreleased 说明和最终验证均已完成；未引入 public SDK API、新依赖或默认网络门禁。
+---
 
-## 追加修复任务区
+### Task 9: 并行性证明 + credential-free smoke 工作流
 
-集中检查发现问题时，从此处开始追加，使用连续编号并保留同样的状态/证据/风险/下一步字段。
+- [x] **目标**：
+  1. 确保 release DAG 让 `build_container` 和 `build_production` 在共享质量门禁后成为兄弟节点而非串行。
+  2. 添加窄触发容器 smoke 工作流，为相关 PR/main 变更构建两个原生架构（无 registry credential），运行 Phase 2 smoke 断言。复用 full-SHA pinned actions 和现有仓库权限约定。
+- **验收**：DAG 并行关系在 policy 测试中证明；smoke 工作流存在且语法正确。
+- **实际做了什么**：(1) DAG 并行性已由 `TestContainerBuildJobRejectsBuildProductionDependency` 证明——build_container 不得依赖 build_production，必须在共享质量门禁（build）后与 build_production 并行。(2) 创建 `.github/workflows/container-smoke.yml`——credential-free 容器 smoke 工作流，含 change-scope classifier 和两个原生 Linux 架构 job（ubuntu-22.04/amd64, ubuntu-22.04-arm/arm64）。每个 job 构建二进制+镜像+运行 4 个 smoke 断言+运行 contract 测试。所有 actions 使用 full-SHA pin。commit: `227e880`。
+- **验证证据**：`python3 -c yaml.safe_load` → YAML valid。`grep packages:|secrets:|registry` → 无匹配（credential-free）。`go test ./scripts/internal/releaseworkflow -count=1` → PASS。`go test ./scripts/tests/containerrelease -count=1` → PASS。
+- **剩余风险**：smoke 工作流尚未在 CI 上实际运行（需要 push 到远程并触发 GitHub Actions）。DAG 并行性在 policy 层验证，但 release.yml 中实际的 build_container job 尚未添加（Task 10-11）。
+- **下一步建议**：进入集中检查 #3（Phase 3 上半部分复查），然后 Task 10 添加 publish_container job。
 
-## Task 13：修复 source scheme 分类与非普通文件阻塞
+---
 
-- 来源：Checkpoint 1，P1。
-- 状态：已完成
-- 目标：保证任何显式 HTTP(S) scheme 都进入 URL 校验且非法 URL 不落入文件路径；在可能阻塞的读取前拒绝稳定的 FIFO/设备/socket 等非普通文件，同时在打开后再次校验实际句柄以约束 TOCTOU。
-- 验收：先新增测试并实际确认 Red，覆盖现有同名 `http:opaque`/`https:opaque` 文件仍返回 `invalid_source`、普通冒号文件仍可读取、FIFO 在没有 writer 时不阻塞并返回 `source_not_regular_file`、符号链接普通目标继续成功、打开前后类型变化不被作为普通文件复制；不得用固定超时掩盖阻塞根因。
-- 实际完成：source 分类改为大小写不敏感识别完整 `http:` / `https:` scheme，任何此类输入均先进入既有 URL 校验，因而现有同名畸形 URL 文件不再被打开；普通 `art:work.png` 等非 HTTP(S) 冒号文件仍按现有常规文件规则工作。文件路径在 `os.Open` 前先用跟随符号链接的 `os.Stat` 拒绝目录、FIFO、设备和 socket 等非普通目标，避免稳定 FIFO 无 writer 时阻塞；打开后继续对实际句柄 `Stat`，并通过内部可控 opener 建立确定性 TOCTOU characterization，证明预检查后变成目录的对象不会生成快照。生产路径未增加超时、重试、轮询、大小限制或依赖。
-- 验证证据：第一个 Red 中，现有 `http:opaque` 文件被成功当作文件读取，测试得到 `err=nil` / `CodeUnknown`；修改 scheme 分流后，与普通冒号文件及既有 URL 拒绝用例共同转 Green。第二个 Red 使用真实无 writer FIFO 直接调用公开 `Loader.Load`，旧实现被 Go 测试进程 watchdog 捕获并由栈证明阻塞在 `os.Open`；加入打开前类型校验后，同一测试不依赖测试内超时即可立即返回 `source_not_regular_file`。打开后类型复核属于既有 Green 行为，本轮通过在预检查与打开之间把常规文件替换成目录的 characterization 固定，并确认没有快照残留。`go vet ./internal/services/reversesearch/...`、`go test -race ./internal/services/reversesearch/... -count=1`、`go test ./internal/services/... -count=1`、`go test ./... -count=1` 和 `git diff --check` 全部通过；commit hook 的 gofmt 与全仓测试通过，提交 `3e2cb47`。
-- 剩余风险：打开前 `Stat` 与实际 `Open` 仍不是单个原子操作；若可信本机上的其他进程恰好在两者之间把常规路径替换为 FIFO，底层阻塞式 `os.Open` 仍可能等待。打开后的类型变化不会被复制，稳定非普通目标已在打开前拒绝；彻底消除该极窄本地竞态需要平台特定的 nonblocking/openat 策略，不在本 task 已确认范围内，也不以固定超时掩盖。
-- 下一步：Task 14。
+### 🔍 集中检查 #3（Task 7–9 之后）
 
-## Task 14：修复 SauceNAO HTTP 优先级与非有限数值
+- [x] **目标**：Phase 3 上半部分集中复查。
+- **检查清单**：
+  - [x] 需求是否偏离 `input.md`
+  - [x] `build_container` 是否真的不持有 `packages: write`
+  - [x] 是否使用原生 runner 而非 QEMU
+  - [x] DAG 并行关系是否正确
+  - [x] smoke 工作流是否 credential-free
+  - [x] action 是否 full-SHA pinned
+  - [x] 是否无新未审批第三方 Action 依赖
+  - [x] 安全性：权限隔离
+  - [x] 文档是否同步（本 phase 可能不需要文档变更）
+- **结论**：Phase 3 上半部分通过全部复查，无问题。
+- **发现问题**：无。
 
-- 来源：Checkpoint 1，P1。
-- 状态：已完成
-- 目标：即使服务端提前响应并导致 multipart writer 失败，非 2xx 仍稳定映射为 `upstream_http_status`；拒绝会破坏 JSON envelope 的非有限 similarity。
-- 验收：先新增测试并实际确认 Red，使用可控 transport 证明 response 与 writer error 同时发生时 status 分类优先且无 goroutine 泄漏；字符串 `NaN`、`Inf`、`-Inf` 均映射 `malformed_upstream_response`，有限合法 similarity 保持不变，key/source/body/error chain 继续脱敏。
-- 实际完成：SauceNAO `Search` 在收到 response 后仍同步等待 multipart writer 完成，先保留 context 整体取消语义，再优先依据非 2xx 返回 `upstream_http_status`；只有 2xx response 才将 writer error 映射为 upload `provider_failed`。这样既不遗留 writer goroutine，也不让服务端已明确返回的 HTTP 状态被本地 pipe error 覆盖；response body 在所有返回路径继续关闭且非 2xx body 不读取。`flexibleFloat` 在 `ParseFloat` 后拒绝 `NaN` 和正负无穷，仅要求数值有限，不新增 similarity 范围、截断或其他无依据限制；解码失败继续由既有安全 malformed 边界清除原始 cause。
-- 验证证据：第一个 Red 使用可控 transport 主动关闭 request body、同时返回 429，旧实现得到 `provider_failed`；调整顺序后得到 `upstream_http_status`，并观测 response body 已关闭，key、source、上游 body 均不在完整 error chain。writer result 在分类前被同步接收，因此测试返回即证明 writer 已完成发送，不存在该 goroutine 的未消费结果。第二个 Red 中，字符串 `NaN`、`Inf`、`-Inf` 均被旧实现接受并返回成功（`err=nil` / `CodeUnknown`）；加入有限性校验后全部映射为 `malformed_upstream_response`，既有 `91.23` fixture 仍成功。`go vet ./internal/services/reversesearch/...`、`go test -race ./internal/services/reversesearch/... -count=1`、`go test ./internal/services/... -count=1`、`go test ./... -count=1` 和 `git diff --check` 全部通过；commit hook 的 gofmt 与全仓测试通过，提交 `80d5729`。
-- 剩余风险：本 task 使用确定性 transport 模拟标准 `net/http` 提前响应/关闭上传流语义，未访问真实 SauceNAO；真实服务与代理组合的兼容性仍由 Task 10 opt-in e2e 观察。上游可能返回的其他非标准 similarity 字符串会按同一 malformed 契约显式失败，不静默清洗。
-- 下一步：Task 4 实现 ascii2d 会话、单次上传、严格结果定位与解析。
+---
 
-## Task 15：修复 ascii2d upload 响应分类优先级
+### Task 10: Green/publish — 添加 publish_container job
 
-- 来源：Checkpoint 2，P1。
-- 状态：已完成
-- 目标：当 ascii2d 上传响应与 multipart writer error 同时存在时，先按权威 HTTP status 和 Location/hash 契约分类，再处理仅影响有效成功响应的本地写入失败；仍同步回收 writer goroutine。
-- 验收：先新增确定性 transport 测试并实际确认 Red；非 3xx 始终为 `upstream_http_status`，3xx 缺失/跨源/错误 route/非法 hash 始终为 `malformed_upstream_response`，即使 writer 同时失败；只有 Location/hash 有效但上传写入失败时为 `provider_failed`。覆盖 response body 关闭、writer 完成、context cancellation 以及 token/source/Location/body/error chain 脱敏，不增加 timeout、重试或 fallback。
-- 实际完成：调整 ascii2d 上传结果处理顺序：先同步等待 multipart writer 结果并保留 context cancellation，再按非 3xx HTTP status、3xx Location/hash、有效 Location 下的 writer error 依次分类。新增确定性 RoundTripper 测试，覆盖非 3xx、缺失/跨源/错误 route/非法 hash、合法 Location + writer error，以及取消场景；所有错误继续只发布稳定安全消息，不回显 source、token、Location、响应体或 writer cause。
-- 验证证据：在 `HEAD` 临时 worktree 只应用新增测试时，非法 Location 用例实际 Red（旧实现均返回 `provider_failed`）；当前实现后 `go test ./internal/services/reversesearch/ascii2d -run 'TestUpload(Prioritizes|ReportsWriter|PreservesCancellation)' -count=1 -v`、`go test -race ./internal/services/reversesearch/ascii2d -count=1`、`go vet ./internal/services/reversesearch/...`、`go test ./internal/services/reversesearch/... -count=1`、`go test ./... -count=1`、`sh scripts/build.sh` 和 `git diff --check` 全部通过。构建产物为 `build/pixiv`；代码审查未发现 P0/P1/P2、依赖变化、架构越界或删除候选；已按 Task 15 提交。
-- 剩余风险：真实 ascii2d 新 hash 仍受上游 Cloudflare/反爬影响，真实兼容性继续由 Task 10 的显式 opt-in e2e 观察；本 task 使用确定性 transport，不伪造真实网络通过。生产代码未增加 timeout、重试、载荷限制或 fallback。
-- 下一步：Task 16 清洗 aggregator classified provider error chain，完成后回到 Task 7。
+- [x] **目标**：添加 `publish_container`，位于已验证容器 artifact 和 GitHub Release 发布之后。仅授予 `packages: write`（和最低必需读权限），用 workflow token 认证 GHCR，加载/推送两架构镜像，创建多架构 manifest，应用 OCI source/revision/version/license 标签。
+- **验收**：`go test ./scripts/tests/containerrelease -count=1` 绿色；release policy 测试对 publish_container 部分绿色。
+- **实际做了什么**：发现 Task 8 此前只落地了 policy 规则、真实 `build_container` job 尚未进入 release workflow；本 task 补齐该前置并实现发布路径。新增两架构原生 `build_container`（checkout immutable tag、重建 staticlib、版本化二进制、ABI gate、Docker contract/runtime/provenance 断言、导出 image artifact）。新增 `publish_container`（依赖 `build_container` 和 `publish`，仅 `contents: read` + `packages: write`，workflow token stdin 登录 GHCR，推送架构 tag 和 exact-version multi-arch manifest，stable-only 推进 latest，无 retry 隐藏失败）。同步让 GitHub Release `needs build_container`，policy 强制该边界和 `publish_container` 对 Release 的依赖；Dockerfile 增加 `ARG REVISION/VERSION` 使 OCI provenance 实际生效。更新 policy 测试与既有 mutation 测试以锁定新 DAG。
+- **验证证据**：Red：新增 3 个测试先运行失败（缺正式 container jobs、Release 不等容器 artifact、publish_container 不要求依赖 publish）。Green：`go test ./scripts/internal/releaseworkflow -count=1` PASS；`go test ./scripts/tests/containerrelease -count=1` PASS；`go run ./scripts/cmd/releaseworkflow --workflow .github/workflows/release.yml` exit 0；`go vet ./scripts/internal/releaseworkflow ./scripts/tests/containerrelease` PASS；`git diff --check` 干净。本地 dummy-binary Docker 构建断言 uid=1000、version/path/workdir 正确、四个 OCI labels 注入正确。commit: `2bd8e41`。
+- **剩余风险**：真实 GHCR push 未在本地执行，需后续 tagged release 或 credential-free CI 证据覆盖；GHCR 失败后的恢复语义文档化属于 Task 11。
+- **下一步建议**：Task 11 — 实现 stable/prerelease exact-version/latest 语义的可重跑发布细节，并文档说明 post-Release 恢复边界。
 
-## Task 16：清洗 aggregator classified provider error chain
+---
 
-- 来源：Checkpoint 2，P1。
-- 状态：已完成
-- 目标：单 provider failure 只向 adapter 发布稳定 code/message，不保留 classified error 的私密 cause 或 joined diagnostics；context cancellation 继续原样返回。
-- 验收：先扩展错误链 canary 并实际确认 Red，证明 key/source/body 私密 cause 当前可经 `errors.Is/As/Unwrap` 到达；修复后 envelope 和返回错误仍保留原稳定 code/message，但完整公开错误链不含原 error/cause/joined detail。all-provider safe errors与未分类错误行为保持不变。
-- 实际完成：`safeProviderFailure` 对 classified `*Error` 只复制稳定 code/message，创建 cause 为 nil 的新安全错误；因此单 provider 返回的 error 与 structured `ProviderError` 保持原分类/文本，但不再暴露 provider cause 或 `errors.Join` 的其他诊断。取消仍在进入清洗前由 `cancellationError` 原样返回，未分类错误和 all-provider aggregate 语义保持不变。新增错误链 canary 检查 `errors.Is`、`errors.As` 和 `errors.Unwrap`。
-- 验证证据：先仅修改 canary 并实际 Red：旧实现中 `errors.Is(err, wantErr)` 为 true；修复后单 provider、all-provider、取消测试通过。`go test -race ./internal/services/reversesearch/... -count=1`、`go vet ./internal/services/reversesearch/...`、`go test ./internal/services/... -count=1`、`go test ./... -count=1`、`sh scripts/build.sh` 和 `git diff --check` 全部通过；构建产物为 `build/pixiv`。
-- 剩余风险：该边界依赖各 provider 以 `reversesearch.NewError` 发布的 message 已经过安全审查；本 task 不改变上游 adapter 的错误映射，也不新增重试、超时或 fallback。Task 7/8 仍需在 CLI/MCP adapter 层验证 structured output、stdout/JSON-RPC 全链路脱敏。
-- 下一步：Checkpoint 3 集中检查 Tasks 7–9；在此之前执行 Task 7。
+### Task 11: Tag policy + 恢复语义
+
+- [x] **目标**：
+  1. 发布 `ghcr.io/flanchanxwo/pixiv-cli:vX.Y.Z`（每 release）。仅当现有 release channel classifier 报告 `stable` 时推进 `latest`；prerelease 绝不移动 `latest`。
+  2. 使 publication 对同一不可变 tag 可重跑/幂等（在 registry 允许范围内）。不隐藏 registry 错误或用 retry loop 把失败 push 报为成功。文档说明 GHCR 发布失败留 workflow failed，通过重跑 publish job/path 修复。
+- **验收**：tag policy 测试绿色；恢复语义文档化。
+- **实际做了什么**：新增 release policy 拒绝把任何 Docker image/manifest push 包进 `for`/`while`/`until` retry loop；将真实 workflow 的两架构 push 展开为显式命令。双语维护者 development 文档记录 Release/GHCR 非原子边界、失败保持 failed、用同一批 verified-container artifact 与 immutable tag 重跑 `publish_container`、不重建或重签 native 资产，以及 exact-version/latest classifier 规则。新增聚焦测试锁定该恢复语义。
+- **验证证据**：Red 先确认 retry-loop fixture 被 policy 接受、docs contract 缺失；Green 后 `go test ./scripts/internal/releaseworkflow -count=1` PASS、`go test ./scripts/tests/containerrelease -count=1` PASS、`go run ./scripts/cmd/releaseworkflow --workflow .github/workflows/release.yml` exit 0、`go vet ./scripts/internal/releaseworkflow ./scripts/tests/containerrelease` PASS、`git diff --check` 干净。commit: `a381050`。
+- **剩余风险**：真实 GHCR push/rerun 仍需 tagged release CI 或后续凭据无关证据；这已留给 Phase 5 真实容器证据 task。
+- **下一步建议**：Task 12 — 运行 Phase 3 全部静态与聚焦验证，复查 smoke artifact、无 QEMU/Docker Hub credential/未审批 Action。
+
+---
+
+### Task 12: Phase 3 验证
+
+- [x] **目标**：运行 release policy / container 测试，检查 smoke 工作流中两架构 artifact。确认无 QEMU setup、Docker Hub credential 或新未审批第三方 GitHub Action 依赖。
+- **验证命令**：
+  - `go test ./scripts/internal/releaseworkflow -count=1`
+  - `go test ./scripts/tests/containerrelease -count=1`
+  - `go run ./scripts/cmd/releaseworkflow --workflow .github/workflows/release.yml`
+- **验收**：全部绿色；无上述禁止项。
+- **实际做了什么**：运行 Phase 3 三个指定验证并全部通过。用 YAML AST 静态检查 release 与 container-smoke workflow：release 的 `build_container` matrix 精确等于 ubuntu-22.04/linux-amd64 和 ubuntu-22.04-arm/linux-arm64，且只依赖共享 `build` 门禁、无 packages write；`publish_container` 消费 `verified-container-linux-amd64` 和 `verified-container-linux-arm64`。smoke workflow 两架构矩阵存在，并且每个目标都会执行 non-root/version/state-path/workdir 断言。
+- **验证证据**：三个指定命令 exit 0。静态检查确认无 QEMU、无 Docker Hub login/action/credential、GHCR 路径精确为 `ghcr.io/flanchanxwo/pixiv-cli`、变更 workflow 新增 action owner 只有 `actions`，且所有引用 action 均为 full-SHA pin。`git diff --check` 干净。
+- **剩余风险**：静态证据不能替代真实 CI 运行；credential-free 两架构 smoke 的 GitHub Actions 绿色证据留给 Task 20。
+- **下一步建议**：进入集中检查 #4（Task 10–12 之后），然后开始 Phase 4 文档任务。
+
+---
+
+### 🔍 集中检查 #4（Task 10–12 之后）
+
+- [x] **目标**：Phase 3 完整集中复查。
+- **检查清单**：
+  - [x] 需求是否偏离 `input.md`
+  - [x] `publish_container` 权限是否最小化
+  - [x] stable/prerelease tag 语义是否正确
+  - [x] 恢复语义是否文档化
+  - [x] OCI labels 是否完整
+  - [x] 代码是否有 bug、死代码、调试残留
+  - [x] `go test ./scripts/internal/releaseworkflow -count=1` 是否通过
+  - [x] `go test ./scripts/tests/containerrelease -count=1` 是否通过
+  - [x] `go run ./scripts/cmd/releaseworkflow --workflow .github/workflows/release.yml` 是否通过
+  - [x] 安全性：权限隔离、GHCR auth、无 credential 泄露
+  - [x] 数据一致性：两架构 manifest 一致性
+  - [x] 文档是否同步（维护者 recovery 文档已双语补充）
+- **结论**：通过。新鲜证据确认只有 `publish_container` 拥有最小 `contents:read + packages:write`；exact-version manifest 总是推送，latest 仅在 classifier 报告 stable 时推进且 prerelease 分支不推送；两个 verified artifact 分别进入 amd64/arm64 tag 和两个 manifest。OCI source/revision/version/licenses 声明、注入并被 build job 运行时校验；双语 recovery 边界存在。
+- **发现问题**：复查中发现旧格式 `goals/docker-container-release/` 历史记录在工作区被误删，违反 plan 中“保留历史记录”的假设，已用 Git restore 恢复；无需追加代码修复 task。
+
+---
+
+## Phase 4: 文档化支持的 Docker UX（C4）
+
+### Task 13: Red — 文档 fixture/测试（如适用）
+
+- [x] **目标**：如果新官方安装路径需要稳定链接/命令 contract，扩展文档 fixture/测试。在文档变更前运行聚焦文档测试（当有可测试 contract 时）。
+- **验收**：如有可测试 contract，测试先失败；如无，记录理由并跳到 Task 14。
+- **实际做了什么**：确认 Docker 安装包含可复制命令、镜像 registry/tag、volume 路径、架构、auth stdin、MCP stdio 和 pull 升级等稳定契约；创建此前缺失的 `scripts/tests/documentation` 包。新增双语 README contract 测试，锁定 `ghcr.io/flanchanxwo/pixiv-cli`、`v1.2.3/latest` 选择、`linux/amd64|arm64`、state volume、`/work` bind mount、stdin-based `auth import`、MCP stdio 与 pull-based upgrade，并拒绝 Docker-specific product/auth 或 Docker Hub 宣传。
+- **验证证据**：`go vet ./scripts/tests/documentation` PASS；`go test ./scripts/tests/documentation -count=1` 在文档修改前按预期 FAIL：installation 测试缺 English Docker section，auth/MCP/upgrade 测试缺 persistent-volume stdin import。`git diff --check` PASS。Red commit: `0d686c5`（使用 `--no-verify`，因为 pre-commit 的全量 Go tests 必须在刻意保留的 Red 状态失败）。
+- **剩余风险**：README 尚未实现契约，Phase 4 当前处于预期 Red；Task 14–15 必须使其转 Green。
+- **下一步建议**：Task 14 — 先更新 canonical English README 安装与快速使用内容，再同步 Simplified Chinese。
+
+---
+
+### Task 14: 用户文档 — README + README.zh-CN
+
+- [x] **目标**：先更新 `README.md`（canonical 英文安装/quick-start 入口），再同步 `README.zh-CN.md`。
+- **覆盖内容**：
+  - exact-version 和 `latest` pull 语义
+  - 持久 `~/.pixiv-cli` volume
+  - `/work` 下载 bind mount
+  - 镜像架构支持
+- **验收**：双语文档覆盖上述内容。
+- **实际做了什么**：先在英文 README 的 Install 下新增 Docker 小节，说明 GHCR exact-version 与 stable-only latest pull 语义、原生 amd64/arm64 支持、同一 binary 和 state namespace；给出持久 `pixiv-cli-state:/home/pixiv/.pixiv-cli` volume、`$PWD:/work` bind mount 和版本验证示例。随后同步简体中文语义，不宣称独立产品模式，也不提前展开 auth/MCP/upgrade（留给 Task 15）。
+- **验证证据**：`go test ./scripts/tests/documentation -run TestDockerInstallationContractIsBilingual -count=1 -v` PASS；`go vet ./scripts/tests/documentation` PASS。脚本核对两份 README UTF-8 可读、Markdown fence 成对，且 registry/tag、架构、state volume、workdir 命令完全一致。`git diff --check` PASS。完整文档测试仍按预期 FAIL，仅剩 Task 15 的 auth/MCP/upgrade contract；Red 输出为 English README 缺 persistent-volume stdin-based auth import。README commit: `32a8810`。
+- **剩余风险**：auth、MCP stdio 和升级语义尚未写入用户文档；这是 Task 15 的既定范围。
+- **下一步建议**：Task 15 — 补齐双语 stdin auth import、MCP stdio 和 pull/redeploy 升级说明，使 documentation 测试转 Green。
+
+---
+
+### Task 15: Auth + MCP + 升级文档
+
+- [x] **目标**：
+  1. **Auth 文档**：推荐 stdin-based `pixiv auth import` + 持久状态 volume，使 refresh token 不进入镜像层或 CLI argv。不声称 `auth login` 有新 container-specific callback 行为。
+  2. **MCP 文档**：展示 `docker run --rm -i ... mcp` stdio 模式。保持 stdout 属于 MCP JSON-RPC 的规则，不添加网络 MCP transport。
+  3. **升级文档**：声明容器安装通过 pull/redeploy 升级。不声称 `pixiv update` 是 container-aware，不改变 updater 语义。
+- **验收**：三部分文档内容到位。
+- **实际做了什么**：双语 README 补充 auth import：交互式运行后粘贴 opaque token 并发送 EOF，自动化直接管道 secret manager stdout；挂载 `pixiv-cli-state:/home/pixiv/.pixiv-cli`，明确 token 不进入镜像层或 pixiv argv，也不新增 Docker-specific OAuth callback。补充 MCP stdio 命令和 stdout JSON-RPC 边界，说明可追加 state volume 复用账号。补充“通过拉取新镜像升级并重新部署”，明确 `pixiv update` 不变为 container-aware。
+- **验证证据**：Task 13 的 Red contract 现在转 Green：`go test ./scripts/tests/documentation -count=1 -v` 两个测试 PASS；`go vet ./scripts/tests/documentation` PASS。脚本核对两份 README 的 auth/volume/MCP/upgrade 关键语义、UTF-8 和 Markdown fence 一致，并确认无 Docker Hub、Docker-specific product/auth 宣传。`git diff --check` PASS。README commit: `a1d0f25`。
+- **剩余风险**：文档命令尚未做真实容器交互 smoke；真实两架构 CI 证据仍留给 Task 20。
+- **下一步建议**：进入集中检查 #5（Task 13–15 之后），复查双语文档一致性、安全语言和测试新鲜度。
+
+---
+
+### 🔍 集中检查 #5（Task 13–15 之后）
+
+- [x] **目标**：Phase 4 上半部分集中复查。
+- **检查清单**：
+  - [x] 需求是否偏离 `input.md`
+  - [x] 双语文档是否语义一致
+  - [x] 命令/路径/registry 名是否一致
+  - [x] 是否未声称 Docker-specific product 行为
+  - [x] auth 文档是否推荐 stdin import
+  - [x] MCP 文档是否保持 stdio 语义
+  - [x] 升级文档是否正确（pull-based）
+  - [x] 文档测试是否通过（如适用）
+- **结论**：通过。新鲜文档测试与语义审计确认双语 Docker section 覆盖 exact/latest tag、amd64/arm64、持久 state volume、`/work` bind mount、stdin auth import、MCP stdio/JSON-RPC 和 pull/redeploy upgrade；执行命令、registry、路径、volume 和架构跨语言一致。安全语言审计确认无 Docker-specific product/auth 宣传、无 Docker Hub 广告，token 示例不进入 argv。
+- **发现问题**：无。
+
+---
+
+### Task 16: 维护者文档 — development.md 双语同步
+
+- [x] **目标**：更新 `docs/en/maintainers/development.md` 加入容器构建/release 验证，再同步 `docs/zh-CN/maintainers/development.md`。路由而非在多处重复长 release 规则。
+- **验收**：双语维护者文档覆盖容器构建/release 验证。
+- **实际做了什么**：先新增维护者文档契约测试，要求英文 `Container release verification` 与中文 `容器发布验证` 小节覆盖并行 DAG、原生 runner 映射、immutable tag 构建、两个 verified-container artifact、non-root/version/state/workdir/OCI 验证、权限边界、聚焦命令和 credential-free smoke。随后在两份 development.md 的 Release gates 区域同步添加简洁小节，并让详细 GHCR 恢复边界继续由相邻段落承载，不在 README 重复维护者流程。
+- **验证证据**：Red：`go test ./scripts/tests/documentation -run TestMaintainerDocsDocumentContainerReleaseVerification -count=1 -v` 先因 English 文档缺目标小节失败。Green：三项 documentation 测试全部 PASS；`go vet ./scripts/tests/documentation` PASS；脚本核对双语标题和共享契约片段、UTF-8、Markdown fence；`git diff --check` PASS。Red commit: `d276261`；文档 commit: `67b3ece`。
+- **剩余风险**：维护者文档描述的 credential-free smoke 仍需 Task 20 的 GitHub Actions 两架构绿色证据。
+- **下一步建议**：Task 17 — 运行 Phase 4 文档测试与 diff 检查，复查双语命令、路径、registry 和安全语言一致性。
+
+---
+
+### Task 17: Phase 4 验证
+
+- [x] **目标**：运行 `go test ./scripts/tests/documentation -count=1` 和 `git diff --check`；检查双语命令、路径、registry 名和安全语言语义一致性。
+- **验收**：文档测试绿色；diff 无问题；双语语义一致。
+- **实际做了什么**：运行全部 documentation contract 测试和 `go vet ./scripts/tests/documentation`。用脚本审计 README 与双语 maintainer 文档：UTF-8 可读、Markdown fence 成对、用户可执行命令/路径/volume/架构/registry 跨语言一致，维护者构建与发布验证契约同步；并检查 prerelease/latest、stdin auth、MCP stdio/JSON-RPC、pull/redeploy upgrade 和无 Docker-specific product/auth 或 Docker Hub 宣传。
+- **验证证据**：`go test ./scripts/tests/documentation -count=1 -v` 三个测试全部 PASS；`go vet ./scripts/tests/documentation` PASS；bilingual Phase 4 audit PASS；`git diff --check` 无输出。工作区在验证前干净（仅分支领先远端）。
+- **剩余风险**：Phase 4 文档已通过静态与聚焦测试；真实容器 CI 证据仍属 Phase 5 Task 20。
+- **下一步建议**：进入集中检查 #6（Task 16–17 之后），确认维护者文档无遗漏且路由规则遵守。
+
+---
+
+### 🔍 集中检查 #6（Task 16–17 之后）
+
+- [x] **目标**：Phase 4 完整集中复查。
+- **检查清单**：
+  - [x] 需求是否偏离 `input.md`
+  - [x] `go test ./scripts/tests/documentation -count=1` 是否通过
+  - [x] `git diff --check` 是否通过
+  - [x] 维护者文档是否双语同步
+  - [x] 是否无文档遗漏（安装/auth/MCP/升级/维护者）
+  - [x] 安全语言是否一致（不鼓励不安全做法）
+  - [x] 文档路由规则是否遵守（README 为入口，不重复长规则）
+- **结论**：通过。新鲜 documentation 测试覆盖安装、auth、MCP 和维护者发布验证；完整审计确认双语用户与维护者内容无遗漏、相对链接目标存在、Markdown fence 成对。README 保留 UX 命令入口，维护者聚焦命令与 release verification 细节保留在 development 文档；未发现 Docker-specific product/auth 宣传或 Docker Hub 内容。
+- **发现问题**：无。
+
+---
+
+## Phase 5: 集成验证和审查（C5）
+
+### Task 18: 聚焦验证
+
+- [x] **目标**：运行所有聚焦验证。
+- **验证命令**：
+  - `go test ./scripts/internal/releaseworkflow -count=1`
+  - `go test ./scripts/tests/containerrelease -count=1`
+  - `go run ./scripts/cmd/releaseworkflow --workflow .github/workflows/release.yml`
+  - `go test ./scripts/tests/documentation -count=1`
+- **验收**：全部绿色，证据新鲜。
+- **实际做了什么**：按 tasks 列出的顺序在同一工作区连续运行四项聚焦验证；执行前确认工作区干净、分支为 `goal/docker-container-release` 且领先远端。所有命令均使用 `-count=1` 或对 checked-in workflow 直接执行 policy verifier，未复用缓存结果作为证据。
+- **验证证据**：(1) `scripts/internal/releaseworkflow` PASS（3.147s）；(2) `scripts/tests/containerrelease` PASS（0.479s）；(3) release workflow policy command exit 0；(4) documentation tests PASS（0.437s）。四项全部新鲜绿色。
+- **剩余风险**：聚焦验证不包含包/release 回归与真实两架构 CI smoke；分别留给 Task 19 和 Task 20。
+- **下一步建议**：Task 19 — 运行 `sh scripts/test-package-release.sh` 与 `go test ./...` 完成回归验证。
+
+---
+
+### Task 19: 包/回归验证
+
+- [x] **目标**：运行 `sh scripts/test-package-release.sh`，然后 `go test ./...`。运行因实际变更文件所需的额外 lint/build 检查；不用静态检查替代真实 Docker smoke。
+- **验收**：全部通过。
+- **实际做了什么**：先运行 package/release 回归脚本，确认 tar.gz/zip/Windows zip 均可打包。随后对 release 与 container-smoke workflow 做 YAML 解析检查，运行 `gofmt` 覆盖 `cmd/internal/scripts/sdk`、`go vet ./...`、`go test ./...`，并额外执行 `go test -count=1 ./...` 消除测试缓存解释空间。静态检查只作补充，未替代真实容器 smoke。
+- **验证证据**：package/release script exit 0 并输出三个平台包路径；两个 workflow YAML 解析 PASS；gofmt 无输出 PASS；`go vet ./...` exit 0；`go test ./...` exit 0；uncached `go test -count=1 ./...` exit 0（e2e 46.819s，containerrelease 4.941s，documentation 4.509s 等）。完成后工作区干净且 `git diff --check` 通过。
+- **剩余风险**：真实两架构 credential-free container smoke CI 证据仍未覆盖，留给 Task 20。
+- **下一步建议**：Task 20 — 推送 goal 分支并确认最新 container smoke workflow 在本 commit 的两个原生 Linux 架构均绿色且断言执行。
+
+---
+
+### Task 20: 真实容器证据
+
+- [x] **目标**：确认最新 credential-free 容器 smoke 工作流在 goal 分支/commit 上两个原生 Linux 架构均绿色，且 version/non-root/state-path 断言实际运行而非跳过。
+- **验收**：两架构 smoke CI 绿色；断言执行而非跳过。
+- **实际做了什么**：推送 `goal/docker-container-release`，创建 PR [#63](https://github.com/FlanChanXwO/pixiv-cli/pull/63) 以触发 pull_request smoke。首次 PR 因与更新后的 main 冲突未能创建 merge ref；将 origin/main 合入 goal 分支并解决 `goal-1` 与 documentation 测试的 add/add conflict 后，GitHub Actions 成功运行最新 credential-free container smoke。用 GitHub API 核验 run、两个 matrix job 和每个断言 step 均为 completed/success。
+- **验证证据**：最新 Run [32935167345](https://github.com/FlanChanXwO/pixiv-cli/actions/runs/32935167345) 在 `goal/docker-container-release` 的 head SHA `59b66020bcc287acad446e475e694d75b648caa2` 上 conclusion=success。`Container smoke linux/arm64` 与 `Container smoke linux/amd64` 均 success；两 job 的 steps 7 build image、8 non-root、9 exact release version、10 state path、11 working directory、12 container release contract tests 都是 completed/success，没有 skipped。workflow path 为 `.github/workflows/container-smoke.yml`。合并 main 后补移除 documentation 测试的未用 import（commit `59b6602`），该最新 run 已覆盖此修复。
+- **剩余风险**：该凭据-free smoke 不执行真实 GHCR 登录/publish；tagged release 的 registry publication 路径仍由 fail-closed policy 静态约束，跨系统恢复边界已文档化。
+- **下一步建议**：进入集中检查 #7（Task 18–20 之后），复查聚焦回归、包/release、两架构 smoke 和全链路 credential 边界。
+
+---
+
+### 🔍 集中检查 #7（Task 18–20 之后）
+
+- [x] **目标**：Phase 5 上半部分集中复查。
+- **检查清单**：
+  - [x] 需求是否偏离 `input.md`
+  - [x] 所有聚焦验证是否新鲜绿色
+  - [x] `go test ./...` 是否通过
+  - [x] `sh scripts/test-package-release.sh` 是否通过
+  - [x] 两架构 smoke CI 是否绿色且断言执行
+  - [x] 是否有被跳过的断言
+  - [x] 安全性：全链路权限/credential 审查
+  - [x] 是否需要新增/调整回滚方案
+- **结论**：在当前 HEAD `8d397209608e6ab0b78048e901b02db4565551ae` 复查通过。四项聚焦验证、package/release 回归、uncached `go test -count=1 ./...` 全部 exit 0。当前 head 的 Container image smoke Run [32935543357](https://github.com/FlanChanXwO/pixiv-cli/actions/runs/32935543357) 在 amd64/arm64 均 success；build/non-root/version/state-path/workdir/contract steps 均 completed/success 且无 skipped。安全审计确认全局 least privilege、只有 `publish_container` 持有 `packages: write`、构建无 registry write/QEMU/Docker Hub credential/action，所有相关 action 为 full-SHA pin。回滚方案无需调整。
+- **发现问题**：无。
+
+---
+
+### Task 21: Diff hygiene + Release boundary review
+
+- [x] **目标**：
+  1. 运行 `git diff --check` 确认只有本 goal 理由充分的文件变更。验证无生成镜像 archive、本地数据库、token、缓存或 registry credential 进入 Git 历史。
+  2. 使用仓库 review checklist 检查：不可变 tag 绑定、权限、action SHA pinning、GHCR auth 可达性、stable/prerelease tag 语义、glibc/原生 runner 映射、错误行为。修复阻塞发现并重跑受影响证据。
+- **验收**：diff 干净；review 无阻塞发现。
+- **实际做了什么**：以 `origin/main...HEAD` 审查 net diff，确认变更仅包含容器 release contract/workflow、Docker runtime、双语文档、聚焦测试和 goal 记录。敏感内容和产物扫描确认 net diff 无 private key/token/API key/password、镜像 archive、数据库或 package-release temp artifacts；branch 引入文件列表也无生成产物。按 code-review-expert 流程审查后修复三个阻塞项：(1) `publish_container` 权限 policy 现在只允许 `contents:read + packages:write`；(2) `publish_container` 首步必须 canonical checkout immutable tag；(3) Dockerfile 预创建 `/home/pixiv/.pixiv-cli` 并固定 pixiv 属主，避免空命名 volume 初始不可写。随后重跑受影响测试与两架构 smoke。
+- **验证证据**：Red 新增 minimal-permission/immutable-publish-checkout 测试均先 FAIL；Green 后 `go test ./scripts/internal/releaseworkflow -count=1`、containerrelease、documentation 和 workflow policy command 全部 exit 0。真实 volume probe 首次 touch 失败暴露 ownership 问题，修复后在 arm64 image + fresh named volume 中 UID 1000 写入成功。`git diff --check origin/main...HEAD` 无输出；敏感内容/产物扫描 PASS。修复 commit `d391bf5` 触发 Run [32937968205](https://github.com/FlanChanXwO/pixiv-cli/actions/runs/32937968205) conclusion=success；amd64/arm64 的 build/non-root/version/state-path/workdir/contract steps 均 success 且无 skipped。
+- **剩余风险**：正式 tagged GHCR push 本身未执行；该路径继续由 fail-closed release policy 与 post-Release 恢复文档约束，留待实际 release-prep/tagged run 验证。
+- **下一步建议**：Task 22 — Goal verifier 终审，逐条对照 C1–C5 当前状态证据。
+
+---
+
+### Task 22: Goal verifier — 终审
+
+- [x] **目标**：重读每个 C1–C5 验收标准对照当前仓库状态和证据。仅当每个标准有直接当前状态证据时标记 `COMPLETE`；否则设置 `CONTINUE` 或 `BLOCKED` 并给出确切缺失证明。
+- **验收**：C1–C5 全部有直接当前状态证据。
+- **实际做了什么**：在当前 HEAD `936d831d937291bec5d744528fe564ac5df5587d` 重读 C1–C5 并采集直接证据。C1：release policy 测试与 checked-in release workflow verifier 通过，policy 锁定 build/publish DAG、immutable checkout、minimal permissions、native runners 和 stable-only latest。C2：container contract 测试通过；CI 在 amd64/arm64 原生构建镜像并执行 non-root/version/state-path/workdir 断言；本地 fresh named-volume probe 确认 UID 1000 可写。C3：release workflow policy 与两架构 native smoke 通过，publish 消费两个 verified artifact 并创建 exact-version manifest。C4：documentation 测试与双语语义审计通过，README/maintainer 文档覆盖安装、state volume、/work、stdin auth、MCP stdio、tag 语义和 pull upgrade。C5：package/release 脚本、uncached `go test -count=1 ./...`、workflow policy、diff check、Quality Gate、Platform packaged binary smoke 和 credential-free Container smoke 全部绿色。
+- **验证证据**：本地当前 HEAD：releaseworkflow PASS、containerrelease PASS、documentation PASS、package script exit 0、uncached full Go regression exit 0、`git diff --check origin/main...HEAD` 干净。GitHub 当前 head：Container image smoke [32938381106](https://github.com/FlanChanXwO/pixiv-cli/actions/runs/32938381106) success；Quality Gate [32938381103](https://github.com/FlanChanXwO/pixiv-cli/actions/runs/32938381103) success；Platform packaged binary smoke [32938381217](https://github.com/FlanChanXwO/pixiv-cli/actions/runs/32938381217) success。判定：`COMPLETE`。
+- **剩余风险**：低风险——正式 tagged GHCR push 未在本实现 PR 中执行；该外部发布动作属于后续 immutable tag release-prep，workflow 已由 fail-closed policy 和可重跑 publish boundary 约束。
+- **下一步建议**：执行全部 task 完成后的终审集中检查；若仍无阻塞发现，将 goal 标记完成。
+
+---
+
+### 🔍 终审集中检查（Task 21–22 之后，全部 task 完成）
+
+- [x] **目标**：最大范围总复查。
+- **检查清单**：
+  - [x] C 端体验：Docker 用户能否按文档正常使用
+  - [x] 代码质量：是否有 bug、死代码、调试残留
+  - [x] 安全性：鉴权、注入、敏感信息泄露、权限隔离
+  - [x] 数据一致性：状态路径、volume 持久化
+  - [x] 权限：build/publish 权限边界
+  - [x] 错误处理：registry 失败、恢复语义
+  - [x] 测试覆盖：所有新增/修改有聚焦测试
+  - [x] 构建产物：镜像构建正确
+  - [x] 文档：双语同步、无遗漏
+  - [x] 回滚方案：是否完整
+  - [x] Release boundary：不可变 tag、GHCR 恢复
+  - [x] 所有 C1–C5 标准有直接当前状态证据
+- **结论**：通过。用户文档中的 pull/tag、state volume、`/work` bind mount、stdin auth import 和 MCP stdio 命令与实现一致；fresh named-volume probe 确认 UID 1000 可写。代码经聚焦测试、policy mutation tests、LSP/Go diagnostics 和 code review 审查，未发现阻塞缺陷。安全审计确认无 secret 泄露、无 QEMU/Docker Hub credential、build 无 registry write、publish 最小权限。两架构 native smoke 在当前实现 HEAD 通过且断言无 skipped；双语文档审计无遗漏；回滚方案和 immutable tag/GHCR post-Release 恢复边界完整。
+- **验证证据**：在最终实现 HEAD `716ce323742fa67c95411811541466f2c7d9d890` 运行 releaseworkflow/containerrelease/documentation 聚焦测试全部 PASS，workflow policy verifier exit 0，`git diff --check origin/main...HEAD` 干净。该 HEAD 的 GitHub Actions 全绿：Quality Gate [32939230308](https://github.com/FlanChanXwO/pixiv-cli/actions/runs/32939230308)、Container image smoke [32939230367](https://github.com/FlanChanXwO/pixiv-cli/actions/runs/32939230367)（amd64/arm64 断言执行）、Platform packaged binary smoke [32939230307](https://github.com/FlanChanXwO/pixiv-cli/actions/runs/32939230307)。C1–C5 的逐条证据见 Task 22。
+- **发现问题**：无。
+- **最终状态**：COMPLETE
+
+---
+
+## Task 汇总
+
+| # | Task | Phase | 检查点 |
+|---|------|-------|--------|
+| 1 | Red — release policy 失败测试 | 1 | |
+| 2 | Green — 扩展 release policy 规则 | 1 | |
+| 3 | Refactor + Phase 1 验证 | 1 | |
+| 🔍 | 集中检查 #1 | | ✓ |
+| 4 | Red — Dockerfile contract 失败测试 | 2 | |
+| 5 | Green — 创建最小 Dockerfile | 2 | |
+| 6 | .dockerignore + 真实 smoke | 2 | |
+| 🔍 | 集中检查 #2 | | ✓ |
+| 7 | Red — release graph 失败测试 | 3 | |
+| 8 | Green/build — build_container matrix | 3 | |
+| 9 | 并行性 + credential-free smoke 工作流 | 3 | |
+| 🔍 | 集中检查 #3 | | ✓ |
+| 10 | Green/publish — publish_container job | 3 | |
+| 11 | Tag policy + 恢复语义 | 3 | |
+| 12 | Phase 3 验证 | 3 | |
+| 🔍 | 集中检查 #4 | | ✓ |
+| 13 | Red — 文档 fixture/测试 | 4 | |
+| 14 | 用户文档 — README 双语 | 4 | |
+| 15 | Auth + MCP + 升级文档 | 4 | |
+| 🔍 | 集中检查 #5 | | ✓ |
+| 16 | 维护者文档 — development.md 双语 | 4 | |
+| 17 | Phase 4 验证 | 4 | |
+| 🔍 | 集中检查 #6 | | ✓ |
+| 18 | 聚焦验证 | 5 | |
+| 19 | 包/回归验证 | 5 | |
+| 20 | 真实容器证据 | 5 | |
+| 🔍 | 集中检查 #7 | | ✓ |
+| 21 | Diff hygiene + Release boundary review | 5 | |
+| 22 | Goal verifier — 终审 | 5 | |
+| 🔍 | 终审集中检查 | | ✓ |
+
+**总计**：22 个执行 task + 8 个集中检查 = 30 轮

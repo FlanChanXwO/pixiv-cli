@@ -479,6 +479,33 @@ overlay。tag run 失败时应修复默认分支上的原因，并按正常的�
 build、production build 与 publish 都绑定同一个 tag；生产构建在独立 runner 上从 clean tag tree 重建
 staticlib，并继续以 `git diff --exit-code` 做 byte-for-byte 校验。
 
+GitHub Release 与 GHCR 是独立系统，无法原子提交。因此容器发布拆成 Release 前的 `build_container`
+和 Release 后的 `publish_container`。若 GHCR 发布失败，release workflow 必须保持 failed；恢复方式是用
+同一批 verified-container artifact（保留 90 天）和 immutable tag 重跑失败的 `publish_container` job——不要为了修复
+registry 发布而重建或重签 native 资产。exact-version manifest 总是推送；只有现有 channel classifier
+报告 stable 时才推进 `latest`。不使用 retry loop 隐藏 push 失败。
+
+### 容器发布验证
+
+`build_container` 在共享 `build` 门禁后运行，并与 `build_production` 并行；它不会等待生产资产重建。两个原生
+target 分别是 `ubuntu-22.04` 对应 `linux/amd64`、`ubuntu-22.04-arm` 对应 `linux/arm64`。每个 target 都从
+immutable tag checkout，在 clean tree 重建对应 Rust staticlib，通过 Linux ABI gate 构建版本化 Linux binary，
+运行容器打包测试，构建 pinned glibc runtime 镜像，并验证非 root 执行、精确版本、`/home/pixiv/.pixiv-cli/`
+下的 `pixiv config path`、`/work` 以及 OCI provenance（`org.opencontainers.image.source`、revision、version
+和 licenses），最后导出 `verified-container-linux-amd64` 与 `verified-container-linux-arm64`。build job 只持有
+`contents: read`；只有 `publish_container` 在 GitHub Release 后用 `packages: write` 消费这些 artifact。
+
+维护者聚焦检查：
+
+```bash
+go test ./scripts/internal/releaseworkflow -count=1
+go test ./scripts/tests/containerrelease -count=1
+go run ./scripts/cmd/releaseworkflow --workflow .github/workflows/release.yml
+```
+
+无凭据容器 smoke workflow 会在相关变更时构建两个原生架构，并执行 version、非 root、state-path 和工作目录
+断言；正式 tagged release 不能用这些本地检查替代该 CI evidence。
+
 Release policy 的共享契约位于 `scripts/internal/releasecontract` 与 `scripts/internal/workflow/yaml`。
 前者持有唯一的 per-target Rust toolchain 映射和六平台契约，后者提供 YAML AST 安全操作；两者都直接
 参与正常 release policy 和 production build 校验。保留的 release verifier 测试只覆盖 tag trigger、

@@ -53,6 +53,81 @@ Versioned installers keep `checksums.txt` on the official GitHub HTTPS path. Emb
 probed only for the platform archive, must return the same checksum content, and the downloaded archive still has to
 pass SHA-256 verification. This changes transport availability, never Release identity or integrity.
 
+### Docker (Linux amd64/arm64)
+
+Official images are published to GHCR as `ghcr.io/flanchanxwo/pixiv-cli`. Pull an exact release when reproducibility matters:
+
+```bash
+docker pull ghcr.io/flanchanxwo/pixiv-cli:v1.2.3
+```
+
+`latest` follows stable releases only; Prerelease tags never move `latest`. To track the current stable release, pull `ghcr.io/flanchanxwo/pixiv-cli:latest`. Images are built natively for `linux/amd64` and `linux/arm64`. The container runs the same `pixiv` binary and uses the same `~/.pixiv-cli` state namespace as other installations.
+
+Keep account state persistent and expose a download workspace:
+
+```bash
+docker run --rm \
+  -v pixiv-cli-state:/home/pixiv/.pixiv-cli \
+  -v "$PWD:/work" \
+  ghcr.io/flanchanxwo/pixiv-cli:v1.2.3 \
+  --version
+```
+
+Use `/work` for downloaded files with an explicit output path; it is the container's working directory, not a separate product mode.
+
+Bind mounts preserve host ownership. If the host directory is not writable by image UID 1000, run as the host identity, give the container an ephemeral `HOME`, and choose an explicit output path:
+
+```bash
+docker run --rm \
+  --user "$(id -u):$(id -g)" \
+  -e HOME=/tmp/pixiv-cli \
+  -v "$PWD:/work" \
+  ghcr.io/flanchanxwo/pixiv-cli:v1.2.3 \
+  download URL --output /work/downloads
+```
+
+For persistent state with that same host identity, bind a host directory you own instead of the default named volume:
+
+```bash
+mkdir -p "$PWD/pixiv-cli-state"
+docker run --rm \
+  --user "$(id -u):$(id -g)" \
+  -e HOME=/tmp/pixiv-cli \
+  -v "$PWD/pixiv-cli-state:/home/pixiv/.pixiv-cli" \
+  ghcr.io/flanchanxwo/pixiv-cli:v1.2.3 \
+  auth list
+```
+
+Import a refresh token through stdin instead of passing it as an argv value. For manual import, allocate a TTY so the hidden prompt can suppress echo: run the command, paste the opaque token, and send EOF (`Ctrl-D`).
+
+```bash
+docker run --rm -it \
+  -v pixiv-cli-state:/home/pixiv/.pixiv-cli \
+  ghcr.io/flanchanxwo/pixiv-cli:v1.2.3 \
+  auth import
+```
+
+For automation, pipe your secret manager's stdout directly into stdin with `-i`, not `-it`. The container writes only to the persistent state volume:
+
+```bash
+secret-manager print-token | docker run --rm -i \
+  -v pixiv-cli-state:/home/pixiv/.pixiv-cli \
+  ghcr.io/flanchanxwo/pixiv-cli:v1.2.3 \
+  auth import
+```
+
+This uses the existing `pixiv auth import` behavior; it does not add a Docker-specific OAuth callback flow for `auth login`.
+
+For MCP, the transport remains `docker run --rm -i ghcr.io/flanchanxwo/pixiv-cli mcp`, and stdout stays reserved for MCP JSON-RPC. Pin a release as shown below:
+
+```bash
+docker run --rm -i ghcr.io/flanchanxwo/pixiv-cli:v1.2.3 mcp
+```
+
+Add `-v pixiv-cli-state:/home/pixiv/.pixiv-cli` when the MCP server should reuse persisted accounts.
+
+Upgrade by pulling a newer image and redeploying with the same state volume. This workflow does not make `pixiv update` container-aware.
+
 ### Install with an AI agent
 
 Copy this single prompt into Codex, Claude Code, Cursor, or another local AI agent with terminal access:

@@ -51,6 +51,83 @@ binary，并在修改 PATH 前完成用户级安装。可用 `--no-path` 保持 
 
 随正式版本发布的安装器始终从 GitHub HTTPS 直连取得权威 `checksums.txt`。内置免费候选源只用于探测和下载平台压缩包，候选返回的 checksum 必须与直连内容一致，下载结果仍必须通过 SHA-256 校验。它只改善传输可达性，不改变 Release 身份或完整性判断。
 
+### Docker（Linux amd64/arm64）
+
+官方镜像发布到 GHCR：`ghcr.io/flanchanxwo/pixiv-cli`。需要可复现部署时，请拉取精确 release：
+
+```bash
+docker pull ghcr.io/flanchanxwo/pixiv-cli:v1.2.3
+```
+
+`latest` 只跟随 stable release；prerelease tag 绝不移动 `latest`。要跟踪当前 stable release，可拉取
+`ghcr.io/flanchanxwo/pixiv-cli:latest`。镜像分别为 `linux/amd64` 和 `linux/arm64` 原生构建。容器运行同一个
+`pixiv` binary，并使用与其他安装方式相同的 `~/.pixiv-cli` 状态命名空间。
+
+持久保存账号状态，并挂载下载工作区：
+
+```bash
+docker run --rm \
+  -v pixiv-cli-state:/home/pixiv/.pixiv-cli \
+  -v "$PWD:/work" \
+  ghcr.io/flanchanxwo/pixiv-cli:v1.2.3 \
+  --version
+```
+
+下载文件请配合显式输出路径放在 `/work`；它是容器工作目录，不代表独立的产品模式。
+
+bind mount 会保留宿主目录属主。如果宿主目录不能被镜像内的 UID 1000 写入，请以宿主身份运行、给容器临时 `HOME`，并选择显式输出路径：
+
+```bash
+docker run --rm \
+  --user "$(id -u):$(id -g)" \
+  -e HOME=/tmp/pixiv-cli \
+  -v "$PWD:/work" \
+  ghcr.io/flanchanxwo/pixiv-cli:v1.2.3 \
+  download URL --output /work/downloads
+```
+
+若要在同一宿主身份下持久化状态，请绑定一个你拥有的宿主目录，而不是默认 named volume：
+
+```bash
+mkdir -p "$PWD/pixiv-cli-state"
+docker run --rm \
+  --user "$(id -u):$(id -g)" \
+  -e HOME=/tmp/pixiv-cli \
+  -v "$PWD/pixiv-cli-state:/home/pixiv/.pixiv-cli" \
+  ghcr.io/flanchanxwo/pixiv-cli:v1.2.3 \
+  auth list
+```
+
+请通过 stdin 导入 refresh token，不要把它作为 argv 值传入。手动导入时分配 TTY，让隐藏输入提示避免回显：运行命令后粘贴 opaque token，再发送 EOF（`Ctrl-D`）。
+
+```bash
+docker run --rm -it \
+  -v pixiv-cli-state:/home/pixiv/.pixiv-cli \
+  ghcr.io/flanchanxwo/pixiv-cli:v1.2.3 \
+  auth import
+```
+
+自动化场景请把 secret manager 的 stdout 直接管道给 stdin，使用 `-i` 而不是 `-it`。容器只写入持久状态 volume：
+
+```bash
+secret-manager print-token | docker run --rm -i \
+  -v pixiv-cli-state:/home/pixiv/.pixiv-cli \
+  ghcr.io/flanchanxwo/pixiv-cli:v1.2.3 \
+  auth import
+```
+
+这沿用既有 `pixiv auth import` 行为，不会为 `auth login` 添加 Docker-specific OAuth callback 流程。
+
+MCP 传输保持 `docker run --rm -i ghcr.io/flanchanxwo/pixiv-cli mcp`，stdout 仍保留给 MCP JSON-RPC。可按下方命令固定 release：
+
+```bash
+docker run --rm -i ghcr.io/flanchanxwo/pixiv-cli:v1.2.3 mcp
+```
+
+如果 MCP server 需要复用已保存账号，请追加 `-v pixiv-cli-state:/home/pixiv/.pixiv-cli`。
+
+通过拉取新镜像升级，并使用同一 state volume 重新部署。该流程不会将 `pixiv update` 改为 container-aware。
+
 ### 让 AI Agent 安装
 
 把下面这一段 prompt 复制给能够操作本机终端的 Codex、Claude Code、Cursor 或其他 AI Agent：

@@ -1,87 +1,68 @@
-# 原始输入与已确认计划
+# Goal Input — Docker as a first-class pixiv-cli release target
 
-使用 goal-mode 技能初始化这份计划，但是不要执行
+## 原始需求
 
-<proposed_plan>
-# SauceNAO / ascii2d 以图搜图集成（修订版）
+Add official Docker container support to `pixiv-cli` as a first-class distribution target.
 
-## 总结
+### 核心要求
 
-原计划需要实质修订。保留 `pixiv search SOURCE` 自动识别、SauceNAO/ascii2d、多 provider 聚合、CLI/MCP 输出和 partial 成功；修正 v1 架构边界、输出协议、Record 类型、配置入口和文档路径。
+1. Container builds must start from the same immutable release tag as the existing native production builds.
+2. Container builds run in parallel with the native production build path after the shared release quality gates.
+3. Produce native `linux/amd64` and `linux/arm64` images (native runners, not QEMU cross-build).
+4. Publish a multi-architecture image to GHCR (`ghcr.io/flanchanxwo/pixiv-cli`) as part of the tagged release workflow.
 
-不新增 public SDK，也不修改 `sdk/pixiv`。
+### 产品模型约束
 
-## 接口与架构
+- Container distribution must preserve the existing product model instead of creating a Docker-specific product.
+- The same `pixiv` binary, the same `~/.pixiv-cli` state namespace, the same CLI/MCP behavior, and the same release provenance and validation expectations apply.
 
-- 新增 `internal/services/reversesearch` 顶层 Facade，并在 `AGENTS.md` 和双语架构文档中加入仅限该能力的例外：CLI/MCP 可依赖顶层 Facade/契约，但不得导入其 SauceNAO/ascii2d 协议子包。
-- 内部契约采用：
-  - `Provider`: `saucenao | ascii2d-color | ascii2d-bovw | all`
-  - `Request`: `Source`、`Provider`、`PixivOnly`
-  - `Searcher.Search(context.Context, Request) (Response, error)`
-- `APIKey`、HTTP client、cookie jar 和代理属于构造依赖，不进入每次 `Request`。CLI 按 `--proxy/--no-proxy` 构造查询服务；MCP 使用启动时的代理快照。
-- CLI 保留自动识别：
-  - 明确带 HTTP(S) scheme 的输入始终进入图片模式；URL 非法时显式失败，不回退关键词。
-  - 其他输入仅在跟随符号链接后为现有常规文件时进入图片模式。
-  - 图片模式只接受 `--provider`、现有输出参数和代理参数；显式搜索过滤、类型、分页或 trending 参数均报 usage error。
-- MCP 新增 `reverse_search`，输入仅为必填 `source` 和可选 `provider`。
-- 配置新增：
-  - `reverse_search_provider`，默认 `saucenao`
-  - `reverse_search_pixiv_only`，默认 `true`
-  - `saucenao_api_key`，由 `SAUCENAO_API_KEY` 覆盖
-- 删除原计划中的 CLI/MCP `all_results`；需要非 Pixiv 命中时通过 `reverse_search_pixiv_only=false` 统一控制。
+### Scope decisions
 
-## Provider、载荷与输出
+- Registry: GitHub Container Registry (`ghcr.io/flanchanxwo/pixiv-cli`).
+- Architectures: `linux/amd64` and `linux/arm64` only for the first container release.
+- Runtime base: a glibc-based Debian slim image pinned by immutable digest; Alpine/musl and `scratch` are out of scope.
+- Builds use native Linux runners; QEMU cross-build is out of scope.
+- Container build jobs must not receive registry write permission. They produce verified image artifacts; registry publication happens in a separate publish job.
+- Stable releases publish `vX.Y.Z` and advance `latest`; prereleases publish only the exact version tag and must not advance `latest`.
+- Container upgrades are performed by pulling a newer image. This goal documents that rule but does not change `pixiv update` behavior.
 
-- URL 响应或本地文件只流式复制一次到权限受限的临时文件，同时计算 SHA-256；各 provider 从同一快照重新打开 reader。结束时关闭并清理，不回显路径、原始 URL或文件内容。
-- HTTP(S) 禁止 userinfo，并在每次重定向和最终响应重新校验协议。按已确认的信任模型，CLI/MCP 均允许任意可读常规文件及私网、环回、链路本地 URL；文档必须将 MCP 标为仅适合可信本机客户端。
-- 不设置统一大小上限、固定总超时或重试。ascii2d 单独验证 JPEG/PNG/WEBP 与官方 10 MB 限制；该限制不影响 SauceNAO-only 请求。[ascii2d 官方说明](https://ascii2d.net/readme)
-- SauceNAO：
-  - API key 必填，缺失时在读取/上传载荷前返回 `missing_credential`。
-  - multipart 上传固定 `output_type=2`、`db=999`，不开放高级参数。
-  - 解析 rank、similarity、index、标题、作者、显式 Pixiv ID/用户 ID、外链和非敏感 quota；任何错误不得包含 key、source 或原始响应体。
-- ascii2d：
-  - 使用独立 cookie jar 获取首页 CSRF。
-  - 一次 POST `/search/file`，只从同源预期 Location 提取严格 hash。
-  - color/bovw 共享上传 hash，再并行抓取两个结果页。
-  - 缺失 CSRF、Location、hash 或关键结果结构时返回 `malformed_upstream_response`，不静默跳过。
-- `all` 固定按 `saucenao`、`ascii2d-color`、`ascii2d-bovw` 排序；SauceNAO 与 ascii2d 分支并发，ascii2d 两种模式共享上传。context 取消始终中止整体操作，不转换为 partial。
-- JSON/MCP envelope 固定为：
-  - `input`: 仅 `kind`、`sha256`
-  - `providers`: 有序 `{name,status,result_count,quota?}`
-  - `results`: 可选 canonical Pixiv ref，加一个或多个 provider evidence
-  - `records`: canonical Pixiv 管道实体
-  - `provider_errors`: `{provider,code,message}`
-  - `partial`: 仅在至少一个成功且至少一个失败时为 true
-- 只从显式 Pixiv ID 或严格 `/artworks/{id}`、`/users/{id}` URL 建立 canonical ref；不根据标题或作者猜测。同一 `(type,id)` 按首次出现去重并合并 evidence，跨 provider 分数不比较。
-- Provider 无法可靠判断 artwork 子类型，因此作品 Record 使用准确的通用 `type:"artwork"`；新增受校验的 identity Record constructor，并让 download、bookmark add/remove 接受该类型。用户仍使用 `type:"user"`。
-- CLI JSON 与 MCP structured output返回完整 envelope；人类输出展示过滤后的结果；非 TTY/显式 NDJSON 仅输出 `records`。
-- 单 provider 失败或全部 provider 失败：CLI 非零，MCP 保留 envelope 且 `isError=true`。`all` partial：CLI exit 0 并写安全 warning，MCP `isError=false`。
+### Non-goals
 
-## 配置、安全与文档
+- No Docker-specific authentication protocol or token storage format.
+- No rewrite of `auth login`, OAuth callback handling, or MCP transport.
+- No Docker Hub publication.
+- No Kubernetes/Helm/Compose deployment layer.
+- No Alpine/musl support, QEMU build path, or additional CPU architectures.
+- No new Go runtime dependency solely for Docker support.
+- No change to self-update implementation in this goal.
+- No versioned changelog entry during this implementation PR; release notes remain release-preparation work per repository policy.
 
-- `[reverse_search]` 默认配置写入 provider/pixiv-only；SauceNAO key 仅在用户设置后写入私有 TOML。
-- `config get saucenao_api_key` 始终输出 `<redacted>`；`config set saucenao_api_key` 拒绝 argv value，只接受非 TTY stdin。
-- 修复通用环境覆盖提示：所有 Sensitive 设置只说明“由环境覆盖”，不得打印环境值。
-- 图片模式解析 JSON 输出配置时不得初始化 Pixiv SDK 或打开账号数据库。
-- 文档说明图片会上传至第三方、URL 会先在本地抓取、MCP 的文件外传/SSRF 权限、partial 语义和 NDJSON 限制。SauceNAO 会短期保存上传图片，URL 查询可能缓存更久。[SauceNAO 隐私与条款](https://saucenao.com/legal.html)
-- 更新目标分支实际存在的文件：英/中文 README、CLI/MCP reference、`docs/{en,zh-CN}/maintainers/{architecture,development}.md`、`skills/pixiv-cli/`、`changelog/unreleased/{en,zh-CN}.md`。
-- 不再引用已不存在的日文文档、旧 `docs/maintainers/*` 路径或 `.github/PULL_REQUEST_TEMPLATE.md` release-note 流程。
+### Completion Criteria
 
-## 测试计划
+- C1: The release policy formally recognizes container build/publish jobs, preserves immutable-tag provenance, keeps registry write permission out of build jobs, and fails closed if the Docker release contract drifts.
+- C2: A production container image can be built from the versioned native Linux binary with a pinned glibc runtime base, runs as a non-root user, preserves the `~/.pixiv-cli` state path, uses `/work` as the working directory, and reports the exact release version.
+- C3: Tagged releases build `linux/amd64` and `linux/arm64` container images on native runners in parallel with native production builds and publish a GHCR multi-arch image with correct stable/prerelease tag semantics and OCI provenance labels.
+- C4: English and Simplified Chinese user/maintainer documentation describe Docker installation, persistent state, download bind mounts, stdin-based `auth import`, MCP stdio usage, release tagging, and pull-based upgrades without claiming Docker-specific product behavior.
+- C5: Focused container/release tests, documentation tests, repository Go tests, release workflow policy validation, diff checks, and the credential-free container smoke workflow all pass with fresh evidence.
 
-- 严格 TDD：每项行为先运行聚焦测试确认 Red，再完成 Green/Refactor。
-- Provider fixtures：
-  - SauceNAO multipart、固定字段、正常/空结果、quota、API status、非 2xx、非法/缺失 JSON、脱敏。
-  - ascii2d cookie/CSRF、一次上传、Location/hash、color/bovw HTML、10 MB 边界、格式校验、selector 漂移和共享上传。
-- Facade/source：
-  - URL/文件只生成一次快照、SHA-256、临时权限和清理。
-  - URL scheme/userinfo/重定向复核，以及已确认允许的私网与任意常规文件行为。
-  - deterministic provider 顺序、并发取消、canonical 去重、evidence 合并、pixiv-only、partial 和全部失败。
-- CLI/MCP/config：
-  - 自动识别与关键词保留、参数冲突、provider 配置/覆盖、JSON/human/NDJSON。
-  - `artwork` Record 到 download/bookmark 的管道兼容。
-  - MCP schema、structured error、partial `isError`。
-  - key 的 stdin-only 写入、环境优先级，以及 stdout/stderr/diagnostics/JSON-RPC 全链路不泄密。
-- 真实网络 e2e 仅在 `PIXIV_REVERSE_SEARCH_E2E=1` 下运行，SauceNAO 还要求 key；它用于观察上游兼容性，不作为默认发布门禁。
-- 验证顺序：目标 provider/Facade 测试 → CLI/MCP/config/Record 回归 → 架构与 secret 测试 → `go test ./...` → `sh scripts/build.sh`。不新增依赖，复用现有 `golang.org/x/net/html`。
-</proposed_plan>
+### Release consistency boundary
+
+GitHub Release and GHCR are separate publication systems and cannot be made transactionally atomic. The implementation must keep container build failures ahead of GitHub Release publication by making verified container artifacts a prerequisite of the release publish path. Registry push occurs in a dedicated post-Release job with only `packages: write`; a push failure leaves the release workflow failed and must be recoverable by rerunning container publication without rebuilding or resigning the native release.
+
+The implementation must document this recovery boundary rather than hiding it behind retries or pretending cross-service rollback exists.
+
+### Evidence Required
+
+| Criterion | Verification command / evidence | Evidence location |
+|-----------|---------------------------------|-------------------|
+| C1 | `go test ./scripts/internal/releaseworkflow -count=1` and `go run ./scripts/cmd/releaseworkflow --workflow .github/workflows/release.yml` | Test output + Progress Log |
+| C2 | `go test ./scripts/tests/containerrelease -count=1` plus native Docker smoke: `pixiv --version`, `pixiv config path`, and non-root user assertion | Test output + container smoke CI log |
+| C3 | `go test ./scripts/tests/containerrelease -count=1` plus successful `linux/amd64` and `linux/arm64` jobs in the credential-free container smoke workflow; release policy statically proves GHCR permissions/tag rules | Test output + GitHub Actions run |
+| C4 | `go test ./scripts/tests/documentation -count=1` | Test output |
+| C5 | `go test ./...`, `sh scripts/test-package-release.sh`, `go run ./scripts/cmd/releaseworkflow --workflow .github/workflows/release.yml`, `go test ./scripts/tests/documentation -count=1`, `git diff --check`, and required GitHub CI checks | Local/CI verification logs |
+
+### Budget Limits
+
+- Max iterations: 50 Goal Mode iterations.
+- Max hours: unset; use host/session limits rather than inventing a repository-specific wall-clock cap.
+- These are agent-execution controls only and must not become product runtime timeouts, retry limits, truncation rules, or hidden fallbacks.

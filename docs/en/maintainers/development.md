@@ -385,6 +385,22 @@ Adding or restoring an entry point for any capability above is a functional chan
 
 release.yml only accepts `v[0-9]*` tag pushes and no longer offers `workflow_dispatch`, a `release_tag` input or a test-only overlay. When a tag run fails, fix the cause on the default branch and re-run the normal immutable-tag release process; new verifiers, tests or production sources are not injected into an old tag from the default branch, and no manual recovery entry is provided for an existing Release. validate, test build, production build and publish are all bound to the same tag; the production build rebuilds the staticlib from a clean tag tree on a separate runner and continues to use `git diff --exit-code` for byte-for-byte verification.
 
+GitHub Release and GHCR are separate systems and cannot commit atomically. Container publication is therefore split into `build_container` before Release and `publish_container` after Release. If GHCR publication fails, the release workflow remains failed; recovery reruns the failed `publish_container` job with the same verified container artifacts (retained for 90 days) and immutable tag—do not rebuild or resign native assets to repair registry publication. The exact-version manifest is always pushed; `latest` moves only when the existing channel classifier reports stable. No retry loop hides push failures.
+
+### Container release verification
+
+`build_container` runs after the shared `build` gate and beside `build_production`; it never waits for production assets to be rebuilt. The two native targets are `ubuntu-22.04` for `linux/amd64` and `ubuntu-22.04-arm` for `linux/arm64`. Each target checks out the immutable tag, rebuilds its Rust staticlib from that clean tree, builds a versioned Linux binary through the Linux ABI gate, runs container packaging tests, builds a pinned glibc runtime image, verifies non-root execution, the exact version, `pixiv config path` under `/home/pixiv/.pixiv-cli/`, `/work`, and OCI provenance (`org.opencontainers.image.source`, revision, version, and licenses), then exports `verified-container-linux-amd64` and `verified-container-linux-arm64`. Build jobs receive only `contents: read`; only `publish_container` consumes those artifacts with `packages: write` after GitHub Release.
+
+Focused maintainer checks are:
+
+```bash
+go test ./scripts/internal/releaseworkflow -count=1
+go test ./scripts/tests/containerrelease -count=1
+go run ./scripts/cmd/releaseworkflow --workflow .github/workflows/release.yml
+```
+
+The credential-free container smoke workflow builds both native architectures on relevant changes and executes version, non-root, state-path, and working-directory assertions; these local checks do not replace that CI evidence for a tagged release.
+
 The shared contract for release policy lives in `scripts/internal/releasecontract` and `scripts/internal/workflow/yaml`. The former holds the single per-target Rust toolchain mapping and the six-platform contract; the latter provides YAML AST safe operations; both directly participate in normal release policy and production build validation. The retained release verifier tests only cover tag trigger, build quality, production isolation, publish/Homebrew policy, release notes and the workflow YAML safety boundary; historical recovery plans and acceptance reports retain their original text and paths and do not serve as current process descriptions.
 
 ### Verifier source navigation
