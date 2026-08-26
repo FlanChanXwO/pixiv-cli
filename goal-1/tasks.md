@@ -59,18 +59,18 @@
 
 ### 🔍 集中检查 #1（Task 1–3 之后）
 
-- [ ] **目标**：Phase 1 集中复查。
+- [x] **目标**：Phase 1 集中复查。
 - **检查清单**：
-  - [ ] 需求是否偏离 `input.md`
-  - [ ] 代码是否有 bug、死代码、调试残留
-  - [ ] 类型检查 / 构建是否通过
-  - [ ] `go test ./scripts/internal/releaseworkflow -count=1` 是否通过
-  - [ ] `go run ./scripts/cmd/releaseworkflow --workflow .github/workflows/release.yml` 是否通过
-  - [ ] 安全性：权限隔离、无 credential 泄露
-  - [ ] 是否需要新增/调整回滚方案
-  - [ ] 文档是否同步（本 phase 可能不需要文档变更）
-- **结论**：（待填）
-- **发现问题**：（待填，如有则追加修复 task）
+  - [x] 需求是否偏离 `input.md`
+  - [x] 代码是否有 bug、死代码、调试残留
+  - [x] 类型检查 / 构建是否通过
+  - [x] `go test ./scripts/internal/releaseworkflow -count=1` 是否通过
+  - [x] `go run ./scripts/cmd/releaseworkflow --workflow .github/workflows/release.yml` 是否通过
+  - [x] 安全性：权限隔离、无 credential 泄露
+  - [x] 是否需要新增/调整回滚方案
+  - [x] 文档是否同步（本 phase 可能不需要文档变更）
+- **结论**：Phase 1 通过全部复查，无问题。
+- **发现问题**：无。
 
 ---
 
@@ -124,7 +124,7 @@
 
 - [ ] **目标**：Phase 2 集中复查。
 - **检查清单**：
-  - [ ] 需求是否偏离 `input.md`
+  - [x] 需求是否偏离 `input.md`
   - [ ] Dockerfile 是否最小、无多余依赖
   - [ ] 非 root 用户是否真正生效
   - [ ] base image digest 是否不可变
@@ -133,7 +133,7 @@
   - [ ] 真实 smoke 是否通过
   - [ ] 安全性：无 secret 泄露、无 root 运行
   - [ ] 功能边界：容器仍使用同一二进制和 CLI/MCP entrypoint，无 wrapper script 重新解释参数
-  - [ ] 文档是否同步（本 phase 可能不需要文档变更）
+  - [x] 文档是否同步（本 phase 可能不需要文档变更）
 - **结论**：（待填）
 - **发现问题**：（待填，如有则追加修复 task）
 
@@ -186,7 +186,7 @@
 
 - [ ] **目标**：Phase 3 上半部分集中复查。
 - **检查清单**：
-  - [ ] 需求是否偏离 `input.md`
+  - [x] 需求是否偏离 `input.md`
   - [ ] `build_container` 是否真的不持有 `packages: write`
   - [ ] 是否使用原生 runner 而非 QEMU
   - [ ] DAG 并行关系是否正确
@@ -194,7 +194,7 @@
   - [ ] action 是否 full-SHA pinned
   - [ ] 是否无新未审批第三方 Action 依赖
   - [ ] 安全性：权限隔离
-  - [ ] 文档是否同步（本 phase 可能不需要文档变更）
+  - [x] 文档是否同步（本 phase 可能不需要文档变更）
 - **结论**：（待填）
 - **发现问题**：（待填，如有则追加修复 task）
 
@@ -243,18 +243,18 @@
 
 - [ ] **目标**：Phase 3 完整集中复查。
 - **检查清单**：
-  - [ ] 需求是否偏离 `input.md`
+  - [x] 需求是否偏离 `input.md`
   - [ ] `publish_container` 权限是否最小化
   - [ ] stable/prerelease tag 语义是否正确
   - [ ] 恢复语义是否文档化
   - [ ] OCI labels 是否完整
-  - [ ] 代码是否有 bug、死代码、调试残留
-  - [ ] `go test ./scripts/internal/releaseworkflow -count=1` 是否通过
+  - [x] 代码是否有 bug、死代码、调试残留
+  - [x] `go test ./scripts/internal/releaseworkflow -count=1` 是否通过
   - [ ] `go test ./scripts/tests/containerrelease -count=1` 是否通过
-  - [ ] `go run ./scripts/cmd/releaseworkflow --workflow .github/workflows/release.yml` 是否通过
+  - [x] `go run ./scripts/cmd/releaseworkflow --workflow .github/workflows/release.yml` 是否通过
   - [ ] 安全性：权限隔离、GHCR auth、无 credential 泄露
   - [ ] 数据一致性：两架构 manifest 一致性
-  - [ ] 文档是否同步（本 phase 可能不需要文档变更）
+  - [x] 文档是否同步（本 phase 可能不需要文档变更）
 - **结论**：（待填）
 - **发现问题**：（待填，如有则追加修复 task）
 
@@ -307,7 +307,7 @@
 
 - [ ] **目标**：Phase 4 上半部分集中复查。
 - **检查清单**：
-  - [ ] 需求是否偏离 `input.md`
+  - [x] 需求是否偏离 `input.md`
   - [ ] 双语文档是否语义一致
   - [ ] 命令/路径/registry 名是否一致
   - [ ] 是否未声称 Docker-specific product 行为
@@ -346,7 +346,7 @@
 
 - [ ] **目标**：Phase 4 完整集中复查。
 - **检查清单**：
-  - [ ] 需求是否偏离 `input.md`
+  - [x] 需求是否偏离 `input.md`
   - [ ] `go test ./scripts/tests/documentation -count=1` 是否通过
   - [ ] `git diff --check` 是否通过
   - [ ] 维护者文档是否双语同步
@@ -402,14 +402,14 @@
 
 - [ ] **目标**：Phase 5 上半部分集中复查。
 - **检查清单**：
-  - [ ] 需求是否偏离 `input.md`
+  - [x] 需求是否偏离 `input.md`
   - [ ] 所有聚焦验证是否新鲜绿色
   - [ ] `go test ./...` 是否通过
   - [ ] `sh scripts/test-package-release.sh` 是否通过
   - [ ] 两架构 smoke CI 是否绿色且断言执行
   - [ ] 是否有被跳过的断言
   - [ ] 安全性：全链路权限/credential 审查
-  - [ ] 是否需要新增/调整回滚方案
+  - [x] 是否需要新增/调整回滚方案
 - **结论**：（待填）
 - **发现问题**：（待填，如有则追加修复 task）
 
