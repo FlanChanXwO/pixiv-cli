@@ -254,6 +254,12 @@ func TestInstallCmdCheckoutUsesCRLFWhenAutocrlfDisabled(t *testing.T) {
 	}
 }
 
+// installCmdInvocation 保持 Windows smoke 测试对 cmd.exe 参数边界的覆盖；
+// 参数必须作为独立 argv 传入，不能预先拼接成带引号的命令行。
+func installCmdInvocation(script, installDir string) []string {
+	return []string{"/d", "/c", "call", script, "--install-dir", installDir, "--no-path"}
+}
+
 func runGitCommand(t *testing.T, directory string, arguments ...string) {
 	t.Helper()
 	command := exec.Command("git", append([]string{"-C", directory}, arguments...)...)
