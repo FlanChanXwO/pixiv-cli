@@ -101,6 +101,14 @@ func checkContainerPublishJob(job *yaml.Node) error {
 	if err := requireContainerPublishNeeds(job); err != nil {
 		return err
 	}
+	// publish_container 的 steps 必须包含 exact-version tag 推送（${RELEASE_TAG}）。
+	if err := requireExactVersionTagPush(job); err != nil {
+		return err
+	}
+	// latest tag 推送必须受 stable-only gate 约束，不能无条件推送。
+	if err := rejectUnconditionalLatestTagPush(job); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -185,6 +193,52 @@ func requireContainerPublishNeeds(job *yaml.Node) error {
 	}
 	if !foundBuildContainer {
 		return errors.New("publish_container job must depend on build_container")
+	}
+	return nil
+}
+
+// requireExactVersionTagPush 确保 publish_container 的 steps 中包含推送
+// exact-version tag（使用 ${RELEASE_TAG}）的步骤。每 release 必须发布
+// exact-version container tag，这是 release consistency boundary 的要求。
+func requireExactVersionTagPush(job *yaml.Node) error {
+	steps, err := jobSteps(job)
+	if err != nil {
+		return errors.New("publish_container job must push the exact-version tag")
+	}
+	for _, step := range steps {
+		run, ok := workflowyaml.MappingValue(step, "run")
+		if !ok || run.Kind != yaml.ScalarNode {
+			continue
+		}
+		if strings.Contains(run.Value, "docker push") && strings.Contains(run.Value, "${RELEASE_TAG}") {
+			return nil
+		}
+	}
+	return errors.New("publish_container job must always push the exact-version tag")
+}
+
+// rejectUnconditionalLatestTagPush 确保如果 publish_container 推送 latest tag，
+// 该推送必须受 stable-only gate 约束（使用 channel classifier 区分 stable/prerelease），
+// 而非无条件推送。latest tag 只在 stable release 时推进。
+func rejectUnconditionalLatestTagPush(job *yaml.Node) error {
+	steps, err := jobSteps(job)
+	if err != nil {
+		return nil
+	}
+	for _, step := range steps {
+		run, ok := workflowyaml.MappingValue(step, "run")
+		if !ok || run.Kind != yaml.ScalarNode {
+			continue
+		}
+		if !strings.Contains(run.Value, "latest") {
+			continue
+		}
+		// 如果步骤包含 latest 但没有 stable gate（channel classifier），
+		// 则是无条件推送，应被拒绝。
+		hasStableGate := strings.Contains(run.Value, "stable") || strings.Contains(run.Value, "channel") || strings.Contains(run.Value, "prerelease")
+		if !hasStableGate {
+			return errors.New("publish_container job must not push latest tag unconditionally (requires stable-only gate)")
+		}
 	}
 	return nil
 }

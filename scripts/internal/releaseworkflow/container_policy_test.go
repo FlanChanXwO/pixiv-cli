@@ -241,7 +241,14 @@ func addPublishContainerJob(t *testing.T, jobs *yaml.Node) {
 		"packages", scalarNode("write"),
 	))
 	// publish_container 需要有 steps 字段以通过 requireOnlyMappingKeys
-	appendMappingValue(t, publishContainer, "steps", &yaml.Node{Kind: yaml.SequenceNode, Tag: "!!seq"})
+	// 且必须包含 exact-version tag 推送步骤以满足 tag policy
+	appendMappingValue(t, publishContainer, "steps", &yaml.Node{
+		Kind: yaml.SequenceNode,
+		Tag:  "!!seq",
+		Content: []*yaml.Node{
+			runStepNode("Publish exact-version tag", `docker push ghcr.io/flanchanxwo/pixiv-cli:${RELEASE_TAG}`),
+		},
+	})
 	appendMappingValue(t, jobs, "publish_container", publishContainer)
 }
 
@@ -392,41 +399,69 @@ func TestContainerPublishJobIsOnlyPackagesWrite(t *testing.T) {
 func TestContainerPublishJobAlwaysPublishesExactVersionTag(t *testing.T) {
 	t.Parallel()
 
-	root := releaseWorkflowRoot(t)
-	jobs := requireMappingValue(t, root, "jobs")
-	addBuildContainerJob(t, jobs)
-	// 添加一个 publish_container，其 steps 中应包含 exact-version tag 推送
-	publishContainer := containerPublishJobFixture()
-	appendMappingValue(t, publishContainer, "name", scalarNode("Publish container image"))
-	appendMappingValue(t, publishContainer, "needs", sequenceNode("build_container", "publish"))
-	appendMappingValue(t, publishContainer, "runs-on", scalarNode("ubuntu-24.04"))
-	appendMappingValue(t, publishContainer, "permissions", mappingNode(
-		"contents", scalarNode("read"),
-		"packages", scalarNode("write"),
-	))
-	// steps 包含 exact-version tag 推送步骤
-	appendMappingValue(t, publishContainer, "steps", &yaml.Node{
-		Kind: yaml.SequenceNode,
-		Tag:  "!!seq",
-		Content: []*yaml.Node{
-			runStepNode("Publish exact-version tag", `docker push ghcr.io/flanchanxwo/pixiv-cli:${RELEASE_TAG}`),
-		},
-	})
-	appendMappingValue(t, jobs, "publish_container", publishContainer)
+	t.Run("accepts exact-version tag push", func(t *testing.T) {
+		t.Parallel()
+		root := releaseWorkflowRoot(t)
+		jobs := requireMappingValue(t, root, "jobs")
+		addBuildContainerJob(t, jobs)
+		publishContainer := containerPublishJobFixture()
+		appendMappingValue(t, publishContainer, "name", scalarNode("Publish container image"))
+		appendMappingValue(t, publishContainer, "needs", sequenceNode("build_container", "publish"))
+		appendMappingValue(t, publishContainer, "runs-on", scalarNode("ubuntu-24.04"))
+		appendMappingValue(t, publishContainer, "permissions", mappingNode(
+			"contents", scalarNode("read"),
+			"packages", scalarNode("write"),
+		))
+		appendMappingValue(t, publishContainer, "steps", &yaml.Node{
+			Kind: yaml.SequenceNode,
+			Tag:  "!!seq",
+			Content: []*yaml.Node{
+				runStepNode("Publish exact-version tag", `docker push ghcr.io/flanchanxwo/pixiv-cli:${RELEASE_TAG}`),
+			},
+		})
+		appendMappingValue(t, jobs, "publish_container", publishContainer)
 
-	body, err := yaml.Marshal(root)
-	if err != nil {
-		t.Fatalf("marshal workflow: %v", err)
-	}
-	// 当前 policy 不校验 steps 内容中的 tag 推送——此测试确认 Red：
-	// checkWorkflow 不检查 exact-version tag 推送步骤，因此测试失败。
-	err = checkWorkflow(body)
-	if err != nil {
-		t.Fatalf("policy rejected workflow: %v", err)
-	}
-	// 如果 policy 不检查 tag 推送步骤，这里不会失败——这正是 Red：
-	// 我们需要 policy 检查 publish_container 包含 exact-version tag 推送。
-	t.Fatal("policy must require publish_container to always push the exact-version tag")
+		body, err := yaml.Marshal(root)
+		if err != nil {
+			t.Fatalf("marshal workflow: %v", err)
+		}
+		if err := checkWorkflow(body); err != nil {
+			t.Fatalf("policy rejected workflow with exact-version tag push: %v", err)
+		}
+	})
+
+	t.Run("rejects missing exact-version tag push", func(t *testing.T) {
+		t.Parallel()
+		root := releaseWorkflowRoot(t)
+		jobs := requireMappingValue(t, root, "jobs")
+		addBuildContainerJob(t, jobs)
+		publishContainer := containerPublishJobFixture()
+		appendMappingValue(t, publishContainer, "name", scalarNode("Publish container image"))
+		appendMappingValue(t, publishContainer, "needs", sequenceNode("build_container", "publish"))
+		appendMappingValue(t, publishContainer, "runs-on", scalarNode("ubuntu-24.04"))
+		appendMappingValue(t, publishContainer, "permissions", mappingNode(
+			"contents", scalarNode("read"),
+			"packages", scalarNode("write"),
+		))
+		// steps 不包含 exact-version tag 推送——只有 latest
+		appendMappingValue(t, publishContainer, "steps", &yaml.Node{
+			Kind: yaml.SequenceNode,
+			Tag:  "!!seq",
+			Content: []*yaml.Node{
+				runStepNode("Push latest only", `echo "no exact version"`),
+			},
+		})
+		appendMappingValue(t, jobs, "publish_container", publishContainer)
+
+		body, err := yaml.Marshal(root)
+		if err != nil {
+			t.Fatalf("marshal workflow: %v", err)
+		}
+		err = checkWorkflow(body)
+		if err == nil || !strings.Contains(strings.ToLower(err.Error()), "exact-version") {
+			t.Fatalf("policy error = %v, want rejection mentioning exact-version", err)
+		}
+	})
 }
 
 // TestContainerPublishJobLatestTagOnlyForStable 断言 latest tag 仅在 stable
@@ -446,11 +481,13 @@ func TestContainerPublishJobLatestTagOnlyForStable(t *testing.T) {
 		"contents", scalarNode("read"),
 		"packages", scalarNode("write"),
 	))
-	// steps 无条件推送 latest tag——应被拒绝
+	// steps 包含 exact-version tag 推送（满足 tag policy），
+	// 但也包含无条件 latest tag 推送——应被拒绝
 	appendMappingValue(t, publishContainer, "steps", &yaml.Node{
 		Kind: yaml.SequenceNode,
 		Tag:  "!!seq",
 		Content: []*yaml.Node{
+			runStepNode("Publish exact-version tag", `docker push ghcr.io/flanchanxwo/pixiv-cli:${RELEASE_TAG}`),
 			runStepNode("Push latest unconditionally", `docker push ghcr.io/flanchanxwo/pixiv-cli:latest`),
 		},
 	})
