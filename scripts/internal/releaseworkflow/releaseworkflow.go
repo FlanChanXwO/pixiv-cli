@@ -59,6 +59,7 @@ func checkPinnedGitHubKnownHosts(body []byte) error {
 	}
 	return nil
 }
+
 // requiredJobs 是 release workflow 必须包含的 job 名称集合。
 var requiredJobs = []string{
 	"validate", "e2e", "build", "build_production", "release_notes_audit",
@@ -207,7 +208,13 @@ func checkWorkflow(body []byte) error {
 	if err := checkVerifyReleaseSourceJob(verifyReleaseSource); err != nil {
 		return err
 	}
-	signingIndex, publishSteps, err := checkPublishJob(publish)
+	// 容器 job 是可选的：一旦存在，GitHub Release 必须等待其 artifact。
+	// 该检查必须先于 publish contract，否则旧的单依赖校验会掩盖一致性边界错误。
+	buildContainer, _ := workflowyaml.MappingValue(jobs, "build_container")
+	if err := requirePublishAfterContainerBuild(publish, buildContainer); err != nil {
+		return err
+	}
+	signingIndex, publishSteps, err := checkPublishJob(publish, buildContainer != nil)
 	if err != nil {
 		return err
 	}
@@ -225,7 +232,6 @@ func checkWorkflow(body []byte) error {
 	}
 	// 容器 job 是可选的：一旦存在就必须满足 container release contract。
 	// build_container 不持有 packages: write；publish_container 是唯一持权 job。
-	buildContainer, _ := workflowyaml.MappingValue(jobs, "build_container")
 	if err := checkContainerBuildJob(buildContainer); err != nil {
 		return err
 	}

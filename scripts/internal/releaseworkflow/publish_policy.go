@@ -116,14 +116,30 @@ func requireVerifiedProductionDownloads(steps []*yaml.Node) error {
 	return nil
 }
 
-func checkPublishJob(job *yaml.Node) (int, []*yaml.Node, error) {
+func checkPublishJob(job *yaml.Node, requiresContainerDependency bool) (int, []*yaml.Node, error) {
 	if err := requireRequiredJobExecution(job, "publish job"); err != nil {
 		return 0, nil, err
 	}
 	if err := requireOnlyMappingKeys(job, "name", "needs", "runs-on", "environment", "permissions", "steps"); err != nil {
 		return 0, nil, fmt.Errorf("publish job: %w", err)
 	}
-	if err := workflowyaml.RequireScalar(job, "needs", "verify_release_source"); err != nil {
+	// 无容器构建时维持原有单依赖；有容器构建时 Release 必须等待两架构 artifact。
+	if requiresContainerDependency {
+		validNeeds := false
+		if needs, ok := workflowyaml.MappingValue(job, "needs"); ok && needs.Kind == yaml.SequenceNode && len(needs.Content) == 2 {
+			values := make([]string, 0, 2)
+			for _, dependency := range needs.Content {
+				if dependency.Kind == yaml.ScalarNode {
+					values = append(values, dependency.Value)
+				}
+			}
+			validNeeds = len(values) == 2 &&
+				values[0] == "build_container" && values[1] == "verify_release_source"
+		}
+		if !validNeeds {
+			return 0, nil, errors.New("publish job with container builds must depend on [build_container, verify_release_source]")
+		}
+	} else if err := workflowyaml.RequireScalar(job, "needs", "verify_release_source"); err != nil {
 		return 0, nil, fmt.Errorf("publish job: %w", err)
 	}
 	if err := workflowyaml.RequireScalar(job, "runs-on", "ubuntu-24.04"); err != nil {

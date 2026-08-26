@@ -728,10 +728,16 @@ func TestCheckWorkflowRejectsSecurityAndQualityPolicyMutations(t *testing.T) {
 		},
 		{
 			name: "publish bypasses verify source dependency",
-			want: "needs must equal \"verify_release_source\"",
+			want: "verified container",
 			mutate: func(t *testing.T, root *yaml.Node) {
 				t.Helper()
-				requireMappingValue(t, jobNode(t, root, "publish"), "needs").Value = "build"
+				// 正式 workflow 现在用 sequence 同时声明容器 artifact 与 trust gate；
+				// 改成 scalar 才能表达“只依赖 build、绕过 verify_release_source”。
+				needs := requireMappingValue(t, jobNode(t, root, "publish"), "needs")
+				needs.Kind = yaml.ScalarNode
+				needs.Tag = "!!str"
+				needs.Value = "build"
+				needs.Content = nil
 			},
 		},
 		{

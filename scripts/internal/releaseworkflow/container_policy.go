@@ -97,7 +97,8 @@ func checkContainerPublishJob(job *yaml.Node) error {
 	if err := requireContainerPublishPermissions(job); err != nil {
 		return err
 	}
-	// publish_container 必须依赖 build_container（获取已验证容器 artifact）。
+	// publish_container 必须依赖 build_container 和 publish：前者提供两架构已验证
+	// artifact，后者保证 GHCR 推送是 GitHub Release 之后的可重跑恢复路径。
 	if err := requireContainerPublishNeeds(job); err != nil {
 		return err
 	}
@@ -186,15 +187,38 @@ func requireContainerPublishNeeds(job *yaml.Node) error {
 		}
 	}
 	foundBuildContainer := false
+	foundGitHubRelease := false
 	for _, dep := range deps {
-		if dep == "build_container" {
+		switch dep {
+		case "build_container":
 			foundBuildContainer = true
+		case "publish":
+			foundGitHubRelease = true
 		}
 	}
-	if !foundBuildContainer {
-		return errors.New("publish_container job must depend on build_container")
+	if !foundBuildContainer || !foundGitHubRelease {
+		return errors.New("publish_container job must depend on build_container and publish")
 	}
 	return nil
+}
+
+// requirePublishAfterContainerBuild 保证 GitHub Release 发布等待已验证容器 artifact。
+// GitHub Release 与 GHCR 虽然无法原子提交，但 Release 不得先于容器构建完成；
+// GHCR 推送失败仍可通过重跑 publish_container 恢复。
+func requirePublishAfterContainerBuild(publish, buildContainer *yaml.Node) error {
+	if buildContainer == nil {
+		return nil
+	}
+	needs, ok := workflowyaml.MappingValue(publish, "needs")
+	if !ok || needs.Kind != yaml.SequenceNode {
+		return errors.New("publish job must depend on build_container for verified container artifacts")
+	}
+	for _, dep := range needs.Content {
+		if dep.Kind == yaml.ScalarNode && dep.Value == "build_container" {
+			return nil
+		}
+	}
+	return errors.New("publish job must depend on build_container for verified container artifacts")
 }
 
 // requireExactVersionTagPush 确保 publish_container 的 steps 中包含推送

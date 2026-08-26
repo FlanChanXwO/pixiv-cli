@@ -25,7 +25,82 @@ func TestCheckWorkflowAcceptsCheckedInWorkflowWithContainerJobs(t *testing.T) {
 	}
 }
 
-// TestContainerBuildJobRejectsPackagesWrite 断言 build_container 不持有 packages: write。
+// TestCheckWorkflowRequiresContainerReleaseJobs 断言正式 release workflow 必须包含
+// 两个容器 job。容器是发布路径的一等公民，不允许继续停留在“可选 fixture”状态。
+func TestCheckWorkflowRequiresContainerReleaseJobs(t *testing.T) {
+	t.Parallel()
+
+	root := releaseWorkflowRoot(t)
+	jobs := requireMappingValue(t, root, "jobs")
+	for _, name := range []string{"build_container", "publish_container"} {
+		if _, ok := workflowyaml.MappingValue(jobs, name); !ok {
+			t.Fatalf("checked-in release workflow must contain the %q job", name)
+		}
+	}
+}
+
+// TestGitHubReleaseRequiresVerifiedContainerArtifacts 断言 GitHub Release 发布
+// 必须等待两架构容器 artifact。GHCR 推送可以失败并重跑，但不能在容器构建未验证时先发 Release。
+func TestGitHubReleaseRequiresVerifiedContainerArtifacts(t *testing.T) {
+	t.Parallel()
+
+	root := releaseWorkflowRoot(t)
+	jobs := requireMappingValue(t, root, "jobs")
+	addBuildContainerJob(t, jobs)
+	publish := requireMappingValue(t, jobs, "publish")
+	needs := requireMappingValue(t, publish, "needs")
+	filteredNeeds := make([]*yaml.Node, 0, len(needs.Content))
+	for _, dependency := range needs.Content {
+		if dependency.Value != "build_container" {
+			filteredNeeds = append(filteredNeeds, dependency)
+		}
+	}
+	needs.Content = filteredNeeds
+	body, err := yaml.Marshal(root)
+	if err != nil {
+		t.Fatalf("marshal workflow: %v", err)
+	}
+	err = checkWorkflow(body)
+	if err == nil || !strings.Contains(err.Error(), "verified container") {
+		t.Fatalf("policy error = %v, want rejection mentioning verified container", err)
+	}
+}
+
+// TestContainerPublishJobRequiresGitHubRelease 断言 GHCR 发布必须在 GitHub Release
+// 之后执行；这保证容器推送是 post-Release 恢复路径，而不是绕过 Release 门禁的旁路。
+func TestContainerPublishJobRequiresGitHubRelease(t *testing.T) {
+	t.Parallel()
+
+	root := releaseWorkflowRoot(t)
+	jobs := requireMappingValue(t, root, "jobs")
+	addBuildContainerJob(t, jobs)
+	publishContainer := containerPublishJobFixture()
+	appendMappingValue(t, publishContainer, "name", scalarNode("Publish container image"))
+	appendMappingValue(t, publishContainer, "needs", sequenceNode("build_container"))
+	appendMappingValue(t, publishContainer, "runs-on", scalarNode("ubuntu-24.04"))
+	appendMappingValue(t, publishContainer, "permissions", mappingNode(
+		"contents", scalarNode("read"),
+		"packages", scalarNode("write"),
+	))
+	appendMappingValue(t, publishContainer, "steps", &yaml.Node{
+		Kind: yaml.SequenceNode,
+		Tag:  "!!seq",
+		Content: []*yaml.Node{
+			runStepNode("Publish exact-version tag", `docker push ghcr.io/flanchanxwo/pixiv-cli:${RELEASE_TAG}`),
+		},
+	})
+	setJobNode(t, jobs, "publish_container", publishContainer)
+	body, err := yaml.Marshal(root)
+	if err != nil {
+		t.Fatalf("marshal workflow: %v", err)
+	}
+	err = checkWorkflow(body)
+	if err == nil || !strings.Contains(err.Error(), "publish") {
+		t.Fatalf("policy error = %v, want rejection requiring the publish dependency", err)
+	}
+}
+
+// TestContainerBuildJobRejectsPackagesWrite 断言 build_container 不持有 packages: write。es: write。
 func TestContainerBuildJobRejectsPackagesWrite(t *testing.T) {
 	t.Parallel()
 
@@ -38,7 +113,7 @@ func TestContainerBuildJobRejectsPackagesWrite(t *testing.T) {
 		"contents", scalarNode("read"),
 		"packages", scalarNode("write"),
 	))
-	appendMappingValue(t, jobs, "build_container", buildContainer)
+	setJobNode(t, jobs, "build_container", buildContainer)
 	// 添加合规的 publish_container 以便不因缺少它而报错
 	addPublishContainerJob(t, jobs)
 	body, err := yaml.Marshal(root)
@@ -62,7 +137,7 @@ func TestContainerBuildJobRejectsMovableRef(t *testing.T) {
 	checkout := checkoutStepFromContainer(t, steps)
 	with := requireMappingValue(t, checkout, "with")
 	requireMappingValue(t, with, "ref").Value = "${{ github.event.repository.default_branch }}"
-	appendMappingValue(t, jobs, "build_container", buildContainer)
+	setJobNode(t, jobs, "build_container", buildContainer)
 	addPublishContainerJob(t, jobs)
 	body, err := yaml.Marshal(root)
 	if err != nil {
@@ -88,7 +163,7 @@ func TestContainerBuildJobRejectsQEMU(t *testing.T) {
 		scalarNode("uses"), scalarNode("docker/setup-qemu-action@aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"),
 	}}
 	steps.Content = append(steps.Content, qemuStep)
-	appendMappingValue(t, jobs, "build_container", buildContainer)
+	setJobNode(t, jobs, "build_container", buildContainer)
 	addPublishContainerJob(t, jobs)
 	body, err := yaml.Marshal(root)
 	if err != nil {
@@ -108,7 +183,7 @@ func TestContainerBuildJobRejectsNonNativeRunner(t *testing.T) {
 	jobs := requireMappingValue(t, root, "jobs")
 	buildContainer := containerJobFixture(t)
 	requireMappingValue(t, buildContainer, "runs-on").Value = "macos-15"
-	appendMappingValue(t, jobs, "build_container", buildContainer)
+	setJobNode(t, jobs, "build_container", buildContainer)
 	addPublishContainerJob(t, jobs)
 	body, err := yaml.Marshal(root)
 	if err != nil {
@@ -131,7 +206,7 @@ func TestContainerBuildJobRejectsBuildProductionDependency(t *testing.T) {
 	// 替换 needs 为 build_production（串行依赖，应被拒绝）
 	removeMappingValue(t, buildContainer, "needs")
 	appendMappingValue(t, buildContainer, "needs", sequenceNode("build_production"))
-	appendMappingValue(t, jobs, "build_container", buildContainer)
+	setJobNode(t, jobs, "build_container", buildContainer)
 	addPublishContainerJob(t, jobs)
 	body, err := yaml.Marshal(root)
 	if err != nil {
@@ -159,7 +234,7 @@ func TestContainerPublishJobRequiresPackagesWrite(t *testing.T) {
 		"contents", scalarNode("read"),
 	))
 	appendMappingValue(t, publishContainer, "steps", &yaml.Node{Kind: yaml.SequenceNode, Tag: "!!seq"})
-	appendMappingValue(t, jobs, "publish_container", publishContainer)
+	setJobNode(t, jobs, "publish_container", publishContainer)
 	// 添加合规的 build_container 以便不因缺少它而报错
 	addBuildContainerJob(t, jobs)
 	body, err := yaml.Marshal(root)
@@ -189,7 +264,7 @@ func TestContainerPublishJobRequiresBuildContainerDependency(t *testing.T) {
 		"packages", scalarNode("write"),
 	))
 	appendMappingValue(t, publishContainer, "steps", &yaml.Node{Kind: yaml.SequenceNode, Tag: "!!seq"})
-	appendMappingValue(t, jobs, "publish_container", publishContainer)
+	setJobNode(t, jobs, "publish_container", publishContainer)
 	// 添加合规的 build_container 以便不因缺少它而报错
 	addBuildContainerJob(t, jobs)
 	body, err := yaml.Marshal(root)
@@ -219,19 +294,21 @@ func addContainerJobs(t *testing.T, root *yaml.Node) {
 	addPublishContainerJob(t, jobs)
 }
 
+// setJobNode 替换 checked-in workflow 中同名 job，避免正式容器 job 进入仓库后
+// 旧的“追加 fixture”测试产生 duplicate key。
+func setJobNode(t *testing.T, jobs *yaml.Node, name string, job *yaml.Node) {
+	t.Helper()
+	removeMappingValue(t, jobs, name)
+	appendMappingValue(t, jobs, name, job)
+}
+
 func addBuildContainerJob(t *testing.T, jobs *yaml.Node) {
 	t.Helper()
-	if _, exists := workflowyaml.MappingValue(jobs, "build_container"); exists {
-		return
-	}
-	appendMappingValue(t, jobs, "build_container", containerJobFixture(t))
+	setJobNode(t, jobs, "build_container", containerJobFixture(t))
 }
 
 func addPublishContainerJob(t *testing.T, jobs *yaml.Node) {
 	t.Helper()
-	if _, exists := workflowyaml.MappingValue(jobs, "publish_container"); exists {
-		return
-	}
 	publishContainer := containerPublishJobFixture()
 	appendMappingValue(t, publishContainer, "name", scalarNode("Publish container image"))
 	appendMappingValue(t, publishContainer, "needs", sequenceNode("build_container", "publish"))
@@ -249,10 +326,10 @@ func addPublishContainerJob(t *testing.T, jobs *yaml.Node) {
 			runStepNode("Publish exact-version tag", `docker push ghcr.io/flanchanxwo/pixiv-cli:${RELEASE_TAG}`),
 		},
 	})
-	appendMappingValue(t, jobs, "publish_container", publishContainer)
+	setJobNode(t, jobs, "publish_container", publishContainer)
 }
 
-// containerJobFixture 返回一个合规的 build_container job 节点。
+// containerJobFixture 返回一个合规的 build_container job 节点。tainer job 节点。
 func containerJobFixture(t *testing.T) *yaml.Node {
 	t.Helper()
 	job := &yaml.Node{Kind: yaml.MappingNode, Tag: "!!map"}
@@ -419,7 +496,7 @@ func TestContainerPublishJobAlwaysPublishesExactVersionTag(t *testing.T) {
 				runStepNode("Publish exact-version tag", `docker push ghcr.io/flanchanxwo/pixiv-cli:${RELEASE_TAG}`),
 			},
 		})
-		appendMappingValue(t, jobs, "publish_container", publishContainer)
+		setJobNode(t, jobs, "publish_container", publishContainer)
 
 		body, err := yaml.Marshal(root)
 		if err != nil {
@@ -451,7 +528,7 @@ func TestContainerPublishJobAlwaysPublishesExactVersionTag(t *testing.T) {
 				runStepNode("Push latest only", `echo "no exact version"`),
 			},
 		})
-		appendMappingValue(t, jobs, "publish_container", publishContainer)
+		setJobNode(t, jobs, "publish_container", publishContainer)
 
 		body, err := yaml.Marshal(root)
 		if err != nil {
@@ -491,7 +568,7 @@ func TestContainerPublishJobLatestTagOnlyForStable(t *testing.T) {
 			runStepNode("Push latest unconditionally", `docker push ghcr.io/flanchanxwo/pixiv-cli:latest`),
 		},
 	})
-	appendMappingValue(t, jobs, "publish_container", publishContainer)
+	setJobNode(t, jobs, "publish_container", publishContainer)
 
 	body, err := yaml.Marshal(root)
 	if err != nil {

@@ -41,7 +41,9 @@ ENV HOME=/home/pixiv
 WORKDIR /work
 
 # OCI provenance 元数据标签。
-# 构建时通过 --label 或 buildx --build-arg 注入实际值。
+# CI 必须注入触发 release 的不可变 tag 与 tag commit；本地构建可显式传入对应值。
+ARG REVISION
+ARG VERSION
 LABEL org.opencontainers.image.source="https://github.com/FlanChanXwO/pixiv-cli"
 LABEL org.opencontainers.image.revision="${REVISION}"
 LABEL org.opencontainers.image.version="${VERSION}"

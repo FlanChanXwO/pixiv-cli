@@ -5,7 +5,7 @@ on:
     tags:
       - 'v[0-9]*'
 
-# 版本、checkout、Release 与 Formula 全部绑定触发 workflow 的 immutable tag。
+# 版本、checkout、Release、Formula 与 Container 全部绑定触发 workflow 的 immutable tag。
 env:
   RELEASE_TAG: ${{ github.ref_name }}
 
@@ -317,6 +317,109 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
+  # 容器与生产资产共享同一个质量门禁，并在其后的原生 runner 上并行构建。
+  # 镜像本身不获得 registry 写权限；只产出本地验证过的 OCI artifact。
+  build_container:
+    name: Build container ${{ matrix.goos }}/${{ matrix.goarch }}
+    needs:
+      - build
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-22.04
+            goos: linux
+            goarch: amd64
+            rust_target: x86_64-unknown-linux-gnu
+            rust_toolchain: '1.96.1'
+            artifact: linux-amd64
+            cc: gcc
+          - runner: ubuntu-22.04-arm
+            goos: linux
+            goarch: arm64
+            rust_target: aarch64-unknown-linux-gnu
+            rust_toolchain: '1.96.1'
+            artifact: linux-arm64
+            cc: gcc
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ env.RELEASE_TAG }}
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+        with:
+          go-version: '1.26.3'
+      - name: Validate the immutable container source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$(git rev-parse "$RELEASE_TAG^{commit}")"
+          go run ./scripts/cmd/releaseassets validate-source --version "${RELEASE_TAG#v}" --product-skill skills/pixiv-cli/SKILL.md
+      - name: Install the pinned native Rust toolchain
+        shell: bash
+        run: rustup toolchain install '${{ matrix.rust_toolchain }}' --profile minimal --target '${{ matrix.rust_target }}' --no-self-update
+      - name: Rebuild the selected static library from the immutable tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          CC='${{ matrix.cc }}' RUSTUP_TOOLCHAIN='${{ matrix.rust_toolchain }}' bash scripts/build-staticlibs.sh --target '${{ matrix.rust_target }}'
+          git restore --source="$RELEASE_TAG^{commit}" -- internal/media/ugoira/rust/staticlib/manifest.json
+          git diff --exit-code
+          test -z "$(git status --porcelain --untracked-files=all)"
+          test -z "$(git clean -ndx)"
+      - name: Build and verify the versioned Linux executable
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          CC='${{ matrix.cc }}' go build -trimpath -buildvcs=false \
+            -ldflags "-X github.com/FlanChanXwO/pixiv-cli/internal/shared/buildinfo.Version=${RELEASE_TAG}" \
+            -o dist/pixiv ./cmd/pixiv
+          go run ./scripts/cmd/linuxabi --binary dist/pixiv
+      - name: Check the container packaging contract
+        shell: bash
+        run: go test ./scripts/tests/containerrelease -count=1
+      - name: Build the verified container image
+        shell: bash
+        run: |
+          docker build \
+            --build-arg REVISION="$(git rev-parse "$RELEASE_TAG^{commit}")" \
+            --build-arg VERSION='${RELEASE_TAG}' \
+            --platform 'linux/${{ matrix.goarch }}' \
+            --tag "pixiv-cli:${RELEASE_TAG}-${{ matrix.artifact }}" .
+      - name: Verify image provenance and runtime contract
+        shell: bash
+        env:
+          IMAGE: pixiv-cli:${{ env.RELEASE_TAG }}-${{ matrix.artifact }}
+        run: |
+          set -euo pipefail
+          uid=$(docker run --rm --entrypoint id "$IMAGE" -u)
+          test "$uid" != 0
+          version=$(docker run --rm "$IMAGE" --version)
+          test "$version" = "pixiv ${RELEASE_TAG}"
+          docker run --rm "$IMAGE" config path | grep -F '/home/pixiv/.pixiv-cli/'
+          test "$(docker run --rm --entrypoint sh "$IMAGE" -c pwd)" = /work
+          inspect_label() {
+            docker image inspect --format "{{ index .Config.Labels "$1" }}" "$IMAGE"
+          }
+          test "$(inspect_label org.opencontainers.image.revision)" = "$(git rev-parse HEAD)"
+          test "$(inspect_label org.opencontainers.image.version)" = "${RELEASE_TAG}"
+          test "$(inspect_label org.opencontainers.image.source)" = "https://github.com/FlanChanXwO/pixiv-cli"
+          test "$(inspect_label org.opencontainers.image.licenses)" = "MIT"
+      - name: Export the verified image artifact
+        shell: bash
+        run: docker save --output "${RUNNER_TEMP}/pixiv-cli-${{ matrix.artifact }}.tar" "pixiv-cli:${RELEASE_TAG}-${{ matrix.artifact }}"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: verified-container-${{ matrix.artifact }}
+          path: ${{ runner.temp }}/pixiv-cli-${{ matrix.artifact }}.tar
+          if-no-files-found: error
+          retention-days: 1
+
   # 在进入受保护的 publish job 前，以 tag 内不可变说明、GitHub PR 关联和实际提交范围交叉核对发布来源。
   release_notes_audit:
     name: Audit release notes provenance
@@ -381,7 +484,9 @@ jobs:
 
   publish:
     name: Sign and publish the GitHub Release
-    needs: verify_release_source
+    needs:
+      - build_container
+      - verify_release_source
     runs-on: ubuntu-24.04
     # Task 20 must create this protected Environment and store the signing values
     # as its secrets, rather than repository secrets available to arbitrary tags.
@@ -490,6 +595,82 @@ jobs:
           path: release/checksums.txt
           if-no-files-found: error
           retention-days: 1
+
+
+  # GHCR 与 GitHub Release 无法原子提交；这里把推送隔离为 post-Release 恢复路径。
+  # 失败必须保留 workflow failure，可通过重跑本 job 复用同一批已验证 artifact。
+  publish_container:
+    name: Publish the multi-architecture container image
+    needs:
+      - build_container
+      - publish
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          persist-credentials: false
+          ref: ${{ env.RELEASE_TAG }}
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+        with:
+          go-version: '1.26.3'
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: verified-container-linux-amd64
+          path: containers/linux-amd64
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: verified-container-linux-arm64
+          path: containers/linux-arm64
+      - name: Load the verified container artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker load --input containers/linux-amd64/pixiv-cli-linux-amd64.tar
+          docker load --input containers/linux-arm64/pixiv-cli-linux-arm64.tar
+      - name: Authenticate to GHCR
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: printf '%s' "$GITHUB_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+      - name: Push architecture-specific verified images
+        shell: bash
+        run: |
+          set -euo pipefail
+          for target in linux-amd64 linux-arm64; do
+            docker tag "pixiv-cli:${RELEASE_TAG}-${target}" "ghcr.io/flanchanxwo/pixiv-cli:${RELEASE_TAG}-${target}"
+            docker push "ghcr.io/flanchanxwo/pixiv-cli:${RELEASE_TAG}-${target}"
+          done
+      - name: Publish the exact-version multi-architecture manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker manifest create "ghcr.io/flanchanxwo/pixiv-cli:${RELEASE_TAG}" \
+            --amend "ghcr.io/flanchanxwo/pixiv-cli:${RELEASE_TAG}-linux-amd64" \
+            --amend "ghcr.io/flanchanxwo/pixiv-cli:${RELEASE_TAG}-linux-arm64"
+          docker manifest push "ghcr.io/flanchanxwo/pixiv-cli:${RELEASE_TAG}"
+      - name: Advance latest only for a stable release
+        shell: bash
+        run: |
+          set -euo pipefail
+          channel=$(go run ./scripts/cmd/releaseassets channel --version "${RELEASE_TAG#v}")
+          case "$channel" in
+            stable)
+              docker manifest create "ghcr.io/flanchanxwo/pixiv-cli:latest" \
+                --amend "ghcr.io/flanchanxwo/pixiv-cli:${RELEASE_TAG}-linux-amd64" \
+                --amend "ghcr.io/flanchanxwo/pixiv-cli:${RELEASE_TAG}-linux-arm64"
+              docker manifest push "ghcr.io/flanchanxwo/pixiv-cli:latest"
+              ;;
+            prerelease)
+              printf '%s\n' 'prerelease keeps the latest tag unchanged' >&2
+              ;;
+            *)
+              printf '%s\n' 'unexpected release classification' >&2
+              exit 1
+              ;;
+          esac
 
   render_homebrew_formula:
     name: Render the channel Homebrew formula
