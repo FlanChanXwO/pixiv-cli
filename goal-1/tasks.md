@@ -389,12 +389,12 @@
 
 ### Task 20: 真实容器证据
 
-- [ ] **目标**：确认最新 credential-free 容器 smoke 工作流在 goal 分支/commit 上两个原生 Linux 架构均绿色，且 version/non-root/state-path 断言实际运行而非跳过。
+- [x] **目标**：确认最新 credential-free 容器 smoke 工作流在 goal 分支/commit 上两个原生 Linux 架构均绿色，且 version/non-root/state-path 断言实际运行而非跳过。
 - **验收**：两架构 smoke CI 绿色；断言执行而非跳过。
-- **实际做了什么**：（待填）
-- **验证证据**：（待填）
-- **剩余风险**：（待填）
-- **下一步建议**：（待填）
+- **实际做了什么**：推送 `goal/docker-container-release`，创建 PR [#63](https://github.com/FlanChanXwO/pixiv-cli/pull/63) 以触发 pull_request smoke。首次 PR 因与更新后的 main 冲突未能创建 merge ref；将 origin/main 合入 goal 分支并解决 `goal-1` 与 documentation 测试的 add/add conflict 后，GitHub Actions 成功运行最新 credential-free container smoke。用 GitHub API 核验 run、两个 matrix job 和每个断言 step 均为 completed/success。
+- **验证证据**：最新 Run [32935167345](https://github.com/FlanChanXwO/pixiv-cli/actions/runs/32935167345) 在 `goal/docker-container-release` 的 head SHA `59b66020bcc287acad446e475e694d75b648caa2` 上 conclusion=success。`Container smoke linux/arm64` 与 `Container smoke linux/amd64` 均 success；两 job 的 steps 7 build image、8 non-root、9 exact release version、10 state path、11 working directory、12 container release contract tests 都是 completed/success，没有 skipped。workflow path 为 `.github/workflows/container-smoke.yml`。合并 main 后补移除 documentation 测试的未用 import（commit `59b6602`），该最新 run 已覆盖此修复。
+- **剩余风险**：该凭据-free smoke 不执行真实 GHCR 登录/publish；tagged release 的 registry publication 路径仍由 fail-closed policy 静态约束，跨系统恢复边界已文档化。
+- **下一步建议**：进入集中检查 #7（Task 18–20 之后），复查聚焦回归、包/release、两架构 smoke 和全链路 credential 边界。
 
 ---
 
