@@ -72,6 +72,9 @@ func (s Store) Set(alias, raw string) (ConfigMutationResult, error) {
 		return ConfigMutationResult{}, err
 	}
 	envRaw, hasOverride := EnvValue(spec)
+	if spec.Sensitive {
+		envRaw = ""
+	}
 	return ConfigMutationResult{Alias: alias, EnvOverride: envRaw, HasOverride: hasOverride}, nil
 }
 
@@ -92,5 +95,8 @@ func (s Store) Unset(alias string) (ConfigMutationResult, error) {
 		return ConfigMutationResult{}, err
 	}
 	envRaw, hasOverride := EnvValue(spec)
+	if spec.Sensitive {
+		envRaw = ""
+	}
 	return ConfigMutationResult{Alias: alias, EnvOverride: envRaw, HasOverride: hasOverride}, nil
 }

@@ -1,11 +1,40 @@
 package publicapi
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 )
+
+func TestRepositoryPublicAPIInventoryIsPinned(t *testing.T) {
+	repositoryRoot := findPublicAPIRepositoryRoot(t)
+	digest := sha256.Sum256([]byte(Render(Inventory(repositoryRoot))))
+	const wantDigest = "ed45ee60aba67e2a657174325e9796451a6ef88f4161dc643ad97368f5e7eb31"
+	if got := hex.EncodeToString(digest[:]); got != wantDigest {
+		t.Fatalf("public SDK inventory changed: got sha256 %s, want %s; update the inventory deliberately with the public API review", got, wantDigest)
+	}
+}
+
+func findPublicAPIRepositoryRoot(t *testing.T) string {
+	t.Helper()
+	directory, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("get working directory: %v", err)
+	}
+	for {
+		if info, err := os.Stat(filepath.Join(directory, "go.mod")); err == nil && info.Mode().IsRegular() {
+			return directory
+		}
+		parent := filepath.Dir(directory)
+		if parent == directory {
+			t.Fatal("could not find repository root")
+		}
+		directory = parent
+	}
+}
 
 func TestInventoryCollectsOnlyExportedPackageSymbols(t *testing.T) {
 	t.Parallel()

@@ -10,6 +10,14 @@ Visual lists automatically emit canonical NDJSON when piped. Downloads currently
 quality, GIF/APNG mode, output directory, filename templates, and `--on-error`; unsupported options fail as unknown
 flags. Proxy URIs accept `http`, `https`, `socks5`, and `socks5h`.
 
+`pixiv search SOURCE` also performs reverse-image search when `SOURCE` is an explicit HTTP(S) URL or an existing
+regular local file. Reverse search is independent of the authenticated Pixiv account; it uses the configured
+third-party provider and may upload the source outside the machine.
+
+Review the [SauceNAO privacy and terms](https://saucenao.com/legal.html) before
+using it: uploaded images may be retained for a short period, and URL queries
+may be cached for longer than the request itself.
+
 User-visible changes are recorded in the [versioned changelog](../../changelog/README.md).
 
 [GitHub Releases page]: https://github.com/FlanChanXwO/pixiv-cli/releases
@@ -321,6 +329,8 @@ pixiv update --check --json
 pixiv search "初音ミク" --type artwork --limit 10
 pixiv search "初音ミク" --type novel --json
 pixiv search "artist" --type user --limit 10
+pixiv search ./image.png --provider ascii2d-color --json
+pixiv search https://example.com/image.png --provider all --ndjson
 pixiv search --trending-tags --json
 pixiv detail 123456 --type artwork --json
 pixiv detail 123456 --type novel --content --json
@@ -354,6 +364,39 @@ All non-mutating data reads, recommendations, timelines, and downloads use the l
 
 Visual lists write canonical Record NDJSON automatically when stdout is a non-terminal and no explicit output format was selected. Each line has stable string `id`, `type`, and `url`; `download`, `bookmark add/remove`, and `follow add/remove` consume compatible records without positional IDs. `--json` and explicit `--ndjson` retain precedence.
 
+### Reverse image search
+
+`pixiv search SOURCE` enters image mode before any Pixiv SDK or account-pool setup:
+
+- An input with an explicit, case-insensitive `http:` or `https:` scheme always enters image mode. Invalid URLs fail as
+  reverse-search source errors and never fall back to a keyword search.
+- Any other input enters image mode only when it is an existing regular file after following symlinks. Directories,
+  FIFOs, devices, sockets, and other non-regular paths are not image sources; all other text remains a keyword.
+- Image mode accepts `--provider`, `--json`, `--ndjson`, `--proxy`, and `--no-proxy`. Search filters, `--type`,
+  pagination, and `--trending-tags` are rejected rather than ignored.
+
+The provider values are `saucenao`, `ascii2d-color`, `ascii2d-bovw`, and `all`. The configured default is
+`saucenao`; `--provider` overrides it for one invocation. `all` runs the providers in the fixed order SauceNAO,
+ascii2d color, ascii2d bovw and may return a partial success. `reverse_search_pixiv_only` controls whether
+non-Pixiv matches remain in `results`; it defaults to `true` and is not a per-command flag.
+
+The source is fetched or opened once into a private temporary snapshot and represented in output only by
+`input.kind` (`file` or `url`) and `input.sha256`. SauceNAO and ascii2d are third-party services: the image may be
+uploaded or retained according to their policies, and URL requests may be cached. ascii2d accepts JPEG, PNG, and
+WEBP and applies its provider-specific 10 MB upload limit; this does not impose a common limit on SauceNAO-only
+search. Do not submit images or URLs that the user is not authorized to share.
+
+JSON output is the complete envelope `{input, providers, results, records, provider_errors, partial}`. `records`
+contains only canonical Pixiv identities: artwork matches use the generic `type:"artwork"` because reverse search
+does not know the artwork subtype, while user matches use `type:"user"`. The CLI does not call Pixiv detail merely
+to infer a subtype. External-only matches can remain in `results` when Pixiv-only filtering is disabled but do not
+become records. Human output is a safe summary; piped or explicit NDJSON emits only those canonical records.
+
+For `all`, a successful provider plus a failed provider sets `partial=true`, writes a safe warning to stderr, and
+exits successfully. A single-provider failure or an all-provider failure exits non-zero while preserving any
+available JSON envelope. Provider errors use stable `code` and `message` values; source strings, API keys, cookies,
+CSRF/redirect values, temporary paths, and upstream response bodies never appear in output or diagnostics.
+
 Public positional inputs also accept one implicit non-TTY stdin value. A missing required value or an omitted optional
 value consumes the complete stream as one value and removes only one trailing LF/CRLF; it never splits shell whitespace.
 For example, `printf '%s\n' 13214141 | pixiv search` is equivalent to `pixiv search 13214141`. Explicit positional
@@ -380,10 +423,10 @@ Only the structured entity filters documented by each command are accepted. The 
 | `auth refresh` | `pixiv auth refresh [UID] [--all] [--json] [--proxy URL\|--no-proxy]` | Refreshes the selected/default saved account's OAuth access token and rotated refresh token, then forces a profile read to update its cached Pixiv Premium status. `--all` refreshes every stored account. JSON always returns `accounts`. |
 | `config path` | `pixiv config path` | Prints the `config.toml` path, creating the baseline file if it is missing. |
 | `config get` | `pixiv config get KEY` | Prints one effective config value. |
-| `config set` | `pixiv config set KEY [VALUE]` | Writes one known config key, including `account_pool_enabled`, `account_pool_strategy`, `download_path`, `filename_template`, `directory_template`, `request_interval`, `https_proxy`, `log_level`, and `log_format`. |
+| `config set` | `pixiv config set KEY [VALUE]` | Writes one known config key, including `account_pool_enabled`, `account_pool_strategy`, `download_path`, `filename_template`, `directory_template`, `request_interval`, `https_proxy`, `log_level`, `log_format`, `reverse_search_provider`, `reverse_search_pixiv_only`, and the stdin-only `saucenao_api_key`. |
 | `config unset` | `pixiv config unset KEY` | Deletes one known config key from `config.toml`. |
 | `update` | `pixiv update [--check] [--prerelease] [--proxy URL]` | Checks for or performs an update matching the current install source; `--json` is only valid together with `--check`. |
-| `search` | `pixiv search [WORD] [-t artwork\|novel\|user] [options]` | Canonical entity search. `artwork` is the default; `--trending-tags` is the no-word artwork tag-list mode and does not accept search filters or pagination. |
+| `search` | `pixiv search [WORD\|IMAGE_PATH_OR_URL] [-t artwork\|novel\|user] [options]` | Canonical entity search or automatic reverse-image search. A regular file or explicit HTTP(S) source selects image mode; `--trending-tags` is the no-word artwork tag-list mode and does not accept search filters or pagination. |
 | `detail` | `pixiv detail ID_OR_URL [-t artwork\|novel\|user] [--content] [--json]` | Reads one artwork, novel, or user. `--content` is explicit and valid only for novels. |
 | `ranking` | `pixiv ranking [--mode MODE --date YYYY-MM-DD --page N --limit N]` | Reads illustration rankings. Novel ranking is not part of the v1 contract. |
 | `series` | `pixiv series SERIES_ID -t artwork\|novel [--page N --limit N --json\|--ndjson]` | Lists the artworks or novels in one series. The entity type is required. |
@@ -431,6 +474,7 @@ extension. Extensions also replace ASCII control characters and remove trailing 
 | Command | Flag | Default | Description |
 | --- | --- | --- | --- |
 | `search` | `--type` / `-t` | `artwork` | Entity route: `artwork`, `novel`, or `user`. Artwork subtype is a separate `--content-type`; `illust` is not an entity value. |
+| `search` | `--provider` | `reverse_search_provider` (`saucenao`) | Reverse-image provider: `saucenao`, `ascii2d-color`, `ascii2d-bovw`, or `all`; valid only for image sources and overrides the config for this invocation. |
 | `search` | `--content-type` | `all` | Artwork subtype: `all`, `illust-and-ugoira`, `illust`, `manga`, or `ugoira`; artwork search only. |
 | `search`, `novel search` | `--search-by` | `tag-partial` | Artwork search accepts `tag-partial`, `tag-exact`, `title-caption`, and `tag-title-caption`; novel search accepts the first three only. |
 | `search`, `novel search` | `--sort` | `date_desc` | Sort order: `date_desc` or `date_asc`. |
@@ -563,14 +607,28 @@ report every outcome through diagnostics; cancellation stops immediately.
 | `https_proxy` | string | empty | Global proxy URI (`http`, `https`, `socks5`, or `socks5h`); the lowercase `https_proxy` environment variable takes precedence. |
 | `log_level` | string | `info` | Diagnostic level: `info` is silent; `debug` enables typed stderr diagnostics. The value is written as `[logging].level`. |
 | `log_format` | string | `text` | Diagnostic stderr format: `text` or one JSON event per line. The value is written as `[logging].format`. |
+| `reverse_search_provider` | string | `saucenao` | Default reverse-image provider: `saucenao`, `ascii2d-color`, `ascii2d-bovw`, or `all`. |
+| `reverse_search_pixiv_only` | boolean | `true` | Keeps only explicitly identified Pixiv artwork/user matches in the canonical result set; external evidence can still remain in `results` when disabled. |
+| `saucenao_api_key` | sensitive string | unset | SauceNAO credential. `config get` always prints `<redacted>`; `config set` accepts the value only from non-TTY stdin, never as an argument. |
 
 The first command that needs configuration creates a compact baseline `config.toml` from the current schema.
 It includes the core download, output, login, update, and logging defaults; advanced settings such as
 `directory_template` and `request_interval` remain omitted until explicitly configured. Existing files are never
 overwritten. Configuration is read when the command starts, so a change applies on the next invocation.
 
+Set the SauceNAO key through hidden input or an authorized secret-manager pipeline, not an argument or chat:
+
+```bash
+read -rs SAUCENAO_KEY && printf '%s\n' "$SAUCENAO_KEY" | pixiv config set saucenao_api_key
+unset SAUCENAO_KEY
+pixiv config get saucenao_api_key    # always prints <redacted>
+```
+
+The environment variable `SAUCENAO_API_KEY` overrides the file value without displaying its contents. Do not put the
+key in shell history, diagnostics, JSON, MCP input, or a checked-in TOML file.
+
 Manual TOML may contain advanced runtime sections such as `[account_pool]`, `[network]`, `[pixiv.network]`,
-`[fanbox.network]`, `[fanbox.flaresolverr]`, `[login]`, and `[update]`:
+`[fanbox.network]`, `[fanbox.flaresolverr]`, `[reverse_search]`, `[login]`, and `[update]`:
 
 ```toml
 [network]
@@ -586,6 +644,10 @@ user_agent = "my-native-agent/1.0"
 [fanbox.flaresolverr]
 url = "http://127.0.0.1:8191"
 proxy_url = "socks5://solver-upstream.example:1080"
+
+[reverse_search]
+provider = "saucenao"
+pixiv_only = true
 ```
 
 `[pixiv.network].proxy_url` and `[fanbox.network].proxy_url` preserve absent versus explicit empty:
@@ -620,6 +682,7 @@ with v1. The transfer is explicit so a stale or unexpected local file cannot bec
 | `PIXIV_REQUEST_INTERVAL` | empty | Minimum interval between network request starts. |
 | `PIXIV_LOG_LEVEL` | `info` | Diagnostic level: `info` or `debug`; overrides `[logging].level`. |
 | `PIXIV_LOG_FORMAT` | `text` | Diagnostic stderr format: `text` or `json`; overrides `[logging].format`. |
+| `SAUCENAO_API_KEY` | empty | SauceNAO credential; overrides the private config value and is never printed. |
 | `https_proxy` / `HTTPS_PROXY` | empty | Proxy URI (`http`, `https`, `socks5`, or `socks5h`); the lowercase `https_proxy` takes precedence. |
 
 CLI data commands select the explicit/default account through `pixiv auth use` when pooling is disabled, or an eligible database account when pooling is enabled; they do not accept credential-selection flags.

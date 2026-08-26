@@ -68,20 +68,23 @@ type snapshotEnvValue struct {
 }
 
 type RuntimeConfig struct {
-	DownloadPath       string
-	FilenameTemplate   string
-	DirectoryTemplate  string
-	HTTPSProxy         string
-	LogLevel           string
-	LogFormat          string
-	PixivNetwork       ServiceNetworkConfig
-	FanboxNetwork      ServiceNetworkConfig
-	FanboxFlareSolverr *FlareSolverrConfig
-	RequestInterval    time.Duration
-	UpdateCheckEnabled bool
-	OutputJSON         bool
-	LoginOpenBrowser   bool
-	LoginUseAfterLogin bool
+	DownloadPath           string
+	FilenameTemplate       string
+	DirectoryTemplate      string
+	HTTPSProxy             string
+	LogLevel               string
+	LogFormat              string
+	PixivNetwork           ServiceNetworkConfig
+	FanboxNetwork          ServiceNetworkConfig
+	FanboxFlareSolverr     *FlareSolverrConfig
+	RequestInterval        time.Duration
+	UpdateCheckEnabled     bool
+	OutputJSON             bool
+	LoginOpenBrowser       bool
+	LoginUseAfterLogin     bool
+	ReverseSearchProvider  string
+	ReverseSearchPixivOnly bool
+	SauceNAOAPIKey         string
 	// LoginRelay* 描述本次运行时创建的跨机器浏览器中继。历史 secret/target
 	// 配置项仍可留在私有配置文件中，但不会载入 runtime，避免恢复旧 client relay。
 	LoginRelayPublicURL   string
@@ -144,6 +147,9 @@ var settingSpecs = []SettingSpec{
 	{Alias: "log_format", KoanfKey: "logging.format", Table: []string{"logging"}, Key: "format", Kind: settingString, HasDefault: true, Default: "text", DefaultInFile: true, CLIManaged: true},
 	{Alias: "https_proxy", KoanfKey: "network.https_proxy", Table: []string{"network"}, Key: "https_proxy", Kind: settingString, CLIManaged: true},
 	{Alias: "request_interval", KoanfKey: "network.request_interval", Table: []string{"network"}, Key: "request_interval", Kind: settingDuration, HasDefault: true, Default: time.Duration(0), CLIManaged: true},
+	{Alias: "reverse_search_provider", KoanfKey: "reverse_search.provider", Table: []string{"reverse_search"}, Key: "provider", Kind: settingString, HasDefault: true, Default: "saucenao", DefaultInFile: true, CLIManaged: true},
+	{Alias: "reverse_search_pixiv_only", KoanfKey: "reverse_search.pixiv_only", Table: []string{"reverse_search"}, Key: "pixiv_only", Kind: settingBool, HasDefault: true, Default: true, DefaultInFile: true, CLIManaged: true},
+	{Alias: "saucenao_api_key", KoanfKey: "reverse_search.saucenao_api_key", Table: []string{"reverse_search"}, Key: "saucenao_api_key", Kind: settingString, Sensitive: true, CLIManaged: true},
 	{Alias: "web_fallback_enabled", KoanfKey: "web.fallback_enabled", Table: []string{"web"}, Key: "fallback_enabled", Kind: settingBool, Removed: true},
 	{Alias: "login_relay_public_url", KoanfKey: "login.relay_public_url", Table: []string{"login"}, Key: "relay_public_url", Kind: settingString},
 	{Alias: "login_relay_listen_addr", KoanfKey: "login.relay_listen_addr", Table: []string{"login"}, Key: "relay_listen_addr", Kind: settingString},
@@ -234,6 +240,8 @@ func EnvValue(spec SettingSpec) (string, bool) {
 			return value, true
 		}
 		return envLookup("HTTPS_PROXY")
+	case "saucenao_api_key":
+		return envLookup("SAUCENAO_API_KEY")
 	default:
 		return "", false
 	}
@@ -383,6 +391,18 @@ func (s Snapshot) Runtime() (RuntimeConfig, error) {
 	if err != nil {
 		return RuntimeConfig{}, err
 	}
+	reverseSearchProvider, err := s.Effective("reverse_search_provider")
+	if err != nil {
+		return RuntimeConfig{}, err
+	}
+	reverseSearchPixivOnly, err := s.Effective("reverse_search_pixiv_only")
+	if err != nil {
+		return RuntimeConfig{}, err
+	}
+	sauceNAOAPIKey, err := s.Effective("saucenao_api_key")
+	if err != nil {
+		return RuntimeConfig{}, err
+	}
 	loginRelayPublicURL, err := s.Effective("login_relay_public_url")
 	if err != nil {
 		return RuntimeConfig{}, err
@@ -424,24 +444,27 @@ func (s Snapshot) Runtime() (RuntimeConfig, error) {
 		return RuntimeConfig{}, err
 	}
 	cfg := RuntimeConfig{
-		DownloadPath:          downloadPath.Value.(string),
-		FilenameTemplate:      filenameTemplate.Value.(string),
-		DirectoryTemplate:     settingStringValue(directoryTemplate),
-		HTTPSProxy:            "",
-		LogLevel:              normalizedLogLevel,
-		LogFormat:             normalizedLogFormat,
-		PixivNetwork:          pixivNetwork,
-		FanboxNetwork:         fanboxNetwork,
-		FanboxFlareSolverr:    flareSolverr,
-		UpdateCheckEnabled:    updateCheckEnabled.Value.(bool),
-		OutputJSON:            outputJSON.Value.(bool),
-		LoginOpenBrowser:      loginOpenBrowser.Value.(bool),
-		LoginUseAfterLogin:    loginUseAfterLogin.Value.(bool),
-		LoginRelayPublicURL:   settingStringValue(loginRelayPublicURL),
-		LoginRelayListenAddr:  settingStringValue(loginRelayListenAddr),
-		LoginRelayTLSCertFile: settingStringValue(loginRelayTLSCertFile),
-		LoginRelayTLSKeyFile:  settingStringValue(loginRelayTLSKeyFile),
-		AccountPool:           accountPool,
+		DownloadPath:           downloadPath.Value.(string),
+		FilenameTemplate:       filenameTemplate.Value.(string),
+		DirectoryTemplate:      settingStringValue(directoryTemplate),
+		HTTPSProxy:             "",
+		LogLevel:               normalizedLogLevel,
+		LogFormat:              normalizedLogFormat,
+		PixivNetwork:           pixivNetwork,
+		FanboxNetwork:          fanboxNetwork,
+		FanboxFlareSolverr:     flareSolverr,
+		UpdateCheckEnabled:     updateCheckEnabled.Value.(bool),
+		OutputJSON:             outputJSON.Value.(bool),
+		LoginOpenBrowser:       loginOpenBrowser.Value.(bool),
+		LoginUseAfterLogin:     loginUseAfterLogin.Value.(bool),
+		ReverseSearchProvider:  reverseSearchProvider.Value.(string),
+		ReverseSearchPixivOnly: reverseSearchPixivOnly.Value.(bool),
+		SauceNAOAPIKey:         settingStringValue(sauceNAOAPIKey),
+		LoginRelayPublicURL:    settingStringValue(loginRelayPublicURL),
+		LoginRelayListenAddr:   settingStringValue(loginRelayListenAddr),
+		LoginRelayTLSCertFile:  settingStringValue(loginRelayTLSCertFile),
+		LoginRelayTLSKeyFile:   settingStringValue(loginRelayTLSKeyFile),
+		AccountPool:            accountPool,
 	}
 	if requestInterval.HasValue {
 		cfg.RequestInterval = requestInterval.Value.(time.Duration)

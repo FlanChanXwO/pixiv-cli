@@ -51,6 +51,7 @@ type options struct {
 	bookmarkStrategy string
 	bookmarkMin      int
 	bookmarkMax      int
+	provider         string
 }
 
 // Request 是 search 一次执行解析出的传输覆写值；它不持有 client 或资源。
@@ -68,11 +69,13 @@ type CommandOptions struct {
 
 // Dependencies 是 search、novel search 与 user-search 兼容路由的窄执行端口。
 type Dependencies struct {
-	Input      io.Reader
-	Output     io.Writer
-	UsageError func(error) error
-	JSONOut    func(*bool) (bool, error)
-	Pooled     func(context.Context, Request, func(context.Context, *pixiv.Client) (bool, error)) error
+	Input         io.Reader
+	Output        io.Writer
+	ErrorOutput   io.Writer
+	UsageError    func(error) error
+	JSONOut       func(*bool) (bool, error)
+	Pooled        func(context.Context, Request, func(context.Context, *pixiv.Client) (bool, error)) error
+	ReverseSearch ReverseSearchFunc
 }
 
 type command struct {
@@ -234,6 +237,7 @@ func New(data Dependencies) *cobra.Command {
 	flags.IntVar(&opts.bookmarkMin, "bookmark-min", 0, "minimum public bookmark count; strategy controls filtering completeness")
 	flags.IntVar(&opts.bookmarkMax, "bookmark-max", 0, "maximum public bookmark count; strategy controls filtering completeness")
 	flags.StringVar(&opts.bookmarkStrategy, "bookmark-strategy", string(bookmarkFilterStrategyAuto), "bookmark count strategy: auto, local, best_effort, server")
+	flags.StringVar(&opts.provider, "provider", "", "reverse search provider: saucenao, ascii2d-color, ascii2d-bovw, all")
 	listing.BindListFlags(cmd, &opts.limit, &opts.page)
 	data.bindTextValueWhen(cmd, 1, 1, 0, func(_ *cobra.Command, _ []string) bool { return !opts.trendingTags })
 	requirements.Bind(cmd, requirements.PixivData())
@@ -241,6 +245,12 @@ func New(data Dependencies) *cobra.Command {
 }
 
 func (a command) run(cmd *cobra.Command, args []string, opts options) error {
+	if source := strings.Join(args, " "); isReverseSearchSource(source) {
+		return a.runReverseSearch(cmd, source, opts)
+	}
+	if cmd.Flags().Changed("provider") {
+		return a.data.usage(errors.New("--provider is only supported for image sources"))
+	}
 	if opts.trendingTags {
 		if err := validateTrendingTagsFlags(cmd); err != nil {
 			return err

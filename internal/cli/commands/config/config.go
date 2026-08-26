@@ -109,13 +109,13 @@ func get(host Host, alias string) error {
 	if err != nil {
 		return err
 	}
-	if !value.HasValue {
-		_, _ = fmt.Fprintln(host.Output(), configMissingPlaceholder)
-		return errors.New("config value is unset")
-	}
 	if spec, ok := configapp.SettingSpecByAlias(alias); ok && spec.Sensitive {
 		_, err := fmt.Fprintln(host.Output(), "<redacted>")
 		return err
+	}
+	if !value.HasValue {
+		_, _ = fmt.Fprintln(host.Output(), configMissingPlaceholder)
+		return errors.New("config value is unset")
 	}
 	_, err = fmt.Fprintln(host.Output(), configapp.PublicSettingText(alias, value.Text))
 	return err
@@ -136,16 +136,38 @@ func newSetCommand(host Host) *cobra.Command {
 			if !isCLIConfigAlias(args[0]) {
 				return invalidCLIConfigKey(args[0])
 			}
+			if configapp.IsSensitiveSetting(args[0]) && len(args) == 2 {
+				return errors.New("sensitive config values must be provided through non-TTY stdin")
+			}
+			if configapp.IsSensitiveSetting(args[0]) {
+				if pipeline.IsTTY(host.Input()) {
+					return errors.New("sensitive config values require non-TTY stdin")
+				}
+				return nil
+			}
 			if len(args) != 2 {
 				return errors.New("VALUE is required for this config key")
 			}
 			return nil
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if configapp.IsSensitiveSetting(args[0]) {
+				raw, err := pipeline.ReadValue(host.Input())
+				if err != nil {
+					return fmt.Errorf("read sensitive config value from stdin: %w", err)
+				}
+				return set(host, args[0], raw)
+			}
 			return set(host, args[0], args[1])
 		},
 	}
-	pipeline.Bind(cmd, pipeline.InputSpec{Codec: pipeline.TextValue, MinArgs: 1, MaxArgs: 2, FillPosition: 1, Reader: host.Input(), UsageError: host.UsageError})
+	pipeline.Bind(cmd, pipeline.InputSpec{
+		Codec: pipeline.TextValue, MinArgs: 1, MaxArgs: 2, FillPosition: 1,
+		Reader: host.Input(), UsageError: host.UsageError,
+		Enabled: func(_ *cobra.Command, args []string) bool {
+			return len(args) == 0 || !configapp.IsSensitiveSetting(args[0])
+		},
+	})
 	requirements.Bind(cmd, requirements.Normal())
 	return cmd
 }
@@ -199,7 +221,7 @@ func unset(host Host, alias string) error {
 }
 
 func writeOverrideNote(out io.Writer, alias, envOverride string) {
-	if alias == "https_proxy" {
+	if alias == "https_proxy" || configapp.IsSensitiveSetting(alias) {
 		_, _ = fmt.Fprintf(out, "note: %s is currently overridden by environment; effective value remains controlled by environment\n", alias)
 		return
 	}
