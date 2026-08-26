@@ -146,3 +146,64 @@ func TestDockerAuthMCPAndUpgradeContractIsBilingual(t *testing.T) {
 	rejectUnsafeClaims(t, "English", en)
 	rejectUnsafeClaims(t, "Simplified Chinese", zhCN)
 }
+
+// TestMaintainerDocsDocumentContainerReleaseVerification 锁定维护者文档中的
+// 容器构建、发布边界和聚焦验证命令；公开 README 不重复这些维护者流程。
+func TestMaintainerDocsDocumentContainerReleaseVerification(t *testing.T) {
+	t.Parallel()
+
+	contracts := map[string]struct {
+		path      string
+		heading   string
+		fragments []string
+	}{
+		"English": {
+			path:    "docs/en/maintainers/development.md",
+			heading: "### Container release verification",
+			fragments: []string{
+				"`build_container` runs after the shared `build` gate and beside `build_production`",
+				"`ubuntu-22.04` for `linux/amd64`",
+				"`ubuntu-22.04-arm` for `linux/arm64`",
+				"verified-container-linux-amd64",
+				"verified-container-linux-arm64",
+				"non-root",
+				"`pixiv config path`",
+				"org.opencontainers.image.source",
+				"credential-free container smoke workflow",
+				"go test ./scripts/internal/releaseworkflow -count=1",
+				"go test ./scripts/tests/containerrelease -count=1",
+				"go run ./scripts/cmd/releaseworkflow --workflow .github/workflows/release.yml",
+			},
+		},
+		"Simplified Chinese": {
+			path:    "docs/zh-CN/maintainers/development.md",
+			heading: "### 容器发布验证",
+			fragments: []string{
+				"`build_container` 在共享 `build` 门禁后运行，并与 `build_production` 并行",
+				"`ubuntu-22.04` 对应 `linux/amd64`",
+				"`ubuntu-22.04-arm` 对应 `linux/arm64`",
+				"verified-container-linux-amd64",
+				"verified-container-linux-arm64",
+				"非 root",
+				"`pixiv config path`",
+				"org.opencontainers.image.source",
+				"无凭据容器 smoke workflow",
+				"go test ./scripts/internal/releaseworkflow -count=1",
+				"go test ./scripts/tests/containerrelease -count=1",
+				"go run ./scripts/cmd/releaseworkflow --workflow .github/workflows/release.yml",
+			},
+		},
+	}
+
+	for locale, contract := range contracts {
+		document := readUserGuide(t, contract.path)
+		if !strings.Contains(document, contract.heading) {
+			t.Fatalf("%s maintainer documentation must contain %q", locale, contract.heading)
+		}
+		for _, fragment := range contract.fragments {
+			if !strings.Contains(document, fragment) {
+				t.Fatalf("%s maintainer documentation must document container verification with %q", locale, fragment)
+			}
+		}
+	}
+}
