@@ -617,3 +617,74 @@ func TestContainerPublishJobLatestTagOnlyForStable(t *testing.T) {
 		t.Fatalf("policy error = %v, want rejection mentioning latest", err)
 	}
 }
+
+// TestContainerPublishJobPermissionsAreMinimal 断言发布 job 只能持有 GHCR 推送
+// 所需的最小权限；任何额外写权限都会扩大 post-Release 恢复路径的爆炸半径。
+func TestContainerPublishJobPermissionsAreMinimal(t *testing.T) {
+	t.Parallel()
+
+	root := releaseWorkflowRoot(t)
+	jobs := requireMappingValue(t, root, "jobs")
+	addBuildContainerJob(t, jobs)
+	publishContainer := containerPublishJobFixture()
+	appendMappingValue(t, publishContainer, "name", scalarNode("Publish container image"))
+	appendMappingValue(t, publishContainer, "needs", sequenceNode("build_container", "publish"))
+	appendMappingValue(t, publishContainer, "runs-on", scalarNode("ubuntu-24.04"))
+	appendMappingValue(t, publishContainer, "permissions", mappingNode(
+		"contents", scalarNode("write"),
+		"packages", scalarNode("write"),
+	))
+	appendMappingValue(t, publishContainer, "steps", &yaml.Node{
+		Kind: yaml.SequenceNode,
+		Tag:  "!!seq",
+		Content: []*yaml.Node{
+			runStepNode("Publish exact-version tag", `docker push ghcr.io/flanchanxwo/pixiv-cli:${RELEASE_TAG}`),
+		},
+	})
+	setJobNode(t, jobs, "publish_container", publishContainer)
+
+	body, err := yaml.Marshal(root)
+	if err != nil {
+		t.Fatalf("marshal workflow: %v", err)
+	}
+	err = checkWorkflow(body)
+	if err == nil || !strings.Contains(strings.ToLower(err.Error()), "minimal") {
+		t.Fatalf("policy error = %v, want rejection mentioning minimal publish permissions", err)
+	}
+}
+
+// TestContainerPublishJobChecksOutImmutableTag 断言 post-Release 分类和推送
+// 也必须绑定触发 release 的不可变 tag，不能从 movable ref 恢复 registry 状态。
+func TestContainerPublishJobChecksOutImmutableTag(t *testing.T) {
+	t.Parallel()
+
+	root := releaseWorkflowRoot(t)
+	jobs := requireMappingValue(t, root, "jobs")
+	addBuildContainerJob(t, jobs)
+	publishContainer := containerPublishJobFixture()
+	appendMappingValue(t, publishContainer, "name", scalarNode("Publish container image"))
+	appendMappingValue(t, publishContainer, "needs", sequenceNode("build_container", "publish"))
+	appendMappingValue(t, publishContainer, "runs-on", scalarNode("ubuntu-24.04"))
+	appendMappingValue(t, publishContainer, "permissions", mappingNode(
+		"contents", scalarNode("read"),
+		"packages", scalarNode("write"),
+	))
+	// 故意没有 canonical checkout——policy 必须 fail closed。
+	appendMappingValue(t, publishContainer, "steps", &yaml.Node{
+		Kind: yaml.SequenceNode,
+		Tag:  "!!seq",
+		Content: []*yaml.Node{
+			runStepNode("Publish exact-version tag", `docker push ghcr.io/flanchanxwo/pixiv-cli:${RELEASE_TAG}`),
+		},
+	})
+	setJobNode(t, jobs, "publish_container", publishContainer)
+
+	body, err := yaml.Marshal(root)
+	if err != nil {
+		t.Fatalf("marshal workflow: %v", err)
+	}
+	err = checkWorkflow(body)
+	if err == nil || !strings.Contains(err.Error(), "immutable release tag") {
+		t.Fatalf("policy error = %v, want rejection requiring immutable release tag checkout", err)
+	}
+}
