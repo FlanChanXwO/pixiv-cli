@@ -226,16 +226,16 @@
 
 ### Task 12: Phase 3 验证
 
-- [ ] **目标**：运行 release policy / container 测试，检查 smoke 工作流中两架构 artifact。确认无 QEMU setup、Docker Hub credential 或新未审批第三方 GitHub Action 依赖。
+- [x] **目标**：运行 release policy / container 测试，检查 smoke 工作流中两架构 artifact。确认无 QEMU setup、Docker Hub credential 或新未审批第三方 GitHub Action 依赖。
 - **验证命令**：
   - `go test ./scripts/internal/releaseworkflow -count=1`
   - `go test ./scripts/tests/containerrelease -count=1`
   - `go run ./scripts/cmd/releaseworkflow --workflow .github/workflows/release.yml`
 - **验收**：全部绿色；无上述禁止项。
-- **实际做了什么**：（待填）
-- **验证证据**：（待填）
-- **剩余风险**：（待填）
-- **下一步建议**：（待填）
+- **实际做了什么**：运行 Phase 3 三个指定验证并全部通过。用 YAML AST 静态检查 release 与 container-smoke workflow：release 的 `build_container` matrix 精确等于 ubuntu-22.04/linux-amd64 和 ubuntu-22.04-arm/linux-arm64，且只依赖共享 `build` 门禁、无 packages write；`publish_container` 消费 `verified-container-linux-amd64` 和 `verified-container-linux-arm64`。smoke workflow 两架构矩阵存在，并且每个目标都会执行 non-root/version/state-path/workdir 断言。
+- **验证证据**：三个指定命令 exit 0。静态检查确认无 QEMU、无 Docker Hub login/action/credential、GHCR 路径精确为 `ghcr.io/flanchanxwo/pixiv-cli`、变更 workflow 新增 action owner 只有 `actions`，且所有引用 action 均为 full-SHA pin。`git diff --check` 干净。
+- **剩余风险**：静态证据不能替代真实 CI 运行；credential-free 两架构 smoke 的 GitHub Actions 绿色证据留给 Task 20。
+- **下一步建议**：进入集中检查 #4（Task 10–12 之后），然后开始 Phase 4 文档任务。
 
 ---
 
