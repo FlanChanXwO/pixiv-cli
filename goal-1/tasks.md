@@ -430,12 +430,12 @@
 
 ### Task 22: Goal verifier — 终审
 
-- [ ] **目标**：重读每个 C1–C5 验收标准对照当前仓库状态和证据。仅当每个标准有直接当前状态证据时标记 `COMPLETE`；否则设置 `CONTINUE` 或 `BLOCKED` 并给出确切缺失证明。
+- [x] **目标**：重读每个 C1–C5 验收标准对照当前仓库状态和证据。仅当每个标准有直接当前状态证据时标记 `COMPLETE`；否则设置 `CONTINUE` 或 `BLOCKED` 并给出确切缺失证明。
 - **验收**：C1–C5 全部有直接当前状态证据。
-- **实际做了什么**：（待填）
-- **验证证据**：（待填）
-- **剩余风险**：（待填）
-- **下一步建议**：（待填）
+- **实际做了什么**：在当前 HEAD `936d831d937291bec5d744528fe564ac5df5587d` 重读 C1–C5 并采集直接证据。C1：release policy 测试与 checked-in release workflow verifier 通过，policy 锁定 build/publish DAG、immutable checkout、minimal permissions、native runners 和 stable-only latest。C2：container contract 测试通过；CI 在 amd64/arm64 原生构建镜像并执行 non-root/version/state-path/workdir 断言；本地 fresh named-volume probe 确认 UID 1000 可写。C3：release workflow policy 与两架构 native smoke 通过，publish 消费两个 verified artifact 并创建 exact-version manifest。C4：documentation 测试与双语语义审计通过，README/maintainer 文档覆盖安装、state volume、/work、stdin auth、MCP stdio、tag 语义和 pull upgrade。C5：package/release 脚本、uncached `go test -count=1 ./...`、workflow policy、diff check、Quality Gate、Platform packaged binary smoke 和 credential-free Container smoke 全部绿色。
+- **验证证据**：本地当前 HEAD：releaseworkflow PASS、containerrelease PASS、documentation PASS、package script exit 0、uncached full Go regression exit 0、`git diff --check origin/main...HEAD` 干净。GitHub 当前 head：Container image smoke [32938381106](https://github.com/FlanChanXwO/pixiv-cli/actions/runs/32938381106) success；Quality Gate [32938381103](https://github.com/FlanChanXwO/pixiv-cli/actions/runs/32938381103) success；Platform packaged binary smoke [32938381217](https://github.com/FlanChanXwO/pixiv-cli/actions/runs/32938381217) success。判定：`COMPLETE`。
+- **剩余风险**：低风险——正式 tagged GHCR push 未在本实现 PR 中执行；该外部发布动作属于后续 immutable tag release-prep，workflow 已由 fail-closed policy 和可重跑 publish boundary 约束。
+- **下一步建议**：执行全部 task 完成后的终审集中检查；若仍无阻塞发现，将 goal 标记完成。
 
 ---
 
