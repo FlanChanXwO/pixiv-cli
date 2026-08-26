@@ -27,6 +27,7 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/recommended"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/related_users"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/remove_bookmark"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/reverse_search"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/search_illust"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/search_novel"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/search_user"
@@ -57,6 +58,9 @@ type Account = runtime.Account
 // SDKPorts 是 MCP 对 Pixiv SDK 的窄端口：打开独立认证快照、在账号池重放边界内
 // 执行操作。composition root 注入实现；MCP 不持有 service locator。
 type SDKPorts = runtime.SDKPorts
+
+// ReverseSearchPorts 是 reverse_search 的启动时配置与能力注入。
+type ReverseSearchPorts = runtime.ReverseSearchPorts
 
 // New 保留构造参数位置以便嵌入方平滑升级；第一个参数不再被读取，所有 Pixiv
 // 能力必须由 public SDK ports 提供。
@@ -106,6 +110,7 @@ func register(app *runtime.App, server *mcp.Server) {
 	recommended.Register(app, server)
 	related_users.Register(app, server)
 	remove_bookmark.Register(app, server)
+	reverse_search.Register(app, server)
 	search_illust.Register(app, server)
 	search_novel.Register(app, server)
 	search_user.Register(app, server)

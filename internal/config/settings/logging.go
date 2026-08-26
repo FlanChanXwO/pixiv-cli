@@ -11,8 +11,20 @@ func normalizeSpecialString(alias, value string) (string, error) {
 		return normalizeLogLevel(value)
 	case "log_format":
 		return normalizeLogFormat(value)
+	case "reverse_search_provider":
+		return normalizeReverseSearchProvider(value)
 	default:
 		return value, nil
+	}
+}
+
+func normalizeReverseSearchProvider(value string) (string, error) {
+	value = strings.TrimSpace(value)
+	switch value {
+	case "saucenao", "ascii2d-color", "ascii2d-bovw", "all":
+		return value, nil
+	default:
+		return "", fmt.Errorf("reverse_search_provider must be one of: saucenao, ascii2d-color, ascii2d-bovw, all")
 	}
 }
 

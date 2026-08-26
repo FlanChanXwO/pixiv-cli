@@ -16,7 +16,7 @@
 
 ## Why pixiv-cli?
 
-- **One capability surface** — search, details, rankings, recommendations, users, bookmarks, follows, downloads, and ugoira across CLI, MCP, and SDK.
+- **One capability surface** — keyword search, details, rankings, recommendations, users, bookmarks, follows, downloads, and ugoira across CLI, MCP, and SDK; reverse-image search is integrated into the CLI/MCP surface.
 - **Read-only FANBOX access** — authenticate with `FANBOXSESSID`, inspect creators, posts, home/supporting feeds, tags, and first-party file resources through the CLI, MCP, or `sdk/fanbox`.
 - **Composable visual pipelines** — visual lists automatically emit canonical NDJSON when piped; use `--filter` for typed local artwork rules and pass matching records straight to `download`.
 - **Local account pools** — enable database-backed scheduling for read workloads with `pixiv auth pool status|enable|disable`; selection honors Pixiv `Retry-After` responses without exposing credentials.
@@ -24,7 +24,7 @@
 - **Four ugoira output modes** — choose GIF, APNG, lossless ZIP, or extracted frames.
 - **Reliable, organized downloads** — revalidate `.pixiv-cache` metadata, resume verified partials, retry eligible resource failures, optionally archive completed artwork IDs, write sidecars, and show exact terminal progress when available.
 - **Authenticated App API discovery** — read R18 details, pages, ugoira metadata, and all 16 ranking modes through the App API.
-- **Useful search filters** — rating, content type, AI mode, aspect ratio, resolution, and a versioned drawing-tool catalog.
+- **Useful search filters** — rating, content type, AI mode, aspect ratio, resolution, and a versioned drawing-tool catalog; reverse-image search can query SauceNAO or ascii2d from a local file or URL.
 - **Direct Pixiv references** — paste supported artwork URLs into detail or download; authenticated profile and artworks URLs expand to that creator's visual works.
 - **Local multi-account OAuth** — browser login, account selection, refresh-token rotation, and an optional cross-machine callback relay.
 - **Automation-ready integration** — typed SDK errors, JSON output, clean MCP stdio, signed release updates, and complete result reporting.
@@ -116,6 +116,10 @@ pixiv fanbox post 123456
 pixiv search "初音ミク" --type illust --ai-mode exclude --resolution high
 pixiv novel search "初音ミク" --rating sfw --min-text-length 1000
 
+# Reverse-search a local image or HTTP(S) image URL. Results can be JSON or NDJSON.
+pixiv search ./image.png --provider ascii2d-color --json
+pixiv search https://your-image-url.example/image.png --provider all --ndjson
+
 # Follow creators and build your collection.
 pixiv follow add 12345678
 pixiv bookmark add 123456
@@ -148,6 +152,8 @@ pixiv timeline latest --type illust --limit 10 --json
 
 ### MCP
 
+Reverse-image search is available through the CLI/MCP integration; the public Go SDK remains unchanged.
+
 Start the stdio server explicitly. stdout remains reserved for JSON-RPC; tool failures are returned as structured results with `isError=true`. No project-level or daily log files are created by default.
 
 ```bash
@@ -158,6 +164,11 @@ pixiv fanbox mcp
 
 See the [MCP tool contract](docs/en/mcp-tools.md) for tools, parameters, structured output, and authentication behavior.
 Fixed MCP status, error, and display text is English; Pixiv metadata and user-supplied text are preserved verbatim.
+
+The `reverse_search` tool accepts a regular local file or HTTP(S) URL and may upload
+that source to third-party providers. Because trusted local MCP clients may request
+private files and private/loopback/link-local URLs, run it only from a client you
+trust; see the [reverse-search MCP contract](docs/en/mcp-tools.md#reverse-image-search).
 
 ### Go SDK
 

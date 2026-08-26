@@ -67,6 +67,16 @@ func TestStoreUsesInjectedFilePortForPathReadWriteAndInitialization(t *testing.T
 	require.Equal(t, "default", value.Source)
 }
 
+func TestSensitiveMutationReportsEnvironmentOverrideWithoutItsValue(t *testing.T) {
+	t.Setenv("SAUCENAO_API_KEY", "must-not-leak")
+	files := &injectedFileStore{path: "injected/config.toml", files: make(map[string][]byte)}
+
+	result, err := (config.Store{Files: files}).Set("saucenao_api_key", "file-key")
+	require.NoError(t, err)
+	require.True(t, result.HasOverride)
+	require.Empty(t, result.EnvOverride)
+}
+
 func TestGeneratedDefaultConfigIsCompactAndPreservesExistingFile(t *testing.T) {
 	path := "injected/config.toml"
 	files := &injectedFileStore{path: path, files: make(map[string][]byte)}
@@ -90,6 +100,9 @@ func TestGeneratedDefaultConfigIsCompactAndPreservesExistingFile(t *testing.T) {
 		"[logging]",
 		`level = "info"`,
 		`format = "text"`,
+		"[reverse_search]",
+		`provider = "saucenao"`,
+		"pixiv_only = true",
 	} {
 		require.Contains(t, string(body), fragment)
 	}

@@ -47,9 +47,10 @@ type downloadOptions struct {
 }
 
 var visualRecordTypes = map[string]struct{}{
-	"illust": {},
-	"manga":  {},
-	"ugoira": {},
+	"artwork": {},
+	"illust":  {},
+	"manga":   {},
+	"ugoira":  {},
 }
 
 func newController(deps Deps) controller {

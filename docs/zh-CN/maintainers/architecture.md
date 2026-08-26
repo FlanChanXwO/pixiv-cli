@@ -1,5 +1,7 @@
 # 架构说明
 
+[English](../../en/maintainers/architecture.md) | 简体中文 | [文档索引](../../index-zh-CN.md)
+
 ```mermaid
 flowchart LR
     ENTRY["cmd/pixiv<br/>唯一二进制入口"] --> CLI["internal/cli<br/>命令与生命周期"]
@@ -264,6 +266,12 @@ v1 已删除 `internal/services/pixiv/webapi` 与匿名 Web/AJAX 路径：App AP
 迁移后，两个产品根包分别聚合账号与会话业务，不把 CLI/MCP DTO、filter、record、schema 或输出适配带入 services。Facade 只依赖业务叶 Module 的 Port、配置快照、协议无关的共享 Module 与 public SDK；不得依赖 `internal/storage/database` 的具体实现，也不得由 public SDK 反向 import。
 
 `internal/services/pixiv` 的业务 Facade 统一账号打开、登录完成、凭据 rotation、账号池选择/冻结/safe replay 与 Lease 生命周期；`internal/services/fanbox` 统一账号选择、session 校验与独立 client 生命周期，但不引入 Pixiv 账号池策略。
+
+### reverse-search Facade 例外
+
+反向搜图是唯一跨越常规 public SDK 边界的产品能力。顶层契约与 Facade 位于 `internal/services/reversesearch`，provider 协议适配只位于 `internal/services/reversesearch/saucenao` 与 `internal/services/reversesearch/ascii2d`。生产组装 `internal/cli/root.go` 可以依赖 `internal/services/reversesearch/assembly`，在每个命令/session 启动时绑定 HTTP client、代理和 SauceNAO key；`internal/cli/commands` 下的 CLI owner 与全部 `internal/mcpserver` 只能 import 顶层 `internal/services/reversesearch` 契约，不得 import provider 子包或 assembly。Facade 返回领域结果，CLI/MCP 只在输出边界投影 canonical Record。
+
+Facade 会把常规文件或 HTTP(S) source 载入一个私有快照、计算 hash，并在 provider 工作结束后清理。已确认的 source policy 有意允许任意可读常规文件以及私网、loopback、link-local URL；因此 MCP 必须处在可信本机 client 边界之后。source 与 provider transport 都不能跨过输出边界；可发布的只有 source kind/hash、安全的 provider 摘要/错误、领域 evidence 和 canonical `artwork`/`user` Record。
 
 ### `internal/services/pixiv/endpoint/{artwork,novel,user}`
 

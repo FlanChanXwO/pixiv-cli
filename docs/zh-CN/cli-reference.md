@@ -7,6 +7,12 @@ SDK 与 MCP 细节不在此重复，入口见[相关文档](#相关文档)。
 
 > 视觉列表在管道中会自动输出 canonical NDJSON。下载目前支持页码、静态质量、`gif|apng`、输出目录、文件名模板和 `--on-error`；不支持的选项会作为 unknown flag 失败。代理接受 `http`、`https`、`socks5` 与 `socks5h`；配置包含 `directory_template`、`request_interval`（可用 `PIXIV_REQUEST_INTERVAL` 或 `[network].request_interval` 设置）。
 
+`pixiv search SOURCE` 在 `SOURCE` 是显式 HTTP(S) URL 或现有常规本地文件时也会执行反向搜图。
+反向搜图不依赖已认证的 Pixiv 账号，而是使用配置的第三方 provider，并可能把 source 上传到本机之外。
+
+使用前请阅读 [SauceNAO 隐私与条款](https://saucenao.com/legal.html)：上传图片可能短期保留，URL 查询的缓存时间
+可能长于本次请求。
+
 用户可感知变化记录在[按版本归档的更新日志](../../changelog/README.zh-CN.md)。
 
 [GitHub Releases 页面]: https://github.com/FlanChanXwO/pixiv-cli/releases
@@ -250,6 +256,8 @@ pixiv update --check --json
 pixiv search "初音ミク" --type artwork --limit 10
 pixiv search "初音ミク" --type novel --json
 pixiv search "artist" --type user --limit 10
+pixiv search ./image.png --provider ascii2d-color --json
+pixiv search https://example.com/image.png --provider all --ndjson
 pixiv search --trending-tags --json
 pixiv detail 123456 --type artwork --json
 pixiv detail 123456 --type novel --content --json
@@ -273,6 +281,34 @@ CLI 使用 Cobra/pflag，选项可以写在位置参数前后，例如 `pixiv au
 
 视觉列表接入管道时会自动输出 NDJSON；也可显式使用 `--ndjson`。每行都是带稳定字符串 `id`、`type`、`url` 的规范 Record，其余适用 SDK 字段会保留。`download`、`bookmark add/remove`、`follow add/remove` 可不带位置 ID 直接消费它们；动作成功时 stdout 保持为空，安全诊断写入 stderr。`--on-error=skip|fail-fast` 控制 stdin 中格式错误或不兼容 Record 的处理；`--json` 与 `--ndjson` 不能同时使用。
 
+### 反向搜图
+
+`pixiv search SOURCE` 会在任何 Pixiv SDK 或账号池初始化之前进入图片模式：
+
+- 带有显式、大小写不敏感 `http:` 或 `https:` scheme 的输入始终进入图片模式。非法 URL 会作为反向搜图 source
+  错误失败，绝不会回退为关键词搜索。
+- 其他输入只有在跟随符号链接后是现有常规文件时才进入图片模式。目录、FIFO、设备、socket 等非普通路径不是图片源；
+  其他文本仍按关键词处理。
+- 图片模式只接受 `--provider`、`--json`、`--ndjson`、`--proxy` 和 `--no-proxy`。搜索筛选、`--type`、分页和
+  `--trending-tags` 会明确拒绝，不会静默忽略。
+
+provider 值为 `saucenao`、`ascii2d-color`、`ascii2d-bovw` 和 `all`。配置默认值是 `saucenao`；`--provider`
+只覆盖本次调用。`all` 按固定顺序 SauceNAO、ascii2d color、ascii2d bovw 执行，并可能产生 partial 成功。
+`reverse_search_pixiv_only` 控制 `results` 是否保留非 Pixiv 命中，默认 `true`，不是单次命令 flag。
+
+source 只被抓取或打开一次，写入私有临时快照；输出仅包含 `input.kind`（`file` 或 `url`）和 `input.sha256`。
+SauceNAO 与 ascii2d 是第三方服务：图片可能按其政策被上传或保留，URL 请求也可能被缓存。ascii2d 接受 JPEG、PNG、
+WEBP，并执行 provider 自身的 10 MB 上传限制；这不是 SauceNAO-only 查询的统一限制。不要提交无权分享的图片或 URL。
+
+JSON 输出是完整 envelope：`{input, providers, results, records, provider_errors, partial}`。`records` 只包含
+canonical Pixiv identity：反向搜图不知道作品 subtype，因此作品使用通用 `type:"artwork"`，用户使用 `type:"user"`。
+CLI 不会仅为推断 subtype 调用 Pixiv detail。关闭 Pixiv-only 时，纯外部命中可以保留在 `results`，但不会成为 record。
+人类输出是安全摘要；管道输出或显式 NDJSON 只输出这些 canonical record。
+
+对 `all` 来说，一个 provider 成功、另一个失败时设置 `partial=true`，向 stderr 写安全 warning，并以成功退出；单
+provider 失败或全部 provider 失败时非零退出，但在有响应数据时保留 JSON envelope。provider error 只使用稳定的
+`code` 和 `message`；source、API key、cookie、CSRF/redirect 值、临时路径和上游响应 body 不会进入输出或诊断。
+
 所有公开位置参数命令都支持一次隐式非 TTY stdin 补值：缺少一个必填值或省略可选值时，完整 stdin 作为一个值，只移除一个末尾 LF/CRLF，不按 shell 空白拆分；显式位置参数存在时不读 stdin。例如 `printf '%s\n' 13214141 | pixiv search` 等价于 `pixiv search 13214141`。`download`、`bookmark add/remove`、`follow add/remove` 对隐式输入按首个非空白字节选择严格 canonical NDJSON 或一个裸 ID/URL，选定模式后不回退；`-` 只是普通文本。
 
 canonical 数据 action 是 `search`、`detail`、`ranking`、`series`、`comment`、`bookmark`、`download`、`user`、`timeline`、`mypixiv` 和 `recommended`。在适用命令中统一使用 `-t/--type`、`-p/--page`、`-l/--limit`、`-o/--output`（下载目录）和 `-j/--json`；这些是参数短名，不是命令别名。例如，`pixiv timeline latest --type artwork` 是最新作品流的 canonical 写法。`novel search`、`user search` 和根级 `follow` 仍是兼容路径，必须映射到同一 application 用例。
@@ -295,10 +331,10 @@ canonical 数据 action 是 `search`、`detail`、`ranking`、`series`、`commen
 | `auth refresh` | `pixiv auth refresh [UID] [--all] [--json] [--proxy URL\|--no-proxy]` | 刷新指定/默认已保存账号的 OAuth access token 与 rotation 后 refresh token，再强制读取 profile 更新 Pixiv 高级会员缓存。`--all` 刷新全部已保存账号；JSON 固定返回 `accounts`。 |
 | `config path` | `pixiv config path` | 输出 `config.toml` 路径；不存在时创建基础文件。 |
 | `config get` | `pixiv config get KEY` | 输出一个生效中的配置值。 |
-| `config set` | `pixiv config set KEY [VALUE]` | 写入已知配置键，包括 `account_pool_enabled`、`account_pool_strategy`、`download_path`、`filename_template`、`directory_template`、`request_interval`、`https_proxy`、`log_level` 与 `log_format`。 |
+| `config set` | `pixiv config set KEY [VALUE]` | 写入已知配置键，包括 `account_pool_enabled`、`account_pool_strategy`、`download_path`、`filename_template`、`directory_template`、`request_interval`、`https_proxy`、`log_level`、`log_format`、`reverse_search_provider`、`reverse_search_pixiv_only` 和仅限 stdin 的 `saucenao_api_key`。 |
 | `config unset` | `pixiv config unset KEY` | 从 `config.toml` 删除一个已知配置键。 |
 | `update` | `pixiv update [--check] [--prerelease] [--proxy URL]` | 检查或执行与当前安装来源匹配的更新；`--json` 仅可与 `--check` 同用。 |
-| `search` | `pixiv search [WORD] [-t artwork\|novel\|user] [options]` | canonical 实体搜索；默认 `artwork`。`--trending-tags` 是无 WORD 的完整作品趋势标签模式，不接受搜索筛选或分页。 |
+| `search` | `pixiv search [WORD\|IMAGE_PATH_OR_URL] [-t artwork\|novel\|user] [options]` | canonical 实体搜索或自动反向搜图。常规文件或显式 HTTP(S) source 选择图片模式；`--trending-tags` 是无 WORD 的完整作品趋势标签模式，不接受搜索筛选或分页。 |
 | `detail` | `pixiv detail ID_OR_URL [-t artwork\|novel\|user] [--content] [--json]` | 读取一件作品、一本小说或一个用户；`--content` 只对小说有效。 |
 | `ranking` | `pixiv ranking [--mode MODE --date YYYY-MM-DD --page N --limit N]` | 读取插画排行；小说排行不在 v1 契约中。 |
 | `series` | `pixiv series SERIES_ID -t artwork\|novel [--page N --limit N --json\|--ndjson]` | 列出一个作品或小说系列；实体类型必填。 |
@@ -345,6 +381,7 @@ Content-Type 与 URL 后缀不一致（例如 URL 为 `.png`、实体为 JPEG）
 | 命令 | 参数 | 默认值 | 说明 |
 | --- | --- | --- | --- |
 | `search` | `--type` / `-t` | `artwork` | 实体路由：`artwork`、`novel` 或 `user`；作品子类型使用独立的 `--content-type`，`illust` 不是实体值。 |
+| `search` | `--provider` | `reverse_search_provider`（`saucenao`） | 反向搜图 provider：`saucenao`、`ascii2d-color`、`ascii2d-bovw` 或 `all`；仅图片源有效，并只覆盖本次调用的配置。 |
 | `search` | `--content-type` | `all` | 作品子类型：`all`、`illust-and-ugoira`、`illust`、`manga` 或 `ugoira`；只适用于 artwork search。 |
 | `search`、`novel search` | `--search-by` | `tag-partial` | artwork 支持 `tag-partial`、`tag-exact`、`title-caption`、`tag-title-caption`；novel 只支持前三者。 |
 | `search`、`novel search` | `--sort` | `date_desc` | 排序方式：`date_desc` 或 `date_asc`。 |
@@ -469,7 +506,18 @@ URL 在本地解析，不会抓 HTML 或跟随重定向。当前 CLI download �
 logging 默认项；`directory_template`、`request_interval` 等高级设置在显式配置前继续省略。已有文件绝不
 覆盖。配置在命令启动时读取，因此修改会在下一次运行生效。
 
-手工 TOML 可以包含 `[account_pool]`、`[network]`、`[pixiv.network]`、`[fanbox.network]`、`[fanbox.flaresolverr]`、`[login]`、`[update]` 等高级运行时段：
+请通过隐藏输入或获得授权的 secret-manager 管道设置 SauceNAO key，不要把它写进参数或聊天：
+
+```bash
+read -rs SAUCENAO_KEY && printf '%s\n' "$SAUCENAO_KEY" | pixiv config set saucenao_api_key
+unset SAUCENAO_KEY
+pixiv config get saucenao_api_key    # 始终输出 <redacted>
+```
+
+环境变量 `SAUCENAO_API_KEY` 会覆盖文件值，但不会显示内容。不要把 key 写入 shell history、诊断信息、JSON、
+MCP input 或提交到仓库的 TOML 文件。
+
+手工 TOML 可以包含 `[account_pool]`、`[network]`、`[pixiv.network]`、`[fanbox.network]`、`[fanbox.flaresolverr]`、`[reverse_search]`、`[login]`、`[update]` 等高级运行时段：
 
 ```toml
 [network]
@@ -485,6 +533,10 @@ user_agent = "my-native-agent/1.0"
 [fanbox.flaresolverr]
 url = "http://127.0.0.1:8191"
 proxy_url = "socks5://solver-upstream.example:1080"
+
+[reverse_search]
+provider = "saucenao"
+pixiv_only = true
 ```
 
 `[pixiv.network].proxy_url` 与 `[fanbox.network].proxy_url` 区分缺失和显式空值：命令 `--proxy`/`--no-proxy` > 对应 service key（含显式空值） > `https_proxy`/`HTTPS_PROXY` > `[network].https_proxy` > direct。FANBOX native 只接受不带 userinfo 的 HTTP(S) CONNECT；Pixiv 接受 HTTP(S)、SOCKS5 与 SOCKS5H。`user_agent` 只修改 FANBOX native header，不改变 Chrome 146 TLS profile，也不保证绕过 Cloudflare。FlareSolverr 可选且仅 challenge-only；service URL 与 upstream proxy 独立于 native FANBOX proxy。默认 config generator 不创建这些可选 table。
@@ -505,6 +557,7 @@ v1 CLI 不会读取或迁移旧的 `~/.pixiv-cli/auth.json`。从旧版本切换
 | `PIXIV_REQUEST_INTERVAL` | 空 | 请求起始间隔。 |
 | `PIXIV_LOG_LEVEL` | `info` | 诊断级别：`info` 或 `debug`，覆盖 `[logging].level`。 |
 | `PIXIV_LOG_FORMAT` | `text` | 诊断 stderr 格式：`text` 或 `json`，覆盖 `[logging].format`。 |
+| `SAUCENAO_API_KEY` | 空 | SauceNAO credential；覆盖私有配置值且永不打印。 |
 | `https_proxy` / `HTTPS_PROXY` | 空 | `http`、`https`、`socks5` 或 `socks5h` 代理 URI；优先使用小写 `https_proxy`。 |
 
 CLI 数据命令在账号池关闭时使用 `pixiv auth use` 的显式/默认账号，启用时从数据库选择 eligible 账号；不接受身份选择参数。

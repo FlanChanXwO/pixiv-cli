@@ -16,7 +16,7 @@
 
 ## 为什么选择 pixiv-cli？
 
-- **一致的能力面**——CLI、MCP 与 SDK 均可完成搜索、详情、排行、推荐、用户、收藏、关注、下载和 ugoira 处理。
+- **一致的能力面**——CLI、MCP 与 SDK 均可完成关键词搜索、详情、排行、推荐、用户、收藏、关注、下载和 ugoira 处理；反向搜图接入 CLI/MCP 能力面。
 - **只读 FANBOX 能力**——通过 `FANBOXSESSID` 登录后，可从 CLI、MCP 或 `sdk/fanbox` 查看创作者、帖子、主页/支持中 feed、标签和第一方文件资源。
 - **组合式视觉作品管道**——视觉列表接入管道时自动输出 canonical NDJSON；用 `--filter` 编写有类型的本地作品筛选，并可直接传给 `download`。
 - **本地账号池**——为读取型任务选择符合条件的本地账号，并在分页和下载准备阶段遵循 Pixiv 的 `Retry-After` 响应。
@@ -24,7 +24,7 @@
 - **四种 ugoira 输出模式**——可选择 GIF、APNG、无损 ZIP 或解压后的帧。
 - **可靠且可整理的下载**——重验证 `.pixiv-cache` 元数据、续传已验证残片、重试可恢复资源失败，可选归档完整作品、写入 sidecar，并在可知总字节数时显示终端进度。
 - **认证 App API 发现能力**——通过 App API 读取 R18 详情、分页、ugoira metadata 和全部 16 种排行榜。
-- **实用搜索筛选**——支持分级、作品类型、AI 模式、横纵比、分辨率和版本内置的绘图工具目录。
+- **实用搜索筛选**——支持分级、作品类型、AI 模式、横纵比、分辨率和版本内置的绘图工具目录；反向搜图支持从本地文件或 URL 查询 SauceNAO、ascii2d。
 - **直达 Pixiv 引用**——可把受支持作品 URL 直接粘贴给详情或下载；已认证的作者主页/作品页 URL 会展开为该作者的视觉作品。
 - **本地多账号 OAuth**——支持浏览器登录、账号选择、refresh token rotation 和可选的跨机器 callback relay。
 - **适合自动化**——typed SDK error、JSON 输出、纯净 MCP stdio、签名更新和完整结果报告。
@@ -114,6 +114,10 @@ pixiv fanbox post 123456
 pixiv search "初音ミク" --type illust --ai-mode exclude --resolution high
 pixiv novel search "初音ミク" --rating sfw --min-text-length 1000
 
+# 对本地图片或 HTTP(S) 图片 URL 反向搜图；可输出 JSON 或 NDJSON。
+pixiv search ./image.png --provider ascii2d-color --json
+pixiv search https://your-image-url.example/image.png --provider all --ndjson
+
 # 关注创作者并收藏作品。
 pixiv follow add 12345678
 pixiv bookmark add 123456
@@ -146,6 +150,8 @@ pixiv timeline latest --type illust --limit 10 --json
 
 ### MCP
 
+反向搜图属于 CLI/MCP integration；public Go SDK 保持不变。
+
 显式启动 stdio server。stdout 只用于 JSON-RPC；tool 运行失败会以 `isError=true` 的 structured result 返回。默认不创建项目级或每日日志文件。
 
 ```bash
@@ -156,6 +162,10 @@ pixiv fanbox mcp
 
 [MCP tool 契约](docs/zh-CN/mcp-tools.md)记录了 tools、参数、structured output 和认证行为。
 MCP 固定状态、错误和展示文本使用英文；Pixiv 元数据及用户提供的文本保持原文。
+
+`reverse_search` 接受常规本地文件或 HTTP(S) URL，并可能把图片上传给第三方 provider。
+可信本机 MCP client 可以请求私有文件以及私网/loopback/link-local URL，因此只应在可信 client
+中运行；详见 [MCP 反向搜图契约](docs/zh-CN/mcp-tools.md#反向搜图)。
 
 ### Go SDK
 

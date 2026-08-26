@@ -37,6 +37,48 @@ models. The separate FANBOX MCP server follows the same resource shape: a
 first-party resource contains its opaque `ref` and optional
 `requires_credentials`, never `url`, `request_headers`, or `expires_at`.
 
+## Reverse image search
+
+`reverse_search` is a Pixiv MCP tool with a closed input object:
+
+```json
+{"source":"/private/path/image.png","provider":"ascii2d-color"}
+```
+
+`source` is required and `provider` is optional. The provider enum is
+`saucenao`, `ascii2d-color`, `ascii2d-bovw`, or `all`; omitting it uses the
+MCP process's startup configuration, whose default is `saucenao`. The
+`reverse_search_pixiv_only` configuration is also captured at startup and
+controls whether non-Pixiv matches remain in `results`. A tool call cannot
+change the proxy, API key, or other transport configuration.
+
+The source may be any readable regular local file or HTTP(S) URL. Under the
+intentional trusted-local-client model, private, loopback, and link-local URL
+targets are allowed, and the server may read private files. The server fetches
+or opens the source once into a private snapshot, uploads it to the selected
+third-party provider(s), and never returns the original source, temporary path,
+request headers, cookies, API key, CSRF value, redirect `Location`, or upstream
+response body. Run `pixiv mcp` only for MCP clients that are trusted to request
+these local resources. SauceNAO/ascii2d processing and retention follow their
+own policies; URL queries may be cached. ascii2d accepts JPEG, PNG, and WEBP
+and applies its provider-specific 10 MB limit.
+
+The structured output is always the closed envelope
+`{input, providers, results, records, provider_errors, partial}`. `input`
+contains only `kind` and `sha256`; `providers` is the fixed provider status
+list; `results` keeps provider evidence and optional canonical Pixiv identity;
+`provider_errors` contains only stable `provider`, `code`, and `message`;
+`records` contains canonical `artwork` or `user` records. An artwork record is
+deliberately generic because the search providers do not establish Pixiv's
+artwork subtype, and the tool does not call artwork detail to guess it.
+External-only results remain outside `records`.
+
+When at least one provider succeeds and another fails, `partial=true` and the
+tool result is successful (`isError=false`). A single-provider failure or an
+all-provider failure preserves the envelope and sets `isError=true`; schema
+errors are rejected before provider execution. Cancellation remains a full
+request cancellation, not a partial success.
+
 ## Entity filters and bookmark-count search
 
 Only the typed filters below are input fields. The former top-level expression
@@ -89,6 +131,7 @@ not treated as an artwork detail request.
 | --- | --- |
 | `search_illust` | Required `word`; optional `search_target`, `sort`, `duration`, `start_date`, `end_date`, `content_type`, `ai_mode`, `aspect_ratio`, `resolution`, exact `tool`, bookmark range/strategy, `illust_filter`, `page`, `limit`. Stable enum/date validation happens before opening the SDK. |
 | `search_novel` | Required `word`; optional `search_target`, `sort`, `duration`, `novel_filter`, `page`, `limit`. Rating, text-length, and original-only fields are intentionally not published. |
+| `reverse_search` | Required `source` (regular local file or HTTP(S) URL); optional `provider` enum. Uses the startup proxy/key/pixiv-only snapshot and returns the reverse-search envelope described above. |
 | `illust_detail` | Exactly one of positive `illust_id` or a supported artwork `url`; returns one safe record. |
 | `novel_detail` / `novel_content` | Positive `novel_id`; the first returns metadata and the second returns complete structured content blocks. |
 | `illust_related` | Positive `illust_id`, optional `illust_filter`, `page`, `limit`. |
