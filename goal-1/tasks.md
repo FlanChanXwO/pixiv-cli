@@ -400,18 +400,18 @@
 
 ### 🔍 集中检查 #7（Task 18–20 之后）
 
-- [ ] **目标**：Phase 5 上半部分集中复查。
+- [x] **目标**：Phase 5 上半部分集中复查。
 - **检查清单**：
   - [x] 需求是否偏离 `input.md`
-  - [ ] 所有聚焦验证是否新鲜绿色
-  - [ ] `go test ./...` 是否通过
-  - [ ] `sh scripts/test-package-release.sh` 是否通过
-  - [ ] 两架构 smoke CI 是否绿色且断言执行
-  - [ ] 是否有被跳过的断言
-  - [ ] 安全性：全链路权限/credential 审查
+  - [x] 所有聚焦验证是否新鲜绿色
+  - [x] `go test ./...` 是否通过
+  - [x] `sh scripts/test-package-release.sh` 是否通过
+  - [x] 两架构 smoke CI 是否绿色且断言执行
+  - [x] 是否有被跳过的断言
+  - [x] 安全性：全链路权限/credential 审查
   - [x] 是否需要新增/调整回滚方案
-- **结论**：（待填）
-- **发现问题**：（待填，如有则追加修复 task）
+- **结论**：在当前 HEAD `8d397209608e6ab0b78048e901b02db4565551ae` 复查通过。四项聚焦验证、package/release 回归、uncached `go test -count=1 ./...` 全部 exit 0。当前 head 的 Container image smoke Run [32935543357](https://github.com/FlanChanXwO/pixiv-cli/actions/runs/32935543357) 在 amd64/arm64 均 success；build/non-root/version/state-path/workdir/contract steps 均 completed/success 且无 skipped。安全审计确认全局 least privilege、只有 `publish_container` 持有 `packages: write`、构建无 registry write/QEMU/Docker Hub credential/action，所有相关 action 为 full-SHA pin。回滚方案无需调整。
+- **发现问题**：无。
 
 ---
 
