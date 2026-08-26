@@ -441,23 +441,24 @@
 
 ### 🔍 终审集中检查（Task 21–22 之后，全部 task 完成）
 
-- [ ] **目标**：最大范围总复查。
+- [x] **目标**：最大范围总复查。
 - **检查清单**：
-  - [ ] C 端体验：Docker 用户能否按文档正常使用
-  - [ ] 代码质量：是否有 bug、死代码、调试残留
-  - [ ] 安全性：鉴权、注入、敏感信息泄露、权限隔离
-  - [ ] 数据一致性：状态路径、volume 持久化
-  - [ ] 权限：build/publish 权限边界
-  - [ ] 错误处理：registry 失败、恢复语义
-  - [ ] 测试覆盖：所有新增/修改有聚焦测试
-  - [ ] 构建产物：镜像构建正确
-  - [ ] 文档：双语同步、无遗漏
-  - [ ] 回滚方案：是否完整
-  - [ ] Release boundary：不可变 tag、GHCR 恢复
-  - [ ] 所有 C1–C5 标准有直接当前状态证据
-- **结论**：（待填）
-- **发现问题**：（待填，如有则立即修复）
-- **最终状态**：（待填：COMPLETE / CONTINUE / BLOCKED）
+  - [x] C 端体验：Docker 用户能否按文档正常使用
+  - [x] 代码质量：是否有 bug、死代码、调试残留
+  - [x] 安全性：鉴权、注入、敏感信息泄露、权限隔离
+  - [x] 数据一致性：状态路径、volume 持久化
+  - [x] 权限：build/publish 权限边界
+  - [x] 错误处理：registry 失败、恢复语义
+  - [x] 测试覆盖：所有新增/修改有聚焦测试
+  - [x] 构建产物：镜像构建正确
+  - [x] 文档：双语同步、无遗漏
+  - [x] 回滚方案：是否完整
+  - [x] Release boundary：不可变 tag、GHCR 恢复
+  - [x] 所有 C1–C5 标准有直接当前状态证据
+- **结论**：通过。用户文档中的 pull/tag、state volume、`/work` bind mount、stdin auth import 和 MCP stdio 命令与实现一致；fresh named-volume probe 确认 UID 1000 可写。代码经聚焦测试、policy mutation tests、LSP/Go diagnostics 和 code review 审查，未发现阻塞缺陷。安全审计确认无 secret 泄露、无 QEMU/Docker Hub credential、build 无 registry write、publish 最小权限。两架构 native smoke 在当前实现 HEAD 通过且断言无 skipped；双语文档审计无遗漏；回滚方案和 immutable tag/GHCR post-Release 恢复边界完整。
+- **验证证据**：在最终实现 HEAD `716ce323742fa67c95411811541466f2c7d9d890` 运行 releaseworkflow/containerrelease/documentation 聚焦测试全部 PASS，workflow policy verifier exit 0，`git diff --check origin/main...HEAD` 干净。该 HEAD 的 GitHub Actions 全绿：Quality Gate [32939230308](https://github.com/FlanChanXwO/pixiv-cli/actions/runs/32939230308)、Container image smoke [32939230367](https://github.com/FlanChanXwO/pixiv-cli/actions/runs/32939230367)（amd64/arm64 断言执行）、Platform packaged binary smoke [32939230307](https://github.com/FlanChanXwO/pixiv-cli/actions/runs/32939230307)。C1–C5 的逐条证据见 Task 22。
+- **发现问题**：无。
+- **最终状态**：COMPLETE
 
 ---
 
