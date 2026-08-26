@@ -12,7 +12,7 @@
 
 ### Task 1: Red — 编写 release policy 失败测试
 
-- [ ] **目标**：在 `scripts/internal/releaseworkflow` 中添加聚焦测试，断言计划中的容器 job 拓扑和约束，确认当前行为因缺少容器 contract 而失败。
+- [x] **目标**：在 `scripts/internal/releaseworkflow` 中添加聚焦测试，断言计划中的容器 job 拓扑和约束，确认当前行为因缺少容器 contract 而失败。
 - **具体断言**：
   - 存在 `build_container` job，其在共享质量门禁之后启动
   - 存在 `publish_container` job，其依赖 `build_container` 和 GitHub Release
@@ -24,10 +24,10 @@
   - exact-version tag 始终发布
   - `latest` 仅 stable 时推进，prerelease 不推进
 - **验收**：测试编译通过但运行失败，Red 证据已记录。
-- **实际做了什么**：（待填）
-- **验证证据**：（待填）
-- **剩余风险**：（待填）
-- **下一步建议**：（待填）
+- **实际做了什么**：创建了 `container_policy.go`（stub，含 `containerRegistry` 常量、`containerMatrixTargets` 映射和返回 error 的 `checkContainerBuildJob`/`checkContainerPublishJob` stub）和 `container_policy_test.go`（9 个聚焦测试）。测试覆盖：build_container 必须存在、不持有 packages: write、checkout 不可变 tag、无 QEMU、原生 Linux runner、不串行依赖 build_production；publish_container 必须持有 packages: write、必须依赖 build_container；containerRegistry 常量正确。
+- **验证证据**：`go test ./scripts/internal/releaseworkflow -run 'TestContainer|TestCheckWorkflowRejectsMissingContainerJobs' -count=1 -v` 输出显示 8 个测试 FAIL（Red），1 个 `TestContainerRegistryPath` PASS（仅验证常量）。`TestCheckWorkflowAcceptsCheckedInWorkflow` 仍 PASS（无回归）。pre-commit `go test ./...` 也确认 releaseworkflow 包 FAIL，符合 Red 预期。commit: `9b5744d`。
+- **剩余风险**：部分测试（如 QEMU rejection、non-native runner）在 Red 阶段因 `requireOnlyMappingKeys` job allow-list 先于 container policy 报错而得到不匹配的错误消息，需在 Task 2 实现 Green 时确保这些测试在正确层报错。`latest` 仅 stable 和 exact-version tag 断言未在本 task 覆盖，将在 Task 7（release graph 测试）中处理。
+- **下一步建议**：Task 2 — Green：在 `checkWorkflow` 中将 `build_container`/`publish_container` 加入 job allow-list，实现 `checkContainerBuildJob` 和 `checkContainerPublishJob` 的完整 policy 规则，使所有 Red 测试转 Green。
 
 ---
 
