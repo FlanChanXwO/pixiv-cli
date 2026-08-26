@@ -1,1 +1,0 @@
-error: argument must be an entity ID or a supported Pixiv URL

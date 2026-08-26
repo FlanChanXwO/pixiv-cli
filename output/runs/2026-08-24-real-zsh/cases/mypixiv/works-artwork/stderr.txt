@@ -1,1 +1,0 @@
-error: type without USER_ID must be one of: illust, novel
