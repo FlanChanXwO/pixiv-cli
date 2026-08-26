@@ -19,7 +19,6 @@ import (
 type testSDKTransport struct {
 	t    *testing.T
 	fake *fakeSDKClient
-	seq  int64
 }
 
 func (tr *testSDKTransport) RoundTrip(request *http.Request) (*http.Response, error) {
@@ -366,13 +365,7 @@ func testSDKPorts(t *testing.T, fake *fakeSDKClient) pixivmcpserver.SDKPorts {
 
 func newTestSDKPorts(t *testing.T, fake *fakeSDKClient) (pixivmcpserver.SDKPorts, pixivmcpserver.Account) {
 	t.Helper()
-	client, _, err := pixivsdk.OpenWith(context.Background(), "test-refresh-token", pixivsdk.Options{
-		HTTPClient: &http.Client{Transport: &testSDKTransport{t: t, fake: fake}},
-	})
-	if err != nil {
-		t.Fatalf("open test pixiv client: %v", err)
-	}
-	t.Cleanup(client.CloseIdleConnections)
+	client := openWireClient(t, fake)
 	return pixivmcpserver.SDKPorts{
 		Open: func(pixivmcpserver.Account) (*pixivsdk.Client, error) { return client, nil },
 		Execute: func(ctx context.Context, _ pixivmcpserver.Account, attempt func(context.Context, *pixivsdk.Client) (bool, error)) error {

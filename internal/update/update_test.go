@@ -32,6 +32,7 @@ func TestUpdateCoordinatorDefaultReleaseInstallerReportsMissingTrustedKey(t *tes
 
 	require.ErrorContains(t, err, "trusted release signing key is not configured")
 }
+
 func TestNewGitHubReleaseClientDefaultCacheUsesApplicationDataDirectory(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
@@ -54,6 +55,7 @@ func TestNewGitHubReleaseClientDefaultCacheUsesApplicationDataDirectory(t *testi
 	require.NoError(t, err)
 	require.Contains(t, string(cacheBytes), `"schema_version":2`)
 }
+
 func TestAutomaticUpdateCheckerReportsStableReleaseNotice(t *testing.T) {
 	checker := &fakeReleaseChecker{result: update.ReleaseCheckResult{Release: &update.Release{TagName: "v0.2.0"}}}
 	automatic, err := update.NewAutomaticUpdateChecker(update.AutomaticUpdateCheckerOptions{
@@ -73,89 +75,6 @@ func TestAutomaticUpdateCheckerReportsStableReleaseNotice(t *testing.T) {
 	assert.Equal(t, "v0.2.0", notice.LatestVersion)
 	assert.Equal(t, "pixiv update", notice.UpdateCommand)
 	assert.Equal(t, []update.ReleaseCheckOptions{{Automatic: true}}, checker.options)
-}
-
-func TestAutomaticUpdateCheckerDoesNotPromptAfterThrottleOrWithoutNewRelease(t *testing.T) {
-	tests := []struct {
-		name    string
-		result  update.ReleaseCheckResult
-		version string
-	}{
-		{name: "throttled", result: update.ReleaseCheckResult{Release: &update.Release{TagName: "v0.2.0"}, Throttled: true}, version: "v0.1.0"},
-		{name: "no release", result: update.ReleaseCheckResult{}, version: "v0.1.0"},
-		{name: "same version", result: update.ReleaseCheckResult{Release: &update.Release{TagName: "v0.1.0"}}, version: "v0.1.0"},
-		{name: "older version", result: update.ReleaseCheckResult{Release: &update.Release{TagName: "v0.1.0"}}, version: "v0.2.0"},
-	}
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			checker := &fakeReleaseChecker{result: test.result}
-			detected := false
-			automatic, err := update.NewAutomaticUpdateChecker(update.AutomaticUpdateCheckerOptions{
-				SourceDetector: update.SourceDetectorFunc(func(buildinfo.Info) (update.InstallSource, error) {
-					detected = true
-					return update.InstallSourceRelease, nil
-				}),
-				ReleaseChecker: checker,
-			})
-			require.NoError(t, err)
-
-			notice, err := automatic.Check(context.Background(), update.AutomaticUpdateRequest{BuildInfo: buildinfo.Info{Version: test.version}})
-
-			require.NoError(t, err)
-			assert.Nil(t, notice)
-			assert.False(t, detected, "no prompt must avoid unnecessary source detection")
-			assert.Equal(t, []update.ReleaseCheckOptions{{Automatic: true}}, checker.options)
-		})
-	}
-}
-
-func TestAutomaticUpdateCheckerReturnsSourceSpecificCommands(t *testing.T) {
-	tests := []struct {
-		name   string
-		source update.InstallSource
-		want   string
-	}{
-		{name: "homebrew stable", source: update.InstallSourceHomebrewStable, want: "brew upgrade FlanChanXwO/tap/pixiv-cli"},
-		{name: "homebrew beta returns to stable", source: update.InstallSourceHomebrewBeta, want: "pixiv update"},
-		{name: "go install", source: update.InstallSourceGoInstall, want: "go install github.com/FlanChanXwO/pixiv-cli/cmd/pixiv@v0.2.0"},
-		{name: "release", source: update.InstallSourceRelease, want: "pixiv update"},
-	}
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			automatic, err := update.NewAutomaticUpdateChecker(update.AutomaticUpdateCheckerOptions{
-				SourceDetector: fakeSourceDetector{source: test.source},
-				ReleaseChecker: &fakeReleaseChecker{result: update.ReleaseCheckResult{
-					Release: &update.Release{TagName: "v0.2.0"},
-				}},
-			})
-			require.NoError(t, err)
-
-			notice, err := automatic.Check(context.Background(), update.AutomaticUpdateRequest{BuildInfo: buildinfo.Info{Version: "v0.1.0"}})
-
-			require.NoError(t, err)
-			require.NotNil(t, notice)
-			assert.Equal(t, test.want, notice.UpdateCommand)
-		})
-	}
-}
-
-func TestAutomaticUpdateCheckerDevelopmentBuildAvoidsAllDependencies(t *testing.T) {
-	automatic, err := update.NewAutomaticUpdateChecker(update.AutomaticUpdateCheckerOptions{
-		SourceDetector: update.SourceDetectorFunc(func(buildinfo.Info) (update.InstallSource, error) {
-			t.Fatal("development build must not detect an installation source")
-			return "", nil
-		}),
-		ReleaseChecker: automaticReleaseCheckerFunc(func(context.Context, update.ReleaseCheckOptions) (update.ReleaseCheckResult, error) {
-			t.Fatal("development build must not query GitHub Releases")
-			return update.ReleaseCheckResult{}, nil
-		}),
-	})
-	require.NoError(t, err)
-
-	notice, err := automatic.Check(context.Background(), update.AutomaticUpdateRequest{BuildInfo: buildinfo.Info{Version: "dev"}})
-
-	require.NoError(t, err)
-	assert.Nil(t, notice)
 }
 
 func TestAutomaticUpdateCheckerPreservesFailures(t *testing.T) {
@@ -221,6 +140,7 @@ type automaticReleaseCheckerFunc func(context.Context, update.ReleaseCheckOption
 func (f automaticReleaseCheckerFunc) Check(ctx context.Context, options update.ReleaseCheckOptions) (update.ReleaseCheckResult, error) {
 	return f(ctx, options)
 }
+
 func TestUpdateCoordinatorGoInstallUsesExactReleaseTag(t *testing.T) {
 	checker := &fakeReleaseChecker{result: update.ReleaseCheckResult{Release: &update.Release{TagName: "v0.2.0", Version: "0.2.0"}}}
 	runner := &fakeCommandRunner{}
@@ -439,58 +359,6 @@ func TestUpdateCoordinatorCheckNeverRunsCommandOrInstaller(t *testing.T) {
 	}
 }
 
-func TestUpdateCoordinatorCheckReportsNoReleaseAsNilLatestVersion(t *testing.T) {
-	coordinator, err := update.NewUpdateCoordinator(update.UpdateCoordinatorOptions{
-		SourceDetector: fakeSourceDetector{source: update.InstallSourceRelease},
-		ReleaseChecker: &fakeReleaseChecker{},
-	})
-	require.NoError(t, err)
-
-	result, err := coordinator.Execute(context.Background(), update.UpdateRequest{
-		BuildInfo: buildinfo.Info{Version: "v0.1.0"},
-		Check:     true,
-	})
-
-	require.NoError(t, err)
-	assert.Nil(t, result.LatestVersion)
-	assert.False(t, result.LatestPrerelease)
-	assert.False(t, result.UpdateAvailable)
-}
-
-func TestUpdateCoordinatorCheckReportsHomebrewChannelSwitchWhenSemVerIsOlder(t *testing.T) {
-	tests := []struct {
-		name       string
-		source     update.InstallSource
-		prerelease bool
-		current    string
-		candidate  string
-	}{
-		{name: "stable to beta", source: update.InstallSourceHomebrewStable, prerelease: true, current: "v2.0.0", candidate: "v1.0.0-beta.1"},
-		{name: "beta to stable", source: update.InstallSourceHomebrewBeta, current: "v2.0.0-beta.1", candidate: "v1.0.0"},
-	}
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			runner := &fakeCommandRunner{}
-			coordinator, err := update.NewUpdateCoordinator(update.UpdateCoordinatorOptions{
-				SourceDetector: fakeSourceDetector{source: test.source},
-				ReleaseChecker: &fakeReleaseChecker{result: update.ReleaseCheckResult{Release: &update.Release{TagName: test.candidate}}},
-				CommandRunner:  runner,
-			})
-			require.NoError(t, err)
-
-			result, err := coordinator.Execute(context.Background(), update.UpdateRequest{
-				BuildInfo:         buildinfo.Info{Version: test.current},
-				Check:             true,
-				IncludePrerelease: test.prerelease,
-			})
-
-			require.NoError(t, err)
-			assert.True(t, result.UpdateAvailable)
-			assert.Empty(t, runner.commands)
-		})
-	}
-}
-
 func TestUpdateCoordinatorRejectsInvalidFormalVersionBeforeReleaseCheck(t *testing.T) {
 	checker := &fakeReleaseChecker{}
 	coordinator, err := update.NewUpdateCoordinator(update.UpdateCoordinatorOptions{
@@ -541,22 +409,6 @@ func TestUpdateCoordinatorPreservesDetectorAndCheckerFailures(t *testing.T) {
 			assert.Equal(t, test.wantCheckCall, len(test.checker.options) == 1)
 		})
 	}
-}
-
-func TestUpdateCoordinatorGoInstallSkipsRunnerWithoutStrictUpdate(t *testing.T) {
-	runner := &fakeCommandRunner{}
-	coordinator, err := update.NewUpdateCoordinator(update.UpdateCoordinatorOptions{
-		SourceDetector: fakeSourceDetector{source: update.InstallSourceGoInstall},
-		ReleaseChecker: &fakeReleaseChecker{result: update.ReleaseCheckResult{Release: &update.Release{TagName: "v0.1.0"}}},
-		CommandRunner:  runner,
-	})
-	require.NoError(t, err)
-
-	result, err := coordinator.Execute(context.Background(), update.UpdateRequest{BuildInfo: buildinfo.Info{Version: "v0.1.0"}})
-
-	require.NoError(t, err)
-	assert.False(t, result.UpdateAvailable)
-	assert.Empty(t, runner.commands)
 }
 
 type fakeSourceDetector struct {

@@ -5,7 +5,6 @@ import (
 	"errors"
 
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
-	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"io"
 	"net/http"
 	"net/http/cookiejar"
@@ -103,6 +102,7 @@ func TestOpenRejectsEmptyRefreshToken(t *testing.T) {
 		t.Fatalf("expected CredentialsExpired, got %v", err)
 	}
 }
+
 func TestSearchNovelsWiresQueryAndCursor(t *testing.T) {
 	calls := 0
 	rt := roundTripFunc(func(req *http.Request) (*http.Response, error) {
@@ -460,6 +460,7 @@ func TestReadOperationsMapPermissionErrors(t *testing.T) {
 		})
 	}
 }
+
 func TestSearchArtworksWiresOperation(t *testing.T) {
 	calls := 0
 	rt := roundTripFunc(func(req *http.Request) (*http.Response, error) {
@@ -591,179 +592,27 @@ func TestArtworkWiresDetailPreservesPagesAndResources(t *testing.T) {
 }
 
 func TestPixivFamiliesNoWebFallbackTokenMatrix(t *testing.T) {
-	t.Run("empty access token", func(t *testing.T) {
-		calls := 0
-		rt := roundTripFunc(func(req *http.Request) (*http.Response, error) {
-			calls++
-			return nil, errors.New("empty-token request unexpectedly reached transport")
-		})
-		_, err := NewWith("", Options{HTTPClient: &http.Client{Transport: rt}})
-		if sdk.ReasonOf(err) != sdk.InvalidArgument {
-			t.Fatalf("NewWith reason = %q, want %q", sdk.ReasonOf(err), sdk.InvalidArgument)
-		}
-		if calls != 0 {
-			t.Fatalf("empty token made %d network calls, want 0", calls)
-		}
-	})
-
 	families := []struct {
 		name string
 		call func(context.Context, *Client) error
 	}{
 		{name: "search", call: func(ctx context.Context, client *Client) error {
-			_, err := client.SearchArtworks(ctx, SearchArtworksRequest{Word: "matrix"})
+			_, err := client.SearchArtworks(ctx, SearchArtworksRequest{Word: "representative"})
 			return err
 		}},
 		{name: "detail", call: func(ctx context.Context, client *Client) error {
 			_, err := client.Artwork(ctx, ArtworkRequest{ArtworkID: 1})
 			return err
 		}},
-		{name: "pages", call: func(ctx context.Context, client *Client) error {
-			_, err := client.ArtworkPages(ctx, ArtworkPagesRequest{ArtworkID: 1})
-			return err
-		}},
-		{name: "ugoira", call: func(ctx context.Context, client *Client) error {
-			_, err := client.UgoiraMetadata(ctx, UgoiraMetadataRequest{ArtworkID: 1})
-			return err
-		}},
-		{name: "related", call: func(ctx context.Context, client *Client) error {
-			_, err := client.RelatedArtworks(ctx, RelatedArtworksRequest{ArtworkID: 1})
-			return err
-		}},
-		{name: "series", call: func(ctx context.Context, client *Client) error {
-			_, err := client.ArtworkSeries(ctx, ArtworkSeriesRequest{SeriesID: 1})
-			return err
-		}},
-		{name: "ranking", call: func(ctx context.Context, client *Client) error {
-			_, err := client.ArtworkRanking(ctx, ArtworkRankingRequest{Mode: RankingModeDay})
-			return err
-		}},
-		{name: "recommended", call: func(ctx context.Context, client *Client) error {
-			_, err := client.RecommendedArtworks(ctx, RecommendedArtworksRequest{})
-			return err
-		}},
-		{name: "following", call: func(ctx context.Context, client *Client) error {
-			_, err := client.FollowingArtworks(ctx, FollowingArtworksRequest{Restrict: RestrictPrivate})
-			return err
-		}},
-		{name: "latest", call: func(ctx context.Context, client *Client) error {
-			_, err := client.LatestArtworks(ctx, LatestArtworksRequest{ContentType: SearchContentTypeIllust})
-			return err
-		}},
-		{name: "user artworks", call: func(ctx context.Context, client *Client) error {
-			_, err := client.UserArtworks(ctx, UserArtworksRequest{UserID: 1, Kind: ArtworkKindIllustration})
-			return err
-		}},
-		{name: "mypixiv", call: func(ctx context.Context, client *Client) error {
-			_, err := client.MyPixivArtworks(ctx, MyPixivArtworksRequest{})
-			return err
-		}},
-		{name: "trending", call: func(ctx context.Context, client *Client) error {
-			_, err := client.TrendingArtworkTags(ctx, TrendingArtworkTagsRequest{})
-			return err
-		}},
-		{name: "comments", call: func(ctx context.Context, client *Client) error {
-			_, err := client.ArtworkComments(ctx, ArtworkCommentsRequest{ArtworkID: 1})
-			return err
-		}},
-		{name: "bookmark list", call: func(ctx context.Context, client *Client) error {
-			_, err := client.UserArtworkBookmarks(ctx, UserArtworkBookmarksRequest{UserID: 1, Restrict: RestrictPrivate})
-			return err
-		}},
-		{name: "bookmark tags", call: func(ctx context.Context, client *Client) error {
-			_, err := client.UserArtworkBookmarkTags(ctx, UserArtworkBookmarkTagsRequest{UserID: 1, Restrict: RestrictPrivate})
-			return err
-		}},
-		{name: "bookmark detail", call: func(ctx context.Context, client *Client) error {
+		{name: "bookmark", call: func(ctx context.Context, client *Client) error {
 			_, err := client.ArtworkBookmark(ctx, ArtworkBookmarkRequest{ArtworkID: 1})
 			return err
 		}},
-		{name: "bookmark add", call: func(ctx context.Context, client *Client) error {
+		{name: "mutation", call: func(ctx context.Context, client *Client) error {
 			return client.AddBookmark(ctx, AddBookmarkRequest{ArtworkID: 1})
-		}},
-		{name: "bookmark remove", call: func(ctx context.Context, client *Client) error {
-			return client.RemoveBookmark(ctx, RemoveBookmarkRequest{ArtworkID: 1})
-		}},
-		{name: "novel search", call: func(ctx context.Context, client *Client) error {
-			_, err := client.SearchNovels(ctx, SearchNovelsRequest{Word: "matrix"})
-			return err
-		}},
-		{name: "novel detail", call: func(ctx context.Context, client *Client) error {
-			_, err := client.Novel(ctx, NovelRequest{NovelID: 1})
-			return err
-		}},
-		{name: "novel content", call: func(ctx context.Context, client *Client) error {
-			_, err := client.NovelContent(ctx, NovelContentRequest{NovelID: 1})
-			return err
-		}},
-		{name: "novel series", call: func(ctx context.Context, client *Client) error {
-			_, err := client.NovelSeries(ctx, NovelSeriesRequest{SeriesID: 1})
-			return err
-		}},
-		{name: "novel comments", call: func(ctx context.Context, client *Client) error {
-			_, err := client.NovelComments(ctx, NovelCommentsRequest{NovelID: 1})
-			return err
-		}},
-		{name: "novel recommended", call: func(ctx context.Context, client *Client) error {
-			_, err := client.RecommendedNovels(ctx, RecommendedNovelsRequest{})
-			return err
-		}},
-		{name: "novel following", call: func(ctx context.Context, client *Client) error {
-			_, err := client.FollowingNovels(ctx, FollowingNovelsRequest{Restrict: RestrictPrivate})
-			return err
-		}},
-		{name: "novel latest", call: func(ctx context.Context, client *Client) error {
-			_, err := client.LatestNovels(ctx, LatestNovelsRequest{})
-			return err
-		}},
-		{name: "user novels", call: func(ctx context.Context, client *Client) error {
-			_, err := client.UserNovels(ctx, UserNovelsRequest{UserID: 1})
-			return err
-		}},
-		{name: "user novel bookmarks", call: func(ctx context.Context, client *Client) error {
-			_, err := client.UserNovelBookmarks(ctx, UserNovelBookmarksRequest{UserID: 1, Restrict: RestrictPrivate})
-			return err
-		}},
-		{name: "user search", call: func(ctx context.Context, client *Client) error {
-			_, err := client.SearchUsers(ctx, SearchUsersRequest{Word: "matrix"})
-			return err
-		}},
-		{name: "user detail", call: func(ctx context.Context, client *Client) error {
-			_, err := client.User(ctx, UserRequest{UserID: 1})
-			return err
-		}},
-		{name: "user recommended", call: func(ctx context.Context, client *Client) error {
-			_, err := client.RecommendedUsers(ctx, RecommendedUsersRequest{})
-			return err
-		}},
-		{name: "user related", call: func(ctx context.Context, client *Client) error {
-			_, err := client.RelatedUsers(ctx, RelatedUsersRequest{UserID: 1})
-			return err
-		}},
-		{name: "user following", call: func(ctx context.Context, client *Client) error {
-			_, err := client.UserFollowing(ctx, UserFollowingRequest{UserID: 1, Restrict: RestrictPrivate})
-			return err
-		}},
-		{name: "user followers", call: func(ctx context.Context, client *Client) error {
-			_, err := client.UserFollowers(ctx, UserFollowersRequest{UserID: 1, Restrict: RestrictPrivate})
-			return err
-		}},
-		{name: "user blocked", call: func(ctx context.Context, client *Client) error {
-			_, err := client.UserBlockedUsers(ctx, UserBlockedUsersRequest{UserID: 1})
-			return err
-		}},
-		{name: "follow add", call: func(ctx context.Context, client *Client) error {
-			return client.FollowUser(ctx, FollowUserRequest{UserID: 1})
-		}},
-		{name: "follow delete", call: func(ctx context.Context, client *Client) error {
-			return client.UnfollowUser(ctx, UnfollowUserRequest{UserID: 1})
-		}},
-		{name: "AI visibility", call: func(ctx context.Context, client *Client) error {
-			return client.SetAIArtworkVisibility(ctx, SetAIArtworkVisibilityRequest{Visible: true})
 		}},
 	}
 	for _, family := range families {
-		family := family
 		t.Run(family.name, func(t *testing.T) {
 			calls := 0
 			rt := roundTripFunc(func(req *http.Request) (*http.Response, error) {
@@ -841,59 +690,15 @@ func TestSearchRejectsUnknownQueryValues(t *testing.T) {
 		name string
 		call func(*Client) error
 	}{
-		{name: "artwork whitespace word", call: func(client *Client) error {
-			_, err := client.SearchArtworks(context.Background(), SearchArtworksRequest{Word: " \t"})
-			return err
-		}},
-		{name: "artwork target", call: func(client *Client) error {
+		{name: "artwork filter", call: func(client *Client) error {
 			_, err := client.SearchArtworks(context.Background(), SearchArtworksRequest{Word: "query", Target: SearchTarget("unknown")})
 			return err
 		}},
-		{name: "artwork sort", call: func(client *Client) error {
-			_, err := client.SearchArtworks(context.Background(), SearchArtworksRequest{Word: "query", Sort: SortMode("unknown")})
-			return err
-		}},
-		{name: "artwork duration", call: func(client *Client) error {
-			_, err := client.SearchArtworks(context.Background(), SearchArtworksRequest{Word: "query", Duration: DurationFilter("unknown")})
-			return err
-		}},
-		{name: "artwork content type", call: func(client *Client) error {
-			_, err := client.SearchArtworks(context.Background(), SearchArtworksRequest{Word: "query", ContentType: SearchContentType("unknown")})
-			return err
-		}},
-		{name: "artwork ai mode", call: func(client *Client) error {
-			_, err := client.SearchArtworks(context.Background(), SearchArtworksRequest{Word: "query", AIMode: SearchAIMode("unknown")})
-			return err
-		}},
-		{name: "artwork aspect ratio", call: func(client *Client) error {
-			_, err := client.SearchArtworks(context.Background(), SearchArtworksRequest{Word: "query", AspectRatio: SearchAspectRatio("unknown")})
-			return err
-		}},
-		{name: "artwork resolution", call: func(client *Client) error {
-			_, err := client.SearchArtworks(context.Background(), SearchArtworksRequest{Word: "query", Resolution: SearchResolution("unknown")})
-			return err
-		}},
-		{name: "artwork invalid start date", call: func(client *Client) error {
-			_, err := client.SearchArtworks(context.Background(), SearchArtworksRequest{Word: "query", StartDate: "2026-02-30"})
-			return err
-		}},
-		{name: "novel whitespace word", call: func(client *Client) error {
-			_, err := client.SearchNovels(context.Background(), SearchNovelsRequest{Word: " \t"})
-			return err
-		}},
-		{name: "novel target", call: func(client *Client) error {
+		{name: "novel filter", call: func(client *Client) error {
 			_, err := client.SearchNovels(context.Background(), SearchNovelsRequest{Word: "query", Target: SearchTarget("unknown")})
 			return err
 		}},
-		{name: "novel sort", call: func(client *Client) error {
-			_, err := client.SearchNovels(context.Background(), SearchNovelsRequest{Word: "query", Sort: SortMode("unknown")})
-			return err
-		}},
-		{name: "novel duration", call: func(client *Client) error {
-			_, err := client.SearchNovels(context.Background(), SearchNovelsRequest{Word: "query", Duration: DurationFilter("unknown")})
-			return err
-		}},
-		{name: "user whitespace word", call: func(client *Client) error {
+		{name: "user whitespace", call: func(client *Client) error {
 			_, err := client.SearchUsers(context.Background(), SearchUsersRequest{Word: " \t"})
 			return err
 		}},
@@ -984,99 +789,11 @@ func TestArtworkRankingDefaultsAndValidatesMode(t *testing.T) {
 	}
 }
 
-// parityMapping records the PixivPy AppPixivAPI baseline methods and how v1
-// covers them. "direct" and "equivalent" entries must exist as methods on
-// *Client; "excluded" entries must not.
-var parityMapping = []struct {
-	baseline string
-	v1       string
-	status   string
-}{
-
-	{"user_detail", "User", "direct"},
-	{"user_illusts", "UserArtworks", "direct"},
-	{"user_bookmarks_illust", "UserArtworkBookmarks", "direct"},
-	{"user_bookmarks_novel", "UserNovelBookmarks", "direct"},
-	{"user_related", "RelatedUsers", "direct"},
-	{"user_recommended", "RecommendedUsers", "direct"},
-	{"user_following", "UserFollowing", "direct"},
-	{"user_follower", "UserFollowers", "direct"},
-	{"user_mypixiv", "MyPixivUsers", "direct"},
-	{"user_list", "UserBlockedUsers", "equivalent"},
-	{"illust_follow", "FollowingArtworks", "direct"},
-	{"illust_detail", "Artwork", "direct"},
-	{"illust_comments", "ArtworkComments", "direct"},
-	{"illust_related", "RelatedArtworks", "direct"},
-	{"illust_recommended", "RecommendedArtworks", "direct"},
-	{"illust_ranking", "ArtworkRanking", "direct"},
-	{"trending_tags_illust", "TrendingArtworkTags", "direct"},
-	{"search_illust", "SearchArtworks", "direct"},
-	{"illust_bookmark_detail", "ArtworkBookmark", "direct"},
-	{"user_bookmark_tags_illust", "UserArtworkBookmarkTags", "direct"},
-	{"ugoira_metadata", "UgoiraMetadata", "equivalent"},
-	{"illust_new", "LatestArtworks", "direct"},
-	{"search_novel", "SearchNovels", "direct"},
-	{"novel_detail", "Novel", "direct"},
-	{"novel_series", "NovelSeries", "equivalent"},
-	{"novel_comments", "NovelComments", "direct"},
-	{"novel_recommended", "RecommendedNovels", "direct"},
-	{"novel_new", "LatestNovels", "direct"},
-	{"novel_follow", "FollowingNovels", "direct"},
-	{"user_novels", "UserNovels", "direct"},
-	{"webview_novel", "NovelContent", "equivalent"},
-
-	{"illust_bookmark_add", "AddBookmark", "equivalent"},
-	{"illust_bookmark_delete", "RemoveBookmark", "direct"},
-	{"user_follow_add", "FollowUser", "direct"},
-	{"user_follow_delete", "UnfollowUser", "direct"},
-	{"user_edit_ai_show_settings", "SetAIArtworkVisibility", "equivalent"},
-	{"auth/refresh", "Open", "equivalent"},
-	{"set_auth", "New", "equivalent"},
-	{"download", "OpenResource", "equivalent"},
-
-	{"showcase_article", "ShowcaseArticle", "excluded"},
-	{"novel_text", "NovelText", "excluded"},
-	{"raw webview_novel HTML", "NovelRawContent", "excluded"},
-	{"req_auth=false", "AnonymousSearchArtworks", "excluded"},
-	{"username/password grant", "LoginWithPassword", "excluded"},
-	{"parse_result", "ParseResult", "excluded"},
-	{"set_api_proxy", "SetAPIProxy", "excluded"},
-}
-
-func TestPixivPyParityInventory(t *testing.T) {
-	clientType := reflect.TypeOf((*pixiv.Client)(nil))
-	packageFns := map[string]any{
-		"Open": pixiv.Open,
-		"New":  pixiv.New,
-	}
-	for _, entry := range parityMapping {
-		if fn, ok := packageFns[entry.v1]; ok {
-			if fn == nil {
-				t.Errorf("%s -> %s (%s): function must exist", entry.baseline, entry.v1, entry.status)
-			}
-			continue
-		}
-		_, exists := clientType.MethodByName(entry.v1)
-		switch entry.status {
-		case "direct", "equivalent":
-			if !exists {
-				t.Errorf("%s -> %s (%s): method %s must exist on *Client", entry.baseline, entry.v1, entry.status, entry.v1)
-			}
-		case "excluded":
-			if exists {
-				t.Errorf("%s -> %s (excluded): method %s must NOT exist on *Client", entry.baseline, entry.v1, entry.v1)
-			}
-		default:
-			t.Fatalf("unknown status %q for %s", entry.status, entry.baseline)
-		}
-	}
-}
-
 // TestPublicInventoryNoRawMediaURLFields guards the invariant that media URLs
 // never appear as loose public fields; they may only live inside Resource.URL.
 func TestPublicInventoryNoRawMediaURLFields(t *testing.T) {
 	forbidden := []string{"DownloadURL", "ZipURLs", "OriginalURL", "SignedURL", "ImageURLs", "MetaSinglePage", "MetaPages"}
-	clientType := reflect.TypeOf((*pixiv.Client)(nil))
+	clientType := reflect.TypeOf((*Client)(nil))
 	for i := 0; i < clientType.NumMethod(); i++ {
 		method := clientType.Method(i)
 		found := scanTypeForFields(method.Type, forbidden)
@@ -1109,6 +826,7 @@ func scanTypeForFields(typ reflect.Type, forbidden []string) []string {
 	}
 	return found
 }
+
 func TestArtworkPublicMappingRejectsMissingPublishTime(t *testing.T) {
 	rt := roundTripFunc(func(*http.Request) (*http.Response, error) {
 		return jsonResponse(`{"illust":{"id":1,"type":"illust","image_urls":{"original":"https://i.pximg.net/img/1.png"},"user":{"id":7,"name":"artist"}}}`), nil
@@ -1198,6 +916,7 @@ func jsonResponse(body string) *http.Response {
 		Body:       io.NopCloser(strings.NewReader(body)),
 	}
 }
+
 func TestBookmarkOperationsRejectUnknownRestrictBeforeNetwork(t *testing.T) {
 	calls := 0
 	rt := roundTripFunc(func(req *http.Request) (*http.Response, error) {

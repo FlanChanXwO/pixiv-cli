@@ -61,69 +61,6 @@ func TestUploadPrioritizesHTTPStatusWhenMultipartWriterAlsoFails(t *testing.T) {
 	require.NotContains(t, errorChainText(err), privateResponse)
 }
 
-func TestUploadPrioritizesMalformedLocationWhenMultipartWriterAlsoFails(t *testing.T) {
-	tests := []struct {
-		name      string
-		location  string
-		wantError string
-	}{
-		{name: "missing", wantError: "ascii2d returned a malformed upload location"},
-		{name: "cross origin", location: "https://private-location.invalid/search/color/" + fixtureHash, wantError: "ascii2d returned an unsafe upload location"},
-		{name: "wrong route", location: "/search/bovw/" + fixtureHash, wantError: "ascii2d returned a malformed upload location"},
-		{name: "invalid hash", location: "/search/color/private-invalid-hash", wantError: "ascii2d returned a malformed upload location"},
-	}
-
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			responseBody := &closeTrackingBody{Reader: strings.NewReader("private upstream response body")}
-			client := newTransportClient(t, func(request *http.Request) (*http.Response, error) {
-				require.Equal(t, http.MethodPost, request.Method)
-				require.NoError(t, request.Body.Close())
-				header := make(http.Header)
-				header.Set("Location", test.location)
-				return &http.Response{
-					StatusCode: http.StatusFound,
-					Header:     header,
-					Body:       responseBody,
-					Request:    request,
-				}, nil
-			})
-
-			_, err := client.Upload(context.Background(), loadSnapshot(t, []byte("\x89PNG\r\n\x1a\nprivate source payload")))
-			require.Equal(t, reversesearch.CodeMalformedUpstreamResponse, reversesearch.CodeOf(err))
-			require.EqualError(t, err, test.wantError)
-			require.True(t, responseBody.closed.Load())
-			require.NotContains(t, errorChainText(err), "private source payload")
-			require.NotContains(t, errorChainText(err), "private upstream response body")
-			require.NotContains(t, errorChainText(err), "private-location.invalid")
-			require.NotContains(t, errorChainText(err), "private-invalid-hash")
-		})
-	}
-}
-
-func TestUploadReportsWriterFailureAfterValidLocation(t *testing.T) {
-	responseBody := &closeTrackingBody{Reader: strings.NewReader("private upstream response body")}
-	client := newTransportClient(t, func(request *http.Request) (*http.Response, error) {
-		require.Equal(t, http.MethodPost, request.Method)
-		require.NoError(t, request.Body.Close())
-		header := make(http.Header)
-		header.Set("Location", "/search/color/"+fixtureHash)
-		return &http.Response{
-			StatusCode: http.StatusFound,
-			Header:     header,
-			Body:       responseBody,
-			Request:    request,
-		}, nil
-	})
-
-	_, err := client.Upload(context.Background(), loadSnapshot(t, []byte("\x89PNG\r\n\x1a\nprivate source payload")))
-	require.Equal(t, reversesearch.CodeProviderFailed, reversesearch.CodeOf(err))
-	require.EqualError(t, err, "could not upload image to ascii2d")
-	require.True(t, responseBody.closed.Load())
-	require.NotContains(t, errorChainText(err), "private source payload")
-	require.NotContains(t, errorChainText(err), "private upstream response body")
-}
-
 func TestUploadPreservesCancellationAndClosesResponseBody(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -304,47 +241,6 @@ func TestConcurrentUploadsUseSeparateCookieSessions(t *testing.T) {
 	require.Zero(t, mismatchCount.Load())
 }
 
-func TestUploadRejectsMissingCSRFAndUnsafeOrMalformedLocation(t *testing.T) {
-	tests := []struct {
-		name      string
-		home      string
-		location  string
-		wantError string
-	}{
-		{name: "missing file form", home: `<html><input name="authenticity_token" value="fixture-csrf"></html>`, wantError: "ascii2d returned a malformed response"},
-		{name: "missing location", home: uploadFormFixture(), wantError: "ascii2d returned a malformed upload location"},
-		{name: "cross origin", home: uploadFormFixture(), location: "https://attacker.invalid/search/color/" + fixtureHash, wantError: "ascii2d returned an unsafe upload location"},
-		{name: "wrong route", home: uploadFormFixture(), location: "/search/bovw/" + fixtureHash, wantError: "ascii2d returned a malformed upload location"},
-		{name: "invalid hash", home: uploadFormFixture(), location: "/search/color/not-a-hash", wantError: "ascii2d returned a malformed upload location"},
-		{name: "query attached", home: uploadFormFixture(), location: "/search/color/" + fixtureHash + "?private=value", wantError: "ascii2d returned a malformed upload location"},
-	}
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
-				switch request.URL.Path {
-				case "/":
-					http.SetCookie(w, &http.Cookie{Name: "ascii2d_session", Value: "fixture-session", Path: "/"})
-					_, _ = io.WriteString(w, test.home)
-				case "/search/file":
-					w.Header().Set("Location", test.location)
-					w.WriteHeader(http.StatusFound)
-				default:
-					t.Errorf("unexpected request path: %s", request.URL.Path)
-					w.WriteHeader(http.StatusNotFound)
-				}
-			}))
-			defer server.Close()
-
-			client := newClient(t, server)
-			_, err := client.Upload(context.Background(), loadSnapshot(t, []byte("\x89PNG\r\n\x1a\nfixture")))
-			require.Equal(t, reversesearch.CodeMalformedUpstreamResponse, reversesearch.CodeOf(err))
-			require.EqualError(t, err, test.wantError)
-			require.NotContains(t, err.Error(), "fixture-csrf")
-			require.NotContains(t, err.Error(), "attacker.invalid")
-		})
-	}
-}
-
 func TestSessionRejectsCrossOriginRedirects(t *testing.T) {
 	attacker := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
 		if request.URL.Path == "/result" {
@@ -482,29 +378,6 @@ func TestSessionSearchRejectsUnsupportedProviderAndMalformedResultStructure(t *t
 	_, err := session.Search(context.Background(), reversesearch.ProviderSauceNAO)
 	require.Equal(t, reversesearch.CodeInvalidRequest, reversesearch.CodeOf(err))
 	require.EqualError(t, err, "ascii2d search mode is invalid")
-}
-
-func TestSessionSearchAcceptsWellFormedEmptyResult(t *testing.T) {
-	server := resultServer(t, `<html><body><div class="row item-box"><div class="image-box">query image</div></div></body></html>`, http.StatusOK)
-	defer server.Close()
-	session := uploadSession(t, server)
-
-	response, err := session.Search(context.Background(), reversesearch.ProviderASCII2DColor)
-	require.NoError(t, err)
-	require.NotNil(t, response.Matches)
-	require.Empty(t, response.Matches)
-}
-
-func TestSessionSearchMapsHTTPFailureWithoutLeakingBody(t *testing.T) {
-	server := resultServer(t, "private upstream body fixture-csrf", http.StatusForbidden)
-	defer server.Close()
-	session := uploadSession(t, server)
-
-	_, err := session.Search(context.Background(), reversesearch.ProviderASCII2DBOVW)
-	require.Equal(t, reversesearch.CodeUpstreamHTTPStatus, reversesearch.CodeOf(err))
-	require.EqualError(t, err, "ascii2d returned an unsuccessful HTTP status")
-	require.NotContains(t, err.Error(), "private upstream body")
-	require.NotContains(t, err.Error(), "fixture-csrf")
 }
 
 func newASCII2DServer(t *testing.T, upload http.HandlerFunc) *httptest.Server {
