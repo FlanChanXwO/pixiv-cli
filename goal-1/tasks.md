@@ -171,14 +171,14 @@
 
 ### Task 9: 并行性证明 + credential-free smoke 工作流
 
-- [ ] **目标**：
+- [x] **目标**：
   1. 确保 release DAG 让 `build_container` 和 `build_production` 在共享质量门禁后成为兄弟节点而非串行。
   2. 添加窄触发容器 smoke 工作流，为相关 PR/main 变更构建两个原生架构（无 registry credential），运行 Phase 2 smoke 断言。复用 full-SHA pinned actions 和现有仓库权限约定。
 - **验收**：DAG 并行关系在 policy 测试中证明；smoke 工作流存在且语法正确。
-- **实际做了什么**：（待填）
-- **验证证据**：（待填）
-- **剩余风险**：（待填）
-- **下一步建议**：（待填）
+- **实际做了什么**：(1) DAG 并行性已由 `TestContainerBuildJobRejectsBuildProductionDependency` 证明——build_container 不得依赖 build_production，必须在共享质量门禁（build）后与 build_production 并行。(2) 创建 `.github/workflows/container-smoke.yml`——credential-free 容器 smoke 工作流，含 change-scope classifier 和两个原生 Linux 架构 job（ubuntu-22.04/amd64, ubuntu-22.04-arm/arm64）。每个 job 构建二进制+镜像+运行 4 个 smoke 断言+运行 contract 测试。所有 actions 使用 full-SHA pin。commit: `227e880`。
+- **验证证据**：`python3 -c yaml.safe_load` → YAML valid。`grep packages:|secrets:|registry` → 无匹配（credential-free）。`go test ./scripts/internal/releaseworkflow -count=1` → PASS。`go test ./scripts/tests/containerrelease -count=1` → PASS。
+- **剩余风险**：smoke 工作流尚未在 CI 上实际运行（需要 push 到远程并触发 GitHub Actions）。DAG 并行性在 policy 层验证，但 release.yml 中实际的 build_container job 尚未添加（Task 10-11）。
+- **下一步建议**：进入集中检查 #3（Phase 3 上半部分复查），然后 Task 10 添加 publish_container job。
 
 ---
 
