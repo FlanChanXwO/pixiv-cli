@@ -291,15 +291,15 @@
 
 ### Task 15: Auth + MCP + 升级文档
 
-- [ ] **目标**：
+- [x] **目标**：
   1. **Auth 文档**：推荐 stdin-based `pixiv auth import` + 持久状态 volume，使 refresh token 不进入镜像层或 CLI argv。不声称 `auth login` 有新 container-specific callback 行为。
   2. **MCP 文档**：展示 `docker run --rm -i ... mcp` stdio 模式。保持 stdout 属于 MCP JSON-RPC 的规则，不添加网络 MCP transport。
   3. **升级文档**：声明容器安装通过 pull/redeploy 升级。不声称 `pixiv update` 是 container-aware，不改变 updater 语义。
 - **验收**：三部分文档内容到位。
-- **实际做了什么**：（待填）
-- **验证证据**：（待填）
-- **剩余风险**：（待填）
-- **下一步建议**：（待填）
+- **实际做了什么**：双语 README 补充 auth import：交互式运行后粘贴 opaque token 并发送 EOF，自动化直接管道 secret manager stdout；挂载 `pixiv-cli-state:/home/pixiv/.pixiv-cli`，明确 token 不进入镜像层或 pixiv argv，也不新增 Docker-specific OAuth callback。补充 MCP stdio 命令和 stdout JSON-RPC 边界，说明可追加 state volume 复用账号。补充“通过拉取新镜像升级并重新部署”，明确 `pixiv update` 不变为 container-aware。
+- **验证证据**：Task 13 的 Red contract 现在转 Green：`go test ./scripts/tests/documentation -count=1 -v` 两个测试 PASS；`go vet ./scripts/tests/documentation` PASS。脚本核对两份 README 的 auth/volume/MCP/upgrade 关键语义、UTF-8 和 Markdown fence 一致，并确认无 Docker Hub、Docker-specific product/auth 宣传。`git diff --check` PASS。README commit: `a1d0f25`。
+- **剩余风险**：文档命令尚未做真实容器交互 smoke；真实两架构 CI 证据仍留给 Task 20。
+- **下一步建议**：进入集中检查 #5（Task 13–15 之后），复查双语文档一致性、安全语言和测试新鲜度。
 
 ---
 
