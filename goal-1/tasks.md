@@ -362,17 +362,17 @@
 
 ### Task 18: 聚焦验证
 
-- [ ] **目标**：运行所有聚焦验证。
+- [x] **目标**：运行所有聚焦验证。
 - **验证命令**：
   - `go test ./scripts/internal/releaseworkflow -count=1`
   - `go test ./scripts/tests/containerrelease -count=1`
   - `go run ./scripts/cmd/releaseworkflow --workflow .github/workflows/release.yml`
   - `go test ./scripts/tests/documentation -count=1`
 - **验收**：全部绿色，证据新鲜。
-- **实际做了什么**：（待填）
-- **验证证据**：（待填）
-- **剩余风险**：（待填）
-- **下一步建议**：（待填）
+- **实际做了什么**：按 tasks 列出的顺序在同一工作区连续运行四项聚焦验证；执行前确认工作区干净、分支为 `goal/docker-container-release` 且领先远端。所有命令均使用 `-count=1` 或对 checked-in workflow 直接执行 policy verifier，未复用缓存结果作为证据。
+- **验证证据**：(1) `scripts/internal/releaseworkflow` PASS（3.147s）；(2) `scripts/tests/containerrelease` PASS（0.479s）；(3) release workflow policy command exit 0；(4) documentation tests PASS（0.437s）。四项全部新鲜绿色。
+- **剩余风险**：聚焦验证不包含包/release 回归与真实两架构 CI smoke；分别留给 Task 19 和 Task 20。
+- **下一步建议**：Task 19 — 运行 `sh scripts/test-package-release.sh` 与 `go test ./...` 完成回归验证。
 
 ---
 
