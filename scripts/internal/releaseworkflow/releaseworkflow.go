@@ -59,6 +59,49 @@ func checkPinnedGitHubKnownHosts(body []byte) error {
 	}
 	return nil
 }
+// requiredJobs 是 release workflow 必须包含的 job 名称集合。
+var requiredJobs = []string{
+	"validate", "e2e", "build", "build_production", "release_notes_audit",
+	"verify_release_source", "publish", "render_homebrew_formula",
+	"verify_homebrew_formula", "deploy_homebrew_tap",
+}
+
+// optionalJobs 是 release workflow 可选包含的 job 名称集合。
+// build_container/publish_container 一旦存在须满足 container contract。
+var optionalJobs = map[string]struct{}{
+	"build_container":   {},
+	"publish_container": {},
+}
+
+// requireJobsAllowlist 确认 workflow 包含全部必需 job，只含允许的 job，
+// 容器 job 是可选的。
+func requireJobsAllowlist(jobs *yaml.Node) error {
+	allowed := make(map[string]struct{}, len(requiredJobs)+len(optionalJobs))
+	for _, name := range requiredJobs {
+		allowed[name] = struct{}{}
+	}
+	for name := range optionalJobs {
+		allowed[name] = struct{}{}
+	}
+	seen := make(map[string]struct{}, len(jobs.Content)/2)
+	for index := 0; index+1 < len(jobs.Content); index += 2 {
+		key := jobs.Content[index]
+		if key.Kind != yaml.ScalarNode {
+			return errors.New("must contain exactly the required keys")
+		}
+		if _, ok := allowed[key.Value]; !ok {
+			return errors.New("must contain exactly the required keys")
+		}
+		seen[key.Value] = struct{}{}
+	}
+	for _, name := range requiredJobs {
+		if _, ok := seen[name]; !ok {
+			return errors.New("must contain exactly the required keys")
+		}
+	}
+	return nil
+}
+
 func checkWorkflow(body []byte) error {
 	var document yaml.Node
 	if err := yaml.Unmarshal(body, &document); err != nil {
@@ -93,7 +136,8 @@ func checkWorkflow(body []byte) error {
 	if !ok || jobs.Kind != yaml.MappingNode {
 		return errors.New("workflow must have a jobs mapping")
 	}
-	if err := requireOnlyMappingKeys(jobs, "validate", "e2e", "build", "build_production", "release_notes_audit", "verify_release_source", "publish", "render_homebrew_formula", "verify_homebrew_formula", "deploy_homebrew_tap"); err != nil {
+	// 容器 job（build_container/publish_container）是可选的；允许列表而非严格列表。
+	if err := requireJobsAllowlist(jobs); err != nil {
 		return fmt.Errorf("workflow jobs: %w", err)
 	}
 	validate, ok := workflowyaml.MappingValue(jobs, "validate")
@@ -177,6 +221,16 @@ func checkWorkflow(body []byte) error {
 		return err
 	}
 	if err := checkDeployHomebrewJob(deployHomebrew); err != nil {
+		return err
+	}
+	// 容器 job 是可选的：一旦存在就必须满足 container release contract。
+	// build_container 不持有 packages: write；publish_container 是唯一持权 job。
+	buildContainer, _ := workflowyaml.MappingValue(jobs, "build_container")
+	if err := checkContainerBuildJob(buildContainer); err != nil {
+		return err
+	}
+	publishContainer, _ := workflowyaml.MappingValue(jobs, "publish_container")
+	if err := checkContainerPublishJob(publishContainer); err != nil {
 		return err
 	}
 	return nil

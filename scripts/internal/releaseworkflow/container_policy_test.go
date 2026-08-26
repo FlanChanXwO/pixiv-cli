@@ -8,26 +8,24 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// TestCheckWorkflowRejectsMissingContainerJobs 断言 release workflow 必须包含
-// build_container 和 publish_container job。当前 checked-in workflow 缺少这些 job，
-// checkWorkflow 返回 nil（不报错），因此测试失败——这是 Red 状态。
-func TestCheckWorkflowRejectsMissingContainerJobs(t *testing.T) {
+// TestCheckWorkflowAcceptsCheckedInWorkflowWithContainerJobs 断言当 release workflow
+// 包含合规格器 build_container/publish_container job 时 policy 接受它。
+// 当前 checked-in workflow 尚无容器 job，因此此测试先添加合规 job 再验证接受。
+func TestCheckWorkflowAcceptsCheckedInWorkflowWithContainerJobs(t *testing.T) {
 	t.Parallel()
 
 	root := releaseWorkflowRoot(t)
+	addContainerJobs(t, root)
 	body, err := yaml.Marshal(root)
 	if err != nil {
 		t.Fatalf("marshal workflow: %v", err)
 	}
-	if err := checkWorkflow(body); err == nil ||
-		!strings.Contains(err.Error(), "build_container") {
-		t.Fatalf("policy error = %v, want rejection mentioning build_container", err)
+	if err := checkWorkflow(body); err != nil {
+		t.Fatalf("policy rejected workflow with compliant container jobs: %v", err)
 	}
 }
 
 // TestContainerBuildJobRejectsPackagesWrite 断言 build_container 不持有 packages: write。
-// Red 状态：checkWorkflow 因 build_container 不在 allowed job list 而拒绝，报 "must contain
-// exactly the required keys" 而非 "packages"，测试因错误不匹配而失败。
 func TestContainerBuildJobRejectsPackagesWrite(t *testing.T) {
 	t.Parallel()
 
@@ -41,6 +39,8 @@ func TestContainerBuildJobRejectsPackagesWrite(t *testing.T) {
 		"packages", scalarNode("write"),
 	))
 	appendMappingValue(t, jobs, "build_container", buildContainer)
+	// 添加合规的 publish_container 以便不因缺少它而报错
+	addPublishContainerJob(t, jobs)
 	body, err := yaml.Marshal(root)
 	if err != nil {
 		t.Fatalf("marshal workflow: %v", err)
@@ -63,6 +63,7 @@ func TestContainerBuildJobRejectsMovableRef(t *testing.T) {
 	with := requireMappingValue(t, checkout, "with")
 	requireMappingValue(t, with, "ref").Value = "${{ github.event.repository.default_branch }}"
 	appendMappingValue(t, jobs, "build_container", buildContainer)
+	addPublishContainerJob(t, jobs)
 	body, err := yaml.Marshal(root)
 	if err != nil {
 		t.Fatalf("marshal workflow: %v", err)
@@ -84,10 +85,11 @@ func TestContainerBuildJobRejectsQEMU(t *testing.T) {
 	// 使用一个合法格式的 SHA 以避免 action reference 校验先于 container policy 报错
 	qemuStep := &yaml.Node{Kind: yaml.MappingNode, Tag: "!!map", Content: []*yaml.Node{
 		scalarNode("name"), scalarNode("Set up QEMU"),
-		scalarNode("uses"), scalarNode("docker/setup-qemu-action@2f5e3a8e4f3e5a5e5a5e5a5e5a5e5a5a5a5a5a5e5"),
+		scalarNode("uses"), scalarNode("docker/setup-qemu-action@aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"),
 	}}
 	steps.Content = append(steps.Content, qemuStep)
 	appendMappingValue(t, jobs, "build_container", buildContainer)
+	addPublishContainerJob(t, jobs)
 	body, err := yaml.Marshal(root)
 	if err != nil {
 		t.Fatalf("marshal workflow: %v", err)
@@ -107,6 +109,7 @@ func TestContainerBuildJobRejectsNonNativeRunner(t *testing.T) {
 	buildContainer := containerJobFixture(t)
 	requireMappingValue(t, buildContainer, "runs-on").Value = "macos-15"
 	appendMappingValue(t, jobs, "build_container", buildContainer)
+	addPublishContainerJob(t, jobs)
 	body, err := yaml.Marshal(root)
 	if err != nil {
 		t.Fatalf("marshal workflow: %v", err)
@@ -129,6 +132,7 @@ func TestContainerBuildJobRejectsBuildProductionDependency(t *testing.T) {
 	removeMappingValue(t, buildContainer, "needs")
 	appendMappingValue(t, buildContainer, "needs", sequenceNode("build_production"))
 	appendMappingValue(t, jobs, "build_container", buildContainer)
+	addPublishContainerJob(t, jobs)
 	body, err := yaml.Marshal(root)
 	if err != nil {
 		t.Fatalf("marshal workflow: %v", err)
@@ -154,7 +158,10 @@ func TestContainerPublishJobRequiresPackagesWrite(t *testing.T) {
 	appendMappingValue(t, publishContainer, "permissions", mappingNode(
 		"contents", scalarNode("read"),
 	))
+	appendMappingValue(t, publishContainer, "steps", &yaml.Node{Kind: yaml.SequenceNode, Tag: "!!seq"})
 	appendMappingValue(t, jobs, "publish_container", publishContainer)
+	// 添加合规的 build_container 以便不因缺少它而报错
+	addBuildContainerJob(t, jobs)
 	body, err := yaml.Marshal(root)
 	if err != nil {
 		t.Fatalf("marshal workflow: %v", err)
@@ -181,7 +188,10 @@ func TestContainerPublishJobRequiresBuildContainerDependency(t *testing.T) {
 		"contents", scalarNode("read"),
 		"packages", scalarNode("write"),
 	))
+	appendMappingValue(t, publishContainer, "steps", &yaml.Node{Kind: yaml.SequenceNode, Tag: "!!seq"})
 	appendMappingValue(t, jobs, "publish_container", publishContainer)
+	// 添加合规的 build_container 以便不因缺少它而报错
+	addBuildContainerJob(t, jobs)
 	body, err := yaml.Marshal(root)
 	if err != nil {
 		t.Fatalf("marshal workflow: %v", err)
@@ -201,8 +211,41 @@ func TestContainerRegistryPath(t *testing.T) {
 	}
 }
 
-// containerJobFixture 返回一个最小 build_container job 节点，
-// 满足结构 contract 中最基本的字段，以便各个 mutation 测试可以在其上修改。
+// addContainerJobs 向 workflow root 添加合规的 build_container 和 publish_container job。
+func addContainerJobs(t *testing.T, root *yaml.Node) {
+	t.Helper()
+	jobs := requireMappingValue(t, root, "jobs")
+	addBuildContainerJob(t, jobs)
+	addPublishContainerJob(t, jobs)
+}
+
+func addBuildContainerJob(t *testing.T, jobs *yaml.Node) {
+	t.Helper()
+	if _, exists := workflowyaml.MappingValue(jobs, "build_container"); exists {
+		return
+	}
+	appendMappingValue(t, jobs, "build_container", containerJobFixture(t))
+}
+
+func addPublishContainerJob(t *testing.T, jobs *yaml.Node) {
+	t.Helper()
+	if _, exists := workflowyaml.MappingValue(jobs, "publish_container"); exists {
+		return
+	}
+	publishContainer := containerPublishJobFixture()
+	appendMappingValue(t, publishContainer, "name", scalarNode("Publish container image"))
+	appendMappingValue(t, publishContainer, "needs", sequenceNode("build_container", "publish"))
+	appendMappingValue(t, publishContainer, "runs-on", scalarNode("ubuntu-24.04"))
+	appendMappingValue(t, publishContainer, "permissions", mappingNode(
+		"contents", scalarNode("read"),
+		"packages", scalarNode("write"),
+	))
+	// publish_container 需要有 steps 字段以通过 requireOnlyMappingKeys
+	appendMappingValue(t, publishContainer, "steps", &yaml.Node{Kind: yaml.SequenceNode, Tag: "!!seq"})
+	appendMappingValue(t, jobs, "publish_container", publishContainer)
+}
+
+// containerJobFixture 返回一个合规的 build_container job 节点。
 func containerJobFixture(t *testing.T) *yaml.Node {
 	t.Helper()
 	job := &yaml.Node{Kind: yaml.MappingNode, Tag: "!!map"}
