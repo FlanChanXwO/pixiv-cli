@@ -322,12 +322,12 @@
 
 ### Task 16: 维护者文档 — development.md 双语同步
 
-- [ ] **目标**：更新 `docs/en/maintainers/development.md` 加入容器构建/release 验证，再同步 `docs/zh-CN/maintainers/development.md`。路由而非在多处重复长 release 规则。
+- [x] **目标**：更新 `docs/en/maintainers/development.md` 加入容器构建/release 验证，再同步 `docs/zh-CN/maintainers/development.md`。路由而非在多处重复长 release 规则。
 - **验收**：双语维护者文档覆盖容器构建/release 验证。
-- **实际做了什么**：（待填）
-- **验证证据**：（待填）
-- **剩余风险**：（待填）
-- **下一步建议**：（待填）
+- **实际做了什么**：先新增维护者文档契约测试，要求英文 `Container release verification` 与中文 `容器发布验证` 小节覆盖并行 DAG、原生 runner 映射、immutable tag 构建、两个 verified-container artifact、non-root/version/state/workdir/OCI 验证、权限边界、聚焦命令和 credential-free smoke。随后在两份 development.md 的 Release gates 区域同步添加简洁小节，并让详细 GHCR 恢复边界继续由相邻段落承载，不在 README 重复维护者流程。
+- **验证证据**：Red：`go test ./scripts/tests/documentation -run TestMaintainerDocsDocumentContainerReleaseVerification -count=1 -v` 先因 English 文档缺目标小节失败。Green：三项 documentation 测试全部 PASS；`go vet ./scripts/tests/documentation` PASS；脚本核对双语标题和共享契约片段、UTF-8、Markdown fence；`git diff --check` PASS。Red commit: `d276261`；文档 commit: `67b3ece`。
+- **剩余风险**：维护者文档描述的 credential-free smoke 仍需 Task 20 的 GitHub Actions 两架构绿色证据。
+- **下一步建议**：Task 17 — 运行 Phase 4 文档测试与 diff 检查，复查双语命令、路径、registry 和安全语言一致性。
 
 ---
 
