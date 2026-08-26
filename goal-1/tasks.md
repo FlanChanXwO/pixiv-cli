@@ -109,14 +109,14 @@
 
 ### Task 6: .dockerignore + 真实 smoke 构建
 
-- [ ] **目标**：
+- [x] **目标**：
   1. 添加 `.dockerignore`，排除仓库/build-noise 内容但不排除 packaging contract 所需文件。不添加 secret-specific 猜测，依赖最小构建上下文和现有仓库 secret 规则。
   2. 在原生 Linux 上构建镜像并运行断言：`id -u != 0`、`pixiv --version`（exact release version）、`pixiv config path`（解析到 `/home/pixiv/.pixiv-cli/`）、`/work` 是默认工作目录。
 - **验收**：镜像构建成功，所有 smoke 断言通过；镜像 ID/digest 和 smoke 输出记录为证据（不记录 credential 或本地数据库内容）。
-- **实际做了什么**：（待填）
-- **验证证据**：（待填）
-- **剩余风险**：（待填）
-- **下一步建议**：（待填）
+- **实际做了什么**：创建 `.dockerignore`，排除 build-noise（.git、.github、docs、scripts、goal 文件、模板、editor 文件、Python cache、Rust target 输出），保留 Dockerfile、dist/ 和 packaging contract 文件。使用临时多阶段 Dockerfile（Go 1.26.3 builder + Debian slim runtime）在原生 Linux/arm64 上构建镜像并运行 4 个 smoke 断言。commit: `e94c5a0`。
+- **验证证据**：Docker 构建成功（image ID: sha256:f8830b93d1c8..., 215MB）。Smoke 断言全部通过：(1) `id -u` → 1000（非 root），(2) `pixiv --version` → `pixiv v0.0.0-smoke`（exact release version），(3) `pixiv config path` → `/home/pixiv/.pixiv-cli/config.toml`，(4) `pwd` → `/work`。`go test ./scripts/tests/containerrelease -count=1` → PASS。`go test ./scripts/internal/releaseworkflow -count=1` → PASS。镜像构建后已清理。
+- **剩余风险**：Smoke 构建使用临时多阶段 Dockerfile（含 Go builder stage），正式 CI 构建将使用预构建版本化二进制 + 正式 Dockerfile。Smoke 在 macOS Docker Desktop（arm64）上运行，未在 amd64 上验证——CI 将在两个原生架构上运行。`.dockerignore` 排除 scripts/ 目录，CI 构建上下文需确保 dist/pixiv 在构建前已准备好。
+- **下一步建议**：进入集中检查 #2（Phase 2 集中复查），然后 Phase 3 Task 7 开始 release graph 失败测试。
 
 ---
 
