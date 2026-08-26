@@ -7,7 +7,6 @@ package documentation_test
 import (
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 )
