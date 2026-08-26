@@ -254,3 +254,77 @@ func TestDockerfilePrecreatesWritableStateDirectory(t *testing.T) {
 		}
 	}
 }
+
+// TestReleaseWorkflowQuotesOCILabelKeys 锁定 inspect 模板中的 label key 必须是
+// 带引号的字符串，避免 dotted key 被 Go template 当作表达式。
+func TestReleaseWorkflowQuotesOCILabelKeys(t *testing.T) {
+	t.Parallel()
+	root := repositoryRoot(t)
+	body, err := os.ReadFile(filepath.Join(root, ".github/workflows/release.yml"))
+	if err != nil {
+		t.Fatalf("read release workflow: %v", err)
+	}
+	required := `docker image inspect --format '{{ index .Config.Labels "'"$1"'" }}'`
+	if !strings.Contains(string(body), required) {
+		t.Fatalf("release workflow must quote OCI label keys with %q", required)
+	}
+}
+
+// TestDockerfileIncludesLicenseNotices 确保镜像携带项目许可证与完整第三方声明。
+func TestDockerfileIncludesLicenseNotices(t *testing.T) {
+	t.Parallel()
+	dockerfile := readDockerfile(t)
+	for _, fragment := range []string{
+		"COPY LICENSE THIRD_PARTY_LICENSES.md /usr/share/doc/pixiv-cli/",
+		"COPY third_party/licenses/ /usr/share/doc/pixiv-cli/third_party/licenses/",
+		"chmod -R a+rX /usr/share/doc/pixiv-cli",
+	} {
+		if !strings.Contains(dockerfile, fragment) {
+			t.Fatalf("Dockerfile must preserve license notices with %q", fragment)
+		}
+	}
+}
+
+// TestContainerWorkflowsVerifyLicenseNotices 要求原生 smoke 不只做静态检查，
+// 还必须确认镜像内确实存在 LICENSE、汇总文档和第三方 license 文件。
+func TestContainerWorkflowsVerifyLicenseNotices(t *testing.T) {
+	t.Parallel()
+	root := repositoryRoot(t)
+	fragment := "/usr/share/doc/pixiv-cli/third_party/licenses"
+	for _, relativePath := range []string{
+		".github/workflows/release.yml",
+		".github/workflows/container-smoke.yml",
+	} {
+		body, err := os.ReadFile(filepath.Join(root, relativePath))
+		if err != nil {
+			t.Fatalf("read %s: %v", relativePath, err)
+		}
+		if !strings.Contains(string(body), fragment) || !strings.Contains(string(body), "license-notices") {
+			t.Fatalf("%s must verify embedded image license notices at %q", relativePath, fragment)
+		}
+	}
+}
+
+// TestContainerArtifactRetentionSupportsRecovery 锁定发布恢复窗口；
+// 一天过期会使 publish_container 失败后无法按文档重用同一批 artifact。
+func TestContainerArtifactRetentionSupportsRecovery(t *testing.T) {
+	t.Parallel()
+	root := repositoryRoot(t)
+	body, err := os.ReadFile(filepath.Join(root, ".github/workflows/release.yml"))
+	if err != nil {
+		t.Fatalf("read release workflow: %v", err)
+	}
+	text := string(body)
+	uploadIndex := strings.Index(text, "name: verified-container-${{ matrix.artifact }}")
+	if uploadIndex < 0 {
+		t.Fatal("release workflow must upload verified container artifacts")
+	}
+	remainder := text[uploadIndex:]
+	end := strings.Index(remainder, "\n      - ")
+	if end > 0 {
+		remainder = remainder[:end]
+	}
+	if !strings.Contains(remainder, "retention-days: 90") {
+		t.Fatal("verified container artifacts must be retained for the documented 90-day recovery window")
+	}
+}

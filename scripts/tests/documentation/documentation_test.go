@@ -286,3 +286,35 @@ func readDocumentation(t *testing.T, root, relativePath string) string {
 	}
 	return string(content)
 }
+
+// TestDockerBindMountSupportsArbitraryHostUID 锁定非 UID 1000 主机目录的安全用法。
+func TestDockerBindMountSupportsArbitraryHostUID(t *testing.T) {
+	t.Parallel()
+
+	en := readUserGuide(t, "README.md")
+	zhCN := readUserGuide(t, "README.zh-CN.md")
+	commonFragments := []string{
+		"--user \"$(id -u):$(id -g)\"",
+		"-e HOME=/tmp/pixiv-cli",
+		"mkdir -p \"$PWD/pixiv-cli-state\"",
+	}
+	requireFragments(t, "English", en, commonFragments)
+	requireFragments(t, "Simplified Chinese", zhCN, commonFragments)
+}
+
+// TestDockerAuthImportExamplesUseCorrectTTYMode 区分手动粘贴（需要 TTY 隐藏输入）
+// 和自动化管道（只 attach stdin，不分配 TTY）。
+func TestDockerAuthImportExamplesUseCorrectTTYMode(t *testing.T) {
+	t.Parallel()
+
+	for locale, path := range map[string]string{
+		"English":            "README.md",
+		"Simplified Chinese": "README.zh-CN.md",
+	} {
+		document := readUserGuide(t, path)
+		if !strings.Contains(document, "docker run --rm -it \\") ||
+			!strings.Contains(document, "| docker run --rm -i") {
+			t.Fatalf("%s README must distinguish interactive (-it) and piped (-i) auth import examples", locale)
+		}
+	}
+}

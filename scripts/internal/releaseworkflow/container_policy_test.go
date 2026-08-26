@@ -704,3 +704,40 @@ func TestContainerPublishJobChecksOutImmutableTag(t *testing.T) {
 		t.Fatalf("policy error = %v, want rejection requiring immutable release tag checkout", err)
 	}
 }
+
+// TestContainerPublishJobRequiresNewestStableGate 断言 latest 只能由仍是最新
+// stable 的 immutable tag 推进；旧 stable rerun 不得把 latest 回滚。
+func TestContainerPublishJobRequiresNewestStableGate(t *testing.T) {
+	t.Parallel()
+
+	root := releaseWorkflowRoot(t)
+	jobs := requireMappingValue(t, root, "jobs")
+	addBuildContainerJob(t, jobs)
+	publishContainer := containerPublishJobFixture()
+	appendMappingValue(t, publishContainer, "name", scalarNode("Publish container image"))
+	appendMappingValue(t, publishContainer, "needs", sequenceNode("build_container", "publish"))
+	appendMappingValue(t, publishContainer, "runs-on", scalarNode("ubuntu-24.04"))
+	appendMappingValue(t, publishContainer, "permissions", mappingNode(
+		"contents", scalarNode("read"),
+		"packages", scalarNode("write"),
+	))
+	appendMappingValue(t, publishContainer, "steps", &yaml.Node{
+		Kind: yaml.SequenceNode,
+		Tag:  "!!seq",
+		Content: []*yaml.Node{
+			canonicalPublishCheckout(t),
+			runStepNode("Publish exact-version tag", `docker push ghcr.io/flanchanxwo/pixiv-cli:${RELEASE_TAG}`),
+			runStepNode("Advance latest only for a stable release", `channel=stable; case "$channel" in stable) docker manifest push ghcr.io/flanchanxwo/pixiv-cli:latest ;; esac`),
+		},
+	})
+	setJobNode(t, jobs, "publish_container", publishContainer)
+
+	body, err := yaml.Marshal(root)
+	if err != nil {
+		t.Fatalf("marshal workflow: %v", err)
+	}
+	err = checkWorkflow(body)
+	if err == nil || !strings.Contains(err.Error(), "newest stable") {
+		t.Fatalf("policy error = %v, want rejection requiring newest stable comparison", err)
+	}
+}
