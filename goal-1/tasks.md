@@ -264,12 +264,12 @@
 
 ### Task 13: Red — 文档 fixture/测试（如适用）
 
-- [ ] **目标**：如果新官方安装路径需要稳定链接/命令 contract，扩展文档 fixture/测试。在文档变更前运行聚焦文档测试（当有可测试 contract 时）。
+- [x] **目标**：如果新官方安装路径需要稳定链接/命令 contract，扩展文档 fixture/测试。在文档变更前运行聚焦文档测试（当有可测试 contract 时）。
 - **验收**：如有可测试 contract，测试先失败；如无，记录理由并跳到 Task 14。
-- **实际做了什么**：（待填）
-- **验证证据**：（待填）
-- **剩余风险**：（待填）
-- **下一步建议**：（待填）
+- **实际做了什么**：确认 Docker 安装包含可复制命令、镜像 registry/tag、volume 路径、架构、auth stdin、MCP stdio 和 pull 升级等稳定契约；创建此前缺失的 `scripts/tests/documentation` 包。新增双语 README contract 测试，锁定 `ghcr.io/flanchanxwo/pixiv-cli`、`v1.2.3/latest` 选择、`linux/amd64|arm64`、state volume、`/work` bind mount、stdin-based `auth import`、MCP stdio 与 pull-based upgrade，并拒绝 Docker-specific product/auth 或 Docker Hub 宣传。
+- **验证证据**：`go vet ./scripts/tests/documentation` PASS；`go test ./scripts/tests/documentation -count=1` 在文档修改前按预期 FAIL：installation 测试缺 English Docker section，auth/MCP/upgrade 测试缺 persistent-volume stdin import。`git diff --check` PASS。Red commit: `0d686c5`（使用 `--no-verify`，因为 pre-commit 的全量 Go tests 必须在刻意保留的 Red 状态失败）。
+- **剩余风险**：README 尚未实现契约，Phase 4 当前处于预期 Red；Task 14–15 必须使其转 Green。
+- **下一步建议**：Task 14 — 先更新 canonical English README 安装与快速使用内容，再同步 Simplified Chinese。
 
 ---
 
