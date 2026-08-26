@@ -333,12 +333,12 @@
 
 ### Task 17: Phase 4 验证
 
-- [ ] **目标**：运行 `go test ./scripts/tests/documentation -count=1` 和 `git diff --check`；检查双语命令、路径、registry 名和安全语言语义一致性。
+- [x] **目标**：运行 `go test ./scripts/tests/documentation -count=1` 和 `git diff --check`；检查双语命令、路径、registry 名和安全语言语义一致性。
 - **验收**：文档测试绿色；diff 无问题；双语语义一致。
-- **实际做了什么**：（待填）
-- **验证证据**：（待填）
-- **剩余风险**：（待填）
-- **下一步建议**：（待填）
+- **实际做了什么**：运行全部 documentation contract 测试和 `go vet ./scripts/tests/documentation`。用脚本审计 README 与双语 maintainer 文档：UTF-8 可读、Markdown fence 成对、用户可执行命令/路径/volume/架构/registry 跨语言一致，维护者构建与发布验证契约同步；并检查 prerelease/latest、stdin auth、MCP stdio/JSON-RPC、pull/redeploy upgrade 和无 Docker-specific product/auth 或 Docker Hub 宣传。
+- **验证证据**：`go test ./scripts/tests/documentation -count=1 -v` 三个测试全部 PASS；`go vet ./scripts/tests/documentation` PASS；bilingual Phase 4 audit PASS；`git diff --check` 无输出。工作区在验证前干净（仅分支领先远端）。
+- **剩余风险**：Phase 4 文档已通过静态与聚焦测试；真实容器 CI 证据仍属 Phase 5 Task 20。
+- **下一步建议**：进入集中检查 #6（Task 16–17 之后），确认维护者文档无遗漏且路由规则遵守。
 
 ---
 
