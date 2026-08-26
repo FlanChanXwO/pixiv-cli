@@ -184,19 +184,19 @@
 
 ### 🔍 集中检查 #3（Task 7–9 之后）
 
-- [ ] **目标**：Phase 3 上半部分集中复查。
+- [x] **目标**：Phase 3 上半部分集中复查。
 - **检查清单**：
   - [x] 需求是否偏离 `input.md`
-  - [ ] `build_container` 是否真的不持有 `packages: write`
-  - [ ] 是否使用原生 runner 而非 QEMU
-  - [ ] DAG 并行关系是否正确
-  - [ ] smoke 工作流是否 credential-free
-  - [ ] action 是否 full-SHA pinned
-  - [ ] 是否无新未审批第三方 Action 依赖
-  - [ ] 安全性：权限隔离
+  - [x] `build_container` 是否真的不持有 `packages: write`
+  - [x] 是否使用原生 runner 而非 QEMU
+  - [x] DAG 并行关系是否正确
+  - [x] smoke 工作流是否 credential-free
+  - [x] action 是否 full-SHA pinned
+  - [x] 是否无新未审批第三方 Action 依赖
+  - [x] 安全性：权限隔离
   - [x] 文档是否同步（本 phase 可能不需要文档变更）
-- **结论**：（待填）
-- **发现问题**：（待填，如有则追加修复 task）
+- **结论**：Phase 3 上半部分通过全部复查，无问题。
+- **发现问题**：无。
 
 ---
 
@@ -252,7 +252,7 @@
   - [x] `go test ./scripts/internal/releaseworkflow -count=1` 是否通过
   - [x] `go test ./scripts/tests/containerrelease -count=1` 是否通过
   - [x] `go run ./scripts/cmd/releaseworkflow --workflow .github/workflows/release.yml` 是否通过
-  - [ ] 安全性：权限隔离、GHCR auth、无 credential 泄露
+  - [x] 安全性：权限隔离、GHCR auth、无 credential 泄露
   - [ ] 数据一致性：两架构 manifest 一致性
   - [x] 文档是否同步（本 phase 可能不需要文档变更）
 - **结论**：（待填）
