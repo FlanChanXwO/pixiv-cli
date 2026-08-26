@@ -323,3 +323,148 @@ func checkoutStepFromContainer(t *testing.T, steps *yaml.Node) *yaml.Node {
 	t.Fatal("container job fixture has no checkout step")
 	return nil
 }
+
+// TestContainerPublishJobIsOnlyPackagesWrite 断言 publish_container 是唯一持有
+// packages: write 的 job——workflow 中没有任何其它 job 持有 packages: write。
+// 这确保 registry 推送权限仅限于发布 job，构建 job 无法直接推送未验证镜像。
+func TestContainerPublishJobIsOnlyPackagesWrite(t *testing.T) {
+	t.Parallel()
+
+	root := releaseWorkflowRoot(t)
+	jobs := requireMappingValue(t, root, "jobs")
+
+	// 添加合规的 build_container 和 publish_container
+	addBuildContainerJob(t, jobs)
+	addPublishContainerJob(t, jobs)
+
+	// 遍历所有 job，确保只有 publish_container 持有 packages: write
+	for i := 0; i+1 < len(jobs.Content); i += 2 {
+		jobName := jobs.Content[i].Value
+		job := jobs.Content[i+1]
+		permissions, ok := workflowyaml.MappingValue(job, "permissions")
+		if !ok {
+			continue
+		}
+		packages, ok := workflowyaml.MappingValue(permissions, "packages")
+		if !ok {
+			continue
+		}
+		if packages.Kind == yaml.ScalarNode && packages.Value == "write" {
+			if jobName != "publish_container" {
+				t.Fatalf("job %q must not declare packages: write (only publish_container may)", jobName)
+			}
+		}
+	}
+
+	body, err := yaml.Marshal(root)
+	if err != nil {
+		t.Fatalf("marshal workflow: %v", err)
+	}
+	if err := checkWorkflow(body); err != nil {
+		t.Fatalf("policy rejected workflow: %v", err)
+	}
+
+	// 现在给 build_container 添加 packages: write（已被其它测试覆盖），
+	// 但这里额外验证全局唯一性：给一个非容器 job 添加 packages: write
+	root2 := releaseWorkflowRoot(t)
+	jobs2 := requireMappingValue(t, root2, "jobs")
+	addBuildContainerJob(t, jobs2)
+	addPublishContainerJob(t, jobs2)
+
+	// 给 validate job 添加 packages: write（validate 不应持有此权限）
+	validate := requireMappingValue(t, jobs2, "validate")
+	validatePerms := requireMappingValue(t, validate, "permissions")
+	appendMappingValue(t, validatePerms, "packages", scalarNode("write"))
+
+	body2, err := yaml.Marshal(root2)
+	if err != nil {
+		t.Fatalf("marshal workflow: %v", err)
+	}
+	err = checkWorkflow(body2)
+	if err == nil {
+		t.Fatal("policy accepted workflow where validate job has packages: write")
+	}
+}
+
+// TestContainerPublishJobAlwaysPublishesExactVersionTag 断言 publish_container
+// 始终发布 exact-version tag（vX.Y.Z），不跳过或条件化版本 tag。
+// 这是 release consistency boundary 的要求：每 release 必须有 exact-version tag。
+func TestContainerPublishJobAlwaysPublishesExactVersionTag(t *testing.T) {
+	t.Parallel()
+
+	root := releaseWorkflowRoot(t)
+	jobs := requireMappingValue(t, root, "jobs")
+	addBuildContainerJob(t, jobs)
+	// 添加一个 publish_container，其 steps 中应包含 exact-version tag 推送
+	publishContainer := containerPublishJobFixture()
+	appendMappingValue(t, publishContainer, "name", scalarNode("Publish container image"))
+	appendMappingValue(t, publishContainer, "needs", sequenceNode("build_container", "publish"))
+	appendMappingValue(t, publishContainer, "runs-on", scalarNode("ubuntu-24.04"))
+	appendMappingValue(t, publishContainer, "permissions", mappingNode(
+		"contents", scalarNode("read"),
+		"packages", scalarNode("write"),
+	))
+	// steps 包含 exact-version tag 推送步骤
+	appendMappingValue(t, publishContainer, "steps", &yaml.Node{
+		Kind: yaml.SequenceNode,
+		Tag:  "!!seq",
+		Content: []*yaml.Node{
+			runStepNode("Publish exact-version tag", `docker push ghcr.io/flanchanxwo/pixiv-cli:${RELEASE_TAG}`),
+		},
+	})
+	appendMappingValue(t, jobs, "publish_container", publishContainer)
+
+	body, err := yaml.Marshal(root)
+	if err != nil {
+		t.Fatalf("marshal workflow: %v", err)
+	}
+	// 当前 policy 不校验 steps 内容中的 tag 推送——此测试确认 Red：
+	// checkWorkflow 不检查 exact-version tag 推送步骤，因此测试失败。
+	err = checkWorkflow(body)
+	if err != nil {
+		t.Fatalf("policy rejected workflow: %v", err)
+	}
+	// 如果 policy 不检查 tag 推送步骤，这里不会失败——这正是 Red：
+	// 我们需要 policy 检查 publish_container 包含 exact-version tag 推送。
+	t.Fatal("policy must require publish_container to always push the exact-version tag")
+}
+
+// TestContainerPublishJobLatestTagOnlyForStable 断言 latest tag 仅在 stable
+// release 时推进，prerelease 不推进 latest。当前 policy 不检查此约束——Red。
+func TestContainerPublishJobLatestTagOnlyForStable(t *testing.T) {
+	t.Parallel()
+
+	root := releaseWorkflowRoot(t)
+	jobs := requireMappingValue(t, root, "jobs")
+	addBuildContainerJob(t, jobs)
+	// 添加一个 publish_container，无条件推进 latest（不区分 stable/prerelease）
+	publishContainer := containerPublishJobFixture()
+	appendMappingValue(t, publishContainer, "name", scalarNode("Publish container image"))
+	appendMappingValue(t, publishContainer, "needs", sequenceNode("build_container", "publish"))
+	appendMappingValue(t, publishContainer, "runs-on", scalarNode("ubuntu-24.04"))
+	appendMappingValue(t, publishContainer, "permissions", mappingNode(
+		"contents", scalarNode("read"),
+		"packages", scalarNode("write"),
+	))
+	// steps 无条件推送 latest tag——应被拒绝
+	appendMappingValue(t, publishContainer, "steps", &yaml.Node{
+		Kind: yaml.SequenceNode,
+		Tag:  "!!seq",
+		Content: []*yaml.Node{
+			runStepNode("Push latest unconditionally", `docker push ghcr.io/flanchanxwo/pixiv-cli:latest`),
+		},
+	})
+	appendMappingValue(t, jobs, "publish_container", publishContainer)
+
+	body, err := yaml.Marshal(root)
+	if err != nil {
+		t.Fatalf("marshal workflow: %v", err)
+	}
+	err = checkWorkflow(body)
+	if err == nil {
+		t.Fatal("policy accepted unconditionally pushing latest tag — must require stable-only gate")
+	}
+	if !strings.Contains(strings.ToLower(err.Error()), "latest") {
+		t.Fatalf("policy error = %v, want rejection mentioning latest", err)
+	}
+}
