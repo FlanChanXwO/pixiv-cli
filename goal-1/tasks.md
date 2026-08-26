@@ -378,12 +378,12 @@
 
 ### Task 19: 包/回归验证
 
-- [ ] **目标**：运行 `sh scripts/test-package-release.sh`，然后 `go test ./...`。运行因实际变更文件所需的额外 lint/build 检查；不用静态检查替代真实 Docker smoke。
+- [x] **目标**：运行 `sh scripts/test-package-release.sh`，然后 `go test ./...`。运行因实际变更文件所需的额外 lint/build 检查；不用静态检查替代真实 Docker smoke。
 - **验收**：全部通过。
-- **实际做了什么**：（待填）
-- **验证证据**：（待填）
-- **剩余风险**：（待填）
-- **下一步建议**：（待填）
+- **实际做了什么**：先运行 package/release 回归脚本，确认 tar.gz/zip/Windows zip 均可打包。随后对 release 与 container-smoke workflow 做 YAML 解析检查，运行 `gofmt` 覆盖 `cmd/internal/scripts/sdk`、`go vet ./...`、`go test ./...`，并额外执行 `go test -count=1 ./...` 消除测试缓存解释空间。静态检查只作补充，未替代真实容器 smoke。
+- **验证证据**：package/release script exit 0 并输出三个平台包路径；两个 workflow YAML 解析 PASS；gofmt 无输出 PASS；`go vet ./...` exit 0；`go test ./...` exit 0；uncached `go test -count=1 ./...` exit 0（e2e 46.819s，containerrelease 4.941s，documentation 4.509s 等）。完成后工作区干净且 `git diff --check` 通过。
+- **剩余风险**：真实两架构 credential-free container smoke CI 证据仍未覆盖，留给 Task 20。
+- **下一步建议**：Task 20 — 推送 goal 分支并确认最新 container smoke workflow 在本 commit 的两个原生 Linux 架构均绿色且断言执行。
 
 ---
 
