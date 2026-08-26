@@ -1,0 +1,59 @@
+# Docker 构建上下文排除——只保留 Dockerfile 和 packaging contract 所需文件。
+# 不排除 Dockerfile 自身和 dist/ 下的预构建二进制。
+
+# VCS
+.git/
+.gitignore
+.github/
+
+# Go build/test artifacts（dist/ 保留，因为 Dockerfile COPY dist/pixiv）
+build/
+*.test
+*.out
+coverage/
+coverage.txt
+
+# Runtime outputs and local data
+downloads/
+output/
+*.db
+*.sqlite
+*.sqlite3
+*.log
+
+# Editor and OS files
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*~
+
+# Python cache
+__pycache__/
+*.py[cod]
+
+# Rust compiler output (machine-specific; committed staticlib/manifest stays in context)
+internal/media/ugoira/rust/target/
+
+# Worktrees
+.worktrees/
+
+# Goal files (internal planning, not needed for container build)
+goal-*/
+goals/
+
+# Templates (Homebrew-specific, not needed for container build)
+templates/
+
+# Documentation (not needed in runtime image)
+docs/
+changelog/
+*.md
+!README.md
+
+# Scripts not needed in runtime image (build scripts are used in CI, not in container)
+scripts/
+
+# Local environment
+.env
+.env.*
