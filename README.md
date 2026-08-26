@@ -75,10 +75,42 @@ docker run --rm \
 
 Use `/work` for downloaded files with an explicit output path; it is the container's working directory, not a separate product mode.
 
-Import a refresh token through stdin instead of passing it as an argv value. Run the command, paste the opaque token, and send EOF (`Ctrl-D`); the container writes only to the persistent state volume. For automation, pipe your secret manager's stdout directly into `docker run`:
+Bind mounts preserve host ownership. If the host directory is not writable by image UID 1000, run as the host identity, give the container an ephemeral `HOME`, and choose an explicit output path:
 
 ```bash
-docker run --rm -i \
+docker run --rm \
+  --user "$(id -u):$(id -g)" \
+  -e HOME=/tmp/pixiv-cli \
+  -v "$PWD:/work" \
+  ghcr.io/flanchanxwo/pixiv-cli:v1.2.3 \
+  download URL --output /work/downloads
+```
+
+For persistent state with that same host identity, bind a host directory you own instead of the default named volume:
+
+```bash
+mkdir -p "$PWD/pixiv-cli-state"
+docker run --rm \
+  --user "$(id -u):$(id -g)" \
+  -e HOME=/tmp/pixiv-cli \
+  -v "$PWD/pixiv-cli-state:/home/pixiv/.pixiv-cli" \
+  ghcr.io/flanchanxwo/pixiv-cli:v1.2.3 \
+  auth list
+```
+
+Import a refresh token through stdin instead of passing it as an argv value. For manual import, allocate a TTY so the hidden prompt can suppress echo: run the command, paste the opaque token, and send EOF (`Ctrl-D`).
+
+```bash
+docker run --rm -it \
+  -v pixiv-cli-state:/home/pixiv/.pixiv-cli \
+  ghcr.io/flanchanxwo/pixiv-cli:v1.2.3 \
+  auth import
+```
+
+For automation, pipe your secret manager's stdout directly into stdin with `-i`, not `-it`. The container writes only to the persistent state volume:
+
+```bash
+secret-manager print-token | docker run --rm -i \
   -v pixiv-cli-state:/home/pixiv/.pixiv-cli \
   ghcr.io/flanchanxwo/pixiv-cli:v1.2.3 \
   auth import

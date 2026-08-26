@@ -137,6 +137,14 @@ jobs:
             echo "Working directory must be /work, got '$workdir'" >&2
             exit 1
           fi
+      - name: Verify embedded license-notices bundle
+        shell: bash
+        run: |
+          docker run --rm --entrypoint sh pixiv-cli-smoke:${{ matrix.goarch }} -c '
+            test -s /usr/share/doc/pixiv-cli/LICENSE &&
+            test -s /usr/share/doc/pixiv-cli/THIRD_PARTY_LICENSES.md &&
+            find /usr/share/doc/pixiv-cli/third_party/licenses -type f | grep -q .
+          '
       - name: Run container release contract tests
         shell: bash
         run: go test ./scripts/tests/containerrelease -count=1

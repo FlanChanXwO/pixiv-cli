@@ -50,6 +50,7 @@ docs/
 changelog/
 *.md
 !README.md
+!THIRD_PARTY_LICENSES.md
 
 # Scripts not needed in runtime image (build scripts are used in CI, not in container)
 scripts/

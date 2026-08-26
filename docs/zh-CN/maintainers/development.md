@@ -481,7 +481,7 @@ staticlib，并继续以 `git diff --exit-code` 做 byte-for-byte 校验。
 
 GitHub Release 与 GHCR 是独立系统，无法原子提交。因此容器发布拆成 Release 前的 `build_container`
 和 Release 后的 `publish_container`。若 GHCR 发布失败，release workflow 必须保持 failed；恢复方式是用
-同一批 verified-container artifact 和 immutable tag 重跑失败的 `publish_container` job——不要为了修复
+同一批 verified-container artifact（保留 90 天）和 immutable tag 重跑失败的 `publish_container` job——不要为了修复
 registry 发布而重建或重签 native 资产。exact-version manifest 总是推送；只有现有 channel classifier
 报告 stable 时才推进 `latest`。不使用 retry loop 隐藏 push 失败。
 

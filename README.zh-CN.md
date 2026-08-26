@@ -75,10 +75,42 @@ docker run --rm \
 
 下载文件请配合显式输出路径放在 `/work`；它是容器工作目录，不代表独立的产品模式。
 
-请通过 stdin 导入 refresh token，不要把它作为 argv 值传入。运行命令后粘贴 opaque token，再发送 EOF（`Ctrl-D`）；容器只写入持久状态 volume。自动化场景请把 secret manager 的 stdout 直接管道给 `docker run`：
+bind mount 会保留宿主目录属主。如果宿主目录不能被镜像内的 UID 1000 写入，请以宿主身份运行、给容器临时 `HOME`，并选择显式输出路径：
 
 ```bash
-docker run --rm -i \
+docker run --rm \
+  --user "$(id -u):$(id -g)" \
+  -e HOME=/tmp/pixiv-cli \
+  -v "$PWD:/work" \
+  ghcr.io/flanchanxwo/pixiv-cli:v1.2.3 \
+  download URL --output /work/downloads
+```
+
+若要在同一宿主身份下持久化状态，请绑定一个你拥有的宿主目录，而不是默认 named volume：
+
+```bash
+mkdir -p "$PWD/pixiv-cli-state"
+docker run --rm \
+  --user "$(id -u):$(id -g)" \
+  -e HOME=/tmp/pixiv-cli \
+  -v "$PWD/pixiv-cli-state:/home/pixiv/.pixiv-cli" \
+  ghcr.io/flanchanxwo/pixiv-cli:v1.2.3 \
+  auth list
+```
+
+请通过 stdin 导入 refresh token，不要把它作为 argv 值传入。手动导入时分配 TTY，让隐藏输入提示避免回显：运行命令后粘贴 opaque token，再发送 EOF（`Ctrl-D`）。
+
+```bash
+docker run --rm -it \
+  -v pixiv-cli-state:/home/pixiv/.pixiv-cli \
+  ghcr.io/flanchanxwo/pixiv-cli:v1.2.3 \
+  auth import
+```
+
+自动化场景请把 secret manager 的 stdout 直接管道给 stdin，使用 `-i` 而不是 `-it`。容器只写入持久状态 volume：
+
+```bash
+secret-manager print-token | docker run --rm -i \
   -v pixiv-cli-state:/home/pixiv/.pixiv-cli \
   ghcr.io/flanchanxwo/pixiv-cli:v1.2.3 \
   auth import

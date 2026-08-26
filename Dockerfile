@@ -37,6 +37,11 @@ RUN mkdir -p /home/pixiv/.pixiv-cli && chown -R pixiv:pixiv /home/pixiv
 COPY dist/pixiv /usr/local/bin/pixiv
 RUN chmod 0755 /usr/local/bin/pixiv
 
+# 携带项目与第三方许可证，保证容器分发满足保留版权和许可声明的要求。
+COPY LICENSE THIRD_PARTY_LICENSES.md /usr/share/doc/pixiv-cli/
+COPY third_party/licenses/ /usr/share/doc/pixiv-cli/third_party/licenses/
+RUN chmod -R a+rX /usr/share/doc/pixiv-cli
+
 # 设置 HOME 环境变量，使 pixiv CLI 本地状态路径解析到用户 home 目录下。
 ENV HOME=/home/pixiv
 

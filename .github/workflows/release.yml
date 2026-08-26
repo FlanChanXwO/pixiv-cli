@@ -391,6 +391,7 @@ jobs:
             --build-arg VERSION='${RELEASE_TAG}' \
             --platform 'linux/${{ matrix.goarch }}' \
             --tag "pixiv-cli:${RELEASE_TAG}-${{ matrix.artifact }}" .
+      # Includes the embedded license-notices bundle in every architecture check.
       - name: Verify image provenance and runtime contract
         shell: bash
         env:
@@ -403,8 +404,13 @@ jobs:
           test "$version" = "pixiv ${RELEASE_TAG}"
           docker run --rm "$IMAGE" config path | grep -F '/home/pixiv/.pixiv-cli/'
           test "$(docker run --rm --entrypoint sh "$IMAGE" -c pwd)" = /work
+          docker run --rm --entrypoint sh "$IMAGE" -c '
+            test -s /usr/share/doc/pixiv-cli/LICENSE &&
+            test -s /usr/share/doc/pixiv-cli/THIRD_PARTY_LICENSES.md &&
+            find /usr/share/doc/pixiv-cli/third_party/licenses -type f | grep -q .
+          '
           inspect_label() {
-            docker image inspect --format "{{ index .Config.Labels "$1" }}" "$IMAGE"
+            docker image inspect --format '{{ index .Config.Labels "'"$1"'" }}' "$IMAGE"
           }
           test "$(inspect_label org.opencontainers.image.revision)" = "$(git rev-parse HEAD)"
           test "$(inspect_label org.opencontainers.image.version)" = "${RELEASE_TAG}"
@@ -418,7 +424,8 @@ jobs:
           name: verified-container-${{ matrix.artifact }}
           path: ${{ runner.temp }}/pixiv-cli-${{ matrix.artifact }}.tar
           if-no-files-found: error
-          retention-days: 1
+          # publish_container 的恢复输入不能一天后消失；90 天覆盖 registry 修复窗口。
+          retention-days: 90
 
   # 在进入受保护的 publish job 前，以 tag 内不可变说明、GitHub PR 关联和实际提交范围交叉核对发布来源。
   release_notes_audit:
@@ -651,13 +658,23 @@ jobs:
             --amend "ghcr.io/flanchanxwo/pixiv-cli:${RELEASE_TAG}-linux-amd64" \
             --amend "ghcr.io/flanchanxwo/pixiv-cli:${RELEASE_TAG}-linux-arm64"
           docker manifest push "ghcr.io/flanchanxwo/pixiv-cli:${RELEASE_TAG}"
-      - name: Advance latest only for a stable release
+      - name: Advance latest only for the newest stable release
         shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           channel=$(go run ./scripts/cmd/releaseassets channel --version "${RELEASE_TAG#v}")
           case "$channel" in
             stable)
+              latest_stable_tag=$(
+                GH_TOKEN="$GITHUB_TOKEN" gh api --paginate \
+                  "repos/$GITHUB_REPOSITORY/git/matching-refs/tags/v" \
+                  --jq '.[].ref | sub("^refs/tags/"; "")' \
+                | grep -E '^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$' \
+                | sort -Vr | head -n1
+              )
+              test "${RELEASE_TAG}" = "${latest_stable_tag}"
               docker manifest create "ghcr.io/flanchanxwo/pixiv-cli:latest" \
                 --amend "ghcr.io/flanchanxwo/pixiv-cli:${RELEASE_TAG}-linux-amd64" \
                 --amend "ghcr.io/flanchanxwo/pixiv-cli:${RELEASE_TAG}-linux-arm64"

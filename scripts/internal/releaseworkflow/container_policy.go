@@ -115,6 +115,10 @@ func checkContainerPublishJob(job *yaml.Node) error {
 	if err := rejectUnconditionalLatestTagPush(job); err != nil {
 		return err
 	}
+	// 旧 stable rerun 不得把 latest 回滚；policy 要求发布前比较远端最新 stable tag。
+	if err := requireNewestStableTagGuard(job); err != nil {
+		return err
+	}
 	// 发布阶段的 channel classifier 和 registry 恢复也必须绑定同一个不可变 tag。
 	steps, err := jobSteps(job)
 	if err != nil || len(steps) == 0 {
@@ -306,6 +310,35 @@ func rejectUnconditionalLatestTagPush(job *yaml.Node) error {
 		hasStableGate := strings.Contains(run.Value, "stable") || strings.Contains(run.Value, "channel") || strings.Contains(run.Value, "prerelease")
 		if !hasStableGate {
 			return errors.New("publish_container job must not push latest tag unconditionally (requires stable-only gate)")
+		}
+	}
+	return nil
+}
+
+// requireNewestStableTagGuard 确保 latest 推送前通过 GitHub tag refs 比较
+// 最新 stable 版本。仅凭 “stable” 字样或当前 channel 不够：旧 stable 的 rerun
+// 会把 latest 指回旧镜像，造成用户静默降级。
+func requireNewestStableTagGuard(job *yaml.Node) error {
+	steps, err := jobSteps(job)
+	if err != nil {
+		return nil
+	}
+	required := []string{
+		`GH_TOKEN="$GITHUB_TOKEN" gh api --paginate`,
+		`"repos/$GITHUB_REPOSITORY/git/matching-refs/tags/v"`,
+		`grep -E '^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$'`,
+		`sort -Vr | head -n1`,
+		`test "${RELEASE_TAG}" = "${latest_stable_tag}"`,
+	}
+	for _, step := range steps {
+		run, ok := workflowyaml.MappingValue(step, "run")
+		if !ok || run.Kind != yaml.ScalarNode || !strings.Contains(run.Value, "ghcr.io/flanchanxwo/pixiv-cli:latest") {
+			continue
+		}
+		for _, fragment := range required {
+			if !strings.Contains(run.Value, fragment) {
+				return errors.New("publish_container job must verify RELEASE_TAG is the newest stable tag before advancing latest")
+			}
 		}
 	}
 	return nil

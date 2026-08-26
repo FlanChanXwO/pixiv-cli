@@ -328,3 +328,17 @@ func TestContainerArtifactRetentionSupportsRecovery(t *testing.T) {
 		t.Fatal("verified container artifacts must be retained for the documented 90-day recovery window")
 	}
 }
+
+// TestDockerignoreKeepsThirdPartyLicenseSummary 确保根级第三方许可汇总
+// 不会被通用 Markdown 排除规则挡在 build context 外。
+func TestDockerignoreKeepsThirdPartyLicenseSummary(t *testing.T) {
+	t.Parallel()
+	root := repositoryRoot(t)
+	body, err := os.ReadFile(filepath.Join(root, ".dockerignore"))
+	if err != nil {
+		t.Fatalf("read .dockerignore: %v", err)
+	}
+	if !strings.Contains(string(body), "!THIRD_PARTY_LICENSES.md") {
+		t.Fatal(".dockerignore must include THIRD_PARTY_LICENSES.md in the container build context")
+	}
+}
