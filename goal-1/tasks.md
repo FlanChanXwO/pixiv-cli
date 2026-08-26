@@ -344,17 +344,17 @@
 
 ### 🔍 集中检查 #6（Task 16–17 之后）
 
-- [ ] **目标**：Phase 4 完整集中复查。
+- [x] **目标**：Phase 4 完整集中复查。
 - **检查清单**：
   - [x] 需求是否偏离 `input.md`
-  - [ ] `go test ./scripts/tests/documentation -count=1` 是否通过
-  - [ ] `git diff --check` 是否通过
-  - [ ] 维护者文档是否双语同步
-  - [ ] 是否无文档遗漏（安装/auth/MCP/升级/维护者）
-  - [ ] 安全语言是否一致（不鼓励不安全做法）
-  - [ ] 文档路由规则是否遵守（README 为入口，不重复长规则）
-- **结论**：（待填）
-- **发现问题**：（待填，如有则追加修复 task）
+  - [x] `go test ./scripts/tests/documentation -count=1` 是否通过
+  - [x] `git diff --check` 是否通过
+  - [x] 维护者文档是否双语同步
+  - [x] 是否无文档遗漏（安装/auth/MCP/升级/维护者）
+  - [x] 安全语言是否一致（不鼓励不安全做法）
+  - [x] 文档路由规则是否遵守（README 为入口，不重复长规则）
+- **结论**：通过。新鲜 documentation 测试覆盖安装、auth、MCP 和维护者发布验证；完整审计确认双语用户与维护者内容无遗漏、相对链接目标存在、Markdown fence 成对。README 保留 UX 命令入口，维护者聚焦命令与 release verification 细节保留在 development 文档；未发现 Docker-specific product/auth 宣传或 Docker Hub 内容。
+- **发现问题**：无。
 
 ---
 
