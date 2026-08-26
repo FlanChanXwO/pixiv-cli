@@ -33,12 +33,12 @@
 
 ### Task 2: Green — 扩展 release policy 规则使测试通过
 
-- [ ] **目标**：在 `scripts/internal/releaseworkflow` 中添加最小容器-policy 规则满足 Task 1 的失败测试。复用现有 workflow YAML helper 和 Linux target provenance，不创建第二个 parser 或重复 policy 框架。
+- [x] **目标**：在 `scripts/internal/releaseworkflow` 中添加最小容器-policy 规则满足 Task 1 的失败测试。复用现有 workflow YAML helper 和 Linux target provenance，不创建第二个 parser 或重复 policy 框架。
 - **验收**：`go test ./scripts/internal/releaseworkflow -count=1` 绿色；`go run ./scripts/cmd/releaseworkflow --workflow .github/workflows/release.yml` 无 policy 违规（当前 release.yml 尚无容器 job 时，policy 检查报告预期状态）。
-- **实际做了什么**：（待填）
-- **验证证据**：（待填）
-- **剩余风险**：（待填）
-- **下一步建议**：（待填）
+- **实际做了什么**：实现了 `checkContainerBuildJob`（验证 permissions 无 packages: write、不可变 tag checkout、原生 matrix runner、无 QEMU、不依赖 build_production、两 native Linux matrix target）和 `checkContainerPublishJob`（验证 packages: write、依赖 build_container）。将 `requireOnlyMappingKeys` 替换为 `requireJobsAllowlist`——必需 job 全部存在且只含允许 job，容器 job 可选。更新测试 fixture 添加 `steps` 键和合规 companion job 以隔离被测维度。commit: `825cbce`。
+- **验证证据**：`go test ./scripts/internal/releaseworkflow -count=1` → 全部 PASS（含 9 个 container 测试和全部既有测试）。`go run ./scripts/cmd/releaseworkflow --workflow .github/workflows/release.yml` → exit 0。`go test ./scripts/internal/... ./scripts/tests/... -count=1` → 全部 PASS。
+- **剩余风险**：容器 job 当前是可选的——release.yml 尚无容器 job 时 policy 不报错。Phase 3 添加 release.yml 容器 job 后，policy 将开始实际校验。`latest` 仅 stable 和 exact-version tag 语义断言仍待 Task 7 覆盖。
+- **下一步建议**：Task 3 — Refactor + Phase 1 验证：检查是否有稳定且有害的重复（如 Linux release target metadata），运行完整 Phase 1 验证，确认无 production/auth/updater 行为或 registry credential 引入。
 
 ---
 
