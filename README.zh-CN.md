@@ -51,6 +51,30 @@ binary，并在修改 PATH 前完成用户级安装。可用 `--no-path` 保持 
 
 随正式版本发布的安装器始终从 GitHub HTTPS 直连取得权威 `checksums.txt`。内置免费候选源只用于探测和下载平台压缩包，候选返回的 checksum 必须与直连内容一致，下载结果仍必须通过 SHA-256 校验。它只改善传输可达性，不改变 Release 身份或完整性判断。
 
+### Docker（Linux amd64/arm64）
+
+官方镜像发布到 GHCR：`ghcr.io/flanchanxwo/pixiv-cli`。需要可复现部署时，请拉取精确 release：
+
+```bash
+docker pull ghcr.io/flanchanxwo/pixiv-cli:v1.2.3
+```
+
+`latest` 只跟随 stable release；prerelease tag 绝不移动 `latest`。要跟踪当前 stable release，可拉取
+`ghcr.io/flanchanxwo/pixiv-cli:latest`。镜像分别为 `linux/amd64` 和 `linux/arm64` 原生构建。容器运行同一个
+`pixiv` binary，并使用与其他安装方式相同的 `~/.pixiv-cli` 状态命名空间。
+
+持久保存账号状态，并挂载下载工作区：
+
+```bash
+docker run --rm \
+  -v pixiv-cli-state:/home/pixiv/.pixiv-cli \
+  -v "$PWD:/work" \
+  ghcr.io/flanchanxwo/pixiv-cli:v1.2.3 \
+  --version
+```
+
+下载文件请配合显式输出路径放在 `/work`；它是容器工作目录，不代表独立的产品模式。
+
 ### 让 AI Agent 安装
 
 把下面这一段 prompt 复制给能够操作本机终端的 Codex、Claude Code、Cursor 或其他 AI Agent：

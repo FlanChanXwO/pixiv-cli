@@ -53,6 +53,28 @@ Versioned installers keep `checksums.txt` on the official GitHub HTTPS path. Emb
 probed only for the platform archive, must return the same checksum content, and the downloaded archive still has to
 pass SHA-256 verification. This changes transport availability, never Release identity or integrity.
 
+### Docker (Linux amd64/arm64)
+
+Official images are published to GHCR as `ghcr.io/flanchanxwo/pixiv-cli`. Pull an exact release when reproducibility matters:
+
+```bash
+docker pull ghcr.io/flanchanxwo/pixiv-cli:v1.2.3
+```
+
+`latest` follows stable releases only; Prerelease tags never move `latest`. To track the current stable release, pull `ghcr.io/flanchanxwo/pixiv-cli:latest`. Images are built natively for `linux/amd64` and `linux/arm64`. The container runs the same `pixiv` binary and uses the same `~/.pixiv-cli` state namespace as other installations.
+
+Keep account state persistent and expose a download workspace:
+
+```bash
+docker run --rm \
+  -v pixiv-cli-state:/home/pixiv/.pixiv-cli \
+  -v "$PWD:/work" \
+  ghcr.io/flanchanxwo/pixiv-cli:v1.2.3 \
+  --version
+```
+
+Use `/work` for downloaded files with an explicit output path; it is the container's working directory, not a separate product mode.
+
 ### Install with an AI agent
 
 Copy this single prompt into Codex, Claude Code, Cursor, or another local AI agent with terminal access:
