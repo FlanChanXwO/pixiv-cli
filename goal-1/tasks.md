@@ -241,22 +241,22 @@
 
 ### 🔍 集中检查 #4（Task 10–12 之后）
 
-- [ ] **目标**：Phase 3 完整集中复查。
+- [x] **目标**：Phase 3 完整集中复查。
 - **检查清单**：
   - [x] 需求是否偏离 `input.md`
-  - [ ] `publish_container` 权限是否最小化
-  - [ ] stable/prerelease tag 语义是否正确
-  - [ ] 恢复语义是否文档化
-  - [ ] OCI labels 是否完整
+  - [x] `publish_container` 权限是否最小化
+  - [x] stable/prerelease tag 语义是否正确
+  - [x] 恢复语义是否文档化
+  - [x] OCI labels 是否完整
   - [x] 代码是否有 bug、死代码、调试残留
   - [x] `go test ./scripts/internal/releaseworkflow -count=1` 是否通过
   - [x] `go test ./scripts/tests/containerrelease -count=1` 是否通过
   - [x] `go run ./scripts/cmd/releaseworkflow --workflow .github/workflows/release.yml` 是否通过
   - [x] 安全性：权限隔离、GHCR auth、无 credential 泄露
-  - [ ] 数据一致性：两架构 manifest 一致性
-  - [x] 文档是否同步（本 phase 可能不需要文档变更）
-- **结论**：（待填）
-- **发现问题**：（待填，如有则追加修复 task）
+  - [x] 数据一致性：两架构 manifest 一致性
+  - [x] 文档是否同步（维护者 recovery 文档已双语补充）
+- **结论**：通过。新鲜证据确认只有 `publish_container` 拥有最小 `contents:read + packages:write`；exact-version manifest 总是推送，latest 仅在 classifier 报告 stable 时推进且 prerelease 分支不推送；两个 verified artifact 分别进入 amd64/arm64 tag 和两个 manifest。OCI source/revision/version/licenses 声明、注入并被 build job 运行时校验；双语 recovery 边界存在。
+- **发现问题**：复查中发现旧格式 `goals/docker-container-release/` 历史记录在工作区被误删，违反 plan 中“保留历史记录”的假设，已用 Git restore 恢复；无需追加代码修复 task。
 
 ---
 
