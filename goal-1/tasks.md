@@ -44,16 +44,16 @@
 
 ### Task 3: Refactor + Phase 1 验证
 
-- [ ] **目标**：仅在存在稳定且有害的重复时，合并真正共享的 Linux release target metadata。不泛化无关 release policy。然后运行 Phase 1 完整验证。
+- [x] **目标**：仅在存在稳定且有害的重复时，合并真正共享的 Linux release target metadata。不泛化无关 release policy。然后运行 Phase 1 完整验证。
 - **验证命令**：
   - `go test ./scripts/internal/releaseworkflow -count=1`
   - `go run ./scripts/cmd/releaseworkflow --workflow .github/workflows/release.yml`
 - **Scope audit**：确认本 phase 未引入任何 production 行为、auth 行为、updater 行为或 registry credential。
 - **验收**：两者均绿色，Red→Green 证据记录到进度日志。
-- **实际做了什么**：（待填）
-- **验证证据**：（待填）
-- **剩余风险**：（待填）
-- **下一步建议**：（待填）
+- **实际做了什么**：审查了 `releaseMatrixTargets`（6 条目，跨平台）与 `containerMatrixTargets`（2 条目，仅 Linux）的重复。两个 Linux 条目虽在两个 map 中字符串相同，但用途和基数不同（6-target 全平台构建矩阵 vs 2-target 容器矩阵），合并会引入过滤逻辑增加复杂度，不符合 KISS。判定为非有害重复，不合并。运行 Phase 1 完整验证。Scope audit 确认仅引入 `persist-credentials: false`（checkout 安全设置），无 secret/token/auth/updater/registry credential 引入。
+- **验证证据**：`go test ./scripts/internal/releaseworkflow -count=1` → PASS（全部测试含 container 测试）。`go run ./scripts/cmd/releaseworkflow --workflow .github/workflows/release.yml` → exit 0。`go build ./scripts/...` → exit 0。`git diff` scope audit 确认无 production/auth/updater 行为或 registry credential。
+- **剩余风险**：无。Phase 1 纯粹是 release policy 测试和规则，不触及任何运行时行为。
+- **下一步建议**：进入集中检查 #1（Phase 1 集中复查），然后 Phase 2 Task 4 开始 Dockerfile contract 测试。
 
 ---
 
