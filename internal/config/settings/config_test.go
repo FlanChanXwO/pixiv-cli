@@ -52,6 +52,9 @@ func TestRuntimeAccountPoolUsesOnlyCurrentSettings(t *testing.T) {
 }
 
 func TestRuntimeDefaultsReverseSearchSettings(t *testing.T) {
+	// 隔离环境变量：若测试进程已导出 SAUCENAO_API_KEY，LoadSnapshotAt 会将其写入快照，
+	// 导致下方 SauceNAOAPIKey 空值断言失败。
+	t.Setenv("SAUCENAO_API_KEY", "")
 	state, err := config.LoadSnapshotAt(filepath.Join(t.TempDir(), "config.toml"))
 	require.NoError(t, err)
 

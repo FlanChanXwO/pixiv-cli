@@ -15,7 +15,7 @@
 
 ## 当前上下文
 
-- 目标 worktree：`/Users/flanchan/Developer/Projects/GithubProjects/pixiv-cli/.worktrees/image-search-integration`
+- 目标 worktree：`.worktrees/image-search-integration`（仓库相对路径）
 - 分支：`codex/image-search-integration`
 - 初始化时 worktree 干净。
 - 目标分支是 v1 重构后的布局：CLI owner 位于 `internal/cli/commands`，Pixiv MCP tool 位于 `internal/mcpserver/pixiv/tools/<tool>`，配置位于 `internal/config/settings`。

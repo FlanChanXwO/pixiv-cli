@@ -506,10 +506,11 @@ URL 在本地解析，不会抓 HTML 或跟随重定向。当前 CLI download �
 logging 默认项；`directory_template`、`request_interval` 等高级设置在显式配置前继续省略。已有文件绝不
 覆盖。配置在命令启动时读取，因此修改会在下一次运行生效。
 
-请通过私有终端或获得授权的 secret-manager 管道设置 SauceNAO key，不要把它写进参数或聊天：
+请通过隐藏输入或获得授权的 secret-manager 管道设置 SauceNAO key，不要把它写进参数或聊天：
 
 ```bash
-printf '%s\n' 'YOUR_SAUCENAO_API_KEY' | pixiv config set saucenao_api_key
+read -rs SAUCENAO_KEY && printf '%s\n' "$SAUCENAO_KEY" | pixiv config set saucenao_api_key
+unset SAUCENAO_KEY
 pixiv config get saucenao_api_key    # 始终输出 <redacted>
 ```
 

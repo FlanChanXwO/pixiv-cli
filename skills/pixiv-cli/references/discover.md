@@ -61,9 +61,9 @@ pixiv search "初音ミク" --type artwork --limit 10 --json
 
 Use the same `search` command with a local regular file or an HTTP(S) image URL:
 
-```
+```bash
 pixiv search ./image.png --provider saucenao --json
-pixiv search https://example.com/image.png --provider all --ndjson
+pixiv search https://your-image-url.example/image.png --provider all --ndjson
 ```
 
 - An explicit `http:`/`https:` scheme always selects reverse-search mode. An

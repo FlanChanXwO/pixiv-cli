@@ -616,10 +616,11 @@ It includes the core download, output, login, update, and logging defaults; adva
 `directory_template` and `request_interval` remain omitted until explicitly configured. Existing files are never
 overwritten. Configuration is read when the command starts, so a change applies on the next invocation.
 
-Set the SauceNAO key through a private terminal or an authorized secret-manager pipeline, not an argument or chat:
+Set the SauceNAO key through hidden input or an authorized secret-manager pipeline, not an argument or chat:
 
 ```bash
-printf '%s\n' 'YOUR_SAUCENAO_API_KEY' | pixiv config set saucenao_api_key
+read -rs SAUCENAO_KEY && printf '%s\n' "$SAUCENAO_KEY" | pixiv config set saucenao_api_key
+unset SAUCENAO_KEY
 pixiv config get saucenao_api_key    # always prints <redacted>
 ```
 

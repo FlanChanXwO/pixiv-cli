@@ -252,10 +252,11 @@ scripts/test-e2e.sh
 scripts/test-e2e.sh --pixiv-only
 scripts/test-e2e.sh --fanbox-post-only
 # Explicit reverse-search upstream compatibility observation; never run by default.
+# Pre-export SAUCENAO_API_KEY from a private environment; do not inline it.
+export SAUCENAO_API_KEY
 PIXIV_REVERSE_SEARCH_E2E=1 \
 PIXIV_REVERSE_SEARCH_SOURCE=<private-test-image-path-or-url> \
 PIXIV_REVERSE_SEARCH_PROVIDER=all \
-SAUCENAO_API_KEY=<secret-from-private-environment> \
 scripts/test-reverse-search-e2e.sh
 ```
 

@@ -163,9 +163,17 @@ func TestUploadAcceptsSupportedMediaAtOfficialSizeBoundary(t *testing.T) {
 			var uploadedType string
 			var uploadedFilename string
 			server := newASCII2DServer(t, func(w http.ResponseWriter, request *http.Request) {
-				require.NoError(t, request.ParseMultipartForm(ascii2d.MaxImageBytes))
+				if err := request.ParseMultipartForm(ascii2d.MaxImageBytes); err != nil {
+					t.Errorf("parse multipart form: %v", err)
+					w.WriteHeader(http.StatusBadRequest)
+					return
+				}
 				file, header, err := request.FormFile("file")
-				require.NoError(t, err)
+				if err != nil {
+					t.Errorf("get form file: %v", err)
+					w.WriteHeader(http.StatusBadRequest)
+					return
+				}
 				defer file.Close()
 				uploadedType = header.Header.Get("Content-Type")
 				uploadedFilename = header.Filename
@@ -209,10 +217,20 @@ func TestUploadUsesIndependentCookieJarCSRFAndStrictRedirect(t *testing.T) {
 	var uploadCount atomic.Int32
 	server := newASCII2DServer(t, func(w http.ResponseWriter, request *http.Request) {
 		uploadCount.Add(1)
-		require.Contains(t, request.Header.Get("Cookie"), "ascii2d_session=fixture-session")
-		require.NoError(t, request.ParseMultipartForm(1<<20))
-		require.Equal(t, "fixture-csrf", request.FormValue("authenticity_token"))
-		require.Len(t, request.MultipartForm.File["file"], 1)
+		if !strings.Contains(request.Header.Get("Cookie"), "ascii2d_session=fixture-session") {
+			t.Errorf("expected ascii2d_session cookie, got %q", request.Header.Get("Cookie"))
+		}
+		if err := request.ParseMultipartForm(1 << 20); err != nil {
+			t.Errorf("parse multipart form: %v", err)
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		if request.FormValue("authenticity_token") != "fixture-csrf" {
+			t.Errorf("expected fixture-csrf token, got %q", request.FormValue("authenticity_token"))
+		}
+		if len(request.MultipartForm.File["file"]) != 1 {
+			t.Errorf("expected 1 file, got %d", len(request.MultipartForm.File["file"]))
+		}
 		http.Redirect(w, request, "/search/color/"+fixtureHash, http.StatusFound)
 	})
 	defer server.Close()
@@ -243,16 +261,25 @@ func TestConcurrentUploadsUseSeparateCookieSessions(t *testing.T) {
 			http.SetCookie(w, &http.Cookie{Name: "ascii2d_session", Value: value, Path: "/"})
 			_, _ = io.WriteString(w, strings.ReplaceAll(uploadFormFixture(), "fixture-csrf", value))
 		case "/search/file":
-			require.NoError(t, request.ParseMultipartForm(1<<20))
+			if err := request.ParseMultipartForm(1 << 20); err != nil {
+				t.Errorf("parse multipart form: %v", err)
+				w.WriteHeader(http.StatusBadRequest)
+				return
+			}
 			cookie, err := request.Cookie("ascii2d_session")
-			require.NoError(t, err)
+			if err != nil {
+				t.Errorf("get cookie: %v", err)
+				w.WriteHeader(http.StatusBadRequest)
+				return
+			}
 			if cookie.Value != request.FormValue("authenticity_token") {
 				mismatchCount.Add(1)
 			}
 			w.Header().Set("Location", "/search/color/"+fixtureHash)
 			w.WriteHeader(http.StatusFound)
 		default:
-			t.Fatalf("unexpected request path: %s", request.URL.Path)
+			t.Errorf("unexpected request path: %s", request.URL.Path)
+			w.WriteHeader(http.StatusNotFound)
 		}
 	}))
 	defer server.Close()
@@ -302,7 +329,8 @@ func TestUploadRejectsMissingCSRFAndUnsafeOrMalformedLocation(t *testing.T) {
 					w.Header().Set("Location", test.location)
 					w.WriteHeader(http.StatusFound)
 				default:
-					t.Fatalf("unexpected request path: %s", request.URL.Path)
+					t.Errorf("unexpected request path: %s", request.URL.Path)
+					w.WriteHeader(http.StatusNotFound)
 				}
 			}))
 			defer server.Close()
@@ -389,7 +417,8 @@ func TestSessionSearchParsesColorAndBOVWFromOneUpload(t *testing.T) {
 			modesMu.Unlock()
 			_, _ = io.WriteString(w, resultFixture())
 		default:
-			t.Fatalf("unexpected request path: %s", request.URL.Path)
+			t.Errorf("unexpected request path: %s", request.URL.Path)
+			w.WriteHeader(http.StatusNotFound)
 		}
 	}))
 	defer server.Close()
@@ -488,7 +517,8 @@ func newASCII2DServer(t *testing.T, upload http.HandlerFunc) *httptest.Server {
 		case "/search/file":
 			upload(w, request)
 		default:
-			t.Fatalf("unexpected request path: %s", request.URL.Path)
+			t.Errorf("unexpected request path: %s", request.URL.Path)
+			w.WriteHeader(http.StatusNotFound)
 		}
 	}))
 }
@@ -508,7 +538,8 @@ func resultServer(t *testing.T, resultBody string, resultStatus int) *httptest.S
 			w.WriteHeader(resultStatus)
 			_, _ = io.WriteString(w, resultBody)
 		default:
-			t.Fatalf("unexpected request path: %s", request.URL.Path)
+			t.Errorf("unexpected request path: %s", request.URL.Path)
+			w.WriteHeader(http.StatusNotFound)
 		}
 	}))
 }

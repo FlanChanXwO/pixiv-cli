@@ -140,6 +140,11 @@ func validateSnapshot(snapshot *reversesearch.Snapshot) (string, error) {
 	defer reader.Close()
 	buffer := make([]byte, 512)
 	read, readErr := io.ReadFull(reader, buffer)
+	// io.ReadFull 在 0 字节输入时返回 io.EOF（而非 io.ErrUnexpectedEOF）。
+	// 空图片是用户输入问题，应归类为 CodeInvalidSource，否则调用方会误判为本地内部故障。
+	if errors.Is(readErr, io.EOF) {
+		return "", reversesearch.NewError(reversesearch.CodeInvalidSource, "ascii2d supports only JPEG, PNG, or WEBP images", nil)
+	}
 	if readErr != nil && !errors.Is(readErr, io.ErrUnexpectedEOF) {
 		return "", reversesearch.NewError(reversesearch.CodeSnapshotFailed, "could not inspect image snapshot", nil)
 	}

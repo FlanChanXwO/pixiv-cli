@@ -1,5 +1,10 @@
 //go:build unix
 
+// source_unix_test.go 使用 internal test package（package reversesearch），因为本文件
+// 需要覆盖未导出的 Loader.openFile 字段来模拟 TOCTOU 竞态——open 与 stat 之间文件类型
+// 被替换为目录。这是 reversesearch 包内唯一的 same-package 测试例外：source_test.go 和
+// source_fifo_test.go 均使用 external test package（reversesearch_test）。
+
 package reversesearch
 
 import (

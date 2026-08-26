@@ -171,14 +171,18 @@ func handleReverseSearch(ctx context.Context, app *runtime.App, input reverseSea
 		Source: input.Source, Provider: provider, PixivOnly: ports.PixivOnly,
 	})
 	out = outputFromResponse(response)
+	// 即使 Search 返回错误，response 也可能包含已完成的 Pixiv 结果（例如 Snapshot.Close 失败）。
+	// 先填充 records，使 isError=true 的结构化结果保留与 CLI 一致的完整 envelope。
+	records, recordsErr := reverseSearchRecords(response.Results)
+	if recordsErr == nil {
+		out.Records = records
+	}
 	if err != nil {
 		return reverseSearchError(out, safeErrorCode(ctx, err)), out, nil
 	}
-	records, err := reverseSearchRecords(response.Results)
-	if err != nil {
+	if recordsErr != nil {
 		return reverseSearchError(out, reversesearch.CodeUnknown), out, nil
 	}
-	out.Records = records
 	return reverseSearchResult(out), out, nil
 }
 

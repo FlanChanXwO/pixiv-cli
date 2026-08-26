@@ -130,8 +130,8 @@ func (a *Aggregator) searchAllASCII2D(ctx context.Context, snapshot *Snapshot, o
 		return
 	}
 	var searches sync.WaitGroup
-	searches.Add(2)
 	for index := 1; index < len(outcomes); index++ {
+		searches.Add(1)
 		go func(index int) {
 			defer searches.Done()
 			outcomes[index].response, outcomes[index].err = session.Search(ctx, aggregateProviderOrder[index])

@@ -116,7 +116,7 @@ pixiv novel search "初音ミク" --rating sfw --min-text-length 1000
 
 # 对本地图片或 HTTP(S) 图片 URL 反向搜图；可输出 JSON 或 NDJSON。
 pixiv search ./image.png --provider ascii2d-color --json
-pixiv search https://example.com/image.png --provider all --ndjson
+pixiv search https://your-image-url.example/image.png --provider all --ndjson
 
 # 关注创作者并收藏作品。
 pixiv follow add 12345678

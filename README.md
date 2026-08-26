@@ -118,7 +118,7 @@ pixiv novel search "初音ミク" --rating sfw --min-text-length 1000
 
 # Reverse-search a local image or HTTP(S) image URL. Results can be JSON or NDJSON.
 pixiv search ./image.png --provider ascii2d-color --json
-pixiv search https://example.com/image.png --provider all --ndjson
+pixiv search https://your-image-url.example/image.png --provider all --ndjson
 
 # Follow creators and build your collection.
 pixiv follow add 12345678
