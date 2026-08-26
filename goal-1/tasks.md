@@ -305,18 +305,18 @@
 
 ### 🔍 集中检查 #5（Task 13–15 之后）
 
-- [ ] **目标**：Phase 4 上半部分集中复查。
+- [x] **目标**：Phase 4 上半部分集中复查。
 - **检查清单**：
   - [x] 需求是否偏离 `input.md`
-  - [ ] 双语文档是否语义一致
-  - [ ] 命令/路径/registry 名是否一致
-  - [ ] 是否未声称 Docker-specific product 行为
-  - [ ] auth 文档是否推荐 stdin import
-  - [ ] MCP 文档是否保持 stdio 语义
-  - [ ] 升级文档是否正确（pull-based）
-  - [ ] 文档测试是否通过（如适用）
-- **结论**：（待填）
-- **发现问题**：（待填，如有则追加修复 task）
+  - [x] 双语文档是否语义一致
+  - [x] 命令/路径/registry 名是否一致
+  - [x] 是否未声称 Docker-specific product 行为
+  - [x] auth 文档是否推荐 stdin import
+  - [x] MCP 文档是否保持 stdio 语义
+  - [x] 升级文档是否正确（pull-based）
+  - [x] 文档测试是否通过（如适用）
+- **结论**：通过。新鲜文档测试与语义审计确认双语 Docker section 覆盖 exact/latest tag、amd64/arm64、持久 state volume、`/work` bind mount、stdin auth import、MCP stdio/JSON-RPC 和 pull/redeploy upgrade；执行命令、registry、路径、volume 和架构跨语言一致。安全语言审计确认无 Docker-specific product/auth 宣传、无 Docker Hub 广告，token 示例不进入 argv。
+- **发现问题**：无。
 
 ---
 
