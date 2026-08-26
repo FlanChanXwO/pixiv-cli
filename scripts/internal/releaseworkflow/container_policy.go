@@ -102,6 +102,11 @@ func checkContainerPublishJob(job *yaml.Node) error {
 	if err := requireContainerPublishNeeds(job); err != nil {
 		return err
 	}
+	// GHCR 推送不允许 retry loop：registry 错误必须保留给 workflow 和操作者判断，
+	// 恢复方式是显式重跑 publish_container，而不是把失败自动改写成成功。
+	if err := rejectRegistryPushRetryLoop(job); err != nil {
+		return err
+	}
 	// publish_container 的 steps 必须包含 exact-version tag 推送（${RELEASE_TAG}）。
 	if err := requireExactVersionTagPush(job); err != nil {
 		return err
@@ -219,6 +224,31 @@ func requirePublishAfterContainerBuild(publish, buildContainer *yaml.Node) error
 		}
 	}
 	return errors.New("publish job must depend on build_container for verified container artifacts")
+}
+
+// rejectRegistryPushRetryLoop 禁止把 registry push 放进 retry loop。GHCR 失败可能
+// 来自权限、认证或不可重试的服务端状态；只有显式失败和显式 job rerun 能保留原因。
+func rejectRegistryPushRetryLoop(job *yaml.Node) error {
+	steps, err := jobSteps(job)
+	if err != nil {
+		return nil
+	}
+	for _, step := range steps {
+		run, ok := workflowyaml.MappingValue(step, "run")
+		if !ok || run.Kind != yaml.ScalarNode {
+			continue
+		}
+		if !strings.Contains(run.Value, "docker push") && !strings.Contains(run.Value, "docker manifest push") {
+			continue
+		}
+		lowered := strings.ToLower(run.Value)
+		for _, loopKeyword := range []string{"for ", "while ", "until "} {
+			if strings.Contains(lowered, loopKeyword) {
+				return errors.New("publish_container job must not wrap registry pushes in a retry loop")
+			}
+		}
+	}
+	return nil
 }
 
 // requireExactVersionTagPush 确保 publish_container 的 steps 中包含推送

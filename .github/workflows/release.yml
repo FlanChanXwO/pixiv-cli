@@ -639,10 +639,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          for target in linux-amd64 linux-arm64; do
-            docker tag "pixiv-cli:${RELEASE_TAG}-${target}" "ghcr.io/flanchanxwo/pixiv-cli:${RELEASE_TAG}-${target}"
-            docker push "ghcr.io/flanchanxwo/pixiv-cli:${RELEASE_TAG}-${target}"
-          done
+          docker tag "pixiv-cli:${RELEASE_TAG}-linux-amd64" "ghcr.io/flanchanxwo/pixiv-cli:${RELEASE_TAG}-linux-amd64"
+          docker push "ghcr.io/flanchanxwo/pixiv-cli:${RELEASE_TAG}-linux-amd64"
+          docker tag "pixiv-cli:${RELEASE_TAG}-linux-arm64" "ghcr.io/flanchanxwo/pixiv-cli:${RELEASE_TAG}-linux-arm64"
+          docker push "ghcr.io/flanchanxwo/pixiv-cli:${RELEASE_TAG}-linux-arm64"
       - name: Publish the exact-version multi-architecture manifest
         shell: bash
         run: |

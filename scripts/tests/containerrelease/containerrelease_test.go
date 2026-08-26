@@ -207,3 +207,34 @@ func TestDockerfileUsesDebianSlimBase(t *testing.T) {
 		t.Fatal("Dockerfile must use a slim variant of Debian")
 	}
 }
+
+// TestMaintainerDocsDocumentContainerRecoveryBoundary 锁定双语维护者文档中的
+// GHCR 恢复语义：GitHub Release 与 GHCR 非原子，失败必须显式重跑发布 job。
+func TestMaintainerDocsDocumentContainerRecoveryBoundary(t *testing.T) {
+	t.Parallel()
+	root := repositoryRoot(t)
+	requiredFragments := map[string][]string{
+		"docs/en/maintainers/development.md": {
+			"If GHCR publication fails",
+			"same verified container artifacts",
+			"No retry loop",
+		},
+		"docs/zh-CN/maintainers/development.md": {
+			"若 GHCR 发布失败",
+			"同一批 verified-container artifact",
+			"不使用 retry loop",
+		},
+	}
+	for relativePath, fragments := range requiredFragments {
+		body, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(relativePath)))
+		if err != nil {
+			t.Fatalf("read %s: %v", relativePath, err)
+		}
+		document := string(body)
+		for _, fragment := range fragments {
+			if !strings.Contains(document, fragment) {
+				t.Fatalf("%s must document container recovery boundary with %q", relativePath, fragment)
+			}
+		}
+	}
+}

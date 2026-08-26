@@ -541,8 +541,43 @@ func TestContainerPublishJobAlwaysPublishesExactVersionTag(t *testing.T) {
 	})
 }
 
+// TestContainerPublishJobRejectsRegistryPushRetryLoop 断言 GHCR 推送失败必须
+// 保持 workflow failure；不允许用 retry loop 把暂时性或权限类错误伪装成成功。
+func TestContainerPublishJobRejectsRegistryPushRetryLoop(t *testing.T) {
+	t.Parallel()
+
+	root := releaseWorkflowRoot(t)
+	jobs := requireMappingValue(t, root, "jobs")
+	addBuildContainerJob(t, jobs)
+	publishContainer := containerPublishJobFixture()
+	appendMappingValue(t, publishContainer, "name", scalarNode("Publish container image"))
+	appendMappingValue(t, publishContainer, "needs", sequenceNode("build_container", "publish"))
+	appendMappingValue(t, publishContainer, "runs-on", scalarNode("ubuntu-24.04"))
+	appendMappingValue(t, publishContainer, "permissions", mappingNode(
+		"contents", scalarNode("read"),
+		"packages", scalarNode("write"),
+	))
+	appendMappingValue(t, publishContainer, "steps", &yaml.Node{
+		Kind: yaml.SequenceNode,
+		Tag:  "!!seq",
+		Content: []*yaml.Node{
+			runStepNode("Retry exact-version push", `for attempt in 1 2 3; do docker push ghcr.io/flanchanxwo/pixiv-cli:${RELEASE_TAG}; done`),
+		},
+	})
+	setJobNode(t, jobs, "publish_container", publishContainer)
+
+	body, err := yaml.Marshal(root)
+	if err != nil {
+		t.Fatalf("marshal workflow: %v", err)
+	}
+	err = checkWorkflow(body)
+	if err == nil || !strings.Contains(strings.ToLower(err.Error()), "retry") {
+		t.Fatalf("policy error = %v, want rejection mentioning retry", err)
+	}
+}
+
 // TestContainerPublishJobLatestTagOnlyForStable 断言 latest tag 仅在 stable
-// release 时推进，prerelease 不推进 latest。当前 policy 不检查此约束——Red。
+// release 时推进；prerelease 不移动 latest。无条件推送会被 policy 拒绝。
 func TestContainerPublishJobLatestTagOnlyForStable(t *testing.T) {
 	t.Parallel()
 
