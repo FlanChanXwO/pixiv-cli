@@ -38,10 +38,6 @@ internal/media/ugoira/rust/target/
 # Worktrees
 .worktrees/
 
-# Goal files (internal planning, not needed for container build)
-goal-*/
-goals/
-
 # Templates (Homebrew-specific, not needed for container build)
 templates/
 
