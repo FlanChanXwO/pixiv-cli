@@ -78,7 +78,7 @@
 
 ### Task 4: Red — 编写 Dockerfile/package contract 失败测试
 
-- [ ] **目标**：在 `scripts/tests/containerrelease` 中添加测试，定义 Dockerfile/package contract，在创建 Dockerfile 前确认失败。
+- [x] **目标**：在 `scripts/tests/containerrelease` 中添加测试，定义 Dockerfile/package contract，在创建 Dockerfile 前确认失败。
 - **具体断言**：
   - Dockerfile 使用不可变 base digest（非 tag）
   - 不使用 Alpine/musl/scratch base
@@ -89,10 +89,10 @@
   - OCI 元数据输入存在（source/revision/version/license）
   - 无嵌入 secret/state 文件
 - **验收**：测试编译通过但运行失败，Red 证据已记录。
-- **实际做了什么**：（待填）
-- **验证证据**：（待填）
-- **剩余风险**：（待填）
-- **下一步建议**：（待填）
+- **实际做了什么**：创建了 `scripts/tests/containerrelease/containerrelease_test.go`（12 个聚焦测试），断言 Dockerfile 必须满足：存在、不可变 base digest（非 tag）、非 Alpine/musl/scratch、非 root 用户（USER 指令）、HOME=/home/pixiv、WORKDIR /work、ENTRYPOINT ["/usr/local/bin/pixiv"]、COPY pixiv 到 /usr/local/bin/pixiv、OCI 标签（source/revision/version/license）、ca-certificates 安装、无嵌入 secret/state、Debian slim base。commit: `d770adf`。
+- **验证证据**：`go test ./scripts/tests/containerrelease -count=1 -v` → 全部 12 个测试 FAIL（Red），因 Dockerfile 不存在。`go test ./scripts/internal/releaseworkflow -count=1` → PASS（无回归）。
+- **剩余风险**：测试当前基于字符串匹配而非 Docker 构建实际行为；Task 6 将补充真实 Docker smoke。`Debian slim` 的具体 digest 将在 Task 5 创建 Dockerfile 时确定。
+- **下一步建议**：Task 5 — Green：创建最小 Dockerfile，满足所有 12 个 Red 测试的断言。需确定 Debian slim 的不可变 digest。
 
 ---
 
