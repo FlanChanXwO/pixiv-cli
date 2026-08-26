@@ -1,0 +1,142 @@
+name: Container image smoke
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'Dockerfile'
+      - '.dockerignore'
+      - 'scripts/tests/containerrelease/**'
+      - '.github/workflows/container-smoke.yml'
+  push:
+    branches:
+      - main
+    paths:
+      - 'Dockerfile'
+      - '.dockerignore'
+      - 'scripts/tests/containerrelease/**'
+      - '.github/workflows/container-smoke.yml'
+  workflow_dispatch: {}
+
+concurrency:
+  group: container-smoke-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions: {}
+
+jobs:
+  classify_changes:
+    name: Classify change scope
+    runs-on: ubuntu-24.04
+    outputs:
+      docs_only: ${{ steps.scope.outputs.docs_only }}
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+        with:
+          go-version: '1.26.3'
+      - name: Detect documentation-only changes
+        id: scope
+        shell: bash
+        env:
+          BASE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+          HEAD_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then
+            printf '%s\n' 'docs_only=false' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          go run ./scripts/cmd/changescope --base "$BASE_SHA" --head "$HEAD_SHA" --github-output "$GITHUB_OUTPUT"
+
+  container_smoke:
+    needs: classify_changes
+    if: ${{ needs.classify_changes.outputs.docs_only != 'true' }}
+    name: Container smoke ${{ matrix.goos }}/${{ matrix.goarch }}
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-22.04
+            goos: linux
+            goarch: amd64
+            rust_target: x86_64-unknown-linux-gnu
+            rust_toolchain: '1.96.1'
+            cc: gcc
+          - runner: ubuntu-22.04-arm
+            goos: linux
+            goarch: arm64
+            rust_target: aarch64-unknown-linux-gnu
+            rust_toolchain: '1.96.1'
+            cc: gcc
+    env:
+      CC: ${{ matrix.cc }}
+      RUSTUP_TOOLCHAIN: ${{ matrix.rust_toolchain }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+        with:
+          go-version: '1.26.3'
+      - name: Install the native Rust toolchain
+        shell: bash
+        run: rustup toolchain install '${{ matrix.rust_toolchain }}' --profile minimal --target '${{ matrix.rust_target }}' --no-self-update
+      - name: Build the native Rust static library
+        shell: bash
+        run: bash scripts/build-staticlibs.sh --target '${{ matrix.rust_target }}'
+      - name: Build the versioned Linux binary
+        shell: bash
+        run: |
+          set -eu
+          mkdir -p dist
+          go build -trimpath -buildvcs=false \
+            -ldflags "-X github.com/FlanChanXwO/pixiv-cli/internal/shared/buildinfo.Version=v0.0.0-smoke" \
+            -o dist/pixiv ./cmd/pixiv
+      - name: Build the container image
+        shell: bash
+        run: docker build -t pixiv-cli-smoke:${{ matrix.goarch }} .
+      - name: Verify non-root user
+        shell: bash
+        run: |
+          uid=$(docker run --rm --entrypoint id pixiv-cli-smoke:${{ matrix.goarch }} -u)
+          if [ "$uid" = "0" ]; then
+            echo "Container must not run as root (UID 0)" >&2
+            exit 1
+          fi
+      - name: Verify exact release version
+        shell: bash
+        run: |
+          version=$(docker run --rm pixiv-cli-smoke:${{ matrix.goarch }} --version)
+          if [ "$version" != "pixiv v0.0.0-smoke" ]; then
+            echo "Version mismatch: expected 'pixiv v0.0.0-smoke', got '$version'" >&2
+            exit 1
+          fi
+      - name: Verify state path
+        shell: bash
+        run: |
+          config_path=$(docker run --rm pixiv-cli-smoke:${{ matrix.goarch }} config path)
+          if ! echo "$config_path" | grep -q '/home/pixiv/.pixiv-cli/'; then
+            echo "State path must resolve to /home/pixiv/.pixiv-cli/" >&2
+            exit 1
+          fi
+      - name: Verify working directory
+        shell: bash
+        run: |
+          workdir=$(docker run --rm --entrypoint sh pixiv-cli-smoke:${{ matrix.goarch }} -c 'pwd')
+          if [ "$workdir" != "/work" ]; then
+            echo "Working directory must be /work, got '$workdir'" >&2
+            exit 1
+          fi
+      - name: Run container release contract tests
+        shell: bash
+        run: go test ./scripts/tests/containerrelease -count=1
