@@ -238,3 +238,19 @@ func TestMaintainerDocsDocumentContainerRecoveryBoundary(t *testing.T) {
 		}
 	}
 }
+
+// TestDockerfilePrecreatesWritableStateDirectory 锁定命名 volume 的初始属主：
+// Docker 首次挂载空 volume 时会复制镜像内目录的 ownership，缺失会导致非 root 无法写入。
+func TestDockerfilePrecreatesWritableStateDirectory(t *testing.T) {
+	t.Parallel()
+	dockerfile := readDockerfile(t)
+	required := []string{
+		"mkdir -p /home/pixiv/.pixiv-cli",
+		"chown -R pixiv:pixiv /home/pixiv",
+	}
+	for _, fragment := range required {
+		if !strings.Contains(dockerfile, fragment) {
+			t.Fatalf("Dockerfile must precreate writable state directory with %q for named volumes", fragment)
+		}
+	}
+}

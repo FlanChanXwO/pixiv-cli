@@ -86,6 +86,7 @@ func TestContainerPublishJobRequiresGitHubRelease(t *testing.T) {
 		Kind: yaml.SequenceNode,
 		Tag:  "!!seq",
 		Content: []*yaml.Node{
+			canonicalPublishCheckout(t),
 			runStepNode("Publish exact-version tag", `docker push ghcr.io/flanchanxwo/pixiv-cli:${RELEASE_TAG}`),
 		},
 	})
@@ -323,6 +324,7 @@ func addPublishContainerJob(t *testing.T, jobs *yaml.Node) {
 		Kind: yaml.SequenceNode,
 		Tag:  "!!seq",
 		Content: []*yaml.Node{
+			canonicalPublishCheckout(t),
 			runStepNode("Publish exact-version tag", `docker push ghcr.io/flanchanxwo/pixiv-cli:${RELEASE_TAG}`),
 		},
 	})
@@ -389,6 +391,18 @@ func canonicalContainerCheckout(t *testing.T) *yaml.Node {
 		scalarNode("uses"), scalarNode(canonicalCheckoutAction),
 		scalarNode("with"), mappingNode(
 			"fetch-depth", scalarNode("0"),
+			"persist-credentials", scalarNode("false"),
+			"ref", scalarNode("${{ env.RELEASE_TAG }}"),
+		),
+	}}
+}
+
+// canonicalPublishCheckout 返回 publish_container 所需的轻量不可变 tag checkout。
+func canonicalPublishCheckout(t *testing.T) *yaml.Node {
+	t.Helper()
+	return &yaml.Node{Kind: yaml.MappingNode, Tag: "!!map", Content: []*yaml.Node{
+		scalarNode("uses"), scalarNode(canonicalCheckoutAction),
+		scalarNode("with"), mappingNode(
 			"persist-credentials", scalarNode("false"),
 			"ref", scalarNode("${{ env.RELEASE_TAG }}"),
 		),
@@ -493,6 +507,7 @@ func TestContainerPublishJobAlwaysPublishesExactVersionTag(t *testing.T) {
 			Kind: yaml.SequenceNode,
 			Tag:  "!!seq",
 			Content: []*yaml.Node{
+				canonicalPublishCheckout(t),
 				runStepNode("Publish exact-version tag", `docker push ghcr.io/flanchanxwo/pixiv-cli:${RELEASE_TAG}`),
 			},
 		})
@@ -638,6 +653,7 @@ func TestContainerPublishJobPermissionsAreMinimal(t *testing.T) {
 		Kind: yaml.SequenceNode,
 		Tag:  "!!seq",
 		Content: []*yaml.Node{
+			canonicalPublishCheckout(t),
 			runStepNode("Publish exact-version tag", `docker push ghcr.io/flanchanxwo/pixiv-cli:${RELEASE_TAG}`),
 		},
 	})

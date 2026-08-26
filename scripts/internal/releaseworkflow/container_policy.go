@@ -115,6 +115,14 @@ func checkContainerPublishJob(job *yaml.Node) error {
 	if err := rejectUnconditionalLatestTagPush(job); err != nil {
 		return err
 	}
+	// 发布阶段的 channel classifier 和 registry 恢复也必须绑定同一个不可变 tag。
+	steps, err := jobSteps(job)
+	if err != nil || len(steps) == 0 {
+		return errors.New("publish_container job must checkout the immutable release tag")
+	}
+	if err := requireCanonicalCheckout(steps[0], "publish_container job", checkoutWithRequirement{"persist-credentials", "false"}, checkoutWithRequirement{"ref", "${{ env.RELEASE_TAG }}"}); err != nil {
+		return fmt.Errorf("publish_container job must checkout the immutable release tag: %w", err)
+	}
 	return nil
 }
 
@@ -166,7 +174,13 @@ func requireContainerBuildNeeds(job *yaml.Node) error {
 func requireContainerPublishPermissions(job *yaml.Node) error {
 	permissions, ok := workflowyaml.MappingValue(job, "permissions")
 	if !ok || permissions.Kind != yaml.MappingNode {
-		return errors.New("publish_container job must declare packages: write")
+		return errors.New("publish_container job must declare minimal contents:read and packages:write permissions")
+	}
+	if err := requireOnlyMappingKeys(permissions, "contents", "packages"); err != nil {
+		return errors.New("publish_container job permissions must be minimal: only contents:read and packages:write")
+	}
+	if err := workflowyaml.RequireScalar(permissions, "contents", "read"); err != nil {
+		return errors.New("publish_container job permissions must be minimal: only contents:read and packages:write")
 	}
 	packages, ok := workflowyaml.MappingValue(permissions, "packages")
 	if !ok || packages.Kind != yaml.ScalarNode || packages.Value != "write" {

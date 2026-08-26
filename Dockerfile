@@ -29,6 +29,9 @@ RUN apt-get update \
 # 容器不以 root 运行，避免提权风险。
 RUN useradd --home-dir /home/pixiv --create-home --shell /usr/sbin/nologin --uid 1000 pixiv
 
+# 预创建状态目录并固定属主；首次挂载空命名 volume 时 Docker 会继承该 ownership。
+RUN mkdir -p /home/pixiv/.pixiv-cli && chown -R pixiv:pixiv /home/pixiv
+
 # 拷贝预构建的版本化 pixiv 二进制到 /usr/local/bin/pixiv。
 # 二进制从构建上下文的 dist/pixiv 拷入。
 COPY dist/pixiv /usr/local/bin/pixiv
