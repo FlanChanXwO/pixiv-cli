@@ -122,20 +122,20 @@
 
 ### 🔍 集中检查 #2（Task 4–6 之后）
 
-- [ ] **目标**：Phase 2 集中复查。
+- [x] **目标**：Phase 2 集中复查。
 - **检查清单**：
   - [x] 需求是否偏离 `input.md`
-  - [ ] Dockerfile 是否最小、无多余依赖
-  - [ ] 非 root 用户是否真正生效
-  - [ ] base image digest 是否不可变
-  - [ ] `.dockerignore` 是否合理
-  - [ ] `go test ./scripts/tests/containerrelease -count=1` 是否通过
-  - [ ] 真实 smoke 是否通过
-  - [ ] 安全性：无 secret 泄露、无 root 运行
-  - [ ] 功能边界：容器仍使用同一二进制和 CLI/MCP entrypoint，无 wrapper script 重新解释参数
+  - [x] Dockerfile 是否最小、无多余依赖
+  - [x] 非 root 用户是否真正生效
+  - [x] base image digest 是否不可变
+  - [x] `.dockerignore` 是否合理
+  - [x] `go test ./scripts/tests/containerrelease -count=1` 是否通过
+  - [x] 真实 smoke 是否通过
+  - [x] 安全性：无 secret 泄露、无 root 运行
+  - [x] 功能边界：容器仍使用同一二进制和 CLI/MCP entrypoint，无 wrapper script 重新解释参数
   - [x] 文档是否同步（本 phase 可能不需要文档变更）
-- **结论**：（待填）
-- **发现问题**：（待填，如有则追加修复 task）
+- **结论**：Phase 2 通过全部复查，无问题。
+- **发现问题**：无。
 
 ---
 
@@ -250,7 +250,7 @@
   - [ ] OCI labels 是否完整
   - [x] 代码是否有 bug、死代码、调试残留
   - [x] `go test ./scripts/internal/releaseworkflow -count=1` 是否通过
-  - [ ] `go test ./scripts/tests/containerrelease -count=1` 是否通过
+  - [x] `go test ./scripts/tests/containerrelease -count=1` 是否通过
   - [x] `go run ./scripts/cmd/releaseworkflow --workflow .github/workflows/release.yml` 是否通过
   - [ ] 安全性：权限隔离、GHCR auth、无 credential 泄露
   - [ ] 数据一致性：两架构 manifest 一致性
