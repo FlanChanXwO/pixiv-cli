@@ -160,12 +160,12 @@
 
 ### Task 8: Green/build — 添加 build_container matrix
 
-- [ ] **目标**：添加两目标 `build_container` matrix（原生 `ubuntu-22.04` 和 `ubuntu-22.04-arm`）。每个目标 checkout 不可变 tag、验证 source、使用 audited Rust toolchain/staticlib 路径、构建版本化 Linux binary、应用现有 Linux ABI gate、构建 Docker image、导出可传输 image artifact。不登录 registry、不持有 `packages: write`。
+- [x] **目标**：添加两目标 `build_container` matrix（原生 `ubuntu-22.04` 和 `ubuntu-22.04-arm`）。每个目标 checkout 不可变 tag、验证 source、使用 audited Rust toolchain/staticlib 路径、构建版本化 Linux binary、应用现有 Linux ABI gate、构建 Docker image、导出可传输 image artifact。不登录 registry、不持有 `packages: write`。
 - **验收**：`go test ./scripts/tests/containerrelease -count=1` 绿色；release policy 测试对 build_container 部分绿色。
-- **实际做了什么**：（待填）
-- **验证证据**：（待填）
-- **剩余风险**：（待填）
-- **下一步建议**：（待填）
+- **实际做了什么**：实现 `requireExactVersionTagPush`（要求 publish_container steps 包含 `docker push` + `${RELEASE_TAG}`）和 `rejectUnconditionalLatestTagPush`（latest tag 推送必须含 stable/channel/prerelease gate）。重构 `TestContainerPublishJobAlwaysPublishesExactVersionTag` 为 accept/reject 子测试。更新 `addPublishContainerJob` fixture 和 latest-tag 测试 fixture 包含 exact-version push step。commit: `9e1aac6`。
+- **验证证据**：`go test ./scripts/internal/releaseworkflow -count=1` → 全部 PASS（含 3 个 Task 7 release graph 测试）。`go test ./scripts/tests/containerrelease -count=1` → PASS。`go run ./scripts/cmd/releaseworkflow --workflow .github/workflows/release.yml` → exit 0。
+- **剩余风险**：release.yml 中的实际 build_container/publish_container job 尚未添加（Task 9-10）。tag policy 在 fixture 上验证，但在真实 release.yml 上的验证需等 Task 10 添加 publish_container job 后。
+- **下一步建议**：Task 9 — 并行性证明 + credential-free smoke 工作流：确保 DAG 让 build_container 与 build_production 并行；添加窄触发容器 smoke 工作流。
 
 ---
 
