@@ -417,14 +417,14 @@
 
 ### Task 21: Diff hygiene + Release boundary review
 
-- [ ] **目标**：
+- [x] **目标**：
   1. 运行 `git diff --check` 确认只有本 goal 理由充分的文件变更。验证无生成镜像 archive、本地数据库、token、缓存或 registry credential 进入 Git 历史。
   2. 使用仓库 review checklist 检查：不可变 tag 绑定、权限、action SHA pinning、GHCR auth 可达性、stable/prerelease tag 语义、glibc/原生 runner 映射、错误行为。修复阻塞发现并重跑受影响证据。
 - **验收**：diff 干净；review 无阻塞发现。
-- **实际做了什么**：（待填）
-- **验证证据**：（待填）
-- **剩余风险**：（待填）
-- **下一步建议**：（待填）
+- **实际做了什么**：以 `origin/main...HEAD` 审查 net diff，确认变更仅包含容器 release contract/workflow、Docker runtime、双语文档、聚焦测试和 goal 记录。敏感内容和产物扫描确认 net diff 无 private key/token/API key/password、镜像 archive、数据库或 package-release temp artifacts；branch 引入文件列表也无生成产物。按 code-review-expert 流程审查后修复三个阻塞项：(1) `publish_container` 权限 policy 现在只允许 `contents:read + packages:write`；(2) `publish_container` 首步必须 canonical checkout immutable tag；(3) Dockerfile 预创建 `/home/pixiv/.pixiv-cli` 并固定 pixiv 属主，避免空命名 volume 初始不可写。随后重跑受影响测试与两架构 smoke。
+- **验证证据**：Red 新增 minimal-permission/immutable-publish-checkout 测试均先 FAIL；Green 后 `go test ./scripts/internal/releaseworkflow -count=1`、containerrelease、documentation 和 workflow policy command 全部 exit 0。真实 volume probe 首次 touch 失败暴露 ownership 问题，修复后在 arm64 image + fresh named volume 中 UID 1000 写入成功。`git diff --check origin/main...HEAD` 无输出；敏感内容/产物扫描 PASS。修复 commit `d391bf5` 触发 Run [32937968205](https://github.com/FlanChanXwO/pixiv-cli/actions/runs/32937968205) conclusion=success；amd64/arm64 的 build/non-root/version/state-path/workdir/contract steps 均 success 且无 skipped。
+- **剩余风险**：正式 tagged GHCR push 本身未执行；该路径继续由 fail-closed release policy 与 post-Release 恢复文档约束，留待实际 release-prep/tagged run 验证。
+- **下一步建议**：Task 22 — Goal verifier 终审，逐条对照 C1–C5 当前状态证据。
 
 ---
 
