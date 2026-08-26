@@ -75,6 +75,27 @@ docker run --rm \
 
 下载文件请配合显式输出路径放在 `/work`；它是容器工作目录，不代表独立的产品模式。
 
+请通过 stdin 导入 refresh token，不要把它作为 argv 值传入。运行命令后粘贴 opaque token，再发送 EOF（`Ctrl-D`）；容器只写入持久状态 volume。自动化场景请把 secret manager 的 stdout 直接管道给 `docker run`：
+
+```bash
+docker run --rm -i \
+  -v pixiv-cli-state:/home/pixiv/.pixiv-cli \
+  ghcr.io/flanchanxwo/pixiv-cli:v1.2.3 \
+  auth import
+```
+
+这沿用既有 `pixiv auth import` 行为，不会为 `auth login` 添加 Docker-specific OAuth callback 流程。
+
+MCP 传输保持 `docker run --rm -i ghcr.io/flanchanxwo/pixiv-cli mcp`，stdout 仍保留给 MCP JSON-RPC。可按下方命令固定 release：
+
+```bash
+docker run --rm -i ghcr.io/flanchanxwo/pixiv-cli:v1.2.3 mcp
+```
+
+如果 MCP server 需要复用已保存账号，请追加 `-v pixiv-cli-state:/home/pixiv/.pixiv-cli`。
+
+通过拉取新镜像升级，并使用同一 state volume 重新部署。该流程不会将 `pixiv update` 改为 container-aware。
+
 ### 让 AI Agent 安装
 
 把下面这一段 prompt 复制给能够操作本机终端的 Codex、Claude Code、Cursor 或其他 AI Agent：

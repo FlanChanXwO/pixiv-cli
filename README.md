@@ -75,6 +75,27 @@ docker run --rm \
 
 Use `/work` for downloaded files with an explicit output path; it is the container's working directory, not a separate product mode.
 
+Import a refresh token through stdin instead of passing it as an argv value. Run the command, paste the opaque token, and send EOF (`Ctrl-D`); the container writes only to the persistent state volume. For automation, pipe your secret manager's stdout directly into `docker run`:
+
+```bash
+docker run --rm -i \
+  -v pixiv-cli-state:/home/pixiv/.pixiv-cli \
+  ghcr.io/flanchanxwo/pixiv-cli:v1.2.3 \
+  auth import
+```
+
+This uses the existing `pixiv auth import` behavior; it does not add a Docker-specific OAuth callback flow for `auth login`.
+
+For MCP, the transport remains `docker run --rm -i ghcr.io/flanchanxwo/pixiv-cli mcp`, and stdout stays reserved for MCP JSON-RPC. Pin a release as shown below:
+
+```bash
+docker run --rm -i ghcr.io/flanchanxwo/pixiv-cli:v1.2.3 mcp
+```
+
+Add `-v pixiv-cli-state:/home/pixiv/.pixiv-cli` when the MCP server should reuse persisted accounts.
+
+Upgrade by pulling a newer image and redeploying with the same state volume. This workflow does not make `pixiv update` container-aware.
+
 ### Install with an AI agent
 
 Copy this single prompt into Codex, Claude Code, Cursor, or another local AI agent with terminal access:
