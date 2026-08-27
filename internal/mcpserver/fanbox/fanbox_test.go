@@ -254,7 +254,8 @@ func TestFanboxCreatorMissingIDIsStructuredError(t *testing.T) {
 		{name: "creator posts", tool: "fanbox_creator_posts", args: map[string]any{"creator_id": ""}, want: "creator_id is required"},
 		{name: "creator tags", tool: "fanbox_creator_tags", args: map[string]any{"creator_id": ""}, want: "creator_id is required"},
 		{name: "post", tool: "fanbox_post", args: map[string]any{"post_id": ""}, want: "post_id is required"},
-		{name: "tagged posts", tool: "fanbox_tagged_posts", args: map[string]any{"creator_id": "c", "tag": ""}, want: "creator_id and tag are required"},
+		{name: "tagged posts missing creator", tool: "fanbox_tagged_posts", args: map[string]any{"creator_id": "", "tag": "fanart"}, want: "creator_id and tag are required"},
+		{name: "tagged posts missing tag", tool: "fanbox_tagged_posts", args: map[string]any{"creator_id": "c", "tag": ""}, want: "creator_id and tag are required"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
