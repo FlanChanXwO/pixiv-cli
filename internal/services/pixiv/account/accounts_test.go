@@ -70,8 +70,18 @@ type pixivTestRepository struct {
 	rotateCall *pixivRotationCall
 }
 
-func newPixivTestRepository() *pixivTestRepository {
-	return &pixivTestRepository{accounts: make(map[int64]accountpixiv.Account)}
+func newPixivTestRepository(accounts ...accountpixiv.Account) *pixivTestRepository {
+	repository := &pixivTestRepository{accounts: make(map[int64]accountpixiv.Account, len(accounts))}
+	for _, account := range accounts {
+		repository.accounts[account.UserID] = account
+	}
+	return repository
+}
+
+func pixivAccountFixture(userID int64, username, token string, sortOrder int64, schedulable bool) accountpixiv.Account {
+	account := accountpixiv.New(userID, username, []byte(token))
+	account.SortOrder, account.Schedulable = sortOrder, schedulable
+	return account
 }
 
 func (r *pixivTestRepository) SavePixivCredential(_ context.Context, account accountpixiv.Account) error {
@@ -262,15 +272,15 @@ func cloneInt64(value *int64) *int64 {
 	return &cloned
 }
 
-func newPixivTestService(repo *pixivTestRepository, defaults *pixivTestDefaults) *accountpixiv.Service {
-	return accountpixiv.NewService(repo, defaults)
+func newPixivTestService(repo *pixivTestRepository, defaults ...*pixivTestDefaults) *accountpixiv.Service {
+	if len(defaults) == 0 {
+		defaults = []*pixivTestDefaults{{}}
+	}
+	return accountpixiv.NewService(repo, defaults[0])
 }
 
 func TestRemoveAccountClearsExplicitDefaultThenRemoves(t *testing.T) {
-	repo := newPixivTestRepository()
-	account := accountpixiv.New(42, "first", []byte("token"))
-	account.SortOrder, account.Schedulable = 1, true
-	repo.accounts[42] = account
+	repo := newPixivTestRepository(pixivAccountFixture(42, "first", "token", 1, true))
 	defaults := &pixivTestDefaults{userID: 42, ok: true}
 	service := newPixivTestService(repo, defaults)
 
@@ -282,10 +292,7 @@ func TestRemoveAccountClearsExplicitDefaultThenRemoves(t *testing.T) {
 }
 
 func TestRemoveAccountDefaultClearFailureAbortsRemoval(t *testing.T) {
-	repo := newPixivTestRepository()
-	account := accountpixiv.New(42, "first", []byte("token"))
-	account.SortOrder, account.Schedulable = 1, true
-	repo.accounts[42] = account
+	repo := newPixivTestRepository(pixivAccountFixture(42, "first", "token", 1, true))
 	defaults := &pixivTestDefaults{userID: 42, ok: true, clearErr: errors.New("clear failed")}
 	service := newPixivTestService(repo, defaults)
 
@@ -323,14 +330,11 @@ func TestVerifyPixivAccountIdentity(t *testing.T) {
 }
 
 func TestPixivAutoDefaultMarksSmallestSortOrder(t *testing.T) {
-	repo := newPixivTestRepository()
-	second := accountpixiv.New(42, "second", []byte("token-2"))
-	second.SortOrder, second.Schedulable = 2, true
-	first := accountpixiv.New(7, "first", []byte("token-1"))
-	first.SortOrder, first.Schedulable = 1, true
-	repo.accounts[42] = second
-	repo.accounts[7] = first
-	service := newPixivTestService(repo, &pixivTestDefaults{})
+	repo := newPixivTestRepository(
+		pixivAccountFixture(42, "second", "token-2", 2, true),
+		pixivAccountFixture(7, "first", "token-1", 1, true),
+	)
+	service := newPixivTestService(repo)
 
 	accounts, err := service.ListAccounts(context.Background())
 	require.NoError(t, err)
@@ -341,14 +345,11 @@ func TestPixivAutoDefaultMarksSmallestSortOrder(t *testing.T) {
 }
 
 func TestPixivPoolManagementPersistsNonSecretStatus(t *testing.T) {
-	repo := newPixivTestRepository()
-	first := accountpixiv.New(42, "first", []byte("token-42"))
-	first.SortOrder, first.Schedulable = 1, true
-	second := accountpixiv.New(43, "second", []byte("token-43"))
-	second.SortOrder, second.Schedulable = 2, true
-	repo.accounts[42] = first
-	repo.accounts[43] = second
-	service := newPixivTestService(repo, &pixivTestDefaults{})
+	repo := newPixivTestRepository(
+		pixivAccountFixture(42, "first", "token-42", 1, true),
+		pixivAccountFixture(43, "second", "token-43", 2, true),
+	)
+	service := newPixivTestService(repo)
 	ctx := context.Background()
 
 	require.NoError(t, service.SetPoolSchedulable(ctx, []int64{42}, false))
@@ -371,8 +372,7 @@ func TestPixivPoolManagementPersistsNonSecretStatus(t *testing.T) {
 }
 
 func TestPixivDefaultReadErrorIsReturnedBeforeRemoval(t *testing.T) {
-	repo := newPixivTestRepository()
-	repo.accounts[42] = accountpixiv.New(42, "first", []byte("token"))
+	repo := newPixivTestRepository(pixivAccountFixture(42, "first", "token", 0, false))
 	defaults := &pixivTestDefaults{readErr: errors.New("default read failed")}
 	service := newPixivTestService(repo, defaults)
 
@@ -410,7 +410,7 @@ func TestRotateCredentialRejectsIdentityMismatchBeforeRepository(t *testing.T) {
 
 func TestImportAndRestoreValidateCredentialInputs(t *testing.T) {
 	repo := newPixivTestRepository()
-	service := newPixivTestService(repo, &pixivTestDefaults{})
+	service := newPixivTestService(repo)
 
 	_, err := service.ImportAccount(context.Background(), "  ", false)
 	require.EqualError(t, err, "pixiv refresh token is required")
@@ -435,7 +435,7 @@ func TestRestoreAccountPreservesExistingDefault(t *testing.T) {
 
 func TestRestoreAccountsRejectsInvalidInputs(t *testing.T) {
 	repo := newPixivTestRepository()
-	service := newPixivTestService(repo, &pixivTestDefaults{})
+	service := newPixivTestService(repo)
 
 	_, err := service.RestoreAccounts(context.Background(), nil)
 	require.ErrorContains(t, err, "no accounts")
@@ -447,11 +447,7 @@ func TestRestoreAccountsRejectsInvalidInputs(t *testing.T) {
 }
 
 func TestRestoreAccountsReportsReplacementsAndAdoptsBundleDefaultOnEmptyStore(t *testing.T) {
-	repo := newPixivTestRepository()
-	existing := accountpixiv.New(7, "old-seven", []byte("old-token"))
-	existing.SortOrder = 1
-	existing.Schedulable = true
-	repo.accounts[7] = existing
+	repo := newPixivTestRepository(pixivAccountFixture(7, "old-seven", "old-token", 1, true))
 	defaults := &pixivTestDefaults{}
 	service := newPixivTestService(repo, defaults)
 
@@ -478,11 +474,7 @@ func TestRestoreAccountsReportsReplacementsAndAdoptsBundleDefaultOnEmptyStore(t 
 }
 
 func TestRestoreAccountsPreservesExistingDefault(t *testing.T) {
-	repo := newPixivTestRepository()
-	existing := accountpixiv.New(7, "seven", []byte("seven-token"))
-	existing.SortOrder = 1
-	existing.Schedulable = true
-	repo.accounts[7] = existing
+	repo := newPixivTestRepository(pixivAccountFixture(7, "seven", "seven-token", 1, true))
 	defaults := &pixivTestDefaults{userID: 7, ok: true}
 	service := newPixivTestService(repo, defaults)
 
@@ -497,7 +489,7 @@ func TestRestoreAccountsPreservesExistingDefault(t *testing.T) {
 
 func TestRestoreAccountsAdoptsFirstAccountWhenBundleDefaultAbsent(t *testing.T) {
 	repo := newPixivTestRepository()
-	service := newPixivTestService(repo, &pixivTestDefaults{})
+	service := newPixivTestService(repo)
 
 	inputs := []accountpixiv.RestoreAccountInput{
 		{Account: accountpixiv.AccountSummary{UserID: 42, Username: "forty-two"}, RefreshToken: "forty-token", IsBundleDefault: false},
@@ -509,10 +501,7 @@ func TestRestoreAccountsAdoptsFirstAccountWhenBundleDefaultAbsent(t *testing.T) 
 }
 
 func TestExportReadsStoredCredentialThroughDefensiveCopy(t *testing.T) {
-	repo := newPixivTestRepository()
-	account := accountpixiv.New(42, "first", []byte("token"))
-	account.SortOrder, account.Schedulable = 1, true
-	repo.accounts[42] = account
+	repo := newPixivTestRepository(pixivAccountFixture(42, "first", "token", 1, true))
 	service := newPixivTestService(repo, &pixivTestDefaults{userID: 42, ok: true})
 
 	token, err := service.ExportRefreshToken(context.Background(), 42)
@@ -532,7 +521,7 @@ func TestImportAccountPassesSDKOptionsAndPreservesPoolState(t *testing.T) {
 	frozenUntil := int64(4_000_000_000)
 	existing.PoolFrozenUntil = &frozenUntil
 	repo.accounts[42] = existing
-	service := newPixivTestService(repo, &pixivTestDefaults{})
+	service := newPixivTestService(repo)
 
 	called := false
 	client := &http.Client{Transport: pixivRoundTripper(func(request *http.Request) (*http.Response, error) {
@@ -554,7 +543,7 @@ func TestCheckAccountRejectsCredentialIdentityMismatchBeforeRotation(t *testing.
 	account := accountpixiv.New(42, "local", []byte("local-token"))
 	account.CredentialRevision = 3
 	repo.accounts[42] = account
-	service := newPixivTestService(repo, &pixivTestDefaults{})
+	service := newPixivTestService(repo)
 	client := &http.Client{Transport: pixivRoundTripper(func(*http.Request) (*http.Response, error) {
 		return pixivJSONResponse(`{"access_token":"access","refresh_token":"rotated","user":{"id":"43","name":"foreign"}}`), nil
 	})}
@@ -566,7 +555,7 @@ func TestCheckAccountRejectsCredentialIdentityMismatchBeforeRotation(t *testing.
 }
 
 func TestCheckRefreshTokenRejectsCredentialIdentityMismatch(t *testing.T) {
-	service := newPixivTestService(newPixivTestRepository(), &pixivTestDefaults{})
+	service := newPixivTestService(newPixivTestRepository())
 	client := &http.Client{Transport: pixivRoundTripper(func(*http.Request) (*http.Response, error) {
 		return pixivJSONResponse(`{"access_token":"access","refresh_token":"rotated","user":{"id":"43","name":"foreign"}}`), nil
 	})}

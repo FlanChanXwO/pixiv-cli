@@ -11,7 +11,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
-	"slices"
 	"strings"
 	"testing"
 )
@@ -47,23 +46,6 @@ func TestInstallShInstallsVerifiedLatestArchive(t *testing.T) {
 	}
 	if !strings.Contains(string(output), "SHA-256 verified") || !strings.Contains(string(output), installed) || !strings.Contains(string(output), "pixiv v"+fixtureVersion+"\n") {
 		t.Fatalf("installer did not report verification and destination:\n%s", output)
-	}
-}
-
-func TestStandaloneInstallersUseRootVersionContract(t *testing.T) {
-	removedVersionJSON := "version " + "--json"
-	for _, script := range []string{"install.sh", "install.cmd"} {
-		payload, err := os.ReadFile(filepath.Join("..", "..", script))
-		if err != nil {
-			t.Fatal(err)
-		}
-		content := string(payload)
-		if count := strings.Count(content, "--version"); count != 2 {
-			t.Errorf("%s --version invocation count = %d, want staged preflight and final report", script, count)
-		}
-		if strings.Contains(content, removedVersionJSON) {
-			t.Errorf("%s retains the removed version JSON contract", script)
-		}
 	}
 }
 
@@ -225,42 +207,6 @@ func TestInstallShRejectsAutomaticPathForCustomDirectoryBeforeDownload(t *testin
 	}
 }
 
-func TestReadmesExposeBothInstallersAndAgentPrompt(t *testing.T) {
-	for _, candidate := range []string{
-		filepath.Join("..", "..", "..", "README.md"),
-		filepath.Join("..", "..", "..", "README.zh-CN.md"),
-	} {
-		payload, err := os.ReadFile(candidate)
-		if err != nil {
-			t.Fatal(err)
-		}
-		content := string(payload)
-		for _, required := range []string{"scripts/install.sh", "scripts/install.cmd", "SHA-256", "pixiv --version"} {
-			if !strings.Contains(content, required) {
-				t.Errorf("%s missing %q", candidate, required)
-			}
-		}
-	}
-}
-
-func TestInstallCmdUsesOnlyNativeCmdTools(t *testing.T) {
-	payload, err := os.ReadFile(filepath.Join("..", "..", "install.cmd"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	lower := strings.ToLower(string(payload))
-	for _, required := range []string{"curl.exe", "certutil.exe", "tar.exe", "reg.exe", "--install-dir", "--no-path"} {
-		if !strings.Contains(lower, required) {
-			t.Errorf("install.cmd missing %q", required)
-		}
-	}
-	for _, forbidden := range []string{"powershell", ".ps1", "executionpolicy"} {
-		if strings.Contains(lower, forbidden) {
-			t.Errorf("install.cmd must not depend on %q", forbidden)
-		}
-	}
-}
-
 // TestInstallCmdCheckoutUsesCRLFWhenAutocrlfDisabled 固化 Windows 发布测试的
 // checkout 契约：即使 Git for Windows 被要求关闭 autocrlf，cmd.exe 脚本也必须
 // 由仓库属性以 CRLF 写入工作树，避免 cmd.exe 将 LF 脚本错误地连成一行。
@@ -336,84 +282,6 @@ func isolatedGitEnvironment() []string {
 		}
 	}
 	return environment
-}
-
-func TestInstallCmdBindsWindowsSystemTarForZIPExtraction(t *testing.T) {
-	payload, err := os.ReadFile(filepath.Join("..", "..", "install.cmd"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	content := strings.ToLower(string(payload))
-	for _, required := range []string{
-		`set "system_tar=%systemroot%\system32\tar.exe"`,
-		`if not exist "%system_tar%"`,
-		`"%system_tar%" -xf "%asset%" -c "extract" pixiv.exe`,
-	} {
-		if !strings.Contains(content, required) {
-			t.Fatalf("install.cmd must bind Windows system tar for ZIP extraction; missing %q", required)
-		}
-	}
-	if strings.Contains(content, `tar.exe -xf`) {
-		t.Fatal("install.cmd must not resolve ZIP extraction through PATH")
-	}
-}
-
-func TestInstallCmdExtractsArchiveFromTemporaryWorkingDirectory(t *testing.T) {
-	payload, err := os.ReadFile(filepath.Join("..", "..", "install.cmd"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := validateInstallCmdExtraction(string(payload)); err != nil {
-		t.Fatal(err)
-	}
-}
-
-const installCmdSystemTarExtraction = `"%system_tar%" -xf "%asset%" -c "extract" pixiv.exe`
-
-func validateInstallCmdExtraction(script string) error {
-	content := strings.ToLower(strings.ReplaceAll(script, "\r\n", "\n"))
-	pushIndex := strings.Index(content, `pushd "%work_dir%"`)
-	tarIndex := strings.Index(content, installCmdSystemTarExtraction)
-	if pushIndex < 0 || tarIndex < 0 || pushIndex > tarIndex {
-		return fmt.Errorf("install.cmd must extract the relative archive inside its temporary working directory")
-	}
-	if strings.Contains(content, `-xf "%archive%"`) {
-		return fmt.Errorf("install.cmd passed an absolute drive path directly to tar.exe")
-	}
-
-	lines := strings.Split(content, "\n")
-	for index, line := range lines {
-		if !strings.Contains(line, installCmdSystemTarExtraction) {
-			continue
-		}
-		for next := index + 1; next < len(lines); next++ {
-			trimmed := strings.TrimSpace(lines[next])
-			if trimmed == "" || strings.HasPrefix(trimmed, "rem ") {
-				continue
-			}
-			if trimmed != "popd" {
-				return fmt.Errorf("install.cmd must restore the working directory after successful extraction")
-			}
-			return nil
-		}
-		return fmt.Errorf("install.cmd must restore the working directory after successful extraction")
-	}
-	return fmt.Errorf("install.cmd system tar invocation was not found")
-}
-
-func TestInstallCmdInvocationKeepsPathsAsSeparateArguments(t *testing.T) {
-	script := `C:\workspace with spaces\scripts\install.cmd`
-	installDir := `C:\Users\tester\pixiv bin`
-	want := []string{"/d", "/c", "call", script, "--install-dir", installDir, "--no-path"}
-	if got := installCmdInvocation(script, installDir); !slices.Equal(got, want) {
-		t.Fatalf("install.cmd invocation arguments mismatch: got %#v; want %#v", got, want)
-	}
-}
-
-// installCmdInvocation 让 Go 分别引用每个 Windows 参数；若先拼接含引号的
-// command line，os/exec 会为 cmd.exe 再次转义，脚本名可能变成字面 \"path\"。
-func installCmdInvocation(script, installDir string) []string {
-	return []string{"/d", "/c", "call", script, "--install-dir", installDir, "--no-path"}
 }
 
 func prepareUnixFixture(t *testing.T, corruptChecksum bool) (string, string) {

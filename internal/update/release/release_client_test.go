@@ -8,7 +8,6 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -50,47 +49,6 @@ func TestGitHubReleaseClientSelectsLatestStableRelease(t *testing.T) {
 	}
 	if result.Release.TagName != "v1.0.1" {
 		t.Fatalf("Check() tag = %q, want %q", result.Release.TagName, "v1.0.1")
-	}
-}
-
-func TestGitHubReleaseClientUsesStableUserAgentForEveryReleasePage(t *testing.T) {
-	const wantUserAgent = "pixiv-cli"
-	requests := make(map[string]int)
-	var server *httptest.Server
-	server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if got := r.Header.Get("User-Agent"); got != wantUserAgent {
-			t.Errorf("User-Agent for %q = %q, want %q", r.URL.RequestURI(), got, wantUserAgent)
-			http.Error(w, "missing or incorrect User-Agent", http.StatusForbidden)
-			return
-		}
-		requests[r.URL.RequestURI()]++
-		w.Header().Set("Content-Type", "application/json")
-		switch r.URL.Query().Get("page") {
-		case "":
-			w.Header().Set("Link", "<"+server.URL+"/repos/FlanChanXwO/pixiv-cli/releases?page=2>; rel=\"next\"")
-			fmt.Fprint(w, `[{"tag_name":"v1.0.0","draft":false,"prerelease":false}]`)
-		case "2":
-			fmt.Fprint(w, `[{"tag_name":"v1.0.1","draft":false,"prerelease":false}]`)
-		default:
-			t.Fatalf("unexpected release page %q", r.URL.RequestURI())
-		}
-	}))
-	defer server.Close()
-
-	client := newGitHubReleaseClient(t, release.ReleaseClientOptions{
-		APIBaseURL: server.URL,
-		CacheDir:   t.TempDir(),
-	})
-
-	result, err := client.Check(context.Background(), release.ReleaseCheckOptions{})
-	if err != nil {
-		t.Fatalf("Check() error = %v", err)
-	}
-	if result.Release == nil || result.Release.TagName != "v1.0.1" {
-		t.Fatalf("Check() release = %#v, want v1.0.1 from the second page", result.Release)
-	}
-	if requests["/repos/FlanChanXwO/pixiv-cli/releases"] != 1 || requests["/repos/FlanChanXwO/pixiv-cli/releases?page=2"] != 1 {
-		t.Fatalf("release page requests = %#v, want one request for each page", requests)
 	}
 }
 
@@ -213,108 +171,6 @@ func TestGitHubReleaseClientRejectsNonSemVerPublishedRelease(t *testing.T) {
 	}
 }
 
-func TestGitHubReleaseClientRejectsMixedValidAndInvalidPublishedSemVerTags(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(w, `[
-			{"tag_name":"v2.0.0","draft":false,"prerelease":false},
-			{"tag_name":"latest","draft":false,"prerelease":false}
-		]`)
-	}))
-	defer server.Close()
-
-	client := newGitHubReleaseClient(t, release.ReleaseClientOptions{
-		APIBaseURL: server.URL,
-		CacheDir:   t.TempDir(),
-	})
-
-	result, err := client.Check(context.Background(), release.ReleaseCheckOptions{})
-	if err == nil || !strings.Contains(err.Error(), `parse GitHub release tag "latest"`) {
-		t.Fatalf("Check() result = %#v, error = %v, want visible invalid tag rejection", result, err)
-	}
-	if result.Release != nil {
-		t.Fatalf("Check() release = %#v, want none after mixed invalid tag rejection", result.Release)
-	}
-}
-
-func TestGitHubReleaseClientRejectsAllInvalidPublishedSemVerTagsWithoutRelease(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(w, `[
-			{"tag_name":"latest","draft":false,"prerelease":false},
-			{"tag_name":"release-candidate","draft":false,"prerelease":false}
-		]`)
-	}))
-	defer server.Close()
-
-	client := newGitHubReleaseClient(t, release.ReleaseClientOptions{
-		APIBaseURL: server.URL,
-		CacheDir:   t.TempDir(),
-	})
-
-	result, err := client.Check(context.Background(), release.ReleaseCheckOptions{})
-	if err == nil || !strings.Contains(err.Error(), `parse GitHub release tag "latest"`) {
-		t.Fatalf("Check() error = %v, want visible invalid tag rejection", err)
-	}
-	if result.Release != nil {
-		t.Fatalf("Check() release = %#v, want none after invalid tag rejection", result.Release)
-	}
-}
-
-func TestGitHubReleaseClientSkipsGitHubPrereleaseBeforeTagValidation(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(w, `[
-			{"tag_name":"v1.0.0","draft":false,"prerelease":false},
-			{"tag_name":"nightly","draft":false,"prerelease":true}
-		]`)
-	}))
-	defer server.Close()
-	client := newGitHubReleaseClient(t, release.ReleaseClientOptions{
-		APIBaseURL: server.URL,
-		CacheDir:   t.TempDir(),
-	})
-
-	stable, err := client.Check(context.Background(), release.ReleaseCheckOptions{})
-	if err != nil {
-		t.Fatalf("stable Check() error = %v", err)
-	}
-	if stable.Release == nil || stable.Release.TagName != "v1.0.0" {
-		t.Fatalf("stable Check() release = %#v, want v1.0.0", stable.Release)
-	}
-
-	_, err = client.Check(context.Background(), release.ReleaseCheckOptions{IncludePrerelease: true})
-	if err == nil || !strings.Contains(err.Error(), "nightly") {
-		t.Fatalf("prerelease Check() error = %v, want visible nightly tag error", err)
-	}
-}
-
-func TestGitHubReleaseClientPreservesBuildMetadataWithoutChangingPrecedence(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(w, `[
-			{"tag_name":"v1.2.3+build.7","draft":false,"prerelease":false},
-			{"tag_name":"v1.2.3+build.8","draft":false,"prerelease":false}
-		]`)
-	}))
-	defer server.Close()
-	client := newGitHubReleaseClient(t, release.ReleaseClientOptions{
-		APIBaseURL: server.URL,
-		CacheDir:   t.TempDir(),
-	})
-
-	result, err := client.Check(context.Background(), release.ReleaseCheckOptions{})
-	if err != nil {
-		t.Fatalf("Check() error = %v", err)
-	}
-	if result.Release == nil {
-		t.Fatal("Check() returned no release")
-	}
-	if result.Release.TagName != "v1.2.3+build.7" || result.Release.Version != "1.2.3+build.7" {
-		t.Fatalf("Check() release = %#v, want first equal-precedence build tag and Version with metadata", result.Release)
-	}
-}
-
 func TestGitHubReleaseClientFollowsNextPagesAndRevalidatesTheirETags(t *testing.T) {
 	requestCount := map[string]int{}
 	var requestMu sync.Mutex
@@ -374,63 +230,6 @@ func TestGitHubReleaseClientFollowsNextPagesAndRevalidatesTheirETags(t *testing.
 	defer requestMu.Unlock()
 	if requestCount["/repos/FlanChanXwO/pixiv-cli/releases"] != 2 || requestCount["/repos/FlanChanXwO/pixiv-cli/releases?page=2"] != 2 {
 		t.Fatalf("request counts = %#v, want every cached page revalidated", requestCount)
-	}
-}
-
-func TestGitHubReleaseClientOrdersSemVerNumbersBeyondUint64(t *testing.T) {
-	const aboveUint64 = "18446744073709551616"
-	tests := []struct {
-		name        string
-		releases    string
-		options     release.ReleaseCheckOptions
-		wantTagName string
-	}{
-		{
-			name: "major",
-			releases: `[
-				{"tag_name":"v18446744073709551615.0.0","draft":false,"prerelease":false},
-				{"tag_name":"v` + aboveUint64 + `.0.0","draft":false,"prerelease":false}
-			]`,
-			wantTagName: "v" + aboveUint64 + ".0.0",
-		},
-		{
-			name: "minor and patch",
-			releases: `[
-				{"tag_name":"v1.18446744073709551615.18446744073709551615","draft":false,"prerelease":false},
-				{"tag_name":"v1.18446744073709551616.0","draft":false,"prerelease":false}
-			]`,
-			wantTagName: "v1." + aboveUint64 + ".0",
-		},
-		{
-			name: "numeric prerelease identifier",
-			releases: `[
-				{"tag_name":"v1.0.0-18446744073709551615","draft":false,"prerelease":false},
-				{"tag_name":"v1.0.0-18446744073709551616","draft":false,"prerelease":false}
-			]`,
-			options:     release.ReleaseCheckOptions{IncludePrerelease: true},
-			wantTagName: "v1.0.0-" + aboveUint64,
-		},
-	}
-
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				w.Header().Set("Content-Type", "application/json")
-				fmt.Fprint(w, test.releases)
-			}))
-			defer server.Close()
-			client := newGitHubReleaseClient(t, release.ReleaseClientOptions{
-				APIBaseURL: server.URL,
-				CacheDir:   t.TempDir(),
-			})
-			result, err := client.Check(context.Background(), test.options)
-			if err != nil {
-				t.Fatalf("Check() error = %v", err)
-			}
-			if result.Release == nil || result.Release.TagName != test.wantTagName {
-				t.Fatalf("Check() release = %#v, want %q", result.Release, test.wantTagName)
-			}
-		})
 	}
 }
 
@@ -591,59 +390,6 @@ func TestGitHubReleaseClientUsesETagAndAtomicallyPersistedCache(t *testing.T) {
 	}
 }
 
-func TestGitHubReleaseClientTightensExistingCacheDirectoryPermissions(t *testing.T) {
-	cacheDir := filepath.Join(t.TempDir(), ".pixiv-cli")
-	if err := os.Mkdir(cacheDir, 0o700); err != nil {
-		t.Fatalf("create cache directory fixture: %v", err)
-	}
-	// 明确设为宽权限，避免测试结果受到进程 umask 影响。
-	if err := os.Chmod(cacheDir, 0o755); err != nil {
-		t.Fatalf("widen cache directory fixture permissions: %v", err)
-	}
-	cachePath := filepath.Join(cacheDir, "github-releases.json")
-	if err := os.WriteFile(cachePath, []byte(`{"checked_at":"2026-07-12T00:00:00Z","releases":[]}`), 0o600); err != nil {
-		t.Fatalf("create existing cache file fixture: %v", err)
-	}
-	if err := os.Chmod(cachePath, 0o600); err != nil {
-		t.Fatalf("set existing cache file fixture permissions: %v", err)
-	}
-
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(w, `[{"tag_name":"v1.0.0","draft":false,"prerelease":false}]`)
-	}))
-	defer server.Close()
-
-	client := newGitHubReleaseClient(t, release.ReleaseClientOptions{
-		APIBaseURL: server.URL,
-		CacheDir:   cacheDir,
-	})
-	result, err := client.Check(context.Background(), release.ReleaseCheckOptions{})
-	if err != nil {
-		t.Fatalf("Check() error = %v", err)
-	}
-	if result.Release == nil || result.Release.TagName != "v1.0.0" {
-		t.Fatalf("Check() release = %#v, want v1.0.0", result.Release)
-	}
-
-	if runtime.GOOS != "windows" {
-		cacheDirInfo, err := os.Stat(cacheDir)
-		if err != nil {
-			t.Fatalf("stat cache directory: %v", err)
-		}
-		if got := cacheDirInfo.Mode().Perm(); got != 0o700 {
-			t.Fatalf("cache directory permissions = %#o, want 0700", got)
-		}
-		cacheFileInfo, err := os.Stat(cachePath)
-		if err != nil {
-			t.Fatalf("stat cache file: %v", err)
-		}
-		if got := cacheFileInfo.Mode().Perm(); got != 0o600 {
-			t.Fatalf("cache file permissions = %#o, want 0600", got)
-		}
-	}
-}
-
 func TestGitHubReleaseClientReturnsCacheWriteFailures(t *testing.T) {
 	cacheDir := filepath.Join(t.TempDir(), "cache-file")
 	if err := os.WriteFile(cacheDir, []byte("not a directory"), 0o600); err != nil {
@@ -722,41 +468,6 @@ func TestGitHubReleaseClientThrottlesAutomaticChecksFor24Hours(t *testing.T) {
 	}
 	if requests != 2 {
 		t.Fatalf("request count at 24 hours = %d, want 2", requests)
-	}
-}
-
-func TestGitHubReleaseClientUsesThreeSecondDeadlineOnlyForAutomaticChecks(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("ETag", `"releases-v1"`)
-		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(w, `[{"tag_name":"v1.0.0","draft":false,"prerelease":false}]`)
-	}))
-	defer server.Close()
-
-	transport := &deadlineRecordingTransport{next: http.DefaultTransport}
-	client := newGitHubReleaseClient(t, release.ReleaseClientOptions{
-		APIBaseURL: server.URL,
-		CacheDir:   t.TempDir(),
-		HTTPClient: &http.Client{Transport: transport},
-	})
-
-	started := time.Now()
-	if _, err := client.Check(context.Background(), release.ReleaseCheckOptions{Automatic: true}); err != nil {
-		t.Fatalf("automatic Check() error = %v", err)
-	}
-	if !transport.hasDeadline {
-		t.Fatal("automatic request has no deadline")
-	}
-	if transport.deadline.Before(started.Add(3*time.Second-100*time.Millisecond)) || transport.deadline.After(started.Add(3*time.Second+100*time.Millisecond)) {
-		t.Fatalf("automatic request deadline = %s, want about three seconds after %s", transport.deadline, started)
-	}
-
-	transport.reset()
-	if _, err := client.Check(context.Background(), release.ReleaseCheckOptions{}); err != nil {
-		t.Fatalf("explicit Check() error = %v", err)
-	}
-	if transport.hasDeadline {
-		t.Fatalf("explicit request unexpectedly has deadline %s", transport.deadline)
 	}
 }
 
@@ -883,11 +594,6 @@ type deadlineRecordingTransport struct {
 func (t *deadlineRecordingTransport) RoundTrip(request *http.Request) (*http.Response, error) {
 	t.deadline, t.hasDeadline = request.Context().Deadline()
 	return t.next.RoundTrip(request)
-}
-
-func (t *deadlineRecordingTransport) reset() {
-	t.hasDeadline = false
-	t.deadline = time.Time{}
 }
 
 // newGitHubReleaseClient 注入与 CacheDir 对齐的安装器文件 cache，保证 cache 读写

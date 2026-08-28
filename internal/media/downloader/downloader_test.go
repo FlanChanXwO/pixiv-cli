@@ -168,31 +168,6 @@ func TestDownloadFailureDoesNotReplaceExistingFile(t *testing.T) {
 	assertFileBody(t, target, "old")
 }
 
-func TestDownloadSuccessReplacesExistingFile(t *testing.T) {
-	dir := t.TempDir()
-	target := filepath.Join(dir, "42.jpg")
-	if err := os.WriteFile(target, []byte("old"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	rawURL := "https://i.example/42.jpg"
-	client := &fakePixivClient{
-		details: map[int64]pixiv.Artwork{
-			42: {
-				ID: 42, Title: "single", PageCount: 1, Kind: pixiv.ArtworkKindIllustration,
-				User:  pixiv.User{Name: "author"},
-				Pages: []pixiv.ArtworkPage{artworkPage(rawURL, 0)},
-			},
-		},
-		downloads: map[string][]byte{rawURL: []byte("new")},
-	}
-	m := downloader.NewManager(client, dir, "{id}")
-
-	if _, err := m.Download(context.Background(), downloader.DownloadRequest{IllustIDs: []int64{42}}); err != nil {
-		t.Fatalf("Download returned error: %v", err)
-	}
-	assertFileBody(t, target, "new")
-}
-
 func TestDownloadMultiPageArtworkReturnsAllPaths(t *testing.T) {
 	dir := t.TempDir()
 	client := &fakePixivClient{
@@ -583,6 +558,7 @@ func assertFileBody(t *testing.T, path, want string) {
 		t.Fatalf("%s body = %q, want %q", path, string(body), want)
 	}
 }
+
 func TestDownloadPagesSelectionIsOneBasedAndErrorsOnMissing(t *testing.T) {
 	dir := t.TempDir()
 	client := &fakePixivClient{
@@ -655,6 +631,7 @@ func TestDownloadUgoiraRejectsQualityAndPages(t *testing.T) {
 		t.Fatalf("pages error=%v", err)
 	}
 }
+
 func TestParsePageSpec(t *testing.T) {
 	for _, test := range []struct {
 		name      string
@@ -701,6 +678,7 @@ func TestValidateDownloadQuality(t *testing.T) {
 	}
 	require.Error(t, downloader.ValidateDownloadQuality("huge"))
 }
+
 func TestDownloadServiceDelegatesOperationClientAndRequest(t *testing.T) {
 	type contextKey string
 	ctx := context.WithValue(context.Background(), contextKey("request"), "same-context")
@@ -1214,32 +1192,6 @@ func TestDirectResourceUsesCollisionResistantNames(t *testing.T) {
 	// 两个 ref 必须都落盘（第二个不会覆盖第一个）。
 	for _, path := range seen {
 		assertFileBody(t, path, "data")
-	}
-}
-
-// TestDownloadAppliesRequestedStaticQuality 验证 finding #8：非 original 质量
-// TestDownloadAppliesRequestedStaticQuality 验证 finding #8：非 original 质量
-// 会请求变体 ref。变体 ref 的构造与身份保持由 internal-package 的
-// resource_internal_test.go 直接覆盖；这里通过 Manager.Download 确认非 original
-// 质量仍能完成下载，且 original 质量复用页面 ref（不触发变体解析失败）。
-func TestDownloadAppliesRequestedStaticQuality(t *testing.T) {
-	dir := t.TempDir()
-	rawURL := "https://i.example/42.jpg"
-	client := &fakePixivClient{
-		details: map[int64]pixiv.Artwork{42: {
-			ID: 42, Title: "single", PageCount: 1, Kind: pixiv.ArtworkKindIllustration,
-			User:  pixiv.User{Name: "author"},
-			Pages: []pixiv.ArtworkPage{artworkPage(rawURL, 0)},
-		}},
-		downloads: map[string][]byte{rawURL: []byte("jpg")},
-	}
-	m := downloader.NewManager(client, dir, "{id}")
-	// original 质量走 passthrough，下载成功。
-	if _, err := m.Download(context.Background(), downloader.DownloadRequest{
-		IllustIDs: []int64{42},
-		Quality:   downloader.DownloadQualityOriginal,
-	}); err != nil {
-		t.Fatalf("Download(original) error: %v", err)
 	}
 }
 

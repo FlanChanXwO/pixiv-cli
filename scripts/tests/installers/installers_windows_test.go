@@ -81,6 +81,12 @@ func TestInstallCmdVersionPreflightFailurePreservesExistingBinary(t *testing.T) 
 	}
 }
 
+// installCmdInvocation 保持 Windows smoke 测试对 cmd.exe 参数边界的覆盖；
+// 参数必须作为独立 argv 传入，不能预先拼接成带引号的命令行。
+func installCmdInvocation(script, installDir string) []string {
+	return []string{"/d", "/c", "call", script, "--install-dir", installDir, "--no-path"}
+}
+
 func runInstallCmd(t *testing.T, fakeBin, fixtureDir, installDir string) ([]byte, error) {
 	t.Helper()
 	script, err := filepath.Abs(filepath.Join("..", "..", "install.cmd"))
