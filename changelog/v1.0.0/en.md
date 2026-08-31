@@ -17,6 +17,7 @@
 
 - Restore release validation for the audited v0.10.0 recovery path so valid release preparation is not rejected. ([#49](https://github.com/FlanChanXwO/pixiv-cli/pull/49))
 - Handle pending ClawHub security scans without misreporting a received publication as a failed release. ([#50](https://github.com/FlanChanXwO/pixiv-cli/pull/50))
+- Fix Pixiv authentication service initialization errors, verified current-user and endpoint contracts, FANBOX proxy conflict validation, and forward-compatible local account migrations. ([#67](https://github.com/FlanChanXwO/pixiv-cli/pull/67))
 
 ## Documentation
 

@@ -17,6 +17,7 @@
 
 - 恢复经审计的 v0.10.0 recovery 路径发布校验，避免有效的发布准备被拒绝。 ([#49](https://github.com/FlanChanXwO/pixiv-cli/pull/49))
 - 处理 ClawHub pending security scan，避免已接收的发布被错误报告为失败。 ([#50](https://github.com/FlanChanXwO/pixiv-cli/pull/50))
+- 修复 Pixiv 认证服务初始化错误、已验证的当前用户与端点契约、FANBOX 代理冲突校验，以及本地账号数据库的向前兼容迁移。 ([#67](https://github.com/FlanChanXwO/pixiv-cli/pull/67))
 
 ## 文档
 
