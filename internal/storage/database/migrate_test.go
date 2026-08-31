@@ -1,4 +1,4 @@
-package database_test
+package database
 
 import (
 	"context"
@@ -9,14 +9,13 @@ import (
 	"testing"
 
 	accountpixiv "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/account"
-	database "github.com/FlanChanXwO/pixiv-cli/internal/storage/database"
 )
 
 func TestOpenAppliesMigrationsAndApplicationID(t *testing.T) {
-	if database.CurrentVersion() != 3 {
-		t.Fatalf("CurrentVersion() = %d, want 3", database.CurrentVersion())
+	if CurrentVersion() != 3 {
+		t.Fatalf("CurrentVersion() = %d, want 3", CurrentVersion())
 	}
-	db, err := database.Open(t.TempDir())
+	db, err := Open(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -25,14 +24,14 @@ func TestOpenAppliesMigrationsAndApplicationID(t *testing.T) {
 	if err := db.DB().QueryRow(`PRAGMA user_version`).Scan(&userVersion); err != nil {
 		t.Fatal(err)
 	}
-	if userVersion != database.CurrentVersion() {
-		t.Fatalf("user_version = %d, want %d", userVersion, database.CurrentVersion())
+	if userVersion != CurrentVersion() {
+		t.Fatalf("user_version = %d, want %d", userVersion, CurrentVersion())
 	}
 	if err := db.DB().QueryRow(`PRAGMA application_id`).Scan(&applicationID); err != nil {
 		t.Fatal(err)
 	}
-	if applicationID != database.ApplicationID {
-		t.Fatalf("application_id = 0x%X, want 0x%X", applicationID, database.ApplicationID)
+	if applicationID != ApplicationID {
+		t.Fatalf("application_id = 0x%X, want 0x%X", applicationID, ApplicationID)
 	}
 	if err := db.DB().QueryRow(`SELECT count(*) FROM schema_migration`).Scan(&migrationCount); err != nil {
 		t.Fatal(err)
@@ -44,7 +43,7 @@ func TestOpenAppliesMigrationsAndApplicationID(t *testing.T) {
 
 func TestOpenAcceptsLegacyInitialMigrationChecksum(t *testing.T) {
 	dir := t.TempDir()
-	db, err := database.Open(dir)
+	db, err := Open(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -58,7 +57,7 @@ func TestOpenAcceptsLegacyInitialMigrationChecksum(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	legacyDB, err := database.Open(dir)
+	legacyDB, err := Open(dir)
 	if err != nil {
 		t.Fatalf("legacy initial migration checksum was rejected: %v", err)
 	}
@@ -67,7 +66,7 @@ func TestOpenAcceptsLegacyInitialMigrationChecksum(t *testing.T) {
 
 func TestOpenIsIdempotentAndRejectsApplicationOrVersionDrift(t *testing.T) {
 	dir := t.TempDir()
-	db, err := database.Open(dir)
+	db, err := Open(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -75,20 +74,20 @@ func TestOpenIsIdempotentAndRejectsApplicationOrVersionDrift(t *testing.T) {
 		t.Fatal(err)
 	}
 	db.Close()
-	if _, err := database.Open(dir); err == nil || !strings.Contains(err.Error(), "another application") {
+	if _, err := Open(dir); err == nil || !strings.Contains(err.Error(), "another application") {
 		t.Fatalf("wrong application_id error = %v", err)
 	}
-	_ = os.Remove(database.DatabasePath(dir))
+	_ = os.Remove(DatabasePath(dir))
 
-	db, err = database.Open(dir)
+	db, err = Open(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.DB().Exec(fmt.Sprintf(`PRAGMA user_version = %d`, database.CurrentVersion()+1)); err != nil {
+	if _, err := db.DB().Exec(fmt.Sprintf(`PRAGMA user_version = %d`, CurrentVersion()+1)); err != nil {
 		t.Fatal(err)
 	}
 	db.Close()
-	if _, err := database.Open(dir); err == nil || !strings.Contains(err.Error(), "downgrade") {
+	if _, err := Open(dir); err == nil || !strings.Contains(err.Error(), "downgrade") {
 		t.Fatalf("downgrade error = %v", err)
 	}
 }
@@ -104,7 +103,7 @@ func TestMigrationLedgerRejectsChecksumAndNameDrift(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			dir := t.TempDir()
-			db, err := database.Open(dir)
+			db, err := Open(dir)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -112,7 +111,7 @@ func TestMigrationLedgerRejectsChecksumAndNameDrift(t *testing.T) {
 				t.Fatal(err)
 			}
 			db.Close()
-			if _, err := database.Open(dir); err == nil || !strings.Contains(err.Error(), test.want) {
+			if _, err := Open(dir); err == nil || !strings.Contains(err.Error(), test.want) {
 				t.Fatalf("migration drift error = %v", err)
 			}
 		})
@@ -121,7 +120,7 @@ func TestMigrationLedgerRejectsChecksumAndNameDrift(t *testing.T) {
 
 func TestDatabasePermissionsAndSpecialPath(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "space unicode 名称 ? # %", `windows-like C:\pixiv\state`)
-	db, err := database.Open(dir)
+	db, err := Open(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -173,12 +172,36 @@ func TestPixivSchedulableCheckRejectsInvalidValue(t *testing.T) {
 	}
 }
 
-func openTestDatabase(t *testing.T) *database.DB {
+func openTestDatabase(t *testing.T) *DB {
 	t.Helper()
-	db, err := database.Open(t.TempDir())
+	db, err := Open(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = db.Close() })
 	return db
+}
+
+func TestTableInfoQueryUsesFixedIdentifiers(t *testing.T) {
+	for _, test := range []struct {
+		table string
+		want  string
+	}{
+		{table: "fanbox_account", want: `PRAGMA table_info(fanbox_account)`},
+		{table: "pixiv_account", want: `PRAGMA table_info(pixiv_account)`},
+	} {
+		t.Run(test.table, func(t *testing.T) {
+			query, err := tableInfoQuery(test.table)
+			if err != nil {
+				t.Fatalf("tableInfoQuery(%q): %v", test.table, err)
+			}
+			if query != test.want {
+				t.Fatalf("tableInfoQuery(%q) = %q, want %q", test.table, query, test.want)
+			}
+		})
+	}
+
+	if _, err := tableInfoQuery("pixiv_account); DROP TABLE schema_migration;--"); err == nil {
+		t.Fatal("tableInfoQuery accepted an unsupported identifier")
+	}
 }

@@ -255,11 +255,23 @@ func tableColumnNotNull(db *sql.DB, table, column string) (bool, error) {
 	return present && notNull, err
 }
 
-func tableColumn(db *sql.DB, table, column string) (present, notNull bool, returnErr error) {
-	if table != "fanbox_account" && table != "pixiv_account" {
-		return false, false, fmt.Errorf("unsupported table %q", table)
+func tableInfoQuery(table string) (string, error) {
+	switch table {
+	case "fanbox_account":
+		return `PRAGMA table_info(fanbox_account)`, nil
+	case "pixiv_account":
+		return `PRAGMA table_info(pixiv_account)`, nil
+	default:
+		return "", fmt.Errorf("unsupported table %q", table)
 	}
-	rows, err := db.Query("PRAGMA table_info(" + table + ")")
+}
+
+func tableColumn(db *sql.DB, table, column string) (present, notNull bool, returnErr error) {
+	query, err := tableInfoQuery(table)
+	if err != nil {
+		return false, false, err
+	}
+	rows, err := db.Query(query)
 	if err != nil {
 		return false, false, err
 	}
