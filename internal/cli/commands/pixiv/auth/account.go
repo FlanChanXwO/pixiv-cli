@@ -158,7 +158,11 @@ func (a controller) newAccountExportCommand() *cobra.Command {
 				}
 				userID = parsed
 			}
-			result, err := a.services().Account.Export(accountExportRequest{UserID: userID, All: opts.all})
+			services := a.services()
+			if err := services.require(); err != nil {
+				return err
+			}
+			result, err := services.Account.Export(accountExportRequest{UserID: userID, All: opts.all})
 			if err != nil {
 				return err
 			}
@@ -237,7 +241,11 @@ func (a controller) newAccountImportCommand() *cobra.Command {
 
 func (a controller) accountImport(cmd *cobra.Command, args []string, opts accountImportOptions) error {
 	if input, ok := authImportInputFrom(cmd); ok && len(input.bundle) > 0 {
-		result, err := a.services().Account.ImportBundle(input.bundle)
+		services := a.services()
+		if err := services.require(); err != nil {
+			return err
+		}
+		result, err := services.Account.ImportBundle(input.bundle)
 		if err != nil {
 			return err
 		}
@@ -259,6 +267,9 @@ func (a controller) accountImport(cmd *cobra.Command, args []string, opts accoun
 		return err
 	}
 	services := a.services()
+	if err := services.require(); err != nil {
+		return err
+	}
 	result, err := services.Account.Import(cmd.Context(), accountImportRequest{
 		TokenInput:         tokenInput,
 		HTTPSProxyOverride: proxyOverride,
@@ -358,6 +369,9 @@ func (a controller) newAccountListCommand() *cobra.Command {
 
 func (a controller) accountList(jsonOut bool) error {
 	services := a.services()
+	if err := services.require(); err != nil {
+		return err
+	}
 	result, err := services.Account.List()
 	if err != nil {
 		return err
@@ -420,7 +434,11 @@ func (a controller) newAccountPoolStatusCommand() *cobra.Command {
 		Short: "Show account pool scheduling status",
 		Args:  a.requireExactArgs(0, "pixiv auth pool status [--json]"),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			result, err := a.services().Account.PoolStatus(cmd.Context())
+			services := a.services()
+			if err := services.require(); err != nil {
+				return err
+			}
+			result, err := services.Account.PoolStatus(cmd.Context())
 			if err != nil {
 				return err
 			}
@@ -463,6 +481,10 @@ func (a controller) newAccountPoolChangeCommand(name string, schedulable bool) *
 			return nil
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
+			services := a.services()
+			if err := services.require(); err != nil {
+				return err
+			}
 			userIDs := make([]int64, 0, len(args))
 			for _, raw := range args {
 				userID, err := parseAuthUID(raw)
@@ -471,7 +493,7 @@ func (a controller) newAccountPoolChangeCommand(name string, schedulable bool) *
 				}
 				userIDs = append(userIDs, userID)
 			}
-			if err := a.services().Account.SetPool(cmd.Context(), userIDs, schedulable, opts.all); err != nil {
+			if err := services.Account.SetPool(cmd.Context(), userIDs, schedulable, opts.all); err != nil {
 				return err
 			}
 			if opts.jsonOut {
@@ -528,6 +550,9 @@ func (a controller) newAccountRemoveCommand() *cobra.Command {
 
 func (a controller) accountRemove(args []string, opts accountRemoveOptions) error {
 	services := a.services()
+	if err := services.require(); err != nil {
+		return err
+	}
 	list, err := services.Account.List()
 	if err != nil {
 		return err
@@ -577,6 +602,9 @@ func (a controller) newAccountUseCommand() *cobra.Command {
 
 func (a controller) accountUse(args []string, jsonOut bool) error {
 	services := a.services()
+	if err := services.require(); err != nil {
+		return err
+	}
 	list, err := services.Account.List()
 	if err != nil {
 		return err
@@ -627,6 +655,9 @@ func (a controller) accountCheck(cmd *cobra.Command, userID int64, opts accountC
 		return err
 	}
 	services := a.services()
+	if err := services.require(); err != nil {
+		return err
+	}
 	result, err := services.Account.CheckWithRequest(cmd.Context(), accountCheckRequest{
 		UserID:             userID,
 		HTTPSProxyOverride: proxyOverride,
@@ -688,6 +719,9 @@ func (a controller) accountRefresh(cmd *cobra.Command, userID int64, opts accoun
 		return err
 	}
 	services := a.services()
+	if err := services.require(); err != nil {
+		return err
+	}
 	userIDs := []int64{userID}
 	if opts.all {
 		list, err := services.Account.List()

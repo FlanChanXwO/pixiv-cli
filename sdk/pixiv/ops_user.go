@@ -160,7 +160,7 @@ func (c *Client) CurrentUser(ctx context.Context, request CurrentUserRequest) (U
 	if c.userID <= 0 {
 		return UserDetail{}, newError("CurrentUser", sdk.Unauthorized, "current user identity is unknown")
 	}
-	detail, err := c.userDetail.Current(ctx)
+	detail, err := c.userDetail.Current(ctx, c.userID)
 	if err != nil {
 		return UserDetail{}, classifyAppError(err, "CurrentUser")
 	}

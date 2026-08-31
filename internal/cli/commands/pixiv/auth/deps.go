@@ -15,8 +15,8 @@ type Deps struct {
 	Output      io.Writer
 	ErrorOutput io.Writer
 	UsageError  func(error) error
-	Account     func() AccountService
-	Login       func() pixivaccount.LoginService
+	Account     func() (AccountService, error)
+	Login       func() (pixivaccount.LoginService, error)
 	LoadRuntime func() (config.RuntimeConfig, error)
 	WriteBundle func(string, []byte, bool) error
 
@@ -43,4 +43,5 @@ type runtimeServices struct {
 	Account     AccountService
 	Login       pixivaccount.LoginService
 	LoadRuntime func() (config.RuntimeConfig, error)
+	err         error
 }

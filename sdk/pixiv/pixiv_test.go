@@ -78,6 +78,35 @@ func TestOpenRotatesCredentials(t *testing.T) {
 	}
 }
 
+func TestCurrentUserUsesVerifiedOAuthIdentity(t *testing.T) {
+	rt := roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		if req.URL.Host == "oauth.secure.pixiv.net" {
+			return oauthResponse(), nil
+		}
+		if req.URL.Host != "app-api.pixiv.net" || req.URL.Path != "/v1/user/detail" {
+			return nil, errors.New("unexpected request " + req.URL.String())
+		}
+		if req.URL.Query().Get("user_id") != "42" || req.URL.Query().Get("filter") != "for_android" {
+			return nil, errors.New("current user query does not use verified identity")
+		}
+		if req.Header.Get("X-User-Id") != "42" {
+			return nil, errors.New("current user header does not use verified identity")
+		}
+		return jsonResponse(`{"user":{"id":42,"name":"tester"},"profile":{},"profile_publicity":{"gender":false,"region":false,"birth_day":false,"birth_year":false,"job":false,"pawoo":false},"workspace":{}}`), nil
+	})
+	client, _, err := OpenWith(context.Background(), "old-refresh-token", Options{HTTPClient: &http.Client{Transport: rt}})
+	if err != nil {
+		t.Fatalf("OpenWith: %v", err)
+	}
+	result, err := client.CurrentUser(context.Background(), CurrentUserRequest{})
+	if err != nil {
+		t.Fatalf("CurrentUser: %v", err)
+	}
+	if result.User.ID != 42 || result.User.Name != "tester" {
+		t.Fatalf("current user = %#v", result)
+	}
+}
+
 func TestOpenRejectsMissingAccountIdentity(t *testing.T) {
 	rt := roundTripFunc(func(req *http.Request) (*http.Response, error) {
 		if req.URL.Host == "oauth.secure.pixiv.net" {
@@ -341,7 +370,7 @@ func TestArtworkCommentsPreserveMetadataAndCursor(t *testing.T) {
 	calls := 0
 	rt := roundTripFunc(func(req *http.Request) (*http.Response, error) {
 		calls++
-		if req.URL.Path != "/v2/illust/comments" {
+		if req.URL.Path != "/v3/illust/comments" {
 			t.Errorf("path = %q", req.URL.Path)
 		}
 		query := req.URL.Query()
@@ -355,7 +384,7 @@ func TestArtworkCommentsPreserveMetadataAndCursor(t *testing.T) {
 		if query.Get("offset") != wantOffset {
 			t.Errorf("offset = %q, want %q", query.Get("offset"), wantOffset)
 		}
-		body := `{"comments":[{"id":7002,"comment":"hello","created_at":"2026-01-01T00:00:00Z","user":{"id":7,"name":"commenter"}}],"total_comments":3,"access_control":{"can_comment":true,"is_locked":false},"next_url":"https://app-api.pixiv.net/v2/illust/comments?illust_id=7001&offset=4"}`
+		body := `{"comments":[{"id":7002,"comment":"hello","created_at":"2026-01-01T00:00:00Z","user":{"id":7,"name":"commenter"}}],"total_comments":3,"access_control":{"can_comment":true,"is_locked":false},"next_url":"https://app-api.pixiv.net/v3/illust/comments?illust_id=7001&offset=4"}`
 		if calls == 2 {
 			body = `{"comments":[],"next_url":null}`
 		}
@@ -1107,12 +1136,12 @@ func TestArtworkBookmarkPreservesBookmarkedAndAbsentStates(t *testing.T) {
 	calls := 0
 	rt := roundTripFunc(func(req *http.Request) (*http.Response, error) {
 		calls++
-		if req.URL.Path != "/v1/illust/bookmark/detail" || req.URL.Query().Get("illust_id") != "77" {
+		if req.URL.Path != "/v2/illust/bookmark/detail" || req.URL.Query().Get("illust_id") != "77" {
 			t.Errorf("request = %s?%s", req.URL.Path, req.URL.RawQuery)
 		}
-		body := `{"bookmark_detail":{"restrict":"private","tags":["cat","fav"]}}`
+		body := `{"bookmark_detail":{"is_bookmarked":true,"restrict":"private","tags":[{"name":"cat","is_registered":true},{"name":"fav","is_registered":false}]}}`
 		if calls == 2 {
-			body = `{"bookmark_detail":null}`
+			body = `{"bookmark_detail":{"is_bookmarked":false,"restrict":"public","tags":[{"name":"cat","is_registered":false}]}}`
 		}
 		return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": {"application/json"}}, Body: io.NopCloser(strings.NewReader(body))}, nil
 	})

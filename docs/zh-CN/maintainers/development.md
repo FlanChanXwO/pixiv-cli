@@ -222,6 +222,7 @@ CLI 的认证、配置、回调桥接、Release 检查缓存与 callback helper 
 
 - macOS/Linux：`~/.pixiv-cli`；Windows：`%USERPROFILE%\.pixiv-cli`。
 - 账号凭据保存在 `pixiv-cli.db`（SQLite，账号 key 是 Pixiv UID / FANBOX UID）。
+- 内置 migration 将数据库推进到 schema v3。旧 v1 数据库会原地升级；若初始 schema 已包含后续字段，则只记录对应迁移而不重复执行冲突 DDL；未知的更新 schema 仍会 fail closed。
 - 全局配置保存在 `config.toml`。
 - Unix-like 主动使用 `0700` 父目录与 `0600` 文件；Windows 首次创建继承父目录 ACL，替换既有目标保留其 ACL，不主动收紧或放宽 DACL。
 

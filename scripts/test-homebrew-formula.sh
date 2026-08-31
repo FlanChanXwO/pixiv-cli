@@ -46,7 +46,7 @@ if grep -F 'post_install do' "$formula" >/dev/null; then
 	printf '%s\n' 'stable formula uses the unsupported post_install block DSL' >&2
 	exit 1
 fi
-grep -F 'assert_equal "v#{version}", version_info["version"]' "$formula" >/dev/null
+grep -F 'assert_equal "pixiv v#{version}\n", shell_output("#{bin}/pixiv --version")' "$formula" >/dev/null
 if rg -i 'windows|ffmpeg|depends_on' "$formula" >/dev/null; then
 	printf '%s\n' 'stable formula unexpectedly selects Windows or has a build/ffmpeg dependency' >&2
 	exit 1
@@ -63,7 +63,7 @@ grep -F 'class PixivCliBeta < Formula' "$beta_formula" >/dev/null
 grep -F 'version "0.2.0-beta.1"' "$beta_formula" >/dev/null
 grep -F 'conflicts_with "pixiv-cli", because: "both install the pixiv command"' "$beta_formula" >/dev/null
 grep -F 'bin.install "pixiv"' "$beta_formula" >/dev/null
-grep -F 'assert_equal "v#{version}", version_info["version"]' "$beta_formula" >/dev/null
+grep -F 'assert_equal "pixiv v#{version}\n", shell_output("#{bin}/pixiv --version")' "$beta_formula" >/dev/null
 if rg -i 'windows|ffmpeg|depends_on' "$beta_formula" >/dev/null; then
 	printf '%s\n' 'beta formula unexpectedly selects Windows or has a build/ffmpeg dependency' >&2
 	exit 1

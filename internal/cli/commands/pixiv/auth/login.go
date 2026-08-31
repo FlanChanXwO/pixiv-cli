@@ -98,6 +98,9 @@ func (a controller) accountLogin(cmd *cobra.Command, opts AccountLoginOptions) e
 		return err
 	}
 	services := a.services()
+	if err := services.require(); err != nil {
+		return err
+	}
 	if services.LoadRuntime == nil {
 		return errors.New("pixiv auth runtime loader is not configured")
 	}

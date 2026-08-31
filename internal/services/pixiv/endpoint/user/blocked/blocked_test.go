@@ -20,9 +20,17 @@ func (f *fakeTransport) GetJSON(_ context.Context, path string, query url.Values
 	return json.Unmarshal([]byte(f.body), out)
 }
 func TestBlockedMapsUserAndOffset(t *testing.T) {
-	f := &fakeTransport{body: `{"user_previews":[{"user":{"id":91}}]}`}
+	f := &fakeTransport{body: `{"users":[{"id":91}]}`}
 	result, err := blocked.New(f).List(context.Background(), blocked.Request{UserID: 9, Offset: 4})
-	if err != nil || f.path != "/v1/user/list" || f.query.Get("user_id") != "9" || f.query.Get("offset") != "4" || len(result.Items) != 1 || result.Items[0].User.ID != 91 {
+	if err != nil || f.path != "/v2/user/list" || f.query.Get("user_id") != "9" || f.query.Get("filter") != "for_android" || f.query.Get("offset") != "4" || len(result.Items) != 1 || result.Items[0].User.ID != 91 {
 		t.Fatalf("result=%#v request=%q %v err=%v", result, f.path, f.query, err)
+	}
+}
+
+func TestBlockedAcceptsLegacyPreviewEnvelope(t *testing.T) {
+	f := &fakeTransport{body: `{"user_previews":[{"user":{"id":92}}]}`}
+	result, err := blocked.New(f).List(context.Background(), blocked.Request{UserID: 9})
+	if err != nil || len(result.Items) != 1 || result.Items[0].User.ID != 92 {
+		t.Fatalf("result=%#v err=%v", result, err)
 	}
 }

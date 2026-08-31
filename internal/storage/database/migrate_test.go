@@ -13,8 +13,8 @@ import (
 )
 
 func TestOpenAppliesMigrationsAndApplicationID(t *testing.T) {
-	if database.CurrentVersion() != 1 {
-		t.Fatalf("CurrentVersion() = %d, want 1", database.CurrentVersion())
+	if database.CurrentVersion() != 3 {
+		t.Fatalf("CurrentVersion() = %d, want 3", database.CurrentVersion())
 	}
 	db, err := database.Open(t.TempDir())
 	if err != nil {
@@ -37,9 +37,32 @@ func TestOpenAppliesMigrationsAndApplicationID(t *testing.T) {
 	if err := db.DB().QueryRow(`SELECT count(*) FROM schema_migration`).Scan(&migrationCount); err != nil {
 		t.Fatal(err)
 	}
-	if migrationCount != 1 {
-		t.Fatalf("schema_migration count = %d, want 1", migrationCount)
+	if migrationCount != 3 {
+		t.Fatalf("schema_migration count = %d, want 3", migrationCount)
 	}
+}
+
+func TestOpenAcceptsLegacyInitialMigrationChecksum(t *testing.T) {
+	dir := t.TempDir()
+	db, err := database.Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.DB().Exec(`UPDATE schema_migration SET checksum=? WHERE version=1`, "0247f7ea8739433ce47074048a1c8707728e7f3d04cf47c3ff6f15282f8e641f"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.DB().Exec(`PRAGMA user_version = 1`); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	legacyDB, err := database.Open(dir)
+	if err != nil {
+		t.Fatalf("legacy initial migration checksum was rejected: %v", err)
+	}
+	defer legacyDB.Close()
 }
 
 func TestOpenIsIdempotentAndRejectsApplicationOrVersionDrift(t *testing.T) {

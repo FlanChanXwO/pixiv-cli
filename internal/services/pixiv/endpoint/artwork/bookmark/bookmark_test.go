@@ -3,22 +3,28 @@ package bookmark_test
 import (
 	"context"
 	"encoding/json"
+	"net/http"
 	"net/url"
 	"testing"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/artwork/bookmark"
+	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/protocol"
 )
 
 type fakeTransport struct {
-	path  string
-	query url.Values
-	form  url.Values
-	body  string
+	path   string
+	query  url.Values
+	form   url.Values
+	body   string
+	getErr error
 }
 
 func (f *fakeTransport) GetJSON(_ context.Context, path string, query url.Values, out any) error {
 	f.path = path
 	f.query = query
+	if f.getErr != nil {
+		return f.getErr
+	}
 	return json.Unmarshal([]byte(f.body), out)
 }
 
@@ -52,16 +58,27 @@ func TestBookmarkTagsDetailAndMutations(t *testing.T) {
 		t.Fatalf("tags = %#v request=%q %v", tags, transport.path, transport.query)
 	}
 
-	transport.body = `{"bookmark_detail":{"restrict":"private","tags":["cat"]}}`
+	transport.body = `{"bookmark_detail":{"is_bookmarked":true,"restrict":"private","tags":[{"name":"cat","is_registered":true}]}}`
 	detail, err := bookmark.New(transport).Detail(context.Background(), 9)
-	if err != nil || detail.Restrict != "private" || len(detail.Tags) != 1 {
+	if err != nil || transport.path != "/v2/illust/bookmark/detail" || detail.Restrict != "private" || len(detail.Tags) != 1 || detail.Tags[0] != "cat" {
 		t.Fatalf("detail = %#v err=%v", detail, err)
 	}
-	transport.body = `{"bookmark_detail":null}`
+	transport.body = `{"bookmark_detail":{"is_bookmarked":false,"restrict":"public","tags":[{"name":"cat","is_registered":false}]}}`
 	detail, err = bookmark.New(transport).Detail(context.Background(), 9)
 	if err != nil || detail.Restrict != "" || detail.Tags == nil || len(detail.Tags) != 0 {
 		t.Fatalf("not bookmarked detail = %#v err=%v", detail, err)
 	}
+	transport.body = `{"bookmark_detail":null}`
+	detail, err = bookmark.New(transport).Detail(context.Background(), 9)
+	if err != nil || detail.Restrict != "" || detail.Tags == nil || len(detail.Tags) != 0 {
+		t.Fatalf("null bookmark detail = %#v err=%v", detail, err)
+	}
+	transport.getErr = protocol.HTTPStatus(http.StatusNotFound)
+	detail, err = bookmark.New(transport).Detail(context.Background(), 9)
+	if err != nil || detail.Restrict != "" || detail.Tags == nil || len(detail.Tags) != 0 {
+		t.Fatalf("404 bookmark detail = %#v err=%v", detail, err)
+	}
+	transport.getErr = nil
 
 	if err := bookmark.New(transport).Add(context.Background(), bookmark.AddRequest{ArtworkID: 9, Restrict: "public", Tags: []string{"cat", "favorite"}}); err != nil {
 		t.Fatalf("Add: %v", err)

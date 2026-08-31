@@ -154,6 +154,7 @@ The CLI's credentials, configuration, callback bridge, release check cache and c
 
 - macOS/Linux: `~/.pixiv-cli`; Windows: `%USERPROFILE%\.pixiv-cli`.
 - Account credentials are stored in `pixiv-cli.db` (SQLite; the account key is the Pixiv UID / FANBOX UID).
+- Embedded migrations advance the database through schema v3. Legacy v1 databases are upgraded in place; when the initial schema already contains a later column, the corresponding migration is recorded without replaying duplicate DDL. Unknown newer schemas remain fail-closed.
 - Global configuration is stored in `config.toml`.
 - Unix-like systems actively use `0700` parent directories and `0600` files; Windows inherits the parent-directory ACL on first creation, preserves the existing ACL when replacing an existing target, and does not actively tighten or relax the DACL.
 

@@ -18,6 +18,7 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/pipeline"
 	"github.com/FlanChanXwO/pixiv-cli/internal/config/paths"
 	configapp "github.com/FlanChanXwO/pixiv-cli/internal/config/settings"
+	pixivaccount "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/account"
 	"github.com/FlanChanXwO/pixiv-cli/internal/services/reversesearch"
 	reverseassembly "github.com/FlanChanXwO/pixiv-cli/internal/services/reversesearch/assembly"
 	"github.com/FlanChanXwO/pixiv-cli/internal/storage/database"
@@ -215,6 +216,23 @@ func TestRunNoArgsPrintsCoreHelpOnly(t *testing.T) {
 	assert.NotContains(t, stdout.String(), "completion")
 	_, err := os.Stat(configPath)
 	assert.ErrorIs(t, err, os.ErrNotExist)
+}
+
+func TestAuthServiceLoadErrorIsReturned(t *testing.T) {
+	useTempPaths(t)
+	old := newCLIAccountServices
+	loadErr := errors.New("database schema version 3 is newer than binary schema version 1")
+	newCLIAccountServices = func(app) (authcommands.AccountService, pixivaccount.LoginService, error) {
+		return authcommands.AccountService{}, pixivaccount.LoginService{}, loadErr
+	}
+	t.Cleanup(func() { newCLIAccountServices = old })
+
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"pixiv", "auth", "list"}, strings.NewReader(""), &stdout, &stderr)
+
+	assert.Equal(t, 1, code)
+	assert.Contains(t, stderr.String(), loadErr.Error())
+	assert.NotContains(t, stderr.String(), "pixiv account service is not configured")
 }
 
 func TestRunMCPDispatchesCoreTransportOptions(t *testing.T) {

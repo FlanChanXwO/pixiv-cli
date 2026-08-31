@@ -240,7 +240,7 @@ func (tr *testSDKTransport) RoundTrip(request *http.Request) (*http.Response, er
 		req := pixivsdk.UserArtworkBookmarkTagsRequest{UserID: queryInt64(request.URL.Query(), "user_id"), Restrict: pixivsdk.Restrict(request.URL.Query().Get("restrict")), Cursor: cursorFromOffset(queryInt(request.URL.Query(), "offset"))}
 		tr.fake.bookmarkTagsRequest = req
 		status, body, err = wireBookmarkTags(tr.fake.bookmarkTagsPage.Items)
-	case "/v1/illust/bookmark/detail":
+	case "/v2/illust/bookmark/detail":
 		req := pixivsdk.ArtworkBookmarkRequest{ArtworkID: queryInt64(request.URL.Query(), "illust_id")}
 		tr.fake.artworkBookmarkRequest = req
 		tr.fake.bookmarkDetailRequest = req
@@ -261,7 +261,7 @@ func (tr *testSDKTransport) RoundTrip(request *http.Request) (*http.Response, er
 		id := queryInt64(request.URL.Query(), "novel_id")
 		tr.fake.novelContentRequest = pixivsdk.NovelContentRequest{NovelID: id}
 		return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": {"text/html"}}, Body: io.NopCloser(strings.NewReader(tr.fake.novelContentHTML))}, nil
-	case "/v2/illust/comments":
+	case "/v3/illust/comments":
 		req := pixivsdk.ArtworkCommentsRequest{ArtworkID: queryInt64(request.URL.Query(), "illust_id")}
 		tr.fake.illustCommentsRequest = req
 		tr.fake.artworkCommentsRequest = req
@@ -828,9 +828,13 @@ func wireBookmarkDetail(detail pixivsdk.ArtworkBookmarkDetail) (int, []byte, err
 	case pixivsdk.RestrictPrivate:
 		restrict = "private"
 	}
+	tags := make([]map[string]any, 0, len(detail.Tags))
+	for _, tag := range detail.Tags {
+		tags = append(tags, map[string]any{"name": tag, "is_registered": true})
+	}
 	body, err := json.Marshal(struct {
 		BookmarkDetail map[string]any `json:"bookmark_detail"`
-	}{map[string]any{"is_bookmarked": true, "restrict": restrict, "tags": detail.Tags}})
+	}{map[string]any{"is_bookmarked": restrict != "", "restrict": restrict, "tags": tags}})
 	return http.StatusOK, body, err
 }
 

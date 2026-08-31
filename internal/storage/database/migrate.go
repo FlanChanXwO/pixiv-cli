@@ -93,6 +93,11 @@ type appliedMigration struct {
 	Checksum string
 }
 
+// Released pre-v1 binaries recorded this initial-schema checksum before the
+// current tree consolidated the later columns into 0001; keep that known
+// ledger value valid so existing local databases can advance to v3.
+const legacyInitialMigrationChecksum = "0247f7ea8739433ce47074048a1c8707728e7f3d04cf47c3ff6f15282f8e641f"
+
 // migrate 将数据库 schema 推进到 binary 的当前版本。它只向前执行：checksum
 // 漂移、版本缺口、重复版本、未知更新 schema 和 downgrade 一律 fail closed。
 func migrate(db *sql.DB) error {
@@ -127,8 +132,20 @@ func migrate(db *sql.DB) error {
 			if existing.Name != m.Name {
 				return fmt.Errorf("migration %d name drifted: %q != %q", m.Version, existing.Name, m.Name)
 			}
-			if existing.Checksum != m.Checksum {
+			if existing.Checksum != m.Checksum && !(m.Version == 1 && existing.Checksum == legacyInitialMigrationChecksum) {
 				return fmt.Errorf("migration %d checksum drifted", m.Version)
+			}
+			continue
+		}
+		alreadySatisfied, err := migrationAlreadySatisfied(db, m)
+		if err != nil {
+			return fmt.Errorf("inspect migration %d (%s): %w", m.Version, m.Name, err)
+		}
+		if alreadySatisfied {
+			// 0001 in this tree already contains the final v3 columns. Record the
+			// historical migrations without replaying duplicate ALTER TABLE SQL.
+			if err := recordOne(db, m); err != nil {
+				return fmt.Errorf("record migration %d (%s): %w", m.Version, m.Name, err)
 			}
 			continue
 		}
@@ -193,11 +210,79 @@ func applyOne(db *sql.DB, m migration) error {
 	if _, err := tx.Exec(m.SQL); err != nil {
 		return err
 	}
+	if err := recordOneTx(tx, m); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func recordOne(db *sql.DB, m migration) error {
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	if err := recordOneTx(tx, m); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func recordOneTx(tx *sql.Tx, m migration) error {
 	if _, err := tx.Exec(
 		`INSERT INTO schema_migration (version, name, checksum, applied_at) VALUES (?, ?, ?, ?)`,
 		m.Version, m.Name, m.Checksum, time.Now().UTC().Unix(),
 	); err != nil {
 		return err
 	}
-	return tx.Commit()
+	return nil
+}
+
+func migrationAlreadySatisfied(db *sql.DB, m migration) (bool, error) {
+	switch m.Version {
+	case 2:
+		return tableColumnNotNull(db, "fanbox_account", "creator_id")
+	case 3:
+		present, _, err := tableColumn(db, "pixiv_account", "schedulable")
+		return present, err
+	default:
+		return false, nil
+	}
+}
+
+func tableColumnNotNull(db *sql.DB, table, column string) (bool, error) {
+	present, notNull, err := tableColumn(db, table, column)
+	return present && notNull, err
+}
+
+func tableColumn(db *sql.DB, table, column string) (present, notNull bool, returnErr error) {
+	if table != "fanbox_account" && table != "pixiv_account" {
+		return false, false, fmt.Errorf("unsupported table %q", table)
+	}
+	rows, err := db.Query("PRAGMA table_info(" + table + ")")
+	if err != nil {
+		return false, false, err
+	}
+	defer func() {
+		if closeErr := rows.Close(); returnErr == nil && closeErr != nil {
+			returnErr = closeErr
+		}
+	}()
+	for rows.Next() {
+		var (
+			cid        int
+			name       string
+			columnType string
+			notNull    int
+			defaultV   sql.NullString
+			primary    int
+		)
+		if err := rows.Scan(&cid, &name, &columnType, &notNull, &defaultV, &primary); err != nil {
+			return false, false, err
+		}
+		if name == column {
+			return true, notNull != 0, rows.Err()
+		}
+	}
+	return false, false, rows.Err()
 }

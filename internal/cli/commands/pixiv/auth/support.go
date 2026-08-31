@@ -98,13 +98,17 @@ func (a controller) bindNoInput(cmd *cobra.Command) {
 func (a controller) services() runtimeServices {
 	services := runtimeServices{}
 	if a.deps.Account != nil {
-		services.Account = a.deps.Account()
+		services.Account, services.err = a.deps.Account()
 	}
-	if a.deps.Login != nil {
-		services.Login = a.deps.Login()
+	if services.err == nil && a.deps.Login != nil {
+		services.Login, services.err = a.deps.Login()
 	}
 	services.LoadRuntime = a.deps.LoadRuntime
 	return services
+}
+
+func (s runtimeServices) require() error {
+	return s.err
 }
 
 func (a controller) printJSON(value any) error {
