@@ -51,7 +51,14 @@ func dsnWithPragmas(path string) string {
 	query.Add("_pragma", "synchronous(FULL)")
 	query.Add("_pragma", "secure_delete(ON)")
 	query.Add("_pragma", "trusted_schema(off)")
-	return (&url.URL{Scheme: "file", Path: path, RawQuery: query.Encode()}).String()
+	// SQLite file URI 的 path 必须使用 slash；Windows 反斜杠会被 URI
+	// 解析为转义路径，导致 modernc.org/sqlite 打开数据库时报错误。
+	filePath := filepath.ToSlash(path)
+	if filepath.VolumeName(path) != "" && !strings.HasPrefix(filePath, "/") {
+		// URL 中的 Windows 盘符需要位于根路径下，才能得到 file:///C:/...。
+		filePath = "/" + filePath
+	}
+	return (&url.URL{Scheme: "file", Path: filePath, RawQuery: query.Encode()}).String()
 }
 
 type DB struct {

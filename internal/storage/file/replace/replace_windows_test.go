@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	replace "github.com/FlanChanXwO/pixiv-cli/internal/storage/file/replace"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
