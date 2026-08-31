@@ -140,11 +140,17 @@ func TestDatabasePermissionsAndSpecialPath(t *testing.T) {
 		t.Fatal(err)
 	}
 	info, err := os.Stat(db.Path())
-	if err != nil || info.Mode().Perm() != 0o600 {
+	if err != nil {
+		t.Fatal(err)
+	}
+	if runtime.GOOS != "windows" && info.Mode().Perm() != 0o600 {
 		t.Fatalf("database mode = %v, err=%v", info.Mode().Perm(), err)
 	}
 	dirInfo, err := os.Stat(filepath.Dir(db.Path()))
-	if err != nil || dirInfo.Mode().Perm() != 0o700 {
+	if err != nil {
+		t.Fatal(err)
+	}
+	if runtime.GOOS != "windows" && dirInfo.Mode().Perm() != 0o700 {
 		t.Fatalf("directory mode = %v, err=%v", dirInfo.Mode().Perm(), err)
 	}
 }

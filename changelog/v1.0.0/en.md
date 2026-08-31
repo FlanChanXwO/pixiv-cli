@@ -19,6 +19,7 @@
 - Handle pending ClawHub security scans without misreporting a received publication as a failed release. ([#50](https://github.com/FlanChanXwO/pixiv-cli/pull/50))
 - Fix Pixiv authentication service initialization errors, verified current-user and endpoint contracts, FANBOX proxy conflict validation, and forward-compatible local account migrations. ([#67](https://github.com/FlanChanXwO/pixiv-cli/pull/67))
 - Make Windows release gates portable across file URIs, ACL-backed permissions, platform paths, and executable naming. ([#68](https://github.com/FlanChanXwO/pixiv-cli/pull/68))
+- Make the database permission test distinguish Windows ACL semantics from POSIX mode bits. ([#71](https://github.com/FlanChanXwO/pixiv-cli/pull/71))
 
 ## Documentation
 
