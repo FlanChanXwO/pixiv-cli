@@ -23,6 +23,8 @@
 ## 文档
 
 - 简化 pull request template，使审查记录包含仓库流程要求的变更、验证和自查证据。 ([#61](https://github.com/FlanChanXwO/pixiv-cli/pull/61))
+- 在双语 v1.0.0 release notes 中记录经审计的 Windows 兼容性修复。 ([#69](https://github.com/FlanChanXwO/pixiv-cli/pull/69))
+- 完成 v1.0.0 release notes 的审计来源覆盖。 ([#70](https://github.com/FlanChanXwO/pixiv-cli/pull/70))
 
 ## 维护
 
