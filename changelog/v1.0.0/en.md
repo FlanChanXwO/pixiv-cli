@@ -23,6 +23,7 @@
 ## Documentation
 
 - Simplify the pull request template so review records contain the change, verification, and self-check evidence required by the repository workflow. ([#61](https://github.com/FlanChanXwO/pixiv-cli/pull/61))
+- Record the audited Windows portability fix in the bilingual v1.0.0 release notes. ([#69](https://github.com/FlanChanXwO/pixiv-cli/pull/69))
 
 ## Maintenance
 
