@@ -270,6 +270,24 @@ func TestReleaseWorkflowQuotesOCILabelKeys(t *testing.T) {
 	}
 }
 
+// TestReleaseWorkflowExpandsContainerVersionBuildArg 确保 Docker 收到实际的
+// release tag，而不是被 Shell 单引号保护后的字面量 `${RELEASE_TAG}`。
+func TestReleaseWorkflowExpandsContainerVersionBuildArg(t *testing.T) {
+	t.Parallel()
+	root := repositoryRoot(t)
+	body, err := os.ReadFile(filepath.Join(root, ".github/workflows/release.yml"))
+	if err != nil {
+		t.Fatalf("read release workflow: %v", err)
+	}
+	text := string(body)
+	if !strings.Contains(text, `--build-arg VERSION="${RELEASE_TAG}"`) {
+		t.Fatal("release workflow must expand RELEASE_TAG when passing the container VERSION build arg")
+	}
+	if strings.Contains(text, "--build-arg VERSION='${RELEASE_TAG}'") {
+		t.Fatal("release workflow must not pass the literal ${RELEASE_TAG} as the container VERSION build arg")
+	}
+}
+
 // TestDockerfileIncludesLicenseNotices 确保镜像携带项目许可证与完整第三方声明。
 func TestDockerfileIncludesLicenseNotices(t *testing.T) {
 	t.Parallel()

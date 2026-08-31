@@ -388,7 +388,7 @@ jobs:
         run: |
           docker build \
             --build-arg REVISION="$(git rev-parse "$RELEASE_TAG^{commit}")" \
-            --build-arg VERSION='${RELEASE_TAG}' \
+            --build-arg VERSION="${RELEASE_TAG}" \
             --platform 'linux/${{ matrix.goarch }}' \
             --tag "pixiv-cli:${RELEASE_TAG}-${{ matrix.artifact }}" .
       # Includes the embedded license-notices bundle in every architecture check.
