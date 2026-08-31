@@ -34,10 +34,10 @@ func TestDetailMapsProfileAndWireVisibility(t *testing.T) {
 	}
 }
 
-func TestCurrentUsesUserDetailRouteAndRejectsMissingEnvelope(t *testing.T) {
+func TestCurrentUsesVerifiedUserIDAndRejectsMissingEnvelope(t *testing.T) {
 	transport := &fakeTransport{body: detailBody}
-	result, err := detail.New(transport).Current(context.Background())
-	if err != nil || transport.path != "/v1/user/detail" || transport.query.Get("user_id") != "0" || transport.query.Get("filter") != "for_android" || result.User.ID != 51 {
+	result, err := detail.New(transport).Current(context.Background(), 51)
+	if err != nil || transport.path != "/v1/user/detail" || transport.query.Get("user_id") != "51" || transport.query.Get("filter") != "for_android" || result.User.ID != 51 {
 		t.Fatalf("result=%#v request=%q %v err=%v", result, transport.path, transport.query, err)
 	}
 	for _, body := range []string{`{}`, `{"user":null,"profile":{},"profile_publicity":{},"workspace":{}}`} {

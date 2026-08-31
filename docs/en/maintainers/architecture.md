@@ -139,7 +139,7 @@ Owns the SQLite authority for local account state:
 
 - Schema, migration ledger, and repository for `pixiv-cli.db`; account identity/credential is keyed by `user_id`,
   and Pixiv rotation and FANBOX session replacement use `credential_revision` compare-and-swap.
-- SQLite migration only maintains the current v1 initial schema; the legacy `auth.json` and the legacy `account_pool.accounts` are not part of the startup migration path.
+- SQLite uses forward-only migrations through schema v3. It upgrades legacy v1 databases with the v2/v3 changes and recognizes the final columns already present in this tree's initial schema without replaying duplicate DDL; the legacy `auth.json` and the legacy `account_pool.accounts` are not part of the startup migration path.
 - Platform-appropriate private DB/journal file permissions (Unix-like `0700`/`0600`).
 - auth export only reads the default, an exact UID, or all local accounts; it does not read environment tokens, refresh, go to the network, or mutate state.
 

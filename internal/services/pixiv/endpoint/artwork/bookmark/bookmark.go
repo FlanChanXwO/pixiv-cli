@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net/http"
 	"net/url"
 	"strconv"
 
@@ -112,14 +113,25 @@ func (c *Client) Detail(ctx context.Context, artworkID int64) (artwork.BookmarkD
 	if err := c.transport.GetJSON(ctx, protocol.AppIllustBookmarkDetail, url.Values{
 		"illust_id": {strconv.FormatInt(artworkID, 10)},
 	}, &raw); err != nil {
+		var failure protocol.Failure
+		// v2 对“未收藏”作品可能返回 404；SDK 的公开契约把它统一表示为
+		// 空状态，因此只在该端点上转换 404，其他错误仍原样暴露。
+		if errors.As(err, &failure) && failure.Kind == protocol.FailureHTTPStatus && failure.StatusCode == http.StatusNotFound {
+			return artwork.BookmarkDetail{Tags: []string{}}, nil
+		}
 		return artwork.BookmarkDetail{}, err
 	}
 	if raw.Detail == nil {
 		return artwork.BookmarkDetail{Tags: []string{}}, nil
 	}
+	if raw.Detail.IsBookmarked != nil && !*raw.Detail.IsBookmarked {
+		return artwork.BookmarkDetail{Tags: []string{}}, nil
+	}
 	tags := []string{}
 	if raw.Detail.Tags != nil {
-		tags = append(tags, raw.Detail.Tags...)
+		for _, tag := range raw.Detail.Tags {
+			tags = append(tags, tag.Name)
+		}
 	}
 	return artwork.BookmarkDetail{Restrict: raw.Detail.Restrict, Tags: tags}, nil
 }
@@ -170,8 +182,14 @@ type detailResponseDTO struct {
 }
 
 type bookmarkDetailDTO struct {
-	Restrict string   `json:"restrict"`
-	Tags     []string `json:"tags"`
+	IsBookmarked *bool                  `json:"is_bookmarked"`
+	Restrict     string                 `json:"restrict"`
+	Tags         []bookmarkDetailTagDTO `json:"tags"`
+}
+
+type bookmarkDetailTagDTO struct {
+	Name         string `json:"name"`
+	IsRegistered bool   `json:"is_registered"`
 }
 
 type illustDTO struct {

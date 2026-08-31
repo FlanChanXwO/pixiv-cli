@@ -125,8 +125,8 @@ func (a command) newListCommand() *cobra.Command {
 		Use:   "list",
 		Short: "List FANBOX accounts",
 		Args:  a.data.RequireExactArgs(0, "pixiv fanbox auth list [--json]"),
-		RunE: func(_ *cobra.Command, _ []string) error {
-			return a.runList(jsonOut)
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			return a.runList(cmd, jsonOut)
 		},
 	}
 	cmd.Flags().BoolVar(&jsonOut, "json", false, "print JSON")
@@ -134,7 +134,10 @@ func (a command) newListCommand() *cobra.Command {
 	return cmd
 }
 
-func (a command) runList(jsonOut bool) error {
+func (a command) runList(cmd *cobra.Command, jsonOut bool) error {
+	if _, err := deps.ProxyOverride(cmd); err != nil {
+		return err
+	}
 	service, err := a.data.AccountService()
 	if err != nil {
 		return err
@@ -275,8 +278,8 @@ func (a command) newStatusCommand() *cobra.Command {
 		Use:   "status [UID]",
 		Short: "Show the default FANBOX account",
 		Args:  a.data.RequireMaxArgs(1, "pixiv fanbox auth status [UID]"),
-		RunE: func(_ *cobra.Command, args []string) error {
-			return a.runStatus(args, jsonOut)
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return a.runStatus(cmd, args, jsonOut)
 		},
 	}
 	cmd.Flags().BoolVar(&jsonOut, "json", false, "print JSON")
@@ -284,7 +287,10 @@ func (a command) newStatusCommand() *cobra.Command {
 	return cmd
 }
 
-func (a command) runStatus(args []string, jsonOut bool) error {
+func (a command) runStatus(cmd *cobra.Command, args []string, jsonOut bool) error {
+	if _, err := deps.ProxyOverride(cmd); err != nil {
+		return err
+	}
 	service, err := a.data.AccountService()
 	if err != nil {
 		return err

@@ -156,11 +156,11 @@ func resolveKind(cmd *cobra.Command, args []string, opts *options, usage func(er
 	if kind == "" {
 		return "", errors.New("recommended requires KIND or --type")
 	}
-	if cmd.Flags().Changed("type") {
-		if kind != "artwork" && kind != "novel" && kind != "user" && kind != "all" {
-			return "", usage(errors.New("type must be one of artwork, novel, user, all"))
-		}
-		if kind != "artwork" && cmd.Flags().Changed("content-type") {
+	if cmd.Flags().Changed("type") && kind != "artwork" && kind != "novel" && kind != "user" && kind != "all" {
+		return "", usage(errors.New("type must be one of artwork, novel, user, all"))
+	}
+	if cmd.Flags().Changed("content-type") {
+		if kind != "artwork" {
 			return "", usage(errors.New("--content-type is only supported when --type artwork"))
 		}
 		if opts.contentType != "all" && opts.contentType != "illust" && opts.contentType != "manga" {

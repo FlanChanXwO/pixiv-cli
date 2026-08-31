@@ -139,7 +139,7 @@ key ID 与 public key 常量位于 `internal/update/installer/release_installer.
 
 - `pixiv-cli.db` 的 schema、migration ledger 与 repository；账号 identity/credential 以 `user_id`
   为 key，Pixiv rotation 与 FANBOX session replacement 使用 `credential_revision` compare-and-swap。
-- SQLite migration 只维护当前 v1 初始 schema；旧 `auth.json` 与旧 `account_pool.accounts` 都不属于启动迁移路径。
+- SQLite 使用截至 schema v3 的向前迁移：会把旧 v1 数据库推进到 v2/v3；对于本树初始 schema 已经包含的最终字段，会记录兼容迁移而不重复执行冲突 DDL。旧 `auth.json` 与旧 `account_pool.accounts` 都不属于启动迁移路径。
 - 平台对应的私有 DB/journal 文件权限（Unix-like `0700`/`0600`）。
 - auth export 只读取默认、精确 UID 或全部本地账号；不读取环境 token、不刷新、不联网、不修改状态。
 

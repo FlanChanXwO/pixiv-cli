@@ -222,6 +222,7 @@ CLI 的认证、配置、回调桥接、Release 检查缓存与 callback helper 
 
 - macOS/Linux：`~/.pixiv-cli`；Windows：`%USERPROFILE%\.pixiv-cli`。
 - 账号凭据保存在 `pixiv-cli.db`（SQLite，账号 key 是 Pixiv UID / FANBOX UID）。
+- 内置 migration 将数据库推进到 schema v3。旧 v1 数据库会原地升级；若初始 schema 已包含后续字段，则只记录对应迁移而不重复执行冲突 DDL；未知的更新 schema 仍会 fail closed。
 - 全局配置保存在 `config.toml`。
 - Unix-like 主动使用 `0700` 父目录与 `0600` 文件；Windows 首次创建继承父目录 ACL，替换既有目标保留其 ACL，不主动收紧或放宽 DACL。
 
@@ -402,6 +403,7 @@ amd64/arm64 platform-smoke 还会用真实 `cmd.exe`、`certutil.exe` 与 `tar.e
 | `internal/browsercookies/secret` | 测试构造 `SecretService{command: ...}` 注入未导出字段并断言未导出的 sentinel error 与命令输出脱敏行为。 |
 | `internal/update/installer` | 测试注入未导出的 `assetURLValidator` seam 与 checksum 校验函数，用真实 fixture 二进制验证 root `--version` 预检与失败时不替换旧可执行。 |
 | `internal/update/release` | `source_route_test.go` 观察未导出的 source route 选择与 canonical API URL cache 状态；该目录其余测试已用 external package。 |
+| `internal/storage/database` | 测试观察未导出的 `tableInfoQuery` 白名单与迁移兼容 seam，确保 SQL 标识符始终来自固定字面量，旧 schema 不能静默绕过契约。 |
 | `scripts/internal/browsernativeevidence` | 测试观察未导出的环境探测并注入合成 Firefox cookie 种子。 |
 | `scripts/internal/changescope` | 测试直接调用未导出的路径解析（`splitNULPaths`、`docsOnlyPaths`）与 change-scope 判定。 |
 | `scripts/internal/homebrewformula` | 测试直接调用未导出的 formula 渲染与版本校验（`renderFormula`、`validateFormulaVersion`、`checkDynamicVersionNeeds`）。 |

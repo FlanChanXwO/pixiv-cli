@@ -31,7 +31,10 @@ func (c *Client) List(ctx context.Context, request Request) (Result, error) {
 	if c == nil || c.transport == nil {
 		return Result{}, errors.New("user blocked transport is not configured")
 	}
-	query := url.Values{"user_id": {strconv.FormatInt(request.UserID, 10)}}
+	query := url.Values{
+		"user_id": {strconv.FormatInt(request.UserID, 10)},
+		"filter":  {"for_android"},
+	}
 	if request.Offset > 0 {
 		query.Set("offset", strconv.Itoa(request.Offset))
 	}
@@ -39,11 +42,12 @@ func (c *Client) List(ctx context.Context, request Request) (Result, error) {
 	if err := c.transport.GetJSON(ctx, protocol.AppUserList, query, &raw); err != nil {
 		return Result{}, err
 	}
-	if !raw.Users.Present || !raw.Users.Valid {
+	users, present := raw.list()
+	if !present || !users.Valid {
 		return Result{}, protocol.MalformedResponse()
 	}
-	items := make([]user.Preview, len(raw.Users.Items))
-	for index, value := range raw.Users.Items {
+	items := make([]user.Preview, len(users.Items))
+	for index, value := range users.Items {
 		if value.User.ID <= 0 {
 			return Result{}, protocol.MalformedResponse()
 		}
@@ -64,12 +68,36 @@ func (c *Client) List(ctx context.Context, request Request) (Result, error) {
 }
 
 type responseDTO struct {
-	Users   requiredList[userPreviewDTO] `json:"user_previews"`
-	NextURL *string                      `json:"next_url"`
+	Users        requiredList[userListItemDTO] `json:"users"`
+	UserPreviews requiredList[userListItemDTO] `json:"user_previews"`
+	NextURL      *string                       `json:"next_url"`
 }
-type userPreviewDTO struct {
-	User userDTO `json:"user"`
+
+func (r responseDTO) list() (requiredList[userListItemDTO], bool) {
+	if r.Users.Present {
+		return r.Users, true
+	}
+	return r.UserPreviews, r.UserPreviews.Present
 }
+
+type userListItemDTO struct {
+	User userDTO
+}
+
+func (i *userListItemDTO) UnmarshalJSON(data []byte) error {
+	var envelope struct {
+		User *userDTO `json:"user"`
+	}
+	if err := json.Unmarshal(data, &envelope); err != nil {
+		return err
+	}
+	if envelope.User != nil {
+		i.User = *envelope.User
+		return nil
+	}
+	return json.Unmarshal(data, &i.User)
+}
+
 type userDTO struct {
 	ID               int64               `json:"id"`
 	Name             string              `json:"name"`

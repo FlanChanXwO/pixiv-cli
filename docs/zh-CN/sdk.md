@@ -185,7 +185,7 @@ for {
 
 关键语义：
 
-- `CurrentUser` 通过 `/v1/user/detail`、`user_id=0` 和 Android App API filter 读取认证账号；不再调用已失效的 `/v1/user/me`。
+- `CurrentUser` 通过 `/v1/user/detail`、已验证的正数账号 UID 和 Android App API filter 读取认证账号；不再调用已失效的 `/v1/user/me`。
 - `SearchAIModeOnly` 按规范化后的 `Artwork.AIType == 2` 对当前返回批次做本地筛选；该 mode 会进入 cursor 绑定，因此不能把另一种 AI mode 的续页 cursor 复用过来。
 - 只有上游明确提供时才填充评论总数和访问控制 metadata。成功的空列表使用非 nil 的空 `Items` slice 表示，不伪造错误或总数。
 - `ArtworkBookmark` 用空 `Restrict` 与空 tags 表示当前作品未收藏；`AddBookmark` 校验可见性值，不把未知值静默交给服务端默认处理。

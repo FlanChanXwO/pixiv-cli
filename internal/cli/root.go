@@ -561,9 +561,10 @@ func (a app) authDeps() authcommands.Deps {
 	var once sync.Once
 	var account authcommands.AccountService
 	var login pixivaccount.LoginService
+	var loadErr error
 	load := func() {
 		once.Do(func() {
-			account, login, _ = newCLIAccountServices(a)
+			account, login, loadErr = newCLIAccountServices(a)
 		})
 	}
 	return authcommands.Deps{
@@ -571,13 +572,13 @@ func (a app) authDeps() authcommands.Deps {
 		Output:      a.out,
 		ErrorOutput: a.errOut,
 		UsageError:  newUsageError,
-		Account: func() authcommands.AccountService {
+		Account: func() (authcommands.AccountService, error) {
 			load()
-			return account
+			return account, loadErr
 		},
-		Login: func() pixivaccount.LoginService {
+		Login: func() (pixivaccount.LoginService, error) {
 			load()
-			return login
+			return login, loadErr
 		},
 		LoadRuntime:  a.runtimeConfig,
 		WriteBundle:  writeAuthExportBundle,
