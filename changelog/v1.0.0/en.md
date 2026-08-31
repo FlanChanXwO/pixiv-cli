@@ -20,6 +20,7 @@
 - Fix Pixiv authentication service initialization errors, verified current-user and endpoint contracts, FANBOX proxy conflict validation, and forward-compatible local account migrations. ([#67](https://github.com/FlanChanXwO/pixiv-cli/pull/67))
 - Make Windows release gates portable across file URIs, ACL-backed permissions, platform paths, and executable naming. ([#68](https://github.com/FlanChanXwO/pixiv-cli/pull/68))
 - Make the database permission test distinguish Windows ACL semantics from POSIX mode bits. ([#71](https://github.com/FlanChanXwO/pixiv-cli/pull/71))
+- Refresh the six pinned native ugoira static libraries from one source-matched evidence run so production release rebuilds are byte-for-byte reproducible. ([#72](https://github.com/FlanChanXwO/pixiv-cli/pull/72))
 
 ## Documentation
 

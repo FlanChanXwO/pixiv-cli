@@ -20,6 +20,7 @@
 - 修复 Pixiv 认证服务初始化错误、已验证的当前用户与端点契约、FANBOX 代理冲突校验，以及本地账号数据库的向前兼容迁移。 ([#67](https://github.com/FlanChanXwO/pixiv-cli/pull/67))
 - 修复 Windows 发布门禁在文件 URI、ACL 权限、平台路径和可执行文件命名上的兼容性问题。 ([#68](https://github.com/FlanChanXwO/pixiv-cli/pull/68))
 - 让数据库权限测试区分 Windows ACL 语义与 POSIX 权限位。 ([#71](https://github.com/FlanChanXwO/pixiv-cli/pull/71))
+- 从单次与源码匹配的 evidence run 重新汇总 6 个 pinned native ugoira 静态库，使生产发布重建能够逐字节复现。 ([#72](https://github.com/FlanChanXwO/pixiv-cli/pull/72))
 
 ## 文档
 
