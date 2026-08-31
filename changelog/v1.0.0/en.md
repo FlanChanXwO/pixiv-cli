@@ -21,6 +21,7 @@
 - Make Windows release gates portable across file URIs, ACL-backed permissions, platform paths, and executable naming. ([#68](https://github.com/FlanChanXwO/pixiv-cli/pull/68))
 - Make the database permission test distinguish Windows ACL semantics from POSIX mode bits. ([#71](https://github.com/FlanChanXwO/pixiv-cli/pull/71))
 - Refresh the six pinned native ugoira static libraries from one source-matched evidence run so production release rebuilds are byte-for-byte reproducible. ([#72](https://github.com/FlanChanXwO/pixiv-cli/pull/72))
+- Pass the expanded release tag to the container image version label so OCI provenance verification matches the immutable tag. ([#74](https://github.com/FlanChanXwO/pixiv-cli/pull/74))
 
 ## Documentation
 

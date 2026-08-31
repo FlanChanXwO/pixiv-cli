@@ -21,6 +21,7 @@
 - 修复 Windows 发布门禁在文件 URI、ACL 权限、平台路径和可执行文件命名上的兼容性问题。 ([#68](https://github.com/FlanChanXwO/pixiv-cli/pull/68))
 - 让数据库权限测试区分 Windows ACL 语义与 POSIX 权限位。 ([#71](https://github.com/FlanChanXwO/pixiv-cli/pull/71))
 - 从单次与源码匹配的 evidence run 重新汇总 6 个 pinned native ugoira 静态库，使生产发布重建能够逐字节复现。 ([#72](https://github.com/FlanChanXwO/pixiv-cli/pull/72))
+- 将展开后的 release tag 传入容器镜像版本标签，使 OCI provenance 校验与 immutable tag 保持一致。 ([#74](https://github.com/FlanChanXwO/pixiv-cli/pull/74))
 
 ## 文档
 
