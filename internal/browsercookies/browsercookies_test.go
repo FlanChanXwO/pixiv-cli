@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -209,15 +210,17 @@ func TestWriteTempSnapshotPermissions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := info.Mode().Perm(); got != 0o600 {
-		t.Fatalf("file mode = %o, want 600", got)
-	}
 	dirInfo, err := os.Stat(filepath.Dir(path))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := dirInfo.Mode().Perm(); got != 0o700 {
-		t.Fatalf("dir mode = %o, want 700", got)
+	if runtime.GOOS != "windows" {
+		if got := info.Mode().Perm(); got != 0o600 {
+			t.Fatalf("file mode = %o, want 600", got)
+		}
+		if got := dirInfo.Mode().Perm(); got != 0o700 {
+			t.Fatalf("dir mode = %o, want 700", got)
+		}
 	}
 	cleanup()
 	if _, err := os.Stat(path); !os.IsNotExist(err) {

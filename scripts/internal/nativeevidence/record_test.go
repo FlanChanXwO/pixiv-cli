@@ -85,7 +85,11 @@ func TestRecordEvidenceBindsStaticlibBinaryAndCompleteArchive(t *testing.T) {
 }
 
 func TestReadBinaryVersionRequiresExactRootOutput(t *testing.T) {
-	binary := filepath.Join(t.TempDir(), "pixiv")
+	binaryName := "pixiv"
+	if runtime.GOOS == "windows" {
+		binaryName = "pixiv.exe"
+	}
+	binary := filepath.Join(t.TempDir(), binaryName)
 	copyTestExecutable(t, binary)
 
 	tests := []struct {

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -119,7 +120,14 @@ func TestMigrationLedgerRejectsChecksumAndNameDrift(t *testing.T) {
 }
 
 func TestDatabasePermissionsAndSpecialPath(t *testing.T) {
-	dir := filepath.Join(t.TempDir(), "space unicode 名称 ? # %", `windows-like C:\pixiv\state`)
+	specialDirectory := "space unicode 名称 ? # %"
+	nestedDirectory := `windows-like C:\pixiv\state`
+	if runtime.GOOS == "windows" {
+		// ?、: 与反斜杠在 Windows 路径中具有特殊含义，不能作为普通目录名。
+		specialDirectory = "space unicode 名称 # %"
+		nestedDirectory = "windows-like C pixiv state"
+	}
+	dir := filepath.Join(t.TempDir(), specialDirectory, nestedDirectory)
 	db, err := Open(dir)
 	if err != nil {
 		t.Fatal(err)
