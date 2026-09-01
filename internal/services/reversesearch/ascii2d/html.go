@@ -65,45 +65,106 @@ func parseResults(body io.Reader) ([]reversesearch.Match, error) {
 	}
 	matches := make([]reversesearch.Match, 0, len(itemBoxes)-1)
 	for _, item := range itemBoxes[1:] {
-		info := firstDescendantWithClass(item, "info-box")
-		if info == nil {
-			return nil, errors.New("result info is missing")
+		match, ok, err := parseResultItem(item, len(matches)+1)
+		if err != nil {
+			return nil, err
 		}
-		detail := firstDescendantWithClass(info, "detail-box")
-		if detail == nil {
-			return nil, errors.New("result detail is missing")
-		}
-		var links []*html.Node
-		var source string
-		walkElements(detail, func(node *html.Node) {
-			switch node.Data {
-			case "a":
-				if strings.TrimSpace(attribute(node, "href")) != "" {
-					links = append(links, node)
-				}
-			case "small":
-				if source == "" {
-					source = nodeText(node)
-				}
-			}
-		})
-		if len(links) == 0 || source == "" {
-			return nil, errors.New("result identity is missing")
-		}
-		externalURLs := make([]string, 0, len(links))
-		for _, link := range links {
-			externalURLs = append(externalURLs, strings.TrimSpace(attribute(link, "href")))
-		}
-		match := reversesearch.Match{
-			Rank: len(matches) + 1, IndexName: source, Title: nodeText(links[0]),
-			ExternalURLs: externalURLs,
-		}
-		if len(links) > 1 {
-			match.Author = nodeText(links[1])
+		if !ok {
+			continue
 		}
 		matches = append(matches, match)
 	}
 	return matches, nil
+}
+
+func parseResultItem(item *html.Node, rank int) (reversesearch.Match, bool, error) {
+	info := firstDescendantWithClass(item, "info-box")
+	if info == nil {
+		// 真实结果页会把广告作为 item-box 插入；它没有 image-box/info-box。
+		// 带 image-box 却缺少 info-box 的节点仍按 schema drift 报错。
+		if firstDescendantWithClass(item, "image-box") == nil {
+			return reversesearch.Match{}, false, nil
+		}
+		return reversesearch.Match{}, false, errors.New("result info is missing")
+	}
+	detail := firstDescendantWithClass(info, "detail-box")
+	if detail == nil {
+		return reversesearch.Match{}, false, errors.New("result detail is missing")
+	}
+	if external := firstDescendantWithClass(detail, "external"); external != nil {
+		return parseExternalResult(external, rank)
+	}
+
+	var links []*html.Node
+	var source string
+	walkElements(detail, func(node *html.Node) {
+		switch node.Data {
+		case "a":
+			if strings.TrimSpace(attribute(node, "href")) != "" {
+				links = append(links, node)
+			}
+		case "small":
+			if source == "" {
+				source = nodeText(node)
+			}
+		}
+	})
+	if len(links) == 0 || source == "" {
+		return reversesearch.Match{}, false, errors.New("result identity is missing")
+	}
+	return matchFromLinks(rank, source, links), true, nil
+}
+
+func parseExternalResult(external *html.Node, rank int) (reversesearch.Match, bool, error) {
+	var links []*html.Node
+	walkElements(external, func(node *html.Node) {
+		if node.Data == "a" && strings.TrimSpace(attribute(node, "href")) != "" {
+			links = append(links, node)
+		}
+	})
+	if len(links) == 0 {
+		return reversesearch.Match{}, false, errors.New("result identity is missing")
+	}
+	title := textOutsideAnchors(external)
+	source := nodeText(links[0])
+	if title == "" || source == "" {
+		return reversesearch.Match{}, false, errors.New("result identity is missing")
+	}
+	return matchFromLinksWithTitle(rank, source, title, links), true, nil
+}
+
+func matchFromLinks(rank int, source string, links []*html.Node) reversesearch.Match {
+	return matchFromLinksWithTitle(rank, source, nodeText(links[0]), links)
+}
+
+func matchFromLinksWithTitle(rank int, source, title string, links []*html.Node) reversesearch.Match {
+	externalURLs := make([]string, 0, len(links))
+	for _, link := range links {
+		externalURLs = append(externalURLs, strings.TrimSpace(attribute(link, "href")))
+	}
+	match := reversesearch.Match{Rank: rank, IndexName: source, Title: title, ExternalURLs: externalURLs}
+	if len(links) > 1 {
+		match.Author = nodeText(links[1])
+	}
+	return match
+}
+
+func textOutsideAnchors(node *html.Node) string {
+	var values []string
+	var collect func(*html.Node)
+	collect = func(current *html.Node) {
+		if current.Type == html.ElementNode && current.Data == "a" {
+			return
+		}
+		if current.Type == html.TextNode {
+			values = append(values, current.Data)
+		}
+		for child := current.FirstChild; child != nil; child = child.NextSibling {
+			collect(child)
+		}
+	}
+	collect(node)
+	return strings.Join(strings.Fields(strings.Join(values, " ")), " ")
 }
 
 func walkElements(node *html.Node, visit func(*html.Node)) {

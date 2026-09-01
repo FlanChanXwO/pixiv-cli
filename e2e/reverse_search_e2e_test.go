@@ -12,11 +12,13 @@ import (
 )
 
 const (
-	reverseSearchE2EEnabledEnv  = "PIXIV_REVERSE_SEARCH_E2E"
-	reverseSearchE2ESourceEnv   = "PIXIV_REVERSE_SEARCH_SOURCE"
-	reverseSearchE2EProviderEnv = "PIXIV_REVERSE_SEARCH_PROVIDER"
-	reverseSearchE2EProxyEnv    = "PIXIV_REVERSE_SEARCH_PROXY"
-	reverseSearchE2EKeyEnv      = "SAUCENAO_API_KEY"
+	reverseSearchE2EEnabledEnv     = "PIXIV_REVERSE_SEARCH_E2E"
+	reverseSearchE2ESourceEnv      = "PIXIV_REVERSE_SEARCH_SOURCE"
+	reverseSearchE2EProviderEnv    = "PIXIV_REVERSE_SEARCH_PROVIDER"
+	reverseSearchE2EProxyEnv       = "PIXIV_REVERSE_SEARCH_PROXY"
+	reverseSearchE2ESolverURLEnv   = "PIXIV_REVERSE_SEARCH_SOLVER_URL"
+	reverseSearchE2ESolverProxyEnv = "PIXIV_REVERSE_SEARCH_SOLVER_PROXY"
+	reverseSearchE2EKeyEnv         = "SAUCENAO_API_KEY"
 )
 
 type reverseSearchE2EConfig struct {
@@ -24,6 +26,8 @@ type reverseSearchE2EConfig struct {
 	source      string
 	provider    reversesearch.Provider
 	proxy       string
+	solverURL   string
+	solverProxy string
 	sauceNAOKey string
 }
 
@@ -108,6 +112,34 @@ func TestReverseSearchE2EConfigAllowsAscii2DWithoutSauceNAOKey(t *testing.T) {
 	}
 }
 
+func TestReverseSearchE2EConfigReadsFlareSolverrOptions(t *testing.T) {
+	config, err := reverseSearchE2EConfigFrom(func(name string) string {
+		switch name {
+		case reverseSearchE2EEnabledEnv:
+			return "1"
+		case reverseSearchE2ESourceEnv:
+			return "/tmp/source.png"
+		case reverseSearchE2EProviderEnv:
+			return "ascii2d-color"
+		case reverseSearchE2ESolverURLEnv:
+			return " http://127.0.0.1:8191/ "
+		case reverseSearchE2ESolverProxyEnv:
+			return " socks5://127.0.0.1:7891 "
+		default:
+			return ""
+		}
+	})
+	if err != nil {
+		t.Fatalf("FlareSolverr configuration rejected: %v", err)
+	}
+	if config.solverURL != "http://127.0.0.1:8191/" {
+		t.Fatalf("solver URL = %q", config.solverURL)
+	}
+	if config.solverProxy != "socks5://127.0.0.1:7891" {
+		t.Fatalf("solver proxy = %q", config.solverProxy)
+	}
+}
+
 func TestRealReverseSearch(t *testing.T) {
 	config, err := reverseSearchE2EConfigFrom(os.Getenv)
 	if err != nil {
@@ -117,7 +149,15 @@ func TestRealReverseSearch(t *testing.T) {
 		t.Skip("set PIXIV_REVERSE_SEARCH_E2E=1 to run the real reverse-search e2e")
 	}
 
-	searcher, err := reverseassembly.New(reverseassembly.Options{Proxy: config.proxy, SauceNAOKey: config.sauceNAOKey})
+	var solverOptions *reverseassembly.FlareSolverrOptions
+	if config.solverURL != "" {
+		solverOptions = &reverseassembly.FlareSolverrOptions{
+			URL: config.solverURL, ProxyURL: config.solverProxy,
+		}
+	}
+	searcher, err := reverseassembly.New(reverseassembly.Options{
+		Proxy: config.proxy, SauceNAOKey: config.sauceNAOKey, FlareSolverr: solverOptions,
+	})
 	if err != nil {
 		t.Fatalf("construct real reverse-search e2e client: code=%s", reversesearch.CodeOf(err))
 	}
@@ -137,9 +177,11 @@ func reverseSearchE2EConfigFrom(getenv func(string) string) (reverseSearchE2ECon
 		return reverseSearchE2EConfig{}, nil
 	}
 	config := reverseSearchE2EConfig{
-		source:   strings.TrimSpace(getenv(reverseSearchE2ESourceEnv)),
-		provider: reversesearch.Provider(strings.TrimSpace(getenv(reverseSearchE2EProviderEnv))),
-		proxy:    strings.TrimSpace(getenv(reverseSearchE2EProxyEnv)),
+		source:      strings.TrimSpace(getenv(reverseSearchE2ESourceEnv)),
+		provider:    reversesearch.Provider(strings.TrimSpace(getenv(reverseSearchE2EProviderEnv))),
+		proxy:       strings.TrimSpace(getenv(reverseSearchE2EProxyEnv)),
+		solverURL:   strings.TrimSpace(getenv(reverseSearchE2ESolverURLEnv)),
+		solverProxy: strings.TrimSpace(getenv(reverseSearchE2ESolverProxyEnv)),
 	}
 	if config.source == "" {
 		return reverseSearchE2EConfig{}, errors.New("PIXIV_REVERSE_SEARCH_SOURCE is required when real reverse-search e2e is enabled")

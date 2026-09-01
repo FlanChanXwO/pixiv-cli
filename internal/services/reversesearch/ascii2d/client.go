@@ -613,6 +613,7 @@ func (c *Client) validateUploadLocation(raw string) (string, error) {
 	if err != nil || raw == "" || location.User != nil {
 		return "", reversesearch.NewError(reversesearch.CodeMalformedUpstreamResponse, "ascii2d returned a malformed upload location", nil)
 	}
+	normalizeSameHostHTTPSUploadLocation(c.endpoint, location)
 	resolved := c.endpoint.ResolveReference(location)
 	if !sameOrigin(c.endpoint, resolved) {
 		return "", reversesearch.NewError(reversesearch.CodeMalformedUpstreamResponse, "ascii2d returned an unsafe upload location", nil)
@@ -625,6 +626,18 @@ func (c *Client) validateUploadLocation(raw string) (string, error) {
 		return "", reversesearch.NewError(reversesearch.CodeMalformedUpstreamResponse, "ascii2d returned a malformed upload location", nil)
 	}
 	return segments[2], nil
+}
+
+func normalizeSameHostHTTPSUploadLocation(endpoint, location *url.URL) {
+	if !strings.EqualFold(endpoint.Scheme, "https") ||
+		!strings.EqualFold(location.Scheme, "http") ||
+		!strings.EqualFold(location.Hostname(), endpoint.Hostname()) {
+		return
+	}
+	// ascii2d 当前会在 HTTPS 上传响应中生成同主机的 HTTP Location。这里只
+	// 把已校验主机的 scheme 规范回 HTTPS endpoint，绝不跟随不安全的降级地址；
+	// 显式端口仍由 sameOrigin 继续校验。
+	location.Scheme = endpoint.Scheme
 }
 
 func sameOrigin(left, right *url.URL) bool {

@@ -85,6 +85,22 @@ func TestUploadPreservesCancellationAndClosesResponseBody(t *testing.T) {
 	require.NotContains(t, errorChainText(err), "private upstream response body")
 }
 
+func TestUploadAcceptsSameHostHTTPRedirectForHTTPSEndpoint(t *testing.T) {
+	client := newTransportClient(t, func(request *http.Request) (*http.Response, error) {
+		_, err := io.Copy(io.Discard, request.Body)
+		require.NoError(t, err)
+		return &http.Response{
+			StatusCode: http.StatusFound,
+			Header:     http.Header{"Location": {"http://ascii2d.invalid/search/color/" + fixtureHash}},
+			Body:       io.NopCloser(strings.NewReader("")),
+			Request:    request,
+		}, nil
+	})
+
+	_, err := client.Upload(context.Background(), loadSnapshot(t, []byte("\x89PNG\r\n\x1a\nfixture")))
+	require.NoError(t, err)
+}
+
 func TestUploadAcceptsSupportedMediaAtOfficialSizeBoundary(t *testing.T) {
 	tests := []struct {
 		name      string
@@ -353,6 +369,32 @@ func TestSessionSearchParsesColorAndBOVWFromOneUpload(t *testing.T) {
 	}
 }
 
+func TestSessionSearchIgnoresAdvertisementItemBoxes(t *testing.T) {
+	server := resultServer(t, resultFixtureWithAdvertisement(), http.StatusOK)
+	defer server.Close()
+
+	session := uploadSession(t, server)
+	response, err := session.Search(context.Background(), reversesearch.ProviderASCII2DColor)
+	require.NoError(t, err)
+	require.Equal(t, []reversesearch.Match{{
+		Rank: 1, IndexName: "pixiv", Title: "Fixture title", Author: "Fixture author",
+		ExternalURLs: []string{"https://www.pixiv.net/artworks/123", "https://www.pixiv.net/users/456"},
+	}}, response.Matches)
+}
+
+func TestSessionSearchParsesExternalResultDetails(t *testing.T) {
+	server := resultServer(t, resultFixtureWithExternalResult(), http.StatusOK)
+	defer server.Close()
+
+	session := uploadSession(t, server)
+	response, err := session.Search(context.Background(), reversesearch.ProviderASCII2DColor)
+	require.NoError(t, err)
+	require.Equal(t, []reversesearch.Match{{
+		Rank: 1, IndexName: "Dlsite", Title: "External title",
+		ExternalURLs: []string{"https://example.test/external"},
+	}}, response.Matches)
+}
+
 func TestSessionSearchRejectsUnsupportedProviderAndMalformedResultStructure(t *testing.T) {
 	tests := []struct {
 		name string
@@ -482,6 +524,29 @@ func serverURL(t *testing.T, raw string) *url.URL {
 
 func uploadFormFixture() string {
 	return `<html><body><form id="file_upload" enctype="multipart/form-data" action="/search/file" method="post"><input type="hidden" name="authenticity_token" value="fixture-csrf"><input type="file" name="file"></form></body></html>`
+}
+
+func resultFixtureWithAdvertisement() string {
+	const advertisement = `<div class="row item-box"><div class="p-t-1 hidden-md-up"><div class="gray-link">advertisement</div></div></div>`
+	return strings.Replace(resultFixture(), `<div class="row item-box">
+  <div class="image-box">`, advertisement+`
+<div class="row item-box">
+  <div class="image-box">`, 1)
+}
+
+func resultFixtureWithExternalResult() string {
+	return `<html><body>
+<div class="row item-box"><div class="image-box">query image</div></div>
+<div class="row item-box">
+  <div class="image-box"><img src="/thumbnail/external.jpg"></div>
+  <div class="info-box">
+    <div class="detail-box gray-link">
+      <strong class="info-header">登録された詳細</strong>
+      <div class="external">External title<a target="_blank" rel="noopener" href="https://example.test/external">Dlsite</a></div>
+    </div>
+  </div>
+</div>
+</body></html>`
 }
 
 func resultFixture() string {
