@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	pixivmcpserver "github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv"
@@ -143,6 +144,55 @@ func TestReverseSearchE2EConfigReadsFlareSolverrOptions(t *testing.T) {
 	}
 }
 
+func TestRegisterRealReverseSearchE2ECleanupClosesSearcher(t *testing.T) {
+	searcher := &closeTrackingReverseSearchE2ESearcher{}
+	t.Run("cleanup", func(t *testing.T) {
+		registerRealReverseSearchE2ECleanup(t, searcher)
+	})
+	if got := searcher.closeCalls.Load(); got != 1 {
+		t.Fatalf("searcher close calls = %d, want 1", got)
+	}
+}
+
+func TestStartRealReverseSearchMCPServerPublishesRunErrorAndWaits(t *testing.T) {
+	want := errors.New("mcp runner failed")
+	started := make(chan struct{})
+	release := make(chan struct{})
+	done := startRealReverseSearchMCPServer(context.Background(), func(context.Context) error {
+		close(started)
+		<-release
+		return want
+	})
+	<-started
+	select {
+	case <-done:
+		t.Fatal("MCP runner completed before release")
+	default:
+	}
+	close(release)
+	if got := <-done; !errors.Is(got, want) {
+		t.Fatalf("MCP runner error = %v, want %v", got, want)
+	}
+}
+
+type closeTrackingReverseSearchE2ESearcher struct {
+	closeCalls atomic.Int32
+}
+
+func (s *closeTrackingReverseSearchE2ESearcher) Search(context.Context, reversesearch.Request) (reversesearch.Response, error) {
+	return reversesearch.Response{
+		Input: reversesearch.Input{Kind: reversesearch.SourceKindFile, SHA256: "fixture"},
+		Providers: []reversesearch.ProviderSummary{{
+			Name: reversesearch.ProviderSauceNAO, Status: reversesearch.ProviderStatusSuccess,
+		}},
+	}, nil
+}
+
+func (s *closeTrackingReverseSearchE2ESearcher) Close() error {
+	s.closeCalls.Add(1)
+	return nil
+}
+
 func TestRealReverseSearch(t *testing.T) {
 	config, err := reverseSearchE2EConfigFrom(os.Getenv)
 	if err != nil {
@@ -164,6 +214,7 @@ func TestRealReverseSearch(t *testing.T) {
 	if err != nil {
 		t.Fatalf("construct real reverse-search e2e client: code=%s", reversesearch.CodeOf(err))
 	}
+	registerRealReverseSearchE2ECleanup(t, searcher)
 	response, err := searcher.Search(context.Background(), reversesearch.Request{
 		Source: config.source, Provider: config.provider, PixivOnly: true,
 	})
@@ -258,17 +309,25 @@ func newRealReverseSearchMCPSession(t *testing.T, searcher reversesearch.Searche
 	}, pixivmcpserver.Account{})
 	clientTransport, serverTransport := mcp.NewInMemoryTransports()
 	ctx, cancel := context.WithCancel(context.Background())
-	go func() { _ = server.Run(ctx, serverTransport) }()
+	serverDone := startRealReverseSearchMCPServer(ctx, func(runCtx context.Context) error {
+		return server.Run(runCtx, serverTransport)
+	})
 	client := mcp.NewClient(&mcp.Implementation{Name: "reverse-search-e2e", Version: "test"}, nil)
 	session, err := client.Connect(ctx, clientTransport, nil)
 	if err != nil {
 		cancel()
-		_ = closeRealReverseSearchE2EClient(searcher)
+		reportRealReverseSearchMCPServerError(t, <-serverDone)
+		if closeErr := closeRealReverseSearchE2EClient(searcher); closeErr != nil {
+			t.Errorf("close real reverse-search MCP e2e client: code=%s", reversesearch.CodeOf(closeErr))
+		}
 		t.Fatalf("connect real reverse-search MCP e2e client: %v", err)
 	}
 	t.Cleanup(func() {
-		_ = session.Close()
+		if err := session.Close(); err != nil {
+			t.Errorf("close real reverse-search MCP client session: %v", err)
+		}
 		cancel()
+		reportRealReverseSearchMCPServerError(t, <-serverDone)
 		if err := closeRealReverseSearchE2EClient(searcher); err != nil {
 			t.Errorf("close real reverse-search MCP e2e client: code=%s", reversesearch.CodeOf(err))
 		}
@@ -281,6 +340,31 @@ func closeRealReverseSearchE2EClient(searcher reversesearch.Searcher) error {
 		return closer.Close()
 	}
 	return nil
+}
+
+func registerRealReverseSearchE2ECleanup(t *testing.T, searcher reversesearch.Searcher) {
+	t.Helper()
+	t.Cleanup(func() {
+		if err := closeRealReverseSearchE2EClient(searcher); err != nil {
+			t.Errorf("close real reverse-search e2e client: code=%s", reversesearch.CodeOf(err))
+		}
+	})
+}
+
+func startRealReverseSearchMCPServer(ctx context.Context, run func(context.Context) error) <-chan error {
+	done := make(chan error, 1)
+	go func() {
+		defer close(done)
+		done <- run(ctx)
+	}()
+	return done
+}
+
+func reportRealReverseSearchMCPServerError(t *testing.T, err error) {
+	t.Helper()
+	if err != nil && !errors.Is(err, context.Canceled) {
+		t.Errorf("real reverse-search MCP server runner: %v", err)
+	}
 }
 
 func callRealReverseSearchMCP(t *testing.T, session *mcp.ClientSession, source string, provider reversesearch.Provider) realReverseSearchMCPOutput {
