@@ -42,10 +42,11 @@ type Options struct {
 
 // Client 持有 ascii2d 会话模板；每次 Upload 都创建独立 cookie jar。
 type Client struct {
-	httpClient *http.Client
-	endpoint   *url.URL
-	userAgent  string
-	hints      clientHints
+	httpClient  *http.Client
+	endpoint    *url.URL
+	userAgent   string
+	hints       clientHints
+	solverCache *solverStateCache
 }
 
 // Session 是一次成功上传产生的不可变查询句柄。color 与 bovw 可共享它。
@@ -82,7 +83,13 @@ func New(options Options) (*Client, error) {
 	}
 	client := *baseClient
 	client.Jar = nil
-	return &Client{httpClient: &client, endpoint: parsed, userAgent: userAgent, hints: hints}, nil
+	return &Client{
+		httpClient:  &client,
+		endpoint:    parsed,
+		userAgent:   userAgent,
+		hints:       hints,
+		solverCache: newSolverStateCache(),
+	}, nil
 }
 
 func (c *Client) Preflight(ctx context.Context) error {
@@ -144,10 +151,11 @@ func (c *Client) newSessionClient() (*Client, error) {
 		return nil
 	}
 	return &Client{
-		httpClient: &httpClient,
-		endpoint:   c.endpoint,
-		userAgent:  c.userAgent,
-		hints:      c.hints,
+		httpClient:  &httpClient,
+		endpoint:    c.endpoint,
+		userAgent:   c.userAgent,
+		hints:       c.hints,
+		solverCache: c.solverCache,
 	}, nil
 }
 
