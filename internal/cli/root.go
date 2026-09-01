@@ -142,6 +142,7 @@ var (
 	runMCPServer = func(a app, ctx context.Context, request mcpcommands.Request) error {
 		return a.runPixivMCP(ctx, request)
 	}
+	runMCPStdio          = stdiotransport.RunStdio
 	ensureURLSchemeRelay = loginhelper.EnsurePersistentIfNeeded
 	canPrompt            = func(a app) bool { return authcommands.CanPrompt(a.in, a.out) }
 	promptInput          = func(a app, message, defaultValue string) (string, error) {
@@ -367,6 +368,12 @@ func newUsageError(err error) error {
 
 func (a app) closeResources() error {
 	return a.closeState.close()
+}
+
+func registerReverseSearchCloser(state *closeState, searcher reversesearch.Searcher) {
+	if closer, ok := searcher.(reversesearch.Closer); ok {
+		state.add(closer.Close)
+	}
 }
 
 func (a app) openAuthDatabase() (*database.DB, error) {
@@ -730,6 +737,7 @@ func (a app) searchDeps() pixivsearch.Dependencies {
 			if err != nil {
 				return reversesearch.Response{}, err
 			}
+			registerReverseSearchCloser(a.closeState, searcher)
 			return searcher.Search(ctx, reversesearch.Request{
 				Source: request.Source, Provider: provider, PixivOnly: runtime.ReverseSearchPixivOnly,
 			})
@@ -954,6 +962,7 @@ func (a app) runPixivMCP(ctx context.Context, request mcpcommands.Request) error
 	if err != nil {
 		return err
 	}
+	registerReverseSearchCloser(a.closeState, reverseSearchPorts.Searcher)
 	ports, err := newCLIPixivSDKPorts(a)
 	if err != nil {
 		return err
@@ -979,7 +988,7 @@ func (a app) runPixivMCP(ctx context.Context, request mcpcommands.Request) error
 		},
 		ReverseSearch: reverseSearchPorts,
 	}, account)
-	return stdiotransport.RunStdio(ctx, server)
+	return runMCPStdio(ctx, server)
 }
 
 func reverseSearchFlareSolverr(runtime configapp.RuntimeConfig) *reverseassembly.FlareSolverrOptions {

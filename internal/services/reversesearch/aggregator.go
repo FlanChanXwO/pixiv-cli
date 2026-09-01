@@ -16,12 +16,31 @@ type AggregatorDependencies struct {
 
 // Aggregator 在同一快照上执行 provider 并构造稳定领域 envelope。
 type Aggregator struct {
-	sauceNAO ProviderClient
-	ascii2d  ASCII2DClient
+	sauceNAO  ProviderClient
+	ascii2d   ASCII2DClient
+	closeOnce sync.Once
+	closeErr  error
 }
 
 func NewAggregator(dependencies AggregatorDependencies) *Aggregator {
 	return &Aggregator{sauceNAO: dependencies.SauceNAO, ascii2d: dependencies.ASCII2D}
+}
+
+// Close 以与 provider 构造相反的顺序释放长期存活的 provider 资源；每个
+// provider 都是可选的 lifecycle port，未实现 Close 的测试/嵌入 provider 不受影响。
+func (a *Aggregator) Close() error {
+	if a == nil {
+		return nil
+	}
+	a.closeOnce.Do(func() {
+		if closer, ok := a.ascii2d.(Closer); ok {
+			a.closeErr = errors.Join(a.closeErr, closer.Close())
+		}
+		if closer, ok := a.sauceNAO.(Closer); ok {
+			a.closeErr = errors.Join(a.closeErr, closer.Close())
+		}
+	})
+	return a.closeErr
 }
 
 func (a *Aggregator) Preflight(ctx context.Context, query PayloadQuery) error {
@@ -226,3 +245,4 @@ func responseFromProvider(provider Provider, providerResponse ProviderResponse, 
 }
 
 var _ PayloadSearcher = (*Aggregator)(nil)
+var _ Closer = (*Aggregator)(nil)

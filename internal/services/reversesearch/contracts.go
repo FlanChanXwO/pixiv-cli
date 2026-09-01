@@ -152,3 +152,10 @@ type ASCII2DSession interface {
 type Searcher interface {
 	Search(context.Context, Request) (Response, error)
 }
+
+// Closer 是 reverse-search 内部资源生命周期端口。它保持为独立的可选
+// contract，让只实现 Search 的嵌入方仍可平滑使用；composition root 在
+// 资源由本次命令拥有时负责注册 Close。
+type Closer interface {
+	Close() error
+}

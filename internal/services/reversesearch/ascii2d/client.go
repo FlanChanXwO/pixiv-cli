@@ -14,6 +14,7 @@ import (
 	"net/url"
 	"regexp"
 	"strings"
+	"sync"
 
 	"golang.org/x/net/html"
 
@@ -41,6 +42,11 @@ type Options struct {
 	FlareSolverr *FlareSolverrOptions
 }
 
+type clientLifecycle struct {
+	once sync.Once
+	err  error
+}
+
 // Client 持有 ascii2d 会话模板；每次 Upload 都创建独立 cookie jar。
 type Client struct {
 	httpClient  *http.Client
@@ -49,6 +55,7 @@ type Client struct {
 	hints       clientHints
 	solver      *solverClient
 	solverCache *solverStateCache
+	lifecycle   *clientLifecycle
 }
 
 // Session 是一次成功上传产生的不可变查询句柄。color 与 bovw 可共享它。
@@ -56,6 +63,8 @@ type Session struct {
 	client *Client
 	hash   string
 }
+
+var _ reversesearch.Closer = (*Client)(nil)
 
 func New(options Options) (*Client, error) {
 	endpoint := options.Endpoint
@@ -99,7 +108,36 @@ func New(options Options) (*Client, error) {
 		hints:       hints,
 		solver:      solver,
 		solverCache: newSolverStateCache(),
+		lifecycle:   &clientLifecycle{},
 	}, nil
+}
+
+// Close 结束 ascii2d 的进程级 solver session，并释放 native/browser client
+// 的空闲连接。session client 与模板 client 共享同一 lifecycle，因此重复
+// Close 或从任一 session 关闭都不会重复 destroy 同一个 solver session。
+func (c *Client) Close() error {
+	if c == nil {
+		return nil
+	}
+	if c.lifecycle == nil {
+		// 只有内部零值/旧测试构造会缺少 lifecycle；正常实例均由 New 初始化。
+		c.lifecycle = &clientLifecycle{}
+	}
+	c.lifecycle.once.Do(func() {
+		if c.solverCache != nil {
+			c.solverCache.close()
+		}
+		if c.solver != nil {
+			c.lifecycle.err = errors.Join(c.lifecycle.err, c.solver.destroy(context.Background()))
+			if c.solver.httpClient != nil {
+				c.solver.httpClient.CloseIdleConnections()
+			}
+		}
+		if c.httpClient != nil {
+			c.httpClient.CloseIdleConnections()
+		}
+	})
+	return c.lifecycle.err
 }
 
 func (c *Client) Preflight(ctx context.Context) error {
@@ -218,6 +256,7 @@ func (c *Client) newSessionClient() (*Client, error) {
 		hints:       c.hints,
 		solver:      c.solver,
 		solverCache: c.solverCache,
+		lifecycle:   c.lifecycle,
 	}, nil
 }
 

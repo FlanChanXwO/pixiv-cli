@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 
 	reversesearch "github.com/FlanChanXwO/pixiv-cli/internal/services/reversesearch"
 )
@@ -29,7 +30,10 @@ type Client struct {
 	apiKey     string
 	httpClient *http.Client
 	endpoint   string
+	closeOnce  sync.Once
 }
+
+var _ reversesearch.Closer = (*Client)(nil)
 
 func New(options Options) *Client {
 	endpoint := options.Endpoint
@@ -41,6 +45,20 @@ func New(options Options) *Client {
 		client = http.DefaultClient
 	}
 	return &Client{apiKey: options.APIKey, httpClient: client, endpoint: endpoint}
+}
+
+// Close 释放 SauceNAO client 的空闲连接；整个 reverse-search Facade 结束时
+// 调用一次即可，重复调用保持幂等。
+func (c *Client) Close() error {
+	if c == nil {
+		return nil
+	}
+	c.closeOnce.Do(func() {
+		if c.httpClient != nil {
+			c.httpClient.CloseIdleConnections()
+		}
+	})
+	return nil
 }
 
 // Preflight 在 source 被读取前验证构造期凭据。
