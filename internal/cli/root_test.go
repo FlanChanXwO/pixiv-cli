@@ -109,6 +109,8 @@ func TestImageSearchBuildsReverseSearchWithCLIProxyOverride(t *testing.T) {
 
 	require.NoError(t, root.Execute(), stderr.String())
 	assert.Equal(t, "http://127.0.0.1:7890", captured.Proxy)
+	require.NotNil(t, captured.ASCII2DProxy)
+	assert.Equal(t, "http://127.0.0.1:7890", *captured.ASCII2DProxy)
 }
 
 func TestMCPReverseSearchUsesStartupConfigAndProxySnapshot(t *testing.T) {
@@ -131,6 +133,8 @@ func TestMCPReverseSearchUsesStartupConfigAndProxySnapshot(t *testing.T) {
 	}, mcpcommands.Request{HTTPSProxyOverride: &proxy})
 	require.NoError(t, err)
 	assert.Equal(t, "http://mcp-flag-proxy", captured.Proxy)
+	require.NotNil(t, captured.ASCII2DProxy)
+	assert.Equal(t, "http://mcp-flag-proxy", *captured.ASCII2DProxy)
 	assert.Equal(t, "startup-key", captured.SauceNAOKey)
 	assert.Equal(t, reversesearch.ProviderAll, ports.Provider)
 	assert.False(t, ports.PixivOnly)
@@ -149,13 +153,14 @@ func TestMCPReverseSearchUsesConfiguredServiceProxyBeforeGlobal(t *testing.T) {
 	t.Cleanup(func() { newCLIMCPReverseSearch = oldReverse })
 
 	tests := []struct {
-		name  string
-		proxy configapp.OptionalString
-		want  string
+		name         string
+		proxy        configapp.OptionalString
+		wantStandard string
+		wantASCII2D  string
 	}{
-		{name: "configured service proxy wins", proxy: configapp.OptionalString{Present: true, Value: "http://reverse-search-proxy"}, want: "http://reverse-search-proxy"},
-		{name: "explicit empty service proxy means direct", proxy: configapp.OptionalString{Present: true}, want: ""},
-		{name: "absent service proxy falls back to global", proxy: configapp.OptionalString{}, want: "http://global-proxy"},
+		{name: "configured service proxy wins for ascii2d only", proxy: configapp.OptionalString{Present: true, Value: "http://reverse-search-proxy"}, wantStandard: "http://global-proxy", wantASCII2D: "http://reverse-search-proxy"},
+		{name: "explicit empty service proxy means direct for ascii2d only", proxy: configapp.OptionalString{Present: true}, wantStandard: "http://global-proxy", wantASCII2D: ""},
+		{name: "absent service proxy falls back to global for both", proxy: configapp.OptionalString{}, wantStandard: "http://global-proxy", wantASCII2D: "http://global-proxy"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -168,7 +173,9 @@ func TestMCPReverseSearchUsesConfiguredServiceProxyBeforeGlobal(t *testing.T) {
 				ReverseSearchPixivOnly: false,
 			}, mcpcommands.Request{})
 			require.NoError(t, err)
-			assert.Equal(t, test.want, captured.Proxy)
+			assert.Equal(t, test.wantStandard, captured.Proxy)
+			require.NotNil(t, captured.ASCII2DProxy)
+			assert.Equal(t, test.wantASCII2D, *captured.ASCII2DProxy)
 		})
 	}
 }

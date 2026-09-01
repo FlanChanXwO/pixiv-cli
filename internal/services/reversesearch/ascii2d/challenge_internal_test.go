@@ -63,6 +63,12 @@ func TestClassifyResponseErrorLeavesOrdinaryForbiddenAndNonHTMLErrorsUnchanged(t
 			body:       `<html><body><h1>Forbidden</h1><p>Access denied.</p></body></html>`,
 		},
 		{
+			name:       "cloudflare access denied page",
+			statusCode: http.StatusForbidden,
+			header:     http.Header{"Content-Type": []string{"text/html; charset=utf-8"}},
+			body:       `<html><head><title>Attention Required! | Cloudflare</title></head><body><h1>Error 1020</h1><p>Access denied</p><p>Cloudflare Ray ID: abc123</p></body></html>`,
+		},
+		{
 			name:       "non html body",
 			statusCode: http.StatusForbidden,
 			header:     http.Header{"Content-Type": []string{"application/json"}},

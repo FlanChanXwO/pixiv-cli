@@ -719,9 +719,9 @@ func (a app) searchDeps() pixivsearch.Dependencies {
 			if request.Provider != "" {
 				provider = request.Provider
 			}
-			proxy := reverseSearchProxy(runtime, request.HTTPSProxyOverride)
+			standardProxy, ascii2dProxy := reverseSearchProxies(runtime, request.HTTPSProxyOverride)
 			searcher, err := newCLIReverseSearch(reverseassembly.Options{
-				Proxy: proxy, UserAgent: runtime.ReverseSearchNetwork.UserAgent.Value, SauceNAOKey: runtime.SauceNAOAPIKey,
+				Proxy: standardProxy, ASCII2DProxy: &ascii2dProxy, UserAgent: runtime.ReverseSearchNetwork.UserAgent.Value, SauceNAOKey: runtime.SauceNAOAPIKey,
 			})
 			if err != nil {
 				return reversesearch.Response{}, err
@@ -978,23 +978,25 @@ func (a app) runPixivMCP(ctx context.Context, request mcpcommands.Request) error
 	return stdiotransport.RunStdio(ctx, server)
 }
 
-func reverseSearchProxy(runtime configapp.RuntimeConfig, override *string) string {
+func reverseSearchProxies(runtime configapp.RuntimeConfig, override *string) (standardProxy, ascii2dProxy string) {
+	standardProxy = runtime.HTTPSProxy
 	if override != nil {
-		return *override
+		return *override, *override
 	}
 	if runtime.ReverseSearchNetwork.ProxyURL.Present {
-		return runtime.ReverseSearchNetwork.ProxyURL.Value
+		return standardProxy, runtime.ReverseSearchNetwork.ProxyURL.Value
 	}
-	return runtime.HTTPSProxy
+	return standardProxy, standardProxy
 }
 
 // newMCPReverseSearchPorts 在 MCP stdio 启动时创建一次反向搜图 Facade，并
-// 固定代理、凭据和配置默认值。后续 tool input 只允许覆盖 provider，不能改变
-// 传输或 credential 依赖，避免同一 MCP session 的运行时语义漂移。
+// 固定 standard/ascii2d 两个代理网络面、凭据和配置默认值。后续 tool input
+// 只允许覆盖 provider，不能改变传输或 credential 依赖，避免同一 MCP session
+// 的运行时语义漂移。
 func newMCPReverseSearchPorts(runtime configapp.RuntimeConfig, request mcpcommands.Request) (mcpserver.ReverseSearchPorts, error) {
-	proxy := reverseSearchProxy(runtime, request.HTTPSProxyOverride)
+	standardProxy, ascii2dProxy := reverseSearchProxies(runtime, request.HTTPSProxyOverride)
 	searcher, err := newCLIMCPReverseSearch(reverseassembly.Options{
-		Proxy: proxy, UserAgent: runtime.ReverseSearchNetwork.UserAgent.Value, SauceNAOKey: runtime.SauceNAOAPIKey,
+		Proxy: standardProxy, ASCII2DProxy: &ascii2dProxy, UserAgent: runtime.ReverseSearchNetwork.UserAgent.Value, SauceNAOKey: runtime.SauceNAOAPIKey,
 	})
 	if err != nil {
 		return mcpserver.ReverseSearchPorts{}, err

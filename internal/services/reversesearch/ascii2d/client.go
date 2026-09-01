@@ -340,15 +340,14 @@ func normalizeChallengeText(value string) string {
 }
 
 func hasChallengeText(value string) bool {
+	// Ray ID、access-denied 和通用 WAF 标题不是 challenge 证据，避免误触发 solver。
 	for _, marker := range []string{
 		"just a moment",
-		"attention required! | cloudflare",
 		"verify you are human",
 		"checking your browser before accessing",
 		"challenge-platform",
 		"cf-chl-",
 		"cf_chl",
-		"cloudflare ray id",
 	} {
 		if strings.Contains(value, marker) {
 			return true

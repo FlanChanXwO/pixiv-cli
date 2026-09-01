@@ -12,13 +12,15 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/shared/network"
 )
 
-// Options are construction-time values for one CLI invocation. Proxy, the
-// ascii2d user-agent, and the SauceNAO key never enter the per-request
-// reversesearch.Request.
+// Options are construction-time values for one CLI invocation. Proxy is the
+// standard HTTP proxy for source loading and SauceNAO. ASCII2DProxy is an
+// optional override for ascii2d's dedicated browser transport; when omitted,
+// it preserves the historical behavior of reusing Proxy.
 type Options struct {
-	Proxy       string
-	UserAgent   string
-	SauceNAOKey string
+	Proxy        string
+	ASCII2DProxy *string
+	UserAgent    string
+	SauceNAOKey  string
 }
 
 // New constructs a Facade with a standard HTTP client for the source loader and
@@ -38,6 +40,13 @@ func newWithClient(options Options, client *http.Client) (reversesearch.Searcher
 	})
 }
 
+func (options Options) ascii2dProxy() string {
+	if options.ASCII2DProxy != nil {
+		return *options.ASCII2DProxy
+	}
+	return options.Proxy
+}
+
 func newWithClientWithASCII2DFactory(
 	options Options,
 	client *http.Client,
@@ -47,7 +56,7 @@ func newWithClientWithASCII2DFactory(
 		return nil, reversesearch.NewError(reversesearch.CodeProviderNotConfigured, "reverse search HTTP client is not configured", nil)
 	}
 	asciiClient, err := newASCII2DClient(ascii2d.Options{
-		ProxyURL:  options.Proxy,
+		ProxyURL:  options.ascii2dProxy(),
 		UserAgent: options.UserAgent,
 	})
 	if err != nil {

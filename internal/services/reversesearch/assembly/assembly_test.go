@@ -35,8 +35,10 @@ func TestNewWithClientSeparatesBrowserASCII2DFromStandardClients(t *testing.T) {
 	})}
 
 	var captured ascii2d.Options
+	standardProxy := "http://standard.invalid"
+	ascii2dProxy := "http://proxy.invalid"
 	searcher, err := newWithClientWithASCII2DFactory(
-		Options{Proxy: "http://proxy.invalid", UserAgent: "fixture-user-agent", SauceNAOKey: "fixture-key"},
+		Options{Proxy: standardProxy, ASCII2DProxy: &ascii2dProxy, UserAgent: "fixture-user-agent", SauceNAOKey: "fixture-key"},
 		standardClient,
 		func(options ascii2d.Options) (reversesearch.ASCII2DClient, error) {
 			captured = options
@@ -50,8 +52,8 @@ func TestNewWithClientSeparatesBrowserASCII2DFromStandardClients(t *testing.T) {
 	if captured.HTTPClient != nil {
 		t.Fatal("ascii2d received the standard HTTP client instead of its browser transport")
 	}
-	if captured.ProxyURL != "http://proxy.invalid" {
-		t.Fatalf("ascii2d proxy = %q, want %q", captured.ProxyURL, "http://proxy.invalid")
+	if captured.ProxyURL != ascii2dProxy {
+		t.Fatalf("ascii2d proxy = %q, want %q", captured.ProxyURL, ascii2dProxy)
 	}
 	if captured.UserAgent != "fixture-user-agent" {
 		t.Fatalf("ascii2d user-agent = %q, want %q", captured.UserAgent, "fixture-user-agent")
