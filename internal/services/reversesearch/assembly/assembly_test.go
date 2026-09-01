@@ -18,6 +18,38 @@ func TestNewRejectsInvalidProxy(t *testing.T) {
 	}
 }
 
+func TestNewWithClientPassesFlareSolverrToASCII2D(t *testing.T) {
+	var captured ascii2d.Options
+	searcher, err := newWithClientWithASCII2DFactory(
+		Options{
+			FlareSolverr: &FlareSolverrOptions{
+				URL:      "http://solver.invalid",
+				ProxyURL: "socks5://solver-proxy.invalid:1080",
+			},
+		},
+		&http.Client{},
+		func(options ascii2d.Options) (reversesearch.ASCII2DClient, error) {
+			captured = options
+			return assemblyASCII2DStub{}, nil
+		},
+	)
+	if err != nil {
+		t.Fatalf("construct reverse-searcher: %v", err)
+	}
+	if searcher == nil {
+		t.Fatal("construct reverse-searcher returned nil")
+	}
+	if captured.FlareSolverr == nil {
+		t.Fatal("ascii2d did not receive FlareSolverr options")
+	}
+	if captured.FlareSolverr.URL != "http://solver.invalid" {
+		t.Fatalf("FlareSolverr URL = %q, want %q", captured.FlareSolverr.URL, "http://solver.invalid")
+	}
+	if captured.FlareSolverr.ProxyURL != "socks5://solver-proxy.invalid:1080" {
+		t.Fatalf("FlareSolverr proxy = %q, want %q", captured.FlareSolverr.ProxyURL, "socks5://solver-proxy.invalid:1080")
+	}
+}
+
 func TestNewWithClientSeparatesBrowserASCII2DFromStandardClients(t *testing.T) {
 	var requests []string
 	standardClient := &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {

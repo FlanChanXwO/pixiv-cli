@@ -205,6 +205,45 @@ func TestValidateSolverSolutionRejectsMissingOrConflictingClearance(t *testing.T
 	}
 }
 
+func TestSolverClientCreateIsIdempotent(t *testing.T) {
+	var createCalls int
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		body, err := io.ReadAll(request.Body)
+		if err != nil {
+			t.Fatalf("read solver request: %v", err)
+		}
+		var decoded solverRequest
+		if err := json.Unmarshal(body, &decoded); err != nil {
+			t.Fatalf("decode solver request: %v", err)
+		}
+		if decoded.Command != "sessions.create" {
+			t.Fatalf("solver command = %q, want sessions.create", decoded.Command)
+		}
+		createCalls++
+		writeSolverJSON(writer, `{"status":"ok"}`)
+	}))
+	defer server.Close()
+
+	client, err := newSolverClient(solverClientOptions{
+		FlareSolverr: FlareSolverrOptions{URL: server.URL},
+		SessionName:  "fixture-session",
+	})
+	if err != nil {
+		t.Fatalf("newSolverClient() error = %v", err)
+	}
+
+	ctx := context.Background()
+	if err := client.create(ctx); err != nil {
+		t.Fatalf("first create() error = %v", err)
+	}
+	if err := client.create(ctx); err != nil {
+		t.Fatalf("second create() error = %v", err)
+	}
+	if createCalls != 1 {
+		t.Fatalf("sessions.create calls = %d, want 1", createCalls)
+	}
+}
+
 func writeSolverJSON(writer http.ResponseWriter, body string) {
 	writeSolverJSONStatus(writer, http.StatusOK, body)
 }

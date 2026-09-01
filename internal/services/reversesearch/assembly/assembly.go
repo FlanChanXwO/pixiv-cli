@@ -12,6 +12,14 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/shared/network"
 )
 
+// FlareSolverrOptions describes the optional challenge-recovery service for
+// ascii2d. Its browser proxy is kept separate from the standard reverse-search
+// HTTP proxy.
+type FlareSolverrOptions struct {
+	URL      string
+	ProxyURL string
+}
+
 // Options are construction-time values for one CLI invocation. Proxy is the
 // standard HTTP proxy for source loading and SauceNAO. ASCII2DProxy is an
 // optional override for ascii2d's dedicated browser transport; when omitted,
@@ -21,6 +29,7 @@ type Options struct {
 	ASCII2DProxy *string
 	UserAgent    string
 	SauceNAOKey  string
+	FlareSolverr *FlareSolverrOptions
 }
 
 // New constructs a Facade with a standard HTTP client for the source loader and
@@ -55,9 +64,17 @@ func newWithClientWithASCII2DFactory(
 	if client == nil {
 		return nil, reversesearch.NewError(reversesearch.CodeProviderNotConfigured, "reverse search HTTP client is not configured", nil)
 	}
+	var solverOptions *ascii2d.FlareSolverrOptions
+	if options.FlareSolverr != nil {
+		solverOptions = &ascii2d.FlareSolverrOptions{
+			URL:      options.FlareSolverr.URL,
+			ProxyURL: options.FlareSolverr.ProxyURL,
+		}
+	}
 	asciiClient, err := newASCII2DClient(ascii2d.Options{
-		ProxyURL:  options.ascii2dProxy(),
-		UserAgent: options.UserAgent,
+		ProxyURL:     options.ascii2dProxy(),
+		UserAgent:    options.UserAgent,
+		FlareSolverr: solverOptions,
 	})
 	if err != nil {
 		return nil, err

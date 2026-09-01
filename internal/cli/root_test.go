@@ -130,12 +130,19 @@ func TestMCPReverseSearchUsesStartupConfigAndProxySnapshot(t *testing.T) {
 		ReverseSearchProvider:  "all",
 		ReverseSearchPixivOnly: false,
 		SauceNAOAPIKey:         "startup-key",
+		ReverseSearchFlareSolverr: &configapp.FlareSolverrConfig{
+			URL:      "http://solver.invalid",
+			ProxyURL: "socks5://solver-proxy.invalid:1080",
+		},
 	}, mcpcommands.Request{HTTPSProxyOverride: &proxy})
 	require.NoError(t, err)
 	assert.Equal(t, "http://mcp-flag-proxy", captured.Proxy)
 	require.NotNil(t, captured.ASCII2DProxy)
 	assert.Equal(t, "http://mcp-flag-proxy", *captured.ASCII2DProxy)
 	assert.Equal(t, "startup-key", captured.SauceNAOKey)
+	require.NotNil(t, captured.FlareSolverr)
+	assert.Equal(t, "http://solver.invalid", captured.FlareSolverr.URL)
+	assert.Equal(t, "socks5://solver-proxy.invalid:1080", captured.FlareSolverr.ProxyURL)
 	assert.Equal(t, reversesearch.ProviderAll, ports.Provider)
 	assert.False(t, ports.PixivOnly)
 	assert.NotNil(t, ports.Searcher)

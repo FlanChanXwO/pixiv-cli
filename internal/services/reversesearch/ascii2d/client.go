@@ -34,10 +34,11 @@ var (
 
 // Options 是 ascii2d adapter 的构造依赖。
 type Options struct {
-	HTTPClient *http.Client
-	Endpoint   string
-	ProxyURL   string
-	UserAgent  string
+	HTTPClient   *http.Client
+	Endpoint     string
+	ProxyURL     string
+	UserAgent    string
+	FlareSolverr *FlareSolverrOptions
 }
 
 // Client 持有 ascii2d 会话模板；每次 Upload 都创建独立 cookie jar。
@@ -46,6 +47,7 @@ type Client struct {
 	endpoint    *url.URL
 	userAgent   string
 	hints       clientHints
+	solver      *solverClient
 	solverCache *solverStateCache
 }
 
@@ -83,11 +85,19 @@ func New(options Options) (*Client, error) {
 	}
 	client := *baseClient
 	client.Jar = nil
+	var solver *solverClient
+	if options.FlareSolverr != nil {
+		solver, err = newSolverClient(solverClientOptions{FlareSolverr: *options.FlareSolverr})
+		if err != nil {
+			return nil, err
+		}
+	}
 	return &Client{
 		httpClient:  &client,
 		endpoint:    parsed,
 		userAgent:   userAgent,
 		hints:       hints,
+		solver:      solver,
 		solverCache: newSolverStateCache(),
 	}, nil
 }
@@ -105,7 +115,7 @@ func (c *Client) Preflight(ctx context.Context) error {
 	return nil
 }
 
-// Upload 校验 ascii2d 专属媒体约束，建立 Cookie/CSRF 会话并只上传一次快照。
+// Upload 校验 ascii2d 专属媒体约束；每次上传尝试都从 Snapshot 重新打开并构建 multipart。
 func (c *Client) Upload(ctx context.Context, snapshot *reversesearch.Snapshot) (reversesearch.ASCII2DSession, error) {
 	if err := c.Preflight(ctx); err != nil {
 		return nil, err
@@ -120,13 +130,64 @@ func (c *Client) Upload(ctx context.Context, snapshot *reversesearch.Snapshot) (
 	}
 	token, err := sessionClient.fetchCSRF(ctx)
 	if err != nil {
+		if errors.Is(err, errChallengeDetected) {
+			return c.recoverUpload(ctx, snapshot, mediaType, sessionClient.endpoint.String(), err)
+		}
 		return nil, err
 	}
 	hash, err := sessionClient.upload(ctx, snapshot, mediaType, token)
 	if err != nil {
+		if errors.Is(err, errChallengeDetected) {
+			return c.recoverUpload(ctx, snapshot, mediaType, sessionClient.resolvePath("/search/file").String(), err)
+		}
 		return nil, err
 	}
 	return &Session{client: sessionClient, hash: hash}, nil
+}
+
+func (c *Client) recoverUpload(ctx context.Context, snapshot *reversesearch.Snapshot, mediaType, protectedURL string, challengeErr error) (reversesearch.ASCII2DSession, error) {
+	if c == nil || c.solver == nil {
+		return nil, challengeErr
+	}
+	// challenge 只允许一次恢复重放；恢复后的 session/CSRF 与原尝试完全隔离。
+	state, err := c.solveChallenge(ctx, protectedURL)
+	if err != nil {
+		return nil, err
+	}
+	sessionClient, err := c.newSessionClientWithSolverState(state)
+	if err != nil {
+		c.solverCache.invalidate()
+		return nil, err
+	}
+	token, err := sessionClient.fetchCSRF(ctx)
+	if err != nil {
+		if errors.Is(err, errChallengeDetected) {
+			c.solverCache.invalidate()
+			return nil, ErrSolverFailed
+		}
+		return nil, err
+	}
+	hash, err := sessionClient.upload(ctx, snapshot, mediaType, token)
+	if err != nil {
+		if errors.Is(err, errChallengeDetected) {
+			c.solverCache.invalidate()
+			return nil, ErrSolverFailed
+		}
+		return nil, err
+	}
+	return &Session{client: sessionClient, hash: hash}, nil
+}
+
+func (c *Client) solveChallenge(ctx context.Context, protectedURL string) (solverState, error) {
+	if c == nil || c.solver == nil || c.solverCache == nil || c.endpoint == nil {
+		return solverState{}, ErrSolverUnavailable
+	}
+	return c.solverCache.getOrSolve(ctx, func(solveContext context.Context) (solverState, error) {
+		if err := c.solver.create(solveContext); err != nil {
+			return solverState{}, err
+		}
+		return c.solver.get(solveContext, protectedURL)
+	})
 }
 
 func (c *Client) newSessionClient() (*Client, error) {
@@ -155,8 +216,31 @@ func (c *Client) newSessionClient() (*Client, error) {
 		endpoint:    c.endpoint,
 		userAgent:   c.userAgent,
 		hints:       c.hints,
+		solver:      c.solver,
 		solverCache: c.solverCache,
 	}, nil
+}
+
+func (c *Client) newSessionClientWithSolverState(state solverState) (*Client, error) {
+	if !validSolverHeaderValue(state.userAgent) || state.clearance == "" || !validSolverCookieValue(state.clearance) {
+		return nil, ErrMalformedSolverResponse
+	}
+	userAgent, hints, err := normalizeUserAgent(state.userAgent)
+	if err != nil {
+		return nil, ErrMalformedSolverResponse
+	}
+	sessionClient, err := c.newSessionClient()
+	if err != nil {
+		return nil, err
+	}
+	sessionClient.userAgent = userAgent
+	sessionClient.hints = hints
+	sessionClient.httpClient.Jar.SetCookies(sessionClient.endpoint, []*http.Cookie{{
+		Name:  "cf_clearance",
+		Value: state.clearance,
+		Path:  "/",
+	}})
+	return sessionClient, nil
 }
 
 func validateSnapshot(snapshot *reversesearch.Snapshot) (string, error) {

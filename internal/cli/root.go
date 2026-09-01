@@ -721,7 +721,11 @@ func (a app) searchDeps() pixivsearch.Dependencies {
 			}
 			standardProxy, ascii2dProxy := reverseSearchProxies(runtime, request.HTTPSProxyOverride)
 			searcher, err := newCLIReverseSearch(reverseassembly.Options{
-				Proxy: standardProxy, ASCII2DProxy: &ascii2dProxy, UserAgent: runtime.ReverseSearchNetwork.UserAgent.Value, SauceNAOKey: runtime.SauceNAOAPIKey,
+				Proxy:        standardProxy,
+				ASCII2DProxy: &ascii2dProxy,
+				UserAgent:    runtime.ReverseSearchNetwork.UserAgent.Value,
+				SauceNAOKey:  runtime.SauceNAOAPIKey,
+				FlareSolverr: reverseSearchFlareSolverr(runtime),
 			})
 			if err != nil {
 				return reversesearch.Response{}, err
@@ -978,6 +982,16 @@ func (a app) runPixivMCP(ctx context.Context, request mcpcommands.Request) error
 	return stdiotransport.RunStdio(ctx, server)
 }
 
+func reverseSearchFlareSolverr(runtime configapp.RuntimeConfig) *reverseassembly.FlareSolverrOptions {
+	if runtime.ReverseSearchFlareSolverr == nil {
+		return nil
+	}
+	return &reverseassembly.FlareSolverrOptions{
+		URL:      runtime.ReverseSearchFlareSolverr.URL,
+		ProxyURL: runtime.ReverseSearchFlareSolverr.ProxyURL,
+	}
+}
+
 func reverseSearchProxies(runtime configapp.RuntimeConfig, override *string) (standardProxy, ascii2dProxy string) {
 	standardProxy = runtime.HTTPSProxy
 	if override != nil {
@@ -996,7 +1010,11 @@ func reverseSearchProxies(runtime configapp.RuntimeConfig, override *string) (st
 func newMCPReverseSearchPorts(runtime configapp.RuntimeConfig, request mcpcommands.Request) (mcpserver.ReverseSearchPorts, error) {
 	standardProxy, ascii2dProxy := reverseSearchProxies(runtime, request.HTTPSProxyOverride)
 	searcher, err := newCLIMCPReverseSearch(reverseassembly.Options{
-		Proxy: standardProxy, ASCII2DProxy: &ascii2dProxy, UserAgent: runtime.ReverseSearchNetwork.UserAgent.Value, SauceNAOKey: runtime.SauceNAOAPIKey,
+		Proxy:        standardProxy,
+		ASCII2DProxy: &ascii2dProxy,
+		UserAgent:    runtime.ReverseSearchNetwork.UserAgent.Value,
+		SauceNAOKey:  runtime.SauceNAOAPIKey,
+		FlareSolverr: reverseSearchFlareSolverr(runtime),
 	})
 	if err != nil {
 		return mcpserver.ReverseSearchPorts{}, err

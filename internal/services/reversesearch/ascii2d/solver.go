@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -51,6 +52,9 @@ type solverClient struct {
 	proxyURL   string
 	httpClient *http.Client
 	session    string
+
+	mu      sync.Mutex
+	created bool
 }
 
 type solverState struct {
@@ -162,11 +166,22 @@ func validSolverSessionName(value string) bool {
 }
 
 func (c *solverClient) create(ctx context.Context) error {
+	if c == nil {
+		return ErrSolverUnavailable
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.created {
+		return nil
+	}
 	_, err := c.call(ctx, solverRequest{
 		Command: "sessions.create",
 		Session: c.session,
 		Proxy:   solverProxyForCreate(c.proxyURL),
 	})
+	if err == nil {
+		c.created = true
+	}
 	return err
 }
 
@@ -191,10 +206,21 @@ func (c *solverClient) get(ctx context.Context, targetURL string) (solverState, 
 }
 
 func (c *solverClient) destroy(ctx context.Context) error {
+	if c == nil {
+		return ErrSolverUnavailable
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if !c.created {
+		return nil
+	}
 	_, err := c.call(ctx, solverRequest{
 		Command: "sessions.destroy",
 		Session: c.session,
 	})
+	if err == nil {
+		c.created = false
+	}
 	return err
 }
 
