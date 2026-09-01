@@ -513,3 +513,70 @@ func errorChainText(err error) string {
 	}
 	return text + "\n" + errorChainText(errors.Unwrap(err))
 }
+
+func TestUploadClassifiesCloudflareChallengeHeaderBeforeReadingBody(t *testing.T) {
+	const privateResponse = "private cloudflare challenge response"
+	responseBody := &closeTrackingBody{Reader: strings.NewReader(privateResponse)}
+	client, err := ascii2d.New(ascii2d.Options{
+		Endpoint: "https://ascii2d.invalid",
+		HTTPClient: &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+			return &http.Response{
+				StatusCode: http.StatusForbidden,
+				Header:     http.Header{"Cf-Mitigated": []string{"challenge"}},
+				Body:       responseBody,
+				Request:    request,
+			}, nil
+		})},
+	})
+	require.NoError(t, err)
+
+	_, err = client.Upload(context.Background(), loadSnapshot(t, []byte("\xff\xd8\xff\xe0fixture")))
+	require.Equal(t, reversesearch.CodeUpstreamHTTPStatus, reversesearch.CodeOf(err))
+	require.EqualError(t, err, "ascii2d challenge detected")
+	require.True(t, responseBody.closed.Load())
+	require.NotContains(t, errorChainText(err), privateResponse)
+}
+
+func TestUploadClassifiesCloudflareHTMLChallengeWithoutArbitraryTruncation(t *testing.T) {
+	responseBody := &closeTrackingBody{Reader: strings.NewReader(strings.Repeat("ordinary prefix ", 5000) + `<html><head><title>Just a moment...</title></head><body>Checking your browser before accessing ascii2d</body></html>`)}
+	client, err := ascii2d.New(ascii2d.Options{
+		Endpoint: "https://ascii2d.invalid",
+		HTTPClient: &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+			return &http.Response{
+				StatusCode: http.StatusForbidden,
+				Header:     http.Header{"Content-Type": []string{"text/html; charset=utf-8"}},
+				Body:       responseBody,
+				Request:    request,
+			}, nil
+		})},
+	})
+	require.NoError(t, err)
+
+	_, err = client.Upload(context.Background(), loadSnapshot(t, []byte("\xff\xd8\xff\xe0fixture")))
+	require.Equal(t, reversesearch.CodeUpstreamHTTPStatus, reversesearch.CodeOf(err))
+	require.EqualError(t, err, "ascii2d challenge detected")
+	require.True(t, responseBody.closed.Load())
+}
+
+func TestUploadClassifiesCloudflareChallengeHeaderEvenWithSuccessfulStatus(t *testing.T) {
+	const privateResponse = "private cloudflare challenge response"
+	responseBody := &closeTrackingBody{Reader: strings.NewReader(privateResponse)}
+	client, err := ascii2d.New(ascii2d.Options{
+		Endpoint: "https://ascii2d.invalid",
+		HTTPClient: &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     http.Header{"Cf-Mitigated": []string{"challenge"}},
+				Body:       responseBody,
+				Request:    request,
+			}, nil
+		})},
+	})
+	require.NoError(t, err)
+
+	_, err = client.Upload(context.Background(), loadSnapshot(t, []byte("\xff\xd8\xff\xe0fixture")))
+	require.Equal(t, reversesearch.CodeUpstreamHTTPStatus, reversesearch.CodeOf(err))
+	require.EqualError(t, err, "ascii2d challenge detected")
+	require.True(t, responseBody.closed.Load())
+	require.NotContains(t, errorChainText(err), privateResponse)
+}
