@@ -43,6 +43,13 @@ FANBOX MCP server 也遵循相同资源形状：第一方 resource 只包含 opa
 使用 MCP 进程启动时的配置，默认是 `saucenao`。`reverse_search_pixiv_only` 也在启动时固定，并控制
 `results` 是否保留非 Pixiv 命中。单次 tool call 不能改变代理、API key 或其他传输配置。
 
+启动时的 transport 有三个不同网络面：standard source/SauceNAO client、专用 ascii2d browser client，以及
+FlareSolverr JSON control client。存在 `[reverse_search.network].proxy_url` 时（显式空值表示 direct access），
+它只选择 ascii2d proxy；standard client 继续使用全局 proxy route。`[reverse_search.network].user_agent` 只作用于
+ascii2d。Chromium User-Agent 会得到匹配的 `Sec-CH-UA`、`Sec-CH-UA-Mobile` 和 `Sec-CH-UA-Platform` hint，非
+Chromium User-Agent 则省略这些 Chromium hint。`[reverse_search.flaresolverr].proxy_url` 只作为
+`sessions.create` 中发送的 browser upstream proxy；solver control traffic 不继承任一 native route。
+
 source 可以是任意可读常规本地文件或 HTTP(S) URL。按明确的可信本机 client 信任模型，允许私网、loopback、
 link-local URL 目标，server 也可以读取私有文件。server 只抓取或打开一次私有快照，再上传给所选第三方
 provider；不会返回原始 source、临时路径、请求头、cookie、API key、CSRF 值、redirect `Location` 或上游
@@ -58,6 +65,17 @@ canonical `artwork` 或 `user` record。因为 provider 无法确定 Pixiv 作�
 至少一个 provider 成功且另一个失败时，`partial=true`，tool 成功（`isError=false`）。单 provider 失败或全部
 provider 失败时保留 envelope 并设置 `isError=true`；schema 错误在 provider 执行前拒绝。取消仍是完整请求取消，
 不会伪装为 partial 成功。
+
+图片由 native ascii2d `/search/file` multipart endpoint 上传；FlareSolverr 只接收 JSON challenge-recovery request，
+绝不会收到图片上传。solver state 只属于进程/client，不持久化到磁盘。ascii2d 的 provider 自身 10 MB 限制不是
+反向搜图全局 1 MiB 压缩上传规则；`gzip, deflate, br` 是 response negotiation。
+
+当前稳定的反向搜图 error-code vocabulary 为：`unknown`、`invalid_request`、`invalid_source`、
+`source_not_regular_file`、`source_read_failed`、`source_http_status`、`snapshot_failed`、
+`source_loader_not_configured`、`provider_not_configured`、`missing_credential`、`malformed_upstream_response`、
+`upstream_http_status`、`provider_failed`、`all_providers_failed`、`challenge_required`、`solver_unavailable`、
+`solver_failed` 和 `malformed_solver_response`。provider failure cause 会在进入 `provider_errors` 前脱敏；只发布
+经过审查的稳定 code 与安全 message。
 
 ## 实体 filter 与收藏数搜索
 

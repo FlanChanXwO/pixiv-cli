@@ -52,6 +52,17 @@ MCP process's startup configuration, whose default is `saucenao`. The
 controls whether non-Pixiv matches remain in `results`. A tool call cannot
 change the proxy, API key, or other transport configuration.
 
+The startup transport has three distinct network surfaces: the standard source/
+SauceNAO client, the dedicated ascii2d browser client, and the FlareSolverr JSON
+control client. `[reverse_search.network].proxy_url` selects the ascii2d proxy
+when present (an explicit empty value selects direct access); the standard client
+keeps the global proxy route. `[reverse_search.network].user_agent` applies only
+to ascii2d. Chromium User-Agents receive matching `Sec-CH-UA`,
+`Sec-CH-UA-Mobile`, and `Sec-CH-UA-Platform` hints, while non-Chromium
+User-Agents omit those Chromium hints. `[reverse_search.flaresolverr].proxy_url`
+is only the browser upstream proxy sent in `sessions.create`; solver control
+traffic does not inherit either native route.
+
 The source may be any readable regular local file or HTTP(S) URL. Under the
 intentional trusted-local-client model, private, loopback, and link-local URL
 targets are allowed, and the server may read private files. The server fetches
@@ -78,6 +89,22 @@ tool result is successful (`isError=false`). A single-provider failure or an
 all-provider failure preserves the envelope and sets `isError=true`; schema
 errors are rejected before provider execution. Cancellation remains a full
 request cancellation, not a partial success.
+
+The image is uploaded natively to ascii2d's `/search/file` multipart endpoint;
+FlareSolverr receives only JSON challenge-recovery requests and never receives
+the image upload. Its solver state is process/client-scoped and is not persisted
+to disk. ascii2d's 10 MB provider-specific limit is not a reverse-search-wide
+1 MiB compressed-upload rule; `gzip, deflate, br` is response negotiation.
+
+The stable reverse-search error-code vocabulary is `unknown`, `invalid_request`,
+`invalid_source`, `source_not_regular_file`, `source_read_failed`,
+`source_http_status`, `snapshot_failed`, `source_loader_not_configured`,
+`provider_not_configured`, `missing_credential`, `malformed_upstream_response`,
+`upstream_http_status`, `provider_failed`, `all_providers_failed`,
+`challenge_required`, `solver_unavailable`, `solver_failed`, and
+`malformed_solver_response`. Provider failure causes are sanitized before they
+enter `provider_errors`; only the reviewed stable code and safe message are
+published.
 
 ## Entity filters and bookmark-count search
 

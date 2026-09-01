@@ -262,6 +262,14 @@ Reverse image search is the only product capability that crosses the normal publ
 
 The Facade loads a regular file or HTTP(S) source into one private snapshot, hashes it, and removes it after the provider work finishes. The deliberate source policy permits arbitrary readable regular files and private, loopback, or link-local URLs; the MCP server therefore belongs behind a trusted local-client boundary. Neither the source nor provider transport material crosses the output boundary: only source kind/hash, safe provider summaries/errors, domain evidence, and canonical `artwork`/`user` records are publishable.
 
+Reverse-search assembly owns three separate network surfaces: the standard source/SauceNAO client, the dedicated
+ascii2d browser client, and the FlareSolverr JSON control client. The reverse-search service proxy may override only
+ascii2d, while a command-level proxy override applies to both native clients; the standard client otherwise follows
+the global route. The ascii2d User-Agent is paired with its `Chrome_146` TLS profile and matching Chromium client hints,
+or omits those hints for a non-Chromium User-Agent. FlareSolverr's upstream proxy is used only by browser
+`sessions.create`; solver control traffic stays independent, and the image always uses the native ascii2d multipart
+upload rather than passing through the solver. Solver state is process/client-scoped and is not persisted.
+
 ### `internal/services/pixiv/endpoint/{artwork,novel,user}`
 
 The three parent packages only own the normalized entities/values shared by their respective endpoint families; routes, wire DTOs, response validation, pagination, and mutation forms stay in the corresponding sub-families. novel and user no longer flow through a shared model package, preventing appapi or cross-domain mappers from becoming business owners again. Transport-layer constants such as MCP delivery still stay in `internal/mcpserver`.

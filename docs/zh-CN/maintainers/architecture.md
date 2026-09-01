@@ -273,6 +273,13 @@ v1 已删除 `internal/services/pixiv/webapi` 与匿名 Web/AJAX 路径：App AP
 
 Facade 会把常规文件或 HTTP(S) source 载入一个私有快照、计算 hash，并在 provider 工作结束后清理。已确认的 source policy 有意允许任意可读常规文件以及私网、loopback、link-local URL；因此 MCP 必须处在可信本机 client 边界之后。source 与 provider transport 都不能跨过输出边界；可发布的只有 source kind/hash、安全的 provider 摘要/错误、领域 evidence 和 canonical `artwork`/`user` Record。
 
+reverse-search assembly 负责三个独立网络面：standard source/SauceNAO client、专用 ascii2d browser client，以及
+FlareSolverr JSON control client。reverse-search service proxy 只可以覆盖 ascii2d；命令级 proxy override 同时
+作用于两个 native client；没有覆盖时 standard client 继续遵循全局 route。ascii2d User-Agent 必须与
+`Chrome_146` TLS profile 以及匹配的 Chromium client hint 配对；非 Chromium User-Agent 则省略这些 hint。
+FlareSolverr 的 upstream proxy 只用于 browser `sessions.create`；solver control traffic 保持独立，图片始终
+走 native ascii2d multipart upload，不经过 solver。solver state 只属于进程/client，不持久化。
+
 ### `internal/services/pixiv/endpoint/{artwork,novel,user}`
 
 三个 parent 包只拥有各自 endpoint family 共享的 normalized entity/value；route、wire DTO、响应校验、分页与 mutation form 留在对应的子 family。novel 与 user 不再通过共享 model 包传递，避免 appapi 或跨域 mapper 重新成为业务 owner。MCP delivery 等传输层常量仍留在 `internal/mcpserver`。
