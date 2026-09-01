@@ -172,6 +172,94 @@ func TestRequestIntervalRejectsNegativeDuration(t *testing.T) {
 	require.EqualError(t, err, "request_interval must not be negative")
 }
 
+func TestRuntimePreservesReverseSearchNetworkAndFlareSolverrSeparately(t *testing.T) {
+	withoutProxyEnvironment(t)
+	path := filepath.Join(t.TempDir(), "config.toml")
+	require.NoError(t, os.WriteFile(path, []byte(`[network]
+https_proxy = "http://global-proxy"
+
+[reverse_search.network]
+proxy_url = ""
+user_agent = "custom-reverse-search-agent"
+
+[reverse_search.flaresolverr]
+url = "http://reverse-solver.example"
+proxy_url = "socks5://reverse-solver-proxy.example"
+
+[fanbox.network]
+proxy_url = "http://fanbox-proxy.example"
+user_agent = "custom-fanbox-agent"
+
+[fanbox.flaresolverr]
+url = "http://fanbox-solver.example"
+proxy_url = "socks5://fanbox-solver-proxy.example"
+`), 0o600))
+
+	state, err := config.LoadSnapshotAt(path)
+	require.NoError(t, err)
+	runtime, err := state.Runtime()
+	require.NoError(t, err)
+
+	require.Equal(t, "http://global-proxy", runtime.HTTPSProxy)
+	require.True(t, runtime.ReverseSearchNetwork.ProxyURL.Present)
+	require.Empty(t, runtime.ReverseSearchNetwork.ProxyURL.Value)
+	require.True(t, runtime.ReverseSearchNetwork.UserAgent.Present)
+	require.Equal(t, "custom-reverse-search-agent", runtime.ReverseSearchNetwork.UserAgent.Value)
+	require.NotNil(t, runtime.ReverseSearchFlareSolverr)
+	require.Equal(t, "http://reverse-solver.example", runtime.ReverseSearchFlareSolverr.URL)
+	require.Equal(t, "socks5://reverse-solver-proxy.example", runtime.ReverseSearchFlareSolverr.ProxyURL)
+
+	require.Equal(t, "http://fanbox-proxy.example", runtime.FanboxNetwork.ProxyURL.Value)
+	require.Equal(t, "custom-fanbox-agent", runtime.FanboxNetwork.UserAgent.Value)
+	require.NotNil(t, runtime.FanboxFlareSolverr)
+	require.Equal(t, "http://fanbox-solver.example", runtime.FanboxFlareSolverr.URL)
+	require.Equal(t, "socks5://fanbox-solver-proxy.example", runtime.FanboxFlareSolverr.ProxyURL)
+}
+
+func TestRuntimeRejectsMalformedReverseSearchAdvancedValues(t *testing.T) {
+	tests := []struct {
+		name    string
+		body    string
+		wantErr string
+	}{
+		{
+			name:    "network proxy must be a string",
+			body:    "[reverse_search.network]\nproxy_url = 42\n",
+			wantErr: "reverse_search.network.proxy_url must be a string",
+		},
+		{
+			name:    "network user agent must be a string",
+			body:    "[reverse_search.network]\nuser_agent = 42\n",
+			wantErr: "reverse_search.network.user_agent must be a string",
+		},
+		{
+			name:    "solver proxy must be a string",
+			body:    "[reverse_search.flaresolverr]\nurl = 'http://solver.example'\nproxy_url = 42\n",
+			wantErr: "reverse_search.flaresolverr.proxy_url must be a string",
+		},
+		{
+			name:    "solver URL is required",
+			body:    "[reverse_search.flaresolverr]\nproxy_url = 'socks5://solver-proxy.example'\n",
+			wantErr: "reverse_search.flaresolverr.url must be set when reverse_search.flaresolverr is configured",
+		},
+		{
+			name:    "solver URL cannot be blank",
+			body:    "[reverse_search.flaresolverr]\nurl = '   '\n",
+			wantErr: "reverse_search.flaresolverr.url must be set when reverse_search.flaresolverr is configured",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "config.toml")
+			require.NoError(t, os.WriteFile(path, []byte(test.body), 0o600))
+			state, err := config.LoadSnapshotAt(path)
+			require.NoError(t, err)
+			_, err = state.Runtime()
+			require.EqualError(t, err, test.wantErr)
+		})
+	}
+}
+
 func TestRuntimePreservesServiceNetworkPresenceAndValues(t *testing.T) {
 	withoutProxyEnvironment(t)
 	path := filepath.Join(t.TempDir(), "config.toml")
@@ -215,7 +303,10 @@ func TestRuntimeLeavesOptionalServiceNetworkTablesAbsent(t *testing.T) {
 	require.False(t, runtime.PixivNetwork.ProxyURL.Present)
 	require.False(t, runtime.FanboxNetwork.ProxyURL.Present)
 	require.False(t, runtime.FanboxNetwork.UserAgent.Present)
+	require.False(t, runtime.ReverseSearchNetwork.ProxyURL.Present)
+	require.False(t, runtime.ReverseSearchNetwork.UserAgent.Present)
 	require.Nil(t, runtime.FanboxFlareSolverr)
+	require.Nil(t, runtime.ReverseSearchFlareSolverr)
 }
 
 func TestRuntimeRejectsMalformedAdvancedNetworkValues(t *testing.T) {

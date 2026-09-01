@@ -137,6 +137,62 @@ func TestMCPReverseSearchUsesStartupConfigAndProxySnapshot(t *testing.T) {
 	assert.NotNil(t, ports.Searcher)
 }
 
+func TestMCPReverseSearchUsesConfiguredServiceProxyBeforeGlobal(t *testing.T) {
+	oldReverse := newCLIMCPReverseSearch
+	var captured reverseassembly.Options
+	newCLIMCPReverseSearch = func(options reverseassembly.Options) (reversesearch.Searcher, error) {
+		captured = options
+		return rootReverseSearcherFunc(func(_ context.Context, _ reversesearch.Request) (reversesearch.Response, error) {
+			return reversesearch.Response{}, nil
+		}), nil
+	}
+	t.Cleanup(func() { newCLIMCPReverseSearch = oldReverse })
+
+	tests := []struct {
+		name  string
+		proxy configapp.OptionalString
+		want  string
+	}{
+		{name: "configured service proxy wins", proxy: configapp.OptionalString{Present: true, Value: "http://reverse-search-proxy"}, want: "http://reverse-search-proxy"},
+		{name: "explicit empty service proxy means direct", proxy: configapp.OptionalString{Present: true}, want: ""},
+		{name: "absent service proxy falls back to global", proxy: configapp.OptionalString{}, want: "http://global-proxy"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			_, err := newMCPReverseSearchPorts(configapp.RuntimeConfig{
+				HTTPSProxy: "http://global-proxy",
+				ReverseSearchNetwork: configapp.ServiceNetworkConfig{
+					ProxyURL: test.proxy,
+				},
+				ReverseSearchProvider:  "all",
+				ReverseSearchPixivOnly: false,
+			}, mcpcommands.Request{})
+			require.NoError(t, err)
+			assert.Equal(t, test.want, captured.Proxy)
+		})
+	}
+}
+
+func TestMCPReverseSearchPassesConfiguredUserAgentToAssembly(t *testing.T) {
+	oldReverse := newCLIMCPReverseSearch
+	var captured reverseassembly.Options
+	newCLIMCPReverseSearch = func(options reverseassembly.Options) (reversesearch.Searcher, error) {
+		captured = options
+		return rootReverseSearcherFunc(func(_ context.Context, _ reversesearch.Request) (reversesearch.Response, error) {
+			return reversesearch.Response{}, nil
+		}), nil
+	}
+	t.Cleanup(func() { newCLIMCPReverseSearch = oldReverse })
+
+	_, err := newMCPReverseSearchPorts(configapp.RuntimeConfig{
+		ReverseSearchNetwork: configapp.ServiceNetworkConfig{
+			UserAgent: configapp.OptionalString{Present: true, Value: "fixture-user-agent"},
+		},
+	}, mcpcommands.Request{})
+	require.NoError(t, err)
+	assert.Equal(t, "fixture-user-agent", captured.UserAgent)
+}
+
 func TestCloseStateClosesInReverseOrderOnceAndJoinsErrors(t *testing.T) {
 	firstErr := errors.New("first close")
 	secondErr := errors.New("second close")

@@ -32,12 +32,16 @@ var (
 type Options struct {
 	HTTPClient *http.Client
 	Endpoint   string
+	ProxyURL   string
+	UserAgent  string
 }
 
 // Client 持有 ascii2d 会话模板；每次 Upload 都创建独立 cookie jar。
 type Client struct {
 	httpClient *http.Client
 	endpoint   *url.URL
+	userAgent  string
+	hints      clientHints
 }
 
 // Session 是一次成功上传产生的不可变查询句柄。color 与 bovw 可共享它。
@@ -56,13 +60,25 @@ func New(options Options) (*Client, error) {
 		(!strings.EqualFold(parsed.Scheme, "http") && !strings.EqualFold(parsed.Scheme, "https")) {
 		return nil, reversesearch.NewError(reversesearch.CodeInvalidRequest, "ascii2d endpoint is invalid", nil)
 	}
+	userAgent, hints, err := normalizeUserAgent(options.UserAgent)
+	if err != nil {
+		return nil, err
+	}
+	proxyURL, err := validateProxyURL(options.ProxyURL)
+	if err != nil {
+		return nil, err
+	}
 	baseClient := options.HTTPClient
 	if baseClient == nil {
-		baseClient = http.DefaultClient
+		transport, err := newBrowserTransport(proxyURL)
+		if err != nil {
+			return nil, reversesearch.NewError(reversesearch.CodeProviderFailed, "could not create ascii2d browser transport", nil)
+		}
+		baseClient = &http.Client{Transport: transport}
 	}
 	client := *baseClient
 	client.Jar = nil
-	return &Client{httpClient: &client, endpoint: parsed}, nil
+	return &Client{httpClient: &client, endpoint: parsed, userAgent: userAgent, hints: hints}, nil
 }
 
 func (c *Client) Preflight(ctx context.Context) error {
@@ -123,7 +139,12 @@ func (c *Client) newSessionClient() (*Client, error) {
 		}
 		return nil
 	}
-	return &Client{httpClient: &httpClient, endpoint: c.endpoint}, nil
+	return &Client{
+		httpClient: &httpClient,
+		endpoint:   c.endpoint,
+		userAgent:  c.userAgent,
+		hints:      c.hints,
+	}, nil
 }
 
 func validateSnapshot(snapshot *reversesearch.Snapshot) (string, error) {
@@ -162,6 +183,7 @@ func (c *Client) fetchCSRF(ctx context.Context) (string, error) {
 	if err != nil {
 		return "", reversesearch.NewError(reversesearch.CodeProviderFailed, "could not create ascii2d session request", nil)
 	}
+	c.applyNavigationHeaders(request, "none", "")
 	response, err := c.httpClient.Do(request)
 	if err != nil {
 		if ctxErr := ctx.Err(); ctxErr != nil {
@@ -192,6 +214,7 @@ func (c *Client) upload(ctx context.Context, snapshot *reversesearch.Snapshot, m
 		<-writeResult
 		return "", reversesearch.NewError(reversesearch.CodeProviderFailed, "could not create ascii2d upload request", nil)
 	}
+	c.applyFormHeaders(request)
 	request.Header.Set("Content-Type", contentType)
 
 	client := *c.httpClient
@@ -339,6 +362,7 @@ func (s *Session) Search(ctx context.Context, provider reversesearch.Provider) (
 	if err != nil {
 		return reversesearch.ProviderResponse{}, reversesearch.NewError(reversesearch.CodeProviderFailed, "could not create ascii2d result request", nil)
 	}
+	s.client.applyNavigationHeaders(request, "same-origin", s.client.homeURL())
 	response, err := s.client.httpClient.Do(request)
 	if err != nil {
 		if ctxErr := ctx.Err(); ctxErr != nil {

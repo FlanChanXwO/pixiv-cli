@@ -719,12 +719,9 @@ func (a app) searchDeps() pixivsearch.Dependencies {
 			if request.Provider != "" {
 				provider = request.Provider
 			}
-			proxy := runtime.HTTPSProxy
-			if request.HTTPSProxyOverride != nil {
-				proxy = *request.HTTPSProxyOverride
-			}
+			proxy := reverseSearchProxy(runtime, request.HTTPSProxyOverride)
 			searcher, err := newCLIReverseSearch(reverseassembly.Options{
-				Proxy: proxy, SauceNAOKey: runtime.SauceNAOAPIKey,
+				Proxy: proxy, UserAgent: runtime.ReverseSearchNetwork.UserAgent.Value, SauceNAOKey: runtime.SauceNAOAPIKey,
 			})
 			if err != nil {
 				return reversesearch.Response{}, err
@@ -981,16 +978,23 @@ func (a app) runPixivMCP(ctx context.Context, request mcpcommands.Request) error
 	return stdiotransport.RunStdio(ctx, server)
 }
 
+func reverseSearchProxy(runtime configapp.RuntimeConfig, override *string) string {
+	if override != nil {
+		return *override
+	}
+	if runtime.ReverseSearchNetwork.ProxyURL.Present {
+		return runtime.ReverseSearchNetwork.ProxyURL.Value
+	}
+	return runtime.HTTPSProxy
+}
+
 // newMCPReverseSearchPorts 在 MCP stdio 启动时创建一次反向搜图 Facade，并
 // 固定代理、凭据和配置默认值。后续 tool input 只允许覆盖 provider，不能改变
 // 传输或 credential 依赖，避免同一 MCP session 的运行时语义漂移。
 func newMCPReverseSearchPorts(runtime configapp.RuntimeConfig, request mcpcommands.Request) (mcpserver.ReverseSearchPorts, error) {
-	proxy := runtime.HTTPSProxy
-	if request.HTTPSProxyOverride != nil {
-		proxy = *request.HTTPSProxyOverride
-	}
+	proxy := reverseSearchProxy(runtime, request.HTTPSProxyOverride)
 	searcher, err := newCLIMCPReverseSearch(reverseassembly.Options{
-		Proxy: proxy, SauceNAOKey: runtime.SauceNAOAPIKey,
+		Proxy: proxy, UserAgent: runtime.ReverseSearchNetwork.UserAgent.Value, SauceNAOKey: runtime.SauceNAOAPIKey,
 	})
 	if err != nil {
 		return mcpserver.ReverseSearchPorts{}, err
