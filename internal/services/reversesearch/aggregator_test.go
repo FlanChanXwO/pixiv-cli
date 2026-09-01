@@ -244,7 +244,7 @@ func TestAggregatorAllOneModeFailureIsPartialAndKeepsOtherResults(t *testing.T) 
 	sauce := providerClientStub{search: func(context.Context, *reversesearch.Snapshot) (reversesearch.ProviderResponse, error) {
 		return reversesearch.ProviderResponse{Provider: reversesearch.ProviderSauceNAO, Matches: []reversesearch.Match{{Rank: 1, ArtworkID: 1}}}, nil
 	}}
-	bovwFailure := reversesearch.NewError(reversesearch.CodeMalformedUpstreamResponse, "ascii2d returned a malformed result page", nil)
+	bovwFailure := reversesearch.NewError(reversesearch.CodeSolverFailed, "ascii2d challenge solver failed", errors.New("private solver diagnostic"))
 	ascii := ascii2DClientStub{upload: func(context.Context, *reversesearch.Snapshot) (reversesearch.ASCII2DSession, error) {
 		return ascii2DSessionFunc(func(_ context.Context, provider reversesearch.Provider) (reversesearch.ProviderResponse, error) {
 			if provider == reversesearch.ProviderASCII2DBOVW {
@@ -268,8 +268,8 @@ func TestAggregatorAllOneModeFailureIsPartialAndKeepsOtherResults(t *testing.T) 
 	}, response.Providers)
 	require.Equal(t, []reversesearch.ProviderError{{
 		Provider: reversesearch.ProviderASCII2DBOVW,
-		Code:     reversesearch.CodeMalformedUpstreamResponse,
-		Message:  "ascii2d returned a malformed result page",
+		Code:     reversesearch.CodeSolverFailed,
+		Message:  "ascii2d challenge solver failed",
 	}}, response.ProviderErrors)
 }
 

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"strings"
 	"testing"
@@ -163,6 +164,53 @@ func TestCommandDoesNotFallbackInvalidHTTPSourceToKeywordSearch(t *testing.T) {
 	}
 	if opened {
 		t.Fatal("fell back to Pixiv keyword search for invalid HTTP source")
+	}
+}
+
+func TestCommandJSONOutputPreservesStableSolverErrorAndSafeCause(t *testing.T) {
+	const secret = "solver-secret source-secret csrf-secret"
+	output := &bytes.Buffer{}
+	response := reversesearch.Response{
+		Input:     reversesearch.Input{Kind: reversesearch.SourceKindURL, SHA256: "deadbeef"},
+		Providers: []reversesearch.ProviderSummary{{Name: reversesearch.ProviderASCII2DColor, Status: reversesearch.ProviderStatusError}},
+		Results:   []reversesearch.Result{},
+		ProviderErrors: []reversesearch.ProviderError{{
+			Provider: reversesearch.ProviderASCII2DColor,
+			Code:     reversesearch.CodeSolverUnavailable,
+			Message:  "ascii2d challenge solver is unavailable",
+		}},
+	}
+	cmd := New(Dependencies{
+		Input:       strings.NewReader(""),
+		Output:      output,
+		ErrorOutput: &bytes.Buffer{},
+		JSONOut:     func(*bool) (bool, error) { return true, nil },
+		ReverseSearch: func(context.Context, ReverseSearchRequest) (reversesearch.Response, error) {
+			return response, reversesearch.NewError(reversesearch.CodeSolverUnavailable, "ascii2d challenge solver is unavailable", errors.New(secret))
+		},
+	})
+	cmd.SetArgs([]string{"https://example.test/image.jpg", "--json"})
+
+	err := cmd.Execute()
+	if err == nil || err.Error() != "ascii2d challenge solver is unavailable" {
+		t.Fatalf("execute reverse search error = %v", err)
+	}
+	var envelope struct {
+		Providers      []reversesearch.ProviderSummary `json:"providers"`
+		Results        []reversesearch.Result          `json:"results"`
+		ProviderErrors []reversesearch.ProviderError   `json:"provider_errors"`
+	}
+	if decodeErr := json.Unmarshal(output.Bytes(), &envelope); decodeErr != nil {
+		t.Fatalf("decode JSON output: %v; output=%q", decodeErr, output.String())
+	}
+	if len(envelope.Providers) != 1 || len(envelope.Results) != 0 || len(envelope.ProviderErrors) != 1 {
+		t.Fatalf("unexpected solver error envelope: %+v", envelope)
+	}
+	if envelope.ProviderErrors[0].Code != reversesearch.CodeSolverUnavailable {
+		t.Fatalf("provider error code = %q, want %q", envelope.ProviderErrors[0].Code, reversesearch.CodeSolverUnavailable)
+	}
+	if strings.Contains(output.String(), secret) || strings.Contains(err.Error(), secret) {
+		t.Fatalf("solver error leaked private cause: output=%q err=%q", output.String(), err)
 	}
 }
 

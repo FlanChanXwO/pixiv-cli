@@ -33,6 +33,28 @@ var (
 	errChallengeDetected   = errors.New("ascii2d challenge detected")
 )
 
+func mapSolverError(err error) error {
+	if err == nil {
+		return nil
+	}
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return err
+	}
+	if reversesearch.CodeOf(err) != reversesearch.CodeUnknown {
+		return err
+	}
+	switch {
+	case errors.Is(err, ErrSolverUnavailable):
+		return reversesearch.NewError(reversesearch.CodeSolverUnavailable, "ascii2d challenge solver is unavailable", err)
+	case errors.Is(err, ErrSolverFailed):
+		return reversesearch.NewError(reversesearch.CodeSolverFailed, "ascii2d challenge solver failed", err)
+	case errors.Is(err, ErrMalformedSolverResponse):
+		return reversesearch.NewError(reversesearch.CodeMalformedSolverResponse, "ascii2d challenge solver response is malformed", err)
+	default:
+		return err
+	}
+}
+
 // Options 是 ascii2d adapter 的构造依赖。
 type Options struct {
 	HTTPClient   *http.Client
@@ -98,7 +120,7 @@ func New(options Options) (*Client, error) {
 	if options.FlareSolverr != nil {
 		solver, err = newSolverClient(solverClientOptions{FlareSolverr: *options.FlareSolverr})
 		if err != nil {
-			return nil, err
+			return nil, mapSolverError(err)
 		}
 	}
 	return &Client{
@@ -185,23 +207,23 @@ func (c *Client) Upload(ctx context.Context, snapshot *reversesearch.Snapshot) (
 
 func (c *Client) recoverUpload(ctx context.Context, snapshot *reversesearch.Snapshot, mediaType, protectedURL string, challengeErr error) (reversesearch.ASCII2DSession, error) {
 	if c == nil || c.solver == nil {
-		return nil, challengeErr
+		return nil, reversesearch.NewError(reversesearch.CodeChallengeRequired, "ascii2d challenge requires solver recovery", challengeErr)
 	}
 	// challenge 只允许一次恢复重放；恢复后的 session/CSRF 与原尝试完全隔离。
 	state, err := c.solveChallenge(ctx, protectedURL)
 	if err != nil {
-		return nil, err
+		return nil, mapSolverError(err)
 	}
 	sessionClient, err := c.newSessionClientWithSolverState(state)
 	if err != nil {
 		c.solverCache.invalidate()
-		return nil, err
+		return nil, mapSolverError(err)
 	}
 	token, err := sessionClient.fetchCSRF(ctx)
 	if err != nil {
 		if errors.Is(err, errChallengeDetected) {
 			c.solverCache.invalidate()
-			return nil, ErrSolverFailed
+			return nil, mapSolverError(ErrSolverFailed)
 		}
 		return nil, err
 	}
@@ -209,7 +231,7 @@ func (c *Client) recoverUpload(ctx context.Context, snapshot *reversesearch.Snap
 	if err != nil {
 		if errors.Is(err, errChallengeDetected) {
 			c.solverCache.invalidate()
-			return nil, ErrSolverFailed
+			return nil, mapSolverError(ErrSolverFailed)
 		}
 		return nil, err
 	}
@@ -218,14 +240,15 @@ func (c *Client) recoverUpload(ctx context.Context, snapshot *reversesearch.Snap
 
 func (c *Client) solveChallenge(ctx context.Context, protectedURL string) (solverState, error) {
 	if c == nil || c.solver == nil || c.solverCache == nil || c.endpoint == nil {
-		return solverState{}, ErrSolverUnavailable
+		return solverState{}, mapSolverError(ErrSolverUnavailable)
 	}
-	return c.solverCache.getOrSolve(ctx, func(solveContext context.Context) (solverState, error) {
+	state, err := c.solverCache.getOrSolve(ctx, func(solveContext context.Context) (solverState, error) {
 		if err := c.solver.create(solveContext); err != nil {
 			return solverState{}, err
 		}
 		return c.solver.get(solveContext, protectedURL)
 	})
+	return state, mapSolverError(err)
 }
 
 func (c *Client) newSessionClient() (*Client, error) {

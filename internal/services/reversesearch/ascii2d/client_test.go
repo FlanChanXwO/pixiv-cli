@@ -501,6 +501,94 @@ func resultFixture() string {
 </body></html>`
 }
 
+func TestUploadMapsChallengeAndSolverFailuresToStableCodes(t *testing.T) {
+	tests := []struct {
+		name        string
+		solverBody  string
+		solverState bool
+		wantCode    reversesearch.ErrorCode
+		wantCause   error
+	}{
+		{
+			name:     "challenge without configured solver",
+			wantCode: reversesearch.CodeChallengeRequired,
+		},
+		{
+			name:        "solver response is malformed",
+			solverState: true,
+			solverBody:  `{"status":"ok","solution":{"userAgent":"solver-agent","cookies":[]}}`,
+			wantCode:    reversesearch.CodeMalformedSolverResponse,
+			wantCause:   ascii2d.ErrMalformedSolverResponse,
+		},
+		{
+			name:        "solver reports failure",
+			solverState: true,
+			solverBody:  `{"status":"error","message":"private solver diagnostic"}`,
+			wantCode:    reversesearch.CodeSolverFailed,
+			wantCause:   ascii2d.ErrSolverFailed,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			asciiServer := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+				writer.Header().Set("Cf-Mitigated", "challenge")
+				writer.WriteHeader(http.StatusForbidden)
+				_, _ = io.WriteString(writer, "private ascii challenge body")
+			}))
+			t.Cleanup(asciiServer.Close)
+
+			options := ascii2d.Options{Endpoint: asciiServer.URL, HTTPClient: asciiServer.Client()}
+			if test.solverState {
+				solverServer := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+					var payload struct {
+						Command string `json:"cmd"`
+					}
+					if err := json.NewDecoder(request.Body).Decode(&payload); err != nil {
+						t.Errorf("decode solver request: %v", err)
+						return
+					}
+					switch payload.Command {
+					case "sessions.create":
+						writeJSON(t, writer, map[string]any{"status": "ok"})
+					case "request.get":
+						writer.Header().Set("Content-Type", "application/json")
+						writer.WriteHeader(http.StatusOK)
+						_, _ = io.WriteString(writer, test.solverBody)
+					default:
+						t.Errorf("unexpected solver command %q", payload.Command)
+						writer.WriteHeader(http.StatusBadRequest)
+					}
+				}))
+				t.Cleanup(solverServer.Close)
+				options.FlareSolverr = &ascii2d.FlareSolverrOptions{URL: solverServer.URL}
+			}
+
+			client, err := ascii2d.New(options)
+			require.NoError(t, err)
+			_, err = client.Upload(context.Background(), loadSnapshot(t, []byte("\xff\xd8\xff\xe0fixture")))
+			require.Equal(t, test.wantCode, reversesearch.CodeOf(err))
+			if test.wantCause != nil {
+				require.ErrorIs(t, err, test.wantCause)
+			}
+			require.NotContains(t, errorChainText(err), "private ascii challenge body")
+			require.NotContains(t, errorChainText(err), "private solver diagnostic")
+		})
+	}
+}
+
+func TestNewMapsInvalidSolverConfigurationToStableCode(t *testing.T) {
+	_, err := ascii2d.New(ascii2d.Options{
+		Endpoint:   "https://ascii2d.invalid",
+		HTTPClient: &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) { return nil, errors.New("unused") })},
+		FlareSolverr: &ascii2d.FlareSolverrOptions{
+			URL: "file:///private/solver",
+		},
+	})
+	require.Equal(t, reversesearch.CodeSolverUnavailable, reversesearch.CodeOf(err))
+	require.ErrorIs(t, err, ascii2d.ErrSolverUnavailable)
+}
+
 func errorChainText(err error) string {
 	if err == nil {
 		return ""
@@ -532,8 +620,8 @@ func TestUploadClassifiesCloudflareChallengeHeaderBeforeReadingBody(t *testing.T
 	require.NoError(t, err)
 
 	_, err = client.Upload(context.Background(), loadSnapshot(t, []byte("\xff\xd8\xff\xe0fixture")))
-	require.Equal(t, reversesearch.CodeUpstreamHTTPStatus, reversesearch.CodeOf(err))
-	require.EqualError(t, err, "ascii2d challenge detected")
+	require.Equal(t, reversesearch.CodeChallengeRequired, reversesearch.CodeOf(err))
+	require.EqualError(t, err, "ascii2d challenge requires solver recovery")
 	require.True(t, responseBody.closed.Load())
 	require.NotContains(t, errorChainText(err), privateResponse)
 }
@@ -554,8 +642,8 @@ func TestUploadClassifiesCloudflareHTMLChallengeWithoutArbitraryTruncation(t *te
 	require.NoError(t, err)
 
 	_, err = client.Upload(context.Background(), loadSnapshot(t, []byte("\xff\xd8\xff\xe0fixture")))
-	require.Equal(t, reversesearch.CodeUpstreamHTTPStatus, reversesearch.CodeOf(err))
-	require.EqualError(t, err, "ascii2d challenge detected")
+	require.Equal(t, reversesearch.CodeChallengeRequired, reversesearch.CodeOf(err))
+	require.EqualError(t, err, "ascii2d challenge requires solver recovery")
 	require.True(t, responseBody.closed.Load())
 }
 
@@ -576,8 +664,8 @@ func TestUploadClassifiesCloudflareChallengeHeaderEvenWithSuccessfulStatus(t *te
 	require.NoError(t, err)
 
 	_, err = client.Upload(context.Background(), loadSnapshot(t, []byte("\xff\xd8\xff\xe0fixture")))
-	require.Equal(t, reversesearch.CodeUpstreamHTTPStatus, reversesearch.CodeOf(err))
-	require.EqualError(t, err, "ascii2d challenge detected")
+	require.Equal(t, reversesearch.CodeChallengeRequired, reversesearch.CodeOf(err))
+	require.EqualError(t, err, "ascii2d challenge requires solver recovery")
 	require.True(t, responseBody.closed.Load())
 	require.NotContains(t, errorChainText(err), privateResponse)
 }
@@ -907,6 +995,7 @@ func TestUploadStopsAfterOneRecoveryReplayAndInvalidatesSolverState(t *testing.T
 	client := newSolverRecoveryClient(t, asciiServer, solver)
 	_, err := client.Upload(context.Background(), snapshot)
 	require.ErrorIs(t, err, ascii2d.ErrSolverFailed)
+	require.Equal(t, reversesearch.CodeSolverFailed, reversesearch.CodeOf(err))
 	require.Equal(t, int32(2), homeCalls.Load())
 	require.Equal(t, int32(2), uploadCalls.Load(), "challenge recovery must not loop beyond one replay")
 	require.Equal(t, int32(1), solver.createCall.Load())
