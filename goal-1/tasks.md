@@ -169,18 +169,40 @@
 
 ### 🔍 集中检查 #2（Task 4–6）
 
-- [ ] **目标**：复查输出格式与兼容性。
+- [x] **目标**：复查输出格式与兼容性。
 - **检查清单**：
-  - [ ] `pixiv detail 123 | cat` 默认文本是否未变化。
-  - [ ] RecordMode 非 TTY 是否自动 canonical NDJSON。
-  - [ ] `--json` / `--ndjson` 是否互斥且错误明确。
-  - [ ] JSON array 是否流式，不缓存整个输入。
-  - [ ] detail records 是否来自实际 SDK detail DTO。
-  - [ ] reverse generic artwork 是否被规范化为具体 artwork kind。
-  - [ ] novel content 是否有稳定 identity。
-  - [ ] stdout/stderr 是否严格分离。
-- **结论**：待执行。
-- **发现问题**：待执行。
+  - [x] `pixiv detail 123 | cat` 默认文本是否未变化：TextValue 默认路径仍走原 human presenter，已有回归测试覆盖。
+  - [x] RecordMode 非 TTY 是否自动 canonical NDJSON：`runRecords` 仅在 record mode、无显式输出 flag 且 stdout 非 TTY 时自动打开。
+  - [x] `--json` / `--ndjson` 是否互斥且错误明确：入口在读取输入前检查 `Changed` 状态。
+  - [x] JSON array 是否流式，不缓存整个输入：`jsonArraySpool` 逐条写临时文件并在完成后复制，不构造无界内存数组。
+  - [x] detail records 是否来自实际 SDK detail DTO：artwork/novel/content/user 均先调用 fetcher，再显式 DTO conversion。
+  - [x] reverse generic artwork 是否被规范化为具体 artwork kind：record entity resolver 接受 generic `artwork`，输出使用实际 artwork DTO kind。
+  - [x] novel content 是否有稳定 identity：`RecordFromNovelContentDTO` 固定 `id/type/url` 并保留 structured content。
+  - [x] stdout/stderr 是否严格分离：record diagnostics 走 `ErrorOutput`，machine output 只写 `Output`，I/O error 不被吞掉。
+  - [ ] RecordMode 的 `--content` 是否对非 novel 输入在 fetch 前显式失败：发现缺口，需先补 Red 测试再修复。
+- **结论**：输出格式、machine projection、流式 array 与 stdout/stderr 边界通过检查；Phase 2 发现一个真实 option-validation 缺口，必须先修复后再进入普通/reverse composition。
+- **发现问题**：`internal/cli/commands/pixiv/detail/detail.go:180-192` 在 RecordMode 中完成 `entityForRecord` 后直接调用 `runOneWithOutput`，没有复用 TextValue 路径 `opts.content && entity != "novel"` 的校验。因此 artwork/user record 配合 `--content` 时会静默忽略该 flag 并请求错误的 detail 路径，违反“`--content` 只作用于 novel”与显式可诊断错误契约。
+
+---
+
+### Task 6.1: Red → Green — Reject `--content` for non-novel records
+
+- [ ] **目标**：修复集中检查发现的 RecordMode option-validation 缺口，保持 TextValue 与 RecordMode 的 `--content` 语义一致。
+- **Red**：
+  - 增加 artwork/user canonical record 配合 `--content` 的 command test。
+  - 断言返回 `--content is only supported when --type novel`，且在 fetch 前失败、不请求错误 endpoint。
+- **Green**：
+  - 在 RecordMode 完成 entity inference/compatibility 后、读取 ID 和 fetch 前复用同一条显式校验。
+  - 不改变 novel record + `--content` 的正常路径，不新增 fallback、限制或通用抽象。
+- **Refactor**：仅检查是否能复用已有 option-validation helper；不为一个 guard 建立框架。
+- **验证命令**：
+  - `go test ./internal/cli/commands/pixiv/detail -count=1 -run 'TestCommand.*Content' -v`
+  - `go test ./internal/cli/commands/pixiv/detail -count=1`
+- **验收**：非 novel record + `--content` 明确失败且未调用对应 fetcher；TextValue 与 novel content 回归继续通过。
+- **实际做了什么**：待执行。
+- **验证证据**：待执行。
+- **剩余风险**：待执行。
+- **下一步建议**：Task 7。
 
 ---
 
